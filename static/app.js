@@ -1931,6 +1931,7 @@ compactToleranceScale=function(kind,values,count){
     </section>
     <section class="qa-step-pane" data-qa-pane="list" hidden>
      <div class="qa-list" id="qaList"><div class="qa-empty">グラフ作成後、対象データの一覧を表示します。</div></div>
+     <div class="qa-list-status" id="qaListStatus"></div>
     </section>
    </div>`;
 
@@ -2008,17 +2009,51 @@ compactToleranceScale=function(kind,values,count){
   return items.slice(0,n);
  }
 
+ /* ---------- 面積最大化の共通ヘルパー ----------
+    棒/クラスタの間隔を「スロット比率」ではなく「最大px」で頭打ちにすることで、
+    項目数が少ない（スロットが広い）場合でも棒が細く中央に寄らず、
+    エリア全体を均等に使い切るようにする。 */
+ function bandGap(slot,factor){return Math.max(2,Math.min(slot*(1-factor),34))}
+ function bandWidth(slot,factor,min){return Math.max(min||4,slot-bandGap(slot,factor))}
+ /* 凡例（系列名/円グラフ項目）をSVG内に折り返し配置する。印刷時もHTMLツールバーの
+    凡例が非表示になるため、グラフ本体に埋め込んで基本情報として常に見えるようにする。 */
+ function legendLayout(keys,maxW){
+  const rowH=17,chipW=10,padX=10;
+  let cx=0,rows=1;const placements=[];
+  keys.forEach((k,i)=>{
+   const label=ell(String(k),14);
+   /* 日本語（全角）は1文字がほぼ1em幅なので、半角基準の推定だと重なる。
+      全角/半角を判定して幅を積算し、凡例チップが本文と衝突しないようにする。 */
+   const textW=Math.max(20,[...label].reduce((w,ch)=>w+(/[\x00-\xff]/.test(ch)?6.4:11.5),0));
+   const itemW=chipW+4+textW+padX;
+   if(cx+itemW>maxW&&cx>0){cx=0;rows++}
+   placements.push({label,row:rows-1,x:cx,col:stackPalette[i%stackPalette.length]});
+   cx+=itemW;
+  });
+  return {placements,rows,rowH};
+ }
+ function legendSvg(info,x0,y0){
+  if(!info)return '';
+  return info.placements.map(p=>`<rect x="${x0+p.x}" y="${y0+p.row*info.rowH-9}" width="10" height="10" rx="2" fill="${p.col}"></rect><text class="qa-svg-legend-label" x="${x0+p.x+14}" y="${y0+p.row*info.rowH}">${html(p.label)}</text>`).join('');
+ }
+
  /* ---------- 縦系（棒/積み上げ/集合/折れ線/面/コンボ） ---------- */
  function svgVertical(items,cfg){
-  const {W,H,metric,keys,hasSeries,flags,showVal,color}=cfg;
+  const {W,H,metric,keys,hasSeries,flags,showVal,color,title,subtitle,xTitle,yTitle}=cfg;
   const combo=!!flags.combo,stack=!!flags.stack,pct=!!flags.pct,line=!!flags.line,area=!!flags.area;
   const barMetric=combo?(val('qaBarMetric')||'count'):metric;
   const lineMetric=combo?(val('qaLineMetric')||'sum'):metric;
   const labels=items.map(it=>String(it.label));
   const maxLen=Math.max(...labels.map(s=>ell(s,18).length),1);
   const rotate=items.length>6||maxLen>5;
-  const B=rotate?Math.min(150,Math.max(46,34+maxLen*7)):40;
-  const T=24,L=60,R=combo?60:22;
+  const R=combo?60:16,L0=60+(yTitle?18:0);
+  /* 凡例は実際の描画（本体側の分岐）と一致させる。combo かつ 積み上げ でない場合は
+     系列色を使わず単色棒+折れ線で描くため、系列名ではなく棒/折れ線の凡例を出す。 */
+  const legendKeys=combo?(stack&&hasSeries?keys:[`棒: ${METRIC_LABEL[barMetric]}`,`折れ線: ${METRIC_LABEL[lineMetric]}`]):(hasSeries?keys:[]);
+  const legendInfo=legendKeys.length?legendLayout(legendKeys,Math.max(140,W-L0-R)):null;
+  const titleH=title?21:0,subtitleH=subtitle?15:0,legendH=legendInfo?legendInfo.rows*17+6:0;
+  const B=(rotate?Math.min(150,Math.max(46,34+maxLen*7)):40)+(xTitle?20:0);
+  const T=12+titleH+subtitleH+legendH,L=L0;
   const plotH=Math.max(90,H-T-B),plotW=Math.max(140,W-L-R);
   const n=items.length,slot=plotW/n,x=i=>L+slot*i+slot/2;
   const stackTotal=it=>keys.reduce((s,k)=>s+Number(it.stacks?.[k]?.[metric]||0),0);
@@ -2033,7 +2068,7 @@ compactToleranceScale=function(kind,values,count){
   const yL=v=>T+plotH-(Number(v||0)/lmax)*plotH;
   let grid='';for(let r=0;r<=4;r++){const gy=T+plotH*r/4,gv=pmax*(4-r)/4;grid+=`<line class="qa-gridline" x1="${L}" y1="${gy}" x2="${W-R}" y2="${gy}"></line><text class="qa-label" x="${L-8}" y="${gy+4}" text-anchor="end">${pct&&!combo?Math.round(gv)+'%':fmt(gv)}</text>`}
   let raxis='';if(combo){for(let r=0;r<=4;r++){const gy=T+plotH*r/4,gv=lmax*(4-r)/4;raxis+=`<text class="qa-label qa-raxis" x="${W-R+8}" y="${gy+4}" text-anchor="start">${fmt(gv)}</text>`}}
-  const bw=Math.max(3,Math.min(slot*0.92,slot*barFactor()));
+  const bw=bandWidth(slot,barFactor(),3);
   let body='';
   if(combo){
    if(stack&&hasSeries){body+=items.map((it,i)=>{const cx=x(i);let acc=0;return keys.map((k,si)=>{const v=Number(it.stacks?.[k]?.[metric]||0);if(!v)return '';const yy=yB(acc+v),hh=yB(acc)-yy;acc+=v;return `<rect x="${cx-bw/2}" y="${yy}" width="${bw}" height="${Math.max(1,hh)}" fill="${stackPalette[si%stackPalette.length]}" opacity=".85"><title>${html(it.label)} / ${html(k)}: ${fmt(v)}</title></rect>`}).join('')}).join('')}
@@ -2044,8 +2079,9 @@ compactToleranceScale=function(kind,values,count){
   }else if(hasSeries&&stack){
    body=items.map((it,i)=>{const total=stackTotal(it)||1;let acc=0;const cx=x(i);const segs=keys.map((k,si)=>{let v=Number(it.stacks?.[k]?.[metric]||0);if(!v)return '';let disp=pct?v/total*100:v;const yy=yB(acc+disp),hh=yB(acc)-yy;acc+=disp;return `<rect x="${cx-bw/2}" y="${yy}" width="${bw}" height="${Math.max(1,hh)}" fill="${stackPalette[si%stackPalette.length]}"><title>${html(it.label)} / ${html(k)}: ${fmt(v)}</title></rect>`}).join('');const lab=showVal&&!pct?`<text class="qa-value" x="${cx}" y="${yB(stackTotal(it))-6}" text-anchor="middle">${fmt(stackTotal(it))}</text>`:'';return segs+lab}).join('');
   }else if(hasSeries){
-   const gw=Math.max(2,Math.min(18,(slot*0.82)/keys.length)),groupW=gw*keys.length;
-   body=items.map((it,i)=>{const x0=x(i)-groupW/2;return keys.map((k,si)=>{const v=Number(it.stacks?.[k]?.[metric]||0);return `<rect x="${x0+si*gw}" y="${yB(v)}" width="${Math.max(2,gw-2)}" height="${Math.max(1,T+plotH-yB(v))}" rx="2" fill="${stackPalette[si%stackPalette.length]}"><title>${html(it.label)} / ${html(k)}: ${fmt(v)}</title></rect>`}).join('')}).join('');
+   const clusterW=bandWidth(slot,barFactor(),10),innerGap=Math.min(4,clusterW/keys.length*0.15);
+   const gw=Math.max(3,clusterW/keys.length-innerGap),groupW=gw*keys.length+innerGap*(keys.length-1);
+   body=items.map((it,i)=>{const x0=x(i)-groupW/2;return keys.map((k,si)=>{const v=Number(it.stacks?.[k]?.[metric]||0);return `<rect x="${x0+si*(gw+innerGap)}" y="${yB(v)}" width="${gw}" height="${Math.max(1,T+plotH-yB(v))}" rx="2" fill="${stackPalette[si%stackPalette.length]}"><title>${html(it.label)} / ${html(k)}: ${fmt(v)}</title></rect>`}).join('')}).join('');
   }else if(line){
    const pts=items.map((it,i)=>`${x(i)},${yB(Number(it[metric]||0))}`).join(' ');body=`<polyline class="qa-line" points="${pts}" stroke="${color}"></polyline>`+items.map((it,i)=>`<circle class="qa-point" cx="${x(i)}" cy="${yB(Number(it[metric]||0))}" r="4" fill="${color}"><title>${html(it.label)}: ${fmt(Number(it[metric]||0))}</title></circle>`).join('');
    if(showVal){const st=Math.ceil(items.length/18||1);body+=items.map((it,i)=>i%st===0?`<text class="qa-value" x="${x(i)}" y="${yB(Number(it[metric]||0))-7}" text-anchor="middle">${fmt(Number(it[metric]||0))}</text>`:'').join('')}
@@ -2057,22 +2093,28 @@ compactToleranceScale=function(kind,values,count){
    if(showVal){const st=Math.ceil(items.length/22||1);body+=items.map((it,i)=>i%st===0?`<text class="qa-value" x="${x(i)}" y="${yB(Number(it[metric]||0))-6}" text-anchor="middle">${fmt(Number(it[metric]||0))}</text>`:'').join('')}
   }
   const xlabels=items.map((it,i)=>rotate?`<text class="qa-label" x="${x(i)}" y="${T+plotH+14}" text-anchor="end" transform="rotate(-40 ${x(i)} ${T+plotH+14})">${html(ell(it.label,18))}<title>${html(it.label)}</title></text>`:`<text class="qa-label" x="${x(i)}" y="${T+plotH+18}" text-anchor="middle">${html(ell(it.label,10))}<title>${html(it.label)}</title></text>`).join('');
-  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="品質データ分析グラフ">${grid}${raxis}<line class="qa-axis" x1="${L}" y1="${T}" x2="${L}" y2="${T+plotH}"></line>${combo?`<line class="qa-axis" x1="${W-R}" y1="${T}" x2="${W-R}" y2="${T+plotH}"></line>`:''}<line class="qa-axis" x1="${L}" y1="${T+plotH}" x2="${W-R}" y2="${T+plotH}"></line>${body}${xlabels}</svg>`;
+  const head=(title?`<text class="qa-chart-title" x="${W/2}" y="16" text-anchor="middle">${html(title)}</text>`:'')+(subtitle?`<text class="qa-chart-subtitle" x="${W/2}" y="${16+titleH}" text-anchor="middle">${html(subtitle)}</text>`:'')+legendSvg(legendInfo,L,16+titleH+subtitleH+10);
+  const axisTitles=(xTitle?`<text class="qa-axis-title" x="${L+plotW/2}" y="${T+plotH+B-6}" text-anchor="middle">${html(xTitle)}</text>`:'')+(yTitle?`<text class="qa-axis-title" x="14" y="${T+plotH/2}" text-anchor="middle" transform="rotate(-90 14 ${T+plotH/2})">${html(yTitle)}</text>`:'');
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${html(title||'品質データ分析グラフ')}">${head}${axisTitles}${grid}${raxis}<line class="qa-axis" x1="${L}" y1="${T}" x2="${L}" y2="${T+plotH}"></line>${combo?`<line class="qa-axis" x1="${W-R}" y1="${T}" x2="${W-R}" y2="${T+plotH}"></line>`:''}<line class="qa-axis" x1="${L}" y1="${T+plotH}" x2="${W-R}" y2="${T+plotH}"></line>${body}${xlabels}</svg>`;
  }
 
  /* ---------- 横系（横棒/横積み上げ/横集合） ---------- */
  function svgHorizontal(items,cfg){
-  const {W,H,metric,keys,hasSeries,flags,showVal,color}=cfg;
+  const {W,H,metric,keys,hasSeries,flags,showVal,color,title,subtitle,xTitle,yTitle}=cfg;
   const stack=!!flags.stack,pct=!!flags.pct;
   const stackTotal=it=>keys.reduce((s,k)=>s+Number(it.stacks?.[k]?.[metric]||0),0);
   const labels=items.map(it=>ell(String(it.label),22));
-  const L=Math.min(230,Math.max(90,20+Math.max(...labels.map(s=>s.length),3)*11)),T=14,R=60,B=30;
+  const L=Math.min(230,Math.max(90,20+Math.max(...labels.map(s=>s.length),3)*11)),R=16;
+  const legendKeys=hasSeries?keys:[];
+  const legendInfo=legendKeys.length?legendLayout(legendKeys,Math.max(140,W-L-R)):null;
+  const titleH=title?21:0,subtitleH=subtitle?15:0,legendH=legendInfo?legendInfo.rows*17+6:0,catCapH=yTitle?16:0;
+  const T=12+titleH+subtitleH+legendH+catCapH,B=30+(xTitle?20:0);
   const n=items.length,avail=Math.max(60,H-T-B);
   let stride=avail/n,scroll=false;if(stride<26){stride=26;scroll=true}
   const H2=scroll?T+B+n*stride:H;
   const plotW=Math.max(120,W-L-R);
-  const rowH=Math.max(8,Math.min(stride-6,stride*barFactor()+ (hasSeries&&!stack?6:0)));
-  const yrow=i=>T+i*stride+(stride-rowH)/2;
+  const rowH=bandWidth(stride,barFactor(),8);
+  const yrow=(i,h)=>T+i*stride+(stride-(h==null?rowH:h))/2;
   let primVals;
   if(hasSeries&&stack)primVals=items.map(it=>pct?100:stackTotal(it));
   else if(hasSeries)primVals=items.map(it=>Math.max(...keys.map(k=>Number(it.stacks?.[k]?.[metric]||0)),0));
@@ -2083,25 +2125,34 @@ compactToleranceScale=function(kind,values,count){
   if(hasSeries&&stack){
    body=items.map((it,i)=>{const total=stackTotal(it)||1;let acc=0;const yy=yrow(i);const segs=keys.map((k,si)=>{let v=Number(it.stacks?.[k]?.[metric]||0);if(!v)return '';let disp=pct?v/total*100:v;const x0=xv(acc),w=xv(acc+disp)-x0;acc+=disp;return `<rect x="${x0}" y="${yy}" width="${Math.max(1,w)}" height="${rowH}" fill="${stackPalette[si%stackPalette.length]}"><title>${html(it.label)} / ${html(k)}: ${fmt(v)}</title></rect>`}).join('');const lab=showVal&&!pct?`<text class="qa-value" x="${xv(stackTotal(it))+6}" y="${yy+rowH/2+4}">${fmt(stackTotal(it))}</text>`:'';return segs+lab}).join('');
   }else if(hasSeries){
-   const gh=Math.max(2,Math.min(16,(rowH)/keys.length));body=items.map((it,i)=>{const y0=yrow(i)+(rowH-gh*keys.length)/2;return keys.map((k,si)=>{const v=Number(it.stacks?.[k]?.[metric]||0);return `<rect x="${L}" y="${y0+si*gh}" width="${Math.max(1,xv(v)-L)}" height="${Math.max(1,gh-1)}" fill="${stackPalette[si%stackPalette.length]}"><title>${html(it.label)} / ${html(k)}: ${fmt(v)}</title></rect>`}).join('')}).join('');
+   const clusterH=bandWidth(stride,barFactor(),10),innerGap=Math.min(3,clusterH/keys.length*0.15);
+   const gh=Math.max(2,clusterH/keys.length-innerGap);
+   body=items.map((it,i)=>{const y0=yrow(i,clusterH);return keys.map((k,si)=>{const v=Number(it.stacks?.[k]?.[metric]||0);return `<rect x="${L}" y="${y0+si*(gh+innerGap)}" width="${Math.max(1,xv(v)-L)}" height="${gh}" fill="${stackPalette[si%stackPalette.length]}"><title>${html(it.label)} / ${html(k)}: ${fmt(v)}</title></rect>`}).join('')}).join('');
   }else{
    body=items.map((it,i)=>{const v=Number(it[metric]||0),yy=yrow(i);const lab=showVal?`<text class="qa-value" x="${xv(v)+6}" y="${yy+rowH/2+4}">${fmt(v)}</text>`:'';return `<rect x="${L}" y="${yy}" width="${Math.max(1,xv(v)-L)}" height="${rowH}" rx="3" fill="${color}" opacity=".9"><title>${html(it.label)}: ${fmt(v)}</title></rect>${lab}`}).join('');
   }
   const ylabels=items.map((it,i)=>`<text class="qa-label" x="${L-8}" y="${yrow(i)+rowH/2+4}" text-anchor="end">${html(ell(it.label,22))}<title>${html(it.label)}</title></text>`).join('');
-  return `<svg viewBox="0 0 ${W} ${H2}" width="${W}" height="${H2}" role="img" aria-label="品質データ分析グラフ（横棒）">${grid}<line class="qa-axis" x1="${L}" y1="${T}" x2="${L}" y2="${H2-B}"></line>${body}${ylabels}</svg>`;
+  const head=(title?`<text class="qa-chart-title" x="${W/2}" y="16" text-anchor="middle">${html(title)}</text>`:'')+(subtitle?`<text class="qa-chart-subtitle" x="${W/2}" y="${16+titleH}" text-anchor="middle">${html(subtitle)}</text>`:'')+legendSvg(legendInfo,L,16+titleH+subtitleH+10)+(yTitle?`<text class="qa-axis-title" x="${L}" y="${T-catCapH+11}" text-anchor="start">${html(yTitle)}</text>`:'');
+  const axisTitle=xTitle?`<text class="qa-axis-title" x="${L+plotW/2}" y="${H2-8}" text-anchor="middle">${html(xTitle)}</text>`:'';
+  return `<svg viewBox="0 0 ${W} ${H2}" width="${W}" height="${H2}" role="img" aria-label="${html(title||'品質データ分析グラフ（横棒）')}">${head}${axisTitle}${grid}<line class="qa-axis" x1="${L}" y1="${T}" x2="${L}" y2="${H2-B}"></line>${body}${ylabels}</svg>`;
  }
 
  /* ---------- 円 / ドーナツ ---------- */
  function polar(cx,cy,r,a){return [cx+r*Math.cos(a),cy+r*Math.sin(a)]}
  function arcPath(cx,cy,r,ir,a0,a1){const large=(a1-a0)>Math.PI?1:0;const [x0,y0]=polar(cx,cy,r,a0),[x1,y1]=polar(cx,cy,r,a1);if(ir<=0)return `M${cx} ${cy} L${x0} ${y0} A${r} ${r} 0 ${large} 1 ${x1} ${y1} Z`;const [x2,y2]=polar(cx,cy,ir,a1),[x3,y3]=polar(cx,cy,ir,a0);return `M${x0} ${y0} A${r} ${r} 0 ${large} 1 ${x1} ${y1} L${x2} ${y2} A${ir} ${ir} 0 ${large} 0 ${x3} ${y3} Z`}
  function svgPie(items,cfg){
-  const {W,H,metric,flags,showVal}=cfg,donut=!!flags.donut;
+  const {W,H,metric,flags,showVal,title,subtitle}=cfg,donut=!!flags.donut;
   const total=items.reduce((s,it)=>s+Number(it[metric]||0),0)||1;
-  const cx=W/2,cy=H/2,r=Math.max(40,Math.min(W,H)/2-24),ir=donut?r*0.56:0;
+  const legendInfo=legendLayout(items.map(it=>it.label),Math.max(140,W-32));
+  const titleH=title?21:0,subtitleH=subtitle?15:0,legendH=legendInfo.rows*17+8;
+  const topH=12+titleH+subtitleH,bottomH=legendH+10;
+  const cx=W/2,cy=topH+(H-topH-bottomH)/2,r=Math.max(40,Math.min(W-32,H-topH-bottomH)/2-14),ir=donut?r*0.56:0;
   let a0=-Math.PI/2,arcs='';
   items.forEach((it,i)=>{const v=Number(it[metric]||0),frac=v/total,a1=a0+frac*2*Math.PI,col=stackPalette[i%stackPalette.length];arcs+=`<path d="${arcPath(cx,cy,r,ir,a0,a1)}" fill="${col}" stroke="#fff" stroke-width="2"><title>${html(it.label)}: ${fmt(v)} (${(frac*100).toFixed(1)}%)</title></path>`;if(showVal&&frac>=0.04){const mid=(a0+a1)/2,lr=ir>0?(r+ir)/2:r*0.62,[lx,ly]=polar(cx,cy,lr,mid);arcs+=`<text class="qa-pie-label" x="${lx}" y="${ly}" text-anchor="middle">${Math.round(frac*100)}%</text>`}a0=a1});
   const center=donut?`<text x="${cx}" y="${cy-4}" text-anchor="middle" class="qa-donut-total">${fmt(total)}</text><text x="${cx}" y="${cy+16}" text-anchor="middle" class="qa-donut-sub">${METRIC_LABEL[metric]||''}</text>`:'';
-  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="品質データ分析グラフ（円）">${arcs}${center}</svg>`;
+  const head=(title?`<text class="qa-chart-title" x="${W/2}" y="16" text-anchor="middle">${html(title)}</text>`:'')+(subtitle?`<text class="qa-chart-subtitle" x="${W/2}" y="${16+titleH}" text-anchor="middle">${html(subtitle)}</text>`:'');
+  const legendRow=legendSvg(legendInfo,Math.max(8,(W-Math.max(...legendInfo.placements.map(p=>p.x),0))/2-70),H-legendH+8);
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${html(title||'品質データ分析グラフ（円）')}">${head}${arcs}${center}${legendRow}</svg>`;
  }
 
  function legend(data,items,metric,flags,hasSeries){
@@ -2122,7 +2173,17 @@ compactToleranceScale=function(kind,values,count){
   const sortMetric=flags.combo?(val('qaBarMetric')||'count'):metric;
   const items=prepareItems(data,sortMetric);
   const {w,h}=stage();
-  const cfg={W:w,H:h,metric,keys,hasSeries,flags,showVal:checked('qaShowValues'),color:baseColor()};
+  const axisLabel=data.dimension==='time'?('時系列・'+(BUCKET_LABELS[data.bucket]||'日別')):(data.group_col||'項目');
+  const metricLabel=METRIC_LABEL[metric]+(metric==='sum'&&data.value_col?`（${data.value_col}）`:'');
+  /* グラフの基本情報（タイトル・軸ラベル・凡例）はSVG内に直接描画する。
+     ツールバー側の凡例/サマリーは印刷時に非表示になるため、印刷しても
+     「何のグラフか」が常にわかるよう図そのものに埋め込む。 */
+  const title=flags.pie?`${axisLabel} 別 ${metricLabel}の内訳`:(hasSeries?`${axisLabel} × ${data.stack_col} 別 ${metricLabel}`:`${axisLabel} 別 ${metricLabel}`);
+  const periodTxt=($id('sumPeriod')&&$id('sumPeriod').textContent)||'';
+  const subtitle=`対象 ${fmt(data.total||0)}件・${periodTxt}・表示 ${items.length}項目`;
+  const xTitle=flags.pie?'':(flags.orient==='h'?metricLabel:axisLabel);
+  const yTitle=flags.pie?'':(flags.orient==='h'?axisLabel:metricLabel);
+  const cfg={W:w,H:h,metric,keys,hasSeries,flags,showVal:checked('qaShowValues'),color:baseColor(),title,subtitle,xTitle,yTitle};
   let svg;
   if(!items.length)svg='<div class="qa-empty">対象データがありません。条件を見直してください。</div>';
   else if(flags.pie)svg=svgPie(items,cfg);
@@ -2131,9 +2192,14 @@ compactToleranceScale=function(kind,values,count){
   $id('qaChart').innerHTML=svg;
   $id('qaList').innerHTML=listHtml(data);
   $id('qaLegend').innerHTML=legend(data,items,metric,flags,hasSeries);
-  const axis=data.dimension==='time'?('時系列 / '+(BUCKET_LABELS[data.bucket]||'日別')):(data.group_col||'-');
+  const axis=axisLabel;
   const stackChip=hasSeries?`<span class="qa-chip">凡例: ${html(data.stack_col)}</span>`:'';
-  $id('qaSummary').innerHTML=`<span class="qa-chip">対象 ${Number(data.total||0).toLocaleString()}件</span><span class="qa-chip">${METRIC_LABEL[metric]}${data.metric==='sum'&&data.value_col?'（'+html(data.value_col)+'）':''}</span><span class="qa-chip">軸: ${html(axis)}</span><span class="qa-chip">表示 ${items.length}項目</span>${stackChip}`;
+  $id('qaSummary').innerHTML=`<span class="qa-chip">対象 ${Number(data.total||0).toLocaleString()}件</span><span class="qa-chip">${html(metricLabel)}</span><span class="qa-chip">軸: ${html(axis)}</span><span class="qa-chip">表示 ${items.length}項目</span>${stackChip}`;
+  const listStatus=$id('qaListStatus');
+  if(listStatus){
+   const rowsShown=(data.rows||[]).length,total=Number(data.total||0);
+   listStatus.innerHTML=rowsShown?`<span>表示 ${rowsShown.toLocaleString()}件${rowsShown<total?` / 対象 ${total.toLocaleString()}件中`:''}</span>`:'';
+  }
  }
 
  async function run(){
