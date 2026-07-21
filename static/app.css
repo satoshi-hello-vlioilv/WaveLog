@@ -496,20 +496,24 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 .mother-quality textarea{width:100%;height:300px;border:1px solid var(--line);border-top:0;resize:none;background:#fff}
 
 .product-panel{display:grid;gap:8px}
-.product-head,.flatness-table-head{display:flex;justify-content:space-between;align-items:center;padding:7px 9px;background:#ffffdc;border:1px solid var(--line)}
+.product-head,.flatness-table-head{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 9px;background:#ffffdc;border:1px solid var(--line)}
 .product-head b,.flatness-table-head b{font-weight:800}
 .product-head span{padding:3px 10px;background:#edf3f5;border:1px solid var(--line)}
-.product-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) 132px;gap:8px;align-items:end}
-.product-summary label{display:grid;grid-template-rows:20px 17px 36px;font-size:12px;white-space:nowrap}
-.product-summary small{display:block;color:#64777e}
-.product-summary button{height:36px;white-space:nowrap}
-.product-summary input,.alignment-grid input,.alignment-grid textarea,.flatness-entry select,.flatness-entry textarea{width:100%;margin-top:3px;background:#fff}
-.alignment-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.alignment-grid label{display:grid;grid-template-rows:20px auto;font-size:12px;white-space:nowrap}
-.alignment-grid label:nth-child(-n+3){min-height:78px}
-.alignment-grid textarea{height:52px;resize:vertical}
+.product-head button,.flatness-table-head button{height:32px;white-space:nowrap;margin-left:auto}
+.product-rows-note{padding:6px 9px;color:#61757c;font-size:12px;background:#f8fafb;border:1px solid var(--line);border-top:0}
+/* 丈(1..N)ごとの製品測定テーブル。列数が多いため横スクロールを許容する */
+.product-rows-wrap{overflow-x:auto;border:1px solid var(--line);border-top:0}
+.product-rows-table{width:100%;min-width:760px;border-collapse:collapse}
+.product-rows-table th,.product-rows-table td{padding:5px 6px;border:1px solid #d5e0e3;text-align:center;font-size:12px}
+.product-rows-table thead th{background:#eef2f4;color:#173842;font-weight:800;white-space:nowrap}
+.product-rows-table tbody th{background:#f8fafb}
+.product-rows-table input{width:100%;min-width:56px;height:30px;padding:2px 5px;text-align:center;background:#fff}
+.product-judge{display:inline-block;min-width:32px;padding:2px 6px;border-radius:10px;background:#eef2f4;color:#61757c;font-weight:800}
+.product-judge.ok{background:#e7f6ef;color:#1e7a55}
+.product-judge.ng{background:#fdeaea;color:#a32424}
 .flatness-entry{display:grid;grid-template-columns:110px 110px minmax(0,1fr);gap:8px}
 .flatness-entry label{font-size:12px}
+.flatness-entry select,.flatness-entry textarea{width:100%;margin-top:3px;background:#fff}
 .flatness-entry textarea{height:120px;resize:vertical}
 
 .quality{margin-top:8px}
@@ -672,8 +676,8 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .measure-shell button,.measure-shell input,.measure-shell select,.measure-shell textarea,
 .measure-shell label,.measure-shell output,
 .field label,.selectors label,.dense-controls label,.dense-controls .major-list select,
-.dense-controls .major-list select option,.material-grid label,.product-summary label,
-.alignment-grid label,.flatness-entry label,.flat-panel label,
+.dense-controls .major-list select option,.material-grid label,
+.flatness-entry label,.flat-panel label,
 .center-pane fieldset,.center-pane fieldset label,.center-pane fieldset legend,
 .tolerance-source-control label,.tolerance-source-control select,
 .quality-grade-item b,.quality-grade-item span,.data-management-grid b,.data-management-grid span,
@@ -1044,35 +1048,6 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .dense-controls .major-list{grid-template-rows:20px 273px}
 .dense-controls .major-list select{height:273px}
 @media(max-width:1450px){.dense-controls .major-list{grid-template-rows:20px 234px}.dense-controls .major-list select{height:234px}}
-.quality-analysis-panel{margin:6px 14px 0;border:1px solid #b9c9ce;border-radius:10px;background:#fff;overflow:hidden;box-shadow:0 1px 8px #0b2b3310}
-.quality-analysis-panel[hidden]{display:none!important}
-.qa-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 12px;background:#eef8f9;border-bottom:1px solid #d3e2e5}
-.qa-head b{color:#173842;font-size:15px}.qa-head small{color:#607981}.qa-actions{display:flex;gap:7px;align-items:center}.qa-actions button,.qa-controls button{height:34px;white-space:nowrap}.qa-primary{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:800}
-.qa-body{display:grid;grid-template-columns:minmax(330px,.9fr) minmax(0,1.6fr);gap:10px;padding:10px}.qa-controls{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-content:start}.qa-controls label{display:grid;gap:3px;color:#526970;font-size:12px;font-weight:700}.qa-controls select,.qa-controls input{height:34px;width:100%;min-width:0}.qa-controls .qa-wide{grid-column:1/-1}.qa-result-summary{grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;color:#526970}.qa-chip{padding:4px 9px;border-radius:14px;background:#edf7f8;border:1px solid #bad3d7;color:#075e67;font-weight:800}.qa-visual{min-width:0;display:grid;grid-template-rows:minmax(220px,auto) minmax(160px,1fr);gap:8px}.qa-chart{min-height:220px;border:1px solid #d5e0e3;border-radius:8px;background:#fbfdfd;padding:8px;overflow:auto}.qa-chart svg{width:100%;min-width:620px;height:260px}.qa-list{min-height:160px;max-height:320px;overflow:auto;border:1px solid #d5e0e3;border-radius:8px}.qa-list table{width:max-content;min-width:100%}.qa-empty{padding:24px;text-align:center;color:#60747b;border:1px dashed #b7c7cc;border-radius:8px;background:#fbfdfd}.qa-bar{fill:#087c89}.qa-axis{stroke:#6e858c;stroke-width:1}.qa-label{font-size:11px;fill:#233f47}.qa-value{font-size:11px;fill:#075e67;font-weight:700}.print-button{background:#173842;color:#fff;border-color:#173842;font-weight:800}
-@media(max-width:1180px){.qa-body{grid-template-columns:1fr}.qa-chart svg{min-width:520px}}
-@media print{
- body{background:#fff}.layout{display:block;height:auto}.layout>aside,main>header,#tabs,.hint,footer,.equipment-setup-banner,.generic-filter-bar,.qa-actions,.qa-controls button,.toast-area,.save-overlay,.modal,.record-modal{display:none!important}
- main{display:block}.quality-analysis-panel{display:block!important;margin:0;border:0;box-shadow:none}.qa-head{border-bottom:2px solid #333;background:#fff}.qa-body{display:block;padding:0}.qa-controls{display:none}.qa-chart{border:0;overflow:visible}.qa-list{max-height:none;overflow:visible;border:0}#grid{margin:0;border:0;overflow:visible}.no-print{display:none!important}
-}
-
-
-/* ============================================================
-2026-07-21 Quality analysis V2: graph-first tab UI
-============================================================ */
-.quality-analysis-panel.qa-v2{margin:8px 14px 0;border-radius:12px;border:1px solid #b9c9ce;background:#f8fbfc;box-shadow:0 4px 18px #0b2b3314}
-.qa-v2 .qa-head{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;padding:10px 14px;background:linear-gradient(90deg,#eef8f9,#ffffff);border-bottom:1px solid #d3e2e5}.qa-step-tabs{display:flex;gap:6px;padding:8px 10px;background:#fff;border-bottom:1px solid #dbe7ea}.qa-step-tabs button{height:36px;padding:0 14px;border-radius:18px;border:1px solid #b7ccd0;background:#f7fbfc;color:#36515c;font-weight:800}.qa-step-tabs button.active{background:var(--teal);border-color:var(--teal);color:#fff;box-shadow:0 3px 12px #087c8930}.qa-step-pane[hidden]{display:none!important}.qa-v2 .qa-body{display:block;padding:0}.qa-design-pane{display:grid;grid-template-columns:360px minmax(0,1fr);gap:12px;padding:12px}.qa-recipe{display:grid;gap:10px;align-content:start}.qa-card{padding:12px;border:1px solid #d2e1e4;border-radius:12px;background:#fff}.qa-card h3{margin:0 0 8px;font-size:15px;color:#173842}.qa-card p{margin:0 0 8px;color:#607981}.qa-field-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.qa-field-grid label,.qa-card label{display:grid;gap:4px;color:#526970;font-size:12px;font-weight:800}.qa-card select,.qa-card input{height:36px;width:100%;min-width:0}.qa-period-buttons{display:flex;flex-wrap:wrap;gap:6px}.qa-period-buttons button{height:30px;padding:0 10px;border-radius:15px;background:#eef8f9;border-color:#bad3d7;color:#075e67;font-weight:700}.qa-period-buttons button:hover{background:#dff3f5}.qa-chart-toolbar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border:1px solid #d2e1e4;border-radius:12px;background:#fff;margin-bottom:8px}.qa-chart-options{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.qa-chart-options label{display:flex;align-items:center;gap:5px;color:#526970;font-size:12px;font-weight:800}.qa-color-dot{width:18px;height:18px;border-radius:50%;display:inline-block;border:2px solid #fff;box-shadow:0 0 0 1px #91a8ae}.qa-graph-stage{min-height:520px;border:1px solid #d2e1e4;border-radius:14px;background:#fff;padding:12px;overflow:auto}.qa-graph-stage svg{width:100%;min-width:760px;height:480px}.qa-v2 .qa-list{max-height:620px;margin:12px;border-radius:12px;background:#fff}.qa-workflow-help{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:10px 12px;background:#edf7f8;border-bottom:1px solid #dbe7ea}.qa-help-step{display:flex;gap:8px;align-items:flex-start;padding:8px;border-radius:10px;background:#fff;border:1px solid #d2e1e4}.qa-help-step b{display:grid;place-items:center;flex:0 0 24px;height:24px;border-radius:50%;background:var(--teal);color:#fff}.qa-help-step span{font-weight:800;color:#173842}.qa-help-step small{display:block;color:#607981;margin-top:2px}.qa-primary-large{height:42px;width:100%;background:var(--teal);border-color:var(--teal);color:#fff;font-weight:900}.qa-secondary{height:36px;background:#173842;border-color:#173842;color:#fff;font-weight:800}.qa-legend{display:flex;gap:12px;align-items:center;flex-wrap:wrap;color:#526970;font-weight:700}.qa-line{fill:none;stroke-width:3}.qa-point{stroke:#fff;stroke-width:2}.qa-gridline{stroke:#e4ecef;stroke-width:1}.qa-tab-title{display:flex;align-items:baseline;gap:8px}.qa-tab-title b{font-size:16px;color:#173842}.qa-tab-title small{color:#607981}
-@media(max-width:1250px){.qa-design-pane{grid-template-columns:1fr}.qa-workflow-help{grid-template-columns:1fr}.qa-graph-stage svg{min-width:620px}}
-@media print{.qa-step-tabs,.qa-workflow-help,.qa-recipe,.qa-chart-toolbar{display:none!important}.qa-design-pane{display:block;padding:0}.qa-graph-stage{border:0;min-height:auto;overflow:visible}.qa-graph-stage svg{height:420px}}
-
-
-/* ============================================================
-2026-07-21 Quality analysis V3: no clipping / stacking
-============================================================ */
-.qa-v3 .qa-step-tabs{grid-template-columns:none}.qa-v3 .qa-design-pane{grid-template-columns:minmax(360px,390px) minmax(0,1fr);align-items:start}.qa-v3 .qa-recipe{overflow:visible;min-width:0}.qa-v3 .qa-result-summary{display:flex;gap:6px;flex-wrap:wrap;max-height:none;overflow:visible}.qa-v3 .qa-primary-large{margin-top:2px}.qa-v3 .qa-stack-card{border-color:#c8dfe3;background:#fbfefe}.qa-v3 .qa-stack-card.is-active{border-color:#087c89;box-shadow:0 0 0 3px #087c8920}.qa-v3 .qa-stack-toggle{display:flex;align-items:center;gap:8px;padding:8px;border-radius:10px;background:#eef8f9;color:#173842;font-weight:900}.qa-v3 .qa-stack-toggle input{width:auto;height:auto}.qa-v3 .qa-summary-card{padding:9px 10px}.qa-v3 .qa-graph-stage{min-height:560px}.qa-v3 .qa-graph-stage svg{height:520px}.qa-stack-legend{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.qa-stack-legend span{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#526970}.qa-stack-legend i{display:inline-block;width:10px;height:10px;border-radius:2px}.qa-v3 .qa-list{max-height:680px}.qa-v3 [data-qa-tab="settings"],.qa-v3 [data-qa-pane="settings"]{display:none!important}
-@media(max-width:1250px){.qa-v3 .qa-design-pane{grid-template-columns:1fr}.qa-v3 .qa-graph-stage{min-height:430px}.qa-v3 .qa-graph-stage svg{height:430px}}
-
-
-
 /* ============================================================
 2026-07-21 Quality analysis V7 : Power BI流フィールドウェル / SPA一画面
 - 3タブ（元データ/グラフ/対象データ一覧）。元データが既定
@@ -1223,4 +1198,93 @@ body.qa-mode.qa-view-raw #genericFilterBar{display:block!important}
  .qa-v7 .qa-chart-main{display:block}
  .qa-v7 .qa-graph-stage{border:0;overflow:visible;min-height:auto}
  .qa-v7 .qa-graph-stage svg{width:100%!important;height:auto!important}
+}
+
+
+/* ============================================================
+ 2026-07-21 測定帳票（ロット別レポート）
+ IA/認知心理学: 左=ロット一覧(再認)→右=帳票プレビュー(詳細)。
+ 帳票本体はセクション見出しでチャンク化し、視線移動と記憶負荷を抑える。
+ ============================================================ */
+.local-report-btn{margin-top:6px;background:#1f5d68;color:#fff;font-weight:800}
+.local-report-btn:hover{background:var(--teal)}
+.rp-dialog{position:relative;width:96vw;max-width:1400px;height:92vh;display:flex;flex-direction:column;background:#f4f7f8;border-radius:14px;overflow:hidden;box-shadow:0 30px 80px #00000055}
+.rp-head{display:flex;align-items:center;gap:16px;padding:14px 20px;background:linear-gradient(90deg,var(--nav),#1f5560);color:#fff}
+.rp-head-title{display:flex;flex-direction:column;gap:2px;min-width:0}
+.rp-head-title h2{margin:0;font-size:20px}
+.rp-sub{color:#bfe0e4;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rp-close{margin-left:auto;width:36px;height:36px;border:0;border-radius:8px;background:#ffffff22;color:#fff;font-size:22px;line-height:1;cursor:pointer}
+.rp-close:hover{background:#ffffff33}
+.rp-body{flex:1;min-height:0;display:grid;grid-template-columns:320px minmax(0,1fr)}
+.rp-nav{display:flex;flex-direction:column;min-height:0;background:#e7eff1;border-right:1px solid var(--line)}
+.rp-nav-toolbar{display:flex;flex-direction:column;gap:8px;padding:12px}
+.rp-search{position:relative;display:flex;align-items:center}
+.rp-search-icon{position:absolute;left:10px;font-size:13px;opacity:.6;pointer-events:none}
+.rp-search input{height:36px;width:100%;padding:6px 12px 6px 30px;border:1px solid var(--line);border-radius:20px;background:#fff}
+.rp-nav-toolbar select{height:34px;width:100%;background:#fff}
+.rp-lot-list{flex:1;min-height:0;overflow:auto;padding:0 10px 12px;display:flex;flex-direction:column;gap:6px}
+.rp-lot-row{display:flex;flex-direction:column;gap:3px;padding:9px 11px;border:1px solid #d5e0e3;border-radius:10px;background:#fff;text-align:left;cursor:pointer;font:inherit;color:inherit}
+.rp-lot-row:hover{border-color:#9fc3c8;background:#f6fdfd}
+.rp-lot-row.active{border-color:var(--teal);background:#eafafa;box-shadow:0 0 0 2px #087c8930}
+.rp-lot-main{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.rp-lot-main b{font-size:14px;color:#173842;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rp-lot-sub{color:#61757c;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rp-lot-date{color:#8a9aa0;font-size:11px;font-variant-numeric:tabular-nums}
+.rp-status-badge{flex:0 0 auto;padding:2px 8px;border-radius:10px;background:#eef2f4;color:#526970;font-weight:800;font-size:10px;white-space:nowrap}
+.rp-status-badge.done{background:#e7f6ef;color:#1e7a55}
+.rp-status-badge.ng{background:#fdeaea;color:#a32424}
+.rp-main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.rp-toolbar{display:flex;align-items:center;gap:12px;padding:12px 18px;background:#fff;border-bottom:1px solid var(--line)}
+.rp-toolbar-title{font-weight:800;color:#173842;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rp-toolbar-actions{margin-left:auto;display:flex;gap:8px}
+.rp-btn-primary{height:38px;padding:0 18px;border:0;border-radius:8px;background:var(--teal);color:#fff;font-weight:800;cursor:pointer}
+.rp-btn-primary:hover{background:var(--teal-dark)}
+.rp-btn-primary:disabled{opacity:.4;cursor:not-allowed}
+.rp-btn-secondary{height:38px;padding:0 16px;border:1px solid #9fb9b2;border-radius:8px;background:#fff;color:#2c5049;font-weight:700;cursor:pointer}
+.rp-btn-secondary:disabled{opacity:.4;cursor:not-allowed}
+.rp-pdf-hint{padding:6px 18px;color:#6a7d83;font-size:11px;background:#f7fafb;border-bottom:1px solid #e5edef}
+.rp-scroll{flex:1;min-height:0;overflow:auto;padding:18px}
+.rp-report{max-width:900px;margin:0 auto;background:#fff;border:1px solid #d5e0e3;border-radius:12px;padding:24px 28px}
+.rp-empty{padding:40px;text-align:center;color:#60747b;background:#fff;border:1px dashed #aebfc4;border-radius:12px}
+.rp-report-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;padding-bottom:14px;margin-bottom:16px;border-bottom:2px solid #173842}
+.rp-report-head small{color:var(--teal);font-weight:800;letter-spacing:.1em}
+.rp-report-head h2{margin:2px 0 0;font-size:26px;color:#173842}
+.rp-report-head-meta{display:flex;flex-direction:column;align-items:flex-end;gap:6px;color:#61757c;font-size:12px}
+/* 旧帳票（B5帳票）の左上余白に相当。ラベル貼付や手書き用に空白のまま確保する
+   （中を埋めずキャプションだけ隅に添える）。 */
+.rp-label-area{min-height:150px;margin-bottom:18px;padding:6px 10px;border:1px dashed #b7c7cc;border-radius:8px;background:#fbfdfd;display:flex;align-items:flex-end;justify-content:flex-end;break-inside:avoid}
+.rp-label-caption{color:#aebfc4;font-size:10px}
+.rp-section{margin-bottom:18px;break-inside:avoid}
+.rp-section h3{margin:0 0 8px;padding:6px 10px;background:#eef2f4;border-left:4px solid var(--teal);color:#173842;font-size:14px}
+.rp-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 16px}
+.rp-field{display:grid;grid-template-columns:120px minmax(0,1fr);gap:8px;padding:5px 4px;border-bottom:1px solid #eef2f4}
+.rp-field-label{color:#61757c;font-size:12px;font-weight:700}
+.rp-field-value{color:#17272d;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rp-dim-table{width:100%;border-collapse:collapse;margin-top:2px}
+.rp-dim-table th,.rp-dim-table td{padding:6px 8px;border:1px solid #d5e0e3;text-align:center;font-size:13px}
+.rp-dim-table thead th{background:#eef2f4;color:#173842}
+.rp-dim-table tbody th{background:#f8fafb;text-align:left}
+/* 品質等級: ラベル(th)と値(td)を交互に並べた3ペア構成 */
+.rp-grade-table th{background:#f8fafb;color:#61757c;font-weight:700;text-align:left;white-space:nowrap}
+.rp-grade-table td{font-weight:800;color:#173842}
+/* 頭/尾を1枚に収める測定データ表。列数が多いため小さめのフォントで密に配置する */
+.rp-note{margin:0 0 6px;color:#61757c;font-size:11px}
+.rp-wide-wrap{overflow-x:auto}
+.rp-wide-table{min-width:760px}
+.rp-wide-table th,.rp-wide-table td{padding:4px 6px;font-size:11px}
+
+@media(max-width:1000px){.rp-body{grid-template-columns:1fr}.rp-nav{max-height:260px}}
+
+@media print{
+ body>*:not(#reportModal){display:none!important}
+ #reportModal{position:static;inset:auto;background:none;display:block;z-index:auto;padding:0}
+ #reportModal .rp-dialog{position:static;width:100%;max-width:none;height:auto;box-shadow:none;border-radius:0;margin:0;background:#fff}
+ #reportModal .rp-head,#reportModal .rp-nav,#reportModal .rp-toolbar,#reportModal .rp-pdf-hint{display:none!important}
+ #reportModal .rp-body{display:block;height:auto}
+ #reportModal .rp-main{display:block;height:auto;overflow:visible}
+ #reportModal .rp-scroll{padding:0;overflow:visible}
+ #reportModal .rp-report{max-width:none;margin:0;border:0;padding:0}
+ #reportModal .rp-wide-wrap{overflow:visible}
+ #reportModal .rp-wide-table{min-width:0;width:100%}
+ #reportModal .rp-wide-table th,#reportModal .rp-wide-table td{padding:2px 3px;font-size:9px}
 }
