@@ -163,13 +163,13 @@ function renderProductPanel(){
  body.innerHTML=Array.from({length:n},(_,i)=>{
   const r=m.product.rows[i]||(m.product.rows[i]=blankProductRow()),judge=judgeAlignmentCode(r.alignmentCode);
   const field=(key,type)=>`<input data-product-field="${key}" value="${esc(r[key]||'')}" type="${type||'text'}"${type==='number'?' inputmode="decimal" step="any"':''}>`;
-  return `<tr data-row="${i}"><th>${i+1}</th><td>${field('productLength','number')}</td><td>${field('wallThickness','number')}</td><td>${field('alignmentCode')}</td><td><span class="product-judge${judge==='OK'?' ok':judge==='NG'?' ng':''}">${judge||'-'}</span></td><td>${field('edgeShape')}</td><td>${field('occurrencePosition')}</td><td>${field('regularity')}</td><td>${field('pitch','number')}</td><td>${field('alignmentValue')}</td><td>${field('note')}</td></tr>`;
+  return `<tr data-row="${i}"><th>${i+1}</th><td>${field('productLength','number')}</td><td>${field('wallThickness','number')}</td><td>${field('alignmentCode')}</td><td><span class="product-judge${judge==='OK'?' ok':judge==='NG'?' ng':''}">${judge}</span></td><td>${field('edgeShape')}</td><td>${field('occurrencePosition')}</td><td>${field('regularity')}</td><td>${field('pitch','number')}</td><td>${field('alignmentValue')}</td><td>${field('note')}</td></tr>`;
  }).join('');
  body.querySelectorAll('[data-product-field]').forEach(el=>{
   el.oninput=()=>{
    const tr=el.closest('tr'),i=+tr.dataset.row,key=el.dataset.productField;
    const row=m.product.rows[i]=m.product.rows[i]||blankProductRow();row[key]=el.value;
-   if(key==='alignmentCode'){const j=judgeAlignmentCode(el.value),badge=tr.querySelector('.product-judge');badge.textContent=j||'-';badge.className='product-judge'+(j==='OK'?' ok':j==='NG'?' ng':'')}
+   if(key==='alignmentCode'){const j=judgeAlignmentCode(el.value),badge=tr.querySelector('.product-judge');badge.textContent=j;badge.className='product-judge'+(j==='OK'?' ok':j==='NG'?' ng':'')}
    markDirty();updateProductStatus();
   };
  });
@@ -2373,9 +2373,9 @@ compactToleranceScale=function(kind,values,count){
   list.innerHTML='';list.append(frag);
  }
 
- function reportSection(title,rows){
+ function reportSection(title,rows,cols){
   const body=rows.map(([label,value])=>`<div class="rp-field"><span class="rp-field-label">${esc(label)}</span><span class="rp-field-value" title="${esc(value||'-')}">${esc(value||'-')}</span></div>`).join('');
-  return `<section class="rp-section"><h3>${esc(title)}</h3><div class="rp-grid">${body}</div></section>`;
+  return `<section class="rp-section"><h3>${esc(title)}</h3><div class="rp-grid${cols?' rp-grid-'+cols:''}">${body}</div></section>`;
  }
  function dimensionSection(b){
   const row=(label,mat,temper,thick,width,length)=>`<tr><th>${esc(label)}</th><td>${esc(mat||'-')}</td><td>${esc(temper||'-')}</td><td>${esc(fmtDimSafe(thick,2)||'-')}</td><td>${esc(fmtDimSafe(width,1)||'-')}</td><td>${esc(fmtDimSafe(length,1)||'-')}</td></tr>`;
@@ -2437,14 +2437,18 @@ compactToleranceScale=function(kind,values,count){
  }
  /* 丈(1..N)別の長さ・肉厚・揃い判定。旧帳票の「丈」テーブル（長さ/肉厚/揃い/外観/備考）に対応。
     「外観」列は旧帳票でも実データが書き込まれない控え欄のため、空欄のまま残す。 */
+ /* 丈数(N)が増えても縦方向を圧迫しないよう、丈を列に、指標を行に転置する
+    （測定データ（板厚）のOS/CL/DS表と同じ考え方）。行数は常に固定5行。 */
  function productRowsSection(x){
   const rows=x.product?.rows||[],n=Math.max(1,Math.min(9,+x.settings?.verticalCount||1));
-  let body='';
-  for(let i=0;i<n;i++){
-   const r=rows[i]||{},judge=judgeAlignmentCode(r.alignmentCode);
-   body+=`<tr><th>${i+1}</th><td>${esc(r.productLength||'-')}</td><td>${esc(r.wallThickness||'-')}</td><td>${judge?`<span class="product-judge${judge==='OK'?' ok':' ng'}">${esc(judge)}</span>`:'-'}</td><td></td><td>${esc(r.note||'-')}</td></tr>`;
-  }
-  return `<section class="rp-section"><h3>丈別データ（長さ・肉厚・揃い）</h3><table class="rp-dim-table"><thead><tr><th>丈</th><th>長さ</th><th>肉厚</th><th>揃い</th><th>外観</th><th>備考</th></tr></thead><tbody>${body}</tbody></table></section>`;
+  const cols=Array.from({length:n},(_,i)=>i+1);
+  const metricRow=(label,fn)=>`<tr><th>${esc(label)}</th>${cols.map((_,i)=>`<td>${fn(rows[i]||{},i)}</td>`).join('')}</tr>`;
+  const body=metricRow('長さ',r=>esc(r.productLength||'-'))
+   +metricRow('肉厚',r=>esc(r.wallThickness||'-'))
+   +metricRow('揃い',r=>{const j=judgeAlignmentCode(r.alignmentCode);return j?`<span class="product-judge${j==='OK'?' ok':' ng'}">${esc(j)}</span>`:''})
+   +metricRow('外観',()=>'')
+   +metricRow('備考',r=>esc(r.note||'-'));
+  return `<section class="rp-section"><h3>丈別データ（長さ・肉厚・揃い）</h3><div class="rp-wide-wrap"><table class="rp-dim-table rp-product-table"><thead><tr><th>丈</th>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div></section>`;
  }
 
  function renderReport(x){
@@ -2454,23 +2458,33 @@ compactToleranceScale=function(kind,values,count){
   const isDimensional=s.measureType==='板厚/板幅';
   const hasProductData=(x.product?.rows||[]).some(r=>r&&['productLength','wallThickness','alignmentCode'].some(k=>String(r[k]||'').trim()!==''));
   const showProduct=s.measureType==='揃い/肉厚/長さ'||hasProductData;
+  /* 1ページ(A4)に収める配置: 情報量に応じてゾーンごとに列数を変え、
+     再認しやすい単位（ラベル欄+基本情報、公差付き実測値など）でまとめる。
+     大きな表（板幅ほかの40行）だけは全幅を割り当てる。 */
   $id('reportContent').innerHTML=`
    <div class="rp-report-head">
     <div><small>MEASUREMENT REPORT</small><h2>${esc(b.lotNo||x.id)}</h2></div>
     <div class="rp-report-head-meta"><span class="rp-status-badge ${statusClass(x.status)}">${esc(statusLabel(x.status))}</span><span>帳票作成: ${esc(fmtDT(new Date().toISOString()))}</span></div>
    </div>
-   <div class="rp-label-area" aria-hidden="true"><span class="rp-label-caption">ラベル貼付スペース</span></div>
-   ${reportSection('基本情報',[['ロット番号',b.lotNo],['検査番号',b.inspectionNo],['鋳造番号',b.castingNo],['オーダー番号',b.orderNo],['引当番号',b.allocationNo],['用途コード',b.purposeCode],['用途名',b.purposeName],['取引先',b.customer],['納入先',b.delivery]])}
-   ${reportSection('コース情報',[['設計コース',b.designCourse],['実績コース',b.course],['残コース',b.residualCourse]])}
-   ${dimensionSection(b)}
-   ${qualityGradeSection(x)}
-   ${reportSection('測定条件',[['登録設備',equipment],['オペレータ',s.operator],['検査員',s.inspector],['入力内容',s.measureType],['丈位置',s.lengthPos],['縦割数',s.verticalCount],['横割数',s.horizontalCount],['巻出方向',s.unwind],['内径',s.innerDiameter],['スプール',s.spool],['板厚測定器',s.thicknessGauge],['板幅測定器',s.widthGauge],['条入力順',s.widthOrder],['方向',s.widthDirection],['バリ揃え',s.burr],['内巻両面テープ',s.innerTape?'あり':'なし']])}
-   ${motherSection(x)}
-   ${showProduct?productRowsSection(x):''}
-   ${isDimensional?thicknessMeasurementSection(x):''}
+   <div class="rp-zone rp-zone-3">
+    <div class="rp-label-area" aria-hidden="true"><span class="rp-label-caption">ラベル貼付スペース</span></div>
+    ${reportSection('基本情報',[['ロット番号',b.lotNo],['検査番号',b.inspectionNo],['鋳造番号',b.castingNo],['オーダー番号',b.orderNo],['引当番号',b.allocationNo],['用途コード',b.purposeCode],['用途名',b.purposeName],['取引先',b.customer],['納入先',b.delivery]])}
+    <div class="rp-stack">${reportSection('コース情報',[['設計コース',b.designCourse],['実績コース',b.course],['残コース',b.residualCourse]])}${dimensionSection(b)}</div>
+   </div>
+   <div class="rp-zone rp-zone-2">
+    ${qualityGradeSection(x)}
+    ${reportSection('測定条件',[['登録設備',equipment],['オペレータ',s.operator],['検査員',s.inspector],['入力内容',s.measureType],['丈位置',s.lengthPos],['縦割数',s.verticalCount],['横割数',s.horizontalCount],['巻出方向',s.unwind],['内径',s.innerDiameter],['スプール',s.spool],['板厚測定器',s.thicknessGauge],['板幅測定器',s.widthGauge],['条入力順',s.widthOrder],['方向',s.widthDirection],['バリ揃え',s.burr],['内巻両面テープ',s.innerTape?'あり':'なし']],4)}
+   </div>
+   <div class="rp-zone rp-zone-3">
+    ${motherSection(x)}
+    ${showProduct?productRowsSection(x):'<div></div>'}
+    ${isDimensional?thicknessMeasurementSection(x):'<div></div>'}
+   </div>
    ${isDimensional?widthMeasurementSection(x):''}
-   ${reportSection('作業時間',[['開始時刻',formatWorkTime(w.startAt)],['終了時刻',formatWorkTime(w.endAt)],['実働時間',dur]])}
-   ${reportSection('登録状態',[['状態',statusLabel(x.status)],['更新日時',fmtDT(x.updatedAt)],['NG回数',s.ngCount||0]])}
+   <div class="rp-zone rp-zone-2">
+    ${reportSection('作業時間',[['開始時刻',formatWorkTime(w.startAt)],['終了時刻',formatWorkTime(w.endAt)],['実働時間',dur]])}
+    ${reportSection('登録状態',[['状態',statusLabel(x.status)],['更新日時',fmtDT(x.updatedAt)],['NG回数',s.ngCount||0]])}
+   </div>
   `;
  }
 

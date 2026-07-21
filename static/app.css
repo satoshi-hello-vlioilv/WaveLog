@@ -1250,32 +1250,49 @@ body.qa-mode.qa-view-raw #genericFilterBar{display:block!important}
 .rp-report-head small{color:var(--teal);font-weight:800;letter-spacing:.1em}
 .rp-report-head h2{margin:2px 0 0;font-size:26px;color:#173842}
 .rp-report-head-meta{display:flex;flex-direction:column;align-items:flex-end;gap:6px;color:#61757c;font-size:12px}
+/* ゾーン: 関連するセクションを横に並べ、認知的なまとまり（チャンク）ごとに
+   視線移動を抑える。列数はゾーンごとに情報量に応じて変える。 */
+.rp-zone{display:grid;gap:14px;margin-bottom:14px;align-items:start}
+.rp-zone-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.rp-zone-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.rp-stack{display:flex;flex-direction:column;gap:14px;min-width:0}
 /* 旧帳票（B5帳票）の左上余白に相当。ラベル貼付や手書き用に空白のまま確保する
    （中を埋めずキャプションだけ隅に添える）。 */
-.rp-label-area{min-height:150px;margin-bottom:18px;padding:6px 10px;border:1px dashed #b7c7cc;border-radius:8px;background:#fbfdfd;display:flex;align-items:flex-end;justify-content:flex-end;break-inside:avoid}
+.rp-label-area{min-height:90px;padding:6px 10px;border:1px dashed #b7c7cc;border-radius:8px;background:#fbfdfd;display:flex;align-items:flex-end;justify-content:flex-end;break-inside:avoid}
 .rp-label-caption{color:#aebfc4;font-size:10px}
-.rp-section{margin-bottom:18px;break-inside:avoid}
-.rp-section h3{margin:0 0 8px;padding:6px 10px;background:#eef2f4;border-left:4px solid var(--teal);color:#173842;font-size:14px}
-.rp-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 16px}
-.rp-field{display:grid;grid-template-columns:120px minmax(0,1fr);gap:8px;padding:5px 4px;border-bottom:1px solid #eef2f4}
-.rp-field-label{color:#61757c;font-size:12px;font-weight:700}
+.rp-section{margin:0;break-inside:avoid}
+.rp-section h3{margin:0 0 6px;padding:5px 9px;background:#eef2f4;border-left:4px solid var(--teal);color:#173842;font-size:13px}
+.rp-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 14px}
+.rp-grid-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.rp-field{display:grid;grid-template-columns:min-content minmax(0,1fr);gap:8px;padding:4px;border-bottom:1px solid #eef2f4;white-space:nowrap}
+.rp-field-label{color:#61757c;font-size:11px;font-weight:700}
 .rp-field-value{color:#17272d;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rp-dim-table{width:100%;border-collapse:collapse;margin-top:2px}
-.rp-dim-table th,.rp-dim-table td{padding:6px 8px;border:1px solid #d5e0e3;text-align:center;font-size:13px}
+.rp-dim-table th,.rp-dim-table td{height:auto;padding:4px 6px;border:1px solid #d5e0e3;text-align:center;font-size:12px}
 .rp-dim-table thead th{background:#eef2f4;color:#173842}
 .rp-dim-table tbody th{background:#f8fafb;text-align:left}
 /* 品質等級: ラベル(th)と値(td)を交互に並べた3ペア構成 */
 .rp-grade-table th{background:#f8fafb;color:#61757c;font-weight:700;text-align:left;white-space:nowrap}
 .rp-grade-table td{font-weight:800;color:#173842}
 /* 頭/尾を1枚に収める測定データ表。列数が多いため小さめのフォントで密に配置する */
-.rp-note{margin:0 0 6px;color:#61757c;font-size:11px}
+.rp-note{margin:0 0 4px;color:#61757c;font-size:10px}
 .rp-wide-wrap{overflow-x:auto}
 .rp-wide-table{min-width:760px}
-.rp-wide-table th,.rp-wide-table td{padding:4px 6px;font-size:11px}
+.rp-wide-table th,.rp-wide-table td{padding:3px 5px;font-size:10px}
+/* 丈別データ: 丈数が増えても列が伸びるだけで行数（縦寸法）は変わらない */
+.rp-product-table th,.rp-product-table td{padding:3px 4px;font-size:10px;white-space:nowrap}
+.rp-product-table tbody th{white-space:nowrap}
 
-@media(max-width:1000px){.rp-body{grid-template-columns:1fr}.rp-nav{max-height:260px}}
+@media(max-width:1000px){.rp-body{grid-template-columns:1fr}.rp-nav{max-height:260px}.rp-zone-2,.rp-zone-3{grid-template-columns:1fr}}
 
+/* ---------------------------------------------------------------
+   印刷（PDF保存含む）: A4 1枚に収める高密度レイアウト。
+   画面プレビューと同じDOM構造のまま、列数とフォント/余白だけを
+   さらに詰める。データの間引きはせず、控え欄（40行グリッド等）も
+   旧帳票どおり確保したうえで密度で吸収する。
+   --------------------------------------------------------------- */
 @media print{
+ @page{size:A4;margin:6mm}
  body>*:not(#reportModal){display:none!important}
  #reportModal{position:static;inset:auto;background:none;display:block;z-index:auto;padding:0}
  #reportModal .rp-dialog{position:static;width:100%;max-width:none;height:auto;box-shadow:none;border-radius:0;margin:0;background:#fff}
@@ -1283,8 +1300,25 @@ body.qa-mode.qa-view-raw #genericFilterBar{display:block!important}
  #reportModal .rp-body{display:block;height:auto}
  #reportModal .rp-main{display:block;height:auto;overflow:visible}
  #reportModal .rp-scroll{padding:0;overflow:visible}
- #reportModal .rp-report{max-width:none;margin:0;border:0;padding:0}
+ #reportModal .rp-report{max-width:none;margin:0;border:0;padding:0;font-size:10px}
+ #reportModal .rp-report-head{padding-bottom:3px;margin-bottom:4px}
+ #reportModal .rp-report-head h2{font-size:17px}
+ #reportModal .rp-report-head-meta{font-size:9px;gap:2px}
+ #reportModal .rp-zone{gap:5px;margin-bottom:4px}
+ #reportModal .rp-zone-3{grid-template-columns:1fr 1.6fr 1.4fr}
+ #reportModal .rp-stack{gap:4px}
+ #reportModal .rp-label-area{min-height:0;height:100%;padding:3px 6px}
+ #reportModal .rp-label-caption{font-size:7px}
+ #reportModal .rp-section h3{padding:2px 6px;font-size:9px;margin-bottom:3px}
+ #reportModal .rp-grid{gap:0 8px}
+ #reportModal .rp-grid-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+ #reportModal .rp-field{grid-template-columns:min-content minmax(0,1fr);gap:4px;padding:1.5px 2px;font-size:8.5px}
+ #reportModal .rp-field-label{font-size:8px}
+ #reportModal .rp-dim-table th,#reportModal .rp-dim-table td{padding:1.5px 3px;font-size:8.5px}
+ #reportModal .rp-note{font-size:7.5px}
  #reportModal .rp-wide-wrap{overflow:visible}
  #reportModal .rp-wide-table{min-width:0;width:100%}
- #reportModal .rp-wide-table th,#reportModal .rp-wide-table td{padding:2px 3px;font-size:9px}
+ #reportModal .rp-wide-table th,#reportModal .rp-wide-table td{padding:1px 2px;font-size:7.5px;line-height:1.15}
+ #reportModal .rp-product-table{min-width:0;width:100%}
+ #reportModal .rp-product-table th,#reportModal .rp-product-table td{padding:1px 2px;font-size:7.5px;line-height:1.15}
 }
