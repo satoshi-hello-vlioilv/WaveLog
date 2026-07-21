@@ -496,20 +496,24 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 .mother-quality textarea{width:100%;height:300px;border:1px solid var(--line);border-top:0;resize:none;background:#fff}
 
 .product-panel{display:grid;gap:8px}
-.product-head,.flatness-table-head{display:flex;justify-content:space-between;align-items:center;padding:7px 9px;background:#ffffdc;border:1px solid var(--line)}
+.product-head,.flatness-table-head{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 9px;background:#ffffdc;border:1px solid var(--line)}
 .product-head b,.flatness-table-head b{font-weight:800}
 .product-head span{padding:3px 10px;background:#edf3f5;border:1px solid var(--line)}
-.product-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) 132px;gap:8px;align-items:end}
-.product-summary label{display:grid;grid-template-rows:20px 17px 36px;font-size:12px;white-space:nowrap}
-.product-summary small{display:block;color:#64777e}
-.product-summary button{height:36px;white-space:nowrap}
-.product-summary input,.alignment-grid input,.alignment-grid textarea,.flatness-entry select,.flatness-entry textarea{width:100%;margin-top:3px;background:#fff}
-.alignment-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.alignment-grid label{display:grid;grid-template-rows:20px auto;font-size:12px;white-space:nowrap}
-.alignment-grid label:nth-child(-n+3){min-height:78px}
-.alignment-grid textarea{height:52px;resize:vertical}
+.product-head button,.flatness-table-head button{height:32px;white-space:nowrap;margin-left:auto}
+.product-rows-note{padding:6px 9px;color:#61757c;font-size:12px;background:#f8fafb;border:1px solid var(--line);border-top:0}
+/* 丈(1..N)ごとの製品測定テーブル。列数が多いため横スクロールを許容する */
+.product-rows-wrap{overflow-x:auto;border:1px solid var(--line);border-top:0}
+.product-rows-table{width:100%;min-width:760px;border-collapse:collapse}
+.product-rows-table th,.product-rows-table td{padding:5px 6px;border:1px solid #d5e0e3;text-align:center;font-size:12px}
+.product-rows-table thead th{background:#eef2f4;color:#173842;font-weight:800;white-space:nowrap}
+.product-rows-table tbody th{background:#f8fafb}
+.product-rows-table input{width:100%;min-width:56px;height:30px;padding:2px 5px;text-align:center;background:#fff}
+.product-judge{display:inline-block;min-width:32px;padding:2px 6px;border-radius:10px;background:#eef2f4;color:#61757c;font-weight:800}
+.product-judge.ok{background:#e7f6ef;color:#1e7a55}
+.product-judge.ng{background:#fdeaea;color:#a32424}
 .flatness-entry{display:grid;grid-template-columns:110px 110px minmax(0,1fr);gap:8px}
 .flatness-entry label{font-size:12px}
+.flatness-entry select,.flatness-entry textarea{width:100%;margin-top:3px;background:#fff}
 .flatness-entry textarea{height:120px;resize:vertical}
 
 .quality{margin-top:8px}
@@ -672,8 +676,8 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .measure-shell button,.measure-shell input,.measure-shell select,.measure-shell textarea,
 .measure-shell label,.measure-shell output,
 .field label,.selectors label,.dense-controls label,.dense-controls .major-list select,
-.dense-controls .major-list select option,.material-grid label,.product-summary label,
-.alignment-grid label,.flatness-entry label,.flat-panel label,
+.dense-controls .major-list select option,.material-grid label,
+.flatness-entry label,.flat-panel label,
 .center-pane fieldset,.center-pane fieldset label,.center-pane fieldset legend,
 .tolerance-source-control label,.tolerance-source-control select,
 .quality-grade-item b,.quality-grade-item span,.data-management-grid b,.data-management-grid span,
@@ -1246,6 +1250,10 @@ body.qa-mode.qa-view-raw #genericFilterBar{display:block!important}
 .rp-report-head small{color:var(--teal);font-weight:800;letter-spacing:.1em}
 .rp-report-head h2{margin:2px 0 0;font-size:26px;color:#173842}
 .rp-report-head-meta{display:flex;flex-direction:column;align-items:flex-end;gap:6px;color:#61757c;font-size:12px}
+/* 旧帳票（B5帳票）の左上余白に相当。ラベル貼付や手書き用に空白のまま確保する
+   （中を埋めずキャプションだけ隅に添える）。 */
+.rp-label-area{min-height:150px;margin-bottom:18px;padding:6px 10px;border:1px dashed #b7c7cc;border-radius:8px;background:#fbfdfd;display:flex;align-items:flex-end;justify-content:flex-end;break-inside:avoid}
+.rp-label-caption{color:#aebfc4;font-size:10px}
 .rp-section{margin-bottom:18px;break-inside:avoid}
 .rp-section h3{margin:0 0 8px;padding:6px 10px;background:#eef2f4;border-left:4px solid var(--teal);color:#173842;font-size:14px}
 .rp-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 16px}

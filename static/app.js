@@ -145,25 +145,68 @@ function applyRightLayout(){
  if(layout==='product')renderProductPanel();
  if(layout==='mother'&&$('#motherQualityInfo'))$('#motherQualityInfo').value=S.measure.qualityInfo||'異常情報なし';
 }
+/* v33: 「揃い/肉厚/長さ」は縦割数で分割した丈(1〜N)ごとに複数行で保持する。
+   丈は旧VBA帳票の「丈」テーブル（長さ/肉厚/揃い/外観/備考）と同じ、
+   丈=最終的に分割された各ピースを指す1..N連番（頭/尾のサンプリング位置とは無関係）。 */
+function blankProductRow(){return{productLength:'',wallThickness:'',alignmentCode:'',edgeShape:'',occurrencePosition:'',regularity:'',pitch:'',alignmentValue:'',note:''}}
+function productRowCount(){return Math.max(1,Math.min(9,+$('#verticalCount')?.value||1))}
+function judgeAlignmentCode(code){code=String(code||'').trim();if(!code)return '';return code==='0000'?'OK':'NG'}
+function updateProductStatus(){
+ const m=S.measure;if(!m?.product?.rows)return;
+ const n=productRowCount(),filled=m.product.rows.slice(0,n).filter(r=>['productLength','wallThickness','alignmentCode'].some(k=>String(r?.[k]||'').trim()!=='')).length;
+ if($('#productMeasureStatus'))$('#productMeasureStatus').textContent=filled?`入力済み ${filled}/${n}丈`:'入力待ち';
+}
 function renderProductPanel(){
- const m=S.measure; m.product=m.product||{};
- document.querySelectorAll('[data-product]').forEach(el=>el.value=m.product[el.dataset.product]??'');
- const entered=Object.values(m.product).filter(v=>String(v??'').trim()!=='').length;
- if($('#productMeasureStatus'))$('#productMeasureStatus').textContent=entered?`入力済み ${entered}項目`:'入力待ち';
+ const m=S.measure;const body=$('#productRowsBody');if(!body||!m)return;
+ if(!m.product||!Array.isArray(m.product.rows))m.product={rows:Array.from({length:LENGTH_SLOTS},blankProductRow)};
+ const n=productRowCount();
+ body.innerHTML=Array.from({length:n},(_,i)=>{
+  const r=m.product.rows[i]||(m.product.rows[i]=blankProductRow()),judge=judgeAlignmentCode(r.alignmentCode);
+  const field=(key,type)=>`<input data-product-field="${key}" value="${esc(r[key]||'')}" type="${type||'text'}"${type==='number'?' inputmode="decimal" step="any"':''}>`;
+  return `<tr data-row="${i}"><th>${i+1}</th><td>${field('productLength','number')}</td><td>${field('wallThickness','number')}</td><td>${field('alignmentCode')}</td><td><span class="product-judge${judge==='OK'?' ok':judge==='NG'?' ng':''}">${judge||'-'}</span></td><td>${field('edgeShape')}</td><td>${field('occurrencePosition')}</td><td>${field('regularity')}</td><td>${field('pitch','number')}</td><td>${field('alignmentValue')}</td><td>${field('note')}</td></tr>`;
+ }).join('');
+ body.querySelectorAll('[data-product-field]').forEach(el=>{
+  el.oninput=()=>{
+   const tr=el.closest('tr'),i=+tr.dataset.row,key=el.dataset.productField;
+   const row=m.product.rows[i]=m.product.rows[i]||blankProductRow();row[key]=el.value;
+   if(key==='alignmentCode'){const j=judgeAlignmentCode(el.value),badge=tr.querySelector('.product-judge');badge.textContent=j||'-';badge.className='product-judge'+(j==='OK'?' ok':j==='NG'?' ng':'')}
+   markDirty();updateProductStatus();
+  };
+ });
+ upgradeManualInputTypes();updateProductStatus();
  loadFlatComment(); applyInputProtection();
 }
 const collectV30Base=collect;
 collect=function(){
- const m=collectV30Base(); m.product=m.product||{};
- document.querySelectorAll('[data-product]').forEach(el=>m.product[el.dataset.product]=el.value);
+ const m=collectV30Base();m.product=m.product&&Array.isArray(m.product.rows)?m.product:{rows:Array.from({length:LENGTH_SLOTS},blankProductRow)};
+ document.querySelectorAll('#productRowsBody tr').forEach(tr=>{
+  const i=+tr.dataset.row,row=m.product.rows[i]=m.product.rows[i]||blankProductRow();
+  tr.querySelectorAll('[data-product-field]').forEach(el=>row[el.dataset.productField]=el.value);
+ });
  return m;
 };
 const ensureMeasureShapeV30Base=ensureMeasureShape;
-ensureMeasureShape=function(m){m=ensureMeasureShapeV30Base(m);m.product=m.product||{};return m};
+ensureMeasureShape=function(m){
+ m=ensureMeasureShapeV30Base(m);
+ if(!m.product||!Array.isArray(m.product.rows)){
+  const legacy=m.product&&typeof m.product==='object'?m.product:null;
+  m.product={rows:Array.from({length:LENGTH_SLOTS},blankProductRow)};
+  if(legacy&&(legacy.productLength||legacy.wallThickness||legacy.alignmentCode)){
+   Object.assign(m.product.rows[0],{productLength:legacy.productLength||'',wallThickness:legacy.wallThickness||'',alignmentCode:legacy.alignmentCode||'',edgeShape:legacy.edgeShape||'',occurrencePosition:legacy.occurrencePosition||'',regularity:legacy.regularity||'',pitch:legacy.pitch||'',alignmentValue:legacy.alignmentValue||''});
+  }
+ }else if(m.product.rows.length<LENGTH_SLOTS){
+  while(m.product.rows.length<LENGTH_SLOTS)m.product.rows.push(blankProductRow());
+ }
+ return m;
+};
 const renderMeasurementV30Base=renderMeasurement;
 renderMeasurement=function(){renderMeasurementV30Base();renderProductPanel();applyRightLayout()};
-document.querySelectorAll('[data-product]').forEach(el=>el.addEventListener('input',()=>{S.measure.product=S.measure.product||{};S.measure.product[el.dataset.product]=el.value;renderProductPanel();markDirty()}));
-if($('#alignmentFill'))$('#alignmentFill').onclick=()=>{S.measure.product=S.measure.product||{};S.measure.product.alignmentCode='0000';['edgeShape','occurrencePosition','regularity','alignmentValue'].forEach(k=>S.measure.product[k]='0');renderProductPanel();markDirty()};
+if($('#productAllOk'))$('#productAllOk').onclick=()=>{
+ const n=productRowCount();
+ for(let i=0;i<n;i++){const row=S.measure.product.rows[i]=S.measure.product.rows[i]||blankProductRow();Object.assign(row,{alignmentCode:'0000',edgeShape:'0',occurrencePosition:'0',regularity:'0',alignmentValue:'0'})}
+ renderProductPanel();markDirty();
+};
+$('#verticalCount')?.addEventListener('change',()=>{if($('#measureType').value==='揃い/肉厚/長さ')renderProductPanel()});
 $('#measureType').onchange=()=>{S.measure.settings.wStep=0;S.measure.settings.tStep=0;S.measure.settings.burrFirst=null;S.measure.settings.measureType=$('#measureType').value;applyRightLayout();$('#deviceInput').focus();markDirty()};
 openMeasurement=async function(row){
  if(!row)throw Error('対象データがありません'); S.current=row;
@@ -326,7 +369,10 @@ function activeRequiredControls(){
  if(type==='母材'){
   document.querySelectorAll('[data-mother]').forEach((el,i)=>controls.push({el,label:['手計算','全長','MINカード指示','MAXカード指示','前オフ実績','後オフ実績','前オフカード指示','後オフカード指示'][i]||'母材'}));
  }else if(type==='揃い/肉厚/長さ'){
-  [['wallThickness','肉厚'],['productLength','長さ'],['alignmentCode','揃い']].forEach(([key,label])=>controls.push({el:document.querySelector(`[data-product="${key}"]`),label}));
+  const fieldLabels={productLength:'長さ',wallThickness:'肉厚',alignmentCode:'揃い'};
+  document.querySelectorAll('#productRowsBody tr').forEach((tr,i)=>{
+   tr.querySelectorAll('[data-product-field]').forEach(el=>{const label=fieldLabels[el.dataset.productField];if(label)controls.push({el,label:`${label}(丈${i+1})`})});
+  });
  }else{
   document.querySelectorAll('#measurementGrid input[data-mkey]').forEach(el=>{if(!el.closest('.inactive'))controls.push({el,label:`測定値 ${Number(el.dataset.j)+1}`})});
  }
@@ -404,7 +450,7 @@ function renderDataManagementPanel(){
 }
 function bindInfoTabs(){document.querySelectorAll('[data-infotab]').forEach(btn=>btn.onclick=()=>{document.querySelectorAll('[data-infotab]').forEach(x=>x.classList.toggle('active',x===btn));document.querySelectorAll('[data-infopanel]').forEach(p=>p.hidden=p.dataset.infopanel!==btn.dataset.infotab)})}
 function upgradeManualInputTypes(){
- document.querySelectorAll('input[data-mother],input[data-product]').forEach(el=>{
+ document.querySelectorAll('input[data-mother],input[data-product-field]').forEach(el=>{
   if(el.type==='number'){
    el.step='any';
    el.inputMode='decimal';
@@ -415,7 +461,6 @@ function upgradeManualInputTypes(){
    el.classList.remove('numeric-input');
   }
  });
- document.querySelectorAll('textarea[data-product]').forEach(el=>el.classList.add('text-input'));
 }
 const renderMeasurementInfoBase=renderMeasurement;
 renderMeasurement=function(){hydrateBusinessFields();renderMeasurementInfoBase();upgradeManualInputTypes();renderQualityGradePanel();renderDataManagementPanel();bindInfoTabs()};
@@ -2378,13 +2423,28 @@ compactToleranceScale=function(kind,values,count){
   const rows=['OS','CL','DS'].map((label,col)=>`<tr><th>${label}</th><td>${tol?fmtDimSafe(tol[0],3):'-'}</td><td>${esc(measAt(x,'thickness',headIdx,col)||'-')}</td><td>${esc(measAt(x,'thickness',tailIdx,col)||'-')}</td><td>${tol?fmtDimSafe(tol[1],3):'-'}</td></tr>`).join('');
   return `<section class="rp-section"><h3>測定データ（板厚）</h3><table class="rp-dim-table"><thead><tr><th>測定位置</th><th>範囲下限</th><th>${esc(headLabel)}</th><th>${esc(tailLabel)}</th><th>範囲上限</th></tr></thead><tbody>${rows}</tbody></table></section>`;
  }
+ /* コイル№は実際の横割数に関わらず常に最大40行を確保する。旧帳票（B5帳票）は
+    条数に関わらず固定グリッドを印刷しており、余白も注記・手書き用の必要領域
+    のため、実データがない行も空欄のまま枠だけ残す（"-"を書かず空欄にする）。 */
  function widthMeasurementSection(x){
-  const s=x.settings||{},n=Math.max(1,Math.min(40,+s.horizontalCount||1)),{headIdx,tailIdx,headLabel,tailLabel}=lengthLabels(s),tol=toleranceRangeLocal(x,'width');
+  const s=x.settings||{},actual=Math.max(1,Math.min(40,+s.horizontalCount||1)),{headIdx,tailIdx,headLabel,tailLabel}=lengthLabels(s),tol=toleranceRangeLocal(x,'width');
   let rows='';
-  for(let col=0;col<n;col++){
-   rows+=`<tr><th>${col+1}</th><td>${tol?fmtDimSafe(tol[0],2):'-'}</td><td>${esc(measAt(x,'width',headIdx,col)||'-')}</td><td>${esc(measAt(x,'width',tailIdx,col)||'-')}</td><td>${tol?fmtDimSafe(tol[1],2):'-'}</td><td>${esc(measAt(x,'lateral',headIdx,col)||'-')}</td><td>${esc(measAt(x,'lateral',tailIdx,col)||'-')}</td><td>${esc(measAt(x,'burr',headIdx,col)||'-')}</td><td>${esc(measAt(x,'burr',tailIdx,col)||'-')}</td><td>${esc(measAt(x,'offset',tailIdx,col)||'-')}</td><td>${esc(measAt(x,'telescope',tailIdx,col)||'-')}</td><td>${esc(measAt(x,'flatness',tailIdx,col)||'-')}</td><td>${esc(measAt(x,'comments',tailIdx,col)||'-')}</td></tr>`;
+  for(let col=0;col<40;col++){
+   const real=col<actual,cell=v=>real?esc(v||'-'):'';
+   rows+=`<tr><th>${col+1}</th><td>${real&&tol?fmtDimSafe(tol[0],2):''}</td><td>${cell(measAt(x,'width',headIdx,col))}</td><td>${cell(measAt(x,'width',tailIdx,col))}</td><td>${real&&tol?fmtDimSafe(tol[1],2):''}</td><td>${cell(measAt(x,'lateral',headIdx,col))}</td><td>${cell(measAt(x,'lateral',tailIdx,col))}</td><td>${cell(measAt(x,'burr',headIdx,col))}</td><td>${cell(measAt(x,'burr',tailIdx,col))}</td><td>${cell(measAt(x,'offset',tailIdx,col))}</td><td>${cell(measAt(x,'telescope',tailIdx,col))}</td><td>${cell(measAt(x,'flatness',tailIdx,col))}</td><td>${cell(measAt(x,'comments',tailIdx,col))}</td></tr>`;
   }
-  return `<section class="rp-section"><h3>測定データ（板幅・ラテラルボー・バリ・巻ずれ・テレスコープ）</h3><p class="rp-note">巻ずれ・テレスコープは ${esc(tailLabel)} のデータのみ対象です。</p><div class="rp-wide-wrap"><table class="rp-dim-table rp-wide-table"><thead><tr><th rowspan="2">コイル№</th><th colspan="4">板幅</th><th colspan="2">ラテラルボー</th><th colspan="2">バリ</th><th>巻ずれ</th><th>テレスコープ</th><th rowspan="2">フラットネス</th><th rowspan="2">備考</th></tr><tr><th>範囲下限</th><th>${esc(headLabel)}</th><th>${esc(tailLabel)}</th><th>範囲上限</th><th>${esc(headLabel)}</th><th>${esc(tailLabel)}</th><th>${esc(headLabel)}</th><th>${esc(tailLabel)}</th><th>${esc(tailLabel)}</th><th>${esc(tailLabel)}</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+  return `<section class="rp-section"><h3>測定データ（板幅・ラテラルボー・バリ・巻ずれ・テレスコープ）</h3><p class="rp-note">巻ずれ・テレスコープは ${esc(tailLabel)} のデータのみ対象です。横割数（${actual}条）を超える行は控え欄として空欄にしています。</p><div class="rp-wide-wrap"><table class="rp-dim-table rp-wide-table"><thead><tr><th rowspan="2">コイル№</th><th colspan="4">板幅</th><th colspan="2">ラテラルボー</th><th colspan="2">バリ</th><th>巻ずれ</th><th>テレスコープ</th><th rowspan="2">フラットネス</th><th rowspan="2">備考</th></tr><tr><th>範囲下限</th><th>${esc(headLabel)}</th><th>${esc(tailLabel)}</th><th>範囲上限</th><th>${esc(headLabel)}</th><th>${esc(tailLabel)}</th><th>${esc(headLabel)}</th><th>${esc(tailLabel)}</th><th>${esc(tailLabel)}</th><th>${esc(tailLabel)}</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+ }
+ /* 丈(1..N)別の長さ・肉厚・揃い判定。旧帳票の「丈」テーブル（長さ/肉厚/揃い/外観/備考）に対応。
+    「外観」列は旧帳票でも実データが書き込まれない控え欄のため、空欄のまま残す。 */
+ function productRowsSection(x){
+  const rows=x.product?.rows||[],n=Math.max(1,Math.min(9,+x.settings?.verticalCount||1));
+  let body='';
+  for(let i=0;i<n;i++){
+   const r=rows[i]||{},judge=judgeAlignmentCode(r.alignmentCode);
+   body+=`<tr><th>${i+1}</th><td>${esc(r.productLength||'-')}</td><td>${esc(r.wallThickness||'-')}</td><td>${judge?`<span class="product-judge${judge==='OK'?' ok':' ng'}">${esc(judge)}</span>`:'-'}</td><td></td><td>${esc(r.note||'-')}</td></tr>`;
+  }
+  return `<section class="rp-section"><h3>丈別データ（長さ・肉厚・揃い）</h3><table class="rp-dim-table"><thead><tr><th>丈</th><th>長さ</th><th>肉厚</th><th>揃い</th><th>外観</th><th>備考</th></tr></thead><tbody>${body}</tbody></table></section>`;
  }
 
  function renderReport(x){
@@ -2392,17 +2452,21 @@ compactToleranceScale=function(kind,values,count){
   const equipment=s.registeredEquipment||x.registeredEquipment||x.snapshot?.registeredEquipment||'-';
   const dur=w.startAt&&w.endAt?formatDuration(new Date(w.endAt)-new Date(w.startAt)):(w.startAt?'作業中':'未計測');
   const isDimensional=s.measureType==='板厚/板幅';
+  const hasProductData=(x.product?.rows||[]).some(r=>r&&['productLength','wallThickness','alignmentCode'].some(k=>String(r[k]||'').trim()!==''));
+  const showProduct=s.measureType==='揃い/肉厚/長さ'||hasProductData;
   $id('reportContent').innerHTML=`
    <div class="rp-report-head">
     <div><small>MEASUREMENT REPORT</small><h2>${esc(b.lotNo||x.id)}</h2></div>
     <div class="rp-report-head-meta"><span class="rp-status-badge ${statusClass(x.status)}">${esc(statusLabel(x.status))}</span><span>帳票作成: ${esc(fmtDT(new Date().toISOString()))}</span></div>
    </div>
+   <div class="rp-label-area" aria-hidden="true"><span class="rp-label-caption">ラベル貼付スペース</span></div>
    ${reportSection('基本情報',[['ロット番号',b.lotNo],['検査番号',b.inspectionNo],['鋳造番号',b.castingNo],['オーダー番号',b.orderNo],['引当番号',b.allocationNo],['用途コード',b.purposeCode],['用途名',b.purposeName],['取引先',b.customer],['納入先',b.delivery]])}
    ${reportSection('コース情報',[['設計コース',b.designCourse],['実績コース',b.course],['残コース',b.residualCourse]])}
    ${dimensionSection(b)}
    ${qualityGradeSection(x)}
    ${reportSection('測定条件',[['登録設備',equipment],['オペレータ',s.operator],['検査員',s.inspector],['入力内容',s.measureType],['丈位置',s.lengthPos],['縦割数',s.verticalCount],['横割数',s.horizontalCount],['巻出方向',s.unwind],['内径',s.innerDiameter],['スプール',s.spool],['板厚測定器',s.thicknessGauge],['板幅測定器',s.widthGauge],['条入力順',s.widthOrder],['方向',s.widthDirection],['バリ揃え',s.burr],['内巻両面テープ',s.innerTape?'あり':'なし']])}
    ${motherSection(x)}
+   ${showProduct?productRowsSection(x):''}
    ${isDimensional?thicknessMeasurementSection(x):''}
    ${isDimensional?widthMeasurementSection(x):''}
    ${reportSection('作業時間',[['開始時刻',formatWorkTime(w.startAt)],['終了時刻',formatWorkTime(w.endAt)],['実働時間',dur]])}
