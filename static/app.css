@@ -1109,7 +1109,7 @@ body.qa-mode.qa-view-raw #genericFilterBar{display:block!important}
 .qa-v7 [data-qa-pane][hidden]{display:none!important}
 .qa-v7 .qa-body{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
 .qa-v7 .qa-step-pane{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
-.qa-v7 .qa-design-pane{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:minmax(300px,336px) minmax(0,1fr);gap:14px;padding:14px}
+.qa-v7 .qa-design-pane{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:minmax(300px,336px) minmax(0,1fr);gap:10px;padding:10px}
 
 /* 左: レシピ（アコーディオン＋固定フッター） */
 .qa-v7 .qa-recipe{min-height:0;display:flex;flex-direction:column;gap:10px}
@@ -1156,7 +1156,7 @@ body.qa-mode.qa-view-raw #genericFilterBar{display:block!important}
 /* 右: グラフ */
 .qa-v7 .qa-chart-main{min-width:0;min-height:0;display:flex;flex-direction:column;overflow:visible}
 /* ツールバー: 折り返し可・各行に十分な高さ → 下部の潰れ/見切れ防止 */
-.qa-v7 .qa-chart-toolbar{display:flex;flex-wrap:wrap;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid #d6e3e6;border-radius:12px;background:#fff;margin-bottom:10px;flex:0 0 auto;overflow:visible}
+.qa-v7 .qa-chart-toolbar{display:flex;flex-wrap:wrap;align-items:flex-start;gap:10px;padding:8px 12px;border:1px solid #d6e3e6;border-radius:12px;background:#fff;margin-bottom:8px;flex:0 0 auto;overflow:visible}
 .qa-v7 .qa-chart-options{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;width:100%}
 .qa-v7 .qa-opt{display:flex;align-items:center;gap:7px;min-height:38px;flex:0 0 auto}
 .qa-v7 .qa-opt[hidden]{display:none!important}
@@ -1192,12 +1192,21 @@ body.qa-mode.qa-view-raw #genericFilterBar{display:block!important}
 .qa-v7 .qa-pie-label{font-size:12px;font-weight:900;fill:#fff}
 .qa-v7 .qa-donut-total{font-size:22px;font-weight:900;fill:#143842}
 .qa-v7 .qa-donut-sub{font-size:12px;font-weight:700;fill:#607981}
+/* グラフの基本情報（タイトル/軸ラベル/凡例）をSVG本体に埋め込む。
+   画面表示・印刷のどちらでも「何のグラフか」が常に見える状態を保つ。 */
+.qa-v7 .qa-chart-title{font-size:15px;font-weight:800;fill:#143842}
+.qa-v7 .qa-chart-subtitle{font-size:11px;font-weight:700;fill:#5c777e}
+.qa-v7 .qa-axis-title{font-size:11px;font-weight:800;fill:#40606a}
+.qa-v7 .qa-svg-legend-label{font-size:11px;fill:#3a565d}
 
 /* 対象データ一覧: 残り領域を最大活用 */
-.qa-v7 .qa-list{flex:1 1 auto;min-height:0;margin:14px;overflow:auto;border:1px solid #d6e3e6;border-radius:12px;background:#fff}
+.qa-v7 .qa-list{flex:1 1 auto;min-height:0;margin:14px 14px 8px;overflow:auto;border:1px solid #d6e3e6;border-radius:12px;background:#fff}
 .qa-v7 .qa-list table{width:max-content;min-width:100%;border-collapse:separate;border-spacing:0}
 .qa-v7 .qa-list th{position:sticky;top:0;background:#e6f1f2;color:#28464e;font-weight:800;white-space:nowrap;padding:8px 10px;border-bottom:1px solid #b7cace}
 .qa-v7 .qa-list td{padding:7px 10px;border-bottom:1px solid #e5edef;white-space:nowrap}
+/* 一覧下部の状態バー: 表示件数/対象件数を明示し、余白を情報として使う */
+.qa-v7 .qa-list-status{flex:0 0 auto;margin:0 14px 12px;padding:7px 12px;border-radius:9px;background:#eef8f9;border:1px solid #d3e2e5;color:#40606a;font-weight:700;font-size:12px}
+.qa-v7 .qa-list-status:empty{display:none}
 
 /* レスポンシブ */
 @media(max-width:1180px){
