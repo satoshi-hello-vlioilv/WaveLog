@@ -2233,3 +2233,158 @@ compactToleranceScale=function(kind,values,count){
  window.addEventListener('resize',()=>{clearTimeout(window._qaRz);window._qaRz=setTimeout(()=>{const p=$id('qualityAnalysisPanel');if(last&&p&&!p.hidden&&p.dataset.view==='graph')render(last)},150)});
  document.addEventListener('DOMContentLoaded',sync);queueMicrotask(sync);
 })();
+
+
+/* ============================================================
+2026-07-21 ロット別測定帳票
+--------------------------------------------------------------
+方針（IA / 認知心理学）:
+- 左に端末保存済みロットの一覧（再認）、右にプレビュー（詳細）を並べ、
+  マスタ管理モーダルと同じ「ナビ→詳細」の型に揃える（一貫性）。
+- 帳票本体はセクション見出しでチャンク化し、1画面で読み切れる粒度にする。
+- 「測定データ.accdb」への保存内容と同一のローカル保存レコード
+  （reliableAll）を対象データとする。印刷・PDF保存はブラウザーの
+  印刷機能を使い、追加ライブラリなしで完結させる。
+============================================================ */
+(function(){
+ let rpState={items:[],query:'',sort:'updated-desc',selectedId:''};
+ const $id=id=>document.getElementById(id);
+ function fmtDT(v){if(!v)return '-';const d=new Date(v);return Number.isNaN(d.getTime())?'-':d.toLocaleString('ja-JP',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'})}
+ function fmtDimSafe(v,d){const raw=String(v??'').trim();if(raw==='')return '';const n=Number(raw);return Number.isFinite(n)?n.toFixed(d):raw}
+ function statusLabel(s){return s||'編集中'}
+ function statusClass(s){return s==='完了'?'done':s==='測定値NG'?'ng':''}
+
+ function ensureNavButton(){
+  const nav=document.querySelector('.local-nav');if(!nav||$id('openReportList'))return;
+  const b=document.createElement('button');b.type='button';b.id='openReportList';b.className='db local-report-btn';
+  b.innerHTML='<span>測定帳票</span>';b.title='端末保存済みのロットから帳票（印刷・PDF）を作成します';
+  b.onclick=openReportModal;nav.append(b);
+ }
+
+ function ensureModal(){
+  let modal=$id('reportModal');if(modal)return modal;
+  modal=document.createElement('div');modal.className='record-modal rp-modal';modal.id='reportModal';modal.hidden=true;
+  modal.innerHTML=`
+   <div class="rp-dialog" role="dialog" aria-modal="true" aria-labelledby="reportModalTitle">
+    <header class="rp-head">
+     <div class="rp-head-title"><h2 id="reportModalTitle">測定帳票</h2><span class="rp-sub">端末に保存済みのロットから帳票を作成します。一覧から選ぶとプレビューが表示されます。</span></div>
+     <button id="closeReportModal" class="rp-close" type="button" aria-label="閉じる">×</button>
+    </header>
+    <div class="rp-body">
+     <nav class="rp-nav" aria-label="ロット一覧">
+      <div class="rp-nav-toolbar">
+       <label class="rp-search"><span class="rp-search-icon" aria-hidden="true">検索</span><input id="reportSearch" type="search" placeholder="ロット・検査番号・設備など" autocomplete="off"></label>
+       <select id="reportSort" aria-label="並び順">
+        <option value="updated-desc">更新日時の新しい順</option>
+        <option value="updated-asc">更新日時の古い順</option>
+        <option value="lot-asc">ロット番号順</option>
+       </select>
+      </div>
+      <div class="rp-lot-list" id="reportLotList"></div>
+     </nav>
+     <section class="rp-main">
+      <div class="rp-toolbar">
+       <div class="rp-toolbar-title" id="reportSelectedTitle">ロットを選択してください</div>
+       <div class="rp-toolbar-actions">
+        <button type="button" id="reportPrint" class="rp-btn-primary" disabled>印刷</button>
+        <button type="button" id="reportPdf" class="rp-btn-secondary" disabled>PDFで保存</button>
+       </div>
+      </div>
+      <div class="rp-pdf-hint">「PDFで保存」は印刷ダイアログを開きます。出力先（プリンター）で「PDFに保存」を選択してください。</div>
+      <div class="rp-scroll"><div class="rp-report" id="reportContent"><div class="rp-empty">左の一覧からロットを選ぶと、帳票プレビューがここに表示されます。</div></div></div>
+     </section>
+    </div>
+   </div>`;
+  document.body.append(modal);
+  $id('closeReportModal').onclick=()=>{modal.hidden=true};
+  modal.addEventListener('click',ev=>{if(ev.target===modal)modal.hidden=true});
+  const search=$id('reportSearch');if(search)search.oninput=()=>{rpState.query=search.value;renderLotList()};
+  const sort=$id('reportSort');if(sort)sort.onchange=()=>{rpState.sort=sort.value;renderLotList()};
+  $id('reportPrint').onclick=printReport;$id('reportPdf').onclick=printReport;
+  return modal;
+ }
+
+ function searchText(x){return [x.basic?.lotNo,x.basic?.inspectionNo,x.basic?.castingNo,x.basic?.orderNo,x.settings?.registeredEquipment,x.registeredEquipment,x.status].map(v=>String(v||'').normalize('NFKC').toLowerCase()).join(' ')}
+ function sortedFiltered(){
+  const q=String(rpState.query||'').normalize('NFKC').toLowerCase();
+  let items=rpState.items.filter(x=>!q||searchText(x).includes(q));items=[...items];
+  if(rpState.sort==='updated-asc')items.sort((a,b)=>String(a.updatedAt||'').localeCompare(String(b.updatedAt||'')));
+  else if(rpState.sort==='lot-asc')items.sort((a,b)=>String(a.basic?.lotNo||'').localeCompare(String(b.basic?.lotNo||''),'ja'));
+  else items.sort((a,b)=>String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')));
+  return items;
+ }
+
+ function renderLotList(){
+  const list=$id('reportLotList');if(!list)return;
+  const items=sortedFiltered();
+  if(!items.length){list.innerHTML=`<div class="rp-empty">${rpState.items.length?'検索条件に一致するロットがありません。':'端末に保存されたロットがありません。測定画面で保存すると一覧に表示されます。'}</div>`;return}
+  const frag=document.createDocumentFragment();
+  items.forEach(x=>{
+   const equipment=x.settings?.registeredEquipment||x.registeredEquipment||x.snapshot?.registeredEquipment||'-';
+   const row=document.createElement('button');row.type='button';row.className='rp-lot-row'+(x.id===rpState.selectedId?' active':'');
+   row.innerHTML=`<span class="rp-lot-main"><b title="${esc(x.basic?.lotNo||x.id)}">${esc(x.basic?.lotNo||x.id)}</b><em class="rp-status-badge ${statusClass(x.status)}">${esc(statusLabel(x.status))}</em></span><span class="rp-lot-sub" title="${esc(equipment)}">${esc(equipment)}・${esc(x.basic?.inspectionNo||'-')}</span><span class="rp-lot-date">${esc(fmtDT(x.updatedAt))}</span>`;
+   row.onclick=()=>selectLot(x.id);frag.append(row);
+  });
+  list.innerHTML='';list.append(frag);
+ }
+
+ function reportSection(title,rows){
+  const body=rows.map(([label,value])=>`<div class="rp-field"><span class="rp-field-label">${esc(label)}</span><span class="rp-field-value" title="${esc(value||'-')}">${esc(value||'-')}</span></div>`).join('');
+  return `<section class="rp-section"><h3>${esc(title)}</h3><div class="rp-grid">${body}</div></section>`;
+ }
+ function dimensionSection(b){
+  const row=(label,mat,temper,thick,width,length)=>`<tr><th>${esc(label)}</th><td>${esc(mat||'-')}</td><td>${esc(temper||'-')}</td><td>${esc(fmtDimSafe(thick,2)||'-')}</td><td>${esc(fmtDimSafe(width,1)||'-')}</td><td>${esc(fmtDimSafe(length,1)||'-')}</td></tr>`;
+  return `<section class="rp-section"><h3>寸法（オーダー／製造）</h3><table class="rp-dim-table"><thead><tr><th></th><th>材質</th><th>調質</th><th>板厚</th><th>板幅</th><th>板丈</th></tr></thead><tbody>${row('オーダー',b.orderMaterial,b.orderTemper,b.orderThickness,b.orderWidth,b.orderLength)}${row('製造',b.mfgMaterial,b.mfgTemper,b.mfgThickness,b.mfgWidth,b.mfgLength)}</tbody></table></section>`;
+ }
+
+ function renderReport(x){
+  const b=x.basic||{},s=x.settings||{},w=x.workTime||{};
+  const equipment=s.registeredEquipment||x.registeredEquipment||x.snapshot?.registeredEquipment||'-';
+  const dur=w.startAt&&w.endAt?formatDuration(new Date(w.endAt)-new Date(w.startAt)):(w.startAt?'作業中':'未計測');
+  $id('reportContent').innerHTML=`
+   <div class="rp-report-head">
+    <div><small>MEASUREMENT REPORT</small><h2>${esc(b.lotNo||x.id)}</h2></div>
+    <div class="rp-report-head-meta"><span class="rp-status-badge ${statusClass(x.status)}">${esc(statusLabel(x.status))}</span><span>帳票作成: ${esc(fmtDT(new Date().toISOString()))}</span></div>
+   </div>
+   ${reportSection('基本情報',[['ロット番号',b.lotNo],['検査番号',b.inspectionNo],['鋳造番号',b.castingNo],['オーダー番号',b.orderNo],['引当番号',b.allocationNo],['用途コード',b.purposeCode],['用途名',b.purposeName],['取引先',b.customer],['納入先',b.delivery]])}
+   ${reportSection('コース情報',[['設計コース',b.designCourse],['実績コース',b.course],['残コース',b.residualCourse]])}
+   ${dimensionSection(b)}
+   ${reportSection('測定条件',[['登録設備',equipment],['オペレータ',s.operator],['検査員',s.inspector],['入力内容',s.measureType],['丈位置',s.lengthPos],['縦割数',s.verticalCount],['横割数',s.horizontalCount],['巻出方向',s.unwind],['内径',s.innerDiameter],['スプール',s.spool],['板厚測定器',s.thicknessGauge],['板幅測定器',s.widthGauge],['条入力順',s.widthOrder],['方向',s.widthDirection],['バリ揃え',s.burr],['内巻両面テープ',s.innerTape?'あり':'なし']])}
+   ${reportSection('作業時間',[['開始時刻',formatWorkTime(w.startAt)],['終了時刻',formatWorkTime(w.endAt)],['実働時間',dur]])}
+   ${reportSection('登録状態',[['状態',statusLabel(x.status)],['更新日時',fmtDT(x.updatedAt)],['NG回数',s.ngCount||0]])}
+  `;
+ }
+
+ function selectLot(id){
+  rpState.selectedId=id;renderLotList();
+  const x=rpState.items.find(i=>i.id===id);if(!x)return;
+  $id('reportSelectedTitle').textContent=`${x.basic?.lotNo||x.id} の帳票プレビュー`;
+  $id('reportPrint').disabled=false;$id('reportPdf').disabled=false;
+  renderReport(x);
+ }
+
+ function printReport(){
+  if(!rpState.selectedId)return;
+  const x=rpState.items.find(i=>i.id===rpState.selectedId),prevTitle=document.title;
+  document.title=`測定帳票_${x?.basic?.lotNo||x?.id||'lot'}`;
+  window.print();
+  setTimeout(()=>{document.title=prevTitle},500);
+ }
+
+ async function openReportModal(){
+  ensureModal();$id('reportModal').hidden=false;
+  $id('reportSelectedTitle').textContent='ロットを選択してください';
+  $id('reportPrint').disabled=true;$id('reportPdf').disabled=true;
+  $id('reportContent').innerHTML='<div class="rp-empty">左の一覧からロットを選ぶと、帳票プレビューがここに表示されます。</div>';
+  const listEl=$id('reportLotList');listEl.innerHTML='<div class="rp-empty">読み込んでいます…</div>';
+  try{
+   const all=await reliableAll();
+   rpState={items:all,query:'',sort:$id('reportSort')?.value||'updated-desc',selectedId:''};
+   const search=$id('reportSearch');if(search)search.value='';
+   renderLotList();
+  }catch(e){listEl.innerHTML=`<div class="rp-empty">一覧を読み込めませんでした: ${esc(e.message)}</div>`}
+ }
+
+ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$id('reportModal')?.hidden){$id('reportModal').hidden=true}},true);
+ queueMicrotask(ensureNavButton);
+})();
