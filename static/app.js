@@ -2442,19 +2442,26 @@ compactToleranceScale=function(kind,values,count){
   return `<section class="rp-section"><h3>測定データ（板幅・ラテラルボー・バリ・巻ずれ・テレスコープ）</h3><p class="rp-note">巻ずれ・テレスコープは ${esc(tailLabel)} のデータのみ対象です。横割数（${actual}条）を超える行は控え欄として空欄にしています。</p><div class="rp-wide-wrap"><table class="rp-dim-table rp-wide-table"><thead><tr><th rowspan="2">コイル№</th><th colspan="4">板幅</th><th colspan="2">ラテラルボー</th><th colspan="2">バリ</th><th>巻ずれ</th><th>テレスコープ</th><th rowspan="2">フラットネス</th><th rowspan="2">備考</th></tr><tr><th>範囲下限</th><th>${esc(headLabel)}</th><th>${esc(tailLabel)}</th><th>範囲上限</th><th>${esc(headLabel)}</th><th>${esc(tailLabel)}</th><th>${esc(headLabel)}</th><th>${esc(tailLabel)}</th><th>${esc(tailLabel)}</th><th>${esc(tailLabel)}</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
  }
  /* 丈(1..N)別の長さ・肉厚・揃い判定。旧帳票の「丈」テーブル（長さ/肉厚/揃い/外観/備考）に対応。
-    「外観」列は旧帳票でも実データが書き込まれない控え欄のため、空欄のまま残す。 */
- /* 丈数(N)が増えても縦方向を圧迫しないよう、丈を列に、指標を行に転置する
-    （測定データ（板厚）のOS/CL/DS表と同じ考え方）。行数は常に固定5行。 */
+    「外観」列は旧帳票でも実データが書き込まれない控え欄のため、空欄のまま残す。
+    丈数(N)が増えても縦方向を圧迫しないよう、丈を列に、指標を行に転置する
+    （測定データ（板厚）のOS/CL/DS表と同じ考え方）。行数は常に固定5行。
+    列数も丈数（最大9）に関わらず常に9列固定とし、丈数が変わるたびに
+    レイアウト幅が変化しないようにする（板幅40行表と同じ「固定枠+控え欄」方式）。 */
  function productRowsSection(x){
-  const rows=x.product?.rows||[],n=Math.max(1,Math.min(9,+x.settings?.verticalCount||1));
-  const cols=Array.from({length:n},(_,i)=>i+1);
-  const metricRow=(label,fn)=>`<tr><th>${esc(label)}</th>${cols.map((_,i)=>`<td>${fn(rows[i]||{},i)}</td>`).join('')}</tr>`;
+  const rows=x.product?.rows||[],actual=Math.max(1,Math.min(9,+x.settings?.verticalCount||1)),cols=Array.from({length:9},(_,i)=>i+1);
+  const metricRow=(label,fn)=>`<tr><th>${esc(label)}</th>${cols.map((_,i)=>`<td>${i<actual?fn(rows[i]||{},i):''}</td>`).join('')}</tr>`;
   const body=metricRow('長さ',r=>esc(r.productLength||'-'))
    +metricRow('肉厚',r=>esc(r.wallThickness||'-'))
    +metricRow('揃い',r=>{const j=judgeAlignmentCode(r.alignmentCode);return j?`<span class="product-judge${j==='OK'?' ok':' ng'}">${esc(j)}</span>`:''})
    +metricRow('外観',()=>'')
    +metricRow('備考',r=>esc(r.note||'-'));
-  return `<section class="rp-section"><h3>丈別データ（長さ・肉厚・揃い）</h3><div class="rp-wide-wrap"><table class="rp-dim-table rp-product-table"><thead><tr><th>丈</th>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div></section>`;
+  return `<section class="rp-section"><h3>丈別データ（長さ・肉厚・揃い）</h3><p class="rp-note">丈数（${actual}丈）を超える列は控え欄として空欄にしています。</p><div class="rp-wide-wrap"><table class="rp-dim-table rp-product-table"><thead><tr><th>丈</th>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div></section>`;
+ }
+ /* 作業班構成: オペレータ・検査員は既存データから、梱包員は現状データ未実装
+    のため常に「-」表示。旧帳票の梱包員欄に相当する表示エリアだけ先に確保する。 */
+ function crewSection(x){
+  const s=x.settings||{};
+  return reportSection('作業班構成',[['オペレータ',s.operator],['検査員',s.inspector],['梱包員',s.packer]]);
  }
 
  function renderReport(x){
@@ -2464,9 +2471,13 @@ compactToleranceScale=function(kind,values,count){
   const isDimensional=s.measureType==='板厚/板幅';
   const hasProductData=(x.product?.rows||[]).some(r=>r&&['productLength','wallThickness','alignmentCode'].some(k=>String(r[k]||'').trim()!==''));
   const showProduct=s.measureType==='揃い/肉厚/長さ'||hasProductData;
-  /* 1ページ(A4)に収める配置: 情報量に応じてゾーンごとに列数を変え、
+  /* 1ページ(A4)に収める配置: 情報量に応じてゾーンごとに列数と列幅比を変え、
      再認しやすい単位（ラベル欄+基本情報、公差付き実測値など）でまとめる。
-     大きな表（板幅ほかの40行）だけは全幅を割り当てる。 */
+     文字量が少ないブロック（品質等級・母材実績など）は幅を絞り、
+     文字量が多い/列数が可変なブロック（測定条件・丈別データ）に幅を回す
+     ことで、列の高さがそろい不要な余白が生まれないようにする。
+     品質情報は長文になりうるため、狭い列に押し込めず全幅の専用行として
+     常時確保する。大きな表（板幅ほかの40行）も同様に全幅を割り当てる。 */
   $id('reportContent').innerHTML=`
    <div class="rp-report-head">
     <div><small>MEASUREMENT REPORT</small><h2>${esc(b.lotNo||x.id)}</h2></div>
@@ -2475,13 +2486,15 @@ compactToleranceScale=function(kind,values,count){
    <div class="rp-zone rp-zone-3">
     <div class="rp-label-area" aria-hidden="true"><span class="rp-label-caption">ラベル貼付スペース</span></div>
     ${reportSection('基本情報',[['ロット番号',b.lotNo],['検査番号',b.inspectionNo],['鋳造番号',b.castingNo],['オーダー番号',b.orderNo],['引当番号',b.allocationNo],['用途コード',b.purposeCode],['用途名',b.purposeName],['取引先',b.customer],['納入先',b.delivery]])}
-    <div class="rp-stack">${reportSection('コース情報',[['設計コース',b.designCourse],['実績コース',b.course],['残コース',b.residualCourse]])}${qualityInfoSection(x)}${dimensionSection(b)}</div>
+    <div class="rp-stack">${reportSection('コース情報',[['設計コース',b.designCourse],['実績コース',b.course],['残コース',b.residualCourse]])}${dimensionSection(b)}</div>
    </div>
-   <div class="rp-zone rp-zone-2">
+   ${qualityInfoSection(x)}
+   <div class="rp-zone rp-zone-quality">
     ${qualityGradeSection(x)}
-    ${reportSection('測定条件',[['登録設備',equipment],['オペレータ',s.operator],['検査員',s.inspector],['入力内容',s.measureType],['丈位置',s.lengthPos],['縦割数',s.verticalCount],['横割数',s.horizontalCount],['巻出方向',s.unwind],['内径',s.innerDiameter],['スプール',s.spool],['板厚測定器',s.thicknessGauge],['板幅測定器',s.widthGauge],['条入力順',s.widthOrder],['方向',s.widthDirection],['バリ揃え',s.burr],['内巻両面テープ',s.innerTape?'あり':'なし']],4)}
+    ${reportSection('測定条件',[['登録設備',equipment],['入力内容',s.measureType],['丈位置',s.lengthPos],['縦割数',s.verticalCount],['横割数',s.horizontalCount],['巻出方向',s.unwind],['内径',s.innerDiameter],['スプール',s.spool],['板厚測定器',s.thicknessGauge],['板幅測定器',s.widthGauge],['条入力順',s.widthOrder],['方向',s.widthDirection],['バリ揃え',s.burr],['内巻両面テープ',s.innerTape?'あり':'なし']],4)}
+    ${crewSection(x)}
    </div>
-   <div class="rp-zone rp-zone-3">
+   <div class="rp-zone rp-zone-length">
     ${motherSection(x)}
     ${showProduct?productRowsSection(x):'<div></div>'}
     ${isDimensional?thicknessMeasurementSection(x):'<div></div>'}

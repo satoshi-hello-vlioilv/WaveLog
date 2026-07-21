@@ -1255,6 +1255,11 @@ body.qa-mode.qa-view-raw #genericFilterBar{display:block!important}
 .rp-zone{display:grid;gap:14px;margin-bottom:14px;align-items:start}
 .rp-zone-2{grid-template-columns:repeat(2,minmax(0,1fr))}
 .rp-zone-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+/* 品質等級・母材実績・測定データ(板厚)は文字数が少なく幅を要らないため狭く、
+   測定条件・丈別データ（列可変/固定9丈）は幅が要るため広く配分する。
+   等幅にすると文字量の少ない側に余白が残ってしまうため列比を変える。 */
+.rp-zone-quality{grid-template-columns:.7fr 1.6fr .9fr}
+.rp-zone-length{grid-template-columns:.8fr 2.2fr .8fr}
 .rp-stack{display:flex;flex-direction:column;gap:14px;min-width:0}
 /* 旧帳票（B5帳票）の左上余白に相当。ラベル貼付や手書き用に空白のまま確保する
    （中を埋めずキャプションだけ隅に添える）。 */
@@ -1274,9 +1279,13 @@ body.qa-mode.qa-view-raw #genericFilterBar{display:block!important}
 /* 品質等級: ラベル(th)と値(td)を交互に並べた4ペア構成（コンパクト化） */
 .rp-grade-table th{background:#f8fafb;color:#61757c;font-weight:700;text-align:left;white-space:nowrap}
 .rp-grade-table td{font-weight:800;color:#173842}
-/* 品質情報: 仕掛の別ファイルから取得した異常/保留情報。通常は1行だが
-   保留履歴がある場合は複数行になるため折り返しを許可する。 */
-.rp-info-box{padding:6px 9px;border:1px solid #d5e0e3;border-radius:0 0 6px 6px;background:#fbfdfd;color:#173842;font-size:11px;line-height:1.5;white-space:normal;word-break:break-word}
+/* 品質情報・板幅測定データなど、ゾーン(グリッド)に属さず全幅で単独配置する
+   セクション同士の縦間隔。ゾーンの外に出た分、明示的に余白を持たせる。 */
+#reportContent>.rp-section{margin-bottom:14px}
+/* 品質情報: 仕掛の別ファイルから取得した異常/保留情報。文字量が多くなる
+   ことが多いため、狭い列に押し込めず全幅の専用行として常時確保する。
+   短文の場合でも面積が安定するよう最小高さを確保する。 */
+.rp-info-box{min-height:52px;padding:6px 9px;border:1px solid #d5e0e3;border-radius:0 0 6px 6px;background:#fbfdfd;color:#173842;font-size:11px;line-height:1.5;white-space:normal;word-break:break-word}
 /* 頭/尾を1枚に収める測定データ表。列数が多いため小さめのフォントで密に配置する */
 .rp-note{margin:0 0 4px;color:#61757c;font-size:10px}
 .rp-wide-wrap{overflow-x:auto}
@@ -1309,9 +1318,12 @@ body.qa-mode.qa-view-raw #genericFilterBar{display:block!important}
  #reportModal .rp-report-head-meta{font-size:9px;gap:2px}
  #reportModal .rp-zone{gap:4px;margin-bottom:3px}
  #reportModal .rp-zone-3{grid-template-columns:1fr 1.6fr 1.4fr}
+ #reportModal .rp-zone-quality{grid-template-columns:.7fr 1.6fr .9fr}
+ #reportModal .rp-zone-length{grid-template-columns:.8fr 2.2fr .8fr}
  #reportModal .rp-stack{gap:3px}
  #reportModal .rp-label-area{min-height:0;height:100%;padding:3px 6px}
  #reportModal .rp-label-caption{font-size:7px}
+ #reportModal #reportContent>.rp-section{margin-bottom:3px}
  #reportModal .rp-section h3{padding:1.5px 6px;font-size:9px;margin-bottom:2px}
  #reportModal .rp-grid{gap:0 8px}
  #reportModal .rp-grid-4{grid-template-columns:repeat(4,minmax(0,1fr))}
@@ -1319,7 +1331,7 @@ body.qa-mode.qa-view-raw #genericFilterBar{display:block!important}
  #reportModal .rp-field-label{font-size:8px}
  #reportModal .rp-dim-table th,#reportModal .rp-dim-table td{padding:1.5px 3px;font-size:8.5px}
  #reportModal .rp-note{font-size:7.5px}
- #reportModal .rp-info-box{padding:1px 5px;font-size:7.5px;line-height:1.25}
+ #reportModal .rp-info-box{min-height:26px;padding:1px 5px;font-size:7.5px;line-height:1.25}
  #reportModal .rp-wide-wrap{overflow:visible}
  #reportModal .rp-wide-table{min-width:0;width:100%}
  #reportModal .rp-wide-table th,#reportModal .rp-wide-table td{padding:1px 2px;font-size:7.5px;line-height:1.15}
