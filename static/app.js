@@ -2337,10 +2337,61 @@ compactToleranceScale=function(kind,values,count){
   return `<section class="rp-section"><h3>寸法（オーダー／製造）</h3><table class="rp-dim-table"><thead><tr><th></th><th>材質</th><th>調質</th><th>板厚</th><th>板幅</th><th>板丈</th></tr></thead><tbody>${row('オーダー',b.orderMaterial,b.orderTemper,b.orderThickness,b.orderWidth,b.orderLength)}${row('製造',b.mfgMaterial,b.mfgTemper,b.mfgThickness,b.mfgWidth,b.mfgLength)}</tbody></table></section>`;
  }
 
+ /* ---------- 複数丈（N分割）対応: 1(頭) と N(尾) のみを帳票に載せる ----------
+    旧VBA帳票（B5帳票モジュール）と同じ考え方。丈位置は 0=1(頭) 、
+    末尾(=縦割数)=N(尾) に固定して読む。巻ずれ・テレスコープはN(尾)のみ対象。 */
+ function lengthLabels(s){
+  const n=Math.max(1,Math.min(9,+s?.verticalCount||1));
+  return {headIdx:0,tailIdx:n,headLabel:'1(頭)',tailLabel:`${n}(尾)`};
+ }
+ function measAt(x,key,li,col){const v=x.measurements?.[key]?.[li]?.[col];return (v===undefined||v===null||v==='')?'':String(v)}
+ function fieldNum(row,names){for(const n of names){if(row[n]!==undefined&&row[n]!==null&&row[n]!==''){const v=Number(row[n]);if(Number.isFinite(v))return v}}return null}
+ /* 公差範囲: レコード保存時点の仕掛スナップショット(source)から製造/オーダー公差を読む。
+    フィールド名は toleranceDataForSource（測定画面側）と同じ候補を使う。 */
+ function toleranceRangeLocal(x,kind){
+  const row=x.source||x.snapshot?.source||{};
+  const base=Number(kind==='thickness'?x.basic?.mfgThickness:x.basic?.mfgWidth);
+  if(!Number.isFinite(base))return null;
+  const isT=kind==='thickness',dim=isT?'板厚':'板幅';
+  const fieldsFor=order=>({
+   plus:[`${dim}公差_${order?'オーダー':'製造'}_プラス`,`${dim}公差_${order?'ｵｰﾀﾞｰ':'製造'}_ﾌﾟﾗｽ`,isT?(order?'KOSAXSOP':'KOSAXSMP'):(order?'KOSAYSOP':'KOSAYSMP')],
+   minus:[`${dim}公差_${order?'オーダー':'製造'}_マイナス`,`${dim}公差_${order?'ｵｰﾀﾞｰ':'製造'}_ﾏｲﾅｽ`,isT?(order?'KOSAXSOM':'KOSAXSMM'):(order?'KOSAYSOM':'KOSAYSMM')],
+  });
+  const wantOrder=x.settings?.toleranceSource==='order';
+  let f=fieldsFor(wantOrder),plus=fieldNum(row,f.plus),minus=fieldNum(row,f.minus);
+  if((plus===null||minus===null)&&wantOrder){f=fieldsFor(false);plus=fieldNum(row,f.plus);minus=fieldNum(row,f.minus)}
+  if(plus===null||minus===null)return null;
+  return [base-minus,base+plus];
+ }
+ function qualityGradeSection(x){
+  const g=x.qualityGrades||{};
+  const rows=[['生地外観','アルマイト','表面処理'],['付着油','方向性','強度'],['ラテラルボー','直角度','切断面'],['板厚公差','幅丈公差','フラットネス']];
+  const body=rows.map(triple=>`<tr>${triple.map(l=>`<th>${esc(l)}</th><td>${esc(g[l]||'-')}</td>`).join('')}</tr>`).join('');
+  return `<section class="rp-section"><h3>品質等級</h3><table class="rp-dim-table rp-grade-table"><tbody>${body}</tbody></table></section>`;
+ }
+ function motherSection(x){
+  const m=x.mother||{};
+  return `<section class="rp-section"><h3>母材実績／カード指示</h3><table class="rp-dim-table"><thead><tr><th></th><th>手計算</th><th>全長</th><th>前オフ</th><th>後オフ</th></tr></thead><tbody><tr><th>実績</th><td>${esc(m.manual||'-')}</td><td>${esc(m.fullLength||'-')}</td><td>${esc(m.front||'-')}</td><td>${esc(m.rear||'-')}</td></tr><tr><th>カード指示</th><td>${esc(m.minCard||'-')}</td><td>${esc(m.maxCard||'-')}</td><td>${esc(m.frontCard||'-')}</td><td>${esc(m.rearCard||'-')}</td></tr></tbody></table></section>`;
+ }
+ function thicknessMeasurementSection(x){
+  const s=x.settings||{},{headIdx,tailIdx,headLabel,tailLabel}=lengthLabels(s),tol=toleranceRangeLocal(x,'thickness');
+  const rows=['OS','CL','DS'].map((label,col)=>`<tr><th>${label}</th><td>${tol?fmtDimSafe(tol[0],3):'-'}</td><td>${esc(measAt(x,'thickness',headIdx,col)||'-')}</td><td>${esc(measAt(x,'thickness',tailIdx,col)||'-')}</td><td>${tol?fmtDimSafe(tol[1],3):'-'}</td></tr>`).join('');
+  return `<section class="rp-section"><h3>測定データ（板厚）</h3><table class="rp-dim-table"><thead><tr><th>測定位置</th><th>範囲下限</th><th>${esc(headLabel)}</th><th>${esc(tailLabel)}</th><th>範囲上限</th></tr></thead><tbody>${rows}</tbody></table></section>`;
+ }
+ function widthMeasurementSection(x){
+  const s=x.settings||{},n=Math.max(1,Math.min(40,+s.horizontalCount||1)),{headIdx,tailIdx,headLabel,tailLabel}=lengthLabels(s),tol=toleranceRangeLocal(x,'width');
+  let rows='';
+  for(let col=0;col<n;col++){
+   rows+=`<tr><th>${col+1}</th><td>${tol?fmtDimSafe(tol[0],2):'-'}</td><td>${esc(measAt(x,'width',headIdx,col)||'-')}</td><td>${esc(measAt(x,'width',tailIdx,col)||'-')}</td><td>${tol?fmtDimSafe(tol[1],2):'-'}</td><td>${esc(measAt(x,'lateral',headIdx,col)||'-')}</td><td>${esc(measAt(x,'lateral',tailIdx,col)||'-')}</td><td>${esc(measAt(x,'burr',headIdx,col)||'-')}</td><td>${esc(measAt(x,'burr',tailIdx,col)||'-')}</td><td>${esc(measAt(x,'offset',tailIdx,col)||'-')}</td><td>${esc(measAt(x,'telescope',tailIdx,col)||'-')}</td><td>${esc(measAt(x,'flatness',tailIdx,col)||'-')}</td><td>${esc(measAt(x,'comments',tailIdx,col)||'-')}</td></tr>`;
+  }
+  return `<section class="rp-section"><h3>測定データ（板幅・ラテラルボー・バリ・巻ずれ・テレスコープ）</h3><p class="rp-note">巻ずれ・テレスコープは ${esc(tailLabel)} のデータのみ対象です。</p><div class="rp-wide-wrap"><table class="rp-dim-table rp-wide-table"><thead><tr><th rowspan="2">コイル№</th><th colspan="4">板幅</th><th colspan="2">ラテラルボー</th><th colspan="2">バリ</th><th>巻ずれ</th><th>テレスコープ</th><th rowspan="2">フラットネス</th><th rowspan="2">備考</th></tr><tr><th>範囲下限</th><th>${esc(headLabel)}</th><th>${esc(tailLabel)}</th><th>範囲上限</th><th>${esc(headLabel)}</th><th>${esc(tailLabel)}</th><th>${esc(headLabel)}</th><th>${esc(tailLabel)}</th><th>${esc(tailLabel)}</th><th>${esc(tailLabel)}</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+ }
+
  function renderReport(x){
   const b=x.basic||{},s=x.settings||{},w=x.workTime||{};
   const equipment=s.registeredEquipment||x.registeredEquipment||x.snapshot?.registeredEquipment||'-';
   const dur=w.startAt&&w.endAt?formatDuration(new Date(w.endAt)-new Date(w.startAt)):(w.startAt?'作業中':'未計測');
+  const isDimensional=s.measureType==='板厚/板幅';
   $id('reportContent').innerHTML=`
    <div class="rp-report-head">
     <div><small>MEASUREMENT REPORT</small><h2>${esc(b.lotNo||x.id)}</h2></div>
@@ -2349,7 +2400,11 @@ compactToleranceScale=function(kind,values,count){
    ${reportSection('基本情報',[['ロット番号',b.lotNo],['検査番号',b.inspectionNo],['鋳造番号',b.castingNo],['オーダー番号',b.orderNo],['引当番号',b.allocationNo],['用途コード',b.purposeCode],['用途名',b.purposeName],['取引先',b.customer],['納入先',b.delivery]])}
    ${reportSection('コース情報',[['設計コース',b.designCourse],['実績コース',b.course],['残コース',b.residualCourse]])}
    ${dimensionSection(b)}
+   ${qualityGradeSection(x)}
    ${reportSection('測定条件',[['登録設備',equipment],['オペレータ',s.operator],['検査員',s.inspector],['入力内容',s.measureType],['丈位置',s.lengthPos],['縦割数',s.verticalCount],['横割数',s.horizontalCount],['巻出方向',s.unwind],['内径',s.innerDiameter],['スプール',s.spool],['板厚測定器',s.thicknessGauge],['板幅測定器',s.widthGauge],['条入力順',s.widthOrder],['方向',s.widthDirection],['バリ揃え',s.burr],['内巻両面テープ',s.innerTape?'あり':'なし']])}
+   ${motherSection(x)}
+   ${isDimensional?thicknessMeasurementSection(x):''}
+   ${isDimensional?widthMeasurementSection(x):''}
    ${reportSection('作業時間',[['開始時刻',formatWorkTime(w.startAt)],['終了時刻',formatWorkTime(w.endAt)],['実働時間',dur]])}
    ${reportSection('登録状態',[['状態',statusLabel(x.status)],['更新日時',fmtDT(x.updatedAt)],['NG回数',s.ngCount||0]])}
   `;

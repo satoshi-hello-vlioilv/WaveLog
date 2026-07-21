@@ -1256,6 +1256,14 @@ body.qa-mode.qa-view-raw #genericFilterBar{display:block!important}
 .rp-dim-table th,.rp-dim-table td{padding:6px 8px;border:1px solid #d5e0e3;text-align:center;font-size:13px}
 .rp-dim-table thead th{background:#eef2f4;color:#173842}
 .rp-dim-table tbody th{background:#f8fafb;text-align:left}
+/* 品質等級: ラベル(th)と値(td)を交互に並べた3ペア構成 */
+.rp-grade-table th{background:#f8fafb;color:#61757c;font-weight:700;text-align:left;white-space:nowrap}
+.rp-grade-table td{font-weight:800;color:#173842}
+/* 頭/尾を1枚に収める測定データ表。列数が多いため小さめのフォントで密に配置する */
+.rp-note{margin:0 0 6px;color:#61757c;font-size:11px}
+.rp-wide-wrap{overflow-x:auto}
+.rp-wide-table{min-width:760px}
+.rp-wide-table th,.rp-wide-table td{padding:4px 6px;font-size:11px}
 
 @media(max-width:1000px){.rp-body{grid-template-columns:1fr}.rp-nav{max-height:260px}}
 
@@ -1268,4 +1276,7 @@ body.qa-mode.qa-view-raw #genericFilterBar{display:block!important}
  #reportModal .rp-main{display:block;height:auto;overflow:visible}
  #reportModal .rp-scroll{padding:0;overflow:visible}
  #reportModal .rp-report{max-width:none;margin:0;border:0;padding:0}
+ #reportModal .rp-wide-wrap{overflow:visible}
+ #reportModal .rp-wide-table{min-width:0;width:100%}
+ #reportModal .rp-wide-table th,#reportModal .rp-wide-table td{padding:2px 3px;font-size:9px}
 }
