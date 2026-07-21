@@ -1271,9 +1271,12 @@ body.qa-mode.qa-view-raw #genericFilterBar{display:block!important}
 .rp-dim-table th,.rp-dim-table td{height:auto;padding:4px 6px;border:1px solid #d5e0e3;text-align:center;font-size:12px}
 .rp-dim-table thead th{background:#eef2f4;color:#173842}
 .rp-dim-table tbody th{background:#f8fafb;text-align:left}
-/* 品質等級: ラベル(th)と値(td)を交互に並べた3ペア構成 */
+/* 品質等級: ラベル(th)と値(td)を交互に並べた4ペア構成（コンパクト化） */
 .rp-grade-table th{background:#f8fafb;color:#61757c;font-weight:700;text-align:left;white-space:nowrap}
 .rp-grade-table td{font-weight:800;color:#173842}
+/* 品質情報: 仕掛の別ファイルから取得した異常/保留情報。通常は1行だが
+   保留履歴がある場合は複数行になるため折り返しを許可する。 */
+.rp-info-box{padding:6px 9px;border:1px solid #d5e0e3;border-radius:0 0 6px 6px;background:#fbfdfd;color:#173842;font-size:11px;line-height:1.5;white-space:normal;word-break:break-word}
 /* 頭/尾を1枚に収める測定データ表。列数が多いため小さめのフォントで密に配置する */
 .rp-note{margin:0 0 4px;color:#61757c;font-size:10px}
 .rp-wide-wrap{overflow-x:auto}
@@ -1292,7 +1295,7 @@ body.qa-mode.qa-view-raw #genericFilterBar{display:block!important}
    旧帳票どおり確保したうえで密度で吸収する。
    --------------------------------------------------------------- */
 @media print{
- @page{size:A4;margin:6mm}
+ @page{size:A4;margin:5mm}
  body>*:not(#reportModal){display:none!important}
  #reportModal{position:static;inset:auto;background:none;display:block;z-index:auto;padding:0}
  #reportModal .rp-dialog{position:static;width:100%;max-width:none;height:auto;box-shadow:none;border-radius:0;margin:0;background:#fff}
@@ -1301,21 +1304,22 @@ body.qa-mode.qa-view-raw #genericFilterBar{display:block!important}
  #reportModal .rp-main{display:block;height:auto;overflow:visible}
  #reportModal .rp-scroll{padding:0;overflow:visible}
  #reportModal .rp-report{max-width:none;margin:0;border:0;padding:0;font-size:10px}
- #reportModal .rp-report-head{padding-bottom:3px;margin-bottom:4px}
- #reportModal .rp-report-head h2{font-size:17px}
+ #reportModal .rp-report-head{padding-bottom:2px;margin-bottom:3px}
+ #reportModal .rp-report-head h2{font-size:16px}
  #reportModal .rp-report-head-meta{font-size:9px;gap:2px}
- #reportModal .rp-zone{gap:5px;margin-bottom:4px}
+ #reportModal .rp-zone{gap:4px;margin-bottom:3px}
  #reportModal .rp-zone-3{grid-template-columns:1fr 1.6fr 1.4fr}
- #reportModal .rp-stack{gap:4px}
+ #reportModal .rp-stack{gap:3px}
  #reportModal .rp-label-area{min-height:0;height:100%;padding:3px 6px}
  #reportModal .rp-label-caption{font-size:7px}
- #reportModal .rp-section h3{padding:2px 6px;font-size:9px;margin-bottom:3px}
+ #reportModal .rp-section h3{padding:1.5px 6px;font-size:9px;margin-bottom:2px}
  #reportModal .rp-grid{gap:0 8px}
  #reportModal .rp-grid-4{grid-template-columns:repeat(4,minmax(0,1fr))}
- #reportModal .rp-field{grid-template-columns:min-content minmax(0,1fr);gap:4px;padding:1.5px 2px;font-size:8.5px}
+ #reportModal .rp-field{grid-template-columns:min-content minmax(0,1fr);gap:4px;padding:1px 2px;font-size:8.5px}
  #reportModal .rp-field-label{font-size:8px}
  #reportModal .rp-dim-table th,#reportModal .rp-dim-table td{padding:1.5px 3px;font-size:8.5px}
  #reportModal .rp-note{font-size:7.5px}
+ #reportModal .rp-info-box{padding:1px 5px;font-size:7.5px;line-height:1.25}
  #reportModal .rp-wide-wrap{overflow:visible}
  #reportModal .rp-wide-table{min-width:0;width:100%}
  #reportModal .rp-wide-table th,#reportModal .rp-wide-table td{padding:1px 2px;font-size:7.5px;line-height:1.15}

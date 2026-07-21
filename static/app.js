@@ -2410,9 +2410,15 @@ compactToleranceScale=function(kind,values,count){
  }
  function qualityGradeSection(x){
   const g=x.qualityGrades||{};
-  const rows=[['生地外観','アルマイト','表面処理'],['付着油','方向性','強度'],['ラテラルボー','直角度','切断面'],['板厚公差','幅丈公差','フラットネス']];
-  const body=rows.map(triple=>`<tr>${triple.map(l=>`<th>${esc(l)}</th><td>${esc(g[l]||'-')}</td>`).join('')}</tr>`).join('');
+  const rows=[['生地外観','アルマイト','表面処理','付着油'],['方向性','強度','ラテラルボー','直角度'],['切断面','板厚公差','幅丈公差','フラットネス']];
+  const body=rows.map(group=>`<tr>${group.map(l=>`<th>${esc(l)}</th><td>${esc(g[l]||'-')}</td>`).join('')}</tr>`).join('');
   return `<section class="rp-section"><h3>品質等級</h3><table class="rp-dim-table rp-grade-table"><tbody>${body}</tbody></table></section>`;
+ }
+ /* 仕掛データ取込時に別ファイル（品質情報テーブル）から取得し保存している
+    異常/保留情報。旧帳票では品質等級欄の上（右上ブロック）に表示されていた。 */
+ function qualityInfoSection(x){
+  const text=String(x.qualityInfo||'異常情報なし');
+  return `<section class="rp-section"><h3>品質情報（仕掛）</h3><div class="rp-info-box">${esc(text).replace(/\n/g,'<br>')}</div></section>`;
  }
  function motherSection(x){
   const m=x.mother||{};
@@ -2469,7 +2475,7 @@ compactToleranceScale=function(kind,values,count){
    <div class="rp-zone rp-zone-3">
     <div class="rp-label-area" aria-hidden="true"><span class="rp-label-caption">ラベル貼付スペース</span></div>
     ${reportSection('基本情報',[['ロット番号',b.lotNo],['検査番号',b.inspectionNo],['鋳造番号',b.castingNo],['オーダー番号',b.orderNo],['引当番号',b.allocationNo],['用途コード',b.purposeCode],['用途名',b.purposeName],['取引先',b.customer],['納入先',b.delivery]])}
-    <div class="rp-stack">${reportSection('コース情報',[['設計コース',b.designCourse],['実績コース',b.course],['残コース',b.residualCourse]])}${dimensionSection(b)}</div>
+    <div class="rp-stack">${reportSection('コース情報',[['設計コース',b.designCourse],['実績コース',b.course],['残コース',b.residualCourse]])}${qualityInfoSection(x)}${dimensionSection(b)}</div>
    </div>
    <div class="rp-zone rp-zone-2">
     ${qualityGradeSection(x)}
