@@ -104,7 +104,27 @@ function deviceParse(raw){const manual=S.measure?.settings?.inputMode==='manual'
 function activeMeasureKey(){return({母材:'mother', '板厚/板幅':'width',ラテラルボー:'lateral',バリ:'burr',テレスコープ:'telescope',巻ずれ:'offset',フラットネス:'flatness'})[$('#measureType').value]||'width'}
 function toleranceFor(kind,index=0){const r=S.measure.source||{},b=S.measure.basic;const val=(names)=>{for(const n of names)if(r[n]!==undefined&&r[n]!==null&&r[n]!=='')return Number(r[n]);return NaN};if(kind==='thickness'){const base=Number(b.mfgThickness),plus=val(['板厚公差_製造_プラス','KOSAXSMP']),minus=val(['板厚公差_製造_マイナス','KOSAXSMM']);return(Number.isFinite(base)&&Number.isFinite(plus)&&Number.isFinite(minus))?[base-minus,base+plus]:null}const base=Number(b.mfgWidth),plus=val(['板幅公差_製造_プラス','KOSAYSMP']),minus=val(['板幅公差_製造_マイナス','KOSAYSMM']);return(Number.isFinite(base)&&Number.isFinite(plus)&&Number.isFinite(minus))?[base-minus,base+plus]:null}
 function judgeInput(el,key,value,index){el.classList.remove('ng','complete');if(key==='flatness'){if(String(el.value||'').trim()!=='')el.classList.add('complete');return}const tol=toleranceFor(key==='thickness'?'thickness':'width',index);if(Number.isFinite(value)){el.classList.add('complete');if(tol&&(value<tol[0]||value>tol[1]))el.classList.add('ng')}}
-function focusCurrent(){document.querySelectorAll('[data-mkey]').forEach(x=>x.classList.remove('current'));const m=S.measure.settings,key=activeMeasureKey();let sel;if(key==='width'&&m.pendingDevice==='micrometer')sel=`[data-mkey="thickness"][data-j="${m.tStep||0}"]`;else sel=`[data-mkey="${key}"][data-i="${lengthIndex()}"][data-j="${m.wStep||0}"]`;const el=document.querySelector(sel);if(el){el.classList.add('current');el.scrollIntoView({block:'nearest',inline:'nearest'})}$('#stepStatus').textContent=`入力位置 ${key==='width'&&m.pendingDevice==='micrometer'?'板厚 '+((m.tStep||0)+1):'丈 '+(lengthIndex()+1)+' / 条 '+((m.wStep||0)+1)}`}
+/* 板厚/板幅は測定器の種別(マイクロメータ/ノギス等)でデータが自動的に
+   板厚・板幅へ振り分けられるため、どちらを先に測っても問題ない設計。
+   このため次の入力先を1箇所だけに絞らず、板厚・板幅それぞれの次入力
+   セルを同時に(合計2箇所)強調表示する。それ以外の測定種は従来通り
+   1箇所のみ強調する。 */
+function focusCurrent(){
+ document.querySelectorAll('[data-mkey]').forEach(x=>x.classList.remove('current'));
+ const m=S.measure.settings,key=activeMeasureKey();
+ if(key==='width'){
+  const tEl=document.querySelector(`[data-mkey="thickness"][data-j="${m.tStep||0}"]`);
+  const wEl=document.querySelector(`[data-mkey="width"][data-i="${lengthIndex()}"][data-j="${m.wStep||0}"]`);
+  if(tEl)tEl.classList.add('current');
+  if(wEl)wEl.classList.add('current');
+  (m.pendingDevice==='micrometer'?tEl:wEl)?.scrollIntoView({block:'nearest',inline:'nearest'});
+  $('#stepStatus').textContent=`入力位置 板厚 ${(m.tStep||0)+1} ／ 板幅 丈 ${lengthIndex()+1} 条 ${(m.wStep||0)+1}`;
+  return;
+ }
+ const el=document.querySelector(`[data-mkey="${key}"][data-i="${lengthIndex()}"][data-j="${m.wStep||0}"]`);
+ if(el){el.classList.add('current');el.scrollIntoView({block:'nearest',inline:'nearest'})}
+ $('#stepStatus').textContent=`入力位置 丈 ${lengthIndex()+1} / 条 ${(m.wStep||0)+1}`;
+}
 function advanceWidth(){const m=S.measure.settings,max=Math.max(1,+$('#horizontalCount').value||1),seq=widthSequence(max,$('#widthOrder').value,$('#widthDirection').value),pos=seq.indexOf(m.wStep||0);m.wStep=seq[(pos+1)%seq.length]}
 /* 自動転送モードでは、DOM再描画(renderMeasureGrid)の前後で万一
    フォーカスがずれても必ず受信欄へ戻す。手動入力モードでは
@@ -150,7 +170,13 @@ async function openRecords(status){const all=await idbAll(),items=all.filter(x=>
 async function registerNg(){const m=await saveLocal('測定値NG');m.settings.ngCount=(m.settings.ngCount||0)+1;await idbPut(m);setState(`NGロット ${m.settings.ngCount}回目を保存`)}
 function lockCounts(){const has=Object.values(S.measure.measurements).some(a=>a.flat().some(v=>v!==''));$('#verticalCount').disabled=has;$('#horizontalCount').disabled=has}
 
-function updateReceiveState(focused=document.activeElement===$('#deviceInput')){if(!S.measure)return;const manual=S.measure.settings.inputMode==='manual',box=$('#inputStatusBox'),inp=$('#deviceInput');box.classList.remove('receiving','manual-state','not-ready-state');inp.classList.remove('manual-receive','locked-receive');if(manual){box.classList.add('manual-state');inp.classList.add('manual-receive');$('#inputReady').textContent='手動入力モード';$('#inputModeHelp').textContent='直接入力・Enterで確定';$('#receiveLock').textContent='手入力許可';inp.placeholder='必要に応じて数値を入力'}else if(focused){box.classList.add('receiving');$('#inputReady').textContent='伝送入力受付中';$('#inputModeHelp').textContent='転送待ち・Tabで確定';$('#receiveLock').textContent='転送専用';inp.placeholder='測定器データ受信専用'}else{box.classList.add('not-ready-state');inp.classList.add('locked-receive');$('#inputReady').textContent='伝送入力停止中';$('#inputModeHelp').textContent='クリックで受付再開';$('#receiveLock').textContent='受付停止';inp.placeholder='クリックして伝送受付を再開'}}$('#deviceInput').onfocus=()=>updateReceiveState(true);$('#deviceInput').onblur=()=>updateReceiveState(false);
+/* 板厚/板幅・バリは自動転送専用に固定されているため、受信欄のDOMフォーカスが
+   一瞬外れただけで「伝送入力停止中」のグレー表示に切り替わると、起動直後や
+   再フォーカスの合間に自動モードが無効になったように見えてしまう。手動入力
+   モードでない限りは常に「受信中」の見た目を維持し、フォーカスの有無では
+   状態表示を変えない(内部のフォーカス制御自体はrefocusDeviceInput側で従来通り
+   継続する)。 */
+function updateReceiveState(focused=document.activeElement===$('#deviceInput')){if(!S.measure)return;const manual=S.measure.settings.inputMode==='manual',box=$('#inputStatusBox'),inp=$('#deviceInput');box.classList.remove('receiving','manual-state','not-ready-state');inp.classList.remove('manual-receive','locked-receive');if(manual){box.classList.add('manual-state');inp.classList.add('manual-receive');$('#inputReady').textContent='手動入力モード';$('#inputModeHelp').textContent='直接入力・Enterで確定';$('#receiveLock').textContent='手入力許可';inp.placeholder='必要に応じて数値を入力'}else{box.classList.add('receiving');$('#inputReady').textContent='伝送入力受付中';$('#inputModeHelp').textContent='転送待ち・Tabで確定';$('#receiveLock').textContent='転送専用';inp.placeholder='測定器データ受信専用'}}$('#deviceInput').onfocus=()=>updateReceiveState(true);$('#deviceInput').onblur=()=>updateReceiveState(false);
 /* 受信欄は自動モードでは視覚的に隠しているため、万一フォーカスが外れても
    ユーザーが直接クリックし直す手段がなくなる。「自動モード」バッジ側を
    クリックしたら受信欄へフォーカスを戻す安全弁を用意しておく。 */
@@ -486,7 +512,7 @@ openRecords=async function(status){
   c.querySelector('.danger').onclick=async()=>{if(confirm('この端末内データを削除しますか？')){await reliableDelete(x.id);await refreshDraftCount();openRecords(status)}};$('#recordList').append(c)
  });$('#recordModal').hidden=false;
 };
-resumeStoredMeasure=async function(saved,row=null){S.current=row||saved.source||saved.snapshot?.source||null;S.measure=ensureMeasureShape(saved);renderMeasurement();$('#recordModal').hidden=true;$('#measureModal').hidden=false;await loadMeasurementContext(false);requestAnimationFrame(()=>$('#deviceInput').focus())};
+resumeStoredMeasure=async function(saved,row=null){S.current=row||saved.source||saved.snapshot?.source||null;S.measure=ensureMeasureShape(saved);renderMeasurement();$('#recordModal').hidden=true;$('#measureModal').hidden=false;requestAnimationFrame(()=>$('#deviceInput').focus());await loadMeasurementContext(false);requestAnimationFrame(()=>$('#deviceInput').focus())};
 openMeasurement=async function(row){
  if(!row)throw Error('対象データがありません');S.current=row;const found=await findDraftForRow(row);
  if(found){await openRecords('編集中');showToast('編集中データがあります','一覧から再開するデータを選択してください。');return}
@@ -509,7 +535,7 @@ function bindV32Navigation(){
 openMeasurement=async function(row){
  if(!row)throw Error('対象データがありません');S.current=row;const found=await findDraftForRow(row);
  if(found){await resumeStoredMeasure(found,row);showToast('編集中データを直接再開しました',`${found.basic?.lotNo||pick(row,'lotNo')} / ${found.updatedAt?new Date(found.updatedAt).toLocaleString('ja-JP'):''}`);return}
- const m=blankMeasure(row);m.id=lotKey(row)||crypto.randomUUID();S.measure=ensureMeasureShape(m);renderMeasurement();$('#measureModal').hidden=false;await loadMeasurementContext(true);await reliablePut(collect());await refreshDraftCount();requestAnimationFrame(()=>$('#deviceInput').focus())
+ const m=blankMeasure(row);m.id=lotKey(row)||crypto.randomUUID();S.measure=ensureMeasureShape(m);renderMeasurement();$('#measureModal').hidden=false;requestAnimationFrame(()=>$('#deviceInput').focus());await loadMeasurementContext(true);await reliablePut(collect());await refreshDraftCount();requestAnimationFrame(()=>$('#deviceInput').focus())
 };
 const initV32Base=init;init=async function(){try{await initV32Base()}catch(e){console.error('初期化エラー',e);showToast('初期化の一部に失敗',e.message,8000)}finally{bindV32Navigation()}};
 
