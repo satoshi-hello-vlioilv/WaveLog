@@ -4,14 +4,20 @@ import json, pyodbc, subprocess
 
 app=Flask(__name__); BASE=Path(__file__).resolve().parent
 
+# 手動管理のバージョン番号。画面に表示される「デプロイ確認用」の主表示。
+# gitが使えない配布先(zipコピー等)でも必ず値が出るよう、こちらを主とする。
+# 意味のある変更をコミットするたびに更新すること。
+APP_VERSION='1.2.0'
 def _git_version():
+ # 参考情報(ツールチップ用)。git非対応の配布環境では取得できないため
+ # 失敗しても画面表示自体には影響しないようベストエフォートにする。
  try:
   rev=subprocess.check_output(['git','rev-parse','--short','HEAD'],cwd=BASE,stderr=subprocess.DEVNULL).decode().strip()
   when=subprocess.check_output(['git','log','-1','--format=%cI'],cwd=BASE,stderr=subprocess.DEVNULL).decode().strip()
   dirty=bool(subprocess.check_output(['git','status','--porcelain'],cwd=BASE,stderr=subprocess.DEVNULL).decode().strip())
   return {'commit':rev,'commit_at':when,'dirty':dirty}
  except Exception:
-  return {'commit':'unknown','commit_at':'','dirty':False}
+  return {'commit':'','commit_at':'','dirty':False}
 GIT_VERSION=_git_version()
 SIKA_DIR=Path(r"\\Nlmsrvngy03\Read\【New】仕掛\台帳")
 DBS={
@@ -694,7 +700,7 @@ def home():
  token=str(max(f.stat().st_mtime_ns for f in asset_files))
  return render_template('index.html', build='current', asset_token=token)
 @app.get('/api/build')
-def build(): return jsonify(build='current', feature='measurement-workflow-current', port=5029, **GIT_VERSION)
+def build(): return jsonify(build='current', version=APP_VERSION, feature='measurement-workflow-current', port=5029, **GIT_VERSION)
 @app.get('/api/catalog')
 def catalog(): return jsonify(databases=[{"key":k,"label":v['label'],"file_name":v['path'].name,"role":v['role']} for k,v in DBS.items()])
 @app.get('/api/tables')

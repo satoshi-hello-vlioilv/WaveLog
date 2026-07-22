@@ -6,8 +6,8 @@ async function init(){
  const build=await api('/api/build');document.title='測定伝送システム';
  const badge=document.querySelector('.build-badge');
  if(badge){
-  badge.textContent=build.commit&&build.commit!=='unknown'?`v.${build.commit}${build.dirty?'+':''}`:'バージョン不明';
-  badge.title=build.commit_at?`最終コミット: ${new Date(build.commit_at).toLocaleString('ja-JP')}${build.dirty?'（未コミットの変更あり）':''}`:'';
+  badge.textContent=build.version?`VER${build.version}`:'バージョン不明';
+  badge.title=build.commit?`コミット: ${build.commit}${build.commit_at?' / '+new Date(build.commit_at).toLocaleString('ja-JP'):''}${build.dirty?'（未コミットの変更あり）':''}`:'';
  }
  const d=await api('/api/catalog');S.catalog=d.databases;
  const nav=$('#nav');
