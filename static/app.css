@@ -316,15 +316,15 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 
 /* ---------- 7. 右ペイン: 伝送状態 / タブ ---------- */
 .input-status{
-  display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);gap:8px;align-items:center;
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;align-items:center;
   min-height:52px;padding:5px 8px;border:2px solid #278b75;border-radius:8px;background:#e8f8f2;
 }
 .input-status.receiving{border-color:var(--teal);background:#e5f7fa}
 .input-status.manual-state{border-color:#d58d16;background:#fff5dd}
 .input-status.not-ready-state{border-color:#b2bdc1;background:#edf0f1}
 .receive-state{display:flex;align-items:center;gap:9px;min-width:0}
-.receive-state b{display:block;color:#143fdd;font-weight:800}
-.receive-state small{display:block;margin-top:2px;color:#45636b;white-space:normal;overflow:visible;text-overflow:clip;line-height:1.3}
+.receive-state b{display:block;color:#143fdd;font-weight:800;white-space:nowrap}
+.receive-state small{display:block;margin-top:2px;color:#45636b;white-space:nowrap;overflow:visible;text-overflow:clip;line-height:1.3;word-break:keep-all}
 .state-lamp{width:12px;height:12px;border-radius:50%;background:#16a273;box-shadow:0 0 0 4px #16a27322}
 .not-ready-state .state-lamp{background:#7e8d92;box-shadow:none}
 .manual-state .state-lamp{background:#e49a20;box-shadow:0 0 0 4px #e49a2022}
