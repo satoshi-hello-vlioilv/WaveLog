@@ -171,8 +171,8 @@ tbody tr:hover{background:#e5f2f3;cursor:pointer}
 .measurement-action-cell{text-align:center;background:inherit}
 .measurement-action-button{padding:5px 10px;border:1px solid var(--teal);background:var(--teal);color:#fff;font-weight:700;white-space:nowrap}
 .measurement-action-button:hover{background:var(--teal-dark);color:#fff}
-.split-flag-head{min-width:64px;text-align:center;background:#f2e6b3}
-.split-flag-cell{text-align:center;font-weight:700;white-space:nowrap}
+.split-flag-head{min-width:112px;text-align:center;background:#f2e6b3}
+.split-flag-cell{text-align:center;font-weight:700;white-space:nowrap;font-size:12px}
 .split-flag-cell.split-yes{background:#fff2cc;color:#8a6600}
 .split-flag-cell.split-no{background:inherit;color:#8a9a97}
 /* 行選択(シングルクリック): ホバーやmeasurement-row(測定可)の目印と
@@ -310,6 +310,7 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 .analysis h3,.quality h3{margin:0;padding:6px 8px;background:#fff1d9;border:1px solid var(--line)}
 .analysis table{width:100%}
 .split-pane,.debug-pane{height:250px;overflow:auto;padding:7px;background:#fff;border:1px solid var(--line);border-top:0}
+.split-status-pending{display:block;padding:6px;color:#8a6600;background:#fff2cc;border:1px solid #e0b23d;border-radius:4px;font-weight:700}
 .debug-pane pre{white-space:pre-wrap;font-size:var(--fs-micro)}
 
 /* ---------- 6. 中央ペイン（選択項目） ---------- */

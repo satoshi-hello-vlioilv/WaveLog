@@ -86,8 +86,10 @@
   function childCountFieldValue(r,i){return fieldByCandidates(r,CHILD_COUNT_PREFIXES.map(p=>p+i))}
   // 親子管理_子カード1〜10から子ロット番号を復元する(旧VBA KCDNO相当)。
   // 1〜9: ロット番号の先頭6桁+1桁、10〜99: 先頭5桁+2桁で末尾を置換。
-  function childLotNumbersFromCard(){
-    const r=S.measure?.source||{},lotNo=String(S.measure?.basic?.lotNo||'');
+  // row/lotNoを省略すると現在開いている測定(S.measure)を対象にする。
+  function childLotNumbersFromCard(row,lotNo){
+    const r=row||S.measure?.source||{};
+    lotNo=lotNo!==undefined?lotNo:String(S.measure?.basic?.lotNo||'');
     if(!lotNo)return [];
     const out=[];
     for(let i=1;i<=10;i++){
@@ -138,14 +140,48 @@
   }
   window.rowHasSplitData=rowHasSplitData;
 
+  /* 分割には「全く同一幅で分割するパターン」と「幅の異なるロットへ分割
+     するパターン」の両方があるため、行の生データだけで分かる範囲で
+     ロット数・同一幅/異幅を判定する(子ロットの再検索なしで済む軽量版)。
+     コンマ5本分割_切断巾*が2件以上あれば、その値同士を比較して判定する。
+     判定材料が無ければwidthPattern='unknown'とする。 */
+  function analyzeRowSplit(row){
+    if(!row||!rowHasSplitData(row))return{hasSplit:false,lotCount:1,widthPattern:'none'};
+    let cardCount=0;
+    for(let i=1;i<=10;i++){const v=childCardValue(row,i);if(v!==undefined&&Number(v)!==0)cardCount++}
+    const cutWidths=[];
+    for(let i=1;i<=10;i++){const w=childCutWidthValue(row,i);if(w!==undefined&&Number(w)!==0)cutWidths.push(Number(w))}
+    const lotCount=Math.max(cardCount,cutWidths.length)+1; // +1: 自分(親)の持ち分
+    let widthPattern='unknown';
+    if(cutWidths.length>=2)widthPattern=cutWidths.every(w=>Math.abs(w-cutWidths[0])<0.05)?'same':'different';
+    return{hasSplit:true,lotCount,widthPattern};
+  }
+  window.analyzeRowSplit=analyzeRowSplit;
+  function widthPatternLabel(p){return p==='same'?'同一幅分割':p==='different'?'異幅分割':'幅パターン不明'}
+  // applySplit後の確定データ(子ロット自身から取得した実際の幅)を使った、
+  // より正確な同一幅/異幅・ロット数の要約。
+  function summarizeAppliedGroups(groups){
+    const widths=groups.map(g=>g.base?.width).filter(w=>Number.isFinite(w));
+    let pattern='幅情報なし';
+    if(widths.length>=2)pattern=widths.every(w=>Math.abs(w-widths[0])<0.05)?'同一幅分割':'異幅分割';
+    else if(widths.length===1)pattern='単一幅';
+    return `${groups.length}ロットに分割（${pattern}）`;
+  }
+
+  /* 仕掛一覧(SIKALOTNOW)の列表示マスタで「親子管理_子カード*」「コンマ5本
+     分割_切断巾*」等が非表示設定にされていると、通常の一覧取得(/api/table)
+     ではこれらの列がレスポンスから丸ごと除外され、分割の判定材料が
+     一切手に入らなくなる(表示設定はあくまで一覧の見た目の話であり、
+     内部計算がそれに引きずられるべきではない)。このため分割機能が使う
+     問い合わせは全て include_hidden=1 を付け、非表示設定に関係なく
+     生データを取得する。 */
   async function resolveSikaTable(){
     if(S.measure?.settings?.sourceTable)return S.measure.settings.sourceTable;
     const info=await api('/api/tables?db=SIKALOTNOW');
     return info.tables?.[0]||null;
   }
   async function resolveSikaColumns(table){
-    if(S.measure?.settings?.sourceColumns?.length)return S.measure.settings.sourceColumns;
-    const d=await api('/api/table?'+new URLSearchParams({db:'SIKALOTNOW',table,page:1,page_size:1}));
+    const d=await api('/api/table?'+new URLSearchParams({db:'SIKALOTNOW',table,page:1,page_size:1,include_hidden:1}));
     return d.columns||[];
   }
   function findColumn(columns,candidates){
@@ -162,10 +198,64 @@
       const filters=[{column:lotCol,op:'eq',value:lotNo}];
       const equipCol=findColumn(columns,aliases.equipment),equipment=typeof currentConfiguredEquipment==='function'?currentConfiguredEquipment():'';
       if(equipCol&&equipment)filters.push({column:equipCol,op:'contains',value:equipment});
-      const params=new URLSearchParams({db:'SIKALOTNOW',table,page:1,page_size:5,filters:JSON.stringify(filters)});
+      const params=new URLSearchParams({db:'SIKALOTNOW',table,page:1,page_size:5,include_hidden:1,filters:JSON.stringify(filters)});
       const d=await api('/api/table?'+params);
       return d.rows?.[0]||null;
     }catch(e){console.warn('子ロット再検索に失敗しました: '+lotNo,e);return null}
+  }
+  // 現在開いているロット自身の完全な生データ(非表示列を含む)を取得し、
+  // S.measure.sourceへマージする。一覧取得時点では列表示マスタにより
+  // 分割関連の列が欠落している可能性があるため、測定画面を開いた際に
+  // 一度だけ取り直して補う。
+  async function refreshSelfSourceFull(){
+    if(!S.measure)return;
+    const lotNo=S.measure.basic?.lotNo;if(!lotNo)return;
+    try{
+      const row=await fetchChildLotRow(lotNo);
+      if(row)S.measure.source={...(S.measure.source||{}),...row};
+    }catch(e){console.warn('自ロットの完全データ取得に失敗しました',e)}
+  }
+
+  /* 仕掛一覧から「子ロット」の行を直接クリックした場合、そのロット単独の
+     データは分割後の一部でしかなく不完全なことがある(旧システムにも、
+     子ロットを開いたら親ロットのデータへ読み替える仕組みがあったとの
+     ことなので、同様の考え方をデータエラー回避用として実装する)。
+     子ロット番号は親ロット番号の先頭5〜6桁を共有し末尾1〜2桁だけが
+     異なる構成のため、同じ先頭5桁を持つ候補行の中から、親子管理_子カード
+     が実際にこのロット番号を指しているものを探して親ロットとする。
+     行が自分自身の子カードを持つ(=既に親ロット)場合は探さない。 */
+  async function findParentLotFor(row){
+    if(!row||rowHasSplitData(row))return null;
+    const lotNo=String(pick(row,'lotNo')||'');
+    if(lotNo.length<6)return null;
+    try{
+      const table=await resolveSikaTable();if(!table)return null;
+      const columns=await resolveSikaColumns(table);if(!columns.length)return null;
+      const lotCol=findColumn(columns,aliases.lotNo);if(!lotCol)return null;
+      const filters=[{column:lotCol,op:'starts',value:lotNo.slice(0,5)}];
+      const equipCol=findColumn(columns,aliases.equipment),equipment=typeof currentConfiguredEquipment==='function'?currentConfiguredEquipment():'';
+      if(equipCol&&equipment)filters.push({column:equipCol,op:'contains',value:equipment});
+      const params=new URLSearchParams({db:'SIKALOTNOW',table,page:1,page_size:50,include_hidden:1,filters:JSON.stringify(filters)});
+      const d=await api('/api/table?'+params);
+      for(const cand of (d.rows||[])){
+        const candLotNo=String(pick(cand,'lotNo')||'');
+        if(!candLotNo||candLotNo===lotNo)continue;
+        const kids=childLotNumbersFromCard(cand,candLotNo);
+        if(kids.some(k=>k.lot===lotNo))return cand;
+      }
+    }catch(e){console.warn('親ロットの検索に失敗しました: '+lotNo,e)}
+    return null;
+  }
+  // 子ロットと判定された場合、確認の上で親ロットの行に差し替える。
+  async function resolveToParentIfChild(row){
+    if(!row||S.db!=='SIKALOTNOW')return row;
+    const parent=await findParentLotFor(row);
+    if(!parent)return row;
+    const childLotNo=pick(row,'lotNo'),parentLotNo=pick(parent,'lotNo');
+    const useParent=confirm(`このロット(${childLotNo})は分割後の子ロットです。\n親ロット(${parentLotNo})のデータを開きますか？\n\n「キャンセル」を選ぶと、このまま子ロットのデータで開きます(データが不完全な場合があります)。`);
+    if(!useParent)return row;
+    if(typeof showToast==='function')showToast('親ロットのデータを開きます',`${childLotNo} → ${parentLotNo}`,4200);
+    return parent;
   }
 
   function buildCandidateList(){
@@ -247,9 +337,38 @@
     if(typeof setState==='function')setState('条割を変更しました');
     if(typeof renderMeasureGrid==='function')renderMeasureGrid();
     if(typeof updateMeasurementHeading==='function')updateMeasurementHeading();
+    refreshSplitStatusPanel();
   };
   const applyBtn=$('#applySplit');if(applyBtn)applyBtn.onclick=applySplit;
   const openBtn=$('#openSplit');if(openBtn)openBtn.onclick=openSplit;
+
+  /* 左パネル「幅分割情報」タブ(#splitGrid)は、テンプレート上は固定文字列
+     「分割無し」のままで、従来は条割変更モーダルを開いて実行するまで
+     一切更新されなかった(=分割データがあるロットを開いた直後は、実際は
+     分割データを持っているのに「分割無し」と表示され続けていた)。
+     測定画面を開いた/再開した時点で、生データ(親子管理_子カード等)から
+     分割データの有無を判定し、未設定でも「分割データあり」と分かるように
+     する。applySplit実行後もここで最新の設定内容へ更新する。 */
+  function refreshSplitStatusPanel(){
+    const el=$('#splitGrid');if(!el)return;
+    const groups=S.measure?.settings?.splitGroups;
+    if(Array.isArray(groups)&&groups.length){
+      const summary=summarizeAppliedGroups(groups);
+      const list=groups.map((g,i)=>`${i+1}. ${esc(g.lot)} / ${g.count}条${Number.isFinite(g.base?.width)?` / 幅${g.base.width}`:''}${g.missing?'（子ロット情報取得失敗）':''}`).join('<br>');
+      el.innerHTML=`<b class="split-status-summary">${esc(summary)}</b><br>${list}`;
+      return;
+    }
+    const info=analyzeRowSplit(S.measure?.source);
+    if(info.hasSplit){
+      el.innerHTML=`<span class="split-status-pending">⚠ このロットには分割データがあります（推定${info.lotCount}ロット・${esc(widthPatternLabel(info.widthPattern))}）。「条割変更」から設定してください。</span>`;
+      return;
+    }
+    el.textContent='分割無し';
+  }
+  if(typeof renderMeasurement==='function'){
+    const baseRenderMeasurementSplitStatus=renderMeasurement;
+    renderMeasurement=function(){baseRenderMeasurementSplitStatus();refreshSplitStatusPanel()};
+  }
 
   // ---- 判定への配線 ----
   function groupForIndex(index){
@@ -296,12 +415,41 @@
 
   // 使用設備・仕掛データを開いた時点のテーブル/列名を、子ロット再検索に
   // そのまま使えるよう記録しておく(仕掛一覧から開いた場合のみ意味を持つ)。
+  // また、開こうとした行が子ロットと判定された場合は、確認の上で親ロットの
+  // データに読み替える(データエラー回避)。
+  // baseOpenMeasurement/baseResumeStoredMeasureは内部でマスタ関連の問い合わせ
+  // (loadMeasurementContext等)を行い、それが失敗すると例外を投げたまま
+  // 呼び出し元まで伝播する(この端末がAccessに未接続の場合など)。分割情報の
+  // 補完・再描画は測定画面自体が開いた後であれば意味があるため、finally で
+  // 必ず実行し、後続のマスタ読込失敗に巻き込まれて実行されなくなることを防ぐ。
+  // (例外そのものは従来通り再送出されるため、呼び出し元の挙動は変えない)
   if(typeof openMeasurement==='function'){
     const baseOpenMeasurement=openMeasurement;
     openMeasurement=async function(row){
-      const result=await baseOpenMeasurement(row);
-      if(S.measure&&S.db==='SIKALOTNOW'){S.measure.settings=S.measure.settings||{};S.measure.settings.sourceTable=S.table;S.measure.settings.sourceColumns=(S.columns||[]).slice()}
-      return result;
+      row=await resolveToParentIfChild(row);
+      try{
+        return await baseOpenMeasurement(row);
+      }finally{
+        if(S.measure&&S.db==='SIKALOTNOW'){
+          S.measure.settings=S.measure.settings||{};S.measure.settings.sourceTable=S.table;S.measure.settings.sourceColumns=(S.columns||[]).slice();
+          await refreshSelfSourceFull();
+          refreshSplitStatusPanel();
+        }
+      }
+    };
+  }
+  // 編集中/完了一覧からの「続きから再開」経路でも、分割関連の完全データを
+  // 補ってから幅分割情報を再描画する(現在のS.dbが仕掛一覧とは限らないため
+  // ここではS.db判定をしない)。
+  if(typeof resumeStoredMeasure==='function'){
+    const baseResumeStoredMeasure=resumeStoredMeasure;
+    resumeStoredMeasure=async function(saved,row=null){
+      try{
+        return await baseResumeStoredMeasure(saved,row);
+      }finally{
+        await refreshSelfSourceFull();
+        refreshSplitStatusPanel();
+      }
     };
   }
 
@@ -320,7 +468,7 @@
       const cls=[g.missing?'split-legend-missing':'',isCurrent?'split-legend-current':''].filter(Boolean).join(' ');
       return `<tr${cls?` class="${cls}"`:''}><td>${isCurrent?'▶ ':''}${esc(range)}</td><td>${esc(g.lot)}</td><td>${esc(wText)}</td><td>${esc(tText)}</td></tr>`;
     });
-    return `<div class="split-tolerance-legend"><b>条ごとの公差(分割あり) — ▶は現在の入力位置</b><table><thead><tr><th>条範囲</th><th>ロット№</th><th>板幅 目標(公差)</th><th>板厚 目標(公差)</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
+    return `<div class="split-tolerance-legend"><b>条ごとの公差 — ${esc(summarizeAppliedGroups(groups))} — ▶は現在の入力位置</b><table><thead><tr><th>条範囲</th><th>ロット№</th><th>板幅 目標(公差)</th><th>板厚 目標(公差)</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
   }
   if(typeof updateMeasurementHeading==='function'){
     const baseHeading=updateMeasurementHeading;
