@@ -1098,6 +1098,20 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .work-time-item.validation-ng input{background:var(--invalid-bg);border-color:var(--invalid)}
 #workTimeHint{display:block;margin-top:6px;color:#6f4400}
 
+/* ---------- 作業時間: 過去実績比較 ---------- */
+.worktime-benchmark{margin-top:10px;padding:10px;background:#eef6f5;border:1px solid #9fc9c2;border-radius:8px}
+.worktime-benchmark .wtb-empty{font-size:12px;color:#526970}
+.wtb-title{font-size:12px;font-weight:800;color:#1f5b52;margin-bottom:7px}
+.wtb-title small{font-weight:600;color:#4c7a72;margin-left:4px}
+.wtb-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(84px,1fr));gap:6px}
+.wtb-cell{display:flex;flex-direction:column;gap:2px;padding:6px 8px;background:#fff;border:1px solid #cfe4e0;border-radius:6px}
+.wtb-cell small{font-size:10px;color:#6f8783}
+.wtb-cell b{font-size:14px;font-variant-numeric:tabular-nums;color:#1f3a37}
+.wtb-cell.wtb-slower{background:#fff6e0;border-color:#e0c26a}
+.wtb-cell.wtb-slower b{color:#8a6600}
+.wtb-cell.wtb-faster{background:#eafaf1;border-color:#7cc9a0}
+.wtb-cell.wtb-faster b{color:#146c43}
+
 /* ============================================================
  マスタ管理モーダル（刷新: 大画面・高密度・モダン）
  IA/認知心理学: 種別ナビ(再認)→コンパクト入力→広い一覧(主役)。
