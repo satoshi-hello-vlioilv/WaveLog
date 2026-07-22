@@ -24,18 +24,12 @@
  function statusLabel(s){return s||'編集中'}
  function statusClass(s){return s==='完了'?'done':s==='測定値NG'?'ng':''}
 
- function ensureNavButton(){
-  const nav=document.querySelector('.view-nav');if(!nav||$id('openReportList'))return;
-  const b=document.createElement('button');b.type='button';b.id='openReportList';b.className='db nav-item nav-item--view';
-  b.innerHTML='<svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg><span>測定帳票</span>';
-  b.title='端末保存済みのロットから帳票（印刷・PDF）を作成します';
-  b.onclick=openReportView;nav.append(b);
- }
-
+ /* 2026-07-22: 帳票へはメニューから直接遷移させず、編集中/完了データ一覧の
+    各行からのみ開けるようにする(一覧側が起点になる運用のため、サイドバー
+    の直接導線は廃止)。 */
  function exitReportView(){
   if(!document.body.classList.contains('rp-mode'))return;
   document.body.classList.remove('rp-mode');
-  $id('openReportList')?.classList.remove('active');
   const panel=$id('reportPanel');if(panel)panel.hidden=true;
  }
  if(typeof selectDb==='function'){const old=selectDb;selectDb=async function(k,b){exitReportView();return old(k,b)}}
@@ -45,6 +39,7 @@
   panel=document.createElement('section');panel.className='rp-panel';panel.id='reportPanel';panel.hidden=true;
   panel.innerHTML=`
    <header class="rp-head">
+    <button type="button" id="reportBack" class="rp-back-btn" title="元の一覧に戻ります"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>戻る</button>
     <div class="rp-head-title"><h2>測定帳票</h2><span class="rp-sub">端末に保存済みのロットから帳票を作成します。一覧から選ぶとプレビューが表示されます。</span></div>
    </header>
    <div class="rp-body">
@@ -83,6 +78,7 @@
   const search=$id('reportSearch');if(search)search.oninput=()=>{rpState.query=search.value;renderLotList()};
   const sort=$id('reportSort');if(sort)sort.onchange=()=>{rpState.sort=sort.value;renderLotList()};
   $id('reportPrint').onclick=printReport;$id('reportPdf').onclick=printReport;
+  $id('reportBack').onclick=backToRecordList;
   panel.querySelectorAll('[data-seg="rpZoomSeg"] button').forEach(b=>b.onclick=()=>setZoom(b.dataset.val));
   window.addEventListener('resize',()=>{if(rpZoom==='fit')fitPage()});
   return panel;
@@ -296,7 +292,6 @@
   document.getElementById('openDashboard')?.classList.remove('active');
   document.body.classList.add('rp-mode');
   document.querySelectorAll('#nav button.db').forEach(b=>b.classList.remove('active'));
-  $id('openReportList')?.classList.add('active');
   ensurePanel().hidden=false;
   setZoom(rpZoom);
   $id('reportSelectedTitle').textContent='ロットを選択してください';
@@ -313,13 +308,18 @@
 
  /* 編集中/完了データ一覧の各行から、帳票メニューを経由せず直接その
     ロットの帳票プレビューを開けるようにする(大量データの中から
-    帳票を探すのは一覧側が起点になるという運用を想定)。 */
+    帳票を探すのは一覧側が起点になるという運用を想定)。遷移元の一覧
+    (編集中/完了)を覚えておき、戻るボタンで同じ一覧へ戻れるようにする。 */
+ let rpReturnStatus='編集中';
  window.openReportForRecord=async function(id){
+  rpReturnStatus=typeof recordListState!=='undefined'&&recordListState?.status==='履歴'?'履歴':'編集中';
   await openReportView();
   selectLot(id);
  };
-
- queueMicrotask(ensureNavButton);
+ function backToRecordList(){
+  exitReportView();
+  if(typeof openRecordsSafe==='function')openRecordsSafe(rpReturnStatus);
+ }
 })();
 
 /* ============================================================

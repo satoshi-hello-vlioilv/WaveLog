@@ -173,9 +173,8 @@ th.sortable-col{cursor:pointer;user-select:none}
 th.sortable-col:hover{background:#e5f2f3}
 th.col-sorted{background:#d7eff1;color:#075e67}
 th.col-sorted:hover{background:#c7e7ea}
-.lot-cell{padding:0}
-.grid-lot-link{min-height:33px;padding:6px 9px;border:0;border-radius:0;background:transparent;font-weight:700}
-.grid-lot-link:hover{background:var(--teal);color:#fff}
+.lot-cell{padding:4px}
+.grid-lot-link{min-height:29px}
 
 footer{height:40px;display:flex;align-items:center;justify-content:space-between;padding:0 15px;background:#fff;border-top:1px solid var(--line)}
 
@@ -257,8 +256,13 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 .field.full{grid-column:1/-1}
 .field label{display:block;color:#5e7077;font-size:var(--fs-micro)}
 .field output{display:block;min-height:29px;padding:4px 6px;border:1px solid #bcc9cd;background:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.lot-dsp-link{display:block;width:100%;min-height:29px;padding:4px 6px;border:1px solid var(--teal);border-radius:0;background:#eafafa;color:#0b5e68;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;font-weight:700;text-decoration:underline;text-underline-offset:2px}
-.lot-dsp-link:hover{background:var(--teal);color:#fff}
+/* ロット問い合わせボタン: グリッド・編集中/完了一覧・測定パネルの3箇所で
+   共通のモダンなチップ状デザインに統一する(枠線+淡色背景+丸角、下線なし)。
+   ホバーで塗りつぶし、押下でわずかに沈む触感を付ける。 */
+.lot-dsp-link{display:block;width:100%;min-height:29px;padding:5px 10px;border:1px solid #a9d6cf;border-radius:7px;background:#eafaf7;color:#0b5e68;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;font-weight:700;text-decoration:none;transition:background .15s,border-color .15s,box-shadow .15s,transform .05s}
+.lot-dsp-link:hover{background:var(--teal);border-color:var(--teal);color:#fff;box-shadow:0 2px 8px rgba(11,94,104,.28)}
+.lot-dsp-link:active{transform:translateY(1px);box-shadow:none}
+.lot-dsp-link:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
 .dimension{grid-column:1/-1;display:grid;grid-template-columns:54px repeat(5,minmax(0,1fr));gap:2px}
 .dimension>*{padding:3px 2px;border:1px solid #c6d0d3;text-align:center;white-space:nowrap}
 
@@ -646,7 +650,7 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 #recordList{padding:0;overflow:auto;background:#eef3f4}
 .record-list-head,.record-list-row{
   display:grid;
-  grid-template-columns:minmax(90px,1.1fr) minmax(60px,.7fr) minmax(60px,.7fr) minmax(60px,.7fr) minmax(70px,.9fr) minmax(70px,.8fr) minmax(50px,.55fr) minmax(60px,.7fr) minmax(48px,.5fr) minmax(48px,.45fr) minmax(48px,.45fr) minmax(90px,.9fr) minmax(90px,.9fr) minmax(80px,.8fr) 200px;
+  grid-template-columns:minmax(90px,1.1fr) minmax(60px,.7fr) minmax(60px,.7fr) minmax(60px,.7fr) minmax(70px,.9fr) minmax(70px,.8fr) minmax(50px,.55fr) minmax(60px,.7fr) minmax(48px,.5fr) minmax(48px,.45fr) minmax(48px,.45fr) minmax(90px,.9fr) minmax(90px,.9fr) minmax(80px,.8fr) 236px;
   align-items:center;
 }
 .record-list-head{position:sticky;top:0;z-index:4;min-height:42px;background:#dcecef;border-bottom:1px solid #98afb5;color:#28464e;font-size:12px;font-weight:800}
@@ -657,17 +661,20 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .record-list-row:focus{outline:3px solid #087c8950;outline-offset:-3px}
 .record-list-row.is-same-lot{box-shadow:inset 4px 0 0 var(--teal);background:#eafafa}
 .record-list-cell{min-width:0;padding:8px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.record-list-cell.primary{padding:0}
-.record-list-cell.primary .grid-lot-link{width:100%;height:100%;min-height:0;padding:8px 10px;text-align:left;overflow:hidden;text-overflow:ellipsis}
+.record-list-cell.primary{padding:6px}
+.record-list-cell.primary .grid-lot-link{width:100%;height:100%;min-height:0}
 .record-list-cell.primary{font-weight:800;color:#173842}
 .record-list-cell.secondary{font-size:12px;color:#526970}
 .record-list-cell time{font-variant-numeric:tabular-nums}
 .record-duration{font-weight:800;color:#075e67}
-.record-list-actions{display:flex;gap:4px;padding:7px 8px}
-.record-list-actions button{min-height:34px;padding:6px 7px;font-size:12px;white-space:nowrap}
+.record-list-actions{display:flex;align-items:center;gap:5px;padding:7px 8px}
+.record-list-actions button{min-height:34px;padding:6px 7px;font-size:12px;white-space:nowrap;border-radius:6px}
 .record-list-actions .resume{background:var(--teal);color:#fff;border-color:var(--teal)}
 .record-list-actions .resume:disabled{opacity:.45;cursor:not-allowed}
-.record-list-actions .report{color:#075e67;background:#eafafa;border-color:#8fc9c2}
+/* 帳票ボタンは一覧からの主要な導線のため、他の操作ボタンより一回り
+   大きく強調する。 */
+.record-list-actions .report{min-height:38px;padding:8px 16px;font-size:13px;font-weight:800;color:#075e67;background:#eafafa;border:1px solid #8fc9c2;border-radius:7px}
+.record-list-actions .report:hover{background:var(--teal);border-color:var(--teal);color:#fff}
 .record-list-actions .danger{color:#9d2020;background:#fff7f7;border-color:#dab0b0}
 .record-toolbar{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#eef8f9;border-bottom:1px solid var(--line)}
 .record-toolbar button{background:var(--teal);color:#fff}
@@ -1329,6 +1336,9 @@ body.rec-mode.qa-mode.qa-view-raw #grid,body.rec-mode.qa-mode.qa-view-raw footer
 .rp-panel{flex:1;min-height:0;margin:9px 14px;display:flex;flex-direction:column;background:#f4f7f8;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .rp-panel[hidden]{display:none!important}
 .rp-head{display:flex;align-items:center;gap:16px;padding:12px 18px;background:linear-gradient(90deg,var(--nav),#1f5560);color:#fff}
+.rp-back-btn{display:flex;align-items:center;gap:6px;flex:none;height:36px;padding:0 14px 0 10px;border:1px solid rgba(255,255,255,.35);border-radius:8px;background:rgba(255,255,255,.12);color:#fff;font-weight:700;font-size:13px;cursor:pointer;transition:background .15s}
+.rp-back-btn:hover{background:rgba(255,255,255,.24)}
+.rp-back-btn svg{flex:none}
 .rp-head-title{display:flex;flex-direction:column;gap:2px;min-width:0}
 .rp-head-title h2{margin:0;font-size:18px}
 .rp-sub{color:#bfe0e4;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
