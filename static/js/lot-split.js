@@ -67,15 +67,32 @@
     };
   }
 
-  // KOCARD1〜10から子ロット番号を復元する(旧VBA KCDNO相当)。
+  /* 分割(子ロット)関連の実カラム名は「親子管理_子カード<N>」「コンマ5本分割_
+     切断巾<N>」であることが実データで確認された(旧VBA変数名KOCARD/K05JO等は
+     内部エイリアスであり、Accessの生カラム名ではなかった)。全角/半角ゆれや
+     旧エイリアスも候補として保持し、複数パターンを試す。 */
+  const CHILD_CARD_PREFIXES=['親子管理_子カード','親子管理_子ｶｰﾄﾞ','KOCARD'];
+  const CHILD_CUTWIDTH_PREFIXES=['コンマ5本分割_切断巾','ｺﾝﾏ5本分割_切断巾','K05W'];
+  const CHILD_COUNT_PREFIXES=['YK','K05JO'];
+  function fieldByCandidates(r,names){
+    for(const n of names){
+      const v=r?.[n];
+      if(v!==undefined&&v!==null&&String(v).trim()!=='')return v;
+    }
+    return undefined;
+  }
+  function childCardValue(r,i){return fieldByCandidates(r,CHILD_CARD_PREFIXES.map(p=>p+i))}
+  function childCutWidthValue(r,i){return fieldByCandidates(r,CHILD_CUTWIDTH_PREFIXES.map(p=>p+i))}
+  function childCountFieldValue(r,i){return fieldByCandidates(r,CHILD_COUNT_PREFIXES.map(p=>p+i))}
+  // 親子管理_子カード1〜10から子ロット番号を復元する(旧VBA KCDNO相当)。
   // 1〜9: ロット番号の先頭6桁+1桁、10〜99: 先頭5桁+2桁で末尾を置換。
   function childLotNumbersFromCard(){
     const r=S.measure?.source||{},lotNo=String(S.measure?.basic?.lotNo||'');
     if(!lotNo)return [];
     const out=[];
     for(let i=1;i<=10;i++){
-      const raw=r['KOCARD'+i];
-      if(raw===undefined||raw===null||String(raw).trim()==='')break;
+      const raw=childCardValue(r,i);
+      if(raw===undefined)break;
       const n=Number(raw);
       if(!Number.isFinite(n)||n<=0)break;
       if(n>=1&&n<=9)out.push({lot:lotNo.slice(0,6)+String(n),index:i});
@@ -93,10 +110,33 @@
     }
     return out;
   }
+  // 条数は本来コンマ5本分割_切断巾側から特定できる想定だが、実データでの
+  // フィールド確証が取れるまでの安全側フォールバックとして、専用の条数系
+  // 候補が無ければ「切断巾に値がある行を1条」として数える。
   function childCount(i){
-    const r=S.measure?.source||{},v=r['YK'+i]??r['K05JO'+i],n=Number(v);
-    return Number.isFinite(n)&&n>0?n:0;
+    const r=S.measure?.source||{};
+    const v=childCountFieldValue(r,i);
+    if(v!==undefined){const n=Number(v);if(Number.isFinite(n)&&n>0)return n}
+    const w=childCutWidthValue(r,i);
+    if(w!==undefined&&Number(w)!==0)return 1;
+    return 0;
   }
+  // 仕掛データ一覧(グリッド)側で「分割あり/なし」を判定するための、行(生データ)
+  // 単位のチェック。親子管理_子カード・コンマ5本分割_切断巾のいずれかに
+  // 意味のある値(0以外)があれば分割ありとみなす。
+  function rowHasSplitData(row){
+    if(!row)return false;
+    for(let i=1;i<=10;i++){
+      const v=childCardValue(row,i);
+      if(v!==undefined&&Number(v)!==0)return true;
+    }
+    for(let i=1;i<=10;i++){
+      const v=childCutWidthValue(row,i);
+      if(v!==undefined&&Number(v)!==0)return true;
+    }
+    return false;
+  }
+  window.rowHasSplitData=rowHasSplitData;
 
   async function resolveSikaTable(){
     if(S.measure?.settings?.sourceTable)return S.measure.settings.sourceTable;
