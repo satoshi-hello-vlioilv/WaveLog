@@ -358,7 +358,10 @@
   const baseRenderGrid=typeof renderGrid==='function'?renderGrid:null;
   if(baseRenderGrid){renderGrid=function(){baseRenderGrid();renderGenericFilterBar();updateFilterSuggestions();};}
 
-  /* ---- 公差数直線: 縦軸を左へ寄せ、測定値はドット＋条番号/数値 ---- */
+  /* ---- 公差数直線: 縦軸を左へ寄せ、測定済みの全値をスウォームプロット(蜂群図)
+     で表示する。直前の値だけドット＋条番号/数値のフルラベルで大きく強調し、
+     それ以外は小さな点(ツールチップに条番号/数値)としてトラック脇に並べ、
+     値が近いものは重ならないよう左右にずらす。 ---- */
   if(typeof compactToleranceScale==='function'){
     compactToleranceScale=function(kind,values,count){
       const facts=compactToleranceFacts(kind),range=facts.range;if(!range)return facts.html;
@@ -367,16 +370,56 @@
       const pct=v=>Math.max(0,Math.min(100,(viewHigh-v)/(viewHigh-viewLow)*100));
       const upper=pct(high),lower=pct(low),center=pct((low+high)/2);
       const last=(function(){for(let i=Math.min(values.length,count)-1;i>=0;i--){const raw=String(values[i]??'').trim(),n=Number(raw);if(raw!==''&&Number.isFinite(n))return{raw,n,index:i}}return null})();
+      const dots=[];
+      for(let i=0;i<Math.min(values.length,count);i++){
+        if(last&&i===last.index)continue;
+        const raw=String(values[i]??'').trim();if(raw==='')continue;
+        const n=Number(raw);if(!Number.isFinite(n))continue;
+        const p=Math.max(5,Math.min(95,pct(n))),ng=n<low||n>high;
+        dots.push(`<i class="numberline-swarm-dot ${ng?'ng':'ok'}" style="top:${p}%" data-pos="${p}" title="条${i+1}: ${esc(raw)}"></i>`);
+      }
       const mark=last?(()=>{const p=Math.max(5,Math.min(95,pct(last.n))),ng=last.n<low||last.n>high;return `<div class="numberline-measure ${ng?'ng':'ok'}" style="top:${p}%"><span class="nl-dot"></span><b><span>条${last.index+1}</span>${esc(last.raw)}</b></div>`})():'';
-      return facts.html+`<div class="accurate-numberline" style="--upper:${upper}%;--lower:${lower}%;--center:${center}%">
+      return facts.html+`<div class="accurate-numberline" data-swarm="1" style="--upper:${upper}%;--lower:${lower}%;--center:${center}%">
         <div class="numberline-band high"></div><div class="numberline-band ok"></div><div class="numberline-band low"></div>
         <div class="numberline-track"></div>
         <div class="numberline-tick upper"><b><span>上限</span>${esc(formatTol(kind,high))}</b></div>
         <div class="numberline-tick center"><b><span>中央</span>${esc(formatTol(kind,(low+high)/2))}</b></div>
         <div class="numberline-tick lower"><b><span>下限</span>${esc(formatTol(kind,low))}</b></div>
+        ${dots.join('')}
         ${mark}
       </div>`;
     };
+  }
+
+  /* スウォームプロットの重なり回避: top%(値)が近い点をクラスタ化し、
+     クラスタ内で左右に等間隔ジグザグ配置する。実測ピクセル寸法を使うため
+     DOM挿入後に実行する必要があり、renderMeasureGridVertical完了後に呼ぶ。 */
+  function layoutSwarmDots(){
+    document.querySelectorAll?.('.accurate-numberline[data-swarm="1"]').forEach(box=>{
+      const dots=[...box.querySelectorAll('.numberline-swarm-dot')];
+      if(dots.length<2)return;
+      const h=box.clientHeight||190,w=box.clientWidth||200,step=7;
+      const trackLeft=parseFloat(getComputedStyle(box).getPropertyValue('--nl-track'))||70;
+      const maxSpread=Math.max(0,w-trackLeft-14);
+      const items=dots.map(el=>({el,y:(parseFloat(el.dataset.pos)||50)/100*h})).sort((a,b)=>a.y-b.y);
+      const clusters=[];let cur=[];
+      items.forEach(it=>{
+        if(cur.length&&it.y-cur[cur.length-1].y>6){clusters.push(cur);cur=[]}
+        cur.push(it);
+      });
+      if(cur.length)clusters.push(cur);
+      clusters.forEach(cluster=>{
+        const n=cluster.length;
+        cluster.forEach((it,i)=>{
+          const offset=Math.max(0,Math.min(maxSpread,i*step));
+          it.el.style.left=`calc(var(--nl-track) + ${offset}px)`;
+        });
+      });
+    });
+  }
+  if(typeof renderMeasureGridVertical==='function'){
+    const baseRenderForSwarm=renderMeasureGridVertical;
+    renderMeasureGridVertical=function(){baseRenderForSwarm();layoutSwarmDots()};
   }
 
   // 一覧を開くたび（テーブル切替時）にデフォルトフィルタを自動適用する。

@@ -508,7 +508,10 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 .compact-scale-label.upper{top:6px}
 .compact-scale-label.lower{bottom:6px}
 .compact-scale-safe{position:absolute;top:48%;left:2px;right:2px;text-align:center;color:#275a53;font-weight:800}
-.compact-value-mark{position:absolute;left:50%;width:24px;height:3px;transform:translate(-50%,-50%);border-radius:2px;box-shadow:0 0 0 1px #fff}
+/* スウォームプロット: 各点は小さな丸。近い値は左右にずらして重なりを避ける
+   (layoutSwarmScalesがleftを上書きする)。直前の値だけ.lastで一回り大きく
+   金色のリング+ゆっくり明滅させ、他の点と混同しないようにする。 */
+.compact-value-mark{position:absolute;left:50%;width:9px;height:9px;border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 0 0 1px #fff;transition:left .15s ease}
 .compact-value-mark.ok{background:var(--teal)}
 .compact-value-mark.ng{background:#d02e2e}
 
@@ -844,9 +847,15 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
   font-variant-numeric:tabular-nums;
 }
 .compact-value-mark.last{
-  width:34px;
-  height:4px;
+  width:16px;
+  height:16px;
   z-index:4;
+  box-shadow:0 0 0 2px #fff,0 0 0 5px rgba(255,183,3,.85);
+  animation:swarmLastPulse 1.4s ease-in-out infinite;
+}
+@keyframes swarmLastPulse{
+  0%,100%{box-shadow:0 0 0 2px #fff,0 0 0 5px rgba(255,183,3,.85)}
+  50%{box-shadow:0 0 0 2px #fff,0 0 0 8px rgba(255,183,3,.35)}
 }
 .compact-last-value{
   position:absolute;
@@ -911,6 +920,11 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .numberline-measure.ng .nl-dot{background:#d02e2e;box-shadow:0 0 0 2px #fff,0 0 0 3px #f0a5a5}
 .numberline-measure.ng b{border-color:#d02e2e;color:#9b1b1b;background:#fff5f5}
 .numberline-measure.ng b span{color:#9b6b6b}
+/* スウォームプロット: 直前以外の測定値を小さな点で表示する。値が近い点は
+   layoutSwarmDots()がleftをトラックの右へ段階的にずらして重なりを避ける。 */
+.numberline-swarm-dot{position:absolute;left:var(--nl-track);width:8px;height:8px;border-radius:50%;transform:translate(-50%,-50%);z-index:5;box-shadow:0 0 0 1px #fff;transition:left .15s ease}
+.numberline-swarm-dot.ok{background:var(--teal)}
+.numberline-swarm-dot.ng{background:#d02e2e}
 
 /* ---- 汎用フィルタ バー ---- */
 .generic-filter-bar{margin:6px 14px 0;border:1px solid #b9c9ce;border-radius:8px;background:#fff;overflow:hidden}
