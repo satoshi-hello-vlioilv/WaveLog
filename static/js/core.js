@@ -134,7 +134,7 @@ function updateReceiveState(focused=document.activeElement===$('#deviceInput')){
    文字列が置き換わらず連結・重複してしまう不具合が確認されたため、
    受信中はvalueへ一切手を入れない。半角変換はTab確定時に
    deviceParse側で1回だけ行う。 */
-let deviceAutoCommitTimer=null;
+let deviceAutoCommitTimer=null,deviceKeyDetectCount=0;
 /* IME変換が起きている端末では、確定用のTabキー自体がIMEに横取りされ
    keydownまでイベントが届かないことがあり、Tab検知に頼るだけでは
    確定できないケースがある。そのため自動転送モードでは、入力が
@@ -156,7 +156,15 @@ $('#deviceInput').onkeydown=e=>{
     すべて無効化し、ブラウザ側へ渡さないようにする。 */
  if(e.ctrlKey||e.metaKey||e.altKey){e.preventDefault();return}
  const auto=S.measure?.settings?.inputMode!=='manual',accept=(auto&&e.key==='Tab')||(!auto&&e.key==='Enter');
- if(accept){e.preventDefault();clearTimeout(deviceAutoCommitTimer);const target=e.target;requestAnimationFrame(()=>{if(target.value.trim())processDeviceInput(target.value)})}
+ if(accept){
+  e.preventDefault();clearTimeout(deviceAutoCommitTimer);const target=e.target;
+  /* Tab/Enterのkeydownを実際に検知できたことが目視で分かるよう、
+     内容が空でも枠を一瞬光らせ、検知回数カウンタを進める
+     (検知そのものが働いているかを現場で確認するための表示)。 */
+  target.classList.add('device-detect');setTimeout(()=>target.classList.remove('device-detect'),250);
+  deviceKeyDetectCount++;const counter=$('#deviceKeyCount');if(counter)counter.textContent=`検知 ${deviceKeyDetectCount}回`;
+  requestAnimationFrame(()=>{if(target.value.trim())processDeviceInput(target.value)})
+ }
  else if((e.key==='Delete'||e.key==='Backspace')&&!e.target.value){e.preventDefault();processDeviceInput('#DeleteMode#')}
  else if(e.key==='ArrowDown'||(e.key==='Enter'&&!e.target.value)){e.preventDefault();advanceWidth();focusCurrent()}
  else if(e.key==='ArrowUp'){e.preventDefault();const seq=widthSequence(Math.max(1,+$('#horizontalCount').value||1),$('#widthOrder').value,$('#widthDirection').value),pos=seq.indexOf(S.measure.settings.wStep||0);S.measure.settings.wStep=seq[(pos-1+seq.length)%seq.length];focusCurrent()}
