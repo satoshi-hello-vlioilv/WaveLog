@@ -17,7 +17,7 @@ async function init(){
   if(!b){b=document.createElement('button');b.type='button';b.className='db nav-item nav-item--view';b.dataset.dbKey=x.key;b.innerHTML='<span></span>';nav?.append(b)}
   (b.querySelector('span')||b).textContent=x.label;b.onclick=()=>selectDb(x.key,b);
  });
- const drafts=$('#homeDrafts'),history=$('#homeHistory');if(drafts)drafts.onclick=()=>openRecords('編集中');if(history)history.onclick=()=>openRecords('履歴');
+ const drafts=$('#homeDrafts');if(drafts)drafts.onclick=()=>openRecords('編集中');
  bindAppSettingsControls();await refreshDraftCount();showQuota();
 }
 /* バージョンバッジをクリックすると更新履歴の一覧を表示する。 */
@@ -274,7 +274,7 @@ $('#measureType').onchange=()=>{S.measure.settings.wStep=0;S.measure.settings.tS
 $('#lengthPos').onchange=()=>{renderMeasureGrid();$('#deviceInput').focus()};
 $('#widthOrder').onchange=focusCurrent;$('#widthDirection').onchange=focusCurrent;
 document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-mode]').forEach(x=>x.classList.remove('active'));b.classList.add('active');S.measure.settings.inputMode=b.dataset.mode;$('#deviceInput').readOnly=false;applyInputProtection();$('#deviceInput').focus();updateReceiveState(true);setState(b.dataset.mode==='auto'?'自動転送: Tabで受信':'手動入力: Enterで確定')});
-$('#openDrafts').onclick=()=>openRecords('編集中');$('#openHistory').onclick=()=>openRecords('履歴');$('#closeRecords').onclick=()=>$('#recordModal').hidden=true;$('#ngLot').onclick=registerNg;
+$('#openDrafts').onclick=()=>openRecords('編集中');$('#closeRecords').onclick=()=>$('#recordModal').hidden=true;$('#ngLot').onclick=registerNg;
 const oldSaveLocal=saveLocal;saveLocal=async function(status='編集中'){lockCounts();return oldSaveLocal(status)};
 
 function activateWorkspace(name){document.querySelectorAll('[data-worktab]').forEach(b=>b.classList.toggle('active',b.dataset.worktab===name));document.querySelectorAll('[data-workpanel]').forEach(p=>p.hidden=p.dataset.workpanel!==name)}
@@ -568,7 +568,7 @@ $('#homeDrafts').onclick=()=>openRecords('編集中');$('#openDrafts').onclick=(
 // v32 final navigation controller
 function bindV32Navigation(){
  const open=async status=>{try{await openRecords(status)}catch(e){console.error(e);alert('保存データ一覧を開けません: '+e.message)}};
- [['homeDrafts','編集中'],['homeHistory','履歴'],['openDrafts','編集中'],['openHistory','履歴']].forEach(([id,status])=>{const b=$('#'+id);if(b){b.onclick=null;b.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();open(status)})}})
+ [['homeDrafts','編集中'],['openDrafts','編集中']].forEach(([id,status])=>{const b=$('#'+id);if(b){b.onclick=null;b.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();open(status)})}})
 }
 // 仕掛からは最新の同一ロットを直接再開。一覧ルートは左ボタンに独立して残す。
 openMeasurement=async function(row){
@@ -592,10 +592,10 @@ async function openRecordsSafe(status='編集中'){
 }
 // Capture phase keeps the navigation working even if another handler fails or is overwritten.
 document.addEventListener('click',event=>{
- const button=event.target.closest('[data-open-records],#homeDrafts,#homeHistory,#openDrafts,#openHistory');
+ const button=event.target.closest('[data-open-records],#homeDrafts,#openDrafts');
  if(!button)return;
  event.preventDefault();event.stopImmediatePropagation();
- const status=button.dataset.openRecords||(button.id==='homeHistory'||button.id==='openHistory'?'履歴':'編集中');
+ const status=button.dataset.openRecords||'編集中';
  openRecordsSafe(status);
 },true);
 
