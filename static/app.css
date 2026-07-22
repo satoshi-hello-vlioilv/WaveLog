@@ -655,15 +655,22 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .record-dialog h2{margin:2px 0}
 .record-dialog small{color:#8fd4d4}
 .record-dialog>header button{font-size:24px;color:#fff;background:transparent;border:0}
-.record-searchbar{display:grid;grid-template-columns:minmax(340px,1fr) 250px 110px auto;gap:10px;align-items:end;padding:12px 16px;border-bottom:1px solid #d5e0e3;background:#fff}
+.record-searchbar{display:grid;grid-template-columns:auto minmax(300px,1fr) 250px 110px auto;gap:10px;align-items:end;padding:12px 16px;border-bottom:1px solid #d5e0e3;background:#fff}
 .record-searchbar label{display:grid;gap:4px}
 .record-searchbar label>span{font-size:var(--fs-micro);font-weight:800;color:#526970}
 .record-searchbar input,.record-searchbar select,.record-searchbar button{height:38px}
+/* 編集中/完了はそれぞれ独立にON/OFFできるトグル(排他選択ではない)なので、
+   セグメントコントロールではなくピル状のチェックボタンで表現する。 */
+.record-status-filter{display:flex;gap:6px}
+.status-filter-btn{height:38px;padding:0 16px;border:1.5px solid #c7d4d8;border-radius:19px;background:#fff;color:#61757c;font-size:13px;font-weight:800;cursor:pointer;transition:background .15s,border-color .15s,color .15s}
+.status-filter-btn:hover{border-color:#9fb4ba}
+.status-filter-btn.active{border-color:var(--teal);background:var(--teal);color:#fff}
+.status-filter-btn[data-status-filter="done"].active{border-color:#1e7a55;background:#1e7a55}
 .record-search-result{align-self:center;text-align:right;color:#526970;font-weight:700;white-space:nowrap}
 #recordList{padding:0;overflow:auto;background:#eef3f4}
 .record-list-head,.record-list-row{
   display:grid;
-  grid-template-columns:minmax(90px,1.1fr) minmax(60px,.7fr) minmax(60px,.7fr) minmax(60px,.7fr) minmax(70px,.9fr) minmax(70px,.8fr) minmax(50px,.55fr) minmax(60px,.7fr) minmax(48px,.5fr) minmax(48px,.45fr) minmax(48px,.45fr) minmax(90px,.9fr) minmax(90px,.9fr) minmax(80px,.8fr) 236px;
+  grid-template-columns:minmax(78px,.6fr) minmax(90px,1.1fr) minmax(60px,.7fr) minmax(60px,.7fr) minmax(60px,.7fr) minmax(70px,.9fr) minmax(70px,.8fr) minmax(60px,.7fr) minmax(48px,.5fr) minmax(48px,.45fr) minmax(48px,.45fr) minmax(90px,.9fr) minmax(90px,.9fr) minmax(80px,.8fr) 236px;
   align-items:center;
 }
 .record-list-head{position:sticky;top:0;z-index:4;min-height:42px;background:#dcecef;border-bottom:1px solid #98afb5;color:#28464e;font-size:12px;font-weight:800}
@@ -832,6 +839,7 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 }
 @media(max-width:1000px){
   .record-searchbar{grid-template-columns:1fr 220px}
+  .record-status-filter{grid-column:1/-1}
   .record-search-result{grid-column:1/-1;text-align:left}
 }
 @container (max-width:560px){
