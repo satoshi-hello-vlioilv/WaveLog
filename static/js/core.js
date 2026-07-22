@@ -4,11 +4,10 @@ const LENGTH_SLOTS=12;const $=s=>document.querySelector(s),S={db:null,table:null
 const api=async(u,o)=>{let r;try{r=await fetch(u,{cache:'no-store',...(o||{})})}catch(error){throw Error('サーバーへ接続できません。Flaskアプリが起動中か、ポート5029で開いているか確認してください。詳細: '+(error?.message||String(error)))}const text=await r.text();let j={};try{j=text?JSON.parse(text):{}}catch(_){j={error:text}}if(!r.ok)throw Error(j.error||('HTTP '+r.status));return j},esc=v=>{const d=document.createElement('div');d.textContent=v??'';return d.innerHTML};
 async function init(){
  const build=await api('/api/build');document.title='測定伝送システム';
- const badge=document.querySelector('.build-badge');
- if(badge){
+ document.querySelectorAll('.build-badge').forEach(badge=>{
   badge.textContent=build.version?`VER${build.version}`:'バージョン不明';
   badge.title=build.commit?`コミット: ${build.commit}${build.commit_at?' / '+new Date(build.commit_at).toLocaleString('ja-JP'):''}${build.dirty?'（未コミットの変更あり）':''}`:'';
- }
+ });
  const d=await api('/api/catalog');S.catalog=d.databases;
  const nav=$('#nav');
  d.databases.forEach(x=>{
@@ -670,9 +669,14 @@ renderGrid=function(){
  const filteredCols=new Set((S.genericFilters||[]).map(f=>f.column));
  const t=document.createElement('table');
  t.innerHTML='<thead><tr><th>#</th>'+S.columns.map(c=>{
-  const filtered=filteredCols.has(c);
-  return `<th class="${filtered?'col-filtered':''}" title="${filtered?'絞り込み中の列です':''}">${esc(c)}${filtered?'<i class="col-filter-badge" aria-hidden="true" title="この列にフィルタが適用されています">▼</i>':''}</th>`;
+  const filtered=filteredCols.has(c),sorted=S.sortColumn===c,arrow=sorted?(S.sortDir==='desc'?' ▼':' ▲'):'';
+  return `<th class="sortable-col ${filtered?'col-filtered':''} ${sorted?'col-sorted':''}" data-sort-col="${esc(c)}" title="クリックで並び替え${filtered?'（絞り込み中の列です）':''}">${esc(c)}${arrow}${filtered?'<i class="col-filter-badge" aria-hidden="true" title="この列にフィルタが適用されています">▼</i>':''}</th>`;
  }).join('')+(isWork?'<th class="measurement-action-head">測定</th>':'')+'</tr></thead>';
+ t.querySelectorAll('th[data-sort-col]').forEach(th=>th.onclick=()=>{
+  const col=th.dataset.sortCol;
+  S.sortDir=(S.sortColumn===col&&S.sortDir==='asc')?'desc':'asc';
+  S.sortColumn=col;S.page=1;load();
+ });
  const b=document.createElement('tbody');
  S.rows.forEach((r,i)=>{
   const tr=document.createElement('tr');
@@ -804,7 +808,7 @@ selectDb=async function(k,b){
  try{S.db=k;document.querySelectorAll('.db').forEach(x=>x.classList.remove('active'));b.classList.add('active');const result=await api(`/api/tables?db=${encodeURIComponent(k)}`);S.tables=result.tables;updateWaiting(`${label}の表示対象を確認中`,'2/3 表示可能なテーブルを整理しています');renderTabs();if(S.tables.length)await selectTable(S.tables[0]);else $('#grid').textContent='表示可能なテーブルがありません。'}catch(e){$('#grid').innerHTML=`<div class="load-error"><b>${esc(label)}を開けませんでした</b><span>${esc(e.message)}</span></div>`;throw e}finally{hideSaveOverlay()}
 };
 selectTable=async function(t){
- S.table=t;S.page=1;renderTabs();const label=databaseLabel(S.db);showWaiting(`${label}を読み込んでいます`,`テーブル: ${t}`,'3/3 列情報と一覧データを取得しています');await nextPaint();try{await load()}finally{hideSaveOverlay()}
+ S.table=t;S.page=1;S.sortColumn=null;S.sortDir=null;renderTabs();const label=databaseLabel(S.db);showWaiting(`${label}を読み込んでいます`,`テーブル: ${t}`,'3/3 列情報と一覧データを取得しています');await nextPaint();try{await load()}finally{hideSaveOverlay()}
 };
 const loadListBase=load;
 load=async function(){
@@ -1143,6 +1147,17 @@ bindMeasureInputs=function(){
 };
 const processDeviceInputPrecisionBase=processDeviceInput;
 processDeviceInput=function(raw){const type=$('#measureType')?.value,parsed=deviceParse(raw);if(type==='板厚/板幅'&&parsed.value!==null&&Number.isFinite(parsed.value)&&['caliper','tape','manual'].includes(parsed.device)){const normalized={...parsed,value:Number(parsed.value.toFixed(1))};const original=deviceParse;deviceParse=()=>normalized;try{return processDeviceInputPrecisionBase(raw)}finally{deviceParse=original}}return processDeviceInputPrecisionBase(raw)};
+/* 現場で不具合が再現した際に原因を切り分けられるよう、受信した生データと
+   結果(成功/エラー)を#deviceLastReceivedへ常に記録する。値の書き込みや
+   フォーカス制御には一切関与しない、純粋な診断用の追記のみ。 */
+const processDeviceInputDiagBase=processDeviceInput;
+processDeviceInput=function(raw){
+ const pad2=n=>String(n).padStart(2,'0'),d=new Date(),ts=`${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+ const result=processDeviceInputDiagBase(raw);
+ const el=$('#deviceInput'),out=$('#deviceLastReceived');
+ if(out){const ok=el?.classList.contains('device-ok'),ng=el?.classList.contains('device-error');const label=ok?'OK':ng?'NG':'-';out.textContent=`直前受信 ${ts} [${label}]: ${raw||'(空)'}`;out.classList.toggle('ng',!!ng)}
+ return result;
+};
 const toleranceDataForSourcePrecisionBase=toleranceDataForSource;
 toleranceDataForSource=function(kind,source){const data=toleranceDataForSourcePrecisionBase(kind,source);if(source==='order'&&data&&(Number(data.plus)===0||Number(data.minus)===0))return null;return data};
 compactToleranceFacts=function(kind){

@@ -69,6 +69,7 @@ button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-vis
 .layout{height:100vh;display:grid;grid-template-columns:242px 1fr}
 .layout>aside{background:var(--nav);color:#fff;padding:18px 12px;display:flex;flex-direction:column;overflow-y:auto}
 .build-badge{display:inline-block;margin-left:5px;padding:2px 6px;border-radius:9px;background:#35c2a6;color:#17272d;font-weight:800}
+.measure-build-badge{font-size:12px;vertical-align:middle}
 
 /* ---------- 3a. サイドバー: ブランド ---------- */
 .layout>aside .brand{padding:0 6px 14px;margin-bottom:12px;border-bottom:1px solid #2c4750}
@@ -165,6 +166,13 @@ tbody tr.is-selected:hover{background:#e3e9ff!important}
    ホバー等とは異なる暖色(アンバー)でヘッダーだけを強調する。 */
 th.col-filtered{background:#ffe6ac;color:#6b4a00}
 .col-filter-badge{margin-left:4px;font-size:10px;color:#a06b00}
+/* カラムクリックソート: ホバーで操作可能なことを示し、現在のソート列は
+   矢印(▲/▼)と配色で分かるようにする。フィルタ列と重なった場合も
+   矢印記号自体は消えないため、どちらの状態も見失わない。 */
+th.sortable-col{cursor:pointer;user-select:none}
+th.sortable-col:hover{background:#e5f2f3}
+th.col-sorted{background:#d7eff1;color:#075e67}
+th.col-sorted:hover{background:#c7e7ea}
 .lot-cell{padding:0}
 .grid-lot-link{min-height:33px;padding:6px 9px;border:0;border-radius:0;background:transparent;font-weight:700}
 .grid-lot-link:hover{background:var(--teal);color:#fff}
@@ -349,6 +357,7 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 .manual-state .receive-lock{background:#d58d16}
 .not-ready-state .receive-lock{background:#7e8d92}
 .device-key-count{color:#61757c;font-size:10px}
+.device-key-count.ng{color:#c02020;font-weight:700}
 
 .work-tabs{display:flex;position:sticky;top:0;z-index:4;margin-top:8px;background:#f5f5f3;border-bottom:1px solid var(--line)}
 .work-tabs button{flex:1;min-height:36px;border-radius:6px 6px 0 0;padding:8px 5px;font-weight:700}
