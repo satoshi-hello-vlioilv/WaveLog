@@ -11,13 +11,12 @@
    - 既存のダッシュボード／帳票パネルと同じ視覚語彙（.rp-head, .rp-btn-*,
      .db-card 相当）を踏襲し、新しい学習コストを増やさない。
    ============================================================
-   作業重量（オフ重量）の算出:
-   - 当工程算出重量(kg) = 測定板厚平均(mm) × 測定板幅平均(mm) × 正味全長(m)
+   作業重量の算出（作業重量＝当工程の算出重量）:
+   - 作業重量(kg) = 測定板厚平均(mm) × 測定板幅平均(mm) × 正味全長(m)
      × 条数 × 比重(2.7=アルミニウム) ÷ 1000
    - 正味全長 = 母材入力の全長 − 前オフ − 後オフ
-   - オフ重量 = 前工程実績重量(BOX実績_良品重量) − 当工程算出重量
-   - 母材入力(全長)・前工程実績重量・実測値のいずれかが無いロットは、
-     重量計算の対象外として明示的に除外する（0円で誤魔化さない）。
+   - 母材入力(全長)・実測値のいずれかが無いロットは、重量計算の対象外として
+     明示的に除外する（0円で誤魔化さない）。
    ============================================================ */
 (function(){
  if(typeof $!=='function')return;
@@ -48,11 +47,10 @@
   const vc=Math.max(1,+x.settings?.verticalCount||1),hc=Math.max(1,+x.settings?.horizontalCount||1);
   const avgThk=avgMeasured(x.measurements?.thickness,vc,3),avgWid=avgMeasured(x.measurements?.width,vc,hc);
   const full=Number(x.mother?.fullLength),front=Number(x.mother?.front)||0,rear=Number(x.mother?.rear)||0;
-  const prior=Number(x.basic?.priorProcessWeight);
-  if(avgThk==null||avgWid==null||!Number.isFinite(full)||!Number.isFinite(prior))return null;
+  if(avgThk==null||avgWid==null||!Number.isFinite(full))return null;
   const netLength=full-front-rear;if(!(netLength>0))return null;
-  const outputKg=avgWid*avgThk*netLength*hc*DENSITY/1000;
-  return {offKg:prior-outputKg,outputKg,priorKg:prior,avgThk,avgWid,netLength};
+  const workKg=avgWid*avgThk*netLength*hc*DENSITY/1000;
+  return {workKg,avgThk,avgWid,netLength};
  }
 
  function crewLabel(size){return (size&&size!=='-')?`${size}名班`:'人数未設定'}
@@ -89,7 +87,7 @@
   monthItems().forEach(x=>{
    if(!map.has(x.dateKey))map.set(x.dateKey,{count:0,weightSum:0,weightCount:0,items:[]});
    const b=map.get(x.dateKey);b.count++;b.items.push(x);
-   if(x.weight){b.weightSum+=x.weight.offKg;b.weightCount++}
+   if(x.weight){b.weightSum+=x.weight.workKg;b.weightCount++}
   });
   return map;
  }
@@ -189,12 +187,12 @@
   const items=monthItems();
   const totalCount=items.length;
   const withWeight=items.filter(x=>x.weight);
-  const totalOffKg=withWeight.reduce((s,x)=>s+x.weight.offKg,0);
+  const totalWorkKg=withWeight.reduce((s,x)=>s+x.weight.workKg,0);
   const activeDays=new Set(items.map(x=>x.dateKey)).size;
   const missing=totalCount-withWeight.length;
   $id('calSummary').innerHTML=`
    <div class="db-card"><span class="db-card-label">対象ロット数</span><span class="db-card-value">${totalCount.toLocaleString()}件</span></div>
-   <div class="db-card"><span class="db-card-label">作業重量（オフ）合計</span><span class="db-card-value">${fmtKg(totalOffKg)}kg<small class="cal-card-sub"> / ${fmtT(totalOffKg)}t</small></span></div>
+   <div class="db-card"><span class="db-card-label">作業重量合計</span><span class="db-card-value">${fmtKg(totalWorkKg)}kg<small class="cal-card-sub"> / ${fmtT(totalWorkKg)}t</small></span></div>
    <div class="db-card"><span class="db-card-label">稼働日数</span><span class="db-card-value">${activeDays.toLocaleString()}日</span></div>
    <div class="db-card${missing?' cal-card-warn':''}"><span class="db-card-label">重量算出対象外</span><span class="db-card-value">${missing.toLocaleString()}件${missing?'<small class="cal-card-sub">母材入力等が未完了</small>':''}</span></div>`;
  }
@@ -218,7 +216,7 @@
    const metricText=bucket?(calState.metric==='weight'?(bucket.weightCount?`${fmtKg(bucket.weightSum)}kg`:'—'):`${bucket.count}件`):'';
    const countBadge=bucket&&calState.metric==='weight'?`<span class="cal-day-sub">${bucket.count}件</span>`:'';
    const isNegative=calState.metric==='weight'&&bucket&&bucket.weightCount&&bucket.weightSum<0;
-   return `<button type="button" class="cal-day lvl-${level}${weekendClass}${isToday?' today':''}${isSelected?' selected':''}" data-date-key="${key}" title="${esc(d.toLocaleDateString('ja-JP',{year:'numeric',month:'long',day:'numeric',weekday:'short'}))}${isNegative?'（算出重量が前工程実績重量を上回っています。要確認）':''}">
+   return `<button type="button" class="cal-day lvl-${level}${weekendClass}${isToday?' today':''}${isSelected?' selected':''}" data-date-key="${key}" title="${esc(d.toLocaleDateString('ja-JP',{year:'numeric',month:'long',day:'numeric',weekday:'short'}))}${isNegative?'（測定値の入力に誤りがある可能性があります。要確認）':''}">
     <span class="cal-day-num">${d.getDate()}</span>
     ${bucket?`<span class="cal-day-metric${isNegative?' cal-day-negative':''}">${esc(metricText)}</span>${countBadge}`:''}
    </button>`;
@@ -235,7 +233,7 @@
   const items=[...bucket.items].sort((a,b)=>a.lotNo.localeCompare(b.lotNo,'ja'));
   const rows=items.map(x=>{
    const w=x.weight;
-   const weightText=w?`${fmtKg(w.offKg)}kg${w.offKg<0?'<span class="cal-warn-tag" title="算出重量が前工程実績重量を上回っています。母材入力をご確認ください。">⚠要確認</span>':''}`:'<span class="cal-blank">計算対象外</span>';
+   const weightText=w?`${fmtKg(w.workKg)}kg`:'<span class="cal-blank">計算対象外</span>';
    return `<div class="cal-lot-row">
     <div class="cal-lot-main"><span class="rp-status-badge ${statusClass(x.status)}">${esc(statusLabel(x.status))}</span><b class="cal-lot-no" data-lot-id="${esc(x.id)}" title="クリックで帳票プレビューを開きます">${esc(x.lotNo)}</b></div>
     <div class="cal-lot-sub"><span>${esc(x.purposeName)}</span><span>${esc(x.equipment)}</span><span>${esc(crewLabel(x.crewSize))} / ${esc(x.operator)}</span></div>

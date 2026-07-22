@@ -1611,5 +1611,4 @@ body.cal-mode.qa-mode.qa-view-raw #grid,body.cal-mode.qa-mode.qa-view-raw footer
 .cal-lot-sub{display:flex;flex-wrap:wrap;gap:6px 10px;font-size:11px;color:#61757c}
 .cal-lot-weight{font-size:12px;font-weight:800;color:#173842;font-variant-numeric:tabular-nums}
 .cal-blank{color:#aab6b9;font-style:normal;font-weight:600}
-.cal-warn-tag{margin-left:6px;padding:1px 7px;border-radius:8px;background:#fff2d9;color:#8a5a00;font-size:10px;font-weight:800}
 @media(max-width:1000px){.cal-layout{grid-template-columns:1fr}.cal-detail{border-left:0;border-top:1px solid var(--line);max-height:320px}#calSummary{grid-template-columns:repeat(2,minmax(0,1fr))}}
