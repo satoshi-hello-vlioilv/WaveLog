@@ -334,28 +334,32 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 .center-pane fieldset label{margin:0;white-space:nowrap}
 
 /* ---------- 7. 右ペイン: 伝送状態 / タブ ---------- */
+/* この欄は板厚/板幅・バリ(自動転送専用の測定種)でしか表示されない
+   (手動専用の測定種ではsyncInputModeLockがボックスごと隠す)ため、
+   詳細な受信状態テキストや受信欄そのものは見せず、「自動モード」の
+   バッジだけを見せてデータがスマートに入っていく演出にする。
+   #deviceInputはキー入力イベントを受け続ける必要があるため、
+   display:none/visibility:hiddenではなく視覚的にのみ隠す(クリップ)。 */
 .input-status{
-  display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:8px;align-items:center;
-  min-height:52px;padding:5px 8px;border:2px solid #278b75;border-radius:8px;background:#e8f8f2;
+  display:flex;align-items:center;gap:8px;min-height:40px;padding:6px 12px;
+  border:2px solid #278b75;border-radius:8px;background:#e8f8f2;
 }
 .input-status[hidden]{display:none}
 .input-status.receiving{border-color:var(--teal);background:#e5f7fa}
 .input-status.manual-state{border-color:#d58d16;background:#fff5dd}
 .input-status.not-ready-state{border-color:#b2bdc1;background:#edf0f1}
 .receive-state{display:flex;align-items:center;gap:9px;min-width:0}
-.receive-state b{display:block;color:#143fdd;font-weight:800;white-space:nowrap}
-.receive-state small{color:#45636b;white-space:nowrap;overflow:visible;text-overflow:clip;line-height:1.3;word-break:keep-all}
-.receive-substatus{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-top:2px}
+.receive-state>div{display:none}
+.auto-mode-label{font-weight:800;color:#0b5e68;letter-spacing:.02em}
 .state-lamp{width:12px;height:12px;border-radius:50%;background:#16a273;box-shadow:0 0 0 4px #16a27322}
 .not-ready-state .state-lamp{background:#7e8d92;box-shadow:none}
 .manual-state .state-lamp{background:#e49a20;box-shadow:0 0 0 4px #e49a2022}
 .receive-input-wrap{position:relative}
-.receive-input-wrap input{width:100%;height:36px;padding:6px 84px 6px 10px;border:2px solid var(--teal);background:#fff;font-weight:700}
-.receive-input-wrap input.manual-receive{border-color:#d58d16;background:#fffdf7}
-.receive-input-wrap input.locked-receive{border-color:#839399;background:#e8ecee;color:#66777c}
-.receive-lock{position:absolute;right:6px;top:6px;padding:4px 8px;border-radius:11px;background:var(--teal);color:#fff;font-size:var(--fs-micro);font-weight:700}
-.manual-state .receive-lock{background:#d58d16}
-.not-ready-state .receive-lock{background:#7e8d92}
+.receive-input-wrap input{
+  position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+  clip:rect(0,0,0,0);white-space:nowrap;border:0;
+}
+.receive-lock{display:none}
 .device-key-count{color:#61757c;font-size:10px}
 .device-key-count.ng{color:#c02020;font-weight:700}
 
