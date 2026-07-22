@@ -925,14 +925,13 @@ function currentConfiguredEquipment(){return String(localStorage.getItem(APP_EQU
 const USER_ID_KEY='AccessMeasurementUserId';
 function currentUserId(){return String(localStorage.getItem(USER_ID_KEY)||'').trim()}
 function setUserId(id){id=String(id||'').trim().slice(0,50);if(id)localStorage.setItem(USER_ID_KEY,id);return id}
-function ensureUserId(){
- let id=currentUserId();
- if(!id){
-  const input=(typeof prompt==='function')?prompt('マスタ更新の記録に使うユーザーID（社員番号など）を入力してください。'):'';
-  id=setUserId(input||'');
- }
- return id;
-}
+/* ユーザーIDはこの端末を動かしているWindowsのログインIDを自動取得して
+   使う(入力を求めない)。起動直後に一度だけ/api/whoamiへ問い合わせて
+   キャッシュする。取得できるまでの短い間にマスタ更新が走った場合は、
+   記録が空欄のまま残る(手入力プロンプトへは戻さない)。 */
+async function fetchWhoami(){try{const r=await api('/api/whoami');return String(r.username||'').trim()}catch(_){return ''}}
+queueMicrotask(async()=>{if(!currentUserId()){const name=await fetchWhoami();if(name)setUserId(name)}});
+function ensureUserId(){return currentUserId()}
 function withUserId(body){return Object.assign({},body||{},{user_id:ensureUserId()})}
 function designCourseValue(){return sourceField(['設計_設備ｺｰｽ','設計_設備コース'])}
 function actualCourseValue(){return sourceField(['実績_設備ｺｰｽ','実績_設備コース'])}

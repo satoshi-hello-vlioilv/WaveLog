@@ -1,17 +1,18 @@
 from flask import Flask, render_template, request, jsonify
 from pathlib import Path
-import json, pyodbc, subprocess
+import json, os, pyodbc, subprocess
 
 app=Flask(__name__); BASE=Path(__file__).resolve().parent
 
 # 手動管理のバージョン番号。画面に表示される「デプロイ確認用」の主表示。
 # gitが使えない配布先(zipコピー等)でも必ず値が出るよう、こちらを主とする。
 # 意味のある変更をコミットするたびに更新すること。
-APP_VERSION='1.19.0'
+APP_VERSION='1.20.0'
 
 # 更新履歴。画面の「VERx.y.z」バッジから一覧表示する。APP_VERSIONを
 # 上げるたびに、このリストの先頭に新しいバージョンを追記すること。
 CHANGELOG=[
+ {'version':'1.20.0','notes':['仕掛一覧の閲覧時、使用設備と一致する(BOX設計_設備名)条件を既定で自動適用するようにした。色分け表示され、解除しようとすると確認ダイアログが出る','フィルタのマスタ登録を、条件の組み合わせ単位ではなく条件1つずつの個別登録に変更。適用時は現在の条件へ追加(マージ)するようにした','フィルタ・マスタ更新の登録者IDを、この端末のWindowsログインIDから自動取得するようにし、手入力を求めるプロンプトを廃止']},
  {'version':'1.19.0','notes':['仕掛データ取得・再開の際、BOX設計_設備名が登録済みの使用設備と一致しない場合は必須条件としてブロックするよう修正','分割(子ロット)データの実カラム名が「親子管理_子カード*」「コンマ5本分割_切断巾*」であることを反映し、子ロットデータを正しく取得できるよう修正(従来は誤ったカラム名を参照しており分割ありのロットも「分割なし」表示になっていた)','仕掛データ一覧の一番左に「分割」列を追加し、分割データの有無を一覧上で確認できるようにした']},
  {'version':'1.18.0','notes':['測定画面の「作業時間」タブに、過去実績との比較カードを追加。用途名・製造材質・製造調質・実績板厚・実績板幅・丈割数・条割数・使用設備が一致する完了データから、過去の平均作業時間・N数・バラつき(標準偏差)を算出し、今回(または作業中の経過時間)との差分を表示する']},
  {'version':'1.17.1','notes':['条割(分割)ロットで、測定中にフォーカスが移った条に応じて公差の数値表示・図示・「条ごとの公差」一覧のハイライトが連動するよう修正。従来は常に1条目の公差のまま表示が固定されていた']},
@@ -883,6 +884,13 @@ def home():
  return render_template('index.html', build='current', asset_token=token)
 @app.get('/api/build')
 def build(): return jsonify(build='current', version=APP_VERSION, feature='measurement-workflow-current', port=5029, **GIT_VERSION)
+@app.get('/api/whoami')
+def whoami():
+ # この端末(各測定端末)で実行しているアプリのOSログインユーザー名を返す。
+ # マスタ更新記録(登録者ID)に、手入力させず自動で使うためのもの。
+ try:username=os.getlogin()
+ except Exception:username=os.environ.get('USERNAME') or os.environ.get('USER') or os.environ.get('LOGNAME') or ''
+ return jsonify(username=str(username or '').strip())
 @app.get('/api/changelog')
 def changelog(): return jsonify(version=APP_VERSION, entries=CHANGELOG)
 @app.get('/api/catalog')

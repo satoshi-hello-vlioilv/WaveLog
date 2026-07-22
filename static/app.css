@@ -1000,6 +1000,10 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .filter-tag em{font-style:normal;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#3d555d}
 .filter-tag i{display:grid;place-items:center;width:18px;height:18px;border-radius:50%;font-style:normal;color:#9b1b1b;font-weight:900;cursor:pointer}
 .filter-tag i:hover{background:#ffe1e1}
+.filter-tag-locked{background:#fff2cc;border-color:#e0b23d;color:#6b5200}
+.filter-tag-locked b{color:#6b5200}
+.filter-tag-locked em{color:#6b5200}
+.filter-tag-lock-icon{font-size:11px}
 .filter-empty{color:#6d7e84;font-size:var(--fs-micro);white-space:nowrap}
 
 /* サジェスト・ドロップダウン（認知負荷を下げる: 再認＞想起 / チャンク化 / 段階的開示） */

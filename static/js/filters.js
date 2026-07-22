@@ -26,6 +26,26 @@
   S.filterPresetSource='local';
   S.filterCondUsage=readUsage();
 
+  /* ---- 仕掛一覧(SIKALOTNOW)閲覧時の必須フィルタ: 使用設備一致 ----
+     BOX設計_設備名が登録済みの使用設備と一致する行だけを既定で表示する。
+     解除は可能だが、誤って外さないよう色分け表示し、外す操作には確認を挟む。 */
+  const EQUIPMENT_FILTER_COLUMN='BOX設計_設備名';
+  function isLockedEquipmentFilter(f){return !!f&&f.locked==='equipment'}
+  function confirmRemoveLockedFilter(){return confirm('この条件(使用設備「'+(S.genericFilters.find(isLockedEquipmentFilter)?.value||'')+'」と一致するロットのみ表示)を外すと、他設備のロットも表示されます。\n本当に解除しますか？')}
+  /* forceInject=trueは「仕掛一覧へ新たに入った(selectTable)」時だけに使う。
+     load()側はforceInjectしない(=既にある条件の値を最新の使用設備へ
+     追従させるだけ)。そうしないと、ユーザーが確認の上で条件を外しても、
+     直後のload()で即座に復活してしまい「一時的に外す」ことができなく
+     なるため。 */
+  function ensureEquipmentFilterFor(db,{forceInject=false}={}){
+    if(db!=='SIKALOTNOW')return;
+    const equipment=typeof currentConfiguredEquipment==='function'?currentConfiguredEquipment():'';
+    if(!equipment)return;
+    const already=S.genericFilters.find(isLockedEquipmentFilter);
+    if(already){already.value=equipment;return}
+    if(forceInject)S.genericFilters.unshift({column:EQUIPMENT_FILTER_COLUMN,op:'contains',value:equipment,locked:'equipment'});
+  }
+
   function readLocalPresets(){try{return JSON.parse(localStorage.getItem(FILTER_STORE)||'[]')}catch(_){return []}}
   function writeLocalPresets(){try{localStorage.setItem(FILTER_STORE,JSON.stringify((S.filterPresets||[]).slice(0,120)))}catch(_){}}
   function readUsage(){try{return JSON.parse(localStorage.getItem(USAGE_STORE)||'{}')}catch(_){return {}}}
@@ -65,24 +85,33 @@
       S.filterPresets=readLocalPresets();S.filterPresetSource='local';console.warn('フィルタマスタ読込失敗、ローカルを使用',e);return false;
     }finally{setInlineLoading(false)}
   }
+  /* マスタへの保存は「今アクティブな条件の組み合わせ」を1件のプリセット
+     として束ねるのではなく、条件1つずつを個別のプリセットとして登録する。
+     組み合わせ単位だと再利用時に不要な条件までまとめて適用されてしまい
+     使い勝手が悪いため、単一条件ずつ再利用できるようにする。 */
   async function saveCurrentFiltersToMaster(){
-    if(!S.genericFilters.length){showToast?.('保存する条件がありません','条件を追加してから保存してください。',3800);return}
-    const suggested=S.genericFilters.map(condLabel).join(' / ').slice(0,60);
-    const name=prompt('フィルタ名を入力してください（マスタへ登録します）。',suggested);
-    if(!name)return;
-    const payload={name:name.trim(),db:S.db,table:S.table,filters:structuredClone(S.genericFilters)};
-    if(canWait())showWaiting('フィルタをマスタへ保存しています','マスタ.accdb のフィルタプリセットマスタへ書き込み中','1/2 サーバーへ条件を送信しています');
-    try{
-      const r=await api('/api/filter-presets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(withUserId(payload))});
-      if(canWait())updateWaiting('登録内容を取得しています','2/2 最新のフィルタ一覧を読み込んでいます');
-      await loadMasterPresets({inline:false});
-      showToast?.('フィルタマスタへ保存しました',r.message||name,3800);
-    }catch(e){
-      const preset={id:crypto.randomUUID(),name:name.trim(),db:S.db,table:S.table,filters:structuredClone(S.genericFilters),updatedAt:new Date().toISOString(),master:false};
-      S.filterPresets=[preset,...(S.filterPresets||[]).filter(x=>!(x.name===preset.name&&x.db===preset.db&&x.table===preset.table))].slice(0,120);
-      writeLocalPresets();S.filterPresetSource='local';
-      showToast?.('マスタへ保存できませんでした','この端末内にのみ保存しました。詳細: '+e.message,6500);
-    }finally{if(canWait())hideSaveOverlay()}
+    const savable=S.genericFilters.filter(f=>!isLockedEquipmentFilter(f));
+    if(!savable.length){showToast?.('保存する条件がありません','条件を追加してから保存してください（使用設備の必須条件は保存対象外です）。',4200);return}
+    if(savable.length>1&&!confirm(`現在アクティブな${savable.length}件の条件を、それぞれ個別の登録フィルタとして保存します。よろしいですか？`))return;
+    if(canWait())showWaiting('フィルタをマスタへ保存しています','マスタ.accdb のフィルタプリセットマスタへ書き込み中','条件を1件ずつ登録しています');
+    let saved=0,skipped=0,failed=0;
+    for(const f of savable){
+      const dup=(S.filterPresets||[]).some(p=>(p.filters||[]).length===1&&filterKey(p.filters[0])===filterKey(f)&&(!p.db||p.db===S.db)&&(!p.table||p.table===S.table));
+      if(dup){skipped++;continue}
+      const payload={name:condLabel(f).slice(0,60),db:S.db,table:S.table,filters:[f]};
+      try{
+        await api('/api/filter-presets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(withUserId(payload))});
+        saved++;
+      }catch(e){
+        const preset={id:crypto.randomUUID(),name:payload.name,db:S.db,table:S.table,filters:[f],updatedAt:new Date().toISOString(),master:false};
+        S.filterPresets=[preset,...(S.filterPresets||[])].slice(0,120);writeLocalPresets();S.filterPresetSource='local';
+        failed++;
+      }
+    }
+    try{await loadMasterPresets({inline:false})}catch(_){}
+    if(canWait())hideSaveOverlay();
+    const parts=[];if(saved)parts.push(`新規${saved}件`);if(skipped)parts.push(`登録済み${skipped}件`);if(failed)parts.push(`この端末のみ${failed}件`);
+    showToast?.('条件をマスタへ登録しました',parts.join(' / ')||'変更はありません',4200);
     renderGenericFilterBar();renderFilterPresetList();
   }
   async function deletePreset(preset){
@@ -130,12 +159,14 @@
     showToast?.('デフォルトフィルタを適用しました',matches.map(p=>p.name).join(' / '),3200);
   }
 
-  /* 保存フィルタの適用（置換）と、サジェストからの追加（マージ） */
-  function applyPreset(preset,{merge=false}={}){
+  /* 保存フィルタは条件単位で登録されるため、適用は常にマージ(現在の条件へ
+     追加)とする。置換にすると、他の条件や使用設備の必須条件まで消えて
+     しまい、条件単位で運用する意味が薄れるため。 */
+  function applyPreset(preset,{merge=true}={}){
     markPresetUsed(preset);
     const incoming=structuredClone(preset.filters||[]);
-    if(merge){const seen=new Set(S.genericFilters.map(filterKey));incoming.forEach(f=>{if(!seen.has(filterKey(f)))S.genericFilters.push(f)})}
-    else{S.genericFilters=incoming}
+    const seen=new Set(S.genericFilters.map(filterKey));
+    incoming.forEach(f=>{if(!seen.has(filterKey(f))){S.genericFilters.push(f);seen.add(filterKey(f))}});
     S.genericFilters.forEach(bumpCondUsage);
     S.page=1;renderGenericFilterBar();load();
   }
@@ -177,7 +208,16 @@
     $('#addGenericFilter').onclick=()=>{const f={column:$('#filterColumn').value,op:$('#filterOp').value,value:$('#filterValue').value.trim()};if(!f.column)return;if(!noValueOp(f.op)&&!f.value){$('#filterValue').focus();return}addGenericFilter(f);$('#filterValue').value=''};
     $('#saveFilterPreset').onclick=saveCurrentFiltersToMaster;
     $('#openFilterPresets').onclick=openFilterPresetModal;
-    $('#clearGenericFilters').onclick=()=>{S.genericFilters=[];S.page=1;renderGenericFilterBar();load()};
+    $('#clearGenericFilters').onclick=()=>{
+      const hasLocked=S.genericFilters.some(isLockedEquipmentFilter);
+      if(hasLocked){
+        if(confirmRemoveLockedFilter())S.genericFilters=[];
+        else S.genericFilters=S.genericFilters.filter(isLockedEquipmentFilter);
+      }else{
+        S.genericFilters=[];
+      }
+      S.page=1;renderGenericFilterBar();load();
+    };
     bindTokenSearch();
     return bar;
   }
@@ -202,9 +242,15 @@
     const box=$('#filterTokenInput');if(!box)return;const input=$('#filterTokenSearch');
     box.querySelectorAll('.filter-tag').forEach(x=>x.remove());
     S.genericFilters.forEach((f,i)=>{
-      const tag=document.createElement('span');tag.className='filter-tag';tag.title=`${f.column} ${opLabel(f.op)}${noValueOp(f.op)?'':' '+f.value}`;
-      tag.innerHTML=`<span>${esc(f.column)}</span><b>${esc(opShort(f.op))}</b>${noValueOp(f.op)?'':`<em>${esc(f.value)}</em>`}<i data-filter-index="${i}" title="解除">×</i>`;
-      tag.querySelector('i').onclick=e=>{e.stopPropagation();S.genericFilters.splice(i,1);S.page=1;renderGenericFilterBar();load()};
+      const locked=isLockedEquipmentFilter(f);
+      const tag=document.createElement('span');tag.className='filter-tag'+(locked?' filter-tag-locked':'');
+      tag.title=locked?`必須条件: 使用設備「${f.value}」と一致するロットのみ表示します（仕掛一覧の閲覧時は既定で適用されます）`:`${f.column} ${opLabel(f.op)}${noValueOp(f.op)?'':' '+f.value}`;
+      tag.innerHTML=`${locked?'<span class="filter-tag-lock-icon" aria-hidden="true">🔒</span>':''}<span>${esc(f.column)}</span><b>${esc(opShort(f.op))}</b>${noValueOp(f.op)?'':`<em>${esc(f.value)}</em>`}<i data-filter-index="${i}" title="解除">×</i>`;
+      tag.querySelector('i').onclick=e=>{
+        e.stopPropagation();
+        if(locked&&!confirmRemoveLockedFilter())return;
+        S.genericFilters.splice(i,1);S.page=1;renderGenericFilterBar();load();
+      };
       box.insertBefore(tag,input);
     });
     const count=$('#filterCount');if(count)count.textContent=`${S.genericFilters.length}件`;
@@ -292,7 +338,11 @@
       else if(e.key==='ArrowUp'){e.preventDefault();moveSuggest(-1)}
       else if(e.key==='Enter'){e.preventDefault();(suggestFlat[suggestIndex]||suggestFlat[0])?.click()}
       else if(e.key==='Escape'){suggest.hidden=true}
-      else if(e.key==='Backspace'&&!input.value&&S.genericFilters.length){S.genericFilters.pop();S.page=1;renderGenericFilterBar();load()}
+      else if(e.key==='Backspace'&&!input.value&&S.genericFilters.length){
+        const last=S.genericFilters[S.genericFilters.length-1];
+        if(isLockedEquipmentFilter(last)&&!confirmRemoveLockedFilter())return;
+        S.genericFilters.pop();S.page=1;renderGenericFilterBar();load();
+      }
     });
     const row=input.closest('.filter-search-row')||box;document.addEventListener('click',e=>{if(!row.contains(e.target)){box.classList.remove('focus-within');if(suggest)suggest.hidden=true}});
   }
@@ -345,6 +395,7 @@
   // /api/table へフィルタ条件を送信する。
   if(typeof load==='function'){
     load=async function(){
+      ensureEquipmentFilterFor(S.db);
       const q=new URLSearchParams({db:S.db,table:S.table,page:S.page,page_size:$('#pageSize').value,search:$('#search').value});
       if(S.genericFilters?.length)q.set('filters',JSON.stringify(S.genericFilters));
       if(S.sortColumn){q.set('sort',S.sortColumn);q.set('sort_dir',S.sortDir||'asc')}
@@ -423,9 +474,11 @@
   }
 
   // 一覧を開くたび（テーブル切替時）にデフォルトフィルタを自動適用する。
+  // 仕掛一覧(SIKALOTNOW)では、デフォルトフィルタの後に使用設備の必須条件を
+  // 注入する(デフォルトフィルタが全置換しても、必ずこの条件が残るように)。
   if(typeof selectTable==='function'){
     const selectTableDefaultFilterBase=selectTable;
-    selectTable=async function(t){applyDefaultFiltersFor(S.db,t);return selectTableDefaultFilterBase(t)};
+    selectTable=async function(t){applyDefaultFiltersFor(S.db,t);ensureEquipmentFilterFor(S.db,{forceInject:true});return selectTableDefaultFilterBase(t)};
   }
 
   // 起動時: バー生成 → マスタからサジェスト材料を先読み（ローディング表示つき）。
