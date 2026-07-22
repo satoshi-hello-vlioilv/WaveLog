@@ -4,6 +4,11 @@ const LENGTH_SLOTS=12;const $=s=>document.querySelector(s),S={db:null,table:null
 const api=async(u,o)=>{let r;try{r=await fetch(u,{cache:'no-store',...(o||{})})}catch(error){throw Error('サーバーへ接続できません。Flaskアプリが起動中か、ポート5029で開いているか確認してください。詳細: '+(error?.message||String(error)))}const text=await r.text();let j={};try{j=text?JSON.parse(text):{}}catch(_){j={error:text}}if(!r.ok)throw Error(j.error||('HTTP '+r.status));return j},esc=v=>{const d=document.createElement('div');d.textContent=v??'';return d.innerHTML};
 async function init(){
  const build=await api('/api/build');document.title='測定伝送システム';
+ const badge=document.querySelector('.build-badge');
+ if(badge){
+  badge.textContent=build.commit&&build.commit!=='unknown'?`v.${build.commit}${build.dirty?'+':''}`:'バージョン不明';
+  badge.title=build.commit_at?`最終コミット: ${new Date(build.commit_at).toLocaleString('ja-JP')}${build.dirty?'（未コミットの変更あり）':''}`:'';
+ }
  const d=await api('/api/catalog');S.catalog=d.databases;
  const nav=$('#nav');
  d.databases.forEach(x=>{
@@ -26,8 +31,8 @@ async function openMeasurement(row){if(!row)throw Error('対象データがあ�
 function lotKey(r){return [pick(r,'equipment'),pick(r,'lotNo'),pick(r,'inspectionNo'),pick(r,'castingNo')].join('|')}
 /* 基本情報タブの寸法表示整形。板厚=小数2桁 / 板幅・板丈=小数1桁。数値でない・空欄はそのまま。 */
 function fmtDim(value,digits){const raw=String(value??'').trim();if(raw==='')return '';const n=Number(raw);return Number.isFinite(n)?n.toFixed(digits):raw}
-function renderMeasurement(){const m=S.measure,b=m.basic;updateLengthOptions(m.settings.verticalCount||1);updateCoilOptions(m.settings.horizontalCount||1);$('#modalEquipment').textContent=b.equipment;const fields=[['管理No.','lotNo'],['検査No.','inspectionNo'],['オーダーNo.','orderNo'],['引当No.','allocationNo'],['鋳造No.','castingNo'],['用途コード','purposeCode'],['用途名','purposeName'],['取引先','customer'],['納入先','delivery'],['実績コース','course']];let h='<div class="info-grid">'+fields.map(([l,k])=>k==='lotNo'?`<div class="field"><label>${l}</label><button type="button" class="lot-dsp-link" title="クリックでLotDspをこのロット番号で開きます">${esc(b[k])||'—'}</button></div>`:`<div class="field ${['customer','delivery','course'].includes(k)?'full':''}"><label>${l}</label><output title="${esc(b[k])}">${esc(b[k])}</output></div>`).join('');h+=`<div class="dimension"><b></b><b>材質</b><b>調質</b><b>板厚</b><b>板幅</b><b>板丈</b><b>オーダー</b><span>${esc(b.orderMaterial)}</span><span>${esc(b.orderTemper)}</span><span>${esc(fmtDim(b.orderThickness,2))}</span><span>${esc(fmtDim(b.orderWidth,1))}</span><span>${esc(fmtDim(b.orderLength,1))}</span><b>製造</b><span>${esc(b.mfgMaterial)}</span><span>${esc(b.mfgTemper)}</span><span>${esc(fmtDim(b.mfgThickness,2))}</span><span>${esc(fmtDim(b.mfgWidth,1))}</span><span>${esc(fmtDim(b.mfgLength,1))}</span></div></div>`;$('#basicInfo').innerHTML=h;Object.entries(m.settings).forEach(([k,v])=>{const el=$('#'+k);if(el){if(el.type==='checkbox')el.checked=v;else el.value=v}});$('#qualityInfo').value=m.qualityInfo;document.querySelectorAll('[data-mother]').forEach(x=>x.value=m.mother[x.dataset.mother]||'');document.querySelectorAll('[name=burr]').forEach(x=>x.checked=x.value===m.settings.burr);renderMeasureGrid();renderStats();setState('IndexedDB読込済み')}
-/* 管理No.(ロット№)クリックでLotDsp検索サイトをロット番号指定で開く。
+function renderMeasurement(){const m=S.measure,b=m.basic;updateLengthOptions(m.settings.verticalCount||1);updateCoilOptions(m.settings.horizontalCount||1);$('#modalEquipment').textContent=b.equipment;const fields=[['ロット№','lotNo'],['検査No.','inspectionNo'],['オーダーNo.','orderNo'],['引当No.','allocationNo'],['鋳造No.','castingNo'],['用途コード','purposeCode'],['用途名','purposeName'],['取引先','customer'],['納入先','delivery'],['実績コース','course']];let h='<div class="info-grid">'+fields.map(([l,k])=>k==='lotNo'?`<div class="field"><label>${l}</label><button type="button" class="lot-dsp-link" title="クリックでLotDspをこのロット番号で開きます">${esc(b[k])||'—'}</button></div>`:`<div class="field ${['customer','delivery','course'].includes(k)?'full':''}"><label>${l}</label><output title="${esc(b[k])}">${esc(b[k])}</output></div>`).join('');h+=`<div class="dimension"><b></b><b>材質</b><b>調質</b><b>板厚</b><b>板幅</b><b>板丈</b><b>オーダー</b><span>${esc(b.orderMaterial)}</span><span>${esc(b.orderTemper)}</span><span>${esc(fmtDim(b.orderThickness,2))}</span><span>${esc(fmtDim(b.orderWidth,1))}</span><span>${esc(fmtDim(b.orderLength,1))}</span><b>製造</b><span>${esc(b.mfgMaterial)}</span><span>${esc(b.mfgTemper)}</span><span>${esc(fmtDim(b.mfgThickness,2))}</span><span>${esc(fmtDim(b.mfgWidth,1))}</span><span>${esc(fmtDim(b.mfgLength,1))}</span></div></div>`;$('#basicInfo').innerHTML=h;Object.entries(m.settings).forEach(([k,v])=>{const el=$('#'+k);if(el){if(el.type==='checkbox')el.checked=v;else el.value=v}});$('#qualityInfo').value=m.qualityInfo;document.querySelectorAll('[data-mother]').forEach(x=>x.value=m.mother[x.dataset.mother]||'');document.querySelectorAll('[name=burr]').forEach(x=>x.checked=x.value===m.settings.burr);renderMeasureGrid();renderStats();setState('IndexedDB読込済み')}
+/* ロット№クリックでLotDsp検索サイトをロット番号指定で開く。
    linkkeyは「7文字固定幅のロット番号 + 半角スペース3つ + 7文字分の
    空欄(検査番号側は使わない)」という構成(実機のURLから確認)。
    別オリジンのためフォームへの直接書き込みはできないが、この形式で
@@ -57,7 +62,7 @@ document.addEventListener('click',e=>{
  openLotDsp(S.measure?.basic?.lotNo,localStorage.getItem('LotDspLastTabV1')||'0');
 });
 /* タブ番号は測定画面には出さず、アプリ設定(使用設備の設定)モーダルの
-   内部設定として切り替える。管理No.欄の見た目・サイズは常に元のまま。 */
+   内部設定として切り替える。ロット№欄の見た目・サイズは常に元のまま。 */
 (function(){
  const sel=document.getElementById('lotDspTabSetting');if(!sel)return;
  sel.value=localStorage.getItem('LotDspLastTabV1')||'0';
