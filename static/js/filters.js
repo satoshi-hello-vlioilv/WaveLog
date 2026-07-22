@@ -348,7 +348,7 @@
       const q=new URLSearchParams({db:S.db,table:S.table,page:S.page,page_size:$('#pageSize').value,search:$('#search').value});
       if(S.genericFilters?.length)q.set('filters',JSON.stringify(S.genericFilters));
       const d=await api('/api/table?'+q);Object.assign(S,{columns:d.columns,rows:d.rows,count:d.count});
-      const info=S.catalog.find(x=>x.key===S.db)||{};$('#fileName').textContent=info.file_name||'';$('#tableName').textContent=S.table;renderGrid();renderGenericFilterBar();
+      const info=S.catalog.find(x=>x.key===S.db)||{};$('#fileName').textContent=info.file_name||'';renderGrid();renderGenericFilterBar();
     };
   }
   if(typeof renderTabs==='function'){

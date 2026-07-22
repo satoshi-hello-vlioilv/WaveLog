@@ -31,7 +31,7 @@ async function openMeasurement(row){if(!row)throw Error('対象データがあ�
 function lotKey(r){return [pick(r,'equipment'),pick(r,'lotNo'),pick(r,'inspectionNo'),pick(r,'castingNo')].join('|')}
 /* 基本情報タブの寸法表示整形。板厚=小数2桁 / 板幅・板丈=小数1桁。数値でない・空欄はそのまま。 */
 function fmtDim(value,digits){const raw=String(value??'').trim();if(raw==='')return '';const n=Number(raw);return Number.isFinite(n)?n.toFixed(digits):raw}
-function renderMeasurement(){const m=S.measure,b=m.basic;updateLengthOptions(m.settings.verticalCount||1);updateCoilOptions(m.settings.horizontalCount||1);$('#modalEquipment').textContent=b.equipment;const fields=[['ロット№','lotNo'],['検査No.','inspectionNo'],['オーダーNo.','orderNo'],['引当No.','allocationNo'],['鋳造No.','castingNo'],['用途コード','purposeCode'],['用途名','purposeName'],['取引先','customer'],['納入先','delivery'],['実績コース','course']];let h='<div class="info-grid">'+fields.map(([l,k])=>k==='lotNo'?`<div class="field"><label>${l}</label><button type="button" class="lot-dsp-link" title="クリックでLotDspをこのロット番号で開きます">${esc(b[k])||'—'}</button></div>`:`<div class="field ${['customer','delivery','course'].includes(k)?'full':''}"><label>${l}</label><output title="${esc(b[k])}">${esc(b[k])}</output></div>`).join('');h+=`<div class="dimension"><b></b><b>材質</b><b>調質</b><b>板厚</b><b>板幅</b><b>板丈</b><b>オーダー</b><span>${esc(b.orderMaterial)}</span><span>${esc(b.orderTemper)}</span><span>${esc(fmtDim(b.orderThickness,2))}</span><span>${esc(fmtDim(b.orderWidth,1))}</span><span>${esc(fmtDim(b.orderLength,1))}</span><b>製造</b><span>${esc(b.mfgMaterial)}</span><span>${esc(b.mfgTemper)}</span><span>${esc(fmtDim(b.mfgThickness,2))}</span><span>${esc(fmtDim(b.mfgWidth,1))}</span><span>${esc(fmtDim(b.mfgLength,1))}</span></div></div>`;$('#basicInfo').innerHTML=h;Object.entries(m.settings).forEach(([k,v])=>{const el=$('#'+k);if(el){if(el.type==='checkbox')el.checked=v;else el.value=v}});$('#qualityInfo').value=m.qualityInfo;document.querySelectorAll('[data-mother]').forEach(x=>x.value=m.mother[x.dataset.mother]||'');document.querySelectorAll('[name=burr]').forEach(x=>x.checked=x.value===m.settings.burr);renderMeasureGrid();renderStats();setState('IndexedDB読込済み')}
+function renderMeasurement(){const m=S.measure,b=m.basic;updateLengthOptions(m.settings.verticalCount||1);updateCoilOptions(m.settings.horizontalCount||1);$('#modalEquipment').textContent=b.equipment;const fields=[['ロット№','lotNo'],['検査No.','inspectionNo'],['オーダーNo.','orderNo'],['引当No.','allocationNo'],['鋳造No.','castingNo'],['用途コード','purposeCode'],['用途名','purposeName'],['取引先','customer'],['納入先','delivery'],['実績コース','course']];let h='<div class="info-grid">'+fields.map(([l,k])=>k==='lotNo'?`<div class="field"><label>${l}</label><button type="button" class="lot-dsp-link" title="クリックでLotDspをこのロット番号で開きます">${esc(b[k])||'—'}</button></div>`:`<div class="field ${['customer','delivery','course'].includes(k)?'full':''}"><label>${l}</label><output title="${esc(b[k])}">${esc(b[k])}</output></div>`).join('');h+=`<div class="dimension"><b></b><b>材質</b><b>調質</b><b>板厚</b><b>板幅</b><b>板丈</b><b>オーダー</b><span>${esc(b.orderMaterial)}</span><span>${esc(b.orderTemper)}</span><span>${esc(fmtDim(b.orderThickness,3))}</span><span>${esc(fmtDim(b.orderWidth,1))}</span><span>${esc(fmtDim(b.orderLength,1))}</span><b>製造</b><span>${esc(b.mfgMaterial)}</span><span>${esc(b.mfgTemper)}</span><span>${esc(fmtDim(b.mfgThickness,3))}</span><span>${esc(fmtDim(b.mfgWidth,1))}</span><span>${esc(fmtDim(b.mfgLength,1))}</span></div></div>`;$('#basicInfo').innerHTML=h;Object.entries(m.settings).forEach(([k,v])=>{const el=$('#'+k);if(el){if(el.type==='checkbox')el.checked=v;else el.value=v}});$('#qualityInfo').value=m.qualityInfo;document.querySelectorAll('[data-mother]').forEach(x=>x.value=m.mother[x.dataset.mother]||'');document.querySelectorAll('[name=burr]').forEach(x=>x.checked=x.value===m.settings.burr);renderMeasureGrid();renderStats();setState('IndexedDB読込済み')}
 /* ロット№クリックでLotDsp検索サイトをロット番号指定で開く。
    linkkeyは「7文字固定幅のロット番号 + 半角スペース3つ + 7文字固定幅の
    鋳造番号」という構成(実機のURLから確認)。
@@ -107,7 +107,11 @@ function toleranceFor(kind,index=0){const r=S.measure.source||{},b=S.measure.bas
 function judgeInput(el,key,value,index){el.classList.remove('ng','complete');if(key==='flatness'){if(String(el.value||'').trim()!=='')el.classList.add('complete');return}const tol=toleranceFor(key==='thickness'?'thickness':'width',index);if(Number.isFinite(value)){el.classList.add('complete');if(tol&&(value<tol[0]||value>tol[1]))el.classList.add('ng')}}
 function focusCurrent(){document.querySelectorAll('[data-mkey]').forEach(x=>x.classList.remove('current'));const m=S.measure.settings,key=activeMeasureKey();let sel;if(key==='width'&&m.pendingDevice==='micrometer')sel=`[data-mkey="thickness"][data-j="${m.tStep||0}"]`;else sel=`[data-mkey="${key}"][data-i="${lengthIndex()}"][data-j="${m.wStep||0}"]`;const el=document.querySelector(sel);if(el){el.classList.add('current');el.scrollIntoView({block:'nearest',inline:'nearest'})}$('#stepStatus').textContent=`入力位置 ${key==='width'&&m.pendingDevice==='micrometer'?'板厚 '+((m.tStep||0)+1):'丈 '+(lengthIndex()+1)+' / 条 '+((m.wStep||0)+1)}`}
 function advanceWidth(){const m=S.measure.settings,max=Math.max(1,+$('#horizontalCount').value||1),seq=widthSequence(max,$('#widthOrder').value,$('#widthDirection').value),pos=seq.indexOf(m.wStep||0);m.wStep=seq[(pos+1)%seq.length]}
-function processDeviceInput(raw){const p=deviceParse(raw),m=S.measure,st=m.settings,type=$('#measureType').value,li=lengthIndex();$('#deviceInput').classList.remove('device-ok','device-error');if(p.device==='invalid'||p.value===null&&p.device!=='delete'){setState('入力形式エラー');$('#deviceInput').classList.add('device-error');$('#deviceInput').value='';return}if(p.device==='delete'){const key=activeMeasureKey();if(key==='width'&&st.pendingDevice==='micrometer')m.measurements.thickness[li][st.tStep||0]='';else m.measurements[key][li][st.wStep||0]='';renderMeasureGrid();markDirty();return}
+/* 自動転送モードでは、DOM再描画(renderMeasureGrid)の前後で万一
+   フォーカスがずれても必ず受信欄へ戻す。手動入力モードでは
+   セル側にフォーカスを残す仕様のため対象外。 */
+function refocusDeviceInput(){if(S.measure?.settings?.inputMode!=='manual')$('#deviceInput').focus()}
+function processDeviceInput(raw){const p=deviceParse(raw),m=S.measure,st=m.settings,type=$('#measureType').value,li=lengthIndex();$('#deviceInput').classList.remove('device-ok','device-error');if(p.device==='invalid'||p.value===null&&p.device!=='delete'){setState('入力形式エラー');$('#deviceInput').classList.add('device-error');$('#deviceInput').value='';refocusDeviceInput();return}if(p.device==='delete'){const key=activeMeasureKey();if(key==='width'&&st.pendingDevice==='micrometer')m.measurements.thickness[li][st.tStep||0]='';else m.measurements[key][li][st.wStep||0]='';renderMeasureGrid();markDirty();refocusDeviceInput();return}
  if(type==='板厚/板幅'){
   if(p.device==='micrometer'){const j=st.tStep||0;m.measurements.thickness[li][j]=p.value.toFixed(3);st.tStep=(j+1)%3;st.pendingDevice='micrometer'}
   else if(['caliper','tape','manual'].includes(p.device)){const j=st.wStep||0;m.measurements.width[li][j]=p.value.toFixed(p.device==='caliper'?2:1);st.pendingDevice='width';advanceWidth()}
@@ -117,9 +121,9 @@ function processDeviceInput(raw){const p=deviceParse(raw),m=S.measure,st=m.setti
  }else if(type==='テレスコープ'){
   if(!['depth','manual'].includes(p.device))return inputError('テレスコープはデプスゲージを使用してください');m.measurements.telescope[li][st.wStep||0]=p.value.toFixed(2);advanceWidth()
  }else{const key=activeMeasureKey();m.measurements[key][li][st.wStep||0]=type==='ラテラルボー'?(Math.ceil(p.value*2)/2).toFixed(1):p.value.toFixed(1);advanceWidth()}
- $('#deviceInput').classList.add('device-ok');$('#deviceInput').value='';renderMeasureGrid();renderStats();markDirty();focusCurrent()
+ $('#deviceInput').classList.add('device-ok');$('#deviceInput').value='';renderMeasureGrid();renderStats();markDirty();focusCurrent();refocusDeviceInput()
 }
-function inputError(msg){setState(msg);$('#deviceInput').classList.add('device-error')}
+function inputError(msg){setState(msg);const el=$('#deviceInput');el.classList.add('device-error');el.value='';refocusDeviceInput()}
 function renderMeasureGrid(){const type=$('#measureType').value,key=activeMeasureKey(),m=S.measure,l=Math.max(1,+$('#verticalCount').value||1),w=Math.max(1,+$('#horizontalCount').value||1);let h='';if(type==='板厚/板幅'){const li=lengthIndex();h+='<table class="measure-grid-table"><thead><tr><th>板厚</th><th>OS</th><th>CL</th><th>DS</th></tr></thead><tbody><tr><th>丈 '+(li+1)+'</th>'+m.measurements.thickness[li].map((v,j)=>`<td><input data-mkey="thickness" data-i="${li}" data-j="${j}" value="${esc(v)}"></td>`).join('')+'</tr></tbody></table>'}
  const rows=m.measurements[key==='mother'?'width':key];h+='<table class="measure-grid-table"><thead><tr><th>丈＼条</th>'+Array.from({length:w},(_,i)=>`<th>${i+1}</th>`).join('')+'</tr></thead><tbody>';for(let i=0;i<l;i++)h+=`<tr><th>${i+1}</th>`+Array.from({length:w},(_,j)=>`<td><input data-mkey="${key==='mother'?'width':key}" data-i="${i}" data-j="${j}" value="${esc(rows[i][j])}"></td>`).join('')+'</tr>';$('#measurementGrid').innerHTML=h+'</tbody></table>';document.querySelectorAll('[data-mkey]').forEach(x=>{const v=Number(x.value);judgeInput(x,x.dataset.mkey,v,+x.dataset.j);x.onclick=()=>{m.settings.wStep=+x.dataset.j;if(x.dataset.mkey==='thickness')m.settings.tStep=+x.dataset.j;focusCurrent();$('#deviceInput').focus()};x.oninput=()=>{m.measurements[x.dataset.mkey][+x.dataset.i][+x.dataset.j]=x.value;judgeInput(x,x.dataset.mkey,Number(x.value),+x.dataset.j);renderStats();markDirty()};x.onkeydown=e=>{if(e.key==='Delete'){x.value='';x.oninput()}if(e.key==='Enter'){e.preventDefault();advanceWidth();focusCurrent();$('#deviceInput').focus()}}});focusCurrent()}
 async function openMeasurement(row){if(!row)throw Error('対象データがありません');S.current=row;const key=lotKey(row),saved=await idbGet(key);if(saved){const resume=confirm('編集中のデータがあります。読み込みますか？\n「キャンセル」は新規データとして開きます。');S.measure=resume?saved:blankMeasure(row)}else S.measure=blankMeasure(row);S.measure.id=key;renderMeasurement();$('#measureModal').hidden=false;await loadMeasurementContext();requestAnimationFrame(()=>$('#deviceInput').focus())}
@@ -332,7 +336,28 @@ if($('#productAllOk'))$('#productAllOk').onclick=()=>{
  renderProductPanel();markDirty();
 };
 $('#verticalCount')?.addEventListener('change',()=>{if($('#measureType').value==='揃い/肉厚/長さ')renderProductPanel()});
-$('#measureType').onchange=()=>{S.measure.settings.wStep=0;S.measure.settings.tStep=0;S.measure.settings.burrFirst=null;S.measure.settings.measureType=$('#measureType').value;applyRightLayout();$('#deviceInput').focus();markDirty()};
+/* 測定種ごとに運用が固定されているため、入力モードの切替UI自体を出さない。
+   - 板厚/板幅・バリ: 測定器からの自動転送のみ。
+   - ラテラルボー・テレスコープ・巻ずれ・フラットネス: 実運用は手動入力のみ
+     (対応する自動転送デバイスがないため)。伝送状態欄(受信欄・検知回数等)
+     も自動転送を前提にした表示のため、手動固定の測定種では丸ごと隠す。 */
+const AUTO_ONLY_MEASURE_TYPES={'板厚/板幅':1,'バリ':1};
+const MANUAL_ONLY_MEASURE_TYPES={'ラテラルボー':1,'テレスコープ':1,'巻ずれ':1,'フラットネス':1};
+function syncInputModeLock(){
+ if(!S.measure)return;
+ const type=$('#measureType')?.value,tabs=$('.mode-tabs'),statusBox=$('#inputStatusBox');
+ const forceAuto=!!AUTO_ONLY_MEASURE_TYPES[type],forceManual=!!MANUAL_ONLY_MEASURE_TYPES[type];
+ if(tabs)tabs.hidden=forceAuto||forceManual;
+ if(statusBox)statusBox.hidden=forceManual;
+ const desiredMode=forceAuto?'auto':forceManual?'manual':null;
+ if(desiredMode&&S.measure.settings.inputMode!==desiredMode){
+  S.measure.settings.inputMode=desiredMode;
+  document.querySelectorAll('[data-mode]').forEach(x=>x.classList.toggle('active',x.dataset.mode===desiredMode));
+  applyInputProtection();
+  updateReceiveState(document.activeElement===$('#deviceInput'));
+ }
+}
+$('#measureType').onchange=()=>{S.measure.settings.wStep=0;S.measure.settings.tStep=0;S.measure.settings.burrFirst=null;S.measure.settings.measureType=$('#measureType').value;applyRightLayout();syncInputModeLock();$('#deviceInput').focus();markDirty()};
 openMeasurement=async function(row){
  if(!row)throw Error('対象データがありません'); S.current=row;
  const found=await findDraftForRow(row);
@@ -1055,7 +1080,10 @@ function bindFlatnessInputs(){
  });
 }
 const applyRightLayoutCompactBase=applyRightLayout;
-applyRightLayout=function(){applyRightLayoutCompactBase();const summary=$('#toleranceSummary');if(summary)summary.hidden=$('#measureType')?.value==='板厚/板幅'};
+/* 板厚/板幅は上部要約を常に隠す。それ以外は隠さない側にだけ働かせ、
+   ラテラルボー等の指示型サプレッション(suppressSummaryForInstruction)が
+   既に隠した状態を、ここで無条件にhidden=falseへ戻して上書きしない。 */
+applyRightLayout=function(){applyRightLayoutCompactBase();const summary=$('#toleranceSummary');if(summary&&$('#measureType')?.value==='板厚/板幅')summary.hidden=true};
 
 
 /* Measurement precision and zero-order-tolerance correction. */
