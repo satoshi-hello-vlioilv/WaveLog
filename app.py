@@ -7,11 +7,12 @@ app=Flask(__name__); BASE=Path(__file__).resolve().parent
 # 手動管理のバージョン番号。画面に表示される「デプロイ確認用」の主表示。
 # gitが使えない配布先(zipコピー等)でも必ず値が出るよう、こちらを主とする。
 # 意味のある変更をコミットするたびに更新すること。
-APP_VERSION='1.11.0'
+APP_VERSION='1.12.0'
 
 # 更新履歴。画面の「VERx.y.z」バッジから一覧表示する。APP_VERSIONを
 # 上げるたびに、このリストの先頭に新しいバージョンを追記すること。
 CHANGELOG=[
+ {'version':'1.12.0','notes':['列単位で一覧の表示/非表示を管理する「表示マスタ」を追加。マスタ管理の「列表示」タブから仕掛一覧・品質データそれぞれ列ごとに表示切替できる']},
  {'version':'1.11.0','notes':['オペレータマスタに作業可能設備を複数登録できるようにし、設備マスタと連携','測定画面のオペレータ選択を、使用設備で作業可能なオペレータのみに絞り込むよう変更(設備未割当のオペレータは従来通り常に表示)']},
  {'version':'1.10.1','notes':['一覧統合に合わせてメニューを整理。サイドバーと測定画面の「編集中データ一覧」「完了データ一覧」ボタンを1つの「データ一覧」ボタンに統合']},
  {'version':'1.10.0','notes':['編集中データ一覧と完了データ一覧を1つの統合リストに変更。編集中/完了それぞれ独立したトグルフィルタを追加し(既定は編集中のみON)、両方ONにすると1つのリストで両方確認できるようにした','一覧の一番左に状態(編集中/完了)バッジ列を追加']},
@@ -780,6 +781,84 @@ def filter_preset_delete():
   return jsonify(ok=True,id=pid,updated_by=uid)
  except Exception as e:return jsonify(error=f'フィルタプリセット削除失敗: {e}'),500
 
+# ========================================================================
+# 表示マスタ（列表示設定）
+#  - 対象DB（仕掛一覧=SIKALOTNOW、品質データ=SIKALOTDEF等、DBS参照）ごとに、
+#    どの列を一覧から非表示にするかを管理する。
+#  - 行の存在＝非表示。行が無い列は既定で表示（互換ポリシー、他マスタと同じ考え方）。
+#    オペレータ設備マスタと同じ「完全同期」方式で保存する。
+# ========================================================================
+COLUMN_DISPLAY_TABLE='表示マスタ'
+def ensure_column_display_table(c):
+ names=tables(c);created=False
+ if COLUMN_DISPLAY_TABLE not in names:
+  cur=c.cursor()
+  cur.execute('CREATE TABLE [表示マスタ] ([ID] COUNTER, [対象] TEXT(20), [列名] TEXT(60), [登録者ID] TEXT(50), [更新者ID] TEXT(50), [登録日時] DATETIME, [更新日時] DATETIME)')
+  cur.execute('CREATE UNIQUE INDEX [UX_表示マスタ] ON [表示マスタ] ([対象],[列名])')
+  c.commit();created=True
+ ensure_audit_columns(c,COLUMN_DISPLAY_TABLE)
+ return created
+
+def hidden_columns_for(c,dbkey):
+ # 対象=dbkey の非表示列名の集合を返す。テーブル未作成時は空集合。
+ if COLUMN_DISPLAY_TABLE not in tables(c):return set()
+ cur=c.cursor();cur.execute('SELECT [列名] FROM [表示マスタ] WHERE [対象]=?',[dbkey])
+ return {str(r[0] or '').strip() for r in cur.fetchall() if str(r[0] or '').strip()}
+
+def hidden_columns_for_db(dbkey):
+ # api_table() から使う簡易ヘルパー。マスタ.accdbが未整備/未接続でも
+ # 一覧表示自体は継続できるよう、失敗時は空集合（＝全列表示）を返す。
+ try:
+  path=DBS['MASTER']['path']
+  if not path.exists():return set()
+  with connect(path,True) as c:
+   return hidden_columns_for(c,dbkey)
+ except Exception:
+  return set()
+
+def set_hidden_columns(c,dbkey,names,uid):
+ # 指定対象DBの非表示列を names の内容に完全同期する（増分の追加・削除）。
+ ensure_column_display_table(c)
+ cur=c.cursor()
+ wanted={str(n).strip() for n in (names or []) if str(n or '').strip()}
+ cur.execute('SELECT [ID],[列名] FROM [表示マスタ] WHERE [対象]=?',[dbkey])
+ existing={str(r[1] or '').strip():r[0] for r in cur.fetchall()}
+ for nm,rid in existing.items():
+  if nm not in wanted:cur.execute('DELETE FROM [表示マスタ] WHERE [ID]=?',[rid])
+ for nm in wanted:
+  if nm not in existing:
+   cur.execute('INSERT INTO [表示マスタ] ([対象],[列名],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,Now(),Now())',[dbkey,nm,uid,uid])
+ c.commit()
+
+@app.get('/api/column-display-master')
+def column_display_master_list():
+ try:
+  dbkey=str(request.args.get('db') or '').strip()
+  if not dbkey:return jsonify(error='対象DBを指定してください。'),400
+  cf=cfg(dbkey)
+  with connect(cf['path'],cf['role']=='readonly') as c:
+   a=tables(c);table=cf['preferred'] if cf['preferred'] in a else (a[0] if a else None)
+   real_columns=cols(c,table) if table else []
+  master=DBS['MASTER']['path'];hidden=set()
+  if master.exists():
+   with connect(master,True) as mc:hidden=hidden_columns_for(mc,dbkey)
+  return jsonify(ok=True,db=dbkey,label=cf['label'],table=table,columns=real_columns,hidden=sorted(hidden & set(real_columns)))
+ except Exception as e:return jsonify(error=f'表示マスタ読込失敗: {e}'),500
+
+@app.post('/api/column-display-master')
+def column_display_master_update():
+ try:
+  x=request.get_json(force=True) or {};dbkey=str(x.get('db') or '').strip();hidden=x.get('hidden');uid=request_user_id(x)
+  if not dbkey:return jsonify(error='対象DBを指定してください。'),400
+  if dbkey not in DBS:return jsonify(error='対象DBが不正です。'),400
+  if not isinstance(hidden,list):return jsonify(error='非表示列の指定が不正です。'),400
+  path=DBS['MASTER']['path']
+  if not path.exists():raise FileNotFoundError(f'マスタ.accdbが見つかりません: {path}')
+  with connect(path,False) as c:
+   set_hidden_columns(c,dbkey,hidden,uid)
+  return jsonify(ok=True,db=dbkey,hidden=hidden,updated_by=uid,message='表示設定を保存しました。')
+ except Exception as e:return jsonify(error=f'表示マスタ更新失敗: {e}'),500
+
 @app.after_request
 def no_cache(response):
  response.headers['Cache-Control']='no-store, no-cache, must-revalidate, max-age=0'
@@ -848,7 +927,14 @@ def api_table():
    sort_col=request.args.get('sort','').strip();sort_dir='DESC' if request.args.get('sort_dir','').strip().lower()=='desc' else 'ASC'
    order=f' ORDER BY {qi(sort_col)} {sort_dir}' if sort_col in cs else ''
    cur=c.cursor();cur.execute(f'SELECT COUNT(*) FROM {qi(t)}'+where,params);count=int(cur.fetchone()[0]);top=page*size;cur.execute(f'SELECT TOP {top} * FROM {qi(t)}'+where+order,params);rows=cur.fetchmany(top);start=(page-1)*size;rows=rows[start:start+size]
-  return jsonify(columns=cs,rows=[dict(zip(cs,r)) for r in rows],count=count,filters_applied=len(filters))
+  # 表示マスタで非表示指定された列は、検索/絞込/並替の対象(cs)には残しつつ、
+  # 返却するcolumns/rowsからのみ除外する(生の行タプルはcs全体の順序と対応するため、
+  # zip自体はcs全体で行い、その後に非表示列をdictから取り除く)。
+  hidden=hidden_columns_for_db(k)
+  row_dicts=[dict(zip(cs,r)) for r in rows]
+  visible_cs=[x for x in cs if x not in hidden] if hidden else cs
+  if hidden:row_dicts=[{col:v for col,v in d.items() if col not in hidden} for d in row_dicts]
+  return jsonify(columns=visible_cs,rows=row_dicts,count=count,filters_applied=len(filters))
  except Exception as e:return jsonify(error=str(e)),500
 
 def first_existing(columns, names):

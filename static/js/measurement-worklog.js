@@ -161,6 +161,7 @@
   {key:'equipment',label:'設備',icon:'設',endpoint:'/api/equipment-master',hasDelete:false,
    fields:[{k:'name',label:'設備名',required:true,key:true}],
    cols:[{k:'name',label:'設備名',grow:2}]},
+  {key:'columnDisplay',label:'列表示',icon:'列',special:'column-display'},
  ];
  let maintState={defKey:'operator',items:[],editing:null,query:''};
  function currentDef(){return MASTER_DEFS.find(d=>d.key===maintState.defKey)||MASTER_DEFS[0]}
@@ -294,8 +295,14 @@
   });
   list.append(frag);
  }
+ function setMaintSearchVisible(show){
+  const search=document.querySelector('#masterMaintModal .mm-search');if(search)search.style.display=show?'':'none';
+  const cnt=$('#masterMaintCount');if(cnt)cnt.style.display=show?'':'none';
+ }
  async function loadMaint(force){
   const def=currentDef();const title=$('#masterMaintTitle');if(title)title.textContent=def.label+'マスタ';
+  if(def.special==='column-display'){setMaintSearchVisible(false);return loadColumnDisplayMaint(force)}
+  setMaintSearchVisible(true);
   const list=$('#masterMaintList');if(list&&force)list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
   const multiField=def.fields.find(f=>f.type==='equipment-multi');
   if(multiField&&typeof loadEquipmentMaster==='function'){try{await loadEquipmentMaster()}catch(e){/* 設備マスタが読めなくてもオペレータ一覧の表示は継続する */}}
@@ -306,6 +313,75 @@
    maintState.items=items;
    renderMaintList();
   }catch(e){if(list)list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
+ }
+
+ /* ---------- 列表示マスタ（仕掛一覧・品質データの列表示/非表示を管理） ---------- */
+ let columnDisplayState={dbs:[],dbKey:'',columns:[],hidden:[],loading:false};
+ async function ensureColumnDisplayDbs(){
+  if(columnDisplayState.dbs.length)return columnDisplayState.dbs;
+  try{
+   const r=await api('/api/catalog');
+   columnDisplayState.dbs=(r&&r.databases||[]).filter(d=>d.role==='readonly');
+  }catch(e){columnDisplayState.dbs=[]}
+  if(!columnDisplayState.dbKey&&columnDisplayState.dbs.length)columnDisplayState.dbKey=columnDisplayState.dbs[0].key;
+  return columnDisplayState.dbs;
+ }
+ async function loadColumnDisplayMaint(force){
+  const form=$('#masterMaintForm'),list=$('#masterMaintList');
+  if(!form||!list)return;
+  await ensureColumnDisplayDbs();
+  if(!columnDisplayState.dbKey){form.innerHTML='';list.innerHTML='<div class="mm-empty">対象となる一覧データベースがありません。</div>';return}
+  if(force||list.dataset.cdLoaded!==columnDisplayState.dbKey){
+   list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
+   renderColumnDisplayForm();
+   try{
+    const r=await api('/api/column-display-master?db='+encodeURIComponent(columnDisplayState.dbKey));
+    columnDisplayState.columns=(r&&r.columns)||[];columnDisplayState.hidden=(r&&r.hidden)||[];
+    list.dataset.cdLoaded=columnDisplayState.dbKey;
+    renderColumnDisplayList();
+   }catch(e){list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
+  }else{
+   renderColumnDisplayForm();renderColumnDisplayList();
+  }
+ }
+ function renderColumnDisplayForm(){
+  const form=$('#masterMaintForm');if(!form)return;
+  const tabs=columnDisplayState.dbs.map(d=>`<button type="button" class="mm-cd-tab${d.key===columnDisplayState.dbKey?' active':''}" data-cd-db="${esc(d.key)}">${esc(d.label)}</button>`).join('');
+  form.innerHTML=`<div class="mm-form-head"><span class="mm-mode-chip new">列表示設定</span></div>
+   <div class="mm-cd-toolbar">
+    <div class="mm-cd-dbtabs">${tabs}</div>
+    <div class="mm-cd-actions">
+     <button type="button" id="mmCdShowAll" class="mm-btn-ghost sm">すべて表示</button>
+     <button type="button" id="mmCdHideAll" class="mm-btn-ghost sm">すべて非表示</button>
+     <button type="button" id="mmCdSave" class="mm-btn-primary">この画面の表示設定を保存</button>
+    </div>
+   </div>
+   <p class="mm-form-hint">チェックを外した列は、対応する一覧画面（仕掛一覧・品質データ）から非表示になります。未設定の列は既定で表示されます。</p>`;
+  form.onsubmit=ev=>ev.preventDefault();
+  form.querySelectorAll('[data-cd-db]').forEach(b=>b.onclick=()=>{columnDisplayState.dbKey=b.dataset.cdDb;loadColumnDisplayMaint(true)});
+  const showAll=$('#mmCdShowAll'),hideAll=$('#mmCdHideAll'),save=$('#mmCdSave');
+  if(showAll)showAll.onclick=()=>document.querySelectorAll('#masterMaintList [data-cd-col]').forEach(b=>b.checked=true);
+  if(hideAll)hideAll.onclick=()=>document.querySelectorAll('#masterMaintList [data-cd-col]').forEach(b=>b.checked=false);
+  if(save)save.onclick=()=>saveColumnDisplayMaint();
+ }
+ function renderColumnDisplayList(){
+  const list=$('#masterMaintList');if(!list)return;
+  const hiddenSet=new Set(columnDisplayState.hidden);
+  const columns=columnDisplayState.columns;
+  if(!columns.length){list.innerHTML='<div class="mm-empty">対象テーブルの列が取得できませんでした。</div>';return}
+  const boxes=columns.map(col=>`<label class="mm-checkbox mm-cd-checkbox"><input type="checkbox" data-cd-col="${esc(col)}"${hiddenSet.has(col)?'':' checked'}><span>${esc(col)}</span></label>`).join('');
+  list.innerHTML=`<div class="mm-cd-grid">${boxes}</div>`;
+ }
+ async function saveColumnDisplayMaint(){
+  const uid=requireMaintUser();if(uid===null)return;
+  const hidden=[...document.querySelectorAll('#masterMaintList [data-cd-col]')].filter(b=>!b.checked).map(b=>b.dataset.cdCol);
+  try{
+   setMaintLoading(true,'表示設定を保存しています…');
+   await api('/api/column-display-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({db:columnDisplayState.dbKey,hidden,user_id:uid})});
+   columnDisplayState.hidden=hidden;
+   showToast&&showToast('表示設定を保存しました',`非表示 ${hidden.length}列`,3600);
+  }catch(e){showToast&&showToast('保存できませんでした',e.message,6500)}
+  finally{setMaintLoading(false)}
  }
  function openMasterMaint(){const modal=ensureMaintModal();const uid=$('#masterUserId');if(uid)uid.value=currentUserId();maintState.editing=null;maintState.query='';const se=$('#masterMaintSearch');if(se)se.value='';syncNav();modal.hidden=false;loadMaint(true);requestAnimationFrame(()=>{const u=$('#masterUserId');if(u&&!u.value)u.focus()})}
 

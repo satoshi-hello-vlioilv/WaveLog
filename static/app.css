@@ -1145,6 +1145,15 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .mm-btn-primary{height:40px;padding:0 22px;border:0;border-radius:8px;background:var(--teal);color:#fff;font-weight:800;cursor:pointer;box-shadow:0 4px 12px #087c8940}
 .mm-btn-primary:hover{background:var(--teal-dark)}
 .mm-form-hint{color:#6a7d83;font-size:12px}
+.mm-cd-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.mm-cd-dbtabs{display:flex;gap:6px;flex-wrap:wrap}
+.mm-cd-tab{height:34px;padding:0 16px;border:1.5px solid #c7d4d8;border-radius:17px;background:#fff;color:#526970;font-weight:800;font-size:12.5px;cursor:pointer}
+.mm-cd-tab:hover{border-color:#9fb4ba}
+.mm-cd-tab.active{border-color:var(--teal);background:var(--teal);color:#fff}
+.mm-cd-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.mm-cd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:4px 14px;padding:6px 4px}
+.mm-cd-checkbox{padding:6px 4px;border-radius:6px}
+.mm-cd-checkbox:hover{background:#eafafa}
 .mm-list-wrap{flex:1;min-height:0;overflow:auto;padding:0 18px 18px}
 .mm-list{display:flex;flex-direction:column}
 .mm-row{display:grid;align-items:center;gap:12px;padding:0 12px;min-height:44px;border-bottom:1px solid #e5edef}
