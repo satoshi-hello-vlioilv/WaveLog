@@ -107,7 +107,7 @@ function toleranceFor(kind,index=0){const r=S.measure.source||{},b=S.measure.bas
 function judgeInput(el,key,value,index){el.classList.remove('ng','complete');if(key==='flatness'){if(String(el.value||'').trim()!=='')el.classList.add('complete');return}const tol=toleranceFor(key==='thickness'?'thickness':'width',index);if(Number.isFinite(value)){el.classList.add('complete');if(tol&&(value<tol[0]||value>tol[1]))el.classList.add('ng')}}
 function focusCurrent(){document.querySelectorAll('[data-mkey]').forEach(x=>x.classList.remove('current'));const m=S.measure.settings,key=activeMeasureKey();let sel;if(key==='width'&&m.pendingDevice==='micrometer')sel=`[data-mkey="thickness"][data-j="${m.tStep||0}"]`;else sel=`[data-mkey="${key}"][data-i="${lengthIndex()}"][data-j="${m.wStep||0}"]`;const el=document.querySelector(sel);if(el){el.classList.add('current');el.scrollIntoView({block:'nearest',inline:'nearest'})}$('#stepStatus').textContent=`入力位置 ${key==='width'&&m.pendingDevice==='micrometer'?'板厚 '+((m.tStep||0)+1):'丈 '+(lengthIndex()+1)+' / 条 '+((m.wStep||0)+1)}`}
 function advanceWidth(){const m=S.measure.settings,max=Math.max(1,+$('#horizontalCount').value||1),seq=widthSequence(max,$('#widthOrder').value,$('#widthDirection').value),pos=seq.indexOf(m.wStep||0);m.wStep=seq[(pos+1)%seq.length]}
-function processDeviceInput(raw){const p=deviceParse(raw),m=S.measure,st=m.settings,type=$('#measureType').value,li=lengthIndex();$('#deviceInput').classList.remove('device-ok','device-error');if(p.device==='invalid'||p.value===null&&p.device!=='delete'){setState('入力形式エラー');$('#deviceInput').classList.add('device-error');return}if(p.device==='delete'){const key=activeMeasureKey();if(key==='width'&&st.pendingDevice==='micrometer')m.measurements.thickness[li][st.tStep||0]='';else m.measurements[key][li][st.wStep||0]='';renderMeasureGrid();markDirty();return}
+function processDeviceInput(raw){const p=deviceParse(raw),m=S.measure,st=m.settings,type=$('#measureType').value,li=lengthIndex();$('#deviceInput').classList.remove('device-ok','device-error');if(p.device==='invalid'||p.value===null&&p.device!=='delete'){setState('入力形式エラー');$('#deviceInput').classList.add('device-error');$('#deviceInput').value='';return}if(p.device==='delete'){const key=activeMeasureKey();if(key==='width'&&st.pendingDevice==='micrometer')m.measurements.thickness[li][st.tStep||0]='';else m.measurements[key][li][st.wStep||0]='';renderMeasureGrid();markDirty();return}
  if(type==='板厚/板幅'){
   if(p.device==='micrometer'){const j=st.tStep||0;m.measurements.thickness[li][j]=p.value.toFixed(3);st.tStep=(j+1)%3;st.pendingDevice='micrometer'}
   else if(['caliper','tape','manual'].includes(p.device)){const j=st.wStep||0;m.measurements.width[li][j]=p.value.toFixed(p.device==='caliper'?2:1);st.pendingDevice='width';advanceWidth()}
@@ -135,6 +135,16 @@ function updateReceiveState(focused=document.activeElement===$('#deviceInput')){
    受信中はvalueへ一切手を入れない。半角変換はTab確定時に
    deviceParse側で1回だけ行う。 */
 let deviceAutoCommitTimer=null,deviceKeyDetectCount=0;
+/* 自動転送中、日本語IME等の変換候補(全角)がそのまま挿入されるのを
+   入り口で止める試み。beforeinputの時点でinsertCompositionText系の
+   挿入をpreventDefaultし、valueには一切書き込まない(valueを書き換える
+   と測定器側ソフトの自前バッファ管理と衝突し文字列が壊れる不具合が
+   あったため、その方式には戻さない)。IME側の内部状態までは制御でき
+   ないため、環境によって効果が変わる可能性がある点はご留意ください。 */
+$('#deviceInput').addEventListener('beforeinput',e=>{
+ if(S.measure?.settings?.inputMode==='manual')return;
+ if(e.inputType==='insertCompositionText'||e.inputType==='insertFromComposition')e.preventDefault();
+});
 /* IME変換が起きている端末では、確定用のTabキー自体がIMEに横取りされ
    keydownまでイベントが届かないことがあり、Tab検知に頼るだけでは
    確定できないケースがある。そのため自動転送モードでは、入力が
