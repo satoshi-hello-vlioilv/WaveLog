@@ -1220,14 +1220,17 @@ body.rp-mode #grid,body.rp-mode footer,body.rp-mode #tabs,body.rp-mode .hint,bod
 body.db-mode #grid,body.db-mode footer,body.db-mode #tabs,body.db-mode .hint,body.db-mode #genericFilterBar,body.db-mode .qa-v7{display:none!important}
 /* 編集中/完了データ一覧も同様にモーダルではなくメイン画面表示にする。 */
 body.rec-mode #grid,body.rec-mode footer,body.rec-mode #tabs,body.rec-mode .hint,body.rec-mode #genericFilterBar,body.rec-mode .qa-v7{display:none!important}
+/* 実績カレンダーも同様にメイン画面表示にする。 */
+body.cal-mode #grid,body.cal-mode footer,body.cal-mode #tabs,body.cal-mode .hint,body.cal-mode #genericFilterBar,body.cal-mode .qa-v7{display:none!important}
 /* 品質データの「元データ表示」(qa-view-raw)は#grid等を強制的に再表示する
    詳細度3のルール(body.qa-mode.qa-view-raw #grid)を持つため、上のrp-mode/
-   db-mode/rec-modeの詳細度2のルールより優先されてしまい、品質データ表示中に
-   帳票・ダッシュボード・編集中/完了一覧を開くと元の#gridが透けて見える
+   db-mode/rec-mode/cal-modeの詳細度2のルールより優先されてしまい、品質データ表示中に
+   帳票・ダッシュボード・編集中/完了一覧・実績カレンダーを開くと元の#gridが透けて見える
    不具合があった。詳細度を合わせて確実に上書きする。 */
 body.rp-mode.qa-mode.qa-view-raw #grid,body.rp-mode.qa-mode.qa-view-raw footer,body.rp-mode.qa-mode.qa-view-raw #genericFilterBar,
 body.db-mode.qa-mode.qa-view-raw #grid,body.db-mode.qa-mode.qa-view-raw footer,body.db-mode.qa-mode.qa-view-raw #genericFilterBar,
-body.rec-mode.qa-mode.qa-view-raw #grid,body.rec-mode.qa-mode.qa-view-raw footer,body.rec-mode.qa-mode.qa-view-raw #genericFilterBar{display:none!important}
+body.rec-mode.qa-mode.qa-view-raw #grid,body.rec-mode.qa-mode.qa-view-raw footer,body.rec-mode.qa-mode.qa-view-raw #genericFilterBar,
+body.cal-mode.qa-mode.qa-view-raw #grid,body.cal-mode.qa-mode.qa-view-raw footer,body.cal-mode.qa-mode.qa-view-raw #genericFilterBar{display:none!important}
 .rec-panel{flex:1;min-height:0;margin:9px 14px;display:flex;flex-direction:column;background:#f4f7f8;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .rec-panel[hidden]{display:none!important}
 .rec-panel .record-dialog{width:100%;height:100%;border-radius:0;box-shadow:none}
@@ -1550,3 +1553,63 @@ body.rec-mode.qa-mode.qa-view-raw #grid,body.rec-mode.qa-mode.qa-view-raw footer
 .db-axis-title{font-size:11px;font-weight:800;fill:#40606a}
 .db-svg-legend-label{font-size:11px;fill:#3a565d}
 @media(max-width:1000px){.db-layout{grid-template-columns:1fr}.db-controls{max-height:280px}.db-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* ---------- 実績カレンダー ---------- */
+.cal-panel{flex:1;min-height:0;margin:9px 14px;display:flex;flex-direction:column;background:#f4f7f8;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.cal-panel[hidden]{display:none!important}
+.cal-layout{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 320px;overflow:hidden}
+.cal-main{display:flex;flex-direction:column;gap:12px;min-width:0;min-height:0;padding:16px;overflow-y:auto}
+.cal-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.cal-nav{display:flex;align-items:center;gap:8px}
+.cal-nav .rp-btn-secondary{height:32px;padding:0 12px}
+.cal-month-label{font-size:16px;color:#173842;min-width:104px;text-align:center}
+.cal-toolbar-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#calSummary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.cal-card-warn{border-color:#e5b3b3;background:#fff8f8}
+.cal-card-warn .db-card-label{color:#a34848}
+.cal-card-sub{display:block;font-size:11px;font-weight:600;color:#61757c;margin-top:1px}
+.cal-weekday-row{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;padding:0 2px}
+.cal-weekday-row span{text-align:center;font-size:11px;font-weight:800;color:#61757c;padding:2px 0}
+.cal-weekday-row span.sun{color:#c92c2c}
+.cal-weekday-row span.sat{color:#2563eb}
+.cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));grid-auto-rows:minmax(74px,auto);gap:6px}
+.cal-day{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:6px 8px;border:1px solid #e5edef;border-radius:8px;background:#fff;cursor:pointer;text-align:left;transition:box-shadow .12s,border-color .12s}
+.cal-day-blank{background:transparent;border-color:transparent;cursor:default}
+.cal-day:not(.cal-day-blank):hover{border-color:#9fc3c8;box-shadow:0 1px 4px #102a3314}
+.cal-day.selected{border-color:var(--teal);box-shadow:0 0 0 2px #087c8940}
+.cal-day.today .cal-day-num{color:var(--teal);font-weight:900;text-decoration:underline;text-underline-offset:3px}
+.cal-day-num{font-size:12px;font-weight:700;color:#3a565d;font-variant-numeric:tabular-nums}
+.cal-day.sun .cal-day-num{color:#c92c2c}
+.cal-day.sat .cal-day-num{color:#2563eb}
+.cal-day-metric{font-size:13px;font-weight:800;color:#173842;font-variant-numeric:tabular-nums}
+.cal-day-metric.cal-day-negative{color:#c92c2c}
+.cal-day-sub{font-size:10px;color:#61757c}
+.cal-day.lvl-1{background:#e6f4f3}
+.cal-day.lvl-2{background:#b9e2dd}
+.cal-day.lvl-3{background:#68bcb2}
+.cal-day.lvl-4{background:var(--teal)}
+.cal-day.lvl-3 .cal-day-num,.cal-day.lvl-4 .cal-day-num{color:#fff}
+.cal-day.lvl-3 .cal-day-metric,.cal-day.lvl-4 .cal-day-metric{color:#fff}
+.cal-day.lvl-3 .cal-day-sub,.cal-day.lvl-4 .cal-day-sub{color:#e3f6f4}
+.cal-day.lvl-4.today .cal-day-num{color:#fff;text-decoration-color:#fff}
+.cal-legend{display:flex;align-items:center;gap:4px;justify-content:flex-end;font-size:11px;color:#61757c;padding:2px 4px}
+.cal-legend-swatch{width:14px;height:14px;border-radius:4px;border:1px solid #e5edef;background:#fff}
+.cal-legend-swatch.lvl-1{background:#e6f4f3}
+.cal-legend-swatch.lvl-2{background:#b9e2dd}
+.cal-legend-swatch.lvl-3{background:#68bcb2}
+.cal-legend-swatch.lvl-4{background:var(--teal)}
+.cal-detail{display:flex;flex-direction:column;min-width:0;min-height:0;background:#fff;border-left:1px solid var(--line);overflow-y:auto}
+.cal-detail-empty{margin:auto;padding:24px;color:#60747b;text-align:center;font-size:13px}
+.cal-detail-head{position:sticky;top:0;display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:14px 16px;background:#eef4f5;border-bottom:1px solid var(--line);z-index:1}
+.cal-detail-head b{font-size:14px;color:#173842}
+.cal-detail-head span{font-size:11px;color:#526970;font-weight:700}
+.cal-lot-list{display:flex;flex-direction:column}
+.cal-lot-row{display:flex;flex-direction:column;gap:4px;padding:10px 16px;border-bottom:1px solid #eef2f4}
+.cal-lot-main{display:flex;align-items:center;gap:8px}
+.cal-lot-no{font-size:13px;color:#087c89;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.cal-lot-no:hover{color:var(--teal-dark)}
+.cal-lot-sub{display:flex;flex-wrap:wrap;gap:6px 10px;font-size:11px;color:#61757c}
+.cal-lot-weight{font-size:12px;font-weight:800;color:#173842;font-variant-numeric:tabular-nums}
+.cal-blank{color:#aab6b9;font-style:normal;font-weight:600}
+.cal-warn-tag{margin-left:6px;padding:1px 7px;border-radius:8px;background:#fff2d9;color:#8a5a00;font-size:10px;font-weight:800}
+@media(max-width:1000px){.cal-layout{grid-template-columns:1fr}.cal-detail{border-left:0;border-top:1px solid var(--line);max-height:320px}#calSummary{grid-template-columns:repeat(2,minmax(0,1fr))}}

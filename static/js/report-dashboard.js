@@ -295,6 +295,7 @@
  }
 
  async function openReportView(){
+  window.exitCalendarView?.();
   document.body.classList.remove('qa-mode','qa-view-raw');
   document.getElementById('dashboardPanel')?.setAttribute('hidden','');
   document.body.classList.remove('db-mode');
@@ -643,6 +644,7 @@
  }
 
  async function openDashboardView(){
+  window.exitCalendarView?.();
   document.body.classList.remove('qa-mode','qa-view-raw');
   document.getElementById('reportPanel')?.setAttribute('hidden','');
   document.body.classList.remove('rp-mode');
