@@ -1154,6 +1154,15 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .mm-cd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:4px 14px;padding:6px 4px}
 .mm-cd-checkbox{padding:6px 4px;border-radius:6px}
 .mm-cd-checkbox:hover{background:#eafafa}
+.mm-btn-danger{height:40px;padding:0 18px;border:0;border-radius:8px;background:var(--invalid);color:#fff;font-weight:800;cursor:pointer;box-shadow:0 4px 12px #c92c2c40}
+.mm-btn-danger:hover{background:#a82121}
+.mm-import-warning{display:flex;flex-direction:column;gap:4px;padding:10px 14px;border:1.5px solid #e5b3b3;border-radius:10px;background:#fff5f5;color:#8a2323}
+.mm-import-warning b{font-size:13px}
+.mm-import-warning span{font-size:12px;color:#a34848;line-height:1.5}
+.mm-imp-badge{display:inline-block;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:800}
+.mm-imp-badge.new{background:#e7f6ef;color:#1e7a55}
+.mm-imp-badge.overwrite{background:#fff2d9;color:#8a5a00}
+.mm-imp-badge.unsupported{background:#f0f0f0;color:#888}
 .mm-list-wrap{flex:1;min-height:0;overflow:auto;padding:0 18px 18px}
 .mm-list{display:flex;flex-direction:column}
 .mm-row{display:grid;align-items:center;gap:12px;padding:0 12px;min-height:44px;border-bottom:1px solid #e5edef}

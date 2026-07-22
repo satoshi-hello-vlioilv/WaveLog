@@ -7,11 +7,12 @@ app=Flask(__name__); BASE=Path(__file__).resolve().parent
 # 手動管理のバージョン番号。画面に表示される「デプロイ確認用」の主表示。
 # gitが使えない配布先(zipコピー等)でも必ず値が出るよう、こちらを主とする。
 # 意味のある変更をコミットするたびに更新すること。
-APP_VERSION='1.12.0'
+APP_VERSION='1.13.0'
 
 # 更新履歴。画面の「VERx.y.z」バッジから一覧表示する。APP_VERSIONを
 # 上げるたびに、このリストの先頭に新しいバージョンを追記すること。
 CHANGELOG=[
+ {'version':'1.13.0','notes':['PC引継ぎ等の特別な場面向けに、測定データ.accdb(Web測定バックアップ)からこの端末のIndexedDBへデータを取り込む「データ引継ぎ」機能をマスタ管理に追加。既存データの上書き有無を表示した上で、確認ダイアログを経てから実行する','測定データ.accdbへの保存時、[設備]列にロットの設計設備ではなく、この端末に登録された実際の使用設備を記録するよう修正']},
  {'version':'1.12.0','notes':['列単位で一覧の表示/非表示を管理する「表示マスタ」を追加。マスタ管理の「列表示」タブから仕掛一覧・品質データそれぞれ列ごとに表示切替できる']},
  {'version':'1.11.0','notes':['オペレータマスタに作業可能設備を複数登録できるようにし、設備マスタと連携','測定画面のオペレータ選択を、使用設備で作業可能なオペレータのみに絞り込むよう変更(設備未割当のオペレータは従来通り常に表示)']},
  {'version':'1.10.1','notes':['一覧統合に合わせてメニューを整理。サイドバーと測定画面の「編集中データ一覧」「完了データ一覧」ボタンを1つの「データ一覧」ボタンに統合']},
@@ -1054,6 +1055,23 @@ def backup():
    ensure_backup_table(c);cur=c.cursor();cur.execute('DELETE FROM [Web測定バックアップ] WHERE [記録ID]=?',[x['id']]);cur.execute('INSERT INTO [Web測定バックアップ] ([記録ID],[設備],[ロット番号],[検査番号],[鋳造番号],[状態],[更新日時],[圧縮形式],[ペイロード]) VALUES (?,?,?,?,?,?,Now(),?,?)',[x['id'],x.get('equipment',''),x.get('lotNo',''),x.get('inspectionNo',''),x.get('castingNo',''),x.get('status','編集中'),x.get('codec','delimiter-v1'),x['payload']]);c.commit()
   return jsonify(ok=True,direction='IndexedDB -> 測定データ.accdb')
  except Exception as e:return jsonify(error=str(e)),500
+
+@app.get('/api/measurement/backup/list')
+def backup_list():
+ # PC引継ぎ等でIndexedDBが空の端末へ、測定データ.accdb(Web測定バックアップ)から
+ # インポートするための読み取り専用API。書き込みはせず、行をそのまま返す。
+ # 実際のIndexedDBへの反映(JSON解凍・idbPut)はブラウザ側で行う。
+ try:
+  if not MEAS_DB.exists():raise FileNotFoundError(f'測定データ.accdbが見つかりません: {MEAS_DB}')
+  with connect(MEAS_DB,True) as c:
+   if 'Web測定バックアップ' not in tables(c):
+    return jsonify(ok=True,items=[],count=0,table_exists=False,meas_path=str(MEAS_DB))
+   cur=c.cursor()
+   cur.execute('SELECT [記録ID],[設備],[ロット番号],[検査番号],[鋳造番号],[状態],[更新日時],[圧縮形式],[ペイロード] FROM [Web測定バックアップ] ORDER BY [更新日時] DESC')
+   rows=cur.fetchall()
+  items=[{'id':str(r[0] or ''),'equipment':str(r[1] or ''),'lotNo':str(r[2] or ''),'inspectionNo':str(r[3] or ''),'castingNo':str(r[4] or ''),'status':str(r[5] or ''),'updated_at':r[6].isoformat() if r[6] else None,'codec':str(r[7] or ''),'payload':str(r[8] or '')} for r in rows]
+  return jsonify(ok=True,items=items,count=len(items),table_exists=True,meas_path=str(MEAS_DB))
+ except Exception as e:return jsonify(error=f'測定データ読込失敗: {e}',meas_path=str(MEAS_DB)),500
 
 # ========================================================================
 # 品質データ分析 API

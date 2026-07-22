@@ -519,7 +519,11 @@ encodePayload=function(m){return JSON.stringify(m)};
 function showSaveOverlay(title,detail){$('#saveOverlayTitle').textContent=title;$('#saveOverlayDetail').textContent=detail;$('#saveOverlay').hidden=false}
 function hideSaveOverlay(){$('#saveOverlay').hidden=true}
 async function backupRecord(m){
- const x={id:m.id,equipment:m.basic.equipment,lotNo:m.basic.lotNo,inspectionNo:m.basic.inspectionNo,castingNo:m.basic.castingNo,status:m.status,codec:'json-full-v32',payload:encodePayload(m)};
+ // [設備]列には、ロットの設計設備(m.basic.equipment)ではなく、この端末に
+ // 登録されている実際の使用設備(registeredEquipment)を記録する。
+ // どの設備設定で測定・登録されたデータかを後から区別できるようにするため。
+ const equipment=m.registeredEquipment||m.settings?.registeredEquipment||currentConfiguredEquipment()||m.basic.equipment;
+ const x={id:m.id,equipment,lotNo:m.basic.lotNo,inspectionNo:m.basic.inspectionNo,castingNo:m.basic.castingNo,status:m.status,codec:'json-full-v32',payload:encodePayload(m)};
  return api('/api/measurement/backup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(x)});
 }
 async function persistAndTransition(status){

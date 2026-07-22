@@ -162,6 +162,7 @@
    fields:[{k:'name',label:'設備名',required:true,key:true}],
    cols:[{k:'name',label:'設備名',grow:2}]},
   {key:'columnDisplay',label:'列表示',icon:'列',special:'column-display'},
+  {key:'importBackup',label:'データ引継ぎ',icon:'継',special:'import-backup'},
  ];
  let maintState={defKey:'operator',items:[],editing:null,query:''};
  function currentDef(){return MASTER_DEFS.find(d=>d.key===maintState.defKey)||MASTER_DEFS[0]}
@@ -302,6 +303,7 @@
  async function loadMaint(force){
   const def=currentDef();const title=$('#masterMaintTitle');if(title)title.textContent=def.label+'マスタ';
   if(def.special==='column-display'){setMaintSearchVisible(false);return loadColumnDisplayMaint(force)}
+  if(def.special==='import-backup'){setMaintSearchVisible(false);return loadImportBackupMaint(force)}
   setMaintSearchVisible(true);
   const list=$('#masterMaintList');if(list&&force)list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
   const multiField=def.fields.find(f=>f.type==='equipment-multi');
@@ -382,6 +384,98 @@
    showToast&&showToast('表示設定を保存しました',`非表示 ${hidden.length}列`,3600);
   }catch(e){showToast&&showToast('保存できませんでした',e.message,6500)}
   finally{setMaintLoading(false)}
+ }
+ /* ---------- データ引継ぎ（PC引継ぎ等で測定データ.accdbからIndexedDBへ取り込む） ----------
+    通常はIndexedDB→測定データ.accdbの一方通行だが、PC更新等でIndexedDBが
+    空の端末に対しては逆方向の取り込みが必要になる。対象のペイロードは
+    codec='json-full-v32'（現行の完全JSONスナップショット）のみをサポートし、
+    それ以外(旧形式等)は安全側に倒して「非対応」として選択不可にする。
+    既存IDと衝突する場合は上書きになるため、選択状態を可視化した上で
+    確認ダイアログを挟んでから実行する。 ---------- */
+ let importBackupState={items:[],loaded:false,localIds:new Set()};
+ async function loadImportBackupMaint(force){
+  const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
+  if(!force&&importBackupState.loaded){renderImportBackupForm();renderImportBackupList();return}
+  form.innerHTML='';list.innerHTML='<div class="mm-empty">測定データ.accdbを読み込んでいます…</div>';
+  try{
+   const [backupResult,localItems]=await Promise.all([api('/api/measurement/backup/list'),reliableAll().catch(()=>[])]);
+   importBackupState.items=(backupResult&&backupResult.items)||[];
+   importBackupState.localIds=new Set(localItems.map(x=>x.id));
+   importBackupState.loaded=true;
+   renderImportBackupForm();renderImportBackupList();
+  }catch(e){list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
+ }
+ function renderImportBackupForm(){
+  const form=$('#masterMaintForm');if(!form)return;
+  const items=importBackupState.items,supported=items.filter(x=>x.codec==='json-full-v32');
+  form.innerHTML=`<div class="mm-form-head"><span class="mm-mode-chip editing">PC引継ぎ専用</span></div>
+   <div class="mm-import-warning">
+    <b>注意: この操作はこの端末のIndexedDB（編集中/完了データ）を書き換えます。</b>
+    <span>測定データ.accdb（Web測定バックアップ）の内容を、この端末のローカルデータへ取り込みます。同じIDの既存データは上書きされ、元に戻せません。PC更新・端末交換時の引継ぎなど、特別な場合以外は実行しないでください。</span>
+   </div>
+   <div class="mm-cd-toolbar">
+    <span class="mm-form-hint">測定データ.accdb: ${esc(String(items.length))}件（うち取込可能 ${esc(String(supported.length))}件）</span>
+    <div class="mm-cd-actions">
+     <button type="button" id="mmImpReload" class="mm-btn-ghost sm">再読込</button>
+     <button type="button" id="mmImpSelectAll" class="mm-btn-ghost sm">取込可能をすべて選択</button>
+     <button type="button" id="mmImpSelectNone" class="mm-btn-ghost sm">選択解除</button>
+     <button type="button" id="mmImpRun" class="mm-btn-danger">選択した項目をインポート</button>
+    </div>
+   </div>`;
+  form.onsubmit=ev=>ev.preventDefault();
+  const reload=$('#mmImpReload'),selAll=$('#mmImpSelectAll'),selNone=$('#mmImpSelectNone'),run=$('#mmImpRun');
+  if(reload)reload.onclick=()=>loadImportBackupMaint(true);
+  if(selAll)selAll.onclick=()=>document.querySelectorAll('#masterMaintList [data-imp-id]:not(:disabled)').forEach(b=>b.checked=true);
+  if(selNone)selNone.onclick=()=>document.querySelectorAll('#masterMaintList [data-imp-id]').forEach(b=>b.checked=false);
+  if(run)run.onclick=()=>runImportBackup();
+ }
+ function renderImportBackupList(){
+  const list=$('#masterMaintList');if(!list)return;
+  const items=importBackupState.items;
+  if(!items.length){list.innerHTML='<div class="mm-empty">測定データ.accdbに取込可能なバックアップがありません。</div>';return}
+  const tmpl='40px minmax(90px,1fr) minmax(70px,.7fr) minmax(60px,.6fr) minmax(70px,.7fr) minmax(90px,.8fr) minmax(90px,.9fr) 90px';
+  const head=`<div class="mm-row head" style="grid-template-columns:${tmpl}"><span></span><span>ロット番号</span><span>検査番号</span><span>状態</span><span>設備</span><span>更新日時</span><span>形式</span><span>取込先</span></div>`;
+  const rows=items.map(it=>{
+   const supported=it.codec==='json-full-v32';
+   const conflict=importBackupState.localIds.has(it.id);
+   const targetLabel=supported?(conflict?'<span class="mm-imp-badge overwrite">上書き</span>':'<span class="mm-imp-badge new">新規</span>'):'<span class="mm-imp-badge unsupported">非対応</span>';
+   return `<div class="mm-row" style="grid-template-columns:${tmpl}">`+
+    `<span><input type="checkbox" data-imp-id="${esc(it.id)}"${supported?'':' disabled'}></span>`+
+    `<span title="${esc(it.lotNo)}">${esc(it.lotNo)||'<em class="mm-blank">—</em>'}</span>`+
+    `<span>${esc(it.inspectionNo)||'<em class="mm-blank">—</em>'}</span>`+
+    `<span>${esc(it.status)||'<em class="mm-blank">—</em>'}</span>`+
+    `<span title="${esc(it.equipment)}">${esc(it.equipment)||'<em class="mm-blank">—</em>'}</span>`+
+    `<span class="mm-date">${esc(fmtDT(it.updated_at))}</span>`+
+    `<span>${esc(it.codec)||'<em class="mm-blank">—</em>'}</span>`+
+    `<span>${targetLabel}</span></div>`;
+  }).join('');
+  list.innerHTML=head+rows;
+ }
+ async function runImportBackup(){
+  const uid=requireMaintUser();if(uid===null)return;
+  const checked=[...document.querySelectorAll('#masterMaintList [data-imp-id]:checked')].map(b=>b.dataset.impId);
+  if(!checked.length){showToast&&showToast('取込対象が選択されていません','取込可能な項目にチェックを付けてください。',4000);return}
+  const targets=importBackupState.items.filter(it=>checked.includes(it.id));
+  const overwriteCount=targets.filter(it=>importBackupState.localIds.has(it.id)).length;
+  const warn=`選択した${targets.length}件をこの端末のIndexedDBへインポートします。`+
+   (overwriteCount?`\nうち${overwriteCount}件は既存データを上書きし、元に戻せません。`:'\n既存データとの重複はありません。')+
+   '\n\n本当に実行しますか？（PC引継ぎ等の特別な場合以外は「キャンセル」してください）';
+  if(!confirm(warn))return;
+  let okCount=0,ngCount=0;const errors=[];
+  try{
+   setMaintLoading(true,`インポートしています… (0/${targets.length})`);
+   for(let i=0;i<targets.length;i++){
+    const it=targets[i];
+    setMaintLoading(true,`インポートしています… (${i+1}/${targets.length})`);
+    try{
+     const record=ensureMeasureShape(JSON.parse(it.payload));
+     record.id=it.id;
+     await reliablePut(record);okCount++;
+    }catch(e){ngCount++;errors.push(`${it.lotNo||it.id}: ${e.message}`)}
+   }
+  }finally{setMaintLoading(false)}
+  await refreshDraftCount();importBackupState.loaded=false;await loadImportBackupMaint(true);
+  showToast&&showToast('インポートが完了しました',`成功 ${okCount}件 / 失敗 ${ngCount}件`+(errors.length?`\n${errors.slice(0,3).join('\n')}`:''),8000);
  }
  function openMasterMaint(){const modal=ensureMaintModal();const uid=$('#masterUserId');if(uid)uid.value=currentUserId();maintState.editing=null;maintState.query='';const se=$('#masterMaintSearch');if(se)se.value='';syncNav();modal.hidden=false;loadMaint(true);requestAnimationFrame(()=>{const u=$('#masterUserId');if(u&&!u.value)u.focus()})}
 
