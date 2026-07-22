@@ -114,7 +114,21 @@ function advanceWidth(){const m=S.measure.settings,max=Math.max(1,+$('#horizonta
    いないため、ここで無条件にfocus()すると再描画のタイミングと重なり、
    次の転送データの受信に影響することがあった(1.5.0で多条の連続入力が
    崩れた不具合の原因)。既にフォーカスがある場合は何もしない。 */
-function refocusDeviceInput(){if(S.measure?.settings?.inputMode==='manual')return;const el=$('#deviceInput');if(document.activeElement!==el)el.focus()}
+/* value=''でのクリアは、IME変換セッションが内部的に残ったまま(compositionend
+   が発火しないまま)になることがあり、次の転送データがその残存セッションへ
+   連結されて文字列が二重化する不具合が実機で確認された(例:
+   "DT10011＋００００００２６．１５MDT10011＋００００００２６．１５")。
+   compositionstart/endだけを監視して開いたままかどうかを判定し、開いている
+   場合だけblur→focusでIME変換セッションを明示的に終了させる。通常の
+   ASCII転送や、正しくcompositionendまで完了した場合は一切何もしないため、
+   1.5.0で起きた「無条件focus()が多条の連続入力を崩す」問題は再発しない。 */
+let deviceCompositionOpen=false;
+function refocusDeviceInput(){
+ if(S.measure?.settings?.inputMode==='manual')return;
+ const el=$('#deviceInput');
+ if(deviceCompositionOpen){el.blur();deviceCompositionOpen=false}
+ if(document.activeElement!==el)el.focus();
+}
 function processDeviceInput(raw){const p=deviceParse(raw),m=S.measure,st=m.settings,type=$('#measureType').value,li=lengthIndex();$('#deviceInput').classList.remove('device-ok','device-error');if(p.device==='invalid'||p.value===null&&p.device!=='delete'){setState('入力形式エラー');$('#deviceInput').classList.add('device-error');$('#deviceInput').value='';refocusDeviceInput();return}if(p.device==='delete'){const key=activeMeasureKey();if(key==='width'&&st.pendingDevice==='micrometer')m.measurements.thickness[li][st.tStep||0]='';else m.measurements[key][li][st.wStep||0]='';renderMeasureGrid();markDirty();refocusDeviceInput();return}
  if(type==='板厚/板幅'){
   if(p.device==='micrometer'){const j=st.tStep||0;m.measurements.thickness[li][j]=p.value.toFixed(3);st.tStep=(j+1)%3;st.pendingDevice='micrometer'}
@@ -143,6 +157,11 @@ function updateReceiveState(focused=document.activeElement===$('#deviceInput')){
    受信中はvalueへ一切手を入れない。半角変換はTab確定時に
    deviceParse側で1回だけ行う。 */
 let deviceAutoCommitTimer=null,deviceKeyDetectCount=0;
+/* IME変換セッションの開閉だけを監視(valueには一切触れない)。
+   refocusDeviceInput()が、compositionendが来ないまま次の転送を
+   迎えそうな場合にだけblur→focusで強制終了させるために使う。 */
+$('#deviceInput').addEventListener('compositionstart',()=>{deviceCompositionOpen=true});
+$('#deviceInput').addEventListener('compositionend',()=>{deviceCompositionOpen=false});
 /* IME変換中はキー1つ1つがinsertCompositionTextとして届くため、
    これを入り口でブロックすると全角記号だけでなく通常の数字まで
    一切valueに入らなくなり、転送データそのものが受信できなくなる
