@@ -238,6 +238,22 @@
     return baseToleranceDetail(kind,index);
   };
 
+  // compactToleranceData(表示用の公差テキスト生成)は従来 index を常に0扱いで
+  // 呼ばれており、条ごとに公差が変わる分割ロットでは「今フォーカスしている
+  // 条」ではなく常に1条目の公差を表示してしまっていた。index省略時は現在の
+  // 入力位置(wStep/tStep)を既定値として使うようにし、基準値(base)も
+  // toleranceDetailが返す値(分割時はその子ロット自身の値)を優先する。
+  if(typeof compactToleranceData==='function'){
+    compactToleranceData=function(kind,index){
+      const idx=index??((S.measure?.settings?.[kind==='thickness'?'tStep':'wStep'])||0);
+      const detail=toleranceDetail(kind,idx);
+      if(!detail)return null;
+      const base=Number.isFinite(detail.base)?detail.base:Number(kind==='thickness'?S.measure.basic.mfgThickness:S.measure.basic.mfgWidth);
+      const labels={manufacturing:'製造公差',order:'オーダー公差',instruction:'指示公差'};
+      return{source:labels[detail.source]||'公差',base:fixedToleranceValue(kind,base),plus:fixedToleranceValue(kind,detail.plus),minus:fixedToleranceValue(kind,detail.minus),low:fixedToleranceValue(kind,detail.range[0]),high:fixedToleranceValue(kind,detail.range[1]),range:detail.range,splitLot:detail.splitLot||''};
+    };
+  }
+
   // 使用設備・仕掛データを開いた時点のテーブル/列名を、子ロット再検索に
   // そのまま使えるよう記録しておく(仕掛一覧から開いた場合のみ意味を持つ)。
   if(typeof openMeasurement==='function'){
@@ -249,19 +265,22 @@
     };
   }
 
-  // ---- 条ごとの公差一覧をパネルへ表示 ----
+  // ---- 条ごとの公差一覧をパネルへ表示(現在フォーカス中の条をハイライト) ----
   function splitLegendHtml(){
     const groups=S.measure?.settings?.splitGroups;
     if(!Array.isArray(groups)||groups.length<2)return '';
+    const wStep=S.measure?.settings?.wStep||0;
     let start=1;
-    const rows=groups.map(g=>{
-      const end=start+g.count-1,range=`${start}〜${end}条`;start=end+1;
+    const rows=groups.map((g,gi)=>{
+      const end=start+g.count-1,range=`${start}〜${end}条`,startIdx=start-1;start=end+1;
+      const isCurrent=wStep>=startIdx&&wStep<startIdx+g.count;
       const w=g.tol?.width?.manufacturing||g.tol?.width?.order,t=g.tol?.thickness?.manufacturing||g.tol?.thickness?.order;
       const wText=g.missing?'取得失敗':(w&&Number.isFinite(g.base?.width)?`${g.base.width} (+${w.plus}/-${w.minus})`:'—');
       const tText=g.missing?'—':(t&&Number.isFinite(g.base?.thickness)?`${g.base.thickness} (+${t.plus}/-${t.minus})`:'—');
-      return `<tr${g.missing?' class="split-legend-missing"':''}><td>${esc(range)}</td><td>${esc(g.lot)}</td><td>${esc(wText)}</td><td>${esc(tText)}</td></tr>`;
+      const cls=[g.missing?'split-legend-missing':'',isCurrent?'split-legend-current':''].filter(Boolean).join(' ');
+      return `<tr${cls?` class="${cls}"`:''}><td>${isCurrent?'▶ ':''}${esc(range)}</td><td>${esc(g.lot)}</td><td>${esc(wText)}</td><td>${esc(tText)}</td></tr>`;
     });
-    return `<div class="split-tolerance-legend"><b>条ごとの公差(分割あり)</b><table><thead><tr><th>条範囲</th><th>ロット№</th><th>板幅 目標(公差)</th><th>板厚 目標(公差)</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
+    return `<div class="split-tolerance-legend"><b>条ごとの公差(分割あり) — ▶は現在の入力位置</b><table><thead><tr><th>条範囲</th><th>ロット№</th><th>板幅 目標(公差)</th><th>板厚 目標(公差)</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
   }
   if(typeof updateMeasurementHeading==='function'){
     const baseHeading=updateMeasurementHeading;
@@ -272,5 +291,29 @@
       el.querySelectorAll('.split-tolerance-legend').forEach(x=>x.remove());
       if(type==='板厚/板幅'){const html=splitLegendHtml();if(html)el.insertAdjacentHTML('beforeend',html)}
     };
+  }
+
+  // ---- 条(条位置)ごとに公差が異なりうるため、フォーカス移動時に
+  //      公差表示(数値・図示)を追従させる ----
+  // focusCurrent()は入力位置切替の全経路(セルクリック・矢印キー・自動転送後の
+  // advanceWidth等)で必ず呼ばれるため、ここに軽量な再描画をフックする。
+  // measurementGrid全体の再描画はしない(入力欄のフォーカス/スクロール位置を
+  // 保つため、公差表示部分のみDOMを直接更新する)。
+  function refreshFocusedToleranceDisplay(){
+    const type=$('#measureType')?.value;
+    if(type!=='板厚/板幅')return;
+    if(typeof updateMeasurementHeading==='function')updateMeasurementHeading();
+    const tSide=document.querySelector('.compact-thickness-body .compact-tolerance-side');
+    if(tSide&&typeof compactToleranceFacts==='function')tSide.innerHTML=compactToleranceFacts('thickness').html;
+    const wSide=document.querySelector('.compact-width-body .compact-tolerance-side');
+    if(wSide&&typeof compactToleranceScale==='function'){
+      const li=typeof lengthIndex==='function'?lengthIndex():0,count=Math.max(1,Math.min(40,+($('#horizontalCount')?.value)||1));
+      const width=S.measure?.measurements?.width?.[li]||[];
+      wSide.innerHTML=compactToleranceScale('width',width,count);
+    }
+  }
+  if(typeof focusCurrent==='function'){
+    const baseFocusCurrent=focusCurrent;
+    focusCurrent=function(){baseFocusCurrent();refreshFocusedToleranceDisplay()};
   }
 })();

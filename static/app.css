@@ -657,6 +657,8 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .split-tolerance-legend th,.split-tolerance-legend td{padding:3px 6px;border:1px solid #d8c47a;text-align:left}
 .split-tolerance-legend th{background:#f2e6b3}
 .split-legend-missing td{color:#a33;background:#fdecec}
+.split-legend-current td{background:#fff1b8;font-weight:700}
+.split-legend-current td:first-child{color:#8a6600}
 
 /* ---------- 11. 保存データ一覧モーダル ---------- */
 .record-modal{position:fixed;inset:0;z-index:1500;background:#071c2280;display:grid;place-items:center}
