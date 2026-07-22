@@ -501,13 +501,20 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 .product-head span{padding:3px 10px;background:#edf3f5;border:1px solid var(--line)}
 .product-head button,.flatness-table-head button{height:32px;white-space:nowrap;margin-left:auto}
 .product-rows-note{padding:6px 9px;color:#61757c;font-size:12px;background:#f8fafb;border:1px solid var(--line);border-top:0}
-/* 丈(1..N)ごとの製品測定テーブル。列数が多いため横スクロールを許容する */
-.product-rows-wrap{overflow-x:auto;border:1px solid var(--line);border-top:0}
-.product-rows-table{width:100%;min-width:760px;border-collapse:collapse}
-.product-rows-table th,.product-rows-table td{padding:5px 6px;border:1px solid #d5e0e3;text-align:center;font-size:12px}
-.product-rows-table thead th{background:#eef2f4;color:#173842;font-weight:800;white-space:nowrap}
-.product-rows-table tbody th{background:#f8fafb}
-.product-rows-table input{width:100%;min-width:56px;height:30px;padding:2px 5px;text-align:center;background:#fff}
+/* 丈番号タブ: 横スクロール表を避け、1丈ずつ切り替えて縦並びで入力する。
+   必須3項目(長さ/肉厚/揃いコード)が入力済みの丈にはドットを表示する。 */
+.product-length-tabs{display:flex;flex-wrap:wrap;gap:4px;padding:8px;background:#fff;border:1px solid var(--line);border-top:0}
+.product-length-tabs button{position:relative;min-width:40px;height:34px;padding:0 8px;border:1px solid #c4d4d7;border-radius:8px;background:#fff;color:#3a565d;font-weight:800;cursor:pointer}
+.product-length-tabs button.active{background:var(--teal);border-color:var(--teal);color:#fff}
+.product-length-tabs button.filled::after{content:'';position:absolute;top:3px;right:3px;width:6px;height:6px;border-radius:50%;background:#1e7a55}
+.product-length-tabs button.active.filled::after{background:#fff}
+/* 選択中の丈の入力項目を縦方向に並べる。auto-fitで幅に応じて折り返す
+   ため、パネル幅に関わらず横スクロールバーは出ない。 */
+.product-length-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;padding:10px;background:#fff;border:1px solid var(--line);border-top:0}
+.product-length-fields label{display:grid;grid-template-rows:20px 36px;font-size:12px}
+.product-length-fields label.wide{grid-column:1/-1}
+.product-length-fields input{width:100%;height:36px;padding:2px 8px;background:#fff}
+.product-length-fields .product-judge{align-self:center;justify-self:start}
 .product-judge{display:inline-block;min-width:32px;padding:2px 6px;border-radius:10px;background:#eef2f4;color:#61757c;font-weight:800}
 .product-judge.ok{background:#e7f6ef;color:#1e7a55}
 .product-judge.ng{background:#fdeaea;color:#a32424}

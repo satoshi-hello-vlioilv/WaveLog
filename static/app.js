@@ -147,7 +147,11 @@ function applyRightLayout(){
 }
 /* v33: 「揃い/肉厚/長さ」は縦割数で分割した丈(1〜N)ごとに複数行で保持する。
    丈は旧VBA帳票の「丈」テーブル（長さ/肉厚/揃い/外観/備考）と同じ、
-   丈=最終的に分割された各ピースを指す1..N連番（頭/尾のサンプリング位置とは無関係）。 */
+   丈=最終的に分割された各ピースを指す1..N連番（頭/尾のサンプリング位置とは無関係）。
+   v34: 横スクロールが出る横並び表は廃止し、丈番号タブ+縦並びフォームに変更。
+   検証(activeRequiredControls)は全丈分のDOM要素を必要とするため、非表示の
+   互換テーブル(#productRowsBody)は残し、可視フォームの入力と値を同期させる。 */
+let productActiveLen=1;
 function blankProductRow(){return{productLength:'',wallThickness:'',alignmentCode:'',edgeShape:'',occurrencePosition:'',regularity:'',pitch:'',alignmentValue:'',note:''}}
 function productRowCount(){return Math.max(1,Math.min(9,+$('#verticalCount')?.value||1))}
 function judgeAlignmentCode(code){code=String(code||'').trim();if(!code)return '';return code==='0000'?'OK':'NG'}
@@ -156,20 +160,40 @@ function updateProductStatus(){
  const n=productRowCount(),filled=m.product.rows.slice(0,n).filter(r=>['productLength','wallThickness','alignmentCode'].some(k=>String(r?.[k]||'').trim()!=='')).length;
  if($('#productMeasureStatus'))$('#productMeasureStatus').textContent=filled?`入力済み ${filled}/${n}丈`:'入力待ち';
 }
+function productRowFilled(r){return ['productLength','wallThickness','alignmentCode'].some(k=>String(r?.[k]||'').trim()!=='')}
 function renderProductPanel(){
- const m=S.measure;const body=$('#productRowsBody');if(!body||!m)return;
+ const m=S.measure;const body=$('#productRowsBody'),tabs=$('#productLengthTabs'),fields=$('#productLengthFields');
+ if(!body||!tabs||!fields||!m)return;
  if(!m.product||!Array.isArray(m.product.rows))m.product={rows:Array.from({length:LENGTH_SLOTS},blankProductRow)};
  const n=productRowCount();
+ if(productActiveLen>n)productActiveLen=n;
+ if(productActiveLen<1)productActiveLen=1;
+ /* 検証(activeRequiredControls)が丈ごとのDOM要素を必要とするため、非表示のまま
+    互換テーブルは保持し、可視フォームの入力をここにも反映させる。 */
  body.innerHTML=Array.from({length:n},(_,i)=>{
-  const r=m.product.rows[i]||(m.product.rows[i]=blankProductRow()),judge=judgeAlignmentCode(r.alignmentCode);
+  const r=m.product.rows[i]||(m.product.rows[i]=blankProductRow());
   const field=(key,type)=>`<input data-product-field="${key}" value="${esc(r[key]||'')}" type="${type||'text'}"${type==='number'?' inputmode="decimal" step="any"':''}>`;
-  return `<tr data-row="${i}"><th>${i+1}</th><td>${field('productLength','number')}</td><td>${field('wallThickness','number')}</td><td>${field('alignmentCode')}</td><td><span class="product-judge${judge==='OK'?' ok':judge==='NG'?' ng':''}">${judge}</span></td><td>${field('edgeShape')}</td><td>${field('occurrencePosition')}</td><td>${field('regularity')}</td><td>${field('pitch','number')}</td><td>${field('alignmentValue')}</td><td>${field('note')}</td></tr>`;
+  return `<tr data-row="${i}"><th>${i+1}</th><td>${field('productLength','number')}</td><td>${field('wallThickness','number')}</td><td>${field('alignmentCode')}</td><td>${field('edgeShape')}</td><td>${field('occurrencePosition')}</td><td>${field('regularity')}</td><td>${field('pitch','number')}</td><td>${field('alignmentValue')}</td><td>${field('note')}</td></tr>`;
  }).join('');
- body.querySelectorAll('[data-product-field]').forEach(el=>{
+
+ /* 丈番号タブ: 選択中の丈を強調し、必須3項目(長さ/肉厚/揃いコード)が
+    入力済みの丈にはドットを表示して一覧性を確保する（横スクロール回避）。 */
+ tabs.innerHTML=Array.from({length:n},(_,i)=>`<button type="button" data-len="${i+1}" class="${i+1===productActiveLen?'active ':''}${productRowFilled(m.product.rows[i])?'filled':''}">${i+1}</button>`).join('');
+ tabs.querySelectorAll('button').forEach(b=>b.onclick=()=>{productActiveLen=+b.dataset.len;renderProductPanel()});
+
+ const i=productActiveLen-1,r=m.product.rows[i]=m.product.rows[i]||blankProductRow(),judge=judgeAlignmentCode(r.alignmentCode);
+ const field=(key,label,type,wide)=>`<label${wide?' class="wide"':''}>${esc(label)}<input data-product-field="${key}" value="${esc(r[key]||'')}" type="${type||'text'}"${type==='number'?' inputmode="decimal" step="any"':''}></label>`;
+ fields.innerHTML=field('productLength','長さ','number')+field('wallThickness','肉厚','number')
+  +`<label>揃いコード<input data-product-field="alignmentCode" value="${esc(r.alignmentCode||'')}"></label>`
+  +`<label>判定<span class="product-judge${judge==='OK'?' ok':judge==='NG'?' ng':''}" id="productJudgeBadge">${esc(judge)}</span></label>`
+  +field('edgeShape','1桁目 エッジ形状')+field('occurrencePosition','2桁目 発生位置')+field('regularity','3桁目 規則性')
+  +field('pitch','ピッチ','number')+field('alignmentValue','4桁目 値')+field('note','備考','text',true);
+ fields.querySelectorAll('[data-product-field]').forEach(el=>{
   el.oninput=()=>{
-   const tr=el.closest('tr'),i=+tr.dataset.row,key=el.dataset.productField;
-   const row=m.product.rows[i]=m.product.rows[i]||blankProductRow();row[key]=el.value;
-   if(key==='alignmentCode'){const j=judgeAlignmentCode(el.value),badge=tr.querySelector('.product-judge');badge.textContent=j;badge.className='product-judge'+(j==='OK'?' ok':j==='NG'?' ng':'')}
+   const key=el.dataset.productField,row=m.product.rows[i]=m.product.rows[i]||blankProductRow();row[key]=el.value;
+   const shadow=body.querySelector(`tr[data-row="${i}"] [data-product-field="${key}"]`);if(shadow)shadow.value=el.value;
+   if(key==='alignmentCode'){const j=judgeAlignmentCode(el.value),badge=$('#productJudgeBadge');if(badge){badge.textContent=j;badge.className='product-judge'+(j==='OK'?' ok':j==='NG'?' ng':'')}}
+   if(key==='productLength'||key==='wallThickness'||key==='alignmentCode'){const tabBtn=tabs.querySelector(`button[data-len="${i+1}"]`);if(tabBtn)tabBtn.classList.toggle('filled',productRowFilled(row))}
    markDirty();updateProductStatus();
   };
  });
@@ -200,7 +224,7 @@ ensureMeasureShape=function(m){
  return m;
 };
 const renderMeasurementV30Base=renderMeasurement;
-renderMeasurement=function(){renderMeasurementV30Base();renderProductPanel();applyRightLayout()};
+renderMeasurement=function(){productActiveLen=1;renderMeasurementV30Base();renderProductPanel();applyRightLayout()};
 if($('#productAllOk'))$('#productAllOk').onclick=()=>{
  const n=productRowCount();
  for(let i=0;i<n;i++){const row=S.measure.product.rows[i]=S.measure.product.rows[i]||blankProductRow();Object.assign(row,{alignmentCode:'0000',edgeShape:'0',occurrencePosition:'0',regularity:'0',alignmentValue:'0'})}

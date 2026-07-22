@@ -28,8 +28,10 @@
 <div class="work-panel" data-workpanel="quality" hidden=""><div class="quality"><h3>品質情報</h3><textarea id="qualityInfo" readonly="">異常情報なし</textarea></div></div>
 <div class="work-panel" data-workpanel="product" hidden=""><div class="product-panel">
 <div class="product-head"><b>製品測定（丈毎）</b><span id="productMeasureStatus">入力待ち</span><button id="productAllOk" type="button">全丈 OK一括入力</button></div>
-<div class="product-rows-note">縦割数で分割した丈（1〜N）ごとに、長さ・肉厚・揃いコードを記録します。揃いコードは4桁とも「0」で自動的にOK判定になります。</div>
-<div class="product-rows-wrap"><table class="product-rows-table"><thead><tr><th>丈</th><th>長さ</th><th>肉厚</th><th>揃いコード</th><th>判定</th><th>1桁目<br/>エッジ形状</th><th>2桁目<br/>発生位置</th><th>3桁目<br/>規則性</th><th>ピッチ</th><th>4桁目<br/>値</th><th>備考</th></tr></thead><tbody id="productRowsBody"></tbody></table></div>
+<div class="product-rows-note">縦割数で分割した丈（1〜N）ごとに、長さ・肉厚・揃いコードを記録します。揃いコードは4桁とも「0」で自動的にOK判定になります。丈番号タブを切り替えて1丈ずつ入力してください。</div>
+<div class="product-length-tabs" id="productLengthTabs" role="tablist" aria-label="丈番号"></div>
+<div class="product-length-fields" id="productLengthFields"></div>
+<table class="product-rows-table" hidden aria-hidden="true"><tbody id="productRowsBody"></tbody></table>
 <div class="flatness-table-head"><b>フラットネス</b><button id="flatAllOk">全条〇</button></div><div class="flatness-entry"><label>対象条<select id="coilNo"></select></label><label>判定<select id="flatness"><option></option><option>〇</option><option>△</option><option>×</option></select></label><label>備考<textarea id="coilComment"></textarea></label></div>
 </div></div><div class="work-panel" data-workpanel="flat" hidden=""></div></section></div>
 <div class="record-modal" hidden="" id="splitModal"><div class="split-dialog"><header><div><small>SLIT ARRANGEMENT</small><h2>条割の並び替え</h2></div><button id="closeSplit">×</button></header><div class="split-layout"><section><h3>変更前</h3><div class="split-table" id="splitSources"></div><p>行をダブルクリックして、登録条順へ追加します。</p><dl><dt>全条数</dt><dd id="splitTotal">0</dd><dt>分割ロット数</dt><dd id="splitLotCount">0</dd></dl></section><section><h3>変更後</h3><div class="split-table" id="splitResult"></div><button disabled="" id="applySplit">実行</button></section><section><div class="split-count">登録条数 <b id="splitRegistered">0</b></div><ol id="splitSequence"></ol><button id="undoSplit">1つ戻す</button><button id="resetSplit">初めから</button></section></div></div></div>
