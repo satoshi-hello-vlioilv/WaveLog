@@ -518,10 +518,12 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 .product-judge{display:inline-block;min-width:32px;padding:2px 6px;border-radius:10px;background:#eef2f4;color:#61757c;font-weight:800}
 .product-judge.ok{background:#e7f6ef;color:#1e7a55}
 .product-judge.ng{background:#fdeaea;color:#a32424}
-.flatness-entry{display:grid;grid-template-columns:110px 110px minmax(0,1fr);gap:8px}
+.flatness-entry{display:grid;grid-template-columns:120px minmax(0,1fr);gap:8px;padding:8px}
 .flatness-entry label{font-size:12px}
 .flatness-entry select,.flatness-entry textarea{width:100%;margin-top:3px;background:#fff}
-.flatness-entry textarea{height:120px;resize:vertical}
+.flatness-entry textarea{height:60px;resize:vertical}
+.measure-status-group{display:flex;align-items:center;gap:6px}
+.measure-status-group button{height:24px;padding:0 8px;white-space:nowrap;border:1px solid #bac9ce;background:#fff;border-radius:4px;cursor:pointer;font-weight:700}
 
 .quality{margin-top:8px}
 .quality h3{font-size:var(--fs-title)}
