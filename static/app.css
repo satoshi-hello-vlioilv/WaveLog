@@ -574,7 +574,10 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 .material-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;padding:8px;background:#fff0dc;border:1px solid var(--line)}
 .material-grid label{display:grid;grid-template-rows:20px 36px;font-size:12px;white-space:nowrap}
 .material-grid input{width:100%;height:36px}
+.material-grid output{display:flex;align-items:center;justify-content:center;width:100%;height:36px;border:1px solid var(--line);background:#fff;font-weight:700}
 .mother-entry-note{grid-column:1/-1;padding:6px 8px;background:#e8f8f2;border:1px solid #65b29e;color:#174f44;font-weight:700}
+.mother-auto-field{background:#eaf0ff;border:1px solid #9fb8e6;border-radius:2px;padding:2px 4px}
+.mother-auto-field output{background:#fff;color:#1f3a63}
 .mother-quality{margin-top:8px}
 .mother-quality b{display:block;padding:6px 8px;border:1px solid var(--line);background:#e4e5e6;font-weight:700}
 .mother-quality textarea{width:100%;height:300px;border:1px solid var(--line);border-top:0;resize:none;background:#fff}
@@ -647,6 +650,13 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .split-layout li{padding:5px;border-bottom:1px solid #edf0f1}
 .split-count{text-align:right;margin-bottom:8px}
 .split-count b{font-size:26px}
+.split-row-loading{padding:14px;color:#526970;font-weight:700}
+.split-tolerance-legend{margin-top:8px;padding:8px;background:#fff8e0;border:1px solid #d8c47a;border-radius:4px}
+.split-tolerance-legend>b{display:block;margin-bottom:6px;font-size:12px;color:#6b5a10}
+.split-tolerance-legend table{width:100%;border-collapse:collapse;font-size:12px}
+.split-tolerance-legend th,.split-tolerance-legend td{padding:3px 6px;border:1px solid #d8c47a;text-align:left}
+.split-tolerance-legend th{background:#f2e6b3}
+.split-legend-missing td{color:#a33;background:#fdecec}
 
 /* ---------- 11. 保存データ一覧モーダル ---------- */
 .record-modal{position:fixed;inset:0;z-index:1500;background:#071c2280;display:grid;place-items:center}
