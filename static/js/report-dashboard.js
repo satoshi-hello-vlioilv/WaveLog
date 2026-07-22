@@ -223,11 +223,22 @@
   return reportSection('作業班構成',[['オペレータ',s.operator],['検査員',s.inspector],['梱包員',s.packer],['作業人数',(s.crewSize&&s.crewSize!=='-')?`${s.crewSize}名班`:'-']]);
  }
 
+ /* ある測定項目(measurements[key])にひとつでも実測値が入っているか。
+    「入力内容」セレクトは1レコード内の作業タブ切替に過ぎず、保存時点の
+    選択値ではないため、帳票にどのセクションを載せるかは実際にデータが
+    あるかどうかで判定する(現在の選択値だけで判定すると、板幅を測定した
+    後にラテラルボー等の別タブに切り替えたまま保存した場合、板厚/板幅の
+    実測データが帳票から消えてしまう不具合があった)。 */
+ function hasMeasurementValues(x,keys){
+  return keys.some(key=>(x.measurements?.[key]||[]).some(row=>(row||[]).some(v=>String(v??'').trim()!=='')));
+ }
  function renderReport(x){
   const b=x.basic||{},s=x.settings||{},w=x.workTime||{};
   const equipment=s.registeredEquipment||x.registeredEquipment||x.snapshot?.registeredEquipment||'-';
   const dur=w.startAt&&w.endAt?formatDuration(new Date(w.endAt)-new Date(w.startAt)):(w.startAt?'作業中':'未計測');
-  const isDimensional=s.measureType==='板厚/板幅';
+  const isDimensional=s.measureType==='板厚/板幅'||hasMeasurementValues(x,['thickness']);
+  const hasWidthTableData=hasMeasurementValues(x,['width','lateral','burr','offset','telescope','flatness']);
+  const showWidthTable=['板厚/板幅','ラテラルボー','バリ','テレスコープ','巻ずれ','フラットネス'].includes(s.measureType)||hasWidthTableData;
   const hasProductData=(x.product?.rows||[]).some(r=>r&&['productLength','wallThickness','alignmentCode'].some(k=>String(r[k]||'').trim()!==''));
   const showProduct=s.measureType==='揃い/肉厚/長さ'||hasProductData;
   /* 1ページ(A4)に収める配置: 情報量に応じてゾーンごとに列数と列幅比を変え、
@@ -258,7 +269,7 @@
     ${showProduct?productRowsSection(x):'<div></div>'}
     ${isDimensional?thicknessMeasurementSection(x):'<div></div>'}
    </div>
-   ${isDimensional?widthMeasurementSection(x):''}
+   ${showWidthTable?widthMeasurementSection(x):''}
    <div class="rp-zone rp-zone-2">
     ${reportSection('作業時間',[['開始時刻',formatWorkTime(w.startAt)],['終了時刻',formatWorkTime(w.endAt)],['実働時間',dur]])}
     ${reportSection('登録状態',[['状態',statusLabel(x.status)],['更新日時',fmtDT(x.updatedAt)],['NG回数',s.ngCount||0]])}
