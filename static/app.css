@@ -240,18 +240,6 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 .field output{display:block;min-height:29px;padding:4px 6px;border:1px solid #bcc9cd;background:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lot-dsp-link{display:block;width:100%;min-height:29px;padding:4px 6px;border:1px solid var(--teal);border-radius:0;background:#eafafa;color:#0b5e68;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;font-weight:700;text-decoration:underline;text-underline-offset:2px}
 .lot-dsp-link:hover{background:var(--teal);color:#fff}
-/* タブ番号切替は普段のフレームサイズを変えないよう、ラベル行の余白に
-   小さなバッジを置き、選択時だけその場にピッカーを開く形にしている
-   (段階的開示: 使用頻度の低い操作を平常時は隠す)。 */
-.lot-dsp-label-row{display:flex;align-items:center;justify-content:space-between;gap:4px}
-.lot-dsp-label-row label{flex:1;min-width:0}
-.lot-dsp-tab-badge{flex:none;padding:0 4px;border:1px solid var(--teal);border-radius:8px;background:#eafafa;color:#0b5e68;font-size:10px;font-weight:800;line-height:15px;cursor:pointer}
-.lot-dsp-tab-badge:hover{background:var(--teal);color:#fff}
-.field:has(.lot-dsp-tab-picker){position:relative}
-.lot-dsp-tab-picker{position:absolute;top:100%;left:0;z-index:20;display:flex;flex-wrap:nowrap;gap:2px;padding:3px;background:#173842;border-radius:0 0 6px 6px;box-shadow:0 4px 10px #0004}
-.lot-dsp-tab-picker[hidden]{display:none}
-.lot-dsp-tab-picker button{flex:none;width:19px;height:19px;padding:0;border:1px solid #2c4750;border-radius:4px;background:#fff;color:#0b5e68;font-size:11px;font-weight:800;line-height:1;cursor:pointer}
-.lot-dsp-tab-picker button:hover{background:var(--teal);color:#fff}
 .dimension{grid-column:1/-1;display:grid;grid-template-columns:54px repeat(5,minmax(0,1fr));gap:2px}
 .dimension>*{padding:3px 2px;border:1px solid #c6d0d3;text-align:center;white-space:nowrap}
 
@@ -670,6 +658,8 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .setting-status{margin-top:10px;padding:9px 11px;border-radius:8px;background:#edf2f3;color:#526970}
 .setting-status.ok{background:#e8f8f2;color:#1e624d}
 .setting-status.warn{background:#fff0e3;color:#7a2f00}
+.settings-divider{margin:18px 0;border:0;border-top:1px solid var(--line)}
+.settings-hint{margin:6px 0 0;color:#61757c;font-size:var(--fs-micro);font-weight:400}
 .settings-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
 .settings-actions #saveAppSettings{min-width:140px;height:42px;background:var(--teal);color:#fff;border-color:var(--teal);font-weight:800}
 
