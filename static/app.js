@@ -6,8 +6,8 @@ async function init(){
  const nav=$('#nav');
  d.databases.forEach(x=>{
   let b=nav?.querySelector(`[data-db-key="${x.key}"]`);
-  if(!b){b=document.createElement('button');b.className='db';b.dataset.dbKey=x.key;nav?.append(b)}
-  b.textContent=x.label;b.onclick=()=>selectDb(x.key,b);
+  if(!b){b=document.createElement('button');b.type='button';b.className='db nav-item nav-item--view';b.dataset.dbKey=x.key;b.innerHTML='<span></span>';nav?.append(b)}
+  (b.querySelector('span')||b).textContent=x.label;b.onclick=()=>selectDb(x.key,b);
  });
  const drafts=$('#homeDrafts'),history=$('#homeHistory');if(drafts)drafts.onclick=()=>openRecords('編集中');if(history)history.onclick=()=>openRecords('履歴');
  bindAppSettingsControls();await refreshDraftCount();showQuota();
@@ -723,7 +723,7 @@ renderMeasurement=function(){renderMeasurementSettingsBase();renderCourseHierarc
 
 // Final workflow: registration gate, saved registration identity, and scalable record list.
 let pendingMeasurementRow=null;
-function updateRegisteredEquipmentBadge(){const badge=$('#registeredEquipmentBadge'),equipment=currentConfiguredEquipment();if(!badge)return;badge.textContent=equipment?`使用設備: ${equipment}`:'使用設備: 未登録';badge.classList.toggle('unregistered',!equipment);badge.title=equipment?'クリックして使用設備を変更できます':'測定開始前に使用設備の登録が必要です';badge.onclick=openAppSettings}
+function updateRegisteredEquipmentBadge(){const badge=$('#registeredEquipmentBadge'),equipment=currentConfiguredEquipment();if(!badge)return;const label=badge.querySelector('.equip-badge-text')||badge;label.textContent=equipment?`使用設備: ${equipment}`:'使用設備: 未登録';badge.classList.toggle('unregistered',!equipment);badge.title=equipment?'クリックして使用設備を変更できます':'測定開始前に使用設備の登録が必要です';badge.onclick=openAppSettings}
 function requireEquipmentBeforeMeasurement(row){
  const equipment=currentConfiguredEquipment();if(equipment)return true;
  pendingMeasurementRow=row||null;openAppSettings();const status=$('#equipmentSettingStatus');if(status){status.textContent='測定を開始するには、使用設備の登録が必要です。';status.className='setting-status warn'}return false;
@@ -2381,9 +2381,10 @@ compactToleranceScale=function(kind,values,count){
  function statusClass(s){return s==='完了'?'done':s==='測定値NG'?'ng':''}
 
  function ensureNavButton(){
-  const nav=document.querySelector('.local-nav');if(!nav||$id('openReportList'))return;
-  const b=document.createElement('button');b.type='button';b.id='openReportList';b.className='db local-report-btn';
-  b.innerHTML='<span>測定帳票</span>';b.title='端末保存済みのロットから帳票（印刷・PDF）を作成します';
+  const nav=document.querySelector('.view-nav');if(!nav||$id('openReportList'))return;
+  const b=document.createElement('button');b.type='button';b.id='openReportList';b.className='db nav-item nav-item--view';
+  b.innerHTML='<svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg><span>測定帳票</span>';
+  b.title='端末保存済みのロットから帳票（印刷・PDF）を作成します';
   b.onclick=openReportView;nav.append(b);
  }
 
@@ -2819,9 +2820,10 @@ compactToleranceScale=function(kind,values,count){
  async function ensureData(force){if(dbCache&&!force)return dbCache;dbCache=(await reliableAll()).map(toKpiRow);return dbCache}
 
  function ensureNavButton(){
-  const nav=document.querySelector('.local-nav');if(!nav||$id('openDashboard'))return;
-  const b=document.createElement('button');b.type='button';b.id='openDashboard';b.className='db local-dashboard-btn';
-  b.innerHTML='<span>ダッシュボード</span>';b.title='端末保存済みの測定データからKPI（設備別効率・人数別内訳・品種別作業時間など）を集計します';
+  const nav=document.querySelector('.view-nav');if(!nav||$id('openDashboard'))return;
+  const b=document.createElement('button');b.type='button';b.id='openDashboard';b.className='db nav-item nav-item--view';
+  b.innerHTML='<svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg><span>ダッシュボード</span>';
+  b.title='端末保存済みの測定データからKPI（設備別効率・人数別内訳・品種別作業時間など）を集計します';
   b.onclick=openDashboardView;nav.append(b);
  }
 
