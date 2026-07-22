@@ -680,7 +680,8 @@ def no_cache(response):
 
 @app.get('/')
 def home():
- token=str(max((BASE/'static'/'app.js').stat().st_mtime_ns,(BASE/'static'/'app.css').stat().st_mtime_ns))
+ asset_files=list((BASE/'static'/'js').glob('*.js'))+[BASE/'static'/'app.css']
+ token=str(max(f.stat().st_mtime_ns for f in asset_files))
  return render_template('index.html', build='current', asset_token=token)
 @app.get('/api/build')
 def build(): return jsonify(build='current', feature='measurement-workflow-current', port=5029)
