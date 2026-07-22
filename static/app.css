@@ -650,6 +650,13 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .split-layout li{padding:5px;border-bottom:1px solid #edf0f1}
 .split-count{text-align:right;margin-bottom:8px}
 .split-count b{font-size:26px}
+.split-row-loading{padding:14px;color:#526970;font-weight:700}
+.split-tolerance-legend{margin-top:8px;padding:8px;background:#fff8e0;border:1px solid #d8c47a;border-radius:4px}
+.split-tolerance-legend>b{display:block;margin-bottom:6px;font-size:12px;color:#6b5a10}
+.split-tolerance-legend table{width:100%;border-collapse:collapse;font-size:12px}
+.split-tolerance-legend th,.split-tolerance-legend td{padding:3px 6px;border:1px solid #d8c47a;text-align:left}
+.split-tolerance-legend th{background:#f2e6b3}
+.split-legend-missing td{color:#a33;background:#fdecec}
 
 /* ---------- 11. 保存データ一覧モーダル ---------- */
 .record-modal{position:fixed;inset:0;z-index:1500;background:#071c2280;display:grid;place-items:center}

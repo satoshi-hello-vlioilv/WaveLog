@@ -219,6 +219,21 @@
   const m=x.mother||{},originalWidth=fmtDim(x.basic?.originalWidth,1);
   return `<section class="rp-section"><h3>母材実績／カード指示</h3><table class="rp-dim-table"><thead><tr><th></th><th>元幅</th><th>手計算</th><th>全長</th><th>前オフ</th><th>後オフ</th></tr></thead><tbody><tr><th>実績</th><td rowspan="2">${esc(originalWidth||'-')}</td><td>${esc(m.manual||'-')}</td><td>${esc(m.fullLength||'-')}</td><td>${esc(m.front||'-')}</td><td>${esc(m.rear||'-')}</td></tr><tr><th>カード指示</th><td>${esc(m.minCard||'-')}</td><td>${esc(m.maxCard||'-')}</td><td>${esc(m.frontCard||'-')}</td><td>${esc(m.rearCard||'-')}</td></tr></tbody></table></section>`;
  }
+ /* 条割(分割)が設定されている場合、条ごとにどのロットの公差で判定したかを
+    帳票にも残す(判定に使った公差の根拠を後から追跡できるようにするため)。 */
+ function splitToleranceSection(x){
+  const groups=x.settings?.splitGroups;
+  if(!Array.isArray(groups)||groups.length<2)return '';
+  let start=1;
+  const rows=groups.map(g=>{
+   const end=start+(g.count||0)-1,range=`${start}〜${end}条`;start=end+1;
+   const w=g.tol?.width?.manufacturing||g.tol?.width?.order,t=g.tol?.thickness?.manufacturing||g.tol?.thickness?.order;
+   const wText=g.missing?'取得失敗':(w&&Number.isFinite(g.base?.width)?`${g.base.width} (+${w.plus}/-${w.minus})`:'-');
+   const tText=g.missing?'-':(t&&Number.isFinite(g.base?.thickness)?`${g.base.thickness} (+${t.plus}/-${t.minus})`:'-');
+   return `<tr><td>${esc(range)}</td><td>${esc(g.lot)}</td><td>${esc(wText)}</td><td>${esc(tText)}</td></tr>`;
+  }).join('');
+  return `<section class="rp-section"><h3>条割 分割公差(条ごとの判定基準)</h3><table class="rp-dim-table"><thead><tr><th>条範囲</th><th>ロット№</th><th>板幅 目標(公差)</th><th>板厚 目標(公差)</th></tr></thead><tbody>${rows}</tbody></table></section>`;
+ }
  function thicknessMeasurementSection(x){
   const s=x.settings||{},{headIdx,tailIdx,headLabel,tailLabel}=lengthLabels(s),tol=toleranceRangeLocal(x,'thickness');
   const rows=['OS','CL','DS'].map((label,col)=>`<tr><th>${label}</th><td>${tol?fmtDimSafe(tol[0],3):'-'}</td><td>${esc(measAt(x,'thickness',headIdx,col)||'-')}</td><td>${esc(measAt(x,'thickness',tailIdx,col)||'-')}</td><td>${tol?fmtDimSafe(tol[1],3):'-'}</td></tr>`).join('');
@@ -301,6 +316,7 @@
    </div>
    <div class="rp-zone rp-zone-length">
     ${motherSection(x)}
+    ${splitToleranceSection(x)}
     ${showProduct?productRowsSection(x):'<div></div>'}
     ${isDimensional?thicknessMeasurementSection(x):'<div></div>'}
    </div>
