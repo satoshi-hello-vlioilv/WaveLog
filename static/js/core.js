@@ -128,23 +128,19 @@ async function openRecords(status){const all=await idbAll(),items=all.filter(x=>
 async function registerNg(){const m=await saveLocal('測定値NG');m.settings.ngCount=(m.settings.ngCount||0)+1;await idbPut(m);setState(`NGロット ${m.settings.ngCount}回目を保存`)}
 function lockCounts(){const has=Object.values(S.measure.measurements).some(a=>a.flat().some(v=>v!==''));$('#verticalCount').disabled=has;$('#horizontalCount').disabled=has}
 
-function updateReceiveState(focused=document.activeElement===$('#deviceInput')){if(!S.measure)return;const manual=S.measure.settings.inputMode==='manual',box=$('#inputStatusBox'),inp=$('#deviceInput');box.classList.remove('receiving','manual-state','not-ready-state');inp.classList.remove('manual-receive','locked-receive');if(manual){box.classList.add('manual-state');inp.classList.add('manual-receive');$('#inputReady').textContent='手動入力モード';$('#inputModeHelp').textContent='測定セルへ直接入力（Enterで確定）';$('#receiveLock').textContent='手入力許可';inp.placeholder='必要に応じて数値を入力'}else if(focused){box.classList.add('receiving');$('#inputReady').textContent='伝送入力受付中';$('#inputModeHelp').textContent='測定器からの転送待ち。Tabで受信確定';$('#receiveLock').textContent='転送専用';inp.placeholder='測定器データ受信専用'}else{box.classList.add('not-ready-state');inp.classList.add('locked-receive');$('#inputReady').textContent='伝送入力停止中';$('#inputModeHelp').textContent='受信欄をクリックすると受付を再開します';$('#receiveLock').textContent='受付停止';inp.placeholder='クリックして伝送受付を再開'}}$('#deviceInput').onfocus=()=>updateReceiveState(true);$('#deviceInput').onblur=()=>updateReceiveState(false);
+function updateReceiveState(focused=document.activeElement===$('#deviceInput')){if(!S.measure)return;const manual=S.measure.settings.inputMode==='manual',box=$('#inputStatusBox'),inp=$('#deviceInput');box.classList.remove('receiving','manual-state','not-ready-state');inp.classList.remove('manual-receive','locked-receive');if(manual){box.classList.add('manual-state');inp.classList.add('manual-receive');$('#inputReady').textContent='手動入力モード';$('#inputModeHelp').textContent='直接入力・Enterで確定';$('#receiveLock').textContent='手入力許可';inp.placeholder='必要に応じて数値を入力'}else if(focused){box.classList.add('receiving');$('#inputReady').textContent='伝送入力受付中';$('#inputModeHelp').textContent='転送待ち・Tabで確定';$('#receiveLock').textContent='転送専用';inp.placeholder='測定器データ受信専用'}else{box.classList.add('not-ready-state');inp.classList.add('locked-receive');$('#inputReady').textContent='伝送入力停止中';$('#inputModeHelp').textContent='クリックで受付再開';$('#receiveLock').textContent='受付停止';inp.placeholder='クリックして伝送受付を再開'}}$('#deviceInput').onfocus=()=>updateReceiveState(true);$('#deviceInput').onblur=()=>updateReceiveState(false);
 /* 転送中にリアルタイムでvalueを書き換えると、測定器側ソフトが行う
    「全選択してから打ち直す」といった自前のバッファ管理と衝突し、
    文字列が置き換わらず連結・重複してしまう不具合が確認されたため、
    受信中はvalueへ一切手を入れない。半角変換はTab確定時に
    deviceParse側で1回だけ行う。 */
 let deviceAutoCommitTimer=null,deviceKeyDetectCount=0;
-/* 自動転送中、日本語IME等の変換候補(全角)がそのまま挿入されるのを
-   入り口で止める試み。beforeinputの時点でinsertCompositionText系の
-   挿入をpreventDefaultし、valueには一切書き込まない(valueを書き換える
-   と測定器側ソフトの自前バッファ管理と衝突し文字列が壊れる不具合が
-   あったため、その方式には戻さない)。IME側の内部状態までは制御でき
-   ないため、環境によって効果が変わる可能性がある点はご留意ください。 */
-$('#deviceInput').addEventListener('beforeinput',e=>{
- if(S.measure?.settings?.inputMode==='manual')return;
- if(e.inputType==='insertCompositionText'||e.inputType==='insertFromComposition')e.preventDefault();
-});
+/* IME変換中はキー1つ1つがinsertCompositionTextとして届くため、
+   これを入り口でブロックすると全角記号だけでなく通常の数字まで
+   一切valueに入らなくなり、転送データそのものが受信できなくなる
+   (受信欄は空のままTabだけが来て、上書きが起きない不具合)。
+   このためbeforeinputでの遮断はやめ、全角/半角の統一はこれまで
+   通りTab確定時にdeviceParse側で1回だけ行う方式に一本化する。 */
 /* IME変換が起きている端末では、確定用のTabキー自体がIMEに横取りされ
    keydownまでイベントが届かないことがあり、Tab検知に頼るだけでは
    確定できないケースがある。そのため自動転送モードでは、入力が
