@@ -639,7 +639,7 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 #recordList{padding:0;overflow:auto;background:#eef3f4}
 .record-list-head,.record-list-row{
   display:grid;
-  grid-template-columns:minmax(90px,1.1fr) minmax(60px,.7fr) minmax(60px,.7fr) minmax(60px,.7fr) minmax(70px,.9fr) minmax(70px,.8fr) minmax(55px,.6fr) minmax(60px,.7fr) minmax(55px,.55fr) minmax(55px,.5fr) minmax(55px,.5fr) minmax(90px,.9fr) minmax(90px,.9fr) minmax(80px,.8fr) 160px;
+  grid-template-columns:minmax(90px,1.1fr) minmax(60px,.7fr) minmax(60px,.7fr) minmax(60px,.7fr) minmax(70px,.9fr) minmax(70px,.8fr) minmax(50px,.55fr) minmax(60px,.7fr) minmax(48px,.5fr) minmax(48px,.45fr) minmax(48px,.45fr) minmax(90px,.9fr) minmax(90px,.9fr) minmax(80px,.8fr) 200px;
   align-items:center;
 }
 .record-list-head{position:sticky;top:0;z-index:4;min-height:42px;background:#dcecef;border-bottom:1px solid #98afb5;color:#28464e;font-size:12px;font-weight:800}
@@ -654,10 +654,11 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .record-list-cell.secondary{font-size:12px;color:#526970}
 .record-list-cell time{font-variant-numeric:tabular-nums}
 .record-duration{font-weight:800;color:#075e67}
-.record-list-actions{display:flex;gap:6px;padding:7px 9px}
-.record-list-actions button{min-height:34px;white-space:nowrap}
+.record-list-actions{display:flex;gap:4px;padding:7px 8px}
+.record-list-actions button{min-height:34px;padding:6px 7px;font-size:12px;white-space:nowrap}
 .record-list-actions .resume{background:var(--teal);color:#fff;border-color:var(--teal)}
 .record-list-actions .resume:disabled{opacity:.45;cursor:not-allowed}
+.record-list-actions .report{color:#075e67;background:#eafafa;border-color:#8fc9c2}
 .record-list-actions .danger{color:#9d2020;background:#fff7f7;border-color:#dab0b0}
 .record-toolbar{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#eef8f9;border-bottom:1px solid var(--line)}
 .record-toolbar button{background:var(--teal);color:#fff}
