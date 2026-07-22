@@ -494,7 +494,7 @@ const initV32Base=init;init=async function(){try{await initV32Base()}catch(e){co
 // Current: record list opens immediately, then loads storage asynchronously.
 async function openRecordsSafe(status='編集中'){
  const modal=$('#recordModal'),title=$('#recordTitle'),list=$('#recordList');
- title.textContent=status==='履歴'?'完了データ':'保存データから再開';
+ title.textContent=status==='履歴'?'完了データ一覧':'編集中データ一覧';
  list.innerHTML='<div class="record-loading">保存データを読み込んでいます...</div>';
  modal.hidden=false;
  try{await openRecords(status)}catch(error){
@@ -924,7 +924,7 @@ function renderRecordListRows(){
  const result=$('#recordSearchResult');if(result)result.textContent=`${items.length} / ${recordListState.items.length}件を表示`;
 }
 openRecords=async function(status){
- const all=await reliableAll();recordListState={status,items:all.filter(x=>status==='履歴'?x.status==='完了':x.status!=='完了').map(ensureMeasureShape),query:'',sort:'updated-desc'};$('#recordTitle').textContent=status==='履歴'?'完了データ':'編集中データ一覧';$('#recordModal').hidden=false;
+ const all=await reliableAll();recordListState={status,items:all.filter(x=>status==='履歴'?x.status==='完了':x.status!=='完了').map(ensureMeasureShape),query:'',sort:'updated-desc'};$('#recordTitle').textContent=status==='履歴'?'完了データ一覧':'編集中データ一覧';$('#recordModal').hidden=false;
  const search=$('#recordSearch'),sort=$('#recordSort'),clear=$('#clearRecordSearch');if(search){search.value='';search.oninput=()=>{recordListState.query=search.value;renderRecordListRows()}}if(sort){sort.value='updated-desc';sort.onchange=()=>{recordListState.sort=sort.value;renderRecordListRows()}}if(clear)clear.onclick=()=>{recordListState.query='';if(search)search.value='';renderRecordListRows()};renderRecordListRows();requestAnimationFrame(()=>search?.focus())
 };
 
@@ -1191,6 +1191,32 @@ compactToleranceScale=function(kind,values,count){
  return `${facts.html}<div class="compact-tol-scale"><span class="compact-scale-label upper">上限 <b>${esc(fixedToleranceValue(kind,high))}</b></span><span class="compact-scale-safe">公差内</span>${marks}<span class="compact-scale-label lower">下限 <b>${esc(fixedToleranceValue(kind,low))}</b></span></div>`;
 };
 
+
+/* 編集中/完了データ一覧をモーダルからメイン画面切替表示へ変更(帳票・
+   ダッシュボードと同じIA)。既存のopenRecords/closeRecords等の表示
+   切替コードは触らず、#recordModalの位置とスタイルだけ変え、
+   hidden属性の変化をMutationObserverで見てbody.rec-modeへ反映する。
+   これにより一覧側のロジックを一切変更せずに済む。 */
+(function(){
+ const panel=document.getElementById('recordModal');
+ const grid=document.getElementById('grid');
+ if(!panel||!grid?.parentNode)return;
+ grid.parentNode.insertBefore(panel,grid);
+ const sync=()=>{
+  const showing=!panel.hidden;
+  document.body.classList.toggle('rec-mode',showing);
+  if(showing){
+   document.getElementById('reportPanel')?.setAttribute('hidden','');
+   document.body.classList.remove('rp-mode');
+   document.getElementById('dashboardPanel')?.setAttribute('hidden','');
+   document.body.classList.remove('db-mode');
+  }
+ };
+ new MutationObserver(sync).observe(panel,{attributes:true,attributeFilter:['hidden']});
+ sync();
+ const baseSelectDb=typeof selectDb==='function'?selectDb:null;
+ if(baseSelectDb)selectDb=async function(k,b){panel.hidden=true;return baseSelectDb(k,b)};
+})();
 
 /* Final relative 40:60 layout and three-row tolerance hierarchy. */
 compactToleranceFacts=function(kind){

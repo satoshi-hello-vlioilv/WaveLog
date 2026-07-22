@@ -1135,6 +1135,11 @@ body.qa-mode.qa-view-raw #genericFilterBar{display:block!important}
    とし、qa-modeと同様に他の要素を隠して表示エリアを最大化する。 */
 body.rp-mode #grid,body.rp-mode footer,body.rp-mode #tabs,body.rp-mode .hint,body.rp-mode #genericFilterBar,body.rp-mode .qa-v7{display:none!important}
 body.db-mode #grid,body.db-mode footer,body.db-mode #tabs,body.db-mode .hint,body.db-mode #genericFilterBar,body.db-mode .qa-v7{display:none!important}
+/* 編集中/完了データ一覧も同様にモーダルではなくメイン画面表示にする。 */
+body.rec-mode #grid,body.rec-mode footer,body.rec-mode #tabs,body.rec-mode .hint,body.rec-mode #genericFilterBar,body.rec-mode .qa-v7{display:none!important}
+.rec-panel{flex:1;min-height:0;margin:9px 14px;display:flex;flex-direction:column;background:#f4f7f8;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.rec-panel[hidden]{display:none!important}
+.rec-panel .record-dialog{width:100%;height:100%;border-radius:0;box-shadow:none}
 
 .qa-v7{flex:1 1 auto;min-height:0;margin:8px 14px 14px;border:1px solid #b9c9ce;border-radius:14px;background:#f5f9fa;box-shadow:0 6px 22px #0b2b3316;display:flex;flex-direction:column;overflow:hidden}
 .qa-v7[hidden]{display:none!important}
