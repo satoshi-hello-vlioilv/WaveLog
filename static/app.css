@@ -667,13 +667,14 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .record-list-cell.secondary{font-size:12px;color:#526970}
 .record-list-cell time{font-variant-numeric:tabular-nums}
 .record-duration{font-weight:800;color:#075e67}
-.record-list-actions{display:flex;align-items:center;gap:5px;padding:7px 8px}
-.record-list-actions button{min-height:34px;padding:6px 7px;font-size:12px;white-space:nowrap;border-radius:6px}
+/* 続きから再開/帳票/削除の3ボタンは役割で色分けしつつ、サイズ・文字サイズ・
+   角丸は完全に統一する(特定のボタンだけ大きくしない)。均等幅(flex:1)に
+   して列内でタップしやすい大きさを揃える。 */
+.record-list-actions{display:flex;align-items:stretch;gap:6px;padding:7px 8px}
+.record-list-actions button{flex:1;min-height:36px;padding:6px 4px;font-size:12px;font-weight:700;white-space:nowrap;border-radius:6px}
 .record-list-actions .resume{background:var(--teal);color:#fff;border-color:var(--teal)}
 .record-list-actions .resume:disabled{opacity:.45;cursor:not-allowed}
-/* 帳票ボタンは一覧からの主要な導線のため、他の操作ボタンより一回り
-   大きく強調する。 */
-.record-list-actions .report{min-height:38px;padding:8px 16px;font-size:13px;font-weight:800;color:#075e67;background:#eafafa;border:1px solid #8fc9c2;border-radius:7px}
+.record-list-actions .report{color:#075e67;background:#eafafa;border:1px solid #8fc9c2}
 .record-list-actions .report:hover{background:var(--teal);border-color:var(--teal);color:#fff}
 .record-list-actions .danger{color:#9d2020;background:#fff7f7;border-color:#dab0b0}
 .record-toolbar{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#eef8f9;border-bottom:1px solid var(--line)}
