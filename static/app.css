@@ -165,6 +165,13 @@ tbody tr.is-selected:hover{background:#e3e9ff!important}
    ホバー等とは異なる暖色(アンバー)でヘッダーだけを強調する。 */
 th.col-filtered{background:#ffe6ac;color:#6b4a00}
 .col-filter-badge{margin-left:4px;font-size:10px;color:#a06b00}
+/* カラムクリックソート: ホバーで操作可能なことを示し、現在のソート列は
+   矢印(▲/▼)と配色で分かるようにする。フィルタ列と重なった場合も
+   矢印記号自体は消えないため、どちらの状態も見失わない。 */
+th.sortable-col{cursor:pointer;user-select:none}
+th.sortable-col:hover{background:#e5f2f3}
+th.col-sorted{background:#d7eff1;color:#075e67}
+th.col-sorted:hover{background:#c7e7ea}
 .lot-cell{padding:0}
 .grid-lot-link{min-height:33px;padding:6px 9px;border:0;border-radius:0;background:transparent;font-weight:700}
 .grid-lot-link:hover{background:var(--teal);color:#fff}

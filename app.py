@@ -7,7 +7,7 @@ app=Flask(__name__); BASE=Path(__file__).resolve().parent
 # 手動管理のバージョン番号。画面に表示される「デプロイ確認用」の主表示。
 # gitが使えない配布先(zipコピー等)でも必ず値が出るよう、こちらを主とする。
 # 意味のある変更をコミットするたびに更新すること。
-APP_VERSION='1.6.0'
+APP_VERSION='1.6.1'
 def _git_version():
  # 参考情報(ツールチップ用)。git非対応の配布環境では取得できないため
  # 失敗しても画面表示自体には影響しないようベストエフォートにする。
@@ -750,7 +750,9 @@ def api_table():
     where_parts.append('('+' OR '.join(f'CStr({qi(x)}) LIKE ?' for x in cs)+')');params += [f'%{q}%']*len(cs)
    filters=safe_filters(filter_payload,cs);fp,filter_params=build_filter_where(filters);where_parts += fp;params += filter_params
    where=(' WHERE '+' AND '.join(where_parts)) if where_parts else ''
-   cur=c.cursor();cur.execute(f'SELECT COUNT(*) FROM {qi(t)}'+where,params);count=int(cur.fetchone()[0]);top=page*size;cur.execute(f'SELECT TOP {top} * FROM {qi(t)}'+where,params);rows=cur.fetchmany(top);start=(page-1)*size;rows=rows[start:start+size]
+   sort_col=request.args.get('sort','').strip();sort_dir='DESC' if request.args.get('sort_dir','').strip().lower()=='desc' else 'ASC'
+   order=f' ORDER BY {qi(sort_col)} {sort_dir}' if sort_col in cs else ''
+   cur=c.cursor();cur.execute(f'SELECT COUNT(*) FROM {qi(t)}'+where,params);count=int(cur.fetchone()[0]);top=page*size;cur.execute(f'SELECT TOP {top} * FROM {qi(t)}'+where+order,params);rows=cur.fetchmany(top);start=(page-1)*size;rows=rows[start:start+size]
   return jsonify(columns=cs,rows=[dict(zip(cs,r)) for r in rows],count=count,filters_applied=len(filters))
  except Exception as e:return jsonify(error=str(e)),500
 

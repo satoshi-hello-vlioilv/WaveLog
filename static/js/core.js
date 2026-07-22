@@ -670,9 +670,14 @@ renderGrid=function(){
  const filteredCols=new Set((S.genericFilters||[]).map(f=>f.column));
  const t=document.createElement('table');
  t.innerHTML='<thead><tr><th>#</th>'+S.columns.map(c=>{
-  const filtered=filteredCols.has(c);
-  return `<th class="${filtered?'col-filtered':''}" title="${filtered?'絞り込み中の列です':''}">${esc(c)}${filtered?'<i class="col-filter-badge" aria-hidden="true" title="この列にフィルタが適用されています">▼</i>':''}</th>`;
+  const filtered=filteredCols.has(c),sorted=S.sortColumn===c,arrow=sorted?(S.sortDir==='desc'?' ▼':' ▲'):'';
+  return `<th class="sortable-col ${filtered?'col-filtered':''} ${sorted?'col-sorted':''}" data-sort-col="${esc(c)}" title="クリックで並び替え${filtered?'（絞り込み中の列です）':''}">${esc(c)}${arrow}${filtered?'<i class="col-filter-badge" aria-hidden="true" title="この列にフィルタが適用されています">▼</i>':''}</th>`;
  }).join('')+(isWork?'<th class="measurement-action-head">測定</th>':'')+'</tr></thead>';
+ t.querySelectorAll('th[data-sort-col]').forEach(th=>th.onclick=()=>{
+  const col=th.dataset.sortCol;
+  S.sortDir=(S.sortColumn===col&&S.sortDir==='asc')?'desc':'asc';
+  S.sortColumn=col;S.page=1;load();
+ });
  const b=document.createElement('tbody');
  S.rows.forEach((r,i)=>{
   const tr=document.createElement('tr');
@@ -804,7 +809,7 @@ selectDb=async function(k,b){
  try{S.db=k;document.querySelectorAll('.db').forEach(x=>x.classList.remove('active'));b.classList.add('active');const result=await api(`/api/tables?db=${encodeURIComponent(k)}`);S.tables=result.tables;updateWaiting(`${label}の表示対象を確認中`,'2/3 表示可能なテーブルを整理しています');renderTabs();if(S.tables.length)await selectTable(S.tables[0]);else $('#grid').textContent='表示可能なテーブルがありません。'}catch(e){$('#grid').innerHTML=`<div class="load-error"><b>${esc(label)}を開けませんでした</b><span>${esc(e.message)}</span></div>`;throw e}finally{hideSaveOverlay()}
 };
 selectTable=async function(t){
- S.table=t;S.page=1;renderTabs();const label=databaseLabel(S.db);showWaiting(`${label}を読み込んでいます`,`テーブル: ${t}`,'3/3 列情報と一覧データを取得しています');await nextPaint();try{await load()}finally{hideSaveOverlay()}
+ S.table=t;S.page=1;S.sortColumn=null;S.sortDir=null;renderTabs();const label=databaseLabel(S.db);showWaiting(`${label}を読み込んでいます`,`テーブル: ${t}`,'3/3 列情報と一覧データを取得しています');await nextPaint();try{await load()}finally{hideSaveOverlay()}
 };
 const loadListBase=load;
 load=async function(){
