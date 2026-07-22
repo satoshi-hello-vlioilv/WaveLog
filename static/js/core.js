@@ -766,7 +766,7 @@ renderGrid=function(){
  const lotCol=hasLotDsp?findColumnFor('lotNo'):null,castCol=hasLotDsp?findColumnFor('castingNo'):null;
  const filteredCols=new Set((S.genericFilters||[]).map(f=>f.column));
  const t=document.createElement('table');
- t.innerHTML='<thead><tr><th>#</th>'+S.columns.map(c=>{
+ t.innerHTML='<thead><tr><th>#</th>'+(isWork?'<th class="split-flag-head" title="親子管理_子カード／コンマ5本分割_切断巾に実データがある場合「分割あり」と表示します">分割</th>':'')+S.columns.map(c=>{
   const filtered=filteredCols.has(c),sorted=S.sortColumn===c,arrow=sorted?(S.sortDir==='desc'?' ▼':' ▲'):'';
   return `<th class="sortable-col ${filtered?'col-filtered':''} ${sorted?'col-sorted':''}" data-sort-col="${esc(c)}" title="クリックで並び替え${filtered?'（絞り込み中の列です）':''}">${esc(c)}${arrow}${filtered?'<i class="col-filter-badge" aria-hidden="true" title="この列にフィルタが適用されています">▼</i>':''}</th>`;
  }).join('')+(isWork?'<th class="measurement-action-head">測定</th>':'')+'</tr></thead>';
@@ -778,7 +778,8 @@ renderGrid=function(){
  const b=document.createElement('tbody');
  S.rows.forEach((r,i)=>{
   const tr=document.createElement('tr');
-  tr.innerHTML=`<td>${(S.page-1)*+$('#pageSize').value+i+1}</td>`+S.columns.map(c=>{
+  const split=isWork&&typeof window.rowHasSplitData==='function'&&window.rowHasSplitData(r);
+  tr.innerHTML=`<td>${(S.page-1)*+$('#pageSize').value+i+1}</td>`+(isWork?`<td class="split-flag-cell ${split?'split-yes':'split-no'}">${split?'分割あり':'分割なし'}</td>`:'')+S.columns.map(c=>{
    if(c===lotCol){const lotVal=r[c];return `<td class="lot-cell"><button type="button" class="lot-dsp-link grid-lot-link" title="クリックでLotDspをこのロット番号で開きます">${esc(lotVal)||'—'}</button></td>`}
    return `<td>${esc(r[c])}</td>`;
   }).join('')+(isWork?'<td class="measurement-action-cell"><button type="button" class="measurement-action-button">開く</button></td>':'');
@@ -924,14 +925,13 @@ function currentConfiguredEquipment(){return String(localStorage.getItem(APP_EQU
 const USER_ID_KEY='AccessMeasurementUserId';
 function currentUserId(){return String(localStorage.getItem(USER_ID_KEY)||'').trim()}
 function setUserId(id){id=String(id||'').trim().slice(0,50);if(id)localStorage.setItem(USER_ID_KEY,id);return id}
-function ensureUserId(){
- let id=currentUserId();
- if(!id){
-  const input=(typeof prompt==='function')?prompt('マスタ更新の記録に使うユーザーID（社員番号など）を入力してください。'):'';
-  id=setUserId(input||'');
- }
- return id;
-}
+/* ユーザーIDはこの端末を動かしているWindowsのログインIDを自動取得して
+   使う(入力を求めない)。起動直後に一度だけ/api/whoamiへ問い合わせて
+   キャッシュする。取得できるまでの短い間にマスタ更新が走った場合は、
+   記録が空欄のまま残る(手入力プロンプトへは戻さない)。 */
+async function fetchWhoami(){try{const r=await api('/api/whoami');return String(r.username||'').trim()}catch(_){return ''}}
+queueMicrotask(async()=>{if(!currentUserId()){const name=await fetchWhoami();if(name)setUserId(name)}});
+function ensureUserId(){return currentUserId()}
 function withUserId(body){return Object.assign({},body||{},{user_id:ensureUserId()})}
 function designCourseValue(){return sourceField(['設計_設備ｺｰｽ','設計_設備コース'])}
 function actualCourseValue(){return sourceField(['実績_設備ｺｰｽ','実績_設備コース'])}
@@ -1152,7 +1152,22 @@ openEquipmentSettingsFinal=async function(reason='manual',suggested=''){
  requestAnimationFrame(()=>input.focus());return true;
 };
 openAppSettings=()=>openEquipmentSettingsFinal('manual');
-requireEquipmentBeforeMeasurement=function(row){if(currentConfiguredEquipment())return true;pendingMeasurementRow=row||null;openEquipmentSettingsFinal('required');return false};
+/* 使用設備が未登録なら従来通り登録を促す。登録済みでも、対象データの
+   BOX設計_設備名が登録設備と一致しない場合は、開く/再開するどちらの
+   経路でも必須条件としてブロックする(仕掛一覧の行クリック・編集中/完了
+   一覧からの「続きから再開」の両方がrequireEquipmentBeforeMeasurement
+   を経由するため、ここ一箇所の修正で両経路をカバーできる)。
+   行データが無い/BOX設計_設備名が空の場合は判定不能のためブロックしない。 */
+requireEquipmentBeforeMeasurement=function(row){
+ const equipment=currentConfiguredEquipment();
+ if(!equipment){pendingMeasurementRow=row||null;openEquipmentSettingsFinal('required');return false}
+ const rowEquipment=row?pick(row,'equipment'):'';
+ if(rowEquipment&&!equipmentIsInDesignCourse(equipment,rowEquipment)){
+  alert(`このロットの設計設備「${rowEquipment}」は、登録済みの使用設備「${equipment}」と一致しません。\n測定を開始・再開できません。設備が正しいか確認してください。`);
+  return false;
+ }
+ return true;
+};
 updateCourseGuard=function(){
  if(!S.measure)return;const equipment=currentConfiguredEquipment(),course=designCourseValue(),residual=residualCourseValue(),suggestion=residualEquipmentSuggestion(),warning=$('#courseWarning');if(!warning)return;
  let message='',show=false;if(!equipment){message='使用設備が未設定です。設備マスタから登録してください。';show=true}else if(!course){message=`設計コースが取得できないため、設備「${equipment}」の対象判定ができません。`;show=true}else if(!equipmentIsInDesignCourse(equipment,course)){message=`設定設備「${equipment}」は設計コース「${course}」に含まれていません。`;show=true}

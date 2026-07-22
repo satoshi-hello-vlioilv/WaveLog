@@ -67,15 +67,32 @@
     };
   }
 
-  // KOCARD1〜10から子ロット番号を復元する(旧VBA KCDNO相当)。
+  /* 分割(子ロット)関連の実カラム名は「親子管理_子カード<N>」「コンマ5本分割_
+     切断巾<N>」であることが実データで確認された(旧VBA変数名KOCARD/K05JO等は
+     内部エイリアスであり、Accessの生カラム名ではなかった)。全角/半角ゆれや
+     旧エイリアスも候補として保持し、複数パターンを試す。 */
+  const CHILD_CARD_PREFIXES=['親子管理_子カード','親子管理_子ｶｰﾄﾞ','KOCARD'];
+  const CHILD_CUTWIDTH_PREFIXES=['コンマ5本分割_切断巾','ｺﾝﾏ5本分割_切断巾','K05W'];
+  const CHILD_COUNT_PREFIXES=['YK','K05JO'];
+  function fieldByCandidates(r,names){
+    for(const n of names){
+      const v=r?.[n];
+      if(v!==undefined&&v!==null&&String(v).trim()!=='')return v;
+    }
+    return undefined;
+  }
+  function childCardValue(r,i){return fieldByCandidates(r,CHILD_CARD_PREFIXES.map(p=>p+i))}
+  function childCutWidthValue(r,i){return fieldByCandidates(r,CHILD_CUTWIDTH_PREFIXES.map(p=>p+i))}
+  function childCountFieldValue(r,i){return fieldByCandidates(r,CHILD_COUNT_PREFIXES.map(p=>p+i))}
+  // 親子管理_子カード1〜10から子ロット番号を復元する(旧VBA KCDNO相当)。
   // 1〜9: ロット番号の先頭6桁+1桁、10〜99: 先頭5桁+2桁で末尾を置換。
   function childLotNumbersFromCard(){
     const r=S.measure?.source||{},lotNo=String(S.measure?.basic?.lotNo||'');
     if(!lotNo)return [];
     const out=[];
     for(let i=1;i<=10;i++){
-      const raw=r['KOCARD'+i];
-      if(raw===undefined||raw===null||String(raw).trim()==='')break;
+      const raw=childCardValue(r,i);
+      if(raw===undefined)break;
       const n=Number(raw);
       if(!Number.isFinite(n)||n<=0)break;
       if(n>=1&&n<=9)out.push({lot:lotNo.slice(0,6)+String(n),index:i});
@@ -93,10 +110,33 @@
     }
     return out;
   }
+  // 条数は本来コンマ5本分割_切断巾側から特定できる想定だが、実データでの
+  // フィールド確証が取れるまでの安全側フォールバックとして、専用の条数系
+  // 候補が無ければ「切断巾に値がある行を1条」として数える。
   function childCount(i){
-    const r=S.measure?.source||{},v=r['YK'+i]??r['K05JO'+i],n=Number(v);
-    return Number.isFinite(n)&&n>0?n:0;
+    const r=S.measure?.source||{};
+    const v=childCountFieldValue(r,i);
+    if(v!==undefined){const n=Number(v);if(Number.isFinite(n)&&n>0)return n}
+    const w=childCutWidthValue(r,i);
+    if(w!==undefined&&Number(w)!==0)return 1;
+    return 0;
   }
+  // 仕掛データ一覧(グリッド)側で「分割あり/なし」を判定するための、行(生データ)
+  // 単位のチェック。親子管理_子カード・コンマ5本分割_切断巾のいずれかに
+  // 意味のある値(0以外)があれば分割ありとみなす。
+  function rowHasSplitData(row){
+    if(!row)return false;
+    for(let i=1;i<=10;i++){
+      const v=childCardValue(row,i);
+      if(v!==undefined&&Number(v)!==0)return true;
+    }
+    for(let i=1;i<=10;i++){
+      const v=childCutWidthValue(row,i);
+      if(v!==undefined&&Number(v)!==0)return true;
+    }
+    return false;
+  }
+  window.rowHasSplitData=rowHasSplitData;
 
   async function resolveSikaTable(){
     if(S.measure?.settings?.sourceTable)return S.measure.settings.sourceTable;
@@ -238,6 +278,22 @@
     return baseToleranceDetail(kind,index);
   };
 
+  // compactToleranceData(表示用の公差テキスト生成)は従来 index を常に0扱いで
+  // 呼ばれており、条ごとに公差が変わる分割ロットでは「今フォーカスしている
+  // 条」ではなく常に1条目の公差を表示してしまっていた。index省略時は現在の
+  // 入力位置(wStep/tStep)を既定値として使うようにし、基準値(base)も
+  // toleranceDetailが返す値(分割時はその子ロット自身の値)を優先する。
+  if(typeof compactToleranceData==='function'){
+    compactToleranceData=function(kind,index){
+      const idx=index??((S.measure?.settings?.[kind==='thickness'?'tStep':'wStep'])||0);
+      const detail=toleranceDetail(kind,idx);
+      if(!detail)return null;
+      const base=Number.isFinite(detail.base)?detail.base:Number(kind==='thickness'?S.measure.basic.mfgThickness:S.measure.basic.mfgWidth);
+      const labels={manufacturing:'製造公差',order:'オーダー公差',instruction:'指示公差'};
+      return{source:labels[detail.source]||'公差',base:fixedToleranceValue(kind,base),plus:fixedToleranceValue(kind,detail.plus),minus:fixedToleranceValue(kind,detail.minus),low:fixedToleranceValue(kind,detail.range[0]),high:fixedToleranceValue(kind,detail.range[1]),range:detail.range,splitLot:detail.splitLot||''};
+    };
+  }
+
   // 使用設備・仕掛データを開いた時点のテーブル/列名を、子ロット再検索に
   // そのまま使えるよう記録しておく(仕掛一覧から開いた場合のみ意味を持つ)。
   if(typeof openMeasurement==='function'){
@@ -249,19 +305,22 @@
     };
   }
 
-  // ---- 条ごとの公差一覧をパネルへ表示 ----
+  // ---- 条ごとの公差一覧をパネルへ表示(現在フォーカス中の条をハイライト) ----
   function splitLegendHtml(){
     const groups=S.measure?.settings?.splitGroups;
     if(!Array.isArray(groups)||groups.length<2)return '';
+    const wStep=S.measure?.settings?.wStep||0;
     let start=1;
-    const rows=groups.map(g=>{
-      const end=start+g.count-1,range=`${start}〜${end}条`;start=end+1;
+    const rows=groups.map((g,gi)=>{
+      const end=start+g.count-1,range=`${start}〜${end}条`,startIdx=start-1;start=end+1;
+      const isCurrent=wStep>=startIdx&&wStep<startIdx+g.count;
       const w=g.tol?.width?.manufacturing||g.tol?.width?.order,t=g.tol?.thickness?.manufacturing||g.tol?.thickness?.order;
       const wText=g.missing?'取得失敗':(w&&Number.isFinite(g.base?.width)?`${g.base.width} (+${w.plus}/-${w.minus})`:'—');
       const tText=g.missing?'—':(t&&Number.isFinite(g.base?.thickness)?`${g.base.thickness} (+${t.plus}/-${t.minus})`:'—');
-      return `<tr${g.missing?' class="split-legend-missing"':''}><td>${esc(range)}</td><td>${esc(g.lot)}</td><td>${esc(wText)}</td><td>${esc(tText)}</td></tr>`;
+      const cls=[g.missing?'split-legend-missing':'',isCurrent?'split-legend-current':''].filter(Boolean).join(' ');
+      return `<tr${cls?` class="${cls}"`:''}><td>${isCurrent?'▶ ':''}${esc(range)}</td><td>${esc(g.lot)}</td><td>${esc(wText)}</td><td>${esc(tText)}</td></tr>`;
     });
-    return `<div class="split-tolerance-legend"><b>条ごとの公差(分割あり)</b><table><thead><tr><th>条範囲</th><th>ロット№</th><th>板幅 目標(公差)</th><th>板厚 目標(公差)</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
+    return `<div class="split-tolerance-legend"><b>条ごとの公差(分割あり) — ▶は現在の入力位置</b><table><thead><tr><th>条範囲</th><th>ロット№</th><th>板幅 目標(公差)</th><th>板厚 目標(公差)</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
   }
   if(typeof updateMeasurementHeading==='function'){
     const baseHeading=updateMeasurementHeading;
@@ -272,5 +331,29 @@
       el.querySelectorAll('.split-tolerance-legend').forEach(x=>x.remove());
       if(type==='板厚/板幅'){const html=splitLegendHtml();if(html)el.insertAdjacentHTML('beforeend',html)}
     };
+  }
+
+  // ---- 条(条位置)ごとに公差が異なりうるため、フォーカス移動時に
+  //      公差表示(数値・図示)を追従させる ----
+  // focusCurrent()は入力位置切替の全経路(セルクリック・矢印キー・自動転送後の
+  // advanceWidth等)で必ず呼ばれるため、ここに軽量な再描画をフックする。
+  // measurementGrid全体の再描画はしない(入力欄のフォーカス/スクロール位置を
+  // 保つため、公差表示部分のみDOMを直接更新する)。
+  function refreshFocusedToleranceDisplay(){
+    const type=$('#measureType')?.value;
+    if(type!=='板厚/板幅')return;
+    if(typeof updateMeasurementHeading==='function')updateMeasurementHeading();
+    const tSide=document.querySelector('.compact-thickness-body .compact-tolerance-side');
+    if(tSide&&typeof compactToleranceFacts==='function')tSide.innerHTML=compactToleranceFacts('thickness').html;
+    const wSide=document.querySelector('.compact-width-body .compact-tolerance-side');
+    if(wSide&&typeof compactToleranceScale==='function'){
+      const li=typeof lengthIndex==='function'?lengthIndex():0,count=Math.max(1,Math.min(40,+($('#horizontalCount')?.value)||1));
+      const width=S.measure?.measurements?.width?.[li]||[];
+      wSide.innerHTML=compactToleranceScale('width',width,count);
+    }
+  }
+  if(typeof focusCurrent==='function'){
+    const baseFocusCurrent=focusCurrent;
+    focusCurrent=function(){baseFocusCurrent();refreshFocusedToleranceDisplay()};
   }
 })();
