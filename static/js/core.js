@@ -33,16 +33,16 @@ function lotKey(r){return [pick(r,'equipment'),pick(r,'lotNo'),pick(r,'inspectio
 function fmtDim(value,digits){const raw=String(value??'').trim();if(raw==='')return '';const n=Number(raw);return Number.isFinite(n)?n.toFixed(digits):raw}
 function renderMeasurement(){const m=S.measure,b=m.basic;updateLengthOptions(m.settings.verticalCount||1);updateCoilOptions(m.settings.horizontalCount||1);$('#modalEquipment').textContent=b.equipment;const fields=[['ロット№','lotNo'],['検査No.','inspectionNo'],['オーダーNo.','orderNo'],['引当No.','allocationNo'],['鋳造No.','castingNo'],['用途コード','purposeCode'],['用途名','purposeName'],['取引先','customer'],['納入先','delivery'],['実績コース','course']];let h='<div class="info-grid">'+fields.map(([l,k])=>k==='lotNo'?`<div class="field"><label>${l}</label><button type="button" class="lot-dsp-link" title="クリックでLotDspをこのロット番号で開きます">${esc(b[k])||'—'}</button></div>`:`<div class="field ${['customer','delivery','course'].includes(k)?'full':''}"><label>${l}</label><output title="${esc(b[k])}">${esc(b[k])}</output></div>`).join('');h+=`<div class="dimension"><b></b><b>材質</b><b>調質</b><b>板厚</b><b>板幅</b><b>板丈</b><b>オーダー</b><span>${esc(b.orderMaterial)}</span><span>${esc(b.orderTemper)}</span><span>${esc(fmtDim(b.orderThickness,2))}</span><span>${esc(fmtDim(b.orderWidth,1))}</span><span>${esc(fmtDim(b.orderLength,1))}</span><b>製造</b><span>${esc(b.mfgMaterial)}</span><span>${esc(b.mfgTemper)}</span><span>${esc(fmtDim(b.mfgThickness,2))}</span><span>${esc(fmtDim(b.mfgWidth,1))}</span><span>${esc(fmtDim(b.mfgLength,1))}</span></div></div>`;$('#basicInfo').innerHTML=h;Object.entries(m.settings).forEach(([k,v])=>{const el=$('#'+k);if(el){if(el.type==='checkbox')el.checked=v;else el.value=v}});$('#qualityInfo').value=m.qualityInfo;document.querySelectorAll('[data-mother]').forEach(x=>x.value=m.mother[x.dataset.mother]||'');document.querySelectorAll('[name=burr]').forEach(x=>x.checked=x.value===m.settings.burr);renderMeasureGrid();renderStats();setState('IndexedDB読込済み')}
 /* ロット№クリックでLotDsp検索サイトをロット番号指定で開く。
-   linkkeyは「7文字固定幅のロット番号 + 半角スペース3つ + 7文字分の
-   空欄(検査番号側は使わない)」という構成(実機のURLから確認)。
+   linkkeyは「7文字固定幅のロット番号 + 半角スペース3つ + 7文字固定幅の
+   鋳造番号」という構成(実機のURLから確認)。
    別オリジンのためフォームへの直接書き込みはできないが、この形式で
    URLを開けば相手側アプリがlinkkeyを読み取って検索まで行う。念のため
    ロット番号はクリップボードにもコピーしておく(自動遷移が効かない
    場合の手動貼り付け用フォールバック)。 */
 const LOT_DSP_BASE='http://nlmfangyweb1a/LotDspWeb/#/lotdsp';
 function lotDspField(v){return String(v||'').slice(0,7).padEnd(7,' ')}
-function lotDspLinkKey(lotNo){return lotDspField(lotNo)+'   '+lotDspField('')}
-function buildLotDspUrl(lotNo,tab){return `${LOT_DSP_BASE}?linkkey=${encodeURIComponent(lotDspLinkKey(lotNo))}&tab=${encodeURIComponent(tab)}`}
+function lotDspLinkKey(lotNo,castingNo){return lotDspField(lotNo)+'   '+lotDspField(castingNo)}
+function buildLotDspUrl(lotNo,castingNo,tab){return `${LOT_DSP_BASE}?linkkey=${encodeURIComponent(lotDspLinkKey(lotNo,castingNo))}&tab=${encodeURIComponent(tab)}`}
 function copyText(text){
  if(navigator.clipboard&&window.isSecureContext)return navigator.clipboard.writeText(text).catch(()=>copyTextFallback(text));
  copyTextFallback(text);return Promise.resolve();
@@ -52,20 +52,21 @@ function copyTextFallback(text){
  try{document.execCommand('copy')}catch(_){}
  document.body.removeChild(ta);
 }
-function openLotDsp(lotNo,tab){
+function openLotDsp(lotNo,castingNo,tab){
  if(!lotNo){showToast('ロット番号が未設定です','LotDspへは移動できません');return}
- window.open(buildLotDspUrl(lotNo,tab),'_blank','noopener');
+ window.open(buildLotDspUrl(lotNo,castingNo,tab),'_blank','noopener');
  copyText(lotNo);
 }
 document.addEventListener('click',e=>{
  const link=e.target.closest('.lot-dsp-link');if(!link)return;
- openLotDsp(S.measure?.basic?.lotNo,localStorage.getItem('LotDspLastTabV1')||'0');
+ openLotDsp(S.measure?.basic?.lotNo,S.measure?.basic?.castingNo,localStorage.getItem('LotDspLastTabV1')||'1');
 });
 /* タブ番号は測定画面には出さず、アプリ設定(使用設備の設定)モーダルの
-   内部設定として切り替える。ロット№欄の見た目・サイズは常に元のまま。 */
+   内部設定として切り替える。ロット№欄の見た目・サイズは常に元のまま。
+   既定値はTab1(実機URLの例に合わせる)。 */
 (function(){
  const sel=document.getElementById('lotDspTabSetting');if(!sel)return;
- sel.value=localStorage.getItem('LotDspLastTabV1')||'0';
+ sel.value=localStorage.getItem('LotDspLastTabV1')||'1';
  sel.onchange=()=>localStorage.setItem('LotDspLastTabV1',sel.value);
 })();
 function renderMeasureGrid(){const type=$('#measureType').value,map={母材:'width','板厚/板幅':'width',ラテラルボー:'lateral',バリ:'burr',テレスコープ:'telescope',巻ずれ:'offset'},key=map[type]||'width',rows=S.measure.measurements[key],l=Math.max(1,+$('#verticalCount').value||1),w=Math.max(1,+$('#horizontalCount').value||1);let h='<table class="measure-grid-table"><thead><tr><th>丈＼条</th>'+Array.from({length:w},(_,i)=>`<th>${i+1}</th>`).join('')+'</tr></thead><tbody>';for(let i=0;i<l;i++)h+=`<tr><th>${i+1}</th>`+Array.from({length:w},(_,j)=>`<td><input data-mkey="${key}" data-i="${i}" data-j="${j}" value="${esc(rows[i][j])}"></td>`).join('')+'</tr>';$('#measurementGrid').innerHTML=h+'</tbody></table>';document.querySelectorAll('[data-mkey]').forEach(x=>x.oninput=()=>{S.measure.measurements[x.dataset.mkey][+x.dataset.i][+x.dataset.j]=x.value;renderStats();markDirty()})}
