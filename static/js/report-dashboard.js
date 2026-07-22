@@ -654,6 +654,6 @@ function updateSoftChoiceVisuals(){
 }
 SOFT_CHOICE_IDS.forEach(id=>{const el=$('#'+id);if(el)el.addEventListener('change',updateSoftChoiceVisuals)});
 const renderMeasurementSoftChoiceBase=renderMeasurement;
-renderMeasurement=function(){renderMeasurementSoftChoiceBase();updateSoftChoiceVisuals()};
+renderMeasurement=function(){renderMeasurementSoftChoiceBase();updateSoftChoiceVisuals();if(typeof syncInputModeLock==='function')syncInputModeLock()};
 const optionFillSoftChoiceBase=optionFill;
 optionFill=function(id,items,current){optionFillSoftChoiceBase(id,items,current);updateSoftChoiceVisuals()};
