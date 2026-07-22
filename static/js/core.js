@@ -110,7 +110,12 @@ function advanceWidth(){const m=S.measure.settings,max=Math.max(1,+$('#horizonta
 /* 自動転送モードでは、DOM再描画(renderMeasureGrid)の前後で万一
    フォーカスがずれても必ず受信欄へ戻す。手動入力モードでは
    セル側にフォーカスを残す仕様のため対象外。 */
-function refocusDeviceInput(){if(S.measure?.settings?.inputMode!=='manual')$('#deviceInput').focus()}
+/* 実際にフォーカスが外れている時だけ.focus()を呼ぶ。多条(セル数が多く
+   scrollIntoViewを伴う再描画)の連続入力中は通常フォーカスは外れて
+   いないため、ここで無条件にfocus()すると再描画のタイミングと重なり、
+   次の転送データの受信に影響することがあった(1.5.0で多条の連続入力が
+   崩れた不具合の原因)。既にフォーカスがある場合は何もしない。 */
+function refocusDeviceInput(){if(S.measure?.settings?.inputMode==='manual')return;const el=$('#deviceInput');if(document.activeElement!==el)el.focus()}
 function processDeviceInput(raw){const p=deviceParse(raw),m=S.measure,st=m.settings,type=$('#measureType').value,li=lengthIndex();$('#deviceInput').classList.remove('device-ok','device-error');if(p.device==='invalid'||p.value===null&&p.device!=='delete'){setState('入力形式エラー');$('#deviceInput').classList.add('device-error');$('#deviceInput').value='';refocusDeviceInput();return}if(p.device==='delete'){const key=activeMeasureKey();if(key==='width'&&st.pendingDevice==='micrometer')m.measurements.thickness[li][st.tStep||0]='';else m.measurements[key][li][st.wStep||0]='';renderMeasureGrid();markDirty();refocusDeviceInput();return}
  if(type==='板厚/板幅'){
   if(p.device==='micrometer'){const j=st.tStep||0;m.measurements.thickness[li][j]=p.value.toFixed(3);st.tStep=(j+1)%3;st.pendingDevice='micrometer'}
@@ -655,10 +660,43 @@ function configureToleranceSelector(){const el=$('#toleranceSource');if(!el||!S.
 const hydrateBusinessExactBase=hydrateBusinessFields;
 hydrateBusinessFields=function(){hydrateBusinessExactBase();const r=S.measure.source||S.measure.snapshot?.source||{};if(r['実績_設備ｺｰｽ']!==undefined&&r['実績_設備ｺｰｽ']!==null)S.measure.basic.course=String(r['実績_設備ｺｰｽ'])};
 renderQualityGradePanel=function(){const panel=$('#qualityGradePanel');if(!panel)return;const m=S.measure;m.qualityGrades=m.qualityGrades||{};Object.entries(QUALITY_GRADE_SOURCE).forEach(([label,names])=>m.qualityGrades[label]=sourceValue(names));panel.innerHTML=`<div class="quality-grade-grid">${Object.keys(QUALITY_GRADE_SOURCE).map(label=>`<div class="quality-grade-item"><b>${esc(label)}</b><span title="${esc(m.qualityGrades[label]||'')}">${esc(m.qualityGrades[label]||'未設定')}</span></div>`).join('')}</div>`};
+/* 一覧の列名は仕掛先DBの生カラム名なので、aliasesの候補名のうち
+   実際にS.columnsへ含まれているものを探してロット番号・鋳造番号の
+   列を特定する(見つからなければ通常表示のまま)。 */
+function findColumnFor(key){return (aliases[key]||[]).find(n=>S.columns.includes(n))||null}
 // Add an explicit virtual action column instead of writing into the last data column.
 renderGrid=function(){
- const t=document.createElement('table'),isWork=S.db==='SIKALOTNOW';t.innerHTML='<thead><tr><th>#</th>'+S.columns.map(c=>`<th>${esc(c)}</th>`).join('')+(isWork?'<th class="measurement-action-head">測定</th>':'')+'</tr></thead>';const b=document.createElement('tbody');
- S.rows.forEach((r,i)=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${(S.page-1)*+$('#pageSize').value+i+1}</td>`+S.columns.map(c=>`<td>${esc(r[c])}</td>`).join('')+(isWork?'<td class="measurement-action-cell"><button type="button" class="measurement-action-button">開く</button></td>':'');if(isWork){tr.classList.add('measurement-row');const open=e=>{e.preventDefault();e.stopPropagation();openMeasurement(r).catch(err=>alert('測定画面を開けません: '+err.message))};tr.addEventListener('dblclick',open);tr.querySelector('.measurement-action-button').onclick=open}b.append(tr)});
+ const isWork=S.db==='SIKALOTNOW',lotCol=isWork?findColumnFor('lotNo'):null,castCol=isWork?findColumnFor('castingNo'):null;
+ const filteredCols=new Set((S.genericFilters||[]).map(f=>f.column));
+ const t=document.createElement('table');
+ t.innerHTML='<thead><tr><th>#</th>'+S.columns.map(c=>{
+  const filtered=filteredCols.has(c);
+  return `<th class="${filtered?'col-filtered':''}" title="${filtered?'絞り込み中の列です':''}">${esc(c)}${filtered?'<i class="col-filter-badge" aria-hidden="true" title="この列にフィルタが適用されています">▼</i>':''}</th>`;
+ }).join('')+(isWork?'<th class="measurement-action-head">測定</th>':'')+'</tr></thead>';
+ const b=document.createElement('tbody');
+ S.rows.forEach((r,i)=>{
+  const tr=document.createElement('tr');
+  tr.innerHTML=`<td>${(S.page-1)*+$('#pageSize').value+i+1}</td>`+S.columns.map(c=>{
+   if(c===lotCol){const lotVal=r[c];return `<td class="lot-cell"><button type="button" class="lot-dsp-link grid-lot-link" title="クリックでLotDspをこのロット番号で開きます">${esc(lotVal)||'—'}</button></td>`}
+   return `<td>${esc(r[c])}</td>`;
+  }).join('')+(isWork?'<td class="measurement-action-cell"><button type="button" class="measurement-action-button">開く</button></td>':'');
+  if(r===S.selectedRow)tr.classList.add('is-selected');
+  tr.addEventListener('click',()=>{
+   if(S.selectedRow===r)return;
+   S.selectedRow=r;
+   b.querySelectorAll('tr.is-selected').forEach(x=>x.classList.remove('is-selected'));
+   tr.classList.add('is-selected');
+  });
+  if(isWork){
+   tr.classList.add('measurement-row');
+   const open=e=>{e.preventDefault();e.stopPropagation();openMeasurement(r).catch(err=>alert('測定画面を開けません: '+err.message))};
+   tr.addEventListener('dblclick',open);
+   tr.querySelector('.measurement-action-button').onclick=open;
+   const lotBtn=tr.querySelector('.grid-lot-link');
+   if(lotBtn)lotBtn.onclick=e=>{e.preventDefault();e.stopPropagation();openLotDsp(pick(r,'lotNo'),castCol?r[castCol]:pick(r,'castingNo'),localStorage.getItem('LotDspLastTabV1')||'1')};
+  }
+  b.append(tr);
+ });
  t.append(b);$('#grid').replaceChildren(t);$('#count').textContent=`全 ${S.count.toLocaleString()}件`;$('#page').textContent=`${S.page}ページ`;$('#prev').disabled=S.page===1;$('#next').disabled=S.page*+$('#pageSize').value>=S.count;
 };
 const renderMeasurementExactBase=renderMeasurement;

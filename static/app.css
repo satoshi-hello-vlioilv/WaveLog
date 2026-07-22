@@ -157,6 +157,17 @@ tbody tr:hover{background:#e5f2f3;cursor:pointer}
 .measurement-action-cell{text-align:center;background:inherit}
 .measurement-action-button{padding:5px 10px;border:1px solid var(--teal);background:var(--teal);color:#fff;font-weight:700;white-space:nowrap}
 .measurement-action-button:hover{background:var(--teal-dark);color:#fff}
+/* 行選択(シングルクリック): ホバーやmeasurement-row(測定可)の目印と
+   混同しないよう、色相の違う強調(青系の左ボーダー+淡い背景)にする。 */
+tbody tr.is-selected{background:#eef2ff!important;box-shadow:inset 4px 0 0 #2851d1}
+tbody tr.is-selected:hover{background:#e3e9ff!important}
+/* フィルタ適用中の列見出し: どの列が絞り込まれているか一目で分かるよう、
+   ホバー等とは異なる暖色(アンバー)でヘッダーだけを強調する。 */
+th.col-filtered{background:#ffe6ac;color:#6b4a00}
+.col-filter-badge{margin-left:4px;font-size:10px;color:#a06b00}
+.lot-cell{padding:0}
+.grid-lot-link{min-height:33px;padding:6px 9px;border:0;border-radius:0;background:transparent;font-weight:700}
+.grid-lot-link:hover{background:var(--teal);color:#fff}
 
 footer{height:40px;display:flex;align-items:center;justify-content:space-between;padding:0 15px;background:#fff;border-top:1px solid var(--line)}
 
