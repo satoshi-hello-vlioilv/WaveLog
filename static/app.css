@@ -657,6 +657,8 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .record-list-row:focus{outline:3px solid #087c8950;outline-offset:-3px}
 .record-list-row.is-same-lot{box-shadow:inset 4px 0 0 var(--teal);background:#eafafa}
 .record-list-cell{min-width:0;padding:8px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.record-list-cell.primary{padding:0}
+.record-list-cell.primary .grid-lot-link{width:100%;height:100%;min-height:0;padding:8px 10px;text-align:left;overflow:hidden;text-overflow:ellipsis}
 .record-list-cell.primary{font-weight:800;color:#173842}
 .record-list-cell.secondary{font-size:12px;color:#526970}
 .record-list-cell time{font-variant-numeric:tabular-nums}
@@ -1165,6 +1167,14 @@ body.rp-mode #grid,body.rp-mode footer,body.rp-mode #tabs,body.rp-mode .hint,bod
 body.db-mode #grid,body.db-mode footer,body.db-mode #tabs,body.db-mode .hint,body.db-mode #genericFilterBar,body.db-mode .qa-v7{display:none!important}
 /* 編集中/完了データ一覧も同様にモーダルではなくメイン画面表示にする。 */
 body.rec-mode #grid,body.rec-mode footer,body.rec-mode #tabs,body.rec-mode .hint,body.rec-mode #genericFilterBar,body.rec-mode .qa-v7{display:none!important}
+/* 品質データの「元データ表示」(qa-view-raw)は#grid等を強制的に再表示する
+   詳細度3のルール(body.qa-mode.qa-view-raw #grid)を持つため、上のrp-mode/
+   db-mode/rec-modeの詳細度2のルールより優先されてしまい、品質データ表示中に
+   帳票・ダッシュボード・編集中/完了一覧を開くと元の#gridが透けて見える
+   不具合があった。詳細度を合わせて確実に上書きする。 */
+body.rp-mode.qa-mode.qa-view-raw #grid,body.rp-mode.qa-mode.qa-view-raw footer,body.rp-mode.qa-mode.qa-view-raw #genericFilterBar,
+body.db-mode.qa-mode.qa-view-raw #grid,body.db-mode.qa-mode.qa-view-raw footer,body.db-mode.qa-mode.qa-view-raw #genericFilterBar,
+body.rec-mode.qa-mode.qa-view-raw #grid,body.rec-mode.qa-mode.qa-view-raw footer,body.rec-mode.qa-mode.qa-view-raw #genericFilterBar{display:none!important}
 .rec-panel{flex:1;min-height:0;margin:9px 14px;display:flex;flex-direction:column;background:#f4f7f8;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .rec-panel[hidden]{display:none!important}
 .rec-panel .record-dialog{width:100%;height:100%;border-radius:0;box-shadow:none}
