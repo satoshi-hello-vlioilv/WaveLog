@@ -302,6 +302,9 @@ applyInputProtection=function(){
  applyInputProtectionV31Base();
  const mother=$('#measureType')?.value==='母材';
  if(mother)document.querySelectorAll('[data-mother]').forEach(el=>{el.readOnly=false;el.disabled=false;el.tabIndex=0;el.classList.remove('auto-locked');el.title='母材は手動入力できます'});
+ /* フラットネスは測定器転送の対象外(〇/△/×または自由記述)のため、
+    転送モードに関わらず常にセルへ直接入力できるようにする。 */
+ if($('#measureType')?.value==='フラットネス')document.querySelectorAll('input[data-mkey="flatness"]').forEach(el=>{el.readOnly=false;el.tabIndex=0;el.classList.remove('auto-locked');el.title='記号(〇/△/×)または自由記述を入力できます'});
 };
 encodePayload=function(m){return JSON.stringify(m)};
 function showSaveOverlay(title,detail){$('#saveOverlayTitle').textContent=title;$('#saveOverlayDetail').textContent=detail;$('#saveOverlay').hidden=false}
@@ -430,8 +433,12 @@ function showValidationMessage(result){
 }
 // Fix empty string being interpreted as numeric zero, while keeping red for tolerance NG.
 judgeInput=function(el,key,value,index){
- const raw=String(el.value??'').trim(),tol=toleranceFor(key==='thickness'?'thickness':'width',index),num=Number(raw);
  el.classList.remove('ng','complete');
+ if(key==='flatness'){
+  if(String(el.value||'').trim()!=='')el.classList.add('complete');
+  return;
+ }
+ const raw=String(el.value??'').trim(),tol=toleranceFor(key==='thickness'?'thickness':'width',index),num=Number(raw);
  if(raw!==''&&Number.isFinite(num)){el.classList.add('complete');if(tol&&(num<tol[0]||num>tol[1]))el.classList.add('ng')}
 };
 const persistAndTransitionValidated=persistAndTransition;
@@ -912,7 +919,7 @@ renderMeasureGridVertical=function(){
  const type=$('#measureType').value,key=activeMeasureKey(),m=S.measure,li=lengthIndex(),count=Math.max(1,Math.min(40,+$('#horizontalCount').value||1));
  if(type!=='板厚/板幅'){
   const actualKey=key==='mother'?'width':key,values=m.measurements[actualKey][li],done=values.slice(0,count).filter(v=>v!=='').length;
-  const bulkBtn=type==='フラットネス'?'<button type="button" id="flatAllOk">全条 〇</button>':'';
+  const bulkBtn=type==='フラットネス'?'<span class="flat-pick-group"><span class="flat-pick-label">現在の条へ入力</span><button type="button" class="flat-pick" data-sym="〇">〇</button><button type="button" class="flat-pick" data-sym="△">△</button><button type="button" class="flat-pick" data-sym="×">×</button></span><button type="button" id="flatAllOk">全条 〇</button>':'';
   let h=`<section class="measure-grid-block compact-other"><div class="measure-grid-block-title"><span>${esc(type)}</span><div class="measure-status-group"><span class="measure-status">${compactMeasureStatus(done,count)}</span>${bulkBtn}</div></div><div class="compact-width-body"><aside class="compact-tolerance-side">${compactToleranceScale(actualKey,values,count)}</aside><div class="strip-layout compact-strip-layout">`;
   for(let col=0;col<2;col++){h+='<div class="strip-column"><div class="strip-head"><span>条</span><span>測定値・判定</span></div>';for(let row=0;row<20;row++){const j=col*20+row,active=j<count;h+=`<div class="strip-row ${active?'':'inactive'}"><label>${j+1}</label>${makeMeasureInputV29(actualKey,li,j,active?values[j]:'',active)}</div>`}h+='</div>'}h+='</div></div></section>';
   if(type==='フラットネス')h+=`<section class="measure-grid-block flatness-note-block"><div class="measure-grid-block-title"><span>備考</span></div><div class="flatness-entry"><label>対象条<select id="coilNo"></select></label><label>備考<textarea id="coilComment"></textarea></label></div></section>`;
@@ -930,8 +937,30 @@ renderMeasureGridVertical=function(){
   $('#coilComment').onchange=()=>{saveFlatComment();markDirty()};
   $('#flatAllOk').onclick=()=>{const j=lengthIndex(),n=Math.max(1,+$('#horizontalCount').value||1);for(let c=0;c<n;c++)m.measurements.flatness[j][c]='〇';renderMeasureGrid();markDirty()};
   loadFlatComment();
+  bindFlatnessInputs();
  }
 };
+function focusFlatnessCurrentCell(){const m=S.measure,el=document.querySelector(`input[data-mkey="flatness"][data-i="${lengthIndex()}"][data-j="${m.settings.wStep||0}"]`);if(el)el.focus()}
+function bindFlatnessInputs(){
+ const m=S.measure;
+ /* フラットネスは記号(〇/△/×)または自由記述のため、他項目のような
+    測定器転送(deviceInput)経由の数値受信とは切り離し、セルへ直接
+    入力できるようにする。 */
+ document.querySelectorAll('input[data-mkey="flatness"]').forEach(x=>{
+  x.onclick=()=>{m.settings.wStep=+x.dataset.j;focusCurrent()};
+  x.onkeydown=e=>{
+   if(e.key==='Delete'){x.value='';x.oninput();m.settings.wStep=+x.dataset.j;renderMeasureGrid();focusFlatnessCurrentCell();return}
+   if(e.key==='Enter'){e.preventDefault();advanceWidth();renderMeasureGrid();focusFlatnessCurrentCell()}
+  };
+ });
+ document.querySelectorAll('.flat-pick').forEach(btn=>{
+  btn.onclick=()=>{
+   const j=lengthIndex(),c=m.settings.wStep||0;
+   m.measurements.flatness[j][c]=btn.dataset.sym;
+   advanceWidth();renderMeasureGrid();markDirty();focusFlatnessCurrentCell();
+  };
+ });
+}
 const applyRightLayoutCompactBase=applyRightLayout;
 applyRightLayout=function(){applyRightLayoutCompactBase();const summary=$('#toleranceSummary');if(summary)summary.hidden=$('#measureType')?.value==='板厚/板幅'};
 
