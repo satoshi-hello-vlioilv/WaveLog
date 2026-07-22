@@ -142,7 +142,7 @@
   return `<section class="rp-section"><h3>${esc(title)}</h3><div class="rp-grid${cols?' rp-grid-'+cols:''}">${body}</div></section>`;
  }
  function dimensionSection(b){
-  const row=(label,mat,temper,thick,width,length)=>`<tr><th>${esc(label)}</th><td>${esc(mat||'-')}</td><td>${esc(temper||'-')}</td><td>${esc(fmtDimSafe(thick,2)||'-')}</td><td>${esc(fmtDimSafe(width,1)||'-')}</td><td>${esc(fmtDimSafe(length,1)||'-')}</td></tr>`;
+  const row=(label,mat,temper,thick,width,length)=>`<tr><th>${esc(label)}</th><td>${esc(mat||'-')}</td><td>${esc(temper||'-')}</td><td>${esc(fmtDimSafe(thick,3)||'-')}</td><td>${esc(fmtDimSafe(width,1)||'-')}</td><td>${esc(fmtDimSafe(length,1)||'-')}</td></tr>`;
   return `<section class="rp-section"><h3>寸法（オーダー／製造）</h3><table class="rp-dim-table"><thead><tr><th></th><th>材質</th><th>調質</th><th>板厚</th><th>板幅</th><th>板丈</th></tr></thead><tbody>${row('オーダー',b.orderMaterial,b.orderTemper,b.orderThickness,b.orderWidth,b.orderLength)}${row('製造',b.mfgMaterial,b.mfgTemper,b.mfgThickness,b.mfgWidth,b.mfgLength)}</tbody></table></section>`;
  }
 
