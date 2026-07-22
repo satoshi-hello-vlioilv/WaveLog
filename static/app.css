@@ -619,7 +619,7 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 #recordList{padding:0;overflow:auto;background:#eef3f4}
 .record-list-head,.record-list-row{
   display:grid;
-  grid-template-columns:minmax(90px,1.1fr) minmax(60px,.7fr) minmax(60px,.7fr) minmax(60px,.7fr) minmax(70px,.9fr) minmax(70px,.8fr) minmax(55px,.6fr) minmax(60px,.7fr) minmax(90px,.9fr) minmax(90px,.9fr) minmax(80px,.8fr) 160px;
+  grid-template-columns:minmax(90px,1.1fr) minmax(60px,.7fr) minmax(60px,.7fr) minmax(60px,.7fr) minmax(70px,.9fr) minmax(70px,.8fr) minmax(55px,.6fr) minmax(60px,.7fr) minmax(55px,.55fr) minmax(55px,.5fr) minmax(55px,.5fr) minmax(90px,.9fr) minmax(90px,.9fr) minmax(80px,.8fr) 160px;
   align-items:center;
 }
 .record-list-head{position:sticky;top:0;z-index:4;min-height:42px;background:#dcecef;border-bottom:1px solid #98afb5;color:#28464e;font-size:12px;font-weight:800}
