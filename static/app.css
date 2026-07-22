@@ -1402,11 +1402,12 @@ body.rec-mode.qa-mode.qa-view-raw #grid,body.rec-mode.qa-mode.qa-view-raw footer
 .rp-zone{display:grid;gap:4px;margin-bottom:3px;align-items:start}
 .rp-zone-2{grid-template-columns:repeat(2,minmax(0,1fr))}
 .rp-zone-3{grid-template-columns:1fr 1.6fr 1.4fr}
-/* 品質等級・母材実績・測定データ(板厚)は文字数が少なく幅を要らないため狭く、
-   測定条件・丈別データ（固定9丈）は幅が要るため広く配分する。
-   等幅にすると文字量の少ない側に余白が残ってしまうため列比を変える。 */
+/* 品質等級・測定条件は文字量に応じて幅配分を変える。 */
 .rp-zone-quality{grid-template-columns:.7fr 1.6fr .9fr}
-.rp-zone-length{grid-template-columns:.8fr 2.2fr .8fr}
+/* 母材実績・丈別データ(行=丈・列=長さ/肉厚/揃い/外観/備考の固定6列)・
+   測定データ(板厚、行=OS/CL/DS)はいずれも列数が少なく高さで内容量が
+   変わる表のため、ほぼ等幅で並べる。 */
+.rp-zone-length{grid-template-columns:.9fr 1.2fr .9fr}
 .rp-stack{display:flex;flex-direction:column;gap:3px;min-width:0}
 /* 旧帳票（B5帳票）の左上余白に相当。ラベル貼付や手書き用に空白のまま確保する
    （中を埋めずキャプションだけ隅に添える）。 */
@@ -1438,9 +1439,12 @@ body.rec-mode.qa-mode.qa-view-raw #grid,body.rec-mode.qa-mode.qa-view-raw footer
 .rp-wide-wrap{overflow:visible}
 .rp-wide-table{min-width:0;width:100%}
 .rp-wide-table th,.rp-wide-table td{padding:1px 2px;font-size:7.5px;line-height:1.15}
-/* 丈別データ: 丈数が増えても列が伸びるだけで行数（縦寸法）は変わらない */
-.rp-product-table{min-width:0;width:100%}
-.rp-product-table th,.rp-product-table td{padding:1px 2px;font-size:7.5px;line-height:1.15;white-space:nowrap}
+/* 丈別データ: 列数(丈/長さ/肉厚/揃い/外観/備考の6列)は丈数に関わらず常に
+   固定。table-layout:fixedで列幅を固定し、長い備考テキストが隣接する
+   測定データ(板厚)の領域まではみ出さないよう、はみ出す分は省略記号で
+   切り詰める(丈数が増えるのは行方向のみ)。 */
+.rp-product-table{min-width:0;width:100%;table-layout:fixed}
+.rp-product-table th,.rp-product-table td{padding:1px 2px;font-size:7.5px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rp-product-table tbody th{white-space:nowrap}
 
 @media(max-width:1000px){.rp-body{grid-template-columns:1fr}.rp-nav{max-height:220px}}
