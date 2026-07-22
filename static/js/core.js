@@ -6,7 +6,9 @@ async function init(){
  const build=await api('/api/build');document.title='測定伝送システム';
  document.querySelectorAll('.build-badge').forEach(badge=>{
   badge.textContent=build.version?`VER${build.version}`:'バージョン不明';
-  badge.title=build.commit?`コミット: ${build.commit}${build.commit_at?' / '+new Date(build.commit_at).toLocaleString('ja-JP'):''}${build.dirty?'（未コミットの変更あり）':''}`:'';
+  badge.title=(build.commit?`コミット: ${build.commit}${build.commit_at?' / '+new Date(build.commit_at).toLocaleString('ja-JP'):''}${build.dirty?'（未コミットの変更あり）':''} / `:'')+'クリックで更新履歴を表示';
+  badge.classList.add('build-badge-clickable');
+  badge.onclick=openChangelog;
  });
  const d=await api('/api/catalog');S.catalog=d.databases;
  const nav=$('#nav');
@@ -18,6 +20,21 @@ async function init(){
  const drafts=$('#homeDrafts'),history=$('#homeHistory');if(drafts)drafts.onclick=()=>openRecords('編集中');if(history)history.onclick=()=>openRecords('履歴');
  bindAppSettingsControls();await refreshDraftCount();showQuota();
 }
+/* バージョンバッジをクリックすると更新履歴の一覧を表示する。 */
+let changelogLoaded=false;
+async function openChangelog(){
+ const modal=$('#changelogModal'),list=$('#changelogList');if(!modal||!list)return;
+ modal.hidden=false;
+ if(changelogLoaded)return;
+ try{
+  const data=await api('/api/changelog');
+  list.innerHTML=(data.entries||[]).map(e=>`<article class="changelog-entry"><h3>VER${esc(e.version)}</h3><ul>${(e.notes||[]).map(n=>`<li>${esc(n)}</li>`).join('')}</ul></article>`).join('')||'<p class="changelog-loading">更新履歴はまだありません。</p>';
+  changelogLoaded=true;
+ }catch(error){
+  list.innerHTML=`<p class="changelog-loading">更新履歴を読み込めませんでした: ${esc(error?.message||String(error))}</p>`;
+ }
+}
+$('#closeChangelog').onclick=()=>{$('#changelogModal').hidden=true};
 async function selectDb(k,b){S.db=k;document.querySelectorAll('.db').forEach(x=>x.classList.remove('active'));b.classList.add('active');S.tables=(await api(`/api/tables?db=${encodeURIComponent(k)}`)).tables;renderTabs();if(S.tables.length)selectTable(S.tables[0])}
 function renderTabs(){$('#tabs').innerHTML='';S.tables.forEach(t=>{const b=document.createElement('button');b.className='tab'+(t===S.table?' active':'');b.textContent=t;b.onclick=()=>selectTable(t);$('#tabs').append(b)})}
 function selectTable(t){S.table=t;S.page=1;renderTabs();load()}
@@ -1064,6 +1081,7 @@ openAppSettings=()=>openEquipmentSettingsFinal('manual');
 requireEquipmentBeforeMeasurement=function(row){if(currentConfiguredEquipment())return true;pendingMeasurementRow=row||null;openEquipmentSettingsFinal('required');return false};
 document.addEventListener('click',event=>{const trigger=event.target.closest('[data-open-equipment-settings],#registeredEquipmentBadge');if(!trigger)return;event.preventDefault();event.stopImmediatePropagation();openEquipmentSettingsFinal('manual')},true);
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('#appSettingsModal')?.hidden){$('#appSettingsModal').hidden=true}},true);
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('#changelogModal')?.hidden){$('#changelogModal').hidden=true}},true);
 queueMicrotask(()=>{ensureEquipmentSettingsModal();updateEquipmentEntryPoints()});
 
 
