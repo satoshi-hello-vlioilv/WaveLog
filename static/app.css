@@ -238,6 +238,8 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 .field.full{grid-column:1/-1}
 .field label{display:block;color:#5e7077;font-size:var(--fs-micro)}
 .field output{display:block;min-height:29px;padding:4px 6px;border:1px solid #bcc9cd;background:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lot-dsp-link{display:block;width:100%;min-height:29px;padding:4px 6px;border:1px solid var(--teal);border-radius:0;background:#eafafa;color:#0b5e68;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;font-weight:700;text-decoration:underline;text-underline-offset:2px}
+.lot-dsp-link:hover{background:var(--teal);color:#fff}
 .dimension{grid-column:1/-1;display:grid;grid-template-columns:54px repeat(5,minmax(0,1fr));gap:2px}
 .dimension>*{padding:3px 2px;border:1px solid #c6d0d3;text-align:center;white-space:nowrap}
 
