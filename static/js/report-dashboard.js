@@ -311,6 +311,14 @@
   }catch(e){listEl.innerHTML=`<div class="rp-empty">一覧を読み込めませんでした: ${esc(e.message)}</div>`}
  }
 
+ /* 編集中/完了データ一覧の各行から、帳票メニューを経由せず直接その
+    ロットの帳票プレビューを開けるようにする(大量データの中から
+    帳票を探すのは一覧側が起点になるという運用を想定)。 */
+ window.openReportForRecord=async function(id){
+  await openReportView();
+  selectLot(id);
+ };
+
  queueMicrotask(ensureNavButton);
 })();
 

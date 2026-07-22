@@ -95,6 +95,7 @@
   function formatTol(kind,v){return typeof fixedToleranceValue==='function'?fixedToleranceValue(kind,v):(Number.isFinite(Number(v))?String(v):'-')}
 
   // 図示は「直前に測定した1点」だけを表示し、公差内ラベルを左寄せ、中央基準値も表示する。
+  // (この後filters.jsが数直線デザインへさらに上書きするため、これは中間段階の見た目。)
   if(typeof compactToleranceScale==='function'){
     compactToleranceScale=function(kind,values,count){
       const facts=compactToleranceFacts(kind),range=facts.range;
