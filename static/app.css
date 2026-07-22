@@ -85,9 +85,9 @@ button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-vis
 .measure-build-badge{font-size:12px;vertical-align:middle}
 
 /* ---------- 3a. サイドバー: ブランド ---------- */
-.layout>aside .brand{padding:0 6px 14px;margin-bottom:12px;border-bottom:1px solid #2c4750}
+.layout>aside .brand{padding:0 6px 14px;margin-bottom:12px;border-bottom:1px solid #2c4750;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .layout>aside .brand h2{margin:0;font-size:16px;letter-spacing:.01em}
-.layout>aside .brand small{display:block;margin-top:4px;color:#8fb3ba}
+.layout>aside .brand small{display:inline-flex;margin-top:0;color:#8fb3ba}
 
 /* ---------- 3b. サイドバー: 使用設備ステータスカード ----------
    ナビ項目（操作＝ボタン）と混同しないよう、破線/実線の
@@ -1135,10 +1135,34 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .mm-keytag{font-style:normal;font-size:10px;font-weight:800;color:#0a6570;background:#dcecef;border-radius:6px;padding:1px 6px}
 .mm-field input,.mm-field select{height:38px;min-width:200px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:#fff}
 .mm-field input:focus-visible,.mm-field select:focus-visible{outline:0;border-color:var(--teal);box-shadow:0 0 0 3px #087c8926}
+.mm-field-wide{flex-basis:100%}
+.mm-field-hint{color:#8a9aa0;font-size:11px}
+.mm-checkbox-group{display:flex;flex-wrap:wrap;gap:6px 14px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;max-height:150px;overflow:auto}
+.mm-checkbox{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:#2c4750;white-space:nowrap;cursor:pointer}
+.mm-checkbox input{margin:0}
+.mm-empty-inline{color:#8a9aa0;font-size:12px}
 .mm-form-tail{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .mm-btn-primary{height:40px;padding:0 22px;border:0;border-radius:8px;background:var(--teal);color:#fff;font-weight:800;cursor:pointer;box-shadow:0 4px 12px #087c8940}
 .mm-btn-primary:hover{background:var(--teal-dark)}
 .mm-form-hint{color:#6a7d83;font-size:12px}
+.mm-cd-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.mm-cd-dbtabs{display:flex;gap:6px;flex-wrap:wrap}
+.mm-cd-tab{height:34px;padding:0 16px;border:1.5px solid #c7d4d8;border-radius:17px;background:#fff;color:#526970;font-weight:800;font-size:12.5px;cursor:pointer}
+.mm-cd-tab:hover{border-color:#9fb4ba}
+.mm-cd-tab.active{border-color:var(--teal);background:var(--teal);color:#fff}
+.mm-cd-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.mm-cd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:4px 14px;padding:6px 4px}
+.mm-cd-checkbox{padding:6px 4px;border-radius:6px}
+.mm-cd-checkbox:hover{background:#eafafa}
+.mm-btn-danger{height:40px;padding:0 18px;border:0;border-radius:8px;background:var(--invalid);color:#fff;font-weight:800;cursor:pointer;box-shadow:0 4px 12px #c92c2c40}
+.mm-btn-danger:hover{background:#a82121}
+.mm-import-warning{display:flex;flex-direction:column;gap:4px;padding:10px 14px;border:1.5px solid #e5b3b3;border-radius:10px;background:#fff5f5;color:#8a2323}
+.mm-import-warning b{font-size:13px}
+.mm-import-warning span{font-size:12px;color:#a34848;line-height:1.5}
+.mm-imp-badge{display:inline-block;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:800}
+.mm-imp-badge.new{background:#e7f6ef;color:#1e7a55}
+.mm-imp-badge.overwrite{background:#fff2d9;color:#8a5a00}
+.mm-imp-badge.unsupported{background:#f0f0f0;color:#888}
 .mm-list-wrap{flex:1;min-height:0;overflow:auto;padding:0 18px 18px}
 .mm-list{display:flex;flex-direction:column}
 .mm-row{display:grid;align-items:center;gap:12px;padding:0 12px;min-height:44px;border-bottom:1px solid #e5edef}
@@ -1425,6 +1449,7 @@ body.rec-mode.qa-mode.qa-view-raw #grid,body.rec-mode.qa-mode.qa-view-raw footer
 .rp-section h3{margin:0 0 2px;padding:1.5px 6px;background:#eef2f4;border-left:4px solid var(--teal);color:#173842;font-size:9px}
 .rp-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 8px}
 .rp-grid-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.rp-grid-1{grid-template-columns:minmax(0,1fr)}
 .rp-field{display:grid;grid-template-columns:min-content minmax(0,1fr);gap:4px;padding:1px 2px;border-bottom:1px solid #eef2f4;white-space:nowrap;font-size:8.5px}
 .rp-field-label{color:#61757c;font-size:8px;font-weight:700}
 .rp-field-value{color:#17272d;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

@@ -147,8 +147,8 @@
  /* ---------- マスタ管理モーダル（刷新版: 大画面・高密度・検索・IDリネーム更新） ---------- */
  const MASTER_DEFS=[
   {key:'operator',label:'オペレータ',icon:'人',endpoint:'/api/operator-master',hasDelete:true,
-   fields:[{k:'name',label:'氏名',required:true,key:true},{k:'yomi',label:'ヨミガナ'}],
-   cols:[{k:'name',label:'氏名',grow:2},{k:'yomi',label:'ヨミガナ',grow:2}]},
+   fields:[{k:'name',label:'氏名',required:true,key:true},{k:'yomi',label:'ヨミガナ'},{k:'equipment',label:'作業可能設備',type:'equipment-multi'}],
+   cols:[{k:'name',label:'氏名',grow:2},{k:'yomi',label:'ヨミガナ',grow:1},{k:'equipmentText',label:'作業可能設備',grow:3}]},
   {key:'device',label:'機器',icon:'器',endpoint:'/api/device-master',hasDelete:true,
    fields:[{k:'kind',label:'測定区分',type:'select',options:['板厚','板幅','その他',''],key:true},{k:'name',label:'機器名',required:true,key:true},{k:'note',label:'備考'}],
    cols:[{k:'kind',label:'測定区分',grow:1},{k:'name',label:'機器名',grow:2},{k:'note',label:'備考',grow:3}]},
@@ -161,6 +161,8 @@
   {key:'equipment',label:'設備',icon:'設',endpoint:'/api/equipment-master',hasDelete:false,
    fields:[{k:'name',label:'設備名',required:true,key:true}],
    cols:[{k:'name',label:'設備名',grow:2}]},
+  {key:'columnDisplay',label:'列表示',icon:'列',special:'column-display'},
+  {key:'importBackup',label:'データ引継ぎ',icon:'継',special:'import-backup'},
  ];
  let maintState={defKey:'operator',items:[],editing:null,query:''};
  function currentDef(){return MASTER_DEFS.find(d=>d.key===maintState.defKey)||MASTER_DEFS[0]}
@@ -207,6 +209,12 @@
   const def=currentDef(),form=$('#masterMaintForm');if(!form)return;const editing=maintState.editing;
   const controls=def.fields.map(f=>{
    const val=editing?String(editing[f.k]??''):'';
+   if(f.type==='equipment-multi'){
+    const selected=new Set((editing&&Array.isArray(editing[f.k])?editing[f.k]:[]).map(String));
+    const opts=equipmentMasterState.items||[];
+    const boxes=opts.length?opts.map(eq=>`<label class="mm-checkbox"><input type="checkbox" data-equipment-field="${f.k}" value="${esc(eq.name)}"${selected.has(eq.name)?' checked':''}><span>${esc(eq.name)}</span></label>`).join(''):'<span class="mm-empty-inline">設備マスタが未登録です。先に「設備」タブで登録してください。</span>';
+    return `<label class="mm-field mm-field-wide"><span>${esc(f.label)}</span><div class="mm-checkbox-group">${boxes}</div><small class="mm-field-hint">未選択の場合は制限なし（全設備で表示対象）として扱われます。</small></label>`;
+   }
    if(f.type==='select'){
     const opts=(f.options||[]).map(o=>`<option value="${esc(o)}"${o===val?' selected':''}>${esc(o||'（指定なし）')}</option>`).join('');
     return `<label class="mm-field"><span>${esc(f.label)}${f.required?'<i>*</i>':''}${f.key?'<em class="mm-keytag">キー</em>':''}</span><select data-field="${f.k}">${opts}</select></label>`;
@@ -233,7 +241,10 @@
   const def=currentDef(),uid=requireMaintUser();if(uid===null)return;const editing=maintState.editing;
   const body={user_id:uid};let ok=true;
   if(editing)body.id=editing.id;
-  def.fields.forEach(f=>{const el=$(`#masterMaintForm [data-field="${f.k}"]`);const v=String(el?el.value:'').trim();if(f.required&&!v)ok=false;body[f.k]=v});
+  def.fields.forEach(f=>{
+   if(f.type==='equipment-multi'){body[f.k]=[...document.querySelectorAll(`#masterMaintForm [data-equipment-field="${f.k}"]:checked`)].map(el=>el.value);return}
+   const el=$(`#masterMaintForm [data-field="${f.k}"]`);const v=String(el?el.value:'').trim();if(f.required&&!v)ok=false;body[f.k]=v;
+  });
   if(!ok){showToast('入力を確認してください','必須項目が未入力です。',4000);return}
   const endpoint=editing?def.endpoint+'/update':def.endpoint;
   try{
@@ -285,14 +296,186 @@
   });
   list.append(frag);
  }
+ function setMaintSearchVisible(show){
+  const search=document.querySelector('#masterMaintModal .mm-search');if(search)search.style.display=show?'':'none';
+  const cnt=$('#masterMaintCount');if(cnt)cnt.style.display=show?'':'none';
+ }
  async function loadMaint(force){
   const def=currentDef();const title=$('#masterMaintTitle');if(title)title.textContent=def.label+'マスタ';
+  if(def.special==='column-display'){setMaintSearchVisible(false);return loadColumnDisplayMaint(force)}
+  if(def.special==='import-backup'){setMaintSearchVisible(false);return loadImportBackupMaint(force)}
+  setMaintSearchVisible(true);
   const list=$('#masterMaintList');if(list&&force)list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
+  const multiField=def.fields.find(f=>f.type==='equipment-multi');
+  if(multiField&&typeof loadEquipmentMaster==='function'){try{await loadEquipmentMaster()}catch(e){/* 設備マスタが読めなくてもオペレータ一覧の表示は継続する */}}
   renderMaintForm();
   try{
-   const r=await api(def.endpoint);maintState.items=(r&&r.items)||[];
+   const r=await api(def.endpoint);let items=(r&&r.items)||[];
+   if(multiField)items=items.map(it=>({...it,[multiField.k+'Text']:(Array.isArray(it[multiField.k])&&it[multiField.k].length)?it[multiField.k].join('、'):'（制限なし・全設備）'}));
+   maintState.items=items;
    renderMaintList();
   }catch(e){if(list)list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
+ }
+
+ /* ---------- 列表示マスタ（仕掛一覧・品質データの列表示/非表示を管理） ---------- */
+ let columnDisplayState={dbs:[],dbKey:'',columns:[],hidden:[],loading:false};
+ async function ensureColumnDisplayDbs(){
+  if(columnDisplayState.dbs.length)return columnDisplayState.dbs;
+  try{
+   const r=await api('/api/catalog');
+   columnDisplayState.dbs=(r&&r.databases||[]).filter(d=>d.role==='readonly');
+  }catch(e){columnDisplayState.dbs=[]}
+  if(!columnDisplayState.dbKey&&columnDisplayState.dbs.length)columnDisplayState.dbKey=columnDisplayState.dbs[0].key;
+  return columnDisplayState.dbs;
+ }
+ async function loadColumnDisplayMaint(force){
+  const form=$('#masterMaintForm'),list=$('#masterMaintList');
+  if(!form||!list)return;
+  await ensureColumnDisplayDbs();
+  if(!columnDisplayState.dbKey){form.innerHTML='';list.innerHTML='<div class="mm-empty">対象となる一覧データベースがありません。</div>';return}
+  if(force||list.dataset.cdLoaded!==columnDisplayState.dbKey){
+   list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
+   renderColumnDisplayForm();
+   try{
+    const r=await api('/api/column-display-master?db='+encodeURIComponent(columnDisplayState.dbKey));
+    columnDisplayState.columns=(r&&r.columns)||[];columnDisplayState.hidden=(r&&r.hidden)||[];
+    list.dataset.cdLoaded=columnDisplayState.dbKey;
+    renderColumnDisplayList();
+   }catch(e){list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
+  }else{
+   renderColumnDisplayForm();renderColumnDisplayList();
+  }
+ }
+ function renderColumnDisplayForm(){
+  const form=$('#masterMaintForm');if(!form)return;
+  const tabs=columnDisplayState.dbs.map(d=>`<button type="button" class="mm-cd-tab${d.key===columnDisplayState.dbKey?' active':''}" data-cd-db="${esc(d.key)}">${esc(d.label)}</button>`).join('');
+  form.innerHTML=`<div class="mm-form-head"><span class="mm-mode-chip new">列表示設定</span></div>
+   <div class="mm-cd-toolbar">
+    <div class="mm-cd-dbtabs">${tabs}</div>
+    <div class="mm-cd-actions">
+     <button type="button" id="mmCdShowAll" class="mm-btn-ghost sm">すべて表示</button>
+     <button type="button" id="mmCdHideAll" class="mm-btn-ghost sm">すべて非表示</button>
+     <button type="button" id="mmCdSave" class="mm-btn-primary">この画面の表示設定を保存</button>
+    </div>
+   </div>
+   <p class="mm-form-hint">チェックを外した列は、対応する一覧画面（仕掛一覧・品質データ）から非表示になります。未設定の列は既定で表示されます。</p>`;
+  form.onsubmit=ev=>ev.preventDefault();
+  form.querySelectorAll('[data-cd-db]').forEach(b=>b.onclick=()=>{columnDisplayState.dbKey=b.dataset.cdDb;loadColumnDisplayMaint(true)});
+  const showAll=$('#mmCdShowAll'),hideAll=$('#mmCdHideAll'),save=$('#mmCdSave');
+  if(showAll)showAll.onclick=()=>document.querySelectorAll('#masterMaintList [data-cd-col]').forEach(b=>b.checked=true);
+  if(hideAll)hideAll.onclick=()=>document.querySelectorAll('#masterMaintList [data-cd-col]').forEach(b=>b.checked=false);
+  if(save)save.onclick=()=>saveColumnDisplayMaint();
+ }
+ function renderColumnDisplayList(){
+  const list=$('#masterMaintList');if(!list)return;
+  const hiddenSet=new Set(columnDisplayState.hidden);
+  const columns=columnDisplayState.columns;
+  if(!columns.length){list.innerHTML='<div class="mm-empty">対象テーブルの列が取得できませんでした。</div>';return}
+  const boxes=columns.map(col=>`<label class="mm-checkbox mm-cd-checkbox"><input type="checkbox" data-cd-col="${esc(col)}"${hiddenSet.has(col)?'':' checked'}><span>${esc(col)}</span></label>`).join('');
+  list.innerHTML=`<div class="mm-cd-grid">${boxes}</div>`;
+ }
+ async function saveColumnDisplayMaint(){
+  const uid=requireMaintUser();if(uid===null)return;
+  const hidden=[...document.querySelectorAll('#masterMaintList [data-cd-col]')].filter(b=>!b.checked).map(b=>b.dataset.cdCol);
+  try{
+   setMaintLoading(true,'表示設定を保存しています…');
+   await api('/api/column-display-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({db:columnDisplayState.dbKey,hidden,user_id:uid})});
+   columnDisplayState.hidden=hidden;
+   showToast&&showToast('表示設定を保存しました',`非表示 ${hidden.length}列`,3600);
+  }catch(e){showToast&&showToast('保存できませんでした',e.message,6500)}
+  finally{setMaintLoading(false)}
+ }
+ /* ---------- データ引継ぎ（PC引継ぎ等で測定データ.accdbからIndexedDBへ取り込む） ----------
+    通常はIndexedDB→測定データ.accdbの一方通行だが、PC更新等でIndexedDBが
+    空の端末に対しては逆方向の取り込みが必要になる。対象のペイロードは
+    codec='json-full-v32'（現行の完全JSONスナップショット）のみをサポートし、
+    それ以外(旧形式等)は安全側に倒して「非対応」として選択不可にする。
+    既存IDと衝突する場合は上書きになるため、選択状態を可視化した上で
+    確認ダイアログを挟んでから実行する。 ---------- */
+ let importBackupState={items:[],loaded:false,localIds:new Set()};
+ async function loadImportBackupMaint(force){
+  const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
+  if(!force&&importBackupState.loaded){renderImportBackupForm();renderImportBackupList();return}
+  form.innerHTML='';list.innerHTML='<div class="mm-empty">測定データ.accdbを読み込んでいます…</div>';
+  try{
+   const [backupResult,localItems]=await Promise.all([api('/api/measurement/backup/list'),reliableAll().catch(()=>[])]);
+   importBackupState.items=(backupResult&&backupResult.items)||[];
+   importBackupState.localIds=new Set(localItems.map(x=>x.id));
+   importBackupState.loaded=true;
+   renderImportBackupForm();renderImportBackupList();
+  }catch(e){list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
+ }
+ function renderImportBackupForm(){
+  const form=$('#masterMaintForm');if(!form)return;
+  const items=importBackupState.items,supported=items.filter(x=>x.codec==='json-full-v32');
+  form.innerHTML=`<div class="mm-form-head"><span class="mm-mode-chip editing">PC引継ぎ専用</span></div>
+   <div class="mm-import-warning">
+    <b>注意: この操作はこの端末のIndexedDB（編集中/完了データ）を書き換えます。</b>
+    <span>測定データ.accdb（Web測定バックアップ）の内容を、この端末のローカルデータへ取り込みます。同じIDの既存データは上書きされ、元に戻せません。PC更新・端末交換時の引継ぎなど、特別な場合以外は実行しないでください。</span>
+   </div>
+   <div class="mm-cd-toolbar">
+    <span class="mm-form-hint">測定データ.accdb: ${esc(String(items.length))}件（うち取込可能 ${esc(String(supported.length))}件）</span>
+    <div class="mm-cd-actions">
+     <button type="button" id="mmImpReload" class="mm-btn-ghost sm">再読込</button>
+     <button type="button" id="mmImpSelectAll" class="mm-btn-ghost sm">取込可能をすべて選択</button>
+     <button type="button" id="mmImpSelectNone" class="mm-btn-ghost sm">選択解除</button>
+     <button type="button" id="mmImpRun" class="mm-btn-danger">選択した項目をインポート</button>
+    </div>
+   </div>`;
+  form.onsubmit=ev=>ev.preventDefault();
+  const reload=$('#mmImpReload'),selAll=$('#mmImpSelectAll'),selNone=$('#mmImpSelectNone'),run=$('#mmImpRun');
+  if(reload)reload.onclick=()=>loadImportBackupMaint(true);
+  if(selAll)selAll.onclick=()=>document.querySelectorAll('#masterMaintList [data-imp-id]:not(:disabled)').forEach(b=>b.checked=true);
+  if(selNone)selNone.onclick=()=>document.querySelectorAll('#masterMaintList [data-imp-id]').forEach(b=>b.checked=false);
+  if(run)run.onclick=()=>runImportBackup();
+ }
+ function renderImportBackupList(){
+  const list=$('#masterMaintList');if(!list)return;
+  const items=importBackupState.items;
+  if(!items.length){list.innerHTML='<div class="mm-empty">測定データ.accdbに取込可能なバックアップがありません。</div>';return}
+  const tmpl='40px minmax(90px,1fr) minmax(70px,.7fr) minmax(60px,.6fr) minmax(70px,.7fr) minmax(90px,.8fr) minmax(90px,.9fr) 90px';
+  const head=`<div class="mm-row head" style="grid-template-columns:${tmpl}"><span></span><span>ロット番号</span><span>検査番号</span><span>状態</span><span>設備</span><span>更新日時</span><span>形式</span><span>取込先</span></div>`;
+  const rows=items.map(it=>{
+   const supported=it.codec==='json-full-v32';
+   const conflict=importBackupState.localIds.has(it.id);
+   const targetLabel=supported?(conflict?'<span class="mm-imp-badge overwrite">上書き</span>':'<span class="mm-imp-badge new">新規</span>'):'<span class="mm-imp-badge unsupported">非対応</span>';
+   return `<div class="mm-row" style="grid-template-columns:${tmpl}">`+
+    `<span><input type="checkbox" data-imp-id="${esc(it.id)}"${supported?'':' disabled'}></span>`+
+    `<span title="${esc(it.lotNo)}">${esc(it.lotNo)||'<em class="mm-blank">—</em>'}</span>`+
+    `<span>${esc(it.inspectionNo)||'<em class="mm-blank">—</em>'}</span>`+
+    `<span>${esc(it.status)||'<em class="mm-blank">—</em>'}</span>`+
+    `<span title="${esc(it.equipment)}">${esc(it.equipment)||'<em class="mm-blank">—</em>'}</span>`+
+    `<span class="mm-date">${esc(fmtDT(it.updated_at))}</span>`+
+    `<span>${esc(it.codec)||'<em class="mm-blank">—</em>'}</span>`+
+    `<span>${targetLabel}</span></div>`;
+  }).join('');
+  list.innerHTML=head+rows;
+ }
+ async function runImportBackup(){
+  const uid=requireMaintUser();if(uid===null)return;
+  const checked=[...document.querySelectorAll('#masterMaintList [data-imp-id]:checked')].map(b=>b.dataset.impId);
+  if(!checked.length){showToast&&showToast('取込対象が選択されていません','取込可能な項目にチェックを付けてください。',4000);return}
+  const targets=importBackupState.items.filter(it=>checked.includes(it.id));
+  const overwriteCount=targets.filter(it=>importBackupState.localIds.has(it.id)).length;
+  const warn=`選択した${targets.length}件をこの端末のIndexedDBへインポートします。`+
+   (overwriteCount?`\nうち${overwriteCount}件は既存データを上書きし、元に戻せません。`:'\n既存データとの重複はありません。')+
+   '\n\n本当に実行しますか？（PC引継ぎ等の特別な場合以外は「キャンセル」してください）';
+  if(!confirm(warn))return;
+  let okCount=0,ngCount=0;const errors=[];
+  try{
+   setMaintLoading(true,`インポートしています… (0/${targets.length})`);
+   for(let i=0;i<targets.length;i++){
+    const it=targets[i];
+    setMaintLoading(true,`インポートしています… (${i+1}/${targets.length})`);
+    try{
+     const record=ensureMeasureShape(JSON.parse(it.payload));
+     record.id=it.id;
+     await reliablePut(record);okCount++;
+    }catch(e){ngCount++;errors.push(`${it.lotNo||it.id}: ${e.message}`)}
+   }
+  }finally{setMaintLoading(false)}
+  await refreshDraftCount();importBackupState.loaded=false;await loadImportBackupMaint(true);
+  showToast&&showToast('インポートが完了しました',`成功 ${okCount}件 / 失敗 ${ngCount}件`+(errors.length?`\n${errors.slice(0,3).join('\n')}`:''),8000);
  }
  function openMasterMaint(){const modal=ensureMaintModal();const uid=$('#masterUserId');if(uid)uid.value=currentUserId();maintState.editing=null;maintState.query='';const se=$('#masterMaintSearch');if(se)se.value='';syncNav();modal.hidden=false;loadMaint(true);requestAnimationFrame(()=>{const u=$('#masterUserId');if(u&&!u.value)u.focus()})}
 
