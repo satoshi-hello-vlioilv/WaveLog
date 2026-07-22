@@ -19,6 +19,9 @@ async function init(){
  });
  const drafts=$('#homeDrafts');if(drafts)drafts.onclick=()=>openRecords('編集中');
  bindAppSettingsControls();await refreshDraftCount();showQuota();
+ // 起動直後の初期画面は仕掛一覧(SIKALOTNOW)を既定表示とする。
+ const initialDbBtn=nav?.querySelector('[data-db-key="SIKALOTNOW"]');
+ if(initialDbBtn){try{await selectDb('SIKALOTNOW',initialDbBtn)}catch(e){console.warn('初期表示(仕掛一覧)の読み込みに失敗しました',e)}}
 }
 /* バージョンバッジをクリックすると更新履歴の一覧を表示する。 */
 let changelogLoaded=false;
