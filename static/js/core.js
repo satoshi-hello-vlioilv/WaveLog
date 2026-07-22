@@ -26,7 +26,29 @@ async function openMeasurement(row){if(!row)throw Error('対象データがあ�
 function lotKey(r){return [pick(r,'equipment'),pick(r,'lotNo'),pick(r,'inspectionNo'),pick(r,'castingNo')].join('|')}
 /* 基本情報タブの寸法表示整形。板厚=小数2桁 / 板幅・板丈=小数1桁。数値でない・空欄はそのまま。 */
 function fmtDim(value,digits){const raw=String(value??'').trim();if(raw==='')return '';const n=Number(raw);return Number.isFinite(n)?n.toFixed(digits):raw}
-function renderMeasurement(){const m=S.measure,b=m.basic;updateLengthOptions(m.settings.verticalCount||1);updateCoilOptions(m.settings.horizontalCount||1);$('#modalEquipment').textContent=b.equipment;const fields=[['管理No.','lotNo'],['検査No.','inspectionNo'],['オーダーNo.','orderNo'],['引当No.','allocationNo'],['鋳造No.','castingNo'],['用途コード','purposeCode'],['用途名','purposeName'],['取引先','customer'],['納入先','delivery'],['実績コース','course']];let h='<div class="info-grid">'+fields.map(([l,k])=>`<div class="field ${['customer','delivery','course'].includes(k)?'full':''}"><label>${l}</label><output title="${esc(b[k])}">${esc(b[k])}</output></div>`).join('');h+=`<div class="dimension"><b></b><b>材質</b><b>調質</b><b>板厚</b><b>板幅</b><b>板丈</b><b>オーダー</b><span>${esc(b.orderMaterial)}</span><span>${esc(b.orderTemper)}</span><span>${esc(fmtDim(b.orderThickness,2))}</span><span>${esc(fmtDim(b.orderWidth,1))}</span><span>${esc(fmtDim(b.orderLength,1))}</span><b>製造</b><span>${esc(b.mfgMaterial)}</span><span>${esc(b.mfgTemper)}</span><span>${esc(fmtDim(b.mfgThickness,2))}</span><span>${esc(fmtDim(b.mfgWidth,1))}</span><span>${esc(fmtDim(b.mfgLength,1))}</span></div></div>`;$('#basicInfo').innerHTML=h;Object.entries(m.settings).forEach(([k,v])=>{const el=$('#'+k);if(el){if(el.type==='checkbox')el.checked=v;else el.value=v}});$('#qualityInfo').value=m.qualityInfo;document.querySelectorAll('[data-mother]').forEach(x=>x.value=m.mother[x.dataset.mother]||'');document.querySelectorAll('[name=burr]').forEach(x=>x.checked=x.value===m.settings.burr);renderMeasureGrid();renderStats();setState('IndexedDB読込済み')}
+function renderMeasurement(){const m=S.measure,b=m.basic;updateLengthOptions(m.settings.verticalCount||1);updateCoilOptions(m.settings.horizontalCount||1);$('#modalEquipment').textContent=b.equipment;const fields=[['管理No.','lotNo'],['検査No.','inspectionNo'],['オーダーNo.','orderNo'],['引当No.','allocationNo'],['鋳造No.','castingNo'],['用途コード','purposeCode'],['用途名','purposeName'],['取引先','customer'],['納入先','delivery'],['実績コース','course']];let h='<div class="info-grid">'+fields.map(([l,k])=>k==='lotNo'?`<div class="field"><label>${l}</label><button type="button" class="lot-dsp-link" title="クリックでLotDspを開き、ロット番号をコピーします">${esc(b[k])||'—'}</button></div>`:`<div class="field ${['customer','delivery','course'].includes(k)?'full':''}"><label>${l}</label><output title="${esc(b[k])}">${esc(b[k])}</output></div>`).join('');h+=`<div class="dimension"><b></b><b>材質</b><b>調質</b><b>板厚</b><b>板幅</b><b>板丈</b><b>オーダー</b><span>${esc(b.orderMaterial)}</span><span>${esc(b.orderTemper)}</span><span>${esc(fmtDim(b.orderThickness,2))}</span><span>${esc(fmtDim(b.orderWidth,1))}</span><span>${esc(fmtDim(b.orderLength,1))}</span><b>製造</b><span>${esc(b.mfgMaterial)}</span><span>${esc(b.mfgTemper)}</span><span>${esc(fmtDim(b.mfgThickness,2))}</span><span>${esc(fmtDim(b.mfgWidth,1))}</span><span>${esc(fmtDim(b.mfgLength,1))}</span></div></div>`;$('#basicInfo').innerHTML=h;Object.entries(m.settings).forEach(([k,v])=>{const el=$('#'+k);if(el){if(el.type==='checkbox')el.checked=v;else el.value=v}});$('#qualityInfo').value=m.qualityInfo;document.querySelectorAll('[data-mother]').forEach(x=>x.value=m.mother[x.dataset.mother]||'');document.querySelectorAll('[name=burr]').forEach(x=>x.checked=x.value===m.settings.burr);renderMeasureGrid();renderStats();setState('IndexedDB読込済み')}
+/* 管理No.(ロット№)クリックでLotDsp検索サイトを開く。別オリジンのため
+   フォームへ直接値を書き込むことはできず、番号をコピーして手貼り付け
+   してもらう運用とする(URLパラメータでの自動投入方式が判明したら
+   window.openのURLへ付与する形に拡張できる)。 */
+const LOT_DSP_URL='http://nlmfangyweb1a/LotDspWeb/#/lotdsp';
+function copyText(text){
+ if(navigator.clipboard&&window.isSecureContext)return navigator.clipboard.writeText(text).catch(()=>copyTextFallback(text));
+ copyTextFallback(text);return Promise.resolve();
+}
+function copyTextFallback(text){
+ const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.focus();ta.select();
+ try{document.execCommand('copy')}catch(_){}
+ document.body.removeChild(ta);
+}
+document.addEventListener('click',e=>{
+ const btn=e.target.closest('.lot-dsp-link');if(!btn)return;
+ const lotNo=S.measure?.basic?.lotNo;
+ if(!lotNo){showToast('ロット番号が未設定です','LotDspへは移動できません');return}
+ copyText(lotNo);
+ window.open(LOT_DSP_URL,'_blank','noopener');
+ showToast('ロット番号をコピーしました',`「${lotNo}」をLotDspの「ロット番号」欄に貼り付けて検索してください`,5000);
+});
 function renderMeasureGrid(){const type=$('#measureType').value,map={母材:'width','板厚/板幅':'width',ラテラルボー:'lateral',バリ:'burr',テレスコープ:'telescope',巻ずれ:'offset'},key=map[type]||'width',rows=S.measure.measurements[key],l=Math.max(1,+$('#verticalCount').value||1),w=Math.max(1,+$('#horizontalCount').value||1);let h='<table class="measure-grid-table"><thead><tr><th>丈＼条</th>'+Array.from({length:w},(_,i)=>`<th>${i+1}</th>`).join('')+'</tr></thead><tbody>';for(let i=0;i<l;i++)h+=`<tr><th>${i+1}</th>`+Array.from({length:w},(_,j)=>`<td><input data-mkey="${key}" data-i="${i}" data-j="${j}" value="${esc(rows[i][j])}"></td>`).join('')+'</tr>';$('#measurementGrid').innerHTML=h+'</tbody></table>';document.querySelectorAll('[data-mkey]').forEach(x=>x.oninput=()=>{S.measure.measurements[x.dataset.mkey][+x.dataset.i][+x.dataset.j]=x.value;renderStats();markDirty()})}
 function nums(a){return a.flat().map(Number).filter(Number.isFinite).filter(x=>x!==0)}function stat(a){const n=nums(a);if(!n.length)return['','','','',0];const av=n.reduce((x,y)=>x+y,0)/n.length,sd=Math.sqrt(n.reduce((x,y)=>x+(y-av)**2,0)/n.length);return[Math.min(...n),av,Math.max(...n),sd*3,n.length]}
 function renderStats(){const types=[['板厚','thickness',3],['板幅','width',2],['バリ','burr',3],['ラテラルボー','lateral',1],['巻きずれ','offset',1],['テレスコープ','telescope',1]];$('#stats').innerHTML=types.map(([l,k,d])=>{const s=stat(S.measure.measurements[k]);return `<tr><th>${l}</th>${s.slice(0,4).map(v=>`<td>${v===''?'':Number(v).toFixed(d)}</td>`).join('')}<td>${s[4]}</td></tr>`}).join('')}
@@ -302,6 +324,9 @@ applyInputProtection=function(){
  applyInputProtectionV31Base();
  const mother=$('#measureType')?.value==='母材';
  if(mother)document.querySelectorAll('[data-mother]').forEach(el=>{el.readOnly=false;el.disabled=false;el.tabIndex=0;el.classList.remove('auto-locked');el.title='母材は手動入力できます'});
+ /* フラットネスは測定器転送の対象外(〇/△/×または自由記述)のため、
+    転送モードに関わらず常にセルへ直接入力できるようにする。 */
+ if($('#measureType')?.value==='フラットネス')document.querySelectorAll('input[data-mkey="flatness"]').forEach(el=>{el.readOnly=false;el.tabIndex=0;el.classList.remove('auto-locked');el.title='記号(〇/△/×)または自由記述を入力できます'});
 };
 encodePayload=function(m){return JSON.stringify(m)};
 function showSaveOverlay(title,detail){$('#saveOverlayTitle').textContent=title;$('#saveOverlayDetail').textContent=detail;$('#saveOverlay').hidden=false}
@@ -430,8 +455,12 @@ function showValidationMessage(result){
 }
 // Fix empty string being interpreted as numeric zero, while keeping red for tolerance NG.
 judgeInput=function(el,key,value,index){
- const raw=String(el.value??'').trim(),tol=toleranceFor(key==='thickness'?'thickness':'width',index),num=Number(raw);
  el.classList.remove('ng','complete');
+ if(key==='flatness'){
+  if(String(el.value||'').trim()!=='')el.classList.add('complete');
+  return;
+ }
+ const raw=String(el.value??'').trim(),tol=toleranceFor(key==='thickness'?'thickness':'width',index),num=Number(raw);
  if(raw!==''&&Number.isFinite(num)){el.classList.add('complete');if(tol&&(num<tol[0]||num>tol[1]))el.classList.add('ng')}
 };
 const persistAndTransitionValidated=persistAndTransition;
@@ -912,7 +941,7 @@ renderMeasureGridVertical=function(){
  const type=$('#measureType').value,key=activeMeasureKey(),m=S.measure,li=lengthIndex(),count=Math.max(1,Math.min(40,+$('#horizontalCount').value||1));
  if(type!=='板厚/板幅'){
   const actualKey=key==='mother'?'width':key,values=m.measurements[actualKey][li],done=values.slice(0,count).filter(v=>v!=='').length;
-  const bulkBtn=type==='フラットネス'?'<button type="button" id="flatAllOk">全条 〇</button>':'';
+  const bulkBtn=type==='フラットネス'?'<span class="flat-pick-group"><span class="flat-pick-label">現在の条へ入力</span><button type="button" class="flat-pick" data-sym="〇">〇</button><button type="button" class="flat-pick" data-sym="△">△</button><button type="button" class="flat-pick" data-sym="×">×</button></span><button type="button" id="flatAllOk">全条 〇</button>':'';
   let h=`<section class="measure-grid-block compact-other"><div class="measure-grid-block-title"><span>${esc(type)}</span><div class="measure-status-group"><span class="measure-status">${compactMeasureStatus(done,count)}</span>${bulkBtn}</div></div><div class="compact-width-body"><aside class="compact-tolerance-side">${compactToleranceScale(actualKey,values,count)}</aside><div class="strip-layout compact-strip-layout">`;
   for(let col=0;col<2;col++){h+='<div class="strip-column"><div class="strip-head"><span>条</span><span>測定値・判定</span></div>';for(let row=0;row<20;row++){const j=col*20+row,active=j<count;h+=`<div class="strip-row ${active?'':'inactive'}"><label>${j+1}</label>${makeMeasureInputV29(actualKey,li,j,active?values[j]:'',active)}</div>`}h+='</div>'}h+='</div></div></section>';
   if(type==='フラットネス')h+=`<section class="measure-grid-block flatness-note-block"><div class="measure-grid-block-title"><span>備考</span></div><div class="flatness-entry"><label>対象条<select id="coilNo"></select></label><label>備考<textarea id="coilComment"></textarea></label></div></section>`;
@@ -930,8 +959,30 @@ renderMeasureGridVertical=function(){
   $('#coilComment').onchange=()=>{saveFlatComment();markDirty()};
   $('#flatAllOk').onclick=()=>{const j=lengthIndex(),n=Math.max(1,+$('#horizontalCount').value||1);for(let c=0;c<n;c++)m.measurements.flatness[j][c]='〇';renderMeasureGrid();markDirty()};
   loadFlatComment();
+  bindFlatnessInputs();
  }
 };
+function focusFlatnessCurrentCell(){const m=S.measure,el=document.querySelector(`input[data-mkey="flatness"][data-i="${lengthIndex()}"][data-j="${m.settings.wStep||0}"]`);if(el)el.focus()}
+function bindFlatnessInputs(){
+ const m=S.measure;
+ /* フラットネスは記号(〇/△/×)または自由記述のため、他項目のような
+    測定器転送(deviceInput)経由の数値受信とは切り離し、セルへ直接
+    入力できるようにする。 */
+ document.querySelectorAll('input[data-mkey="flatness"]').forEach(x=>{
+  x.onclick=()=>{m.settings.wStep=+x.dataset.j;focusCurrent()};
+  x.onkeydown=e=>{
+   if(e.key==='Delete'){x.value='';x.oninput();m.settings.wStep=+x.dataset.j;renderMeasureGrid();focusFlatnessCurrentCell();return}
+   if(e.key==='Enter'){e.preventDefault();advanceWidth();renderMeasureGrid();focusFlatnessCurrentCell()}
+  };
+ });
+ document.querySelectorAll('.flat-pick').forEach(btn=>{
+  btn.onclick=()=>{
+   const j=lengthIndex(),c=m.settings.wStep||0;
+   m.measurements.flatness[j][c]=btn.dataset.sym;
+   advanceWidth();renderMeasureGrid();markDirty();focusFlatnessCurrentCell();
+  };
+ });
+}
 const applyRightLayoutCompactBase=applyRightLayout;
 applyRightLayout=function(){applyRightLayoutCompactBase();const summary=$('#toleranceSummary');if(summary)summary.hidden=$('#measureType')?.value==='板厚/板幅'};
 
