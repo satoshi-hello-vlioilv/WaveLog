@@ -129,7 +129,11 @@ async function registerNg(){const m=await saveLocal('測定値NG');m.settings.ng
 function lockCounts(){const has=Object.values(S.measure.measurements).some(a=>a.flat().some(v=>v!==''));$('#verticalCount').disabled=has;$('#horizontalCount').disabled=has}
 
 function updateReceiveState(focused=document.activeElement===$('#deviceInput')){if(!S.measure)return;const manual=S.measure.settings.inputMode==='manual',box=$('#inputStatusBox'),inp=$('#deviceInput');box.classList.remove('receiving','manual-state','not-ready-state');inp.classList.remove('manual-receive','locked-receive');if(manual){box.classList.add('manual-state');inp.classList.add('manual-receive');$('#inputReady').textContent='手動入力モード';$('#inputModeHelp').textContent='測定セルへ直接入力（Enterで確定）';$('#receiveLock').textContent='手入力許可';inp.placeholder='必要に応じて数値を入力'}else if(focused){box.classList.add('receiving');$('#inputReady').textContent='伝送入力受付中';$('#inputModeHelp').textContent='測定器からの転送待ち。Tabで受信確定';$('#receiveLock').textContent='転送専用';inp.placeholder='測定器データ受信専用'}else{box.classList.add('not-ready-state');inp.classList.add('locked-receive');$('#inputReady').textContent='伝送入力停止中';$('#inputModeHelp').textContent='受信欄をクリックすると受付を再開します';$('#receiveLock').textContent='受付停止';inp.placeholder='クリックして伝送受付を再開'}}$('#deviceInput').onfocus=()=>updateReceiveState(true);$('#deviceInput').onblur=()=>updateReceiveState(false);
-$('#deviceInput').oninput=e=>{if(S.measure?.settings?.inputMode==='manual')return;const normalized=toHalfWidth(e.target.value);if(normalized!==e.target.value)e.target.value=normalized};
+/* 転送中にリアルタイムでvalueを書き換えると、測定器側ソフトが行う
+   「全選択してから打ち直す」といった自前のバッファ管理と衝突し、
+   文字列が置き換わらず連結・重複してしまう不具合が確認されたため、
+   受信中はvalueへ一切手を入れない。半角変換はTab確定時に
+   deviceParse側で1回だけ行う。 */
 $('#deviceInput').onkeydown=e=>{
  /* 測定器からの転送はキー入力を極めて短い間隔で連続送信するため、
     途中で偶然Ctrl/Alt等の修飾キーが混じるとブラウザの検索(Ctrl+F)等の
