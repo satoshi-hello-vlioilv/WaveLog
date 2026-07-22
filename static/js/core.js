@@ -134,6 +134,20 @@ function updateReceiveState(focused=document.activeElement===$('#deviceInput')){
    文字列が置き換わらず連結・重複してしまう不具合が確認されたため、
    受信中はvalueへ一切手を入れない。半角変換はTab確定時に
    deviceParse側で1回だけ行う。 */
+let deviceAutoCommitTimer=null;
+/* IME変換が起きている端末では、確定用のTabキー自体がIMEに横取りされ
+   keydownまでイベントが届かないことがあり、Tab検知に頼るだけでは
+   確定できないケースがある。そのため自動転送モードでは、入力が
+   一定時間(既定220ms)止まったら「送信完了」とみなし、Tab検知を
+   待たずに自動で確定処理へ回すフォールバックを備える(Tabが正しく
+   届いた場合はrequestAnimationFrameの方が先に処理するため、通常時の
+   挙動はTab確定のまま変わらない)。 */
+$('#deviceInput').oninput=()=>{
+ if(S.measure?.settings?.inputMode==='manual')return;
+ clearTimeout(deviceAutoCommitTimer);
+ const inp=$('#deviceInput');
+ deviceAutoCommitTimer=setTimeout(()=>{if(inp&&inp.value.trim())processDeviceInput(inp.value)},220);
+};
 $('#deviceInput').onkeydown=e=>{
  /* 測定器からの転送はキー入力を極めて短い間隔で連続送信するため、
     途中で偶然Ctrl/Alt等の修飾キーが混じるとブラウザの検索(Ctrl+F)等の
@@ -142,7 +156,7 @@ $('#deviceInput').onkeydown=e=>{
     すべて無効化し、ブラウザ側へ渡さないようにする。 */
  if(e.ctrlKey||e.metaKey||e.altKey){e.preventDefault();return}
  const auto=S.measure?.settings?.inputMode!=='manual',accept=(auto&&e.key==='Tab')||(!auto&&e.key==='Enter');
- if(accept){e.preventDefault();const target=e.target;requestAnimationFrame(()=>processDeviceInput(target.value))}
+ if(accept){e.preventDefault();clearTimeout(deviceAutoCommitTimer);const target=e.target;requestAnimationFrame(()=>{if(target.value.trim())processDeviceInput(target.value)})}
  else if((e.key==='Delete'||e.key==='Backspace')&&!e.target.value){e.preventDefault();processDeviceInput('#DeleteMode#')}
  else if(e.key==='ArrowDown'||(e.key==='Enter'&&!e.target.value)){e.preventDefault();advanceWidth();focusCurrent()}
  else if(e.key==='ArrowUp'){e.preventDefault();const seq=widthSequence(Math.max(1,+$('#horizontalCount').value||1),$('#widthOrder').value,$('#widthDirection').value),pos=seq.indexOf(S.measure.settings.wStep||0);S.measure.settings.wStep=seq[(pos-1+seq.length)%seq.length];focusCurrent()}
