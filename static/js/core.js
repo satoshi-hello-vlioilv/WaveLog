@@ -4,11 +4,10 @@ const LENGTH_SLOTS=12;const $=s=>document.querySelector(s),S={db:null,table:null
 const api=async(u,o)=>{let r;try{r=await fetch(u,{cache:'no-store',...(o||{})})}catch(error){throw Error('サーバーへ接続できません。Flaskアプリが起動中か、ポート5029で開いているか確認してください。詳細: '+(error?.message||String(error)))}const text=await r.text();let j={};try{j=text?JSON.parse(text):{}}catch(_){j={error:text}}if(!r.ok)throw Error(j.error||('HTTP '+r.status));return j},esc=v=>{const d=document.createElement('div');d.textContent=v??'';return d.innerHTML};
 async function init(){
  const build=await api('/api/build');document.title='測定伝送システム';
- const badge=document.querySelector('.build-badge');
- if(badge){
+ document.querySelectorAll('.build-badge').forEach(badge=>{
   badge.textContent=build.version?`VER${build.version}`:'バージョン不明';
   badge.title=build.commit?`コミット: ${build.commit}${build.commit_at?' / '+new Date(build.commit_at).toLocaleString('ja-JP'):''}${build.dirty?'（未コミットの変更あり）':''}`:'';
- }
+ });
  const d=await api('/api/catalog');S.catalog=d.databases;
  const nav=$('#nav');
  d.databases.forEach(x=>{
@@ -1148,6 +1147,17 @@ bindMeasureInputs=function(){
 };
 const processDeviceInputPrecisionBase=processDeviceInput;
 processDeviceInput=function(raw){const type=$('#measureType')?.value,parsed=deviceParse(raw);if(type==='板厚/板幅'&&parsed.value!==null&&Number.isFinite(parsed.value)&&['caliper','tape','manual'].includes(parsed.device)){const normalized={...parsed,value:Number(parsed.value.toFixed(1))};const original=deviceParse;deviceParse=()=>normalized;try{return processDeviceInputPrecisionBase(raw)}finally{deviceParse=original}}return processDeviceInputPrecisionBase(raw)};
+/* 現場で不具合が再現した際に原因を切り分けられるよう、受信した生データと
+   結果(成功/エラー)を#deviceLastReceivedへ常に記録する。値の書き込みや
+   フォーカス制御には一切関与しない、純粋な診断用の追記のみ。 */
+const processDeviceInputDiagBase=processDeviceInput;
+processDeviceInput=function(raw){
+ const pad2=n=>String(n).padStart(2,'0'),d=new Date(),ts=`${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+ const result=processDeviceInputDiagBase(raw);
+ const el=$('#deviceInput'),out=$('#deviceLastReceived');
+ if(out){const ok=el?.classList.contains('device-ok'),ng=el?.classList.contains('device-error');const label=ok?'OK':ng?'NG':'-';out.textContent=`直前受信 ${ts} [${label}]: ${raw||'(空)'}`;out.classList.toggle('ng',!!ng)}
+ return result;
+};
 const toleranceDataForSourcePrecisionBase=toleranceDataForSource;
 toleranceDataForSource=function(kind,source){const data=toleranceDataForSourcePrecisionBase(kind,source);if(source==='order'&&data&&(Number(data.plus)===0||Number(data.minus)===0))return null;return data};
 compactToleranceFacts=function(kind){
