@@ -203,19 +203,18 @@
  }
  /* 丈(1..N)別の長さ・肉厚・揃い判定。旧帳票の「丈」テーブル（長さ/肉厚/揃い/外観/備考）に対応。
     「外観」列は旧帳票でも実データが書き込まれない控え欄のため、空欄のまま残す。
-    丈数(N)が増えても縦方向を圧迫しないよう、丈を列に、指標を行に転置する
-    （測定データ（板厚）のOS/CL/DS表と同じ考え方）。行数は常に固定5行。
-    列数も丈数（最大9）に関わらず常に9列固定とし、丈数が変わるたびに
-    レイアウト幅が変化しないようにする（板幅40行表と同じ「固定枠+控え欄」方式）。 */
+    旧B5帳票と同じ「丈を行に、指標を列に」持つ構成に統一する。以前は丈数
+    (最大9)ぶんを列に転置していたが、丈数が多いと列がセルの表示幅に収まらず、
+    テキストが隣接セル(この帳票では板厚/板幅の実測値テーブル)の領域まで
+    はみ出して表示されてしまう不具合があったため、丈ごとに行を積む
+    シンプルな構成に戻した(丈は最大9のため縦方向の圧迫も小さい)。 */
  function productRowsSection(x){
-  const rows=x.product?.rows||[],actual=Math.max(1,Math.min(9,+x.settings?.verticalCount||1)),cols=Array.from({length:9},(_,i)=>i+1);
-  const metricRow=(label,fn)=>`<tr><th>${esc(label)}</th>${cols.map((_,i)=>`<td>${i<actual?fn(rows[i]||{},i):''}</td>`).join('')}</tr>`;
-  const body=metricRow('長さ',r=>esc(r.productLength||'-'))
-   +metricRow('肉厚',r=>esc(r.wallThickness||'-'))
-   +metricRow('揃い',r=>{const j=judgeAlignmentCode(r.alignmentCode);return j?`<span class="product-judge${j==='OK'?' ok':' ng'}">${esc(j)}</span>`:''})
-   +metricRow('外観',()=>'')
-   +metricRow('備考',r=>esc(r.note||'-'));
-  return `<section class="rp-section"><h3>丈別データ（長さ・肉厚・揃い）</h3><p class="rp-note">丈数（${actual}丈）を超える列は控え欄として空欄にしています。</p><div class="rp-wide-wrap"><table class="rp-dim-table rp-product-table"><thead><tr><th>丈</th>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div></section>`;
+  const rows=x.product?.rows||[],actual=Math.max(1,Math.min(9,+x.settings?.verticalCount||1));
+  const body=Array.from({length:actual},(_,i)=>{
+   const r=rows[i]||{},j=judgeAlignmentCode(r.alignmentCode);
+   return `<tr><th>${i+1}</th><td>${esc(r.productLength||'-')}</td><td>${esc(r.wallThickness||'-')}</td><td>${j?`<span class="product-judge${j==='OK'?' ok':' ng'}">${esc(j)}</span>`:''}</td><td></td><td>${esc(r.note||'-')}</td></tr>`;
+  }).join('');
+  return `<section class="rp-section"><h3>丈別データ（長さ・肉厚・揃い）</h3><table class="rp-dim-table rp-product-table"><thead><tr><th>丈</th><th>長さ</th><th>肉厚</th><th>揃い</th><th>外観</th><th>備考</th></tr></thead><tbody>${body}</tbody></table></section>`;
  }
  /* 作業班構成: オペレータ・検査員は既存データから、梱包員は現状データ未実装
     のため常に「-」表示。旧帳票の梱包員欄に相当する表示エリアだけ先に確保する。 */
