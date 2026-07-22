@@ -147,8 +147,8 @@
  /* ---------- マスタ管理モーダル（刷新版: 大画面・高密度・検索・IDリネーム更新） ---------- */
  const MASTER_DEFS=[
   {key:'operator',label:'オペレータ',icon:'人',endpoint:'/api/operator-master',hasDelete:true,
-   fields:[{k:'name',label:'氏名',required:true,key:true},{k:'yomi',label:'ヨミガナ'}],
-   cols:[{k:'name',label:'氏名',grow:2},{k:'yomi',label:'ヨミガナ',grow:2}]},
+   fields:[{k:'name',label:'氏名',required:true,key:true},{k:'yomi',label:'ヨミガナ'},{k:'equipment',label:'作業可能設備',type:'equipment-multi'}],
+   cols:[{k:'name',label:'氏名',grow:2},{k:'yomi',label:'ヨミガナ',grow:1},{k:'equipmentText',label:'作業可能設備',grow:3}]},
   {key:'device',label:'機器',icon:'器',endpoint:'/api/device-master',hasDelete:true,
    fields:[{k:'kind',label:'測定区分',type:'select',options:['板厚','板幅','その他',''],key:true},{k:'name',label:'機器名',required:true,key:true},{k:'note',label:'備考'}],
    cols:[{k:'kind',label:'測定区分',grow:1},{k:'name',label:'機器名',grow:2},{k:'note',label:'備考',grow:3}]},
@@ -207,6 +207,12 @@
   const def=currentDef(),form=$('#masterMaintForm');if(!form)return;const editing=maintState.editing;
   const controls=def.fields.map(f=>{
    const val=editing?String(editing[f.k]??''):'';
+   if(f.type==='equipment-multi'){
+    const selected=new Set((editing&&Array.isArray(editing[f.k])?editing[f.k]:[]).map(String));
+    const opts=equipmentMasterState.items||[];
+    const boxes=opts.length?opts.map(eq=>`<label class="mm-checkbox"><input type="checkbox" data-equipment-field="${f.k}" value="${esc(eq.name)}"${selected.has(eq.name)?' checked':''}><span>${esc(eq.name)}</span></label>`).join(''):'<span class="mm-empty-inline">設備マスタが未登録です。先に「設備」タブで登録してください。</span>';
+    return `<label class="mm-field mm-field-wide"><span>${esc(f.label)}</span><div class="mm-checkbox-group">${boxes}</div><small class="mm-field-hint">未選択の場合は制限なし（全設備で表示対象）として扱われます。</small></label>`;
+   }
    if(f.type==='select'){
     const opts=(f.options||[]).map(o=>`<option value="${esc(o)}"${o===val?' selected':''}>${esc(o||'（指定なし）')}</option>`).join('');
     return `<label class="mm-field"><span>${esc(f.label)}${f.required?'<i>*</i>':''}${f.key?'<em class="mm-keytag">キー</em>':''}</span><select data-field="${f.k}">${opts}</select></label>`;
@@ -233,7 +239,10 @@
   const def=currentDef(),uid=requireMaintUser();if(uid===null)return;const editing=maintState.editing;
   const body={user_id:uid};let ok=true;
   if(editing)body.id=editing.id;
-  def.fields.forEach(f=>{const el=$(`#masterMaintForm [data-field="${f.k}"]`);const v=String(el?el.value:'').trim();if(f.required&&!v)ok=false;body[f.k]=v});
+  def.fields.forEach(f=>{
+   if(f.type==='equipment-multi'){body[f.k]=[...document.querySelectorAll(`#masterMaintForm [data-equipment-field="${f.k}"]:checked`)].map(el=>el.value);return}
+   const el=$(`#masterMaintForm [data-field="${f.k}"]`);const v=String(el?el.value:'').trim();if(f.required&&!v)ok=false;body[f.k]=v;
+  });
   if(!ok){showToast('入力を確認してください','必須項目が未入力です。',4000);return}
   const endpoint=editing?def.endpoint+'/update':def.endpoint;
   try{
@@ -288,9 +297,13 @@
  async function loadMaint(force){
   const def=currentDef();const title=$('#masterMaintTitle');if(title)title.textContent=def.label+'マスタ';
   const list=$('#masterMaintList');if(list&&force)list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
+  const multiField=def.fields.find(f=>f.type==='equipment-multi');
+  if(multiField&&typeof loadEquipmentMaster==='function'){try{await loadEquipmentMaster()}catch(e){/* 設備マスタが読めなくてもオペレータ一覧の表示は継続する */}}
   renderMaintForm();
   try{
-   const r=await api(def.endpoint);maintState.items=(r&&r.items)||[];
+   const r=await api(def.endpoint);let items=(r&&r.items)||[];
+   if(multiField)items=items.map(it=>({...it,[multiField.k+'Text']:(Array.isArray(it[multiField.k])&&it[multiField.k].length)?it[multiField.k].join('、'):'（制限なし・全設備）'}));
+   maintState.items=items;
    renderMaintList();
   }catch(e){if(list)list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
  }

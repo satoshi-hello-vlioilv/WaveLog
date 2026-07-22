@@ -498,7 +498,7 @@ function applyContextSnapshot(x){
 loadMeasurementContext=async function(force=false){
  const m=S.measure;if(!m)return;
  if(m.snapshot?.context&&!force){applyContextSnapshot(m.snapshot.context);setState('保存済み参照データを復元');return m.snapshot.context}
- const u=new URLSearchParams({lot:m.basic.lotNo,equipment:m.basic.equipment});
+ const u=new URLSearchParams({lot:m.basic.lotNo,equipment:currentConfiguredEquipment()||m.basic.equipment});
  try{
   setState('仕掛・品質・マスタ読込中');const x=await api('/api/measurement/context?'+u);
   m.snapshot=m.snapshot||{};m.snapshot.context=structuredClone(x);m.snapshot.source=structuredClone(m.source||{});m.snapshot.basic=structuredClone(m.basic||{});

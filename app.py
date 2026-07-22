@@ -7,11 +7,12 @@ app=Flask(__name__); BASE=Path(__file__).resolve().parent
 # 手動管理のバージョン番号。画面に表示される「デプロイ確認用」の主表示。
 # gitが使えない配布先(zipコピー等)でも必ず値が出るよう、こちらを主とする。
 # 意味のある変更をコミットするたびに更新すること。
-APP_VERSION='1.10.1'
+APP_VERSION='1.11.0'
 
 # 更新履歴。画面の「VERx.y.z」バッジから一覧表示する。APP_VERSIONを
 # 上げるたびに、このリストの先頭に新しいバージョンを追記すること。
 CHANGELOG=[
+ {'version':'1.11.0','notes':['オペレータマスタに作業可能設備を複数登録できるようにし、設備マスタと連携','測定画面のオペレータ選択を、使用設備で作業可能なオペレータのみに絞り込むよう変更(設備未割当のオペレータは従来通り常に表示)']},
  {'version':'1.10.1','notes':['一覧統合に合わせてメニューを整理。サイドバーと測定画面の「編集中データ一覧」「完了データ一覧」ボタンを1つの「データ一覧」ボタンに統合']},
  {'version':'1.10.0','notes':['編集中データ一覧と完了データ一覧を1つの統合リストに変更。編集中/完了それぞれ独立したトグルフィルタを追加し(既定は編集中のみON)、両方ONにすると1つのリストで両方確認できるようにした','一覧の一番左に状態(編集中/完了)バッジ列を追加']},
  {'version':'1.9.6','notes':['測定帳票: 板幅などを測定した後に別の入力内容(ラテラルボー等)に切り替えたまま保存すると、板厚/板幅の実測データが帳票に表示されない不具合を修正。保存時点の選択タブではなく、実際に測定データがあるかどうかでセクション表示を判定するようにした']},
@@ -216,14 +217,71 @@ def operator_master_rows(c):
   if active and str(r[1] or '').strip():rows.append(r)
  return rows
 
-def read_operator_names(c):
+# ------------------------------------------------------------------------
+# オペレータ設備マスタ（オペレータ×設備の中間テーブル、多対多）
+#  - 設備マスタと同じ表記ゆれ吸収(normalize_equipment_name)で名称突合する。
+#  - あるオペレータの割当が0件＝「制限なし（全設備で表示）」として扱う。
+#    既存オペレータを不用意に画面から消さないための互換ポリシー。
+# ------------------------------------------------------------------------
+OPERATOR_EQUIPMENT_TABLE='オペレータ設備マスタ'
+def ensure_operator_equipment_table(c):
+ names=tables(c);created=False
+ if OPERATOR_EQUIPMENT_TABLE not in names:
+  cur=c.cursor()
+  cur.execute('CREATE TABLE [オペレータ設備マスタ] ([ID] COUNTER, [オペレータID] LONG, [設備名] TEXT(50), [登録者ID] TEXT(50), [更新者ID] TEXT(50), [登録日時] DATETIME, [更新日時] DATETIME)')
+  cur.execute('CREATE UNIQUE INDEX [UX_オペレータ設備マスタ] ON [オペレータ設備マスタ] ([オペレータID],[設備名])')
+  c.commit();created=True
+ ensure_audit_columns(c,OPERATOR_EQUIPMENT_TABLE)
+ return created
+
+def operator_equipment_map(c):
+ # {オペレータID: [設備名, ...]} を返す。テーブル未作成の場合は空。
+ ensure_operator_equipment_table(c)
+ cur=c.cursor();cur.execute('SELECT [オペレータID],[設備名] FROM [オペレータ設備マスタ] ORDER BY [設備名]')
+ out={}
+ for oid,name in cur.fetchall():
+  nm=str(name or '').strip()
+  if not nm:continue
+  out.setdefault(oid,[]).append(nm)
+ return out
+
+def ensure_operator_equipment(path):
+ # 書き込み接続でテーブルの存在を保証する。measurement_context の前処理に使う。
+ with connect(path,False) as c:
+  created=ensure_operator_equipment_table(c)
+ return created
+
+def set_operator_equipment(c,oid,names,uid):
+ # 指定オペレータの割当設備を names の内容に完全同期する（増分の追加・削除）。
+ ensure_operator_equipment_table(c)
+ cur=c.cursor()
+ wanted={str(n).strip() for n in (names or []) if str(n or '').strip()}
+ cur.execute('SELECT [ID],[設備名] FROM [オペレータ設備マスタ] WHERE [オペレータID]=?',[oid])
+ existing={str(r[1] or '').strip():r[0] for r in cur.fetchall()}
+ for nm,rid in existing.items():
+  if nm not in wanted:cur.execute('DELETE FROM [オペレータ設備マスタ] WHERE [ID]=?',[rid])
+ for nm in wanted:
+  if nm not in existing:
+   cur.execute('INSERT INTO [オペレータ設備マスタ] ([オペレータID],[設備名],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,Now(),Now())',[oid,nm,uid,uid])
+ c.commit()
+
+def read_operator_names(c,equipment=None):
  # 読み取り専用接続から、有効なオペレータ氏名を表示順で取得する。
+ # equipment指定時は、割当設備を持つオペレータをその設備でフィルタする。
+ # 割当が1件もないオペレータは「制限なし」として常に含める（互換ポリシー）。
  if OPERATOR_MASTER_TABLE not in tables(c):return []
- cur=c.cursor();cur.execute('SELECT [氏名],[表示順],[有効] FROM [オペレータマスタ] ORDER BY [表示順],[氏名]')
+ cur=c.cursor();cur.execute('SELECT [オペレータID],[氏名],[表示順],[有効] FROM [オペレータマスタ] ORDER BY [表示順],[氏名]')
+ rows=cur.fetchall()
+ target=normalize_equipment_name(equipment) if equipment else ''
+ eqmap=operator_equipment_map(c) if (target and OPERATOR_EQUIPMENT_TABLE in tables(c)) else {}
  out=[];seen=set()
- for r in cur.fetchall():
-  active=True if r[2] is None else bool(r[2]);nm=str(r[0] or '').strip()
-  if active and nm and nm.casefold() not in seen:seen.add(nm.casefold());out.append(nm)
+ for oid,nm,order,active in rows:
+  active=True if active is None else bool(active);nm=str(nm or '').strip()
+  if not active or not nm:continue
+  if target:
+   assigned=eqmap.get(oid) or []
+   if assigned and not any(normalize_equipment_name(a)==target for a in assigned):continue
+  if nm.casefold() not in seen:seen.add(nm.casefold());out.append(nm)
  return out
 
 @app.get('/api/operator-master')
@@ -232,15 +290,15 @@ def operator_master_list():
   path=DBS['MASTER']['path']
   if not path.exists():raise FileNotFoundError(f'マスタ.accdbが見つかりません: {path}')
   with connect(path,False) as c:
-   before=OPERATOR_MASTER_TABLE in tables(c);ensure_operator_master_table(c);rows=operator_master_rows(c)
-   items=[{'id':r[0],'name':str(r[1] or '').strip(),'order':r[2] or 0,'active':True,'updated_at':r[4].isoformat() if r[4] else None,'updated_by':(str(r[5]).strip() if len(r)>5 and r[5] else '')} for r in rows]
+   before=OPERATOR_MASTER_TABLE in tables(c);ensure_operator_master_table(c);rows=operator_master_rows(c);eqmap=operator_equipment_map(c)
+   items=[{'id':r[0],'name':str(r[1] or '').strip(),'order':r[2] or 0,'active':True,'updated_at':r[4].isoformat() if r[4] else None,'updated_by':(str(r[5]).strip() if len(r)>5 and r[5] else ''),'equipment':eqmap.get(r[0],[])} for r in rows]
   return jsonify(ok=True,items=items,table=OPERATOR_MASTER_TABLE,created=not before,empty=len(items)==0,master_path=str(path))
  except Exception as e:return jsonify(error=f'オペレータマスタ読込失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
 
 @app.post('/api/operator-master')
 def operator_master_register():
  try:
-  x=request.get_json(force=True) or {};name=str(x.get('name') or '').strip();yomi=str(x.get('yomi') or '').strip();uid=request_user_id(x)
+  x=request.get_json(force=True) or {};name=str(x.get('name') or '').strip();yomi=str(x.get('yomi') or '').strip();equipment=x.get('equipment') or [];uid=request_user_id(x)
   if not name:return jsonify(error='氏名を入力してください。'),400
   path=DBS['MASTER']['path']
   if not path.exists():raise FileNotFoundError(f'マスタ.accdbが見つかりません: {path}')
@@ -250,18 +308,19 @@ def operator_master_register():
     # 既存氏名は有効化のみ。ﾖﾐｶﾞﾅは指定があるときだけ更新する（Accessの IIf/式差異を避ける）。
     if yomi:cur.execute('UPDATE [オペレータマスタ] SET [有効]=-1,[ﾖﾐｶﾞﾅ]=?,[更新者ID]=?,[更新日時]=Now() WHERE [オペレータID]=?',[yomi,uid,existing[0]])
     else:cur.execute('UPDATE [オペレータマスタ] SET [有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [オペレータID]=?',[uid,existing[0]])
-    registered=False;stored_name=str(existing[1]).strip()
+    registered=False;stored_name=str(existing[1]).strip();oid=existing[0]
    else:
     cur.execute('SELECT Max([表示順]) FROM [オペレータマスタ]');maximum=cur.fetchone()[0];order=int(maximum or 0)+10
     cur.execute('INSERT INTO [オペレータマスタ] ([氏名],[ﾖﾐｶﾞﾅ],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,-1,?,?,Now(),Now())',[name,yomi,order,uid,uid]);registered=True;stored_name=name
-   c.commit()
+    cur.execute('SELECT @@IDENTITY');oid=cur.fetchone()[0]
+   c.commit();set_operator_equipment(c,oid,equipment,uid)
   return jsonify(ok=True,name=stored_name,registered=registered,updated_by=uid,message=('オペレータマスタへ新規登録しました。' if registered else 'オペレータマスタの登録済み氏名を有効化しました。'))
  except Exception as e:return jsonify(error=f'オペレータマスタ登録失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
 
 @app.post('/api/operator-master/update')
 def operator_master_update():
  try:
-  x=request.get_json(force=True) or {};oid=x.get('id');name=str(x.get('name') or '').strip();yomi=str(x.get('yomi') or '').strip();uid=request_user_id(x)
+  x=request.get_json(force=True) or {};oid=x.get('id');name=str(x.get('name') or '').strip();yomi=str(x.get('yomi') or '').strip();equipment=x.get('equipment');uid=request_user_id(x)
   if oid is None:return jsonify(error='更新対象IDがありません。'),400
   if not name:return jsonify(error='氏名を入力してください。'),400
   path=DBS['MASTER']['path']
@@ -271,6 +330,7 @@ def operator_master_update():
    dup=next((r for r in rows if normalize_operator_name(r[1])==target and str(r[0])!=str(oid)),None)
    if dup:return jsonify(error=f'同名の氏名が既に存在するため変更できません: {str(dup[1]).strip()}'),409
    cur.execute('UPDATE [オペレータマスタ] SET [氏名]=?,[ﾖﾐｶﾞﾅ]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [オペレータID]=?',[name,yomi,uid,oid]);c.commit()
+   if equipment is not None:set_operator_equipment(c,oid,equipment,uid)
   return jsonify(ok=True,id=oid,name=name,updated_by=uid,message='オペレータを更新しました。')
  except Exception as e:return jsonify(error=f'オペレータマスタ更新失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
 
@@ -829,6 +889,10 @@ def measurement_context():
    try:
     created=ensure_operator_master(master);result['diagnostics']['operator_master']={'created':created}
    except Exception as _e:result['diagnostics']['operator_master_error']=str(_e)
+   # オペレータ設備マスタ（オペレータ×設備の割当）の存在を保証してから読み取る。
+   try:
+    oe_created=ensure_operator_equipment(master);result['diagnostics']['operator_equipment_master']={'created':oe_created}
+   except Exception as _e:result['diagnostics']['operator_equipment_master_error']=str(_e)
    # スプール種別マスタの存在を保証してから読み取る。
    try:
     s_created=ensure_spool_master(master);result['diagnostics']['spool_master']={'created':s_created}
@@ -864,9 +928,12 @@ def measurement_context():
      if not values and where:cur.execute(sql);values=[norm(r[0]) for r in cur.fetchall() if norm(r[0])]
      return sorted(set(values),key=str.casefold)
     # 読み取りはオペレータマスタ（有効・表示順）から行う。
+    # オペレータ欄のみ、対象設備（equipment）で作業可能設備によるフィルタをかける。
+    # 割当が1件もないオペレータは常に表示対象（互換ポリシー）。検査員・梱包員は従来通り全件。
     people=read_operator_names(c)
-    result['diagnostics']['matches']['オペレータマスタ']={'table':OPERATOR_MASTER_TABLE,'column':'氏名','count':len(people)}
-    result['operators']=people;result['inspectors']=people;result['packers']=people
+    people_for_equipment=read_operator_names(c,equipment=equipment) if equipment else people
+    result['diagnostics']['matches']['オペレータマスタ']={'table':OPERATOR_MASTER_TABLE,'column':'氏名','count':len(people),'filtered_by_equipment':equipment or '','filtered_count':len(people_for_equipment)}
+    result['operators']=people_for_equipment;result['inspectors']=people;result['packers']=people
     # 読み取りは機器マスタ（測定区分・有効・表示順）から行う。
     thickness_gauges=read_device_names(c,'板厚');width_gauges=read_device_names(c,'板幅')
     result['diagnostics']['matches']['機器マスタ']={'table':DEVICE_MASTER_TABLE,'column':'機器名','板厚':len(thickness_gauges),'板幅':len(width_gauges)}
