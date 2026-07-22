@@ -1338,3 +1338,53 @@ body.qa-mode.qa-view-raw #genericFilterBar{display:block!important}
  #reportModal .rp-product-table{min-width:0;width:100%}
  #reportModal .rp-product-table th,#reportModal .rp-product-table td{padding:1px 2px;font-size:7.5px;line-height:1.15}
 }
+
+/* ============================================================
+ 2026-07-21 生産管理ダッシュボード（KPI集計）
+ 端末保存済みの測定データを対象に、設備・作業人数・品種ごとの
+ 作業効率をクライアント側で集計する。品質データ分析(qa-v7)と
+ 同じ「軸×系列×指標」の汎用設計・見た目の言語を踏襲する。
+ ============================================================ */
+.local-dashboard-btn{margin-top:6px;background:#1f5d68;color:#fff;font-weight:800}
+.local-dashboard-btn:hover{background:var(--teal)}
+.db-dialog{position:relative;width:96vw;max-width:1400px;height:92vh;display:flex;flex-direction:column;background:#f4f7f8;border-radius:14px;overflow:hidden;box-shadow:0 30px 80px #00000055}
+.db-layout{flex:1;min-height:0;display:grid;grid-template-columns:260px minmax(0,1fr);overflow:hidden}
+.db-controls{display:flex;flex-direction:column;gap:14px;padding:16px;background:#e7eff1;border-right:1px solid var(--line);overflow-y:auto}
+.db-presets{display:flex;flex-wrap:wrap;gap:6px}
+.db-presets button{padding:6px 10px;border:1px solid #9fb9b2;border-radius:16px;background:#fff;color:#2c5049;font-weight:700;font-size:12px;cursor:pointer}
+.db-presets button.active{background:var(--teal);border-color:var(--teal);color:#fff}
+.db-ctl-group{display:flex;flex-direction:column;gap:6px}
+.db-ctl-label{font-size:11px;font-weight:800;color:#526970;letter-spacing:.02em}
+.db-ctl-group select{height:34px;padding:0 8px;border:1px solid var(--line);border-radius:8px;background:#fff}
+.db-seg{display:flex;flex-wrap:wrap;gap:4px}
+.db-seg button{padding:5px 9px;border:1px solid #c4d4d7;border-radius:14px;background:#fff;color:#3a565d;font-size:11px;cursor:pointer}
+.db-seg button.active{background:var(--teal);border-color:var(--teal);color:#fff}
+.db-seg-sm button{padding:3px 8px;font-size:10px}
+.db-field-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.db-field-grid label{display:flex;flex-direction:column;gap:2px;font-size:11px;color:#61757c}
+.db-field-grid input{height:30px;padding:0 6px;border:1px solid var(--line);border-radius:6px}
+.db-sub{display:flex;flex-direction:column;gap:4px;margin-top:2px;font-size:11px;color:#61757c}
+.db-main{display:flex;flex-direction:column;min-width:0;min-height:0;padding:16px;gap:14px;overflow-y:auto}
+.db-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.db-card{display:flex;flex-direction:column;gap:4px;padding:10px 14px;background:#fff;border:1px solid #d5e0e3;border-radius:10px}
+.db-card-label{font-size:11px;color:#61757c;font-weight:700}
+.db-card-value{font-size:20px;color:#173842;font-variant-numeric:tabular-nums}
+.db-chart-wrap{background:#fff;border:1px solid #d5e0e3;border-radius:12px;padding:10px;min-height:360px;display:flex}
+.db-chart{flex:1;min-width:0;min-height:340px}
+.db-chart svg{width:100%;height:100%}
+.db-empty{margin:auto;padding:20px;color:#60747b;text-align:center}
+.db-table-wrap{background:#fff;border:1px solid #d5e0e3;border-radius:12px;overflow:auto}
+.db-table{width:100%;border-collapse:collapse}
+.db-table th,.db-table td{padding:6px 10px;border-bottom:1px solid #eef2f4;text-align:center;font-size:12px;white-space:nowrap}
+.db-table thead th{background:#eef2f4;color:#173842;position:sticky;top:0}
+.db-table tbody th{text-align:left;color:#173842}
+.db-empty-cell{padding:16px;text-align:center;color:#60747b}
+.db-axis{stroke:#8299a0;stroke-width:1}
+.db-gridline{stroke:#e7eef0;stroke-width:1}
+.db-label{font-size:11px;fill:#3a565d}
+.db-value{font-size:11px;fill:#075e67;font-weight:800}
+.db-chart-title{font-size:15px;font-weight:800;fill:#143842}
+.db-chart-subtitle{font-size:11px;font-weight:700;fill:#5c777e}
+.db-axis-title{font-size:11px;font-weight:800;fill:#40606a}
+.db-svg-legend-label{font-size:11px;fill:#3a565d}
+@media(max-width:1000px){.db-layout{grid-template-columns:1fr}.db-controls{max-height:280px}.db-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}

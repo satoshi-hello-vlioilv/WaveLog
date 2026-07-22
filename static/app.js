@@ -19,7 +19,7 @@ async function load(){const q=new URLSearchParams({db:S.db,table:S.table,page:S.
 function renderGrid(){const t=document.createElement('table');t.innerHTML='<thead><tr><th>#</th>'+S.columns.map(c=>`<th>${esc(c)}</th>`).join('')+'</tr></thead>';const b=document.createElement('tbody');S.rows.forEach((r,i)=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${(S.page-1)*+$('#pageSize').value+i+1}</td>`+S.columns.map(c=>`<td>${esc(r[c])}</td>`).join('');if(S.db==='SIKALOTNOW'){tr.classList.add('measurement-row');tr.title='ダブルクリックで測定画面を開く';tr.addEventListener('dblclick',e=>{e.preventDefault();e.stopPropagation();openMeasurement(r).catch(err=>alert('測定画面を開けません: '+err.message))})}b.append(tr)});t.append(b);$('#grid').replaceChildren(t);$('#count').textContent=`全 ${S.count.toLocaleString()}件`;$('#page').textContent=`${S.page}ページ`;$('#prev').disabled=S.page===1;$('#next').disabled=S.page*+$('#pageSize').value>=S.count}
 const aliases={lotNo:['ロット番号','ﾛｯﾄ番号','LTNO'],inspectionNo:['検査番号','KNNO'],orderNo:['オーダー番号','JUON','JUNO'],castingNo:['鋳造番号','CYNO'],allocationNo:['引当番号','HKNO'],orderMaterial:['オーダー材質','JUA'],orderTemper:['オーダー調質','JUB'],orderThickness:['オーダー板厚','JUX'],orderWidth:['オーダー板幅','JUY'],orderLength:['オーダー板丈','JUZ'],mfgMaterial:['製造材質','LTA'],mfgTemper:['製造調質','LTB'],mfgThickness:['製造板厚','LTX'],mfgWidth:['製造板幅','LTY'],mfgLength:['製造板丈','LTZ'],purposeCode:['用途コード','用途ｺｰﾄﾞ','YOTOC'],purposeName:['用途名','YOTON'],customer:['取引先','TOKUNA'],delivery:['納入先','NONNA'],designCourse:['設計_設備ｺｰｽ','設計_設備コース'],course:['実績_設備ｺｰｽ','実績_設備コース','実績コース'],residualCourse:['残仕掛設備ｺｰｽ','残仕掛設備コース','ZANMC'],equipment:['BOX設計_設備名','設備']};
 function pick(row,key){for(const n of aliases[key]||[])if(row[n]!==undefined&&row[n]!==null)return String(row[n]);return ''}
-function blankMeasure(row){return{id:crypto.randomUUID(),status:'編集中',updatedAt:new Date().toISOString(),source:row,basic:Object.fromEntries(Object.keys(aliases).map(k=>[k,pick(row,k)])),settings:{operator:'-',inspector:'-',lengthPos:'1(頭)',measureType:'母材',verticalCount:1,horizontalCount:1,unwind:'上出し',innerDiameter:'-',spool:'-',thicknessGauge:'-',widthGauge:'-',widthOrder:'通常',widthDirection:'昇順',inputMode:'auto',tStep:0,wStep:0,burrFirst:null,ngCount:0,burr:'指定なし',innerTape:false},mother:{},qualityInfo:'異常情報なし',measurements:{thickness:Array.from({length:LENGTH_SLOTS},()=>Array(3).fill('')),width:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),lateral:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),burr:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),telescope:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),offset:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),flatness:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),comments:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill(''))}}}
+function blankMeasure(row){return{id:crypto.randomUUID(),status:'編集中',updatedAt:new Date().toISOString(),source:row,basic:Object.fromEntries(Object.keys(aliases).map(k=>[k,pick(row,k)])),settings:{operator:'-',inspector:'-',lengthPos:'1(頭)',measureType:'母材',verticalCount:1,horizontalCount:1,unwind:'上出し',innerDiameter:'-',spool:'-',thicknessGauge:'-',widthGauge:'-',widthOrder:'通常',widthDirection:'昇順',inputMode:'auto',tStep:0,wStep:0,burrFirst:null,ngCount:0,burr:'指定なし',innerTape:false,crewSize:'1'},mother:{},qualityInfo:'異常情報なし',measurements:{thickness:Array.from({length:LENGTH_SLOTS},()=>Array(3).fill('')),width:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),lateral:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),burr:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),telescope:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),offset:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),flatness:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),comments:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill(''))}}}
 async function openMeasurement(row){if(!row)throw Error('対象データがありません');S.current=row;const key=lotKey(row),saved=await idbGet(key);S.measure=saved||blankMeasure(row);S.measure.id=key;renderMeasurement();$('#measureModal').hidden=false;requestAnimationFrame(()=>$('#deviceInput').focus())}
 function lotKey(r){return [pick(r,'equipment'),pick(r,'lotNo'),pick(r,'inspectionNo'),pick(r,'castingNo')].join('|')}
 /* 基本情報タブの寸法表示整形。板厚=小数2桁 / 板幅・板丈=小数1桁。数値でない・空欄はそのまま。 */
@@ -28,7 +28,7 @@ function renderMeasurement(){const m=S.measure,b=m.basic;updateLengthOptions(m.s
 function renderMeasureGrid(){const type=$('#measureType').value,map={母材:'width','板厚/板幅':'width',ラテラルボー:'lateral',バリ:'burr',テレスコープ:'telescope',巻ずれ:'offset'},key=map[type]||'width',rows=S.measure.measurements[key],l=Math.max(1,+$('#verticalCount').value||1),w=Math.max(1,+$('#horizontalCount').value||1);let h='<table class="measure-grid-table"><thead><tr><th>丈＼条</th>'+Array.from({length:w},(_,i)=>`<th>${i+1}</th>`).join('')+'</tr></thead><tbody>';for(let i=0;i<l;i++)h+=`<tr><th>${i+1}</th>`+Array.from({length:w},(_,j)=>`<td><input data-mkey="${key}" data-i="${i}" data-j="${j}" value="${esc(rows[i][j])}"></td>`).join('')+'</tr>';$('#measurementGrid').innerHTML=h+'</tbody></table>';document.querySelectorAll('[data-mkey]').forEach(x=>x.oninput=()=>{S.measure.measurements[x.dataset.mkey][+x.dataset.i][+x.dataset.j]=x.value;renderStats();markDirty()})}
 function nums(a){return a.flat().map(Number).filter(Number.isFinite).filter(x=>x!==0)}function stat(a){const n=nums(a);if(!n.length)return['','','','',0];const av=n.reduce((x,y)=>x+y,0)/n.length,sd=Math.sqrt(n.reduce((x,y)=>x+(y-av)**2,0)/n.length);return[Math.min(...n),av,Math.max(...n),sd*3,n.length]}
 function renderStats(){const types=[['板厚','thickness',3],['板幅','width',2],['バリ','burr',3],['ラテラルボー','lateral',1],['巻きずれ','offset',1],['テレスコープ','telescope',1]];$('#stats').innerHTML=types.map(([l,k,d])=>{const s=stat(S.measure.measurements[k]);return `<tr><th>${l}</th>${s.slice(0,4).map(v=>`<td>${v===''?'':Number(v).toFixed(d)}</td>`).join('')}<td>${s[4]}</td></tr>`}).join('')}
-function collect(){const m=S.measure;m.updatedAt=new Date().toISOString();['operator','inspector','lengthPos','measureType','verticalCount','horizontalCount','unwind','innerDiameter','spool','thicknessGauge','widthGauge','widthOrder','widthDirection'].forEach(k=>m.settings[k]=$('#'+k).value);m.settings.burr=document.querySelector('[name=burr]:checked')?.value||'';m.settings.innerTape=$('#innerTape').checked;m.qualityInfo=$('#qualityInfo').value;document.querySelectorAll('[data-mother]').forEach(x=>m.mother[x.dataset.mother]=x.value);saveFlatComment();return m}
+function collect(){const m=S.measure;m.updatedAt=new Date().toISOString();['operator','inspector','lengthPos','measureType','verticalCount','horizontalCount','unwind','innerDiameter','spool','thicknessGauge','widthGauge','widthOrder','widthDirection','crewSize'].forEach(k=>{const el=$('#'+k);if(el)m.settings[k]=el.value});m.settings.burr=document.querySelector('[name=burr]:checked')?.value||'';m.settings.innerTape=$('#innerTape').checked;m.qualityInfo=$('#qualityInfo').value;document.querySelectorAll('[data-mother]').forEach(x=>m.mother[x.dataset.mother]=x.value);saveFlatComment();return m}
 function encodePayload(m){const sep='\u001f',row='\u001e';const enc=a=>a.map(x=>Array.isArray(x)?x.join(sep):x).join(row);return JSON.stringify({id:m.id,status:m.status,basic:m.basic,settings:m.settings,mother:m.mother,qualityInfo:m.qualityInfo,data:Object.fromEntries(Object.entries(m.measurements).map(([k,v])=>[k,enc(v)]))})}
 async function saveLocal(status='編集中'){const m=collect();m.status=status;await idbPut(m);setState(status==='完了'?'完了・端末保存済み':'端末保存済み');return m}
 async function backup(){const m=await saveLocal(S.measure.status);const x={id:m.id,equipment:m.basic.equipment,lotNo:m.basic.lotNo,inspectionNo:m.basic.inspectionNo,castingNo:m.basic.castingNo,status:m.status,codec:'delimiter-v1',payload:encodePayload(m)};await api('/api/measurement/backup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(x)});setState('Accessバックアップ済み')}
@@ -2461,7 +2461,7 @@ compactToleranceScale=function(kind,values,count){
     のため常に「-」表示。旧帳票の梱包員欄に相当する表示エリアだけ先に確保する。 */
  function crewSection(x){
   const s=x.settings||{};
-  return reportSection('作業班構成',[['オペレータ',s.operator],['検査員',s.inspector],['梱包員',s.packer]]);
+  return reportSection('作業班構成',[['オペレータ',s.operator],['検査員',s.inspector],['梱包員',s.packer],['作業人数',s.crewSize?`${s.crewSize}名班`:'-']]);
  }
 
  function renderReport(x){
@@ -2538,5 +2538,324 @@ compactToleranceScale=function(kind,values,count){
  }
 
  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$id('reportModal')?.hidden){$id('reportModal').hidden=true}},true);
+ queueMicrotask(ensureNavButton);
+})();
+
+/* ============================================================
+2026-07-21 生産管理ダッシュボード（KPI集計）
+--------------------------------------------------------------
+方針:
+- 端末保存済みの測定データ(reliableAll)を対象とする。品質データ分析
+  (qa-v7)はAccess側のテーブルをサーバー集計するのに対し、こちらは
+  ローカルのみのデータのためクライアント側で集計する。
+- 「設備別効率」「人数別内訳」「品種別作業時間」を個別画面にせず、
+  軸(X)×系列×指標×期間/集計単位を自由に組み合わせる汎用集計に
+  统一する（品質データ分析と同じ設計思想）。プリセットボタンは
+  この汎用設定に対する「よく使う組み合わせのショートカット」。
+============================================================ */
+(function(){
+ const $id=id=>document.getElementById(id);
+ const val=id=>{const el=$id(id);return el?el.value:''};
+ const fmt=n=>Number(n||0).toLocaleString(undefined,{maximumFractionDigits:1});
+ const ell=(s,n)=>{s=String(s??'');return s.length>n?s.slice(0,n-1)+'…':s};
+ function niceMax(m){if(!(m>0))return 1;const p=Math.pow(10,Math.floor(Math.log10(m)));const n=m/p;const f=n<=1?1:n<=2?2:n<=5?5:10;return f*p}
+ function bandGap(slot,factor){return Math.max(2,Math.min(slot*(1-factor),34))}
+ function bandWidth(slot,factor,min){return Math.max(min||4,slot-bandGap(slot,factor))}
+ const stackPalette=['#087c89','#2563eb','#16a34a','#f59e0b','#dc2626','#7c3aed','#0f766e','#e11d48','#64748b','#84cc16'];
+
+ function legendLayout(keys,maxW){
+  const rowH=17,chipW=10,padX=10;
+  let cx=0,rows=1;const placements=[];
+  keys.forEach((k,i)=>{
+   const label=ell(String(k),14);
+   const textW=Math.max(20,[...label].reduce((w,ch)=>w+(/[\x00-\xff]/.test(ch)?6.4:11.5),0));
+   const itemW=chipW+4+textW+padX;
+   if(cx+itemW>maxW&&cx>0){cx=0;rows++}
+   placements.push({label,row:rows-1,x:cx,col:stackPalette[i%stackPalette.length]});
+   cx+=itemW;
+  });
+  return {placements,rows,rowH};
+ }
+ function legendSvg(info,x0,y0){
+  if(!info)return '';
+  return info.placements.map(p=>`<rect x="${x0+p.x}" y="${y0+p.row*info.rowH-9}" width="10" height="10" rx="2" fill="${p.col}"></rect><text class="db-svg-legend-label" x="${x0+p.x+14}" y="${y0+p.row*info.rowH}">${esc(p.label)}</text>`).join('');
+ }
+
+ /* ---------- ローカル測定データ → KPI用フラット行 ---------- */
+ function crewLabel(size){return size?`${size}名班`:'人数未設定'}
+ function toKpiRow(x){
+  const b=x.basic||{},s=x.settings||{},w=x.workTime||{};
+  const start=w.startAt?new Date(w.startAt):null,end=w.endAt?new Date(w.endAt):null;
+  const validRange=start&&end&&!isNaN(start)&&!isNaN(end)&&end>start;
+  const durationMin=validRange?(end-start)/60000:null;
+  const vertical=Math.max(1,+s.verticalCount||1),horizontal=Math.max(1,+s.horizontalCount||1);
+  const dateBase=start&&!isNaN(start)?start:(x.updatedAt?new Date(x.updatedAt):null);
+  return {
+   id:x.id,status:x.status||'編集中',
+   equipment:s.registeredEquipment||x.registeredEquipment||b.equipment||'-',
+   crewSize:s.crewSize?String(s.crewSize):'',
+   operator:s.operator||'-',
+   measureType:s.measureType||'-',
+   purposeName:b.purposeName||'用途未設定',
+   productType:`${b.purposeName||'用途未設定'} / ${vertical}丈×${horizontal}条`,
+   durationMin,
+   date:(dateBase&&!isNaN(dateBase))?dateBase:null,
+  };
+ }
+
+ const DIMENSIONS={
+  equipment:{label:'設備',get:r=>r.equipment},
+  crewSize:{label:'作業人数',get:r=>crewLabel(r.crewSize)},
+  productType:{label:'品種（用途名・丈数×条数）',get:r=>r.productType},
+  purposeName:{label:'用途名',get:r=>r.purposeName},
+  operator:{label:'オペレータ',get:r=>r.operator},
+  measureType:{label:'入力内容',get:r=>r.measureType},
+ };
+ const METRICS={
+  count:{label:'件数',compute:c=>c.count},
+  avgMin:{label:'平均作業時間（分/件）',compute:c=>c.durCount?c.durSum/c.durCount:null},
+  sumHour:{label:'合計作業時間（時間）',compute:c=>c.durSum/60},
+  perHour:{label:'時間あたり処理数（件/時）',compute:c=>c.durSum>0?c.count/(c.durSum/60):null},
+ };
+ function bucketKey(date,bucket){
+  if(!date)return null;
+  const y=date.getFullYear(),m=date.getMonth()+1,d=date.getDate(),p2=n=>String(n).padStart(2,'0');
+  if(bucket==='year')return `${y}年`;
+  if(bucket==='month')return `${y}-${p2(m)}`;
+  return `${y}-${p2(m)}-${p2(d)}`;
+ }
+
+ /* ---------- 汎用集計: 軸(分類/時系列)×系列×指標 ---------- */
+ function aggregate(rows,{axis,bucket,series,metricKey}){
+  const metric=METRICS[metricKey]||METRICS.count;
+  const groups=new Map(),seriesKeys=new Set();
+  rows.forEach(r=>{
+   const key=axis==='time'?bucketKey(r.date,bucket):(DIMENSIONS[axis]?DIMENSIONS[axis].get(r):'-');
+   if(key==null||key==='')return;
+   if(!groups.has(key))groups.set(key,{label:key,cells:new Map()});
+   const g=groups.get(key);
+   const sk=series&&DIMENSIONS[series]?DIMENSIONS[series].get(r):'__all__';
+   seriesKeys.add(sk);
+   if(!g.cells.has(sk))g.cells.set(sk,{count:0,durSum:0,durCount:0});
+   const c=g.cells.get(sk);
+   c.count++;if(r.durationMin!=null){c.durSum+=r.durationMin;c.durCount++}
+  });
+  let items=[...groups.values()].map(g=>{
+   const totalCell={count:0,durSum:0,durCount:0};const stacks={};
+   g.cells.forEach((c,k)=>{stacks[k]=metric.compute(c);totalCell.count+=c.count;totalCell.durSum+=c.durSum;totalCell.durCount+=c.durCount});
+   return {label:g.label,value:metric.compute(totalCell),stacks,count:totalCell.count};
+  });
+  if(axis==='time')items.sort((a,b)=>String(a.label).localeCompare(String(b.label)));
+  else items.sort((a,b)=>(Number(b.value)||0)-(Number(a.value)||0));
+  const keys=series?[...seriesKeys].filter(k=>k!=='__all__').sort((a,b)=>String(a).localeCompare(String(b),'ja')):[];
+  return {items,keys,metricLabel:metric.label,total:rows.length};
+ }
+
+ /* ---------- グラフ描画（縦棒/集合棒。品質データ分析のSVG設計を踏襲） ---------- */
+ function stage(){const el=$id('dashboardChart');if(!el)return{w:900,h:460};const w=el.clientWidth,h=el.clientHeight;if(w<80||h<80)return{w:Math.max(760,w||900),h:Math.max(400,h||460)};return{w:Math.max(320,w-20),h:Math.max(240,h-20)}}
+ function svgBar(items,cfg){
+  const {W,H,keys,hasSeries,showVal,color,title,subtitle,xTitle,yTitle}=cfg;
+  if(!items.length)return '';
+  const labels=items.map(it=>String(it.label));
+  const maxLen=Math.max(...labels.map(s=>ell(s,18).length),1);
+  const rotate=items.length>6||maxLen>5;
+  const R=16,L0=60+(yTitle?18:0);
+  const legendKeys=hasSeries?keys:[];
+  const legendInfo=legendKeys.length?legendLayout(legendKeys,Math.max(140,W-L0-R)):null;
+  const titleH=title?21:0,subtitleH=subtitle?15:0,legendH=legendInfo?legendInfo.rows*17+6:0;
+  const B=(rotate?Math.min(150,Math.max(46,34+maxLen*7)):40)+(xTitle?20:0);
+  const T=12+titleH+subtitleH+legendH,L=L0;
+  const plotH=Math.max(90,H-T-B),plotW=Math.max(140,W-L-R);
+  const n=items.length,slot=plotW/n,x=i=>L+slot*i+slot/2;
+  const primVals=hasSeries?items.map(it=>Math.max(...keys.map(k=>Number(it.stacks?.[k])||0),0)):items.map(it=>Number(it.value)||0);
+  const pmax=niceMax(Math.max(...primVals,1));
+  const yB=v=>T+plotH-(Number(v||0)/pmax)*plotH;
+  let grid='';for(let r=0;r<=4;r++){const gy=T+plotH*r/4,gv=pmax*(4-r)/4;grid+=`<line class="db-gridline" x1="${L}" y1="${gy}" x2="${W-R}" y2="${gy}"></line><text class="db-label" x="${L-8}" y="${gy+4}" text-anchor="end">${fmt(gv)}</text>`}
+  const bw=bandWidth(slot,.62,3);
+  let body='';
+  if(hasSeries){
+   const clusterW=bandWidth(slot,.62,10),innerGap=Math.min(4,clusterW/keys.length*0.15);
+   const gw=Math.max(3,clusterW/keys.length-innerGap),groupW=gw*keys.length+innerGap*(keys.length-1);
+   body=items.map((it,i)=>{const x0=x(i)-groupW/2;return keys.map((k,si)=>{const v=it.stacks?.[k];if(v==null||Number.isNaN(v))return '';return `<rect x="${x0+si*(gw+innerGap)}" y="${yB(v)}" width="${gw}" height="${Math.max(1,T+plotH-yB(v))}" rx="2" fill="${stackPalette[si%stackPalette.length]}"><title>${esc(it.label)} / ${esc(k)}: ${fmt(v)}</title></rect>`}).join('')}).join('');
+  }else{
+   body=items.map((it,i)=>{const v=it.value;if(v==null||Number.isNaN(v))return '';return `<rect x="${x(i)-bw/2}" y="${yB(v)}" width="${bw}" height="${Math.max(1,T+plotH-yB(v))}" rx="4" fill="${color}" opacity=".9"><title>${esc(it.label)}: ${fmt(v)}</title></rect>`}).join('');
+   if(showVal){const st=Math.ceil(items.length/22||1);body+=items.map((it,i)=>{const v=it.value;if(v==null||Number.isNaN(v)||i%st!==0)return '';return `<text class="db-value" x="${x(i)}" y="${yB(v)-6}" text-anchor="middle">${fmt(v)}</text>`}).join('')}
+  }
+  const xlabels=items.map((it,i)=>rotate?`<text class="db-label" x="${x(i)}" y="${T+plotH+14}" text-anchor="end" transform="rotate(-40 ${x(i)} ${T+plotH+14})">${esc(ell(it.label,18))}<title>${esc(it.label)}</title></text>`:`<text class="db-label" x="${x(i)}" y="${T+plotH+18}" text-anchor="middle">${esc(ell(it.label,10))}<title>${esc(it.label)}</title></text>`).join('');
+  const head=(title?`<text class="db-chart-title" x="${W/2}" y="16" text-anchor="middle">${esc(title)}</text>`:'')+(subtitle?`<text class="db-chart-subtitle" x="${W/2}" y="${16+titleH}" text-anchor="middle">${esc(subtitle)}</text>`:'')+legendSvg(legendInfo,L,16+titleH+subtitleH+10);
+  const axisTitles=(xTitle?`<text class="db-axis-title" x="${L+plotW/2}" y="${T+plotH+B-6}" text-anchor="middle">${esc(xTitle)}</text>`:'')+(yTitle?`<text class="db-axis-title" x="14" y="${T+plotH/2}" text-anchor="middle" transform="rotate(-90 14 ${T+plotH/2})">${esc(yTitle)}</text>`:'');
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(title||'ダッシュボードグラフ')}">${head}${axisTitles}${grid}<line class="db-axis" x1="${L}" y1="${T}" x2="${L}" y2="${T+plotH}"></line><line class="db-axis" x1="${L}" y1="${T+plotH}" x2="${W-R}" y2="${T+plotH}"></line>${body}${xlabels}</svg>`;
+ }
+
+ /* ---------- モーダル/コントロール ---------- */
+ let dbCache=null,dbLast=null;
+ async function ensureData(force){if(dbCache&&!force)return dbCache;dbCache=(await reliableAll()).map(toKpiRow);return dbCache}
+
+ function ensureNavButton(){
+  const nav=document.querySelector('.local-nav');if(!nav||$id('openDashboard'))return;
+  const b=document.createElement('button');b.type='button';b.id='openDashboard';b.className='db local-dashboard-btn';
+  b.innerHTML='<span>ダッシュボード</span>';b.title='端末保存済みの測定データからKPI（設備別効率・人数別内訳・品種別作業時間など）を集計します';
+  b.onclick=openDashboardModal;nav.append(b);
+ }
+
+ const AXIS_OPTS=[['time','時系列'],['equipment','設備'],['crewSize','作業人数'],['productType','品種（用途名・丈数×条数）'],['purposeName','用途名'],['operator','オペレータ'],['measureType','入力内容']];
+ const SERIES_OPTS=[['','なし'],['equipment','設備'],['crewSize','作業人数'],['productType','品種'],['operator','オペレータ']];
+ const METRIC_OPTS=[['avgMin','平均作業時間（分/件）'],['count','件数'],['sumHour','合計作業時間（時間）'],['perHour','時間あたり処理数（件/時）']];
+ const PRESETS={
+  equipEfficiency:{axis:'equipment',series:'crewSize',metric:'avgMin'},
+  crewBreakdown:{axis:'crewSize',series:'equipment',metric:'count'},
+  productType:{axis:'productType',series:'',metric:'avgMin'},
+  trend:{axis:'time',bucket:'month',series:'equipment',metric:'count'},
+ };
+
+ function ensureModal(){
+  let modal=$id('dashboardModal');if(modal)return modal;
+  modal=document.createElement('div');modal.className='record-modal db-modal';modal.id='dashboardModal';modal.hidden=true;
+  modal.innerHTML=`
+   <div class="db-dialog" role="dialog" aria-modal="true" aria-labelledby="dashboardModalTitle">
+    <header class="rp-head">
+     <div class="rp-head-title"><h2 id="dashboardModalTitle">ダッシュボード</h2><span class="rp-sub">端末保存済みの測定データから、設備・作業人数・品種ごとの作業効率をKPIとして集計します。</span></div>
+     <button id="closeDashboardModal" class="rp-close" type="button" aria-label="閉じる">×</button>
+    </header>
+    <div class="db-layout">
+     <aside class="db-controls">
+      <div class="db-presets">
+       <button type="button" data-preset="equipEfficiency" class="active">設備別効率</button>
+       <button type="button" data-preset="crewBreakdown">人数別内訳</button>
+       <button type="button" data-preset="productType">品種別作業時間</button>
+       <button type="button" data-preset="trend">月次推移</button>
+      </div>
+      <div class="db-ctl-group">
+       <span class="db-ctl-label">期間</span>
+       <div class="db-seg" data-seg="dbPeriodSeg">
+        <button type="button" data-val="7d">直近7日</button><button type="button" data-val="30d">直近30日</button><button type="button" data-val="90d">直近90日</button>
+        <button type="button" data-val="thisMonth" class="active">今月</button><button type="button" data-val="lastMonth">先月</button><button type="button" data-val="ytd">今年</button><button type="button" data-val="all">全期間</button>
+       </div>
+       <div class="db-field-grid"><label>開始<input id="dbStart" type="date"></label><label>終了<input id="dbEnd" type="date"></label></div>
+      </div>
+      <div class="db-ctl-group">
+       <span class="db-ctl-label">軸（X）</span>
+       <select id="dbAxis">${AXIS_OPTS.map(([v,l])=>`<option value="${v}">${esc(l)}</option>`).join('')}</select>
+       <div class="db-sub" id="dbBucketWrap" hidden>
+        <span>集計単位</span>
+        <div class="db-seg db-seg-sm" data-seg="dbBucketSeg"><button type="button" data-val="day" class="active">日</button><button type="button" data-val="month">月</button><button type="button" data-val="year">年</button></div>
+       </div>
+      </div>
+      <div class="db-ctl-group"><span class="db-ctl-label">内訳（系列）</span><select id="dbSeries">${SERIES_OPTS.map(([v,l])=>`<option value="${v}">${esc(l)}</option>`).join('')}</select></div>
+      <div class="db-ctl-group"><span class="db-ctl-label">指標（Y）</span><select id="dbMetric">${METRIC_OPTS.map(([v,l])=>`<option value="${v}">${esc(l)}</option>`).join('')}</select></div>
+      <div class="db-ctl-group"><span class="db-ctl-label">対象ステータス</span><select id="dbStatus"><option value="done">完了のみ</option><option value="all">すべて（編集中含む）</option></select></div>
+      <button type="button" id="dbRefresh" class="rp-btn-primary">この条件で集計</button>
+     </aside>
+     <main class="db-main">
+      <div class="db-summary" id="dashboardSummary"></div>
+      <div class="db-chart-wrap"><div class="db-chart" id="dashboardChart"><div class="db-empty">左の設定で集計条件を選び、「この条件で集計」を押してください。</div></div></div>
+      <div class="db-table-wrap"><table class="db-table" id="dashboardTable"></table></div>
+     </main>
+    </div>
+   </div>`;
+  document.body.append(modal);
+  modal.querySelector('.db-dialog').addEventListener('click',e=>e.stopPropagation());
+  modal.addEventListener('click',()=>modal.hidden=true);
+  $id('closeDashboardModal').onclick=()=>modal.hidden=true;
+  modal.querySelectorAll('[data-seg="dbPeriodSeg"] button').forEach(b=>b.onclick=()=>applyPeriod(b.dataset.val));
+  modal.querySelectorAll('[data-seg="dbBucketSeg"] button').forEach(b=>b.onclick=()=>{setSeg('dbBucketSeg',b.dataset.val);runDashboard()});
+  $id('dbStart').addEventListener('change',()=>{setSeg('dbPeriodSeg','');runDashboard()});
+  $id('dbEnd').addEventListener('change',()=>{setSeg('dbPeriodSeg','');runDashboard()});
+  $id('dbAxis').addEventListener('change',()=>{toggleBucket();runDashboard()});
+  ['dbSeries','dbMetric','dbStatus'].forEach(id=>$id(id).addEventListener('change',runDashboard));
+  $id('dbRefresh').onclick=()=>runDashboard(true);
+  modal.querySelectorAll('[data-preset]').forEach(b=>b.onclick=()=>applyPreset(b.dataset.preset));
+  return modal;
+ }
+
+ function setSeg(group,value){document.querySelectorAll(`[data-seg="${group}"] button`).forEach(b=>b.classList.toggle('active',b.dataset.val===value))}
+ function toggleBucket(){const el=$id('dbBucketWrap');if(el)el.hidden=val('dbAxis')!=='time'}
+
+ function periodRange(kind){
+  const now=new Date();let a=null,b=null;
+  if(kind==='7d'){a=new Date(now);a.setDate(now.getDate()-6);b=now}
+  else if(kind==='30d'){a=new Date(now);a.setDate(now.getDate()-29);b=now}
+  else if(kind==='90d'){a=new Date(now);a.setDate(now.getDate()-89);b=now}
+  else if(kind==='thisMonth'){a=new Date(now.getFullYear(),now.getMonth(),1);b=now}
+  else if(kind==='lastMonth'){a=new Date(now.getFullYear(),now.getMonth()-1,1);b=new Date(now.getFullYear(),now.getMonth(),0)}
+  else if(kind==='ytd'){a=new Date(now.getFullYear(),0,1);b=now}
+  return {a,b};
+ }
+ function applyPeriod(kind){
+  const {a,b}=periodRange(kind),pad=n=>String(n).padStart(2,'0'),d=dt=>dt?`${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`:'';
+  $id('dbStart').value=d(a);$id('dbEnd').value=d(b);setSeg('dbPeriodSeg',kind);runDashboard();
+ }
+ function applyPreset(name){
+  const p=PRESETS[name];if(!p)return;
+  document.querySelectorAll('[data-preset]').forEach(b=>b.classList.toggle('active',b.dataset.preset===name));
+  $id('dbAxis').value=p.axis;$id('dbSeries').value=p.series||'';$id('dbMetric').value=p.metric;
+  if(p.bucket)setSeg('dbBucketSeg',p.bucket);
+  toggleBucket();runDashboard();
+ }
+
+ function summaryCards(rows){
+  const n=rows.length,withDur=rows.filter(r=>r.durationMin!=null);
+  const avg=withDur.length?withDur.reduce((s,r)=>s+r.durationMin,0)/withDur.length:null;
+  const equipCount=new Set(rows.map(r=>r.equipment)).size;
+  const crewCount=new Set(rows.map(r=>r.crewSize).filter(Boolean)).size;
+  return `<div class="db-card"><span class="db-card-label">対象ロット数</span><b class="db-card-value">${fmt(n)}</b></div>
+   <div class="db-card"><span class="db-card-label">平均作業時間</span><b class="db-card-value">${avg!=null?fmt(avg)+' 分':'-'}</b></div>
+   <div class="db-card"><span class="db-card-label">稼働設備数</span><b class="db-card-value">${fmt(equipCount)}</b></div>
+   <div class="db-card"><span class="db-card-label">記録済み人数区分</span><b class="db-card-value">${fmt(crewCount)}</b></div>`;
+ }
+ function axisLabelOf(axis){return axis==='time'?'期間':(DIMENSIONS[axis]?DIMENSIONS[axis].label:axis)}
+ function tableHtml(data,ctx){
+  if(!data.items.length)return '<tbody><tr><td class="db-empty-cell">対象データがありません</td></tr></tbody>';
+  const hasSeries=!!ctx.series&&data.keys.length>0;
+  const showCount=ctx.metricKey!=='count';
+  const countCol=showCount?'<th>件数</th>':'';
+  const head=hasSeries?`<tr><th>${esc(axisLabelOf(ctx.axis))}</th>${data.keys.map(k=>`<th>${esc(k)}</th>`).join('')}<th>${esc(data.metricLabel)}</th>${countCol}</tr>`:`<tr><th>${esc(axisLabelOf(ctx.axis))}</th><th>${esc(data.metricLabel)}</th>${countCol}</tr>`;
+  const body=data.items.map(it=>{
+   const cells=hasSeries?data.keys.map(k=>`<td>${it.stacks[k]!=null?fmt(it.stacks[k]):'-'}</td>`).join(''):'';
+   const countCell=showCount?`<td>${fmt(it.count)}</td>`:'';
+   return `<tr><th>${esc(it.label)}</th>${cells}<td>${it.value!=null?fmt(it.value):'-'}</td>${countCell}</tr>`;
+  }).join('');
+  return `<thead>${head}</thead><tbody>${body}</tbody>`;
+ }
+
+ function renderDashboard(data,ctx,scopeRows){
+  dbLast={data,ctx};
+  const hasSeries=!!ctx.series&&data.keys.length>0;
+  const axisLabel=axisLabelOf(ctx.axis);
+  const title=hasSeries?`${axisLabel} × ${DIMENSIONS[ctx.series].label} 別 ${data.metricLabel}`:`${axisLabel} 別 ${data.metricLabel}`;
+  const subtitle=`対象 ${fmt(scopeRows.length)}件・表示 ${data.items.length}項目`;
+  const {w,h}=stage();
+  const svg=svgBar(data.items,{W:w,H:h,keys:data.keys,hasSeries,showVal:!hasSeries,color:'#087c89',title,subtitle,xTitle:axisLabel,yTitle:data.metricLabel});
+  $id('dashboardChart').innerHTML=svg||'<div class="db-empty">対象データがありません。条件を見直してください。</div>';
+  $id('dashboardSummary').innerHTML=summaryCards(scopeRows);
+  $id('dashboardTable').innerHTML=tableHtml(data,ctx);
+ }
+
+ async function runDashboard(force){
+  const modal=$id('dashboardModal');if(!modal||modal.hidden)return;
+  const all=await ensureData(force);
+  const statusFilter=val('dbStatus')||'done';
+  const startStr=val('dbStart'),endStr=val('dbEnd');
+  const startD=startStr?new Date(startStr+'T00:00:00'):null;
+  const endD=endStr?new Date(endStr+'T23:59:59'):null;
+  let rows=all.filter(r=>statusFilter==='all'||r.status==='完了');
+  rows=rows.filter(r=>{
+   if(!r.date)return !startD&&!endD;
+   if(startD&&r.date<startD)return false;
+   if(endD&&r.date>endD)return false;
+   return true;
+  });
+  const axis=val('dbAxis')||'equipment',bucket=(document.querySelector('[data-seg="dbBucketSeg"] button.active')||{}).dataset?.val||'day',series=val('dbSeries')||'',metricKey=val('dbMetric')||'avgMin';
+  const data=aggregate(rows,{axis,bucket,series,metricKey});
+  renderDashboard(data,{axis,bucket,series,metricKey},rows);
+ }
+
+ async function openDashboardModal(){
+  const modal=ensureModal();modal.hidden=false;
+  if(!modal.dataset.inited){modal.dataset.inited='1';applyPreset('equipEfficiency');applyPeriod('thisMonth')}
+  else{toggleBucket();runDashboard()}
+ }
+
+ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$id('dashboardModal')?.hidden){$id('dashboardModal').hidden=true}},true);
  queueMicrotask(ensureNavButton);
 })();
