@@ -316,19 +316,17 @@
   }catch(e){listEl.innerHTML=`<div class="rp-empty">一覧を読み込めませんでした: ${esc(e.message)}</div>`}
  }
 
- /* 編集中/完了データ一覧の各行から、帳票メニューを経由せず直接その
-    ロットの帳票プレビューを開けるようにする(大量データの中から
-    帳票を探すのは一覧側が起点になるという運用を想定)。遷移元の一覧
-    (編集中/完了)を覚えておき、戻るボタンで同じ一覧へ戻れるようにする。 */
- let rpReturnStatus='編集中';
+ /* 編集中/完了データ一覧は統合された1つの一覧のため、帳票から戻る際は
+    現在のトグル状態(編集中/完了それぞれのON/OFF)をそのまま維持して
+    再度開く(openRecordsSafe(null)はopenRecords()側でプリセットを
+    上書きせず現在のrecordListState.statusesを引き継ぐ)。 */
  window.openReportForRecord=async function(id){
-  rpReturnStatus=typeof recordListState!=='undefined'&&recordListState?.status==='履歴'?'履歴':'編集中';
   await openReportView();
   selectLot(id);
  };
  function backToRecordList(){
   exitReportView();
-  if(typeof openRecordsSafe==='function')openRecordsSafe(rpReturnStatus);
+  if(typeof openRecordsSafe==='function')openRecordsSafe(null);
  }
 })();
 
