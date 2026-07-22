@@ -778,8 +778,18 @@ renderGrid=function(){
  const b=document.createElement('tbody');
  S.rows.forEach((r,i)=>{
   const tr=document.createElement('tr');
-  const split=isWork&&typeof window.rowHasSplitData==='function'&&window.rowHasSplitData(r);
-  tr.innerHTML=`<td>${(S.page-1)*+$('#pageSize').value+i+1}</td>`+(isWork?`<td class="split-flag-cell ${split?'split-yes':'split-no'}">${split?'分割あり':'分割なし'}</td>`:'')+S.columns.map(c=>{
+  let splitCell='';
+  if(isWork){
+   const info=typeof window.analyzeRowSplit==='function'?window.analyzeRowSplit(r):{hasSplit:false};
+   if(info.hasSplit){
+    const patternShort=info.widthPattern==='same'?'同幅':info.widthPattern==='different'?'異幅':'';
+    const patternFull=info.widthPattern==='same'?'同一幅分割':info.widthPattern==='different'?'異幅分割':'幅パターン不明';
+    splitCell=`<td class="split-flag-cell split-yes" title="推定${info.lotCount}ロットへの分割・${patternFull}(実際の子ロット数・幅は測定画面で確定します)">分割あり(${info.lotCount})${patternShort?'・'+patternShort:''}</td>`;
+   }else{
+    splitCell='<td class="split-flag-cell split-no">分割なし</td>';
+   }
+  }
+  tr.innerHTML=`<td>${(S.page-1)*+$('#pageSize').value+i+1}</td>`+splitCell+S.columns.map(c=>{
    if(c===lotCol){const lotVal=r[c];return `<td class="lot-cell"><button type="button" class="lot-dsp-link grid-lot-link" title="クリックでLotDspをこのロット番号で開きます">${esc(lotVal)||'—'}</button></td>`}
    return `<td>${esc(r[c])}</td>`;
   }).join('')+(isWork?'<td class="measurement-action-cell"><button type="button" class="measurement-action-button">開く</button></td>':'');
