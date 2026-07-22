@@ -17,7 +17,7 @@
   印刷機能を使い、追加ライブラリなしで完結させる。
 ============================================================ */
 (function(){
- let rpState={items:[],query:'',sort:'updated-desc',selectedId:''},rpZoom='fit';
+ let rpState={items:[],query:'',sort:'updated-desc',selectedId:''},rpZoom='fit',rpCurrentScale=1;
  const $id=id=>document.getElementById(id);
  function fmtDT(v){if(!v)return '-';const d=new Date(v);return Number.isNaN(d.getTime())?'-':d.toLocaleString('ja-JP',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'})}
  function fmtDimSafe(v,d){const raw=String(v??'').trim();if(raw==='')return '';const n=Number(raw);return Number.isFinite(n)?n.toFixed(d):raw}
@@ -60,8 +60,10 @@
       <div class="rp-toolbar-actions">
        <div class="rp-zoom-seg" data-seg="rpZoomSeg" role="group" aria-label="表示倍率">
         <button type="button" data-val="fit" class="active">ページ全体</button>
+        <button type="button" data-val="width">幅に合わせる</button>
         <button type="button" data-val="100">100%</button>
        </div>
+       <span class="rp-zoom-readout" id="rpZoomReadout" title="Ctrlを押しながらホイールで拡大・縮小できます">100%</span>
        <button type="button" id="reportPrint" class="rp-btn-primary" disabled>印刷</button>
        <button type="button" id="reportPdf" class="rp-btn-secondary" disabled>PDFで保存</button>
       </div>
@@ -80,15 +82,36 @@
   $id('reportPrint').onclick=printReport;$id('reportPdf').onclick=printReport;
   $id('reportBack').onclick=backToRecordList;
   panel.querySelectorAll('[data-seg="rpZoomSeg"] button').forEach(b=>b.onclick=()=>setZoom(b.dataset.val));
-  window.addEventListener('resize',()=>{if(rpZoom==='fit')fitPage()});
+  window.addEventListener('resize',()=>{if(rpZoom==='fit')fitPage();else if(rpZoom==='width')fitWidth()});
+  // Ctrl(⌘)+ホイールで拡大縮小。通常のホイールは一覧のスクロールを妨げないよう素通しする。
+  $id('rpScroll').addEventListener('wheel',e=>{
+   if(!e.ctrlKey&&!e.metaKey)return;
+   e.preventDefault();
+   rpZoom='custom';
+   document.querySelectorAll('[data-seg="rpZoomSeg"] button').forEach(b=>b.classList.remove('active'));
+   applyScale(rpCurrentScale*(e.deltaY<0?1.1:1/1.1));
+  },{passive:false});
   return panel;
  }
 
- /* ---------- A4ページの表示倍率（既定=ページ全体をフィット表示） ---------- */
+ /* ---------- A4ページの表示倍率 ----------
+    'fit'=ページ全体(縦横ともに収まるよう縮小)、'width'=表示エリアの幅に
+    最大化(高さは超えてよく、縦スクロールで閲覧)、'100'=実寸、
+    'custom'=Ctrl+ホイールによる任意倍率。印刷/PDF出力時はCSS側で
+    transformを強制解除するため、画面上の倍率は出力に影響しない。 ---------- */
  function setZoom(v){
   rpZoom=v;
   document.querySelectorAll('[data-seg="rpZoomSeg"] button').forEach(b=>b.classList.toggle('active',b.dataset.val===v));
-  if(v==='fit')fitPage();else resetPageScale();
+  if(v==='fit')fitPage();else if(v==='width')fitWidth();else applyScale(1);
+ }
+ function applyScale(scale){
+  const box=$id('rpPageBox'),page=$id('reportContent');if(!box||!page)return;
+  scale=Math.max(.25,Math.min(3,scale));
+  rpCurrentScale=scale;
+  const pw=page.offsetWidth,ph=page.offsetHeight;
+  page.style.transform=`scale(${scale})`;
+  if(pw&&ph){box.style.width=`${pw*scale}px`;box.style.height=`${ph*scale}px`}
+  const readout=$id('rpZoomReadout');if(readout)readout.textContent=`${Math.round(scale*100)}%`;
  }
  function resetPageScale(){
   const box=$id('rpPageBox'),page=$id('reportContent');if(!box||!page)return;
@@ -104,8 +127,20 @@
    const pw=page.offsetWidth,ph=page.offsetHeight;if(!pw||!ph)return;
    const availW=Math.max(60,scroll.clientWidth-44),availH=Math.max(60,scroll.clientHeight-44);
    const scale=Math.max(.1,Math.min(availW/pw,availH/ph,1));
-   page.style.transform=`scale(${scale})`;
-   box.style.width=`${pw*scale}px`;box.style.height=`${ph*scale}px`;
+   applyScale(scale);
+  });
+ }
+ function fitWidth(){
+  if(rpZoom!=='width')return;
+  const scroll=$id('rpScroll'),box=$id('rpPageBox'),page=$id('reportContent');
+  if(!scroll||!box||!page)return;
+  resetPageScale();
+  requestAnimationFrame(()=>{
+   if(rpZoom!=='width')return;
+   const pw=page.offsetWidth;if(!pw)return;
+   const availW=Math.max(60,scroll.clientWidth-44);
+   const scale=Math.max(.1,availW/pw);
+   applyScale(scale);
   });
  }
 
@@ -283,7 +318,7 @@
   $id('reportSelectedTitle').textContent=`${x.basic?.lotNo||x.id} の帳票プレビュー`;
   $id('reportPrint').disabled=false;$id('reportPdf').disabled=false;
   renderReport(x);
-  fitPage();
+  fitPage();fitWidth();
  }
 
  function printReport(){
