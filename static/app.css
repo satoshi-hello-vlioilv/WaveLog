@@ -1063,6 +1063,11 @@ body.qa-mode.qa-view-raw #grid{display:block!important}
 body.qa-mode.qa-view-raw footer{display:flex!important}
 body.qa-mode.qa-view-raw #genericFilterBar{display:block!important}
 
+/* 測定帳票・ダッシュボードもモーダルではなくメイン画面の表示切り替え
+   とし、qa-modeと同様に他の要素を隠して表示エリアを最大化する。 */
+body.rp-mode #grid,body.rp-mode footer,body.rp-mode #tabs,body.rp-mode .hint,body.rp-mode #genericFilterBar,body.rp-mode .qa-v7{display:none!important}
+body.db-mode #grid,body.db-mode footer,body.db-mode #tabs,body.db-mode .hint,body.db-mode #genericFilterBar,body.db-mode .qa-v7{display:none!important}
+
 .qa-v7{flex:1 1 auto;min-height:0;margin:8px 14px 14px;border:1px solid #b9c9ce;border-radius:14px;background:#f5f9fa;box-shadow:0 6px 22px #0b2b3316;display:flex;flex-direction:column;overflow:hidden}
 .qa-v7[hidden]{display:none!important}
 /* 元データビューでは本文を畳み、#grid を最大化 */
@@ -1203,19 +1208,22 @@ body.qa-mode.qa-view-raw #genericFilterBar{display:block!important}
 
 /* ============================================================
  2026-07-21 測定帳票（ロット別レポート）
+ モーダルではなくメイン画面の表示切り替え（qa-v7と同じ形式）。
  IA/認知心理学: 左=ロット一覧(再認)→右=帳票プレビュー(詳細)。
  帳票本体はセクション見出しでチャンク化し、視線移動と記憶負荷を抑える。
+ 画面プレビューは印刷と同じ密度のCSSでA4実寸(210mm×297mm)のまま
+ 組み、JSでコンテナに収まるscale()を掛けて「ページ全体」を既定表示
+ にする（WYSIWYG。100%表示にも切替可）。
  ============================================================ */
 .local-report-btn{margin-top:6px;background:#1f5d68;color:#fff;font-weight:800}
-.local-report-btn:hover{background:var(--teal)}
-.rp-dialog{position:relative;width:96vw;max-width:1400px;height:92vh;display:flex;flex-direction:column;background:#f4f7f8;border-radius:14px;overflow:hidden;box-shadow:0 30px 80px #00000055}
-.rp-head{display:flex;align-items:center;gap:16px;padding:14px 20px;background:linear-gradient(90deg,var(--nav),#1f5560);color:#fff}
+.local-report-btn:hover,.local-report-btn.active{background:var(--teal)}
+.rp-panel{flex:1;min-height:0;margin:9px 14px;display:flex;flex-direction:column;background:#f4f7f8;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.rp-panel[hidden]{display:none!important}
+.rp-head{display:flex;align-items:center;gap:16px;padding:12px 18px;background:linear-gradient(90deg,var(--nav),#1f5560);color:#fff}
 .rp-head-title{display:flex;flex-direction:column;gap:2px;min-width:0}
-.rp-head-title h2{margin:0;font-size:20px}
+.rp-head-title h2{margin:0;font-size:18px}
 .rp-sub{color:#bfe0e4;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rp-close{margin-left:auto;width:36px;height:36px;border:0;border-radius:8px;background:#ffffff22;color:#fff;font-size:22px;line-height:1;cursor:pointer}
-.rp-close:hover{background:#ffffff33}
-.rp-body{flex:1;min-height:0;display:grid;grid-template-columns:320px minmax(0,1fr)}
+.rp-body{flex:1;min-height:0;display:grid;grid-template-columns:300px minmax(0,1fr)}
 .rp-nav{display:flex;flex-direction:column;min-height:0;background:#e7eff1;border-right:1px solid var(--line)}
 .rp-nav-toolbar{display:flex;flex-direction:column;gap:8px;padding:12px}
 .rp-search{position:relative;display:flex;align-items:center}
@@ -1234,46 +1242,52 @@ body.qa-mode.qa-view-raw #genericFilterBar{display:block!important}
 .rp-status-badge.done{background:#e7f6ef;color:#1e7a55}
 .rp-status-badge.ng{background:#fdeaea;color:#a32424}
 .rp-main{display:flex;flex-direction:column;min-width:0;min-height:0}
-.rp-toolbar{display:flex;align-items:center;gap:12px;padding:12px 18px;background:#fff;border-bottom:1px solid var(--line)}
+.rp-toolbar{display:flex;align-items:center;gap:12px;padding:10px 18px;background:#fff;border-bottom:1px solid var(--line)}
 .rp-toolbar-title{font-weight:800;color:#173842;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rp-toolbar-actions{margin-left:auto;display:flex;gap:8px}
-.rp-btn-primary{height:38px;padding:0 18px;border:0;border-radius:8px;background:var(--teal);color:#fff;font-weight:800;cursor:pointer}
+.rp-toolbar-actions{margin-left:auto;display:flex;align-items:center;gap:8px}
+.rp-zoom-seg{display:flex;gap:2px;background:#eef2f4;border-radius:8px;padding:2px}
+.rp-zoom-seg button{padding:6px 10px;border:0;border-radius:6px;background:transparent;color:#3a565d;font-size:12px;font-weight:700;cursor:pointer}
+.rp-zoom-seg button.active{background:#fff;color:#075e67;box-shadow:0 1px 3px #00000022}
+.rp-btn-primary{height:36px;padding:0 16px;border:0;border-radius:8px;background:var(--teal);color:#fff;font-weight:800;cursor:pointer}
 .rp-btn-primary:hover{background:var(--teal-dark)}
 .rp-btn-primary:disabled{opacity:.4;cursor:not-allowed}
-.rp-btn-secondary{height:38px;padding:0 16px;border:1px solid #9fb9b2;border-radius:8px;background:#fff;color:#2c5049;font-weight:700;cursor:pointer}
+.rp-btn-secondary{height:36px;padding:0 14px;border:1px solid #9fb9b2;border-radius:8px;background:#fff;color:#2c5049;font-weight:700;cursor:pointer}
 .rp-btn-secondary:disabled{opacity:.4;cursor:not-allowed}
-.rp-pdf-hint{padding:6px 18px;color:#6a7d83;font-size:11px;background:#f7fafb;border-bottom:1px solid #e5edef}
-.rp-scroll{flex:1;min-height:0;overflow:auto;padding:18px}
-.rp-report{max-width:900px;margin:0 auto;background:#fff;border:1px solid #d5e0e3;border-radius:12px;padding:24px 28px}
+.rp-pdf-hint{padding:5px 18px;color:#6a7d83;font-size:11px;background:#f7fafb;border-bottom:1px solid #e5edef}
+.rp-scroll{flex:1;min-height:0;overflow:auto;padding:20px;background:#dbe4e6;display:flex;justify-content:center;align-items:flex-start}
+.rp-page-box{overflow:visible}
+/* A4実寸。画面プレビューは印刷と同じ密度のCSSで組み、実際に印刷
+   される見た目そのままをページ枠内に収める（WYSIWYG）。 */
+.rp-page{width:210mm;min-height:297mm;background:#fff;box-shadow:0 6px 24px #00000030;padding:8mm;box-sizing:border-box;font-size:10px;transform-origin:top left}
 .rp-empty{padding:40px;text-align:center;color:#60747b;background:#fff;border:1px dashed #aebfc4;border-radius:12px}
-.rp-report-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;padding-bottom:14px;margin-bottom:16px;border-bottom:2px solid #173842}
+.rp-report-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;padding-bottom:3px;margin-bottom:4px;border-bottom:2px solid #173842}
 .rp-report-head small{color:var(--teal);font-weight:800;letter-spacing:.1em}
-.rp-report-head h2{margin:2px 0 0;font-size:26px;color:#173842}
-.rp-report-head-meta{display:flex;flex-direction:column;align-items:flex-end;gap:6px;color:#61757c;font-size:12px}
+.rp-report-head h2{margin:2px 0 0;font-size:16px;color:#173842}
+.rp-report-head-meta{display:flex;flex-direction:column;align-items:flex-end;gap:2px;color:#61757c;font-size:9px}
 /* ゾーン: 関連するセクションを横に並べ、認知的なまとまり（チャンク）ごとに
    視線移動を抑える。列数はゾーンごとに情報量に応じて変える。 */
-.rp-zone{display:grid;gap:14px;margin-bottom:14px;align-items:start}
+.rp-zone{display:grid;gap:4px;margin-bottom:3px;align-items:start}
 .rp-zone-2{grid-template-columns:repeat(2,minmax(0,1fr))}
-.rp-zone-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.rp-zone-3{grid-template-columns:1fr 1.6fr 1.4fr}
 /* 品質等級・母材実績・測定データ(板厚)は文字数が少なく幅を要らないため狭く、
-   測定条件・丈別データ（列可変/固定9丈）は幅が要るため広く配分する。
+   測定条件・丈別データ（固定9丈）は幅が要るため広く配分する。
    等幅にすると文字量の少ない側に余白が残ってしまうため列比を変える。 */
 .rp-zone-quality{grid-template-columns:.7fr 1.6fr .9fr}
 .rp-zone-length{grid-template-columns:.8fr 2.2fr .8fr}
-.rp-stack{display:flex;flex-direction:column;gap:14px;min-width:0}
+.rp-stack{display:flex;flex-direction:column;gap:3px;min-width:0}
 /* 旧帳票（B5帳票）の左上余白に相当。ラベル貼付や手書き用に空白のまま確保する
    （中を埋めずキャプションだけ隅に添える）。 */
-.rp-label-area{min-height:90px;padding:6px 10px;border:1px dashed #b7c7cc;border-radius:8px;background:#fbfdfd;display:flex;align-items:flex-end;justify-content:flex-end;break-inside:avoid}
-.rp-label-caption{color:#aebfc4;font-size:10px}
+.rp-label-area{min-height:0;height:100%;padding:3px 6px;border:1px dashed #b7c7cc;border-radius:8px;background:#fbfdfd;display:flex;align-items:flex-end;justify-content:flex-end;break-inside:avoid}
+.rp-label-caption{color:#aebfc4;font-size:7px}
 .rp-section{margin:0;break-inside:avoid}
-.rp-section h3{margin:0 0 6px;padding:5px 9px;background:#eef2f4;border-left:4px solid var(--teal);color:#173842;font-size:13px}
-.rp-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 14px}
+.rp-section h3{margin:0 0 2px;padding:1.5px 6px;background:#eef2f4;border-left:4px solid var(--teal);color:#173842;font-size:9px}
+.rp-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 8px}
 .rp-grid-4{grid-template-columns:repeat(4,minmax(0,1fr))}
-.rp-field{display:grid;grid-template-columns:min-content minmax(0,1fr);gap:8px;padding:4px;border-bottom:1px solid #eef2f4;white-space:nowrap}
-.rp-field-label{color:#61757c;font-size:11px;font-weight:700}
+.rp-field{display:grid;grid-template-columns:min-content minmax(0,1fr);gap:4px;padding:1px 2px;border-bottom:1px solid #eef2f4;white-space:nowrap;font-size:8.5px}
+.rp-field-label{color:#61757c;font-size:8px;font-weight:700}
 .rp-field-value{color:#17272d;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rp-dim-table{width:100%;border-collapse:collapse;margin-top:2px}
-.rp-dim-table th,.rp-dim-table td{height:auto;padding:4px 6px;border:1px solid #d5e0e3;text-align:center;font-size:12px}
+.rp-dim-table th,.rp-dim-table td{height:auto;padding:1.5px 3px;border:1px solid #d5e0e3;text-align:center;font-size:8.5px}
 .rp-dim-table thead th{background:#eef2f4;color:#173842}
 .rp-dim-table tbody th{background:#f8fafb;text-align:left}
 /* 品質等級: ラベル(th)と値(td)を交互に並べた4ペア構成（コンパクト化） */
@@ -1281,73 +1295,53 @@ body.qa-mode.qa-view-raw #genericFilterBar{display:block!important}
 .rp-grade-table td{font-weight:800;color:#173842}
 /* 品質情報・板幅測定データなど、ゾーン(グリッド)に属さず全幅で単独配置する
    セクション同士の縦間隔。ゾーンの外に出た分、明示的に余白を持たせる。 */
-#reportContent>.rp-section{margin-bottom:14px}
+#reportContent>.rp-section{margin-bottom:3px}
 /* 品質情報: 仕掛の別ファイルから取得した異常/保留情報。文字量が多くなる
    ことが多いため、狭い列に押し込めず全幅の専用行として常時確保する。
    短文の場合でも面積が安定するよう最小高さを確保する。 */
-.rp-info-box{min-height:52px;padding:6px 9px;border:1px solid #d5e0e3;border-radius:0 0 6px 6px;background:#fbfdfd;color:#173842;font-size:11px;line-height:1.5;white-space:normal;word-break:break-word}
+.rp-info-box{min-height:26px;padding:1px 5px;border:1px solid #d5e0e3;border-radius:0 0 6px 6px;background:#fbfdfd;color:#173842;font-size:7.5px;line-height:1.25;white-space:normal;word-break:break-word}
 /* 頭/尾を1枚に収める測定データ表。列数が多いため小さめのフォントで密に配置する */
-.rp-note{margin:0 0 4px;color:#61757c;font-size:10px}
-.rp-wide-wrap{overflow-x:auto}
-.rp-wide-table{min-width:760px}
-.rp-wide-table th,.rp-wide-table td{padding:3px 5px;font-size:10px}
+.rp-note{margin:0 0 2px;color:#61757c;font-size:7.5px}
+.rp-wide-wrap{overflow:visible}
+.rp-wide-table{min-width:0;width:100%}
+.rp-wide-table th,.rp-wide-table td{padding:1px 2px;font-size:7.5px;line-height:1.15}
 /* 丈別データ: 丈数が増えても列が伸びるだけで行数（縦寸法）は変わらない */
-.rp-product-table th,.rp-product-table td{padding:3px 4px;font-size:10px;white-space:nowrap}
+.rp-product-table{min-width:0;width:100%}
+.rp-product-table th,.rp-product-table td{padding:1px 2px;font-size:7.5px;line-height:1.15;white-space:nowrap}
 .rp-product-table tbody th{white-space:nowrap}
 
-@media(max-width:1000px){.rp-body{grid-template-columns:1fr}.rp-nav{max-height:260px}.rp-zone-2,.rp-zone-3{grid-template-columns:1fr}}
+@media(max-width:1000px){.rp-body{grid-template-columns:1fr}.rp-nav{max-height:220px}}
 
 /* ---------------------------------------------------------------
-   印刷（PDF保存含む）: A4 1枚に収める高密度レイアウト。
-   画面プレビューと同じDOM構造のまま、列数とフォント/余白だけを
-   さらに詰める。データの間引きはせず、控え欄（40行グリッド等）も
-   旧帳票どおり確保したうえで密度で吸収する。
+   印刷（PDF保存含む）: プレビューと同じCSSのまま、縮小表示用の
+   transformだけ解除してA4実寸で出力する。データの間引きはせず、
+   控え欄（40行グリッド等）も旧帳票どおり確保する。
    --------------------------------------------------------------- */
 @media print{
  @page{size:A4;margin:5mm}
- body>*:not(#reportModal){display:none!important}
- #reportModal{position:static;inset:auto;background:none;display:block;z-index:auto;padding:0}
- #reportModal .rp-dialog{position:static;width:100%;max-width:none;height:auto;box-shadow:none;border-radius:0;margin:0;background:#fff}
- #reportModal .rp-head,#reportModal .rp-nav,#reportModal .rp-toolbar,#reportModal .rp-pdf-hint{display:none!important}
- #reportModal .rp-body{display:block;height:auto}
- #reportModal .rp-main{display:block;height:auto;overflow:visible}
- #reportModal .rp-scroll{padding:0;overflow:visible}
- #reportModal .rp-report{max-width:none;margin:0;border:0;padding:0;font-size:10px}
- #reportModal .rp-report-head{padding-bottom:2px;margin-bottom:3px}
- #reportModal .rp-report-head h2{font-size:16px}
- #reportModal .rp-report-head-meta{font-size:9px;gap:2px}
- #reportModal .rp-zone{gap:4px;margin-bottom:3px}
- #reportModal .rp-zone-3{grid-template-columns:1fr 1.6fr 1.4fr}
- #reportModal .rp-zone-quality{grid-template-columns:.7fr 1.6fr .9fr}
- #reportModal .rp-zone-length{grid-template-columns:.8fr 2.2fr .8fr}
- #reportModal .rp-stack{gap:3px}
- #reportModal .rp-label-area{min-height:0;height:100%;padding:3px 6px}
- #reportModal .rp-label-caption{font-size:7px}
- #reportModal #reportContent>.rp-section{margin-bottom:3px}
- #reportModal .rp-section h3{padding:1.5px 6px;font-size:9px;margin-bottom:2px}
- #reportModal .rp-grid{gap:0 8px}
- #reportModal .rp-grid-4{grid-template-columns:repeat(4,minmax(0,1fr))}
- #reportModal .rp-field{grid-template-columns:min-content minmax(0,1fr);gap:4px;padding:1px 2px;font-size:8.5px}
- #reportModal .rp-field-label{font-size:8px}
- #reportModal .rp-dim-table th,#reportModal .rp-dim-table td{padding:1.5px 3px;font-size:8.5px}
- #reportModal .rp-note{font-size:7.5px}
- #reportModal .rp-info-box{min-height:26px;padding:1px 5px;font-size:7.5px;line-height:1.25}
- #reportModal .rp-wide-wrap{overflow:visible}
- #reportModal .rp-wide-table{min-width:0;width:100%}
- #reportModal .rp-wide-table th,#reportModal .rp-wide-table td{padding:1px 2px;font-size:7.5px;line-height:1.15}
- #reportModal .rp-product-table{min-width:0;width:100%}
- #reportModal .rp-product-table th,#reportModal .rp-product-table td{padding:1px 2px;font-size:7.5px;line-height:1.15}
+ body.rp-mode .layout>aside,body.rp-mode main>*:not(#reportPanel){display:none!important}
+ body.rp-mode .layout{display:block;height:auto}
+ body.rp-mode main{display:block;height:auto}
+ #reportPanel{position:static;margin:0;border:0;border-radius:0;background:#fff;display:block;height:auto}
+ #reportPanel .rp-head,#reportPanel .rp-nav,#reportPanel .rp-toolbar,#reportPanel .rp-pdf-hint{display:none!important}
+ #reportPanel .rp-body{display:block;height:auto}
+ #reportPanel .rp-main{display:block;height:auto;overflow:visible}
+ #reportPanel .rp-scroll{padding:0;overflow:visible;display:block;background:none}
+ #reportPanel .rp-page-box{width:auto!important;height:auto!important}
+ #reportPanel .rp-page{width:auto;min-height:0;margin:0;box-shadow:none;padding:0;transform:none!important}
 }
 
 /* ============================================================
  2026-07-21 生産管理ダッシュボード（KPI集計）
- 端末保存済みの測定データを対象に、設備・作業人数・品種ごとの
- 作業効率をクライアント側で集計する。品質データ分析(qa-v7)と
- 同じ「軸×系列×指標」の汎用設計・見た目の言語を踏襲する。
+ モーダルではなくメイン画面の表示切り替え（qa-v7・測定帳票と同じ
+ 形式）。端末保存済みの測定データを対象に、設備・作業人数・品種
+ ごとの作業効率をクライアント側で集計する。品質データ分析(qa-v7)
+ と同じ「軸×系列×指標」の汎用設計・見た目の言語を踏襲する。
  ============================================================ */
 .local-dashboard-btn{margin-top:6px;background:#1f5d68;color:#fff;font-weight:800}
-.local-dashboard-btn:hover{background:var(--teal)}
-.db-dialog{position:relative;width:96vw;max-width:1400px;height:92vh;display:flex;flex-direction:column;background:#f4f7f8;border-radius:14px;overflow:hidden;box-shadow:0 30px 80px #00000055}
+.local-dashboard-btn:hover,.local-dashboard-btn.active{background:var(--teal)}
+.db-panel{flex:1;min-height:0;margin:9px 14px;display:flex;flex-direction:column;background:#f4f7f8;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.db-panel[hidden]{display:none!important}
 .db-layout{flex:1;min-height:0;display:grid;grid-template-columns:260px minmax(0,1fr);overflow:hidden}
 .db-controls{display:flex;flex-direction:column;gap:14px;padding:16px;background:#e7eff1;border-right:1px solid var(--line);overflow-y:auto}
 .db-presets{display:flex;flex-wrap:wrap;gap:6px}

@@ -2284,15 +2284,20 @@ compactToleranceScale=function(kind,values,count){
 2026-07-21 ロット別測定帳票
 --------------------------------------------------------------
 方針（IA / 認知心理学）:
-- 左に端末保存済みロットの一覧（再認）、右にプレビュー（詳細）を並べ、
-  マスタ管理モーダルと同じ「ナビ→詳細」の型に揃える（一貫性）。
-- 帳票本体はセクション見出しでチャンク化し、1画面で読み切れる粒度にする。
+- モーダルではなく、品質データ分析(qa-v7)と同じ「メイン画面の
+  表示切り替え」とする。表示エリアを最大限確保するため、#grid の
+  兄弟要素としてパネルを差し込み、body.rp-mode で他の要素を隠す。
+- 左に端末保存済みロットの一覧（再認）、右にプレビュー（詳細）。
+  帳票本体はセクション見出しでチャンク化し、1画面で読み切れる粒度にする。
+- 画面プレビューは印刷と同じ密度のCSSでA4実寸(210mm×297mm)のまま
+  組み、既定では「ページ全体」表示（縮小フィット）にして帳票の
+  全体像を一目で把握できるようにする。100%表示にも切り替え可能。
 - 「測定データ.accdb」への保存内容と同一のローカル保存レコード
   （reliableAll）を対象データとする。印刷・PDF保存はブラウザーの
   印刷機能を使い、追加ライブラリなしで完結させる。
 ============================================================ */
 (function(){
- let rpState={items:[],query:'',sort:'updated-desc',selectedId:''};
+ let rpState={items:[],query:'',sort:'updated-desc',selectedId:''},rpZoom='fit';
  const $id=id=>document.getElementById(id);
  function fmtDT(v){if(!v)return '-';const d=new Date(v);return Number.isNaN(d.getTime())?'-':d.toLocaleString('ja-JP',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'})}
  function fmtDimSafe(v,d){const raw=String(v??'').trim();if(raw==='')return '';const n=Number(raw);return Number.isFinite(n)?n.toFixed(d):raw}
@@ -2303,50 +2308,88 @@ compactToleranceScale=function(kind,values,count){
   const nav=document.querySelector('.local-nav');if(!nav||$id('openReportList'))return;
   const b=document.createElement('button');b.type='button';b.id='openReportList';b.className='db local-report-btn';
   b.innerHTML='<span>測定帳票</span>';b.title='端末保存済みのロットから帳票（印刷・PDF）を作成します';
-  b.onclick=openReportModal;nav.append(b);
+  b.onclick=openReportView;nav.append(b);
  }
 
- function ensureModal(){
-  let modal=$id('reportModal');if(modal)return modal;
-  modal=document.createElement('div');modal.className='record-modal rp-modal';modal.id='reportModal';modal.hidden=true;
-  modal.innerHTML=`
-   <div class="rp-dialog" role="dialog" aria-modal="true" aria-labelledby="reportModalTitle">
-    <header class="rp-head">
-     <div class="rp-head-title"><h2 id="reportModalTitle">測定帳票</h2><span class="rp-sub">端末に保存済みのロットから帳票を作成します。一覧から選ぶとプレビューが表示されます。</span></div>
-     <button id="closeReportModal" class="rp-close" type="button" aria-label="閉じる">×</button>
-    </header>
-    <div class="rp-body">
-     <nav class="rp-nav" aria-label="ロット一覧">
-      <div class="rp-nav-toolbar">
-       <label class="rp-search"><span class="rp-search-icon" aria-hidden="true">検索</span><input id="reportSearch" type="search" placeholder="ロット・検査番号・設備など" autocomplete="off"></label>
-       <select id="reportSort" aria-label="並び順">
-        <option value="updated-desc">更新日時の新しい順</option>
-        <option value="updated-asc">更新日時の古い順</option>
-        <option value="lot-asc">ロット番号順</option>
-       </select>
-      </div>
-      <div class="rp-lot-list" id="reportLotList"></div>
-     </nav>
-     <section class="rp-main">
-      <div class="rp-toolbar">
-       <div class="rp-toolbar-title" id="reportSelectedTitle">ロットを選択してください</div>
-       <div class="rp-toolbar-actions">
-        <button type="button" id="reportPrint" class="rp-btn-primary" disabled>印刷</button>
-        <button type="button" id="reportPdf" class="rp-btn-secondary" disabled>PDFで保存</button>
+ function exitReportView(){
+  if(!document.body.classList.contains('rp-mode'))return;
+  document.body.classList.remove('rp-mode');
+  $id('openReportList')?.classList.remove('active');
+  const panel=$id('reportPanel');if(panel)panel.hidden=true;
+ }
+ if(typeof selectDb==='function'){const old=selectDb;selectDb=async function(k,b){exitReportView();return old(k,b)}}
+
+ function ensurePanel(){
+  let panel=$id('reportPanel');if(panel)return panel;
+  panel=document.createElement('section');panel.className='rp-panel';panel.id='reportPanel';panel.hidden=true;
+  panel.innerHTML=`
+   <header class="rp-head">
+    <div class="rp-head-title"><h2>測定帳票</h2><span class="rp-sub">端末に保存済みのロットから帳票を作成します。一覧から選ぶとプレビューが表示されます。</span></div>
+   </header>
+   <div class="rp-body">
+    <nav class="rp-nav" aria-label="ロット一覧">
+     <div class="rp-nav-toolbar">
+      <label class="rp-search"><span class="rp-search-icon" aria-hidden="true">検索</span><input id="reportSearch" type="search" placeholder="ロット・検査番号・設備など" autocomplete="off"></label>
+      <select id="reportSort" aria-label="並び順">
+       <option value="updated-desc">更新日時の新しい順</option>
+       <option value="updated-asc">更新日時の古い順</option>
+       <option value="lot-asc">ロット番号順</option>
+      </select>
+     </div>
+     <div class="rp-lot-list" id="reportLotList"></div>
+    </nav>
+    <section class="rp-main">
+     <div class="rp-toolbar">
+      <div class="rp-toolbar-title" id="reportSelectedTitle">ロットを選択してください</div>
+      <div class="rp-toolbar-actions">
+       <div class="rp-zoom-seg" data-seg="rpZoomSeg" role="group" aria-label="表示倍率">
+        <button type="button" data-val="fit" class="active">ページ全体</button>
+        <button type="button" data-val="100">100%</button>
        </div>
+       <button type="button" id="reportPrint" class="rp-btn-primary" disabled>印刷</button>
+       <button type="button" id="reportPdf" class="rp-btn-secondary" disabled>PDFで保存</button>
       </div>
-      <div class="rp-pdf-hint">「PDFで保存」は印刷ダイアログを開きます。出力先（プリンター）で「PDFに保存」を選択してください。</div>
-      <div class="rp-scroll"><div class="rp-report" id="reportContent"><div class="rp-empty">左の一覧からロットを選ぶと、帳票プレビューがここに表示されます。</div></div></div>
-     </section>
-    </div>
+     </div>
+     <div class="rp-pdf-hint">「PDFで保存」は印刷ダイアログを開きます。出力先（プリンター）で「PDFに保存」を選択してください。</div>
+     <div class="rp-scroll" id="rpScroll">
+      <div class="rp-page-box" id="rpPageBox">
+       <div class="rp-report rp-page" id="reportContent"><div class="rp-empty">左の一覧からロットを選ぶと、帳票プレビューがここに表示されます。</div></div>
+      </div>
+     </div>
+    </section>
    </div>`;
-  document.body.append(modal);
-  $id('closeReportModal').onclick=()=>{modal.hidden=true};
-  modal.addEventListener('click',ev=>{if(ev.target===modal)modal.hidden=true});
+  const grid=$id('grid');grid?.parentNode?.insertBefore(panel,grid);
   const search=$id('reportSearch');if(search)search.oninput=()=>{rpState.query=search.value;renderLotList()};
   const sort=$id('reportSort');if(sort)sort.onchange=()=>{rpState.sort=sort.value;renderLotList()};
   $id('reportPrint').onclick=printReport;$id('reportPdf').onclick=printReport;
-  return modal;
+  panel.querySelectorAll('[data-seg="rpZoomSeg"] button').forEach(b=>b.onclick=()=>setZoom(b.dataset.val));
+  window.addEventListener('resize',()=>{if(rpZoom==='fit')fitPage()});
+  return panel;
+ }
+
+ /* ---------- A4ページの表示倍率（既定=ページ全体をフィット表示） ---------- */
+ function setZoom(v){
+  rpZoom=v;
+  document.querySelectorAll('[data-seg="rpZoomSeg"] button').forEach(b=>b.classList.toggle('active',b.dataset.val===v));
+  if(v==='fit')fitPage();else resetPageScale();
+ }
+ function resetPageScale(){
+  const box=$id('rpPageBox'),page=$id('reportContent');if(!box||!page)return;
+  page.style.transform='';box.style.width='';box.style.height='';
+ }
+ function fitPage(){
+  if(rpZoom!=='fit')return;
+  const scroll=$id('rpScroll'),box=$id('rpPageBox'),page=$id('reportContent');
+  if(!scroll||!box||!page)return;
+  resetPageScale();
+  requestAnimationFrame(()=>{
+   if(rpZoom!=='fit')return;
+   const pw=page.offsetWidth,ph=page.offsetHeight;if(!pw||!ph)return;
+   const availW=Math.max(60,scroll.clientWidth-44),availH=Math.max(60,scroll.clientHeight-44);
+   const scale=Math.max(.1,Math.min(availW/pw,availH/ph,1));
+   page.style.transform=`scale(${scale})`;
+   box.style.width=`${pw*scale}px`;box.style.height=`${ph*scale}px`;
+  });
  }
 
  function searchText(x){return [x.basic?.lotNo,x.basic?.inspectionNo,x.basic?.castingNo,x.basic?.orderNo,x.settings?.registeredEquipment,x.registeredEquipment,x.status].map(v=>String(v||'').normalize('NFKC').toLowerCase()).join(' ')}
@@ -2513,6 +2556,7 @@ compactToleranceScale=function(kind,values,count){
   $id('reportSelectedTitle').textContent=`${x.basic?.lotNo||x.id} の帳票プレビュー`;
   $id('reportPrint').disabled=false;$id('reportPdf').disabled=false;
   renderReport(x);
+  fitPage();
  }
 
  function printReport(){
@@ -2523,8 +2567,16 @@ compactToleranceScale=function(kind,values,count){
   setTimeout(()=>{document.title=prevTitle},500);
  }
 
- async function openReportModal(){
-  ensureModal();$id('reportModal').hidden=false;
+ async function openReportView(){
+  document.body.classList.remove('qa-mode','qa-view-raw');
+  document.getElementById('dashboardPanel')?.setAttribute('hidden','');
+  document.body.classList.remove('db-mode');
+  document.getElementById('openDashboard')?.classList.remove('active');
+  document.body.classList.add('rp-mode');
+  document.querySelectorAll('#nav button.db').forEach(b=>b.classList.remove('active'));
+  $id('openReportList')?.classList.add('active');
+  ensurePanel().hidden=false;
+  setZoom(rpZoom);
   $id('reportSelectedTitle').textContent='ロットを選択してください';
   $id('reportPrint').disabled=true;$id('reportPdf').disabled=true;
   $id('reportContent').innerHTML='<div class="rp-empty">左の一覧からロットを選ぶと、帳票プレビューがここに表示されます。</div>';
@@ -2537,7 +2589,6 @@ compactToleranceScale=function(kind,values,count){
   }catch(e){listEl.innerHTML=`<div class="rp-empty">一覧を読み込めませんでした: ${esc(e.message)}</div>`}
  }
 
- document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$id('reportModal')?.hidden){$id('reportModal').hidden=true}},true);
  queueMicrotask(ensureNavButton);
 })();
 
@@ -2695,8 +2746,16 @@ compactToleranceScale=function(kind,values,count){
   const nav=document.querySelector('.local-nav');if(!nav||$id('openDashboard'))return;
   const b=document.createElement('button');b.type='button';b.id='openDashboard';b.className='db local-dashboard-btn';
   b.innerHTML='<span>ダッシュボード</span>';b.title='端末保存済みの測定データからKPI（設備別効率・人数別内訳・品種別作業時間など）を集計します';
-  b.onclick=openDashboardModal;nav.append(b);
+  b.onclick=openDashboardView;nav.append(b);
  }
+
+ function exitDashboardView(){
+  if(!document.body.classList.contains('db-mode'))return;
+  document.body.classList.remove('db-mode');
+  $id('openDashboard')?.classList.remove('active');
+  const panel=$id('dashboardPanel');if(panel)panel.hidden=true;
+ }
+ if(typeof selectDb==='function'){const old=selectDb;selectDb=async function(k,b){exitDashboardView();return old(k,b)}}
 
  const AXIS_OPTS=[['time','時系列'],['equipment','設備'],['crewSize','作業人数'],['productType','品種（用途名・丈数×条数）'],['purposeName','用途名'],['operator','オペレータ'],['measureType','入力内容']];
  const SERIES_OPTS=[['','なし'],['equipment','設備'],['crewSize','作業人数'],['productType','品種'],['operator','オペレータ']];
@@ -2708,14 +2767,12 @@ compactToleranceScale=function(kind,values,count){
   trend:{axis:'time',bucket:'month',series:'equipment',metric:'count'},
  };
 
- function ensureModal(){
-  let modal=$id('dashboardModal');if(modal)return modal;
-  modal=document.createElement('div');modal.className='record-modal db-modal';modal.id='dashboardModal';modal.hidden=true;
-  modal.innerHTML=`
-   <div class="db-dialog" role="dialog" aria-modal="true" aria-labelledby="dashboardModalTitle">
+ function ensurePanel(){
+  let panel=$id('dashboardPanel');if(panel)return panel;
+  panel=document.createElement('section');panel.className='db-panel';panel.id='dashboardPanel';panel.hidden=true;
+  panel.innerHTML=`
     <header class="rp-head">
-     <div class="rp-head-title"><h2 id="dashboardModalTitle">ダッシュボード</h2><span class="rp-sub">端末保存済みの測定データから、設備・作業人数・品種ごとの作業効率をKPIとして集計します。</span></div>
-     <button id="closeDashboardModal" class="rp-close" type="button" aria-label="閉じる">×</button>
+     <div class="rp-head-title"><h2>ダッシュボード</h2><span class="rp-sub">端末保存済みの測定データから、設備・作業人数・品種ごとの作業効率をKPIとして集計します。</span></div>
     </header>
     <div class="db-layout">
      <aside class="db-controls">
@@ -2751,21 +2808,17 @@ compactToleranceScale=function(kind,values,count){
       <div class="db-chart-wrap"><div class="db-chart" id="dashboardChart"><div class="db-empty">左の設定で集計条件を選び、「この条件で集計」を押してください。</div></div></div>
       <div class="db-table-wrap"><table class="db-table" id="dashboardTable"></table></div>
      </main>
-    </div>
-   </div>`;
-  document.body.append(modal);
-  modal.querySelector('.db-dialog').addEventListener('click',e=>e.stopPropagation());
-  modal.addEventListener('click',()=>modal.hidden=true);
-  $id('closeDashboardModal').onclick=()=>modal.hidden=true;
-  modal.querySelectorAll('[data-seg="dbPeriodSeg"] button').forEach(b=>b.onclick=()=>applyPeriod(b.dataset.val));
-  modal.querySelectorAll('[data-seg="dbBucketSeg"] button').forEach(b=>b.onclick=()=>{setSeg('dbBucketSeg',b.dataset.val);runDashboard()});
+    </div>`;
+  const grid=$id('grid');grid?.parentNode?.insertBefore(panel,grid);
+  panel.querySelectorAll('[data-seg="dbPeriodSeg"] button').forEach(b=>b.onclick=()=>applyPeriod(b.dataset.val));
+  panel.querySelectorAll('[data-seg="dbBucketSeg"] button').forEach(b=>b.onclick=()=>{setSeg('dbBucketSeg',b.dataset.val);runDashboard()});
   $id('dbStart').addEventListener('change',()=>{setSeg('dbPeriodSeg','');runDashboard()});
   $id('dbEnd').addEventListener('change',()=>{setSeg('dbPeriodSeg','');runDashboard()});
   $id('dbAxis').addEventListener('change',()=>{toggleBucket();runDashboard()});
   ['dbSeries','dbMetric','dbStatus'].forEach(id=>$id(id).addEventListener('change',runDashboard));
   $id('dbRefresh').onclick=()=>runDashboard(true);
-  modal.querySelectorAll('[data-preset]').forEach(b=>b.onclick=()=>applyPreset(b.dataset.preset));
-  return modal;
+  panel.querySelectorAll('[data-preset]').forEach(b=>b.onclick=()=>applyPreset(b.dataset.preset));
+  return panel;
  }
 
  function setSeg(group,value){document.querySelectorAll(`[data-seg="${group}"] button`).forEach(b=>b.classList.toggle('active',b.dataset.val===value))}
@@ -2832,7 +2885,7 @@ compactToleranceScale=function(kind,values,count){
  }
 
  async function runDashboard(force){
-  const modal=$id('dashboardModal');if(!modal||modal.hidden)return;
+  const panel=$id('dashboardPanel');if(!panel||panel.hidden)return;
   const all=await ensureData(force);
   const statusFilter=val('dbStatus')||'done';
   const startStr=val('dbStart'),endStr=val('dbEnd');
@@ -2850,12 +2903,18 @@ compactToleranceScale=function(kind,values,count){
   renderDashboard(data,{axis,bucket,series,metricKey},rows);
  }
 
- async function openDashboardModal(){
-  const modal=ensureModal();modal.hidden=false;
-  if(!modal.dataset.inited){modal.dataset.inited='1';applyPreset('equipEfficiency');applyPeriod('thisMonth')}
+ async function openDashboardView(){
+  document.body.classList.remove('qa-mode','qa-view-raw');
+  document.getElementById('reportPanel')?.setAttribute('hidden','');
+  document.body.classList.remove('rp-mode');
+  document.getElementById('openReportList')?.classList.remove('active');
+  document.body.classList.add('db-mode');
+  document.querySelectorAll('#nav button.db').forEach(b=>b.classList.remove('active'));
+  $id('openDashboard')?.classList.add('active');
+  const panel=ensurePanel();panel.hidden=false;
+  if(!panel.dataset.inited){panel.dataset.inited='1';applyPreset('equipEfficiency');applyPeriod('thisMonth')}
   else{toggleBucket();runDashboard()}
  }
 
- document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$id('dashboardModal')?.hidden){$id('dashboardModal').hidden=true}},true);
  queueMicrotask(ensureNavButton);
 })();
