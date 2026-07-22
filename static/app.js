@@ -19,7 +19,7 @@ async function load(){const q=new URLSearchParams({db:S.db,table:S.table,page:S.
 function renderGrid(){const t=document.createElement('table');t.innerHTML='<thead><tr><th>#</th>'+S.columns.map(c=>`<th>${esc(c)}</th>`).join('')+'</tr></thead>';const b=document.createElement('tbody');S.rows.forEach((r,i)=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${(S.page-1)*+$('#pageSize').value+i+1}</td>`+S.columns.map(c=>`<td>${esc(r[c])}</td>`).join('');if(S.db==='SIKALOTNOW'){tr.classList.add('measurement-row');tr.title='ダブルクリックで測定画面を開く';tr.addEventListener('dblclick',e=>{e.preventDefault();e.stopPropagation();openMeasurement(r).catch(err=>alert('測定画面を開けません: '+err.message))})}b.append(tr)});t.append(b);$('#grid').replaceChildren(t);$('#count').textContent=`全 ${S.count.toLocaleString()}件`;$('#page').textContent=`${S.page}ページ`;$('#prev').disabled=S.page===1;$('#next').disabled=S.page*+$('#pageSize').value>=S.count}
 const aliases={lotNo:['ロット番号','ﾛｯﾄ番号','LTNO'],inspectionNo:['検査番号','KNNO'],orderNo:['オーダー番号','JUON','JUNO'],castingNo:['鋳造番号','CYNO'],allocationNo:['引当番号','HKNO'],orderMaterial:['オーダー材質','JUA'],orderTemper:['オーダー調質','JUB'],orderThickness:['オーダー板厚','JUX'],orderWidth:['オーダー板幅','JUY'],orderLength:['オーダー板丈','JUZ'],mfgMaterial:['製造材質','LTA'],mfgTemper:['製造調質','LTB'],mfgThickness:['製造板厚','LTX'],mfgWidth:['製造板幅','LTY'],mfgLength:['製造板丈','LTZ'],purposeCode:['用途コード','用途ｺｰﾄﾞ','YOTOC'],purposeName:['用途名','YOTON'],customer:['取引先','TOKUNA'],delivery:['納入先','NONNA'],designCourse:['設計_設備ｺｰｽ','設計_設備コース'],course:['実績_設備ｺｰｽ','実績_設備コース','実績コース'],residualCourse:['残仕掛設備ｺｰｽ','残仕掛設備コース','ZANMC'],equipment:['BOX設計_設備名','設備']};
 function pick(row,key){for(const n of aliases[key]||[])if(row[n]!==undefined&&row[n]!==null)return String(row[n]);return ''}
-function blankMeasure(row){return{id:crypto.randomUUID(),status:'編集中',updatedAt:new Date().toISOString(),source:row,basic:Object.fromEntries(Object.keys(aliases).map(k=>[k,pick(row,k)])),settings:{operator:'-',inspector:'-',lengthPos:'1(頭)',measureType:'母材',verticalCount:1,horizontalCount:1,unwind:'上出し',innerDiameter:'-',spool:'-',thicknessGauge:'-',widthGauge:'-',widthOrder:'通常',widthDirection:'昇順',inputMode:'auto',tStep:0,wStep:0,burrFirst:null,ngCount:0,burr:'指定なし',innerTape:false,crewSize:'1'},mother:{},qualityInfo:'異常情報なし',measurements:{thickness:Array.from({length:LENGTH_SLOTS},()=>Array(3).fill('')),width:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),lateral:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),burr:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),telescope:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),offset:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),flatness:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),comments:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill(''))}}}
+function blankMeasure(row){return{id:crypto.randomUUID(),status:'編集中',updatedAt:new Date().toISOString(),source:row,basic:Object.fromEntries(Object.keys(aliases).map(k=>[k,pick(row,k)])),settings:{operator:'-',inspector:'-',lengthPos:'1(頭)',measureType:'母材',verticalCount:1,horizontalCount:1,unwind:'上出し',innerDiameter:'-',spool:'-',thicknessGauge:'-',widthGauge:'-',widthOrder:'通常',widthDirection:'昇順',inputMode:'auto',tStep:0,wStep:0,burrFirst:null,ngCount:0,burr:'指定なし',innerTape:false,crewSize:'-'},mother:{},qualityInfo:'異常情報なし',measurements:{thickness:Array.from({length:LENGTH_SLOTS},()=>Array(3).fill('')),width:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),lateral:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),burr:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),telescope:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),offset:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),flatness:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),comments:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill(''))}}}
 async function openMeasurement(row){if(!row)throw Error('対象データがありません');S.current=row;const key=lotKey(row),saved=await idbGet(key);S.measure=saved||blankMeasure(row);S.measure.id=key;renderMeasurement();$('#measureModal').hidden=false;requestAnimationFrame(()=>$('#deviceInput').focus())}
 function lotKey(r){return [pick(r,'equipment'),pick(r,'lotNo'),pick(r,'inspectionNo'),pick(r,'castingNo')].join('|')}
 /* 基本情報タブの寸法表示整形。板厚=小数2桁 / 板幅・板丈=小数1桁。数値でない・空欄はそのまま。 */
@@ -887,7 +887,7 @@ openEquipmentSettingsFinal=async function(reason='manual',suggested=''){
 function stampWorkTimeLocked(kind){if(!S.measure)return;S.measure.workTime=S.measure.workTime||{};const now=new Date();if(kind==='start'){if(S.measure.workTime.endAt){showToast('開始時刻は変更できません','終了時刻の記録後は開始時刻を変更できません。');return}S.measure.workTime.startAt=now.toISOString()}else{if(!S.measure.workTime.startAt){showToast('開始時刻が未記録です','先に開始時刻を記録してください。');return}if(now<new Date(S.measure.workTime.startAt)){showToast('終了時刻を記録できません','終了時刻は開始時刻より後である必要があります。');return}S.measure.workTime.endAt=now.toISOString()}updateWorkTimePanel();markDirty();updateValidationVisuals()}
 updateWorkTimePanel=function(){if(!S.measure)return;S.measure.workTime=S.measure.workTime||{startAt:'',endAt:''};const start=$('#workStartAt'),end=$('#workEndAt');if(!start||!end)return;start.dataset.iso=S.measure.workTime.startAt||'';end.dataset.iso=S.measure.workTime.endAt||'';start.value=formatWorkTime(start.dataset.iso);end.value=formatWorkTime(end.dataset.iso);$('#stampWorkStart').disabled=!!S.measure.workTime.startAt;$('#stampWorkEnd').disabled=!S.measure.workTime.startAt||!!S.measure.workTime.endAt;[[ $('#workStartCard'),start.dataset.iso],[ $('#workEndCard'),end.dataset.iso]].forEach(([card,value])=>{card?.classList.toggle('validation-required',!value);card?.classList.toggle('validation-valid',!!value)});$('#workDuration').textContent=S.measure.workTime.endAt?`実作業時間 ${formatDuration(durationMs(S.measure))}`:S.measure.workTime.startAt?'作業中':'未計測';$('#stampWorkStart').onclick=()=>stampWorkTimeLocked('start');$('#stampWorkEnd').onclick=()=>stampWorkTimeLocked('end')};
 const renderMeasurementWorkTabBase=renderMeasurement;renderMeasurement=function(){renderMeasurementWorkTabBase();document.querySelectorAll('[data-lefttab]').forEach(x=>x.classList.toggle('active',x.dataset.lefttab==='worktime'));document.querySelectorAll('[data-leftpanel]').forEach(x=>x.hidden=x.dataset.leftpanel!=='worktime');updateWorkTimePanel()};
-renderRecordListRows=function(){const list=$('#recordList'),items=sortedFilteredRecords(),currentLot=normalizedLot(S.current?pick(S.current,'lotNo'):'');if(!list)return;list.innerHTML='<div class="record-list-head"><span>ロット番号</span><span>検査番号</span><span>鋳造番号</span><span>オーダー番号</span><span>取引先</span><span>コース</span><span>状態</span><span>更新日時</span><span>実作業時間</span><span>操作</span></div>';if(!items.length)list.insertAdjacentHTML('beforeend','<div class="record-empty">検索条件に一致するデータはありません。</div>');items.forEach(x=>{ensureMeasureShape(x);const same=currentLot&&normalizedLot(x.basic?.lotNo)===currentLot,row=document.createElement('article'),resume=resumeRecordFromList(x),course=x.basic?.residualCourse||x.basic?.course||x.basic?.designCourse||'-';row.className='record-list-row'+(same?' is-same-lot':'');row.tabIndex=0;row.innerHTML=`<div class="record-list-cell primary">${esc(x.basic?.lotNo||x.id)}</div><div class="record-list-cell">${esc(x.basic?.inspectionNo||'-')}</div><div class="record-list-cell">${esc(x.basic?.castingNo||'-')}</div><div class="record-list-cell secondary">${esc(x.basic?.orderNo||'-')}</div><div class="record-list-cell secondary">${esc(x.basic?.customer||'-')}</div><div class="record-list-cell secondary">${esc(course)}</div><div class="record-list-cell">${esc(x.status||'編集中')}</div><div class="record-list-cell"><time>${esc(x.updatedAt?new Date(x.updatedAt).toLocaleString('ja-JP'):'-')}</time></div><div class="record-list-cell record-duration">${esc(formatDuration(durationMs(x)))}</div><div class="record-list-actions"><button class="resume" type="button">${recordListState.status==='履歴'?'内容を開く':'続きから再開'}</button><button class="danger" type="button">削除</button></div>`;row.querySelector('.resume').onclick=e=>{e.stopPropagation();resume()};row.ondblclick=e=>{if(!e.target.closest('.danger'))resume()};row.onkeydown=e=>{if(e.key==='Enter')resume()};row.querySelector('.danger').onclick=async e=>{e.stopPropagation();if(confirm('この端末内データを削除しますか？')){await reliableDelete(x.id);await refreshDraftCount();await openRecords(recordListState.status)}};list.append(row)});const result=$('#recordSearchResult');if(result)result.textContent=`${items.length} / ${recordListState.items.length}件を表示`};
+renderRecordListRows=function(){const list=$('#recordList'),items=sortedFilteredRecords(),currentLot=normalizedLot(S.current?pick(S.current,'lotNo'):'');if(!list)return;list.innerHTML='<div class="record-list-head"><span>ロット番号</span><span>検査番号</span><span>鋳造番号</span><span>オーダー番号</span><span>取引先</span><span>コース</span><span>状態</span><span>オペレータ</span><span>作業開始時刻</span><span>更新日時</span><span>実作業時間</span><span>操作</span></div>';if(!items.length)list.insertAdjacentHTML('beforeend','<div class="record-empty">検索条件に一致するデータはありません。</div>');items.forEach(x=>{ensureMeasureShape(x);const same=currentLot&&normalizedLot(x.basic?.lotNo)===currentLot,row=document.createElement('article'),resume=resumeRecordFromList(x),course=x.basic?.residualCourse||x.basic?.course||x.basic?.designCourse||'-';row.className='record-list-row'+(same?' is-same-lot':'');row.tabIndex=0;row.innerHTML=`<div class="record-list-cell primary">${esc(x.basic?.lotNo||x.id)}</div><div class="record-list-cell">${esc(x.basic?.inspectionNo||'-')}</div><div class="record-list-cell">${esc(x.basic?.castingNo||'-')}</div><div class="record-list-cell secondary">${esc(x.basic?.orderNo||'-')}</div><div class="record-list-cell secondary">${esc(x.basic?.customer||'-')}</div><div class="record-list-cell secondary">${esc(course)}</div><div class="record-list-cell">${esc(x.status||'編集中')}</div><div class="record-list-cell secondary">${esc(x.settings?.operator||'-')}</div><div class="record-list-cell"><time>${esc(x.workTime?.startAt?formatWorkTime(x.workTime.startAt):'-')}</time></div><div class="record-list-cell"><time>${esc(x.updatedAt?new Date(x.updatedAt).toLocaleString('ja-JP'):'-')}</time></div><div class="record-list-cell record-duration">${esc(formatDuration(durationMs(x)))}</div><div class="record-list-actions"><button class="resume" type="button">${recordListState.status==='履歴'?'内容を開く':'続きから再開'}</button><button class="danger" type="button">削除</button></div>`;row.querySelector('.resume').onclick=e=>{e.stopPropagation();resume()};row.ondblclick=e=>{if(!e.target.closest('.danger'))resume()};row.onkeydown=e=>{if(e.key==='Enter')resume()};row.querySelector('.danger').onclick=async e=>{e.stopPropagation();if(confirm('この端末内データを削除しますか？')){await reliableDelete(x.id);await refreshDraftCount();await openRecords(recordListState.status)}};list.append(row)});const result=$('#recordSearchResult');if(result)result.textContent=`${items.length} / ${recordListState.items.length}件を表示`};
 queueMicrotask(()=>{updateEquipmentEntryPoints();const badge=$('#registeredEquipmentBadge');if(badge){badge.setAttribute('role','button');badge.tabIndex=0;badge.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openEquipmentSettingsFinal('manual')}}}});
 
 
@@ -1316,6 +1316,30 @@ compactToleranceScale=function(kind,values,count){
     }
   }
 
+  /* ---- デフォルトフィルタ（テーブルごとに複数選択可） ----
+     一覧を開くたび（selectTable時）に、登録済みプリセットのうち
+     デフォルト指定されたものを自動適用する。 */
+  const DEFAULT_STORE='MeasurementDefaultFilterPresetsV1';
+  function readDefaultPresetMap(){try{return JSON.parse(localStorage.getItem(DEFAULT_STORE)||'{}')}catch(_){return {}}}
+  function writeDefaultPresetMap(map){try{localStorage.setItem(DEFAULT_STORE,JSON.stringify(map))}catch(_){}}
+  function defaultMapKey(db,table){return `${db||''}::${table||''}`}
+  function defaultPresetIdsFor(db,table){return (readDefaultPresetMap()[defaultMapKey(db,table)]||[]).map(String)}
+  function isDefaultPreset(preset,db,table){return defaultPresetIdsFor(db,table).includes(String(preset.id))}
+  function toggleDefaultPreset(preset,db,table){
+    const map=readDefaultPresetMap(),key=defaultMapKey(db,table),ids=new Set((map[key]||[]).map(String)),pid=String(preset.id);
+    if(ids.has(pid))ids.delete(pid);else ids.add(pid);
+    map[key]=[...ids];writeDefaultPresetMap(map);
+  }
+  function applyDefaultFiltersFor(db,table){
+    const ids=defaultPresetIdsFor(db,table);if(!ids.length)return;
+    const idSet=new Set(ids),matches=(S.filterPresets||[]).filter(p=>idSet.has(String(p.id)));
+    if(!matches.length)return;
+    const merged=[],seen=new Set();
+    matches.forEach(p=>(p.filters||[]).forEach(f=>{const k=filterKey(f);if(!seen.has(k)){seen.add(k);merged.push(f)}}));
+    S.genericFilters=merged;S.page=1;
+    showToast?.('デフォルトフィルタを適用しました',matches.map(p=>p.name).join(' / '),3200);
+  }
+
   /* 保存フィルタの適用（置換）と、サジェストからの追加（マージ） */
   function applyPreset(preset,{merge=false}={}){
     markPresetUsed(preset);
@@ -1518,9 +1542,12 @@ compactToleranceScale=function(kind,values,count){
     ordered.forEach(p=>{
       const item=document.createElement('div');item.className='filter-preset-item';
       const conds=(p.filters||[]).map(f=>`<span class="fp-cond">${esc(f.column)} <b>${esc(opShort(f.op))}</b>${noValueOp(f.op)?'':' '+esc(f.value)}</span>`).join('');
-      item.innerHTML=`<div class="fp-name" title="${esc(p.name)}">${esc(p.name)}${p.uses?`<small>使用 ${p.uses}回</small>`:''}</div><div class="fp-target">${esc((p.db||'全DB')+' / '+(p.table||'全テーブル'))}</div><div class="fp-conds">${conds||'<span class="fp-cond">条件なし</span>'}</div><div class="fp-actions"><button class="apply" type="button">適用</button><button class="danger" type="button">削除</button></div>`;
+      const applicable=forThis.includes(p);
+      const defaultToggle=applicable?`<label class="fp-default" title="この一覧を開いたときに自動で適用します（複数選択可）"><input type="checkbox" class="fp-default-check"${isDefaultPreset(p,S.db,S.table)?' checked':''}> デフォルト</label>`:'';
+      item.innerHTML=`<div class="fp-name" title="${esc(p.name)}">${esc(p.name)}${p.uses?`<small>使用 ${p.uses}回</small>`:''}</div><div class="fp-target">${esc((p.db||'全DB')+' / '+(p.table||'全テーブル'))}</div><div class="fp-conds">${conds||'<span class="fp-cond">条件なし</span>'}</div><div class="fp-actions">${defaultToggle}<button class="apply" type="button">適用</button><button class="danger" type="button">削除</button></div>`;
       item.querySelector('.apply').onclick=()=>{applyPreset(p);$('#filterPresetModal').hidden=true};
       item.querySelector('.danger').onclick=()=>deletePreset(p);
+      item.querySelector('.fp-default-check')?.addEventListener('change',()=>toggleDefaultPreset(p,S.db,S.table));
       if(loading)list.insertBefore(item,loading);else list.appendChild(item);
     });
   }
@@ -1559,6 +1586,12 @@ compactToleranceScale=function(kind,values,count){
         ${mark}
       </div>`;
     };
+  }
+
+  // 一覧を開くたび（テーブル切替時）にデフォルトフィルタを自動適用する。
+  if(typeof selectTable==='function'){
+    const selectTableDefaultFilterBase=selectTable;
+    selectTable=async function(t){applyDefaultFiltersFor(S.db,t);return selectTableDefaultFilterBase(t)};
   }
 
   // 起動時: バー生成 → マスタからサジェスト材料を先読み（ローディング表示つき）。
@@ -2547,7 +2580,7 @@ compactToleranceScale=function(kind,values,count){
     のため常に「-」表示。旧帳票の梱包員欄に相当する表示エリアだけ先に確保する。 */
  function crewSection(x){
   const s=x.settings||{};
-  return reportSection('作業班構成',[['オペレータ',s.operator],['検査員',s.inspector],['梱包員',s.packer],['作業人数',s.crewSize?`${s.crewSize}名班`:'-']]);
+  return reportSection('作業班構成',[['オペレータ',s.operator],['検査員',s.inspector],['梱包員',s.packer],['作業人数',(s.crewSize&&s.crewSize!=='-')?`${s.crewSize}名班`:'-']]);
  }
 
  function renderReport(x){
@@ -2676,7 +2709,7 @@ compactToleranceScale=function(kind,values,count){
  }
 
  /* ---------- ローカル測定データ → KPI用フラット行 ---------- */
- function crewLabel(size){return size?`${size}名班`:'人数未設定'}
+ function crewLabel(size){return(size&&size!=='-')?`${size}名班`:'人数未設定'}
  function toKpiRow(x){
   const b=x.basic||{},s=x.settings||{},w=x.workTime||{};
   const start=w.startAt?new Date(w.startAt):null,end=w.endAt?new Date(w.endAt):null;
@@ -2687,7 +2720,7 @@ compactToleranceScale=function(kind,values,count){
   return {
    id:x.id,status:x.status||'編集中',
    equipment:s.registeredEquipment||x.registeredEquipment||b.equipment||'-',
-   crewSize:s.crewSize?String(s.crewSize):'',
+   crewSize:(s.crewSize&&s.crewSize!=='-')?String(s.crewSize):'',
    operator:s.operator||'-',
    measureType:s.measureType||'-',
    purposeName:b.purposeName||'用途未設定',
@@ -2961,3 +2994,20 @@ compactToleranceScale=function(kind,values,count){
 
  queueMicrotask(ensureNavButton);
 })();
+
+/* v36: 検査員・作業人数・内径・スプール・板厚測定器・板幅測定器は必須ではないが、
+   「-」のまま未選択の間は背景色で目立たせ、何か選んだら白背景に戻す。 */
+const SOFT_CHOICE_IDS=['inspector','crewSize','innerDiameter','spool','thicknessGauge','widthGauge'];
+function updateSoftChoiceVisuals(){
+ SOFT_CHOICE_IDS.forEach(id=>{
+  const el=$('#'+id);if(!el)return;
+  const chosen=el.value!==''&&el.value!=='-';
+  el.classList.toggle('choice-pending',!chosen);
+  el.classList.toggle('choice-made',chosen);
+ });
+}
+SOFT_CHOICE_IDS.forEach(id=>{const el=$('#'+id);if(el)el.addEventListener('change',updateSoftChoiceVisuals)});
+const renderMeasurementSoftChoiceBase=renderMeasurement;
+renderMeasurement=function(){renderMeasurementSoftChoiceBase();updateSoftChoiceVisuals()};
+const optionFillSoftChoiceBase=optionFill;
+optionFill=function(id,items,current){optionFillSoftChoiceBase(id,items,current);updateSoftChoiceVisuals()};
