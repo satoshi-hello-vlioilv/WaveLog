@@ -157,6 +157,17 @@ tbody tr:hover{background:#e5f2f3;cursor:pointer}
 .measurement-action-cell{text-align:center;background:inherit}
 .measurement-action-button{padding:5px 10px;border:1px solid var(--teal);background:var(--teal);color:#fff;font-weight:700;white-space:nowrap}
 .measurement-action-button:hover{background:var(--teal-dark);color:#fff}
+/* 行選択(シングルクリック): ホバーやmeasurement-row(測定可)の目印と
+   混同しないよう、色相の違う強調(青系の左ボーダー+淡い背景)にする。 */
+tbody tr.is-selected{background:#eef2ff!important;box-shadow:inset 4px 0 0 #2851d1}
+tbody tr.is-selected:hover{background:#e3e9ff!important}
+/* フィルタ適用中の列見出し: どの列が絞り込まれているか一目で分かるよう、
+   ホバー等とは異なる暖色(アンバー)でヘッダーだけを強調する。 */
+th.col-filtered{background:#ffe6ac;color:#6b4a00}
+.col-filter-badge{margin-left:4px;font-size:10px;color:#a06b00}
+.lot-cell{padding:0}
+.grid-lot-link{min-height:33px;padding:6px 9px;border:0;border-radius:0;background:transparent;font-weight:700}
+.grid-lot-link:hover{background:var(--teal);color:#fff}
 
 footer{height:40px;display:flex;align-items:center;justify-content:space-between;padding:0 15px;background:#fff;border-top:1px solid var(--line)}
 
@@ -619,7 +630,7 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 #recordList{padding:0;overflow:auto;background:#eef3f4}
 .record-list-head,.record-list-row{
   display:grid;
-  grid-template-columns:minmax(90px,1.1fr) minmax(60px,.7fr) minmax(60px,.7fr) minmax(60px,.7fr) minmax(70px,.9fr) minmax(70px,.8fr) minmax(55px,.6fr) minmax(60px,.7fr) minmax(90px,.9fr) minmax(90px,.9fr) minmax(80px,.8fr) 160px;
+  grid-template-columns:minmax(90px,1.1fr) minmax(60px,.7fr) minmax(60px,.7fr) minmax(60px,.7fr) minmax(70px,.9fr) minmax(70px,.8fr) minmax(55px,.6fr) minmax(60px,.7fr) minmax(55px,.55fr) minmax(55px,.5fr) minmax(55px,.5fr) minmax(90px,.9fr) minmax(90px,.9fr) minmax(80px,.8fr) 160px;
   align-items:center;
 }
 .record-list-head{position:sticky;top:0;z-index:4;min-height:42px;background:#dcecef;border-bottom:1px solid #98afb5;color:#28464e;font-size:12px;font-weight:800}
@@ -1124,6 +1135,11 @@ body.qa-mode.qa-view-raw #genericFilterBar{display:block!important}
    とし、qa-modeと同様に他の要素を隠して表示エリアを最大化する。 */
 body.rp-mode #grid,body.rp-mode footer,body.rp-mode #tabs,body.rp-mode .hint,body.rp-mode #genericFilterBar,body.rp-mode .qa-v7{display:none!important}
 body.db-mode #grid,body.db-mode footer,body.db-mode #tabs,body.db-mode .hint,body.db-mode #genericFilterBar,body.db-mode .qa-v7{display:none!important}
+/* 編集中/完了データ一覧も同様にモーダルではなくメイン画面表示にする。 */
+body.rec-mode #grid,body.rec-mode footer,body.rec-mode #tabs,body.rec-mode .hint,body.rec-mode #genericFilterBar,body.rec-mode .qa-v7{display:none!important}
+.rec-panel{flex:1;min-height:0;margin:9px 14px;display:flex;flex-direction:column;background:#f4f7f8;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.rec-panel[hidden]{display:none!important}
+.rec-panel .record-dialog{width:100%;height:100%;border-radius:0;box-shadow:none}
 
 .qa-v7{flex:1 1 auto;min-height:0;margin:8px 14px 14px;border:1px solid #b9c9ce;border-radius:14px;background:#f5f9fa;box-shadow:0 6px 22px #0b2b3316;display:flex;flex-direction:column;overflow:hidden}
 .qa-v7[hidden]{display:none!important}

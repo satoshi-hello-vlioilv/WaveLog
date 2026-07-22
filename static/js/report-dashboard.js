@@ -292,6 +292,7 @@
   document.body.classList.remove('qa-mode','qa-view-raw');
   document.getElementById('dashboardPanel')?.setAttribute('hidden','');
   document.body.classList.remove('db-mode');
+  document.getElementById('recordModal')?.setAttribute('hidden','');
   document.getElementById('openDashboard')?.classList.remove('active');
   document.body.classList.add('rp-mode');
   document.querySelectorAll('#nav button.db').forEach(b=>b.classList.remove('active'));
@@ -630,6 +631,7 @@
   document.getElementById('reportPanel')?.setAttribute('hidden','');
   document.body.classList.remove('rp-mode');
   document.getElementById('openReportList')?.classList.remove('active');
+  document.getElementById('recordModal')?.setAttribute('hidden','');
   document.body.classList.add('db-mode');
   document.querySelectorAll('#nav button.db').forEach(b=>b.classList.remove('active'));
   $id('openDashboard')?.classList.add('active');

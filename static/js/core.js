@@ -110,7 +110,12 @@ function advanceWidth(){const m=S.measure.settings,max=Math.max(1,+$('#horizonta
 /* 自動転送モードでは、DOM再描画(renderMeasureGrid)の前後で万一
    フォーカスがずれても必ず受信欄へ戻す。手動入力モードでは
    セル側にフォーカスを残す仕様のため対象外。 */
-function refocusDeviceInput(){if(S.measure?.settings?.inputMode!=='manual')$('#deviceInput').focus()}
+/* 実際にフォーカスが外れている時だけ.focus()を呼ぶ。多条(セル数が多く
+   scrollIntoViewを伴う再描画)の連続入力中は通常フォーカスは外れて
+   いないため、ここで無条件にfocus()すると再描画のタイミングと重なり、
+   次の転送データの受信に影響することがあった(1.5.0で多条の連続入力が
+   崩れた不具合の原因)。既にフォーカスがある場合は何もしない。 */
+function refocusDeviceInput(){if(S.measure?.settings?.inputMode==='manual')return;const el=$('#deviceInput');if(document.activeElement!==el)el.focus()}
 function processDeviceInput(raw){const p=deviceParse(raw),m=S.measure,st=m.settings,type=$('#measureType').value,li=lengthIndex();$('#deviceInput').classList.remove('device-ok','device-error');if(p.device==='invalid'||p.value===null&&p.device!=='delete'){setState('入力形式エラー');$('#deviceInput').classList.add('device-error');$('#deviceInput').value='';refocusDeviceInput();return}if(p.device==='delete'){const key=activeMeasureKey();if(key==='width'&&st.pendingDevice==='micrometer')m.measurements.thickness[li][st.tStep||0]='';else m.measurements[key][li][st.wStep||0]='';renderMeasureGrid();markDirty();refocusDeviceInput();return}
  if(type==='板厚/板幅'){
   if(p.device==='micrometer'){const j=st.tStep||0;m.measurements.thickness[li][j]=p.value.toFixed(3);st.tStep=(j+1)%3;st.pendingDevice='micrometer'}
@@ -489,7 +494,7 @@ const initV32Base=init;init=async function(){try{await initV32Base()}catch(e){co
 // Current: record list opens immediately, then loads storage asynchronously.
 async function openRecordsSafe(status='編集中'){
  const modal=$('#recordModal'),title=$('#recordTitle'),list=$('#recordList');
- title.textContent=status==='履歴'?'完了データ':'保存データから再開';
+ title.textContent=status==='履歴'?'完了データ一覧':'編集中データ一覧';
  list.innerHTML='<div class="record-loading">保存データを読み込んでいます...</div>';
  modal.hidden=false;
  try{await openRecords(status)}catch(error){
@@ -655,10 +660,43 @@ function configureToleranceSelector(){const el=$('#toleranceSource');if(!el||!S.
 const hydrateBusinessExactBase=hydrateBusinessFields;
 hydrateBusinessFields=function(){hydrateBusinessExactBase();const r=S.measure.source||S.measure.snapshot?.source||{};if(r['実績_設備ｺｰｽ']!==undefined&&r['実績_設備ｺｰｽ']!==null)S.measure.basic.course=String(r['実績_設備ｺｰｽ'])};
 renderQualityGradePanel=function(){const panel=$('#qualityGradePanel');if(!panel)return;const m=S.measure;m.qualityGrades=m.qualityGrades||{};Object.entries(QUALITY_GRADE_SOURCE).forEach(([label,names])=>m.qualityGrades[label]=sourceValue(names));panel.innerHTML=`<div class="quality-grade-grid">${Object.keys(QUALITY_GRADE_SOURCE).map(label=>`<div class="quality-grade-item"><b>${esc(label)}</b><span title="${esc(m.qualityGrades[label]||'')}">${esc(m.qualityGrades[label]||'未設定')}</span></div>`).join('')}</div>`};
+/* 一覧の列名は仕掛先DBの生カラム名なので、aliasesの候補名のうち
+   実際にS.columnsへ含まれているものを探してロット番号・鋳造番号の
+   列を特定する(見つからなければ通常表示のまま)。 */
+function findColumnFor(key){return (aliases[key]||[]).find(n=>S.columns.includes(n))||null}
 // Add an explicit virtual action column instead of writing into the last data column.
 renderGrid=function(){
- const t=document.createElement('table'),isWork=S.db==='SIKALOTNOW';t.innerHTML='<thead><tr><th>#</th>'+S.columns.map(c=>`<th>${esc(c)}</th>`).join('')+(isWork?'<th class="measurement-action-head">測定</th>':'')+'</tr></thead>';const b=document.createElement('tbody');
- S.rows.forEach((r,i)=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${(S.page-1)*+$('#pageSize').value+i+1}</td>`+S.columns.map(c=>`<td>${esc(r[c])}</td>`).join('')+(isWork?'<td class="measurement-action-cell"><button type="button" class="measurement-action-button">開く</button></td>':'');if(isWork){tr.classList.add('measurement-row');const open=e=>{e.preventDefault();e.stopPropagation();openMeasurement(r).catch(err=>alert('測定画面を開けません: '+err.message))};tr.addEventListener('dblclick',open);tr.querySelector('.measurement-action-button').onclick=open}b.append(tr)});
+ const isWork=S.db==='SIKALOTNOW',lotCol=isWork?findColumnFor('lotNo'):null,castCol=isWork?findColumnFor('castingNo'):null;
+ const filteredCols=new Set((S.genericFilters||[]).map(f=>f.column));
+ const t=document.createElement('table');
+ t.innerHTML='<thead><tr><th>#</th>'+S.columns.map(c=>{
+  const filtered=filteredCols.has(c);
+  return `<th class="${filtered?'col-filtered':''}" title="${filtered?'絞り込み中の列です':''}">${esc(c)}${filtered?'<i class="col-filter-badge" aria-hidden="true" title="この列にフィルタが適用されています">▼</i>':''}</th>`;
+ }).join('')+(isWork?'<th class="measurement-action-head">測定</th>':'')+'</tr></thead>';
+ const b=document.createElement('tbody');
+ S.rows.forEach((r,i)=>{
+  const tr=document.createElement('tr');
+  tr.innerHTML=`<td>${(S.page-1)*+$('#pageSize').value+i+1}</td>`+S.columns.map(c=>{
+   if(c===lotCol){const lotVal=r[c];return `<td class="lot-cell"><button type="button" class="lot-dsp-link grid-lot-link" title="クリックでLotDspをこのロット番号で開きます">${esc(lotVal)||'—'}</button></td>`}
+   return `<td>${esc(r[c])}</td>`;
+  }).join('')+(isWork?'<td class="measurement-action-cell"><button type="button" class="measurement-action-button">開く</button></td>':'');
+  if(r===S.selectedRow)tr.classList.add('is-selected');
+  tr.addEventListener('click',()=>{
+   if(S.selectedRow===r)return;
+   S.selectedRow=r;
+   b.querySelectorAll('tr.is-selected').forEach(x=>x.classList.remove('is-selected'));
+   tr.classList.add('is-selected');
+  });
+  if(isWork){
+   tr.classList.add('measurement-row');
+   const open=e=>{e.preventDefault();e.stopPropagation();openMeasurement(r).catch(err=>alert('測定画面を開けません: '+err.message))};
+   tr.addEventListener('dblclick',open);
+   tr.querySelector('.measurement-action-button').onclick=open;
+   const lotBtn=tr.querySelector('.grid-lot-link');
+   if(lotBtn)lotBtn.onclick=e=>{e.preventDefault();e.stopPropagation();openLotDsp(pick(r,'lotNo'),castCol?r[castCol]:pick(r,'castingNo'),localStorage.getItem('LotDspLastTabV1')||'1')};
+  }
+  b.append(tr);
+ });
  t.append(b);$('#grid').replaceChildren(t);$('#count').textContent=`全 ${S.count.toLocaleString()}件`;$('#page').textContent=`${S.page}ページ`;$('#prev').disabled=S.page===1;$('#next').disabled=S.page*+$('#pageSize').value>=S.count;
 };
 const renderMeasurementExactBase=renderMeasurement;
@@ -886,7 +924,7 @@ function renderRecordListRows(){
  const result=$('#recordSearchResult');if(result)result.textContent=`${items.length} / ${recordListState.items.length}件を表示`;
 }
 openRecords=async function(status){
- const all=await reliableAll();recordListState={status,items:all.filter(x=>status==='履歴'?x.status==='完了':x.status!=='完了').map(ensureMeasureShape),query:'',sort:'updated-desc'};$('#recordTitle').textContent=status==='履歴'?'完了データ':'編集中データ一覧';$('#recordModal').hidden=false;
+ const all=await reliableAll();recordListState={status,items:all.filter(x=>status==='履歴'?x.status==='完了':x.status!=='完了').map(ensureMeasureShape),query:'',sort:'updated-desc'};$('#recordTitle').textContent=status==='履歴'?'完了データ一覧':'編集中データ一覧';$('#recordModal').hidden=false;
  const search=$('#recordSearch'),sort=$('#recordSort'),clear=$('#clearRecordSearch');if(search){search.value='';search.oninput=()=>{recordListState.query=search.value;renderRecordListRows()}}if(sort){sort.value='updated-desc';sort.onchange=()=>{recordListState.sort=sort.value;renderRecordListRows()}}if(clear)clear.onclick=()=>{recordListState.query='';if(search)search.value='';renderRecordListRows()};renderRecordListRows();requestAnimationFrame(()=>search?.focus())
 };
 
@@ -1014,7 +1052,10 @@ openEquipmentSettingsFinal=async function(reason='manual',suggested=''){
 function stampWorkTimeLocked(kind){if(!S.measure)return;S.measure.workTime=S.measure.workTime||{};const now=new Date();if(kind==='start'){if(S.measure.workTime.endAt){showToast('開始時刻は変更できません','終了時刻の記録後は開始時刻を変更できません。');return}S.measure.workTime.startAt=now.toISOString()}else{if(!S.measure.workTime.startAt){showToast('開始時刻が未記録です','先に開始時刻を記録してください。');return}if(now<new Date(S.measure.workTime.startAt)){showToast('終了時刻を記録できません','終了時刻は開始時刻より後である必要があります。');return}S.measure.workTime.endAt=now.toISOString()}updateWorkTimePanel();markDirty();updateValidationVisuals()}
 updateWorkTimePanel=function(){if(!S.measure)return;S.measure.workTime=S.measure.workTime||{startAt:'',endAt:''};const start=$('#workStartAt'),end=$('#workEndAt');if(!start||!end)return;start.dataset.iso=S.measure.workTime.startAt||'';end.dataset.iso=S.measure.workTime.endAt||'';start.value=formatWorkTime(start.dataset.iso);end.value=formatWorkTime(end.dataset.iso);$('#stampWorkStart').disabled=!!S.measure.workTime.startAt;$('#stampWorkEnd').disabled=!S.measure.workTime.startAt||!!S.measure.workTime.endAt;[[ $('#workStartCard'),start.dataset.iso],[ $('#workEndCard'),end.dataset.iso]].forEach(([card,value])=>{card?.classList.toggle('validation-required',!value);card?.classList.toggle('validation-valid',!!value)});$('#workDuration').textContent=S.measure.workTime.endAt?`実作業時間 ${formatDuration(durationMs(S.measure))}`:S.measure.workTime.startAt?'作業中':'未計測';$('#stampWorkStart').onclick=()=>stampWorkTimeLocked('start');$('#stampWorkEnd').onclick=()=>stampWorkTimeLocked('end')};
 const renderMeasurementWorkTabBase=renderMeasurement;renderMeasurement=function(){renderMeasurementWorkTabBase();document.querySelectorAll('[data-lefttab]').forEach(x=>x.classList.toggle('active',x.dataset.lefttab==='worktime'));document.querySelectorAll('[data-leftpanel]').forEach(x=>x.hidden=x.dataset.leftpanel!=='worktime');updateWorkTimePanel()};
-renderRecordListRows=function(){const list=$('#recordList'),items=sortedFilteredRecords(),currentLot=normalizedLot(S.current?pick(S.current,'lotNo'):'');if(!list)return;list.innerHTML='<div class="record-list-head"><span>ロット番号</span><span>検査番号</span><span>鋳造番号</span><span>オーダー番号</span><span>取引先</span><span>コース</span><span>状態</span><span>オペレータ</span><span>作業開始時刻</span><span>更新日時</span><span>実作業時間</span><span>操作</span></div>';if(!items.length)list.insertAdjacentHTML('beforeend','<div class="record-empty">検索条件に一致するデータはありません。</div>');items.forEach(x=>{ensureMeasureShape(x);const same=currentLot&&normalizedLot(x.basic?.lotNo)===currentLot,row=document.createElement('article'),resume=resumeRecordFromList(x),course=x.basic?.residualCourse||x.basic?.course||x.basic?.designCourse||'-';row.className='record-list-row'+(same?' is-same-lot':'');row.tabIndex=0;row.innerHTML=`<div class="record-list-cell primary">${esc(x.basic?.lotNo||x.id)}</div><div class="record-list-cell">${esc(x.basic?.inspectionNo||'-')}</div><div class="record-list-cell">${esc(x.basic?.castingNo||'-')}</div><div class="record-list-cell secondary">${esc(x.basic?.orderNo||'-')}</div><div class="record-list-cell secondary">${esc(x.basic?.customer||'-')}</div><div class="record-list-cell secondary">${esc(course)}</div><div class="record-list-cell">${esc(x.status||'編集中')}</div><div class="record-list-cell secondary">${esc(x.settings?.operator||'-')}</div><div class="record-list-cell"><time>${esc(x.workTime?.startAt?formatWorkTime(x.workTime.startAt):'-')}</time></div><div class="record-list-cell"><time>${esc(x.updatedAt?new Date(x.updatedAt).toLocaleString('ja-JP'):'-')}</time></div><div class="record-list-cell record-duration">${esc(formatDuration(durationMs(x)))}</div><div class="record-list-actions"><button class="resume" type="button">${recordListState.status==='履歴'?'内容を開く':'続きから再開'}</button><button class="danger" type="button">削除</button></div>`;row.querySelector('.resume').onclick=e=>{e.stopPropagation();resume()};row.ondblclick=e=>{if(!e.target.closest('.danger'))resume()};row.onkeydown=e=>{if(e.key==='Enter')resume()};row.querySelector('.danger').onclick=async e=>{e.stopPropagation();if(confirm('この端末内データを削除しますか？')){await reliableDelete(x.id);await refreshDraftCount();await openRecords(recordListState.status)}};list.append(row)});const result=$('#recordSearchResult');if(result)result.textContent=`${items.length} / ${recordListState.items.length}件を表示`};
+/* 分割(条割変更)が実際に行われたかどうか: splitGroupsが2ロット以上に
+   分かれている場合のみ「分割あり」とする(単一ロットのデフォルト値は分割なし扱い)。 */
+function recordSplitLabel(x){return Array.isArray(x.settings?.splitGroups)&&x.settings.splitGroups.length>1?'あり':'-'}
+renderRecordListRows=function(){const list=$('#recordList'),items=sortedFilteredRecords(),currentLot=normalizedLot(S.current?pick(S.current,'lotNo'):'');if(!list)return;list.innerHTML='<div class="record-list-head"><span>ロット番号</span><span>検査番号</span><span>鋳造番号</span><span>オーダー番号</span><span>取引先</span><span>コース</span><span>状態</span><span>オペレータ</span><span>検査員</span><span>作業人数</span><span>分割</span><span>作業開始時刻</span><span>更新日時</span><span>実作業時間</span><span>操作</span></div>';if(!items.length)list.insertAdjacentHTML('beforeend','<div class="record-empty">検索条件に一致するデータはありません。</div>');items.forEach(x=>{ensureMeasureShape(x);const same=currentLot&&normalizedLot(x.basic?.lotNo)===currentLot,row=document.createElement('article'),resume=resumeRecordFromList(x),course=x.basic?.residualCourse||x.basic?.course||x.basic?.designCourse||'-',crew=x.settings?.crewSize&&x.settings.crewSize!=='-'?x.settings.crewSize+'名':'-';row.className='record-list-row'+(same?' is-same-lot':'');row.tabIndex=0;row.innerHTML=`<div class="record-list-cell primary">${esc(x.basic?.lotNo||x.id)}</div><div class="record-list-cell">${esc(x.basic?.inspectionNo||'-')}</div><div class="record-list-cell">${esc(x.basic?.castingNo||'-')}</div><div class="record-list-cell secondary">${esc(x.basic?.orderNo||'-')}</div><div class="record-list-cell secondary">${esc(x.basic?.customer||'-')}</div><div class="record-list-cell secondary">${esc(course)}</div><div class="record-list-cell">${esc(x.status||'編集中')}</div><div class="record-list-cell secondary">${esc(x.settings?.operator||'-')}</div><div class="record-list-cell secondary">${esc(x.settings?.inspector||'-')}</div><div class="record-list-cell secondary">${esc(crew)}</div><div class="record-list-cell secondary">${esc(recordSplitLabel(x))}</div><div class="record-list-cell"><time>${esc(x.workTime?.startAt?formatWorkTime(x.workTime.startAt):'-')}</time></div><div class="record-list-cell"><time>${esc(x.updatedAt?new Date(x.updatedAt).toLocaleString('ja-JP'):'-')}</time></div><div class="record-list-cell record-duration">${esc(formatDuration(durationMs(x)))}</div><div class="record-list-actions"><button class="resume" type="button">${recordListState.status==='履歴'?'内容を開く':'続きから再開'}</button><button class="danger" type="button">削除</button></div>`;row.querySelector('.resume').onclick=e=>{e.stopPropagation();resume()};row.ondblclick=e=>{if(!e.target.closest('.danger'))resume()};row.onkeydown=e=>{if(e.key==='Enter')resume()};row.querySelector('.danger').onclick=async e=>{e.stopPropagation();if(confirm('この端末内データを削除しますか？')){await reliableDelete(x.id);await refreshDraftCount();await openRecords(recordListState.status)}};list.append(row)});const result=$('#recordSearchResult');if(result)result.textContent=`${items.length} / ${recordListState.items.length}件を表示`};
 queueMicrotask(()=>{updateEquipmentEntryPoints();const badge=$('#registeredEquipmentBadge');if(badge){badge.setAttribute('role','button');badge.tabIndex=0;badge.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openEquipmentSettingsFinal('manual')}}}});
 
 
@@ -1150,6 +1191,32 @@ compactToleranceScale=function(kind,values,count){
  return `${facts.html}<div class="compact-tol-scale"><span class="compact-scale-label upper">上限 <b>${esc(fixedToleranceValue(kind,high))}</b></span><span class="compact-scale-safe">公差内</span>${marks}<span class="compact-scale-label lower">下限 <b>${esc(fixedToleranceValue(kind,low))}</b></span></div>`;
 };
 
+
+/* 編集中/完了データ一覧をモーダルからメイン画面切替表示へ変更(帳票・
+   ダッシュボードと同じIA)。既存のopenRecords/closeRecords等の表示
+   切替コードは触らず、#recordModalの位置とスタイルだけ変え、
+   hidden属性の変化をMutationObserverで見てbody.rec-modeへ反映する。
+   これにより一覧側のロジックを一切変更せずに済む。 */
+(function(){
+ const panel=document.getElementById('recordModal');
+ const grid=document.getElementById('grid');
+ if(!panel||!grid?.parentNode)return;
+ grid.parentNode.insertBefore(panel,grid);
+ const sync=()=>{
+  const showing=!panel.hidden;
+  document.body.classList.toggle('rec-mode',showing);
+  if(showing){
+   document.getElementById('reportPanel')?.setAttribute('hidden','');
+   document.body.classList.remove('rp-mode');
+   document.getElementById('dashboardPanel')?.setAttribute('hidden','');
+   document.body.classList.remove('db-mode');
+  }
+ };
+ new MutationObserver(sync).observe(panel,{attributes:true,attributeFilter:['hidden']});
+ sync();
+ const baseSelectDb=typeof selectDb==='function'?selectDb:null;
+ if(baseSelectDb)selectDb=async function(k,b){panel.hidden=true;return baseSelectDb(k,b)};
+})();
 
 /* Final relative 40:60 layout and three-row tolerance hierarchy. */
 compactToleranceFacts=function(kind){
