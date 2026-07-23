@@ -121,8 +121,12 @@ function bindV32Navigation(){
  const open=async status=>{try{await openRecords(status)}catch(e){console.error(e);alert('保存データ一覧を開けません: '+e.message)}};
  [['homeDrafts','編集中'],['openDrafts','編集中']].forEach(([id,status])=>{const b=$('#'+id);if(b){b.onclick=null;b.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();open(status)})}})
 }
-/* 一覧を開く(読み込み中表示→エラー時は再試行ボタン)。 */
+/* 一覧を開く(読み込み中表示→エラー時は再試行ボタン)。
+   実績カレンダー表示中にデータ一覧を開くと、カレンダーパネル(cal-mode)が
+   隠れないまま半透明の#recordModalが重なって表示が被る不具合があったため、
+   帳票/ダッシュボード表示への遷移と同様にカレンダー表示を必ず抜ける。 */
 async function openRecordsSafe(status='編集中'){
+ window.exitCalendarView?.();
  showWaiting(status==='履歴'?'完了データを取得しています':'編集中データを取得しています','この端末の保存領域を確認中','IndexedDBと代替保存領域を照合しています');
  try{
  const modal=$('#recordModal'),title=$('#recordTitle'),list=$('#recordList');
