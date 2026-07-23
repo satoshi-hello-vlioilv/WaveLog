@@ -70,6 +70,16 @@
   function childCardValue(r,i){return fieldByCandidates(r,CHILD_CARD_PREFIXES.map(p=>p+i))}
   function childCutWidthValue(r,i){return fieldByCandidates(r,CHILD_CUTWIDTH_PREFIXES.map(p=>p+i))}
   function childCountFieldValue(r,i){return fieldByCandidates(r,CHILD_COUNT_PREFIXES.map(p=>p+i))}
+  // 「ｺﾝﾏ5本ｶｰﾄﾞ区分」が3の行は、親側の分割データ(親子管理_子カード等)が
+  // 無く一見「分割なし」に見えても、実際には分割済みの子ロット(子カード)
+  // 自身であることを示す。仕掛一覧で気づけるよう、この行に限って親ロットの
+  // 逆引き検索(findParentLotFor)を行う。
+  const CHILD_CARD_CLASSIFICATION_PREFIXES=['ｺﾝﾏ5本ｶｰﾄﾞ区分','コンマ5本カード区分'];
+  function isChildCardClassifiedRow(row){
+    const v=fieldByCandidates(row,CHILD_CARD_CLASSIFICATION_PREFIXES);
+    return v!==undefined&&Number(v)===3;
+  }
+  window.isChildCardClassifiedRow=isChildCardClassifiedRow;
   // 親子管理_子カード1〜10から子ロット番号を復元する(旧VBA KCDNO相当)。
   // 1〜9: ロット番号の先頭6桁+1桁、10〜99: 先頭5桁+2桁で末尾を置換。
   // row/lotNoを省略すると現在開いている測定(S.measure)を対象にする。
@@ -286,6 +296,7 @@
     }catch(e){console.warn('親ロットの検索に失敗しました: '+lotNo,e)}
     return null;
   }
+  window.findParentLotFor=findParentLotFor;
   // 子ロットと判定された場合、確認の上で親ロットの行に差し替える。
   async function resolveToParentIfChild(row){
     if(!row||S.db!=='SIKALOTNOW')return row;

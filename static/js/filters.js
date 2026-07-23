@@ -33,12 +33,15 @@
      一覧を開くたびに自動適用され(=固定フィルタと同じ挙動)、外そうとすると
      確認を挟む。確認の上で外した場合はそのセッション中だけ一時的に外れ、
      一覧を開き直すと自動的に元へ戻る。
-     使用設備一致は、この一覧を開いた端末の設定に応じて値が変わる特殊な
-     必須条件のため、専用の仕組み(f.locked==='equipment')のまま維持する。 */
+     条件の説明表示・確認メッセージは、どの条件が鍵付きでも同じ汎用ロジック
+     (condLabel)で組み立てる(以前あった使用設備専用の文言分岐は削除)。
+     使用設備一致の値は、この一覧を開いた端末の設定に応じて変わる特殊な
+     必須条件のため、値をその都度同期する専用の仕組み(f.locked==='equipment')
+     のみ維持する。 */
   const EQUIPMENT_FILTER_COLUMN='BOX設計_設備名';
   function isLockedFilter(f){return !!f&&!!f.locked}
   function isLockedEquipmentFilter(f){return !!f&&f.locked==='equipment'}
-  function lockedFilterDescription(f){return isLockedEquipmentFilter(f)?`使用設備「${f.value}」と一致するロットのみ表示`:condLabel(f)}
+  function lockedFilterDescription(f){return condLabel(f)}
   function confirmRemoveLockedFilter(f){
     const target=f||S.genericFilters.find(isLockedFilter);
     if(!target)return true;
