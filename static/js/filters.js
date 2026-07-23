@@ -26,12 +26,29 @@
   S.filterPresetSource='local';
   S.filterCondUsage=readUsage();
 
-  /* ---- 仕掛一覧(SIKALOTNOW)閲覧時の必須フィルタ: 使用設備一致 ----
-     BOX設計_設備名が登録済みの使用設備と一致する行だけを既定で表示する。
-     解除は可能だが、誤って外さないよう色分け表示し、外す操作には確認を挟む。 */
+  /* ---- 鍵付き必須条件（汎用） ----
+     以前は「使用設備一致」専用の固定フィルタとして実装していたが、任意の
+     デフォルトフィルタ(登録フィルタ一覧のプリセット)に鍵マークを付けられる
+     よう汎用化した。鍵を付けたプリセットは、デフォルトフィルタとして
+     一覧を開くたびに自動適用され(=固定フィルタと同じ挙動)、外そうとすると
+     確認を挟む。確認の上で外した場合はそのセッション中だけ一時的に外れ、
+     一覧を開き直すと自動的に元へ戻る。
+     使用設備一致は、この一覧を開いた端末の設定に応じて値が変わる特殊な
+     必須条件のため、専用の仕組み(f.locked==='equipment')のまま維持する。 */
   const EQUIPMENT_FILTER_COLUMN='BOX設計_設備名';
+  function isLockedFilter(f){return !!f&&!!f.locked}
   function isLockedEquipmentFilter(f){return !!f&&f.locked==='equipment'}
-  function confirmRemoveLockedFilter(){return confirm('この条件(使用設備「'+(S.genericFilters.find(isLockedEquipmentFilter)?.value||'')+'」と一致するロットのみ表示)を外すと、他設備のロットも表示されます。\n本当に解除しますか？')}
+  function lockedFilterDescription(f){return isLockedEquipmentFilter(f)?`使用設備「${f.value}」と一致するロットのみ表示`:condLabel(f)}
+  function confirmRemoveLockedFilter(f){
+    const target=f||S.genericFilters.find(isLockedFilter);
+    if(!target)return true;
+    return confirm(`この条件(${lockedFilterDescription(target)})は鍵付きの必須条件です。外すと一時的に条件が緩和されます（この一覧を開き直すと自動的に元へ戻ります）。\n本当に解除しますか？`);
+  }
+  function confirmRemoveAllLocked(lockedList){
+    if(lockedList.length<=1)return confirmRemoveLockedFilter(lockedList[0]);
+    const desc=lockedList.map(lockedFilterDescription).join('、');
+    return confirm(`鍵付きの必須条件が${lockedList.length}件あります(${desc})。全解除すると一時的にこれらの条件も外れます（この一覧を開き直すと自動的に元へ戻ります）。\n本当に解除しますか？`);
+  }
   /* forceInject=trueは「仕掛一覧へ新たに入った(selectTable)」時だけに使う。
      load()側はforceInjectしない(=既にある条件の値を最新の使用設備へ
      追従させるだけ)。そうしないと、ユーザーが確認の上で条件を外しても、
@@ -90,7 +107,7 @@
      組み合わせ単位だと再利用時に不要な条件までまとめて適用されてしまい
      使い勝手が悪いため、単一条件ずつ再利用できるようにする。 */
   async function saveCurrentFiltersToMaster(){
-    const savable=S.genericFilters.filter(f=>!isLockedEquipmentFilter(f));
+    const savable=S.genericFilters.filter(f=>!isLockedFilter(f));
     if(!savable.length){showToast?.('保存する条件がありません','条件を追加してから保存してください（使用設備の必須条件は保存対象外です）。',4200);return}
     if(savable.length>1&&!confirm(`現在アクティブな${savable.length}件の条件を、それぞれ個別の登録フィルタとして保存します。よろしいですか？`))return;
     if(canWait())showWaiting('フィルタをマスタへ保存しています','マスタ.accdb のフィルタプリセットマスタへ書き込み中','条件を1件ずつ登録しています');
@@ -144,17 +161,44 @@
   function defaultMapKey(db,table){return `${db||''}::${table||''}`}
   function defaultPresetIdsFor(db,table){return (readDefaultPresetMap()[defaultMapKey(db,table)]||[]).map(String)}
   function isDefaultPreset(preset,db,table){return defaultPresetIdsFor(db,table).includes(String(preset.id))}
-  function toggleDefaultPreset(preset,db,table){
+  function setDefaultPreset(preset,db,table,on){
     const map=readDefaultPresetMap(),key=defaultMapKey(db,table),ids=new Set((map[key]||[]).map(String)),pid=String(preset.id);
-    if(ids.has(pid))ids.delete(pid);else ids.add(pid);
+    if(on)ids.add(pid);else ids.delete(pid);
     map[key]=[...ids];writeDefaultPresetMap(map);
+  }
+  function toggleDefaultPreset(preset,db,table){setDefaultPreset(preset,db,table,!isDefaultPreset(preset,db,table))}
+
+  /* ---- 鍵付きデフォルトフィルタ（テーブルごとに複数選択可） ----
+     デフォルトフィルタのうち、鍵を付けたものは「一覧を開くたびに必ず
+     自動適用され、外そうとすると確認が必要な必須条件」になる(旧・固定
+     設備フィルタと同じ挙動)。鍵はデフォルトが前提のため、鍵を付けると
+     デフォルトも自動でONにし、デフォルトを外すと鍵も一緒に外れる。 */
+  const LOCKED_DEFAULT_STORE='MeasurementLockedDefaultFilterPresetsV1';
+  function readLockedPresetMap(){try{return JSON.parse(localStorage.getItem(LOCKED_DEFAULT_STORE)||'{}')}catch(_){return {}}}
+  function writeLockedPresetMap(map){try{localStorage.setItem(LOCKED_DEFAULT_STORE,JSON.stringify(map))}catch(_){}}
+  function lockedPresetIdsFor(db,table){return (readLockedPresetMap()[defaultMapKey(db,table)]||[]).map(String)}
+  function isLockedDefaultPreset(preset,db,table){return lockedPresetIdsFor(db,table).includes(String(preset.id))}
+  function setLockedDefaultPreset(preset,db,table,on){
+    const map=readLockedPresetMap(),key=defaultMapKey(db,table),ids=new Set((map[key]||[]).map(String)),pid=String(preset.id);
+    if(on)ids.add(pid);else ids.delete(pid);
+    map[key]=[...ids];writeLockedPresetMap(map);
   }
   function applyDefaultFiltersFor(db,table){
     const ids=defaultPresetIdsFor(db,table);if(!ids.length)return;
-    const idSet=new Set(ids),matches=(S.filterPresets||[]).filter(p=>idSet.has(String(p.id)));
+    const idSet=new Set(ids),lockedIds=new Set(lockedPresetIdsFor(db,table));
+    const matches=(S.filterPresets||[]).filter(p=>idSet.has(String(p.id)));
     if(!matches.length)return;
+    // 鍵付きプリセットを先に処理し、複数プリセットに同一条件がまたがる
+    // 場合も鍵の状態が優先されるようにする。
+    const ordered=[...matches].sort((a,b)=>Number(lockedIds.has(String(b.id)))-Number(lockedIds.has(String(a.id))));
     const merged=[],seen=new Set();
-    matches.forEach(p=>(p.filters||[]).forEach(f=>{const k=filterKey(f);if(!seen.has(k)){seen.add(k);merged.push(f)}}));
+    ordered.forEach(p=>{
+      const locked=lockedIds.has(String(p.id));
+      (p.filters||[]).forEach(f=>{
+        const k=filterKey(f);
+        if(!seen.has(k)){seen.add(k);merged.push(locked?{...f,locked:true}:{...f})}
+      });
+    });
     S.genericFilters=merged;S.page=1;
     showToast?.('デフォルトフィルタを適用しました',matches.map(p=>p.name).join(' / '),3200);
   }
@@ -209,10 +253,10 @@
     $('#saveFilterPreset').onclick=saveCurrentFiltersToMaster;
     $('#openFilterPresets').onclick=openFilterPresetModal;
     $('#clearGenericFilters').onclick=()=>{
-      const hasLocked=S.genericFilters.some(isLockedEquipmentFilter);
-      if(hasLocked){
-        if(confirmRemoveLockedFilter())S.genericFilters=[];
-        else S.genericFilters=S.genericFilters.filter(isLockedEquipmentFilter);
+      const lockedList=S.genericFilters.filter(isLockedFilter);
+      if(lockedList.length){
+        if(confirmRemoveAllLocked(lockedList))S.genericFilters=[];
+        else S.genericFilters=S.genericFilters.filter(isLockedFilter);
       }else{
         S.genericFilters=[];
       }
@@ -242,13 +286,13 @@
     const box=$('#filterTokenInput');if(!box)return;const input=$('#filterTokenSearch');
     box.querySelectorAll('.filter-tag').forEach(x=>x.remove());
     S.genericFilters.forEach((f,i)=>{
-      const locked=isLockedEquipmentFilter(f);
+      const locked=isLockedFilter(f);
       const tag=document.createElement('span');tag.className='filter-tag'+(locked?' filter-tag-locked':'');
-      tag.title=locked?`必須条件: 使用設備「${f.value}」と一致するロットのみ表示します（仕掛一覧の閲覧時は既定で適用されます）`:`${f.column} ${opLabel(f.op)}${noValueOp(f.op)?'':' '+f.value}`;
+      tag.title=locked?`必須条件: ${lockedFilterDescription(f)}（一覧を開くたびに既定で適用されます）`:`${f.column} ${opLabel(f.op)}${noValueOp(f.op)?'':' '+f.value}`;
       tag.innerHTML=`${locked?'<span class="filter-tag-lock-icon" aria-hidden="true">🔒</span>':''}<span>${esc(f.column)}</span><b>${esc(opShort(f.op))}</b>${noValueOp(f.op)?'':`<em>${esc(f.value)}</em>`}<i data-filter-index="${i}" title="解除">×</i>`;
       tag.querySelector('i').onclick=e=>{
         e.stopPropagation();
-        if(locked&&!confirmRemoveLockedFilter())return;
+        if(locked&&!confirmRemoveLockedFilter(f))return;
         S.genericFilters.splice(i,1);S.page=1;renderGenericFilterBar();load();
       };
       box.insertBefore(tag,input);
@@ -340,7 +384,7 @@
       else if(e.key==='Escape'){suggest.hidden=true}
       else if(e.key==='Backspace'&&!input.value&&S.genericFilters.length){
         const last=S.genericFilters[S.genericFilters.length-1];
-        if(isLockedEquipmentFilter(last)&&!confirmRemoveLockedFilter())return;
+        if(isLockedFilter(last)&&!confirmRemoveLockedFilter(last))return;
         S.genericFilters.pop();S.page=1;renderGenericFilterBar();load();
       }
     });
@@ -383,11 +427,28 @@
       const item=document.createElement('div');item.className='filter-preset-item';
       const conds=(p.filters||[]).map(f=>`<span class="fp-cond">${esc(f.column)} <b>${esc(opShort(f.op))}</b>${noValueOp(f.op)?'':' '+esc(f.value)}</span>`).join('');
       const applicable=forThis.includes(p);
+      const locked=isLockedDefaultPreset(p,S.db,S.table);
       const defaultToggle=applicable?`<label class="fp-default" title="この一覧を開いたときに自動で適用します（複数選択可）"><input type="checkbox" class="fp-default-check"${isDefaultPreset(p,S.db,S.table)?' checked':''}> デフォルト</label>`:'';
-      item.innerHTML=`<div class="fp-name" title="${esc(p.name)}">${esc(p.name)}${p.uses?`<small>使用 ${p.uses}回</small>`:''}</div><div class="fp-target">${esc((p.db||'全DB')+' / '+(p.table||'全テーブル'))}</div><div class="fp-conds">${conds||'<span class="fp-cond">条件なし</span>'}</div><div class="fp-actions">${defaultToggle}<button class="apply" type="button">適用</button><button class="danger" type="button">削除</button></div>`;
+      const lockToggle=applicable?`<button type="button" class="fp-lock-btn${locked?' locked':''}" aria-pressed="${locked}" title="${locked?'鍵付き必須条件: 一覧を開くたびに自動適用され、外す際は確認が必要です。もう一度押すと鍵だけ外せます（デフォルト適用は維持）。':'鍵を付けると、デフォルト適用した上で外す際に確認が必要な必須条件になります。'}">${locked?'🔒':'🔓'}</button>`:'';
+      item.innerHTML=`<div class="fp-name" title="${esc(p.name)}">${esc(p.name)}${p.uses?`<small>使用 ${p.uses}回</small>`:''}</div><div class="fp-target">${esc((p.db||'全DB')+' / '+(p.table||'全テーブル'))}</div><div class="fp-conds">${conds||'<span class="fp-cond">条件なし</span>'}</div><div class="fp-actions">${defaultToggle}${lockToggle}<button class="apply" type="button">適用</button><button class="danger" type="button">削除</button></div>`;
       item.querySelector('.apply').onclick=()=>{applyPreset(p);$('#filterPresetModal').hidden=true};
       item.querySelector('.danger').onclick=()=>deletePreset(p);
-      item.querySelector('.fp-default-check')?.addEventListener('change',()=>toggleDefaultPreset(p,S.db,S.table));
+      item.querySelector('.fp-default-check')?.addEventListener('change',e=>{
+        // 鍵付きのままデフォルトを外すと固定フィルタの意味が失われるため、
+        // 鍵が付いている場合は確認の上でデフォルトと鍵を同時に外す。
+        if(!e.target.checked&&isLockedDefaultPreset(p,S.db,S.table)){
+          if(!confirm(`このフィルタ「${p.name}」は鍵付きの必須条件です。デフォルトを外すと鍵も一緒に解除されます。\n本当によろしいですか？`)){e.target.checked=true;return}
+          setLockedDefaultPreset(p,S.db,S.table,false);
+        }
+        toggleDefaultPreset(p,S.db,S.table);
+        renderFilterPresetList();
+      });
+      item.querySelector('.fp-lock-btn')?.addEventListener('click',()=>{
+        const nowLocked=!isLockedDefaultPreset(p,S.db,S.table);
+        setLockedDefaultPreset(p,S.db,S.table,nowLocked);
+        if(nowLocked&&!isDefaultPreset(p,S.db,S.table))setDefaultPreset(p,S.db,S.table,true);
+        renderFilterPresetList();
+      });
       if(loading)list.insertBefore(item,loading);else list.appendChild(item);
     });
   }
