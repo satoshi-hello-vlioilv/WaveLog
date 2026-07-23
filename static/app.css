@@ -175,6 +175,8 @@ tbody tr:hover{background:#e5f2f3;cursor:pointer}
 .split-flag-cell{text-align:center;font-weight:700;white-space:nowrap;font-size:12px}
 .split-flag-cell.split-yes{background:#fff2cc;color:#8a6600}
 .split-flag-cell.split-no{background:inherit;color:#8a9a97}
+.split-flag-cell.split-missing{background:#fdecec;color:#a32424;animation:split-missing-pulse 1.6s ease-in-out 2}
+@keyframes split-missing-pulse{0%,100%{background:#fdecec}50%{background:#f8c9c9}}
 /* 行選択(シングルクリック): ホバーやmeasurement-row(測定可)の目印と
    混同しないよう、色相の違う強調(青系の左ボーダー+淡い背景)にする。 */
 tbody tr.is-selected{background:#eef2ff!important;box-shadow:inset 4px 0 0 #2851d1}

@@ -77,6 +77,10 @@ function renderGrid(){
   S.sortColumn=col;S.page=1;load();
  });
  const b=document.createElement('tbody');
+ // 分割データはあるが子ロットが仕掛から見つからない行(=作業済みで仕掛から
+ // 外れている可能性が高い)を、非同期の存在確認後にグリッド上で気づけるように
+ // 更新する対象を集める(下のrunLimitedブロック参照)。
+ const splitCheckTargets=[];
  S.rows.forEach((r,i)=>{
   const tr=document.createElement('tr');
   let splitCell='';
@@ -86,6 +90,7 @@ function renderGrid(){
     const patternShort=info.widthPattern==='same'?'同幅':info.widthPattern==='different'?'異幅':'';
     const patternFull=info.widthPattern==='same'?'同一幅分割':info.widthPattern==='different'?'異幅分割':'幅パターン不明';
     splitCell=`<td class="split-flag-cell split-yes" title="推定${info.lotCount}ロットへの分割・${patternFull}(実際の子ロット数・幅は測定画面で確定します)">分割あり(${info.lotCount})${patternShort?'・'+patternShort:''}</td>`;
+    splitCheckTargets.push({tr,row:r});
    }else{
     splitCell='<td class="split-flag-cell split-no">分割なし</td>';
    }
@@ -114,6 +119,31 @@ function renderGrid(){
   b.append(tr);
  });
  t.append(b);$('#grid').replaceChildren(t);$('#count').textContent=`全 ${S.count.toLocaleString()}件`;$('#page').textContent=`${S.page}ページ`;$('#prev').disabled=S.page===1;$('#next').disabled=S.page*+$('#pageSize').value>=S.count;
+ checkSplitRowsForMissingChildren(splitCheckTargets);
+}
+/* 分割あり行について、子ロットが仕掛に実在するかを確認し、見つからなければ
+   グリッド上で気づける表示(⚠子ロット未検出)に切り替える。1行ごとに問い合わせが
+   発生するため、同時実行数を絞って一覧の応答性・Access接続への負荷を抑える。 */
+function runLimited(items,limit,worker){
+ let idx=0;
+ const runners=Array.from({length:Math.min(limit,items.length)},async()=>{
+  while(idx<items.length){
+   const item=items[idx++];
+   try{await worker(item)}catch(e){console.warn(e)}
+  }
+ });
+ return Promise.all(runners);
+}
+function checkSplitRowsForMissingChildren(targets){
+ if(!targets.length||typeof window.findMissingChildLots!=='function')return;
+ runLimited(targets,3,async({tr,row})=>{
+  const info=await window.findMissingChildLots(row);
+  if(!info||!info.missing.length)return;
+  const cell=tr.querySelector('.split-flag-cell');if(!cell)return;
+  cell.classList.remove('split-yes');cell.classList.add('split-missing');
+  cell.textContent=`分割あり・子ロット未検出(${info.missing.length})⚠`;
+  cell.title=`次の子ロットが仕掛データに見つかりません: ${info.missing.join('、')}\n作業済み(仕掛から外れている)の可能性が高く、目標幅・公差の一部が欠けたまま測定される恐れがあります。`;
+ });
 }
 /* 検索・ページャ。ボタンは常に最新のload実装を呼ぶ(旧実装は初期のload関数を
    参照し続ける潜在不具合があった)。 */
