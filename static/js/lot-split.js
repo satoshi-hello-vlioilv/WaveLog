@@ -90,8 +90,10 @@
     return out;
   }
   // 同一行に子ロット番号が直接入っているケース(LTNO1..8)。
-  function directChildLotNumbers(){
-    const r=S.measure?.source||{},out=[];
+  // rowを省略すると現在開いている測定(S.measure.source)を対象にする(既存呼び出し
+  // 互換)。仕掛一覧のグリッド行など、測定を開く前の生データにも使えるようにする。
+  function directChildLotNumbers(row){
+    const r=row||S.measure?.source||{},out=[];
     for(let i=1;i<=8;i++){
       const lot=r['LTNO'+i]||r['分割ロット'+i];
       if(lot)out.push({lot:String(lot),index:i});
@@ -101,13 +103,28 @@
   // 条数は本来コンマ5本分割_切断巾側から特定できる想定だが、実データでの
   // フィールド確証が取れるまでの安全側フォールバックとして、専用の条数系
   // 候補が無ければ「切断巾に値がある行を1条」として数える。
-  function childCount(i){
-    const r=S.measure?.source||{};
+  // rowを省略すると現在開いている測定(S.measure.source)を対象にする(既存呼び出し互換)。
+  function childCount(i,row){
+    const r=row||S.measure?.source||{};
     const v=childCountFieldValue(r,i);
     if(v!==undefined){const n=Number(v);if(Number.isFinite(n)&&n>0)return n}
     const w=childCutWidthValue(r,i);
     if(w!==undefined&&Number(w)!==0)return 1;
     return 0;
+  }
+  // 行(生データ)から期待される子ロット番号の一覧を求める(重複除去済み、
+  // 条数0の枠は除く)。buildCandidateList()と同じ優先順位(直接ロット番号
+  // →子カード復元)だが、S.measureに依存せず任意の行に対して使える。
+  function expectedChildLotsForRow(row,lotNo){
+    const direct=directChildLotNumbers(row);
+    const picks=direct.length?direct:childLotNumbersFromCard(row,lotNo);
+    const seen=new Set(),out=[];
+    picks.forEach(({lot,index})=>{
+      if(!lot||seen.has(lot))return;
+      seen.add(lot);
+      if(childCount(index,row)>0)out.push(lot);
+    });
+    return out;
   }
   // 仕掛データ一覧(グリッド)側で「分割あり/なし」を判定するための、行(生データ)
   // 単位のチェック。親子管理_子カード・コンマ5本分割_切断巾のいずれかに
@@ -257,6 +274,36 @@
     return parent;
   }
 
+  /* 親ロットの分割データ(親子管理_子カード等)は仕掛にあっても、実際の子ロットが
+     仕掛(SIKALOTNOW)から見つからないことがある。子ロットは既に作業済みで仕掛から
+     外れている可能性が高く、そのまま気づかずに測定を始めると、判定に使う目標幅・
+     公差が一部欠けたまま進めてしまう事故につながる。
+     子ロット番号は親ロットと同じ先頭5桁を共有するため、子ロットごとに個別問い合わせ
+     せず、先頭5桁が一致する仕掛データを1回の問い合わせでまとめて取得し、期待される
+     子ロット番号がその中に存在するかを確認する(findParentLotForと同じ問い合わせ
+     パターンを流用)。分割データが無い行はfalseを返さずnull(対象外)とする。 */
+  async function findMissingChildLots(row){
+    if(!row||!rowHasSplitData(row))return null;
+    const lotNo=String(pick(row,'lotNo')||'');
+    if(lotNo.length<5)return null;
+    const expected=expectedChildLotsForRow(row,lotNo);
+    if(!expected.length)return null;
+    try{
+      const table=await resolveSikaTable();if(!table)return null;
+      const columns=await resolveSikaColumns(table);if(!columns.length)return null;
+      const lotCol=findColumn(columns,aliases.lotNo);if(!lotCol)return null;
+      const filters=[{column:lotCol,op:'starts',value:lotNo.slice(0,5)}];
+      const equipCol=findColumn(columns,aliases.equipment),equipment=typeof currentConfiguredEquipment==='function'?currentConfiguredEquipment():'';
+      if(equipCol&&equipment)filters.push({column:equipCol,op:'contains',value:equipment});
+      const params=new URLSearchParams({db:'SIKALOTNOW',table,page:1,page_size:50,include_hidden:1,filters:JSON.stringify(filters)});
+      const d=await api('/api/table?'+params);
+      const present=new Set((d.rows||[]).map(r=>String(pick(r,'lotNo')||'')));
+      const missing=expected.filter(lot=>!present.has(lot));
+      return{expected,missing};
+    }catch(e){console.warn('子ロット存在確認に失敗しました: '+lotNo,e);return null}
+  }
+  window.findMissingChildLots=findMissingChildLots;
+
   // 割った後の材料はすべて子ロットになり、開いている親ロット自身の「持ち分」
   // という概念は存在しない。条割の組み合わせは検出できた子ロットのみで構成する。
   function buildCandidateList(){
@@ -384,9 +431,14 @@
 
   /* 元幅（実績、BOX実績_板幅）から条幅合計を差し引くと、スリット時に両耳から
      削り取られる屑幅の合計(片耳ごとの内訳ではなく両耳分を合算した値)が求まる。
-     条幅合計は、条割設定済みなら各子ロット自身の製造板幅×条数の合計、未設定
-     なら現在のロットの製造板幅×横割数とする。母材パネルと幅分割情報パネルの
-     両方に同じ計算結果を表示する。 */
+     条幅合計は次の優先順で決める:
+     1. 条割変更で確定済み(splitGroups)なら、各子ロット自身の製造板幅×条数の合計。
+     2. 未確定でも分割データを検出し子ロット候補(splitSourcesCache)を取得済みなら、
+        その子ロット自身の製造板幅×条数の合計(#horizontalCountはまだ分割後の
+        正しい条数を反映していないことが多く、確定前にこれを使うと横割数不足で
+        屑幅が大きくずれるため使わない)。
+     3. 分割データが無い場合のみ、現在のロットの製造板幅×横割数とする。
+     母材パネルと幅分割情報パネルの両方に同じ計算結果を表示する。 */
   function slitWidthTotal(){
     const groups=S.measure?.settings?.splitGroups;
     if(Array.isArray(groups)&&groups.length){
@@ -394,6 +446,14 @@
       for(const g of groups){
         if(g.missing||!Number.isFinite(g.base?.width))return null;
         total+=g.base.width*g.count;
+      }
+      return total;
+    }
+    if(splitSourcesCache&&splitSourcesCacheKey===currentSplitCacheKey()&&splitSourcesCache.length){
+      let total=0;
+      for(const s of splitSourcesCache){
+        if(s.missing||!Number.isFinite(s.base?.width))return null;
+        total+=s.base.width*s.count;
       }
       return total;
     }
@@ -571,6 +631,13 @@
     const baseOpenMeasurement=openMeasurement;
     openMeasurement=async function(row){
       row=await resolveToParentIfChild(row);
+      if(row&&S.db==='SIKALOTNOW'){
+        const missingInfo=await findMissingChildLots(row);
+        if(missingInfo&&missingInfo.missing.length){
+          const proceed=confirm(`このロットは分割データがありますが、次の子ロットが仕掛データに見つかりません:\n${missingInfo.missing.join('、')}\n\n子ロットが仕掛から外れている場合、既に作業済みである可能性が高く、このまま測定を始めると目標幅・公差の一部が欠けたまま判定されます。\n\nこのまま測定を開始しますか？`);
+          if(!proceed)return;
+        }
+      }
       try{
         return await baseOpenMeasurement(row);
       }finally{
