@@ -51,7 +51,19 @@ async function loadMeasurementContext(force=false){
 }
 function encodePayload(m){return JSON.stringify(m)}
 function showSaveOverlay(title,detail){$('#saveOverlayTitle').textContent=title;$('#saveOverlayDetail').textContent=detail;$('#saveOverlay').hidden=false}
-function hideSaveOverlay(){$('#saveOverlay').hidden=true}
+function hideSaveOverlay(){$('#saveOverlay').hidden=true;setWaitingStep(0)}
+/* ステップ表示(1/2・2/2)。以前は「N/3」という文言を進捗テキストへ埋め込む
+   だけだったため、各ステップの間に描画を挟む猶予(nextPaint)が無い呼び出し
+   ではステップ2の表示が一瞬も画面に出ないまま次のステップへ上書きされ、
+   実質「1番目と3番目しか見えない」状態になっていた。ステップ数は実際に
+   目視できる2段階に整理し、進捗テキストとは独立したドット表示で示す
+   (呼び出し側がstepを渡さない単発処理では非表示のまま)。 */
+function setWaitingStep(step){
+ const wrap=$('#waitingSteps');if(!wrap)return;
+ if(!step){wrap.hidden=true;return}
+ wrap.hidden=false;
+ wrap.querySelectorAll('.waiting-step').forEach(el=>{const n=+el.dataset.step;el.classList.toggle('done',n<step);el.classList.toggle('active',n===step)});
+}
 async function backupRecord(m){
  // [設備]列には、ロットの設計設備(m.basic.equipment)ではなく、この端末に
  // 登録されている実際の使用設備(registeredEquipment)を記録する。
@@ -61,8 +73,8 @@ async function backupRecord(m){
  return api('/api/measurement/backup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(x)});
 }
 // Explicit, staged waiting feedback for the two perceived slow routes.
-function showWaiting(title,detail,progress){showSaveOverlay(title,detail);const p=$('#waitingProgress');if(p)p.textContent=progress||'処理を開始しています'}
-function updateWaiting(detail,progress){if(detail)$('#saveOverlayDetail').textContent=detail;const p=$('#waitingProgress');if(p&&progress)p.textContent=progress}
+function showWaiting(title,detail,progress,step){showSaveOverlay(title,detail);const p=$('#waitingProgress');if(p)p.textContent=progress||'処理を開始しています';setWaitingStep(step||0)}
+function updateWaiting(detail,progress,step){if(detail)$('#saveOverlayDetail').textContent=detail;const p=$('#waitingProgress');if(p&&progress)p.textContent=progress;if(step)setWaitingStep(step)}
 /* 保存/完了登録。完了時は必須項目・公差NGの検証を通過した場合のみ登録する。 */
 async function persistAndTransition(status){
  updateValidationVisuals();
@@ -96,23 +108,30 @@ async function findDraftForRow(row){
 }
 async function resumeStoredMeasure(saved,row=null){S.current=row||saved.source||saved.snapshot?.source||null;S.measure=ensureMeasureShape(saved);renderMeasurement();$('#recordModal').hidden=true;$('#measureModal').hidden=false;requestAnimationFrame(()=>$('#deviceInput').focus());await loadMeasurementContext(false);requestAnimationFrame(()=>$('#deviceInput').focus())}
 /* 測定画面を開く本処理: 同一ロットの編集中データがあれば直接再開、なければ
-   新規作成して参照データ取得→初回保存まで行う。 */
+   新規作成して参照データ取得→初回保存まで行う。端末内検索(高速・ローカル)
+   →仕掛等の参照データ取得(Access経由・低速)という実際の所要時間の境目に
+   合わせて、ここで待機表示をステップ2へ切り替える(呼び出し元のopenMeasurement
+   がステップ1を出している)。 */
 async function openMeasurementCore(row){
  if(!row)throw Error('対象データがありません');S.current=row;const found=await findDraftForRow(row);
+ const lot=pick(row,'lotNo')||'選択ロット';
+ updateWaiting(`ロット ${lot} の仕掛情報を取得中`,'仕掛・公差・品質等級・品質情報を読み込んでいます',2);
+ await nextPaint();
  if(found){await resumeStoredMeasure(found,row);showToast('編集中データを直接再開しました',`${found.basic?.lotNo||pick(row,'lotNo')} / ${found.updatedAt?new Date(found.updatedAt).toLocaleString('ja-JP'):''}`);return}
  const m=blankMeasure(row);m.id=lotKey(row)||crypto.randomUUID();S.measure=ensureMeasureShape(m);renderMeasurement();$('#measureModal').hidden=false;requestAnimationFrame(()=>$('#deviceInput').focus());await loadMeasurementContext(true);await reliablePut(collect());await refreshDraftCount();requestAnimationFrame(()=>$('#deviceInput').focus())
 }
 /* 測定画面を開く入口: 使用設備の登録/一致チェック→待機表示→本処理→
-   登録設備の記録。旧実装の3層ラップ(待機表示/登録ゲート)を一本化した。 */
+   登録設備の記録。待機表示は実際に目視できる2段階(端末内検索→参照データ
+   取得)に整理し、それぞれの表示に確実に1フレーム以上の猶予(nextPaint)を
+   与える。以前は3段階だったが、間に描画の猶予が無い箇所があり中間の
+   ステップが画面に一切表示されないまま次のステップへ上書きされていた。 */
 async function openMeasurement(row){
  if(!requireEquipmentBeforeMeasurement(row))return;
- const lot=pick(row,'lotNo')||'選択ロット';showWaiting('測定画面を準備しています',`ロット ${lot} の保存データを確認中`,'1/3 端末内の編集中データを検索しています');
+ const lot=pick(row,'lotNo')||'選択ロット';
+ showWaiting('測定画面を準備しています',`ロット ${lot} の保存データを確認中`,'端末内の編集中データを確認しています',1);
+ await nextPaint();
  let result;
- try{
-  updateWaiting(`ロット ${lot} の仕掛情報を取得中`,'2/3 仕掛・公差・品質等級・品質情報を読み込んでいます');
-  result=await openMeasurementCore(row);
-  updateWaiting('画面を構成しています','3/3 入力欄と判定条件を反映しています');
- }finally{hideSaveOverlay()}
+ try{result=await openMeasurementCore(row)}finally{hideSaveOverlay()}
  if(S.measure){S.measure.settings=S.measure.settings||{};S.measure.settings.registeredEquipment=currentConfiguredEquipment();S.measure.registeredEquipment=currentConfiguredEquipment();updateCourseGuard()}
  return result;
 }
@@ -199,7 +218,23 @@ async function unlockCompletedForEdit(x){
  await reliablePut(x);
  return true;
 }
-function resumeRecordFromList(x){return async()=>{try{if(!requireEquipmentBeforeMeasurement(x.source||x.snapshot?.source||null))return;if(x.status==='完了'&&!await unlockCompletedForEdit(x))return;S.measure=ensureMeasureShape(x);S.current=x.source||x.snapshot?.source||null;renderMeasurement();const recordModal=$('#recordModal'),measureModal=$('#measureModal');if(recordModal)recordModal.hidden=true;if(measureModal)measureModal.hidden=false;await loadMeasurementContext(false);updateCourseGuard();showToast('編集中データを再開しました',String(x.basic?.lotNo||x.id))}catch(error){console.error('resume failed',error);showToast('再開できませんでした',error?.message||String(error),8000)}}}
+// データ一覧からの再開もAccess経由の参照データ取得(loadMeasurementContext)を
+// 伴うため、以前は待機表示が一切出ないまま無音で待たされていた。他の
+// 測定画面オープン経路と同様に待機表示を出す(こちらは検索を伴わない
+// 単発の読込のためステップ表示は使わない)。
+function resumeRecordFromList(x){return async()=>{
+ try{
+  if(!requireEquipmentBeforeMeasurement(x.source||x.snapshot?.source||null))return;
+  if(x.status==='完了'&&!await unlockCompletedForEdit(x))return;
+  showWaiting('編集画面を準備しています',`ロット ${x.basic?.lotNo||x.id} の内容を復元中`,'保存済みの参照データを読み込んでいます');
+  await nextPaint();
+  S.measure=ensureMeasureShape(x);S.current=x.source||x.snapshot?.source||null;renderMeasurement();
+  const recordModal=$('#recordModal'),measureModal=$('#measureModal');if(recordModal)recordModal.hidden=true;if(measureModal)measureModal.hidden=false;
+  await loadMeasurementContext(false);updateCourseGuard();
+  showToast('編集中データを再開しました',String(x.basic?.lotNo||x.id));
+ }catch(error){console.error('resume failed',error);showToast('再開できませんでした',error?.message||String(error),8000)}
+ finally{hideSaveOverlay()}
+}}
 /* 「何も入力がないデータ」かどうか: 測定値・丈別データ・母材入力・作業時間の
    いずれにも実データが無ければ、削除しても失うものが無い空レコードとみなす
    (仕掛を開いただけで自動保存された未入力レコードなど)。 */

@@ -48,12 +48,19 @@ async function load(){
   const q=new URLSearchParams({db:S.db,table:S.table,page:S.page,page_size:$('#pageSize').value,search:$('#search').value});const d=await api('/api/table?'+q);Object.assign(S,{columns:d.columns,rows:d.rows,count:d.count});const info=S.catalog.find(x=>x.key===S.db);$('#fileName').textContent=info.file_name;$('#tableName').textContent=S.table;renderGrid();
  }finally{hideSaveOverlay()}
 }
+/* データベース切替→テーブル選択は、実際に目視できる2段階で待機表示する
+   (テーブル構成の確認→列情報・一覧データの取得)。以前は3段階だったが、
+   ステップ間に描画の猶予(nextPaint)を与えていない箇所があり、中間の
+   ステップが一度も画面に表示されないまま次のステップへ上書きされていた。 */
 async function selectDb(k,b){
- const label=databaseLabel(k);showWaiting(`${label}へ切り替えています`,`接続先を確認しています: ${label}`,'1/3 データベースのテーブル構成を取得しています');await nextPaint();
- try{S.db=k;document.querySelectorAll('.db').forEach(x=>x.classList.remove('active'));b.classList.add('active');const result=await api(`/api/tables?db=${encodeURIComponent(k)}`);S.tables=result.tables;updateWaiting(`${label}の表示対象を確認中`,'2/3 表示可能なテーブルを整理しています');renderTabs();if(S.tables.length)await selectTable(S.tables[0]);else $('#grid').textContent='表示可能なテーブルがありません。'}catch(e){$('#grid').innerHTML=`<div class="load-error"><b>${esc(label)}を開けませんでした</b><span>${esc(e.message)}</span></div>`;throw e}finally{hideSaveOverlay()}
+ const label=databaseLabel(k);showWaiting(`${label}へ切り替えています`,`接続先を確認しています: ${label}`,'テーブル構成を確認しています',1);await nextPaint();
+ try{S.db=k;document.querySelectorAll('.db').forEach(x=>x.classList.remove('active'));b.classList.add('active');const result=await api(`/api/tables?db=${encodeURIComponent(k)}`);S.tables=result.tables;renderTabs();if(S.tables.length)await selectTable(S.tables[0]);else $('#grid').textContent='表示可能なテーブルがありません。'}catch(e){$('#grid').innerHTML=`<div class="load-error"><b>${esc(label)}を開けませんでした</b><span>${esc(e.message)}</span></div>`;throw e}finally{hideSaveOverlay()}
 }
 async function selectTable(t){
- S.table=t;S.page=1;S.sortColumn=null;S.sortDir=null;renderTabs();const label=databaseLabel(S.db);showWaiting(`${label}を読み込んでいます`,`テーブル: ${t}`,'3/3 列情報と一覧データを取得しています');await nextPaint();try{await load()}finally{hideSaveOverlay()}
+ S.table=t;S.page=1;S.sortColumn=null;S.sortDir=null;renderTabs();const label=databaseLabel(S.db);
+ if($('#saveOverlay').hidden){showWaiting(`${label}を読み込んでいます`,`テーブル: ${t}`,'列情報と一覧データを取得しています');await nextPaint()}
+ else{updateWaiting(`テーブル: ${t}`,'列情報と一覧データを取得しています',2);await nextPaint()}
+ try{await load()}finally{hideSaveOverlay()}
 }
 /* 一覧の列名は仕掛先DBの生カラム名なので、aliasesの候補名のうち
    実際にS.columnsへ含まれているものを探してロット番号・鋳造番号の

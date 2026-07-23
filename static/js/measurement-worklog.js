@@ -535,10 +535,12 @@
  }
  function openMasterMaint(){const modal=ensureMaintModal();const uid=$('#masterUserId');if(uid)uid.value=currentUserId();maintState.defKey='operator';maintState.editing=null;maintState.query='';const se=$('#masterMaintSearch');if(se)se.value='';syncNav();modal.hidden=false;loadMaint(true);requestAnimationFrame(()=>{const u=$('#masterUserId');if(u&&!u.value)u.focus()})}
 
- function bindMasterMaint(){const b=$('#openMasterMaint');if(b)b.onclick=e=>{e.preventDefault();openMasterMaint()}}
+ // #openMasterMaintのクリックはここ(document委譲・capture)一箇所のみで処理する。
+ // 以前はbindMasterMaint()でボタン自身にもonclickを付けていたが、この
+ // capture段リスナーがstopImmediatePropagation()で先に処理を完結させるため
+ // ボタン側のonclickは常に発火しない到達不能コードだった(削除済み)。
  document.addEventListener('click',e=>{const t=e.target.closest('#openMasterMaint');if(!t)return;e.preventDefault();e.stopImmediatePropagation();openMasterMaint()},true);
  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#masterMaintModal')?.hidden){$('#masterMaintModal').hidden=true}},true);
- queueMicrotask(()=>{bindMasterMaint()});
 })();
 
 
