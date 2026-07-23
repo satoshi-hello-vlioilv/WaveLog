@@ -345,12 +345,22 @@
     return `幅${entry.base.width} (+${w.plus}/-${w.minus})`;
   }
 
+  // 子ロットの条数(この子ロットが実際に何条分を占めるか)は、親ロット側の
+  // 子カード配列から推測した値(childCount、YK*系フィールドが無ければ
+  // 「切断巾があれば1条」という未確証のフォールバック)ではなく、子ロット
+  // 自身の仕掛データにある「BOX設計_横割数」を優先する。親側からの推測に
+  // 頼っていたため、実際の子ロット自身の条数と食い違い、条割変更で
+  // 横割数と子ロット条数合計が一致しなくなることがあった。
+  function childOwnCount(row,fallback){
+    const n=Number(pick(row,'boxHorizontalCount'));
+    return Number.isFinite(n)&&n>=1&&n<=40?Math.round(n):fallback;
+  }
   async function buildSplitSources(){
     const children=buildCandidateList(),out=[];
     for(const c of children){
       const row=await fetchChildLotRow(c.lot);
       if(!row){out.push({lot:c.lot,count:c.count,width:'',tol:'子ロット情報を取得できませんでした',missing:true});continue}
-      const entry={lot:c.lot,count:c.count,missing:false,
+      const entry={lot:c.lot,count:childOwnCount(row,c.count),missing:false,
         base:{thickness:baseFromRow(row,'thickness'),width:baseFromRow(row,'width')},
         tolData:{thickness:{manufacturing:toleranceFromRow(row,'thickness','manufacturing'),order:toleranceFromRow(row,'thickness','order')},
              width:{manufacturing:toleranceFromRow(row,'width','manufacturing'),order:toleranceFromRow(row,'width','order')}}};
