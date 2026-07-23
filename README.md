@@ -46,25 +46,35 @@ python app.py
 ## ディレクトリ構成
 
 ```
-app.py                     Flaskサーバー本体・Access(ODBC)連携・API
+app.py                     Flask本体・一覧/測定コンテキスト/バックアップ/品質分析API
+changelog_data.py          バージョン番号(APP_VERSION)と更新履歴(CHANGELOG)
+db_access.py               Access(ODBC)接続・DB定義・共通ヘルパ
+masters.py                 各種マスタCRUD API(Blueprint)
 templates/index.html       画面の骨格（SPA）
 static/app.css             全画面共通スタイル
-static/js/
-  core.js                  起動・DB/テーブル一覧・測定ワークスペース基盤
-  measurement-tolerance.js 公差判定・許容範囲まわり
-  filters.js                一覧の絞り込み・並び替え・数直線表示
-  measurement-worklog.js   作業時間・作業班などの記録
+static/js/                 (index.htmlの記載順に読み込み)
+  base.js                  共有基盤: グローバル状態S・api・共通ユーティリティ・別名定義
+  list-view.js             起動処理・DB/テーブル選択・一覧グリッド
+  measurement-view.js      測定画面の構成・各パネル描画・入力検証・作業時間
+  measurement-input.js     測定器受信・入力位置管理・測定グリッド・公差計算
+  records-store.js         端末内保存(IndexedDB)・保存/完了遷移・データ一覧・設備設定
+  measurement-tolerance.js 公差判定の拡張・寸法ロック
+  lot-split.js             条割(ロット分割): 検出・条割変更モーダル・条ごと公差・屑幅
+  filters.js               一覧の絞り込み・フィルタプリセット・スウォーム表示
+  measurement-worklog.js   マスタ管理モーダル・列表示マスタ・データ引継ぎ
+  worktime-benchmark.js    作業時間の過去実績比較
   quality-analysis.js      品質データ分析グラフ
   report-dashboard.js      測定帳票・生産管理ダッシュボード
+  calendar-view.js         実績カレンダー
 ```
 
-`static/js/*.js` は `templates/index.html` に記載された順序で読み込まれ、
-後から読み込まれるファイルほど同名関数を上書きしていく構成になっています。
-挙動を追う際は、読み込み順で最後に定義されている実装が実際に動くコードです。
+各関数はいずれか1ファイルが所有し、拡張が必要な場合のみ後続ファイルが
+`const base=fn; fn=function(){...base()...}` 形式でラップします（規約の詳細と
+ファイル間の依存関係は `docs/ARCHITECTURE.md` を参照）。
 
 ## バージョンと更新履歴
 
-`app.py` の `APP_VERSION` が画面右上・測定画面ヘッダーのバージョンバッジに
-表示されます。意味のある変更をコミットするたびに更新し、`CHANGELOG`
-（同じく `app.py`）に更新内容を追記してください。バッジをクリックすると
+`changelog_data.py` の `APP_VERSION` が画面右上・測定画面ヘッダーのバージョン
+バッジに表示されます。意味のある変更をコミットするたびに更新し、`CHANGELOG`
+（同ファイル）の先頭に更新内容を追記してください。バッジをクリックすると
 `CHANGELOG` の内容がアプリ内モーダルに一覧表示されます（`/api/changelog`）。
