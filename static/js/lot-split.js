@@ -558,6 +558,7 @@
       if(count)count.textContent='';
       if(detail)detail.textContent='';
       splitVisualLayout=null;
+      renderScrapAndRuler(null);
       return;
     }
     const layout=computeVisualLayout(seq,sources);
@@ -581,6 +582,43 @@
     if(count)count.textContent=`${total}条`;
     if(detail)detail.textContent='';
     ensureSplitVisualWiring();
+    renderScrapAndRuler(layout);
+  }
+  // 屑幅(両耳合計)を左右均等に振り分け、条ストリップの両端に「動かせない
+  // 帯」として描画する(#splitVisualScrapOs/Ds、条とは違いドラッグ操作の
+  // 対象外)。屑を左右均等に振り分ける設計のため、条ストリップの中央は
+  // 数式上必ず母材全幅(元幅)の中央と一致する。センターライン(薄い点線)は
+  // 常にこの中央に描画し、元幅(実績)が判明していれば±1000/1250/1500mmの
+  // 目盛りも母材幅の範囲内に収まる分だけ重ねて表示する。
+  function renderScrapAndRuler(layout){
+    const scrapOs=$('#splitVisualScrapOs'),scrapDs=$('#splitVisualScrapDs'),strip=$('#splitVisualStrip'),ruler=$('#splitVisualRuler');
+    if(!scrapOs||!scrapDs||!strip||!ruler)return;
+    const info=layout?scrapWidthInfo():null;
+    const stripUnits=layout?layout.totalUnits:0;
+    if(info&&Number.isFinite(info.scrap)&&info.scrap>0&&stripUnits>0){
+      const half=info.scrap/2,halfText=esc(fmtDim(half,1));
+      scrapOs.hidden=false;scrapDs.hidden=false;
+      scrapOs.style.flexGrow=half;scrapDs.style.flexGrow=half;strip.style.flexGrow=stripUnits;
+      scrapOs.innerHTML=`<span class="split-visual-scrap-label">屑<b>${halfText}</b></span>`;
+      scrapDs.innerHTML=`<span class="split-visual-scrap-label">屑<b>${halfText}</b></span>`;
+      scrapOs.title=`屑幅(OS側、両耳合計の半分) ${halfText} ／ 動かせません`;
+      scrapDs.title=`屑幅(DS側、両耳合計の半分) ${halfText} ／ 動かせません`;
+    }else{
+      scrapOs.hidden=true;scrapDs.hidden=true;scrapOs.innerHTML='';scrapDs.innerHTML='';
+      scrapOs.style.flexGrow='';scrapDs.style.flexGrow='';strip.style.flexGrow='';
+    }
+    if(!layout){ruler.innerHTML='';return}
+    let html='<div class="split-visual-centerline" title="センターライン"></div>';
+    if(info&&info.scrap>=0&&Number.isFinite(info.original)&&info.original>0){
+      const half=info.original/2;
+      [1000,1250,1500].forEach(d=>{
+        if(d>half)return;
+        const pct=d/info.original*100;
+        html+=`<div class="split-visual-tick" style="left:${(50-pct).toFixed(3)}%"><span class="split-visual-tick-label">${d}</span></div>`;
+        html+=`<div class="split-visual-tick" style="left:${(50+pct).toFixed(3)}%"><span class="split-visual-tick-label">${d}</span></div>`;
+      });
+    }
+    ruler.innerHTML=html;
   }
   // ドラッグ中、ドロップ予定位置に「入る予定の条」と同じ色・同じ幅の
   // ゴーストを差し込んで表示する(どこに入るかを視覚的に明示する)。

@@ -212,17 +212,17 @@
    if(f.type==='equipment-multi'){
     const selected=new Set((editing&&Array.isArray(editing[f.k])?editing[f.k]:[]).map(String));
     const opts=equipmentMasterState.items||[];
-    const chips=opts.length?opts.map(eq=>{
-     const checked=selected.has(eq.name);
-     return `<label class="mm-eq-chip${checked?' checked':''}"><input type="checkbox" data-equipment-field="${f.k}" value="${esc(eq.name)}"${checked?' checked':''}><span>${esc(eq.name)}</span></label>`;
-    }).join(''):'<span class="mm-empty-inline">設備マスタが未登録です。先に「設備」タブで登録してください。</span>';
-    const actions=opts.length?`<div class="mm-eq-actions"><button type="button" class="mm-btn-ghost sm" data-equipment-all="${f.k}">すべて選択</button><button type="button" class="mm-btn-ghost sm" data-equipment-none="${f.k}">選択解除</button></div>`:'';
-    return `<div class="mm-field mm-field-wide"><span>${esc(f.label)}</span>
-     <div class="mm-eq-picker" data-equipment-picker="${f.k}">
-      <div class="mm-eq-picker-head"><span class="mm-eq-count" data-equipment-count="${f.k}">${selected.size}件選択中 / 全${opts.length}件</span>${actions}</div>
-      <div class="mm-eq-grid">${chips}</div>
+    if(!opts.length){
+     return `<div class="mm-field"><span>${esc(f.label)}</span><span class="mm-empty-inline">設備マスタが未登録です。先に「設備」タブで登録してください。</span></div>`;
+    }
+    const hiddenBoxes=opts.map(eq=>`<input type="checkbox" data-equipment-field="${f.k}" value="${esc(eq.name)}"${selected.has(eq.name)?' checked':''} hidden>`).join('');
+    const tags=opts.filter(eq=>selected.has(eq.name)).map(eq=>`<span class="mm-tag">${esc(eq.name)}<button type="button" class="mm-tag-remove" aria-label="${esc(eq.name)}を削除">×</button></span>`).join('');
+    return `<div class="mm-field mm-tagfield" data-tagfield="${f.k}"><span>${esc(f.label)}</span>
+     <div class="mm-tagfield-inner">
+      <div class="mm-tag-box" data-equipment-box="${f.k}" tabindex="-1">${tags}<input type="text" class="mm-tag-search" data-equipment-search="${f.k}" placeholder="設備名で検索・追加" autocomplete="off">${hiddenBoxes}</div>
+      <div class="mm-tag-suggest" data-equipment-suggest="${f.k}" hidden></div>
      </div>
-     <small class="mm-field-hint">未選択の場合は制限なし（全設備で表示対象）として扱われます。</small></div>`;
+     <small class="mm-field-hint">クリックで追加・×で削除。未選択なら制限なし（全設備で表示対象）。</small></div>`;
    }
    if(f.type==='select'){
     const opts=(f.options||[]).map(o=>`<option value="${esc(o)}"${o===val?' selected':''}>${esc(o||'（指定なし）')}</option>`).join('');
@@ -238,19 +238,47 @@
   const nb=$('#masterMaintNew');if(nb)nb.onclick=()=>{maintState.editing=null;renderMaintForm()};
   bindEquipmentPickers(form);
  }
- // 作業可能設備ピッカー(チップ状の複数選択)。すべて選択/選択解除ボタンと
- // 選択件数表示をチェック状態と常に同期させる。
+ // 作業可能設備タグ入力: フォーカスで登録済み設備をサジェスト、クリックで
+ // 連続追加できるようにする（認識優先＝再入力不要、逐次追加を高速化）。
+ // 送信時の互換性のため、選択状態は非表示チェックボックス(data-equipment-field)
+ // で保持し、submitMaint()側の読み取りロジックは変更しない。
  function bindEquipmentPickers(form){
-  form.querySelectorAll('[data-equipment-picker]').forEach(picker=>{
-   const fk=picker.dataset.equipmentPicker;
-   const boxes=()=>[...picker.querySelectorAll(`[data-equipment-field="${fk}"]`)];
-   const countEl=picker.querySelector(`[data-equipment-count="${fk}"]`);
-   const refresh=()=>{if(countEl){const all=boxes();countEl.textContent=`${all.filter(b=>b.checked).length}件選択中 / 全${all.length}件`}};
-   boxes().forEach(b=>b.addEventListener('change',()=>{b.closest('.mm-eq-chip')?.classList.toggle('checked',b.checked);refresh()}));
-   const allBtn=picker.querySelector(`[data-equipment-all="${fk}"]`);
-   const noneBtn=picker.querySelector(`[data-equipment-none="${fk}"]`);
-   if(allBtn)allBtn.onclick=()=>{boxes().forEach(b=>{b.checked=true;b.closest('.mm-eq-chip')?.classList.add('checked')});refresh()};
-   if(noneBtn)noneBtn.onclick=()=>{boxes().forEach(b=>{b.checked=false;b.closest('.mm-eq-chip')?.classList.remove('checked')});refresh()};
+  form.querySelectorAll('[data-tagfield]').forEach(field=>{
+   const fk=field.dataset.tagfield;
+   const box=field.querySelector(`[data-equipment-box="${fk}"]`);
+   const search=field.querySelector(`[data-equipment-search="${fk}"]`);
+   const suggest=field.querySelector(`[data-equipment-suggest="${fk}"]`);
+   if(!box||!search||!suggest)return;
+   const opts=equipmentMasterState.items||[];
+   const checkbox=name=>[...box.querySelectorAll(`[data-equipment-field="${fk}"]`)].find(b=>b.value===name);
+   const selectedNames=()=>opts.filter(eq=>{const cb=checkbox(eq.name);return cb&&cb.checked}).map(eq=>eq.name);
+   const setChecked=(name,val)=>{const cb=checkbox(name);if(cb)cb.checked=val};
+   function renderTags(){
+    box.querySelectorAll('.mm-tag').forEach(t=>t.remove());
+    selectedNames().forEach(name=>{
+     const tag=document.createElement('span');tag.className='mm-tag';
+     tag.innerHTML=`${esc(name)}<button type="button" class="mm-tag-remove" aria-label="${esc(name)}を削除">×</button>`;
+     tag.querySelector('.mm-tag-remove').onclick=ev=>{ev.stopPropagation();setChecked(name,false);renderTags();renderSuggest();search.focus()};
+     box.insertBefore(tag,search);
+    });
+   }
+   function renderSuggest(){
+    const q=String(search.value||'').normalize('NFKC').toLowerCase().trim();
+    const selected=new Set(selectedNames());
+    const items=opts.filter(eq=>!selected.has(eq.name)&&(!q||eq.name.normalize('NFKC').toLowerCase().includes(q)));
+    if(!items.length){suggest.innerHTML=`<div class="mm-tag-suggest-empty">${selected.size>=opts.length?'すべて選択済みです':'該当する設備がありません'}</div>`;return}
+    suggest.innerHTML=items.map(eq=>`<button type="button" class="mm-tag-suggest-item" data-pick="${esc(eq.name)}">${esc(eq.name)}</button>`).join('');
+    suggest.querySelectorAll('[data-pick]').forEach(btn=>{btn.onclick=ev=>{ev.stopPropagation();setChecked(btn.dataset.pick,true);search.value='';renderTags();renderSuggest();search.focus()}});
+   }
+   search.addEventListener('focus',()=>{renderSuggest();suggest.hidden=false});
+   search.addEventListener('input',()=>{renderSuggest();suggest.hidden=false});
+   search.addEventListener('keydown',ev=>{
+    if(ev.key==='Backspace'&&!search.value){const names=selectedNames();if(names.length){setChecked(names[names.length-1],false);renderTags();renderSuggest()}}
+    else if(ev.key==='Escape'){suggest.hidden=true;search.blur()}
+   });
+   search.addEventListener('blur',()=>{setTimeout(()=>{if(document.activeElement!==search)suggest.hidden=true},150)});
+   box.addEventListener('mousedown',ev=>{if(ev.target===box){ev.preventDefault();search.focus()}});
+   renderTags();
   });
  }
 
