@@ -692,7 +692,9 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 /* 条の並び視覚図: 母材幅をほぼ100%として、各条を実際の条幅比率(子ロットの
    製造板幅)で並べた帯として表示する(splitVisualLayout)。同じロットが
    連続する範囲は1つの帯にまとめ、最大40条規模でも見やすくする。帯自体が
-   操作面(タップで確認済みトグル、ドラッグで範囲選択→再ドラッグで入替)。 */
+   操作面(タップで確認済みトグル、ドラッグでその場から即座に追従して
+   並べ替え。ドロップ予定位置には同じ色・同じ幅のゴーストを差し込んで
+   表示する)。 */
 .split-visual{grid-column:1/-1;background:#fff;border:1px solid #dbe4e6;border-radius:12px;padding:14px 16px;box-shadow:0 1px 3px #0000000f}
 .split-visual-head{display:flex;align-items:baseline;gap:12px;margin-bottom:10px;flex-wrap:wrap}
 .split-visual-head b{font-size:15px;color:#1b3438}
@@ -704,15 +706,15 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .split-visual-block:hover{filter:brightness(1.07)}
 .split-visual-block:last-child{border-right:0}
 .split-visual-strip.split-visual-dragging .split-visual-block{cursor:grabbing}
-.split-visual-block.empty{background:repeating-linear-gradient(135deg,#eef2f4 0 6px,#e3e9eb 6px 12px)!important;border:1.5px dashed #c4d4d7}
+.split-visual-block.empty{background:repeating-linear-gradient(135deg,#eef2f4 0 6px,#e3e9eb 6px 12px)!important;border:1.5px dashed #c4d4d7;cursor:default}
 .split-visual-block.unconfirmed{background-image:repeating-linear-gradient(135deg,#ffffff59 0 6px,transparent 6px 12px)}
 .split-visual-block-label{display:flex;flex-direction:column;align-items:center;line-height:1.2;font-size:11px;font-weight:800;white-space:nowrap;padding:0 4px}
 .split-visual-block-label b{font-size:10px;font-weight:700;opacity:.85}
 .split-visual-unconfirmed-mark{position:absolute;top:4px;right:4px;width:7px;height:7px;border-radius:50%;background:#fff;box-shadow:0 0 0 1.5px #d97706}
 .split-visual-block.flash{animation:splitVisualFlash .9s ease}
 @keyframes splitVisualFlash{0%,100%{box-shadow:none}30%{box-shadow:0 0 0 3px #fff,0 0 0 7px var(--teal)}}
-.split-visual-selection{position:absolute;top:-5px;bottom:-5px;border:3px solid #fff;border-radius:8px;box-shadow:0 0 0 3px var(--nav),0 4px 10px #00000040;pointer-events:none;z-index:2}
-.split-visual-dropline{position:absolute;top:-7px;bottom:-7px;width:4px;background:var(--nav);border-radius:2px;box-shadow:0 0 0 2px #fff;pointer-events:none;z-index:3}
+.split-visual-block.lifted{opacity:.35}
+.split-visual-ghost{position:absolute;top:-5px;bottom:-5px;display:flex;align-items:center;justify-content:center;border:2px dashed #fff;border-radius:8px;box-shadow:0 0 0 3px var(--nav),0 6px 14px #00000040;color:#fff;text-shadow:0 1px 1px #0006;overflow:hidden;pointer-events:none;z-index:3;transition:left .05s linear,width .05s linear}
 .split-visual-detail{min-height:16px;margin-top:8px;font-size:12px;font-weight:700;color:#3a565d}
 .split-visual-empty{padding:14px;text-align:center;color:#8a9a97;font-size:13px}
 .split-visual-actions{display:flex;gap:8px;margin-top:12px}

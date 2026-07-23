@@ -228,6 +228,21 @@
             if(v!=='')S.measure.basic[k]=v;
           });
         }
+        // 横割数(条数)の初期値(BOX設計_横割数)も列表示設定で一覧側から
+        // 欠落し得るため、完全な生データから改めて反映し直す。ただし測定
+        // データが既に入力されている場合(dimensionLocked)は、オペレータの
+        // 入力・保存済み設定を上書きしない。
+        if(!S.measure.settings.dimensionLocked){
+          const n=Number(pick(S.measure.source,'boxHorizontalCount'));
+          if(Number.isFinite(n)&&n>=1&&n<=40){
+            const rounded=Math.round(n);
+            if(S.measure.settings.horizontalCount!==rounded){
+              S.measure.settings.horizontalCount=rounded;
+              if($('#horizontalCount'))$('#horizontalCount').value=rounded;
+              if(typeof updateCoilOptions==='function')updateCoilOptions(rounded);
+            }
+          }
+        }
       }
     }catch(e){console.warn('自ロットの完全データ取得に失敗しました',e)}
   }
@@ -383,17 +398,21 @@
        未確認の条が残ったまま条割を実行しようとした場合は確認ダイアログで
        一度立ち止まらせる(自動配置を無条件に信用してしまう事故の防止)。
 
-     操作:
-     - 条をタップ(ドラッグなしのクリック) → 確認済み/未確認のトグル。
-     - 条をドラッグ(2条以上またぐ) → その範囲を選択状態にする(値は
-       変えない)。
-     - 選択済みの範囲の内側から改めてドラッグ → その範囲をまとめてつまみ、
-       ドロップ位置へ挿入する(他の条は自動的に詰まる)。移動した条は
-       確認済みになる。
+     操作(単一ジェスチャーのドラッグ並べ替え):
+     - 条ブロックをつかんで動かす → その場で追従し、ドロップ予定位置に
+       ゴースト(同じ色・同じ幅の枠)を差し込んで表示する。離すとその位置へ
+       挿入され、他の条は自動的に詰まる。移動した条は確認済みになる。
+       「範囲選択→別ドラッグで移動」という2段階操作は認知負荷が高く、
+       特に条数が少なく1条あたりの帯が広い場合に選択判定がうまく機能
+       しなかったため廃止し、つかんだら即座に追従する直接操作の1段階に
+       統一した(2条をA→B/B→Aに入れ替えるような単純な操作も、対象の
+       ブロックを直接つかんで反対側へ運ぶだけで完結する)。
+     - 条をタップ(ほぼ動かさないクリック) → 確認済み/未確認のトグル。
+       移動量が小さい間はドラッグ扱いにしないため、タップと誤操作なく
+       区別できる。
      - 子ロット候補カードをクリック → 視覚図内の該当する条を一時的に
        光らせて位置を確認できる(値は変えない、位置特定専用)。 */
   let activeLot=null;
-  let splitSelection=null; // {start,end} 0始まり・両端含む、選択中/選択済みの範囲
   let splitUndoStack=[];
   let splitVisualLayout=null; // 直近描画時の幅レイアウト(ポインタ位置→条番号の逆算に使う)
 
@@ -524,29 +543,26 @@
       html+=`<div class="split-visual-block${lot?'':' empty'}${fullyConfirmed?' confirmed':' unconfirmed'}" data-start="${i}" data-end="${j}" data-lot="${lot?esc(lot):''}" style="left:${left}%;width:${width}%;background-color:${bg}" title="${label} ／ ${n}条 ／ ${widthText}${tolText} ／ ${confN}/${n}条確認済み">${wide?`<span class="split-visual-block-label">${label}<b>×${n}</b></span>`:''}${!fullyConfirmed?'<i class="split-visual-unconfirmed-mark" aria-hidden="true"></i>':''}</div>`;
       i=j+1;
     }
-    html+='<div class="split-visual-selection" id="splitVisualSelectionBox" hidden></div><div class="split-visual-dropline" id="splitVisualDropLine" hidden></div></div>';
+    html+='<div class="split-visual-ghost" id="splitVisualGhost" hidden></div></div>';
     strip.innerHTML=html;
     if(count){const confirmedTotal=confirmed.filter(Boolean).length;count.textContent=`${confirmedTotal}/${total}条 確認済み`}
     if(detail)detail.textContent='';
-    updateSelectionOverlay();
     ensureSplitVisualWiring();
   }
-  function updateSelectionOverlay(){
-    const box=$('#splitVisualSelectionBox');
-    if(!box||!splitVisualLayout)return;
-    if(!splitSelection){box.hidden=true;return}
+  // ドラッグ中、ドロップ予定位置に「入る予定のブロック」と同じ色・同じ幅の
+  // ゴーストを差し込んで表示する(どこに入るかを視覚的に明示する)。
+  function showGhost(dragBlock,dropIndex){
+    const ghost=$('#splitVisualGhost');
+    if(!ghost||!splitVisualLayout)return;
     const{cum,totalUnits}=splitVisualLayout;
-    box.hidden=false;
-    box.style.left=(cum[splitSelection.start]/totalUnits*100)+'%';
-    box.style.width=((cum[splitSelection.end+1]-cum[splitSelection.start])/totalUnits*100)+'%';
+    const widthUnits=cum[dragBlock.end+1]-cum[dragBlock.start];
+    ghost.hidden=false;
+    ghost.style.left=(cum[dropIndex]/totalUnits*100)+'%';
+    ghost.style.width=(widthUnits/totalUnits*100)+'%';
+    ghost.style.background=dragBlock.color||'#8a9a97';
+    ghost.innerHTML=`<span class="split-visual-block-label">${esc(dragBlock.lot||'')}<b>×${dragBlock.end-dragBlock.start+1}</b></span>`;
   }
-  function showDropPreview(dropIndex){
-    const line=$('#splitVisualDropLine');
-    if(!line||!splitVisualLayout)return;
-    line.hidden=false;
-    line.style.left=(splitVisualLayout.cum[dropIndex]/splitVisualLayout.totalUnits*100)+'%';
-  }
-  function hideDropPreview(){const line=$('#splitVisualDropLine');if(line)line.hidden=true}
+  function hideGhost(){const ghost=$('#splitVisualGhost');if(ghost)ghost.hidden=true}
   function flashLotInVisual(lot){
     const strip=$('#splitVisualStrip');if(!strip)return;
     strip.querySelectorAll('.split-visual-block').forEach(el=>{
@@ -554,15 +570,30 @@
     });
   }
 
+  // 条ブロック(同一ロットの連続範囲)を1つの単位として直接つかんで運ぶ、
+  // 単一ジェスチャーのドラッグ並べ替え。「範囲選択→別ドラッグで移動」の
+  // 2段階方式は、条数が少なく1条あたりの帯が広い場合にセル境界をまたぐ
+  // 判定が働かず選択自体が成立しないことがあり、認知負荷も高かったため
+  // 廃止した。掴んだ位置からのポインタ移動が閾値を超えるまでは「タップ」
+  // として扱い(確認済みトグル)、超えたら「ドラッグ」として即座に追従・
+  // ゴースト表示を開始する。
+  const DRAG_START_THRESHOLD=6;
   let splitVisualWired=false;
   function ensureSplitVisualWiring(){
     const strip=$('#splitVisualStrip');
     if(!strip||splitVisualWired)return;
     splitVisualWired=true;
-    let phase=null,anchorIndex=-1,moveStart=-1,moveEnd=-1,moveGrabOffset=0,moved=false;
+    let downIdx=-1,downX=0,downY=0,dragging=false,dragBlock=null;
     function context(){
       const sources=splitSourceRows(),total=sources.reduce((a,x)=>a+x.count,0);
       return{sources,total,seq:ensureSequenceLength(total),confirmed:ensureConfirmedLength(total)};
+    }
+    function blockRangeAt(seq,idx){
+      const lot=seq[idx];
+      let start=idx,end=idx;
+      while(start>0&&seq[start-1]===lot)start--;
+      while(end+1<seq.length&&seq[end+1]===lot)end++;
+      return{start,end};
     }
     function updateDetailFor(idx){
       const detail=$('#splitVisualDetail');if(!detail)return;
@@ -571,56 +602,52 @@
       const src=sources.find(s=>s.lot===lot);
       detail.textContent=src?`${lot} ／ 幅${src.width===''||src.width===undefined?'—':src.width} ／ ${src.tol||'—'}`:lot;
     }
+    function beginDragging(){
+      dragging=true;
+      strip.classList.add('split-visual-dragging');
+      const el=strip.querySelector(`.split-visual-block[data-start="${dragBlock.start}"][data-end="${dragBlock.end}"]`);
+      if(el)el.classList.add('lifted');
+    }
     function handleMove(e){
-      moved=true;
-      if(phase==='select'){
-        const idx=indexAtClientX(e.clientX);if(idx<0)return;
-        splitSelection={start:Math.min(anchorIndex,idx),end:Math.max(anchorIndex,idx)};
-        updateSelectionOverlay();
-        updateDetailFor(idx);
-      }else if(phase==='move'){
-        const drop=dropTargetIndex(e.clientX);if(drop<0)return;
-        const{total}=context();
-        showDropPreview(Math.max(0,Math.min(drop-moveGrabOffset,total)));
+      if(!dragging){
+        if(Math.hypot(e.clientX-downX,e.clientY-downY)<DRAG_START_THRESHOLD)return;
+        beginDragging();
       }
+      const drop=dropTargetIndex(e.clientX);if(drop<0)return;
+      const{total}=context();
+      dragBlock.dropTarget=Math.max(0,Math.min(drop-dragBlock.grabOffset,total));
+      showGhost(dragBlock,dragBlock.dropTarget);
     }
     function handleUp(e){
       document.removeEventListener('pointermove',handleMove);
       document.removeEventListener('pointerup',handleUp);
       document.removeEventListener('pointercancel',handleUp);
       strip.classList.remove('split-visual-dragging');
-      if(phase==='select'){
-        if(!moved||splitSelection.start===splitSelection.end){
-          const{seq,confirmed}=context(),idx=splitSelection?splitSelection.start:anchorIndex;
-          if(seq[idx]!=null){pushUndoSnapshot(seq,confirmed);confirmed[idx]=!confirmed[idx]}
-          splitSelection=null;
-        }
+      hideGhost();
+      if(!dragging){
+        const{seq,confirmed}=context();
+        if(seq[downIdx]!=null){pushUndoSnapshot(seq,confirmed);confirmed[downIdx]=!confirmed[downIdx]}
         renderSplit();
-      }else if(phase==='move'){
+      }else{
         const drop=dropTargetIndex(e.clientX);
-        const{seq,confirmed,total}=context(),len=moveEnd-moveStart+1;
-        const dropStart=drop<0?moveStart:Math.max(0,Math.min(drop-moveGrabOffset,total));
+        const{seq,confirmed,total}=context();
+        const dropStart=drop<0?dragBlock.dropTarget:Math.max(0,Math.min(drop-dragBlock.grabOffset,total));
         pushUndoSnapshot(seq,confirmed);
-        const insertedAt=moveRange(seq,confirmed,moveStart,moveEnd,dropStart);
-        splitSelection={start:insertedAt,end:insertedAt+len-1};
-        hideDropPreview();
+        moveRange(seq,confirmed,dragBlock.start,dragBlock.end,dropStart);
         renderSplit();
         if(typeof markDirty==='function')markDirty();
       }
-      phase=null;
+      dragging=false;dragBlock=null;
     }
     strip.addEventListener('pointerdown',e=>{
       const idx=indexAtClientX(e.clientX);if(idx<0)return;
+      const{seq,sources}=context();
+      if(seq[idx]==null)return;
       e.preventDefault();
-      moved=false;
-      if(splitSelection&&idx>=splitSelection.start&&idx<=splitSelection.end){
-        phase='move';moveStart=splitSelection.start;moveEnd=splitSelection.end;moveGrabOffset=idx-moveStart;
-        strip.classList.add('split-visual-dragging');
-      }else{
-        phase='select';anchorIndex=idx;splitSelection={start:idx,end:idx};
-        updateSelectionOverlay();
-        updateDetailFor(idx);
-      }
+      const{start,end}=blockRangeAt(seq,idx),colorMap=splitLotColorMap(sources);
+      dragBlock={start,end,grabOffset:idx-start,lot:seq[idx],color:colorMap[seq[idx]],dropTarget:start};
+      downIdx=idx;downX=e.clientX;downY=e.clientY;dragging=false;
+      updateDetailFor(idx);
       document.addEventListener('pointermove',handleMove);
       document.addEventListener('pointerup',handleUp);
       document.addEventListener('pointercancel',handleUp);
@@ -684,7 +711,6 @@
   function renderSplit(){
     const sources=splitSourceRows(),total=sources.reduce((a,x)=>a+x.count,0);
     const{seq,confirmed}=seedSplitDefaults(sources,total);
-    if(splitSelection&&splitSelection.end>=total)splitSelection=null;
     const colorMap=splitLotColorMap(sources);
     renderSplitCandidates(sources,seq,confirmed,colorMap);
     renderSplitVisual(sources,seq,confirmed,colorMap);
@@ -700,7 +726,7 @@
   async function openSplit(){
     if(!S.measure)return;
     $('#splitModal').hidden=false;
-    activeLot=null;splitSelection=null;splitUndoStack=[];
+    activeLot=null;splitUndoStack=[];
     if(!splitSourcesCache||splitSourcesCacheKey!==currentSplitCacheKey()){
       const box=$('#splitSources');if(box)box.innerHTML='<div class="split-row-loading">子ロット情報を取得しています…</div>';
     }
@@ -741,7 +767,6 @@
     const snap=splitUndoStack.pop();if(!snap)return;
     S.measure.settings.splitSequence=snap.seq;
     S.measure.settings.splitConfirmed=snap.confirmed;
-    splitSelection=null;
     renderSplit();
   };
   const resetBtn=$('#resetSplit');if(resetBtn)resetBtn.onclick=()=>{
@@ -749,7 +774,7 @@
     pushUndoSnapshot(ensureSequenceLength(total),ensureConfirmedLength(total));
     S.measure.settings.splitSequence=defaultFillSequence(sources,total);
     S.measure.settings.splitConfirmed=Array(total).fill(false);
-    splitSelection=null;activeLot=null;
+    activeLot=null;
     renderSplit();
   };
 
