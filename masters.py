@@ -83,6 +83,28 @@ def equipment_master_update():
   return jsonify(ok=True,id=eid,name=name,updated_by=uid,message='設備名を更新しました。')
  except Exception as e:return jsonify(error=f'設備マスタ更新失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
 
+@bp.post('/api/equipment-master/delete')
+def equipment_master_delete():
+ try:
+  x=request.get_json(force=True) or {};eid=x.get('id');uid=request_user_id(x)
+  if eid is None:return jsonify(error='削除対象IDがありません。'),400
+  path=DBS['MASTER']['path']
+  if not path.exists():raise FileNotFoundError(f'マスタ.accdbが見つかりません: {path}')
+  with connect(path,False) as c:
+   ensure_equipment_master_table(c);cur=c.cursor()
+   cur.execute('SELECT [設備名] FROM [設備マスタ] WHERE [設備ID]=?',[eid]);row=cur.fetchone();name=str(row[0]).strip() if row and row[0] else ''
+   # 物理削除ではなく無効化し、履歴を残す。無効化した更新者も記録する。
+   cur.execute('UPDATE [設備マスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [設備ID]=?',[uid,eid])
+   # オペレータ設備マスタは設備名で紐づいているため、削除した設備を作業可能
+   # 設備として持つオペレータの割当からも取り除き、削除済みの設備名が
+   # 選択肢から消えた後も表示上だけ残り続ける(ゴースト参照)のを防ぐ。
+   if name:
+    ensure_operator_equipment_table(c)
+    cur.execute('DELETE FROM [オペレータ設備マスタ] WHERE [設備名]=?',[name])
+   c.commit()
+  return jsonify(ok=True,id=eid,updated_by=uid)
+ except Exception as e:return jsonify(error=f'設備マスタ削除失敗: {e}'),500
+
 # ========================================================================
 # オペレータマスタ（一般的なオートナンバー方式）
 #  - 主キーは COUNTER（オートナンバー）で人手管理不要。

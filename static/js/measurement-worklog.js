@@ -158,7 +158,7 @@
   {key:'inner',label:'内径種別',icon:'径',endpoint:'/api/inner-master',hasDelete:true,
    fields:[{k:'name',label:'内径種別',required:true,key:true},{k:'note',label:'備考'}],
    cols:[{k:'name',label:'内径種別',grow:2},{k:'note',label:'備考',grow:3}]},
-  {key:'equipment',label:'設備',icon:'設',endpoint:'/api/equipment-master',hasDelete:false,
+  {key:'equipment',label:'設備',icon:'設',endpoint:'/api/equipment-master',hasDelete:true,
    fields:[{k:'name',label:'設備名',required:true,key:true}],
    cols:[{k:'name',label:'設備名',grow:2}]},
   {key:'columnDisplay',label:'列表示',icon:'列',special:'column-display'},
@@ -212,8 +212,17 @@
    if(f.type==='equipment-multi'){
     const selected=new Set((editing&&Array.isArray(editing[f.k])?editing[f.k]:[]).map(String));
     const opts=equipmentMasterState.items||[];
-    const boxes=opts.length?opts.map(eq=>`<label class="mm-checkbox"><input type="checkbox" data-equipment-field="${f.k}" value="${esc(eq.name)}"${selected.has(eq.name)?' checked':''}><span>${esc(eq.name)}</span></label>`).join(''):'<span class="mm-empty-inline">設備マスタが未登録です。先に「設備」タブで登録してください。</span>';
-    return `<label class="mm-field mm-field-wide"><span>${esc(f.label)}</span><div class="mm-checkbox-group">${boxes}</div><small class="mm-field-hint">未選択の場合は制限なし（全設備で表示対象）として扱われます。</small></label>`;
+    const chips=opts.length?opts.map(eq=>{
+     const checked=selected.has(eq.name);
+     return `<label class="mm-eq-chip${checked?' checked':''}"><input type="checkbox" data-equipment-field="${f.k}" value="${esc(eq.name)}"${checked?' checked':''}><span>${esc(eq.name)}</span></label>`;
+    }).join(''):'<span class="mm-empty-inline">設備マスタが未登録です。先に「設備」タブで登録してください。</span>';
+    const actions=opts.length?`<div class="mm-eq-actions"><button type="button" class="mm-btn-ghost sm" data-equipment-all="${f.k}">すべて選択</button><button type="button" class="mm-btn-ghost sm" data-equipment-none="${f.k}">選択解除</button></div>`:'';
+    return `<div class="mm-field mm-field-wide"><span>${esc(f.label)}</span>
+     <div class="mm-eq-picker" data-equipment-picker="${f.k}">
+      <div class="mm-eq-picker-head"><span class="mm-eq-count" data-equipment-count="${f.k}">${selected.size}件選択中 / 全${opts.length}件</span>${actions}</div>
+      <div class="mm-eq-grid">${chips}</div>
+     </div>
+     <small class="mm-field-hint">未選択の場合は制限なし（全設備で表示対象）として扱われます。</small></div>`;
    }
    if(f.type==='select'){
     const opts=(f.options||[]).map(o=>`<option value="${esc(o)}"${o===val?' selected':''}>${esc(o||'（指定なし）')}</option>`).join('');
@@ -227,6 +236,22 @@
    <div class="mm-form-tail"><button type="submit" class="mm-btn-primary">${editing?'更新を保存':'追加登録'}</button><span class="mm-form-hint">${editing?'キー項目（名称・区分など）も変更できます。保存すると同じIDのまま更新（リネーム）されます。同名が既にある場合は更新できません。':'必須(*)を入力して追加登録します。'}</span></div>`;
   form.onsubmit=ev=>{ev.preventDefault();submitMaint()};
   const nb=$('#masterMaintNew');if(nb)nb.onclick=()=>{maintState.editing=null;renderMaintForm()};
+  bindEquipmentPickers(form);
+ }
+ // 作業可能設備ピッカー(チップ状の複数選択)。すべて選択/選択解除ボタンと
+ // 選択件数表示をチェック状態と常に同期させる。
+ function bindEquipmentPickers(form){
+  form.querySelectorAll('[data-equipment-picker]').forEach(picker=>{
+   const fk=picker.dataset.equipmentPicker;
+   const boxes=()=>[...picker.querySelectorAll(`[data-equipment-field="${fk}"]`)];
+   const countEl=picker.querySelector(`[data-equipment-count="${fk}"]`);
+   const refresh=()=>{if(countEl){const all=boxes();countEl.textContent=`${all.filter(b=>b.checked).length}件選択中 / 全${all.length}件`}};
+   boxes().forEach(b=>b.addEventListener('change',()=>{b.closest('.mm-eq-chip')?.classList.toggle('checked',b.checked);refresh()}));
+   const allBtn=picker.querySelector(`[data-equipment-all="${fk}"]`);
+   const noneBtn=picker.querySelector(`[data-equipment-none="${fk}"]`);
+   if(allBtn)allBtn.onclick=()=>{boxes().forEach(b=>{b.checked=true;b.closest('.mm-eq-chip')?.classList.add('checked')});refresh()};
+   if(noneBtn)noneBtn.onclick=()=>{boxes().forEach(b=>{b.checked=false;b.closest('.mm-eq-chip')?.classList.remove('checked')});refresh()};
+  });
  }
 
  function setMaintLoading(show,text){
@@ -307,7 +332,10 @@
   setMaintSearchVisible(true);
   const list=$('#masterMaintList');if(list&&force)list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
   const multiField=def.fields.find(f=>f.type==='equipment-multi');
-  if(multiField&&typeof loadEquipmentMaster==='function'){try{await loadEquipmentMaster()}catch(e){/* 設備マスタが読めなくてもオペレータ一覧の表示は継続する */}}
+  // force未指定(キャッシュ利用)のままだと、設備マスタタブで新規登録・削除した
+  // 直後でもオペレータタブの選択肢が古いままになる。loadMaint()のforceを
+  // そのまま伝播し、タブを開き直すたびに最新の設備マスタを反映する。
+  if(multiField&&typeof loadEquipmentMaster==='function'){try{await loadEquipmentMaster(force)}catch(e){/* 設備マスタが読めなくてもオペレータ一覧の表示は継続する */}}
   renderMaintForm();
   try{
    const r=await api(def.endpoint);let items=(r&&r.items)||[];
