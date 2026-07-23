@@ -636,46 +636,76 @@ input.text-input,input[type="text"],textarea{text-align:left}
 input.numeric-input::-webkit-inner-spin-button,input.numeric-input::-webkit-outer-spin-button{opacity:.15;min-width:18px}
 input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::-webkit-inner-spin-button{opacity:1}
 
-/* ---------- 10. 条割変更モーダル ---------- */
+/* ---------- 10. 条割変更モーダル ----------
+   視覚図(#splitVisualStrip)を操作面とし、子ロット候補カードのクリックで
+   「選択中ロット」を決め、視覚図の条をクリック/ドラッグして塗る形式。
+   カードベースのモダンな配色に統一し、色は候補カード・視覚図・結果
+   プレビューの3箇所で共通(splitLotColorMap)にして対応関係を掴みやすくする。 */
 .record-modal[hidden]{display:none}
-.split-dialog{width:min(1180px,96vw);height:min(760px,92vh);background:#f4f6f7;border-radius:10px;overflow:hidden;box-shadow:0 20px 70px #0006}
-.split-dialog>header{height:64px;display:flex;justify-content:space-between;align-items:center;padding:10px 18px;background:var(--nav);color:#fff}
+.split-dialog{width:min(1180px,96vw);height:min(780px,92vh);background:#eef2f3;border-radius:14px;overflow:hidden;box-shadow:0 24px 80px #0007}
+.split-dialog>header{height:64px;display:flex;justify-content:space-between;align-items:center;padding:10px 20px;background:var(--nav);color:#fff}
 .split-dialog h2{margin:2px 0;font-size:21px}
-.split-dialog small{color:#91d5da}
-.split-dialog header button{font-size:26px;color:#fff;background:transparent;border:0}
-.split-layout{height:calc(100% - 64px);display:grid;grid-template-columns:1fr 1fr .62fr;grid-auto-rows:min-content 1fr;gap:14px;padding:16px}
+.split-dialog small{color:#7fd8d0;letter-spacing:.06em}
+.split-dialog header button{width:38px;height:38px;font-size:24px;line-height:1;color:#fff;background:transparent;border:0;border-radius:8px;cursor:pointer}
+.split-dialog header button:hover{background:#ffffff26}
+.split-layout{height:calc(100% - 64px);display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:min-content 1fr;gap:14px;padding:16px}
 .split-layout section{min-width:0;min-height:0;display:flex;flex-direction:column}
-.split-layout h3{margin:0 0 8px;text-align:center;font-size:18px}
-.split-table{border:1px solid #86999f;background:#fff}
-.split-row{display:grid;grid-template-columns:1.5fr .7fr .9fr .7fr;min-height:38px;border-bottom:1px solid #aebcc1}
-.split-row:last-child{border-bottom:0}
-.split-row>*{display:flex;align-items:center;padding:6px 8px;border-right:1px solid #aebcc1}
-.split-row>*:last-child{border-right:0}
-.split-row.head{background:#ffffdc;font-weight:700}
-.split-row.source:not(.disabled):hover{background:#def1f2;cursor:pointer}
-.split-row.disabled{background:#d8dcde;color:#7b8589}
-.split-layout dl{display:grid;grid-template-columns:1fr auto;gap:5px}
-.split-layout dd{font-weight:800}
-.split-layout ol{flex:1;min-height:0;margin:0;padding:8px 8px 8px 42px;overflow:auto;border:1px solid #aebcc1;background:#fff}
-.split-layout li{padding:5px;border-bottom:1px solid #edf0f1}
-.split-count{text-align:right;margin-bottom:8px}
-.split-count b{font-size:26px}
+.split-layout h3{margin:0 0 10px;font-size:15px;font-weight:800;color:#264349;display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.split-candidates-stats{font-size:12px;font-weight:600;color:#61757c}
+.split-candidates-stats b{color:var(--teal);font-size:13px}
+.split-hint-text{margin:8px 0 0;font-size:12px;color:#79898d}
 .split-row-loading{padding:14px;color:#526970;font-weight:700}
-/* 条の並び視覚表示: 登録済みの条順(splitSequence)を実際の物理配置に見立て、
-   左から1条目→N条目の順に色分けした帯として表示する(操作するたびに
-   リアルタイムで更新)。 */
-.split-visual{grid-column:1/-1;background:#fff;border:1px solid #86999f;border-radius:6px;padding:10px 12px}
-.split-visual-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:8px;flex-wrap:wrap}
-.split-visual-head b{font-size:14px}
-.split-visual-head span{font-size:12px;color:#61757c}
-.split-visual-strip{display:flex;flex-wrap:wrap;gap:2px;max-height:104px;overflow-y:auto}
-.split-visual-cell{width:26px;height:34px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;border-radius:2px;font-size:10px;font-weight:800;color:#fff;background:#d8dcde;text-shadow:0 1px 1px #0006}
-.split-visual-cell.pending{background:#eef2f4;color:#9aabab;text-shadow:none;border:1px dashed #c4d4d7}
-.split-visual-cell.group-start{margin-left:6px}
-.split-visual-legend{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:8px;font-size:12px;color:#3a565d}
-.split-visual-legend-item{display:inline-flex;align-items:center;gap:5px}
-.split-visual-legend-item i{display:inline-block;width:12px;height:12px;border-radius:2px;flex:0 0 auto}
-.split-visual-empty,.split-visual-legend-empty{color:#8a9a97;font-size:13px}
+.split-candidates-empty,.split-result-empty{padding:16px;text-align:center;color:#8a9a97;font-size:13px;background:#fff;border:1px dashed #c4d4d7;border-radius:10px}
+
+/* 子ロット候補カード。クリックで選択中ロット(視覚図の塗り先)になる。 */
+.split-candidates{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding-right:2px}
+.split-candidate{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#fff;border:2px solid #dbe4e6;border-radius:10px;cursor:pointer;transition:border-color .12s,box-shadow .12s,transform .12s}
+.split-candidate:hover{border-color:#9fd4d8;box-shadow:0 2px 8px #0871001a}
+.split-candidate.active{border-color:var(--teal);background:#eafafa;box-shadow:0 0 0 3px #087c891f}
+.split-candidate.done{cursor:default;opacity:.6;background:#f5f7f7}
+.split-candidate.done:hover{border-color:#dbe4e6;box-shadow:none}
+.split-candidate-swatch{width:14px;height:14px;margin-top:3px;border-radius:4px;flex:0 0 auto;box-shadow:inset 0 0 0 1px #00000022}
+.split-candidate-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.split-candidate-head{display:flex;align-items:center;gap:8px}
+.split-candidate-head b{font-size:14px;color:#1b3438}
+.split-candidate-head em{font-style:normal;font-size:12px;font-weight:700;color:#61757c;background:#eef2f4;border-radius:20px;padding:1px 8px}
+.split-candidate.active .split-candidate-head em{color:var(--teal-dark);background:#d3f0ee}
+.split-candidate-done{margin-left:auto;color:#1e7a55;font-style:normal;font-weight:800}
+.split-candidate-meta{font-size:12px;color:#79898d}
+.split-candidate-fill{align-self:flex-start;margin-top:2px;height:26px;padding:0 10px;font-size:11px;font-weight:700;color:var(--teal-dark);background:#fff;border:1px solid var(--teal);border-radius:20px;cursor:pointer;white-space:nowrap}
+.split-candidate-fill:hover{background:var(--teal);color:#fff}
+
+/* 条割結果プレビュー(#splitResult)。左端に視覚図/候補カードと同じ色の
+   アクセントを付け、対応関係を示す。 */
+.split-result{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:6px}
+.split-result-row{display:grid;grid-template-columns:22px 1fr auto auto;align-items:center;gap:10px;padding:9px 12px;background:#fff;border:1px solid #dbe4e6;border-left-width:5px;border-left-style:solid;border-radius:8px;font-size:13px}
+.split-result-index{color:#9aabab;font-weight:800;font-size:12px}
+.split-result-lot{font-weight:800;color:#1b3438}
+.split-result-count{color:#3a565d;font-weight:700}
+.split-result-width{color:#61757c;font-size:12px;justify-self:end}
+.split-result-tol{display:none}
+.split-apply-btn{margin-top:10px;height:44px;font-size:14px;font-weight:800;color:#fff;background:var(--teal);border:0;border-radius:10px;cursor:pointer;transition:filter .12s}
+.split-apply-btn:hover:not(:disabled){filter:brightness(1.08)}
+.split-apply-btn:disabled{background:#c4d4d7;color:#fff;cursor:not-allowed}
+
+/* 条の並び視覚図: 登録済みの条(splitSequence)を実際の物理配置に見立て、
+   左から1条目→N条目の順に色分けした帯として表示する。セル自体が操作面
+   (クリックで割当/解除、ドラッグでまとめて塗る)。 */
+.split-visual{grid-column:1/-1;background:#fff;border:1px solid #dbe4e6;border-radius:12px;padding:14px 16px;box-shadow:0 1px 3px #0000000f}
+.split-visual-head{display:flex;align-items:baseline;gap:12px;margin-bottom:10px;flex-wrap:wrap}
+.split-visual-head b{font-size:15px;color:#1b3438}
+.split-visual-count{font-size:12px;font-weight:800;color:var(--teal-dark);background:#e3f5f3;border-radius:20px;padding:2px 10px}
+.split-visual-hint{margin-left:auto;font-size:11px;color:#8a9a97}
+.split-visual-strip{display:flex;flex-wrap:wrap;gap:3px;max-height:132px;overflow-y:auto;padding:2px;touch-action:none}
+.split-visual-cell{width:34px;height:40px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;border:0;border-radius:6px;font-size:11px;font-weight:800;color:#fff;background:#d8dcde;text-shadow:0 1px 1px #0005;cursor:pointer;transition:transform .08s,box-shadow .08s;user-select:none}
+.split-visual-cell:hover{transform:translateY(-1px);box-shadow:0 3px 6px #00000026}
+.split-visual-cell.pending{background:#eef2f4;color:#9aabab;text-shadow:none;border:1.5px dashed #c4d4d7}
+.split-visual-cell.pending:hover{border-color:var(--teal);color:var(--teal-dark)}
+.split-visual-cell.group-start{margin-left:8px}
+.split-visual-empty{padding:14px;text-align:center;color:#8a9a97;font-size:13px}
+.split-visual-actions{display:flex;gap:8px;margin-top:12px}
+.split-ghost-btn{height:32px;padding:0 14px;font-size:12px;font-weight:700;color:#3a565d;background:#fff;border:1px solid #c4d4d7;border-radius:20px;cursor:pointer}
+.split-ghost-btn:hover{background:#eef2f4;border-color:#9aabab}
 .split-tolerance-legend{margin-top:8px;padding:8px;background:#fff8e0;border:1px solid #d8c47a;border-radius:4px}
 .split-tolerance-legend>b{display:block;margin-bottom:6px;font-size:12px;color:#6b5a10}
 .split-tolerance-legend table{width:100%;border-collapse:collapse;font-size:12px}
