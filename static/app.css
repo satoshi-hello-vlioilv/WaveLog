@@ -1729,4 +1729,11 @@ body.cal-mode.qa-mode.qa-view-raw #grid,body.cal-mode.qa-mode.qa-view-raw footer
 .cal-lot-sub{display:flex;flex-wrap:wrap;gap:6px 10px;font-size:11px;color:#61757c}
 .cal-lot-weight{font-size:12px;font-weight:800;color:#173842;font-variant-numeric:tabular-nums}
 .cal-blank{color:#aab6b9;font-style:normal;font-weight:600}
+
+/* 幅分割情報パネル(.split-pane)は固定250pxのままだと、分割データの
+   メッセージ・テーブル・屑幅行がまとまると入り切らず、常に内側の縦
+   スクロールバーが出てしまっていた。内容に合わせて自然に伸び、外側の
+   左ペイン(.left-pane、overflow:auto)側で必要な時だけスクロールする
+   ようにする(.work-time-panelの高さ調整と同じ考え方)。 */
+.split-pane{height:auto;min-height:290px}
 @media(max-width:1000px){.cal-layout{grid-template-columns:1fr}.cal-detail{border-left:0;border-top:1px solid var(--line);max-height:320px}#calSummary{grid-template-columns:repeat(2,minmax(0,1fr))}}
