@@ -369,22 +369,34 @@
   }
   window.ensureSplitCandidatesLoaded=ensureSplitCandidatesLoaded;
 
-  /* 条割の並べ替え(UI/UX刷新版): 視覚図そのものを操作面にする。
+  /* 条割の並べ替え(母材幅比率の視覚配置版): 母材幅をほぼ100%として、各条を
+     実際の条幅比率(子ロットの製造板幅)で並べた帯を主操作面にする。
+     子ロット候補の並び順で最初から敷き詰めた状態を初期値とし(実務上その
+     ままのケースが大半)、操作は「違っている部分だけ直す」ことに絞る。
      ------------------------------------------------------------
-     データモデル: splitSequenceは「条数分の固定長配列」とし、位置(条)ごとに
-     直接ロットを割当/解除できるようにする(未割当はnull)。旧実装は末尾へ
-     追加するだけの配列だったため、途中の1条だけ直し忘れた場合でも全部
-     やり直す必要があったのが最大の弱点だった。
+     データモデル:
+     - splitSequence: 条数分の固定長配列。各要素はロット名(子ロット条数
+       合計と横割数が一致しない場合のみ一部nullが残りうる)。
+     - splitConfirmed: splitSequenceと同じ長さの真偽値配列。オペレータが
+       実際にその条を確認/操作したかどうかを表す。初期配置は全てfalse
+       (=自動配置のまま未確認)とし、視覚図で見た目を弱めて区別する。
+       未確認の条が残ったまま条割を実行しようとした場合は確認ダイアログで
+       一度立ち止まらせる(自動配置を無条件に信用してしまう事故の防止)。
 
      操作:
-     - 子ロット候補カードをクリック → そのロットを「選択中」にする
-       (視覚図での塗り先になる)。
-     - 視覚図の条セルをクリック → 選択中ロットが残っていれば割当、
-       既に割当済みの条なら解除(選択中ロットに関係なく解除される)。
-     - 視覚図の条セルをドラッグ(マウス/タッチ) → なぞった範囲へ
-       まとめて割当/解除(1条ずつクリックする手間を減らす)。
-     - 候補カードの「残りN条を一括割当て」→ 次の空き条へ順に一括割当て。 */
+     - 条をタップ(ドラッグなしのクリック) → 確認済み/未確認のトグル。
+     - 条をドラッグ(2条以上またぐ) → その範囲を選択状態にする(値は
+       変えない)。
+     - 選択済みの範囲の内側から改めてドラッグ → その範囲をまとめてつまみ、
+       ドロップ位置へ挿入する(他の条は自動的に詰まる)。移動した条は
+       確認済みになる。
+     - 子ロット候補カードをクリック → 視覚図内の該当する条を一時的に
+       光らせて位置を確認できる(値は変えない、位置特定専用)。 */
   let activeLot=null;
+  let splitSelection=null; // {start,end} 0始まり・両端含む、選択中/選択済みの範囲
+  let splitUndoStack=[];
+  let splitVisualLayout=null; // 直近描画時の幅レイアウト(ポインタ位置→条番号の逆算に使う)
+
   function ensureSequenceLength(total){
     const m=S.measure.settings;
     let seq=Array.isArray(m.splitSequence)?m.splitSequence.slice(0,total):[];
@@ -392,24 +404,48 @@
     m.splitSequence=seq;
     return seq;
   }
+  function ensureConfirmedLength(total){
+    const m=S.measure.settings;
+    let arr=Array.isArray(m.splitConfirmed)?m.splitConfirmed.slice(0,total):[];
+    while(arr.length<total)arr.push(false);
+    m.splitConfirmed=arr;
+    return arr;
+  }
   function countAssigned(seq,lot){return seq.filter(x=>x===lot).length}
-  function remainingFor(sources,seq,lot){
-    const src=sources.find(s=>s.lot===lot);
-    return src?Math.max(0,src.count-countAssigned(seq,lot)):0;
+  function defaultFillSequence(sources,total){
+    const seq=Array(total).fill(null);
+    let idx=0;
+    sources.forEach(s=>{for(let k=0;k<s.count&&idx<total;k++)seq[idx++]=s.lot});
+    return seq;
   }
-  function assignPosition(seq,sources,index,lot){
-    if(!lot||index<0||index>=seq.length||seq[index])return false;
-    if(remainingFor(sources,seq,lot)<=0)return false;
-    seq[index]=lot;return true;
+  // モーダルを開いた直後などsplitSequenceが空の場合のみ、候補の並び順で
+  // 先頭から敷き詰めた初期配置を生成する(既に操作中の内容があれば保持)。
+  function seedSplitDefaults(sources,total){
+    const m=S.measure.settings,seq=ensureSequenceLength(total);
+    if(total>0&&!seq.some(Boolean)){
+      m.splitSequence=defaultFillSequence(sources,total);
+      m.splitConfirmed=Array(total).fill(false);
+    }else{
+      ensureConfirmedLength(total);
+    }
+    return{seq:m.splitSequence,confirmed:m.splitConfirmed};
   }
-  function clearPosition(seq,index){
-    if(index<0||index>=seq.length||!seq[index])return false;
-    seq[index]=null;return true;
+  function pushUndoSnapshot(seq,confirmed){
+    splitUndoStack.push({seq:seq.slice(),confirmed:confirmed.slice()});
+    if(splitUndoStack.length>20)splitUndoStack.shift();
   }
-  function bulkFillRemaining(seq,sources,lot){
-    let remaining=remainingFor(sources,seq,lot),filled=0;
-    for(let i=0;i<seq.length&&remaining>0;i++){if(!seq[i]){seq[i]=lot;remaining--;filled++}}
-    return filled;
+  // 選択範囲(start〜end、両端含む)をドロップ位置(dropIndex、移動前の配列
+  // 基準の挿入先インデックス)へ移動する。他の条は自動的に詰まる。
+  // 移動した条は確認済み(true)になる。
+  function moveRange(seq,confirmed,start,end,dropIndex){
+    const len=end-start+1,seqBlock=seq.slice(start,end+1);
+    seq.splice(start,len);
+    confirmed.splice(start,len);
+    let insertAt=dropIndex>start?dropIndex-len:dropIndex;
+    insertAt=Math.max(0,Math.min(insertAt,seq.length));
+    seq.splice(insertAt,0,...seqBlock);
+    confirmed.splice(insertAt,0,...seqBlock.map(()=>true));
+    return insertAt;
   }
 
   const SPLIT_VISUAL_COLORS=['#087c89','#f59e0b','#2563eb','#16a34a','#dc2626','#7c3aed','#0891b2','#ca8a04'];
@@ -419,118 +455,206 @@
     return map;
   }
 
-  /* 条の並び視覚図(#splitVisualStrip)。1条目→N条目の順に色分けした帯として
-     描画し、そのままクリック/ドラッグの操作面にする(視覚図=操作対象)。
-     配線(ensureSplitVisualWiring)はコンテナへ1度だけ行い、以後はイベント
-     委任で毎回の再描画に追従させる(innerHTML差し替え後もそのまま効く)。 */
-  function renderSplitVisual(sources,seq,total,colorMap){
-    const strip=$('#splitVisualStrip'),count=$('#splitVisualCount');
+  // ポインタ位置(clientX)→条番号(0始まり)。直近描画時の幅レイアウト
+  // (splitVisualLayout)を使うため、同一ロットが連続する範囲を1つの帯に
+  // まとめて描画していても(条ごとにDOM要素を持たなくても)正確に条を
+  // 特定できる。
+  function indexAtClientX(clientX){
+    const strip=$('#splitVisualStrip');
+    if(!strip||!splitVisualLayout)return -1;
+    const rect=strip.getBoundingClientRect();
+    if(!rect.width)return -1;
+    const frac=Math.min(1,Math.max(0,(clientX-rect.left)/rect.width));
+    const target=frac*splitVisualLayout.totalUnits,{cum,total}=splitVisualLayout;
+    for(let i=0;i<total;i++){if(target<cum[i+1])return i}
+    return total-1;
+  }
+  // 移動(挿入)先の位置(0〜total、totalは末尾への追加を意味する)。セルの
+  // 中間点より左なら「そのセルの手前」、右なら「そのセルの後ろ(=次の
+  // セルの手前)」を返す。indexAtClientXはセル自体の特定用(0〜total-1)
+  // なので、末尾ちょうどへの挿入を表現できない。ドロップ位置の判定には
+  // 必ずこちらを使う。
+  function dropTargetIndex(clientX){
+    const strip=$('#splitVisualStrip');
+    if(!strip||!splitVisualLayout)return -1;
+    const rect=strip.getBoundingClientRect();
+    if(!rect.width)return -1;
+    const frac=Math.min(1,Math.max(0,(clientX-rect.left)/rect.width));
+    const target=frac*splitVisualLayout.totalUnits,{cum,total}=splitVisualLayout;
+    for(let i=0;i<total;i++){if(target<(cum[i]+cum[i+1])/2)return i}
+    return total;
+  }
+  function computeVisualLayout(seq,sources){
+    const widthMap=Object.fromEntries(sources.map(s=>[s.lot,Number(s.width)||0]));
+    const units=seq.map(lot=>{const w=lot?widthMap[lot]:0;return w>0?w:1}),cum=[0];
+    units.forEach(u=>cum.push(cum[cum.length-1]+u));
+    return{cum,totalUnits:cum[cum.length-1]||1,total:seq.length};
+  }
+
+  /* 条の並び視覚図(#splitVisualStrip)。母材幅をほぼ100%として、各条を
+     実際の条幅比率(子ロットの製造板幅)で並べた帯として描画する。同じ
+     ロットが連続する範囲は1つの帯にまとめて表示し(最大40条規模でも
+     見やすい)、選択中の範囲・移動先プレビューは別レイヤーで重ねて表示する。 */
+  function renderSplitVisual(sources,seq,confirmed,colorMap){
+    const strip=$('#splitVisualStrip'),count=$('#splitVisualCount'),detail=$('#splitVisualDetail');
+    const total=seq.length;
     if(!strip)return;
     if(!total){
       strip.innerHTML='<div class="split-visual-empty">条割の対象となる子ロットがありません。</div>';
       if(count)count.textContent='';
+      if(detail)detail.textContent='';
+      splitVisualLayout=null;
       return;
     }
-    let html='',prevLot=null;
-    for(let i=0;i<total;i++){
-      const lot=seq[i]||null,groupStart=lot!==prevLot;prevLot=lot;
-      if(lot){
-        html+=`<button type="button" class="split-visual-cell assigned${groupStart?' group-start':''}" data-index="${i}" style="background:${colorMap[lot]||'#8a9a97'}" title="${esc(i+1)}条目 ／ ${esc(lot)} ／ クリックで解除"><span>${i+1}</span></button>`;
-      }else{
-        html+=`<button type="button" class="split-visual-cell pending${groupStart?' group-start':''}" data-index="${i}" title="${esc(i+1)}条目 ／ 未割当"><span>${i+1}</span></button>`;
-      }
+    const layout=computeVisualLayout(seq,sources);
+    splitVisualLayout=layout;
+    const widthMap=Object.fromEntries(sources.map(s=>[s.lot,s.width])),tolMap=Object.fromEntries(sources.map(s=>[s.lot,s.tol]));
+    let html='<div class="split-visual-track">',i=0;
+    while(i<total){
+      const lot=seq[i];
+      let j=i;
+      while(j+1<total&&seq[j+1]===lot)j++;
+      const left=layout.cum[i]/layout.totalUnits*100,width=(layout.cum[j+1]-layout.cum[i])/layout.totalUnits*100;
+      const n=j-i+1,confN=confirmed.slice(i,j+1).filter(Boolean).length,fullyConfirmed=confN===n;
+      const bg=lot?(colorMap[lot]||'#8a9a97'):'transparent';
+      const label=lot?esc(lot):'未割当';
+      const widthText=lot&&widthMap[lot]!==''&&widthMap[lot]!==undefined?`幅${esc(String(widthMap[lot]))} ／ `:'';
+      const tolText=lot?esc(tolMap[lot]||''):'';
+      const wide=width>5;
+      html+=`<div class="split-visual-block${lot?'':' empty'}${fullyConfirmed?' confirmed':' unconfirmed'}" data-start="${i}" data-end="${j}" data-lot="${lot?esc(lot):''}" style="left:${left}%;width:${width}%;background-color:${bg}" title="${label} ／ ${n}条 ／ ${widthText}${tolText} ／ ${confN}/${n}条確認済み">${wide?`<span class="split-visual-block-label">${label}<b>×${n}</b></span>`:''}${!fullyConfirmed?'<i class="split-visual-unconfirmed-mark" aria-hidden="true"></i>':''}</div>`;
+      i=j+1;
     }
+    html+='<div class="split-visual-selection" id="splitVisualSelectionBox" hidden></div><div class="split-visual-dropline" id="splitVisualDropLine" hidden></div></div>';
     strip.innerHTML=html;
-    if(count){const filled=seq.filter(Boolean).length;count.textContent=`${filled}/${total}条 登録済み`}
+    if(count){const confirmedTotal=confirmed.filter(Boolean).length;count.textContent=`${confirmedTotal}/${total}条 確認済み`}
+    if(detail)detail.textContent='';
+    updateSelectionOverlay();
     ensureSplitVisualWiring();
   }
+  function updateSelectionOverlay(){
+    const box=$('#splitVisualSelectionBox');
+    if(!box||!splitVisualLayout)return;
+    if(!splitSelection){box.hidden=true;return}
+    const{cum,totalUnits}=splitVisualLayout;
+    box.hidden=false;
+    box.style.left=(cum[splitSelection.start]/totalUnits*100)+'%';
+    box.style.width=((cum[splitSelection.end+1]-cum[splitSelection.start])/totalUnits*100)+'%';
+  }
+  function showDropPreview(dropIndex){
+    const line=$('#splitVisualDropLine');
+    if(!line||!splitVisualLayout)return;
+    line.hidden=false;
+    line.style.left=(splitVisualLayout.cum[dropIndex]/splitVisualLayout.totalUnits*100)+'%';
+  }
+  function hideDropPreview(){const line=$('#splitVisualDropLine');if(line)line.hidden=true}
+  function flashLotInVisual(lot){
+    const strip=$('#splitVisualStrip');if(!strip)return;
+    strip.querySelectorAll('.split-visual-block').forEach(el=>{
+      if(el.dataset.lot===lot){el.classList.add('flash');setTimeout(()=>el.classList.remove('flash'),900)}
+    });
+  }
+
   let splitVisualWired=false;
   function ensureSplitVisualWiring(){
     const strip=$('#splitVisualStrip');
     if(!strip||splitVisualWired)return;
     splitVisualWired=true;
-    let dragging=false,dragMode=null;
-    function cellAt(x,y){const el=document.elementFromPoint(x,y);return el?.closest('.split-visual-cell')||null}
+    let phase=null,anchorIndex=-1,moveStart=-1,moveEnd=-1,moveGrabOffset=0,moved=false;
     function context(){
       const sources=splitSourceRows(),total=sources.reduce((a,x)=>a+x.count,0);
-      return{sources,total,seq:ensureSequenceLength(total),colorMap:splitLotColorMap(sources)};
+      return{sources,total,seq:ensureSequenceLength(total),confirmed:ensureConfirmedLength(total)};
     }
-    function paintCellDom(cell,index,seq,colorMap){
-      const lot=seq[index];
-      cell.classList.toggle('assigned',!!lot);cell.classList.toggle('pending',!lot);
-      cell.style.background=lot?(colorMap[lot]||'#8a9a97'):'';
-      cell.title=lot?`${index+1}条目 ／ ${lot} ／ クリックで解除`:`${index+1}条目 ／ 未割当`;
+    function updateDetailFor(idx){
+      const detail=$('#splitVisualDetail');if(!detail)return;
+      const{seq,sources}=context(),lot=seq[idx];
+      if(!lot){detail.textContent='';return}
+      const src=sources.find(s=>s.lot===lot);
+      detail.textContent=src?`${lot} ／ 幅${src.width===''||src.width===undefined?'—':src.width} ／ ${src.tol||'—'}`:lot;
     }
-    function applyAt(index,seq,sources){
-      if(dragMode==='clear')return seq[index]?clearPosition(seq,index):false;
-      if(dragMode==='fill')return(!seq[index]&&activeLot)?assignPosition(seq,sources,index,activeLot):false;
-      return false;
+    function handleMove(e){
+      moved=true;
+      if(phase==='select'){
+        const idx=indexAtClientX(e.clientX);if(idx<0)return;
+        splitSelection={start:Math.min(anchorIndex,idx),end:Math.max(anchorIndex,idx)};
+        updateSelectionOverlay();
+        updateDetailFor(idx);
+      }else if(phase==='move'){
+        const drop=dropTargetIndex(e.clientX);if(drop<0)return;
+        const{total}=context();
+        showDropPreview(Math.max(0,Math.min(drop-moveGrabOffset,total)));
+      }
     }
-    function handlePointerMove(e){
-      if(!dragging)return;
-      const cell=cellAt(e.clientX,e.clientY);if(!cell)return;
-      const index=+cell.dataset.index,{seq,sources,colorMap}=context();
-      if(applyAt(index,seq,sources))paintCellDom(cell,index,seq,colorMap);
-    }
-    function finishDrag(){
-      if(!dragging)return;
-      dragging=false;dragMode=null;
-      document.removeEventListener('pointermove',handlePointerMove);
-      document.removeEventListener('pointerup',finishDrag);
-      document.removeEventListener('pointercancel',finishDrag);
-      renderSplit();
-      if(typeof markDirty==='function')markDirty();
+    function handleUp(e){
+      document.removeEventListener('pointermove',handleMove);
+      document.removeEventListener('pointerup',handleUp);
+      document.removeEventListener('pointercancel',handleUp);
+      strip.classList.remove('split-visual-dragging');
+      if(phase==='select'){
+        if(!moved||splitSelection.start===splitSelection.end){
+          const{seq,confirmed}=context(),idx=splitSelection?splitSelection.start:anchorIndex;
+          if(seq[idx]!=null){pushUndoSnapshot(seq,confirmed);confirmed[idx]=!confirmed[idx]}
+          splitSelection=null;
+        }
+        renderSplit();
+      }else if(phase==='move'){
+        const drop=dropTargetIndex(e.clientX);
+        const{seq,confirmed,total}=context(),len=moveEnd-moveStart+1;
+        const dropStart=drop<0?moveStart:Math.max(0,Math.min(drop-moveGrabOffset,total));
+        pushUndoSnapshot(seq,confirmed);
+        const insertedAt=moveRange(seq,confirmed,moveStart,moveEnd,dropStart);
+        splitSelection={start:insertedAt,end:insertedAt+len-1};
+        hideDropPreview();
+        renderSplit();
+        if(typeof markDirty==='function')markDirty();
+      }
+      phase=null;
     }
     strip.addEventListener('pointerdown',e=>{
-      const cell=e.target.closest('.split-visual-cell');if(!cell)return;
+      const idx=indexAtClientX(e.clientX);if(idx<0)return;
       e.preventDefault();
-      const index=+cell.dataset.index,{seq,sources,colorMap}=context();
-      dragMode=seq[index]?'clear':(activeLot?'fill':null);
-      if(!dragMode)return;
-      dragging=true;
-      document.addEventListener('pointermove',handlePointerMove);
-      document.addEventListener('pointerup',finishDrag);
-      document.addEventListener('pointercancel',finishDrag);
-      if(applyAt(index,seq,sources))paintCellDom(cell,index,seq,colorMap);
+      moved=false;
+      if(splitSelection&&idx>=splitSelection.start&&idx<=splitSelection.end){
+        phase='move';moveStart=splitSelection.start;moveEnd=splitSelection.end;moveGrabOffset=idx-moveStart;
+        strip.classList.add('split-visual-dragging');
+      }else{
+        phase='select';anchorIndex=idx;splitSelection={start:idx,end:idx};
+        updateSelectionOverlay();
+        updateDetailFor(idx);
+      }
+      document.addEventListener('pointermove',handleMove);
+      document.addEventListener('pointerup',handleUp);
+      document.addEventListener('pointercancel',handleUp);
     });
   }
 
-  /* 子ロット候補カード(#splitSources)。クリックで選択中ロットにする
-     (視覚図の塗り先)。「残りN条を一括割当て」は選択操作を介さず即座に
-     次の空き条へまとめて割り当てる。 */
-  function renderSplitCandidates(sources,seq,colorMap){
+  /* 子ロット候補カード(#splitSources)。凡例として現在の割当条数・幅・
+     公差を表示する。クリックすると視覚図内の該当する条を一時的に光らせ、
+     40条規模でも該当ロットの位置をすぐ見つけられるようにする(位置特定用、
+     値は変更しない)。 */
+  function renderSplitCandidates(sources,seq,confirmed,colorMap){
     const box=$('#splitSources');if(!box)return;
     if(!sources.length){box.innerHTML='<div class="split-candidates-empty">条割の対象となる子ロットがありません。</div>';return}
     box.innerHTML=sources.map(s=>{
-      const used=countAssigned(seq,s.lot),remaining=Math.max(0,s.count-used),done=remaining<=0,active=activeLot===s.lot;
-      return `<div class="split-candidate${active?' active':''}${done?' done':''}" data-lot="${esc(s.lot)}" role="button" tabindex="0">
+      const n=countAssigned(seq,s.lot),confN=seq.reduce((a,lot,i)=>a+(lot===s.lot&&confirmed[i]?1:0),0),active=activeLot===s.lot;
+      return `<div class="split-candidate${active?' active':''}" data-lot="${esc(s.lot)}" role="button" tabindex="0">
         <span class="split-candidate-swatch" style="background:${colorMap[s.lot]||'#8a9a97'}"></span>
         <span class="split-candidate-body">
-          <span class="split-candidate-head"><b>${esc(s.lot)}</b><em>${used}/${s.count}条</em>${done?'<i class="split-candidate-done" aria-hidden="true">✓</i>':''}</span>
+          <span class="split-candidate-head"><b>${esc(s.lot)}</b><em>${n}条${confN<n?` ／ ${confN}確認済み`:' ／ 確認済み'}</em></span>
           <span class="split-candidate-meta">${s.width!==''&&s.width!==undefined?`幅${esc(String(s.width))} ／ `:''}${esc(s.missing?'子ロット情報取得失敗':(s.tol||'—'))}</span>
         </span>
-        ${remaining>0?`<button type="button" class="split-candidate-fill" data-fill="${esc(s.lot)}">残り${remaining}条を一括割当て</button>`:''}
       </div>`;
     }).join('');
     box.querySelectorAll('.split-candidate').forEach(card=>{
       const lot=card.dataset.lot;
-      const select=()=>{if(card.classList.contains('done'))return;activeLot=lot;renderSplit()};
-      card.addEventListener('click',e=>{if(!e.target.closest('[data-fill]'))select()});
-      card.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();select()}});
-    });
-    box.querySelectorAll('[data-fill]').forEach(btn=>{
-      btn.addEventListener('click',e=>{
-        e.stopPropagation();
-        const lot=btn.dataset.fill,total=sources.reduce((a,x)=>a+x.count,0),seq2=ensureSequenceLength(total);
-        bulkFillRemaining(seq2,sources,lot);
-        activeLot=lot;renderSplit();
-        if(typeof markDirty==='function')markDirty();
-      });
+      const locate=()=>{activeLot=activeLot===lot?null:lot;renderSplit();if(activeLot)flashLotInVisual(lot)};
+      card.addEventListener('click',locate);
+      card.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();locate()}});
     });
   }
 
   /* 条割結果プレビュー(#splitResult)。視覚図/候補カードと同じ色を左端に
-     アクセントとして付け、色の対応関係が一目でわかるようにする。 */
+     アクセントとして付け、色の対応関係が一目でわかるようにする。未確認の
+     条が残るグループには注意マークを付ける。 */
   function splitGrouped(seq,sources){
     const map=Object.fromEntries(sources.map(x=>[x.lot,x])),groups=[];
     seq.forEach(lot=>{
@@ -541,29 +665,34 @@
     });
     return groups.filter(Boolean);
   }
-  function renderSplitResult(seq,sources,colorMap){
+  function renderSplitResult(seq,confirmed,sources,colorMap){
     const box=$('#splitResult');if(!box)return;
     const groups=splitGrouped(seq,sources);
-    if(!groups.length){box.innerHTML='<div class="split-result-empty">視覚図または子ロット候補から条を割り当てると、ここに結果が表示されます。</div>';return}
-    box.innerHTML=groups.map((g,i)=>`<div class="split-result-row" style="border-left-color:${colorMap[g.lot]||'#8a9a97'}"><b class="split-result-index">${i+1}</b><span class="split-result-lot">${esc(g.lot)}</span><span class="split-result-count">${g.count}条</span><span class="split-result-width">${esc(g.width||'—')}</span><span class="split-result-tol">${esc(g.tol||'—')}</span></div>`).join('');
+    if(!groups.length){box.innerHTML='<div class="split-result-empty">視覚図で条を確認・並べ替えると、ここに結果が表示されます。</div>';return}
+    let i=0;
+    box.innerHTML=groups.map((g,gi)=>{
+      const start=i,end=i+g.count-1;i=end+1;
+      const fullyConfirmed=confirmed.slice(start,end+1).every(Boolean);
+      return `<div class="split-result-row${fullyConfirmed?'':' unconfirmed'}" style="border-left-color:${colorMap[g.lot]||'#8a9a97'}"><b class="split-result-index">${gi+1}</b><span class="split-result-lot">${esc(g.lot)}</span><span class="split-result-count">${g.count}条</span><span class="split-result-width">${esc(g.width||'—')}</span>${fullyConfirmed?'':'<i class="split-result-flag" title="未確認の条があります">●</i>'}</div>`;
+    }).join('');
   }
 
-  /* 条割変更モーダルの描画。条の並び視覚図(上)・子ロット候補(左)・条割結果
-     プレビュー(右)を splitSourceRows()/splitSequenceから構成する。 */
+  /* 条割変更モーダルの描画。母材幅比率の視覚図(上)・子ロット候補(左)・
+     条割結果プレビュー(右)を splitSourceRows()/splitSequence/splitConfirmed
+     から構成する。初回描画時のみ、候補の並び順で先頭から敷き詰めた状態を
+     初期値として自動生成する(seedSplitDefaults)。 */
   function renderSplit(){
-    const sources=splitSourceRows(),total=sources.reduce((a,x)=>a+x.count,0),seq=ensureSequenceLength(total);
-    if(!activeLot||remainingFor(sources,seq,activeLot)<=0){
-      const next=sources.find(s=>remainingFor(sources,seq,s.lot)>0);
-      activeLot=next?next.lot:null;
-    }
+    const sources=splitSourceRows(),total=sources.reduce((a,x)=>a+x.count,0);
+    const{seq,confirmed}=seedSplitDefaults(sources,total);
+    if(splitSelection&&splitSelection.end>=total)splitSelection=null;
     const colorMap=splitLotColorMap(sources);
-    renderSplitCandidates(sources,seq,colorMap);
-    renderSplitVisual(sources,seq,total,colorMap);
-    renderSplitResult(seq,sources,colorMap);
-    const filled=seq.filter(Boolean).length,groups=splitGrouped(seq,sources);
+    renderSplitCandidates(sources,seq,confirmed,colorMap);
+    renderSplitVisual(sources,seq,confirmed,colorMap);
+    renderSplitResult(seq,confirmed,sources,colorMap);
     $('#splitTotal').textContent=total;
     $('#splitLotCount').textContent=new Set(sources.map(x=>x.lot)).size;
-    $('#applySplit').disabled=filled!==total||groups.length>8;
+    $('#applySplit').disabled=total===0||seq.some(x=>x==null);
+    const undoBtn=$('#undoSplit');if(undoBtn)undoBtn.disabled=splitUndoStack.length===0;
     refreshSplitStatusPanel();
   }
   window.renderSplit=renderSplit;
@@ -571,7 +700,7 @@
   async function openSplit(){
     if(!S.measure)return;
     $('#splitModal').hidden=false;
-    activeLot=null;
+    activeLot=null;splitSelection=null;splitUndoStack=[];
     if(!splitSourcesCache||splitSourcesCacheKey!==currentSplitCacheKey()){
       const box=$('#splitSources');if(box)box.innerHTML='<div class="split-row-loading">子ロット情報を取得しています…</div>';
     }
@@ -583,9 +712,10 @@
   function applySplit(){
     const sources=splitSourceRows();
     if(!sources.length){alert('このロットには条割の対象となる子ロットが見つかりません。');return}
-    const total=sources.reduce((a,x)=>a+x.count,0),seq=ensureSequenceLength(total);
-    const filled=seq.filter(Boolean).length;
-    if(filled!==total){alert(`全条分を登録してください。（あと${total-filled}条）`);return}
+    const total=sources.reduce((a,x)=>a+x.count,0),seq=ensureSequenceLength(total),confirmed=ensureConfirmedLength(total);
+    if(seq.some(x=>x==null)){alert('全条分を登録してください。');return}
+    const unconfirmedCount=confirmed.filter(x=>!x).length;
+    if(unconfirmedCount>0&&!confirm(`${unconfirmedCount}/${total}条が未確認のままです。このまま条割を確定しますか？`))return;
     const map=Object.fromEntries(sources.map(x=>[x.lot,x])),groups=[];
     seq.forEach(lot=>{const last=groups.at(-1);if(last&&last.lot===lot)last.count++;else groups.push({lot,count:1,source:map[lot]})});
     if(groups.length>8){alert('システム上8を超える分割は設定できません。');return}
@@ -607,18 +737,19 @@
   const applyBtn=$('#applySplit');if(applyBtn)applyBtn.onclick=applySplit;
   const openBtn=$('#openSplit');if(openBtn)openBtn.onclick=openSplit;
   const closeBtn=$('#closeSplit');if(closeBtn)closeBtn.onclick=()=>$('#splitModal').hidden=true;
-  // 「1つ戻す」: 末尾ではなく、現在割り当てられている中で最も条番号が大きい
-  // 位置を解除する(自由な位置クリックに対応した後も、直感的な「直前の操作を
-  // 取り消す」に近い挙動を保つため)。
   const undoBtn=$('#undoSplit');if(undoBtn)undoBtn.onclick=()=>{
-    const sources=splitSourceRows(),total=sources.reduce((a,x)=>a+x.count,0),seq=ensureSequenceLength(total);
-    for(let i=seq.length-1;i>=0;i--){if(seq[i]){seq[i]=null;break}}
+    const snap=splitUndoStack.pop();if(!snap)return;
+    S.measure.settings.splitSequence=snap.seq;
+    S.measure.settings.splitConfirmed=snap.confirmed;
+    splitSelection=null;
     renderSplit();
   };
   const resetBtn=$('#resetSplit');if(resetBtn)resetBtn.onclick=()=>{
     const sources=splitSourceRows(),total=sources.reduce((a,x)=>a+x.count,0);
-    S.measure.settings.splitSequence=Array(total).fill(null);
-    activeLot=null;
+    pushUndoSnapshot(ensureSequenceLength(total),ensureConfirmedLength(total));
+    S.measure.settings.splitSequence=defaultFillSequence(sources,total);
+    S.measure.settings.splitConfirmed=Array(total).fill(false);
+    splitSelection=null;activeLot=null;
     renderSplit();
   };
 

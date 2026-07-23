@@ -51,14 +51,15 @@
 </div></div><div class="work-panel" data-workpanel="flat" hidden=""></div></section></div>
 <div class="record-modal" hidden="" id="splitModal"><div class="split-dialog"><header><div><small>SLIT ARRANGEMENT</small><h2>条割の並び替え</h2></div><button id="closeSplit" aria-label="閉じる">×</button></header><div class="split-layout">
 <div class="split-visual" id="splitVisual">
-<div class="split-visual-head"><b>条の並び</b><span class="split-visual-count" id="splitVisualCount">0/0条 登録済み</span><span class="split-visual-hint">条をクリックで割当/解除、ドラッグでまとめて塗れます</span></div>
+<div class="split-visual-head"><b>条の並び（母材幅比率表示）</b><span class="split-visual-count" id="splitVisualCount">0/0条 確認済み</span><span class="split-visual-hint">タップで確認済みに／ドラッグで範囲選択→もう一度ドラッグで入替</span></div>
 <div class="split-visual-strip" id="splitVisualStrip"></div>
-<div class="split-visual-actions"><button type="button" id="undoSplit" class="split-ghost-btn">1つ戻す</button><button type="button" id="resetSplit" class="split-ghost-btn">初めから</button></div>
+<div class="split-visual-detail" id="splitVisualDetail"></div>
+<div class="split-visual-actions"><button type="button" id="undoSplit" class="split-ghost-btn" disabled>1つ戻す</button><button type="button" id="resetSplit" class="split-ghost-btn">初めから</button></div>
 </div>
 <section class="split-candidates-section">
 <h3>子ロット候補<span class="split-candidates-stats">全<b id="splitTotal">0</b>条 ／ <b id="splitLotCount">0</b>ロット</span></h3>
 <div class="split-candidates" id="splitSources"></div>
-<p class="split-hint-text">ロットをクリックすると選択され、上の視覚図で条をクリック/ドラッグして割り当てられます。</p>
+<p class="split-hint-text">ロットをクリックすると、上の視覚図で該当する条が光って位置を確認できます。</p>
 </section>
 <section class="split-result-section">
 <h3>条割プレビュー</h3>
