@@ -1291,6 +1291,7 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .mm-tag-box input.mm-tag-search{flex:1 1 100px;min-width:100px;height:26px;padding:2px 4px;border:0;background:transparent;font-size:12.5px}
 .mm-tag-box input.mm-tag-search:focus-visible{outline:0;box-shadow:none}
 .mm-tag-suggest{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:20;max-height:230px;overflow:auto;display:flex;flex-direction:column;gap:2px;padding:6px;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 10px 26px rgba(20,40,45,.16)}
+.mm-tag-suggest[hidden]{display:none}
 .mm-tag-suggest-item{display:block;width:100%;text-align:left;padding:7px 10px;border:0;border-radius:6px;background:transparent;color:#2c4750;font-size:12.5px;font-weight:600;cursor:pointer}
 .mm-tag-suggest-item:hover,.mm-tag-suggest-item:focus-visible{outline:0;background:#eafafa;color:#0a6570}
 .mm-tag-suggest-empty{padding:7px 10px;color:#8a9aa0;font-size:12px}
