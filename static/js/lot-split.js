@@ -228,18 +228,27 @@
             if(v!=='')S.measure.basic[k]=v;
           });
         }
-        // 横割数(条数)の初期値(BOX設計_横割数)も列表示設定で一覧側から
-        // 欠落し得るため、完全な生データから改めて反映し直す。ただし測定
-        // データが既に入力されている場合(dimensionLocked)は、オペレータの
-        // 入力・保存済み設定を上書きしない。
+        // 横割数(条数)・縦割数(丈割数)の初期値(BOX設計_横割数/BOX設計_縦割数)
+        // も列表示設定で一覧側から欠落し得るため、完全な生データから改めて
+        // 反映し直す。ただし測定データが既に入力されている場合
+        // (dimensionLocked)は、オペレータの入力・保存済み設定を上書きしない。
         if(!S.measure.settings.dimensionLocked){
-          const n=Number(pick(S.measure.source,'boxHorizontalCount'));
-          if(Number.isFinite(n)&&n>=1&&n<=40){
-            const rounded=Math.round(n);
+          const hn=Number(pick(S.measure.source,'boxHorizontalCount'));
+          if(Number.isFinite(hn)&&hn>=1&&hn<=40){
+            const rounded=Math.round(hn);
             if(S.measure.settings.horizontalCount!==rounded){
               S.measure.settings.horizontalCount=rounded;
               if($('#horizontalCount'))$('#horizontalCount').value=rounded;
               if(typeof updateCoilOptions==='function')updateCoilOptions(rounded);
+            }
+          }
+          const vn=Number(pick(S.measure.source,'boxVerticalCount'));
+          if(Number.isFinite(vn)&&vn>=1&&vn<=9){
+            const rounded=Math.round(vn);
+            if(S.measure.settings.verticalCount!==rounded){
+              S.measure.settings.verticalCount=rounded;
+              if($('#verticalCount'))$('#verticalCount').value=rounded;
+              if(typeof updateLengthOptions==='function')updateLengthOptions(rounded);
             }
           }
         }
