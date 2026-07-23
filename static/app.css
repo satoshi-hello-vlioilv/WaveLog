@@ -643,8 +643,8 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .split-dialog h2{margin:2px 0;font-size:21px}
 .split-dialog small{color:#91d5da}
 .split-dialog header button{font-size:26px;color:#fff;background:transparent;border:0}
-.split-layout{height:calc(100% - 64px);display:grid;grid-template-columns:1fr 1fr .62fr;gap:14px;padding:16px}
-.split-layout section{min-width:0}
+.split-layout{height:calc(100% - 64px);display:grid;grid-template-columns:1fr 1fr .62fr;grid-auto-rows:min-content 1fr;gap:14px;padding:16px}
+.split-layout section{min-width:0;min-height:0;display:flex;flex-direction:column}
 .split-layout h3{margin:0 0 8px;text-align:center;font-size:18px}
 .split-table{border:1px solid #86999f;background:#fff}
 .split-row{display:grid;grid-template-columns:1.5fr .7fr .9fr .7fr;min-height:38px;border-bottom:1px solid #aebcc1}
@@ -656,11 +656,26 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .split-row.disabled{background:#d8dcde;color:#7b8589}
 .split-layout dl{display:grid;grid-template-columns:1fr auto;gap:5px}
 .split-layout dd{font-weight:800}
-.split-layout ol{height:520px;margin:0;padding:8px 8px 8px 42px;overflow:auto;border:1px solid #aebcc1;background:#fff}
+.split-layout ol{flex:1;min-height:0;margin:0;padding:8px 8px 8px 42px;overflow:auto;border:1px solid #aebcc1;background:#fff}
 .split-layout li{padding:5px;border-bottom:1px solid #edf0f1}
 .split-count{text-align:right;margin-bottom:8px}
 .split-count b{font-size:26px}
 .split-row-loading{padding:14px;color:#526970;font-weight:700}
+/* 条の並び視覚表示: 登録済みの条順(splitSequence)を実際の物理配置に見立て、
+   左から1条目→N条目の順に色分けした帯として表示する(操作するたびに
+   リアルタイムで更新)。 */
+.split-visual{grid-column:1/-1;background:#fff;border:1px solid #86999f;border-radius:6px;padding:10px 12px}
+.split-visual-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:8px;flex-wrap:wrap}
+.split-visual-head b{font-size:14px}
+.split-visual-head span{font-size:12px;color:#61757c}
+.split-visual-strip{display:flex;flex-wrap:wrap;gap:2px;max-height:104px;overflow-y:auto}
+.split-visual-cell{width:26px;height:34px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;border-radius:2px;font-size:10px;font-weight:800;color:#fff;background:#d8dcde;text-shadow:0 1px 1px #0006}
+.split-visual-cell.pending{background:#eef2f4;color:#9aabab;text-shadow:none;border:1px dashed #c4d4d7}
+.split-visual-cell.group-start{margin-left:6px}
+.split-visual-legend{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:8px;font-size:12px;color:#3a565d}
+.split-visual-legend-item{display:inline-flex;align-items:center;gap:5px}
+.split-visual-legend-item i{display:inline-block;width:12px;height:12px;border-radius:2px;flex:0 0 auto}
+.split-visual-empty,.split-visual-legend-empty{color:#8a9a97;font-size:13px}
 .split-tolerance-legend{margin-top:8px;padding:8px;background:#fff8e0;border:1px solid #d8c47a;border-radius:4px}
 .split-tolerance-legend>b{display:block;margin-bottom:6px;font-size:12px;color:#6b5a10}
 .split-tolerance-legend table{width:100%;border-collapse:collapse;font-size:12px}

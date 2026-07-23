@@ -369,15 +369,49 @@
   }
   window.ensureSplitCandidatesLoaded=ensureSplitCandidatesLoaded;
 
-  /* 条割変更モーダルの描画。候補一覧(左)・条割結果プレビュー(中)・登録順(右)を
-     splitSourceRows()/splitSequenceから構成する。旧core.jsにあった基盤実装を
-     このファイルへ一本化した(末尾の幅分割情報パネル更新のみ、旧実装の簡易文字列
-     ではなくrefreshSplitStatusPanel()を正とする)。 */
+  /* 条の並び視覚表示。登録済みの条順(splitSequence)を、実際に並ぶ物理配置に
+     見立てて1条目→N条目の順に色分けした帯として描画する。ダブルクリックでの
+     追加・1つ戻す・初めから、いずれの操作後もrenderSplit()から呼ばれることで
+     リアルタイムに更新される。まだ登録されていない条は未割当の枠として示す。 */
+  const SPLIT_VISUAL_COLORS=['#087c89','#f59e0b','#2563eb','#16a34a','#dc2626','#7c3aed','#0891b2','#ca8a04'];
+  function splitLotColorMap(sources){
+    const map={};
+    sources.forEach((s,i)=>{map[s.lot]=SPLIT_VISUAL_COLORS[i%SPLIT_VISUAL_COLORS.length]});
+    return map;
+  }
+  function renderSplitVisual(sources,seq,total){
+    const strip=$('#splitVisualStrip'),legend=$('#splitVisualLegend');
+    if(!strip||!legend)return;
+    if(!total){
+      strip.innerHTML='<div class="split-visual-empty">条割の対象となる子ロットがありません。</div>';
+      legend.innerHTML='';
+      return;
+    }
+    const colorMap=splitLotColorMap(sources);
+    let html='',prevLot=null;
+    for(let i=0;i<total;i++){
+      const lot=seq[i]||null,groupStart=lot!==prevLot;prevLot=lot;
+      if(lot){
+        const color=colorMap[lot]||'#8a9a97';
+        html+=`<div class="split-visual-cell assigned${groupStart?' group-start':''}" style="background:${color}" title="${esc(i+1)}条目 ／ ${esc(lot)}"><span>${i+1}</span></div>`;
+      }else{
+        html+=`<div class="split-visual-cell pending${groupStart?' group-start':''}" title="${i+1}条目 ／ 未割当"><span>${i+1}</span></div>`;
+      }
+    }
+    strip.innerHTML=html;
+    legend.innerHTML=sources.map(s=>`<span class="split-visual-legend-item"><i style="background:${colorMap[s.lot]||'#8a9a97'}"></i>${esc(s.lot)}${s.width!==''&&s.width!==undefined?`・幅${esc(String(s.width))}`:''}・${s.count}条</span>`).join('')||'<span class="split-visual-legend-empty">候補ロットがありません。</span>';
+  }
+
+  /* 条割変更モーダルの描画。条の並び視覚表示(上)・候補一覧(左)・条割結果
+     プレビュー(中)・登録順(右)を splitSourceRows()/splitSequenceから構成する。
+     旧core.jsにあった基盤実装をこのファイルへ一本化した(末尾の幅分割情報
+     パネル更新のみ、旧実装の簡易文字列ではなくrefreshSplitStatusPanel()を正とする)。 */
   function splitGrouped(sequence,sources){const map=Object.fromEntries(sources.map(x=>[x.lot,x])),groups=[];sequence.forEach(lot=>{const last=groups.at(-1);if(last&&last.lot===lot)last.count++;else groups.push({lot,count:1,width:map[lot]?.width||'',tol:map[lot]?.tol||''})});return groups}
   function renderSplit(){
     const sources=splitSourceRows(),seq=S.measure.settings.splitSequence||[],counts={};
     seq.forEach(x=>counts[x]=(counts[x]||0)+1);
     const total=sources.reduce((a,x)=>a+x.count,0);
+    renderSplitVisual(sources,seq,total);
     $('#splitSources').innerHTML='<div class="split-row head"><b>ロットNo.</b><b>横割</b><b>割幅</b><b>公差</b></div>'+sources.map((x,i)=>`<div class="split-row source ${counts[x.lot]>=x.count?'disabled':''}" data-source="${i}"><span>${esc(x.lot)}</span><span>${x.count}</span><span>${esc(x.width)}</span><span>${esc(x.tol)}</span></div>`).join('');
     document.querySelectorAll('[data-source]').forEach(row=>row.ondblclick=()=>{const x=sources[+row.dataset.source],used=counts[x.lot]||0;if(used<x.count){seq.push(x.lot);S.measure.settings.splitSequence=seq;renderSplit()}});
     const groups=splitGrouped(seq,sources);
