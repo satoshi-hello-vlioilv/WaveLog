@@ -81,6 +81,10 @@ function renderGrid(){
  // 外れている可能性が高い)を、非同期の存在確認後にグリッド上で気づけるように
  // 更新する対象を集める(下のrunLimitedブロック参照)。
  const splitCheckTargets=[];
+ // 親側の分割データは無い(=一見「分割なし」)行でも、「ｺﾝﾏ5本ｶｰﾄﾞ区分」が
+ // 3の行は分割済みの子ロット自身であるため、親ロットを逆引き検索して
+ // 気づけるようにする対象を集める(下のcheckParentLookupRows参照)。
+ const parentCheckTargets=[];
  S.rows.forEach((r,i)=>{
   const tr=document.createElement('tr');
   let splitCell='';
@@ -93,6 +97,7 @@ function renderGrid(){
     splitCheckTargets.push({tr,row:r});
    }else{
     splitCell='<td class="split-flag-cell split-no">分割なし</td>';
+    if(typeof window.isChildCardClassifiedRow==='function'&&window.isChildCardClassifiedRow(r))parentCheckTargets.push({tr,row:r});
    }
   }
   tr.innerHTML=`<td>${(S.page-1)*+$('#pageSize').value+i+1}</td>`+splitCell+S.columns.map(c=>{
@@ -120,6 +125,7 @@ function renderGrid(){
  });
  t.append(b);$('#grid').replaceChildren(t);$('#count').textContent=`全 ${S.count.toLocaleString()}件`;$('#page').textContent=`${S.page}ページ`;$('#prev').disabled=S.page===1;$('#next').disabled=S.page*+$('#pageSize').value>=S.count;
  checkSplitRowsForMissingChildren(splitCheckTargets);
+ checkParentLookupRows(parentCheckTargets);
 }
 /* 分割あり行について、子ロットが仕掛に実在するかを確認し、見つからなければ
    グリッド上で気づける表示(⚠子ロット未検出)に切り替える。1行ごとに問い合わせが
@@ -143,6 +149,25 @@ function checkSplitRowsForMissingChildren(targets){
   cell.classList.remove('split-yes');cell.classList.add('split-missing');
   cell.textContent=`分割あり・子ロット未検出(${info.missing.length})⚠`;
   cell.title=`次の子ロットが仕掛データに見つかりません: ${info.missing.join('、')}\n作業済み(仕掛から外れている)の可能性が高く、目標幅・公差の一部が欠けたまま測定される恐れがあります。`;
+ });
+}
+/* 親側の分割データが無い(=一見「分割なし」)行でも、「ｺﾝﾏ5本ｶｰﾄﾞ区分」が3の
+   行は分割済みの子ロット(子カード)自身である。親ロットを逆引き検索し、
+   見つかれば「分割なし(親：xxx)」、見つからなければ「分割なし(子)」に
+   切り替えて、仕掛一覧だけで子ロットであることに気づけるようにする。 */
+function checkParentLookupRows(targets){
+ if(!targets.length||typeof window.findParentLotFor!=='function')return;
+ runLimited(targets,3,async({tr,row})=>{
+  const parent=await window.findParentLotFor(row);
+  const cell=tr.querySelector('.split-flag-cell');if(!cell)return;
+  if(parent){
+   const parentLotNo=pick(parent,'lotNo');
+   cell.textContent=`分割なし(親：${parentLotNo})`;
+   cell.title=`このロットは分割済みの子ロット(子カード)です。親ロット「${parentLotNo}」が仕掛に見つかりました。`;
+  }else{
+   cell.textContent='分割なし(子)';
+   cell.title='このロットは分割済みの子ロット(子カード)と判定されましたが、対応する親ロットは仕掛に見つかりませんでした。';
+  }
  });
 }
 /* 検索・ページャ。ボタンは常に最新のload実装を呼ぶ(旧実装は初期のload関数を

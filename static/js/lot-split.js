@@ -70,6 +70,16 @@
   function childCardValue(r,i){return fieldByCandidates(r,CHILD_CARD_PREFIXES.map(p=>p+i))}
   function childCutWidthValue(r,i){return fieldByCandidates(r,CHILD_CUTWIDTH_PREFIXES.map(p=>p+i))}
   function childCountFieldValue(r,i){return fieldByCandidates(r,CHILD_COUNT_PREFIXES.map(p=>p+i))}
+  // 「ｺﾝﾏ5本ｶｰﾄﾞ区分」が3の行は、親側の分割データ(親子管理_子カード等)が
+  // 無く一見「分割なし」に見えても、実際には分割済みの子ロット(子カード)
+  // 自身であることを示す。仕掛一覧で気づけるよう、この行に限って親ロットの
+  // 逆引き検索(findParentLotFor)を行う。
+  const CHILD_CARD_CLASSIFICATION_PREFIXES=['ｺﾝﾏ5本ｶｰﾄﾞ区分','コンマ5本カード区分'];
+  function isChildCardClassifiedRow(row){
+    const v=fieldByCandidates(row,CHILD_CARD_CLASSIFICATION_PREFIXES);
+    return v!==undefined&&Number(v)===3;
+  }
+  window.isChildCardClassifiedRow=isChildCardClassifiedRow;
   // 親子管理_子カード1〜10から子ロット番号を復元する(旧VBA KCDNO相当)。
   // 1〜9: ロット番号の先頭6桁+1桁、10〜99: 先頭5桁+2桁で末尾を置換。
   // row/lotNoを省略すると現在開いている測定(S.measure)を対象にする。
@@ -286,6 +296,7 @@
     }catch(e){console.warn('親ロットの検索に失敗しました: '+lotNo,e)}
     return null;
   }
+  window.findParentLotFor=findParentLotFor;
   // 子ロットと判定された場合、確認の上で親ロットの行に差し替える。
   async function resolveToParentIfChild(row){
     if(!row||S.db!=='SIKALOTNOW')return row;
@@ -531,8 +542,9 @@
 
   /* 条の並び視覚図(#splitVisualStrip)。母材幅をほぼ100%として、各条を
      実際の条幅比率(子ロットの製造板幅)で並べた帯として描画する。同じ
-     ロットが連続する範囲は1つの帯にまとめて表示し(最大40条規模でも
-     見やすい)、選択中の範囲・移動先プレビューは別レイヤーで重ねて表示する。 */
+     ロットが連続していても1条=1マスとして個別に描画し(最大40条規模でも
+     見やすい)、条ごとに独立してドラッグ操作できるようにする。選択中の
+     条・移動先プレビューは別レイヤーで重ねて表示する。 */
   function renderSplitVisual(sources,seq,confirmed,colorMap){
     const strip=$('#splitVisualStrip'),count=$('#splitVisualCount'),detail=$('#splitVisualDetail');
     const total=seq.length;
@@ -547,20 +559,17 @@
     const layout=computeVisualLayout(seq,sources);
     splitVisualLayout=layout;
     const widthMap=Object.fromEntries(sources.map(s=>[s.lot,s.width])),tolMap=Object.fromEntries(sources.map(s=>[s.lot,s.tol]));
-    let html='<div class="split-visual-track">',i=0;
-    while(i<total){
+    let html='<div class="split-visual-track">';
+    for(let i=0;i<total;i++){
       const lot=seq[i];
-      let j=i;
-      while(j+1<total&&seq[j+1]===lot)j++;
-      const left=layout.cum[i]/layout.totalUnits*100,width=(layout.cum[j+1]-layout.cum[i])/layout.totalUnits*100;
-      const n=j-i+1,confN=confirmed.slice(i,j+1).filter(Boolean).length,fullyConfirmed=confN===n;
+      const left=layout.cum[i]/layout.totalUnits*100,width=(layout.cum[i+1]-layout.cum[i])/layout.totalUnits*100;
+      const fullyConfirmed=!!confirmed[i];
       const bg=lot?(colorMap[lot]||'#8a9a97'):'transparent';
       const label=lot?esc(lot):'未割当';
       const widthText=lot&&widthMap[lot]!==''&&widthMap[lot]!==undefined?`幅${esc(String(widthMap[lot]))} ／ `:'';
       const tolText=lot?esc(tolMap[lot]||''):'';
       const wide=width>5;
-      html+=`<div class="split-visual-block${lot?'':' empty'}${fullyConfirmed?' confirmed':' unconfirmed'}" data-start="${i}" data-end="${j}" data-lot="${lot?esc(lot):''}" style="left:${left}%;width:${width}%;background-color:${bg}" title="${label} ／ ${n}条 ／ ${widthText}${tolText} ／ ${confN}/${n}条確認済み">${wide?`<span class="split-visual-block-label">${label}<b>×${n}</b></span>`:''}${!fullyConfirmed?'<i class="split-visual-unconfirmed-mark" aria-hidden="true"></i>':''}</div>`;
-      i=j+1;
+      html+=`<div class="split-visual-block${lot?'':' empty'}${fullyConfirmed?' confirmed':' unconfirmed'}" data-start="${i}" data-end="${i}" data-lot="${lot?esc(lot):''}" style="left:${left}%;width:${width}%;background-color:${bg}" title="${label} ／ ${i+1}条目 ／ ${widthText}${tolText} ／ ${fullyConfirmed?'確認済み':'未確認'}">${wide?`<span class="split-visual-block-label">${label}</span>`:''}${!fullyConfirmed?'<i class="split-visual-unconfirmed-mark" aria-hidden="true"></i>':''}</div>`;
     }
     html+='<div class="split-visual-ghost" id="splitVisualGhost" hidden></div></div>';
     strip.innerHTML=html;
@@ -568,7 +577,7 @@
     if(detail)detail.textContent='';
     ensureSplitVisualWiring();
   }
-  // ドラッグ中、ドロップ予定位置に「入る予定のブロック」と同じ色・同じ幅の
+  // ドラッグ中、ドロップ予定位置に「入る予定の条」と同じ色・同じ幅の
   // ゴーストを差し込んで表示する(どこに入るかを視覚的に明示する)。
   function showGhost(dragBlock,dropIndex){
     const ghost=$('#splitVisualGhost');
@@ -579,7 +588,7 @@
     ghost.style.left=(cum[dropIndex]/totalUnits*100)+'%';
     ghost.style.width=(widthUnits/totalUnits*100)+'%';
     ghost.style.background=dragBlock.color||'#8a9a97';
-    ghost.innerHTML=`<span class="split-visual-block-label">${esc(dragBlock.lot||'')}<b>×${dragBlock.end-dragBlock.start+1}</b></span>`;
+    ghost.innerHTML=`<span class="split-visual-block-label">${esc(dragBlock.lot||'')}</span>`;
   }
   function hideGhost(){const ghost=$('#splitVisualGhost');if(ghost)ghost.hidden=true}
   function flashLotInVisual(lot){
@@ -589,13 +598,14 @@
     });
   }
 
-  // 条ブロック(同一ロットの連続範囲)を1つの単位として直接つかんで運ぶ、
-  // 単一ジェスチャーのドラッグ並べ替え。「範囲選択→別ドラッグで移動」の
-  // 2段階方式は、条数が少なく1条あたりの帯が広い場合にセル境界をまたぐ
-  // 判定が働かず選択自体が成立しないことがあり、認知負荷も高かったため
-  // 廃止した。掴んだ位置からのポインタ移動が閾値を超えるまでは「タップ」
-  // として扱い(確認済みトグル)、超えたら「ドラッグ」として即座に追従・
-  // ゴースト表示を開始する。
+  // 条を1つ(1条)ずつ直接つかんで運ぶ、単一ジェスチャーのドラッグ並べ替え。
+  // 同じロットが連続していても隣接条どうしをまとめて動かすことはせず、
+  // 常に1条単位で並べ替える(複雑な入れ替えも1条ずつの操作で組み立てる)。
+  // 「範囲選択→別ドラッグで移動」の2段階方式は、条数が少なく1条あたりの
+  // 帯が広い場合にセル境界をまたぐ判定が働かず選択自体が成立しないことが
+  // あり、認知負荷も高かったため廃止した。掴んだ位置からのポインタ移動が
+  // 閾値を超えるまでは「タップ」として扱い(確認済みトグル)、超えたら
+  // 「ドラッグ」として即座に追従・ゴースト表示を開始する。
   const DRAG_START_THRESHOLD=6;
   let splitVisualWired=false;
   function ensureSplitVisualWiring(){
@@ -606,13 +616,6 @@
     function context(){
       const sources=splitSourceRows(),total=sources.reduce((a,x)=>a+x.count,0);
       return{sources,total,seq:ensureSequenceLength(total),confirmed:ensureConfirmedLength(total)};
-    }
-    function blockRangeAt(seq,idx){
-      const lot=seq[idx];
-      let start=idx,end=idx;
-      while(start>0&&seq[start-1]===lot)start--;
-      while(end+1<seq.length&&seq[end+1]===lot)end++;
-      return{start,end};
     }
     function updateDetailFor(idx){
       const detail=$('#splitVisualDetail');if(!detail)return;
@@ -663,8 +666,8 @@
       const{seq,sources}=context();
       if(seq[idx]==null)return;
       e.preventDefault();
-      const{start,end}=blockRangeAt(seq,idx),colorMap=splitLotColorMap(sources);
-      dragBlock={start,end,grabOffset:idx-start,lot:seq[idx],color:colorMap[seq[idx]],dropTarget:start};
+      const colorMap=splitLotColorMap(sources);
+      dragBlock={start:idx,end:idx,grabOffset:0,lot:seq[idx],color:colorMap[seq[idx]],dropTarget:idx};
       downIdx=idx;downX=e.clientX;downY=e.clientY;dragging=false;
       updateDetailFor(idx);
       document.addEventListener('pointermove',handleMove);

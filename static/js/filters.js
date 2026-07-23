@@ -33,12 +33,15 @@
      一覧を開くたびに自動適用され(=固定フィルタと同じ挙動)、外そうとすると
      確認を挟む。確認の上で外した場合はそのセッション中だけ一時的に外れ、
      一覧を開き直すと自動的に元へ戻る。
-     使用設備一致は、この一覧を開いた端末の設定に応じて値が変わる特殊な
-     必須条件のため、専用の仕組み(f.locked==='equipment')のまま維持する。 */
+     条件の説明表示・確認メッセージは、どの条件が鍵付きでも同じ汎用ロジック
+     (condLabel)で組み立てる(以前あった使用設備専用の文言分岐は削除)。
+     使用設備一致の値は、この一覧を開いた端末の設定に応じて変わる特殊な
+     必須条件のため、値をその都度同期する専用の仕組み(f.locked==='equipment')
+     のみ維持する。 */
   const EQUIPMENT_FILTER_COLUMN='BOX設計_設備名';
   function isLockedFilter(f){return !!f&&!!f.locked}
   function isLockedEquipmentFilter(f){return !!f&&f.locked==='equipment'}
-  function lockedFilterDescription(f){return isLockedEquipmentFilter(f)?`使用設備「${f.value}」と一致するロットのみ表示`:condLabel(f)}
+  function lockedFilterDescription(f){return condLabel(f)}
   function confirmRemoveLockedFilter(f){
     const target=f||S.genericFilters.find(isLockedFilter);
     if(!target)return true;
@@ -201,6 +204,43 @@
     });
     S.genericFilters=merged;S.page=1;
     showToast?.('デフォルトフィルタを適用しました',matches.map(p=>p.name).join(' / '),3200);
+  }
+
+  /* あるプリセットの条件が、対象のプリセット自身を除いても他のデフォルト
+     (または鍵付き)プリセットから引き続き必要とされているか。デフォルト
+     /鍵の解除時、他プリセットが同じ条件を必要としていれば残す。 */
+  function presetFilterRequiredElsewhere(preset,key,{lockedOnly=false}={}){
+    const ids=(lockedOnly?lockedPresetIdsFor(S.db,S.table):defaultPresetIdsFor(S.db,S.table))
+      .filter(id=>String(id)!==String(preset.id));
+    if(!ids.length)return false;
+    const idSet=new Set(ids);
+    return (S.filterPresets||[]).some(p=>idSet.has(String(p.id))&&(p.filters||[]).some(f=>filterKey(f)===key));
+  }
+  /* 登録フィルタ一覧のデフォルト/鍵チェックを変更した直後、現在表示中の
+     フィルタバー(S.genericFilters)へ即座に反映する。デフォルトONなら
+     そのプリセットの条件を追加(手動で一度外していても復活させる)、OFF
+     なら他のデフォルトプリセットが同じ条件を必要としない限り取り除く。
+     画面切替(selectTable)を待たずに反映することで、フィルタ設定画面から
+     やり直した内容がその場のフィルタバーに即再適用されるようにする。 */
+  function syncActiveFiltersForPreset(preset){
+    const isDefault=isDefaultPreset(preset,S.db,S.table);
+    const locked=isLockedDefaultPreset(preset,S.db,S.table);
+    (preset.filters||[]).forEach(f=>{
+      const key=filterKey(f),idx=S.genericFilters.findIndex(x=>filterKey(x)===key);
+      if(isDefault){
+        if(idx>=0){
+          if(locked&&!S.genericFilters[idx].locked)S.genericFilters[idx]={...S.genericFilters[idx],locked:true};
+          else if(!locked&&S.genericFilters[idx].locked&&!presetFilterRequiredElsewhere(preset,key,{lockedOnly:true})){
+            const{locked:_,...rest}=S.genericFilters[idx];S.genericFilters[idx]=rest;
+          }
+        }else{
+          S.genericFilters.push(locked?{...f,locked:true}:{...f});
+        }
+      }else if(idx>=0&&!presetFilterRequiredElsewhere(preset,key)){
+        S.genericFilters.splice(idx,1);
+      }
+    });
+    S.page=1;renderGenericFilterBar();load();
   }
 
   /* 保存フィルタは条件単位で登録されるため、適用は常にマージ(現在の条件へ
@@ -441,12 +481,14 @@
           setLockedDefaultPreset(p,S.db,S.table,false);
         }
         toggleDefaultPreset(p,S.db,S.table);
+        syncActiveFiltersForPreset(p);
         renderFilterPresetList();
       });
       item.querySelector('.fp-lock-btn')?.addEventListener('click',()=>{
         const nowLocked=!isLockedDefaultPreset(p,S.db,S.table);
         setLockedDefaultPreset(p,S.db,S.table,nowLocked);
         if(nowLocked&&!isDefaultPreset(p,S.db,S.table))setDefaultPreset(p,S.db,S.table,true);
+        syncActiveFiltersForPreset(p);
         renderFilterPresetList();
       });
       if(loading)list.insertBefore(item,loading);else list.appendChild(item);
