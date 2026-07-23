@@ -162,7 +162,14 @@ document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{document.quer
 /* 測定値セルの生成。板厚=3桁/板幅=1桁へ表示時に整形する。 */
 function makeMeasureInput(key,i,j,value){value=fixedMeasurementValue(key,value);const mode=key==='flatness'?'text':'decimal';return `<input data-mkey="${key}" data-i="${i}" data-j="${j}" value="${esc(value)}" inputmode="${mode}" aria-label="${j+1}条">`}
 function bindMeasureInputs(){
- const m=S.measure;document.querySelectorAll('[data-mkey]').forEach(x=>{judgeInput(x,x.dataset.mkey,Number(x.value),+x.dataset.j);x.onclick=()=>{if(x.dataset.mkey==='thickness')m.settings.tStep=+x.dataset.j;else m.settings.wStep=+x.dataset.j;focusCurrent();$('#deviceInput').focus()};x.oninput=()=>{m.measurements[x.dataset.mkey][+x.dataset.i][+x.dataset.j]=x.value;judgeInput(x,x.dataset.mkey,Number(x.value),+x.dataset.j);renderStats();markDirty()};x.onkeydown=e=>{if(S.measure.settings.inputMode!=='manual'){e.preventDefault();return}if(e.key==='Delete'){x.value='';x.oninput()}if(e.key==='Enter'){e.preventDefault();advanceWidth();focusCurrent()}}})
+ const m=S.measure;
+ const syncStepFor=x=>{if(x.dataset.mkey==='thickness')m.settings.tStep=+x.dataset.j;else m.settings.wStep=+x.dataset.j};
+ document.querySelectorAll('[data-mkey]').forEach(x=>{judgeInput(x,x.dataset.mkey,Number(x.value),+x.dataset.j);x.onclick=()=>{syncStepFor(x);focusCurrent();if(S.measure.settings.inputMode!=='manual')$('#deviceInput').focus()};
+  // 手動モードでは、クリックだけでなくTabキー等の操作で実際に
+  // フォーカスが移動した場合も、強調表示(.current)をそのセルへ
+  // 追従させる(自動モードは受信欄にフォーカスを固定するため対象外)。
+  x.addEventListener('focus',()=>{if(S.measure.settings.inputMode!=='manual')return;syncStepFor(x);focusCurrent()});
+  x.oninput=()=>{m.measurements[x.dataset.mkey][+x.dataset.i][+x.dataset.j]=x.value;judgeInput(x,x.dataset.mkey,Number(x.value),+x.dataset.j);renderStats();markDirty()};x.onkeydown=e=>{if(S.measure.settings.inputMode!=='manual'){e.preventDefault();return}if(e.key==='Delete'){x.value='';x.oninput()}if(e.key==='Enter'){e.preventDefault();advanceWidth();focusCurrent()}}})
 
  document.querySelectorAll('[data-mkey="thickness"],[data-mkey="width"]').forEach(el=>{
   const previousBlur=el.onblur;

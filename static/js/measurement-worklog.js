@@ -533,7 +533,7 @@
   await refreshDraftCount();importBackupState.loaded=false;await loadImportBackupMaint(true);
   showToast&&showToast('インポートが完了しました',`成功 ${okCount}件 / 失敗 ${ngCount}件`+(errors.length?`\n${errors.slice(0,3).join('\n')}`:''),8000);
  }
- function openMasterMaint(){const modal=ensureMaintModal();const uid=$('#masterUserId');if(uid)uid.value=currentUserId();maintState.editing=null;maintState.query='';const se=$('#masterMaintSearch');if(se)se.value='';syncNav();modal.hidden=false;loadMaint(true);requestAnimationFrame(()=>{const u=$('#masterUserId');if(u&&!u.value)u.focus()})}
+ function openMasterMaint(){const modal=ensureMaintModal();const uid=$('#masterUserId');if(uid)uid.value=currentUserId();maintState.defKey='operator';maintState.editing=null;maintState.query='';const se=$('#masterMaintSearch');if(se)se.value='';syncNav();modal.hidden=false;loadMaint(true);requestAnimationFrame(()=>{const u=$('#masterUserId');if(u&&!u.value)u.focus()})}
 
  function bindMasterMaint(){const b=$('#openMasterMaint');if(b)b.onclick=e=>{e.preventDefault();openMasterMaint()}}
  document.addEventListener('click',e=>{const t=e.target.closest('#openMasterMaint');if(!t)return;e.preventDefault();e.stopImmediatePropagation();openMasterMaint()},true);
