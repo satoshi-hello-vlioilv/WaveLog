@@ -503,6 +503,9 @@
     sources.forEach((s,i)=>{map[s.lot]=SPLIT_VISUAL_COLORS[i%SPLIT_VISUAL_COLORS.length]});
     return map;
   }
+  // 図中のラベルはロット番号全体だと長く読みにくいため下3桁のみを表示する
+  // (詳細行・候補カード・ツールチップは引き続きロット番号全体を表示)。
+  function lotSuffix3(lot){const s=String(lot||'');return s.length>3?s.slice(-3):s}
 
   // ポインタ位置(clientX)→条番号(0始まり)。直近描画時の幅レイアウト
   // (splitVisualLayout)を使うため、同一ロットが連続する範囲を1つの帯に
@@ -543,9 +546,10 @@
   /* 条の並び視覚図(#splitVisualStrip)。母材幅をほぼ100%として、各条を
      実際の条幅比率(子ロットの製造板幅)で並べた帯として描画する。同じ
      ロットが連続していても1条=1マスとして個別に描画し(最大40条規模でも
-     見やすい)、条ごとに独立してドラッグ操作できるようにする。選択中の
-     条・移動先プレビューは別レイヤーで重ねて表示する。 */
-  function renderSplitVisual(sources,seq,confirmed,colorMap){
+     見やすい)、条ごとに独立してドラッグ操作できるようにする。ラベルは
+     ロット番号下3桁と板幅のみとし、狭いマスでも読める簡潔さを優先する
+     (ロット番号全体・公差は詳細行とツールチップで確認する)。 */
+  function renderSplitVisual(sources,seq,colorMap){
     const strip=$('#splitVisualStrip'),count=$('#splitVisualCount'),detail=$('#splitVisualDetail');
     const total=seq.length;
     if(!strip)return;
@@ -563,17 +567,18 @@
     for(let i=0;i<total;i++){
       const lot=seq[i];
       const left=layout.cum[i]/layout.totalUnits*100,width=(layout.cum[i+1]-layout.cum[i])/layout.totalUnits*100;
-      const fullyConfirmed=!!confirmed[i];
       const bg=lot?(colorMap[lot]||'#8a9a97'):'transparent';
-      const label=lot?esc(lot):'未割当';
-      const widthText=lot&&widthMap[lot]!==''&&widthMap[lot]!==undefined?`幅${esc(String(widthMap[lot]))} ／ `:'';
+      const fullLabel=lot?esc(lot):'未割当';
+      const hasWidth=lot&&widthMap[lot]!==''&&widthMap[lot]!==undefined;
+      const widthText=hasWidth?esc(String(widthMap[lot])):'';
       const tolText=lot?esc(tolMap[lot]||''):'';
-      const wide=width>5;
-      html+=`<div class="split-visual-block${lot?'':' empty'}${fullyConfirmed?' confirmed':' unconfirmed'}" data-start="${i}" data-end="${i}" data-lot="${lot?esc(lot):''}" style="left:${left}%;width:${width}%;background-color:${bg}" title="${label} ／ ${i+1}条目 ／ ${widthText}${tolText} ／ ${fullyConfirmed?'確認済み':'未確認'}">${wide?`<span class="split-visual-block-label">${label}</span>`:''}${!fullyConfirmed?'<i class="split-visual-unconfirmed-mark" aria-hidden="true"></i>':''}</div>`;
+      const wide=width>4;
+      const cellLabel=lot?`<span class="split-visual-block-label"><b>${esc(lotSuffix3(lot))}</b>${hasWidth?`<small>${widthText}</small>`:''}</span>`:'';
+      html+=`<div class="split-visual-block${lot?'':' empty'}" data-start="${i}" data-end="${i}" data-lot="${lot?esc(lot):''}" style="left:${left}%;width:${width}%;background-color:${bg}" title="${fullLabel} ／ ${i+1}条目${hasWidth?` ／ 幅${widthText}`:''}${tolText?` ／ ${tolText}`:''}">${wide?cellLabel:''}</div>`;
     }
     html+='<div class="split-visual-ghost" id="splitVisualGhost" hidden></div></div>';
     strip.innerHTML=html;
-    if(count){const confirmedTotal=confirmed.filter(Boolean).length;count.textContent=`${confirmedTotal}/${total}条 確認済み`}
+    if(count)count.textContent=`${total}条`;
     if(detail)detail.textContent='';
     ensureSplitVisualWiring();
   }
@@ -588,7 +593,7 @@
     ghost.style.left=(cum[dropIndex]/totalUnits*100)+'%';
     ghost.style.width=(widthUnits/totalUnits*100)+'%';
     ghost.style.background=dragBlock.color||'#8a9a97';
-    ghost.innerHTML=`<span class="split-visual-block-label">${esc(dragBlock.lot||'')}</span>`;
+    ghost.innerHTML=`<span class="split-visual-block-label"><b>${esc(lotSuffix3(dragBlock.lot||''))}</b></span>`;
   }
   function hideGhost(){const ghost=$('#splitVisualGhost');if(ghost)ghost.hidden=true}
   function flashLotInVisual(lot){
@@ -604,15 +609,15 @@
   // 「範囲選択→別ドラッグで移動」の2段階方式は、条数が少なく1条あたりの
   // 帯が広い場合にセル境界をまたぐ判定が働かず選択自体が成立しないことが
   // あり、認知負荷も高かったため廃止した。掴んだ位置からのポインタ移動が
-  // 閾値を超えるまでは「タップ」として扱い(確認済みトグル)、超えたら
-  // 「ドラッグ」として即座に追従・ゴースト表示を開始する。
+  // 閾値を超えるまでは「タップ」として扱い(詳細表示のみ・並びは変えない)、
+  // 超えたら「ドラッグ」として即座に追従・ゴースト表示を開始する。
   const DRAG_START_THRESHOLD=6;
   let splitVisualWired=false;
   function ensureSplitVisualWiring(){
     const strip=$('#splitVisualStrip');
     if(!strip||splitVisualWired)return;
     splitVisualWired=true;
-    let downIdx=-1,downX=0,downY=0,dragging=false,dragBlock=null;
+    let downX=0,downY=0,dragging=false,dragBlock=null;
     function context(){
       const sources=splitSourceRows(),total=sources.reduce((a,x)=>a+x.count,0);
       return{sources,total,seq:ensureSequenceLength(total),confirmed:ensureConfirmedLength(total)};
@@ -647,9 +652,8 @@
       strip.classList.remove('split-visual-dragging');
       hideGhost();
       if(!dragging){
-        const{seq,confirmed}=context();
-        if(seq[downIdx]!=null){pushUndoSnapshot(seq,confirmed);confirmed[downIdx]=!confirmed[downIdx]}
-        renderSplit();
+        // ほぼ動かさないタップは詳細表示(pointerdown時にupdateDetailForで
+        // 既に表示済み)のみとし、並び・状態は一切変更しない。
       }else{
         const drop=dropTargetIndex(e.clientX);
         const{seq,confirmed,total}=context();
@@ -668,7 +672,7 @@
       e.preventDefault();
       const colorMap=splitLotColorMap(sources);
       dragBlock={start:idx,end:idx,grabOffset:0,lot:seq[idx],color:colorMap[seq[idx]],dropTarget:idx};
-      downIdx=idx;downX=e.clientX;downY=e.clientY;dragging=false;
+      downX=e.clientX;downY=e.clientY;dragging=false;
       updateDetailFor(idx);
       document.addEventListener('pointermove',handleMove);
       document.addEventListener('pointerup',handleUp);
@@ -680,15 +684,15 @@
      公差を表示する。クリックすると視覚図内の該当する条を一時的に光らせ、
      40条規模でも該当ロットの位置をすぐ見つけられるようにする(位置特定用、
      値は変更しない)。 */
-  function renderSplitCandidates(sources,seq,confirmed,colorMap){
+  function renderSplitCandidates(sources,seq,colorMap){
     const box=$('#splitSources');if(!box)return;
     if(!sources.length){box.innerHTML='<div class="split-candidates-empty">条割の対象となる子ロットがありません。</div>';return}
     box.innerHTML=sources.map(s=>{
-      const n=countAssigned(seq,s.lot),confN=seq.reduce((a,lot,i)=>a+(lot===s.lot&&confirmed[i]?1:0),0),active=activeLot===s.lot;
+      const n=countAssigned(seq,s.lot),active=activeLot===s.lot;
       return `<div class="split-candidate${active?' active':''}" data-lot="${esc(s.lot)}" role="button" tabindex="0">
         <span class="split-candidate-swatch" style="background:${colorMap[s.lot]||'#8a9a97'}"></span>
         <span class="split-candidate-body">
-          <span class="split-candidate-head"><b>${esc(s.lot)}</b><em>${n}条${confN<n?` ／ ${confN}確認済み`:' ／ 確認済み'}</em></span>
+          <span class="split-candidate-head"><b>${esc(s.lot)}</b><em>${n}条</em></span>
           <span class="split-candidate-meta">${s.width!==''&&s.width!==undefined?`幅${esc(String(s.width))} ／ `:''}${esc(s.missing?'子ロット情報取得失敗':(s.tol||'—'))}</span>
         </span>
       </div>`;
@@ -702,8 +706,7 @@
   }
 
   /* 条割結果プレビュー(#splitResult)。視覚図/候補カードと同じ色を左端に
-     アクセントとして付け、色の対応関係が一目でわかるようにする。未確認の
-     条が残るグループには注意マークを付ける。 */
+     アクセントとして付け、色の対応関係が一目でわかるようにする。 */
   function splitGrouped(seq,sources){
     const map=Object.fromEntries(sources.map(x=>[x.lot,x])),groups=[];
     seq.forEach(lot=>{
@@ -714,16 +717,11 @@
     });
     return groups.filter(Boolean);
   }
-  function renderSplitResult(seq,confirmed,sources,colorMap){
+  function renderSplitResult(seq,sources,colorMap){
     const box=$('#splitResult');if(!box)return;
     const groups=splitGrouped(seq,sources);
     if(!groups.length){box.innerHTML='<div class="split-result-empty">視覚図で条を確認・並べ替えると、ここに結果が表示されます。</div>';return}
-    let i=0;
-    box.innerHTML=groups.map((g,gi)=>{
-      const start=i,end=i+g.count-1;i=end+1;
-      const fullyConfirmed=confirmed.slice(start,end+1).every(Boolean);
-      return `<div class="split-result-row${fullyConfirmed?'':' unconfirmed'}" style="border-left-color:${colorMap[g.lot]||'#8a9a97'}"><b class="split-result-index">${gi+1}</b><span class="split-result-lot">${esc(g.lot)}</span><span class="split-result-count">${g.count}条</span><span class="split-result-width">${esc(g.width||'—')}</span>${fullyConfirmed?'':'<i class="split-result-flag" title="未確認の条があります">●</i>'}</div>`;
-    }).join('');
+    box.innerHTML=groups.map((g,gi)=>`<div class="split-result-row" style="border-left-color:${colorMap[g.lot]||'#8a9a97'}"><b class="split-result-index">${gi+1}</b><span class="split-result-lot">${esc(g.lot)}</span><span class="split-result-count">${g.count}条</span><span class="split-result-width">${esc(g.width||'—')}</span></div>`).join('');
   }
 
   /* 条割変更モーダルの描画。母材幅比率の視覚図(上)・子ロット候補(左)・
@@ -732,11 +730,11 @@
      初期値として自動生成する(seedSplitDefaults)。 */
   function renderSplit(){
     const sources=splitSourceRows(),total=sources.reduce((a,x)=>a+x.count,0);
-    const{seq,confirmed}=seedSplitDefaults(sources,total);
+    const{seq}=seedSplitDefaults(sources,total);
     const colorMap=splitLotColorMap(sources);
-    renderSplitCandidates(sources,seq,confirmed,colorMap);
-    renderSplitVisual(sources,seq,confirmed,colorMap);
-    renderSplitResult(seq,confirmed,sources,colorMap);
+    renderSplitCandidates(sources,seq,colorMap);
+    renderSplitVisual(sources,seq,colorMap);
+    renderSplitResult(seq,sources,colorMap);
     $('#splitTotal').textContent=total;
     $('#splitLotCount').textContent=new Set(sources.map(x=>x.lot)).size;
     $('#applySplit').disabled=total===0||seq.some(x=>x==null);
@@ -760,10 +758,8 @@
   function applySplit(){
     const sources=splitSourceRows();
     if(!sources.length){alert('このロットには条割の対象となる子ロットが見つかりません。');return}
-    const total=sources.reduce((a,x)=>a+x.count,0),seq=ensureSequenceLength(total),confirmed=ensureConfirmedLength(total);
+    const total=sources.reduce((a,x)=>a+x.count,0),seq=ensureSequenceLength(total);
     if(seq.some(x=>x==null)){alert('全条分を登録してください。');return}
-    const unconfirmedCount=confirmed.filter(x=>!x).length;
-    if(unconfirmedCount>0&&!confirm(`${unconfirmedCount}/${total}条が未確認のままです。このまま条割を確定しますか？`))return;
     const map=Object.fromEntries(sources.map(x=>[x.lot,x])),groups=[];
     seq.forEach(lot=>{const last=groups.at(-1);if(last&&last.lot===lot)last.count++;else groups.push({lot,count:1,source:map[lot]})});
     if(groups.length>8){alert('システム上8を超える分割は設定できません。');return}
@@ -886,7 +882,6 @@
     const totalCount=sources.reduce((a,x)=>a+x.count,0),horiz=Math.max(1,+($('#horizontalCount')?.value)||1);
     const mismatch=totalCount!==horiz;
     el.innerHTML=`
-      <div class="split-panel-status split-panel-status-pending">⚠ 分割データがあります（${esc(widthPatternLabel(info.widthPattern))}・子ロット${sources.length}件）。「条割変更」で条ごとの並びを設定してください。</div>
       <table class="split-panel-table"><thead><tr><th>子ロット№</th><th>条数</th><th>幅</th><th>公差</th></tr></thead><tbody>${candidateRowsHtml(sources)}</tbody></table>
       ${mismatch?`<div class="split-mismatch-badge">子ロット条数合計(${totalCount})が横割数(${horiz})と一致しません。「条割変更」で内容を確認してください。</div>`:''}
       ${scrapWidthLineHtml()}

@@ -267,7 +267,7 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 .tabs button{border-radius:0;min-height:36px;display:flex;align-items:center;justify-content:center;white-space:nowrap}
 .tabs .active{background:#fff;border-bottom-color:#fff;font-weight:700}
 
-.basic-card,.quality-grade-panel,.data-management-panel{padding:8px;background:#fff;border:1px solid var(--line);border-radius:10px}
+.basic-card,.quality-grade-panel,.data-management-panel,.split-pane{padding:8px;background:#fff;border:1px solid var(--line);border-radius:10px}
 .info-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px 5px}
 .field{min-width:0}
 .field.full{grid-column:1/-1}
@@ -312,7 +312,8 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 
 .analysis h3,.quality h3{margin:0;padding:6px 8px;background:#fff1d9;border:1px solid var(--line)}
 .analysis table{width:100%}
-.split-pane,.debug-pane{height:250px;overflow:auto;padding:7px;background:#fff;border:1px solid var(--line);border-top:0}
+.split-pane{overflow:auto}
+.debug-pane{height:250px;overflow:auto;padding:7px;background:#fff;border:1px solid var(--line);border-top:0}
 .debug-pane pre{white-space:pre-wrap;font-size:var(--fs-micro)}
 
 /* ---------- 6. 中央ペイン（選択項目） ---------- */
@@ -642,7 +643,7 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
    色は候補カード・視覚図・結果プレビューの3箇所で共通(splitLotColorMap)
    にして対応関係を掴みやすくする。 */
 .record-modal[hidden]{display:none}
-.split-dialog{width:min(1180px,96vw);height:min(780px,92vh);background:#eef2f3;border-radius:14px;overflow:hidden;box-shadow:0 24px 80px #0007}
+.split-dialog{width:min(1360px,97vw);height:min(860px,94vh);background:#eef2f3;border-radius:14px;overflow:hidden;box-shadow:0 24px 80px #0007}
 .split-dialog>header{height:64px;display:flex;justify-content:space-between;align-items:center;padding:10px 20px;background:var(--nav);color:#fff}
 .split-dialog h2{margin:2px 0;font-size:21px}
 .split-dialog small{color:#7fd8d0;letter-spacing:.06em}
@@ -672,47 +673,44 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .split-candidate-meta{font-size:12px;color:#79898d}
 
 /* 条割結果プレビュー(#splitResult)。左端に視覚図/候補カードと同じ色の
-   アクセントを付け、対応関係を示す。未確認の条が残るグループには注意
-   マークを付ける。 */
+   アクセントを付け、対応関係を示す。 */
 .split-result{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:6px}
 .split-result-row{display:grid;grid-template-columns:22px 1fr auto auto;align-items:center;gap:10px;padding:9px 12px;background:#fff;border:1px solid #dbe4e6;border-left-width:5px;border-left-style:solid;border-radius:8px;font-size:13px}
-.split-result-row.unconfirmed{background:#fffaf0}
 .split-result-index{color:#9aabab;font-weight:800;font-size:12px}
 .split-result-lot{font-weight:800;color:#1b3438}
 .split-result-count{color:#3a565d;font-weight:700}
 .split-result-width{color:#61757c;font-size:12px;justify-self:end}
 .split-result-tol{display:none}
-.split-result-flag{font-style:normal;color:#d97706;font-size:10px;justify-self:end}
 .split-apply-btn{margin-top:10px;height:44px;font-size:14px;font-weight:800;color:#fff;background:var(--teal);border:0;border-radius:10px;cursor:pointer;transition:filter .12s}
 .split-apply-btn:hover:not(:disabled){filter:brightness(1.08)}
 .split-apply-btn:disabled{background:#c4d4d7;color:#fff;cursor:not-allowed}
 
 /* 条の並び視覚図: 母材幅をほぼ100%として、各条を実際の条幅比率(子ロットの
    製造板幅)で並べた帯として表示する(splitVisualLayout)。同じロットが
-   連続する範囲は1つの帯にまとめ、最大40条規模でも見やすくする。帯自体が
-   操作面(タップで確認済みトグル、ドラッグでその場から即座に追従して
-   並べ替え。ドロップ予定位置には同じ色・同じ幅のゴーストを差し込んで
-   表示する)。 */
-.split-visual{grid-column:1/-1;background:#fff;border:1px solid #dbe4e6;border-radius:12px;padding:14px 16px;box-shadow:0 1px 3px #0000000f}
+   連続していても1条=1マスの個別セルとして描画し、最大40条規模でも見やすく
+   する。帯自体が操作面(ドラッグでその場から即座に追従して並べ替え。
+   ドロップ予定位置には同じ色・同じ幅のゴーストを差し込んで表示する)。 */
+.split-visual{grid-column:1/-1;background:#fff;border:1px solid #dbe4e6;border-radius:12px;padding:16px 18px;box-shadow:0 1px 3px #0000000f}
 .split-visual-head{display:flex;align-items:baseline;gap:12px;margin-bottom:10px;flex-wrap:wrap}
 .split-visual-head b{font-size:15px;color:#1b3438}
 .split-visual-count{font-size:12px;font-weight:800;color:var(--teal-dark);background:#e3f5f3;border-radius:20px;padding:2px 10px}
 .split-visual-hint{margin-left:auto;font-size:11px;color:#8a9a97}
-.split-visual-strip{position:relative;height:64px;border-radius:10px;background:#eef2f4;touch-action:none;user-select:none}
+.split-visual-row{display:flex;align-items:stretch;gap:8px}
+.split-visual-end{flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:30px;border-radius:8px;background:#e3ecee;color:#4d6169;font-size:11px;font-weight:800;letter-spacing:.03em}
+.split-visual-strip{position:relative;flex:1;min-width:0;height:88px;border-radius:10px;background:#eef2f4;touch-action:none;user-select:none}
 .split-visual-track{position:relative;width:100%;height:100%}
 .split-visual-block{position:absolute;top:0;bottom:0;box-sizing:border-box;display:flex;align-items:center;justify-content:center;overflow:hidden;border-right:2px solid #eef2f4;color:#fff;text-shadow:0 1px 1px #0006;cursor:grab;transition:filter .1s}
 .split-visual-block:hover{filter:brightness(1.07)}
 .split-visual-block:last-child{border-right:0}
 .split-visual-strip.split-visual-dragging .split-visual-block{cursor:grabbing}
-.split-visual-block.empty{background:repeating-linear-gradient(135deg,#eef2f4 0 6px,#e3e9eb 6px 12px)!important;border:1.5px dashed #c4d4d7;cursor:default}
-.split-visual-block.unconfirmed{background-image:repeating-linear-gradient(135deg,#ffffff59 0 6px,transparent 6px 12px)}
-.split-visual-block-label{display:flex;flex-direction:column;align-items:center;line-height:1.2;font-size:11px;font-weight:800;white-space:nowrap;padding:0 4px}
-.split-visual-block-label b{font-size:10px;font-weight:700;opacity:.85}
-.split-visual-unconfirmed-mark{position:absolute;top:4px;right:4px;width:7px;height:7px;border-radius:50%;background:#fff;box-shadow:0 0 0 1.5px #d97706}
+.split-visual-block.empty{background:#eef2f4!important;border:1.5px dashed #c4d4d7;cursor:default}
+.split-visual-block-label{display:flex;flex-direction:column;align-items:center;line-height:1.25;font-size:12px;font-weight:800;white-space:nowrap;padding:0 4px}
+.split-visual-block-label small{font-size:10px;font-weight:700;opacity:.85}
 .split-visual-block.flash{animation:splitVisualFlash .9s ease}
 @keyframes splitVisualFlash{0%,100%{box-shadow:none}30%{box-shadow:0 0 0 3px #fff,0 0 0 7px var(--teal)}}
 .split-visual-block.lifted{opacity:.35}
 .split-visual-ghost{position:absolute;top:-5px;bottom:-5px;display:flex;align-items:center;justify-content:center;border:2px dashed #fff;border-radius:8px;box-shadow:0 0 0 3px var(--nav),0 6px 14px #00000040;color:#fff;text-shadow:0 1px 1px #0006;overflow:hidden;pointer-events:none;z-index:3;transition:left .05s linear,width .05s linear}
+.split-visual-ghost[hidden]{display:none}
 .split-visual-detail{min-height:16px;margin-top:8px;font-size:12px;font-weight:700;color:#3a565d}
 .split-visual-empty{padding:14px;text-align:center;color:#8a9a97;font-size:13px}
 .split-visual-actions{display:flex;gap:8px;margin-top:12px}
