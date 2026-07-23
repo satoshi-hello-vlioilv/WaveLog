@@ -1,13 +1,13 @@
 "use strict";
-/* lot-split.js: 条割(分割)ロットの公差を条ごとに正しく判定へ反映する。
+/* lot-split.js: 条割(ロット分割)機能の所有ファイル。
    ------------------------------------------------------------
-   背景: 条割変更(#openSplit)は既に存在し、どの条がどの子ロットに
-   属するかを並び替えで指定できる。しかし旧実装は splitGroups/
-   toleranceTags を保存するだけで、実際の判定(toleranceDetail)は
-   常に「現在開いている親ロット1つ分」の製造板厚・製造板幅と、その
-   親ロット自身の公差プラス/マイナスのみを使っていた。分割後は
-   子ロットごとに目標幅・公差が異なりうるため、これは判定として
-   誤りうる。
+   このファイルが持つもの:
+   - 分割データ(親子管理_子カード・コンマ5本分割_切断巾)の検出と子ロット再検索
+   - 条割変更モーダル(#splitModal)の描画・操作・確定(renderSplit/openSplit/applySplit)
+   - 幅分割情報パネル(#splitGrid)と幅分割タブバッジの表示
+   - 条ごとの公差判定への配線(toleranceDetailの分割対応ラップ)
+   - 子ロット行を直接開いた場合の親ロット読替(データエラー回避)
+   - 元幅（実績）と条幅合計から求める両耳合計屑幅の表示
 
    参考にした旧VBA(添付 [A1]グローバル接続INPUT / [A2]測定ロジック)
    の考え方:
@@ -290,16 +290,17 @@
     return out;
   }
 
-  /* splitSourceRows()を、非同期取得済みキャッシュを返す同期関数に置き換える。
-     renderSplit/applySplit(core.js)は元のままこの関数を同期呼び出しし続ける。
-     幅分割情報パネル(#splitGrid)側でも同じキャッシュを使い、条割変更モーダルを
-     開く前から候補データを能動的に表示できるようにする(ensureSplitCandidatesLoaded)。
+  /* splitSourceRows(): 非同期取得済みキャッシュを返す同期関数。renderSplit/
+     applySplitはこの関数を同期呼び出しする。幅分割情報パネル(#splitGrid)側でも
+     同じキャッシュを使い、条割変更モーダルを開く前から候補データを能動的に
+     表示できるようにする(ensureSplitCandidatesLoaded)。
      ロットが変わったらキャッシュを破棄するため、取得時のロット№をキーとして保持する。 */
   let splitSourcesCache=null,splitSourcesCacheKey=null,splitSourcesLoading=null;
   function currentSplitCacheKey(){return S.measure?.basic?.lotNo||''}
-  splitSourceRows=function(){
+  function splitSourceRows(){
     return splitSourcesCache&&splitSourcesCacheKey===currentSplitCacheKey()?splitSourcesCache:[];
-  };
+  }
+  window.splitSourceRows=splitSourceRows;
   async function ensureSplitCandidatesLoaded(force){
     const key=currentSplitCacheKey();
     if(!force&&splitSourcesCache&&splitSourcesCacheKey===key)return splitSourcesCache;
@@ -321,19 +322,38 @@
   }
   window.ensureSplitCandidatesLoaded=ensureSplitCandidatesLoaded;
 
-  const baseOpenSplit=typeof openSplit==='function'?openSplit:null;
-  openSplit=async function(){
+  /* 条割変更モーダルの描画。候補一覧(左)・条割結果プレビュー(中)・登録順(右)を
+     splitSourceRows()/splitSequenceから構成する。旧core.jsにあった基盤実装を
+     このファイルへ一本化した(末尾の幅分割情報パネル更新のみ、旧実装の簡易文字列
+     ではなくrefreshSplitStatusPanel()を正とする)。 */
+  function splitGrouped(sequence,sources){const map=Object.fromEntries(sources.map(x=>[x.lot,x])),groups=[];sequence.forEach(lot=>{const last=groups.at(-1);if(last&&last.lot===lot)last.count++;else groups.push({lot,count:1,width:map[lot]?.width||'',tol:map[lot]?.tol||''})});return groups}
+  function renderSplit(){
+    const sources=splitSourceRows(),seq=S.measure.settings.splitSequence||[],counts={};
+    seq.forEach(x=>counts[x]=(counts[x]||0)+1);
+    const total=sources.reduce((a,x)=>a+x.count,0);
+    $('#splitSources').innerHTML='<div class="split-row head"><b>ロットNo.</b><b>横割</b><b>割幅</b><b>公差</b></div>'+sources.map((x,i)=>`<div class="split-row source ${counts[x.lot]>=x.count?'disabled':''}" data-source="${i}"><span>${esc(x.lot)}</span><span>${x.count}</span><span>${esc(x.width)}</span><span>${esc(x.tol)}</span></div>`).join('');
+    document.querySelectorAll('[data-source]').forEach(row=>row.ondblclick=()=>{const x=sources[+row.dataset.source],used=counts[x.lot]||0;if(used<x.count){seq.push(x.lot);S.measure.settings.splitSequence=seq;renderSplit()}});
+    const groups=splitGrouped(seq,sources);
+    $('#splitResult').innerHTML='<div class="split-row head"><b>ロットNo.</b><b>横割</b><b>割幅</b><b>公差</b></div>'+Array.from({length:8},(_,i)=>{const g=groups[i];return `<div class="split-row ${g?'':'disabled'}"><span>${esc(g?.lot||'')}</span><span>${g?.count||''}</span><span>${esc(g?.width||'')}</span><span>${esc(g?.tol||'')}</span></div>`}).join('');
+    $('#splitSequence').innerHTML=seq.map((x,i)=>`<li>${i+1} - ${esc(x)}</li>`).join('');
+    $('#splitTotal').textContent=total;$('#splitLotCount').textContent=new Set(sources.map(x=>x.lot)).size;$('#splitRegistered').textContent=seq.length;
+    $('#applySplit').disabled=seq.length!==total||groups.length>8;
+    refreshSplitStatusPanel();
+  }
+  window.renderSplit=renderSplit;
+
+  async function openSplit(){
     if(!S.measure)return;
     $('#splitModal').hidden=false;
     if(!splitSourcesCache||splitSourcesCacheKey!==currentSplitCacheKey()){
       const box=$('#splitSources');if(box)box.innerHTML='<div class="split-row-loading">子ロット情報を取得しています…</div>';
     }
     await ensureSplitCandidatesLoaded();
-    if(typeof renderSplit==='function')renderSplit();
-  };
+    renderSplit();
+  }
+  window.openSplit=openSplit;
 
-  const baseApplySplit=typeof applySplit==='function'?applySplit:null;
-  applySplit=function(){
+  function applySplit(){
     const sources=splitSourceRows();
     if(!sources.length){alert('このロットには条割の対象となる子ロットが見つかりません。');return}
     const seq=S.measure.settings.splitSequence||[],total=sources.reduce((a,x)=>a+x.count,0);
@@ -353,17 +373,14 @@
     if(typeof renderMeasureGrid==='function')renderMeasureGrid();
     if(typeof updateMeasurementHeading==='function')updateMeasurementHeading();
     refreshSplitStatusPanel();
-  };
+  }
+  window.applySplit=applySplit;
+  // 条割変更モーダルの全ボタン結線(このファイルがモーダルの所有者)。
   const applyBtn=$('#applySplit');if(applyBtn)applyBtn.onclick=applySplit;
   const openBtn=$('#openSplit');if(openBtn)openBtn.onclick=openSplit;
-
-  // core.jsのrenderSplit()は末尾で#splitGridへ簡易文字列を書き込むため、その
-  // 直後に必ず自前のリッチな幅分割情報パネルへ描き直す(#splitGridの内容は
-  // 常にrefreshSplitStatusPanel()が最終的な権威を持つようにする)。
-  if(typeof renderSplit==='function'){
-    const baseRenderSplitForPanel=renderSplit;
-    renderSplit=function(){baseRenderSplitForPanel();refreshSplitStatusPanel()};
-  }
+  const closeBtn=$('#closeSplit');if(closeBtn)closeBtn.onclick=()=>$('#splitModal').hidden=true;
+  const undoBtn=$('#undoSplit');if(undoBtn)undoBtn.onclick=()=>{S.measure.settings.splitSequence?.pop();renderSplit()};
+  const resetBtn=$('#resetSplit');if(resetBtn)resetBtn.onclick=()=>{S.measure.settings.splitSequence=[];renderSplit()};
 
   /* 元幅（実績、BOX実績_板幅）から条幅合計を差し引くと、スリット時に両耳から
      削り取られる屑幅の合計(片耳ごとの内訳ではなく両耳分を合算した値)が求まる。
