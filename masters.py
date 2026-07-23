@@ -649,8 +649,11 @@ def filter_preset_list():
     except Exception:filters=[]
     if not isinstance(filters,list):filters=[]
     items.append({'id':r[0],'name':str(r[1] or '').strip(),'db':str(r[2] or '').strip(),'table':str(r[3] or '').strip(),'filters':filters,'uses':int(r[5] or 0),'last_used':r[6].isoformat() if r[6] else None,'updated_at':r[8].isoformat() if r[8] else None,'updated_by':(str(r[9]).strip() if len(r)>9 and r[9] else '')})
-  if db_key:items=[x for x in items if not x['db'] or x['db']==db_key]
-  if table:items=[x for x in items if not x['table'] or x['table']==table]
+  # ファイル(DB)＆テーブルごとに個別管理するため、対象DB/対象テーブルが
+  # 空欄のプリセット(=以前の実装が汎用として扱っていたもの)であっても、
+  # 厳密に一致しない限り対象外とする。
+  if db_key:items=[x for x in items if x['db']==db_key]
+  if table:items=[x for x in items if x['table']==table]
   return jsonify(ok=True,items=items,table=FILTER_PRESET_TABLE,created=not before,master_path=str(path))
  except Exception as e:return jsonify(error=f'フィルタプリセット読込失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
 

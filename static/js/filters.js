@@ -66,6 +66,25 @@
     if(forceInject)S.genericFilters.unshift({column:EQUIPMENT_FILTER_COLUMN,op:'contains',value:equipment,locked:'equipment'});
   }
 
+  /* ---- アクティブなフィルタ設定状態(S.genericFilters)を、ファイル(DB)＆
+     テーブルごとに個別管理する ----
+     従来はS.genericFiltersがどのDB/テーブルにも属さない単一の共有配列で、
+     デフォルトフィルタが設定されていないテーブルへ切り替えると何も
+     リセットされず、直前のテーブル(存在しない列の条件や鍵付き設備条件を
+     含む)がそのまま残り続けていた。切替の都度、直前のコンテキストの
+     状態を保存し、切替先のコンテキスト専用の状態を復元する。鍵付き
+     必須条件は毎回applyDefaultFiltersFor/ensureEquipmentFilterForから
+     新しく導出し直されるものなので、保存対象からは除く。 */
+  let activeFilterContextKey=null;
+  const activeFilterStateCache={};
+  function saveActiveFilterState(){
+    if(activeFilterContextKey==null)return;
+    activeFilterStateCache[activeFilterContextKey]=S.genericFilters.filter(f=>!isLockedFilter(f)).map(f=>({...f}));
+  }
+  function restoreActiveFilterState(key){
+    return (activeFilterStateCache[key]||[]).map(f=>({...f}));
+  }
+
   function readLocalPresets(){try{return JSON.parse(localStorage.getItem(FILTER_STORE)||'[]')}catch(_){return []}}
   function writeLocalPresets(){try{localStorage.setItem(FILTER_STORE,JSON.stringify((S.filterPresets||[]).slice(0,120)))}catch(_){}}
   function readUsage(){try{return JSON.parse(localStorage.getItem(USAGE_STORE)||'{}')}catch(_){return {}}}
@@ -75,7 +94,12 @@
   function noValueOp(op){return ['empty','not_empty'].includes(op)}
   function filterKey(f){return [f.column,f.op,f.value].join('\u001f')}
   function formatTol(kind,v){return typeof fixedToleranceValue==='function'?fixedToleranceValue(kind,v):(Number.isFinite(Number(v))?String(v):'-')}
-  function currentTablePresets(){return (S.filterPresets||[]).filter(p=>(!p.db||p.db===S.db)&&(!p.table||p.table===S.table))}
+  /* db/tableが完全一致するプリセットのみを対象とする(厳密一致)。以前は
+     対象DB/対象テーブルが空欄のプリセットを「どのテーブルにも適用される
+     もの」として扱っていたが、保存時は必ずS.db/S.tableを記録するため
+     本来空欄は発生しない想定。ファイル/テーブルごとに完全に個別管理する
+     ため、空欄=汎用というフォールバックは廃止する。 */
+  function currentTablePresets(){return (S.filterPresets||[]).filter(p=>p.db===S.db&&p.table===S.table)}
   function condLabel(f){return `${f.column} ${opShort(f.op)}${noValueOp(f.op)?'':' '+f.value}`}
   function bumpCondUsage(f){const k=filterKey(f);const u=S.filterCondUsage[k]||{count:0};u.count=(u.count||0)+1;u.at=Date.now();u.f={column:f.column,op:f.op,value:f.value};S.filterCondUsage[k]=u;writeUsage()}
 
@@ -98,7 +122,8 @@
   async function loadMasterPresets(opts={}){
     if(opts.inline!==false)setInlineLoading(true,'マスタからフィルタを読込中');
     try{
-      const r=await api('/api/filter-presets');
+      const q=new URLSearchParams();if(S.db)q.set('db',S.db);if(S.table)q.set('table',S.table);
+      const r=await api('/api/filter-presets'+(q.toString()?'?'+q:''));
       S.filterPresets=(r.items||[]).map(x=>({id:x.id,name:x.name,db:x.db,table:x.table,filters:Array.isArray(x.filters)?x.filters:[],uses:x.uses||0,lastUsed:x.last_used,updatedAt:x.updated_at,master:true}));
       S.filterPresetSource='master';writeLocalPresets();return true;
     }catch(e){
@@ -116,7 +141,7 @@
     if(canWait())showWaiting('フィルタをマスタへ保存しています','マスタ.accdb のフィルタプリセットマスタへ書き込み中','条件を1件ずつ登録しています');
     let saved=0,skipped=0,failed=0;
     for(const f of savable){
-      const dup=(S.filterPresets||[]).some(p=>(p.filters||[]).length===1&&filterKey(p.filters[0])===filterKey(f)&&(!p.db||p.db===S.db)&&(!p.table||p.table===S.table));
+      const dup=(S.filterPresets||[]).some(p=>(p.filters||[]).length===1&&filterKey(p.filters[0])===filterKey(f)&&p.db===S.db&&p.table===S.table);
       if(dup){skipped++;continue}
       const payload={name:condLabel(f).slice(0,60),db:S.db,table:S.table,filters:[f]};
       try{
@@ -456,10 +481,10 @@
   }
   function renderFilterPresetList(){
     const list=$('#filterPresetList');if(!list)return;
-    const all=S.filterPresets||[],forThis=currentTablePresets();
+    const forThis=currentTablePresets();
     const summary=$('#filterPresetSummary');
-    if(summary)summary.textContent=`保存先: ${S.filterPresetSource==='master'?'マスタ.accdb':'この端末（マスタ未接続）'}　全 ${all.length}件（現在の一覧向け ${forThis.length}件）`;
-    const ordered=[...forThis,...all.filter(p=>!forThis.includes(p))];
+    if(summary)summary.textContent=`保存先: ${S.filterPresetSource==='master'?'マスタ.accdb':'この端末（マスタ未接続）'}　このテーブルの登録フィルタ ${forThis.length}件（${S.db||'-'} / ${S.table||'-'}）`;
+    const ordered=forThis;
     const loading=list.querySelector(':scope > .panel-loading');
     list.querySelectorAll(':scope > .filter-preset-item, :scope > .record-empty').forEach(x=>x.remove());
     if(!ordered.length){const e=document.createElement('div');e.className='record-empty';e.textContent='登録済みフィルタはありません。「マスタへ保存」で登録できます。';list.appendChild(e);return}
@@ -581,7 +606,18 @@
   // 注入する(デフォルトフィルタが全置換しても、必ずこの条件が残るように)。
   if(typeof selectTable==='function'){
     const selectTableDefaultFilterBase=selectTable;
-    selectTable=async function(t){applyDefaultFiltersFor(S.db,t);ensureEquipmentFilterFor(S.db,{forceInject:true});return selectTableDefaultFilterBase(t)};
+    selectTable=async function(t){
+      // 切替先に応じてS.genericFiltersを個別コンテキストへ入れ替える。
+      // (1)直前のコンテキストの状態を保存 (2)切替先の保存済み状態を復元
+      // (3)デフォルト/鍵付き条件をそのコンテキスト向けに再適用。
+      saveActiveFilterState();
+      const key=defaultMapKey(S.db,t);
+      S.genericFilters=restoreActiveFilterState(key);
+      applyDefaultFiltersFor(S.db,t);
+      ensureEquipmentFilterFor(S.db,{forceInject:true});
+      activeFilterContextKey=key;
+      return selectTableDefaultFilterBase(t);
+    };
   }
 
   // 起動時: バー生成 → マスタからサジェスト材料を先読み（ローディング表示つき）。

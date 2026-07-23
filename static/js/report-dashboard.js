@@ -18,6 +18,9 @@
 ============================================================ */
 (function(){
  let rpState={items:[],query:'',sort:'updated-desc',selectedId:''},rpZoom='fit',rpCurrentScale=1;
+ // 条ごとのロット№/公差ラベルを、連続する行でも毎回表示するか、変化した
+ // 行だけに表示するか(見た目上のグルーピング)を切り替えられるようにする。
+ let rpRepeatLabels=true;
  const $id=id=>document.getElementById(id);
  function fmtDT(v){if(!v)return '-';const d=new Date(v);return Number.isNaN(d.getTime())?'-':d.toLocaleString('ja-JP',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'})}
  function fmtDimSafe(v,d){const raw=String(v??'').trim();if(raw==='')return '';const n=Number(raw);return Number.isFinite(n)?n.toFixed(d):raw}
@@ -64,6 +67,7 @@
         <button type="button" data-val="100">100%</button>
        </div>
        <span class="rp-zoom-readout" id="rpZoomReadout" title="Ctrlを押しながらホイールで拡大・縮小できます">100%</span>
+       <button type="button" id="reportLabelToggle" class="rp-btn-secondary" title="条ごとのロット№・板幅公差のラベルを、連続する行でも毎回表示するか、変化した行だけに表示するかを切り替えます">ラベル: 毎行表示</button>
        <button type="button" id="reportPrint" class="rp-btn-primary" disabled>印刷</button>
        <button type="button" id="reportPdf" class="rp-btn-secondary" disabled>PDFで保存</button>
       </div>
@@ -81,6 +85,7 @@
   const sort=$id('reportSort');if(sort)sort.onchange=()=>{rpState.sort=sort.value;renderLotList()};
   $id('reportPrint').onclick=printReport;$id('reportPdf').onclick=printReport;
   $id('reportBack').onclick=backToRecordList;
+  $id('reportLabelToggle').onclick=()=>{rpRepeatLabels=!rpRepeatLabels;updateLabelToggle();const cur=rpState.items.find(i=>i.id===rpState.selectedId);if(cur)renderReport(cur)};
   panel.querySelectorAll('[data-seg="rpZoomSeg"] button').forEach(b=>b.onclick=()=>setZoom(b.dataset.val));
   window.addEventListener('resize',()=>{if(rpZoom==='fit')fitPage();else if(rpZoom==='width')fitWidth()});
   // Ctrl(⌘)+ホイールで拡大縮小。通常のホイールは一覧のスクロールを妨げないよう素通しする。
@@ -91,6 +96,7 @@
    document.querySelectorAll('[data-seg="rpZoomSeg"] button').forEach(b=>b.classList.remove('active'));
    applyScale(rpCurrentScale*(e.deltaY<0?1.1:1/1.1));
   },{passive:false});
+  updateLabelToggle();
   return panel;
  }
 
@@ -99,6 +105,11 @@
     最大化(高さは超えてよく、縦スクロールで閲覧)、'100'=実寸、
     'custom'=Ctrl+ホイールによる任意倍率。印刷/PDF出力時はCSS側で
     transformを強制解除するため、画面上の倍率は出力に影響しない。 ---------- */
+ function updateLabelToggle(){
+  const b=$id('reportLabelToggle');if(!b)return;
+  b.textContent=rpRepeatLabels?'ラベル: 毎行表示':'ラベル: 変化時のみ表示';
+  b.classList.toggle('active',!rpRepeatLabels);
+ }
  function setZoom(v){
   rpZoom=v;
   document.querySelectorAll('[data-seg="rpZoomSeg"] button').forEach(b=>b.classList.toggle('active',b.dataset.val===v));
@@ -163,7 +174,9 @@
    const equipment=x.settings?.registeredEquipment||x.registeredEquipment||x.snapshot?.registeredEquipment||'-';
    const row=document.createElement('button');row.type='button';row.className='rp-lot-row'+(x.id===rpState.selectedId?' active':'');
    row.innerHTML=`<span class="rp-lot-main"><b title="${esc(x.basic?.lotNo||x.id)}">${esc(x.basic?.lotNo||x.id)}</b><em class="rp-status-badge ${statusClass(x.status)}">${esc(statusLabel(x.status))}</em></span><span class="rp-lot-sub" title="${esc(equipment)}">${esc(equipment)}・${esc(x.basic?.inspectionNo||'-')}</span><span class="rp-lot-date">${esc(fmtDT(x.updatedAt))}</span>`;
-   row.onclick=()=>selectLot(x.id);frag.append(row);
+   row.onclick=()=>selectLot(x.id);
+   row.ondblclick=e=>{e.preventDefault();e.stopPropagation();if(typeof resumeRecordFromList==='function')resumeRecordFromList(x)()};
+   frag.append(row);
   });
   list.innerHTML='';list.append(frag);
  }
@@ -219,20 +232,27 @@
   const m=x.mother||{},originalWidth=fmtDim(x.basic?.originalWidth,1);
   return `<section class="rp-section"><h3>母材実績／カード指示</h3><table class="rp-dim-table"><thead><tr><th></th><th>元幅</th><th>手計算</th><th>全長</th><th>前オフ</th><th>後オフ</th></tr></thead><tbody><tr><th>実績</th><td rowspan="2">${esc(originalWidth||'-')}</td><td>${esc(m.manual||'-')}</td><td>${esc(m.fullLength||'-')}</td><td>${esc(m.front||'-')}</td><td>${esc(m.rear||'-')}</td></tr><tr><th>カード指示</th><td>${esc(m.minCard||'-')}</td><td>${esc(m.maxCard||'-')}</td><td>${esc(m.frontCard||'-')}</td><td>${esc(m.rearCard||'-')}</td></tr></tbody></table></section>`;
  }
- /* 条割(分割)が設定されている場合、条ごとにどのロットの公差で判定したかを
-    帳票にも残す(判定に使った公差の根拠を後から追跡できるようにするため)。 */
- function splitToleranceSection(x){
+ /* 条割(分割)が設定されている場合、条(col, 0始まり)がどのロット・どの
+    目標幅(公差)に属するかを求める。以前は「条割 分割公差」として別表に
+    していたが、条ごとのロット№・範囲上下限として板幅の実測データ表へ
+    直接統合し、判定に使った公差の根拠をその場で確認できるようにする。
+    分割されていない(またはグループが1つ以下)場合は、レコード自身の
+    ロット№と全体の板幅公差(fallbackTol)をそのまま返す。 */
+ function widthRowContext(x,col,fallbackTol){
   const groups=x.settings?.splitGroups;
-  if(!Array.isArray(groups)||groups.length<2)return '';
-  let start=1;
-  const rows=groups.map(g=>{
-   const end=start+(g.count||0)-1,range=`${start}〜${end}条`;start=end+1;
-   const w=g.tol?.width?.manufacturing||g.tol?.width?.order,t=g.tol?.thickness?.manufacturing||g.tol?.thickness?.order;
-   const wText=g.missing?'取得失敗':(w&&Number.isFinite(g.base?.width)?`${g.base.width} (+${w.plus}/-${w.minus})`:'-');
-   const tText=g.missing?'-':(t&&Number.isFinite(g.base?.thickness)?`${g.base.thickness} (+${t.plus}/-${t.minus})`:'-');
-   return `<tr><td>${esc(range)}</td><td>${esc(g.lot)}</td><td>${esc(wText)}</td><td>${esc(tText)}</td></tr>`;
-  }).join('');
-  return `<section class="rp-section"><h3>条割 分割公差(条ごとの判定基準)</h3><table class="rp-dim-table"><thead><tr><th>条範囲</th><th>ロット№</th><th>板幅 目標(公差)</th><th>板厚 目標(公差)</th></tr></thead><tbody>${rows}</tbody></table></section>`;
+  if(Array.isArray(groups)&&groups.length>=2){
+   let start=0;
+   for(const g of groups){
+    const count=g.count||0,end=start+count;
+    if(col>=start&&col<end){
+     const w=g.tol?.width?.manufacturing||g.tol?.width?.order;
+     const range=(w&&Number.isFinite(g.base?.width))?[g.base.width-w.minus,g.base.width+w.plus]:null;
+     return {lot:g.lot||'-',range};
+    }
+    start=end;
+   }
+  }
+  return {lot:x.basic?.lotNo||'-',range:fallbackTol};
  }
  function thicknessMeasurementSection(x){
   const s=x.settings||{},{headIdx,tailIdx,headLabel,tailLabel}=lengthLabels(s),tol=toleranceRangeLocal(x,'thickness');
@@ -244,12 +264,20 @@
     のため、実データがない行も空欄のまま枠だけ残す（"-"を書かず空欄にする）。 */
  function widthMeasurementSection(x){
   const s=x.settings||{},actual=Math.max(1,Math.min(40,+s.horizontalCount||1)),{headIdx,tailIdx,headLabel,tailLabel}=lengthLabels(s),tol=toleranceRangeLocal(x,'width');
-  let rows='';
+  let rows='',prevKey=null;
   for(let col=0;col<40;col++){
    const real=col<actual,cell=v=>real?esc(v||'-'):'';
-   rows+=`<tr><th>${col+1}</th><td>${real&&tol?fmtDimSafe(tol[0],2):''}</td><td>${cell(measAt(x,'width',headIdx,col))}</td><td>${cell(measAt(x,'width',tailIdx,col))}</td><td>${real&&tol?fmtDimSafe(tol[1],2):''}</td><td>${cell(measAt(x,'lateral',headIdx,col))}</td><td>${cell(measAt(x,'lateral',tailIdx,col))}</td><td>${cell(measAt(x,'burr',headIdx,col))}</td><td>${cell(measAt(x,'burr',tailIdx,col))}</td><td>${cell(measAt(x,'offset',tailIdx,col))}</td><td>${cell(measAt(x,'telescope',tailIdx,col))}</td><td>${cell(measAt(x,'flatness',tailIdx,col))}</td><td>${cell(measAt(x,'comments',tailIdx,col))}</td></tr>`;
+   let lotText='',lowText='',highText='';
+   if(real){
+    const ctx=widthRowContext(x,col,tol),key=`${ctx.lot}|${ctx.range?ctx.range.join(','):''}`;
+    const show=rpRepeatLabels||key!==prevKey;prevKey=key;
+    lotText=show?esc(ctx.lot):'';
+    lowText=ctx.range?fmtDimSafe(ctx.range[0],2):(tol?fmtDimSafe(tol[0],2):'');
+    highText=ctx.range?fmtDimSafe(ctx.range[1],2):(tol?fmtDimSafe(tol[1],2):'');
+   }
+   rows+=`<tr><th class="rp-colno">${col+1}</th><td class="rp-collot">${lotText}</td><td>${lowText}</td><td>${cell(measAt(x,'width',headIdx,col))}</td><td>${cell(measAt(x,'width',tailIdx,col))}</td><td>${highText}</td><td>${cell(measAt(x,'lateral',headIdx,col))}</td><td>${cell(measAt(x,'lateral',tailIdx,col))}</td><td>${cell(measAt(x,'burr',headIdx,col))}</td><td>${cell(measAt(x,'burr',tailIdx,col))}</td><td>${cell(measAt(x,'offset',tailIdx,col))}</td><td>${cell(measAt(x,'telescope',tailIdx,col))}</td><td>${cell(measAt(x,'flatness',headIdx,col))}</td><td>${cell(measAt(x,'flatness',tailIdx,col))}</td><td>${cell(measAt(x,'comments',tailIdx,col))}</td></tr>`;
   }
-  return `<section class="rp-section"><h3>測定データ（板幅・ラテラルボー・バリ・巻ずれ・テレスコープ）</h3><p class="rp-note">巻ずれ・テレスコープは ${esc(tailLabel)} のデータのみ対象です。横割数（${actual}条）を超える行は控え欄として空欄にしています。</p><div class="rp-wide-wrap"><table class="rp-dim-table rp-wide-table"><thead><tr><th rowspan="2">コイル№</th><th colspan="4">板幅</th><th colspan="2">ラテラルボー</th><th colspan="2">バリ</th><th>巻ずれ</th><th>テレスコープ</th><th rowspan="2">フラットネス</th><th rowspan="2">備考</th></tr><tr><th>範囲下限</th><th>${esc(headLabel)}</th><th>${esc(tailLabel)}</th><th>範囲上限</th><th>${esc(headLabel)}</th><th>${esc(tailLabel)}</th><th>${esc(headLabel)}</th><th>${esc(tailLabel)}</th><th>${esc(tailLabel)}</th><th>${esc(tailLabel)}</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+  return `<section class="rp-section"><h3>測定データ（板幅・ラテラルボー・バリ・巻ずれ・テレスコープ）</h3><p class="rp-note">巻ずれ・テレスコープは ${esc(tailLabel)} のデータのみ対象です。横割数（${actual}条）を超える行は控え欄として空欄にしています。幅ロット分割時は条ごとのロット№・目標幅(公差)を条番号の右に表示します。</p><div class="rp-wide-wrap"><table class="rp-dim-table rp-wide-table"><thead><tr><th rowspan="2">条番号</th><th rowspan="2">ロット№</th><th colspan="4">板幅</th><th colspan="2">ラテラルボー</th><th colspan="2">バリ</th><th>巻ずれ</th><th>テレスコープ</th><th colspan="2">フラットネス</th><th rowspan="2">備考</th></tr><tr><th>範囲下限</th><th>${esc(headLabel)}</th><th>${esc(tailLabel)}</th><th>範囲上限</th><th>${esc(headLabel)}</th><th>${esc(tailLabel)}</th><th>${esc(headLabel)}</th><th>${esc(tailLabel)}</th><th>${esc(tailLabel)}</th><th>${esc(tailLabel)}</th><th>${esc(headLabel)}</th><th>${esc(tailLabel)}</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
  }
  /* 丈(1..N)別の長さ・肉厚・揃い判定。旧帳票の「丈」テーブル（長さ/肉厚/揃い/外観/備考）に対応。
     「外観」列は旧帳票でも実データが書き込まれない控え欄のため、空欄のまま残す。
@@ -316,7 +344,6 @@
    </div>
    <div class="rp-zone rp-zone-length">
     ${motherSection(x)}
-    ${splitToleranceSection(x)}
     ${showProduct?productRowsSection(x):'<div></div>'}
     ${isDimensional?thicknessMeasurementSection(x):'<div></div>'}
    </div>

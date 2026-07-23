@@ -393,14 +393,28 @@
     return splitSourcesCache&&splitSourcesCacheKey===currentSplitCacheKey()?splitSourcesCache:[];
   }
   window.splitSourceRows=splitSourceRows;
+  /* 再編集などで測定を開き直すたびに、子ロットの詳細をAccessへ毎回
+     問い合わせ直すと表示が遅い。1度計算できた候補(子ロットの生データ
+     込み)はレコード自身(S.measure.settings.splitSourcesCache)へ保存
+     対象として保持し、次回以降はそれをそのまま使って再計算・再問い合わせ
+     を省略する(force指定時のみ強制的に取得し直す)。 */
   async function ensureSplitCandidatesLoaded(force){
     const key=currentSplitCacheKey();
     if(!force&&splitSourcesCache&&splitSourcesCacheKey===key)return splitSourcesCache;
+    if(!force){
+      const saved=S.measure?.settings?.splitSourcesCache;
+      if(Array.isArray(saved)&&saved.length){
+        splitSourcesCache=saved;splitSourcesCacheKey=key;
+        refreshSplitStatusPanel();
+        return splitSourcesCache;
+      }
+    }
     if(splitSourcesLoading)return splitSourcesLoading;
     splitSourcesLoading=(async()=>{
       try{
         const sources=await buildSplitSources();
         splitSourcesCache=sources;splitSourcesCacheKey=key;
+        if(S.measure){S.measure.settings.splitSourcesCache=sources;if(typeof markDirty==='function')markDirty()}
       }catch(e){
         console.warn('分割候補の取得に失敗しました',e);
         splitSourcesCache=[];splitSourcesCacheKey=key;
