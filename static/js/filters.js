@@ -206,6 +206,43 @@
     showToast?.('デフォルトフィルタを適用しました',matches.map(p=>p.name).join(' / '),3200);
   }
 
+  /* あるプリセットの条件が、対象のプリセット自身を除いても他のデフォルト
+     (または鍵付き)プリセットから引き続き必要とされているか。デフォルト
+     /鍵の解除時、他プリセットが同じ条件を必要としていれば残す。 */
+  function presetFilterRequiredElsewhere(preset,key,{lockedOnly=false}={}){
+    const ids=(lockedOnly?lockedPresetIdsFor(S.db,S.table):defaultPresetIdsFor(S.db,S.table))
+      .filter(id=>String(id)!==String(preset.id));
+    if(!ids.length)return false;
+    const idSet=new Set(ids);
+    return (S.filterPresets||[]).some(p=>idSet.has(String(p.id))&&(p.filters||[]).some(f=>filterKey(f)===key));
+  }
+  /* 登録フィルタ一覧のデフォルト/鍵チェックを変更した直後、現在表示中の
+     フィルタバー(S.genericFilters)へ即座に反映する。デフォルトONなら
+     そのプリセットの条件を追加(手動で一度外していても復活させる)、OFF
+     なら他のデフォルトプリセットが同じ条件を必要としない限り取り除く。
+     画面切替(selectTable)を待たずに反映することで、フィルタ設定画面から
+     やり直した内容がその場のフィルタバーに即再適用されるようにする。 */
+  function syncActiveFiltersForPreset(preset){
+    const isDefault=isDefaultPreset(preset,S.db,S.table);
+    const locked=isLockedDefaultPreset(preset,S.db,S.table);
+    (preset.filters||[]).forEach(f=>{
+      const key=filterKey(f),idx=S.genericFilters.findIndex(x=>filterKey(x)===key);
+      if(isDefault){
+        if(idx>=0){
+          if(locked&&!S.genericFilters[idx].locked)S.genericFilters[idx]={...S.genericFilters[idx],locked:true};
+          else if(!locked&&S.genericFilters[idx].locked&&!presetFilterRequiredElsewhere(preset,key,{lockedOnly:true})){
+            const{locked:_,...rest}=S.genericFilters[idx];S.genericFilters[idx]=rest;
+          }
+        }else{
+          S.genericFilters.push(locked?{...f,locked:true}:{...f});
+        }
+      }else if(idx>=0&&!presetFilterRequiredElsewhere(preset,key)){
+        S.genericFilters.splice(idx,1);
+      }
+    });
+    S.page=1;renderGenericFilterBar();load();
+  }
+
   /* 保存フィルタは条件単位で登録されるため、適用は常にマージ(現在の条件へ
      追加)とする。置換にすると、他の条件や使用設備の必須条件まで消えて
      しまい、条件単位で運用する意味が薄れるため。 */
@@ -444,12 +481,14 @@
           setLockedDefaultPreset(p,S.db,S.table,false);
         }
         toggleDefaultPreset(p,S.db,S.table);
+        syncActiveFiltersForPreset(p);
         renderFilterPresetList();
       });
       item.querySelector('.fp-lock-btn')?.addEventListener('click',()=>{
         const nowLocked=!isLockedDefaultPreset(p,S.db,S.table);
         setLockedDefaultPreset(p,S.db,S.table,nowLocked);
         if(nowLocked&&!isDefaultPreset(p,S.db,S.table))setDefaultPreset(p,S.db,S.table,true);
+        syncActiveFiltersForPreset(p);
         renderFilterPresetList();
       });
       if(loading)list.insertBefore(item,loading);else list.appendChild(item);
