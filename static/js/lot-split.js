@@ -53,20 +53,6 @@
     return p&&m?{plus:p.value,minus:m.value,plusKey:p.key,minusKey:m.key}:null;
   }
 
-  // 親ロット自身(=分割していない/自分の持ち分)のtolデータは、既存のcore.js
-  // toleranceDataForSource()をそのまま使う(重複ロジックを避ける)。
-  function selfSource(){
-    const b=S.measure.basic;
-    return{
-      lot:String(b.lotNo||'当ロット'),self:true,missing:false,
-      base:{thickness:Number(b.mfgThickness),width:Number(b.mfgWidth)},
-      tolData:{
-        thickness:{manufacturing:typeof toleranceDataForSource==='function'?toleranceDataForSource('thickness','manufacturing'):null,order:typeof toleranceDataForSource==='function'?toleranceDataForSource('thickness','order'):null},
-        width:{manufacturing:typeof toleranceDataForSource==='function'?toleranceDataForSource('width','manufacturing'):null,order:typeof toleranceDataForSource==='function'?toleranceDataForSource('width','order'):null}
-      }
-    };
-  }
-
   /* 分割(子ロット)関連の実カラム名は「親子管理_子カード<N>」「コンマ5本分割_
      切断巾<N>」であることが実データで確認された(旧VBA変数名KOCARD/K05JO等は
      内部エイリアスであり、Accessの生カラム名ではなかった)。全角/半角ゆれや
@@ -151,7 +137,9 @@
     for(let i=1;i<=10;i++){const v=childCardValue(row,i);if(v!==undefined&&Number(v)!==0)cardCount++}
     const cutWidths=[];
     for(let i=1;i<=10;i++){const w=childCutWidthValue(row,i);if(w!==undefined&&Number(w)!==0)cutWidths.push(Number(w))}
-    const lotCount=Math.max(cardCount,cutWidths.length)+1; // +1: 自分(親)の持ち分
+    // 割った後はすべて子ロットになり親の持ち分は残らないため、子カード/切断巾の
+    // 検出件数がそのままロット数になる(自分(親)を+1する必要はない)。
+    const lotCount=Math.max(cardCount,cutWidths.length,1);
     let widthPattern='unknown';
     if(cutWidths.length>=2)widthPattern=cutWidths.every(w=>Math.abs(w-cutWidths[0])<0.05)?'same':'different';
     return{hasSplit:true,lotCount,widthPattern};
@@ -206,13 +194,24 @@
   // 現在開いているロット自身の完全な生データ(非表示列を含む)を取得し、
   // S.measure.sourceへマージする。一覧取得時点では列表示マスタにより
   // 分割関連の列が欠落している可能性があるため、測定画面を開いた際に
-  // 一度だけ取り直して補う。
+  // 一度だけ取り直して補う。分割関連列に限らず、元幅（実績）等の他の
+  // 基本情報項目(aliases/pick)も同じ列表示マスタの影響を受けうるため、
+  // マージ後の完全なsourceから基本情報(S.measure.basic)も再計算し直す
+  // (値が取得できた項目のみ上書きし、既存値を空欄で潰さない)。
   async function refreshSelfSourceFull(){
     if(!S.measure)return;
     const lotNo=S.measure.basic?.lotNo;if(!lotNo)return;
     try{
       const row=await fetchChildLotRow(lotNo);
-      if(row)S.measure.source={...(S.measure.source||{}),...row};
+      if(row){
+        S.measure.source={...(S.measure.source||{}),...row};
+        if(typeof aliases==='object'&&typeof pick==='function'){
+          Object.keys(aliases).forEach(k=>{
+            const v=pick(S.measure.source,k);
+            if(v!=='')S.measure.basic[k]=v;
+          });
+        }
+      }
     }catch(e){console.warn('自ロットの完全データ取得に失敗しました',e)}
   }
 
@@ -258,14 +257,14 @@
     return parent;
   }
 
+  // 割った後の材料はすべて子ロットになり、開いている親ロット自身の「持ち分」
+  // という概念は存在しない。条割の組み合わせは検出できた子ロットのみで構成する。
   function buildCandidateList(){
-    const totalCount=Math.max(1,+($('#horizontalCount')?.value)||+S.measure.settings.horizontalCount||1);
     const direct=directChildLotNumbers(),carded=childLotNumbersFromCard();
     const picks=direct.length?direct:carded;
     const seen=new Set(),children=[];
     picks.forEach(({lot,index})=>{if(!lot||seen.has(lot))return;seen.add(lot);const count=childCount(index);if(count>0)children.push({lot:String(lot),count})});
-    const childTotal=children.reduce((a,x)=>a+x.count,0);
-    return{selfCount:Math.max(0,totalCount-childTotal),children};
+    return children;
   }
 
   function describeTol(entry){
@@ -276,13 +275,8 @@
   }
 
   async function buildSplitSources(){
-    const cand=buildCandidateList(),out=[];
-    const self=selfSource();
-    self.count=cand.selfCount||Math.max(1,+($('#horizontalCount')?.value)||1);
-    self.width=Number.isFinite(self.base.width)?self.base.width:'';
-    self.tol=describeTol(self);
-    out.push(self);
-    for(const c of cand.children){
+    const children=buildCandidateList(),out=[];
+    for(const c of children){
       const row=await fetchChildLotRow(c.lot);
       if(!row){out.push({lot:c.lot,count:c.count,width:'',tol:'子ロット情報を取得できませんでした',missing:true});continue}
       const entry={lot:c.lot,count:c.count,missing:false,
@@ -296,32 +290,53 @@
     return out;
   }
 
-  // splitSourceRows()を、非同期取得済みキャッシュを返す同期関数に置き換える。
-  // renderSplit/applySplit(core.js)は元のままこの関数を同期呼び出しし続ける。
-  let splitSourcesCache=null;
+  /* splitSourceRows()を、非同期取得済みキャッシュを返す同期関数に置き換える。
+     renderSplit/applySplit(core.js)は元のままこの関数を同期呼び出しし続ける。
+     幅分割情報パネル(#splitGrid)側でも同じキャッシュを使い、条割変更モーダルを
+     開く前から候補データを能動的に表示できるようにする(ensureSplitCandidatesLoaded)。
+     ロットが変わったらキャッシュを破棄するため、取得時のロット№をキーとして保持する。 */
+  let splitSourcesCache=null,splitSourcesCacheKey=null,splitSourcesLoading=null;
+  function currentSplitCacheKey(){return S.measure?.basic?.lotNo||''}
   splitSourceRows=function(){
-    if(splitSourcesCache)return splitSourcesCache;
-    return [{lot:S.measure?.basic?.lotNo||'当ロット',count:Math.max(1,+($('#horizontalCount')?.value)||1),width:S.measure?.basic?.mfgWidth||'',tol:'取得中…'}];
+    return splitSourcesCache&&splitSourcesCacheKey===currentSplitCacheKey()?splitSourcesCache:[];
   };
+  async function ensureSplitCandidatesLoaded(force){
+    const key=currentSplitCacheKey();
+    if(!force&&splitSourcesCache&&splitSourcesCacheKey===key)return splitSourcesCache;
+    if(splitSourcesLoading)return splitSourcesLoading;
+    splitSourcesLoading=(async()=>{
+      try{
+        const sources=await buildSplitSources();
+        splitSourcesCache=sources;splitSourcesCacheKey=key;
+      }catch(e){
+        console.warn('分割候補の取得に失敗しました',e);
+        splitSourcesCache=[];splitSourcesCacheKey=key;
+      }finally{
+        splitSourcesLoading=null;
+        refreshSplitStatusPanel();
+      }
+      return splitSourcesCache;
+    })();
+    return splitSourcesLoading;
+  }
+  window.ensureSplitCandidatesLoaded=ensureSplitCandidatesLoaded;
 
   const baseOpenSplit=typeof openSplit==='function'?openSplit:null;
   openSplit=async function(){
     if(!S.measure)return;
-    splitSourcesCache=null;
     $('#splitModal').hidden=false;
-    const box=$('#splitSources');if(box)box.innerHTML='<div class="split-row-loading">子ロット情報を取得しています…</div>';
-    try{
-      splitSourcesCache=await buildSplitSources();
-    }catch(e){
-      splitSourcesCache=[{lot:S.measure?.basic?.lotNo||'当ロット',count:Math.max(1,+($('#horizontalCount')?.value)||1),width:S.measure?.basic?.mfgWidth||'',tol:'取得エラー'}];
-      console.warn('分割候補の取得に失敗しました',e);
+    if(!splitSourcesCache||splitSourcesCacheKey!==currentSplitCacheKey()){
+      const box=$('#splitSources');if(box)box.innerHTML='<div class="split-row-loading">子ロット情報を取得しています…</div>';
     }
+    await ensureSplitCandidatesLoaded();
     if(typeof renderSplit==='function')renderSplit();
   };
 
   const baseApplySplit=typeof applySplit==='function'?applySplit:null;
   applySplit=function(){
-    const sources=splitSourceRows(),seq=S.measure.settings.splitSequence||[],total=sources.reduce((a,x)=>a+x.count,0);
+    const sources=splitSourceRows();
+    if(!sources.length){alert('このロットには条割の対象となる子ロットが見つかりません。');return}
+    const seq=S.measure.settings.splitSequence||[],total=sources.reduce((a,x)=>a+x.count,0);
     if(seq.length!==total){alert('全条分を登録してください。');return}
     const map=Object.fromEntries(sources.map(x=>[x.lot,x])),groups=[];
     seq.forEach(lot=>{const last=groups.at(-1);if(last&&last.lot===lot)last.count++;else groups.push({lot,count:1,source:map[lot]})});
@@ -342,33 +357,145 @@
   const applyBtn=$('#applySplit');if(applyBtn)applyBtn.onclick=applySplit;
   const openBtn=$('#openSplit');if(openBtn)openBtn.onclick=openSplit;
 
+  // core.jsのrenderSplit()は末尾で#splitGridへ簡易文字列を書き込むため、その
+  // 直後に必ず自前のリッチな幅分割情報パネルへ描き直す(#splitGridの内容は
+  // 常にrefreshSplitStatusPanel()が最終的な権威を持つようにする)。
+  if(typeof renderSplit==='function'){
+    const baseRenderSplitForPanel=renderSplit;
+    renderSplit=function(){baseRenderSplitForPanel();refreshSplitStatusPanel()};
+  }
+
+  /* 元幅（実績、BOX実績_板幅）から条幅合計を差し引くと、スリット時に両耳から
+     削り取られる屑幅の合計(片耳ごとの内訳ではなく両耳分を合算した値)が求まる。
+     条幅合計は、条割設定済みなら各子ロット自身の製造板幅×条数の合計、未設定
+     なら現在のロットの製造板幅×横割数とする。母材パネルと幅分割情報パネルの
+     両方に同じ計算結果を表示する。 */
+  function slitWidthTotal(){
+    const groups=S.measure?.settings?.splitGroups;
+    if(Array.isArray(groups)&&groups.length){
+      let total=0;
+      for(const g of groups){
+        if(g.missing||!Number.isFinite(g.base?.width))return null;
+        total+=g.base.width*g.count;
+      }
+      return total;
+    }
+    const rawWidth=S.measure?.basic?.mfgWidth;
+    if(rawWidth===undefined||rawWidth===null||String(rawWidth).trim()==='')return null;
+    const width=Number(rawWidth);
+    const count=Math.max(1,+($('#horizontalCount')?.value)||+S.measure?.settings?.horizontalCount||1);
+    return Number.isFinite(width)?width*count:null;
+  }
+  function scrapWidthInfo(){
+    // Number('')は0になってしまう(JSの仕様)ため、元幅（実績）が未取得/空欄の
+    // 場合を「0扱い」にせず、計算不可として扱う(架空の巨大な屑幅を出さない)。
+    const rawOriginal=S.measure?.basic?.originalWidth;
+    if(rawOriginal===undefined||rawOriginal===null||String(rawOriginal).trim()==='')return null;
+    const original=Number(rawOriginal);
+    const slit=slitWidthTotal();
+    if(!Number.isFinite(original)||!Number.isFinite(slit))return null;
+    return{original,slit,scrap:original-slit};
+  }
+  function updateScrapWidthDisplay(){
+    const el=$('#motherScrapWidth');if(!el)return;
+    const info=scrapWidthInfo();
+    if(!info){el.textContent='－';el.classList.remove('scrap-width-warn');return}
+    el.textContent=fmtDim(info.scrap,1);
+    el.classList.toggle('scrap-width-warn',info.scrap<0);
+  }
+  function scrapWidthLineHtml(){
+    const info=scrapWidthInfo();
+    if(!info)return '';
+    const cls=info.scrap<0?'split-scrap-line split-scrap-warn':'split-scrap-line';
+    return `<div class="${cls}">元幅(実績) ${esc(fmtDim(info.original,1))} － 条幅合計 ${esc(fmtDim(info.slit,1))} ＝ <b>屑幅(両耳合計) ${esc(fmtDim(info.scrap,1))}</b></div>`;
+  }
+
+  /* 「幅分割情報」サブタブ(data-lefttab="split")に、未設定/設定済みが一目で
+     わかるバッジを付ける(視覚導線)。 */
+  function updateSplitTabBadge(state){
+    const badge=$('#splitTabBadge');if(!badge)return;
+    if(state==='applied'){badge.hidden=false;badge.textContent='設定済み';badge.className='split-tab-badge split-tab-badge-applied'}
+    else if(state==='pending'){badge.hidden=false;badge.textContent='未設定';badge.className='split-tab-badge split-tab-badge-pending'}
+    else{badge.hidden=true}
+  }
+  function wireSplitPanelOpenBtn(el){
+    const btn=el.querySelector('#splitPanelOpenBtn');
+    if(btn)btn.onclick=()=>openSplit();
+  }
+  function candidateRowsHtml(sources){
+    return sources.map(s=>`<tr class="${s.missing?'split-legend-missing':''}"><td>${esc(s.lot)}</td><td>${s.count}条</td><td>${s.width!==''&&s.width!==undefined?esc(String(s.width)):'—'}</td><td>${esc(s.missing?'取得失敗':(s.tol||'—'))}</td></tr>`).join('');
+  }
+  // 未設定(候補のみ判明している)状態: 条割変更が実際に読み出すのと同じ子ロット
+  // 候補データをここでも先読みして表示し、この画面から直接「条割変更」へ
+  // 遷移できるボタンを置く(操作導線)。
+  function renderPendingCandidatesPanel(el,sources,info){
+    if(!sources.length){
+      el.innerHTML=`<div class="split-panel-status split-panel-status-pending">⚠ このロットには分割データがあります（推定${info.lotCount}ロット・${esc(widthPatternLabel(info.widthPattern))}）が、子ロットの詳細を取得できませんでした。</div>
+        <button type="button" class="split-panel-open-btn" id="splitPanelOpenBtn">条割変更を開く →</button>`;
+      wireSplitPanelOpenBtn(el);
+      return;
+    }
+    const totalCount=sources.reduce((a,x)=>a+x.count,0),horiz=Math.max(1,+($('#horizontalCount')?.value)||1);
+    const mismatch=totalCount!==horiz;
+    el.innerHTML=`
+      <div class="split-panel-status split-panel-status-pending">⚠ 分割データがあります（${esc(widthPatternLabel(info.widthPattern))}・子ロット${sources.length}件）。「条割変更」で条ごとの並びを設定してください。</div>
+      <table class="split-panel-table"><thead><tr><th>子ロット№</th><th>条数</th><th>幅</th><th>公差</th></tr></thead><tbody>${candidateRowsHtml(sources)}</tbody></table>
+      ${mismatch?`<div class="split-mismatch-badge">子ロット条数合計(${totalCount})が横割数(${horiz})と一致しません。「条割変更」で内容を確認してください。</div>`:''}
+      ${scrapWidthLineHtml()}
+      <button type="button" class="split-panel-open-btn" id="splitPanelOpenBtn">この内容で条割変更を開く →</button>`;
+    wireSplitPanelOpenBtn(el);
+  }
+  // 設定済み(applySplit確定済み)状態の表示。
+  function renderAppliedGroupsPanel(el,groups){
+    const summary=summarizeAppliedGroups(groups);
+    const rows=groups.map((g,i)=>`<tr class="${g.missing?'split-legend-missing':''}"><td>${i+1}</td><td>${esc(g.lot)}</td><td>${g.count}条</td><td>${Number.isFinite(g.base?.width)?esc(String(g.base.width)):'—'}</td><td>${g.missing?'取得失敗':'OK'}</td></tr>`).join('');
+    el.innerHTML=`
+      <div class="split-panel-status split-panel-status-applied">✓ ${esc(summary)}</div>
+      <table class="split-panel-table"><thead><tr><th>#</th><th>ロット№</th><th>条数</th><th>幅</th><th>状態</th></tr></thead><tbody>${rows}</tbody></table>
+      ${scrapWidthLineHtml()}
+      <button type="button" class="split-panel-open-btn" id="splitPanelOpenBtn">条割変更を開く（再設定）→</button>`;
+    wireSplitPanelOpenBtn(el);
+  }
+
   /* 左パネル「幅分割情報」タブ(#splitGrid)は、テンプレート上は固定文字列
      「分割無し」のままで、従来は条割変更モーダルを開いて実行するまで
      一切更新されなかった(=分割データがあるロットを開いた直後は、実際は
      分割データを持っているのに「分割無し」と表示され続けていた)。
      測定画面を開いた/再開した時点で、生データ(親子管理_子カード等)から
-     分割データの有無を判定し、未設定でも「分割データあり」と分かるように
-     する。applySplit実行後もここで最新の設定内容へ更新する。 */
+     分割データの有無を判定し、未設定でも子ロット候補を能動的に取得して
+     表示する(条割変更モーダルを手動で開くまで待たない)。applySplit実行後
+     もここで最新の設定内容へ更新する。 */
   function refreshSplitStatusPanel(){
     const el=$('#splitGrid');if(!el)return;
     const groups=S.measure?.settings?.splitGroups;
     if(Array.isArray(groups)&&groups.length){
-      const summary=summarizeAppliedGroups(groups);
-      const list=groups.map((g,i)=>`${i+1}. ${esc(g.lot)} / ${g.count}条${Number.isFinite(g.base?.width)?` / 幅${g.base.width}`:''}${g.missing?'（子ロット情報取得失敗）':''}`).join('<br>');
-      el.innerHTML=`<b class="split-status-summary">${esc(summary)}</b><br>${list}`;
+      renderAppliedGroupsPanel(el,groups);
+      updateSplitTabBadge('applied');
+      updateScrapWidthDisplay();
       return;
     }
     const info=analyzeRowSplit(S.measure?.source);
-    if(info.hasSplit){
-      el.innerHTML=`<span class="split-status-pending">⚠ このロットには分割データがあります（推定${info.lotCount}ロット・${esc(widthPatternLabel(info.widthPattern))}）。「条割変更」から設定してください。</span>`;
+    if(!info.hasSplit){
+      el.innerHTML='<div class="split-panel-status split-panel-status-none">分割無し</div>';
+      updateSplitTabBadge('none');
+      updateScrapWidthDisplay();
       return;
     }
-    el.textContent='分割無し';
+    updateSplitTabBadge('pending');
+    const key=currentSplitCacheKey();
+    if(splitSourcesCache&&splitSourcesCacheKey===key){
+      renderPendingCandidatesPanel(el,splitSourcesCache,info);
+    }else{
+      el.innerHTML=`<div class="split-panel-status split-panel-status-pending">⚠ このロットには分割データがあります（推定${info.lotCount}ロット・${esc(widthPatternLabel(info.widthPattern))}）。子ロット情報を取得しています…</div>`;
+      ensureSplitCandidatesLoaded();
+    }
+    updateScrapWidthDisplay();
   }
   if(typeof renderMeasurement==='function'){
     const baseRenderMeasurementSplitStatus=renderMeasurement;
     renderMeasurement=function(){baseRenderMeasurementSplitStatus();refreshSplitStatusPanel()};
   }
+  $('#horizontalCount')?.addEventListener('change',()=>refreshSplitStatusPanel());
 
   // ---- 判定への配線 ----
   function groupForIndex(index){
