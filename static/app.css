@@ -1264,7 +1264,7 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .mm-mode-chip.new{background:#e7f6ef;color:#1e7a55;border:1px solid #9ed7bd}
 .mm-mode-chip.editing{background:#fff2d9;color:#8a5a00;border:1px solid #e5c07a}
 .mm-mode-chip small{color:#94794a;font-weight:700}
-.mm-form-fields{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+.mm-form-fields{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start}
 .mm-field{display:flex;flex-direction:column;gap:4px;min-width:0}
 .mm-field>span{font-size:12px;color:#526970;font-weight:700;display:flex;align-items:center;gap:5px;white-space:nowrap}
 .mm-field>span i{color:var(--invalid);font-style:normal}
@@ -1277,18 +1277,23 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .mm-checkbox{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:#2c4750;white-space:nowrap;cursor:pointer}
 .mm-checkbox input{margin:0}
 .mm-empty-inline{color:#8a9aa0;font-size:12px}
-/* 作業可能設備ピッカー: 他フィールド(38px/8px角)と揃うよう、チップ状の
-   トグルボタンを並べた専用カードにする。件数表示・一括選択操作を添えて
-   複数選択でも状態を把握しやすくする(単なるチェックボックス羅列からの刷新)。 */
-.mm-eq-picker{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:#fbfdfd}
-.mm-eq-picker-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
-.mm-eq-count{font-size:12px;font-weight:800;color:var(--teal-dark);background:#e3f5f3;border-radius:20px;padding:2px 10px;white-space:nowrap}
-.mm-eq-actions{display:flex;gap:6px}
-.mm-eq-grid{display:flex;flex-wrap:wrap;gap:8px;max-height:160px;overflow:auto;padding:2px}
-.mm-eq-chip{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 14px;border:1.5px solid #c7d4d8;border-radius:20px;background:#fff;color:#3a565d;font-weight:700;font-size:12.5px;cursor:pointer;transition:border-color .12s,background .12s,color .12s,box-shadow .12s}
-.mm-eq-chip:hover{border-color:#9fb4ba;background:#f3fbfc}
-.mm-eq-chip input{width:15px;height:15px;margin:0;flex:0 0 auto;accent-color:var(--teal);cursor:pointer}
-.mm-eq-chip.checked{border-color:var(--teal);background:#eafafa;color:#0a6570;box-shadow:0 0 0 3px #087c891f}
+/* 作業可能設備タグ入力: 氏名・ヨミガナと同じ行に収まるコンパクトな
+   タグフィールド。フォーカス(認識優先)でサジェストを出し、クリックで
+   連続追加できるようにする。フォーム自体を低くすることで、下の一覧
+   (mm-list-wrap)がより多くの行を表示できる(情報密度の確保)。 */
+.mm-tagfield{flex:1 1 300px;min-width:240px}
+.mm-tagfield-inner{position:relative}
+.mm-tag-box{display:flex;flex-wrap:wrap;align-items:center;gap:5px;min-height:38px;padding:4px 6px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:text}
+.mm-tag-box:focus-within{border-color:var(--teal);box-shadow:0 0 0 3px #087c8926}
+.mm-tag{display:inline-flex;align-items:center;gap:2px;height:26px;padding:0 4px 0 10px;border-radius:14px;background:#eafafa;color:#0a6570;font-weight:700;font-size:12px;white-space:nowrap}
+.mm-tag-remove{width:18px;height:18px;border:0;border-radius:50%;background:transparent;color:#0a6570;font-size:13px;line-height:1;cursor:pointer;padding:0}
+.mm-tag-remove:hover{background:#0a657026}
+.mm-tag-box input.mm-tag-search{flex:1 1 100px;min-width:100px;height:26px;padding:2px 4px;border:0;background:transparent;font-size:12.5px}
+.mm-tag-box input.mm-tag-search:focus-visible{outline:0;box-shadow:none}
+.mm-tag-suggest{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:20;max-height:230px;overflow:auto;display:flex;flex-direction:column;gap:2px;padding:6px;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 10px 26px rgba(20,40,45,.16)}
+.mm-tag-suggest-item{display:block;width:100%;text-align:left;padding:7px 10px;border:0;border-radius:6px;background:transparent;color:#2c4750;font-size:12.5px;font-weight:600;cursor:pointer}
+.mm-tag-suggest-item:hover,.mm-tag-suggest-item:focus-visible{outline:0;background:#eafafa;color:#0a6570}
+.mm-tag-suggest-empty{padding:7px 10px;color:#8a9aa0;font-size:12px}
 .mm-form-tail{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .mm-btn-primary{height:40px;padding:0 22px;border:0;border-radius:8px;background:var(--teal);color:#fff;font-weight:800;cursor:pointer;box-shadow:0 4px 12px #087c8940}
 .mm-btn-primary:hover{background:var(--teal-dark)}
