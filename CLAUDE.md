@@ -8,7 +8,7 @@
   `pkill -f "python3 -u app.py"` → `python3 -u app.py` で再起動してから確認する
   （自動リロード無効。再起動忘れは過去に誤診断の原因になった）。
 - **バージョン更新**: 意味のある変更をコミットするたびに
-  `changelog_data.py` の `APP_VERSION` を上げ、`CHANGELOG` 先頭へ
+  `backend/changelog_data.py` の `APP_VERSION` を上げ、`CHANGELOG` 先頭へ
   エントリを追記する（新しい順）。
 - **関数の定義は1箇所**: コア5ファイル内で同名関数を再定義しない。
   拡張ファイルからは `const base=fn; fn=function(){...base()...}` のラップのみ可、
@@ -21,11 +21,16 @@
   （旧VBA名 KOCARD/K05JO はエイリアスであり実カラム名ではない）。
 - **DBエンジンの使い分け**: 仕掛(SIKALOTNOW)・品質データ(SIKALOTDEF)は工場側の
   別システムが所有するネットワーク共有上の読み取り専用Accessファイルのため、
-  今後もpyodbc経由でAccessのまま読む。マスタ(`マスタ.sqlite3`)・測定データ
-  バックアップ(`測定データ.sqlite3`)は本アプリ自身が読み書きするローカルの
-  SQLiteで、`db_access.py`の`connect()`がパス拡張子でAccess/SQLiteを自動判別
-  する。`masters.py`のSQLはNow()/Nz()等のAccess関数をそのまま使っているが、
-  `connect()`がSQLite接続へユーザー定義関数として登録して吸収している。
+  今後もpyodbc経由でAccessのまま読む。マスタ(`data/マスタ.sqlite3`)・測定データ
+  バックアップ(`data/測定データ.sqlite3`)は本アプリ自身が読み書きするローカルの
+  SQLiteで、`backend/db_access.py`の`connect()`がパス拡張子でAccess/SQLiteを
+  自動判別する。`backend/masters.py`のSQLはNow()/Nz()等のAccess関数をそのまま
+  使っているが、`connect()`がSQLite接続へユーザー定義関数として登録して吸収
+  している。
+- **フォルダ構成**: `app.py`(エントリポイント)と`start_app.bat`/
+  `migrate_to_sqlite.bat`はルート直下。それ以外のバックエンドPythonは
+  `backend/`パッケージへ、`マスタ.accdb`/`測定データ.accdb`とその移行先
+  `*.sqlite3`は`data/`フォルダへまとめている。
 
 ## 検証
 

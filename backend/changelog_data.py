@@ -4,11 +4,15 @@
 意味のある変更をコミットするたびに APP_VERSION を上げ、CHANGELOG の
 先頭へ新しいエントリを追記すること(新しい順)。
 """
-APP_VERSION='1.38.1'
+APP_VERSION='1.39.0'
 
 # 更新履歴。画面の「VERx.y.z」バッジから一覧表示する。APP_VERSIONを
 # 上げるたびに、このリストの先頭に新しいバージョンを追記すること。
 CHANGELOG=[
+ {'version':'1.39.0','notes':[
+  'リポジトリ直下に散らばっていたファイルをフォルダ階層で整理。Flask本体(app.py)以外のバックエンドPython(changelog_data.py/db_access.py/masters.py/migrate_to_sqlite.py)を backend/ パッケージへ、マスタ.accdb/測定データ.accdbとその移行先である*.sqlite3を data/ フォルダへ移動した。app.py・start_app.bat・migrate_to_sqlite.bat はダブルクリック起動の分かりやすさを優先しルート直下のまま残している。data/フォルダ導入前の旧配置(リポジトリ直下)にマスタ.accdb等が残っていても、そちらも探索対象に含めているため移行時の互換性は保たれる',
+  '内容が陳腐化していた古い設計メモ(README.txt、当初の開発依頼文のみを残していたもの)を削除',
+ ]},
  {'version':'1.38.1','notes':[
   'start_app.batが、旧マスタ.accdb/測定データ.accdbを検出すると起動のたびに移行スクリプト(migrate_to_sqlite.py)を同期実行しており、Accessドライバ側の状態によってはここで止まり、アプリ本体(python app.py)が一切起動しない不具合を修正。移行処理をstart_app.batの起動経路から完全に切り離し、必要な場合のみ手動で一度実行する専用の migrate_to_sqlite.bat を新設した。start_app.batは旧ファイルを検出した場合、案内メッセージを表示するのみで起動は妨げない',
  ]},

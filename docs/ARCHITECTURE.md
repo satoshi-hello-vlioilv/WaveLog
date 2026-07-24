@@ -8,25 +8,34 @@
 - **バックエンド**: Flask (`app.py`)。仕掛(`SIKALOTNOW.accdb`)・品質データ
   (`SIKALOTDEF.accdb`)は工場側の別システムが所有する読み取り専用のAccess
   ファイル(ネットワーク共有)を pyodbc で参照。マスタ・測定データバックアップは
-  本アプリ自身が読み書きするローカルの SQLite(`sqlite3`標準ライブラリ)。
-  ビルド工程なし。
+  本アプリ自身が読み書きするローカルの SQLite(`sqlite3`標準ライブラリ)で、
+  `data/` フォルダ配下に置く。ビルド工程なし。
 - **フロントエンド**: `templates/index.html` 1枚 + プレーンな `<script>` タグで読み込む
   vanilla JS 群。バンドラ・フレームワークなし（現場PCへのコピー配布を想定）。
 - **データ保存**: 測定データは端末の IndexedDB（+ localStorage ミラー）が主。
-  完了時に `測定データ.sqlite3` の `Web測定バックアップ` テーブルへJSONで退避。
+  完了時に `data/測定データ.sqlite3` の `Web測定バックアップ` テーブルへJSONで退避。
+
+## ディレクトリ構成
+
+`app.py`(起動エントリポイント)と `start_app.bat`/`migrate_to_sqlite.bat`
+(ダブルクリック起動用)はルート直下に置く。それ以外のバックエンドロジックは
+`backend/` パッケージへ、ローカルDBファイルは `data/` フォルダへまとめている
+(全体の一覧は `README.md` を参照)。
 
 ## バックエンド構成
 
 | ファイル | 役割 |
 |---|---|
 | `app.py` | Flask本体。一覧API(`/api/table` ほか)・測定コンテキスト(`/api/measurement/context`)・バックアップ・品質分析・whoami |
-| `changelog_data.py` | `APP_VERSION` と `CHANGELOG`（データのみ。リリースごとにここを更新） |
-| `db_access.py` | `DBS`(接続先定義)・`connect`/`cols`/`tables`/`qi`(Access/SQLite両対応)・監査列・バックアップテーブル整備 |
-| `masters.py` | 各種マスタCRUDのBlueprint（設備/オペレータ/スプール/内径/機器/フィルタプリセット/列表示）。URLは分離前と同一 |
-| `migrate_to_sqlite.py` | 旧`マスタ.accdb`/`測定データ.accdb`から新しい`.sqlite3`への一度限りの移行スクリプト。`migrate_to_sqlite.bat`から手動で一度だけ実行する想定(`start_app.bat`からは呼ばない。Accessドライバ側の状態次第でここが固まっても通常起動が巻き添えを食わないようにするため) |
+| `backend/changelog_data.py` | `APP_VERSION` と `CHANGELOG`（データのみ。リリースごとにここを更新） |
+| `backend/db_access.py` | `DBS`(接続先定義)・`APP_ROOT`/`DATA_DIR`(パス基準)・`connect`/`cols`/`tables`/`qi`(Access/SQLite両対応)・監査列・バックアップテーブル整備 |
+| `backend/masters.py` | 各種マスタCRUDのBlueprint（設備/オペレータ/スプール/内径/機器/フィルタプリセット/列表示）。URLは分離前と同一 |
+| `backend/migrate_to_sqlite.py` | 旧`マスタ.accdb`/`測定データ.accdb`(`data/`、または旧配置のリポジトリ直下)から新しい`data/*.sqlite3`への一度限りの移行スクリプト。`migrate_to_sqlite.bat`(内部で`python -m backend.migrate_to_sqlite`を実行)から手動で一度だけ実行する想定(`start_app.bat`からは呼ばない。Accessドライバ側の状態次第でここが固まっても通常起動が巻き添えを食わないようにするため) |
 
-依存方向は `app.py → masters.py → db_access.py`（逆参照なし）。
-`changelog_data.py` は独立。
+依存方向は `app.py → backend.masters → backend.db_access`（逆参照なし）。
+`backend.changelog_data` は独立。`app.py` からは絶対import
+(`from backend.xxx import ...`)、`backend` 内のモジュール同士は相対import
+(`from .db_access import ...`)で参照する。
 
 ### 列表示マスタと include_hidden
 
@@ -91,6 +100,6 @@ fn=function(...){ /* 前処理 */ const r=baseFn(...); /* 後処理 */ return r 
   モックして検証する。一方マスタ(`/api/operator-master` 等)はSQLite化に
   伴いAccessドライバ無しの環境でも実際にサーバー経由で読み書きして検証できる
   （マスタ系のテストはモック不要）。
-- **リリース**: 意味のある変更ごとに `changelog_data.py` の `APP_VERSION` を
-  上げ、`CHANGELOG` 先頭にエントリを追記する（アプリ内の更新履歴表示が
-  これを直接参照する）。
+- **リリース**: 意味のある変更ごとに `backend/changelog_data.py` の
+  `APP_VERSION` を上げ、`CHANGELOG` 先頭にエントリを追記する（アプリ内の
+  更新履歴表示がこれを直接参照する）。

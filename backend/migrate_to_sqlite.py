@@ -6,15 +6,18 @@ WaveLogは、本アプリ自身が読み書きするローカルストア(マス
 所有するネットワーク共有上の読み取り専用ファイルのため、これらは移行対象
 外で引き続きAccessのまま読み取る。
 
-このスクリプトは、旧アプリ資産としてこのフォルダに残っている
-マスタ.accdb / 測定データ.accdb (存在すれば)から、新しい
-マスタ.sqlite3 / 測定データ.sqlite3 へ全テーブル・全行をコピーする。
-IDは元の値のまま引き継ぐ(他テーブルからの参照を壊さないため)。
+このスクリプトは、旧アプリ資産として data/ フォルダ(またはdata/導入前の
+旧配置であるリポジトリ直下)に残っているマスタ.accdb / 測定データ.accdb
+(存在すれば)から、新しい data/マスタ.sqlite3 / data/測定データ.sqlite3 へ
+全テーブル・全行をコピーする。IDは元の値のまま引き継ぐ(他テーブルからの
+参照を壊さないため)。
 
-使い方:
-    python migrate_to_sqlite.py            # 移行を実行(対象sqlite3が既に
-                                            # データを持つ場合は安全のため中断)
-    python migrate_to_sqlite.py --force    # 対象sqlite3のテーブルを空にしてから再移行
+使い方(リポジトリ直下で実行):
+    python -m backend.migrate_to_sqlite            # 移行を実行(対象sqlite3が
+                                                     # 既にデータを持つ場合は
+                                                     # 安全のため中断)
+    python -m backend.migrate_to_sqlite --force     # 対象sqlite3のテーブルを
+                                                     # 空にしてから再移行
 
 このスクリプトはWindows側(Accessドライバがインストールされた実機)で実行する
 想定。Accessドライバの無い環境(このサンドボックス等)では、移行元ファイルが
@@ -22,14 +25,11 @@ IDは元の値のまま引き継ぐ(他テーブルからの参照を壊さな�
 """
 import sys
 import sqlite3
-from pathlib import Path
 
 import pyodbc
 
-import db_access as dba
-import masters as m
-
-BASE=Path(__file__).resolve().parent
+from . import db_access as dba
+from . import masters as m
 
 # 移行対象テーブル一覧: (テーブル名, ensure_*_table関数)
 MASTER_TABLE_ENSURERS=[
@@ -44,11 +44,14 @@ MASTER_TABLE_ENSURERS=[
 ]
 
 def find_old_accdb(candidates):
- for name in candidates:
-  path=BASE/name
-  if path.exists():return path
- for path in BASE.glob('*.accdb'):
-  if any(token.lower() in path.name.lower() for token in candidates):return path
+ # data/ (新しい既定の置き場所)を優先し、見つからなければ
+ # data/フォルダ導入前の旧配置(リポジトリ直下)を探す。
+ for base in (dba.DATA_DIR,dba.APP_ROOT):
+  for name in candidates:
+   path=base/name
+   if path.exists():return path
+  for path in base.glob('*.accdb'):
+   if any(token.lower() in path.name.lower() for token in candidates):return path
  return None
 
 def table_has_rows(sqlite_path,table):
