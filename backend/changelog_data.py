@@ -4,11 +4,15 @@
 意味のある変更をコミットするたびに APP_VERSION を上げ、CHANGELOG の
 先頭へ新しいエントリを追記すること(新しい順)。
 """
-APP_VERSION='1.39.0'
+APP_VERSION='1.40.0'
 
 # 更新履歴。画面の「VERx.y.z」バッジから一覧表示する。APP_VERSIONを
 # 上げるたびに、このリストの先頭に新しいバージョンを追記すること。
 CHANGELOG=[
+ {'version':'1.40.0','notes':[
+  'SQLiteへの移行が完了し不要になった旧マスタ.accdb/測定データ.accdbを削除。ローカルDBの置き場所を data/ フォルダから db/ フォルダへ変更し、ファイル名もマスタ.sqlite3→master.sqlite3、測定データ.sqlite3→records.sqlite3へリネームした',
+  '上記に伴い、移行完了済みで不要になった移行スクリプト(migrate_to_sqlite.py)と手動移行用バッチ(migrate_to_sqlite.bat)、start_app.batの旧accdb検出案内を撤去',
+ ]},
  {'version':'1.39.0','notes':[
   'リポジトリ直下に散らばっていたファイルをフォルダ階層で整理。Flask本体(app.py)以外のバックエンドPython(changelog_data.py/db_access.py/masters.py/migrate_to_sqlite.py)を backend/ パッケージへ、マスタ.accdb/測定データ.accdbとその移行先である*.sqlite3を data/ フォルダへ移動した。app.py・start_app.bat・migrate_to_sqlite.bat はダブルクリック起動の分かりやすさを優先しルート直下のまま残している。data/フォルダ導入前の旧配置(リポジトリ直下)にマスタ.accdb等が残っていても、そちらも探索対象に含めているため移行時の互換性は保たれる',
   '内容が陳腐化していた古い設計メモ(README.txt、当初の開発依頼文のみを残していたもの)を削除',

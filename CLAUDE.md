@@ -21,16 +21,17 @@
   （旧VBA名 KOCARD/K05JO はエイリアスであり実カラム名ではない）。
 - **DBエンジンの使い分け**: 仕掛(SIKALOTNOW)・品質データ(SIKALOTDEF)は工場側の
   別システムが所有するネットワーク共有上の読み取り専用Accessファイルのため、
-  今後もpyodbc経由でAccessのまま読む。マスタ(`data/マスタ.sqlite3`)・測定データ
-  バックアップ(`data/測定データ.sqlite3`)は本アプリ自身が読み書きするローカルの
+  今後もpyodbc経由でAccessのまま読む。マスタ(`db/master.sqlite3`)・測定データ
+  バックアップ(`db/records.sqlite3`)は本アプリ自身が読み書きするローカルの
   SQLiteで、`backend/db_access.py`の`connect()`がパス拡張子でAccess/SQLiteを
   自動判別する。`backend/masters.py`のSQLはNow()/Nz()等のAccess関数をそのまま
   使っているが、`connect()`がSQLite接続へユーザー定義関数として登録して吸収
   している。
-- **フォルダ構成**: `app.py`(エントリポイント)と`start_app.bat`/
-  `migrate_to_sqlite.bat`はルート直下。それ以外のバックエンドPythonは
-  `backend/`パッケージへ、`マスタ.accdb`/`測定データ.accdb`とその移行先
-  `*.sqlite3`は`data/`フォルダへまとめている。
+- **フォルダ構成**: `app.py`(エントリポイント)と`start_app.bat`はルート直下。
+  それ以外のバックエンドPythonは`backend/`パッケージへ、ローカルDB
+  (`master.sqlite3`/`records.sqlite3`、無ければ初回書き込み時に自動生成)は
+  `db/`フォルダへまとめている。旧Access資産(`マスタ.accdb`等)は移行完了済みの
+  ため撤去済み。
 
 ## 検証
 
