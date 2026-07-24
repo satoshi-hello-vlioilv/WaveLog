@@ -4,9 +4,9 @@ import json, os, pyodbc, subprocess
 
 app=Flask(__name__); BASE=Path(__file__).resolve().parent
 
-from changelog_data import APP_VERSION, CHANGELOG
-from db_access import DBS, MEAS_DB, DRIVER, qi, connect, cols, tables, cfg, ensure_audit_columns, request_user_id, ensure_backup_table
-from masters import bp as masters_bp, hidden_columns_for_db, read_operator_names, read_spool_names, read_inner_names, read_device_names, ensure_operator_master, ensure_spool_master, ensure_inner_master, ensure_device_master, ensure_operator_equipment, OPERATOR_MASTER_TABLE, SPOOL_MASTER_TABLE, INNER_MASTER_TABLE, DEVICE_MASTER_TABLE
+from backend.changelog_data import APP_VERSION, CHANGELOG
+from backend.db_access import DBS, MEAS_DB, DRIVER, qi, connect, cols, tables, cfg, ensure_audit_columns, request_user_id, ensure_backup_table
+from backend.masters import bp as masters_bp, hidden_columns_for_db, read_operator_names, read_spool_names, read_inner_names, read_device_names, ensure_operator_master, ensure_spool_master, ensure_inner_master, ensure_device_master, ensure_operator_equipment, OPERATOR_MASTER_TABLE, SPOOL_MASTER_TABLE, INNER_MASTER_TABLE, DEVICE_MASTER_TABLE
 app.register_blueprint(masters_bp)
 
 

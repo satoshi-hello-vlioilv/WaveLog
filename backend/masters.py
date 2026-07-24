@@ -7,7 +7,7 @@ URLはBlueprint分離前と同一(/api/equipment-master 等)。
 """
 import json
 from flask import Blueprint, request, jsonify
-from db_access import DBS, qi, connect, cols, tables, cfg, AUDIT_COLUMNS, ensure_audit_columns, request_user_id
+from .db_access import DBS, qi, connect, cols, tables, cfg, AUDIT_COLUMNS, ensure_audit_columns, request_user_id
 
 bp=Blueprint('masters',__name__)
 

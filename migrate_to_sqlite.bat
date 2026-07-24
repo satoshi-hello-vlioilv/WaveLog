@@ -7,5 +7,5 @@ rem (通常のアプリ起動をこの処理の成否に依存させないため
 rem migrate_to_sqlite.py自体が「移行先に既にデータがあれば中断」する安全策を
 rem 持つため、誤って複数回実行しても実データを二重に書き込むことはない。
 python -c "import flask,pyodbc" >nul 2>&1 || python -m pip install -r requirements.txt
-python migrate_to_sqlite.py
+python -m backend.migrate_to_sqlite
 pause

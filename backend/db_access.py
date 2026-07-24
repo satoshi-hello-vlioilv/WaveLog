@@ -15,19 +15,24 @@ from datetime import datetime
 import sqlite3
 import pyodbc
 
-BASE=Path(__file__).resolve().parent
+APP_ROOT=Path(__file__).resolve().parent.parent
+DATA_DIR=APP_ROOT/"data"
 SIKA_DIR=Path(r"\\Nlmsrvngy03\Read\【New】仕掛\台帳")
 DBS={
  "SIKALOTNOW":{"path":SIKA_DIR/"SIKALOTNOW.accdb","label":"仕掛（現在）","role":"readonly","preferred":"仕掛","engine":"access"},
  "SIKALOTDEF":{"path":SIKA_DIR/"SIKALOTDEF.accdb","label":"品質データ","role":"readonly","preferred":"仕掛","engine":"access"},
- "MASTER":{"path":BASE/"マスタ.sqlite3","label":"マスタ","role":"master","preferred":"オペレータマスタ","engine":"sqlite"}}
+ "MASTER":{"path":DATA_DIR/"マスタ.sqlite3","label":"マスタ","role":"master","preferred":"オペレータマスタ","engine":"sqlite"}}
 def resolve_local_db(candidates):
- for name in candidates:
-  path=BASE/name
-  if path.exists():return path
- for path in BASE.glob('*.sqlite3'):
-  if any(token.lower() in path.name.lower() for token in candidates):return path
- return BASE/candidates[0]
+ # data/ (新しい既定の置き場所) を優先し、見つからなければ旧配置
+ # (リポジトリ直下、data/フォルダ導入前のバージョンで使われていた場所)を
+ # 探す。どちらにも無ければ新規作成先としてdata/配下のパスを返す。
+ for base in (DATA_DIR,APP_ROOT):
+  for name in candidates:
+   path=base/name
+   if path.exists():return path
+  for path in base.glob('*.sqlite3'):
+   if any(token.lower() in path.name.lower() for token in candidates):return path
+ return DATA_DIR/candidates[0]
 DBS['MASTER']['path']=resolve_local_db(['マスタ.sqlite3','マスタデータ.sqlite3','Master.sqlite3'])
 MEAS_DB=resolve_local_db(['測定データ.sqlite3','Measurement.sqlite3']); MEAS_ENGINE='sqlite'
 DRIVER="Microsoft Access Driver (*.mdb, *.accdb)"
