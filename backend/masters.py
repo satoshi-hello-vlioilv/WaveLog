@@ -1,7 +1,7 @@
 """masters.py: 各種マスタのCRUD API(Blueprint)。
 
 設備マスタ/オペレータマスタ(+作業可能設備)/スプール種別/内径種別/機器マスタ/
-フィルタプリセット/列表示(表示マスタ)を提供する。すべてマスタ.sqlite3に保存し、
+フィルタプリセット/列表示(表示マスタ)を提供する。すべてdb/master.sqlite3に保存し、
 テーブルが無ければ初回アクセス時に自動作成する。
 URLはBlueprint分離前と同一(/api/equipment-master 等)。
 """
@@ -712,7 +712,7 @@ def hidden_columns_for(c,dbkey):
  return {str(r[0] or '').strip() for r in cur.fetchall() if str(r[0] or '').strip()}
 
 def hidden_columns_for_db(dbkey):
- # api_table() から使う簡易ヘルパー。マスタ.sqlite3が未整備/未接続でも
+ # api_table() から使う簡易ヘルパー。db/master.sqlite3が未整備/未接続でも
  # 一覧表示自体は継続できるよう、失敗時は空集合（＝全列表示）を返す。
  try:
   path=DBS['MASTER']['path']

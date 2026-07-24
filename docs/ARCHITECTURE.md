@@ -9,18 +9,18 @@
   (`SIKALOTDEF.accdb`)は工場側の別システムが所有する読み取り専用のAccess
   ファイル(ネットワーク共有)を pyodbc で参照。マスタ・測定データバックアップは
   本アプリ自身が読み書きするローカルの SQLite(`sqlite3`標準ライブラリ)で、
-  `data/` フォルダ配下に置く。ビルド工程なし。
+  `db/` フォルダ配下に置く。ビルド工程なし。
 - **フロントエンド**: `templates/index.html` 1枚 + プレーンな `<script>` タグで読み込む
   vanilla JS 群。バンドラ・フレームワークなし（現場PCへのコピー配布を想定）。
 - **データ保存**: 測定データは端末の IndexedDB（+ localStorage ミラー）が主。
-  完了時に `data/測定データ.sqlite3` の `Web測定バックアップ` テーブルへJSONで退避。
+  完了時に `db/records.sqlite3` の `Web測定バックアップ` テーブルへJSONで退避。
 
 ## ディレクトリ構成
 
-`app.py`(起動エントリポイント)と `start_app.bat`/`migrate_to_sqlite.bat`
-(ダブルクリック起動用)はルート直下に置く。それ以外のバックエンドロジックは
-`backend/` パッケージへ、ローカルDBファイルは `data/` フォルダへまとめている
-(全体の一覧は `README.md` を参照)。
+`app.py`(起動エントリポイント)と `start_app.bat`(ダブルクリック起動用)は
+ルート直下に置く。それ以外のバックエンドロジックは `backend/` パッケージへ、
+ローカルDBファイルは `db/` フォルダへまとめている(全体の一覧は `README.md`
+を参照)。
 
 ## バックエンド構成
 
@@ -28,9 +28,8 @@
 |---|---|
 | `app.py` | Flask本体。一覧API(`/api/table` ほか)・測定コンテキスト(`/api/measurement/context`)・バックアップ・品質分析・whoami |
 | `backend/changelog_data.py` | `APP_VERSION` と `CHANGELOG`（データのみ。リリースごとにここを更新） |
-| `backend/db_access.py` | `DBS`(接続先定義)・`APP_ROOT`/`DATA_DIR`(パス基準)・`connect`/`cols`/`tables`/`qi`(Access/SQLite両対応)・監査列・バックアップテーブル整備 |
+| `backend/db_access.py` | `DBS`(接続先定義)・`APP_ROOT`/`DB_DIR`(パス基準)・`connect`/`cols`/`tables`/`qi`(Access/SQLite両対応)・監査列・バックアップテーブル整備 |
 | `backend/masters.py` | 各種マスタCRUDのBlueprint（設備/オペレータ/スプール/内径/機器/フィルタプリセット/列表示）。URLは分離前と同一 |
-| `backend/migrate_to_sqlite.py` | 旧`マスタ.accdb`/`測定データ.accdb`(`data/`、または旧配置のリポジトリ直下)から新しい`data/*.sqlite3`への一度限りの移行スクリプト。`migrate_to_sqlite.bat`(内部で`python -m backend.migrate_to_sqlite`を実行)から手動で一度だけ実行する想定(`start_app.bat`からは呼ばない。Accessドライバ側の状態次第でここが固まっても通常起動が巻き添えを食わないようにするため) |
 
 依存方向は `app.py → backend.masters → backend.db_access`（逆参照なし）。
 `backend.changelog_data` は独立。`app.py` からは絶対import

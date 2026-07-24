@@ -1,14 +1,14 @@
 """db_access.py: Access/SQLiteデータベースへの接続と共通ヘルパ。
 
 - DBS: 画面から選択できるデータベース(仕掛/品質/マスタ)の定義
-- MEAS_DB: 測定データのバックアップ先(測定データ.sqlite3)
+- MEAS_DB: 測定データのバックアップ先(db/records.sqlite3)
 - connect/cols/tables/qi: 接続とスキーマ操作の基本関数(Access/SQLite両対応)
 - 監査列(登録者ID/更新者ID)とバックアップテーブルの整備
 
 仕掛(SIKALOTNOW)・品質データ(SIKALOTDEF)は工場側の別システムが所有・書込する
 読み取り専用のAccessファイルのため、これらは引き続きpyodbc経由でAccessのまま
 読み取る。一方、マスタ(オペレータ/設備/フィルタ等)と測定データバックアップは
-本アプリ自身が読み書きするローカルストアのため、SQLiteへ移行した。
+本アプリ自身が読み書きするローカルストアのため、SQLite(db/フォルダ)へ移行した。
 """
 from pathlib import Path
 from datetime import datetime
@@ -16,25 +16,25 @@ import sqlite3
 import pyodbc
 
 APP_ROOT=Path(__file__).resolve().parent.parent
-DATA_DIR=APP_ROOT/"data"
+DB_DIR=APP_ROOT/"db"
 SIKA_DIR=Path(r"\\Nlmsrvngy03\Read\【New】仕掛\台帳")
 DBS={
  "SIKALOTNOW":{"path":SIKA_DIR/"SIKALOTNOW.accdb","label":"仕掛（現在）","role":"readonly","preferred":"仕掛","engine":"access"},
  "SIKALOTDEF":{"path":SIKA_DIR/"SIKALOTDEF.accdb","label":"品質データ","role":"readonly","preferred":"仕掛","engine":"access"},
- "MASTER":{"path":DATA_DIR/"マスタ.sqlite3","label":"マスタ","role":"master","preferred":"オペレータマスタ","engine":"sqlite"}}
-def resolve_local_db(candidates):
- # data/ (新しい既定の置き場所) を優先し、見つからなければ旧配置
- # (リポジトリ直下、data/フォルダ導入前のバージョンで使われていた場所)を
- # 探す。どちらにも無ければ新規作成先としてdata/配下のパスを返す。
- for base in (DATA_DIR,APP_ROOT):
-  for name in candidates:
-   path=base/name
-   if path.exists():return path
-  for path in base.glob('*.sqlite3'):
-   if any(token.lower() in path.name.lower() for token in candidates):return path
- return DATA_DIR/candidates[0]
-DBS['MASTER']['path']=resolve_local_db(['マスタ.sqlite3','マスタデータ.sqlite3','Master.sqlite3'])
-MEAS_DB=resolve_local_db(['測定データ.sqlite3','Measurement.sqlite3']); MEAS_ENGINE='sqlite'
+ "MASTER":{"path":DB_DIR/"master.sqlite3","label":"マスタ","role":"master","preferred":"オペレータマスタ","engine":"sqlite"}}
+# db/ 導入以前に使われていた置き場所とファイル名(新しい順)。db/に無い場合の
+# 移行先探索にのみ使う(過去バージョンからの引き継ぎ用で、新規環境では未使用)。
+_LEGACY_LOCATIONS=(APP_ROOT/"data",APP_ROOT)
+def resolve_local_db(name,legacy_names):
+ path=DB_DIR/name
+ if path.exists():return path
+ for base in _LEGACY_LOCATIONS:
+  for old_name in legacy_names:
+   old_path=base/old_name
+   if old_path.exists():return old_path
+ return DB_DIR/name
+DBS['MASTER']['path']=resolve_local_db('master.sqlite3',['マスタ.sqlite3','マスタデータ.sqlite3','Master.sqlite3'])
+MEAS_DB=resolve_local_db('records.sqlite3',['測定データ.sqlite3','Measurement.sqlite3']); MEAS_ENGINE='sqlite'
 DRIVER="Microsoft Access Driver (*.mdb, *.accdb)"
 
 # ========================================================================
