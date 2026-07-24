@@ -124,7 +124,7 @@
     const savable=S.genericFilters.filter(f=>!isLockedFilter(f));
     if(!savable.length){showToast?.('保存する条件がありません','条件を追加してから保存してください（使用設備の必須条件は保存対象外です）。',4200);return}
     if(savable.length>1&&!confirm(`現在アクティブな${savable.length}件の条件を、それぞれ個別の登録フィルタとして保存します。よろしいですか？`))return;
-    if(canWait())showWaiting('フィルタをマスタへ保存しています','マスタ.accdb のフィルタプリセットマスタへ書き込み中','条件を1件ずつ登録しています');
+    if(canWait())showWaiting('フィルタをマスタへ保存しています','マスタ.sqlite3 のフィルタプリセットマスタへ書き込み中','条件を1件ずつ登録しています');
     let saved=0,skipped=0,failed=0;
     for(const f of savable){
       const dup=(S.filterPresets||[]).some(p=>(p.filters||[]).length===1&&filterKey(p.filters[0])===filterKey(f)&&p.db===S.db&&p.table===S.table);
@@ -469,7 +469,7 @@
     const list=$('#filterPresetList');if(!list)return;
     const forThis=currentTablePresets();
     const summary=$('#filterPresetSummary');
-    if(summary)summary.textContent=`保存先: ${S.filterPresetSource==='master'?'マスタ.accdb':'この端末（マスタ未接続）'}　このテーブルの登録フィルタ ${forThis.length}件（${S.db||'-'} / ${S.table||'-'}）`;
+    if(summary)summary.textContent=`保存先: ${S.filterPresetSource==='master'?'マスタ.sqlite3':'この端末（マスタ未接続）'}　このテーブルの登録フィルタ ${forThis.length}件（${S.db||'-'} / ${S.table||'-'}）`;
     const ordered=forThis;
     const loading=list.querySelector(':scope > .panel-loading');
     list.querySelectorAll(':scope > .filter-preset-item, :scope > .record-empty').forEach(x=>x.remove());

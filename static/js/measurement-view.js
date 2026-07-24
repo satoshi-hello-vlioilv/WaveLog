@@ -38,7 +38,11 @@ m.basic=m.basic||{};m.settings={operator:'-',inspector:'-',lengthPos:'1(頭)',me
 }
 /* 画面の入力値をS.measureへ回収する。設定→母材→製品丈→登録設備→作業時間の順。 */
 function collect(){
- const m=S.measure;m.updatedAt=new Date().toISOString();['operator','inspector','lengthPos','measureType','verticalCount','horizontalCount','unwind','innerDiameter','spool','thicknessGauge','widthGauge','widthOrder','widthDirection','crewSize'].forEach(k=>{const el=$('#'+k);if(el)m.settings[k]=el.value});m.settings.burr=document.querySelector('[name=burr]:checked')?.value||'';m.settings.innerTape=$('#innerTape').checked;m.qualityInfo=$('#qualityInfo').value;document.querySelectorAll('[data-mother]').forEach(x=>m.mother[x.dataset.mother]=x.value);saveFlatComment();
+ // verticalCount/horizontalCountはdefaultVerticalCount/defaultHorizontalCountが
+ // 数値で設定する項目のため、DOM値(常に文字列)を読み戻す際も数値へ揃える
+ // (揃えないと、後続のリロード等を経ない一度目の保存でだけ文字列型のまま
+ // 保存され、===比較箇所で不整合を起こし得る)。
+ const m=S.measure;m.updatedAt=new Date().toISOString();['operator','inspector','lengthPos','measureType','verticalCount','horizontalCount','unwind','innerDiameter','spool','thicknessGauge','widthGauge','widthOrder','widthDirection','crewSize'].forEach(k=>{const el=$('#'+k);if(!el)return;m.settings[k]=(k==='verticalCount'||k==='horizontalCount')?(Number(el.value)||1):el.value});m.settings.burr=document.querySelector('[name=burr]:checked')?.value||'';m.settings.innerTape=$('#innerTape').checked;m.qualityInfo=$('#qualityInfo').value;document.querySelectorAll('[data-mother]').forEach(x=>m.mother[x.dataset.mother]=x.value);saveFlatComment();
  m.product=m.product&&Array.isArray(m.product.rows)?m.product:{rows:Array.from({length:LENGTH_SLOTS},blankProductRow)};
  document.querySelectorAll('#productRowsBody tr').forEach(tr=>{
   const i=+tr.dataset.row,row=m.product.rows[i]=m.product.rows[i]||blankProductRow();

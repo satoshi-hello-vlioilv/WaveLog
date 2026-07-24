@@ -1,7 +1,7 @@
 """masters.py: 各種マスタのCRUD API(Blueprint)。
 
 設備マスタ/オペレータマスタ(+作業可能設備)/スプール種別/内径種別/機器マスタ/
-フィルタプリセット/列表示(表示マスタ)を提供する。すべてマスタ.accdbに保存し、
+フィルタプリセット/列表示(表示マスタ)を提供する。すべてマスタ.sqlite3に保存し、
 テーブルが無ければ初回アクセス時に自動作成する。
 URLはBlueprint分離前と同一(/api/equipment-master 等)。
 """
@@ -15,9 +15,9 @@ EQUIPMENT_MASTER_TABLE='設備マスタ'
 def ensure_equipment_master_table(c):
  names=tables(c);created=False
  if EQUIPMENT_MASTER_TABLE not in names:
-  # Access SQLの互換性を優先し、制約と索引は別SQLで作成する。
+  # 制約と索引は別SQLで作成する。
   cur=c.cursor()
-  cur.execute('CREATE TABLE [設備マスタ] ([設備ID] COUNTER, [設備名] TEXT(50), [表示順] INTEGER, [有効] YESNO, [登録者ID] TEXT(50), [更新者ID] TEXT(50), [登録日時] DATETIME, [更新日時] DATETIME)')
+  cur.execute('CREATE TABLE [設備マスタ] ([設備ID] INTEGER PRIMARY KEY AUTOINCREMENT, [設備名] TEXT, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
   cur.execute('CREATE UNIQUE INDEX [UX_設備マスタ_設備名] ON [設備マスタ] ([設備名])')
   c.commit();created=True
  ensure_audit_columns(c,EQUIPMENT_MASTER_TABLE)
@@ -30,7 +30,7 @@ def normalize_equipment_name(value):
 def equipment_master_rows(c):
  ensure_equipment_master_table(c)
  cur=c.cursor()
- # AccessのYESNO条件式差異を避け、全行取得後にPython側で有効判定する。
+ # 全行取得後にPython側で有効判定する。
  cur.execute('SELECT [設備ID],[設備名],[表示順],[有効],[更新日時],[更新者ID] FROM [設備マスタ] ORDER BY [表示順],[設備名]')
  rows=[]
  for r in cur.fetchall():
@@ -42,7 +42,6 @@ def equipment_master_rows(c):
 def equipment_master_list():
  try:
   path=DBS['MASTER']['path']
-  if not path.exists():raise FileNotFoundError(f'マスタ.accdbが見つかりません: {path}')
   with connect(path,False) as c:
    before=EQUIPMENT_MASTER_TABLE in tables(c);rows=equipment_master_rows(c)
    items=[{'id':r[0],'name':str(r[1] or '').strip(),'order':r[2] or 0,'active':True,'updated_at':r[4].isoformat() if r[4] else None,'updated_by':(str(r[5]).strip() if len(r)>5 and r[5] else '')} for r in rows]
@@ -55,7 +54,6 @@ def equipment_master_register():
   x=request.get_json(force=True) or {};name=str(x.get('name') or '').strip();uid=request_user_id(x)
   if not name:return jsonify(error='設備名を入力してください。'),400
   path=DBS['MASTER']['path']
-  if not path.exists():raise FileNotFoundError(f'マスタ.accdbが見つかりません: {path}')
   with connect(path,False) as c:
    ensure_equipment_master_table(c);cur=c.cursor();cur.execute('SELECT [設備ID],[設備名] FROM [設備マスタ]');rows=cur.fetchall();target=normalize_equipment_name(name);existing=next((r for r in rows if normalize_equipment_name(r[1])==target),None)
    if existing:
@@ -74,7 +72,6 @@ def equipment_master_update():
   if eid is None:return jsonify(error='更新対象IDがありません。'),400
   if not name:return jsonify(error='設備名を入力してください。'),400
   path=DBS['MASTER']['path']
-  if not path.exists():raise FileNotFoundError(f'マスタ.accdbが見つかりません: {path}')
   with connect(path,False) as c:
    ensure_equipment_master_table(c);cur=c.cursor();cur.execute('SELECT [設備ID],[設備名] FROM [設備マスタ]');rows=cur.fetchall();target=normalize_equipment_name(name)
    dup=next((r for r in rows if normalize_equipment_name(r[1])==target and str(r[0])!=str(eid)),None)
@@ -89,7 +86,6 @@ def equipment_master_delete():
   x=request.get_json(force=True) or {};eid=x.get('id');uid=request_user_id(x)
   if eid is None:return jsonify(error='削除対象IDがありません。'),400
   path=DBS['MASTER']['path']
-  if not path.exists():raise FileNotFoundError(f'マスタ.accdbが見つかりません: {path}')
   with connect(path,False) as c:
    ensure_equipment_master_table(c);cur=c.cursor()
    cur.execute('SELECT [設備名] FROM [設備マスタ] WHERE [設備ID]=?',[eid]);row=cur.fetchone();name=str(row[0]).strip() if row and row[0] else ''
@@ -115,9 +111,9 @@ OPERATOR_MASTER_TABLE='オペレータマスタ'
 def ensure_operator_master_table(c):
  names=tables(c);created=False
  if OPERATOR_MASTER_TABLE not in names:
-  # 設備マスタと同じ方針。Access SQL互換のため制約と索引は別SQLで作成する。
+  # 設備マスタと同じ方針。制約と索引は別SQLで作成する。
   cur=c.cursor()
-  cur.execute('CREATE TABLE [オペレータマスタ] ([オペレータID] COUNTER, [氏名] TEXT(50), [ﾖﾐｶﾞﾅ] TEXT(50), [表示順] INTEGER, [有効] YESNO, [登録者ID] TEXT(50), [更新者ID] TEXT(50), [登録日時] DATETIME, [更新日時] DATETIME)')
+  cur.execute('CREATE TABLE [オペレータマスタ] ([オペレータID] INTEGER PRIMARY KEY AUTOINCREMENT, [氏名] TEXT, [ﾖﾐｶﾞﾅ] TEXT, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
   cur.execute('CREATE UNIQUE INDEX [UX_オペレータマスタ_氏名] ON [オペレータマスタ] ([氏名])')
   c.commit();created=True
  ensure_audit_columns(c,OPERATOR_MASTER_TABLE)
@@ -136,7 +132,7 @@ def ensure_operator_master(path):
 def operator_master_rows(c):
  ensure_operator_master_table(c)
  cur=c.cursor()
- # AccessのYESNO条件式差異を避け、全行取得後にPython側で有効判定する。
+ # 全行取得後にPython側で有効判定する。
  cur.execute('SELECT [オペレータID],[氏名],[表示順],[有効],[更新日時],[更新者ID] FROM [オペレータマスタ] ORDER BY [表示順],[氏名]')
  rows=[]
  for r in cur.fetchall():
@@ -155,7 +151,7 @@ def ensure_operator_equipment_table(c):
  names=tables(c);created=False
  if OPERATOR_EQUIPMENT_TABLE not in names:
   cur=c.cursor()
-  cur.execute('CREATE TABLE [オペレータ設備マスタ] ([ID] COUNTER, [オペレータID] LONG, [設備名] TEXT(50), [登録者ID] TEXT(50), [更新者ID] TEXT(50), [登録日時] DATETIME, [更新日時] DATETIME)')
+  cur.execute('CREATE TABLE [オペレータ設備マスタ] ([ID] INTEGER PRIMARY KEY AUTOINCREMENT, [オペレータID] INTEGER, [設備名] TEXT, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
   cur.execute('CREATE UNIQUE INDEX [UX_オペレータ設備マスタ] ON [オペレータ設備マスタ] ([オペレータID],[設備名])')
   c.commit();created=True
  ensure_audit_columns(c,OPERATOR_EQUIPMENT_TABLE)
@@ -215,7 +211,6 @@ def read_operator_names(c,equipment=None):
 def operator_master_list():
  try:
   path=DBS['MASTER']['path']
-  if not path.exists():raise FileNotFoundError(f'マスタ.accdbが見つかりません: {path}')
   with connect(path,False) as c:
    before=OPERATOR_MASTER_TABLE in tables(c);ensure_operator_master_table(c);rows=operator_master_rows(c);eqmap=operator_equipment_map(c)
    items=[{'id':r[0],'name':str(r[1] or '').strip(),'order':r[2] or 0,'active':True,'updated_at':r[4].isoformat() if r[4] else None,'updated_by':(str(r[5]).strip() if len(r)>5 and r[5] else ''),'equipment':eqmap.get(r[0],[])} for r in rows]
@@ -228,18 +223,17 @@ def operator_master_register():
   x=request.get_json(force=True) or {};name=str(x.get('name') or '').strip();yomi=str(x.get('yomi') or '').strip();equipment=x.get('equipment') or [];uid=request_user_id(x)
   if not name:return jsonify(error='氏名を入力してください。'),400
   path=DBS['MASTER']['path']
-  if not path.exists():raise FileNotFoundError(f'マスタ.accdbが見つかりません: {path}')
   with connect(path,False) as c:
    ensure_operator_master_table(c);cur=c.cursor();cur.execute('SELECT [オペレータID],[氏名] FROM [オペレータマスタ]');rows=cur.fetchall();target=normalize_operator_name(name);existing=next((r for r in rows if normalize_operator_name(r[1])==target),None)
    if existing:
-    # 既存氏名は有効化のみ。ﾖﾐｶﾞﾅは指定があるときだけ更新する（Accessの IIf/式差異を避ける）。
+    # 既存氏名は有効化のみ。ﾖﾐｶﾞﾅは指定があるときだけ更新する（値の有無で分岐する）。
     if yomi:cur.execute('UPDATE [オペレータマスタ] SET [有効]=-1,[ﾖﾐｶﾞﾅ]=?,[更新者ID]=?,[更新日時]=Now() WHERE [オペレータID]=?',[yomi,uid,existing[0]])
     else:cur.execute('UPDATE [オペレータマスタ] SET [有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [オペレータID]=?',[uid,existing[0]])
     registered=False;stored_name=str(existing[1]).strip();oid=existing[0]
    else:
     cur.execute('SELECT Max([表示順]) FROM [オペレータマスタ]');maximum=cur.fetchone()[0];order=int(maximum or 0)+10
     cur.execute('INSERT INTO [オペレータマスタ] ([氏名],[ﾖﾐｶﾞﾅ],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,-1,?,?,Now(),Now())',[name,yomi,order,uid,uid]);registered=True;stored_name=name
-    cur.execute('SELECT @@IDENTITY');oid=cur.fetchone()[0]
+    oid=cur.lastrowid
    c.commit();set_operator_equipment(c,oid,equipment,uid)
   return jsonify(ok=True,name=stored_name,registered=registered,updated_by=uid,message=('オペレータマスタへ新規登録しました。' if registered else 'オペレータマスタの登録済み氏名を有効化しました。'))
  except Exception as e:return jsonify(error=f'オペレータマスタ登録失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
@@ -251,7 +245,6 @@ def operator_master_update():
   if oid is None:return jsonify(error='更新対象IDがありません。'),400
   if not name:return jsonify(error='氏名を入力してください。'),400
   path=DBS['MASTER']['path']
-  if not path.exists():raise FileNotFoundError(f'マスタ.accdbが見つかりません: {path}')
   with connect(path,False) as c:
    ensure_operator_master_table(c);cur=c.cursor();cur.execute('SELECT [オペレータID],[氏名] FROM [オペレータマスタ]');rows=cur.fetchall();target=normalize_operator_name(name)
    dup=next((r for r in rows if normalize_operator_name(r[1])==target and str(r[0])!=str(oid)),None)
@@ -267,7 +260,6 @@ def operator_master_delete():
   x=request.get_json(force=True) or {};oid=x.get('id');uid=request_user_id(x)
   if oid is None:return jsonify(error='削除対象IDがありません。'),400
   path=DBS['MASTER']['path']
-  if not path.exists():raise FileNotFoundError(f'マスタ.accdbが見つかりません: {path}')
   with connect(path,False) as c:
    ensure_operator_master_table(c);cur=c.cursor()
    # 物理削除ではなく無効化し、履歴を残す。無効化した更新者も記録する。
@@ -285,9 +277,9 @@ SPOOL_MASTER_TABLE='スプール種別マスタ'
 def ensure_spool_master_table(c):
  names=tables(c);created=False
  if SPOOL_MASTER_TABLE not in names:
-  # 設備マスタ・オペレータマスタと同じ方針。Access SQL互換のため制約と索引は別SQLで作成する。
+  # 設備マスタ・オペレータマスタと同じ方針。制約と索引は別SQLで作成する。
   cur=c.cursor()
-  cur.execute('CREATE TABLE [スプール種別マスタ] ([スプールID] COUNTER, [種別名] TEXT(50), [備考] TEXT(120), [表示順] INTEGER, [有効] YESNO, [登録者ID] TEXT(50), [更新者ID] TEXT(50), [登録日時] DATETIME, [更新日時] DATETIME)')
+  cur.execute('CREATE TABLE [スプール種別マスタ] ([スプールID] INTEGER PRIMARY KEY AUTOINCREMENT, [種別名] TEXT, [備考] TEXT, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
   cur.execute('CREATE UNIQUE INDEX [UX_スプール種別マスタ_種別名] ON [スプール種別マスタ] ([種別名])')
   c.commit();created=True
  ensure_audit_columns(c,SPOOL_MASTER_TABLE)
@@ -306,7 +298,7 @@ def ensure_spool_master(path):
 def spool_master_rows(c):
  ensure_spool_master_table(c)
  cur=c.cursor()
- # AccessのYESNO条件式差異を避け、全行取得後にPython側で有効判定する。
+ # 全行取得後にPython側で有効判定する。
  cur.execute('SELECT [スプールID],[種別名],[表示順],[有効],[更新日時],[更新者ID] FROM [スプール種別マスタ] ORDER BY [表示順],[種別名]')
  rows=[]
  for r in cur.fetchall():
@@ -328,7 +320,6 @@ def read_spool_names(c):
 def spool_master_list():
  try:
   path=DBS['MASTER']['path']
-  if not path.exists():raise FileNotFoundError(f'マスタ.accdbが見つかりません: {path}')
   with connect(path,False) as c:
    before=SPOOL_MASTER_TABLE in tables(c);ensure_spool_master_table(c);rows=spool_master_rows(c)
    items=[{'id':r[0],'name':str(r[1] or '').strip(),'order':r[2] or 0,'active':True,'updated_at':r[4].isoformat() if r[4] else None,'updated_by':(str(r[5]).strip() if len(r)>5 and r[5] else '')} for r in rows]
@@ -341,11 +332,10 @@ def spool_master_register():
   x=request.get_json(force=True) or {};name=str(x.get('name') or '').strip();note=str(x.get('note') or '').strip();uid=request_user_id(x)
   if not name:return jsonify(error='種別名を入力してください。'),400
   path=DBS['MASTER']['path']
-  if not path.exists():raise FileNotFoundError(f'マスタ.accdbが見つかりません: {path}')
   with connect(path,False) as c:
    ensure_spool_master_table(c);cur=c.cursor();cur.execute('SELECT [スプールID],[種別名] FROM [スプール種別マスタ]');rows=cur.fetchall();target=normalize_spool_name(name);existing=next((r for r in rows if normalize_spool_name(r[1])==target),None)
    if existing:
-    # 既存種別は有効化のみ。備考は指定があるときだけ更新する（Accessの IIf/式差異を避ける）。
+    # 既存種別は有効化のみ。備考は指定があるときだけ更新する（値の有無で分岐する）。
     if note:cur.execute('UPDATE [スプール種別マスタ] SET [有効]=-1,[備考]=?,[更新者ID]=?,[更新日時]=Now() WHERE [スプールID]=?',[note,uid,existing[0]])
     else:cur.execute('UPDATE [スプール種別マスタ] SET [有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [スプールID]=?',[uid,existing[0]])
     registered=False;stored_name=str(existing[1]).strip()
@@ -363,7 +353,6 @@ def spool_master_update():
   if sid is None:return jsonify(error='更新対象IDがありません。'),400
   if not name:return jsonify(error='種別名を入力してください。'),400
   path=DBS['MASTER']['path']
-  if not path.exists():raise FileNotFoundError(f'マスタ.accdbが見つかりません: {path}')
   with connect(path,False) as c:
    ensure_spool_master_table(c);cur=c.cursor();cur.execute('SELECT [スプールID],[種別名] FROM [スプール種別マスタ]');rows=cur.fetchall();target=normalize_spool_name(name)
    dup=next((r for r in rows if normalize_spool_name(r[1])==target and str(r[0])!=str(sid)),None)
@@ -378,7 +367,6 @@ def spool_master_delete():
   x=request.get_json(force=True) or {};sid=x.get('id');uid=request_user_id(x)
   if sid is None:return jsonify(error='削除対象IDがありません。'),400
   path=DBS['MASTER']['path']
-  if not path.exists():raise FileNotFoundError(f'マスタ.accdbが見つかりません: {path}')
   with connect(path,False) as c:
    ensure_spool_master_table(c);cur=c.cursor()
    # 物理削除ではなく無効化し、履歴を残す。無効化した更新者も記録する。
@@ -396,9 +384,9 @@ INNER_MASTER_TABLE='内径種別マスタ'
 def ensure_inner_master_table(c):
  names=tables(c);created=False
  if INNER_MASTER_TABLE not in names:
-  # 設備マスタ・オペレータマスタ・スプール種別マスタと同じ方針。Access SQL互換のため制約と索引は別SQLで作成する。
+  # 設備マスタ・オペレータマスタ・スプール種別マスタと同じ方針。制約と索引は別SQLで作成する。
   cur=c.cursor()
-  cur.execute('CREATE TABLE [内径種別マスタ] ([内径ID] COUNTER, [内径種別] TEXT(50), [備考] TEXT(120), [表示順] INTEGER, [有効] YESNO, [登録者ID] TEXT(50), [更新者ID] TEXT(50), [登録日時] DATETIME, [更新日時] DATETIME)')
+  cur.execute('CREATE TABLE [内径種別マスタ] ([内径ID] INTEGER PRIMARY KEY AUTOINCREMENT, [内径種別] TEXT, [備考] TEXT, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
   cur.execute('CREATE UNIQUE INDEX [UX_内径種別マスタ_内径種別] ON [内径種別マスタ] ([内径種別])')
   c.commit();created=True
  ensure_audit_columns(c,INNER_MASTER_TABLE)
@@ -417,7 +405,7 @@ def ensure_inner_master(path):
 def inner_master_rows(c):
  ensure_inner_master_table(c)
  cur=c.cursor()
- # AccessのYESNO条件式差異を避け、全行取得後にPython側で有効判定する。
+ # 全行取得後にPython側で有効判定する。
  cur.execute('SELECT [内径ID],[内径種別],[表示順],[有効],[更新日時],[更新者ID] FROM [内径種別マスタ] ORDER BY [表示順],[内径種別]')
  rows=[]
  for r in cur.fetchall():
@@ -439,7 +427,6 @@ def read_inner_names(c):
 def inner_master_list():
  try:
   path=DBS['MASTER']['path']
-  if not path.exists():raise FileNotFoundError(f'マスタ.accdbが見つかりません: {path}')
   with connect(path,False) as c:
    before=INNER_MASTER_TABLE in tables(c);ensure_inner_master_table(c);rows=inner_master_rows(c)
    items=[{'id':r[0],'name':str(r[1] or '').strip(),'order':r[2] or 0,'active':True,'updated_at':r[4].isoformat() if r[4] else None,'updated_by':(str(r[5]).strip() if len(r)>5 and r[5] else '')} for r in rows]
@@ -452,11 +439,10 @@ def inner_master_register():
   x=request.get_json(force=True) or {};name=str(x.get('name') or '').strip();note=str(x.get('note') or '').strip();uid=request_user_id(x)
   if not name:return jsonify(error='内径種別を入力してください。'),400
   path=DBS['MASTER']['path']
-  if not path.exists():raise FileNotFoundError(f'マスタ.accdbが見つかりません: {path}')
   with connect(path,False) as c:
    ensure_inner_master_table(c);cur=c.cursor();cur.execute('SELECT [内径ID],[内径種別] FROM [内径種別マスタ]');rows=cur.fetchall();target=normalize_inner_name(name);existing=next((r for r in rows if normalize_inner_name(r[1])==target),None)
    if existing:
-    # 既存種別は有効化のみ。備考は指定があるときだけ更新する（Accessの IIf/式差異を避ける）。
+    # 既存種別は有効化のみ。備考は指定があるときだけ更新する（値の有無で分岐する）。
     if note:cur.execute('UPDATE [内径種別マスタ] SET [有効]=-1,[備考]=?,[更新者ID]=?,[更新日時]=Now() WHERE [内径ID]=?',[note,uid,existing[0]])
     else:cur.execute('UPDATE [内径種別マスタ] SET [有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [内径ID]=?',[uid,existing[0]])
     registered=False;stored_name=str(existing[1]).strip()
@@ -474,7 +460,6 @@ def inner_master_update():
   if iid is None:return jsonify(error='更新対象IDがありません。'),400
   if not name:return jsonify(error='内径種別を入力してください。'),400
   path=DBS['MASTER']['path']
-  if not path.exists():raise FileNotFoundError(f'マスタ.accdbが見つかりません: {path}')
   with connect(path,False) as c:
    ensure_inner_master_table(c);cur=c.cursor();cur.execute('SELECT [内径ID],[内径種別] FROM [内径種別マスタ]');rows=cur.fetchall();target=normalize_inner_name(name)
    dup=next((r for r in rows if normalize_inner_name(r[1])==target and str(r[0])!=str(iid)),None)
@@ -489,7 +474,6 @@ def inner_master_delete():
   x=request.get_json(force=True) or {};iid=x.get('id');uid=request_user_id(x)
   if iid is None:return jsonify(error='削除対象IDがありません。'),400
   path=DBS['MASTER']['path']
-  if not path.exists():raise FileNotFoundError(f'マスタ.accdbが見つかりません: {path}')
   with connect(path,False) as c:
    ensure_inner_master_table(c);cur=c.cursor()
    # 物理削除ではなく無効化し、履歴を残す。無効化した更新者も記録する。
@@ -508,10 +492,10 @@ DEVICE_MASTER_TABLE='機器マスタ'
 def ensure_device_master_table(c):
  names=tables(c);created=False
  if DEVICE_MASTER_TABLE not in names:
-  # 他マスタと同じ方針。Access SQL互換のため制約と索引は別SQLで作成する。
+  # 他マスタと同じ方針。制約と索引は別SQLで作成する。
   # 測定区分＋機器名の複合一意（同名でも区分違いは別レコードとして許容）。
   cur=c.cursor()
-  cur.execute('CREATE TABLE [機器マスタ] ([機器ID] COUNTER, [機器名] TEXT(50), [測定区分] TEXT(20), [備考] TEXT(120), [表示順] INTEGER, [有効] YESNO, [登録者ID] TEXT(50), [更新者ID] TEXT(50), [登録日時] DATETIME, [更新日時] DATETIME)')
+  cur.execute('CREATE TABLE [機器マスタ] ([機器ID] INTEGER PRIMARY KEY AUTOINCREMENT, [機器名] TEXT, [測定区分] TEXT, [備考] TEXT, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
   cur.execute('CREATE UNIQUE INDEX [UX_機器マスタ_区分名] ON [機器マスタ] ([測定区分],[機器名])')
   c.commit();created=True
  ensure_audit_columns(c,DEVICE_MASTER_TABLE)
@@ -530,7 +514,7 @@ def ensure_device_master(path):
 def device_master_rows(c):
  ensure_device_master_table(c)
  cur=c.cursor()
- # AccessのYESNO条件式差異を避け、全行取得後にPython側で有効判定する。
+ # 全行取得後にPython側で有効判定する。
  cur.execute('SELECT [機器ID],[機器名],[測定区分],[表示順],[有効],[更新日時],[更新者ID] FROM [機器マスタ] ORDER BY [測定区分],[表示順],[機器名]')
  rows=[]
  for r in cur.fetchall():
@@ -555,7 +539,6 @@ def read_device_names(c,kind):
 def device_master_list():
  try:
   path=DBS['MASTER']['path']
-  if not path.exists():raise FileNotFoundError(f'マスタ.accdbが見つかりません: {path}')
   with connect(path,False) as c:
    before=DEVICE_MASTER_TABLE in tables(c);ensure_device_master_table(c);rows=device_master_rows(c)
    items=[{'id':r[0],'name':str(r[1] or '').strip(),'kind':str(r[2] or '').strip(),'order':r[3] or 0,'active':True,'updated_at':r[5].isoformat() if r[5] else None,'updated_by':(str(r[6]).strip() if len(r)>6 and r[6] else '')} for r in rows]
@@ -568,11 +551,10 @@ def device_master_register():
   x=request.get_json(force=True) or {};name=str(x.get('name') or '').strip();kind=str(x.get('kind') or '').strip();note=str(x.get('note') or '').strip();uid=request_user_id(x)
   if not name:return jsonify(error='機器名を入力してください。'),400
   path=DBS['MASTER']['path']
-  if not path.exists():raise FileNotFoundError(f'マスタ.accdbが見つかりません: {path}')
   with connect(path,False) as c:
    ensure_device_master_table(c);cur=c.cursor();cur.execute('SELECT [機器ID],[機器名],[測定区分] FROM [機器マスタ]');rows=cur.fetchall();tn=normalize_device_name(name);tk=normalize_device_name(kind);existing=next((r for r in rows if normalize_device_name(r[1])==tn and normalize_device_name(r[2])==tk),None)
    if existing:
-    # 既存（区分＋機器名一致）は有効化のみ。備考は指定があるときだけ更新する（Accessの IIf/式差異を避ける）。
+    # 既存（区分＋機器名一致）は有効化のみ。備考は指定があるときだけ更新する（値の有無で分岐する）。
     if note:cur.execute('UPDATE [機器マスタ] SET [有効]=-1,[備考]=?,[更新者ID]=?,[更新日時]=Now() WHERE [機器ID]=?',[note,uid,existing[0]])
     else:cur.execute('UPDATE [機器マスタ] SET [有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [機器ID]=?',[uid,existing[0]])
     registered=False;stored_name=str(existing[1]).strip()
@@ -590,7 +572,6 @@ def device_master_update():
   if did is None:return jsonify(error='更新対象IDがありません。'),400
   if not name:return jsonify(error='機器名を入力してください。'),400
   path=DBS['MASTER']['path']
-  if not path.exists():raise FileNotFoundError(f'マスタ.accdbが見つかりません: {path}')
   with connect(path,False) as c:
    ensure_device_master_table(c);cur=c.cursor();cur.execute('SELECT [機器ID],[機器名],[測定区分] FROM [機器マスタ]');rows=cur.fetchall();tn=normalize_device_name(name);tk=normalize_device_name(kind)
    dup=next((r for r in rows if normalize_device_name(r[1])==tn and normalize_device_name(r[2])==tk and str(r[0])!=str(did)),None)
@@ -605,7 +586,6 @@ def device_master_delete():
   x=request.get_json(force=True) or {};did=x.get('id');uid=request_user_id(x)
   if did is None:return jsonify(error='削除対象IDがありません。'),400
   path=DBS['MASTER']['path']
-  if not path.exists():raise FileNotFoundError(f'マスタ.accdbが見つかりません: {path}')
   with connect(path,False) as c:
    ensure_device_master_table(c);cur=c.cursor()
    # 物理削除ではなく無効化し、履歴を残す。無効化した更新者も記録する。
@@ -617,9 +597,9 @@ FILTER_PRESET_TABLE='フィルタプリセットマスタ'
 def ensure_filter_preset_table(c):
  names=tables(c);created=False
  if FILTER_PRESET_TABLE not in names:
-  # 設備マスタと同様にAccess SQL互換を優先。条件はJSONとしてLONGCHARへ、使用回数は集計用に保持する。
+  # 設備マスタと同様の方針。条件はJSON文字列として保持し、使用回数は集計用に保持する。
   cur=c.cursor()
-  cur.execute('CREATE TABLE [フィルタプリセットマスタ] ([プリセットID] COUNTER, [名称] TEXT(120), [対象DB] TEXT(40), [対象テーブル] TEXT(120), [条件JSON] LONGCHAR, [使用回数] INTEGER, [最終使用日時] DATETIME, [表示順] INTEGER, [有効] YESNO, [登録者ID] TEXT(50), [更新者ID] TEXT(50), [登録日時] DATETIME, [更新日時] DATETIME)')
+  cur.execute('CREATE TABLE [フィルタプリセットマスタ] ([プリセットID] INTEGER PRIMARY KEY AUTOINCREMENT, [名称] TEXT, [対象DB] TEXT, [対象テーブル] TEXT, [条件JSON] TEXT, [使用回数] INTEGER, [最終使用日時] DATETIME, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
   c.commit();created=True
  ensure_audit_columns(c,FILTER_PRESET_TABLE)
  return created
@@ -627,7 +607,7 @@ def ensure_filter_preset_table(c):
 def filter_preset_rows(c):
  ensure_filter_preset_table(c)
  cur=c.cursor()
- # AccessのYESNO条件式差異を避け、全行取得後にPython側で有効判定する。使用回数の多い順で返す。
+ # 全行取得後にPython側で有効判定する(使用回数の多い順で返す)。
  cur.execute('SELECT [プリセットID],[名称],[対象DB],[対象テーブル],[条件JSON],[使用回数],[最終使用日時],[有効],[更新日時],[更新者ID] FROM [フィルタプリセットマスタ] ORDER BY [使用回数] DESC,[表示順],[名称]')
  rows=[]
  for r in cur.fetchall():
@@ -640,7 +620,6 @@ def filter_preset_list():
  try:
   db_key=str(request.args.get('db') or '').strip();table=str(request.args.get('table') or '').strip()
   path=DBS['MASTER']['path']
-  if not path.exists():raise FileNotFoundError(f'マスタ.accdbが見つかりません: {path}')
   with connect(path,False) as c:
    before=FILTER_PRESET_TABLE in tables(c);rows=filter_preset_rows(c)
    items=[]
@@ -666,7 +645,6 @@ def filter_preset_register():
   if not isinstance(filters,list) or not filters:return jsonify(error='保存する条件がありません。'),400
   db_key=str(x.get('db') or '').strip();table=str(x.get('table') or '').strip();payload=json.dumps(filters,ensure_ascii=False)
   path=DBS['MASTER']['path']
-  if not path.exists():raise FileNotFoundError(f'マスタ.accdbが見つかりません: {path}')
   with connect(path,False) as c:
    ensure_filter_preset_table(c);cur=c.cursor()
    cur.execute('SELECT [プリセットID],[名称],[対象DB],[対象テーブル] FROM [フィルタプリセットマスタ]');rows=cur.fetchall()
@@ -677,7 +655,7 @@ def filter_preset_register():
    else:
     cur.execute('SELECT Max([表示順]) FROM [フィルタプリセットマスタ]');maximum=cur.fetchone()[0];order=int(maximum or 0)+10
     cur.execute('INSERT INTO [フィルタプリセットマスタ] ([名称],[対象DB],[対象テーブル],[条件JSON],[使用回数],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,0,?,-1,?,?,Now(),Now())',[name,db_key,table,payload,order,uid,uid]);registered=True
-    cur.execute('SELECT Max([プリセットID]) FROM [フィルタプリセットマスタ]');preset_id=cur.fetchone()[0]
+    preset_id=cur.lastrowid
    c.commit()
   return jsonify(ok=True,name=name,id=preset_id,registered=registered,updated_by=uid,message=('フィルタマスタへ新規登録しました。' if registered else '登録済みフィルタを更新しました。'))
  except Exception as e:return jsonify(error=f'フィルタプリセット登録失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
@@ -702,7 +680,6 @@ def filter_preset_delete():
   x=request.get_json(force=True) or {};pid=x.get('id');uid=request_user_id(x)
   if pid is None:return jsonify(error='削除対象IDがありません。'),400
   path=DBS['MASTER']['path']
-  if not path.exists():raise FileNotFoundError(f'マスタ.accdbが見つかりません: {path}')
   with connect(path,False) as c:
    ensure_filter_preset_table(c);cur=c.cursor()
    # 物理削除ではなく無効化し、履歴を残す。無効化した更新者も記録する。
@@ -722,7 +699,7 @@ def ensure_column_display_table(c):
  names=tables(c);created=False
  if COLUMN_DISPLAY_TABLE not in names:
   cur=c.cursor()
-  cur.execute('CREATE TABLE [表示マスタ] ([ID] COUNTER, [対象] TEXT(20), [列名] TEXT(60), [登録者ID] TEXT(50), [更新者ID] TEXT(50), [登録日時] DATETIME, [更新日時] DATETIME)')
+  cur.execute('CREATE TABLE [表示マスタ] ([ID] INTEGER PRIMARY KEY AUTOINCREMENT, [対象] TEXT, [列名] TEXT, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
   cur.execute('CREATE UNIQUE INDEX [UX_表示マスタ] ON [表示マスタ] ([対象],[列名])')
   c.commit();created=True
  ensure_audit_columns(c,COLUMN_DISPLAY_TABLE)
@@ -735,7 +712,7 @@ def hidden_columns_for(c,dbkey):
  return {str(r[0] or '').strip() for r in cur.fetchall() if str(r[0] or '').strip()}
 
 def hidden_columns_for_db(dbkey):
- # api_table() から使う簡易ヘルパー。マスタ.accdbが未整備/未接続でも
+ # api_table() から使う簡易ヘルパー。マスタ.sqlite3が未整備/未接続でも
  # 一覧表示自体は継続できるよう、失敗時は空集合（＝全列表示）を返す。
  try:
   path=DBS['MASTER']['path']
@@ -782,7 +759,6 @@ def column_display_master_update():
   if dbkey not in DBS:return jsonify(error='対象DBが不正です。'),400
   if not isinstance(hidden,list):return jsonify(error='非表示列の指定が不正です。'),400
   path=DBS['MASTER']['path']
-  if not path.exists():raise FileNotFoundError(f'マスタ.accdbが見つかりません: {path}')
   with connect(path,False) as c:
    set_hidden_columns(c,dbkey,hidden,uid)
   return jsonify(ok=True,db=dbkey,hidden=hidden,updated_by=uid,message='表示設定を保存しました。')
