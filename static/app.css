@@ -339,11 +339,15 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 .debug-pane pre{white-space:pre-wrap;font-size:var(--fs-micro)}
 
 /* ---------- 6. 中央ペイン（選択項目） ---------- */
-/* 単独のパネル見出し（母材タブなど）。中央の row-title には別途スタイルを適用 */
-.panel-title:not(.row-title){padding:6px;text-align:center;background:var(--header-bar-bg);color:var(--header-bar-fg);border:1px solid var(--line);font-weight:700;font-size:var(--fs-title)}
+/* 見出しバー(.panel-title/.row-title)は、直下のカードと角丸半径・枠線色を
+   共有し「見出し(天面角丸)+本体(底面角丸)」で1つの連続したカード輪郭に
+   見せる(以前は見出しだけ角丸0の直線的な枠のままで、他が丸くなった分
+   かえって浮いて見えていた)。row-titleのように直下がカード化されていない
+   単独の見出しは、それ自体を独立した角丸バーとして扱う。 */
+.panel-title:not(.row-title){padding:6px;text-align:center;background:var(--header-bar-bg);color:var(--header-bar-fg);border:1px solid var(--card-border);border-bottom:0;border-radius:var(--radius-card) var(--radius-card) 0 0;font-weight:700;font-size:var(--fs-title)}
 .row-title{
   display:grid;grid-template-columns:max-content minmax(0,1fr);align-items:center;gap:8px;
-  min-height:48px;padding:5px 7px;background:var(--header-bar-bg);color:var(--header-bar-fg);border:1px solid var(--line);overflow:hidden;
+  min-height:48px;padding:5px 7px;margin-bottom:8px;background:var(--header-bar-bg);color:var(--header-bar-fg);border:1px solid var(--card-border);border-radius:var(--radius-card);overflow:hidden;
 }
 .row-title>span:first-child{font-weight:800;white-space:nowrap}
 .title-actions{
@@ -607,7 +611,7 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
    同居し、他パネルの見出しバーも黄・水色・灰とばらばらだった。
    「情報カードの下地(--card-bg)」「区分見出しバー(--header-bar-bg)」
    「自動計算値の強調(--computed-bg)」の3役割に色相を集約する。 */
-.material-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;padding:8px;background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius-card)}
+.material-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;padding:8px;background:var(--card-bg);border:1px solid var(--card-border);border-top:0;border-radius:0 0 var(--radius-card) var(--radius-card)}
 .material-grid label{display:grid;grid-template-rows:20px 36px;font-size:12px;white-space:nowrap}
 .material-grid input{width:100%;height:36px}
 .material-grid output{display:flex;align-items:center;justify-content:center;width:100%;height:36px;border:1px solid var(--line);background:#fff;font-weight:700}
@@ -616,8 +620,8 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 .mother-auto-field output{background:#fff;color:var(--computed-fg)}
 .mother-auto-field output.scrap-width-warn{background:var(--invalid-bg);color:var(--invalid);font-weight:800}
 .mother-quality{margin-top:8px}
-.mother-quality b{display:block;padding:6px 8px;border:1px solid var(--line);background:var(--header-bar-bg);color:var(--header-bar-fg);font-weight:700}
-.mother-quality textarea{width:100%;height:300px;border:1px solid var(--line);border-top:0;resize:none;background:#fff}
+.mother-quality b{display:block;padding:6px 8px;border:1px solid var(--card-border);border-bottom:0;border-radius:var(--radius-card) var(--radius-card) 0 0;background:var(--header-bar-bg);color:var(--header-bar-fg);font-weight:700}
+.mother-quality textarea{width:100%;height:300px;border:1px solid var(--card-border);border-top:0;border-radius:0 0 var(--radius-card) var(--radius-card);resize:none;background:#fff}
 
 .product-panel{display:grid;gap:8px}
 .product-head,.flatness-table-head{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 9px;background:var(--header-bar-bg);color:var(--header-bar-fg);border:1px solid var(--line)}
