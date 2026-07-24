@@ -441,8 +441,8 @@
   }catch(e){showToast&&showToast('保存できませんでした',e.message,6500)}
   finally{setMaintLoading(false)}
  }
- /* ---------- データ引継ぎ（PC引継ぎ等で測定データ.accdbからIndexedDBへ取り込む） ----------
-    通常はIndexedDB→測定データ.accdbの一方通行だが、PC更新等でIndexedDBが
+ /* ---------- データ引継ぎ（PC引継ぎ等で測定データ.sqlite3からIndexedDBへ取り込む） ----------
+    通常はIndexedDB→測定データ.sqlite3の一方通行だが、PC更新等でIndexedDBが
     空の端末に対しては逆方向の取り込みが必要になる。対象のペイロードは
     codec='json-full-v32'（現行の完全JSONスナップショット）のみをサポートし、
     それ以外(旧形式等)は安全側に倒して「非対応」として選択不可にする。
@@ -452,7 +452,7 @@
  async function loadImportBackupMaint(force){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
   if(!force&&importBackupState.loaded){renderImportBackupForm();renderImportBackupList();return}
-  form.innerHTML='';list.innerHTML='<div class="mm-empty">測定データ.accdbを読み込んでいます…</div>';
+  form.innerHTML='';list.innerHTML='<div class="mm-empty">測定データ.sqlite3を読み込んでいます…</div>';
   try{
    const [backupResult,localItems]=await Promise.all([api('/api/measurement/backup/list'),reliableAll().catch(()=>[])]);
    importBackupState.items=(backupResult&&backupResult.items)||[];
@@ -467,10 +467,10 @@
   form.innerHTML=`<div class="mm-form-head"><span class="mm-mode-chip editing">PC引継ぎ専用</span></div>
    <div class="mm-import-warning">
     <b>注意: この操作はこの端末のIndexedDB（編集中/完了データ）を書き換えます。</b>
-    <span>測定データ.accdb（Web測定バックアップ）の内容を、この端末のローカルデータへ取り込みます。同じIDの既存データは上書きされ、元に戻せません。PC更新・端末交換時の引継ぎなど、特別な場合以外は実行しないでください。</span>
+    <span>測定データ.sqlite3（Web測定バックアップ）の内容を、この端末のローカルデータへ取り込みます。同じIDの既存データは上書きされ、元に戻せません。PC更新・端末交換時の引継ぎなど、特別な場合以外は実行しないでください。</span>
    </div>
    <div class="mm-cd-toolbar">
-    <span class="mm-form-hint">測定データ.accdb: ${esc(String(items.length))}件（うち取込可能 ${esc(String(supported.length))}件）</span>
+    <span class="mm-form-hint">測定データ.sqlite3: ${esc(String(items.length))}件（うち取込可能 ${esc(String(supported.length))}件）</span>
     <div class="mm-cd-actions">
      <button type="button" id="mmImpReload" class="mm-btn-ghost sm">再読込</button>
      <button type="button" id="mmImpSelectAll" class="mm-btn-ghost sm">取込可能をすべて選択</button>
@@ -488,7 +488,7 @@
  function renderImportBackupList(){
   const list=$('#masterMaintList');if(!list)return;
   const items=importBackupState.items;
-  if(!items.length){list.innerHTML='<div class="mm-empty">測定データ.accdbに取込可能なバックアップがありません。</div>';return}
+  if(!items.length){list.innerHTML='<div class="mm-empty">測定データ.sqlite3に取込可能なバックアップがありません。</div>';return}
   const tmpl='40px minmax(90px,1fr) minmax(70px,.7fr) minmax(60px,.6fr) minmax(70px,.7fr) minmax(90px,.8fr) minmax(90px,.9fr) 90px';
   const head=`<div class="mm-row head" style="grid-template-columns:${tmpl}"><span></span><span>ロット番号</span><span>検査番号</span><span>状態</span><span>設備</span><span>更新日時</span><span>形式</span><span>取込先</span></div>`;
   const rows=items.map(it=>{

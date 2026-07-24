@@ -19,13 +19,23 @@
   `normalizedFieldName`/`exactFieldNumber` 系を使い、直接文字列比較しない。
   分割関連の実カラム名は「親子管理_子カード<N>」「コンマ5本分割_切断巾<N>」
   （旧VBA名 KOCARD/K05JO はエイリアスであり実カラム名ではない）。
+- **DBエンジンの使い分け**: 仕掛(SIKALOTNOW)・品質データ(SIKALOTDEF)は工場側の
+  別システムが所有するネットワーク共有上の読み取り専用Accessファイルのため、
+  今後もpyodbc経由でAccessのまま読む。マスタ(`マスタ.sqlite3`)・測定データ
+  バックアップ(`測定データ.sqlite3`)は本アプリ自身が読み書きするローカルの
+  SQLiteで、`db_access.py`の`connect()`がパス拡張子でAccess/SQLiteを自動判別
+  する。`masters.py`のSQLはNow()/Nz()等のAccess関数をそのまま使っているが、
+  `connect()`がSQLite接続へユーザー定義関数として登録して吸収している。
 
 ## 検証
 
 - Playwright ヘッドレス（Chromium: `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`、
   `NODE_PATH=/opt/node22/lib/node_modules`）。テストは scratchpad の `test_*.js`。
-- サンドボックスにAccessドライバは無く、マスタ系APIは500を返す。
-  実データ依存の検証は `page.route` で `/api/table` 等をモックして行う。
+- サンドボックスにAccessドライバは無く、仕掛/品質データ系API(`/api/table`等、
+  SIKALOTNOW/SIKALOTDEF)は接続先がAccessのままのため500を返す。実データ依存の
+  検証は`page.route`でモックして行う。一方マスタ系API(`/api/operator-master`等)
+  はSQLite化済みのため、サンドボックスでもモック無しで実際にサーバー経由の
+  読み書きを検証できる。
 - `openMeasurement`/`resumeStoredMeasure` は内部のマスタ問い合わせ失敗で
   例外を投げ得る。後続処理を確実に実行したいラップは `finally` に置く。
 

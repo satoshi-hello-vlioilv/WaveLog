@@ -5,11 +5,15 @@
 
 ## 全体像
 
-- **バックエンド**: Flask (`app.py`) + pyodbc による Access(.accdb) 連携。ビルド工程なし。
+- **バックエンド**: Flask (`app.py`)。仕掛(`SIKALOTNOW.accdb`)・品質データ
+  (`SIKALOTDEF.accdb`)は工場側の別システムが所有する読み取り専用のAccess
+  ファイル(ネットワーク共有)を pyodbc で参照。マスタ・測定データバックアップは
+  本アプリ自身が読み書きするローカルの SQLite(`sqlite3`標準ライブラリ)。
+  ビルド工程なし。
 - **フロントエンド**: `templates/index.html` 1枚 + プレーンな `<script>` タグで読み込む
   vanilla JS 群。バンドラ・フレームワークなし（現場PCへのコピー配布を想定）。
 - **データ保存**: 測定データは端末の IndexedDB（+ localStorage ミラー）が主。
-  完了時に `測定データ.accdb` の `Web測定バックアップ` テーブルへJSONで退避。
+  完了時に `測定データ.sqlite3` の `Web測定バックアップ` テーブルへJSONで退避。
 
 ## バックエンド構成
 
@@ -17,8 +21,9 @@
 |---|---|
 | `app.py` | Flask本体。一覧API(`/api/table` ほか)・測定コンテキスト(`/api/measurement/context`)・バックアップ・品質分析・whoami |
 | `changelog_data.py` | `APP_VERSION` と `CHANGELOG`（データのみ。リリースごとにここを更新） |
-| `db_access.py` | `DBS`(接続先定義)・`connect`/`cols`/`tables`/`qi`・監査列・バックアップテーブル整備 |
+| `db_access.py` | `DBS`(接続先定義)・`connect`/`cols`/`tables`/`qi`(Access/SQLite両対応)・監査列・バックアップテーブル整備 |
 | `masters.py` | 各種マスタCRUDのBlueprint（設備/オペレータ/スプール/内径/機器/フィルタプリセット/列表示）。URLは分離前と同一 |
+| `migrate_to_sqlite.py` | 旧`マスタ.accdb`/`測定データ.accdb`から新しい`.sqlite3`への一度限りの移行スクリプト |
 
 依存方向は `app.py → masters.py → db_access.py`（逆参照なし）。
 `changelog_data.py` は独立。
@@ -81,8 +86,11 @@ fn=function(...){ /* 前処理 */ const r=baseFn(...); /* 後処理 */ return r 
 - **サーバー再起動が必須**: テンプレート/静的ファイルの自動リロードは無効。
   `app.py`・`templates`・`static` を変更したら Flask を再起動して確認する。
 - **回帰テスト**: Playwright のヘッドレステスト群（開発環境のscratchpadに
-  `test_*.js`）を変更のたびに実行する。`/api/table` 等は `page.route` で
-  モックし、Accessドライバの無い環境でも検証できる形を保つ。
+  `test_*.js`）を変更のたびに実行する。仕掛/品質データ(`/api/table` 等)は
+  引き続きAccess接続のため、Accessドライバの無い環境では `page.route` で
+  モックして検証する。一方マスタ(`/api/operator-master` 等)はSQLite化に
+  伴いAccessドライバ無しの環境でも実際にサーバー経由で読み書きして検証できる
+  （マスタ系のテストはモック不要）。
 - **リリース**: 意味のある変更ごとに `changelog_data.py` の `APP_VERSION` を
   上げ、`CHANGELOG` 先頭にエントリを追記する（アプリ内の更新履歴表示が
   これを直接参照する）。

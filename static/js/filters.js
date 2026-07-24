@@ -35,46 +35,32 @@
      一覧を開き直すと自動的に元へ戻る。
      条件の説明表示・確認メッセージは、どの条件が鍵付きでも同じ汎用ロジック
      (condLabel)で組み立てる(以前あった使用設備専用の文言分岐は削除)。
-     使用設備一致の値は、この一覧を開いた端末の設定に応じて変わる特殊な
-     必須条件のため、値をその都度同期する専用の仕組み(f.locked==='equipment')
-     のみ維持する。 */
-  const EQUIPMENT_FILTER_COLUMN='BOX設計_設備名';
+     旧来の「BOX設計_設備名＝使用設備」を無条件で自動注入する専用コード
+     (ensureEquipmentFilterFor)は汎用化により完全に不要となったため削除した。
+     使用設備必須条件が欲しい場合は、登録フィルタ一覧から通常のプリセットと
+     して保存し鍵を付ければ、他の鍵付き条件と同じ扱いで自動適用される。 */
   function isLockedFilter(f){return !!f&&!!f.locked}
-  function isLockedEquipmentFilter(f){return !!f&&f.locked==='equipment'}
   function lockedFilterDescription(f){return condLabel(f)}
   function confirmRemoveLockedFilter(f){
     const target=f||S.genericFilters.find(isLockedFilter);
     if(!target)return true;
-    return confirm(`この条件(${lockedFilterDescription(target)})は鍵付きの必須条件です。外すと一時的に条件が緩和されます（この一覧を開き直すと自動的に元へ戻ります）。\n本当に解除しますか？`);
+    return confirm(`この条件(${lockedFilterDescription(target)})は鍵付きの必須条件です。外すと一時的に条件が緩和されます(この一覧を開き直すと自動的に元へ戻ります)。\n本当に解除しますか？`);
   }
   function confirmRemoveAllLocked(lockedList){
     if(lockedList.length<=1)return confirmRemoveLockedFilter(lockedList[0]);
     const desc=lockedList.map(lockedFilterDescription).join('、');
-    return confirm(`鍵付きの必須条件が${lockedList.length}件あります(${desc})。全解除すると一時的にこれらの条件も外れます（この一覧を開き直すと自動的に元へ戻ります）。\n本当に解除しますか？`);
-  }
-  /* forceInject=trueは「仕掛一覧へ新たに入った(selectTable)」時だけに使う。
-     load()側はforceInjectしない(=既にある条件の値を最新の使用設備へ
-     追従させるだけ)。そうしないと、ユーザーが確認の上で条件を外しても、
-     直後のload()で即座に復活してしまい「一時的に外す」ことができなく
-     なるため。 */
-  function ensureEquipmentFilterFor(db,{forceInject=false}={}){
-    if(db!=='SIKALOTNOW')return;
-    const equipment=typeof currentConfiguredEquipment==='function'?currentConfiguredEquipment():'';
-    if(!equipment)return;
-    const already=S.genericFilters.find(isLockedEquipmentFilter);
-    if(already){already.value=equipment;return}
-    if(forceInject)S.genericFilters.unshift({column:EQUIPMENT_FILTER_COLUMN,op:'contains',value:equipment,locked:'equipment'});
+    return confirm(`鍵付きの必須条件が${lockedList.length}件あります(${desc})。全解除すると一時的にこれらの条件も外れます(この一覧を開き直すと自動的に元へ戻ります)。\n本当に解除しますか？`);
   }
 
   /* ---- アクティブなフィルタ設定状態(S.genericFilters)を、ファイル(DB)＆
      テーブルごとに個別管理する ----
      従来はS.genericFiltersがどのDB/テーブルにも属さない単一の共有配列で、
      デフォルトフィルタが設定されていないテーブルへ切り替えると何も
-     リセットされず、直前のテーブル(存在しない列の条件や鍵付き設備条件を
+     リセットされず、直前のテーブル(存在しない列の条件や鍵付き条件を
      含む)がそのまま残り続けていた。切替の都度、直前のコンテキストの
      状態を保存し、切替先のコンテキスト専用の状態を復元する。鍵付き
-     必須条件は毎回applyDefaultFiltersFor/ensureEquipmentFilterForから
-     新しく導出し直されるものなので、保存対象からは除く。 */
+     必須条件は毎回applyDefaultFiltersForから新しく導出し直されるものなので、
+     保存対象からは除く。 */
   let activeFilterContextKey=null;
   const activeFilterStateCache={};
   function saveActiveFilterState(){
@@ -138,7 +124,7 @@
     const savable=S.genericFilters.filter(f=>!isLockedFilter(f));
     if(!savable.length){showToast?.('保存する条件がありません','条件を追加してから保存してください（使用設備の必須条件は保存対象外です）。',4200);return}
     if(savable.length>1&&!confirm(`現在アクティブな${savable.length}件の条件を、それぞれ個別の登録フィルタとして保存します。よろしいですか？`))return;
-    if(canWait())showWaiting('フィルタをマスタへ保存しています','マスタ.accdb のフィルタプリセットマスタへ書き込み中','条件を1件ずつ登録しています');
+    if(canWait())showWaiting('フィルタをマスタへ保存しています','マスタ.sqlite3 のフィルタプリセットマスタへ書き込み中','条件を1件ずつ登録しています');
     let saved=0,skipped=0,failed=0;
     for(const f of savable){
       const dup=(S.filterPresets||[]).some(p=>(p.filters||[]).length===1&&filterKey(p.filters[0])===filterKey(f)&&p.db===S.db&&p.table===S.table);
@@ -483,7 +469,7 @@
     const list=$('#filterPresetList');if(!list)return;
     const forThis=currentTablePresets();
     const summary=$('#filterPresetSummary');
-    if(summary)summary.textContent=`保存先: ${S.filterPresetSource==='master'?'マスタ.accdb':'この端末（マスタ未接続）'}　このテーブルの登録フィルタ ${forThis.length}件（${S.db||'-'} / ${S.table||'-'}）`;
+    if(summary)summary.textContent=`保存先: ${S.filterPresetSource==='master'?'マスタ.sqlite3':'この端末（マスタ未接続）'}　このテーブルの登録フィルタ ${forThis.length}件（${S.db||'-'} / ${S.table||'-'}）`;
     const ordered=forThis;
     const loading=list.querySelector(':scope > .panel-loading');
     list.querySelectorAll(':scope > .filter-preset-item, :scope > .record-empty').forEach(x=>x.remove());
@@ -523,7 +509,6 @@
   // /api/table へフィルタ条件を送信する。
   if(typeof load==='function'){
     load=async function(){
-      ensureEquipmentFilterFor(S.db);
       const q=new URLSearchParams({db:S.db,table:S.table,page:S.page,page_size:$('#pageSize').value,search:$('#search').value});
       if(S.genericFilters?.length)q.set('filters',JSON.stringify(S.genericFilters));
       if(S.sortColumn){q.set('sort',S.sortColumn);q.set('sort_dir',S.sortDir||'asc')}
@@ -602,8 +587,9 @@
   }
 
   // 一覧を開くたび（テーブル切替時）にデフォルトフィルタを自動適用する。
-  // 仕掛一覧(SIKALOTNOW)では、デフォルトフィルタの後に使用設備の必須条件を
-  // 注入する(デフォルトフィルタが全置換しても、必ずこの条件が残るように)。
+  // 使用設備必須条件が欲しい場合も、登録フィルタに鍵を付けて保存すれば
+  // 他の鍵付きデフォルトフィルタと同じくここで自動適用される(ハード
+  // コーディングされた専用注入は行わない)。
   if(typeof selectTable==='function'){
     const selectTableDefaultFilterBase=selectTable;
     selectTable=async function(t){
@@ -614,7 +600,6 @@
       const key=defaultMapKey(S.db,t);
       S.genericFilters=restoreActiveFilterState(key);
       applyDefaultFiltersFor(S.db,t);
-      ensureEquipmentFilterFor(S.db,{forceInject:true});
       activeFilterContextKey=key;
       return selectTableDefaultFilterBase(t);
     };

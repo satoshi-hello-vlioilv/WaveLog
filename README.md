@@ -2,7 +2,10 @@
 
 板金・コイル加工ラインの測定器（マイクロメータ・ノギス等）から送られてくる
 測定データを受信し、Microsoft Access（.accdb）の仕掛データと突き合わせながら
-記録・帳票化するための、Flask製の社内向けWebアプリです。
+記録・帳票化するための、Flask製の社内向けWebアプリです。仕掛・品質データは
+工場側の別システムが所有するAccessファイルを読み取り専用で参照し、本アプリ
+自身が読み書きするマスタ・測定データバックアップはSQLite（.sqlite3）に
+保存します。
 
 ## 主な機能
 
@@ -25,12 +28,17 @@
 
 ## 動作環境
 
-- Windows（Microsoft Access ODBC ドライバーが必要なため）
+- Windows（仕掛・品質データの参照にMicrosoft Access ODBC ドライバーが必要なため）
 - Python 3.9 以降
-- 必要パッケージ: `flask`, `pyodbc`
-- 参照する仕掛データ（`SIKALOTNOW.accdb` / `SIKALOTDEF.accdb`）は社内ネットワーク
-  共有（`app.py` の `SIKA_DIR`）を参照します。ローカルの `マスタ.accdb` /
-  `測定データ.accdb` はリポジトリ直下に配置します。
+- 必要パッケージ: `flask`, `pyodbc`（`sqlite3` は標準ライブラリのため追加インストール不要）
+- 参照する仕掛データ（`SIKALOTNOW.accdb` / `SIKALOTDEF.accdb`）は、工場側の
+  別システムが所有・書込する社内ネットワーク共有（`db_access.py` の
+  `SIKA_DIR`）を読み取り専用で参照します。ローカルのマスタ（`マスタ.sqlite3`）・
+  測定データバックアップ（`測定データ.sqlite3`）は本アプリ自身が読み書きする
+  ローカルストアで、リポジトリ直下に自動生成されます（無ければ初回書き込み時に
+  自動作成、事前準備は不要）。
+- 旧バージョンの `マスタ.accdb` / `測定データ.accdb` が残っている場合は、
+  `python migrate_to_sqlite.py` で一度だけSQLiteへデータを移行できます。
 
 ## 起動方法
 
@@ -48,8 +56,9 @@ python app.py
 ```
 app.py                     Flask本体・一覧/測定コンテキスト/バックアップ/品質分析API
 changelog_data.py          バージョン番号(APP_VERSION)と更新履歴(CHANGELOG)
-db_access.py               Access(ODBC)接続・DB定義・共通ヘルパ
-masters.py                 各種マスタCRUD API(Blueprint)
+db_access.py               Access(ODBC)/SQLite接続・DB定義・共通ヘルパ
+masters.py                 各種マスタCRUD API(Blueprint、マスタ.sqlite3)
+migrate_to_sqlite.py       旧マスタ.accdb/測定データ.accdbからSQLiteへの一度限りの移行スクリプト
 templates/index.html       画面の骨格（SPA）
 static/app.css             全画面共通スタイル
 static/js/                 (index.htmlの記載順に読み込み)

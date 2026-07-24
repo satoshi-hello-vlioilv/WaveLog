@@ -226,16 +226,16 @@ def backup():
   if missing:return jsonify(error='必須項目不足: '+','.join(missing)),400
   with connect(MEAS_DB) as c:
    ensure_backup_table(c);cur=c.cursor();cur.execute('DELETE FROM [Web測定バックアップ] WHERE [記録ID]=?',[x['id']]);cur.execute('INSERT INTO [Web測定バックアップ] ([記録ID],[設備],[ロット番号],[検査番号],[鋳造番号],[状態],[更新日時],[圧縮形式],[ペイロード]) VALUES (?,?,?,?,?,?,Now(),?,?)',[x['id'],x.get('equipment',''),x.get('lotNo',''),x.get('inspectionNo',''),x.get('castingNo',''),x.get('status','編集中'),x.get('codec','delimiter-v1'),x['payload']]);c.commit()
-  return jsonify(ok=True,direction='IndexedDB -> 測定データ.accdb')
+  return jsonify(ok=True,direction='IndexedDB -> 測定データ.sqlite3')
  except Exception as e:return jsonify(error=str(e)),500
 
 @app.get('/api/measurement/backup/list')
 def backup_list():
- # PC引継ぎ等でIndexedDBが空の端末へ、測定データ.accdb(Web測定バックアップ)から
+ # PC引継ぎ等でIndexedDBが空の端末へ、測定データ.sqlite3(Web測定バックアップ)から
  # インポートするための読み取り専用API。書き込みはせず、行をそのまま返す。
  # 実際のIndexedDBへの反映(JSON解凍・idbPut)はブラウザ側で行う。
  try:
-  if not MEAS_DB.exists():raise FileNotFoundError(f'測定データ.accdbが見つかりません: {MEAS_DB}')
+  if not MEAS_DB.exists():return jsonify(ok=True,items=[],count=0,table_exists=False,meas_path=str(MEAS_DB))
   with connect(MEAS_DB,True) as c:
    if 'Web測定バックアップ' not in tables(c):
     return jsonify(ok=True,items=[],count=0,table_exists=False,meas_path=str(MEAS_DB))
