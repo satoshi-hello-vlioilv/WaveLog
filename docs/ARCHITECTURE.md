@@ -23,7 +23,7 @@
 | `changelog_data.py` | `APP_VERSION` と `CHANGELOG`（データのみ。リリースごとにここを更新） |
 | `db_access.py` | `DBS`(接続先定義)・`connect`/`cols`/`tables`/`qi`(Access/SQLite両対応)・監査列・バックアップテーブル整備 |
 | `masters.py` | 各種マスタCRUDのBlueprint（設備/オペレータ/スプール/内径/機器/フィルタプリセット/列表示）。URLは分離前と同一 |
-| `migrate_to_sqlite.py` | 旧`マスタ.accdb`/`測定データ.accdb`から新しい`.sqlite3`への一度限りの移行スクリプト |
+| `migrate_to_sqlite.py` | 旧`マスタ.accdb`/`測定データ.accdb`から新しい`.sqlite3`への一度限りの移行スクリプト。`migrate_to_sqlite.bat`から手動で一度だけ実行する想定(`start_app.bat`からは呼ばない。Accessドライバ側の状態次第でここが固まっても通常起動が巻き添えを食わないようにするため) |
 
 依存方向は `app.py → masters.py → db_access.py`（逆参照なし）。
 `changelog_data.py` は独立。

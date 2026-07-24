@@ -38,7 +38,10 @@
   ローカルストアで、リポジトリ直下に自動生成されます（無ければ初回書き込み時に
   自動作成、事前準備は不要）。
 - 旧バージョンの `マスタ.accdb` / `測定データ.accdb` が残っている場合は、
-  `python migrate_to_sqlite.py` で一度だけSQLiteへデータを移行できます。
+  `migrate_to_sqlite.bat`（または `python migrate_to_sqlite.py`）を一度だけ
+  実行するとSQLiteへデータを移行できます。`start_app.bat`（通常起動）からは
+  自動実行しません。Accessドライバ側の状態次第でこの移行処理が固まった場合に
+  日常のアプリ起動そのものが巻き添えで止まらないようにするためです。
 
 ## 起動方法
 
@@ -49,7 +52,9 @@ python app.py
 
 起動後、ブラウザで `http://127.0.0.1:5029/` を開きます。Windows環境では
 `start_app.bat` をダブルクリックすることでも起動できます（必要パッケージが
-未導入の場合は自動でインストールを試みます）。
+未導入の場合は自動でインストールを試みます）。旧 `マスタ.accdb` /
+`測定データ.accdb` が残っている場合は起動時に案内メッセージが表示されるので、
+データを引き継ぎたい場合のみ別途 `migrate_to_sqlite.bat` を一度実行してください。
 
 ## ディレクトリ構成
 
@@ -59,6 +64,7 @@ changelog_data.py          バージョン番号(APP_VERSION)と更新履歴(CHA
 db_access.py               Access(ODBC)/SQLite接続・DB定義・共通ヘルパ
 masters.py                 各種マスタCRUD API(Blueprint、マスタ.sqlite3)
 migrate_to_sqlite.py       旧マスタ.accdb/測定データ.accdbからSQLiteへの一度限りの移行スクリプト
+migrate_to_sqlite.bat      上記を手動で一度だけ実行するためのバッチ(start_app.batからは呼ばれない)
 templates/index.html       画面の骨格（SPA）
 static/app.css             全画面共通スタイル
 static/js/                 (index.htmlの記載順に読み込み)
