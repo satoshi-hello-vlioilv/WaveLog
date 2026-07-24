@@ -4,11 +4,14 @@
 意味のある変更をコミットするたびに APP_VERSION を上げ、CHANGELOG の
 先頭へ新しいエントリを追記すること(新しい順)。
 """
-APP_VERSION='1.40.0'
+APP_VERSION='1.40.1'
 
 # 更新履歴。画面の「VERx.y.z」バッジから一覧表示する。APP_VERSIONを
 # 上げるたびに、このリストの先頭に新しいバージョンを追記すること。
 CHANGELOG=[
+ {'version':'1.40.1','notes':[
+  'リポジトリのルート直下に実データのマスタ.sqlite3/測定データ.sqlite3がアップロードされ、gitに追跡された状態で残っていたのを修正。db/master.sqlite3・db/records.sqlite3へ内容そのまま移動し、以後は他のローカルDBファイルと同様にgit管理対象外(.gitignoreの*.sqlite3)にした。既存のマスタ登録内容(オペレータ・設備等)や測定データバックアップはそのまま引き継がれる',
+ ]},
  {'version':'1.40.0','notes':[
   'SQLiteへの移行が完了し不要になった旧マスタ.accdb/測定データ.accdbを削除。ローカルDBの置き場所を data/ フォルダから db/ フォルダへ変更し、ファイル名もマスタ.sqlite3→master.sqlite3、測定データ.sqlite3→records.sqlite3へリネームした',
   '上記に伴い、移行完了済みで不要になった移行スクリプト(migrate_to_sqlite.py)と手動移行用バッチ(migrate_to_sqlite.bat)、start_app.batの旧accdb検出案内を撤去',
