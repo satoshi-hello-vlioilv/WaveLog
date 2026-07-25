@@ -4,11 +4,14 @@
 意味のある変更をコミットするたびに APP_VERSION を上げ、CHANGELOG の
 先頭へ新しいエントリを追記すること(新しい順)。
 """
-APP_VERSION='1.40.3'
+APP_VERSION='1.40.4'
 
 # 更新履歴。画面の「VERx.y.z」バッジから一覧表示する。APP_VERSIONを
 # 上げるたびに、このリストの先頭に新しいバージョンを追記すること。
 CHANGELOG=[
+ {'version':'1.40.4','notes':[
+  'db/master.sqlite3・db/records.sqlite3が再びgitに追跡された状態でリポジトリへアップロードされていたのを、内容はそのままにgit管理対象外(.gitignoreの*.sqlite3)へ戻した。実データ(オペレータ27件・設備7件等)はローカルにそのまま保持している',
+ ]},
  {'version':'1.40.3','notes':[
   'start_app.batがUTF-8で保存されており、日本語を含む行(REMコメントやマスタ.sqlite3等のファイル名判定)をWindowsのcmd.exeが誤読し、コマンドとして認識できず起動に失敗する不具合を修正。REMコメントは英語化し、ファイル名の一致に必要な箇所のみ日本語を残した上で、ファイル全体をCP932(Shift-JIS)へ保存し直した',
  ]},
