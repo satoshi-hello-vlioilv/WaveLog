@@ -313,7 +313,7 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 .data-management-grid b{background:var(--header-bar-bg);color:var(--header-bar-fg);white-space:nowrap}
 .data-management-grid span{background:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-.subtabs{display:flex;margin-top:8px;border-bottom:1px solid var(--line)}
+.subtabs{display:flex;margin-top:8px}
 .subtabs button{position:relative;border-radius:var(--radius-tab) var(--radius-tab) 0 0;padding:5px 8px;border:1px solid transparent;border-bottom:0;min-height:36px;background:transparent;color:#4d6169;box-shadow:none}
 .subtabs button:hover{border-color:transparent;background:#eef6f7}
 .subtabs button.active{background:var(--teal);color:#fff;font-weight:700}
@@ -321,7 +321,7 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 .split-tab-badge-pending{background:#e0b23d;color:#4a3900}
 .split-tab-badge-applied{background:#1e7a55;color:#fff}
 
-.work-time-panel{height:250px;margin:0;padding:12px;border:1px solid var(--line);border-top:0;background:#fff}
+.work-time-panel{height:250px;margin:0;padding:12px;border:1px solid var(--line);border-radius:10px;background:#fff}
 .work-time-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}
 .work-time-title b{font-size:var(--fs-title)}
 .work-time-title span{font-variant-numeric:tabular-nums;font-weight:800;color:var(--teal)}
@@ -332,10 +332,15 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 .work-time-item button{height:34px;white-space:nowrap;background:var(--teal);color:#fff;border-color:var(--teal)}
 .work-time-panel>small{display:block;margin-top:6px;color:#6f4400}
 
-.analysis h3,.quality h3{margin:0;padding:6px 8px;background:#fff1d9;border:1px solid var(--line)}
-.analysis table{width:100%}
+.analysis{background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.analysis h3{margin:0;padding:6px 8px;background:var(--header-bar-bg);color:var(--header-bar-fg);border-bottom:1px solid var(--line)}
+.quality h3{margin:0;padding:6px 8px;background:#fff1d9;border:1px solid var(--line)}
+.analysis table{width:100%;border-collapse:collapse}
+.analysis th,.analysis td{padding:5px 3px;border-bottom:1px solid var(--line);text-align:right}
+.analysis th:first-child,.analysis td:first-child{text-align:left}
+.analysis tbody tr:last-child th,.analysis tbody tr:last-child td{border-bottom:0}
 .split-pane{overflow:auto}
-.debug-pane{height:250px;overflow:auto;padding:7px;background:#fff;border:1px solid var(--line);border-top:0}
+.debug-pane{height:250px;overflow:auto;padding:7px;background:#fff;border:1px solid var(--line);border-radius:10px}
 .debug-pane pre{white-space:pre-wrap;font-size:var(--fs-micro)}
 
 /* ---------- 6. 中央ペイン（選択項目） ---------- */
