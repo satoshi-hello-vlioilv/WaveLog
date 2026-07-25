@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, jsonify
 from pathlib import Path
-import json, os, pyodbc, subprocess
+import json, os, pyodbc, subprocess, threading, time
 
 app=Flask(__name__); BASE=Path(__file__).resolve().parent
 
@@ -28,6 +28,30 @@ def no_cache(response):
  response.headers['Pragma']='no-cache'
  response.headers['Expires']='0'
  return response
+
+# ========================================================================
+# ウォッチドッグ(ハートビート監視)
+# フロント(base.js)がタブを開いている間、定期的にPOSTでここへ生存信号を
+# 送る。ブラウザを閉じる・端末がフリーズする等で信号が一定時間途絶えたら、
+# このプロセス自身をos._exit()で終了する。start_app.bat経由で起動した
+# python.exeが、ウィンドウを閉じ忘れた後もバックグラウンドに残り続ける
+# (実質的なゾンビ化)のを防ぐための自己終了機構。
+# os._exit()を使うのは、別スレッドからsys.exit()を呼んでもそのスレッドが
+# 終わるだけでプロセス自体は終了しないため(SystemExitはスレッドローカル)。
+# ========================================================================
+_last_heartbeat=time.monotonic()
+HEARTBEAT_TIMEOUT_SEC=90
+@app.post('/api/heartbeat')
+def heartbeat():
+ global _last_heartbeat
+ _last_heartbeat=time.monotonic()
+ return jsonify(ok=True)
+def _watchdog_loop():
+ while True:
+  time.sleep(10)
+  if time.monotonic()-_last_heartbeat>HEARTBEAT_TIMEOUT_SEC:
+   print(f'[watchdog] ハートビートが{HEARTBEAT_TIMEOUT_SEC}秒以上途絶えたため終了します')
+   os._exit(0)
 
 @app.get('/')
 def home():
@@ -372,4 +396,6 @@ def quality_analysis():
   return jsonify(ok=True,table=table,columns=cs,group_col=group_col,value_col=value_col,stack_col=stack_col,date_col=date_col,metric=metric_key,total=len(filtered),items=items[:200],series=sorted(series.values(),key=lambda x:x['label'])[:200],stack_keys=stack_keys,list_columns=list_cols,rows=rows,source_rows=len(raw),max_rows=max_rows,bucket=bucket,dimension=dimension)
  except Exception as e:return jsonify(error=f'品質データ分析失敗: {str(e)}'),500
 
-if __name__=='__main__': app.run(host='127.0.0.1',port=5029,debug=False)
+if __name__=='__main__':
+ threading.Thread(target=_watchdog_loop,daemon=True).start()
+ app.run(host='127.0.0.1',port=5029,debug=False)

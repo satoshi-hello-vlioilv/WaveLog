@@ -113,3 +113,10 @@ function fixedToleranceValue(kind,value){const n=Number(value);if(!Number.isFini
 /* Final title guard for delayed initialization and browser history restoration. */
 function enforceApplicationTitle(){if(document.title!=='測定伝送システム')document.title='測定伝送システム'}
 enforceApplicationTitle();window.addEventListener('pageshow',enforceApplicationTitle);document.addEventListener('visibilitychange',()=>{if(!document.hidden)enforceApplicationTitle()});
+/* ウォッチドッグ用ハートビート。このタブが開いている間、定期的にバック
+   エンドへ生存信号を送る。ブラウザを閉じる等で信号が途絶えると、
+   サーバー側のウォッチドッグがFlaskプロセスを自動終了し、閉じ忘れに
+   よるプロセスの残存(ゾンビ化)を防ぐ(サーバー側: app.py HEARTBEAT_TIMEOUT_SEC)。
+   応答は見ないため失敗しても無視する(サーバー再起動中の一時断等)。 */
+function sendHeartbeat(){fetch('/api/heartbeat',{method:'POST',cache:'no-store',keepalive:true}).catch(()=>{})}
+sendHeartbeat();setInterval(sendHeartbeat,15000);
