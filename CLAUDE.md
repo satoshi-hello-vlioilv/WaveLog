@@ -32,6 +32,13 @@
   (`master.sqlite3`/`records.sqlite3`、無ければ初回書き込み時に自動生成)は
   `db/`フォルダへまとめている。旧Access資産(`マスタ.accdb`等)は移行完了済みの
   ため撤去済み。
+- **start_app.batの文字コード**: このファイルは**CP932(Shift-JIS)で保存する**
+  こと(UTF-8で日本語を含めるとWindowsのcmd.exeが誤読しコマンドが壊れる。
+  実際に発生した不具合)。編集時はUTF-8で書いてから
+  `iconv -f UTF-8 -t CP932//TRANSLIT start_app.bat -o start_app.bat` で変換する。
+  `file start_app.bat` が `Non-ISO extended-ASCII text` になっていればCP932。
+  可能な限り非ASCII文字(REMコメント等)は使わず、`マスタ.sqlite3`等の
+  実ファイル名の一致に必要な箇所のみ日本語を使う。
 
 ## 検証
 
