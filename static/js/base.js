@@ -113,10 +113,22 @@ function fixedToleranceValue(kind,value){const n=Number(value);if(!Number.isFini
 /* Final title guard for delayed initialization and browser history restoration. */
 function enforceApplicationTitle(){if(document.title!=='測定伝送システム')document.title='測定伝送システム'}
 enforceApplicationTitle();window.addEventListener('pageshow',enforceApplicationTitle);document.addEventListener('visibilitychange',()=>{if(!document.hidden)enforceApplicationTitle()});
-/* ウォッチドッグ用ハートビート。このタブが開いている間、定期的にバック
-   エンドへ生存信号を送る。ブラウザを閉じる等で信号が途絶えると、
-   サーバー側のウォッチドッグがFlaskプロセスを自動終了し、閉じ忘れに
-   よるプロセスの残存(ゾンビ化)を防ぐ(サーバー側: app.py HEARTBEAT_TIMEOUT_SEC)。
+/* ウォッチドッグ用ハートビート。タブごとに固有IDを発行し(sessionStorageで
+   リロードをまたいで維持、タブを閉じれば消える)、開いている間は定期的に
+   バックエンドへ生存信号を送る。タブを閉じる・別ページへ移動する際は
+   pagehideで即座に終了通知(close)を送り、そのタブが無くなったことを
+   明示的に伝える。ブラウザを閉じ忘れた場合はサーバー側のウォッチドッグが
+   Flaskプロセスを自動終了し、プロセスの残存(ゾンビ化)を防ぐ(サーバー側:
+   app.py EMPTY_GRACE_SEC)。単なる通信瞬断(Wi-Fi切断等)ではタブは消えた
+   ことにならないため誤って終了しない(サーバー側: HEARTBEAT_STALE_SEC)。
    応答は見ないため失敗しても無視する(サーバー再起動中の一時断等)。 */
-function sendHeartbeat(){fetch('/api/heartbeat',{method:'POST',cache:'no-store',keepalive:true}).catch(()=>{})}
+const WATCHDOG_TAB_ID=(function(){
+ try{
+  let id=sessionStorage.getItem('wavelogTabId');
+  if(!id){id=(crypto.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random()}`);sessionStorage.setItem('wavelogTabId',id)}
+  return id;
+ }catch(e){return `${Date.now()}-${Math.random()}`}
+})();
+function sendHeartbeat(){fetch(`/api/heartbeat?tab=${encodeURIComponent(WATCHDOG_TAB_ID)}`,{method:'POST',cache:'no-store',keepalive:true}).catch(()=>{})}
 sendHeartbeat();setInterval(sendHeartbeat,15000);
+window.addEventListener('pagehide',()=>{try{navigator.sendBeacon(`/api/heartbeat/close?tab=${encodeURIComponent(WATCHDOG_TAB_ID)}`)}catch(e){}});
