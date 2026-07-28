@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, jsonify
 from pathlib import Path
-import json, os, pyodbc, subprocess
+import json, os, pyodbc, subprocess, threading, time
 
 app=Flask(__name__); BASE=Path(__file__).resolve().parent
 
@@ -28,6 +28,66 @@ def no_cache(response):
  response.headers['Pragma']='no-cache'
  response.headers['Expires']='0'
  return response
+
+# ========================================================================
+# ウォッチドッグ(開いているタブの存在監視)
+# フロント(base.js)はタブごとに固有IDを発行し、開いている間は定期的に
+# POST /api/heartbeat?tab=<id> で自分の存在をサーバーへ伝える。タブを
+# 閉じる・別ページへ移動する際は pagehide イベントから即座に
+# POST /api/heartbeat/close?tab=<id> を送り、そのタブが無くなったことを
+# 明示的に知らせる(リロード時も pagehide は発火するが、同じtab idの
+# ハートビートが直後に届くため EMPTY_GRACE_SEC 以内なら消えたと判定しない)。
+# 開いているタブが0件になってからEMPTY_GRACE_SEC秒経っても0件のままなら、
+# このプロセス自身をos._exit()で終了する。start_app.bat経由で起動した
+# python.exeが、ウィンドウを閉じ忘れた後もバックグラウンドに残り続ける
+# (実質的なゾンビ化)のを防ぐための自己終了機構。
+#
+# 以前は「一定時間ハートビートが届かない」ことだけを根拠にしていたが、
+# Wi-Fi瞬断など単なる通信断でもタブ自体は開いたままのケースがあり、
+# 通信復旧後もプロセスが既に終了していて二度と繋がらなくなる不具合が
+# あった。そのため正常系の判定はタブの明示的な消滅通知(存在の有無)を
+# 主基準とし、「一定時間ハートビートが届かない」場合の自動終了は、
+# 強制終了・端末のフリーズ・停電などpagehideが発火しない異常系のみを
+# 想定した保険として、通信瞬断では発動しない程度に十分長くする。
+#
+# os._exit()を使うのは、別スレッドからsys.exit()を呼んでもそのスレッドが
+# 終わるだけでプロセス自体は終了しないため(SystemExitはスレッドローカル)。
+# ========================================================================
+_active_tabs={}
+_tabs_lock=threading.Lock()
+_empty_since=time.monotonic()
+HEARTBEAT_STALE_SEC=3600
+EMPTY_GRACE_SEC=90
+WATCHDOG_CHECK_INTERVAL_SEC=10
+def _tab_key():
+ return request.args.get('tab') or 'default'
+@app.post('/api/heartbeat')
+def heartbeat():
+ with _tabs_lock:
+  _active_tabs[_tab_key()]=time.monotonic()
+ return jsonify(ok=True)
+@app.post('/api/heartbeat/close')
+def heartbeat_close():
+ with _tabs_lock:
+  _active_tabs.pop(_tab_key(),None)
+ return jsonify(ok=True)
+def _watchdog_loop():
+ global _empty_since
+ while True:
+  time.sleep(WATCHDOG_CHECK_INTERVAL_SEC)
+  now=time.monotonic()
+  with _tabs_lock:
+   for t in [t for t,last in _active_tabs.items() if now-last>HEARTBEAT_STALE_SEC]:
+    del _active_tabs[t]
+   empty=not _active_tabs
+  if not empty:
+   _empty_since=None
+   continue
+  if _empty_since is None:
+   _empty_since=now
+  elif now-_empty_since>EMPTY_GRACE_SEC:
+   print(f'[watchdog] 開いているタブが{EMPTY_GRACE_SEC}秒以上存在しないため終了します')
+   os._exit(0)
 
 @app.get('/')
 def home():
@@ -372,4 +432,6 @@ def quality_analysis():
   return jsonify(ok=True,table=table,columns=cs,group_col=group_col,value_col=value_col,stack_col=stack_col,date_col=date_col,metric=metric_key,total=len(filtered),items=items[:200],series=sorted(series.values(),key=lambda x:x['label'])[:200],stack_keys=stack_keys,list_columns=list_cols,rows=rows,source_rows=len(raw),max_rows=max_rows,bucket=bucket,dimension=dimension)
  except Exception as e:return jsonify(error=f'品質データ分析失敗: {str(e)}'),500
 
-if __name__=='__main__': app.run(host='127.0.0.1',port=5029,debug=False)
+if __name__=='__main__':
+ threading.Thread(target=_watchdog_loop,daemon=True).start()
+ app.run(host='127.0.0.1',port=5029,debug=False)
