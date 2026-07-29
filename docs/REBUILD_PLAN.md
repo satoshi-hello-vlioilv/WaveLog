@@ -309,16 +309,14 @@ LOCAL_DIR_NAME  = 'WaveLog'          # %LOCALAPPDATA% 配下の名前
 各手順ごとに回帰テスト一式（現状 PASS=118 / FAIL=6）を実行し、
 **既知の6件以外に失敗が増えないこと**を確認してから次へ進む。
 
-**Commit A で発見した既存の潜在バグ（Phase 3の対象外・未修正）**:
-`/api/table?db=MASTER` がAccess専用の `SELECT TOP N` 構文を使っており、
-SQLite(`db/master.sqlite3`)に対しては構文エラーで失敗する。移動前の
-`app.py`から一言一句同じコードであることを確認済みで、Phase 3で発生した
-問題ではない。フロントエンドの「ファイルを選択」プルダウンで「マスタ」を
-選ぶと実際にこの経路を踏むため、選ぶと一覧取得が失敗する（マスタの編集
-自体は専用の「マスタ管理」画面から行うため通常はこの経路を使わないが、
-再現は可能）。修正するなら `backend/db_access.py` の `connect()` に
-SQLite用のクエリ変換(`TOP N` → `LIMIT N`)を足すか、`/api/table` 側で
-エンジンに応じてSQLを出し分ける対応が必要。
+**Commit A で発見した既存の潜在バグ（修正済み）**:
+`/api/table?db=MASTER` がAccess専用の `SELECT TOP N`/`CStr()`/`Val()` を
+使っており、SQLite(`db/master.sqlite3`)に対しては失敗していた（詳細は
+コミット `75aec63`）。`SELECT TOP N`はエンジンに応じて`LIMIT`へ出し分け、
+`CStr()`/`Val()`は`backend/db_access.py`へSQLite用のユーザー定義関数として
+登録して吸収し、範囲フィルタ(gt/gte/lt/lte)のパラメータ型もSQLite接続時
+のみPython側で数値化するよう修正した。`db=SIKALOTNOW`/`SIKALOTDEF`
+(Access)側のSQL文字列・挙動は変更していない。
 
 ### Phase 4 — docs / tests の整備
 
