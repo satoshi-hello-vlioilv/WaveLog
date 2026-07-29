@@ -283,14 +283,42 @@ LOCAL_DIR_NAME  = 'WaveLog'          # %LOCALAPPDATA% 配下の名前
 
 最も回帰リスクが高いため、**移動と改変を必ず別コミットに分ける**。
 
-1. `backend/` → `app/` へ移動（import パスの変更のみ・ロジック不変）
-2. `templates/` `static/` → `app/` 配下へ移動（`url_for` が吸収）
-3. `app.py` の業務APIを `routes/` へ分離（受付とロジックの分離はまだしない）
-4. `routes/` から `services/` へ業務ロジックを抽出
-5. `masters.py`（50KB）を `routes/masters.py` + `repositories/master_repo.py` へ分割
+> **実装上の判断（当初計画からの変更）**: 「1. `backend/`→`app/`へ移動」
+> 「2. `templates/`/`static/`→`app/`配下へ移動」は実施しない。Phase 1の
+> 判断（`app/`パッケージは`app.py`と名前衝突するため作れない）がここでも
+> 効いてくる。`app.py`をFlaskインスタンス生成の薄いエントリファイルとして
+> 恒久的に残す以上、`backend/`という名前もそのまま使い続ける。
+> `templates/`/`static/`もFlaskの既定探索(アプリのroot_path基準)で問題なく
+> 機能しており、移動する実利がない。詳細は `docs/ARCHITECTURE.md` の
+> 「`backend/`を`app/`へリネームしない」を参照。
+>
+> 代わりに、達成したい本質(起動制御と業務ロジックの分離／画面URLの受付と
+> データアクセスの分離)に直接効く3.と5.のみを実施する。4.(services/層の
+> 抽出)は、既存の業務関数(`measurement_context`/`quality_analysis`)が
+> 単一関数内で完結しており、1:1でラップするだけのservices/層を追加しても
+> 実質的な関心の分離にならないため見送る(過剰な抽象化を避ける方針。
+> 仕様書も「小規模アプリではrouteとmodelsを単一ファイルにしても構わない」
+> と明記している)。
 
-各手順ごとに回帰テスト一式（現状 PASS=115 / FAIL=6）を実行し、
+1. ~~`backend/` → `app/` へ移動~~ 【見送り】上記の理由により実施しない
+2. ~~`templates/` `static/` → `app/` 配下へ移動~~ 【見送り】実施しない
+3. `app.py` の業務APIを `backend/routes/{core,tables,measurement,quality}.py` へ移動【実施済み・Commit A】
+4. ~~`routes/` から `services/` へ業務ロジックを抽出~~ 【見送り】上記の理由により実施しない
+5. `masters.py`（766行）を `backend/routes/masters.py` + `backend/repositories/master_repo.py` へ分割【実施予定・Commit B】
+
+各手順ごとに回帰テスト一式（現状 PASS=118 / FAIL=6）を実行し、
 **既知の6件以外に失敗が増えないこと**を確認してから次へ進む。
+
+**Commit A で発見した既存の潜在バグ（Phase 3の対象外・未修正）**:
+`/api/table?db=MASTER` がAccess専用の `SELECT TOP N` 構文を使っており、
+SQLite(`db/master.sqlite3`)に対しては構文エラーで失敗する。移動前の
+`app.py`から一言一句同じコードであることを確認済みで、Phase 3で発生した
+問題ではない。フロントエンドの「ファイルを選択」プルダウンで「マスタ」を
+選ぶと実際にこの経路を踏むため、選ぶと一覧取得が失敗する（マスタの編集
+自体は専用の「マスタ管理」画面から行うため通常はこの経路を使わないが、
+再現は可能）。修正するなら `backend/db_access.py` の `connect()` に
+SQLite用のクエリ変換(`TOP N` → `LIMIT N`)を足すか、`/api/table` 側で
+エンジンに応じてSQLを出し分ける対応が必要。
 
 ### Phase 4 — docs / tests の整備
 

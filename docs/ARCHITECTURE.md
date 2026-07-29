@@ -59,23 +59,36 @@
 
 ## バックエンド構成
 
+`app.py` はFlaskインスタンスの生成とBlueprint登録のみを行う薄いエントリ
+ポイント(405行→43行)。業務APIは目的別に `backend/routes/` へ分離してある。
+
 | ファイル | 役割 |
 |---|---|
-| `app.py` | Flask本体。一覧API(`/api/table` ほか)・測定コンテキスト(`/api/measurement/context`)・バックアップ・品質分析・whoami・`/api/ready.js` |
+| `app.py` | Flask本体の組み立て。Blueprint登録・キャッシュ無効化ヘッダ・ウォッチドッグ組み込みのみ |
+| `backend/routes/core.py` | トップページ・`/api/build`・`/api/ready.js`・`/api/whoami`・`/api/changelog` |
+| `backend/routes/tables.py` | 汎用DB一覧API(`/api/catalog`・`/api/tables`・`/api/table`) |
+| `backend/routes/measurement.py` | 測定コンテキスト・マスタ診断・バックアップAPI |
+| `backend/routes/quality.py` | 品質データ分析API(`/api/quality/analysis`) |
+| `backend/masters.py` | 各種マスタCRUDのBlueprint（設備/オペレータ/スプール/内径/機器/フィルタプリセット/列表示）。URLは分離前と同一 |
 | `backend/changelog_data.py` | `APP_VERSION` と `CHANGELOG`（データのみ。リリースごとにここを更新） |
 | `backend/db_access.py` | `DBS`(接続先定義)・`APP_ROOT`/`DB_DIR`(パス基準)・`connect`/`cols`/`tables`/`qi`(Access/SQLite両対応)・監査列・バックアップテーブル整備 |
-| `backend/masters.py` | 各種マスタCRUDのBlueprint（設備/オペレータ/スプール/内径/機器/フィルタプリセット/列表示）。URLは分離前と同一 |
 
-依存方向は `start_app.py → server.py → app.py → backend.masters →
-backend.db_access`（逆参照なし）。`backend.config` は他へ依存せず、
-`backend.paths`/`logging_setup`/`watchdog` がこれを参照する。
-`backend.changelog_data` は独立。`app.py` からは絶対import
-(`from backend.xxx import ...`)、`backend` 内のモジュール同士は相対import
-(`from .db_access import ...`)で参照する。
+依存方向は `start_app.py → server.py → app.py → backend.routes.* →
+backend.masters/backend.db_access`（逆参照なし）。`backend.config` は他へ
+依存せず、`backend.paths`/`logging_setup`/`watchdog` がこれを参照する。
+`backend.changelog_data` は独立。`app.py`・`backend.routes.*` からは絶対
+import(`from backend.xxx import ...`)、`backend` 内のモジュール同士は
+相対import(`from .db_access import ...`、`backend.routes.*` からは
+`from ..db_access import ...`)で参照する。
 
-> `backend/` ではなく `app/` にしていないのは、Pythonが同名のパッケージを
-> モジュールより優先するため、`app/` を作ると `app.py` が読み込めなくなる
-> ため。`app.py` を解体する Phase 3 で `backend/` ごと `app/` へ移す。
+> **`backend/` を `app/` へリネームしない**: Pythonは同名のパッケージを
+> モジュールより優先するため、`app/` パッケージを作ると `app.py` が
+> importできなくなる(直接実行`python app.py`は可能でも、他モジュールから
+> の`import app`は`app/`パッケージに解決されてしまう)。この衝突を解消する
+> 唯一の方法はFlaskインスタンス生成ファイルの名前自体を変えることだが、
+> それは配布・ドキュメント上の実利が薄いため見送り、`backend/`という
+> 名前を恒久的に採用している。routes/masters(将来的にはrepositories)と
+> いう内部構成の分離自体は、パッケージ名を`app`にせずとも達成できる。
 
 ### 列表示マスタと include_hidden
 
