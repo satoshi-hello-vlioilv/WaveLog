@@ -43,15 +43,22 @@ DRIVER="Microsoft Access Driver (*.mdb, *.accdb)"
 
 # ========================================================================
 # SQLite側のAccess SQL互換関数
-#  - Now()/Nz()はAccess独自のSQL関数。masters.py側のSQL文言はそのまま
-#    流用し、この2つをSQLite接続へユーザー定義関数として登録することで
-#    差分を吸収する(呼び出し側のSQL文字列を書き換えずに済む)。
+#  - Now()/Nz()/CStr()/Val()はAccess独自のSQL関数。masters.py・汎用一覧
+#    API(/api/table)側のSQL文言はそのまま流用し、これらをSQLite接続へ
+#    ユーザー定義関数として登録することで差分を吸収する(呼び出し側のSQL
+#    文字列を書き換えずに済む)。Max()はSQLite組込のMAX()とキーワードが
+#    大小無視で一致するため登録不要。
 #  - DATETIME列はISO8601文字列で保存し、detect_types+コンバータで
 #    読み出し時に自動的にdatetimeオブジェックへ復元する(既存コードの
 #    .isoformat()呼び出しをそのまま使えるようにするため)。
 # ========================================================================
 def _sqlite_now():return datetime.now().isoformat(sep=' ')
 def _sqlite_nz(value,default):return default if value is None else value
+def _sqlite_cstr(value):return '' if value is None else str(value)
+def _sqlite_val(value):
+ import re
+ m=re.match(r'^\s*[+-]?\d+(\.\d+)?',str(value or ''))
+ return float(m.group(0)) if m else 0.0
 sqlite3.register_adapter(datetime,lambda dt:dt.isoformat(sep=' '))
 sqlite3.register_converter('DATETIME',lambda b:datetime.fromisoformat(b.decode()))
 
@@ -70,6 +77,7 @@ def connect(path,readonly=False,engine=None):
    path.parent.mkdir(parents=True,exist_ok=True)
    c=sqlite3.connect(str(path),timeout=10,detect_types=sqlite3.PARSE_DECLTYPES)
   c.create_function('Now',0,_sqlite_now);c.create_function('Nz',2,_sqlite_nz)
+  c.create_function('CStr',1,_sqlite_cstr);c.create_function('Val',1,_sqlite_val)
   return c
  if not path.exists(): raise FileNotFoundError(f"データベースが見つかりません: {path}")
  return pyodbc.connect(f"DRIVER={{{DRIVER}}};DBQ={path};"+("READONLY=1;" if readonly else ""),autocommit=False,timeout=10)

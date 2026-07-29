@@ -4,11 +4,14 @@
 意味のある変更をコミットするたびに APP_VERSION を上げ、CHANGELOG の
 先頭へ新しいエントリを追記すること(新しい順)。
 """
-APP_VERSION='1.48.0'
+APP_VERSION='1.49.0'
 
 # 更新履歴。画面の「VERx.y.z」バッジから一覧表示する。APP_VERSIONを
 # 上げるたびに、このリストの先頭に新しいバージョンを追記すること。
 CHANGELOG=[
+ {'version':'1.49.0','notes':[
+  '一覧画面(/api/table)の「ファイルを選択」で「マスタ」を選ぶと一覧取得に失敗する不具合を修正。原因はAccess専用のSQL構文(SELECT TOP・CStr・Val)をSQLite(db/master.sqlite3)に対してもそのまま使っていたため。エンジンに応じてSELECT TOPをLIMITへ出し分け、CStr/Valをユーザー定義関数として登録して吸収した。あわせて、件数範囲での絞り込み(以上・以下等)がSQLite側では常に0件になっていた不具合も修正(値の型優先で比較するSQLiteの仕様により、Val()の数値結果と文字列パラメータを比べると不成立になっていたため)。仕掛・品質データ(Access)側の挙動は変更していない',
+ ]},
  {'version':'1.48.0','notes':[
   '内部構成の整理(画面挙動への影響なし)。マスタCRUD(766行)を一手に担っていたbackend/masters.pyを、リクエスト受付(backend/routes/masters.py)とデータアクセス(backend/repositories/master_repo.py)へ分離した。ロジックは変更していない(移動のみ、全ルート・全関数がbyte単位で同一であることを確認済み)',
  ]},
