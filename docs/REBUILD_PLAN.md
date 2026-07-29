@@ -279,7 +279,7 @@ LOCAL_DIR_NAME  = 'WaveLog'          # %LOCALAPPDATA% 配下の名前
 >    `config/local.example.json`をコミットし、必要な環境だけコピーして
 >    使う。存在しなければ一切影響せず、`db/`フォルダをそのまま使う。
 
-### Phase 3 — バックエンド／フロントエンドの再編
+### Phase 3 — バックエンド／フロントエンドの再編 【実施済み】
 
 最も回帰リスクが高いため、**移動と改変を必ず別コミットに分ける**。
 
@@ -304,7 +304,7 @@ LOCAL_DIR_NAME  = 'WaveLog'          # %LOCALAPPDATA% 配下の名前
 2. ~~`templates/` `static/` → `app/` 配下へ移動~~ 【見送り】実施しない
 3. `app.py` の業務APIを `backend/routes/{core,tables,measurement,quality}.py` へ移動【実施済み・Commit A】
 4. ~~`routes/` から `services/` へ業務ロジックを抽出~~ 【見送り】上記の理由により実施しない
-5. `masters.py`（766行）を `backend/routes/masters.py` + `backend/repositories/master_repo.py` へ分割【実施予定・Commit B】
+5. `masters.py`（766行）を `backend/routes/masters.py` + `backend/repositories/master_repo.py` へ分割【実施済み・Commit B】
 
 各手順ごとに回帰テスト一式（現状 PASS=118 / FAIL=6）を実行し、
 **既知の6件以外に失敗が増えないこと**を確認してから次へ進む。

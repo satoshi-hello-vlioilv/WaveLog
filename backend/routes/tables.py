@@ -6,7 +6,7 @@ import json
 from flask import Blueprint, request, jsonify
 
 from ..db_access import DBS, qi, connect, cols, tables, cfg
-from ..masters import hidden_columns_for_db
+from ..repositories.master_repo import hidden_columns_for_db
 
 bp=Blueprint('tables',__name__)
 

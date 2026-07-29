@@ -4,11 +4,14 @@
 意味のある変更をコミットするたびに APP_VERSION を上げ、CHANGELOG の
 先頭へ新しいエントリを追記すること(新しい順)。
 """
-APP_VERSION='1.47.0'
+APP_VERSION='1.48.0'
 
 # 更新履歴。画面の「VERx.y.z」バッジから一覧表示する。APP_VERSIONを
 # 上げるたびに、このリストの先頭に新しいバージョンを追記すること。
 CHANGELOG=[
+ {'version':'1.48.0','notes':[
+  '内部構成の整理(画面挙動への影響なし)。マスタCRUD(766行)を一手に担っていたbackend/masters.pyを、リクエスト受付(backend/routes/masters.py)とデータアクセス(backend/repositories/master_repo.py)へ分離した。ロジックは変更していない(移動のみ、全ルート・全関数がbyte単位で同一であることを確認済み)',
+ ]},
  {'version':'1.47.0','notes':[
   '内部構成の整理(画面挙動への影響なし)。app.py(405行)に集まっていた業務API(トップページ・起動確認・一覧取得・測定コンテキスト・品質データ分析等)を、backend/routes/配下へ目的別(core/tables/measurement/quality)に分離した。app.pyはFlaskインスタンスの組み立て(Blueprint登録・キャッシュ無効化・ウォッチドッグ組み込み)のみを担う43行の薄いエントリポイントになった。ロジックは変更していない(移動のみ)',
  ]},

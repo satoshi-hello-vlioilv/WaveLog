@@ -1,10 +1,10 @@
 """app.py: Flask本体の組み立て。
 
-業務API自体は backend/routes/(core/tables/measurement/quality) と
-backend/masters.py(マスタCRUD)が持つ。ここではFlaskインスタンスの生成、
-Blueprintの登録、リクエスト共通処理(キャッシュ無効化)、ウォッチドッグの
-組み込みのみを行う(起動制御と業務ロジックを分ける方針。詳細は
-docs/ARCHITECTURE.md・docs/REBUILD_PLAN.mdを参照)。
+業務API自体は backend/routes/(core/tables/measurement/quality/masters) が持つ。
+データアクセス層は backend/db_access.py・backend/repositories/(master_repo)。
+ここではFlaskインスタンスの生成、Blueprintの登録、リクエスト共通処理
+(キャッシュ無効化)、ウォッチドッグの組み込みのみを行う(起動制御と業務
+ロジックを分ける方針。詳細はdocs/ARCHITECTURE.md・docs/REBUILD_PLAN.mdを参照)。
 """
 import _pycache_bootstrap  # 他のimportより前に。単独実行(python app.py)される場合に備える
 
@@ -17,7 +17,7 @@ from backend.routes.core import bp as core_bp
 from backend.routes.tables import bp as tables_bp
 from backend.routes.measurement import bp as measurement_bp
 from backend.routes.quality import bp as quality_bp
-from backend.masters import bp as masters_bp
+from backend.routes.masters import bp as masters_bp
 
 app.register_blueprint(core_bp)
 app.register_blueprint(tables_bp)

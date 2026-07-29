@@ -5,7 +5,7 @@ app.pyから移設。ロジックは変更していない(移動のみ)。
 from flask import Blueprint, request, jsonify
 
 from ..db_access import DBS, MEAS_DB, qi, connect, cols, tables, ensure_backup_table
-from ..masters import read_operator_names, read_spool_names, read_inner_names, read_device_names, ensure_operator_master, ensure_spool_master, ensure_inner_master, ensure_device_master, ensure_operator_equipment, OPERATOR_MASTER_TABLE, SPOOL_MASTER_TABLE, INNER_MASTER_TABLE, DEVICE_MASTER_TABLE
+from ..repositories.master_repo import read_operator_names, read_spool_names, read_inner_names, read_device_names, ensure_operator_master, ensure_spool_master, ensure_inner_master, ensure_device_master, ensure_operator_equipment, OPERATOR_MASTER_TABLE, SPOOL_MASTER_TABLE, INNER_MASTER_TABLE, DEVICE_MASTER_TABLE
 
 bp=Blueprint('measurement',__name__)
 

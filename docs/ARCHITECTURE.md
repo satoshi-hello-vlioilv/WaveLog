@@ -69,17 +69,22 @@
 | `backend/routes/tables.py` | 汎用DB一覧API(`/api/catalog`・`/api/tables`・`/api/table`) |
 | `backend/routes/measurement.py` | 測定コンテキスト・マスタ診断・バックアップAPI |
 | `backend/routes/quality.py` | 品質データ分析API(`/api/quality/analysis`) |
-| `backend/masters.py` | 各種マスタCRUDのBlueprint（設備/オペレータ/スプール/内径/機器/フィルタプリセット/列表示）。URLは分離前と同一 |
+| `backend/routes/masters.py` | 各種マスタCRUDのBlueprint（設備/オペレータ/スプール/内径/機器/フィルタプリセット/列表示）。URLは分離前と同一。リクエスト受付とレスポンス整形のみを行い、データアクセスは`repositories/master_repo.py`へ委譲 |
+| `backend/repositories/master_repo.py` | 各種マスタのデータアクセス層。テーブル定義(`ensure_*_table`)・正規化(`normalize_*_name`)・読み取り(`*_master_rows`/`read_*_names`)・書き込み補助(`set_operator_equipment`/`set_hidden_columns`)。Flaskに依存しない |
 | `backend/changelog_data.py` | `APP_VERSION` と `CHANGELOG`（データのみ。リリースごとにここを更新） |
 | `backend/db_access.py` | `DBS`(接続先定義)・`APP_ROOT`/`DB_DIR`(パス基準)・`connect`/`cols`/`tables`/`qi`(Access/SQLite両対応)・監査列・バックアップテーブル整備 |
 
 依存方向は `start_app.py → server.py → app.py → backend.routes.* →
-backend.masters/backend.db_access`（逆参照なし）。`backend.config` は他へ
+backend.repositories.master_repo → backend.db_access`（逆参照なし）。
+`backend.routes.tables`/`backend.routes.measurement` は
+`backend.repositories.master_repo` の読み取り関数(`hidden_columns_for_db`/
+`read_*_names`/`ensure_*_master`)に依存する。`backend.config` は他へ
 依存せず、`backend.paths`/`logging_setup`/`watchdog` がこれを参照する。
 `backend.changelog_data` は独立。`app.py`・`backend.routes.*` からは絶対
 import(`from backend.xxx import ...`)、`backend` 内のモジュール同士は
 相対import(`from .db_access import ...`、`backend.routes.*` からは
-`from ..db_access import ...`)で参照する。
+`from ..db_access import ...`、`from ..repositories.master_repo import ...`)
+で参照する。
 
 > **`backend/` を `app/` へリネームしない**: Pythonは同名のパッケージを
 > モジュールより優先するため、`app/` パッケージを作ると `app.py` が
