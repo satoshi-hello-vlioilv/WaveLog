@@ -1,8 +1,11 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, Response
 from pathlib import Path
-import json, os, pyodbc, subprocess, threading, time
+import json, os, pyodbc, re, subprocess, threading, time
 
 app=Flask(__name__); BASE=Path(__file__).resolve().parent
+# アプリ識別子と待受ポート。待機画面(loading.html)が「同じポートに居るのが
+# 本当にこのアプリか」を確認するのに使う。
+APP_ID='wavelog'; PORT=5029
 
 from backend.changelog_data import APP_VERSION, CHANGELOG
 from backend.db_access import DBS, MEAS_DB, DRIVER, qi, connect, cols, tables, cfg, ensure_audit_columns, request_user_id, ensure_backup_table
@@ -95,7 +98,25 @@ def home():
  token=str(max(f.stat().st_mtime_ns for f in asset_files))
  return render_template('index.html', build='current', asset_token=token)
 @app.get('/api/build')
-def build(): return jsonify(build='current', version=APP_VERSION, feature='measurement-workflow-current', port=5029, **GIT_VERSION)
+def build(): return jsonify(build='current', version=APP_VERSION, feature='measurement-workflow-current', port=PORT, app_id=APP_ID, **GIT_VERSION)
+
+# ========================================================================
+# 起動完了の確認(待機画面 loading.html 用)
+# loading.htmlはサーバーより先に開かれるためfile://から読み込まれる。
+# file://からhttp://127.0.0.1へのfetchはCORSで応答を読めないが、script要素
+# なら生成元をまたいで読み込めるため、JSONP形式でアプリ識別情報を返す。
+# 待機画面はこれを受け取って初めてアプリ本体へ遷移する。ブラウザとサーバーの
+# どちらが先に立ち上がっても成立するので、起動順序に依存しない。
+# cbはコールバック関数名としてそのままJavaScriptへ埋め込むため、JSの識別子
+# として妥当な文字列以外は拒否する(任意コード混入の防止)。
+# ========================================================================
+_JS_IDENTIFIER=re.compile(r'[A-Za-z_$][A-Za-z0-9_$]*\Z')
+@app.get('/api/ready.js')
+def ready_js():
+ cb=request.args.get('cb','')
+ if not _JS_IDENTIFIER.match(cb):return Response('/* invalid callback */',mimetype='application/javascript',status=400)
+ info=json.dumps({'app':APP_ID,'ready':True,'version':APP_VERSION,'pid':os.getpid(),'url':f'http://127.0.0.1:{PORT}/'})
+ return Response(f'{cb}({info});',mimetype='application/javascript')
 @app.get('/api/whoami')
 def whoami():
  # この端末(各測定端末)で実行しているアプリのOSログインユーザー名を返す。
@@ -434,4 +455,4 @@ def quality_analysis():
 
 if __name__=='__main__':
  threading.Thread(target=_watchdog_loop,daemon=True).start()
- app.run(host='127.0.0.1',port=5029,debug=False)
+ app.run(host='127.0.0.1',port=PORT,debug=False)
