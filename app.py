@@ -1,3 +1,5 @@
+import _pycache_bootstrap  # 他のimportより前に。単独実行(python app.py)される場合に備える
+
 from flask import Flask, render_template, request, jsonify, Response
 from pathlib import Path
 import json, os, pyodbc, re, subprocess

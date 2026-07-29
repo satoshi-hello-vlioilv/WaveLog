@@ -74,7 +74,16 @@ python app.py             # 同じ経路へ委譲されます
 
 ログ・キャッシュ・実行時ファイルはアプリ本体のフォルダではなくユーザー別の
 ローカル領域へ出力されます。アプリ本体を共有フォルダーへ置いた場合でも、
-端末ごとの実行状態が衝突せず、共有側を汚さないようにするためです。
+端末ごとの実行状態が衝突せず、共有側を汚さないようにするためです
+（Pythonの`.pyc`キャッシュも同様にローカル領域へ出力します）。
+
+### DBファイルの置き場所を変更したい場合
+
+既定では `db/master.sqlite3`・`db/records.sqlite3` を使います。配置場所を
+変えたい場合は `config/local.example.json` を `config/local.json` として
+コピーし、`db_dir`（両方まとめて）または `master_db_path`/`records_db_path`
+（個別に）を指定してください。`config/local.json` が無ければこの設定は
+一切使われず、従来どおりの場所を使います。
 
 ## ディレクトリ構成
 
@@ -86,18 +95,21 @@ start_app.py               Python側の起動開始点(環境確認→多重起�
 launch_guard.py            多重起動の防止・起動中インスタンスの記録
 server.py                  Webサーバーの起動のみ(起動監視とWeb処理の境界)
 process_manager.py         対象アプリだけを安全に停止する
+_pycache_bootstrap.py      .pycキャッシュをローカル領域へ逃がす(各エントリポイントの最初のimport)
 loading.html               起動待機画面(サーバーより先に開かれる)
 app.py                     Flask本体・一覧/測定コンテキスト/バックアップ/品質分析API
 requirements.txt           必要パッケージ
+config/
+  local.example.json         DBパス上書き設定の雛形(コピーしてlocal.jsonに)
 backend/                   Flask本体以外のバックエンドロジック(Pythonパッケージ)
   config.py                  アプリID・表示名・ポート等のアプリ固有値(集約先)
-  paths.py                   ローカル領域(%LOCALAPPDATA%)の解決・共有配置の検出
+  paths.py                   ローカル領域(%LOCALAPPDATA%)の解決・共有配置の検出・config/local.jsonの読込
   logging_setup.py           ログ初期化(launcher / app の2系統)
   watchdog.py                プロセスの生存管理(ハートビート監視・明示停止)
   changelog_data.py          バージョン番号(APP_VERSION)と更新履歴(CHANGELOG)
   db_access.py                Access(ODBC)/SQLite接続・DB定義・共通ヘルパ
   masters.py                   各種マスタCRUD API(Blueprint、db/master.sqlite3)
-db/                         ローカルDBの置き場所
+db/                         ローカルDBの既定の置き場所(config/local.jsonで変更可)
   master.sqlite3               本アプリが読み書きするマスタ(無ければ初回書き込み時に自動生成)
   records.sqlite3              測定データバックアップ(無ければ初回書き込み時に自動生成)
 templates/index.html       画面の骨格（SPA）

@@ -5,6 +5,8 @@
 立ち上げるまで」を、ここから下(app.py / backend/)は「立ち上がった後」を
 担当する。
 """
+import _pycache_bootstrap  # 他のimportより前に。単独実行される場合に備える
+
 from backend import watchdog
 from backend.config import HOST, PORT
 from backend.logging_setup import launcher_logger

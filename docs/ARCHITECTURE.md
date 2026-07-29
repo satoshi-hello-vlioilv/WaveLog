@@ -39,10 +39,18 @@
 | `server.py` | Webサーバーの起動のみ。起動監視とWeb処理の境界 |
 | `process_manager.py` | 対象アプリだけの安全な停止（正常終了要求→記録済みPID。プロセス名では判定しない） |
 | `loading.html` | 起動待機画面。サーバーより先に `file://` で開かれ、`/api/ready.js` の応答を待ってからアプリへ遷移する |
+| `_pycache_bootstrap.py` | `.pyc` キャッシュをローカル領域へ逃がす。`sys.pycache_prefix` は最初のimportより前に設定する必要があるため、各エントリポイントの一番最初のimportにする |
+| `config/local.example.json` | DBパス上書き設定の雛形。コピーして `config/local.json` にすると有効化される(未配置なら既定の`db/`のまま) |
 | `backend/config.py` | アプリID・表示名・ポート・監視しきい値などアプリ固有値の集約先 |
-| `backend/paths.py` | `%LOCALAPPDATA%` 配下の解決、共有フォルダー配置の検出 |
+| `backend/paths.py` | `%LOCALAPPDATA%` 配下の解決、共有フォルダー配置の検出、`config/local.json` の読込(`load_local_config`/`configured_path`) |
 | `backend/logging_setup.py` | ログ初期化。`launcher.log`(起動・停止) と `app.log`(本体) の2系統 |
 | `backend/watchdog.py` | プロセスの生存管理。ハートビート監視・明示停止(`/api/shutdown`) |
+
+`_pycache_bootstrap.py` は `start_app.py`・`process_manager.py`・`server.py`・
+`app.py` の4つすべてで最初にimportしている。単独で起動され得る経路が複数
+あり、1箇所だけに書くと別経路で `.pyc` がアプリ側へ生成されてしまう
+(`process_manager.py stop` を単体実行した際にこれが起きることを実測で確認し、
+全エントリポイントへ追加した)。
 
 起動待機画面は `file://` から開かれるため `fetch` ではCORSで応答を読めない。
 生成元をまたいで読み込める script 要素で `/api/ready.js` を叩き、JSONP形式で

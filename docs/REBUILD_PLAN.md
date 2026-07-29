@@ -251,12 +251,33 @@ LOCAL_DIR_NAME  = 'WaveLog'          # %LOCALAPPDATA% 配下の名前
 >    かつコンソールが出るので診断用途を兼ねる）。仕様書が求める
 >    「通常起動と原因調査用起動を分ける」ことは満たしている。
 
-### Phase 2 — 実行時ファイルのローカル配置
+### Phase 2 — 実行時ファイルのローカル配置 【実施済み】
 
-- `%LOCALAPPDATA%\WaveLog\` 配下の作成と `app/paths.py` による解決
-- `PYTHONPYCACHEPREFIX` で `__pycache__` をローカル領域へ
-- DBパスの設定化 + 共有配置の検出と警告（4.1）
+- `%LOCALAPPDATA%\WaveLog\` 配下の作成と解決（`backend/paths.py`、Phase 1で先行実施）
+- `sys.pycache_prefix` で `.pyc` キャッシュをローカル領域へ（`_pycache_bootstrap.py`）
+- DBパスの設定化（`config/local.json`、既定は現状維持）＋共有配置の検出と警告（4.1）
 - 既存データは**移動しない**（後方互換の `resolve_local_db` を維持）
+
+> **実装上の判断（当初計画からの変更）**
+>
+> 1. **`PYTHONPYCACHEPREFIX`環境変数ではなく`sys.pycache_prefix`を使用**:
+>    環境変数はstart_app.py自身の起動前に設定されていなければ効果が無く、
+>    Start.vbs/start_app.batの側で設定する必要が生じて起動経路が複雑になる。
+>    Python 3.8+の`sys.pycache_prefix`はインタプリタ内から動的に設定でき、
+>    最初のimportより前に1行足すだけで済むため、こちらを採用した。
+> 2. **`_pycache_bootstrap.py`という小さな橋渡しモジュールを新設**:
+>    `sys.pycache_prefix`は「他のモジュールを1つでもimportする前」に設定
+>    する必要がある。`backend.paths`をimportしてローカル領域を解決しようと
+>    すると、そのimport自体が先にアプリ側へキャッシュを作ってしまう
+>    (鶏と卵)。そのため依存の無い最小限のモジュールを独立させ、
+>    `start_app.py`/`process_manager.py`/`server.py`/`app.py`という4つの
+>    エントリポイントすべての最初のimportにした（単独実行される経路が
+>    複数あるため、1箇所に書くだけでは不十分だった。実装中に
+>    `process_manager.py stop`単体実行時だけキャッシュ抑制が効いていない
+>    ことを実測で発見し、全エントリポイントへの追加が必要と判明した）。
+> 3. **DBパスの設定は`config/local.json`（任意ファイル）で実現**:
+>    `config/local.example.json`をコミットし、必要な環境だけコピーして
+>    使う。存在しなければ一切影響せず、`db/`フォルダをそのまま使う。
 
 ### Phase 3 — バックエンド／フロントエンドの再編
 

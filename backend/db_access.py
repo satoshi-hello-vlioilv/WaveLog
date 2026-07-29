@@ -15,8 +15,12 @@ from datetime import datetime
 import sqlite3
 import pyodbc
 
-APP_ROOT=Path(__file__).resolve().parent.parent
-DB_DIR=APP_ROOT/"db"
+from .paths import APP_ROOT, configured_path
+
+# DBの置き場所は既定でAPP_ROOT/db。config/local.jsonの"db_dir"で上書き可能
+# (未配置なら従来どおり)。個別ファイルの上書きはDBS['MASTER']['path']/
+# MEAS_DBの設定時にconfigured_pathで別途反映する。
+DB_DIR=configured_path('db_dir') or APP_ROOT/"db"
 SIKA_DIR=Path(r"\\Nlmsrvngy03\Read\【New】仕掛\台帳")
 DBS={
  "SIKALOTNOW":{"path":SIKA_DIR/"SIKALOTNOW.accdb","label":"仕掛（現在）","role":"readonly","preferred":"仕掛","engine":"access"},
@@ -33,8 +37,8 @@ def resolve_local_db(name,legacy_names):
    old_path=base/old_name
    if old_path.exists():return old_path
  return DB_DIR/name
-DBS['MASTER']['path']=resolve_local_db('master.sqlite3',['マスタ.sqlite3','マスタデータ.sqlite3','Master.sqlite3'])
-MEAS_DB=resolve_local_db('records.sqlite3',['測定データ.sqlite3','Measurement.sqlite3']); MEAS_ENGINE='sqlite'
+DBS['MASTER']['path']=configured_path('master_db_path') or resolve_local_db('master.sqlite3',['マスタ.sqlite3','マスタデータ.sqlite3','Master.sqlite3'])
+MEAS_DB=configured_path('records_db_path') or resolve_local_db('records.sqlite3',['測定データ.sqlite3','Measurement.sqlite3']); MEAS_ENGINE='sqlite'
 DRIVER="Microsoft Access Driver (*.mdb, *.accdb)"
 
 # ========================================================================

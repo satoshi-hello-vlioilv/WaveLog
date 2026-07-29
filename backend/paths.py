@@ -11,12 +11,35 @@
 """
 from pathlib import Path
 import ctypes
+import json
 import os
 import sys
 
 from .config import LOCAL_DIR_NAME
 
 APP_ROOT=Path(__file__).resolve().parent.parent
+
+# ========================================================================
+# 任意の設定ファイル(config/local.json)によるDBパスの上書き
+# 配布形態(端末ごとのコピー/共有フォルダー)がまだ確定していないため、
+# 既定は現状維持(APP_ROOT/db)としつつ、必要になれば設定1つで切り替えられる
+# ようにする。ファイルが無い/壊れている場合は空の設定として扱い、既存データの
+# 場所に一切影響しない(config/local.example.jsonがコミット済みの雛形)。
+# ========================================================================
+def load_local_config():
+ path=APP_ROOT/'config'/'local.json'
+ if not path.exists():
+  return {}
+ try:
+  data=json.loads(path.read_text(encoding='utf-8'))
+  return data if isinstance(data,dict) else {}
+ except Exception:
+  return {}
+
+def configured_path(key):
+ """config/local.jsonでのパス上書き値。未設定/該当なしはNone。"""
+ value=load_local_config().get(key)
+ return Path(value) if value else None
 
 def local_root():
  """ユーザー別ローカル領域のルート。存在しなくてもパスだけ返す。"""

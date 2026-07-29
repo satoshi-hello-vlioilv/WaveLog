@@ -17,6 +17,8 @@ Start.vbs(通常起動)と start_app.bat(診断起動)は、どちらも最終�
 また多重起動時は、待機画面が既存インスタンスを検出して即座にアプリへ
 遷移するので、「既存の画面を開く」動作(仕様書2.4)がそのまま実現される。
 """
+import _pycache_bootstrap  # 他のimportより前に。必ず1行目のimportにすること
+
 from pathlib import Path
 import importlib.util
 import subprocess
@@ -27,7 +29,7 @@ import webbrowser
 import launch_guard
 from backend.config import APP_NAME, PORT, REQUIRED_PACKAGES, app_url
 from backend.logging_setup import launcher_logger, log_environment
-from backend.paths import APP_ROOT, ensure_local_dirs, is_network_path
+from backend.paths import APP_ROOT, configured_path, ensure_local_dirs, is_network_path
 
 # 旧配置(リポジトリ直下 / data フォルダ)に残っているDBファイルの取り込み先。
 # 取り込み先に同名ファイルが既にある場合は上書きしない(繰り返し起動しても安全)。
@@ -95,13 +97,15 @@ def adopt_legacy_databases(log):
 
 
 def warn_if_shared(log):
- """共有フォルダー配置を検出したら記録する(SQLiteの同時書込は破損し得る)。"""
- records=APP_ROOT/'db'/'records.sqlite3'
+ """共有フォルダー配置を検出したら記録する(SQLiteの同時書込は破損し得る)。
+    config/local.jsonでrecords_db_pathが上書きされていれば、その実際の
+    置き場所を確認する(既定はAPP_ROOT/db/records.sqlite3)。"""
+ records=configured_path('records_db_path') or APP_ROOT/'db'/'records.sqlite3'
  if is_network_path(APP_ROOT):
   log.warning('アプリ本体がネットワーク上に配置されています: %s',APP_ROOT)
-  if records.exists():
-   log.warning('測定データバックアップ(%s)が共有上にあります。複数端末から'
-               '同時に使用するとSQLiteが破損する恐れがあります',records)
+ if is_network_path(records) and records.exists():
+  log.warning('測定データバックアップ(%s)が共有上にあります。複数端末から'
+              '同時に使用するとSQLiteが破損する恐れがあります',records)
 
 
 def main():

@@ -1,0 +1,6 @@
+{
+ "_comment": "このファイルをコピーして config/local.json として保存すると、DBファイルの置き場所を既定(アプリ直下の db/ フォルダ)から変更できます。config/local.json が存在しない場合は、この設定は一切使われず、従来どおり db/ フォルダをそのまま使います。値を上書きしない項目は null のままにしてください。",
+ "db_dir": null,
+ "master_db_path": null,
+ "records_db_path": null
+}
