@@ -129,6 +129,31 @@ const WATCHDOG_TAB_ID=(function(){
   return id;
  }catch(e){return `${Date.now()}-${Math.random()}`}
 })();
-function sendHeartbeat(){fetch(`/api/heartbeat?tab=${encodeURIComponent(WATCHDOG_TAB_ID)}`,{method:'POST',cache:'no-store',keepalive:true}).catch(()=>{})}
-sendHeartbeat();setInterval(sendHeartbeat,15000);
+/* ハートビートは「こちらが生きている」ことを伝えるだけでなく、その応答から
+   「サーバーが生きているか」も分かる。応答が続けて途絶えたら画面最上部へ
+   明示する。サーバーが終了していても画面は普通に見えてしまい、操作して
+   初めてエラーになる状態を避けるため(仕様書2.9)。
+   1回の失敗では出さない(サーバー再起動中の一時断や瞬断で出さないため)。 */
+const HEARTBEAT_INTERVAL_MS=15000, HEARTBEAT_FAIL_LIMIT=2;
+let heartbeatFailures=0;
+function setConnectionLost(lost){
+ const bar=document.getElementById('connectionLost');
+ if(bar)bar.hidden=!lost;
+ document.body.classList.toggle('connection-lost',lost);
+}
+async function sendHeartbeat(){
+ try{
+  const res=await fetch(`/api/heartbeat?tab=${encodeURIComponent(WATCHDOG_TAB_ID)}`,{method:'POST',cache:'no-store',keepalive:true});
+  if(!res.ok)throw Error('HTTP '+res.status);
+  heartbeatFailures=0;setConnectionLost(false);
+ }catch(e){
+  heartbeatFailures++;
+  if(heartbeatFailures>=HEARTBEAT_FAIL_LIMIT)setConnectionLost(true);
+ }
+}
+sendHeartbeat();setInterval(sendHeartbeat,HEARTBEAT_INTERVAL_MS);
+document.addEventListener('DOMContentLoaded',()=>{
+ const btn=document.getElementById('connectionLostReload');
+ if(btn)btn.onclick=()=>location.reload();
+});
 window.addEventListener('pagehide',()=>{try{navigator.sendBeacon(`/api/heartbeat/close?tab=${encodeURIComponent(WATCHDOG_TAB_ID)}`)}catch(e){}});
