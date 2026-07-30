@@ -274,6 +274,34 @@ A4縦は `fit` 倍率が**高さで決まる**（210×297mm を横長の画面�
 - 印刷CSS（`@media print`）は `.rp-bar` と `.rp-nav` を隠す。**バーのクラス名を
   変えたらこの行も直す**こと。
 
+### A4縦 / A4横
+
+用紙寸法は `.rp-page` / `.rp-page.rp-landscape` で入れ替える。倍率計算
+（`fitPage`/`applyScale`）は実寸を読むので自動で追従する。印刷側の用紙向きは
+**`@page` をクラスで切り替えられない**ため、`updatePageSizeStyle()` が
+`<style id="rpPageSizeStyle">` を書き換える（`app.css` の既定 `@page` より後に
+挿入されるので、こちらが勝つ）。
+
+**倍率を決める辺が向きで変わる**:
+
+| 向き | 律速 | 一覧を畳むと |
+|---|---|---|
+| 縦 210×297 | 高さ | 倍率は変わらない（余白が減るだけ） |
+| 横 297×210 | 幅 | 77% → 98%（1400×900 実測） |
+
+横向きは高さが210mmしかなく、測定データ表（40行）を1本で積むと**59mmはみ出して
+2ページに割れる**。そのため `widthMeasurementSection()` は横向きのとき
+`1〜20条 / 21〜40条` の2ブロックへ左右分割する（`.rp-wide-split`）。向きを変えたら
+表の組み方が変わるので、`applyOrientation()` は `renderReport()` を呼び直す。
+
+一覧を畳む `.rp-body.rp-nav-hidden` は **`grid-template-columns` を1列にする**こと。
+`0 minmax(0,1fr)` の2列指定のままだと、`display:none` でグリッドから外れた
+`.rp-nav` の代わりに `.rp-main` が幅0の第1列へ自動配置され、表示領域が潰れる
+（実測で内容幅16px・倍率が下限25%へ落ちた）。
+
+向きと一覧の表示状態は端末ごとの設定として `localStorage`
+（`WaveLogReportOrientationV1` / `WaveLogReportNavHiddenV1`）に保持する。
+
 ### ハンドラ結線の注意
 
 - `measurement-view.js` の `.selectors` 一括 `onchange=markDirty` は、

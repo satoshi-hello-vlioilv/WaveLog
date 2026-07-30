@@ -1658,6 +1658,12 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
 .rp-icon-btn.active{background:#fff;border-color:#fff;color:#0d4650}
 
 .rp-body{flex:1;min-height:0;display:grid;grid-template-columns:230px minmax(0,1fr)}
+/* ロット一覧を畳んだ状態。A4横は倍率が幅で決まるため、畳むと帳票が大きくなる。
+   列数は1列にする。`0 minmax(0,1fr)` の2列指定のままだと、display:noneで
+   グリッドから外れた.rp-navの代わりに.rp-mainが幅0の第1列へ自動配置され、
+   表示領域が潰れる(実測で内容幅16px・倍率が下限25%に落ちた)。 */
+.rp-body.rp-nav-hidden{grid-template-columns:minmax(0,1fr)}
+.rp-body.rp-nav-hidden .rp-nav{display:none}
 .rp-nav{display:flex;flex-direction:column;min-height:0;background:#e7eff1;border-right:1px solid var(--line)}
 /* 検索と並び順は横1列。縦2段(102px)だった分をロット一覧の表示に回す。 */
 .rp-nav-toolbar{display:flex;align-items:center;gap:6px;padding:7px 8px}
@@ -1694,6 +1700,11 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
 /* A4実寸。画面プレビューは印刷と同じ密度のCSSで組み、実際に印刷
    される見た目そのままをページ枠内に収める（WYSIWYG）。 */
 .rp-page{width:210mm;min-height:297mm;background:#fff;box-shadow:0 6px 24px #00000030;padding:8mm;box-sizing:border-box;font-size:10px;transform-origin:top left}
+/* A4横。用紙寸法を入れ替えるだけで、倍率計算(fitPage/applyScale)は実寸を
+   読むため自動で追従する。印刷側の@pageはJS(updatePageSizeStyle)が差し替える。 */
+.rp-page.rp-landscape{width:297mm;min-height:210mm}
+/* A4横の測定データ表は1〜20条/21〜40条を左右に分けて高さを半減させる。 */
+.rp-wide-split{display:grid;grid-template-columns:1fr 1fr;gap:0 4px;align-items:start}
 .rp-empty{padding:40px;text-align:center;color:#60747b;background:#fff;border:1px dashed #aebfc4;border-radius:12px}
 .rp-report-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;padding-bottom:3px;margin-bottom:4px;border-bottom:2px solid #173842}
 .rp-report-head small{color:var(--teal);font-weight:800;letter-spacing:.1em}
