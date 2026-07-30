@@ -10,6 +10,10 @@
   ファイル(ネットワーク共有)を pyodbc で参照。マスタ・測定データバックアップは
   本アプリ自身が読み書きするローカルの SQLite(`sqlite3`標準ライブラリ)で、
   `db/` フォルダ配下に置く。ビルド工程なし。
+  仕掛/品質データの読み込み先ファイル自体も`config/local.json`の
+  `sikalotnow_path`/`sikalotdef_path`で上書きでき、拡張子が`.sqlite3`等なら
+  自動的にSQLiteとして読む（`db_access.py`の`_engine_for`）。工場側が将来
+  SQLiteへ移行した場合や、検証用に手元へ複製したファイルを指す用途を想定。
 - **フロントエンド**: `templates/index.html` 1枚 + プレーンな `<script>` タグで読み込む
   vanilla JS 群。バンドラ・フレームワークなし（現場PCへのコピー配布を想定）。
 - **データ保存**: 測定データは端末の IndexedDB（+ localStorage ミラー）が主。
@@ -40,7 +44,7 @@
 | `process_manager.py` | 対象アプリだけの安全な停止（正常終了要求→記録済みPID。プロセス名では判定しない） |
 | `loading.html` | 起動待機画面。サーバーより先に `file://` で開かれ、`/api/ready.js` の応答を待ってからアプリへ遷移する |
 | `_pycache_bootstrap.py` | `.pyc` キャッシュをローカル領域へ逃がす。`sys.pycache_prefix` は最初のimportより前に設定する必要があるため、各エントリポイントの一番最初のimportにする |
-| `config/local.example.json` | DBパス上書き設定の雛形。コピーして `config/local.json` にすると有効化される(未配置なら既定の`db/`のまま) |
+| `config/local.example.json` | DBパス上書き設定の雛形。コピーして `config/local.json` にすると有効化される(未配置なら既定の`db/`のまま)。`db_dir`/`master_db_path`/`records_db_path`に加え、`sikalotnow_path`/`sikalotdef_path`で仕掛・品質データの読み込み先ファイル自体も切り替えられる |
 | `backend/config.py` | アプリID・表示名・ポート・監視しきい値などアプリ固有値の集約先 |
 | `backend/paths.py` | `%LOCALAPPDATA%` 配下の解決、共有フォルダー配置の検出、`config/local.json` の読込(`load_local_config`/`configured_path`) |
 | `backend/logging_setup.py` | ログ初期化。`launcher.log`(起動・停止) と `app.log`(本体) の2系統 |
@@ -114,7 +118,36 @@ import(`from backend.xxx import ...`)、`backend` 内のモジュール同士は
 | `list-view.js` | `init`・`selectDb`/`selectTable`/`load`・`renderGrid`・更新履歴モーダル・検索/ページャ |
 | `measurement-view.js` | `ensureMeasureShape`・`collect`・`renderMeasurement`・各パネル描画（品質等級/コース/製品丈/作業時間）・入力検証（`updateValidationVisuals`）・`updateMeasurementHeading` |
 | `measurement-input.js` | `deviceParse`・`processDeviceInput`・`focusCurrent`・`renderMeasureGrid(Vertical)`・`judgeInput`・公差計算（`toleranceDetail`/`toleranceDataForSource`/`compactTolerance*`） |
-| `records-store.js` | IndexedDB/ミラー永続化・`saveLocal`/`persistAndTransition`・`openMeasurement`・`openRecords`/`renderRecordListRows`・`loadMeasurementContext`・使用設備設定/設備マスタ・アプリ起動呼び出し（末尾） |
+| `records-store.js` | IndexedDB/ミラー永続化・`saveLocal`/`persistAndTransition`・`openMeasurement`・`openRecords`/`renderRecordListRows`・`loadMeasurementContext`・使用設備設定/設備マスタ・Access同期の未完了キューと再送・アプリ起動呼び出し（末尾） |
+
+### Access同期の未完了キューと再送（records-store.js）
+
+`backupRecord(m)`（`/api/measurement/backup`へのPOST、`DELETE→INSERT`の
+冪等upsertなので再送しても重複しない）の成否をレコードへ持たせず捨てて
+いたため、工場の共有フォルダが不安定だと端末内にはあるがAccess側には
+無いデータが静かに溜まっていた。これを可視化・再送可能にする。
+
+- `m.syncState={status:'pending'|'synced'|'failed',lastAttempt,lastError,attempts}`。
+  `ensureMeasureShape`が新規/既存レコード双方へ初期値を補う。
+- `backupAndTrackSync(m)`が`backupRecord`→`syncState`更新→`reliablePut`保存を
+  一括で行う（呼び出し側は個別に組み立てない）。
+- `syncPendingRecords({silent})`が`syncState.status!=='synced'`のレコードを
+  まとめて再送する。呼び出し元: 起動直後（`queueMicrotask`）・
+  `online`イベント・15分間隔の`setInterval`（すべて`silent:true`）、および
+  データ一覧の「今すぐ再送」ボタン（`#recordSyncNowBtn`、`silent:false`で
+  進捗オーバーレイ表示）。
+- `refreshSyncStatusUI()`がサイドバー（`#homeDraftSyncWarn`）とデータ一覧
+  （`#recordSyncBar`/`#recordSyncCount`）の未同期件数表示を更新する。
+  **`syncPendingRecords`や`backupAndTrackSync`を新しい経路から呼ぶときは
+  必ずセットで呼ぶこと**（呼び忘れると表示が更新されない）。
+- データ一覧の行を再描画するときは`renderRecordListRows()`ではなく
+  `refreshRecordList()`を使うこと。`renderRecordListRows()`は
+  `recordListState.items`という開いた時点のキャッシュを読むだけで
+  ストレージを再取得しないため、`syncPendingRecords`のように裏で
+  レコードが更新された直後に呼ぶと古い`syncState`のバッジが残る
+  （実際に一覧を開いたまま再送すると同期済みになってもバッジが消えない
+  不具合があった。`refreshRecordList()`は`reliableAll()`から読み直して
+  から描画するため取り違えない）。
 
 **各関数の定義はコア内で1箇所のみ**（旧 core.js にあった同名関数の多層
 再定義・到達不能な旧実装は 2026-07 のリファクタリングで撤去済み）。
@@ -290,6 +323,35 @@ UI は「入力内容」セレクトをチップへ置換する（面積は増�
 （帳票を見ている間は測定画面の描画が止まるため、古い件数が残るのを防ぐ）。
 `print:true` は描画完了を待つため `requestAnimationFrame` を2回挟んでから
 印刷ダイアログを開く（同期的に呼ぶと白紙になる）。
+
+### 帳票の一括印刷
+
+一覧から複数ロットを選び、1回の印刷操作でロットごと1ページずつまとめて
+出力する機能。既存の単一プレビュー（`#reportContent`/`#rpPageBox`、ズーム・
+スクロール状態を持つ）の状態を一切崩さないよう、印刷専用の別経路で組む。
+
+- `renderReport(x)`のHTML生成部分は`reportHtml(x)`という純関数へ抽出済み
+  （`renderReport`は`$id('reportContent').innerHTML=reportHtml(x)`のみ）。
+  単一プレビューと一括印刷の両方がこの1つの関数からページ内容を作るため、
+  帳票のレイアウトを直すときはここ1箇所を直せば両方に反映される。
+- 選択状態は`rpSelectedIds`（`Set`）。検索・並び替え・プレビュー切り替えを
+  跨いでも保持する。一覧の各行（`.rp-lot-row`）はチェックボックス
+  （`.rp-lot-check`）と選択・再開用の本体ボタン（`.rp-lot-main-btn`）を
+  横並びに持つ2要素構成。
+- `printSelectedReports()`が選択済みロットぶん`reportHtml(x)`を呼び、
+  `<div class="rp-report rp-page">`でロットごとに包んで印刷専用領域
+  （`#reportBulkPrintArea`、`ensureBulkPrintArea()`が生成し`document.body`
+  直下へ追加）へ流し込み、`body.rp-bulk-print`を付けてから`window.print()`
+  を呼ぶ（`requestAnimationFrame`を2回挟んでから呼ぶのは単一印刷と同じ理由
+  ＝同期的に呼ぶと描画前で白紙になるため）。`afterprint`で後片付け
+  （クラス除去・領域を空に・タイトルを戻す）する。
+- 印刷CSS（`app.css`）は`body.rp-mode`のブロックとは別に
+  `@media print{ body.rp-bulk-print ... }`を追加で持つ。`#reportPanel`
+  （単一プレビュー側）を丸ごと隠し、`#reportBulkPrintArea`だけを表示、
+  中の`.rp-page`は`page-break-after:always`（最後の1件だけ`auto`）で
+  1ロット1ページに改ページする。用紙向き（`@page`のsize）は
+  `updatePageSizeStyle()`が書き換える`#rpPageSizeStyle`が単一印刷と共通で
+  効くため、一括印刷側で別途向きを指定する必要はない。
 
 ### 帳票ビューの縦方向（A4縦を大きく見せる）
 

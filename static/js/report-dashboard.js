@@ -21,6 +21,9 @@
  // 条ごとのロット№/公差ラベルを、連続する行でも毎回表示するか、変化した
  // 行だけに表示するか(見た目上のグルーピング)を切り替えられるようにする。
  let rpRepeatLabels=true;
+ // 帳票の一括印刷用の複数選択。ロットを切り替えるたびにクリアはしない
+ // (絞り込みや並び替えを挟んでも選択を保てるようにするため)。
+ let rpSelectedIds=new Set();
  const $id=id=>document.getElementById(id);
  function fmtDT(v){if(!v)return '-';const d=new Date(v);return Number.isNaN(d.getTime())?'-':d.toLocaleString('ja-JP',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'})}
  function fmtDimSafe(v,d){const raw=String(v??'').trim();if(raw==='')return '';const n=Number(raw);return Number.isFinite(n)?n.toFixed(d):raw}
@@ -76,6 +79,10 @@
       </select>
      </div>
      <div class="rp-lot-list" id="reportLotList"></div>
+     <div class="rp-nav-foot rp-bulk-foot">
+      <label class="rp-foot-selectall" title="表示中のロットをすべて選択/解除します"><input type="checkbox" id="reportSelectAll">全選択</label>
+      <button type="button" id="reportBulkPrintBtn" class="rp-foot-btn rp-foot-btn--primary" disabled title="チェックした帳票をまとめて1回の印刷で出力します(1ロット1ページ)">選択した帳票を印刷 (<span id="reportBulkCount">0</span>)</button>
+     </div>
      <div class="rp-nav-foot">
       <span class="rp-foot-label">表示</span>
       <button type="button" id="reportLabelToggle" class="rp-foot-btn" title="条ごとのロット№・板幅公差のラベルを、連続する行でも毎回表示するか、変化した行だけに表示するかを切り替えます">ラベル: 毎行表示</button>
@@ -95,6 +102,12 @@
   $id('reportPrint').onclick=printReport;$id('reportPdf').onclick=printReport;
   $id('reportBack').onclick=backToRecordList;
   $id('reportLabelToggle').onclick=()=>{rpRepeatLabels=!rpRepeatLabels;updateLabelToggle();const cur=rpState.items.find(i=>i.id===rpState.selectedId);if(cur)renderReport(cur)};
+  $id('reportSelectAll').onchange=e=>{
+   const items=sortedFiltered();
+   if(e.target.checked)items.forEach(x=>rpSelectedIds.add(x.id));else items.forEach(x=>rpSelectedIds.delete(x.id));
+   renderLotList();
+  };
+  $id('reportBulkPrintBtn').onclick=printSelectedReports;
   panel.querySelectorAll('[data-seg="rpZoomSeg"] button').forEach(b=>b.onclick=()=>setZoom(b.dataset.val));
   panel.querySelectorAll('[data-seg="rpOrientSeg"] button').forEach(b=>b.onclick=()=>setOrientation(b.dataset.orient));
   $id('reportNavToggle').onclick=toggleNav;
@@ -229,20 +242,70 @@
   return items;
  }
 
+ /* 一括印刷ボタンの有効/disabled・件数表示・「全選択」チェックボックスの
+    tri-state(表示中の一部だけ選択されている場合は中間状態)を更新する。 */
+ function updateBulkPrintButton(){
+  const items=sortedFiltered(),btn=$id('reportBulkPrintBtn'),count=$id('reportBulkCount'),selectAll=$id('reportSelectAll');
+  if(!btn||!count)return;
+  const n=rpSelectedIds.size;
+  count.textContent=String(n);btn.disabled=n===0;
+  if(selectAll&&items.length){
+   const checkedInView=items.filter(x=>rpSelectedIds.has(x.id)).length;
+   selectAll.checked=checkedInView===items.length;
+   selectAll.indeterminate=checkedInView>0&&checkedInView<items.length;
+  }else if(selectAll){selectAll.checked=false;selectAll.indeterminate=false}
+ }
  function renderLotList(){
   const list=$id('reportLotList');if(!list)return;
   const items=sortedFiltered();
-  if(!items.length){list.innerHTML=`<div class="rp-empty">${rpState.items.length?'検索条件に一致するロットがありません。':'端末に保存されたロットがありません。測定画面で保存すると一覧に表示されます。'}</div>`;return}
+  if(!items.length){list.innerHTML=`<div class="rp-empty">${rpState.items.length?'検索条件に一致するロットがありません。':'端末に保存されたロットがありません。測定画面で保存すると一覧に表示されます。'}</div>`;updateBulkPrintButton();return}
   const frag=document.createDocumentFragment();
   items.forEach(x=>{
    const equipment=x.settings?.registeredEquipment||x.registeredEquipment||x.snapshot?.registeredEquipment||'-';
-   const row=document.createElement('button');row.type='button';row.className='rp-lot-row'+(x.id===rpState.selectedId?' active':'');
-   row.innerHTML=`<span class="rp-lot-main"><b title="${esc(x.basic?.lotNo||x.id)}">${esc(x.basic?.lotNo||x.id)}</b><em class="rp-status-badge ${statusClass(x.status)}">${esc(statusLabel(x.status))}</em></span><span class="rp-lot-sub" title="${esc(equipment)}">${esc(equipment)}・${esc(x.basic?.inspectionNo||'-')}</span><span class="rp-lot-date">${esc(fmtDT(x.updatedAt))}</span>`;
-   row.onclick=()=>selectLot(x.id);
-   row.ondblclick=e=>{e.preventDefault();e.stopPropagation();if(typeof resumeRecordFromList==='function')resumeRecordFromList(x)()};
+   /* 一括印刷用のチェックボックスと、プレビュー選択用のボタンを分ける
+      (ボタンの中へinputをネストするのはアクセシビリティ・仕様上避ける)。 */
+   const row=document.createElement('div');row.className='rp-lot-row'+(x.id===rpState.selectedId?' active':'');
+   const checked=rpSelectedIds.has(x.id);
+   row.innerHTML=`<label class="rp-lot-check" title="一括印刷の対象に含めます" onclick="event.stopPropagation()"><input type="checkbox"${checked?' checked':''}></label><button type="button" class="rp-lot-main-btn"><span class="rp-lot-main"><b title="${esc(x.basic?.lotNo||x.id)}">${esc(x.basic?.lotNo||x.id)}</b><em class="rp-status-badge ${statusClass(x.status)}">${esc(statusLabel(x.status))}</em></span><span class="rp-lot-sub" title="${esc(equipment)}">${esc(equipment)}・${esc(x.basic?.inspectionNo||'-')}</span><span class="rp-lot-date">${esc(fmtDT(x.updatedAt))}</span></button>`;
+   row.querySelector('.rp-lot-check input').onchange=e=>{
+    if(e.target.checked)rpSelectedIds.add(x.id);else rpSelectedIds.delete(x.id);
+    row.classList.toggle('checked',e.target.checked);updateBulkPrintButton();
+   };
+   const mainBtn=row.querySelector('.rp-lot-main-btn');
+   mainBtn.onclick=()=>selectLot(x.id);
+   mainBtn.ondblclick=e=>{e.preventDefault();e.stopPropagation();if(typeof resumeRecordFromList==='function')resumeRecordFromList(x)()};
    frag.append(row);
   });
   list.innerHTML='';list.append(frag);
+  updateBulkPrintButton();
+ }
+ /* ---------- 帳票の一括印刷 ----------
+    選択した複数ロットをまとめて1回の印刷ダイアログで出力する。既存の
+    単一プレビュー(#reportContent/rpPageBox)は画面表示・ズーム操作の
+    状態を持つため、それを一切崩さないよう、印刷専用の別コンテナ
+    (#reportBulkPrintArea)へロットごとに.rp-pageを生成して流し込み、
+    画面上は隠したまま@media printでのみ表示する。 */
+ function ensureBulkPrintArea(){
+  let el=$id('reportBulkPrintArea');if(el)return el;
+  el=document.createElement('div');el.id='reportBulkPrintArea';el.className='rp-bulk-print-area';
+  document.body.appendChild(el);return el;
+ }
+ function printSelectedReports(){
+  const items=rpState.items.filter(x=>rpSelectedIds.has(x.id));
+  if(!items.length)return;
+  const area=ensureBulkPrintArea();
+  area.innerHTML=items.map(x=>`<div class="rp-report rp-page${rpOrientation==='landscape'?' rp-landscape':''}">${reportHtml(x)}</div>`).join('');
+  document.body.classList.add('rp-bulk-print');
+  const prevTitle=document.title;
+  document.title=`測定帳票_${items.length}件`;
+  const cleanup=()=>{
+   document.body.classList.remove('rp-bulk-print');
+   document.title=prevTitle;area.innerHTML='';
+   window.removeEventListener('afterprint',cleanup);
+  };
+  window.addEventListener('afterprint',cleanup);
+  // 描画が反映されるのを待ってから印刷ダイアログを開く(同期的に呼ぶと白紙になる)。
+  requestAnimationFrame(()=>requestAnimationFrame(()=>window.print()));
  }
 
  function reportSection(title,rows,cols){
@@ -389,7 +452,19 @@
  function hasMeasurementValues(x,keys){
   return keys.some(key=>(x.measurements?.[key]||[]).some(row=>(row||[]).some(v=>String(v??'').trim()!=='')));
  }
- function renderReport(x){
+ /* 単一プレビューへの書き込み。 */
+ function renderReport(x){$id('reportContent').innerHTML=reportHtml(x)}
+ /* 帳票本体のHTML生成。帳票の一括印刷(複数ロットをまとめて別ページへ
+    流し込む)でも同じHTMLを使うため、単一プレビューへの書き込みとは
+    分離してある。
+    1ページ(A4)に収める配置: 情報量に応じてゾーンごとに列数と列幅比を変え、
+    再認しやすい単位（ラベル欄+基本情報、公差付き実測値など）でまとめる。
+    文字量が少ないブロック（品質等級・母材実績など）は幅を絞り、
+    文字量が多い/列数が可変なブロック（測定条件・丈別データ）に幅を回す
+    ことで、列の高さがそろい不要な余白が生まれないようにする。
+    品質情報は長文になりうるため、狭い列に押し込めず全幅の専用行として
+    常時確保する。大きな表（板幅ほかの40行）も同様に全幅を割り当てる。 */
+ function reportHtml(x){
   const b=x.basic||{},s=x.settings||{},w=x.workTime||{};
   const equipment=s.registeredEquipment||x.registeredEquipment||x.snapshot?.registeredEquipment||'-';
   const dur=w.startAt&&w.endAt?formatDuration(new Date(w.endAt)-new Date(w.startAt)):(w.startAt?'作業中':'未計測');
@@ -398,14 +473,7 @@
   const showWidthTable=['板厚/板幅','ラテラルボー','バリ','テレスコープ','巻ずれ','フラットネス'].includes(s.measureType)||hasWidthTableData;
   const hasProductData=(x.product?.rows||[]).some(r=>r&&['productLength','wallThickness','alignmentCode'].some(k=>String(r[k]||'').trim()!==''));
   const showProduct=s.measureType==='揃い/肉厚/長さ'||hasProductData;
-  /* 1ページ(A4)に収める配置: 情報量に応じてゾーンごとに列数と列幅比を変え、
-     再認しやすい単位（ラベル欄+基本情報、公差付き実測値など）でまとめる。
-     文字量が少ないブロック（品質等級・母材実績など）は幅を絞り、
-     文字量が多い/列数が可変なブロック（測定条件・丈別データ）に幅を回す
-     ことで、列の高さがそろい不要な余白が生まれないようにする。
-     品質情報は長文になりうるため、狭い列に押し込めず全幅の専用行として
-     常時確保する。大きな表（板幅ほかの40行）も同様に全幅を割り当てる。 */
-  $id('reportContent').innerHTML=`
+  return `
    <div class="rp-report-head">
     <div><small>MEASUREMENT REPORT</small><h2>${esc(b.lotNo||x.id)}</h2></div>
     <div class="rp-report-head-meta"><span class="rp-status-badge ${statusClass(x.status)}">${esc(statusLabel(x.status))}</span><span>帳票作成: ${esc(fmtDT(new Date().toISOString()))}</span></div>

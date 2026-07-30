@@ -34,6 +34,13 @@ m.basic=m.basic||{};m.settings={operator:'-',inspector:'-',lengthPos:'1(頭)',me
  }
  m.settings.registeredEquipment=m.settings.registeredEquipment||m.registeredEquipment||m.snapshot?.registeredEquipment||'';
  m.workTime={startAt:'',endAt:'',...(m.workTime||{})};
+ /* Accessへのバックアップ同期状態。status: 'synced'(直近の送信に成功)/
+    'pending'(まだ送信していない、または未送信のまま作成された旧データ)/
+    'failed'(直近の送信が失敗)。records-store.js の markSyncResult が
+    backupRecord() の成否に応じて更新する。旧データ(このフィールドが無い)は
+    実際に送信できたか判定できないため安全側でpendingとし、再送の対象にする
+    (backupRecordはDELETE+INSERTのため再送しても重複しない)。 */
+ m.syncState={status:'pending',lastAttempt:'',lastError:'',attempts:0,...(m.syncState||{})};
  return m;
 }
 /* 画面の入力値をS.measureへ回収する。設定→母材→製品丈→登録設備→作業時間の順。 */

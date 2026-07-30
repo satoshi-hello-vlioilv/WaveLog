@@ -1680,9 +1680,20 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
 .rp-search input{height:30px;width:100%;min-width:0;padding:5px 8px 5px 29px;border:1px solid var(--line);border-radius:15px;background:#fff}
 .rp-nav-toolbar select{height:30px;flex:none;width:92px;min-width:0;padding:4px 6px;background:#fff;font-size:12px}
 .rp-lot-list{flex:1;min-height:0;overflow:auto;padding:0 8px 8px;display:flex;flex-direction:column;gap:5px}
-.rp-lot-row{display:flex;flex-direction:column;gap:2px;padding:7px 9px;border:1px solid #d5e0e3;border-radius:9px;background:#fff;text-align:left;cursor:pointer;font:inherit;color:inherit}
+/* 行は「一括印刷のチェックボックス」+「プレビュー選択ボタン」の2要素。
+   button要素の中へinputをネストするのは仕様・アクセシビリティ上避けるため、
+   行自体はdiv、チェックボックスとボタンを横並びにする。 */
+.rp-lot-row{display:flex;align-items:stretch;gap:0;padding:0;border:1px solid #d5e0e3;border-radius:9px;background:#fff;overflow:hidden}
 .rp-lot-row:hover{border-color:#9fc3c8;background:#f6fdfd}
 .rp-lot-row.active{border-color:var(--teal);background:#eafafa;box-shadow:0 0 0 2px #087c8930}
+.rp-lot-row.checked{border-color:#0a8993}
+.rp-lot-check{display:flex;align-items:center;padding:0 3px 0 9px;cursor:pointer;flex:none}
+.rp-lot-check input{margin:0;cursor:pointer}
+.rp-lot-main-btn{
+  flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;
+  padding:7px 9px 7px 4px;text-align:left;cursor:pointer;font:inherit;color:inherit;
+  background:transparent;border:0;
+}
 .rp-lot-main{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .rp-lot-main b{font-size:13px;color:#173842;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rp-lot-sub{color:#61757c;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -1702,6 +1713,19 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 .rp-foot-btn.active{background:#eafafa;border-color:var(--teal);color:#075e67}
+.rp-foot-btn--primary{background:var(--teal);border-color:var(--teal);color:#fff}
+.rp-foot-btn--primary:hover:not(:disabled){background:var(--teal-dark)}
+.rp-foot-btn--primary:disabled{opacity:.45;cursor:not-allowed}
+/* 帳票の一括印刷: 全選択チェック＋件数ボタン。 */
+.rp-bulk-foot{background:#eef4f4}
+.rp-foot-selectall{
+  display:flex;align-items:center;gap:5px;flex:none;font-size:11px;font-weight:700;color:#2c5049;
+  cursor:pointer;user-select:none;
+}
+.rp-foot-selectall input{margin:0;cursor:pointer}
+/* 一括印刷専用の領域。画面表示では常に隠し、印刷時のみ表示する
+   (既存の単一プレビュー#reportContentの状態は一切崩さない)。 */
+.rp-bulk-print-area{display:none}
 .rp-main{display:flex;flex-direction:column;min-width:0;min-height:0}
 .rp-scroll{flex:1;min-height:0;overflow:auto;padding:8px;background:#dbe4e6;display:flex;justify-content:center;align-items:flex-start}
 .rp-page-box{overflow:visible}
@@ -1796,6 +1820,17 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
  #reportPanel .rp-scroll{padding:0;overflow:visible;display:block;background:none}
  #reportPanel .rp-page-box{width:auto!important;height:auto!important}
  #reportPanel .rp-page{width:auto;min-height:0;margin:0;box-shadow:none;padding:0;transform:none!important}
+}
+
+/* 帳票の一括印刷: 通常の単一プレビュー(#reportPanel)は丸ごと隠し、
+   印刷専用領域(#reportBulkPrintArea)だけを表示する。ロットごとに
+   1ページとして、印刷時のみpage-break-afterで改ページする
+   （画面表示中は.rp-bulk-print-areaが常時display:noneのため無関係）。 */
+@media print{
+ body.rp-bulk-print #reportPanel{display:none!important}
+ body.rp-bulk-print .rp-bulk-print-area{display:block!important}
+ body.rp-bulk-print .rp-bulk-print-area .rp-page{width:auto;min-height:0;margin:0;box-shadow:none;padding:0;box-sizing:border-box;transform:none!important;page-break-after:always}
+ body.rp-bulk-print .rp-bulk-print-area .rp-page:last-child{page-break-after:auto}
 }
 
 /* ============================================================
@@ -2055,3 +2090,31 @@ body.rp-mode #printCurrentView,body.qa-mode #printCurrentView{display:none!impor
 }
 .setup-first b{font-size:var(--fs-title);color:var(--nav)}
 .setup-first span{color:#5c7178;max-width:60ch}
+
+/* ---------- 24. Access同期の未完了キューと再送 ----------
+   backupRecord()の成否をsyncStateへ保存するようにしたのに合わせ、
+   サイドバー・データ一覧の両方で未同期の存在に気づける表示を追加する。 */
+.sync-warn-dot{
+  display:inline-block;width:8px;height:8px;border-radius:50%;
+  background:var(--warn);margin-left:6px;flex:none;
+  box-shadow:0 0 0 2px rgba(255,255,255,.35);
+}
+.record-sync-bar{
+  display:flex;align-items:center;gap:8px;padding:8px 14px;margin:0 0 8px;
+  background:var(--required-bg);border:1px solid var(--required);border-radius:8px;
+  color:#7a5200;font-size:13px;
+}
+.record-sync-bar svg{flex:none;color:#a06a00}
+.record-sync-bar b{font-variant-numeric:tabular-nums}
+.record-sync-bar span{flex:1}
+.record-sync-bar button{
+  flex:none;height:30px;padding:0 12px;border:1px solid #d9a441;border-radius:6px;
+  background:#fff;color:#7a5200;font-weight:700;font-size:12px;cursor:pointer;
+}
+.record-sync-bar button:hover{background:#fff6e6}
+.record-sync-badge{
+  display:inline-block;margin-left:5px;padding:1px 6px;border-radius:8px;
+  background:var(--required-bg);border:1px solid var(--required);color:#7a5200;
+  font-size:9px;font-weight:800;vertical-align:middle;
+}
+.record-sync-badge.record-sync-failed{background:var(--invalid-bg);border-color:var(--invalid);color:#a32424}

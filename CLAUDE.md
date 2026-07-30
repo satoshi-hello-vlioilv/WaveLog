@@ -29,12 +29,17 @@
   （旧VBA名 KOCARD/K05JO はエイリアスであり実カラム名ではない）。
 - **DBエンジンの使い分け**: 仕掛(SIKALOTNOW)・品質データ(SIKALOTDEF)は工場側の
   別システムが所有するネットワーク共有上の読み取り専用Accessファイルのため、
-  今後もpyodbc経由でAccessのまま読む。マスタ(`db/master.sqlite3`)・測定データ
-  バックアップ(`db/records.sqlite3`)は本アプリ自身が読み書きするローカルの
+  既定は今後もpyodbc経由でAccessのまま読む。マスタ(`db/master.sqlite3`)・測定
+  データバックアップ(`db/records.sqlite3`)は本アプリ自身が読み書きするローカルの
   SQLiteで、`backend/db_access.py`の`connect()`がパス拡張子でAccess/SQLiteを
   自動判別する。`backend/masters.py`のSQLはNow()/Nz()等のAccess関数をそのまま
   使っているが、`connect()`がSQLite接続へユーザー定義関数として登録して吸収
-  している。
+  している。仕掛/品質データの読み込み先自体は`config/local.json`の
+  `sikalotnow_path`/`sikalotdef_path`で上書き可能で、拡張子が`.sqlite3`等なら
+  自動的にSQLiteとして読む（`db_access.py`の`_engine_for`）。サンドボックス検証で
+  一時的に使う場合は検証後に`config/local.json`を削除し、既定のAccdb/ネットワーク
+  共有パスへ戻してから再起動すること（削除せず放置すると以降の起動が上書き先を
+  読み続けてしまう）。
 - **フォルダ構成**: `app.py`(エントリポイント)と`start_app.bat`はルート直下。
   それ以外のバックエンドPythonは`backend/`パッケージへ、ローカルDB
   (`master.sqlite3`/`records.sqlite3`、無ければ初回書き込み時に自動生成)は
