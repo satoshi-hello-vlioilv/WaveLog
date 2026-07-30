@@ -223,7 +223,7 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
   position:absolute;inset:.5vh .35vw;
   background:#f5f5f3;border-radius:10px;box-shadow:0 20px 70px #0005;
   display:grid;
-  grid-template-columns:136px minmax(0,1fr);
+  grid-template-columns:160px minmax(0,1fr);
   grid-template-rows:62px auto minmax(0,1fr);
   overflow:hidden;
   font-size:var(--fs);
@@ -252,8 +252,11 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 .course-warning-actions button{min-width:155px;border-color:#b44900;background:#b44900;color:#fff;font-weight:800}
 
 /* --- 操作レール（左端の縦ボタン列） --- */
+/* 幅は最長のラベル(「このデータを削除」「データ一覧を開く」= 実測128px)が
+   切り詰められない値にする。以前は136px(ボタン実幅109px)で、主要導線の
+   「保存して一覧へ」までが「保存して一...」と省略されていた。 */
 .action-rail{
-  grid-row:3;width:136px;display:flex;flex-direction:column;gap:12px;
+  grid-row:3;width:160px;display:flex;flex-direction:column;gap:10px;
   padding:9px 8px;background:#d7e5ee;border-right:1px solid #9fb2bf;overflow-y:auto;
 }
 .rail-group{display:grid;gap:6px}
@@ -1007,8 +1010,8 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 
 /* ---------- 15. レスポンシブ（幅に応じた列調整のみ / 文字サイズは不変） ---------- */
 @media(max-width:1450px){
-  .measure-shell{grid-template-columns:128px minmax(0,1fr)}
-  .action-rail{width:128px}
+  .measure-shell{grid-template-columns:152px minmax(0,1fr)}
+  .action-rail{width:152px}
   .dense-controls .major-list{grid-template-rows:20px 180px}
   .dense-controls .major-list select{height:180px}
 }

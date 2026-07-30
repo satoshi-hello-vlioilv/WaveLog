@@ -222,6 +222,37 @@ UI は「入力内容」セレクトをチップへ置換する（面積は増�
 公開している関数: `measureProgress`・`refreshMeasureProgress`・
 `measureCompletionReview`・`toggleMeasureExcluded`・`measureItemNames`。
 
+### 操作レール（測定画面の左端）
+
+目的別に5グループ。**上から使用頻度順、破壊的操作は最下段**（`rail-bottom`）。
+
+| グループ | 中身 |
+|---|---|
+| 測定進捗 | 状態表示のみ（`measure-progress.js` が描画） |
+| 保存 | 保存して一覧へ / 測定を完了 |
+| 帳票 | 帳票を表示 / 印刷する |
+| データ | データ一覧を開く / DBへ同期 |
+| 異常・削除 | NGとして記録 / このデータを削除 |
+
+幅は**最長ラベル（「このデータを削除」＝実測128px）が切り詰められない値**にする
+（`.action-rail` 160px / ≤1450pxで152px。`.measure-shell` の
+`grid-template-columns` と必ず揃えること）。過去に136pxだったときは主要導線の
+「保存して一覧へ」まで省略されていた。
+
+### 測定画面から帳票を開く
+
+帳票（`report-dashboard.js`）は**端末に保存済みのレコードを読んで描画する**
+（`reliableAll()`）。したがって測定画面から開くときは、画面上の入力内容を
+先に `saveLocal()` してから開く。このとき `saveLocal()` の既定値は `'編集中'`
+なので、**完了済みデータの状態を巻き戻さないよう現在の状態を明示して渡す**。
+
+`window.openReportForRecord(id, {returnTo, print})` で起点を指定する。
+`returnTo:'measure'` なら「戻る」の表示が「測定へ戻る」に変わり、測定モーダルを
+開き直したうえで `updateValidationVisuals()` を呼んで進捗・検証表示を作り直す
+（帳票を見ている間は測定画面の描画が止まるため、古い件数が残るのを防ぐ）。
+`print:true` は描画完了を待つため `requestAnimationFrame` を2回挟んでから
+印刷ダイアログを開く（同期的に呼ぶと白紙になる）。
+
 ### ハンドラ結線の注意
 
 - `measurement-view.js` の `.selectors` 一括 `onchange=markDirty` は、

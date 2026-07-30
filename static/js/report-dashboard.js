@@ -378,6 +378,9 @@
   document.getElementById('dashboardPanel')?.setAttribute('hidden','');
   document.body.classList.remove('db-mode');
   document.getElementById('recordModal')?.setAttribute('hidden','');
+  /* 測定画面から開く場合もあるため、重なって残らないよう閉じる
+     (測定内容は呼び出し側で保存済み。戻る操作で開き直す)。 */
+  document.getElementById('measureModal')?.setAttribute('hidden','');
   document.getElementById('openDashboard')?.classList.remove('active');
   document.body.classList.add('rp-mode');
   document.querySelectorAll('#nav button.db').forEach(b=>b.classList.remove('active'));
@@ -395,18 +398,67 @@
   }catch(e){listEl.innerHTML=`<div class="rp-empty">一覧を読み込めませんでした: ${esc(e.message)}</div>`}
  }
 
+ /* 帳票を開いた起点。「戻る」の行き先をここで覚えておく。
+    'records' = 編集中/完了データ一覧(従来) / 'measure' = 測定画面。 */
+ let rpReturnTo='records';
+
  /* 編集中/完了データ一覧は統合された1つの一覧のため、帳票から戻る際は
     現在のトグル状態(編集中/完了それぞれのON/OFF)をそのまま維持して
     再度開く(openRecordsSafe(null)はopenRecords()側でプリセットを
     上書きせず現在のrecordListState.statusesを引き継ぐ)。 */
- window.openReportForRecord=async function(id){
-  await openReportView();
+ window.openReportForRecord=async function(id,options){
+  const opt=options||{};
+  rpReturnTo=opt.returnTo==='measure'?'measure':'records';
+  await openReportView();           // ここで初めてパネル(戻るボタン)が作られる
+  updateBackButton();
   selectLot(id);
+  /* 印刷は描画後でないと白紙になるため、1フレーム置いてから開く。 */
+  if(opt.print)requestAnimationFrame(()=>requestAnimationFrame(printReport));
  };
+ function updateBackButton(){
+  const btn=$id('reportBack');if(!btn)return;
+  const toMeasure=rpReturnTo==='measure';
+  /* ボタンの中身は <svg>アイコン</svg> + 文字列。アイコンは残して文字だけ差し替える。 */
+  const label=[...btn.childNodes].find(n=>n.nodeType===Node.TEXT_NODE);
+  if(label)label.textContent=toMeasure?'測定へ戻る':'戻る';
+  btn.title=toMeasure?'測定画面へ戻ります':'元の一覧に戻ります';
+ }
  function backToRecordList(){
   exitReportView();
+  if(rpReturnTo==='measure'){
+   rpReturnTo='records';updateBackButton();
+   const modal=document.getElementById('measureModal');
+   if(modal){
+    modal.hidden=false;
+    /* 帳票へ出ている間に描画が止まっているため、戻った時点の内容で
+       検証表示と測定進捗を作り直す(古い件数が残るのを防ぐ)。 */
+    if(typeof updateValidationVisuals==='function')updateValidationVisuals();
+    requestAnimationFrame(()=>$id('deviceInput')?.focus());
+   }
+   return;
+  }
   if(typeof openRecordsSafe==='function')openRecordsSafe(null);
  }
+
+ /* 測定画面(操作レール)から帳票を開く。帳票は端末に保存済みのレコードを
+    読んで描画するため、画面上の入力内容をそのまま出せるよう先に保存する。
+    saveLocal()の既定値は'編集中'なので、完了済みのデータを開いていた場合に
+    状態を巻き戻さないよう、現在の状態を明示して渡す。 */
+ async function openReportFromMeasure(print){
+  if(!S.measure){showToast?.('測定データがありません','測定画面を開いてから実行してください。',4000);return}
+  try{
+   await saveLocal(S.measure.status||'編集中');
+  }catch(e){
+   showToast?.('帳票を開けませんでした','入力内容を端末へ保存できませんでした: '+e.message,6000);return;
+  }
+  await window.openReportForRecord(S.measure.id,{returnTo:'measure',print:!!print});
+ }
+ document.addEventListener('click',e=>{
+  const btn=e.target.closest?.('#openReport,#printReport');if(!btn)return;
+  e.preventDefault();
+  openReportFromMeasure(btn.id==='printReport');
+ });
+ window.openReportFromMeasure=openReportFromMeasure;
 })();
 
 /* ============================================================
