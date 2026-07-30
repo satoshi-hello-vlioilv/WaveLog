@@ -152,6 +152,14 @@ button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-vis
 .nav-item--admin{color:#84a3a9;font-weight:600}
 .nav-item--admin .nav-icon{opacity:.6}
 .nav-item--admin:hover{background:#22434d;color:#cfe6ea}
+/* 選択中(現在地)の見た目は種類を問わず揃える。以前は nav-item--view だけに
+   .active の指定があり、データ一覧(primary)とマスタ一覧(admin)は選択中でも
+   見た目が変わらず「今どこにいるか」が分からなかった。 */
+.nav-item.active{box-shadow:inset 3px 0 0 #6be0d6}
+.nav-item--admin.active{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:800}
+.nav-item--admin.active .nav-icon{opacity:1}
+.nav-item--admin.active:hover{background:var(--teal);color:#fff}
+.nav-item--primary.active{background:var(--teal-dark)}
 
 #nav{margin-top:0}
 
@@ -2032,3 +2040,18 @@ body.connection-lost .layout{padding-top:52px}
   .type-chip{font-size:11px;padding:1px 5px}
 }
 @media(prefers-reduced-motion:reduce){.rail-progress-bar i{transition:none}}
+
+/* ---------- 23. ナビゲーションと印刷導線の整理 ----------
+   「印刷」は画面ごとに1つだけにする。ヘッダの「画面を印刷」は今の画面を
+   そのまま出す汎用操作だが、専用の印刷を持つ画面では重複するため隠す
+   (帳票=rp-mode は専用の印刷アイコン、品質データ分析=qa-mode はツールバーの
+   印刷ボタンを持つ)。 */
+body.rp-mode #printCurrentView,body.qa-mode #printCurrentView{display:none!important}
+
+/* 使用設備が未登録のときの初期案内。仕掛一覧を取りに行く前に設定へ誘導する。 */
+.setup-first{
+  display:flex;flex-direction:column;gap:6px;margin:18px;padding:20px 22px;
+  background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius-card);
+}
+.setup-first b{font-size:var(--fs-title);color:var(--nav)}
+.setup-first span{color:#5c7178;max-width:60ch}

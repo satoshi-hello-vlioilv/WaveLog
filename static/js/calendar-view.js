@@ -95,7 +95,7 @@
 
  /* ---------- ナビ・ビュー排他制御 ---------- */
  function ensureNavButton(){
-  const nav=document.querySelector('.view-nav');if(!nav||$id('openCalendar'))return;
+  const nav=document.querySelector('#analysisNav');if(!nav||$id('openCalendar'))return;
   const b=document.createElement('button');b.type='button';b.id='openCalendar';b.className='db nav-item nav-item--view';
   b.innerHTML='<svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/></svg><span>実績カレンダー</span>';
   b.title='端末保存済みの測定データを、日ごとの作業実績としてカレンダー表示します';

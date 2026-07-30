@@ -52,6 +52,15 @@ function setState(x){$('#localState').textContent=x}
    でデータを新規に読み込んだ時と、保存が成功した時にリセットする。 */
 let measureDirty=false;
 function markDirty(){measureDirty=true;setState('未保存')}
+/* サイドバーの選択状態。トップレベルの行き先(データ一覧・仕掛・品質データ・
+   マスタ一覧・ダッシュボード・実績カレンダー)は排他で、常にどれか1つだけが
+   選択中になる。以前は行き先ごとに自分の.activeを付け外ししていたため、
+   データ一覧だけ選択状態にならず「今どこにいるか」が分からなかった。
+   keyはボタンのid、またはDB一覧ボタンのdata-db-key。 */
+function setActiveNav(key){
+ document.querySelectorAll('aside .nav-item').forEach(b=>
+  b.classList.toggle('active',!!key&&(b.id===key||b.dataset.dbKey===key)));
+}
 function bindTabs(group,panel){document.querySelectorAll(`[data-${group}tab]`).forEach(btn=>btn.onclick=()=>{document.querySelectorAll(`[data-${group}tab]`).forEach(x=>x.classList.toggle('active',x===btn));document.querySelectorAll(`[data-${group}panel]`).forEach(x=>x.hidden=x.dataset[group+'panel']!==btn.dataset[group+'tab'])})}
 function optionFill(id,items,current='-'){const el=$('#'+id);if(!el)return;const vals=['-',...new Set(items||[])];el.innerHTML=vals.map(v=>`<option>${esc(v)}</option>`).join('');if(vals.includes(current))el.value=current}
 function qualityText(items){if(!items?.length)return '異常情報なし';return items.slice(0,4).map((q,i)=>`(${i+1}) ${q['発生設備']||''} ${q['登録日時']||''} ${q['異常内容']||''}\nコメント：${q['コメント']||''}\n最終処置：${q['最終処置']||''}\n保留設定日：${q['保留設定日']||''}　保留解除日：${q['保留解除']||''}`).join('\n\n')}

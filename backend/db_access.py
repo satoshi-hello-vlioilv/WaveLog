@@ -25,7 +25,7 @@ SIKA_DIR=Path(r"\\Nlmsrvngy03\Read\【New】仕掛\台帳")
 DBS={
  "SIKALOTNOW":{"path":SIKA_DIR/"SIKALOTNOW.accdb","label":"仕掛（現在）","role":"readonly","preferred":"仕掛","engine":"access"},
  "SIKALOTDEF":{"path":SIKA_DIR/"SIKALOTDEF.accdb","label":"品質データ","role":"readonly","preferred":"仕掛","engine":"access"},
- "MASTER":{"path":DB_DIR/"master.sqlite3","label":"マスタ","role":"master","preferred":"オペレータマスタ","engine":"sqlite"}}
+ "MASTER":{"path":DB_DIR/"master.sqlite3","label":"マスタ一覧","role":"master","preferred":"オペレータマスタ","engine":"sqlite"}}
 # db/ 導入以前に使われていた置き場所とファイル名(新しい順)。db/に無い場合の
 # 移行先探索にのみ使う(過去バージョンからの引き継ぎ用で、新規環境では未使用)。
 _LEGACY_LOCATIONS=(APP_ROOT/"data",APP_ROOT)

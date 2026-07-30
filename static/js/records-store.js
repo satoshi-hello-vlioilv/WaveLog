@@ -182,7 +182,7 @@ $('#saveDraft').onclick=()=>persistAndTransition('編集中');
 $('#complete').onclick=()=>persistAndTransition('完了');
 $('#backupNow').onclick=async()=>{showSaveOverlay('Accessへバックアップ','完全スナップショットを送信中');try{const m=collect();await reliablePut(m);await backupRecord(m);hideSaveOverlay();showToast('Accessバックアップ完了',m.basic.lotNo||'')}catch(e){hideSaveOverlay();alert('バックアップ失敗: '+e.message)}};
 $('#discard').onclick=async()=>{if(confirm('端末内の測定データを削除しますか？')){await reliableDelete(S.measure.id);await refreshDraftCount();$('#measureModal').hidden=true}};
-$('#closeRecords').onclick=()=>$('#recordModal').hidden=true;$('#ngLot').onclick=registerNg;
+$('#ngLot').onclick=registerNg;
 function closeMeasureModal(){if(measureDirty&&!confirm('保存されていない変更があります。破棄して閉じますか？'))return;$('#measureModal').hidden=true}
 $('#closeModal').onclick=closeMeasureModal;$('.shade').onclick=closeMeasureModal;
 /* 編集中データ一覧と完了データ一覧は1つの統合リストとして表示する。
@@ -406,6 +406,8 @@ queueMicrotask(()=>{updateEquipmentEntryPoints();const badge=$('#registeredEquip
    document.body.classList.remove('rp-mode');
    document.getElementById('dashboardPanel')?.setAttribute('hidden','');
    document.body.classList.remove('db-mode');
+   /* 他のトップレベル表示先と同じく、サイドバーで現在地が分かるようにする。 */
+   if(typeof setActiveNav==='function')setActiveNav('homeDrafts');
   }
  };
  new MutationObserver(sync).observe(panel,{attributes:true,attributeFilter:['hidden']});

@@ -692,7 +692,7 @@
  async function ensureData(force){if(dbCache&&!force)return dbCache;dbCache=(await reliableAll()).map(toKpiRow);return dbCache}
 
  function ensureNavButton(){
-  const nav=document.querySelector('.view-nav');if(!nav||$id('openDashboard'))return;
+  const nav=document.querySelector('#analysisNav');if(!nav||$id('openDashboard'))return;
   const b=document.createElement('button');b.type='button';b.id='openDashboard';b.className='db nav-item nav-item--view';
   b.innerHTML='<svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg><span>ダッシュボード</span>';
   b.title='端末保存済みの測定データからKPI（設備別効率・人数別内訳・品種別作業時間など）を集計します';
