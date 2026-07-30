@@ -121,9 +121,9 @@ import(`from backend.xxx import ...`)、`backend` 内のモジュール同士は
 
 ### 2. 機能拡張ファイル（コアの後に読み込み）
 
-`measurement-tolerance.js` → `lot-split.js` → `filters.js` →
-`measurement-worklog.js` → `worktime-benchmark.js` → `quality-analysis.js` →
-`report-dashboard.js` → `calendar-view.js`
+`measurement-tolerance.js` → `lot-split.js` → `measure-progress.js` →
+`filters.js` → `measurement-worklog.js` → `worktime-benchmark.js` →
+`quality-analysis.js` → `report-dashboard.js` → `calendar-view.js`
 
 各ファイルはIIFE（即時関数）で自身のヘルパを閉じ込め、コアの関数を
 拡張する場合のみ次の規約でラップする:
@@ -178,6 +178,49 @@ fn=function(...){ /* 前処理 */ const r=baseFn(...); /* 後処理 */ return r 
 `splitUpdateBlockers`・`checkSplitSourcesUpdate`・
 `applySplitSourcesUpdate`・`rejectSplitSourcesUpdate`・
 `revertSplitSources`・`refreshSplitStatusPanel`。
+
+### 測定進捗と完了ゲート（measure-progress.js）
+
+**完了可否は2層**に分かれている。混ぜないこと。
+
+| 層 | 所有 | 対象 | 挙動 |
+|---|---|---|---|
+| ハード | `records-store.js` の `persistAndTransition` | 公差外(`ng`)、オペレータ/検査員の未選択 | 登録させない |
+| 確認 | `measure-progress.js`（`persistAndTransition` をラップ） | 8つの入力内容の未測定、丈位置の未測定、作業時間の未記録 | 一覧を提示して**確認のうえ続行可** |
+
+`measurement-view.js` の `activeRequiredControls()` は**表示中のグリッドしか
+見ない**（現在の入力内容 × 現在の丈位置）。これは枠色表示のための仕様として
+残してあり、完了可否の判断には使わない。全体の集計は
+`measure-progress.js` が `S.measure` から**DOM非依存**で行うため、入力内容や
+丈位置を切り替えなくても全16面（8項目 × 丈位置）を評価できる。
+
+必要な測定項目は**製品の材質・用途コード・規格で変わる**ため機械判定はしない。
+測定しない項目はチップの**右クリック**で「対象外」に指定する（マウス運用）。
+指定時のみ、同じ用途コードの完了データから実測の割合を示して確認する
+（品質等級 QCD1〜15 は用途コードに対応して登録されているため、条件軸として
+用途コードを使えば等級と同じ情報が得られる。加えて実績集計なら QCD に対応の
+無い母材・バリ・テレスコープ・巻ずれもカバーできる）。
+
+| `settings` キー | 内容 |
+|---|---|
+| `measureScope.excluded` | 対象外に指定した入力内容の名前（測定データと同じ経路で永続化・再開時に復元） |
+| `measureScope.decidedAt` / `decidedBy` | 指定した時刻と手段 |
+
+データの持ち方が項目で違う点に注意（`ITEM_DEFS` の `scope`）:
+`lot`=ロットに1つ（母材 → `m.mother`）/ `piece`=縦割りした丈ごと
+（揃い/肉厚/長さ → `m.product.rows`）/ `length`=丈位置 × 条
+（`m.measurements[key][丈位置][条]`。ただし `thickness` は条ごとではなく
+長さごとに3枠）。丈位置の数は `updateLengthOptions` と同じく**縦割数+1**。
+
+UI は「入力内容」セレクトをチップへ置換する（面積は増やさない）。**元の
+`<select#measureType>` は `display:none` にせず `.visually-hidden-control` で
+1pxに縮めて操作可能なまま残す** —— キーボード操作・支援技術に加え、
+`#measureType` を `selectOption` で駆動している既存テストを壊さないため
+（`hidden` にすると Playwright が不可視と判断して操作できなくなる。実際に
+4件のテストが落ちた）。
+
+公開している関数: `measureProgress`・`refreshMeasureProgress`・
+`measureCompletionReview`・`toggleMeasureExcluded`・`measureItemNames`。
 
 ### ハンドラ結線の注意
 

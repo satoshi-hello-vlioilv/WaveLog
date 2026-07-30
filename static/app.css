@@ -1922,3 +1922,60 @@ body.connection-lost .layout{padding-top:52px}
 }
 .split-recheck-btn:hover:not(:disabled){background:var(--pale)}
 .split-recheck-btn:disabled{color:#9aa; cursor:progress}
+
+/* ---------- 22. 測定進捗（入力内容チップ / 操作レールのサマリ） ----------
+   入力内容の選択そのものに状態を持たせ、切り替えのたびに全項目の進捗が
+   目に入るようにする。色は既存の語彙をそのまま使う:
+   オレンジ(--required)=未入力 / ティール(--teal)=完了 / 灰=対象外。 */
+/* 高さは隣の「オペレータ」「丈位置」リストと同じ行に合わせる。行の高さは
+   画面幅で変わるため固定値を持たず、グリッド行いっぱいに伸ばす。 */
+.type-chips{display:flex;flex-direction:column;gap:2px;min-height:0;height:100%;align-self:stretch;grid-row:2}
+/* チップに置き換えた<select>。display:none にすると操作できなくなるため、
+   場所を取らせずに残す(キーボード操作・支援技術・自動テスト用)。 */
+.visually-hidden-control{
+  position:absolute!important;width:1px!important;height:1px!important;
+  min-width:0!important;padding:0!important;margin:-1px;border:0!important;
+  overflow:hidden;clip-path:inset(50%);white-space:nowrap;
+}
+.dense-controls .major-list .type-chips{width:100%}
+.type-chip{
+  flex:1 1 0;min-height:0;height:auto;
+  display:flex;align-items:center;justify-content:space-between;gap:4px;
+  padding:2px 6px;border-radius:6px;font-size:12px;font-weight:700;
+  background:var(--required-bg);border:1px solid var(--required);color:#7a5200;
+  box-shadow:none;text-align:left;overflow:hidden;cursor:pointer;
+}
+.type-chip-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.type-chip-state{font-size:var(--fs-micro);font-weight:700;opacity:.85;flex:none;font-variant-numeric:tabular-nums}
+.type-chip:hover{border-color:var(--teal);background:#fff7e8}
+.type-chip--done{background:var(--teal);border-color:var(--teal);color:#fff}
+.type-chip--done:hover{background:var(--teal-dark);border-color:var(--teal-dark)}
+.type-chip--part{background:#fff;border-color:var(--teal);color:var(--computed-fg)}
+.type-chip--part:hover{background:var(--computed-bg)}
+.type-chip--skip{background:#e9edee;border:1px dashed #8b9ca2;color:#6d7f85}
+.type-chip--skip:hover{background:#dfe5e6;border-color:#6d7f85}
+.type-chip.is-current{outline:2px solid var(--nav);outline-offset:1px}
+
+/* 操作レールのサマリ。項目名は再掲せず、全体・丈位置・作業時間だけを出す。 */
+.rail-progress-group{gap:4px}
+.rail-progress-bar{height:7px;border-radius:4px;background:#fff;border:1px solid #9eb2bc;overflow:hidden}
+.rail-progress-bar i{display:block;height:100%;background:var(--teal);transition:width .2s}
+.rail-progress-line{
+  font-size:var(--fs-micro);color:#36515c;display:flex;align-items:center;gap:5px;flex-wrap:wrap;
+}
+.rail-progress-line b{font-size:13px;color:var(--nav);font-variant-numeric:tabular-nums}
+.rail-progress-skip{color:#6d7f85}
+.rail-progress-lengths{display:flex;flex-wrap:wrap;gap:3px}
+.rail-len{
+  font-size:var(--fs-micro);padding:1px 5px;border-radius:9px;white-space:nowrap;
+  background:var(--required-bg);border:1px solid var(--required);color:#7a5200;
+}
+.rail-len--done{background:var(--teal);border-color:var(--teal);color:#fff}
+.rail-len--part{background:#fff;border-color:var(--teal);color:var(--computed-fg)}
+.rail-progress-worktime--done{color:var(--computed-fg)}
+.rail-progress-worktime--todo,.rail-progress-worktime--part{color:#a06a00;font-weight:700}
+
+@media(max-width:1450px){
+  .type-chip{font-size:11px;padding:1px 5px}
+}
+@media(prefers-reduced-motion:reduce){.rail-progress-bar i{transition:none}}
