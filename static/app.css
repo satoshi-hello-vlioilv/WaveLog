@@ -1875,3 +1875,50 @@ body.cal-mode.qa-mode.qa-view-raw #grid,body.cal-mode.qa-mode.qa-view-raw footer
 .connection-lost-bar button:hover{background:#ffecec}
 /* バーの高さぶん本文を押し下げ、ヘッダーが隠れないようにする。 */
 body.connection-lost .layout{padding-top:52px}
+
+/* ---------------------------------------------------------------
+   子ロットデータの更新提案・差異一覧・履歴（幅分割情報パネル内）
+   保存済みの子ロットデータと実データに差異が出たときだけ現れる。
+   勝手に差し替えず、差異を示してオペレータに適用可否を選ばせる。
+   --------------------------------------------------------------- */
+.split-update-panel{
+ margin-top:10px; padding:8px; background:#fff7e6;
+ border:1px solid var(--warn); border-radius:var(--radius-card);
+}
+.split-update-head{font-size:12.5px; font-weight:800; color:#8a5a00; margin-bottom:6px; line-height:1.35}
+.split-diff-table{width:100%; border-collapse:collapse; font-size:12px; background:#fff; margin-bottom:6px}
+.split-diff-table th,.split-diff-table td{padding:3px 5px; border:1px solid #d8c49a; text-align:left}
+.split-diff-table th{background:#fdf0d5}
+.split-diff-table tr.split-diff-added td{background:#eaf7ee}
+.split-diff-table tr.split-diff-removed td{background:#fdecec; color:#a33}
+.split-update-blocked{
+ font-size:11.5px; color:#8a3b00; background:#ffe9d6;
+ border:1px solid #e0a878; border-radius:6px; padding:5px 6px; margin-bottom:6px; line-height:1.4;
+}
+.split-update-actions{display:flex; gap:6px}
+.split-update-actions button{
+ flex:1 1 0; height:32px; font-size:var(--fs); font-family:inherit; cursor:pointer;
+ background:var(--teal); color:#fff; border:1px solid var(--teal); border-radius:6px; font-weight:800;
+}
+.split-update-actions button:hover:not(:disabled){filter:brightness(1.08)}
+.split-update-actions button:disabled{background:#c9d4d6; border-color:#c9d4d6; cursor:not-allowed}
+.split-update-actions .split-update-secondary{background:#fff; color:var(--nav); border-color:var(--line); font-weight:600}
+.split-update-actions .split-update-secondary:hover{background:#f2f6f7}
+/* 履歴。既定は折りたたみ、更新提案が出ているときだけ開いた状態で描画する。 */
+.split-history{margin-top:8px; font-size:12px}
+.split-history>summary{cursor:pointer; color:var(--nav); font-weight:700; padding:3px 0}
+.split-history ul{list-style:none; margin:4px 0 6px; padding:0}
+.split-history li{padding:3px 0; border-top:1px solid var(--pale); line-height:1.5}
+.split-history li.split-history-current{color:var(--computed-fg); border-top:0}
+.split-history li.split-history-rejected{color:#8a5a00}
+.split-history-btn{
+ margin-left:4px; padding:1px 7px; font-size:11.5px; font-family:inherit; cursor:pointer;
+ background:#fff; color:var(--nav); border:1px solid var(--line); border-radius:5px;
+}
+.split-history-btn:hover{background:var(--pale)}
+.split-recheck-btn{
+ width:100%; height:28px; font-size:12px; font-family:inherit; cursor:pointer;
+ background:#fff; color:var(--nav); border:1px solid var(--line); border-radius:6px;
+}
+.split-recheck-btn:hover:not(:disabled){background:var(--pale)}
+.split-recheck-btn:disabled{color:#9aa; cursor:progress}

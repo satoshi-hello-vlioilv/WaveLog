@@ -414,7 +414,13 @@
       try{
         const sources=await buildSplitSources();
         splitSourcesCache=sources;splitSourcesCacheKey=key;
-        if(S.measure){S.measure.settings.splitSourcesCache=sources;if(typeof markDirty==='function')markDirty()}
+        if(S.measure){
+          S.measure.settings.splitSourcesCache=sources;
+          // 取得時刻を残す。この記録を後で再開したときに「いつ時点のデータか」を
+          // 示し、バックグラウンドの更新確認が直後の二重取得を避ける判断にも使う。
+          S.measure.settings.splitSourcesSavedAt=nowIso();
+          if(typeof markDirty==='function')markDirty();
+        }
       }catch(e){
         console.warn('分割候補の取得に失敗しました',e);
         splitSourcesCache=[];splitSourcesCacheKey=key;
@@ -906,6 +912,362 @@
     return `<div class="${cls}">元幅(実績) ${esc(fmtDim(info.original,1))} － 条幅合計 ${esc(fmtDim(info.slit,1))} ＝ <b>屑幅(両耳合計) ${esc(fmtDim(info.scrap,1))}</b></div>`;
   }
 
+  /* ======================================================================
+     子ロットデータの保存・更新検知・復元（分割あり品の途中再開対応）
+
+     子ロットの基準値・公差は、一度取得したらレコード自身
+     (settings.splitSourcesCache)へ保存して途中から再開できるようにしている
+     (ensureSplitCandidatesLoaded)。ただし工場側の別システムが仕掛データを
+     後から書き換えることがあり、測定途中で保存済みの内容と実データが食い違う
+     ことがある。そのため測定画面を開いている間はバックグラウンドで再取得して
+     差異を検出し、更新するかどうかをオペレータへ提案する。
+
+     適用・拒否のどちらを選んでも取得したデータは捨てずに残す
+     (settings.splitSourcesHistory / splitSourcesRejected)。これにより後から
+     元の内容へ戻したり、一度断った更新を改めて適用したりできる。
+
+     【適用・復元を許可する条件】
+     差異が出ている項目に対して測定データが1つも入力されていないこと。
+     入力済みの測定値はその時点の基準値・公差で判定・表示されているため、
+     後から基準値だけ差し替えると判定結果と入力値の整合が取れなくなる。
+     条割が未確定(splitGroups未設定)のうちは子ロットデータがまだ判定に
+     使われていないため、この制限はかけない。
+     ====================================================================== */
+  const SPLIT_UPDATE_CHECK_INTERVAL_MS=10*60*1000;  // 常駐の自動確認間隔
+  const SPLIT_UPDATE_FRESH_MS=60*1000;              // 取得直後の二重確認を避ける猶予
+  const SPLIT_HISTORY_LIMIT=10;
+  // 条位置(条index)を持つ測定種。分割の公差は条位置ごとに変わるため、
+  // 「その子ロットの条が測定済みか」はこれらを対象に判定する。板厚は条位置では
+  // なく3点固定なので別扱い(hasThicknessMeasurement)。
+  const POSITIONAL_MEASURE_KINDS=['width','lateral','burr','telescope','offset','flatness'];
+  const THICKNESS_DIFF_KEYS=new Set(['thickness','ttolM','ttolO']);
+  let visibleRejectedIndex=null;   // 「差異を表示」で展開中の未適用スナップショット
+  let splitUpdateChecking=false;
+
+  function nowIso(){return new Date().toISOString()}
+  function fmtStamp(iso){
+    if(!iso)return '取得時刻不明';
+    const d=new Date(iso);
+    if(!Number.isFinite(d.getTime()))return '取得時刻不明';
+    const p=n=>String(n).padStart(2,'0');
+    return `${d.getFullYear()}/${p(d.getMonth()+1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+  function numKey(v){return Number.isFinite(v)?String(Math.round(v*1000)/1000):''}
+  function tolOf(s,kind,src){return s?.tolData?.[kind]?.[src]||null}
+  function tolKey(t){return t?`${t.plus}|${t.minus}`:''}
+  function tolText(t){return t?`+${t.plus}/-${t.minus}`:'—'}
+
+  /* 差異を取る項目。cmpは比較用の正規化値、textは画面表示用の文字列。
+     判定に効く値(基準値・公差)と、条割の構成に効く値(条数・取得可否)を含める。 */
+  const SPLIT_DIFF_FIELDS=[
+    {key:'missing',label:'子ロットの取得',cmp:s=>s.missing?'NG':'OK',text:s=>s.missing?'取得失敗':'取得OK'},
+    {key:'count',label:'条数',cmp:s=>String(s.count??''),text:s=>s.count==null?'—':`${s.count}条`},
+    {key:'width',label:'製造板幅',cmp:s=>numKey(s.base?.width),text:s=>Number.isFinite(s.base?.width)?fmtDim(s.base.width,1):'—'},
+    {key:'thickness',label:'製造板厚',cmp:s=>numKey(s.base?.thickness),text:s=>Number.isFinite(s.base?.thickness)?fmtDim(s.base.thickness,3):'—'},
+    {key:'wtolM',label:'板幅公差(製造)',cmp:s=>tolKey(tolOf(s,'width','manufacturing')),text:s=>tolText(tolOf(s,'width','manufacturing'))},
+    {key:'wtolO',label:'板幅公差(オーダー)',cmp:s=>tolKey(tolOf(s,'width','order')),text:s=>tolText(tolOf(s,'width','order'))},
+    {key:'ttolM',label:'板厚公差(製造)',cmp:s=>tolKey(tolOf(s,'thickness','manufacturing')),text:s=>tolText(tolOf(s,'thickness','manufacturing'))},
+    {key:'ttolO',label:'板厚公差(オーダー)',cmp:s=>tolKey(tolOf(s,'thickness','order')),text:s=>tolText(tolOf(s,'thickness','order'))},
+  ];
+  /* 保存済み(prev)と最新(next)の子ロットデータを突き合わせて差異一覧を返す。
+     kindは'changed'(値の変化)/'added'(子ロットが増えた)/'removed'(無くなった)。 */
+  function diffSplitSources(prev,next){
+    const prevMap=new Map((prev||[]).map(s=>[String(s.lot),s]));
+    const nextMap=new Map((next||[]).map(s=>[String(s.lot),s]));
+    const lots=[...new Set([...prevMap.keys(),...nextMap.keys()])];
+    const out=[];
+    for(const lot of lots){
+      const a=prevMap.get(lot),b=nextMap.get(lot);
+      if(!a){out.push({lot,field:'子ロット',before:'（無し）',after:'追加されています',kind:'added'});continue}
+      if(!b){out.push({lot,field:'子ロット',before:'あり',after:'見つかりません',kind:'removed'});continue}
+      for(const f of SPLIT_DIFF_FIELDS){
+        if(f.cmp(a)!==f.cmp(b))out.push({lot,field:f.label,before:f.text(a),after:f.text(b),kind:'changed',fieldKey:f.key});
+      }
+    }
+    return out;
+  }
+  window.diffSplitSources=diffSplitSources;
+
+  // 条割確定済みの割当から、指定ロットが占める条index一覧を返す。
+  function positionsForLot(lot){
+    const groups=S.measure?.settings?.splitGroups,posMap=S.measure?.settings?.splitPositionGroup;
+    if(!Array.isArray(groups)||!Array.isArray(posMap))return [];
+    const out=[];
+    posMap.forEach((gi,idx)=>{if(groups[gi]&&String(groups[gi].lot)===String(lot))out.push(idx)});
+    return out;
+  }
+  function allPositions(){
+    const n=Math.max(1,+($('#horizontalCount')?.value)||+S.measure?.settings?.horizontalCount||1);
+    return Array.from({length:n},(_,i)=>i);
+  }
+  function hasPositionalMeasurement(positions){
+    const m=S.measure?.measurements;
+    if(!m||!positions.length)return false;
+    for(const kind of POSITIONAL_MEASURE_KINDS){
+      const slots=m[kind];
+      if(!Array.isArray(slots))continue;
+      for(const row of slots){
+        if(!Array.isArray(row))continue;
+        for(const i of positions){
+          const v=row[i];
+          if(v!==undefined&&v!==null&&String(v).trim()!=='')return true;
+        }
+      }
+    }
+    return false;
+  }
+  function hasThicknessMeasurement(){
+    const slots=S.measure?.measurements?.thickness;
+    if(!Array.isArray(slots))return false;
+    return slots.some(row=>Array.isArray(row)&&row.some(v=>v!==undefined&&v!==null&&String(v).trim()!==''));
+  }
+  /* 差異のある項目に測定データが入力済みで、差し替えを許可できない子ロットを返す。
+     条数の変化・子ロットの増減は条割の割当そのものが変わるため、影響範囲を
+     その子ロットの条だけに限定できない(全条＋板厚を確認する)。 */
+  function splitUpdateBlockers(diffs){
+    const groups=S.measure?.settings?.splitGroups;
+    if(!Array.isArray(groups)||!groups.length)return [];   // 未確定なら判定に未使用
+    const byLot=new Map();
+    (diffs||[]).forEach(d=>{const k=String(d.lot);if(!byLot.has(k))byLot.set(k,[]);byLot.get(k).push(d)});
+    const out=[];
+    for(const [lot,list] of byLot){
+      const structural=list.some(d=>d.kind!=='changed'||d.fieldKey==='count');
+      const touchesThickness=list.some(d=>THICKNESS_DIFF_KEYS.has(d.fieldKey));
+      const scope=structural?allPositions():positionsForLot(lot);
+      const reasons=[];
+      if(hasPositionalMeasurement(scope))reasons.push('条位置の測定データが入力済み');
+      if((structural||touchesThickness)&&hasThicknessMeasurement())reasons.push('板厚の測定データが入力済み');
+      if(reasons.length)out.push({lot,reasons});
+    }
+    return out;
+  }
+  window.splitUpdateBlockers=splitUpdateBlockers;
+
+  /* 条割確定済み(splitGroups)の各グループは、確定時点の基準値・公差をコピーして
+     保持しており判定はそちらを見る。データを差し替えたら、条の割当(count/並び)は
+     保ったまま基準値・公差だけを新しい内容へ同期する。条数が変わった/ロットが
+     増減した場合は割当自体が成立しないため、再設定が必要な旨を返す。 */
+  function syncSplitGroupsFromSources(){
+    const st=S.measure?.settings,groups=st?.splitGroups;
+    if(!Array.isArray(groups)||!groups.length){if(st)st.splitNeedsReconfigure=false;return ''}
+    const map=new Map((st.splitSourcesCache||[]).map(s=>[String(s.lot),s]));
+    let needsReconfigure=false;
+    groups.forEach(g=>{
+      const s=map.get(String(g.lot));
+      if(!s){needsReconfigure=true;g.missing=true;return}
+      g.base=s.base||null;g.tol=s.tolData||null;g.missing=!!s.missing;
+      if(Number(s.count)!==Number(g.count))needsReconfigure=true;
+    });
+    const total=(st.splitSourcesCache||[]).reduce((a,x)=>a+(Number(x.count)||0),0);
+    const assigned=groups.reduce((a,g)=>a+(Number(g.count)||0),0);
+    if(total!==assigned)needsReconfigure=true;
+    st.splitNeedsReconfigure=needsReconfigure;
+    return needsReconfigure?'条数の構成が変わっています。「条割変更」で再設定してください。':'';
+  }
+  function rerenderAfterSplitDataChange(){
+    if(typeof renderMeasureGrid==='function')renderMeasureGrid();
+    if(typeof updateMeasurementHeading==='function')updateMeasurementHeading();
+    refreshSplitStatusPanel();
+  }
+  function blockerMessage(blockers,verb){
+    return `次の子ロットは、差異のある項目に測定データが入力済みのため${verb}できません:\n`
+      +blockers.map(b=>`・${b.lot}（${b.reasons.join('・')}）`).join('\n')
+      +'\n\n該当する測定データを削除してから実行してください。';
+  }
+  /* 子ロットデータの差し替え本体(更新適用・復元・未適用分の後追い適用で共有)。
+     差し替え前の内容は必ず履歴へ積むため、何度でも元へ戻せる。 */
+  function adoptSplitSources(sources,at,{confirmText,successText,verb='適用'}={}){
+    const st=S.measure?.settings;
+    if(!st||!Array.isArray(sources)||!sources.length)return false;
+    const diffs=diffSplitSources(st.splitSourcesCache,sources);
+    if(!diffs.length){if(typeof showToast==='function')showToast('現在のデータと同じ内容です','差し替えは行いませんでした');return false}
+    const blockers=splitUpdateBlockers(diffs);
+    if(blockers.length){alert(blockerMessage(blockers,verb));return false}
+    if(confirmText&&!confirm(confirmText))return false;
+    const history=Array.isArray(st.splitSourcesHistory)?st.splitSourcesHistory:[];
+    history.push({at:st.splitSourcesSavedAt||null,sources:st.splitSourcesCache||[],note:'差し替え前'});
+    st.splitSourcesHistory=history.slice(-SPLIT_HISTORY_LIMIT);
+    st.splitSourcesCache=sources;
+    st.splitSourcesSavedAt=at||nowIso();
+    splitSourcesCache=sources;splitSourcesCacheKey=currentSplitCacheKey();
+    const note=syncSplitGroupsFromSources();
+    if(typeof markDirty==='function')markDirty();
+    rerenderAfterSplitDataChange();
+    if(typeof showToast==='function')showToast(successText||'子ロットデータを差し替えました',note||`差異${diffs.length}件を反映しました`,5200);
+    return true;
+  }
+
+  /* バックグラウンドでの更新確認。表示は止めず、差異があればpendingとして
+     記録してパネルとトーストで知らせる(勝手に差し替えない)。 */
+  async function checkSplitSourcesUpdate({manual=false}={}){
+    const st=S.measure?.settings;
+    if(!st)return null;
+    if(!analyzeRowSplit(S.measure?.source).hasSplit)return null;
+    const active=st.splitSourcesCache;
+    if(!Array.isArray(active)||!active.length)return null;  // 初回取得前は比較対象が無い
+    if(splitUpdateChecking||splitSourcesLoading)return null;
+    if(!manual&&st.splitSourcesSavedAt){
+      const age=Date.now()-new Date(st.splitSourcesSavedAt).getTime();
+      if(Number.isFinite(age)&&age<SPLIT_UPDATE_FRESH_MS)return null;  // 取得直後は確認しない
+    }
+    const keyAtStart=currentSplitCacheKey();
+    splitUpdateChecking=true;
+    if(manual)refreshSplitStatusPanel();
+    try{
+      const fresh=await buildSplitSources();
+      if(currentSplitCacheKey()!==keyAtStart)return null;  // 待機中にロットが切り替わった
+      if(!Array.isArray(fresh)||!fresh.length)return null;
+      st.splitSourcesCheckedAt=nowIso();
+      const diffs=diffSplitSources(active,fresh);
+      if(!diffs.length){
+        st.splitSourcesPending=null;
+        if(manual&&typeof showToast==='function')showToast('子ロットデータの更新はありません','保存済みの内容と一致しています');
+        return{diffs:[]};
+      }
+      st.splitSourcesPending={at:st.splitSourcesCheckedAt,sources:fresh,diffs};
+      if(typeof markDirty==='function')markDirty();
+      if(typeof showToast==='function')showToast('子ロットデータに更新があります',`差異${diffs.length}件 — 「幅分割情報」タブで確認してください`,7000);
+      return st.splitSourcesPending;
+    }catch(e){
+      console.warn('子ロットデータの更新確認に失敗しました',e);
+      return null;
+    }finally{
+      splitUpdateChecking=false;
+      refreshSplitStatusPanel();
+    }
+  }
+  window.checkSplitSourcesUpdate=checkSplitSourcesUpdate;
+
+  function applySplitSourcesUpdate(){
+    const st=S.measure?.settings,pending=st?.splitSourcesPending;
+    if(!pending)return;
+    if(adoptSplitSources(pending.sources,pending.at,{successText:'子ロットデータを更新しました',verb:'適用'})){
+      st.splitSourcesPending=null;
+      if(typeof setState==='function')setState('子ロットデータを更新しました');
+      refreshSplitStatusPanel();
+    }
+  }
+  window.applySplitSourcesUpdate=applySplitSourcesUpdate;
+
+  /* 「今回は適用しない」。取得済みデータは捨てずに未適用として残し、
+     後から差異の確認・適用ができるようにする。 */
+  function rejectSplitSourcesUpdate(){
+    const st=S.measure?.settings,pending=st?.splitSourcesPending;
+    if(!pending)return;
+    const rejected=Array.isArray(st.splitSourcesRejected)?st.splitSourcesRejected:[];
+    rejected.push({at:pending.at,sources:pending.sources,diffs:pending.diffs});
+    st.splitSourcesRejected=rejected.slice(-SPLIT_HISTORY_LIMIT);
+    st.splitSourcesPending=null;
+    if(typeof markDirty==='function')markDirty();
+    if(typeof showToast==='function')showToast('今回は更新を適用しませんでした','取得した内容は履歴に残しています（後から適用・比較できます）',5600);
+    refreshSplitStatusPanel();
+  }
+  window.rejectSplitSourcesUpdate=rejectSplitSourcesUpdate;
+
+  // 履歴から元の内容へ戻す。
+  function revertSplitSources(index){
+    const st=S.measure?.settings;
+    const history=Array.isArray(st?.splitSourcesHistory)?st.splitSourcesHistory:[];
+    const target=history[index];
+    if(!target||!Array.isArray(target.sources)||!target.sources.length)return;
+    // adopt内で現在の内容が履歴へ積まれるため、先に対象を履歴から外す。
+    history.splice(index,1);
+    const ok=adoptSplitSources(target.sources,target.at,{
+      confirmText:`子ロットデータを ${fmtStamp(target.at)} 時点の内容へ戻します。よろしいですか？`,
+      successText:'子ロットデータを元に戻しました',verb:'復元'});
+    if(!ok)history.splice(index,0,target);   // 失敗時は履歴を元の並びへ復旧
+    else if(typeof setState==='function')setState('子ロットデータを元に戻しました');
+    refreshSplitStatusPanel();
+  }
+  window.revertSplitSources=revertSplitSources;
+
+  // 一度断った更新を後から適用する。
+  function applyRejectedSplitSources(index){
+    const st=S.measure?.settings;
+    const rejected=Array.isArray(st?.splitSourcesRejected)?st.splitSourcesRejected:[];
+    const target=rejected[index];
+    if(!target)return;
+    if(adoptSplitSources(target.sources,target.at,{
+      confirmText:`${fmtStamp(target.at)} に取得した内容を適用します。よろしいですか？`,
+      successText:'子ロットデータを更新しました',verb:'適用'})){
+      rejected.splice(index,1);
+      visibleRejectedIndex=null;
+      refreshSplitStatusPanel();
+    }
+  }
+
+  // ---- 差異・履歴の表示 ----
+  function diffTableHtml(diffs,beforeLabel,afterLabel){
+    const rows=(diffs||[]).map(d=>`<tr class="split-diff-${esc(d.kind)}"><td>${esc(d.lot)}</td><td>${esc(d.field)}</td><td>${esc(d.before)}</td><td>${esc(d.after)}</td></tr>`).join('');
+    return `<table class="split-diff-table"><thead><tr><th>ロット№</th><th>項目</th><th>${esc(beforeLabel)}</th><th>${esc(afterLabel)}</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+  function splitPendingSectionHtml(){
+    const pending=S.measure?.settings?.splitSourcesPending;
+    if(!pending||!Array.isArray(pending.diffs)||!pending.diffs.length)return '';
+    const blockers=splitUpdateBlockers(pending.diffs);
+    const blocked=blockers.length>0;
+    return `<div class="split-update-panel">
+      <div class="split-update-head">⚠ 子ロットデータに更新があります（${esc(fmtStamp(pending.at))} 確認・差異${pending.diffs.length}件）</div>
+      ${diffTableHtml(pending.diffs,'保存済み','最新')}
+      ${blocked?`<div class="split-update-blocked">差異のある項目に測定データが入力済みのため適用できません：${esc(blockers.map(b=>`${b.lot}（${b.reasons.join('・')}）`).join(' / '))}</div>`:''}
+      <div class="split-update-actions">
+        <button type="button" id="splitUpdateApply"${blocked?' disabled':''}>更新を適用</button>
+        <button type="button" id="splitUpdateReject" class="split-update-secondary">今回は適用しない</button>
+      </div></div>`;
+  }
+  function splitHistorySectionHtml(){
+    const st=S.measure?.settings;
+    if(!st)return '';
+    const history=Array.isArray(st.splitSourcesHistory)?st.splitSourcesHistory:[];
+    const rejected=Array.isArray(st.splitSourcesRejected)?st.splitSourcesRejected:[];
+    const items=[`<li class="split-history-current"><b>現在使用中</b> — ${esc(fmtStamp(st.splitSourcesSavedAt))} 取得${st.splitSourcesCheckedAt?` ／ 最終確認 ${esc(fmtStamp(st.splitSourcesCheckedAt))}`:''}</li>`];
+    history.slice().reverse().forEach((h,i)=>{
+      const idx=history.length-1-i;
+      items.push(`<li>${esc(fmtStamp(h.at))} 取得 <button type="button" class="split-history-btn" data-revert="${idx}">この内容に戻す</button></li>`);
+    });
+    rejected.slice().reverse().forEach((r,i)=>{
+      const idx=rejected.length-1-i;
+      const open=visibleRejectedIndex===idx;
+      items.push(`<li class="split-history-rejected">${esc(fmtStamp(r.at))} 未適用（差異${r.diffs?.length||0}件）
+        <button type="button" class="split-history-btn" data-showrejected="${idx}">${open?'差異を隠す':'差異を表示'}</button>
+        <button type="button" class="split-history-btn" data-applyrejected="${idx}">この内容を適用</button>
+        ${open?diffTableHtml(r.diffs,'現在','この時点'):''}</li>`);
+    });
+    if(items.length===1&&!st.splitSourcesSavedAt)return '';
+    return `<details class="split-history"${st.splitSourcesPending?'':' open'}><summary>子ロットデータの履歴（${items.length}件）</summary>
+      <ul>${items.join('')}</ul>
+      <button type="button" class="split-recheck-btn" id="splitRecheckBtn"${splitUpdateChecking?' disabled':''}>${splitUpdateChecking?'確認中…':'今すぐ更新を確認'}</button></details>`;
+  }
+  function splitDataSectionsHtml(){
+    return splitPendingSectionHtml()+splitHistorySectionHtml();
+  }
+  function wireSplitDataSections(el){
+    el.querySelector('#splitUpdateApply')?.addEventListener('click',()=>applySplitSourcesUpdate());
+    el.querySelector('#splitUpdateReject')?.addEventListener('click',()=>rejectSplitSourcesUpdate());
+    el.querySelector('#splitRecheckBtn')?.addEventListener('click',()=>checkSplitSourcesUpdate({manual:true}));
+    el.querySelectorAll('[data-revert]').forEach(b=>b.addEventListener('click',()=>revertSplitSources(+b.dataset.revert)));
+    el.querySelectorAll('[data-applyrejected]').forEach(b=>b.addEventListener('click',()=>applyRejectedSplitSources(+b.dataset.applyrejected)));
+    el.querySelectorAll('[data-showrejected]').forEach(b=>b.addEventListener('click',()=>{
+      const i=+b.dataset.showrejected;
+      visibleRejectedIndex=visibleRejectedIndex===i?null:i;
+      refreshSplitStatusPanel();
+    }));
+  }
+  // 測定画面を開いている間、一定間隔でバックグラウンド確認する。
+  setInterval(()=>{
+    if(!S.measure)return;
+    if($('#measureModal')?.hidden!==false)return;
+    checkSplitSourcesUpdate();
+  },SPLIT_UPDATE_CHECK_INTERVAL_MS);
+  // 開いた直後は表示を優先し、少し遅らせて1回目の確認を走らせる。
+  function scheduleSplitUpdateCheck(delayMs=8000){
+    setTimeout(()=>{
+      if(!S.measure)return;
+      if($('#measureModal')?.hidden!==false)return;
+      checkSplitSourcesUpdate();
+    },delayMs);
+  }
+
   /* 「幅分割情報」サブタブ(data-lefttab="split")に、未設定/設定済みが一目で
      わかるバッジを付ける(視覚導線)。 */
   function updateSplitTabBadge(state){
@@ -914,9 +1276,10 @@
     else if(state==='pending'){badge.hidden=false;badge.textContent='未設定';badge.className='split-tab-badge split-tab-badge-pending'}
     else{badge.hidden=true}
   }
-  function wireSplitPanelOpenBtn(el){
+  function wireSplitPanelButtons(el){
     const btn=el.querySelector('#splitPanelOpenBtn');
     if(btn)btn.onclick=()=>openSplit();
+    wireSplitDataSections(el);
   }
   function candidateRowsHtml(sources){
     return sources.map(s=>`<tr class="${s.missing?'split-legend-missing':''}"><td>${esc(s.lot)}</td><td>${s.count}条</td><td>${s.width!==''&&s.width!==undefined?esc(String(s.width)):'—'}</td><td>${esc(s.missing?'取得失敗':(s.tol||'—'))}</td></tr>`).join('');
@@ -928,7 +1291,7 @@
     if(!sources.length){
       el.innerHTML=`<div class="split-panel-status split-panel-status-pending">⚠ このロットには分割データがあります（推定${info.lotCount}ロット・${esc(widthPatternLabel(info.widthPattern))}）が、子ロットの詳細を取得できませんでした。</div>
         <button type="button" class="split-panel-open-btn" id="splitPanelOpenBtn">条割変更を開く →</button>`;
-      wireSplitPanelOpenBtn(el);
+      wireSplitPanelButtons(el);
       return;
     }
     const totalCount=sources.reduce((a,x)=>a+x.count,0),horiz=Math.max(1,+($('#horizontalCount')?.value)||1);
@@ -937,19 +1300,23 @@
       <table class="split-panel-table"><thead><tr><th>子ロット№</th><th>条数</th><th>幅</th><th>公差</th></tr></thead><tbody>${candidateRowsHtml(sources)}</tbody></table>
       ${mismatch?`<div class="split-mismatch-badge">子ロット条数合計(${totalCount})が横割数(${horiz})と一致しません。「条割変更」で内容を確認してください。</div>`:''}
       ${scrapWidthLineHtml()}
-      <button type="button" class="split-panel-open-btn" id="splitPanelOpenBtn">この内容で条割変更を開く →</button>`;
-    wireSplitPanelOpenBtn(el);
+      <button type="button" class="split-panel-open-btn" id="splitPanelOpenBtn">この内容で条割変更を開く →</button>
+      ${splitDataSectionsHtml()}`;
+    wireSplitPanelButtons(el);
   }
   // 設定済み(applySplit確定済み)状態の表示。
   function renderAppliedGroupsPanel(el,groups){
     const summary=summarizeAppliedGroups(groups);
     const rows=groups.map((g,i)=>`<tr class="${g.missing?'split-legend-missing':''}"><td>${i+1}</td><td>${esc(g.lot)}</td><td>${g.count}条</td><td>${Number.isFinite(g.base?.width)?esc(String(g.base.width)):'—'}</td><td>${g.missing?'取得失敗':'OK'}</td></tr>`).join('');
+    const needsReconfigure=S.measure?.settings?.splitNeedsReconfigure;
     el.innerHTML=`
       <div class="split-panel-status split-panel-status-applied">✓ ${esc(summary)}</div>
       <table class="split-panel-table"><thead><tr><th>#</th><th>ロット№</th><th>条数</th><th>幅</th><th>状態</th></tr></thead><tbody>${rows}</tbody></table>
+      ${needsReconfigure?'<div class="split-mismatch-badge">子ロットデータの更新で条数の構成が変わりました。「条割変更」で再設定してください。</div>':''}
       ${scrapWidthLineHtml()}
-      <button type="button" class="split-panel-open-btn" id="splitPanelOpenBtn">条割変更を開く（再設定）→</button>`;
-    wireSplitPanelOpenBtn(el);
+      <button type="button" class="split-panel-open-btn" id="splitPanelOpenBtn">条割変更を開く（再設定）→</button>
+      ${splitDataSectionsHtml()}`;
+    wireSplitPanelButtons(el);
   }
 
   /* 左パネル「幅分割情報」タブ(#splitGrid)は、テンプレート上は固定文字列
@@ -986,6 +1353,7 @@
     }
     updateScrapWidthDisplay();
   }
+  window.refreshSplitStatusPanel=refreshSplitStatusPanel;
   if(typeof renderMeasurement==='function'){
     const baseRenderMeasurementSplitStatus=renderMeasurement;
     renderMeasurement=function(){baseRenderMeasurementSplitStatus();refreshSplitStatusPanel()};
@@ -1063,6 +1431,7 @@
           S.measure.settings=S.measure.settings||{};S.measure.settings.sourceTable=S.table;S.measure.settings.sourceColumns=(S.columns||[]).slice();
           await refreshSelfSourceFull();
           refreshSplitStatusPanel();
+          scheduleSplitUpdateCheck();
         }
       }
     };
@@ -1078,6 +1447,9 @@
       }finally{
         await refreshSelfSourceFull();
         refreshSplitStatusPanel();
+        // 途中から再開した場合、保存済みの子ロットデータは取得時点のもの。
+        // 実データが更新されていないかバックグラウンドで確認する。
+        scheduleSplitUpdateCheck();
       }
     };
   }
