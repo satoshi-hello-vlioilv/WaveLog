@@ -78,7 +78,18 @@ function updateWaiting(detail,progress,step){if(detail)$('#saveOverlayDetail').t
 /* 保存/完了登録。完了時は必須項目・公差NGの検証を通過した場合のみ登録する。 */
 async function persistAndTransition(status){
  updateValidationVisuals();
- if(status==='完了'){const result=updateValidationVisuals();if(result.missing.length||result.ng.length){showValidationMessage(result);return}}
+ /* 完了の可否は2段構え。ここで止めるのは「製品に依らず必ず不正なもの」だけ:
+      - 公差外(ng): 値が範囲外。測り直すかNGとして記録する必要がある
+      - オペレータ/検査員の未選択: どの製品でも必須
+    測定項目の未入力は、必要な項目が製品の材質・用途・規格で変わるため
+    ここでは止めず、measure-progress.js が全項目・全丈位置をまとめて提示して
+    確認する(意図的に測らない項目があるため、一律のブロックは作業を止める)。 */
+ if(status==='完了'){
+  const result=updateValidationVisuals();
+  if(result.ng.length){showValidationMessage(result);return}
+  const identity=result.missing.filter(x=>x.el&&(x.el.id==='operator'||x.el.id==='inspector'));
+  if(identity.length){showValidationMessage({missing:identity,ng:[]});return}
+ }
  showSaveOverlay(status==='完了'?'完了登録しています':'一時保存しています','入力内容と初期参照データを端末へ保存中');
  try{
   const m=collect();m.status=status;m.updatedAt=new Date().toISOString();m.snapshot=m.snapshot||{};
