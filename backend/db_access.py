@@ -15,8 +15,12 @@ from datetime import datetime
 import sqlite3
 import pyodbc
 
-APP_ROOT=Path(__file__).resolve().parent.parent
-DB_DIR=APP_ROOT/"db"
+from .paths import APP_ROOT, configured_path
+
+# DBの置き場所は既定でAPP_ROOT/db。config/local.jsonの"db_dir"で上書き可能
+# (未配置なら従来どおり)。個別ファイルの上書きはDBS['MASTER']['path']/
+# MEAS_DBの設定時にconfigured_pathで別途反映する。
+DB_DIR=configured_path('db_dir') or APP_ROOT/"db"
 SIKA_DIR=Path(r"\\Nlmsrvngy03\Read\【New】仕掛\台帳")
 DBS={
  "SIKALOTNOW":{"path":SIKA_DIR/"SIKALOTNOW.accdb","label":"仕掛（現在）","role":"readonly","preferred":"仕掛","engine":"access"},
@@ -33,21 +37,28 @@ def resolve_local_db(name,legacy_names):
    old_path=base/old_name
    if old_path.exists():return old_path
  return DB_DIR/name
-DBS['MASTER']['path']=resolve_local_db('master.sqlite3',['マスタ.sqlite3','マスタデータ.sqlite3','Master.sqlite3'])
-MEAS_DB=resolve_local_db('records.sqlite3',['測定データ.sqlite3','Measurement.sqlite3']); MEAS_ENGINE='sqlite'
+DBS['MASTER']['path']=configured_path('master_db_path') or resolve_local_db('master.sqlite3',['マスタ.sqlite3','マスタデータ.sqlite3','Master.sqlite3'])
+MEAS_DB=configured_path('records_db_path') or resolve_local_db('records.sqlite3',['測定データ.sqlite3','Measurement.sqlite3']); MEAS_ENGINE='sqlite'
 DRIVER="Microsoft Access Driver (*.mdb, *.accdb)"
 
 # ========================================================================
 # SQLite側のAccess SQL互換関数
-#  - Now()/Nz()はAccess独自のSQL関数。masters.py側のSQL文言はそのまま
-#    流用し、この2つをSQLite接続へユーザー定義関数として登録することで
-#    差分を吸収する(呼び出し側のSQL文字列を書き換えずに済む)。
+#  - Now()/Nz()/CStr()/Val()はAccess独自のSQL関数。masters.py・汎用一覧
+#    API(/api/table)側のSQL文言はそのまま流用し、これらをSQLite接続へ
+#    ユーザー定義関数として登録することで差分を吸収する(呼び出し側のSQL
+#    文字列を書き換えずに済む)。Max()はSQLite組込のMAX()とキーワードが
+#    大小無視で一致するため登録不要。
 #  - DATETIME列はISO8601文字列で保存し、detect_types+コンバータで
 #    読み出し時に自動的にdatetimeオブジェックへ復元する(既存コードの
 #    .isoformat()呼び出しをそのまま使えるようにするため)。
 # ========================================================================
 def _sqlite_now():return datetime.now().isoformat(sep=' ')
 def _sqlite_nz(value,default):return default if value is None else value
+def _sqlite_cstr(value):return '' if value is None else str(value)
+def _sqlite_val(value):
+ import re
+ m=re.match(r'^\s*[+-]?\d+(\.\d+)?',str(value or ''))
+ return float(m.group(0)) if m else 0.0
 sqlite3.register_adapter(datetime,lambda dt:dt.isoformat(sep=' '))
 sqlite3.register_converter('DATETIME',lambda b:datetime.fromisoformat(b.decode()))
 
@@ -66,6 +77,7 @@ def connect(path,readonly=False,engine=None):
    path.parent.mkdir(parents=True,exist_ok=True)
    c=sqlite3.connect(str(path),timeout=10,detect_types=sqlite3.PARSE_DECLTYPES)
   c.create_function('Now',0,_sqlite_now);c.create_function('Nz',2,_sqlite_nz)
+  c.create_function('CStr',1,_sqlite_cstr);c.create_function('Val',1,_sqlite_val)
   return c
  if not path.exists(): raise FileNotFoundError(f"データベースが見つかりません: {path}")
  return pyodbc.connect(f"DRIVER={{{DRIVER}}};DBQ={path};"+("READONLY=1;" if readonly else ""),autocommit=False,timeout=10)

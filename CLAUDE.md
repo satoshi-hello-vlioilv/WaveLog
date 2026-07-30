@@ -5,8 +5,16 @@
 ## 必ず守ること
 
 - **サーバー再起動**: `app.py`/`templates`/`static` を変更したら
-  `pkill -f "python3 -u app.py"` → `python3 -u app.py` で再起動してから確認する
-  （自動リロード無効。再起動忘れは過去に誤診断の原因になった）。
+  `python3 process_manager.py stop` → `python3 -u start_app.py` で再起動してから
+  確認する（自動リロード無効。再起動忘れは過去に誤診断の原因になった）。
+  `pkill`でPythonをプロセス名だけで一括終了しないこと（他のPythonを巻き添えに
+  する。停止は必ず`process_manager.py`経由）。
+- **起動基盤に触るとき**: 起動・停止・監視の処理は `start_app.py` /
+  `launch_guard.py` / `server.py` / `process_manager.py` / `backend/watchdog.py`
+  が所有する。業務APIをこれらへ足さない（逆に`app.py`へ起動制御を戻さない）。
+  ポート・アプリID・表示名などのアプリ固有値は `backend/config.py` に集約
+  してあるので、他ファイルへ直接書かない。
+  設計の背景と今後の再編計画は `docs/REBUILD_PLAN.md` を参照。
 - **バージョン更新**: 意味のある変更をコミットするたびに
   `backend/changelog_data.py` の `APP_VERSION` を上げ、`CHANGELOG` 先頭へ
   エントリを追記する（新しい順）。

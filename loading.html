@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>測定伝送システム を起動しています</title>
+<!--
+  起動待機画面。start_app.bat / Start.vbs から、サーバーより先にブラウザで
+  開かれる(file://)。サーバーが応答するまで待ってからアプリ本体へ遷移する
+  ため、「ブラウザだけ先に開いて接続エラー画面が出る」ことがなくなる。
+
+  file:// から http://127.0.0.1 への fetch は CORS で応答を読めないので、
+  生成元をまたいで読み込める script 要素で生存確認する(サーバー側の
+  /api/ready.js が JSONP 形式でアプリ識別情報を返す)。
+  file:// から読むため外部ファイルを参照できない。CSS/JSは全て埋め込む。
+-->
+<style>
+ :root{
+  --nav:#173842; --teal:#087c89; --pale:#dcecef; --bg:#eef2f4;
+  --line:#b7c7cc; --warn:#f5a30a; --invalid:#c92c2c;
+ }
+ *{box-sizing:border-box}
+ body{
+  margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+  background:var(--bg); color:var(--nav);
+  font-family:"Segoe UI","Meiryo",system-ui,sans-serif; font-size:14px; line-height:1.35;
+ }
+ .card{
+  width:min(92vw,460px); background:#fff; border:1px solid var(--line);
+  border-radius:10px; padding:28px 30px 24px; text-align:center;
+  box-shadow:0 2px 14px rgba(23,56,66,.10);
+ }
+ .logo{width:48px;height:48px;margin:0 auto 14px;display:block}
+ h1{margin:0 0 4px; font-size:17px; letter-spacing:.02em}
+ .sub{margin:0 0 22px; font-size:12px; color:#5d757e; letter-spacing:.08em}
+ /* 二重リングのスピナー(アプリ内の待機表示と同じ意匠) */
+ .spinner{width:38px;height:38px;margin:0 auto 16px;position:relative}
+ .spinner i{
+  position:absolute; inset:0; border-radius:50%;
+  border:3px solid var(--pale); border-top-color:var(--teal);
+  animation:spin 1s linear infinite;
+ }
+ .spinner i:last-child{
+  inset:8px; border-width:2px; border-top-color:var(--warn);
+  animation-duration:1.5s; animation-direction:reverse;
+ }
+ @keyframes spin{to{transform:rotate(360deg)}}
+ .stage{font-size:14px; font-weight:600; margin:0 0 6px; min-height:1.35em}
+ .elapsed{font-size:12px; color:#5d757e; margin:0}
+ .steps{list-style:none; margin:20px 0 0; padding:14px 0 0; border-top:1px solid var(--pale); text-align:left}
+ .steps li{
+  display:flex; align-items:center; gap:9px; padding:4px 0;
+  font-size:12.5px; color:#8fa3aa; transition:color .2s;
+ }
+ .steps li b{
+  flex:0 0 auto; width:15px; height:15px; border-radius:50%;
+  border:2px solid currentColor; display:inline-block; position:relative;
+ }
+ .steps li.on{color:var(--teal); font-weight:600}
+ .steps li.done{color:var(--nav)}
+ .steps li.done b{background:var(--teal); border-color:var(--teal)}
+ /* チェックマーク */
+ .steps li.done b::after{
+  content:""; position:absolute; left:3.5px; top:.5px;
+  width:3px; height:7px; border:solid #fff; border-width:0 2px 2px 0;
+  transform:rotate(45deg);
+ }
+ .error{display:none; text-align:left}
+ .error h2{margin:0 0 10px; font-size:15px; color:var(--invalid)}
+ .error p{margin:0 0 10px; font-size:13px}
+ .error ul{margin:0; padding-left:1.15em; font-size:12.5px; color:#41606b}
+ .error li{margin-bottom:5px}
+ .retry{
+  margin-top:16px; width:100%; padding:9px; font-size:14px; font-family:inherit;
+  color:#fff; background:var(--teal); border:0; border-radius:8px; cursor:pointer;
+ }
+ .retry:hover{background:#096b75}
+ body.failed .live{display:none}
+ body.failed .error{display:block}
+</style>
+</head>
+<body>
+<div class="card">
+ <svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="12" fill="#173842"/><path d="M14 18h36v28H14z" fill="#fff"/><path d="M20 24h24v5H20zm0 10h15v5H20z" fill="#087c89"/><circle cx="45" cy="42" r="9" fill="#f5a30a"/></svg>
+ <h1>測定伝送システム</h1>
+ <p class="sub">STARTING UP</p>
+
+ <div class="live">
+  <div class="spinner" aria-hidden="true"><i></i><i></i></div>
+  <p class="stage" id="stage">実行環境を確認中…</p>
+  <p class="elapsed" id="elapsed">経過 0 秒</p>
+  <ul class="steps" id="steps">
+   <li data-step="0"><b></b><span>実行環境を確認中</span></li>
+   <li data-step="1"><b></b><span>アプリを準備中</span></li>
+   <li data-step="2"><b></b><span>接続を確認中</span></li>
+   <li data-step="3"><b></b><span>起動完了</span></li>
+  </ul>
+ </div>
+
+ <div class="error" id="error">
+  <h2>アプリを起動できませんでした</h2>
+  <p>待機時間内にアプリが応答しませんでした。次を確認してください。</p>
+  <ul>
+   <li><b>start_app.bat</b> を直接ダブルクリックし、黒い画面に出るエラー内容を確認する</li>
+   <li>Python がインストールされているか</li>
+   <li>ポート <b id="errPort">5029</b> を他のアプリが使用していないか</li>
+   <li>それでも直らない場合は、黒い画面の内容を管理者へ伝える</li>
+  </ul>
+  <button class="retry" type="button" id="retry">もう一度確認する</button>
+ </div>
+</div>
+
+<script>
+"use strict";
+(function(){
+ var PORT=5029, APP_ID='wavelog';
+ var POLL_INTERVAL_MS=500, TIMEOUT_MS=90000;
+ var started=Date.now(), timer=null, polling=true;
+
+ var stageEl=document.getElementById('stage');
+ var elapsedEl=document.getElementById('elapsed');
+ var steps=document.getElementById('steps').children;
+
+ document.getElementById('errPort').textContent=PORT;
+
+ /* 表示上の段階。実際の完了判定はサーバー応答のみで行い、
+    経過秒数では「起動完了」にしない(仕様書2.2)。 */
+ function stageFor(sec){ return sec<2?0 : sec<5?1 : 2 }
+ function paint(active){
+  for(var i=0;i<steps.length;i++){
+   steps[i].className = i<active ? 'done' : (i===active ? 'on' : '');
+  }
+ }
+ function tick(){
+  var sec=Math.floor((Date.now()-started)/1000);
+  elapsedEl.textContent='経過 '+sec+' 秒';
+  var s=stageFor(sec);
+  stageEl.textContent=['実行環境を確認中…','アプリを準備中…','接続を確認中…'][s];
+  paint(s);
+  if(Date.now()-started>TIMEOUT_MS) fail();
+ }
+
+ /* サーバーが応答したときにJSONP経由で呼ばれる。 */
+ window.wavelogReady=function(info){
+  if(!polling) return;
+  if(!info||info.app!==APP_ID||!info.ready) return; // 別アプリが同じポートに居る場合は無視して待ち続ける
+  polling=false; clearInterval(timer);
+  stageEl.textContent='起動完了';
+  paint(3); steps[3].className='done';
+  var url=(info.url||('http://127.0.0.1:'+PORT+'/'));
+  setTimeout(function(){ location.replace(url) },250); // 完了表示を一瞬見せてから遷移
+ };
+
+ function probe(){
+  if(!polling) return;
+  var el=document.createElement('script');
+  el.src='http://127.0.0.1:'+PORT+'/api/ready.js?cb=wavelogReady&t='+Date.now();
+  // サーバー未起動ならonerror。読み込み済みのscript要素は都度捨てる。
+  el.onerror=function(){ el.remove() };
+  el.onload=function(){ el.remove() };
+  document.head.appendChild(el);
+  if(polling) setTimeout(probe,POLL_INTERVAL_MS);
+ }
+
+ function fail(){
+  polling=false; clearInterval(timer);
+  document.body.className='failed';
+ }
+
+ document.getElementById('retry').onclick=function(){
+  document.body.className='';
+  started=Date.now(); polling=true;
+  timer=setInterval(tick,250); tick(); probe();
+ };
+
+ timer=setInterval(tick,250); tick(); probe();
+})();
+</script>
+</body>
+</html>
