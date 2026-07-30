@@ -4,8 +4,9 @@ app.pyから移設。ロジックは変更していない(移動のみ)。
 """
 from flask import Blueprint, request, jsonify
 
-from ..db_access import DBS, MEAS_DB, qi, connect, cols, tables, ensure_backup_table
+from ..db_access import DBS, MEAS_DB, RECORDS_BACKUP_EXPORT_PATH, qi, connect, cols, tables, ensure_backup_table
 from ..repositories.master_repo import read_operator_names, read_spool_names, read_inner_names, read_device_names, ensure_operator_master, ensure_spool_master, ensure_inner_master, ensure_device_master, ensure_operator_equipment, OPERATOR_MASTER_TABLE, SPOOL_MASTER_TABLE, INNER_MASTER_TABLE, DEVICE_MASTER_TABLE
+from .. import records_export
 
 bp=Blueprint('measurement',__name__)
 
@@ -119,8 +120,20 @@ def backup():
   if missing:return jsonify(error='必須項目不足: '+','.join(missing)),400
   with connect(MEAS_DB) as c:
    ensure_backup_table(c);cur=c.cursor();cur.execute('DELETE FROM [Web測定バックアップ] WHERE [記録ID]=?',[x['id']]);cur.execute('INSERT INTO [Web測定バックアップ] ([記録ID],[設備],[ロット番号],[検査番号],[鋳造番号],[状態],[更新日時],[圧縮形式],[ペイロード]) VALUES (?,?,?,?,?,?,Now(),?,?)',[x['id'],x.get('equipment',''),x.get('lotNo',''),x.get('inspectionNo',''),x.get('castingNo',''),x.get('status','編集中'),x.get('codec','delimiter-v1'),x['payload']]);c.commit()
+  records_export.mark_dirty()
   return jsonify(ok=True,direction='IndexedDB -> records.sqlite3')
  except Exception as e:return jsonify(error=str(e)),500
+
+def _read_backup_rows(path):
+ # 指定したrecords.sqlite3形式のファイルから[Web測定バックアップ]を読み取る
+ # 共通処理。書き込みは一切行わない。
+ if path is None or not path.exists():return None,path
+ with connect(path,True) as c:
+  if 'Web測定バックアップ' not in tables(c):return [],path
+  cur=c.cursor()
+  cur.execute('SELECT [記録ID],[設備],[ロット番号],[検査番号],[鋳造番号],[状態],[更新日時],[圧縮形式],[ペイロード] FROM [Web測定バックアップ] ORDER BY [更新日時] DESC')
+  rows=cur.fetchall()
+ return [{'id':str(r[0] or ''),'equipment':str(r[1] or ''),'lotNo':str(r[2] or ''),'inspectionNo':str(r[3] or ''),'castingNo':str(r[4] or ''),'status':str(r[5] or ''),'updated_at':r[6].isoformat() if r[6] else None,'codec':str(r[7] or ''),'payload':str(r[8] or '')} for r in rows],path
 
 @bp.get('/api/measurement/backup/list')
 def backup_list():
@@ -128,13 +141,20 @@ def backup_list():
  # インポートするための読み取り専用API。書き込みはせず、行をそのまま返す。
  # 実際のIndexedDBへの反映(JSON解凍・idbPut)はブラウザ側で行う。
  try:
-  if not MEAS_DB.exists():return jsonify(ok=True,items=[],count=0,table_exists=False,meas_path=str(MEAS_DB))
-  with connect(MEAS_DB,True) as c:
-   if 'Web測定バックアップ' not in tables(c):
-    return jsonify(ok=True,items=[],count=0,table_exists=False,meas_path=str(MEAS_DB))
-   cur=c.cursor()
-   cur.execute('SELECT [記録ID],[設備],[ロット番号],[検査番号],[鋳造番号],[状態],[更新日時],[圧縮形式],[ペイロード] FROM [Web測定バックアップ] ORDER BY [更新日時] DESC')
-   rows=cur.fetchall()
-  items=[{'id':str(r[0] or ''),'equipment':str(r[1] or ''),'lotNo':str(r[2] or ''),'inspectionNo':str(r[3] or ''),'castingNo':str(r[4] or ''),'status':str(r[5] or ''),'updated_at':r[6].isoformat() if r[6] else None,'codec':str(r[7] or ''),'payload':str(r[8] or '')} for r in rows]
-  return jsonify(ok=True,items=items,count=len(items),table_exists=True,meas_path=str(MEAS_DB))
+  items,path=_read_backup_rows(MEAS_DB)
+  if items is None:return jsonify(ok=True,items=[],count=0,table_exists=False,meas_path=str(path))
+  return jsonify(ok=True,items=items,count=len(items),table_exists=True,meas_path=str(path))
  except Exception as e:return jsonify(error=f'測定データ読込失敗: {e}',meas_path=str(MEAS_DB)),500
+
+@bp.get('/api/measurement/backup/list-view')
+def backup_list_view():
+ # 閲覧モード用: 追加バックアップ出力先(config/local.jsonの
+ # records_backup_export_path、Box等)に複製されたrecords.sqlite3を読む。
+ # 未設定の場合はconfigured=falseを返し、フロント側で案内を出す。
+ try:
+  if RECORDS_BACKUP_EXPORT_PATH is None:
+   return jsonify(ok=True,configured=False,items=[],count=0,table_exists=False,meas_path=None)
+  items,path=_read_backup_rows(RECORDS_BACKUP_EXPORT_PATH)
+  if items is None:return jsonify(ok=True,configured=True,items=[],count=0,table_exists=False,meas_path=str(path))
+  return jsonify(ok=True,configured=True,items=items,count=len(items),table_exists=True,meas_path=str(path))
+ except Exception as e:return jsonify(error=f'閲覧用データ読込失敗: {e}',meas_path=str(RECORDS_BACKUP_EXPORT_PATH)),500

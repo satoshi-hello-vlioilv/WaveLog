@@ -320,6 +320,57 @@ def filter_preset_rows(c):
  return rows
 
 # ========================================================================
+# アクセス権限マスタ（ログインID×PC名の組み合わせで編集可否を管理）
+#  - 起動時にこの端末のログインID+PC名で照合し、編集可能/閲覧のみを判定する
+#    (backend/access_mode.pyが使う)。該当行が無い場合は「編集可能」を既定と
+#    する(複数のPCでローカル運用しており、通常は書き込みが1台に閉じている
+#    現状の運用を壊さないため。閲覧専用にしたいPCだけ明示的に登録する)。
+#  - キーはログインID＋PC名の組み合わせ(両方完全一致)。ワイルドカード
+#    (空欄で「任意」扱い)は現状サポートしない。
+# ========================================================================
+ACCESS_PERMISSION_TABLE='アクセス権限マスタ'
+def ensure_access_permission_table(c):
+ names=tables(c);created=False
+ if ACCESS_PERMISSION_TABLE not in names:
+  cur=c.cursor()
+  cur.execute('CREATE TABLE [アクセス権限マスタ] ([権限ID] INTEGER PRIMARY KEY AUTOINCREMENT, [ログインID] TEXT, [PC名] TEXT, [編集可否] INTEGER, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
+  cur.execute('CREATE UNIQUE INDEX [UX_アクセス権限マスタ] ON [アクセス権限マスタ] ([ログインID],[PC名])')
+  c.commit();created=True
+ ensure_audit_columns(c,ACCESS_PERMISSION_TABLE)
+ return created
+
+def normalize_identity_part(value):
+ import unicodedata
+ return unicodedata.normalize('NFKC',str(value or '')).strip().upper()
+
+def ensure_access_permission_master(path):
+ # 書き込み接続でテーブルの存在を保証する。access_mode.pyの起動時判定の前処理に使う。
+ with connect(path,False) as c:
+  created=ensure_access_permission_table(c)
+ return created
+
+def access_permission_master_rows(c):
+ ensure_access_permission_table(c)
+ cur=c.cursor()
+ # 全行取得後にPython側で有効判定する。
+ cur.execute('SELECT [権限ID],[ログインID],[PC名],[編集可否],[表示順],[有効],[更新日時],[更新者ID] FROM [アクセス権限マスタ] ORDER BY [表示順],[ログインID],[PC名]')
+ rows=[]
+ for r in cur.fetchall():
+  active=True if r[5] is None else bool(r[5])
+  if active:rows.append(r)
+ return rows
+
+def has_edit_permission(c,login_id,pc_name):
+ # ログインID＋PC名の完全一致(表記ゆれ吸収)で照合する。該当行が無ければ
+ # 「編集可能」を既定とする(上記コメント参照)。
+ if ACCESS_PERMISSION_TABLE not in tables(c):return True
+ target_login=normalize_identity_part(login_id);target_pc=normalize_identity_part(pc_name)
+ for r in access_permission_master_rows(c):
+  if normalize_identity_part(r[1])==target_login and normalize_identity_part(r[2])==target_pc:
+   return bool(r[3])
+ return True
+
+# ========================================================================
 # 表示マスタ（列表示設定）
 #  - 対象DB（仕掛一覧=SIKALOTNOW、品質データ=SIKALOTDEF等、DBS参照）ごとに、
 #    どの列を一覧から非表示にするかを管理する。

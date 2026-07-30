@@ -539,7 +539,11 @@
   $id('reportContent').innerHTML='<div class="rp-empty">左の一覧からロットを選ぶと、帳票プレビューがここに表示されます。</div>';
   const listEl=$id('reportLotList');listEl.innerHTML='<div class="rp-empty">読み込んでいます…</div>';
   try{
-   const all=await reliableAll();
+   /* 閲覧モードでは、この端末のIndexedDBではなく閲覧用バックアップ
+      (Box等へ複製したrecords.sqlite3)を読む(backend/access_mode.js
+      window.loadViewModeRecords。編集モードでは従来どおりreliableAll()。 */
+   const viewMode=window.accessMode&&window.accessMode.mode==='view';
+   const all=viewMode&&typeof window.loadViewModeRecords==='function'?await window.loadViewModeRecords():await reliableAll();
    rpState={items:all,query:'',sort:$id('reportSort')?.value||'updated-desc',selectedId:''};
    const search=$id('reportSearch');if(search)search.value='';
    renderLotList();

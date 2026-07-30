@@ -12,7 +12,7 @@ from flask import Flask
 
 app=Flask(__name__)
 
-from backend import watchdog
+from backend import watchdog, records_export, access_mode
 from backend.routes.core import bp as core_bp
 from backend.routes.tables import bp as tables_bp
 from backend.routes.measurement import bp as measurement_bp
@@ -35,6 +35,10 @@ def no_cache(response):
 # プロセスの生存管理(ハートビート監視・明示停止)は backend/watchdog.py が
 # 所有する。業務機能の変更が起動・停止の挙動へ影響しないよう分離している。
 watchdog.install(app)
+# 測定データバックアップの閲覧用複製(records_backup_export_path未設定なら何もしない)。
+records_export.start()
+# 編集可能モード/閲覧モードの判定・切替・書込ガード。
+access_mode.install(app)
 
 if __name__=='__main__':
  # 直接 python app.py で起動された場合も、通常の起動経路(Start.vbs /

@@ -173,6 +173,18 @@ main>header small{color:#687a81;margin-top:2px}
 .equipment-header-button span{font-size:var(--fs-micro)}
 .equipment-header-button b{max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .equipment-header-button.is-unset{border-color:#d58d16;background:#fff0d6;color:#6f4400}
+/* 編集可能モード/閲覧モードの表示・切替(access-mode.js)。既定は編集可能
+   モードで、権限マスタで閲覧のみに設定された端末だけ起動時に閲覧モードで
+   立ち上がる。クリックで(権限があれば)切り替えられる。 */
+.access-mode-badge{height:38px;padding:0 14px;border:1.5px solid #9ed7bd;border-radius:19px;background:#e7f6ef;color:#1e7a55;font-weight:800;font-size:12.5px;cursor:pointer;white-space:nowrap}
+.access-mode-badge.is-view{border-color:#e5b3b3;background:#fff5f5;color:#8a2323}
+.access-mode-badge:disabled{cursor:not-allowed;opacity:.7}
+/* 閲覧モード中は書込系の導線を隠す。データ一覧の行は閲覧用バックアップから
+   描画するため「続きから再開」「削除」は意味を持たない(帳票表示のみ残す)。 */
+body.view-mode .record-list-actions .resume,
+body.view-mode .record-list-actions .danger{display:none}
+body.view-mode #recordSyncBar{display:none!important}
+body.view-mode #openMasterMaint{opacity:.45;pointer-events:none}
 
 #tabs{height:38px;display:flex;background:#fff;border-bottom:1px solid var(--line)}
 .tab{border:0;border-bottom:3px solid transparent;border-radius:0;background:#fff}
@@ -1344,6 +1356,9 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .mm-mode-chip.new{background:#e7f6ef;color:#1e7a55;border:1px solid #9ed7bd}
 .mm-mode-chip.editing{background:#fff2d9;color:#8a5a00;border:1px solid #e5c07a}
 .mm-mode-chip small{color:#94794a;font-weight:700}
+/* マスタ種別ごとの補足説明(MASTER_DEFS[].hint)。警告ではなく前提知識の
+   案内のため、mm-import-warningより控えめな配色にする。 */
+.mm-def-hint{margin:0;padding:8px 12px;border:1px solid #d5e0e3;border-radius:8px;background:#f3f8f8;color:#526970;font-size:12px;line-height:1.5}
 .mm-form-fields{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start}
 .mm-field{display:flex;flex-direction:column;gap:4px;min-width:0}
 .mm-field>span{font-size:12px;color:#526970;font-weight:700;display:flex;align-items:center;gap:5px;white-space:nowrap}

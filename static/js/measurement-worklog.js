@@ -161,6 +161,10 @@
   {key:'equipment',label:'設備',icon:'設',endpoint:'/api/equipment-master',hasDelete:true,
    fields:[{k:'name',label:'設備名',required:true,key:true}],
    cols:[{k:'name',label:'設備名',grow:2}]},
+  {key:'accessPermission',label:'アクセス権限',icon:'権',endpoint:'/api/access-permission-master',hasDelete:true,
+   fields:[{k:'loginId',label:'ログインID',required:true,key:true},{k:'pcName',label:'PC名',required:true,key:true},{k:'canEdit',label:'編集可否',type:'select',options:['編集可','閲覧のみ']}],
+   cols:[{k:'loginId',label:'ログインID',grow:2},{k:'pcName',label:'PC名',grow:2},{k:'canEdit',label:'編集可否',grow:1}],
+   hint:'登録の無い組み合わせは既定で編集可能として扱われます。特定の端末を閲覧専用にしたい場合のみ、その端末のログインID・PC名の組み合わせを「閲覧のみ」で登録してください。'},
   {key:'columnDisplay',label:'列表示',icon:'列',special:'column-display'},
   {key:'importBackup',label:'データ引継ぎ',icon:'継',special:'import-backup'},
  ];
@@ -232,6 +236,7 @@
   }).join('');
   const chip=editing?`<span class="mm-mode-chip editing">編集中 <b>${esc(editing[def.cols[0].k]||'')}</b><small>ID:${esc(editing.id)}</small></span>`:`<span class="mm-mode-chip new">新規登録</span>`;
   form.innerHTML=`<div class="mm-form-head">${chip}${editing?'<button type="button" id="masterMaintNew" class="mm-btn-ghost sm">＋ 新規入力に切替</button>':''}</div>
+   ${def.hint?`<p class="mm-def-hint">${esc(def.hint)}</p>`:''}
    <div class="mm-form-fields">${controls}</div>
    <div class="mm-form-tail"><button type="submit" class="mm-btn-primary">${editing?'更新を保存':'追加登録'}</button><span class="mm-form-hint">${editing?'キー項目（名称・区分など）も変更できます。保存すると同じIDのまま更新（リネーム）されます。同名が既にある場合は更新できません。':'必須(*)を入力して追加登録します。'}</span></div>`;
   form.onsubmit=ev=>{ev.preventDefault();submitMaint()};

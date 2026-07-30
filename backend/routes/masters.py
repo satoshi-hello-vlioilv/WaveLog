@@ -22,6 +22,7 @@ from ..repositories.master_repo import (
  DEVICE_MASTER_TABLE, ensure_device_master_table, normalize_device_name, device_master_rows,
  FILTER_PRESET_TABLE, ensure_filter_preset_table, filter_preset_rows,
  COLUMN_DISPLAY_TABLE, ensure_column_display_table, hidden_columns_for, set_hidden_columns,
+ ACCESS_PERMISSION_TABLE, ensure_access_permission_table, normalize_identity_part, access_permission_master_rows,
 )
 from ..db_access import cols, tables, cfg
 
@@ -423,3 +424,71 @@ def column_display_master_update():
    set_hidden_columns(c,dbkey,hidden,uid)
   return jsonify(ok=True,db=dbkey,hidden=hidden,updated_by=uid,message='表示設定を保存しました。')
  except Exception as e:return jsonify(error=f'表示マスタ更新失敗: {e}'),500
+
+# ========================================================================
+# アクセス権限マスタ（ログインID×PC名で編集可否を管理。閲覧モードの判定は
+# backend/access_mode.pyが使う。ここではCRUD APIのみを提供する）
+# ========================================================================
+def _bool_from_can_edit(value):
+ # フロントは'編集可'/'閲覧のみ'という表記の select を送ってくる。
+ return str(value or '').strip()=='編集可'
+
+@bp.get('/api/access-permission-master')
+def access_permission_master_list():
+ try:
+  path=DBS['MASTER']['path']
+  with connect(path,False) as c:
+   before=ACCESS_PERMISSION_TABLE in tables(c);rows=access_permission_master_rows(c)
+   items=[{'id':r[0],'loginId':str(r[1] or '').strip(),'pcName':str(r[2] or '').strip(),'canEdit':'編集可' if bool(r[3]) else '閲覧のみ','order':r[4] or 0,'active':True,'updated_at':r[6].isoformat() if r[6] else None,'updated_by':(str(r[7]).strip() if len(r)>7 and r[7] else '')} for r in rows]
+  return jsonify(ok=True,items=items,table=ACCESS_PERMISSION_TABLE,created=not before,empty=len(items)==0,master_path=str(path))
+ except Exception as e:return jsonify(error=f'アクセス権限マスタ読込失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
+
+@bp.post('/api/access-permission-master')
+def access_permission_master_register():
+ try:
+  x=request.get_json(force=True) or {};login_id=str(x.get('loginId') or '').strip();pc_name=str(x.get('pcName') or '').strip();can_edit=_bool_from_can_edit(x.get('canEdit'));uid=request_user_id(x)
+  if not login_id:return jsonify(error='ログインIDを入力してください。'),400
+  if not pc_name:return jsonify(error='PC名を入力してください。'),400
+  path=DBS['MASTER']['path']
+  with connect(path,False) as c:
+   ensure_access_permission_table(c);cur=c.cursor();cur.execute('SELECT [権限ID],[ログインID],[PC名] FROM [アクセス権限マスタ]');rows=cur.fetchall()
+   tl=normalize_identity_part(login_id);tp=normalize_identity_part(pc_name)
+   existing=next((r for r in rows if normalize_identity_part(r[1])==tl and normalize_identity_part(r[2])==tp),None)
+   if existing:
+    cur.execute('UPDATE [アクセス権限マスタ] SET [編集可否]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [権限ID]=?',[1 if can_edit else 0,uid,existing[0]]);registered=False
+   else:
+    cur.execute('SELECT Max([表示順]) FROM [アクセス権限マスタ]');maximum=cur.fetchone()[0];order=int(maximum or 0)+10
+    cur.execute('INSERT INTO [アクセス権限マスタ] ([ログインID],[PC名],[編集可否],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,-1,?,?,Now(),Now())',[login_id,pc_name,1 if can_edit else 0,order,uid,uid]);registered=True
+   c.commit()
+  return jsonify(ok=True,loginId=login_id,pcName=pc_name,registered=registered,updated_by=uid,message=('アクセス権限マスタへ新規登録しました。' if registered else '登録済みの組み合わせを更新しました。'))
+ except Exception as e:return jsonify(error=f'アクセス権限マスタ登録失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
+
+@bp.post('/api/access-permission-master/update')
+def access_permission_master_update():
+ try:
+  x=request.get_json(force=True) or {};aid=x.get('id');login_id=str(x.get('loginId') or '').strip();pc_name=str(x.get('pcName') or '').strip();can_edit=_bool_from_can_edit(x.get('canEdit'));uid=request_user_id(x)
+  if aid is None:return jsonify(error='更新対象IDがありません。'),400
+  if not login_id:return jsonify(error='ログインIDを入力してください。'),400
+  if not pc_name:return jsonify(error='PC名を入力してください。'),400
+  path=DBS['MASTER']['path']
+  with connect(path,False) as c:
+   ensure_access_permission_table(c);cur=c.cursor();cur.execute('SELECT [権限ID],[ログインID],[PC名] FROM [アクセス権限マスタ]');rows=cur.fetchall()
+   tl=normalize_identity_part(login_id);tp=normalize_identity_part(pc_name)
+   dup=next((r for r in rows if normalize_identity_part(r[1])==tl and normalize_identity_part(r[2])==tp and str(r[0])!=str(aid)),None)
+   if dup:return jsonify(error='同じログインID・PC名の組み合わせが既に存在するため変更できません。'),409
+   cur.execute('UPDATE [アクセス権限マスタ] SET [ログインID]=?,[PC名]=?,[編集可否]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [権限ID]=?',[login_id,pc_name,1 if can_edit else 0,uid,aid]);c.commit()
+  return jsonify(ok=True,id=aid,loginId=login_id,pcName=pc_name,updated_by=uid,message='アクセス権限を更新しました。')
+ except Exception as e:return jsonify(error=f'アクセス権限マスタ更新失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
+
+@bp.post('/api/access-permission-master/delete')
+def access_permission_master_delete():
+ try:
+  x=request.get_json(force=True) or {};aid=x.get('id');uid=request_user_id(x)
+  if aid is None:return jsonify(error='削除対象IDがありません。'),400
+  path=DBS['MASTER']['path']
+  with connect(path,False) as c:
+   ensure_access_permission_table(c);cur=c.cursor()
+   # 物理削除ではなく無効化し、履歴を残す。無効化した更新者も記録する。
+   cur.execute('UPDATE [アクセス権限マスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [権限ID]=?',[uid,aid]);c.commit()
+  return jsonify(ok=True,id=aid,updated_by=uid)
+ except Exception as e:return jsonify(error=f'アクセス権限マスタ削除失敗: {e}'),500
