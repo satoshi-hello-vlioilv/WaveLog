@@ -222,6 +222,86 @@ UI は「入力内容」セレクトをチップへ置換する（面積は増�
 公開している関数: `measureProgress`・`refreshMeasureProgress`・
 `measureCompletionReview`・`toggleMeasureExcluded`・`measureItemNames`。
 
+### 操作レール（測定画面の左端）
+
+目的別に5グループ。**上から使用頻度順、破壊的操作は最下段**（`rail-bottom`）。
+
+| グループ | 中身 |
+|---|---|
+| 測定進捗 | 状態表示のみ（`measure-progress.js` が描画） |
+| 保存 | 保存して一覧へ / 測定を完了 |
+| 帳票 | 帳票を表示 / 印刷する |
+| データ | データ一覧を開く / DBへ同期 |
+| 異常・削除 | NGとして記録 / このデータを削除 |
+
+幅は**最長ラベル（「このデータを削除」＝実測128px）が切り詰められない値**にする
+（`.action-rail` 160px / ≤1450pxで152px。`.measure-shell` の
+`grid-template-columns` と必ず揃えること）。過去に136pxだったときは主要導線の
+「保存して一覧へ」まで省略されていた。
+
+### 測定画面から帳票を開く
+
+帳票（`report-dashboard.js`）は**端末に保存済みのレコードを読んで描画する**
+（`reliableAll()`）。したがって測定画面から開くときは、画面上の入力内容を
+先に `saveLocal()` してから開く。このとき `saveLocal()` の既定値は `'編集中'`
+なので、**完了済みデータの状態を巻き戻さないよう現在の状態を明示して渡す**。
+
+`window.openReportForRecord(id, {returnTo, print})` で起点を指定する。
+`returnTo:'measure'` なら「戻る」の表示が「測定へ戻る」に変わり、測定モーダルを
+開き直したうえで `updateValidationVisuals()` を呼んで進捗・検証表示を作り直す
+（帳票を見ている間は測定画面の描画が止まるため、古い件数が残るのを防ぐ）。
+`print:true` は描画完了を待つため `requestAnimationFrame` を2回挟んでから
+印刷ダイアログを開く（同期的に呼ぶと白紙になる）。
+
+### 帳票ビューの縦方向（A4縦を大きく見せる）
+
+A4縦は `fit` 倍率が**高さで決まる**（210×297mm を横長の画面に収めるため、
+横幅には常に余りがある）。したがって**表示を大きくする＝縦のchromeを削る**
+であり、左パネルを畳んだり横幅を広げても倍率は上がらない。
+
+| 削ったもの | 効果 |
+|---|---|
+| `body.rp-mode` で一覧用のアプリヘッダ＋設備バナーを非表示 | 122px |
+| 3段（見出し帯66 + ツールバー57 + PDF注意書き26）→ `.rp-bar` 1本 44px | 105px |
+| `.rp-scroll` の余白 20px→8px / パネル余白 9px→4px | 34px |
+
+結果、A4の倍率は 1400×900 で 49%→71%、1920×1080 で 67%→87%。
+
+- 操作類は **`.rp-bar` 1層に集約**する。ここに段を足すと直接倍率が下がる。
+- 印刷・PDFは**アイコン + `title`**。PDFの「印刷ダイアログが開く」旨の注意書きは
+  常時表示をやめて `title` に入れてある。
+- 使用頻度の低い表示設定（ラベルの出し方）は左パネル最下段 `.rp-nav-foot` へ。
+- 印刷CSS（`@media print`）は `.rp-bar` と `.rp-nav` を隠す。**バーのクラス名を
+  変えたらこの行も直す**こと。
+
+### A4縦 / A4横
+
+用紙寸法は `.rp-page` / `.rp-page.rp-landscape` で入れ替える。倍率計算
+（`fitPage`/`applyScale`）は実寸を読むので自動で追従する。印刷側の用紙向きは
+**`@page` をクラスで切り替えられない**ため、`updatePageSizeStyle()` が
+`<style id="rpPageSizeStyle">` を書き換える（`app.css` の既定 `@page` より後に
+挿入されるので、こちらが勝つ）。
+
+**倍率を決める辺が向きで変わる**:
+
+| 向き | 律速 | 一覧を畳むと |
+|---|---|---|
+| 縦 210×297 | 高さ | 倍率は変わらない（余白が減るだけ） |
+| 横 297×210 | 幅 | 77% → 98%（1400×900 実測） |
+
+横向きは高さが210mmしかなく、測定データ表（40行）を1本で積むと**59mmはみ出して
+2ページに割れる**。そのため `widthMeasurementSection()` は横向きのとき
+`1〜20条 / 21〜40条` の2ブロックへ左右分割する（`.rp-wide-split`）。向きを変えたら
+表の組み方が変わるので、`applyOrientation()` は `renderReport()` を呼び直す。
+
+一覧を畳む `.rp-body.rp-nav-hidden` は **`grid-template-columns` を1列にする**こと。
+`0 minmax(0,1fr)` の2列指定のままだと、`display:none` でグリッドから外れた
+`.rp-nav` の代わりに `.rp-main` が幅0の第1列へ自動配置され、表示領域が潰れる
+（実測で内容幅16px・倍率が下限25%へ落ちた）。
+
+向きと一覧の表示状態は端末ごとの設定として `localStorage`
+（`WaveLogReportOrientationV1` / `WaveLogReportNavHiddenV1`）に保持する。
+
 ### ハンドラ結線の注意
 
 - `measurement-view.js` の `.selectors` 一括 `onchange=markDirty` は、

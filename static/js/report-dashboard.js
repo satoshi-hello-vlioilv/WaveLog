@@ -40,39 +40,48 @@
  function ensurePanel(){
   let panel=$id('reportPanel');if(panel)return panel;
   panel=document.createElement('section');panel.className='rp-panel';panel.id='reportPanel';panel.hidden=true;
+  /* A4縦をできるだけ大きく見せるため、操作類は1本のバーへ統合する。
+     ボタンはアイコン化し、名称と補足はtitle(ツールチップ)で示す。
+     表示設定(ラベルの出し方)は使用頻度が低いので左パネルの最下段へ置き、
+     バーを薄いまま保つ。 */
+  const icon=d=>`<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
   panel.innerHTML=`
-   <header class="rp-head">
-    <button type="button" id="reportBack" class="rp-back-btn" title="元の一覧に戻ります"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>戻る</button>
-    <div class="rp-head-title"><h2>測定帳票</h2><span class="rp-sub">端末に保存済みのロットから帳票を作成します。一覧から選ぶとプレビューが表示されます。</span></div>
+   <header class="rp-bar">
+    <button type="button" id="reportBack" class="rp-back-btn" title="元の一覧に戻ります">${icon('<polyline points="15 18 9 12 15 6"/>')}戻る</button>
+    <div class="rp-bar-title" id="reportSelectedTitle">ロットを選択してください</div>
+    <div class="rp-bar-actions">
+     <div class="rp-zoom-seg" data-seg="rpOrientSeg" role="group" aria-label="用紙の向き">
+      <button type="button" data-orient="portrait" title="A4縦（210×297mm）で作成します">縦</button>
+      <button type="button" data-orient="landscape" title="A4横（297×210mm）で作成します。列の多い測定データ表が読みやすくなります">横</button>
+     </div>
+     <div class="rp-zoom-seg" data-seg="rpZoomSeg" role="group" aria-label="表示倍率">
+      <button type="button" data-val="fit" class="active" title="ページ全体が収まる倍率">全体</button>
+      <button type="button" data-val="width">幅</button>
+      <button type="button" data-val="100">100%</button>
+     </div>
+     <span class="rp-zoom-readout" id="rpZoomReadout" title="Ctrlを押しながらホイールで拡大・縮小できます">100%</span>
+     <button type="button" id="reportNavToggle" class="rp-icon-btn" title="ロット一覧を隠して帳票を広く表示します" aria-label="ロット一覧の表示切替">${icon('<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/>')}</button>
+     <button type="button" id="reportPrint" class="rp-icon-btn rp-icon-btn--primary" title="印刷する" aria-label="印刷する" disabled>${icon('<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>')}</button>
+     <button type="button" id="reportPdf" class="rp-icon-btn" title="PDFで保存する（印刷ダイアログが開きます。出力先で「PDFに保存」を選んでください）" aria-label="PDFで保存する" disabled>${icon('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>')}</button>
+    </div>
    </header>
    <div class="rp-body">
     <nav class="rp-nav" aria-label="ロット一覧">
      <div class="rp-nav-toolbar">
-      <label class="rp-search"><span class="rp-search-icon" aria-hidden="true">検索</span><input id="reportSearch" type="search" placeholder="ロット・検査番号・設備など" autocomplete="off"></label>
+      <label class="rp-search"><span class="rp-search-icon" aria-hidden="true">${icon('<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>')}</span><input id="reportSearch" type="search" placeholder="ロット・設備で絞り込み" aria-label="ロット検索" autocomplete="off"></label>
       <select id="reportSort" aria-label="並び順">
-       <option value="updated-desc">更新日時の新しい順</option>
-       <option value="updated-asc">更新日時の古い順</option>
-       <option value="lot-asc">ロット番号順</option>
+       <option value="updated-desc">新しい順</option>
+       <option value="updated-asc">古い順</option>
+       <option value="lot-asc">ロット順</option>
       </select>
      </div>
      <div class="rp-lot-list" id="reportLotList"></div>
+     <div class="rp-nav-foot">
+      <span class="rp-foot-label">表示</span>
+      <button type="button" id="reportLabelToggle" class="rp-foot-btn" title="条ごとのロット№・板幅公差のラベルを、連続する行でも毎回表示するか、変化した行だけに表示するかを切り替えます">ラベル: 毎行表示</button>
+     </div>
     </nav>
     <section class="rp-main">
-     <div class="rp-toolbar">
-      <div class="rp-toolbar-title" id="reportSelectedTitle">ロットを選択してください</div>
-      <div class="rp-toolbar-actions">
-       <div class="rp-zoom-seg" data-seg="rpZoomSeg" role="group" aria-label="表示倍率">
-        <button type="button" data-val="fit" class="active">ページ全体</button>
-        <button type="button" data-val="width">幅に合わせる</button>
-        <button type="button" data-val="100">100%</button>
-       </div>
-       <span class="rp-zoom-readout" id="rpZoomReadout" title="Ctrlを押しながらホイールで拡大・縮小できます">100%</span>
-       <button type="button" id="reportLabelToggle" class="rp-btn-secondary" title="条ごとのロット№・板幅公差のラベルを、連続する行でも毎回表示するか、変化した行だけに表示するかを切り替えます">ラベル: 毎行表示</button>
-       <button type="button" id="reportPrint" class="rp-btn-primary" disabled>印刷</button>
-       <button type="button" id="reportPdf" class="rp-btn-secondary" disabled>PDFで保存</button>
-      </div>
-     </div>
-     <div class="rp-pdf-hint">「PDFで保存」は印刷ダイアログを開きます。出力先（プリンター）で「PDFに保存」を選択してください。</div>
      <div class="rp-scroll" id="rpScroll">
       <div class="rp-page-box" id="rpPageBox">
        <div class="rp-report rp-page" id="reportContent"><div class="rp-empty">左の一覧からロットを選ぶと、帳票プレビューがここに表示されます。</div></div>
@@ -87,6 +96,9 @@
   $id('reportBack').onclick=backToRecordList;
   $id('reportLabelToggle').onclick=()=>{rpRepeatLabels=!rpRepeatLabels;updateLabelToggle();const cur=rpState.items.find(i=>i.id===rpState.selectedId);if(cur)renderReport(cur)};
   panel.querySelectorAll('[data-seg="rpZoomSeg"] button').forEach(b=>b.onclick=()=>setZoom(b.dataset.val));
+  panel.querySelectorAll('[data-seg="rpOrientSeg"] button').forEach(b=>b.onclick=()=>setOrientation(b.dataset.orient));
+  $id('reportNavToggle').onclick=toggleNav;
+  applyOrientation();applyNavVisibility();
   window.addEventListener('resize',()=>{if(rpZoom==='fit')fitPage();else if(rpZoom==='width')fitWidth()});
   // Ctrl(⌘)+ホイールで拡大縮小。通常のホイールは一覧のスクロールを妨げないよう素通しする。
   $id('rpScroll').addEventListener('wheel',e=>{
@@ -109,6 +121,58 @@
   const b=$id('reportLabelToggle');if(!b)return;
   b.textContent=rpRepeatLabels?'ラベル: 毎行表示':'ラベル: 変化時のみ表示';
   b.classList.toggle('active',!rpRepeatLabels);
+ }
+ /* ---------- 用紙の向き（A4縦 / A4横） ----------
+    横向きは列の多い測定データ表(板幅ほか15列)に効く。用紙寸法はCSSの
+    .rp-landscape で入れ替え、印刷側は @page の size を差し替える。@page は
+    クラスで切り替えられないため、専用の<style>を書き換える方式にする
+    (app.css側の既定 @page より後に挿入されるため、こちらが優先される)。
+    向きは端末ごとの表示設定として保持する。 */
+ const RP_ORIENT_KEY='WaveLogReportOrientationV1';
+ let rpOrientation=(()=>{try{return localStorage.getItem(RP_ORIENT_KEY)==='landscape'?'landscape':'portrait'}catch(e){return 'portrait'}})();
+ function updatePageSizeStyle(){
+  let el=document.getElementById('rpPageSizeStyle');
+  if(!el){el=document.createElement('style');el.id='rpPageSizeStyle';document.head.appendChild(el)}
+  el.textContent=`@page{size:A4 ${rpOrientation==='landscape'?'landscape':'portrait'};margin:5mm}`;
+ }
+ function applyOrientation(){
+  const page=$id('reportContent');
+  if(page)page.classList.toggle('rp-landscape',rpOrientation==='landscape');
+  document.querySelectorAll('[data-seg="rpOrientSeg"] button')
+   .forEach(b=>b.classList.toggle('active',b.dataset.orient===rpOrientation));
+  updatePageSizeStyle();
+  /* 測定データ表の組み方が向きで変わる(横は2ブロック)ため、描画済みなら作り直す。 */
+  const cur=rpState.items.find(i=>i.id===rpState.selectedId);
+  if(cur)renderReport(cur);
+  /* 用紙の縦横が変わると収まる倍率も変わるため、現在の指定で計算し直す。 */
+  if(rpZoom==='fit')fitPage();else if(rpZoom==='width')fitWidth();else applyScale(rpCurrentScale);
+ }
+ /* ロット一覧の表示切替。A4横は倍率が「幅」で決まるため、一覧を畳むと
+    そのぶん帳票が大きくなる(実測 77%→98%)。縦は高さで決まるので倍率は
+    変わらないが、余白が減って見やすくなる。 */
+ const RP_NAV_KEY='WaveLogReportNavHiddenV1';
+ let rpNavHidden=(()=>{try{return localStorage.getItem(RP_NAV_KEY)==='1'}catch(e){return false}})();
+ function applyNavVisibility(){
+  const body=$id('reportPanel')?.querySelector('.rp-body');
+  if(body)body.classList.toggle('rp-nav-hidden',rpNavHidden);
+  const btn=$id('reportNavToggle');
+  if(btn){
+   btn.classList.toggle('active',rpNavHidden);
+   btn.title=rpNavHidden?'ロット一覧を表示します':'ロット一覧を隠して帳票を広く表示します';
+  }
+  if(rpZoom==='fit')fitPage();else if(rpZoom==='width')fitWidth();
+ }
+ function toggleNav(){
+  rpNavHidden=!rpNavHidden;
+  try{localStorage.setItem(RP_NAV_KEY,rpNavHidden?'1':'0')}catch(e){}
+  applyNavVisibility();
+ }
+ function setOrientation(v){
+  const next=v==='landscape'?'landscape':'portrait';
+  if(next===rpOrientation)return;
+  rpOrientation=next;
+  try{localStorage.setItem(RP_ORIENT_KEY,rpOrientation)}catch(e){}
+  applyOrientation();
  }
  function setZoom(v){
   rpZoom=v;
@@ -264,20 +328,35 @@
     のため、実データがない行も空欄のまま枠だけ残す（"-"を書かず空欄にする）。 */
  function widthMeasurementSection(x){
   const s=x.settings||{},actual=Math.max(1,Math.min(40,+s.horizontalCount||1)),{headIdx,tailIdx,headLabel,tailLabel}=lengthLabels(s),tol=toleranceRangeLocal(x,'width');
-  let rows='',prevKey=null;
-  for(let col=0;col<40;col++){
+  const rowHtml=(col,prev)=>{
    const real=col<actual,cell=v=>real?esc(v||'-'):'';
-   let lotText='',lowText='',highText='';
+   let lotText='',lowText='',highText='',key=prev;
    if(real){
-    const ctx=widthRowContext(x,col,tol),key=`${ctx.lot}|${ctx.range?ctx.range.join(','):''}`;
-    const show=rpRepeatLabels||key!==prevKey;prevKey=key;
+    const ctx=widthRowContext(x,col,tol);key=`${ctx.lot}|${ctx.range?ctx.range.join(','):''}`;
+    const show=rpRepeatLabels||key!==prev;
     lotText=show?esc(ctx.lot):'';
     lowText=ctx.range?fmtDimSafe(ctx.range[0],2):(tol?fmtDimSafe(tol[0],2):'');
     highText=ctx.range?fmtDimSafe(ctx.range[1],2):(tol?fmtDimSafe(tol[1],2):'');
    }
-   rows+=`<tr><th class="rp-colno">${col+1}</th><td class="rp-collot">${lotText}</td><td>${lowText}</td><td>${cell(measAt(x,'width',headIdx,col))}</td><td>${cell(measAt(x,'width',tailIdx,col))}</td><td>${highText}</td><td>${cell(measAt(x,'lateral',headIdx,col))}</td><td>${cell(measAt(x,'lateral',tailIdx,col))}</td><td>${cell(measAt(x,'burr',headIdx,col))}</td><td>${cell(measAt(x,'burr',tailIdx,col))}</td><td>${cell(measAt(x,'offset',tailIdx,col))}</td><td>${cell(measAt(x,'telescope',tailIdx,col))}</td><td>${cell(measAt(x,'flatness',headIdx,col))}</td><td>${cell(measAt(x,'flatness',tailIdx,col))}</td><td>${cell(measAt(x,'comments',tailIdx,col))}</td></tr>`;
-  }
-  return `<section class="rp-section"><h3>測定データ（板幅・ラテラルボー・バリ・巻ずれ・テレスコープ）</h3><p class="rp-note">巻ずれ・テレスコープは ${esc(tailLabel)} のデータのみ対象です。横割数（${actual}条）を超える行は控え欄として空欄にしています。幅ロット分割時は条ごとのロット№・目標幅(公差)を条番号の右に表示します。</p><div class="rp-wide-wrap"><table class="rp-dim-table rp-wide-table"><thead><tr><th rowspan="2">条番号</th><th rowspan="2">ロット№</th><th colspan="4">板幅</th><th colspan="2">ラテラルボー</th><th colspan="2">バリ</th><th>巻ずれ</th><th>テレスコープ</th><th colspan="2">フラットネス</th><th rowspan="2">備考</th></tr><tr><th>範囲下限</th><th>${esc(headLabel)}</th><th>${esc(tailLabel)}</th><th>範囲上限</th><th>${esc(headLabel)}</th><th>${esc(tailLabel)}</th><th>${esc(headLabel)}</th><th>${esc(tailLabel)}</th><th>${esc(tailLabel)}</th><th>${esc(tailLabel)}</th><th>${esc(headLabel)}</th><th>${esc(tailLabel)}</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+   const html=`<tr><th class="rp-colno">${col+1}</th><td class="rp-collot">${lotText}</td><td>${lowText}</td><td>${cell(measAt(x,'width',headIdx,col))}</td><td>${cell(measAt(x,'width',tailIdx,col))}</td><td>${highText}</td><td>${cell(measAt(x,'lateral',headIdx,col))}</td><td>${cell(measAt(x,'lateral',tailIdx,col))}</td><td>${cell(measAt(x,'burr',headIdx,col))}</td><td>${cell(measAt(x,'burr',tailIdx,col))}</td><td>${cell(measAt(x,'offset',tailIdx,col))}</td><td>${cell(measAt(x,'telescope',tailIdx,col))}</td><td>${cell(measAt(x,'flatness',headIdx,col))}</td><td>${cell(measAt(x,'flatness',tailIdx,col))}</td><td>${cell(measAt(x,'comments',tailIdx,col))}</td></tr>`;
+   return{html,key};
+  };
+  const head=`<thead><tr><th rowspan="2">条番号</th><th rowspan="2">ロット№</th><th colspan="4">板幅</th><th colspan="2">ラテラルボー</th><th colspan="2">バリ</th><th>巻ずれ</th><th>テレスコープ</th><th colspan="2">フラットネス</th><th rowspan="2">備考</th></tr><tr><th>範囲下限</th><th>${esc(headLabel)}</th><th>${esc(tailLabel)}</th><th>範囲上限</th><th>${esc(headLabel)}</th><th>${esc(tailLabel)}</th><th>${esc(headLabel)}</th><th>${esc(tailLabel)}</th><th>${esc(tailLabel)}</th><th>${esc(tailLabel)}</th><th>${esc(headLabel)}</th><th>${esc(tailLabel)}</th></tr></thead>`;
+  const table=(from,to)=>{
+   /* ロット№・目標幅の「変化した行だけ表示」はブロックごとに見出しが付くため、
+      ブロック先頭では必ず表示されるよう基準を初期化する。 */
+   let prev=null,body='';
+   for(let col=from;col<to;col++){const r=rowHtml(col,prev);body+=r.html;prev=r.key}
+   return `<table class="rp-dim-table rp-wide-table">${head}<tbody>${body}</tbody></table>`;
+  };
+  /* A4横は幅に余裕がある一方で高さが210mmしかない。40行を1本で積むと
+     用紙からはみ出す(実測で59mmオーバー)ため、1〜20条と21〜40条の2ブロックへ
+     横に割って高さを半分にする。縦(297mm)は従来どおり1本で収まる。 */
+  const landscape=rpOrientation==='landscape';
+  const tables=landscape
+   ?`<div class="rp-wide-split">${table(0,20)}${table(20,40)}</div>`
+   :table(0,40);
+  return `<section class="rp-section"><h3>測定データ（板幅・ラテラルボー・バリ・巻ずれ・テレスコープ）</h3><p class="rp-note">巻ずれ・テレスコープは ${esc(tailLabel)} のデータのみ対象です。横割数（${actual}条）を超える行は控え欄として空欄にしています。幅ロット分割時は条ごとのロット№・目標幅(公差)を条番号の右に表示します。${landscape?'A4横のため1〜20条と21〜40条を左右に分けています。':''}</p><div class="rp-wide-wrap">${tables}</div></section>`;
  }
  /* 丈(1..N)別の長さ・肉厚・揃い判定。旧帳票の「丈」テーブル（長さ/肉厚/揃い/外観/備考）に対応。
     「外観」列は旧帳票でも実データが書き込まれない控え欄のため、空欄のまま残す。
@@ -358,7 +437,8 @@
  function selectLot(id){
   rpState.selectedId=id;renderLotList();
   const x=rpState.items.find(i=>i.id===id);if(!x)return;
-  $id('reportSelectedTitle').textContent=`${x.basic?.lotNo||x.id} の帳票プレビュー`;
+  /* バーは1層に詰めているため、左の一覧で選択中が分かることを前提に短く出す。 */
+  $id('reportSelectedTitle').textContent=[x.basic?.lotNo||x.id,x.basic?.inspectionNo,statusLabel(x.status)].filter(Boolean).join(' / ');
   $id('reportPrint').disabled=false;$id('reportPdf').disabled=false;
   renderReport(x);
   fitPage();fitWidth();
@@ -378,6 +458,9 @@
   document.getElementById('dashboardPanel')?.setAttribute('hidden','');
   document.body.classList.remove('db-mode');
   document.getElementById('recordModal')?.setAttribute('hidden','');
+  /* 測定画面から開く場合もあるため、重なって残らないよう閉じる
+     (測定内容は呼び出し側で保存済み。戻る操作で開き直す)。 */
+  document.getElementById('measureModal')?.setAttribute('hidden','');
   document.getElementById('openDashboard')?.classList.remove('active');
   document.body.classList.add('rp-mode');
   document.querySelectorAll('#nav button.db').forEach(b=>b.classList.remove('active'));
@@ -395,18 +478,67 @@
   }catch(e){listEl.innerHTML=`<div class="rp-empty">一覧を読み込めませんでした: ${esc(e.message)}</div>`}
  }
 
+ /* 帳票を開いた起点。「戻る」の行き先をここで覚えておく。
+    'records' = 編集中/完了データ一覧(従来) / 'measure' = 測定画面。 */
+ let rpReturnTo='records';
+
  /* 編集中/完了データ一覧は統合された1つの一覧のため、帳票から戻る際は
     現在のトグル状態(編集中/完了それぞれのON/OFF)をそのまま維持して
     再度開く(openRecordsSafe(null)はopenRecords()側でプリセットを
     上書きせず現在のrecordListState.statusesを引き継ぐ)。 */
- window.openReportForRecord=async function(id){
-  await openReportView();
+ window.openReportForRecord=async function(id,options){
+  const opt=options||{};
+  rpReturnTo=opt.returnTo==='measure'?'measure':'records';
+  await openReportView();           // ここで初めてパネル(戻るボタン)が作られる
+  updateBackButton();
   selectLot(id);
+  /* 印刷は描画後でないと白紙になるため、1フレーム置いてから開く。 */
+  if(opt.print)requestAnimationFrame(()=>requestAnimationFrame(printReport));
  };
+ function updateBackButton(){
+  const btn=$id('reportBack');if(!btn)return;
+  const toMeasure=rpReturnTo==='measure';
+  /* ボタンの中身は <svg>アイコン</svg> + 文字列。アイコンは残して文字だけ差し替える。 */
+  const label=[...btn.childNodes].find(n=>n.nodeType===Node.TEXT_NODE);
+  if(label)label.textContent=toMeasure?'測定へ戻る':'戻る';
+  btn.title=toMeasure?'測定画面へ戻ります':'元の一覧に戻ります';
+ }
  function backToRecordList(){
   exitReportView();
+  if(rpReturnTo==='measure'){
+   rpReturnTo='records';updateBackButton();
+   const modal=document.getElementById('measureModal');
+   if(modal){
+    modal.hidden=false;
+    /* 帳票へ出ている間に描画が止まっているため、戻った時点の内容で
+       検証表示と測定進捗を作り直す(古い件数が残るのを防ぐ)。 */
+    if(typeof updateValidationVisuals==='function')updateValidationVisuals();
+    requestAnimationFrame(()=>$id('deviceInput')?.focus());
+   }
+   return;
+  }
   if(typeof openRecordsSafe==='function')openRecordsSafe(null);
  }
+
+ /* 測定画面(操作レール)から帳票を開く。帳票は端末に保存済みのレコードを
+    読んで描画するため、画面上の入力内容をそのまま出せるよう先に保存する。
+    saveLocal()の既定値は'編集中'なので、完了済みのデータを開いていた場合に
+    状態を巻き戻さないよう、現在の状態を明示して渡す。 */
+ async function openReportFromMeasure(print){
+  if(!S.measure){showToast?.('測定データがありません','測定画面を開いてから実行してください。',4000);return}
+  try{
+   await saveLocal(S.measure.status||'編集中');
+  }catch(e){
+   showToast?.('帳票を開けませんでした','入力内容を端末へ保存できませんでした: '+e.message,6000);return;
+  }
+  await window.openReportForRecord(S.measure.id,{returnTo:'measure',print:!!print});
+ }
+ document.addEventListener('click',e=>{
+  const btn=e.target.closest?.('#openReport,#printReport');if(!btn)return;
+  e.preventDefault();
+  openReportFromMeasure(btn.id==='printReport');
+ });
+ window.openReportFromMeasure=openReportFromMeasure;
 })();
 
 /* ============================================================

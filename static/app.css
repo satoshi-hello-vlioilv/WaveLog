@@ -223,7 +223,7 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
   position:absolute;inset:.5vh .35vw;
   background:#f5f5f3;border-radius:10px;box-shadow:0 20px 70px #0005;
   display:grid;
-  grid-template-columns:136px minmax(0,1fr);
+  grid-template-columns:160px minmax(0,1fr);
   grid-template-rows:62px auto minmax(0,1fr);
   overflow:hidden;
   font-size:var(--fs);
@@ -252,8 +252,11 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 .course-warning-actions button{min-width:155px;border-color:#b44900;background:#b44900;color:#fff;font-weight:800}
 
 /* --- 操作レール（左端の縦ボタン列） --- */
+/* 幅は最長のラベル(「このデータを削除」「データ一覧を開く」= 実測128px)が
+   切り詰められない値にする。以前は136px(ボタン実幅109px)で、主要導線の
+   「保存して一覧へ」までが「保存して一...」と省略されていた。 */
 .action-rail{
-  grid-row:3;width:136px;display:flex;flex-direction:column;gap:12px;
+  grid-row:3;width:160px;display:flex;flex-direction:column;gap:10px;
   padding:9px 8px;background:#d7e5ee;border-right:1px solid #9fb2bf;overflow-y:auto;
 }
 .rail-group{display:grid;gap:6px}
@@ -1007,8 +1010,8 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 
 /* ---------- 15. レスポンシブ（幅に応じた列調整のみ / 文字サイズは不変） ---------- */
 @media(max-width:1450px){
-  .measure-shell{grid-template-columns:128px minmax(0,1fr)}
-  .action-rail{width:128px}
+  .measure-shell{grid-template-columns:152px minmax(0,1fr)}
+  .action-rail{width:152px}
   .dense-controls .major-list{grid-template-rows:20px 180px}
   .dense-controls .major-list select{height:180px}
 }
@@ -1605,53 +1608,103 @@ body.cal-mode.qa-mode.qa-view-raw #grid,body.cal-mode.qa-mode.qa-view-raw footer
  組み、JSでコンテナに収まるscale()を掛けて「ページ全体」を既定表示
  にする（WYSIWYG。100%表示にも切替可）。
  ============================================================ */
-.rp-panel{flex:1;min-height:0;margin:9px 14px;display:flex;flex-direction:column;background:#f4f7f8;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+/* --- 帳票ビュー ---
+   A4縦(210x297mm)を出来るだけ大きく見せるため、縦方向のchromeを削る。
+   以前は「一覧用のアプリヘッダ(54px)+設備バナー(68px)+見出し帯(66px)+
+   ツールバー(57px)+PDF注意書き(26px)+余白(40px)」で900pxの画面の約340pxを
+   占有し、A4が49%表示になっていた。操作類は1本のバーへ統合し、
+   帳票表示中は一覧用のヘッダ類を隠す。 */
+body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!important}
+.rp-panel{flex:1;min-height:0;margin:4px 8px;display:flex;flex-direction:column;background:#f4f7f8;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .rp-panel[hidden]{display:none!important}
-.rp-head{display:flex;align-items:center;gap:16px;padding:12px 18px;background:linear-gradient(90deg,var(--nav),#1f5560);color:#fff}
-.rp-back-btn{display:flex;align-items:center;gap:6px;flex:none;height:36px;padding:0 14px 0 10px;border:1px solid rgba(255,255,255,.35);border-radius:8px;background:rgba(255,255,255,.12);color:#fff;font-weight:700;font-size:13px;cursor:pointer;transition:background .15s}
+
+/* 操作バー(1層)。戻る / ロット / 表示倍率 / 操作アイコン をこの1本に集約。 */
+.rp-bar{
+  display:flex;align-items:center;gap:10px;padding:5px 10px;min-height:44px;
+  background:linear-gradient(90deg,var(--nav),#1f5560);color:#fff;
+}
+.rp-back-btn{
+  display:flex;align-items:center;gap:5px;flex:none;height:32px;padding:0 12px 0 9px;
+  border:1px solid rgba(255,255,255,.35);border-radius:7px;background:rgba(255,255,255,.12);
+  color:#fff;font-weight:700;font-size:13px;cursor:pointer;transition:background .15s;
+}
 .rp-back-btn:hover{background:rgba(255,255,255,.24)}
 .rp-back-btn svg{flex:none}
-.rp-head-title{display:flex;flex-direction:column;gap:2px;min-width:0}
-.rp-head-title h2{margin:0;font-size:18px}
-.rp-sub{color:#bfe0e4;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rp-body{flex:1;min-height:0;display:grid;grid-template-columns:250px minmax(0,1fr)}
+.rp-bar-title{
+  font-weight:800;font-size:14px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.rp-bar-actions{margin-left:auto;display:flex;align-items:center;gap:6px;flex:none}
+.rp-zoom-seg{display:flex;gap:2px;background:rgba(255,255,255,.14);border-radius:7px;padding:2px}
+.rp-zoom-seg button{
+  padding:5px 9px;border:0;border-radius:5px;background:transparent;color:#dbeaed;
+  font-size:12px;font-weight:700;cursor:pointer;
+}
+.rp-zoom-seg button:hover{background:rgba(255,255,255,.12)}
+.rp-zoom-seg button.active{background:#fff;color:#0d4650}
+.rp-zoom-readout{
+  min-width:40px;text-align:center;font-size:12px;font-weight:800;color:#cfe3e6;
+  font-variant-numeric:tabular-nums;cursor:help;
+}
+/* 操作ボタンはアイコン化。何のボタンかはtitle(ツールチップ)で示す。 */
+.rp-icon-btn{
+  display:flex;align-items:center;justify-content:center;flex:none;
+  width:32px;height:32px;padding:0;border:1px solid rgba(255,255,255,.35);border-radius:7px;
+  background:rgba(255,255,255,.12);color:#fff;cursor:pointer;transition:background .15s;
+}
+.rp-icon-btn:hover:not(:disabled){background:rgba(255,255,255,.26)}
+.rp-icon-btn:disabled{opacity:.35;cursor:not-allowed}
+.rp-icon-btn--primary{background:var(--teal);border-color:var(--teal)}
+.rp-icon-btn--primary:hover:not(:disabled){background:#0a95a4;border-color:#0a95a4}
+.rp-icon-btn.active{background:#fff;border-color:#fff;color:#0d4650}
+
+.rp-body{flex:1;min-height:0;display:grid;grid-template-columns:230px minmax(0,1fr)}
+/* ロット一覧を畳んだ状態。A4横は倍率が幅で決まるため、畳むと帳票が大きくなる。
+   列数は1列にする。`0 minmax(0,1fr)` の2列指定のままだと、display:noneで
+   グリッドから外れた.rp-navの代わりに.rp-mainが幅0の第1列へ自動配置され、
+   表示領域が潰れる(実測で内容幅16px・倍率が下限25%に落ちた)。 */
+.rp-body.rp-nav-hidden{grid-template-columns:minmax(0,1fr)}
+.rp-body.rp-nav-hidden .rp-nav{display:none}
 .rp-nav{display:flex;flex-direction:column;min-height:0;background:#e7eff1;border-right:1px solid var(--line)}
-.rp-nav-toolbar{display:flex;flex-direction:column;gap:8px;padding:12px}
-.rp-search{position:relative;display:flex;align-items:center}
-.rp-search-icon{position:absolute;left:10px;font-size:13px;opacity:.6;pointer-events:none}
-.rp-search input{height:36px;width:100%;padding:6px 12px 6px 30px;border:1px solid var(--line);border-radius:20px;background:#fff}
-.rp-nav-toolbar select{height:34px;width:100%;background:#fff}
-.rp-lot-list{flex:1;min-height:0;overflow:auto;padding:0 10px 12px;display:flex;flex-direction:column;gap:6px}
-.rp-lot-row{display:flex;flex-direction:column;gap:3px;padding:9px 11px;border:1px solid #d5e0e3;border-radius:10px;background:#fff;text-align:left;cursor:pointer;font:inherit;color:inherit}
+/* 検索と並び順は横1列。縦2段(102px)だった分をロット一覧の表示に回す。 */
+.rp-nav-toolbar{display:flex;align-items:center;gap:6px;padding:7px 8px}
+.rp-search{position:relative;display:flex;align-items:center;flex:1;min-width:0}
+.rp-search-icon{position:absolute;left:8px;display:flex;color:#6a8189;opacity:.75;pointer-events:none}
+.rp-search input{height:30px;width:100%;min-width:0;padding:5px 8px 5px 29px;border:1px solid var(--line);border-radius:15px;background:#fff}
+.rp-nav-toolbar select{height:30px;flex:none;width:92px;min-width:0;padding:4px 6px;background:#fff;font-size:12px}
+.rp-lot-list{flex:1;min-height:0;overflow:auto;padding:0 8px 8px;display:flex;flex-direction:column;gap:5px}
+.rp-lot-row{display:flex;flex-direction:column;gap:2px;padding:7px 9px;border:1px solid #d5e0e3;border-radius:9px;background:#fff;text-align:left;cursor:pointer;font:inherit;color:inherit}
 .rp-lot-row:hover{border-color:#9fc3c8;background:#f6fdfd}
 .rp-lot-row.active{border-color:var(--teal);background:#eafafa;box-shadow:0 0 0 2px #087c8930}
 .rp-lot-main{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.rp-lot-main b{font-size:14px;color:#173842;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rp-lot-sub{color:#61757c;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rp-lot-date{color:#8a9aa0;font-size:11px;font-variant-numeric:tabular-nums}
-.rp-status-badge{flex:0 0 auto;padding:2px 8px;border-radius:10px;background:#eef2f4;color:#526970;font-weight:800;font-size:10px;white-space:nowrap}
+.rp-lot-main b{font-size:13px;color:#173842;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rp-lot-sub{color:#61757c;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rp-lot-date{color:#8a9aa0;font-size:10px;font-variant-numeric:tabular-nums}
+.rp-status-badge{flex:0 0 auto;padding:2px 7px;border-radius:10px;background:#eef2f4;color:#526970;font-weight:800;font-size:10px;white-space:nowrap}
 .rp-status-badge.done{background:#e7f6ef;color:#1e7a55}
 .rp-status-badge.ng{background:#fdeaea;color:#a32424}
+/* 表示設定は左パネルの最下段へ。操作バーを1層のまま薄く保つため。 */
+.rp-nav-foot{
+  flex:none;border-top:1px solid var(--line);padding:7px 8px;background:#dfeaec;
+  display:flex;align-items:center;gap:6px;
+}
+.rp-nav-foot .rp-foot-label{font-size:11px;font-weight:800;color:#3a565d;flex:none}
+.rp-foot-btn{
+  flex:1;min-width:0;height:28px;padding:0 8px;border:1px solid #9fb9b2;border-radius:6px;
+  background:#fff;color:#2c5049;font-size:11px;font-weight:700;cursor:pointer;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.rp-foot-btn.active{background:#eafafa;border-color:var(--teal);color:#075e67}
 .rp-main{display:flex;flex-direction:column;min-width:0;min-height:0}
-.rp-toolbar{display:flex;align-items:center;gap:12px;padding:10px 18px;background:#fff;border-bottom:1px solid var(--line)}
-.rp-toolbar-title{font-weight:800;color:#173842;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rp-toolbar-actions{margin-left:auto;display:flex;align-items:center;gap:8px}
-.rp-zoom-seg{display:flex;gap:2px;background:#eef2f4;border-radius:8px;padding:2px}
-.rp-zoom-seg button{padding:6px 10px;border:0;border-radius:6px;background:transparent;color:#3a565d;font-size:12px;font-weight:700;cursor:pointer}
-.rp-zoom-seg button.active{background:#fff;color:#075e67;box-shadow:0 1px 3px #00000022}
-.rp-zoom-readout{min-width:44px;text-align:center;font-size:12px;font-weight:800;color:#526970;font-variant-numeric:tabular-nums;cursor:help}
-.rp-btn-primary{height:36px;padding:0 16px;border:0;border-radius:8px;background:var(--teal);color:#fff;font-weight:800;cursor:pointer}
-.rp-btn-primary:hover{background:var(--teal-dark)}
-.rp-btn-primary:disabled{opacity:.4;cursor:not-allowed}
-.rp-btn-secondary{height:36px;padding:0 14px;border:1px solid #9fb9b2;border-radius:8px;background:#fff;color:#2c5049;font-weight:700;cursor:pointer}
-.rp-btn-secondary:disabled{opacity:.4;cursor:not-allowed}
-.rp-btn-secondary.active{background:#eafafa;border-color:var(--teal);color:#075e67}
-.rp-pdf-hint{padding:5px 18px;color:#6a7d83;font-size:11px;background:#f7fafb;border-bottom:1px solid #e5edef}
-.rp-scroll{flex:1;min-height:0;overflow:auto;padding:20px;background:#dbe4e6;display:flex;justify-content:center;align-items:flex-start}
+.rp-scroll{flex:1;min-height:0;overflow:auto;padding:8px;background:#dbe4e6;display:flex;justify-content:center;align-items:flex-start}
 .rp-page-box{overflow:visible}
 /* A4実寸。画面プレビューは印刷と同じ密度のCSSで組み、実際に印刷
    される見た目そのままをページ枠内に収める（WYSIWYG）。 */
 .rp-page{width:210mm;min-height:297mm;background:#fff;box-shadow:0 6px 24px #00000030;padding:8mm;box-sizing:border-box;font-size:10px;transform-origin:top left}
+/* A4横。用紙寸法を入れ替えるだけで、倍率計算(fitPage/applyScale)は実寸を
+   読むため自動で追従する。印刷側の@pageはJS(updatePageSizeStyle)が差し替える。 */
+.rp-page.rp-landscape{width:297mm;min-height:210mm}
+/* A4横の測定データ表は1〜20条/21〜40条を左右に分けて高さを半減させる。 */
+.rp-wide-split{display:grid;grid-template-columns:1fr 1fr;gap:0 4px;align-items:start}
 .rp-empty{padding:40px;text-align:center;color:#60747b;background:#fff;border:1px dashed #aebfc4;border-radius:12px}
 .rp-report-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;padding-bottom:3px;margin-bottom:4px;border-bottom:2px solid #173842}
 .rp-report-head small{color:var(--teal);font-weight:800;letter-spacing:.1em}
@@ -1729,7 +1782,7 @@ body.cal-mode.qa-mode.qa-view-raw #grid,body.cal-mode.qa-mode.qa-view-raw footer
  body.rp-mode .layout{display:block;height:auto}
  body.rp-mode main{display:block;height:auto}
  #reportPanel{position:static;margin:0;border:0;border-radius:0;background:#fff;display:block;height:auto}
- #reportPanel .rp-head,#reportPanel .rp-nav,#reportPanel .rp-toolbar,#reportPanel .rp-pdf-hint{display:none!important}
+ #reportPanel .rp-bar,#reportPanel .rp-nav{display:none!important}
  #reportPanel .rp-body{display:block;height:auto}
  #reportPanel .rp-main{display:block;height:auto;overflow:visible}
  #reportPanel .rp-scroll{padding:0;overflow:visible;display:block;background:none}

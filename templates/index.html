@@ -25,10 +25,11 @@
 <div aria-atomic="true" aria-live="polite" class="toast-area" id="toastArea"></div>
 <div class="modal" hidden="" id="measureModal"><div class="shade"></div><section aria-modal="true" class="measure-shell" role="dialog"><header class="measure-head"><div><small>MEASUREMENT WORKSPACE</small><h1>測定伝送システム <span id="modalEquipment"></span> <b class="build-badge measure-build-badge">最新版</b></h1></div><div class="save-state"><span id="localState">未保存</span><button id="closeModal">×</button></div></header><div class="course-warning" hidden="" id="courseWarning" role="alert">この設備は設計コースの対象外です。</div>
 <nav aria-label="測定操作" class="action-rail">
-<div class="rail-group"><span class="rail-label">保存</span><button class="rail-primary" id="saveDraft">保存して一覧へ</button><button class="rail-success" id="complete">測定を完了</button><button id="backupNow">DBへ同期</button></div>
-<div class="rail-group"><span class="rail-label">データを開く</span><button id="openDrafts">データ一覧を開く</button></div>
 <div class="rail-group rail-progress-group"><span class="rail-label">測定進捗</span><div id="railProgress"></div></div>
-<div class="rail-group rail-bottom"><span class="rail-label">その他</span><button id="ngLot">NGとして記録</button><button class="rail-danger" id="discard">このデータを削除</button></div>
+<div class="rail-group"><span class="rail-label">保存</span><button class="rail-primary" id="saveDraft">保存して一覧へ</button><button class="rail-success" id="complete">測定を完了</button></div>
+<div class="rail-group"><span class="rail-label">帳票</span><button id="openReport">帳票を表示</button><button id="printReport">印刷する</button></div>
+<div class="rail-group"><span class="rail-label">データ</span><button id="openDrafts">データ一覧を開く</button><button id="backupNow">DBへ同期</button></div>
+<div class="rail-group rail-bottom"><span class="rail-label">異常・削除</span><button id="ngLot">NGとして記録</button><button class="rail-danger" id="discard">このデータを削除</button></div>
 </nav>
 <div class="measure-body"><section class="left-pane"><div class="tabs"><button class="active" data-infotab="basic" type="button">基本情報</button><button data-infotab="grade" type="button">品質等級</button><button data-infotab="split" type="button">幅分割情報<span class="split-tab-badge" id="splitTabBadge" hidden></span></button></div><div class="basic-card" data-infopanel="basic" id="basicInfo"></div><div class="quality-grade-panel" data-infopanel="grade" hidden="" id="qualityGradePanel"></div><div class="split-pane" data-infopanel="split" hidden=""><div id="splitGrid">分割無し</div></div><div class="subtabs"><button class="active" data-lefttab="worktime">作業時間</button><button data-lefttab="analysis">測定データ分析</button></div><div class="work-time-panel" data-leftpanel="worktime" aria-label="作業時間記録">
 <div class="work-time-title"><b>作業時間</b><span id="workDuration">未計測</span></div>
