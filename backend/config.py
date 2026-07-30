@@ -33,5 +33,10 @@ HEARTBEAT_STALE_SEC=3600
 EMPTY_GRACE_SEC=90
 WATCHDOG_CHECK_INTERVAL_SEC=10
 
+# 測定データバックアップ(records.sqlite3)の閲覧用複製(records_export.py)を
+# チェックする間隔。変化があった場合のみ複製するため、間隔を短くしても
+# 無駄な複製は増えない(負荷軽減より鮮度を優先したい場合はここを短くする)。
+RECORDS_BACKUP_EXPORT_INTERVAL_SEC=600
+
 def app_url():
  return f'http://{HOST}:{PORT}/'

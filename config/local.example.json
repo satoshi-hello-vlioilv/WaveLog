@@ -6,5 +6,7 @@
  "_sikalotnow_comment": "仕掛(SIKALOTNOW)の読み込み先。既定は工場側共有(\\\\Nlmsrvngy03\\Read\\【New】仕掛\\台帳\\SIKALOTNOW.accdb)。拡張子を.sqlite3にするとSQLiteとして自動的に読み込む。",
  "sikalotnow_path": null,
  "_sikalotdef_comment": "品質データ(SIKALOTDEF)の読み込み先。既定は工場側共有上のSIKALOTDEF.accdb。拡張子を.sqlite3にするとSQLiteとして自動的に読み込む。",
- "sikalotdef_path": null
+ "sikalotdef_path": null,
+ "_records_backup_export_comment": "測定データバックアップ(records.sqlite3)を、閲覧用に複製する追加の出力先。未設定なら複製しない。Box等のクラウド同期フォルダを指定すると、他端末からは閲覧モードでこの複製を読める(書き込みは常にローカルのrecords.sqlite3のみ)。変化があった場合に限り、一定間隔でまとめて複製する(負荷軽減のため)。",
+ "records_backup_export_path": null
 }

@@ -54,6 +54,9 @@ def resolve_local_db(name,legacy_names):
  return DB_DIR/name
 DBS['MASTER']['path']=configured_path('master_db_path') or resolve_local_db('master.sqlite3',['マスタ.sqlite3','マスタデータ.sqlite3','Master.sqlite3'])
 MEAS_DB=configured_path('records_db_path') or resolve_local_db('records.sqlite3',['測定データ.sqlite3','Measurement.sqlite3']); MEAS_ENGINE='sqlite'
+# 閲覧用の追加複製先(config/local.jsonの"records_backup_export_path")。
+# 未設定ならNoneのままで、records_export.pyは複製を一切行わない(既定は現状維持)。
+RECORDS_BACKUP_EXPORT_PATH=configured_path('records_backup_export_path')
 DRIVER="Microsoft Access Driver (*.mdb, *.accdb)"
 
 # ========================================================================

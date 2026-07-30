@@ -73,10 +73,12 @@
 | `backend/routes/tables.py` | 汎用DB一覧API(`/api/catalog`・`/api/tables`・`/api/table`) |
 | `backend/routes/measurement.py` | 測定コンテキスト・マスタ診断・バックアップAPI |
 | `backend/routes/quality.py` | 品質データ分析API(`/api/quality/analysis`) |
-| `backend/routes/masters.py` | 各種マスタCRUDのBlueprint（設備/オペレータ/スプール/内径/機器/フィルタプリセット/列表示）。URLは分離前と同一。リクエスト受付とレスポンス整形のみを行い、データアクセスは`repositories/master_repo.py`へ委譲 |
+| `backend/routes/masters.py` | 各種マスタCRUDのBlueprint（設備/オペレータ/スプール/内径/機器/フィルタプリセット/列表示/アクセス権限）。URLは分離前と同一。リクエスト受付とレスポンス整形のみを行い、データアクセスは`repositories/master_repo.py`へ委譲 |
 | `backend/repositories/master_repo.py` | 各種マスタのデータアクセス層。テーブル定義(`ensure_*_table`)・正規化(`normalize_*_name`)・読み取り(`*_master_rows`/`read_*_names`)・書き込み補助(`set_operator_equipment`/`set_hidden_columns`)。Flaskに依存しない |
 | `backend/changelog_data.py` | `APP_VERSION` と `CHANGELOG`（データのみ。リリースごとにここを更新） |
 | `backend/db_access.py` | `DBS`(接続先定義)・`APP_ROOT`/`DB_DIR`(パス基準)・`connect`/`cols`/`tables`/`qi`(Access/SQLite両対応)・監査列・バックアップテーブル整備 |
+| `backend/records_export.py` | 測定データバックアップ(`records.sqlite3`)の閲覧用複製(定期・差分あり時のみ) |
+| `backend/access_mode.py` | 編集可能モード/閲覧モードの判定・切替API・書込系APIのガード(`before_request`) |
 
 依存方向は `start_app.py → server.py → app.py → backend.routes.* →
 backend.repositories.master_repo → backend.db_access`（逆参照なし）。
@@ -148,6 +150,82 @@ import(`from backend.xxx import ...`)、`backend` 内のモジュール同士は
   （実際に一覧を開いたまま再送すると同期済みになってもバッジが消えない
   不具合があった。`refreshRecordList()`は`reliableAll()`から読み直して
   から描画するため取り違えない）。
+
+### 測定データバックアップの閲覧用複製と編集可能/閲覧モード
+
+複数の設備でこのアプリをローカル運用しており、運用上は書き込みが1台に
+閉じている（設定を誤らない限り）想定。その1台の`records.sqlite3`を
+Box等のクラウド同期フォルダへ複製し、他端末はそれを閲覧専用で見る、という
+使い方をサポートする。
+
+**バックアップの追加出力先（`records_export.py`）**
+
+- `config/local.json`の`records_backup_export_path`（既定`null`＝複製しない）
+  へ、`/api/measurement/backup`が成功するたびに変化フラグを立て
+  （`mark_dirty()`）、`RECORDS_BACKUP_EXPORT_INTERVAL_SEC`（既定600秒、
+  `backend/config.py`）ごとに変化があれば複製する（`_loop`のバックグラウンド
+  スレッド、`watchdog.py`と同じ`daemon=True`スレッドパターン）。変化が無い
+  間隔は何もしない（負荷軽減）。
+- 複製は`sqlite3.Connection.backup()`（オンラインバックアップAPI）を使う。
+  単純なファイルコピーだと書き込み中のファイルを複製したときに壊れた
+  コピーになり得るため、書き込み中でも整合性の取れたコピーを作れる
+  このAPIを使う。
+- 複製先の書き込みが遅い/失敗しても、測定データのローカル保存自体は
+  絶対にブロックしない（`mark_dirty()`は成否を待たないfire-and-forget）。
+  失敗時は次回また複製を試みる。
+
+**アクセス権限マスタ（`master_repo.py`のACCESS_PERMISSION_TABLE）**
+
+- `ログインID`×`PC名`の組み合わせ（完全一致、表記ゆれはNFKC正規化+大文字化で
+  吸収）で編集可否を管理する。他マスタと同じソフトデリート方式のテーブルで、
+  マスタ管理画面（`measurement-worklog.js`の`MASTER_DEFS`、key:
+  `accessPermission`）から登録・編集できる。
+- **該当行が無い組み合わせは既定で「編集可能」**（`has_edit_permission`）。
+  複数PCでの単一書き込み運用を壊さないための互換ポリシーで、閲覧専用に
+  したい端末だけ明示的に「閲覧のみ」で登録する（ホワイトリストではなく、
+  制限したい端末だけを個別に落とす方式）。
+
+**モードの判定・切替・書込ガード（`access_mode.py`）**
+
+- Flaskプロセス起動時に、この端末のログインID（`os.getlogin()`、失敗時は
+  `USERNAME`/`USER`/`LOGNAME`にフォールバック）とPC名（`socket.gethostname()`）
+  でアクセス権限マスタを照合し、初期モード（`edit`/`view`）を決める。
+  モードはプロセス内メモリの状態（同一端末の複数タブで共有）。
+- `GET /api/access-mode`で現在のモード・切替可否・ログインID・PC名を取得、
+  `POST /api/access-mode`で切替える。切替時も毎回マスタを読み直して判定する
+  ため、マスタ側の変更（権限の追加・剥奪）は次の切替から即座に反映される
+  （再起動不要）。編集権限を持たない端末は`view`から`edit`へ自分では
+  切り替えられない（403）。
+- `before_request`フックが、閲覧モード中は`measurement`/`masters`
+  Blueprintへの非GETリクエストをすべて403にする（新しいBlueprintを
+  Guardの対象に加える場合は`_GUARDED_BLUEPRINTS`へ追加すること）。
+  モード切替API自体はどちらのBlueprintにも属さない（`app`へ直接登録）ため、
+  このガードの対象外＝閲覧モード中でも呼べる。
+
+**フロント側の入口ガードと閲覧データ（`access-mode.js`、最後に読み込む）**
+
+- 起動時に`GET /api/access-mode`を取得し、ヘッダーの`#accessModeBadge`へ
+  反映する。`body.view-mode`クラスで閲覧モード中のCSS出し分け
+  （データ一覧の「続きから再開」「削除」ボタン・同期バーを隠す等）を行う。
+- サーバー側の403だけに頼ると、モーダルを開いて入力した後に弾かれるなど
+  手戻りが大きいため、フロント側でも先回りしてブロックする。
+  `openMeasurement`（新規開始・再開の共通入口）と`resumeRecordFromList`
+  （データ一覧の「続きから再開」）をラップし、閲覧モード中はトースト表示
+  のみで処理を進めない。
+- 閲覧モードの**データ一覧はこの端末のIndexedDBではなく閲覧用バックアップ
+  （`GET /api/measurement/backup/list-view`、`records_backup_export_path`を
+  読む）から取得する**。`openRecords`をラップし、閲覧モード中は
+  `recordListState.items`を`window.loadViewModeRecords()`（ペイロードを
+  `ensureMeasureShape(JSON.parse(...))`で復元した配列）で差し替えてから
+  `renderRecordListRows()`を呼ぶ（`recordListState`/`openRecords`/
+  `renderRecordListRows`はrecords-store.js側がIIFEを持たないため、
+  他ファイルから直接参照・再代入できる）。
+- 帳票（report-dashboard.js）も同様に、`openReportView()`内で
+  `window.accessMode.mode==='view'`なら`reliableAll()`の代わりに
+  `window.loadViewModeRecords()`を呼ぶよう直接編集してある（IIFEで閉じた
+  `rpState`は外からラップできないため、所有ファイル側を直接直す方針を
+  採った）。一括印刷等の他機能は`rpState.items`を読むだけなので、
+  データソースが差し替わっても変更不要で動く。
 
 **各関数の定義はコア内で1箇所のみ**（旧 core.js にあった同名関数の多層
 再定義・到達不能な旧実装は 2026-07 のリファクタリングで撤去済み）。
