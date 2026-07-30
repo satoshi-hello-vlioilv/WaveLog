@@ -1,6 +1,10 @@
 {
- "_comment": "このファイルをコピーして config/local.json として保存すると、DBファイルの置き場所を既定(アプリ直下の db/ フォルダ)から変更できます。config/local.json が存在しない場合は、この設定は一切使われず、従来どおり db/ フォルダをそのまま使います。値を上書きしない項目は null のままにしてください。",
+ "_comment": "このファイルをコピーして config/local.json として保存すると、DBファイルの置き場所を既定から変更できます。config/local.json が存在しない場合は、この設定は一切使われず、従来どおりの場所をそのまま使います。値を上書きしない項目は null のままにしてください。",
  "db_dir": null,
  "master_db_path": null,
- "records_db_path": null
+ "records_db_path": null,
+ "_sikalotnow_comment": "仕掛(SIKALOTNOW)の読み込み先。既定は工場側共有(\\\\Nlmsrvngy03\\Read\\【New】仕掛\\台帳\\SIKALOTNOW.accdb)。拡張子を.sqlite3にするとSQLiteとして自動的に読み込む。",
+ "sikalotnow_path": null,
+ "_sikalotdef_comment": "品質データ(SIKALOTDEF)の読み込み先。既定は工場側共有上のSIKALOTDEF.accdb。拡張子を.sqlite3にするとSQLiteとして自動的に読み込む。",
+ "sikalotdef_path": null
 }

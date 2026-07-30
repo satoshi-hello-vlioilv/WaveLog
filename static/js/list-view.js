@@ -10,17 +10,31 @@ async function init(){
   badge.onclick=openChangelog;
  });
  const d=await api('/api/catalog');S.catalog=d.databases;
- const nav=$('#nav');
+ const nav=$('#nav'),adminNav=$('#adminNav'),maintBtn=$('#openMasterMaint');
  d.databases.forEach(x=>{
-  let b=nav?.querySelector(`[data-db-key="${x.key}"]`);
-  if(!b){b=document.createElement('button');b.type='button';b.className='db nav-item nav-item--view';b.dataset.dbKey=x.key;b.innerHTML='<span></span>';nav?.append(b)}
+  /* 置き場所はroleで決める。読み取り専用の業務データ(仕掛・品質データ)は
+     「一覧を見る」、マスタは編集画面(マスタ管理)と並べて「管理」へ入れる。
+     以前は全て「表示切替」へ入れていたため、性質の違う一覧と分析ビューが
+     混在し、「マスタ」と「マスタ管理」も別グループに離れて紛らわしかった。 */
+  const master=x.role==='master',host=master?adminNav:nav;
+  let b=document.querySelector(`aside [data-db-key="${x.key}"]`);
+  if(!b){
+   b=document.createElement('button');b.type='button';b.dataset.dbKey=x.key;
+   /* 静的に置いてある兄弟(仕掛・品質データ)と見た目を揃えるためアイコンを付ける。 */
+   b.innerHTML='<svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"/><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"/></svg><span></span>';
+   b.className='db nav-item '+(master?'nav-item--admin':'nav-item--view');
+   if(master&&maintBtn)host?.insertBefore(b,maintBtn);else host?.append(b);
+  }
   (b.querySelector('span')||b).textContent=x.label;b.onclick=()=>selectDb(x.key,b);
  });
  const drafts=$('#homeDrafts');if(drafts)drafts.onclick=()=>openRecords('編集中');
  bindAppSettingsControls();await refreshDraftCount();showQuota();
- // 起動直後の初期画面は仕掛一覧(SIKALOTNOW)を既定表示とする。
+ /* 起動直後の初期画面。使用設備が未登録のうちは絞り込みも対象判定もできず、
+    仕掛一覧を取得しても使えないため、先に設備登録へ誘導する。 */
  const initialDbBtn=nav?.querySelector('[data-db-key="SIKALOTNOW"]');
- if(initialDbBtn){try{await selectDb('SIKALOTNOW',initialDbBtn)}catch(e){console.warn('初期表示(仕掛一覧)の読み込みに失敗しました',e)}}
+ const equipped=typeof currentConfiguredEquipment==='function'&&currentConfiguredEquipment();
+ if(initialDbBtn&&equipped){try{await selectDb('SIKALOTNOW',initialDbBtn)}catch(e){console.warn('初期表示(仕掛一覧)の読み込みに失敗しました',e)}}
+ else if(!equipped)$('#grid').innerHTML='<div class="setup-first"><b>最初に使用設備を設定してください</b><span>この端末で使用する設備を登録すると、仕掛一覧を設備で絞り込んで表示できます。上の「使用設備を設定」から登録してください。</span></div>';
  }catch(e){console.error('初期化エラー',e);showToast('初期化の一部に失敗',e.message,8000)}
  finally{bindV32Navigation()}
 }
@@ -54,7 +68,7 @@ async function load(){
    ステップが一度も画面に表示されないまま次のステップへ上書きされていた。 */
 async function selectDb(k,b){
  const label=databaseLabel(k);showWaiting(`${label}へ切り替えています`,`接続先を確認しています: ${label}`,'テーブル構成を確認しています',1);await nextPaint();
- try{S.db=k;document.querySelectorAll('.db').forEach(x=>x.classList.remove('active'));b.classList.add('active');const result=await api(`/api/tables?db=${encodeURIComponent(k)}`);S.tables=result.tables;renderTabs();if(S.tables.length)await selectTable(S.tables[0]);else $('#grid').textContent='表示可能なテーブルがありません。'}catch(e){$('#grid').innerHTML=`<div class="load-error"><b>${esc(label)}を開けませんでした</b><span>${esc(e.message)}</span></div>`;throw e}finally{hideSaveOverlay()}
+ try{S.db=k;setActiveNav(k);const result=await api(`/api/tables?db=${encodeURIComponent(k)}`);S.tables=result.tables;renderTabs();if(S.tables.length)await selectTable(S.tables[0]);else $('#grid').textContent='表示可能なテーブルがありません。'}catch(e){$('#grid').innerHTML=`<div class="load-error"><b>${esc(label)}を開けませんでした</b><span>${esc(e.message)}</span></div>`;throw e}finally{hideSaveOverlay()}
 }
 async function selectTable(t){
  S.table=t;S.page=1;S.sortColumn=null;S.sortDir=null;renderTabs();const label=databaseLabel(S.db);

@@ -22,10 +22,25 @@ from .paths import APP_ROOT, configured_path
 # MEAS_DBの設定時にconfigured_pathで別途反映する。
 DB_DIR=configured_path('db_dir') or APP_ROOT/"db"
 SIKA_DIR=Path(r"\\Nlmsrvngy03\Read\【New】仕掛\台帳")
+
+def _engine_for(path):
+ """パスの拡張子からAccess/SQLiteを判定する(connect()の自動判定と同一基準)。
+    工場側システムが将来SQLiteへ移行した場合でも、DBS/connect双方が同じ
+    基準で判定するため、ファイル名を差し替えるだけで読み替えられる。"""
+ return 'sqlite' if str(path).lower().endswith(('.sqlite3','.sqlite','.db')) else 'access'
+
+# 仕掛(SIKALOTNOW)・品質データ(SIKALOTDEF)の実ファイルは工場側システムが
+# 所有するため既定はネットワーク共有上のAccessファイルだが、
+# config/local.jsonの"sikalotnow_path"/"sikalotdef_path"で読み込み先を
+# 上書きできる(検証用に手元へ複製したファイルを指す、共有先のパス変更に
+# 追従する、等の用途)。上書き先の拡張子が.sqlite3等であれば自動的に
+# SQLiteとして接続する(_engine_for)。
+_SIKALOTNOW_PATH=configured_path('sikalotnow_path') or SIKA_DIR/"SIKALOTNOW.accdb"
+_SIKALOTDEF_PATH=configured_path('sikalotdef_path') or SIKA_DIR/"SIKALOTDEF.accdb"
 DBS={
- "SIKALOTNOW":{"path":SIKA_DIR/"SIKALOTNOW.accdb","label":"仕掛（現在）","role":"readonly","preferred":"仕掛","engine":"access"},
- "SIKALOTDEF":{"path":SIKA_DIR/"SIKALOTDEF.accdb","label":"品質データ","role":"readonly","preferred":"仕掛","engine":"access"},
- "MASTER":{"path":DB_DIR/"master.sqlite3","label":"マスタ","role":"master","preferred":"オペレータマスタ","engine":"sqlite"}}
+ "SIKALOTNOW":{"path":_SIKALOTNOW_PATH,"label":"仕掛（現在）","role":"readonly","preferred":"仕掛","engine":_engine_for(_SIKALOTNOW_PATH)},
+ "SIKALOTDEF":{"path":_SIKALOTDEF_PATH,"label":"品質データ","role":"readonly","preferred":"仕掛","engine":_engine_for(_SIKALOTDEF_PATH)},
+ "MASTER":{"path":DB_DIR/"master.sqlite3","label":"マスタ一覧","role":"master","preferred":"オペレータマスタ","engine":"sqlite"}}
 # db/ 導入以前に使われていた置き場所とファイル名(新しい順)。db/に無い場合の
 # 移行先探索にのみ使う(過去バージョンからの引き継ぎ用で、新規環境では未使用)。
 _LEGACY_LOCATIONS=(APP_ROOT/"data",APP_ROOT)
