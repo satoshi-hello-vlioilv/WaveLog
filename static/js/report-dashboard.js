@@ -40,39 +40,43 @@
  function ensurePanel(){
   let panel=$id('reportPanel');if(panel)return panel;
   panel=document.createElement('section');panel.className='rp-panel';panel.id='reportPanel';panel.hidden=true;
+  /* A4縦をできるだけ大きく見せるため、操作類は1本のバーへ統合する。
+     ボタンはアイコン化し、名称と補足はtitle(ツールチップ)で示す。
+     表示設定(ラベルの出し方)は使用頻度が低いので左パネルの最下段へ置き、
+     バーを薄いまま保つ。 */
+  const icon=d=>`<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
   panel.innerHTML=`
-   <header class="rp-head">
-    <button type="button" id="reportBack" class="rp-back-btn" title="元の一覧に戻ります"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>戻る</button>
-    <div class="rp-head-title"><h2>測定帳票</h2><span class="rp-sub">端末に保存済みのロットから帳票を作成します。一覧から選ぶとプレビューが表示されます。</span></div>
+   <header class="rp-bar">
+    <button type="button" id="reportBack" class="rp-back-btn" title="元の一覧に戻ります">${icon('<polyline points="15 18 9 12 15 6"/>')}戻る</button>
+    <div class="rp-bar-title" id="reportSelectedTitle">ロットを選択してください</div>
+    <div class="rp-bar-actions">
+     <div class="rp-zoom-seg" data-seg="rpZoomSeg" role="group" aria-label="表示倍率">
+      <button type="button" data-val="fit" class="active" title="ページ全体が収まる倍率">全体</button>
+      <button type="button" data-val="width">幅</button>
+      <button type="button" data-val="100">100%</button>
+     </div>
+     <span class="rp-zoom-readout" id="rpZoomReadout" title="Ctrlを押しながらホイールで拡大・縮小できます">100%</span>
+     <button type="button" id="reportPrint" class="rp-icon-btn rp-icon-btn--primary" title="印刷する" aria-label="印刷する" disabled>${icon('<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>')}</button>
+     <button type="button" id="reportPdf" class="rp-icon-btn" title="PDFで保存する（印刷ダイアログが開きます。出力先で「PDFに保存」を選んでください）" aria-label="PDFで保存する" disabled>${icon('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>')}</button>
+    </div>
    </header>
    <div class="rp-body">
     <nav class="rp-nav" aria-label="ロット一覧">
      <div class="rp-nav-toolbar">
-      <label class="rp-search"><span class="rp-search-icon" aria-hidden="true">検索</span><input id="reportSearch" type="search" placeholder="ロット・検査番号・設備など" autocomplete="off"></label>
+      <label class="rp-search"><span class="rp-search-icon" aria-hidden="true">${icon('<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>')}</span><input id="reportSearch" type="search" placeholder="ロット・設備で絞り込み" aria-label="ロット検索" autocomplete="off"></label>
       <select id="reportSort" aria-label="並び順">
-       <option value="updated-desc">更新日時の新しい順</option>
-       <option value="updated-asc">更新日時の古い順</option>
-       <option value="lot-asc">ロット番号順</option>
+       <option value="updated-desc">新しい順</option>
+       <option value="updated-asc">古い順</option>
+       <option value="lot-asc">ロット順</option>
       </select>
      </div>
      <div class="rp-lot-list" id="reportLotList"></div>
+     <div class="rp-nav-foot">
+      <span class="rp-foot-label">表示</span>
+      <button type="button" id="reportLabelToggle" class="rp-foot-btn" title="条ごとのロット№・板幅公差のラベルを、連続する行でも毎回表示するか、変化した行だけに表示するかを切り替えます">ラベル: 毎行表示</button>
+     </div>
     </nav>
     <section class="rp-main">
-     <div class="rp-toolbar">
-      <div class="rp-toolbar-title" id="reportSelectedTitle">ロットを選択してください</div>
-      <div class="rp-toolbar-actions">
-       <div class="rp-zoom-seg" data-seg="rpZoomSeg" role="group" aria-label="表示倍率">
-        <button type="button" data-val="fit" class="active">ページ全体</button>
-        <button type="button" data-val="width">幅に合わせる</button>
-        <button type="button" data-val="100">100%</button>
-       </div>
-       <span class="rp-zoom-readout" id="rpZoomReadout" title="Ctrlを押しながらホイールで拡大・縮小できます">100%</span>
-       <button type="button" id="reportLabelToggle" class="rp-btn-secondary" title="条ごとのロット№・板幅公差のラベルを、連続する行でも毎回表示するか、変化した行だけに表示するかを切り替えます">ラベル: 毎行表示</button>
-       <button type="button" id="reportPrint" class="rp-btn-primary" disabled>印刷</button>
-       <button type="button" id="reportPdf" class="rp-btn-secondary" disabled>PDFで保存</button>
-      </div>
-     </div>
-     <div class="rp-pdf-hint">「PDFで保存」は印刷ダイアログを開きます。出力先（プリンター）で「PDFに保存」を選択してください。</div>
      <div class="rp-scroll" id="rpScroll">
       <div class="rp-page-box" id="rpPageBox">
        <div class="rp-report rp-page" id="reportContent"><div class="rp-empty">左の一覧からロットを選ぶと、帳票プレビューがここに表示されます。</div></div>
@@ -358,7 +362,8 @@
  function selectLot(id){
   rpState.selectedId=id;renderLotList();
   const x=rpState.items.find(i=>i.id===id);if(!x)return;
-  $id('reportSelectedTitle').textContent=`${x.basic?.lotNo||x.id} の帳票プレビュー`;
+  /* バーは1層に詰めているため、左の一覧で選択中が分かることを前提に短く出す。 */
+  $id('reportSelectedTitle').textContent=[x.basic?.lotNo||x.id,x.basic?.inspectionNo,statusLabel(x.status)].filter(Boolean).join(' / ');
   $id('reportPrint').disabled=false;$id('reportPdf').disabled=false;
   renderReport(x);
   fitPage();fitWidth();
