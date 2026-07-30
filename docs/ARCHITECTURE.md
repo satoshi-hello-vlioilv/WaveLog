@@ -139,6 +139,46 @@ fn=function(...){ /* 前処理 */ const r=baseFn(...); /* 後処理 */ return r 
 - 条割（分割）関連は検出・モーダル・判定配線・屑幅計算まで含めて
   `lot-split.js` が全所有する。
 
+### 分割子ロットデータの保存と更新確認
+
+子ロットデータ（分割元ロットの一覧: ロット番号・本数・幅・厚み・公差）は
+`S.measure.settings` 配下に置く。`encodePayload(m)=JSON.stringify(m)` の
+ため、`settings` に入れた値は測定データと同じ経路で自動的に永続化され、
+再開時にそのまま復元される（保存経路の追加実装は不要）。
+
+| キー | 内容 |
+|---|---|
+| `splitSourcesCache` | 保存済みの子ロット一覧（判定・表示の基準） |
+| `splitSourcesSavedAt` | 上記の取得時刻。再開時の「いつ時点か」表示と、直後の二重取得の抑止に使う |
+| `splitSourcesCheckedAt` | 最後に更新確認を行った時刻 |
+| `splitSourcesPending` | 差異が見つかった未処理の提案 `{at,sources,diffs}` |
+| `splitSourcesHistory` | 適用・拒否で置き換わった過去の内容（新しい順、最大10件） |
+| `splitSourcesRejected` | 拒否した内容（破棄せず保持し、後から適用できる） |
+| `splitNeedsReconfigure` | 本数変更により条の割り当て再設定が必要な旨の警告 |
+
+更新確認は `checkSplitSourcesUpdate()` がバックグラウンドで行う
+（測定画面を開いた直後 + 10分間隔。測定画面が閉じている間は動かさない）。
+差異検出は `diffSplitSources(prev,next)`、適用可否の判定は
+`splitUpdateBlockers(diffs)` が所有する。
+
+**適用可否の条件**: 差異の出た項目に対して測定データが1つも入力されて
+いないこと。`splitGroups` が未設定（＝まだ判定に使われていない）なら常に
+許可する。本数変更・ロットの追加/削除は条の割り当て自体が変わるため、
+判定対象を全条へ広げる。厚み公差の差異は厚み入力、それ以外の位置依存
+項目（幅・横ズレ・バリ・テレスコープ・オフセット・平坦度）は該当ロットの
+条位置の入力で判定する（`thickness` は条ごとではなく長さごとに3枠のため、
+判定経路が分かれている）。
+
+`applySplit()` は取得結果を `splitGroups` 側へ複製し、判定
+（`groupRangeFor`）はその複製を読む。したがって更新の適用時は
+`splitSourcesCache` だけでなく `syncSplitGroupsFromSources()` で
+`splitGroups[].base/tol/missing` も更新する必要がある。
+
+公開している関数（`window.X=X`）: `diffSplitSources`・
+`splitUpdateBlockers`・`checkSplitSourcesUpdate`・
+`applySplitSourcesUpdate`・`rejectSplitSourcesUpdate`・
+`revertSplitSources`・`refreshSplitStatusPanel`。
+
 ### ハンドラ結線の注意
 
 - `measurement-view.js` の `.selectors` 一括 `onchange=markDirty` は、
