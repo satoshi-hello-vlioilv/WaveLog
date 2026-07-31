@@ -113,6 +113,14 @@ function residualCourseValue(){return sourceField(['残仕掛設備ｺｰｽ','�
 function normalizeCourseText(v){return String(v||'').normalize('NFKC').toUpperCase().replace(/[\s　]+/g,'')}
 function equipmentIsInDesignCourse(equipment,course){const e=normalizeCourseText(equipment),c=normalizeCourseText(course);return !!e&&!!c&&c.includes(e)}
 document.title='測定伝送システム';
+/* レコードのstatus文字列からバッジ用のCSSクラス/表示ラベルを求める共通関数。
+   以前はcalendar-view.js/report-dashboard.jsに同一内容が重複定義され、
+   records-store.jsは一覧行のレンダリングで同じ判定をインラインで
+   再実装していた(コア5ファイル内での同名関数の再定義を避ける方針のため一本化)。 */
+function statusClass(s){return s==='完了'?'done':s==='測定値NG'?'ng':''}
+function statusLabel(s){return s||'編集中'}
+/* 一覧グリッドのように表示幅が狭い場所向けの短縮ラベル(NG登録のみ「NG」と省略)。 */
+function statusShortLabel(s){return s==='測定値NG'?'NG':statusLabel(s)}
 function durationMs(record){const a=record?.workTime?.startAt,b=record?.workTime?.endAt;if(!a||!b)return null;const ms=new Date(b)-new Date(a);return Number.isFinite(ms)&&ms>=0?ms:null}
 function formatDuration(ms){if(ms===null||ms===undefined)return '-';const sec=Math.floor(ms/1000),h=Math.floor(sec/3600),m=Math.floor(sec%3600/60),s=sec%60;return `${h}時間 ${m}分 ${s}秒`}
 /* Measurement precision and zero-order-tolerance correction. */

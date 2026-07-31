@@ -27,8 +27,7 @@
  const $id=id=>document.getElementById(id);
  function fmtDT(v){if(!v)return '-';const d=new Date(v);return Number.isNaN(d.getTime())?'-':d.toLocaleString('ja-JP',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'})}
  function fmtDimSafe(v,d){const raw=String(v??'').trim();if(raw==='')return '';const n=Number(raw);return Number.isFinite(n)?n.toFixed(d):raw}
- function statusLabel(s){return s||'編集中'}
- function statusClass(s){return s==='完了'?'done':s==='測定値NG'?'ng':''}
+ // statusClass/statusLabelはbase.jsの共通定義を使う(以前はここに同一内容を重複定義していた)。
 
  /* 2026-07-22: 帳票へはメニューから直接遷移させず、編集中/完了データ一覧の
     各行からのみ開けるようにする(一覧側が起点になる運用のため、サイドバー

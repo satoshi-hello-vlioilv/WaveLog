@@ -54,8 +54,7 @@
  }
 
  function crewLabel(size){return (size&&size!=='-')?`${size}名班`:'人数未設定'}
- function statusClass(s){return s==='完了'?'done':s==='測定値NG'?'ng':''}
- function statusLabel(s){return s||'編集中'}
+ // statusClass/statusLabelはbase.jsの共通定義を使う(以前はここに同一内容を重複定義していた)。
  function fmtKg(v){return Number.isFinite(v)?Math.round(v).toLocaleString('ja-JP'):'-'}
  function fmtT(v){return Number.isFinite(v)?(v/1000).toLocaleString('ja-JP',{minimumFractionDigits:2,maximumFractionDigits:2}):'-'}
  function fmtDT(v){if(!v)return '-';const d=new Date(v);return Number.isNaN(d.getTime())?'-':d.toLocaleString('ja-JP',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}
