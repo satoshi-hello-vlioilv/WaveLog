@@ -297,6 +297,7 @@
           <button id="clearGenericFilters" type="button">全解除</button>
         </div>
       </div>
+      <div class="filter-quick-row" id="filterQuickRow" hidden></div>
       <div class="filter-body" id="filterBody" hidden>
         <div class="filter-builder">
           <label>カラム<select id="filterColumn"></select></label>
@@ -360,8 +361,23 @@
     });
     const count=$('#filterCount');if(count)count.textContent=`${S.genericFilters.length}件`;
   }
+  /* クイックフィルタ: 詳細ビルダーを開かなくても、よく使う条件をワンクリックで
+     追加できるチップを検索バー直下へ常時表示する(既存のfrequentConditions()
+     ―保存フィルタ利用回数×2+個別条件の適用履歴―をそのまま流用)。
+     アクティブな条件は既にfrequentConditions()側で除外されるため、
+     追加すると自動的にチップから消える。 */
+  function renderQuickFilters(){
+    const row=$('#filterQuickRow');if(!row)return;
+    const top=frequentConditions().slice(0,6);
+    if(!top.length){row.hidden=true;row.innerHTML='';return}
+    row.hidden=false;
+    row.innerHTML=`<span class="filter-quick-label">よく使う条件</span>`+top.map(f=>
+      `<button type="button" class="suggest-chip quick"><span>${esc(f.column)}</span><b>${esc(opShort(f.op))}</b>${noValueOp(f.op)?'':`<em>${esc(f.value)}</em>`}</button>`
+    ).join('');
+    [...row.querySelectorAll('.suggest-chip')].forEach((btn,i)=>btn.onclick=()=>addGenericFilter(top[i]));
+  }
   function renderGenericFilterBar(){
-    ensureGenericFilterBar();updateFilterColumns();renderActiveTokens();
+    ensureGenericFilterBar();updateFilterColumns();renderActiveTokens();renderQuickFilters();
   }
 
   /* ---- サジェスト（再認・チャンク化・頻度順） ---- */
