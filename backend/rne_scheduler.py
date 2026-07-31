@@ -14,6 +14,7 @@ Pythonプロセス(backend.rne_worker)を起動する(rne_extract.extract_one参
 from __future__ import annotations
 import json
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -63,12 +64,13 @@ def _run_job(job,conf):
  result_path=work_root/f'{token}.result.json'
  work_dir=work_root/token
  payload={'job':job,'conf':conf,'work_dir':str(work_dir)}
+ env=dict(os.environ,NAVI_WORKER_TIMEOUT_SEC=str(_WORKER_TIMEOUT_SEC))
  try:
   work_root.mkdir(parents=True,exist_ok=True)
   payload_path.write_text(json.dumps(payload,ensure_ascii=False),encoding='utf-8')
   proc=subprocess.run(
    [sys.executable,'-m','backend.rne_worker',str(payload_path),str(result_path)],
-   cwd=str(APP_ROOT),capture_output=True,text=True,timeout=_WORKER_TIMEOUT_SEC,**_no_window())
+   cwd=str(APP_ROOT),capture_output=True,text=True,timeout=_WORKER_TIMEOUT_SEC,env=env,**_no_window())
   if result_path.exists():
    return json.loads(result_path.read_text(encoding='utf-8'))
   return {'ok':False,'job':job['name'],'error':f"ワーカーが結果を返しませんでした(exit={proc.returncode}): {proc.stderr[-2000:]}"}
@@ -80,6 +82,11 @@ def _run_job(job,conf):
   for p in (payload_path,result_path):
    try:p.unlink()
    except OSError:pass
+  # ワーカーがタイムアウトでkillされた場合、その場のfinally(rne_extract側の
+  # 作業フォルダ削除)は実行されない。呼び出し元(ここ)からも念のため
+  # 掃除しておき、繰り返しのタイムアウトでディスクを圧迫しないようにする。
+  try:shutil.rmtree(work_dir,ignore_errors=True)
+  except Exception:pass
 
 
 def run_batch():

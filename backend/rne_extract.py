@@ -118,10 +118,22 @@ def publish(src,dst,backup_dir,generations=5):
    except OSError:pass
 
 def apply_pending(dst,backup_dir,generations=5):
+ """前回publish()が公開先の使用中で保留した内容を適用する。publish()と同じく、
+ 適用前のdstを世代管理付きでバックアップしてから置き換える(バックアップの
+ 抜けを作らないため)。"""
  pending=sorted(dst.parent.glob(f'{dst.stem}.pending_*{dst.suffix}'),key=lambda p:p.stat().st_mtime,reverse=True)
  if not pending:return None
  newest=pending[0]
  try:
+  if dst.exists() and backup_dir:
+   stamp=datetime.now().strftime('%Y%m%d_%H%M%S')
+   bdir=backup_dir/dst.stem;bdir.mkdir(parents=True,exist_ok=True)
+   try:shutil.copy2(dst,bdir/f'{dst.stem}_{stamp}{dst.suffix}')
+   except OSError:pass
+   old=sorted(bdir.glob(f'{dst.stem}_*{dst.suffix}'),key=lambda p:p.stat().st_mtime,reverse=True)
+   for item in old[generations:]:
+    try:item.unlink()
+    except OSError:pass
   os.replace(newest,dst)
   for old in pending[1:]:
    try:old.unlink()
