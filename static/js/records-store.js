@@ -262,10 +262,10 @@ $('#backupNow').onclick=async()=>{
   else showToast('Accessバックアップ失敗',`${m.basic.lotNo||''} / ${m.syncState?.lastError||''}（未同期として記録し、後で再送できます）`,7000);
  }catch(e){hideSaveOverlay();alert('バックアップ失敗: '+e.message)}
 };
-$('#discard').onclick=async()=>{if(confirm('端末内の測定データを削除しますか？')){await reliableDelete(S.measure.id);await refreshDraftCount();$('#measureModal').hidden=true}};
+$('#discard').onclick=async()=>{if(await confirmModal('端末内の測定データを削除しますか？')){await reliableDelete(S.measure.id);await refreshDraftCount();$('#measureModal').hidden=true}};
 $('#ngLot').onclick=registerNg;
 {const btn=$('#recordSyncNowBtn');if(btn)btn.onclick=()=>syncPendingRecords({silent:false})}
-function closeMeasureModal(){if(measureDirty&&!confirm('保存されていない変更があります。破棄して閉じますか？'))return;$('#measureModal').hidden=true}
+async function closeMeasureModal(){if(measureDirty&&!(await confirmModal('保存されていない変更があります。破棄して閉じますか？')))return;$('#measureModal').hidden=true}
 $('#closeModal').onclick=closeMeasureModal;$('.shade').onclick=closeMeasureModal;
 /* 編集中データ一覧と完了データ一覧は1つの統合リストとして表示する。
    statuses.editing/doneはそれぞれ独立したトグルで、両方ONにすると
@@ -306,7 +306,7 @@ document.querySelectorAll('.status-filter-btn').forEach(b=>b.onclick=()=>{
    場合は先に警告を出し、ユーザーが承認して初めて状態を「編集中」へ
    戻して保存し、以降の編集を受け付けるようにする(ロック解除の一手間)。 */
 async function unlockCompletedForEdit(x){
- if(!confirm(`このデータ(${x.basic?.lotNo||x.id})はすでに完了しています。\n再編集すると「編集中」の状態に戻り、内容を変更できるようになります。\nよろしいですか？`))return false;
+ if(!(await confirmModal(`このデータ(${x.basic?.lotNo||x.id})はすでに完了しています。\n再編集すると「編集中」の状態に戻り、内容を変更できるようになります。\nよろしいですか？`)))return false;
  x.status='編集中';x.updatedAt=new Date().toISOString();
  await reliablePut(x);
  return true;
@@ -339,27 +339,11 @@ function recordHasAnyInput(x){
  if(x.workTime?.startAt||x.workTime?.endAt)return true;
  return false;
 }
-/* 削除確認モーダル: 何も入力がないデータ以外は、汎用confirm()ではなく
-   専用モーダルでロット情報を示した上でしっかり警告する。 */
-function ensureDeleteRecordModal(){
- let modal=$('#deleteRecordModal');if(modal)return modal;
- modal=document.createElement('div');modal.className='record-modal';modal.id='deleteRecordModal';modal.hidden=true;
- modal.innerHTML=`<div class="settings-dialog delete-confirm-dialog" role="dialog" aria-modal="true"><header><div><small>DELETE CONFIRMATION</small><h2>端末内データを削除しますか？</h2></div><button id="closeDeleteRecordModal" type="button" aria-label="閉じる">×</button></header><div class="settings-body"><div class="delete-confirm-summary" id="deleteRecordSummary"></div><p class="delete-confirm-warning">入力済みの測定データも含め、この端末内のデータを完全に削除します。この操作は取り消せません。</p><div class="settings-actions"><button id="cancelDeleteRecord" type="button">キャンセル</button><button id="confirmDeleteRecord" type="button" class="danger">削除する</button></div></div></div>`;
- document.body.append(modal);
- modal.addEventListener('click',e=>{if(e.target===modal)modal.hidden=true});
- $('#closeDeleteRecordModal').onclick=()=>modal.hidden=true;
- return modal;
-}
+/* 削除確認: 何も入力がないデータ以外は、汎用confirm()ではなく共通確認モーダル
+   (confirmModal)でロット情報を示した上でしっかり警告する。 */
 function confirmDeleteRecord(x){
- return new Promise(resolve=>{
-  const modal=ensureDeleteRecordModal();
-  $('#deleteRecordSummary').innerHTML=`<div class="delete-confirm-row"><span>ロット番号</span><b>${esc(x.basic?.lotNo||x.id)}</b></div><div class="delete-confirm-row"><span>状態</span><b>${esc(x.status||'編集中')}</b></div><div class="delete-confirm-row"><span>検査番号</span><b>${esc(x.basic?.inspectionNo||'-')}</b></div><div class="delete-confirm-row"><span>更新日時</span><b>${esc(x.updatedAt?new Date(x.updatedAt).toLocaleString('ja-JP'):'-')}</b></div>`;
-  modal.hidden=false;
-  const cancel=$('#cancelDeleteRecord'),confirmBtn=$('#confirmDeleteRecord');
-  const close=result=>{modal.hidden=true;resolve(result)};
-  cancel.onclick=()=>close(false);
-  confirmBtn.onclick=()=>close(true);
- });
+ const summary=`<div class="delete-confirm-summary"><div class="delete-confirm-row"><span>ロット番号</span><b>${esc(x.basic?.lotNo||x.id)}</b></div><div class="delete-confirm-row"><span>状態</span><b>${esc(x.status||'編集中')}</b></div><div class="delete-confirm-row"><span>検査番号</span><b>${esc(x.basic?.inspectionNo||'-')}</b></div><div class="delete-confirm-row"><span>更新日時</span><b>${esc(x.updatedAt?new Date(x.updatedAt).toLocaleString('ja-JP'):'-')}</b></div></div><p class="delete-confirm-warning">入力済みの測定データも含め、この端末内のデータを完全に削除します。この操作は取り消せません。</p>`;
+ return confirmModal({eyebrow:'DELETE CONFIRMATION',title:'端末内データを削除しますか？',bodyHtml:summary,confirmLabel:'削除する',danger:true});
 }
 /* 分割(条割変更)が実際に行われたかどうか: splitGroupsが2ロット以上に
    分かれている場合のみ「分割あり」とする(単一ロットのデフォルト値は分割なし扱い)。 */

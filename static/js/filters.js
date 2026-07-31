@@ -41,15 +41,15 @@
      して保存し鍵を付ければ、他の鍵付き条件と同じ扱いで自動適用される。 */
   function isLockedFilter(f){return !!f&&!!f.locked}
   function lockedFilterDescription(f){return condLabel(f)}
-  function confirmRemoveLockedFilter(f){
+  async function confirmRemoveLockedFilter(f){
     const target=f||S.genericFilters.find(isLockedFilter);
     if(!target)return true;
-    return confirm(`この条件(${lockedFilterDescription(target)})は鍵付きの必須条件です。外すと一時的に条件が緩和されます(この一覧を開き直すと自動的に元へ戻ります)。\n本当に解除しますか？`);
+    return await confirmModal(`この条件(${lockedFilterDescription(target)})は鍵付きの必須条件です。外すと一時的に条件が緩和されます(この一覧を開き直すと自動的に元へ戻ります)。\n本当に解除しますか？`);
   }
-  function confirmRemoveAllLocked(lockedList){
-    if(lockedList.length<=1)return confirmRemoveLockedFilter(lockedList[0]);
+  async function confirmRemoveAllLocked(lockedList){
+    if(lockedList.length<=1)return await confirmRemoveLockedFilter(lockedList[0]);
     const desc=lockedList.map(lockedFilterDescription).join('、');
-    return confirm(`鍵付きの必須条件が${lockedList.length}件あります(${desc})。全解除すると一時的にこれらの条件も外れます(この一覧を開き直すと自動的に元へ戻ります)。\n本当に解除しますか？`);
+    return await confirmModal(`鍵付きの必須条件が${lockedList.length}件あります(${desc})。全解除すると一時的にこれらの条件も外れます(この一覧を開き直すと自動的に元へ戻ります)。\n本当に解除しますか？`);
   }
 
   /* ---- アクティブなフィルタ設定状態(S.genericFilters)を、ファイル(DB)＆
@@ -123,7 +123,7 @@
   async function saveCurrentFiltersToMaster(){
     const savable=S.genericFilters.filter(f=>!isLockedFilter(f));
     if(!savable.length){showToast?.('保存する条件がありません','条件を追加してから保存してください（使用設備の必須条件は保存対象外です）。',4200);return}
-    if(savable.length>1&&!confirm(`現在アクティブな${savable.length}件の条件を、それぞれ個別の登録フィルタとして保存します。よろしいですか？`))return;
+    if(savable.length>1&&!(await confirmModal(`現在アクティブな${savable.length}件の条件を、それぞれ個別の登録フィルタとして保存します。よろしいですか？`)))return;
     if(canWait())showWaiting('フィルタをマスタへ保存しています','master.sqlite3 のフィルタプリセットマスタへ書き込み中','条件を1件ずつ登録しています');
     let saved=0,skipped=0,failed=0;
     for(const f of savable){
@@ -146,7 +146,7 @@
     renderGenericFilterBar();renderFilterPresetList();
   }
   async function deletePreset(preset){
-    if(!confirm(`登録フィルタ「${preset.name}」を削除しますか？`))return;
+    if(!(await confirmModal(`登録フィルタ「${preset.name}」を削除しますか？`)))return;
     const listEl=$('#filterPresetList');
     if(preset.master&&preset.id!=null){
       setPanelLoading(listEl,true,'マスタから削除しています...');
@@ -313,10 +313,10 @@
     $('#addGenericFilter').onclick=()=>{const f={column:$('#filterColumn').value,op:$('#filterOp').value,value:$('#filterValue').value.trim()};if(!f.column)return;if(!noValueOp(f.op)&&!f.value){$('#filterValue').focus();return}addGenericFilter(f);$('#filterValue').value=''};
     $('#saveFilterPreset').onclick=saveCurrentFiltersToMaster;
     $('#openFilterPresets').onclick=openFilterPresetModal;
-    $('#clearGenericFilters').onclick=()=>{
+    $('#clearGenericFilters').onclick=async()=>{
       const lockedList=S.genericFilters.filter(isLockedFilter);
       if(lockedList.length){
-        if(confirmRemoveAllLocked(lockedList))S.genericFilters=[];
+        if(await confirmRemoveAllLocked(lockedList))S.genericFilters=[];
         else S.genericFilters=S.genericFilters.filter(isLockedFilter);
       }else{
         S.genericFilters=[];
@@ -351,9 +351,9 @@
       const tag=document.createElement('span');tag.className='filter-tag'+(locked?' filter-tag-locked':'');
       tag.title=locked?`必須条件: ${lockedFilterDescription(f)}（一覧を開くたびに既定で適用されます）`:`${f.column} ${opLabel(f.op)}${noValueOp(f.op)?'':' '+f.value}`;
       tag.innerHTML=`${locked?'<span class="filter-tag-lock-icon" aria-hidden="true">🔒</span>':''}<span>${esc(f.column)}</span><b>${esc(opShort(f.op))}</b>${noValueOp(f.op)?'':`<em>${esc(f.value)}</em>`}<i data-filter-index="${i}" title="解除">×</i>`;
-      tag.querySelector('i').onclick=e=>{
+      tag.querySelector('i').onclick=async e=>{
         e.stopPropagation();
-        if(locked&&!confirmRemoveLockedFilter(f))return;
+        if(locked&&!(await confirmRemoveLockedFilter(f)))return;
         S.genericFilters.splice(i,1);S.page=1;renderGenericFilterBar();load();
       };
       box.insertBefore(tag,input);
@@ -438,14 +438,14 @@
     const input=$('#filterTokenSearch'),box=$('#filterTokenInput'),suggest=$('#filterSuggest');if(!input)return;
     input.addEventListener('focus',()=>{box.classList.add('focus-within');renderSuggest()});
     input.addEventListener('input',()=>renderSuggest());
-    input.addEventListener('keydown',e=>{
+    input.addEventListener('keydown',async e=>{
       if(e.key==='ArrowDown'){e.preventDefault();moveSuggest(1)}
       else if(e.key==='ArrowUp'){e.preventDefault();moveSuggest(-1)}
       else if(e.key==='Enter'){e.preventDefault();(suggestFlat[suggestIndex]||suggestFlat[0])?.click()}
       else if(e.key==='Escape'){suggest.hidden=true}
       else if(e.key==='Backspace'&&!input.value&&S.genericFilters.length){
         const last=S.genericFilters[S.genericFilters.length-1];
-        if(isLockedFilter(last)&&!confirmRemoveLockedFilter(last))return;
+        if(isLockedFilter(last)&&!(await confirmRemoveLockedFilter(last)))return;
         S.genericFilters.pop();S.page=1;renderGenericFilterBar();load();
       }
     });
@@ -494,11 +494,11 @@
       item.innerHTML=`<div class="fp-name" title="${esc(p.name)}">${esc(p.name)}${p.uses?`<small>使用 ${p.uses}回</small>`:''}</div><div class="fp-target">${esc((p.db||'全DB')+' / '+(p.table||'全テーブル'))}</div><div class="fp-conds">${conds||'<span class="fp-cond">条件なし</span>'}</div><div class="fp-actions">${defaultToggle}${lockToggle}<button class="apply" type="button">適用</button><button class="danger" type="button">削除</button></div>`;
       item.querySelector('.apply').onclick=()=>{applyPreset(p);$('#filterPresetModal').hidden=true};
       item.querySelector('.danger').onclick=()=>deletePreset(p);
-      item.querySelector('.fp-default-check')?.addEventListener('change',e=>{
+      item.querySelector('.fp-default-check')?.addEventListener('change',async e=>{
         // 鍵付きのままデフォルトを外すと固定フィルタの意味が失われるため、
         // 鍵が付いている場合は確認の上でデフォルトと鍵を同時に外す。
         if(!e.target.checked&&isLockedDefaultPreset(p,S.db,S.table)){
-          if(!confirm(`このフィルタ「${p.name}」は鍵付きの必須条件です。デフォルトを外すと鍵も一緒に解除されます。\n本当によろしいですか？`)){e.target.checked=true;return}
+          if(!(await confirmModal(`このフィルタ「${p.name}」は鍵付きの必須条件です。デフォルトを外すと鍵も一緒に解除されます。\n本当によろしいですか？`))){e.target.checked=true;return}
           setLockedDefaultPreset(p,S.db,S.table,false);
         }
         toggleDefaultPreset(p,S.db,S.table);

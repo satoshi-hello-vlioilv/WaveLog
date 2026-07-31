@@ -79,6 +79,36 @@ function showToast(title, detail='', duration=3400){
  item.innerHTML=`<b>${esc(title)}</b>${detail?`<small>${esc(detail)}</small>`:''}`;
  area.append(item); setTimeout(()=>{item.classList.add('out');setTimeout(()=>item.remove(),220)},duration);
 }
+/* 共通の確認モーダル。ブラウザ標準のconfirm()はアプリの見た目に合わせられず
+   タブ全体をブロックするため、破棄確認・削除確認等はこちらへ統一する
+   (以前はlot-split.js/filters.js/records-store.jsが個別にconfirm()を
+   呼んでいた。records-store.jsの削除確認だけは専用モーダルを持っていたが、
+   それも含めてこの共通モーダルへ一本化する)。
+   opts.message: 通常のテキスト確認(改行はそのまま表示)。
+   opts.bodyHtml: 任意のHTML本文(ロット情報の要約表示等)。指定時はmessageより優先。
+   opts.danger: trueで確定ボタンを危険色にする。文字列を渡した場合はmessage扱い。 */
+function ensureConfirmModal(){
+ let modal=$('#appConfirmModal');if(modal)return modal;
+ modal=document.createElement('div');modal.className='record-modal';modal.id='appConfirmModal';modal.hidden=true;
+ modal.innerHTML=`<div class="settings-dialog confirm-modal-dialog" role="dialog" aria-modal="true"><header><div><small id="appConfirmEyebrow">CONFIRMATION</small><h2 id="appConfirmTitle">確認</h2></div><button id="closeAppConfirm" type="button" aria-label="閉じる">×</button></header><div class="settings-body"><div id="appConfirmBody"></div><div class="settings-actions"><button id="appConfirmCancel" type="button">キャンセル</button><button id="appConfirmOk" type="button">OK</button></div></div></div>`;
+ document.body.append(modal);
+ return modal;
+}
+function confirmModal(opts){
+ const o=typeof opts==='string'?{message:opts}:(opts||{});
+ return new Promise(resolve=>{
+  const modal=ensureConfirmModal();
+  $('#appConfirmEyebrow').textContent=o.eyebrow||'CONFIRMATION';
+  $('#appConfirmTitle').textContent=o.title||'確認';
+  $('#appConfirmBody').innerHTML=o.bodyHtml!==undefined?o.bodyHtml:`<p class="confirm-modal-message">${esc(o.message||'')}</p>`;
+  const cancel=$('#appConfirmCancel'),ok=$('#appConfirmOk'),close=$('#closeAppConfirm');
+  cancel.textContent=o.cancelLabel||'キャンセル';ok.textContent=o.confirmLabel||'OK';ok.className=o.danger?'danger':'';
+  modal.hidden=false;
+  const finish=result=>{modal.hidden=true;resolve(result)};
+  cancel.onclick=()=>finish(false);ok.onclick=()=>finish(true);close.onclick=()=>finish(false);
+  modal.onclick=e=>{if(e.target===modal)finish(false)};
+ });
+}
 function sourceValue(names){const r=S.measure?.source||S.measure?.snapshot?.source||{};for(const n of names){if(r[n]!==undefined&&r[n]!==null&&String(r[n]).trim()!=='')return String(r[n])}return ''}
 // Database field normalization supports half-width/full-width variants such as ﾌﾟﾗｽ / プラス.
 function normalizedFieldName(name){return String(name||'').normalize('NFKC').replace(/\s+/g,'').toLowerCase()}

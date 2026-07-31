@@ -937,6 +937,9 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .delete-confirm-row span{color:#61757c;font-weight:700}
 .delete-confirm-row b{color:#17272d}
 .delete-confirm-warning{margin:0;padding:10px 12px;border-left:4px solid #c62828;background:#fdecec;color:#7a1f1f;line-height:1.7;font-weight:700}
+/* 共通確認モーダル(confirmModal)のメッセージ本文。confirm()の改行表現を
+   引き継ぐため、\nをそのまま改行として表示する。 */
+.confirm-modal-message{margin:0;padding:10px 12px;border-left:4px solid var(--teal);background:#eef8f9;color:#3a565d;line-height:1.7;white-space:pre-line}
 
 /* 初期画面の設備設定バナー（設定済みは非表示） */
 .equipment-setup-banner{
