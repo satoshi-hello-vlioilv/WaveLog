@@ -10,7 +10,7 @@ NaviOpenCatalog -> NaviExecuteCatalog -> NaviSaveData -> NaviCloseCatalog ->
 NaviCloseSession。
 """
 from __future__ import annotations
-import ctypes, os, re, shutil, struct, time
+import ctypes, os, re, struct, time
 from pathlib import Path
 
 NAVI_OK=0
