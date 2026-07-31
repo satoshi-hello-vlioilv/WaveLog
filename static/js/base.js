@@ -115,8 +115,10 @@ function confirmModal(opts){
   const finish=result=>{modal.hidden=true;resolve(result)};
   cancel.onclick=()=>finish(false);ok.onclick=()=>finish(true);close.onclick=()=>finish(false);
   modal.onclick=e=>{if(e.target===modal)finish(false)};
+  requestAnimationFrame(()=>cancel.focus());
  });
 }
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('#appConfirmModal')?.hidden){$('#appConfirmCancel')?.click()}},true);
 function sourceValue(names){const r=S.measure?.source||S.measure?.snapshot?.source||{};for(const n of names){if(r[n]!==undefined&&r[n]!==null&&String(r[n]).trim()!=='')return String(r[n])}return ''}
 // Database field normalization supports half-width/full-width variants such as ﾌﾟﾗｽ / プラス.
 function normalizedFieldName(name){return String(name||'').normalize('NFKC').replace(/\s+/g,'').toLowerCase()}

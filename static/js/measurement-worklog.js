@@ -280,6 +280,13 @@
    search.addEventListener('keydown',ev=>{
     if(ev.key==='Backspace'&&!search.value){const names=selectedNames();if(names.length){setChecked(names[names.length-1],false);renderTags();renderSuggest()}}
     else if(ev.key==='Escape'){suggest.hidden=true;search.blur()}
+    else if(ev.key==='Enter'){
+     // このinputはフォーム内にあるため、既定動作のままだとEnterで
+     // フォーム送信(登録・更新)が誤爆する。先頭の候補を追加する操作として扱う。
+     ev.preventDefault();
+     const first=suggest.querySelector('[data-pick]');
+     if(first){setChecked(first.dataset.pick,true);search.value='';renderTags();renderSuggest()}
+    }
    });
    search.addEventListener('blur',()=>{setTimeout(()=>{if(document.activeElement!==search)suggest.hidden=true},150)});
    box.addEventListener('mousedown',ev=>{if(ev.target===box){ev.preventDefault();search.focus()}});
@@ -343,13 +350,13 @@
   if(!items.length){list.insertAdjacentHTML('beforeend',`<div class="mm-empty">${all.length&&maintState.query?'絞り込み条件に一致するデータがありません。':'有効なデータがありません。上のフォームから追加してください。'}</div>`);return}
   const frag=document.createDocumentFragment();
   items.forEach(it=>{
-   const row=document.createElement('div');row.className='mm-row'+(maintState.editing&&maintState.editing.id===it.id?' editing':'');row.style.gridTemplateColumns=tmpl;row.tabIndex=0;row.title='クリックで編集フォームに読み込みます';
+   const row=document.createElement('div');row.className='mm-row'+(maintState.editing&&maintState.editing.id===it.id?' editing':'');row.style.gridTemplateColumns=tmpl;row.tabIndex=0;row.setAttribute('role','button');row.title='クリックで編集フォームに読み込みます';
    const cells=def.cols.map(c=>`<span title="${esc(it[c.k]??'')}">${esc(it[c.k]??'')||'<em class="mm-blank">—</em>'}</span>`).join('');
    row.innerHTML=`${cells}<span class="mm-user" title="${esc(it.updated_by||'')}">${esc(it.updated_by||'-')}</span><span class="mm-date">${esc(fmtDT(it.updated_at))}</span><span class="mm-act"><button type="button" class="mm-edit">編集</button>${def.hasDelete?'<button type="button" class="mm-del">削除</button>':''}</span>`;
    const edit=()=>{maintState.editing=Object.assign({},it);renderMaintForm();const f=$('#masterMaintForm');if(f)f.scrollIntoView({block:'nearest'})};
    row.querySelector('.mm-edit').onclick=e=>{e.stopPropagation();edit()};
    const del=row.querySelector('.mm-del');if(del)del.onclick=e=>{e.stopPropagation();deleteMaint(it)};
-   row.onclick=()=>edit();row.onkeydown=e=>{if(e.key==='Enter')edit()};
+   row.onclick=()=>edit();row.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){if(e.key===' ')e.preventDefault();edit()}};
    frag.append(row);
   });
   list.append(frag);
@@ -538,14 +545,14 @@
   await refreshDraftCount();importBackupState.loaded=false;await loadImportBackupMaint(true);
   showToast&&showToast('インポートが完了しました',`成功 ${okCount}件 / 失敗 ${ngCount}件`+(errors.length?`\n${errors.slice(0,3).join('\n')}`:''),8000);
  }
- function openMasterMaint(){const modal=ensureMaintModal();const uid=$('#masterUserId');if(uid)uid.value=currentUserId();maintState.defKey='operator';maintState.editing=null;maintState.query='';const se=$('#masterMaintSearch');if(se)se.value='';syncNav();modal.hidden=false;loadMaint(true);requestAnimationFrame(()=>{const u=$('#masterUserId');if(u&&!u.value)u.focus()})}
+ function openMasterMaint(){const modal=ensureMaintModal();const uid=$('#masterUserId');if(uid)uid.value=currentUserId();maintState.defKey='operator';maintState.editing=null;maintState.query='';const se=$('#masterMaintSearch');if(se)se.value='';syncNav();modal.hidden=false;loadMaint(true);requestAnimationFrame(()=>{const u=$('#masterUserId');if(u&&!u.value){u.focus();return}const s=$('#masterMaintSearch');if(s)s.focus()})}
 
  // #openMasterMaintのクリックはここ(document委譲・capture)一箇所のみで処理する。
  // 以前はbindMasterMaint()でボタン自身にもonclickを付けていたが、この
  // capture段リスナーがstopImmediatePropagation()で先に処理を完結させるため
  // ボタン側のonclickは常に発火しない到達不能コードだった(削除済み)。
  document.addEventListener('click',e=>{const t=e.target.closest('#openMasterMaint');if(!t)return;e.preventDefault();e.stopImmediatePropagation();openMasterMaint()},true);
- document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#masterMaintModal')?.hidden){$('#masterMaintModal').hidden=true}},true);
+ document.addEventListener('keydown',e=>{const modal=$('#masterMaintModal');if(e.key==='Escape'&&modal&&!modal.hidden){modal.hidden=true}},true);
 })();
 
 

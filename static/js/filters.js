@@ -351,12 +351,15 @@
       const locked=isLockedFilter(f);
       const tag=document.createElement('span');tag.className='filter-tag'+(locked?' filter-tag-locked':'');
       tag.title=locked?`必須条件: ${lockedFilterDescription(f)}（一覧を開くたびに既定で適用されます）`:`${f.column} ${opLabel(f.op)}${noValueOp(f.op)?'':' '+f.value}`;
-      tag.innerHTML=`${locked?'<span class="filter-tag-lock-icon" aria-hidden="true">🔒</span>':''}<span>${esc(f.column)}</span><b>${esc(opShort(f.op))}</b>${noValueOp(f.op)?'':`<em>${esc(f.value)}</em>`}<i data-filter-index="${i}" title="解除">×</i>`;
-      tag.querySelector('i').onclick=async e=>{
+      tag.innerHTML=`${locked?'<span class="filter-tag-lock-icon" aria-hidden="true">🔒</span>':''}<span>${esc(f.column)}</span><b>${esc(opShort(f.op))}</b>${noValueOp(f.op)?'':`<em>${esc(f.value)}</em>`}<i data-filter-index="${i}" tabindex="0" role="button" aria-label="この条件を解除" title="解除">×</i>`;
+      const removeThis=async e=>{
         e.stopPropagation();
         if(locked&&!(await confirmRemoveLockedFilter(f)))return;
         S.genericFilters.splice(i,1);S.page=1;renderGenericFilterBar();load();
       };
+      const removeIcon=tag.querySelector('i');
+      removeIcon.onclick=removeThis;
+      removeIcon.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();removeThis(e)}};
       box.insertBefore(tag,input);
     });
     const count=$('#filterCount');if(count)count.textContent=`${S.genericFilters.length}件`;
@@ -484,10 +487,12 @@
     $('#closeFilterPresets').onclick=()=>{modal.hidden=true};
     $('#reloadFilterPresets').onclick=async()=>{const list=$('#filterPresetList');setPanelLoading(list,true,'マスタから再読込しています...');await loadMasterPresets({inline:false});setPanelLoading(list,false);renderFilterPresetList();renderGenericFilterBar()};
     modal.addEventListener('click',e=>{if(e.target===modal)modal.hidden=true});
+    document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!modal.hidden){modal.hidden=true}},true);
     return modal;
   }
   async function openFilterPresetModal(){
     ensureFilterPresetModal();$('#filterPresetModal').hidden=false;
+    requestAnimationFrame(()=>$('#closeFilterPresets')?.focus());
     const list=$('#filterPresetList');list.innerHTML='';setPanelLoading(list,true,'登録フィルタを読み込んでいます...');
     await loadMasterPresets({inline:false});setPanelLoading(list,false);renderFilterPresetList();renderGenericFilterBar();
   }

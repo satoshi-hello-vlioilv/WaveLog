@@ -7,7 +7,9 @@ async function init(){
   badge.textContent=build.version?`VER${build.version}`:'バージョン不明';
   badge.title=(build.commit?`コミット: ${build.commit}${build.commit_at?' / '+new Date(build.commit_at).toLocaleString('ja-JP'):''}${build.dirty?'（未コミットの変更あり）':''} / `:'')+'クリックで更新履歴を表示';
   badge.classList.add('build-badge-clickable');
+  badge.tabIndex=0;badge.setAttribute('role','button');badge.setAttribute('aria-label','更新履歴を表示');
   badge.onclick=openChangelog;
+  badge.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openChangelog()}};
  });
  const d=await api('/api/catalog');S.catalog=d.databases;
  const nav=$('#nav'),adminNav=$('#adminNav'),maintBtn=$('#openMasterMaint');
@@ -43,6 +45,7 @@ let changelogLoaded=false;
 async function openChangelog(){
  const modal=$('#changelogModal'),list=$('#changelogList');if(!modal||!list)return;
  modal.hidden=false;
+ requestAnimationFrame(()=>$('#closeChangelog')?.focus());
  if(changelogLoaded)return;
  try{
   const data=await api('/api/changelog');
@@ -90,12 +93,16 @@ function renderGrid(){
  const t=document.createElement('table');
  t.innerHTML='<thead><tr><th>#</th>'+(isWork?'<th class="split-flag-head" title="親子管理_子カード／コンマ5本分割_切断巾に実データがある場合「分割あり」と表示します">分割</th>':'')+S.columns.map(c=>{
   const filtered=filteredCols.has(c),sorted=S.sortColumn===c,arrow=sorted?(S.sortDir==='desc'?' ▼':' ▲'):'';
-  return `<th class="sortable-col ${filtered?'col-filtered':''} ${sorted?'col-sorted':''}" data-sort-col="${esc(c)}" title="クリックで並び替え${filtered?'（絞り込み中の列です）':''}">${esc(c)}${arrow}${filtered?'<i class="col-filter-badge" aria-hidden="true" title="この列にフィルタが適用されています">▼</i>':''}</th>`;
+  return `<th class="sortable-col ${filtered?'col-filtered':''} ${sorted?'col-sorted':''}" data-sort-col="${esc(c)}" tabindex="0" role="button" aria-label="${esc(c)}列で並び替え" title="クリックで並び替え${filtered?'（絞り込み中の列です）':''}">${esc(c)}${arrow}${filtered?'<i class="col-filter-badge" aria-hidden="true" title="この列にフィルタが適用されています">▼</i>':''}</th>`;
  }).join('')+(isWork?'<th class="measurement-action-head">測定</th>':'')+'</tr></thead>';
- t.querySelectorAll('th[data-sort-col]').forEach(th=>th.onclick=()=>{
+ const sortByHeader=th=>{
   const col=th.dataset.sortCol;
   S.sortDir=(S.sortColumn===col&&S.sortDir==='asc')?'desc':'asc';
   S.sortColumn=col;S.page=1;load();
+ };
+ t.querySelectorAll('th[data-sort-col]').forEach(th=>{
+  th.onclick=()=>sortByHeader(th);
+  th.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();sortByHeader(th)}};
  });
  const b=document.createElement('tbody');
  // 分割データはあるが子ロットが仕掛から見つからない行(=作業済みで仕掛から

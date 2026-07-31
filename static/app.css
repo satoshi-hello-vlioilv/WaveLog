@@ -119,6 +119,7 @@ button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-vis
 .build-badge{display:inline-block;margin-left:5px;padding:2px 6px;border-radius:9px;background:#35c2a6;color:#17272d;font-weight:800}
 .build-badge-clickable{cursor:pointer;border:0;font:inherit}
 .build-badge-clickable:hover{background:#28a88f}
+.build-badge-clickable:focus-visible{outline:2px solid var(--nav);outline-offset:2px}
 /* 更新履歴モーダル: 設定モーダルと同じ構造(.record-modal/.settings-dialog)を
    流用し、中身だけバージョンごとの箇条書きリストにする。 */
 .changelog-dialog{width:min(560px,94vw);max-height:86vh;display:flex;flex-direction:column}
@@ -263,6 +264,7 @@ th.col-filtered{background:#ffe6ac;color:#6b4a00}
    矢印記号自体は消えないため、どちらの状態も見失わない。 */
 th.sortable-col{cursor:pointer;user-select:none}
 th.sortable-col:hover{background:#e5f2f3}
+th.sortable-col:focus-visible{outline:2px solid var(--teal);outline-offset:-2px}
 th.col-sorted{background:#d7eff1;color:#075e67}
 th.col-sorted:hover{background:#c7e7ea}
 .lot-cell{padding:var(--space-1)}
@@ -1276,6 +1278,7 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .filter-tag em{font-style:normal;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#3d555d}
 .filter-tag i{display:grid;place-items:center;width:18px;height:18px;border-radius:50%;font-style:normal;color:#9b1b1b;font-weight:900;cursor:pointer}
 .filter-tag i:hover{background:#ffe1e1}
+.filter-tag i:focus-visible{outline:2px solid var(--teal);outline-offset:1px}
 .filter-tag-locked{background:#fff2cc;border-color:#e0b23d;color:#6b5200}
 .filter-tag-locked b{color:#6b5200}
 .filter-tag-locked em{color:#6b5200}

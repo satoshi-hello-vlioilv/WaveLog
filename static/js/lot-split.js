@@ -804,6 +804,7 @@
   async function openSplit(){
     if(!S.measure)return;
     $('#splitModal').hidden=false;
+    requestAnimationFrame(()=>$('#closeSplit')?.focus());
     activeLot=null;splitUndoStack=[];
     if(!splitSourcesCache||splitSourcesCacheKey!==currentSplitCacheKey()){
       const box=$('#splitSources');if(box)box.innerHTML='<div class="split-row-loading">子ロット情報を取得しています…</div>';
@@ -839,6 +840,7 @@
   const applyBtn=$('#applySplit');if(applyBtn)applyBtn.onclick=applySplit;
   const openBtn=$('#openSplit');if(openBtn)openBtn.onclick=openSplit;
   const closeBtn=$('#closeSplit');if(closeBtn)closeBtn.onclick=()=>$('#splitModal').hidden=true;
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('#splitModal')?.hidden){$('#splitModal').hidden=true}},true);
   const undoBtn=$('#undoSplit');if(undoBtn)undoBtn.onclick=()=>{
     const snap=splitUndoStack.pop();if(!snap)return;
     S.measure.settings.splitSequence=snap.seq;
