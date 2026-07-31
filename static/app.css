@@ -72,6 +72,13 @@
   --radius-tab:8px;
   --radius-card:10px;
 
+  /* 空状態(データなし)表示の共通トークン。以前は一覧・品質データ分析・
+     帳票・実績カレンダー・条割パネル等の空状態メッセージが、ほぼ同じ
+     トーンでありながら微妙に異なる色(#60747b/#8a9a97、#aebfc4/#b7c7cc/
+     #c4d4d7等)で個別にハードコードされていた。 */
+  --muted:#60747b;
+  --muted-border:#b7c7cc;
+
   /* タイプスケール（ここだけ変えれば全体の文字が揃う） */
   --fs-badge:10px;    /* ステータスバッジ・カウンタ等の最小文字 */
   --fs-micro:11px;    /* 判定バッジ・目盛ラベルなど極小の図解要素 */
@@ -745,7 +752,7 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .split-candidates-stats b{color:var(--teal);font-size:13px}
 .split-hint-text{margin:8px 0 0;font-size:12px;color:#79898d}
 .split-row-loading{padding:14px;color:#526970;font-weight:700}
-.split-candidates-empty,.split-result-empty{padding:var(--space-4);text-align:center;color:#8a9a97;font-size:13px;background:#fff;border:1px dashed #c4d4d7;border-radius:10px}
+.split-candidates-empty,.split-result-empty{padding:var(--space-4);text-align:center;color:var(--muted);font-size:13px;background:#fff;border:1px dashed var(--muted-border);border-radius:10px}
 
 /* 子ロット候補カード。凡例として割当条数・確認済み数・幅・公差を表示し、
    クリックすると視覚図内の該当する条を一時的に光らせる(位置特定用)。 */
@@ -821,7 +828,7 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .split-visual-ghost{position:absolute;top:-5px;bottom:-5px;display:flex;align-items:center;justify-content:center;border:2px dashed #fff;border-radius:8px;box-shadow:0 0 0 3px var(--nav),0 6px 14px #00000040;color:#fff;text-shadow:0 1px 1px #0006;overflow:hidden;pointer-events:none;z-index:3;transition:left .05s linear,width .05s linear}
 .split-visual-ghost[hidden]{display:none}
 .split-visual-detail{min-height:16px;margin-top:8px;font-size:12px;font-weight:700;color:#3a565d}
-.split-visual-empty{padding:14px;text-align:center;color:#8a9a97;font-size:13px}
+.split-visual-empty{padding:14px;text-align:center;color:var(--muted);font-size:13px}
 .split-visual-actions{display:flex;gap:var(--space-2);margin-top:12px}
 .split-ghost-btn{height:32px;padding:0 14px;font-size:12px;font-weight:700;color:#3a565d;background:#fff;border:1px solid #c4d4d7;border-radius:20px;cursor:pointer}
 .split-ghost-btn:hover:not(:disabled){background:#eef2f4;border-color:#9aabab}
@@ -903,7 +910,8 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .record-list-actions .danger{color:#9d2020;background:#fff7f7;border-color:#dab0b0}
 .record-toolbar{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#eef8f9;border-bottom:1px solid var(--line)}
 .record-toolbar button{background:var(--teal);color:#fff}
-.record-empty,.record-loading{margin:var(--space-5);padding:30px;text-align:center;background:#fff;border:1px dashed #aebfc4;border-radius:10px;color:#60747b}
+.record-empty,.record-loading{margin:var(--space-5);padding:30px;text-align:center;background:#fff;border:1px dashed var(--muted-border);border-radius:12px;color:var(--muted)}
+.record-empty button{margin-top:var(--space-3)}
 
 /* ---------- 12. 設備設定モーダル ---------- */
 #appSettingsModal{z-index:5000;background:#071c22b8;backdrop-filter:blur(2px)}
@@ -1463,7 +1471,7 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .mm-edit:hover{background:var(--teal-dark)}
 .mm-del{background:#fff6f6;color:#9d2020;border-color:#dbb0b0}
 .mm-del:hover{background:#ffecec}
-.mm-empty{padding:40px;text-align:center;color:#60747b;background:#fff;border:1px dashed #aebfc4;border-radius:12px;margin-top:14px}
+.mm-empty{padding:40px;text-align:center;color:var(--muted);background:#fff;border:1px dashed var(--muted-border);border-radius:12px;margin-top:14px}
 .mm-empty.error{color:#8a2b2b;border-color:#d8a6a6;background:#fff5f5}
 .mm-loading{position:absolute;inset:0;z-index:10;display:grid;place-items:center;background:#ffffffcc;backdrop-filter:blur(1px)}
 .mm-loading[hidden]{display:none}
@@ -1606,7 +1614,7 @@ body.cal-mode.qa-mode.qa-view-raw #grid,body.cal-mode.qa-mode.qa-view-raw footer
 /* 描画エリア: 実寸フィット。中身は左上基準、横溢れは出さない */
 .qa-v7 .qa-graph-stage{flex:1 1 auto;min-height:0;border:1px solid #d6e3e6;border-radius:14px;background:#fff;padding:10px;overflow:auto}
 .qa-v7 .qa-graph-stage svg{display:block;margin:0 auto;max-width:100%}
-.qa-v7 .qa-empty{padding:26px;text-align:center;color:#60747b;border:1px dashed #b7c7cc;border-radius:10px;background:#fbfdfd}
+.qa-v7 .qa-empty{padding:26px;text-align:center;color:var(--muted);border:1px dashed var(--muted-border);border-radius:12px;background:#fbfdfd}
 
 /* SVG要素 */
 .qa-v7 .qa-axis{stroke:#8299a0;stroke-width:1}
@@ -1783,7 +1791,8 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
 .rp-page.rp-landscape{width:297mm;min-height:210mm}
 /* A4横の測定データ表は1〜20条/21〜40条を左右に分けて高さを半減させる。 */
 .rp-wide-split{display:grid;grid-template-columns:1fr 1fr;gap:0 4px;align-items:start}
-.rp-empty{padding:40px;text-align:center;color:#60747b;background:#fff;border:1px dashed #aebfc4;border-radius:12px}
+.rp-empty{padding:40px;text-align:center;color:var(--muted);background:#fff;border:1px dashed var(--muted-border);border-radius:12px}
+.rp-empty button{margin-top:var(--space-3)}
 .rp-report-head{display:flex;align-items:flex-end;justify-content:space-between;gap:var(--space-3);padding-bottom:3px;margin-bottom:4px;border-bottom:2px solid #173842}
 .rp-report-head small{color:var(--teal);font-weight:800;letter-spacing:.1em}
 .rp-report-head h2{margin:2px 0 0;font-size:16px;color:#173842}
@@ -1912,13 +1921,13 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
 .db-chart-wrap{background:#fff;border:1px solid #d5e0e3;border-radius:12px;padding:10px;min-height:360px;display:flex}
 .db-chart{flex:1;min-width:0;min-height:340px}
 .db-chart svg{width:100%;height:100%}
-.db-empty{margin:auto;padding:20px;color:#60747b;text-align:center}
+.db-empty{margin:auto;padding:20px;color:var(--muted);text-align:center}
 .db-table-wrap{background:#fff;border:1px solid #d5e0e3;border-radius:12px;overflow:auto}
 .db-table{width:100%;border-collapse:collapse}
 .db-table th,.db-table td{padding:6px 10px;border-bottom:1px solid #eef2f4;text-align:center;font-size:12px;white-space:nowrap}
 .db-table thead th{background:#eef2f4;color:#173842;position:sticky;top:0}
 .db-table tbody th{text-align:left;color:#173842}
-.db-empty-cell{padding:var(--space-4);text-align:center;color:#60747b}
+.db-empty-cell{padding:var(--space-4);text-align:center;color:var(--muted)}
 .db-axis{stroke:#8299a0;stroke-width:1}
 .db-gridline{stroke:#e7eef0;stroke-width:1}
 .db-label{font-size:11px;fill:#3a565d}
@@ -1974,7 +1983,7 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
 .cal-legend-swatch.lvl-3{background:#68bcb2}
 .cal-legend-swatch.lvl-4{background:var(--teal)}
 .cal-detail{display:flex;flex-direction:column;min-width:0;min-height:0;background:#fff;border-left:1px solid var(--line);overflow-y:auto}
-.cal-detail-empty{margin:auto;padding:var(--space-5);color:#60747b;text-align:center;font-size:13px}
+.cal-detail-empty{margin:auto;padding:var(--space-5);color:var(--muted);text-align:center;font-size:13px}
 .cal-detail-head{position:sticky;top:0;display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-2);padding:14px 16px;background:#eef4f5;border-bottom:1px solid var(--line);z-index:1}
 .cal-detail-head b{font-size:14px;color:#173842}
 .cal-detail-head span{font-size:11px;color:#526970;font-weight:700}

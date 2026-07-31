@@ -257,7 +257,12 @@
  function renderLotList(){
   const list=$id('reportLotList');if(!list)return;
   const items=sortedFiltered();
-  if(!items.length){list.innerHTML=`<div class="rp-empty">${rpState.items.length?'検索条件に一致するロットがありません。':'端末に保存されたロットがありません。測定画面で保存すると一覧に表示されます。'}</div>`;updateBulkPrintButton();return}
+  if(!items.length){
+   list.innerHTML=rpState.items.length?'<div class="rp-empty"><b>検索条件に一致するロットがありません。</b><button id="rpEmptyClearSearch" type="button">検索条件を解除</button></div>':'<div class="rp-empty">端末に保存されたロットがありません。測定画面で保存すると一覧に表示されます。</div>';
+   const clearBtn=$id('rpEmptyClearSearch');
+   if(clearBtn)clearBtn.onclick=()=>{rpState.query='';const search=$id('reportSearch');if(search)search.value='';renderLotList()};
+   updateBulkPrintButton();return;
+  }
   const frag=document.createDocumentFragment();
   items.forEach(x=>{
    const equipment=x.settings?.registeredEquipment||x.registeredEquipment||x.snapshot?.registeredEquipment||'-';
