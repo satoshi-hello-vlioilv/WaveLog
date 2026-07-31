@@ -834,6 +834,16 @@
     if(typeof renderMeasureGrid==='function')renderMeasureGrid();
     if(typeof updateMeasurementHeading==='function')updateMeasurementHeading();
     refreshSplitStatusPanel();
+    /* 条割「適用」直後だけの一撃アニメーション。refreshSplitStatusPanel()は
+       測定画面を開いた/再開しただけの同期でも呼ばれるため、アニメーション
+       クラスはこの関数(実際に適用ボタンが押された瞬間)側で明示的に付与する。
+       同じクラス名の連続適用でも確実に再生されるよう、一度剥がしてreflowを
+       挟んでから付け直す(CSSアニメーションはクラスの値が変化した時にしか
+       再生されないため)。 */
+    const badge=$('#splitTabBadge');
+    if(badge){badge.classList.remove('split-tab-badge-pop');void badge.offsetWidth;badge.classList.add('split-tab-badge-pop')}
+    const statusEl=document.querySelector('.split-panel-status-applied');
+    if(statusEl){statusEl.classList.remove('just-applied');void statusEl.offsetWidth;statusEl.classList.add('just-applied')}
   }
   window.applySplit=applySplit;
   // 条割変更モーダルの全ボタン結線(このファイルがモーダルの所有者)。

@@ -392,6 +392,12 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 .split-tab-badge{display:inline-block;margin-left:5px;padding:1px 6px;border-radius:9px;font-size:var(--fs-badge);font-weight:800;vertical-align:middle}
 .split-tab-badge-pending{background:#e0b23d;color:#4a3900}
 .split-tab-badge-applied{background:var(--success);color:#fff}
+/* 条割「適用」ボタン押下の直後だけJSが付与する一撃アニメーション
+   (applySplit()参照。パネル同期の再描画では付与しないため、
+   タブを開き直しただけで再生されることはない)。 */
+.split-tab-badge-pop{animation:split-apply-pop .4s cubic-bezier(.34,1.56,.64,1)}
+@keyframes split-apply-pop{0%{transform:scale(.55)}65%{transform:scale(1.2)}100%{transform:scale(1)}}
+@media(prefers-reduced-motion:reduce){.split-tab-badge-pop{animation:none}}
 
 .work-time-panel{height:250px;margin:0;padding:var(--space-3);border:1px solid var(--line);border-radius:10px;background:#fff}
 .work-time-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}
@@ -883,6 +889,11 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .split-panel-status-none{background:#eef2f4;color:#61757c}
 .split-panel-status-pending{background:#fff2cc;color:#8a6600;border:1px solid #e0b23d}
 .split-panel-status-applied{background:var(--success-bg);color:var(--success);border:1px solid var(--success-border)}
+/* 条割「適用」ボタン押下の直後だけJSが付与する一撃アニメーション
+   (applySplit()参照。パネルを開き直しただけの再同期では付与しない)。 */
+.split-panel-status-applied.just-applied{animation:split-status-flash .5s ease-out}
+@keyframes split-status-flash{0%{background:#bdf0d4}100%{background:var(--success-bg)}}
+@media(prefers-reduced-motion:reduce){.split-panel-status-applied.just-applied{animation:none}}
 .split-panel-table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:8px;background:#fff}
 .split-panel-table th,.split-panel-table td{padding:4px 6px;border:1px solid #c4d4d7;text-align:left}
 .split-panel-table th{background:#edf3f5;position:sticky;top:0}
@@ -1034,11 +1045,15 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 
 /* 通知バナーは右下に配置し、右からスライドイン／右へスライドアウトする */
 .toast-area{position:fixed;bottom:18px;right:22px;top:auto;z-index:5100;display:grid;gap:var(--space-2);justify-items:end;pointer-events:none;width:min(420px,calc(100vw - 32px))}
-.toast{width:100%;padding:12px 14px;border:1px solid #55aeb5;border-left:6px solid var(--teal);border-radius:8px;background:#f4ffff;color:#173f45;box-shadow:0 8px 28px #001b2433;animation:toast-in .2s ease-out;will-change:transform,opacity}
+.toast{width:100%;padding:12px 14px;border:1px solid #55aeb5;border-left:6px solid var(--teal);border-radius:8px;background:#f4ffff;color:#173f45;box-shadow:0 8px 28px #001b2433;animation:toast-in .22s ease-out,toast-glow .7s ease-out .05s;will-change:transform,opacity}
 .toast b{display:block;margin-bottom:3px}
 .toast small{display:block;color:#527078}
 .toast.out{opacity:0;transform:translateX(30px);transition:opacity .2s ease-in,transform .2s ease-in}
 @keyframes toast-in{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:none}}
+/* 到着直後だけ縁に淡いブランドカラーの光彩が広がって消える、瞬間的な
+   「届いた」フィードバック(保存成功トーストの体感速度を上げる)。 */
+@keyframes toast-glow{0%{box-shadow:0 8px 28px #001b2433,0 0 0 0 #087c8959}100%{box-shadow:0 8px 28px #001b2433,0 0 0 10px #087c8900}}
+@media(prefers-reduced-motion:reduce){.toast{animation:none}.toast.out{transition:none}}
 
 /* ---------- 14. 検証状態（空欄=橙 / 入力済=白 / 公差外=赤） ---------- */
 /* 動的に付与される状態クラスは意図を明示するため !important を使用 */
@@ -1248,6 +1263,13 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .numberline-pending.ng{border-color:var(--danger)}
 @keyframes numberline-pending-pulse{0%,100%{opacity:1;transform:translate(-50%,-50%) scale(1)}50%{opacity:.55;transform:translate(-50%,-50%) scale(1.25)}}
 @media(prefers-reduced-motion:reduce){.numberline-pending{animation:none}}
+/* 公差判定の着地演出: 先読みリング(.numberline-pending)が確定して
+   .numberline-measureへ切り替わった瞬間だけ、ドットが軽くバウンドして
+   「判定が確定した」ことを伝える(付与はJS側で新規確定時のみ、既存値の
+   再描画では付与しない)。 */
+.numberline-measure.just-landed .nl-dot{animation:numberline-land .32s cubic-bezier(.34,1.56,.64,1)}
+@keyframes numberline-land{0%{transform:scale(.4);opacity:.4}60%{transform:scale(1.35)}100%{transform:scale(1)}}
+@media(prefers-reduced-motion:reduce){.numberline-measure.just-landed .nl-dot{animation:none}}
 
 /* ---- 汎用フィルタ バー ---- */
 .generic-filter-bar{margin:6px 14px 0;border:1px solid #b9c9ce;border-radius:8px;background:#fff;overflow:hidden}

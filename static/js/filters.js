@@ -557,6 +557,7 @@
      で表示する。直前の値だけドット＋条番号/数値のフルラベルで大きく強調し、
      それ以外は小さな点(ツールチップに条番号/数値)としてトラック脇に並べ、
      値が近いものは重ならないよう左右にずらす。 ---- */
+  const numberlineLastSeen={};
   if(typeof compactToleranceScale==='function'){
     compactToleranceScale=function(kind,values,count){
       const facts=compactToleranceFacts(kind),range=facts.range;if(!range)return facts.html;
@@ -573,7 +574,17 @@
         const p=Math.max(5,Math.min(95,pct(n))),ng=n<low||n>high;
         dots.push(`<i class="numberline-swarm-dot ${ng?'ng':'ok'}" style="top:${p}%" data-pos="${p}" title="条${i+1}: ${esc(raw)}"></i>`);
       }
-      const mark=last?(()=>{const p=Math.max(5,Math.min(95,pct(last.n))),ng=last.n<low||last.n>high;return `<div class="numberline-measure ${ng?'ng':'ok'}" style="top:${p}%"><span class="nl-dot"></span><b><span>条${last.index+1}</span>${esc(last.raw)}</b></div>`})():'';
+      /* 確定した最新値(.numberline-measure)は数直線全体の再描画のたびに
+         作り直されるため、単純にCSSアニメーションを付けると無関係な
+         キー入力のたびにも再生されてしまう。実際に「今まさに確定した」
+         回だけ着地アニメーションが鳴るよう、kindごとに直前の確定値を
+         記憶して差分がある時だけクラスを付与する。 */
+      const mark=last?(()=>{
+        const p=Math.max(5,Math.min(95,pct(last.n))),ng=last.n<low||last.n>high;
+        const seenKey=`${last.index}:${last.raw}`,isNew=numberlineLastSeen[kind]!==seenKey;
+        numberlineLastSeen[kind]=seenKey;
+        return `<div class="numberline-measure ${ng?'ng':'ok'}${isNew?' just-landed':''}" style="top:${p}%"><span class="nl-dot"></span><b><span>条${last.index+1}</span>${esc(last.raw)}</b></div>`;
+      })():'';
       return facts.html+`<div class="accurate-numberline" data-swarm="1" style="--upper:${upper}%;--lower:${lower}%;--center:${center}%">
         <div class="numberline-band high"></div><div class="numberline-band ok"></div><div class="numberline-band low"></div>
         <div class="numberline-track"></div>
