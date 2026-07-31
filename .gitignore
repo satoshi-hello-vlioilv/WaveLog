@@ -2,3 +2,11 @@ __pycache__/
 *.pyc
 *.sqlite3
 config/local.json
+
+# 仕掛/品質データのローカル運用(sikalot_source=local)用資材。PCごとの手動配置
+# (RNEファイル・SymNaviA.dll・接続パスワードを含むためコミットしない)。
+# 詳細はconfig/rne_extract/README.md参照。
+config/rne_extract/rne/
+config/rne_extract/NAVIAP/
+config/rne_extract/symnavim.conf
+config/rne_extract/symnavim.def

@@ -12,7 +12,7 @@ from flask import Flask
 
 app=Flask(__name__)
 
-from backend import watchdog, records_export, access_mode
+from backend import watchdog, records_export, access_mode, rne_scheduler
 from backend.routes.core import bp as core_bp
 from backend.routes.tables import bp as tables_bp
 from backend.routes.measurement import bp as measurement_bp
@@ -39,6 +39,8 @@ watchdog.install(app)
 records_export.start()
 # 編集可能モード/閲覧モードの判定・切替・書込ガード。
 access_mode.install(app)
+# 仕掛/品質データのローカル運用(sikalot_source=local)時のみRNE定期抽出を開始。
+rne_scheduler.start()
 
 if __name__=='__main__':
  # 直接 python app.py で起動された場合も、通常の起動経路(Start.vbs /

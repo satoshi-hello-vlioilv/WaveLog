@@ -15,7 +15,7 @@ from datetime import datetime
 import sqlite3
 import pyodbc
 
-from .paths import APP_ROOT, configured_path
+from .paths import APP_ROOT, configured_path, configured_value
 
 # DBの置き場所は既定でAPP_ROOT/db。config/local.jsonの"db_dir"で上書き可能
 # (未配置なら従来どおり)。個別ファイルの上書きはDBS['MASTER']['path']/
@@ -29,14 +29,22 @@ def _engine_for(path):
     基準で判定するため、ファイル名を差し替えるだけで読み替えられる。"""
  return 'sqlite' if str(path).lower().endswith(('.sqlite3','.sqlite','.db')) else 'access'
 
-# 仕掛(SIKALOTNOW)・品質データ(SIKALOTDEF)の実ファイルは工場側システムが
-# 所有するため既定はネットワーク共有上のAccessファイルだが、
-# config/local.jsonの"sikalotnow_path"/"sikalotdef_path"で読み込み先を
-# 上書きできる(検証用に手元へ複製したファイルを指す、共有先のパス変更に
-# 追従する、等の用途)。上書き先の拡張子が.sqlite3等であれば自動的に
-# SQLiteとして接続する(_engine_for)。
-_SIKALOTNOW_PATH=configured_path('sikalotnow_path') or SIKA_DIR/"SIKALOTNOW.accdb"
-_SIKALOTDEF_PATH=configured_path('sikalotdef_path') or SIKA_DIR/"SIKALOTDEF.accdb"
+# 仕掛(SIKALOTNOW)・品質データ(SIKALOTDEF)の読み込み元は既定でネットワーク
+# 共有上のAccessファイル(工場側システムが所有)だが、config/local.jsonの
+# "sikalot_source"="local"にすると、WaveLog自身がRNE経由で定期的に抽出・
+# 更新するローカルSQLite3(db/sikalotnow.sqlite3・db/sikalotdef.sqlite3、
+# backend/rne_scheduler.pyが背景スレッドで更新)を読む運用に切り替えられる。
+# ネットワーク共有への到達性が無い/不安定な環境向けの切替で、2つのDBを
+# まとめて1つのスイッチで切り替える(個別切替は用途が無いため)。
+SIKALOT_SOURCE='local' if configured_value('sikalot_source','network')=='local' else 'network'
+SIKALOTNOW_LOCAL_PATH=DB_DIR/"sikalotnow.sqlite3"
+SIKALOTDEF_LOCAL_PATH=DB_DIR/"sikalotdef.sqlite3"
+# "sikalotnow_path"/"sikalotdef_path"による明示的な上書き(検証用に手元へ
+# 複製したファイルを指す、等)はsikalot_sourceの切替より常に優先する
+# (従来からの開発/検証用の上書き挙動を変えないため)。上書き先の拡張子が
+# .sqlite3等であれば自動的にSQLiteとして接続する(_engine_for)。
+_SIKALOTNOW_PATH=configured_path('sikalotnow_path') or (SIKALOTNOW_LOCAL_PATH if SIKALOT_SOURCE=='local' else SIKA_DIR/"SIKALOTNOW.accdb")
+_SIKALOTDEF_PATH=configured_path('sikalotdef_path') or (SIKALOTDEF_LOCAL_PATH if SIKALOT_SOURCE=='local' else SIKA_DIR/"SIKALOTDEF.accdb")
 DBS={
  "SIKALOTNOW":{"path":_SIKALOTNOW_PATH,"label":"仕掛（現在）","role":"readonly","preferred":"仕掛","engine":_engine_for(_SIKALOTNOW_PATH)},
  "SIKALOTDEF":{"path":_SIKALOTDEF_PATH,"label":"品質データ","role":"readonly","preferred":"仕掛","engine":_engine_for(_SIKALOTDEF_PATH)},

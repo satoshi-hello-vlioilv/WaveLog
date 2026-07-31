@@ -41,6 +41,11 @@ def configured_path(key):
  value=load_local_config().get(key)
  return Path(value) if value else None
 
+def configured_value(key,default=None):
+ """config/local.jsonでの任意設定値(パス以外)の上書き。未設定/該当なしはdefault。"""
+ value=load_local_config().get(key)
+ return default if value is None else value
+
 def local_root():
  """ユーザー別ローカル領域のルート。存在しなくてもパスだけ返す。"""
  base=os.environ.get('LOCALAPPDATA')          # Windows

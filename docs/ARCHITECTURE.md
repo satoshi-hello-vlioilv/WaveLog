@@ -79,6 +79,10 @@
 | `backend/db_access.py` | `DBS`(接続先定義)・`APP_ROOT`/`DB_DIR`(パス基準)・`connect`/`cols`/`tables`/`qi`(Access/SQLite両対応)・監査列・バックアップテーブル整備 |
 | `backend/records_export.py` | 測定データバックアップ(`records.sqlite3`)の閲覧用複製(定期・差分あり時のみ) |
 | `backend/access_mode.py` | 編集可能モード/閲覧モードの判定・切替API・書込系APIのガード(`before_request`) |
+| `backend/navigator_api.py` | SymfoNavi Navigator API(`SymNaviA.dll`)のctypesラッパー(Windows専用、SymfoNavi-Data-Hubから移植) |
+| `backend/rne_extract.py` | RNEから仕掛/品質データをSQLite3として抽出する1ジョブ分のロジック(CSV解析・SQLite書き込み・アトミック公開) |
+| `backend/rne_worker.py` | `rne_extract.extract_one`をサブプロセスとして実行するエントリポイント(`python -m backend.rne_worker`) |
+| `backend/rne_scheduler.py` | 仕掛/品質データのローカル運用(`sikalot_source=local`)時、RNE抽出を定期的に並列実行する背景スレッド |
 
 依存方向は `start_app.py → server.py → app.py → backend.routes.* →
 backend.repositories.master_repo → backend.db_access`（逆参照なし）。
@@ -100,6 +104,80 @@ import(`from backend.xxx import ...`)、`backend` 内のモジュール同士は
 > それは配布・ドキュメント上の実利が薄いため見送り、`backend/`という
 > 名前を恒久的に採用している。routes/masters(将来的にはrepositories)と
 > いう内部構成の分離自体は、パッケージ名を`app`にせずとも達成できる。
+
+### 仕掛/品質データのローカル運用(RNE定期抽出)
+
+仕掛(SIKALOTNOW)・品質データ(SIKALOTDEF)は既定でネットワーク共有
+(`\\Nlmsrvngy03\Read\【New】仕掛\台帳`)上のAccessファイルを直接読む
+（工場側の別システムが所有・書込する読み取り専用データ)。この既定は
+変えず、共有への到達性が無い/不安定な環境向けに、WaveLog自身がNavigator
+API経由でRNE(Navigator問い合わせ定義)を実行し、ローカルSQLite3として
+定期更新する運用へ切り替えられるようにしてある(SymfoNavi-Data-Hubの
+抽出パイプラインの移植)。
+
+**切替スイッチ(`db_access.py`)**
+
+- `config/local.json`の`sikalot_source`(既定`"network"`)を`"local"`に
+  すると、`DBS['SIKALOTNOW']`/`DBS['SIKALOTDEF']`の読み込み先が
+  `db/sikalotnow.sqlite3`/`db/sikalotdef.sqlite3`(`SIKALOTNOW_LOCAL_PATH`/
+  `SIKALOTDEF_LOCAL_PATH`)へ切り替わる。2つのDBをまとめて1つのスイッチで
+  切り替える(個別切替は用途が無いため)。
+- `sikalotnow_path`/`sikalotdef_path`による明示上書き(検証用)は
+  `sikalot_source`の切替より常に優先する(従来の開発/検証用の挙動を
+  変えないため)。
+
+**抽出パイプライン(`navigator_api.py` → `rne_extract.py`)**
+
+- `navigator_api.py`は`SymNaviA.dll`をctypesで直接呼ぶWindows専用の薄い
+  ラッパー(`NaviOpenSession`→`NaviOpenCatalog`→`NaviExecuteCatalog`→
+  `NaviSaveData`(CSV)→`NaviCloseCatalog`→`NaviCloseSession`)。DLLは
+  `C:\NAVIAP`を最優先で探し、無ければ`config/rne_extract/NAVIAP`配下
+  (`dllVC14`/`dllVC14x64`/`debugdllVC14`/`debugdllVC14x64`のいずれか)を
+  Pythonのビット幅に合わせてフォールバック選択する。
+- `rne_extract.extract_one(job, conf, work_dir)`が1ジョブ分の抽出を担う。
+  Navigator APIが書き出した中間CSVを解析し(`read_extract_csv`、
+  cp932→utf-8-sig→utf-8の順でエンコーディングを試す)、全列TEXTの
+  SQLite3として書き込み(`write_sqlite`、`_更新情報`メタデータテーブル
+  付き、`PRAGMA integrity_check`で検証)、ローカルで完成させてから
+  公開先(`db/`配下)へアトミック置換する(`publish`)。
+- 公開先が他プロセス/他PCに開かれ使用中(Windowsのファイル共有違反)の
+  場合は、最大3秒リトライしたのち`{stem}.pending_{timestamp}{suffix}`
+  として保存し、次回の抽出開始時に`apply_pending()`で適用する(強制
+  上書きしない)。公開の都度、直前ファイルを世代管理付きでバックアップ
+  する。
+- 接続情報は`config/rne_extract/symnavim.conf`の`[Connect_*]`セクション
+  から読む(`creds`)。追加データソース(`[ApiOracle]`等)があれば
+  `connect_data_source`で個別接続し、`[ApiOracle]`が無い場合はNavigator
+  接続情報をOracle接続として1回だけ流用する(SymfoNavi-Data-Hub側の実運用
+  を踏襲)。
+
+**並列実行と定期スケジューリング(`rne_worker.py` / `rne_scheduler.py`)**
+
+- Navigator API/COMセッションはプロセス間で安全に共有できないため、
+  ジョブ(SIKALOTNOW・SIKALOTDEF)ごとに独立したサブプロセス
+  (`python -m backend.rne_worker <payload.json> <result.json>`)として
+  実行する。ジョブ数が2件と少ないため、キュー/スロット管理は行わず、
+  ジョブ数と同じ数のスレッド(`rne_scheduler.run_batch`)がそれぞれ
+  サブプロセスの完了をブロック待ちする単純な形にしてある。
+- `sikalot_source=local`のときだけ、`rne_scheduler.start()`が
+  `records_export.py`/`watchdog.py`と同じ`daemon=True`スレッドパターンで
+  背景スレッドを起動し、起動直後に1回、以降は`rne_extract_interval_sec`
+  (`config/local.json`、既定900秒=15分、下限60秒にクランプ)ごとに
+  抽出を繰り返す。間隔はループの毎周回で読み直すため、変更の反映に
+  アプリの再起動は不要。
+
+**資材の配置(`config/rne_extract/`)**
+
+- RNEファイル・`SymNaviA.dll`・`symnavim.conf`は機密情報/サイト固有資産
+  のためリポジトリへ含めず、PCごとに`config/rne_extract/`配下へ手動配置
+  する(配置形態の詳細は`config/rne_extract/README.md`、テンプレートは
+  `symnavim.conf.example`)。`.gitignore`で実体(`rne/`・`NAVIAP/`・
+  `symnavim.conf`)を除外し、README/exampleのみ追跡する。
+- サンドボックス等の非Windows環境では`navigator_api.py`がインスタンス化
+  時点で`RuntimeError`を返すため、抽出は毎回失敗ログを残すだけでサーバー
+  自体は問題なく動作する(周辺のロジック——設定切替・スケジューラの間隔
+  制御・SQLite書き込み/アトミック公開/pending適用——はこの環境でも
+  検証済み)。
 
 ### 列表示マスタと include_hidden
 

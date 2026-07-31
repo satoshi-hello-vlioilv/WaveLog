@@ -40,6 +40,18 @@
   一時的に使う場合は検証後に`config/local.json`を削除し、既定のAccdb/ネットワーク
   共有パスへ戻してから再起動すること（削除せず放置すると以降の起動が上書き先を
   読み続けてしまう）。
+- **仕掛/品質データのローカル運用**: `config/local.json`の`sikalot_source`を
+  `local`にすると、ネットワーク共有ではなく`backend/rne_scheduler.py`が
+  定期的にRNE(Navigator問い合わせ定義)から抽出・更新する
+  `db/sikalotnow.sqlite3`/`db/sikalotdef.sqlite3`を読む運用に切り替わる
+  （2DBまとめて1スイッチ）。抽出間隔は`rne_extract_interval_sec`（既定900秒、
+  下限60秒）。実処理はWindows専用（`backend/navigator_api.py`が`SymNaviA.dll`を
+  ctypesで直接呼ぶ）で、ジョブごとに独立サブプロセス（`backend/rne_worker.py`）
+  として並列実行する。RNEファイル・`SymNaviA.dll`・`symnavim.conf`は機密/
+  サイト固有のためコミットせず`config/rne_extract/`へPCごとに手動配置する
+  （`config/rne_extract/README.md`参照、`.gitignore`済み）。検証後は
+  `sikalot_source`を戻し忘れないこと（上記と同じ理由）。詳細は
+  `docs/ARCHITECTURE.md`の「仕掛/品質データのローカル運用」節を参照。
 - **フォルダ構成**: `app.py`(エントリポイント)と`start_app.bat`はルート直下。
   それ以外のバックエンドPythonは`backend/`パッケージへ、ローカルDB
   (`master.sqlite3`/`records.sqlite3`、無ければ初回書き込み時に自動生成)は
