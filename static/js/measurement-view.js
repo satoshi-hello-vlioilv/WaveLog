@@ -81,7 +81,7 @@ function applyRightLayout(){
  pane.classList.add('layout-'+layout); activateWorkspace(layout);
  if(layout==='measure'){renderMeasureGrid();updateMeasurementHeading()}
  if(layout==='product')renderProductPanel();
- if(layout==='mother'&&$('#motherQualityInfo'))$('#motherQualityInfo').value=S.measure.qualityInfo||'異常情報なし';
+ if(layout==='mother'&&$('#motherQualityInfo')){const qi=S.measure.qualityInfo||'異常情報なし';$('#motherQualityInfo').value=qi;if($('#motherQualitySum'))$('#motherQualitySum').textContent=qi.split('\n')[0]}
  const summary=$('#toleranceSummary');if(summary&&$('#measureType')?.value==='板厚/板幅')summary.hidden=true;
 }
 /* v33: 「揃い/肉厚/長さ」は縦割数で分割した丈(1〜N)ごとに複数行で保持する。

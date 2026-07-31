@@ -38,6 +38,14 @@ document.addEventListener('click',e=>{
  const link=e.target.closest('.lot-dsp-link');if(!link)return;
  openLotDsp(S.measure?.basic?.lotNo,S.measure?.basic?.castingNo,localStorage.getItem('LotDspLastTabV1')||'1');
 });
+/* 段階的開示(.disclosure)の共通トグル。品質データ分析(qa-acc)で確立した
+   見た目を条割パネル・母材パネル等でも同じ言語で使うための汎用部品
+   (app.cssの.disclosure系クラス参照)。動的に再描画される領域(条割の
+   履歴セクション等)にも効くよう、常時デリゲートで拾う。 */
+document.addEventListener('click',e=>{
+ const head=e.target.closest('.disclosure-head');if(!head)return;
+ head.closest('.disclosure')?.classList.toggle('open');
+});
 /* タブ番号は測定画面には出さず、アプリ設定(使用設備の設定)モーダルの
    内部設定として切り替える。ロット№欄の見た目・サイズは常に元のまま。
    既定値はTab1(実機URLの例に合わせる)。 */

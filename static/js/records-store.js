@@ -32,7 +32,7 @@ function applyContextSnapshot(x){
  optionFill('thicknessGauge',x.thickness_gauges,m.settings.thicknessGauge);optionFill('widthGauge',x.width_gauges,m.settings.widthGauge);
  optionFill('innerDiameter',x.inner_diameters,m.settings.innerDiameter);optionFill('spool',x.spools,m.settings.spool);
  if(x.quality?.length){m.qualityInfo=qualityText(x.quality)}
- $('#qualityInfo').value=m.qualityInfo||'異常情報なし';if($('#motherQualityInfo'))$('#motherQualityInfo').value=$('#qualityInfo').value;
+ $('#qualityInfo').value=m.qualityInfo||'異常情報なし';if($('#motherQualityInfo')){$('#motherQualityInfo').value=$('#qualityInfo').value;if($('#motherQualitySum'))$('#motherQualitySum').textContent=$('#qualityInfo').value.split('\n')[0]}
  $('#masterDiagnostic').textContent=JSON.stringify(x.diagnostics||{},null,2);
 }
 /* 仕掛・品質・マスタの参照データを取得し、スナップショットとして保存データへ

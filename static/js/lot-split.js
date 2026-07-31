@@ -1234,9 +1234,12 @@
         ${open?diffTableHtml(r.diffs,'現在','この時点'):''}</li>`);
     });
     if(items.length===1&&!st.splitSourcesSavedAt)return '';
-    return `<details class="split-history"${st.splitSourcesPending?'':' open'}><summary>子ロットデータの履歴（${items.length}件）</summary>
-      <ul>${items.join('')}</ul>
-      <button type="button" class="split-recheck-btn" id="splitRecheckBtn"${splitUpdateChecking?' disabled':''}>${splitUpdateChecking?'確認中…':'今すぐ更新を確認'}</button></details>`;
+    return `<div class="disclosure split-history${st.splitSourcesPending?'':' open'}">
+      <button type="button" class="disclosure-head"><span class="disclosure-num">履</span><span class="disclosure-title">子ロットデータの履歴</span><span class="disclosure-sum">${items.length}件</span><span class="disclosure-chev"></span></button>
+      <div class="disclosure-body">
+       <ul>${items.join('')}</ul>
+       <button type="button" class="split-recheck-btn" id="splitRecheckBtn"${splitUpdateChecking?' disabled':''}>${splitUpdateChecking?'確認中…':'今すぐ更新を確認'}</button>
+      </div></div>`;
   }
   function splitDataSectionsHtml(){
     return splitPendingSectionHtml()+splitHistorySectionHtml();

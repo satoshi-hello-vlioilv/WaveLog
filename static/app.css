@@ -695,8 +695,29 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 .mother-auto-field output{background:#fff;color:var(--computed-fg)}
 .mother-auto-field output.scrap-width-warn{background:var(--invalid-bg);color:var(--invalid);font-weight:800}
 .mother-quality{margin-top:8px}
-.mother-quality b{display:block;padding:6px 8px;border:1px solid var(--card-border);border-bottom:0;border-radius:var(--radius-card) var(--radius-card) 0 0;background:var(--header-bar-bg);color:var(--header-bar-fg);font-weight:700}
-.mother-quality textarea{width:100%;height:300px;border:1px solid var(--card-border);border-top:0;border-radius:0 0 var(--radius-card) var(--radius-card);resize:none;background:#fff}
+.mother-quality textarea{width:100%;height:280px;border:1px solid var(--card-border);border-radius:8px;resize:none;background:#fff}
+
+/* 段階的開示(アコーディオン)の共通部品。品質データ分析(quality-analysis.js
+   の.qa-acc)で確立した見た目(番号バッジ＋タイトル＋折りたたみ時の要約＋
+   シェブロン)を、他の画面(条割モーダル・母材パネル等)でも同じ言語で
+   使えるよう汎用クラスとして切り出したもの。quality-analysis.js側は
+   .qa-v7専用の見た目調整が多く絡むため、そちらは触れずこちらは独立させる。
+   qa-accと異なり単独開閉(1つ開くと他が閉じる、ではなく各項目が独立)とし、
+   既定はopenのまま(情報を不意に隠さない)。 */
+.disclosure{border:1px solid #d6e3e6;border-radius:12px;background:#fff;box-shadow:0 1px 3px #0b2b330a;overflow:hidden}
+.disclosure+.disclosure{margin-top:var(--space-2)}
+.disclosure-head{display:flex;align-items:center;gap:10px;width:100%;padding:9px 12px;border:0;background:#fff;cursor:pointer;text-align:left;box-shadow:none;border-radius:0}
+.disclosure-head:hover{background:#f4fbfc}
+.disclosure-num{display:grid;place-items:center;width:22px;height:22px;border-radius:7px;background:#dceff1;color:#0a6570;font-size:11px;font-weight:900;flex:0 0 auto}
+.disclosure.open .disclosure-num{background:var(--teal);color:#fff}
+.disclosure-title{font-size:13px;font-weight:800;color:#143842;flex:0 0 auto}
+.disclosure-sum{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;color:#0a6570;font-size:12px;font-weight:700}
+.disclosure.open .disclosure-sum{display:none}
+.disclosure-chev{flex:0 0 auto;width:8px;height:8px;border-right:2px solid #6d8990;border-bottom:2px solid #6d8990;transform:rotate(-45deg);transition:transform .18s ease}
+.disclosure.open .disclosure-chev{transform:rotate(45deg)}
+.disclosure-body{display:none;padding:0 12px 12px}
+.disclosure.open .disclosure-body{display:block}
+@media(prefers-reduced-motion:reduce){.disclosure-chev{transition:none}}
 
 .product-panel{display:grid;gap:var(--space-2)}
 .product-head,.flatness-table-head{display:flex;justify-content:space-between;align-items:center;gap:var(--space-2);padding:7px 9px;background:var(--header-bar-bg);color:var(--header-bar-fg);border:1px solid var(--line)}
@@ -1071,7 +1092,7 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .measure-head h1{font-size:20px}
 .panel-title:not(.row-title),.row-title>span:first-child,
 .analysis h3,.quality h3,.editor-head h3,.measure-grid-block-title,
-.work-time-title b,.product-head b,.flatness-table-head b,.mother-quality b,
+.work-time-title b,.product-head b,.flatness-table-head b,
 .measure-shell h2,.split-dialog h3{
   font-size:var(--fs-title);
 }
@@ -2080,9 +2101,10 @@ body.connection-lost .layout{padding-top:52px}
 .split-update-actions button:disabled{background:#c9d4d6; border-color:#c9d4d6; cursor:not-allowed}
 .split-update-actions .split-update-secondary{background:#fff; color:var(--nav); border-color:var(--line); font-weight:600}
 .split-update-actions .split-update-secondary:hover{background:#f2f6f7}
-/* 履歴。既定は折りたたみ、更新提案が出ているときだけ開いた状態で描画する。 */
+/* 履歴。既定は展開、更新提案が出ているときだけ折りたたんだ状態で描画する
+   (更新提案側の確認を優先させるため)。開閉の見た目自体は.disclosure
+   共通部品(段階的開示パターン)を使う。 */
 .split-history{margin-top:8px; font-size:12px}
-.split-history>summary{cursor:pointer; color:var(--nav); font-weight:700; padding:3px 0}
 .split-history ul{list-style:none; margin:4px 0 6px; padding:0}
 .split-history li{padding:3px 0; border-top:1px solid var(--pale); line-height:1.5}
 .split-history li.split-history-current{color:var(--computed-fg); border-top:0}
