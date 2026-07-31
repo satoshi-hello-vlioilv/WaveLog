@@ -205,15 +205,25 @@
     // 鍵付きプリセットを先に処理し、複数プリセットに同一条件がまたがる
     // 場合も鍵の状態が優先されるようにする。
     const ordered=[...matches].sort((a,b)=>Number(lockedIds.has(String(b.id)))-Number(lockedIds.has(String(a.id))));
-    const merged=[],seen=new Set();
+    /* 呼び出し元(selectTable)がここより前にrestoreActiveFilterState()で
+       復元済みの、このテーブル向けの非鍵付き(手動追加)条件へ重ね合わせる。
+       以前はS.genericFiltersを丸ごと置き換えており、デフォルトフィルタが
+       設定されたテーブルでは、タブを切り替えて戻るたびに手動で追加した
+       検索条件が無警告で消えていた。 */
+    const seen=new Set(S.genericFilters.map(filterKey));
     ordered.forEach(p=>{
       const locked=lockedIds.has(String(p.id));
       (p.filters||[]).forEach(f=>{
         const k=filterKey(f);
-        if(!seen.has(k)){seen.add(k);merged.push(locked?{...f,locked:true}:{...f})}
+        if(!seen.has(k)){
+          seen.add(k);S.genericFilters.push(locked?{...f,locked:true}:{...f});
+        }else if(locked){
+          const idx=S.genericFilters.findIndex(x=>filterKey(x)===k);
+          if(idx>=0&&!S.genericFilters[idx].locked)S.genericFilters[idx]={...S.genericFilters[idx],locked:true};
+        }
       });
     });
-    S.genericFilters=merged;S.page=1;
+    S.page=1;
     showToast?.('デフォルトフィルタを適用しました',matches.map(p=>p.name).join(' / '),3200);
   }
 
