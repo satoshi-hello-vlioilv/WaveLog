@@ -290,6 +290,18 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 .measure-head>div:first-child{min-width:0;overflow:hidden}
 .measure-head small{color:var(--teal);font-weight:800;letter-spacing:.1em}
 .measure-head h1{margin:2px 0 0;font-size:var(--fs-lg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* ヘッダー固定のミニ進捗表示(#railProgressと同じ集計をmeasure-progress.js
+   から複製表示)。左端の操作レールは縦に長くなると視界から外れ得るが、
+   ヘッダーは常に見えているため、タブ・入力内容を切り替えていても進捗が
+   常時見える場所として設ける。 */
+.measure-head-progress{display:flex;align-items:center;gap:8px;flex:0 0 auto;padding:0 16px;border-left:1px solid var(--line);border-right:1px solid var(--line);height:34px}
+.measure-head-progress-label{font-size:var(--fs-micro);font-weight:800;color:#5c7178;letter-spacing:.04em;white-space:nowrap}
+.measure-head-progress-bar{width:70px;height:7px;border-radius:4px;background:var(--bg);border:1px solid var(--muted-border);overflow:hidden}
+.measure-head-progress-bar i{display:block;height:100%;background:var(--teal);transition:width .2s}
+.measure-head-progress-bar--done i{background:var(--success)}
+.measure-head-progress-frac{min-width:34px;text-align:right;font-size:13px;font-weight:800;color:var(--nav);font-variant-numeric:tabular-nums}
+@media(prefers-reduced-motion:reduce){.measure-head-progress-bar i{transition:none}}
+@media(max-width:1180px){.measure-head-progress-label{display:none}.measure-head-progress{padding:0 10px;gap:6px}.measure-head-progress-bar{width:44px}}
 .save-state{display:flex;align-items:center;gap:var(--space-3);min-width:250px;justify-content:flex-end;flex:0 0 auto}
 .save-state #localState{padding:4px 9px;border-radius:12px;background:var(--warn-bg);color:var(--warn-fg);max-width:210px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .save-state button{border:0;font-size:24px;box-shadow:none;background:transparent}
