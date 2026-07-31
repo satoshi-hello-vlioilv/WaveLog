@@ -8,5 +8,9 @@
  "_sikalotdef_comment": "品質データ(SIKALOTDEF)の読み込み先。既定は工場側共有上のSIKALOTDEF.accdb。拡張子を.sqlite3にするとSQLiteとして自動的に読み込む。",
  "sikalotdef_path": null,
  "_records_backup_export_comment": "測定データバックアップ(records.sqlite3)を、閲覧用に複製する追加の出力先。未設定なら複製しない。Box等のクラウド同期フォルダを指定すると、他端末からは閲覧モードでこの複製を読める(書き込みは常にローカルのrecords.sqlite3のみ)。変化があった場合に限り、一定間隔でまとめて複製する(負荷軽減のため)。",
- "records_backup_export_path": null
+ "records_backup_export_path": null,
+ "_sikalot_source_comment": "仕掛(SIKALOTNOW)・品質データ(SIKALOTDEF)の読み込み元をまとめて切り替える。既定(null/'network')は工場側共有上のAccessファイルをそのまま読む。'local'にすると、WaveLog自身がRNE経由で定期的に抽出・更新するローカルSQLite3(db/sikalotnow.sqlite3・db/sikalotdef.sqlite3)を読む運用に切り替わる(ネットワーク共有への到達性が無い/不安定な環境向け)。RNEファイル・SymNaviA.dll・symnavim.confの配置はconfig/rne_extract/README.mdを参照。sikalotnow_path/sikalotdef_pathを明示指定した場合はそちらが常に優先される。",
+ "sikalot_source": null,
+ "_rne_extract_interval_comment": "sikalot_source='local'のときのRNE抽出間隔(秒)。未設定なら900秒(15分)。現場の負荷/鮮度要件に応じて変更できる(60秒未満は60秒に切り上げる)。次の周回から反映されるため、変更にアプリの再起動は不要。",
+ "rne_extract_interval_sec": null
 }

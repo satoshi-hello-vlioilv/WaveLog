@@ -1,0 +1,9 @@
+; symnavim.conf.example
+; このファイルをコピーして config/rne_extract/symnavim.conf として保存し、
+; 実際の接続情報を記入してください(symnavim.confはgitignore済みでコミットされません)。
+; セクション名は任意ですが、Connect_ で始めるのが慣例です。
+
+[Connect_Shikakari]
+SymNaviServer=YourNaviServerName
+SymNaviUSERID=your-user-id
+SymNaviPasswd=your-password

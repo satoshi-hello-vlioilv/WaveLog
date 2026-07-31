@@ -38,5 +38,12 @@ WATCHDOG_CHECK_INTERVAL_SEC=10
 # 無駄な複製は増えない(負荷軽減より鮮度を優先したい場合はここを短くする)。
 RECORDS_BACKUP_EXPORT_INTERVAL_SEC=600
 
+# 仕掛/品質データのローカル運用(config/local.jsonの"sikalot_source"="local")時、
+# RNEから抽出する既定間隔。現場ごとに負荷/鮮度要件が異なり変更したいという
+# 要望があったため、他の間隔値と異なりconfig/local.jsonの
+# "rne_extract_interval_sec"で上書きできるようにしてある(この値は未設定時の
+# 既定値)。
+RNE_EXTRACT_INTERVAL_SEC_DEFAULT=900
+
 def app_url():
  return f'http://{HOST}:{PORT}/'
