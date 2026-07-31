@@ -561,6 +561,7 @@
         <div class="numberline-tick lower"><b><span>下限</span>${esc(formatTol(kind,low))}</b></div>
         ${dots.join('')}
         ${mark}
+        <div class="numberline-pending" id="numberlinePending" hidden></div>
       </div>`;
     };
   }

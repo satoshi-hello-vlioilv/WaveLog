@@ -1218,6 +1218,13 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .numberline-swarm-dot{position:absolute;left:var(--nl-track);width:8px;height:8px;border-radius:50%;transform:translate(-50%,-50%);z-index:5;box-shadow:0 0 0 1px #fff;transition:left .15s ease}
 .numberline-swarm-dot.ok{background:var(--teal)}
 .numberline-swarm-dot.ng{background:#d02e2e}
+/* 公差NGの先読み警告: 受信欄への転送中(確定前)の値を、リング状のマーカーで
+   その場所に速報表示する。確定済みの.numberline-measureとは見た目を変え
+   (輪郭のみ・点滅)、「まだ確定していない」ことが一目でわかるようにする。 */
+.numberline-pending{position:absolute;left:var(--nl-track);width:16px;height:16px;border-radius:50%;transform:translate(-50%,-50%);z-index:7;border:3px solid var(--success);box-shadow:0 0 0 2px #fff;pointer-events:none;animation:numberline-pending-pulse 1s ease-in-out infinite}
+.numberline-pending.ng{border-color:var(--danger)}
+@keyframes numberline-pending-pulse{0%,100%{opacity:1;transform:translate(-50%,-50%) scale(1)}50%{opacity:.55;transform:translate(-50%,-50%) scale(1.25)}}
+@media(prefers-reduced-motion:reduce){.numberline-pending{animation:none}}
 
 /* ---- 汎用フィルタ バー ---- */
 .generic-filter-bar{margin:6px 14px 0;border:1px solid #b9c9ce;border-radius:8px;background:#fff;overflow:hidden}
