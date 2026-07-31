@@ -303,7 +303,7 @@
     const parent=await findParentLotFor(row);
     if(!parent)return row;
     const childLotNo=pick(row,'lotNo'),parentLotNo=pick(parent,'lotNo');
-    const useParent=confirm(`このロット(${childLotNo})は分割後の子ロットです。\n親ロット(${parentLotNo})のデータを開きますか？\n\n「キャンセル」を選ぶと、このまま子ロットのデータで開きます(データが不完全な場合があります)。`);
+    const useParent=await confirmModal(`このロット(${childLotNo})は分割後の子ロットです。\n親ロット(${parentLotNo})のデータを開きますか？\n\n「キャンセル」を選ぶと、このまま子ロットのデータで開きます(データが不完全な場合があります)。`);
     if(!useParent)return row;
     if(typeof showToast==='function')showToast('親ロットのデータを開きます',`${childLotNo} → ${parentLotNo}`,4200);
     return parent;
@@ -804,6 +804,7 @@
   async function openSplit(){
     if(!S.measure)return;
     $('#splitModal').hidden=false;
+    requestAnimationFrame(()=>$('#closeSplit')?.focus());
     activeLot=null;splitUndoStack=[];
     if(!splitSourcesCache||splitSourcesCacheKey!==currentSplitCacheKey()){
       const box=$('#splitSources');if(box)box.innerHTML='<div class="split-row-loading">子ロット情報を取得しています…</div>';
@@ -833,12 +834,23 @@
     if(typeof renderMeasureGrid==='function')renderMeasureGrid();
     if(typeof updateMeasurementHeading==='function')updateMeasurementHeading();
     refreshSplitStatusPanel();
+    /* 条割「適用」直後だけの一撃アニメーション。refreshSplitStatusPanel()は
+       測定画面を開いた/再開しただけの同期でも呼ばれるため、アニメーション
+       クラスはこの関数(実際に適用ボタンが押された瞬間)側で明示的に付与する。
+       同じクラス名の連続適用でも確実に再生されるよう、一度剥がしてreflowを
+       挟んでから付け直す(CSSアニメーションはクラスの値が変化した時にしか
+       再生されないため)。 */
+    const badge=$('#splitTabBadge');
+    if(badge){badge.classList.remove('split-tab-badge-pop');void badge.offsetWidth;badge.classList.add('split-tab-badge-pop')}
+    const statusEl=document.querySelector('.split-panel-status-applied');
+    if(statusEl){statusEl.classList.remove('just-applied');void statusEl.offsetWidth;statusEl.classList.add('just-applied')}
   }
   window.applySplit=applySplit;
   // 条割変更モーダルの全ボタン結線(このファイルがモーダルの所有者)。
   const applyBtn=$('#applySplit');if(applyBtn)applyBtn.onclick=applySplit;
   const openBtn=$('#openSplit');if(openBtn)openBtn.onclick=openSplit;
   const closeBtn=$('#closeSplit');if(closeBtn)closeBtn.onclick=()=>$('#splitModal').hidden=true;
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('#splitModal')?.hidden){$('#splitModal').hidden=true}},true);
   const undoBtn=$('#undoSplit');if(undoBtn)undoBtn.onclick=()=>{
     const snap=splitUndoStack.pop();if(!snap)return;
     S.measure.settings.splitSequence=snap.seq;
@@ -1076,14 +1088,14 @@
   }
   /* 子ロットデータの差し替え本体(更新適用・復元・未適用分の後追い適用で共有)。
      差し替え前の内容は必ず履歴へ積むため、何度でも元へ戻せる。 */
-  function adoptSplitSources(sources,at,{confirmText,successText,verb='適用'}={}){
+  async function adoptSplitSources(sources,at,{confirmText,successText,verb='適用'}={}){
     const st=S.measure?.settings;
     if(!st||!Array.isArray(sources)||!sources.length)return false;
     const diffs=diffSplitSources(st.splitSourcesCache,sources);
     if(!diffs.length){if(typeof showToast==='function')showToast('現在のデータと同じ内容です','差し替えは行いませんでした');return false}
     const blockers=splitUpdateBlockers(diffs);
     if(blockers.length){alert(blockerMessage(blockers,verb));return false}
-    if(confirmText&&!confirm(confirmText))return false;
+    if(confirmText&&!(await confirmModal(confirmText)))return false;
     const history=Array.isArray(st.splitSourcesHistory)?st.splitSourcesHistory:[];
     history.push({at:st.splitSourcesSavedAt||null,sources:st.splitSourcesCache||[],note:'差し替え前'});
     st.splitSourcesHistory=history.slice(-SPLIT_HISTORY_LIMIT);
@@ -1138,10 +1150,10 @@
   }
   window.checkSplitSourcesUpdate=checkSplitSourcesUpdate;
 
-  function applySplitSourcesUpdate(){
+  async function applySplitSourcesUpdate(){
     const st=S.measure?.settings,pending=st?.splitSourcesPending;
     if(!pending)return;
-    if(adoptSplitSources(pending.sources,pending.at,{successText:'子ロットデータを更新しました',verb:'適用'})){
+    if(await adoptSplitSources(pending.sources,pending.at,{successText:'子ロットデータを更新しました',verb:'適用'})){
       st.splitSourcesPending=null;
       if(typeof setState==='function')setState('子ロットデータを更新しました');
       refreshSplitStatusPanel();
@@ -1165,14 +1177,14 @@
   window.rejectSplitSourcesUpdate=rejectSplitSourcesUpdate;
 
   // 履歴から元の内容へ戻す。
-  function revertSplitSources(index){
+  async function revertSplitSources(index){
     const st=S.measure?.settings;
     const history=Array.isArray(st?.splitSourcesHistory)?st.splitSourcesHistory:[];
     const target=history[index];
     if(!target||!Array.isArray(target.sources)||!target.sources.length)return;
     // adopt内で現在の内容が履歴へ積まれるため、先に対象を履歴から外す。
     history.splice(index,1);
-    const ok=adoptSplitSources(target.sources,target.at,{
+    const ok=await adoptSplitSources(target.sources,target.at,{
       confirmText:`子ロットデータを ${fmtStamp(target.at)} 時点の内容へ戻します。よろしいですか？`,
       successText:'子ロットデータを元に戻しました',verb:'復元'});
     if(!ok)history.splice(index,0,target);   // 失敗時は履歴を元の並びへ復旧
@@ -1182,12 +1194,12 @@
   window.revertSplitSources=revertSplitSources;
 
   // 一度断った更新を後から適用する。
-  function applyRejectedSplitSources(index){
+  async function applyRejectedSplitSources(index){
     const st=S.measure?.settings;
     const rejected=Array.isArray(st?.splitSourcesRejected)?st.splitSourcesRejected:[];
     const target=rejected[index];
     if(!target)return;
-    if(adoptSplitSources(target.sources,target.at,{
+    if(await adoptSplitSources(target.sources,target.at,{
       confirmText:`${fmtStamp(target.at)} に取得した内容を適用します。よろしいですか？`,
       successText:'子ロットデータを更新しました',verb:'適用'})){
       rejected.splice(index,1);
@@ -1234,9 +1246,12 @@
         ${open?diffTableHtml(r.diffs,'現在','この時点'):''}</li>`);
     });
     if(items.length===1&&!st.splitSourcesSavedAt)return '';
-    return `<details class="split-history"${st.splitSourcesPending?'':' open'}><summary>子ロットデータの履歴（${items.length}件）</summary>
-      <ul>${items.join('')}</ul>
-      <button type="button" class="split-recheck-btn" id="splitRecheckBtn"${splitUpdateChecking?' disabled':''}>${splitUpdateChecking?'確認中…':'今すぐ更新を確認'}</button></details>`;
+    return `<div class="disclosure split-history${st.splitSourcesPending?'':' open'}">
+      <button type="button" class="disclosure-head"><span class="disclosure-num">履</span><span class="disclosure-title">子ロットデータの履歴</span><span class="disclosure-sum">${items.length}件</span><span class="disclosure-chev"></span></button>
+      <div class="disclosure-body">
+       <ul>${items.join('')}</ul>
+       <button type="button" class="split-recheck-btn" id="splitRecheckBtn"${splitUpdateChecking?' disabled':''}>${splitUpdateChecking?'確認中…':'今すぐ更新を確認'}</button>
+      </div></div>`;
   }
   function splitDataSectionsHtml(){
     return splitPendingSectionHtml()+splitHistorySectionHtml();
@@ -1420,7 +1435,7 @@
       if(row&&S.db==='SIKALOTNOW'){
         const missingInfo=await findMissingChildLots(row);
         if(missingInfo&&missingInfo.missing.length){
-          const proceed=confirm(`このロットは分割データがありますが、次の子ロットが仕掛データに見つかりません:\n${missingInfo.missing.join('、')}\n\n子ロットが仕掛から外れている場合、既に作業済みである可能性が高く、このまま測定を始めると目標幅・公差の一部が欠けたまま判定されます。\n\nこのまま測定を開始しますか？`);
+          const proceed=await confirmModal(`このロットは分割データがありますが、次の子ロットが仕掛データに見つかりません:\n${missingInfo.missing.join('、')}\n\n子ロットが仕掛から外れている場合、既に作業済みである可能性が高く、このまま測定を始めると目標幅・公差の一部が欠けたまま判定されます。\n\nこのまま測定を開始しますか？`);
           if(!proceed)return;
         }
       }

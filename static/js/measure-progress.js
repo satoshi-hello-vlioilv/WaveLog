@@ -154,6 +154,19 @@ function lengthLabel(li){
  return String(li+1);
 }
 
+/* ヘッダー固定のミニ進捗表示。操作レール(#railProgress)は左端の縦長パネル
+   内にあり、レールが長くなる・画面を狭くすると視界から外れ得る。ヘッダーは
+   常に画面最上部に固定されているため、タブや入力内容を切り替えていても
+   進捗(何項目済みか)が常に見える場所として、同じ集計をもう一箇所だけ
+   ごく小さく複製する。 */
+function headProgressHtml(p){
+ const pct=p.activeCount?Math.round(p.doneCount/p.activeCount*100):0;
+ const cls=pct>=100?'done':pct>0?'part':'todo';
+ return `<span class="measure-head-progress-label">進捗</span>`
+  +`<span class="measure-head-progress-bar measure-head-progress-bar--${cls}"><i style="width:${pct}%"></i></span>`
+  +`<span class="measure-head-progress-frac">${p.doneCount}/${p.activeCount}</span>`;
+}
+
 function refreshMeasureProgress(){
  const m=S.measure;if(!m)return;
  const chipBox=$('#measureTypeChips'),select=$('#measureType');
@@ -169,6 +182,8 @@ function refreshMeasureProgress(){
  }
  const rail=$('#railProgress');
  if(rail)rail.innerHTML=railHtml(p,m);
+ const head=$('#headProgress');
+ if(head)head.innerHTML=headProgressHtml(p);
 }
 
 /* ---------- 対象外の切替 ---------- */

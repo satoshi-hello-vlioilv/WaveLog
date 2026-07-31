@@ -5,6 +5,31 @@ function nums(a){return a.flat().map(Number).filter(Number.isFinite).filter(x=>x
 function renderStats(){const types=[['板厚','thickness',3],['板幅','width',2],['バリ','burr',3],['ラテラルボー','lateral',1],['巻きずれ','offset',1],['テレスコープ','telescope',1]];$('#stats').innerHTML=types.map(([l,k,d])=>{const s=stat(S.measure.measurements[k]);return `<tr><th>${l}</th>${s.slice(0,4).map(v=>`<td>${v===''?'':Number(v).toFixed(d)}</td>`).join('')}<td>${s[4]}</td></tr>`}).join('')}
 function deviceParse(raw){const manual=S.measure?.settings?.inputMode==='manual',v=(manual?String(raw||''):toHalfWidth(String(raw||''))).trim().toUpperCase();if(v==='#DELETEMODE#'||v==='DELETE')return{device:'delete',value:null};if(v.includes('+#L')){const num=Number(v.split('+#L')[1]);return{device:'tape',value:Number.isFinite(num)?num:null}}if(!v.includes('+'))return Number.isFinite(Number(v))?{device:'manual',value:Number(v)}:{device:'invalid',value:null};const [code,data]=v.split('+');let device='invalid';if(code.startsWith('DT1')){const kind=code.slice(-2,-1);device=kind==='0'?'micrometer':kind==='1'?'caliper':kind==='2'?'depth':'invalid'}const num=Number(String(data).replace(/M$/,''));return{device,value:Number.isFinite(num)?num:null}}
 function activeMeasureKey(){return({母材:'mother', '板厚/板幅':'width',ラテラルボー:'lateral',バリ:'burr',テレスコープ:'telescope',巻ずれ:'offset',フラットネス:'flatness'})[$('#measureType').value]||'width'}
+/* 公差NGの先読み警告: 受信欄(#deviceInput)へ転送中の生データを、確定(Tab/Enter)
+   前の時点でその都度deviceParseし、どの項目(kind)へ入るかを判定できれば
+   数直線(#numberlinePending)へ即座にプレビュー表示する。実際に書き込みは
+   せず読み取りのみのため、転送中はvalueへ一切手を入れないという既存の
+   制約(processDeviceInputCore側の注記参照)には影響しない。 */
+function numberlinePendingKind(raw){
+ const type=$('#measureType')?.value,p=deviceParse(raw);
+ if(!p||p.device==='invalid'||p.device==='delete'||p.value===null)return null;
+ if(type==='板厚/板幅')return['caliper','tape','manual'].includes(p.device)?'width':null;
+ if(type==='バリ')return['micrometer','manual'].includes(p.device)?'burr':null;
+ if(type==='テレスコープ')return['depth','manual'].includes(p.device)?'telescope':null;
+ const key=activeMeasureKey();
+ return(key==='mother'||key==='flatness')?null:key;
+}
+function updateNumberlinePending(raw){
+ const marker=$('#numberlinePending');if(!marker)return;
+ if(!S.measure||S.measure.settings?.inputMode==='manual'||!raw){marker.hidden=true;return}
+ const kind=numberlinePendingKind(raw);
+ if(!kind){marker.hidden=true;return}
+ const facts=typeof compactToleranceFacts==='function'?compactToleranceFacts(kind):null,range=facts&&facts.range;
+ if(!range){marker.hidden=true;return}
+ const v=deviceParse(raw).value,low=range[0],high=range[1],span=Math.max(high-low,.000001),viewLow=low-span*.25,viewHigh=high+span*.25;
+ const pos=Math.max(3,Math.min(97,(viewHigh-v)/(viewHigh-viewLow)*100)),ng=v<low||v>high;
+ marker.hidden=false;marker.className='numberline-pending'+(ng?' ng':' ok');marker.style.top=pos+'%';
+}
 /* 板厚/板幅は測定器の種別(マイクロメータ/ノギス等)でデータが自動的に
    板厚・板幅へ振り分けられるため、どちらを先に測っても問題ない設計。
    このため次の入力先を1箇所だけに絞らず、板厚・板幅それぞれの次入力
@@ -133,6 +158,7 @@ $('#deviceInput').oninput=()=>{
  if(S.measure?.settings?.inputMode==='manual')return;
  clearTimeout(deviceAutoCommitTimer);
  const inp=$('#deviceInput');
+ updateNumberlinePending(inp.value);
  deviceAutoCommitTimer=setTimeout(()=>{if(inp&&inp.value.trim())processDeviceInput(inp.value)},220);
 };
 $('#deviceInput').onkeydown=e=>{

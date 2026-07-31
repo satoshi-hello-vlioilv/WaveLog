@@ -16,8 +16,15 @@
 - 対象データ一覧は残り領域いっぱいに表示。
 ============================================================ */
 (function(){
- const baseColors={teal:'#087c89',blue:'#2563eb',green:'#16a34a',orange:'#f59e0b',red:'#dc2626',purple:'#7c3aed',slate:'#334155',pink:'#db2777'};
- const stackPalette=['#087c89','#2563eb','#16a34a','#f59e0b','#dc2626','#7c3aed','#0f766e','#e11d48','#64748b','#84cc16','#06b6d4','#a855f7','#94a3b8','#f97316'];
+ const baseColors={teal:'#05a1b2',blue:'#2563eb',green:'#16a34a',orange:'#f59e0b',red:'#dc2626',purple:'#7c3aed',slate:'#334155',pink:'#db2777'};
+ // ブランド基調色(teal)を起点に、dataviz手法の8色categorical検証(色覚シミュレーションCVD分離・
+ // 明度/彩度帯・コントラスト)を通した固定順の8色。順序を変えると検証結果が変わるため変更不可。
+ // 検証: node scripts/validate_palette.js "<このカンマ区切り>" --mode light --surface "#ffffff"
+ const stackPalette=['#05a1b2','#dc2626','#f59e0b','#db2777','#2563eb','#16a34a','#7c3aed','#039580'];
+ // stack_keysが8件を超えるとbackend側で超過分を「その他」へ集約するが(quality.py)、
+ // 8色循環にそのまま巻き込むと9件目の色が1件目と衝突するため、専用の中立色で固定する。
+ const OTHER_COLOR='#94a3b8';
+ function seriesColor(key,i){return String(key)==='その他'?OTHER_COLOR:stackPalette[i%stackPalette.length]}
  /* type: [value,label,{flags}]  orient:v/h, bar, line, area, stack, pct, pie, donut, combo */
  const CHART_TYPES=[
   ['col','縦棒（集合）',{orient:'v',bar:1}],
@@ -245,7 +252,7 @@
    const textW=Math.max(20,[...label].reduce((w,ch)=>w+(/[\x00-\xff]/.test(ch)?6.4:11.5),0));
    const itemW=chipW+4+textW+padX;
    if(cx+itemW>maxW&&cx>0){cx=0;rows++}
-   placements.push({label,row:rows-1,x:cx,col:stackPalette[i%stackPalette.length]});
+   placements.push({label,row:rows-1,x:cx,col:seriesColor(k,i)});
    cx+=itemW;
   });
   return {placements,rows,rowH};
@@ -289,17 +296,17 @@
   const bw=bandWidth(slot,barFactor(),3);
   let body='';
   if(combo){
-   if(stack&&hasSeries){body+=items.map((it,i)=>{const cx=x(i);let acc=0;return keys.map((k,si)=>{const v=Number(it.stacks?.[k]?.[metric]||0);if(!v)return '';const yy=yB(acc+v),hh=yB(acc)-yy;acc+=v;return `<rect x="${cx-bw/2}" y="${yy}" width="${bw}" height="${Math.max(1,hh)}" fill="${stackPalette[si%stackPalette.length]}" opacity=".85"><title>${html(it.label)} / ${html(k)}: ${fmt(v)}</title></rect>`}).join('')}).join('')}
+   if(stack&&hasSeries){body+=items.map((it,i)=>{const cx=x(i);let acc=0;return keys.map((k,si)=>{const v=Number(it.stacks?.[k]?.[metric]||0);if(!v)return '';const yy=yB(acc+v),hh=yB(acc)-yy;acc+=v;return `<rect x="${cx-bw/2}" y="${yy}" width="${bw}" height="${Math.max(1,hh)}" fill="${seriesColor(k,si)}" opacity=".85"><title>${html(it.label)} / ${html(k)}: ${fmt(v)}</title></rect>`}).join('')}).join('')}
    else{body+=items.map((it,i)=>{const v=Number(it[barMetric]||0);return `<rect x="${x(i)-bw/2}" y="${yB(v)}" width="${bw}" height="${Math.max(1,T+plotH-yB(v))}" rx="3" fill="${color}" opacity=".5"><title>${html(it.label)} 棒(${METRIC_LABEL[barMetric]}): ${fmt(v)}</title></rect>`}).join('')}
    const pts=items.map((it,i)=>`${x(i)},${yL(Number(it[lineMetric]||0))}`).join(' ');
    body+=`<polyline class="qa-line" points="${pts}" stroke="${color}"></polyline>`+items.map((it,i)=>`<circle class="qa-point" cx="${x(i)}" cy="${yL(Number(it[lineMetric]||0))}" r="4" fill="${color}"><title>${html(it.label)} 線(${METRIC_LABEL[lineMetric]}): ${fmt(Number(it[lineMetric]||0))}</title></circle>`).join('');
    if(showVal)body+=items.map((it,i)=>`<text class="qa-value" x="${x(i)}" y="${yL(Number(it[lineMetric]||0))-7}" text-anchor="middle">${fmt(Number(it[lineMetric]||0))}</text>`).join('');
   }else if(hasSeries&&stack){
-   body=items.map((it,i)=>{const total=stackTotal(it)||1;let acc=0;const cx=x(i);const segs=keys.map((k,si)=>{let v=Number(it.stacks?.[k]?.[metric]||0);if(!v)return '';let disp=pct?v/total*100:v;const yy=yB(acc+disp),hh=yB(acc)-yy;acc+=disp;return `<rect x="${cx-bw/2}" y="${yy}" width="${bw}" height="${Math.max(1,hh)}" fill="${stackPalette[si%stackPalette.length]}"><title>${html(it.label)} / ${html(k)}: ${fmt(v)}</title></rect>`}).join('');const lab=showVal&&!pct?`<text class="qa-value" x="${cx}" y="${yB(stackTotal(it))-6}" text-anchor="middle">${fmt(stackTotal(it))}</text>`:'';return segs+lab}).join('');
+   body=items.map((it,i)=>{const total=stackTotal(it)||1;let acc=0;const cx=x(i);const segs=keys.map((k,si)=>{let v=Number(it.stacks?.[k]?.[metric]||0);if(!v)return '';let disp=pct?v/total*100:v;const yy=yB(acc+disp),hh=yB(acc)-yy;acc+=disp;return `<rect x="${cx-bw/2}" y="${yy}" width="${bw}" height="${Math.max(1,hh)}" fill="${seriesColor(k,si)}"><title>${html(it.label)} / ${html(k)}: ${fmt(v)}</title></rect>`}).join('');const lab=showVal&&!pct?`<text class="qa-value" x="${cx}" y="${yB(stackTotal(it))-6}" text-anchor="middle">${fmt(stackTotal(it))}</text>`:'';return segs+lab}).join('');
   }else if(hasSeries){
    const clusterW=bandWidth(slot,barFactor(),10),innerGap=Math.min(4,clusterW/keys.length*0.15);
    const gw=Math.max(3,clusterW/keys.length-innerGap),groupW=gw*keys.length+innerGap*(keys.length-1);
-   body=items.map((it,i)=>{const x0=x(i)-groupW/2;return keys.map((k,si)=>{const v=Number(it.stacks?.[k]?.[metric]||0);return `<rect x="${x0+si*(gw+innerGap)}" y="${yB(v)}" width="${gw}" height="${Math.max(1,T+plotH-yB(v))}" rx="2" fill="${stackPalette[si%stackPalette.length]}"><title>${html(it.label)} / ${html(k)}: ${fmt(v)}</title></rect>`}).join('')}).join('');
+   body=items.map((it,i)=>{const x0=x(i)-groupW/2;return keys.map((k,si)=>{const v=Number(it.stacks?.[k]?.[metric]||0);return `<rect x="${x0+si*(gw+innerGap)}" y="${yB(v)}" width="${gw}" height="${Math.max(1,T+plotH-yB(v))}" rx="2" fill="${seriesColor(k,si)}"><title>${html(it.label)} / ${html(k)}: ${fmt(v)}</title></rect>`}).join('')}).join('');
   }else if(line){
    const pts=items.map((it,i)=>`${x(i)},${yB(Number(it[metric]||0))}`).join(' ');body=`<polyline class="qa-line" points="${pts}" stroke="${color}"></polyline>`+items.map((it,i)=>`<circle class="qa-point" cx="${x(i)}" cy="${yB(Number(it[metric]||0))}" r="4" fill="${color}"><title>${html(it.label)}: ${fmt(Number(it[metric]||0))}</title></circle>`).join('');
    if(showVal){const st=Math.ceil(items.length/18||1);body+=items.map((it,i)=>i%st===0?`<text class="qa-value" x="${x(i)}" y="${yB(Number(it[metric]||0))-7}" text-anchor="middle">${fmt(Number(it[metric]||0))}</text>`:'').join('')}
@@ -341,11 +348,11 @@
   let grid='';for(let r=0;r<=4;r++){const gx=L+plotW*r/4,gv=(pct&&hasSeries&&stack?100:max)*r/4;grid+=`<line class="qa-gridline" x1="${gx}" y1="${T}" x2="${gx}" y2="${H2-B}"></line><text class="qa-label" x="${gx}" y="${H2-B+16}" text-anchor="middle">${pct&&hasSeries&&stack?Math.round(gv)+'%':fmt(gv)}</text>`}
   let body='';
   if(hasSeries&&stack){
-   body=items.map((it,i)=>{const total=stackTotal(it)||1;let acc=0;const yy=yrow(i);const segs=keys.map((k,si)=>{let v=Number(it.stacks?.[k]?.[metric]||0);if(!v)return '';let disp=pct?v/total*100:v;const x0=xv(acc),w=xv(acc+disp)-x0;acc+=disp;return `<rect x="${x0}" y="${yy}" width="${Math.max(1,w)}" height="${rowH}" fill="${stackPalette[si%stackPalette.length]}"><title>${html(it.label)} / ${html(k)}: ${fmt(v)}</title></rect>`}).join('');const lab=showVal&&!pct?`<text class="qa-value" x="${xv(stackTotal(it))+6}" y="${yy+rowH/2+4}">${fmt(stackTotal(it))}</text>`:'';return segs+lab}).join('');
+   body=items.map((it,i)=>{const total=stackTotal(it)||1;let acc=0;const yy=yrow(i);const segs=keys.map((k,si)=>{let v=Number(it.stacks?.[k]?.[metric]||0);if(!v)return '';let disp=pct?v/total*100:v;const x0=xv(acc),w=xv(acc+disp)-x0;acc+=disp;return `<rect x="${x0}" y="${yy}" width="${Math.max(1,w)}" height="${rowH}" fill="${seriesColor(k,si)}"><title>${html(it.label)} / ${html(k)}: ${fmt(v)}</title></rect>`}).join('');const lab=showVal&&!pct?`<text class="qa-value" x="${xv(stackTotal(it))+6}" y="${yy+rowH/2+4}">${fmt(stackTotal(it))}</text>`:'';return segs+lab}).join('');
   }else if(hasSeries){
    const clusterH=bandWidth(stride,barFactor(),10),innerGap=Math.min(3,clusterH/keys.length*0.15);
    const gh=Math.max(2,clusterH/keys.length-innerGap);
-   body=items.map((it,i)=>{const y0=yrow(i,clusterH);return keys.map((k,si)=>{const v=Number(it.stacks?.[k]?.[metric]||0);return `<rect x="${L}" y="${y0+si*(gh+innerGap)}" width="${Math.max(1,xv(v)-L)}" height="${gh}" fill="${stackPalette[si%stackPalette.length]}"><title>${html(it.label)} / ${html(k)}: ${fmt(v)}</title></rect>`}).join('')}).join('');
+   body=items.map((it,i)=>{const y0=yrow(i,clusterH);return keys.map((k,si)=>{const v=Number(it.stacks?.[k]?.[metric]||0);return `<rect x="${L}" y="${y0+si*(gh+innerGap)}" width="${Math.max(1,xv(v)-L)}" height="${gh}" fill="${seriesColor(k,si)}"><title>${html(it.label)} / ${html(k)}: ${fmt(v)}</title></rect>`}).join('')}).join('');
   }else{
    body=items.map((it,i)=>{const v=Number(it[metric]||0),yy=yrow(i);const lab=showVal?`<text class="qa-value" x="${xv(v)+6}" y="${yy+rowH/2+4}">${fmt(v)}</text>`:'';return `<rect x="${L}" y="${yy}" width="${Math.max(1,xv(v)-L)}" height="${rowH}" rx="3" fill="${color}" opacity=".9"><title>${html(it.label)}: ${fmt(v)}</title></rect>${lab}`}).join('');
   }
@@ -366,7 +373,7 @@
   const topH=12+titleH+subtitleH,bottomH=legendH+10;
   const cx=W/2,cy=topH+(H-topH-bottomH)/2,r=Math.max(40,Math.min(W-32,H-topH-bottomH)/2-14),ir=donut?r*0.56:0;
   let a0=-Math.PI/2,arcs='';
-  items.forEach((it,i)=>{const v=Number(it[metric]||0),frac=v/total,a1=a0+frac*2*Math.PI,col=stackPalette[i%stackPalette.length];arcs+=`<path d="${arcPath(cx,cy,r,ir,a0,a1)}" fill="${col}" stroke="#fff" stroke-width="2"><title>${html(it.label)}: ${fmt(v)} (${(frac*100).toFixed(1)}%)</title></path>`;if(showVal&&frac>=0.04){const mid=(a0+a1)/2,lr=ir>0?(r+ir)/2:r*0.62,[lx,ly]=polar(cx,cy,lr,mid);arcs+=`<text class="qa-pie-label" x="${lx}" y="${ly}" text-anchor="middle">${Math.round(frac*100)}%</text>`}a0=a1});
+  items.forEach((it,i)=>{const v=Number(it[metric]||0),frac=v/total,a1=a0+frac*2*Math.PI,col=seriesColor(it.label,i);arcs+=`<path d="${arcPath(cx,cy,r,ir,a0,a1)}" fill="${col}" stroke="#fff" stroke-width="2"><title>${html(it.label)}: ${fmt(v)} (${(frac*100).toFixed(1)}%)</title></path>`;if(showVal&&frac>=0.04){const mid=(a0+a1)/2,lr=ir>0?(r+ir)/2:r*0.62,[lx,ly]=polar(cx,cy,lr,mid);arcs+=`<text class="qa-pie-label" x="${lx}" y="${ly}" text-anchor="middle">${Math.round(frac*100)}%</text>`}a0=a1});
   const center=donut?`<text x="${cx}" y="${cy-4}" text-anchor="middle" class="qa-donut-total">${fmt(total)}</text><text x="${cx}" y="${cy+16}" text-anchor="middle" class="qa-donut-sub">${METRIC_LABEL[metric]||''}</text>`:'';
   const head=(title?`<text class="qa-chart-title" x="${W/2}" y="16" text-anchor="middle">${html(title)}</text>`:'')+(subtitle?`<text class="qa-chart-subtitle" x="${W/2}" y="${16+titleH}" text-anchor="middle">${html(subtitle)}</text>`:'');
   const legendRow=legendSvg(legendInfo,Math.max(8,(W-Math.max(...legendInfo.placements.map(p=>p.x),0))/2-70),H-legendH+8);
@@ -375,8 +382,8 @@
 
  function legend(data,items,metric,flags,hasSeries){
   if(flags.combo){const bm=val('qaBarMetric')||'count',lm=val('qaLineMetric')||'sum';return `<span class="qa-lg"><i class="sw" style="background:${baseColor()};opacity:.5"></i>棒: ${METRIC_LABEL[bm]}</span><span class="qa-lg"><i class="ln" style="background:${baseColor()}"></i>折れ線: ${METRIC_LABEL[lm]}</span>`}
-  if(flags.pie){return `<div class="qa-stack-legend">${items.map((it,i)=>`<span><i style="background:${stackPalette[i%stackPalette.length]}"></i>${html(ell(it.label,16))}</span>`).join('')}</div>`}
-  if(hasSeries)return `<div class="qa-stack-legend">${(data.stack_keys||[]).map((k,i)=>`<span><i style="background:${stackPalette[i%stackPalette.length]}"></i>${html(k)}</span>`).join('')}</div>`;
+  if(flags.pie){return `<div class="qa-stack-legend">${items.map((it,i)=>`<span><i style="background:${seriesColor(it.label,i)}"></i>${html(ell(it.label,16))}</span>`).join('')}</div>`}
+  if(hasSeries)return `<div class="qa-stack-legend">${(data.stack_keys||[]).map((k,i)=>`<span><i style="background:${seriesColor(k,i)}"></i>${html(k)}</span>`).join('')}</div>`;
   return `<span class="qa-color-dot" style="background:${baseColor()}"></span>${METRIC_LABEL[metric]||''}`;
  }
 

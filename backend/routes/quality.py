@@ -125,7 +125,7 @@ def quality_analysis():
   else:items=sorted(items,key=lambda x:x[metric_key],reverse=True)
   stack_keys=[]
   if stack_col:
-   stack_keys=[x['label'] for x in sorted(stack_totals.values(),key=lambda x:x[metric_key],reverse=True)[:12]]
+   stack_keys=[x['label'] for x in sorted(stack_totals.values(),key=lambda x:x[metric_key],reverse=True)[:8]]
    for item in items:
     raw_stacks=stack_map.get(item['label'],{})
     stacks={}; other={'count':0,'sum':0.0}

@@ -38,6 +38,14 @@ document.addEventListener('click',e=>{
  const link=e.target.closest('.lot-dsp-link');if(!link)return;
  openLotDsp(S.measure?.basic?.lotNo,S.measure?.basic?.castingNo,localStorage.getItem('LotDspLastTabV1')||'1');
 });
+/* 段階的開示(.disclosure)の共通トグル。品質データ分析(qa-acc)で確立した
+   見た目を条割パネル・母材パネル等でも同じ言語で使うための汎用部品
+   (app.cssの.disclosure系クラス参照)。動的に再描画される領域(条割の
+   履歴セクション等)にも効くよう、常時デリゲートで拾う。 */
+document.addEventListener('click',e=>{
+ const head=e.target.closest('.disclosure-head');if(!head)return;
+ head.closest('.disclosure')?.classList.toggle('open');
+});
 /* タブ番号は測定画面には出さず、アプリ設定(使用設備の設定)モーダルの
    内部設定として切り替える。ロット№欄の見た目・サイズは常に元のまま。
    既定値はTab1(実機URLの例に合わせる)。 */
@@ -79,6 +87,38 @@ function showToast(title, detail='', duration=3400){
  item.innerHTML=`<b>${esc(title)}</b>${detail?`<small>${esc(detail)}</small>`:''}`;
  area.append(item); setTimeout(()=>{item.classList.add('out');setTimeout(()=>item.remove(),220)},duration);
 }
+/* 共通の確認モーダル。ブラウザ標準のconfirm()はアプリの見た目に合わせられず
+   タブ全体をブロックするため、破棄確認・削除確認等はこちらへ統一する
+   (以前はlot-split.js/filters.js/records-store.jsが個別にconfirm()を
+   呼んでいた。records-store.jsの削除確認だけは専用モーダルを持っていたが、
+   それも含めてこの共通モーダルへ一本化する)。
+   opts.message: 通常のテキスト確認(改行はそのまま表示)。
+   opts.bodyHtml: 任意のHTML本文(ロット情報の要約表示等)。指定時はmessageより優先。
+   opts.danger: trueで確定ボタンを危険色にする。文字列を渡した場合はmessage扱い。 */
+function ensureConfirmModal(){
+ let modal=$('#appConfirmModal');if(modal)return modal;
+ modal=document.createElement('div');modal.className='record-modal';modal.id='appConfirmModal';modal.hidden=true;
+ modal.innerHTML=`<div class="settings-dialog confirm-modal-dialog" role="dialog" aria-modal="true"><header><div><small id="appConfirmEyebrow">CONFIRMATION</small><h2 id="appConfirmTitle">確認</h2></div><button id="closeAppConfirm" type="button" aria-label="閉じる">×</button></header><div class="settings-body"><div id="appConfirmBody"></div><div class="settings-actions"><button id="appConfirmCancel" type="button">キャンセル</button><button id="appConfirmOk" type="button">OK</button></div></div></div>`;
+ document.body.append(modal);
+ return modal;
+}
+function confirmModal(opts){
+ const o=typeof opts==='string'?{message:opts}:(opts||{});
+ return new Promise(resolve=>{
+  const modal=ensureConfirmModal();
+  $('#appConfirmEyebrow').textContent=o.eyebrow||'CONFIRMATION';
+  $('#appConfirmTitle').textContent=o.title||'確認';
+  $('#appConfirmBody').innerHTML=o.bodyHtml!==undefined?o.bodyHtml:`<p class="confirm-modal-message">${esc(o.message||'')}</p>`;
+  const cancel=$('#appConfirmCancel'),ok=$('#appConfirmOk'),close=$('#closeAppConfirm');
+  cancel.textContent=o.cancelLabel||'キャンセル';ok.textContent=o.confirmLabel||'OK';ok.className=o.danger?'danger':'';
+  modal.hidden=false;
+  const finish=result=>{modal.hidden=true;resolve(result)};
+  cancel.onclick=()=>finish(false);ok.onclick=()=>finish(true);close.onclick=()=>finish(false);
+  modal.onclick=e=>{if(e.target===modal)finish(false)};
+  requestAnimationFrame(()=>cancel.focus());
+ });
+}
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('#appConfirmModal')?.hidden){$('#appConfirmCancel')?.click()}},true);
 function sourceValue(names){const r=S.measure?.source||S.measure?.snapshot?.source||{};for(const n of names){if(r[n]!==undefined&&r[n]!==null&&String(r[n]).trim()!=='')return String(r[n])}return ''}
 // Database field normalization supports half-width/full-width variants such as ﾌﾟﾗｽ / プラス.
 function normalizedFieldName(name){return String(name||'').normalize('NFKC').replace(/\s+/g,'').toLowerCase()}
@@ -113,6 +153,14 @@ function residualCourseValue(){return sourceField(['残仕掛設備ｺｰｽ','�
 function normalizeCourseText(v){return String(v||'').normalize('NFKC').toUpperCase().replace(/[\s　]+/g,'')}
 function equipmentIsInDesignCourse(equipment,course){const e=normalizeCourseText(equipment),c=normalizeCourseText(course);return !!e&&!!c&&c.includes(e)}
 document.title='測定伝送システム';
+/* レコードのstatus文字列からバッジ用のCSSクラス/表示ラベルを求める共通関数。
+   以前はcalendar-view.js/report-dashboard.jsに同一内容が重複定義され、
+   records-store.jsは一覧行のレンダリングで同じ判定をインラインで
+   再実装していた(コア5ファイル内での同名関数の再定義を避ける方針のため一本化)。 */
+function statusClass(s){return s==='完了'?'done':s==='測定値NG'?'ng':''}
+function statusLabel(s){return s||'編集中'}
+/* 一覧グリッドのように表示幅が狭い場所向けの短縮ラベル(NG登録のみ「NG」と省略)。 */
+function statusShortLabel(s){return s==='測定値NG'?'NG':statusLabel(s)}
 function durationMs(record){const a=record?.workTime?.startAt,b=record?.workTime?.endAt;if(!a||!b)return null;const ms=new Date(b)-new Date(a);return Number.isFinite(ms)&&ms>=0?ms:null}
 function formatDuration(ms){if(ms===null||ms===undefined)return '-';const sec=Math.floor(ms/1000),h=Math.floor(sec/3600),m=Math.floor(sec%3600/60),s=sec%60;return `${h}時間 ${m}分 ${s}秒`}
 /* Measurement precision and zero-order-tolerance correction. */

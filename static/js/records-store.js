@@ -32,7 +32,7 @@ function applyContextSnapshot(x){
  optionFill('thicknessGauge',x.thickness_gauges,m.settings.thicknessGauge);optionFill('widthGauge',x.width_gauges,m.settings.widthGauge);
  optionFill('innerDiameter',x.inner_diameters,m.settings.innerDiameter);optionFill('spool',x.spools,m.settings.spool);
  if(x.quality?.length){m.qualityInfo=qualityText(x.quality)}
- $('#qualityInfo').value=m.qualityInfo||'異常情報なし';if($('#motherQualityInfo'))$('#motherQualityInfo').value=$('#qualityInfo').value;
+ $('#qualityInfo').value=m.qualityInfo||'異常情報なし';if($('#motherQualityInfo')){$('#motherQualityInfo').value=$('#qualityInfo').value;if($('#motherQualitySum'))$('#motherQualitySum').textContent=$('#qualityInfo').value.split('\n')[0]}
  $('#masterDiagnostic').textContent=JSON.stringify(x.diagnostics||{},null,2);
 }
 /* 仕掛・品質・マスタの参照データを取得し、スナップショットとして保存データへ
@@ -262,10 +262,10 @@ $('#backupNow').onclick=async()=>{
   else showToast('Accessバックアップ失敗',`${m.basic.lotNo||''} / ${m.syncState?.lastError||''}（未同期として記録し、後で再送できます）`,7000);
  }catch(e){hideSaveOverlay();alert('バックアップ失敗: '+e.message)}
 };
-$('#discard').onclick=async()=>{if(confirm('端末内の測定データを削除しますか？')){await reliableDelete(S.measure.id);await refreshDraftCount();$('#measureModal').hidden=true}};
+$('#discard').onclick=async()=>{if(await confirmModal('端末内の測定データを削除しますか？')){await reliableDelete(S.measure.id);await refreshDraftCount();$('#measureModal').hidden=true}};
 $('#ngLot').onclick=registerNg;
 {const btn=$('#recordSyncNowBtn');if(btn)btn.onclick=()=>syncPendingRecords({silent:false})}
-function closeMeasureModal(){if(measureDirty&&!confirm('保存されていない変更があります。破棄して閉じますか？'))return;$('#measureModal').hidden=true}
+async function closeMeasureModal(){if(measureDirty&&!(await confirmModal('保存されていない変更があります。破棄して閉じますか？')))return;$('#measureModal').hidden=true}
 $('#closeModal').onclick=closeMeasureModal;$('.shade').onclick=closeMeasureModal;
 /* 編集中データ一覧と完了データ一覧は1つの統合リストとして表示する。
    statuses.editing/doneはそれぞれ独立したトグルで、両方ONにすると
@@ -306,7 +306,7 @@ document.querySelectorAll('.status-filter-btn').forEach(b=>b.onclick=()=>{
    場合は先に警告を出し、ユーザーが承認して初めて状態を「編集中」へ
    戻して保存し、以降の編集を受け付けるようにする(ロック解除の一手間)。 */
 async function unlockCompletedForEdit(x){
- if(!confirm(`このデータ(${x.basic?.lotNo||x.id})はすでに完了しています。\n再編集すると「編集中」の状態に戻り、内容を変更できるようになります。\nよろしいですか？`))return false;
+ if(!(await confirmModal(`このデータ(${x.basic?.lotNo||x.id})はすでに完了しています。\n再編集すると「編集中」の状態に戻り、内容を変更できるようになります。\nよろしいですか？`)))return false;
  x.status='編集中';x.updatedAt=new Date().toISOString();
  await reliablePut(x);
  return true;
@@ -339,35 +339,26 @@ function recordHasAnyInput(x){
  if(x.workTime?.startAt||x.workTime?.endAt)return true;
  return false;
 }
-/* 削除確認モーダル: 何も入力がないデータ以外は、汎用confirm()ではなく
-   専用モーダルでロット情報を示した上でしっかり警告する。 */
-function ensureDeleteRecordModal(){
- let modal=$('#deleteRecordModal');if(modal)return modal;
- modal=document.createElement('div');modal.className='record-modal';modal.id='deleteRecordModal';modal.hidden=true;
- modal.innerHTML=`<div class="settings-dialog delete-confirm-dialog" role="dialog" aria-modal="true"><header><div><small>DELETE CONFIRMATION</small><h2>端末内データを削除しますか？</h2></div><button id="closeDeleteRecordModal" type="button" aria-label="閉じる">×</button></header><div class="settings-body"><div class="delete-confirm-summary" id="deleteRecordSummary"></div><p class="delete-confirm-warning">入力済みの測定データも含め、この端末内のデータを完全に削除します。この操作は取り消せません。</p><div class="settings-actions"><button id="cancelDeleteRecord" type="button">キャンセル</button><button id="confirmDeleteRecord" type="button" class="danger">削除する</button></div></div></div>`;
- document.body.append(modal);
- modal.addEventListener('click',e=>{if(e.target===modal)modal.hidden=true});
- $('#closeDeleteRecordModal').onclick=()=>modal.hidden=true;
- return modal;
-}
+/* 削除確認: 何も入力がないデータ以外は、汎用confirm()ではなく共通確認モーダル
+   (confirmModal)でロット情報を示した上でしっかり警告する。 */
 function confirmDeleteRecord(x){
- return new Promise(resolve=>{
-  const modal=ensureDeleteRecordModal();
-  $('#deleteRecordSummary').innerHTML=`<div class="delete-confirm-row"><span>ロット番号</span><b>${esc(x.basic?.lotNo||x.id)}</b></div><div class="delete-confirm-row"><span>状態</span><b>${esc(x.status||'編集中')}</b></div><div class="delete-confirm-row"><span>検査番号</span><b>${esc(x.basic?.inspectionNo||'-')}</b></div><div class="delete-confirm-row"><span>更新日時</span><b>${esc(x.updatedAt?new Date(x.updatedAt).toLocaleString('ja-JP'):'-')}</b></div>`;
-  modal.hidden=false;
-  const cancel=$('#cancelDeleteRecord'),confirmBtn=$('#confirmDeleteRecord');
-  const close=result=>{modal.hidden=true;resolve(result)};
-  cancel.onclick=()=>close(false);
-  confirmBtn.onclick=()=>close(true);
- });
+ const summary=`<div class="delete-confirm-summary"><div class="delete-confirm-row"><span>ロット番号</span><b>${esc(x.basic?.lotNo||x.id)}</b></div><div class="delete-confirm-row"><span>状態</span><b>${esc(x.status||'編集中')}</b></div><div class="delete-confirm-row"><span>検査番号</span><b>${esc(x.basic?.inspectionNo||'-')}</b></div><div class="delete-confirm-row"><span>更新日時</span><b>${esc(x.updatedAt?new Date(x.updatedAt).toLocaleString('ja-JP'):'-')}</b></div></div><p class="delete-confirm-warning">入力済みの測定データも含め、この端末内のデータを完全に削除します。この操作は取り消せません。</p>`;
+ return confirmModal({eyebrow:'DELETE CONFIRMATION',title:'端末内データを削除しますか？',bodyHtml:summary,confirmLabel:'削除する',danger:true});
 }
 /* 分割(条割変更)が実際に行われたかどうか: splitGroupsが2ロット以上に
    分かれている場合のみ「分割あり」とする(単一ロットのデフォルト値は分割なし扱い)。 */
 function recordSplitLabel(x){return Array.isArray(x.settings?.splitGroups)&&x.settings.splitGroups.length>1?'あり':'-'}
-function renderRecordListRows(){const list=$('#recordList'),items=sortedFilteredRecords(),currentLot=normalizedLot(S.current?pick(S.current,'lotNo'):'');if(!list)return;list.innerHTML='<div class="record-list-head"><span>状態</span><span>ロット番号</span><span>検査番号</span><span>製造材質</span><span>製造板厚</span><span>用途名</span><span>コース</span><span>オペレータ</span><span>検査員</span><span>作業人数</span><span>分割</span><span>作業開始時刻</span><span>更新日時</span><span>実作業時間</span><span>操作</span></div>';if(!items.length)list.insertAdjacentHTML('beforeend','<div class="record-empty">検索条件に一致するデータはありません。</div>');items.forEach(x=>{ensureMeasureShape(x);const same=currentLot&&normalizedLot(x.basic?.lotNo)===currentLot,row=document.createElement('article'),resume=resumeRecordFromList(x),course=x.basic?.residualCourse||x.basic?.course||x.basic?.designCourse||'-',crew=x.settings?.crewSize&&x.settings.crewSize!=='-'?x.settings.crewSize+'名':'-',isDone=x.status==='完了',isNg=x.status==='測定値NG',syncSt=x.syncState?.status||'pending',syncBadge=syncSt==='synced'?'':`<span class="record-sync-badge record-sync-${syncSt}" title="${syncSt==='failed'?'Accessへの送信に失敗しました: '+esc(x.syncState?.lastError||''):'Accessへまだ送信していません'}">未同期</span>`;row.className='record-list-row'+(same?' is-same-lot':'');row.tabIndex=0;row.innerHTML=`<div class="record-list-cell"><span class="rp-status-badge${isDone?' done':isNg?' ng':''}" title="${isNg?'NG回数 '+(x.settings?.ngCount||0)+'回':''}">${isDone?'完了':isNg?'NG':'編集中'}</span>${syncBadge}</div><div class="record-list-cell primary"><button type="button" class="lot-dsp-link grid-lot-link" title="クリックでLotDspをこのロット番号で開きます">${esc(x.basic?.lotNo||x.id)}</button></div><div class="record-list-cell">${esc(x.basic?.inspectionNo||'-')}</div><div class="record-list-cell">${esc(x.basic?.mfgMaterial||'-')}</div><div class="record-list-cell secondary">${esc(fmtDim(x.basic?.mfgThickness,3)||'-')}</div><div class="record-list-cell secondary">${esc(x.basic?.purposeName||'-')}</div><div class="record-list-cell secondary">${esc(course)}</div><div class="record-list-cell secondary">${esc(x.settings?.operator||'-')}</div><div class="record-list-cell secondary">${esc(x.settings?.inspector||'-')}</div><div class="record-list-cell secondary">${esc(crew)}</div><div class="record-list-cell secondary">${esc(recordSplitLabel(x))}</div><div class="record-list-cell"><time>${esc(x.workTime?.startAt?formatWorkTime(x.workTime.startAt):'-')}</time></div><div class="record-list-cell"><time>${esc(x.updatedAt?new Date(x.updatedAt).toLocaleString('ja-JP'):'-')}</time></div><div class="record-list-cell record-duration">${esc(formatDuration(durationMs(x)))}</div><div class="record-list-actions"><button class="resume" type="button">${isDone?'内容を開く':'続きから再開'}</button><button class="report" type="button" title="このロットの帳票プレビューを開きます">帳票</button><button class="danger" type="button">削除</button></div>`;row.querySelector('.resume').onclick=e=>{e.stopPropagation();resume()};row.querySelector('.report').onclick=e=>{e.stopPropagation();if(typeof openReportForRecord==='function')openReportForRecord(x.id)};const recLotBtn=row.querySelector('.grid-lot-link');if(recLotBtn)recLotBtn.onclick=e=>{e.preventDefault();e.stopPropagation();openLotDsp(x.basic?.lotNo,x.basic?.castingNo,localStorage.getItem('LotDspLastTabV1')||'1')};
+function renderRecordListRows(){const list=$('#recordList'),items=sortedFilteredRecords(),currentLot=normalizedLot(S.current?pick(S.current,'lotNo'):'');if(!list)return;list.innerHTML='<div class="record-list-head"><span>状態</span><span>ロット番号</span><span>検査番号</span><span>製造材質</span><span>製造板厚</span><span>用途名</span><span>コース</span><span>オペレータ</span><span>検査員</span><span>作業人数</span><span>分割</span><span>作業開始時刻</span><span>更新日時</span><span>実作業時間</span><span>操作</span></div>';if(!items.length){
+ const q=recordListState.query;
+ list.insertAdjacentHTML('beforeend',q?`<div class="record-empty"><b>「${esc(q)}」に一致するデータはありません。</b><button id="recordEmptyClearSearch" type="button">検索条件を解除</button></div>`:'<div class="record-empty">表示できるデータがありません。</div>');
+ const clearBtn=$('#recordEmptyClearSearch');
+ if(clearBtn)clearBtn.onclick=()=>{recordListState.query='';const search=$('#recordSearch');if(search)search.value='';renderRecordListRows()};
+}
+items.forEach(x=>{ensureMeasureShape(x);const same=currentLot&&normalizedLot(x.basic?.lotNo)===currentLot,row=document.createElement('article'),resume=resumeRecordFromList(x),course=x.basic?.residualCourse||x.basic?.course||x.basic?.designCourse||'-',crew=x.settings?.crewSize&&x.settings.crewSize!=='-'?x.settings.crewSize+'名':'-',isDone=x.status==='完了',isNg=x.status==='測定値NG',badgeClass=statusClass(x.status),syncSt=x.syncState?.status||'pending',syncBadge=syncSt==='synced'?'':`<span class="record-sync-badge record-sync-${syncSt}" title="${syncSt==='failed'?'Accessへの送信に失敗しました: '+esc(x.syncState?.lastError||''):'Accessへまだ送信していません'}">未同期</span>`;row.className='record-list-row'+(same?' is-same-lot':'');row.tabIndex=0;row.innerHTML=`<div class="record-list-cell"><span class="rp-status-badge${badgeClass?' '+badgeClass:''}" title="${isNg?'NG回数 '+(x.settings?.ngCount||0)+'回':''}">${statusShortLabel(x.status)}</span>${syncBadge}</div><div class="record-list-cell primary"><button type="button" class="lot-dsp-link grid-lot-link" title="クリックでLotDspをこのロット番号で開きます">${esc(x.basic?.lotNo||x.id)}</button></div><div class="record-list-cell">${esc(x.basic?.inspectionNo||'-')}</div><div class="record-list-cell">${esc(x.basic?.mfgMaterial||'-')}</div><div class="record-list-cell secondary">${esc(fmtDim(x.basic?.mfgThickness,3)||'-')}</div><div class="record-list-cell secondary">${esc(x.basic?.purposeName||'-')}</div><div class="record-list-cell secondary">${esc(course)}</div><div class="record-list-cell secondary">${esc(x.settings?.operator||'-')}</div><div class="record-list-cell secondary">${esc(x.settings?.inspector||'-')}</div><div class="record-list-cell secondary">${esc(crew)}</div><div class="record-list-cell secondary">${esc(recordSplitLabel(x))}</div><div class="record-list-cell"><time>${esc(x.workTime?.startAt?formatWorkTime(x.workTime.startAt):'-')}</time></div><div class="record-list-cell"><time>${esc(x.updatedAt?new Date(x.updatedAt).toLocaleString('ja-JP'):'-')}</time></div><div class="record-list-cell record-duration">${esc(formatDuration(durationMs(x)))}</div><div class="record-list-actions"><button class="resume" type="button">${isDone?'内容を開く':'続きから再開'}</button><button class="report" type="button" title="このロットの帳票プレビューを開きます">帳票</button><button class="danger" type="button">削除</button></div>`;row.querySelector('.resume').onclick=e=>{e.stopPropagation();resume()};row.querySelector('.report').onclick=e=>{e.stopPropagation();if(typeof openReportForRecord==='function')openReportForRecord(x.id)};const recLotBtn=row.querySelector('.grid-lot-link');if(recLotBtn)recLotBtn.onclick=e=>{e.preventDefault();e.stopPropagation();openLotDsp(x.basic?.lotNo,x.basic?.castingNo,localStorage.getItem('LotDspLastTabV1')||'1')};
 // ダブルクリックは編集再開ではなく帳票プレビューへの遷移とする(編集は「続きから再開/内容を開く」ボタンから明示的に行う)。
 row.ondblclick=e=>{if(!e.target.closest('.danger')&&!e.target.closest('.resume')&&!e.target.closest('.report')&&!e.target.closest('.grid-lot-link')&&typeof openReportForRecord==='function')openReportForRecord(x.id)};
-row.onkeydown=e=>{if(e.key==='Enter')resume()};
+row.setAttribute('role','button');row.setAttribute('aria-label',(isDone?'内容を開く':'続きから再開')+' '+(x.basic?.lotNo||x.id));
+row.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){if(e.key===' ')e.preventDefault();resume()}};
 row.querySelector('.danger').onclick=async e=>{e.stopPropagation();const proceed=recordHasAnyInput(x)?await confirmDeleteRecord(x):true;if(proceed){await reliableDelete(x.id);await refreshDraftCount();await refreshRecordList()}};
 list.append(row)});const result=$('#recordSearchResult');if(result)result.textContent=`${items.length} / ${recordListState.items.length}件を表示`}
 /* ---- 使用設備の登録・設備マスタ ---- */
