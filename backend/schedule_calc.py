@@ -5,22 +5,22 @@ Flask非依存。backend/repositories/schedule_repo.pyが持つ生データ(表�
 予定終了)を計算し、測定データバックアップとの実績突合で状態を動的に導出
 する。結果はDBへ書き戻さない(§7.4、単一書き込み者モデルを崩さないため)。
 
-見積分の解決は「一律見積(全係数1.0)」段階(フェーズ5で負荷率モデルに
-置き換える予定、§11):
+見積分の解決(§6・§7.6):
   - [見積分]が明示的に設定されていればそれをそのまま使う(source='override')
   - 種別='設備停止'でNULLなら、設備停止マスタの現在の標準所要分を
     (設備名,予定名称)で引き直す(source='stop-reason-master'、§5.1の
     「スナップショットしない」方針どおり、マスタの現在値を都度反映する)
-  - 種別='作業'でNULLなら、負荷率上書きマスタの因子='BASE'(基準時間T0)を
-    設備別優先で読み、無ければDEFAULT_ESTIMATE_MINUTES(source='default'、
-    フェーズ5で対数線形モデルに置き換わるまでの暫定値)
+  - 種別='作業'でNULLなら、負荷率モデル(load_factor.py、§6)による
+    対数線形推定を使う(source='model')。実績が無くモデル自体が
+    算出できない場合のみDEFAULT_ESTIMATE_MINUTES(source='default')
 """
 import json
 from datetime import date, datetime, time, timedelta
 
+from . import load_factor
 from .repositories import schedule_repo as sr
 from .repositories.master_repo import normalize_equipment_name
-from .db_access import MEAS_DB, RECORDS_BACKUP_EXPORT_PATH, read_backup_rows
+from .db_access import merged_backup_rows
 
 MIN_REMAIN_MINUTES=5
 MAX_HORIZON_DAYS=60
@@ -124,30 +124,11 @@ def normalize_match_key(value):
  import unicodedata
  return unicodedata.normalize('NFKC',str(value or '')).strip().upper()
 
-def _load_backup_rows():
- # 書込端末のローカルrecords.sqlite3(最新)と、閲覧用の複製先
- # (records_backup_export_path、Box等、view/schedule端末向け)の両方を
- # 集め、記録IDごとに更新日時が新しい方を残す(どちらの端末からでも
- # 同じ実績が見える)。
- merged={}
- for path in (MEAS_DB,RECORDS_BACKUP_EXPORT_PATH):
-  try:
-   items,_=read_backup_rows(path)
-  except Exception:
-   items=None
-  for row in (items or []):
-   rid=row.get('id')
-   if not rid:continue
-   existing=merged.get(rid)
-   if existing is None or (row.get('updated_at') or '')>(existing.get('updated_at') or ''):
-    merged[rid]=row
- return list(merged.values())
-
 def build_actual_index(backup_rows=None):
  """(ロット番号,鋳造番号,製造材質)の正規化キー -> 最新実績dict、の索引を作る。
  §7.4のとおり3項目のいずれかが欠けている行は突合対象にしない。"""
  index={}
- for row in (backup_rows if backup_rows is not None else _load_backup_rows()):
+ for row in (backup_rows if backup_rows is not None else merged_backup_rows()):
   try:
    payload=json.loads(row.get('payload') or '{}')
   except Exception:
@@ -182,18 +163,25 @@ def derive_state(stored_state,actual):
 # ========================================================================
 # 見積分の解決(§6.1、一律見積(係数1.0)段階)
 # ========================================================================
-def resolve_estimate_minutes(c,equipment,plan_row_dict):
- """plan_row_dict: {'kind','title','estimateMinutes'}を最低限持つdict
- (routes/schedule.pyの_plan_entry()と同じキー)。戻り値: (分, source)。"""
+_EMPTY_ESTIMATE_EXTRAS={'low':None,'high':None,'sigmaLog':None,'base':None,'factors':[]}
+
+def resolve_estimate(c,equipment,plan_row_dict):
+ """plan_row_dict: {'kind','title','estimateMinutes','detail'}を持つdict
+ (expand_plan()内のentry辞書と同じキー)。戻り値: §6.8のentries[].estimate
+ 相当のdict(minutes/source/low/high/sigmaLog/base/factors)。"""
  if plan_row_dict.get('estimateMinutes') is not None:
-  return float(plan_row_dict['estimateMinutes']),'override'
+  return {'minutes':float(plan_row_dict['estimateMinutes']),'source':'override',**_EMPTY_ESTIMATE_EXTRAS}
  if plan_row_dict.get('kind')=='設備停止':
   minutes=sr.stop_reason_standard_minutes(c,equipment,plan_row_dict.get('title') or '')
-  if minutes is not None:return float(minutes),'stop-reason-master'
-  return DEFAULT_ESTIMATE_MINUTES,'default'
- base=sr.base_minutes_override(c,equipment)
- if base is not None:return float(base),'base-override'
- return DEFAULT_ESTIMATE_MINUTES,'default'
+  if minutes is not None:
+   return {'minutes':float(minutes),'source':'stop-reason-master',**_EMPTY_ESTIMATE_EXTRAS}
+  return {'minutes':DEFAULT_ESTIMATE_MINUTES,'source':'default',**_EMPTY_ESTIMATE_EXTRAS}
+ # 種別='作業': 負荷率モデル(§6)による見積。basisがequipment/pooledなら
+ # 実績由来のsource='model'、モデル自体が無ければsource='default'。
+ result=load_factor.estimate_work(c,equipment,plan_row_dict.get('detail') or {})
+ source='model' if result.get('basis') in ('equipment','pooled') else 'default'
+ return {'minutes':result['minutes'],'source':source,'low':result.get('low'),'high':result.get('high'),
+         'sigmaLog':result.get('sigmaLog'),'base':result.get('base'),'factors':result.get('factors') or []}
 
 # ========================================================================
 # 展開の本体(§7.2・§7.3)
@@ -235,9 +223,9 @@ def expand_plan(c,equipment,now=None):
    anchor=datetime.fromisoformat(active[0]['actual']['startAt'])
   except Exception:
    anchor=now
-  minutes,_src=resolve_estimate_minutes(c,equipment,active[0])
+  est0=resolve_estimate(c,equipment,active[0])
   elapsed=max(0.0,_minutes_between(anchor,now))
-  first_remaining_override=max(minutes-elapsed,MIN_REMAIN_MINUTES)
+  first_remaining_override=max(est0['minutes']-elapsed,MIN_REMAIN_MINUTES)
  else:
   anchor,_waited=snap_to_working(now,timeline)
   if anchor is None:
@@ -251,9 +239,11 @@ def expand_plan(c,equipment,now=None):
    e['plannedStart']=None;e['plannedEnd']=None;e['startsInMinutes']=None
    e['estimate']=None;e['reorderable']=False;e['spansNonWorking']=False;e['overdueMinutes']=0
    continue
-  minutes,source=resolve_estimate_minutes(c,equipment,e)
+  est=resolve_estimate(c,equipment,e)
+  minutes=est['minutes']
   if e is active[0] and first_remaining_override is not None:
-   minutes=first_remaining_override;source='remaining'
+   minutes=first_remaining_override
+   est=dict(est,minutes=minutes,source='remaining')
   fixed_start=None
   if e.get('fixedStart'):
    try:fixed_start=datetime.fromisoformat(e['fixedStart'])
@@ -270,7 +260,7 @@ def expand_plan(c,equipment,now=None):
    truncated=True
   if truncated:
    e['plannedStart']=None;e['plannedEnd']=None;e['startsInMinutes']=None
-   e['estimate']={'minutes':minutes,'source':source}
+   e['estimate']=dict(est,minutes=minutes)
    e['reorderable']=(e['state']==sr.PLAN_REORDERABLE_STATE)
    e['spansNonWorking']=False;e['overdueMinutes']=0
    warnings.append(f"予定ID {e['id']} は稼働カレンダー上、{MAX_HORIZON_DAYS}日以内に収まりません。")
@@ -280,7 +270,7 @@ def expand_plan(c,equipment,now=None):
   if end_cursor is None:
    truncated=True
    e['plannedStart']=planned_start.isoformat();e['plannedEnd']=None;e['startsInMinutes']=round(_minutes_between(now,planned_start),1)
-   e['estimate']={'minutes':minutes,'source':source}
+   e['estimate']=dict(est,minutes=minutes)
    e['reorderable']=(e['state']==sr.PLAN_REORDERABLE_STATE)
    e['spansNonWorking']=spans;e['overdueMinutes']=round(overdue,1)
    warnings.append(f"予定ID {e['id']} は稼働カレンダー上、{MAX_HORIZON_DAYS}日以内に収まりません。")
@@ -288,7 +278,7 @@ def expand_plan(c,equipment,now=None):
   cursor=end_cursor
   e['plannedStart']=planned_start.isoformat();e['plannedEnd']=cursor.isoformat()
   e['startsInMinutes']=round(_minutes_between(now,planned_start),1)
-  e['estimate']={'minutes':round(minutes,1),'source':source}
+  e['estimate']=dict(est,minutes=round(minutes,1))
   e['reorderable']=(e['state']==sr.PLAN_REORDERABLE_STATE)
   e['spansNonWorking']=bool(spans)
   e['overdueMinutes']=round(overdue,1)
@@ -315,4 +305,11 @@ def expand_plan(c,equipment,now=None):
    e['actual']=None
   e['actualRecordId']=(actual or {}).get('id') or e.get('actualRecordId')
 
- return {'entries':entries,'warnings':warnings,'anchor':anchor.isoformat() if anchor else None}
+ lf_model=load_factor.get_model(equipment)
+ load_factor_info=None
+ if lf_model is not None:
+  load_factor_info={'basis':lf_model.get('basis'),'n':lf_model.get('n'),
+                     'sigmaLog':round(lf_model.get('sigmaLog') or 0.0,3),
+                     'calculatedAt':lf_model.get('calculatedAt')}
+ return {'entries':entries,'warnings':warnings,'anchor':anchor.isoformat() if anchor else None,
+         'loadFactor':load_factor_info}

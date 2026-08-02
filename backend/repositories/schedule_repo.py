@@ -292,6 +292,43 @@ def ensure_load_factor_override_table(c):
   c.commit();created=True
  return created
 
+def load_factor_override_rows(c,equipment=None):
+ # §5.4。設備名は空文字が「全設備共通」の意味を持つため、他マスタと違い
+ # normalize_equipment_nameでの絞り込みはしない(呼び出し側で設備別/全体
+ # 共通の両方を必要に応じて引く。load_factor.pyのresolve_overrides参照)。
+ ensure_load_factor_override_table(c)
+ cur=c.cursor()
+ cur.execute('SELECT [上書きID],[設備名],[因子],[水準],[係数],[理由],[有効],[更新日時],[更新者ID] FROM [負荷率上書きマスタ] ORDER BY [設備名],[因子],[水準]')
+ rows=[]
+ for r in cur.fetchall():
+  active=True if r[6] is None else bool(r[6])
+  if not active:continue
+  if equipment is not None and str(r[1] or '').strip()!=str(equipment or '').strip():continue
+  rows.append(r)
+ return rows
+
+def load_factor_override_upsert(c,equipment,factor,level,uid,coefficient=None,reason=''):
+ # 因子='BASE'のときは[水準]は空文字固定(§5.4「因子='BASE'のときは空」)。
+ ensure_load_factor_override_table(c)
+ equipment=str(equipment or '').strip();factor=str(factor or '').strip();level='' if factor=='BASE' else str(level or '').strip()
+ if not factor:raise ValueError('因子を指定してください。')
+ cur=c.cursor()
+ cur.execute('SELECT [上書きID] FROM [負荷率上書きマスタ] WHERE [設備名]=? AND [因子]=? AND [水準]=?',[equipment,factor,level])
+ existing=cur.fetchone()
+ if existing:
+  cur.execute('UPDATE [負荷率上書きマスタ] SET [係数]=?,[理由]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [上書きID]=?',
+              [coefficient,reason,uid,existing[0]])
+  return existing[0],False
+ cur.execute('INSERT INTO [負荷率上書きマスタ] ([設備名],[因子],[水準],[係数],[理由],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,-1,?,?,Now(),Now())',
+             [equipment,factor,level,coefficient,reason,uid,uid])
+ return cur.lastrowid,True
+
+def load_factor_override_delete(c,override_id,uid):
+ ensure_load_factor_override_table(c)
+ cur=c.cursor()
+ cur.execute('UPDATE [負荷率上書きマスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [上書きID]=?',[uid,override_id])
+ return cur.rowcount
+
 def base_minutes_override(c,equipment):
  # §6.1のT0(基準時間)。因子='BASE'(水準は空)の行を設備別優先で読む。
  # フェーズ5(load_factor.py)が実績から自動算出するまでの間、

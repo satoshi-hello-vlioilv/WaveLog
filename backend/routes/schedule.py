@@ -1,11 +1,12 @@
 """schedule.py: スケジュール機能のBlueprint(docs/SCHEDULE_MODE_DESIGN.md §8)。
 
 排他制御基盤(backend/schedule_sync.py、§4)の上に、作業予定・稼働カレンダー
-マスタ・設備停止マスタのCRUD(backend/repositories/schedule_repo.py、§5)と、
-時刻展開・実績突合(backend/schedule_calc.py、§6.6・§7)を配線する。
+マスタ・設備停止マスタ・負荷率上書きマスタのCRUD(backend/repositories/
+schedule_repo.py、§5)と、時刻展開・実績突合(backend/schedule_calc.py、
+§7)・負荷率モデル(backend/load_factor.py、§6)を配線する。
 `GET /api/schedule/plan` は展開済み(estimate/plannedStart/plannedEnd/
-actual等を含む)のentriesを返す。見積分は「一律見積(全係数1.0)」段階
-(フェーズ5で負荷率モデルに置き換える、§11)。
+actual等を含む)のentriesを返す。種別='作業'の見積分は負荷率モデル
+(§6)による対数線形推定(フェーズ5)。
 
 非GETは `_WRITE_ALLOWED_MODES` によりscheduleモードのみ許可されるが、
 `plan_reorder` だけは `_ENDPOINT_EXTRA_MODES` によりeditモード(現場段取り
@@ -14,10 +15,13 @@ actual等を含む)のentriesを返す。見積分は「一律見積(全係数1.
 before_requestでは判定できない(設備名はリクエストボディの中)ため、この
 ハンドラ内で追加チェックする。
 """
+import json
+
 from flask import Blueprint, request, jsonify
 
 from .. import schedule_sync
 from .. import schedule_calc
+from .. import load_factor
 from ..repositories import schedule_repo as sr
 from ..repositories.master_repo import normalize_equipment_name
 from ..db_access import connect, request_user_id
@@ -84,7 +88,8 @@ def plan_list():
  if err:return jsonify(error=err),503
  warnings=list(result.get('warnings') or [])
  if stale:warnings.append('スケジュールデータの取得に失敗したため、直前のローカルキャッシュを表示しています。')
- return jsonify(ok=True,configured=True,equipment=equipment,entries=result['entries'],anchor=result.get('anchor'),warnings=warnings)
+ return jsonify(ok=True,configured=True,equipment=equipment,entries=result['entries'],anchor=result.get('anchor'),
+                loadFactor=result.get('loadFactor'),warnings=warnings)
 
 @bp.post('/api/schedule/plan/add')
 def plan_add():
@@ -215,3 +220,103 @@ def stop_reason_delete():
   if n==0:raise ValueError('指定の設備停止理由が見つかりません。')
   return {'id':sid}
  return _write_response(fn)
+
+# ========================================================================
+# 負荷率モデル(§6、フェーズ5)
+# ========================================================================
+def _override_entry(r):
+ # r: 上書きID,設備名,因子,水準,係数,理由,有効,更新日時,更新者ID
+ return {'id':r[0],'equipment':r[1],'factor':r[2],'level':r[3],'coefficient':r[4],'reason':str(r[5] or ''),
+         'updatedAt':r[7].isoformat() if r[7] else None,'updatedBy':str(r[8] or '')}
+
+def _load_factor_summary(model,overrides_rows):
+ # モデル辞書(backend/load_factor.py `_fit`/`_compute_model`の戻り値)を
+ # §6.6「係数・N数・σ・ビン境界・除外件数」のAPI応答形へ整形する。
+ if model is None:return None
+ factors=[]
+ counts=model.get('counts') or {}
+ for key,levels in (model.get('factors') or {}).items():
+  for level,value in levels.items():
+   factors.append({'key':key,'level':level,'value':round(value,3),'n':counts.get(key,{}).get(level,0)})
+ boundaries={k:(list(v) if v else None) for k,v in (model.get('boundaries') or {}).items()}
+ return {'basis':model.get('basis'),'equipment':model.get('equipment'),'n':model.get('n'),
+         'excluded':model.get('excluded'),'T0':round(model.get('T0') or 0.0,1),
+         'sigmaLog':round(model.get('sigmaLog') or 0.0,3),'calculatedAt':model.get('calculatedAt'),
+         'boundaries':boundaries,'factors':factors,
+         'overrides':[_override_entry(r) for r in overrides_rows]}
+
+@bp.get('/api/schedule/load-factors')
+def load_factor_list():
+ # §6.6・§8.3。係数・N数・σ・ビン境界・除外件数と、この設備+全設備共通の
+ # 手動上書き一覧を返す。モデル自体はload_factor.py側でプロセス内キャッシュ
+ # 済み(§6.6)。上書き一覧だけスケジュール共有DBから都度取得する。
+ equipment=str(request.args.get('equipment') or '').strip()
+ if not equipment:return jsonify(error='どの設備の負荷率か指定してください(equipment)。'),400
+ def fn(c):
+  rows=sr.load_factor_override_rows(c)
+  return [r for r in rows if not r[1] or normalize_equipment_name(r[1])==normalize_equipment_name(equipment)]
+ overrides_rows,stale,err=_read(fn)
+ if err=='not_configured':return jsonify(ok=True,configured=False,equipment=equipment,model=None)
+ if err:return jsonify(error=err),503
+ model=load_factor.get_model(equipment)
+ return jsonify(ok=True,configured=True,equipment=equipment,
+                model=_load_factor_summary(model,overrides_rows),stale=stale)
+
+@bp.post('/api/schedule/load-factors/override')
+def load_factor_override_save():
+ # §6.7「係数 = 上書きマスタに行があればその値」の上書きマスタ本体を保存/
+ # 解除する。因子='BASE'は水準=''固定でT0(基準時間)自体を上書きする。
+ # 上書きはestimate_work()が呼び出しのたびに読み直す(§6.7)ため、モデルの
+ # プロセス内キャッシュ(get_model)は無効化不要。
+ x=request.get_json(force=True) or {}
+ equipment=str(x.get('equipment') or '').strip()
+ factor=str(x.get('factor') or '').strip()
+ level='' if factor=='BASE' else str(x.get('level') or '').strip()
+ coefficient=x.get('coefficient')
+ if not factor:return jsonify(error='因子を指定してください。'),400
+ def fn(c):
+  if coefficient is None:
+   rows=sr.load_factor_override_rows(c,equipment)
+   target=next((r for r in rows if str(r[2] or '')==factor and str(r[3] or '')==level),None)
+   if target is None:raise ValueError('解除対象の上書きが見つかりません。')
+   sr.load_factor_override_delete(c,target[0],request_user_id(x))
+   return {'equipment':equipment,'factor':factor,'level':level,'cleared':True}
+  oid,created=sr.load_factor_override_upsert(c,equipment,factor,level,request_user_id(x),
+                                              coefficient=float(coefficient),reason=str(x.get('reason') or ''))
+  return {'id':oid,'created':created}
+ return _write_response(fn)
+
+@bp.post('/api/schedule/load-factors/recalc')
+def load_factor_recalc():
+ # §6.6「POST /api/schedule/load-factors/recalc でキャッシュ破棄・再計算」。
+ # 実績データ(共有測定バックアップ)はこのアプリの書込対象外のため、
+ # 共有スケジュールDBのロック/改訂番号は使わない(プロセス内キャッシュの
+ # 破棄のみ)。
+ x=request.get_json(force=True) or {}
+ equipment=str(x.get('equipment') or '').strip()
+ if not equipment:return jsonify(error='どの設備を再計算するか指定してください(equipment)。'),400
+ load_factor.invalidate_cache(equipment)
+ model=load_factor.get_model(equipment,force=True)
+ return jsonify(ok=True,equipment=equipment,model=_load_factor_summary(model,[]) if model else None)
+
+@bp.get('/api/schedule/estimate')
+def estimate_preview():
+ # §6.7・§6.8・§8「単一ロットの見積(内訳付き)」。明細(detail)はフロントが
+ # 仕掛一覧の行からaliases(static/js/base.js)で作って渡す
+ # (§5.1と同じ規約。サーバー側でSIKALOTNOWのエイリアス解決を再実装しない)。
+ equipment=str(request.args.get('equipment') or '').strip()
+ if not equipment:return jsonify(error='どの設備の見積か指定してください(equipment)。'),400
+ detail_raw=request.args.get('detail') or '{}'
+ try:
+  detail=json.loads(detail_raw)
+  if not isinstance(detail,dict):detail=None
+ except Exception:
+  detail=None
+ if detail is None:return jsonify(error='detail(明細JSON)の形式が不正です。'),400
+ def fn(c):
+  return load_factor.estimate_work(c,equipment,detail)
+ result,stale,err=_read(fn)
+ if err=='not_configured':return jsonify(ok=True,configured=False,equipment=equipment,estimate=None)
+ if err:return jsonify(error=err),503
+ return jsonify(ok=True,configured=True,equipment=equipment,lot=str(request.args.get('lot') or ''),
+                estimate=result,stale=stale)

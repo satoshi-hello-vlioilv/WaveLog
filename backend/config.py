@@ -56,5 +56,13 @@ RNE_EXTRACT_INTERVAL_SEC_DEFAULT=900
 SCHEDULE_LOCK_TTL_SEC_DEFAULT=30
 SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT=1500
 
+# 負荷率(換算係数)モデル(docs/SCHEDULE_MODE_DESIGN.md §6)。
+# LOAD_FACTOR_CACHE_TTL_SEC: 設備ごとの算出結果をプロセス内にキャッシュする
+# 秒数(実績ソースのmtime変化でも無効化されるため、TTLは「変化を検知できない
+# 場合の保険」の意味合いが強い)。MIN_SAMPLES: これ未満の有効実績しかない
+# 設備は自設備モデルを作らず、全設備プールのモデルへT0だけ差し替えて使う(§6.5)。
+LOAD_FACTOR_CACHE_TTL_SEC=600
+MIN_SAMPLES=20
+
 def app_url():
  return f'http://{HOST}:{PORT}/'

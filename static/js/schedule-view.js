@@ -197,6 +197,26 @@
   $('#scTimeline').innerHTML=`<div class="sc-empty-note">${esc(msg)}</div>`;
  }
 
+ /* ---------- 見積の内訳(§6.8・§9.3、負荷率モデルの根拠を開示) ---------- */
+ function estimateSourceLabel(src){
+  return {model:'モデル',override:'手動上書き','stop-reason-master':'設備停止マスタ',remaining:'残り時間',default:'暫定既定値'}[src]||src||'';
+ }
+ function factorSourceLabel(src){
+  return {auto:'自動',override:'上書き',unknown:'未知'}[src]||src||'';
+ }
+ function renderEstimateBreakdown(e){
+  const est=e.estimate;
+  if(!est||!est.factors||!est.factors.length)return '';
+  const baseLine=est.base?`<div class="sc-estimate-row sc-estimate-base">基準時間 T0=${fmtMinutes(est.base.T0)}(実績${est.base.n}件)</div>`:'';
+  const rangeLine=(est.low!=null&&est.high!=null)?`<div class="sc-estimate-row sc-estimate-range">予測区間 ${fmtMinutes(est.low)} 〜 ${fmtMinutes(est.high)}</div>`:'';
+  const rows=est.factors.map(f=>
+   `<div class="sc-estimate-factor sc-ef-source-${esc(f.source)}"><span class="sc-ef-key">${esc(f.key)}</span><span class="sc-ef-level">${esc(f.level)}</span>`+
+   `<span class="sc-ef-value">×${f.value}</span><span class="sc-ef-n">n=${f.n}</span><span class="sc-ef-source">${factorSourceLabel(f.source)}</span></div>`
+  ).join('');
+  return `<button type="button" class="sc-estimate-toggle" data-target="scEstimateDetail-${e.id}">見積の内訳 ▾</button>
+   <div class="sc-estimate-detail" id="scEstimateDetail-${e.id}" hidden>${baseLine}${rangeLine}${rows}</div>`;
+ }
+
  function stateBadgeClass(state){
   if(state==='完了')return 'sc-state-done';
   if(state==='着手')return 'sc-state-active';
@@ -225,7 +245,7 @@
    const timeLine=e.plannedStart
     ?`${fmtDateTime(e.plannedStart)} 〜 ${fmtDateTime(e.plannedEnd)}${e.state==='予定'?` (${fmtRelative(e.startsInMinutes)})`:''}`
     :(e.state==='完了'||e.state==='取消'?'':'時刻を特定できません');
-   const estimateLine=e.estimate?`見積 ${fmtMinutes(e.estimate.minutes)}${e.estimate.source==='default'?' (暫定)':''}`:'';
+   const estimateLine=e.estimate?`見積 ${fmtMinutes(e.estimate.minutes)}${e.estimate.source==='default'?' ('+estimateSourceLabel('default')+')':''}`:'';
    let actualLine='';
    if(e.actual){
     if(e.state==='着手')actualLine=`経過 ${fmtMinutes(e.actual.elapsedMinutes)}`;
@@ -240,11 +260,20 @@
      <div class="sc-card-title">${lotLine}</div>
      <div class="sc-card-time">${timeLine}</div>
      <div class="sc-card-meta">${estimateLine}${actualLine?' / '+actualLine:''}${overdue}${spans}</div>
+     ${renderEstimateBreakdown(e)}
     </div>
     ${scState.fullControl&&e.state==='予定'?'<button type="button" class="sc-card-delete" title="削除">削除</button>':''}`;
    if(canDrag)wireDrag(card);
    const del=card.querySelector('.sc-card-delete');
    if(del)del.onclick=ev=>{ev.stopPropagation();deleteEntry(e.id)};
+   const toggle=card.querySelector('.sc-estimate-toggle');
+   if(toggle)toggle.onclick=ev=>{
+    ev.stopPropagation();
+    const detail=document.getElementById(toggle.dataset.target);
+    if(!detail)return;
+    detail.hidden=!detail.hidden;
+    toggle.textContent='見積の内訳 '+(detail.hidden?'▾':'▴');
+   };
    timeline.append(card);
   });
  }

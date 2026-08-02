@@ -700,6 +700,27 @@ CREATE UNIQUE INDEX [UX_負荷率上書き] ON [負荷率上書きマスタ] ([�
 本機能の中核。「品種・材料ごとに重い/軽いがある」を、実績から**自動で**
 数値化して見積へ反映する。
 
+> **実装済み(フェーズ5)**: `backend/load_factor.py`として実装済み。学習データの
+> 抽出(§6.4、`completed_training_rows()`)・中央値/MADによる外れ値除去・
+> 3反復の座標降下推定(§6.5、`n/(n+K)`収縮・`[ln0.5,ln2.0]`クリップ)・
+> 数値因子の四分位ビン化(§6.3、4種以下は値そのものを水準にする)・
+> TTL+mtimeキャッシュ(§6.6、`get_model()`)・因子別/`BASE`の手動上書き
+> (§6.7、`負荷率上書きマスタ`)・見積の内訳(§6.8、`estimate_work()`)を、
+> 既知の真値係数を仕込んだ合成データでの単体テスト(収束・N=1収縮・外れ値
+> 除去・ビン化・上書き優先順位・`MIN_SAMPLES`未満時のプールモデル+自設備T0
+> 代替の8観点)で検証済み。`backend/schedule_calc.py`の`resolve_estimate()`が
+> 種別='作業'の見積分をこのモデルへ委譲し(`source='model'`)、
+> `GET /api/schedule/plan`の応答へ`loadFactor`(§6.6の基準情報)・
+> `entries[].estimate.factors`(§6.8の内訳)として反映される。API
+> (`load-factors`/`load-factors/override`/`load-factors/recalc`/`estimate`)は
+> `backend/routes/schedule.py`に実装済み。HTTP検証(合成実績30件・
+> `POST /override`での上書き保存/解除・`BASE`上書きでのT0置換・
+> `POST /recalc`でのキャッシュ再計算・schedule以外のモードでの403)・
+> Playwright検証(タイムラインカードの「見積の内訳」開閉、基準時間/予測区間/
+> 因子別係数の表示)で確認済み。§6.9の精度検証UI(`GET /api/schedule/accuracy`
+> の画面表示)と負荷率の手動上書き管理画面(APIのみ実装済み、UIはフェーズ8)は
+> 未着手。
+
 ### 6.1 モデルの形: 対数線形(乗法)モデル
 
 ```
@@ -897,13 +918,13 @@ MAD(中央絶対偏差)を求め、`|y - m| > 3 × 1.4826 × MAD` の実績を�
 > 導出込み判定)を、純粋関数の単体テストと`schedule_repo`を使った統合テスト
 > (稼働カレンダー・実績突合・固定開始時刻の押し出し・設備停止マスタの
 > 現在値を都度引く挙動)の両方で検証済み。`GET /api/schedule/plan`は
-> このモジュールの結果をそのまま返す。**負荷率モデル(§6、フェーズ5)は
-> まだ無い**ため、見積分は「明示上書き」「設備停止マスタの標準所要分」
-> 「負荷率上書きマスタの`因子='BASE'`(基準時間T0)」の順で解決し、
-> どれも無ければ`DEFAULT_ESTIMATE_MINUTES`(暫定既定値、120分)を使う
-> (`source`フィールドで見積の根拠を返す: `override`/`stop-reason-master`/
-> `base-override`/`default`/`remaining`)。§6.6以降の統計的な係数推定・
-> 見積の内訳(§6.8)・精度検証(§6.9)は未実装。
+> このモジュールの結果をそのまま返す。**負荷率モデル(§6、フェーズ5)も
+> 実装済み**。見積分は「明示上書き(`source='override'`)」「種別='設備停止'
+> なら設備停止マスタの標準所要分(`source='stop-reason-master'`、無ければ
+> `DEFAULT_ESTIMATE_MINUTES`で`source='default'`)」「種別='作業'なら
+> `load_factor.estimate_work()`(`source='model'`、モデル自体が無ければ
+> `source='default'`)」の順で解決する。着手中の先頭予定だけは残り時間で
+> 上書きする(`source='remaining'`)。§6.9の精度検証UIは未実装(フェーズ8)。
 
 ### 7.1 展開はバックエンドで行う
 
@@ -1045,12 +1066,20 @@ for entry in 有効な予定(表示順):
 > `retryAfterSec`付き)を検証済み。**`GET /api/schedule/plan`は
 > `backend/schedule_calc.py`(§7)による時刻展開・実績突合込みの完成形
 > (`estimate`/`plannedStart`/`plannedEnd`/`actual`/`reorderable`等)を
-> 返す**(フェーズ3で実装、見積は「一律見積(係数1.0)」段階)。`plan/reorder`
-> の対象判定(§7.5手順1〜2)も実績突合込みの導出状態を使うよう配線済みで、
-> 「DBの[状態]列は'予定'のままだが実績突合で着手/完了相当になっている予定」
-> を並べ替え対象に含めようとすると400になることをHTTPで確認済み。
-> `load-factors`/`estimate`/`accuracy`は`load_factor.py`(フェーズ5)未実装
-> のため未着手。
+> 返す**(見積分は負荷率モデル(§6、フェーズ5)による、`entries[].estimate`
+> に`low`/`high`/`sigmaLog`/`base`/`factors`の内訳・応答全体に`loadFactor`
+> (基準情報)を含む)。`plan/reorder`の対象判定(§7.5手順1〜2)も実績突合
+> 込みの導出状態を使うよう配線済みで、「DBの[状態]列は'予定'のままだが
+> 実績突合で着手/完了相当になっている予定」を並べ替え対象に含めようと
+> すると400になることをHTTPで確認済み。**`load-factors`(GET)・
+> `load-factors/override`(POST)・`load-factors/recalc`(POST)・`estimate`
+> (GET)も実装済み**(フェーズ5)。HTTPで合成実績データを使い、モデルの
+> 算出(`basis='equipment'`/`'pooled'`)・因子別上書きの保存/解除・`BASE`
+> 上書きによるT0置換・キャッシュ再計算・schedule以外のモードでの403を
+> 確認済み。`estimate`の`detail`(明細)はフロントが仕掛一覧の行から
+> `aliases`(static/js/base.js)で作って渡す規約とし、サーバー側では
+> SIKALOTNOWのエイリアス解決を再実装していない(§5.1と同じ規約)。
+> `accuracy`(§6.9)は未実装(フェーズ8)。
 
 Blueprint 名は `schedule`(`backend/routes/schedule.py`)。
 非GETは `_WRITE_ALLOWED_MODES` により `schedule` モードのみ許可(§3.3)。
@@ -1410,12 +1439,12 @@ const canPlan = window.accessMode?.mode === 'schedule';
 
 | ファイル | 役割 |
 |---|---|
-| `backend/routes/schedule.py` | **実装済み**。Blueprint `schedule`。`lock-status`に加え`plan`(一覧/追加/更新/削除/並べ替え)・`calendar`(取得/完全同期保存)・`stop-reason-master`(一覧/登録/削除)を実装。時刻展開(`estimate`/`plannedStart`等)・`load-factors`/`estimate`/`accuracy`はフェーズ3・5で追加 |
-| `backend/repositories/schedule_repo.py` | **実装済み**。4テーブル(作業予定/稼働カレンダーマスタ/設備停止マスタ/負荷率上書きマスタ)の定義・CRUD(Flask非依存)。負荷率上書きマスタはテーブル定義のみで、算出・上書きロジックはフェーズ5(`load_factor.py`)が持つ |
-| `backend/load_factor.py` | 未実装。実績読込・外れ値除去・反復フィット・収縮・キャッシュ |
-| `backend/schedule_calc.py` | **実装済み**。稼働カレンダー展開・アンカー決定・実績突合・並べ替え対象判定(§7.5)。見積分は一律見積(係数1.0)段階(負荷率モデルはフェーズ5) |
+| `backend/routes/schedule.py` | **実装済み**。Blueprint `schedule`。`lock-status`に加え`plan`(一覧/追加/更新/削除/並べ替え)・`calendar`(取得/完全同期保存)・`stop-reason-master`(一覧/登録/削除)・`load-factors`(取得)・`load-factors/override`(保存/解除)・`load-factors/recalc`(再計算)・`estimate`(単一ロットの見積内訳)を実装 |
+| `backend/repositories/schedule_repo.py` | **実装済み**。4テーブル(作業予定/稼働カレンダーマスタ/設備停止マスタ/負荷率上書きマスタ)の定義・CRUD(Flask非依存)。負荷率上書きマスタのCRUD(`load_factor_override_rows`/`_upsert`/`_delete`)もフェーズ5で追加済み |
+| `backend/load_factor.py` | **実装済み**。学習データ抽出・外れ値除去(中央値/MAD)・3反復の座標降下推定(収縮・クリップ)・数値因子の四分位ビン化・TTL+mtimeキャッシュ(`get_model`)・手動上書きの優先解決・見積の内訳(`estimate_work`)・精度検証の粗い代理指標(`accuracy`、UIは未実装) |
+| `backend/schedule_calc.py` | **実装済み**。稼働カレンダー展開・アンカー決定・実績突合・並べ替え対象判定(§7.5)。見積分は`resolve_estimate()`が`load_factor.py`(§6)へ委譲する(種別='作業') |
 | `backend/schedule_sync.py` | **実装済み**。ロック取得/解放・Box上ファイルの取得(backup())・整合性確認・一時名書込+リネーム反映・改訂番号チェック(§4.2〜§4.5)。データの中身を知らない汎用基盤で、業務テーブル実装時は`with_write()`のapply_fnへ差し込むだけで使える。フェーズ4のPlaywright検証中に見つけた不具合を修正: `fetch_snapshot()`の一時ファイル名が固定だったため、GET系(ロック無し)の複数リクエストがほぼ同時に走ると一時ファイルを取り合って読込失敗することがあった。呼び出しごとに一意な一時ファイル名にして解消(最終目的地への反映は`Path.replace()`で元々アトミック) |
-| `static/js/schedule-view.js` | **実装済み**。スケジュール画面・タイムライン・並べ替え(現場段取り簡易表示§9.4.1・ロック表示§9.3を含む)。並べ替えはHTML5 Drag and Drop + Alt+↑/↓(lot-split.jsの単一ジェスチャー演出は未移植) |
+| `static/js/schedule-view.js` | **実装済み**。スケジュール画面・タイムライン・並べ替え(現場段取り簡易表示§9.4.1・ロック表示§9.3を含む)。並べ替えはHTML5 Drag and Drop + Alt+↑/↓(lot-split.jsの単一ジェスチャー演出は未移植)。§6.8の「見積の内訳」(基準時間T0・予測区間・因子別係数/N/source)を各カードの折りたたみパネルとして表示(既定は折りたたみ) |
 | `docs/SCHEDULE_MODE_DESIGN.md` | 本書 |
 
 ### 10.2 既存ファイルの変更
@@ -1425,8 +1454,8 @@ const canPlan = window.accessMode?.mode === 'schedule';
 | `backend/access_mode.py` | **実装済み**。`schedule` モード追加。`_GUARDED_BLUEPRINTS` → `_WRITE_ALLOWED_MODES` + `_ENDPOINT_EXTRA_MODES`(現場段取り例外、§3.3)。`canSchedule`/`canFieldReorder`/`fieldReorderEquipment` 応答。他モジュールが参照するための`current_permission_flags()`も追加 |
 | `backend/repositories/master_repo.py` | **実装済み**(アクセス権限マスタ部分)。`スケジュール可否`・`現場段取り可否`・`現場段取り対象設備` 列追加。`permission_flags()` 追加。**`EQUIPMENT_NAME_REFERENCES`へ新テーブルの`(テーブル名,列名)`を追記**は未実装(§5.0、業務テーブル自体が未実装のため) |
 | `backend/routes/masters.py` | **実装済み**(アクセス権限マスタCRUD部分)。`canSchedule`/`canFieldReorder`/`fieldReorderEquipment` を通す。`equipment_master_delete`が`schedule_repo`の参照件数集計を呼ぶよう拡張する変更(§5.0.1、`force`パラメータ追加)は未実装 |
-| `backend/db_access.py` | **実装済み**。`SCHEDULE_SHARE_PATH`・`SCHEDULE_CACHE_PATH`(ローカル一時取得先)の解決。`read_backup_rows()`を追加し、`backend/routes/measurement.py`の重複実装(`_read_backup_rows`)を統合(§7.4の実績突合と共用) |
-| `backend/config.py` | `SCHEDULE_LOCK_TTL_SEC_DEFAULT` / `SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT` は**実装済み**。`LOAD_FACTOR_CACHE_TTL_SEC` / `MIN_SAMPLES` 等は未実装(業務ロジック側) |
+| `backend/db_access.py` | **実装済み**。`SCHEDULE_SHARE_PATH`・`SCHEDULE_CACHE_PATH`(ローカル一時取得先)の解決。`read_backup_rows()`を追加し、`backend/routes/measurement.py`の重複実装(`_read_backup_rows`)を統合(§7.4の実績突合と共用)。`merged_backup_rows()`を追加し、`MEAS_DB`・`RECORDS_BACKUP_EXPORT_PATH`両方の実績を記録IDごとに更新日時の新しい方でマージする(§7.4の実績突合・§6.6の負荷率モデル学習データの両方が共用) |
+| `backend/config.py` | **実装済み**。`SCHEDULE_LOCK_TTL_SEC_DEFAULT` / `SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT` に加え、`LOAD_FACTOR_CACHE_TTL_SEC=600` / `MIN_SAMPLES=20` を追加 |
 | `app.py` | **実装済み**。`schedule` Blueprint 登録のみ。§4.2のサイクルは呼び出しごとに動く同期処理のため、`records_export.py`のような常駐の背景スレッド起動は不要 |
 | `static/js/access-mode.js` | **実装済み**。3モード対応。**`openMeasurement`/`resumeRecordFromList` ガードの条件を `!== 'edit'` へ反転**。モードピッカーポップオーバー。`canFieldReorder` バッジ(§3.5、ヘッダーの`accessModeBadge`隣に配置) |
 | `static/js/list-view.js` | **実装済み**。仕掛一覧に「予定」列(schedule時のみ)。複数行選択(一括追加)は未実装、単一選択行からの追加のみ |
@@ -1493,8 +1522,8 @@ const canPlan = window.accessMode?.mode === 'schedule';
 | 1 | モード基盤 | ~~権限マスタ拡張(スケジュール可否・現場段取り可否・現場段取り対象設備)・3モード判定・ガード表・エンドポイント例外・API・フロントのバッジ/入口ガード~~**実装済み** | ○(計画端末・現場段取り端末を安全に用意できる) |
 | 2 | 予定データ層+排他制御 | ~~`schedule_repo.py`の4テーブル・`schedule_sync.py`(ロック・改訂番号・取得反映サイクル、§4)・CRUD API(展開なし)~~**実装済み** | △(基盤のみだが、ここで排他制御まで作り切る) |
 | 3 | 稼働カレンダー + 展開 | ~~`schedule_calc.py`・`/api/schedule/plan` の時刻展開・実績突合(§7.4)~~**実装済み** | ○(一律見積でも「何時間後」「実績」が出る) |
-| 4 | スケジュール画面 | ~~タイムライン(順次作業表示)・並べ替え・仕掛一覧からの投入・現場段取り簡易表示(§9.4.1)・ロック表示(§9.3)~~**実装済み**(複数選択一括投入・負荷率の内訳表示は未実装) | ◎(ここで使い始められる) |
-| 5 | 負荷率モデル | `load_factor.py`・算出API・見積の内訳表示 | ◎(要望の本丸) |
+| 4 | スケジュール画面 | ~~タイムライン(順次作業表示)・並べ替え・仕掛一覧からの投入・現場段取り簡易表示(§9.4.1)・ロック表示(§9.3)~~**実装済み**(複数選択一括投入は未実装。負荷率の内訳表示はフェーズ5で追加) | ◎(ここで使い始められる) |
+| 5 | 負荷率モデル | ~~`load_factor.py`・算出API・見積の内訳表示~~**実装済み** | ◎(要望の本丸) |
 | 6 | 設備停止 | 設備停止マスタ・投入UI(8分類)・固定開始時刻・非稼働帯表示 | ○ |
 | 7 | 進捗表示 | 実績突合による自動進捗・測定画面への予定表示 | ◎(現場から見える) |
 | 8 | 精度の検証 | 見積 vs 実測の指標・負荷率の手動上書きUI | ○(運用ループが回る) |

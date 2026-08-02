@@ -2140,6 +2140,22 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
 .sc-card-delete{align-self:flex-start;height:26px;padding:0 10px;border:1px solid var(--danger-border);background:var(--danger-bg);color:var(--danger);border-radius:6px;cursor:pointer;font-size:11px}
 @media(max-width:1000px){.sc-body{flex-direction:column}.sc-side{width:auto;border-left:0;border-top:1px solid var(--line)}}
 
+/* 見積の内訳(§6.8・§9.3)。負荷率モデルの根拠(基準時間・予測区間・因子別
+   係数)を開示する。既定は折りたたみ(カード一覧が縦に伸びすぎないため)。 */
+.sc-estimate-toggle{align-self:flex-start;margin-top:2px;padding:0;border:0;background:none;color:#3a7d86;font-size:11px;font-weight:700;cursor:pointer}
+.sc-estimate-toggle:hover{text-decoration:underline}
+.sc-estimate-detail[hidden]{display:none}
+.sc-estimate-detail{margin-top:4px;padding:6px 8px;background:#eef4f5;border:1px solid var(--line);border-radius:6px;display:flex;flex-direction:column;gap:3px}
+.sc-estimate-row{font-size:11px;color:#3a565d}
+.sc-estimate-factor{display:flex;align-items:center;gap:6px;font-size:11px;color:#3a565d}
+.sc-ef-key{color:#61757c;min-width:110px}
+.sc-ef-level{font-weight:700;color:#173842}
+.sc-ef-value{font-variant-numeric:tabular-nums}
+.sc-ef-n{color:#8a9aa0}
+.sc-ef-source{margin-left:auto;font-size:10px;font-weight:800;padding:1px 7px;border-radius:9px;background:#eef2f3;color:#5c777e}
+.sc-ef-source-override .sc-ef-source{background:var(--warn-bg);color:var(--warn-fg)}
+.sc-ef-source-unknown .sc-ef-source{background:var(--danger-bg);color:var(--danger)}
+
 /* ---------------------------------------------------------------
    接続断の明示。ハートビートが続けて失敗したときに最上部へ出す。
    サーバーが終了していても画面上は普通に見えてしまうため、状態が
