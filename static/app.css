@@ -258,6 +258,10 @@ tbody tr:hover{background:#e5f2f3;cursor:pointer}
 .measurement-action-cell{text-align:center;background:inherit}
 .measurement-action-button{padding:5px 10px;border:1px solid var(--teal);background:var(--teal);color:#fff;font-weight:700;white-space:nowrap}
 .measurement-action-button:hover{background:var(--teal-dark);color:#fff}
+.plan-action-head{min-width:80px;text-align:center;background:#e4e0f7}
+.plan-action-cell{text-align:center;background:inherit}
+.plan-action-button{padding:5px 10px;border:1px solid #6a5acd;background:#fff;color:#4b3fa8;font-weight:700;white-space:nowrap;border-radius:4px;cursor:pointer}
+.plan-action-button:hover{background:#6a5acd;color:#fff}
 .split-flag-head{min-width:112px;text-align:center;background:#f2e6b3}
 .split-flag-cell{text-align:center;font-weight:700;white-space:nowrap;font-size:12px}
 .split-flag-cell.split-yes{background:#fff2cc;color:#8a6600}
@@ -1594,15 +1598,18 @@ body.db-mode #grid,body.db-mode footer,body.db-mode #tabs,body.db-mode #genericF
 body.rec-mode #grid,body.rec-mode footer,body.rec-mode #tabs,body.rec-mode #genericFilterBar,body.rec-mode .qa-v7{display:none!important}
 /* 実績カレンダーも同様にメイン画面表示にする。 */
 body.cal-mode #grid,body.cal-mode footer,body.cal-mode #tabs,body.cal-mode #genericFilterBar,body.cal-mode .qa-v7{display:none!important}
+/* 作業スケジュール(スケジュールモード等)も同様にメイン画面表示にする。 */
+body.sc-mode #grid,body.sc-mode footer,body.sc-mode #tabs,body.sc-mode #genericFilterBar,body.sc-mode .qa-v7{display:none!important}
 /* 品質データの「元データ表示」(qa-view-raw)は#grid等を強制的に再表示する
    詳細度3のルール(body.qa-mode.qa-view-raw #grid)を持つため、上のrp-mode/
-   db-mode/rec-mode/cal-modeの詳細度2のルールより優先されてしまい、品質データ表示中に
-   帳票・ダッシュボード・編集中/完了一覧・実績カレンダーを開くと元の#gridが透けて見える
+   db-mode/rec-mode/cal-mode/sc-modeの詳細度2のルールより優先されてしまい、品質データ表示中に
+   帳票・ダッシュボード・編集中/完了一覧・実績カレンダー・作業スケジュールを開くと元の#gridが透けて見える
    不具合があった。詳細度を合わせて確実に上書きする。 */
 body.rp-mode.qa-mode.qa-view-raw #grid,body.rp-mode.qa-mode.qa-view-raw footer,body.rp-mode.qa-mode.qa-view-raw #genericFilterBar,
 body.db-mode.qa-mode.qa-view-raw #grid,body.db-mode.qa-mode.qa-view-raw footer,body.db-mode.qa-mode.qa-view-raw #genericFilterBar,
 body.rec-mode.qa-mode.qa-view-raw #grid,body.rec-mode.qa-mode.qa-view-raw footer,body.rec-mode.qa-mode.qa-view-raw #genericFilterBar,
-body.cal-mode.qa-mode.qa-view-raw #grid,body.cal-mode.qa-mode.qa-view-raw footer,body.cal-mode.qa-mode.qa-view-raw #genericFilterBar{display:none!important}
+body.cal-mode.qa-mode.qa-view-raw #grid,body.cal-mode.qa-mode.qa-view-raw footer,body.cal-mode.qa-mode.qa-view-raw #genericFilterBar,
+body.sc-mode.qa-mode.qa-view-raw #grid,body.sc-mode.qa-mode.qa-view-raw footer,body.sc-mode.qa-mode.qa-view-raw #genericFilterBar{display:none!important}
 .rec-panel{flex:1;min-height:0;margin:9px 14px;display:flex;flex-direction:column;background:#f4f7f8;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .rec-panel[hidden]{display:none!important}
 .rec-panel .record-dialog{width:100%;height:100%;border-radius:0;box-shadow:none}
@@ -2087,6 +2094,51 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
    ようにする(.work-time-panelの高さ調整と同じ考え方)。 */
 .split-pane{height:auto;min-height:290px}
 @media(max-width:1000px){.cal-layout{grid-template-columns:1fr}.cal-detail{border-left:0;border-top:1px solid var(--line);max-height:320px}#calSummary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* ---------- 作業スケジュール(順次作業表示、docs/SCHEDULE_MODE_DESIGN.md §9) ---------- */
+.sc-panel{flex:1;min-height:0;margin:9px 14px;display:flex;flex-direction:column;background:#f4f7f8;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.sc-panel[hidden]{display:none!important}
+.sc-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.sc-head-left,.sc-head-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.sc-title{font-size:15px;color:#173842}
+.sc-equipment-select{height:32px;padding:0 8px;border:1px solid var(--line);border-radius:6px;background:#fff}
+.sc-equipment-fixed{font-size:12.5px;font-weight:700;color:#3a565d;background:#eafafa;border:1px solid var(--teal);border-radius:14px;padding:4px 10px}
+.sc-lock-badge{font-size:11px;font-weight:700;color:var(--warn-fg);background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:12px;padding:3px 9px}
+.sc-field-reorder-note{font-size:11px;font-weight:700;color:var(--warn-fg)}
+.sc-refresh,.sc-close{height:30px;padding:0 12px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer}
+.sc-close{width:30px;padding:0;font-size:16px;line-height:1}
+.sc-warnings{padding:6px 14px;background:var(--warn-bg);border-bottom:1px solid var(--warn-border)}
+.sc-warning{font-size:12px;color:var(--warn-fg)}
+.sc-body{flex:1;min-height:0;display:flex;gap:0;overflow:hidden}
+.sc-timeline{flex:1;min-width:0;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:8px}
+.sc-side{width:300px;flex-shrink:0;border-left:1px solid var(--line);background:#fff;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:16px}
+.sc-side-title{font-size:12px;font-weight:800;color:#5c777e;margin-bottom:6px}
+.sc-empty-note{color:#8a9aa0;font-size:12.5px;padding:8px 2px}
+.sc-add-row{display:flex;flex-direction:column;gap:6px;font-size:12.5px}
+.sc-add-row-button{align-self:flex-start;height:28px;padding:0 10px;border:1px solid var(--teal);background:#eafafa;color:#164e55;border-radius:6px;cursor:pointer}
+.sc-stop-buttons{display:flex;flex-wrap:wrap;gap:6px}
+.sc-stop-button{height:28px;padding:0 10px;border:1px solid var(--line);border-radius:14px;background:#fff;font-size:12px;cursor:pointer}
+.sc-stop-button:hover{border-color:var(--teal)}
+.sc-stop-button.is-disabled{opacity:.5;cursor:not-allowed}
+.sc-card{display:flex;align-items:stretch;gap:8px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:8px 10px;position:relative}
+.sc-card[draggable="true"]{cursor:grab}
+.sc-card.sc-dragging{opacity:.4}
+.sc-card-handle{display:flex;align-items:center;justify-content:center;width:20px;flex-shrink:0;color:#9fb0b5;font-size:14px}
+.sc-card-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.sc-card-top{display:flex;align-items:center;gap:8px}
+.sc-kind{font-size:10px;font-weight:800;color:#5c777e;text-transform:none}
+.sc-state{font-size:10px;font-weight:800;padding:1px 8px;border-radius:10px;background:#eef2f3;color:#5c777e}
+.sc-card.sc-state-active .sc-state{background:var(--success-bg);color:var(--success)}
+.sc-card.sc-state-done .sc-state{background:#eef2f3;color:#5c777e}
+.sc-card.sc-state-cancel .sc-state{background:var(--danger-bg);color:var(--danger);text-decoration:line-through}
+.sc-card.sc-state-active{border-color:var(--success-border);background:var(--success-bg)}
+.sc-card-title{font-size:13.5px;font-weight:700;color:#173842}
+.sc-card-time{font-size:12px;color:#3a565d}
+.sc-card-meta{font-size:11px;color:#61757c;display:flex;flex-wrap:wrap;gap:6px}
+.sc-overdue{color:var(--danger);font-weight:800}
+.sc-spans{color:var(--warn-fg);font-weight:700}
+.sc-card-delete{align-self:flex-start;height:26px;padding:0 10px;border:1px solid var(--danger-border);background:var(--danger-bg);color:var(--danger);border-radius:6px;cursor:pointer;font-size:11px}
+@media(max-width:1000px){.sc-body{flex-direction:column}.sc-side{width:auto;border-left:0;border-top:1px solid var(--line)}}
 
 /* ---------------------------------------------------------------
    接続断の明示。ハートビートが続けて失敗したときに最上部へ出す。

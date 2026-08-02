@@ -229,6 +229,7 @@ function bindV32Navigation(){
    帳票/ダッシュボード表示への遷移と同様にカレンダー表示を必ず抜ける。 */
 async function openRecordsSafe(status='編集中'){
  window.exitCalendarView?.();
+ window.exitScheduleView?.();
  showWaiting(status==='履歴'?'完了データを取得しています':'編集中データを取得しています','この端末の保存領域を確認中','IndexedDBと代替保存領域を照合しています');
  try{
  const modal=$('#recordModal'),title=$('#recordTitle'),list=$('#recordList');
@@ -482,6 +483,7 @@ queueMicrotask(()=>{updateEquipmentEntryPoints();const badge=$('#registeredEquip
    document.body.classList.remove('rp-mode');
    document.getElementById('dashboardPanel')?.setAttribute('hidden','');
    document.body.classList.remove('db-mode');
+   window.exitScheduleView?.();
    /* 他のトップレベル表示先と同じく、サイドバーで現在地が分かるようにする。 */
    if(typeof setActiveNav==='function')setActiveNav('homeDrafts');
   }

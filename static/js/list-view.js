@@ -86,15 +86,18 @@ function findColumnFor(key){return (aliases[key]||[]).find(n=>S.columns.includes
 // Add an explicit virtual action column instead of writing into the last data column.
 function renderGrid(){
  /* ロット問い合わせ(LotDsp)は仕掛一覧・品質データのどちらでも使えるように
-    する。「測定」列(測定画面を開く)は仕掛一覧(SIKALOTNOW)専用のまま。 */
+    する。「測定」列(測定画面を開く)は仕掛一覧(SIKALOTNOW)専用のまま。
+    「予定」列(スケジュールへ追加、§9.5)もSIKALOTNOW専用で、スケジュール
+    モードのときだけ出す(押せないボタンを他モードで見せない)。 */
  const isWork=S.db==='SIKALOTNOW',hasLotDsp=S.db==='SIKALOTNOW'||S.db==='SIKALOTDEF';
+ const canPlan=isWork&&window.accessMode?.mode==='schedule';
  const lotCol=hasLotDsp?findColumnFor('lotNo'):null,castCol=hasLotDsp?findColumnFor('castingNo'):null;
  const filteredCols=new Set((S.genericFilters||[]).map(f=>f.column));
  const t=document.createElement('table');
  t.innerHTML='<thead><tr><th>#</th>'+(isWork?'<th class="split-flag-head" title="親子管理_子カード／コンマ5本分割_切断巾に実データがある場合「分割あり」と表示します">分割</th>':'')+S.columns.map(c=>{
   const filtered=filteredCols.has(c),sorted=S.sortColumn===c,arrow=sorted?(S.sortDir==='desc'?' ▼':' ▲'):'';
   return `<th class="sortable-col ${filtered?'col-filtered':''} ${sorted?'col-sorted':''}" data-sort-col="${esc(c)}" tabindex="0" role="button" aria-label="${esc(c)}列で並び替え" title="クリックで並び替え${filtered?'（絞り込み中の列です）':''}">${esc(c)}${arrow}${filtered?'<i class="col-filter-badge" aria-hidden="true" title="この列にフィルタが適用されています">▼</i>':''}</th>`;
- }).join('')+(isWork?'<th class="measurement-action-head">測定</th>':'')+'</tr></thead>';
+ }).join('')+(isWork?'<th class="measurement-action-head">測定</th>':'')+(canPlan?'<th class="plan-action-head">予定</th>':'')+'</tr></thead>';
  const sortByHeader=th=>{
   const col=th.dataset.sortCol;
   S.sortDir=(S.sortColumn===col&&S.sortDir==='asc')?'desc':'asc';
@@ -131,19 +134,24 @@ function renderGrid(){
   tr.innerHTML=`<td>${(S.page-1)*+$('#pageSize').value+i+1}</td>`+splitCell+S.columns.map(c=>{
    if(c===lotCol){const lotVal=r[c];return `<td class="lot-cell"><button type="button" class="lot-dsp-link grid-lot-link" title="クリックでLotDspをこのロット番号で開きます">${esc(lotVal)||'—'}</button></td>`}
    return `<td>${esc(r[c])}</td>`;
-  }).join('')+(isWork?'<td class="measurement-action-cell"><button type="button" class="measurement-action-button">開く</button></td>':'');
+  }).join('')+(isWork?'<td class="measurement-action-cell"><button type="button" class="measurement-action-button">開く</button></td>':'')+(canPlan?'<td class="plan-action-cell"><button type="button" class="plan-action-button" title="この行の設備の作業スケジュールへ追加します">+ 予定</button></td>':'');
   if(r===S.selectedRow)tr.classList.add('is-selected');
   tr.addEventListener('click',()=>{
    if(S.selectedRow===r)return;
    S.selectedRow=r;
    b.querySelectorAll('tr.is-selected').forEach(x=>x.classList.remove('is-selected'));
    tr.classList.add('is-selected');
+   window.scRefreshAddFromListPanel?.();
   });
   if(isWork){
    tr.classList.add('measurement-row');
    const open=e=>{e.preventDefault();e.stopPropagation();openMeasurement(r).catch(err=>alert('測定画面を開けません: '+err.message))};
    tr.addEventListener('dblclick',open);
    tr.querySelector('.measurement-action-button').onclick=open;
+  }
+  if(canPlan){
+   const planBtn=tr.querySelector('.plan-action-button');
+   if(planBtn)planBtn.onclick=e=>{e.preventDefault();e.stopPropagation();window.scheduleAddFromRow?.(r)};
   }
   if(hasLotDsp){
    const lotBtn=tr.querySelector('.grid-lot-link');
