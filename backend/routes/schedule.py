@@ -320,3 +320,13 @@ def estimate_preview():
  if err:return jsonify(error=err),503
  return jsonify(ok=True,configured=True,equipment=equipment,lot=str(request.args.get('lot') or ''),
                 estimate=result,stale=stale)
+
+@bp.get('/api/schedule/accuracy')
+def accuracy():
+ # §6.9・§9.8「見積 vs 実測」の指標(中央値バイアス・MAPE相当)。実績データ
+ # (共有測定バックアップ)側の読み込みのみで、共有スケジュールDBには触れない
+ # ため、_read()のロック/改訂番号サイクルは使わない(GETかつ読み取り専用)。
+ equipment=str(request.args.get('equipment') or '').strip()
+ if not equipment:return jsonify(error='どの設備の精度を見るか指定してください(equipment)。'),400
+ result=load_factor.accuracy(equipment)
+ return jsonify(ok=True,equipment=equipment,**result)

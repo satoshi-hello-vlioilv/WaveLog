@@ -421,6 +421,14 @@ def permission_flags(c,login_id,pc_name):
    return {'canEdit':bool(r[3]),'canSchedule':bool(r[8]),'canFieldReorder':bool(r[9]),'fieldReorderEquipment':str(r[10] or '').strip()}
  return {'canEdit':True,'canSchedule':False,'canFieldReorder':False,'fieldReorderEquipment':''}
 
+def field_reorder_terminal_count(c,equipment):
+ # docs/SCHEDULE_MODE_DESIGN.md §5.0.1: 設備削除確認で使う。現場段取り
+ # 対象設備としてこの設備名を登録している端末数(現場段取り可否が真の
+ # 行のみを数える)。
+ if ACCESS_PERMISSION_TABLE not in tables(c):return 0
+ target=normalize_equipment_name(equipment)
+ return sum(1 for r in access_permission_master_rows(c) if bool(r[9]) and normalize_equipment_name(str(r[10] or '').strip())==target)
+
 # ========================================================================
 # 表示マスタ（列表示設定）
 #  - 対象DB（仕掛一覧=SIKALOTNOW、品質データ=SIKALOTDEF等、DBS参照）ごとに、

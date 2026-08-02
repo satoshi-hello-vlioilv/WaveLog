@@ -25,8 +25,10 @@ from ..repositories.master_repo import (
  FILTER_PRESET_TABLE, ensure_filter_preset_table, filter_preset_rows,
  COLUMN_DISPLAY_TABLE, ensure_column_display_table, hidden_columns_for, set_hidden_columns,
  ACCESS_PERMISSION_TABLE, ensure_access_permission_table, normalize_identity_part, access_permission_master_rows,
+ field_reorder_terminal_count,
 )
 from ..db_access import cols, tables, cfg
+from .. import schedule_calc
 
 bp=Blueprint('masters',__name__)
 
@@ -123,12 +125,28 @@ def equipment_master_update():
 @bp.post('/api/equipment-master/delete')
 def equipment_master_delete():
  try:
-  x=request.get_json(force=True) or {};eid=x.get('id');uid=request_user_id(x)
+  x=request.get_json(force=True) or {};eid=x.get('id');uid=request_user_id(x);force=bool(x.get('force'))
   if eid is None:return jsonify(error='削除対象IDがありません。'),400
   path=DBS['MASTER']['path']
   with connect(path,False) as c:
    ensure_equipment_master_table(c);cur=c.cursor()
    cur.execute('SELECT [設備名] FROM [設備マスタ] WHERE [設備ID]=?',[eid]);row=cur.fetchone();name=str(row[0]).strip() if row and row[0] else ''
+   # docs/SCHEDULE_MODE_DESIGN.md §5.0.1: まず拒否して内訳を提示し、
+   # 利用者が再確認のうえforce:trueで再送した場合のみ実際に削除する。
+   # スケジュール側の参照はDBへ一切書き込まない読み取り専用の確認のみ
+   # (削除してもスケジュール側のデータは履歴として残る)。
+   references_check_failed=False
+   if name and not force:
+    references=schedule_calc.equipment_reference_counts(name)
+    if references is None:
+     # 共有ファイルの取得自体に失敗(Box未接続等)。確認できないだけで、
+     # 削除自体をブロックする理由にはしない(§5.0.1)。
+     references_check_failed=True
+    else:
+     references['fieldReorderTerminals']=field_reorder_terminal_count(c,name)
+     if any(v>0 for v in references.values()):
+      return jsonify(error='この設備には関連するスケジュールデータがあります。',
+                      code='schedule_references_exist',references=references),409
    # 物理削除ではなく無効化し、履歴を残す。無効化した更新者も記録する。
    cur.execute('UPDATE [設備マスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [設備ID]=?',[uid,eid])
    # オペレータ設備マスタは設備名で紐づいているため、削除した設備を作業可能
@@ -138,7 +156,7 @@ def equipment_master_delete():
     ensure_operator_equipment_table(c)
     cur.execute('DELETE FROM [オペレータ設備マスタ] WHERE [設備名]=?',[name])
    c.commit()
-  return jsonify(ok=True,id=eid,updated_by=uid)
+  return jsonify(ok=True,id=eid,updated_by=uid,referencesCheckFailed=references_check_failed)
  except Exception as e:return jsonify(error=f'設備マスタ削除失敗: {e}'),500
 
 @bp.get('/api/operator-master')

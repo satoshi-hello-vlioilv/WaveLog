@@ -165,6 +165,7 @@
    fields:[{k:'loginId',label:'ログインID',required:true,key:true},{k:'pcName',label:'PC名',required:true,key:true},{k:'canEdit',label:'編集可否',type:'select',options:['編集可','閲覧のみ']}],
    cols:[{k:'loginId',label:'ログインID',grow:2},{k:'pcName',label:'PC名',grow:2},{k:'canEdit',label:'編集可否',grow:1}],
    hint:'登録の無い組み合わせは既定で編集可能として扱われます。特定の端末を閲覧専用にしたい場合のみ、その端末のログインID・PC名の組み合わせを「閲覧のみ」で登録してください。'},
+  {key:'loadFactor',label:'負荷率',icon:'率',special:'load-factor',endpoint:'/api/schedule/load-factors'},
   {key:'stopReason',label:'設備停止',icon:'停',endpoint:'/api/schedule/stop-reason-master',hasDelete:true,
    fields:[{k:'equipment',label:'設備名',type:'equipment-select',required:true,key:true},
            {k:'category',label:'分類',type:'select',options:['保全','段取り','待ち','突発','']},
@@ -374,9 +375,52 @@
   }catch(e){showToast&&showToast(editing?'更新できませんでした':'登録できませんでした',e.message,6500)}
   finally{setMaintLoading(false)}
  }
+ /* 設備マスタの削除確認: docs/SCHEDULE_MODE_DESIGN.md §5.0.1のとおり、まず
+    拒否して関連スケジュールデータの内訳を提示し、利用者が再確認のうえ
+    明示的に選んだ場合のみforce:trueで再送する(削除してもスケジュール側の
+    データ自体は一切書き換えない・履歴として残る)。 */
+ function scheduleReferenceLabels(){
+  return {pendingPlans:'未着手の作業予定',inProgressPlans:'着手中の作業予定',completedPlans:'完了済みの作業予定',
+          calendarRows:'稼働カレンダー',stopReasonRows:'設備停止マスタ',loadFactorOverrideRows:'負荷率の手動上書き',
+          fieldReorderTerminals:'現場段取り対象に設定中の端末'};
+ }
+ async function deleteEquipmentWithReferenceCheck(item,uid){
+  try{
+   setMaintLoading(true,'設備マスタを無効化しています…');
+   await api('/api/equipment-master/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:item.id,user_id:uid})});
+   return true;
+  }catch(e){
+   if(e.code!=='schedule_references_exist')throw e;
+   setMaintLoading(false);
+   const labels=scheduleReferenceLabels();
+   const rows=Object.entries(e.references||{}).filter(([,v])=>v>0)
+    .map(([k,v])=>`<tr class="${k==='inProgressPlans'?'eq-ref-warn':''}"><td>${esc(labels[k]||k)}</td><td>${v}件</td></tr>`).join('');
+   const proceed=await confirmModal({
+    eyebrow:'設備マスタ',title:'関連するスケジュールデータがあります',danger:true,
+    bodyHtml:`<p class="confirm-modal-message">「${esc(item.name||'')}」には以下のスケジュールデータが関連しています。削除すると、これらは履歴として残りますが、今後この設備は仕掛一覧・スケジュール画面・現場段取りの選択肢から外れます。よろしいですか?</p>
+     <table class="eq-ref-table"><tbody>${rows}</tbody></table>`,
+    confirmLabel:'削除する',cancelLabel:'キャンセル'
+   });
+   if(!proceed)return false;
+   setMaintLoading(true,'設備マスタを無効化しています…');
+   await api('/api/equipment-master/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:item.id,user_id:uid,force:true})});
+   return true;
+  }finally{
+   setMaintLoading(false);
+  }
+ }
  async function deleteMaint(item){
   const def=currentDef();if(!def.hasDelete)return;const uid=requireMaintUser();if(uid===null)return;
   const nm=item[def.cols[0].k]||item.name||'';
+  if(def.key==='equipment'){
+   try{
+    const proceeded=await deleteEquipmentWithReferenceCheck(item,uid);
+    if(!proceeded)return;
+    if(maintState.editing&&maintState.editing.id===item.id)maintState.editing=null;
+    await loadMaint(true);showToast&&showToast(def.label+'を無効化しました',nm,3600);
+   }catch(e){showToast&&showToast('削除できませんでした',e.message,6500)}
+   return;
+  }
   if(!confirm(`${def.label}「${nm}」を無効化（削除）しますか？`))return;
   try{
    setMaintLoading(true,`${def.label}を無効化しています…`);
@@ -423,6 +467,7 @@
   const def=currentDef();const title=$('#masterMaintTitle');if(title)title.textContent=def.label+'マスタ';
   if(def.special==='column-display'){setMaintSearchVisible(false);return loadColumnDisplayMaint(force)}
   if(def.special==='import-backup'){setMaintSearchVisible(false);return loadImportBackupMaint(force)}
+  if(def.special==='load-factor'){setMaintSearchVisible(false);return loadLoadFactorMaint(force)}
   setMaintSearchVisible(true);
   const list=$('#masterMaintList');if(list&&force)list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
   const multiField=def.fields.find(f=>f.type==='equipment-multi');
@@ -505,6 +550,118 @@
    await api('/api/column-display-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({db:columnDisplayState.dbKey,hidden,user_id:uid})});
    columnDisplayState.hidden=hidden;
    showToast&&showToast('表示設定を保存しました',`非表示 ${hidden.length}列`,3600);
+  }catch(e){showToast&&showToast('保存できませんでした',e.message,6500)}
+  finally{setMaintLoading(false)}
+ }
+ /* ---------- 負荷率(換算係数)モデル(docs/SCHEDULE_MODE_DESIGN.md §6・§9.8) ----------
+    因子×水準の一覧(自動算出値・N数・上書き値)は「自動算出＋上書き」の2層
+    構造で汎用CRUDのフォームに載らないため、列表示マスタと同じ特別扱いにする。 */
+ let loadFactorState={equipment:'',configured:true,model:null,accuracy:null};
+ function loadFactorBasisLabel(b){return {equipment:'自設備の実績',pooled:'全設備プール(自設備は実績不足)',default:'算出不可(実績なし)'}[b]||b||'-'}
+ function fmtLfMinutes(min){if(min===null||min===undefined)return '-';const v=Math.round(min);if(v<60)return `${v}分`;return `${Math.floor(v/60)}時間${v%60?(v%60)+'分':''}`}
+ async function loadLoadFactorMaint(force){
+  const list=$('#masterMaintList');if(!list)return;
+  if(typeof loadEquipmentMaster==='function'){try{await loadEquipmentMaster(force)}catch(e){/* 設備マスタが読めなくても画面表示は継続する */}}
+  const opts=equipmentMasterState.items||[];
+  if(!loadFactorState.equipment&&opts.length)loadFactorState.equipment=opts[0].name;
+  renderLoadFactorForm();
+  if(!loadFactorState.equipment){list.innerHTML='<div class="mm-empty">設備マスタが未登録です。先に「設備」タブで登録してください。</div>';return}
+  list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
+  try{
+   const [lf,acc]=await Promise.all([
+    api('/api/schedule/load-factors?equipment='+encodeURIComponent(loadFactorState.equipment)),
+    api('/api/schedule/accuracy?equipment='+encodeURIComponent(loadFactorState.equipment)).catch(()=>null),
+   ]);
+   loadFactorState.configured=!!(lf&&lf.configured);
+   loadFactorState.model=loadFactorState.configured?lf.model:null;
+   loadFactorState.accuracy=acc;
+   renderLoadFactorList();
+  }catch(e){list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
+ }
+ function renderLoadFactorForm(){
+  const form=$('#masterMaintForm');if(!form)return;
+  const opts=equipmentMasterState.items||[];
+  const optHtml=opts.map(eq=>`<option value="${esc(eq.name)}"${eq.name===loadFactorState.equipment?' selected':''}>${esc(eq.name)}</option>`).join('');
+  form.innerHTML=`<div class="mm-form-head"><span class="mm-mode-chip new">負荷率(換算係数)モデル</span></div>
+   <div class="mm-cd-toolbar">
+    <div class="mm-cd-dbtabs"><select id="mmLfEquipment">${optHtml||'<option value="">設備マスタが未登録です</option>'}</select></div>
+    <div class="mm-cd-actions"><button type="button" id="mmLfRecalc" class="mm-btn-ghost sm">再計算</button></div>
+   </div>
+   <p class="mm-form-hint">因子ごとの自動算出係数(§6)と手動上書きです。係数を入力して保存すると上書きが有効になり、空欄で保存すると解除されます。「BASE」行は基準時間T0(1件あたりの基準所要分)自体を分単位で上書きします。</p>`;
+  form.onsubmit=ev=>ev.preventDefault();
+  const sel=$('#mmLfEquipment');
+  if(sel)sel.onchange=()=>{loadFactorState.equipment=sel.value;loadLoadFactorMaint(false)};
+  const recalc=$('#mmLfRecalc');
+  if(recalc)recalc.onclick=async()=>{
+   const uid=requireMaintUser();if(uid===null)return;
+   try{
+    setMaintLoading(true,'再計算しています…');
+    await api('/api/schedule/load-factors/recalc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({equipment:loadFactorState.equipment,user_id:uid})});
+    await loadLoadFactorMaint(true);
+    showToast&&showToast('再計算しました','',3200);
+   }catch(e){showToast&&showToast('再計算できませんでした',e.message,6500)}
+   finally{setMaintLoading(false)}
+  };
+ }
+ function renderLoadFactorList(){
+  const list=$('#masterMaintList');if(!list)return;
+  if(!loadFactorState.configured){list.innerHTML='<div class="mm-empty">スケジュール機能が設定されていません(config/local.jsonのschedule_share_path未設定)。</div>';return}
+  const model=loadFactorState.model;
+  if(!model){list.innerHTML='<div class="mm-empty">この設備の完了実績がまだ無く、係数を算出できません。</div>';return}
+  const acc=loadFactorState.accuracy;
+  const baseOv=(model.overrides||[]).find(o=>o.factor==='BASE');
+  const summary=`<div class="lf-summary">
+   <div><small>基準</small><b>${esc(loadFactorBasisLabel(model.basis))}</b></div>
+   <div><small>基準時間T0</small><b>${fmtLfMinutes(model.T0)}</b>${baseOv?`<span class="lf-override-note">→ 上書き適用中: ${fmtLfMinutes(baseOv.coefficient)}</span>`:''}</div>
+   <div><small>実績件数</small><b>${model.n}件${model.excluded?`(外れ値${model.excluded}件除外)`:''}</b></div>
+   <div><small>ばらつき(σ)</small><b>${model.sigmaLog!=null?model.sigmaLog:'-'}</b></div>
+   ${acc&&acc.n?`<div><small>精度: 中央値バイアス</small><b>${acc.medianLogBias>0?'+':''}${acc.medianLogBias}</b></div>
+   <div><small>精度: MAPE相当</small><b>${Math.round((acc.mape||0)*100)}%(n=${acc.n})</b></div>`:''}
+  </div>`;
+  const overrideMap={};
+  (model.overrides||[]).forEach(o=>{overrideMap[o.factor+' '+(o.level||'')]=o});
+  const baseOverride=overrideMap['BASE '];
+  const baseRow=`<div class="lf-row lf-row-base">
+   <span class="lf-row-key">BASE</span><span class="lf-row-level">基準時間T0</span>
+   <span class="lf-row-value">${fmtLfMinutes(model.T0)}</span><span class="lf-row-n">n=${model.n}</span>
+   <span class="lf-row-override"><input type="number" step="0.1" min="0" placeholder="分で上書き" data-lf-factor="BASE" data-lf-level="" value="${baseOverride?baseOverride.coefficient:''}"></span>
+   <span class="lf-row-actions"><button type="button" class="mm-btn-ghost sm" data-lf-save="BASE|">保存</button>${baseOverride?'<button type="button" class="mm-btn-ghost sm" data-lf-clear="BASE|">解除</button>':''}</span>
+  </div>`;
+  const factorRows=(model.factors||[]).map(f=>{
+   const ov=overrideMap[f.key+' '+f.level];
+   return `<div class="lf-row">
+    <span class="lf-row-key">${esc(f.key)}</span><span class="lf-row-level">${esc(f.level)}</span>
+    <span class="lf-row-value">×${f.value}</span><span class="lf-row-n">n=${f.n}</span>
+    <span class="lf-row-override"><input type="number" step="0.01" min="0" placeholder="係数で上書き" data-lf-factor="${esc(f.key)}" data-lf-level="${esc(f.level)}" value="${ov?ov.coefficient:''}"></span>
+    <span class="lf-row-actions"><button type="button" class="mm-btn-ghost sm" data-lf-save="${esc(f.key)}|${esc(f.level)}">保存</button>${ov?`<button type="button" class="mm-btn-ghost sm" data-lf-clear="${esc(f.key)}|${esc(f.level)}">解除</button>`:''}</span>
+   </div>`;
+  }).join('');
+  list.innerHTML=`${summary}
+   <div class="lf-table">
+    <div class="lf-row lf-row-head"><span>因子</span><span>水準</span><span>係数</span><span>N</span><span>手動上書き</span><span></span></div>
+    ${baseRow}
+    ${factorRows||'<div class="mm-empty">この設備には因子(水準)がありません。</div>'}
+   </div>`;
+  list.querySelectorAll('[data-lf-save]').forEach(btn=>btn.onclick=()=>saveLoadFactorOverride(btn.dataset.lfSave,false));
+  list.querySelectorAll('[data-lf-clear]').forEach(btn=>btn.onclick=()=>saveLoadFactorOverride(btn.dataset.lfClear,true));
+ }
+ async function saveLoadFactorOverride(key,clear){
+  const uid=requireMaintUser();if(uid===null)return;
+  const [factor,level]=key.split('|');
+  let coefficient=null;
+  if(!clear){
+   const input=document.querySelector(`[data-lf-factor="${CSS.escape(factor)}"][data-lf-level="${CSS.escape(level)}"]`);
+   const raw=input?String(input.value).trim():'';
+   if(!raw){showToast&&showToast('係数(またはBASEは分)を入力してください','',3200);return}
+   coefficient=Number(raw);
+   if(!Number.isFinite(coefficient)){showToast&&showToast('数値を入力してください','',3200);return}
+  }
+  try{
+   setMaintLoading(true,clear?'解除しています…':'保存しています…');
+   await api('/api/schedule/load-factors/override',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({equipment:loadFactorState.equipment,factor,level,coefficient,user_id:uid})});
+   await loadLoadFactorMaint(true);
+   showToast&&showToast(clear?'上書きを解除しました':'上書きを保存しました','',3200);
   }catch(e){showToast&&showToast('保存できませんでした',e.message,6500)}
   finally{setMaintLoading(false)}
  }

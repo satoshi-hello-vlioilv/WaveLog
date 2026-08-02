@@ -18,9 +18,10 @@ import json
 from datetime import date, datetime, time, timedelta
 
 from . import load_factor
+from . import schedule_sync
 from .repositories import schedule_repo as sr
 from .repositories.master_repo import normalize_equipment_name
-from .db_access import merged_backup_rows
+from .db_access import merged_backup_rows, connect as _sqlite_connect
 
 MIN_REMAIN_MINUTES=5
 MAX_HORIZON_DAYS=60
@@ -313,3 +314,37 @@ def expand_plan(c,equipment,now=None):
                      'calculatedAt':lf_model.get('calculatedAt')}
  return {'entries':entries,'warnings':warnings,'anchor':anchor.isoformat() if anchor else None,
          'loadFactor':load_factor_info}
+
+# ========================================================================
+# 設備削除時の参照件数(§5.0.1)
+# ========================================================================
+def equipment_reference_counts(equipment):
+ """設備マスタの削除確認(§5.0.1)が使う、指定設備に紐づくスケジュール側
+ データの参照件数。共有DBの読み取り専用スナップショットを使う(ロック不要、
+ §4.2の「取得」のみ)。schedule_share_path未設定ならそもそもスケジュール
+ 機能を使っていないため全件0を返す。共有ファイルの取得自体に失敗した
+ 場合はNoneを返す(呼び出し側は「確認できませんでした」の警告付きで
+ 削除をブロックしない、§5.0.1の方針どおり)。pendingPlans/inProgressPlans/
+ completedPlansは実績突合込みの導出状態(expand_plan()、§7.4と同じ)で
+ 数える(「状態が実質的に」の要件どおり、DBの生の[状態]列では数えない)。"""
+ try:
+  local_path,_stale=schedule_sync.fetch_snapshot()
+ except schedule_sync.ScheduleNotConfigured:
+  return {'pendingPlans':0,'inProgressPlans':0,'completedPlans':0,
+          'calendarRows':0,'stopReasonRows':0,'loadFactorOverrideRows':0}
+ except schedule_sync.ScheduleUnavailableError:
+  return None
+ c=_sqlite_connect(local_path,False,'sqlite')
+ try:
+  expanded=expand_plan(c,equipment)
+  pending=sum(1 for e in expanded['entries'] if e['state']==sr.PLAN_REORDERABLE_STATE)
+  in_progress=sum(1 for e in expanded['entries'] if e['state']=='着手')
+  completed=sum(1 for e in expanded['entries'] if e['state']=='完了')
+  calendar_rows=len(sr.calendar_rows(c,equipment))
+  stop_reason_rows=len(sr.stop_reason_rows(c,equipment))
+  target=normalize_equipment_name(equipment)
+  override_rows=sum(1 for r in sr.load_factor_override_rows(c) if normalize_equipment_name(r[1])==target)
+ finally:
+  c.close()
+ return {'pendingPlans':pending,'inProgressPlans':in_progress,'completedPlans':completed,
+         'calendarRows':calendar_rows,'stopReasonRows':stop_reason_rows,'loadFactorOverrideRows':override_rows}
