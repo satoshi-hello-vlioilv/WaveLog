@@ -10,6 +10,7 @@ backend/masters.py から移設。ロジックは変更していない(移動の
 URLはBlueprint分離前と同一(/api/equipment-master 等)。
 """
 import json
+from datetime import datetime
 from flask import Blueprint, request, jsonify
 
 from ..db_access import DBS, connect, request_user_id
@@ -43,17 +44,59 @@ def equipment_master_list():
 def equipment_master_register():
  try:
   x=request.get_json(force=True) or {};name=str(x.get('name') or '').strip();uid=request_user_id(x)
+  # reuseExisting: True=同じ設備として復元/False=別の新しい設備として登録/
+  # 未指定(None)=無効化された同名設備があれば選択を求める(下記参照)。
+  reuse_existing=x.get('reuseExisting')
   if not name:return jsonify(error='設備名を入力してください。'),400
   path=DBS['MASTER']['path']
   with connect(path,False) as c:
-   ensure_equipment_master_table(c);cur=c.cursor();cur.execute('SELECT [設備ID],[設備名] FROM [設備マスタ]');rows=cur.fetchall();target=normalize_equipment_name(name);existing=next((r for r in rows if normalize_equipment_name(r[1])==target),None)
-   if existing:
-    cur.execute('UPDATE [設備マスタ] SET [有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [設備ID]=?',[uid,existing[0]]);registered=False;stored_name=str(existing[1]).strip()
-   else:
+   ensure_equipment_master_table(c);cur=c.cursor()
+   cur.execute('SELECT [設備ID],[設備名],[有効],[更新日時],[更新者ID] FROM [設備マスタ]');rows=cur.fetchall()
+   target=normalize_equipment_name(name)
+   existing=next((r for r in rows if normalize_equipment_name(r[1])==target),None)
+   existing_active=bool(existing) and (True if existing[2] is None else bool(existing[2]))
+
+   if existing and existing_active:
+    # 既にアクティブな同名設備がある。選択の余地は無く、従来どおりの冪等応答。
+    return jsonify(ok=True,name=str(existing[1]).strip(),registered=False,reused=True,updated_by=uid,
+                    message='設備マスタの登録済み設備を使用します。')
+
+   if existing and not existing_active and reuse_existing is None:
+    # 過去に削除(無効化)された同名設備がある。呼び出し元が意図(復元/新規)を
+    # 明示していなければ、ここで選択を求める(実装しない=常に復元、という
+    # 従来動作をここだけ変える。他の呼び出し元はreuseExisting:trueを渡せば
+    # 従来どおり無条件で復元される)。
+    return jsonify(error=f'「{name}」は過去に削除された設備と同じ名前です。同じ設備として復元するか、別の新しい設備として登録するか選んでください。',
+                    code='inactive_equipment_name_conflict',
+                    existingId=existing[0],
+                    existingDeactivatedAt=existing[3].isoformat() if existing[3] else None,
+                    existingDeactivatedBy=(str(existing[4]).strip() if existing[4] else '')),409
+
+   if existing and not existing_active and reuse_existing:
+    # 同じ設備として復元: 無効化されていた行をそのまま有効化する(従来の挙動)。
+    cur.execute('UPDATE [設備マスタ] SET [有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [設備ID]=?',[uid,existing[0]]);c.commit()
+    return jsonify(ok=True,name=str(existing[1]).strip(),registered=False,reused=True,updated_by=uid,
+                    message='設備マスタへ登録済みの設備を復元しました。過去のスケジュール等の履歴もそのまま引き継がれます。')
+
+   if existing and not existing_active and reuse_existing is False:
+    # 別の新しい設備として登録: 既存の無効行を一意な退避名へ改名し、
+    # rename_equipment_references(§改名連動)で関連マスタ側もその退避名へ
+    # 追従させたうえで、空いた名称で新規行を作る。設備マスタの[設備名]は
+    # 一意インデックスがあるため、退避せずに同名で2行目を作ることはできない。
+    retired_name=f'{name}(旧{datetime.now().strftime("%Y%m%d%H%M%S%f")})'
+    cur.execute('UPDATE [設備マスタ] SET [設備名]=?,[更新者ID]=?,[更新日時]=Now() WHERE [設備ID]=?',[retired_name,uid,existing[0]])
+    renamed=rename_equipment_references(c,name,retired_name)
     cur.execute('SELECT Max([表示順]) FROM [設備マスタ]');maximum=cur.fetchone()[0];order=int(maximum or 0)+10
-    cur.execute('INSERT INTO [設備マスタ] ([設備名],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,-1,?,?,Now(),Now())',[name,order,uid,uid]);registered=True;stored_name=name
-   c.commit()
-  return jsonify(ok=True,name=stored_name,registered=registered,updated_by=uid,message=('設備マスタへ新規登録しました。次回から設備リストに表示されます。' if registered else '設備マスタの登録済み設備を使用します。'))
+    cur.execute('INSERT INTO [設備マスタ] ([設備名],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,-1,?,?,Now(),Now())',[name,order,uid,uid])
+    c.commit()
+    return jsonify(ok=True,name=name,registered=True,reused=False,retiredAs=retired_name,retiredReferences=renamed,updated_by=uid,
+                    message=f'「{name}」を新しい設備として登録しました。過去の設備は「{retired_name}」として履歴に残ります。')
+
+   # 同名の既存行が無い場合: 通常の新規登録。
+   cur.execute('SELECT Max([表示順]) FROM [設備マスタ]');maximum=cur.fetchone()[0];order=int(maximum or 0)+10
+   cur.execute('INSERT INTO [設備マスタ] ([設備名],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,-1,?,?,Now(),Now())',[name,order,uid,uid]);c.commit()
+   return jsonify(ok=True,name=name,registered=True,reused=False,updated_by=uid,
+                   message='設備マスタへ新規登録しました。次回から設備リストに表示されます。')
  except Exception as e:return jsonify(error=f'設備マスタ登録失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
 
 @bp.post('/api/equipment-master/update')
