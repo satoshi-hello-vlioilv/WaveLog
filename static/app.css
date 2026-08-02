@@ -232,8 +232,7 @@ body.schedule-mode .record-list-actions .resume,
 body.schedule-mode .record-list-actions .danger{display:none}
 body.view-mode #recordSyncBar,
 body.schedule-mode #recordSyncBar{display:none!important}
-body.view-mode #openMasterMaint,
-body.schedule-mode #openMasterMaint{opacity:.45;pointer-events:none}
+body.view-mode #openMasterMaint{opacity:.45;pointer-events:none}
 
 #tabs{height:38px;display:flex;background:#fff;border-bottom:1px solid var(--line)}
 .tab{border:0;border-bottom:3px solid transparent;border-radius:0;background:#fff}
@@ -2155,6 +2154,18 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
 .sc-ef-source{margin-left:auto;font-size:10px;font-weight:800;padding:1px 7px;border-radius:9px;background:#eef2f3;color:#5c777e}
 .sc-ef-source-override .sc-ef-source{background:var(--warn-bg);color:var(--warn-fg)}
 .sc-ef-source-unknown .sc-ef-source{background:var(--danger-bg);color:var(--danger)}
+
+/* 固定開始日時(§5.1・§7.3、フェーズ6)。schedule モードの未着手カードだけ
+   編集でき、それ以外(view/edit)は設定済みの値を読み取り表示のみ出す。 */
+.sc-fixed-start{display:flex;align-items:center;gap:6px;font-size:11px;color:#61757c}
+.sc-fixed-start label{display:flex;align-items:center;gap:4px}
+.sc-fixed-start-input{height:24px;padding:0 4px;border:1px solid var(--line);border-radius:5px;font-size:11px;font-family:inherit}
+.sc-fixed-start-clear{height:22px;padding:0 8px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:10px;cursor:pointer}
+.sc-fixed-start-readonly{font-size:11px;color:#61757c}
+
+/* 非稼働帯の明示(§9.3「── 12:00 昼休み ──」)。稼働カレンダー上の空き・
+   固定開始日時による押し出しで、カード間の時刻が連続しない箇所に挿む。 */
+.sc-gap-divider{align-self:center;font-size:11px;color:#8a9aa0;padding:2px 0;text-align:center}
 
 /* ---------------------------------------------------------------
    接続断の明示。ハートビートが続けて失敗したときに最上部へ出す。

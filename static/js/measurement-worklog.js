@@ -165,11 +165,33 @@
    fields:[{k:'loginId',label:'ログインID',required:true,key:true},{k:'pcName',label:'PC名',required:true,key:true},{k:'canEdit',label:'編集可否',type:'select',options:['編集可','閲覧のみ']}],
    cols:[{k:'loginId',label:'ログインID',grow:2},{k:'pcName',label:'PC名',grow:2},{k:'canEdit',label:'編集可否',grow:1}],
    hint:'登録の無い組み合わせは既定で編集可能として扱われます。特定の端末を閲覧専用にしたい場合のみ、その端末のログインID・PC名の組み合わせを「閲覧のみ」で登録してください。'},
+  {key:'stopReason',label:'設備停止',icon:'停',endpoint:'/api/schedule/stop-reason-master',hasDelete:true,
+   fields:[{k:'equipment',label:'設備名',type:'equipment-select',required:true,key:true},
+           {k:'category',label:'分類',type:'select',options:['保全','段取り','待ち','突発','']},
+           {k:'name',label:'名称',required:true,key:true},{k:'standardMinutes',label:'標準所要分',required:true}],
+   cols:[{k:'equipment',label:'設備名',grow:1},{k:'category',label:'分類',grow:1},{k:'name',label:'名称',grow:2},{k:'standardMinutes',label:'標準所要分',grow:1}],
+   hint:'作業スケジュール(docs/SCHEDULE_MODE_DESIGN.md §5.3)の設備停止予定で選べる名称と、その設備での標準所要分(分)です。同じ名称でも設備が異なれば別行として個別の時間を登録できます。「突発停止」は現場からの連絡を受けた計画担当が投入する運用のため、名称に登録しておくだけで自動では動きません。'},
   {key:'columnDisplay',label:'列表示',icon:'列',special:'column-display'},
   {key:'importBackup',label:'データ引継ぎ',icon:'継',special:'import-backup'},
  ];
  let maintState={defKey:'operator',items:[],editing:null,query:''};
  function currentDef(){return MASTER_DEFS.find(d=>d.key===maintState.defKey)||MASTER_DEFS[0]}
+ // scheduleモードは作業予定(schedule Blueprint)以外のマスタへ書込できない
+ // (backend/access_mode.pyの_WRITE_ALLOWED_MODES)。マスタ管理モーダル自体は
+ // 開けるようにしつつ(設備停止マスタはscheduleモードでのみ書込可能なため)、
+ // タブは自分のBlueprintで書けるものだけに絞る。
+ function maintDefVisible(def){
+  const mode=(window.accessMode&&window.accessMode.mode)||'edit';
+  if(mode!=='schedule')return true;
+  return !!(def.endpoint&&def.endpoint.indexOf('/api/schedule/')===0);
+ }
+ function firstVisibleDefKey(){const d=MASTER_DEFS.find(maintDefVisible);return d?d.key:MASTER_DEFS[0].key}
+ function renderMaintNav(){
+  const nav=$('#masterMaintNav');if(!nav)return;
+  nav.innerHTML=MASTER_DEFS.filter(maintDefVisible).map(d=>`<button type="button" data-master="${d.key}"><span class="mm-nav-ico" aria-hidden="true">${esc(d.icon)}</span><span class="mm-nav-label">${esc(d.label)}</span></button>`).join('');
+  nav.querySelectorAll('[data-master]').forEach(b=>b.onclick=()=>{maintState.defKey=b.dataset.master;maintState.editing=null;maintState.query='';const se=$('#masterMaintSearch');if(se)se.value='';syncNav();loadMaint(true)});
+  syncNav();
+ }
 
  function ensureMaintModal(){
   let modal=$('#masterMaintModal');if(modal)return modal;
@@ -201,9 +223,7 @@
   const uid=$('#masterUserId');if(uid){uid.value=currentUserId();uid.onchange=()=>setUserId(uid.value)}
   $('#reloadMasterMaint').onclick=()=>loadMaint(true);
   const search=$('#masterMaintSearch');if(search){search.oninput=()=>{maintState.query=search.value;renderMaintList()}}
-  const nav=$('#masterMaintNav');
-  nav.innerHTML=MASTER_DEFS.map(d=>`<button type="button" data-master="${d.key}"><span class="mm-nav-ico" aria-hidden="true">${esc(d.icon)}</span><span class="mm-nav-label">${esc(d.label)}</span></button>`).join('');
-  nav.querySelectorAll('[data-master]').forEach(b=>b.onclick=()=>{maintState.defKey=b.dataset.master;maintState.editing=null;maintState.query='';const se=$('#masterMaintSearch');if(se)se.value='';syncNav();loadMaint(true)});
+  renderMaintNav();
   return modal;
  }
  function syncNav(){document.querySelectorAll('#masterMaintNav [data-master]').forEach(b=>b.classList.toggle('active',b.dataset.master===maintState.defKey))}
@@ -213,6 +233,14 @@
   const def=currentDef(),form=$('#masterMaintForm');if(!form)return;const editing=maintState.editing;
   const controls=def.fields.map(f=>{
    const val=editing?String(editing[f.k]??''):'';
+   if(f.type==='equipment-select'){
+    const opts=equipmentMasterState.items||[];
+    if(!opts.length){
+     return `<div class="mm-field"><span>${esc(f.label)}</span><span class="mm-empty-inline">設備マスタが未登録です。先に「設備」タブで登録してください。</span></div>`;
+    }
+    const optHtml=opts.map(eq=>`<option value="${esc(eq.name)}"${eq.name===val?' selected':''}>${esc(eq.name)}</option>`).join('');
+    return `<label class="mm-field"><span>${esc(f.label)}${f.required?'<i>*</i>':''}${f.key?'<em class="mm-keytag">キー</em>':''}</span><select data-field="${f.k}"><option value="">選択...</option>${optHtml}</select></label>`;
+   }
    if(f.type==='equipment-multi'){
     const selected=new Set((editing&&Array.isArray(editing[f.k])?editing[f.k]:[]).map(String));
     const opts=equipmentMasterState.items||[];
@@ -398,10 +426,11 @@
   setMaintSearchVisible(true);
   const list=$('#masterMaintList');if(list&&force)list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
   const multiField=def.fields.find(f=>f.type==='equipment-multi');
+  const needsEquipmentMaster=multiField||def.fields.some(f=>f.type==='equipment-select');
   // force未指定(キャッシュ利用)のままだと、設備マスタタブで新規登録・削除した
-  // 直後でもオペレータタブの選択肢が古いままになる。loadMaint()のforceを
-  // そのまま伝播し、タブを開き直すたびに最新の設備マスタを反映する。
-  if(multiField&&typeof loadEquipmentMaster==='function'){try{await loadEquipmentMaster(force)}catch(e){/* 設備マスタが読めなくてもオペレータ一覧の表示は継続する */}}
+  // 直後でもオペレータ/設備停止タブの選択肢が古いままになる。loadMaint()の
+  // forceをそのまま伝播し、タブを開き直すたびに最新の設備マスタを反映する。
+  if(needsEquipmentMaster&&typeof loadEquipmentMaster==='function'){try{await loadEquipmentMaster(force)}catch(e){/* 設備マスタが読めなくても一覧の表示は継続する */}}
   renderMaintForm();
   try{
    const r=await api(def.endpoint);let items=(r&&r.items)||[];
@@ -571,7 +600,7 @@
   await refreshDraftCount();importBackupState.loaded=false;await loadImportBackupMaint(true);
   showToast&&showToast('インポートが完了しました',`成功 ${okCount}件 / 失敗 ${ngCount}件`+(errors.length?`\n${errors.slice(0,3).join('\n')}`:''),8000);
  }
- function openMasterMaint(){const modal=ensureMaintModal();const uid=$('#masterUserId');if(uid)uid.value=currentUserId();maintState.defKey='operator';maintState.editing=null;maintState.query='';const se=$('#masterMaintSearch');if(se)se.value='';syncNav();modal.hidden=false;loadMaint(true);requestAnimationFrame(()=>{const u=$('#masterUserId');if(u&&!u.value){u.focus();return}const s=$('#masterMaintSearch');if(s)s.focus()})}
+ function openMasterMaint(){const modal=ensureMaintModal();renderMaintNav();const uid=$('#masterUserId');if(uid)uid.value=currentUserId();maintState.defKey=firstVisibleDefKey();maintState.editing=null;maintState.query='';const se=$('#masterMaintSearch');if(se)se.value='';syncNav();modal.hidden=false;loadMaint(true);requestAnimationFrame(()=>{const u=$('#masterUserId');if(u&&!u.value){u.focus();return}const s=$('#masterMaintSearch');if(s)s.focus()})}
 
  // #openMasterMaintのクリックはここ(document委譲・capture)一箇所のみで処理する。
  // 以前はbindMasterMaint()でボタン自身にもonclickを付けていたが、この

@@ -1220,10 +1220,26 @@ Blueprint 名は `schedule`(`backend/routes/schedule.py`)。
 > 選択中1行のみ(複数選択・一括追加は未実装、`S.selectedRows`(Set)への
 > 拡張は将来の改善候補として残す)。§9.4.1の現場段取り簡易表示(追加パネル・
 > 見積内訳を隠す)・§9.6のモード別表示差分(edit=設備固定/view・schedule=
-> 設備セレクタ)は実装・Playwright検証済み。§9.7(測定画面への予定表示)・
-> §9.8(負荷率・稼働カレンダー・設備停止のマスタ管理画面。設備停止マスタ
-> だけは本フェーズでも簡易的に追加パネルから登録できるが、専用の一覧/編集
-> UIは無い)は未実装。
+> 設備セレクタ)は実装・Playwright検証済み。**フェーズ6で追加**: §9.3の
+> 「非稼働帯を線として明示」(カード間の予定開始/終了が連続しないとき、
+> フロント側でその場で差分計算して`── ◯分の空き ──`の区切りを挿む。
+> 固定開始日時による押し出しの場合は「・固定開始時刻待ち」を併記)、
+> 予定カードへの固定開始日時の設定/解除UI(§5.1・§7.3、`plan/update`の
+> `fixedStart`をそのまま使う。schedule モードの未着手カードのみ編集可、
+> それ以外は設定済みの値を読み取り表示のみ)、§9.8の設備停止マスタ管理
+> (`static/js/measurement-worklog.js`の`MASTER_DEFS`へ`stopReason`タブを
+> 追加。汎用CRUDにそのまま乗る素直な行編集のため専用UIは作っていない)。
+> **フェーズ6のPlaywright検証中に見つけた不具合を修正**: 「マスタ管理」
+> ボタンは`body.schedule-mode`でも`body.view-mode`と同じく無条件に無効化
+> していたが(全マスタが編集モード専用だった旧設計の名残)、設備停止マスタは
+> scheduleモードでのみ書込可能(`_WRITE_ALLOWED_MODES`の`schedule`
+> Blueprint)なため、この既定のままだとscheduleモードの端末が設備停止マスタへ
+> 一生手が届かない矛盾があった。`body.view-mode`のみ無効化するよう修正し、
+> マスタ管理モーダル側は現在のモードで書込めるタブ(`endpoint`が
+> `/api/schedule/`始まりかどうか)だけをナビに出すよう対応(`maintDefVisible`/
+> `renderMaintNav`)。§9.7(測定画面への予定表示)・負荷率/稼働カレンダーの
+> 管理画面(§9.8の`special`扱いの2つ、`load-factor`/`work-calendar`)は
+> 未実装(前者はフェーズ7、後者は本設計のスコープ外候補)。
 
 ### 9.1 情報アーキテクチャ(サイドバー)
 
@@ -1444,7 +1460,7 @@ const canPlan = window.accessMode?.mode === 'schedule';
 | `backend/load_factor.py` | **実装済み**。学習データ抽出・外れ値除去(中央値/MAD)・3反復の座標降下推定(収縮・クリップ)・数値因子の四分位ビン化・TTL+mtimeキャッシュ(`get_model`)・手動上書きの優先解決・見積の内訳(`estimate_work`)・精度検証の粗い代理指標(`accuracy`、UIは未実装) |
 | `backend/schedule_calc.py` | **実装済み**。稼働カレンダー展開・アンカー決定・実績突合・並べ替え対象判定(§7.5)。見積分は`resolve_estimate()`が`load_factor.py`(§6)へ委譲する(種別='作業') |
 | `backend/schedule_sync.py` | **実装済み**。ロック取得/解放・Box上ファイルの取得(backup())・整合性確認・一時名書込+リネーム反映・改訂番号チェック(§4.2〜§4.5)。データの中身を知らない汎用基盤で、業務テーブル実装時は`with_write()`のapply_fnへ差し込むだけで使える。フェーズ4のPlaywright検証中に見つけた不具合を修正: `fetch_snapshot()`の一時ファイル名が固定だったため、GET系(ロック無し)の複数リクエストがほぼ同時に走ると一時ファイルを取り合って読込失敗することがあった。呼び出しごとに一意な一時ファイル名にして解消(最終目的地への反映は`Path.replace()`で元々アトミック) |
-| `static/js/schedule-view.js` | **実装済み**。スケジュール画面・タイムライン・並べ替え(現場段取り簡易表示§9.4.1・ロック表示§9.3を含む)。並べ替えはHTML5 Drag and Drop + Alt+↑/↓(lot-split.jsの単一ジェスチャー演出は未移植)。§6.8の「見積の内訳」(基準時間T0・予測区間・因子別係数/N/source)を各カードの折りたたみパネルとして表示(既定は折りたたみ) |
+| `static/js/schedule-view.js` | **実装済み**。スケジュール画面・タイムライン・並べ替え(現場段取り簡易表示§9.4.1・ロック表示§9.3を含む)。並べ替えはHTML5 Drag and Drop + Alt+↑/↓(lot-split.jsの単一ジェスチャー演出は未移植)。§6.8の「見積の内訳」(基準時間T0・予測区間・因子別係数/N/source)を各カードの折りたたみパネルとして表示(既定は折りたたみ)。§5.1・§7.3の固定開始日時の設定/解除UI(scheduleモードの未着手カードのみ編集可)、§9.3の非稼働帯の区切り表示(カード間の`plannedEnd`/`plannedStart`の差からフロント側で算出) |
 | `docs/SCHEDULE_MODE_DESIGN.md` | 本書 |
 
 ### 10.2 既存ファイルの変更
@@ -1460,7 +1476,7 @@ const canPlan = window.accessMode?.mode === 'schedule';
 | `static/js/access-mode.js` | **実装済み**。3モード対応。**`openMeasurement`/`resumeRecordFromList` ガードの条件を `!== 'edit'` へ反転**。モードピッカーポップオーバー。`canFieldReorder` バッジ(§3.5、ヘッダーの`accessModeBadge`隣に配置) |
 | `static/js/list-view.js` | **実装済み**。仕掛一覧に「予定」列(schedule時のみ)。複数行選択(一括追加)は未実装、単一選択行からの追加のみ |
 | `static/js/base.js` | `closeAllMainViews(except)` への一本化リファクタは未実装。schedule-view.jsは既存4ビューと同じ「個別に他ビューを閉じる」方式のまま追加した(§9.2) |
-| `static/js/measurement-worklog.js` | `MASTER_DEFS` へ3タブ追加(負荷率・稼働カレンダー・設備停止)は未実装。設備停止マスタの登録はフェーズ4でスケジュール画面の追加パネルから暫定的に可能(専用タブは無い) |
+| `static/js/measurement-worklog.js` | **実装済み(設備停止マスタ部分)**。`MASTER_DEFS`へ`stopReason`タブを追加(設備名は`equipment-select`という新規フィールド型で設備マスタから選択)。scheduleモードでは書込めないタブ(`masters`Blueprint配下)をナビから隠す`maintDefVisible`/`renderMaintNav`を追加し、`#openMasterMaint`のCSS無効化を`view-mode`のみに縮小(旧`schedule-mode`無効化のままだと設備停止マスタに永久に手が届かない矛盾があったため)。負荷率・稼働カレンダーの2タブ(`special`扱い)は未実装 |
 | `static/js/measurement-view.js` | 基本情報タブへ予定表示(読み取りのみ、`finally` で差し込む)は未実装(フェーズ7) |
 | `templates/index.html` | **実装済み**。「計画」ナビグループ(`#planNav`静的ボタン`#openSchedule`)・スクリプトタグ追加。`fieldReorderBadge`要素も配置済み |
 | `static/app.css` | **実装済み**。`body.view-mode`/`schedule-mode`のモードバッジ・`body.sc-mode`排他・`.sc-panel`タイムライン・`.plan-action-*`(仕掛一覧の予定列)一式 |
@@ -1524,7 +1540,7 @@ const canPlan = window.accessMode?.mode === 'schedule';
 | 3 | 稼働カレンダー + 展開 | ~~`schedule_calc.py`・`/api/schedule/plan` の時刻展開・実績突合(§7.4)~~**実装済み** | ○(一律見積でも「何時間後」「実績」が出る) |
 | 4 | スケジュール画面 | ~~タイムライン(順次作業表示)・並べ替え・仕掛一覧からの投入・現場段取り簡易表示(§9.4.1)・ロック表示(§9.3)~~**実装済み**(複数選択一括投入は未実装。負荷率の内訳表示はフェーズ5で追加) | ◎(ここで使い始められる) |
 | 5 | 負荷率モデル | ~~`load_factor.py`・算出API・見積の内訳表示~~**実装済み** | ◎(要望の本丸) |
-| 6 | 設備停止 | 設備停止マスタ・投入UI(8分類)・固定開始時刻・非稼働帯表示 | ○ |
+| 6 | 設備停止 | ~~設備停止マスタ・投入UI(8分類)・固定開始時刻・非稼働帯表示~~**実装済み** | ○ |
 | 7 | 進捗表示 | 実績突合による自動進捗・測定画面への予定表示 | ◎(現場から見える) |
 | 8 | 精度の検証 | 見積 vs 実測の指標・負荷率の手動上書きUI | ○(運用ループが回る) |
 

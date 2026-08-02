@@ -40,6 +40,12 @@
   if(v<60)return `${v}分`;
   return `${Math.floor(v/60)}時間${v%60?(v%60)+'分':''}`;
  }
+ function fmtLocalInput(iso){
+  if(!iso)return '';
+  const d=new Date(iso);if(Number.isNaN(d.getTime()))return '';
+  const pad=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+ }
 
  /* ---------- パネルDOM ---------- */
  function ensurePanel(){
@@ -231,7 +237,19 @@
    return;
   }
   timeline.innerHTML='';
+  let lastEnd=null;
   scState.entries.forEach(e=>{
+   if(e.plannedStart&&lastEnd){
+    const gapMin=(new Date(e.plannedStart)-new Date(lastEnd))/60000;
+    if(gapMin>1){
+     const isFixedGap=e.fixedStart&&Math.abs(new Date(e.fixedStart)-new Date(e.plannedStart))<60000;
+     const div=document.createElement('div');
+     div.className='sc-gap-divider';
+     div.textContent=`── ${fmtMinutes(gapMin)}の空き (${fmtDateTime(lastEnd)}〜${fmtDateTime(e.plannedStart)})${isFixedGap?' ・固定開始時刻待ち':''} ──`;
+     timeline.append(div);
+    }
+   }
+   if(e.plannedEnd)lastEnd=e.plannedEnd;
    const card=document.createElement('article');
    card.className='sc-card '+stateBadgeClass(e.state);
    card.dataset.id=e.id;
@@ -260,12 +278,17 @@
      <div class="sc-card-title">${lotLine}</div>
      <div class="sc-card-time">${timeLine}</div>
      <div class="sc-card-meta">${estimateLine}${actualLine?' / '+actualLine:''}${overdue}${spans}</div>
+     ${renderFixedStartControl(e)}
      ${renderEstimateBreakdown(e)}
     </div>
     ${scState.fullControl&&e.state==='予定'?'<button type="button" class="sc-card-delete" title="削除">削除</button>':''}`;
    if(canDrag)wireDrag(card);
    const del=card.querySelector('.sc-card-delete');
    if(del)del.onclick=ev=>{ev.stopPropagation();deleteEntry(e.id)};
+   const fsInput=card.querySelector('.sc-fixed-start-input');
+   if(fsInput)fsInput.onchange=()=>updateFixedStart(e.id,fsInput.value);
+   const fsClear=card.querySelector('.sc-fixed-start-clear');
+   if(fsClear)fsClear.onclick=ev=>{ev.stopPropagation();updateFixedStart(e.id,'')};
    const toggle=card.querySelector('.sc-estimate-toggle');
    if(toggle)toggle.onclick=ev=>{
     ev.stopPropagation();
@@ -276,6 +299,26 @@
    };
    timeline.append(card);
   });
+ }
+
+ /* ---------- 固定開始日時(§5.1・§7.3、フェーズ6) ---------- */
+ function renderFixedStartControl(e){
+  if(scState.fullControl&&e.state==='予定'){
+   return `<div class="sc-fixed-start">
+    <label>固定開始<input type="datetime-local" class="sc-fixed-start-input" data-id="${e.id}" value="${fmtLocalInput(e.fixedStart)}"></label>
+    ${e.fixedStart?`<button type="button" class="sc-fixed-start-clear" data-id="${e.id}" title="固定開始日時を解除">解除</button>`:''}
+   </div>`;
+  }
+  if(e.fixedStart)return `<div class="sc-fixed-start-readonly">固定開始 ${fmtDateTime(e.fixedStart)}</div>`;
+  return '';
+ }
+ async function updateFixedStart(id,localValue){
+  const iso=localValue?new Date(localValue).toISOString():null;
+  try{
+   await api('/api/schedule/plan/update',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(withUserId({id,fixedStart:iso}))});
+   await loadPlan();
+  }catch(e){showToast&&showToast('固定開始日時の更新に失敗しました',e.message,5000)}
  }
 
  async function deleteEntry(id){
