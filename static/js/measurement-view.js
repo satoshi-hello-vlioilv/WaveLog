@@ -190,6 +190,7 @@ function renderMeasurement(){
  renderDataManagementPanel();
  renderResidualCourseEverywhere();
  renderCourseHierarchy();
+ renderScheduleInfo();
  configureToleranceSelector();
  document.querySelectorAll('[data-lefttab]').forEach(x=>x.classList.toggle('active',x.dataset.lefttab==='worktime'));
  document.querySelectorAll('[data-leftpanel]').forEach(x=>x.hidden=x.dataset.leftpanel!=='worktime');
@@ -323,6 +324,50 @@ function renderCourseHierarchy(){
  const basic=$('#basicInfo .info-grid');if(basic){[...basic.querySelectorAll('.course-stack-field,.residual-course-field')].forEach(x=>x.remove());const old=[...basic.querySelectorAll('.field')].find(x=>x.querySelector('label')?.textContent==='実績コース');if(old)old.remove();const anchor=[...basic.querySelectorAll('.field')].find(x=>x.querySelector('label')?.textContent==='納入先');[['設計コース',design],['実績コース',actual],['残コース',residual]].forEach(([label,value],i)=>{const item=document.createElement('div');item.className='field full course-stack-field';item.innerHTML=`<label>${label}</label><output title="${esc(value)}">${esc(value||'未設定')}</output>`;if(anchor){const prior=[...basic.querySelectorAll('.course-stack-field')].at(-1);(prior||anchor).after(item)}else basic.append(item)})}
  const grid=$('#dataManagementPanel .data-management-grid');if(grid){const pairs=[];for(let i=0;i<grid.children.length;i+=2)pairs.push([grid.children[i]?.textContent,grid.children[i+1]?.textContent]);const keep=pairs.filter(([label])=>!['設計コース','実績コース','残コース'].includes(label));const insertAt=Math.max(0,keep.findIndex(([label])=>label==='オーダー番号'));keep.splice(insertAt,0,['設計コース',design||'未設定'],['実績コース',actual||'未設定'],['残コース',residual||'未設定']);grid.innerHTML=keep.map(([label,value])=>`<b>${esc(label||'')}</b><span title="${esc(value||'')}">${esc(value||'未設定')}</span>`).join('')}
  updateCourseGuard();
+}
+/* ---------- 作業スケジュールとの連携(読み取りのみ、docs/SCHEDULE_MODE_DESIGN.md §9.7) ----------
+   測定画面を開いたロットが作業予定に含まれていれば、基本情報タブへ
+   「予定 2番目 / 予定開始 11:44 / 見積 2時間32分」の1行を出す。書き込みは
+   行わない(進捗は§7.4の実績突合で自動反映される)。取得はopenMeasurement()の
+   finally(CLAUDE.mdの既知の落とし穴どおり)で1回だけ行い、結果はモジュール内
+   変数へキャッシュする(renderMeasurement()のたびに毎回問い合わせない)。 */
+let scheduleInfoCache=null;
+function scheduleMinutesLabel(min){
+ if(min===null||min===undefined)return '-';
+ const v=Math.round(min);
+ if(v<60)return `${v}分`;
+ return `${Math.floor(v/60)}時間${v%60?(v%60)+'分':''}`;
+}
+function renderScheduleInfo(){
+ const basic=$('#basicInfo .info-grid');if(!basic)return;
+ basic.querySelectorAll('.schedule-info-field').forEach(x=>x.remove());
+ const lotNo=S.measure?.basic?.lotNo;
+ if(!lotNo||!scheduleInfoCache||normalizedLot(scheduleInfoCache.lotNo)!==normalizedLot(lotNo))return;
+ const anchor=[...basic.querySelectorAll('.field')].find(x=>x.querySelector('label')?.textContent==='ロット№');
+ const item=document.createElement('div');
+ item.className='field full schedule-info-field';
+ item.innerHTML=`<label>作業予定</label><output>予定 ${scheduleInfoCache.position}番目 / 予定開始 ${esc(scheduleInfoCache.startText)} / 見積 ${esc(scheduleInfoCache.minutesText)}</output>`;
+ if(anchor)anchor.after(item);else basic.prepend(item);
+}
+async function refreshScheduleInfo(){
+ scheduleInfoCache=null;
+ const lotNo=S.measure?.basic?.lotNo,equipment=typeof currentConfiguredEquipment==='function'?currentConfiguredEquipment():'';
+ if(lotNo&&equipment){
+  try{
+   const r=await api('/api/schedule/plan?equipment='+encodeURIComponent(equipment));
+   if(r&&r.configured&&Array.isArray(r.entries)){
+    const active=r.entries.filter(e=>e.state!=='完了'&&e.state!=='取消');
+    const idx=active.findIndex(e=>normalizedLot(e.lotNo)===normalizedLot(lotNo));
+    if(idx>=0){
+     const entry=active[idx];
+     scheduleInfoCache={lotNo,position:idx+1,
+      startText:entry.plannedStart?new Date(entry.plannedStart).toLocaleString('ja-JP',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'未定',
+      minutesText:scheduleMinutesLabel(entry.estimate?.minutes)};
+    }
+   }
+  }catch(e){/* 補助表示のためベストエフォート。未設定・取得失敗時は単に出さない */}
+ }
+ renderScheduleInfo();
 }
 function configureToleranceSelector(){const el=$('#toleranceSource');if(!el||!S.measure)return;const type=$('#measureType').value,isDimensional=type==='板厚/板幅',order=el.querySelector('option[value="order"]'),availability=orderToleranceAvailability();order.disabled=!availability.available;order.textContent=availability.available?'オーダー公差':'オーダー公差（データなし）';order.classList.toggle('order-tolerance-unavailable',!availability.available);if(!availability.available&&S.measure.settings.toleranceSource==='order')S.measure.settings.toleranceSource='manufacturing';el.value=S.measure.settings.toleranceSource||'manufacturing';el.disabled=!isDimensional;el.title=isDimensional?(availability.available?'製造公差またはオーダー公差を選択できます':'オーダー公差がないため製造公差のみ使用できます'):'板厚・板幅以外は指示公差を自動適用します';el.onchange=()=>{if(el.value==='order'&&!availability.available)return;S.measure.settings.toleranceSource=el.value;renderMeasureGrid();updateMeasurementHeading();markDirty()}}
 /* 作業時間パネル。開始→終了の順序を強制するロック付き打刻。 */

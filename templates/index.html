@@ -14,6 +14,10 @@
 <button class="db nav-item nav-item--view" data-db-key="SIKALOTNOW" type="button"><svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg><span>仕掛（現在）</span></button>
 <button class="db nav-item nav-item--view" data-db-key="SIKALOTDEF" type="button"><svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><span>品質データ</span></button>
 </nav>
+<nav class="nav-group plan-nav" id="planNav" aria-label="計画">
+<div class="nav-group-label">計画</div>
+<button class="db nav-item nav-item--view" id="openSchedule" type="button"><svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="14" x2="16" y2="14"/></svg><span>作業スケジュール</span></button>
+</nav>
 <nav class="nav-group analysis-nav" id="analysisNav" aria-label="分析">
 <div class="nav-group-label">分析</div>
 </nav>
@@ -87,5 +91,6 @@
 <script src="{{url_for('static',filename='js/quality-analysis.js')}}?t={{asset_token}}"></script>
 <script src="{{url_for('static',filename='js/report-dashboard.js')}}?t={{asset_token}}"></script>
 <script src="{{url_for('static',filename='js/calendar-view.js')}}?t={{asset_token}}"></script>
+<script src="{{url_for('static',filename='js/schedule-view.js')}}?t={{asset_token}}"></script>
 <script src="{{url_for('static',filename='js/access-mode.js')}}?t={{asset_token}}"></script>
 </body></html>

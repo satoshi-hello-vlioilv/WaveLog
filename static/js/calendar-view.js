@@ -113,6 +113,7 @@
  if(typeof selectDb==='function'){const oldSelectDb=selectDb;selectDb=async function(k,b){exitCalendarView();return oldSelectDb(k,b)}}
 
  async function openCalendarView(){
+  window.exitScheduleView?.();
   document.body.classList.remove('qa-mode','qa-view-raw');
   $id('qualityAnalysisPanel')?.setAttribute('hidden','');
   document.body.classList.remove('rp-mode');

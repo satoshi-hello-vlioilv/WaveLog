@@ -199,7 +199,15 @@ def fetch_snapshot():
  戻り値: (ローカルパス, stale: bool)"""
  shared=_require_configured()
  SCHEDULE_CACHE_PATH.parent.mkdir(parents=True,exist_ok=True)
- tmp=SCHEDULE_CACHE_PATH.with_suffix('.fetch.tmp')
+ # tmp名は呼び出しごとに一意にする(§4.2手順2はGET系(読み取り専用)からも
+ # ロック無しで呼ばれるため、複数リクエストが同時に走ると固定名の一時
+ # ファイルを取り合って書込失敗・rename失敗を起こしうる。実際にPlaywright
+ # 検証で"attempt to write a readonly database"/"tmpが見つからない"という
+ # 形で再現した)。最終目的地(SCHEDULE_CACHE_PATH)への書込自体は
+ # Path.replace()がOSレベルでアトミックなため、複数呼び出しが同時に
+ # 完了しても最終状態は常にどちらか一方の完全なスナップショットになり、
+ # 壊れたファイルが残ることはない。
+ tmp=SCHEDULE_CACHE_PATH.with_suffix(f'.fetch.{uuid.uuid4().hex}.tmp')
  if shared.exists():
   try:
    src=connect(shared,True,'sqlite')

@@ -78,6 +78,12 @@ def _permission_flags():
  except Exception:
   return {'canEdit':True,'canSchedule':False,'canFieldReorder':False,'fieldReorderEquipment':''}
 
+def current_permission_flags():
+ # 他モジュール(schedule.pyの現場段取りAPI等)がこの端末の権限を参照する
+ # ための公開版。_permission_flags()自体は毎回マスタを読み直す(再起動不要
+ # ポリシー)ため、呼び出し側でキャッシュしないこと。
+ return _permission_flags()
+
 def _permitted():
  return _permission_flags()['canEdit']
 

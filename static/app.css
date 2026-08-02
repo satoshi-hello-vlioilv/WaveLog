@@ -232,8 +232,7 @@ body.schedule-mode .record-list-actions .resume,
 body.schedule-mode .record-list-actions .danger{display:none}
 body.view-mode #recordSyncBar,
 body.schedule-mode #recordSyncBar{display:none!important}
-body.view-mode #openMasterMaint,
-body.schedule-mode #openMasterMaint{opacity:.45;pointer-events:none}
+body.view-mode #openMasterMaint{opacity:.45;pointer-events:none}
 
 #tabs{height:38px;display:flex;background:#fff;border-bottom:1px solid var(--line)}
 .tab{border:0;border-bottom:3px solid transparent;border-radius:0;background:#fff}
@@ -258,6 +257,10 @@ tbody tr:hover{background:#e5f2f3;cursor:pointer}
 .measurement-action-cell{text-align:center;background:inherit}
 .measurement-action-button{padding:5px 10px;border:1px solid var(--teal);background:var(--teal);color:#fff;font-weight:700;white-space:nowrap}
 .measurement-action-button:hover{background:var(--teal-dark);color:#fff}
+.plan-action-head{min-width:80px;text-align:center;background:#e4e0f7}
+.plan-action-cell{text-align:center;background:inherit}
+.plan-action-button{padding:5px 10px;border:1px solid #6a5acd;background:#fff;color:#4b3fa8;font-weight:700;white-space:nowrap;border-radius:4px;cursor:pointer}
+.plan-action-button:hover{background:#6a5acd;color:#fff}
 .split-flag-head{min-width:112px;text-align:center;background:#f2e6b3}
 .split-flag-cell{text-align:center;font-weight:700;white-space:nowrap;font-size:12px}
 .split-flag-cell.split-yes{background:#fff2cc;color:#8a6600}
@@ -715,6 +718,10 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 .mother-auto-field{background:var(--computed-bg);border:1px solid #9cd6ce;border-radius:6px;padding:2px 4px}
 .mother-auto-field output{background:#fff;color:var(--computed-fg)}
 .mother-auto-field output.scrap-width-warn{background:var(--invalid-bg);color:var(--invalid);font-weight:800}
+/* 作業スケジュールとの連携(docs/SCHEDULE_MODE_DESIGN.md §9.7)。基本情報タブに
+   出す「予定 2番目 / 予定開始 11:44 / 見積2時間32分」の1行。 */
+.schedule-info-field{background:var(--computed-bg);border:1px solid #9cd6ce;border-radius:6px;padding:2px 4px}
+.schedule-info-field output{background:#fff;color:var(--computed-fg);font-weight:700}
 .mother-quality{margin-top:8px}
 .mother-quality textarea{width:100%;height:280px;border:1px solid var(--card-border);border-radius:8px;resize:none;background:#fff}
 
@@ -1007,6 +1014,11 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 /* 共通確認モーダル(confirmModal)のメッセージ本文。confirm()の改行表現を
    引き継ぐため、\nをそのまま改行として表示する。 */
 .confirm-modal-message{margin:0;padding:10px 12px;border-left:4px solid var(--teal);background:#eef8f9;color:#3a565d;line-height:1.7;white-space:pre-line}
+/* 設備削除確認(docs/SCHEDULE_MODE_DESIGN.md §5.0.1)の関連スケジュールデータ内訳。 */
+.eq-ref-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}
+.eq-ref-table td{padding:5px 8px;border-bottom:1px solid var(--line)}
+.eq-ref-table td:last-child{text-align:right;font-weight:800;font-variant-numeric:tabular-nums}
+.eq-ref-table tr.eq-ref-warn td{color:var(--danger);font-weight:800}
 
 /* 初期画面の設備設定バナー（設定済みは非表示） */
 .equipment-setup-banner{
@@ -1527,6 +1539,21 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .mm-cd-checkbox{padding:6px 4px;border-radius:6px}
 .mm-cd-checkbox:hover{background:#eafafa}
 .mm-btn-danger{height:40px;padding:0 18px;border:0;border-radius:8px;background:var(--invalid);color:#fff;font-weight:800;cursor:pointer;box-shadow:0 4px 12px #c92c2c40}
+/* 負荷率(換算係数)モデル管理画面(docs/SCHEDULE_MODE_DESIGN.md §6・§9.8)。 */
+.lf-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;padding:10px 12px;margin-bottom:12px;background:var(--computed-bg);border:1px solid #9cd6ce;border-radius:8px}
+.lf-summary small{display:block;color:#5e7077;font-size:var(--fs-micro)}
+.lf-summary b{color:var(--computed-fg);font-size:14px}
+.lf-override-note{display:block;color:var(--warn-fg,#b06a00);font-size:var(--fs-micro);margin-top:2px}
+.lf-table{display:flex;flex-direction:column;gap:2px}
+.lf-row{display:grid;grid-template-columns:1.3fr 1.3fr .8fr .6fr 1.1fr 1.2fr;gap:8px;align-items:center;padding:6px 8px;border-bottom:1px solid var(--line);font-size:12.5px}
+.lf-row-head{font-size:11px;font-weight:800;color:#5e7077;border-bottom:2px solid var(--line)}
+.lf-row-base{background:#fff7e6}
+.lf-row-key{font-weight:700;color:#173842}
+.lf-row-value{font-variant-numeric:tabular-nums}
+.lf-row-n{color:#8a9aa0}
+.lf-row-override input{width:100%;height:28px;padding:0 6px;border:1px solid var(--line);border-radius:5px;font-size:12px}
+.lf-row-actions{display:flex;gap:4px}
+@media(max-width:900px){.lf-row{grid-template-columns:1fr 1fr}.lf-row-head{display:none}}
 .mm-btn-danger:hover{background:#a82121}
 .mm-import-warning{display:flex;flex-direction:column;gap:var(--space-1);padding:10px 14px;border:1.5px solid #e5b3b3;border-radius:10px;background:#fff5f5;color:#8a2323}
 .mm-import-warning b{font-size:13px}
@@ -1594,15 +1621,18 @@ body.db-mode #grid,body.db-mode footer,body.db-mode #tabs,body.db-mode #genericF
 body.rec-mode #grid,body.rec-mode footer,body.rec-mode #tabs,body.rec-mode #genericFilterBar,body.rec-mode .qa-v7{display:none!important}
 /* 実績カレンダーも同様にメイン画面表示にする。 */
 body.cal-mode #grid,body.cal-mode footer,body.cal-mode #tabs,body.cal-mode #genericFilterBar,body.cal-mode .qa-v7{display:none!important}
+/* 作業スケジュール(スケジュールモード等)も同様にメイン画面表示にする。 */
+body.sc-mode #grid,body.sc-mode footer,body.sc-mode #tabs,body.sc-mode #genericFilterBar,body.sc-mode .qa-v7{display:none!important}
 /* 品質データの「元データ表示」(qa-view-raw)は#grid等を強制的に再表示する
    詳細度3のルール(body.qa-mode.qa-view-raw #grid)を持つため、上のrp-mode/
-   db-mode/rec-mode/cal-modeの詳細度2のルールより優先されてしまい、品質データ表示中に
-   帳票・ダッシュボード・編集中/完了一覧・実績カレンダーを開くと元の#gridが透けて見える
+   db-mode/rec-mode/cal-mode/sc-modeの詳細度2のルールより優先されてしまい、品質データ表示中に
+   帳票・ダッシュボード・編集中/完了一覧・実績カレンダー・作業スケジュールを開くと元の#gridが透けて見える
    不具合があった。詳細度を合わせて確実に上書きする。 */
 body.rp-mode.qa-mode.qa-view-raw #grid,body.rp-mode.qa-mode.qa-view-raw footer,body.rp-mode.qa-mode.qa-view-raw #genericFilterBar,
 body.db-mode.qa-mode.qa-view-raw #grid,body.db-mode.qa-mode.qa-view-raw footer,body.db-mode.qa-mode.qa-view-raw #genericFilterBar,
 body.rec-mode.qa-mode.qa-view-raw #grid,body.rec-mode.qa-mode.qa-view-raw footer,body.rec-mode.qa-mode.qa-view-raw #genericFilterBar,
-body.cal-mode.qa-mode.qa-view-raw #grid,body.cal-mode.qa-mode.qa-view-raw footer,body.cal-mode.qa-mode.qa-view-raw #genericFilterBar{display:none!important}
+body.cal-mode.qa-mode.qa-view-raw #grid,body.cal-mode.qa-mode.qa-view-raw footer,body.cal-mode.qa-mode.qa-view-raw #genericFilterBar,
+body.sc-mode.qa-mode.qa-view-raw #grid,body.sc-mode.qa-mode.qa-view-raw footer,body.sc-mode.qa-mode.qa-view-raw #genericFilterBar{display:none!important}
 .rec-panel{flex:1;min-height:0;margin:9px 14px;display:flex;flex-direction:column;background:#f4f7f8;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .rec-panel[hidden]{display:none!important}
 .rec-panel .record-dialog{width:100%;height:100%;border-radius:0;box-shadow:none}
@@ -2087,6 +2117,79 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
    ようにする(.work-time-panelの高さ調整と同じ考え方)。 */
 .split-pane{height:auto;min-height:290px}
 @media(max-width:1000px){.cal-layout{grid-template-columns:1fr}.cal-detail{border-left:0;border-top:1px solid var(--line);max-height:320px}#calSummary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* ---------- 作業スケジュール(順次作業表示、docs/SCHEDULE_MODE_DESIGN.md §9) ---------- */
+.sc-panel{flex:1;min-height:0;margin:9px 14px;display:flex;flex-direction:column;background:#f4f7f8;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.sc-panel[hidden]{display:none!important}
+.sc-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.sc-head-left,.sc-head-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.sc-title{font-size:15px;color:#173842}
+.sc-equipment-select{height:32px;padding:0 8px;border:1px solid var(--line);border-radius:6px;background:#fff}
+.sc-equipment-fixed{font-size:12.5px;font-weight:700;color:#3a565d;background:#eafafa;border:1px solid var(--teal);border-radius:14px;padding:4px 10px}
+.sc-lock-badge{font-size:11px;font-weight:700;color:var(--warn-fg);background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:12px;padding:3px 9px}
+.sc-field-reorder-note{font-size:11px;font-weight:700;color:var(--warn-fg)}
+.sc-refresh,.sc-close{height:30px;padding:0 12px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer}
+.sc-close{width:30px;padding:0;font-size:16px;line-height:1}
+.sc-warnings{padding:6px 14px;background:var(--warn-bg);border-bottom:1px solid var(--warn-border)}
+.sc-warning{font-size:12px;color:var(--warn-fg)}
+.sc-body{flex:1;min-height:0;display:flex;gap:0;overflow:hidden}
+.sc-timeline{flex:1;min-width:0;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:8px}
+.sc-side{width:300px;flex-shrink:0;border-left:1px solid var(--line);background:#fff;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:16px}
+.sc-side-title{font-size:12px;font-weight:800;color:#5c777e;margin-bottom:6px}
+.sc-empty-note{color:#8a9aa0;font-size:12.5px;padding:8px 2px}
+.sc-add-row{display:flex;flex-direction:column;gap:6px;font-size:12.5px}
+.sc-add-row-button{align-self:flex-start;height:28px;padding:0 10px;border:1px solid var(--teal);background:#eafafa;color:#164e55;border-radius:6px;cursor:pointer}
+.sc-stop-buttons{display:flex;flex-wrap:wrap;gap:6px}
+.sc-stop-button{height:28px;padding:0 10px;border:1px solid var(--line);border-radius:14px;background:#fff;font-size:12px;cursor:pointer}
+.sc-stop-button:hover{border-color:var(--teal)}
+.sc-stop-button.is-disabled{opacity:.5;cursor:not-allowed}
+.sc-card{display:flex;align-items:stretch;gap:8px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:8px 10px;position:relative}
+.sc-card[draggable="true"]{cursor:grab}
+.sc-card.sc-dragging{opacity:.4}
+.sc-card-handle{display:flex;align-items:center;justify-content:center;width:20px;flex-shrink:0;color:#9fb0b5;font-size:14px}
+.sc-card-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.sc-card-top{display:flex;align-items:center;gap:8px}
+.sc-kind{font-size:10px;font-weight:800;color:#5c777e;text-transform:none}
+.sc-state{font-size:10px;font-weight:800;padding:1px 8px;border-radius:10px;background:#eef2f3;color:#5c777e}
+.sc-card.sc-state-active .sc-state{background:var(--success-bg);color:var(--success)}
+.sc-card.sc-state-done .sc-state{background:#eef2f3;color:#5c777e}
+.sc-card.sc-state-cancel .sc-state{background:var(--danger-bg);color:var(--danger);text-decoration:line-through}
+.sc-card.sc-state-active{border-color:var(--success-border);background:var(--success-bg)}
+.sc-card-title{font-size:13.5px;font-weight:700;color:#173842}
+.sc-card-time{font-size:12px;color:#3a565d}
+.sc-card-meta{font-size:11px;color:#61757c;display:flex;flex-wrap:wrap;gap:6px}
+.sc-overdue{color:var(--danger);font-weight:800}
+.sc-spans{color:var(--warn-fg);font-weight:700}
+.sc-card-delete{align-self:flex-start;height:26px;padding:0 10px;border:1px solid var(--danger-border);background:var(--danger-bg);color:var(--danger);border-radius:6px;cursor:pointer;font-size:11px}
+@media(max-width:1000px){.sc-body{flex-direction:column}.sc-side{width:auto;border-left:0;border-top:1px solid var(--line)}}
+
+/* 見積の内訳(§6.8・§9.3)。負荷率モデルの根拠(基準時間・予測区間・因子別
+   係数)を開示する。既定は折りたたみ(カード一覧が縦に伸びすぎないため)。 */
+.sc-estimate-toggle{align-self:flex-start;margin-top:2px;padding:0;border:0;background:none;color:#3a7d86;font-size:11px;font-weight:700;cursor:pointer}
+.sc-estimate-toggle:hover{text-decoration:underline}
+.sc-estimate-detail[hidden]{display:none}
+.sc-estimate-detail{margin-top:4px;padding:6px 8px;background:#eef4f5;border:1px solid var(--line);border-radius:6px;display:flex;flex-direction:column;gap:3px}
+.sc-estimate-row{font-size:11px;color:#3a565d}
+.sc-estimate-factor{display:flex;align-items:center;gap:6px;font-size:11px;color:#3a565d}
+.sc-ef-key{color:#61757c;min-width:110px}
+.sc-ef-level{font-weight:700;color:#173842}
+.sc-ef-value{font-variant-numeric:tabular-nums}
+.sc-ef-n{color:#8a9aa0}
+.sc-ef-source{margin-left:auto;font-size:10px;font-weight:800;padding:1px 7px;border-radius:9px;background:#eef2f3;color:#5c777e}
+.sc-ef-source-override .sc-ef-source{background:var(--warn-bg);color:var(--warn-fg)}
+.sc-ef-source-unknown .sc-ef-source{background:var(--danger-bg);color:var(--danger)}
+
+/* 固定開始日時(§5.1・§7.3、フェーズ6)。schedule モードの未着手カードだけ
+   編集でき、それ以外(view/edit)は設定済みの値を読み取り表示のみ出す。 */
+.sc-fixed-start{display:flex;align-items:center;gap:6px;font-size:11px;color:#61757c}
+.sc-fixed-start label{display:flex;align-items:center;gap:4px}
+.sc-fixed-start-input{height:24px;padding:0 4px;border:1px solid var(--line);border-radius:5px;font-size:11px;font-family:inherit}
+.sc-fixed-start-clear{height:22px;padding:0 8px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:10px;cursor:pointer}
+.sc-fixed-start-readonly{font-size:11px;color:#61757c}
+
+/* 非稼働帯の明示(§9.3「── 12:00 昼休み ──」)。稼働カレンダー上の空き・
+   固定開始日時による押し出しで、カード間の時刻が連続しない箇所に挿む。 */
+.sc-gap-divider{align-self:center;font-size:11px;color:#8a9aa0;padding:2px 0;text-align:center}
 
 /* ---------------------------------------------------------------
    接続断の明示。ハートビートが続けて失敗したときに最上部へ出す。

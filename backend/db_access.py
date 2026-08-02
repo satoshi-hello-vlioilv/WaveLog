@@ -155,3 +155,38 @@ def ensure_backup_table(c):
  if 'Web測定バックアップ' not in names:
   c.cursor().execute('CREATE TABLE [Web測定バックアップ] ([記録ID] TEXT, [設備] TEXT, [ロット番号] TEXT, [検査番号] TEXT, [鋳造番号] TEXT, [状態] TEXT, [更新日時] DATETIME, [圧縮形式] TEXT, [ペイロード] TEXT)')
   c.commit()
+
+def read_backup_rows(path):
+ # [Web測定バックアップ]テーブルを読み取り専用で読む共通処理。
+ # backend/routes/measurement.py(PC引継ぎ用/閲覧モード一覧)と
+ # backend/schedule_calc.py(実績突合、docs/SCHEDULE_MODE_DESIGN.md §7.4)が
+ # 共用する。書き込みは一切行わない。戻り値: (行のlist of dict, path)。
+ # ファイル自体が無ければ (None, path)。
+ if path is None or not path.exists():return None,path
+ with connect(path,True) as c:
+  if 'Web測定バックアップ' not in tables(c):return [],path
+  cur=c.cursor()
+  cur.execute('SELECT [記録ID],[設備],[ロット番号],[検査番号],[鋳造番号],[状態],[更新日時],[圧縮形式],[ペイロード] FROM [Web測定バックアップ] ORDER BY [更新日時] DESC')
+  rows=cur.fetchall()
+ return [{'id':str(r[0] or ''),'equipment':str(r[1] or ''),'lotNo':str(r[2] or ''),'inspectionNo':str(r[3] or ''),'castingNo':str(r[4] or ''),'status':str(r[5] or ''),'updated_at':r[6].isoformat() if r[6] else None,'codec':str(r[7] or ''),'payload':str(r[8] or '')} for r in rows],path
+
+def merged_backup_rows():
+ # MEAS_DB(書込端末のローカルrecords.sqlite3)とRECORDS_BACKUP_EXPORT_PATH
+ # (閲覧用複製、Box等)の両方から[Web測定バックアップ]を集め、記録IDごとに
+ # 更新日時が新しい方を残す。schedule_calc.py(実績突合、§7.4)・
+ # load_factor.py(負荷率モデルの学習、§6.6)が共用する。どちらの端末
+ # (書込端末そのもの/閲覧・スケジュール専用端末)から呼んでも同じ実績が
+ # 見える。
+ merged={}
+ for path in (MEAS_DB,RECORDS_BACKUP_EXPORT_PATH):
+  try:
+   items,_=read_backup_rows(path)
+  except Exception:
+   items=None
+  for row in (items or []):
+   rid=row.get('id')
+   if not rid:continue
+   existing=merged.get(rid)
+   if existing is None or (row.get('updated_at') or '')>(existing.get('updated_at') or ''):
+    merged[rid]=row
+ return list(merged.values())
