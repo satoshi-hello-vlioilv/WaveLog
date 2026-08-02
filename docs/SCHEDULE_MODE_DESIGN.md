@@ -403,7 +403,7 @@ Box上の `schedule.sqlite3` が同期中の中途半端な状態や破損した
 索引は別SQL)に合わせる。`Now()` は `db_access.connect()` がSQLiteへ
 ユーザー定義関数として登録済みのため、そのまま使える。
 
-データアクセス層は `backend/repositories/schedule_repo.py`(Flask非依存)。
+データアクセス層は `backend/repositories/schedule_repo.py`(Flask非依存、**実装済み**)。
 
 ### 5.0 設備名は設備マスタと改名連動する(実装済みの仕組みに相乗り)
 
@@ -1020,6 +1020,19 @@ for entry in 有効な予定(表示順):
 
 ## 8. API設計
 
+> **実装済み(フェーズ2、展開なし)**: `plan`(追加・並べ替え・更新・削除・
+> 一覧)・`calendar`(取得・完全同期保存)・`stop-reason-master`(一覧・
+> 登録/更新・削除)は実装済みで、いずれも`schedule_sync.with_write()`の
+> 取得→適用→反映サイクルに乗っている。実サーバー越しのHTTPで、通常のCRUD・
+> 他設備の停止理由ID誤用の拒否(400)・並べ替えの不整合拒否(400)・
+> モード別の書込ガード(403)・現場段取りの設備一致チェック(403)・
+> ロック競合(423、`lockedBy`/`retryAfterSec`付き)を検証済み。
+> **`GET /api/schedule/plan`はまだ時刻展開(§7)を行わず、生の`entries`
+> (id/order/kind/lotNo/detail/state等)のみを返す**。`estimate`/
+> `plannedStart`/`actual`等はフェーズ3で同じURLのレスポンスへ追加する。
+> `load-factors`/`estimate`/`accuracy`は`load_factor.py`(フェーズ5)未実装
+> のため未着手。
+
 Blueprint 名は `schedule`(`backend/routes/schedule.py`)。
 非GETは `_WRITE_ALLOWED_MODES` により `schedule` モードのみ許可(§3.3)。
 **すべての非GETエンドポイントは§4.2の「取得→適用→反映」サイクルを内側で
@@ -1359,8 +1372,8 @@ const canPlan = window.accessMode?.mode === 'schedule';
 
 | ファイル | 役割 |
 |---|---|
-| `backend/routes/schedule.py` | **実装済み**。Blueprint `schedule`。現状は`GET /api/schedule/lock-status`のみ。予定データのCRUD APIは未実装 |
-| `backend/repositories/schedule_repo.py` | 未実装。4テーブル(作業予定/稼働カレンダーマスタ/設備停止マスタ/負荷率上書きマスタ)の定義・CRUD(Flask非依存) |
+| `backend/routes/schedule.py` | **実装済み**。Blueprint `schedule`。`lock-status`に加え`plan`(一覧/追加/更新/削除/並べ替え)・`calendar`(取得/完全同期保存)・`stop-reason-master`(一覧/登録/削除)を実装。時刻展開(`estimate`/`plannedStart`等)・`load-factors`/`estimate`/`accuracy`はフェーズ3・5で追加 |
+| `backend/repositories/schedule_repo.py` | **実装済み**。4テーブル(作業予定/稼働カレンダーマスタ/設備停止マスタ/負荷率上書きマスタ)の定義・CRUD(Flask非依存)。負荷率上書きマスタはテーブル定義のみで、算出・上書きロジックはフェーズ5(`load_factor.py`)が持つ |
 | `backend/load_factor.py` | 未実装。実績読込・外れ値除去・反復フィット・収縮・キャッシュ |
 | `backend/schedule_calc.py` | 未実装。稼働カレンダー展開・アンカー決定・実績突合・並べ替え対象判定(§7.5) |
 | `backend/schedule_sync.py` | **実装済み**。ロック取得/解放・Box上ファイルの取得(backup())・整合性確認・一時名書込+リネーム反映・改訂番号チェック(§4.2〜§4.5)。データの中身を知らない汎用基盤で、業務テーブル実装時は`with_write()`のapply_fnへ差し込むだけで使える |
@@ -1440,7 +1453,7 @@ const canPlan = window.accessMode?.mode === 'schedule';
 | # | フェーズ | 内容 | 単体で価値が出るか |
 |---|---|---|---|
 | 1 | モード基盤 | ~~権限マスタ拡張(スケジュール可否・現場段取り可否・現場段取り対象設備)・3モード判定・ガード表・エンドポイント例外・API・フロントのバッジ/入口ガード~~**実装済み** | ○(計画端末・現場段取り端末を安全に用意できる) |
-| 2 | 予定データ層+排他制御 | `schedule_repo.py`の4テーブル・~~`schedule_sync.py`(ロック・改訂番号・取得反映サイクル、§4)~~**実装済み**・CRUD API(展開なし) | △(基盤のみだが、ここで排他制御まで作り切る) |
+| 2 | 予定データ層+排他制御 | ~~`schedule_repo.py`の4テーブル・`schedule_sync.py`(ロック・改訂番号・取得反映サイクル、§4)・CRUD API(展開なし)~~**実装済み** | △(基盤のみだが、ここで排他制御まで作り切る) |
 | 3 | 稼働カレンダー + 展開 | `schedule_calc.py`・`/api/schedule/plan` の時刻展開・実績突合(§7.4) | ○(一律見積でも「何時間後」「実績」が出る) |
 | 4 | スケジュール画面 | タイムライン(順次作業表示)・ドラッグ並べ替え・仕掛一覧からの投入・現場段取り簡易表示(§9.4.1)・ロック表示(§9.3) | ◎(ここで使い始められる) |
 | 5 | 負荷率モデル | `load_factor.py`・算出API・見積の内訳表示 | ◎(要望の本丸) |
