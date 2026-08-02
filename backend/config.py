@@ -45,5 +45,16 @@ RECORDS_BACKUP_EXPORT_INTERVAL_SEC=600
 # 既定値)。
 RNE_EXTRACT_INTERVAL_SEC_DEFAULT=900
 
+# スケジュール機能(docs/SCHEDULE_MODE_DESIGN.md §4)の排他制御。共有環境
+# (Box等)上のschedule.sqlite3へは常に1端末だけが短時間だけ触るよう、呼び出し
+# 1回分だけを保持する短命ロック(schedule.lock.json)で直列化する。TTLは
+# 「クラッシュ等で解放されないまま残ったロックが、自然に失効するまでの
+# 最大待ち時間」でもあるため、短すぎると競合を見逃し、長すぎると無関係な
+# 待ちが増える。実際のBoxクライアントの同期速度を見て現場で調整できるよう、
+# config/local.jsonの"schedule_lock_ttl_sec"/"schedule_lock_verify_delay_ms"
+# で上書き可能にしてある(ここは未設定時の既定値)。
+SCHEDULE_LOCK_TTL_SEC_DEFAULT=30
+SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT=1500
+
 def app_url():
  return f'http://{HOST}:{PORT}/'
