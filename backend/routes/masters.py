@@ -17,6 +17,7 @@ from ..repositories.master_repo import (
  EQUIPMENT_MASTER_TABLE, ensure_equipment_master_table, normalize_equipment_name, equipment_master_rows,
  OPERATOR_MASTER_TABLE, ensure_operator_master_table, normalize_operator_name, operator_master_rows,
  OPERATOR_EQUIPMENT_TABLE, ensure_operator_equipment_table, operator_equipment_map, set_operator_equipment,
+ rename_equipment_references,
  SPOOL_MASTER_TABLE, ensure_spool_master_table, normalize_spool_name, spool_master_rows,
  INNER_MASTER_TABLE, ensure_inner_master_table, normalize_inner_name, inner_master_rows,
  DEVICE_MASTER_TABLE, ensure_device_master_table, normalize_device_name, device_master_rows,
@@ -66,8 +67,14 @@ def equipment_master_update():
    ensure_equipment_master_table(c);cur=c.cursor();cur.execute('SELECT [設備ID],[設備名] FROM [設備マスタ]');rows=cur.fetchall();target=normalize_equipment_name(name)
    dup=next((r for r in rows if normalize_equipment_name(r[1])==target and str(r[0])!=str(eid)),None)
    if dup:return jsonify(error=f'同名の設備が既に存在するため変更できません: {str(dup[1]).strip()}'),409
-   cur.execute('UPDATE [設備マスタ] SET [設備名]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [設備ID]=?',[name,uid,eid]);c.commit()
-  return jsonify(ok=True,id=eid,name=name,updated_by=uid,message='設備名を更新しました。')
+   current=next((r for r in rows if str(r[0])==str(eid)),None);old_name=str(current[1]).strip() if current and current[1] else ''
+   cur.execute('UPDATE [設備マスタ] SET [設備名]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [設備ID]=?',[name,uid,eid])
+   # 設備名は他マスタ(オペレータ設備マスタ等、EQUIPMENT_NAME_REFERENCES参照)から
+   # 文字列で参照されているため、改名時はそちら側も追従させる(改名連動)。
+   renamed=rename_equipment_references(c,old_name,name) if old_name else 0
+   c.commit()
+  msg='設備名を更新しました。'+(f' 関連する設備参照{renamed}件も追従しました。' if renamed else '')
+  return jsonify(ok=True,id=eid,name=name,updated_by=uid,renamedReferences=renamed,message=msg)
  except Exception as e:return jsonify(error=f'設備マスタ更新失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
 
 @bp.post('/api/equipment-master/delete')
