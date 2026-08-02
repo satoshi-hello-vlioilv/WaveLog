@@ -302,6 +302,31 @@
    box.querySelector('b').textContent=text||'処理しています…';box.hidden=false;
   }else if(box){box.hidden=true}
  }
+ /* 設備マスタの新規登録専用: 過去に削除(無効化)された同名設備があると
+    サーバーはinactive_equipment_name_conflictで409を返す(選択の余地がある
+    ため)。既存の確認モーダル(2択)をそのまま2段階連ねて選ばせ、共通
+    コンポーネント自体には手を入れない。どちらもキャンセルした場合はnullを
+    返し、呼び出し側(submitMaint)は何も表示せず処理を終える。 */
+ async function registerEquipmentWithChoice(body){
+  try{
+   return await api('/api/equipment-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  }catch(e){
+   if(e.code!=='inactive_equipment_name_conflict')throw e;
+   const restore=await confirmModal({
+    eyebrow:'設備マスタ',title:'過去に削除された設備名です',
+    message:`「${body.name}」は過去に削除(無効化)された設備と同じ名前です。\n\n同じ設備として復元しますか？\n(これまでのスケジュール等の履歴はそのまま引き継がれます)`,
+    confirmLabel:'同じ設備として復元',cancelLabel:'別の選択肢を見る'
+   });
+   if(restore)return api('/api/equipment-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,reuseExisting:true})});
+   const asNew=await confirmModal({
+    eyebrow:'設備マスタ',title:'別の新しい設備として登録しますか？',
+    message:`「${body.name}」を、過去の設備とは別の新しい設備として登録します。\n\n過去の履歴は「${body.name}(旧…)」という名前へ切り離され、以後は新しい「${body.name}」の履歴として記録されます。`,
+    confirmLabel:'新しい設備として登録'
+   });
+   if(!asNew)return null;
+   return api('/api/equipment-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,reuseExisting:false})});
+  }
+ }
  async function submitMaint(){
   const def=currentDef(),uid=requireMaintUser();if(uid===null)return;const editing=maintState.editing;
   const body={user_id:uid};let ok=true;
@@ -314,7 +339,8 @@
   const endpoint=editing?def.endpoint+'/update':def.endpoint;
   try{
    setMaintLoading(true,editing?`${def.label}を更新しています…`:`${def.label}を登録しています…`);
-   const r=await api(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+   const r=(def.key==='equipment'&&!editing)?await registerEquipmentWithChoice(body):await api(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+   if(r===null)return; // 設備の新規/復元どちらもキャンセルされた
    maintState.editing=null;await loadMaint(true);
    showToast&&showToast(def.label+(editing?'を更新しました':'を登録しました'),(r&&r.message)||'',3600);
   }catch(e){showToast&&showToast(editing?'更新できませんでした':'登録できませんでした',e.message,6500)}

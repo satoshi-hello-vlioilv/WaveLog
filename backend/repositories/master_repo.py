@@ -126,6 +126,42 @@ def set_operator_equipment(c,oid,names,uid):
    cur.execute('INSERT INTO [オペレータ設備マスタ] ([オペレータID],[設備名],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,Now(),Now())',[oid,nm,uid,uid])
  c.commit()
 
+# ------------------------------------------------------------------------
+# 設備名の改名連動
+#  - 設備マスタの[設備名]をキーに参照している内部マスタの一覧。設備名を
+#    持たせる新しいマスタを追加したら必ずここへ追記する(追記を忘れても
+#    既存の参照は壊れないが、改名時にサイレントに追従しなくなるだけなので
+#    気づきにくい)。
+#  - SIKALOTNOW側の生カラム(BOX設計_設備名等、工場側システムが所有する
+#    読み取り専用データ)や、測定データ内のsettings.registeredEquipment
+#    (その時点で実際に使った設備という履歴的事実)は対象に含めない。
+#    改名時に過去の記録まで書き換えるのは事実の改ざんになるため。
+# ------------------------------------------------------------------------
+EQUIPMENT_NAME_REFERENCES=(
+ (OPERATOR_EQUIPMENT_TABLE,'設備名'),
+)
+
+def rename_equipment_references(c,old_name,new_name):
+ # 設備マスタで改名された設備名を、これを参照する内部マスタ側にも反映する。
+ # 正規化一致(表記ゆれ)する既存値のみを新名称へ書き換える。書き換え後に
+ # 一意制約へ衝突する場合(改名先の名称が同じ紐付け先へ既に別行として
+ # 登録されていた等のデータ不整合)は、そのUPDATEだけ諦めて重複行を
+ # 削除する(新名称側の既存行を優先し、古い方は用済みとして片付ける)。
+ old_norm=normalize_equipment_name(old_name)
+ if not old_norm or old_norm==normalize_equipment_name(new_name):return 0
+ total=0
+ for table,col in EQUIPMENT_NAME_REFERENCES:
+  if table not in tables(c):continue
+  cur=c.cursor()
+  cur.execute(f'SELECT DISTINCT [{col}] FROM [{table}]')
+  for (val,) in cur.fetchall():
+   if not val or normalize_equipment_name(val)!=old_norm or str(val)==new_name:continue
+   try:
+    cur.execute(f'UPDATE [{table}] SET [{col}]=? WHERE [{col}]=?',[new_name,val]);total+=cur.rowcount
+   except Exception:
+    cur.execute(f'DELETE FROM [{table}] WHERE [{col}]=?',[val])
+ return total
+
 def read_operator_names(c,equipment=None):
  # 読み取り専用接続から、有効なオペレータ氏名を表示順で取得する。
  # equipment指定時は、割当設備を持つオペレータをその設備でフィルタする。
