@@ -10,7 +10,7 @@ backend/routes/masters.py が持つ。
 フィルタプリセット/列表示(表示マスタ)を提供する。すべてdb/master.sqlite3に保存し、
 テーブルが無ければ初回アクセス時に自動作成する。
 """
-from ..db_access import DBS, connect, ensure_audit_columns, tables
+from ..db_access import DBS, connect, ensure_audit_columns, tables, cols
 
 EQUIPMENT_MASTER_TABLE='設備マスタ'
 def ensure_equipment_master_table(c):
@@ -365,6 +365,9 @@ def filter_preset_rows(c):
 #    (空欄で「任意」扱い)は現状サポートしない。
 # ========================================================================
 ACCESS_PERMISSION_TABLE='アクセス権限マスタ'
+# スケジュールモード(docs/SCHEDULE_MODE_DESIGN.md §3.2)で追加した3列。
+# 既存の ensure_audit_columns と同じ「列が無ければ ALTER TABLE で足す」方式。
+_SCHEDULE_PERMISSION_COLUMNS=(('スケジュール可否','INTEGER'),('現場段取り可否','INTEGER'),('現場段取り対象設備','TEXT'))
 def ensure_access_permission_table(c):
  names=tables(c);created=False
  if ACCESS_PERMISSION_TABLE not in names:
@@ -373,6 +376,11 @@ def ensure_access_permission_table(c):
   cur.execute('CREATE UNIQUE INDEX [UX_アクセス権限マスタ] ON [アクセス権限マスタ] ([ログインID],[PC名])')
   c.commit();created=True
  ensure_audit_columns(c,ACCESS_PERMISSION_TABLE)
+ existing=set(cols(c,ACCESS_PERMISSION_TABLE));cur=c.cursor();changed=False
+ for name,typ in _SCHEDULE_PERMISSION_COLUMNS:
+  if name not in existing:
+   cur.execute(f'ALTER TABLE [{ACCESS_PERMISSION_TABLE}] ADD COLUMN [{name}] {typ}');changed=True
+ if changed:c.commit()
  return created
 
 def normalize_identity_part(value):
@@ -388,8 +396,9 @@ def ensure_access_permission_master(path):
 def access_permission_master_rows(c):
  ensure_access_permission_table(c)
  cur=c.cursor()
- # 全行取得後にPython側で有効判定する。
- cur.execute('SELECT [権限ID],[ログインID],[PC名],[編集可否],[表示順],[有効],[更新日時],[更新者ID] FROM [アクセス権限マスタ] ORDER BY [表示順],[ログインID],[PC名]')
+ # 全行取得後にPython側で有効判定する。スケジュール関連3列は既存の呼び出し元
+ # (masters.pyのCRUD一覧等)のインデックス([0]〜[7])を壊さないよう末尾へ追加する。
+ cur.execute('SELECT [権限ID],[ログインID],[PC名],[編集可否],[表示順],[有効],[更新日時],[更新者ID],[スケジュール可否],[現場段取り可否],[現場段取り対象設備] FROM [アクセス権限マスタ] ORDER BY [表示順],[ログインID],[PC名]')
  rows=[]
  for r in cur.fetchall():
   active=True if r[5] is None else bool(r[5])
@@ -397,14 +406,20 @@ def access_permission_master_rows(c):
  return rows
 
 def has_edit_permission(c,login_id,pc_name):
+ return permission_flags(c,login_id,pc_name)['canEdit']
+
+def permission_flags(c,login_id,pc_name):
  # ログインID＋PC名の完全一致(表記ゆれ吸収)で照合する。該当行が無ければ
- # 「編集可能」を既定とする(上記コメント参照)。
- if ACCESS_PERMISSION_TABLE not in tables(c):return True
+ # 編集可否は「可」を既定とする(既存の互換ポリシー、上記コメント参照)。
+ # スケジュール可否・現場段取り可否は未登録/未設定なら「不可」を既定とする
+ # (触れる範囲が広がる側の既定は安全側に倒す。docs/SCHEDULE_MODE_DESIGN.md §3.2)。
+ if ACCESS_PERMISSION_TABLE not in tables(c):
+  return {'canEdit':True,'canSchedule':False,'canFieldReorder':False,'fieldReorderEquipment':''}
  target_login=normalize_identity_part(login_id);target_pc=normalize_identity_part(pc_name)
  for r in access_permission_master_rows(c):
   if normalize_identity_part(r[1])==target_login and normalize_identity_part(r[2])==target_pc:
-   return bool(r[3])
- return True
+   return {'canEdit':bool(r[3]),'canSchedule':bool(r[8]),'canFieldReorder':bool(r[9]),'fieldReorderEquipment':str(r[10] or '').strip()}
+ return {'canEdit':True,'canSchedule':False,'canFieldReorder':False,'fieldReorderEquipment':''}
 
 # ========================================================================
 # 表示マスタ（列表示設定）

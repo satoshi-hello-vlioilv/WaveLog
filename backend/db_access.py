@@ -65,6 +65,15 @@ MEAS_DB=configured_path('records_db_path') or resolve_local_db('records.sqlite3'
 # 閲覧用の追加複製先(config/local.jsonの"records_backup_export_path")。
 # 未設定ならNoneのままで、records_export.pyは複製を一切行わない(既定は現状維持)。
 RECORDS_BACKUP_EXPORT_PATH=configured_path('records_backup_export_path')
+
+# スケジュール機能(docs/SCHEDULE_MODE_DESIGN.md §4)のデータ本体。共有環境
+# (Box等)上のパスをconfig/local.jsonの"schedule_share_path"で指定する。
+# 未設定ならNoneのままで、backend/schedule_sync.pyはScheduleNotConfiguredを
+# 送出し、機能自体が無効になる(仕掛/品質データのsikalotnow_path等と同じく、
+# 検証時はここをローカルの空ファイルへ一時的に切り替えて安全に試せる)。
+SCHEDULE_SHARE_PATH=configured_path('schedule_share_path')
+# fetch_snapshot()の作業用ローカルコピー置き場。個別設定は無く固定。
+SCHEDULE_CACHE_PATH=DB_DIR/'schedule_cache.sqlite3'
 DRIVER="Microsoft Access Driver (*.mdb, *.accdb)"
 
 # ========================================================================

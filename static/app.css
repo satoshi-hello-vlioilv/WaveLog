@@ -209,18 +209,31 @@ main>header small{color:#687a81;margin-top:2px}
 .equipment-header-button span{font-size:var(--fs-micro)}
 .equipment-header-button b{max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .equipment-header-button.is-unset{border-color:var(--warn-border);background:var(--warn-bg);color:var(--warn-fg)}
-/* 編集可能モード/閲覧モードの表示・切替(access-mode.js)。既定は編集可能
-   モードで、権限マスタで閲覧のみに設定された端末だけ起動時に閲覧モードで
-   立ち上がる。クリックで(権限があれば)切り替えられる。 */
-.access-mode-badge{height:38px;padding:0 14px;border:1.5px solid var(--success-border);border-radius:19px;background:var(--success-bg);color:var(--success);font-weight:800;font-size:12.5px;cursor:pointer;white-space:nowrap}
+/* 編集可能モード/閲覧モード/スケジュールモードの表示・切替(access-mode.js)。
+   既定は編集可能モードで、権限マスタの設定に応じて閲覧モード/スケジュール
+   モードで起動する端末もある。クリックで(権限のあるモードの範囲で)切り替えられる。 */
+.access-mode-badge{height:38px;padding:0 14px;border:1.5px solid var(--success-border);border-radius:19px;background:var(--success-bg);color:var(--success);font-weight:800;font-size:12.5px;cursor:pointer;white-space:nowrap;position:relative}
 .access-mode-badge.is-view{border-color:#e5b3b3;background:#fff5f5;color:#8a2323}
+.access-mode-badge.is-schedule{border-color:#b9c4f0;background:#f2f4ff;color:#333e8a}
 .access-mode-badge:disabled{cursor:not-allowed;opacity:.7}
-/* 閲覧モード中は書込系の導線を隠す。データ一覧の行は閲覧用バックアップから
-   描画するため「続きから再開」「削除」は意味を持たない(帳票表示のみ残す)。 */
+.access-mode-menu{position:fixed;z-index:1000;min-width:190px;padding:6px;border:1px solid var(--line);border-radius:10px;background:#fff;box-shadow:0 8px 24px rgba(0,0,0,.16)}
+.access-mode-menu button{display:flex;flex-direction:column;align-items:flex-start;gap:1px;width:100%;padding:8px 10px;border:0;border-radius:6px;background:transparent;text-align:left;font-weight:700;font-size:12.5px;color:var(--ink,#222);cursor:pointer}
+.access-mode-menu button:hover{background:#f1f3f5}
+.access-mode-menu button.is-current{background:#eafafa;color:#164e55}
+.access-mode-menu button small{font-weight:500;color:#687a81;font-size:11px}
+.field-reorder-badge{height:26px;padding:0 10px;border:1.5px solid var(--warn-border);border-radius:13px;background:var(--warn-bg);color:var(--warn-fg);font-weight:700;font-size:11px;white-space:nowrap}
+/* 閲覧モード・スケジュールモード中は測定系の書込導線を隠す。データ一覧の行は
+   閲覧用バックアップから描画するため「続きから再開」「削除」は意味を持たない
+   (帳票表示のみ残す)。スケジュールモードも測定データへは閲覧モードと同じく
+   書込不可のため同じ抑制を適用する。 */
 body.view-mode .record-list-actions .resume,
-body.view-mode .record-list-actions .danger{display:none}
-body.view-mode #recordSyncBar{display:none!important}
-body.view-mode #openMasterMaint{opacity:.45;pointer-events:none}
+body.view-mode .record-list-actions .danger,
+body.schedule-mode .record-list-actions .resume,
+body.schedule-mode .record-list-actions .danger{display:none}
+body.view-mode #recordSyncBar,
+body.schedule-mode #recordSyncBar{display:none!important}
+body.view-mode #openMasterMaint,
+body.schedule-mode #openMasterMaint{opacity:.45;pointer-events:none}
 
 #tabs{height:38px;display:flex;background:#fff;border-bottom:1px solid var(--line)}
 .tab{border:0;border-bottom:3px solid transparent;border-radius:0;background:#fff}

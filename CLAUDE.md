@@ -57,14 +57,18 @@
   (`master.sqlite3`/`records.sqlite3`、無ければ初回書き込み時に自動生成)は
   `db/`フォルダへまとめている。旧Access資産(`マスタ.accdb`等)は移行完了済みの
   ため撤去済み。
-- **編集可能モード/閲覧モード**: `backend/access_mode.py`が起動時にログインID+PC名を
-  アクセス権限マスタ(`backend/repositories/master_repo.py`のACCESS_PERMISSION_TABLE)
-  と照合し、モードを決める(該当行が無ければ既定で編集可能)。閲覧モード中は
-  `before_request`が`measurement`/`masters`Blueprintへの非GETをすべて403にする。
-  **新しい書込系APIを追加する場合、そのBlueprintが`_GUARDED_BLUEPRINTS`に含まれるか
-  確認すること**(含まれないBlueprintへ書込系ルートを足すと閲覧モードでもガードされ
-  ず書き込めてしまう)。フロント側の入口ガード・閲覧データの読み込みは
-  `static/js/access-mode.js`(最後に読み込むファイル)が持つ。
+- **編集可能モード/閲覧モード/スケジュールモード**: `backend/access_mode.py`が起動時に
+  ログインID+PC名をアクセス権限マスタ(`backend/repositories/master_repo.py`の
+  ACCESS_PERMISSION_TABLE、`permission_flags()`が判定)と照合し、モードを決める
+  (該当行が無ければ既定で編集可能)。書込ガードは`_WRITE_ALLOWED_MODES`
+  (Blueprint名→書込を許可するモード集合)と`_ENDPOINT_EXTRA_MODES`(個別
+  エンドポイント→追加で許可するモード。現場段取りの並べ替えAPI等)の2段で
+  `before_request`が判定する。**新しい書込系APIを追加する場合、そのBlueprintが
+  `_WRITE_ALLOWED_MODES`に含まれるか確認すること**(未宣言のBlueprintは安全側
+  ＝どのモードでも書込不可の側へ倒れる。既存の許可モードを広げたい場合のみ
+  `_ENDPOINT_EXTRA_MODES`へ個別追記し、ハンドラ側でも権限を二重チェックする)。
+  詳細は`docs/SCHEDULE_MODE_DESIGN.md`§3を参照。フロント側の入口ガード・
+  閲覧データの読み込みは`static/js/access-mode.js`(最後に読み込むファイル)が持つ。
 - **start_app.batの文字コード**: このファイルは**CP932(Shift-JIS)で保存する**
   こと(UTF-8で日本語を含めるとWindowsのcmd.exeが誤読しコマンドが壊れる。
   実際に発生した不具合)。編集時はUTF-8で書いてから
