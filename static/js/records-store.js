@@ -214,7 +214,7 @@ async function openMeasurement(row){
  showWaiting('測定画面を準備しています',`ロット ${lot} の保存データを確認中`,'端末内の編集中データを確認しています',1);
  await nextPaint();
  let result;
- try{result=await openMeasurementCore(row)}finally{hideSaveOverlay()}
+ try{result=await openMeasurementCore(row)}finally{hideSaveOverlay();if(typeof refreshScheduleInfo==='function')refreshScheduleInfo()}
  if(S.measure){S.measure.settings=S.measure.settings||{};S.measure.settings.registeredEquipment=currentConfiguredEquipment();S.measure.registeredEquipment=currentConfiguredEquipment();updateCourseGuard()}
  return result;
 }

@@ -1237,9 +1237,9 @@ Blueprint 名は `schedule`(`backend/routes/schedule.py`)。
 > 一生手が届かない矛盾があった。`body.view-mode`のみ無効化するよう修正し、
 > マスタ管理モーダル側は現在のモードで書込めるタブ(`endpoint`が
 > `/api/schedule/`始まりかどうか)だけをナビに出すよう対応(`maintDefVisible`/
-> `renderMaintNav`)。§9.7(測定画面への予定表示)・負荷率/稼働カレンダーの
-> 管理画面(§9.8の`special`扱いの2つ、`load-factor`/`work-calendar`)は
-> 未実装(前者はフェーズ7、後者は本設計のスコープ外候補)。
+> `renderMaintNav`)。§9.7(測定画面への予定表示)はフェーズ7で実装済み(下記)。
+> 負荷率/稼働カレンダーの管理画面(§9.8の`special`扱いの2つ、
+> `load-factor`/`work-calendar`)は未実装(本設計のスコープ外候補)。
 
 ### 9.1 情報アーキテクチャ(サイドバー)
 
@@ -1429,6 +1429,22 @@ const canPlan = window.accessMode?.mode === 'schedule';
 > 投げうるため、この表示処理を差し込むラップは `finally` に置く
 > (CLAUDE.md の既知の落とし穴)。
 
+> **実装済み(フェーズ7)**: `static/js/measurement-view.js`に
+> `refreshScheduleInfo()`(非同期、`GET /api/schedule/plan`を1回だけ問い合わせて
+> モジュール内変数`scheduleInfoCache`へ結果をキャッシュ)と`renderScheduleInfo()`
+> (同期、キャッシュから基本情報タブの`ロット№`直下へ「作業予定」の1行を
+> 差し込む/消す)に分割して実装。`renderScheduleInfo()`は`renderMeasurement()`
+> の描画チェーン(§9.7と同じ場所の`renderCourseHierarchy()`等の並び)から毎回
+> 同期的に呼ぶが、ネットワーク問い合わせを伴う`refreshScheduleInfo()`自体は
+> `records-store.js`の`openMeasurement()`の`finally`(`hideSaveOverlay()`と同じ
+> ブロック)から1回だけ`await`せずに発火する(測定画面を開く体感速度を
+> スケジュール未設定時にも落とさないため)。位置(「◯番目」)は、その設備の
+> `entries`から状態が完了/取消でないものだけを抜き出した配列内でのロットの
+> 出現順(1始まり)。予定に含まれないロット・スケジュール未設定・取得失敗時は
+> 単に行を出さない(ベストエフォート、エラー通知はしない)。Playwrightで
+> 実際に予定へ登録したロットを開いた場合の表示内容・挿入位置・未登録ロットで
+> 行が出ないことを確認済み。
+
 ### 9.8 負荷率・稼働カレンダー・設備停止の管理画面
 
 `static/js/measurement-worklog.js` の `MASTER_DEFS` へタブを追加する形で
@@ -1477,7 +1493,7 @@ const canPlan = window.accessMode?.mode === 'schedule';
 | `static/js/list-view.js` | **実装済み**。仕掛一覧に「予定」列(schedule時のみ)。複数行選択(一括追加)は未実装、単一選択行からの追加のみ |
 | `static/js/base.js` | `closeAllMainViews(except)` への一本化リファクタは未実装。schedule-view.jsは既存4ビューと同じ「個別に他ビューを閉じる」方式のまま追加した(§9.2) |
 | `static/js/measurement-worklog.js` | **実装済み(設備停止マスタ部分)**。`MASTER_DEFS`へ`stopReason`タブを追加(設備名は`equipment-select`という新規フィールド型で設備マスタから選択)。scheduleモードでは書込めないタブ(`masters`Blueprint配下)をナビから隠す`maintDefVisible`/`renderMaintNav`を追加し、`#openMasterMaint`のCSS無効化を`view-mode`のみに縮小(旧`schedule-mode`無効化のままだと設備停止マスタに永久に手が届かない矛盾があったため)。負荷率・稼働カレンダーの2タブ(`special`扱い)は未実装 |
-| `static/js/measurement-view.js` | 基本情報タブへ予定表示(読み取りのみ、`finally` で差し込む)は未実装(フェーズ7) |
+| `static/js/measurement-view.js` | **実装済み(フェーズ7)**。`refreshScheduleInfo()`(非同期、`records-store.js`の`openMeasurement()`の`finally`から発火)・`renderScheduleInfo()`(同期、`renderMeasurement()`の描画チェーンから毎回呼ぶ)で基本情報タブへ予定表示(読み取り専用)を追加 |
 | `templates/index.html` | **実装済み**。「計画」ナビグループ(`#planNav`静的ボタン`#openSchedule`)・スクリプトタグ追加。`fieldReorderBadge`要素も配置済み |
 | `static/app.css` | **実装済み**。`body.view-mode`/`schedule-mode`のモードバッジ・`body.sc-mode`排他・`.sc-panel`タイムライン・`.plan-action-*`(仕掛一覧の予定列)一式 |
 | `config/local.example.json` | **実装済み**。`schedule_share_path`/`schedule_lock_ttl_sec`/`schedule_lock_verify_delay_ms`の雛形 |
@@ -1541,7 +1557,7 @@ const canPlan = window.accessMode?.mode === 'schedule';
 | 4 | スケジュール画面 | ~~タイムライン(順次作業表示)・並べ替え・仕掛一覧からの投入・現場段取り簡易表示(§9.4.1)・ロック表示(§9.3)~~**実装済み**(複数選択一括投入は未実装。負荷率の内訳表示はフェーズ5で追加) | ◎(ここで使い始められる) |
 | 5 | 負荷率モデル | ~~`load_factor.py`・算出API・見積の内訳表示~~**実装済み** | ◎(要望の本丸) |
 | 6 | 設備停止 | ~~設備停止マスタ・投入UI(8分類)・固定開始時刻・非稼働帯表示~~**実装済み** | ○ |
-| 7 | 進捗表示 | 実績突合による自動進捗・測定画面への予定表示 | ◎(現場から見える) |
+| 7 | 進捗表示 | ~~実績突合による自動進捗・測定画面への予定表示~~**実装済み**(自動進捗はフェーズ3で先行実装済み、本フェーズは測定画面表示のみ) | ◎(現場から見える) |
 | 8 | 精度の検証 | 見積 vs 実測の指標・負荷率の手動上書きUI | ○(運用ループが回る) |
 
 設備削除時の確認フロー(§5.0.1)は全テーブルの参照件数を集計するため、

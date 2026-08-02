@@ -718,6 +718,10 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 .mother-auto-field{background:var(--computed-bg);border:1px solid #9cd6ce;border-radius:6px;padding:2px 4px}
 .mother-auto-field output{background:#fff;color:var(--computed-fg)}
 .mother-auto-field output.scrap-width-warn{background:var(--invalid-bg);color:var(--invalid);font-weight:800}
+/* 作業スケジュールとの連携(docs/SCHEDULE_MODE_DESIGN.md §9.7)。基本情報タブに
+   出す「予定 2番目 / 予定開始 11:44 / 見積2時間32分」の1行。 */
+.schedule-info-field{background:var(--computed-bg);border:1px solid #9cd6ce;border-radius:6px;padding:2px 4px}
+.schedule-info-field output{background:#fff;color:var(--computed-fg);font-weight:700}
 .mother-quality{margin-top:8px}
 .mother-quality textarea{width:100%;height:280px;border:1px solid var(--card-border);border-radius:8px;resize:none;background:#fff}
 
