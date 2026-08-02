@@ -1,12 +1,11 @@
 """schedule.py: スケジュール機能のBlueprint(docs/SCHEDULE_MODE_DESIGN.md §8)。
 
 排他制御基盤(backend/schedule_sync.py、§4)の上に、作業予定・稼働カレンダー
-マスタ・設備停止マスタのCRUD(backend/repositories/schedule_repo.py、§5)を
-配線する。**時刻展開(稼働カレンダーからのETA計算・実績突合、§7)はまだ実装
-していない**ため、`GET /api/schedule/plan` は展開前の生データ(順序・種別・
-明細等)のみを返す。フェーズ3で `estimate`/`plannedStart`/`actual` 等の
-フィールドをこのレスポンスへ追加する予定だが、`entries[].id/order/kind/...`
-の形は変えない(URLも変えない)。
+マスタ・設備停止マスタのCRUD(backend/repositories/schedule_repo.py、§5)と、
+時刻展開・実績突合(backend/schedule_calc.py、§6.6・§7)を配線する。
+`GET /api/schedule/plan` は展開済み(estimate/plannedStart/plannedEnd/
+actual等を含む)のentriesを返す。見積分は「一律見積(全係数1.0)」段階
+(フェーズ5で負荷率モデルに置き換える、§11)。
 
 非GETは `_WRITE_ALLOWED_MODES` によりscheduleモードのみ許可されるが、
 `plan_reorder` だけは `_ENDPOINT_EXTRA_MODES` によりeditモード(現場段取り
@@ -18,7 +17,9 @@ before_requestでは判定できない(設備名はリクエストボディの�
 from flask import Blueprint, request, jsonify
 
 from .. import schedule_sync
+from .. import schedule_calc
 from ..repositories import schedule_repo as sr
+from ..repositories.master_repo import normalize_equipment_name
 from ..db_access import connect, request_user_id
 from ..access_mode import current_login_id, current_pc_name, get_mode, current_permission_flags
 
@@ -72,31 +73,18 @@ def _write_response(apply_fn):
 # ========================================================================
 # 作業予定
 # ========================================================================
-def _plan_entry(r):
- # sr.plan_rows()/plan_row()の列順: 予定ID,設備名,表示順,種別,ロット番号,
- # 検査番号,鋳造番号,予定名称,明細JSON,固定開始日時,見積分,状態,実績測定ID,
- # 備考,有効,登録日時,更新日時,更新者ID
- import json as _json
- detail={}
- if r[8]:
-  try:detail=_json.loads(r[8])
-  except Exception:detail={}
- return {'id':r[0],'equipment':r[1],'order':r[2],'kind':r[3],
-         'lotNo':r[4],'inspectionNo':r[5],'castingNo':r[6],
-         'title':r[7],'detail':detail,'fixedStart':r[9],'estimateMinutes':r[10],
-         'state':r[11],'actualRecordId':r[12],'remark':r[13],
-         'reorderable':(r[11] or sr.PLAN_REORDERABLE_STATE)==sr.PLAN_REORDERABLE_STATE,
-         'updatedAt':r[16].isoformat() if r[16] else None,'updatedBy':str(r[17] or '')}
-
 @bp.get('/api/schedule/plan')
 def plan_list():
+ # §7.3・§8.1。schedule_calc.expand_plan()が稼働カレンダーの展開・実績突合
+ # (状態の動的導出)まで行った完成形を返す(DBへは書き戻さない)。
  equipment=str(request.args.get('equipment') or '').strip()
  if not equipment:return jsonify(error='どの設備の予定か指定してください(equipment)。'),400
- result,stale,err=_read(lambda c:[_plan_entry(r) for r in sr.plan_rows(c,equipment)])
- if err=='not_configured':return jsonify(ok=True,configured=False,equipment=equipment,entries=[])
+ result,stale,err=_read(lambda c:schedule_calc.expand_plan(c,equipment))
+ if err=='not_configured':return jsonify(ok=True,configured=False,equipment=equipment,entries=[],anchor=None,warnings=[])
  if err:return jsonify(error=err),503
- warnings=['スケジュールデータの取得に失敗したため、直前のローカルキャッシュを表示しています。'] if stale else []
- return jsonify(ok=True,configured=True,equipment=equipment,entries=result,warnings=warnings)
+ warnings=list(result.get('warnings') or [])
+ if stale:warnings.append('スケジュールデータの取得に失敗したため、直前のローカルキャッシュを表示しています。')
+ return jsonify(ok=True,configured=True,equipment=equipment,entries=result['entries'],anchor=result.get('anchor'),warnings=warnings)
 
 @bp.post('/api/schedule/plan/add')
 def plan_add():
@@ -148,12 +136,16 @@ def plan_reorder():
  if not equipment:return jsonify(error='どの設備の並べ替えか指定してください。'),400
  if get_mode()=='edit':
   flags=current_permission_flags()
-  from ..repositories.master_repo import normalize_equipment_name
   if not flags['canFieldReorder'] or normalize_equipment_name(flags['fieldReorderEquipment'])!=normalize_equipment_name(equipment):
    return jsonify(error='この端末には、この設備の現場段取り(並べ替え)権限がありません。'),403
  ordered_ids=x.get('orderedIds') or x.get('planIds') or []
  def fn(c):
-  n=sr.plan_reorder(c,equipment,ordered_ids,request_user_id(x))
+  # §7.5手順1〜2: 実績突合込みで導出した状態から「実質的に予定」なIDだけを
+  # 並べ替え対象にする(DBの[状態]列だけを見ると、実績突合で既に着手/完了
+  # 相当になっている予定を誤って動かせてしまう)。
+  expanded=schedule_calc.expand_plan(c,equipment)
+  reorderable_ids={e['id'] for e in expanded['entries'] if e.get('reorderable')}
+  n=sr.plan_reorder(c,equipment,ordered_ids,request_user_id(x),reorderable_ids=reorderable_ids)
   return {'equipment':equipment,'reordered':n}
  return _write_response(fn)
 

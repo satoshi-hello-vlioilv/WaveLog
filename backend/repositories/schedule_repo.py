@@ -78,7 +78,11 @@ def plan_add(c,equipment,kind,uid,position='end',lot_no='',inspection_no='',cast
   if normalize_equipment_name(row[0])!=normalize_equipment_name(equipment):
    raise ValueError('指定の停止理由は別の設備に登録されています。')
   title_snapshot=str(row[1] or '').strip()
-  if est is None:est=row[2]
+  # [見積分]はestimate_minutes(明示上書き)が無ければNULLのままにする(§5.1)。
+  # マスタの標準所要分は固定値としてここでスナップショットしない。マスタの
+  # 標準所要分を後から編集したら、まだ見積を上書きしていない予定には反映
+  # させたいため、解決はschedule_calc.py(フェーズ3)の展開時に(設備名,
+  # 予定名称)で毎回引き直す
   lot_no=inspection_no=casting_no=''
  else:
   detail_json=_json.dumps(detail or {},ensure_ascii=False)
@@ -117,21 +121,30 @@ def plan_delete(c,plan_id,uid):
  cur.execute('UPDATE [作業予定] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [予定ID]=?',[uid,plan_id])
  return cur.rowcount
 
-def plan_reorder(c,equipment,ordered_ids,uid):
- # §5.1.1・§7.5。未着手([状態]='予定')の予定だけが並べ替え対象。着手中・
- # 完了・取消の予定は物理的な作業順序として既に確定しているため動かせない
- # (実運用では常に「これから」の作業が「済み」の後ろに来る)。ordered_idsは
- # 現在[状態]='予定'の全件と過不足なく一致する必要がある(部分並べ替えは
- # 一貫性を崩すため受け付けない)。既存の着手中/完了/取消行の[表示順]の
- # 直後から1..Nを振り直すことで、確定済みの並びを一切動かさずに済む。
+def plan_reorder(c,equipment,ordered_ids,uid,reorderable_ids=None):
+ # §5.1.1・§7.5。未着手(実質的に「予定」状態)の予定だけが並べ替え対象。
+ # 着手中・完了・取消の予定は物理的な作業順序として既に確定しているため
+ # 動かせない(実運用では常に「これから」の作業が「済み」の後ろに来る)。
+ # ordered_idsは対象の全件と過不足なく一致する必要がある(部分並べ替えは
+ # 一貫性を崩すため受け付けない)。対象外(確定済み)行の[表示順]の直後から
+ # 1..Nを振り直すことで、確定済みの並びを一切動かさずに済む。
+ #
+ # reorderable_ids: 呼び出し元(backend/routes/schedule.py)がschedule_calc.
+ # expand_plan()の実績突合込みの導出状態(§7.4)から計算した「実質的に予定」
+ # なIDの集合。渡されなければ、DBの[状態]列だけを見た簡易判定にフォール
+ # バックする(schedule_calc抜きの直接呼び出し・単体テスト向け。実績突合が
+ # 絡む本番の並べ替えでは必ずreorderable_idsを渡すこと)。
  ensure_plan_table(c)
  equipment=str(equipment or '').strip()
  if not equipment:raise ValueError('設備名を指定してください。')
  cur=c.cursor()
  cur.execute('SELECT [予定ID],[表示順],[状態] FROM [作業予定] WHERE [設備名]=? AND ([有効] IS NULL OR [有効]<>0)',[equipment])
  active_rows=cur.fetchall()
- reorderable={r[0] for r in active_rows if (r[2] or PLAN_REORDERABLE_STATE)==PLAN_REORDERABLE_STATE}
- fixed_orders=[r[1] or 0 for r in active_rows if (r[2] or PLAN_REORDERABLE_STATE)!=PLAN_REORDERABLE_STATE]
+ if reorderable_ids is None:
+  reorderable={r[0] for r in active_rows if (r[2] or PLAN_REORDERABLE_STATE)==PLAN_REORDERABLE_STATE}
+ else:
+  reorderable=set(reorderable_ids)
+ fixed_orders=[r[1] or 0 for r in active_rows if r[0] not in reorderable]
  given=list(ordered_ids or [])
  if len(set(given))!=len(given):raise ValueError('並べ替え対象に重複があります。')
  if set(given)!=reorderable:raise ValueError('並べ替え対象が現在の未着手予定と一致しません(追加・削除の直後は最新の一覧を取得し直してください)。')
@@ -226,8 +239,12 @@ def stop_reason_upsert(c,equipment,name,uid,category='',standard_minutes=None,co
  if not equipment:raise ValueError('設備名を入力してください。')
  if not name:raise ValueError('名称を入力してください。')
  cur=c.cursor()
- cur.execute('SELECT [停止理由ID] FROM [設備停止マスタ] WHERE [設備名]=? AND [名称]=?',[equipment,name])
- existing=cur.fetchone()
+ # 設備名は表記ゆれを吸収して照合する(他の設備名参照と同じ方式)。名称は
+ # UNIQUE INDEXの実体に合わせて完全一致(前後空白除去のみ)で照合する。
+ cur.execute('SELECT [停止理由ID],[設備名],[名称] FROM [設備停止マスタ]')
+ target_eq=normalize_equipment_name(equipment)
+ existing_row=next((r for r in cur.fetchall() if normalize_equipment_name(r[1])==target_eq and str(r[2] or '').strip()==name),None)
+ existing=(existing_row[0],) if existing_row else None
  if existing:
   cur.execute('UPDATE [設備停止マスタ] SET [分類]=?,[標準所要分]=?,[色キー]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [停止理由ID]=?',
               [category,standard_minutes,color_key,uid,existing[0]])
@@ -244,6 +261,21 @@ def stop_reason_delete(c,stop_reason_id,uid):
  cur.execute('UPDATE [設備停止マスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [停止理由ID]=?',[uid,stop_reason_id])
  return cur.rowcount
 
+def stop_reason_standard_minutes(c,equipment,name):
+ # §5.1: 設備停止の予定は[見積分]がNULLなら、追加時点ではなく展開の都度
+ # このマスタの現在値を引く(スナップショットしない。plan_addのコメント参照)。
+ # 予定側にはstopReasonIdの参照列が無いため、(設備名,名称)の自然キーで
+ # 引き直す(設備名は表記ゆれ吸収、名称は完全一致。stop_reason_upsertと同じ方式)。
+ ensure_stop_reason_table(c)
+ cur=c.cursor()
+ cur.execute('SELECT [設備名],[名称],[標準所要分],[有効] FROM [設備停止マスタ]')
+ target_eq=normalize_equipment_name(equipment);target_name=str(name or '').strip()
+ for eq,nm,minutes,active in cur.fetchall():
+  active=True if active is None else bool(active)
+  if active and normalize_equipment_name(eq)==target_eq and str(nm or '').strip()==target_name:
+   return minutes
+ return None
+
 # ========================================================================
 # 負荷率上書きマスタ(§5.4)
 #  - テーブル定義のみフェーズ2で用意する。算出・上書きAPI・見積内訳は
@@ -259,6 +291,20 @@ def ensure_load_factor_override_table(c):
   cur.execute('CREATE UNIQUE INDEX [UX_負荷率上書き] ON [負荷率上書きマスタ] ([設備名],[因子],[水準])')
   c.commit();created=True
  return created
+
+def base_minutes_override(c,equipment):
+ # §6.1のT0(基準時間)。因子='BASE'(水準は空)の行を設備別優先で読む。
+ # フェーズ5(load_factor.py)が実績から自動算出するまでの間、
+ # schedule_calc.pyの「一律見積(係数1.0)」はこの値(無ければ既定値)を使う。
+ ensure_load_factor_override_table(c)
+ cur=c.cursor()
+ cur.execute("SELECT [設備名],[係数],[有効] FROM [負荷率上書きマスタ] WHERE [因子]='BASE'")
+ rows=[r for r in cur.fetchall() if (True if r[2] is None else bool(r[2]))]
+ target=normalize_equipment_name(equipment)
+ specific=next((r[1] for r in rows if normalize_equipment_name(r[0])==target and target),None)
+ if specific is not None:return specific
+ global_row=next((r[1] for r in rows if not str(r[0] or '').strip()),None)
+ return global_row
 
 def ensure_schedule_tables(c):
  # 4テーブルをまとめて用意する。with_write()のapply_fn冒頭やGET系ルートの
