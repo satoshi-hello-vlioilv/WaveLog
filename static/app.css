@@ -2142,43 +2142,76 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
 .sc-warning{font-size:12px;color:var(--warn-fg)}
 .sc-body{flex:1;min-height:0;display:flex;gap:0;overflow:hidden}
 .sc-body[hidden]{display:none!important}
-.sc-timeline{flex:1;min-width:0;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:8px}
+.sc-timeline{flex:1;min-width:0;overflow-y:auto;overflow-x:auto;padding:8px 14px;display:flex;flex-direction:column;gap:2px}
 .sc-side{width:300px;flex-shrink:0;border-left:1px solid var(--line);background:#fff;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:16px}
 .sc-side-title{font-size:12px;font-weight:800;color:#5c777e;margin-bottom:6px}
+.sc-side-hint{font-size:11px;color:#8a9aa0;margin:0 0 6px}
 .sc-empty-note{color:#8a9aa0;font-size:12.5px;padding:8px 2px}
-.sc-add-row{display:flex;flex-direction:column;gap:6px;font-size:12.5px}
+.sc-lot-search-input{width:100%;height:32px;padding:0 10px;border:1px solid var(--line);border-radius:6px;font-size:12.5px;font-family:inherit;box-sizing:border-box}
+.sc-lot-search-input:focus{outline:0;border-color:var(--teal);box-shadow:0 0 0 2px var(--computed-bg)}
+.sc-lot-search-results{display:flex;flex-direction:column;gap:4px;margin-top:6px}
+.sc-lot-result{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px;background:#f7fafa;border:1px solid var(--line);border-radius:6px}
+.sc-lot-result-info{font-size:12px;color:#3a565d;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sc-lot-result-info b{color:#173842}
+.sc-lot-result-add{flex-shrink:0;height:24px;padding:0 8px;border:1px solid var(--teal);background:#eafafa;color:#164e55;border-radius:5px;font-size:11px;cursor:pointer}
+.sc-lot-result-add:disabled{opacity:.5;cursor:not-allowed}
+.sc-add-row-divider{font-size:10.5px;font-weight:800;color:#8a9aa0;margin-top:10px;padding-top:8px;border-top:1px dashed var(--line)}
+.sc-add-row{display:flex;flex-direction:column;gap:6px;font-size:12.5px;margin-top:4px}
 .sc-add-row-button{align-self:flex-start;height:28px;padding:0 10px;border:1px solid var(--teal);background:#eafafa;color:#164e55;border-radius:6px;cursor:pointer}
 .sc-add-bulk-lots{max-height:70px;overflow-y:auto;color:#61757c;font-size:11.5px;line-height:1.5}
+.sc-stop-groups{display:flex;flex-direction:column;gap:12px}
+.sc-stop-group-title{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:800;color:#8a9aa0;margin-bottom:5px;text-transform:uppercase;letter-spacing:.02em}
+.sc-stop-group-icon{font-size:12px}
 .sc-stop-buttons{display:flex;flex-wrap:wrap;gap:6px}
 .sc-stop-button{height:28px;padding:0 10px;border:1px solid var(--line);border-radius:14px;background:#fff;font-size:12px;cursor:pointer}
 .sc-stop-button:hover{border-color:var(--teal)}
 .sc-stop-button.is-disabled{opacity:.5;cursor:not-allowed}
-.sc-card{display:flex;align-items:stretch;gap:8px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:8px 10px;position:relative}
-.sc-card[draggable="true"]{cursor:grab}
-.sc-card.sc-dragging{opacity:.4}
-.sc-card-handle{display:flex;align-items:center;justify-content:center;width:20px;flex-shrink:0;color:#9fb0b5;font-size:14px}
-.sc-card-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
-.sc-card-top{display:flex;align-items:center;gap:8px}
-.sc-kind{font-size:10px;font-weight:800;color:#5c777e;text-transform:none}
-.sc-state{font-size:10px;font-weight:800;padding:1px 8px;border-radius:10px;background:#eef2f3;color:#5c777e}
-.sc-card.sc-state-active .sc-state{background:var(--success-bg);color:var(--success)}
-.sc-card.sc-state-done .sc-state{background:#eef2f3;color:#5c777e}
-.sc-card.sc-state-cancel .sc-state{background:var(--danger-bg);color:var(--danger);text-decoration:line-through}
-.sc-card.sc-state-active{border-color:var(--success-border);background:var(--success-bg)}
-.sc-card-title{font-size:13.5px;font-weight:700;color:#173842}
-.sc-card-time{font-size:12px;color:#3a565d}
-.sc-card-meta{font-size:11px;color:#61757c;display:flex;flex-wrap:wrap;gap:6px}
-.sc-overdue{color:var(--danger);font-weight:800}
-.sc-spans{color:var(--warn-fg);font-weight:700}
-.sc-card-delete{align-self:flex-start;height:26px;padding:0 10px;border:1px solid var(--danger-border);background:var(--danger-bg);color:var(--danger);border-radius:6px;cursor:pointer;font-size:11px}
 @media(max-width:1000px){.sc-body{flex-direction:column}.sc-side{width:auto;border-left:0;border-top:1px solid var(--line)}}
 
-/* 見積の内訳(§6.8・§9.3)。換算係数モデルの根拠(基準時間・予測区間・因子別
-   係数)を開示する。既定は折りたたみ(カード一覧が縦に伸びすぎないため)。 */
-.sc-estimate-toggle{align-self:flex-start;margin-top:2px;padding:0;border:0;background:none;color:#3a7d86;font-size:11px;font-weight:700;cursor:pointer}
-.sc-estimate-toggle:hover{text-decoration:underline}
-.sc-estimate-detail[hidden]{display:none}
-.sc-estimate-detail{margin-top:4px;padding:6px 8px;background:#eef4f5;border:1px solid var(--line);border-radius:6px;display:flex;flex-direction:column;gap:3px}
+/* ---------------------------------------------------------------
+   高密度リスト(§9.3改訂)。「リスト形式並みの高密度、1ロット1行、
+   20行程度が1画面に見える」という要望に合わせ、縦長カードから表形式の
+   1行(.sc-row-line)へ作り直した。ヘッダー(.sc-row-head)と同じグリッド
+   列数で列を揃え、列の意味はヘッダーで1回だけ説明する(各行では値だけ)。
+   固定開始・見積の内訳は情報量が多く常時出すと行が伸びるため、1つの
+   詳細トグル(.sc-row-detail-toggle)へ統合して折りたたむ(既定は閉)。
+   --------------------------------------------------------------- */
+.sc-row-head,.sc-row-line{
+ display:grid;grid-template-columns:16px 20px 104px 54px minmax(140px,1fr) 54px 78px 92px 52px;
+ align-items:center;column-gap:8px;min-width:700px;
+}
+.sc-row-head{padding:2px 8px 4px;position:sticky;top:0;z-index:1;background:#f4f7f8;font-size:10px;font-weight:800;color:#8a9aa0;border-bottom:1px solid var(--line)}
+.sc-row-line{padding:3px 8px;border-radius:4px;background:#fff;border-bottom:1px solid #eef1f2}
+.sc-row-line:hover{background:#f4f9f9}
+.sc-row-line[draggable="true"]{cursor:grab}
+.sc-row-line.sc-dragging{opacity:.4}
+.sc-row-line.sc-row-active{background:var(--success-bg)}
+.sc-row-line.sc-row-active:hover{background:#dcf1e5}
+.sc-row-line.sc-row-done{opacity:.6}
+.sc-row-line.sc-row-cancel{opacity:.6}
+.sc-row-line.sc-row-cancel .sc-row-title{text-decoration:line-through}
+.sc-row-handle{color:#9fb0b5;font-size:12px;text-align:center}
+.sc-row-icon{font-size:12px;text-align:center;color:#7c9095}
+.sc-row-line.sc-row-active .sc-row-icon{color:var(--success)}
+.sc-row-line.sc-row-cancel .sc-row-icon{color:var(--danger)}
+.sc-row-time{font-size:11.5px;color:#3a565d;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}
+.sc-row-rel{font-size:10.5px;color:#8a9aa0;white-space:nowrap;overflow:hidden}
+.sc-row-title{font-size:12.5px;font-weight:700;color:#173842;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.sc-row-est{font-size:11px;color:#3a565d;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.sc-row-est.sc-est-default{color:#8a9aa0;font-style:italic}
+.sc-row-actual{font-size:11px;color:#3a565d;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap;overflow:hidden}
+.sc-row-flags{display:flex;gap:3px;font-size:10.5px;white-space:nowrap;overflow:hidden}
+.sc-flag-overdue{color:var(--danger);font-weight:800}
+.sc-row-actions{display:flex;gap:3px;justify-content:flex-end}
+.sc-row-btn{width:20px;height:20px;padding:0;border:1px solid var(--line);background:#fff;border-radius:4px;font-size:11px;line-height:1;cursor:pointer;color:#5c777e;flex-shrink:0}
+.sc-row-btn:hover{border-color:var(--teal);color:#0c5d67}
+.sc-row-btn.active{background:var(--computed-bg);border-color:var(--teal);color:#0c5d67}
+.sc-row-delete:hover{border-color:var(--danger-border);background:var(--danger-bg);color:var(--danger)}
+
+/* 詳細(固定開始・見積の内訳)を1つの折りたたみへ統合。 */
+.sc-row-detail[hidden]{display:none}
+.sc-row-detail{margin:2px 8px 6px;padding:8px 10px;background:#eef4f5;border:1px solid var(--line);border-radius:6px;display:flex;flex-direction:column;gap:8px;min-width:640px}
+.sc-detail-heading{font-size:10.5px;font-weight:800;color:#5c777e}
 .sc-estimate-row{font-size:11px;color:#3a565d}
 .sc-estimate-factor{display:flex;align-items:center;gap:6px;font-size:11px;color:#3a565d}
 .sc-ef-key{color:#61757c;min-width:110px}
@@ -2188,18 +2221,14 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
 .sc-ef-source{margin-left:auto;font-size:10px;font-weight:800;padding:1px 7px;border-radius:9px;background:#eef2f3;color:#5c777e}
 .sc-ef-source-override .sc-ef-source{background:var(--warn-bg);color:var(--warn-fg)}
 .sc-ef-source-unknown .sc-ef-source{background:var(--danger-bg);color:var(--danger)}
-
-/* 固定開始日時(§5.1・§7.3、フェーズ6)。schedule モードの未着手カードだけ
-   編集でき、それ以外(view/edit)は設定済みの値を読み取り表示のみ出す。 */
 .sc-fixed-start{display:flex;align-items:center;gap:6px;font-size:11px;color:#61757c}
-.sc-fixed-start label{display:flex;align-items:center;gap:4px}
 .sc-fixed-start-input{height:24px;padding:0 4px;border:1px solid var(--line);border-radius:5px;font-size:11px;font-family:inherit}
 .sc-fixed-start-clear{height:22px;padding:0 8px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:10px;cursor:pointer}
 .sc-fixed-start-readonly{font-size:11px;color:#61757c}
 
 /* 非稼働帯の明示(§9.3「── 12:00 昼休み ──」)。稼働カレンダー上の空き・
-   固定開始日時による押し出しで、カード間の時刻が連続しない箇所に挿む。 */
-.sc-gap-divider{align-self:center;font-size:11px;color:#8a9aa0;padding:2px 0;text-align:center}
+   固定開始日時による押し出しで、行間の時刻が連続しない箇所に挿む。 */
+.sc-gap-divider{font-size:10.5px;color:#8a9aa0;padding:1px 8px;text-align:center;min-width:700px}
 
 /* ---------------------------------------------------------------
    全体俯瞰ボード(§9.9)。設備を1つ選ぶ前に「どこが空いているか」を

@@ -190,6 +190,18 @@ def resolve_estimate(c,equipment,plan_row_dict):
 def _minutes_between(a,b):
  return (b-a).total_seconds()/60.0
 
+def _parse_dt(value):
+ """実績(workTime.startAt/endAt)・固定開始日時など、ブラウザ側が
+ `Date.toISOString()`(UTC、'Z'終端)で送ってくるISO文字列を、このモジュール
+ 内で終始使っているnaiveなローカル時刻のdatetimeへ正規化する。tzinfo付き
+ のままdatetime.now()由来のnaive値と比較・減算するとTypeErrorになるため、
+ ここで一本化して吸収する(§7、CLAUDE.mdの「関数の定義は1箇所」)。
+ パース不可ならNoneを返す(呼び出し側は既存どおりtry/exceptで拾う)。"""
+ if not value:return None
+ dt=datetime.fromisoformat(value)
+ if dt.tzinfo is not None:dt=dt.astimezone().replace(tzinfo=None)
+ return dt
+
 def expand_plan(c,equipment,now=None):
  """GET /api/schedule/planの本体。生のplan_rows・稼働カレンダー・実績突合を
  合成し、§8.1のentries形状(id/order/kind/estimate/plannedStart/plannedEnd/
@@ -221,7 +233,7 @@ def expand_plan(c,equipment,now=None):
  first_remaining_override=None
  if active and active[0]['state']=='着手' and active[0]['actual'] and active[0]['actual'].get('startAt'):
   try:
-   anchor=datetime.fromisoformat(active[0]['actual']['startAt'])
+   anchor=_parse_dt(active[0]['actual']['startAt']) or now
   except Exception:
    anchor=now
   est0=resolve_estimate(c,equipment,active[0])
@@ -247,7 +259,7 @@ def expand_plan(c,equipment,now=None):
    est=dict(est,minutes=minutes,source='remaining')
   fixed_start=None
   if e.get('fixedStart'):
-   try:fixed_start=datetime.fromisoformat(e['fixedStart'])
+   try:fixed_start=_parse_dt(e['fixedStart'])
    except Exception:fixed_start=None
   waited_minutes=0.0
   if fixed_start and fixed_start>cursor:
@@ -289,13 +301,13 @@ def expand_plan(c,equipment,now=None):
   e.pop('storedState')
   if e['state']=='着手' and actual and actual.get('startAt'):
    try:
-    started=datetime.fromisoformat(actual['startAt'])
+    started=_parse_dt(actual['startAt'])
     e['actual']={'startAt':actual['startAt'],'endAt':None,'elapsedMinutes':round(max(0.0,_minutes_between(started,now)),1)}
    except Exception:
     e['actual']={'startAt':actual.get('startAt'),'endAt':None,'elapsedMinutes':None}
   elif e['state']=='完了' and actual and actual.get('startAt') and actual.get('endAt'):
    try:
-    started=datetime.fromisoformat(actual['startAt']);ended=datetime.fromisoformat(actual['endAt'])
+    started=_parse_dt(actual['startAt']);ended=_parse_dt(actual['endAt'])
     actual_minutes=max(0.0,_minutes_between(started,ended))
     est=(e.get('estimate') or {}).get('minutes')
     variance=round(actual_minutes-est,1) if est is not None else None
