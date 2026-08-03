@@ -62,7 +62,11 @@ async function load(){
  const label=databaseLabel(S.db),table=S.table||'テーブル';
  if($('#saveOverlay').hidden){showWaiting(`${label}を更新しています`,`テーブル: ${table}`,'検索条件を反映して一覧データを取得しています');await nextPaint()}
  try{
-  const q=new URLSearchParams({db:S.db,table:S.table,page:S.page,page_size:$('#pageSize').value,search:$('#search').value});const d=await api('/api/table?'+q);Object.assign(S,{columns:d.columns,rows:d.rows,count:d.count});const info=S.catalog.find(x=>x.key===S.db);$('#fileName').textContent=info.file_name;$('#tableName').textContent=S.table;renderGrid();
+  const q=new URLSearchParams({db:S.db,table:S.table,page:S.page,page_size:$('#pageSize').value,search:$('#search').value});const d=await api('/api/table?'+q);Object.assign(S,{columns:d.columns,rows:d.rows,count:d.count});const info=S.catalog.find(x=>x.key===S.db);$('#fileName').textContent=info.file_name;$('#tableName').textContent=S.table;
+  // ページ・検索条件が変わるたびに行オブジェクト自体が総入れ替えになるため、
+  // 複数選択(§9.5、一括予定投入)はページ内限定とし、切替のたびにクリアする。
+  S.selectedRows.clear();
+  renderGrid();
  }finally{hideSaveOverlay()}
 }
 /* データベース切替→テーブル選択は、実際に目視できる2段階で待機表示する
@@ -94,7 +98,7 @@ function renderGrid(){
  const lotCol=hasLotDsp?findColumnFor('lotNo'):null,castCol=hasLotDsp?findColumnFor('castingNo'):null;
  const filteredCols=new Set((S.genericFilters||[]).map(f=>f.column));
  const t=document.createElement('table');
- t.innerHTML='<thead><tr><th>#</th>'+(isWork?'<th class="split-flag-head" title="親子管理_子カード／コンマ5本分割_切断巾に実データがある場合「分割あり」と表示します">分割</th>':'')+S.columns.map(c=>{
+ t.innerHTML='<thead><tr>'+(canPlan?'<th class="plan-select-head"><input type="checkbox" id="planSelectAll" title="このページの全行を選択/解除"></th>':'')+'<th>#</th>'+(isWork?'<th class="split-flag-head" title="親子管理_子カード／コンマ5本分割_切断巾に実データがある場合「分割あり」と表示します">分割</th>':'')+S.columns.map(c=>{
   const filtered=filteredCols.has(c),sorted=S.sortColumn===c,arrow=sorted?(S.sortDir==='desc'?' ▼':' ▲'):'';
   return `<th class="sortable-col ${filtered?'col-filtered':''} ${sorted?'col-sorted':''}" data-sort-col="${esc(c)}" tabindex="0" role="button" aria-label="${esc(c)}列で並び替え" title="クリックで並び替え${filtered?'（絞り込み中の列です）':''}">${esc(c)}${arrow}${filtered?'<i class="col-filter-badge" aria-hidden="true" title="この列にフィルタが適用されています">▼</i>':''}</th>`;
  }).join('')+(isWork?'<th class="measurement-action-head">測定</th>':'')+(canPlan?'<th class="plan-action-head">予定</th>':'')+'</tr></thead>';
@@ -131,11 +135,12 @@ function renderGrid(){
     if(typeof window.isChildCardClassifiedRow==='function'&&window.isChildCardClassifiedRow(r))parentCheckTargets.push({tr,row:r});
    }
   }
-  tr.innerHTML=`<td>${(S.page-1)*+$('#pageSize').value+i+1}</td>`+splitCell+S.columns.map(c=>{
+  tr.innerHTML=(canPlan?`<td class="plan-select-cell"><input type="checkbox" class="plan-select-checkbox"></td>`:'')+`<td>${(S.page-1)*+$('#pageSize').value+i+1}</td>`+splitCell+S.columns.map(c=>{
    if(c===lotCol){const lotVal=r[c];return `<td class="lot-cell"><button type="button" class="lot-dsp-link grid-lot-link" title="クリックでLotDspをこのロット番号で開きます">${esc(lotVal)||'—'}</button></td>`}
    return `<td>${esc(r[c])}</td>`;
   }).join('')+(isWork?'<td class="measurement-action-cell"><button type="button" class="measurement-action-button">開く</button></td>':'')+(canPlan?'<td class="plan-action-cell"><button type="button" class="plan-action-button" title="この行の設備の作業スケジュールへ追加します">+ 予定</button></td>':'');
   if(r===S.selectedRow)tr.classList.add('is-selected');
+  if(canPlan&&S.selectedRows.has(r))tr.classList.add('is-plan-selected');
   tr.addEventListener('click',()=>{
    if(S.selectedRow===r)return;
    S.selectedRow=r;
@@ -152,6 +157,16 @@ function renderGrid(){
   if(canPlan){
    const planBtn=tr.querySelector('.plan-action-button');
    if(planBtn)planBtn.onclick=e=>{e.preventDefault();e.stopPropagation();window.scheduleAddFromRow?.(r)};
+   const checkbox=tr.querySelector('.plan-select-checkbox');
+   if(checkbox){
+    checkbox.checked=S.selectedRows.has(r);
+    checkbox.addEventListener('click',e=>e.stopPropagation());
+    checkbox.addEventListener('change',()=>{
+     if(checkbox.checked)S.selectedRows.add(r);else S.selectedRows.delete(r);
+     tr.classList.toggle('is-plan-selected',checkbox.checked);
+     syncPlanSelectAll();renderPlanSelectBar(true);window.scRefreshAddFromListPanel?.();
+    });
+   }
   }
   if(hasLotDsp){
    const lotBtn=tr.querySelector('.grid-lot-link');
@@ -160,9 +175,48 @@ function renderGrid(){
   b.append(tr);
  });
  t.append(b);$('#grid').replaceChildren(t);$('#count').textContent=`全 ${S.count.toLocaleString()}件`;$('#page').textContent=`${S.page}ページ`;$('#prev').disabled=S.page===1;$('#next').disabled=S.page*+$('#pageSize').value>=S.count;
+ if(canPlan){
+  const selectAll=$('#planSelectAll');
+  if(selectAll){
+   syncPlanSelectAll();
+   selectAll.onchange=()=>{
+    S.rows.forEach(r=>{if(selectAll.checked)S.selectedRows.add(r);else S.selectedRows.delete(r)});
+    renderGrid();window.scRefreshAddFromListPanel?.();
+   };
+  }
+ }
+ renderPlanSelectBar(canPlan);
  checkSplitRowsForMissingChildren(splitCheckTargets);
  checkParentLookupRows(parentCheckTargets);
 }
+/* 複数選択→スケジュールへ一括投入(§9.5)。ヘッダーの全選択チェックボックスは
+   このページの行のみを対象にする(indeterminate状態で「一部選択中」を示す)。 */
+function syncPlanSelectAll(){
+ const selectAll=$('#planSelectAll');if(!selectAll)return;
+ const total=S.rows.length,checked=S.rows.filter(r=>S.selectedRows.has(r)).length;
+ selectAll.checked=total>0&&checked===total;
+ selectAll.indeterminate=checked>0&&checked<total;
+}
+/* 選択件数バー。0件のときは何も出さない(未選択時に常時「0件選択中」と
+   出すのは視覚的なノイズになるため、選択が始まってから見せる)。 */
+function renderPlanSelectBar(canPlan){
+ const grid=$('#grid');if(!grid)return;
+ let bar=document.getElementById('planSelectBar');
+ const n=S.selectedRows.size;
+ if(!canPlan||n===0){bar?.remove();return}
+ if(!bar){
+  bar=document.createElement('div');bar.id='planSelectBar';bar.className='plan-select-bar';
+  grid.insertBefore(bar,grid.firstChild);
+ }
+ bar.innerHTML=`<span>${n}件選択中</span><button type="button" class="plan-select-clear" id="planSelectClear">選択解除</button>`;
+ $('#planSelectClear').onclick=()=>{clearListSelection();window.scRefreshAddFromListPanel?.()};
+}
+function clearListSelection(){
+ if(!S.selectedRows.size)return;
+ S.selectedRows.clear();
+ renderGrid();
+}
+window.clearListSelection=clearListSelection;
 /* 分割あり行について、子ロットが仕掛に実在するかを確認し、見つからなければ
    グリッド上で気づける表示(⚠子ロット未検出)に切り替える。1行ごとに問い合わせが
    発生するため、同時実行数を絞って一覧の応答性・Access接続への負荷を抑える。 */

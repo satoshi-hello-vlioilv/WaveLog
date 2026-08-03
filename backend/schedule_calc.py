@@ -10,7 +10,7 @@ Flask非依存。backend/repositories/schedule_repo.pyが持つ生データ(表�
   - 種別='設備停止'でNULLなら、設備停止マスタの現在の標準所要分を
     (設備名,予定名称)で引き直す(source='stop-reason-master'、§5.1の
     「スナップショットしない」方針どおり、マスタの現在値を都度反映する)
-  - 種別='作業'でNULLなら、負荷率モデル(load_factor.py、§6)による
+  - 種別='作業'でNULLなら、換算係数モデル(load_factor.py、§6)による
     対数線形推定を使う(source='model')。実績が無くモデル自体が
     算出できない場合のみDEFAULT_ESTIMATE_MINUTES(source='default')
 """
@@ -177,7 +177,7 @@ def resolve_estimate(c,equipment,plan_row_dict):
   if minutes is not None:
    return {'minutes':float(minutes),'source':'stop-reason-master',**_EMPTY_ESTIMATE_EXTRAS}
   return {'minutes':DEFAULT_ESTIMATE_MINUTES,'source':'default',**_EMPTY_ESTIMATE_EXTRAS}
- # 種別='作業': 負荷率モデル(§6)による見積。basisがequipment/pooledなら
+ # 種別='作業': 換算係数モデル(§6)による見積。basisがequipment/pooledなら
  # 実績由来のsource='model'、モデル自体が無ければsource='default'。
  result=load_factor.estimate_work(c,equipment,plan_row_dict.get('detail') or {})
  source='model' if result.get('basis') in ('equipment','pooled') else 'default'
@@ -189,6 +189,18 @@ def resolve_estimate(c,equipment,plan_row_dict):
 # ========================================================================
 def _minutes_between(a,b):
  return (b-a).total_seconds()/60.0
+
+def _parse_dt(value):
+ """実績(workTime.startAt/endAt)・固定開始日時など、ブラウザ側が
+ `Date.toISOString()`(UTC、'Z'終端)で送ってくるISO文字列を、このモジュール
+ 内で終始使っているnaiveなローカル時刻のdatetimeへ正規化する。tzinfo付き
+ のままdatetime.now()由来のnaive値と比較・減算するとTypeErrorになるため、
+ ここで一本化して吸収する(§7、CLAUDE.mdの「関数の定義は1箇所」)。
+ パース不可ならNoneを返す(呼び出し側は既存どおりtry/exceptで拾う)。"""
+ if not value:return None
+ dt=datetime.fromisoformat(value)
+ if dt.tzinfo is not None:dt=dt.astimezone().replace(tzinfo=None)
+ return dt
 
 def expand_plan(c,equipment,now=None):
  """GET /api/schedule/planの本体。生のplan_rows・稼働カレンダー・実績突合を
@@ -221,7 +233,7 @@ def expand_plan(c,equipment,now=None):
  first_remaining_override=None
  if active and active[0]['state']=='着手' and active[0]['actual'] and active[0]['actual'].get('startAt'):
   try:
-   anchor=datetime.fromisoformat(active[0]['actual']['startAt'])
+   anchor=_parse_dt(active[0]['actual']['startAt']) or now
   except Exception:
    anchor=now
   est0=resolve_estimate(c,equipment,active[0])
@@ -247,7 +259,7 @@ def expand_plan(c,equipment,now=None):
    est=dict(est,minutes=minutes,source='remaining')
   fixed_start=None
   if e.get('fixedStart'):
-   try:fixed_start=datetime.fromisoformat(e['fixedStart'])
+   try:fixed_start=_parse_dt(e['fixedStart'])
    except Exception:fixed_start=None
   waited_minutes=0.0
   if fixed_start and fixed_start>cursor:
@@ -289,13 +301,13 @@ def expand_plan(c,equipment,now=None):
   e.pop('storedState')
   if e['state']=='着手' and actual and actual.get('startAt'):
    try:
-    started=datetime.fromisoformat(actual['startAt'])
+    started=_parse_dt(actual['startAt'])
     e['actual']={'startAt':actual['startAt'],'endAt':None,'elapsedMinutes':round(max(0.0,_minutes_between(started,now)),1)}
    except Exception:
     e['actual']={'startAt':actual.get('startAt'),'endAt':None,'elapsedMinutes':None}
   elif e['state']=='完了' and actual and actual.get('startAt') and actual.get('endAt'):
    try:
-    started=datetime.fromisoformat(actual['startAt']);ended=datetime.fromisoformat(actual['endAt'])
+    started=_parse_dt(actual['startAt']);ended=_parse_dt(actual['endAt'])
     actual_minutes=max(0.0,_minutes_between(started,ended))
     est=(e.get('estimate') or {}).get('minutes')
     variance=round(actual_minutes-est,1) if est is not None else None

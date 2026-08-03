@@ -1,11 +1,12 @@
 """schedule.py: スケジュール機能のBlueprint(docs/SCHEDULE_MODE_DESIGN.md §8)。
 
 排他制御基盤(backend/schedule_sync.py、§4)の上に、作業予定・稼働カレンダー
-マスタ・設備停止マスタ・負荷率上書きマスタのCRUD(backend/repositories/
+マスタ・設備停止マスタ・換算係数上書きマスタ(DBテーブル名は既存互換の
+ため`負荷率上書きマスタ`のまま)のCRUD(backend/repositories/
 schedule_repo.py、§5)と、時刻展開・実績突合(backend/schedule_calc.py、
-§7)・負荷率モデル(backend/load_factor.py、§6)を配線する。
+§7)・換算係数モデル(backend/load_factor.py、§6)を配線する。
 `GET /api/schedule/plan` は展開済み(estimate/plannedStart/plannedEnd/
-actual等を含む)のentriesを返す。種別='作業'の見積分は負荷率モデル
+actual等を含む)のentriesを返す。種別='作業'の見積分は換算係数モデル
 (§6)による対数線形推定(フェーズ5)。
 
 非GETは `_WRITE_ALLOWED_MODES` によりscheduleモードのみ許可されるが、
@@ -16,6 +17,7 @@ before_requestでは判定できない(設備名はリクエストボディの�
 ハンドラ内で追加チェックする。
 """
 import json
+from datetime import datetime, timedelta
 
 from flask import Blueprint, request, jsonify
 
@@ -23,8 +25,8 @@ from .. import schedule_sync
 from .. import schedule_calc
 from .. import load_factor
 from ..repositories import schedule_repo as sr
-from ..repositories.master_repo import normalize_equipment_name
-from ..db_access import connect, request_user_id
+from ..repositories.master_repo import normalize_equipment_name, equipment_master_rows
+from ..db_access import connect, request_user_id, DBS
 from ..access_mode import current_login_id, current_pc_name, get_mode, current_permission_flags
 
 bp=Blueprint('schedule',__name__)
@@ -222,7 +224,7 @@ def stop_reason_delete():
  return _write_response(fn)
 
 # ========================================================================
-# 負荷率モデル(§6、フェーズ5)
+# 換算係数モデル(§6、フェーズ5)
 # ========================================================================
 def _override_entry(r):
  # r: 上書きID,設備名,因子,水準,係数,理由,有効,更新日時,更新者ID
@@ -251,7 +253,7 @@ def load_factor_list():
  # 手動上書き一覧を返す。モデル自体はload_factor.py側でプロセス内キャッシュ
  # 済み(§6.6)。上書き一覧だけスケジュール共有DBから都度取得する。
  equipment=str(request.args.get('equipment') or '').strip()
- if not equipment:return jsonify(error='どの設備の負荷率か指定してください(equipment)。'),400
+ if not equipment:return jsonify(error='どの設備の換算係数か指定してください(equipment)。'),400
  def fn(c):
   rows=sr.load_factor_override_rows(c)
   return [r for r in rows if not r[1] or normalize_equipment_name(r[1])==normalize_equipment_name(equipment)]
@@ -330,3 +332,61 @@ def accuracy():
  if not equipment:return jsonify(error='どの設備の精度を見るか指定してください(equipment)。'),400
  result=load_factor.accuracy(equipment)
  return jsonify(ok=True,equipment=equipment,**result)
+
+# ========================================================================
+# 全設備横断の俯瞰ボード(§9.9、フェーズ9)
+# ========================================================================
+# 俯瞰ボードのミニタイムラインに表示する予定は直近何時間分か。あまり長いと
+# 1本の帯の中で各予定が細くなり読めなくなるため、フロント側の既定表示幅
+# (24時間)より少し長めに持たせておき、48時間ボタンでも取り直し不要にする。
+OVERVIEW_WINDOW_HOURS=48
+
+def _overview_row(equipment,expanded,now):
+ # expand_plan()の結果(§7、schedule_calc.py)を1設備1行分の俯瞰情報へ圧縮する。
+ # 独自の時刻計算はしない(展開はexpand_plan()に一本化、CLAUDE.mdの
+ # 「関数の定義は1箇所」)。ここでは表示用に必要な項目だけを抜き出すのみ。
+ entries=expanded['entries']
+ window_end=now+timedelta(hours=OVERVIEW_WINDOW_HOURS)
+ blocks=[]
+ pending_minutes=0.0
+ pending_count=0
+ active=None
+ max_overdue=0.0
+ for e in entries:
+  if e['state']=='着手':
+   active={'id':e['id'],'lotNo':e.get('lotNo'),'title':e.get('title'),
+           'elapsedMinutes':(e.get('actual') or {}).get('elapsedMinutes')}
+  elif e['state']==sr.PLAN_REORDERABLE_STATE:
+   pending_count+=1
+   pending_minutes+=(e.get('estimate') or {}).get('minutes') or 0.0
+  if e.get('overdueMinutes'):max_overdue=max(max_overdue,e['overdueMinutes'])
+  if e['state'] in ('着手',sr.PLAN_REORDERABLE_STATE) and e.get('plannedStart') and e.get('plannedEnd'):
+   try:
+    start=datetime.fromisoformat(e['plannedStart']);end=datetime.fromisoformat(e['plannedEnd'])
+   except Exception:
+    continue
+   if end<now or start>window_end:continue
+   blocks.append({'id':e['id'],'kind':e['kind'],'state':e['state'],
+                   'plannedStart':e['plannedStart'],'plannedEnd':e['plannedEnd'],
+                   'lotNo':e.get('lotNo'),'title':e.get('title'),
+                   'overdueMinutes':e.get('overdueMinutes') or 0})
+   if len(blocks)>=40:break
+ return {'equipment':equipment,'anchor':expanded.get('anchor'),'active':active,
+         'pendingCount':pending_count,'pendingMinutes':round(pending_minutes,1),
+         'maxOverdueMinutes':round(max_overdue,1),'blocks':blocks,
+         'warningCount':len(expanded.get('warnings') or [])}
+
+@bp.get('/api/schedule/overview')
+def overview():
+ # §9.9「全設備横断の俯瞰ボード」。共有スケジュールDBの取得は1回だけ行い
+ # (_read()、§4.2の「取得」のみ)、設備マスタから取れる有効設備の数だけ
+ # expand_plan()をメモリ上で繰り返し呼ぶ(設備ごとにファイルを取り直さない)。
+ with connect(DBS['MASTER']['path'],False) as mc:
+  equipment_names=[str(r[1]).strip() for r in equipment_master_rows(mc) if str(r[1] or '').strip()]
+ now=datetime.now()
+ def fn(c):
+  return [_overview_row(eq,schedule_calc.expand_plan(c,eq,now=now),now) for eq in equipment_names]
+ result,stale,err=_read(fn)
+ if err=='not_configured':return jsonify(ok=True,configured=False,equipment=[],generatedAt=now.isoformat())
+ if err:return jsonify(error=err),503
+ return jsonify(ok=True,configured=True,equipment=result,generatedAt=now.isoformat(),stale=stale)

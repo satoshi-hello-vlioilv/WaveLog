@@ -165,7 +165,7 @@
    fields:[{k:'loginId',label:'ログインID',required:true,key:true},{k:'pcName',label:'PC名',required:true,key:true},{k:'canEdit',label:'編集可否',type:'select',options:['編集可','閲覧のみ']}],
    cols:[{k:'loginId',label:'ログインID',grow:2},{k:'pcName',label:'PC名',grow:2},{k:'canEdit',label:'編集可否',grow:1}],
    hint:'登録の無い組み合わせは既定で編集可能として扱われます。特定の端末を閲覧専用にしたい場合のみ、その端末のログインID・PC名の組み合わせを「閲覧のみ」で登録してください。'},
-  {key:'loadFactor',label:'負荷率',icon:'率',special:'load-factor',endpoint:'/api/schedule/load-factors'},
+  {key:'loadFactor',label:'換算係数',icon:'率',special:'load-factor',endpoint:'/api/schedule/load-factors'},
   {key:'stopReason',label:'設備停止',icon:'停',endpoint:'/api/schedule/stop-reason-master',hasDelete:true,
    fields:[{k:'equipment',label:'設備名',type:'equipment-select',required:true,key:true},
            {k:'category',label:'分類',type:'select',options:['保全','段取り','待ち','突発','']},
@@ -381,7 +381,7 @@
     データ自体は一切書き換えない・履歴として残る)。 */
  function scheduleReferenceLabels(){
   return {pendingPlans:'未着手の作業予定',inProgressPlans:'着手中の作業予定',completedPlans:'完了済みの作業予定',
-          calendarRows:'稼働カレンダー',stopReasonRows:'設備停止マスタ',loadFactorOverrideRows:'負荷率の手動上書き',
+          calendarRows:'稼働カレンダー',stopReasonRows:'設備停止マスタ',loadFactorOverrideRows:'換算係数の手動上書き',
           fieldReorderTerminals:'現場段取り対象に設定中の端末'};
  }
  async function deleteEquipmentWithReferenceCheck(item,uid){
@@ -553,7 +553,7 @@
   }catch(e){showToast&&showToast('保存できませんでした',e.message,6500)}
   finally{setMaintLoading(false)}
  }
- /* ---------- 負荷率(換算係数)モデル(docs/SCHEDULE_MODE_DESIGN.md §6・§9.8) ----------
+ /* ---------- 換算係数モデル(docs/SCHEDULE_MODE_DESIGN.md §6・§9.8) ----------
     因子×水準の一覧(自動算出値・N数・上書き値)は「自動算出＋上書き」の2層
     構造で汎用CRUDのフォームに載らないため、列表示マスタと同じ特別扱いにする。 */
  let loadFactorState={equipment:'',configured:true,model:null,accuracy:null};
@@ -582,7 +582,7 @@
   const form=$('#masterMaintForm');if(!form)return;
   const opts=equipmentMasterState.items||[];
   const optHtml=opts.map(eq=>`<option value="${esc(eq.name)}"${eq.name===loadFactorState.equipment?' selected':''}>${esc(eq.name)}</option>`).join('');
-  form.innerHTML=`<div class="mm-form-head"><span class="mm-mode-chip new">負荷率(換算係数)モデル</span></div>
+  form.innerHTML=`<div class="mm-form-head"><span class="mm-mode-chip new">換算係数モデル</span></div>
    <div class="mm-cd-toolbar">
     <div class="mm-cd-dbtabs"><select id="mmLfEquipment">${optHtml||'<option value="">設備マスタが未登録です</option>'}</select></div>
     <div class="mm-cd-actions"><button type="button" id="mmLfRecalc" class="mm-btn-ghost sm">再計算</button></div>
