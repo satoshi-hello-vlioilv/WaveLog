@@ -174,7 +174,7 @@ def merged_backup_rows():
  # MEAS_DB(書込端末のローカルrecords.sqlite3)とRECORDS_BACKUP_EXPORT_PATH
  # (閲覧用複製、Box等)の両方から[Web測定バックアップ]を集め、記録IDごとに
  # 更新日時が新しい方を残す。schedule_calc.py(実績突合、§7.4)・
- # load_factor.py(負荷率モデルの学習、§6.6)が共用する。どちらの端末
+ # load_factor.py(換算係数モデルの学習、§6.6)が共用する。どちらの端末
  # (書込端末そのもの/閲覧・スケジュール専用端末)から呼んでも同じ実績が
  # 見える。
  merged={}

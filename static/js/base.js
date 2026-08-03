@@ -2,7 +2,7 @@
 /* base.js: 共有基盤 — グローバル状態(S)・API呼び出し・共通ユーティリティ・
    フィールド別名(aliases)・端末設定(使用設備/ユーザーID)。
    読込順の先頭に置き、画面固有の処理はここへ置かない。 */
-const LENGTH_SLOTS=12;const $=s=>document.querySelector(s),S={db:null,table:null,catalog:[],tables:[],columns:[],rows:[],page:1,count:0,current:null,measure:null};
+const LENGTH_SLOTS=12;const $=s=>document.querySelector(s),S={db:null,table:null,catalog:[],tables:[],columns:[],rows:[],page:1,count:0,current:null,measure:null,selectedRows:new Set()};
 /* エラー時、応答JSONの残りのフィールド(code等)をErrorオブジェクトへ
    そのまま乗せる(呼び出し側がe.messageだけでなくe.codeでも分岐できるように
    するため)。既存の呼び出し元はe.messageしか見ていないため、これを追加

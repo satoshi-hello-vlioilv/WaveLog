@@ -10,7 +10,7 @@ Flask非依存。backend/repositories/schedule_repo.pyが持つ生データ(表�
   - 種別='設備停止'でNULLなら、設備停止マスタの現在の標準所要分を
     (設備名,予定名称)で引き直す(source='stop-reason-master'、§5.1の
     「スナップショットしない」方針どおり、マスタの現在値を都度反映する)
-  - 種別='作業'でNULLなら、負荷率モデル(load_factor.py、§6)による
+  - 種別='作業'でNULLなら、換算係数モデル(load_factor.py、§6)による
     対数線形推定を使う(source='model')。実績が無くモデル自体が
     算出できない場合のみDEFAULT_ESTIMATE_MINUTES(source='default')
 """
@@ -177,7 +177,7 @@ def resolve_estimate(c,equipment,plan_row_dict):
   if minutes is not None:
    return {'minutes':float(minutes),'source':'stop-reason-master',**_EMPTY_ESTIMATE_EXTRAS}
   return {'minutes':DEFAULT_ESTIMATE_MINUTES,'source':'default',**_EMPTY_ESTIMATE_EXTRAS}
- # 種別='作業': 負荷率モデル(§6)による見積。basisがequipment/pooledなら
+ # 種別='作業': 換算係数モデル(§6)による見積。basisがequipment/pooledなら
  # 実績由来のsource='model'、モデル自体が無ければsource='default'。
  result=load_factor.estimate_work(c,equipment,plan_row_dict.get('detail') or {})
  source='model' if result.get('basis') in ('equipment','pooled') else 'default'

@@ -17,7 +17,8 @@
  if(typeof $!=='function')return;
 
  let scState={equipment:'',entries:[],anchor:null,warnings:[],configured:true,
-              editable:false,pickerEnabled:false,stopReasons:[],dragId:null};
+              editable:false,pickerEnabled:false,stopReasons:[],dragId:null,
+              boardMode:'single',boardWindowHours:24,overview:[],overviewSort:'order'};
  let scLockTimer=null;
 
  function fmtDateTime(iso){
@@ -55,18 +56,27 @@
    <div class="sc-head">
     <div class="sc-head-left">
      <b class="sc-title">作業スケジュール</b>
+     <div class="sc-mode-toggle" id="scModeToggle" hidden>
+      <button type="button" class="sc-mode-toggle-btn" id="scModeBoard" data-mode="board">▦ 全体</button>
+      <button type="button" class="sc-mode-toggle-btn" id="scModeSingle" data-mode="single">☰ 個別</button>
+     </div>
      <select class="sc-equipment-select" id="scEquipmentSelect" hidden></select>
      <span class="sc-equipment-fixed" id="scEquipmentFixed" hidden></span>
      <span class="sc-lock-badge" id="scLockBadge" hidden></span>
     </div>
     <div class="sc-head-right">
+     <div class="sc-board-window" id="scBoardWindow" hidden>
+      <button type="button" class="sc-board-window-btn" data-hours="24">24時間</button>
+      <button type="button" class="sc-board-window-btn" data-hours="48">48時間</button>
+     </div>
      <span class="sc-field-reorder-note" id="scFieldReorderNote" hidden>現場段取り: 並べ替えのみ可能</span>
      <button type="button" class="sc-refresh" id="scRefresh">再計算</button>
      <button type="button" class="sc-close" id="scClose" title="閉じる">×</button>
     </div>
    </div>
    <div class="sc-warnings" id="scWarnings" hidden></div>
-   <div class="sc-body">
+   <div class="sc-board" id="scBoard" hidden></div>
+   <div class="sc-body" id="scSingleBody">
     <div class="sc-timeline" id="scTimeline"></div>
     <div class="sc-side" id="scSide" hidden>
      <div class="sc-side-section">
@@ -82,8 +92,17 @@
   const grid=$('#grid');
   if(grid&&grid.parentNode)grid.parentNode.insertBefore(panel,grid);else document.body.appendChild(panel);
   $('#scClose').onclick=exitScheduleView;
-  $('#scRefresh').onclick=()=>refreshAll();
-  $('#scEquipmentSelect').onchange=e=>{scState.equipment=e.target.value;refreshAll()};
+  $('#scRefresh').onclick=()=>refreshCurrentMode();
+  $('#scEquipmentSelect').onchange=e=>{scState.equipment=e.target.value;switchToSingle()};
+  $('#scModeBoard').onclick=()=>switchToBoard();
+  $('#scModeSingle').onclick=()=>switchToSingle();
+  panel.querySelectorAll('.sc-board-window-btn').forEach(btn=>{
+   btn.onclick=()=>{
+    scState.boardWindowHours=+btn.dataset.hours;
+    panel.querySelectorAll('.sc-board-window-btn').forEach(b=>b.classList.toggle('active',b===btn));
+    renderOverviewBoard();
+   };
+  });
   return panel;
  }
 
@@ -125,12 +144,50 @@
    if(!eq){renderUnconfigured();return}
    scState.equipment=eq;
   }
+  // schedule/viewモードでは、設備を1つ選ぶ前に「全設備の中でどこが空いて
+  // いるか」を見せる俯瞰ボードを既定表示にする(§9.9)。editモードは自設備
+  // 固定のため俯瞰ボードの意味が無く、常に個別タイムラインのみ。
+  scState.boardMode=scState.pickerEnabled?'board':'single';
   await renderEquipmentControl(am);
-  if(scState.equipment)await refreshAll();
+  applyBoardModeUi();
+  if(scState.boardMode==='board')await loadOverviewBoard();
+  else if(scState.equipment)await refreshAll();
   else renderTimelineMessage('設備を選択してください。');
   startLockPolling();
  }
  window.openScheduleView=openScheduleView;
+
+ /* ---------- 全体/個別の表示切替(§9.9) ---------- */
+ function applyBoardModeUi(){
+  const inBoard=scState.boardMode==='board';
+  const toggle=$('#scModeToggle');if(toggle)toggle.hidden=!scState.pickerEnabled;
+  $('#scModeBoard').classList.toggle('active',inBoard);
+  $('#scModeSingle').classList.toggle('active',!inBoard);
+  $('#scBoard').hidden=!inBoard;
+  $('#scSingleBody').hidden=inBoard;
+  $('#scBoardWindow').hidden=!inBoard;
+  if(scState.pickerEnabled)$('#scEquipmentSelect').hidden=inBoard;
+  $('#scSide').hidden=!scState.fullControl||inBoard;
+  document.querySelectorAll('.sc-board-window-btn').forEach(btn=>btn.classList.toggle('active',+btn.dataset.hours===scState.boardWindowHours));
+  // 仕掛一覧側で先に行を選択してからこの画面を開いた場合でも、追加パネルが
+  // 静的な初期表示のまま取り残されないよう、表示状態が変わるたびに同期する。
+  if(!inBoard&&scState.fullControl)renderAddFromListPanel();
+ }
+ async function switchToBoard(){
+  if(!scState.pickerEnabled)return;
+  scState.boardMode='board';
+  applyBoardModeUi();
+  await loadOverviewBoard();
+ }
+ async function switchToSingle(){
+  scState.boardMode='single';
+  applyBoardModeUi();
+  if(scState.equipment)await refreshAll();
+  else renderTimelineMessage('設備を選択してください。');
+ }
+ function refreshCurrentMode(){
+  return scState.boardMode==='board'?loadOverviewBoard():refreshAll();
+ }
 
  function renderUnconfigured(){
   $('#scTimeline').innerHTML='<div class="sc-empty-note">使用設備が未登録です。まず使用設備を設定してください。</div>';
@@ -170,6 +227,91 @@
  }
  function stopLockPolling(){if(scLockTimer){clearInterval(scLockTimer);scLockTimer=null}}
 
+ /* ---------- 全体俯瞰ボード(§9.9) ----------
+    設備ごとに1行、右側へ「残作業量」を色分けした帯(次24/48時間の
+    ミニタイムライン)を並べる。時刻計算はGET /api/schedule/overview
+    (backend/schedule_calc.expand_plan()を設備分ループしたもの)に
+    一本化し、ここでは色分け・幅計算などの表示ロジックのみを行う
+    (CLAUDE.mdの「関数の定義は1箇所」、§7.1と同じ方針)。 */
+ function loadLevelClass(pendingMinutes){
+  if(!pendingMinutes)return 'sc-lv-0';
+  if(pendingMinutes<=120)return 'sc-lv-1';
+  if(pendingMinutes<=360)return 'sc-lv-2';
+  return 'sc-lv-3';
+ }
+ async function loadOverviewBoard(){
+  const board=$('#scBoard');if(!board)return;
+  board.innerHTML='<div class="sc-empty-note">読み込んでいます…</div>';
+  try{
+   const r=await api('/api/schedule/overview');
+   if(!r.configured){
+    board.innerHTML='<div class="sc-empty-note">スケジュール機能が設定されていません(config/local.jsonのschedule_share_path未設定)。</div>';
+    return;
+   }
+   scState.overview=r.equipment||[];
+   renderOverviewBoard();
+  }catch(e){
+   board.innerHTML=`<div class="sc-empty-note">俯瞰ボードを取得できませんでした: ${esc(e.message)}</div>`;
+  }
+ }
+ function overviewRows(){
+  const rows=scState.overview.slice();
+  if(scState.overviewSort==='busy')rows.sort((a,b)=>(b.pendingMinutes||0)-(a.pendingMinutes||0));
+  return rows;
+ }
+ function renderOverviewBoard(){
+  const board=$('#scBoard');if(!board)return;
+  if(!scState.overview.length){board.innerHTML='<div class="sc-empty-note">設備マスタが未登録です。</div>';return}
+  const windowHours=scState.boardWindowHours;
+  const windowMs=windowHours*3600000;
+  const now=Date.now();
+  const ticks=[];
+  for(let h=0;h<=windowHours;h+=(windowHours>24?12:6))ticks.push(h);
+  const axis=`<div class="sc-board-axis"><span class="sc-board-axis-label">設備</span><span class="sc-board-axis-track">${
+    ticks.map(h=>`<span class="sc-board-axis-tick" style="left:${(h/windowHours*100).toFixed(2)}%">${h===0?'今':h+'h'}</span>`).join('')
+   }</span></div>`;
+  const rows=overviewRows().map(row=>{
+   const lv=loadLevelClass(row.pendingMinutes);
+   const swatchText=row.pendingMinutes?`残 ${fmtMinutes(row.pendingMinutes)}・${row.pendingCount}件`:'空き';
+   const activeChip=row.active?'<span class="sc-board-active-chip">● 稼働中</span>':'';
+   const overdueChip=row.maxOverdueMinutes>0?`<span class="sc-board-overdue-chip">⚠ 遅延 ${fmtMinutes(row.maxOverdueMinutes)}</span>`:'';
+   const blocks=row.blocks.map(b=>{
+    const start=new Date(b.plannedStart).getTime(),end=new Date(b.plannedEnd).getTime();
+    const left=Math.max(0,(start-now)/windowMs*100);
+    const right=Math.min(100,(end-now)/windowMs*100);
+    if(right<=0||left>=100)return '';
+    const width=Math.max(right-left,0.6);
+    const cls=b.kind==='設備停止'?'sc-board-block-stop':(b.state==='着手'?'sc-board-block-active':'sc-board-block-planned');
+    const title=`${esc(b.kind)} ${esc(b.lotNo||b.title||'')} ${fmtDateTime(b.plannedStart)}〜${fmtDateTime(b.plannedEnd)}`;
+    return `<span class="sc-board-block ${cls}" style="left:${left.toFixed(2)}%;width:${width.toFixed(2)}%" title="${title}"></span>`;
+   }).join('');
+   return `<div class="sc-board-row" data-equipment="${esc(row.equipment)}" tabindex="0">
+    <span class="sc-board-name">${esc(row.equipment)}</span>
+    <span class="sc-board-swatch ${lv}">${esc(swatchText)}</span>
+    <span class="sc-board-track">${blocks}</span>
+    <span class="sc-board-flags">${activeChip}${overdueChip}</span>
+    <span class="sc-board-chevron">›</span>
+   </div>`;
+  }).join('');
+  board.innerHTML=`
+   <div class="sc-board-toolbar">
+    <div class="sc-board-sort">
+     <button type="button" class="sc-board-sort-btn${scState.overviewSort==='order'?' active':''}" data-sort="order">表示順</button>
+     <button type="button" class="sc-board-sort-btn${scState.overviewSort==='busy'?' active':''}" data-sort="busy">混雑順</button>
+    </div>
+   </div>
+   ${axis}
+   <div class="sc-board-rows">${rows}</div>`;
+  board.querySelectorAll('.sc-board-sort-btn').forEach(btn=>{
+   btn.onclick=()=>{scState.overviewSort=btn.dataset.sort;renderOverviewBoard()};
+  });
+  board.querySelectorAll('.sc-board-row').forEach(row=>{
+   const go=()=>{scState.equipment=row.dataset.equipment;$('#scEquipmentSelect').value=scState.equipment;switchToSingle()};
+   row.onclick=go;
+   row.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go()}};
+  });
+ }
+
  /* ---------- 予定一覧の取得・描画 ---------- */
  async function refreshAll(){
   await loadPlan();
@@ -203,7 +345,7 @@
   $('#scTimeline').innerHTML=`<div class="sc-empty-note">${esc(msg)}</div>`;
  }
 
- /* ---------- 見積の内訳(§6.8・§9.3、負荷率モデルの根拠を開示) ---------- */
+ /* ---------- 見積の内訳(§6.8・§9.3、換算係数モデルの根拠を開示) ---------- */
  function estimateSourceLabel(src){
   return {model:'モデル',override:'手動上書き','stop-reason-master':'設備停止マスタ',remaining:'残り時間',default:'暫定既定値'}[src]||src||'';
  }
@@ -402,33 +544,76 @@
   });
  }
 
+ // 複数選択(§9.5、list-view.jsのS.selectedRows)があればそちらを優先し、
+ // 無ければ従来どおり単一選択(S.selectedRow)を使う(後方互換)。
+ function selectedListRows(){
+  if(typeof S==='undefined'||S.db!=='SIKALOTNOW')return [];
+  if(S.selectedRows&&S.selectedRows.size)return Array.from(S.selectedRows);
+  return S.selectedRow?[S.selectedRow]:[];
+ }
  function renderAddFromListPanel(){
   const box=$('#scAddFromList');if(!box)return;
-  if(typeof S==='undefined'||S.db!=='SIKALOTNOW'||!S.selectedRow){
-   box.innerHTML='<div class="sc-empty-note">仕掛一覧で行を選択してください</div>';return;
+  const rows=selectedListRows();
+  if(!rows.length){
+   box.innerHTML='<div class="sc-empty-note">仕掛一覧で行を選択してください(チェックボックスで複数選択も可)</div>';return;
   }
-  const row=S.selectedRow;
-  box.innerHTML=`<div class="sc-add-row"><b>${esc(pick(row,'lotNo')||'-')}</b> ${esc(pick(row,'purposeName')||'')} ${esc(pick(row,'mfgMaterial')||'')}
-   <button type="button" class="sc-add-row-button" id="scAddSelectedRow">この設備の予定へ</button></div>`;
-  const btn=$('#scAddSelectedRow');
-  if(btn)btn.onclick=()=>addRowToSchedule(row,scState.equipment);
+  if(rows.length===1){
+   const row=rows[0];
+   box.innerHTML=`<div class="sc-add-row"><b>${esc(pick(row,'lotNo')||'-')}</b> ${esc(pick(row,'purposeName')||'')} ${esc(pick(row,'mfgMaterial')||'')}
+    <button type="button" class="sc-add-row-button" id="scAddSelectedRow">この設備の予定へ</button></div>`;
+   const btn=$('#scAddSelectedRow');
+   if(btn)btn.onclick=()=>addRowToSchedule(row,scState.equipment);
+   return;
+  }
+  const lots=rows.map(r=>esc(pick(r,'lotNo')||'-')).join('・');
+  box.innerHTML=`<div class="sc-add-row sc-add-row-bulk">
+   <b>${rows.length}件選択中</b>
+   <div class="sc-add-bulk-lots">${lots}</div>
+   <button type="button" class="sc-add-row-button" id="scAddSelectedRows">この設備へ一括追加(${rows.length}件)</button>
+  </div>`;
+  const btn=$('#scAddSelectedRows');
+  if(btn)btn.onclick=()=>addRowsToSchedule(rows,scState.equipment);
  }
  window.scRefreshAddFromListPanel=function(){if(document.body.classList.contains('sc-mode'))renderAddFromListPanel()};
 
+ function buildScheduleDetail(row){
+  const detail={};
+  Object.keys(aliases).forEach(k=>{const v=pick(row,k);if(v!==undefined&&v!==null&&v!=='')detail[k]=v});
+  return detail;
+ }
  async function addRowToSchedule(row,equipment){
   const target=equipment||scState.equipment;
   if(!target){showToast&&showToast('設備を選択してください','',3200);return}
-  const detail={};
-  Object.keys(aliases).forEach(k=>{const v=pick(row,k);if(v!==undefined&&v!==null&&v!=='')detail[k]=v});
   try{
    await api('/api/schedule/plan/add',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify(withUserId({equipment:target,kind:'作業',position:'end',
-     lotNo:pick(row,'lotNo')||'',inspectionNo:pick(row,'inspectionNo')||'',castingNo:pick(row,'castingNo')||'',detail}))});
+     lotNo:pick(row,'lotNo')||'',inspectionNo:pick(row,'inspectionNo')||'',castingNo:pick(row,'castingNo')||'',detail:buildScheduleDetail(row)}))});
    showToast&&showToast('予定へ追加しました',`${target}の予定に追加しました`,3200);
    if(scState.equipment===target)await loadPlan();
   }catch(e){showToast&&showToast('追加に失敗しました',e.message,5000)}
  }
  window.scheduleAddFromRow=function(row){addRowToSchedule(row,pick(row,'equipment')||'')};
+
+ // 一括追加(§9.5): 共有スケジュールDBは§4.2の取得→適用→反映サイクルを
+ // 1リクエストごとに踏むため、並列で撃つとロック競合(423)が起きやすい。
+ // 直列に1件ずつawaitし、失敗したロットだけ後で分かるように集計する。
+ async function addRowsToSchedule(rows,equipment){
+  const target=equipment||scState.equipment;
+  if(!target){showToast&&showToast('設備を選択してください','',3200);return}
+  let okCount=0;const failedLots=[];
+  for(const row of rows){
+   try{
+    await api('/api/schedule/plan/add',{method:'POST',headers:{'Content-Type':'application/json'},
+     body:JSON.stringify(withUserId({equipment:target,kind:'作業',position:'end',
+      lotNo:pick(row,'lotNo')||'',inspectionNo:pick(row,'inspectionNo')||'',castingNo:pick(row,'castingNo')||'',detail:buildScheduleDetail(row)}))});
+    okCount++;
+   }catch(e){failedLots.push(pick(row,'lotNo')||'?')}
+  }
+  if(failedLots.length)showToast&&showToast(`${okCount}/${rows.length}件を追加しました`,`失敗したロット: ${failedLots.join('・')}`,7000);
+  else showToast&&showToast('一括追加しました',`${target}の予定へ${okCount}件追加しました`,3800);
+  window.clearListSelection?.();
+  if(scState.equipment===target)await loadPlan();
+ }
 
  /* ---------- ナビ ----------
     「作業スケジュール」は全モードで常時表示するため(§9.1)、動的注入
