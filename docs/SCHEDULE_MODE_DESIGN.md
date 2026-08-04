@@ -144,6 +144,33 @@ ALTER TABLE [アクセス権限マスタ] ADD COLUMN [現場段取り対象設�
   {'canEdit':bool,'canSchedule':bool,'canFieldReorder':bool,'fieldReorderEquipment':str}`
   を追加し、`has_edit_permission` はその薄いラッパとして残す(呼び出し元の変更不要)。
 
+> **実装済み(フェーズ12、ログインID/PC名の片方だけの登録に対応)**:
+> 当初は「ログインID＋PC名の完全一致」のみに対応していたが、台数の多い
+> 現場で1行ずつ端末を登録するのは非効率という指摘を受け、**どちらか
+> 一方だけの登録**(もう一方は空欄="問わない")もできるように
+> `permission_flags` を拡張した。一致度の高い順に判定する:
+>
+> 1. 両方登録した行が完全一致(従来どおり最優先)
+> 2. ログインIDのみ登録した行がログインID一致(PC名は問わない)
+> 3. PC名のみ登録した行がPC名一致(ログインIDは問わない)
+> 4. 両方空欄で登録した行(全端末・全ユーザー共通の既定上書き。他に
+>    何も一致しなければ使う汎用のフォールバック)
+> 5. 該当行が一切無ければ組み込みの既定値(編集可・スケジュール不可・
+>    現場段取り不可)
+>
+> `backend/routes/masters.py`の登録/更新APIは「ログインID・PC名の
+> 少なくとも一方」だけを必須にする(両方空欄のみ拒否)よう検証を緩和した。
+> あわせて、マスタ管理画面の「アクセス権限」タブに**スケジュール可否・
+> 現場段取り可否・現場段取り対象設備の入力欄が無く、画面から一切
+> 設定できなかった**(バックエンドAPI自体は当初から対応済みだったが、
+> フロントの`MASTER_DEFS`にフィールドが無かった)不備を修正し、
+> `canEdit`と同じ文字列select方式(`'可'/'不可'`)で追加した
+> (現場段取り対象設備は既存の`equipment-select`型を流用)。
+> Playwrightで両方空欄時の登録拒否・片方のみの登録・一覧表示・編集時の
+> 選択状態の復元・`/api/access-mode`が新しい判定結果を反映すること
+> (片方のみの登録でモード切替メニューにスケジュールモードが現れること)
+> を確認済み。
+
 ### 3.3 書込ガード(`backend/access_mode.py`)
 
 現行の `_guard_write` は「モードが `view` かつ対象Blueprintかつ非GET → 403」。
@@ -1689,7 +1716,7 @@ const canPlan = window.accessMode?.mode === 'schedule';
 |---|---|
 | `backend/access_mode.py` | **実装済み**。`schedule` モード追加。`_GUARDED_BLUEPRINTS` → `_WRITE_ALLOWED_MODES` + `_ENDPOINT_EXTRA_MODES`(現場段取り例外、§3.3)。`canSchedule`/`canFieldReorder`/`fieldReorderEquipment` 応答。他モジュールが参照するための`current_permission_flags()`も追加 |
 | `backend/repositories/master_repo.py` | **実装済み**(アクセス権限マスタ部分)。`スケジュール可否`・`現場段取り可否`・`現場段取り対象設備` 列追加。`permission_flags()` 追加。**`EQUIPMENT_NAME_REFERENCES`へ新テーブルの`(テーブル名,列名)`を追記**は未実装(§5.0、業務テーブル自体が未実装のため)。**フェーズ8で`field_reorder_terminal_count()`を追加**(§5.0.1、アクセス権限マスタ側の現場段取り対象設備の参照件数) |
-| `backend/routes/masters.py` | **実装済み**(アクセス権限マスタCRUD部分)。`canSchedule`/`canFieldReorder`/`fieldReorderEquipment` を通す。**フェーズ8で`equipment_master_delete`を拡張**(§5.0.1、`schedule_calc.equipment_reference_counts()`+`master_repo.field_reorder_terminal_count()`を合算し、`force`未指定かつ参照ありなら409、`force:true`で無効化を実行) |
+| `backend/routes/masters.py` | **実装済み**(アクセス権限マスタCRUD部分)。`canSchedule`/`canFieldReorder`/`fieldReorderEquipment` を通す。**フェーズ8で`equipment_master_delete`を拡張**(§5.0.1、`schedule_calc.equipment_reference_counts()`+`master_repo.field_reorder_terminal_count()`を合算し、`force`未指定かつ参照ありなら409、`force:true`で無効化を実行)。**フェーズ12でログインID/PC名の片方だけの登録を許可**(§3.2、両方空欄のみ拒否)し、`canSchedule`/`canFieldReorder`もcanEditと同じ`'可'/'不可'`文字列表記に統一 |
 | `backend/db_access.py` | **実装済み**。`SCHEDULE_SHARE_PATH`・`SCHEDULE_CACHE_PATH`(ローカル一時取得先)の解決。`read_backup_rows()`を追加し、`backend/routes/measurement.py`の重複実装(`_read_backup_rows`)を統合(§7.4の実績突合と共用)。`merged_backup_rows()`を追加し、`MEAS_DB`・`RECORDS_BACKUP_EXPORT_PATH`両方の実績を記録IDごとに更新日時の新しい方でマージする(§7.4の実績突合・§6.6の換算係数モデル学習データの両方が共用) |
 | `backend/config.py` | **実装済み**。`SCHEDULE_LOCK_TTL_SEC_DEFAULT` / `SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT` に加え、`LOAD_FACTOR_CACHE_TTL_SEC=600` / `MIN_SAMPLES=20` を追加 |
 | `app.py` | **実装済み**。`schedule` Blueprint 登録のみ。§4.2のサイクルは呼び出しごとに動く同期処理のため、`records_export.py`のような常駐の背景スレッド起動は不要 |

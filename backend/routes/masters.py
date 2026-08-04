@@ -506,9 +506,10 @@ def _bool_from_can_edit(value):
  # フロントは'編集可'/'閲覧のみ'という表記の select を送ってくる。
  return str(value or '').strip()=='編集可'
 
-def _bool_from_flag(value):
- # canSchedule/canFieldReorderは真偽値そのものを送ってくる想定(select表記の変換は不要)。
- return bool(value)
+def _bool_from_yes_no(value):
+ # canSchedule/canFieldReorderは'可'/'不可'という表記の select を送ってくる
+ # (canEditと同じ、文字列表記のselectで統一する)。
+ return str(value or '').strip()=='可'
 
 @bp.get('/api/access-permission-master')
 def access_permission_master_list():
@@ -516,7 +517,11 @@ def access_permission_master_list():
   path=DBS['MASTER']['path']
   with connect(path,False) as c:
    before=ACCESS_PERMISSION_TABLE in tables(c);rows=access_permission_master_rows(c)
-   items=[{'id':r[0],'loginId':str(r[1] or '').strip(),'pcName':str(r[2] or '').strip(),'canEdit':'編集可' if bool(r[3]) else '閲覧のみ','order':r[4] or 0,'active':True,'updated_at':r[6].isoformat() if r[6] else None,'updated_by':(str(r[7]).strip() if len(r)>7 and r[7] else ''),'canSchedule':bool(r[8]) if len(r)>8 else False,'canFieldReorder':bool(r[9]) if len(r)>9 else False,'fieldReorderEquipment':(str(r[10]).strip() if len(r)>10 and r[10] else '')} for r in rows]
+   # canSchedule/canFieldReorderもcanEditと同じ文字列表記('可'/'不可')で返す
+   # (マスタ管理モーダルの汎用select編集フォームが、編集時にediting[f.k]の
+   # 値とoptionsの文字列を突き合わせて選択状態を復元するため、真偽値のままだと
+   # 一致せず選択が復元されない)。
+   items=[{'id':r[0],'loginId':str(r[1] or '').strip(),'pcName':str(r[2] or '').strip(),'canEdit':'編集可' if bool(r[3]) else '閲覧のみ','order':r[4] or 0,'active':True,'updated_at':r[6].isoformat() if r[6] else None,'updated_by':(str(r[7]).strip() if len(r)>7 and r[7] else ''),'canSchedule':'可' if (len(r)>8 and bool(r[8])) else '不可','canFieldReorder':'可' if (len(r)>9 and bool(r[9])) else '不可','fieldReorderEquipment':(str(r[10]).strip() if len(r)>10 and r[10] else '')} for r in rows]
   return jsonify(ok=True,items=items,table=ACCESS_PERMISSION_TABLE,created=not before,empty=len(items)==0,master_path=str(path))
  except Exception as e:return jsonify(error=f'アクセス権限マスタ読込失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
 
@@ -524,9 +529,12 @@ def access_permission_master_list():
 def access_permission_master_register():
  try:
   x=request.get_json(force=True) or {};login_id=str(x.get('loginId') or '').strip();pc_name=str(x.get('pcName') or '').strip();can_edit=_bool_from_can_edit(x.get('canEdit'));uid=request_user_id(x)
-  can_schedule=_bool_from_flag(x.get('canSchedule'));can_field_reorder=_bool_from_flag(x.get('canFieldReorder'));field_reorder_equipment=str(x.get('fieldReorderEquipment') or '').strip()
-  if not login_id:return jsonify(error='ログインIDを入力してください。'),400
-  if not pc_name:return jsonify(error='PC名を入力してください。'),400
+  can_schedule=_bool_from_yes_no(x.get('canSchedule'));can_field_reorder=_bool_from_yes_no(x.get('canFieldReorder'));field_reorder_equipment=str(x.get('fieldReorderEquipment') or '').strip()
+  # ログインID・PC名は汎用的に使えるよう、どちらか一方だけの登録を許す
+  # (もう一方は空欄=「問わない」という意味になる。master_repo.permission_flags
+  # 側の一致度判定で解決する)。両方空欄は「誰の・どの端末か」を一切
+  # 特定できないため唯一拒否する。
+  if not login_id and not pc_name:return jsonify(error='ログインIDまたはPC名の少なくとも一方を入力してください。'),400
   path=DBS['MASTER']['path']
   with connect(path,False) as c:
    ensure_access_permission_table(c);cur=c.cursor();cur.execute('SELECT [権限ID],[ログインID],[PC名] FROM [アクセス権限マスタ]');rows=cur.fetchall()
@@ -545,10 +553,9 @@ def access_permission_master_register():
 def access_permission_master_update():
  try:
   x=request.get_json(force=True) or {};aid=x.get('id');login_id=str(x.get('loginId') or '').strip();pc_name=str(x.get('pcName') or '').strip();can_edit=_bool_from_can_edit(x.get('canEdit'));uid=request_user_id(x)
-  can_schedule=_bool_from_flag(x.get('canSchedule'));can_field_reorder=_bool_from_flag(x.get('canFieldReorder'));field_reorder_equipment=str(x.get('fieldReorderEquipment') or '').strip()
+  can_schedule=_bool_from_yes_no(x.get('canSchedule'));can_field_reorder=_bool_from_yes_no(x.get('canFieldReorder'));field_reorder_equipment=str(x.get('fieldReorderEquipment') or '').strip()
   if aid is None:return jsonify(error='更新対象IDがありません。'),400
-  if not login_id:return jsonify(error='ログインIDを入力してください。'),400
-  if not pc_name:return jsonify(error='PC名を入力してください。'),400
+  if not login_id and not pc_name:return jsonify(error='ログインIDまたはPC名の少なくとも一方を入力してください。'),400
   path=DBS['MASTER']['path']
   with connect(path,False) as c:
    ensure_access_permission_table(c);cur=c.cursor();cur.execute('SELECT [権限ID],[ログインID],[PC名] FROM [アクセス権限マスタ]');rows=cur.fetchall()
