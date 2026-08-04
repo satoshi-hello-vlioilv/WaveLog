@@ -7,9 +7,10 @@ Pythonプロセス(backend.rne_worker)を起動する(rne_extract.extract_one参
 ジョブ数が2件と少ないため、キュー/スロット管理は行わず、ジョブ数と同じ数の
 スレッドを起動しそれぞれがサブプロセスの完了をブロック待ちする単純な形にした。
 
-抽出間隔はconfig/local.jsonの"rne_extract_interval_sec"で変更できる(現場ごとに
-負荷/鮮度要件が異なるため)。ループの毎周回で読み直すので、次の周回から反映
-される(反映にアプリの再起動は不要)。
+抽出間隔はパス設定マスタ(db/master.sqlite3、マスタ管理画面から編集)の
+"rne_extract_interval_sec"で変更できる(現場ごとに負荷/鮮度要件が異なる
+ため)。ループの毎周回で読み直すので、次の周回から反映される(反映に
+アプリの再起動は不要)。
 """
 from __future__ import annotations
 import json
@@ -22,9 +23,9 @@ import time
 import uuid
 
 from .config import RNE_EXTRACT_INTERVAL_SEC_DEFAULT
-from .db_access import SIKALOT_SOURCE, SIKALOTDEF_LOCAL_PATH, SIKALOTNOW_LOCAL_PATH
+from .db_access import SIKALOT_SOURCE, SIKALOTDEF_LOCAL_PATH, SIKALOTNOW_LOCAL_PATH, path_config_value
 from .logging_setup import app_logger
-from .paths import APP_ROOT, configured_value, ensure_local_dirs
+from .paths import APP_ROOT, ensure_local_dirs
 
 RNE_ASSETS_DIR=APP_ROOT/'config'/'rne_extract'
 _MIN_INTERVAL_SEC=60
@@ -108,7 +109,7 @@ def run_batch():
 
 def _interval_sec():
  try:
-  return max(_MIN_INTERVAL_SEC,int(configured_value('rne_extract_interval_sec',RNE_EXTRACT_INTERVAL_SEC_DEFAULT)))
+  return max(_MIN_INTERVAL_SEC,int(path_config_value('rne_extract_interval_sec',RNE_EXTRACT_INTERVAL_SEC_DEFAULT)))
  except (TypeError,ValueError):
   return RNE_EXTRACT_INTERVAL_SEC_DEFAULT
 

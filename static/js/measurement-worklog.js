@@ -174,6 +174,7 @@
    hint:'作業スケジュール(docs/SCHEDULE_MODE_DESIGN.md §5.3)の設備停止予定で選べる名称と、その設備での標準所要分(分)です。同じ名称でも設備が異なれば別行として個別の時間を登録できます。「突発停止」は現場からの連絡を受けた計画担当が投入する運用のため、名称に登録しておくだけで自動では動きません。'},
   {key:'columnDisplay',label:'列表示',icon:'列',special:'column-display'},
   {key:'importBackup',label:'データ引継ぎ',icon:'継',special:'import-backup'},
+  {key:'pathConfig',label:'パス設定',icon:'路',special:'path-config',endpoint:'/api/path-config-master'},
  ];
  let maintState={defKey:'operator',items:[],editing:null,query:''};
  function currentDef(){return MASTER_DEFS.find(d=>d.key===maintState.defKey)||MASTER_DEFS[0]}
@@ -468,6 +469,7 @@
   if(def.special==='column-display'){setMaintSearchVisible(false);return loadColumnDisplayMaint(force)}
   if(def.special==='import-backup'){setMaintSearchVisible(false);return loadImportBackupMaint(force)}
   if(def.special==='load-factor'){setMaintSearchVisible(false);return loadLoadFactorMaint(force)}
+  if(def.special==='path-config'){setMaintSearchVisible(false);return loadPathConfigMaint(force)}
   setMaintSearchVisible(true);
   const list=$('#masterMaintList');if(list&&force)list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
   const multiField=def.fields.find(f=>f.type==='equipment-multi');
@@ -757,6 +759,88 @@
   await refreshDraftCount();importBackupState.loaded=false;await loadImportBackupMaint(true);
   showToast&&showToast('インポートが完了しました',`成功 ${okCount}件 / 失敗 ${ngCount}件`+(errors.length?`\n${errors.slice(0,3).join('\n')}`:''),8000);
  }
+ /* ---------- パス設定（仕掛/品質データの読み込み先・共有パス・各種間隔。旧config/local.json） ----------
+    複数の値を持つ一覧ではなく1組の設定値のため、列表示マスタと同じ「特別扱い」
+    にする。sikalot_source/sikalotnow_path/sikalotdef_path/records_backup_export_path/
+    schedule_share_pathはサーバー起動時に1回だけ接続先へ反映されるため、保存後も
+    このプロセスでは反映されない(再起動が必要)。一覧欄には「保存値」と「現在
+    有効な値(このプロセス)」を並べて表示し、反映済みかを確認できるようにする。 ---------- */
+ let pathConfigState={values:{},defaults:{},active:{},loaded:false};
+ const PATH_CONFIG_RESTART_FIELDS=[
+  ['sikalot_source','仕掛/品質データの取得元'],
+  ['sikalotnow_path','仕掛(SIKALOTNOW)の読み込み先'],
+  ['sikalotdef_path','品質データ(SIKALOTDEF)の読み込み先'],
+  ['records_backup_export_path','測定データバックアップの複製先'],
+  ['schedule_share_path','スケジュール共有パス(schedule.sqlite3)'],
+ ];
+ async function loadPathConfigMaint(force){
+  const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
+  if(!force&&pathConfigState.loaded){renderPathConfigForm();renderPathConfigList();return}
+  form.innerHTML='';list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
+  try{
+   const r=await api('/api/path-config-master');
+   pathConfigState.values=r.values||{};pathConfigState.defaults=r.defaults||{};pathConfigState.active=r.active||{};
+   pathConfigState.loaded=true;
+   renderPathConfigForm();renderPathConfigList();
+  }catch(e){list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
+ }
+ function renderPathConfigForm(){
+  const form=$('#masterMaintForm');if(!form)return;
+  const v=pathConfigState.values||{};
+  const sourceOpts=[['','（既定）network'],['network','network'],['local','local']]
+   .map(([val,label])=>`<option value="${esc(val)}"${(v.sikalot_source||'')===val?' selected':''}>${esc(label)}</option>`).join('');
+  const textField=(key,label)=>`<label class="mm-field mm-field-wide"><span>${esc(label)}</span><input data-pc-field="${key}" type="text" value="${esc(v[key]||'')}" placeholder="未設定（既定値を使用）" autocomplete="off"></label>`;
+  const numField=(key,label)=>`<label class="mm-field"><span>${esc(label)}</span><input data-pc-field="${key}" type="number" value="${esc(v[key]||'')}" placeholder="${esc(pathConfigState.defaults[key]||'')}" autocomplete="off"></label>`;
+  form.innerHTML=`<div class="mm-form-head"><span class="mm-mode-chip new">パス設定</span></div>
+   <p class="mm-def-hint">仕掛/品質データの読み込み先・共有パスなど、端末ごとに変わり得る設定です。空欄で保存すると既定値に戻ります。<b>取得元・読み込み先・複製先・共有パスの変更はサーバー再起動後に反映されます</b>（下の一覧で保存値と現在有効な値を見比べられます）。抽出間隔・ロック関連は再起動不要で次回から反映されます。</p>
+   <div class="mm-form-fields">
+    <label class="mm-field"><span>仕掛/品質データの取得元</span><select data-pc-field="sikalot_source">${sourceOpts}</select></label>
+    ${textField('sikalotnow_path','仕掛(SIKALOTNOW)の読み込み先（個別上書き）')}
+    ${textField('sikalotdef_path','品質データ(SIKALOTDEF)の読み込み先（個別上書き）')}
+    ${textField('records_backup_export_path','測定データバックアップの閲覧用複製先')}
+    ${textField('schedule_share_path','スケジュール機能の共有データ置き場（schedule.sqlite3）')}
+    ${numField('rne_extract_interval_sec','RNE抽出間隔（秒・60以上）')}
+    ${numField('schedule_lock_ttl_sec','スケジュール書込ロックの有効期限（秒）')}
+    ${numField('schedule_lock_verify_delay_ms','ロック確認までの待機時間（ミリ秒）')}
+   </div>
+   <div class="mm-form-tail"><button type="submit" class="mm-btn-primary">パス設定を保存</button><span class="mm-form-hint">更新者IDは画面右上の入力欄を使用します。</span></div>`;
+  form.onsubmit=ev=>{ev.preventDefault();savePathConfigMaint()};
+ }
+ function renderPathConfigList(){
+  const list=$('#masterMaintList');if(!list)return;
+  const v=pathConfigState.values||{},a=pathConfigState.active||{};
+  const activeText={
+   sikalot_source:a.sikalot_source||'',
+   sikalotnow_path:`${a.sikalotnow_path||''}${a.sikalotnow_engine?`（${a.sikalotnow_engine}）`:''}`,
+   sikalotdef_path:`${a.sikalotdef_path||''}${a.sikalotdef_engine?`（${a.sikalotdef_engine}）`:''}`,
+   records_backup_export_path:a.records_backup_export_path||'（未設定・複製しない）',
+   schedule_share_path:a.schedule_share_path||'（未設定・機能無効）',
+  };
+  const savedText={
+   sikalot_source:v.sikalot_source||'（既定）network',
+   sikalotnow_path:v.sikalotnow_path||'（既定値を使用）',
+   sikalotdef_path:v.sikalotdef_path||'（既定値を使用）',
+   records_backup_export_path:v.records_backup_export_path||'（未設定・複製しない）',
+   schedule_share_path:v.schedule_share_path||'（未設定・機能無効）',
+  };
+  const tmpl='minmax(150px,1fr) minmax(200px,1.6fr) minmax(200px,1.6fr)';
+  const head=`<div class="mm-row head" style="grid-template-columns:${tmpl}"><span>設定項目</span><span>保存値（次回起動から反映）</span><span>現在有効な値（このプロセス）</span></div>`;
+  const rows=PATH_CONFIG_RESTART_FIELDS.map(([key,label])=>`<div class="mm-row" style="grid-template-columns:${tmpl}"><span>${esc(label)}</span><span title="${esc(savedText[key])}">${esc(savedText[key])}</span><span title="${esc(activeText[key])}">${esc(activeText[key])}</span></div>`).join('');
+  list.innerHTML=head+rows+`<p class="mm-def-hint" style="margin-top:10px">RNE抽出間隔: 保存値 ${esc(v.rne_extract_interval_sec||pathConfigState.defaults.rne_extract_interval_sec||'')}秒 / スケジュールロック有効期限: ${esc(v.schedule_lock_ttl_sec||pathConfigState.defaults.schedule_lock_ttl_sec||'')}秒 / ロック確認待機: ${esc(v.schedule_lock_verify_delay_ms||pathConfigState.defaults.schedule_lock_verify_delay_ms||'')}ミリ秒（いずれも再起動不要で次回から反映）</p>`;
+ }
+ async function savePathConfigMaint(){
+  const uid=requireMaintUser();if(uid===null)return;
+  const body={user_id:uid};
+  document.querySelectorAll('#masterMaintForm [data-pc-field]').forEach(el=>{body[el.dataset.pcField]=el.value});
+  try{
+   setMaintLoading(true,'パス設定を保存しています…');
+   const r=await api('/api/path-config-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+   pathConfigState.loaded=false;await loadPathConfigMaint(true);
+   showToast&&showToast('パス設定を保存しました',(r&&r.message)||'',5200);
+  }catch(e){showToast&&showToast('保存できませんでした',e.message,6500)}
+  finally{setMaintLoading(false)}
+ }
+
  function openMasterMaint(){const modal=ensureMaintModal();renderMaintNav();const uid=$('#masterUserId');if(uid)uid.value=currentUserId();maintState.defKey=firstVisibleDefKey();maintState.editing=null;maintState.query='';const se=$('#masterMaintSearch');if(se)se.value='';syncNav();modal.hidden=false;loadMaint(true);requestAnimationFrame(()=>{const u=$('#masterUserId');if(u&&!u.value){u.focus();return}const s=$('#masterMaintSearch');if(s)s.focus()})}
 
  // #openMasterMaintのクリックはここ(document委譲・capture)一箇所のみで処理する。

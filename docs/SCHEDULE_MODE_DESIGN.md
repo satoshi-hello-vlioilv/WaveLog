@@ -376,13 +376,16 @@ Box上の `schedule.sqlite3` が同期中の中途半端な状態や破損した
 日常的な検証作業はここに含めず、実運用側(主担当+副スケジューラの2名)の
 実際の競合可能性を下げておく。
 
-### 4.7 設定 (`config/local.json`)
+### 4.7 設定（パス設定マスタ、旧`config/local.json`）
+
+マスタ管理画面の「パス設定」タブ(`/api/path-config-master`、実体は
+`db/master.sqlite3`のパス設定マスタ)から編集する。
 
 | キー | 既定 | 意味 |
 |---|---|---|
-| `schedule_share_path` | なし | `schedule.sqlite3`の実体パス(Box上の共有パス、または検証用のローカルパス)。**未設定ならスケジュール機能自体を無効化**する(仕掛/品質データの`sikalotnow_path`と同じく、拡張子で自動判定するパス指定方式) |
-| `schedule_lock_ttl_sec` | 30 | ロックの有効期限。この秒数を過ぎたロックは次の取得試行で無条件に奪える |
-| `schedule_lock_verify_delay_ms` | 1500 | ロック取得直後、再読込で確認するまでの待ち時間 |
+| `schedule_share_path` | なし | `schedule.sqlite3`の実体パス(Box上の共有パス、または検証用のローカルパス)。**未設定ならスケジュール機能自体を無効化**する(仕掛/品質データの`sikalotnow_path`と同じく、拡張子で自動判定するパス指定方式)。接続先を決める値のため、保存後はサーバー再起動まで反映されない |
+| `schedule_lock_ttl_sec` | 30 | ロックの有効期限。この秒数を過ぎたロックは次の取得試行で無条件に奪える。保存後は再起動不要で次回のロック取得から反映される |
+| `schedule_lock_verify_delay_ms` | 1500 | ロック取得直後、再読込で確認するまでの待ち時間。保存後は再起動不要で次回のロック取得から反映される |
 
 `backend/config.py` へ `SCHEDULE_LOCK_TTL_SEC_DEFAULT=30`、
 `SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT=1500`、`LOAD_FACTOR_CACHE_TTL_SEC=600`

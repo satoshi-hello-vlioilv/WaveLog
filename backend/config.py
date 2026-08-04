@@ -38,11 +38,11 @@ WATCHDOG_CHECK_INTERVAL_SEC=10
 # 無駄な複製は増えない(負荷軽減より鮮度を優先したい場合はここを短くする)。
 RECORDS_BACKUP_EXPORT_INTERVAL_SEC=600
 
-# 仕掛/品質データのローカル運用(config/local.jsonの"sikalot_source"="local")時、
+# 仕掛/品質データのローカル運用(パス設定マスタの"sikalot_source"="local")時、
 # RNEから抽出する既定間隔。現場ごとに負荷/鮮度要件が異なり変更したいという
-# 要望があったため、他の間隔値と異なりconfig/local.jsonの
-# "rne_extract_interval_sec"で上書きできるようにしてある(この値は未設定時の
-# 既定値)。
+# 要望があったため、他の間隔値と異なりパス設定マスタ(db/master.sqlite3、
+# マスタ管理画面から編集)の"rne_extract_interval_sec"で上書きできるように
+# してある(この値は未設定時の既定値)。
 RNE_EXTRACT_INTERVAL_SEC_DEFAULT=900
 
 # スケジュール機能(docs/SCHEDULE_MODE_DESIGN.md §4)の排他制御。共有環境
@@ -51,7 +51,7 @@ RNE_EXTRACT_INTERVAL_SEC_DEFAULT=900
 # 「クラッシュ等で解放されないまま残ったロックが、自然に失効するまでの
 # 最大待ち時間」でもあるため、短すぎると競合を見逃し、長すぎると無関係な
 # 待ちが増える。実際のBoxクライアントの同期速度を見て現場で調整できるよう、
-# config/local.jsonの"schedule_lock_ttl_sec"/"schedule_lock_verify_delay_ms"
+# パス設定マスタの"schedule_lock_ttl_sec"/"schedule_lock_verify_delay_ms"
 # で上書き可能にしてある(ここは未設定時の既定値)。
 SCHEDULE_LOCK_TTL_SEC_DEFAULT=30
 SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT=1500

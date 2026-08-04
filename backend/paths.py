@@ -20,11 +20,19 @@ from .config import LOCAL_DIR_NAME
 APP_ROOT=Path(__file__).resolve().parent.parent
 
 # ========================================================================
-# 任意の設定ファイル(config/local.json)によるDBパスの上書き
-# 配布形態(端末ごとのコピー/共有フォルダー)がまだ確定していないため、
-# 既定は現状維持(APP_ROOT/db)としつつ、必要になれば設定1つで切り替えられる
-# ようにする。ファイルが無い/壊れている場合は空の設定として扱い、既存データの
-# 場所に一切影響しない(config/local.example.jsonがコミット済みの雛形)。
+# 任意の設定ファイル(config/local.json)によるブートストラップ設定の上書き
+#  - マスタDB(db/master.sqlite3)自体の置き場所を決める3項目
+#    (db_dir/master_db_path/records_db_path)専用。この3つは、値をマスタDBの
+#    中に保存すると「読みに行く先が分からないまま読みに行く」鶏と卵になる
+#    ため、config/local.jsonでの上書きが唯一の設定手段として残る
+#    (ブートストラップ専用の最小限のファイル)。
+#  - それ以外(仕掛/品質データの読み込み先・共有パス・各種間隔設定)は
+#    db/master.sqlite3側のパス設定マスタ(backend/db_access.pyの
+#    PATH_CONFIG_TABLE)へ移行済みで、マスタ管理画面から編集する。
+#    config/local.jsonに残っていた値は初回起動時に一度だけパス設定マスタへ
+#    自動移行される(db_access.py の _migrate_legacy_path_config)。
+#  - ファイルが無い/壊れている場合は空の設定として扱い、既存データの場所に
+#    一切影響しない。
 # ========================================================================
 def load_local_config():
  path=APP_ROOT/'config'/'local.json'
@@ -37,14 +45,10 @@ def load_local_config():
   return {}
 
 def configured_path(key):
- """config/local.jsonでのパス上書き値。未設定/該当なしはNone。"""
+ """config/local.jsonでのパス上書き値(db_dir/master_db_path/records_db_path
+ 専用)。未設定/該当なしはNone。"""
  value=load_local_config().get(key)
  return Path(value) if value else None
-
-def configured_value(key,default=None):
- """config/local.jsonでの任意設定値(パス以外)の上書き。未設定/該当なしはdefault。"""
- value=load_local_config().get(key)
- return default if value is None else value
 
 def local_root():
  """ユーザー別ローカル領域のルート。存在しなくてもパスだけ返す。"""

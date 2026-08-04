@@ -1,8 +1,8 @@
 """schedule_sync.py: スケジュール機能の排他制御基盤(docs/SCHEDULE_MODE_DESIGN.md §4)。
 
-schedule.sqlite3の実体は共有環境(Box等、config/local.jsonの
-"schedule_share_path")に1つだけ置く想定で、最大3端末程度の同時アクセスを
-見込む。SQLiteは複数プロセスからのネットワーク越し書込を推奨しておらず、
+schedule.sqlite3の実体は共有環境(Box等、パス設定マスタの
+"schedule_share_path"、マスタ管理画面から編集)に1つだけ置く想定で、
+最大3端末程度の同時アクセスを見込む。SQLiteは複数プロセスからのネットワーク越し書込を推奨しておらず、
 Boxのようなクラウド同期ストレージは真のファイルロックを提供しないため、
 このモジュールが「共有ファイルへは常に1端末だけが、短時間だけ、取得→適用→
 反映のサイクルで触れる」ことをアプリ側で保証する(直接の複数プロセス書込は
@@ -32,15 +32,21 @@ from pathlib import Path
 import json
 
 from .config import SCHEDULE_LOCK_TTL_SEC_DEFAULT, SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT
-from .db_access import SCHEDULE_SHARE_PATH, SCHEDULE_CACHE_PATH, connect
-from .paths import configured_value
+from .db_access import SCHEDULE_SHARE_PATH, SCHEDULE_CACHE_PATH, connect, path_config_value
 from .logging_setup import app_logger
 
 LOCK_FILENAME='schedule.lock.json'
 META_TABLE='スケジュールメタ'
 
-LOCK_TTL_SEC=int(configured_value('schedule_lock_ttl_sec',SCHEDULE_LOCK_TTL_SEC_DEFAULT) or SCHEDULE_LOCK_TTL_SEC_DEFAULT)
-LOCK_VERIFY_DELAY_SEC=int(configured_value('schedule_lock_verify_delay_ms',SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT) or SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT)/1000
+# 呼び出しのたびにパス設定マスタを読み直す(path_config_value)。以前は
+# プロセス起動時に1回だけ計算していたが、この2つは接続先を決める値では
+# ないため、マスタ管理画面での変更を再起動無しで反映できるようにした。
+def _lock_ttl_sec():
+ try:return int(path_config_value('schedule_lock_ttl_sec',SCHEDULE_LOCK_TTL_SEC_DEFAULT))
+ except (TypeError,ValueError):return SCHEDULE_LOCK_TTL_SEC_DEFAULT
+def _lock_verify_delay_sec():
+ try:return int(path_config_value('schedule_lock_verify_delay_ms',SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT))/1000
+ except (TypeError,ValueError):return SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT/1000
 
 
 class ScheduleNotConfigured(Exception):
@@ -108,7 +114,7 @@ def lock_status():
 def acquire_lock(login_id,pc_name,ttl_sec=None):
  """§4.3のロック取得。取得できたらトークンを返す。埋まっていればLockHeldError。"""
  path=_lock_path()
- ttl=ttl_sec if ttl_sec is not None else LOCK_TTL_SEC
+ ttl=ttl_sec if ttl_sec is not None else _lock_ttl_sec()
  current=_read_lock()
  if current and not _lock_expired(current):
   remaining=1
@@ -128,8 +134,9 @@ def acquire_lock(login_id,pc_name,ttl_sec=None):
  # アトミック排他は原理的に作れない)。この残存リスクはwith_write()側の
  # 改訂番号チェックで最終的に検出・棄却する(ロックが一次防御、改訂番号が
  # 二次防御という二段構え)。
- if LOCK_VERIFY_DELAY_SEC>0:
-  time.sleep(LOCK_VERIFY_DELAY_SEC)
+ verify_delay=_lock_verify_delay_sec()
+ if verify_delay>0:
+  time.sleep(verify_delay)
  verify=_read_lock()
  if not verify or verify.get('token')!=token:
   raise LockHeldError((verify or {}).get('holder_login',''),(verify or {}).get('holder_pc',''),5)

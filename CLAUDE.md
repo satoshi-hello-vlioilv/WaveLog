@@ -34,24 +34,45 @@
   SQLiteで、`backend/db_access.py`の`connect()`がパス拡張子でAccess/SQLiteを
   自動判別する。`backend/masters.py`のSQLはNow()/Nz()等のAccess関数をそのまま
   使っているが、`connect()`がSQLite接続へユーザー定義関数として登録して吸収
-  している。仕掛/品質データの読み込み先自体は`config/local.json`の
-  `sikalotnow_path`/`sikalotdef_path`で上書き可能で、拡張子が`.sqlite3`等なら
-  自動的にSQLiteとして読む（`db_access.py`の`_engine_for`）。サンドボックス検証で
-  一時的に使う場合は検証後に`config/local.json`を削除し、既定のAccdb/ネットワーク
-  共有パスへ戻してから再起動すること（削除せず放置すると以降の起動が上書き先を
-  読み続けてしまう）。
-- **仕掛/品質データのローカル運用**: `config/local.json`の`sikalot_source`を
-  `local`にすると、ネットワーク共有ではなく`backend/rne_scheduler.py`が
-  定期的にRNE(Navigator問い合わせ定義)から抽出・更新する
-  `db/sikalotnow.sqlite3`/`db/sikalotdef.sqlite3`を読む運用に切り替わる
-  （2DBまとめて1スイッチ）。抽出間隔は`rne_extract_interval_sec`（既定900秒、
-  下限60秒）。実処理はWindows専用（`backend/navigator_api.py`が`SymNaviA.dll`を
-  ctypesで直接呼ぶ）で、ジョブごとに独立サブプロセス（`backend/rne_worker.py`）
-  として並列実行する。RNEファイル・`SymNaviA.dll`・`symnavim.conf`は機密/
-  サイト固有のためコミットせず`config/rne_extract/`へPCごとに手動配置する
-  （`config/rne_extract/README.md`参照、`.gitignore`済み）。検証後は
-  `sikalot_source`を戻し忘れないこと（上記と同じ理由）。詳細は
-  `docs/ARCHITECTURE.md`の「仕掛/品質データのローカル運用」節を参照。
+  している。仕掛/品質データの読み込み先自体はパス設定マスタ(下記、マスタ管理
+  画面の「パス設定」タブ)の`sikalotnow_path`/`sikalotdef_path`で上書き可能で、
+  拡張子が`.sqlite3`等なら自動的にSQLiteとして読む（`db_access.py`の
+  `_engine_for`）。**この2項目とsikalot_source/records_backup_export_path/
+  schedule_share_pathは、接続先をプロセス起動時に1回だけ確定させる設計のため、
+  マスタ管理画面で保存してもサーバー再起動まで反映されない**（画面内の「保存値」
+  「現在有効な値」の一覧で反映状況を確認できる）。サンドボックス検証で一時的に
+  使う場合は検証後にマスタ管理 > パス設定から既定のAccdb/ネットワーク共有パスへ
+  戻してから再起動すること（戻し忘れると以降の起動が上書き先を読み続けてしまう）。
+- **パス設定マスタ**（`db/master.sqlite3`、`backend/db_access.py`の
+  `PATH_CONFIG_TABLE`）: 仕掛/品質データの読み込み先・共有パス・各種間隔設定
+  （旧`config/local.json`）を保存する。キー1件=1行で、値の無い項目は行自体が
+  無い＝既定値を使う（他マスタと同じ互換ポリシー）。CRUD APIは`backend/routes/
+  masters.py`の`/api/path-config-master`、UIはマスタ管理画面の「パス設定」タブ
+  （`static/js/measurement-worklog.js`のMASTER_DEFS、key:pathConfig）。
+  本来なら`backend/repositories/master_repo.py`が持つべき層だが、
+  `db_access.py`自身が起動時に接続先を1回だけ確定させる必要があり
+  `master_repo.py`はdb_accessに依存する側のため、循環importを避けて
+  `db_access.py`内に自己完結させてある。`db_dir`/`master_db_path`/
+  `records_db_path`（マスタDB自体の置き場所を決める3項目）だけは、値をマスタDBの
+  中に保存すると読みに行く先が分からなくなる（鶏と卵）ため、引き続き
+  `config/local.json`（唯一残るブートストラップ専用設定）でのみ上書きできる。
+  `config/local.json`に残っていた他の値（旧`sikalotnow_path`等）は初回起動時に
+  一度だけパス設定マスタへ自動移行される（`_migrate_legacy_path_config`。以後は
+  移行済みの目印を残し、`config/local.json`の内容は二度と見ない。マスタ管理画面
+  で空欄に戻して既定へ戻す操作が復活しないようにするため）。
+- **仕掛/品質データのローカル運用**: パス設定マスタの`sikalot_source`を`local`に
+  すると、ネットワーク共有ではなく`backend/rne_scheduler.py`が定期的にRNE
+  (Navigator問い合わせ定義)から抽出・更新する`db/sikalotnow.sqlite3`/
+  `db/sikalotdef.sqlite3`を読む運用に切り替わる（2DBまとめて1スイッチ、
+  切替は再起動が必要）。抽出間隔は`rne_extract_interval_sec`（既定900秒、
+  下限60秒、こちらは再起動不要で次回の周回から反映）。実処理はWindows専用
+  （`backend/navigator_api.py`が`SymNaviA.dll`をctypesで直接呼ぶ）で、
+  ジョブごとに独立サブプロセス（`backend/rne_worker.py`）として並列実行する。
+  RNEファイル・`SymNaviA.dll`・`symnavim.conf`は機密/サイト固有のためコミットせず
+  `config/rne_extract/`へPCごとに手動配置する（`config/rne_extract/README.md`
+  参照、`.gitignore`済み）。検証後は`sikalot_source`を戻し忘れないこと
+  （上記と同じ理由）。詳細は`docs/ARCHITECTURE.md`の「仕掛/品質データの
+  ローカル運用」節を参照。
 - **フォルダ構成**: `app.py`(エントリポイント)と`start_app.bat`はルート直下。
   それ以外のバックエンドPythonは`backend/`パッケージへ、ローカルDB
   (`master.sqlite3`/`records.sqlite3`、無ければ初回書き込み時に自動生成)は

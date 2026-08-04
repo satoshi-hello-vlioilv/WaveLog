@@ -10,10 +10,12 @@
   ファイル(ネットワーク共有)を pyodbc で参照。マスタ・測定データバックアップは
   本アプリ自身が読み書きするローカルの SQLite(`sqlite3`標準ライブラリ)で、
   `db/` フォルダ配下に置く。ビルド工程なし。
-  仕掛/品質データの読み込み先ファイル自体も`config/local.json`の
-  `sikalotnow_path`/`sikalotdef_path`で上書きでき、拡張子が`.sqlite3`等なら
-  自動的にSQLiteとして読む（`db_access.py`の`_engine_for`）。工場側が将来
-  SQLiteへ移行した場合や、検証用に手元へ複製したファイルを指す用途を想定。
+  仕掛/品質データの読み込み先ファイル自体もパス設定マスタ(`db/master.sqlite3`、
+  マスタ管理画面の「パス設定」タブから編集)の`sikalotnow_path`/`sikalotdef_path`
+  で上書きでき、拡張子が`.sqlite3`等なら自動的にSQLiteとして読む
+  （`db_access.py`の`_engine_for`）。工場側が将来SQLiteへ移行した場合や、
+  検証用に手元へ複製したファイルを指す用途を想定。保存内容は次回のサーバー
+  起動から反映される(接続先を決める値のためプロセス起動時に1回だけ解決する)。
 - **フロントエンド**: `templates/index.html` 1枚 + プレーンな `<script>` タグで読み込む
   vanilla JS 群。バンドラ・フレームワークなし（現場PCへのコピー配布を想定）。
 - **データ保存**: 測定データは端末の IndexedDB（+ localStorage ミラー）が主。
@@ -44,9 +46,9 @@
 | `process_manager.py` | 対象アプリだけの安全な停止（正常終了要求→記録済みPID。プロセス名では判定しない） |
 | `loading.html` | 起動待機画面。サーバーより先に `file://` で開かれ、`/api/ready.js` の応答を待ってからアプリへ遷移する |
 | `_pycache_bootstrap.py` | `.pyc` キャッシュをローカル領域へ逃がす。`sys.pycache_prefix` は最初のimportより前に設定する必要があるため、各エントリポイントの一番最初のimportにする |
-| `config/local.example.json` | DBパス上書き設定の雛形。コピーして `config/local.json` にすると有効化される(未配置なら既定の`db/`のまま)。`db_dir`/`master_db_path`/`records_db_path`に加え、`sikalotnow_path`/`sikalotdef_path`で仕掛・品質データの読み込み先ファイル自体も切り替えられる |
+| `config/local.json` | マスタDB自体の置き場所を決める3項目(`db_dir`/`master_db_path`/`records_db_path`)専用のブートストラップ設定(値をマスタDBの中に保存すると読みに行く先が分からなくなるため、この3つだけは唯一この方式が残る)。未配置なら既定の`db/`のまま。それ以外(`sikalotnow_path`/`sikalotdef_path`等)はパス設定マスタ(下記)へ移行済み |
 | `backend/config.py` | アプリID・表示名・ポート・監視しきい値などアプリ固有値の集約先 |
-| `backend/paths.py` | `%LOCALAPPDATA%` 配下の解決、共有フォルダー配置の検出、`config/local.json` の読込(`load_local_config`/`configured_path`) |
+| `backend/paths.py` | `%LOCALAPPDATA%` 配下の解決、共有フォルダー配置の検出、`config/local.json` の読込(`load_local_config`/`configured_path`。マスタDB自体の置き場所を決める3項目専用のブートストラップ設定。それ以外の運用設定はパス設定マスタ(`db_access.py`)へ移行済み) |
 | `backend/logging_setup.py` | ログ初期化。`launcher.log`(起動・停止) と `app.log`(本体) の2系統 |
 | `backend/watchdog.py` | プロセスの生存管理。ハートビート監視・明示停止(`/api/shutdown`) |
 
@@ -73,10 +75,10 @@
 | `backend/routes/tables.py` | 汎用DB一覧API(`/api/catalog`・`/api/tables`・`/api/table`) |
 | `backend/routes/measurement.py` | 測定コンテキスト・マスタ診断・バックアップAPI |
 | `backend/routes/quality.py` | 品質データ分析API(`/api/quality/analysis`) |
-| `backend/routes/masters.py` | 各種マスタCRUDのBlueprint（設備/オペレータ/スプール/内径/機器/フィルタプリセット/列表示/アクセス権限）。URLは分離前と同一。リクエスト受付とレスポンス整形のみを行い、データアクセスは`repositories/master_repo.py`へ委譲 |
+| `backend/routes/masters.py` | 各種マスタCRUDのBlueprint（設備/オペレータ/スプール/内径/機器/フィルタプリセット/列表示/アクセス権限/パス設定）。URLは分離前と同一。リクエスト受付とレスポンス整形のみを行い、データアクセスは`repositories/master_repo.py`(パス設定マスタのみ例外的に`db_access.py`)へ委譲 |
 | `backend/repositories/master_repo.py` | 各種マスタのデータアクセス層。テーブル定義(`ensure_*_table`)・正規化(`normalize_*_name`)・読み取り(`*_master_rows`/`read_*_names`)・書き込み補助(`set_operator_equipment`/`set_hidden_columns`)。Flaskに依存しない |
 | `backend/changelog_data.py` | `APP_VERSION` と `CHANGELOG`（データのみ。リリースごとにここを更新） |
-| `backend/db_access.py` | `DBS`(接続先定義)・`APP_ROOT`/`DB_DIR`(パス基準)・`connect`/`cols`/`tables`/`qi`(Access/SQLite両対応)・監査列・バックアップテーブル整備 |
+| `backend/db_access.py` | `DBS`(接続先定義)・`APP_ROOT`/`DB_DIR`(パス基準)・`connect`/`cols`/`tables`/`qi`(Access/SQLite両対応)・監査列・バックアップテーブル整備・パス設定マスタ(`PATH_CONFIG_TABLE`、旧`config/local.json`。仕掛/品質データの読み込み先・共有パス・各種間隔設定を`db/master.sqlite3`側で管理し、`master_repo.py`と同じ形のCRUDヘルパを提供する) |
 | `backend/records_export.py` | 測定データバックアップ(`records.sqlite3`)の閲覧用複製(定期・差分あり時のみ) |
 | `backend/access_mode.py` | 編集可能モード/閲覧モードの判定・切替API・書込系APIのガード(`before_request`) |
 | `backend/navigator_api.py` | SymfoNavi Navigator API(`SymNaviA.dll`)のctypesラッパー(Windows専用、SymfoNavi-Data-Hubから移植) |
@@ -117,11 +119,13 @@ API経由でRNE(Navigator問い合わせ定義)を実行し、ローカルSQLite
 
 **切替スイッチ(`db_access.py`)**
 
-- `config/local.json`の`sikalot_source`(既定`"network"`)を`"local"`に
-  すると、`DBS['SIKALOTNOW']`/`DBS['SIKALOTDEF']`の読み込み先が
+- パス設定マスタ(`db/master.sqlite3`、マスタ管理画面の「パス設定」タブから
+  編集)の`sikalot_source`(既定`"network"`)を`"local"`にすると、
+  `DBS['SIKALOTNOW']`/`DBS['SIKALOTDEF']`の読み込み先が
   `db/sikalotnow.sqlite3`/`db/sikalotdef.sqlite3`(`SIKALOTNOW_LOCAL_PATH`/
   `SIKALOTDEF_LOCAL_PATH`)へ切り替わる。2つのDBをまとめて1つのスイッチで
-  切り替える(個別切替は用途が無いため)。
+  切り替える(個別切替は用途が無いため)。接続先を決める値のため、保存後は
+  サーバー再起動まで反映されない。
 - `sikalotnow_path`/`sikalotdef_path`による明示上書き(検証用)は
   `sikalot_source`の切替より常に優先する(従来の開発/検証用の挙動を
   変えないため)。
@@ -162,7 +166,7 @@ API経由でRNE(Navigator問い合わせ定義)を実行し、ローカルSQLite
 - `sikalot_source=local`のときだけ、`rne_scheduler.start()`が
   `records_export.py`/`watchdog.py`と同じ`daemon=True`スレッドパターンで
   背景スレッドを起動し、起動直後に1回、以降は`rne_extract_interval_sec`
-  (`config/local.json`、既定900秒=15分、下限60秒にクランプ)ごとに
+  (パス設定マスタ、既定900秒=15分、下限60秒にクランプ)ごとに
   抽出を繰り返す。間隔はループの毎周回で読み直すため、変更の反映に
   アプリの再起動は不要。
 - **ワーカーの自己タイムアウト**: Navigator APIの呼び出しはネットワーク
@@ -251,8 +255,9 @@ Box等のクラウド同期フォルダへ複製し、他端末はそれを閲�
 
 **バックアップの追加出力先（`records_export.py`）**
 
-- `config/local.json`の`records_backup_export_path`（既定`null`＝複製しない）
-  へ、`/api/measurement/backup`が成功するたびに変化フラグを立て
+- パス設定マスタの`records_backup_export_path`（既定未設定＝複製しない、
+  保存後はサーバー再起動で反映）へ、`/api/measurement/backup`が成功する
+  たびに変化フラグを立て
   （`mark_dirty()`）、`RECORDS_BACKUP_EXPORT_INTERVAL_SEC`（既定600秒、
   `backend/config.py`）ごとに変化があれば複製する（`_loop`のバックグラウンド
   スレッド、`watchdog.py`と同じ`daemon=True`スレッドパターン）。変化が無い

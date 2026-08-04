@@ -13,7 +13,12 @@ import json
 from datetime import datetime
 from flask import Blueprint, request, jsonify
 
-from ..db_access import DBS, connect, request_user_id
+from ..config import RNE_EXTRACT_INTERVAL_SEC_DEFAULT, SCHEDULE_LOCK_TTL_SEC_DEFAULT, SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT
+from ..db_access import (
+ DBS, connect, request_user_id,
+ PATH_CONFIG_KEYS, path_config_rows, set_path_config, path_config_value,
+ SIKALOT_SOURCE, RECORDS_BACKUP_EXPORT_PATH, SCHEDULE_SHARE_PATH,
+)
 from ..repositories.master_repo import (
  EQUIPMENT_MASTER_TABLE, ensure_equipment_master_table, normalize_equipment_name, equipment_master_rows,
  OPERATOR_MASTER_TABLE, ensure_operator_master_table, normalize_operator_name, operator_master_rows,
@@ -566,3 +571,82 @@ def access_permission_master_delete():
    cur.execute('UPDATE [アクセス権限マスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [権限ID]=?',[uid,aid]);c.commit()
   return jsonify(ok=True,id=aid,updated_by=uid)
  except Exception as e:return jsonify(error=f'アクセス権限マスタ削除失敗: {e}'),500
+
+# ========================================================================
+# パス設定マスタ（仕掛/品質データの読み込み先・共有パス・各種間隔設定。
+# 旧config/local.json。db_access.pyのPATH_CONFIG_*を参照）
+#  - sikalot_source/sikalotnow_path/sikalotdef_path/records_backup_export_path/
+#    schedule_share_pathはDBS等の接続先をプロセス起動時に1回だけ決めるため、
+#    保存してもこのプロセスでは反映されない(サーバー再起動が必要)。
+#  - rne_extract_interval_sec/schedule_lock_ttl_sec/schedule_lock_verify_delay_ms
+#    は呼び出しのたびに読み直す設計のため、再起動なしで次回から反映される。
+# ========================================================================
+_PATH_CONFIG_DEFAULTS={
+ 'sikalot_source':'network','sikalotnow_path':'','sikalotdef_path':'',
+ 'records_backup_export_path':'','schedule_share_path':'',
+ 'rne_extract_interval_sec':str(RNE_EXTRACT_INTERVAL_SEC_DEFAULT),
+ 'schedule_lock_ttl_sec':str(SCHEDULE_LOCK_TTL_SEC_DEFAULT),
+ 'schedule_lock_verify_delay_ms':str(SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT),
+}
+_PATH_CONFIG_NUMERIC_FIELDS={
+ 'rne_extract_interval_sec':('RNE抽出間隔(秒)',60),
+ 'schedule_lock_ttl_sec':('スケジュールロックの有効期限(秒)',1),
+ 'schedule_lock_verify_delay_ms':('ロック確認までの待機時間(ミリ秒)',0),
+}
+
+@bp.get('/api/path-config-master')
+def path_config_master_get():
+ try:
+  path=DBS['MASTER']['path']
+  saved={}
+  if path.exists():
+   with connect(path,True) as c:saved=path_config_rows(c)
+  values={k:saved.get(k,'') for k in PATH_CONFIG_KEYS}
+  # active: このプロセスで実際に使われている値(保存値は次回起動から反映)。
+  # 突き合わせて画面上で「保存済みだが未反映」を示せるようにする。
+  active={
+   'sikalot_source':SIKALOT_SOURCE,
+   'sikalotnow_path':str(DBS['SIKALOTNOW']['path']),'sikalotnow_engine':DBS['SIKALOTNOW']['engine'],
+   'sikalotdef_path':str(DBS['SIKALOTDEF']['path']),'sikalotdef_engine':DBS['SIKALOTDEF']['engine'],
+   'records_backup_export_path':str(RECORDS_BACKUP_EXPORT_PATH) if RECORDS_BACKUP_EXPORT_PATH else '',
+   'schedule_share_path':str(SCHEDULE_SHARE_PATH) if SCHEDULE_SHARE_PATH else '',
+   'rne_extract_interval_sec':str(path_config_value('rne_extract_interval_sec',RNE_EXTRACT_INTERVAL_SEC_DEFAULT)),
+   'schedule_lock_ttl_sec':str(path_config_value('schedule_lock_ttl_sec',SCHEDULE_LOCK_TTL_SEC_DEFAULT)),
+   'schedule_lock_verify_delay_ms':str(path_config_value('schedule_lock_verify_delay_ms',SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT)),
+  }
+  return jsonify(ok=True,values=values,defaults=_PATH_CONFIG_DEFAULTS,active=active,master_path=str(path))
+ except Exception as e:return jsonify(error=f'パス設定読込失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
+
+@bp.post('/api/path-config-master')
+def path_config_master_update():
+ try:
+  x=request.get_json(force=True) or {};uid=request_user_id(x)
+  errors=[]
+  sikalot_source=str(x.get('sikalot_source') or '').strip()
+  if sikalot_source and sikalot_source not in ('network','local'):
+   errors.append('仕掛/品質データの取得元は「network」「local」のいずれかを指定してください。')
+  numeric_values={}
+  for key,(label,minimum) in _PATH_CONFIG_NUMERIC_FIELDS.items():
+   raw=str(x.get(key) if x.get(key) is not None else '').strip()
+   if not raw:
+    numeric_values[key]='';continue
+   try:n=int(raw)
+   except ValueError:errors.append(f'{label}は整数で入力してください。');continue
+   if n<minimum:errors.append(f'{label}は{minimum}以上で入力してください。');continue
+   numeric_values[key]=str(n)
+  if errors:return jsonify(error=' / '.join(errors)),400
+  updates={
+   'sikalot_source':sikalot_source,
+   'sikalotnow_path':str(x.get('sikalotnow_path') or '').strip(),
+   'sikalotdef_path':str(x.get('sikalotdef_path') or '').strip(),
+   'records_backup_export_path':str(x.get('records_backup_export_path') or '').strip(),
+   'schedule_share_path':str(x.get('schedule_share_path') or '').strip(),
+   **numeric_values,
+  }
+  path=DBS['MASTER']['path']
+  with connect(path,False) as c:
+   for key,value in updates.items():
+    set_path_config(c,key,value,uid)
+  return jsonify(ok=True,updated_by=uid,
+                 message='パス設定を保存しました。仕掛/品質データの読み込み先・共有パスの変更はサーバー再起動後に反映されます。抽出間隔・ロック関連の設定は再起動不要で次回から反映されます。')
+ except Exception as e:return jsonify(error=f'パス設定保存失敗: {e}'),500

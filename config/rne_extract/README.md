@@ -1,8 +1,9 @@
 # config/rne_extract/ について
 
-仕掛(SIKALOTNOW)・品質データ(SIKALOTDEF)をローカル運用(`config/local.json`の
-`"sikalot_source": "local"`)で使うときだけ必要なフォルダです。ネットワーク共有
-(既定運用)のみを使う場合は、このフォルダに何も置く必要はありません。
+仕掛(SIKALOTNOW)・品質データ(SIKALOTDEF)をローカル運用(マスタ管理画面の
+「パス設定」タブで`sikalot_source`を`local`に設定)で使うときだけ必要な
+フォルダです。ネットワーク共有(既定運用)のみを使う場合は、このフォルダに
+何も置く必要はありません。
 
 WaveLogは各PCへローカルコピーして運用する前提のため、ここに置くファイルは
 **PCごとの手動配置**です。以下のファイルは機密情報(接続パスワード)や
@@ -36,12 +37,14 @@ config/rne_extract/
 ## しくみ
 
 `sikalot_source=local`のとき、`backend/rne_scheduler.py`が背景スレッドで
-`rne_extract_interval_sec`(既定900秒=15分、`config/local.json`で変更可)ごとに
-上記RNEを実行し、`db/sikalotnow.sqlite3`・`db/sikalotdef.sqlite3`を更新します。
-実際の抽出処理はWindows専用(`SymNaviA.dll`をctypesで直接呼ぶ)で、サンドボックス
-等の非Windows環境では常に失敗ログが出るだけで、サーバ自体は問題なく動作します。
+`rne_extract_interval_sec`(既定900秒=15分、マスタ管理画面の「パス設定」
+タブで変更可。こちらは再起動不要で次回の周回から反映)ごとに上記RNEを実行し、
+`db/sikalotnow.sqlite3`・`db/sikalotdef.sqlite3`を更新します。実際の抽出処理は
+Windows専用(`SymNaviA.dll`をctypesで直接呼ぶ)で、サンドボックス等の
+非Windows環境では常に失敗ログが出るだけで、サーバ自体は問題なく動作します。
 
-検証で一時的にこのフォルダを使ったあとは、`config/local.json`の
-`sikalot_source`を`null`(または削除)に戻し、既定のネットワーク共有読み込みへ
-戻してから再起動してください(戻し忘れると以降の起動がローカルSQLite3を
+検証で一時的にこのフォルダを使ったあとは、マスタ管理画面の「パス設定」タブで
+`sikalot_source`を既定(未設定/network)に戻し、既定のネットワーク共有読み込みへ
+戻してから再起動してください(sikalot_sourceは接続先を決める値のため、保存後も
+サーバー再起動まで反映されません。戻し忘れると以降の起動がローカルSQLite3を
 読み続けます)。
