@@ -21,6 +21,14 @@ Boxのようなクラウド同期ストレージは真のファイルロック�
 
 書込は必ず with_write() 経由の「ロック取得→共有ファイルをローカルへ取得→
 ローカルで加工→改訂番号を確認して反映→ロック解放」というサイクルを踏む。
+
+三段目(§9.11新設・編集セッション): 上記1・2はデータの整合性を保証する
+ための機構で、書込1回ごとに数百ms保持するだけの短命ロックである。これとは
+別に「設備単位で同時に1人しか編集作業に入れない」というUX上の要件のため、
+acquire_session/release_session/require_sessionが編集セッション(分単位)を
+schedule.sessions.jsonという軽量な別ファイルで管理する。データ本体の
+with_write()サイクルとは独立しているため、1端末が何十件も連続追加する間、
+毎回ネットワーク越しの共有DBバックアップを取り直す必要が無い。
 """
 import sqlite3
 import time
@@ -69,6 +77,13 @@ class RevisionConflictError(Exception):
 
 class ScheduleUnavailableError(Exception):
  """共有ファイルの取得に失敗し、フォールバック用のローカルキャッシュも無い。"""
+
+
+class SessionHeldError(Exception):
+ """他端末がこの設備の編集セッションを保持中(423想定)。"""
+ def __init__(self,equipment,holder_login,holder_pc,retry_after_sec=5):
+  super().__init__(f'{equipment}は{holder_login or "?"}@{holder_pc or "?"}が編集中です。')
+  self.equipment=equipment;self.holder_login=holder_login;self.holder_pc=holder_pc;self.retry_after_sec=retry_after_sec
 
 
 def _require_configured():
@@ -151,6 +166,136 @@ def release_lock(token):
  if current and current.get('token')==token:
   try:path.unlink(missing_ok=True)
   except Exception as e:app_logger().warning('スケジュールロックの解放に失敗しました: %s',e)
+
+
+
+# ------------------------------------------------------------------------
+# 編集セッション(§9.11新設): 「設備単位で同時に1人しか編集作業に入れない」
+# ための助言的ロック。schedule.lock.json(このファイル冒頭のロック)は
+# 書込1回分(数百ms)だけを保持する短命ロックのため、複数ロットの一括追加
+# 中は取得のたびに解放・再取得を繰り返すことになり、体感速度が悪化する
+# うえ、他端末の書込と交互に割り込まれて表示が乱れる余地もある。
+# 編集セッションは「この設備のスケジュール画面を開いている間」という
+# 分単位の長さを持つ別レイヤーのロックとして、schedule.sqlite3本体とは
+# 別の小さなJSONファイル(schedule.sessions.json)へ直接読み書きする
+# (with_write()のsqlite取得→適用→反映サイクルを経由しない。1端末が
+# 何十件も連続追加する間、毎回ネットワーク越しのDBバックアップを取り直す
+# 必要が無いようにするための軽量化)。データ本体の整合性はwith_write()の
+# ロック+改訂番号チェックが引き続き最終防御として機能するため、この
+# セッション機構はあくまで「同じ設備を2人が同時にいじり始めない」ための
+# UX上の安全策(以下require_session参照)。
+SESSION_FILENAME='schedule.sessions.json'
+SESSION_TTL_SEC_DEFAULT=90
+_SESSION_VERIFY_DELAY_SEC=0.3
+
+
+def _sessions_path():
+ return _require_configured().parent/SESSION_FILENAME
+
+
+def _read_sessions_raw():
+ path=_sessions_path()
+ if not path.exists():return {}
+ try:
+  data=json.loads(path.read_text(encoding='utf-8'))
+  return data if isinstance(data,dict) else {}
+ except Exception:
+  return {}
+
+
+def _prune_expired(sessions):
+ now=datetime.now()
+ kept={}
+ for eq,entry in sessions.items():
+  try:
+   if isinstance(entry,dict) and datetime.fromisoformat(entry.get('expires_at',''))>now:
+    kept[eq]=entry
+  except Exception:
+   continue
+ return kept
+
+
+def _write_sessions(sessions):
+ path=_sessions_path()
+ path.parent.mkdir(parents=True,exist_ok=True)
+ tmp=path.with_suffix(f'.{uuid.uuid4().hex}.tmp')
+ tmp.write_text(json.dumps(sessions,ensure_ascii=False),encoding='utf-8')
+ tmp.replace(path)
+
+
+def _own_or_free(entry,login_id,pc_name):
+ if not entry:return True
+ return entry.get('login')==login_id and entry.get('pc')==pc_name
+
+
+def session_status(equipment,login_id='',pc_name=''):
+ """現在このequipmentの編集セッションを誰が保持しているか(読み取りのみ、
+ 排他制御なし。schedule.lock.jsonのlock_status()と同じ位置づけ)。"""
+ if SCHEDULE_SHARE_PATH is None:
+  return {'configured':False}
+ equipment=str(equipment or '').strip()
+ entry=_prune_expired(_read_sessions_raw()).get(equipment) if equipment else None
+ if not entry:
+  return {'configured':True,'held':False}
+ mine=_own_or_free(entry,login_id,pc_name) if (login_id or pc_name) else False
+ return {'configured':True,'held':True,'holderLogin':entry.get('login',''),
+         'holderPc':entry.get('pc',''),'expiresAt':entry.get('expires_at'),'mine':mine}
+
+
+def acquire_session(equipment,login_id,pc_name,ttl_sec=None):
+ """取得(自分がまだ保持していなければ新規、既に保持していれば延長=
+ ハートビートも兼ねる)。他端末が保持中ならSessionHeldError。"""
+ equipment=str(equipment or '').strip()
+ if not equipment:raise ValueError('設備名を指定してください。')
+ _require_configured()
+ ttl=ttl_sec if ttl_sec is not None else SESSION_TTL_SEC_DEFAULT
+ sessions=_prune_expired(_read_sessions_raw())
+ current=sessions.get(equipment)
+ if current and not _own_or_free(current,login_id,pc_name):
+  raise SessionHeldError(equipment,current.get('login',''),current.get('pc',''))
+ token=uuid.uuid4().hex
+ now=datetime.now()
+ sessions[equipment]={'login':login_id,'pc':pc_name,'token':token,
+                      'acquired_at':(current or {}).get('acquired_at') or now.isoformat(),
+                      'expires_at':(now+timedelta(seconds=ttl)).isoformat()}
+ _write_sessions(sessions)
+ # schedule.lock.jsonのacquire_lock()と同じ考え方の簡易検証(§4.3参照)。
+ # ほぼ同時に2端末が取得を試みた場合に双方が「取れた」と誤認する余地を
+ # 減らす(完全排除はできないため、あくまで助言的ロックとして扱うこと)。
+ if _SESSION_VERIFY_DELAY_SEC>0:
+  time.sleep(_SESSION_VERIFY_DELAY_SEC)
+ verify=_prune_expired(_read_sessions_raw()).get(equipment)
+ if not verify or verify.get('token')!=token:
+  raise SessionHeldError(equipment,(verify or {}).get('login',''),(verify or {}).get('pc',''))
+ return verify['expires_at']
+
+
+def release_session(equipment,login_id,pc_name):
+ """自分が保持している分だけ解放する(他端末が既に上書きしていたら何もしない、
+ release_lock()と同じ方針)。ベストエフォート。"""
+ if SCHEDULE_SHARE_PATH is None:return
+ equipment=str(equipment or '').strip()
+ if not equipment:return
+ try:
+  sessions=_prune_expired(_read_sessions_raw())
+  current=sessions.get(equipment)
+  if current and current.get('login')==login_id and current.get('pc')==pc_name:
+   del sessions[equipment]
+   _write_sessions(sessions)
+ except Exception as e:
+  app_logger().warning('スケジュール編集セッションの解放に失敗しました: %s',e)
+
+
+def require_session(equipment,login_id,pc_name):
+ """書込系ハンドラの入口用: このequipmentの編集セッションを自分が保持して
+ いる(または誰も保持していない)ことを確認する。他端末が保持中なら
+ SessionHeldError。schedule_share_path未設定時は素通し(with_write()側の
+ ScheduleNotConfiguredに任せる)。"""
+ equipment=str(equipment or '').strip()
+ if not equipment or SCHEDULE_SHARE_PATH is None:return
+ status=session_status(equipment,login_id,pc_name)
+ if status.get('held') and not status.get('mine'):
+  raise SessionHeldError(equipment,status.get('holderLogin',''),status.get('holderPc',''))
 
 
 def _verify_integrity(path):

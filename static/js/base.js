@@ -220,4 +220,10 @@ document.addEventListener('DOMContentLoaded',()=>{
  const btn=document.getElementById('connectionLostReload');
  if(btn)btn.onclick=()=>location.reload();
 });
-window.addEventListener('pagehide',()=>{try{navigator.sendBeacon(`/api/heartbeat/close?tab=${encodeURIComponent(WATCHDOG_TAB_ID)}`)}catch(e){}});
+/* pagehideが本来カバーする範囲(bfcache入りも含む)の方が広いはずだが、
+   実機でタブを閉じてもサーバーが終了しない事例があったため、念のため
+   unloadでも同じ終了通知を送る(ブラウザ実装差の保険。同じtab idへの
+   重複DELETE相当の呼び出しになるだけで、副作用は無い)。 */
+function notifyTabClosed(){try{navigator.sendBeacon(`/api/heartbeat/close?tab=${encodeURIComponent(WATCHDOG_TAB_ID)}`)}catch(e){}}
+window.addEventListener('pagehide',notifyTabClosed);
+window.addEventListener('unload',notifyTabClosed);

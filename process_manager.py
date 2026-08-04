@@ -83,8 +83,12 @@ def stop():
   print('アプリは起動していません。')
   return 0
  if state==launch_guard.FOREIGN:
-  log.error('停止: ポート %s は別のアプリが使用しています。停止しません',PORT)
-  print(f'ポート {PORT} は別のアプリが使用しています。停止操作は行いません。')
+  # 原因調査用に、実際に何が応答したかも残す(次回同じ現象が起きたときに
+  # 「本当に別アプリなのか、WaveLogだが何かおかしいのか」をログだけで
+  # 切り分けられるようにするため)。
+  detail=f' (応答内容: {info})' if info else ''
+  log.error('停止: ポート %s は別のアプリが使用しています。停止しません%s',PORT,detail)
+  print(f'ポート {PORT} は別のアプリが使用しています。停止操作は行いません。{detail}')
   return 1
  if state==launch_guard.UNRESPONSIVE:
   # HTTPが応答しない(重いネットワーク共有I/O等でブロックされている可能性)。
