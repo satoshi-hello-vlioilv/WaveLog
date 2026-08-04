@@ -34,7 +34,14 @@
   SQLiteで、`backend/db_access.py`の`connect()`がパス拡張子でAccess/SQLiteを
   自動判別する。`backend/masters.py`のSQLはNow()/Nz()等のAccess関数をそのまま
   使っているが、`connect()`がSQLite接続へユーザー定義関数として登録して吸収
-  している。仕掛/品質データの読み込み先自体はパス設定マスタ(下記、マスタ管理
+  している。**UNC共有パス(`\\server\share\...`)上の`.sqlite3`を読み取り専用で
+  開く際は要注意**: `connect()`はfile: URIで開くが、pathlib標準の`as_uri()`が
+  返す2スラッシュ形式(`file://server/share/...`)だとサーバー名をURIの
+  authorityと解釈され、`SQLITE_ALLOW_URI_AUTHORITY`無しでビルドされた標準的な
+  sqlite3では`invalid uri authority`で拒否される。`connect()`内の
+  `_sqlite_ro_uri()`が4スラッシュ形式(`file:////server/share/...`)へ組み立て
+  直して回避しているため、この関数を経由せず独自にURIを組み立てるコードを
+  追加しないこと。仕掛/品質データの読み込み先自体はパス設定マスタ(下記、マスタ管理
   画面の「パス設定」タブ)の`sikalotnow_path`/`sikalotdef_path`で上書き可能で、
   拡張子が`.sqlite3`等なら自動的にSQLiteとして読む（`db_access.py`の
   `_engine_for`）。**この2項目とsikalot_source/records_backup_export_path/

@@ -4,11 +4,14 @@
 意味のある変更をコミットするたびに APP_VERSION を上げ、CHANGELOG の
 先頭へ新しいエントリを追記すること(新しい順)。
 """
-APP_VERSION='1.60.14'
+APP_VERSION='1.60.15'
 
 # 更新履歴。画面の「VERx.y.z」バッジから一覧表示する。APP_VERSIONを
 # 上げるたびに、このリストの先頭に新しいバージョンを追記すること。
 CHANGELOG=[
+ {'version':'1.60.15','notes':[
+  '仕掛/品質データの読み込み先をUNC共有パス(\\\\サーバー名\\共有\\...)上の.sqlite3ファイルへ切り替えると「invalid uri authority」で読み込めない不具合を修正。SQLiteは読み取り専用オープンにfile: URIを使うが、pathlibの標準as_uri()はUNCパスをfile://サーバー名/共有/...という2スラッシュ形式にしてしまい、これは「サーバー名」をURIのauthority部分と解釈させる。SQLITE_ALLOW_URI_AUTHORITYでビルドされていない標準的なsqlite3モジュール(Windows版Python含む)ではauthorityが空文字/localhost以外だと拒否されるため、パス設定マスタでsikalotnow_path等をUNC上の.sqlite3へ向けた環境で必ず発生していた(旧config/local.json時代から潜在していた不具合)。authorityを空のままサーバー名をpath側へ含める4スラッシュ形式(file:////サーバー名/共有/...)で組み立てるよう修正し、UNC・ローカルドライブ・サンドボックスのPOSIXパスいずれでも正しく開けることを確認した(backend/db_access.pyのconnect)',
+ ]},
  {'version':'1.60.14','notes':[
   '仕掛/品質データの読み込み先・共有パス・各種間隔設定(旧config/local.json)を、マスタ管理画面から編集できる「パス設定」タブへ移行。db/master.sqlite3に新設したパス設定マスタ(backend/db_access.py、キー1件=1行の他マスタと同じ互換ポリシー)で管理し、GET/POST /api/path-config-masterのCRUDと、マスタ管理モーダルの専用パネル(保存値と現在有効な値を並べて表示し、反映状況を確認できる)を追加した。db自体の置き場所を決める3項目(db_dir/master_db_path/records_db_path)だけは値の保存先が決まらない鶏と卵問題のためconfig/local.jsonに残るが、それ以外(sikalotnow_path/sikalotdef_path/sikalot_source/records_backup_export_path/schedule_share_path/rne_extract_interval_sec/schedule_lock_ttl_sec/schedule_lock_verify_delay_ms)は初回起動時に一度だけ自動移行される。移行時、sikalot_sourceが"network"/"local"以外の値(手入力ミス)だった場合は引き継がず警告ログを残すようにし、実際に確認できた既存の設定ミス(sikalot_sourceキーへ別項目のパス文字列が誤って設定されていたため、意図せずネットワーク接続へフォールバックしていた)を修正した。接続先を決める5項目は保存後もサーバー再起動まで反映されない一方、抽出間隔・ロック関連の3項目は従来どおり再起動不要で次回から反映される',
  ]},

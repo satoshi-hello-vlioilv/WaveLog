@@ -15,6 +15,7 @@
 """
 from pathlib import Path
 from datetime import datetime
+from urllib.parse import quote
 import sqlite3
 import pyodbc
 
@@ -62,16 +63,29 @@ sqlite3.register_adapter(datetime,lambda dt:dt.isoformat(sep=' '))
 sqlite3.register_converter('DATETIME',lambda b:datetime.fromisoformat(b.decode()))
 
 def qi(s): return '['+str(s).replace(']',']]')+']'
+def _sqlite_ro_uri(path):
+ """読み取り専用オープン用のfile: URIを組み立てる(str連結だとドライブレター
+ 区切りやUnicodeファイル名でURI解釈を誤り得るため、パーセントエンコードする)。
+ UNC共有パス(\\\\server\\share\\...)は要注意: pathlibの標準as_uri()は
+ file://server/share/...という2スラッシュ形式を返すが、これは"server"を
+ URIのauthority部分と解釈させてしまい、SQLITE_ALLOW_URI_AUTHORITYでビルド
+ されていない標準的なsqlite3モジュールでは"invalid uri authority"で拒否
+ される(実際にsikalotnow_path等をUNC上の.sqlite3へ向けたときに発生した)。
+ authorityを空のままサーバー名をpath側に含める4スラッシュ形式
+ (file:////server/share/...)にするとこの制限を回避できる
+ (SQLiteのURI filename仕様に沿った回避策)。"""
+ resolved=path.resolve()
+ posix=resolved.as_posix()
+ if posix.startswith('//'):
+  return 'file://'+quote(posix)+'?mode=ro'
+ return resolved.as_uri()+'?mode=ro'
 def connect(path,readonly=False,engine=None):
  if engine is None:
   engine='sqlite' if str(path).lower().endswith(('.sqlite3','.sqlite','.db')) else 'access'
  if engine=='sqlite':
   if readonly:
    if not path.exists():raise FileNotFoundError(f"データベースが見つかりません: {path}")
-   # Windowsのバックスラッシュパスをfile: URIへ安全に変換するため
-   # (str連結だとドライブレター区切りやUnicodeファイル名でURI解釈を誤り得る)、
-   # pathlibのas_uri()でパーセントエンコード済みのURIを組み立てる。
-   c=sqlite3.connect(path.resolve().as_uri()+"?mode=ro",uri=True,timeout=10,detect_types=sqlite3.PARSE_DECLTYPES)
+   c=sqlite3.connect(_sqlite_ro_uri(path),uri=True,timeout=10,detect_types=sqlite3.PARSE_DECLTYPES)
   else:
    path.parent.mkdir(parents=True,exist_ok=True)
    c=sqlite3.connect(str(path),timeout=10,detect_types=sqlite3.PARSE_DECLTYPES)
