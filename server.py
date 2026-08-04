@@ -19,7 +19,17 @@ def run():
  watchdog.start()
  log.info('Webサーバー: 起動します (%s:%s)',HOST,PORT)
  try:
-  flask_app.run(host=HOST,port=PORT,debug=False)
+  # threaded=True: 既定(シングルスレッド)のままだと、仕掛/品質データや
+  # スケジュール共有ファイルへのアクセスがネットワーク共有の不調で長時間
+  # ブロックした場合、その間ハートビート(/api/heartbeat)・終了通知
+  # (/api/heartbeat/close)・停止スクリプトの生存確認(/api/build)まで
+  # 一切応答できなくなる(タブを閉じても自動終了せず、stop.batからも
+  # 「別のアプリが使用しています」と誤判定されて停止できない不具合の実例)。
+  # リクエストごとにスレッドを分離し、1件の遅い処理が他のリクエストを
+  # 道連れにしないようにする(各リクエストはDB接続を個別に開くため
+  # スレッド間で共有しない設計、と`_active_tabs`等のロック保護は既存のまま
+  # 安全)。
+  flask_app.run(host=HOST,port=PORT,debug=False,threaded=True)
  except OSError as e:
   # 最も多いのはポート使用中。原因が分かる形で記録して再送出する。
   log.error('Webサーバー: 起動できませんでした: %s',e)

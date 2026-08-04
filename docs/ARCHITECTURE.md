@@ -41,7 +41,7 @@
 | `start_app.bat` | 診断起動。コンソールを表示したまま同じ `start_app.py` を実行する |
 | `stop.bat` | 明示停止。`process_manager.py stop` を呼ぶ |
 | `start_app.py` | Python側の起動開始点。ログ初期化→待機画面を開く→多重起動判定→パッケージ確認→サーバー起動 |
-| `launch_guard.py` | ポートの使用状況と `app_id` の照合による多重起動判定、起動中インスタンスの記録 |
+| `launch_guard.py` | ポートの使用状況と `app_id` の照合による多重起動判定(`OURS`/`FOREIGN`/`UNRESPONSIVE`/`FREE`)、起動中インスタンスの記録。`UNRESPONSIVE`(ポート使用中だがHTTP応答が無い)は自プロセスが重い処理でブロックされている可能性を含むため、即座に別アプリ(`FOREIGN`)と決め付けず`process_manager.py`側でinstance.jsonのapp_root照合による強制終了判断へ委ねる |
 | `server.py` | Webサーバーの起動のみ。起動監視とWeb処理の境界 |
 | `process_manager.py` | 対象アプリだけの安全な停止（正常終了要求→記録済みPID。プロセス名では判定しない） |
 | `loading.html` | 起動待機画面。サーバーより先に `file://` で開かれ、`/api/ready.js` の応答を待ってからアプリへ遷移する |
