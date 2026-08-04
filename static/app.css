@@ -2150,6 +2150,12 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
 .sc-body[hidden]{display:none!important}
 .sc-timeline{flex:1;min-width:0;overflow-y:auto;overflow-x:auto;padding:8px 14px;display:flex;flex-direction:column;gap:2px}
 .sc-side{width:300px;flex-shrink:0;border-left:1px solid var(--line);background:#fff;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:16px}
+/* .sc-body/.sc-mode-toggle/.sc-board-windowと同じ既知の落とし穴(§9.9参照):
+   自身のクラスでdisplay:flexを指定しているため、hidden属性だけでは隠れない
+   (author-originのnormal宣言がUAデフォルトの[hidden]{display:none}に勝つ)。
+   editモードで「設備停止を追加」等がスケジュールモード用のヒント文言ごと
+   透けて見えていた実不具合を修正。 */
+.sc-side[hidden]{display:none!important}
 .sc-side-title{font-size:12px;font-weight:800;color:#5c777e;margin-bottom:6px}
 .sc-empty-note{color:#8a9aa0;font-size:12.5px;padding:8px 2px}
 .sc-stop-groups{display:flex;flex-direction:column;gap:12px}
