@@ -249,6 +249,12 @@ body.view-mode #openMasterMaint{opacity:.45;pointer-events:none}
 #grid table{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%}
 #grid th,#grid td{padding:6px 9px;height:33px;border-right:1px solid #d5dfe3;border-bottom:1px solid #d5dfe3;white-space:nowrap}
 #grid th{position:sticky;top:0;background:var(--pale);text-align:left}
+/* 高密度表示(§9.12新設)。スケジュールモードで仕掛一覧とタイムラインを
+   並べて比較する際、1画面により多くの行(ロット)を見せるための表示密度
+   切替(既定=高密度)。#grid要素自身に持たせたクラスで切り替えるため、
+   list-view.jsの再描画(renderGrid、tableを毎回作り直す)には影響しない。 */
+#grid.sc-dense th,#grid.sc-dense td{padding:2px 6px;height:22px;font-size:11.5px}
+#grid.sc-dense .lot-dsp-link,#grid.sc-dense .measurement-action-button,#grid.sc-dense .plan-action-button{padding:1px 6px;height:18px;font-size:10.5px;line-height:1}
 tbody tr:nth-child(even){background:#f7f9fa}
 tbody tr:hover{background:#e5f2f3;cursor:pointer}
 .measurement-row td:first-child{border-left:4px solid var(--teal)}
@@ -1637,6 +1643,9 @@ body.sc-mode #grid,body.sc-mode footer,body.sc-mode #tabs,body.sc-mode #genericF
    絞り込みバー(#genericFilterBar)をタイムラインの隣へ出す。詳細度を
    body.sc-mode単体より上げて確実に上書きする(qa-view-rawと同じ考え方)。 */
 body.sc-mode.sc-split #grid,body.sc-mode.sc-split #genericFilterBar{display:block!important}
+/* 仕掛一覧のポップアップ表示(§9.14新設)。分割表示と同じ理由(body.sc-mode
+   #grid{display:none!important}の上書き)でbodyへクラスを付ける方式にする。 */
+body.sc-mode.sc-list-modal-open #grid,body.sc-mode.sc-list-modal-open #genericFilterBar{display:block!important}
 /* 品質データの「元データ表示」(qa-view-raw)は#grid等を強制的に再表示する
    詳細度3のルール(body.qa-mode.qa-view-raw #grid)を持つため、上のrp-mode/
    db-mode/rec-mode/cal-mode/sc-modeの詳細度2のルールより優先されてしまい、品質データ表示中に
@@ -2146,6 +2155,17 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
 .sc-close{width:30px;padding:0;font-size:16px;line-height:1}
 .sc-warnings{padding:6px 14px;background:var(--warn-bg);border-bottom:1px solid var(--warn-border)}
 .sc-warning{font-size:12px;color:var(--warn-fg)}
+/* 編集セッション(§9.11新設)。他端末が既にこの設備を編集中の間、追加・削除・
+   並べ替えを止めていることをタイムライン閲覧の邪魔にならない帯で伝える。 */
+.sc-session-banner{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 14px;background:var(--warn-bg);border-bottom:1px solid var(--warn-border);font-size:12px;color:var(--warn-fg);font-weight:700}
+.sc-session-banner[hidden]{display:none!important}
+.sc-session-banner button{height:24px;padding:0 10px;border:1px solid var(--warn-border);border-radius:12px;background:#fff;color:var(--warn-fg);font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0}
+/* 他端末が編集セッションを保持している間、この端末からの追加・削除・
+   並べ替え・設備停止投入を止める(サーバー側require_session()の二重防御、
+   §9.11)。ドロップ受入自体はJS側(wireDropTarget)のsessionBlocked()判定で
+   止めており、ここは主に一覧化された操作ボタンの見た目・誤操作防止。 */
+.sc-panel.sc-session-locked .sc-stop-button,.sc-panel.sc-session-locked .sc-row-line[draggable]{pointer-events:none;opacity:.45}
+.sc-panel.sc-session-locked .sc-row-delete{display:none}
 .sc-body{flex:1;min-height:0;display:flex;gap:0;overflow:hidden}
 .sc-body[hidden]{display:none!important}
 .sc-timeline{flex:1;min-width:0;overflow-y:auto;overflow-x:auto;padding:8px 14px;display:flex;flex-direction:column;gap:2px}
@@ -2158,14 +2178,36 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
 .sc-side[hidden]{display:none!important}
 .sc-side-title{font-size:12px;font-weight:800;color:#5c777e;margin-bottom:6px}
 .sc-empty-note{color:#8a9aa0;font-size:12.5px;padding:8px 2px}
+/* 折りたたみ(§9.13新設)。「常時表示だとスケジュールの視野を圧迫する」との
+   指摘のため既定を閉にし(#scStopButtonsのhidden属性、schedule-view.js)、
+   ヘッダーのシェブロンで開閉状態を示す。 */
+.sc-side-section-toggle{display:flex;align-items:center;justify-content:space-between;width:100%;padding:0;border:0;background:transparent;cursor:pointer;margin-bottom:6px}
+.sc-side-section-toggle .sc-side-title{margin-bottom:0}
+.sc-collapse-chevron{font-size:11px;color:#8a9aa0;transition:transform .15s ease}
+.sc-side-section-toggle.open .sc-collapse-chevron{transform:rotate(180deg)}
 .sc-stop-groups{display:flex;flex-direction:column;gap:12px}
+.sc-stop-groups[hidden]{display:none!important}
 .sc-stop-group-title{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:800;color:#8a9aa0;margin-bottom:5px;text-transform:uppercase;letter-spacing:.02em}
 .sc-stop-group-icon{font-size:12px}
 .sc-stop-buttons{display:flex;flex-wrap:wrap;gap:6px}
-.sc-stop-button{height:28px;padding:0 10px;border:1px solid var(--line);border-radius:14px;background:#fff;font-size:12px;cursor:pointer}
+.sc-stop-button{height:28px;padding:0 10px;border:1px solid var(--line);border-radius:14px;background:#fff;font-size:12px;cursor:grab}
 .sc-stop-button:hover{border-color:var(--teal)}
 .sc-stop-button.is-disabled{opacity:.5;cursor:not-allowed}
+.sc-stop-button.is-row-dragging{opacity:.45;outline:1px dashed var(--teal)}
 @media(max-width:1000px){.sc-body{flex-direction:column}.sc-side{width:auto;border-left:0;border-top:1px solid var(--line)}}
+
+/* ---------------------------------------------------------------
+   フローティングモーダル(§9.13・§9.14新設): 仕掛一覧・設備停止を、常時
+   確保された画面領域を使わずに素早く開ける代替の入口。既存の.record-modal/
+   .settings-dialog(更新履歴・アプリ設定と同じモーダル基盤)を土台にし、
+   幅だけこの用途向けに広げる(新しいモーダル実装を増やさない)。
+   --------------------------------------------------------------- */
+.sc-float-modal.record-modal{z-index:1600}
+.sc-float-dialog{width:min(1100px,92vw);max-height:88vh;display:flex;flex-direction:column}
+.sc-float-dialog-narrow{width:min(440px,92vw)}
+.sc-float-body{flex:1;min-height:0;overflow:auto;padding:12px 16px}
+.sc-float-body #genericFilterBar{margin:0 0 8px}
+.sc-float-body #grid{margin:0;min-height:0;border:0}
 
 /* ---------------------------------------------------------------
    分割表示(§9.10): 仕掛一覧(比較・多数選択)とスケジュール(投入先)を
@@ -2191,9 +2233,9 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
 @media(max-width:1280px){
  .sc-split-wrap{grid-template-columns:1fr;grid-template-rows:auto minmax(220px,38vh) minmax(260px,1fr);grid-template-areas:"filter" "list" "panel"}
 }
-.sc-split-toggle{height:30px;padding:0 12px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer;font-size:12px;font-weight:700;color:#5c777e}
-.sc-split-toggle.active{background:var(--pale);border-color:var(--teal);color:#075e67}
-.sc-split-toggle[hidden]{display:none!important}
+.sc-split-toggle,.sc-dense-toggle{height:30px;padding:0 12px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer;font-size:12px;font-weight:700;color:#5c777e}
+.sc-split-toggle.active,.sc-dense-toggle.active{background:var(--pale);border-color:var(--teal);color:#075e67}
+.sc-split-toggle[hidden],.sc-dense-toggle[hidden]{display:none!important}
 /* 仕掛一覧の行をドラッグ可能にする(スケジュールモードのみ、list-view.js)。
    通常のクリック選択(is-selected)・チェックボックス複数選択
    (is-plan-selected)と視覚的に競合しないよう、ドラッグ中だけ別の合図
@@ -2233,6 +2275,10 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
 .sc-row-line.sc-row-done{opacity:.6}
 .sc-row-line.sc-row-cancel{opacity:.6}
 .sc-row-line.sc-row-cancel .sc-row-title{text-decoration:line-through}
+/* 楽観的追加(§9.11新設): サーバーへの反映(書込キュー)が完了するまでの
+   間、行を薄く表示して「まだ確定していない」ことを伝える。 */
+.sc-row-line.sc-row-pending{opacity:.6;background:repeating-linear-gradient(135deg,#fff,#fff 8px,#f7f5ea 8px,#f7f5ea 16px)}
+.sc-flag-pending{color:#a4832a;font-weight:800}
 .sc-row-handle{color:#9fb0b5;font-size:12px;text-align:center}
 .sc-row-icon{font-size:12px;text-align:center;color:#7c9095}
 .sc-row-line.sc-row-active .sc-row-icon{color:var(--success)}

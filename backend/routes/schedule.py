@@ -38,6 +38,48 @@ def lock_status():
  except Exception as e:
   return jsonify(error=str(e)),500
 
+# ========================================================================
+# 編集セッション(§9.11新設): 設備単位の排他(schedule_sync.pyのSession系関数)
+# ========================================================================
+@bp.get('/api/schedule/session-status')
+def session_status_get():
+ equipment=str(request.args.get('equipment') or '').strip()
+ if not equipment:return jsonify(error='どの設備か指定してください(equipment)。'),400
+ try:
+  return jsonify(ok=True,**schedule_sync.session_status(equipment,current_login_id(),current_pc_name()))
+ except Exception as e:
+  return jsonify(error=str(e)),500
+
+@bp.post('/api/schedule/session/acquire')
+def session_acquire():
+ # ハートビートも同じ実装(自分の分は延長、他端末保持中は弾く。§9.11)。
+ x=request.get_json(force=True) or {}
+ equipment=str(x.get('equipment') or '').strip()
+ if not equipment:return jsonify(error='どの設備か指定してください(equipment)。'),400
+ try:
+  expires_at=schedule_sync.acquire_session(equipment,current_login_id(),current_pc_name())
+  return jsonify(ok=True,equipment=equipment,expiresAt=expires_at)
+ except schedule_sync.SessionHeldError as e:
+  return jsonify(error=str(e),sessionLockedBy={'loginId':e.holder_login,'pcName':e.holder_pc},retryAfterSec=e.retry_after_sec),423
+ except schedule_sync.ScheduleNotConfigured as e:
+  return jsonify(error=str(e)),400
+ except ValueError as e:
+  return jsonify(error=str(e)),400
+ except Exception as e:
+  return jsonify(error=str(e)),500
+
+@bp.post('/api/schedule/session/heartbeat')
+def session_heartbeat():
+ return session_acquire()
+
+@bp.post('/api/schedule/session/release')
+def session_release():
+ x=request.get_json(force=True) or {}
+ equipment=str(x.get('equipment') or '').strip()
+ if equipment:
+  schedule_sync.release_session(equipment,current_login_id(),current_pc_name())
+ return jsonify(ok=True)
+
 def _read(fn):
  """GET系共通。ロックを取らず、共有ファイルをローカルへ取得して読むだけ
  (§4.2の「取得」のみを行い、適用・反映はしない)。
@@ -67,6 +109,8 @@ def _write_response(apply_fn):
   return jsonify(error=str(e)),400
  except schedule_sync.LockHeldError as e:
   return jsonify(error=str(e),lockedBy={'loginId':e.holder_login,'pcName':e.holder_pc},retryAfterSec=e.retry_after_sec),423
+ except schedule_sync.SessionHeldError as e:
+  return jsonify(error=str(e),sessionLockedBy={'loginId':e.holder_login,'pcName':e.holder_pc},retryAfterSec=e.retry_after_sec),423
  except schedule_sync.RevisionConflictError as e:
   return jsonify(error=str(e),revision=e.revision),409
  except schedule_sync.ScheduleUnavailableError as e:
@@ -75,6 +119,15 @@ def _write_response(apply_fn):
   return jsonify(error=str(e)),400
  except Exception as e:
   return jsonify(error=str(e)),500
+
+def _check_session(equipment):
+ # scheduleモード(§9.11の編集セッション対象)のときだけ強制する。editモードの
+ # 現場段取り(§3.1.1、plan_reorderのみ許可)は個別の並べ替え権限で既に
+ # ガードされており、この端末はそもそもセッションを取得できない
+ # (POST /api/schedule/session/*はscheduleモード限定のBlueprintのため)。
+ # ここで一律に要求すると現場段取り自体が機能しなくなってしまうため対象外。
+ if get_mode()=='schedule':
+  schedule_sync.require_session(equipment,current_login_id(),current_pc_name())
 
 # ========================================================================
 # 作業予定
@@ -100,6 +153,7 @@ def plan_add():
  kind=str(x.get('kind') or '').strip()
  if not equipment:return jsonify(error='どの設備の予定か指定してください。'),400
  def fn(c):
+  _check_session(equipment)
   pid=sr.plan_add(c,equipment,kind,request_user_id(x),position=str(x.get('position') or 'end'),
                    lot_no=str(x.get('lotNo') or ''),inspection_no=str(x.get('inspectionNo') or ''),
                    casting_no=str(x.get('castingNo') or ''),title=str(x.get('title') or ''),
@@ -116,6 +170,8 @@ def plan_update():
  if plan_id is None:return jsonify(error='更新対象の予定IDがありません。'),400
  fields={k:x[k] for k in ('estimateMinutes','fixedStart','remark','state') if k in x}
  def fn(c):
+  row=sr.plan_row(c,plan_id)
+  if row:_check_session(row[1])
   n=sr.plan_update(c,plan_id,request_user_id(x),**fields)
   if n==0:raise ValueError('指定の予定が見つからないか、更新項目がありません。')
   return {'id':plan_id}
@@ -127,6 +183,8 @@ def plan_delete():
  plan_id=x.get('id')
  if plan_id is None:return jsonify(error='削除対象の予定IDがありません。'),400
  def fn(c):
+  row=sr.plan_row(c,plan_id)
+  if row:_check_session(row[1])
   n=sr.plan_delete(c,plan_id,request_user_id(x))
   if n==0:raise ValueError('指定の予定が見つかりません。')
   return {'id':plan_id}
@@ -147,6 +205,7 @@ def plan_reorder():
    return jsonify(error='この端末には、この設備の現場段取り(並べ替え)権限がありません。'),403
  ordered_ids=x.get('orderedIds') or x.get('planIds') or []
  def fn(c):
+  _check_session(equipment)
   # §7.5手順1〜2: 実績突合込みで導出した状態から「実質的に予定」なIDだけを
   # 並べ替え対象にする(DBの[状態]列だけを見ると、実績突合で既に着手/完了
   # 相当になっている予定を誤って動かせてしまう)。

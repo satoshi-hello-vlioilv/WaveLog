@@ -18,8 +18,15 @@
 
  let scState={equipment:'',entries:[],anchor:null,warnings:[],configured:true,
               editable:false,pickerEnabled:false,stopReasons:[],dragId:null,
-              boardMode:'single',boardWindowHours:24,overview:[],overviewSort:'order'};
+              boardMode:'single',boardWindowHours:24,overview:[],overviewSort:'order',
+              sessionHeld:false,sessionHolder:null};
  let scLockTimer=null;
+ // ---------- 編集セッション(§9.11新設)・書込キュー ----------
+ let scSessionTimer=null,scSessionHeldFor=null,scTempIdSeq=0;
+ let scWriteQueue=[],scQueueRunning=false,scQueueFlushTimer=null;
+ // ---------- 仕掛一覧の高密度表示(§9.12新設、既定=高密度) ----------
+ let scDenseList=(()=>{try{return (localStorage.getItem('scListDenseV1')??'1')!=='0'}catch(e){return true}})();
+ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
  function fmtDateTime(iso){
   if(!iso)return '-';
@@ -79,11 +86,15 @@
       <button type="button" class="sc-board-window-btn" data-hours="48">48時間</button>
      </div>
      <span class="sc-field-reorder-note" id="scFieldReorderNote" hidden>現場段取り: 並べ替えのみ可能</span>
+     <button type="button" class="sc-dense-toggle" id="scDenseToggle" hidden title="仕掛一覧の表示密度を切り替えます">▤ 高密度</button>
      <button type="button" class="sc-split-toggle" id="scSplitToggle" hidden title="仕掛一覧を隣に表示してドラッグで追加します">◫ 仕掛一覧</button>
+     <button type="button" class="sc-split-toggle" id="scListModalBtn" hidden title="仕掛一覧をポップアップで表示してドラッグで追加します">⧉ ポップアップ</button>
+     <button type="button" class="sc-split-toggle" id="scStopModalBtn" hidden title="設備停止をポップアップから追加します">⛔ 設備停止</button>
      <button type="button" class="sc-refresh" id="scRefresh">再計算</button>
      <button type="button" class="sc-close" id="scClose" title="閉じる">×</button>
     </div>
    </div>
+   <div class="sc-session-banner" id="scSessionBanner" hidden></div>
    <div class="sc-warnings" id="scWarnings" hidden></div>
    <div class="sc-board" id="scBoard" hidden></div>
    <div class="sc-body" id="scSingleBody">
@@ -93,8 +104,10 @@
       <p class="sc-drop-hint">左の仕掛一覧からロットをドラッグ、またはチェックボックスで複数選択してこのパネルへドロップすると、この設備の予定へ追加されます。</p>
      </div>
      <div class="sc-side-section">
-      <div class="sc-side-title">設備停止を追加</div>
-      <div class="sc-stop-groups" id="scStopButtons"><div class="sc-empty-note">設備停止マスタが未登録です</div></div>
+      <button type="button" class="sc-side-section-toggle" id="scStopSectionToggle">
+       <span class="sc-side-title">設備停止を追加</span><span class="sc-collapse-chevron">▾</span>
+      </button>
+      <div class="sc-stop-groups" id="scStopButtons" hidden><div class="sc-empty-note">設備停止マスタが未登録です</div></div>
      </div>
     </div>
    </div>`;
@@ -106,6 +119,14 @@
   $('#scModeBoard').onclick=()=>switchToBoard();
   $('#scModeSingle').onclick=()=>switchToSingle();
   $('#scSplitToggle').onclick=()=>toggleSplitList();
+  $('#scListModalBtn').onclick=()=>listModalOpen?closeListModal():openListModal();
+  $('#scStopModalBtn').onclick=()=>stopModalOpen?closeStopModal():openStopModal();
+  $('#scDenseToggle').onclick=()=>toggleListDensity();
+  $('#scStopSectionToggle').onclick=()=>{
+   const box=$('#scStopButtons');if(!box)return;
+   box.hidden=!box.hidden;
+   $('#scStopSectionToggle').classList.toggle('open',!box.hidden);
+  };
   panel.querySelectorAll('.sc-board-window-btn').forEach(btn=>{
    btn.onclick=()=>{
     scState.boardWindowHours=+btn.dataset.hours;
@@ -124,30 +145,55 @@
     .sc-split-wrapへ移すだけで、要素自体・IDは変えないため他モードの
     display:none切替やid参照には影響しない。元の位置はコメントノード
     (splitAnchor)で覚えておき、分割解除時に戻す。 */
- let splitWrap=null,splitAnchor=null,splitListVisible=true;
+ // #grid・#genericFilterBarは常に同じDOMノードを「今どこに表示するか」だけ
+ // 動かす(list-view.jsの検索・並替・ドラッグ機能を再実装しない、CLAUDE.mdの
+ // 「関数の定義は1箇所」)。行き先は分割表示(splitWrap)とポップアップ表示
+ // (#scListModal)の2種類あるため、元の位置をコメントノード(gridAnchor)で
+ // 覚えておく共通処理をmoveGridTo/returnGridHomeへ切り出した。
+ let gridAnchor=null,gridHost=null;
+ function ensureGridAnchor(){
+  if(gridAnchor)return gridAnchor;
+  const grid=document.getElementById('grid');
+  if(!grid||!grid.parentNode)return null;
+  gridAnchor=document.createComment('sc-grid-anchor');
+  grid.parentNode.insertBefore(gridAnchor,grid);
+  return gridAnchor;
+ }
+ function moveGridTo(host){
+  if(!ensureGridAnchor()||!host)return;
+  const grid=document.getElementById('grid'),filterBar=document.getElementById('genericFilterBar');
+  if(filterBar)host.appendChild(filterBar);
+  if(grid)host.appendChild(grid);
+  gridHost=host;
+ }
+ function returnGridHome(){
+  if(!gridHost||!gridAnchor)return;
+  const grid=document.getElementById('grid'),filterBar=document.getElementById('genericFilterBar');
+  const main=gridAnchor.parentNode;
+  if(filterBar)main.insertBefore(filterBar,gridAnchor);
+  if(grid)main.insertBefore(grid,gridAnchor);
+  gridHost=null;
+ }
+
+ let splitWrap=null,splitListVisible=true;
  function ensureSplitWrap(){
   if(splitWrap)return splitWrap;
-  const grid=document.getElementById('grid'),panel=document.getElementById('schedulePanel');
-  if(!grid||!grid.parentNode||!panel)return null;
-  splitAnchor=document.createComment('sc-split-anchor');
-  grid.parentNode.insertBefore(splitAnchor,grid);
+  const panel=document.getElementById('schedulePanel');
+  if(!ensureGridAnchor()||!panel)return null;
   splitWrap=document.createElement('div');splitWrap.className='sc-split-wrap';
-  splitAnchor.parentNode.insertBefore(splitWrap,splitAnchor);
-  const filterBar=document.getElementById('genericFilterBar');
-  if(filterBar)splitWrap.appendChild(filterBar);
-  splitWrap.appendChild(grid);
+  gridAnchor.parentNode.insertBefore(splitWrap,gridAnchor);
+  moveGridTo(splitWrap);
   splitWrap.appendChild(panel);
   return splitWrap;
  }
  function teardownSplitWrap(){
   if(!splitWrap)return;
-  const grid=document.getElementById('grid'),panel=document.getElementById('schedulePanel'),filterBar=document.getElementById('genericFilterBar');
-  const main=splitAnchor.parentNode;
-  if(filterBar)main.insertBefore(filterBar,splitAnchor);
-  main.insertBefore(panel,splitAnchor);
-  main.insertBefore(grid,splitAnchor);
-  splitAnchor.remove();splitWrap.remove();
-  splitWrap=null;splitAnchor=null;
+  const panel=document.getElementById('schedulePanel');
+  const main=gridAnchor.parentNode;
+  returnGridHome();
+  if(panel)main.insertBefore(panel,gridAnchor);
+  splitWrap.remove();
+  splitWrap=null;
  }
  // scheduleモードで1設備のタイムラインを見ている間だけ、仕掛一覧を隣に出す
  // (全体俯瞰ボード・editモード等では対象設備が定まらない/追加できないため
@@ -156,8 +202,10 @@
  // 想定した保険)。
  async function showSplitList(){
   if(!scState.fullControl||scState.boardMode!=='single'||!scState.equipment||!splitListVisible)return;
+  if(listModalOpen)closeListModal();
   ensureSplitWrap();
   document.body.classList.add('sc-split');
+  applyListDensity();
   if(typeof S!=='undefined'&&typeof selectDb==='function'&&S.db!=='SIKALOTNOW'){
    const navBtn=document.querySelector('aside [data-db-key="SIKALOTNOW"]');
    try{await selectDb('SIKALOTNOW',navBtn)}catch(e){/* 一覧が読めなくてもスケジュール自体の表示は継続する */}
@@ -173,10 +221,77 @@
   updateSplitToggleUi();
  }
  function updateSplitToggleUi(){
-  const btn=$('#scSplitToggle');if(!btn)return;
   const applicable=scState.fullControl&&scState.boardMode==='single';
-  btn.hidden=!applicable;
-  btn.classList.toggle('active',applicable&&splitListVisible);
+  const splitBtn=$('#scSplitToggle');
+  if(splitBtn){splitBtn.hidden=!applicable;splitBtn.classList.toggle('active',applicable&&splitListVisible)}
+  const modalBtn=$('#scListModalBtn');
+  if(modalBtn){modalBtn.hidden=!applicable;modalBtn.classList.toggle('active',listModalOpen)}
+  const denseBtn=$('#scDenseToggle');
+  if(denseBtn)denseBtn.hidden=!applicable;
+  updateDenseToggleUi();
+ }
+
+ /* ---------- 仕掛一覧のポップアップ表示(§9.14新設) ----------
+    折りたたみ(splitListVisible=false)や画面が狭い時でも、分割表示へ
+    切り替えずに一覧からドラッグで追加できるようにする代替の入口。
+    #grid自体は同時に1箇所にしか置けないため、開くときは分割表示を畳む。 */
+ let listModalOpen=false;
+ function ensureListModal(){
+  let modal=document.getElementById('scListModal');
+  if(modal)return modal;
+  modal=document.createElement('div');modal.className='record-modal sc-float-modal';modal.id='scListModal';modal.hidden=true;
+  modal.innerHTML=`<div class="settings-dialog sc-float-dialog">
+   <header><div><small>SIKALOTNOW</small><h2>仕掛一覧(ドラッグでスケジュールへ追加)</h2></div><button type="button" id="scListModalClose">×</button></header>
+   <div class="sc-float-body" id="scListModalBody"></div>
+  </div>`;
+  document.body.appendChild(modal);
+  modal.querySelector('.sc-float-dialog').addEventListener('click',e=>e.stopPropagation());
+  modal.addEventListener('click',()=>closeListModal());
+  modal.querySelector('#scListModalClose').onclick=()=>closeListModal();
+  return modal;
+ }
+ async function openListModal(){
+  const modal=ensureListModal();
+  if(splitWrap){splitListVisible=false;hideSplitList()}
+  moveGridTo(modal.querySelector('#scListModalBody'));
+  applyListDensity();
+  modal.hidden=false;listModalOpen=true;
+  // body.sc-mode #grid{display:none!important}(通常モード)を、分割表示の
+  // body.sc-mode.sc-split #gridと同じ考え方で上書きする(§9.14)。
+  document.body.classList.add('sc-list-modal-open');
+  updateSplitToggleUi();
+  if(typeof S!=='undefined'&&typeof selectDb==='function'&&S.db!=='SIKALOTNOW'){
+   const navBtn=document.querySelector('aside [data-db-key="SIKALOTNOW"]');
+   try{await selectDb('SIKALOTNOW',navBtn)}catch(e){/* ベストエフォート */}
+  }
+ }
+ function closeListModal(){
+  const modal=document.getElementById('scListModal');
+  if(!modal||modal.hidden)return;
+  modal.hidden=true;listModalOpen=false;
+  document.body.classList.remove('sc-list-modal-open');
+  returnGridHome();
+  updateSplitToggleUi();
+ }
+
+ /* ---------- 仕掛一覧の高密度表示(§9.12新設) ----------
+    スケジュールのタイムライン(.sc-row-line)と同程度の密度で仕掛一覧を
+    表示できるようにする。#grid自体は再描画のたびに中身(table)を作り直す
+    (list-view.js renderGrid())ため、#grid要素自身に持たせたクラスで
+    CSS側だけを切り替える(再描画に依存しない)。既定は高密度。 */
+ function applyListDensity(){
+  const grid=document.getElementById('grid');
+  if(grid)grid.classList.toggle('sc-dense',scDenseList);
+ }
+ function toggleListDensity(){
+  scDenseList=!scDenseList;
+  try{localStorage.setItem('scListDenseV1',scDenseList?'1':'0')}catch(e){/* 保存できなくても表示自体は切り替える */}
+  applyListDensity();updateDenseToggleUi();
+ }
+ function updateDenseToggleUi(){
+  const btn=$('#scDenseToggle');if(!btn)return;
+  btn.classList.toggle('active',scDenseList);
+  btn.textContent=scDenseList?'▤ 高密度':'▦ 通常密度';
  }
 
  /* ---------- ドロップ受入(§9.10): 仕掛一覧の行をタイムラインへドラッグ ----------
@@ -187,14 +302,24 @@
   if(panel.dataset.dropWired)return;
   panel.dataset.dropWired='1';
   panel.classList.add('sc-drop-target');
+  const dropApplicable=()=>scState.fullControl&&scState.boardMode==='single'&&!!scState.equipment&&!sessionBlocked();
   panel.addEventListener('dragover',e=>{
-   if(!window.__scDragRows||!scState.fullControl||scState.boardMode!=='single'||!scState.equipment)return;
+   if((!window.__scDragRows&&!window.__scDragStopReason)||!dropApplicable())return;
    e.preventDefault();
    e.dataTransfer.dropEffect='copy';
    panel.classList.add('sc-drop-active');
   });
   panel.addEventListener('dragleave',e=>{if(e.target===panel)panel.classList.remove('sc-drop-active')});
   panel.addEventListener('drop',e=>{
+   // 設備停止ボタン(§9.13)からのドラッグ&ドロップ。位置に関わらず末尾へ追加する
+   // (クリック追加と同じ挙動、タイムライン上の特定位置への挿入は行わない)。
+   if(window.__scDragStopReason){
+    e.preventDefault();
+    panel.classList.remove('sc-drop-active');
+    const reason=window.__scDragStopReason;window.__scDragStopReason=null;
+    if(dropApplicable())addStopReasonToSchedule(reason.id,reason.name);
+    return;
+   }
    if(!window.__scDragRows)return;
    e.preventDefault();
    panel.classList.remove('sc-drop-active');
@@ -221,17 +346,22 @@
   document.body.classList.remove('sc-mode');
   document.getElementById('schedulePanel')?.setAttribute('hidden','');
   document.getElementById('openSchedule')?.classList.remove('active');
+  closeListModal();closeStopModal();
   hideSplitList();
   stopLockPolling();
+  stopSessionHeartbeat();
+  if(scSessionHeldFor){releaseSessionFire(scSessionHeldFor);scSessionHeldFor=null}
+  scState.sessionHeld=false;scState.sessionHolder=null;
  }
  window.exitScheduleView=exitScheduleView;
  if(typeof selectDb==='function'){
   const oldSelectDb=selectDb;
   selectDb=async function(k,b){
    // scheduleモードで仕掛一覧(SIKALOTNOW)へ切り替える場合は、分割表示
-   // (§9.10)としてスケジュール画面の隣に出すため、画面自体は閉じない。
+   // (§9.10)としてスケジュール画面の隣に出すため、画面自体は閉じない
+   // (ただし既にポップアップ表示(§9.14)で開いている場合はそちらを崩さない)。
    if(k==='SIKALOTNOW'&&scState.fullControl&&scState.boardMode==='single'&&scState.equipment){
-    ensureSplitWrap();document.body.classList.add('sc-split');
+    if(!listModalOpen){splitListVisible=true;ensureSplitWrap();document.body.classList.add('sc-split');applyListDensity();updateSplitToggleUi()}
     return oldSelectDb(k,b);
    }
    exitScheduleView();
@@ -290,12 +420,14 @@
   $('#scBoardWindow').hidden=!inBoard;
   if(scState.pickerEnabled)$('#scEquipmentSelect').hidden=inBoard;
   $('#scSide').hidden=!scState.fullControl||inBoard;
+  const stopBtn=$('#scStopModalBtn');if(stopBtn)stopBtn.hidden=!scState.fullControl||inBoard;
   document.querySelectorAll('.sc-board-window-btn').forEach(btn=>btn.classList.toggle('active',+btn.dataset.hours===scState.boardWindowHours));
   updateSplitToggleUi();
   // 全体俯瞰ボードや対象設備が無い状態では分割表示(§9.10)の意味が無いため
   // 畳む(仕掛一覧を隣に出したまま設備を切り替えても違和感が無いよう、
   // 個別タイムライン表示中はshowSplitList側で改めて出す)。
-  if(inBoard)hideSplitList();
+  if(inBoard){hideSplitList();closeListModal();closeStopModal()}
+  syncSession();
  }
  async function switchToBoard(){
   if(!scState.pickerEnabled)return;
@@ -350,6 +482,93 @@
   scLockTimer=setInterval(refreshLockBadge,5000);
  }
  function stopLockPolling(){if(scLockTimer){clearInterval(scLockTimer);scLockTimer=null}}
+
+ /* ---------- 編集セッション(§9.11新設) ----------
+    「設備単位で同時に1人しか編集作業に入れない」ための助言的ロック
+    (backend/schedule_sync.pyのacquire_session系)。1設備のタイムラインを
+    開いている間だけ保持し、25秒おきに延長(サーバー側TTLは90秒、数回分の
+    取りこぼしを許容する余裕を持たせてある)。他端末が保持中の場合は
+    バナーを出し、追加・削除・並べ替え・設備停止投入を止める(下記
+    sessionBlocked()、実際の書込APIもrequire_session()で二重に弾く)。 */
+ function sessionApplicable(){
+  return scState.fullControl&&scState.boardMode==='single'&&!!scState.equipment;
+ }
+ function sessionBlocked(){
+  return sessionApplicable()&&!scState.sessionHeld;
+ }
+ async function acquireSessionOnce(){
+  const eq=scState.equipment;
+  try{
+   await api('/api/schedule/session/acquire',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({equipment:eq})});
+   if(scState.equipment!==eq)return; // 応答が届く前に設備が切り替わっていたら結果を捨てる
+   scState.sessionHeld=true;scState.sessionHolder=null;
+  }catch(e){
+   if(scState.equipment!==eq)return;
+   scState.sessionHeld=false;
+   scState.sessionHolder=e.sessionLockedBy||null;
+  }
+  renderSessionBanner();
+ }
+ function startSessionHeartbeat(){
+  stopSessionHeartbeat();
+  scSessionHeldFor=scState.equipment;
+  acquireSessionOnce();
+  scSessionTimer=setInterval(acquireSessionOnce,25000);
+ }
+ function stopSessionHeartbeat(){
+  if(scSessionTimer){clearInterval(scSessionTimer);scSessionTimer=null}
+ }
+ function releaseSessionFire(equipment){
+  // タブを閉じる際にも呼ばれるため、確実性を優先してsendBeacon(base.jsの
+  // notifyTabClosedと同じ考え方)を使い、非対応環境ではfetchへフォールバック
+  // する。応答は待たない(ベストエフォート)。
+  if(!equipment)return;
+  try{
+   const ok=navigator.sendBeacon&&navigator.sendBeacon('/api/schedule/session/release',
+    new Blob([JSON.stringify({equipment})],{type:'application/json'}));
+   if(ok)return;
+  }catch(e){/* フォールバックへ */}
+  try{
+   api('/api/schedule/session/release',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({equipment})}).catch(()=>{});
+  }catch(e){/* ベストエフォート */}
+ }
+ async function syncSession(){
+  if(scSessionHeldFor&&scSessionHeldFor!==scState.equipment){
+   stopSessionHeartbeat();
+   releaseSessionFire(scSessionHeldFor);
+   scSessionHeldFor=null;
+  }
+  if(!sessionApplicable()){
+   stopSessionHeartbeat();
+   if(scState.sessionHeld||scState.sessionHolder){scState.sessionHeld=false;scState.sessionHolder=null;renderSessionBanner()}
+   return;
+  }
+  if(scSessionTimer)return; // 既にこの設備でハートビート中
+  startSessionHeartbeat();
+ }
+ function renderSessionBanner(){
+  const box=$('#scSessionBanner');if(!box)return;
+  if(!sessionApplicable()||scState.sessionHeld||!scState.sessionHolder){
+   box.hidden=true;box.innerHTML='';
+   applyWriteControlsEnabled(true);
+   return;
+  }
+  const h=scState.sessionHolder;
+  box.hidden=false;
+  box.innerHTML=`<span>⚠ ${esc(scState.equipment)}は${esc(h.loginId||'?')}@${esc(h.pcName||'?')}が編集中です。追加・削除・並べ替えは今は操作できません(閲覧のみ)。</span><button type="button" id="scSessionRetry">再試行</button>`;
+  const retryBtn=$('#scSessionRetry');if(retryBtn)retryBtn.onclick=()=>acquireSessionOnce();
+  applyWriteControlsEnabled(false);
+ }
+ function applyWriteControlsEnabled(enabled){
+  const panel=document.getElementById('schedulePanel');
+  if(panel)panel.classList.toggle('sc-session-locked',!enabled);
+ }
+ // タブを閉じる時に保持中のセッションを解放する(base.jsのnotifyTabClosedと
+ // 同じ二重登録方針。pagehideが本来カバーする範囲の方が広いが、ブラウザ
+ // 実装差の保険としてunloadでも同じ通知を送る)。
+ function releaseSessionOnUnload(){if(scSessionHeldFor)releaseSessionFire(scSessionHeldFor)}
+ window.addEventListener('pagehide',releaseSessionOnUnload);
+ window.addEventListener('unload',releaseSessionOnUnload);
 
  /* ---------- 全体俯瞰ボード(§9.9) ----------
     設備ごとに1行、右側へ「残作業量」を色分けした帯(次24/48時間の
@@ -491,6 +710,7 @@
 
  /* ---------- 固定開始日時(§5.1・§7.3、フェーズ6) ---------- */
  function fixedStartHtml(e){
+  if(e.__pending)return ''; // サーバー未反映(§9.11の楽観的追加)の間はまだ予定IDが無く更新できない
   if(scState.fullControl&&e.state==='予定'){
    return `<div class="sc-detail-block"><div class="sc-detail-heading">固定開始日時</div>
     <div class="sc-fixed-start">
@@ -567,9 +787,9 @@
    if(e.plannedEnd)lastEnd=e.plannedEnd;
 
    const row=document.createElement('div');
-   row.className='sc-row-line '+stateRowClass(e.state);
+   row.className='sc-row-line '+stateRowClass(e.state)+(e.__pending?' sc-row-pending':'');
    row.dataset.id=e.id;
-   const canDrag=scState.editable&&e.reorderable;
+   const canDrag=scState.editable&&e.reorderable&&!e.__pending&&!sessionBlocked();
    row.draggable=canDrag;
    if(canDrag)row.tabIndex=0;
 
@@ -590,12 +810,13 @@
     }
    }
    const flags=[
+    e.__pending?'<span class="sc-flag sc-flag-pending" title="サーバーへ反映中です">⏳追加中</span>':'',
     e.overdueMinutes>0?`<span class="sc-flag sc-flag-overdue" title="${Math.round(e.overdueMinutes)}分押しています">⚠${Math.round(e.overdueMinutes)}分</span>`:'',
     e.spansNonWorking?'<span class="sc-flag sc-flag-spans" title="夜間・休日を跨ぎます">🌙</span>':'',
     e.fixedStart?`<span class="sc-flag sc-flag-fixed" title="固定開始 ${fmtDateTime(e.fixedStart)}">📌</span>`:'',
    ].join('');
    const detailHtml=fixedStartHtml(e)+estimateBreakdownHtml(e);
-   const canDelete=scState.fullControl&&e.state==='予定';
+   const canDelete=scState.fullControl&&e.state==='予定'&&!e.__pending;
 
    row.innerHTML=`
     <span class="sc-row-handle" title="${canDrag?'ドラッグまたはAlt+↑/↓で並べ替え':''}">${canDrag?'⠿':(e.state==='着手'?'🔒':'')}</span>
@@ -636,20 +857,77 @@
   });
  }
 
+ /* ---------- 書込キュー(§9.11新設): 画面描画を先行させ、実際のAPI呼び出しは
+    バックグラウンドで直列に処理する ----------
+    共有スケジュールDBは§4.2の取得→適用→反映サイクルを1リクエストごとに
+    踏むため並列化はできない(既存の一括追加が直列awaitだった理由と同じ)。
+    以前はその直列awaitを画面のクリック/ドロップ操作自身がブロックして
+    いたため、20件を超える一括追加で体感速度が悪化していた。ここでは
+    「画面へは即座に反映し、実際の書込はキューに積んで後追いで処理する」
+    方式に変え、ユーザー操作をAPI応答待ちで止めない。編集セッション
+    (§9.11のsyncSession)が同一設備の同時編集を防いでいるため、キューが
+    捌き切る前に他端末の変更と衝突する心配もない。失敗したオペレーションは
+    数回リトライしてから諦め、キューが空になった時点でloadPlan()により
+    サーバー側の最終状態で描き直して正規化する。 */
+ function queueScheduleWrite(run){
+  scWriteQueue.push({run,attempts:0});
+  if(scQueueFlushTimer||scQueueRunning)return;
+  scQueueFlushTimer=setTimeout(()=>{scQueueFlushTimer=null;runWriteQueue()},150);
+ }
+ async function runWriteQueue(){
+  if(scQueueRunning)return;
+  scQueueRunning=true;
+  const failures=[];
+  try{
+   while(scWriteQueue.length){
+    const op=scWriteQueue[0];
+    try{
+     await op.run();
+     scWriteQueue.shift();
+    }catch(e){
+     op.attempts++;
+     if(op.attempts>=3){scWriteQueue.shift();failures.push(e)}
+     else await sleep(700*op.attempts);
+    }
+   }
+  }finally{
+   scQueueRunning=false;
+   if(failures.length){
+    const msg=failures.length===1?failures[0].message:`${failures.length}件の変更を反映できませんでした`;
+    showToast&&showToast('一部の変更を反映できませんでした',msg,7000);
+   }
+   if(scState.equipment)await loadPlan(); // サーバー側の最終状態で正規化する
+  }
+ }
+ function makeOptimisticEntry(kind,fields){
+  return Object.assign({
+   id:'tmp-'+(++scTempIdSeq),kind,state:'予定',reorderable:true,
+   plannedStart:null,plannedEnd:null,startsInMinutes:null,
+   estimate:null,actual:null,overdueMinutes:0,spansNonWorking:false,fixedStart:null,
+   lotNo:'',title:'',detail:{},__pending:true,
+  },fields);
+ }
+
  async function deleteEntry(id){
   if(typeof confirmModal==='function'){
    const ok=await confirmModal({message:'この予定を削除します。よろしいですか？'});
    if(!ok)return;
   }
-  try{
-   await api('/api/schedule/plan/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(withUserId({id}))});
-   await loadPlan();
-  }catch(e){showToast&&showToast('削除に失敗しました',e.message,5000)}
+  const idx=scState.entries.findIndex(e=>e.id===id);
+  if(idx===-1)return;
+  const [removed]=scState.entries.splice(idx,1);
+  renderTimeline();
+  queueScheduleWrite(async()=>{
+   try{
+    await api('/api/schedule/plan/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(withUserId({id}))});
+   }catch(e){
+    if(scState.entries.every(x=>x.id!==removed.id)){scState.entries.splice(Math.min(idx,scState.entries.length),0,removed);renderTimeline()}
+    throw e;
+   }
+  });
  }
 
  /* ---------- ドラッグ並べ替え(§7.5・§9.4) + Alt+↑/↓ ---------- */
- function reorderableIds(){return scState.entries.filter(e=>e.reorderable).map(e=>e.id)}
-
  function wireDrag(card){
   card.addEventListener('dragstart',e=>{scState.dragId=+card.dataset.id;card.classList.add('sc-dragging');e.dataTransfer.effectAllowed='move'});
   card.addEventListener('dragend',()=>{card.classList.remove('sc-dragging');scState.dragId=null});
@@ -687,16 +965,26 @@
   card.focus();
   commitDragOrder();
  }
- async function commitDragOrder(){
-  const ids=[...document.querySelectorAll('#scTimeline .sc-row-line')].map(c=>+c.dataset.id).filter(id=>reorderableIds().includes(id));
-  try{
-   await api('/api/schedule/plan/reorder',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify(withUserId({equipment:scState.equipment,orderedIds:ids}))});
-   await loadPlan();
-  }catch(e){
-   showToast&&showToast('並べ替えに失敗しました',e.message,5000);
-   await loadPlan();
-  }
+ function commitDragOrder(){
+  // ドラッグは既にDOM上の並びを直接動かしている(wireDrag/moveCard)ため、
+  // 画面上は既に確定した見た目になっている。scState.entries自体もこの
+  // DOM順に合わせて並べ直しておくことで、キュー処理中に追加・削除の
+  // 再描画が挟まってもドラッグ結果が消えない(§9.11)。実際のAPI呼び出しは
+  // バックグラウンドの書込キューへ積み、画面をブロックしない。
+  const allIds=[...document.querySelectorAll('#scTimeline .sc-row-line')].map(c=>+c.dataset.id);
+  const byId=new Map(scState.entries.map(e=>[e.id,e]));
+  const ids=allIds.filter(id=>{const e=byId.get(id);return e&&e.reorderable});
+  scState.entries=allIds.map(id=>byId.get(id)).filter(Boolean);
+  const equipment=scState.equipment;
+  queueScheduleWrite(async()=>{
+   try{
+    await api('/api/schedule/plan/reorder',{method:'POST',headers:{'Content-Type':'application/json'},
+     body:JSON.stringify(withUserId({equipment,orderedIds:ids}))});
+   }catch(e){
+    showToast&&showToast('並べ替えに失敗しました',e.message,5000);
+    throw e;
+   }
+  });
  }
 
  /* ---------- 追加パネル(scheduleモードのみ、§9.3) ---------- */
@@ -733,16 +1021,82 @@
   }).join('');
   box.querySelectorAll('.sc-stop-button').forEach(btn=>{
    if(btn.classList.contains('is-disabled')){btn.disabled=true;return}
-   btn.onclick=async()=>{
-    const label=btn.textContent.trim();
-    try{
-     await api('/api/schedule/plan/add',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify(withUserId({equipment:scState.equipment,kind:'設備停止',position:'end',stopReasonId:+btn.dataset.id}))});
-     await loadPlan();
-     showToast&&showToast('設備停止を追加しました',`${scState.equipment}の予定に追加しました(${label})`,3200);
-    }catch(e){showToast&&showToast('追加に失敗しました',e.message,5000)}
-   };
+   const reasonId=+btn.dataset.id;
+   const reason=scState.stopReasons.find(s=>s.id===reasonId);
+   const label=(reason&&reason.name)||btn.textContent.trim();
+   // ドラッグ&ドロップでの追加(§9.13): list-view.jsの仕掛行と同じ
+   // window.__scDragRows方式のハンドオフを、設備停止ボタン専用にもう1系統
+   // 用意する(wireDropTarget側で判別)。
+   btn.draggable=true;
+   btn.addEventListener('dragstart',e=>{
+    window.__scDragStopReason={id:reasonId,name:label};
+    e.dataTransfer.effectAllowed='copy';
+    try{e.dataTransfer.setData('text/plain',label)}catch(err){/* 一部ブラウザでのsetData制限は無視する */}
+    btn.classList.add('is-row-dragging');
+   });
+   btn.addEventListener('dragend',()=>{btn.classList.remove('is-row-dragging');window.__scDragStopReason=null});
+   btn.onclick=()=>addStopReasonToSchedule(reasonId,label);
   });
+ }
+ function addStopReasonToSchedule(reasonId,label){
+  if(!scState.equipment)return;
+  if(sessionBlocked()){
+   showToast&&showToast('追加できません',sessionHolderMessage(),4000);
+   return;
+  }
+  const target=scState.equipment;
+  scState.entries.push(makeOptimisticEntry('設備停止',{title:label}));
+  renderTimeline();
+  queueScheduleWrite(()=>api('/api/schedule/plan/add',{method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify(withUserId({equipment:target,kind:'設備停止',position:'end',stopReasonId:reasonId}))}));
+  showToast&&showToast('設備停止を追加しました',`${target}の予定に追加しました(${label})`,3200);
+ }
+
+ /* ---------- 設備停止のポップアップ表示(§9.13新設) ----------
+    常時表示だと視野(タイムラインの縦幅)を圧迫するという指摘のため、
+    .sc-side内は折りたたみ既定(上のensurePanelでhidden属性を付与済み)にし、
+    ヘッダーの「⛔ 設備停止」ボタンから素早く開けるフローティングモーダルを
+    追加の入口として用意する。#scStopButtons自体を場所だけ動かす(仕掛一覧の
+    ポップアップ、moveGridTo/returnGridHomeと同じ考え方。renderStopButtons()の
+    描画・イベント配線を2重に持たない)。 */
+ let stopModalOpen=false,stopAnchor=null;
+ function ensureStopAnchor(){
+  if(stopAnchor)return stopAnchor;
+  const box=document.getElementById('scStopButtons');
+  if(!box||!box.parentNode)return null;
+  stopAnchor=document.createComment('sc-stop-anchor');
+  box.parentNode.insertBefore(stopAnchor,box);
+  return stopAnchor;
+ }
+ function ensureStopModal(){
+  let modal=document.getElementById('scStopModal');
+  if(modal)return modal;
+  modal=document.createElement('div');modal.className='record-modal sc-float-modal';modal.id='scStopModal';modal.hidden=true;
+  modal.innerHTML=`<div class="settings-dialog sc-float-dialog sc-float-dialog-narrow">
+   <header><div><small>STOP REASON</small><h2>設備停止を追加</h2></div><button type="button" id="scStopModalClose">×</button></header>
+   <div class="sc-float-body" id="scStopModalBody"></div>
+  </div>`;
+  document.body.appendChild(modal);
+  modal.querySelector('.sc-float-dialog').addEventListener('click',e=>e.stopPropagation());
+  modal.addEventListener('click',()=>closeStopModal());
+  modal.querySelector('#scStopModalClose').onclick=()=>closeStopModal();
+  return modal;
+ }
+ function openStopModal(){
+  if(!ensureStopAnchor())return;
+  const modal=ensureStopModal();
+  const box=document.getElementById('scStopButtons');
+  if(box){box.hidden=false;modal.querySelector('#scStopModalBody').appendChild(box)}
+  modal.hidden=false;stopModalOpen=true;
+  $('#scStopModalBtn')?.classList.add('active');
+ }
+ function closeStopModal(){
+  const modal=document.getElementById('scStopModal');
+  if(!modal||modal.hidden)return;
+  const box=document.getElementById('scStopButtons');
+  if(box&&stopAnchor)stopAnchor.parentNode.insertBefore(box,stopAnchor);
+  modal.hidden=true;stopModalOpen=false;
+  $('#scStopModalBtn')?.classList.remove('active');
  }
 
  function buildScheduleDetail(row){
@@ -750,38 +1104,62 @@
   Object.keys(aliases).forEach(k=>{const v=pick(row,k);if(v!==undefined&&v!==null&&v!=='')detail[k]=v});
   return detail;
  }
+ function sessionHolderMessage(){
+  const h=scState.sessionHolder;
+  return h?`${scState.equipment}は${h.loginId||'?'}@${h.pcName||'?'}が編集中です`:`${scState.equipment}は他端末が編集中です`;
+ }
+ function planAddPayload(target,row){
+  return withUserId({equipment:target,kind:'作業',position:'end',
+   lotNo:pick(row,'lotNo')||'',inspectionNo:pick(row,'inspectionNo')||'',castingNo:pick(row,'castingNo')||'',detail:buildScheduleDetail(row)});
+ }
  async function addRowToSchedule(row,equipment){
   const target=equipment||scState.equipment;
   if(!target){showToast&&showToast('設備を選択してください','',3200);return}
-  try{
-   await api('/api/schedule/plan/add',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify(withUserId({equipment:target,kind:'作業',position:'end',
-     lotNo:pick(row,'lotNo')||'',inspectionNo:pick(row,'inspectionNo')||'',castingNo:pick(row,'castingNo')||'',detail:buildScheduleDetail(row)}))});
-   showToast&&showToast('予定へ追加しました',`${target}の予定に追加しました`,3200);
-   if(scState.equipment===target)await loadPlan();
-  }catch(e){showToast&&showToast('追加に失敗しました',e.message,5000)}
+  if(target!==scState.equipment){
+   // 今開いていない設備への追加(§9.5): 楽観描画の対象タイムラインが無い
+   // ため従来どおり即時反映する。
+   try{
+    await api('/api/schedule/plan/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(planAddPayload(target,row))});
+    showToast&&showToast('予定へ追加しました',`${target}の予定に追加しました`,3200);
+   }catch(e){showToast&&showToast('追加に失敗しました',e.message,5000)}
+   return;
+  }
+  if(sessionBlocked()){showToast&&showToast('追加できません',sessionHolderMessage(),4000);return}
+  scState.entries.push(makeOptimisticEntry('作業',{lotNo:pick(row,'lotNo')||'',detail:buildScheduleDetail(row)}));
+  renderTimeline();
+  queueScheduleWrite(()=>api('/api/schedule/plan/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(planAddPayload(target,row))}));
  }
  window.scheduleAddFromRow=function(row){addRowToSchedule(row,pick(row,'equipment')||'')};
 
- // 一括追加(§9.5): 共有スケジュールDBは§4.2の取得→適用→反映サイクルを
- // 1リクエストごとに踏むため、並列で撃つとロック競合(423)が起きやすい。
- // 直列に1件ずつawaitし、失敗したロットだけ後で分かるように集計する。
+ // 一括追加(§9.5・§9.11改訂): 開いている設備への一括追加は、画面へは全件を
+ // 即座に反映し、実際のAPI呼び出しはバックグラウンドの書込キューへ積んで
+ // 順次処理する(体感速度のため。共有DBの取得→適用→反映サイクル自体は
+ // 直列のまま変わらない)。開いていない設備への一括追加は、失敗集計を
+ // その場で示すため引き続き直列awaitする。
  async function addRowsToSchedule(rows,equipment){
   const target=equipment||scState.equipment;
   if(!target){showToast&&showToast('設備を選択してください','',3200);return}
-  let okCount=0;const failedLots=[];
-  for(const row of rows){
-   try{
-    await api('/api/schedule/plan/add',{method:'POST',headers:{'Content-Type':'application/json'},
-     body:JSON.stringify(withUserId({equipment:target,kind:'作業',position:'end',
-      lotNo:pick(row,'lotNo')||'',inspectionNo:pick(row,'inspectionNo')||'',castingNo:pick(row,'castingNo')||'',detail:buildScheduleDetail(row)}))});
-    okCount++;
-   }catch(e){failedLots.push(pick(row,'lotNo')||'?')}
+  if(target!==scState.equipment){
+   let okCount=0;const failedLots=[];
+   for(const row of rows){
+    try{
+     await api('/api/schedule/plan/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(planAddPayload(target,row))});
+     okCount++;
+    }catch(e){failedLots.push(pick(row,'lotNo')||'?')}
+   }
+   if(failedLots.length)showToast&&showToast(`${okCount}/${rows.length}件を追加しました`,`失敗したロット: ${failedLots.join('・')}`,7000);
+   else showToast&&showToast('一括追加しました',`${target}の予定へ${okCount}件追加しました`,3800);
+   window.clearListSelection?.();
+   return;
   }
-  if(failedLots.length)showToast&&showToast(`${okCount}/${rows.length}件を追加しました`,`失敗したロット: ${failedLots.join('・')}`,7000);
-  else showToast&&showToast('一括追加しました',`${target}の予定へ${okCount}件追加しました`,3800);
+  if(sessionBlocked()){showToast&&showToast('追加できません',sessionHolderMessage(),4000);return}
+  rows.forEach(row=>{
+   scState.entries.push(makeOptimisticEntry('作業',{lotNo:pick(row,'lotNo')||'',detail:buildScheduleDetail(row)}));
+   queueScheduleWrite(()=>api('/api/schedule/plan/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(planAddPayload(target,row))}));
+  });
+  renderTimeline();
+  showToast&&showToast(`${rows.length}件をキューへ追加しました`,`${target}の予定へ反映中です…`,3200);
   window.clearListSelection?.();
-  if(scState.equipment===target)await loadPlan();
  }
 
  /* ---------- ナビ ----------
