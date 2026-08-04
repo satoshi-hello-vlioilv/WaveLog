@@ -408,18 +408,36 @@ def access_permission_master_rows(c):
 def has_edit_permission(c,login_id,pc_name):
  return permission_flags(c,login_id,pc_name)['canEdit']
 
+_DEFAULT_PERMISSION_FLAGS={'canEdit':True,'canSchedule':False,'canFieldReorder':False,'fieldReorderEquipment':''}
+
 def permission_flags(c,login_id,pc_name):
- # ログインID＋PC名の完全一致(表記ゆれ吸収)で照合する。該当行が無ければ
- # 編集可否は「可」を既定とする(既存の互換ポリシー、上記コメント参照)。
- # スケジュール可否・現場段取り可否は未登録/未設定なら「不可」を既定とする
- # (触れる範囲が広がる側の既定は安全側に倒す。docs/SCHEDULE_MODE_DESIGN.md §3.2)。
+ # ログインID・PC名は汎用的に使えるよう、どちらか一方だけの登録
+ # (もう一方は空欄)も許す(register/update側もどちらか一方の入力のみで
+ # 登録できる)。一致度の高い順に判定する: 両方一致 > ログインIDのみ登録の
+ # 行がログインID一致(PC名は問わない) > PC名のみ登録の行がPC名一致
+ # (ログインIDは問わない) > 両方空欄で登録された行(全端末共通の既定上書き)。
+ # 該当行が無ければ編集可否は「可」を既定とする(既存の互換ポリシー、上記
+ # コメント参照)。スケジュール可否・現場段取り可否は未登録/未設定なら
+ # 「不可」を既定とする(触れる範囲が広がる側の既定は安全側に倒す。
+ # docs/SCHEDULE_MODE_DESIGN.md §3.2)。
  if ACCESS_PERMISSION_TABLE not in tables(c):
-  return {'canEdit':True,'canSchedule':False,'canFieldReorder':False,'fieldReorderEquipment':''}
+  return dict(_DEFAULT_PERMISSION_FLAGS)
  target_login=normalize_identity_part(login_id);target_pc=normalize_identity_part(pc_name)
+ def flags_of(r):
+  return {'canEdit':bool(r[3]),'canSchedule':bool(r[8]),'canFieldReorder':bool(r[9]),'fieldReorderEquipment':str(r[10] or '').strip()}
+ exact=login_only=pc_only=global_rule=None
  for r in access_permission_master_rows(c):
-  if normalize_identity_part(r[1])==target_login and normalize_identity_part(r[2])==target_pc:
-   return {'canEdit':bool(r[3]),'canSchedule':bool(r[8]),'canFieldReorder':bool(r[9]),'fieldReorderEquipment':str(r[10] or '').strip()}
- return {'canEdit':True,'canSchedule':False,'canFieldReorder':False,'fieldReorderEquipment':''}
+  rl,rp=normalize_identity_part(r[1]),normalize_identity_part(r[2])
+  if rl and rp:
+   if rl==target_login and rp==target_pc:exact=r
+  elif rl:
+   if rl==target_login:login_only=r
+  elif rp:
+   if rp==target_pc:pc_only=r
+  else:
+   global_rule=r
+ matched=exact or login_only or pc_only or global_rule
+ return flags_of(matched) if matched else dict(_DEFAULT_PERMISSION_FLAGS)
 
 def field_reorder_terminal_count(c,equipment):
  # docs/SCHEDULE_MODE_DESIGN.md §5.0.1: 設備削除確認で使う。現場段取り
