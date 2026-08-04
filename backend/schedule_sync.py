@@ -216,6 +216,13 @@ def fetch_snapshot():
  # 壊れたファイルが残ることはない。
  tmp=SCHEDULE_CACHE_PATH.with_suffix(f'.fetch.{uuid.uuid4().hex}.tmp')
  last_error=None
+ if shared.is_dir():
+  # schedule_share_pathにファイル名を付け忘れ、共有フォルダそのものを
+  # 指しているケース(実際に発生: 「unable to open database file」という
+  # SQLite側の汎用エラーだけでは原因が伝わらなかった)。存在チェックだけの
+  # 「未作成」判定(shared.exists()がFalse)では区別できないため、is_dir()で
+  # 明示的に弾き、対処方法を直接伝える。
+  raise ScheduleUnavailableError(f'schedule_share_pathがフォルダを指しています({shared})。schedule.sqlite3のようにファイル名まで指定してください(ファイル自体は未作成でも構いません。最初の書込み時に自動作成されます)。')
  if shared.exists():
   try:
    src=connect(shared,True,'sqlite')
