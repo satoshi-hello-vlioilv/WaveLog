@@ -40,8 +40,10 @@ def probe(timeout=2.0):
  try:
   with urllib.request.urlopen(f'http://{HOST}:{PORT}/api/build',timeout=timeout) as r:
    info=json.loads(r.read().decode('utf-8','replace'))
- except urllib.error.HTTPError:
-  return FOREIGN,None            # 何かが応答している=このアプリではない
+ except urllib.error.HTTPError as e:
+  # 何かが応答している=このアプリではない。原因調査のため、返ってきた
+  # ステータスだけでも記録しておく(FOREIGN自体の判定には使わない)。
+  return FOREIGN,{'http_status':e.code}
  except Exception:
   # bindはされているがHTTPとして応答しない(タイムアウト・接続断など)。
   # 以前はここも一律FOREIGN扱いだったが、ネットワーク共有I/Oのブロックで
