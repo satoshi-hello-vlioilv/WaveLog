@@ -174,22 +174,25 @@ function fixedToleranceValue(kind,value){const n=Number(value);if(!Number.isFini
 /* Final title guard for delayed initialization and browser history restoration. */
 function enforceApplicationTitle(){if(document.title!=='測定伝送システム')document.title='測定伝送システム'}
 enforceApplicationTitle();window.addEventListener('pageshow',enforceApplicationTitle);document.addEventListener('visibilitychange',()=>{if(!document.hidden)enforceApplicationTitle()});
-/* ウォッチドッグ用ハートビート。タブごとに固有IDを発行し(sessionStorageで
-   リロードをまたいで維持、タブを閉じれば消える)、開いている間は定期的に
-   バックエンドへ生存信号を送る。タブを閉じる・別ページへ移動する際は
-   pagehideで即座に終了通知(close)を送り、そのタブが無くなったことを
-   明示的に伝える。ブラウザを閉じ忘れた場合はサーバー側のウォッチドッグが
-   Flaskプロセスを自動終了し、プロセスの残存(ゾンビ化)を防ぐ(サーバー側:
-   app.py EMPTY_GRACE_SEC)。単なる通信瞬断(Wi-Fi切断等)ではタブは消えた
-   ことにならないため誤って終了しない(サーバー側: HEARTBEAT_STALE_SEC)。
-   応答は見ないため失敗しても無視する(サーバー再起動中の一時断等)。 */
-const WATCHDOG_TAB_ID=(function(){
- try{
-  let id=sessionStorage.getItem('wavelogTabId');
-  if(!id){id=(crypto.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random()}`);sessionStorage.setItem('wavelogTabId',id)}
-  return id;
- }catch(e){return `${Date.now()}-${Math.random()}`}
-})();
+/* ウォッチドッグ用ハートビート。読み込みのたびに固有IDを発行し、開いている
+   間は定期的にバックエンドへ生存信号を送る。タブを閉じる・別ページへ
+   移動する際はpagehideで即座に終了通知(close)を送り、そのタブが無くなった
+   ことを明示的に伝える。ブラウザを閉じ忘れた場合はサーバー側のウォッチ
+   ドッグがFlaskプロセスを自動終了し、プロセスの残存(ゾンビ化)を防ぐ
+   (サーバー側: backend/config.py EMPTY_GRACE_SEC)。単なる通信瞬断
+   (Wi-Fi切断等)ではタブは消えたことにならないため誤って終了しない
+   (サーバー側: HEARTBEAT_STALE_SEC)。応答は見ないため失敗しても無視する
+   (サーバー再起動中の一時断等)。
+   IDは毎回の読み込みで新規発行し、sessionStorageへは保存しない。
+   sessionStorageはタブの複製・「閉じたタブを開き直す」操作で新しいタブへ
+   コピーされてしまうため、それで保存していると2つのタブが同じIDを共有
+   してしまい、片方だけを閉じても(もう一方が生きているにも関わらず)
+   サーバー側がそのIDを「消えた」と扱ってしまう恐れがある。IDの安定性は
+   リロードをまたいで保つ必要が無い(サーバー側は「1件でも生きているIDが
+   あるか」しか見ておらず、リロードのpagehideで一瞬0件になっても直後の
+   新しいIDのハートビートでEMPTY_GRACE_SEC以内に復帰する)ため、
+   セッションをまたいだ永続化自体が不要だった。 */
+const WATCHDOG_TAB_ID=(crypto.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random()}`);
 /* ハートビートは「こちらが生きている」ことを伝えるだけでなく、その応答から
    「サーバーが生きているか」も分かる。応答が続けて途絶えたら画面最上部へ
    明示する。サーバーが終了していても画面は普通に見えてしまい、操作して
