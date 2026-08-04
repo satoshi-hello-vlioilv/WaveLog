@@ -20,9 +20,10 @@ from backend.config import APP_ID, HOST, PORT, app_url
 from backend.paths import APP_ROOT, instance_file
 
 # 既存インスタンスの判定結果
-OURS='ours'          # 同じアプリが起動中
-FOREIGN='foreign'    # 別のアプリがポートを使用中
-FREE='free'          # 誰も使っていない
+OURS='ours'                # 同じアプリが起動中
+FOREIGN='foreign'          # 別のアプリがポートを使用中(HTTP応答はあるが別物と確認できた)
+UNRESPONSIVE='unresponsive'# ポートは使用中だがHTTPが応答しない(自分自身が重い処理でブロックされている可能性を含む)
+FREE='free'                # 誰も使っていない
 
 
 def port_in_use(timeout=0.4):
@@ -42,8 +43,14 @@ def probe(timeout=2.0):
  except urllib.error.HTTPError:
   return FOREIGN,None            # 何かが応答している=このアプリではない
  except Exception:
-  # bindはされているがHTTPとして応答しない。別のアプリとみなす。
-  return FOREIGN,None
+  # bindはされているがHTTPとして応答しない(タイムアウト・接続断など)。
+  # 以前はここも一律FOREIGN扱いだったが、ネットワーク共有I/Oのブロックで
+  # 自分自身(WaveLog)が一時的に応答不能になっているだけのケースと区別が
+  # つかず、stop.batが「別のアプリが使用しています」と誤判定して停止不能に
+  # なる実例があった。ここでは即断せずUNRESPONSIVEを返し、呼び出し側で
+  # instance.json(このフォルダーのアプリとして記録されたPIDか)による
+  # 最終判定に委ねる(process_manager.force_stop()が行う照合と同じ考え方)。
+  return UNRESPONSIVE,None
  if isinstance(info,dict) and info.get('app_id')==APP_ID:
   return OURS,info
  return FOREIGN,info

@@ -127,6 +127,16 @@ def main():
   log.error('多重起動: ポート %s を別のアプリが使用しています。起動を中止します',PORT)
   log.info('--- 終了 --- (ポート使用中)')
   return 1
+ if state==launch_guard.UNRESPONSIVE:
+  # このアプリの前回のプロセスがネットワーク共有I/O等で応答不能に陥って
+  # いる可能性がある(別アプリと決め付けて起動を諦めるとFOREIGNと同じ
+  # 見た目になり、stop.batも使えば直せることが伝わらない)。ここで自動的に
+  # 強制終了はしない(本当に別アプリの可能性がまだ残るため)。対処方法を
+  # 明示して起動を中止する。
+  log.error('多重起動: ポート %s は使用中ですが応答がありません(WaveLogが重い処理でブロックされている可能性があります)。'
+            'stop.bat(python process_manager.py stop)で停止してから再度起動してください',PORT)
+  log.info('--- 終了 --- (ポート使用中・応答無し)')
+  return 1
 
  if not ensure_packages(log):
   log.error('起動中止: 必須パッケージが揃いませんでした')

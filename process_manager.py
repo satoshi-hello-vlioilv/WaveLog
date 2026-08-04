@@ -86,6 +86,19 @@ def stop():
   log.error('停止: ポート %s は別のアプリが使用しています。停止しません',PORT)
   print(f'ポート {PORT} は別のアプリが使用しています。停止操作は行いません。')
   return 1
+ if state==launch_guard.UNRESPONSIVE:
+  # HTTPが応答しない(重いネットワーク共有I/O等でブロックされている可能性)。
+  # POST /api/shutdownを送っても同じ理由で処理されない見込みが高いため、
+  # 最初から記録済みPIDでの強制終了へ進む(force_stop()がinstance.jsonの
+  # app_rootを照合し、このフォルダーのアプリでなければ拒否する)。
+  log.info('停止: ポート %s は使用中だが応答が無いため、記録済みのプロセスIDで終了します',PORT)
+  print('応答が無いため、記録済みのプロセスIDで終了します…')
+  if force_stop():
+   launch_guard.clear_instance()
+   print('停止しました。')
+   return 0
+  print('停止できませんでした。ログを確認してください。')
+  return 1
 
  print('アプリへ終了を要求しています…')
  if request_shutdown() and wait_until_stopped():
@@ -109,6 +122,8 @@ def status():
   print(f'起動中です (バージョン {info.get("version","?")} / ポート {PORT})')
  elif state==launch_guard.FOREIGN:
   print(f'ポート {PORT} を別のアプリが使用しています。')
+ elif state==launch_guard.UNRESPONSIVE:
+  print(f'ポート {PORT} は使用中ですが応答がありません(重い処理でブロックされている可能性があります)。')
  else:
   print('起動していません。')
  recorded=launch_guard.read_instance()

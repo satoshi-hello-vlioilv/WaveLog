@@ -13,7 +13,11 @@
   `launch_guard.py` / `server.py` / `process_manager.py` / `backend/watchdog.py`
   が所有する。業務APIをこれらへ足さない（逆に`app.py`へ起動制御を戻さない）。
   ポート・アプリID・表示名などのアプリ固有値は `backend/config.py` に集約
-  してあるので、他ファイルへ直接書かない。
+  してあるので、他ファイルへ直接書かない。`server.py`の`flask_app.run(...)`から
+  **`threaded=True`を外さないこと**（既定のシングルスレッドに戻すと、仕掛/
+  品質データ等ネットワーク共有I/Oが不調で1件のリクエストが長時間ブロックした
+  だけで、ハートビート・停止スクリプトの生存確認まで一切応答できなくなり、
+  自動終了もstop.batでの停止も効かなくなる不具合が実際に発生した）。
   設計の背景と今後の再編計画は `docs/REBUILD_PLAN.md` を参照。
 - **バージョン更新**: 意味のある変更をコミットするたびに
   `backend/changelog_data.py` の `APP_VERSION` を上げ、`CHANGELOG` 先頭へ
