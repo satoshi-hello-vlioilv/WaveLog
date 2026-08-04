@@ -215,6 +215,7 @@ def fetch_snapshot():
  # 完了しても最終状態は常にどちらか一方の完全なスナップショットになり、
  # 壊れたファイルが残ることはない。
  tmp=SCHEDULE_CACHE_PATH.with_suffix(f'.fetch.{uuid.uuid4().hex}.tmp')
+ last_error=None
  if shared.exists():
   try:
    src=connect(shared,True,'sqlite')
@@ -229,8 +230,10 @@ def fetch_snapshot():
    if _verify_integrity(tmp):
     tmp.replace(SCHEDULE_CACHE_PATH)
     return SCHEDULE_CACHE_PATH,False
+   last_error='取得結果が壊れていました(整合性チェック失敗)'
    app_logger().warning('スケジュールデータの取得結果が壊れていたため破棄しました: %s',shared)
   except Exception as e:
+   last_error=str(e)
    app_logger().warning('スケジュールデータの取得に失敗しました(%s): %s',shared,e)
   finally:
    try:tmp.unlink(missing_ok=True)
@@ -244,7 +247,11 @@ def fetch_snapshot():
   return SCHEDULE_CACHE_PATH,False
  if SCHEDULE_CACHE_PATH.exists() and _verify_integrity(SCHEDULE_CACHE_PATH):
   return SCHEDULE_CACHE_PATH,True
- raise ScheduleUnavailableError('共有データを取得できず、有効なローカルキャッシュもありません。')
+ # 原因(last_error)を画面まで返す。サーバーのログを開かなくても
+ # schedule_share_pathの設定ミス(ファイルではなくフォルダを指している等)に
+ # その場で気づけるようにするため(以前は固定文言のみで原因が分からなかった)。
+ detail=f'({shared}: {last_error})' if last_error else f'({shared})'
+ raise ScheduleUnavailableError(f'共有データを取得できず、有効なローカルキャッシュもありません{detail}。')
 
 
 def _push(local_path,shared_path):

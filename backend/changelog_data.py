@@ -4,11 +4,14 @@
 意味のある変更をコミットするたびに APP_VERSION を上げ、CHANGELOG の
 先頭へ新しいエントリを追記すること(新しい順)。
 """
-APP_VERSION='1.60.15'
+APP_VERSION='1.60.16'
 
 # 更新履歴。画面の「VERx.y.z」バッジから一覧表示する。APP_VERSIONを
 # 上げるたびに、このリストの先頭に新しいバージョンを追記すること。
 CHANGELOG=[
+ {'version':'1.60.16','notes':[
+  '作業スケジュール画面で「予定を取得できませんでした: 共有データを取得できず、有効なローカルキャッシュもありません。」が原因不明のまま出る問題を改善。schedule_sync.fetch_snapshot()が共有ファイル(schedule_share_path)の取得に失敗した際、原因(例外メッセージ)を固定文言の末尾へ含めて返すようにした(サーバーのapp.logを開かなくても、対象パスがファイルではなくフォルダを指している等の設定ミスにその場で気づけるようにするため)。あわせてbackend/db_access.pyのUNC共有パス読取修正(1.60.15)が、schedule_sync.py側のconnect()呼び出し(共有schedule.sqlite3の取得・整合性検証・反映)にも同様に効くことを確認した',
+ ]},
  {'version':'1.60.15','notes':[
   '仕掛/品質データの読み込み先をUNC共有パス(\\\\サーバー名\\共有\\...)上の.sqlite3ファイルへ切り替えると「invalid uri authority」で読み込めない不具合を修正。SQLiteは読み取り専用オープンにfile: URIを使うが、pathlibの標準as_uri()はUNCパスをfile://サーバー名/共有/...という2スラッシュ形式にしてしまい、これは「サーバー名」をURIのauthority部分と解釈させる。SQLITE_ALLOW_URI_AUTHORITYでビルドされていない標準的なsqlite3モジュール(Windows版Python含む)ではauthorityが空文字/localhost以外だと拒否されるため、パス設定マスタでsikalotnow_path等をUNC上の.sqlite3へ向けた環境で必ず発生していた(旧config/local.json時代から潜在していた不具合)。authorityを空のままサーバー名をpath側へ含める4スラッシュ形式(file:////サーバー名/共有/...)で組み立てるよう修正し、UNC・ローカルドライブ・サンドボックスのPOSIXパスいずれでも正しく開けることを確認した(backend/db_access.pyのconnect)',
  ]},
