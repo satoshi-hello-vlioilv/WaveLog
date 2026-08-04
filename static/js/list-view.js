@@ -146,7 +146,6 @@ function renderGrid(){
    S.selectedRow=r;
    b.querySelectorAll('tr.is-selected').forEach(x=>x.classList.remove('is-selected'));
    tr.classList.add('is-selected');
-   window.scRefreshAddFromListPanel?.();
   });
   if(isWork){
    tr.classList.add('measurement-row');
@@ -164,9 +163,22 @@ function renderGrid(){
     checkbox.addEventListener('change',()=>{
      if(checkbox.checked)S.selectedRows.add(r);else S.selectedRows.delete(r);
      tr.classList.toggle('is-plan-selected',checkbox.checked);
-     syncPlanSelectAll();renderPlanSelectBar(true);window.scRefreshAddFromListPanel?.();
+     syncPlanSelectAll();renderPlanSelectBar(true);
     });
    }
+   // 分割表示(§9.10)でのドラッグ投入。チェックボックスで複数選択済みの
+   // 行をドラッグした場合はその選択全体を、そうでなければこの1行だけを
+   // 運ぶ(window.__scDragRowsはschedule-view.js側のドロップ処理と共有する
+   // 単純なハンドオフ。scheduleAddFromRow等と同じ既存の連携方式)。
+   tr.draggable=true;
+   tr.addEventListener('dragstart',e=>{
+    const dragRows=(S.selectedRows.has(r)&&S.selectedRows.size>1)?Array.from(S.selectedRows):[r];
+    window.__scDragRows=dragRows;
+    e.dataTransfer.effectAllowed='copy';
+    try{e.dataTransfer.setData('text/plain',dragRows.map(x=>pick(x,'lotNo')||'').join('、'))}catch(err){/* 一部ブラウザでのsetData制限は無視する */}
+    tr.classList.add('is-row-dragging');
+   });
+   tr.addEventListener('dragend',()=>{tr.classList.remove('is-row-dragging');window.__scDragRows=null});
   }
   if(hasLotDsp){
    const lotBtn=tr.querySelector('.grid-lot-link');
@@ -181,7 +193,7 @@ function renderGrid(){
    syncPlanSelectAll();
    selectAll.onchange=()=>{
     S.rows.forEach(r=>{if(selectAll.checked)S.selectedRows.add(r);else S.selectedRows.delete(r)});
-    renderGrid();window.scRefreshAddFromListPanel?.();
+    renderGrid();
    };
   }
  }
@@ -208,8 +220,15 @@ function renderPlanSelectBar(canPlan){
   bar=document.createElement('div');bar.id='planSelectBar';bar.className='plan-select-bar';
   grid.insertBefore(bar,grid.firstChild);
  }
- bar.innerHTML=`<span>${n}件選択中</span><button type="button" class="plan-select-clear" id="planSelectClear">選択解除</button>`;
- $('#planSelectClear').onclick=()=>{clearListSelection();window.scRefreshAddFromListPanel?.()};
+ // ドラッグが使いにくい環境(タッチ操作・支援技術)向けに、選択件数バーへ
+ // 直接投入ボタンも出す(§9.10。ドラッグと同じ一括追加処理を呼ぶだけの
+ // もう1つの入口)。分割表示で対象設備が決まっている時だけ有効にする。
+ const target=window.scCurrentDropTarget?.();
+ const addBtn=target?`<button type="button" class="plan-select-add" id="planSelectAdd">${esc(target)}へ追加</button>`:'';
+ bar.innerHTML=`<span>${n}件選択中</span>${addBtn}<button type="button" class="plan-select-clear" id="planSelectClear">選択解除</button>`;
+ $('#planSelectClear').onclick=clearListSelection;
+ const add=$('#planSelectAdd');
+ if(add)add.onclick=()=>window.scAddSelectedRows?.(Array.from(S.selectedRows));
 }
 function clearListSelection(){
  if(!S.selectedRows.size)return;

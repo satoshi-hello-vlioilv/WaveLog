@@ -79,6 +79,7 @@
       <button type="button" class="sc-board-window-btn" data-hours="48">48時間</button>
      </div>
      <span class="sc-field-reorder-note" id="scFieldReorderNote" hidden>現場段取り: 並べ替えのみ可能</span>
+     <button type="button" class="sc-split-toggle" id="scSplitToggle" hidden title="仕掛一覧を隣に表示してドラッグで追加します">◫ 仕掛一覧</button>
      <button type="button" class="sc-refresh" id="scRefresh">再計算</button>
      <button type="button" class="sc-close" id="scClose" title="閉じる">×</button>
     </div>
@@ -88,12 +89,8 @@
    <div class="sc-body" id="scSingleBody">
     <div class="sc-timeline" id="scTimeline"></div>
     <div class="sc-side" id="scSide" hidden>
-     <div class="sc-side-section">
-      <div class="sc-side-title">仕掛から追加</div>
-      <p class="sc-side-hint">ロット番号の一部を入力すると、この画面から直接追加できます。</p>
-      <input type="text" class="sc-lot-search-input" id="scLotSearch" placeholder="ロット番号で検索...">
-      <div class="sc-lot-search-results" id="scLotSearchResults"></div>
-      <div class="sc-add-from-list" id="scAddFromList"></div>
+     <div class="sc-side-section" id="scSplitHint">
+      <p class="sc-drop-hint">左の仕掛一覧からロットをドラッグ、またはチェックボックスで複数選択してこのパネルへドロップすると、この設備の予定へ追加されます。</p>
      </div>
      <div class="sc-side-section">
       <div class="sc-side-title">設備停止を追加</div>
@@ -108,6 +105,7 @@
   $('#scEquipmentSelect').onchange=e=>{scState.equipment=e.target.value;switchToSingle()};
   $('#scModeBoard').onclick=()=>switchToBoard();
   $('#scModeSingle').onclick=()=>switchToSingle();
+  $('#scSplitToggle').onclick=()=>toggleSplitList();
   panel.querySelectorAll('.sc-board-window-btn').forEach(btn=>{
    btn.onclick=()=>{
     scState.boardWindowHours=+btn.dataset.hours;
@@ -115,9 +113,107 @@
     renderOverviewBoard();
    };
   });
-  wireLotSearch();
+  wireDropTarget(panel);
   return panel;
  }
+
+ /* ---------- 分割表示(§9.10): 仕掛一覧(#grid)をスケジュールパネルの隣へ ----------
+    list-view.jsが持つ仕掛一覧の描画(検索・並替・絞り込み・複数選択・分割
+    検出)をそのまま流用し、比較用の一覧を新しく作り直さない(CLAUDE.mdの
+    「関数の定義は1箇所」)。#grid・#genericFilterBarはDOM上の位置を一時的に
+    .sc-split-wrapへ移すだけで、要素自体・IDは変えないため他モードの
+    display:none切替やid参照には影響しない。元の位置はコメントノード
+    (splitAnchor)で覚えておき、分割解除時に戻す。 */
+ let splitWrap=null,splitAnchor=null,splitListVisible=true;
+ function ensureSplitWrap(){
+  if(splitWrap)return splitWrap;
+  const grid=document.getElementById('grid'),panel=document.getElementById('schedulePanel');
+  if(!grid||!grid.parentNode||!panel)return null;
+  splitAnchor=document.createComment('sc-split-anchor');
+  grid.parentNode.insertBefore(splitAnchor,grid);
+  splitWrap=document.createElement('div');splitWrap.className='sc-split-wrap';
+  splitAnchor.parentNode.insertBefore(splitWrap,splitAnchor);
+  const filterBar=document.getElementById('genericFilterBar');
+  if(filterBar)splitWrap.appendChild(filterBar);
+  splitWrap.appendChild(grid);
+  splitWrap.appendChild(panel);
+  return splitWrap;
+ }
+ function teardownSplitWrap(){
+  if(!splitWrap)return;
+  const grid=document.getElementById('grid'),panel=document.getElementById('schedulePanel'),filterBar=document.getElementById('genericFilterBar');
+  const main=splitAnchor.parentNode;
+  if(filterBar)main.insertBefore(filterBar,splitAnchor);
+  main.insertBefore(panel,splitAnchor);
+  main.insertBefore(grid,splitAnchor);
+  splitAnchor.remove();splitWrap.remove();
+  splitWrap=null;splitAnchor=null;
+ }
+ // scheduleモードで1設備のタイムラインを見ている間だけ、仕掛一覧を隣に出す
+ // (全体俯瞰ボード・editモード等では対象設備が定まらない/追加できないため
+ // 意味が無い)。splitListVisibleは「◫ 仕掛一覧」トグルでの利用者の選択を
+ // 覚えておく(毎回自動で出すと、狭い画面では逆に使いにくいという声を
+ // 想定した保険)。
+ async function showSplitList(){
+  if(!scState.fullControl||scState.boardMode!=='single'||!scState.equipment||!splitListVisible)return;
+  ensureSplitWrap();
+  document.body.classList.add('sc-split');
+  if(typeof S!=='undefined'&&typeof selectDb==='function'&&S.db!=='SIKALOTNOW'){
+   const navBtn=document.querySelector('aside [data-db-key="SIKALOTNOW"]');
+   try{await selectDb('SIKALOTNOW',navBtn)}catch(e){/* 一覧が読めなくてもスケジュール自体の表示は継続する */}
+  }
+ }
+ function hideSplitList(){
+  document.body.classList.remove('sc-split');
+  teardownSplitWrap();
+ }
+ function toggleSplitList(){
+  splitListVisible=!splitListVisible;
+  if(splitListVisible)showSplitList();else hideSplitList();
+  updateSplitToggleUi();
+ }
+ function updateSplitToggleUi(){
+  const btn=$('#scSplitToggle');if(!btn)return;
+  const applicable=scState.fullControl&&scState.boardMode==='single';
+  btn.hidden=!applicable;
+  btn.classList.toggle('active',applicable&&splitListVisible);
+ }
+
+ /* ---------- ドロップ受入(§9.10): 仕掛一覧の行をタイムラインへドラッグ ----------
+    list-view.js側がwindow.__scDragRowsへドラッグ中の行(複数選択時はその
+    全体)を置く単純なハンドオフ。パネル全体を受け皿にし、タイムライン・
+    側パネルどちらへ落としても同じ追加処理を呼ぶ(的を小さくしない)。 */
+ function wireDropTarget(panel){
+  if(panel.dataset.dropWired)return;
+  panel.dataset.dropWired='1';
+  panel.classList.add('sc-drop-target');
+  panel.addEventListener('dragover',e=>{
+   if(!window.__scDragRows||!scState.fullControl||scState.boardMode!=='single'||!scState.equipment)return;
+   e.preventDefault();
+   e.dataTransfer.dropEffect='copy';
+   panel.classList.add('sc-drop-active');
+  });
+  panel.addEventListener('dragleave',e=>{if(e.target===panel)panel.classList.remove('sc-drop-active')});
+  panel.addEventListener('drop',e=>{
+   if(!window.__scDragRows)return;
+   e.preventDefault();
+   panel.classList.remove('sc-drop-active');
+   const rows=window.__scDragRows;window.__scDragRows=null;
+   if(!rows||!rows.length||!scState.equipment)return;
+   if(rows.length===1)addRowToSchedule(rows[0],scState.equipment);
+   else addRowsToSchedule(rows,scState.equipment);
+  });
+ }
+ // list-view.jsの選択件数バー(plan-select-bar)から、ドラッグ無しでも同じ
+ // 一括追加を呼べるようにする入口(タッチ操作・支援技術向け、§9.10)。
+ window.scCurrentDropTarget=function(){
+  return (scState.fullControl&&scState.boardMode==='single'&&scState.equipment)?scState.equipment:'';
+ };
+ window.scAddSelectedRows=function(rows){
+  if(!rows||!rows.length||!scState.equipment)return;
+  if(rows.length===1)addRowToSchedule(rows[0],scState.equipment);
+  else addRowsToSchedule(rows,scState.equipment);
+ };
 
  /* ---------- ビュー排他制御 ---------- */
  function exitScheduleView(){
@@ -125,10 +221,23 @@
   document.body.classList.remove('sc-mode');
   document.getElementById('schedulePanel')?.setAttribute('hidden','');
   document.getElementById('openSchedule')?.classList.remove('active');
+  hideSplitList();
   stopLockPolling();
  }
  window.exitScheduleView=exitScheduleView;
- if(typeof selectDb==='function'){const oldSelectDb=selectDb;selectDb=async function(k,b){exitScheduleView();return oldSelectDb(k,b)}}
+ if(typeof selectDb==='function'){
+  const oldSelectDb=selectDb;
+  selectDb=async function(k,b){
+   // scheduleモードで仕掛一覧(SIKALOTNOW)へ切り替える場合は、分割表示
+   // (§9.10)としてスケジュール画面の隣に出すため、画面自体は閉じない。
+   if(k==='SIKALOTNOW'&&scState.fullControl&&scState.boardMode==='single'&&scState.equipment){
+    ensureSplitWrap();document.body.classList.add('sc-split');
+    return oldSelectDb(k,b);
+   }
+   exitScheduleView();
+   return oldSelectDb(k,b);
+  };
+ }
 
  async function openScheduleView(){
   window.exitCalendarView?.();
@@ -182,9 +291,11 @@
   if(scState.pickerEnabled)$('#scEquipmentSelect').hidden=inBoard;
   $('#scSide').hidden=!scState.fullControl||inBoard;
   document.querySelectorAll('.sc-board-window-btn').forEach(btn=>btn.classList.toggle('active',+btn.dataset.hours===scState.boardWindowHours));
-  // 仕掛一覧側で先に行を選択してからこの画面を開いた場合でも、追加パネルが
-  // 静的な初期表示のまま取り残されないよう、表示状態が変わるたびに同期する。
-  if(!inBoard&&scState.fullControl)renderAddFromListPanel();
+  updateSplitToggleUi();
+  // 全体俯瞰ボードや対象設備が無い状態では分割表示(§9.10)の意味が無いため
+  // 畳む(仕掛一覧を隣に出したまま設備を切り替えても違和感が無いよう、
+  // 個別タイムライン表示中はshowSplitList側で改めて出す)。
+  if(inBoard)hideSplitList();
  }
  async function switchToBoard(){
   if(!scState.pickerEnabled)return;
@@ -329,6 +440,7 @@
  async function refreshAll(){
   await loadPlan();
   if(scState.fullControl)await loadStopReasons();
+  await showSplitList();
  }
  async function loadPlan(){
   if(!scState.equipment)return;
@@ -631,100 +743,6 @@
     }catch(e){showToast&&showToast('追加に失敗しました',e.message,5000)}
    };
   });
- }
-
- // 複数選択(§9.5、list-view.jsのS.selectedRows)があればそちらを優先し、
- // 無ければ従来どおり単一選択(S.selectedRow)を使う(後方互換)。
- function selectedListRows(){
-  if(typeof S==='undefined'||S.db!=='SIKALOTNOW')return [];
-  if(S.selectedRows&&S.selectedRows.size)return Array.from(S.selectedRows);
-  return S.selectedRow?[S.selectedRow]:[];
- }
- // 仕掛一覧で選択中の行があれば、検索欄の下に「もう1つの追加手段」として
- // 出す(検索が主導線・こちらは仕掛一覧側で先に絞り込み/複数選択していた
- // 場合の補助)。何も選択が無ければ何も出さない(検索欄が常時使えるため、
- // 従来の「まず一覧で行を選択してください」という前提の案内文は不要)。
- function renderAddFromListPanel(){
-  const box=$('#scAddFromList');if(!box)return;
-  const rows=selectedListRows();
-  if(!rows.length){box.innerHTML='';return}
-  if(rows.length===1){
-   const row=rows[0];
-   box.innerHTML=`<div class="sc-add-row-divider">仕掛一覧で選択中の行</div>
-    <div class="sc-add-row"><b>${esc(pick(row,'lotNo')||'-')}</b> ${esc(pick(row,'purposeName')||'')} ${esc(pick(row,'mfgMaterial')||'')}
-    <button type="button" class="sc-add-row-button" id="scAddSelectedRow">この設備の予定へ</button></div>`;
-   const btn=$('#scAddSelectedRow');
-   if(btn)btn.onclick=()=>addRowToSchedule(row,scState.equipment);
-   return;
-  }
-  const lots=rows.map(r=>esc(pick(r,'lotNo')||'-')).join('・');
-  box.innerHTML=`<div class="sc-add-row-divider">仕掛一覧で選択中の行</div>
-   <div class="sc-add-row sc-add-row-bulk">
-   <b>${rows.length}件選択中</b>
-   <div class="sc-add-bulk-lots">${lots}</div>
-   <button type="button" class="sc-add-row-button" id="scAddSelectedRows">この設備へ一括追加(${rows.length}件)</button>
-  </div>`;
-  const btn=$('#scAddSelectedRows');
-  if(btn)btn.onclick=()=>addRowsToSchedule(rows,scState.equipment);
- }
- window.scRefreshAddFromListPanel=function(){if(document.body.classList.contains('sc-mode'))renderAddFromListPanel()};
-
- /* ---------- ロット検索追加(§9.5改訂) ----------
-    「仕掛一覧で行を選択→スケジュール画面を開き直して確認」という間接的な
-    導線がわかりにくいという指摘を受け、この画面の中だけでロット番号検索→
-    追加まで完結できるようにした。仕掛一覧が使うのと同じ
-    GET /api/table?db=SIKALOTNOW(§9.5既存の一覧取得API)をそのまま使い、
-    検索ロジックを再実装しない(CLAUDE.mdの「関数の定義は1箇所」)。
-    S.db/S.tableは仕掛一覧側の表示状態そのものなので、ここで書き換えると
-    一覧画面へ戻ったときの表示が壊れる。SIKALOTNOWのテーブル名だけを
-    このモジュール内に個別キャッシュして使う。 */
- let sikalotnowTable=null;
- let lotSearchTimer=null;
- async function resolveSikalotnowTable(){
-  if(sikalotnowTable)return sikalotnowTable;
-  try{
-   const r=await api('/api/tables?db=SIKALOTNOW');
-   sikalotnowTable=(r.tables&&r.tables[0])||null;
-  }catch(e){sikalotnowTable=null}
-  return sikalotnowTable;
- }
- async function searchWorkList(query){
-  const table=await resolveSikalotnowTable();
-  if(!table)return [];
-  const q=new URLSearchParams({db:'SIKALOTNOW',table,page:1,page_size:8,search:query});
-  const r=await api('/api/table?'+q);
-  return r.rows||[];
- }
- function renderLotSearchResults(rows,query){
-  const box=$('#scLotSearchResults');if(!box)return;
-  if(!query){box.innerHTML='';return}
-  if(!rows.length){box.innerHTML='<div class="sc-empty-note">該当するロットが見つかりません。</div>';return}
-  box.innerHTML=rows.map((row,i)=>`<div class="sc-lot-result">
-    <div class="sc-lot-result-info"><b>${esc(pick(row,'lotNo')||'-')}</b> ${esc(pick(row,'purposeName')||'')} ${esc(pick(row,'mfgMaterial')||'')}</div>
-    <button type="button" class="sc-lot-result-add" data-idx="${i}">＋追加</button>
-   </div>`).join('');
-  box.querySelectorAll('.sc-lot-result-add').forEach(btn=>{
-   btn.onclick=async()=>{
-    btn.disabled=true;
-    await addRowToSchedule(rows[+btn.dataset.idx],scState.equipment);
-    const input=$('#scLotSearch');if(input)input.value='';
-    renderLotSearchResults([],'');
-   };
-  });
- }
- function wireLotSearch(){
-  const input=$('#scLotSearch');if(!input||input.dataset.wired)return;
-  input.dataset.wired='1';
-  input.oninput=()=>{
-   clearTimeout(lotSearchTimer);
-   const q=input.value.trim();
-   if(!q){renderLotSearchResults([],'');return}
-   lotSearchTimer=setTimeout(async()=>{
-    if(!scState.equipment){renderLotSearchResults([],q);$('#scLotSearchResults').innerHTML='<div class="sc-empty-note">先に設備を選択してください。</div>';return}
-    const rows=await searchWorkList(q).catch(()=>[]);
-    renderLotSearchResults(rows,q);
-   },300);
-  };
  }
 
  function buildScheduleDetail(row){

@@ -1611,6 +1611,62 @@ const canPlan = window.accessMode?.mode === 'schedule';
 > 表示・スウォッチの色分け・混雑順ソート・行クリックでの個別画面への
 > 遷移・48時間表示切替・editモードでの非表示)で検証済み。
 
+### 9.10 分割表示: 仕掛一覧との同時比較・ドラッグ投入
+
+> **実装済み(フェーズ11)**: §9.5フェーズ10の「パネル内検索」は、ロット
+> 番号が分かっている1件を素早く足す用途には向くが、「20ロット以上を
+> 比較しながらまとめて投入する」という実際の運用には合わなかった
+> (ロット番号の暗記が前提になる・比較のための列が検索結果に出ない)。
+> 利用者からの明示的なフィードバックを受け、**仕掛一覧そのものをスケジュール
+> 画面の隣へ出し、ドラッグでそのまま投入できる**分割表示へ作り直した。
+>
+> **情報アーキテクチャ**: 比較用の一覧(検索・並替・絞り込み・分割検出済み)を
+> 新しく作り直さず、`list-view.js`が既に持つ`#grid`(SIKALOTNOWの一覧)を
+> **DOM上そのまま**スケジュールパネルの隣へ移設する(`schedule-view.js`の
+> `ensureSplitWrap`/`teardownSplitWrap`)。要素のid・描画ロジックは変えず、
+> 元の位置にコメントノードの目印(`splitAnchor`)を残して分割解除時に戻す
+> ため、他の画面モード(品質データの元データ表示・実績カレンダー等)の
+> `display:none`切替やid参照に影響しない。「フィルタ→一覧→ドラッグ→
+> タイムライン」が画面の左から右への一方向の流れになるよう`.sc-split-wrap`
+> をCSS Gridで組む(操作順=視線の移動順、情報の探索と結果の確認を空間的に
+> 固定して往復ナビゲーションの文脈切替コストを無くす、認知心理学)。
+>
+> **投入経路を2つ用意**(ドラッグに不慣れな利用者・タッチ操作/支援技術を
+> 使う利用者の両方をカバーする):
+> 1. **ドラッグ&ドロップ**: `canPlan`の行に`draggable`を付け、
+>    チェックボックスで複数選択済みの行をドラッグした場合は選択全体を、
+>    そうでなければその1行だけを運ぶ(`window.__scDragRows`、
+>    `scheduleAddFromRow`等と同じ既存の単純なwindowハンドオフ方式を踏襲)。
+>    スケジュールパネル全体をドロップ受け皿にし(的を小さくしない)、
+>    ドラッグ中は`--teal`の破線枠(`sc-drop-active`)で受入可能を示す。
+> 2. **選択件数バーの直接ボタン**: 複数選択時に出る「◯件選択中」バー
+>    (§9.5)へ「LS4へ追加」ボタンを追加し(`window.scAddSelectedRows`)、
+>    ドラッグと同じ一括追加処理をクリックだけで呼べるようにした。
+>
+> **色彩調和論**: 新しい色相を増やさず、選択行の強調(`is-plan-selected`)・
+> ドロップ受入(`sc-drop-active`)のいずれも既存の`--teal`系統で統一し、
+> 「これから起きること(投入)」の合図に一貫性を持たせた。
+>
+> **表示条件**: scheduleモードで1設備の個別タイムラインを見ている間だけ
+> 分割表示を出す(全体俯瞰ボード・追加できないeditモード/viewモードでは
+> 対象設備が定まらない/操作できないため意味が無い)。ヘッダーの
+> 「◫ 仕掛一覧」トグル(`#scSplitToggle`)で利用者が任意に畳める
+> (`splitListVisible`)。1280px未満では横並びを諦め、フィルタ→一覧→
+> パネルの縦積みへ切り替える(`@media(max-width:1280px)`)。
+>
+> 旧来の「仕掛から追加」検索欄・パネル内一覧選択ブロック(§9.5フェーズ9/10、
+> `renderAddFromListPanel`/`wireLotSearch`等)はこの分割表示に置き換わる
+> ため削除した(2つの並行導線が併存すると、どちらが「今のロット一覧」を
+> 反映しているか利用者が迷う。CLAUDE.mdの「関数の定義は1箇所」と同じ考え方を
+> UI導線にも適用した)。単発ロットの1件追加(`plan-action-button`「+予定」)は
+> 引き続き一覧の各行に残る。
+>
+> Playwrightで分割表示の自動起動・チェックボックス複数選択+バー直接追加・
+> 単一/複数選択ドラッグ&ドロップ(複数選択中の行をドラッグすると選択全体が
+> 運ばれることを含む)・トグルでの表示/非表示・全体ボードやスケジュール
+> 画面を閉じた際の分割解除(`#grid`が二重化・迷子にならないこと)・解除後の
+> 通常の仕掛/品質データ閲覧への復帰・再度開いた際の再現性を確認済み。
+
 ---
 
 ## 10. 既存コードへの変更点一覧
@@ -1624,7 +1680,7 @@ const canPlan = window.accessMode?.mode === 'schedule';
 | `backend/load_factor.py` | **実装済み**。学習データ抽出・外れ値除去(中央値/MAD)・3反復の座標降下推定(収縮・クリップ)・数値因子の四分位ビン化・TTL+mtimeキャッシュ(`get_model`)・手動上書きの優先解決・見積の内訳(`estimate_work`)・精度検証の粗い代理指標(`accuracy`、**§9.8の換算係数管理画面からフェーズ8で表示に配線**) |
 | `backend/schedule_calc.py` | **実装済み**。稼働カレンダー展開・アンカー決定・実績突合・並べ替え対象判定(§7.5)。見積分は`resolve_estimate()`が`load_factor.py`(§6)へ委譲する(種別='作業')。**フェーズ8で`equipment_reference_counts()`を追加**(§5.0.1の設備削除確認が使う、共有スケジュールDB側の参照件数集計) |
 | `backend/schedule_sync.py` | **実装済み**。ロック取得/解放・Box上ファイルの取得(backup())・整合性確認・一時名書込+リネーム反映・改訂番号チェック(§4.2〜§4.5)。データの中身を知らない汎用基盤で、業務テーブル実装時は`with_write()`のapply_fnへ差し込むだけで使える。フェーズ4のPlaywright検証中に見つけた不具合を修正: `fetch_snapshot()`の一時ファイル名が固定だったため、GET系(ロック無し)の複数リクエストがほぼ同時に走ると一時ファイルを取り合って読込失敗することがあった。呼び出しごとに一意な一時ファイル名にして解消(最終目的地への反映は`Path.replace()`で元々アトミック) |
-| `static/js/schedule-view.js` | **実装済み**。スケジュール画面・タイムライン・並べ替え(現場段取り簡易表示§9.4.1・ロック表示§9.3を含む)。並べ替えはHTML5 Drag and Drop + Alt+↑/↓(lot-split.jsの単一ジェスチャー演出は未移植)。§6.8の「見積の内訳」(基準時間T0・予測区間・因子別係数/N/source)を各カードの折りたたみパネルとして表示(既定は折りたたみ)。§5.1・§7.3の固定開始日時の設定/解除UI(scheduleモードの未着手カードのみ編集可)、§9.3の非稼働帯の区切り表示(カード間の`plannedEnd`/`plannedStart`の差からフロント側で算出)。**フェーズ9で追加**: §9.9の全設備横断俯瞰ボード(`renderOverviewBoard()`、既定表示・混雑順ソート・行クリックでの個別タイムラインへのドリルダウン)、§9.5の複数選択一括追加(`addRowsToSchedule()`、`renderAddFromListPanel()`がS.selectedRowsを優先) |
+| `static/js/schedule-view.js` | **実装済み**。スケジュール画面・タイムライン・並べ替え(現場段取り簡易表示§9.4.1・ロック表示§9.3を含む)。並べ替えはHTML5 Drag and Drop + Alt+↑/↓(lot-split.jsの単一ジェスチャー演出は未移植)。§6.8の「見積の内訳」(基準時間T0・予測区間・因子別係数/N/source)を各カードの折りたたみパネルとして表示(既定は折りたたみ)。§5.1・§7.3の固定開始日時の設定/解除UI(scheduleモードの未着手カードのみ編集可)、§9.3の非稼働帯の区切り表示(カード間の`plannedEnd`/`plannedStart`の差からフロント側で算出)。**フェーズ9で追加**: §9.9の全設備横断俯瞰ボード(`renderOverviewBoard()`、既定表示・混雑順ソート・行クリックでの個別タイムラインへのドリルダウン)、§9.5の複数選択一括追加(`addRowsToSchedule()`)。**フェーズ11で追加**: §9.10の分割表示(`ensureSplitWrap`/`teardownSplitWrap`が`#grid`をDOM上で分割レイアウトへ移設・復元、`wireDropTarget`がスケジュールパネル全体をドロップ受け皿にする)。旧`renderAddFromListPanel`/ロット検索(`wireLotSearch`等)は分割表示に置き換えたため削除 |
 | `docs/SCHEDULE_MODE_DESIGN.md` | 本書 |
 
 ### 10.2 既存ファイルの変更
@@ -1638,7 +1694,7 @@ const canPlan = window.accessMode?.mode === 'schedule';
 | `backend/config.py` | **実装済み**。`SCHEDULE_LOCK_TTL_SEC_DEFAULT` / `SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT` に加え、`LOAD_FACTOR_CACHE_TTL_SEC=600` / `MIN_SAMPLES=20` を追加 |
 | `app.py` | **実装済み**。`schedule` Blueprint 登録のみ。§4.2のサイクルは呼び出しごとに動く同期処理のため、`records_export.py`のような常駐の背景スレッド起動は不要 |
 | `static/js/access-mode.js` | **実装済み**。3モード対応。**`openMeasurement`/`resumeRecordFromList` ガードの条件を `!== 'edit'` へ反転**。モードピッカーポップオーバー。`canFieldReorder` バッジ(§3.5、ヘッダーの`accessModeBadge`隣に配置) |
-| `static/js/list-view.js` | **実装済み**。仕掛一覧に「予定」列(schedule時のみ)。**フェーズ9で追加**: §9.5の複数選択(チェックボックス列+ヘッダー全選択+選択件数バー、`S.selectedRows`) |
+| `static/js/list-view.js` | **実装済み**。仕掛一覧に「予定」列(schedule時のみ)。**フェーズ9で追加**: §9.5の複数選択(チェックボックス列+ヘッダー全選択+選択件数バー、`S.selectedRows`)。**フェーズ11で追加**: §9.10の行ドラッグ(`draggable`+`window.__scDragRows`)・選択件数バーの直接追加ボタン(`window.scAddSelectedRows`/`window.scCurrentDropTarget`) |
 | `static/js/base.js` | `closeAllMainViews(except)` への一本化リファクタは未実装。schedule-view.jsは既存4ビューと同じ「個別に他ビューを閉じる」方式のまま追加した(§9.2)。**フェーズ9で`S`の初期値へ`selectedRows:new Set()`を追加**(§9.5) |
 | `static/js/measurement-worklog.js` | **実装済み**。設備停止マスタ部分(フェーズ6): `MASTER_DEFS`へ`stopReason`タブを追加(設備名は`equipment-select`という新規フィールド型で設備マスタから選択)。scheduleモードでは書込めないタブ(`masters`Blueprint配下)をナビから隠す`maintDefVisible`/`renderMaintNav`を追加し、`#openMasterMaint`のCSS無効化を`view-mode`のみに縮小(旧`schedule-mode`無効化のままだと設備停止マスタに永久に手が届かない矛盾があったため)。**フェーズ8で追加**: `MASTER_DEFS`へ`loadFactor`タブ(`special:'load-factor'`、§9.8の換算係数管理画面)、`deleteMaint()`が設備タブのみ`deleteEquipmentWithReferenceCheck()`へ分岐し409(§5.0.1)を確認モーダル+`force`再送で処理 |
 | `static/js/measurement-view.js` | **実装済み(フェーズ7)**。`refreshScheduleInfo()`(非同期、`records-store.js`の`openMeasurement()`の`finally`から発火)・`renderScheduleInfo()`(同期、`renderMeasurement()`の描画チェーンから毎回呼ぶ)で基本情報タブへ予定表示(読み取り専用)を追加 |
