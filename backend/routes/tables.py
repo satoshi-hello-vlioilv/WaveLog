@@ -69,7 +69,7 @@ def _quality_key_table(c,def_cfg):
  if not names:return None,None,None
  ordered=([def_cfg['preferred']] if def_cfg.get('preferred') in names else [])+[n for n in names if n!=def_cfg.get('preferred')]
  for t in ordered:
-  try:cs=cols(c,t)
+  try:cs=cols(c,t,source=def_cfg['path'])
   except Exception:continue
   k=[_find_column(cs,_JOIN_KEY_ALIASES[x]) for x in ('lotNo','castingNo','mfgMaterial')]
   if all(k):return t,cs,k
@@ -190,7 +190,7 @@ def api_table():
      params.append(_numeric_value(value) if cf['engine']=='sqlite' else value)
    return parts,params
   with connect(cf['path'],cf['role']=='readonly') as c:
-   cs=cols(c,t);where_parts=[];params=[]
+   cs=cols(c,t,source=cf['path']);where_parts=[];params=[]
    if q:
     where_parts.append('('+' OR '.join(f'CStr({qi(x)}) LIKE ?' for x in cs)+')');params += [f'%{q}%']*len(cs)
    filters=safe_filters(filter_payload,cs);fp,filter_params=build_filter_where(filters);where_parts += fp;params += filter_params

@@ -32,7 +32,7 @@ def measurement_context():
    with connect(DBS['SIKALOTDEF']['path'],True) as c:
     ts=tables(c);t=matching_table(ts,['仕掛','品質情報','品質','保留'])
     if t:
-     cs=cols(c,t);lot_col=matching_col(cs,['ロット番号','ﾛｯﾄ番号','ロット№','LTNO'])
+     cs=cols(c,t,source=DBS['SIKALOTDEF']['path']);lot_col=matching_col(cs,['ロット番号','ﾛｯﾄ番号','ロット№','LTNO'])
      if lot_col:
       # SELECT TOP N はAccess専用構文でSQLiteでは構文エラーになる(engine='sqlite'は
       # sikalot_source=localやsikalotdef_pathで品質データをSQLiteへ切り替えた場合に
@@ -72,7 +72,7 @@ def measurement_context():
     def read_values(table_aliases,col_aliases,extra=None):
      table=matching_table(ts,table_aliases)
      if not table:return []
-     cs=cols(c,table);column=matching_col(cs,col_aliases)
+     cs=cols(c,table,source=master);column=matching_col(cs,col_aliases)
      result['diagnostics']['matches']['/'.join(table_aliases)]={'table':table,'column':column,'columns':cs}
      if not column:return []
      sql=f'SELECT DISTINCT {qi(column)} FROM {qi(table)}';params=[];where=[]

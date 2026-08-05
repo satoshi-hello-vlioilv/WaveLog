@@ -78,7 +78,7 @@ def quality_analysis():
    if table not in available:
     table=cf['preferred'] if cf['preferred'] in available else (available[0] if available else '')
    if not table:return jsonify(error='品質データのテーブルがありません。'),404
-   cs=cols(c,table)
+   cs=cols(c,table,source=cf['path'])
    if group_col not in cs:group_col=first_existing(cs,['発生設備','異常内容','登録日時']) or (cs[0] if cs else '')
    if value_col not in cs:value_col=first_existing(cs,['廃棄重量','廃却重量','ｽｸﾗｯﾌﾟ重量','スクラップ重量']) or ''
    if stack_col not in cs:stack_col=''

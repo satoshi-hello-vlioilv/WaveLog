@@ -93,18 +93,11 @@ def connect(path,readonly=False,engine=None):
    c=sqlite3.connect(str(path),timeout=10,detect_types=sqlite3.PARSE_DECLTYPES)
   c.create_function('Now',0,_sqlite_now);c.create_function('Nz',2,_sqlite_nz)
   c.create_function('CStr',1,_sqlite_cstr);c.create_function('Val',1,_sqlite_val)
-  _tag_source(c,path)
   return c
  if not path.exists(): raise FileNotFoundError(f"データベースが見つかりません: {path}")
  c=pyodbc.connect(f"DRIVER={{{DRIVER}}};DBQ={path};"+("READONLY=1;" if readonly else ""),autocommit=False,timeout=10)
- _tag_source(c,path)
  return c
 
-def _tag_source(c,path):
- # cols()のキャッシュ(下記)が「どの接続先か」を接続オブジェクトから引ける
- # ようにするための目印。付けられない実装でも動くよう失敗は握りつぶす。
- try:c._wavelog_source=str(path)
- except Exception:pass
 # 列名の取得は「1行だけSELECTして description を見る」実装のため、共有越しの
 # Access(SIKALOTNOW/SIKALOTDEF)では1往復まるごとかかる。列構成は運用中に
 # 変わらないので短時間キャッシュする(docs/ARCHITECTURE.md「共有ファイルを
@@ -116,18 +109,28 @@ _cols_cache_lock=threading.Lock()
 def invalidate_cols_cache():
  with _cols_cache_lock:_cols_cache.clear()
 
-def cols(c,t,use_cache=True):
- key=None
- if use_cache:
-  # 同じ接続先の同じテーブルであれば結果は同じ。接続オブジェクトではなく
-  # 接続先(DBのパス/DSN)で引く。
-  try:key=(str(getattr(c,'_wavelog_source','') or id(type(c))),str(t))
-  except Exception:key=None
-  if key:
-   now=time.time()
-   with _cols_cache_lock:
-    hit=_cols_cache.get(key)
-   if hit and (now-hit[0])<COLS_CACHE_TTL_SEC:return list(hit[1])
+def cols(c,t,use_cache=True,source=None):
+ """テーブルtの列名を、SELECT * と同じ並びで返す。
+
+ **sourceを渡したときだけキャッシュする**。sourceは接続先を一意に表す値
+ (DBファイルのパス)。呼び出し側が接続先を知っているときだけ渡すこと。
+
+ 以前は接続オブジェクトへ目印(_wavelog_source)を付けて接続先を引く実装
+ だったが、sqlite3.Connection・pyodbc.Connectionはどちらも属性を追加でき
+ ないC実装のため**目印付けは常に失敗**し、キャッシュキーが
+ `id(type(c))`(=同じエンジンなら全DB共通の定数)へ落ちていた。結果、
+ 「同じ名前のテーブルを持つ別のDB」を続けて開くと、先に開いた方の列名が
+ 返り、`dict(zip(cols,row))`で**値が別の列名へ紐づく**(品質データの一覧で
+ ロット№欄に日時が出る等)。列数が違えばzipで末尾が黙って捨てられもする。
+ 接続オブジェクトから接続先を推測するのは諦め、呼び出し側から明示的に
+ 受け取る。sourceが無ければキャッシュしない(速度より正しさを優先する)。
+ """
+ key=(str(source),str(t)) if (use_cache and source) else None
+ if key:
+  now=time.time()
+  with _cols_cache_lock:
+   hit=_cols_cache.get(key)
+  if hit and (now-hit[0])<COLS_CACHE_TTL_SEC:return list(hit[1])
  cur=c.cursor()
  if isinstance(c,sqlite3.Connection):cur.execute(f"SELECT * FROM {qi(t)} LIMIT 1")
  else:cur.execute(f"SELECT TOP 1 * FROM {qi(t)}")
