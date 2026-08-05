@@ -146,22 +146,22 @@
 
  /* ---------- マスタ管理モーダル（刷新版: 大画面・高密度・検索・IDリネーム更新） ---------- */
  const MASTER_DEFS=[
-  {key:'operator',label:'オペレータ',icon:'人',endpoint:'/api/operator-master',hasDelete:true,
+  {group:'equip',key:'operator',label:'オペレータ',icon:'人',endpoint:'/api/operator-master',hasDelete:true,
    fields:[{k:'name',label:'氏名',required:true,key:true},{k:'yomi',label:'ヨミガナ'},{k:'equipment',label:'作業可能設備',type:'equipment-multi'}],
    cols:[{k:'name',label:'氏名',grow:2},{k:'yomi',label:'ヨミガナ',grow:1},{k:'equipmentText',label:'作業可能設備',grow:3}]},
-  {key:'device',label:'機器',icon:'器',endpoint:'/api/device-master',hasDelete:true,
+  {group:'equip',key:'device',label:'機器',icon:'器',endpoint:'/api/device-master',hasDelete:true,
    fields:[{k:'kind',label:'測定区分',type:'select',options:['板厚','板幅','その他',''],key:true},{k:'name',label:'機器名',required:true,key:true},{k:'note',label:'備考'}],
    cols:[{k:'kind',label:'測定区分',grow:1},{k:'name',label:'機器名',grow:2},{k:'note',label:'備考',grow:3}]},
-  {key:'spool',label:'スプール種別',icon:'巻',endpoint:'/api/spool-master',hasDelete:true,
+  {group:'equip',key:'spool',label:'スプール種別',icon:'巻',endpoint:'/api/spool-master',hasDelete:true,
    fields:[{k:'name',label:'種別名',required:true,key:true},{k:'note',label:'備考'}],
    cols:[{k:'name',label:'種別名',grow:2},{k:'note',label:'備考',grow:3}]},
-  {key:'inner',label:'内径種別',icon:'径',endpoint:'/api/inner-master',hasDelete:true,
+  {group:'equip',key:'inner',label:'内径種別',icon:'径',endpoint:'/api/inner-master',hasDelete:true,
    fields:[{k:'name',label:'内径種別',required:true,key:true},{k:'note',label:'備考'}],
    cols:[{k:'name',label:'内径種別',grow:2},{k:'note',label:'備考',grow:3}]},
-  {key:'equipment',label:'設備',icon:'設',endpoint:'/api/equipment-master',hasDelete:true,
+  {group:'equip',key:'equipment',label:'設備',icon:'設',endpoint:'/api/equipment-master',hasDelete:true,
    fields:[{k:'name',label:'設備名',required:true,key:true}],
    cols:[{k:'name',label:'設備名',grow:2}]},
-  {key:'accessPermission',label:'アクセス権限',icon:'権',endpoint:'/api/access-permission-master',hasDelete:true,
+  {group:'system',key:'accessPermission',label:'アクセス権限',icon:'権',endpoint:'/api/access-permission-master',hasDelete:true,
    fields:[{k:'loginId',label:'ログインID',key:true},{k:'pcName',label:'PC名',key:true},
            {k:'canEdit',label:'編集可否',type:'select',options:['編集可','閲覧のみ']},
            {k:'canSchedule',label:'スケジュール可否',type:'select',options:['不可','可']},
@@ -169,27 +169,27 @@
            {k:'fieldReorderEquipment',label:'現場段取り対象設備',type:'equipment-select'}],
    cols:[{k:'loginId',label:'ログインID',grow:2},{k:'pcName',label:'PC名',grow:2},{k:'canEdit',label:'編集可否',grow:1},{k:'canSchedule',label:'スケジュール',grow:1},{k:'canFieldReorder',label:'現場段取り',grow:1},{k:'fieldReorderEquipment',label:'対象設備',grow:1}],
    hint:'ログインID・PC名はどちらか一方だけの登録もできます(汎用的な運用のため)。片方だけ登録した場合、もう一方は「問わない」という意味になります(例: ログインIDだけ登録すると、そのユーザーはどの端末からでもこの権限になります)。両方登録した組み合わせが最優先で一致し、次に片方だけの登録、両方空欄の登録(全端末共通の既定)の順に判定します。登録の無い組み合わせは既定で編集可能・スケジュール不可・現場段取り不可として扱われます。特定の端末を閲覧専用にしたい場合はその端末を「閲覧のみ」で、作業スケジュールを操作させたい場合は「スケジュール可否」を「可」で登録してください。「現場段取り可否」は編集モードの端末に限り、対象設備の並べ替えだけを追加で許可します。'},
-  {key:'loadFactor',label:'換算係数',icon:'率',special:'load-factor',endpoint:'/api/schedule/load-factors'},
-  {key:'stopReason',label:'設備停止',icon:'停',endpoint:'/api/schedule/stop-reason-master',hasDelete:true,
+  {group:'schedule',key:'loadFactor',label:'換算係数',icon:'率',special:'load-factor',endpoint:'/api/schedule/load-factors'},
+  {group:'schedule',key:'stopReason',label:'設備停止',icon:'停',endpoint:'/api/schedule/stop-reason-master',hasDelete:true,
    fields:[{k:'equipment',label:'設備名',type:'equipment-select',required:true,key:true},
            {k:'category',label:'分類',type:'select',options:['保全','段取り','待ち','突発','']},
            {k:'name',label:'名称',required:true,key:true},{k:'standardMinutes',label:'標準所要分',required:true}],
    cols:[{k:'equipment',label:'設備名',grow:1},{k:'category',label:'分類',grow:1},{k:'name',label:'名称',grow:2},{k:'standardMinutes',label:'標準所要分',grow:1}],
    hint:'作業スケジュール(docs/SCHEDULE_MODE_DESIGN.md §5.3)の設備停止予定で選べる名称と、その設備での標準所要分(分)です。同じ名称でも設備が異なれば別行として個別の時間を登録できます。「突発停止」は現場からの連絡を受けた計画担当が投入する運用のため、名称に登録しておくだけで自動では動きません。'},
-  {key:'shiftMaster',label:'勤務形態',icon:'勤',endpoint:'/api/schedule/shift-master',hasDelete:true,
+  {group:'schedule',key:'shiftMaster',label:'勤務形態',icon:'勤',endpoint:'/api/schedule/shift-master',hasDelete:true,
    fields:[{k:'equipment',label:'設備名(空欄=全設備既定)',type:'equipment-select',key:true},
            {k:'name',label:'名称',required:true,key:true},
            {k:'start',label:'開始時刻(HH:MM)',required:true},
            {k:'end',label:'終了時刻(HH:MM)',required:true}],
    cols:[{k:'equipment',label:'設備名',grow:1},{k:'name',label:'名称',grow:1},{k:'start',label:'開始',grow:1},{k:'end',label:'終了',grow:1}],
    hint:'作業スケジュール(docs/SCHEDULE_MODE_DESIGN.md §5.5)のタイムラインに出す「勤務」列の元データです。予定の時刻(時分)がこの範囲に入る行の名称を表示します。終了時刻を開始時刻以下にすると日をまたぐ勤務として扱います(例: 23:00〜07:00)。設備名を空欄にすると全設備の既定になり、特定の設備の設定があればそちらを優先します。設定例: 日勤=8:15〜17:05／1直=7:00〜15:00／2直=15:00〜23:00／3直=23:00〜07:00／4直=11:00〜19:10／5直=21:20〜05:45。'},
-  {key:'columnDisplay',label:'列表示',icon:'列',special:'column-display'},
-  {key:'importBackup',label:'データ引継ぎ',icon:'継',special:'import-backup'},
-  {key:'pathConfig',label:'パス設定',icon:'路',special:'path-config',endpoint:'/api/path-config-master'},
+  {group:'system',key:'columnDisplay',label:'列表示',icon:'列',special:'column-display'},
+  {group:'system',key:'importBackup',label:'データ引継ぎ',icon:'継',special:'import-backup'},
+  {group:'system',key:'pathConfig',label:'パス設定',icon:'路',special:'path-config',endpoint:'/api/path-config-master'},
   // 旧「マスタ一覧」(サイドバーのMASTERナビ→汎用グリッド)をここへ統合した
   // (ARCHITECTURE.md「マスタ管理の画面形態」)。上のタブが扱わないテーブル(表示マスタ・スケジュール列表示マスタ
   // 等)も含め、master.sqlite3の中身をそのまま確認するための読み取り専用タブ。
-  {key:'rawTable',label:'テーブル生データ',icon:'表',special:'raw-table',readOnly:true},
+  {group:'system',key:'rawTable',label:'テーブル生データ',icon:'表',special:'raw-table',readOnly:true},
  ];
  let maintState={defKey:'operator',items:[],editing:null,query:''};
  function currentDef(){return MASTER_DEFS.find(d=>d.key===maintState.defKey)||MASTER_DEFS[0]}
@@ -206,9 +206,26 @@
   return !!(def.endpoint&&def.endpoint.indexOf('/api/schedule/')===0);
  }
  function firstVisibleDefKey(){const d=MASTER_DEFS.find(maintDefVisible);return d?d.key:MASTER_DEFS[0].key}
+ /* マスタ種別のグループ(情報アーキテクチャ): 13種を平坦に並べると
+    「どれが何の設定か」を毎回読んで探すことになるため、利用者の頭の中の
+    分類(誰が・何を使うか / 作業スケジュールの設定 / システム寄りの設定)で
+    3つに束ねる。1グループ5件前後=一度に見渡せる粒度(Miller)。 */
+ const MASTER_GROUPS=[
+  {key:'equip',label:'設備・人',hint:'測定の現場で使う基本マスタ'},
+  {key:'schedule',label:'作業スケジュール',hint:'計画の時間計算に使う設定'},
+  {key:'system',label:'表示・システム',hint:'画面表示と端末・データの設定'},
+ ];
  function renderMaintNav(){
   const nav=$('#masterMaintNav');if(!nav)return;
-  nav.innerHTML=MASTER_DEFS.filter(maintDefVisible).map(d=>`<button type="button" data-master="${d.key}"><span class="mm-nav-ico" aria-hidden="true">${esc(d.icon)}</span><span class="mm-nav-label">${esc(d.label)}</span></button>`).join('');
+  const visible=MASTER_DEFS.filter(maintDefVisible);
+  const html=MASTER_GROUPS.map(g=>{
+   const defs=visible.filter(d=>(d.group||'system')===g.key);
+   if(!defs.length)return '';
+   return `<div class="mm-nav-group"><div class="mm-nav-group-label" title="${esc(g.hint)}">${esc(g.label)}</div>`+
+    defs.map(d=>`<button type="button" data-master="${d.key}"><span class="mm-nav-ico" aria-hidden="true">${esc(d.icon)}</span><span class="mm-nav-label">${esc(d.label)}</span></button>`).join('')+
+    '</div>';
+  }).join('');
+  nav.innerHTML=html;
   nav.querySelectorAll('[data-master]').forEach(b=>b.onclick=()=>{maintState.defKey=b.dataset.master;maintState.editing=null;maintState.query='';const se=$('#masterMaintSearch');if(se)se.value='';syncNav();loadMaint(true)});
   syncNav();
  }
@@ -568,7 +585,17 @@
  }
 
  function fmtDT(v){if(!v)return '-';const d=new Date(v);return Number.isNaN(d.getTime())?'-':d.toLocaleString('ja-JP',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}
- function maintGridTemplate(def){const data=def.cols.map(c=>`minmax(120px,${c.grow||1}fr)`).join(' ');return `${data} 120px 150px 132px`}
+ /* 横スクロールを出さないための列幅設計。
+    - データ列は minmax(0,fr) で「入るだけ縮む」ようにする(以前は最小120pxが
+      効いて、6列のアクセス権限マスタでは常に1100px超を要求し横スクロールが出た)。
+    - 更新者・更新日時は監査用の副次情報。列数の多いマスタでは列として持たず、
+      行のツールチップ(title)へ退避して主情報の幅を確保する。 */
+ const MAINT_AUDIT_MAX_COLS=3;
+ function maintShowsAudit(def){return (def.cols||[]).length<=MAINT_AUDIT_MAX_COLS}
+ function maintGridTemplate(def){
+  const data=def.cols.map(c=>`minmax(0,${c.grow||1}fr)`).join(' ');
+  return maintShowsAudit(def)?`${data} 96px 128px 108px`:`${data} 108px`;
+ }
  function filteredMaintItems(def){
   const q=String(maintState.query||'').trim().normalize('NFKC').toLowerCase();
   let items=maintState.items||[];
@@ -579,14 +606,18 @@
   const def=currentDef(),list=$('#masterMaintList');if(!list)return;
   const all=maintState.items||[],items=filteredMaintItems(def),tmpl=maintGridTemplate(def);
   const cnt=$('#masterMaintCount');if(cnt)cnt.textContent=maintState.query?`${items.length} / 有効 ${all.length}件`:`有効 ${all.length}件`;
+  const showAudit=maintShowsAudit(def);
   const headCols=def.cols.map(c=>`<span>${esc(c.label)}</span>`).join('');
-  list.innerHTML=`<div class="mm-row head" style="grid-template-columns:${tmpl}">${headCols}<span>更新者</span><span>更新日時</span><span class="mm-act">操作</span></div>`;
+  list.innerHTML=`<div class="mm-row head" style="grid-template-columns:${tmpl}">${headCols}${showAudit?'<span>更新者</span><span>更新日時</span>':''}<span class="mm-act">操作</span></div>`;
   if(!items.length){list.insertAdjacentHTML('beforeend',`<div class="mm-empty">${all.length&&maintState.query?'絞り込み条件に一致するデータがありません。':'有効なデータがありません。上のフォームから追加してください。'}</div>`);return}
   const frag=document.createDocumentFragment();
   items.forEach(it=>{
-   const row=document.createElement('div');row.className='mm-row'+(maintState.editing&&maintState.editing.id===it.id?' editing':'');row.style.gridTemplateColumns=tmpl;row.tabIndex=0;row.setAttribute('role','button');row.title='クリックで編集フォームに読み込みます';
+   const row=document.createElement('div');row.className='mm-row'+(maintState.editing&&maintState.editing.id===it.id?' editing':'');row.style.gridTemplateColumns=tmpl;row.tabIndex=0;row.setAttribute('role','button');
+   // 列として出さない監査情報(更新者・更新日時)は行のツールチップで補う。
+   const audit=`更新者: ${it.updated_by||'-'} / 更新日時: ${fmtDT(it.updated_at)}`;
+   row.title=showAudit?'クリックで編集フォームに読み込みます':`クリックで編集\n${audit}`;
    const cells=def.cols.map(c=>`<span title="${esc(it[c.k]??'')}">${esc(it[c.k]??'')||'<em class="mm-blank">—</em>'}</span>`).join('');
-   row.innerHTML=`${cells}<span class="mm-user" title="${esc(it.updated_by||'')}">${esc(it.updated_by||'-')}</span><span class="mm-date">${esc(fmtDT(it.updated_at))}</span><span class="mm-act"><button type="button" class="mm-edit">編集</button>${def.hasDelete?'<button type="button" class="mm-del">削除</button>':''}</span>`;
+   row.innerHTML=`${cells}${showAudit?`<span class="mm-user" title="${esc(it.updated_by||'')}">${esc(it.updated_by||'-')}</span><span class="mm-date">${esc(fmtDT(it.updated_at))}</span>`:''}<span class="mm-act"><button type="button" class="mm-edit">編集</button>${def.hasDelete?'<button type="button" class="mm-del">削除</button>':''}</span>`;
    // 入力項目が多いマスタは編集専用モーダル、少ないマスタは従来どおり
    // 上部のインラインフォームへ読み込む(ARCHITECTURE.md「マスタ管理の画面形態」、defUsesEditorModal)。
    const edit=()=>{

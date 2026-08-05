@@ -1566,9 +1566,13 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .mm-head-user input{height:var(--ctl-h);min-width:180px;padding:6px 10px;border:1px solid #7fc0c8;border-radius:8px;background:#fff;color:#12333a;font-weight:700}
 .mm-close{width:36px;height:36px;border:0;border-radius:8px;background:#ffffff22;color:#fff;font-size:22px;line-height:1;cursor:pointer}
 .mm-close:hover{background:#ffffff33}
-.mm-body{flex:1;min-height:0;display:grid;grid-template-columns:210px minmax(0,1fr)}
-.mm-nav{display:flex;flex-direction:column;gap:6px;padding:14px 12px;background:#e7eff1;border-right:1px solid var(--line);overflow:auto}
-.mm-nav button{display:flex;align-items:center;gap:10px;padding:11px 12px;border:1px solid transparent;border-radius:10px;background:#fff;color:#23454d;font-weight:700;cursor:pointer;transition:.12s;text-align:left}
+.mm-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(150px,calc(200px * var(--ui-scale))) minmax(0,1fr)}
+.mm-nav{display:flex;flex-direction:column;gap:2px;padding:12px 10px;background:#e7eff1;border-right:1px solid var(--line);overflow:auto}
+/* マスタ種別のグループ見出し(情報アーキテクチャ)。左ナビのnav-group-labelと
+   同じ言語で、色相はteal系のまま彩度だけ落として階層を示す。 */
+.mm-nav-group{display:flex;flex-direction:column;gap:3px;margin-bottom:10px}
+.mm-nav-group-label{padding:0 6px 2px;font-size:var(--fs-badge);font-weight:800;letter-spacing:.06em;color:#6f8f96}
+.mm-nav button{display:flex;align-items:center;gap:9px;min-height:var(--ctl-h);padding:0 10px;border:1px solid transparent;border-radius:9px;background:#fff;color:#23454d;font-weight:700;cursor:pointer;transition:.12s;text-align:left}
 .mm-nav button:hover{border-color:#9fc3c8;background:#f3fbfc}
 .mm-nav button.active{background:var(--teal);color:#fff;border-color:var(--teal);box-shadow:0 4px 12px #087c8940}
 .mm-nav-ico{display:grid;place-items:center;width:26px;height:26px;border-radius:8px;background:#dceff1;color:#0a6570;font-weight:900;font-size:var(--fs-base-sm);flex:0 0 auto}
@@ -1696,17 +1700,19 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .mm-imp-badge.new{background:var(--success-bg);color:var(--success)}
 .mm-imp-badge.overwrite{background:#fff2d9;color:#8a5a00}
 .mm-imp-badge.unsupported{background:#f0f0f0;color:#888}
-.mm-list-wrap{flex:1;min-height:0;overflow:auto;padding:0 18px 18px}
+/* 横スクロールは出さない(列はminmax(0,fr)で縮み、あふれる文字は省略記号)。
+   生データタブだけは列数が読めないため、内側の.mm-raw-scrollが横スクロールを持つ。 */
+.mm-list-wrap{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:0 18px 18px}
 .mm-list{display:flex;flex-direction:column}
-.mm-row{display:grid;align-items:center;gap:var(--space-3);padding:0 12px;min-height:44px;border-bottom:1px solid #e5edef}
+.mm-row{display:grid;align-items:center;gap:var(--space-2);padding:0 10px;min-height:calc(var(--ctl-h) + 8px);border-bottom:1px solid #e5edef}
 .mm-row.head{position:sticky;top:0;z-index:2;min-height:42px;background:#eef4f5;border-bottom:2px solid #cfdde0;color:#37535b;font-weight:800}
 .mm-row:not(.head){background:#fff;cursor:pointer;transition:background .1s}
 .mm-row:not(.head):nth-child(even){background:#f8fbfb}
 .mm-row:not(.head):hover{background:#eafafa}
 .mm-row:not(.head):focus-visible{outline:0;box-shadow:inset 0 0 0 2px var(--teal)}
 .mm-row.editing{box-shadow:inset 4px 0 0 var(--teal);background:#eafafa}
-.mm-row>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
-.mm-row.head>span{font-size:12px}
+.mm-row>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-base-sm)}
+.mm-row.head>span{font-size:var(--fs-sm)}
 .mm-user{color:#175c49;font-weight:700}
 .mm-date{color:#5b737a;font-variant-numeric:tabular-nums}
 .mm-blank{color:#aab6b9;font-style:normal}

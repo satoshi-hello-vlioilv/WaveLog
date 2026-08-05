@@ -10,10 +10,20 @@ with_write(login_id,pc_name,uid,apply_fn)のapply_fn内から
 ため、ここでの各関数はcommitしない。ensure_*_tableの新規作成コミットのみ
 例外的に行う。既存のmaster_repo.pyの各ensure_*_tableと同じ扱い)。
 
-4テーブル: 作業予定・稼働カレンダーマスタ・設備停止マスタ・換算係数上書き
-マスタ(DBテーブル名は既存互換のため`負荷率上書きマスタ`のまま)。
+5テーブル: 作業予定・稼働カレンダーマスタ・設備停止マスタ・換算係数上書き
+マスタ(DBテーブル名は既存互換のため`負荷率上書きマスタ`のまま)・勤務形態マスタ。
 時刻展開(稼働カレンダーからのETA計算・実績突合)はschedule_calc.py
 (フェーズ3)が持ち、ここでは生データのCRUDのみを提供する。
+
+**保存先の使い分け(重要)**: 共有のschedule.sqlite3に置くのは`作業予定`だけ。
+設定系の4マスタ(稼働カレンダー・設備停止・換算係数上書き・勤務形態)は
+ローカルのmaster.sqlite3(他のマスタと同じ場所)に置く。作業予定は複数端末が
+同時に触る運用データなので共有DBとロックが要るが、設定系マスタはそうではなく、
+共有DBに置くと(1)ネットワーク共有が不調だとマスタ管理画面すら開けない
+(2)1件の設定変更にも共有DBのロック→取得→適用→反映サイクルが必要で遅い、
+という不利益しかなかった。CRUD関数はどれも接続`c`を引数に取るだけなので、
+呼び出し側が渡す接続を変えるだけで移せる(関数のシグネチャは変更していない)。
+既存データはdb_access側の初回起動時マイグレーションでmaster.sqlite3へ移す。
 """
 import json as _json
 
@@ -73,8 +83,15 @@ def plan_add(c,equipment,kind,uid,position='end',lot_no='',inspection_no='',cast
  title_snapshot=str(title or '').strip();detail_json='';est=estimate_minutes
  if kind=='設備停止':
   if not stop_reason_id:raise ValueError('設備停止の予定には停止理由(stopReasonId)を指定してください。')
-  cur.execute('SELECT [設備名],[名称],[標準所要分] FROM [設備停止マスタ] WHERE [停止理由ID]=?',[stop_reason_id])
-  row=cur.fetchone()
+  # 設備停止マスタはmaster.sqlite3側にあるため、共有DBの接続cではなく
+  # 設定系マスタ接続から引く(保存先を移したときの取りこぼし注意点)。
+  mc=config_master_conn()
+  try:
+   mcur=mc.cursor()
+   mcur.execute('SELECT [設備名],[名称],[標準所要分] FROM [設備停止マスタ] WHERE [停止理由ID]=?',[stop_reason_id])
+   row=mcur.fetchone()
+  finally:
+   mc.close()
   if not row:raise ValueError('指定の設備停止理由が見つかりません。')
   if normalize_equipment_name(row[0])!=normalize_equipment_name(equipment):
    raise ValueError('指定の停止理由は別の設備に登録されています。')
@@ -408,10 +425,96 @@ def shift_delete(c,shift_id,uid):
  return cur.rowcount
 
 def ensure_schedule_tables(c):
- # 5テーブルをまとめて用意する。with_write()のapply_fn冒頭やGET系ルートの
- # 前処理から呼ぶ想定(各ensure_*_tableは冪等なので複数回呼んでも安全)。
+ # 共有schedule.sqlite3側。作業予定だけを用意する(設定系マスタは
+ # master.sqlite3へ移したため、下のensure_config_master_tablesが受け持つ)。
+ # with_write()のapply_fn冒頭やGET系ルートの前処理から呼ぶ想定
+ # (ensure_*_tableは冪等なので複数回呼んでも安全)。
  ensure_plan_table(c)
- ensure_calendar_table(c)
- ensure_stop_reason_table(c)
- ensure_load_factor_override_table(c)
- ensure_shift_table(c)
+
+def ensure_config_master_tables(mc):
+ # master.sqlite3側。設定系の4マスタをまとめて用意する。
+ ensure_calendar_table(mc)
+ ensure_stop_reason_table(mc)
+ ensure_load_factor_override_table(mc)
+ ensure_shift_table(mc)
+
+CONFIG_MASTER_TABLES=('稼働カレンダーマスタ','設備停止マスタ','負荷率上書きマスタ','勤務形態マスタ')
+
+def config_master_conn():
+ """設定系4マスタの保存先(master.sqlite3)への書込可能な接続。
+ 呼び出し側は `with sr.config_master_conn() as mc:` で使う。
+ 循環importを避けるため関数内でdb_accessを参照する。"""
+ from ..db_access import DBS, connect
+ return connect(DBS['MASTER']['path'],False)
+
+# ------------------------------------------------------------------------
+# 共有schedule.sqlite3 -> master.sqlite3 への一度きりの移行
+# ------------------------------------------------------------------------
+# 設定系4マスタの保存先を変更したため、既存環境に入っているデータを引き継ぐ。
+# 共有ファイルへ到達できない場合は「まだ移行していない」まま何もせず戻り、
+# 次回以降のアクセスで再挑戦する(移行済みの目印は成功時のみ立てる)。
+# パス設定マスタの_migrate_legacy_path_configと同じ、目印付き一度きり方式。
+_CONFIG_MIGRATION_MARKER='__schedule_config_masters_migrated__'
+_config_migration_done=False
+
+def _marker_table_ready(mc):
+ from ..db_access import PATH_CONFIG_TABLE, ensure_path_config_table
+ ensure_path_config_table(mc)
+ return PATH_CONFIG_TABLE
+
+def migrate_config_masters_from_shared():
+ """共有schedule.sqlite3に残っている設定系4マスタをmaster.sqlite3へ複製する。
+ master側に既に行があるテーブルは触らない(二重取り込みを避ける)。"""
+ global _config_migration_done
+ if _config_migration_done:return
+ from ..db_access import connect, path_config_rows, set_path_config
+ from ..logging_setup import app_logger
+ mc=config_master_conn()
+ try:
+  _marker_table_ready(mc)
+  if _CONFIG_MIGRATION_MARKER in path_config_rows(mc):
+   _config_migration_done=True;return
+  ensure_config_master_tables(mc)
+  from .. import schedule_sync
+  try:
+   local_path,_stale=schedule_sync.fetch_snapshot()
+  except Exception:
+   # 共有が未設定・未到達。目印は立てず、次回のアクセスで再挑戦する。
+   return
+  moved={}
+  sc=connect(local_path,False,'sqlite')
+  try:
+   src_tables=set(tables(sc))
+   for name in CONFIG_MASTER_TABLES:
+    if name not in src_tables:continue
+    cur=mc.cursor();cur.execute(f'SELECT COUNT(*) FROM [{name}]')
+    if int(cur.fetchone()[0] or 0)>0:continue  # 既に中身がある(移行済みか手入力済み)
+    scur=sc.cursor();scur.execute(f'SELECT * FROM [{name}]')
+    rows=scur.fetchall()
+    if not rows:continue
+    cols_src=[d[0] for d in scur.description]
+    # 主キー(自動採番)は移さず、master側で振り直す。
+    usable=[c for c in cols_src if c in set(_column_names(mc,name)) and c not in ('カレンダーID','停止理由ID','上書きID','勤務ID')]
+    if not usable:continue
+    idx=[cols_src.index(c) for c in usable]
+    ph=','.join('?' for _ in usable)
+    coldef=','.join(f'[{c}]' for c in usable)
+    mc.cursor().executemany(f'INSERT INTO [{name}] ({coldef}) VALUES ({ph})',[[r[i] for i in idx] for r in rows])
+    moved[name]=len(rows)
+  finally:
+   sc.close()
+  set_path_config(mc,_CONFIG_MIGRATION_MARKER,'done','migrate:schedule.sqlite3')
+  mc.commit()
+  _config_migration_done=True
+  if moved:
+   app_logger().info('設定系マスタを共有schedule.sqlite3からmaster.sqlite3へ移行しました: %s',moved)
+ except Exception as e:
+  from ..logging_setup import app_logger as _lg
+  _lg().warning('設定系マスタの移行に失敗しました(次回再試行します): %s',e)
+ finally:
+  mc.close()
+
+def _column_names(c,table):
+ from ..db_access import cols as _cols
+ try:return _cols(c,table)
+ except Exception:return []
