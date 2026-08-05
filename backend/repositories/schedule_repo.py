@@ -637,9 +637,13 @@ def shift_pattern_delete(c,pattern_id,uid):
  ensure_shift_pattern_tables(c)
  cur=c.cursor()
  cur.execute('UPDATE [勤務体系マスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [勤務体系ID]=?',[uid,pattern_id])
+ # 「何件消せたか」は**この無効化の結果**。あとに続くDELETEでcur.rowcountが
+ # 上書きされるため、ここで確定させておく(呼び出し元は0を「対象が無い」と
+ # 見なすので、割当0件の体系=全設備共通が削除できない不具合になっていた)。
+ deleted=cur.rowcount
  # 無効化した体系の設備割当は残さない(再登録したときに古い割当が復活しないよう)
  cur.execute('DELETE FROM [勤務体系設備マスタ] WHERE [勤務体系ID]=?',[pattern_id])
- return cur.rowcount
+ return deleted
 
 _TIME_RE=None
 def _valid_hm(v):

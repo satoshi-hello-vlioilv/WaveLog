@@ -126,7 +126,13 @@
    else if(hasStart)dur.textContent='作業中';
    else dur.textContent='未計測';
   }
-  if(hint)hint.textContent=invalid?'終了時刻は開始時刻より後にしてください。時刻は直接編集・再調整できます。':'開始・終了の両方を設定すると完了登録できます。時刻は直接編集・再調整できます。';
+  /* 案内文は左ペインの縦を常時2行占めていた(§9.55)。誤りのときだけ理由を
+     しっかり出し、通常時は1行に収める(詳しい説明はtitleへ逃がす)。 */
+  if(hint){
+   hint.textContent=invalid?'終了時刻は開始時刻より後にしてください。':'開始・終了の両方を記録してください（直接編集も可）。';
+   hint.title='未記録のまま完了しようとすると確認が出ます。時刻の欄は直接編集して再調整もできます。';
+   hint.classList.toggle('is-invalid',!!invalid);
+  }
  }
  function afterWorkChange(){refreshWorkTime();markDirty();if(typeof updateValidationVisuals==='function')updateValidationVisuals()}
  function commitField(id){const el=$('#'+id);if(!el||!S.measure)return;const iso=localInputToIso(el.value);el.dataset.iso=iso;const w=wt();if(id==='workStartAt')w.startAt=iso;else w.endAt=iso;afterWorkChange()}

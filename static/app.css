@@ -547,11 +547,32 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 .tabs .active{background:var(--teal);color:#fff;font-weight:700}
 
 .basic-card,.quality-grade-panel,.data-management-panel,.split-pane{padding:var(--space-2);background:#fff;border:1px solid var(--line);border-radius:10px}
-.info-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px 5px}
-.field{min-width:0}
+/* ---------- 基本情報(§9.55) ----------
+   13項目を「主識別 → 識別番号 → 製品 → コース」の4かたまりへ束ね、
+   参照用の項目は**ラベルと値を1行**に収める。以前は全項目がラベル上・値下の
+   同じ見た目(1項目48px)で、短い値(コース・取引先等)まで1行を全幅で使って
+   いたため、左ペインに収まらず常時スクロールが出ていた。
+   - かたまりは見出しと余白で示す(Gestaltの近接。罫線を増やさない)
+   - ラベルは値より弱く、視線が値の列を縦に追える(Fittsではなく走査効率)
+   - 主識別(ロット№)だけ大きく残す。一覧から開いた直後に「今どれを見て
+     いるか」を確かめるのが最初の行動で、そこだけ視覚的な重みが要る */
+.info-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 10px;align-content:start}
+.field{display:grid;grid-template-columns:minmax(58px,auto) minmax(0,1fr);align-items:center;gap:6px;min-width:0}
 .field.full{grid-column:1/-1}
-.field label{display:block;color:#5e7077;font-size:var(--fs-micro)}
-.field output{display:block;min-height:29px;padding:4px 6px;border:1px solid #bcc9cd;background:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.field label{color:#7b8e95;font-size:var(--fs-micro);white-space:nowrap;text-align:right}
+.field output{display:block;min-height:0;padding:3px 6px;border:1px solid #d6e0e3;border-radius:5px;background:#fbfdfd;
+ font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* かたまりの見出し。線ではなく小さな見出し＋上余白で切る。 */
+.info-group{
+ grid-column:1/-1;margin-top:6px;padding-bottom:1px;
+ color:#93a5ab;font-size:var(--fs-tiny);font-weight:800;letter-spacing:.08em;
+ border-bottom:1px solid #eef2f3;
+}
+.info-grid>.info-group:first-child,.info-grid>.field:first-child+.info-group{margin-top:0}
+/* 主識別(ロット№)。値だけ一段大きくして、開いた直後の確認を速くする。 */
+.info-lot{grid-template-columns:minmax(58px,auto) minmax(0,1fr);margin-bottom:2px}
+.info-lot label{font-weight:700;color:#5e7077}
+.info-lot .lot-dsp-link{font-size:var(--fs-base-sm);padding:4px 10px;min-height:0}
 /* ロット問い合わせボタン: グリッド・編集中/完了一覧・測定パネルの3箇所で
    共通のモダンなチップ状デザインに統一する(枠線+淡色背景+丸角、下線なし)。
    ホバーで塗りつぶし、押下でわずかに沈む触感を付ける。 */
@@ -1596,9 +1617,18 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 /* ============================================================
  2026-07-21: 作業時間の再編集UI / マスタ管理モーダル
  ============================================================ */
-.work-time-panel{height:auto;min-height:250px}
-.work-time-item{display:block;padding:var(--space-2);border:1px solid var(--line);border-radius:8px;background:#fff}
-.work-time-item>span{display:block;margin-bottom:5px;color:#526970;font-weight:800}
+/* 作業時間(§9.55)。開始・終了はそれぞれ「見出し → 入力+ボタン」の2段だったが、
+   左ペインの縦を2枠で164px使っており、基本情報を詰めても収まらない原因に
+   なっていた。1枠を**1行**(見出し・入力・ボタンを横並び)にする。
+   見出しと入力が同じ行にあっても、対応関係は近接で読み取れる(左から右への
+   自然な走査で「作業開始時刻 = ○○」と読める)。 */
+.work-time-panel{height:auto;min-height:0}
+.work-time-item{display:grid;grid-template-columns:minmax(0,auto) minmax(0,1fr);align-items:center;gap:8px;
+ padding:6px var(--space-2);border:1px solid var(--line);border-radius:8px;background:#fff}
+/* 見出しは枠(作業時間)が文脈を与えているので「開始/終了」で足りる。
+   短くしたぶんを日時の表示幅へ回す(打刻した時刻が読めることが最優先)。 */
+.work-time-item>span{grid-column:auto;min-width:2.6em;color:#526970;font-weight:800;white-space:nowrap}
+.work-time-row input{min-width:190px}
 .work-time-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;align-items:center}
 .work-time-row input{width:100%;min-width:0;height:36px;background:#fff;font-variant-numeric:tabular-nums}
 .work-time-actions{display:flex;gap:6px}
@@ -1610,7 +1640,12 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 
 /* ---------- 作業時間: 過去実績比較 ---------- */
 .worktime-benchmark{margin-top:10px;padding:10px;background:#eef6f5;border:1px solid #9fc9c2;border-radius:8px}
-.worktime-benchmark .wtb-empty{font-size:12px;color:#526970}
+.worktime-benchmark .wtb-empty{font-size:var(--fs-micro);color:#7b8e95;line-height:1.35}
+/* 比較できるものが無いときは「無い」と言うだけの枠。常時2行を占めていたので、
+   囲みを外して1行の注記へ落とす(§9.55。情報が増えたら通常のカードへ戻る)。 */
+.worktime-benchmark:has(.wtb-empty){padding:2px 0;border:0;background:none;min-height:0}
+#workTimeHint{line-height:1.35}
+#workTimeHint.is-invalid{font-weight:700}
 .wtb-title{font-size:12px;font-weight:800;color:#1f5b52;margin-bottom:7px}
 .wtb-title small{font-weight:600;color:#4c7a72;margin-left:4px}
 .wtb-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(84px,1fr));gap:6px}

@@ -355,7 +355,15 @@ def request_user_id(x):
  for k in ('user_id','userId','updated_by','更新者ID'):
   v=str(x.get(k) or '').strip()
   if v:return v[:50]
- return ''
+ # 指定が無ければ端末のログインIDを使う。画面からの操作は必ず利用者IDを
+ # 送るが、直接APIを叩いた場合に空文字のまま[更新者ID]へ入ると「誰が変えたか」
+ # が残らない。分かる範囲で埋めておく(監査列は空より端末の主が有用)。
+ # access_mode側がdb_accessを読むため、循環importにならないよう遅延取得する。
+ try:
+  from .access_mode import current_login_id
+  return str(current_login_id() or '')[:50]
+ except Exception:
+  return ''
 
 def read_backup_rows(path):
  # [Web測定バックアップ]テーブルを読み取り専用で読む共通処理。
