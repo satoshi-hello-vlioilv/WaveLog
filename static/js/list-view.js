@@ -62,7 +62,12 @@ async function load(){
  const label=databaseLabel(S.db),table=S.table||'テーブル';
  if($('#saveOverlay').hidden){showWaiting(`${label}を更新しています`,`テーブル: ${table}`,'検索条件を反映して一覧データを取得しています');await nextPaint()}
  try{
-  const q=new URLSearchParams({db:S.db,table:S.table,page:S.page,page_size:$('#pageSize').value,search:$('#search').value});const d=await api('/api/table?'+q);Object.assign(S,{columns:d.columns,rows:d.rows,count:d.count});const info=S.catalog.find(x=>x.key===S.db);$('#fileName').textContent=info.file_name;$('#tableName').textContent=S.table;
+  const q=new URLSearchParams({db:S.db,table:S.table,page:S.page,page_size:$('#pageSize').value,search:$('#search').value});
+  // スケジュールモードの仕掛一覧のみ、品質データ(SIKALOTDEF)を結合して表示する
+  // (§9.21)。通常の仕掛一覧閲覧では付けない(オプトインでSIKALOTNOW単独表示に
+  // 影響を与えない)。
+  if(S.db==='SIKALOTNOW'&&window.accessMode?.mode==='schedule')q.set('join_quality','1');
+  const d=await api('/api/table?'+q);Object.assign(S,{columns:d.columns,rows:d.rows,count:d.count});const info=S.catalog.find(x=>x.key===S.db);$('#fileName').textContent=info.file_name;$('#tableName').textContent=S.table;
   // ページ・検索条件が変わるたびに行オブジェクト自体が総入れ替えになるため、
   // 複数選択(§9.5、一括予定投入)はページ内限定とし、切替のたびにクリアする。
   S.selectedRows.clear();

@@ -344,10 +344,74 @@ def base_minutes_override(c,equipment):
  global_row=next((r[1] for r in rows if not str(r[0] or '').strip()),None)
  return global_row
 
+# ========================================================================
+# 勤務形態マスタ(§5.5新設)
+#  - 時刻(HH:MM)の範囲と勤務名称の対応表。稼働カレンダーマスタ(§5.2)と
+#    同じ設計方針: [設備名]が空文字なら全設備既定、指定ありならその設備
+#    専用行。適用時の優先順位(設備別>全設備既定)の解決はschedule_calc.py
+#    側で行う(稼働カレンダーマスタのworking_slots_for_dateと同じ構造)。
+#    終了時刻<=開始時刻は日跨ぎ勤務として扱う(例: 23:00〜07:00の3直)。
+# ========================================================================
+SHIFT_TABLE='勤務形態マスタ'
+
+def ensure_shift_table(c):
+ names=tables(c);created=False
+ if SHIFT_TABLE not in names:
+  cur=c.cursor()
+  cur.execute('CREATE TABLE [勤務形態マスタ] ([勤務ID] INTEGER PRIMARY KEY AUTOINCREMENT, [設備名] TEXT, [名称] TEXT, [開始時刻] TEXT, [終了時刻] TEXT, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
+  cur.execute('CREATE INDEX [IX_勤務形態マスタ_設備] ON [勤務形態マスタ] ([設備名])')
+  c.commit();created=True
+ return created
+
+def shift_rows(c,equipment=None):
+ # equipment未指定(またはNone)なら全設備既定([設備名]='')・指定ありなら
+ # その設備専用行のみ(稼働カレンダーマスタcalendar_rows()と同じ規約)。
+ ensure_shift_table(c)
+ cur=c.cursor()
+ cur.execute('SELECT [勤務ID],[設備名],[名称],[開始時刻],[終了時刻],[表示順],[有効] FROM [勤務形態マスタ] ORDER BY [設備名],[表示順]')
+ target=normalize_equipment_name(equipment) if equipment else ''
+ rows=[]
+ for r in cur.fetchall():
+  active=True if r[6] is None else bool(r[6])
+  if not active:continue
+  if normalize_equipment_name(r[1])!=target:continue
+  rows.append(r)
+ return rows
+
+def shift_upsert(c,equipment,name,uid,start='',end=''):
+ # (設備名,名称)の自然キーで照合し、既存なら更新・無ければ新規登録する
+ # (stop_reason_upsertと同じ方式)。設備名は空文字="全設備既定"を許すため
+ # 必須にしない(名称のみ必須)。
+ ensure_shift_table(c)
+ equipment=str(equipment or '').strip();name=str(name or '').strip()
+ if not name:raise ValueError('名称を入力してください。')
+ start=str(start or '').strip();end=str(end or '').strip()
+ if not start or not end:raise ValueError('開始時刻・終了時刻を入力してください(HH:MM)。')
+ cur=c.cursor()
+ cur.execute('SELECT [勤務ID],[設備名],[名称] FROM [勤務形態マスタ]')
+ target_eq=normalize_equipment_name(equipment)
+ existing_row=next((r for r in cur.fetchall() if normalize_equipment_name(r[1])==target_eq and str(r[2] or '').strip()==name),None)
+ if existing_row:
+  cur.execute('UPDATE [勤務形態マスタ] SET [開始時刻]=?,[終了時刻]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [勤務ID]=?',
+              [start,end,uid,existing_row[0]])
+  return existing_row[0],False
+ cur.execute('SELECT Max([表示順]) FROM [勤務形態マスタ] WHERE [設備名]=?',[equipment])
+ order=int((cur.fetchone()[0]) or 0)+10
+ cur.execute('INSERT INTO [勤務形態マスタ] ([設備名],[名称],[開始時刻],[終了時刻],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,-1,?,?,Now(),Now())',
+             [equipment,name,start,end,order,uid,uid])
+ return cur.lastrowid,True
+
+def shift_delete(c,shift_id,uid):
+ ensure_shift_table(c)
+ cur=c.cursor()
+ cur.execute('UPDATE [勤務形態マスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [勤務ID]=?',[uid,shift_id])
+ return cur.rowcount
+
 def ensure_schedule_tables(c):
- # 4テーブルをまとめて用意する。with_write()のapply_fn冒頭やGET系ルートの
+ # 5テーブルをまとめて用意する。with_write()のapply_fn冒頭やGET系ルートの
  # 前処理から呼ぶ想定(各ensure_*_tableは冪等なので複数回呼んでも安全)。
  ensure_plan_table(c)
  ensure_calendar_table(c)
  ensure_stop_reason_table(c)
  ensure_load_factor_override_table(c)
+ ensure_shift_table(c)
