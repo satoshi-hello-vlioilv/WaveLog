@@ -1456,7 +1456,18 @@
    const parts=items.map(k=>contentValueOf(e.detail,k)).filter(v=>v!==undefined);
    if(parts.length)return parts.map(v=>String(v).trim()).join(' / ');
   }
-  return `${e.lotNo||'-'} ${e.detail?.purposeName||''} ${e.detail?.mfgMaterial||''}${e.detail?.mfgTemper?'-'+e.detail.mfgTemper:''}`.trim();
+  /* 既定の組み立て。**値の取り出しはcontentValueOf経由**にする(§9.69)。
+     直接e.detail.purposeNameを見ていたため、生カラム名「用途名」でしか
+     持っていない予定では空欄になっていた(選択時の経路はcontentValueOfを
+     使っており、既定だけが取りこぼす食い違い)。
+     欠けている項目は詰めて繋ぐ。テンプレート文字列で空文字を挟むと
+     「L0001  A5052」のように**二重空白**が残る(実際にそう出ていた)。 */
+  const temper=contentValueOf(e.detail,'mfgTemper');
+  const material=contentValueOf(e.detail,'mfgMaterial');
+  return [e.lotNo||'-',
+          contentValueOf(e.detail,'purposeName'),
+          material?`${material}${temper?'-'+temper:''}`:(temper||'')]
+   .map(v=>String(v??'').trim()).filter(Boolean).join(' ');
  }
  const ROW_HEAD_HTML=`<div class="sc-row-head">
   <span></span><span>区分</span><span>作業</span><span>日付</span><span>時刻</span><span>勤務</span><span>残り</span><span>内容</span><span>見積</span><span>実績</span><span>備考</span><span>操作</span>
