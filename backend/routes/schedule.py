@@ -283,6 +283,45 @@ def stop_reason_delete():
  return _write_response(fn)
 
 # ========================================================================
+# 勤務形態マスタ(§5.5新設): 時刻(HH:MM)の範囲と勤務名称の対応表。
+# タイムラインの「勤務」列(schedule_calc.expand_plan()のentries[].shift)
+# はこのマスタを参照する。
+# ========================================================================
+def _shift_entry(r):
+ # r: 勤務ID,設備名,名称,開始時刻,終了時刻,表示順,有効
+ return {'id':r[0],'equipment':r[1],'name':r[2],'start':r[3],'end':r[4]}
+
+@bp.get('/api/schedule/shift-master')
+def shift_list():
+ equipment=str(request.args.get('equipment') or '').strip()
+ result,stale,err=_read(lambda c:[_shift_entry(r) for r in sr.shift_rows(c,equipment or None)])
+ if err=='not_configured':return jsonify(ok=True,configured=False,items=[])
+ if err:return jsonify(error=err),503
+ return jsonify(ok=True,configured=True,items=result,stale=stale)
+
+@bp.post('/api/schedule/shift-master')
+def shift_register():
+ x=request.get_json(force=True) or {}
+ equipment=str(x.get('equipment') or '').strip()
+ name=str(x.get('name') or '').strip()
+ def fn(c):
+  sid,created=sr.shift_upsert(c,equipment,name,request_user_id(x),
+                               start=str(x.get('start') or '').strip(),end=str(x.get('end') or '').strip())
+  return {'id':sid,'created':created}
+ return _write_response(fn)
+
+@bp.post('/api/schedule/shift-master/delete')
+def shift_delete_route():
+ x=request.get_json(force=True) or {}
+ sid=x.get('id')
+ if sid is None:return jsonify(error='削除対象IDがありません。'),400
+ def fn(c):
+  n=sr.shift_delete(c,sid,request_user_id(x))
+  if n==0:raise ValueError('指定の勤務形態が見つかりません。')
+  return {'id':sid}
+ return _write_response(fn)
+
+# ========================================================================
 # 換算係数モデル(§6、フェーズ5)
 # ========================================================================
 def _override_entry(r):

@@ -25,6 +25,74 @@ def _numeric_value(value):
  m=re.match(r'^\s*[+-]?\d+(\.\d+)?',str(value or ''))
  return float(m.group(0)) if m else 0.0
 
+# ========================================================================
+# 品質データの結合表示(§9.21新設): スケジュールモードの仕掛一覧(分割/
+# ポップアップ表示)だけで、ロット番号+鋳造番号+製造材質をキーに品質データ
+# (SIKALOTDEF)を突合し、列をアプリ側でマージする。SIKALOTNOWとSIKALOTDEFは
+# 別々のAccess/SQLite接続先(CLAUDE.mdのDBエンジン使い分け参照)のため、単一
+# のSQL JOINでは書けず、ここでPython側で結合する。既定のSIKALOTNOW単独表示
+# には一切影響しないよう、明示的なjoin_quality=1指定時のみ動く(オプトイン)。
+# ========================================================================
+_JOIN_KEY_ALIASES={
+ 'lotNo':['ロット番号','ﾛｯﾄ番号','ロット№','LTNO'],
+ 'castingNo':['鋳造番号','CYNO'],
+ 'mfgMaterial':['製造材質','LTA'],
+}
+def _find_column(columns,aliases):
+ for a in aliases:
+  if a in columns:return a
+ for c in columns:
+  if any(a.lower() in c.lower() for a in aliases):return c
+ return None
+
+def _join_quality_data(sikalotnow_cols,row_dicts):
+ """戻り値: (結合後の列名リスト, 結合後の行dictリスト)。重複する列名は
+ 仕掛(SIKALOTNOW)側の値を優先する(現在値としての信頼度が高い運用のため)。
+ 品質データ側が未接続・キー列が見つからない・接続に失敗した場合は何も
+ せず素通しする(fail-open、通常の仕掛一覧表示自体は壊さない)。"""
+ lot_col=_find_column(sikalotnow_cols,_JOIN_KEY_ALIASES['lotNo'])
+ cast_col=_find_column(sikalotnow_cols,_JOIN_KEY_ALIASES['castingNo'])
+ mat_col=_find_column(sikalotnow_cols,_JOIN_KEY_ALIASES['mfgMaterial'])
+ if not (lot_col and cast_col and mat_col):return sikalotnow_cols,row_dicts
+ def key_of(d):
+  return (str(d.get(lot_col) or '').strip(),str(d.get(cast_col) or '').strip(),str(d.get(mat_col) or '').strip())
+ keys=[key_of(d) for d in row_dicts]
+ lot_values=sorted({k[0] for k in keys if all(k)})
+ if not lot_values:return sikalotnow_cols,row_dicts
+ try:
+  def_cfg=DBS['SIKALOTDEF']
+  if not def_cfg['path'].exists():return sikalotnow_cols,row_dicts
+  with connect(def_cfg['path'],True) as c:
+   def_tables=tables(c)
+   t=def_cfg['preferred'] if def_cfg['preferred'] in def_tables else (def_tables[0] if def_tables else None)
+   if not t:return sikalotnow_cols,row_dicts
+   def_cols=cols(c,t)
+   d_lot=_find_column(def_cols,_JOIN_KEY_ALIASES['lotNo'])
+   d_cast=_find_column(def_cols,_JOIN_KEY_ALIASES['castingNo'])
+   d_mat=_find_column(def_cols,_JOIN_KEY_ALIASES['mfgMaterial'])
+   if not (d_lot and d_cast and d_mat):return sikalotnow_cols,row_dicts
+   # ロット番号だけでSQL側を軽く絞り、鋳造番号・製造材質の正確な一致は
+   # Python側で行う(複合IN条件はAccess/SQLite両対応で書きにくいため)。
+   placeholders=','.join('?' for _ in lot_values)
+   cur=c.cursor()
+   cur.execute(f'SELECT * FROM {qi(t)} WHERE CStr({qi(d_lot)}) IN ({placeholders})',lot_values)
+   quality_index={}
+   for row in cur.fetchall():
+    dd=dict(zip(def_cols,row))
+    qkey=(str(dd.get(d_lot) or '').strip(),str(dd.get(d_cast) or '').strip(),str(dd.get(d_mat) or '').strip())
+    if qkey in quality_index:continue  # 同一キーが複数行あれば最初の1件のみ使う
+    quality_index[qkey]=dd
+ except Exception:
+  return sikalotnow_cols,row_dicts
+ extra_cols=[c for c in def_cols if c not in sikalotnow_cols]
+ merged_rows=[]
+ for d,key in zip(row_dicts,keys):
+  qd=quality_index.get(key)
+  merged=dict(qd) if qd else {}
+  merged.update(d)  # 重複列は仕掛(SIKALOTNOW)側を優先
+  merged_rows.append(merged)
+ return sikalotnow_cols+extra_cols,merged_rows
+
 @bp.get('/api/catalog')
 def catalog(): return jsonify(databases=[{"key":k,"label":v['label'],"file_name":v['path'].name,"role":v['role']} for k,v in DBS.items()])
 @bp.get('/api/tables')
@@ -102,5 +170,7 @@ def api_table():
   row_dicts=[dict(zip(cs,r)) for r in rows]
   visible_cs=[x for x in cs if x not in hidden] if hidden else cs
   if hidden:row_dicts=[{col:v for col,v in d.items() if col not in hidden} for d in row_dicts]
+  if k=='SIKALOTNOW' and request.args.get('join_quality')=='1':
+   visible_cs,row_dicts=_join_quality_data(visible_cs,row_dicts)
   return jsonify(columns=visible_cs,rows=row_dicts,count=count,filters_applied=len(filters))
  except Exception as e:return jsonify(error=str(e)),500

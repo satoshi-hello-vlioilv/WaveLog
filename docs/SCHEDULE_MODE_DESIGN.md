@@ -1889,6 +1889,128 @@ scheduleモードにも開いている(表示設定のみで測定データ・�
 いう指摘を受け、`:is(.sc-split-wrap,.sc-float-body)`配下だけ文字サイズ・
 余白を縮めた(通常表示のフィルタバーは変更していない)。
 
+### 9.20 勤務形態マスタ+タイムラインの年月日・勤務列、「内容」欄の汎用化
+
+タイムラインの各行に、時刻に加えて年月日(`.sc-row-date`、`08/05`のような
+短縮表記、ツールチップで曜日込みのフル表記)と、その開始時刻が属する
+「勤務」(`.sc-row-shift`)を常時表示する列を追加した(`ROW_HEAD_HTML`)。
+
+勤務は新設の勤務形態マスタ(`backend/repositories/schedule_repo.py`の
+`SHIFT_TABLE`=`勤務形態マスタ`、`GET/POST /api/schedule/shift-master`、
+`POST /api/schedule/shift-master/delete`)で時間帯と名称を紐づける。
+他のマスタ(稼働カレンダーマスタ等)と同じ「設備名が空欄の行=全設備共通の
+既定、設備名を指定した行=その設備だけの上書き」という互換ポリシーで、
+`日勤=8:15-17:05`のような単純な勤務にも、`1直/2直/3直`のような交替勤務にも
+対応する。終了時刻が開始時刻以下(`23:00-07:00`等)の行は日をまたぐ勤務と
+解釈し、`t>=開始 OR t<終了`のOR判定で所属を求める(`backend/schedule_calc.py`
+の`resolve_shift_label()`)。`expand_plan()`が各予定の`plannedStart`確定時に
+呼び、結果を`entry.shift`へ持たせる(状態が未確定/実績突合前で
+`plannedStart`が無い行は`shift=None`)。マスタ管理画面には`shiftMaster`の
+タブを追加した(`measurement-worklog.js`のMASTER_DEFS、
+`equipment-select`型フィールドで「空欄=全設備既定」を表現)。
+
+「内容」欄(タイムライン上の`.sc-row-title`)は、従来ロット№+用途名+製造材質
++調質の固定組み合わせで表示していたが、どの設備・どの仕掛データ構成でも
+使えるよう汎用化した(`entryContentText()`)。§9.18で設備ごとに選べるように
+した「スケジュール列表示マスタ」の選択列を、仕掛一覧の表示列フィルタだけで
+なく、この内容欄の組み立てにも流用する(選択が無い設備は従来どおりの
+既定組み合わせにフォールバック)。この流用のため、予定追加時に仕掛一覧の
+行データをスナップショットする`buildScheduleDetail()`を、alias化された
+既知フィールドだけでなく、その時点で表示中の全列(`S.columns`、次項§9.21の
+品質データ結合後の列も含む)を生カラム名のまま保存するよう拡張した。
+
+### 9.21 スケジュールモードの仕掛一覧に品質データを結合表示
+
+「スケジュールの時の仕掛情報一覧は、品質情報をロット番号・鋳造番号・
+製造材質でテーブル結合し、品質に関する情報も1つのテーブルデータとして
+表示してほしい。重複するカラムは仕掛情報側を優先」という要望に対応した。
+仕掛(SIKALOTNOW)と品質データ(SIKALOTDEF)はCLAUDE.mdに記載のとおり別々の
+DB接続先(Access/SQLiteが混在しうる)のため、単一のSQL JOINでは書けない。
+そのため`backend/routes/tables.py`にアプリ側(Python)での結合処理を追加した
+(`_join_quality_data()`)。手順は、①ロット番号だけで品質データ側へ
+`WHERE CStr(ロット番号) IN (...)`の軽い絞り込みをかけ、②鋳造番号・製造材質を
+含む3列の完全一致はPython側で行い、③辞書のマージ(`dict(品質側);
+merged.update(仕掛側)`)で重複列は仕掛側を優先する。品質データ側が未接続・
+キー列(ロット番号/鋳造番号/製造材質の別名解決に失敗)・接続エラー等
+あらゆる失敗はfail-open(通常のSIKALOTNOW単独表示へ素通し)にしてあり、
+品質データが読めないことがスケジュール画面自体を壊さないようにしてある。
+
+`GET /api/table`へ`join_quality=1`を明示的に指定した時だけこの結合を行う
+オプトイン方式(既定のSIKALOTNOW単独一覧・他画面のSIKALOTNOW参照には一切
+影響しない)。フロント側は`list-view.js`の`load()`が、スケジュールモード
+(`window.accessMode.mode==='schedule'`)かつSIKALOTNOW表示中の時だけ
+このパラメータを付ける。**注意**: `filters.js`はCLAUDE.mdの「関数の定義は
+1箇所」の原則に反して`load()`を(ラップでなく)丸ごと置き換えている
+既存コードのため、こちらにも同じ分岐を重複して持たせる必要があった
+(片方だけ直すと、フィルタバー使用時にjoin_quality無しへ後退してしまう。
+実装時に実際に踏んだ不具合)。
+
+分割表示(`showSplitList()`)は元々`S.db!=='SIKALOTNOW'`の時しか
+SIKALOTNOWを再取得しなかったため、既にSIKALOTNOWを開いた状態(編集モード
+から切替、または他設備のタイムラインから戻った直後等)でスケジュールの
+単独タイムラインへ入ると、join_quality無しで取得済みの古いデータのまま
+据え置かれ、品質列が出ない不具合があった。分割表示に入った直後の1回だけ
+`load()`を強制する`scSplitJoinApplied`フラグを追加して解消した。
+
+### 9.22 書込の一方通行化(書込キュー完了後の自動再読込を廃止)
+
+§9.11の書込キューは、キューが空になるたび`loadPlan()`でサーバー側の
+最終状態に描き直して正規化していたが、これが「書込完了→再読込→再描画」
+という一往復を挟むため、編集セッションを保持している最中でも表示が一瞬
+消える体感になっていた(`#scTimeline`が読み込み中プレースホルダを一旦
+挟むため)。編集セッションは設備単位で同時に1人しか入れない設計
+(`schedule_sync.py`の`acquire_session`)のため、自分がセッションを保持して
+いる間は他端末とのデータ競合が起きようがなく、この正規化読み込みは
+実質「体感速度を犠牲にした保険」でしかなかった。
+
+そこで、セッション対象(`sessionApplicable()`、schedule fullControl+単独
+タイムライン表示中)の間は書込キュー完了後の自動再読込をしない一方通行の
+書込みへ変更した。読み込みは①編集モードに入るタイミング
+(`openScheduleView`/`refreshAll`等の既存呼び出し)、②他端末編集中の閲覧時
+(`sessionApplicable()`がfalseの場面)の2箇所だけで行う。この間、削除・
+並べ替え直後に他の予定の見積/残り時間等サーバー側の再計算値が古いままに
+なることは許容する(次に編集モードへ入った時点で正規化される)。
+
+一方通行化にともない、これまで最終的な正規化読み込みに頼っていた以下を
+自前で解決する必要があった:
+- 楽観的追加(`makeOptimisticEntry()`)が割り当てる仮ID(`tmp-N`)を、
+  書込成功時に本来のIDへ差し替える`resolveOptimisticEntry()`を新設(削除・
+  並べ替えボタンは`__pending`中は元々無効化してあるため、この差し替えが
+  完了するまでは対象にならない)。
+- 追加が最終的に失敗した(リトライを使い切った)場合に、楽観的に足しておいた
+  仮エントリを取り消す`discardOptimisticEntry()`を新設。`queueScheduleWrite()`
+  に`onFailure`コールバックを追加し、`runWriteQueue()`が諦めた時(3回
+  リトライ後)だけ呼ぶようにした(失敗するたび毎回ロールバックしていた
+  旧`deleteEntry()`の実装だと、1回目失敗→ロールバック→2回目成功、という
+  順で実際にはサーバー側は削除済みなのに画面へ復活したまま二度と消えない
+  不整合が起こり得たため、これも同じ機構へ統合して解消した)。
+- 固定開始日時の更新(`updateFixedStart()`)は元々書込キューを経由せず
+  直接await→`loadPlan()`していたため、この操作だけ編集中に表示が一瞬
+  消える対象として残ってしまう。他の書込と同じ書込キュー経由の一方通行
+  (楽観的にローカル反映し、失敗時だけ元へ戻す)へ統一した。
+
+### 9.23 文字サイズの統一化(アプリ全体のタイプスケールへ一元化)
+
+「スケジュールモード部分の文字サイズがヘッダー部分と表部分でバラバラに
+なっている」という指摘のため、`static/app.css`の`.sc-*`(スケジュール画面)
+関連ルールを調査したところ、9px〜13pxの間に10種類近い端数px値
+(9/9.5/10/10.5/11/11.5/12/12.5/13px)が個別にハードコードされており、
+既存の`:root`タイプスケール(`--fs-badge`/`--fs-micro`/`--fs`/`--fs-title`/
+`--fs-lg`、ファイル冒頭のコメントで「ここだけ変えれば全体の文字が揃う」と
+明記されている一元化の方針)を一切参照していなかった。
+
+これを機に、タイプスケールへ`--fs-tiny`(9.5px)・`--fs-sm`(12px)・
+`--fs-base-sm`(13px)の3段を追加して8段構成に拡張し、`.sc-*`配下・
+`#grid.sc-dense`(高密度一覧、スケジュール画面以外でも使う)の約60箇所の
+font-size宣言を、近い既存値へ統合しながら(例: 10.5px/11px→
+`--fs-micro`、11.5px/12px→`--fs-sm`、12.5px/13px→`--fs-base-sm`)すべて
+`var(--fs-*)`参照へ置き換えた。個々の文字サイズが最大でも0.5px程度しか
+動かないよう近傍値へ寄せてあるため見た目の破壊的変化は無いが、以後は
+このタイプスケールの値を変えるだけでスケジュール画面を含むアプリ全体の
+文字サイズが揃って調整できる(アイコングリフとして使っている「×」等の
+閉じるボタン文字サイズ(`.sc-close`等)は、既存の`.mm-close`等と同じく
+対象外のまま個別指定を維持した)。
+
 ---
 
 ## 10. 既存コードへの変更点一覧
@@ -1897,12 +2019,13 @@ scheduleモードにも開いている(表示設定のみで測定データ・�
 
 | ファイル | 役割 |
 |---|---|
-| `backend/routes/schedule.py` | **実装済み**。Blueprint `schedule`。`lock-status`に加え`plan`(一覧/追加/更新/削除/並べ替え)・`calendar`(取得/完全同期保存)・`stop-reason-master`(一覧/登録/削除)・`load-factors`(取得)・`load-factors/override`(保存/解除)・`load-factors/recalc`(再計算)・`estimate`(単一ロットの見積内訳)・**`accuracy`(§6.9、フェーズ8で追加。`load_factor.accuracy()`の薄いラッパー)**・**`overview`(§9.9、フェーズ9で追加。有効設備分`expand_plan()`をループし俯瞰ボード用に圧縮)**を実装。**フェーズ13で追加**: §9.11の`session-status`/`session/acquire`/`session/heartbeat`/`session/release`、`plan_add`/`plan_update`/`plan_delete`/`plan_reorder`への`_check_session()`(scheduleモード時のみ`require_session()`を強制) |
-| `backend/repositories/schedule_repo.py` | **実装済み**。4テーブル(作業予定/稼働カレンダーマスタ/設備停止マスタ/換算係数上書きマスタ)の定義・CRUD(Flask非依存)。換算係数上書きマスタのCRUD(`load_factor_override_rows`/`_upsert`/`_delete`)もフェーズ5で追加済み |
+| `backend/routes/schedule.py` | **実装済み**。Blueprint `schedule`。`lock-status`に加え`plan`(一覧/追加/更新/削除/並べ替え)・`calendar`(取得/完全同期保存)・`stop-reason-master`(一覧/登録/削除)・`load-factors`(取得)・`load-factors/override`(保存/解除)・`load-factors/recalc`(再計算)・`estimate`(単一ロットの見積内訳)・**`accuracy`(§6.9、フェーズ8で追加。`load_factor.accuracy()`の薄いラッパー)**・**`overview`(§9.9、フェーズ9で追加。有効設備分`expand_plan()`をループし俯瞰ボード用に圧縮)**を実装。**フェーズ13で追加**: §9.11の`session-status`/`session/acquire`/`session/heartbeat`/`session/release`、`plan_add`/`plan_update`/`plan_delete`/`plan_reorder`への`_check_session()`(scheduleモード時のみ`require_session()`を強制)。**フェーズ15で追加**: §9.20の`GET/POST /api/schedule/shift-master`・`POST /api/schedule/shift-master/delete`(勤務形態マスタ) |
+| `backend/repositories/schedule_repo.py` | **実装済み**。4テーブル(作業予定/稼働カレンダーマスタ/設備停止マスタ/換算係数上書きマスタ)の定義・CRUD(Flask非依存)。換算係数上書きマスタのCRUD(`load_factor_override_rows`/`_upsert`/`_delete`)もフェーズ5で追加済み。**フェーズ15で5テーブル目`SHIFT_TABLE`(勤務形態マスタ)を追加**(§9.20、`ensure_shift_table`/`shift_rows`/`shift_upsert`/`shift_delete`) |
 | `backend/load_factor.py` | **実装済み**。学習データ抽出・外れ値除去(中央値/MAD)・3反復の座標降下推定(収縮・クリップ)・数値因子の四分位ビン化・TTL+mtimeキャッシュ(`get_model`)・手動上書きの優先解決・見積の内訳(`estimate_work`)・精度検証の粗い代理指標(`accuracy`、**§9.8の換算係数管理画面からフェーズ8で表示に配線**) |
-| `backend/schedule_calc.py` | **実装済み**。稼働カレンダー展開・アンカー決定・実績突合・並べ替え対象判定(§7.5)。見積分は`resolve_estimate()`が`load_factor.py`(§6)へ委譲する(種別='作業')。**フェーズ8で`equipment_reference_counts()`を追加**(§5.0.1の設備削除確認が使う、共有スケジュールDB側の参照件数集計) |
+| `backend/schedule_calc.py` | **実装済み**。稼働カレンダー展開・アンカー決定・実績突合・並べ替え対象判定(§7.5)。見積分は`resolve_estimate()`が`load_factor.py`(§6)へ委譲する(種別='作業')。**フェーズ8で`equipment_reference_counts()`を追加**(§5.0.1の設備削除確認が使う、共有スケジュールDB側の参照件数集計)。**フェーズ15で`resolve_shift_label()`を追加**(§9.20、日またぎ対応の時間帯→勤務名称解決。`expand_plan()`が`plannedStart`確定時に呼び`entry.shift`へ設定) |
+| `backend/routes/tables.py` | **フェーズ15で追加**。§9.21の品質データ結合(`_join_quality_data()`/`_find_column()`)。`GET /api/table`へ`join_quality=1`指定時のみSIKALOTNOWにSIKALOTDEFをアプリ側でマージする(オプトイン、fail-open) |
 | `backend/schedule_sync.py` | **実装済み**。ロック取得/解放・Box上ファイルの取得(backup())・整合性確認・一時名書込+リネーム反映・改訂番号チェック(§4.2〜§4.5)。データの中身を知らない汎用基盤で、業務テーブル実装時は`with_write()`のapply_fnへ差し込むだけで使える。フェーズ4のPlaywright検証中に見つけた不具合を修正: `fetch_snapshot()`の一時ファイル名が固定だったため、GET系(ロック無し)の複数リクエストがほぼ同時に走ると一時ファイルを取り合って読込失敗することがあった。呼び出しごとに一意な一時ファイル名にして解消(最終目的地への反映は`Path.replace()`で元々アトミック)。**フェーズ13で追加**: §9.11の編集セッション(`acquire_session`/`heartbeat_session`/`release_session`/`session_status`/`require_session`、`schedule.sessions.json`という別ファイルで管理し`with_write()`のサイクルを経由しない) |
-| `static/js/schedule-view.js` | **実装済み**。スケジュール画面・タイムライン・並べ替え(現場段取り簡易表示§9.4.1・ロック表示§9.3を含む)。並べ替えはHTML5 Drag and Drop + Alt+↑/↓(lot-split.jsの単一ジェスチャー演出は未移植)。§6.8の「見積の内訳」(基準時間T0・予測区間・因子別係数/N/source)を各カードの折りたたみパネルとして表示(既定は折りたたみ)。§5.1・§7.3の固定開始日時の設定/解除UI(scheduleモードの未着手カードのみ編集可)、§9.3の非稼働帯の区切り表示(カード間の`plannedEnd`/`plannedStart`の差からフロント側で算出)。**フェーズ9で追加**: §9.9の全設備横断俯瞰ボード(`renderOverviewBoard()`、既定表示・混雑順ソート・行クリックでの個別タイムラインへのドリルダウン)、§9.5の複数選択一括追加(`addRowsToSchedule()`)。**フェーズ11で追加**: §9.10の分割表示(`ensureSplitWrap`/`teardownSplitWrap`が`#grid`をDOM上で分割レイアウトへ移設・復元、`wireDropTarget`がスケジュールパネル全体をドロップ受け皿にする)。旧`renderAddFromListPanel`/ロット検索(`wireLotSearch`等)は分割表示に置き換えたため削除。**フェーズ13で追加**: §9.11の編集セッション(`syncSession`/`acquireSessionOnce`/`sessionBlocked`)+書込キュー(`queueScheduleWrite`/`runWriteQueue`/`makeOptimisticEntry`)、§9.12の高密度表示(`toggleListDensity`)、§9.13の設備停止折りたたみ+モーダル(`openStopModal`/`closeStopModal`)、§9.14の仕掛一覧モーダル(`moveGridTo`/`returnGridHome`共通化、`openListModal`/`closeListModal`)。**フェーズ14で追加**: §9.16のセッションfail-open化(`sessionBlocked`の判定変更、`scState.sessionError`)、§9.17のフローティングウィンドウ化(`makeFloatingWindow()`共通ヘルパー、`clampToViewport()`のサイズ考慮クランプ)+リサイズ可能な分割バー(`ensureSplitDivider`/`applySplitListWidth`/`toggleSplitListCollapsed`)+`.sc-side`折りたたみ(`updateSideUi`/`toggleSideCollapsed`)、§9.18の投入済みロット除外(`window.scScheduledLotSet`/`refreshScheduledLotFilter`)+スケジュール列表示マスタのUI(`openColumnModal`/`saveColumnSelection`/`window.scColumnAllowlist`) |
+| `static/js/schedule-view.js` | **実装済み**。スケジュール画面・タイムライン・並べ替え(現場段取り簡易表示§9.4.1・ロック表示§9.3を含む)。並べ替えはHTML5 Drag and Drop + Alt+↑/↓(lot-split.jsの単一ジェスチャー演出は未移植)。§6.8の「見積の内訳」(基準時間T0・予測区間・因子別係数/N/source)を各カードの折りたたみパネルとして表示(既定は折りたたみ)。§5.1・§7.3の固定開始日時の設定/解除UI(scheduleモードの未着手カードのみ編集可)、§9.3の非稼働帯の区切り表示(カード間の`plannedEnd`/`plannedStart`の差からフロント側で算出)。**フェーズ9で追加**: §9.9の全設備横断俯瞰ボード(`renderOverviewBoard()`、既定表示・混雑順ソート・行クリックでの個別タイムラインへのドリルダウン)、§9.5の複数選択一括追加(`addRowsToSchedule()`)。**フェーズ11で追加**: §9.10の分割表示(`ensureSplitWrap`/`teardownSplitWrap`が`#grid`をDOM上で分割レイアウトへ移設・復元、`wireDropTarget`がスケジュールパネル全体をドロップ受け皿にする)。旧`renderAddFromListPanel`/ロット検索(`wireLotSearch`等)は分割表示に置き換えたため削除。**フェーズ13で追加**: §9.11の編集セッション(`syncSession`/`acquireSessionOnce`/`sessionBlocked`)+書込キュー(`queueScheduleWrite`/`runWriteQueue`/`makeOptimisticEntry`)、§9.12の高密度表示(`toggleListDensity`)、§9.13の設備停止折りたたみ+モーダル(`openStopModal`/`closeStopModal`)、§9.14の仕掛一覧モーダル(`moveGridTo`/`returnGridHome`共通化、`openListModal`/`closeListModal`)。**フェーズ14で追加**: §9.16のセッションfail-open化(`sessionBlocked`の判定変更、`scState.sessionError`)、§9.17のフローティングウィンドウ化(`makeFloatingWindow()`共通ヘルパー、`clampToViewport()`のサイズ考慮クランプ)+リサイズ可能な分割バー(`ensureSplitDivider`/`applySplitListWidth`/`toggleSplitListCollapsed`)+`.sc-side`折りたたみ(`updateSideUi`/`toggleSideCollapsed`)、§9.18の投入済みロット除外(`window.scScheduledLotSet`/`refreshScheduledLotFilter`)+スケジュール列表示マスタのUI(`openColumnModal`/`saveColumnSelection`/`window.scColumnAllowlist`)。**フェーズ15で追加**: §9.20の年月日/勤務列(`fmtDateShort`/`fmtDateTitle`/`ROW_HEAD_HTML`)+「内容」欄の汎用化(`entryContentText()`、`buildScheduleDetail()`が`S.columns`全列をスナップショット)、§9.21の分割表示入場時のjoin_quality強制再取得(`scSplitJoinApplied`)、§9.22の一方通行書込(`resolveOptimisticEntry`/`discardOptimisticEntry`、`queueScheduleWrite`の`onFailure`コールバック、`updateFixedStart`の書込キュー化) |
 | `docs/SCHEDULE_MODE_DESIGN.md` | 本書 |
 
 ### 10.2 既存ファイルの変更
@@ -1916,12 +2039,13 @@ scheduleモードにも開いている(表示設定のみで測定データ・�
 | `backend/config.py` | **実装済み**。`SCHEDULE_LOCK_TTL_SEC_DEFAULT` / `SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT` に加え、`LOAD_FACTOR_CACHE_TTL_SEC=600` / `MIN_SAMPLES=20` を追加 |
 | `app.py` | **実装済み**。`schedule` Blueprint 登録のみ。§4.2のサイクルは呼び出しごとに動く同期処理のため、`records_export.py`のような常駐の背景スレッド起動は不要 |
 | `static/js/access-mode.js` | **実装済み**。3モード対応。**`openMeasurement`/`resumeRecordFromList` ガードの条件を `!== 'edit'` へ反転**。モードピッカーポップオーバー。`canFieldReorder` バッジ(§3.5、ヘッダーの`accessModeBadge`隣に配置) |
-| `static/js/list-view.js` | **実装済み**。仕掛一覧に「予定」列(schedule時のみ)。**フェーズ9で追加**: §9.5の複数選択(チェックボックス列+ヘッダー全選択+選択件数バー、`S.selectedRows`)。**フェーズ11で追加**: §9.10の行ドラッグ(`draggable`+`window.__scDragRows`)・選択件数バーの直接追加ボタン(`window.scAddSelectedRows`/`window.scCurrentDropTarget`)。**フェーズ13で§9.15の「+予定」列を最左列(選択チェックボックスの隣)へ移動**。**フェーズ14で追加**: §9.18の投入済みロット除外表示(`visibleRows`、`window.scScheduledLotSet`参照)・設備ごとの列フィルタ(`visibleColumns`、`window.scColumnAllowlist`参照) |
+| `static/js/list-view.js` | **実装済み**。仕掛一覧に「予定」列(schedule時のみ)。**フェーズ9で追加**: §9.5の複数選択(チェックボックス列+ヘッダー全選択+選択件数バー、`S.selectedRows`)。**フェーズ11で追加**: §9.10の行ドラッグ(`draggable`+`window.__scDragRows`)・選択件数バーの直接追加ボタン(`window.scAddSelectedRows`/`window.scCurrentDropTarget`)。**フェーズ13で§9.15の「+予定」列を最左列(選択チェックボックスの隣)へ移動**。**フェーズ14で追加**: §9.18の投入済みロット除外表示(`visibleRows`、`window.scScheduledLotSet`参照)・設備ごとの列フィルタ(`visibleColumns`、`window.scColumnAllowlist`参照)。**フェーズ15で`load()`へ§9.21のjoin_quality=1付与を追加**(scheduleモード+SIKALOTNOW表示中のみ) |
+| `static/js/filters.js` | **フェーズ15で追加**。§9.21のjoin_quality=1付与。`load()`をラップでなく丸ごと置き換える既存実装のため(CLAUDE.mdの「関数の定義は1箇所」からは外れる古いコード)、list-view.js側と同じ分岐をこちらにも重複して持たせる必要があった |
 | `static/js/base.js` | `closeAllMainViews(except)` への一本化リファクタは未実装。schedule-view.jsは既存4ビューと同じ「個別に他ビューを閉じる」方式のまま追加した(§9.2)。**フェーズ9で`S`の初期値へ`selectedRows:new Set()`を追加**(§9.5)。**フェーズ14で追加**: §9.19の左ナビ幅リサイズ(`#navResizeHandle`、`localStorage`の`navWidthV1`) |
-| `static/js/measurement-worklog.js` | **実装済み**。設備停止マスタ部分(フェーズ6): `MASTER_DEFS`へ`stopReason`タブを追加(設備名は`equipment-select`という新規フィールド型で設備マスタから選択)。scheduleモードでは書込めないタブ(`masters`Blueprint配下)をナビから隠す`maintDefVisible`/`renderMaintNav`を追加し、`#openMasterMaint`のCSS無効化を`view-mode`のみに縮小(旧`schedule-mode`無効化のままだと設備停止マスタに永久に手が届かない矛盾があったため)。**フェーズ8で追加**: `MASTER_DEFS`へ`loadFactor`タブ(`special:'load-factor'`、§9.8の換算係数管理画面)、`deleteMaint()`が設備タブのみ`deleteEquipmentWithReferenceCheck()`へ分岐し409(§5.0.1)を確認モーダル+`force`再送で処理 |
+| `static/js/measurement-worklog.js` | **実装済み**。設備停止マスタ部分(フェーズ6): `MASTER_DEFS`へ`stopReason`タブを追加(設備名は`equipment-select`という新規フィールド型で設備マスタから選択)。scheduleモードでは書込めないタブ(`masters`Blueprint配下)をナビから隠す`maintDefVisible`/`renderMaintNav`を追加し、`#openMasterMaint`のCSS無効化を`view-mode`のみに縮小(旧`schedule-mode`無効化のままだと設備停止マスタに永久に手が届かない矛盾があったため)。**フェーズ8で追加**: `MASTER_DEFS`へ`loadFactor`タブ(`special:'load-factor'`、§9.8の換算係数管理画面)、`deleteMaint()`が設備タブのみ`deleteEquipmentWithReferenceCheck()`へ分岐し409(§5.0.1)を確認モーダル+`force`再送で処理。**フェーズ15で`MASTER_DEFS`へ`shiftMaster`タブを追加**(§9.20、勤務形態マスタ) |
 | `static/js/measurement-view.js` | **実装済み(フェーズ7)**。`refreshScheduleInfo()`(非同期、`records-store.js`の`openMeasurement()`の`finally`から発火)・`renderScheduleInfo()`(同期、`renderMeasurement()`の描画チェーンから毎回呼ぶ)で基本情報タブへ予定表示(読み取り専用)を追加 |
 | `templates/index.html` | **実装済み**。「計画」ナビグループ(`#planNav`静的ボタン`#openSchedule`)・スクリプトタグ追加。`fieldReorderBadge`要素も配置済み |
-| `static/app.css` | **実装済み**。`body.view-mode`/`schedule-mode`のモードバッジ・`body.sc-mode`排他・`.sc-panel`タイムライン・`.plan-action-*`(仕掛一覧の予定列)一式。**フェーズ13で追加**: `.sc-session-banner`/`.sc-panel.sc-session-locked`(§9.11)、`#grid.sc-dense`(§9.12)、`.sc-side-section-toggle`/`.sc-stop-button[draggable]`(§9.13)、`.sc-float-modal`/`.sc-float-dialog`(§9.13・§9.14、`.record-modal`/`.settings-dialog`を土台に流用)、`body.sc-mode.sc-list-modal-open`(§9.14)、`.sc-row-pending`(§9.11)。**フェーズ14で刷新・追加**: `.sc-float-modal`/`.sc-float-dialog`(全画面シェード付き)を`.sc-float-win`/`.sc-float-header`/`.sc-float-resize`(シェード無しの浮いたウィンドウ)へ置き換え(§9.17)、`.sc-split-divider`/`.sc-split-collapse-btn`+`--sc-list-w`変数によるリサイズ可能な分割バー(§9.17)、`.sc-side-tab`(`.sc-side`自体の折りたたみ、§9.17)、`:is(.sc-split-wrap,.sc-float-body)`配下のフィルタバーコンパクト化(§9.19)、`#navResizeHandle`+`.layout`3列グリッド化(§9.19)、`.sc-column-list`/`.sc-column-item`(§9.18) |
+| `static/app.css` | **実装済み**。`body.view-mode`/`schedule-mode`のモードバッジ・`body.sc-mode`排他・`.sc-panel`タイムライン・`.plan-action-*`(仕掛一覧の予定列)一式。**フェーズ13で追加**: `.sc-session-banner`/`.sc-panel.sc-session-locked`(§9.11)、`#grid.sc-dense`(§9.12)、`.sc-side-section-toggle`/`.sc-stop-button[draggable]`(§9.13)、`.sc-float-modal`/`.sc-float-dialog`(§9.13・§9.14、`.record-modal`/`.settings-dialog`を土台に流用)、`body.sc-mode.sc-list-modal-open`(§9.14)、`.sc-row-pending`(§9.11)。**フェーズ14で刷新・追加**: `.sc-float-modal`/`.sc-float-dialog`(全画面シェード付き)を`.sc-float-win`/`.sc-float-header`/`.sc-float-resize`(シェード無しの浮いたウィンドウ)へ置き換え(§9.17)、`.sc-split-divider`/`.sc-split-collapse-btn`+`--sc-list-w`変数によるリサイズ可能な分割バー(§9.17)、`.sc-side-tab`(`.sc-side`自体の折りたたみ、§9.17)、`:is(.sc-split-wrap,.sc-float-body)`配下のフィルタバーコンパクト化(§9.19)、`#navResizeHandle`+`.layout`3列グリッド化(§9.19)、`.sc-column-list`/`.sc-column-item`(§9.18)。**フェーズ15で追加**: `.sc-row-date`/`.sc-row-shift`(§9.20)、`:root`のタイプスケールへ`--fs-tiny`/`--fs-sm`/`--fs-base-sm`を追加し`.sc-*`配下・`#grid.sc-dense`のfont-size宣言(約60箇所)をすべて`var(--fs-*)`参照へ統一(§9.23) |
 | `config/local.example.json` | **実装済み**。`schedule_share_path`/`schedule_lock_ttl_sec`/`schedule_lock_verify_delay_ms`の雛形 |
 | `docs/ARCHITECTURE.md` / `README.md` / `CLAUDE.md` | 構成・ガード規約の更新 |
 
@@ -1991,6 +2115,7 @@ scheduleモードにも開いている(表示設定のみで測定データ・�
 | 12 | アクセス権限マスタの汎用化 | ~~ログインID/PC名の片方だけの登録・スケジュール権限のマスタ管理画面配線(§3.2)~~**実装済み** | ○(運用端末の登録の手間を削減) |
 | 13 | 追加体感速度+画面密度改善 | ~~設備単位の編集セッション+書込キューによる楽観的UI(§9.11)・仕掛一覧の高密度表示(§9.12)・設備停止パネルの折りたたみ+フローティングモーダル(§9.13)・仕掛一覧のフローティングモーダル(§9.14)・「+予定」列の最左移動(§9.15)~~**実装済み** | ◎(20ロット超の一括登録が実運用の中心のため) |
 | 14 | フェーズ13の実機不具合修正+レイアウト改善 | ~~編集セッションのfail-open化(§9.16)・フローティングウィンドウ化+リサイズ可能な分割バー+.sc-side折りたたみ(§9.17)・投入済みロット除外表示+設備ごとの列表示マスタ(§9.18)・左ナビ幅リサイズ+フィルタバーのコンパクト化(§9.19)~~**実装済み** | ◎(フェーズ13を実機投入した際に「ドラッグ&ドロップが効かない」「モーダルが動かせない」等、複数の重大な不具合が見つかったための緊急改善) |
+| 15 | 勤務・品質データ結合+体感速度/表示統一の仕上げ | ~~勤務形態マスタ+タイムラインの年月日・勤務列、「内容」欄の汎用化(§9.20)・スケジュールモードの仕掛一覧への品質データ結合表示(§9.21)・書込の一方通行化(§9.22)・文字サイズの統一化(§9.23)~~**実装済み** | ◎(フェーズ13〜14で体感速度・レイアウトを改善した上で、表示できる情報の幅と一貫性を仕上げる段階) |
 
 設備削除時の確認フロー(§5.0.1)は全テーブルの参照件数を集計するため、
 最後発のフェーズ8完了後にまとめて`masters.py`側へ配線する方針としており、

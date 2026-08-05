@@ -71,6 +71,26 @@ def slots_for_date_abs(specific_rows,global_rows,d):
   out.append((start_dt,end_dt))
  return out
 
+def resolve_shift_label(specific_shift_rows,global_shift_rows,dt):
+ """§5.5の勤務形態マスタ。dt(datetime)の時刻(時分のみ、日付は見ない)が
+ 該当する勤務名称を返す(該当が無ければNone)。優先順位は稼働カレンダー
+ マスタと同じ(設備別行があればそちらを優先、無ければ全設備既定)。
+ 終了時刻<=開始時刻は日跨ぎ勤務として扱う(例: 23:00〜07:00の3直、
+ t>=23:00またはt<07:00で該当)。"""
+ if dt is None:return None
+ rows=specific_shift_rows if specific_shift_rows else global_shift_rows
+ if not rows:return None
+ t=dt.time()
+ for r in rows:
+  # r: 勤務ID,設備名,名称,開始時刻,終了時刻,表示順,有効
+  sh,sm=_parse_hm(r[3]);eh,em=_parse_hm(r[4])
+  start_t=time(sh%24,sm);end_t=time(eh%24,em)
+  if (eh*60+em)<=(sh*60+sm):
+   if t>=start_t or t<end_t:return r[2]
+  else:
+   if start_t<=t<end_t:return r[2]
+ return None
+
 def build_slot_timeline(specific_rows,global_rows,from_date,horizon_days=MAX_HORIZON_DAYS):
  """from_dateの前日からfrom_date+horizon_days+1日までの稼働帯を集めて時系列
  ソート・隣接マージした(開始,終了)の絶対時刻リストにする(§7.3の展開が
@@ -210,6 +230,8 @@ def expand_plan(c,equipment,now=None):
  raw_rows=sr.plan_rows(c,equipment)
  specific_cal=sr.calendar_rows(c,equipment)
  global_cal=sr.calendar_rows(c,'')
+ specific_shift=sr.shift_rows(c,equipment)
+ global_shift=sr.shift_rows(c,'')
  actual_index=build_actual_index()
  warnings=[]
 
@@ -250,7 +272,7 @@ def expand_plan(c,equipment,now=None):
  for idx,e in enumerate(entries):
   if e['state'] in PLAN_TERMINAL_STATES:
    e['plannedStart']=None;e['plannedEnd']=None;e['startsInMinutes']=None
-   e['estimate']=None;e['reorderable']=False;e['spansNonWorking']=False;e['overdueMinutes']=0
+   e['estimate']=None;e['reorderable']=False;e['spansNonWorking']=False;e['overdueMinutes']=0;e['shift']=None
    continue
   est=resolve_estimate(c,equipment,e)
   minutes=est['minutes']
@@ -275,7 +297,7 @@ def expand_plan(c,equipment,now=None):
    e['plannedStart']=None;e['plannedEnd']=None;e['startsInMinutes']=None
    e['estimate']=dict(est,minutes=minutes)
    e['reorderable']=(e['state']==sr.PLAN_REORDERABLE_STATE)
-   e['spansNonWorking']=False;e['overdueMinutes']=0
+   e['spansNonWorking']=False;e['overdueMinutes']=0;e['shift']=None
    warnings.append(f"予定ID {e['id']} は稼働カレンダー上、{MAX_HORIZON_DAYS}日以内に収まりません。")
    continue
   planned_start=cursor
@@ -286,6 +308,7 @@ def expand_plan(c,equipment,now=None):
    e['estimate']=dict(est,minutes=minutes)
    e['reorderable']=(e['state']==sr.PLAN_REORDERABLE_STATE)
    e['spansNonWorking']=spans;e['overdueMinutes']=round(overdue,1)
+   e['shift']=resolve_shift_label(specific_shift,global_shift,planned_start)
    warnings.append(f"予定ID {e['id']} は稼働カレンダー上、{MAX_HORIZON_DAYS}日以内に収まりません。")
    continue
   cursor=end_cursor
@@ -295,6 +318,7 @@ def expand_plan(c,equipment,now=None):
   e['reorderable']=(e['state']==sr.PLAN_REORDERABLE_STATE)
   e['spansNonWorking']=bool(spans)
   e['overdueMinutes']=round(overdue,1)
+  e['shift']=resolve_shift_label(specific_shift,global_shift,planned_start)
 
  for e in entries:
   actual=e.pop('actual')

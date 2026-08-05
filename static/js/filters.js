@@ -543,6 +543,10 @@
       const q=new URLSearchParams({db:S.db,table:S.table,page:S.page,page_size:$('#pageSize').value,search:$('#search').value});
       if(S.genericFilters?.length)q.set('filters',JSON.stringify(S.genericFilters));
       if(S.sortColumn){q.set('sort',S.sortColumn);q.set('sort_dir',S.sortDir||'asc')}
+      // list-view.jsのload()と同じ品質データ結合オプトイン(§9.21)。この
+      // ファイルはload()を丸ごと置き換えているため、あちらだけ直しても
+      // 実際にはこちらが動いてしまい反映されない。
+      if(S.db==='SIKALOTNOW'&&window.accessMode?.mode==='schedule')q.set('join_quality','1');
       const d=await api('/api/table?'+q);Object.assign(S,{columns:d.columns,rows:d.rows,count:d.count});
       const info=S.catalog.find(x=>x.key===S.db)||{};$('#fileName').textContent=info.file_name||'';renderGrid();renderGenericFilterBar();
     };

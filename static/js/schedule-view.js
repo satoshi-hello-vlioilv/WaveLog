@@ -187,6 +187,15 @@
  let splitListWidth=(()=>{try{const v=+localStorage.getItem('scSplitListWidthV1');return v>0?v:380}catch(e){return 380}})();
  let splitListCollapsed=(()=>{try{return localStorage.getItem('scSplitListCollapsedV1')==='1'}catch(e){return false}})();
  let splitWrap=null;
+ // §9.22: 品質データ結合(join_quality=1)はlist-view.jsのload()がscheduleモード
+ // かどうかで自動的に付け外しする。showSplitList()は元々S.db!=='SIKALOTNOW'の
+ // 時しか再取得しなかったため、既にSIKALOTNOWを開いた状態(例:編集モードで
+ // 見ていた後にscheduleモードへ切替、あるいは他設備のタイムラインから
+ // 戻ってきた場合)でスケジュール分割表示に入ると、join_quality無しで取得済み
+ // の古いデータのまま据え置かれ、品質列が出ないままになる不具合があった。
+ // この分割表示に入った直後の1回だけload()を強制し、以降(同じ分割表示を
+ // 保ったままの再描画)は無駄な再取得をしない。
+ let scSplitJoinApplied=false;
  function ensureSplitDivider(){
   let divider=splitWrap.querySelector('.sc-split-divider');
   if(divider)return divider;
@@ -259,14 +268,19 @@
   ensureSplitWrap();
   document.body.classList.add('sc-split');
   applyListDensity();
-  if(typeof S!=='undefined'&&typeof selectDb==='function'&&S.db!=='SIKALOTNOW'){
+  if(typeof S!=='undefined'&&typeof selectDb==='function'){
    const navBtn=document.querySelector('aside [data-db-key="SIKALOTNOW"]');
-   try{await selectDb('SIKALOTNOW',navBtn)}catch(e){/* 一覧が読めなくてもスケジュール自体の表示は継続する */}
+   try{
+    if(S.db!=='SIKALOTNOW')await selectDb('SIKALOTNOW',navBtn);
+    else if(!scSplitJoinApplied&&typeof load==='function')await load();
+   }catch(e){/* 一覧が読めなくてもスケジュール自体の表示は継続する */}
+   scSplitJoinApplied=true;
   }
  }
  function hideSplitList(){
   document.body.classList.remove('sc-split');
   teardownSplitWrap();
+  scSplitJoinApplied=false;
  }
  function updateSplitToggleUi(){
   const applicable=scState.fullControl&&scState.boardMode==='single';
@@ -837,8 +851,12 @@
 
  /* ---------- 予定一覧の取得・描画 ---------- */
  async function refreshAll(){
+  // 列表示マスタ(§9.18)はloadPlan()のrenderTimeline()が「内容」欄の組み立てに
+  // 使うため、先に取得しておく(後から取得すると初回描画が古い/未設定の
+  // プリファレンスのまま出て、直後に列が変わるちらつきが起きる)。
+  if(scState.fullControl)await loadScheduleColumnPrefs();
   await loadPlan();
-  if(scState.fullControl){await loadStopReasons();await loadScheduleColumnPrefs()}
+  if(scState.fullControl)await loadStopReasons();
   await showSplitList();
  }
  async function loadPlan(){
@@ -901,13 +919,20 @@
   if(e.fixedStart)return `<div class="sc-detail-block"><div class="sc-detail-heading">固定開始日時</div><div class="sc-fixed-start-readonly">${fmtDateTime(e.fixedStart)}</div></div>`;
   return '';
  }
- async function updateFixedStart(id,localValue){
+ function updateFixedStart(id,localValue){
+  // §9.22: 他の書込と同様、書込キュー経由の一方通行にする(直接await→
+  // loadPlan()だと、この操作だけ編集中に表示が一瞬消える対象として残って
+  // しまうため)。楽観的にローカルへ反映し、失敗した時だけ元へ戻す。
   const iso=localValue?new Date(localValue).toISOString():null;
-  try{
-   await api('/api/schedule/plan/update',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify(withUserId({id,fixedStart:iso}))});
-   await loadPlan();
-  }catch(e){showToast&&showToast('固定開始日時の更新に失敗しました',e.message,5000)}
+  const entry=scState.entries.find(e=>e.id===id);
+  if(!entry)return;
+  const previous=entry.fixedStart;
+  entry.fixedStart=iso;renderTimeline();
+  queueScheduleWrite(
+   ()=>api('/api/schedule/plan/update',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(withUserId({id,fixedStart:iso}))}),
+   ()=>{entry.fixedStart=previous;if(scState.equipment)renderTimeline()}
+  );
  }
 
  /* ---------- 高密度リスト表示(§9.3改訂) ----------
@@ -922,6 +947,21 @@
   const d=new Date(iso);if(Number.isNaN(d.getTime()))return '';
   const pad=n=>String(n).padStart(2,'0');
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+ }
+ // 年月日カラム(§9.20新設)。時刻とは別枠で常時表示する(以前は時刻セルの
+ // title(ツールチップ)にしか出ておらず、一覧性が悪いという指摘のため)。
+ const WEEKDAY_JA=['日','月','火','水','木','金','土'];
+ function fmtDateShort(iso){
+  if(!iso)return '';
+  const d=new Date(iso);if(Number.isNaN(d.getTime()))return '';
+  const pad=n=>String(n).padStart(2,'0');
+  return `${pad(d.getMonth()+1)}/${pad(d.getDate())}`;
+ }
+ function fmtDateTitle(iso){
+  if(!iso)return '';
+  const d=new Date(iso);if(Number.isNaN(d.getTime()))return '';
+  const pad=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())}(${WEEKDAY_JA[d.getDay()]})`;
  }
  function fmtTimeRange(startIso,endIso){
   if(!startIso)return '-';
@@ -940,8 +980,24 @@
   if(state==='取消')return 'sc-row-cancel';
   return 'sc-row-planned';
  }
+ // 「内容」欄の汎用化(§9.18改訂・§9.20)。設備ごとのスケジュール列表示
+ // マスタ(scColumnPrefs、window.scColumnAllowlist経由で仕掛一覧の列フィルタ
+ // にも使っている)で選んだ列があれば、その値をe.detail(buildScheduleDetail、
+ // 生カラム名でも引けるようスナップショット済み)から組み立てる。未設定
+ // (全列)の設備では、従来どおりロット番号・用途名・製造材質の既定組み立て
+ // にフォールバックする(どの設備・どの仕掛データ構成でも動くようにする
+ // ための既定値)。
+ function entryContentText(e){
+  if(e.kind!=='作業')return (e.title||'設備停止').trim();
+  const cols=(scColumnPrefs.equipment===scState.equipment)?scColumnPrefs.columns:null;
+  if(cols&&cols.length){
+   const parts=cols.map(c=>e.detail?.[c]).filter(v=>v!==undefined&&v!==null&&String(v).trim()!=='');
+   if(parts.length)return parts.join(' ');
+  }
+  return `${e.lotNo||'-'} ${e.detail?.purposeName||''} ${e.detail?.mfgMaterial||''}${e.detail?.mfgTemper?'-'+e.detail.mfgTemper:''}`.trim();
+ }
  const ROW_HEAD_HTML=`<div class="sc-row-head">
-  <span></span><span></span><span>時刻</span><span>残り</span><span>内容</span><span>見積</span><span>実績</span><span>備考</span><span>操作</span>
+  <span></span><span></span><span>日付</span><span>時刻</span><span>勤務</span><span>残り</span><span>内容</span><span>見積</span><span>実績</span><span>備考</span><span>操作</span>
  </div>`;
 
  function renderTimeline(){
@@ -974,11 +1030,12 @@
    row.draggable=canDrag;
    if(canDrag)row.tabIndex=0;
 
-   const lotText=(e.kind==='作業'
-    ?`${e.lotNo||'-'} ${e.detail?.purposeName||''} ${e.detail?.mfgMaterial||''}${e.detail?.mfgTemper?'-'+e.detail.mfgTemper:''}`
-    :(e.title||'設備停止')).trim();
+   const lotText=entryContentText(e);
+   const dateText=e.plannedStart?fmtDateShort(e.plannedStart):'-';
+   const dateTitle=e.plannedStart?fmtDateTitle(e.plannedStart):'';
    const timeText=e.plannedStart?fmtTimeRange(e.plannedStart,e.plannedEnd):(e.state==='完了'||e.state==='取消'?'-':'未定');
    const timeTitle=e.plannedStart?`${fmtDateTime(e.plannedStart)} 〜 ${fmtDateTime(e.plannedEnd)}`:'';
+   const shiftText=e.shift||'-';
    const relText=e.startsInMinutes!=null?(fmtRelative(e.startsInMinutes)||'今'):'-';
    const estText=e.estimate?fmtCompact(e.estimate.minutes):'-';
    const estDefault=e.estimate&&e.estimate.source==='default';
@@ -1002,7 +1059,9 @@
    row.innerHTML=`
     <span class="sc-row-handle" title="${canDrag?'ドラッグまたはAlt+↑/↓で並べ替え':''}">${canDrag?'⠿':(e.state==='着手'?'🔒':'')}</span>
     <span class="sc-row-icon" title="${esc(e.kind)}・${esc(e.state)}">${stateIcon(e.kind,e.state)}</span>
+    <span class="sc-row-date" title="${esc(dateTitle)}">${esc(dateText)}</span>
     <span class="sc-row-time" title="${esc(timeTitle)}">${esc(timeText)}</span>
+    <span class="sc-row-shift" title="勤務形態マスタで設定した名称です">${esc(shiftText)}</span>
     <span class="sc-row-rel">${esc(relText)}</span>
     <span class="sc-row-title" title="${esc(lotText)}">${esc(lotText)}</span>
     <span class="sc-row-est${estDefault?' sc-est-default':''}" title="${estDefault?'実績データが無いための暫定既定値です':''}">${estDefault?'~':''}${esc(estText)}</span>
@@ -1055,10 +1114,22 @@
     方式に変え、ユーザー操作をAPI応答待ちで止めない。編集セッション
     (§9.11のsyncSession)が同一設備の同時編集を防いでいるため、キューが
     捌き切る前に他端末の変更と衝突する心配もない。失敗したオペレーションは
-    数回リトライしてから諦め、キューが空になった時点でloadPlan()により
-    サーバー側の最終状態で描き直して正規化する。 */
- function queueScheduleWrite(run){
-  scWriteQueue.push({run,attempts:0});
+    数回リトライしてから諦める。諦めた操作だけonFailureでロールバックする
+    (§9.22改訂、下記)。
+    以前はキューが空になるたびloadPlan()でサーバー側の最終状態に描き直して
+    いたが、これが「書込完了→再読込→再描画」という一往復を挟むため、
+    ロック保持中(1人だけが編集している最中)でも表示が一瞬消える体感になって
+    いた(読み込み中プレースホルダを一旦挟むため)。編集セッションは設備単位で
+    同時に1人しか入れない設計(schedule_sync.pyのacquire_session)のため、
+    自分が保持している間は他端末とのデータ競合が起きようがない。そこで
+    書込を一方通行にし、セッション対象(sessionApplicable())の間は自動再読込
+    をしない。読み込みは編集モードに入るタイミング(openScheduleView/
+    refreshAll等の既存呼び出し)や、他端末編集中の閲覧時(sessionApplicable()
+    がfalseの場面)にのみ行う。この間、削除・並べ替え直後に他の予定の見積/
+    残り時間等サーバー側の再計算値が古いままになるのは許容する
+    (次に編集モードへ入った時点で正規化される)。 */
+ function queueScheduleWrite(run,onFailure){
+  scWriteQueue.push({run,onFailure,attempts:0});
   if(scQueueFlushTimer||scQueueRunning)return;
   scQueueFlushTimer=setTimeout(()=>{scQueueFlushTimer=null;runWriteQueue()},150);
  }
@@ -1074,7 +1145,10 @@
      scWriteQueue.shift();
     }catch(e){
      op.attempts++;
-     if(op.attempts>=3){scWriteQueue.shift();failures.push(e)}
+     if(op.attempts>=3){
+      scWriteQueue.shift();failures.push(e);
+      try{op.onFailure&&op.onFailure(e)}catch(err){/* ロールバック自体の失敗はここでは無視(諦めたことは既にfailuresへ記録済み) */}
+     }
      else await sleep(700*op.attempts);
     }
    }
@@ -1084,8 +1158,22 @@
     const msg=failures.length===1?failures[0].message:`${failures.length}件の変更を反映できませんでした`;
     showToast&&showToast('一部の変更を反映できませんでした',msg,7000);
    }
-   if(scState.equipment)await loadPlan(); // サーバー側の最終状態で正規化する
+   if(scState.equipment&&!sessionApplicable())await loadPlan(); // 自分が編集中の設備以外(=他端末編集中の閲覧時)だけ最終状態で正規化する
   }
+ }
+ // 楽観的追加(makeOptimisticEntry)で割り当てた仮ID(tmp-N)を、書込キューでの
+ // サーバー反映後に本来のIDへ差し替える。削除・並べ替えボタンは__pending中は
+ // 無効化してあるため、この差し替えが完了するまでは対象にならない
+ // (§9.22、上のrunWriteQueueコメント参照)。
+ function resolveOptimisticEntry(entry,result){
+  entry.id=result.id;entry.__pending=false;
+  if(scState.equipment)renderTimeline();
+ }
+ // 追加が最終的に失敗した(リトライを使い切った)場合、楽観的に足しておいた
+ // 仮エントリを取り消す。
+ function discardOptimisticEntry(entry){
+  const idx=scState.entries.indexOf(entry);
+  if(idx!==-1){scState.entries.splice(idx,1);if(scState.equipment)renderTimeline()}
  }
  function makeOptimisticEntry(kind,fields){
   return Object.assign({
@@ -1105,14 +1193,16 @@
   if(idx===-1)return;
   const [removed]=scState.entries.splice(idx,1);
   renderTimeline();
-  queueScheduleWrite(async()=>{
-   try{
-    await api('/api/schedule/plan/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(withUserId({id}))});
-   }catch(e){
+  queueScheduleWrite(
+   ()=>api('/api/schedule/plan/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(withUserId({id}))}),
+   ()=>{
+    // リトライを使い切って諦めた時だけロールバックする(§9.22)。以前は
+    // 失敗するたびに毎回ロールバックしていたため、1回目失敗→ロールバック→
+    // 2回目成功、という順で実際にはサーバー側は削除済みなのに画面へ復活
+    // したまま二度と消えない不整合が起こり得た。
     if(scState.entries.every(x=>x.id!==removed.id)){scState.entries.splice(Math.min(idx,scState.entries.length),0,removed);renderTimeline()}
-    throw e;
    }
-  });
+  );
  }
 
  /* ---------- ドラッグ並べ替え(§7.5・§9.4) + Alt+↑/↓ ---------- */
@@ -1233,10 +1323,14 @@
    return;
   }
   const target=scState.equipment;
-  scState.entries.push(makeOptimisticEntry('設備停止',{title:label}));
+  const entry=makeOptimisticEntry('設備停止',{title:label});
+  scState.entries.push(entry);
   renderTimeline();
-  queueScheduleWrite(()=>api('/api/schedule/plan/add',{method:'POST',headers:{'Content-Type':'application/json'},
-   body:JSON.stringify(withUserId({equipment:target,kind:'設備停止',position:'end',stopReasonId:reasonId}))}));
+  queueScheduleWrite(
+   ()=>api('/api/schedule/plan/add',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(withUserId({equipment:target,kind:'設備停止',position:'end',stopReasonId:reasonId}))}).then(r=>resolveOptimisticEntry(entry,r)),
+   ()=>discardOptimisticEntry(entry)
+  );
   showToast&&showToast('設備停止を追加しました',`${target}の予定に追加しました(${label})`,3200);
  }
 
@@ -1331,7 +1425,7 @@
   const allCols=(typeof S!=='undefined'?S.columns:null)||[];
   if(!allCols.length){body.innerHTML='<div class="sc-empty-note">仕掛一覧を先に開いてください(列名の取得が必要です)。</div>';return}
   const selected=(scColumnPrefs.equipment===scState.equipment&&scColumnPrefs.columns)?new Set(scColumnPrefs.columns):null;
-  body.innerHTML=`<p class="sc-drop-hint">${esc(scState.equipment)}の仕掛一覧(分割・ポップアップ表示)に出す列を選びます。1つも選ばなければ全列を表示します。</p>
+  body.innerHTML=`<p class="sc-drop-hint">${esc(scState.equipment)}の仕掛一覧(分割・ポップアップ表示)に出す列と、タイムラインの「内容」欄に組み立てる情報を選びます。1つも選ばなければ全列を表示し、「内容」欄は既定の組み立て(ロット番号・用途名・製造材質)のままにします。</p>
    <div class="sc-column-list">${allCols.map(c=>`<label class="sc-column-item"><input type="checkbox" value="${esc(c)}"${(!selected||selected.has(c))?' checked':''}> ${esc(c)}</label>`).join('')}</div>
    <div class="sc-column-actions">
     <button type="button" id="scColumnSelectAll">全選択</button>
@@ -1354,7 +1448,8 @@
    await api('/api/schedule-column-master',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify(withUserId({equipment:eq,columns:toSave}))});
    scColumnPrefs={equipment:eq,columns:toSave.length?toSave:null};
-   showToast&&showToast('表示列を保存しました',`${eq}の仕掛一覧に反映します`,3200);
+   showToast&&showToast('表示列を保存しました',`${eq}の仕掛一覧・タイムラインの内容欄に反映します`,3200);
+   if(scState.entries.length)renderTimeline();
    refreshScheduledLotFilter();
   }catch(e){showToast&&showToast('保存に失敗しました',e.message,5000)}
  }
@@ -1372,8 +1467,20 @@
  }
 
  function buildScheduleDetail(row){
+  // §6の換算係数モデルはalias化された既知フィールド(mfgMaterial等)を前提に
+  // しているため、従来どおりそちらも残す。あわせて§9.18改訂で「内容」欄を
+  // 汎用化するため、スケジュール列表示マスタが選ぶ生カラム名でも値を
+  // 引けるよう、S.columns(今表示中の仕掛一覧の全列)もそのまま(生カラム名を
+  // キーに)スナップショットへ含める。どの設備・どの仕掛データ構成でも
+  // 対応できるようにするための汎用化(alias一覧に無い列も選べる)。
   const detail={};
   Object.keys(aliases).forEach(k=>{const v=pick(row,k);if(v!==undefined&&v!==null&&v!=='')detail[k]=v});
+  if(typeof S!=='undefined'&&Array.isArray(S.columns)){
+   S.columns.forEach(c=>{
+    const v=row[c];
+    if(v!==undefined&&v!==null&&v!=='')detail[c]=v;
+   });
+  }
   return detail;
  }
  function sessionHolderMessage(){
@@ -1397,9 +1504,13 @@
    return;
   }
   if(sessionBlocked()){showToast&&showToast('追加できません',sessionHolderMessage(),4000);return}
-  scState.entries.push(makeOptimisticEntry('作業',{lotNo:pick(row,'lotNo')||'',detail:buildScheduleDetail(row)}));
+  const entry=makeOptimisticEntry('作業',{lotNo:pick(row,'lotNo')||'',detail:buildScheduleDetail(row)});
+  scState.entries.push(entry);
   renderTimeline();
-  queueScheduleWrite(()=>api('/api/schedule/plan/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(planAddPayload(target,row))}));
+  queueScheduleWrite(
+   ()=>api('/api/schedule/plan/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(planAddPayload(target,row))}).then(r=>resolveOptimisticEntry(entry,r)),
+   ()=>discardOptimisticEntry(entry)
+  );
  }
  window.scheduleAddFromRow=function(row){addRowToSchedule(row,pick(row,'equipment')||'')};
 
@@ -1426,8 +1537,12 @@
   }
   if(sessionBlocked()){showToast&&showToast('追加できません',sessionHolderMessage(),4000);return}
   rows.forEach(row=>{
-   scState.entries.push(makeOptimisticEntry('作業',{lotNo:pick(row,'lotNo')||'',detail:buildScheduleDetail(row)}));
-   queueScheduleWrite(()=>api('/api/schedule/plan/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(planAddPayload(target,row))}));
+   const entry=makeOptimisticEntry('作業',{lotNo:pick(row,'lotNo')||'',detail:buildScheduleDetail(row)});
+   scState.entries.push(entry);
+   queueScheduleWrite(
+    ()=>api('/api/schedule/plan/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(planAddPayload(target,row))}).then(r=>resolveOptimisticEntry(entry,r)),
+    ()=>discardOptimisticEntry(entry)
+   );
   });
   renderTimeline();
   showToast&&showToast(`${rows.length}件をキューへ追加しました`,`${target}の予定へ反映中です…`,3200);
