@@ -93,14 +93,48 @@ def connect(path,readonly=False,engine=None):
    c=sqlite3.connect(str(path),timeout=10,detect_types=sqlite3.PARSE_DECLTYPES)
   c.create_function('Now',0,_sqlite_now);c.create_function('Nz',2,_sqlite_nz)
   c.create_function('CStr',1,_sqlite_cstr);c.create_function('Val',1,_sqlite_val)
+  _tag_source(c,path)
   return c
  if not path.exists(): raise FileNotFoundError(f"データベースが見つかりません: {path}")
- return pyodbc.connect(f"DRIVER={{{DRIVER}}};DBQ={path};"+("READONLY=1;" if readonly else ""),autocommit=False,timeout=10)
-def cols(c,t):
+ c=pyodbc.connect(f"DRIVER={{{DRIVER}}};DBQ={path};"+("READONLY=1;" if readonly else ""),autocommit=False,timeout=10)
+ _tag_source(c,path)
+ return c
+
+def _tag_source(c,path):
+ # cols()のキャッシュ(下記)が「どの接続先か」を接続オブジェクトから引ける
+ # ようにするための目印。付けられない実装でも動くよう失敗は握りつぶす。
+ try:c._wavelog_source=str(path)
+ except Exception:pass
+# 列名の取得は「1行だけSELECTして description を見る」実装のため、共有越しの
+# Access(SIKALOTNOW/SIKALOTDEF)では1往復まるごとかかる。列構成は運用中に
+# 変わらないので短時間キャッシュする(docs/ARCHITECTURE.md「共有ファイルを
+# 読む処理は回数が効く」)。一覧を開くたびの往復を1回減らす。
+COLS_CACHE_TTL_SEC=60.0
+_cols_cache={}
+_cols_cache_lock=threading.Lock()
+
+def invalidate_cols_cache():
+ with _cols_cache_lock:_cols_cache.clear()
+
+def cols(c,t,use_cache=True):
+ key=None
+ if use_cache:
+  # 同じ接続先の同じテーブルであれば結果は同じ。接続オブジェクトではなく
+  # 接続先(DBのパス/DSN)で引く。
+  try:key=(str(getattr(c,'_wavelog_source','') or id(type(c))),str(t))
+  except Exception:key=None
+  if key:
+   now=time.time()
+   with _cols_cache_lock:
+    hit=_cols_cache.get(key)
+   if hit and (now-hit[0])<COLS_CACHE_TTL_SEC:return list(hit[1])
  cur=c.cursor()
  if isinstance(c,sqlite3.Connection):cur.execute(f"SELECT * FROM {qi(t)} LIMIT 1")
  else:cur.execute(f"SELECT TOP 1 * FROM {qi(t)}")
- return [x[0] for x in cur.description]
+ out=[x[0] for x in cur.description]
+ if key:
+  with _cols_cache_lock:_cols_cache[key]=(time.time(),list(out))
+ return out
 def tables(c):
  if isinstance(c,sqlite3.Connection):
   cur=c.cursor();cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")

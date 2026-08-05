@@ -255,8 +255,84 @@ main>header small{color:#687a81;margin-top:2px}
    (実測34px前後)、現場段取りバッジ=26pxと三者三様で、横一列に並ぶのに
    上下の中心も高さも揃っていなかった。 */
 .global-actions{display:flex;align-items:center;gap:var(--space-2)}
-.global-actions #search,.global-actions #pageSize,.global-actions #reload{height:var(--ctl-h);padding-top:0;padding-bottom:0}
-.global-actions #search{max-width:220px}
+
+/* ---------- メイン画面ヘッダー(§9.48) ----------
+   以前は「モードバッジ(角丸19pxの塗り)」「使用設備(角丸6pxの枠)」「検索入力」
+   「件数select」「再読込ボタン」「サイズバッジ(角丸19px)」が横一列に並び、
+   形も高さも色の意味もバラバラだった。並び順にも意味が無く、状態を見せる
+   ものと操作するものが混ざっていた。
+
+   役割で3つに分け、役割ごとに見た目を1つに決める:
+     hd-context 今どこを見ているか(読むだけ)
+     hd-status  この端末の状態(モード・使用設備。押すと変えられる)
+     hd-actions 今の一覧への操作(検索・件数・再読込・表示サイズ)
+   高さはすべて --ctl-h、角丸は8pxに統一する。状態は「小さなキー + 太い値」
+   の2段組チップ、操作は四角いボタン/入力、と形で種類が分かるようにする。 */
+main>header{gap:var(--space-4)}
+.hd-context{display:flex;align-items:baseline;gap:var(--space-2);min-width:0}
+.hd-context #fileName{font-size:var(--fs-title);font-weight:800;color:#173842;
+ overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:38vw}
+.hd-freshness{font-size:var(--fs-sm);color:#8a9aa0;white-space:nowrap}
+.hd-freshness[hidden]{display:none}
+
+.hd-status,.hd-actions{display:flex;align-items:center;gap:var(--space-2)}
+.hd-status{margin-left:auto}
+
+/* 状態チップ: キー(小)+値(太)の2段組。押せるものだけ枠が反応する。 */
+.hd-chip{
+ display:inline-flex;flex-direction:column;align-items:flex-start;justify-content:center;
+ height:var(--ctl-h);padding:0 12px;border:1px solid var(--line);border-radius:8px;
+ background:#fff;color:#3a565d;white-space:nowrap;line-height:1.15;
+ font-family:inherit;text-align:left;
+}
+.hd-chip[hidden]{display:none}
+.hd-chip-key{font-size:var(--fs-tiny);font-weight:700;color:#8a9aa0;letter-spacing:.02em}
+.hd-chip-val{font-size:var(--fs-base-sm);font-weight:800;color:#173842;
+ max-width:150px;overflow:hidden;text-overflow:ellipsis}
+button.hd-chip{cursor:pointer;transition:border-color .12s,background .12s}
+button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
+/* モード: 状態そのものが意味を持つので色で区別する(編集=緑/閲覧=灰/スケジュール=青) */
+.hd-chip-mode{border-color:var(--success-border);background:var(--success-bg)}
+.hd-chip-mode .hd-chip-val{color:var(--success)}
+.hd-chip-mode.is-view{border-color:var(--line);background:#eef2f4}
+.hd-chip-mode.is-view .hd-chip-val{color:#5c777e}
+.hd-chip-mode.is-schedule{border-color:#9ec8dd;background:#eaf4fb}
+.hd-chip-mode.is-schedule .hd-chip-val{color:#1a5f86}
+/* 使用設備: 未設定は要対応なので警告色 */
+.hd-chip-equip.is-unset{border-color:var(--warn-border);background:var(--warn-bg)}
+.hd-chip-equip.is-unset .hd-chip-val{color:var(--warn-fg)}
+.hd-chip-static{background:var(--warn-bg);border-color:var(--warn-border)}
+.hd-chip-static .hd-chip-val{color:var(--warn-fg)}
+.hd-chip-static.is-warn{background:var(--danger-bg);border-color:var(--danger-border)}
+.hd-chip-static.is-warn .hd-chip-val{color:var(--danger)}
+
+/* 操作: 高さ・角丸・枠を揃えた四角い部品で統一する */
+.hd-actions .hd-btn,.hd-actions .hd-search,.hd-actions .hd-field{
+ height:var(--ctl-h);border:1px solid var(--line);border-radius:8px;background:#fff;
+}
+.hd-actions .hd-btn{padding:0 14px;font-size:var(--fs-base-sm);font-weight:700;color:#3a565d;cursor:pointer;
+ display:inline-flex;align-items:center;gap:6px;transition:border-color .12s,background .12s}
+.hd-actions .hd-btn:hover{border-color:var(--teal);background:var(--pale);color:#0c5d67}
+.hd-btn-icon{padding:0 12px}
+.hd-size-a{font-size:var(--fs-title);font-weight:800;line-height:1}
+.hd-search{display:inline-flex;align-items:center;gap:6px;padding:0 10px}
+.hd-search:focus-within{border-color:var(--teal);box-shadow:0 0 0 3px #087c8922}
+.hd-search-icon{font-size:var(--fs-sm);opacity:.6}
+.hd-actions #search{border:0;outline:0;background:transparent;height:auto;padding:0;
+ width:min(200px,18vw);font-size:var(--fs-base-sm)}
+.hd-field{display:inline-flex;align-items:center;gap:6px;padding:0 10px}
+.hd-field>span{font-size:var(--fs-tiny);font-weight:700;color:#8a9aa0;white-space:nowrap}
+.hd-actions #pageSize{border:0;outline:0;background:transparent;height:auto;padding:0;
+ font-size:var(--fs-base-sm);font-weight:700;color:#3a565d}
+/* quality-analysis.jsが後から差し込む「画面を印刷」も同じ見た目へ揃える */
+.hd-actions #printCurrentView{height:var(--ctl-h);padding:0 14px;border:1px solid var(--line);
+ border-radius:8px;background:#fff;font-size:var(--fs-base-sm);font-weight:700;color:#3a565d;cursor:pointer}
+.hd-actions #printCurrentView:hover{border-color:var(--teal);background:var(--pale);color:#0c5d67}
+@media(max-width:1180px){
+ .hd-context #fileName{max-width:22vw}
+ .hd-actions #search{width:min(140px,14vw)}
+ .hd-field>span{display:none}
+}
 .equipment-header-button{display:flex;align-items:center;gap:7px;min-width:150px;height:var(--ctl-h);padding:0 10px;border:1px solid var(--teal);background:#eafafa;color:#164e55}
 .equipment-header-button span{font-size:var(--fs-micro)}
 .equipment-header-button b{max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

@@ -90,10 +90,13 @@
   <p class="stage" id="stage">実行環境を確認中…</p>
   <p class="elapsed" id="elapsed">経過 0 秒</p>
   <ul class="steps" id="steps">
-   <li data-step="0"><b></b><span>実行環境を確認中</span></li>
-   <li data-step="1"><b></b><span>アプリを準備中</span></li>
-   <li data-step="2"><b></b><span>接続を確認中</span></li>
-   <li data-step="3"><b></b><span>起動完了</span></li>
+   <li data-step="0"><b></b><span>実行環境を確認</span></li>
+   <li data-step="1"><b></b><span>起動中のアプリを確認</span></li>
+   <li data-step="2"><b></b><span>必要な部品を確認</span></li>
+   <li data-step="3"><b></b><span>データの置き場所を確認</span></li>
+   <li data-step="4"><b></b><span>アプリを読み込み</span></li>
+   <li data-step="5"><b></b><span>Webサーバーを起動</span></li>
+   <li data-step="6"><b></b><span>起動完了</span></li>
   </ul>
  </div>
 
@@ -123,9 +126,18 @@
 
  document.getElementById('errPort').textContent=PORT;
 
- /* 表示上の段階。実際の完了判定はサーバー応答のみで行い、
-    経過秒数では「起動完了」にしない(仕様書2.2)。 */
- function stageFor(sec){ return sec<2?0 : sec<5?1 : 2 }
+ /* 段階表示は**起動処理が実際に書き出した進捗**(boot_status.js)を読む。
+    以前は経過秒数だけで切り替えていたため、5秒を過ぎると何をしていても
+    「接続を確認中」に留まり、どこで待たされているのか分からなかった。
+    共有の応答待ちで時間がかかる場合ほど、この情報が要る。
+    起動処理がまだ何も書けていない間だけ、控えめに0段階目を出す。 */
+ var bootStep=-1, bootLabel='', bootDetail='';
+ window.wavelogBootStatus=function(info){
+  if(!polling||!info) return;
+  if(typeof info.index==='number' && info.index>=bootStep){
+   bootStep=info.index; bootLabel=info.label||''; bootDetail=info.detail||'';
+  }
+ };
  function paint(active){
   for(var i=0;i<steps.length;i++){
    steps[i].className = i<active ? 'done' : (i===active ? 'on' : '');
@@ -133,11 +145,21 @@
  }
  function tick(){
   var sec=Math.floor((Date.now()-started)/1000);
-  elapsedEl.textContent='経過 '+sec+' 秒';
-  var s=stageFor(sec);
-  stageEl.textContent=['実行環境を確認中…','アプリを準備中…','接続を確認中…'][s];
+  elapsedEl.textContent='経過 '+sec+' 秒'+(bootDetail?' ・ '+bootDetail:'');
+  var s=bootStep<0?0:bootStep;
+  stageEl.textContent=(bootLabel||'実行環境を確認')+'…';
   paint(s);
   if(Date.now()-started>TIMEOUT_MS) fail();
+ }
+ /* 起動処理が書き出す進捗ファイルを読み込む(file://同士のためfetchは
+    使えず、<script src>で取り込む)。まだ無い場合はonerrorで黙って捨てる。 */
+ function probeBoot(){
+  if(!polling) return;
+  var el=document.createElement('script');
+  el.src='boot_status.js?t='+Date.now();
+  el.onerror=function(){ el.remove() };
+  el.onload=function(){ el.remove() };
+  document.head.appendChild(el);
  }
 
  /* サーバーが応答したときにJSONP経由で呼ばれる。 */
@@ -146,7 +168,7 @@
   if(!info||info.app!==APP_ID||!info.ready) return; // 別アプリが同じポートに居る場合は無視して待ち続ける
   polling=false; clearInterval(timer);
   stageEl.textContent='起動完了';
-  paint(3); steps[3].className='done';
+  paint(steps.length-1); steps[steps.length-1].className='done';
   var url=(info.url||('http://127.0.0.1:'+PORT+'/'));
   setTimeout(function(){ location.replace(url) },250); // 完了表示を一瞬見せてから遷移
  };
@@ -159,6 +181,7 @@
   el.onerror=function(){ el.remove() };
   el.onload=function(){ el.remove() };
   document.head.appendChild(el);
+  probeBoot();
   if(polling) setTimeout(probe,POLL_INTERVAL_MS);
  }
 

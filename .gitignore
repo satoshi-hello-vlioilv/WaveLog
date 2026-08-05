@@ -10,3 +10,11 @@ config/rne_extract/rne/
 config/rne_extract/NAVIAP/
 config/rne_extract/symnavim.conf
 config/rne_extract/symnavim.def
+boot_status.js
+
+# schedule_sync.pyが共有スケジュールDBの隣へ書く実行時ファイル(排他ロック・
+# 編集セッション・書込中の一時ファイル)。schedule_share_pathをリポジトリ内へ
+# 向けて動かすと出てくる。状態そのものなのでコミットしない。
+schedule.lock.json
+schedule.sessions.json
+*.tmp
