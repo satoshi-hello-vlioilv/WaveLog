@@ -61,6 +61,7 @@ _WRITE_ALLOWED_MODES={
 _ENDPOINT_EXTRA_MODES={
  'schedule.plan_reorder':{'edit'},
  'masters.schedule_column_master_save':{'schedule'},
+ 'masters.schedule_content_master_save':{'schedule'},
 }
 
 def current_login_id():

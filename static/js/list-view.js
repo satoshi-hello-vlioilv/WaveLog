@@ -70,7 +70,7 @@ async function load(){
   // (§9.21)。通常の仕掛一覧閲覧では付けない(オプトインでSIKALOTNOW単独表示に
   // 影響を与えない)。
   if(S.db==='SIKALOTNOW'&&window.accessMode?.mode==='schedule')q.set('join_quality','1');
-  const d=await api('/api/table?'+q);Object.assign(S,{columns:d.columns,rows:d.rows,count:d.count});const info=S.catalog.find(x=>x.key===S.db);$('#fileName').textContent=info.file_name;$('#tableName').textContent=S.table;
+  const d=await api('/api/table?'+q);Object.assign(S,{columns:d.columns,rows:d.rows,count:d.count});S.joinQuality=d.joinQuality||null;const info=S.catalog.find(x=>x.key===S.db);$('#fileName').textContent=info.file_name;$('#tableName').textContent=S.table;
   // ページ・検索条件が変わるたびに行オブジェクト自体が総入れ替えになるため、
   // 複数選択(§9.5、一括予定投入)はページ内限定とし、切替のたびにクリアする。
   S.selectedRows.clear();
@@ -221,8 +221,56 @@ function renderGrid(){
   }
  }
  renderPlanSelectBar(canPlan);
+ renderListToolbar();
  checkSplitRowsForMissingChildren(splitCheckTargets);
  checkParentLookupRows(parentCheckTargets);
+}
+
+/* ---------- 一覧のツールバー ----------
+   一覧そのものに属する操作(表示列の選択)と状態(品質データ結合の結果)は、
+   一覧と同じ場所へ置く。#gridは分割表示・ポップアップ表示へDOMごと
+   移動する(schedule-view.jsのmoveGridTo)ため、このツールバーも#gridの
+   直前の兄弟として一緒に動かす。以前は「表示する列の選択」が作業スケジュール
+   画面のヘッダーにあり、操作対象(仕掛一覧)から離れていて何に効くのか
+   分かりにくかった。 */
+function ensureListToolbar(){
+ let bar=document.getElementById('listToolbar');
+ const grid=$('#grid');
+ if(!grid||!grid.parentNode)return null;
+ if(!bar){
+  bar=document.createElement('div');bar.id='listToolbar';bar.className='list-toolbar';bar.hidden=true;
+  bar.innerHTML=`<button type="button" id="listColumnBtn" class="list-toolbar-btn" title="この一覧に表示する列を選びます">☰ 表示列</button>
+   <span class="list-join-chip" id="listJoinChip" hidden></span>`;
+  grid.parentNode.insertBefore(bar,grid);
+  bar.querySelector('#listColumnBtn').onclick=()=>window.openListColumnPicker?.();
+ }else if(bar.nextElementSibling!==grid){
+  // #gridが別の親(分割/ポップアップ)へ移動したら追従させる。
+  grid.parentNode.insertBefore(bar,grid);
+ }
+ return bar;
+}
+function renderListToolbar(){
+ const bar=ensureListToolbar();if(!bar)return;
+ // 表示列の選択は、設備ごとの設定を持つスケジュールモードの仕掛一覧でのみ扱う。
+ const canPickColumns=S.db==='SIKALOTNOW'&&window.accessMode?.mode==='schedule'&&!!window.scColumnPickerAvailable?.();
+ const btn=bar.querySelector('#listColumnBtn');
+ if(btn)btn.hidden=!canPickColumns;
+ // 品質データ結合(join_quality)の結果を、成功・失敗どちらも一覧の脇に出す。
+ // 以前はサーバー側で黙って素通ししていたため、結合されない理由が分からなかった。
+ const chip=bar.querySelector('#listJoinChip');
+ const info=S.joinQuality;
+ if(chip){
+  if(!info){chip.hidden=true;chip.textContent=''}
+  else{
+   chip.hidden=false;
+   const ok=info.applied&&info.matched>0;
+   chip.className='list-join-chip '+(ok?'is-ok':'is-warn');
+   chip.textContent=ok?`品質データ結合済み ${info.matched}件 / +${info.addedColumns}列`:'品質データ未結合';
+   chip.title=ok?`ロット番号・鋳造番号・製造材質が一致した${info.matched}行に、品質データの${info.addedColumns}列を結合しました(照合先: ${info.table||'-'})。重複する列は仕掛情報を優先します。`
+                :`品質データを結合できませんでした: ${info.reason||'原因不明'}`;
+  }
+ }
+ bar.hidden=!(canPickColumns||(info&&!chip.hidden));
 }
 /* 複数選択→スケジュールへ一括投入(§9.5)。ヘッダーの全選択チェックボックスは
    このページの表示行(投入済みでスケジュールから除外表示している行を除く、

@@ -600,7 +600,7 @@
       // ファイルはload()を丸ごと置き換えているため、あちらだけ直しても
       // 実際にはこちらが動いてしまい反映されない。
       if(S.db==='SIKALOTNOW'&&window.accessMode?.mode==='schedule')q.set('join_quality','1');
-      const d=await api('/api/table?'+q);Object.assign(S,{columns:d.columns,rows:d.rows,count:d.count});
+      const d=await api('/api/table?'+q);Object.assign(S,{columns:d.columns,rows:d.rows,count:d.count});S.joinQuality=d.joinQuality||null;
       const info=S.catalog.find(x=>x.key===S.db)||{};$('#fileName').textContent=info.file_name||'';renderGrid();renderGenericFilterBar();
     };
   }

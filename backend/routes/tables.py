@@ -12,11 +12,15 @@ app.pyから移設(Phase 3)。移設後、db=MASTER(SQLite)に対してのみ以
     パラメータを比べると常に不成立になる不具合。SQLite接続時のみ
     パラメータ側もPython側で数値化してから渡すようにした。
 """
-import json, re
+import json, re, unicodedata
 from flask import Blueprint, request, jsonify
 
 from ..db_access import DBS, qi, connect, cols, tables, cfg
+from ..logging_setup import app_logger
 from ..repositories.master_repo import hidden_columns_for_db
+
+# 品質データ結合のIN句を小分けにする単位(Access側のパラメータ数上限対策)。
+_JOIN_IN_CHUNK=100
 
 bp=Blueprint('tables',__name__)
 
@@ -35,63 +39,106 @@ def _numeric_value(value):
 # ========================================================================
 _JOIN_KEY_ALIASES={
  'lotNo':['ロット番号','ﾛｯﾄ番号','ロット№','LTNO'],
- 'castingNo':['鋳造番号','CYNO'],
- 'mfgMaterial':['製造材質','LTA'],
+ 'castingNo':['鋳造番号','ﾁｭｳｿﾞｳ番号','CYNO'],
+ 'mfgMaterial':['製造材質','ﾒｲｿﾞｳ材質','LTA'],
 }
+def _norm_name(s):
+ # 全角/半角・大小文字のゆれを吸収して比較する(CLAUDE.md「フィールド名」)。
+ return unicodedata.normalize('NFKC',str(s or '')).strip().lower()
 def _find_column(columns,aliases):
+ """列名の別名解決。完全一致 → 正規化一致 → 部分一致の順に探す。
+ 部分一致は誤爆(例: 別名'LTNO'が'PLTNO'に一致)しやすいので最後の手段。"""
  for a in aliases:
   if a in columns:return a
+ norm={_norm_name(c):c for c in columns}
+ for a in aliases:
+  hit=norm.get(_norm_name(a))
+  if hit:return hit
  for c in columns:
-  if any(a.lower() in c.lower() for a in aliases):return c
+  if any(_norm_name(a) in _norm_name(c) for a in aliases):return c
  return None
+def _norm_value(v):
+ # 突合キーの値も同様にゆれを吸収する(前後空白・全角半角)。
+ return unicodedata.normalize('NFKC',str(v if v is not None else '')).strip()
+
+def _quality_key_table(c,def_cfg):
+ """品質データ側で「3つのキー列がすべて揃っているテーブル」を選ぶ。
+ 以前はpreferred(既定'仕掛')が無ければ先頭テーブルを無条件に使っていたため、
+ キー列を持たない別のテーブルを掴んで黙って結合を諦めることがあった。"""
+ names=tables(c)
+ if not names:return None,None,None
+ ordered=([def_cfg['preferred']] if def_cfg.get('preferred') in names else [])+[n for n in names if n!=def_cfg.get('preferred')]
+ for t in ordered:
+  try:cs=cols(c,t)
+  except Exception:continue
+  k=[_find_column(cs,_JOIN_KEY_ALIASES[x]) for x in ('lotNo','castingNo','mfgMaterial')]
+  if all(k):return t,cs,k
+ return None,None,None
 
 def _join_quality_data(sikalotnow_cols,row_dicts):
- """戻り値: (結合後の列名リスト, 結合後の行dictリスト)。重複する列名は
- 仕掛(SIKALOTNOW)側の値を優先する(現在値としての信頼度が高い運用のため)。
- 品質データ側が未接続・キー列が見つからない・接続に失敗した場合は何も
- せず素通しする(fail-open、通常の仕掛一覧表示自体は壊さない)。"""
+ """戻り値: (結合後の列名リスト, 結合後の行dictリスト, 診断情報dict)。
+ 重複する列名は仕掛(SIKALOTNOW)側の値を優先する(現在値としての信頼度が
+ 高い運用のため)。品質データ側が未接続・キー列が見つからない・接続に失敗
+ した場合は何もせず素通しする(fail-open、通常の仕掛一覧表示自体は壊さない)が、
+ **なぜ結合できなかったのかを必ず診断情報として返す**。以前はすべての失敗を
+ 黙って握り潰していたため、「結合されない」という報告に対して原因が
+ 画面にもログにも一切出ず切り分けができなかった。"""
+ info={'applied':False,'reason':'','matched':0,'addedColumns':0}
  lot_col=_find_column(sikalotnow_cols,_JOIN_KEY_ALIASES['lotNo'])
  cast_col=_find_column(sikalotnow_cols,_JOIN_KEY_ALIASES['castingNo'])
  mat_col=_find_column(sikalotnow_cols,_JOIN_KEY_ALIASES['mfgMaterial'])
- if not (lot_col and cast_col and mat_col):return sikalotnow_cols,row_dicts
+ missing=[n for n,v in (('ロット番号',lot_col),('鋳造番号',cast_col),('製造材質',mat_col)) if not v]
+ if missing:
+  info['reason']=f'仕掛一覧側に突合キーの列が見つかりません: {"・".join(missing)}'
+  return sikalotnow_cols,row_dicts,info
  def key_of(d):
-  return (str(d.get(lot_col) or '').strip(),str(d.get(cast_col) or '').strip(),str(d.get(mat_col) or '').strip())
+  return (_norm_value(d.get(lot_col)),_norm_value(d.get(cast_col)),_norm_value(d.get(mat_col)))
  keys=[key_of(d) for d in row_dicts]
- lot_values=sorted({k[0] for k in keys if all(k)})
- if not lot_values:return sikalotnow_cols,row_dicts
+ lot_values=sorted({k[0] for k in keys if k[0]})
+ if not lot_values:
+  info['reason']='表示中の行にロット番号がありません'
+  return sikalotnow_cols,row_dicts,info
+ def_cfg=DBS['SIKALOTDEF']
  try:
-  def_cfg=DBS['SIKALOTDEF']
-  if not def_cfg['path'].exists():return sikalotnow_cols,row_dicts
+  if not def_cfg['path'].exists():
+   info['reason']=f'品質データのファイルが見つかりません: {def_cfg["path"]}'
+   app_logger().warning('品質データ結合: %s',info['reason'])
+   return sikalotnow_cols,row_dicts,info
   with connect(def_cfg['path'],True) as c:
-   def_tables=tables(c)
-   t=def_cfg['preferred'] if def_cfg['preferred'] in def_tables else (def_tables[0] if def_tables else None)
-   if not t:return sikalotnow_cols,row_dicts
-   def_cols=cols(c,t)
-   d_lot=_find_column(def_cols,_JOIN_KEY_ALIASES['lotNo'])
-   d_cast=_find_column(def_cols,_JOIN_KEY_ALIASES['castingNo'])
-   d_mat=_find_column(def_cols,_JOIN_KEY_ALIASES['mfgMaterial'])
-   if not (d_lot and d_cast and d_mat):return sikalotnow_cols,row_dicts
+   t,def_cols,(d_lot,d_cast,d_mat)=_quality_key_table(c,def_cfg)
+   if not t:
+    info['reason']='品質データ側に突合キー(ロット番号・鋳造番号・製造材質)が揃ったテーブルが見つかりません'
+    app_logger().warning('品質データ結合: %s (%s)',info['reason'],def_cfg['path'])
+    return sikalotnow_cols,row_dicts,info
    # ロット番号だけでSQL側を軽く絞り、鋳造番号・製造材質の正確な一致は
    # Python側で行う(複合IN条件はAccess/SQLite両対応で書きにくいため)。
-   placeholders=','.join('?' for _ in lot_values)
-   cur=c.cursor()
-   cur.execute(f'SELECT * FROM {qi(t)} WHERE CStr({qi(d_lot)}) IN ({placeholders})',lot_values)
-   quality_index={}
-   for row in cur.fetchall():
-    dd=dict(zip(def_cols,row))
-    qkey=(str(dd.get(d_lot) or '').strip(),str(dd.get(d_cast) or '').strip(),str(dd.get(d_mat) or '').strip())
-    if qkey in quality_index:continue  # 同一キーが複数行あれば最初の1件のみ使う
-    quality_index[qkey]=dd
- except Exception:
-  return sikalotnow_cols,row_dicts
+   # INのパラメータ数が多いとAccess側で失敗するため小分けにする。
+   quality_index={};cur=c.cursor()
+   for i in range(0,len(lot_values),_JOIN_IN_CHUNK):
+    chunk=lot_values[i:i+_JOIN_IN_CHUNK]
+    placeholders=','.join('?' for _ in chunk)
+    cur.execute(f'SELECT * FROM {qi(t)} WHERE CStr({qi(d_lot)}) IN ({placeholders})',chunk)
+    for row in cur.fetchall():
+     dd=dict(zip(def_cols,row))
+     qkey=(_norm_value(dd.get(d_lot)),_norm_value(dd.get(d_cast)),_norm_value(dd.get(d_mat)))
+     if qkey in quality_index:continue  # 同一キーが複数行あれば最初の1件のみ使う
+     quality_index[qkey]=dd
+ except Exception as e:
+  info['reason']=f'品質データへ接続できません: {e}'
+  app_logger().warning('品質データ結合に失敗しました: %s',e)
+  return sikalotnow_cols,row_dicts,info
  extra_cols=[c for c in def_cols if c not in sikalotnow_cols]
- merged_rows=[]
+ merged_rows=[];matched=0
  for d,key in zip(row_dicts,keys):
   qd=quality_index.get(key)
+  if qd:matched+=1
   merged=dict(qd) if qd else {}
   merged.update(d)  # 重複列は仕掛(SIKALOTNOW)側を優先
   merged_rows.append(merged)
- return sikalotnow_cols+extra_cols,merged_rows
+ info.update(applied=True,matched=matched,addedColumns=len(extra_cols),table=t)
+ if not matched:
+  info['reason']=f'キーが一致する品質データがありませんでした(照合先: {t})'
+ return sikalotnow_cols+extra_cols,merged_rows,info
 
 @bp.get('/api/catalog')
 def catalog(): return jsonify(databases=[{"key":k,"label":v['label'],"file_name":v['path'].name,"role":v['role']} for k,v in DBS.items()])
@@ -170,7 +217,8 @@ def api_table():
   row_dicts=[dict(zip(cs,r)) for r in rows]
   visible_cs=[x for x in cs if x not in hidden] if hidden else cs
   if hidden:row_dicts=[{col:v for col,v in d.items() if col not in hidden} for d in row_dicts]
+  join_info=None
   if k=='SIKALOTNOW' and request.args.get('join_quality')=='1':
-   visible_cs,row_dicts=_join_quality_data(visible_cs,row_dicts)
-  return jsonify(columns=visible_cs,rows=row_dicts,count=count,filters_applied=len(filters))
+   visible_cs,row_dicts,join_info=_join_quality_data(visible_cs,row_dicts)
+  return jsonify(columns=visible_cs,rows=row_dicts,count=count,filters_applied=len(filters),joinQuality=join_info)
  except Exception as e:return jsonify(error=str(e)),500

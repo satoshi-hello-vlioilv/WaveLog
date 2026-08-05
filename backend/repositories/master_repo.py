@@ -550,3 +550,54 @@ def set_schedule_columns(c,equipment,column_names,uid):
               [equipment,name,order,uid,uid])
  c.commit()
  return order
+
+# ------------------------------------------------------------------------
+# スケジュール内容表示マスタ(設備ごと)
+# ------------------------------------------------------------------------
+# 作業スケジュールのタイムライン各行「内容」欄に、どの項目をどの順で並べるか。
+# 上のスケジュール列表示マスタ(仕掛一覧に出す"列"の絞り込み)とは目的が違う:
+#   列表示マスタ … 一覧の横方向に何を見せるか。選ぶ数は多い(10列でも普通)。
+#   内容表示マスタ … 1行の要約文を何で組み立てるか。選ぶ数は少ない(2〜4項目)。
+# 以前は1つのマスタで両方を兼ねていたため、「一覧は10列見たいが内容欄は
+# ロット番号と材質だけにしたい」が表現できず、どちらも中途半端になっていた
+# (実際に「うまく実装されていない」と報告された)。並び順もそのまま
+# 表示順として使うため、利用者が選んだ順に意味がある。
+SCHEDULE_CONTENT_TABLE='スケジュール内容表示マスタ'
+def ensure_schedule_content_table(c):
+ names=tables(c);created=False
+ if SCHEDULE_CONTENT_TABLE not in names:
+  cur=c.cursor()
+  cur.execute('CREATE TABLE [スケジュール内容表示マスタ] ([ID] INTEGER PRIMARY KEY AUTOINCREMENT, [設備名] TEXT, [項目名] TEXT, [表示順] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
+  cur.execute('CREATE INDEX [IX_スケジュール内容表示マスタ_設備] ON [スケジュール内容表示マスタ] ([設備名])')
+  c.commit();created=True
+ ensure_audit_columns(c,SCHEDULE_CONTENT_TABLE)
+ return created
+
+def schedule_content_items_for(c,equipment):
+ # 指定設備の「内容」欄の項目(表示順)。1件も無ければ空リスト
+ # (=未設定、呼び出し側で既定の組み立てへフォールバックする)。
+ if SCHEDULE_CONTENT_TABLE not in tables(c):return []
+ cur=c.cursor()
+ cur.execute('SELECT [設備名],[項目名] FROM [スケジュール内容表示マスタ] ORDER BY [表示順],[ID]')
+ target=normalize_equipment_name(equipment)
+ return [str(r[1]) for r in cur.fetchall() if target and normalize_equipment_name(r[0])==target]
+
+def set_schedule_content_items(c,equipment,item_names,uid):
+ # set_schedule_columnsと同じ全置換方式。渡された順序がそのまま表示順になる。
+ ensure_schedule_content_table(c)
+ equipment=str(equipment or '').strip()
+ if not equipment:raise ValueError('設備名を指定してください。')
+ cur=c.cursor()
+ cur.execute('SELECT [ID],[設備名] FROM [スケジュール内容表示マスタ]')
+ target=normalize_equipment_name(equipment)
+ for rid in [r[0] for r in cur.fetchall() if normalize_equipment_name(r[1])==target]:
+  cur.execute('DELETE FROM [スケジュール内容表示マスタ] WHERE [ID]=?',[rid])
+ order=0
+ for name in (item_names or []):
+  name=str(name or '').strip()
+  if not name:continue
+  order+=1
+  cur.execute('INSERT INTO [スケジュール内容表示マスタ] ([設備名],[項目名],[表示順],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,Now(),Now())',
+              [equipment,name,order,uid,uid])
+ c.commit()
+ return order
