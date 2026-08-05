@@ -2512,8 +2512,8 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
  grid-template-columns:calc(18px * var(--ui-scale)) calc(92px * var(--ui-scale)) calc(50px * var(--ui-scale))
   calc(112px * var(--ui-scale)) calc(58px * var(--ui-scale)) calc(88px * var(--ui-scale))
   minmax(calc(150px * var(--ui-scale)),1fr) calc(62px * var(--ui-scale)) calc(88px * var(--ui-scale))
-  calc(112px * var(--ui-scale)) calc(104px * var(--ui-scale));
- align-items:center;column-gap:8px;min-width:calc(1020px * var(--ui-scale));
+  calc(112px * var(--ui-scale)) calc(148px * var(--ui-scale));
+ align-items:center;column-gap:8px;min-width:calc(1064px * var(--ui-scale));
 }
 .sc-row-head{padding:3px 8px 4px;position:sticky;top:0;z-index:1;background:#f4f7f8;font-size:var(--fs-micro);font-weight:800;color:#8a9aa0;border-bottom:1px solid var(--line)}
 .sc-row-line{padding:var(--row-pad-y) 8px;min-height:var(--row-h);border-radius:4px;background:#fff;border-bottom:1px solid #eef1f2}
@@ -2912,3 +2912,22 @@ body.rp-mode #printCurrentView,body.qa-mode #printCurrentView{display:none!impor
 /* 作業中は予定終了が常に現在時刻(継続中)。進行中であることを時刻欄でも示す。 */
 .sc-row-line.sc-row-ongoing .sc-row-time{font-weight:800;color:var(--success)}
 .sc-row-line.sc-row-ongoing .sc-row-rel{color:var(--success);font-weight:700}
+
+/* 読込時点の表示(§9.42)。画面を開き直しても読み直さない設計なので、
+   「いつ時点か」を必ず見せる(古い情報を黙って見せない)。 */
+.sc-freshness{
+ font-size:var(--fs-sm);color:#8a9aa0;white-space:nowrap;
+ padding:0 8px;border-left:1px solid var(--line);
+}
+.sc-freshness[hidden]{display:none}
+/* 作業中の行はダブルクリックで再開できる(§9.43) */
+.sc-row-line.sc-row-resumable{cursor:pointer}
+.sc-row-resume{background:var(--success-bg);border-color:var(--success-border);color:var(--success);font-weight:800;white-space:nowrap}
+.sc-row-resume:hover{background:var(--success);border-color:var(--success);color:#fff}
+.sc-row-report:hover{border-color:var(--teal);background:var(--pale)}
+
+/* 現場段取りの権限はあるが対象設備が未設定/不一致のとき(§9.44)。
+   「可」と言い切ると、動かした瞬間にサーバーへ弾かれて食い違うため、
+   設定が要ることを色でも示す。 */
+.field-reorder-badge.is-warn{border-color:var(--danger-border);background:var(--danger-bg);color:var(--danger)}
+.sc-field-reorder-note.is-warn{color:var(--danger);font-weight:700}

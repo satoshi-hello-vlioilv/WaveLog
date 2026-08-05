@@ -17,6 +17,8 @@ from pathlib import Path
 from datetime import datetime
 from urllib.parse import quote
 import sqlite3
+import threading
+import time
 import pyodbc
 
 from .paths import APP_ROOT, configured_path, load_local_config
@@ -330,7 +332,37 @@ def read_backup_rows(path):
   rows=cur.fetchall()
  return [{'id':str(r[0] or ''),'equipment':str(r[1] or ''),'lotNo':str(r[2] or ''),'inspectionNo':str(r[3] or ''),'castingNo':str(r[4] or ''),'status':str(r[5] or ''),'updated_at':r[6].isoformat() if r[6] else None,'codec':str(r[7] or ''),'payload':str(r[8] or '')} for r in rows],path
 
-def merged_backup_rows():
+# ---------- 実績バックアップ読込のキャッシュ(docs/SCHEDULE_MODE_DESIGN.md §9.41) ----------
+# RECORDS_BACKUP_EXPORT_PATHは閲覧用複製(Box等のネットワーク共有)を指すのが
+# 普通で、merged_backup_rows()は毎回そのテーブルを**全件**読む。作業スケジュールの
+# 俯瞰ボードは設備数だけexpand_plan()を回すため、10設備なら同じ全件読込が10回
+# 走っていた(load_factorのモデル計算も設備ごとに読むため、実測では1画面で
+# read_backup_rows()が60回)。共有越しではこれがそのまま待ち時間になる。
+#
+# 中身は「測定端末が保存したときだけ」変わる。ファイルの署名(更新時刻+サイズ)で
+# 変化を検出し、変わっていなければ読み直さない。TTL内は署名の確認(stat)すら
+# 省く(statも共有越しでは往復が発生するため)。
+BACKUP_ROWS_CACHE_TTL_SEC=20.0
+_backup_rows_cache={'rows':None,'ts':0.0,'sig':None}
+_backup_rows_lock=threading.Lock()
+
+def _backup_sources_signature():
+ sig=[]
+ for path in (MEAS_DB,RECORDS_BACKUP_EXPORT_PATH):
+  try:
+   st=path.stat();sig.append((str(path),st.st_mtime_ns,st.st_size))
+  except Exception:
+   sig.append((str(path),None,None))
+ return tuple(sig)
+
+def invalidate_backup_rows_cache():
+ # 測定データを保存した直後など、次の読込で必ず取り直したいときに呼ぶ。
+ # 署名でも変化は拾えるが、同一秒内の連続書込を取りこぼさないよう
+ # 明示的に捨てられる口を用意しておく。
+ with _backup_rows_lock:
+  _backup_rows_cache['rows']=None;_backup_rows_cache['ts']=0.0;_backup_rows_cache['sig']=None
+
+def _merged_backup_rows_uncached():
  # MEAS_DB(書込端末のローカルrecords.sqlite3)とRECORDS_BACKUP_EXPORT_PATH
  # (閲覧用複製、Box等)の両方から[Web測定バックアップ]を集め、記録IDごとに
  # 更新日時が新しい方を残す。schedule_calc.py(実績突合、§7.4)・
@@ -350,3 +382,29 @@ def merged_backup_rows():
    if existing is None or (row.get('updated_at') or '')>(existing.get('updated_at') or ''):
     merged[rid]=row
  return list(merged.values())
+
+def merged_backup_rows(force=False):
+ # MEAS_DB(書込端末のローカルrecords.sqlite3)とRECORDS_BACKUP_EXPORT_PATH
+ # (閲覧用複製、Box等)の両方から[Web測定バックアップ]を集め、記録IDごとに
+ # 更新日時が新しい方を残す。schedule_calc.py(実績突合、§7.4)・
+ # load_factor.py(換算係数モデルの学習、§6.6)が共用する。どちらの端末
+ # (書込端末そのもの/閲覧・スケジュール専用端末)から呼んでも同じ実績が
+ # 見える。結果は上記のとおりキャッシュする(§9.41)。
+ now=time.time()
+ if not force:
+  with _backup_rows_lock:
+   cached=_backup_rows_cache['rows']
+   if cached is not None and (now-_backup_rows_cache['ts'])<BACKUP_ROWS_CACHE_TTL_SEC:
+    return cached
+ sig=_backup_sources_signature()
+ if not force:
+  with _backup_rows_lock:
+   cached=_backup_rows_cache['rows']
+   if cached is not None and _backup_rows_cache['sig']==sig:
+    # 中身は変わっていない。読み直さず、鮮度だけ更新して使い回す。
+    _backup_rows_cache['ts']=now
+    return cached
+ rows=_merged_backup_rows_uncached()
+ with _backup_rows_lock:
+  _backup_rows_cache['rows']=rows;_backup_rows_cache['ts']=time.time();_backup_rows_cache['sig']=sig
+ return rows

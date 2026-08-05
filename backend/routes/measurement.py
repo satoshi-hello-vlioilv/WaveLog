@@ -4,7 +4,7 @@ app.pyから移設。ロジックは変更していない(移動のみ)。
 """
 from flask import Blueprint, request, jsonify
 
-from ..db_access import DBS, MEAS_DB, RECORDS_BACKUP_EXPORT_PATH, qi, connect, cols, tables, ensure_backup_table, read_backup_rows
+from ..db_access import DBS, MEAS_DB, RECORDS_BACKUP_EXPORT_PATH, qi, connect, cols, tables, ensure_backup_table, read_backup_rows, invalidate_backup_rows_cache
 from ..repositories.master_repo import read_operator_names, read_spool_names, read_inner_names, read_device_names, ensure_operator_master, ensure_spool_master, ensure_inner_master, ensure_device_master, ensure_operator_equipment, OPERATOR_MASTER_TABLE, SPOOL_MASTER_TABLE, INNER_MASTER_TABLE, DEVICE_MASTER_TABLE
 from .. import records_export
 
@@ -129,6 +129,10 @@ def backup():
   with connect(MEAS_DB) as c:
    ensure_backup_table(c);cur=c.cursor();cur.execute('DELETE FROM [Web測定バックアップ] WHERE [記録ID]=?',[x['id']]);cur.execute('INSERT INTO [Web測定バックアップ] ([記録ID],[設備],[ロット番号],[検査番号],[鋳造番号],[状態],[更新日時],[圧縮形式],[ペイロード]) VALUES (?,?,?,?,?,?,Now(),?,?)',[x['id'],x.get('equipment',''),x.get('lotNo',''),x.get('inspectionNo',''),x.get('castingNo',''),x.get('status','編集中'),x.get('codec','delimiter-v1'),x['payload']]);c.commit()
   records_export.mark_dirty()
+  # 実績バックアップのキャッシュ(§9.41)を捨てる。作業スケジュールの実績突合が
+  # 保存直後の測定を必ず拾えるようにするため(署名でも変化は拾えるが、
+  # 同一秒内の連続保存を取りこぼさないよう明示的に捨てる)。
+  invalidate_backup_rows_cache()
   return jsonify(ok=True,direction='IndexedDB -> records.sqlite3')
  except Exception as e:return jsonify(error=str(e)),500
 

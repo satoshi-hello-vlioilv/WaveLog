@@ -142,6 +142,10 @@ def _write_response(apply_fn):
   return jsonify(error=str(e),sessionLockedBy={'loginId':e.holder_login,'pcName':e.holder_pc},retryAfterSec=e.retry_after_sec),423
  except schedule_sync.RevisionConflictError as e:
   return jsonify(error=str(e),revision=e.revision),409
+ except PermissionError as e:
+  # まとめ書込(§9.45)の中で権限不足を検出した場合。個別エンドポイントの
+  # 403と同じ扱いにする(4xxはフロント側でリトライされない)。
+  return jsonify(error=str(e)),403
  except schedule_sync.ScheduleUnavailableError as e:
   return jsonify(error=str(e)),503
  except ValueError as e:
@@ -225,6 +229,97 @@ def plan_delete():
   n=sr.plan_delete(c,plan_id,request_user_id(x))
   if n==0:raise ValueError('指定の予定が見つかりません。')
   return {'id':plan_id}
+ return _write_response(fn)
+
+# ------------------------------------------------------------------------
+# まとめ書込(§9.45)
+# ------------------------------------------------------------------------
+# 共有スケジュールDBの書込は1回ごとに「ロック取得→検証待ち→スナップショット
+# 取得→適用→改訂番号確認→反映→ロック解放」というサイクルを丸ごと踏む
+# (§4.2)。1件あたりの固定費が大きいため、20ロットの一括追加のように連続
+# する操作では、この固定費が件数ぶん積み上がって体感を悪化させていた
+# (実測1件約1.5秒 → 20件で30秒)。
+#
+# ここでは複数の操作を**1サイクルの中で**順に適用する。各操作の可否判定
+# (編集セッション・現場段取り権限)は個別エンドポイントとまったく同じものを
+# 呼ぶこと。まとめたことで判定が緩むと権限の抜け道になる。
+#
+# 1件失敗しても残りは適用する(従来の1件1リクエストと同じ挙動)。結果は
+# 送った順で返し、呼び出し側が成功/失敗を1件ずつ処理できるようにする。
+def _apply_plan_op(c,op,uid):
+ """1操作を適用して結果dictを返す。例外はそのまま呼び出し側へ。"""
+ kind=str(op.get('op') or '').strip()
+ if kind=='add':
+  equipment=str(op.get('equipment') or '').strip()
+  if not equipment:raise ValueError('どの設備の予定か指定してください。')
+  _check_session(equipment)
+  pid=sr.plan_add(c,equipment,str(op.get('kind') or ''),uid,position=str(op.get('position') or 'end'),
+                   lot_no=str(op.get('lotNo') or ''),inspection_no=str(op.get('inspectionNo') or ''),
+                   casting_no=str(op.get('castingNo') or ''),title=str(op.get('title') or ''),
+                   detail=op.get('detail') or {},stop_reason_id=op.get('stopReasonId'),
+                   estimate_minutes=op.get('estimateMinutes'),fixed_start=op.get('fixedStart'),
+                   remark=str(op.get('remark') or ''))
+  return {'id':pid}
+ if kind=='update':
+  plan_id=op.get('id')
+  if plan_id is None:raise ValueError('更新対象の予定IDがありません。')
+  row=sr.plan_row(c,plan_id)
+  if row:_check_session(row[1])
+  fields={k:op[k] for k in ('estimateMinutes','fixedStart','remark','state') if k in op}
+  n=sr.plan_update(c,plan_id,uid,**fields)
+  if n==0:raise ValueError('指定の予定が見つからないか、更新項目がありません。')
+  return {'id':plan_id}
+ if kind=='delete':
+  plan_id=op.get('id')
+  if plan_id is None:raise ValueError('削除対象の予定IDがありません。')
+  row=sr.plan_row(c,plan_id)
+  if row:_check_session(row[1])
+  n=sr.plan_delete(c,plan_id,uid)
+  if n==0:raise ValueError('指定の予定が見つかりません。')
+  return {'id':plan_id}
+ if kind=='reorder':
+  equipment=str(op.get('equipment') or '').strip()
+  if not equipment:raise ValueError('どの設備の並べ替えか指定してください。')
+  # 個別エンドポイント(plan_reorder)と同じ現場段取り権限の確認。
+  if get_mode()=='edit':
+   flags=current_permission_flags()
+   if not flags['canFieldReorder'] or normalize_equipment_name(flags['fieldReorderEquipment'])!=normalize_equipment_name(equipment):
+    raise PermissionError('この端末には、この設備の現場段取り(並べ替え)権限がありません。')
+  _check_session(equipment)
+  expanded=schedule_calc.expand_plan(c,equipment)
+  reorderable_ids={e['id'] for e in expanded['entries'] if e.get('reorderable')}
+  n=sr.plan_reorder(c,equipment,op.get('orderedIds') or [],uid,reorderable_ids=reorderable_ids)
+  return {'reordered':n}
+ raise ValueError(f'不明な操作です: {kind}')
+
+@bp.post('/api/schedule/plan/batch')
+def plan_batch():
+ # **このエンドポイントはscheduleモード限定**(Blueprintの既定、
+ # access_mode._WRITE_ALLOWED_MODES)。_ENDPOINT_EXTRA_MODESでeditへ開いては
+ # いけない: まとめ書込は追加・削除も運べるため、editモードへ開くと
+ # 「現場段取り端末は並べ替えだけ」という§3.1.1の制限を迂回できてしまう。
+ # editモードの現場段取りは従来どおり個別のplan/reorderを使うこと。
+ x=request.get_json(force=True) or {}
+ ops=x.get('ops')
+ if not isinstance(ops,list) or not ops:
+  return jsonify(error='適用する操作がありません。'),400
+ if len(ops)>200:
+  return jsonify(error='一度にまとめられる操作は200件までです。'),400
+ uid=request_user_id(x)
+ def fn(c):
+  results=[]
+  for op in ops:
+   try:
+    results.append({'ok':True,**(_apply_plan_op(c,op,uid) or {})})
+   except (PermissionError,schedule_sync.SessionHeldError):
+    # 権限不足・他端末が編集中は、1件でもあればサイクルごと止める
+    # (個別エンドポイントと同じく「やる前に弾く」挙動)。
+    raise
+   except Exception as e:
+    # それ以外(対象が見つからない等)は、その1件だけ失敗として記録し
+    # 残りは適用する。1件1リクエストだった頃と同じ結果になる。
+    results.append({'ok':False,'error':str(e)})
+  return {'results':results}
  return _write_response(fn)
 
 @bp.post('/api/schedule/plan/reorder')
@@ -527,11 +622,16 @@ def overview():
  with connect(DBS['MASTER']['path'],False) as mc:
   equipment_names=[str(r[1]).strip() for r in equipment_master_rows(mc) if str(r[1] or '').strip()]
  now=datetime.now()
+ # 実績突合の索引は設備によらず同じ。設備ごとに作り直すと、実績バックアップ
+ # (共有上の閲覧用複製を含む)を設備数ぶん読み直すことになる(§9.41)。
+ actual_index=schedule_calc.build_actual_index()
  def fn(c):
   # 俯瞰ボードは「今どこが動いているか/残りどれだけか」だけを見るため、
   # 計画外実績(§9.33)の完了分は合成しない(history_hours=None)。実施中の
   # 分は合成されるので、予定を立てずに始めた作業も「● 稼働中」に出る。
-  return [_overview_row(eq,schedule_calc.expand_plan(c,eq,now=now,history_hours=None),now) for eq in equipment_names]
+  return [_overview_row(eq,schedule_calc.expand_plan(c,eq,now=now,history_hours=None,
+                                                     actual_index=actual_index),now)
+          for eq in equipment_names]
  result,stale,err=_read(fn)
  if err=='not_configured':return jsonify(ok=True,configured=False,equipment=[],generatedAt=now.isoformat())
  if err:return jsonify(error=err),503

@@ -290,14 +290,18 @@ def _parse_dt(value):
 
 DEFAULT_HISTORY_HOURS=8.0
 
-def expand_plan(c,equipment,now=None,history_hours=DEFAULT_HISTORY_HOURS,include_unplanned=True):
+def expand_plan(c,equipment,now=None,history_hours=DEFAULT_HISTORY_HOURS,include_unplanned=True,actual_index=None):
  """GET /api/schedule/planの本体。生のplan_rows・稼働カレンダー・実績突合を
  合成し、§8.1のentries形状(id/order/kind/estimate/plannedStart/plannedEnd/
  startsInMinutes/actual/reorderable等)を返す。DBへは一切書き戻さない。
  history_hours: 計画外実績(§9.33)の完了分をさかのぼる時間。Noneで完了分なし。
  include_unplanned: 計画外実績の合成そのものを行うか。設備削除の参照件数
  (equipment_reference_counts)のように「共有DBに実在する行数」を数えたい
- 呼び出しはFalseにする(合成分を数えると実在しない予定を数えてしまう)。"""
+ 呼び出しはFalseにする(合成分を数えると実在しない予定を数えてしまう)。
+ actual_index: build_actual_index()の結果。設備ごとにこの関数を回す
+ 呼び出し(俯瞰ボード)は、**必ず1回だけ作って渡すこと**(§9.41)。
+ 渡さないと設備数ぶん実績バックアップを読み直し、共有越しではそのまま
+ 待ち時間になる。"""
  now=now or datetime.now()
  raw_rows=sr.plan_rows(c,equipment)
  # 設定系マスタ(稼働カレンダー・勤務形態・換算係数上書き)はmaster.sqlite3側。
@@ -306,16 +310,16 @@ def expand_plan(c,equipment,now=None,history_hours=DEFAULT_HISTORY_HOURS,include
  sr.migrate_config_masters_from_shared()
  mc=sr.config_master_conn()
  try:
-  return _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours,include_unplanned)
+  return _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours,include_unplanned,actual_index)
  finally:
   mc.close()
 
-def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_HOURS,include_unplanned=True):
+def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_HOURS,include_unplanned=True,actual_index=None):
  specific_cal=sr.calendar_rows(mc,equipment)
  global_cal=sr.calendar_rows(mc,'')
  specific_shift=sr.shift_rows(mc,equipment)
  global_shift=sr.shift_rows(mc,'')
- actual_index=build_actual_index()
+ if actual_index is None:actual_index=build_actual_index()
  warnings=[]
 
  entries=[]

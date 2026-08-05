@@ -72,7 +72,22 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
   // 現場段取り(§3.1.1): editモードでcanFieldReorderが真の端末にだけ表示する
   // 小さなバッジ。モードそのものを増やしたわけではないことを示す表示上の工夫。
   const fieldBadge=$('#fieldReorderBadge');
-  if(fieldBadge)fieldBadge.hidden=!(mode==='edit'&&accessMode.canFieldReorder);
+  if(fieldBadge){
+   fieldBadge.hidden=!(mode==='edit'&&accessMode.canFieldReorder);
+   // §9.44: 「並べ替え可」は対象設備が決まっていて初めて実際に使える権限。
+   // 対象設備が未設定/この端末の使用設備と違う場合に「可」とだけ出すと、
+   // 動かした瞬間に403で弾かれて食い違う。バッジ自体で状態を言い分ける。
+   const target=String(accessMode.fieldReorderEquipment||'').trim();
+   const own=typeof currentConfiguredEquipment==='function'?currentConfiguredEquipment():'';
+   const norm=v=>String(v||'').trim().toUpperCase();
+   const usable=!!target&&(!own||norm(target)===norm(own));
+   fieldBadge.classList.toggle('is-warn',!usable);
+   fieldBadge.textContent=usable?'並べ替え可':'並べ替え設定要';
+   fieldBadge.title=usable
+    ?`現場段取り: ${target} の未着手の予定を並べ替えられます`
+    :(target?`現場段取りの対象設備は「${target}」です(この端末の使用設備: ${own||'未設定'})`
+            :'現場段取りの対象設備が未設定です。マスタ管理 > アクセス権限マスタで設定してください');
+  }
  }
 
  function closeAccessModeMenu(){
