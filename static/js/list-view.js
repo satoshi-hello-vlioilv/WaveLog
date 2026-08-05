@@ -61,35 +61,106 @@ async function openChangelog(){
 $('#closeChangelog').onclick=()=>{$('#changelogModal').hidden=true};
 function renderTabs(){$('#tabs').innerHTML='';S.tables.forEach(t=>{const b=document.createElement('button');b.className='tab'+(t===S.table?' active':'');b.textContent=t;b.onclick=()=>selectTable(t);$('#tabs').append(b)})}
 /* 一覧データの取得。待機表示を出してから読み込む。 */
-async function load(){
+/* ---------- 一覧データのキャッシュ(docs/ARCHITECTURE.md「共有ファイルを読む
+   処理は回数が効く」) ----------
+   仕掛(SIKALOTNOW)・品質データ(SIKALOTDEF)は工場側の共有上にあるAccess/SQLite
+   で、1回開くたびに接続・列取得・COUNT全走査・本体取得の往復が要る。画面を
+   切り替えて戻るたびに全部やり直していたため、切替のたびに待たされていた。
+   同じ条件(DB・テーブル・ページ・検索・フィルタ・並び)なら結果を使い回す。
+
+   仕掛は生きたデータなので、無期限に持つと古い在庫を見せ続けることになる。
+   TTLで頭を打ち、いつ時点かを画面に出し、「再読込」で必ず取り直せるようにする
+   (この3点セットで「速いが嘘はつかない」を成立させる)。 */
+const TABLE_CACHE_TTL_MS=180000;   // 3分
+const tableCache=new Map();
+function tableCacheGet(key){
+ const hit=tableCache.get(key);
+ if(!hit)return null;
+ if(Date.now()-hit.at>TABLE_CACHE_TTL_MS){tableCache.delete(key);return null}
+ return hit;
+}
+function tableCacheSet(key,data){
+ tableCache.set(key,{data,at:Date.now()});
+ // 際限なく溜めない(条件を変えるたびに1件増えるため)
+ if(tableCache.size>40)tableCache.delete(tableCache.keys().next().value);
+}
+function invalidateTableCache(){tableCache.clear();updateListFreshness(null)}
+window.invalidateTableCache=invalidateTableCache;
+/* 「いつ時点の一覧か」をヘッダーへ出す。キャッシュから描いたときだけ意味が
+   あるので、取り立てのときは非表示にする。 */
+function updateListFreshness(at){
+ const el=document.querySelector('#listFreshness');if(!el)return;
+ if(!at){el.hidden=true;return}
+ const min=Math.floor((Date.now()-at)/60000);
+ el.hidden=false;
+ el.textContent=min<1?'たった今の内容':`${min}分前の内容`;
+ el.title='「再読込」で最新を取り直します。';
+}
+window.updateListFreshness=updateListFreshness;
+/* 取得結果を画面状態へ流し込む共通処理(list-view.jsとfilters.jsのload()が共用)。 */
+function applyTableData(d){
+ Object.assign(S,{columns:d.columns,rows:d.rows,count:d.count});
+ S.joinQuality=d.joinQuality||null;
+ const info=(S.catalog||[]).find(x=>x.key===S.db)||{};
+ const fn=$('#fileName');if(fn)fn.textContent=info.file_name||'';
+ const tn=$('#tableName');if(tn)tn.textContent=S.table||'';
+ S.selectedRows.clear();
+}
+window.applyTableData=applyTableData;
+/* 一覧データ取得の本体(キャッシュ判定→取得→鮮度更新)。filters.jsはクエリの
+   組み立てを差し替えるためにload()を丸ごと置き換えているので、そこと
+   共通の振る舞いはすべてここへ集約する(片方だけ直して反映されない事故を防ぐ)。
+   待機表示はwithWaitingの遅延表示に任せる: キャッシュ命中なら一度も出ないし、
+   本当にサーバーを待つときだけ出る。 */
+async function fetchTableData(key,force){
+ const hit=force?null:tableCacheGet(key);
+ if(hit){applyTableData(hit.data);updateListFreshness(hit.at);return}
  const label=databaseLabel(S.db),table=S.table||'テーブル';
- if($('#saveOverlay').hidden){showWaiting(`${label}を更新しています`,`テーブル: ${table}`,'検索条件を反映して一覧データを取得しています');await nextPaint()}
- try{
-  const q=new URLSearchParams({db:S.db,table:S.table,page:S.page,page_size:$('#pageSize').value,search:$('#search').value});
-  // スケジュールモードの仕掛一覧のみ、品質データ(SIKALOTDEF)を結合して表示する
-  // (§9.21)。通常の仕掛一覧閲覧では付けない(オプトインでSIKALOTNOW単独表示に
-  // 影響を与えない)。
-  if(S.db==='SIKALOTNOW'&&window.accessMode?.mode==='schedule')q.set('join_quality','1');
-  const d=await api('/api/table?'+q);Object.assign(S,{columns:d.columns,rows:d.rows,count:d.count});S.joinQuality=d.joinQuality||null;const info=S.catalog.find(x=>x.key===S.db);$('#fileName').textContent=info.file_name;$('#tableName').textContent=S.table;
-  // ページ・検索条件が変わるたびに行オブジェクト自体が総入れ替えになるため、
-  // 複数選択(§9.5、一括予定投入)はページ内限定とし、切替のたびにクリアする。
-  S.selectedRows.clear();
-  renderGrid();
- }finally{hideSaveOverlay()}
+ await withWaiting({title:`${label}を読み込んでいます`,detail:`テーブル: ${table}`,
+   progress:'検索条件を反映して一覧データを取得しています'},async()=>{
+  const d=await api('/api/table?'+key);
+  tableCacheSet(key,d);applyTableData(d);updateListFreshness(null);
+ });
+}
+window.fetchTableData=fetchTableData;
+
+async function load(force){
+ const q=new URLSearchParams({db:S.db,table:S.table,page:S.page,page_size:$('#pageSize').value,search:$('#search').value});
+ // スケジュールモードの仕掛一覧のみ、品質データ(SIKALOTDEF)を結合して表示する
+ // (§9.21)。通常の仕掛一覧閲覧では付けない(オプトインでSIKALOTNOW単独表示に
+ // 影響を与えない)。
+ if(S.db==='SIKALOTNOW'&&window.accessMode?.mode==='schedule')q.set('join_quality','1');
+ await fetchTableData(String(q),force);
+ renderGrid();
 }
 /* データベース切替→テーブル選択は、実際に目視できる2段階で待機表示する
    (テーブル構成の確認→列情報・一覧データの取得)。以前は3段階だったが、
    ステップ間に描画の猶予(nextPaint)を与えていない箇所があり、中間の
-   ステップが一度も画面に表示されないまま次のステップへ上書きされていた。 */
+   ステップが一度も画面に表示されないまま次のステップへ上書きされていた。
+   待機表示そのものはwithWaitingの遅延表示に委ねる(§9.46)。キャッシュから
+   即座に描ける切替でオーバーレイを出すと、一瞬の点滅と表示待ちの描画
+   フレームが挟まるぶん、速くなったのにかえって遅く見えるため。 */
+const tablesCache=new Map();   // テーブル構成は運用中に変わらないので保持する
 async function selectDb(k,b){
- const label=databaseLabel(k);showWaiting(`${label}へ切り替えています`,`接続先を確認しています: ${label}`,'テーブル構成を確認しています',1);await nextPaint();
- try{S.db=k;setActiveNav(k);const result=await api(`/api/tables?db=${encodeURIComponent(k)}`);S.tables=result.tables;renderTabs();if(S.tables.length)await selectTable(S.tables[0]);else $('#grid').textContent='表示可能なテーブルがありません。'}catch(e){$('#grid').innerHTML=`<div class="load-error"><b>${esc(label)}を開けませんでした</b><span>${esc(e.message)}</span></div>`;throw e}finally{hideSaveOverlay()}
+ const label=databaseLabel(k);
+ return withWaiting({title:`${label}へ切り替えています`,detail:`接続先を確認しています: ${label}`,
+   progress:'テーブル構成を確認しています',step:1},async report=>{
+  try{S.db=k;setActiveNav(k);
+   let result=tablesCache.get(k);
+   if(!result){result=await api(`/api/tables?db=${encodeURIComponent(k)}`);tablesCache.set(k,result)}
+   S.tables=result.tables;renderTabs();
+   if(S.tables.length)await selectTable(S.tables[0],report);
+   else $('#grid').textContent='表示可能なテーブルがありません。';
+  }catch(e){$('#grid').innerHTML=`<div class="load-error"><b>${esc(label)}を開けませんでした</b><span>${esc(e.message)}</span></div>`;throw e}
+ });
 }
-async function selectTable(t){
+/* reportは呼び出し元(selectDb)が待機表示を握っているときだけ渡ってくる。
+   単独で呼ばれたとき(タブのクリック)は自分で遅延表示を用意する。 */
+async function selectTable(t,report){
  S.table=t;S.page=1;S.sortColumn=null;S.sortDir=null;renderTabs();const label=databaseLabel(S.db);
- if($('#saveOverlay').hidden){showWaiting(`${label}を読み込んでいます`,`テーブル: ${t}`,'列情報と一覧データを取得しています');await nextPaint()}
- else{updateWaiting(`テーブル: ${t}`,'列情報と一覧データを取得しています',2);await nextPaint()}
- try{await load()}finally{hideSaveOverlay()}
+ if(report){report({detail:`テーブル: ${t}`,progress:'列情報と一覧データを取得しています',step:2});return load()}
+ return withWaiting({title:`${label}を読み込んでいます`,detail:`テーブル: ${t}`,
+   progress:'列情報と一覧データを取得しています'},()=>load());
 }
 /* 一覧の列名は仕掛先DBの生カラム名なので、aliasesの候補名のうち
    実際にS.columnsへ含まれているものを探してロット番号・鋳造番号の
@@ -356,6 +427,8 @@ function checkParentLookupRows(targets){
    参照し続ける潜在不具合があった)。 */
 $('#search').oninput=()=>{clearTimeout(S.t);S.t=setTimeout(()=>{S.page=1;load()},300)};
 $('#pageSize').onchange=()=>{S.page=1;load()};
-$('#reload').onclick=()=>load();
+// 「再読込」は必ずサーバーから取り直す(キャッシュを返すと押しても何も
+// 起きないように見えるため)。
+$('#reload').onclick=()=>{invalidateTableCache();load(true)};
 $('#prev').onclick=()=>{if(S.page>1){S.page--;load()}};
 $('#next').onclick=()=>{S.page++;load()};

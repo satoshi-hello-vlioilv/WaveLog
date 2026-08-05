@@ -44,7 +44,8 @@
 | `launch_guard.py` | ポートの使用状況と `app_id` の照合による多重起動判定(`OURS`/`FOREIGN`/`UNRESPONSIVE`/`FREE`)、起動中インスタンスの記録。`UNRESPONSIVE`(ポート使用中だがHTTP応答が無い)は自プロセスが重い処理でブロックされている可能性を含むため、即座に別アプリ(`FOREIGN`)と決め付けず`process_manager.py`側でinstance.jsonのapp_root照合による強制終了判断へ委ねる |
 | `server.py` | Webサーバーの起動のみ。起動監視とWeb処理の境界 |
 | `process_manager.py` | 対象アプリだけの安全な停止（正常終了要求→記録済みPID。プロセス名では判定しない） |
-| `loading.html` | 起動待機画面。サーバーより先に `file://` で開かれ、`/api/ready.js` の応答を待ってからアプリへ遷移する |
+| `loading.html` | 起動待機画面。サーバーより先に `file://` で開かれ、`/api/ready.js` の応答を待ってからアプリへ遷移する。段階表示は `boot_status.js` を読んで**実際の進捗**を出す |
+| `backend/boot_status.py` | 起動の段階(6つ)をアプリ直下の `boot_status.js` へ書き出す。待機画面はまだサーバーが無い状態なので、`<script src>` で読み取れるJSファイルを介す。書き込みに失敗しても起動は止めない。`/api/ready.js` で削除する(`.gitignore`済み) |
 | `_pycache_bootstrap.py` | `.pyc` キャッシュをローカル領域へ逃がす。`sys.pycache_prefix` は最初のimportより前に設定する必要があるため、各エントリポイントの一番最初のimportにする |
 | `config/local.json` | マスタDB自体の置き場所を決める3項目(`db_dir`/`master_db_path`/`records_db_path`)専用のブートストラップ設定(値をマスタDBの中に保存すると読みに行く先が分からなくなるため、この3つだけは唯一この方式が残る)。未配置なら既定の`db/`のまま。それ以外(`sikalotnow_path`/`sikalotdef_path`等)はパス設定マスタ(下記)へ移行済み |
 | `backend/config.py` | アプリID・表示名・ポート・監視しきい値などアプリ固有値の集約先 |
@@ -62,6 +63,13 @@
 生成元をまたいで読み込める script 要素で `/api/ready.js` を叩き、JSONP形式で
 アプリ識別情報を受け取ってから遷移する。これによりブラウザとサーバーの
 どちらが先に立ち上がっても接続エラー画面が出ない。
+
+段階表示も同じ理由で `<script src="boot_status.js">` を介す。以前は**経過秒数
+だけ**で切り替えていたため、5秒を過ぎると何をしていても「接続を確認中」に
+留まり、共有の応答待ちで長引いたときにどこで待たされているのか分からなかった
+(実際に「起動時の『接続を確認中』が長い」という指摘を受けた)。現在は
+`backend/boot_status.py` が実際の段階を書き出す。詳細は
+`docs/SCHEDULE_MODE_DESIGN.md` §9.47。
 
 ## バックエンド構成
 
@@ -212,7 +220,7 @@ API経由でRNE(Navigator問い合わせ定義)を実行し、ローカルSQLite
 | ファイル | 所有する主な関数 |
 |---|---|
 | `base.js` | `S`(状態)・`api`・`esc`・`aliases`/`pick`・`fmtDim`・`showToast`・`normalizedFieldName`・`sourceField`・使用設備/ユーザーIDの取得・`durationMs` |
-| `list-view.js` | `init`・`selectDb`/`selectTable`/`load`・`renderGrid`・更新履歴モーダル・検索/ページャ |
+| `list-view.js` | `init`・`selectDb`/`selectTable`/`load`・`fetchTableData`(取得キャッシュ。`filters.js`の`load()`と共用)・`renderGrid`・更新履歴モーダル・検索/ページャ |
 | `measurement-view.js` | `ensureMeasureShape`・`collect`・`renderMeasurement`・各パネル描画（品質等級/コース/製品丈/作業時間）・入力検証（`updateValidationVisuals`）・`updateMeasurementHeading` |
 | `measurement-input.js` | `deviceParse`・`processDeviceInput`・`focusCurrent`・`renderMeasureGrid(Vertical)`・`judgeInput`・公差計算（`toleranceDetail`/`toleranceDataForSource`/`compactTolerance*`） |
 | `records-store.js` | IndexedDB/ミラー永続化・`saveLocal`/`persistAndTransition`・`openMeasurement`・`openRecords`/`renderRecordListRows`・`loadMeasurementContext`・使用設備設定/設備マスタ・Access同期の未完了キューと再送・アプリ起動呼び出し（末尾） |
@@ -613,8 +621,10 @@ return withWaiting({title:'…を読み込んでいます', detail:'…', progre
 - **速い処理では出さない。** `delayMs`（既定 350ms）を超えたときだけ表示する。
   ローカルのマスタは大半が一瞬で返るので、毎回スピナーが瞬く方が不安を与える。
 - **二重に出さない。** 外側が表示中なら内側は何もしない（内側が勝手に閉じない）。
-  `list-view.js` の `load()` のように直接 `showWaiting()` する既存経路とも、
-  タイマー発火時にオーバーレイの状態を見直すことで衝突しない。
+  `selectDb()` → `selectTable()` → `load()` のように入れ子で呼ぶ経路では、
+  一番外側だけがオーバーレイを持ち、内側は `report()` で文言を更新する。
+  直接 `showWaiting()` する既存経路とも、タイマー発火時にオーバーレイの
+  状態を見直すことで衝突しない。
 - **必ず閉じる。** `fn` が投げても `finally` で片付ける。
 - 進捗更新は `fn(report)` の `report({detail, progress, step})`。
 - **中身は別関数へ切り出してラッパーから呼ぶ**（`loadMaint()` →

@@ -23,10 +23,12 @@ from pathlib import Path
 import importlib.util
 import subprocess
 import sys
+import threading
 import time
 import webbrowser
 
 import launch_guard
+from backend import boot_status
 from backend.config import APP_NAME, PORT, REQUIRED_PACKAGES, app_url
 from backend.logging_setup import launcher_logger, log_environment
 from backend.paths import APP_ROOT, configured_path, ensure_local_dirs, is_network_path
@@ -112,11 +114,15 @@ def main():
  ensure_local_dirs()
  log=launcher_logger()
  started=time.monotonic()
+ # 段階表示(boot_status)は待機画面を開く前に1件書いておく。開いた直後の
+ # ポーリングで「まだ何も無い」状態を見せないため。
+ boot_status.report('env','ログと実行環境を準備しています')
  log_environment(log)
 
  # 以降どこで失敗しても利用者の画面に状況が出るよう、先に待機画面を開く。
  open_waiting_screen(log)
 
+ boot_status.report('instance',f'ポート {PORT} を確認しています')
  state,info=launch_guard.probe()
  if state==launch_guard.OURS:
   log.info('多重起動: 既に起動しています (バージョン %s)。新たに起動しません',
@@ -138,17 +144,25 @@ def main():
   log.info('--- 終了 --- (ポート使用中・応答無し)')
   return 1
 
+ boot_status.report('packages','必要な部品が揃っているか確認しています')
  if not ensure_packages(log):
+  boot_status.report('packages','必要な部品を用意できませんでした',failed=True)
   log.error('起動中止: 必須パッケージが揃いませんでした')
   return 1
 
+ boot_status.report('data','データの置き場所を確認しています')
  adopt_legacy_databases(log)
- warn_if_shared(log)
+ # 共有配置の確認はネットワーク越しのファイル存在確認を伴い、共有の応答が
+ # 遅いと起動そのものが止まる。記録のための警告でしかないので、起動の
+ # 直列路から外して裏で確認する(§9.47)。
+ threading.Thread(target=warn_if_shared,args=(log,),daemon=True,name='warn-if-shared').start()
  launch_guard.write_instance()
  log.info('起動準備: 完了 (%.2f秒)',time.monotonic()-started)
 
  try:
+  boot_status.report('app','アプリを読み込んでいます')
   import server
+  boot_status.report('server',f'ポート {PORT} で待ち受けを開始します')
   server.run()
  except Exception as e:
   log.exception('起動失敗: %s',e)

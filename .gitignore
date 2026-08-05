@@ -10,3 +10,4 @@ config/rne_extract/rne/
 config/rne_extract/NAVIAP/
 config/rne_extract/symnavim.conf
 config/rne_extract/symnavim.def
+boot_status.js

@@ -6,6 +6,7 @@ from flask import Blueprint, render_template, request, jsonify, Response
 import json, os, re, subprocess
 
 from ..config import APP_ID, PORT
+from .. import boot_status
 from ..changelog_data import APP_VERSION, CHANGELOG
 from ..paths import APP_ROOT as BASE
 
@@ -47,6 +48,9 @@ def ready_js():
  cb=request.args.get('cb','')
  if not _JS_IDENTIFIER.match(cb):return Response('/* invalid callback */',mimetype='application/javascript',status=400)
  info=json.dumps({'app':APP_ID,'ready':True,'version':APP_VERSION,'pid':os.getpid(),'url':f'http://127.0.0.1:{PORT}/'})
+ # ここまで来たら起動は完了している。待機画面の段階表示用に書き出していた
+ # 進捗ファイルは役目を終えたので消す(次回起動時に前回の内容が一瞬見えるのを防ぐ)。
+ boot_status.clear()
  return Response(f'{cb}({info});',mimetype='application/javascript')
 @bp.get('/api/whoami')
 def whoami():

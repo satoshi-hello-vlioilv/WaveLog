@@ -68,6 +68,9 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
    badge.disabled=!canSwitch;
    badge.title=`${MODE_LABELS[mode]||mode}です(${accessMode.loginId||'?'}@${accessMode.pcName||'?'})。${canSwitch?'クリックでモードを切り替えられます。':'この端末には他のモードへ切り替える権限がありません。'}`;
    const label=$('#accessModeLabel');if(label)label.textContent=MODE_LABELS[mode]||mode;
+   // モードは状態そのものが意味を持つので、色でも区別する(§9.48)
+   const chip=$('#accessModeBadge');
+   if(chip){chip.classList.toggle('is-view',mode==='view');chip.classList.toggle('is-schedule',mode==='schedule')}
   }
   // 現場段取り(§3.1.1): editモードでcanFieldReorderが真の端末にだけ表示する
   // 小さなバッジ。モードそのものを増やしたわけではないことを示す表示上の工夫。
@@ -82,7 +85,9 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
    const norm=v=>String(v||'').trim().toUpperCase();
    const usable=!!target&&(!own||norm(target)===norm(own));
    fieldBadge.classList.toggle('is-warn',!usable);
-   fieldBadge.textContent=usable?'並べ替え可':'並べ替え設定要';
+   const val=fieldBadge.querySelector('.hd-chip-val');
+   if(val)val.textContent=usable?'並べ替え可':'設定要';
+   else fieldBadge.textContent=usable?'並べ替え可':'設定要';
    fieldBadge.title=usable
     ?`現場段取り: ${target} の未着手の予定を並べ替えられます`
     :(target?`現場段取りの対象設備は「${target}」です(この端末の使用設備: ${own||'未設定'})`
