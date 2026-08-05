@@ -136,6 +136,39 @@ def backup():
   return jsonify(ok=True,direction='IndexedDB -> records.sqlite3')
  except Exception as e:return jsonify(error=str(e)),500
 
+@bp.post('/api/measurement/backup/delete')
+def backup_delete():
+ """端末内の測定データを削除したとき、バックアップ(records.sqlite3)からも消す。
+
+ これが無かったため、データ一覧から削除しても[Web測定バックアップ]に行が
+ 残り続け、作業スケジュールの実績突合(§7.4)がその行を拾って「作業中
+ (開始だけで終了が無い)」を出し続けていた。データ一覧には何も無いのに
+ スケジュールにだけ作業中が並ぶ、という食い違いの原因(§9.52)。
+
+ 複数IDをまとめて渡せる。存在しないIDは無視して成功扱いにする
+ (端末側の削除は既に済んでおり、ここで失敗にしても再送で解決しないため)。
+ """
+ try:
+  x=request.get_json(force=True) or {}
+  ids=x.get('ids')
+  if ids is None:
+   one=x.get('id')
+   ids=[one] if one else []
+  ids=[str(i).strip() for i in ids if str(i or '').strip()]
+  if not ids:return jsonify(error='削除対象IDがありません。'),400
+  deleted=0
+  with connect(MEAS_DB) as c:
+   ensure_backup_table(c);cur=c.cursor()
+   for rid in ids:
+    cur.execute('DELETE FROM [Web測定バックアップ] WHERE [記録ID]=?',[rid])
+    deleted+=cur.rowcount or 0
+   c.commit()
+  records_export.mark_dirty()
+  # 実績突合が次の描画で必ず消えた状態を見るようにする(§9.41のキャッシュ)。
+  invalidate_backup_rows_cache()
+  return jsonify(ok=True,deleted=deleted,requested=len(ids))
+ except Exception as e:return jsonify(error=str(e)),500
+
 @bp.get('/api/measurement/backup/list')
 def backup_list():
  # PC引継ぎ等でIndexedDBが空の端末へ、db/records.sqlite3(Web測定バックアップ)から

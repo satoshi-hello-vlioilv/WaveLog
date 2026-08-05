@@ -372,6 +372,53 @@ def calendar_save():
  return _cfg_write_response(fn)
 
 # ========================================================================
+# 設備停止分類マスタ(§5.3.1) - 全設備共通
+# ========================================================================
+def _stop_category_entry(r):
+ # r: 分類ID,名称,色キー,表示順,有効,更新日時,更新者ID
+ return {'id':r[0],'name':r[1],'colorKey':r[2],'order':r[3],
+         'updatedAt':r[5].isoformat() if r[5] else None,'updatedBy':str(r[6] or '')}
+
+@bp.get('/api/schedule/stop-category-master')
+def stop_category_list():
+ items=_cfg_read(lambda mc:[_stop_category_entry(r) for r in sr.stop_category_rows(mc)])
+ return jsonify(ok=True,configured=True,items=items,stale=False)
+
+@bp.post('/api/schedule/stop-category-master')
+def stop_category_register():
+ x=request.get_json(force=True) or {}
+ name=str(x.get('name') or '').strip()
+ # idがあれば改名(他マスタと同じリネーム更新)。無ければ新規または再有効化。
+ cid=x.get('id')
+ def fn(mc):
+  gid,created=sr.stop_category_upsert(mc,name,request_user_id(x),
+                                      color_key=str(x.get('colorKey') or ''),
+                                      category_id=int(cid) if cid not in (None,'') else None)
+  return {'id':gid,'created':created}
+ return _cfg_write_response(fn)
+
+@bp.post('/api/schedule/stop-category-master/delete')
+def stop_category_delete():
+ x=request.get_json(force=True) or {}
+ cid=x.get('id')
+ if cid is None:return jsonify(error='削除対象IDがありません。'),400
+ force=bool(x.get('force'))
+ # 使用中の分類をうっかり消すと、設備停止マスタ側の分類が「選択肢に無い値」
+ # として取り残される。まず件数を提示して確認を求め、利用者が再確認のうえ
+ # force:trueで再送したときだけ実際に消す(設備マスタの削除と同じ考え方。§5.0.1)。
+ name,used=_cfg_read(lambda mc:sr.stop_category_usage(mc,cid))
+ if name is None:return jsonify(error='指定の分類が見つかりません。'),400
+ if used and not force:
+  return jsonify(error=f'分類「{name}」は設備停止マスタの{used}件で使用中です。',
+                 code='stop_category_in_use',
+                 references={'name':name,'stopReasonRows':used}),409
+ def fn(mc):
+  n=sr.stop_category_delete(mc,cid,request_user_id(x))
+  if n==0:raise ValueError('指定の分類が見つかりません。')
+  return {'id':cid,'name':name,'stopReasonRows':used}
+ return _cfg_write_response(fn)
+
+# ========================================================================
 # 設備停止マスタ
 # ========================================================================
 def _stop_reason_entry(r):
@@ -416,9 +463,14 @@ def stop_reason_delete():
 # タイムラインの「勤務」列(schedule_calc.expand_plan()のentries[].shift)は
 # sr.shift_rows()経由でこのマスタを参照する。
 # ========================================================================
-def _pattern_entry(mc,r):
+def _pattern_entry(mc,r,assigned=None):
  # r: 勤務体系ID,適用設備,名称,表示順,有効
- return {'id':r[0],'equipment':r[1],'name':r[2],
+ # equipment(複数)は勤務体系設備マスタから引く。0件=全設備既定。
+ # equipmentText は一覧表示用の連結文字列(オペレータマスタと同じ流儀)。
+ if assigned is None:assigned=sr.shift_pattern_equipment_map(mc)
+ names=assigned.get(r[0],[])
+ return {'id':r[0],'equipment':names,'equipmentText':'、'.join(names) or '全設備共通',
+         'name':r[2],
          'segments':[{'id':s[0],'name':s[2],'start':s[3],'end':s[4]} for s in sr.shift_segment_rows(mc,r[0])]}
 
 @bp.get('/api/schedule/shift-pattern-master')
@@ -433,7 +485,8 @@ def shift_pattern_list():
    rows=sr.shift_pattern_rows(mc,'__all__')
   else:
    rows=sr.shift_pattern_rows(mc,equipment) or sr.shift_pattern_rows(mc,None)
-  return [_pattern_entry(mc,r) for r in rows]
+  assigned=sr.shift_pattern_equipment_map(mc)
+  return [_pattern_entry(mc,r,assigned) for r in rows]
  return jsonify(ok=True,configured=True,items=_cfg_read(fn),stale=False)
 
 @bp.post('/api/schedule/shift-pattern-master')
@@ -442,7 +495,11 @@ def shift_pattern_save():
  親子を1リクエストで保存することで、片方だけ保存された中途半端な状態を作らない。"""
  x=request.get_json(force=True) or {}
  pattern_id=x.get('id')
- equipment=str(x.get('equipment') or '').strip()
+ # equipmentは設備名の配列(複数可、空配列=全設備共通)。以前は単一文字列
+ # だったため、互換のため文字列で来た場合も受け付ける。
+ raw_eq=x.get('equipment')
+ if isinstance(raw_eq,list):equipment=[str(v or '').strip() for v in raw_eq if str(v or '').strip()]
+ else:equipment=[str(raw_eq or '').strip()] if str(raw_eq or '').strip() else []
  name=str(x.get('name') or '').strip()
  segments=x.get('segments')
  if segments is not None and not isinstance(segments,list):

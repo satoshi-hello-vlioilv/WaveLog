@@ -198,6 +198,20 @@ API経由でRNE(Navigator問い合わせ定義)を実行し、ローカルSQLite
   する(配置形態の詳細は`config/rne_extract/README.md`、テンプレートは
   `symnavim.conf.example`)。`.gitignore`で実体(`rne/`・`NAVIAP/`・
   `symnavim.conf`)を除外し、README/exampleのみ追跡する。
+- **リポジトリには実体が無い**。`*.RNE`と`SymNaviA.dll`は追跡解除済みで、
+  クローンしただけの状態では`config/rne_extract/`にREADMEと
+  `symnavim.conf.example`しか無い。実環境ではセットアップ時にPCごとへ
+  配置する(配置しないと抽出は動かないが、アプリの他の機能には影響しない)。
+  なお過去のコミット履歴にはこれらのファイルが残っている(追跡解除は
+  以後の追跡を止めるだけで、履歴は書き換えない)。
+
+**状態表示と手動実行**
+
+抽出は背景で回るだけで、成否はアプリログにしか出ていなかった。マスタ管理 >
+パス設定の下部に状態パネルを置き、有効/停止・直近の成否と行数・抽出先の
+最終更新・資材の配置状況を表示し、「今すぐ抽出」で任意のタイミングでも
+走らせられるようにしてある(`/api/rne-extract/status`・`/run`。詳細は
+`docs/SCHEDULE_MODE_DESIGN.md` §9.50)。
 - サンドボックス等の非Windows環境では`navigator_api.py`がインスタンス化
   時点で`RuntimeError`を返すため、抽出は毎回失敗ログを残すだけでサーバー
   自体は問題なく動作する(周辺のロジック——設定切替・スケジューラの間隔

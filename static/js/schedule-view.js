@@ -47,6 +47,9 @@
  function invalidatePlanCache(equipment){
   if(equipment)scPlanCache.delete(equipment);else scPlanCache.clear();
   scOverviewCache=null;  // 俯瞰ボードの残作業量も変わる
+  // 作業可否(§9.51)の判定材料も一緒に捨てる。予定を取り直すのに残コースが
+  // 古いままだと、フラグだけ前回の状態で残る。
+  if(typeof invalidateWorkable==='function')invalidateWorkable();
  }
  window.invalidateSchedulePlanCache=invalidatePlanCache;
  function fmtFetchedAt(ts){
@@ -567,6 +570,7 @@
   hideSplitList();
   stopLockPolling();
   stopSessionHeartbeat();
+  stopWorkableWatch();   // 画面を出たら可否の裏取りも止める(§9.51)
   if(scSessionHeldFor){releaseSessionFire(scSessionHeldFor);scSessionHeldFor=null}
   scState.sessionHeld=false;scState.sessionHolder=null;scState.sessionError=null;
  }
@@ -971,6 +975,130 @@
  }
 
  /* ---------- 予定一覧の取得・描画 ---------- */
+/* ---------- 作業可否フラグ(§9.51) ----------
+    予定に並んでいても、そのロットがまだこの設備まで流れて来ていないことが
+    ある(前工程が終わっていない)。現場の判断基準そのままに、仕掛データの
+    **「残仕掛設備ｺｰｽ」がこの設備名で始まっているか**を作業可否とする。
+
+    判定に使うのは予定投入時のスナップショット(detail)ではなく、**現在の
+    仕掛データ**。スナップショットは投入した時点の値で固まっており、
+    工程が進んでも変わらないため、これで判定すると「まだ来ていないロットを
+    作業可能と見せる」ことになりフラグの意味が無くなる。 */
+ const WORKABLE_TTL_MS=180000;   // 3分(仕掛一覧のキャッシュ§9.46と同じ考え方)
+ let scWorkable={at:0,map:null};
+ function invalidateWorkable(){scWorkable={at:0,map:null}}
+ /* 仕掛一覧から「ロット番号 -> 残仕掛設備ｺｰｽ」を作る。列表示マスタで
+    残仕掛設備ｺｰｽが非表示にされていても判定に要るので include_hidden=1
+    を付ける(CLAUDE.md「内部計算用の問い合わせには include_hidden=1」)。 */
+ async function loadWorkableIndex(force){
+  if(!force&&scWorkable.map&&Date.now()-scWorkable.at<WORKABLE_TTL_MS)return scWorkable.map;
+  const map=new Map();
+  try{
+   const t=await api('/api/tables?db=SIKALOTNOW');
+   const table=(t.tables||[])[0];
+   if(table){
+    const q=new URLSearchParams({db:'SIKALOTNOW',table,page:1,page_size:5000,search:'',include_hidden:'1'});
+    const d=await api('/api/table?'+q);
+    const lotCol=(aliases.lotNo||[]).find(n=>(d.columns||[]).includes(n));
+    const resCol=(aliases.residualCourse||[]).find(n=>(d.columns||[]).includes(n));
+    if(lotCol&&resCol){
+     (d.rows||[]).forEach(r=>{
+      const lot=normalizeLotKey(r[lotCol]);
+      if(lot)map.set(lot,String(r[resCol]??''));
+     });
+    }
+   }
+  }catch(e){
+   // 仕掛が読めないときは判定材料が無い。mapを空で持ち、UIは「不明」を出す
+   // (この場合に既定で「可」にすると、確認できないものを作業させてしまう)。
+   console.warn('作業可否の判定に使う仕掛一覧を取得できません',e);
+  }
+  scWorkable={at:Date.now(),map};
+  return map;
+ }
+ function normalizeLotKey(v){return String(v??'').trim().toUpperCase()}
+ /* 残仕掛設備ｺｰｽがこの設備名で始まっていれば作業可能。
+    戻り値: {state:'ok'|'ng'|'unknown', course:'...'} */
+ function workableOf(e){
+  const eq=String(scState.equipment||'').trim();
+  if(e.kind!=='作業')return {state:'na',course:''};
+  const map=scWorkable.map;
+  if(!eq||!map||!map.size)return {state:'unknown',course:''};
+  const lot=normalizeLotKey(e.lotNo||contentValueOf(e.detail,'lotNo'));
+  if(!lot||!map.has(lot))return {state:'unknown',course:''};
+  const course=String(map.get(lot)||'');
+  const norm=v=>String(v||'').trim().toUpperCase();
+  return {state:norm(course).startsWith(norm(eq))?'ok':'ng',course};
+ }
+ const WORKABLE_LABEL={
+  ok:{text:'可',cls:'is-ok',title:'残仕掛設備ｺｰｽがこの設備で始まっています。作業できます。'},
+  ng:{text:'不可',cls:'is-ng',title:'このロットはまだこの設備に仕掛かっていません(残仕掛設備ｺｰｽが別の設備です)。'},
+  unknown:{text:'?',cls:'is-unknown',title:'仕掛データに該当ロットが見つからないため、作業できるか確認できません。'},
+  na:{text:'—',cls:'is-na',title:'作業以外の予定です。'},
+ };
+
+/* 可否の反映は**画面を作り直さない**。renderTimeline()を呼ぶと行が総入れ替えに
+    なり、ドラッグ中・詳細を開いている最中・スクロール位置がすべて飛ぶ。
+    既にある行の可否セルと開始ボタンだけを差し替える。 */
+ function applyWorkableFlags(){
+  document.querySelectorAll('.sc-row-line').forEach(row=>{
+   const e=row.__scEntry;if(!e)return;
+   const w=workableOf(e);
+   const label=WORKABLE_LABEL[w.state]||WORKABLE_LABEL.unknown;
+   const cell=row.querySelector('.sc-row-workable');
+   if(cell){
+    cell.textContent=label.text;
+    cell.className='sc-row-workable '+label.cls;
+    cell.title=w.course?`${label.title}\n残仕掛設備ｺｰｽ: ${w.course}`:label.title;
+   }
+   row.classList.toggle('sc-row-not-workable',w.state==='ng');
+   // 可否が変わったら開始ボタンの有無も合わせる(可になったらすぐ着手できる)
+   const canStart=scState.canStartWork&&e.kind==='作業'&&e.state==='予定'
+                  &&!e.__pending&&!e.unplanned&&w.state==='ok';
+   const actions=row.querySelector('.sc-row-actions');
+   const existing=row.querySelector('.sc-row-start');
+   if(canStart&&!existing&&actions){
+    const btn=document.createElement('button');
+    btn.type='button';btn.className='sc-row-btn sc-row-start';
+    btn.title='この予定の測定画面を開いて作業を開始します';btn.textContent='▶ 開始';
+    btn.onclick=ev=>{ev.stopPropagation();startWorkFromEntry(e)};
+    actions.prepend(btn);
+   }else if(!canStart&&existing){
+    existing.remove();
+   }
+  });
+ }
+ /* 可でない行は、工程が進めば可へ変わる。利用者に「再読込」を押させずに
+    自動で追いつくよう、可でない予定が残っている間だけ裏で取り直す。
+    全部可になったら見張る理由が無いので止める(無駄な問い合わせを残さない)。 */
+ const WORKABLE_WATCH_MS=120000;   // 2分
+ let workableTimer=null;
+ function stopWorkableWatch(){if(workableTimer){clearTimeout(workableTimer);workableTimer=null}}
+ function scheduleWorkableWatch(){
+  stopWorkableWatch();
+  const entries=scState.entries||[];
+  const pending=entries.some(e=>e.kind==='作業'&&e.state==='予定'&&workableOf(e).state!=='ok');
+  if(!pending)return;
+  workableTimer=setTimeout(()=>{refreshWorkableInBackground(true)},WORKABLE_WATCH_MS);
+ }
+ async function refreshWorkableInBackground(force){
+  try{
+   await loadWorkableIndex(force);
+   applyWorkableFlags();
+   scheduleWorkableWatch();
+  }catch(err){console.warn('作業可否の更新に失敗しました',err)}
+ }
+ /* 仕掛一覧を取り直した直後など、外から可否を更新したいときの入口。 */
+ window.refreshScheduleWorkable=refreshWorkableInBackground;
+ /* 可否がなぜその値なのかを確認するための状態。全部「?」のときに
+    「仕掛が読めていない」のか「該当ロットが無い」のかを切り分ける。 */
+ window.scheduleWorkableState=()=>({
+  watching:workableTimer!==null,
+  indexSize:scWorkable.map?scWorkable.map.size:0,
+  fetchedAt:scWorkable.at||null,
+  equipment:scState.equipment||'',
+ });
+
  async function refreshAll(force){
   // キャッシュから出せるならWAITING表示ごと省く(一瞬で出るのにスピナーが
   // 瞬くと、かえって「また読み込んでいる」ように見えるため)。
@@ -987,6 +1115,10 @@
   // プリファレンスのまま出て、直後に列が変わるちらつきが起きる)。
   if(scState.fullControl){await loadScheduleColumnPrefs();await loadScheduleContentPrefs()}
   await loadPlan(force);
+  // 作業可否(§9.51)の判定材料は**待たない**。仕掛一覧の取得は共有越しだと
+  // 時間がかかることがあり、待つとその間ずっと予定が出ない。先に予定を描き、
+  // 可否は取れ次第そのセルだけ差し替える(操作は一切止めない)。
+  refreshWorkableInBackground(force);
   if(scState.fullControl)await loadStopReasons();
   report({progress:'仕掛一覧を並べて表示しています',step:2});
   await showSplitList();
@@ -995,6 +1127,7 @@
   scState.entries=r.entries||[];scState.anchor=r.anchor;scState.warnings=r.warnings||[];
   scState.planFetchedAt=fetchedAt;
   renderWarnings();renderTimeline();updateFreshnessUi(fetchedAt);
+  scheduleWorkableWatch();   // 可でない行が残っていれば裏で追いかける(§9.51)
  }
  async function loadPlan(force){
   if(!scState.equipment)return;
@@ -1152,7 +1285,7 @@
   return `${e.lotNo||'-'} ${e.detail?.purposeName||''} ${e.detail?.mfgMaterial||''}${e.detail?.mfgTemper?'-'+e.detail.mfgTemper:''}`.trim();
  }
  const ROW_HEAD_HTML=`<div class="sc-row-head">
-  <span></span><span>区分</span><span>日付</span><span>時刻</span><span>勤務</span><span>残り</span><span>内容</span><span>見積</span><span>実績</span><span>備考</span><span>操作</span>
+  <span></span><span>区分</span><span>作業</span><span>日付</span><span>時刻</span><span>勤務</span><span>残り</span><span>内容</span><span>見積</span><span>実績</span><span>備考</span><span>操作</span>
  </div>`;
 
  /* ---------- 実施中/予定/実績のグルーピング(§9.34) ----------
@@ -1329,6 +1462,7 @@
    row.className='sc-row-line '+stateRowClass(e.state)
     +(e.__pending?' sc-row-pending':'')+(locked?' sc-row-locked':'')+(e.ongoing?' sc-row-ongoing':'');
    row.dataset.id=e.id;
+   row.__scEntry=e;   // 作業可否だけ後から差し替えるときの参照(§9.51)
    // ロック(§9.38)された行はその日時に釘付けなので、並べ替えても時刻が
    // 変わらない。動かせるのに何も起きない状態は紛らわしいためドラッグ対象
    // から外す(解除すれば通常のロットと同じように流れる)。
@@ -1380,7 +1514,13 @@
    const canDelete=scState.fullControl&&e.state==='予定'&&!e.__pending&&!e.unplanned;
    // §9.35: 編集モード(=実際に測定する端末)なら、予定から直接測定画面を開ける。
    // 開始時刻を打刻すると実績突合(§7.4)でこの行が「実施中」へ移る。
-   const canStart=scState.canStartWork&&e.kind==='作業'&&e.state==='予定'&&!e.__pending&&!e.unplanned;
+   // §9.51: 作業可否フラグが立っている(残仕掛設備ｺｰｽがこの設備で始まる)
+   // 予定だけ開始できる。まだこの設備に来ていないロットを開始させない。
+   const workable=workableOf(e);
+   const wk=WORKABLE_LABEL[workable.state]||WORKABLE_LABEL.unknown;
+   const wkTitle=workable.course?`${wk.title}\n残仕掛設備ｺｰｽ: ${workable.course}`:wk.title;
+   const canStart=scState.canStartWork&&e.kind==='作業'&&e.state==='予定'&&!e.__pending&&!e.unplanned
+                  &&workable.state==='ok';
    // §9.38: 日時で固定する(ロック)。予定を動かせるモードでのみ操作できる。
    const canLock=scState.fullControl&&e.state==='予定'&&!e.__pending&&!e.unplanned;
    // §9.43: 実績のある行(作業中・完了)は帳票を開ける。実績突合で紐づいた
@@ -1394,6 +1534,7 @@
    row.innerHTML=`
     <span class="sc-row-handle" title="${canDrag?'ドラッグまたはAlt+↑/↓で並べ替え':(locked?'日時を固定中(ロック)':'')}">${canDrag?'⠿':(locked?'🔒':'')}</span>
     <span class="sc-row-cat sc-cat-${cat.key}" title="${esc(e.kind)}・${esc(e.state)}"><i>${cat.icon}</i>${esc(cat.label)}</span>
+    <span class="sc-row-workable ${wk.cls}" title="${esc(wkTitle)}">${esc(wk.text)}</span>
     <span class="sc-row-date" title="${esc(dateTitle)}">${esc(dateText)}</span>
     <span class="sc-row-time" title="${esc(timeTitle)}">${esc(timeText)}</span>
     <span class="sc-row-shift" title="勤務形態マスタで設定した名称です">${esc(shiftText)}</span>
@@ -1410,6 +1551,7 @@
      ${detailHtml?`<button type="button" class="sc-row-btn sc-row-detail-toggle" title="詳細を表示">▾</button>`:''}
      ${canDelete?`<button type="button" class="sc-row-btn sc-row-delete" title="削除">🗑</button>`:''}
     </span>`;
+   row.classList.toggle('sc-row-not-workable',workable.state==='ng');
    if(canDrag)wireDrag(row);
    const del=row.querySelector('.sc-row-delete');
    if(del)del.onclick=ev=>{ev.stopPropagation();deleteEntry(e.id)};
@@ -2172,6 +2314,18 @@
  }
  async function startWorkFromEntry(e){
   if(typeof openMeasurement!=='function'){alert('測定画面を開けません。');return}
+  /* §9.51: まだこの設備に仕掛かっていないロットは開始させない。ボタン自体
+     出していないが、ダブルクリック等の別経路からも来るので二重に確かめる
+     (「予定」から始めるときだけ。着手済みの再開は対象外)。 */
+  if(e.state==='予定'){
+   const w=workableOf(e);
+   if(w.state!=='ok'){
+    alert(w.state==='ng'
+     ?`このロットはまだ${scState.equipment}に仕掛かっていないため作業を開始できません。\n残仕掛設備ｺｰｽ: ${w.course||'(不明)'}`
+     :'仕掛データに該当ロットが見つからないため、作業できるか確認できません。仕掛一覧を再読込してからお試しください。');
+    return;
+   }
+  }
   const row=entryMeasurementRow(e);
   if(!(typeof pick==='function'?pick(row,'lotNo'):row.lotNo)){
    alert('この予定にはロット番号が記録されていないため、測定画面を開けません。');
