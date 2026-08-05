@@ -308,40 +308,58 @@ def stop_reason_delete():
  return _cfg_write_response(fn)
 
 # ========================================================================
-# 勤務形態マスタ(§5.5新設): 時刻(HH:MM)の範囲と勤務名称の対応表。
-# タイムラインの「勤務」列(schedule_calc.expand_plan()のentries[].shift)
-# はこのマスタを参照する。
+# 勤務体系マスタ / 勤務区分マスタ(§5.5改訂): 「日勤」「交替勤務(1,2,3直)」の
+# ような勤務体系(親)の下に、各直の時間帯(子=勤務区分)をぶら下げた2階層。
+# タイムラインの「勤務」列(schedule_calc.expand_plan()のentries[].shift)は
+# sr.shift_rows()経由でこのマスタを参照する。
 # ========================================================================
-def _shift_entry(r):
- # r: 勤務ID,設備名,名称,開始時刻,終了時刻,表示順,有効
- return {'id':r[0],'equipment':r[1],'name':r[2],'start':r[3],'end':r[4]}
+def _pattern_entry(mc,r):
+ # r: 勤務体系ID,適用設備,名称,表示順,有効
+ return {'id':r[0],'equipment':r[1],'name':r[2],
+         'segments':[{'id':s[0],'name':s[2],'start':s[3],'end':s[4]} for s in sr.shift_segment_rows(mc,r[0])]}
 
-@bp.get('/api/schedule/shift-master')
-def shift_list():
+@bp.get('/api/schedule/shift-pattern-master')
+def shift_pattern_list():
+ """equipment未指定なら全件(マスタ管理の一覧)。指定時はその設備に適用される
+ 体系(設備専用があればそれ、無ければ全設備既定)を返す。"""
  equipment=str(request.args.get('equipment') or '').strip()
- items=_cfg_read(lambda mc:[_shift_entry(r) for r in sr.shift_rows(mc,equipment or None)])
- return jsonify(ok=True,configured=True,items=items,stale=False)
+ scope=request.args.get('scope') or ''
+ def fn(mc):
+  sr.migrate_shift_patterns(mc)
+  if scope=='all' or not equipment:
+   rows=sr.shift_pattern_rows(mc,'__all__')
+  else:
+   rows=sr.shift_pattern_rows(mc,equipment) or sr.shift_pattern_rows(mc,None)
+  return [_pattern_entry(mc,r) for r in rows]
+ return jsonify(ok=True,configured=True,items=_cfg_read(fn),stale=False)
 
-@bp.post('/api/schedule/shift-master')
-def shift_register():
+@bp.post('/api/schedule/shift-pattern-master')
+def shift_pattern_save():
+ """勤務体系と、その配下の勤務区分をまとめて保存する(区分は全置換)。
+ 親子を1リクエストで保存することで、片方だけ保存された中途半端な状態を作らない。"""
  x=request.get_json(force=True) or {}
+ pattern_id=x.get('id')
  equipment=str(x.get('equipment') or '').strip()
  name=str(x.get('name') or '').strip()
+ segments=x.get('segments')
+ if segments is not None and not isinstance(segments,list):
+  return jsonify(error='勤務区分の指定が不正です。'),400
  def fn(mc):
-  sid,created=sr.shift_upsert(mc,equipment,name,request_user_id(x),
-                               start=str(x.get('start') or '').strip(),end=str(x.get('end') or '').strip())
-  return {'id':sid,'created':created}
+  uid=request_user_id(x)
+  pid,created=sr.shift_pattern_upsert(mc,pattern_id,equipment,name,uid)
+  saved=sr.shift_segment_sync(mc,pid,segments or [],uid) if segments is not None else None
+  return {'id':pid,'created':created,'savedSegments':saved}
  return _cfg_write_response(fn)
 
-@bp.post('/api/schedule/shift-master/delete')
-def shift_delete_route():
+@bp.post('/api/schedule/shift-pattern-master/delete')
+def shift_pattern_delete_route():
  x=request.get_json(force=True) or {}
- sid=x.get('id')
- if sid is None:return jsonify(error='削除対象IDがありません。'),400
+ pid=x.get('id')
+ if pid is None:return jsonify(error='削除対象IDがありません。'),400
  def fn(mc):
-  n=sr.shift_delete(mc,sid,request_user_id(x))
-  if n==0:raise ValueError('指定の勤務形態が見つかりません。')
-  return {'id':sid}
+  n=sr.shift_pattern_delete(mc,pid,request_user_id(x))
+  if n==0:raise ValueError('指定の勤務体系が見つかりません。')
+  return {'id':pid}
  return _cfg_write_response(fn)
 
 # ========================================================================

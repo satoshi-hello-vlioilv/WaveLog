@@ -522,6 +522,7 @@
 
  async function openScheduleView(){
   window.exitCalendarView?.();
+  window.exitMasterMaint?.();
   document.body.classList.remove('qa-mode','qa-view-raw');
   document.getElementById('reportPanel')?.setAttribute('hidden','');document.body.classList.remove('rp-mode');
   document.getElementById('dashboardPanel')?.setAttribute('hidden','');document.body.classList.remove('db-mode');

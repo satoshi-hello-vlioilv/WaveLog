@@ -369,9 +369,12 @@ def base_minutes_override(c,equipment):
 #    側で行う(稼働カレンダーマスタのworking_slots_for_dateと同じ構造)。
 #    終了時刻<=開始時刻は日跨ぎ勤務として扱う(例: 23:00〜07:00の3直)。
 # ========================================================================
-SHIFT_TABLE='勤務形態マスタ'
+SHIFT_TABLE='勤務形態マスタ'          # 旧・フラット構造(移行元としてのみ参照)
+SHIFT_PATTERN_TABLE='勤務体系マスタ'   # 親: 日勤 / 交替勤務(1,2,3直) など
+SHIFT_SEGMENT_TABLE='勤務区分マスタ'   # 子: 1直 7:00-15:00 など
 
 def ensure_shift_table(c):
+ """旧フラット構造。移行元として読むだけなので、無ければ作るだけで使わない。"""
  names=tables(c);created=False
  if SHIFT_TABLE not in names:
   cur=c.cursor()
@@ -380,49 +383,139 @@ def ensure_shift_table(c):
   c.commit();created=True
  return created
 
-def shift_rows(c,equipment=None):
- # equipment未指定(またはNone)なら全設備既定([設備名]='')・指定ありなら
- # その設備専用行のみ(稼働カレンダーマスタcalendar_rows()と同じ規約)。
- ensure_shift_table(c)
- cur=c.cursor()
- cur.execute('SELECT [勤務ID],[設備名],[名称],[開始時刻],[終了時刻],[表示順],[有効] FROM [勤務形態マスタ] ORDER BY [設備名],[表示順]')
- target=normalize_equipment_name(equipment) if equipment else ''
- rows=[]
- for r in cur.fetchall():
-  active=True if r[6] is None else bool(r[6])
-  if not active:continue
-  if normalize_equipment_name(r[1])!=target:continue
-  rows.append(r)
- return rows
+def ensure_shift_pattern_tables(c):
+ """勤務体系(親)と勤務区分(子)の2テーブル。
+ 現場の言い方に合わせた2階層にする:
+   日勤              -> 日勤 8:15-17:05
+   交替勤務(1,2,3直) -> 1直 7:00-15:00 / 2直 15:00-23:00 / 3直 23:00-翌7:00
+   交替勤務(4,5直)   -> 4直 11:00-19:10 / 5直 21:20-翌5:45
+ 以前は「名称+開始+終了」のフラットな1テーブルだったため、どの直が
+ どの勤務体系に属するのかを表現できず、体系ごと切り替えることもできなかった。
+ [適用設備]は他のマスタと同じ規約で、空文字=全設備既定・設備名指定=その設備専用。"""
+ names=tables(c);created=False
+ if SHIFT_PATTERN_TABLE not in names:
+  cur=c.cursor()
+  cur.execute('CREATE TABLE [勤務体系マスタ] ([勤務体系ID] INTEGER PRIMARY KEY AUTOINCREMENT, [適用設備] TEXT, [名称] TEXT, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
+  cur.execute('CREATE INDEX [IX_勤務体系マスタ_設備] ON [勤務体系マスタ] ([適用設備])')
+  c.commit();created=True
+ if SHIFT_SEGMENT_TABLE not in names:
+  cur=c.cursor()
+  cur.execute('CREATE TABLE [勤務区分マスタ] ([勤務区分ID] INTEGER PRIMARY KEY AUTOINCREMENT, [勤務体系ID] INTEGER, [名称] TEXT, [開始時刻] TEXT, [終了時刻] TEXT, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
+  cur.execute('CREATE INDEX [IX_勤務区分マスタ_体系] ON [勤務区分マスタ] ([勤務体系ID])')
+  c.commit();created=True
+ return created
 
-def shift_upsert(c,equipment,name,uid,start='',end=''):
- # (設備名,名称)の自然キーで照合し、既存なら更新・無ければ新規登録する
- # (stop_reason_upsertと同じ方式)。設備名は空文字="全設備既定"を許すため
- # 必須にしない(名称のみ必須)。
- ensure_shift_table(c)
- equipment=str(equipment or '').strip();name=str(name or '').strip()
- if not name:raise ValueError('名称を入力してください。')
- start=str(start or '').strip();end=str(end or '').strip()
- if not start or not end:raise ValueError('開始時刻・終了時刻を入力してください(HH:MM)。')
+def shift_pattern_rows(c,equipment=None):
+ """勤務体系の一覧。equipment指定時はその設備専用行、未指定なら全設備既定行。
+ equipment='__all__'で全件(マスタ管理の一覧用)。"""
+ ensure_shift_pattern_tables(c)
  cur=c.cursor()
- cur.execute('SELECT [勤務ID],[設備名],[名称] FROM [勤務形態マスタ]')
- target_eq=normalize_equipment_name(equipment)
- existing_row=next((r for r in cur.fetchall() if normalize_equipment_name(r[1])==target_eq and str(r[2] or '').strip()==name),None)
- if existing_row:
-  cur.execute('UPDATE [勤務形態マスタ] SET [開始時刻]=?,[終了時刻]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [勤務ID]=?',
-              [start,end,uid,existing_row[0]])
-  return existing_row[0],False
- cur.execute('SELECT Max([表示順]) FROM [勤務形態マスタ] WHERE [設備名]=?',[equipment])
+ cur.execute('SELECT [勤務体系ID],[適用設備],[名称],[表示順],[有効] FROM [勤務体系マスタ] ORDER BY [適用設備],[表示順],[勤務体系ID]')
+ rows=[r for r in cur.fetchall() if (True if r[4] is None else bool(r[4]))]
+ if equipment=='__all__':return rows
+ target=normalize_equipment_name(equipment) if equipment else ''
+ return [r for r in rows if normalize_equipment_name(r[1])==target]
+
+def shift_segment_rows(c,pattern_id):
+ ensure_shift_pattern_tables(c)
+ cur=c.cursor()
+ cur.execute('SELECT [勤務区分ID],[勤務体系ID],[名称],[開始時刻],[終了時刻],[表示順],[有効] FROM [勤務区分マスタ] WHERE [勤務体系ID]=? ORDER BY [表示順],[勤務区分ID]',[pattern_id])
+ return [r for r in cur.fetchall() if (True if r[6] is None else bool(r[6]))]
+
+def shift_rows(c,equipment=None):
+ """勤務名称の解決に使う勤務区分の一覧。
+ **戻り値のタプル形は旧フラット構造のまま**
+ (勤務ID,設備名,名称,開始時刻,終了時刻,表示順,有効)にしてある。
+ schedule_calc.resolve_shift_label()は形しか見ないため、階層化しても
+ あちらは無改修で済む(呼び出し規約: equipment未指定=全設備既定)。
+ 該当設備の勤務体系が複数あれば表示順で最初の1件を使う。"""
+ migrate_shift_patterns(c)
+ patterns=shift_pattern_rows(c,equipment)
+ if not patterns:return []
+ pid,eq=patterns[0][0],patterns[0][1]
+ return [(r[0],eq,r[2],r[3],r[4],r[5],r[6]) for r in shift_segment_rows(c,pid)]
+
+def shift_pattern_upsert(c,pattern_id,equipment,name,uid):
+ ensure_shift_pattern_tables(c)
+ equipment=str(equipment or '').strip();name=str(name or '').strip()
+ if not name:raise ValueError('勤務体系の名称を入力してください。')
+ cur=c.cursor()
+ if pattern_id:
+  cur.execute('UPDATE [勤務体系マスタ] SET [適用設備]=?,[名称]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [勤務体系ID]=?',[equipment,name,uid,pattern_id])
+  if cur.rowcount==0:raise ValueError('指定の勤務体系が見つかりません。')
+  return pattern_id,False
+ cur.execute('SELECT Max([表示順]) FROM [勤務体系マスタ] WHERE [適用設備]=?',[equipment])
  order=int((cur.fetchone()[0]) or 0)+10
- cur.execute('INSERT INTO [勤務形態マスタ] ([設備名],[名称],[開始時刻],[終了時刻],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,-1,?,?,Now(),Now())',
-             [equipment,name,start,end,order,uid,uid])
+ cur.execute('INSERT INTO [勤務体系マスタ] ([適用設備],[名称],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,-1,?,?,Now(),Now())',[equipment,name,order,uid,uid])
  return cur.lastrowid,True
 
-def shift_delete(c,shift_id,uid):
- ensure_shift_table(c)
+def shift_pattern_delete(c,pattern_id,uid):
+ ensure_shift_pattern_tables(c)
  cur=c.cursor()
- cur.execute('UPDATE [勤務形態マスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [勤務ID]=?',[uid,shift_id])
+ cur.execute('UPDATE [勤務体系マスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [勤務体系ID]=?',[uid,pattern_id])
  return cur.rowcount
+
+_TIME_RE=None
+def _valid_hm(v):
+ global _TIME_RE
+ if _TIME_RE is None:
+  import re as _re;_TIME_RE=_re.compile(r'^([01]?\d|2[0-3]):[0-5]\d$')
+ return bool(_TIME_RE.match(str(v or '').strip()))
+
+def shift_segment_sync(c,pattern_id,segments,uid):
+ """勤務区分を渡された内容へ完全同期する(稼働カレンダーcalendar_syncと同じ
+ 全置換方式)。渡された順序がそのまま表示順になる。"""
+ ensure_shift_pattern_tables(c)
+ if not pattern_id:raise ValueError('勤務体系を指定してください。')
+ cleaned=[]
+ for seg in (segments or []):
+  name=str((seg or {}).get('name') or '').strip()
+  start=str((seg or {}).get('start') or '').strip()
+  end=str((seg or {}).get('end') or '').strip()
+  if not name:raise ValueError('勤務区分の名称を入力してください。')
+  if not _valid_hm(start) or not _valid_hm(end):
+   raise ValueError(f'「{name}」の時刻はHH:MM(00:00〜23:59)で指定してください。')
+  if start==end:raise ValueError(f'「{name}」の開始時刻と終了時刻が同じです。')
+  cleaned.append((name,start,end))
+ cur=c.cursor()
+ cur.execute('DELETE FROM [勤務区分マスタ] WHERE [勤務体系ID]=?',[pattern_id])
+ for i,(name,start,end) in enumerate(cleaned,start=1):
+  cur.execute('INSERT INTO [勤務区分マスタ] ([勤務体系ID],[名称],[開始時刻],[終了時刻],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,-1,?,?,Now(),Now())',
+              [pattern_id,name,start,end,i*10,uid,uid])
+ return len(cleaned)
+
+_shift_migration_done=False
+def migrate_shift_patterns(c):
+ """旧フラット勤務形態マスタ -> 勤務体系/勤務区分 への一度きりの移行。
+ 設備ごとに1つの勤務体系へまとめる(どの直が同じ体系かは旧構造では
+ 表現されていなかったため、設備単位でまとめる以上の推測はしない)。"""
+ global _shift_migration_done
+ if _shift_migration_done:return
+ ensure_shift_pattern_tables(c)
+ try:
+  if SHIFT_TABLE not in tables(c):
+   _shift_migration_done=True;return
+  cur=c.cursor()
+  cur.execute('SELECT COUNT(*) FROM [勤務体系マスタ]')
+  if int(cur.fetchone()[0] or 0)>0:
+   _shift_migration_done=True;return
+  cur.execute('SELECT [設備名],[名称],[開始時刻],[終了時刻],[表示順],[有効] FROM [勤務形態マスタ] ORDER BY [設備名],[表示順]')
+  old=[r for r in cur.fetchall() if (True if r[5] is None else bool(r[5]))]
+  if not old:
+   _shift_migration_done=True;return
+  by_eq={}
+  for r in old:by_eq.setdefault(str(r[0] or '').strip(),[]).append(r)
+  for eq,rows in by_eq.items():
+   label='既定の勤務' if not eq else f'{eq}の勤務'
+   pid,_=shift_pattern_upsert(c,None,eq,label,'migrate:勤務形態マスタ')
+   shift_segment_sync(c,pid,[{'name':r[1],'start':r[2],'end':r[3]} for r in rows],'migrate:勤務形態マスタ')
+  c.commit()
+  from ..logging_setup import app_logger
+  app_logger().info('勤務形態マスタを勤務体系/勤務区分の階層構造へ移行しました: %s',{k or '(全設備既定)':len(v) for k,v in by_eq.items()})
+ except Exception as e:
+  from ..logging_setup import app_logger
+  app_logger().warning('勤務形態マスタの階層移行に失敗しました: %s',e)
+ _shift_migration_done=True
 
 def ensure_schedule_tables(c):
  # 共有schedule.sqlite3側。作業予定だけを用意する(設定系マスタは
@@ -437,8 +530,9 @@ def ensure_config_master_tables(mc):
  ensure_stop_reason_table(mc)
  ensure_load_factor_override_table(mc)
  ensure_shift_table(mc)
+ ensure_shift_pattern_tables(mc)
 
-CONFIG_MASTER_TABLES=('稼働カレンダーマスタ','設備停止マスタ','負荷率上書きマスタ','勤務形態マスタ')
+CONFIG_MASTER_TABLES=('稼働カレンダーマスタ','設備停止マスタ','負荷率上書きマスタ','勤務形態マスタ','勤務体系マスタ','勤務区分マスタ')
 
 def config_master_conn():
  """設定系4マスタの保存先(master.sqlite3)への書込可能な接続。

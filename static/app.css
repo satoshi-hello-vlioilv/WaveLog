@@ -1765,6 +1765,12 @@ body.cal-mode #grid,body.cal-mode #listToolbar,body.cal-mode footer,body.cal-mod
 body.sc-mode #grid,body.sc-mode #listToolbar,body.sc-mode footer,body.sc-mode #tabs,body.sc-mode #genericFilterBar,body.sc-mode .qa-v7{display:none!important}
 /* マスタ管理(ARCHITECTURE.md「マスタ管理の画面形態」)も同様にメイン画面表示にする(旧: 全画面シェード付きモーダル)。 */
 body.mm-mode #grid,body.mm-mode #listToolbar,body.mm-mode footer,body.mm-mode #tabs,body.mm-mode #genericFilterBar,body.mm-mode .qa-v7{display:none!important}
+/* 保険: 他のメイン画面統合ビューが開いている間はマスタ管理パネルを必ず隠す。
+   各ビューのopenXxxがwindow.exitMasterMaint()を呼ぶのが本筋だが、呼び忘れても
+   画面が重なって見えないようにしておく(実際に、データ一覧へ移動したときだけ
+   後始末が走らず画面下部にマスタ管理が残る不具合が起きた)。 */
+body.rp-mode #masterMaintPanel,body.db-mode #masterMaintPanel,body.rec-mode #masterMaintPanel,
+body.cal-mode #masterMaintPanel,body.sc-mode #masterMaintPanel,body.qa-mode #masterMaintPanel{display:none!important}
 /* スケジューリング分割表示(.sc-split-wrap、§9.10)中は、仕掛一覧(#grid)と
    絞り込みバー(#genericFilterBar)をタイムラインの隣へ出す。詳細度を
    body.sc-mode単体より上げて確実に上書きする(qa-view-rawと同じ考え方)。 */
@@ -2760,3 +2766,44 @@ body.rp-mode #printCurrentView,body.qa-mode #printCurrentView{display:none!impor
   font-size:9px;font-weight:800;vertical-align:middle;
 }
 .record-sync-badge.record-sync-failed{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger)}
+
+/* ---------- 勤務体系マスタの専用エディタ(親: 勤務体系 / 子: 勤務区分) ----------
+   左に登録済みの体系、右にその中身。時刻はinput[type=time]で直打ちを避け、
+   24時間バーで「どの時間帯が埋まっているか」を色で示す。 */
+.shift-editor{display:grid;grid-template-columns:minmax(160px,220px) minmax(0,1fr);gap:var(--space-3);align-items:start}
+.shift-list{display:flex;flex-direction:column;gap:4px;min-width:0}
+.shift-list-head{font-size:var(--fs-badge);font-weight:800;letter-spacing:.06em;color:#6f8f96;padding:0 4px 2px}
+.shift-list-item{display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer;text-align:left;min-width:0;width:100%}
+.shift-list-item b{font-size:var(--fs-base-sm);color:#173842;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.shift-list-item small{font-size:var(--fs-micro);color:#7c9095}
+.shift-list-item:hover{border-color:var(--teal);background:#f4fbfc}
+.shift-list-item.active{background:var(--teal);border-color:var(--teal)}
+.shift-list-item.active b,.shift-list-item.active small{color:#fff}
+.shift-detail{min-width:0;display:flex;flex-direction:column;gap:var(--space-2)}
+.shift-fields{display:flex;flex-wrap:wrap;gap:var(--space-3)}
+.shift-fields .mm-field{flex:1 1 240px}
+.shift-fields input,.shift-fields select{width:100%}
+/* 24時間バー: 左端0時・右端24時。区分ごとに色を変え、日跨ぎは両端に分けて描く。 */
+.shift-bar{position:relative;height:22px;border:1px solid var(--line);border-radius:6px;background:repeating-linear-gradient(90deg,#f4f7f8 0,#f4f7f8 calc(100%/24 - 1px),#e4ebed calc(100%/24 - 1px),#e4ebed calc(100%/24));overflow:hidden}
+.shift-bar-piece{position:absolute;top:0;bottom:0;opacity:.9}
+.shift-bar-noon{position:absolute;top:0;bottom:0;left:50%;width:1px;background:#9fb0b5}
+.shift-bar-scale{display:flex;justify-content:space-between;font-size:var(--fs-tiny);color:#8a9aa0}
+.shift-bar-piece[data-i="0"],.shift-seg-dot[data-i="0"]{background:#0a8993}
+.shift-bar-piece[data-i="1"],.shift-seg-dot[data-i="1"]{background:#e08a2e}
+.shift-bar-piece[data-i="2"],.shift-seg-dot[data-i="2"]{background:#5a6fc0}
+.shift-bar-piece[data-i="3"],.shift-seg-dot[data-i="3"]{background:#3f9d6b}
+.shift-bar-piece[data-i="4"],.shift-seg-dot[data-i="4"]{background:#b05a8e}
+.shift-bar-piece[data-i="5"],.shift-seg-dot[data-i="5"]{background:#7d8b91}
+.shift-segs{display:flex;flex-direction:column;gap:4px}
+.shift-seg{display:flex;align-items:center;gap:6px;padding:4px 6px;border:1px solid var(--line);border-radius:8px;background:#fff;flex-wrap:wrap}
+.shift-seg-dot{flex:none;width:10px;height:10px;border-radius:50%}
+.shift-seg-name{flex:1 1 110px;min-width:80px;height:var(--ctl-h-sm)}
+.shift-seg-start,.shift-seg-end{flex:0 0 auto;height:var(--ctl-h-sm);font-variant-numeric:tabular-nums}
+.shift-seg-sep{color:#8a9aa0;font-size:var(--fs-sm)}
+.shift-seg-next{flex:none;min-width:34px;font-size:var(--fs-tiny);font-weight:800;color:var(--warn-fg);background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:9px;padding:1px 6px;text-align:center}
+.shift-seg-next.is-empty{background:transparent;border-color:transparent}
+.shift-seg button{flex:none;width:26px;height:26px;padding:0;border:1px solid var(--line);border-radius:5px;background:#fff;font-size:var(--fs-micro);line-height:1;cursor:pointer;color:#5c777e}
+.shift-seg button:disabled{opacity:.35;cursor:default}
+.shift-actions{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
+.shift-actions-tail{margin-left:auto;display:flex;gap:var(--space-2)}
+.shift-cov-ok{color:var(--success);font-weight:700}
