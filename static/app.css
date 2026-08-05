@@ -86,14 +86,18 @@
      一本に統合した。以後、新しい文字サイズが要る箇所もリテラルpx値を書かず、
      このスケールから選ぶか、本当に既存の粒度で足りない場合のみここへ追記
      する(アプリのどこであっても、文字サイズはここを変えるだけで揃う設計)。 */
-  --fs-tiny:9.5px;    /* フィルタ件数・タグ内補足など最小の付随情報 */
-  --fs-badge:10px;    /* ステータスバッジ・カウンタ等の最小文字 */
-  --fs-micro:11px;    /* 判定バッジ・目盛ラベルなど極小の図解要素、高密度表の標準文字 */
-  --fs-sm:12px;        /* 高密度表内で少し強調したい文字(時刻・アイコン等) */
-  --fs-base-sm:13px;  /* 準見出し・強調文字(行タイトル・パネル副題等) */
-  --fs:14px;          /* 本文・コントロール・値・タブ・ボタン */
-  --fs-title:15px;    /* 見出し・パネルタイトル */
-  --fs-lg:20px;       /* 測定画面見出し等のヒーロー級テキスト */
+  /* 表示サイズ(5段階)の倍率。html[data-ui-size]で切り替える(下記)。
+     文字・コントロール高さ・表の行の高さがすべてこの倍率に連動するため、
+     「アプリ全体の文字サイズ」を1箇所で調整できる。既定(中)は1。 */
+  --ui-scale:1;
+  --fs-tiny:calc(9.5px * var(--ui-scale));    /* フィルタ件数・タグ内補足など最小の付随情報 */
+  --fs-badge:calc(10px * var(--ui-scale));    /* ステータスバッジ・カウンタ等の最小文字 */
+  --fs-micro:calc(11px * var(--ui-scale));    /* 判定バッジ・目盛ラベルなど極小の図解要素 */
+  --fs-sm:calc(12px * var(--ui-scale));       /* 表内で少し強調したい文字(時刻・アイコン等) */
+  --fs-base-sm:calc(13px * var(--ui-scale));  /* 準見出し・強調文字(行タイトル・パネル副題等) */
+  --fs:calc(14px * var(--ui-scale));          /* 本文・コントロール・値・タブ・ボタン */
+  --fs-title:calc(15px * var(--ui-scale));    /* 見出し・パネルタイトル */
+  --fs-lg:calc(20px * var(--ui-scale));       /* 測定画面見出し等のヒーロー級テキスト */
   --lh:1.35;
 
   /* コントロールの高さスケール(ARCHITECTURE.md「コントロールサイズの統一」新設)。タイプスケールと同じ考え方で、
@@ -102,11 +106,26 @@
      おり、特にヘッダー(38px)と左ナビ(高さ指定なし)、フィルタバー(30px)の
      並びがバラバラに見えるという指摘があった。行の高さが揃うと視線の
      水平基準が揃い、密度の違いだけで情報の階層を読み取れるようになる。 */
-  --ctl-h-xs:26px;    /* タグ・チップなど文中に混ざる小片 */
-  --ctl-h-sm:30px;    /* 補助ボタン(フィルタバー・ツールバー内) */
-  --ctl-h:36px;       /* 標準のボタン・入力欄・ナビ項目・タブ */
-  --ctl-h-lg:40px;    /* 主要動作(保存・登録)のボタン */
+  --ctl-h-xs:calc(26px * var(--ui-scale));    /* タグ・チップなど文中に混ざる小片 */
+  --ctl-h-sm:calc(30px * var(--ui-scale));    /* 補助ボタン(フィルタバー・ツールバー内) */
+  --ctl-h:calc(36px * var(--ui-scale));       /* 標準のボタン・入力欄・ナビ項目・タブ */
+  --ctl-h-lg:calc(40px * var(--ui-scale));    /* 主要動作(保存・登録)のボタン */
+
+  /* 一覧(#grid)の行の高さ・余白も表示サイズへ連動させる。以前は作業スケジュール
+     画面だけの「高密度」トグル(#grid.sc-dense)で切り替えていたが、
+     「アプリ全体で調整したい」という要望のため表示サイズ側へ一本化した。 */
+  --row-h:calc(33px * var(--ui-scale));
+  --row-pad-y:calc(6px * var(--ui-scale));
+  --row-pad-x:calc(9px * var(--ui-scale));
 }
+
+/* 表示サイズ5段階(base.jsがlocalStorageの値をhtml[data-ui-size]へ適用する)。
+   数字はタイプスケールの倍率。極小=情報量優先、特大=視認性優先。 */
+:root[data-ui-size="xs"]{--ui-scale:.84}
+:root[data-ui-size="sm"]{--ui-scale:.92}
+:root[data-ui-size="md"]{--ui-scale:1}
+:root[data-ui-size="lg"]{--ui-scale:1.1}
+:root[data-ui-size="xl"]{--ui-scale:1.22}
 
 /* ---------- 2. リセット / 全体 ---------- */
 *{box-sizing:border-box}
@@ -254,6 +273,20 @@ main>header small{color:#687a81;margin-top:2px}
 .access-mode-menu button:hover{background:#f1f3f5}
 .access-mode-menu button.is-current{background:#eafafa;color:#164e55}
 .access-mode-menu button small{font-weight:500;color:#687a81;font-size:var(--fs-micro)}
+/* 表示サイズ切替(アプリ全体)。モードバッジと同じ言語で揃えつつ、
+   意味が違う(権限ではなく見た目の設定)ので彩度を落とした中立色にする。 */
+.ui-size-badge{display:inline-flex;align-items:center;gap:6px;height:var(--ctl-h);padding:0 12px;border:1px solid var(--line);border-radius:19px;background:#fff;color:#3a565d;font-weight:700;font-size:var(--fs-base-sm);cursor:pointer;white-space:nowrap}
+.ui-size-badge:hover{border-color:var(--teal);background:#f4fbfc}
+.ui-size-badge span{font-size:var(--fs-title);line-height:1}
+.ui-size-badge b{font-weight:800}
+.ui-size-menu button>span{display:flex;align-items:center;gap:8px}
+/* 選択肢のプレビュー: 各段階の実際の比率で「Ａ」を出し、選ぶ前に大きさが分かるようにする。 */
+.ui-size-swatch{font-style:normal;display:inline-grid;place-items:center;width:22px;color:#0a6570}
+.ui-size-swatch[data-swatch="xs"]{font-size:10px}
+.ui-size-swatch[data-swatch="sm"]{font-size:12px}
+.ui-size-swatch[data-swatch="md"]{font-size:14px}
+.ui-size-swatch[data-swatch="lg"]{font-size:16px}
+.ui-size-swatch[data-swatch="xl"]{font-size:18px}
 .field-reorder-badge{display:inline-flex;align-items:center;height:var(--ctl-h-xs);padding:0 10px;border:1.5px solid var(--warn-border);border-radius:13px;background:var(--warn-bg);color:var(--warn-fg);font-weight:700;font-size:var(--fs-micro);white-space:nowrap}
 /* 閲覧モード・スケジュールモード中は測定系の書込導線を隠す。データ一覧の行は
    閲覧用バックアップから描画するため「続きから再開」「削除」は意味を持たない
@@ -271,6 +304,21 @@ body.view-mode #openMasterMaint{opacity:.45;pointer-events:none}
 .tab{border:0;border-bottom:3px solid transparent;border-radius:0;background:#fff}
 .tab.active{border-color:var(--teal);font-weight:700}
 
+/* 一覧のツールバー(表示列の選択・品質データ結合の状態)。#gridと一緒に
+   分割表示・ポップアップへ移動するため、#gridの直前の兄弟として置く。 */
+.list-toolbar{display:flex;align-items:center;gap:var(--space-2);margin:6px 14px 0;flex-wrap:wrap}
+/* id付きセレクタで書くこと。分割/ポップアップ表示の再表示ルール
+   (body.sc-mode.sc-split #listToolbar{display:flex!important})より詳細度を
+   高くしないと、出す中身が無いときでも空のツールバーが表示されてしまう。 */
+#listToolbar[hidden]{display:none!important}
+.list-toolbar-btn{height:var(--ctl-h-sm);padding:0 12px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer;font-size:var(--fs-sm);font-weight:700;color:#5c777e}
+.list-toolbar-btn:hover{border-color:var(--teal);background:#f4fbfc}
+.list-toolbar-btn[hidden]{display:none!important}
+.list-join-chip{display:inline-flex;align-items:center;height:var(--ctl-h-xs);padding:0 10px;border-radius:13px;font-size:var(--fs-micro);font-weight:700;white-space:nowrap;cursor:help}
+.list-join-chip.is-ok{background:var(--success-bg);color:var(--success);border:1px solid var(--success-border)}
+.list-join-chip.is-warn{background:var(--warn-bg);color:var(--warn-fg);border:1px solid var(--warn-border)}
+:is(.sc-split-wrap,.sc-float-body) .list-toolbar{margin:4px 6px 0;gap:4px}
+:is(.sc-split-wrap,.sc-float-body) .list-toolbar-btn{height:var(--ctl-h-xs);padding:0 8px;font-size:var(--fs-micro)}
 #grid{flex:1;min-height:0;margin:9px 14px;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:8px}
 /* 元々は要素セレクタ(table/th/td)のみで、仕掛一覧・品質データの一覧
    グリッド(#grid内のtable)向けに書かれたものだったが、要素セレクタの
@@ -280,14 +328,11 @@ body.view-mode #openMasterMaint{opacity:.45;pointer-events:none}
    外れて浮いてしまい、列がずれて見える不具合の原因になっていた)。
    #grid配下のみへ明示的にスコープする。 */
 #grid table{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%}
-#grid th,#grid td{padding:6px 9px;height:33px;border-right:1px solid #d5dfe3;border-bottom:1px solid #d5dfe3;white-space:nowrap}
+/* 行の高さ・余白は表示サイズ(--ui-scale)に連動する。作業スケジュール画面
+   だけにあった「高密度」トグル(#grid.sc-dense)は、アプリ全体で調整したいと
+   いう要望に合わせて表示サイズ5段階へ統合したため廃止した。 */
+#grid th,#grid td{padding:var(--row-pad-y) var(--row-pad-x);height:var(--row-h);border-right:1px solid #d5dfe3;border-bottom:1px solid #d5dfe3;white-space:nowrap}
 #grid th{position:sticky;top:0;background:var(--pale);text-align:left}
-/* 高密度表示(§9.12新設)。スケジュールモードで仕掛一覧とタイムラインを
-   並べて比較する際、1画面により多くの行(ロット)を見せるための表示密度
-   切替(既定=高密度)。#grid要素自身に持たせたクラスで切り替えるため、
-   list-view.jsの再描画(renderGrid、tableを毎回作り直す)には影響しない。 */
-#grid.sc-dense th,#grid.sc-dense td{padding:2px 6px;height:22px;font-size:var(--fs-sm)}
-#grid.sc-dense .lot-dsp-link,#grid.sc-dense .measurement-action-button,#grid.sc-dense .plan-action-button{padding:1px 6px;height:18px;font-size:var(--fs-micro);line-height:1}
 tbody tr:nth-child(even){background:#f7f9fa}
 tbody tr:hover{background:#e5f2f3;cursor:pointer}
 .measurement-row td:first-child{border-left:4px solid var(--teal)}
@@ -1521,9 +1566,13 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .mm-head-user input{height:var(--ctl-h);min-width:180px;padding:6px 10px;border:1px solid #7fc0c8;border-radius:8px;background:#fff;color:#12333a;font-weight:700}
 .mm-close{width:36px;height:36px;border:0;border-radius:8px;background:#ffffff22;color:#fff;font-size:22px;line-height:1;cursor:pointer}
 .mm-close:hover{background:#ffffff33}
-.mm-body{flex:1;min-height:0;display:grid;grid-template-columns:210px minmax(0,1fr)}
-.mm-nav{display:flex;flex-direction:column;gap:6px;padding:14px 12px;background:#e7eff1;border-right:1px solid var(--line);overflow:auto}
-.mm-nav button{display:flex;align-items:center;gap:10px;padding:11px 12px;border:1px solid transparent;border-radius:10px;background:#fff;color:#23454d;font-weight:700;cursor:pointer;transition:.12s;text-align:left}
+.mm-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(150px,calc(200px * var(--ui-scale))) minmax(0,1fr)}
+.mm-nav{display:flex;flex-direction:column;gap:2px;padding:12px 10px;background:#e7eff1;border-right:1px solid var(--line);overflow:auto}
+/* マスタ種別のグループ見出し(情報アーキテクチャ)。左ナビのnav-group-labelと
+   同じ言語で、色相はteal系のまま彩度だけ落として階層を示す。 */
+.mm-nav-group{display:flex;flex-direction:column;gap:3px;margin-bottom:10px}
+.mm-nav-group-label{padding:0 6px 2px;font-size:var(--fs-badge);font-weight:800;letter-spacing:.06em;color:#6f8f96}
+.mm-nav button{display:flex;align-items:center;gap:9px;min-height:var(--ctl-h);padding:0 10px;border:1px solid transparent;border-radius:9px;background:#fff;color:#23454d;font-weight:700;cursor:pointer;transition:.12s;text-align:left}
 .mm-nav button:hover{border-color:#9fc3c8;background:#f3fbfc}
 .mm-nav button.active{background:var(--teal);color:#fff;border-color:var(--teal);box-shadow:0 4px 12px #087c8940}
 .mm-nav-ico{display:grid;place-items:center;width:26px;height:26px;border-radius:8px;background:#dceff1;color:#0a6570;font-weight:900;font-size:var(--fs-base-sm);flex:0 0 auto}
@@ -1651,17 +1700,19 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .mm-imp-badge.new{background:var(--success-bg);color:var(--success)}
 .mm-imp-badge.overwrite{background:#fff2d9;color:#8a5a00}
 .mm-imp-badge.unsupported{background:#f0f0f0;color:#888}
-.mm-list-wrap{flex:1;min-height:0;overflow:auto;padding:0 18px 18px}
+/* 横スクロールは出さない(列はminmax(0,fr)で縮み、あふれる文字は省略記号)。
+   生データタブだけは列数が読めないため、内側の.mm-raw-scrollが横スクロールを持つ。 */
+.mm-list-wrap{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:0 18px 18px}
 .mm-list{display:flex;flex-direction:column}
-.mm-row{display:grid;align-items:center;gap:var(--space-3);padding:0 12px;min-height:44px;border-bottom:1px solid #e5edef}
+.mm-row{display:grid;align-items:center;gap:var(--space-2);padding:0 10px;min-height:calc(var(--ctl-h) + 8px);border-bottom:1px solid #e5edef}
 .mm-row.head{position:sticky;top:0;z-index:2;min-height:42px;background:#eef4f5;border-bottom:2px solid #cfdde0;color:#37535b;font-weight:800}
 .mm-row:not(.head){background:#fff;cursor:pointer;transition:background .1s}
 .mm-row:not(.head):nth-child(even){background:#f8fbfb}
 .mm-row:not(.head):hover{background:#eafafa}
 .mm-row:not(.head):focus-visible{outline:0;box-shadow:inset 0 0 0 2px var(--teal)}
 .mm-row.editing{box-shadow:inset 4px 0 0 var(--teal);background:#eafafa}
-.mm-row>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
-.mm-row.head>span{font-size:12px}
+.mm-row>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-base-sm)}
+.mm-row.head>span{font-size:var(--fs-sm)}
 .mm-user{color:#175c49;font-weight:700}
 .mm-date{color:#5b737a;font-variant-numeric:tabular-nums}
 .mm-blank{color:#aab6b9;font-style:normal}
@@ -1704,23 +1755,31 @@ body.qa-mode.qa-view-raw #genericFilterBar{display:block!important}
 
 /* 測定帳票・ダッシュボードもモーダルではなくメイン画面の表示切り替え
    とし、qa-modeと同様に他の要素を隠して表示エリアを最大化する。 */
-body.rp-mode #grid,body.rp-mode footer,body.rp-mode #tabs,body.rp-mode #genericFilterBar,body.rp-mode .qa-v7{display:none!important}
-body.db-mode #grid,body.db-mode footer,body.db-mode #tabs,body.db-mode #genericFilterBar,body.db-mode .qa-v7{display:none!important}
+body.rp-mode #grid,body.rp-mode #listToolbar,body.rp-mode footer,body.rp-mode #tabs,body.rp-mode #genericFilterBar,body.rp-mode .qa-v7{display:none!important}
+body.db-mode #grid,body.db-mode #listToolbar,body.db-mode footer,body.db-mode #tabs,body.db-mode #genericFilterBar,body.db-mode .qa-v7{display:none!important}
 /* 編集中/完了データ一覧も同様にモーダルではなくメイン画面表示にする。 */
-body.rec-mode #grid,body.rec-mode footer,body.rec-mode #tabs,body.rec-mode #genericFilterBar,body.rec-mode .qa-v7{display:none!important}
+body.rec-mode #grid,body.rec-mode #listToolbar,body.rec-mode footer,body.rec-mode #tabs,body.rec-mode #genericFilterBar,body.rec-mode .qa-v7{display:none!important}
 /* 実績カレンダーも同様にメイン画面表示にする。 */
-body.cal-mode #grid,body.cal-mode footer,body.cal-mode #tabs,body.cal-mode #genericFilterBar,body.cal-mode .qa-v7{display:none!important}
+body.cal-mode #grid,body.cal-mode #listToolbar,body.cal-mode footer,body.cal-mode #tabs,body.cal-mode #genericFilterBar,body.cal-mode .qa-v7{display:none!important}
 /* 作業スケジュール(スケジュールモード等)も同様にメイン画面表示にする。 */
-body.sc-mode #grid,body.sc-mode footer,body.sc-mode #tabs,body.sc-mode #genericFilterBar,body.sc-mode .qa-v7{display:none!important}
+body.sc-mode #grid,body.sc-mode #listToolbar,body.sc-mode footer,body.sc-mode #tabs,body.sc-mode #genericFilterBar,body.sc-mode .qa-v7{display:none!important}
 /* マスタ管理(ARCHITECTURE.md「マスタ管理の画面形態」)も同様にメイン画面表示にする(旧: 全画面シェード付きモーダル)。 */
-body.mm-mode #grid,body.mm-mode footer,body.mm-mode #tabs,body.mm-mode #genericFilterBar,body.mm-mode .qa-v7{display:none!important}
+body.mm-mode #grid,body.mm-mode #listToolbar,body.mm-mode footer,body.mm-mode #tabs,body.mm-mode #genericFilterBar,body.mm-mode .qa-v7{display:none!important}
+/* 保険: 他のメイン画面統合ビューが開いている間はマスタ管理パネルを必ず隠す。
+   各ビューのopenXxxがwindow.exitMasterMaint()を呼ぶのが本筋だが、呼び忘れても
+   画面が重なって見えないようにしておく(実際に、データ一覧へ移動したときだけ
+   後始末が走らず画面下部にマスタ管理が残る不具合が起きた)。 */
+body.rp-mode #masterMaintPanel,body.db-mode #masterMaintPanel,body.rec-mode #masterMaintPanel,
+body.cal-mode #masterMaintPanel,body.sc-mode #masterMaintPanel,body.qa-mode #masterMaintPanel{display:none!important}
 /* スケジューリング分割表示(.sc-split-wrap、§9.10)中は、仕掛一覧(#grid)と
    絞り込みバー(#genericFilterBar)をタイムラインの隣へ出す。詳細度を
    body.sc-mode単体より上げて確実に上書きする(qa-view-rawと同じ考え方)。 */
 body.sc-mode.sc-split #grid,body.sc-mode.sc-split #genericFilterBar{display:block!important}
+body.sc-mode.sc-split #listToolbar{display:flex!important}
 /* 仕掛一覧のポップアップ表示(§9.14新設)。分割表示と同じ理由(body.sc-mode
    #grid{display:none!important}の上書き)でbodyへクラスを付ける方式にする。 */
 body.sc-mode.sc-list-modal-open #grid,body.sc-mode.sc-list-modal-open #genericFilterBar{display:block!important}
+body.sc-mode.sc-list-modal-open #listToolbar{display:flex!important}
 /* 品質データの「元データ表示」(qa-view-raw)は#grid等を強制的に再表示する
    詳細度3のルール(body.qa-mode.qa-view-raw #grid)を持つため、上のrp-mode/
    db-mode/rec-mode/cal-mode/sc-modeの詳細度2のルールより優先されてしまい、品質データ表示中に
@@ -2369,25 +2428,35 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
    分割表示(.sc-split-wrap)・ポップアップ表示(.sc-float-body)の中だけ、
    高さ・余白・文字サイズを縮めて詰める(通常表示は変更しない)。 */
 :is(.sc-split-wrap,.sc-float-body) .generic-filter-bar{font-size:var(--fs-micro)}
-:is(.sc-split-wrap,.sc-float-body) .filter-search-row{min-height:30px;padding:4px 6px;gap:5px;flex-wrap:wrap}
+:is(.sc-split-wrap,.sc-float-body) .filter-search-row{min-height:var(--ctl-h-sm);padding:4px 6px;gap:5px;flex-wrap:wrap}
 :is(.sc-split-wrap,.sc-float-body) .filter-search-row>b{font-size:var(--fs-micro)}
 :is(.sc-split-wrap,.sc-float-body) .filter-count{font-size:var(--fs-tiny);padding:1px 6px}
-:is(.sc-split-wrap,.sc-float-body) .filter-token-input{min-height:26px;padding:2px 6px}
+:is(.sc-split-wrap,.sc-float-body) .filter-token-input{min-height:var(--ctl-h-xs);padding:2px 6px}
 :is(.sc-split-wrap,.sc-float-body) .filter-token-search{height:22px;flex-basis:80px;min-width:60px}
 :is(.sc-split-wrap,.sc-float-body) .filter-quick-row{padding:4px 6px;gap:4px}
 :is(.sc-split-wrap,.sc-float-body) .filter-quick-label{font-size:var(--fs-tiny)}
-:is(.sc-split-wrap,.sc-float-body) .suggest-chip.quick{height:22px;padding:1px 7px;font-size:var(--fs-micro)}
-:is(.sc-split-wrap,.sc-float-body) .filter-tag{height:22px;padding:1px 3px 1px 6px}
+:is(.sc-split-wrap,.sc-float-body) .suggest-chip.quick{height:calc(var(--ctl-h-xs) - 4px);padding:1px 7px;font-size:var(--fs-micro)}
+:is(.sc-split-wrap,.sc-float-body) .filter-tag{height:calc(var(--ctl-h-xs) - 4px);padding:1px 3px 1px 6px}
 :is(.sc-split-wrap,.sc-float-body) .filter-tag>span{max-width:70px;font-size:var(--fs-micro)}
 :is(.sc-split-wrap,.sc-float-body) .filter-tag em{max-width:80px;font-size:var(--fs-micro)}
 :is(.sc-split-wrap,.sc-float-body) .filter-tag b{font-size:var(--fs-tiny)}
-:is(.sc-split-wrap,.sc-float-body) .filter-search-row-actions button{height:26px;padding:0 7px;font-size:var(--fs-micro)}
+:is(.sc-split-wrap,.sc-float-body) .filter-search-row-actions button{height:var(--ctl-h-xs);padding:0 7px;font-size:var(--fs-micro)}
 :is(.sc-split-wrap,.sc-float-body) .filter-body{padding:5px 6px}
 :is(.sc-split-wrap,.sc-float-body) .filter-builder{grid-template-columns:1fr;gap:5px}
-:is(.sc-split-wrap,.sc-float-body) .filter-builder select,:is(.sc-split-wrap,.sc-float-body) .filter-builder input{height:28px;font-size:var(--fs-micro)}
-.sc-split-toggle,.sc-dense-toggle{height:30px;padding:0 12px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer;font-size:var(--fs-sm);font-weight:700;color:#5c777e}
-.sc-split-toggle.active,.sc-dense-toggle.active{background:var(--pale);border-color:var(--teal);color:#075e67}
-.sc-split-toggle[hidden],.sc-dense-toggle[hidden]{display:none!important}
+:is(.sc-split-wrap,.sc-float-body) .filter-builder select,:is(.sc-split-wrap,.sc-float-body) .filter-builder input{height:var(--ctl-h-sm);font-size:var(--fs-micro)}
+/* 「内容」欄の項目ピッカー(順序つき) */
+.sc-content-chosen-head{margin:8px 0 4px;font-size:var(--fs-micro);font-weight:800;color:#5c777e}
+.sc-content-chosen{display:flex;flex-direction:column;gap:3px}
+.sc-content-item{display:flex;align-items:center;gap:5px;padding:3px 6px;border:1px solid var(--line);border-radius:6px;background:#fff;font-size:var(--fs-sm)}
+.sc-content-ord{flex:none;display:grid;place-items:center;width:18px;height:18px;border-radius:50%;background:var(--teal);color:#fff;font-size:var(--fs-tiny);font-weight:800}
+.sc-content-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#173842}
+.sc-content-item button{flex:none;width:22px;height:22px;padding:0;border:1px solid var(--line);border-radius:4px;background:#fff;font-size:var(--fs-tiny);line-height:1;cursor:pointer;color:#5c777e}
+.sc-content-item button:disabled{opacity:.35;cursor:default}
+.sc-content-add{width:100%;text-align:left;padding:3px 6px;border:1px dashed var(--line);border-radius:6px;background:#fff;font-size:var(--fs-sm);color:#3a565d;cursor:pointer}
+.sc-content-add:hover{border-style:solid;border-color:var(--teal);background:#f4fbfc}
+.sc-split-toggle{height:var(--ctl-h-sm);padding:0 12px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer;font-size:var(--fs-sm);font-weight:700;color:#5c777e}
+.sc-split-toggle.active{background:var(--pale);border-color:var(--teal);color:#075e67}
+.sc-split-toggle[hidden]{display:none!important}
 /* 仕掛一覧の行をドラッグ可能にする(スケジュールモードのみ、list-view.js)。
    通常のクリック選択(is-selected)・チェックボックス複数選択
    (is-plan-selected)と視覚的に競合しないよう、ドラッグ中だけ別の合図
@@ -2697,3 +2766,44 @@ body.rp-mode #printCurrentView,body.qa-mode #printCurrentView{display:none!impor
   font-size:9px;font-weight:800;vertical-align:middle;
 }
 .record-sync-badge.record-sync-failed{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger)}
+
+/* ---------- 勤務体系マスタの専用エディタ(親: 勤務体系 / 子: 勤務区分) ----------
+   左に登録済みの体系、右にその中身。時刻はinput[type=time]で直打ちを避け、
+   24時間バーで「どの時間帯が埋まっているか」を色で示す。 */
+.shift-editor{display:grid;grid-template-columns:minmax(160px,220px) minmax(0,1fr);gap:var(--space-3);align-items:start}
+.shift-list{display:flex;flex-direction:column;gap:4px;min-width:0}
+.shift-list-head{font-size:var(--fs-badge);font-weight:800;letter-spacing:.06em;color:#6f8f96;padding:0 4px 2px}
+.shift-list-item{display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer;text-align:left;min-width:0;width:100%}
+.shift-list-item b{font-size:var(--fs-base-sm);color:#173842;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.shift-list-item small{font-size:var(--fs-micro);color:#7c9095}
+.shift-list-item:hover{border-color:var(--teal);background:#f4fbfc}
+.shift-list-item.active{background:var(--teal);border-color:var(--teal)}
+.shift-list-item.active b,.shift-list-item.active small{color:#fff}
+.shift-detail{min-width:0;display:flex;flex-direction:column;gap:var(--space-2)}
+.shift-fields{display:flex;flex-wrap:wrap;gap:var(--space-3)}
+.shift-fields .mm-field{flex:1 1 240px}
+.shift-fields input,.shift-fields select{width:100%}
+/* 24時間バー: 左端0時・右端24時。区分ごとに色を変え、日跨ぎは両端に分けて描く。 */
+.shift-bar{position:relative;height:22px;border:1px solid var(--line);border-radius:6px;background:repeating-linear-gradient(90deg,#f4f7f8 0,#f4f7f8 calc(100%/24 - 1px),#e4ebed calc(100%/24 - 1px),#e4ebed calc(100%/24));overflow:hidden}
+.shift-bar-piece{position:absolute;top:0;bottom:0;opacity:.9}
+.shift-bar-noon{position:absolute;top:0;bottom:0;left:50%;width:1px;background:#9fb0b5}
+.shift-bar-scale{display:flex;justify-content:space-between;font-size:var(--fs-tiny);color:#8a9aa0}
+.shift-bar-piece[data-i="0"],.shift-seg-dot[data-i="0"]{background:#0a8993}
+.shift-bar-piece[data-i="1"],.shift-seg-dot[data-i="1"]{background:#e08a2e}
+.shift-bar-piece[data-i="2"],.shift-seg-dot[data-i="2"]{background:#5a6fc0}
+.shift-bar-piece[data-i="3"],.shift-seg-dot[data-i="3"]{background:#3f9d6b}
+.shift-bar-piece[data-i="4"],.shift-seg-dot[data-i="4"]{background:#b05a8e}
+.shift-bar-piece[data-i="5"],.shift-seg-dot[data-i="5"]{background:#7d8b91}
+.shift-segs{display:flex;flex-direction:column;gap:4px}
+.shift-seg{display:flex;align-items:center;gap:6px;padding:4px 6px;border:1px solid var(--line);border-radius:8px;background:#fff;flex-wrap:wrap}
+.shift-seg-dot{flex:none;width:10px;height:10px;border-radius:50%}
+.shift-seg-name{flex:1 1 110px;min-width:80px;height:var(--ctl-h-sm)}
+.shift-seg-start,.shift-seg-end{flex:0 0 auto;height:var(--ctl-h-sm);font-variant-numeric:tabular-nums}
+.shift-seg-sep{color:#8a9aa0;font-size:var(--fs-sm)}
+.shift-seg-next{flex:none;min-width:34px;font-size:var(--fs-tiny);font-weight:800;color:var(--warn-fg);background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:9px;padding:1px 6px;text-align:center}
+.shift-seg-next.is-empty{background:transparent;border-color:transparent}
+.shift-seg button{flex:none;width:26px;height:26px;padding:0;border:1px solid var(--line);border-radius:5px;background:#fff;font-size:var(--fs-micro);line-height:1;cursor:pointer;color:#5c777e}
+.shift-seg button:disabled{opacity:.35;cursor:default}
+.shift-actions{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
+.shift-actions-tail{margin-left:auto;display:flex;gap:var(--space-2)}
+.shift-cov-ok{color:var(--success);font-weight:700}

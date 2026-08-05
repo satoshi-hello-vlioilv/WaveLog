@@ -30,6 +30,7 @@ from ..repositories.master_repo import (
  FILTER_PRESET_TABLE, ensure_filter_preset_table, filter_preset_rows,
  COLUMN_DISPLAY_TABLE, ensure_column_display_table, hidden_columns_for, set_hidden_columns,
  SCHEDULE_COLUMN_TABLE, ensure_schedule_column_table, schedule_columns_for, set_schedule_columns,
+ SCHEDULE_CONTENT_TABLE, ensure_schedule_content_table, schedule_content_items_for, set_schedule_content_items,
  ACCESS_PERMISSION_TABLE, ensure_access_permission_table, normalize_identity_part, access_permission_master_rows,
  field_reorder_terminal_count,
 )
@@ -534,6 +535,36 @@ def schedule_column_master_save():
   return jsonify(ok=True,equipment=equipment,saved=n,updated_by=uid,message='表示列を保存しました。')
  except ValueError as e:return jsonify(error=str(e)),400
  except Exception as e:return jsonify(error=f'スケジュール列表示マスタ保存失敗: {e}'),500
+
+# ------------------------------------------------------------------------
+# スケジュール内容表示マスタ（タイムラインの「内容」欄の項目・並び順）
+# ------------------------------------------------------------------------
+@bp.get('/api/schedule-content-master')
+def schedule_content_master_get():
+ try:
+  equipment=str(request.args.get('equipment') or '').strip()
+  if not equipment:return jsonify(ok=True,equipment='',items=[])
+  path=DBS['MASTER']['path']
+  if not path.exists():return jsonify(ok=True,equipment=equipment,items=[])
+  with connect(path,True) as c:
+   items=schedule_content_items_for(c,equipment)
+  return jsonify(ok=True,equipment=equipment,items=items)
+ except Exception as e:return jsonify(error=f'スケジュール内容表示マスタ読込失敗: {e}'),500
+
+@bp.post('/api/schedule-content-master')
+def schedule_content_master_save():
+ try:
+  x=request.get_json(force=True) or {};uid=request_user_id(x)
+  equipment=str(x.get('equipment') or '').strip()
+  items=x.get('items')
+  if not equipment:return jsonify(error='設備名を指定してください。'),400
+  if not isinstance(items,list):return jsonify(error='項目の指定が不正です。'),400
+  path=DBS['MASTER']['path']
+  with connect(path,False) as c:
+   n=set_schedule_content_items(c,equipment,items,uid)
+  return jsonify(ok=True,equipment=equipment,saved=n,updated_by=uid,message='内容欄の項目を保存しました。')
+ except ValueError as e:return jsonify(error=str(e)),400
+ except Exception as e:return jsonify(error=f'スケジュール内容表示マスタ保存失敗: {e}'),500
 
 # ========================================================================
 # アクセス権限マスタ（ログインID×PC名で編集可否を管理。閲覧モードの判定は

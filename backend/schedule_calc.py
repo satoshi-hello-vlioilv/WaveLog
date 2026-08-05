@@ -187,7 +187,9 @@ def derive_state(stored_state,actual):
 _EMPTY_ESTIMATE_EXTRAS={'low':None,'high':None,'sigmaLog':None,'base':None,'factors':[]}
 
 def resolve_estimate(c,equipment,plan_row_dict):
- """plan_row_dict: {'kind','title','estimateMinutes','detail'}を持つdict
+ """c: 設定系マスタ(master.sqlite3)への接続。設備停止マスタの標準時間と
+ 換算係数上書きマスタしか読まないため、共有schedule.sqlite3ではなくこちらを渡す。
+ plan_row_dict: {'kind','title','estimateMinutes','detail'}を持つdict
  (expand_plan()内のentry辞書と同じキー)。戻り値: §6.8のentries[].estimate
  相当のdict(minutes/source/low/high/sigmaLog/base/factors)。"""
  if plan_row_dict.get('estimateMinutes') is not None:
@@ -228,10 +230,21 @@ def expand_plan(c,equipment,now=None):
  startsInMinutes/actual/reorderable等)を返す。DBへは一切書き戻さない。"""
  now=now or datetime.now()
  raw_rows=sr.plan_rows(c,equipment)
- specific_cal=sr.calendar_rows(c,equipment)
- global_cal=sr.calendar_rows(c,'')
- specific_shift=sr.shift_rows(c,equipment)
- global_shift=sr.shift_rows(c,'')
+ # 設定系マスタ(稼働カレンダー・勤務形態・換算係数上書き)はmaster.sqlite3側。
+ # 接続を1回だけ開いて、この展開処理の間ずっと使い回す(見積計算のために
+ # 1予定ごとに開き直すと、行数分の接続オープンが発生してしまう)。
+ sr.migrate_config_masters_from_shared()
+ mc=sr.config_master_conn()
+ try:
+  return _expand_plan_with(c,mc,equipment,now,raw_rows)
+ finally:
+  mc.close()
+
+def _expand_plan_with(c,mc,equipment,now,raw_rows):
+ specific_cal=sr.calendar_rows(mc,equipment)
+ global_cal=sr.calendar_rows(mc,'')
+ specific_shift=sr.shift_rows(mc,equipment)
+ global_shift=sr.shift_rows(mc,'')
  actual_index=build_actual_index()
  warnings=[]
 
@@ -258,7 +271,7 @@ def expand_plan(c,equipment,now=None):
    anchor=_parse_dt(active[0]['actual']['startAt']) or now
   except Exception:
    anchor=now
-  est0=resolve_estimate(c,equipment,active[0])
+  est0=resolve_estimate(mc,equipment,active[0])
   elapsed=max(0.0,_minutes_between(anchor,now))
   first_remaining_override=max(est0['minutes']-elapsed,MIN_REMAIN_MINUTES)
  else:
@@ -274,7 +287,7 @@ def expand_plan(c,equipment,now=None):
    e['plannedStart']=None;e['plannedEnd']=None;e['startsInMinutes']=None
    e['estimate']=None;e['reorderable']=False;e['spansNonWorking']=False;e['overdueMinutes']=0;e['shift']=None
    continue
-  est=resolve_estimate(c,equipment,e)
+  est=resolve_estimate(mc,equipment,e)
   minutes=est['minutes']
   if e is active[0] and first_remaining_override is not None:
    minutes=first_remaining_override
@@ -376,11 +389,16 @@ def equipment_reference_counts(equipment):
   pending=sum(1 for e in expanded['entries'] if e['state']==sr.PLAN_REORDERABLE_STATE)
   in_progress=sum(1 for e in expanded['entries'] if e['state']=='着手')
   completed=sum(1 for e in expanded['entries'] if e['state']=='完了')
-  calendar_rows=len(sr.calendar_rows(c,equipment))
-  stop_reason_rows=len(sr.stop_reason_rows(c,equipment))
-  target=normalize_equipment_name(equipment)
-  override_rows=sum(1 for r in sr.load_factor_override_rows(c) if normalize_equipment_name(r[1])==target)
  finally:
   c.close()
+ # 設定系マスタの参照件数はmaster.sqlite3側から数える。
+ mc=sr.config_master_conn()
+ try:
+  calendar_rows=len(sr.calendar_rows(mc,equipment))
+  stop_reason_rows=len(sr.stop_reason_rows(mc,equipment))
+  target=normalize_equipment_name(equipment)
+  override_rows=sum(1 for r in sr.load_factor_override_rows(mc) if normalize_equipment_name(r[1])==target)
+ finally:
+  mc.close()
  return {'pendingPlans':pending,'inProgressPlans':in_progress,'completedPlans':completed,
          'calendarRows':calendar_rows,'stopReasonRows':stop_reason_rows,'loadFactorOverrideRows':override_rows}

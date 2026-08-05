@@ -257,3 +257,78 @@ window.addEventListener('unload',notifyTabClosed);
   document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
  });
 })();
+
+/* ---------- 表示サイズ(5段階、アプリ全体) ----------
+   文字サイズ・コントロールの高さ・一覧の行の高さは、すべてapp.cssの
+   :rootトークンが--ui-scaleを掛けた値で決まる(docs/ARCHITECTURE.md
+   「コントロールサイズの統一」)。ここではその倍率を選ぶ段階を
+   html[data-ui-size]へ流し込むだけで、個別の画面には一切手を入れない。
+   以前は作業スケジュール画面だけに「高密度」トグルがあり、他の画面の
+   文字サイズは調整できなかった(画面ごとにサイズ感がばらつく原因)。
+   base.jsは読み込み順の先頭(=他のJSが画面を組み立てる前)に走るため、
+   ここでhtmlへ属性を付けておけば、後から描かれる画面も最初から正しい
+   サイズで組み上がる。 */
+const UI_SIZE_KEY='MeasurementUiSizeV1';
+const UI_SIZES=[
+ {key:'xs',label:'極小',hint:'一度に見える情報量を最優先'},
+ {key:'sm',label:'小',hint:'情報量を少し優先'},
+ {key:'md',label:'中',hint:'標準'},
+ {key:'lg',label:'大',hint:'読みやすさを少し優先'},
+ {key:'xl',label:'特大',hint:'読みやすさを最優先'},
+];
+function currentUiSize(){
+ try{const v=localStorage.getItem(UI_SIZE_KEY);if(UI_SIZES.some(s=>s.key===v))return v}catch(e){}
+ return 'md';
+}
+function applyUiSize(key){
+ const size=UI_SIZES.some(s=>s.key===key)?key:'md';
+ document.documentElement.dataset.uiSize=size;
+ try{localStorage.setItem(UI_SIZE_KEY,size)}catch(e){/* 保存できなくても表示自体は継続する */}
+ const label=document.getElementById('uiSizeLabel');
+ if(label)label.textContent=(UI_SIZES.find(s=>s.key===size)||{}).label||'中';
+ document.querySelectorAll('#uiSizeMenu [data-ui-size-option]').forEach(b=>{
+  b.classList.toggle('is-current',b.dataset.uiSizeOption===size);
+ });
+}
+applyUiSize(currentUiSize());
+window.applyUiSize=applyUiSize;
+
+/* 表示サイズの選択ポップオーバー。モードバッジ(.access-mode-menu)と同じ
+   「小さなボタン→権限/選択肢を並べたポップオーバー」の言語で揃える
+   (アプリ内で同じ役割のUIは同じ見た目・同じ操作にする)。 */
+(function(){
+ function closeMenu(){
+  document.getElementById('uiSizeMenu')?.remove();
+  document.removeEventListener('click',onOutside,true);
+ }
+ function onOutside(e){
+  const menu=document.getElementById('uiSizeMenu');
+  if(menu&&!menu.contains(e.target)&&!e.target.closest('#uiSizeBadge'))closeMenu();
+ }
+ function openMenu(anchor){
+  closeMenu();
+  const menu=document.createElement('div');
+  menu.className='access-mode-menu ui-size-menu';menu.id='uiSizeMenu';
+  const cur=(typeof currentUiSize==='function')?currentUiSize():'md';
+  UI_SIZES.forEach(s=>{
+   const btn=document.createElement('button');
+   btn.type='button';btn.dataset.uiSizeOption=s.key;
+   if(s.key===cur)btn.classList.add('is-current');
+   btn.innerHTML=`<span><i class="ui-size-swatch" data-swatch="${s.key}" aria-hidden="true">Ａ</i>${s.label}</span><small>${s.hint}</small>`;
+   btn.addEventListener('click',()=>{applyUiSize(s.key);closeMenu()});
+   menu.appendChild(btn);
+  });
+  document.body.appendChild(menu);
+  const rect=anchor.getBoundingClientRect();
+  menu.style.top=`${rect.bottom+6}px`;
+  menu.style.left=`${Math.max(8,rect.right-menu.offsetWidth)}px`;
+  requestAnimationFrame(()=>document.addEventListener('click',onOutside,true));
+ }
+ document.addEventListener('click',e=>{
+  const t=e.target.closest('#uiSizeBadge');if(!t)return;
+  if(document.getElementById('uiSizeMenu')){closeMenu();return}
+  openMenu(t);
+ });
+ // ラベルの初期表示(applyUiSizeはDOM構築前に走るため、ここで一度描き直す)。
+ if(typeof applyUiSize==='function'&&typeof currentUiSize==='function')applyUiSize(currentUiSize());
+})();

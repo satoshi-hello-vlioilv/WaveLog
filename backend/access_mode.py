@@ -58,10 +58,26 @@ _WRITE_ALLOWED_MODES={
 # 触れないため、schedule運用の端末に許可しても実害が無い。
 # 新しい書込系エンドポイントをここへ追記する際は、権限の絞り込みを
 # ハンドラ側(_field_reorder_permitted等)で必ず二重に行うこと。
+# 設定系マスタ(稼働カレンダー・設備停止・勤務体系・換算係数上書き)は、
+# 保存先をmaster.sqlite3へ移して(docs/SCHEDULE_MODE_DESIGN.md §9.27)他のマスタと
+# 同列になったため、マスタ管理画面を持つeditモードからも書けるようにする。
+# scheduleモードはBlueprintの既定(_WRITE_ALLOWED_MODES)で元から書ける。
+# これらは設定値であって作業予定(運用データ)ではないため、editへ開いても
+# 共有スケジュールDBの排他制御(§4.2)には一切影響しない。
 _ENDPOINT_EXTRA_MODES={
  'schedule.plan_reorder':{'edit'},
+ 'schedule.calendar_save':{'edit'},
+ 'schedule.stop_reason_register':{'edit'},
+ 'schedule.stop_reason_delete':{'edit'},
+ 'schedule.shift_pattern_save':{'edit'},
+ 'schedule.shift_pattern_delete_route':{'edit'},
+ 'schedule.load_factor_override_save':{'edit'},
  'masters.schedule_column_master_save':{'schedule'},
+ 'masters.schedule_content_master_save':{'schedule'},
 }
+# editモードで許可する際、さらに「現場段取り可否」を要求するエンドポイント。
+# 作業予定を実際に動かす操作だけが対象で、設定系マスタの保存は含めない。
+_FIELD_REORDER_ENDPOINTS={'schedule.plan_reorder'}
 
 def current_login_id():
  try:username=os.getlogin()
@@ -148,7 +164,12 @@ def install(app):
   if mode in allowed:return None
   extra=_ENDPOINT_EXTRA_MODES.get(request.endpoint)
   if extra and mode in extra:
-   if mode=='edit' and not _field_reorder_permitted():
+   # 現場段取り権限を追加で要求するのは並べ替えAPIだけ(§3.1.1)。
+   # 以前は「editモードで例外的に許可された非GET」すべてにこの判定を
+   # かけていたため、例外を1つ増やすたびに、無関係な設定マスタの保存まで
+   # 現場段取り権限が無いと403になっていた(設定系マスタをeditへ開いた
+   # ときに実際に踏んだ)。判定対象をエンドポイントで明示する。
+   if mode=='edit' and request.endpoint in _FIELD_REORDER_ENDPOINTS and not _field_reorder_permitted():
     return jsonify(error='この端末には現場段取り(並べ替え)の権限がありません。'),403
    return None                         # schedule.plan_reorder自身はequipment一致
                                         # チェックをハンドラ側で行う(§7.5)

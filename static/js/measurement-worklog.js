@@ -146,22 +146,22 @@
 
  /* ---------- マスタ管理モーダル（刷新版: 大画面・高密度・検索・IDリネーム更新） ---------- */
  const MASTER_DEFS=[
-  {key:'operator',label:'オペレータ',icon:'人',endpoint:'/api/operator-master',hasDelete:true,
+  {group:'equip',key:'operator',label:'オペレータ',icon:'人',endpoint:'/api/operator-master',hasDelete:true,
    fields:[{k:'name',label:'氏名',required:true,key:true},{k:'yomi',label:'ヨミガナ'},{k:'equipment',label:'作業可能設備',type:'equipment-multi'}],
    cols:[{k:'name',label:'氏名',grow:2},{k:'yomi',label:'ヨミガナ',grow:1},{k:'equipmentText',label:'作業可能設備',grow:3}]},
-  {key:'device',label:'機器',icon:'器',endpoint:'/api/device-master',hasDelete:true,
+  {group:'equip',key:'device',label:'機器',icon:'器',endpoint:'/api/device-master',hasDelete:true,
    fields:[{k:'kind',label:'測定区分',type:'select',options:['板厚','板幅','その他',''],key:true},{k:'name',label:'機器名',required:true,key:true},{k:'note',label:'備考'}],
    cols:[{k:'kind',label:'測定区分',grow:1},{k:'name',label:'機器名',grow:2},{k:'note',label:'備考',grow:3}]},
-  {key:'spool',label:'スプール種別',icon:'巻',endpoint:'/api/spool-master',hasDelete:true,
+  {group:'equip',key:'spool',label:'スプール種別',icon:'巻',endpoint:'/api/spool-master',hasDelete:true,
    fields:[{k:'name',label:'種別名',required:true,key:true},{k:'note',label:'備考'}],
    cols:[{k:'name',label:'種別名',grow:2},{k:'note',label:'備考',grow:3}]},
-  {key:'inner',label:'内径種別',icon:'径',endpoint:'/api/inner-master',hasDelete:true,
+  {group:'equip',key:'inner',label:'内径種別',icon:'径',endpoint:'/api/inner-master',hasDelete:true,
    fields:[{k:'name',label:'内径種別',required:true,key:true},{k:'note',label:'備考'}],
    cols:[{k:'name',label:'内径種別',grow:2},{k:'note',label:'備考',grow:3}]},
-  {key:'equipment',label:'設備',icon:'設',endpoint:'/api/equipment-master',hasDelete:true,
+  {group:'equip',key:'equipment',label:'設備',icon:'設',endpoint:'/api/equipment-master',hasDelete:true,
    fields:[{k:'name',label:'設備名',required:true,key:true}],
    cols:[{k:'name',label:'設備名',grow:2}]},
-  {key:'accessPermission',label:'アクセス権限',icon:'権',endpoint:'/api/access-permission-master',hasDelete:true,
+  {group:'system',key:'accessPermission',label:'アクセス権限',icon:'権',endpoint:'/api/access-permission-master',hasDelete:true,
    fields:[{k:'loginId',label:'ログインID',key:true},{k:'pcName',label:'PC名',key:true},
            {k:'canEdit',label:'編集可否',type:'select',options:['編集可','閲覧のみ']},
            {k:'canSchedule',label:'スケジュール可否',type:'select',options:['不可','可']},
@@ -169,27 +169,21 @@
            {k:'fieldReorderEquipment',label:'現場段取り対象設備',type:'equipment-select'}],
    cols:[{k:'loginId',label:'ログインID',grow:2},{k:'pcName',label:'PC名',grow:2},{k:'canEdit',label:'編集可否',grow:1},{k:'canSchedule',label:'スケジュール',grow:1},{k:'canFieldReorder',label:'現場段取り',grow:1},{k:'fieldReorderEquipment',label:'対象設備',grow:1}],
    hint:'ログインID・PC名はどちらか一方だけの登録もできます(汎用的な運用のため)。片方だけ登録した場合、もう一方は「問わない」という意味になります(例: ログインIDだけ登録すると、そのユーザーはどの端末からでもこの権限になります)。両方登録した組み合わせが最優先で一致し、次に片方だけの登録、両方空欄の登録(全端末共通の既定)の順に判定します。登録の無い組み合わせは既定で編集可能・スケジュール不可・現場段取り不可として扱われます。特定の端末を閲覧専用にしたい場合はその端末を「閲覧のみ」で、作業スケジュールを操作させたい場合は「スケジュール可否」を「可」で登録してください。「現場段取り可否」は編集モードの端末に限り、対象設備の並べ替えだけを追加で許可します。'},
-  {key:'loadFactor',label:'換算係数',icon:'率',special:'load-factor',endpoint:'/api/schedule/load-factors'},
-  {key:'stopReason',label:'設備停止',icon:'停',endpoint:'/api/schedule/stop-reason-master',hasDelete:true,
+  {group:'schedule',key:'loadFactor',label:'換算係数',icon:'率',special:'load-factor',endpoint:'/api/schedule/load-factors'},
+  {group:'schedule',key:'stopReason',label:'設備停止',icon:'停',endpoint:'/api/schedule/stop-reason-master',hasDelete:true,
    fields:[{k:'equipment',label:'設備名',type:'equipment-select',required:true,key:true},
            {k:'category',label:'分類',type:'select',options:['保全','段取り','待ち','突発','']},
            {k:'name',label:'名称',required:true,key:true},{k:'standardMinutes',label:'標準所要分',required:true}],
    cols:[{k:'equipment',label:'設備名',grow:1},{k:'category',label:'分類',grow:1},{k:'name',label:'名称',grow:2},{k:'standardMinutes',label:'標準所要分',grow:1}],
    hint:'作業スケジュール(docs/SCHEDULE_MODE_DESIGN.md §5.3)の設備停止予定で選べる名称と、その設備での標準所要分(分)です。同じ名称でも設備が異なれば別行として個別の時間を登録できます。「突発停止」は現場からの連絡を受けた計画担当が投入する運用のため、名称に登録しておくだけで自動では動きません。'},
-  {key:'shiftMaster',label:'勤務形態',icon:'勤',endpoint:'/api/schedule/shift-master',hasDelete:true,
-   fields:[{k:'equipment',label:'設備名(空欄=全設備既定)',type:'equipment-select',key:true},
-           {k:'name',label:'名称',required:true,key:true},
-           {k:'start',label:'開始時刻(HH:MM)',required:true},
-           {k:'end',label:'終了時刻(HH:MM)',required:true}],
-   cols:[{k:'equipment',label:'設備名',grow:1},{k:'name',label:'名称',grow:1},{k:'start',label:'開始',grow:1},{k:'end',label:'終了',grow:1}],
-   hint:'作業スケジュール(docs/SCHEDULE_MODE_DESIGN.md §5.5)のタイムラインに出す「勤務」列の元データです。予定の時刻(時分)がこの範囲に入る行の名称を表示します。終了時刻を開始時刻以下にすると日をまたぐ勤務として扱います(例: 23:00〜07:00)。設備名を空欄にすると全設備の既定になり、特定の設備の設定があればそちらを優先します。設定例: 日勤=8:15〜17:05／1直=7:00〜15:00／2直=15:00〜23:00／3直=23:00〜07:00／4直=11:00〜19:10／5直=21:20〜05:45。'},
-  {key:'columnDisplay',label:'列表示',icon:'列',special:'column-display'},
-  {key:'importBackup',label:'データ引継ぎ',icon:'継',special:'import-backup'},
-  {key:'pathConfig',label:'パス設定',icon:'路',special:'path-config',endpoint:'/api/path-config-master'},
+  {group:'schedule',key:'shiftMaster',label:'勤務形態',icon:'勤',special:'shift-pattern',endpoint:'/api/schedule/shift-pattern-master'},
+  {group:'system',key:'columnDisplay',label:'列表示',icon:'列',special:'column-display'},
+  {group:'system',key:'importBackup',label:'データ引継ぎ',icon:'継',special:'import-backup'},
+  {group:'system',key:'pathConfig',label:'パス設定',icon:'路',special:'path-config',endpoint:'/api/path-config-master'},
   // 旧「マスタ一覧」(サイドバーのMASTERナビ→汎用グリッド)をここへ統合した
   // (ARCHITECTURE.md「マスタ管理の画面形態」)。上のタブが扱わないテーブル(表示マスタ・スケジュール列表示マスタ
   // 等)も含め、master.sqlite3の中身をそのまま確認するための読み取り専用タブ。
-  {key:'rawTable',label:'テーブル生データ',icon:'表',special:'raw-table',readOnly:true},
+  {group:'system',key:'rawTable',label:'テーブル生データ',icon:'表',special:'raw-table',readOnly:true},
  ];
  let maintState={defKey:'operator',items:[],editing:null,query:''};
  function currentDef(){return MASTER_DEFS.find(d=>d.key===maintState.defKey)||MASTER_DEFS[0]}
@@ -206,9 +200,26 @@
   return !!(def.endpoint&&def.endpoint.indexOf('/api/schedule/')===0);
  }
  function firstVisibleDefKey(){const d=MASTER_DEFS.find(maintDefVisible);return d?d.key:MASTER_DEFS[0].key}
+ /* マスタ種別のグループ(情報アーキテクチャ): 13種を平坦に並べると
+    「どれが何の設定か」を毎回読んで探すことになるため、利用者の頭の中の
+    分類(誰が・何を使うか / 作業スケジュールの設定 / システム寄りの設定)で
+    3つに束ねる。1グループ5件前後=一度に見渡せる粒度(Miller)。 */
+ const MASTER_GROUPS=[
+  {key:'equip',label:'設備・人',hint:'測定の現場で使う基本マスタ'},
+  {key:'schedule',label:'作業スケジュール',hint:'計画の時間計算に使う設定'},
+  {key:'system',label:'表示・システム',hint:'画面表示と端末・データの設定'},
+ ];
  function renderMaintNav(){
   const nav=$('#masterMaintNav');if(!nav)return;
-  nav.innerHTML=MASTER_DEFS.filter(maintDefVisible).map(d=>`<button type="button" data-master="${d.key}"><span class="mm-nav-ico" aria-hidden="true">${esc(d.icon)}</span><span class="mm-nav-label">${esc(d.label)}</span></button>`).join('');
+  const visible=MASTER_DEFS.filter(maintDefVisible);
+  const html=MASTER_GROUPS.map(g=>{
+   const defs=visible.filter(d=>(d.group||'system')===g.key);
+   if(!defs.length)return '';
+   return `<div class="mm-nav-group"><div class="mm-nav-group-label" title="${esc(g.hint)}">${esc(g.label)}</div>`+
+    defs.map(d=>`<button type="button" data-master="${d.key}"><span class="mm-nav-ico" aria-hidden="true">${esc(d.icon)}</span><span class="mm-nav-label">${esc(d.label)}</span></button>`).join('')+
+    '</div>';
+  }).join('');
+  nav.innerHTML=html;
   nav.querySelectorAll('[data-master]').forEach(b=>b.onclick=()=>{maintState.defKey=b.dataset.master;maintState.editing=null;maintState.query='';const se=$('#masterMaintSearch');if(se)se.value='';syncNav();loadMaint(true)});
   syncNav();
  }
@@ -568,7 +579,17 @@
  }
 
  function fmtDT(v){if(!v)return '-';const d=new Date(v);return Number.isNaN(d.getTime())?'-':d.toLocaleString('ja-JP',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}
- function maintGridTemplate(def){const data=def.cols.map(c=>`minmax(120px,${c.grow||1}fr)`).join(' ');return `${data} 120px 150px 132px`}
+ /* 横スクロールを出さないための列幅設計。
+    - データ列は minmax(0,fr) で「入るだけ縮む」ようにする(以前は最小120pxが
+      効いて、6列のアクセス権限マスタでは常に1100px超を要求し横スクロールが出た)。
+    - 更新者・更新日時は監査用の副次情報。列数の多いマスタでは列として持たず、
+      行のツールチップ(title)へ退避して主情報の幅を確保する。 */
+ const MAINT_AUDIT_MAX_COLS=3;
+ function maintShowsAudit(def){return (def.cols||[]).length<=MAINT_AUDIT_MAX_COLS}
+ function maintGridTemplate(def){
+  const data=def.cols.map(c=>`minmax(0,${c.grow||1}fr)`).join(' ');
+  return maintShowsAudit(def)?`${data} 96px 128px 108px`:`${data} 108px`;
+ }
  function filteredMaintItems(def){
   const q=String(maintState.query||'').trim().normalize('NFKC').toLowerCase();
   let items=maintState.items||[];
@@ -579,14 +600,18 @@
   const def=currentDef(),list=$('#masterMaintList');if(!list)return;
   const all=maintState.items||[],items=filteredMaintItems(def),tmpl=maintGridTemplate(def);
   const cnt=$('#masterMaintCount');if(cnt)cnt.textContent=maintState.query?`${items.length} / 有効 ${all.length}件`:`有効 ${all.length}件`;
+  const showAudit=maintShowsAudit(def);
   const headCols=def.cols.map(c=>`<span>${esc(c.label)}</span>`).join('');
-  list.innerHTML=`<div class="mm-row head" style="grid-template-columns:${tmpl}">${headCols}<span>更新者</span><span>更新日時</span><span class="mm-act">操作</span></div>`;
+  list.innerHTML=`<div class="mm-row head" style="grid-template-columns:${tmpl}">${headCols}${showAudit?'<span>更新者</span><span>更新日時</span>':''}<span class="mm-act">操作</span></div>`;
   if(!items.length){list.insertAdjacentHTML('beforeend',`<div class="mm-empty">${all.length&&maintState.query?'絞り込み条件に一致するデータがありません。':'有効なデータがありません。上のフォームから追加してください。'}</div>`);return}
   const frag=document.createDocumentFragment();
   items.forEach(it=>{
-   const row=document.createElement('div');row.className='mm-row'+(maintState.editing&&maintState.editing.id===it.id?' editing':'');row.style.gridTemplateColumns=tmpl;row.tabIndex=0;row.setAttribute('role','button');row.title='クリックで編集フォームに読み込みます';
+   const row=document.createElement('div');row.className='mm-row'+(maintState.editing&&maintState.editing.id===it.id?' editing':'');row.style.gridTemplateColumns=tmpl;row.tabIndex=0;row.setAttribute('role','button');
+   // 列として出さない監査情報(更新者・更新日時)は行のツールチップで補う。
+   const audit=`更新者: ${it.updated_by||'-'} / 更新日時: ${fmtDT(it.updated_at)}`;
+   row.title=showAudit?'クリックで編集フォームに読み込みます':`クリックで編集\n${audit}`;
    const cells=def.cols.map(c=>`<span title="${esc(it[c.k]??'')}">${esc(it[c.k]??'')||'<em class="mm-blank">—</em>'}</span>`).join('');
-   row.innerHTML=`${cells}<span class="mm-user" title="${esc(it.updated_by||'')}">${esc(it.updated_by||'-')}</span><span class="mm-date">${esc(fmtDT(it.updated_at))}</span><span class="mm-act"><button type="button" class="mm-edit">編集</button>${def.hasDelete?'<button type="button" class="mm-del">削除</button>':''}</span>`;
+   row.innerHTML=`${cells}${showAudit?`<span class="mm-user" title="${esc(it.updated_by||'')}">${esc(it.updated_by||'-')}</span><span class="mm-date">${esc(fmtDT(it.updated_at))}</span>`:''}<span class="mm-act"><button type="button" class="mm-edit">編集</button>${def.hasDelete?'<button type="button" class="mm-del">削除</button>':''}</span>`;
    // 入力項目が多いマスタは編集専用モーダル、少ないマスタは従来どおり
    // 上部のインラインフォームへ読み込む(ARCHITECTURE.md「マスタ管理の画面形態」、defUsesEditorModal)。
    const edit=()=>{
@@ -612,6 +637,7 @@
   if(def.special==='import-backup'){setMaintSearchVisible(false);return loadImportBackupMaint(force)}
   if(def.special==='load-factor'){setMaintSearchVisible(false);return loadLoadFactorMaint(force)}
   if(def.special==='path-config'){setMaintSearchVisible(false);return loadPathConfigMaint(force)}
+  if(def.special==='shift-pattern'){setMaintSearchVisible(false);return loadShiftPatternMaint(force)}
   if(def.special==='raw-table'){setMaintSearchVisible(false);return loadRawTableMaint(force)}
   setMaintSearchVisible(true);
   const list=$('#masterMaintList');if(list&&force)list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
@@ -984,6 +1010,187 @@
   finally{setMaintLoading(false)}
  }
 
+ /* ---------- 勤務体系マスタ(親: 勤務体系 / 子: 勤務区分) ----------
+    現場の言い方どおりの2階層で編集する。
+      日勤              -> 日勤 8:15-17:05
+      交替勤務(1,2,3直) -> 1直 7:00-15:00 / 2直 15:00-23:00 / 3直 23:00-翌7:00
+    汎用のMASTER_DEFS(1行=1レコードの表)では親子を表現できないため専用画面にする。
+    入力負荷を下げる工夫(直打ちを極力減らす):
+      - 時刻はinput[type=time]。キーボードでもピッカーでも入れられ、
+        "8:15"のような表記ゆれ・全角数字が原理的に入らない。
+      - よくある勤務体系はテンプレートからワンクリックで投入できる。
+      - 24時間バーで「どの時間帯が埋まっているか」を色で即座に確認できる
+        (時刻の数字だけを見比べて抜け漏れを探さなくて済む)。 */
+ const SHIFT_TEMPLATES=[
+  {label:'日勤',segments:[{name:'日勤',start:'08:15',end:'17:05'}]},
+  {label:'交替勤務(1,2,3直)',segments:[
+    {name:'1直',start:'07:00',end:'15:00'},{name:'2直',start:'15:00',end:'23:00'},{name:'3直',start:'23:00',end:'07:00'}]},
+  {label:'交替勤務(4,5直)',segments:[
+    {name:'4直',start:'11:00',end:'19:10'},{name:'5直',start:'21:20',end:'05:45'}]},
+ ];
+ let shiftState={patterns:[],selectedId:null,draft:null,loading:false};
+ function shiftDraftFrom(p){
+  return p?{id:p.id,equipment:p.equipment||'',name:p.name||'',segments:(p.segments||[]).map(x=>({name:x.name,start:x.start,end:x.end}))}
+           :{id:null,equipment:'',name:'',segments:[]};
+ }
+ async function loadShiftPatternMaint(force){
+  const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
+  form.classList.remove('mm-form-compact');
+  if(typeof loadEquipmentMaster==='function'){try{await loadEquipmentMaster(force)}catch(e){/* 設備が読めなくても編集は続行 */}}
+  list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
+  try{
+   const r=await api('/api/schedule/shift-pattern-master?scope=all');
+   shiftState.patterns=r.items||[];
+   if(!shiftState.patterns.some(p=>p.id===shiftState.selectedId))shiftState.selectedId=shiftState.patterns[0]?.id??null;
+   shiftState.draft=shiftDraftFrom(shiftState.patterns.find(p=>p.id===shiftState.selectedId));
+   renderShiftPattern();
+  }catch(e){list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
+ }
+ // 24時間バー上の位置(%)。日跨ぎ(終了<=開始)は2本に分けて描く。
+ function shiftBarPieces(seg){
+  const toMin=v=>{const m=/^(\d{1,2}):(\d{2})$/.exec(String(v||''));return m?(+m[1])*60+(+m[2]):null};
+  const s=toMin(seg.start),e=toMin(seg.end);
+  if(s==null||e==null)return [];
+  const pct=v=>(v/1440*100);
+  return (e<=s)?[[pct(s),pct(1440)-pct(s)],[0,pct(e)]]:[[pct(s),pct(e)-pct(s)]];
+ }
+ function renderShiftPattern(){
+  const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
+  const d=shiftState.draft||shiftDraftFrom(null);
+  const eqOpts=(equipmentMasterState.items||[]).map(x=>`<option value="${esc(x.name)}"${x.name===d.equipment?' selected':''}>${esc(x.name)}</option>`).join('');
+  form.innerHTML=`<div class="mm-form-head">
+    <span class="mm-mode-chip ${d.id?'editing':'new'}">${d.id?`編集中 <b>${esc(d.name||'')}</b>`:'新規の勤務体系'}</span>
+    <button type="button" id="shiftNew" class="mm-btn-ghost sm">＋ 勤務体系を追加</button>
+    <span class="mm-form-hint">テンプレート:</span>
+    ${SHIFT_TEMPLATES.map((t,i)=>`<button type="button" class="mm-btn-ghost sm" data-shift-tmpl="${i}">${esc(t.label)}</button>`).join('')}
+   </div>
+   <p class="mm-def-hint">勤務体系(日勤・交替勤務など)の中に、各直の時間帯を並べます。作業スケジュールの「勤務」列は、予定の時刻が入る区分の名称を表示します。終了が開始以下の区分は翌日にまたがる勤務として扱います。適用設備を空欄にすると全設備の既定になり、設備を指定した体系があればそちらが優先されます。</p>`;
+  form.onsubmit=ev=>ev.preventDefault();
+  $('#shiftNew').onclick=()=>{shiftState.selectedId=null;shiftState.draft=shiftDraftFrom(null);renderShiftPattern()};
+  form.querySelectorAll('[data-shift-tmpl]').forEach(b=>b.onclick=()=>{
+   const t=SHIFT_TEMPLATES[+b.dataset.shiftTmpl];
+   shiftState.draft={...d,name:d.name||t.label,segments:t.segments.map(x=>({...x}))};
+   renderShiftPattern();
+  });
+
+  const bars=d.segments.map((seg,i)=>shiftBarPieces(seg).map(([left,w])=>
+    `<span class="shift-bar-piece" data-i="${i%6}" style="left:${left}%;width:${w}%" title="${esc(seg.name)} ${esc(seg.start)}〜${esc(seg.end)}"></span>`).join('')).join('');
+  list.innerHTML=`<div class="shift-editor">
+    <aside class="shift-list">
+     <div class="shift-list-head">登録済みの勤務体系</div>
+     ${shiftState.patterns.length?shiftState.patterns.map(p=>`<button type="button" class="shift-list-item${p.id===d.id?' active':''}" data-shift-pattern="${p.id}">
+        <b>${esc(p.name)}</b><small>${p.equipment?esc(p.equipment):'全設備既定'} ・ ${(p.segments||[]).length}区分</small></button>`).join('')
+       :'<div class="mm-empty-inline">まだありません。テンプレートから作れます。</div>'}
+    </aside>
+    <section class="shift-detail">
+     <div class="shift-fields">
+      <label class="mm-field"><span>勤務体系の名称<i>*</i></span><input id="shiftName" type="text" value="${esc(d.name)}" placeholder="例: 交替勤務(1,2,3直)" autocomplete="off"></label>
+      <label class="mm-field"><span>適用設備（空欄=全設備既定）</span><select id="shiftEquipment"><option value="">全設備既定</option>${eqOpts}</select></label>
+     </div>
+     <div class="shift-bar" title="24時間のうち、どの時間帯がどの区分か">${bars}<span class="shift-bar-noon"></span></div>
+     <div class="shift-bar-scale"><span>0時</span><span>6時</span><span>12時</span><span>18時</span><span>24時</span></div>
+     <div class="shift-segs" id="shiftSegs">${
+       d.segments.length?d.segments.map((seg,i)=>`<div class="shift-seg" data-i="${i}">
+         <span class="shift-seg-dot" data-i="${i%6}"></span>
+         <input class="shift-seg-name" type="text" value="${esc(seg.name)}" placeholder="例: 1直" autocomplete="off">
+         <input class="shift-seg-start" type="time" value="${esc(seg.start)}">
+         <span class="shift-seg-sep">〜</span>
+         <input class="shift-seg-end" type="time" value="${esc(seg.end)}">
+         ${(() => {const t=v=>{const m=/^(\d{1,2}):(\d{2})$/.exec(String(v||''));return m?(+m[1])*60+(+m[2]):null};
+                   const a=t(seg.start),b2=t(seg.end);return (a!=null&&b2!=null&&b2<=a)?'<span class="shift-seg-next">翌日</span>':'<span class="shift-seg-next is-empty"></span>'})()}
+         <button type="button" class="shift-seg-up" title="上へ"${i===0?' disabled':''}>▲</button>
+         <button type="button" class="shift-seg-down" title="下へ"${i===d.segments.length-1?' disabled':''}>▼</button>
+         <button type="button" class="shift-seg-del" title="この区分を削除">×</button>
+        </div>`).join('')
+       :'<div class="mm-empty-inline">区分がありません。「＋ 区分を追加」かテンプレートから追加してください。</div>'}
+     </div>
+     <div class="shift-actions">
+      <button type="button" id="shiftAddSeg" class="mm-btn-ghost sm">＋ 区分を追加</button>
+      <span class="mm-form-hint" id="shiftCoverage"></span>
+      <span class="shift-actions-tail">
+       ${d.id?'<button type="button" id="shiftDelete" class="mm-btn-ghost sm">この勤務体系を削除</button>':''}
+       <button type="button" id="shiftSave" class="mm-btn-primary sm">保存</button>
+      </span>
+     </div>
+    </section>
+   </div>`;
+
+  list.querySelectorAll('[data-shift-pattern]').forEach(b=>b.onclick=()=>{
+   shiftState.selectedId=+b.dataset.shiftPattern;
+   shiftState.draft=shiftDraftFrom(shiftState.patterns.find(p=>p.id===shiftState.selectedId));
+   renderShiftPattern();
+  });
+  const sync=()=>{
+   const dd=shiftState.draft;
+   dd.name=$('#shiftName').value;dd.equipment=$('#shiftEquipment').value;
+   dd.segments=[...list.querySelectorAll('.shift-seg')].map(el=>({
+    name:el.querySelector('.shift-seg-name').value,
+    start:el.querySelector('.shift-seg-start').value,
+    end:el.querySelector('.shift-seg-end').value}));
+  };
+  $('#shiftName').oninput=()=>{shiftState.draft.name=$('#shiftName').value};
+  $('#shiftEquipment').onchange=()=>{shiftState.draft.equipment=$('#shiftEquipment').value};
+  list.querySelectorAll('.shift-seg').forEach(el=>{
+   const i=+el.dataset.i;
+   // 時刻・名称の変更はその場でバーへ反映する(保存前に結果が見える)。
+   el.querySelectorAll('input').forEach(inp=>inp.onchange=()=>{sync();renderShiftPattern()});
+   el.querySelector('.shift-seg-del').onclick=()=>{sync();shiftState.draft.segments.splice(i,1);renderShiftPattern()};
+   el.querySelector('.shift-seg-up').onclick=()=>{sync();if(i>0)shiftState.draft.segments.splice(i-1,0,shiftState.draft.segments.splice(i,1)[0]);renderShiftPattern()};
+   el.querySelector('.shift-seg-down').onclick=()=>{sync();const a=shiftState.draft.segments;if(i<a.length-1)a.splice(i+1,0,a.splice(i,1)[0]);renderShiftPattern()};
+  });
+  $('#shiftAddSeg').onclick=()=>{
+   sync();
+   const segs=shiftState.draft.segments;
+   const last=segs[segs.length-1];
+   // 直前の区分の終了時刻を次の開始時刻の初期値にする(連続する直の入力が
+   // ほぼクリックだけで済む)。
+   segs.push({name:`${segs.length+1}直`,start:last?last.end:'08:00',end:last?last.end:'17:00'});
+   renderShiftPattern();
+  };
+  const del=$('#shiftDelete');if(del)del.onclick=()=>deleteShiftPattern(d);
+  $('#shiftSave').onclick=()=>{sync();saveShiftPattern()};
+  renderShiftCoverage(d);
+ }
+ function renderShiftCoverage(d){
+  const el=$('#shiftCoverage');if(!el)return;
+  const total=d.segments.reduce((a,seg)=>a+shiftBarPieces(seg).reduce((x,[,w])=>x+w,0),0);
+  if(!d.segments.length){el.textContent='';return}
+  el.textContent=total>=99.5?'24時間をすべてカバーしています':`24時間のうち約${Math.round(total)}%をカバーしています`;
+  el.className='mm-form-hint'+(total>=99.5?' shift-cov-ok':'');
+ }
+ async function saveShiftPattern(){
+  const uid=requireMaintUser();if(uid===null)return;
+  const d=shiftState.draft;
+  if(!String(d.name||'').trim()){showToast('入力を確認してください','勤務体系の名称を入力してください。',4000);return}
+  try{
+   setMaintLoading(true,'勤務体系を保存しています…');
+   const r=await api('/api/schedule/shift-pattern-master',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({id:d.id,equipment:d.equipment,name:d.name,segments:d.segments,user_id:uid})});
+   shiftState.selectedId=r.id;
+   await loadShiftPatternMaint(true);
+   showToast&&showToast('勤務体系を保存しました',`${d.name}(${d.segments.length}区分)`,3600);
+  }catch(e){showToast&&showToast('保存できませんでした',e.message,6500)}
+  finally{setMaintLoading(false)}
+ }
+ async function deleteShiftPattern(d){
+  const uid=requireMaintUser();if(uid===null)return;
+  if(!d.id)return;
+  if(typeof confirmModal==='function'){
+   const ok=await confirmModal({eyebrow:'勤務形態',title:'この勤務体系を削除しますか？',
+    message:`「${d.name}」とその配下の区分(${d.segments.length}件)を無効化します。`,confirmLabel:'削除する',danger:true});
+   if(!ok)return;
+  }
+  try{
+   setMaintLoading(true,'勤務体系を削除しています…');
+   await api('/api/schedule/shift-pattern-master/delete',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({id:d.id,user_id:uid})});
+   shiftState.selectedId=null;
+   await loadShiftPatternMaint(true);
+   showToast&&showToast('勤務体系を削除しました',d.name,3600);
+  }catch(e){showToast&&showToast('削除できませんでした',e.message,6500)}
+  finally{setMaintLoading(false)}
+ }
+
  /* ---------- テーブル生データ(旧「マスタ一覧」、ARCHITECTURE.md「マスタ管理の画面形態」で統合) ----------
     master.sqlite3のテーブルをそのまま読み取り専用で表示する。上のタブが
     面倒を見ていないテーブル(表示マスタ・スケジュール列表示マスタ・
@@ -1074,18 +1281,16 @@
  // capture段リスナーがstopImmediatePropagation()で先に処理を完結させるため
  // ボタン側のonclickは常に発火しない到達不能コードだった(削除済み)。
  document.addEventListener('click',e=>{const t=e.target.closest('#openMasterMaint');if(!t)return;e.preventDefault();e.stopImmediatePropagation();openMasterMaint()},true);
- /* マスタ管理以外のサイドバー項目を押したらマスタ管理画面から出る。
-    メイン画面統合型のビュー(帳票・スケジュール等)はそれぞれが「開くときに
-    他を閉じる」方式だが、それらはmeasurement-worklog.jsより後に読み込まれる
-    ため、こちらから相手の関数をラップできない(読み込み順序、
-    docs/ARCHITECTURE.md)。サイドバーのクリックはすべてこの1箇所で拾えるので、
-    入口側で閉じる方式にして相互参照を増やさない。 */
- document.addEventListener('click',e=>{
-  if(!document.body.classList.contains('mm-mode'))return;
-  const btn=e.target.closest('.layout>aside button');
-  if(!btn||btn.closest('#openMasterMaint'))return;
-  exitMasterMaint();
- },true);
+ /* 他ビューへ移るときの後始末は、各ビューの「開くときに他を閉じる」ブロックが
+    window.exitMasterMaint()を呼ぶ方式にしてある(docs/ARCHITECTURE.mdの
+    「画面の開き方・閉じ方の約束」。records-store.js / report-dashboard.js /
+    calendar-view.js / schedule-view.js の各openXxx)。
+    以前はここでサイドバーのクリックをcaptureで拾って閉じていたが、
+    records-store.jsが先に読み込まれ、[data-open-records]/#homeDraftsの
+    captureリスナーでstopImmediatePropagation()しているため、データ一覧へ
+    移動したときだけこのリスナーが呼ばれず、マスタ管理のパネルが画面下部に
+    残ったまま重なる不具合になっていた(クリックの横取りに依存する作りは
+    読み込み順序に左右されて壊れるので使わない)。 */
  // 一覧(DB)切替でも閉じる(report-dashboard.jsのexitReportViewと同じ考え方)。
  if(typeof selectDb==='function'){const base=selectDb;selectDb=async function(k,b){exitMasterMaint();return base(k,b)}}
  document.addEventListener('keydown',e=>{

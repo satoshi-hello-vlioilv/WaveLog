@@ -230,6 +230,7 @@ function bindV32Navigation(){
 async function openRecordsSafe(status='編集中'){
  window.exitCalendarView?.();
  window.exitScheduleView?.();
+ window.exitMasterMaint?.();
  showWaiting(status==='履歴'?'完了データを取得しています':'編集中データを取得しています','この端末の保存領域を確認中','IndexedDBと代替保存領域を照合しています');
  try{
  const modal=$('#recordModal'),title=$('#recordTitle'),list=$('#recordList');

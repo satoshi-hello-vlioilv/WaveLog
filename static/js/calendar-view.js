@@ -114,6 +114,7 @@
 
  async function openCalendarView(){
   window.exitScheduleView?.();
+  window.exitMasterMaint?.();
   document.body.classList.remove('qa-mode','qa-view-raw');
   $id('qualityAnalysisPanel')?.setAttribute('hidden','');
   document.body.classList.remove('rp-mode');

@@ -97,6 +97,35 @@ def _read(fn):
   c.close()
  return result,stale,None
 
+def _cfg_read(fn):
+ """設定系マスタ(稼働カレンダー・設備停止・勤務形態・換算係数上書き)の読み取り。
+ これらはmaster.sqlite3(ローカル)にあるため、共有DBのスナップショット取得も
+ ロックも要らない。ネットワーク共有が不調でもマスタ管理は使えるようにする狙い。"""
+ sr.migrate_config_masters_from_shared()
+ mc=sr.config_master_conn()
+ try:
+  sr.ensure_config_master_tables(mc)
+  return fn(mc)
+ finally:
+  mc.close()
+
+def _cfg_write_response(apply_fn):
+ """設定系マスタの書込。他のマスタ(routes/masters.py)と同じ素直な
+ 「開く→書く→commit」で済む(共有DBのロック→取得→適用→反映サイクルは不要)。"""
+ sr.migrate_config_masters_from_shared()
+ mc=sr.config_master_conn()
+ try:
+  sr.ensure_config_master_tables(mc)
+  result=apply_fn(mc)
+  mc.commit()
+  return jsonify(ok=True,**(result or {}))
+ except ValueError as e:
+  return jsonify(error=str(e)),400
+ except Exception as e:
+  return jsonify(error=str(e)),500
+ finally:
+  mc.close()
+
 def _write_response(apply_fn):
  """POST系共通。schedule_sync.with_write()の例外を§8.0のエラー応答形式へ
  変換する。apply_fn(c)の戻り値(dict)をそのまま応答へマージする。"""
@@ -226,20 +255,18 @@ def _calendar_entry(r):
 @bp.get('/api/schedule/calendar')
 def calendar_list():
  equipment=str(request.args.get('equipment') or '').strip()
- result,stale,err=_read(lambda c:[_calendar_entry(r) for r in sr.calendar_rows(c,equipment)])
- if err=='not_configured':return jsonify(ok=True,configured=False,equipment=equipment,entries=[])
- if err:return jsonify(error=err),503
- return jsonify(ok=True,configured=True,equipment=equipment,entries=result,stale=stale)
+ entries=_cfg_read(lambda mc:[_calendar_entry(r) for r in sr.calendar_rows(mc,equipment)])
+ return jsonify(ok=True,configured=True,equipment=equipment,entries=entries,stale=False)
 
 @bp.post('/api/schedule/calendar')
 def calendar_save():
  x=request.get_json(force=True) or {}
  equipment=str(x.get('equipment') or '').strip()
  entries=x.get('entries') or []
- def fn(c):
-  n=sr.calendar_sync(c,equipment,entries,request_user_id(x))
+ def fn(mc):
+  n=sr.calendar_sync(mc,equipment,entries,request_user_id(x))
   return {'equipment':equipment,'saved':n}
- return _write_response(fn)
+ return _cfg_write_response(fn)
 
 # ========================================================================
 # 設備停止マスタ
@@ -253,73 +280,87 @@ def _stop_reason_entry(r):
 @bp.get('/api/schedule/stop-reason-master')
 def stop_reason_list():
  equipment=str(request.args.get('equipment') or '').strip()
- result,stale,err=_read(lambda c:[_stop_reason_entry(r) for r in sr.stop_reason_rows(c,equipment or None)])
- if err=='not_configured':return jsonify(ok=True,configured=False,items=[])
- if err:return jsonify(error=err),503
- return jsonify(ok=True,configured=True,items=result,stale=stale)
+ items=_cfg_read(lambda mc:[_stop_reason_entry(r) for r in sr.stop_reason_rows(mc,equipment or None)])
+ return jsonify(ok=True,configured=True,items=items,stale=False)
 
 @bp.post('/api/schedule/stop-reason-master')
 def stop_reason_register():
  x=request.get_json(force=True) or {}
  equipment=str(x.get('equipment') or '').strip()
  name=str(x.get('name') or '').strip()
- def fn(c):
-  sid,created=sr.stop_reason_upsert(c,equipment,name,request_user_id(x),
+ def fn(mc):
+  sid,created=sr.stop_reason_upsert(mc,equipment,name,request_user_id(x),
                                      category=str(x.get('category') or ''),
                                      standard_minutes=x.get('standardMinutes'),
                                      color_key=str(x.get('colorKey') or ''))
   return {'id':sid,'created':created}
- return _write_response(fn)
+ return _cfg_write_response(fn)
 
 @bp.post('/api/schedule/stop-reason-master/delete')
 def stop_reason_delete():
  x=request.get_json(force=True) or {}
  sid=x.get('id')
  if sid is None:return jsonify(error='削除対象IDがありません。'),400
- def fn(c):
-  n=sr.stop_reason_delete(c,sid,request_user_id(x))
+ def fn(mc):
+  n=sr.stop_reason_delete(mc,sid,request_user_id(x))
   if n==0:raise ValueError('指定の設備停止理由が見つかりません。')
   return {'id':sid}
- return _write_response(fn)
+ return _cfg_write_response(fn)
 
 # ========================================================================
-# 勤務形態マスタ(§5.5新設): 時刻(HH:MM)の範囲と勤務名称の対応表。
-# タイムラインの「勤務」列(schedule_calc.expand_plan()のentries[].shift)
-# はこのマスタを参照する。
+# 勤務体系マスタ / 勤務区分マスタ(§5.5改訂): 「日勤」「交替勤務(1,2,3直)」の
+# ような勤務体系(親)の下に、各直の時間帯(子=勤務区分)をぶら下げた2階層。
+# タイムラインの「勤務」列(schedule_calc.expand_plan()のentries[].shift)は
+# sr.shift_rows()経由でこのマスタを参照する。
 # ========================================================================
-def _shift_entry(r):
- # r: 勤務ID,設備名,名称,開始時刻,終了時刻,表示順,有効
- return {'id':r[0],'equipment':r[1],'name':r[2],'start':r[3],'end':r[4]}
+def _pattern_entry(mc,r):
+ # r: 勤務体系ID,適用設備,名称,表示順,有効
+ return {'id':r[0],'equipment':r[1],'name':r[2],
+         'segments':[{'id':s[0],'name':s[2],'start':s[3],'end':s[4]} for s in sr.shift_segment_rows(mc,r[0])]}
 
-@bp.get('/api/schedule/shift-master')
-def shift_list():
+@bp.get('/api/schedule/shift-pattern-master')
+def shift_pattern_list():
+ """equipment未指定なら全件(マスタ管理の一覧)。指定時はその設備に適用される
+ 体系(設備専用があればそれ、無ければ全設備既定)を返す。"""
  equipment=str(request.args.get('equipment') or '').strip()
- result,stale,err=_read(lambda c:[_shift_entry(r) for r in sr.shift_rows(c,equipment or None)])
- if err=='not_configured':return jsonify(ok=True,configured=False,items=[])
- if err:return jsonify(error=err),503
- return jsonify(ok=True,configured=True,items=result,stale=stale)
+ scope=request.args.get('scope') or ''
+ def fn(mc):
+  sr.migrate_shift_patterns(mc)
+  if scope=='all' or not equipment:
+   rows=sr.shift_pattern_rows(mc,'__all__')
+  else:
+   rows=sr.shift_pattern_rows(mc,equipment) or sr.shift_pattern_rows(mc,None)
+  return [_pattern_entry(mc,r) for r in rows]
+ return jsonify(ok=True,configured=True,items=_cfg_read(fn),stale=False)
 
-@bp.post('/api/schedule/shift-master')
-def shift_register():
+@bp.post('/api/schedule/shift-pattern-master')
+def shift_pattern_save():
+ """勤務体系と、その配下の勤務区分をまとめて保存する(区分は全置換)。
+ 親子を1リクエストで保存することで、片方だけ保存された中途半端な状態を作らない。"""
  x=request.get_json(force=True) or {}
+ pattern_id=x.get('id')
  equipment=str(x.get('equipment') or '').strip()
  name=str(x.get('name') or '').strip()
- def fn(c):
-  sid,created=sr.shift_upsert(c,equipment,name,request_user_id(x),
-                               start=str(x.get('start') or '').strip(),end=str(x.get('end') or '').strip())
-  return {'id':sid,'created':created}
- return _write_response(fn)
+ segments=x.get('segments')
+ if segments is not None and not isinstance(segments,list):
+  return jsonify(error='勤務区分の指定が不正です。'),400
+ def fn(mc):
+  uid=request_user_id(x)
+  pid,created=sr.shift_pattern_upsert(mc,pattern_id,equipment,name,uid)
+  saved=sr.shift_segment_sync(mc,pid,segments or [],uid) if segments is not None else None
+  return {'id':pid,'created':created,'savedSegments':saved}
+ return _cfg_write_response(fn)
 
-@bp.post('/api/schedule/shift-master/delete')
-def shift_delete_route():
+@bp.post('/api/schedule/shift-pattern-master/delete')
+def shift_pattern_delete_route():
  x=request.get_json(force=True) or {}
- sid=x.get('id')
- if sid is None:return jsonify(error='削除対象IDがありません。'),400
- def fn(c):
-  n=sr.shift_delete(c,sid,request_user_id(x))
-  if n==0:raise ValueError('指定の勤務形態が見つかりません。')
-  return {'id':sid}
- return _write_response(fn)
+ pid=x.get('id')
+ if pid is None:return jsonify(error='削除対象IDがありません。'),400
+ def fn(mc):
+  n=sr.shift_pattern_delete(mc,pid,request_user_id(x))
+  if n==0:raise ValueError('指定の勤務体系が見つかりません。')
+  return {'id':pid}
+ return _cfg_write_response(fn)
 
 # ========================================================================
 # 換算係数モデル(§6、フェーズ5)
@@ -352,15 +393,13 @@ def load_factor_list():
  # 済み(§6.6)。上書き一覧だけスケジュール共有DBから都度取得する。
  equipment=str(request.args.get('equipment') or '').strip()
  if not equipment:return jsonify(error='どの設備の換算係数か指定してください(equipment)。'),400
- def fn(c):
-  rows=sr.load_factor_override_rows(c)
+ def fn(mc):
+  rows=sr.load_factor_override_rows(mc)
   return [r for r in rows if not r[1] or normalize_equipment_name(r[1])==normalize_equipment_name(equipment)]
- overrides_rows,stale,err=_read(fn)
- if err=='not_configured':return jsonify(ok=True,configured=False,equipment=equipment,model=None)
- if err:return jsonify(error=err),503
+ overrides_rows=_cfg_read(fn)
  model=load_factor.get_model(equipment)
  return jsonify(ok=True,configured=True,equipment=equipment,
-                model=_load_factor_summary(model,overrides_rows),stale=stale)
+                model=_load_factor_summary(model,overrides_rows),stale=False)
 
 @bp.post('/api/schedule/load-factors/override')
 def load_factor_override_save():
@@ -374,17 +413,17 @@ def load_factor_override_save():
  level='' if factor=='BASE' else str(x.get('level') or '').strip()
  coefficient=x.get('coefficient')
  if not factor:return jsonify(error='因子を指定してください。'),400
- def fn(c):
+ def fn(mc):
   if coefficient is None:
-   rows=sr.load_factor_override_rows(c,equipment)
+   rows=sr.load_factor_override_rows(mc,equipment)
    target=next((r for r in rows if str(r[2] or '')==factor and str(r[3] or '')==level),None)
    if target is None:raise ValueError('解除対象の上書きが見つかりません。')
-   sr.load_factor_override_delete(c,target[0],request_user_id(x))
+   sr.load_factor_override_delete(mc,target[0],request_user_id(x))
    return {'equipment':equipment,'factor':factor,'level':level,'cleared':True}
-  oid,created=sr.load_factor_override_upsert(c,equipment,factor,level,request_user_id(x),
+  oid,created=sr.load_factor_override_upsert(mc,equipment,factor,level,request_user_id(x),
                                               coefficient=float(coefficient),reason=str(x.get('reason') or ''))
   return {'id':oid,'created':created}
- return _write_response(fn)
+ return _cfg_write_response(fn)
 
 @bp.post('/api/schedule/load-factors/recalc')
 def load_factor_recalc():
@@ -413,13 +452,11 @@ def estimate_preview():
  except Exception:
   detail=None
  if detail is None:return jsonify(error='detail(明細JSON)の形式が不正です。'),400
- def fn(c):
-  return load_factor.estimate_work(c,equipment,detail)
- result,stale,err=_read(fn)
- if err=='not_configured':return jsonify(ok=True,configured=False,equipment=equipment,estimate=None)
- if err:return jsonify(error=err),503
+ # 見積は換算係数上書きマスタ(master.sqlite3)しか読まないため、共有DBの
+ # スナップショット取得は不要。
+ result=_cfg_read(lambda mc:load_factor.estimate_work(mc,equipment,detail))
  return jsonify(ok=True,configured=True,equipment=equipment,lot=str(request.args.get('lot') or ''),
-                estimate=result,stale=stale)
+                estimate=result,stale=False)
 
 @bp.get('/api/schedule/accuracy')
 def accuracy():
