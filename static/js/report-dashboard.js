@@ -538,6 +538,7 @@
   document.getElementById('openDashboard')?.classList.remove('active');
   document.body.classList.add('rp-mode');
   document.querySelectorAll('#nav button.db').forEach(b=>b.classList.remove('active'));
+  setHeaderContext('測定帳票','');
   ensurePanel().hidden=false;
   setZoom(rpZoom);
   $id('reportSelectedTitle').textContent='ロットを選択してください';
@@ -698,6 +699,7 @@
   const dateBase=start&&!isNaN(start)?start:(x.updatedAt?new Date(x.updatedAt):null);
   return {
    id:x.id,status:x.status||'編集中',
+   lotNo:b.lotNo||'',                 // 稼働状況ビューの「直近の実績」で使う(§9.64)
    equipment:s.registeredEquipment||x.registeredEquipment||b.equipment||'-',
    crewSize:(s.crewSize&&s.crewSize!=='-')?String(s.crewSize):'',
    operator:s.operator||'-',
@@ -839,9 +841,29 @@
   panel=document.createElement('section');panel.className='db-panel';panel.id='dashboardPanel';panel.hidden=true;
   panel.innerHTML=`
     <header class="rp-head">
-     <div class="rp-head-title"><h2>ダッシュボード</h2><span class="rp-sub">端末保存済みの測定データから、設備・作業人数・品種ごとの作業効率をKPIとして集計します。</span></div>
+     <div class="rp-head-title"><h2>ダッシュボード</h2><span class="rp-sub" id="dbHeadSub">いま設備がどう動いているかを、作業予定と測定実績から見ます。</span></div>
+     <div class="rp-head-actions">
+      <div class="db-viewtabs" role="tablist" aria-label="表示の切り替え">
+       <button type="button" role="tab" data-dbview="status" class="active" title="作業予定と実績から、いまの稼働状況をまとめて表示します">稼働状況</button>
+       <button type="button" role="tab" data-dbview="pivot" title="期間・軸・指標を自分で選んで集計します">自由集計</button>
+      </div>
+      <button type="button" id="dbStatusRefresh" class="rp-btn-secondary" title="作業予定と実績を取り直します">再読込</button>
+     </div>
     </header>
-    <div class="db-layout">
+    <div class="db-status-view" id="dbStatusView">
+     <div class="db-summary" id="dbStatusKpi"></div>
+     <div class="db-status-grid">
+      <section class="db-status-card">
+       <div class="db-status-card-head"><b>設備の稼働状況</b><span>作業スケジュールの予定と実績から</span></div>
+       <div class="db-status-body" id="dbEquipStatus"></div>
+      </section>
+      <section class="db-status-card">
+       <div class="db-status-card-head"><b>直近の実績</b><span>この端末に保存された測定データ</span></div>
+       <div class="db-status-body" id="dbRecentActual"></div>
+      </section>
+     </div>
+    </div>
+    <div class="db-layout" id="dbPivotView" hidden>
      <aside class="db-controls">
       <div class="db-presets">
        <button type="button" data-preset="equipEfficiency" class="active">設備別効率</button>
@@ -885,7 +907,113 @@
   ['dbSeries','dbMetric','dbStatus'].forEach(id=>$id(id).addEventListener('change',runDashboard));
   $id('dbRefresh').onclick=()=>runDashboard(true);
   panel.querySelectorAll('[data-preset]').forEach(b=>b.onclick=()=>applyPreset(b.dataset.preset));
+  panel.querySelectorAll('[data-dbview]').forEach(b=>b.onclick=()=>setDashboardView(b.dataset.dbview));
+  $id('dbStatusRefresh').onclick=()=>{dbView==='status'?runStatusView(true):runDashboard(true)};
   return panel;
+ }
+
+ /* ---------- 稼働状況ビュー(§9.64) ----------
+    ダッシュボードの既定は「自分で条件を組み立てる集計」だったが、開いた
+    直後は条件未設定で空("対象データがありません")のことが多く、何のための
+    画面か分からない状態だった。既定を**いまの稼働状況**にする。
+    データ源は2つ:
+      - 作業予定と進み具合 … /api/schedule/overview(俯瞰ボードと同じ1往復)
+      - 実績            … 端末内の測定データ(ensureData、既存と共用)
+    自由集計は「自由集計」タブとしてそのまま残す(汎用の集計機能は担保する)。 */
+ let dbView='status';
+ function setDashboardView(view){
+  dbView=view==='pivot'?'pivot':'status';
+  const panel=$id('dashboardPanel');if(!panel)return;
+  panel.querySelectorAll('[data-dbview]').forEach(b=>{
+   const on=b.dataset.dbview===dbView;
+   b.classList.toggle('active',on);b.setAttribute('aria-selected',String(on));
+  });
+  $id('dbStatusView').hidden=(dbView!=='status');
+  $id('dbPivotView').hidden=(dbView!=='pivot');
+  $id('dbHeadSub').textContent=dbView==='status'
+   ?'いま設備がどう動いているかを、作業予定と測定実績から見ます。'
+   :'期間・軸・指標を選んで、端末に保存された測定データを自由に集計します。';
+  if(dbView==='status')runStatusView();else runDashboard();
+ }
+
+ let scheduleOverviewCache=null;
+ async function fetchOverview(force){
+  if(scheduleOverviewCache&&!force)return scheduleOverviewCache;
+  try{scheduleOverviewCache=await api('/api/schedule/overview')}
+  catch(e){scheduleOverviewCache={ok:false,error:e.message,equipment:[]}}
+  return scheduleOverviewCache;
+ }
+ function fmtMin(min){
+  const n=Number(min);if(!Number.isFinite(n)||n<=0)return '0分';
+  const h=Math.floor(n/60),m=Math.round(n%60);
+  return h?`${h}時間${m?m+'分':''}`:`${m}分`;
+ }
+ async function runStatusView(force){
+  const panel=$id('dashboardPanel');if(!panel||panel.hidden||dbView!=='status')return;
+  if(typeof withWaiting!=='function')return runStatusViewInner(force,()=>{});
+  return withWaiting({title:'稼働状況を集計しています',detail:'作業予定と測定実績を読み込んでいます',
+   progress:'作業予定を取得しています',step:1},report=>runStatusViewInner(force,report));
+ }
+ async function runStatusViewInner(force,report){
+  const [ov,all]=await Promise.all([fetchOverview(force),ensureData(force)]);
+  report({progress:'実績と突き合わせています',step:2});
+  const rows=(ov&&ov.equipment)||[];
+  const running=rows.filter(r=>r.active);
+  const pendingCount=rows.reduce((s,r)=>s+(r.pendingCount||0),0);
+  const pendingMin=rows.reduce((s,r)=>s+(r.pendingMinutes||0),0);
+  const late=rows.filter(r=>(r.maxOverdueMinutes||0)>0);
+  // 実績側(今日ぶん)
+  const today=new Date();today.setHours(0,0,0,0);
+  const todayRows=all.filter(r=>r.date&&r.date>=today);
+  const doneToday=todayRows.filter(r=>r.status==='完了');
+  const durs=doneToday.filter(r=>r.durationMin!=null).map(r=>r.durationMin);
+  const avg=durs.length?durs.reduce((a,b)=>a+b,0)/durs.length:null;
+
+  const notConfigured=ov&&ov.configured===false;
+  const failed=ov&&ov.ok===false;
+  $id('dbStatusKpi').innerHTML=`
+   <div class="db-card"><span class="db-card-label">稼働中の設備</span><b class="db-card-value">${fmt(running.length)}</b><small class="db-card-note">全 ${fmt(rows.length)} 設備</small></div>
+   <div class="db-card"><span class="db-card-label">残っている予定</span><b class="db-card-value">${fmt(pendingCount)}<small>件</small></b><small class="db-card-note">見込 ${esc(fmtMin(pendingMin))}</small></div>
+   <div class="db-card${late.length?' is-warn':''}"><span class="db-card-label">遅れている設備</span><b class="db-card-value">${fmt(late.length)}</b><small class="db-card-note">${late.length?'最大 '+esc(fmtMin(Math.max(...late.map(r=>r.maxOverdueMinutes||0)))):'遅れなし'}</small></div>
+   <div class="db-card"><span class="db-card-label">本日の完了</span><b class="db-card-value">${fmt(doneToday.length)}<small>件</small></b><small class="db-card-note">${avg!=null?'平均 '+fmt(avg)+' 分':'実績なし'}</small></div>`;
+
+  if(notConfigured||failed){
+   $id('dbEquipStatus').innerHTML=`<div class="db-empty">${notConfigured
+     ?'作業予定の共有先が未設定です。マスタ管理 &gt; パス設定で設定してください。'
+     :'作業予定を取得できませんでした。'+esc(ov.error||'')}</div>`;
+  }else if(!rows.length){
+   $id('dbEquipStatus').innerHTML='<div class="db-empty">設備マスタに有効な設備がありません。</div>';
+  }else{
+   // 動いている設備・遅れている設備を上に出す(見るべきものから目に入る順)
+   const sorted=[...rows].sort((a,b)=>
+     (b.maxOverdueMinutes||0)-(a.maxOverdueMinutes||0)||
+     (b.active?1:0)-(a.active?1:0)||(b.pendingCount||0)-(a.pendingCount||0));
+   $id('dbEquipStatus').innerHTML=`<table class="db-status-table">
+    <thead><tr><th>設備</th><th>状態</th><th>作業中のロット</th><th>経過</th><th>残り</th><th>見込</th><th>遅れ</th></tr></thead>
+    <tbody>${sorted.map(r=>{
+     const od=r.maxOverdueMinutes||0;
+     return `<tr class="${od>0?'is-late':(r.active?'is-running':'')}">
+      <th>${esc(r.equipment)}</th>
+      <td><span class="db-state-badge ${r.active?'running':'idle'}">${r.active?'稼働中':'空き'}</span></td>
+      <td class="db-lot">${esc(r.active?(r.active.lotNo||r.active.title||'-'):'-')}</td>
+      <td>${r.active&&r.active.elapsedMinutes!=null?esc(fmtMin(r.active.elapsedMinutes)):'-'}</td>
+      <td>${fmt(r.pendingCount||0)}件</td>
+      <td>${esc(fmtMin(r.pendingMinutes||0))}</td>
+      <td>${od>0?`<b class="db-late">${esc(fmtMin(od))}</b>`:'-'}</td>
+     </tr>`}).join('')}</tbody></table>`;
+  }
+
+  const recent=[...all].filter(r=>r.date).sort((a,b)=>b.date-a.date).slice(0,12);
+  $id('dbRecentActual').innerHTML=recent.length?`<table class="db-status-table">
+   <thead><tr><th>ロット</th><th>設備</th><th>状態</th><th>作業時間</th><th>日時</th></tr></thead>
+   <tbody>${recent.map(r=>`<tr>
+    <th class="db-lot">${esc(r.lotNo||'-')}</th>
+    <td>${esc(r.equipment||'-')}</td>
+    <td><span class="db-state-badge ${r.status==='完了'?'done':(r.status==='測定値NG'?'ng':'editing')}">${esc(statusShortLabel(r.status))}</span></td>
+    <td>${r.durationMin!=null?fmt(r.durationMin)+' 分':'-'}</td>
+    <td>${esc(r.date.toLocaleString('ja-JP',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}))}</td>
+   </tr>`).join('')}</tbody></table>`
+   :'<div class="db-empty">この端末にはまだ測定データがありません。</div>';
  }
 
  function setSeg(group,value){document.querySelectorAll(`[data-seg="${group}"] button`).forEach(b=>b.classList.toggle('active',b.dataset.val===value))}
@@ -958,7 +1086,7 @@
    progress:'対象データを取得しています',step:1},report=>runDashboardInner(force,report));
  }
  async function runDashboardInner(force,report){
-  const panel=$id('dashboardPanel');if(!panel||panel.hidden)return;
+  const panel=$id('dashboardPanel');if(!panel||panel.hidden||dbView!=='pivot')return;
   const all=await ensureData(force);
   report({progress:'指標を計算してグラフを描画しています',step:2});
   const statusFilter=val('dbStatus')||'done';
@@ -989,9 +1117,20 @@
   document.body.classList.add('db-mode');
   document.querySelectorAll('#nav button.db').forEach(b=>b.classList.remove('active'));
   $id('openDashboard')?.classList.add('active');
+  setHeaderContext('ダッシュボード','作業予定と測定実績の集計');
   const panel=ensurePanel();panel.hidden=false;
-  if(!panel.dataset.inited){panel.dataset.inited='1';applyPreset('equipEfficiency');applyPeriod('thisMonth')}
-  else{toggleBucket();runDashboard()}
+  // 自由集計側の初期条件は最初の1回だけ整えておく(タブを開いたときに
+  // 条件未設定の空表示にならないようにする)。既定で見せるのは稼働状況(§9.64)。
+  if(!panel.dataset.inited){
+   panel.dataset.inited='1';
+   const p=PRESETS.equipEfficiency;
+   $id('dbAxis').value=p.axis;$id('dbSeries').value=p.series||'';$id('dbMetric').value=p.metric;
+   const {a,b}=periodRange('thisMonth'),pad=n=>String(n).padStart(2,'0'),
+         d=dt=>dt?`${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`:'';
+   $id('dbStart').value=d(a);$id('dbEnd').value=d(b);setSeg('dbPeriodSeg','thisMonth');
+   toggleBucket();
+  }
+  setDashboardView(dbView);
  }
 
  queueMicrotask(ensureNavButton);

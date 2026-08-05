@@ -300,7 +300,16 @@
   if(!splitWrap)return;
   splitWrap.classList.toggle('sc-list-collapsed',splitListCollapsed);
   const btn=splitWrap.querySelector('.sc-split-collapse-btn');
-  if(btn){btn.textContent=splitListCollapsed?'▶':'◀';btn.title=splitListCollapsed?'仕掛一覧を表示':'仕掛一覧を隠す'}
+  if(btn){
+   // 畳んでいる間は縦書きラベルで「何が畳まれているか」を示す(§9.62)。
+   // 矢印だけだと、戻したとき何が出てくるのか分からない。
+   btn.innerHTML=splitListCollapsed
+    ?'<span aria-hidden="true">▶</span><span class="sc-split-collapse-label">仕掛一覧</span>'
+    :'<span aria-hidden="true">◀</span>';
+   btn.title=splitListCollapsed?'仕掛一覧を開きます':'仕掛一覧を畳んで作業スケジュールを広げます';
+   btn.setAttribute('aria-expanded',String(!splitListCollapsed));
+   btn.setAttribute('aria-label',splitListCollapsed?'仕掛一覧を開く':'仕掛一覧を畳む');
+  }
  }
  function toggleSplitListCollapsed(){
   splitListCollapsed=!splitListCollapsed;
@@ -604,6 +613,7 @@
   document.querySelectorAll('#nav button.db,#analysisNav button.db,#planNav button.db').forEach(b=>b.classList.remove('active'));
   document.body.classList.add('sc-mode');
   document.getElementById('openSchedule')?.classList.add('active');
+  setHeaderContext('作業スケジュール','設備ごとの作業予定と実績');
   const panel=ensurePanel();panel.hidden=false;
 
   const am=window.accessMode||{mode:'edit',canFieldReorder:false,fieldReorderEquipment:''};
@@ -624,6 +634,11 @@
   // §9.35: 予定から測定を開始できるのは、実際に測定する端末(編集モード)だけ。
   // scheduleモードは計画専用の端末、viewモードは閲覧専用のため出さない。
   scState.canStartWork=(am.mode==='edit');
+  // §9.61: 履歴(実績)の削除は、測定する端末(edit)と計画盤を整える端末
+  // (schedule)の両方に許す。サーバー側の許可(access_mode.pyの
+  // _ENDPOINT_EXTRA_MODES['measurement.backup_delete'])と必ず揃えること。
+  // 閲覧モードには出さない。
+  scState.canDeleteHistory=(am.mode==='edit'||am.mode==='schedule');
   if(am.mode==='edit'){
    const eq=currentConfiguredEquipment();
    if(!eq){renderUnconfigured();return}
@@ -1594,6 +1609,11 @@
    // 作業中の行はダブルクリックで測定を再開できる(openMeasurementが端末内の
    // 編集中データを見つけて続きから開く)。編集モードの端末だけ。
    const canResume=scState.canStartWork&&e.kind==='作業'&&e.state==='着手';
+   // §9.61: 履歴(作業中・完了)の削除。実績はバックアップ(records.sqlite3)の
+   // 行から合成されるため、端末内のデータ一覧に無くてもここに残り続ける
+   // (別PCで測定した/端末側だけ消えた場合)。実データを消す操作なので
+   // 予定の削除とは別のボタンにし、警告を必ず挟む。
+   const canDeleteHistory=scState.canDeleteHistory&&!!recordId&&(e.state==='着手'||e.state==='完了');
 
    row.innerHTML=`
     <span class="sc-row-handle" title="${canDrag?'ドラッグまたはAlt+↑/↓で並べ替え':(locked?'日時を固定中(ロック)':'')}">${canDrag?'⠿':(locked?'🔒':'')}</span>
@@ -1613,7 +1633,8 @@
      ${canResume?`<button type="button" class="sc-row-btn sc-row-resume" title="測定画面を開いて続きから再開します(行のダブルクリックでも開けます)">▶ 再開</button>`:''}
      ${canReport?`<button type="button" class="sc-row-btn sc-row-report" title="このロットの帳票を表示します">📄</button>`:''}
      ${detailHtml?`<button type="button" class="sc-row-btn sc-row-detail-toggle" title="詳細を表示">▾</button>`:''}
-     ${canDelete?`<button type="button" class="sc-row-btn sc-row-delete" title="削除">🗑</button>`:''}
+     ${canDelete?`<button type="button" class="sc-row-btn sc-row-delete" title="この予定を削除します">🗑</button>`:''}
+     ${canDeleteHistory?`<button type="button" class="sc-row-btn sc-row-btn-danger sc-row-delete-history" title="この実績（測定データ）を削除します。取り消せません">🗑 実績</button>`:''}
     </span>`;
    row.classList.toggle('sc-row-not-workable',workable.state==='ng');
    if(canDrag)wireDrag(row);
@@ -1627,6 +1648,8 @@
    if(resume)resume.onclick=ev=>{ev.stopPropagation();startWorkFromEntry(e)};
    const report=row.querySelector('.sc-row-report');
    if(report)report.onclick=ev=>{ev.stopPropagation();openEntryReport(e)};
+   const delHist=row.querySelector('.sc-row-delete-history');
+   if(delHist)delHist.onclick=ev=>{ev.stopPropagation();deleteHistoryEntry(e)};
    if(canResume){
     row.classList.add('sc-row-resumable');
     row.title='ダブルクリックで測定を再開します';
@@ -1846,6 +1869,52 @@
     // したまま二度と消えない不整合が起こり得た。
     if(scState.entries.every(x=>x.id!==removed.id)){scState.entries.splice(Math.min(idx,scState.entries.length),0,removed);renderTimeline()}
    }});
+ }
+
+ /* 履歴(作業中・完了)の削除(§9.61)。
+    予定の削除(deleteEntry)と違い、**測定データそのもの**を消す操作なので
+    別扱いにしてある。消す先が2つあることに注意:
+      1. この端末の中(IndexedDB+ミラー) … 端末で測定したデータならここにある
+      2. バックアップ(records.sqlite3)  … スケジュールが実績突合に使うのはこちら
+    スケジュールに居座るのに「データ一覧には無い」行は、1が無くて2だけが
+    残っている状態(別PCで測定した/端末側だけ消えた)。どちらの場合も消える
+    ように、端末内にあればreliableDelete(1と2の両方を消す)、無ければ
+    バックアップだけを直接消す。 */
+ async function deleteHistoryEntry(e){
+  const recordId=e.actualRecordId||'';
+  if(!recordId)return;
+  const lot=e.lotNo||contentValueOf(e.detail,'lotNo')||recordId;
+  const stateLabel=e.state==='着手'?'作業中':'完了';
+  const ok=await confirmModal({
+   eyebrow:'DELETE MEASUREMENT RECORD',
+   title:'この実績を削除します',
+   danger:true,confirmLabel:'削除する',
+   bodyHtml:`<p class="confirm-modal-message">ロット <b>${esc(lot)}</b> の実績（${esc(stateLabel)}）を削除します。</p>
+    <ul class="confirm-modal-points">
+     <li>削除するのは<b>測定データそのもの</b>です。作業スケジュールの行だけを消すのではありません。</li>
+     <li>この端末に残っている場合はデータ一覧からも消え、バックアップ（db/records.sqlite3）からも消えます。</li>
+     <li><b>元に戻せません。</b></li>
+    </ul>`});
+  if(!ok)return;
+  await withWaiting({title:'実績を削除しています',detail:`ロット ${lot}`,
+    progress:'端末内データとバックアップから削除しています'},async()=>{
+   let removed=false;
+   // 端末内にあるか(あれば端末＋バックアップの両方を消すreliableDeleteを使う)
+   try{
+    if(typeof reliableGet==='function'&&await reliableGet(recordId)){
+     await reliableDelete(recordId);removed=true;
+     if(typeof refreshDraftCount==='function')await refreshDraftCount();
+    }
+   }catch(err){console.warn('端末内データの削除に失敗',err)}
+   if(!removed){
+    // 端末には無い(別PCで測定した等)。バックアップ行だけを消す。
+    await api('/api/measurement/backup/delete',{method:'POST',
+     headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:[recordId]})});
+   }
+   invalidatePlanCache();
+   await loadPlan(true);
+  });
+  showToast('実績を削除しました',`ロット ${lot}`,4000);
  }
 
  /* ---------- ドラッグ並べ替え(§7.5・§9.4) + Alt+↑/↓ ---------- */

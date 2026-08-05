@@ -76,6 +76,13 @@ _ENDPOINT_EXTRA_MODES={
  'schedule.load_factor_override_save':{'edit'},
  'masters.schedule_column_master_save':{'schedule'},
  'masters.schedule_content_master_save':{'schedule'},
+ # 作業スケジュールの履歴(作業中・完了)を消す導線(§9.61)。計画外実績は
+ # **バックアップ(records.sqlite3)にしか無い**行から合成されるため、
+ # 測定した端末以外(=計画端末)からは消す手段が無く、別PCで作られた行や
+ # 削除に失敗した残骸が「データ一覧には無いのにスケジュールには居座る」
+ # 状態のまま残っていた。計画盤を整えるのは計画端末の役目なので、
+ # scheduleモードにも開く。閲覧モードには開かない(既定のまま拒否)。
+ 'measurement.backup_delete':{'schedule'},
 }
 # 書込ではないがPOSTで受けるもの(§9.50の「今すぐ抽出」)。データを書き換えず、
 # 抽出元(RNE)から読み直すだけなので、閲覧モードの端末からも実行できてよい。

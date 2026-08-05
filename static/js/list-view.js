@@ -95,7 +95,9 @@ window.invalidateTableCache=invalidateTableCache;
    あるので、取り立てのときは非表示にする。 */
 function updateListFreshness(at){
  const el=document.querySelector('#listFreshness');if(!el)return;
- if(!at){el.hidden=true;return}
+ // 鮮度は一覧画面の情報。スケジュール画面では一覧は一区画でしかないので、
+ // ヘッダー(=作業スケジュール)の隣に出すと何の鮮度か分からない(§9.60)。
+ if(!at||document.body.classList.contains('sc-mode')){el.hidden=true;return}
  const min=Math.floor((Date.now()-at)/60000);
  el.hidden=false;
  el.textContent=min<1?'たった今の内容':`${min}分前の内容`;
@@ -107,7 +109,12 @@ function applyTableData(d){
  Object.assign(S,{columns:d.columns,rows:d.rows,count:d.count});
  S.joinQuality=d.joinQuality||null;
  const info=(S.catalog||[]).find(x=>x.key===S.db)||{};
- const fn=$('#fileName');if(fn)fn.textContent=info.file_name||'';
+ // 主は画面名(仕掛一覧/品質データ)、副にファイル名。以前はファイル名だけを
+ // 出しており、他画面へ移ってもそのまま残っていた(§9.60)。
+ // ただしスケジュールの分割表示中(body.sc-mode)は、仕掛一覧は作業スケジュール
+ // 画面の中の一区画にすぎない。ここで書き換えると、作業スケジュールを見て
+ // いるのにヘッダーだけ「仕掛一覧」になる(実際にそうなっていた)。
+ if(!document.body.classList.contains('sc-mode'))setHeaderContext(databaseLabel(S.db),info.file_name||'');
  const tn=$('#tableName');if(tn)tn.textContent=S.table||'';
  S.selectedRows.clear();
 }

@@ -134,6 +134,7 @@
   document.querySelectorAll('#nav button.db').forEach(b=>b.classList.remove('active'));
   document.body.classList.add('cal-mode');
   $id('openCalendar')?.classList.add('active');
+  setHeaderContext('実績カレンダー','この端末に保存された測定データ');
   const panel=ensurePanel();panel.hidden=false;
   calState.selectedKey='';
   await ensureData(true);
@@ -152,19 +153,19 @@
     <section class="cal-main">
      <div class="cal-toolbar">
       <div class="cal-nav">
-       <button type="button" id="calPrev" class="rp-btn-secondary" aria-label="前月">‹</button>
+       <button type="button" id="calPrev" class="rp-btn-secondary rp-btn-icon" aria-label="前の月へ" title="前の月へ">‹</button>
        <b id="calMonthLabel" class="cal-month-label"></b>
-       <button type="button" id="calNext" class="rp-btn-secondary" aria-label="次月">›</button>
-       <button type="button" id="calToday" class="rp-btn-secondary">今月</button>
+       <button type="button" id="calNext" class="rp-btn-secondary rp-btn-icon" aria-label="次の月へ" title="次の月へ">›</button>
+       <button type="button" id="calToday" class="rp-btn-secondary" title="今月へ戻ります">今月</button>
       </div>
       <div class="cal-toolbar-right">
        <div class="db-seg" data-seg="calMetricSeg" role="group" aria-label="表示指標">
-        <button type="button" data-val="weight" class="active">作業重量</button>
-        <button type="button" data-val="count">ロット数</button>
+        <button type="button" data-val="weight" class="active" title="各日のマスの濃さを作業重量で表します">作業重量</button>
+        <button type="button" data-val="count" title="各日のマスの濃さをロット数で表します">ロット数</button>
        </div>
        <div class="db-seg" data-seg="calStatusSeg" role="group" aria-label="対象ステータス">
-        <button type="button" data-val="done" class="active">完了のみ</button>
-        <button type="button" data-val="all">すべて（編集中含む）</button>
+        <button type="button" data-val="done" class="active" title="完了したデータだけを集計します">完了のみ</button>
+        <button type="button" data-val="all" title="編集中のデータも含めて集計します">すべて（編集中含む）</button>
        </div>
       </div>
      </div>

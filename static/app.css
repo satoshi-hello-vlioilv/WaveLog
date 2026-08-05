@@ -129,6 +129,32 @@
 
 /* ---------- 2. リセット / 全体 ---------- */
 *{box-sizing:border-box}
+/* hidden属性は必ず効かせる(§9.59)。
+   ブラウザ標準の`[hidden]{display:none}`は**UAスタイルシート**にあるため、
+   作者スタイルで`.foo{display:flex}`と書いた時点で常に負ける(詳細度ではなく
+   カスケードの出所で決まる)。この取りこぼしで「未同期0件でも同期バナーが
+   出続ける」「使わないチップが常時見えている」等の表示崩れが7要素で
+   起きていた。個別に`.foo[hidden]{display:none}`を足して回るのは漏れるので、
+   ここで一度だけ強制する。**JSは要素の表示/非表示をhidden属性で切り替える**
+   のが本アプリの約束なので、この1行がその約束を担保する。 */
+[hidden]{display:none!important}
+
+/* ---------- ボタンの基本作法(§9.65) ----------
+   認知心理学の基礎3点を、個々の部品ではなく**全ボタン共通の土台**として置く。
+   部品ごとに書くと必ず書き漏れる(実測で、左ナビ7項目にcursor:pointerが無く、
+   押した瞬間の反応(:active)に至っては全画面のほぼ全ボタンで未定義だった。
+   「押しても反応が無いように見える」という指摘の実体はこれ)。
+
+   1. アフォーダンス: 押せるものは押せる形に見える(cursor:pointer)。
+      押せないものは押せない形に見える(not-allowed + 減光)。
+   2. 即時フィードバック: 押した瞬間に必ず見た目が変わる。
+      **transformは使わない** — .sc-split-collapse-btn等、既にtransformで
+      位置合わせしている部品の配置を壊すため。filterなら配置に影響しない。
+   3. キーボード操作でも今どこにいるか分かる(focus-visible)。 */
+button{cursor:pointer}
+button:disabled,button[aria-disabled="true"]{cursor:not-allowed;opacity:.5}
+button:not(:disabled):not([aria-disabled="true"]):active{filter:brightness(.92)}
+button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 html,body{height:100%}
 body{
   margin:0;
@@ -272,8 +298,10 @@ main>header{gap:var(--space-4)}
 .hd-context{display:flex;align-items:baseline;gap:var(--space-2);min-width:0}
 .hd-context #fileName{font-size:var(--fs-title);font-weight:800;color:#173842;
  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:38vw}
+/* 副見出し(データの出どころ)。主見出しの画面名より一段弱く出す。 */
+.hd-context-source{font-size:var(--fs-sm);color:#7b8e95;white-space:nowrap;
+ overflow:hidden;text-overflow:ellipsis;max-width:26vw}
 .hd-freshness{font-size:var(--fs-sm);color:#8a9aa0;white-space:nowrap}
-.hd-freshness[hidden]{display:none}
 
 .hd-status,.hd-actions{display:flex;align-items:center;gap:var(--space-2)}
 .hd-status{margin-left:auto}
@@ -1205,6 +1233,12 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 /* 共通確認モーダル(confirmModal)のメッセージ本文。confirm()の改行表現を
    引き継ぐため、\nをそのまま改行として表示する。 */
 .confirm-modal-message{margin:0;padding:10px 12px;border-left:4px solid var(--teal);background:#eef8f9;color:#3a565d;line-height:1.7;white-space:pre-line}
+/* 取り消せない操作の確認で「何が起きるか」を箇条書きにする(§9.61)。
+   本文を長い一段落にすると読み飛ばされるため、影響範囲を1行1件で示す。 */
+.confirm-modal-points{margin:10px 0 0;padding:0 0 0 20px;color:#3a565d;
+ font-size:var(--fs-sm);line-height:1.75}
+.confirm-modal-points li+li{margin-top:4px}
+.confirm-modal-points b{color:var(--danger)}
 /* 設備削除確認(docs/SCHEDULE_MODE_DESIGN.md §5.0.1)の関連スケジュールデータ内訳。 */
 .eq-ref-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}
 .eq-ref-table td{padding:5px 8px;border-bottom:1px solid var(--line)}
@@ -2278,6 +2312,41 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
  ごとの作業効率をクライアント側で集計する。品質データ分析(qa-v7)
  と同じ「軸×系列×指標」の汎用設計・見た目の言語を踏襲する。
  ============================================================ */
+/* ---------- パネル見出し(.rp-head) (§9.63) ----------
+   ダッシュボード・実績カレンダー・帳票が共通で使う見出し。**このクラスには
+   これまでスタイルが1行も無く**、`<h2>`のブラウザ既定マージンと素の`<span>`が
+   そのまま出ていた。そのため見出しだけ余白も色も他画面と揃わず、崩れて
+   見えていた(calendar-view.jsの冒頭コメントは「ダッシュボードと同じ視覚語彙
+   (.rp-head)」と書いているが、その定義自体が存在しなかった)。
+   データ一覧(.record-dialog>header)と同じ濃色バンドに揃える。 */
+.rp-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);
+ padding:10px 18px;background:var(--nav);color:#fff;flex-wrap:wrap}
+.rp-head-title{display:flex;align-items:baseline;gap:var(--space-3);min-width:0}
+.rp-head-title h2{margin:0;font-size:var(--fs-title);font-weight:800;color:#fff;white-space:nowrap}
+.rp-sub{font-size:var(--fs-sm);color:#a8d6dc;min-width:0;
+ overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rp-head-actions{display:flex;align-items:center;gap:var(--space-2);margin-left:auto}
+/* .rp-btn-primary/.rp-btn-secondary も**基底の定義が無く**、ブラウザ既定の
+   ボタンのまま出ていた(実績カレンダーの「‹ › 今月」やダッシュボードの
+   「この条件で集計」)。ヘッダーの.hd-btnと同じ寸法トークンへ揃える。 */
+.rp-btn-primary,.rp-btn-secondary{
+ height:var(--ctl-h);padding:0 16px;border-radius:8px;border:1px solid var(--line);
+ font-size:var(--fs-base-sm);font-weight:700;cursor:pointer;
+ display:inline-flex;align-items:center;justify-content:center;gap:6px;
+ transition:background .12s,border-color .12s,color .12s;
+}
+.rp-btn-secondary{background:#fff;color:#3a565d}
+.rp-btn-secondary:hover{border-color:var(--teal);background:var(--pale);color:#0c5d67}
+.rp-btn-secondary:active{background:var(--teal);border-color:var(--teal);color:#fff}
+.rp-btn-primary{background:var(--teal);border-color:var(--teal);color:#fff}
+.rp-btn-primary:hover{background:var(--teal-dark);border-color:var(--teal-dark)}
+.rp-btn-primary:active{background:#06565f;border-color:#06565f}
+.rp-btn-primary:disabled,.rp-btn-secondary:disabled{
+ opacity:.45;cursor:not-allowed;background:#eef2f4;border-color:#d5e0e3;color:#93a5ab}
+.rp-btn-icon{width:var(--ctl-h);padding:0;font-size:var(--fs-title);line-height:1}
+/* 濃色ヘッダーの中に置く場合は白枠のゴースト表現にする(背景に沈まないように) */
+.rp-head .rp-btn-secondary{background:transparent;border-color:#3d6673;color:#cfe9ed;height:calc(var(--ctl-h) - 8px)}
+.rp-head .rp-btn-secondary:hover{background:#1b3b45;border-color:#5b8894;color:#fff}
 .db-panel{flex:1;min-height:0;margin:9px 14px;display:flex;flex-direction:column;background:#f4f7f8;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .db-panel[hidden]{display:none!important}
 .db-layout{flex:1;min-height:0;display:grid;grid-template-columns:calc(260px * var(--ui-scale)) minmax(0,1fr);overflow:hidden}
@@ -2320,6 +2389,48 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
 .db-axis-title{font-size:var(--fs-micro);font-weight:800;fill:#40606a}
 .db-svg-legend-label{font-size:var(--fs-micro);fill:#3a565d}
 @media(max-width:1000px){.db-layout{grid-template-columns:1fr}.db-controls{max-height:280px}.db-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* ---------- 稼働状況ビュー(§9.64) ----------
+   ダッシュボードを開いた直後に見えるのはこちら。条件を組み立てなくても
+   「いま何が動いていて、何が残っていて、遅れていないか」が分かる状態を作る。 */
+.db-viewtabs{display:flex;gap:0;background:#0f2a32;border:1px solid #2c4750;border-radius:8px;padding:2px}
+.db-viewtabs button{height:calc(var(--ctl-h) - 8px);padding:0 14px;border:0;border-radius:6px;
+ background:transparent;color:#a8d6dc;font-size:var(--fs-sm);font-weight:700;cursor:pointer;
+ transition:background .12s,color .12s}
+.db-viewtabs button:hover{color:#fff;background:#1b3b45}
+.db-viewtabs button.active{background:var(--teal);color:#fff}
+.db-status-view{flex:1;min-height:0;display:flex;flex-direction:column;gap:var(--space-3);
+ padding:var(--space-4);overflow-y:auto}
+.db-card-note{font-size:var(--fs-micro);color:#7b8e95}
+.db-card-value small{font-size:var(--fs-sm);font-weight:700;margin-left:2px;color:#5c777e}
+.db-card.is-warn{border-color:var(--warn-border);background:var(--warn-bg)}
+.db-card.is-warn .db-card-label{color:var(--warn-fg)}
+.db-status-grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:var(--space-3);
+ align-items:start}
+.db-status-card{background:#fff;border:1px solid #d5e0e3;border-radius:12px;overflow:hidden;min-width:0}
+.db-status-card-head{display:flex;align-items:baseline;gap:var(--space-2);flex-wrap:wrap;
+ padding:9px 14px;border-bottom:1px solid #eef2f4;background:#f7fafb}
+.db-status-card-head b{font-size:var(--fs-base-sm);color:#173842}
+.db-status-card-head span{font-size:var(--fs-micro);color:#7b8e95}
+.db-status-body{max-height:min(46vh,460px);overflow:auto}
+.db-status-table{width:100%;border-collapse:collapse}
+.db-status-table th,.db-status-table td{padding:var(--row-pad-y) var(--row-pad-x);
+ border-bottom:1px solid #eef2f4;text-align:center;font-size:var(--fs-sm);white-space:nowrap}
+.db-status-table thead th{background:#eef2f4;color:#173842;position:sticky;top:0;z-index:1;
+ font-size:var(--fs-micro)}
+.db-status-table tbody th{text-align:left;color:#173842;font-weight:700}
+.db-status-table tbody tr.is-running{background:#f2fbfa}
+.db-status-table tbody tr.is-late{background:var(--warn-bg)}
+.db-status-table .db-lot{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em}
+.db-late{color:var(--warn-fg)}
+.db-state-badge{display:inline-block;padding:1px 8px;border-radius:10px;
+ font-size:var(--fs-micro);font-weight:800;border:1px solid transparent}
+.db-state-badge.running{background:var(--success-bg);border-color:var(--success-border);color:var(--success)}
+.db-state-badge.idle{background:#eef2f4;border-color:#d5e0e3;color:#7b8e95}
+.db-state-badge.done{background:var(--success-bg);border-color:var(--success-border);color:var(--success)}
+.db-state-badge.ng{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger)}
+.db-state-badge.editing{background:var(--warn-bg);border-color:var(--warn-border);color:var(--warn-fg)}
+@media(max-width:1200px){.db-status-grid{grid-template-columns:1fr}}
 
 /* ---------- 実績カレンダー ---------- */
 .cal-panel{flex:1;min-height:0;margin:9px 14px;display:flex;flex-direction:column;background:#f4f7f8;border:1px solid var(--line);border-radius:8px;overflow:hidden}
@@ -2543,17 +2654,42 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
 .sc-split-wrap #grid{grid-area:list;margin:0;min-height:0}
 .sc-split-wrap .sc-split-divider{grid-area:divider}
 .sc-split-wrap .sc-panel{grid-area:panel;margin:0;min-height:0}
-.sc-split-wrap.sc-list-collapsed{grid-template-columns:0 10px 1fr}
-.sc-split-wrap.sc-list-collapsed #genericFilterBar,.sc-split-wrap.sc-list-collapsed #listToolbar,.sc-split-wrap.sc-list-collapsed #grid{display:none!important}
+/* 折りたたみ(§9.62)。
+   **セレクタの詳細度に注意**: 一覧を出す側の`body.sc-mode.sc-split #grid`は
+   (id1・class2・要素1)で、畳む側を`.sc-split-wrap.sc-list-collapsed #grid`
+   (id1・class2・要素0)と書くと**要素1個分だけ負ける**。両方!importantなので
+   詳細度で決まり、畳んでも一覧が消えず、幅0の列に押し込まれた破片だけが
+   左端に残る(実際にそう見えていた)。畳む側にもbody側の条件を付けて上回る。 */
+body.sc-mode.sc-split .sc-split-wrap.sc-list-collapsed #genericFilterBar,
+body.sc-mode.sc-split .sc-split-wrap.sc-list-collapsed #listToolbar,
+body.sc-mode.sc-split .sc-split-wrap.sc-list-collapsed #grid{display:none!important}
+/* 畳んだら一覧の列は完全に無くし、取っ手だけを残す。取っ手は上下いっぱいの
+   帯にして「ここを押せば戻る」と分かる大きさにする(10pxの線に小さなボタンが
+   浮いているだけだと、掴む所が分かりにくい)。 */
+.sc-split-wrap.sc-list-collapsed{grid-template-columns:0 26px 1fr}
 .sc-split-divider{position:relative;cursor:col-resize;background:transparent}
 .sc-split-divider::before{content:'';position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--line);transform:translateX(-50%)}
 .sc-split-divider:hover,.sc-split-divider.dragging{background:var(--pale)}
+.sc-split-wrap.sc-list-collapsed .sc-split-divider{cursor:pointer}
+.sc-split-wrap.sc-list-collapsed .sc-split-divider::before{display:none}
+.sc-split-wrap.sc-list-collapsed .sc-split-divider:hover{background:transparent}
 .sc-split-collapse-btn{
  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1;
  width:22px;height:38px;padding:0;border:1px solid var(--line);border-radius:6px;background:#fff;
- cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px;color:#5c777e;
+ cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;font-size:11px;color:#5c777e;
+ transition:background .12s,border-color .12s,color .12s;
 }
 .sc-split-collapse-btn:hover{border-color:var(--teal);color:#075e67;background:var(--pale)}
+.sc-split-collapse-btn:active{background:var(--teal);border-color:var(--teal);color:#fff}
+.sc-split-wrap.sc-list-collapsed .sc-split-collapse-btn{
+ position:static;transform:none;width:100%;height:100%;flex-direction:column;
+ border-radius:6px 0 0 6px;background:#e9f0f2;border-right-color:transparent;
+}
+/* 畳んでいる間は「何が畳まれているか」を縦書きラベルで示す。アイコンだけだと
+   戻したとき何が出るのか分からない。 */
+.sc-split-collapse-label{writing-mode:vertical-rl;font-size:var(--fs-micro);
+ letter-spacing:.14em;color:#5c777e;font-weight:700;white-space:nowrap}
+.sc-split-wrap:not(.sc-list-collapsed) .sc-split-collapse-label{display:none}
 @media(max-width:1280px){
  .sc-split-wrap{grid-template-columns:1fr;grid-template-rows:auto auto minmax(220px,38vh) minmax(260px,1fr);grid-template-areas:"filter" "toolbar" "list" "panel"}
  .sc-split-divider{display:none}
@@ -2673,6 +2809,11 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
 .sc-row-btn:hover{border-color:var(--teal);color:#0c5d67}
 .sc-row-btn.active{background:var(--computed-bg);border-color:var(--teal);color:#0c5d67}
 .sc-row-delete:hover{border-color:var(--danger-border);background:var(--danger-bg);color:var(--danger)}
+/* 実績(測定データ)の削除は取り消せないので、押す前から危険色で見えるようにする
+   (§9.61)。予定の削除ボタンと隣り合うため、色と文字で区別を付ける。 */
+.sc-row-btn-danger{width:auto;padding:0 7px;border-color:var(--danger-border);
+ background:var(--danger-bg);color:var(--danger);font-weight:700}
+.sc-row-btn-danger:hover{background:var(--danger);border-color:var(--danger);color:#fff}
 
 /* 詳細(固定開始・見積の内訳)を1つの折りたたみへ統合。 */
 .sc-row-detail[hidden]{display:none}

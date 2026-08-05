@@ -157,6 +157,24 @@ function residualCourseValue(){return sourceField(['残仕掛設備ｺｰｽ','�
 function normalizeCourseText(v){return String(v||'').normalize('NFKC').toUpperCase().replace(/[\s　]+/g,'')}
 function equipmentIsInDesignCourse(equipment,course){const e=normalizeCourseText(equipment),c=normalizeCourseText(course);return !!e&&!!c&&c.includes(e)}
 document.title='測定伝送システム';
+/* ---------- ヘッダーの「今どこを見ているか」(§9.60) ----------
+   以前はlist-view.jsのapplyTableData()だけが#fileNameへDBのファイル名を
+   書いており、他の画面(データ一覧・スケジュール・ダッシュボード・カレンダー・
+   マスタ管理)へ移っても消さなかった。そのため「データ一覧を見ているのに
+   ヘッダーはSIKALOTNOW.sqlite3」という、直前に見たDBの名残がずっと残る
+   状態になっていた。
+
+   画面の名前(何を見ているか)を主、データの出どころ(どのファイル/どの範囲か)
+   を副として出す。副が無い画面もあるので、その場合は主だけを出す。
+   **画面を開く関数は必ずこれを呼ぶこと**(呼ばないと前の画面の名残が残る)。 */
+function setHeaderContext(title,source){
+ const t=document.querySelector('#fileName');if(t)t.textContent=title||'測定伝送システム';
+ const s=document.querySelector('#headerContextSource');
+ if(s){s.textContent=source||'';s.hidden=!source}
+ // 画面が変わったら鮮度表示(一覧専用)は持ち越さない
+ if(typeof window.updateListFreshness==='function'&&!source)window.updateListFreshness(null);
+}
+window.setHeaderContext=setHeaderContext;
 /* レコードのstatus文字列からバッジ用のCSSクラス/表示ラベルを求める共通関数。
    以前はcalendar-view.js/report-dashboard.jsに同一内容が重複定義され、
    records-store.jsは一覧行のレンダリングで同じ判定をインラインで

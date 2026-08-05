@@ -161,10 +161,10 @@ async function syncPendingRecords({silent}={}){
    if(!silent)showToast('未同期のデータはありません','',3000);
    return{total:0,ok:0};
   }
-  if(!silent)showSaveOverlay('Accessへ再送しています',`未同期 ${targets.length}件`);
+  if(!silent)showSaveOverlay('バックアップDBへ送信しています',`未同期 ${targets.length}件`);
   let ok=0;
   for(let i=0;i<targets.length;i++){
-   if(!silent)updateWaiting(`${i+1}/${targets.length}件目: ${targets[i].basic?.lotNo||targets[i].id}`,'Accessへ送信しています');
+   if(!silent)updateWaiting(`${i+1}/${targets.length}件目: ${targets[i].basic?.lotNo||targets[i].id}`,'バックアップDBへ送信しています');
    if(await backupAndTrackSync(targets[i]))ok++;
   }
   if(!silent)hideSaveOverlay();
@@ -187,7 +187,7 @@ async function refreshSyncStatusUI(preloaded){
   pendingCount=all.filter(x=>x.syncState?.status!=='synced').length;
  }catch(e){return}
  const badge=$('#homeDraftSyncWarn');
- if(badge){badge.hidden=pendingCount===0;badge.title=pendingCount?`Accessへ未同期のデータが${pendingCount}件あります`:''}
+ if(badge){badge.hidden=pendingCount===0;badge.title=pendingCount?`バックアップDBへ未送信のデータが${pendingCount}件あります`:''}
  const bar=$('#recordSyncBar'),count=$('#recordSyncCount');
  if(bar){bar.hidden=pendingCount===0}
  if(count)count.textContent=String(pendingCount);
@@ -259,7 +259,7 @@ async function persistAndTransition(status){
   if(!accessOK)console.warn('Access backup failed',m.syncState?.lastError);
   measureDirty=false;
   await refreshDraftCount();refreshSyncStatusUI();$('#measureModal').hidden=true;hideSaveOverlay();
-  showToast(status==='完了'?'完了登録しました':'一時保存しました',`${m.basic.lotNo||''} / IndexedDB ${result.idbOK?'OK':'代替保存'} / Access ${accessOK?'OK':'未完了（後で自動的に再送します）'}`,6500);
+  showToast(status==='完了'?'完了登録しました':'一時保存しました',`${m.basic.lotNo||''} / IndexedDB ${result.idbOK?'OK':'代替保存'} / バックアップ ${accessOK?'OK':'未送信（後で自動的に再送します）'}`,6500);
   await openRecords(status==='完了'?'履歴':'編集中');
  }catch(e){hideSaveOverlay();setState('保存エラー');alert('保存できませんでした: '+e.message)}
 }
@@ -361,13 +361,13 @@ document.addEventListener('click',event=>{
 $('#saveDraft').onclick=()=>persistAndTransition('編集中');
 $('#complete').onclick=()=>persistAndTransition('完了');
 $('#backupNow').onclick=async()=>{
- showSaveOverlay('Accessへバックアップ','完全スナップショットを送信中');
+ showSaveOverlay('バックアップDBへ送信','完全スナップショットを送信中');
  try{
   const m=collect();await reliablePut(m);
   const ok=await backupAndTrackSync(m);
   refreshSyncStatusUI();hideSaveOverlay();
-  if(ok)showToast('Accessバックアップ完了',m.basic.lotNo||'');
-  else showToast('Accessバックアップ失敗',`${m.basic.lotNo||''} / ${m.syncState?.lastError||''}（未同期として記録し、後で再送できます）`,7000);
+  if(ok)showToast('バックアップ完了',m.basic.lotNo||'');
+  else showToast('バックアップ失敗',`${m.basic.lotNo||''} / ${m.syncState?.lastError||''}（未同期として記録し、後で再送できます）`,7000);
  }catch(e){hideSaveOverlay();alert('バックアップ失敗: '+e.message)}
 };
 $('#discard').onclick=async()=>{if(await confirmModal('端末内の測定データを削除しますか？')){await reliableDelete(S.measure.id);await refreshDraftCount();$('#measureModal').hidden=true}};
@@ -405,6 +405,7 @@ async function openRecords(status){
  recordListState.items=allRecords.map(ensureMeasureShape);recordListState.query='';recordListState.sort='updated-desc';
  // 未同期件数の表示にも今読んだ配列を渡す(渡さないと全件読みがもう1回走る)
  updateRecordListTitle();syncStatusFilterButtons();$('#recordModal').hidden=false;refreshSyncStatusUI(allRecords);
+ setHeaderContext('データ一覧','この端末に保存された測定データ');
  const search=$('#recordSearch'),sort=$('#recordSort'),clear=$('#clearRecordSearch');if(search){search.value='';search.oninput=()=>{recordListState.query=search.value;renderRecordListRows()}}if(sort){sort.value='updated-desc';sort.onchange=()=>{recordListState.sort=sort.value;renderRecordListRows()}}if(clear)clear.onclick=()=>{recordListState.query='';if(search)search.value='';renderRecordListRows()};renderRecordListRows();requestAnimationFrame(()=>search?.focus())
 }
 document.querySelectorAll('.status-filter-btn').forEach(b=>b.onclick=()=>{
@@ -464,7 +465,7 @@ function renderRecordListRows(){const list=$('#recordList'),items=sortedFiltered
  const clearBtn=$('#recordEmptyClearSearch');
  if(clearBtn)clearBtn.onclick=()=>{recordListState.query='';const search=$('#recordSearch');if(search)search.value='';renderRecordListRows()};
 }
-items.forEach(x=>{ensureMeasureShape(x);const same=currentLot&&normalizedLot(x.basic?.lotNo)===currentLot,row=document.createElement('article'),resume=resumeRecordFromList(x),course=x.basic?.residualCourse||x.basic?.course||x.basic?.designCourse||'-',crew=x.settings?.crewSize&&x.settings.crewSize!=='-'?x.settings.crewSize+'名':'-',isDone=x.status==='完了',isNg=x.status==='測定値NG',badgeClass=statusClass(x.status),syncSt=x.syncState?.status||'pending',syncBadge=syncSt==='synced'?'':`<span class="record-sync-badge record-sync-${syncSt}" title="${syncSt==='failed'?'Accessへの送信に失敗しました: '+esc(x.syncState?.lastError||''):'Accessへまだ送信していません'}">未同期</span>`;row.className='record-list-row'+(same?' is-same-lot':'');row.tabIndex=0;row.innerHTML=`<div class="record-list-cell"><span class="rp-status-badge${badgeClass?' '+badgeClass:''}" title="${isNg?'NG回数 '+(x.settings?.ngCount||0)+'回':''}">${statusShortLabel(x.status)}</span>${syncBadge}</div><div class="record-list-cell primary"><button type="button" class="lot-dsp-link grid-lot-link" title="クリックでLotDspをこのロット番号で開きます">${esc(x.basic?.lotNo||x.id)}</button></div><div class="record-list-cell">${esc(x.basic?.inspectionNo||'-')}</div><div class="record-list-cell">${esc(x.basic?.mfgMaterial||'-')}</div><div class="record-list-cell secondary">${esc(fmtDim(x.basic?.mfgThickness,3)||'-')}</div><div class="record-list-cell secondary">${esc(x.basic?.purposeName||'-')}</div><div class="record-list-cell secondary">${esc(course)}</div><div class="record-list-cell secondary">${esc(x.settings?.operator||'-')}</div><div class="record-list-cell secondary">${esc(x.settings?.inspector||'-')}</div><div class="record-list-cell secondary">${esc(crew)}</div><div class="record-list-cell secondary">${esc(recordSplitLabel(x))}</div><div class="record-list-cell"><time>${esc(x.workTime?.startAt?formatWorkTime(x.workTime.startAt):'-')}</time></div><div class="record-list-cell"><time>${esc(x.updatedAt?new Date(x.updatedAt).toLocaleString('ja-JP'):'-')}</time></div><div class="record-list-cell record-duration">${esc(formatDuration(durationMs(x)))}</div><div class="record-list-actions"><button class="resume" type="button">${isDone?'内容を開く':'続きから再開'}</button><button class="report" type="button" title="このロットの帳票プレビューを開きます">帳票</button><button class="danger" type="button">削除</button></div>`;row.querySelector('.resume').onclick=e=>{e.stopPropagation();resume()};row.querySelector('.report').onclick=e=>{e.stopPropagation();if(typeof openReportForRecord==='function')openReportForRecord(x.id)};const recLotBtn=row.querySelector('.grid-lot-link');if(recLotBtn)recLotBtn.onclick=e=>{e.preventDefault();e.stopPropagation();openLotDsp(x.basic?.lotNo,x.basic?.castingNo,localStorage.getItem('LotDspLastTabV1')||'1')};
+items.forEach(x=>{ensureMeasureShape(x);const same=currentLot&&normalizedLot(x.basic?.lotNo)===currentLot,row=document.createElement('article'),resume=resumeRecordFromList(x),course=x.basic?.residualCourse||x.basic?.course||x.basic?.designCourse||'-',crew=x.settings?.crewSize&&x.settings.crewSize!=='-'?x.settings.crewSize+'名':'-',isDone=x.status==='完了',isNg=x.status==='測定値NG',badgeClass=statusClass(x.status),syncSt=x.syncState?.status||'pending',syncBadge=syncSt==='synced'?'':`<span class="record-sync-badge record-sync-${syncSt}" title="${syncSt==='failed'?'バックアップDBへの送信に失敗しました: '+esc(x.syncState?.lastError||''):'バックアップDBへまだ送信していません'}">未同期</span>`;row.className='record-list-row'+(same?' is-same-lot':'');row.tabIndex=0;row.innerHTML=`<div class="record-list-cell"><span class="rp-status-badge${badgeClass?' '+badgeClass:''}" title="${isNg?'NG回数 '+(x.settings?.ngCount||0)+'回':''}">${statusShortLabel(x.status)}</span>${syncBadge}</div><div class="record-list-cell primary"><button type="button" class="lot-dsp-link grid-lot-link" title="クリックでLotDspをこのロット番号で開きます">${esc(x.basic?.lotNo||x.id)}</button></div><div class="record-list-cell">${esc(x.basic?.inspectionNo||'-')}</div><div class="record-list-cell">${esc(x.basic?.mfgMaterial||'-')}</div><div class="record-list-cell secondary">${esc(fmtDim(x.basic?.mfgThickness,3)||'-')}</div><div class="record-list-cell secondary">${esc(x.basic?.purposeName||'-')}</div><div class="record-list-cell secondary">${esc(course)}</div><div class="record-list-cell secondary">${esc(x.settings?.operator||'-')}</div><div class="record-list-cell secondary">${esc(x.settings?.inspector||'-')}</div><div class="record-list-cell secondary">${esc(crew)}</div><div class="record-list-cell secondary">${esc(recordSplitLabel(x))}</div><div class="record-list-cell"><time>${esc(x.workTime?.startAt?formatWorkTime(x.workTime.startAt):'-')}</time></div><div class="record-list-cell"><time>${esc(x.updatedAt?new Date(x.updatedAt).toLocaleString('ja-JP'):'-')}</time></div><div class="record-list-cell record-duration">${esc(formatDuration(durationMs(x)))}</div><div class="record-list-actions"><button class="resume" type="button">${isDone?'内容を開く':'続きから再開'}</button><button class="report" type="button" title="このロットの帳票プレビューを開きます">帳票</button><button class="danger" type="button">削除</button></div>`;row.querySelector('.resume').onclick=e=>{e.stopPropagation();resume()};row.querySelector('.report').onclick=e=>{e.stopPropagation();if(typeof openReportForRecord==='function')openReportForRecord(x.id)};const recLotBtn=row.querySelector('.grid-lot-link');if(recLotBtn)recLotBtn.onclick=e=>{e.preventDefault();e.stopPropagation();openLotDsp(x.basic?.lotNo,x.basic?.castingNo,localStorage.getItem('LotDspLastTabV1')||'1')};
 // ダブルクリックは編集再開ではなく帳票プレビューへの遷移とする(編集は「続きから再開/内容を開く」ボタンから明示的に行う)。
 row.ondblclick=e=>{if(!e.target.closest('.danger')&&!e.target.closest('.resume')&&!e.target.closest('.report')&&!e.target.closest('.grid-lot-link')&&typeof openReportForRecord==='function')openReportForRecord(x.id)};
 row.setAttribute('role','button');row.setAttribute('aria-label',(isDone?'内容を開く':'続きから再開')+' '+(x.basic?.lotNo||x.id));

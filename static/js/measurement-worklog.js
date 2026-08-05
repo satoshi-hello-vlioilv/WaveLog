@@ -940,7 +940,7 @@
    const audit=`更新者: ${it.updated_by||'-'} / 更新日時: ${fmtDT(it.updated_at)}`;
    row.title=showAudit?'クリックで編集フォームに読み込みます':`クリックで編集\n${audit}`;
    const cells=def.cols.map(c=>`<span title="${esc(it[c.k]??'')}">${esc(it[c.k]??'')||'<em class="mm-blank">—</em>'}</span>`).join('');
-   row.innerHTML=`${cells}${showAudit?`<span class="mm-user" title="${esc(it.updated_by||'')}">${esc(it.updated_by||'-')}</span><span class="mm-date">${esc(fmtDT(it.updated_at))}</span>`:''}<span class="mm-act"><button type="button" class="mm-edit">編集</button>${def.hasDelete?'<button type="button" class="mm-del">削除</button>':''}</span>`;
+   row.innerHTML=`${cells}${showAudit?`<span class="mm-user" title="${esc(it.updated_by||'')}">${esc(it.updated_by||'-')}</span><span class="mm-date">${esc(fmtDT(it.updated_at))}</span>`:''}<span class="mm-act"><button type="button" class="mm-edit" title="この行の内容を編集します">編集</button>${def.hasDelete?'<button type="button" class="mm-del" title="この行を削除します（確認画面が出ます）">削除</button>':''}</span>`;
    // 入力項目が多いマスタは編集専用モーダル、少ないマスタは従来どおり
    // 上部のインラインフォームへ読み込む(ARCHITECTURE.md「マスタ管理の画面形態」、defUsesEditorModal)。
    const edit=()=>{
@@ -1745,6 +1745,7 @@
   const panel=ensureMaintPanel();
   document.body.classList.add('mm-mode');
   document.getElementById('openMasterMaint')?.classList.add('active');
+  setHeaderContext('マスタ管理','master.sqlite3');
   renderMaintNav();
   const uid=$('#masterUserId');if(uid)uid.value=currentUserId();
   if(!maintDefVisible(currentDef()))maintState.defKey=firstVisibleDefKey();
