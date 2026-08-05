@@ -190,26 +190,94 @@
      内部計算がそれに引きずられるべきではない)。このため分割機能が使う
      問い合わせは全て include_hidden=1 を付け、非表示設定に関係なく
      生データを取得する。 */
+  /* ---------- 問い合わせのキャッシュ(docs/ARCHITECTURE.md「共有ファイルを
+     読む処理は回数が効く」) ----------
+     一覧を1ページ描くたびに、子カード判定された行の**1行ごと**に
+     findParentLotFor()が走る(list-view.jsのcheckParentLookupRows)。中身は
+       (1) テーブル名を引く      /api/tables
+       (2) 列名を引く            /api/table?page_size=1
+       (3) 先頭5桁で親を探す     /api/table?page_size=50
+     の3往復で、これが行数ぶん線形に増えていた(実測: 20行→60往復)。
+     200行ページに子カードが80行あれば240往復になり、共有越し(1回150ms)なら
+     それだけで30秒を超える。
+
+     (1)(2)は**実行中に変わらない**ので保持する。(3)は先頭5桁+設備が同じなら
+     まったく同じ問い合わせになるため、キーで束ねて1回にする(同じ親を持つ
+     子ロットが並ぶのが普通なので、実データほどよく効く)。
+     (3)は生データのキャッシュなので、一覧の再読込(invalidateTableCache)に
+     合わせて捨て、TTLも一覧と揃える。 */
+  const SPLIT_QUERY_TTL_MS=180000;   // 3分(仕掛一覧のキャッシュと同じ)
+  let sikaTablePromise=null;
+  const sikaColumnsCache=new Map();   // テーブル名ごとに持つ(測定中はsourceTableが優先されるため)
+  const prefixSearchCache=new Map();
+  function invalidateSplitQueryCache(){
+    sikaTablePromise=null;sikaColumnsCache.clear();prefixSearchCache.clear();
+  }
+  window.invalidateSplitQueryCache=invalidateSplitQueryCache;
   async function resolveSikaTable(){
     if(S.measure?.settings?.sourceTable)return S.measure.settings.sourceTable;
-    const info=await api('/api/tables?db=SIKALOTNOW');
-    return info.tables?.[0]||null;
+    if(!sikaTablePromise){
+      sikaTablePromise=api('/api/tables?db=SIKALOTNOW')
+        .then(info=>info.tables?.[0]||null)
+        .catch(e=>{sikaTablePromise=null;throw e});
+    }
+    return sikaTablePromise;
   }
   async function resolveSikaColumns(table){
-    const d=await api('/api/table?'+new URLSearchParams({db:'SIKALOTNOW',table,page:1,page_size:1,include_hidden:1}));
-    return d.columns||[];
+    // テーブルが違えば列も違う。resolveSikaTable()は測定中だけ
+    // S.measure.settings.sourceTableを返すので、同じセッション内でも
+    // 引数が変わり得る。キーはテーブル名にする。
+    if(!sikaColumnsCache.has(table)){
+      sikaColumnsCache.set(table,
+        api('/api/table?'+new URLSearchParams({db:'SIKALOTNOW',table,page:1,page_size:1,include_hidden:1}))
+          .then(d=>d.columns||[])
+          .catch(e=>{sikaColumnsCache.delete(table);throw e}));
+    }
+    return sikaColumnsCache.get(table);
+  }
+  /* 先頭5桁+設備での仕掛検索。findParentLotFor/findMissingChildLotsが同じ
+     問い合わせを何度も投げるため、キーで1回に束ねる(進行中の呼び出しにも
+     相乗りできるようPromiseのまま持つ)。 */
+  async function searchByLotPrefix(table,columns,prefix){
+    const lotCol=findColumn(columns,aliases.lotNo);if(!lotCol)return [];
+    const equipCol=findColumn(columns,aliases.equipment);
+    const equipment=typeof currentConfiguredEquipment==='function'?currentConfiguredEquipment():'';
+    const key=`${table}|${prefix}|${equipCol&&equipment?equipment:''}`;
+    const hit=prefixSearchCache.get(key);
+    if(hit&&Date.now()-hit.at<SPLIT_QUERY_TTL_MS)return hit.promise;
+    const filters=[{column:lotCol,op:'starts',value:prefix}];
+    if(equipCol&&equipment)filters.push({column:equipCol,op:'contains',value:equipment});
+    const params=new URLSearchParams({db:'SIKALOTNOW',table,page:1,page_size:50,include_hidden:1,filters:JSON.stringify(filters)});
+    const promise=api('/api/table?'+params).then(d=>d.rows||[])
+      .catch(e=>{prefixSearchCache.delete(key);throw e});
+    prefixSearchCache.set(key,{at:Date.now(),promise});
+    return promise;
   }
   function findColumn(columns,candidates){
     for(const c of candidates)if(columns.includes(c))return c;
     for(const c of candidates){const wn=norm(c);const hit=columns.find(x=>norm(x)===wn);if(hit)return hit}
     return null;
   }
-  // 子ロット自身のレコードをSIKALOTNOWへ再検索する(旧VBA GetKLTArr相当)。
+  /* 子ロット自身のレコードをSIKALOTNOWへ再検索する(旧VBA GetKLTArr相当)。
+     子ロットは親と先頭5桁を共有するため、まず**まとめて引いた結果**
+     (searchByLotPrefix、キャッシュ付き)から探す。条割プレビューは子ロットの
+     数だけこれを順番に呼ぶので、素直に1ロット1問い合わせにすると
+     10分割なら10往復を直列で待つことになる(共有越しなら1.5秒級)。
+     prefixの結果が上限(50件)に達していて見つからなかったときだけ、
+     取りこぼしの可能性があるので従来どおり個別に引く。 */
+  const PREFIX_PAGE_SIZE=50;
   async function fetchChildLotRow(lotNo){
     try{
       const table=await resolveSikaTable();if(!table)return null;
       const columns=await resolveSikaColumns(table);if(!columns.length)return null;
       const lotCol=findColumn(columns,aliases.lotNo);if(!lotCol)return null;
+      const key=String(lotNo||'');
+      if(key.length>=5){
+        const rows=await searchByLotPrefix(table,columns,key.slice(0,5));
+        const hit=rows.find(r=>String(pick(r,'lotNo')||'')===key);
+        if(hit)return hit;
+        if(rows.length<PREFIX_PAGE_SIZE)return null;   // 取りこぼしではなく本当に無い
+      }
       const filters=[{column:lotCol,op:'eq',value:lotNo}];
       const equipCol=findColumn(columns,aliases.equipment),equipment=typeof currentConfiguredEquipment==='function'?currentConfiguredEquipment():'';
       if(equipCol&&equipment)filters.push({column:equipCol,op:'contains',value:equipment});
@@ -281,13 +349,8 @@
     try{
       const table=await resolveSikaTable();if(!table)return null;
       const columns=await resolveSikaColumns(table);if(!columns.length)return null;
-      const lotCol=findColumn(columns,aliases.lotNo);if(!lotCol)return null;
-      const filters=[{column:lotCol,op:'starts',value:lotNo.slice(0,5)}];
-      const equipCol=findColumn(columns,aliases.equipment),equipment=typeof currentConfiguredEquipment==='function'?currentConfiguredEquipment():'';
-      if(equipCol&&equipment)filters.push({column:equipCol,op:'contains',value:equipment});
-      const params=new URLSearchParams({db:'SIKALOTNOW',table,page:1,page_size:50,include_hidden:1,filters:JSON.stringify(filters)});
-      const d=await api('/api/table?'+params);
-      for(const cand of (d.rows||[])){
+      const rows=await searchByLotPrefix(table,columns,lotNo.slice(0,5));
+      for(const cand of rows){
         const candLotNo=String(pick(cand,'lotNo')||'');
         if(!candLotNo||candLotNo===lotNo)continue;
         const kids=childLotNumbersFromCard(cand,candLotNo);
@@ -326,13 +389,8 @@
     try{
       const table=await resolveSikaTable();if(!table)return null;
       const columns=await resolveSikaColumns(table);if(!columns.length)return null;
-      const lotCol=findColumn(columns,aliases.lotNo);if(!lotCol)return null;
-      const filters=[{column:lotCol,op:'starts',value:lotNo.slice(0,5)}];
-      const equipCol=findColumn(columns,aliases.equipment),equipment=typeof currentConfiguredEquipment==='function'?currentConfiguredEquipment():'';
-      if(equipCol&&equipment)filters.push({column:equipCol,op:'contains',value:equipment});
-      const params=new URLSearchParams({db:'SIKALOTNOW',table,page:1,page_size:50,include_hidden:1,filters:JSON.stringify(filters)});
-      const d=await api('/api/table?'+params);
-      const present=new Set((d.rows||[]).map(r=>String(pick(r,'lotNo')||'')));
+      const rows=await searchByLotPrefix(table,columns,lotNo.slice(0,5));
+      const present=new Set(rows.map(r=>String(pick(r,'lotNo')||'')));
       const missing=expected.filter(lot=>!present.has(lot));
       return{expected,missing};
     }catch(e){console.warn('子ロット存在確認に失敗しました: '+lotNo,e);return null}

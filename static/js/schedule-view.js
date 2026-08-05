@@ -990,31 +990,70 @@
  /* 仕掛一覧から「ロット番号 -> 残仕掛設備ｺｰｽ」を作る。列表示マスタで
     残仕掛設備ｺｰｽが非表示にされていても判定に要るので include_hidden=1
     を付ける(CLAUDE.md「内部計算用の問い合わせには include_hidden=1」)。 */
+ const WORKABLE_BULK_ROWS=5000;   // 一括で読む上限
+ const WORKABLE_FILL_LIMIT=60;    // 取りこぼしを個別に補う上限(往復が増えるため)
  async function loadWorkableIndex(force){
   if(!force&&scWorkable.map&&Date.now()-scWorkable.at<WORKABLE_TTL_MS)return scWorkable.map;
   const map=new Map();
+  let truncated=false,cols=null,table=null;
   try{
    const t=await api('/api/tables?db=SIKALOTNOW');
-   const table=(t.tables||[])[0];
+   table=(t.tables||[])[0];
    if(table){
-    const q=new URLSearchParams({db:'SIKALOTNOW',table,page:1,page_size:5000,search:'',include_hidden:'1'});
+    const q=new URLSearchParams({db:'SIKALOTNOW',table,page:1,page_size:WORKABLE_BULK_ROWS,search:'',include_hidden:'1'});
     const d=await api('/api/table?'+q);
     const lotCol=(aliases.lotNo||[]).find(n=>(d.columns||[]).includes(n));
     const resCol=(aliases.residualCourse||[]).find(n=>(d.columns||[]).includes(n));
+    cols={lotCol,resCol};
     if(lotCol&&resCol){
      (d.rows||[]).forEach(r=>{
       const lot=normalizeLotKey(r[lotCol]);
       if(lot)map.set(lot,String(r[resCol]??''));
      });
     }
+    // 仕掛が上限より多いと、載らなかったロットが全部「?」になり作業を
+    // 開始できない。**こちらの都合で現場を止めない**よう、載らなかった分は
+    // 予定に出ているロットに限って個別に引き直す(下のfillMissingLots)。
+    truncated=Number(d.count||0)>(d.rows||[]).length;
    }
   }catch(e){
    // 仕掛が読めないときは判定材料が無い。mapを空で持ち、UIは「不明」を出す
    // (この場合に既定で「可」にすると、確認できないものを作業させてしまう)。
    console.warn('作業可否の判定に使う仕掛一覧を取得できません',e);
   }
-  scWorkable={at:Date.now(),map};
-  return map;
+  scWorkable={at:Date.now(),map,truncated,table,cols};
+  if(truncated)await fillMissingLots();
+  return scWorkable.map;
+ }
+ /* 一括取得に載らなかったロットを、**今のタイムラインに出ている分だけ**
+    個別に引いて索引へ足す。全件を引き直すのではなく、判定が要る行に絞る。 */
+ async function fillMissingLots(){
+  const {map,table,cols}=scWorkable;
+  if(!table||!cols||!cols.lotCol||!cols.resCol)return;
+  const missing=[...new Set((scState.entries||[])
+    .filter(e=>e.kind==='作業')
+    .map(e=>normalizeLotKey(e.lotNo||contentValueOf(e.detail,'lotNo')))
+    .filter(lot=>lot&&!map.has(lot)))];
+  if(!missing.length)return;
+  const targets=missing.slice(0,WORKABLE_FILL_LIMIT);
+  let idx=0;
+  await Promise.all(Array.from({length:Math.min(3,targets.length)},async()=>{
+   while(idx<targets.length){
+    const lot=targets[idx++];
+    try{
+     const q=new URLSearchParams({db:'SIKALOTNOW',table,page:1,page_size:1,include_hidden:'1',
+      filters:JSON.stringify([{column:cols.lotCol,op:'eq',value:lot}])});
+     const d=await api('/api/table?'+q);
+     const row=(d.rows||[])[0];
+     // 見つからなければ「仕掛に無い」ことが確定するので、空文字で入れて
+     // 「?」ではなく「不可」として扱えるようにする。
+     map.set(lot,row?String(row[cols.resCol]??''):'');
+    }catch(e){/* 引けなければ「?」のまま(勝手に可にしない) */}
+   }
+  }));
+  if(missing.length>targets.length){
+   console.warn(`作業可否: 仕掛の件数が多く、${missing.length-targets.length}件は判定できませんでした`);
+  }
  }
  function normalizeLotKey(v){return String(v??'').trim().toUpperCase()}
  /* 残仕掛設備ｺｰｽがこの設備名で始まっていれば作業可能。

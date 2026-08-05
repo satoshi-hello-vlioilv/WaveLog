@@ -84,7 +84,12 @@ function tableCacheSet(key,data){
  // 際限なく溜めない(条件を変えるたびに1件増えるため)
  if(tableCache.size>40)tableCache.delete(tableCache.keys().next().value);
 }
-function invalidateTableCache(){tableCache.clear();updateListFreshness(null)}
+function invalidateTableCache(){
+ tableCache.clear();updateListFreshness(null);
+ // 分割判定が使う仕掛の生データ問い合わせも一緒に捨てる(一覧だけ新しくして
+ // 親ロット判定が古いまま、という食い違いを作らない)。
+ if(typeof window.invalidateSplitQueryCache==='function')window.invalidateSplitQueryCache();
+}
 window.invalidateTableCache=invalidateTableCache;
 /* 「いつ時点の一覧か」をヘッダーへ出す。キャッシュから描いたときだけ意味が
    あるので、取り立てのときは非表示にする。 */
@@ -168,6 +173,7 @@ async function selectTable(t,report){
 function findColumnFor(key){return (aliases[key]||[]).find(n=>S.columns.includes(n))||null}
 // Add an explicit virtual action column instead of writing into the last data column.
 function renderGrid(){
+ bumpGridGeneration();   // 前の描画に紐づく非同期判定を打ち切る(下のcheck*参照)
  /* ロット問い合わせ(LotDsp)は仕掛一覧・品質データのどちらでも使えるように
     する。「測定」列(測定画面を開く)は仕掛一覧(SIKALOTNOW)専用のまま。
     「予定」列(スケジュールへ追加、§9.5)もSIKALOTNOW専用で、スケジュール
@@ -383,6 +389,12 @@ window.clearListSelection=clearListSelection;
 /* 分割あり行について、子ロットが仕掛に実在するかを確認し、見つからなければ
    グリッド上で気づける表示(⚠子ロット未検出)に切り替える。1行ごとに問い合わせが
    発生するため、同時実行数を絞って一覧の応答性・Access接続への負荷を抑える。 */
+/* 一覧を描き直すたびに進む世代番号。分割判定・親ロット判定は描画後に
+   非同期で追いつく作りなので、ページ送り・検索・並べ替えで描き直された
+   あとに古い応答が返ってくると、既に取り除かれた行へ書き込み続け、
+   問い合わせも無駄に走り切る。世代が変わったら打ち切る。 */
+let gridGeneration=0;
+function bumpGridGeneration(){return ++gridGeneration}
 function runLimited(items,limit,worker){
  let idx=0;
  const runners=Array.from({length:Math.min(limit,items.length)},async()=>{
@@ -395,8 +407,11 @@ function runLimited(items,limit,worker){
 }
 function checkSplitRowsForMissingChildren(targets){
  if(!targets.length||typeof window.findMissingChildLots!=='function')return;
+ const gen=gridGeneration;
  runLimited(targets,3,async({tr,row})=>{
+  if(gen!==gridGeneration)return;          // 描き直された: この判定はもう不要
   const info=await window.findMissingChildLots(row);
+  if(gen!==gridGeneration)return;
   if(!info||!info.missing.length)return;
   const cell=tr.querySelector('.split-flag-cell');if(!cell)return;
   cell.classList.remove('split-yes');cell.classList.add('split-missing');
@@ -410,8 +425,11 @@ function checkSplitRowsForMissingChildren(targets){
    切り替えて、仕掛一覧だけで子ロットであることに気づけるようにする。 */
 function checkParentLookupRows(targets){
  if(!targets.length||typeof window.findParentLotFor!=='function')return;
+ const gen=gridGeneration;
  runLimited(targets,3,async({tr,row})=>{
+  if(gen!==gridGeneration)return;          // 描き直された: この判定はもう不要
   const parent=await window.findParentLotFor(row);
+  if(gen!==gridGeneration)return;
   const cell=tr.querySelector('.split-flag-cell');if(!cell)return;
   if(parent){
    const parentLotNo=pick(parent,'lotNo');
