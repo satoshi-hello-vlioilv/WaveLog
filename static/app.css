@@ -2925,3 +2925,9 @@ body.rp-mode #printCurrentView,body.qa-mode #printCurrentView{display:none!impor
 .sc-row-resume{background:var(--success-bg);border-color:var(--success-border);color:var(--success);font-weight:800;white-space:nowrap}
 .sc-row-resume:hover{background:var(--success);border-color:var(--success);color:#fff}
 .sc-row-report:hover{border-color:var(--teal);background:var(--pale)}
+
+/* 現場段取りの権限はあるが対象設備が未設定/不一致のとき(§9.44)。
+   「可」と言い切ると、動かした瞬間にサーバーへ弾かれて食い違うため、
+   設定が要ることを色でも示す。 */
+.field-reorder-badge.is-warn{border-color:var(--danger-border);background:var(--danger-bg);color:var(--danger)}
+.sc-field-reorder-note.is-warn{color:var(--danger);font-weight:700}

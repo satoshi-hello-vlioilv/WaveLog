@@ -606,19 +606,26 @@
   // fullControl: 追加・削除・設備停止投入まで可能なのはscheduleモードだけ
   // (§3.1.1のとおり、現場段取りは並べ替え1操作のみに限定する)。
   scState.fullControl=(am.mode==='schedule');
-  scState.editable=scState.fullControl||(am.mode==='edit'&&am.canFieldReorder);
-  scState.fieldReorderOnly=(am.mode==='edit'&&am.canFieldReorder);
+  // §9.44: 並べ替えの可否は**サーバーと同じ条件**で判定する。以前は
+  // canFieldReorderだけを見ていたため、現場段取り可の端末なら
+  // 「現場段取り対象設備」が未設定でも/別設備でも行がドラッグでき、
+  // 動かした瞬間に403で弾かれていた(画面は「並べ替え可」と表示したまま)。
+  // 対象設備は1端末につき1設備で、空欄は「未設定」であって全設備許可ではない
+  // (§3.1.1・§3.2)。ここを緩めるとAPI側の縛りと食い違うので合わせるだけにする。
+  scState.fieldReorderGranted=(am.mode==='edit'&&!!am.canFieldReorder);
+  scState.fieldReorderTarget=String(am.fieldReorderEquipment||'').trim();
+  scState.fieldReorderOnly=false;   // 対象設備が決まってから改めて立てる
+  scState.editable=scState.fullControl;
   scState.pickerEnabled=(am.mode!=='edit');
   // §9.35: 予定から測定を開始できるのは、実際に測定する端末(編集モード)だけ。
   // scheduleモードは計画専用の端末、viewモードは閲覧専用のため出さない。
   scState.canStartWork=(am.mode==='edit');
-  $('#scFieldReorderNote').hidden=!scState.fieldReorderOnly;
-
   if(am.mode==='edit'){
    const eq=currentConfiguredEquipment();
    if(!eq){renderUnconfigured();return}
    scState.equipment=eq;
   }
+  applyFieldReorderPermission();
   // schedule/viewモードでは、設備を1つ選ぶ前に「全設備の中でどこが空いて
   // いるか」を見せる俯瞰ボードを既定表示にする(§9.9)。editモードは自設備
   // 固定のため俯瞰ボードの意味が無く、常に個別タイムラインのみ。
@@ -660,8 +667,37 @@
   applyBoardModeUi();
   await loadOverviewBoard();
  }
+ /* 現場段取り(並べ替え)の可否を、今表示している設備に対して判定し直す。
+    サーバー(routes/schedule.py plan_reorder)と同じく
+    「現場段取り可 かつ 現場段取り対象設備 == この設備」でのみ許可する。
+    権限はあるのに対象設備が違う/未設定のときは、黙って無効にせず理由を出す
+    (マスタ管理で直せる内容なので、何を直せばよいか分かる文言にする)。 */
+ function applyFieldReorderPermission(){
+  const norm=v=>String(v||'').trim().toUpperCase();
+  const matched=scState.fieldReorderGranted&&!!scState.fieldReorderTarget
+   &&norm(scState.fieldReorderTarget)===norm(scState.equipment);
+  scState.fieldReorderOnly=matched;
+  scState.editable=scState.fullControl||matched;
+  const note=$('#scFieldReorderNote');
+  if(!note)return;
+  if(matched){
+   note.hidden=false;note.classList.remove('is-warn');
+   note.textContent='現場段取り: 並べ替えのみ可能';
+   note.title='この設備の未着手の予定を並べ替えられます。';
+  }else if(scState.fieldReorderGranted){
+   note.hidden=false;note.classList.add('is-warn');
+   note.textContent=scState.fieldReorderTarget
+    ?`現場段取りの対象設備は「${scState.fieldReorderTarget}」です`
+    :'現場段取りの対象設備が未設定です';
+   note.title='マスタ管理 > アクセス権限マスタの「現場段取り対象設備」に'
+    +'この設備名を登録すると、並べ替えができるようになります。';
+  }else{
+   note.hidden=true;note.classList.remove('is-warn');
+  }
+ }
  async function switchToSingle(){
   scState.boardMode='single';
+  applyFieldReorderPermission();
   applyBoardModeUi();
   if(scState.equipment)await refreshAll();
   else renderTimelineMessage('設備を選択してください。');
@@ -1479,17 +1515,29 @@
      scWriteQueue.shift();
     }catch(e){
      op.attempts++;
-     if(op.attempts>=3){
+     // 権限不足・入力不正(4xx)は何度やっても同じ結果になる。リトライすると
+     // 同じ失敗メッセージが回数ぶん出てしまうため、即座に諦める。
+     // 再試行に意味があるのは共有ファイルのロック待ち・一時的な通信不良
+     // (423/409/503やネットワーク例外)だけ。
+     const permanent=e&&typeof e.status==='number'&&e.status>=400&&e.status<500&&e.status!==409&&e.status!==423;
+     if(permanent||op.attempts>=3){
       scWriteQueue.shift();failures.push(e);
-      try{op.onFailure&&op.onFailure(e)}catch(err){/* ロールバック自体の失敗はここでは無視(諦めたことは既にfailuresへ記録済み) */}
+      // onFailureを持つ操作は、そちらで利用者へ知らせる責任を持つ。
+      if(op.onFailure){
+       try{e.__reported=true;op.onFailure(e)}catch(err){/* ロールバック自体の失敗はここでは無視(諦めたことは既にfailuresへ記録済み) */}
+      }
      }
      else await sleep(700*op.attempts);
     }
    }
   }finally{
    scQueueRunning=false;
-   if(failures.length){
-    const msg=failures.length===1?failures[0].message:`${failures.length}件の変更を反映できませんでした`;
+   // onFailureで個別に知らせた分は、ここで重ねて出さない(同じ内容の通知が
+    // 二重に並ぶ)。まとめ通知は「個別の知らせ先を持たない操作」が失敗した
+    // ときだけ出す。
+   const unreported=failures.filter(f=>!f.__reported);
+   if(unreported.length){
+    const msg=unreported.length===1?unreported[0].message:`${unreported.length}件の変更を反映できませんでした`;
     showToast&&showToast('一部の変更を反映できませんでした',msg,7000);
    }
    if(scState.equipment&&!sessionApplicable())await loadPlan(); // 自分が編集中の設備以外(=他端末編集中の閲覧時)だけ最終状態で正規化する
@@ -1593,6 +1641,7 @@
      予定)だけを画面の並びで差し替える」形で新しい予定順を組み立てる。
      plan_reorderは並べ替え対象の全件と過不足なく一致するIDを要求するため
      (部分並べ替えは受け付けない)、ロック行も必ず含める。 */
+  const previousEntries=scState.entries.slice();
   const byId=new Map(scState.entries.map(e=>[String(e.id),e]));
   const planOrder=scState.entries.filter(e=>e.reorderable);
   const domIds=[...$('#scTimeline').querySelectorAll('.sc-row-line')].map(c=>c.dataset.id);
@@ -1615,15 +1664,19 @@
   let ri=0,pi=0;
   scState.entries=slots.map(isPlan=>isPlan?nextPlan[pi++]:rest[ri++]);
   const equipment=scState.equipment;
-  queueScheduleWrite(async()=>{
-   try{
-    await api('/api/schedule/plan/reorder',{method:'POST',headers:{'Content-Type':'application/json'},
-     body:JSON.stringify(withUserId({equipment,orderedIds:ids}))});
-   }catch(e){
-    showToast&&showToast('並べ替えに失敗しました',e.message,5000);
-    throw e;
+  // 失敗したときに元へ戻せるよう、書き換える前の並びを控えておく。
+  const previousOrder=previousEntries;
+  queueScheduleWrite(
+   ()=>api('/api/schedule/plan/reorder',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(withUserId({equipment,orderedIds:ids}))}),
+   e=>{
+    // 通知は諦めた時に1回だけ(runWriteQueueのリトライ中に出すと同じ文言が
+    // 回数ぶん並ぶ)。サーバーが受け付けなかった並びを画面に残さないよう、
+    // 元の順序へ戻してから知らせる。
+    if(scState.equipment===equipment){scState.entries=previousOrder;renderTimeline()}
+    showToast&&showToast('並べ替えできませんでした',(e&&e.message)||'',7000);
    }
-  });
+  );
  }
 
  /* ---------- 追加パネル(scheduleモードのみ、§9.3) ---------- */
