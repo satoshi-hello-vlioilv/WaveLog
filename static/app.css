@@ -3167,3 +3167,46 @@ body.rp-mode #printCurrentView,body.qa-mode #printCurrentView{display:none!impor
 .mm-imp-badge.orphan{background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn-fg)}
 .mm-imp-badge.has{background:var(--success-bg);border:1px solid var(--success-border);color:var(--success)}
 .mm-import-warning.is-orphan{border-color:var(--warn-border);background:var(--warn-bg)}
+
+/* ---------- メインメニューの畳み込み(§9.58) ----------
+   畳んだときは幅54pxのアイコン帯にする。完全に隠さないのは、戻す手段と
+   行き先が常に見えている状態を保つため(隠すと「どこへ戻るか」を思い出す
+   必要が生まれる)。ラベルはツールチップへ移す。 */
+.nav-collapse-toggle{
+ margin-left:auto;flex:none;width:26px;height:26px;padding:0;
+ display:grid;place-items:center;
+ border:1px solid #2c4750;border-radius:7px;background:#1b3b45;color:#9fc4cb;cursor:pointer;
+}
+.nav-collapse-toggle:hover{background:#22434d;border-color:#3d6673;color:#fff}
+.nav-collapse-toggle span{
+ display:block;width:9px;height:9px;border-left:2px solid currentColor;border-bottom:2px solid currentColor;
+ transform:rotate(45deg) translate(1px,-1px);transition:transform .15s;
+}
+body.nav-collapsed .nav-collapse-toggle span{transform:rotate(-135deg) translate(-1px,1px)}
+
+body.nav-collapsed .layout>aside{padding-left:5px;padding-right:5px;overflow:visible}
+body.nav-collapsed .layout>aside .brand{
+ padding:0 0 10px;margin-bottom:10px;justify-content:center;gap:0;
+}
+body.nav-collapsed .layout>aside .brand h2,
+body.nav-collapsed .layout>aside .brand small,
+body.nav-collapsed .nav-group-label,
+body.nav-collapsed .nav-item span,
+body.nav-collapsed .equip-badge-text{display:none}
+body.nav-collapsed .nav-collapse-toggle{margin-left:0}
+/* アイコンを中央へ。件数バッジはアイコンの右上へ小さく重ねる。 */
+body.nav-collapsed .nav-item{justify-content:center;padding-left:0;padding-right:0;position:relative}
+body.nav-collapsed .nav-item .nav-icon{opacity:1}
+body.nav-collapsed .nav-item b{
+ position:absolute;top:2px;right:2px;min-width:0;height:auto;padding:0 4px;
+ font-size:var(--fs-tiny);line-height:1.4;
+}
+body.nav-collapsed .nav-item .sync-warn-dot{position:absolute;top:3px;left:4px}
+/* 使用設備バッジはアイコンだけにする(変更はヘッダーの「使用設備」チップからも
+   できるので、細い帯にボタンを押し込まない)。 */
+body.nav-collapsed .registered-equipment-badge{justify-content:center;padding-left:0;padding-right:0;gap:0}
+body.nav-collapsed .registered-equipment-badge button,
+body.nav-collapsed .registered-equipment-badge a,
+body.nav-collapsed .registered-equipment-badge::after{display:none}
+/* 畳んでいる間は幅調整バーを無効化(掴んでも動かないので触らせない) */
+body.nav-collapsed #navResizeHandle{pointer-events:none;opacity:.35}

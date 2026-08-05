@@ -238,16 +238,67 @@ window.addEventListener('unload',notifyTabClosed);
  let navWidth=(()=>{try{const v=+localStorage.getItem('navWidthV1');return v>0?v:242}catch(e){return 242}})();
  function apply(){document.documentElement.style.setProperty('--nav-w',navWidth+'px')}
  apply();
+ /* 畳む/開く(§9.58)。畳んだときは**アイコンだけの細い帯**にする。
+    完全に隠すと戻す手段を別に置く必要があり、どこへ戻るかも分からなく
+    なるため、行き先(アイコン)は常に見えている形を選ぶ。
+    幅は畳んだ状態と開いた状態で別々に覚える(開き直したとき、利用者が
+    自分で決めた幅へ戻る)。 */
+ const NAV_COLLAPSED_KEY='navCollapsedV1';
+ const NAV_RAIL_W=54;
+ let collapsed=(()=>{try{return localStorage.getItem(NAV_COLLAPSED_KEY)==='1'}catch(e){return false}})();
+ function applyCollapsed(){
+  document.body.classList.toggle('nav-collapsed',collapsed);
+  document.documentElement.style.setProperty('--nav-w',(collapsed?NAV_RAIL_W:navWidth)+'px');
+  if(toggle){
+   toggle.setAttribute('aria-expanded',String(!collapsed));
+   toggle.title=collapsed?'メニューを開く':'メニューを畳む';
+  }
+  /* 畳んでいる間はラベルが出ないので、行き先はツールチップで示す。
+     元のtitle(説明文)を持つ項目は説明も残す。
+     退避済みかの判定は`undefined`で見ること。**元のtitleが空の項目は
+     `!b.dataset.navTitle`が真になり**、2回目以降(下のMutationObserver等)で
+     退避値を「適用済みのラベル」で上書きしてしまい、開いても戻らなくなる。 */
+  document.querySelectorAll('aside .nav-item').forEach(b=>{
+   const label=(b.querySelector('span')||{}).textContent.trim()||'';
+   if(collapsed){
+    if(b.dataset.navTitle===undefined)b.dataset.navTitle=b.title||'';
+    const orig=b.dataset.navTitle;
+    b.title=label?(orig?label+'：'+orig:label):orig;
+   }
+   else if(b.dataset.navTitle!==undefined)b.title=b.dataset.navTitle;
+  });
+ }
+ const toggle=document.createElement('button');
+ toggle.type='button';toggle.id='navCollapseToggle';toggle.className='nav-collapse-toggle';
+ toggle.innerHTML='<span aria-hidden="true"></span>';
+ const brand=aside.querySelector('.brand');
+ if(brand)brand.appendChild(toggle);else aside.prepend(toggle);
+ toggle.addEventListener('click',()=>{
+  collapsed=!collapsed;
+  try{localStorage.setItem(NAV_COLLAPSED_KEY,collapsed?'1':'0')}catch(e){/* 保存できなくても切替は効く */}
+  applyCollapsed();
+ });
+ applyCollapsed();
+ /* カレンダー・ダッシュボード・DB一覧のナビ項目は、base.jsより後に読まれる
+    ファイルが動的に足す。畳んだ状態で足されるとツールチップが付かないため、
+    追加を監視して付け直す。監視するのはchildListだけなので、applyCollapsed
+    自身のtitle書き換え(属性変更)では再帰しない。 */
+ new MutationObserver(ms=>{
+  if(ms.some(m=>[...m.addedNodes].some(n=>n.nodeType===1&&
+     (n.classList?.contains('nav-item')||n.querySelector?.('.nav-item')))))applyCollapsed();
+ }).observe(aside,{childList:true,subtree:true});
+
  const handle=document.createElement('div');
  handle.id='navResizeHandle';handle.title='ドラッグでメニュー幅を変更';
  aside.insertAdjacentElement('afterend',handle);
  handle.addEventListener('mousedown',e=>{
+  if(collapsed)return;          // 畳んでいる間は幅を変えない(開いてから変える)
   e.preventDefault();
   const startX=e.clientX,startW=navWidth;
   handle.classList.add('dragging');
   function onMove(ev){
    navWidth=Math.min(Math.max(180,startW+(ev.clientX-startX)),480);
-   apply();
+   applyCollapsed();
   }
   function onUp(){
    document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);

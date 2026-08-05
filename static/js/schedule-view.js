@@ -990,51 +990,73 @@
  /* 仕掛一覧から「ロット番号 -> 残仕掛設備ｺｰｽ」を作る。列表示マスタで
     残仕掛設備ｺｰｽが非表示にされていても判定に要るので include_hidden=1
     を付ける(CLAUDE.md「内部計算用の問い合わせには include_hidden=1」)。 */
- const WORKABLE_BULK_ROWS=5000;   // 一括で読む上限
- const WORKABLE_FILL_LIMIT=60;    // 取りこぼしを個別に補う上限(往復が増えるため)
+ /* 判定材料の集め方(§9.57)。
+    以前は仕掛を`page_size=5000`で1回読んで索引にしていたが、サーバー側は
+    `page_size`を**500件で頭打ち**にしている(backend/routes/tables.py)。
+    仕掛が500件を超える現場では601件目以降が索引に入らず、そこにある予定は
+    全部「?」=作業開始不可になっていた(「仕掛データに作業ロットが
+    見つからない」として報告された不具合)。
+
+    直し方は「全件を索引にする」ではなく「**予定に載っているロットだけ**を
+    確実に埋める」。必要なロット番号は作業予定から分かっているので、
+    仕掛を500件ずつ辿り、必要な分が揃った時点で打ち切る。全件を読み切る
+    必要はなく、往復数は「必要なロットが見つかるまで」で済む。
+    それでも見つからないものは、最後に個別問い合わせで確定させる
+    (仕掛に無いことが確定すれば「?」ではなく「不可」にできる)。 */
+ const WORKABLE_PAGE_SIZE=500;    // サーバー側の上限(これ以上を要求しても切り詰められる)
+ const WORKABLE_MAX_PAGES=40;     // 20000件ぶん。際限なく辿らないための歯止め
+ const WORKABLE_FILL_LIMIT=60;    // 個別に補う上限(往復が増えるため)
+ /* 予定に出ているロット番号(判定が必要な集合)。 */
+ function plannedLotKeys(){
+  return new Set((scState.entries||[])
+   .filter(e=>e.kind==='作業')
+   .map(e=>normalizeLotKey(e.lotNo||contentValueOf(e.detail,'lotNo')))
+   .filter(Boolean));
+ }
  async function loadWorkableIndex(force){
   if(!force&&scWorkable.map&&Date.now()-scWorkable.at<WORKABLE_TTL_MS)return scWorkable.map;
   const map=new Map();
-  let truncated=false,cols=null,table=null;
+  let cols=null,table=null,pages=0,scanned=0,total=0;
+  const needed=plannedLotKeys();
   try{
    const t=await api('/api/tables?db=SIKALOTNOW');
    table=(t.tables||[])[0];
    if(table){
-    const q=new URLSearchParams({db:'SIKALOTNOW',table,page:1,page_size:WORKABLE_BULK_ROWS,search:'',include_hidden:'1'});
-    const d=await api('/api/table?'+q);
-    const lotCol=(aliases.lotNo||[]).find(n=>(d.columns||[]).includes(n));
-    const resCol=(aliases.residualCourse||[]).find(n=>(d.columns||[]).includes(n));
-    cols={lotCol,resCol};
-    if(lotCol&&resCol){
-     (d.rows||[]).forEach(r=>{
-      const lot=normalizeLotKey(r[lotCol]);
-      if(lot)map.set(lot,String(r[resCol]??''));
+    for(let page=1;page<=WORKABLE_MAX_PAGES;page++){
+     const q=new URLSearchParams({db:'SIKALOTNOW',table,page,page_size:WORKABLE_PAGE_SIZE,
+       search:'',include_hidden:'1'});
+     const d=await api('/api/table?'+q);
+     pages=page;total=Number(d.count||0);
+     if(!cols){
+      cols={lotCol:(aliases.lotNo||[]).find(n=>(d.columns||[]).includes(n)),
+            resCol:(aliases.residualCourse||[]).find(n=>(d.columns||[]).includes(n))};
+     }
+     const rows=d.rows||[];scanned+=rows.length;
+     if(!cols.lotCol||!cols.resCol)break;    // 列が無ければ辿っても意味が無い
+     rows.forEach(r=>{
+      const lot=normalizeLotKey(r[cols.lotCol]);
+      if(!lot)return;
+      map.set(lot,String(r[cols.resCol]??''));
+      needed.delete(lot);
      });
+     // 必要な分が揃った / 最後のページまで来た なら打ち切る
+     if(!needed.size||rows.length<WORKABLE_PAGE_SIZE||scanned>=total)break;
     }
-    // 仕掛が上限より多いと、載らなかったロットが全部「?」になり作業を
-    // 開始できない。**こちらの都合で現場を止めない**よう、載らなかった分は
-    // 予定に出ているロットに限って個別に引き直す(下のfillMissingLots)。
-    truncated=Number(d.count||0)>(d.rows||[]).length;
    }
   }catch(e){
    // 仕掛が読めないときは判定材料が無い。mapを空で持ち、UIは「不明」を出す
    // (この場合に既定で「可」にすると、確認できないものを作業させてしまう)。
    console.warn('作業可否の判定に使う仕掛一覧を取得できません',e);
   }
-  scWorkable={at:Date.now(),map,truncated,table,cols};
-  if(truncated)await fillMissingLots();
+  scWorkable={at:Date.now(),map,table,cols,pages,scanned,total};
+  if(needed.size)await fillMissingLots([...needed]);
   return scWorkable.map;
  }
- /* 一括取得に載らなかったロットを、**今のタイムラインに出ている分だけ**
-    個別に引いて索引へ足す。全件を引き直すのではなく、判定が要る行に絞る。 */
- async function fillMissingLots(){
+ /* 辿っても見つからなかったロットを個別に引いて確定させる。
+    全件を引き直すのではなく、判定が要る行だけに絞る。 */
+ async function fillMissingLots(missing){
   const {map,table,cols}=scWorkable;
-  if(!table||!cols||!cols.lotCol||!cols.resCol)return;
-  const missing=[...new Set((scState.entries||[])
-    .filter(e=>e.kind==='作業')
-    .map(e=>normalizeLotKey(e.lotNo||contentValueOf(e.detail,'lotNo')))
-    .filter(lot=>lot&&!map.has(lot)))];
-  if(!missing.length)return;
+  if(!table||!cols||!cols.lotCol||!cols.resCol||!missing.length)return;
   const targets=missing.slice(0,WORKABLE_FILL_LIMIT);
   let idx=0;
   await Promise.all(Array.from({length:Math.min(3,targets.length)},async()=>{
@@ -1052,7 +1074,7 @@
    }
   }));
   if(missing.length>targets.length){
-   console.warn(`作業可否: 仕掛の件数が多く、${missing.length-targets.length}件は判定できませんでした`);
+   console.warn(`作業可否: 判定できなかったロットが${missing.length-targets.length}件あります`);
   }
  }
  function normalizeLotKey(v){return String(v??'').trim().toUpperCase()}
@@ -1136,6 +1158,9 @@
   indexSize:scWorkable.map?scWorkable.map.size:0,
   fetchedAt:scWorkable.at||null,
   equipment:scState.equipment||'',
+  pages:scWorkable.pages||0,        // 仕掛を何ページ辿ったか
+  scanned:scWorkable.scanned||0,    // 読んだ行数
+  total:scWorkable.total||0,        // 仕掛の総件数
  });
 
  async function refreshAll(force){
