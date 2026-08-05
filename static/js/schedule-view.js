@@ -34,6 +34,32 @@
               boardMode:'single',boardWindowHours:24,overview:[],overviewSort:'order',
               sessionHeld:false,sessionHolder:null,sessionError:null,
               canStartWork:false,historyHours:loadHistoryHours(),groupMode:'none'};
+ /* ---------- 読込結果のキャッシュ(§9.42) ----------
+    共有スケジュールDBと実績バックアップはネットワーク共有上にあり、開くたびに
+    読み直すと待たされる。**一度読んだら保持し、画面を開き直しただけでは
+    読み直さない**。読み直すのは次の3つだけ:
+      - 予定を変える操作をしたとき(追加・削除・並べ替え・ロック・作業開始)
+      - ヘッダーの「再計算」を押したとき
+      - 設備を切り替えて、その設備をまだ一度も読んでいないとき
+    いつ時点の状態かはヘッダーに出す(古い情報を黙って見せないため)。 */
+ const scPlanCache=new Map();   // 設備名 -> {entries,anchor,warnings,loadFactor,fetchedAt}
+ let scOverviewCache=null;      // {rows,fetchedAt}
+ function invalidatePlanCache(equipment){
+  if(equipment)scPlanCache.delete(equipment);else scPlanCache.clear();
+  scOverviewCache=null;  // 俯瞰ボードの残作業量も変わる
+ }
+ window.invalidateSchedulePlanCache=invalidatePlanCache;
+ function fmtFetchedAt(ts){
+  if(!ts)return '';
+  const min=Math.floor((Date.now()-ts)/60000);
+  const hm=new Date(ts).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'});
+  return min<1?`${hm} 時点(たった今)`:`${hm} 時点(${min}分前)`;
+ }
+ function updateFreshnessUi(ts){
+  const el=$('#scFreshness');if(!el)return;
+  el.hidden=!ts;
+  if(ts){el.textContent=fmtFetchedAt(ts);el.title='この時点で読み込んだ内容です。「再計算」で最新を取り直します。'}
+ }
  let scLockTimer=null;
  // ---------- 編集セッション(§9.11新設)・書込キュー ----------
  let scSessionTimer=null,scSessionHeldFor=null,scTempIdSeq=0;
@@ -105,6 +131,7 @@
       <span>表示範囲</span>
       <select id="scHistorySelect">${SC_HISTORY_CHOICES.map(h=>`<option value="${h}">直近${h}時間</option>`).join('')}</select>
      </label>
+     <span class="sc-freshness" id="scFreshness" hidden></span>
      <span class="sc-field-reorder-note" id="scFieldReorderNote" hidden>現場段取り: 並べ替えのみ可能</span>
      <button type="button" class="sc-split-toggle" id="scContentModalBtn" hidden title="タイムラインの「内容」欄に出す項目と順序を設備ごとに選びます">📝 内容の項目</button>
      <button type="button" class="sc-split-toggle" id="scListModalBtn" hidden title="仕掛一覧をポップアップで表示してドラッグで追加します">⧉ ポップアップ</button>
@@ -148,7 +175,7 @@
   hist.onchange=()=>{
    scState.historyHours=Number(hist.value)||8;
    try{localStorage.setItem(SC_HISTORY_KEY,String(scState.historyHours))}catch(e){/* 保存できなくても表示は変わる */}
-   if(scState.equipment)loadPlan();
+   if(scState.equipment)loadPlan(true);
   };
   $('#scEquipmentSelect').onchange=e=>{scState.equipment=e.target.value;switchToSingle()};
   $('#scModeBoard').onclick=()=>switchToBoard();
@@ -639,8 +666,10 @@
   if(scState.equipment)await refreshAll();
   else renderTimelineMessage('設備を選択してください。');
  }
- function refreshCurrentMode(){
-  return scState.boardMode==='board'?loadOverviewBoard():refreshAll();
+ // 「再計算」は必ず取り直す(利用者が明示的に最新を求めた操作なので、
+ // ここでキャッシュを返すと押しても何も起きないように見える)。
+ function refreshCurrentMode(force=true){
+  return scState.boardMode==='board'?loadOverviewBoard(force):refreshAll(force);
  }
 
  function renderUnconfigured(){
@@ -820,13 +849,19 @@
  // ため数秒かかることがある。パネル内の「読み込んでいます…」だけだと画面
  // 全体では無反応に見えるので、WAITING表示も併せて出す(withWaitingは
  // 速いときには出ないため、ローカル検証時の操作感は変わらない)。
- async function loadOverviewBoard(){
-  if(typeof withWaiting!=='function')return loadOverviewBoardInner();
+ async function loadOverviewBoard(force){
+  if(!force&&scOverviewCache)return loadOverviewBoardInner(false);
+  if(typeof withWaiting!=='function')return loadOverviewBoardInner(force);
   return withWaiting({title:'全設備の空き状況を読み込んでいます',detail:'共有スケジュールDBを参照しています',
-   progress:'設備ごとの予定を展開して集計しています'},()=>loadOverviewBoardInner());
+   progress:'設備ごとの予定を展開して集計しています'},()=>loadOverviewBoardInner(force));
  }
- async function loadOverviewBoardInner(){
+ async function loadOverviewBoardInner(force){
   const board=$('#scBoard');if(!board)return;
+  if(!force&&scOverviewCache){
+   scState.overview=scOverviewCache.rows;
+   renderOverviewBoard();updateFreshnessUi(scOverviewCache.fetchedAt);
+   return;
+  }
   board.innerHTML='<div class="sc-empty-note">読み込んでいます…</div>';
   try{
    const r=await api('/api/schedule/overview');
@@ -835,7 +870,8 @@
     return;
    }
    scState.overview=r.equipment||[];
-   renderOverviewBoard();
+   scOverviewCache={rows:scState.overview,fetchedAt:Date.now()};
+   renderOverviewBoard();updateFreshnessUi(scOverviewCache.fetchedAt);
   }catch(e){
    board.innerHTML=`<div class="sc-empty-note">俯瞰ボードを取得できませんでした: ${esc(e.message)}</div>`;
   }
@@ -899,24 +935,39 @@
  }
 
  /* ---------- 予定一覧の取得・描画 ---------- */
- async function refreshAll(){
-  if(typeof withWaiting!=='function')return refreshAllInner(()=>{});
+ async function refreshAll(force){
+  // キャッシュから出せるならWAITING表示ごと省く(一瞬で出るのにスピナーが
+  // 瞬くと、かえって「また読み込んでいる」ように見えるため)。
+  const cached=scPlanCache.get(scState.equipment);
+  if(!force&&cached&&cached.historyHours===scState.historyHours)return refreshAllInner(()=>{},false);
+  if(typeof withWaiting!=='function')return refreshAllInner(()=>{},force);
   return withWaiting({title:'作業スケジュールを読み込んでいます',
    detail:scState.equipment?('設備: '+scState.equipment):'共有スケジュールDBを参照しています',
-   progress:'表示設定と予定を取得しています',step:1},report=>refreshAllInner(report));
+   progress:'表示設定と予定を取得しています',step:1},report=>refreshAllInner(report,force));
  }
- async function refreshAllInner(report){
+ async function refreshAllInner(report,force){
   // 列表示マスタ(§9.18)はloadPlan()のrenderTimeline()が「内容」欄の組み立てに
   // 使うため、先に取得しておく(後から取得すると初回描画が古い/未設定の
   // プリファレンスのまま出て、直後に列が変わるちらつきが起きる)。
   if(scState.fullControl){await loadScheduleColumnPrefs();await loadScheduleContentPrefs()}
-  await loadPlan();
+  await loadPlan(force);
   if(scState.fullControl)await loadStopReasons();
   report({progress:'仕掛一覧を並べて表示しています',step:2});
   await showSplitList();
  }
- async function loadPlan(){
+ function applyPlanResult(r,fetchedAt){
+  scState.entries=r.entries||[];scState.anchor=r.anchor;scState.warnings=r.warnings||[];
+  scState.planFetchedAt=fetchedAt;
+  renderWarnings();renderTimeline();updateFreshnessUi(fetchedAt);
+ }
+ async function loadPlan(force){
   if(!scState.equipment)return;
+  const cached=scPlanCache.get(scState.equipment);
+  // 表示範囲が変わったときは取り直す(サーバー側の合成範囲も変わるため)
+  if(!force&&cached&&cached.historyHours===scState.historyHours){
+   applyPlanResult(cached,cached.fetchedAt);
+   return;
+  }
   const timeline=$('#scTimeline');
   timeline.innerHTML='<div class="sc-empty-note">読み込んでいます…</div>';
   try{
@@ -926,8 +977,10 @@
     timeline.innerHTML='<div class="sc-empty-note">スケジュール機能が設定されていません(config/local.jsonのschedule_share_path未設定)。</div>';
     return;
    }
-   scState.entries=r.entries||[];scState.anchor=r.anchor;scState.warnings=r.warnings||[];
-   renderWarnings();renderTimeline();
+   const fetchedAt=Date.now();
+   scPlanCache.set(scState.equipment,{entries:r.entries||[],anchor:r.anchor,warnings:r.warnings||[],
+    loadFactor:r.loadFactor,historyHours:scState.historyHours,fetchedAt});
+   applyPlanResult(r,fetchedAt);
   }catch(e){
    timeline.innerHTML=`<div class="sc-empty-note">予定を取得できませんでした: ${esc(e.message)}</div>`;
   }
@@ -1147,6 +1200,7 @@
   {key:'none',label:'まとめない'},
   {key:'date',label:'日付ごと'},
   {key:'shift',label:'勤務ごと'},
+  {key:'dateshift',label:'日付＋勤務ごと'},
   {key:'category',label:'区分ごと'},
  ];
  const SC_GROUP_KEY='ScheduleGroupModeV1';
@@ -1157,14 +1211,24 @@
   }catch(err){/* 保存値が壊れていても既定で続行する */}
   return 'none';
  }
+ function dateBucketLabel(e){
+  const t=rowTimeOf(e);
+  return t===null?'日付未定':fmtDateTitle(new Date(t).toISOString());
+ }
  function groupBucketOf(e){
   if(scState.groupMode==='date'){
-   const t=rowTimeOf(e);
-   return t===null?{key:'-',label:'日付未定'}:{key:fmtDateTitle(new Date(t).toISOString()),label:fmtDateTitle(new Date(t).toISOString())};
+   const v=dateBucketLabel(e);return {key:v,label:v};
   }
   if(scState.groupMode==='shift'){
    const v=e.shift||'';
    return {key:v||'-',label:v||'勤務未設定'};
+  }
+  if(scState.groupMode==='dateshift'){
+   // 日付が変わっても勤務名が同じ(1直→1直)場合に同じまとまりへ吸われないよう、
+   // キーは日付と勤務の組で作る。3直のような日跨ぎ勤務でも、行の代表時刻の
+   // 日付でまとまるため見出しと行の日付が食い違わない。
+   const d=dateBucketLabel(e),v=e.shift||'勤務未設定';
+   return {key:d+'\u0001'+v,label:`${d} ${v}`};
   }
   if(scState.groupMode==='category'){
    const c=categoryOf(e);
@@ -1286,6 +1350,13 @@
    const canStart=scState.canStartWork&&e.kind==='作業'&&e.state==='予定'&&!e.__pending&&!e.unplanned;
    // §9.38: 日時で固定する(ロック)。予定を動かせるモードでのみ操作できる。
    const canLock=scState.fullControl&&e.state==='予定'&&!e.__pending&&!e.unplanned;
+   // §9.43: 実績のある行(作業中・完了)は帳票を開ける。実績突合で紐づいた
+   // 測定データの記録ID(actualRecordId)をそのまま帳票へ渡す。
+   const recordId=e.actualRecordId||'';
+   const canReport=!!recordId&&(e.state==='着手'||e.state==='完了')&&typeof window.openReportForRecord==='function';
+   // 作業中の行はダブルクリックで測定を再開できる(openMeasurementが端末内の
+   // 編集中データを見つけて続きから開く)。編集モードの端末だけ。
+   const canResume=scState.canStartWork&&e.kind==='作業'&&e.state==='着手';
 
    row.innerHTML=`
     <span class="sc-row-handle" title="${canDrag?'ドラッグまたはAlt+↑/↓で並べ替え':(locked?'日時を固定中(ロック)':'')}">${canDrag?'⠿':(locked?'🔒':'')}</span>
@@ -1301,6 +1372,8 @@
     <span class="sc-row-actions">
      ${canStart?`<button type="button" class="sc-row-btn sc-row-start" title="この予定の測定画面を開いて作業を開始します">▶ 開始</button>`:''}
      ${canLock?`<button type="button" class="sc-row-btn sc-row-lock${locked?' active':''}" title="${locked?'固定を解除して通常の並びへ戻します':'今の予定日時でこの行を固定します(以降ずれません)'}">${locked?'🔒':'🔓'}</button>`:''}
+     ${canResume?`<button type="button" class="sc-row-btn sc-row-resume" title="測定画面を開いて続きから再開します(行のダブルクリックでも開けます)">▶ 再開</button>`:''}
+     ${canReport?`<button type="button" class="sc-row-btn sc-row-report" title="このロットの帳票を表示します">📄</button>`:''}
      ${detailHtml?`<button type="button" class="sc-row-btn sc-row-detail-toggle" title="詳細を表示">▾</button>`:''}
      ${canDelete?`<button type="button" class="sc-row-btn sc-row-delete" title="削除">🗑</button>`:''}
     </span>`;
@@ -1311,6 +1384,26 @@
    if(start)start.onclick=ev=>{ev.stopPropagation();startWorkFromEntry(e)};
    const lock=row.querySelector('.sc-row-lock');
    if(lock)lock.onclick=ev=>{ev.stopPropagation();toggleEntryLock(e)};
+   const resume=row.querySelector('.sc-row-resume');
+   if(resume)resume.onclick=ev=>{ev.stopPropagation();startWorkFromEntry(e)};
+   const report=row.querySelector('.sc-row-report');
+   if(report)report.onclick=ev=>{ev.stopPropagation();openEntryReport(e)};
+   if(canResume){
+    row.classList.add('sc-row-resumable');
+    row.title='ダブルクリックで測定を再開します';
+    row.ondblclick=ev=>{
+     if(ev.target.closest('button'))return;  // 行内ボタンの二度押しを再開と誤認しない
+     ev.preventDefault();startWorkFromEntry(e);
+    };
+   }else if(canReport){
+    // 完了行はダブルクリックで帳票(データ一覧の行と同じ操作感、
+    // records-store.jsのrow.ondblclickに合わせる)。
+    row.title='ダブルクリックで帳票を表示します';
+    row.ondblclick=ev=>{
+     if(ev.target.closest('button'))return;
+     ev.preventDefault();openEntryReport(e);
+    };
+   }
    timeline.append(row);
 
    if(detailHtml){
@@ -1365,6 +1458,11 @@
     残り時間等サーバー側の再計算値が古いままになるのは許容する
     (次に編集モードへ入った時点で正規化される)。 */
  function queueScheduleWrite(run,onFailure){
+  // 予定を変える操作をした時点でキャッシュ(§9.42)は古い。次にこの画面を
+  // 開いたときは必ず取り直す。画面上の表示は楽観的更新(§9.11)で既に
+  // 反映されているので、ここで読み直しはしない(操作直後に画面を止めない
+  // 一方通行の書込、§9.22)。
+  invalidatePlanCache(scState.equipment);
   scWriteQueue.push({run,onFailure,attempts:0});
   if(scQueueFlushTimer||scQueueRunning)return;
   scQueueFlushTimer=setTimeout(()=>{scQueueFlushTimer=null;runWriteQueue()},150);
@@ -1954,6 +2052,22 @@
   put('lotNo',e.lotNo);put('castingNo',e.castingNo);put('inspectionNo',e.inspectionNo);
   return row;
  }
+ /* 帳票を開く(§9.43)。帳票ビューはrecord id(測定データの記録ID)で引くので、
+    実績突合で紐づいたactualRecordIdをそのまま渡す。帳票側の「戻る」は
+    データ一覧へ戻る既定の動きのままにしておく(スケジュールへ戻す独自の
+    導線を足すと、report-dashboard.js側のrpReturnToの状態管理が二重になる)。 */
+ async function openEntryReport(e){
+  const id=e.actualRecordId;
+  if(!id||typeof window.openReportForRecord!=='function'){
+   alert('この行には帳票を開ける測定データが紐づいていません。');
+   return;
+  }
+  try{
+   await window.openReportForRecord(id);
+  }catch(err){
+   alert('帳票を開けません: '+(err&&err.message?err.message:err));
+  }
+ }
  async function startWorkFromEntry(e){
   if(typeof openMeasurement!=='function'){alert('測定画面を開けません。');return}
   const row=entryMeasurementRow(e);
@@ -1963,6 +2077,9 @@
   }
   try{
    await openMeasurement(row);
+   // 開始時刻を打刻すればこの予定は「作業中」へ移る。次にスケジュールを
+   // 開いたときに必ず取り直せるよう、キャッシュを捨てておく(§9.42)。
+   invalidatePlanCache(scState.equipment);
   }catch(err){
    alert('測定画面を開けません: '+(err&&err.message?err.message:err));
   }

@@ -527,11 +527,16 @@ def overview():
  with connect(DBS['MASTER']['path'],False) as mc:
   equipment_names=[str(r[1]).strip() for r in equipment_master_rows(mc) if str(r[1] or '').strip()]
  now=datetime.now()
+ # 実績突合の索引は設備によらず同じ。設備ごとに作り直すと、実績バックアップ
+ # (共有上の閲覧用複製を含む)を設備数ぶん読み直すことになる(§9.41)。
+ actual_index=schedule_calc.build_actual_index()
  def fn(c):
   # 俯瞰ボードは「今どこが動いているか/残りどれだけか」だけを見るため、
   # 計画外実績(§9.33)の完了分は合成しない(history_hours=None)。実施中の
   # 分は合成されるので、予定を立てずに始めた作業も「● 稼働中」に出る。
-  return [_overview_row(eq,schedule_calc.expand_plan(c,eq,now=now,history_hours=None),now) for eq in equipment_names]
+  return [_overview_row(eq,schedule_calc.expand_plan(c,eq,now=now,history_hours=None,
+                                                     actual_index=actual_index),now)
+          for eq in equipment_names]
  result,stale,err=_read(fn)
  if err=='not_configured':return jsonify(ok=True,configured=False,equipment=[],generatedAt=now.isoformat())
  if err:return jsonify(error=err),503

@@ -566,11 +566,37 @@
     現在のトグル状態(編集中/完了それぞれのON/OFF)をそのまま維持して
     再度開く(openRecordsSafe(null)はopenRecords()側でプリセットを
     上書きせず現在のrecordListState.statusesを引き継ぐ)。 */
+ /* サーバー側の測定バックアップから1件だけ取り込む(§9.43)。
+    帳票一覧は編集モードならこの端末のIndexedDBを見るが、作業スケジュールが
+    出す実績は共有の測定バックアップ(他端末が測った分・PC入替前の分を含む)を
+    突合したものなので、IndexedDBに無い記録IDを開こうとすることがある。
+    そのままだと帳票が「ロットを選択してください」のまま何も出ず、理由も
+    分からない。ここでサーバー側から拾って一覧へ足す。 */
+ async function fetchRecordFromBackup(id){
+  for(const url of ['/api/measurement/backup/list','/api/measurement/backup/list-view']){
+   try{
+    const r=await api(url);
+    const hit=(r.items||[]).find(it=>String(it.id)===String(id));
+    if(!hit)continue;
+    const rec=ensureMeasureShape(JSON.parse(hit.payload));rec.id=hit.id;return rec;
+   }catch(e){/* 次の取得先を試す */}
+  }
+  return null;
+ }
  window.openReportForRecord=async function(id,options){
   const opt=options||{};
   rpReturnTo=opt.returnTo==='measure'?'measure':'records';
   await openReportView();           // ここで初めてパネル(戻るボタン)が作られる
   updateBackButton();
+  if(id&&!rpState.items.some(x=>String(x.id)===String(id))){
+   const rec=await fetchRecordFromBackup(id);
+   if(rec){rpState.items=[rec,...rpState.items];renderLotList()}
+   else{
+    $id('reportSelectedTitle').textContent='帳票を表示できません';
+    $id('reportContent').innerHTML='<div class="rp-empty">この測定データがこの端末にも測定バックアップにも見つかりませんでした。</div>';
+    return;
+   }
+  }
   selectLot(id);
   /* 印刷は描画後でないと白紙になるため、1フレーム置いてから開く。 */
   if(opt.print)requestAnimationFrame(()=>requestAnimationFrame(printReport));
