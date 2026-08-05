@@ -391,14 +391,19 @@
   modal.innerHTML=`
    <div class="sc-float-header"><div><small>SIKALOTNOW</small><h2>仕掛一覧(ドラッグでスケジュールへ追加)</h2></div><button type="button" id="scListModalClose" title="閉じる">×</button></div>
    <div class="sc-float-body" id="scListModalBody"></div>
-   <div class="sc-float-resize" title="ドラッグでサイズ変更"></div>`;
+   <!-- 下端の細い帯。一覧(#grid)の横スクロールバーとリサイズのつまみが
+        同じ位置に重なると、角をドラッグしてもスクロールバーを掴んでしまい
+        大きさを変えられない(行数が多いほど確実に重なる)。つまみ用の行を
+        確保するために必ず置くこと。 -->
+   <div class="sc-float-foot sc-list-foot"><span>行をドラッグ、または複数選択してタイムラインへドロップすると予定に追加されます</span></div>
+   <div class="sc-float-resize" title="ドラッグで大きさを変えられます"></div>`;
   document.body.appendChild(modal);
   // 閉じたら分割表示が適用条件を満たしていればそちらへ戻す(該当しなければ
   // showSplitList()内部で無視される)。exitScheduleView/全体ボード切替からの
   // closeListModal()はこのクリックハンドラを経由しないため、無関係な場面で
   // 分割表示を再構築してしまうことはない。
   modal.querySelector('#scListModalClose').onclick=()=>{closeListModal();showSplitList()};
-  makeFloatingWindow(modal,{storageKey:'scListModalRectV1',defaultWidth:640,defaultHeight:560,defaultTop:80});
+  makeFloatingWindow(modal,{storageKey:'scListModalRectV2',defaultWidth:760,defaultHeight:600,defaultTop:80,minWidth:360,minHeight:320});
   return modal;
  }
  async function openListModal(){
