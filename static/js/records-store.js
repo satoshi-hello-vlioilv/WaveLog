@@ -49,6 +49,15 @@ async function deleteBackupRows(ids){
    body:JSON.stringify({ids:list})});
   return true;
  }catch(e){
+  /* 再試行して意味があるのは通信・サーバー側の一時的な失敗だけ。
+     権限不足(403。バックアップの削除はeditモード限定)や不正な要求(4xx)は
+     何度試しても結果が変わらないため、積み直すと控えが永久に消えず、
+     起動のたびに失敗する呼び出しを繰り返すことになる。 */
+  const permanent=e&&e.status>=400&&e.status<500;
+  if(permanent){
+   console.warn('バックアップを削除できません(再試行しても変わらないため控えません)',e.status,e.message);
+   return false;
+  }
   console.warn('バックアップの削除に失敗(次回まとめて再試行します)',e);
   setPendingBackupDeletes([...pendingBackupDeletes(),...list]);
   return false;
@@ -168,9 +177,15 @@ async function syncPendingRecords({silent}={}){
 }
 /* 未同期件数の表示。サイドバーのデータ一覧バッジへ警告ドットを出し、
    データ一覧のツールバーに件数と「今すぐ再送」ボタンを表示する。 */
-async function refreshSyncStatusUI(){
+async function refreshSyncStatusUI(preloaded){
+ // preloaded: 呼び出し元が既に全件を読んでいるときは渡してもらう。
+ // refreshDraftCount()は保存・削除・同期のたびに走る経路で、そこから
+ // 無条件に呼ばれるため、渡さないと同じ全件読みが毎回2回走る。
  let pendingCount=0;
- try{const all=await reliableAll();pendingCount=all.filter(x=>x.syncState?.status!=='synced').length}catch(e){return}
+ try{
+  const all=Array.isArray(preloaded)?preloaded:await reliableAll();
+  pendingCount=all.filter(x=>x.syncState?.status!=='synced').length;
+ }catch(e){return}
  const badge=$('#homeDraftSyncWarn');
  if(badge){badge.hidden=pendingCount===0;badge.title=pendingCount?`Accessへ未同期のデータが${pendingCount}件あります`:''}
  const bar=$('#recordSyncBar'),count=$('#recordSyncCount');
@@ -265,7 +280,13 @@ async function registerNg(){
   const m=await saveLocal('測定値NG');m.settings.ngCount=(m.settings.ngCount||0)+1;await reliablePut(m);setState(`NGロット ${m.settings.ngCount}回目を保存`);
  }catch(e){alert('NG登録を保存できませんでした: '+e.message)}
 }
-async function refreshDraftCount(){try{const all=await reliableAll();$('#homeDraftCount').textContent=all.filter(x=>x.status!=='完了').length}catch(e){$('#homeDraftCount').textContent='!'}refreshSyncStatusUI()}
+async function refreshDraftCount(){
+ // 全件読みは1回だけにして、未同期件数の表示へも同じ配列を渡す。
+ let all=null;
+ try{all=await reliableAll();$('#homeDraftCount').textContent=all.filter(x=>x.status!=='完了').length}
+ catch(e){$('#homeDraftCount').textContent='!'}
+ refreshSyncStatusUI(all);
+}
 async function findDraftForRow(row){
  const all=await reliableAll(),targetLot=normalizedLot(pick(row,'lotNo')),targetInspection=normalizedLot(pick(row,'inspectionNo')),targetCasting=normalizedLot(pick(row,'castingNo'));
  const drafts=all.filter(x=>x.status!=='完了'&&normalizedLot(x.basic?.lotNo)===targetLot).sort((a,b)=>String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')));
@@ -380,8 +401,10 @@ async function openRecords(status){
  if(status==='編集中')recordListState.statuses={editing:true,done:false};
  else if(status==='履歴')recordListState.statuses={editing:false,done:true};
  else if(!recordListState.statuses)recordListState.statuses={editing:true,done:false};
- recordListState.items=(await reliableAll()).map(ensureMeasureShape);recordListState.query='';recordListState.sort='updated-desc';
- updateRecordListTitle();syncStatusFilterButtons();$('#recordModal').hidden=false;refreshSyncStatusUI();
+ const allRecords=await reliableAll();
+ recordListState.items=allRecords.map(ensureMeasureShape);recordListState.query='';recordListState.sort='updated-desc';
+ // 未同期件数の表示にも今読んだ配列を渡す(渡さないと全件読みがもう1回走る)
+ updateRecordListTitle();syncStatusFilterButtons();$('#recordModal').hidden=false;refreshSyncStatusUI(allRecords);
  const search=$('#recordSearch'),sort=$('#recordSort'),clear=$('#clearRecordSearch');if(search){search.value='';search.oninput=()=>{recordListState.query=search.value;renderRecordListRows()}}if(sort){sort.value='updated-desc';sort.onchange=()=>{recordListState.sort=sort.value;renderRecordListRows()}}if(clear)clear.onclick=()=>{recordListState.query='';if(search)search.value='';renderRecordListRows()};renderRecordListRows();requestAnimationFrame(()=>search?.focus())
 }
 document.querySelectorAll('.status-filter-btn').forEach(b=>b.onclick=()=>{

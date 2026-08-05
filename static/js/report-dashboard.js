@@ -794,8 +794,19 @@
  }
 
  /* ---------- モーダル/コントロール ---------- */
- let dbCache=null,dbLast=null;
- async function ensureData(force){if(dbCache&&!force)return dbCache;dbCache=(await reliableAll()).map(toKpiRow);return dbCache}
+ let dbCache=null,dbLast=null,dbLoading=null;
+ /* 結果ではなく**進行中のPromise**を持つ。結果だけをキャッシュすると、
+    1回の描画から2箇所が同時に呼んだときに両方ともキャッシュ未命中となり、
+    端末内データの全件読みが2回走る(実測で発生していた)。 */
+ async function ensureData(force){
+  if(dbCache&&!force)return dbCache;
+  if(dbLoading&&!force)return dbLoading;
+  dbLoading=(async()=>{
+   try{dbCache=(await reliableAll()).map(toKpiRow);return dbCache}
+   finally{dbLoading=null}
+  })();
+  return dbLoading;
+ }
 
  function ensureNavButton(){
   const nav=document.querySelector('#analysisNav');if(!nav||$id('openDashboard'))return;
