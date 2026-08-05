@@ -2284,7 +2284,7 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
 .sc-title{font-size:var(--fs-title);color:#173842}
 .sc-equipment-select{height:32px;padding:0 8px;border:1px solid var(--line);border-radius:6px;background:#fff}
 .sc-equipment-fixed{font-size:var(--fs-base-sm);font-weight:700;color:#3a565d;background:#eafafa;border:1px solid var(--teal);border-radius:14px;padding:4px 10px}
-.sc-lock-badge{font-size:var(--fs-micro);font-weight:700;color:var(--warn-fg);background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:12px;padding:3px 9px}
+.sc-lock-badge{font-size:var(--fs-sm);font-weight:700;color:var(--warn-fg);background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:12px;padding:3px 9px}
 .sc-field-reorder-note{font-size:var(--fs-micro);font-weight:700;color:var(--warn-fg)}
 .sc-refresh,.sc-close{height:30px;padding:0 12px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer}
 .sc-close{width:var(--ctl-h-sm);padding:0;font-size:var(--fs-title);line-height:1}
@@ -2324,7 +2324,7 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
 .sc-side-tab:hover{background:var(--pale);color:#075e67}
 .sc-side-tab[hidden]{display:none!important}
 .sc-side-title{font-size:var(--fs-sm);font-weight:800;color:#5c777e;margin-bottom:6px}
-.sc-empty-note{color:#8a9aa0;font-size:var(--fs-base-sm);padding:8px 2px}
+.sc-empty-note{color:#8a9aa0;font-size:var(--fs);padding:10px 2px}
 /* 折りたたみ(§9.13新設)。「常時表示だとスケジュールの視野を圧迫する」との
    指摘のため既定を閉にし(#scStopButtonsのhidden属性、schedule-view.js)、
    ヘッダーのシェブロンで開閉状態を示す。 */
@@ -2334,7 +2334,7 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
 .sc-side-section-toggle.open .sc-collapse-chevron{transform:rotate(180deg)}
 .sc-stop-groups{display:flex;flex-direction:column;gap:12px}
 .sc-stop-groups[hidden]{display:none!important}
-.sc-stop-group-title{display:flex;align-items:center;gap:5px;font-size:var(--fs-micro);font-weight:800;color:#8a9aa0;margin-bottom:5px;text-transform:uppercase;letter-spacing:.02em}
+.sc-stop-group-title{display:flex;align-items:center;gap:5px;font-size:var(--fs-sm);font-weight:800;color:#8a9aa0;margin-bottom:5px;text-transform:uppercase;letter-spacing:.02em}
 .sc-stop-group-icon{font-size:var(--fs-sm)}
 .sc-stop-buttons{display:flex;flex-wrap:wrap;gap:6px}
 .sc-stop-button{height:28px;padding:0 10px;border:1px solid var(--line);border-radius:14px;background:#fff;font-size:var(--fs-sm);cursor:grab}
@@ -2359,7 +2359,7 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
 }
 .sc-float-win[hidden]{display:none!important}
 .sc-float-header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;background:var(--nav);color:#fff;cursor:move;flex-shrink:0;user-select:none}
-.sc-float-header h2{margin:1px 0 0;font-size:var(--fs-base-sm)}
+.sc-float-header h2{margin:1px 0 0;font-size:var(--fs-title)}
 .sc-float-header small{display:block;color:#8fd4d4;font-size:var(--fs-tiny);letter-spacing:.04em}
 .sc-float-header button{border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer;line-height:1;flex-shrink:0}
 .sc-float-body{flex:1;min-height:0;overflow:auto;padding:10px 12px}
@@ -2508,11 +2508,15 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
    詳細トグル(.sc-row-detail-toggle)へ統合して折りたたむ(既定は閉)。
    --------------------------------------------------------------- */
 .sc-row-head,.sc-row-line{
- display:grid;grid-template-columns:16px 20px 44px 94px 50px 54px minmax(140px,1fr) 54px 78px 92px 52px;
- align-items:center;column-gap:8px;min-width:780px;
+ display:grid;
+ grid-template-columns:calc(18px * var(--ui-scale)) calc(22px * var(--ui-scale)) calc(50px * var(--ui-scale))
+  calc(108px * var(--ui-scale)) calc(58px * var(--ui-scale)) calc(88px * var(--ui-scale))
+  minmax(calc(150px * var(--ui-scale)),1fr) calc(62px * var(--ui-scale)) calc(88px * var(--ui-scale))
+  calc(100px * var(--ui-scale)) calc(72px * var(--ui-scale));
+ align-items:center;column-gap:8px;min-width:calc(900px * var(--ui-scale));
 }
-.sc-row-head{padding:2px 8px 4px;position:sticky;top:0;z-index:1;background:#f4f7f8;font-size:var(--fs-badge);font-weight:800;color:#8a9aa0;border-bottom:1px solid var(--line)}
-.sc-row-line{padding:3px 8px;border-radius:4px;background:#fff;border-bottom:1px solid #eef1f2}
+.sc-row-head{padding:3px 8px 4px;position:sticky;top:0;z-index:1;background:#f4f7f8;font-size:var(--fs-micro);font-weight:800;color:#8a9aa0;border-bottom:1px solid var(--line)}
+.sc-row-line{padding:var(--row-pad-y) 8px;min-height:var(--row-h);border-radius:4px;background:#fff;border-bottom:1px solid #eef1f2}
 .sc-row-line:hover{background:#f4f9f9}
 .sc-row-line[draggable="true"]{cursor:grab}
 .sc-row-line.sc-dragging{opacity:.4}
@@ -2525,22 +2529,22 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
    間、行を薄く表示して「まだ確定していない」ことを伝える。 */
 .sc-row-line.sc-row-pending{opacity:.6;background:repeating-linear-gradient(135deg,#fff,#fff 8px,#f7f5ea 8px,#f7f5ea 16px)}
 .sc-flag-pending{color:#a4832a;font-weight:800}
-.sc-row-handle{color:#9fb0b5;font-size:var(--fs-sm);text-align:center}
-.sc-row-icon{font-size:var(--fs-sm);text-align:center;color:#7c9095}
+.sc-row-handle{color:#9fb0b5;font-size:var(--fs-base-sm);text-align:center}
+.sc-row-icon{font-size:var(--fs-base-sm);text-align:center;color:#7c9095}
 .sc-row-line.sc-row-active .sc-row-icon{color:var(--success)}
 .sc-row-line.sc-row-cancel .sc-row-icon{color:var(--danger)}
-.sc-row-date{font-size:var(--fs-micro);color:#5c777e;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}
-.sc-row-time{font-size:var(--fs-sm);color:#3a565d;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}
-.sc-row-shift{font-size:var(--fs-micro);color:#3a565d;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.sc-row-rel{font-size:var(--fs-micro);color:#8a9aa0;white-space:nowrap;overflow:hidden}
-.sc-row-title{font-size:var(--fs-base-sm);font-weight:700;color:#173842;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-.sc-row-est{font-size:var(--fs-micro);color:#3a565d;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.sc-row-date{font-size:var(--fs-sm);color:#5c777e;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}
+.sc-row-time{font-size:var(--fs-base-sm);color:#3a565d;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}
+.sc-row-shift{font-size:var(--fs-sm);color:#3a565d;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc-row-rel{font-size:var(--fs-sm);color:#8a9aa0;white-space:nowrap;overflow:hidden}
+.sc-row-title{font-size:var(--fs);font-weight:700;color:#173842;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.sc-row-est{font-size:var(--fs-sm);color:#3a565d;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
 .sc-row-est.sc-est-default{color:#8a9aa0;font-style:italic}
-.sc-row-actual{font-size:var(--fs-micro);color:#3a565d;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap;overflow:hidden}
-.sc-row-flags{display:flex;gap:3px;font-size:var(--fs-micro);white-space:nowrap;overflow:hidden}
+.sc-row-actual{font-size:var(--fs-sm);color:#3a565d;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap;overflow:hidden}
+.sc-row-flags{display:flex;gap:3px;font-size:var(--fs-micro);align-items:center;white-space:nowrap;overflow:hidden}
 .sc-flag-overdue{color:var(--danger);font-weight:800}
 .sc-row-actions{display:flex;gap:3px;justify-content:flex-end}
-.sc-row-btn{width:20px;height:20px;padding:0;border:1px solid var(--line);background:#fff;border-radius:4px;font-size:var(--fs-micro);line-height:1;cursor:pointer;color:#5c777e;flex-shrink:0}
+.sc-row-btn{min-width:var(--ctl-h-xs);height:var(--ctl-h-xs);padding:0 4px;border:1px solid var(--line);background:#fff;border-radius:4px;font-size:var(--fs-sm);line-height:1;cursor:pointer;color:#5c777e;flex-shrink:0}
 .sc-row-btn:hover{border-color:var(--teal);color:#0c5d67}
 .sc-row-btn.active{background:var(--computed-bg);border-color:var(--teal);color:#0c5d67}
 .sc-row-delete:hover{border-color:var(--danger-border);background:var(--danger-bg);color:var(--danger)}
@@ -2548,14 +2552,14 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
 /* 詳細(固定開始・見積の内訳)を1つの折りたたみへ統合。 */
 .sc-row-detail[hidden]{display:none}
 .sc-row-detail{margin:2px 8px 6px;padding:8px 10px;background:#eef4f5;border:1px solid var(--line);border-radius:6px;display:flex;flex-direction:column;gap:8px;min-width:640px}
-.sc-detail-heading{font-size:var(--fs-micro);font-weight:800;color:#5c777e}
-.sc-estimate-row{font-size:var(--fs-micro);color:#3a565d}
-.sc-estimate-factor{display:flex;align-items:center;gap:6px;font-size:var(--fs-micro);color:#3a565d}
+.sc-detail-heading{font-size:var(--fs-sm);font-weight:800;color:#5c777e}
+.sc-estimate-row{font-size:var(--fs-sm);color:#3a565d}
+.sc-estimate-factor{display:flex;align-items:center;gap:6px;font-size:var(--fs-sm);color:#3a565d}
 .sc-ef-key{color:#61757c;min-width:110px}
 .sc-ef-level{font-weight:700;color:#173842}
 .sc-ef-value{font-variant-numeric:tabular-nums}
 .sc-ef-n{color:#8a9aa0}
-.sc-ef-source{margin-left:auto;font-size:var(--fs-badge);font-weight:800;padding:1px 7px;border-radius:9px;background:#eef2f3;color:#5c777e}
+.sc-ef-source{margin-left:auto;font-size:var(--fs-micro);font-weight:800;padding:1px 7px;border-radius:9px;background:#eef2f3;color:#5c777e}
 .sc-ef-source-override .sc-ef-source{background:var(--warn-bg);color:var(--warn-fg)}
 .sc-ef-source-unknown .sc-ef-source{background:var(--danger-bg);color:var(--danger)}
 .sc-fixed-start{display:flex;align-items:center;gap:6px;font-size:var(--fs-micro);color:#61757c}
@@ -2580,16 +2584,16 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
 .sc-mode-toggle-btn.active{background:var(--teal);color:#fff}
 .sc-board-window{display:flex;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#fff}
 .sc-board-window[hidden]{display:none!important}
-.sc-board-window-btn{height:26px;padding:0 10px;border:0;background:#fff;color:#5c777e;font-size:var(--fs-micro);font-weight:700;cursor:pointer}
+.sc-board-window-btn{height:var(--ctl-h-xs);padding:0 10px;border:0;background:#fff;color:#5c777e;font-size:var(--fs-sm);font-weight:700;cursor:pointer}
 .sc-board-window-btn.active{background:var(--pale);color:#075e67}
 .sc-board{flex:1;min-height:0;overflow-y:auto;padding:14px}
 .sc-board[hidden]{display:none!important}
 .sc-board-toolbar{display:flex;justify-content:flex-end;margin-bottom:8px}
 .sc-board-sort{display:flex;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
-.sc-board-sort-btn{height:24px;padding:0 10px;border:0;background:#fff;color:#8a9aa0;font-size:var(--fs-micro);cursor:pointer}
+.sc-board-sort-btn{height:var(--ctl-h-xs);padding:0 10px;border:0;background:#fff;color:#8a9aa0;font-size:var(--fs-sm);cursor:pointer}
 .sc-board-sort-btn.active{background:#eef4f5;color:#173842;font-weight:700}
-.sc-board-axis,.sc-board-row{display:grid;grid-template-columns:88px 168px 1fr 150px 18px;align-items:center;column-gap:10px}
-.sc-board-axis{padding:0 10px 6px;color:#8a9aa0;font-size:var(--fs-badge)}
+.sc-board-axis,.sc-board-row{display:grid;grid-template-columns:calc(96px * var(--ui-scale)) calc(180px * var(--ui-scale)) 1fr calc(160px * var(--ui-scale)) calc(20px * var(--ui-scale));align-items:center;column-gap:10px}
+.sc-board-axis{padding:0 10px 6px;color:#8a9aa0;font-size:var(--fs-micro)}
 .sc-board-axis-label{grid-column:1}
 .sc-board-axis-track{grid-column:3;position:relative;height:14px}
 .sc-board-axis-tick{position:absolute;top:0;transform:translateX(-2px);white-space:nowrap}
@@ -2598,7 +2602,7 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
 .sc-board-row:hover{border-color:var(--teal)}
 .sc-board-row:focus-visible{outline:2px solid var(--teal);outline-offset:1px}
 .sc-board-name{font-size:var(--fs-base-sm);font-weight:800;color:#173842}
-.sc-board-swatch{display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:13px;font-size:var(--fs-micro);font-weight:700;white-space:nowrap;justify-self:start}
+.sc-board-swatch{display:inline-flex;align-items:center;height:var(--ctl-h-xs);padding:0 10px;border-radius:13px;font-size:var(--fs-sm);font-weight:700;white-space:nowrap;justify-self:start}
 .sc-board-swatch.sc-lv-0{background:#f4f8f9;color:#8a9aa0;border:1px dashed var(--line)}
 .sc-board-swatch.sc-lv-1{background:var(--pale);color:#0c5d67}
 .sc-board-swatch.sc-lv-2{background:#7fb9bf;color:#0a3f45}
@@ -2850,3 +2854,38 @@ body.rp-mode #printCurrentView,body.qa-mode #printCurrentView{display:none!impor
 /* 仕掛一覧ポップアップの下端の帯(リサイズのつまみ用の逃げを兼ねる) */
 .sc-list-foot{padding:5px 12px}
 .sc-list-foot span{font-size:var(--fs-tiny);color:#7c9095;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:18px}
+
+/* ---------- 作業スケジュール: 実施中/予定/実績のグルーピング(§9.34) ----------
+   状態が混ざった1本の並びだと「今どれをやっているか」「さっき何が終わった
+   か」を目で追う必要があった。3つに切り分けて見出しを付ける。 */
+.sc-group{display:flex;flex-direction:column}
+.sc-group+.sc-group{margin-top:var(--space-3)}
+.sc-group-head{
+ display:flex;align-items:baseline;gap:var(--space-2);
+ padding:var(--space-1) 8px;border-left:3px solid var(--line);
+}
+.sc-group-label{font-size:var(--fs-title);font-weight:800;color:#173842}
+.sc-group-count{font-size:var(--fs-sm);font-weight:700;color:#8a9aa0;font-variant-numeric:tabular-nums}
+.sc-group-note{font-size:var(--fs-sm);color:#8a9aa0}
+.sc-group[data-group="running"] .sc-group-head{border-left-color:var(--success);background:var(--success-bg)}
+.sc-group[data-group="running"] .sc-group-label{color:var(--success)}
+.sc-group[data-group="planned"] .sc-group-head{border-left-color:var(--teal);background:var(--pale)}
+.sc-group[data-group="history"] .sc-group-head{border-left-color:#c4d4d7;background:#eef2f4}
+.sc-group[data-group="history"] .sc-group-label{color:#5c777e}
+/* 計画外(§9.33): 予定に無いのに実績が上がっている行。予定と取り違えると
+   「消せない予定がある」と誤解されるため、必ずこのバッジを添える。 */
+.sc-flag-unplanned{
+ font-size:var(--fs-micro);font-weight:800;padding:1px 6px;border-radius:9px;
+ background:var(--warn-bg);color:var(--warn-fg);border:1px solid var(--warn-border);white-space:nowrap;
+}
+/* 予定から測定を開始する(§9.35)。行の中で最も目を引く操作なので、
+   他の行内ボタン(詳細▾・削除🗑)と違い塗りで出す。 */
+.sc-row-start{
+ min-width:auto;padding:0 8px;background:var(--teal);border-color:var(--teal);color:#fff;
+ font-weight:800;white-space:nowrap;
+}
+.sc-row-start:hover{background:var(--teal-dark);border-color:var(--teal-dark);color:#fff}
+/* 表示範囲(§9.34) */
+.sc-history-range{display:inline-flex;align-items:center;gap:5px;font-size:var(--fs-sm);color:#5c777e;white-space:nowrap}
+.sc-history-range[hidden]{display:none}
+.sc-history-range select{height:var(--ctl-h-sm);padding:0 6px;border:1px solid var(--line);border-radius:6px;background:#fff;font-size:var(--fs-sm);color:#3a565d}

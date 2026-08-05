@@ -16,10 +16,24 @@
 (function(){
  if(typeof $!=='function')return;
 
+ // historyHours(§9.34「表示範囲」): 完了した予定・計画外実績を、今から
+ // 何時間前までさかのぼって表示するか。既定8時間。同じ値をサーバーへも
+ // 送り、計画外実績(§9.33)の合成範囲と画面の表示範囲を必ず一致させる
+ // (画面だけで絞ると「サーバーが返したのに出ない」行が生まれて紛らわしい)。
+ const SC_HISTORY_CHOICES=[2,4,8,24,72];
+ const SC_HISTORY_KEY='ScheduleHistoryHoursV1';
+ function loadHistoryHours(){
+  try{
+   const v=Number(localStorage.getItem(SC_HISTORY_KEY));
+   if(SC_HISTORY_CHOICES.includes(v))return v;
+  }catch(e){/* 保存値が壊れていても既定で続行する */}
+  return 8;
+ }
  let scState={equipment:'',entries:[],anchor:null,warnings:[],configured:true,
               editable:false,pickerEnabled:false,stopReasons:[],dragId:null,
               boardMode:'single',boardWindowHours:24,overview:[],overviewSort:'order',
-              sessionHeld:false,sessionHolder:null,sessionError:null};
+              sessionHeld:false,sessionHolder:null,sessionError:null,
+              canStartWork:false,historyHours:loadHistoryHours()};
  let scLockTimer=null;
  // ---------- 編集セッション(§9.11新設)・書込キュー ----------
  let scSessionTimer=null,scSessionHeldFor=null,scTempIdSeq=0;
@@ -83,6 +97,10 @@
       <button type="button" class="sc-board-window-btn" data-hours="24">24時間</button>
       <button type="button" class="sc-board-window-btn" data-hours="48">48時間</button>
      </div>
+     <label class="sc-history-range" id="scHistoryRange" hidden title="完了した予定と実績を、今から何時間前まで表示するかを選びます">
+      <span>表示範囲</span>
+      <select id="scHistorySelect">${SC_HISTORY_CHOICES.map(h=>`<option value="${h}">直近${h}時間</option>`).join('')}</select>
+     </label>
      <span class="sc-field-reorder-note" id="scFieldReorderNote" hidden>現場段取り: 並べ替えのみ可能</span>
      <button type="button" class="sc-split-toggle" id="scContentModalBtn" hidden title="タイムラインの「内容」欄に出す項目と順序を設備ごとに選びます">📝 内容の項目</button>
      <button type="button" class="sc-split-toggle" id="scListModalBtn" hidden title="仕掛一覧をポップアップで表示してドラッグで追加します">⧉ ポップアップ</button>
@@ -113,6 +131,13 @@
   if(grid&&grid.parentNode)grid.parentNode.insertBefore(panel,grid);else document.body.appendChild(panel);
   $('#scClose').onclick=exitScheduleView;
   $('#scRefresh').onclick=()=>refreshCurrentMode();
+  const hist=$('#scHistorySelect');
+  hist.value=String(scState.historyHours);
+  hist.onchange=()=>{
+   scState.historyHours=Number(hist.value)||8;
+   try{localStorage.setItem(SC_HISTORY_KEY,String(scState.historyHours))}catch(e){/* 保存できなくても表示は変わる */}
+   if(scState.equipment)loadPlan();
+  };
   $('#scEquipmentSelect').onchange=e=>{scState.equipment=e.target.value;switchToSingle()};
   $('#scModeBoard').onclick=()=>switchToBoard();
   $('#scModeSingle').onclick=()=>switchToSingle();
@@ -545,6 +570,9 @@
   scState.editable=scState.fullControl||(am.mode==='edit'&&am.canFieldReorder);
   scState.fieldReorderOnly=(am.mode==='edit'&&am.canFieldReorder);
   scState.pickerEnabled=(am.mode!=='edit');
+  // §9.35: 予定から測定を開始できるのは、実際に測定する端末(編集モード)だけ。
+  // scheduleモードは計画専用の端末、viewモードは閲覧専用のため出さない。
+  scState.canStartWork=(am.mode==='edit');
   $('#scFieldReorderNote').hidden=!scState.fieldReorderOnly;
 
   if(am.mode==='edit'){
@@ -574,6 +602,7 @@
   $('#scBoard').hidden=!inBoard;
   $('#scSingleBody').hidden=inBoard;
   $('#scBoardWindow').hidden=!inBoard;
+  const histWrap=$('#scHistoryRange');if(histWrap)histWrap.hidden=inBoard;
   if(scState.pickerEnabled)$('#scEquipmentSelect').hidden=inBoard;
   updateSideUi();
   const stopBtn=$('#scStopModalBtn');if(stopBtn)stopBtn.hidden=!scState.fullControl||inBoard;
@@ -878,7 +907,8 @@
   const timeline=$('#scTimeline');
   timeline.innerHTML='<div class="sc-empty-note">読み込んでいます…</div>';
   try{
-   const r=await api('/api/schedule/plan?equipment='+encodeURIComponent(scState.equipment));
+   const r=await api('/api/schedule/plan?equipment='+encodeURIComponent(scState.equipment)
+    +'&history_hours='+encodeURIComponent(scState.historyHours));
    if(!r.configured){
     timeline.innerHTML='<div class="sc-empty-note">スケジュール機能が設定されていません(config/local.jsonのschedule_share_path未設定)。</div>';
     return;
@@ -1015,18 +1045,82 @@
   <span></span><span></span><span>日付</span><span>時刻</span><span>勤務</span><span>残り</span><span>内容</span><span>見積</span><span>実績</span><span>備考</span><span>操作</span>
  </div>`;
 
+ /* ---------- 実施中/予定/実績のグルーピング(§9.34) ----------
+    以前は予定・実施中・完了が1本の並びに混ざっており、「今どれをやって
+    いるのか」「さっき何が終わったのか」を目で追う必要があった。状態で
+    3つに切り分け、それぞれ見出しを付ける。
+      実施中: 着手(計画済み・計画外の両方)。今この設備を塞いでいるもの
+      予定  : 未着手。時刻順にそのまま
+      実績  : 完了・取消。表示範囲(historyHours)内のものだけ
+    完了/取消はplannedStart/Endを持たない(終端状態は展開対象外)ため、
+    表示範囲の判定にはactual.endAtを使う。actualも無い取消は、履歴の
+    末尾に残す(消してしまうと「取り消したはずの予定が見当たらない」と
+    なるため)。 */
+ function historyCutoff(){
+  return Date.now()-(scState.historyHours||8)*3600000;
+ }
+ function withinHistory(e){
+  const at=e.actual&&(e.actual.endAt||e.actual.startAt);
+  if(!at)return true;
+  const t=new Date(at).getTime();
+  return Number.isNaN(t)?true:t>=historyCutoff();
+ }
+ function groupEntries(entries){
+  const running=[],planned=[],history=[];
+  entries.forEach(e=>{
+   if(e.state==='着手')running.push(e);
+   else if(e.state==='完了'||e.state==='取消'){if(withinHistory(e))history.push(e)}
+   else planned.push(e);
+  });
+  // 実績は新しい順(直前に終わったものが一番上)
+  history.sort((a,b)=>{
+   const ta=new Date((a.actual&&(a.actual.endAt||a.actual.startAt))||0).getTime()||0;
+   const tb=new Date((b.actual&&(b.actual.endAt||b.actual.startAt))||0).getTime()||0;
+   return tb-ta;
+  });
+  return {running,planned,history};
+ }
+ function groupHeadHtml(label,count,note){
+  return `<div class="sc-group-head"><span class="sc-group-label">${esc(label)}</span>`
+   +`<span class="sc-group-count">${count}件</span>`
+   +(note?`<span class="sc-group-note">${esc(note)}</span>`:'')+`</div>`;
+ }
+
  function renderTimeline(){
   const timeline=$('#scTimeline');
-  if(!scState.entries.length){
-   timeline.innerHTML='<div class="sc-empty-note">この設備の予定はまだありません。</div>';
+  const groups=groupEntries(scState.entries);
+  const total=groups.running.length+groups.planned.length+groups.history.length;
+  if(!total){
+   timeline.innerHTML=scState.entries.length
+    ?`<div class="sc-empty-note">表示範囲(直近${scState.historyHours}時間)に該当する予定・実績がありません。表示範囲を広げてください。</div>`
+    :'<div class="sc-empty-note">この設備の予定はまだありません。</div>';
    refreshScheduledLotFilter();
    return;
   }
   timeline.innerHTML='';
-  timeline.insertAdjacentHTML('beforeend',ROW_HEAD_HTML);
-  let lastEnd=null;
-  scState.entries.forEach(e=>{
-   if(e.plannedStart&&lastEnd){
+  // 各セクションは必ず専用のコンテナへ入れる。並べ替え(wireDrag/moveCard/
+  // commitDragOrder)はDOMの兄弟関係でしか動かないため、素の兄弟として
+  // 並べると「予定」の行を「実績」の位置へドラッグできてしまう。
+  const section=(key,label,list,note,showGaps)=>{
+   if(!list.length)return;
+   const box=document.createElement('div');
+   box.className='sc-group';box.dataset.group=key;
+   box.insertAdjacentHTML('beforeend',groupHeadHtml(label,list.length,note));
+   box.insertAdjacentHTML('beforeend',ROW_HEAD_HTML);
+   let lastEnd=null;
+   list.forEach(e=>renderEntryRow(box,e,showGaps,()=>lastEnd,v=>{lastEnd=v}));
+   timeline.append(box);
+  };
+  section('running','実施中',groups.running,groups.running.some(e=>e.unplanned)?'計画外の作業も含みます':'',false);
+  section('planned','予定',groups.planned,'',true);
+  section('history','実績',groups.history,`直近${scState.historyHours}時間`,false);
+  refreshScheduledLotFilter();
+ }
+
+ function renderEntryRow(timeline,e,showGaps,getLastEnd,setLastEnd){
+  {
+   const lastEnd=getLastEnd();
+   if(showGaps&&e.plannedStart&&lastEnd){
     const gapMin=(new Date(e.plannedStart)-new Date(lastEnd))/60000;
     if(gapMin>1){
      const isFixedGap=e.fixedStart&&Math.abs(new Date(e.fixedStart)-new Date(e.plannedStart))<60000;
@@ -1036,7 +1130,7 @@
      timeline.append(div);
     }
    }
-   if(e.plannedEnd)lastEnd=e.plannedEnd;
+   if(e.plannedEnd)setLastEnd(e.plannedEnd);
 
    const row=document.createElement('div');
    row.className='sc-row-line '+stateRowClass(e.state)+(e.__pending?' sc-row-pending':'');
@@ -1046,10 +1140,15 @@
    if(canDrag)row.tabIndex=0;
 
    const lotText=entryContentText(e);
-   const dateText=e.plannedStart?fmtDateShort(e.plannedStart):'-';
-   const dateTitle=e.plannedStart?fmtDateTitle(e.plannedStart):'';
-   const timeText=e.plannedStart?fmtTimeRange(e.plannedStart,e.plannedEnd):(e.state==='完了'||e.state==='取消'?'-':'未定');
-   const timeTitle=e.plannedStart?`${fmtDateTime(e.plannedStart)} 〜 ${fmtDateTime(e.plannedEnd)}`:'';
+   // 完了・取消は予定時刻を持たない(展開対象外)ので、実績の開始/終了を出す。
+   // 以前は一律「-」で、実績セクションだけ時刻が全く読めなかった。
+   const useActual=(e.state==='完了')&&e.actual&&e.actual.startAt;
+   const showStart=useActual?e.actual.startAt:e.plannedStart;
+   const showEnd=useActual?e.actual.endAt:e.plannedEnd;
+   const dateText=showStart?fmtDateShort(showStart):'-';
+   const dateTitle=showStart?fmtDateTitle(showStart):'';
+   const timeText=showStart?fmtTimeRange(showStart,showEnd):(e.state==='完了'||e.state==='取消'?'-':'未定');
+   const timeTitle=showStart?`${useActual?'実績 ':''}${fmtDateTime(showStart)} 〜 ${fmtDateTime(showEnd)}`:'';
    const shiftText=e.shift||'-';
    const relText=e.startsInMinutes!=null?(fmtRelative(e.startsInMinutes)||'今'):'-';
    const estText=e.estimate?fmtCompact(e.estimate.minutes):'-';
@@ -1063,13 +1162,17 @@
     }
    }
    const flags=[
+    e.unplanned?'<span class="sc-flag sc-flag-unplanned" title="予定に無い実績です(仕掛一覧から直接開始した作業など)">計画外</span>':'',
     e.__pending?'<span class="sc-flag sc-flag-pending" title="サーバーへ反映中です">⏳追加中</span>':'',
     e.overdueMinutes>0?`<span class="sc-flag sc-flag-overdue" title="${Math.round(e.overdueMinutes)}分押しています">⚠${Math.round(e.overdueMinutes)}分</span>`:'',
     e.spansNonWorking?'<span class="sc-flag sc-flag-spans" title="夜間・休日を跨ぎます">🌙</span>':'',
     e.fixedStart?`<span class="sc-flag sc-flag-fixed" title="固定開始 ${fmtDateTime(e.fixedStart)}">📌</span>`:'',
    ].join('');
    const detailHtml=fixedStartHtml(e)+estimateBreakdownHtml(e);
-   const canDelete=scState.fullControl&&e.state==='予定'&&!e.__pending;
+   const canDelete=scState.fullControl&&e.state==='予定'&&!e.__pending&&!e.unplanned;
+   // §9.35: 編集モード(=実際に測定する端末)なら、予定から直接測定画面を開ける。
+   // 開始時刻を打刻すると実績突合(§7.4)でこの行が「実施中」へ移る。
+   const canStart=scState.canStartWork&&e.kind==='作業'&&e.state==='予定'&&!e.__pending&&!e.unplanned;
 
    row.innerHTML=`
     <span class="sc-row-handle" title="${canDrag?'ドラッグまたはAlt+↑/↓で並べ替え':''}">${canDrag?'⠿':(e.state==='着手'?'🔒':'')}</span>
@@ -1083,12 +1186,15 @@
     <span class="sc-row-actual">${esc(actualText)}</span>
     <span class="sc-row-flags">${flags}</span>
     <span class="sc-row-actions">
+     ${canStart?`<button type="button" class="sc-row-btn sc-row-start" title="この予定の測定画面を開いて作業を開始します">▶ 開始</button>`:''}
      ${detailHtml?`<button type="button" class="sc-row-btn sc-row-detail-toggle" title="詳細を表示">▾</button>`:''}
      ${canDelete?`<button type="button" class="sc-row-btn sc-row-delete" title="削除">🗑</button>`:''}
     </span>`;
    if(canDrag)wireDrag(row);
    const del=row.querySelector('.sc-row-delete');
    if(del)del.onclick=ev=>{ev.stopPropagation();deleteEntry(e.id)};
+   const start=row.querySelector('.sc-row-start');
+   if(start)start.onclick=ev=>{ev.stopPropagation();startWorkFromEntry(e)};
    timeline.append(row);
 
    if(detailHtml){
@@ -1109,8 +1215,7 @@
     const fsClear=detail.querySelector('.sc-fixed-start-clear');
     if(fsClear)fsClear.onclick=ev=>{ev.stopPropagation();updateFixedStart(e.id,'')};
    }
-  });
-  refreshScheduledLotFilter();
+  }
  }
  // scState.entriesが変わるたびに、既にスケジュール投入済みのロットが仕掛
  // 一覧から消える(§9.15)よう#gridを再描画する。SIKALOTNOWを見ていない
@@ -1222,12 +1327,14 @@
 
  /* ---------- ドラッグ並べ替え(§7.5・§9.4) + Alt+↑/↓ ---------- */
  function wireDrag(card){
-  card.addEventListener('dragstart',e=>{scState.dragId=+card.dataset.id;card.classList.add('sc-dragging');e.dataTransfer.effectAllowed='move'});
+  // idは文字列のまま扱う。計画外実績(§9.33)の合成idは'actual:<記録ID>'で
+  // 数値化するとNaNになり、比較もMap引きも静かに壊れる。
+  card.addEventListener('dragstart',e=>{scState.dragId=card.dataset.id;card.classList.add('sc-dragging');e.dataTransfer.effectAllowed='move'});
   card.addEventListener('dragend',()=>{card.classList.remove('sc-dragging');scState.dragId=null});
   card.addEventListener('dragover',e=>{
    if(scState.dragId==null)return;
    e.preventDefault();
-   const target=card;if(+target.dataset.id===scState.dragId)return;
+   const target=card;if(target.dataset.id===scState.dragId)return;
    const rect=target.getBoundingClientRect();
    const before=(e.clientY-rect.top)<rect.height/2;
    const dragEl=$('.sc-row-line[data-id="'+scState.dragId+'"]');
@@ -1264,10 +1371,17 @@
   // DOM順に合わせて並べ直しておくことで、キュー処理中に追加・削除の
   // 再描画が挟まってもドラッグ結果が消えない(§9.11)。実際のAPI呼び出しは
   // バックグラウンドの書込キューへ積み、画面をブロックしない。
-  const allIds=[...document.querySelectorAll('#scTimeline .sc-row-line')].map(c=>+c.dataset.id);
-  const byId=new Map(scState.entries.map(e=>[e.id,e]));
-  const ids=allIds.filter(id=>{const e=byId.get(id);return e&&e.reorderable});
-  scState.entries=allIds.map(id=>byId.get(id)).filter(Boolean);
+  // 並べ替えの対象は「予定」セクションだけ。実施中・実績の行まで拾うと、
+  // 表示上の並び(実施中→予定→実績)をそのまま予定の順序としてサーバーへ
+  // 送ってしまう。
+  const host=$('#scTimeline .sc-group[data-group="planned"]')||$('#scTimeline');
+  const domIds=[...host.querySelectorAll('.sc-row-line')].map(c=>c.dataset.id);
+  const byId=new Map(scState.entries.map(e=>[String(e.id),e]));
+  const dragged=domIds.map(id=>byId.get(id)).filter(Boolean);
+  const ids=dragged.filter(e=>e.reorderable).map(e=>e.id);
+  const draggedSet=new Set(dragged.map(e=>String(e.id)));
+  const others=scState.entries.filter(e=>!draggedSet.has(String(e.id)));
+  scState.entries=[...others.filter(e=>e.state==='着手'),...dragged,...others.filter(e=>e.state!=='着手')];
   const equipment=scState.equipment;
   queueScheduleWrite(async()=>{
    try{
@@ -1678,6 +1792,46 @@
   if(!modal||modal.hidden)return;
   modal.hidden=true;contentModalOpen=false;
   updateSplitToggleUi();
+ }
+
+ /* ---------- 予定から測定を開始する(§9.35) ----------
+    予定行のdetailは、投入時点の仕掛データをそのままスナップショットした
+    もの(buildScheduleDetail、alias名と生カラム名の両方を持つ)なので、
+    仕掛一覧の行と同じようにopenMeasurement()へ渡せる。
+    ここで新しい測定画面の入口を作らないこと(測定画面の準備・端末内
+    データの再開・使用設備の照合はすべてopenMeasurement()が持っている。
+    別経路を足すと設備照合を通らない開き方ができてしまう)。 */
+ function entryMeasurementRow(e){
+  const row=Object.assign({},e.detail||{});
+  // 測定画面側(blankMeasure/requireEquipmentBeforeMeasurement等)は値を必ず
+  // pick(row,key)で取り出す。pick()はaliases[key]に並ぶ**生カラム名**しか
+  // 見ない(alias名そのもの、例えばrow.lotNoは探さない)ため、alias名だけを
+  // 持つdetail(投入時期によってはこの流儀)をそのまま渡すと1項目も引けず
+  // 「ロット番号が記録されていない」になる。ここで生カラム名の側へ必ず
+  // 書き戻してから渡す。
+  const put=(key,val)=>{
+   if(val===undefined||val===null||String(val).trim()==='')return;
+   (aliases[key]||[]).forEach(n=>{
+    if(row[n]===undefined||row[n]===null||row[n]==='')row[n]=val;
+   });
+  };
+  Object.keys(aliases).forEach(k=>put(k,contentValueOf(e.detail,k)));
+  // detailが古くて欠けている場合に備え、予定行が持つ3項目で補う。
+  put('lotNo',e.lotNo);put('castingNo',e.castingNo);put('inspectionNo',e.inspectionNo);
+  return row;
+ }
+ async function startWorkFromEntry(e){
+  if(typeof openMeasurement!=='function'){alert('測定画面を開けません。');return}
+  const row=entryMeasurementRow(e);
+  if(!(typeof pick==='function'?pick(row,'lotNo'):row.lotNo)){
+   alert('この予定にはロット番号が記録されていないため、測定画面を開けません。');
+   return;
+  }
+  try{
+   await openMeasurement(row);
+  }catch(err){
+   alert('測定画面を開けません: '+(err&&err.message?err.message:err));
+  }
  }
 
  function buildScheduleDetail(row){

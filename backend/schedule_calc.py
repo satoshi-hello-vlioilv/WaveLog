@@ -164,14 +164,79 @@ def build_actual_index(backup_rows=None):
   existing=index.get(key)
   if existing is not None and existing['updatedAt']>=updated_at:continue
   work_time=payload.get('workTime') or {}
+  # equipment/basicも持たせるのは§9.33(計画外実績の合成)のため。実績突合
+  # (§7.4)自体はstartAt/endAtしか見ないので、既存の判定には影響しない。
+  settings=payload.get('settings') or {}
   index[key]={'id':row.get('id',''),'startAt':work_time.get('startAt') or None,
-              'endAt':work_time.get('endAt') or None,'updatedAt':updated_at}
+              'endAt':work_time.get('endAt') or None,'updatedAt':updated_at,
+              'equipment':str(settings.get('registeredEquipment') or payload.get('registeredEquipment')
+                              or row.get('equipment') or '').strip(),
+              'status':str(row.get('status') or payload.get('status') or '').strip(),
+              'basic':basic,'key':key}
  return index
 
 def match_actual(index,lot_no,casting_no,mfg_material):
  lot=str(lot_no or '').strip();casting=str(casting_no or '').strip();material=str(mfg_material or '').strip()
  if not (lot and casting and material):return None
  return index.get((normalize_match_key(lot),normalize_match_key(casting),normalize_match_key(material)))
+
+# ========================================================================
+# 計画外実績の合成(§9.33)
+# ========================================================================
+# 予定に載っていないのに実績が上がっているケース(仕掛一覧から直接測定を
+# 開始した/予定を立てずに作業した)を、作業スケジュール上でも「実施中」
+# 「実績」として見えるようにするための合成エントリ。
+#
+# 重要: 合成エントリはDBに存在しないため、並べ替え・削除・固定開始の対象に
+# してはいけない(idは'actual:<記録ID>'で、共有DBのどの行にも一致しない)。
+# 状態は必ず着手/完了のどちらかなので、既存の
+# reorderable=(state=='予定') / 削除可否=(state=='予定') の判定に素直に乗り、
+# 特別扱いを増やさずに読み取り専用へ倒れる。
+UNPLANNED_ID_PREFIX='actual:'
+
+def _unplanned_detail(basic):
+ """合成エントリのdetail。「内容」欄(§9.28)と換算係数モデル(§6)が参照する
+ alias名のキーだけを、測定データのbasicから拾って作る。"""
+ keys=('lotNo','castingNo','inspectionNo','mfgMaterial','mfgTemper','purposeName',
+       'customer','delivery','orderNo','equipment')
+ detail={}
+ for k in keys:
+  v=basic.get(k)
+  if v is not None and str(v).strip()!='':detail[k]=v
+ return detail
+
+def unplanned_entries(actual_index,equipment,matched_keys,now,history_hours=None):
+ """予定行に紐づかない実績から合成エントリを作る。
+ matched_keys: すでに予定行が突合に使ったキーの集合(二重に出さないため)。
+ history_hours: 完了済みをさかのぼる時間。Noneなら完了分は作らない。"""
+ target=normalize_equipment_name(equipment)
+ cutoff=None
+ if history_hours is not None:
+  try:cutoff=now-timedelta(hours=float(history_hours))
+  except Exception:cutoff=None
+ running,done=[],[]
+ for key,a in actual_index.items():
+  if key in matched_keys:continue
+  if not a.get('startAt'):continue
+  if normalize_equipment_name(a.get('equipment') or '')!=target:continue
+  basic=a.get('basic') or {}
+  entry={'id':UNPLANNED_ID_PREFIX+str(a.get('id') or ''),'order':None,'kind':'作業',
+         'lotNo':str(basic.get('lotNo') or ''),'inspectionNo':str(basic.get('inspectionNo') or ''),
+         'castingNo':str(basic.get('castingNo') or ''),'title':'','detail':_unplanned_detail(basic),
+         'fixedStart':None,'estimateMinutes':None,'storedState':None,
+         'actualRecordId':a.get('id'),'remark':'','unplanned':True,'actual':a}
+  if a.get('endAt'):
+   if cutoff is None:continue
+   ended=_parse_dt(a['endAt'])
+   if ended is None or ended<cutoff:continue
+   entry['state']='完了'
+   done.append((ended,entry))
+  else:
+   entry['state']='着手'
+   running.append((_parse_dt(a['startAt']) or now,entry))
+ running.sort(key=lambda x:x[0])
+ done.sort(key=lambda x:x[0])
+ return [e for _,e in running],[e for _,e in done]
 
 def derive_state(stored_state,actual):
  """§7.4。計画者が明示的に確定した完了/取消は実績突合より優先する。"""
@@ -224,10 +289,16 @@ def _parse_dt(value):
  if dt.tzinfo is not None:dt=dt.astimezone().replace(tzinfo=None)
  return dt
 
-def expand_plan(c,equipment,now=None):
+DEFAULT_HISTORY_HOURS=8.0
+
+def expand_plan(c,equipment,now=None,history_hours=DEFAULT_HISTORY_HOURS,include_unplanned=True):
  """GET /api/schedule/planの本体。生のplan_rows・稼働カレンダー・実績突合を
  合成し、§8.1のentries形状(id/order/kind/estimate/plannedStart/plannedEnd/
- startsInMinutes/actual/reorderable等)を返す。DBへは一切書き戻さない。"""
+ startsInMinutes/actual/reorderable等)を返す。DBへは一切書き戻さない。
+ history_hours: 計画外実績(§9.33)の完了分をさかのぼる時間。Noneで完了分なし。
+ include_unplanned: 計画外実績の合成そのものを行うか。設備削除の参照件数
+ (equipment_reference_counts)のように「共有DBに実在する行数」を数えたい
+ 呼び出しはFalseにする(合成分を数えると実在しない予定を数えてしまう)。"""
  now=now or datetime.now()
  raw_rows=sr.plan_rows(c,equipment)
  # 設定系マスタ(稼働カレンダー・勤務形態・換算係数上書き)はmaster.sqlite3側。
@@ -236,11 +307,11 @@ def expand_plan(c,equipment,now=None):
  sr.migrate_config_masters_from_shared()
  mc=sr.config_master_conn()
  try:
-  return _expand_plan_with(c,mc,equipment,now,raw_rows)
+  return _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours,include_unplanned)
  finally:
   mc.close()
 
-def _expand_plan_with(c,mc,equipment,now,raw_rows):
+def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_HOURS,include_unplanned=True):
  specific_cal=sr.calendar_rows(mc,equipment)
  global_cal=sr.calendar_rows(mc,'')
  specific_shift=sr.shift_rows(mc,equipment)
@@ -249,6 +320,7 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows):
  warnings=[]
 
  entries=[]
+ matched_keys=set()
  for r in raw_rows:
   detail={}
   if r[8]:
@@ -260,7 +332,17 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows):
   actual=match_actual(actual_index,detail.get('lotNo') or r[4],detail.get('castingNo') or r[6],detail.get('mfgMaterial')) if entry['kind']=='作業' else None
   entry['state']=derive_state(entry['storedState'],actual)
   entry['actual']=actual
+  entry['unplanned']=False
+  if actual is not None:matched_keys.add(actual['key'])
   entries.append(entry)
+
+ # 計画外実績(§9.33)を合成する。実施中の分は先頭へ入れて、この直後の
+ # アンカー決定にそのまま乗せる(設備が実際に塞がっている時間を、予定を
+ # 立てていたかどうかに関わらず反映するため)。完了分は展開ループが
+ # 終端状態として読み飛ばすので末尾でよい。
+ if include_unplanned:
+  unplanned_running,unplanned_done=unplanned_entries(actual_index,equipment,matched_keys,now,history_hours)
+  entries=unplanned_running+entries+unplanned_done
 
  # アンカー決定(§7.2): 展開対象(完了/取消を除く)の先頭を見る
  active=[e for e in entries if e['state'] not in PLAN_TERMINAL_STATES]
@@ -328,7 +410,7 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows):
   e['plannedStart']=planned_start.isoformat();e['plannedEnd']=cursor.isoformat()
   e['startsInMinutes']=round(_minutes_between(now,planned_start),1)
   e['estimate']=dict(est,minutes=round(minutes,1))
-  e['reorderable']=(e['state']==sr.PLAN_REORDERABLE_STATE)
+  e['reorderable']=(e['state']==sr.PLAN_REORDERABLE_STATE) and not e.get('unplanned')
   e['spansNonWorking']=bool(spans)
   e['overdueMinutes']=round(overdue,1)
   e['shift']=resolve_shift_label(specific_shift,global_shift,planned_start)
@@ -385,7 +467,8 @@ def equipment_reference_counts(equipment):
   return None
  c=_sqlite_connect(local_path,False,'sqlite')
  try:
-  expanded=expand_plan(c,equipment)
+  # 合成した計画外実績(§9.33)は共有DBに行が無いため数えない。
+  expanded=expand_plan(c,equipment,include_unplanned=False)
   pending=sum(1 for e in expanded['entries'] if e['state']==sr.PLAN_REORDERABLE_STATE)
   in_progress=sum(1 for e in expanded['entries'] if e['state']=='着手')
   completed=sum(1 for e in expanded['entries'] if e['state']=='完了')
