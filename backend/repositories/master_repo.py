@@ -71,7 +71,9 @@ def operator_master_rows(c):
  ensure_operator_master_table(c)
  cur=c.cursor()
  # 全行取得後にPython側で有効判定する。
- cur.execute('SELECT [オペレータID],[氏名],[表示順],[有効],[更新日時],[更新者ID] FROM [オペレータマスタ] ORDER BY [表示順],[氏名]')
+ # ﾖﾐｶﾞﾅは既存の呼び出し元のインデックス([0]〜[5])を壊さないよう末尾へ足す
+ # (アクセス権限マスタでスケジュール関連3列を足したときと同じ方針)。
+ cur.execute('SELECT [オペレータID],[氏名],[表示順],[有効],[更新日時],[更新者ID],[ﾖﾐｶﾞﾅ] FROM [オペレータマスタ] ORDER BY [表示順],[氏名]')
  rows=[]
  for r in cur.fetchall():
   active=True if r[3] is None else bool(r[3])

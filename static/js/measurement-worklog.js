@@ -186,6 +186,10 @@
   {key:'columnDisplay',label:'列表示',icon:'列',special:'column-display'},
   {key:'importBackup',label:'データ引継ぎ',icon:'継',special:'import-backup'},
   {key:'pathConfig',label:'パス設定',icon:'路',special:'path-config',endpoint:'/api/path-config-master'},
+  // 旧「マスタ一覧」(サイドバーのMASTERナビ→汎用グリッド)をここへ統合した
+  // (ARCHITECTURE.md「マスタ管理の画面形態」)。上のタブが扱わないテーブル(表示マスタ・スケジュール列表示マスタ
+  // 等)も含め、master.sqlite3の中身をそのまま確認するための読み取り専用タブ。
+  {key:'rawTable',label:'テーブル生データ',icon:'表',special:'raw-table',readOnly:true},
  ];
  let maintState={defKey:'operator',items:[],editing:null,query:''};
  function currentDef(){return MASTER_DEFS.find(d=>d.key===maintState.defKey)||MASTER_DEFS[0]}
@@ -196,6 +200,9 @@
  function maintDefVisible(def){
   const mode=(window.accessMode&&window.accessMode.mode)||'edit';
   if(mode!=='schedule')return true;
+  // 読み取り専用のタブ(テーブル生データ)は書込権限と無関係なのでどのモードでも
+  // 出す。旧「マスタ一覧」ナビが全モードで見られた挙動を統合後も保つため(ARCHITECTURE.md「マスタ管理の画面形態」)。
+  if(def.readOnly)return true;
   return !!(def.endpoint&&def.endpoint.indexOf('/api/schedule/')===0);
  }
  function firstVisibleDefKey(){const d=MASTER_DEFS.find(maintDefVisible);return d?d.key:MASTER_DEFS[0].key}
@@ -206,14 +213,23 @@
   syncNav();
  }
 
- function ensureMaintModal(){
-  let modal=$('#masterMaintModal');if(modal)return modal;
-  modal=document.createElement('div');modal.className='record-modal mm-modal';modal.id='masterMaintModal';modal.hidden=true;
-  modal.innerHTML=`<div class="mm-dialog">
+ /* ---------- 画面の形態(ARCHITECTURE.md「マスタ管理の画面形態」改訂) ----------
+    以前は全画面シェード付きのモーダル(.record-modal.mm-modal)だったが、
+    「モーダルにした意味が無い使い方(常時開きっぱなしで一覧を見る画面)」
+    という指摘のため、帳票(rp-mode)・実績カレンダー(cal-mode)・作業スケジュール
+    (sc-mode)と同じメイン画面統合型(body.mm-mode + #masterMaintPanel)へ
+    作り直した。内側の構造(.mm-dialog以下)とid(#masterMaintNav/
+    #masterMaintForm/#masterMaintList等)は一切変えていないため、列表示・
+    データ引継ぎ・換算係数・パス設定といった特殊タブの描画コードは
+    そのまま動く(.mm-panel .mm-dialogのCSSで寸法だけ上書きする)。 */
+ function ensureMaintPanel(){
+  let panel=$('#masterMaintPanel');if(panel)return panel;
+  panel=document.createElement('section');panel.className='mm-panel';panel.id='masterMaintPanel';panel.hidden=true;
+  panel.innerHTML=`<div class="mm-dialog">
    <header class="mm-head">
     <div class="mm-head-title"><h2>マスタ管理</h2><span class="mm-sub">登録内容の追加・編集・無効化。更新はすべて更新者IDとともに記録されます。</span></div>
     <label class="mm-head-user">更新者ID<input id="masterUserId" type="text" autocomplete="off" placeholder="社員番号など"></label>
-    <button id="closeMasterMaint" class="mm-close" type="button" aria-label="閉じる">×</button>
+    <button id="closeMasterMaint" class="mm-close" type="button" aria-label="マスタ管理を閉じる" title="マスタ管理を閉じる">×</button>
    </header>
    <div class="mm-body">
     <nav class="mm-nav" id="masterMaintNav" aria-label="マスタ種別"></nav>
@@ -230,21 +246,47 @@
     </section>
    </div>
   </div>`;
-  document.body.append(modal);
-  $('#closeMasterMaint').onclick=()=>{modal.hidden=true};
-  modal.addEventListener('click',ev=>{if(ev.target===modal)modal.hidden=true});
+  const grid=$('#grid');grid?.parentNode?.insertBefore(panel,grid);
+  $('#closeMasterMaint').onclick=()=>exitMasterMaint();
   const uid=$('#masterUserId');if(uid){uid.value=currentUserId();uid.onchange=()=>setUserId(uid.value)}
   $('#reloadMasterMaint').onclick=()=>loadMaint(true);
   const search=$('#masterMaintSearch');if(search){search.oninput=()=>{maintState.query=search.value;renderMaintList()}}
   renderMaintNav();
-  return modal;
+  return panel;
  }
+ function exitMasterMaint(){
+  if(!document.body.classList.contains('mm-mode'))return;
+  document.body.classList.remove('mm-mode');
+  const panel=$('#masterMaintPanel');if(panel)panel.hidden=true;
+  closeMaintEditor();
+  document.getElementById('openMasterMaint')?.classList.remove('active');
+ }
+ window.exitMasterMaint=exitMasterMaint;
  function syncNav(){document.querySelectorAll('#masterMaintNav [data-master]').forEach(b=>b.classList.toggle('active',b.dataset.master===maintState.defKey))}
  function requireMaintUser(){const el=$('#masterUserId');const id=String(el?el.value:'').trim();if(!id){showToast('更新者IDを入力してください','マスタ更新には更新者IDが必要です。',4200);el&&el.focus();return null}setUserId(id);return id}
 
- function renderMaintForm(){
-  const def=currentDef(),form=$('#masterMaintForm');if(!form)return;const editing=maintState.editing;
-  const controls=def.fields.map(f=>{
+ /* ---------- モーダル化の基準(ARCHITECTURE.md「マスタ管理の画面形態」) ----------
+    「モーダルにする意味」をここ1箇所で定義する。
+      ・一覧・検索・軽い追加は常にメイン画面(統合パネル)側で完結させる。
+        画面を覆う理由が無く、覆うと背後の一覧と見比べられなくなるため。
+      ・入力項目が多い/専用コントロールを伴う編集だけをモーダルにする。
+        上部インラインフォームのままだと縦幅を大きく取って一覧の表示領域を
+        圧迫し、フォームと一覧のどちらも中途半端に見える状態になるため
+        (実際に報告された指摘)。編集の間は一覧を操作させない方が安全でもある。
+    判定は「入力項目がEDITOR_MODAL_MIN_FIELDS以上」「専用コントロール
+    (設備の複数選択タグ入力)を含む」「defで明示(editorModal:true)」のいずれか。
+    現状: オペレータ(タグ入力)・アクセス権限(6項目)・設備停止(4項目)・
+    勤務形態(4項目)がモーダル、機器/スプール/内径/設備はインラインのまま。 */
+ const EDITOR_MODAL_MIN_FIELDS=4;
+ const RICH_FIELD_TYPES=['equipment-multi'];
+ function defUsesEditorModal(def){
+  if(!def||!Array.isArray(def.fields)||!def.fields.length)return false;
+  if(def.editorModal===true)return true;
+  if(def.fields.some(f=>RICH_FIELD_TYPES.includes(f.type)))return true;
+  return def.fields.length>=EDITOR_MODAL_MIN_FIELDS;
+ }
+ function buildFieldControls(def,editing){
+  return def.fields.map(f=>{
    const val=editing?String(editing[f.k]??''):'';
    if(f.type==='equipment-select'){
     const opts=equipmentMasterState.items||[];
@@ -275,6 +317,25 @@
    }
    return `<label class="mm-field"><span>${esc(f.label)}${f.required?'<i>*</i>':''}${f.key?'<em class="mm-keytag">キー</em>':''}</span><input data-field="${f.k}" type="text" value="${esc(val)}" autocomplete="off"></label>`;
   }).join('');
+ }
+ function renderMaintForm(){
+  const def=currentDef(),form=$('#masterMaintForm');if(!form)return;const editing=maintState.editing;
+  // 入力項目が多いマスタは、上部に常設のフォームを置かず(一覧の表示領域を
+  // 空けるため)、編集専用モーダルへ入口だけを出す(ARCHITECTURE.md「マスタ管理の画面形態」)。
+  if(defUsesEditorModal(def)){
+   form.classList.add('mm-form-compact');
+   form.innerHTML=`<div class="mm-form-head">
+     <span class="mm-mode-chip new">新規登録</span>
+     <button type="button" id="masterMaintAdd" class="mm-btn-primary sm">＋ ${esc(def.label)}を追加</button>
+     <span class="mm-form-hint">一覧の行をクリック（またはダブルクリック・「編集」ボタン）で編集ウィンドウを開きます。</span>
+    </div>
+    ${def.hint?`<p class="mm-def-hint">${esc(def.hint)}</p>`:''}`;
+   form.onsubmit=ev=>ev.preventDefault();
+   const ab=$('#masterMaintAdd');if(ab)ab.onclick=()=>openMaintEditor(null);
+   return;
+  }
+  form.classList.remove('mm-form-compact');
+  const controls=buildFieldControls(def,editing);
   const chip=editing?`<span class="mm-mode-chip editing">編集中 <b>${esc(editing[def.cols[0].k]||'')}</b><small>ID:${esc(editing.id)}</small></span>`:`<span class="mm-mode-chip new">新規登録</span>`;
   form.innerHTML=`<div class="mm-form-head">${chip}${editing?'<button type="button" id="masterMaintNew" class="mm-btn-ghost sm">＋ 新規入力に切替</button>':''}</div>
    ${def.hint?`<p class="mm-def-hint">${esc(def.hint)}</p>`:''}
@@ -283,6 +344,62 @@
   form.onsubmit=ev=>{ev.preventDefault();submitMaint()};
   const nb=$('#masterMaintNew');if(nb)nb.onclick=()=>{maintState.editing=null;renderMaintForm()};
   bindEquipmentPickers(form);
+ }
+
+ /* ---------- 汎用の編集専用モーダル(ARCHITECTURE.md「マスタ管理の画面形態」新設) ----------
+    どのマスタでも同じ枠を使う。中身(入力欄)はbuildFieldControls()が
+    MASTER_DEFSのfields定義から組み立てるため、マスタを増やしても
+    このモーダル自体には手を入れなくてよい。 */
+ function ensureMaintEditor(){
+  let modal=$('#maintEditorModal');if(modal)return modal;
+  modal=document.createElement('div');modal.className='record-modal mm-editor-modal';modal.id='maintEditorModal';modal.hidden=true;
+  modal.innerHTML=`<div class="mm-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="maintEditorTitle">
+    <header class="mm-editor-head">
+     <div><small id="maintEditorEyebrow">MASTER</small><h2 id="maintEditorTitle">編集</h2></div>
+     <button type="button" id="maintEditorClose" class="mm-close" aria-label="閉じる">×</button>
+    </header>
+    <form class="mm-editor-body" id="maintEditorForm"></form>
+    <!-- 下段は<footer>ではなく<div>にすること。メイン画面統合型ビューの
+         共通ルール(body.mm-mode footer{display:none!important}等)は要素
+         セレクタのfooterを対象にしているため、<footer>で組むとこのモーダルの
+         保存・キャンセルボタンごと消える(実装時に踏んだ不具合)。 -->
+    <div class="mm-editor-foot">
+     <span class="mm-form-hint" id="maintEditorHint"></span>
+     <div class="mm-editor-actions">
+      <button type="button" id="maintEditorCancel" class="mm-btn-ghost">キャンセル</button>
+      <button type="button" id="maintEditorSave" class="mm-btn-primary">保存</button>
+     </div>
+    </div>
+   </div>`;
+  document.body.append(modal);
+  $('#maintEditorClose').onclick=()=>closeMaintEditor();
+  $('#maintEditorCancel').onclick=()=>closeMaintEditor();
+  $('#maintEditorSave').onclick=()=>submitMaint('#maintEditorForm');
+  modal.addEventListener('click',ev=>{if(ev.target===modal)closeMaintEditor()});
+  return modal;
+ }
+ function openMaintEditor(item){
+  const def=currentDef();if(!defUsesEditorModal(def))return;
+  const modal=ensureMaintEditor();
+  maintState.editing=item?Object.assign({},item):null;
+  const editing=maintState.editing;
+  $('#maintEditorEyebrow').textContent=def.label+'マスタ';
+  $('#maintEditorTitle').textContent=editing?`${String(editing[def.cols[0].k]??'')||'(名称なし)'} を編集`:`${def.label}を新規登録`;
+  $('#maintEditorHint').textContent=editing
+   ?'キー項目（名称・区分など）も変更できます。保存すると同じIDのまま更新されます。'
+   :'必須(*)を入力して登録します。';
+  $('#maintEditorSave').textContent=editing?'更新を保存':'追加登録';
+  const form=$('#maintEditorForm');
+  form.innerHTML=`${def.hint?`<p class="mm-def-hint">${esc(def.hint)}</p>`:''}
+   <div class="mm-form-fields">${buildFieldControls(def,editing)}</div>`;
+  form.onsubmit=ev=>{ev.preventDefault();submitMaint('#maintEditorForm')};
+  bindEquipmentPickers(form);
+  modal.hidden=false;
+  requestAnimationFrame(()=>{const first=form.querySelector('[data-field],[data-equipment-search]');if(first)first.focus()});
+ }
+ function closeMaintEditor(){
+  const modal=$('#maintEditorModal');if(!modal||modal.hidden)return;
+  modal.hidden=true;maintState.editing=null;renderMaintList();
  }
  // 作業可能設備タグ入力: フォーカスで登録済み設備をサジェスト、クリックで
  // 連続追加できるようにする（認識優先＝再入力不要、逐次追加を高速化）。
@@ -336,7 +453,7 @@
  }
 
  function setMaintLoading(show,text){
-  const dialog=$('#masterMaintModal .mm-dialog');if(!dialog)return;
+  const dialog=$('#masterMaintPanel .mm-dialog');if(!dialog)return;
   let box=dialog.querySelector(':scope > .mm-loading');
   if(show){
    if(!box){box=document.createElement('div');box.className='mm-loading';box.innerHTML='<div class="mm-loading-box"><span class="mini-spinner"></span><b></b></div>';dialog.appendChild(box)}
@@ -368,13 +485,16 @@
    return api('/api/equipment-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,reuseExisting:false})});
   }
  }
- async function submitMaint(){
+ /* rootSel: 入力欄を読む対象。インラインフォーム(#masterMaintForm)と
+    編集モーダル(#maintEditorForm)のどちらからでも同じ処理で保存する。 */
+ async function submitMaint(rootSel){
+  const root=rootSel||'#masterMaintForm';
   const def=currentDef(),uid=requireMaintUser();if(uid===null)return;const editing=maintState.editing;
   const body={user_id:uid};let ok=true;
   if(editing)body.id=editing.id;
   def.fields.forEach(f=>{
-   if(f.type==='equipment-multi'){body[f.k]=[...document.querySelectorAll(`#masterMaintForm [data-equipment-field="${f.k}"]:checked`)].map(el=>el.value);return}
-   const el=$(`#masterMaintForm [data-field="${f.k}"]`);const v=String(el?el.value:'').trim();if(f.required&&!v)ok=false;body[f.k]=v;
+   if(f.type==='equipment-multi'){body[f.k]=[...document.querySelectorAll(`${root} [data-equipment-field="${f.k}"]:checked`)].map(el=>el.value);return}
+   const el=$(`${root} [data-field="${f.k}"]`);const v=String(el?el.value:'').trim();if(f.required&&!v)ok=false;body[f.k]=v;
   });
   if(!ok){showToast('入力を確認してください','必須項目が未入力です。',4000);return}
   const endpoint=editing?def.endpoint+'/update':def.endpoint;
@@ -382,6 +502,10 @@
    setMaintLoading(true,editing?`${def.label}を更新しています…`:`${def.label}を登録しています…`);
    const r=(def.key==='equipment'&&!editing)?await registerEquipmentWithChoice(body):await api(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
    if(r===null)return; // 設備の新規/復元どちらもキャンセルされた
+   // 編集モーダルから保存した場合は閉じてから一覧を更新する(closeMaintEditor
+   // 自身もrenderMaintListを呼ぶが、直後のloadMaintで最新データに置き換わる)。
+   const modal=$('#maintEditorModal');
+   if(modal&&!modal.hidden){modal.hidden=true}
    maintState.editing=null;await loadMaint(true);
    showToast&&showToast(def.label+(editing?'を更新しました':'を登録しました'),(r&&r.message)||'',3600);
   }catch(e){showToast&&showToast(editing?'更新できませんでした':'登録できませんでした',e.message,6500)}
@@ -463,16 +587,23 @@
    const row=document.createElement('div');row.className='mm-row'+(maintState.editing&&maintState.editing.id===it.id?' editing':'');row.style.gridTemplateColumns=tmpl;row.tabIndex=0;row.setAttribute('role','button');row.title='クリックで編集フォームに読み込みます';
    const cells=def.cols.map(c=>`<span title="${esc(it[c.k]??'')}">${esc(it[c.k]??'')||'<em class="mm-blank">—</em>'}</span>`).join('');
    row.innerHTML=`${cells}<span class="mm-user" title="${esc(it.updated_by||'')}">${esc(it.updated_by||'-')}</span><span class="mm-date">${esc(fmtDT(it.updated_at))}</span><span class="mm-act"><button type="button" class="mm-edit">編集</button>${def.hasDelete?'<button type="button" class="mm-del">削除</button>':''}</span>`;
-   const edit=()=>{maintState.editing=Object.assign({},it);renderMaintForm();const f=$('#masterMaintForm');if(f)f.scrollIntoView({block:'nearest'})};
+   // 入力項目が多いマスタは編集専用モーダル、少ないマスタは従来どおり
+   // 上部のインラインフォームへ読み込む(ARCHITECTURE.md「マスタ管理の画面形態」、defUsesEditorModal)。
+   const edit=()=>{
+    if(defUsesEditorModal(def)){openMaintEditor(it);return}
+    maintState.editing=Object.assign({},it);renderMaintForm();
+    const f=$('#masterMaintForm');if(f)f.scrollIntoView({block:'nearest'});
+   };
    row.querySelector('.mm-edit').onclick=e=>{e.stopPropagation();edit()};
    const del=row.querySelector('.mm-del');if(del)del.onclick=e=>{e.stopPropagation();deleteMaint(it)};
-   row.onclick=()=>edit();row.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){if(e.key===' ')e.preventDefault();edit()}};
+   row.onclick=()=>edit();row.ondblclick=()=>edit();
+   row.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){if(e.key===' ')e.preventDefault();edit()}};
    frag.append(row);
   });
   list.append(frag);
  }
  function setMaintSearchVisible(show){
-  const search=document.querySelector('#masterMaintModal .mm-search');if(search)search.style.display=show?'':'none';
+  const search=document.querySelector('#masterMaintPanel .mm-search');if(search)search.style.display=show?'':'none';
   const cnt=$('#masterMaintCount');if(cnt)cnt.style.display=show?'':'none';
  }
  async function loadMaint(force){
@@ -481,6 +612,7 @@
   if(def.special==='import-backup'){setMaintSearchVisible(false);return loadImportBackupMaint(force)}
   if(def.special==='load-factor'){setMaintSearchVisible(false);return loadLoadFactorMaint(force)}
   if(def.special==='path-config'){setMaintSearchVisible(false);return loadPathConfigMaint(force)}
+  if(def.special==='raw-table'){setMaintSearchVisible(false);return loadRawTableMaint(force)}
   setMaintSearchVisible(true);
   const list=$('#masterMaintList');if(list&&force)list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
   const multiField=def.fields.find(f=>f.type==='equipment-multi');
@@ -852,14 +984,115 @@
   finally{setMaintLoading(false)}
  }
 
- function openMasterMaint(){const modal=ensureMaintModal();renderMaintNav();const uid=$('#masterUserId');if(uid)uid.value=currentUserId();maintState.defKey=firstVisibleDefKey();maintState.editing=null;maintState.query='';const se=$('#masterMaintSearch');if(se)se.value='';syncNav();modal.hidden=false;loadMaint(true);requestAnimationFrame(()=>{const u=$('#masterUserId');if(u&&!u.value){u.focus();return}const s=$('#masterMaintSearch');if(s)s.focus()})}
+ /* ---------- テーブル生データ(旧「マスタ一覧」、ARCHITECTURE.md「マスタ管理の画面形態」で統合) ----------
+    master.sqlite3のテーブルをそのまま読み取り専用で表示する。上のタブが
+    面倒を見ていないテーブル(表示マスタ・スケジュール列表示マスタ・
+    パス設定マスタの実体など)も確認できる、最後の手段としての生データ閲覧。
+    編集は各専用タブから行う前提のため、ここでは書込導線を一切出さない。 */
+ let rawTableState={tables:[],table:'',columns:[],rows:[],loaded:false};
+ async function loadRawTableMaint(force){
+  const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
+  form.classList.remove('mm-form-compact');
+  if(force||!rawTableState.loaded){
+   form.innerHTML='<div class="mm-form-head"><span class="mm-mode-chip new">読み込み中</span></div>';
+   list.innerHTML='<div class="mm-empty">テーブル一覧を取得しています…</div>';
+   try{
+    const r=await api('/api/tables?db=MASTER');
+    rawTableState.tables=r.tables||[];rawTableState.loaded=true;
+    if(!rawTableState.tables.includes(rawTableState.table))rawTableState.table=rawTableState.tables[0]||'';
+   }catch(e){
+    form.innerHTML='';
+    list.innerHTML=`<div class="mm-empty error">テーブル一覧を取得できませんでした: ${esc(e.message)}</div>`;
+    return;
+   }
+  }
+  renderRawTableForm();
+  await loadRawTableRows();
+ }
+ function renderRawTableForm(){
+  const form=$('#masterMaintForm');if(!form)return;
+  if(!rawTableState.tables.length){form.innerHTML='<div class="mm-form-head"><span class="mm-mode-chip new">テーブルがありません</span></div>';return}
+  const opts=rawTableState.tables.map(t=>`<option value="${esc(t)}"${t===rawTableState.table?' selected':''}>${esc(t)}</option>`).join('');
+  form.innerHTML=`<div class="mm-form-head">
+    <label class="mm-field mm-field-inline"><span>テーブル</span><select id="rawTableSelect">${opts}</select></label>
+    <button type="button" id="rawTableReload" class="mm-btn-ghost sm">再読込</button>
+    <span class="mm-form-hint">読み取り専用です。編集は左の各マスタタブから行ってください。</span>
+   </div>
+   <p class="mm-def-hint">マスタDB(master.sqlite3)のテーブルをそのまま表示します。専用タブが用意されていないテーブルの中身を確認したいときに使います。先頭200件まで表示します。</p>`;
+  form.onsubmit=ev=>ev.preventDefault();
+  const sel=$('#rawTableSelect');if(sel)sel.onchange=()=>{rawTableState.table=sel.value;loadRawTableRows()};
+  const rb=$('#rawTableReload');if(rb)rb.onclick=()=>loadRawTableRows();
+ }
+ async function loadRawTableRows(){
+  const list=$('#masterMaintList');if(!list)return;
+  if(!rawTableState.table){list.innerHTML='<div class="mm-empty">テーブルを選択してください。</div>';return}
+  list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
+  try{
+   const q=new URLSearchParams({db:'MASTER',table:rawTableState.table,page:1,page_size:200,include_hidden:1});
+   const d=await api('/api/table?'+q);
+   rawTableState.columns=d.columns||[];rawTableState.rows=d.rows||[];
+   renderRawTableList(d.count);
+  }catch(e){list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
+ }
+ function renderRawTableList(count){
+  const list=$('#masterMaintList');if(!list)return;
+  const cols=rawTableState.columns,rows=rawTableState.rows;
+  if(!cols.length){list.innerHTML='<div class="mm-empty">列がありません。</div>';return}
+  const head=cols.map(c=>`<th>${esc(c)}</th>`).join('');
+  const body=rows.map(r=>`<tr>${cols.map(c=>{const v=r[c];return `<td title="${esc(v??'')}">${esc(v??'')||'<em class="mm-blank">—</em>'}</td>`}).join('')}</tr>`).join('');
+  list.innerHTML=`<div class="mm-raw-meta">${esc(rawTableState.table)} — ${rows.length}件を表示${(count!=null&&count>rows.length)?` (全${count}件)`:''}</div>
+   <div class="mm-raw-scroll"><table class="mm-raw-table"><thead><tr>${head}</tr></thead><tbody>${body||`<tr><td colspan="${cols.length}">データがありません。</td></tr>`}</tbody></table></div>`;
+ }
+
+ function openMasterMaint(){
+  // 他のメイン画面統合ビューを閉じる(schedule-view.jsのopenScheduleView等と
+  // 同じ「個別に他ビューを閉じる」方式に合わせる)。
+  window.exitScheduleView?.();
+  window.exitCalendarView?.();
+  document.body.classList.remove('qa-mode','qa-view-raw');
+  document.getElementById('reportPanel')?.setAttribute('hidden','');document.body.classList.remove('rp-mode');
+  document.getElementById('dashboardPanel')?.setAttribute('hidden','');document.body.classList.remove('db-mode');
+  document.getElementById('recordModal')?.setAttribute('hidden','');
+  document.getElementById('measureModal')?.setAttribute('hidden','');
+  document.querySelectorAll('#nav button.db,#analysisNav button.db,#planNav button.db').forEach(b=>b.classList.remove('active'));
+
+  const panel=ensureMaintPanel();
+  document.body.classList.add('mm-mode');
+  document.getElementById('openMasterMaint')?.classList.add('active');
+  renderMaintNav();
+  const uid=$('#masterUserId');if(uid)uid.value=currentUserId();
+  if(!maintDefVisible(currentDef()))maintState.defKey=firstVisibleDefKey();
+  maintState.editing=null;maintState.query='';
+  const se=$('#masterMaintSearch');if(se)se.value='';
+  syncNav();panel.hidden=false;loadMaint(true);
+  requestAnimationFrame(()=>{const u=$('#masterUserId');if(u&&!u.value){u.focus();return}const s=$('#masterMaintSearch');if(s)s.focus()});
+ }
+ window.openMasterMaint=openMasterMaint;
 
  // #openMasterMaintのクリックはここ(document委譲・capture)一箇所のみで処理する。
  // 以前はbindMasterMaint()でボタン自身にもonclickを付けていたが、この
  // capture段リスナーがstopImmediatePropagation()で先に処理を完結させるため
  // ボタン側のonclickは常に発火しない到達不能コードだった(削除済み)。
  document.addEventListener('click',e=>{const t=e.target.closest('#openMasterMaint');if(!t)return;e.preventDefault();e.stopImmediatePropagation();openMasterMaint()},true);
- document.addEventListener('keydown',e=>{const modal=$('#masterMaintModal');if(e.key==='Escape'&&modal&&!modal.hidden){modal.hidden=true}},true);
+ /* マスタ管理以外のサイドバー項目を押したらマスタ管理画面から出る。
+    メイン画面統合型のビュー(帳票・スケジュール等)はそれぞれが「開くときに
+    他を閉じる」方式だが、それらはmeasurement-worklog.jsより後に読み込まれる
+    ため、こちらから相手の関数をラップできない(読み込み順序、
+    docs/ARCHITECTURE.md)。サイドバーのクリックはすべてこの1箇所で拾えるので、
+    入口側で閉じる方式にして相互参照を増やさない。 */
+ document.addEventListener('click',e=>{
+  if(!document.body.classList.contains('mm-mode'))return;
+  const btn=e.target.closest('.layout>aside button');
+  if(!btn||btn.closest('#openMasterMaint'))return;
+  exitMasterMaint();
+ },true);
+ // 一覧(DB)切替でも閉じる(report-dashboard.jsのexitReportViewと同じ考え方)。
+ if(typeof selectDb==='function'){const base=selectDb;selectDb=async function(k,b){exitMasterMaint();return base(k,b)}}
+ document.addEventListener('keydown',e=>{
+  if(e.key!=='Escape')return;
+  // 編集モーダルが開いていればそちらだけ閉じる(画面自体は開いたまま)。
+  if($('#maintEditorModal')&&!$('#maintEditorModal').hidden){closeMaintEditor();return}
+ },true);
 })();
 
 

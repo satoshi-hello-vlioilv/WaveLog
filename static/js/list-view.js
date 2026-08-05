@@ -12,20 +12,23 @@ async function init(){
   badge.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openChangelog()}};
  });
  const d=await api('/api/catalog');S.catalog=d.databases;
- const nav=$('#nav'),adminNav=$('#adminNav'),maintBtn=$('#openMasterMaint');
+ const nav=$('#nav');
  d.databases.forEach(x=>{
-  /* 置き場所はroleで決める。読み取り専用の業務データ(仕掛・品質データ)は
-     「一覧を見る」、マスタは編集画面(マスタ管理)と並べて「管理」へ入れる。
-     以前は全て「表示切替」へ入れていたため、性質の違う一覧と分析ビューが
-     混在し、「マスタ」と「マスタ管理」も別グループに離れて紛らわしかった。 */
-  const master=x.role==='master',host=master?adminNav:nav;
+  /* 読み取り専用の業務データ(仕掛・品質データ)だけを「一覧を見る」へ出す。
+     ARCHITECTURE.md「マスタ管理の画面形態」: マスタ(role='master')はサイドバーへ独立したナビ項目を作らない。
+     「マスタ一覧」(生テーブルの汎用グリッド)と「マスタ管理」(編集画面)が
+     別々の入口に分かれていて紛らわしいという指摘のため、生テーブル閲覧は
+     マスタ管理画面の中の「テーブル生データ」タブへ統合し、入口を
+     「マスタ管理」1つに絞った(S.catalogには従来どおり残すため、
+     databaseLabel()やselectDb('MASTER')自体は引き続き動く)。 */
+  if(x.role==='master')return;
   let b=document.querySelector(`aside [data-db-key="${x.key}"]`);
   if(!b){
    b=document.createElement('button');b.type='button';b.dataset.dbKey=x.key;
    /* 静的に置いてある兄弟(仕掛・品質データ)と見た目を揃えるためアイコンを付ける。 */
    b.innerHTML='<svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"/><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"/></svg><span></span>';
-   b.className='db nav-item '+(master?'nav-item--admin':'nav-item--view');
-   if(master&&maintBtn)host?.insertBefore(b,maintBtn);else host?.append(b);
+   b.className='db nav-item nav-item--view';
+   nav?.append(b);
   }
   (b.querySelector('span')||b).textContent=x.label;b.onclick=()=>selectDb(x.key,b);
  });

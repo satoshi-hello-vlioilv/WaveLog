@@ -95,6 +95,17 @@
   --fs-title:15px;    /* 見出し・パネルタイトル */
   --fs-lg:20px;       /* 測定画面見出し等のヒーロー級テキスト */
   --lh:1.35;
+
+  /* コントロールの高さスケール(ARCHITECTURE.md「コントロールサイズの統一」新設)。タイプスケールと同じ考え方で、
+     ボタン・入力欄・バッジ・ナビ項目の高さをここへ集約する。以前は同じ
+     役割のコントロールでも26/28/30/34/36/38/40pxが場当たり的に指定されて
+     おり、特にヘッダー(38px)と左ナビ(高さ指定なし)、フィルタバー(30px)の
+     並びがバラバラに見えるという指摘があった。行の高さが揃うと視線の
+     水平基準が揃い、密度の違いだけで情報の階層を読み取れるようになる。 */
+  --ctl-h-xs:26px;    /* タグ・チップなど文中に混ざる小片 */
+  --ctl-h-sm:30px;    /* 補助ボタン(フィルタバー・ツールバー内) */
+  --ctl-h:36px;       /* 標準のボタン・入力欄・ナビ項目・タブ */
+  --ctl-h-lg:40px;    /* 主要動作(保存・登録)のボタン */
 }
 
 /* ---------- 2. リセット / 全体 ---------- */
@@ -157,14 +168,14 @@ button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-vis
    カード形態で「現在の状態」を示す別レーンとして独立させる。 */
 .registered-equipment-badge{
   display:flex;align-items:center;gap:var(--space-2);width:100%;
-  margin:0 0 16px;padding:9px 10px;
+  margin:0 0 16px;min-height:var(--ctl-h);padding:0 10px;
   border:1px solid #2c4750;border-radius:9px;
-  background:#1f3d47;color:#cfe6ea;font-size:12px;font-weight:700;cursor:pointer;text-align:left;
+  background:#1f3d47;color:#cfe6ea;font-size:var(--fs-sm);font-weight:700;cursor:pointer;text-align:left;
 }
 .registered-equipment-badge .nav-icon{flex:none;opacity:.85}
 .registered-equipment-badge .equip-badge-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .registered-equipment-badge:hover{filter:brightness(1.15)}
-.registered-equipment-badge::after{content:"変更";flex:none;padding:2px 7px;border-radius:8px;background:#2c4750;color:#cfe6ea;font-size:10px;font-weight:800}
+.registered-equipment-badge::after{content:"変更";flex:none;padding:2px 7px;border-radius:8px;background:#2c4750;color:#cfe6ea;font-size:var(--fs-badge);font-weight:800}
 .registered-equipment-badge.unregistered{border-color:var(--warn-border);border-style:dashed;background:#4a3418;color:#ffd8a0}
 .registered-equipment-badge.unregistered::after{content:"要設定";background:var(--warn);color:#3a2400}
 
@@ -173,18 +184,21 @@ button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-vis
    小見出しでチャンク化（認知負荷の低減）。色は teal 系の
    単色相ベース＋警告色(amber)のみに絞り、意味の一貫性を保つ。 */
 .nav-group{display:grid;gap:var(--space-1);margin:0 0 14px}
-.nav-group-label{padding:0 8px 2px;font-size:10px;font-weight:800;letter-spacing:.08em;color:#6f9298}
+.nav-group-label{padding:0 8px 2px;font-size:var(--fs-badge);font-weight:800;letter-spacing:.08em;color:#6f9298}
 .nav-group-admin{margin-top:auto;margin-bottom:0;padding-top:12px;border-top:1px solid #2c4750}
 
+/* ナビ項目は高さ・文字サイズともにトークンへ揃える(ARCHITECTURE.md「コントロールサイズの統一」)。以前は高さ指定が
+   無く、paddingとテキストの行高だけで決まっていたため、ヘッダーのボタン類や
+   使用設備カードと縦のリズムが合っていなかった。 */
 .nav-item{
-  display:flex;align-items:center;gap:9px;width:100%;padding:9px 10px;
+  display:flex;align-items:center;gap:9px;width:100%;min-height:var(--ctl-h);padding:0 10px;
   border:1px solid transparent;border-radius:8px;background:transparent;color:#cfe6ea;
-  text-align:left;font-weight:600;box-shadow:none;
+  text-align:left;font-size:var(--fs-base-sm);font-weight:600;box-shadow:none;
 }
 .nav-item .nav-icon{flex:none;opacity:.8}
 .nav-item span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nav-item:hover{background:#22434d;border-color:#2c4750;color:#fff}
-.nav-item b{flex:none;display:grid;place-items:center;min-width:22px;height:22px;padding:0 5px;border-radius:11px;background:#2c4750;color:#cfe6ea;font-size:11px}
+.nav-item b{flex:none;display:grid;place-items:center;min-width:22px;height:22px;padding:0 5px;border-radius:11px;background:#2c4750;color:#cfe6ea;font-size:var(--fs-micro)}
 
 /* 測定データ（自分の記録を開く＝一覧ダイアログを開く操作） */
 .nav-item--primary{background:#0a8993;color:#fff;font-weight:800}
@@ -217,25 +231,30 @@ main{display:flex;min-width:0;min-height:0;flex-direction:column}
 main>header{height:54px;display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);padding:0 15px;background:#fff;border-bottom:1px solid var(--line)}
 main>header b,main>header small{display:block}
 main>header small{color:#687a81;margin-top:2px}
+/* ヘッダーのコントロールは高さをトークンへ統一する(ARCHITECTURE.md「コントロールサイズの統一」)。以前は
+   使用設備ボタン/モードバッジ=38px、検索・ページサイズ・再読込=paddingのみ
+   (実測34px前後)、現場段取りバッジ=26pxと三者三様で、横一列に並ぶのに
+   上下の中心も高さも揃っていなかった。 */
 .global-actions{display:flex;align-items:center;gap:var(--space-2)}
+.global-actions #search,.global-actions #pageSize,.global-actions #reload{height:var(--ctl-h);padding-top:0;padding-bottom:0}
 .global-actions #search{max-width:220px}
-.equipment-header-button{display:flex;align-items:center;gap:7px;min-width:150px;height:38px;padding:5px 10px;border:1px solid var(--teal);background:#eafafa;color:#164e55}
+.equipment-header-button{display:flex;align-items:center;gap:7px;min-width:150px;height:var(--ctl-h);padding:0 10px;border:1px solid var(--teal);background:#eafafa;color:#164e55}
 .equipment-header-button span{font-size:var(--fs-micro)}
 .equipment-header-button b{max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .equipment-header-button.is-unset{border-color:var(--warn-border);background:var(--warn-bg);color:var(--warn-fg)}
 /* 編集可能モード/閲覧モード/スケジュールモードの表示・切替(access-mode.js)。
    既定は編集可能モードで、権限マスタの設定に応じて閲覧モード/スケジュール
    モードで起動する端末もある。クリックで(権限のあるモードの範囲で)切り替えられる。 */
-.access-mode-badge{height:38px;padding:0 14px;border:1.5px solid var(--success-border);border-radius:19px;background:var(--success-bg);color:var(--success);font-weight:800;font-size:12.5px;cursor:pointer;white-space:nowrap;position:relative}
+.access-mode-badge{height:var(--ctl-h);padding:0 14px;border:1.5px solid var(--success-border);border-radius:19px;background:var(--success-bg);color:var(--success);font-weight:800;font-size:var(--fs-base-sm);cursor:pointer;white-space:nowrap;position:relative}
 .access-mode-badge.is-view{border-color:#e5b3b3;background:#fff5f5;color:#8a2323}
 .access-mode-badge.is-schedule{border-color:#b9c4f0;background:#f2f4ff;color:#333e8a}
 .access-mode-badge:disabled{cursor:not-allowed;opacity:.7}
 .access-mode-menu{position:fixed;z-index:1000;min-width:190px;padding:6px;border:1px solid var(--line);border-radius:10px;background:#fff;box-shadow:0 8px 24px rgba(0,0,0,.16)}
-.access-mode-menu button{display:flex;flex-direction:column;align-items:flex-start;gap:1px;width:100%;padding:8px 10px;border:0;border-radius:6px;background:transparent;text-align:left;font-weight:700;font-size:12.5px;color:var(--ink,#222);cursor:pointer}
+.access-mode-menu button{display:flex;flex-direction:column;align-items:flex-start;gap:1px;width:100%;padding:8px 10px;border:0;border-radius:6px;background:transparent;text-align:left;font-weight:700;font-size:var(--fs-base-sm);color:var(--ink,#222);cursor:pointer}
 .access-mode-menu button:hover{background:#f1f3f5}
 .access-mode-menu button.is-current{background:#eafafa;color:#164e55}
-.access-mode-menu button small{font-weight:500;color:#687a81;font-size:11px}
-.field-reorder-badge{height:26px;padding:0 10px;border:1.5px solid var(--warn-border);border-radius:13px;background:var(--warn-bg);color:var(--warn-fg);font-weight:700;font-size:11px;white-space:nowrap}
+.access-mode-menu button small{font-weight:500;color:#687a81;font-size:var(--fs-micro)}
+.field-reorder-badge{display:inline-flex;align-items:center;height:var(--ctl-h-xs);padding:0 10px;border:1.5px solid var(--warn-border);border-radius:13px;background:var(--warn-bg);color:var(--warn-fg);font-weight:700;font-size:var(--fs-micro);white-space:nowrap}
 /* 閲覧モード・スケジュールモード中は測定系の書込導線を隠す。データ一覧の行は
    閲覧用バックアップから描画するため「続きから再開」「削除」は意味を持たない
    (帳票表示のみ残す)。スケジュールモードも測定データへは閲覧モードと同じく
@@ -248,7 +267,7 @@ body.view-mode #recordSyncBar,
 body.schedule-mode #recordSyncBar{display:none!important}
 body.view-mode #openMasterMaint{opacity:.45;pointer-events:none}
 
-#tabs{height:38px;display:flex;background:#fff;border-bottom:1px solid var(--line)}
+#tabs{height:var(--ctl-h);display:flex;background:#fff;border-bottom:1px solid var(--line)}
 .tab{border:0;border-bottom:3px solid transparent;border-radius:0;background:#fff}
 .tab.active{border-color:var(--teal);font-weight:700}
 
@@ -1345,8 +1364,11 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .filter-token-search{flex:1 0 160px;min-width:120px;height:26px;border:0;border-radius:0;padding:0 2px;background:transparent;box-shadow:none}
 .filter-token-search:focus-visible{outline:0;box-shadow:none}
 .filter-search-row-actions{flex:0 0 auto;display:flex;gap:6px;align-items:center}
-.filter-search-row-actions button{height:30px;padding:0 10px;white-space:nowrap}
+.filter-search-row-actions button{height:var(--ctl-h-sm);padding:0 10px;white-space:nowrap}
 .filter-search-row-actions #saveFilterPreset{background:var(--teal);color:#fff;border-color:var(--teal);font-weight:700}
+/* 「よく使う条件」の開閉トグル(ARCHITECTURE.md「フィルタのよく使う条件」)。既定は閉じており、該当条件が
+   1件も無いときはボタン自体を出さない(JS側でhidden)。 */
+.filter-search-row-actions #filterQuickToggle.active{background:var(--pale);border-color:var(--teal);color:#0a6570;font-weight:700}
 
 /* アクティブ条件タグ（トークン） */
 .filter-tag{display:inline-flex;align-items:center;gap:var(--space-1);flex:0 0 auto;max-width:100%;height:26px;padding:2px 4px 2px 8px;border-radius:13px;border:1px solid #8bbbc1;background:#eafafa;color:#173842}
@@ -1484,14 +1506,19 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
  IA/認知心理学: 種別ナビ(再認)→コンパクト入力→広い一覧(主役)。
  検索で想起負荷を低減。行クリックで編集(近接・一貫性)。
  ============================================================ */
-#masterMaintModal.mm-modal{z-index:1500}
+/* マスタ管理はメイン画面統合型(ARCHITECTURE.md「マスタ管理の画面形態」)。他の統合ビュー(.rec-panel/.sc-panel/
+   .rp-panel)と同じ枠に収め、中の.mm-dialogは寸法だけ枠いっぱいへ上書きする
+   (内部構造を作り直さずに済ませるため。.rec-panel .record-dialogと同じ手法)。 */
+.mm-panel{flex:1;min-height:0;margin:9px 14px;display:flex;flex-direction:column;background:#f4f7f8;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.mm-panel[hidden]{display:none!important}
+.mm-panel .mm-dialog{width:100%;max-width:none;height:100%;border-radius:0;box-shadow:none}
 .mm-dialog{position:relative;width:96vw;max-width:1500px;height:94vh;display:flex;flex-direction:column;background:#f4f7f8;border-radius:14px;overflow:hidden;box-shadow:0 30px 80px #00000055}
 .mm-head{display:flex;align-items:center;gap:var(--space-4);padding:14px 20px;background:linear-gradient(90deg,var(--nav),#1f5560);color:#fff}
 .mm-head-title{display:flex;flex-direction:column;gap:2px;min-width:0}
-.mm-head-title h2{margin:0;font-size:20px}
-.mm-sub{color:#bfe0e4;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.mm-head-user{margin-left:auto;display:flex;align-items:center;gap:var(--space-2);color:#dff1f3;font-weight:700;font-size:13px;white-space:nowrap}
-.mm-head-user input{height:36px;min-width:180px;padding:6px 10px;border:1px solid #7fc0c8;border-radius:8px;background:#fff;color:#12333a;font-weight:700}
+.mm-head-title h2{margin:0;font-size:var(--fs-lg)}
+.mm-sub{color:#bfe0e4;font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mm-head-user{margin-left:auto;display:flex;align-items:center;gap:var(--space-2);color:#dff1f3;font-weight:700;font-size:var(--fs-base-sm);white-space:nowrap}
+.mm-head-user input{height:var(--ctl-h);min-width:180px;padding:6px 10px;border:1px solid #7fc0c8;border-radius:8px;background:#fff;color:#12333a;font-weight:700}
 .mm-close{width:36px;height:36px;border:0;border-radius:8px;background:#ffffff22;color:#fff;font-size:22px;line-height:1;cursor:pointer}
 .mm-close:hover{background:#ffffff33}
 .mm-body{flex:1;min-height:0;display:grid;grid-template-columns:210px minmax(0,1fr)}
@@ -1499,54 +1526,54 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .mm-nav button{display:flex;align-items:center;gap:10px;padding:11px 12px;border:1px solid transparent;border-radius:10px;background:#fff;color:#23454d;font-weight:700;cursor:pointer;transition:.12s;text-align:left}
 .mm-nav button:hover{border-color:#9fc3c8;background:#f3fbfc}
 .mm-nav button.active{background:var(--teal);color:#fff;border-color:var(--teal);box-shadow:0 4px 12px #087c8940}
-.mm-nav-ico{display:grid;place-items:center;width:26px;height:26px;border-radius:8px;background:#dceff1;color:#0a6570;font-weight:900;font-size:13px;flex:0 0 auto}
+.mm-nav-ico{display:grid;place-items:center;width:26px;height:26px;border-radius:8px;background:#dceff1;color:#0a6570;font-weight:900;font-size:var(--fs-base-sm);flex:0 0 auto}
 .mm-nav button.active .mm-nav-ico{background:#ffffff30;color:#fff}
-.mm-nav-label{font-size:14px}
+.mm-nav-label{font-size:var(--fs)}
 .mm-main{min-width:0;display:flex;flex-direction:column;min-height:0}
 .mm-toolbar{display:flex;align-items:center;gap:var(--space-3);padding:12px 18px;background:#fff;border-bottom:1px solid var(--line)}
 .mm-toolbar-left{display:flex;align-items:baseline;gap:10px;min-width:0}
-.mm-toolbar-left b{font-size:16px;color:#173842;white-space:nowrap}
-.mm-count{color:#607981;font-size:12px;font-weight:700;white-space:nowrap}
+.mm-toolbar-left b{font-size:var(--fs-title);color:#173842;white-space:nowrap}
+.mm-count{color:#607981;font-size:var(--fs-sm);font-weight:700;white-space:nowrap}
 .mm-toolbar-right{margin-left:auto;display:flex;align-items:center;gap:10px}
 .mm-search{position:relative;display:flex;align-items:center}
-.mm-search-icon{position:absolute;left:10px;font-size:13px;opacity:.6;pointer-events:none}
-.mm-search input{height:36px;width:300px;max-width:40vw;padding:6px 12px 6px 30px;border:1px solid var(--line);border-radius:20px;background:#f7fafb}
+.mm-search-icon{position:absolute;left:10px;font-size:var(--fs-base-sm);opacity:.6;pointer-events:none}
+.mm-search input{height:var(--ctl-h);width:300px;max-width:40vw;padding:6px 12px 6px 30px;border:1px solid var(--line);border-radius:20px;background:#f7fafb}
 .mm-search input:focus-visible{outline:0;border-color:var(--teal);box-shadow:0 0 0 3px #087c8926;background:#fff}
-.mm-btn-ghost{height:36px;padding:0 14px;border:1px solid #9fb9b2;border-radius:8px;background:#fff;color:#2c5049;font-weight:700;cursor:pointer;white-space:nowrap}
+.mm-btn-ghost{height:var(--ctl-h);padding:0 14px;border:1px solid #9fb9b2;border-radius:8px;background:#fff;color:#2c5049;font-weight:700;cursor:pointer;white-space:nowrap}
 .mm-btn-ghost:hover{background:#eef7f4;border-color:#6da6ad}
-.mm-btn-ghost.sm{height:30px;padding:0 10px;font-size:12px}
+.mm-btn-ghost.sm{height:var(--ctl-h-sm);padding:0 10px;font-size:var(--fs-sm)}
 .mm-form{padding:12px 18px;background:#fbfdfd;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
 .mm-form-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.mm-mode-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;font-weight:800;font-size:13px;white-space:nowrap}
+.mm-mode-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;font-weight:800;font-size:var(--fs-base-sm);white-space:nowrap}
 .mm-mode-chip.new{background:var(--success-bg);color:var(--success);border:1px solid var(--success-border)}
 .mm-mode-chip.editing{background:#fff2d9;color:#8a5a00;border:1px solid #e5c07a}
 .mm-mode-chip small{color:#94794a;font-weight:700}
 /* マスタ種別ごとの補足説明(MASTER_DEFS[].hint)。警告ではなく前提知識の
    案内のため、mm-import-warningより控えめな配色にする。 */
-.mm-def-hint{margin:0;padding:8px 12px;border:1px solid #d5e0e3;border-radius:8px;background:#f3f8f8;color:#526970;font-size:12px;line-height:1.5}
+.mm-def-hint{margin:0;padding:8px 12px;border:1px solid #d5e0e3;border-radius:8px;background:#f3f8f8;color:#526970;font-size:var(--fs-sm);line-height:1.5}
 .mm-form-fields{display:flex;flex-wrap:wrap;gap:var(--space-3);align-items:flex-start}
 .mm-field{display:flex;flex-direction:column;gap:var(--space-1);min-width:0}
-.mm-field>span{font-size:12px;color:#526970;font-weight:700;display:flex;align-items:center;gap:5px;white-space:nowrap}
+.mm-field>span{font-size:var(--fs-sm);color:#526970;font-weight:700;display:flex;align-items:center;gap:5px;white-space:nowrap}
 .mm-field>span i{color:var(--invalid);font-style:normal}
-.mm-keytag{font-style:normal;font-size:10px;font-weight:800;color:#0a6570;background:#dcecef;border-radius:6px;padding:1px 6px}
-.mm-field input,.mm-field select{height:38px;min-width:200px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:#fff}
+.mm-keytag{font-style:normal;font-size:var(--fs-badge);font-weight:800;color:#0a6570;background:#dcecef;border-radius:6px;padding:1px 6px}
+.mm-field input,.mm-field select{height:var(--ctl-h);min-width:200px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:#fff}
 .mm-field input:focus-visible,.mm-field select:focus-visible{outline:0;border-color:var(--teal);box-shadow:0 0 0 3px #087c8926}
 .mm-field-wide{flex-basis:100%}
-.mm-field-hint{color:#8a9aa0;font-size:11px}
+.mm-field-hint{color:#8a9aa0;font-size:var(--fs-micro)}
 .mm-checkbox-group{display:flex;flex-wrap:wrap;gap:6px 14px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;max-height:150px;overflow:auto}
-.mm-checkbox{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:#2c4750;white-space:nowrap;cursor:pointer}
+.mm-checkbox{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-sm);color:#2c4750;white-space:nowrap;cursor:pointer}
 .mm-checkbox input{margin:0}
-.mm-empty-inline{color:#8a9aa0;font-size:12px}
+.mm-empty-inline{color:#8a9aa0;font-size:var(--fs-sm)}
 /* 作業可能設備タグ入力: 氏名・ヨミガナと同じ行に収まるコンパクトな
    タグフィールド。フォーカス(認識優先)でサジェストを出し、クリックで
    連続追加できるようにする。フォーム自体を低くすることで、下の一覧
    (mm-list-wrap)がより多くの行を表示できる(情報密度の確保)。 */
 .mm-tagfield{flex:1 1 300px;min-width:240px}
 .mm-tagfield-inner{position:relative}
-.mm-tag-box{display:flex;flex-wrap:wrap;align-items:center;gap:5px;min-height:38px;padding:4px 6px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:text}
+.mm-tag-box{display:flex;flex-wrap:wrap;align-items:center;gap:5px;min-height:var(--ctl-h);padding:4px 6px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:text}
 .mm-tag-box:focus-within{border-color:var(--teal);box-shadow:0 0 0 3px #087c8926}
-.mm-tag{display:inline-flex;align-items:center;gap:2px;height:26px;padding:0 4px 0 10px;border-radius:14px;background:#eafafa;color:#0a6570;font-weight:700;font-size:12px;white-space:nowrap}
-.mm-tag-remove{width:18px;height:18px;border:0;border-radius:50%;background:transparent;color:#0a6570;font-size:13px;line-height:1;cursor:pointer;padding:0}
+.mm-tag{display:inline-flex;align-items:center;gap:2px;height:var(--ctl-h-xs);padding:0 4px 0 10px;border-radius:14px;background:#eafafa;color:#0a6570;font-weight:700;font-size:var(--fs-sm);white-space:nowrap}
+.mm-tag-remove{width:18px;height:18px;border:0;border-radius:50%;background:transparent;color:#0a6570;font-size:var(--fs-base-sm);line-height:1;cursor:pointer;padding:0}
 .mm-tag-remove:hover{background:#0a657026}
 .mm-tag-box input.mm-tag-search{flex:1 1 100px;min-width:100px;height:26px;padding:2px 4px;border:0;background:transparent;font-size:12.5px}
 .mm-tag-box input.mm-tag-search:focus-visible{outline:0;box-shadow:none}
@@ -1556,9 +1583,41 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .mm-tag-suggest-item:hover,.mm-tag-suggest-item:focus-visible{outline:0;background:#eafafa;color:#0a6570}
 .mm-tag-suggest-empty{padding:7px 10px;color:#8a9aa0;font-size:12px}
 .mm-form-tail{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap}
-.mm-btn-primary{height:40px;padding:0 22px;border:0;border-radius:8px;background:var(--teal);color:#fff;font-weight:800;cursor:pointer;box-shadow:0 4px 12px #087c8940}
+.mm-btn-primary{height:var(--ctl-h-lg);padding:0 22px;border:0;border-radius:8px;background:var(--teal);color:#fff;font-weight:800;cursor:pointer;box-shadow:0 4px 12px #087c8940}
 .mm-btn-primary:hover{background:var(--teal-dark)}
-.mm-form-hint{color:#6a7d83;font-size:12px}
+.mm-btn-primary.sm{height:var(--ctl-h-sm);padding:0 14px;font-size:var(--fs-sm)}
+.mm-form-hint{color:#6a7d83;font-size:var(--fs-sm)}
+/* 入力項目が多いマスタ(ARCHITECTURE.md「マスタ管理の画面形態」、defUsesEditorModal)は上部フォームを
+   「追加ボタン+説明」だけに縮め、その分を一覧の表示領域へ回す。 */
+.mm-form-compact{padding:8px 18px}
+.mm-form-compact .mm-form-head{gap:var(--space-3)}
+
+/* ---------- 汎用の編集専用モーダル(ARCHITECTURE.md「マスタ管理の画面形態」新設) ---------- */
+.mm-editor-dialog{width:min(760px,94vw);max-height:90vh;display:flex;flex-direction:column;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 24px 64px #00000055}
+.mm-editor-head{display:flex;align-items:center;gap:var(--space-3);padding:12px 18px;background:linear-gradient(90deg,var(--nav),#1f5560);color:#fff}
+.mm-editor-head h2{margin:1px 0 0;font-size:var(--fs-title)}
+.mm-editor-head small{display:block;color:#8fd4d4;font-size:var(--fs-tiny);letter-spacing:.04em}
+.mm-editor-head .mm-close{margin-left:auto;width:32px;height:32px;font-size:20px}
+.mm-editor-body{flex:1;min-height:0;overflow:auto;padding:16px 18px;display:flex;flex-direction:column;gap:var(--space-3);background:#fbfdfd}
+.mm-editor-body .mm-form-fields{flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:var(--space-3)}
+.mm-editor-body .mm-field{width:100%}
+.mm-editor-body .mm-field input,.mm-editor-body .mm-field select{width:100%;min-width:0}
+.mm-editor-body .mm-tagfield{flex:0 0 auto;min-width:0}
+.mm-editor-foot{display:flex;align-items:center;gap:var(--space-3);padding:12px 18px;background:#fff;border-top:1px solid var(--line)}
+.mm-editor-actions{margin-left:auto;display:flex;gap:var(--space-2);flex:0 0 auto}
+
+/* ---------- テーブル生データ(旧マスタ一覧、ARCHITECTURE.md「マスタ管理の画面形態」で統合) ---------- */
+.mm-field-inline{flex-direction:row;align-items:center;gap:var(--space-2)}
+.mm-field-inline>span{white-space:nowrap}
+.mm-field-inline select{min-width:220px}
+.mm-raw-meta{padding:6px 2px;color:#607981;font-size:var(--fs-sm);font-weight:700}
+/* .mm-list-wrapが縦スクロールを持つため、生データ表側は横スクロールだけを
+   受け持つ(表が広いときにページ全体が横に伸びないようにする)。 */
+.mm-raw-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:#fff}
+.mm-raw-table{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;font-size:var(--fs-sm)}
+.mm-raw-table th,.mm-raw-table td{padding:4px 9px;height:26px;border-right:1px solid #d5dfe3;border-bottom:1px solid #d5dfe3;white-space:nowrap;text-align:left}
+.mm-raw-table th{position:sticky;top:0;z-index:1;background:var(--pale);font-weight:800}
+.mm-raw-table tbody tr:nth-child(even){background:#fafcfc}
 .mm-cd-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
 .mm-cd-dbtabs{display:flex;gap:6px;flex-wrap:wrap}
 .mm-cd-tab{height:34px;padding:0 16px;border:1.5px solid #c7d4d8;border-radius:17px;background:#fff;color:#526970;font-weight:800;font-size:12.5px;cursor:pointer}
@@ -1653,6 +1712,8 @@ body.rec-mode #grid,body.rec-mode footer,body.rec-mode #tabs,body.rec-mode #gene
 body.cal-mode #grid,body.cal-mode footer,body.cal-mode #tabs,body.cal-mode #genericFilterBar,body.cal-mode .qa-v7{display:none!important}
 /* 作業スケジュール(スケジュールモード等)も同様にメイン画面表示にする。 */
 body.sc-mode #grid,body.sc-mode footer,body.sc-mode #tabs,body.sc-mode #genericFilterBar,body.sc-mode .qa-v7{display:none!important}
+/* マスタ管理(ARCHITECTURE.md「マスタ管理の画面形態」)も同様にメイン画面表示にする(旧: 全画面シェード付きモーダル)。 */
+body.mm-mode #grid,body.mm-mode footer,body.mm-mode #tabs,body.mm-mode #genericFilterBar,body.mm-mode .qa-v7{display:none!important}
 /* スケジューリング分割表示(.sc-split-wrap、§9.10)中は、仕掛一覧(#grid)と
    絞り込みバー(#genericFilterBar)をタイムラインの隣へ出す。詳細度を
    body.sc-mode単体より上げて確実に上書きする(qa-view-rawと同じ考え方)。 */
@@ -1669,6 +1730,7 @@ body.rp-mode.qa-mode.qa-view-raw #grid,body.rp-mode.qa-mode.qa-view-raw footer,b
 body.db-mode.qa-mode.qa-view-raw #grid,body.db-mode.qa-mode.qa-view-raw footer,body.db-mode.qa-mode.qa-view-raw #genericFilterBar,
 body.rec-mode.qa-mode.qa-view-raw #grid,body.rec-mode.qa-mode.qa-view-raw footer,body.rec-mode.qa-mode.qa-view-raw #genericFilterBar,
 body.cal-mode.qa-mode.qa-view-raw #grid,body.cal-mode.qa-mode.qa-view-raw footer,body.cal-mode.qa-mode.qa-view-raw #genericFilterBar,
+body.mm-mode.qa-mode.qa-view-raw #grid,body.mm-mode.qa-mode.qa-view-raw footer,body.mm-mode.qa-mode.qa-view-raw #genericFilterBar,
 body.sc-mode.qa-mode.qa-view-raw #grid,body.sc-mode.qa-mode.qa-view-raw footer,body.sc-mode.qa-mode.qa-view-raw #genericFilterBar{display:none!important}
 .rec-panel{flex:1;min-height:0;margin:9px 14px;display:flex;flex-direction:column;background:#f4f7f8;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .rec-panel[hidden]{display:none!important}

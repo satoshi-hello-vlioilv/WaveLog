@@ -94,7 +94,21 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
    applyAccessModeUI();
    showToast&&showToast(`${MODE_LABELS[accessMode.mode]||accessMode.mode}に切り替えました`,'',3200);
    if($('#recordModal')&&!$('#recordModal').hidden)openRecords(null);
+   await refreshOpenViewsForMode();
   }catch(e){showToast&&showToast('切り替えに失敗しました',e.message,5000)}
+ }
+ /* モードで見た目・権限が変わる画面を開いたままモードを切り替えた場合、
+    その場で開き直して即座に反映する。以前はモードバッジと入口ガードだけを
+    更新していたため、例えば作業スケジュール画面を開いたままスケジュール
+    モードへ切り替えても、その画面はeditモードで組み立てたまま
+    (scState.fullControl=false、追加・削除・分割表示なし)で据え置かれ、
+    一度別の画面へ移動して戻らないと反映されなかった。 */
+ async function refreshOpenViewsForMode(){
+  try{
+   if(document.body.classList.contains('sc-mode')&&typeof window.openScheduleView==='function')await window.openScheduleView();
+   // マスタ管理(ARCHITECTURE.md「マスタ管理の画面形態」でメイン画面統合型に変更)もモードで出せるタブが変わる。
+   else if(document.body.classList.contains('mm-mode')&&typeof window.openMasterMaint==='function')window.openMasterMaint();
+  }catch(e){console.warn('モード切替後の画面更新に失敗しました',e)}
  }
 
  /* モードバッジはクリックで巡回ではなく、権限のあるモードを並べた小さな

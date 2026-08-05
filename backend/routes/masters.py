@@ -171,7 +171,11 @@ def operator_master_list():
   path=DBS['MASTER']['path']
   with connect(path,False) as c:
    before=OPERATOR_MASTER_TABLE in tables(c);ensure_operator_master_table(c);rows=operator_master_rows(c);eqmap=operator_equipment_map(c)
-   items=[{'id':r[0],'name':str(r[1] or '').strip(),'order':r[2] or 0,'active':True,'updated_at':r[4].isoformat() if r[4] else None,'updated_by':(str(r[5]).strip() if len(r)>5 and r[5] else ''),'equipment':eqmap.get(r[0],[])} for r in rows]
+   # ﾖﾐｶﾞﾅ(yomi)は登録・更新時には保存していたのに、この一覧応答へ含めて
+   # いなかったため、マスタ管理の「ヨミガナ」列が常に空欄で、編集フォームにも
+   # 復元されなかった。そのまま保存すると空欄で上書きされて消える不具合に
+   # なっていたので応答へ加える。
+   items=[{'id':r[0],'name':str(r[1] or '').strip(),'yomi':(str(r[6]).strip() if len(r)>6 and r[6] else ''),'order':r[2] or 0,'active':True,'updated_at':r[4].isoformat() if r[4] else None,'updated_by':(str(r[5]).strip() if len(r)>5 and r[5] else ''),'equipment':eqmap.get(r[0],[])} for r in rows]
   return jsonify(ok=True,items=items,table=OPERATOR_MASTER_TABLE,created=not before,empty=len(items)==0,master_path=str(path))
  except Exception as e:return jsonify(error=f'オペレータマスタ読込失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
 

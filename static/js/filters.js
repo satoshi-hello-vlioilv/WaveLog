@@ -16,7 +16,16 @@
 (function(){
   if(typeof $!=='function')return;
   const FILTER_STORE='MeasurementGenericFilterPresetsV1';
-  const USAGE_STORE='MeasurementFilterCondUsageV1';
+  /* 条件の利用履歴(「よく使う条件」の元データ)。V1は列名+演算子+値だけを
+     キーにした単一のフラットなマップで、どのDB/テーブルで使った条件かを
+     まったく持っていなかった。そのため仕掛一覧で使った条件がマスタ一覧や
+     品質データの「よく使う条件」にもそのまま提案され、その表に存在しない
+     列の条件ばかりが並ぶ状態だった(実際に報告された指摘)。V2では
+     「DB名+テーブル名」ごとのバケットに分けて記録する。V1のデータは
+     どのテーブルのものか復元しようが無いため引き継がない(利用回数の
+     統計のみで、失われても数回の操作で貯まり直す性質のデータ)。 */
+  const USAGE_STORE='MeasurementFilterCondUsageV2';
+  const QUICK_OPEN_STORE='MeasurementFilterQuickOpenV1';
   const OPS=[
     ['contains','含む'],['not_contains','含まない'],['eq','＝ 一致'],['neq','≠ 不一致'],
     ['starts','前方一致'],['ends','後方一致'],['gt','> より大きい'],['gte','>= 以上'],['lt','< より小さい'],['lte','<= 以下'],['empty','空欄'],['not_empty','空欄以外']
@@ -73,8 +82,19 @@
 
   function readLocalPresets(){try{return JSON.parse(localStorage.getItem(FILTER_STORE)||'[]')}catch(_){return []}}
   function writeLocalPresets(){try{localStorage.setItem(FILTER_STORE,JSON.stringify((S.filterPresets||[]).slice(0,120)))}catch(_){}}
+  // よく使う条件の開閉状態(既定=閉じる)。端末ごとに覚える。
+  let quickOpen=(()=>{try{return localStorage.getItem(QUICK_OPEN_STORE)==='1'}catch(_){return false}})();
+  function writeQuickOpen(){try{localStorage.setItem(QUICK_OPEN_STORE,quickOpen?'1':'0')}catch(_){}}
   function readUsage(){try{return JSON.parse(localStorage.getItem(USAGE_STORE)||'{}')}catch(_){return {}}}
   function writeUsage(){try{localStorage.setItem(USAGE_STORE,JSON.stringify(S.filterCondUsage||{}))}catch(_){}}
+  /* 利用履歴・アクティブ条件のスコープキー。プリセット(currentTablePresets)が
+     以前からdb+tableの完全一致で管理されているのに合わせる。 */
+  function usageScopeKey(){return `${S.db||''}${S.table||''}`}
+  function scopedUsage(){
+    const all=S.filterCondUsage||{};
+    const bucket=all[usageScopeKey()];
+    return (bucket&&typeof bucket==='object')?bucket:{};
+  }
   function opLabel(op){return OPS.find(x=>x[0]===op)?.[1]||op}
   function opShort(op){return (OPS.find(x=>x[0]===op)?.[1]||op).split(' ')[0]}
   function noValueOp(op){return ['empty','not_empty'].includes(op)}
@@ -87,7 +107,15 @@
      ため、空欄=汎用というフォールバックは廃止する。 */
   function currentTablePresets(){return (S.filterPresets||[]).filter(p=>p.db===S.db&&p.table===S.table)}
   function condLabel(f){return `${f.column} ${opShort(f.op)}${noValueOp(f.op)?'':' '+f.value}`}
-  function bumpCondUsage(f){const k=filterKey(f);const u=S.filterCondUsage[k]||{count:0};u.count=(u.count||0)+1;u.at=Date.now();u.f={column:f.column,op:f.op,value:f.value};S.filterCondUsage[k]=u;writeUsage()}
+  function bumpCondUsage(f){
+    // どのDB/テーブルで使った条件かを必ず添えて記録する(V2、上記コメント参照)。
+    const scope=usageScopeKey();if(!S.db||!S.table)return;
+    const all=S.filterCondUsage||(S.filterCondUsage={});
+    const bucket=(all[scope]&&typeof all[scope]==='object')?all[scope]:(all[scope]={});
+    const k=filterKey(f);const u=bucket[k]||{count:0};
+    u.count=(u.count||0)+1;u.at=Date.now();u.f={column:f.column,op:f.op,value:f.value};
+    bucket[k]=u;writeUsage();
+  }
 
   /* ---- ローディング表示 ---- */
   function setInlineLoading(show,text){
@@ -291,6 +319,7 @@
         <div class="filter-suggest" id="filterSuggest" hidden></div>
         <span class="filter-inline-loading" id="filterInlineLoading" hidden><span class="mini-spinner"></span><span id="filterInlineLoadingText">読込中</span></span>
         <div class="filter-search-row-actions">
+          <button id="filterQuickToggle" type="button" aria-expanded="false" aria-controls="filterQuickRow" hidden>よく使う条件</button>
           <button id="filterToggle" type="button">詳細</button>
           <button id="saveFilterPreset" type="button">マスタへ保存</button>
           <button id="openFilterPresets" type="button">登録一覧</button>
@@ -308,6 +337,9 @@
       </div>`;
     // 詳細ビルダー（段階的開示）
     $('#filterToggle').onclick=()=>{const body=$('#filterBody');body.hidden=!body.hidden;$('#filterToggle').textContent=body.hidden?'詳細':'閉じる'};
+    // よく使う条件は既定で折りたたむ(段階的開示)。以前は該当条件があれば
+    // 常時1行を占有しており、狭い分割表示では一覧の縦幅を圧迫していた。
+    $('#filterQuickToggle').onclick=()=>{quickOpen=!quickOpen;writeQuickOpen();renderQuickFilters()};
     $('#filterOp').innerHTML=OPS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
     $('#filterColumn').onchange=updateFilterSuggestions;
     $('#filterOp').onchange=()=>{$('#filterValue').disabled=noValueOp($('#filterOp').value)};
@@ -370,9 +402,20 @@
      アクティブな条件は既にfrequentConditions()側で除外されるため、
      追加すると自動的にチップから消える。 */
   function renderQuickFilters(){
-    const row=$('#filterQuickRow');if(!row)return;
+    const row=$('#filterQuickRow'),toggle=$('#filterQuickToggle');if(!row)return;
     const top=frequentConditions().slice(0,6);
-    if(!top.length){row.hidden=true;row.innerHTML='';return}
+    if(!top.length){
+      row.hidden=true;row.innerHTML='';
+      if(toggle)toggle.hidden=true;
+      return;
+    }
+    if(toggle){
+      toggle.hidden=false;
+      toggle.textContent=`よく使う条件 ${top.length}`;
+      toggle.classList.toggle('active',quickOpen);
+      toggle.setAttribute('aria-expanded',quickOpen?'true':'false');
+    }
+    if(!quickOpen){row.hidden=true;row.innerHTML='';return}
     row.hidden=false;
     row.innerHTML=`<span class="filter-quick-label">よく使う条件</span>`+top.map(f=>
       `<button type="button" class="suggest-chip quick"><span>${esc(f.column)}</span><b>${esc(opShort(f.op))}</b>${noValueOp(f.op)?'':`<em>${esc(f.value)}</em>`}</button>`
@@ -386,11 +429,21 @@
   /* ---- サジェスト（再認・チャンク化・頻度順） ---- */
   function frequentConditions(){
     // 保存フィルタの条件＋利用履歴を統合し、頻度×新しさで並べる。
+    // どちらも「今見ているDB+テーブル」のものだけを対象にする
+    // (プリセットはcurrentTablePresets、利用履歴はscopedUsage)。
     const map=new Map();
     currentTablePresets().forEach(p=>(p.filters||[]).forEach(f=>{const k=filterKey(f);const e=map.get(k)||{f,count:0,at:0};e.count+=Math.max(1,p.uses||1);map.set(k,e)}));
-    Object.values(S.filterCondUsage||{}).forEach(u=>{if(!u.f)return;const k=filterKey(u.f);const e=map.get(k)||{f:u.f,count:0,at:0};e.count+=(u.count||0)*2;e.at=Math.max(e.at,u.at||0);map.set(k,e)});
+    Object.values(scopedUsage()).forEach(u=>{if(!u.f)return;const k=filterKey(u.f);const e=map.get(k)||{f:u.f,count:0,at:0};e.count+=(u.count||0)*2;e.at=Math.max(e.at,u.at||0);map.set(k,e)});
     const active=new Set(S.genericFilters.map(filterKey));
-    return [...map.values()].filter(e=>!active.has(filterKey(e.f))).sort((a,b)=>b.count-a.count||b.at-a.at).map(e=>e.f);
+    // 同じテーブルでも列構成は変わり得る(表示マスタでの非表示指定、
+    // スケジュールモードの品質データ結合で増える列など)。今の一覧に無い列の
+    // 条件は選んでも意味が無いため提案から外す。S.columnsがまだ空(初回描画前)
+    // の場合だけは絞り込まない(何も出せなくなるのを避ける)。
+    const cols=S.columns&&S.columns.length?new Set(S.columns):null;
+    return [...map.values()]
+      .filter(e=>!active.has(filterKey(e.f)))
+      .filter(e=>!cols||cols.has(e.f.column))
+      .sort((a,b)=>b.count-a.count||b.at-a.at).map(e=>e.f);
   }
   function valueSuggestions(q){
     // 入力語に一致するカラム/値を、現在の一覧データから提案（列 含む 語 / 列 = 値）。
