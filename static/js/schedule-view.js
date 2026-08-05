@@ -19,7 +19,7 @@
  let scState={equipment:'',entries:[],anchor:null,warnings:[],configured:true,
               editable:false,pickerEnabled:false,stopReasons:[],dragId:null,
               boardMode:'single',boardWindowHours:24,overview:[],overviewSort:'order',
-              sessionHeld:false,sessionHolder:null};
+              sessionHeld:false,sessionHolder:null,sessionError:null};
  let scLockTimer=null;
  // ---------- 編集セッション(§9.11新設)・書込キュー ----------
  let scSessionTimer=null,scSessionHeldFor=null,scTempIdSeq=0;
@@ -87,7 +87,7 @@
      </div>
      <span class="sc-field-reorder-note" id="scFieldReorderNote" hidden>現場段取り: 並べ替えのみ可能</span>
      <button type="button" class="sc-dense-toggle" id="scDenseToggle" hidden title="仕掛一覧の表示密度を切り替えます">▤ 高密度</button>
-     <button type="button" class="sc-split-toggle" id="scSplitToggle" hidden title="仕掛一覧を隣に表示してドラッグで追加します">◫ 仕掛一覧</button>
+     <button type="button" class="sc-split-toggle" id="scColumnModalBtn" hidden title="仕掛一覧に表示する列を設備ごとに選びます">☰ 列選択</button>
      <button type="button" class="sc-split-toggle" id="scListModalBtn" hidden title="仕掛一覧をポップアップで表示してドラッグで追加します">⧉ ポップアップ</button>
      <button type="button" class="sc-split-toggle" id="scStopModalBtn" hidden title="設備停止をポップアップから追加します">⛔ 設備停止</button>
      <button type="button" class="sc-refresh" id="scRefresh">再計算</button>
@@ -99,6 +99,7 @@
    <div class="sc-board" id="scBoard" hidden></div>
    <div class="sc-body" id="scSingleBody">
     <div class="sc-timeline" id="scTimeline"></div>
+    <button type="button" class="sc-side-tab" id="scSideToggle" hidden title="設備停止・案内パネルの表示/非表示">◀</button>
     <div class="sc-side" id="scSide" hidden>
      <div class="sc-side-section" id="scSplitHint">
       <p class="sc-drop-hint">左の仕掛一覧からロットをドラッグ、またはチェックボックスで複数選択してこのパネルへドロップすると、この設備の予定へ追加されます。</p>
@@ -118,10 +119,11 @@
   $('#scEquipmentSelect').onchange=e=>{scState.equipment=e.target.value;switchToSingle()};
   $('#scModeBoard').onclick=()=>switchToBoard();
   $('#scModeSingle').onclick=()=>switchToSingle();
-  $('#scSplitToggle').onclick=()=>toggleSplitList();
   $('#scListModalBtn').onclick=()=>listModalOpen?closeListModal():openListModal();
   $('#scStopModalBtn').onclick=()=>stopModalOpen?closeStopModal():openStopModal();
+  $('#scColumnModalBtn').onclick=()=>columnModalOpen?closeColumnModal():openColumnModal();
   $('#scDenseToggle').onclick=()=>toggleListDensity();
+  $('#scSideToggle').onclick=()=>toggleSideCollapsed();
   $('#scStopSectionToggle').onclick=()=>{
    const box=$('#scStopButtons');if(!box)return;
    box.hidden=!box.hidden;
@@ -175,7 +177,55 @@
   gridHost=null;
  }
 
- let splitWrap=null,splitListVisible=true;
+ // リサイズ可能な分割バー(§9.12改訂・§9.17新設)。以前は境界から離れた
+ // ヘッダーの「◫ 仕掛一覧」ボタンで表示/非表示するだけだったが、「ボタン式で
+ // 直感的でない」「作業スケジュール欄を広く取りたい」という指摘のため、
+ // 境界線そのものをドラッグでリサイズでき、中央のボタンでワンクリック
+ // 折りたたみもできる分割バー(.sc-split-divider)へ作り直した。仕掛一覧の
+ // 幅・折りたたみ状態はlocalStorageへ保存する。既定幅は380px(スケジュール
+ // パネル側=1frが残り全部を取るため、パネルの方が確実に広くなる)。
+ let splitListWidth=(()=>{try{const v=+localStorage.getItem('scSplitListWidthV1');return v>0?v:380}catch(e){return 380}})();
+ let splitListCollapsed=(()=>{try{return localStorage.getItem('scSplitListCollapsedV1')==='1'}catch(e){return false}})();
+ let splitWrap=null;
+ function ensureSplitDivider(){
+  let divider=splitWrap.querySelector('.sc-split-divider');
+  if(divider)return divider;
+  divider=document.createElement('div');divider.className='sc-split-divider';
+  divider.innerHTML='<button type="button" class="sc-split-collapse-btn" title="仕掛一覧の表示/非表示"></button>';
+  splitWrap.appendChild(divider);
+  divider.querySelector('.sc-split-collapse-btn').onclick=e=>{e.stopPropagation();toggleSplitListCollapsed()};
+  divider.addEventListener('mousedown',e=>{
+   if(e.target.closest('button')||splitListCollapsed)return;
+   e.preventDefault();
+   const startX=e.clientX,startW=splitListWidth;
+   divider.classList.add('dragging');
+   function onMove(ev){
+    splitListWidth=Math.min(Math.max(240,startW+(ev.clientX-startX)),Math.round(window.innerWidth*0.7));
+    applySplitListWidth();
+   }
+   function onUp(){
+    document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);
+    divider.classList.remove('dragging');
+    try{localStorage.setItem('scSplitListWidthV1',String(splitListWidth))}catch(err){/* 保存できなくても表示自体は継続する */}
+   }
+   document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
+  });
+  return divider;
+ }
+ function applySplitListWidth(){
+  if(splitWrap)splitWrap.style.setProperty('--sc-list-w',splitListWidth+'px');
+ }
+ function updateSplitCollapseUi(){
+  if(!splitWrap)return;
+  splitWrap.classList.toggle('sc-list-collapsed',splitListCollapsed);
+  const btn=splitWrap.querySelector('.sc-split-collapse-btn');
+  if(btn){btn.textContent=splitListCollapsed?'▶':'◀';btn.title=splitListCollapsed?'仕掛一覧を表示':'仕掛一覧を隠す'}
+ }
+ function toggleSplitListCollapsed(){
+  splitListCollapsed=!splitListCollapsed;
+  try{localStorage.setItem('scSplitListCollapsedV1',splitListCollapsed?'1':'0')}catch(e){/* 保存できなくても表示自体は継続する */}
+  updateSplitCollapseUi();
+ }
  function ensureSplitWrap(){
   if(splitWrap)return splitWrap;
   const panel=document.getElementById('schedulePanel');
@@ -184,6 +234,9 @@
   gridAnchor.parentNode.insertBefore(splitWrap,gridAnchor);
   moveGridTo(splitWrap);
   splitWrap.appendChild(panel);
+  ensureSplitDivider();
+  applySplitListWidth();
+  updateSplitCollapseUi();
   return splitWrap;
  }
  function teardownSplitWrap(){
@@ -195,13 +248,13 @@
   splitWrap.remove();
   splitWrap=null;
  }
- // scheduleモードで1設備のタイムラインを見ている間だけ、仕掛一覧を隣に出す
+ // scheduleモードで1設備のタイムラインを見ている間、仕掛一覧を隣に出す
  // (全体俯瞰ボード・editモード等では対象設備が定まらない/追加できないため
- // 意味が無い)。splitListVisibleは「◫ 仕掛一覧」トグルでの利用者の選択を
- // 覚えておく(毎回自動で出すと、狭い画面では逆に使いにくいという声を
- // 想定した保険)。
+ // 意味が無い)。表示自体の有無ではなく分割バーの折りたたみ(上記
+ // splitListCollapsed)で利用者が幅を調整する方針にしたため、ここは常に
+ // 分割レイアウトを組み立てる(ポップアップ表示中は先に畳む)。
  async function showSplitList(){
-  if(!scState.fullControl||scState.boardMode!=='single'||!scState.equipment||!splitListVisible)return;
+  if(!scState.fullControl||scState.boardMode!=='single'||!scState.equipment)return;
   if(listModalOpen)closeListModal();
   ensureSplitWrap();
   document.body.classList.add('sc-split');
@@ -215,44 +268,124 @@
   document.body.classList.remove('sc-split');
   teardownSplitWrap();
  }
- function toggleSplitList(){
-  splitListVisible=!splitListVisible;
-  if(splitListVisible)showSplitList();else hideSplitList();
-  updateSplitToggleUi();
- }
  function updateSplitToggleUi(){
   const applicable=scState.fullControl&&scState.boardMode==='single';
-  const splitBtn=$('#scSplitToggle');
-  if(splitBtn){splitBtn.hidden=!applicable;splitBtn.classList.toggle('active',applicable&&splitListVisible)}
   const modalBtn=$('#scListModalBtn');
   if(modalBtn){modalBtn.hidden=!applicable;modalBtn.classList.toggle('active',listModalOpen)}
+  const columnBtn=$('#scColumnModalBtn');
+  if(columnBtn){columnBtn.hidden=!applicable;columnBtn.classList.toggle('active',columnModalOpen)}
   const denseBtn=$('#scDenseToggle');
   if(denseBtn)denseBtn.hidden=!applicable;
   updateDenseToggleUi();
  }
 
+ /* ---------- .sc-side(案内文+設備停止)の折りたたみ(§9.13改訂) ----------
+    「常時表示だとスケジュールの視野を圧迫する」との指摘のため、.sc-side
+    全体を折りたたみ可能にし、既定を折りたたみにした。境界に常時見える
+    細いタブ(#scSideToggle)を置き、ヘッダーの離れたボタンより発見しやすい
+    位置で開閉できるようにする(§9.13で追加した内側の#scStopSectionToggleは
+    「設備停止を追加」節だけの開閉として維持し、こちらは.sc-side自体の
+    開閉というもう1段上の階層)。 */
+ let scSideCollapsed=(()=>{try{return (localStorage.getItem('scSideCollapsedV1')??'1')==='1'}catch(e){return true}})();
+ function updateSideUi(){
+  const applicable=scState.fullControl&&scState.boardMode==='single';
+  const tab=$('#scSideToggle'),side=$('#scSide');
+  if(tab)tab.hidden=!applicable;
+  if(side)side.hidden=!applicable||scSideCollapsed;
+  if(tab){tab.textContent=scSideCollapsed?'◀':'▶';tab.title=scSideCollapsed?'案内・設備停止パネルを表示':'案内・設備停止パネルを隠す'}
+ }
+ function toggleSideCollapsed(){
+  scSideCollapsed=!scSideCollapsed;
+  try{localStorage.setItem('scSideCollapsedV1',scSideCollapsed?'1':'0')}catch(e){/* 保存できなくても表示自体は継続する */}
+  updateSideUi();
+ }
+
+ /* ---------- 汎用フローティングウィンドウ(§9.16新設) ----------
+    仕掛一覧・設備停止のポップアップ表示に使う共通基盤。既存の.record-modal
+    (全画面シェード+中央ダイアログ)はシェードが背景を覆うため、ウィンドウの
+    外側=タイムラインへドラッグ&ドロップできないという不具合があった
+    (実際に報告された不具合)。ここでは全画面シェードを持たず、ヘッダーの
+    ドラッグで移動・右下角のドラッグでリサイズできる「浮いた」ウィンドウに
+    し、背景(タイムライン)は常に操作可能なままにする。位置・大きさは
+    localStorageへ保存し次回も再現する。 */
+ function makeFloatingWindow(el,opts){
+  const o=Object.assign({storageKey:'',defaultWidth:520,defaultHeight:480,defaultTop:86,defaultRight:24,minWidth:300,minHeight:220},opts||{});
+  const header=el.querySelector('.sc-float-header');
+  const resizeHandle=el.querySelector('.sc-float-resize');
+  let rect={width:o.defaultWidth,height:o.defaultHeight,top:o.defaultTop,left:null};
+  try{
+   const saved=o.storageKey&&JSON.parse(localStorage.getItem(o.storageKey)||'null');
+   if(saved&&typeof saved==='object')rect=Object.assign(rect,saved);
+  }catch(e){/* 保存値が壊れていても既定値で開始する */}
+  function clampToViewport(){
+   // ウィンドウ全体(右下角の抽出ハンドル・閉じるボタン含む)が画面外へ
+   // 出てしまうと、以後リサイズも移動もできなくなり実質操作不能になる。
+   // 固定マージンではなく実際の幅・高さを差し引いて上限を決める。
+   rect.width=Math.min(rect.width,Math.max(o.minWidth,window.innerWidth-20));
+   rect.height=Math.min(rect.height,Math.max(o.minHeight,window.innerHeight-20));
+   const maxLeft=Math.max(0,window.innerWidth-rect.width);
+   const maxTop=Math.max(0,window.innerHeight-rect.height);
+   if(rect.left!=null)rect.left=Math.min(Math.max(0,rect.left),maxLeft);
+   rect.top=Math.min(Math.max(0,rect.top),maxTop);
+  }
+  function applyRect(){
+   clampToViewport();
+   el.style.width=rect.width+'px';
+   el.style.height=rect.height+'px';
+   el.style.top=rect.top+'px';
+   if(rect.left==null){el.style.left='';el.style.right=o.defaultRight+'px'}
+   else{el.style.left=rect.left+'px';el.style.right=''}
+  }
+  function save(){try{if(o.storageKey)localStorage.setItem(o.storageKey,JSON.stringify(rect))}catch(e){/* 保存できなくても表示自体は継続する */}}
+  function dragToMove(startEvent){
+   if(startEvent.target.closest('button'))return;
+   startEvent.preventDefault();
+   const startX=startEvent.clientX,startY=startEvent.clientY;
+   const startBox=el.getBoundingClientRect();
+   const startLeft=startBox.left,startTop=startBox.top;
+   function onMove(ev){rect.left=startLeft+(ev.clientX-startX);rect.top=startTop+(ev.clientY-startY);applyRect()}
+   function onUp(){document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);save()}
+   document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
+  }
+  function dragToResize(startEvent){
+   startEvent.preventDefault();startEvent.stopPropagation();
+   const startX=startEvent.clientX,startY=startEvent.clientY;
+   const startW=rect.width,startH=rect.height;
+   function onMove(ev){rect.width=Math.max(o.minWidth,startW+(ev.clientX-startX));rect.height=Math.max(o.minHeight,startH+(ev.clientY-startY));applyRect()}
+   function onUp(){document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);save()}
+   document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
+  }
+  if(header)header.addEventListener('mousedown',dragToMove);
+  if(resizeHandle)resizeHandle.addEventListener('mousedown',dragToResize);
+  window.addEventListener('resize',()=>applyRect());
+  applyRect();
+ }
+
  /* ---------- 仕掛一覧のポップアップ表示(§9.14新設) ----------
-    折りたたみ(splitListVisible=false)や画面が狭い時でも、分割表示へ
-    切り替えずに一覧からドラッグで追加できるようにする代替の入口。
-    #grid自体は同時に1箇所にしか置けないため、開くときは分割表示を畳む。 */
+    折りたたみ・画面が狭い時でも、分割表示へ切り替えずに一覧からドラッグで
+    追加できるようにする代替の入口。#grid自体は同時に1箇所にしか置けない
+    ため、開くときは分割表示を畳む。 */
  let listModalOpen=false;
  function ensureListModal(){
   let modal=document.getElementById('scListModal');
   if(modal)return modal;
-  modal=document.createElement('div');modal.className='record-modal sc-float-modal';modal.id='scListModal';modal.hidden=true;
-  modal.innerHTML=`<div class="settings-dialog sc-float-dialog">
-   <header><div><small>SIKALOTNOW</small><h2>仕掛一覧(ドラッグでスケジュールへ追加)</h2></div><button type="button" id="scListModalClose">×</button></header>
+  modal=document.createElement('div');modal.className='sc-float-win';modal.id='scListModal';modal.hidden=true;
+  modal.innerHTML=`
+   <div class="sc-float-header"><div><small>SIKALOTNOW</small><h2>仕掛一覧(ドラッグでスケジュールへ追加)</h2></div><button type="button" id="scListModalClose" title="閉じる">×</button></div>
    <div class="sc-float-body" id="scListModalBody"></div>
-  </div>`;
+   <div class="sc-float-resize" title="ドラッグでサイズ変更"></div>`;
   document.body.appendChild(modal);
-  modal.querySelector('.sc-float-dialog').addEventListener('click',e=>e.stopPropagation());
-  modal.addEventListener('click',()=>closeListModal());
-  modal.querySelector('#scListModalClose').onclick=()=>closeListModal();
+  // 閉じたら分割表示が適用条件を満たしていればそちらへ戻す(該当しなければ
+  // showSplitList()内部で無視される)。exitScheduleView/全体ボード切替からの
+  // closeListModal()はこのクリックハンドラを経由しないため、無関係な場面で
+  // 分割表示を再構築してしまうことはない。
+  modal.querySelector('#scListModalClose').onclick=()=>{closeListModal();showSplitList()};
+  makeFloatingWindow(modal,{storageKey:'scListModalRectV1',defaultWidth:640,defaultHeight:560,defaultTop:80});
   return modal;
  }
  async function openListModal(){
   const modal=ensureListModal();
-  if(splitWrap){splitListVisible=false;hideSplitList()}
+  if(splitWrap)hideSplitList();
   moveGridTo(modal.querySelector('#scListModalBody'));
   applyListDensity();
   modal.hidden=false;listModalOpen=true;
@@ -334,10 +467,22 @@
  window.scCurrentDropTarget=function(){
   return (scState.fullControl&&scState.boardMode==='single'&&scState.equipment)?scState.equipment:'';
  };
+
  window.scAddSelectedRows=function(rows){
   if(!rows||!rows.length||!scState.equipment)return;
   if(rows.length===1)addRowToSchedule(rows[0],scState.equipment);
   else addRowsToSchedule(rows,scState.equipment);
+ };
+ // 既にスケジュールへ投入済みのロットを仕掛一覧から消す(§9.15新設、
+ // list-view.js renderGrid()から参照)。今開いている設備のscState.entries
+ // (種別='作業'のみ、設備停止にロット番号は無い)に含まれるロット番号を
+ // 返す。楽観的追加(__pending)の間もすぐ一覧から消えてほしいため、ここは
+ // pendingかどうかを区別しない。
+ window.scScheduledLotSet=function(){
+  if(!scState.fullControl||scState.boardMode!=='single'||!scState.equipment)return null;
+  const set=new Set();
+  scState.entries.forEach(e=>{if(e.kind==='作業'&&e.lotNo)set.add(String(e.lotNo))});
+  return set;
  };
 
  /* ---------- ビュー排他制御 ---------- */
@@ -346,12 +491,12 @@
   document.body.classList.remove('sc-mode');
   document.getElementById('schedulePanel')?.setAttribute('hidden','');
   document.getElementById('openSchedule')?.classList.remove('active');
-  closeListModal();closeStopModal();
+  closeListModal();closeStopModal();closeColumnModal();
   hideSplitList();
   stopLockPolling();
   stopSessionHeartbeat();
   if(scSessionHeldFor){releaseSessionFire(scSessionHeldFor);scSessionHeldFor=null}
-  scState.sessionHeld=false;scState.sessionHolder=null;
+  scState.sessionHeld=false;scState.sessionHolder=null;scState.sessionError=null;
  }
  window.exitScheduleView=exitScheduleView;
  if(typeof selectDb==='function'){
@@ -361,7 +506,7 @@
    // (§9.10)としてスケジュール画面の隣に出すため、画面自体は閉じない
    // (ただし既にポップアップ表示(§9.14)で開いている場合はそちらを崩さない)。
    if(k==='SIKALOTNOW'&&scState.fullControl&&scState.boardMode==='single'&&scState.equipment){
-    if(!listModalOpen){splitListVisible=true;ensureSplitWrap();document.body.classList.add('sc-split');applyListDensity();updateSplitToggleUi()}
+    if(!listModalOpen){ensureSplitWrap();document.body.classList.add('sc-split');applyListDensity();updateSplitToggleUi()}
     return oldSelectDb(k,b);
    }
    exitScheduleView();
@@ -389,7 +534,6 @@
   scState.fieldReorderOnly=(am.mode==='edit'&&am.canFieldReorder);
   scState.pickerEnabled=(am.mode!=='edit');
   $('#scFieldReorderNote').hidden=!scState.fieldReorderOnly;
-  $('#scSide').hidden=!scState.fullControl;
 
   if(am.mode==='edit'){
    const eq=currentConfiguredEquipment();
@@ -419,14 +563,14 @@
   $('#scSingleBody').hidden=inBoard;
   $('#scBoardWindow').hidden=!inBoard;
   if(scState.pickerEnabled)$('#scEquipmentSelect').hidden=inBoard;
-  $('#scSide').hidden=!scState.fullControl||inBoard;
+  updateSideUi();
   const stopBtn=$('#scStopModalBtn');if(stopBtn)stopBtn.hidden=!scState.fullControl||inBoard;
   document.querySelectorAll('.sc-board-window-btn').forEach(btn=>btn.classList.toggle('active',+btn.dataset.hours===scState.boardWindowHours));
   updateSplitToggleUi();
   // 全体俯瞰ボードや対象設備が無い状態では分割表示(§9.10)の意味が無いため
   // 畳む(仕掛一覧を隣に出したまま設備を切り替えても違和感が無いよう、
   // 個別タイムライン表示中はshowSplitList側で改めて出す)。
-  if(inBoard){hideSplitList();closeListModal();closeStopModal()}
+  if(inBoard){hideSplitList();closeListModal();closeStopModal();closeColumnModal()}
   syncSession();
  }
  async function switchToBoard(){
@@ -493,19 +637,37 @@
  function sessionApplicable(){
   return scState.fullControl&&scState.boardMode==='single'&&!!scState.equipment;
  }
+ // 「他端末がこの設備を編集中」と確定できた場合(423+sessionLockedBy)だけ
+ // 操作を止める。ネットワーク不調・タイムアウト等、確定できないエラーでは
+ // 操作を止めない(fail-open)。schedule_share_pathは工場ネットワーク共有上に
+ // あり、CLAUDE.mdに記録の通り遅延・一時的な接続不調が実際に起きる環境の
+ // ため、「原因不明のエラー=安全側でブロック」にすると、ネットワークが
+ // 少し不安定なだけで無言のまま追加・削除・並べ替え・ドラッグが一切効かなく
+ // なるという、この機能が解決したかった「遅い」より遥かに悪い状態になって
+ // しまう(実際に報告された不具合。#scSessionBannerも表示されないまま
+ // 固まって見える点が特に悪い)。データ本体の整合性はwith_write()側の
+ // ロック+改訂番号チェックが最終防御として引き続き機能するため、この
+ // セッション機構が失敗してもデータが壊れることはない。
  function sessionBlocked(){
-  return sessionApplicable()&&!scState.sessionHeld;
+  return sessionApplicable()&&!scState.sessionHeld&&!!scState.sessionHolder;
  }
  async function acquireSessionOnce(){
   const eq=scState.equipment;
   try{
    await api('/api/schedule/session/acquire',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({equipment:eq})});
    if(scState.equipment!==eq)return; // 応答が届く前に設備が切り替わっていたら結果を捨てる
-   scState.sessionHeld=true;scState.sessionHolder=null;
+   scState.sessionHeld=true;scState.sessionHolder=null;scState.sessionError=null;
   }catch(e){
    if(scState.equipment!==eq)return;
    scState.sessionHeld=false;
-   scState.sessionHolder=e.sessionLockedBy||null;
+   if(e.sessionLockedBy&&(e.sessionLockedBy.loginId||e.sessionLockedBy.pcName)){
+    // 明確に他端末が保持中と判定できた場合だけブロック対象にする。
+    scState.sessionHolder=e.sessionLockedBy;scState.sessionError=null;
+   }else{
+    // 原因不明(ネットワーク不調・タイムアウト・設定未完了等)。ブロックは
+    // しないが、状況が分かるよう控えめな警告だけは出す(renderSessionBanner)。
+    scState.sessionHolder=null;scState.sessionError=e.message||String(e);
+   }
   }
   renderSessionBanner();
  }
@@ -540,7 +702,9 @@
   }
   if(!sessionApplicable()){
    stopSessionHeartbeat();
-   if(scState.sessionHeld||scState.sessionHolder){scState.sessionHeld=false;scState.sessionHolder=null;renderSessionBanner()}
+   if(scState.sessionHeld||scState.sessionHolder||scState.sessionError){
+    scState.sessionHeld=false;scState.sessionHolder=null;scState.sessionError=null;renderSessionBanner();
+   }
    return;
   }
   if(scSessionTimer)return; // 既にこの設備でハートビート中
@@ -548,16 +712,32 @@
  }
  function renderSessionBanner(){
   const box=$('#scSessionBanner');if(!box)return;
-  if(!sessionApplicable()||scState.sessionHeld||!scState.sessionHolder){
-   box.hidden=true;box.innerHTML='';
+  if(!sessionApplicable()||scState.sessionHeld){
+   box.hidden=true;box.innerHTML='';box.className='sc-session-banner';
    applyWriteControlsEnabled(true);
    return;
   }
-  const h=scState.sessionHolder;
-  box.hidden=false;
-  box.innerHTML=`<span>⚠ ${esc(scState.equipment)}は${esc(h.loginId||'?')}@${esc(h.pcName||'?')}が編集中です。追加・削除・並べ替えは今は操作できません(閲覧のみ)。</span><button type="button" id="scSessionRetry">再試行</button>`;
-  const retryBtn=$('#scSessionRetry');if(retryBtn)retryBtn.onclick=()=>acquireSessionOnce();
-  applyWriteControlsEnabled(false);
+  if(scState.sessionHolder){
+   // 他端末が保持中と確定できた場合のみ操作を止める(sessionBlocked()と同じ判定)。
+   const h=scState.sessionHolder;
+   box.hidden=false;box.className='sc-session-banner sc-session-banner-blocked';
+   box.innerHTML=`<span>⚠ ${esc(scState.equipment)}は${esc(h.loginId||'?')}@${esc(h.pcName||'?')}が編集中です。追加・削除・並べ替えは今は操作できません(閲覧のみ)。</span><button type="button" id="scSessionRetry">再試行</button>`;
+   $('#scSessionRetry').onclick=()=>acquireSessionOnce();
+   applyWriteControlsEnabled(false);
+   return;
+  }
+  if(scState.sessionError){
+   // 原因不明のエラー。操作は止めない(fail-open)が、編集セッションが
+   // 正しく機能していない可能性を控えめに伝える(閉じるだけで消せる)。
+   box.hidden=false;box.className='sc-session-banner sc-session-banner-warn';
+   box.innerHTML=`<span>編集セッションの取得に失敗しました(${esc(scState.sessionError)})。他端末との同時編集チェックが一時的に効かない可能性がありますが、操作は継続できます。</span><button type="button" id="scSessionRetry">再試行</button><button type="button" id="scSessionDismiss" title="閉じる">×</button>`;
+   $('#scSessionRetry').onclick=()=>acquireSessionOnce();
+   $('#scSessionDismiss').onclick=()=>{box.hidden=true};
+   applyWriteControlsEnabled(true);
+   return;
+  }
+  box.hidden=true;box.innerHTML='';box.className='sc-session-banner';
+  applyWriteControlsEnabled(true);
  }
  function applyWriteControlsEnabled(enabled){
   const panel=document.getElementById('schedulePanel');
@@ -658,7 +838,7 @@
  /* ---------- 予定一覧の取得・描画 ---------- */
  async function refreshAll(){
   await loadPlan();
-  if(scState.fullControl)await loadStopReasons();
+  if(scState.fullControl){await loadStopReasons();await loadScheduleColumnPrefs()}
   await showSplitList();
  }
  async function loadPlan(){
@@ -768,6 +948,7 @@
   const timeline=$('#scTimeline');
   if(!scState.entries.length){
    timeline.innerHTML='<div class="sc-empty-note">この設備の予定はまだありません。</div>';
+   refreshScheduledLotFilter();
    return;
   }
   timeline.innerHTML='';
@@ -855,6 +1036,13 @@
     if(fsClear)fsClear.onclick=ev=>{ev.stopPropagation();updateFixedStart(e.id,'')};
    }
   });
+  refreshScheduledLotFilter();
+ }
+ // scState.entriesが変わるたびに、既にスケジュール投入済みのロットが仕掛
+ // 一覧から消える(§9.15)よう#gridを再描画する。SIKALOTNOWを見ていない
+ // 時は無駄なので、S.dbで確認してから呼ぶ。
+ function refreshScheduledLotFilter(){
+  if(typeof renderGrid==='function'&&typeof S!=='undefined'&&S.db==='SIKALOTNOW')renderGrid();
  }
 
  /* ---------- 書込キュー(§9.11新設): 画面描画を先行させ、実際のAPI呼び出しは
@@ -1071,15 +1259,14 @@
  function ensureStopModal(){
   let modal=document.getElementById('scStopModal');
   if(modal)return modal;
-  modal=document.createElement('div');modal.className='record-modal sc-float-modal';modal.id='scStopModal';modal.hidden=true;
-  modal.innerHTML=`<div class="settings-dialog sc-float-dialog sc-float-dialog-narrow">
-   <header><div><small>STOP REASON</small><h2>設備停止を追加</h2></div><button type="button" id="scStopModalClose">×</button></header>
+  modal=document.createElement('div');modal.className='sc-float-win';modal.id='scStopModal';modal.hidden=true;
+  modal.innerHTML=`
+   <div class="sc-float-header"><div><small>STOP REASON</small><h2>設備停止を追加</h2></div><button type="button" id="scStopModalClose" title="閉じる">×</button></div>
    <div class="sc-float-body" id="scStopModalBody"></div>
-  </div>`;
+   <div class="sc-float-resize" title="ドラッグでサイズ変更"></div>`;
   document.body.appendChild(modal);
-  modal.querySelector('.sc-float-dialog').addEventListener('click',e=>e.stopPropagation());
-  modal.addEventListener('click',()=>closeStopModal());
   modal.querySelector('#scStopModalClose').onclick=()=>closeStopModal();
+  makeFloatingWindow(modal,{storageKey:'scStopModalRectV1',defaultWidth:360,defaultHeight:420,defaultTop:80,minWidth:260,minHeight:200});
   return modal;
  }
  function openStopModal(){
@@ -1097,6 +1284,91 @@
   if(box&&stopAnchor)stopAnchor.parentNode.insertBefore(box,stopAnchor);
   modal.hidden=true;stopModalOpen=false;
   $('#scStopModalBtn')?.classList.remove('active');
+ }
+
+ /* ---------- 設備ごとのスケジュール列表示マスタ(§9.18新設) ----------
+    分割/ポップアップ表示の仕掛一覧に出す列を設備ごとに選べるようにする
+    (backend/repositories/master_repo.pyのSCHEDULE_COLUMN_TABLE)。1件も
+    選ばれていない設備は「未設定=全列表示」(他マスタと同じ互換ポリシー)。
+    list-view.js renderGrid()はwindow.scColumnAllowlist()を呼んでフィルタ
+    する(関数の定義は1箇所、列フィルタ自体の実装はlist-view.js側のみ)。 */
+ let scColumnPrefs={equipment:'',columns:null};
+ async function loadScheduleColumnPrefs(){
+  if(!scState.equipment){scColumnPrefs={equipment:'',columns:null};return}
+  const eq=scState.equipment;
+  try{
+   const r=await api('/api/schedule-column-master?equipment='+encodeURIComponent(eq));
+   if(scState.equipment!==eq)return; // 応答が届く前に設備が切り替わっていたら結果を捨てる
+   scColumnPrefs={equipment:eq,columns:(r.columns&&r.columns.length)?r.columns:null};
+  }catch(e){
+   if(scState.equipment!==eq)return;
+   scColumnPrefs={equipment:eq,columns:null}; // 取得に失敗しても全列表示にフォールバックする(fail-open)
+  }
+  refreshScheduledLotFilter();
+ }
+ window.scColumnAllowlist=function(){
+  if(!scState.fullControl||!scState.equipment||scColumnPrefs.equipment!==scState.equipment)return null;
+  return scColumnPrefs.columns;
+ };
+
+ let columnModalOpen=false;
+ function ensureColumnModal(){
+  let modal=document.getElementById('scColumnModal');
+  if(modal)return modal;
+  modal=document.createElement('div');modal.className='sc-float-win';modal.id='scColumnModal';modal.hidden=true;
+  modal.innerHTML=`
+   <div class="sc-float-header"><div><small>COLUMNS</small><h2>表示する列を選ぶ(設備ごと)</h2></div><button type="button" id="scColumnModalClose" title="閉じる">×</button></div>
+   <div class="sc-float-body" id="scColumnModalBody"></div>
+   <div class="sc-float-resize" title="ドラッグでサイズ変更"></div>`;
+  document.body.appendChild(modal);
+  modal.querySelector('#scColumnModalClose').onclick=()=>closeColumnModal();
+  makeFloatingWindow(modal,{storageKey:'scColumnModalRectV1',defaultWidth:320,defaultHeight:460,defaultTop:80,minWidth:260,minHeight:240});
+  return modal;
+ }
+ function renderColumnModalBody(){
+  const body=document.getElementById('scColumnModalBody');if(!body)return;
+  if(!scState.equipment){body.innerHTML='<div class="sc-empty-note">設備を選択してください。</div>';return}
+  const allCols=(typeof S!=='undefined'?S.columns:null)||[];
+  if(!allCols.length){body.innerHTML='<div class="sc-empty-note">仕掛一覧を先に開いてください(列名の取得が必要です)。</div>';return}
+  const selected=(scColumnPrefs.equipment===scState.equipment&&scColumnPrefs.columns)?new Set(scColumnPrefs.columns):null;
+  body.innerHTML=`<p class="sc-drop-hint">${esc(scState.equipment)}の仕掛一覧(分割・ポップアップ表示)に出す列を選びます。1つも選ばなければ全列を表示します。</p>
+   <div class="sc-column-list">${allCols.map(c=>`<label class="sc-column-item"><input type="checkbox" value="${esc(c)}"${(!selected||selected.has(c))?' checked':''}> ${esc(c)}</label>`).join('')}</div>
+   <div class="sc-column-actions">
+    <button type="button" id="scColumnSelectAll">全選択</button>
+    <button type="button" id="scColumnClearAll">選択解除</button>
+    <button type="button" id="scColumnSave" class="sc-column-save">保存</button>
+   </div>`;
+  body.querySelector('#scColumnSelectAll').onclick=()=>body.querySelectorAll('.sc-column-item input').forEach(i=>{i.checked=true});
+  body.querySelector('#scColumnClearAll').onclick=()=>body.querySelectorAll('.sc-column-item input').forEach(i=>{i.checked=false});
+  body.querySelector('#scColumnSave').onclick=saveColumnSelection;
+ }
+ async function saveColumnSelection(){
+  const body=document.getElementById('scColumnModalBody');if(!body||!scState.equipment)return;
+  const allCols=(typeof S!=='undefined'?S.columns:null)||[];
+  const checked=[...body.querySelectorAll('.sc-column-item input:checked')].map(i=>i.value);
+  // 全列にチェックが入ったままなら「未設定(全列表示)」として保存する
+  // (空配列。1件も無ければ全列表示という他マスタと同じ互換ポリシーに合わせる)。
+  const toSave=checked.length>=allCols.length?[]:checked;
+  const eq=scState.equipment;
+  try{
+   await api('/api/schedule-column-master',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(withUserId({equipment:eq,columns:toSave}))});
+   scColumnPrefs={equipment:eq,columns:toSave.length?toSave:null};
+   showToast&&showToast('表示列を保存しました',`${eq}の仕掛一覧に反映します`,3200);
+   refreshScheduledLotFilter();
+  }catch(e){showToast&&showToast('保存に失敗しました',e.message,5000)}
+ }
+ function openColumnModal(){
+  ensureColumnModal();
+  renderColumnModalBody();
+  document.getElementById('scColumnModal').hidden=false;columnModalOpen=true;
+  updateSplitToggleUi();
+ }
+ function closeColumnModal(){
+  const modal=document.getElementById('scColumnModal');
+  if(!modal||modal.hidden)return;
+  modal.hidden=true;columnModalOpen=false;
+  updateSplitToggleUi();
  }
 
  function buildScheduleDetail(row){

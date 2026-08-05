@@ -51,10 +51,16 @@ _WRITE_ALLOWED_MODES={
 }
 # 上の表より広く許可する例外(エンドポイント名 -> 追加で許可するモード)。
 # 現場段取り: 並べ替えAPI(schedule.plan_reorder)だけをeditにも開ける。
+# スケジュール列表示マスタ(masters.schedule_column_master_save)は、
+# scheduleモードの端末が分割/ポップアップ表示中にその場で表示列を
+# 選べるようにするため、マスタ管理(通常はeditモード限定)の例外として
+# scheduleモードにも開く(§9.18)。表示設定のみで測定データ・他マスタには
+# 触れないため、schedule運用の端末に許可しても実害が無い。
 # 新しい書込系エンドポイントをここへ追記する際は、権限の絞り込みを
 # ハンドラ側(_field_reorder_permitted等)で必ず二重に行うこと。
 _ENDPOINT_EXTRA_MODES={
  'schedule.plan_reorder':{'edit'},
+ 'masters.schedule_column_master_save':{'schedule'},
 }
 
 def current_login_id():

@@ -227,3 +227,33 @@ document.addEventListener('DOMContentLoaded',()=>{
 function notifyTabClosed(){try{navigator.sendBeacon(`/api/heartbeat/close?tab=${encodeURIComponent(WATCHDOG_TAB_ID)}`)}catch(e){}}
 window.addEventListener('pagehide',notifyTabClosed);
 window.addEventListener('unload',notifyTabClosed);
+
+/* 左ナビ(aside)の幅をドラッグでリサイズできるようにする。#navResizeHandle
+   を<aside>の直後(<main>の前)へ挿入するだけで、.layoutのgrid-template-
+   columnsが3列(--nav-w 4px 1fr)構成のため、既存のDOM構造(aside/main)を
+   壊さずに挟み込める。幅はlocalStorageへ保存し次回も再現する。 */
+(function(){
+ const aside=document.querySelector('.layout>aside');
+ if(!aside||!aside.parentNode)return;
+ let navWidth=(()=>{try{const v=+localStorage.getItem('navWidthV1');return v>0?v:242}catch(e){return 242}})();
+ function apply(){document.documentElement.style.setProperty('--nav-w',navWidth+'px')}
+ apply();
+ const handle=document.createElement('div');
+ handle.id='navResizeHandle';handle.title='ドラッグでメニュー幅を変更';
+ aside.insertAdjacentElement('afterend',handle);
+ handle.addEventListener('mousedown',e=>{
+  e.preventDefault();
+  const startX=e.clientX,startW=navWidth;
+  handle.classList.add('dragging');
+  function onMove(ev){
+   navWidth=Math.min(Math.max(180,startW+(ev.clientX-startX)),480);
+   apply();
+  }
+  function onUp(){
+   document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);
+   handle.classList.remove('dragging');
+   try{localStorage.setItem('navWidthV1',String(navWidth))}catch(err){/* 保存できなくても表示自体は継続する */}
+  }
+  document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
+ });
+})();

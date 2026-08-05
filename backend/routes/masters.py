@@ -29,6 +29,7 @@ from ..repositories.master_repo import (
  DEVICE_MASTER_TABLE, ensure_device_master_table, normalize_device_name, device_master_rows,
  FILTER_PRESET_TABLE, ensure_filter_preset_table, filter_preset_rows,
  COLUMN_DISPLAY_TABLE, ensure_column_display_table, hidden_columns_for, set_hidden_columns,
+ SCHEDULE_COLUMN_TABLE, ensure_schedule_column_table, schedule_columns_for, set_schedule_columns,
  ACCESS_PERMISSION_TABLE, ensure_access_permission_table, normalize_identity_part, access_permission_master_rows,
  field_reorder_terminal_count,
 )
@@ -497,6 +498,38 @@ def column_display_master_update():
    set_hidden_columns(c,dbkey,hidden,uid)
   return jsonify(ok=True,db=dbkey,hidden=hidden,updated_by=uid,message='表示設定を保存しました。')
  except Exception as e:return jsonify(error=f'表示マスタ更新失敗: {e}'),500
+
+# ========================================================================
+# スケジュール列表示マスタ(§9.18新設): 設備ごとにスケジュール画面(分割/
+# ポップアップ表示)の仕掛一覧へ出す列を選べるようにする。上の表示マスタ
+# (DB単位・常時・ブロックリスト)とは軸も適用範囲も異なる別マスタ。
+# ========================================================================
+@bp.get('/api/schedule-column-master')
+def schedule_column_master_get():
+ try:
+  equipment=str(request.args.get('equipment') or '').strip()
+  if not equipment:return jsonify(ok=True,equipment='',columns=[])
+  path=DBS['MASTER']['path']
+  if not path.exists():return jsonify(ok=True,equipment=equipment,columns=[])
+  with connect(path,True) as c:
+   columns=schedule_columns_for(c,equipment)
+  return jsonify(ok=True,equipment=equipment,columns=columns)
+ except Exception as e:return jsonify(error=f'スケジュール列表示マスタ読込失敗: {e}'),500
+
+@bp.post('/api/schedule-column-master')
+def schedule_column_master_save():
+ try:
+  x=request.get_json(force=True) or {};uid=request_user_id(x)
+  equipment=str(x.get('equipment') or '').strip()
+  columns=x.get('columns')
+  if not equipment:return jsonify(error='設備名を指定してください。'),400
+  if not isinstance(columns,list):return jsonify(error='列の指定が不正です。'),400
+  path=DBS['MASTER']['path']
+  with connect(path,False) as c:
+   n=set_schedule_columns(c,equipment,columns,uid)
+  return jsonify(ok=True,equipment=equipment,saved=n,updated_by=uid,message='表示列を保存しました。')
+ except ValueError as e:return jsonify(error=str(e)),400
+ except Exception as e:return jsonify(error=f'スケジュール列表示マスタ保存失敗: {e}'),500
 
 # ========================================================================
 # アクセス権限マスタ（ログインID×PC名で編集可否を管理。閲覧モードの判定は

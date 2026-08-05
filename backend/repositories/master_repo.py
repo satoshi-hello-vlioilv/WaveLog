@@ -495,3 +495,56 @@ def set_hidden_columns(c,dbkey,names,uid):
   if nm not in existing:
    cur.execute('INSERT INTO [表示マスタ] ([対象],[列名],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,Now(),Now())',[dbkey,nm,uid,uid])
  c.commit()
+
+# ========================================================================
+# スケジュール列表示マスタ（§9.18新設）
+#  - 上の表示マスタ(対象=DB単位、行の存在=非表示のブロックリスト)とは
+#    軸が異なる: 設備単位(対象=設備名)で、スケジュール画面の分割/ポップ
+#    アップ表示(list-view.js renderGrid)にだけ効くアローリスト。
+#    行が1件も無い設備=未設定=全列表示（表示マスタ・他マスタと同じ
+#    「行が無ければ既定」の互換ポリシー）。表示マスタ(DB全体・常時)と
+#    役割が違うため、既存テーブルへ列を足して意味を上書きするのではなく
+#    別テーブルにした。
+# ========================================================================
+SCHEDULE_COLUMN_TABLE='スケジュール列表示マスタ'
+def ensure_schedule_column_table(c):
+ names=tables(c);created=False
+ if SCHEDULE_COLUMN_TABLE not in names:
+  cur=c.cursor()
+  cur.execute('CREATE TABLE [スケジュール列表示マスタ] ([ID] INTEGER PRIMARY KEY AUTOINCREMENT, [設備名] TEXT, [列名] TEXT, [表示順] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
+  cur.execute('CREATE INDEX [IX_スケジュール列表示マスタ_設備] ON [スケジュール列表示マスタ] ([設備名])')
+  c.commit();created=True
+ ensure_audit_columns(c,SCHEDULE_COLUMN_TABLE)
+ return created
+
+def schedule_columns_for(c,equipment):
+ # 指定設備で選択済みの列名一覧(表示順)。1件も無ければ空リスト
+ # (=未設定、呼び出し側で「全列表示」と解釈する)。
+ if SCHEDULE_COLUMN_TABLE not in tables(c):return []
+ cur=c.cursor()
+ cur.execute('SELECT [設備名],[列名] FROM [スケジュール列表示マスタ] ORDER BY [表示順],[ID]')
+ target=normalize_equipment_name(equipment)
+ return [str(r[1]) for r in cur.fetchall() if target and normalize_equipment_name(r[0])==target]
+
+def set_schedule_columns(c,equipment,column_names,uid):
+ # 指定設備の選択列を column_names の内容へ完全同期する(既存行を全削除して
+ # 作り直す、稼働カレンダーマスタcalendar_syncと同じ全置換方式)。空リストを
+ # 渡すと「未設定(全列表示)」へ戻る。
+ ensure_schedule_column_table(c)
+ equipment=str(equipment or '').strip()
+ if not equipment:raise ValueError('設備名を指定してください。')
+ cur=c.cursor()
+ cur.execute('SELECT [ID],[設備名] FROM [スケジュール列表示マスタ]')
+ target=normalize_equipment_name(equipment)
+ existing_ids=[r[0] for r in cur.fetchall() if normalize_equipment_name(r[1])==target]
+ for rid in existing_ids:
+  cur.execute('DELETE FROM [スケジュール列表示マスタ] WHERE [ID]=?',[rid])
+ order=0
+ for name in (column_names or []):
+  name=str(name or '').strip()
+  if not name:continue
+  order+=1
+  cur.execute('INSERT INTO [スケジュール列表示マスタ] ([設備名],[列名],[表示順],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,Now(),Now())',
+              [equipment,name,order,uid,uid])
+ c.commit()
+ return order
