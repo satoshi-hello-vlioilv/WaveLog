@@ -170,10 +170,17 @@
    cols:[{k:'loginId',label:'ログインID',grow:2},{k:'pcName',label:'PC名',grow:2},{k:'canEdit',label:'編集可否',grow:1},{k:'canSchedule',label:'スケジュール',grow:1},{k:'canFieldReorder',label:'現場段取り',grow:1},{k:'fieldReorderEquipment',label:'対象設備',grow:1}],
    hint:'ログインID・PC名はどちらか一方だけの登録もできます(汎用的な運用のため)。片方だけ登録した場合、もう一方は「問わない」という意味になります(例: ログインIDだけ登録すると、そのユーザーはどの端末からでもこの権限になります)。両方登録した組み合わせが最優先で一致し、次に片方だけの登録、両方空欄の登録(全端末共通の既定)の順に判定します。登録の無い組み合わせは既定で編集可能・スケジュール不可・現場段取り不可として扱われます。特定の端末を閲覧専用にしたい場合はその端末を「閲覧のみ」で、作業スケジュールを操作させたい場合は「スケジュール可否」を「可」で登録してください。「現場段取り可否」は編集モードの端末に限り、対象設備の並べ替えだけを追加で許可します。'},
   {group:'schedule',key:'loadFactor',label:'換算係数',icon:'率',special:'load-factor',endpoint:'/api/schedule/load-factors'},
+  {group:'schedule',key:'stopCategory',label:'設備停止分類',icon:'類',endpoint:'/api/schedule/stop-category-master',hasDelete:true,
+   fields:[{k:'name',label:'分類名',required:true,key:true}],
+   cols:[{k:'name',label:'分類名',grow:2}],
+   hint:'設備停止マスタの「分類」の選択肢です。分類は設備をまたいだ集計・色分けに使うため、設備ごとではなく全設備共通で持ちます。設備停止マスタで未登録の分類を入力して保存すると、ここへも自動で登録されます(先にこの画面で作っておく必要はありません)。使用中の分類を削除しようとすると、何件で使われているかを確認したうえで消します。'},
   {group:'schedule',key:'stopReason',label:'設備停止',icon:'停',endpoint:'/api/schedule/stop-reason-master',hasDelete:true,
    fields:[{k:'equipment',label:'設備名',type:'equipment-select',required:true,key:true},
-           {k:'category',label:'分類',type:'select',options:['保全','段取り','待ち','突発','']},
-           {k:'name',label:'名称',required:true,key:true},{k:'standardMinutes',label:'標準所要分',required:true}],
+           {k:'category',label:'分類',type:'master-combo',source:{endpoint:'/api/schedule/stop-category-master',valueKey:'name'},
+            hint:'設備停止分類マスタから選びます。無い分類は「＋ 新しく追加…」で入力すると、保存時に分類マスタへも登録されます。'},
+           {k:'name',label:'名称',required:true,key:true},
+           {k:'standardMinutes',label:'標準所要分',required:true,type:'number',unit:'分',step:5,min:0,
+            hint:'この設備でこの停止に通常かかる時間です。＋−ボタンで5分ずつ増減できます。'}],
    cols:[{k:'equipment',label:'設備名',grow:1},{k:'category',label:'分類',grow:1},{k:'name',label:'名称',grow:2},{k:'standardMinutes',label:'標準所要分',grow:1}],
    hint:'作業スケジュール(docs/SCHEDULE_MODE_DESIGN.md §5.3)の設備停止予定で選べる名称と、その設備での標準所要分(分)です。同じ名称でも設備が異なれば別行として個別の時間を登録できます。「突発停止」は現場からの連絡を受けた計画担当が投入する運用のため、名称に登録しておくだけで自動では動きません。'},
   {group:'schedule',key:'shiftMaster',label:'勤務形態',icon:'勤',special:'shift-pattern',endpoint:'/api/schedule/shift-pattern-master'},
@@ -296,6 +303,61 @@
   if(def.fields.some(f=>RICH_FIELD_TYPES.includes(f.type)))return true;
   return def.fields.length>=EDITOR_MODAL_MIN_FIELDS;
  }
+
+ /* ================= 入力支援(docs/SCHEDULE_MODE_DESIGN.md §9.49) =================
+    マスタの入力は「マウスだけで最後まで終えられる」ことを基本にする。現場の
+    端末はキーボードが使いにくい場所にあることがあり、また手入力は表記ゆれ
+    (全角/半角・余分な空白)をそのままマスタへ持ち込む原因になるため。
+      - number : 上下ボタン付き。右づめ・3桁区切りで表示し、単位を添える
+      - date   : ブラウザ標準のカレンダー入力(type=date)
+      - master-combo: 別マスタの登録値から選ぶ。未登録の値も入力でき、
+                      保存時にその別マスタへ連動登録される(§5.3.1)
+      - path   : サーバー側のフォルダ参照ダイアログ + ドラッグ&ドロップ
+    いずれも最終的な値は data-field を持つ input/select が保持するので、
+    submitMaint() 側の読み取りは変えない。 */
+ const numFmt=new Intl.NumberFormat('ja-JP',{maximumFractionDigits:6});
+ // 表示用に3桁区切りへ。編集中は素の数値に戻す(区切りが入ったままだと打ち直せない)。
+ function numDisplay(v){
+  const s=String(v??'').trim();if(!s)return '';
+  const n=Number(s.replace(/,/g,''));
+  return Number.isFinite(n)?numFmt.format(n):s;
+ }
+ function numRaw(v){
+  const s=String(v??'').replace(/,/g,'').trim();
+  return s;
+ }
+ // extraAttrは呼び出し側が別の収集属性を足すため(パス設定タブはdata-pc-fieldで集める)
+ function numFieldHtml(f,val,extraAttr){
+  const step=f.step==null?1:f.step;
+  const attrs=[`data-step="${esc(String(step))}"`];
+  if(f.min!=null)attrs.push(`data-min="${esc(String(f.min))}"`);
+  if(f.max!=null)attrs.push(`data-max="${esc(String(f.max))}"`);
+  if(extraAttr)attrs.push(extraAttr);
+  return `<span class="mm-num" data-num-wrap>
+    <button type="button" class="mm-num-btn" data-num-step="-1" tabindex="-1" aria-label="${esc(f.label)}を減らす">−</button>
+    <input data-field="${f.k}" class="mm-num-input" type="text" inputmode="decimal" autocomplete="off"
+           value="${esc(numDisplay(val))}" ${attrs.join(' ')}>
+    <button type="button" class="mm-num-btn" data-num-step="1" tabindex="-1" aria-label="${esc(f.label)}を増やす">＋</button>
+    ${f.unit?`<span class="mm-num-unit">${esc(f.unit)}</span>`:''}
+   </span>`;
+ }
+ function fieldLabelHtml(f){
+  return `<span>${esc(f.label)}${f.required?'<i>*</i>':''}${f.key?'<em class="mm-keytag">キー</em>':''}</span>`;
+ }
+ /* master-combo の選択肢は別マスタから取る。同じマスタを何度も引かないよう
+    タブを開いている間だけ持つ(登録すると連動して増えるので、保存後の
+    loadMaint()で作り直す)。 */
+ const comboCache=new Map();
+ function invalidateComboCache(){comboCache.clear()}
+ async function comboOptions(source){
+  if(!source||!source.endpoint)return [];
+  if(comboCache.has(source.endpoint))return comboCache.get(source.endpoint);
+  try{
+   const r=await api(source.endpoint);
+   const list=(r.items||[]).map(x=>String(x[source.valueKey||'name']??'').trim()).filter(Boolean);
+   comboCache.set(source.endpoint,list);return list;
+  }catch(e){comboCache.set(source.endpoint,[]);return []}
+ }
  function buildFieldControls(def,editing){
   return def.fields.map(f=>{
    const val=editing?String(editing[f.k]??''):'';
@@ -324,9 +386,38 @@
    }
    if(f.type==='select'){
     const opts=(f.options||[]).map(o=>`<option value="${esc(o)}"${o===val?' selected':''}>${esc(o||'（指定なし）')}</option>`).join('');
-    return `<label class="mm-field"><span>${esc(f.label)}${f.required?'<i>*</i>':''}${f.key?'<em class="mm-keytag">キー</em>':''}</span><select data-field="${f.k}">${opts}</select></label>`;
+    return `<label class="mm-field">${fieldLabelHtml(f)}<select data-field="${f.k}">${opts}</select></label>`;
    }
-   return `<label class="mm-field"><span>${esc(f.label)}${f.required?'<i>*</i>':''}${f.key?'<em class="mm-keytag">キー</em>':''}</span><input data-field="${f.k}" type="text" value="${esc(val)}" autocomplete="off"></label>`;
+   /* 別マスタ連動の選択欄(§5.3.1)。選ぶだけで済むのが基本で、無い値は
+      「＋ 新しく追加」から入力する。保存時に相手のマスタへも登録される。 */
+   if(f.type==='master-combo'){
+    return `<div class="mm-field mm-combo" data-combo="${f.k}" data-combo-endpoint="${esc(f.source&&f.source.endpoint||'')}" data-combo-valuekey="${esc(f.source&&f.source.valueKey||'name')}">
+      ${fieldLabelHtml(f)}
+      <div class="mm-combo-inner">
+       <select data-combo-select="${f.k}"><option value="">読み込んでいます…</option></select>
+       <input data-field="${f.k}" type="hidden" value="${esc(val)}">
+       <input class="mm-combo-new" data-combo-new="${f.k}" type="text" placeholder="新しい${esc(f.label)}を入力" autocomplete="off" hidden>
+      </div>
+      <small class="mm-field-hint">${esc(f.hint||'一覧から選ぶだけで入力できます。無いものは「＋ 新しく追加」を選ぶとこの場で登録できます。')}</small></div>`;
+   }
+   if(f.type==='number'){
+    return `<label class="mm-field mm-field-num">${fieldLabelHtml(f)}${numFieldHtml(f,val)}${f.hint?`<small class="mm-field-hint">${esc(f.hint)}</small>`:''}</label>`;
+   }
+   if(f.type==='date'){
+    return `<label class="mm-field">${fieldLabelHtml(f)}<span class="mm-date"><input data-field="${f.k}" type="date" value="${esc(val)}"><button type="button" class="mm-date-today" data-date-today="${f.k}">今日</button></span>${f.hint?`<small class="mm-field-hint">${esc(f.hint)}</small>`:''}</label>`;
+   }
+   if(f.type==='time'){
+    return `<label class="mm-field">${fieldLabelHtml(f)}<input data-field="${f.k}" type="time" step="60" value="${esc(val)}">${f.hint?`<small class="mm-field-hint">${esc(f.hint)}</small>`:''}</label>`;
+   }
+   if(f.type==='path'){
+    return `<div class="mm-field mm-field-path">${fieldLabelHtml(f)}
+      <span class="mm-path" data-path-drop="${f.k}">
+       <input data-field="${f.k}" type="text" value="${esc(val)}" autocomplete="off" spellcheck="false" placeholder="${esc(f.placeholder||'')}">
+       <button type="button" class="mm-path-browse" data-path-browse="${f.k}" data-path-mode="${esc(f.pathMode||'file')}">参照…</button>
+      </span>
+      <small class="mm-field-hint">${esc(f.hint||'「参照…」で選ぶか、エクスプローラーからここへドラッグ&ドロップできます。')}</small></div>`;
+   }
+   return `<label class="mm-field">${fieldLabelHtml(f)}<input data-field="${f.k}" type="text" value="${esc(val)}" autocomplete="off"></label>`;
   }).join('');
  }
  function renderMaintForm(){
@@ -354,7 +445,7 @@
    <div class="mm-form-tail"><button type="submit" class="mm-btn-primary">${editing?'更新を保存':'追加登録'}</button><span class="mm-form-hint">${editing?'キー項目（名称・区分など）も変更できます。保存すると同じIDのまま更新（リネーム）されます。同名が既にある場合は更新できません。':'必須(*)を入力して追加登録します。'}</span></div>`;
   form.onsubmit=ev=>{ev.preventDefault();submitMaint()};
   const nb=$('#masterMaintNew');if(nb)nb.onclick=()=>{maintState.editing=null;renderMaintForm()};
-  bindEquipmentPickers(form);
+  bindEquipmentPickers(form);bindInputHelpers(form);
  }
 
  /* ---------- 汎用の編集専用モーダル(ARCHITECTURE.md「マスタ管理の画面形態」新設) ----------
@@ -404,7 +495,7 @@
   form.innerHTML=`${def.hint?`<p class="mm-def-hint">${esc(def.hint)}</p>`:''}
    <div class="mm-form-fields">${buildFieldControls(def,editing)}</div>`;
   form.onsubmit=ev=>{ev.preventDefault();submitMaint('#maintEditorForm')};
-  bindEquipmentPickers(form);
+  bindEquipmentPickers(form);bindInputHelpers(form);
   modal.hidden=false;
   requestAnimationFrame(()=>{const first=form.querySelector('[data-field],[data-equipment-search]');if(first)first.focus()});
  }
@@ -412,6 +503,232 @@
   const modal=$('#maintEditorModal');if(!modal||modal.hidden)return;
   modal.hidden=true;maintState.editing=null;renderMaintList();
  }
+ /* 入力支援の配線(§9.49)。buildFieldControls()が出した各型を動かす。
+    どの型も「data-field を持つ要素の value が最終的な値」という約束を守るので、
+    submitMaint()側は型を知らなくてよい。 */
+ function bindInputHelpers(form){
+  bindNumberFields(form);
+  bindDateFields(form);
+  bindComboFields(form);
+  bindPathFields(form);
+ }
+ /* --- 数値: 上下ボタン・3桁区切り・右づめ --- */
+ function bindNumberFields(form){
+  form.querySelectorAll('[data-num-wrap]').forEach(wrap=>{
+   const input=wrap.querySelector('.mm-num-input');if(!input)return;
+   const step=Number(input.dataset.step||1)||1;
+   const min=input.dataset.min===undefined?null:Number(input.dataset.min);
+   const max=input.dataset.max===undefined?null:Number(input.dataset.max);
+   const clamp=n=>{
+    if(min!=null&&n<min)n=min;
+    if(max!=null&&n>max)n=max;
+    return n;
+   };
+   // 桁区切りが入ったままだと打ち直せないので、編集中は素の数値に戻す。
+   input.addEventListener('focus',()=>{input.value=numRaw(input.value);input.select()});
+   input.addEventListener('blur',()=>{
+    const raw=numRaw(input.value);
+    if(raw===''){input.value='';return}
+    const n=Number(raw);
+    input.value=Number.isFinite(n)?numDisplay(clamp(n)):raw;
+   });
+   const bump=dir=>{
+    const raw=numRaw(input.value);
+    // 空欄から「＋」を1回押したら1目盛(step)になるのが素直。0を起点にする。
+    const base=raw===''?0:Number(raw);
+    const n=clamp((Number.isFinite(base)?base:0)+dir*step);
+    // 小数のstepで 0.30000000000000004 のような値にしない
+    const fixed=Number(n.toFixed(6));
+    input.value=document.activeElement===input?String(fixed):numDisplay(fixed);
+    input.dispatchEvent(new Event('input',{bubbles:true}));
+   };
+   wrap.querySelectorAll('[data-num-step]').forEach(btn=>{
+    const dir=Number(btn.dataset.numStep)||1;
+    // 押しっぱなしで連続増減(マウスだけで大きく動かせるように)
+    let timer=null,repeat=null;
+    const stop=()=>{clearTimeout(timer);clearInterval(repeat);timer=repeat=null};
+    btn.addEventListener('pointerdown',ev=>{
+     ev.preventDefault();bump(dir);
+     timer=setTimeout(()=>{repeat=setInterval(()=>bump(dir),60)},400);
+    });
+    ['pointerup','pointerleave','pointercancel'].forEach(e=>btn.addEventListener(e,stop));
+   });
+   // 上下キーでも同じ操作(キーボード派の手も止めない)
+   input.addEventListener('keydown',ev=>{
+    if(ev.key==='ArrowUp'){ev.preventDefault();bump(1)}
+    else if(ev.key==='ArrowDown'){ev.preventDefault();bump(-1)}
+   });
+  });
+ }
+ /* --- 日付: カレンダー入力 + 「今日」 --- */
+ function bindDateFields(form){
+  form.querySelectorAll('[data-date-today]').forEach(btn=>{
+   btn.onclick=()=>{
+    const input=form.querySelector(`[data-field="${btn.dataset.dateToday}"]`);
+    if(!input)return;
+    const d=new Date();
+    input.value=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    input.dispatchEvent(new Event('change',{bubbles:true}));
+   };
+  });
+ }
+ /* --- 別マスタ連動の選択欄 --- */
+ const COMBO_NEW='__new__';
+ function bindComboFields(form){
+  form.querySelectorAll('[data-combo]').forEach(async field=>{
+   const fk=field.dataset.combo;
+   const sel=field.querySelector(`[data-combo-select="${fk}"]`);
+   const hidden=field.querySelector(`[data-field="${fk}"]`);
+   const newInput=field.querySelector(`[data-combo-new="${fk}"]`);
+   if(!sel||!hidden)return;
+   const current=String(hidden.value||'').trim();
+   const names=await comboOptions({endpoint:field.dataset.comboEndpoint,valueKey:field.dataset.comboValuekey});
+   // 既存データの値がマスタから消えていても選択肢に残す(選び直しを強要しない)
+   const list=names.slice();
+   if(current&&!list.includes(current))list.push(current);
+   sel.innerHTML=`<option value="">（指定なし）</option>`
+    +list.map(n=>`<option value="${esc(n)}"${n===current?' selected':''}>${esc(n)}</option>`).join('')
+    +`<option value="${COMBO_NEW}">＋ 新しく追加…</option>`;
+   const sync=()=>{
+    if(sel.value===COMBO_NEW){
+     newInput.hidden=false;hidden.value=String(newInput.value||'').trim();
+    }else{
+     newInput.hidden=true;newInput.value='';hidden.value=sel.value;
+    }
+   };
+   sel.onchange=()=>{sync();if(sel.value===COMBO_NEW)newInput.focus()};
+   newInput.oninput=()=>{hidden.value=String(newInput.value||'').trim()};
+   sync();
+  });
+ }
+ /* --- パス: サーバー側フォルダ参照 + ドラッグ&ドロップ --- */
+ function bindPathFields(form){
+  form.querySelectorAll('[data-path-browse]').forEach(btn=>{
+   btn.onclick=async()=>{
+    const input=form.querySelector(`[data-field="${btn.dataset.pathBrowse}"]`);
+    if(!input)return;
+    const picked=await openPathPicker({mode:btn.dataset.pathMode||'file',start:input.value});
+    if(picked!=null){input.value=picked;input.dispatchEvent(new Event('change',{bubbles:true}))}
+   };
+  });
+  form.querySelectorAll('[data-path-drop]').forEach(zone=>{
+   const input=zone.querySelector('[data-field]');if(!input)return;
+   const over=on=>zone.classList.toggle('is-dragover',on);
+   zone.addEventListener('dragover',ev=>{ev.preventDefault();over(true)});
+   zone.addEventListener('dragleave',()=>over(false));
+   zone.addEventListener('drop',ev=>{
+    ev.preventDefault();over(false);
+    const path=pathFromDrop(ev.dataTransfer);
+    if(path){input.value=path;input.dispatchEvent(new Event('change',{bubbles:true}));return}
+    // ブラウザはセキュリティ上ファイルの完全パスを渡さないことがある。
+    // 名前しか取れなかったときは黙って捨てず、参照ダイアログへ誘導する。
+    const name=ev.dataTransfer.files&&ev.dataTransfer.files[0]&&ev.dataTransfer.files[0].name;
+    showToast('パスを取得できませんでした',
+      name?`「${name}」の完全なパスはブラウザからは読み取れませんでした。「参照…」から選んでください。`
+          :'「参照…」ボタンから選んでください。',6000);
+   });
+  });
+ }
+ /* エクスプローラーからのドロップは text/uri-list か text/plain に
+    file:///C:/... 形式で入ってくることが多い。files[0].pathはElectron等
+    でしか使えないため、テキスト側を先に見る。 */
+ function pathFromDrop(dt){
+  if(!dt)return '';
+  for(const type of ['text/uri-list','text/plain']){
+   const raw=String(dt.getData(type)||'').split(/[\r\n]+/).find(s=>s&&!s.startsWith('#'));
+   if(!raw)continue;
+   if(/^file:\/\//i.test(raw)){
+    try{
+     let p=decodeURIComponent(raw.replace(/^file:\/\//i,''));
+     // file://server/share/... はUNCなので先頭の\\を復元する
+     if(/^\/[A-Za-z]:/.test(p))p=p.slice(1);
+     else if(!/^\//.test(p))p='\\\\'+p;
+     return p.replace(/\//g,'\\');
+    }catch(e){/* 壊れたURIは無視 */}
+   }
+   if(/^[A-Za-z]:\\|^\\\\/.test(raw))return raw;
+  }
+  const f=dt.files&&dt.files[0];
+  return (f&&f.path)?f.path:'';
+ }
+
+ /* ---------- パス参照ダイアログ(§9.49) ----------
+    ブラウザのファイル選択はセキュリティ上、完全なパスを返さない(名前だけ)。
+    このアプリはその端末自身で動くローカルサーバーなので、**サーバー側の
+    ディレクトリ一覧**(/api/browse-path)を辿る形にすれば実際のパスが得られる。
+    共有(UNC)も同じ経路で辿れるため、\\server\share\... もマウスだけで選べる。 */
+ let pathPickerResolve=null;
+ function ensurePathPicker(){
+  let modal=$('#pathPickerModal');
+  if(modal)return modal;
+  modal=document.createElement('div');
+  modal.className='record-modal';modal.id='pathPickerModal';modal.hidden=true;
+  modal.innerHTML=`<div class="settings-dialog pathpick-dialog" role="dialog" aria-modal="true" aria-labelledby="pathPickerTitle">
+    <header><div><small>SELECT PATH</small><h2 id="pathPickerTitle">場所を選択</h2></div>
+     <button id="pathPickerClose" type="button" aria-label="閉じる">×</button></header>
+    <div class="settings-body pathpick-body">
+     <div class="pathpick-bar">
+      <button type="button" id="pathPickerUp" class="mm-btn-ghost sm" title="1つ上の階層へ">↑ 上へ</button>
+      <input id="pathPickerPath" type="text" spellcheck="false" autocomplete="off" aria-label="現在の場所">
+      <button type="button" id="pathPickerGo" class="mm-btn-ghost sm">移動</button>
+     </div>
+     <div class="pathpick-places" id="pathPickerPlaces"></div>
+     <div class="pathpick-list" id="pathPickerList"></div>
+     <div class="pathpick-status" id="pathPickerStatus"></div>
+     <div class="settings-actions">
+      <button type="button" id="pathPickerCancel" class="mm-btn-ghost">キャンセル</button>
+      <button type="button" id="pathPickerPick" class="mm-btn-primary">この場所を選択</button>
+     </div>
+    </div></div>`;
+  document.body.append(modal);
+  const close=v=>{modal.hidden=true;if(pathPickerResolve){pathPickerResolve(v);pathPickerResolve=null}};
+  $('#pathPickerClose').onclick=()=>close(null);
+  $('#pathPickerCancel').onclick=()=>close(null);
+  $('#pathPickerPick').onclick=()=>close(String($('#pathPickerPath').value||''));
+  modal.addEventListener('click',ev=>{if(ev.target===modal)close(null)});
+  return modal;
+ }
+ async function openPathPicker(opts){
+  const modal=ensurePathPicker();
+  const mode=opts&&opts.mode||'file';
+  $('#pathPickerTitle').textContent=mode==='dir'?'フォルダを選択':'ファイルを選択';
+  $('#pathPickerPick').textContent=mode==='dir'?'このフォルダを選択':'この場所を選択';
+  modal.hidden=false;
+  await browsePath(String(opts&&opts.start||''),mode);
+  return new Promise(resolve=>{pathPickerResolve=resolve});
+ }
+ async function browsePath(path,mode){
+  const list=$('#pathPickerList'),status=$('#pathPickerStatus');
+  if(!list)return;
+  list.innerHTML='<div class="pathpick-loading">読み込んでいます…</div>';
+  let r;
+  try{r=await api('/api/browse-path?path='+encodeURIComponent(path||''))}
+  catch(e){list.innerHTML=`<div class="pathpick-error">${esc(e.message)}</div>`;return}
+  $('#pathPickerPath').value=r.path||'';
+  $('#pathPickerPlaces').innerHTML=(r.places||[]).map(p=>
+    `<button type="button" class="pathpick-place" data-go="${esc(p.path)}" title="${esc(p.path)}">${esc(p.label)}</button>`).join('');
+  const rows=(r.entries||[]).filter(e=>mode==='dir'?e.isDir:true);
+  list.innerHTML=rows.length
+   ? rows.map(e=>`<button type="button" class="pathpick-row${e.isDir?' is-dir':''}" data-name="${esc(e.name)}" data-dir="${e.isDir?1:0}" data-path="${esc(e.path)}">
+        <span class="pathpick-icon">${e.isDir?'📁':'📄'}</span><span class="pathpick-name">${esc(e.name)}</span>
+        <span class="pathpick-size">${e.isDir?'':esc(e.sizeText||'')}</span></button>`).join('')
+   : '<div class="pathpick-empty">表示できる項目がありません。</div>';
+  status.textContent=r.error?r.error:`${rows.length}件`;
+  status.className='pathpick-status'+(r.error?' is-warn':'');
+  $('#pathPickerUp').onclick=()=>browsePath(r.parent||'',mode);
+  $('#pathPickerGo').onclick=()=>browsePath($('#pathPickerPath').value,mode);
+  $('#pathPickerPath').onkeydown=ev=>{if(ev.key==='Enter'){ev.preventDefault();browsePath($('#pathPickerPath').value,mode)}};
+  $('#pathPickerPlaces').querySelectorAll('[data-go]').forEach(b=>{b.onclick=()=>browsePath(b.dataset.go,mode)});
+  list.querySelectorAll('.pathpick-row').forEach(b=>{
+   // フォルダはクリックで潜る。ファイルはクリックで「その場所」として確定する。
+   b.onclick=()=>{
+    if(b.dataset.dir==='1')browsePath(b.dataset.path,mode);
+    else $('#pathPickerPath').value=b.dataset.path;
+   };
+   b.ondblclick=()=>{if(b.dataset.dir!=='1'){$('#pathPickerPath').value=b.dataset.path;$('#pathPickerPick').click()}};
+  });
+ }
+
  // 作業可能設備タグ入力: フォーカスで登録済み設備をサジェスト、クリックで
  // 連続追加できるようにする（認識優先＝再入力不要、逐次追加を高速化）。
  // 送信時の互換性のため、選択状態は非表示チェックボックス(data-equipment-field)
@@ -505,7 +822,10 @@
   if(editing)body.id=editing.id;
   def.fields.forEach(f=>{
    if(f.type==='equipment-multi'){body[f.k]=[...document.querySelectorAll(`${root} [data-equipment-field="${f.k}"]:checked`)].map(el=>el.value);return}
-   const el=$(`${root} [data-field="${f.k}"]`);const v=String(el?el.value:'').trim();if(f.required&&!v)ok=false;body[f.k]=v;
+   const el=$(`${root} [data-field="${f.k}"]`);
+   // 数値欄は表示用の3桁区切りが入っているので、送る前に外す(§9.49)
+   const v=f.type==='number'?numRaw(el?el.value:''):String(el?el.value:'').trim();
+   if(f.required&&!v)ok=false;body[f.k]=v;
   });
   if(!ok){showToast('入力を確認してください','必須項目が未入力です。',4000);return}
   const endpoint=editing?def.endpoint+'/update':def.endpoint;
@@ -517,6 +837,9 @@
    // 自身もrenderMaintListを呼ぶが、直後のloadMaintで最新データに置き換わる)。
    const modal=$('#maintEditorModal');
    if(modal&&!modal.hidden){modal.hidden=true}
+   // 連動登録(§5.3.1)で相手のマスタが増えている可能性があるため、
+   // 選択肢のキャッシュは毎回捨てる(次に開いたとき新しい分類が出る)。
+   invalidateComboCache();
    maintState.editing=null;await loadMaint(true);
    showToast&&showToast(def.label+(editing?'を更新しました':'を登録しました'),(r&&r.message)||'',3600);
   }catch(e){showToast&&showToast(editing?'更新できませんでした':'登録できませんでした',e.message,6500)}
@@ -967,22 +1290,89 @@
   const v=pathConfigState.values||{};
   const sourceOpts=[['','（既定）network'],['network','network'],['local','local']]
    .map(([val,label])=>`<option value="${esc(val)}"${(v.sikalot_source||'')===val?' selected':''}>${esc(label)}</option>`).join('');
-  const textField=(key,label)=>`<label class="mm-field mm-field-wide"><span>${esc(label)}</span><input data-pc-field="${key}" type="text" value="${esc(v[key]||'')}" placeholder="未設定（既定値を使用）" autocomplete="off"></label>`;
-  const numField=(key,label)=>`<label class="mm-field"><span>${esc(label)}</span><input data-pc-field="${key}" type="number" value="${esc(v[key]||'')}" placeholder="${esc(pathConfigState.defaults[key]||'')}" autocomplete="off"></label>`;
+  /* パス欄は「参照…」ダイアログとドラッグ&ドロップに対応させる(§9.49)。
+     手打ちのUNCパスは打ち間違いに気づきにくいのが実際の問題だった。 */
+  const pathField=(key,label,mode,hint)=>`<div class="mm-field mm-field-wide mm-field-path"><span>${esc(label)}</span>
+    <span class="mm-path" data-path-drop="${key}">
+     <input data-pc-field="${key}" data-field="${key}" type="text" value="${esc(v[key]||'')}" placeholder="未設定（既定値を使用）" autocomplete="off" spellcheck="false">
+     <button type="button" class="mm-path-browse" data-path-browse="${key}" data-path-mode="${mode||'file'}">参照…</button>
+    </span>
+    <small class="mm-field-hint">${esc(hint||'「参照…」で選ぶか、エクスプローラーからここへドラッグ&ドロップできます。空欄で保存すると既定値に戻ります。')}</small></div>`;
+  const numField=(key,label,unit,step,min)=>`<label class="mm-field mm-field-num"><span>${esc(label)}</span>${
+   numFieldHtml({k:key,label,unit,step,min},v[key]||'',`data-pc-field="${key}"`)
+  }<small class="mm-field-hint">未入力なら既定値 ${esc(pathConfigState.defaults[key]||'')}${esc(unit||'')} を使用します。</small></label>`;
   form.innerHTML=`<div class="mm-form-head"><span class="mm-mode-chip new">パス設定</span></div>
    <p class="mm-def-hint">仕掛/品質データの読み込み先・共有パスなど、端末ごとに変わり得る設定です。空欄で保存すると既定値に戻ります。<b>取得元・読み込み先・複製先・共有パスの変更はサーバー再起動後に反映されます</b>（下の一覧で保存値と現在有効な値を見比べられます）。抽出間隔・ロック関連は再起動不要で次回から反映されます。</p>
    <div class="mm-form-fields">
     <label class="mm-field"><span>仕掛/品質データの取得元</span><select data-pc-field="sikalot_source">${sourceOpts}</select></label>
-    ${textField('sikalotnow_path','仕掛(SIKALOTNOW)の読み込み先（個別上書き）')}
-    ${textField('sikalotdef_path','品質データ(SIKALOTDEF)の読み込み先（個別上書き）')}
-    ${textField('records_backup_export_path','測定データバックアップの閲覧用複製先')}
-    ${textField('schedule_share_path','スケジュール機能の共有データ置き場（schedule.sqlite3）')}
-    ${numField('rne_extract_interval_sec','RNE抽出間隔（秒・60以上）')}
-    ${numField('schedule_lock_ttl_sec','スケジュール書込ロックの有効期限（秒）')}
-    ${numField('schedule_lock_verify_delay_ms','ロック確認までの待機時間（ミリ秒）')}
+    ${pathField('sikalotnow_path','仕掛(SIKALOTNOW)の読み込み先（個別上書き）','file')}
+    ${pathField('sikalotdef_path','品質データ(SIKALOTDEF)の読み込み先（個別上書き）','file')}
+    ${pathField('records_backup_export_path','測定データバックアップの閲覧用複製先','dir','複製先の「フォルダ」を選びます。空欄なら複製しません。')}
+    ${pathField('schedule_share_path','スケジュール機能の共有データ置き場（schedule.sqlite3）','file','共有フォルダ上のschedule.sqlite3を選びます。空欄ならスケジュール機能は無効です。')}
+    ${numField('rne_extract_interval_sec','RNE抽出間隔','秒',60,60)}
+    ${numField('schedule_lock_ttl_sec','スケジュール書込ロックの有効期限','秒',5,1)}
+    ${numField('schedule_lock_verify_delay_ms','ロック確認までの待機時間','ミリ秒',100,0)}
    </div>
+   ${rneStatusPanelHtml()}
    <div class="mm-form-tail"><button type="submit" class="mm-btn-primary">パス設定を保存</button><span class="mm-form-hint">更新者IDは画面右上の入力欄を使用します。</span></div>`;
   form.onsubmit=ev=>{ev.preventDefault();savePathConfigMaint()};
+  bindInputHelpers(form);
+  refreshRneStatus();
+ }
+
+ /* ---------- RNE抽出の状態表示と手動実行(§9.50) ----------
+    ローカル運用(sikalot_source=local)のとき、抽出は背景で定期実行される。
+    以前は成否がアプリログにしか出ず、「動いているのか」「今すぐ取り直したい」
+    に画面から答えられなかった(「実際に起動させる方法が分からない」という指摘)。 */
+ let rneTimer=null;
+ function rneStatusPanelHtml(){
+  return `<div class="rne-panel" id="rnePanel">
+    <div class="rne-head">
+     <h4>RNE抽出（仕掛/品質データのローカル運用）</h4>
+     <span class="rne-state" id="rneState">確認中…</span>
+     <button type="button" class="mm-btn-ghost sm" id="rneRunBtn">今すぐ抽出</button>
+    </div>
+    <div id="rneBody"><div class="rne-note">状態を読み込んでいます…</div></div>
+   </div>`;
+ }
+ function fmtWhen(sec){
+  if(!sec)return '—';
+  const d=new Date(sec*1000),diff=Math.floor((Date.now()-d.getTime())/60000);
+  return `${d.toLocaleString('ja-JP')}（${diff<1?'たった今':diff+'分前'}）`;
+ }
+ async function refreshRneStatus(){
+  const panel=$('#rnePanel');if(!panel)return;
+  clearTimeout(rneTimer);rneTimer=null;
+  let s;
+  try{s=await api('/api/rne-extract/status')}
+  catch(e){const b=$('#rneBody');if(b)b.innerHTML=`<div class="rne-note">状態を取得できません: ${esc(e.message)}</div>`;return}
+  const state=$('#rneState'),body=$('#rneBody'),btn=$('#rneRunBtn');
+  if(!state||!body||!btn)return;
+  state.textContent=s.running?'抽出中…':(s.enabled?'有効':'停止中（network運用）');
+  state.className='rne-state '+(s.running?'is-running':(s.enabled?'is-on':'is-off'));
+  btn.disabled=!!s.running;
+  const jobs=(s.jobs||[]).map(j=>`<div class="rne-job${j.ok?'':' is-ng'}"><b>${esc(j.name)}</b>${
+    j.ok?`成功 ${esc(String(j.rows??'-'))}行 / ${(j.elapsed||0).toFixed(1)}秒`:`失敗: ${esc(j.error||'')}`}</div>`).join('');
+  const outs=(s.outputs||[]).map(o=>`<div class="rne-job"><b>${esc(o.name)}</b>${
+    o.exists?`最終更新 ${esc(fmtWhen(o.mtime))}`:'まだ作成されていません'}</div>`).join('');
+  const missing=(s.assets&&s.assets.rneMissing)||[];
+  body.innerHTML=`
+   ${s.enabled?'':`<div class="rne-note"><b>現在はネットワーク共有から直接読む運用です。</b>抽出を使うには、上の「仕掛/品質データの取得元」を <b>local</b> にして保存し、<b>サーバーを再起動</b>してください（取得元は起動時に1回だけ確定するため、保存だけでは切り替わりません）。</div>`}
+   ${missing.length?`<div class="rne-note" style="color:var(--danger)"><b>抽出定義(RNE)が未配置です: ${esc(missing.join(', '))}</b><br>${esc(s.assetsDir||'')}\\rne へ配置してください（機密のためリポジトリには含まれません。config/rne_extract/README.md 参照）。</div>`:''}
+   ${(s.assets&&!s.assets.symnavimConf)?`<div class="rne-note" style="color:var(--danger)">接続情報 symnavim.conf が未配置です（${esc(s.assetsDir||'')}）。</div>`:''}
+   <div class="rne-jobs">${outs}</div>
+   ${jobs?`<div class="rne-jobs">${jobs}</div>`:''}
+   <div class="rne-note">自動実行: ${s.enabled?`起動直後に1回、以降 ${esc(String(s.intervalSec))}秒ごと`:'（停止中）'} ／ 直近の実行: ${esc(fmtWhen(s.finishedAt||s.startedAt))}${s.trigger?`（${s.trigger==='manual'?'手動':'定期'}）`:''}</div>`;
+  btn.onclick=async()=>{
+   btn.disabled=true;
+   try{
+    const r=await api('/api/rne-extract/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:String($('#masterUserId')?.value||'').trim()})});
+    showToast('抽出を開始しました',r.message||'',4000);
+   }catch(e){showToast('抽出を開始できません',e.message,7000);btn.disabled=false;return}
+   refreshRneStatus();
+  };
+  // 実行中だけ短い間隔で追いかける(終わったら止める。無駄な問い合わせを残さない)
+  if(s.running)rneTimer=setTimeout(refreshRneStatus,2000);
  }
  function renderPathConfigList(){
   const list=$('#masterMaintList');if(!list)return;
@@ -1009,7 +1399,10 @@
  async function savePathConfigMaint(){
   const uid=requireMaintUser();if(uid===null)return;
   const body={user_id:uid};
-  document.querySelectorAll('#masterMaintForm [data-pc-field]').forEach(el=>{body[el.dataset.pcField]=el.value});
+  // 数値欄は表示用の3桁区切りが入るので、送る前に外す(§9.49)
+  document.querySelectorAll('#masterMaintForm [data-pc-field]').forEach(el=>{
+   body[el.dataset.pcField]=el.classList.contains('mm-num-input')?numRaw(el.value):el.value;
+  });
   try{
    setMaintLoading(true,'パス設定を保存しています…');
    const r=await api('/api/path-config-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});

@@ -372,6 +372,53 @@ def calendar_save():
  return _cfg_write_response(fn)
 
 # ========================================================================
+# 設備停止分類マスタ(§5.3.1) - 全設備共通
+# ========================================================================
+def _stop_category_entry(r):
+ # r: 分類ID,名称,色キー,表示順,有効,更新日時,更新者ID
+ return {'id':r[0],'name':r[1],'colorKey':r[2],'order':r[3],
+         'updatedAt':r[5].isoformat() if r[5] else None,'updatedBy':str(r[6] or '')}
+
+@bp.get('/api/schedule/stop-category-master')
+def stop_category_list():
+ items=_cfg_read(lambda mc:[_stop_category_entry(r) for r in sr.stop_category_rows(mc)])
+ return jsonify(ok=True,configured=True,items=items,stale=False)
+
+@bp.post('/api/schedule/stop-category-master')
+def stop_category_register():
+ x=request.get_json(force=True) or {}
+ name=str(x.get('name') or '').strip()
+ # idがあれば改名(他マスタと同じリネーム更新)。無ければ新規または再有効化。
+ cid=x.get('id')
+ def fn(mc):
+  gid,created=sr.stop_category_upsert(mc,name,request_user_id(x),
+                                      color_key=str(x.get('colorKey') or ''),
+                                      category_id=int(cid) if cid not in (None,'') else None)
+  return {'id':gid,'created':created}
+ return _cfg_write_response(fn)
+
+@bp.post('/api/schedule/stop-category-master/delete')
+def stop_category_delete():
+ x=request.get_json(force=True) or {}
+ cid=x.get('id')
+ if cid is None:return jsonify(error='削除対象IDがありません。'),400
+ force=bool(x.get('force'))
+ # 使用中の分類をうっかり消すと、設備停止マスタ側の分類が「選択肢に無い値」
+ # として取り残される。まず件数を提示して確認を求め、利用者が再確認のうえ
+ # force:trueで再送したときだけ実際に消す(設備マスタの削除と同じ考え方。§5.0.1)。
+ name,used=_cfg_read(lambda mc:sr.stop_category_usage(mc,cid))
+ if name is None:return jsonify(error='指定の分類が見つかりません。'),400
+ if used and not force:
+  return jsonify(error=f'分類「{name}」は設備停止マスタの{used}件で使用中です。',
+                 code='stop_category_in_use',
+                 references={'name':name,'stopReasonRows':used}),409
+ def fn(mc):
+  n=sr.stop_category_delete(mc,cid,request_user_id(x))
+  if n==0:raise ValueError('指定の分類が見つかりません。')
+  return {'id':cid,'name':name,'stopReasonRows':used}
+ return _cfg_write_response(fn)
+
+# ========================================================================
 # 設備停止マスタ
 # ========================================================================
 def _stop_reason_entry(r):

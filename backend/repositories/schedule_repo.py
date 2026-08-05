@@ -222,6 +222,108 @@ def calendar_sync(c,equipment,entries,uid):
  return count
 
 # ========================================================================
+# 設備停止分類マスタ(§5.3.1)
+#  設備停止マスタの[分類]の選択肢。**分類は全設備共通**(設備ごとに分類体系が
+#  違うと、設備をまたいだ集計・色分けができなくなるため)。設備停止マスタは
+#  従来どおり設備ごとの行を持ち、分類だけをこのマスタから引く。
+#  以前は画面側に'保全/段取り/待ち/突発'をハードコードしていたため、現場で
+#  使いたい分類を足すのにコード修正が要った。
+# ========================================================================
+STOP_CATEGORY_TABLE='設備停止分類マスタ'
+# 初回作成時に入れておく分類(従来ハードコードしていた4つ)。既存の設備停止
+# マスタに別の分類が入っていれば、それも同時に取り込む(下の移行処理)。
+STOP_CATEGORY_SEEDS=('保全','段取り','待ち','突発')
+
+def ensure_stop_category_table(c):
+ names=tables(c);created=False
+ if STOP_CATEGORY_TABLE not in names:
+  cur=c.cursor()
+  cur.execute('CREATE TABLE [設備停止分類マスタ] ([分類ID] INTEGER PRIMARY KEY AUTOINCREMENT, [名称] TEXT, [色キー] TEXT, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
+  cur.execute('CREATE UNIQUE INDEX [UX_設備停止分類マスタ_名称] ON [設備停止分類マスタ] ([名称])')
+  c.commit();created=True
+  _seed_stop_categories(c)
+ return created
+
+def _seed_stop_categories(c):
+ """初回作成時だけ走る移行。既定の4分類と、既に設備停止マスタで使われている
+ 分類を取り込む(空欄で作ると、既存データの分類が選択肢から消えてしまう)。"""
+ seen=[]
+ for name in STOP_CATEGORY_SEEDS:
+  if name not in seen:seen.append(name)
+ try:
+  if STOP_REASON_TABLE in tables(c):
+   cur=c.cursor()
+   cur.execute('SELECT DISTINCT [分類] FROM [設備停止マスタ]')
+   for (v,) in cur.fetchall():
+    v=str(v or '').strip()
+    if v and v not in seen:seen.append(v)
+ except Exception:
+  pass  # 取り込めなくても既定の4分類だけで動く
+ cur=c.cursor()
+ for i,name in enumerate(seen):
+  cur.execute('INSERT INTO [設備停止分類マスタ] ([名称],[色キー],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,-1,?,?,Now(),Now())',
+              [name,'',(i+1)*10,'migrate:seed','migrate:seed'])
+ c.commit()
+
+def stop_category_rows(c):
+ ensure_stop_category_table(c)
+ cur=c.cursor()
+ cur.execute('SELECT [分類ID],[名称],[色キー],[表示順],[有効],[更新日時],[更新者ID] FROM [設備停止分類マスタ] ORDER BY [表示順],[名称]')
+ return [r for r in cur.fetchall() if (True if r[4] is None else bool(r[4]))]
+
+def stop_category_names(c):
+ return [str(r[1] or '').strip() for r in stop_category_rows(c) if str(r[1] or '').strip()]
+
+def stop_category_upsert(c,name,uid,color_key='',category_id=None):
+ """分類の登録・改名。名称が自然キー(全設備共通なので設備名は持たない)。
+ category_idを渡した場合はその行の改名として扱う(他マスタと同じリネーム更新)。"""
+ ensure_stop_category_table(c)
+ name=str(name or '').strip()
+ if not name:raise ValueError('分類名を入力してください。')
+ cur=c.cursor()
+ cur.execute('SELECT [分類ID],[名称],[有効] FROM [設備停止分類マスタ]')
+ rows=cur.fetchall()
+ same=next((r for r in rows if str(r[1] or '').strip()==name),None)
+ if category_id is not None:
+  # 改名。改名先の名前が別IDで既に使われていれば拒否する(UNIQUE制約と同じ)。
+  if same and same[0]!=category_id:raise ValueError(f'分類「{name}」は既に登録されています。')
+  cur.execute('UPDATE [設備停止分類マスタ] SET [名称]=?,[色キー]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [分類ID]=?',
+              [name,color_key,uid,category_id])
+  if cur.rowcount==0:raise ValueError('指定の分類が見つかりません。')
+  return category_id,False
+ if same:
+  # 既にある(無効化されていたものも含む)。有効へ戻すだけで新規行は作らない。
+  cur.execute('UPDATE [設備停止分類マスタ] SET [色キー]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [分類ID]=?',
+              [color_key,uid,same[0]])
+  return same[0],False
+ cur.execute('SELECT Max([表示順]) FROM [設備停止分類マスタ]')
+ order=int((cur.fetchone()[0]) or 0)+10
+ cur.execute('INSERT INTO [設備停止分類マスタ] ([名称],[色キー],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,-1,?,?,Now(),Now())',
+             [name,color_key,order,uid,uid])
+ return cur.lastrowid,True
+
+def stop_category_delete(c,category_id,uid):
+ ensure_stop_category_table(c)
+ cur=c.cursor()
+ cur.execute('UPDATE [設備停止分類マスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [分類ID]=?',[uid,category_id])
+ return cur.rowcount
+
+def stop_category_usage(c,category_id):
+ """この分類を使っている設備停止マスタの行数(削除前の確認用)。"""
+ ensure_stop_category_table(c)
+ cur=c.cursor()
+ cur.execute('SELECT [名称] FROM [設備停止分類マスタ] WHERE [分類ID]=?',[category_id])
+ row=cur.fetchone()
+ if not row:return None,0
+ name=str(row[0] or '').strip()
+ if STOP_REASON_TABLE not in tables(c):return name,0
+ cur.execute('SELECT [分類],[有効] FROM [設備停止マスタ]')
+ n=0
+ for cat,active in cur.fetchall():
+  if (True if active is None else bool(active)) and str(cat or '').strip()==name:n+=1
+ return name,n
+
+# ========================================================================
 # 設備停止マスタ(§5.3)
 # ========================================================================
 STOP_REASON_TABLE='設備停止マスタ'
@@ -256,6 +358,11 @@ def stop_reason_upsert(c,equipment,name,uid,category='',standard_minutes=None,co
  equipment=str(equipment or '').strip();name=str(name or '').strip()
  if not equipment:raise ValueError('設備名を入力してください。')
  if not name:raise ValueError('名称を入力してください。')
+ # 分類は設備停止分類マスタ(§5.3.1)へ自動で登録する。分類の選択肢を増やす
+ # ためだけに別画面へ移動させないための連動(未登録の分類を入力したら、その場で
+ # マスタにも増える)。空欄(分類なし)は登録しない。
+ category=str(category or '').strip()
+ if category:stop_category_upsert(c,category,uid)
  cur=c.cursor()
  # 設備名は表記ゆれを吸収して照合する(他の設備名参照と同じ方式)。名称は
  # UNIQUE INDEXの実体に合わせて完全一致(前後空白除去のみ)で照合する。
@@ -525,14 +632,16 @@ def ensure_schedule_tables(c):
  ensure_plan_table(c)
 
 def ensure_config_master_tables(mc):
- # master.sqlite3側。設定系の4マスタをまとめて用意する。
+ # master.sqlite3側。設定系マスタをまとめて用意する。
  ensure_calendar_table(mc)
  ensure_stop_reason_table(mc)
+ # 分類マスタは設備停止マスタの後に作る(初回作成時に既存の分類値を取り込むため)
+ ensure_stop_category_table(mc)
  ensure_load_factor_override_table(mc)
  ensure_shift_table(mc)
  ensure_shift_pattern_tables(mc)
 
-CONFIG_MASTER_TABLES=('稼働カレンダーマスタ','設備停止マスタ','負荷率上書きマスタ','勤務形態マスタ','勤務体系マスタ','勤務区分マスタ')
+CONFIG_MASTER_TABLES=('稼働カレンダーマスタ','設備停止マスタ','設備停止分類マスタ','負荷率上書きマスタ','勤務形態マスタ','勤務体系マスタ','勤務区分マスタ')
 
 def config_master_conn():
  """設定系4マスタの保存先(master.sqlite3)への書込可能な接続。

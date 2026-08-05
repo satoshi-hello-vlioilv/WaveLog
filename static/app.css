@@ -3007,3 +3007,93 @@ body.rp-mode #printCurrentView,body.qa-mode #printCurrentView{display:none!impor
    設定が要ることを色でも示す。 */
 .field-reorder-badge.is-warn{border-color:var(--danger-border);background:var(--danger-bg);color:var(--danger)}
 .sc-field-reorder-note.is-warn{color:var(--danger);font-weight:700}
+
+/* ---------- マスタ入力支援(§9.49) ----------
+   「マウスだけで最後まで入力できる」を基本にした共通部品。数値の上下ボタン、
+   日付のカレンダー、別マスタ連動の選択、パスの参照ダイアログ。
+   高さはヘッダー・左ナビと同じ --ctl-h トークンに揃える。 */
+.mm-num{display:inline-flex;align-items:stretch;gap:0;min-width:0}
+.mm-field .mm-num-input,.mm-editor-body .mm-field .mm-num-input{
+ width:9em;min-width:0;height:var(--ctl-h);
+ /* 数値は右づめ。桁数の違いが縦に揃って読めるようにする(3桁区切りとセット) */
+ text-align:right;font-variant-numeric:tabular-nums;
+ border:1px solid var(--line);border-left:0;border-right:0;border-radius:0;
+ padding:0 .5em;background:#fff;color:inherit;font-size:var(--fs);
+}
+.mm-field .mm-num-input:focus{outline:2px solid var(--teal);outline-offset:-2px;z-index:1;position:relative}
+.mm-num-btn{
+ width:calc(var(--ctl-h) * .82);height:var(--ctl-h);flex:0 0 auto;
+ border:1px solid var(--line);background:var(--pale);color:var(--nav);
+ font-size:var(--fs);line-height:1;cursor:pointer;user-select:none;
+}
+.mm-num-btn:first-of-type{border-radius:8px 0 0 8px}
+.mm-num-btn:last-of-type{border-radius:0 8px 8px 0}
+.mm-num-btn:hover{background:var(--pale);border-color:var(--teal)}
+.mm-num-btn:active{background:var(--teal);color:#fff}
+.mm-num-unit{align-self:center;margin-left:.5em;font-size:var(--fs-sm);color:var(--muted)}
+
+.mm-date{display:inline-flex;align-items:center;gap:.4em}
+.mm-field .mm-date input[type=date]{min-width:0;height:var(--ctl-h);border:1px solid var(--line);border-radius:8px;padding:0 .5em;background:#fff;color:inherit;font-size:var(--fs)}
+.mm-date-today{
+ height:var(--ctl-h);padding:0 .8em;border:1px solid var(--line);border-radius:8px;
+ background:var(--pale);color:var(--nav);font-size:var(--fs-sm);cursor:pointer;
+}
+.mm-date-today:hover{background:var(--pale);border-color:var(--teal)}
+
+.mm-combo-inner{display:flex;flex-direction:column;gap:.4em}
+.mm-combo-inner select,.mm-combo-new{height:var(--ctl-h);border:1px solid var(--line);border-radius:8px;padding:0 .5em;background:#fff;color:inherit;font-size:var(--fs)}
+.mm-combo-new{border-color:var(--teal)}
+
+.mm-path{display:flex;align-items:stretch;gap:.4em;border-radius:8px}
+.mm-field .mm-path input{flex:1 1 auto;min-width:0;min-width:0;height:var(--ctl-h);border:1px solid var(--line);border-radius:8px;padding:0 .5em;background:#fff;color:inherit;font-size:var(--fs-sm);font-family:ui-monospace,Consolas,monospace}
+.mm-path-browse{
+ flex:0 0 auto;height:var(--ctl-h);padding:0 .9em;border:1px solid var(--line);border-radius:8px;
+ background:var(--pale);color:var(--nav);font-size:var(--fs-sm);cursor:pointer;white-space:nowrap;
+}
+.mm-path-browse:hover{background:var(--pale);border-color:var(--teal)}
+/* ドラッグ中は落とせる場所だと分かるように枠ごと光らせる */
+.mm-path.is-dragover{outline:2px dashed var(--teal);outline-offset:3px;background:var(--pale)}
+
+/* パス参照ダイアログ */
+.pathpick-dialog{width:min(94vw,760px)}
+.pathpick-body{display:flex;flex-direction:column;gap:.6em}
+.pathpick-bar{display:flex;gap:.4em;align-items:stretch}
+.pathpick-bar input{flex:1 1 auto;min-width:0;height:var(--ctl-h);border:1px solid var(--line);border-radius:8px;padding:0 .5em;background:#fff;color:inherit;font-size:var(--fs-sm);font-family:ui-monospace,Consolas,monospace}
+.pathpick-places{display:flex;flex-wrap:wrap;gap:.35em}
+.pathpick-place{
+ height:var(--ctl-h-sm);padding:0 .7em;border:1px solid var(--line);border-radius:999px;
+ background:var(--pale);color:var(--muted);font-size:var(--fs-sm);cursor:pointer;
+ max-width:22em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.pathpick-place:hover{background:var(--pale);border-color:var(--teal);color:var(--nav)}
+.pathpick-list{
+ height:min(46vh,380px);overflow:auto;border:1px solid var(--line);border-radius:8px;background:#fff;
+}
+.pathpick-row{
+ display:flex;align-items:center;gap:.6em;width:100%;
+ padding:var(--row-pad-y) var(--row-pad-x);border:0;border-bottom:1px solid var(--pale);
+ background:none;color:inherit;font-size:var(--fs-sm);text-align:left;cursor:pointer;
+}
+.pathpick-row:hover{background:var(--pale)}
+.pathpick-row.is-dir{font-weight:600}
+.pathpick-icon{flex:0 0 auto}
+.pathpick-name{flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pathpick-size{flex:0 0 auto;color:var(--muted);font-variant-numeric:tabular-nums}
+.pathpick-empty,.pathpick-loading,.pathpick-error{padding:1.2em;text-align:center;color:var(--muted);font-size:var(--fs-sm)}
+.pathpick-error{color:var(--danger)}
+.pathpick-status{font-size:var(--fs-sm);color:var(--muted)}
+.pathpick-status.is-warn{color:var(--danger)}
+
+/* ---------- RNE抽出の状態表示(§9.50) ---------- */
+.rne-panel{border:1px solid var(--line);border-radius:10px;padding:.9em 1em;margin:1em 0;background:var(--pale)}
+.rne-head{display:flex;align-items:center;gap:.7em;flex-wrap:wrap;margin-bottom:.5em}
+.rne-head h4{margin:0;font-size:var(--fs)}
+.rne-state{padding:.15em .7em;border-radius:999px;font-size:var(--fs-badge);font-weight:700;border:1px solid var(--line)}
+.rne-state.is-on{background:var(--success-bg);border-color:var(--success-border);color:var(--success)}
+.rne-state.is-off{background:#fff;color:var(--muted)}
+.rne-state.is-running{background:var(--pale);border-color:var(--teal);color:var(--teal)}
+.rne-jobs{display:grid;gap:.3em;margin:.5em 0 0;font-size:var(--fs-sm)}
+.rne-job{display:flex;gap:.6em;align-items:baseline}
+.rne-job b{min-width:9em}
+.rne-job.is-ng{color:var(--danger)}
+.rne-note{font-size:var(--fs-sm);color:var(--muted);margin:.5em 0 0;line-height:1.5}

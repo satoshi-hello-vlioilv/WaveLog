@@ -11,7 +11,10 @@ URLはBlueprint分離前と同一(/api/equipment-master 等)。
 """
 import json
 from datetime import datetime
+from pathlib import Path
 from flask import Blueprint, request, jsonify
+
+from ..paths import APP_ROOT as BASE_DIR
 
 from ..config import RNE_EXTRACT_INTERVAL_SEC_DEFAULT, SCHEDULE_LOCK_TTL_SEC_DEFAULT, SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT
 from ..db_access import (
@@ -725,3 +728,96 @@ def path_config_master_update():
   return jsonify(ok=True,updated_by=uid,
                  message='パス設定を保存しました。仕掛/品質データの読み込み先・共有パスの変更はサーバー再起動後に反映されます。抽出間隔・ロック関連の設定は再起動不要で次回から反映されます。')
  except Exception as e:return jsonify(error=f'パス設定保存失敗: {e}'),500
+
+# ========================================================================
+# パス参照(§9.49): マスタ管理のパス入力欄から使うディレクトリ一覧。
+#  ブラウザのファイル選択は安全上、完全なパスを返さない(名前だけ)。本アプリは
+#  利用者自身の端末で動くローカルサーバーなので、**サーバー側で一覧を返して
+#  辿らせる**形にすれば実際のパスが得られる。共有(UNC)も同じ経路で辿れるため、
+#  \\server\share\... もマウスだけで選べる。
+#  読み取り専用(一覧を返すだけ)で、ファイルの中身は一切返さない。
+#  待ち受けは127.0.0.1のみ(backend/config.py)なので、この端末の外からは叩けない。
+# ========================================================================
+def _size_text(n):
+ if n is None:return ''
+ for unit in ('B','KB','MB','GB'):
+  if n<1024:return f'{n:.0f}{unit}' if unit=='B' else f'{n:.1f}{unit}'
+  n/=1024
+ return f'{n:.1f}TB'
+
+def _browse_places():
+ """よく使う場所。1クリックで飛べるようにして手入力を減らす。"""
+ places=[{'label':'アプリの場所','path':str(BASE_DIR)},{'label':'データ(db)','path':str(BASE_DIR/'db')}]
+ for key in ('SIKALOTNOW','SIKALOTDEF'):
+  try:
+   parent=DBS[key]['path'].parent
+   places.append({'label':f'{key}の場所','path':str(parent)})
+  except Exception:
+   pass
+ if SCHEDULE_SHARE_PATH:
+  places.append({'label':'共有スケジュール','path':str(Path(SCHEDULE_SHARE_PATH).parent)})
+ seen=set();out=[]
+ for p in places:
+  if p['path'] and p['path'] not in seen:
+   seen.add(p['path']);out.append(p)
+ return out
+
+@bp.get('/api/browse-path')
+def browse_path():
+ """指定フォルダの中身を返す。pathが空/不正なら既定(アプリの場所)を見せる。"""
+ raw=str(request.args.get('path') or '').strip()
+ error=''
+ target=Path(raw) if raw else BASE_DIR
+ try:
+  if target.exists() and target.is_file():target=target.parent
+  if not target.exists():
+   error=f'見つかりません: {target}';target=BASE_DIR
+ except OSError as e:
+  error=f'開けません: {e}';target=BASE_DIR
+ entries=[]
+ try:
+  for child in sorted(target.iterdir(),key=lambda p:(not p.is_dir(),p.name.lower())):
+   try:is_dir=child.is_dir();size=None if is_dir else child.stat().st_size
+   except OSError:is_dir=False;size=None
+   entries.append({'name':child.name,'path':str(child),'isDir':is_dir,'sizeText':_size_text(size)})
+   if len(entries)>=2000:break   # 巨大フォルダで画面を固めない
+ except OSError as e:
+  error=error or f'一覧を取得できません: {e}'
+ parent=str(target.parent) if target.parent!=target else ''
+ return jsonify(ok=True,path=str(target),parent=parent,entries=entries,
+                places=_browse_places(),error=error)
+
+# ========================================================================
+# RNE抽出(仕掛/品質データのローカル運用)の状態表示と手動実行(§9.50)
+#  従来は「起動時に1回＋rne_extract_interval_secごと」の背景実行だけで、
+#  動いているのかを画面から確かめる手段も、その場で取り直す手段も無かった。
+#  (「実際に起動させる方法が分からない」という指摘。抽出の成否はアプリログに
+#   しか出ていなかった。)
+# ========================================================================
+@bp.get('/api/rne-extract/status')
+def rne_extract_status():
+ from .. import rne_scheduler
+ return jsonify(ok=True,**rne_scheduler.last_status())
+
+@bp.post('/api/rne-extract/run')
+def rne_extract_run():
+ """画面の「今すぐ抽出」。抽出は数十秒かかり得るので背景スレッドで走らせ、
+ 画面は /status をポーリングして結果を見る(要求は即座に返す)。"""
+ from .. import rne_scheduler
+ import threading as _th
+ if rne_scheduler.SIKALOT_SOURCE!='local':
+  return jsonify(error='仕掛/品質データがローカル運用(sikalot_source=local)ではありません。'
+                       'パス設定で「local」に変更してサーバーを再起動すると抽出が有効になります。'),400
+ missing=[j['rne'] for j in rne_scheduler.JOBS
+          if not (rne_scheduler.RNE_ASSETS_DIR/'rne'/j['rne']).exists()]
+ if missing:
+  return jsonify(error=f'抽出定義(RNE)が配置されていません: {", ".join(missing)}。'
+                       f'{rne_scheduler.RNE_ASSETS_DIR/"rne"} へ配置してください。'),400
+ status=rne_scheduler.last_status()
+ if status.get('running'):
+  return jsonify(error='抽出が既に実行中です。完了までお待ちください。'),409
+ def _go():
+  try:rne_scheduler.run_batch('manual')
+  except Exception:pass   # 失敗は last_status()のjobs[].errorに出る
+ _th.Thread(target=_go,daemon=True,name='rne-manual').start()
+ return jsonify(ok=True,started=True,message='抽出を開始しました。完了すると状態表示が更新されます。')

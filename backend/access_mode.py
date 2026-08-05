@@ -69,12 +69,17 @@ _ENDPOINT_EXTRA_MODES={
  'schedule.calendar_save':{'edit'},
  'schedule.stop_reason_register':{'edit'},
  'schedule.stop_reason_delete':{'edit'},
+ 'schedule.stop_category_register':{'edit'},
+ 'schedule.stop_category_delete':{'edit'},
  'schedule.shift_pattern_save':{'edit'},
  'schedule.shift_pattern_delete_route':{'edit'},
  'schedule.load_factor_override_save':{'edit'},
  'masters.schedule_column_master_save':{'schedule'},
  'masters.schedule_content_master_save':{'schedule'},
 }
+# 書込ではないがPOSTで受けるもの(§9.50の「今すぐ抽出」)。データを書き換えず、
+# 抽出元(RNE)から読み直すだけなので、閲覧モードの端末からも実行できてよい。
+_READ_ONLY_POST_ENDPOINTS={'masters.rne_extract_run'}
 # editモードで許可する際、さらに「現場段取り可否」を要求するエンドポイント。
 # 作業予定を実際に動かす操作だけが対象で、設定系マスタの保存は含めない。
 _FIELD_REORDER_ENDPOINTS={'schedule.plan_reorder'}
@@ -156,6 +161,7 @@ def install(app):
  @app.before_request
  def _guard_write():
   if request.method=='GET':return None
+  if request.endpoint in _READ_ONLY_POST_ENDPOINTS:return None  # 読み直すだけのPOST(§9.50)
   bp=request.blueprint
   if bp is None:return None            # app直付け(モード切替API・shutdown等)は対象外
   allowed=_WRITE_ALLOWED_MODES.get(bp)

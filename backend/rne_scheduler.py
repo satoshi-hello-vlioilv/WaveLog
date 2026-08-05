@@ -90,8 +90,57 @@ def _run_job(job,conf):
   except Exception:pass
 
 
-def run_batch():
- """全ジョブを並列に1回実行し、結果のdictリストを返す(app.py等からの手動実行にも使う)。"""
+# 直近の実行結果。画面(マスタ管理 > パス設定)へ「動いているか」を出すために持つ。
+# 以前は成否がアプリログにしか出ず、抽出が回っているのかを画面から確認できなかった。
+_last={'startedAt':None,'finishedAt':None,'running':False,'trigger':'','jobs':[]}
+_last_lock=threading.Lock()
+_run_lock=threading.Lock()   # 手動実行と定期実行が重ならないようにする
+
+def last_status():
+ """直近の抽出結果のスナップショット。sikalot_source=local以外でも呼べる。"""
+ with _last_lock:
+  snapshot=dict(_last);snapshot['jobs']=list(_last['jobs'])
+ snapshot['source']=SIKALOT_SOURCE
+ snapshot['enabled']=(SIKALOT_SOURCE=='local')
+ snapshot['intervalSec']=_interval_sec()
+ snapshot['assetsDir']=str(RNE_ASSETS_DIR)
+ # 抽出資材が置かれているか(未配置なら「起動しない」理由がこれ)。
+ snapshot['assets']={
+  'symnavimConf':(RNE_ASSETS_DIR/'symnavim.conf').exists(),
+  'rne':[j['rne'] for j in JOBS if (RNE_ASSETS_DIR/'rne'/j['rne']).exists()],
+  'rneMissing':[j['rne'] for j in JOBS if not (RNE_ASSETS_DIR/'rne'/j['rne']).exists()],
+ }
+ outputs=[]
+ for job in JOBS:
+  p=job['output']
+  try:
+   from pathlib import Path as _P
+   st=_P(p).stat()
+   outputs.append({'name':job['name'],'path':p,'exists':True,'mtime':st.st_mtime,'size':st.st_size})
+  except OSError:
+   outputs.append({'name':job['name'],'path':p,'exists':False,'mtime':None,'size':None})
+ snapshot['outputs']=outputs
+ return snapshot
+
+
+def run_batch(trigger='schedule'):
+ """全ジョブを並列に1回実行し、結果のdictリストを返す(手動実行にも使う)。
+ triggerは'schedule'(定期)か'manual'(画面のボタン)で、状態表示に出す。"""
+ if not _run_lock.acquire(blocking=False):
+  raise RuntimeError('抽出が既に実行中です。完了までお待ちください。')
+ try:
+  with _last_lock:
+   _last.update({'startedAt':time.time(),'finishedAt':None,'running':True,'trigger':trigger})
+  try:
+   return _run_batch_inner()
+  finally:
+   with _last_lock:
+    _last['running']=False;_last['finishedAt']=time.time()
+ finally:
+  _run_lock.release()
+
+
+def _run_batch_inner():
  conf=_conf()
  results=[None]*len(JOBS)
  def _worker(i,job):
@@ -99,11 +148,16 @@ def run_batch():
  threads=[threading.Thread(target=_worker,args=(i,job),name=f"rne-extract-{job['name']}") for i,job in enumerate(JOBS)]
  for t in threads:t.start()
  for t in threads:t.join()
+ jobs=[]
  for job,result in zip(JOBS,results):
   if result.get('ok'):
    app_logger().info('RNE抽出成功: %s (%s行 %s列 %.1f秒)',job['name'],result.get('rows'),result.get('columns'),result.get('elapsed') or 0)
   else:
    app_logger().warning('RNE抽出失敗: %s: %s',job['name'],result.get('error'))
+  jobs.append({'name':job['name'],'ok':bool(result.get('ok')),'rows':result.get('rows'),
+               'columns':result.get('columns'),'elapsed':result.get('elapsed'),
+               'error':str(result.get('error') or '')})
+ with _last_lock:_last['jobs']=jobs
  return results
 
 
@@ -115,10 +169,12 @@ def _interval_sec():
 
 
 def _loop():
- run_batch()
  while True:
+  # 手動実行と重なったときは今回の周回を飛ばす(次の周回で追いつく)
+  try:run_batch('schedule')
+  except RuntimeError:pass
+  except Exception as e:app_logger().warning('RNE抽出の周回で例外: %s',e)
   time.sleep(_interval_sec())
-  run_batch()
 
 
 def start():
