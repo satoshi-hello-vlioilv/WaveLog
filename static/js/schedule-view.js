@@ -774,7 +774,16 @@
   if(pendingMinutes<=360)return 'sc-lv-2';
   return 'sc-lv-3';
  }
+ // 共有スケジュールDBはネットワーク共有上にあり、設備数だけ予定を展開する
+ // ため数秒かかることがある。パネル内の「読み込んでいます…」だけだと画面
+ // 全体では無反応に見えるので、WAITING表示も併せて出す(withWaitingは
+ // 速いときには出ないため、ローカル検証時の操作感は変わらない)。
  async function loadOverviewBoard(){
+  if(typeof withWaiting!=='function')return loadOverviewBoardInner();
+  return withWaiting({title:'全設備の空き状況を読み込んでいます',detail:'共有スケジュールDBを参照しています',
+   progress:'設備ごとの予定を展開して集計しています'},()=>loadOverviewBoardInner());
+ }
+ async function loadOverviewBoardInner(){
   const board=$('#scBoard');if(!board)return;
   board.innerHTML='<div class="sc-empty-note">読み込んでいます…</div>';
   try{
@@ -849,12 +858,19 @@
 
  /* ---------- 予定一覧の取得・描画 ---------- */
  async function refreshAll(){
+  if(typeof withWaiting!=='function')return refreshAllInner(()=>{});
+  return withWaiting({title:'作業スケジュールを読み込んでいます',
+   detail:scState.equipment?('設備: '+scState.equipment):'共有スケジュールDBを参照しています',
+   progress:'表示設定と予定を取得しています',step:1},report=>refreshAllInner(report));
+ }
+ async function refreshAllInner(report){
   // 列表示マスタ(§9.18)はloadPlan()のrenderTimeline()が「内容」欄の組み立てに
   // 使うため、先に取得しておく(後から取得すると初回描画が古い/未設定の
   // プリファレンスのまま出て、直後に列が変わるちらつきが起きる)。
   if(scState.fullControl){await loadScheduleColumnPrefs();await loadScheduleContentPrefs()}
   await loadPlan();
   if(scState.fullControl)await loadStopReasons();
+  report({progress:'仕掛一覧を並べて表示しています',step:2});
   await showSplitList();
  }
  async function loadPlan(){

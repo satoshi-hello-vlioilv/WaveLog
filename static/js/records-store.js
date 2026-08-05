@@ -138,6 +138,44 @@ window.refreshSyncStatusUI=refreshSyncStatusUI;
 // Explicit, staged waiting feedback for the two perceived slow routes.
 function showWaiting(title,detail,progress,step){showSaveOverlay(title,detail);const p=$('#waitingProgress');if(p)p.textContent=progress||'処理を開始しています';setWaitingStep(step||0)}
 function updateWaiting(detail,progress,step){if(detail)$('#saveOverlayDetail').textContent=detail;const p=$('#waitingProgress');if(p&&progress)p.textContent=progress;if(step)setWaitingStep(step)}
+/* ---------- 時間のかかる読み込みへ共通でWAITING表示を出すラッパー ----------
+   マスタ管理・作業スケジュール・カレンダー・分析は、ネットワーク共有上の
+   Access/SQLiteを読むため数秒かかることがある。無反応に見えて二度押しされる
+   のを防ぐため、読み込み中はこのラッパーでオーバーレイを出す。
+
+   守っている約束:
+   - **速い処理ではそもそも出さない**。delayMs(既定350ms)を超えたときだけ
+     表示する。ローカルのマスタは大半が一瞬で返るため、毎回スピナーが
+     瞬いてかえって不安にさせるのを避ける。
+   - **二重に出さない**。既に外側の処理が表示中なら内側は何もしない
+     (表示の主導権は外側が持ち、内側が勝手に閉じない)。list-view.jsの
+     load()のように直接showWaiting()する既存経路とも、タイマー発火時に
+     オーバーレイの状態を見直すことで衝突しない。
+   - **必ず閉じる**。fnが例外を投げてもfinallyで片付ける。
+   fnには進捗更新用の関数を渡す: fn(report) → report({detail,progress,step})。 */
+let waitingBusy=false;
+async function withWaiting(opts,fn){
+ const o=typeof opts==='string'?{title:opts}:(opts||{});
+ const overlay=$('#saveOverlay');
+ const owned=!!overlay&&!waitingBusy&&overlay.hidden;
+ let timer=null,shown=false;
+ if(owned){
+  waitingBusy=true;
+  timer=setTimeout(()=>{
+   // 待っている間に他の処理がオーバーレイを出していたら譲る(閉じもしない)
+   if(!overlay.hidden)return;
+   shown=true;
+   showWaiting(o.title||'読み込んでいます',o.detail||'',o.progress||'サーバーからデータを取得しています',o.step||0);
+  },o.delayMs===undefined?350:o.delayMs);
+ }
+ const report=u=>{if(shown&&u)updateWaiting(u.detail,u.progress,u.step)};
+ try{return await fn(report)}
+ finally{
+  if(timer)clearTimeout(timer);
+  if(owned){waitingBusy=false;if(shown)hideSaveOverlay()}
+ }
+}
+window.withWaiting=withWaiting;
 /* 保存/完了登録。完了時は必須項目・公差NGの検証を通過した場合のみ登録する。 */
 async function persistAndTransition(status){
  updateValidationVisuals();

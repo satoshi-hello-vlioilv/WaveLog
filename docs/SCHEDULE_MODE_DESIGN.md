@@ -2206,9 +2206,77 @@ font-size宣言を、近い既存値へ統合しながら(例: 10.5px/11px→
 `var(--fs-*)`参照へ置き換えた。個々の文字サイズが最大でも0.5px程度しか
 動かないよう近傍値へ寄せてあるため見た目の破壊的変化は無いが、以後は
 このタイプスケールの値を変えるだけでスケジュール画面を含むアプリ全体の
-文字サイズが揃って調整できる(アイコングリフとして使っている「×」等の
-閉じるボタン文字サイズ(`.sc-close`等)は、既存の`.mm-close`等と同じく
-対象外のまま個別指定を維持した)。
+文字サイズが揃って調整できる。
+
+### 9.31 タイプスケール取りこぼしの一掃(実績カレンダー・分析ダッシュボード)
+
+§9.23は`.sc-*`(スケジュール画面)と`#grid.sc-dense`だけを対象にしたため、
+**実績カレンダー(`.cal-*`)と分析ダッシュボード(`.db-*`)が置き去りになって
+いた**。表示サイズを切り替えても、これらの画面はテキストを継承している要素
+だけが伸び縮みし、`font-size:11px`のように直書きされた見出し・日付・凡例は
+固定のまま。「一部だけ拡大されて余計にちぐはぐ」という、切り替え機能が無い
+ときより悪い見え方になっていた。
+
+**測り方**: 見落としを目視で探さない。`data-ui-size`を`md`→`xl`へ切り替えて
+全要素の算出`font-size`をindex固定で2回スナップショットし、**値が変わらない
+要素だけ**を抜き出す(scratchpadの`probe_scale3/4.js`)。これで
+カレンダー10種・ダッシュボード7種・サイドバーのブランド見出し・
+仕掛一覧の分割フラグ列が機械的に出てきた。
+
+**直し方**: §9.23と同じ方針で近傍のトークンへ寄せる(11px→`--fs-micro`、
+12px→`--fs-sm`、13px→`--fs-base-sm`、15px→`--fs-title`、20px→`--fs-lg`)。
+`.db-card-*`は**カレンダーが共有している**ため、カレンダーだけ直しても
+サマリーカードは固定のまま残る(片方だけ触ると必ず取りこぼす)。
+
+文字だけ大きくして器が据え置きだと窮屈になるので、寸法も併せて追随させた:
+
+| 対象 | 変更前 | 変更後 |
+|---|---|---|
+| カレンダーの日セル高 | `minmax(74px,auto)` | `minmax(calc(74px * var(--ui-scale)),auto)` |
+| 右の明細ペイン幅 | `320px` | `calc(320px * var(--ui-scale))` |
+| ダッシュボードの操作ペイン幅 | `260px` | `calc(260px * var(--ui-scale))` |
+| 月ラベルの最小幅 | `104px` | `calc(104px * var(--ui-scale))` |
+| 凡例スウォッチ | `14px` 角 | `calc(14px * var(--ui-scale))` 角 |
+| 各コントロール高 | `32px`/`34px`/`30px` | `--ctl-h-sm`/`--ctl-h` |
+
+**SVGのtextにも効く**: ダッシュボードのグラフラベル(`.db-label`/
+`.db-chart-title`等)はSVG要素だが、`font-size`にcalc()入りのカスタム
+プロパティを指定すれば同じように追随する。グラフだけ字が固定という
+状態も解消した。
+
+§9.23で「アイコングリフだから対象外」としていた`.sc-close`/`.mm-close`も、
+拡大時に器(ボタン)だけ大きくなって×印が取り残されるため追随させた。
+
+### 9.32 時間のかかる読み込みのWAITING表示(`withWaiting`)
+
+マスタ管理・作業スケジュールはネットワーク共有上のDBを読むため数秒かかる
+ことがあり、その間パネル内の「読み込んでいます…」しか手掛かりが無く、
+画面全体としては無反応に見えてタブを連打される状態だった。既に測定画面で
+使っている全画面オーバーレイ(`#saveOverlay`+`showWaiting()`)を、読み込み
+系にも共通で被せられるようラッパー化する。
+
+`records-store.js`の`withWaiting(opts,fn)`(`window.withWaiting`で公開)。
+
+- **速い処理では出さない**。`delayMs`(既定350ms)を超えて初めて表示する。
+  ローカルのマスタは大半が一瞬で返るため、毎回スピナーが瞬く方が不安を
+  与える。閾値を超えた「本当に待たされている」ときだけ出る。
+- **二重に出さない**。外側が表示中なら内側は何もしない(表示の主導権は
+  外側が持ち、内側が勝手に閉じない)。`list-view.js`の`load()`のように
+  直接`showWaiting()`する既存経路とも衝突しないよう、タイマー発火時に
+  オーバーレイの状態を見直してから出す。
+- **必ず閉じる**。`fn`が投げても`finally`で片付ける。
+- 進捗は`fn(report)`の`report({detail,progress,step})`で更新する。
+  `step`を渡した経路(スケジュール)では2段のステップドットも点灯する。
+
+適用先: `loadMaint()`(マスタ管理)・`refreshAll()`/`loadOverviewBoard()`
+(作業スケジュール)・`ensureData()`(実績カレンダー)・`runDashboard()`
+(分析ダッシュボード)・`run()`(品質データ分析)。いずれも
+`loadMaintInner()`のように**中身を別関数へ切り出してラッパーから呼ぶ**形に
+してある(ラップで包むだけだと、既存の呼び出し元がそのまま内側の関数を
+呼んでいる箇所を取りこぼすため)。
+
+書込系(`queueScheduleWrite`)には被せていない。§9.22で書込を一方通行に
+した狙い(操作直後に画面を止めない)を打ち消してしまうため。
 
 ---
 
@@ -2224,7 +2292,11 @@ font-size宣言を、近い既存値へ統合しながら(例: 10.5px/11px→
 | `backend/schedule_calc.py` | **実装済み**。稼働カレンダー展開・アンカー決定・実績突合・並べ替え対象判定(§7.5)。見積分は`resolve_estimate()`が`load_factor.py`(§6)へ委譲する(種別='作業')。**フェーズ8で`equipment_reference_counts()`を追加**(§5.0.1の設備削除確認が使う、共有スケジュールDB側の参照件数集計)。**フェーズ15で`resolve_shift_label()`を追加**(§9.20、日またぎ対応の時間帯→勤務名称解決。`expand_plan()`が`plannedStart`確定時に呼び`entry.shift`へ設定) |
 | `backend/routes/tables.py` | **フェーズ15で追加**。§9.21の品質データ結合(`_join_quality_data()`/`_find_column()`)。`GET /api/table`へ`join_quality=1`指定時のみSIKALOTNOWにSIKALOTDEFをアプリ側でマージする(オプトイン、fail-open) |
 | `backend/schedule_sync.py` | **実装済み**。ロック取得/解放・Box上ファイルの取得(backup())・整合性確認・一時名書込+リネーム反映・改訂番号チェック(§4.2〜§4.5)。データの中身を知らない汎用基盤で、業務テーブル実装時は`with_write()`のapply_fnへ差し込むだけで使える。フェーズ4のPlaywright検証中に見つけた不具合を修正: `fetch_snapshot()`の一時ファイル名が固定だったため、GET系(ロック無し)の複数リクエストがほぼ同時に走ると一時ファイルを取り合って読込失敗することがあった。呼び出しごとに一意な一時ファイル名にして解消(最終目的地への反映は`Path.replace()`で元々アトミック)。**フェーズ13で追加**: §9.11の編集セッション(`acquire_session`/`heartbeat_session`/`release_session`/`session_status`/`require_session`、`schedule.sessions.json`という別ファイルで管理し`with_write()`のサイクルを経由しない) |
-| `static/js/schedule-view.js` | **実装済み**。スケジュール画面・タイムライン・並べ替え(現場段取り簡易表示§9.4.1・ロック表示§9.3を含む)。並べ替えはHTML5 Drag and Drop + Alt+↑/↓(lot-split.jsの単一ジェスチャー演出は未移植)。§6.8の「見積の内訳」(基準時間T0・予測区間・因子別係数/N/source)を各カードの折りたたみパネルとして表示(既定は折りたたみ)。§5.1・§7.3の固定開始日時の設定/解除UI(scheduleモードの未着手カードのみ編集可)、§9.3の非稼働帯の区切り表示(カード間の`plannedEnd`/`plannedStart`の差からフロント側で算出)。**フェーズ9で追加**: §9.9の全設備横断俯瞰ボード(`renderOverviewBoard()`、既定表示・混雑順ソート・行クリックでの個別タイムラインへのドリルダウン)、§9.5の複数選択一括追加(`addRowsToSchedule()`)。**フェーズ11で追加**: §9.10の分割表示(`ensureSplitWrap`/`teardownSplitWrap`が`#grid`をDOM上で分割レイアウトへ移設・復元、`wireDropTarget`がスケジュールパネル全体をドロップ受け皿にする)。旧`renderAddFromListPanel`/ロット検索(`wireLotSearch`等)は分割表示に置き換えたため削除。**フェーズ13で追加**: §9.11の編集セッション(`syncSession`/`acquireSessionOnce`/`sessionBlocked`)+書込キュー(`queueScheduleWrite`/`runWriteQueue`/`makeOptimisticEntry`)、§9.12の高密度表示(`toggleListDensity`)、§9.13の設備停止折りたたみ+モーダル(`openStopModal`/`closeStopModal`)、§9.14の仕掛一覧モーダル(`moveGridTo`/`returnGridHome`共通化、`openListModal`/`closeListModal`)。**フェーズ14で追加**: §9.16のセッションfail-open化(`sessionBlocked`の判定変更、`scState.sessionError`)、§9.17のフローティングウィンドウ化(`makeFloatingWindow()`共通ヘルパー、`clampToViewport()`のサイズ考慮クランプ)+リサイズ可能な分割バー(`ensureSplitDivider`/`applySplitListWidth`/`toggleSplitListCollapsed`)+`.sc-side`折りたたみ(`updateSideUi`/`toggleSideCollapsed`)、§9.18の投入済みロット除外(`window.scScheduledLotSet`/`refreshScheduledLotFilter`)+スケジュール列表示マスタのUI(`openColumnModal`/`saveColumnSelection`/`window.scColumnAllowlist`)。**フェーズ15で追加**: §9.20の年月日/勤務列(`fmtDateShort`/`fmtDateTitle`/`ROW_HEAD_HTML`)+「内容」欄の汎用化(`entryContentText()`、`buildScheduleDetail()`が`S.columns`全列をスナップショット)、§9.21の分割表示入場時のjoin_quality強制再取得(`scSplitJoinApplied`)、§9.22の一方通行書込(`resolveOptimisticEntry`/`discardOptimisticEntry`、`queueScheduleWrite`の`onFailure`コールバック、`updateFixedStart`の書込キュー化)。**§9.30で追加**: `ensureListModal()`のリサイズ対応(下端の`.sc-list-foot`でつまみ用の行を確保、`makeFloatingWindow()`へ`scListModalRectV2`/既定760×600/最小360×320を指定) |
+| `static/js/records-store.js` | **§9.32で追加**: `withWaiting(opts,fn)`(`window.withWaiting`)。読み込み系へ共通のWAITING表示を被せるラッパー。350ms超のときだけ表示・二重表示の抑止・例外時も必ず閉じる、の3点を担う |
+| `static/js/calendar-view.js` | **§9.31で調整**: `.cal-*`のCSSをタイプスケールへ追随。**§9.32で追加**: `ensureData()`を`ensureDataInner()`へ切り出し`withWaiting`で包む |
+| `static/js/report-dashboard.js` | **§9.31で調整**: `.db-*`のCSSをタイプスケールへ追随。**§9.32で追加**: `runDashboard()`を`runDashboardInner()`へ切り出し`withWaiting`で包む(2ステップ) |
+| `static/js/quality-analysis.js` | **§9.32で追加**: `run()`を`runInner()`へ切り出し`withWaiting`で包む |
+| `static/js/schedule-view.js` | **実装済み**。スケジュール画面・タイムライン・並べ替え(現場段取り簡易表示§9.4.1・ロック表示§9.3を含む)。並べ替えはHTML5 Drag and Drop + Alt+↑/↓(lot-split.jsの単一ジェスチャー演出は未移植)。§6.8の「見積の内訳」(基準時間T0・予測区間・因子別係数/N/source)を各カードの折りたたみパネルとして表示(既定は折りたたみ)。§5.1・§7.3の固定開始日時の設定/解除UI(scheduleモードの未着手カードのみ編集可)、§9.3の非稼働帯の区切り表示(カード間の`plannedEnd`/`plannedStart`の差からフロント側で算出)。**フェーズ9で追加**: §9.9の全設備横断俯瞰ボード(`renderOverviewBoard()`、既定表示・混雑順ソート・行クリックでの個別タイムラインへのドリルダウン)、§9.5の複数選択一括追加(`addRowsToSchedule()`)。**フェーズ11で追加**: §9.10の分割表示(`ensureSplitWrap`/`teardownSplitWrap`が`#grid`をDOM上で分割レイアウトへ移設・復元、`wireDropTarget`がスケジュールパネル全体をドロップ受け皿にする)。旧`renderAddFromListPanel`/ロット検索(`wireLotSearch`等)は分割表示に置き換えたため削除。**フェーズ13で追加**: §9.11の編集セッション(`syncSession`/`acquireSessionOnce`/`sessionBlocked`)+書込キュー(`queueScheduleWrite`/`runWriteQueue`/`makeOptimisticEntry`)、§9.12の高密度表示(`toggleListDensity`)、§9.13の設備停止折りたたみ+モーダル(`openStopModal`/`closeStopModal`)、§9.14の仕掛一覧モーダル(`moveGridTo`/`returnGridHome`共通化、`openListModal`/`closeListModal`)。**フェーズ14で追加**: §9.16のセッションfail-open化(`sessionBlocked`の判定変更、`scState.sessionError`)、§9.17のフローティングウィンドウ化(`makeFloatingWindow()`共通ヘルパー、`clampToViewport()`のサイズ考慮クランプ)+リサイズ可能な分割バー(`ensureSplitDivider`/`applySplitListWidth`/`toggleSplitListCollapsed`)+`.sc-side`折りたたみ(`updateSideUi`/`toggleSideCollapsed`)、§9.18の投入済みロット除外(`window.scScheduledLotSet`/`refreshScheduledLotFilter`)+スケジュール列表示マスタのUI(`openColumnModal`/`saveColumnSelection`/`window.scColumnAllowlist`)。**フェーズ15で追加**: §9.20の年月日/勤務列(`fmtDateShort`/`fmtDateTitle`/`ROW_HEAD_HTML`)+「内容」欄の汎用化(`entryContentText()`、`buildScheduleDetail()`が`S.columns`全列をスナップショット)、§9.21の分割表示入場時のjoin_quality強制再取得(`scSplitJoinApplied`)、§9.22の一方通行書込(`resolveOptimisticEntry`/`discardOptimisticEntry`、`queueScheduleWrite`の`onFailure`コールバック、`updateFixedStart`の書込キュー化)。**§9.32で追加**: `refreshAll()`/`loadOverviewBoard()`を`refreshAllInner()`/`loadOverviewBoardInner()`へ切り出し`withWaiting`で包む。**§9.30で追加**: `ensureListModal()`のリサイズ対応(下端の`.sc-list-foot`でつまみ用の行を確保、`makeFloatingWindow()`へ`scListModalRectV2`/既定760×600/最小360×320を指定) |
 | `docs/SCHEDULE_MODE_DESIGN.md` | 本書 |
 
 ### 10.2 既存ファイルの変更
@@ -2244,7 +2316,7 @@ font-size宣言を、近い既存値へ統合しながら(例: 10.5px/11px→
 | `static/js/measurement-worklog.js` | **実装済み**。設備停止マスタ部分(フェーズ6): `MASTER_DEFS`へ`stopReason`タブを追加(設備名は`equipment-select`という新規フィールド型で設備マスタから選択)。scheduleモードでは書込めないタブ(`masters`Blueprint配下)をナビから隠す`maintDefVisible`/`renderMaintNav`を追加し、`#openMasterMaint`のCSS無効化を`view-mode`のみに縮小(旧`schedule-mode`無効化のままだと設備停止マスタに永久に手が届かない矛盾があったため)。**フェーズ8で追加**: `MASTER_DEFS`へ`loadFactor`タブ(`special:'load-factor'`、§9.8の換算係数管理画面)、`deleteMaint()`が設備タブのみ`deleteEquipmentWithReferenceCheck()`へ分岐し409(§5.0.1)を確認モーダル+`force`再送で処理。**フェーズ15で`MASTER_DEFS`へ`shiftMaster`タブを追加**(§9.20、勤務形態マスタ) |
 | `static/js/measurement-view.js` | **実装済み(フェーズ7)**。`refreshScheduleInfo()`(非同期、`records-store.js`の`openMeasurement()`の`finally`から発火)・`renderScheduleInfo()`(同期、`renderMeasurement()`の描画チェーンから毎回呼ぶ)で基本情報タブへ予定表示(読み取り専用)を追加 |
 | `templates/index.html` | **実装済み**。「計画」ナビグループ(`#planNav`静的ボタン`#openSchedule`)・スクリプトタグ追加。`fieldReorderBadge`要素も配置済み |
-| `static/app.css` | **実装済み**。`body.view-mode`/`schedule-mode`のモードバッジ・`body.sc-mode`排他・`.sc-panel`タイムライン・`.plan-action-*`(仕掛一覧の予定列)一式。**フェーズ13で追加**: `.sc-session-banner`/`.sc-panel.sc-session-locked`(§9.11)、`#grid.sc-dense`(§9.12)、`.sc-side-section-toggle`/`.sc-stop-button[draggable]`(§9.13)、`.sc-float-modal`/`.sc-float-dialog`(§9.13・§9.14、`.record-modal`/`.settings-dialog`を土台に流用)、`body.sc-mode.sc-list-modal-open`(§9.14)、`.sc-row-pending`(§9.11)。**フェーズ14で刷新・追加**: `.sc-float-modal`/`.sc-float-dialog`(全画面シェード付き)を`.sc-float-win`/`.sc-float-header`/`.sc-float-resize`(シェード無しの浮いたウィンドウ)へ置き換え(§9.17)、`.sc-split-divider`/`.sc-split-collapse-btn`+`--sc-list-w`変数によるリサイズ可能な分割バー(§9.17)、`.sc-side-tab`(`.sc-side`自体の折りたたみ、§9.17)、`:is(.sc-split-wrap,.sc-float-body)`配下のフィルタバーコンパクト化(§9.19)、`#navResizeHandle`+`.layout`3列グリッド化(§9.19)、`.sc-column-list`/`.sc-column-item`(§9.18)。**フェーズ15で追加**: `.sc-row-date`/`.sc-row-shift`(§9.20)、`:root`のタイプスケールへ`--fs-tiny`/`--fs-sm`/`--fs-base-sm`を追加し`.sc-*`配下・`#grid.sc-dense`のfont-size宣言(約60箇所)をすべて`var(--fs-*)`参照へ統一(§9.23)。**§9.30で追加**: `#scListModalBody`のflex化(`#grid`の内側だけをスクロールさせる)、`.sc-list-foot`(つまみ用の帯)、`:is(.sc-float-body,.sc-split-wrap) #grid`の横スクロールバー常時表示、`.sc-split-wrap`への`toolbar`行/エリア追加 |
+| `static/app.css` | **実装済み**。`body.view-mode`/`schedule-mode`のモードバッジ・`body.sc-mode`排他・`.sc-panel`タイムライン・`.plan-action-*`(仕掛一覧の予定列)一式。**フェーズ13で追加**: `.sc-session-banner`/`.sc-panel.sc-session-locked`(§9.11)、`#grid.sc-dense`(§9.12)、`.sc-side-section-toggle`/`.sc-stop-button[draggable]`(§9.13)、`.sc-float-modal`/`.sc-float-dialog`(§9.13・§9.14、`.record-modal`/`.settings-dialog`を土台に流用)、`body.sc-mode.sc-list-modal-open`(§9.14)、`.sc-row-pending`(§9.11)。**フェーズ14で刷新・追加**: `.sc-float-modal`/`.sc-float-dialog`(全画面シェード付き)を`.sc-float-win`/`.sc-float-header`/`.sc-float-resize`(シェード無しの浮いたウィンドウ)へ置き換え(§9.17)、`.sc-split-divider`/`.sc-split-collapse-btn`+`--sc-list-w`変数によるリサイズ可能な分割バー(§9.17)、`.sc-side-tab`(`.sc-side`自体の折りたたみ、§9.17)、`:is(.sc-split-wrap,.sc-float-body)`配下のフィルタバーコンパクト化(§9.19)、`#navResizeHandle`+`.layout`3列グリッド化(§9.19)、`.sc-column-list`/`.sc-column-item`(§9.18)。**フェーズ15で追加**: `.sc-row-date`/`.sc-row-shift`(§9.20)、`:root`のタイプスケールへ`--fs-tiny`/`--fs-sm`/`--fs-base-sm`を追加し`.sc-*`配下・`#grid.sc-dense`のfont-size宣言(約60箇所)をすべて`var(--fs-*)`参照へ統一(§9.23)。**§9.31で追加**: `.cal-*`(実績カレンダー)・`.db-*`(分析ダッシュボード、SVGラベル含む)の固定pxのfont-sizeをすべて`var(--fs-*)`へ、日セル高/明細ペイン幅/操作ペイン幅/凡例スウォッチを`calc(Npx * var(--ui-scale))`へ、各コントロール高を`--ctl-h-sm`/`--ctl-h`へ置換。`.sc-close`/`.mm-close`/`.split-flag-cell`/`.brand h2`も追随させた。**§9.30で追加**: `#scListModalBody`のflex化(`#grid`の内側だけをスクロールさせる)、`.sc-list-foot`(つまみ用の帯)、`:is(.sc-float-body,.sc-split-wrap) #grid`の横スクロールバー常時表示、`.sc-split-wrap`への`toolbar`行/エリア追加 |
 | `config/local.example.json` | **実装済み**。`schedule_share_path`/`schedule_lock_ttl_sec`/`schedule_lock_verify_delay_ms`の雛形 |
 | `docs/ARCHITECTURE.md` / `README.md` / `CLAUDE.md` | 構成・ガード規約の更新 |
 
