@@ -1074,11 +1074,8 @@
   if(!entry)return;
   const previous=entry.fixedStart;
   entry.fixedStart=iso;renderTimeline();
-  queueScheduleWrite(
-   ()=>api('/api/schedule/plan/update',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify(withUserId({id,fixedStart:iso}))}),
-   ()=>{entry.fixedStart=previous;if(scState.equipment)renderTimeline()}
-  );
+  queuePlanOp({op:'update',id,fixedStart:iso,
+   onFailure:()=>{entry.fixedStart=previous;if(scState.equipment)renderTimeline()}});
  }
 
  /* ---------- 日時ロック(§9.38) ----------
@@ -1493,13 +1490,33 @@
     がfalseの場面)にのみ行う。この間、削除・並べ替え直後に他の予定の見積/
     残り時間等サーバー側の再計算値が古いままになるのは許容する
     (次に編集モードへ入った時点で正規化される)。 */
- function queueScheduleWrite(run,onFailure){
+ /* 操作を「記述(op)」として積む(§9.45)。runの閉包で積む従来の形も残すが、
+    opで積んだ分は runWriteQueue が**まとめて1リクエスト**へ束ねられる。
+    共有DBの書込は1回ごとにロック取得→検証待ち→取得→反映のサイクルを丸ごと
+    踏むため(§4.2)、件数ぶん固定費が積み上がっていた(実測1件約1.5秒)。
+    desc: {op:'add'|'update'|'delete'|'reorder', ...payload, onSuccess, onFailure} */
+ function queuePlanOp(desc){
+  const {onSuccess,onFailure,...op}=desc;
+  queueScheduleWrite(
+   // まとめられなかった場合(scheduleモード以外・単発)はこの経路で個別に投げる。
+   async()=>{
+    const path={add:'/api/schedule/plan/add',update:'/api/schedule/plan/update',
+                delete:'/api/schedule/plan/delete',reorder:'/api/schedule/plan/reorder'}[op.op];
+    const {op:_omit,...body}=op;
+    const r=await api(path,{method:'POST',headers:{'Content-Type':'application/json'},
+     body:JSON.stringify(withUserId(body))});
+    if(onSuccess)onSuccess(r);
+    return r;
+   },
+   onFailure,op,onSuccess);
+ }
+ function queueScheduleWrite(run,onFailure,op,onSuccess){
   // 予定を変える操作をした時点でキャッシュ(§9.42)は古い。次にこの画面を
   // 開いたときは必ず取り直す。画面上の表示は楽観的更新(§9.11)で既に
   // 反映されているので、ここで読み直しはしない(操作直後に画面を止めない
   // 一方通行の書込、§9.22)。
   invalidatePlanCache(scState.equipment);
-  scWriteQueue.push({run,onFailure,attempts:0});
+  scWriteQueue.push({run,onFailure,attempts:0,op,onSuccess});
   if(scQueueFlushTimer||scQueueRunning)return;
   scQueueFlushTimer=setTimeout(()=>{scQueueFlushTimer=null;runWriteQueue()},150);
  }
@@ -1509,6 +1526,46 @@
   const failures=[];
   try{
    while(scWriteQueue.length){
+    // 先頭から「まとめられる操作(op付き)」が続く限り束ねて1リクエストにする。
+    // まとめ書込はscheduleモード限定(サーバー側の制限。§9.45のコメント参照)。
+    if(scWriteQueue[0].op&&scState.fullControl&&scWriteQueue.length>1){
+     const batch=[];
+     while(batch.length<scWriteQueue.length&&scWriteQueue[batch.length].op&&batch.length<100)batch.push(scWriteQueue[batch.length]);
+     if(batch.length>1){
+      let handled=false;
+      try{
+       const r=await api('/api/schedule/plan/batch',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(withUserId({ops:batch.map(b=>b.op)}))});
+       const results=r.results||[];
+       batch.forEach((b,i)=>{
+        const one=results[i];
+        if(one&&one.ok!==false){if(b.onSuccess)b.onSuccess(one)}
+        else{
+         const err=Error((one&&one.error)||'反映できませんでした');
+         err.__reported=!!b.onFailure;failures.push(err);
+         if(b.onFailure){try{b.onFailure(err)}catch(_e){/* ロールバック失敗は無視 */}}
+        }
+       });
+       scWriteQueue.splice(0,batch.length);
+       handled=true;
+      }catch(e){
+       // まとめて失敗(権限不足・他端末編集中・通信不良)。4xxはリトライしても
+       // 同じなので、その場で全件諦める。5xx等は個別処理へ落として従来の
+       // リトライに任せる(まとめ経路だけで握りつぶさない)。
+       const permanent=e&&typeof e.status==='number'&&e.status>=400&&e.status<500&&e.status!==409&&e.status!==423;
+       if(permanent){
+        batch.forEach(b=>{
+         const err=Error(e.message);err.status=e.status;err.__reported=!!b.onFailure;
+         failures.push(err);
+         if(b.onFailure){try{b.onFailure(err)}catch(_e){/* 同上 */}}
+        });
+        scWriteQueue.splice(0,batch.length);
+        handled=true;
+       }
+      }
+      if(handled)continue;
+     }
+    }
     const op=scWriteQueue[0];
     try{
      await op.run();
@@ -1575,16 +1632,14 @@
   if(idx===-1)return;
   const [removed]=scState.entries.splice(idx,1);
   renderTimeline();
-  queueScheduleWrite(
-   ()=>api('/api/schedule/plan/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(withUserId({id}))}),
-   ()=>{
+  queuePlanOp({op:'delete',id,
+   onFailure:()=>{
     // リトライを使い切って諦めた時だけロールバックする(§9.22)。以前は
     // 失敗するたびに毎回ロールバックしていたため、1回目失敗→ロールバック→
     // 2回目成功、という順で実際にはサーバー側は削除済みなのに画面へ復活
     // したまま二度と消えない不整合が起こり得た。
     if(scState.entries.every(x=>x.id!==removed.id)){scState.entries.splice(Math.min(idx,scState.entries.length),0,removed);renderTimeline()}
-   }
-  );
+   }});
  }
 
  /* ---------- ドラッグ並べ替え(§7.5・§9.4) + Alt+↑/↓ ---------- */
@@ -1666,17 +1721,14 @@
   const equipment=scState.equipment;
   // 失敗したときに元へ戻せるよう、書き換える前の並びを控えておく。
   const previousOrder=previousEntries;
-  queueScheduleWrite(
-   ()=>api('/api/schedule/plan/reorder',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify(withUserId({equipment,orderedIds:ids}))}),
-   e=>{
+  queuePlanOp({op:'reorder',equipment,orderedIds:ids,
+   onFailure:e=>{
     // 通知は諦めた時に1回だけ(runWriteQueueのリトライ中に出すと同じ文言が
     // 回数ぶん並ぶ)。サーバーが受け付けなかった並びを画面に残さないよう、
     // 元の順序へ戻してから知らせる。
     if(scState.equipment===equipment){scState.entries=previousOrder;renderTimeline()}
     showToast&&showToast('並べ替えできませんでした',(e&&e.message)||'',7000);
-   }
-  );
+   }});
  }
 
  /* ---------- 追加パネル(scheduleモードのみ、§9.3) ---------- */
@@ -1740,11 +1792,8 @@
   const entry=makeOptimisticEntry('設備停止',{title:label});
   scState.entries.push(entry);
   renderTimeline();
-  queueScheduleWrite(
-   ()=>api('/api/schedule/plan/add',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify(withUserId({equipment:target,kind:'設備停止',position:'end',stopReasonId:reasonId}))}).then(r=>resolveOptimisticEntry(entry,r)),
-   ()=>discardOptimisticEntry(entry)
-  );
+  queuePlanOp({op:'add',equipment:target,kind:'設備停止',position:'end',stopReasonId:reasonId,
+   onSuccess:r=>resolveOptimisticEntry(entry,r),onFailure:()=>discardOptimisticEntry(entry)});
   showToast&&showToast('設備停止を追加しました',`${target}の予定に追加しました(${label})`,3200);
  }
 
@@ -2179,10 +2228,8 @@
   const entry=makeOptimisticEntry('作業',{lotNo:pick(row,'lotNo')||'',detail:buildScheduleDetail(row)});
   scState.entries.push(entry);
   renderTimeline();
-  queueScheduleWrite(
-   ()=>api('/api/schedule/plan/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(planAddPayload(target,row))}).then(r=>resolveOptimisticEntry(entry,r)),
-   ()=>discardOptimisticEntry(entry)
-  );
+  queuePlanOp({op:'add',...planAddPayload(target,row),
+   onSuccess:r=>resolveOptimisticEntry(entry,r),onFailure:()=>discardOptimisticEntry(entry)});
  }
  window.scheduleAddFromRow=function(row){addRowToSchedule(row,pick(row,'equipment')||'')};
 
@@ -2211,10 +2258,8 @@
   rows.forEach(row=>{
    const entry=makeOptimisticEntry('作業',{lotNo:pick(row,'lotNo')||'',detail:buildScheduleDetail(row)});
    scState.entries.push(entry);
-   queueScheduleWrite(
-    ()=>api('/api/schedule/plan/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(planAddPayload(target,row))}).then(r=>resolveOptimisticEntry(entry,r)),
-    ()=>discardOptimisticEntry(entry)
-   );
+   queuePlanOp({op:'add',...planAddPayload(target,row),
+    onSuccess:r=>resolveOptimisticEntry(entry,r),onFailure:()=>discardOptimisticEntry(entry)});
   });
   renderTimeline();
   showToast&&showToast(`${rows.length}件をキューへ追加しました`,`${target}の予定へ反映中です…`,3200);

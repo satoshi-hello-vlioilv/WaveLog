@@ -253,6 +253,9 @@ def acquire_session(equipment,login_id,pc_name,ttl_sec=None):
  current=sessions.get(equipment)
  if current and not _own_or_free(current,login_id,pc_name):
   raise SessionHeldError(equipment,current.get('login',''),current.get('pc',''))
+ # 自分が今まさに保持しているセッションの「延長」か(=ハートビート)。
+ # 取得競争ではないので、下の簡易検証で待つ意味が無い(§9.45)。
+ renewing=bool(current)
  token=uuid.uuid4().hex
  now=datetime.now()
  sessions[equipment]={'login':login_id,'pc':pc_name,'token':token,
@@ -262,7 +265,11 @@ def acquire_session(equipment,login_id,pc_name,ttl_sec=None):
  # schedule.lock.jsonのacquire_lock()と同じ考え方の簡易検証(§4.3参照)。
  # ほぼ同時に2端末が取得を試みた場合に双方が「取れた」と誤認する余地を
  # 減らす(完全排除はできないため、あくまで助言的ロックとして扱うこと)。
- if _SESSION_VERIFY_DELAY_SEC>0:
+ # ただし**延長(ハートビート)では待たない**(§9.45)。既に自分が保持して
+ # いる=他端末はSessionHeldErrorで弾かれている状態なので、取得競争が
+ # 起きようがない。ハートビートは数十秒ごとに走るため、ここで毎回0.3秒
+ # 待つと操作していない間もサーバーを占有し続けることになる。
+ if _SESSION_VERIFY_DELAY_SEC>0 and not renewing:
   time.sleep(_SESSION_VERIFY_DELAY_SEC)
  verify=_prune_expired(_read_sessions_raw()).get(equipment)
  if not verify or verify.get('token')!=token:
@@ -433,6 +440,45 @@ def _local_connection(path):
   c.close()
 
 
+def acquire_lock_deferred(login_id,pc_name,ttl_sec=None):
+ """acquire_lock()を「ロックファイルの書込」と「再読込による検証」に分ける
+ (§9.45)。戻り値は(token, verify)で、verify()を呼んだ時点で検証が完了する。
+
+ 検証は「書いてから一定時間おいて読み直す」ことに意味がある(Boxのような
+ 結果整合的な共有では、直後に読んでも他端末の書込がまだ見えないため)。
+ 一方その待ち時間は**何もしていない**時間なので、呼び出し側は待っている間に
+ 読み取り専用の作業(スナップショット取得)を挟める。検証を通るまで書込は
+ 一切行わないので、保証は従来と変わらない。"""
+ path=_lock_path()
+ ttl=ttl_sec if ttl_sec is not None else _lock_ttl_sec()
+ current=_read_lock()
+ if current and not _lock_expired(current):
+  remaining=1
+  try:
+   remaining=max(1,int((datetime.fromisoformat(current['expires_at'])-datetime.now()).total_seconds()))
+  except Exception:
+   pass
+  raise LockHeldError(current.get('holder_login',''),current.get('holder_pc',''),remaining)
+ token=uuid.uuid4().hex
+ now=datetime.now()
+ payload={'token':token,'holder_login':login_id,'holder_pc':pc_name,
+          'acquired_at':now.isoformat(),'expires_at':(now+timedelta(seconds=ttl)).isoformat()}
+ path.parent.mkdir(parents=True,exist_ok=True)
+ path.write_text(json.dumps(payload,ensure_ascii=False),encoding='utf-8')
+ written_at=time.monotonic()
+ def verify():
+  # 書込からverify_delayが経つまで待つ。呼び出し側が既にその時間を
+  # 別の作業へ使っていれば、ここでの追加の待ちは0になる。
+  remaining_wait=_lock_verify_delay_sec()-(time.monotonic()-written_at)
+  if remaining_wait>0:
+   time.sleep(remaining_wait)
+  got=_read_lock()
+  if not got or got.get('token')!=token:
+   raise LockHeldError((got or {}).get('holder_login',''),(got or {}).get('holder_pc',''),5)
+  return token
+ return token,verify
+
+
 def with_write(login_id,pc_name,uid,apply_fn):
  """§4.2の全サイクル。apply_fn(conn)はローカルの作業コピーへ変更を加えて
  良い(コミットは呼び出し側で行うため、apply_fn内でのcommitは不要)。
@@ -441,11 +487,16 @@ def with_write(login_id,pc_name,uid,apply_fn):
  例外: ScheduleNotConfigured / LockHeldError(423想定) /
  RevisionConflictError(409想定) / ScheduleUnavailableError。"""
  shared=_require_configured()
- token=acquire_lock(login_id,pc_name)
+ # ロックの検証待ち(既定1.5秒)は「待つ」こと自体に意味があるが、その間は
+ # 何もしていない時間でもある。読み取り専用のスナップショット取得を先に
+ # 済ませ、待ち時間と重ねる(§9.45)。書込は検証を通ってからしか行わない
+ # ので、排他の保証は従来と変わらない。
+ token,verify_lock=acquire_lock_deferred(login_id,pc_name)
  try:
   local_path,stale=fetch_snapshot()
   if stale:
    app_logger().warning('スケジュールデータの最新性を確認できないまま書込を行います: %s',shared)
+  verify_lock()
   with _local_connection(local_path) as c:
    base_revision=read_revision(c)
    result=apply_fn(c)
