@@ -2365,8 +2365,28 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
 .sc-float-body{flex:1;min-height:0;overflow:auto;padding:10px 12px}
 .sc-float-body #genericFilterBar{margin:0 0 8px}
 .sc-float-body #grid{margin:0;min-height:0;border:0}
-.sc-float-resize{position:absolute;right:0;bottom:0;width:18px;height:18px;cursor:nwse-resize}
-.sc-float-resize::after{content:'';position:absolute;right:4px;bottom:4px;width:8px;height:8px;border-right:2px solid var(--line);border-bottom:2px solid var(--line)}
+.sc-float-resize{position:absolute;right:0;bottom:0;width:20px;height:20px;cursor:nwse-resize;z-index:2}
+/* つまみは目に入る濃さにする(以前は淡すぎて「サイズを変えられる」ことに
+   気づかれず、しかも本文末尾の保存ボタンと重なる位置にあった)。 */
+.sc-float-resize::after{content:'';position:absolute;right:3px;bottom:3px;width:10px;height:10px;border-right:2px solid #6f8f96;border-bottom:2px solid #6f8f96}
+.sc-float-resize:hover::after{border-color:var(--teal)}
+/* 主要動作を置く固定フッター(スクロールしない)。本文がいくら長くても
+   保存ボタンは常に見える。 */
+.sc-float-foot{flex:0 0 auto;display:flex;align-items:center;gap:var(--space-2);padding:8px 12px 8px;
+  border-top:1px solid var(--line);background:#f4f7f8;flex-wrap:wrap}
+.sc-content-foot-actions{margin-left:auto;display:flex;gap:6px;align-items:center;padding-right:14px}
+.sc-float-foot button{height:var(--ctl-h-sm);padding:0 12px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer;font-size:var(--fs-sm);color:#5c777e}
+.sc-float-foot button:hover{border-color:var(--teal);background:#f4fbfc}
+.sc-float-foot .sc-column-save{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:800}
+.sc-float-foot .sc-column-save:hover{background:var(--teal-dark);color:#fff}
+.sc-column-count{font-size:var(--fs-micro);color:#5c777e;font-weight:700}
+/* 保存前に結果を見せるプレビュー */
+.sc-content-preview{flex:1 1 100%;display:flex;align-items:baseline;gap:6px;min-width:0}
+.sc-content-preview-label{flex:none;font-size:var(--fs-tiny);font-weight:800;color:#8a9aa0}
+.sc-content-preview b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-sm);color:#173842}
+.sc-content-chosen-head{display:flex;align-items:center;gap:6px}
+.sc-content-chosen-head small{font-weight:600;color:#8a9aa0;font-size:var(--fs-tiny)}
+.sc-content-filter{margin-left:auto;height:var(--ctl-h-xs);min-width:0;flex:0 1 150px;padding:0 8px;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:var(--fs-micro)}
 
 /* スケジュール列表示マスタ(§9.18新設)のポップアップ内容。 */
 .sc-column-list{display:flex;flex-direction:column;gap:2px;margin:8px 0;max-height:calc(100% - 110px);overflow-y:auto}

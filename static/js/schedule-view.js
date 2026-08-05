@@ -985,7 +985,7 @@
   if(e.kind!=='作業')return (e.title||'設備停止').trim();
   const items=(scContentPrefs.equipment===scState.equipment)?scContentPrefs.items:null;
   if(items&&items.length){
-   const parts=items.map(k=>e.detail?.[k]).filter(v=>v!==undefined&&v!==null&&String(v).trim()!=='');
+   const parts=items.map(k=>contentValueOf(e.detail,k)).filter(v=>v!==undefined);
    if(parts.length)return parts.map(v=>String(v).trim()).join(' / ');
   }
   return `${e.lotNo||'-'} ${e.detail?.purposeName||''} ${e.detail?.mfgMaterial||''}${e.detail?.mfgTemper?'-'+e.detail.mfgTemper:''}`.trim();
@@ -1411,10 +1411,11 @@
   modal.innerHTML=`
    <div class="sc-float-header"><div><small>LIST COLUMNS</small><h2>仕掛一覧に表示する列</h2></div><button type="button" id="scColumnModalClose" title="閉じる">×</button></div>
    <div class="sc-float-body" id="scColumnModalBody"></div>
-   <div class="sc-float-resize" title="ドラッグでサイズ変更"></div>`;
+   <div class="sc-float-foot" id="scColumnModalFoot"></div>
+   <div class="sc-float-resize" title="ドラッグで大きさを変えられます"></div>`;
   document.body.appendChild(modal);
   modal.querySelector('#scColumnModalClose').onclick=()=>closeColumnModal();
-  makeFloatingWindow(modal,{storageKey:'scColumnModalRectV1',defaultWidth:320,defaultHeight:460,defaultTop:80,minWidth:260,minHeight:240});
+  makeFloatingWindow(modal,{storageKey:'scColumnModalRectV2',defaultWidth:360,defaultHeight:500,defaultTop:80,minWidth:300,minHeight:300});
   return modal;
  }
  function renderColumnModalBody(){
@@ -1424,15 +1425,23 @@
   if(!allCols.length){body.innerHTML='<div class="sc-empty-note">仕掛一覧を先に開いてください(列名の取得が必要です)。</div>';return}
   const selected=(scColumnPrefs.equipment===scState.equipment&&scColumnPrefs.columns)?new Set(scColumnPrefs.columns):null;
   body.innerHTML=`<p class="sc-drop-hint">${esc(scState.equipment)}の仕掛一覧に出す列を選びます(設備ごとに保存)。1つも選ばなければ全列を表示します。タイムラインの「内容」欄はこことは別に、ヘッダーの「内容の項目」で選びます。</p>
-   <div class="sc-column-list">${allCols.map(c=>`<label class="sc-column-item"><input type="checkbox" value="${esc(c)}"${(!selected||selected.has(c))?' checked':''}> ${esc(c)}</label>`).join('')}</div>
-   <div class="sc-column-actions">
-    <button type="button" id="scColumnSelectAll">全選択</button>
-    <button type="button" id="scColumnClearAll">選択解除</button>
-    <button type="button" id="scColumnSave" class="sc-column-save">保存</button>
-   </div>`;
-  body.querySelector('#scColumnSelectAll').onclick=()=>body.querySelectorAll('.sc-column-item input').forEach(i=>{i.checked=true});
-  body.querySelector('#scColumnClearAll').onclick=()=>body.querySelectorAll('.sc-column-item input').forEach(i=>{i.checked=false});
-  body.querySelector('#scColumnSave').onclick=saveColumnSelection;
+   <div class="sc-column-list">${allCols.map(c=>`<label class="sc-column-item"><input type="checkbox" value="${esc(c)}"${(!selected||selected.has(c))?' checked':''}> ${esc(c)}</label>`).join('')}</div>`;
+  // 保存はスクロール領域の外(固定フッター)へ置く。
+  const foot=document.getElementById('scColumnModalFoot');
+  if(foot){
+   foot.innerHTML=`<span class="sc-column-count" id="scColumnCount"></span>
+    <div class="sc-content-foot-actions">
+     <button type="button" id="scColumnSelectAll">全選択</button>
+     <button type="button" id="scColumnClearAll">選択解除</button>
+     <button type="button" id="scColumnSave" class="sc-column-save">保存</button>
+    </div>`;
+   const count=()=>{const el=document.getElementById('scColumnCount');if(el)el.textContent=`${body.querySelectorAll('.sc-column-item input:checked').length} / ${allCols.length} 列を表示`};
+   foot.querySelector('#scColumnSelectAll').onclick=()=>{body.querySelectorAll('.sc-column-item input').forEach(i=>{i.checked=true});count()};
+   foot.querySelector('#scColumnClearAll').onclick=()=>{body.querySelectorAll('.sc-column-item input').forEach(i=>{i.checked=false});count()};
+   foot.querySelector('#scColumnSave').onclick=saveColumnSelection;
+   body.querySelectorAll('.sc-column-item input').forEach(i=>i.onchange=count);
+   count();
+  }
  }
  async function saveColumnSelection(){
   const body=document.getElementById('scColumnModalBody');if(!body||!scState.equipment)return;
@@ -1482,48 +1491,118 @@
    scContentPrefs={equipment:eq,items:null}; // 取得に失敗しても既定の組み立てへフォールバック(fail-open)
   }
  }
- let contentModalOpen=false,contentDraft=[];
+ let contentModalOpen=false,contentDraft=[],contentFilter='';
  function ensureContentModal(){
   let modal=document.getElementById('scContentModal');
   if(modal)return modal;
   modal=document.createElement('div');modal.className='sc-float-win';modal.id='scContentModal';modal.hidden=true;
+  // 主要動作(保存)はスクロール領域の外(.sc-float-foot)へ固定で置く。
+  // 以前は本文の末尾に置いていたため、候補が多い設備では最後まで
+  // スクロールしないと保存ボタンが見えず見逃しやすかった。
   modal.innerHTML=`
    <div class="sc-float-header"><div><small>CONTENT</small><h2>「内容」欄に出す項目</h2></div><button type="button" id="scContentModalClose" title="閉じる">×</button></div>
    <div class="sc-float-body" id="scContentModalBody"></div>
-   <div class="sc-float-resize" title="ドラッグでサイズ変更"></div>`;
+   <div class="sc-float-foot" id="scContentModalFoot"></div>
+   <div class="sc-float-resize" title="ドラッグで大きさを変えられます"></div>`;
   document.body.appendChild(modal);
   modal.querySelector('#scContentModalClose').onclick=()=>closeContentModal();
-  makeFloatingWindow(modal,{storageKey:'scContentModalRectV1',defaultWidth:380,defaultHeight:480,defaultTop:80,minWidth:300,minHeight:260});
+  makeFloatingWindow(modal,{storageKey:'scContentModalRectV2',defaultWidth:460,defaultHeight:520,defaultTop:80,minWidth:340,minHeight:300});
   return modal;
  }
+ /* 未設定のときに「内容」欄を組み立てている既定の項目(entryContentTextの
+    フォールバックと同じ並び)。指定が無い設備でもピッカーを開いた時点で
+    “今表示されているもの”が選択済みで見えるようにするための初期値。 */
+ const DEFAULT_CONTENT_ITEMS=['lotNo','purposeName','mfgMaterial','mfgTemper'];
+ // 生カラム名(用途名など)はそのまま、alias名(purposeNameなど)は日本語の
+ // 代表名で見せる(利用者にとってはaliasの英字名に馴染みが無いため)。
+ function contentItemLabel(k){
+  const names=(typeof aliases!=='undefined'&&aliases[k])||null;
+  return names&&names.length?names[0]:k;
+ }
+ function sameItems(a,b){return a.length===b.length&&a.every((x,i)=>x===b[i])}
+ /* 予定に保存されている仕掛データのスナップショット(detail)は、投入した時期に
+    よってキーの流儀が違う。古い予定はalias名だけ(purposeName等)、新しい予定は
+    alias名と生カラム名(用途名等)の両方を持つ。利用者がどちらの名前で選んでも
+    値が引けるよう、aliases表(base.js)で相互に読み替える。
+    これが無いと、古い予定しか無い設備では「項目を変えても内容欄が全く変わらない」
+    (該当キーが1つも引けず既定の組み立てへフォールバックし続ける)という
+    見え方になる。実際に報告された不具合。 */
+ function contentValueOf(detail,key){
+  if(!detail)return undefined;
+  const ok=v=>v!==undefined&&v!==null&&String(v).trim()!=='';
+  if(ok(detail[key]))return detail[key];
+  if(typeof aliases==='undefined')return undefined;
+  const names=aliases[key];
+  if(names){                       // keyがalias名 -> 生カラム名を順に試す
+   for(const n of names)if(ok(detail[n]))return detail[n];
+   return undefined;
+  }
+  for(const ak of Object.keys(aliases)){   // keyが生カラム名 -> alias名を試す
+   if(aliases[ak].includes(key)&&ok(detail[ak]))return detail[ak];
+  }
+  return undefined;
+ }
+ /* 候補の正規化。「用途名」と「purposeName」のように同じ意味の項目が2つ並ぶと
+    どちらを選ぶべきか分からず、しかも片方は古い予定で引けない。alias表に
+    載っている項目はalias名へ寄せて1つにまとめる(表示は日本語名)。 */
+ function canonicalContentKey(k){
+  if(typeof aliases==='undefined')return k;
+  if(aliases[k])return k;
+  for(const ak of Object.keys(aliases))if(aliases[ak].includes(k))return ak;
+  return k;
+ }
+
  // 選択候補: 今表示している仕掛一覧の全列 + 既に予定へ入っている行が持つ
  // detailのキー(過去に別の列構成で投入した予定も編集できるようにするため)。
  function contentCandidateKeys(){
-  const set=new Set((typeof S!=='undefined'&&Array.isArray(S.columns))?S.columns:[]);
-  scState.entries.forEach(e=>{if(e.detail)Object.keys(e.detail).forEach(k=>set.add(k))});
-  return [...set];
+  // 今表示している仕掛一覧の全列 + 既に予定へ入っている行が持つdetailのキー
+  // (過去に別の列構成で投入した予定も編集できるように)+ 既定の項目
+  // (予定がまだ1件も無い設備でも既定を選べるように)。
+  const raw=[...(typeof S!=='undefined'&&Array.isArray(S.columns)?S.columns:[])];
+  scState.entries.forEach(e=>{if(e.detail)raw.push(...Object.keys(e.detail))});
+  raw.push(...DEFAULT_CONTENT_ITEMS);
+  const seen=new Set(),out=[];
+  raw.forEach(k=>{const c=canonicalContentKey(k);if(!seen.has(c)){seen.add(c);out.push(c)}});
+  return out;
+ }
+ // 保存前でも結果が分かるよう、先頭の予定を使って「内容」欄の見え方を作る。
+ function contentPreviewText(items){
+  const sample=scState.entries.find(e=>e.kind==='作業'&&e.detail&&Object.keys(e.detail).length);
+  if(!items.length)return '(既定の組み立て)';
+  if(!sample)return items.map(contentItemLabel).join(' / ');
+  const parts=items.map(k=>contentValueOf(sample.detail,k)).filter(v=>v!==undefined);
+  return parts.length?parts.map(v=>String(v).trim()).join(' / '):'(この予定には該当データがありません)';
  }
  function renderContentModalBody(){
-  const body=document.getElementById('scContentModalBody');if(!body)return;
-  if(!scState.equipment){body.innerHTML='<div class="sc-empty-note">設備を選択してください。</div>';return}
+  const body=document.getElementById('scContentModalBody'),foot=document.getElementById('scContentModalFoot');
+  if(!body||!foot)return;
+  if(!scState.equipment){body.innerHTML='<div class="sc-empty-note">設備を選択してください。</div>';foot.innerHTML='';return}
   const candidates=contentCandidateKeys();
-  if(!candidates.length){body.innerHTML='<div class="sc-empty-note">仕掛一覧を先に開いてください(項目名の取得が必要です)。</div>';return}
   const chosen=contentDraft;
-  const rest=candidates.filter(k=>!chosen.includes(k));
-  body.innerHTML=`<p class="sc-drop-hint">${esc(scState.equipment)}のタイムライン「内容」欄に出す項目を、出したい順に選びます。未選択のままなら既定(ロット番号・用途名・製造材質・調質)で表示します。<br>※予定に入れた時点の仕掛データを保存して表示しているため、その項目をまだ持っていない古い予定は既定の表示のままになります(新しく追加した予定から反映されます)。</p>
-   <div class="sc-content-chosen-head">表示する項目（上から順に並びます）</div>
+  const q=String(contentFilter||'').trim().toLowerCase();
+  const rest=candidates.filter(k=>!chosen.includes(k))
+   .filter(k=>!q||contentItemLabel(k).toLowerCase().includes(q)||String(k).toLowerCase().includes(q));
+  const isDefault=sameItems(chosen,DEFAULT_CONTENT_ITEMS);
+  body.innerHTML=`<p class="sc-drop-hint">${esc(scState.equipment)}のタイムライン「内容」欄に出す項目を、出したい順に選びます。${isDefault?'いまは既定と同じ組み合わせです。':''}<br>※予定に入れた時点の仕掛データを保存して表示しているため、その項目をまだ持っていない古い予定は既定の表示のままになります(新しく追加した予定から反映されます)。</p>
+   <div class="sc-content-chosen-head">表示する項目<small>上から順に並びます</small></div>
    <div class="sc-content-chosen" id="scContentChosen">${
-     chosen.length?chosen.map((k,i)=>`<div class="sc-content-item" data-i="${i}"><span class="sc-content-ord">${i+1}</span><span class="sc-content-name">${esc(k)}</span>
+     chosen.length?chosen.map((k,i)=>`<div class="sc-content-item" data-i="${i}"><span class="sc-content-ord">${i+1}</span><span class="sc-content-name" title="${esc(k)}">${esc(contentItemLabel(k))}</span>
        <button type="button" data-act="up" title="上へ"${i===0?' disabled':''}>▲</button>
        <button type="button" data-act="down" title="下へ"${i===chosen.length-1?' disabled':''}>▼</button>
        <button type="button" data-act="del" title="外す">×</button></div>`).join('')
      :'<div class="sc-empty-note">未選択（既定の組み立てで表示します）</div>'}</div>
-   <div class="sc-content-chosen-head">追加できる項目</div>
-   <div class="sc-column-list" id="scContentRest">${rest.map(k=>`<button type="button" class="sc-content-add" data-key="${esc(k)}">＋ ${esc(k)}</button>`).join('')||'<div class="sc-empty-note">すべて選択済みです</div>'}</div>
-   <div class="sc-column-actions">
+   <div class="sc-content-chosen-head">追加できる項目
+     <input type="search" id="scContentFilter" class="sc-content-filter" placeholder="項目名で絞り込み" value="${esc(contentFilter||'')}" autocomplete="off"></div>
+   <div class="sc-column-list" id="scContentRest">${rest.map(k=>`<button type="button" class="sc-content-add" data-key="${esc(k)}" title="${esc(k)}">＋ ${esc(contentItemLabel(k))}</button>`).join('')||'<div class="sc-empty-note">該当する項目がありません</div>'}</div>`;
+
+  // 保存はスクロールの外(固定フッター)。押す前に結果が分かるようプレビューを添える。
+  foot.innerHTML=`<div class="sc-content-preview"><span class="sc-content-preview-label">表示例</span><b>${esc(contentPreviewText(chosen))}</b></div>
+   <div class="sc-content-foot-actions">
+    <button type="button" id="scContentDefault" title="既定の組み合わせに戻します">既定に戻す</button>
     <button type="button" id="scContentClear">すべて外す</button>
     <button type="button" id="scContentSave" class="sc-column-save">保存</button>
    </div>`;
+
   body.querySelectorAll('#scContentChosen .sc-content-item').forEach(el=>{
    const i=+el.dataset.i;
    el.querySelectorAll('button[data-act]').forEach(b=>{
@@ -1537,12 +1616,24 @@
    });
   });
   body.querySelectorAll('.sc-content-add').forEach(b=>{b.onclick=()=>{contentDraft.push(b.dataset.key);renderContentModalBody()}});
-  body.querySelector('#scContentClear').onclick=()=>{contentDraft=[];renderContentModalBody()};
-  body.querySelector('#scContentSave').onclick=saveContentSelection;
+  const filter=body.querySelector('#scContentFilter');
+  if(filter)filter.oninput=()=>{
+   contentFilter=filter.value;
+   const pos=filter.selectionStart;
+   renderContentModalBody();
+   const again=document.getElementById('scContentFilter');
+   if(again){again.focus();try{again.setSelectionRange(pos,pos)}catch(e){/* 位置復元は補助的なもの */}}
+  };
+  foot.querySelector('#scContentClear').onclick=()=>{contentDraft=[];renderContentModalBody()};
+  foot.querySelector('#scContentDefault').onclick=()=>{contentDraft=[...DEFAULT_CONTENT_ITEMS];renderContentModalBody()};
+  foot.querySelector('#scContentSave').onclick=saveContentSelection;
  }
  async function saveContentSelection(){
   if(!scState.equipment)return;
-  const eq=scState.equipment,toSave=[...contentDraft];
+  const eq=scState.equipment;
+  // 既定と同じ並びなら「未設定」として保存する。表示のされ方は変わらないのに
+  // 設定済み扱いになると、既定側を後から変えても追随しなくなるため。
+  const toSave=sameItems(contentDraft,DEFAULT_CONTENT_ITEMS)?[]:[...contentDraft];
   try{
    await api('/api/schedule-content-master',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify(withUserId({equipment:eq,items:toSave}))});
@@ -1553,7 +1644,10 @@
  }
  function openContentModal(){
   ensureContentModal();
-  contentDraft=(scContentPrefs.equipment===scState.equipment&&scContentPrefs.items)?[...scContentPrefs.items]:[];
+  // 未設定なら「今表示されている既定の組み立て」を選択済みの状態で開く
+  // (何も選ばれていない空の画面から始めさせない)。
+  contentDraft=(scContentPrefs.equipment===scState.equipment&&scContentPrefs.items)?[...scContentPrefs.items]:[...DEFAULT_CONTENT_ITEMS];
+  contentFilter='';
   renderContentModalBody();
   document.getElementById('scContentModal').hidden=false;contentModalOpen=true;
   updateSplitToggleUi();
