@@ -33,7 +33,7 @@
               editable:false,pickerEnabled:false,stopReasons:[],dragId:null,
               boardMode:'single',boardWindowHours:24,overview:[],overviewSort:'order',
               sessionHeld:false,sessionHolder:null,sessionError:null,
-              canStartWork:false,historyHours:loadHistoryHours()};
+              canStartWork:false,historyHours:loadHistoryHours(),groupMode:'none'};
  let scLockTimer=null;
  // ---------- 編集セッション(§9.11新設)・書込キュー ----------
  let scSessionTimer=null,scSessionHeldFor=null,scTempIdSeq=0;
@@ -97,6 +97,10 @@
       <button type="button" class="sc-board-window-btn" data-hours="24">24時間</button>
       <button type="button" class="sc-board-window-btn" data-hours="48">48時間</button>
      </div>
+     <label class="sc-history-range" id="scGroupRange" hidden title="タイムラインを日付・勤務・区分でまとめて表示します">
+      <span>まとめ</span>
+      <select id="scGroupSelect">${SC_GROUP_MODES.map(m=>`<option value="${m.key}">${m.label}</option>`).join('')}</select>
+     </label>
      <label class="sc-history-range" id="scHistoryRange" hidden title="完了した予定と実績を、今から何時間前まで表示するかを選びます">
       <span>表示範囲</span>
       <select id="scHistorySelect">${SC_HISTORY_CHOICES.map(h=>`<option value="${h}">直近${h}時間</option>`).join('')}</select>
@@ -131,6 +135,14 @@
   if(grid&&grid.parentNode)grid.parentNode.insertBefore(panel,grid);else document.body.appendChild(panel);
   $('#scClose').onclick=exitScheduleView;
   $('#scRefresh').onclick=()=>refreshCurrentMode();
+  const grp=$('#scGroupSelect');
+  scState.groupMode=loadGroupMode();
+  grp.value=scState.groupMode;
+  grp.onchange=()=>{
+   scState.groupMode=grp.value;
+   try{localStorage.setItem(SC_GROUP_KEY,scState.groupMode)}catch(err){/* 保存できなくても表示は変わる */}
+   renderTimeline();
+  };
   const hist=$('#scHistorySelect');
   hist.value=String(scState.historyHours);
   hist.onchange=()=>{
@@ -603,6 +615,7 @@
   $('#scSingleBody').hidden=inBoard;
   $('#scBoardWindow').hidden=!inBoard;
   const histWrap=$('#scHistoryRange');if(histWrap)histWrap.hidden=inBoard;
+  const grpWrap=$('#scGroupRange');if(grpWrap)grpWrap.hidden=inBoard;
   if(scState.pickerEnabled)$('#scEquipmentSelect').hidden=inBoard;
   updateSideUi();
   const stopBtn=$('#scStopModalBtn');if(stopBtn)stopBtn.hidden=!scState.fullControl||inBoard;
@@ -979,6 +992,21 @@
   );
  }
 
+ /* ---------- 日時ロック(§9.38) ----------
+    日付を決めて置きたいロットは「鍵をかけて」その日時へ釘付けにする。
+    ロックの実体は既存の固定開始日時(fixedStart)そのもので、新しい列も
+    保存先も増やしていない。ロックしていない行は従来どおり、現在時刻を
+    起点に前から順に詰めて並ぶため、時間が経つほど自動的に後ろへずれる。 */
+ function toggleEntryLock(e){
+  if(e.fixedStart){updateFixedStart(e.id,'');return}
+  // 今この行が置かれている予定日時でそのまま固定する。使う側の頭の中では
+  // 「今この位置でいい、これ以上ずらしたくない」なので、日時入力を出して
+  // 打ち直させない(細かく変えたい場合は詳細パネルの日時欄で調整できる)。
+  const base=e.plannedStart||e.fixedStart;
+  if(!base){alert('この予定はまだ予定日時が決まっていないため固定できません。');return}
+  updateFixedStart(e.id,fmtLocalInput(base));
+ }
+
  /* ---------- 高密度リスト表示(§9.3改訂) ----------
     「リスト形式並みの高密度、1ロット1行、20行程度見えるように」という
     要望に合わせ、従来の縦長カード(.sc-card)から表形式の1行(.sc-row-line)へ
@@ -1014,10 +1042,6 @@
   const sameDay=new Date(startIso).toDateString()===new Date(endIso).toDateString();
   return `${startText}〜${fmtHM(endIso)}${sameDay?'':'(翌)'}`;
  }
- function stateIcon(kind,state){
-  if(kind==='設備停止')return '⛔';
-  return {'予定':'○','着手':'▶','完了':'✓','取消':'✕'}[state]||'○';
- }
  function stateRowClass(state){
   if(state==='完了')return 'sc-row-done';
   if(state==='着手')return 'sc-row-active';
@@ -1042,7 +1066,7 @@
   return `${e.lotNo||'-'} ${e.detail?.purposeName||''} ${e.detail?.mfgMaterial||''}${e.detail?.mfgTemper?'-'+e.detail.mfgTemper:''}`.trim();
  }
  const ROW_HEAD_HTML=`<div class="sc-row-head">
-  <span></span><span></span><span>日付</span><span>時刻</span><span>勤務</span><span>残り</span><span>内容</span><span>見積</span><span>実績</span><span>備考</span><span>操作</span>
+  <span></span><span>区分</span><span>日付</span><span>時刻</span><span>勤務</span><span>残り</span><span>内容</span><span>見積</span><span>実績</span><span>備考</span><span>操作</span>
  </div>`;
 
  /* ---------- 実施中/予定/実績のグルーピング(§9.34) ----------
@@ -1065,32 +1089,98 @@
   const t=new Date(at).getTime();
   return Number.isNaN(t)?true:t>=historyCutoff();
  }
- function groupEntries(entries){
-  const running=[],planned=[],history=[];
-  entries.forEach(e=>{
-   if(e.state==='着手')running.push(e);
-   else if(e.state==='完了'||e.state==='取消'){if(withinHistory(e))history.push(e)}
-   else planned.push(e);
-  });
-  // 実績は新しい順(直前に終わったものが一番上)
-  history.sort((a,b)=>{
-   const ta=new Date((a.actual&&(a.actual.endAt||a.actual.startAt))||0).getTime()||0;
-   const tb=new Date((b.actual&&(b.actual.endAt||b.actual.startAt))||0).getTime()||0;
-   return tb-ta;
-  });
-  return {running,planned,history};
+
+ /* ---------- 区分(カテゴリ)と並び順(§9.39) ----------
+    完了済み・作業中・作業予定の3区分。以前はセクション見出しで分けて
+    いたが、行の中の「区分」列で持つ形にした(見出し方式だと、日付や勤務で
+    まとめ直したいときに区分の見出しと二重になってしまう)。
+
+    並び順は**時刻の一本道**にする。3区分はそれぞれ代表時刻を持ち、
+      完了 : 実績の終了時刻(過去)
+      作業中: 実績の開始時刻(過去に始まり、予定終了は常に現在時刻=§9.37)
+      予定 : 予定開始時刻(未来)
+    なので、単純に時刻順へ並べるだけで「完了 → 作業中 → 予定」になる。
+    区分ごとに並びを組み立てる必要は無い。 */
+ const SC_CATEGORIES={
+  done:{key:'done',label:'完了',icon:'✓'},
+  doing:{key:'doing',label:'作業中',icon:'▶'},
+  planned:{key:'planned',label:'予定',icon:'○'},
+  cancel:{key:'cancel',label:'取消',icon:'✕'},
+  stop:{key:'stop',label:'設備停止',icon:'⛔'},
+ };
+ function categoryOf(e){
+  if(e.state==='取消')return SC_CATEGORIES.cancel;
+  if(e.state==='完了')return SC_CATEGORIES.done;
+  if(e.state==='着手')return SC_CATEGORIES.doing;
+  if(e.kind==='設備停止')return SC_CATEGORIES.stop;
+  return SC_CATEGORIES.planned;
  }
- function groupHeadHtml(label,count,note){
+ /* 行の代表時刻。並び替え・日付/勤務のまとめ・表示範囲の判定すべてが
+    これを使う(判定ごとに別の時刻を見ると、まとめた見出しと行の日付が
+    食い違う)。 */
+ function rowTimeOf(e){
+  const iso=(e.state==='完了'||e.state==='取消')
+   ?((e.actual&&(e.actual.startAt||e.actual.endAt))||null)
+   :(e.plannedStart||null);
+  if(!iso)return null;
+  const t=new Date(iso).getTime();
+  return Number.isNaN(t)?null:t;
+ }
+ function visibleEntries(){
+  const list=scState.entries.filter(e=>{
+   if(e.state==='完了'||e.state==='取消')return withinHistory(e);
+   return true;
+  });
+  // 時刻の無い行(展開しきれなかった予定など)は末尾へ寄せて順序を保つ
+  return list.map((e,i)=>({e,i,t:rowTimeOf(e)}))
+   .sort((a,b)=>{
+    if(a.t===null&&b.t===null)return a.i-b.i;
+    if(a.t===null)return 1;
+    if(b.t===null)return -1;
+    return a.t===b.t?a.i-b.i:a.t-b.t;
+   })
+   .map(x=>x.e);
+ }
+
+ /* ---------- まとめ方(§9.40) ---------- */
+ const SC_GROUP_MODES=[
+  {key:'none',label:'まとめない'},
+  {key:'date',label:'日付ごと'},
+  {key:'shift',label:'勤務ごと'},
+  {key:'category',label:'区分ごと'},
+ ];
+ const SC_GROUP_KEY='ScheduleGroupModeV1';
+ function loadGroupMode(){
+  try{
+   const v=localStorage.getItem(SC_GROUP_KEY);
+   if(SC_GROUP_MODES.some(m=>m.key===v))return v;
+  }catch(err){/* 保存値が壊れていても既定で続行する */}
+  return 'none';
+ }
+ function groupBucketOf(e){
+  if(scState.groupMode==='date'){
+   const t=rowTimeOf(e);
+   return t===null?{key:'-',label:'日付未定'}:{key:fmtDateTitle(new Date(t).toISOString()),label:fmtDateTitle(new Date(t).toISOString())};
+  }
+  if(scState.groupMode==='shift'){
+   const v=e.shift||'';
+   return {key:v||'-',label:v||'勤務未設定'};
+  }
+  if(scState.groupMode==='category'){
+   const c=categoryOf(e);
+   return {key:c.key,label:c.label};
+  }
+  return null;
+ }
+ function groupHeadHtml(label,count){
   return `<div class="sc-group-head"><span class="sc-group-label">${esc(label)}</span>`
-   +`<span class="sc-group-count">${count}件</span>`
-   +(note?`<span class="sc-group-note">${esc(note)}</span>`:'')+`</div>`;
+   +`<span class="sc-group-count">${count}件</span></div>`;
  }
 
  function renderTimeline(){
   const timeline=$('#scTimeline');
-  const groups=groupEntries(scState.entries);
-  const total=groups.running.length+groups.planned.length+groups.history.length;
-  if(!total){
+  const list=visibleEntries();
+  if(!list.length){
    timeline.innerHTML=scState.entries.length
     ?`<div class="sc-empty-note">表示範囲(直近${scState.historyHours}時間)に該当する予定・実績がありません。表示範囲を広げてください。</div>`
     :'<div class="sc-empty-note">この設備の予定はまだありません。</div>';
@@ -1098,22 +1188,26 @@
    return;
   }
   timeline.innerHTML='';
-  // 各セクションは必ず専用のコンテナへ入れる。並べ替え(wireDrag/moveCard/
-  // commitDragOrder)はDOMの兄弟関係でしか動かないため、素の兄弟として
-  // 並べると「予定」の行を「実績」の位置へドラッグできてしまう。
-  const section=(key,label,list,note,showGaps)=>{
-   if(!list.length)return;
+  // まとめない場合も含め、行は必ず.sc-groupコンテナへ入れる。並べ替え
+  // (wireDrag/moveCard/commitDragOrder)はDOMの兄弟関係だけで動くため、
+  // まとめた見出しを素の兄弟に挟むと行が見出しを跨いで動いてしまう。
+  const buckets=[];
+  list.forEach(e=>{
+   const b=groupBucketOf(e);
+   const key=b?b.key:'__all__';
+   let last=buckets[buckets.length-1];
+   if(!last||last.key!==key){last={key,label:b?b.label:'',rows:[]};buckets.push(last)}
+   last.rows.push(e);
+  });
+  buckets.forEach(bucket=>{
    const box=document.createElement('div');
-   box.className='sc-group';box.dataset.group=key;
-   box.insertAdjacentHTML('beforeend',groupHeadHtml(label,list.length,note));
+   box.className='sc-group';box.dataset.group=bucket.key;
+   if(bucket.label)box.insertAdjacentHTML('beforeend',groupHeadHtml(bucket.label,bucket.rows.length));
    box.insertAdjacentHTML('beforeend',ROW_HEAD_HTML);
    let lastEnd=null;
-   list.forEach(e=>renderEntryRow(box,e,showGaps,()=>lastEnd,v=>{lastEnd=v}));
+   bucket.rows.forEach(e=>renderEntryRow(box,e,true,()=>lastEnd,v=>{lastEnd=v}));
    timeline.append(box);
-  };
-  section('running','実施中',groups.running,groups.running.some(e=>e.unplanned)?'計画外の作業も含みます':'',false);
-  section('planned','予定',groups.planned,'',true);
-  section('history','実績',groups.history,`直近${scState.historyHours}時間`,false);
+  });
   refreshScheduledLotFilter();
  }
 
@@ -1132,10 +1226,16 @@
    }
    if(e.plannedEnd)setLastEnd(e.plannedEnd);
 
+   const cat=categoryOf(e);
+   const locked=!!e.fixedStart;
    const row=document.createElement('div');
-   row.className='sc-row-line '+stateRowClass(e.state)+(e.__pending?' sc-row-pending':'');
+   row.className='sc-row-line '+stateRowClass(e.state)
+    +(e.__pending?' sc-row-pending':'')+(locked?' sc-row-locked':'')+(e.ongoing?' sc-row-ongoing':'');
    row.dataset.id=e.id;
-   const canDrag=scState.editable&&e.reorderable&&!e.__pending&&!sessionBlocked();
+   // ロック(§9.38)された行はその日時に釘付けなので、並べ替えても時刻が
+   // 変わらない。動かせるのに何も起きない状態は紛らわしいためドラッグ対象
+   // から外す(解除すれば通常のロットと同じように流れる)。
+   const canDrag=scState.editable&&e.reorderable&&!e.__pending&&!locked&&!sessionBlocked();
    row.draggable=canDrag;
    if(canDrag)row.tabIndex=0;
 
@@ -1147,10 +1247,20 @@
    const showEnd=useActual?e.actual.endAt:e.plannedEnd;
    const dateText=showStart?fmtDateShort(showStart):'-';
    const dateTitle=showStart?fmtDateTitle(showStart):'';
-   const timeText=showStart?fmtTimeRange(showStart,showEnd):(e.state==='完了'||e.state==='取消'?'-':'未定');
-   const timeTitle=showStart?`${useActual?'実績 ':''}${fmtDateTime(showStart)} 〜 ${fmtDateTime(showEnd)}`:'';
+   // 作業中(§9.37)はまだ終わっていない。予定終了は常に現在時刻なので、
+   // 終了時刻を数字で出すと「もう終わったように」見える。「継続中」と出す。
+   let timeText,timeTitle;
+   if(e.ongoing){
+    timeText=`${fmtHM(showStart)}〜継続中`;
+    timeTitle=`実績開始 ${fmtDateTime(showStart)} / 未完了のため予定終了は現在時刻`;
+   }else{
+    timeText=showStart?fmtTimeRange(showStart,showEnd):(e.state==='完了'||e.state==='取消'?'-':'未定');
+    timeTitle=showStart?`${useActual?'実績 ':''}${fmtDateTime(showStart)} 〜 ${fmtDateTime(showEnd)}`:'';
+   }
    const shiftText=e.shift||'-';
-   const relText=e.startsInMinutes!=null?(fmtRelative(e.startsInMinutes)||'今'):'-';
+   const relText=e.ongoing
+    ?'作業中'
+    :(e.startsInMinutes!=null?(fmtRelative(e.startsInMinutes)||'今'):'-');
    const estText=e.estimate?fmtCompact(e.estimate.minutes):'-';
    const estDefault=e.estimate&&e.estimate.source==='default';
    let actualText='-';
@@ -1163,6 +1273,7 @@
    }
    const flags=[
     e.unplanned?'<span class="sc-flag sc-flag-unplanned" title="予定に無い実績です(仕掛一覧から直接開始した作業など)">計画外</span>':'',
+    locked?`<span class="sc-flag sc-flag-locked" title="固定開始 ${esc(fmtDateTime(e.fixedStart))}">🔒固定</span>`:'',
     e.__pending?'<span class="sc-flag sc-flag-pending" title="サーバーへ反映中です">⏳追加中</span>':'',
     e.overdueMinutes>0?`<span class="sc-flag sc-flag-overdue" title="${Math.round(e.overdueMinutes)}分押しています">⚠${Math.round(e.overdueMinutes)}分</span>`:'',
     e.spansNonWorking?'<span class="sc-flag sc-flag-spans" title="夜間・休日を跨ぎます">🌙</span>':'',
@@ -1173,10 +1284,12 @@
    // §9.35: 編集モード(=実際に測定する端末)なら、予定から直接測定画面を開ける。
    // 開始時刻を打刻すると実績突合(§7.4)でこの行が「実施中」へ移る。
    const canStart=scState.canStartWork&&e.kind==='作業'&&e.state==='予定'&&!e.__pending&&!e.unplanned;
+   // §9.38: 日時で固定する(ロック)。予定を動かせるモードでのみ操作できる。
+   const canLock=scState.fullControl&&e.state==='予定'&&!e.__pending&&!e.unplanned;
 
    row.innerHTML=`
-    <span class="sc-row-handle" title="${canDrag?'ドラッグまたはAlt+↑/↓で並べ替え':''}">${canDrag?'⠿':(e.state==='着手'?'🔒':'')}</span>
-    <span class="sc-row-icon" title="${esc(e.kind)}・${esc(e.state)}">${stateIcon(e.kind,e.state)}</span>
+    <span class="sc-row-handle" title="${canDrag?'ドラッグまたはAlt+↑/↓で並べ替え':(locked?'日時を固定中(ロック)':'')}">${canDrag?'⠿':(locked?'🔒':'')}</span>
+    <span class="sc-row-cat sc-cat-${cat.key}" title="${esc(e.kind)}・${esc(e.state)}"><i>${cat.icon}</i>${esc(cat.label)}</span>
     <span class="sc-row-date" title="${esc(dateTitle)}">${esc(dateText)}</span>
     <span class="sc-row-time" title="${esc(timeTitle)}">${esc(timeText)}</span>
     <span class="sc-row-shift" title="勤務形態マスタで設定した名称です">${esc(shiftText)}</span>
@@ -1187,6 +1300,7 @@
     <span class="sc-row-flags">${flags}</span>
     <span class="sc-row-actions">
      ${canStart?`<button type="button" class="sc-row-btn sc-row-start" title="この予定の測定画面を開いて作業を開始します">▶ 開始</button>`:''}
+     ${canLock?`<button type="button" class="sc-row-btn sc-row-lock${locked?' active':''}" title="${locked?'固定を解除して通常の並びへ戻します':'今の予定日時でこの行を固定します(以降ずれません)'}">${locked?'🔒':'🔓'}</button>`:''}
      ${detailHtml?`<button type="button" class="sc-row-btn sc-row-detail-toggle" title="詳細を表示">▾</button>`:''}
      ${canDelete?`<button type="button" class="sc-row-btn sc-row-delete" title="削除">🗑</button>`:''}
     </span>`;
@@ -1195,6 +1309,8 @@
    if(del)del.onclick=ev=>{ev.stopPropagation();deleteEntry(e.id)};
    const start=row.querySelector('.sc-row-start');
    if(start)start.onclick=ev=>{ev.stopPropagation();startWorkFromEntry(e)};
+   const lock=row.querySelector('.sc-row-lock');
+   if(lock)lock.onclick=ev=>{ev.stopPropagation();toggleEntryLock(e)};
    timeline.append(row);
 
    if(detailHtml){
@@ -1371,17 +1487,35 @@
   // DOM順に合わせて並べ直しておくことで、キュー処理中に追加・削除の
   // 再描画が挟まってもドラッグ結果が消えない(§9.11)。実際のAPI呼び出しは
   // バックグラウンドの書込キューへ積み、画面をブロックしない。
-  // 並べ替えの対象は「予定」セクションだけ。実施中・実績の行まで拾うと、
-  // 表示上の並び(実施中→予定→実績)をそのまま予定の順序としてサーバーへ
-  // 送ってしまう。
-  const host=$('#scTimeline .sc-group[data-group="planned"]')||$('#scTimeline');
-  const domIds=[...host.querySelectorAll('.sc-row-line')].map(c=>c.dataset.id);
+  /* **表示順と予定順は同じではない。** タイムラインは時刻順に並べる
+     (§9.39)ため、ロック(§9.38)された予定が固定日時どおりの位置へ割り込む。
+     画面の並びをそのまま送ると、その割り込み位置が予定順として保存されて
+     しまい、ロックを外した瞬間に意図しない順序になる。
+     そこで「ロック行は予定順の位置に据え置き、動かせる行(=ロックしていない
+     予定)だけを画面の並びで差し替える」形で新しい予定順を組み立てる。
+     plan_reorderは並べ替え対象の全件と過不足なく一致するIDを要求するため
+     (部分並べ替えは受け付けない)、ロック行も必ず含める。 */
   const byId=new Map(scState.entries.map(e=>[String(e.id),e]));
-  const dragged=domIds.map(id=>byId.get(id)).filter(Boolean);
-  const ids=dragged.filter(e=>e.reorderable).map(e=>e.id);
-  const draggedSet=new Set(dragged.map(e=>String(e.id)));
-  const others=scState.entries.filter(e=>!draggedSet.has(String(e.id)));
-  scState.entries=[...others.filter(e=>e.state==='着手'),...dragged,...others.filter(e=>e.state!=='着手')];
+  const planOrder=scState.entries.filter(e=>e.reorderable);
+  const domIds=[...$('#scTimeline').querySelectorAll('.sc-row-line')].map(c=>c.dataset.id);
+  const movableDom=domIds.map(id=>byId.get(id)).filter(e=>e&&e.reorderable&&!e.fixedStart);
+  const movablePlan=planOrder.filter(e=>!e.fixedStart);
+  if(movableDom.length!==movablePlan.length){
+   // 想定外(描画と状態がずれている)。順序を壊すより何もしない方が安全。
+   console.warn('並べ替え対象の件数が画面と一致しないため、並べ替えを中止しました',
+    movableDom.length,movablePlan.length);
+   renderTimeline();
+   return;
+  }
+  let mi=0;
+  const nextPlan=planOrder.map(e=>e.fixedStart?e:movableDom[mi++]);
+  const ids=nextPlan.map(e=>e.id);
+  // 画面をブロックしないよう、ローカルの並びも先に更新しておく(§9.11)。
+  // 並べ替え対象の位置(スロット)はそのままに、中身だけ新しい順序へ差し替える。
+  const rest=scState.entries.filter(e=>!e.reorderable);
+  const slots=scState.entries.map(e=>e.reorderable);
+  let ri=0,pi=0;
+  scState.entries=slots.map(isPlan=>isPlan?nextPlan[pi++]:rest[ri++]);
   const equipment=scState.equipment;
   queueScheduleWrite(async()=>{
    try{

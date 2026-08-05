@@ -23,7 +23,6 @@ from .repositories import schedule_repo as sr
 from .repositories.master_repo import normalize_equipment_name
 from .db_access import merged_backup_rows, connect as _sqlite_connect
 
-MIN_REMAIN_MINUTES=5
 MAX_HORIZON_DAYS=60
 DEFAULT_ESTIMATE_MINUTES=120.0
 PLAN_TERMINAL_STATES=('完了','取消')
@@ -347,15 +346,22 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
  # アンカー決定(§7.2): 展開対象(完了/取消を除く)の先頭を見る
  active=[e for e in entries if e['state'] not in PLAN_TERMINAL_STATES]
  timeline=build_slot_timeline(specific_cal,global_cal,now.date())
- first_remaining_override=None
- if active and active[0]['state']=='着手' and active[0]['actual'] and active[0]['actual'].get('startAt'):
-  try:
-   anchor=_parse_dt(active[0]['actual']['startAt']) or now
-  except Exception:
-   anchor=now
-  est0=resolve_estimate(mc,equipment,active[0])
-  elapsed=max(0.0,_minutes_between(anchor,now))
-  first_remaining_override=max(est0['minutes']-elapsed,MIN_REMAIN_MINUTES)
+ # 着手中(§9.37): まだ終わっていない作業。予定終了は「現在時刻」とし、
+ # 後続の予定はそこから並べる。以前は「残り見積(見積-経過、下限5分)」を
+ # 足した時刻を予定終了にしていたが、見積を超過した瞬間から
+ #   - 予定終了が下限5分で頭打ちになり実態と合わない
+ #   - 後続の予定開始が「もう過ぎているのに未来」の値になる
+ # という食い違いが出ていた。現在時刻で切れば、時間が経つほど後続も
+ # 自然に後ろへずれ、常に整合が取れる(§9.38の「現在時刻に追随して流れる」)。
+ ongoing_ids=set()
+ ongoing_starts=[]
+ for e in active:
+  if e['state']=='着手' and e.get('actual') and e['actual'].get('startAt'):
+   started=_parse_dt(e['actual']['startAt'])
+   if started is not None:
+    ongoing_ids.add(id(e));ongoing_starts.append(started)
+ if ongoing_starts:
+  anchor=min(ongoing_starts)
  else:
   anchor,_waited=snap_to_working(now,timeline)
   if anchor is None:
@@ -371,20 +377,41 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
    continue
   est=resolve_estimate(mc,equipment,e)
   minutes=est['minutes']
-  if e is active[0] and first_remaining_override is not None:
-   minutes=first_remaining_override
-   est=dict(est,minutes=minutes,source='remaining')
+  if id(e) in ongoing_ids:
+   # 実績の開始時刻から「現在時刻まで」。終わっていないので予定終了は
+   # 常に現在時刻(継続中)。見積を超えている分はoverdueMinutesで示す。
+   started=_parse_dt(e['actual']['startAt']) or now
+   elapsed=max(0.0,_minutes_between(started,now))
+   e['plannedStart']=started.isoformat()
+   e['plannedEnd']=now.isoformat()
+   e['ongoing']=True
+   e['startsInMinutes']=round(_minutes_between(now,started),1)
+   e['estimate']=dict(est,minutes=round(est['minutes'],1))
+   e['reorderable']=False
+   e['spansNonWorking']=False
+   e['overdueMinutes']=round(max(0.0,elapsed-est['minutes']),1)
+   e['shift']=resolve_shift_label(specific_shift,global_shift,started)
+   # 後続はすべて現在時刻から並べ直す(着手中が複数あっても基準は1つ)
+   next_cursor,_w=snap_to_working(now,timeline)
+   cursor=next_cursor if next_cursor is not None else now
+   continue
   fixed_start=None
   if e.get('fixedStart'):
    try:fixed_start=_parse_dt(e['fixedStart'])
    except Exception:fixed_start=None
-  waited_minutes=0.0
-  if fixed_start and fixed_start>cursor:
-   waited_minutes=_minutes_between(cursor,fixed_start)
-   cursor=fixed_start
   overdue=0.0
-  if fixed_start and fixed_start<cursor:
-   overdue=_minutes_between(fixed_start,cursor)
+  resume_from=None
+  if fixed_start:
+   # ロック(§9.38): 固定した日時からは動かさない。以前は前工程が押して
+   # カーソルが固定時刻を過ぎていると、その分だけ後ろへずらして配置して
+   # いた(遅れの記録は残るが位置は動く)。それでは「鍵をかけたのに
+   # 時間が経つとずれていく」ことになり、日付を決めて置いた意味が無い。
+   # 表示位置は必ず固定時刻に据え置き、ぶつかっている分はoverdueで知らせる。
+   if fixed_start<cursor:
+    overdue=_minutes_between(fixed_start,cursor)
+    # 後続の予定はカーソルを巻き戻さない(過去へ置いてしまうため)。
+    resume_from=cursor
+   cursor=fixed_start
   cursor,_waited=snap_to_working(cursor,timeline)
   if cursor is None:
    truncated=True
@@ -406,8 +433,11 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
    e['shift']=resolve_shift_label(specific_shift,global_shift,planned_start)
    warnings.append(f"予定ID {e['id']} は稼働カレンダー上、{MAX_HORIZON_DAYS}日以内に収まりません。")
    continue
+  # この予定自身の終了はend_cursor。後続を進めるカーソルだけ、ロックで
+  # 巻き戻した分(resume_from)まで戻す(この行のplannedEndには混ぜない)。
+  e['plannedStart']=planned_start.isoformat();e['plannedEnd']=end_cursor.isoformat()
   cursor=end_cursor
-  e['plannedStart']=planned_start.isoformat();e['plannedEnd']=cursor.isoformat()
+  if resume_from is not None and resume_from>cursor:cursor=resume_from
   e['startsInMinutes']=round(_minutes_between(now,planned_start),1)
   e['estimate']=dict(est,minutes=round(minutes,1))
   e['reorderable']=(e['state']==sr.PLAN_REORDERABLE_STATE) and not e.get('unplanned')
