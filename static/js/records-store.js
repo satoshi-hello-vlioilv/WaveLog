@@ -25,7 +25,51 @@ async function reliablePut(record){
  if(!idbOK&&!mirrorOK)throw Error('端末内保存に失敗しました。ブラウザーの保存領域を確認してください。');
  return{idbOK,mirrorOK};
 }
-async function reliableDelete(id){try{await idbDelete(id)}catch(e){console.warn(e)}try{mirrorDelete(id)}catch(e){console.warn(e)}}
+/* 端末内データの削除。**バックアップ(records.sqlite3)からも必ず消す**。
+   以前は端末内(IndexedDB+ミラー)だけを消していたため、バックアップに行が
+   残り続けた。作業スケジュールの実績突合はバックアップを見るので、
+   「データ一覧には何も無いのに、スケジュールには作業中(開始だけで終了が
+   無い)が並ぶ」という食い違いが起きていた(§9.52)。
+   サーバーへ届かなかった分は端末に控えて次回まとめて消す(削除は端末側で
+   既に済んでおり、ここで失敗を握りつぶすと残骸が永久に残るため)。 */
+const PENDING_BACKUP_DELETE_KEY='WaveLogPendingBackupDeleteV1';
+function pendingBackupDeletes(){
+ try{const v=JSON.parse(localStorage.getItem(PENDING_BACKUP_DELETE_KEY)||'[]');return Array.isArray(v)?v:[]}
+ catch(e){return []}
+}
+function setPendingBackupDeletes(ids){
+ try{localStorage.setItem(PENDING_BACKUP_DELETE_KEY,JSON.stringify([...new Set(ids)].slice(0,500)))}
+ catch(e){/* 保存できなくても削除自体は続ける */}
+}
+async function deleteBackupRows(ids){
+ const list=[...new Set((ids||[]).filter(Boolean))];
+ if(!list.length)return true;
+ try{
+  await api('/api/measurement/backup/delete',{method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({ids:list})});
+  return true;
+ }catch(e){
+  console.warn('バックアップの削除に失敗(次回まとめて再試行します)',e);
+  setPendingBackupDeletes([...pendingBackupDeletes(),...list]);
+  return false;
+ }
+}
+/* 前回消せなかったバックアップ行を消す。起動時と、データ一覧を開いたときに走る。 */
+async function flushPendingBackupDeletes(){
+ const ids=pendingBackupDeletes();
+ if(!ids.length)return;
+ setPendingBackupDeletes([]);          // 失敗したらdeleteBackupRowsが積み直す
+ await deleteBackupRows(ids);
+}
+window.flushPendingBackupDeletes=flushPendingBackupDeletes;
+async function reliableDelete(id){
+ try{await idbDelete(id)}catch(e){console.warn(e)}
+ try{mirrorDelete(id)}catch(e){console.warn(e)}
+ await deleteBackupRows([id]);
+ // 実績が消えたのでスケジュールの予定キャッシュも捨てる(次に開いたときに
+ // 作業中の表示が残らないようにする)。
+ if(typeof window.invalidateSchedulePlanCache==='function')window.invalidateSchedulePlanCache();
+}
 function applyContextSnapshot(x){
  const m=S.measure;if(!m||!x)return;
  optionFill('operator',x.operators,m.settings.operator);optionFill('inspector',x.inspectors||x.operators,m.settings.inspector);
@@ -270,6 +314,9 @@ async function openRecordsSafe(status='編集中'){
  window.exitScheduleView?.();
  window.exitMasterMaint?.();
  showWaiting(status==='履歴'?'完了データを取得しています':'編集中データを取得しています','この端末の保存領域を確認中','IndexedDBと代替保存領域を照合しています');
+ // 一覧を開くのは「端末内に何があるか」を確かめる操作。ここでも未処理の
+ // バックアップ削除を片付けて、一覧とバックアップの食い違いを縮める(§9.52)。
+ flushPendingBackupDeletes().catch(e=>console.warn('バックアップ削除の再試行に失敗',e));
  try{
  const modal=$('#recordModal'),title=$('#recordTitle'),list=$('#recordList');
  title.textContent=status==='履歴'?'完了データ一覧':'編集中データ一覧';
@@ -501,6 +548,9 @@ document.addEventListener('click',event=>{const trigger=event.target.closest('[d
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('#appSettingsModal')?.hidden){$('#appSettingsModal').hidden=true}},true);
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('#changelogModal')?.hidden){$('#changelogModal').hidden=true}},true);
 queueMicrotask(()=>{ensureEquipmentSettingsModal();updateEquipmentEntryPoints()});
+// 前回サーバーへ届かなかったバックアップ削除を片付ける(§9.52)。残したままだと
+// 作業スケジュールに実体の無い「作業中」が出続ける。
+queueMicrotask(()=>{flushPendingBackupDeletes().catch(e=>console.warn('バックアップ削除の再試行に失敗',e))});
 queueMicrotask(async()=>{try{await loadEquipmentMaster();updateEquipmentEntryPoints()}catch(error){console.warn('equipment master init failed',error)}});
 queueMicrotask(()=>{updateRegisteredEquipmentBadge();const start=$('#stampWorkStart'),end=$('#stampWorkEnd');if(start)start.onclick=()=>stampWorkTimeLocked('start');if(end)end.onclick=()=>stampWorkTimeLocked('end')});
 queueMicrotask(()=>{updateEquipmentEntryPoints();const badge=$('#registeredEquipmentBadge');if(badge){badge.setAttribute('role','button');badge.tabIndex=0;badge.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openEquipmentSettingsFinal('manual')}}}});

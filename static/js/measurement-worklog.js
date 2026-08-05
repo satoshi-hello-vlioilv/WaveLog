@@ -1191,48 +1191,90 @@
  function renderImportBackupForm(){
   const form=$('#masterMaintForm');if(!form)return;
   const items=importBackupState.items,supported=items.filter(x=>x.codec==='json-full-v32');
+  // 端末内(IndexedDB)に対応が無い行 = データ一覧に出ないのに実績突合には効く残骸候補(§9.52)
+  const orphans=items.filter(x=>!importBackupState.localIds.has(x.id));
   form.innerHTML=`<div class="mm-form-head"><span class="mm-mode-chip editing">PC引継ぎ専用</span></div>
    <div class="mm-import-warning">
     <b>注意: この操作はこの端末のIndexedDB（編集中/完了データ）を書き換えます。</b>
     <span>records.sqlite3（Web測定バックアップ）の内容を、この端末のローカルデータへ取り込みます。同じIDの既存データは上書きされ、元に戻せません。PC更新・端末交換時の引継ぎなど、特別な場合以外は実行しないでください。</span>
    </div>
    <div class="mm-cd-toolbar">
-    <span class="mm-form-hint">records.sqlite3: ${esc(String(items.length))}件（うち取込可能 ${esc(String(supported.length))}件）</span>
+    <span class="mm-form-hint">records.sqlite3: ${esc(String(items.length))}件（うち取込可能 ${esc(String(supported.length))}件${orphans.length?` ／ <b>この端末に無い ${esc(String(orphans.length))}件</b>`:''}）</span>
     <div class="mm-cd-actions">
      <button type="button" id="mmImpReload" class="mm-btn-ghost sm">再読込</button>
      <button type="button" id="mmImpSelectAll" class="mm-btn-ghost sm">取込可能をすべて選択</button>
+     <button type="button" id="mmImpSelectOrphan" class="mm-btn-ghost sm"${orphans.length?'':' disabled'}>この端末に無いものを選択</button>
      <button type="button" id="mmImpSelectNone" class="mm-btn-ghost sm">選択解除</button>
      <button type="button" id="mmImpRun" class="mm-btn-danger">選択した項目をインポート</button>
+     <button type="button" id="mmImpDelete" class="mm-btn-danger">選択した項目をバックアップから削除</button>
     </div>
-   </div>`;
+   </div>
+   ${orphans.length?`<div class="mm-import-warning is-orphan">
+     <b>この端末のデータ一覧に無いバックアップが ${esc(String(orphans.length))}件あります。</b>
+     <span>作業スケジュールの「作業中」「完了」はこのバックアップを見て表示するため、端末から削除済みのデータが残っていると、データ一覧には何も無いのにスケジュールにだけ作業中が並びます。心当たりの無い行は「この端末に無いものを選択」→「選択した項目をバックアップから削除」で消せます。<b>他のPCで測定したデータをこのPCで参照している場合は、それも「無し」になります。消す前に内容をご確認ください。</b></span>
+    </div>`:''}`;
   form.onsubmit=ev=>ev.preventDefault();
   const reload=$('#mmImpReload'),selAll=$('#mmImpSelectAll'),selNone=$('#mmImpSelectNone'),run=$('#mmImpRun');
   if(reload)reload.onclick=()=>loadImportBackupMaint(true);
   if(selAll)selAll.onclick=()=>document.querySelectorAll('#masterMaintList [data-imp-id]:not(:disabled)').forEach(b=>b.checked=true);
   if(selNone)selNone.onclick=()=>document.querySelectorAll('#masterMaintList [data-imp-id]').forEach(b=>b.checked=false);
   if(run)run.onclick=()=>runImportBackup();
+  const selOrphan=$('#mmImpSelectOrphan'),del=$('#mmImpDelete');
+  if(selOrphan)selOrphan.onclick=()=>{
+   document.querySelectorAll('#masterMaintList [data-imp-id]').forEach(b=>{b.checked=b.dataset.impOrphan==='1'});
+  };
+  if(del)del.onclick=()=>deleteBackupSelection();
  }
  function renderImportBackupList(){
   const list=$('#masterMaintList');if(!list)return;
   const items=importBackupState.items;
   if(!items.length){list.innerHTML='<div class="mm-empty">records.sqlite3に取込可能なバックアップがありません。</div>';return}
-  const tmpl='40px minmax(90px,1fr) minmax(70px,.7fr) minmax(60px,.6fr) minmax(70px,.7fr) minmax(90px,.8fr) minmax(90px,.9fr) 90px';
-  const head=`<div class="mm-row head" style="grid-template-columns:${tmpl}"><span></span><span>ロット番号</span><span>検査番号</span><span>状態</span><span>設備</span><span>更新日時</span><span>形式</span><span>取込先</span></div>`;
+  const tmpl='40px minmax(90px,1fr) minmax(70px,.7fr) minmax(60px,.6fr) minmax(70px,.7fr) minmax(90px,.8fr) minmax(90px,.9fr) 90px 92px';
+  const head=`<div class="mm-row head" style="grid-template-columns:${tmpl}"><span></span><span>ロット番号</span><span>検査番号</span><span>状態</span><span>設備</span><span>更新日時</span><span>形式</span><span>取込先</span><span>端末内</span></div>`;
   const rows=items.map(it=>{
    const supported=it.codec==='json-full-v32';
    const conflict=importBackupState.localIds.has(it.id);
+   // 端末内(IndexedDB)に対応するデータが無い行。データ一覧には出ないのに
+   // 作業スケジュールの実績突合には効いてしまう「残骸」の候補(§9.52)。
+   const orphan=!conflict;
    const targetLabel=supported?(conflict?'<span class="mm-imp-badge overwrite">上書き</span>':'<span class="mm-imp-badge new">新規</span>'):'<span class="mm-imp-badge unsupported">非対応</span>';
-   return `<div class="mm-row" style="grid-template-columns:${tmpl}">`+
-    `<span><input type="checkbox" data-imp-id="${esc(it.id)}"${supported?'':' disabled'}></span>`+
+   return `<div class="mm-row${orphan?' is-orphan':''}" style="grid-template-columns:${tmpl}">`+
+    `<span><input type="checkbox" data-imp-id="${esc(it.id)}" data-imp-orphan="${orphan?1:0}"${supported?'':' disabled'}></span>`+
     `<span title="${esc(it.lotNo)}">${esc(it.lotNo)||'<em class="mm-blank">—</em>'}</span>`+
     `<span>${esc(it.inspectionNo)||'<em class="mm-blank">—</em>'}</span>`+
     `<span>${esc(it.status)||'<em class="mm-blank">—</em>'}</span>`+
     `<span title="${esc(it.equipment)}">${esc(it.equipment)||'<em class="mm-blank">—</em>'}</span>`+
     `<span class="mm-date">${esc(fmtDT(it.updated_at))}</span>`+
     `<span>${esc(it.codec)||'<em class="mm-blank">—</em>'}</span>`+
-    `<span>${targetLabel}</span></div>`;
+    `<span>${targetLabel}</span>`+
+    `<span>${orphan?'<span class="mm-imp-badge orphan" title="この端末のデータ一覧には無い行です。削除しないと作業スケジュールの実績には残り続けます。">無し</span>':'<span class="mm-imp-badge has">有り</span>'}</span></div>`;
   }).join('');
   list.innerHTML=head+rows;
+ }
+/* バックアップ(records.sqlite3)から選択行を削除する(§9.52)。
+    端末内データの削除はreliableDelete()がバックアップも消すようになったが、
+    それ以前に消したもの・他端末で消したものは残骸として残っている。
+    実績突合はこのテーブルを見るため、残骸があるとスケジュールにだけ
+    「作業中」が出続ける。ここから明示的に消せるようにする。 */
+ async function deleteBackupSelection(){
+  const ids=[...document.querySelectorAll('#masterMaintList [data-imp-id]:checked')].map(b=>b.dataset.impId);
+  if(!ids.length){showToast('選択されていません','削除する行を選んでください。',4000);return}
+  const orphan=[...document.querySelectorAll('#masterMaintList [data-imp-id]:checked')].filter(b=>b.dataset.impOrphan==='1').length;
+  const msg=`バックアップから ${ids.length}件を削除します。`
+   +(orphan<ids.length?`\n\nうち ${ids.length-orphan}件はこの端末のデータ一覧にも存在します。削除するとスケジュールの実績表示から消えますが、端末内のデータは残ります。`:'')
+   +'\n\nこの操作は元に戻せません。よろしいですか?';
+  const ok=typeof confirmModal==='function'?await confirmModal(msg):window.confirm(msg);
+  if(!ok)return;
+  try{
+   setMaintLoading(true,`バックアップから ${ids.length}件を削除しています…`);
+   const r=await api('/api/measurement/backup/delete',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ids})});
+   // 実績が変わったので作業スケジュールの予定キャッシュを捨てる
+   if(typeof window.invalidateSchedulePlanCache==='function')window.invalidateSchedulePlanCache();
+   await loadImportBackupMaint(true);
+   showToast('バックアップから削除しました',`${r.deleted}/${r.requested}件`,4600);
+  }catch(e){showToast('削除できませんでした',e.message,6500)}
+  finally{setMaintLoading(false)}
  }
  async function runImportBackup(){
   const uid=requireMaintUser();if(uid===null)return;

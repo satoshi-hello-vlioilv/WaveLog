@@ -3125,3 +3125,10 @@ body.rp-mode #printCurrentView,body.qa-mode #printCurrentView{display:none!impor
 /* 作業できない行は薄く。並べ替えや削除はできるので消しはしない。 */
 .sc-row-line.sc-row-not-workable .sc-row-title,
 .sc-row-line.sc-row-not-workable .sc-row-time{opacity:.55}
+
+/* データ引継ぎ: 端末内に対応の無いバックアップ行(§9.52)。データ一覧には
+   出ないのに作業スケジュールの実績には効くため、色で気付けるようにする。 */
+.mm-row.is-orphan{background:var(--warn-bg)}
+.mm-imp-badge.orphan{background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn-fg)}
+.mm-imp-badge.has{background:var(--success-bg);border:1px solid var(--success-border);color:var(--success)}
+.mm-import-warning.is-orphan{border-color:var(--warn-border);background:var(--warn-bg)}

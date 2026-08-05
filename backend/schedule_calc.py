@@ -224,9 +224,11 @@ def unplanned_entries(actual_index,equipment,matched_keys,now,history_hours=None
          'castingNo':str(basic.get('castingNo') or ''),'title':'','detail':_unplanned_detail(basic),
          'fixedStart':None,'estimateMinutes':None,'storedState':None,
          'actualRecordId':a.get('id'),'remark':'','unplanned':True,'actual':a}
-  if a.get('endAt'):
+  # 終了時刻が無くても状態が完了なら「実施中」には出さない(§9.52)。
+  # 終了時刻が無い完了は履歴の並び順に使う時刻が無いので、開始時刻で並べる。
+  if record_finished(a):
    if cutoff is None:continue
-   ended=_parse_dt(a['endAt'])
+   ended=_parse_dt(a.get('endAt') or '') or _parse_dt(a.get('startAt') or '')
    if ended is None or ended<cutoff:continue
    entry['state']='完了'
    done.append((ended,entry))
@@ -237,11 +239,24 @@ def unplanned_entries(actual_index,equipment,matched_keys,now,history_hours=None
  done.sort(key=lambda x:x[0])
  return [e for _,e in running],[e for _,e in done]
 
+# 測定データ側で「もう終わっている」ことを示す状態(§9.52)。
+# 完了登録は作業終了時刻の打刻を必須にしていない(未記録でも確認のうえ完了
+# できる)。そのため終了時刻の有無だけで判定すると、データ一覧では「完了」
+# なのに作業スケジュールでは「作業中」のまま、という食い違いが起きる。
+# 実際に「開始時刻だけで終了時刻が無い作業途中データ」として報告された。
+RECORD_FINISHED_STATUSES={'完了','測定値NG'}
+
+def record_finished(actual):
+ """この実績はもう終わっているか。終了時刻が無くても状態が完了なら終わり。"""
+ if not actual:return False
+ if actual.get('endAt'):return True
+ return str(actual.get('status') or '').strip() in RECORD_FINISHED_STATUSES
+
 def derive_state(stored_state,actual):
  """§7.4。計画者が明示的に確定した完了/取消は実績突合より優先する。"""
  if stored_state in PLAN_TERMINAL_STATES:return stored_state
  if actual is None:return stored_state or sr.PLAN_REORDERABLE_STATE
- if actual.get('endAt'):return '完了'
+ if record_finished(actual):return '完了'
  if actual.get('startAt'):return '着手'
  return stored_state or sr.PLAN_REORDERABLE_STATE
 
