@@ -1431,9 +1431,16 @@
     {name:'4直',start:'11:00',end:'19:10'},{name:'5直',start:'21:20',end:'05:45'}]},
  ];
  let shiftState={patterns:[],selectedId:null,draft:null,loading:false};
+ /* 適用設備の複数選択(勤務体系マスタ)。チェック済みの設備名を配列で返す。 */
+ function selectedShiftEquipment(){
+  return [...document.querySelectorAll('#shiftEquipment [data-shift-eq]:checked')].map(x=>x.value);
+ }
  function shiftDraftFrom(p){
-  return p?{id:p.id,equipment:p.equipment||'',name:p.name||'',segments:(p.segments||[]).map(x=>({name:x.name,start:x.start,end:x.end}))}
-           :{id:null,equipment:'',name:'',segments:[]};
+  // equipmentは設備名の配列(複数可)。空配列=全設備共通。サーバーが古い形式
+  // (単一文字列)を返しても配列へ寄せる。
+  const eqList=v=>Array.isArray(v)?v.filter(Boolean).map(String):(String(v||'').trim()?[String(v).trim()]:[]);
+  return p?{id:p.id,equipment:eqList(p.equipment),name:p.name||'',segments:(p.segments||[]).map(x=>({name:x.name,start:x.start,end:x.end}))}
+           :{id:null,equipment:[],name:'',segments:[]};
  }
  async function loadShiftPatternMaint(force){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
@@ -1459,7 +1466,11 @@
  function renderShiftPattern(){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
   const d=shiftState.draft||shiftDraftFrom(null);
-  const eqOpts=(equipmentMasterState.items||[]).map(x=>`<option value="${esc(x.name)}"${x.name===d.equipment?' selected':''}>${esc(x.name)}</option>`).join('');
+  const eqSelected=new Set((d.equipment||[]).map(String));
+  const eqItems=(equipmentMasterState.items||[]);
+  const eqChips=eqItems.length
+   ? eqItems.map(x=>`<label class="shift-eq-chip${eqSelected.has(x.name)?' is-on':''}"><input type="checkbox" data-shift-eq value="${esc(x.name)}"${eqSelected.has(x.name)?' checked':''}>${esc(x.name)}</label>`).join('')
+   : '<span class="mm-empty-inline">設備マスタが未登録です。先に「設備」タブで登録してください。</span>';
   form.innerHTML=`<div class="mm-form-head">
     <span class="mm-mode-chip ${d.id?'editing':'new'}">${d.id?`編集中 <b>${esc(d.name||'')}</b>`:'新規の勤務体系'}</span>
     <button type="button" id="shiftNew" class="mm-btn-ghost sm">＋ 勤務体系を追加</button>
@@ -1481,13 +1492,15 @@
     <aside class="shift-list">
      <div class="shift-list-head">登録済みの勤務体系</div>
      ${shiftState.patterns.length?shiftState.patterns.map(p=>`<button type="button" class="shift-list-item${p.id===d.id?' active':''}" data-shift-pattern="${p.id}">
-        <b>${esc(p.name)}</b><small>${p.equipment?esc(p.equipment):'全設備既定'} ・ ${(p.segments||[]).length}区分</small></button>`).join('')
+        <b>${esc(p.name)}</b><small>${esc(p.equipmentText||'全設備共通')} ・ ${(p.segments||[]).length}区分</small></button>`).join('')
        :'<div class="mm-empty-inline">まだありません。テンプレートから作れます。</div>'}
     </aside>
     <section class="shift-detail">
      <div class="shift-fields">
       <label class="mm-field"><span>勤務体系の名称<i>*</i></span><input id="shiftName" type="text" value="${esc(d.name)}" placeholder="例: 交替勤務(1,2,3直)" autocomplete="off"></label>
-      <label class="mm-field"><span>適用設備（空欄=全設備既定）</span><select id="shiftEquipment"><option value="">全設備既定</option>${eqOpts}</select></label>
+      <div class="mm-field mm-field-wide"><span>適用設備（複数選択可・未選択=全設備共通）</span>
+       <div class="shift-eq-picker" id="shiftEquipment">${eqChips}</div>
+       <small class="mm-field-hint">1つの勤務体系を複数の設備へ同時に適用できます。どれも選ばなければ全設備共通の既定になり、設備を選んだ体系があればその設備ではそちらが優先されます。</small></div>
      </div>
      <div class="shift-bar" title="24時間のうち、どの時間帯がどの区分か">${bars}<span class="shift-bar-noon"></span></div>
      <div class="shift-bar-scale"><span>0時</span><span>6時</span><span>12時</span><span>18時</span><span>24時</span></div>
@@ -1524,14 +1537,20 @@
   });
   const sync=()=>{
    const dd=shiftState.draft;
-   dd.name=$('#shiftName').value;dd.equipment=$('#shiftEquipment').value;
+   dd.name=$('#shiftName').value;dd.equipment=selectedShiftEquipment();
    dd.segments=[...list.querySelectorAll('.shift-seg')].map(el=>({
     name:el.querySelector('.shift-seg-name').value,
     start:el.querySelector('.shift-seg-start').value,
     end:el.querySelector('.shift-seg-end').value}));
   };
   $('#shiftName').oninput=()=>{shiftState.draft.name=$('#shiftName').value};
-  $('#shiftEquipment').onchange=()=>{shiftState.draft.equipment=$('#shiftEquipment').value};
+  // 複数選択(チェック)。押した見た目もその場で切り替える。
+  $('#shiftEquipment')?.querySelectorAll('[data-shift-eq]').forEach(cb=>{
+   cb.onchange=()=>{
+    cb.closest('.shift-eq-chip')?.classList.toggle('is-on',cb.checked);
+    shiftState.draft.equipment=selectedShiftEquipment();
+   };
+  });
   list.querySelectorAll('.shift-seg').forEach(el=>{
    const i=+el.dataset.i;
    // 時刻・名称の変更はその場でバーへ反映する(保存前に結果が見える)。
@@ -1567,7 +1586,7 @@
   try{
    setMaintLoading(true,'勤務体系を保存しています…');
    const r=await api('/api/schedule/shift-pattern-master',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({id:d.id,equipment:d.equipment,name:d.name,segments:d.segments,user_id:uid})});
+    body:JSON.stringify({id:d.id,equipment:d.equipment||[],name:d.name,segments:d.segments,user_id:uid})});
    shiftState.selectedId=r.id;
    await loadShiftPatternMaint(true);
    showToast&&showToast('勤務体系を保存しました',`${d.name}(${d.segments.length}区分)`,3600);

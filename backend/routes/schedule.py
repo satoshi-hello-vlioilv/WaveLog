@@ -463,9 +463,14 @@ def stop_reason_delete():
 # タイムラインの「勤務」列(schedule_calc.expand_plan()のentries[].shift)は
 # sr.shift_rows()経由でこのマスタを参照する。
 # ========================================================================
-def _pattern_entry(mc,r):
+def _pattern_entry(mc,r,assigned=None):
  # r: 勤務体系ID,適用設備,名称,表示順,有効
- return {'id':r[0],'equipment':r[1],'name':r[2],
+ # equipment(複数)は勤務体系設備マスタから引く。0件=全設備既定。
+ # equipmentText は一覧表示用の連結文字列(オペレータマスタと同じ流儀)。
+ if assigned is None:assigned=sr.shift_pattern_equipment_map(mc)
+ names=assigned.get(r[0],[])
+ return {'id':r[0],'equipment':names,'equipmentText':'、'.join(names) or '全設備共通',
+         'name':r[2],
          'segments':[{'id':s[0],'name':s[2],'start':s[3],'end':s[4]} for s in sr.shift_segment_rows(mc,r[0])]}
 
 @bp.get('/api/schedule/shift-pattern-master')
@@ -480,7 +485,8 @@ def shift_pattern_list():
    rows=sr.shift_pattern_rows(mc,'__all__')
   else:
    rows=sr.shift_pattern_rows(mc,equipment) or sr.shift_pattern_rows(mc,None)
-  return [_pattern_entry(mc,r) for r in rows]
+  assigned=sr.shift_pattern_equipment_map(mc)
+  return [_pattern_entry(mc,r,assigned) for r in rows]
  return jsonify(ok=True,configured=True,items=_cfg_read(fn),stale=False)
 
 @bp.post('/api/schedule/shift-pattern-master')
@@ -489,7 +495,11 @@ def shift_pattern_save():
  親子を1リクエストで保存することで、片方だけ保存された中途半端な状態を作らない。"""
  x=request.get_json(force=True) or {}
  pattern_id=x.get('id')
- equipment=str(x.get('equipment') or '').strip()
+ # equipmentは設備名の配列(複数可、空配列=全設備共通)。以前は単一文字列
+ # だったため、互換のため文字列で来た場合も受け付ける。
+ raw_eq=x.get('equipment')
+ if isinstance(raw_eq,list):equipment=[str(v or '').strip() for v in raw_eq if str(v or '').strip()]
+ else:equipment=[str(raw_eq or '').strip()] if str(raw_eq or '').strip() else []
  name=str(x.get('name') or '').strip()
  segments=x.get('segments')
  if segments is not None and not isinstance(segments,list):

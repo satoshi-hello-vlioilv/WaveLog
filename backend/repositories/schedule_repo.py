@@ -510,18 +510,84 @@ def ensure_shift_pattern_tables(c):
   cur.execute('CREATE TABLE [勤務区分マスタ] ([勤務区分ID] INTEGER PRIMARY KEY AUTOINCREMENT, [勤務体系ID] INTEGER, [名称] TEXT, [開始時刻] TEXT, [終了時刻] TEXT, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
   cur.execute('CREATE INDEX [IX_勤務区分マスタ_体系] ON [勤務区分マスタ] ([勤務体系ID])')
   c.commit();created=True
+ if SHIFT_PATTERN_EQUIPMENT_TABLE not in names:
+  cur=c.cursor()
+  cur.execute('CREATE TABLE [勤務体系設備マスタ] ([ID] INTEGER PRIMARY KEY AUTOINCREMENT, [勤務体系ID] INTEGER, [設備名] TEXT, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
+  cur.execute('CREATE UNIQUE INDEX [UX_勤務体系設備マスタ] ON [勤務体系設備マスタ] ([勤務体系ID],[設備名])')
+  c.commit();created=True
+ _migrate_shift_pattern_equipment(c)
  return created
 
-def shift_pattern_rows(c,equipment=None):
- """勤務体系の一覧。equipment指定時はその設備専用行、未指定なら全設備既定行。
- equipment='__all__'で全件(マスタ管理の一覧用)。"""
+# ------------------------------------------------------------------------
+# 勤務体系の適用設備(複数)
+#  1つの勤務体系を複数設備へ割り当てたいという要望に対応するため、
+#  単一値だった[適用設備]列から子テーブルへ移した(オペレータ設備マスタと
+#  同じ方式)。**割当が0件 = 全設備既定**で、旧仕様の「空文字=全設備既定」を
+#  そのまま引き継ぐ。移行後は[適用設備]列を読まない(単一の情報源にするため、
+#  移行時に空へ更新して残骸を残さない)。
+# ------------------------------------------------------------------------
+SHIFT_PATTERN_EQUIPMENT_TABLE='勤務体系設備マスタ'
+_SHIFT_PATTERN_EQUIPMENT_MIGRATED=False
+
+def _migrate_shift_pattern_equipment(c):
+ """旧[適用設備](単一値)を子テーブルへ1回だけ移す。"""
+ global _SHIFT_PATTERN_EQUIPMENT_MIGRATED
+ if _SHIFT_PATTERN_EQUIPMENT_MIGRATED:return
+ try:
+  cur=c.cursor()
+  cur.execute('SELECT [勤務体系ID],[適用設備] FROM [勤務体系マスタ]')
+  pending=[(pid,str(eq or '').strip()) for pid,eq in cur.fetchall() if str(eq or '').strip()]
+  for pid,eq in pending:
+   cur.execute('SELECT COUNT(*) FROM [勤務体系設備マスタ] WHERE [勤務体系ID]=?',[pid])
+   if int(cur.fetchone()[0] or 0):continue
+   cur.execute('INSERT INTO [勤務体系設備マスタ] ([勤務体系ID],[設備名],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,Now(),Now())',
+               [pid,eq,'migrate:shift-equipment','migrate:shift-equipment'])
+   cur.execute('UPDATE [勤務体系マスタ] SET [適用設備]=? WHERE [勤務体系ID]=?',['',pid])
+  if pending:c.commit()
+  _SHIFT_PATTERN_EQUIPMENT_MIGRATED=True
+ except Exception:
+  pass   # 移行できなくても、子テーブルが空=全設備既定として動く
+
+def shift_pattern_equipment_map(c):
+ """{勤務体系ID: [設備名, ...]}。割当の無い体系はキー自体が無い(=全設備既定)。"""
  ensure_shift_pattern_tables(c)
  cur=c.cursor()
- cur.execute('SELECT [勤務体系ID],[適用設備],[名称],[表示順],[有効] FROM [勤務体系マスタ] ORDER BY [適用設備],[表示順],[勤務体系ID]')
+ cur.execute('SELECT [勤務体系ID],[設備名] FROM [勤務体系設備マスタ] ORDER BY [設備名]')
+ out={}
+ for pid,name in cur.fetchall():
+  nm=str(name or '').strip()
+  if nm:out.setdefault(pid,[]).append(nm)
+ return out
+
+def set_shift_pattern_equipment(c,pattern_id,names,uid):
+ """指定体系の適用設備を names の内容へ完全同期する(増分の追加・削除)。"""
+ ensure_shift_pattern_tables(c)
+ cur=c.cursor()
+ wanted={str(n).strip() for n in (names or []) if str(n or '').strip()}
+ cur.execute('SELECT [ID],[設備名] FROM [勤務体系設備マスタ] WHERE [勤務体系ID]=?',[pattern_id])
+ existing={str(r[1] or '').strip():r[0] for r in cur.fetchall()}
+ for nm,rid in existing.items():
+  if nm not in wanted:cur.execute('DELETE FROM [勤務体系設備マスタ] WHERE [ID]=?',[rid])
+ for nm in wanted:
+  if nm not in existing:
+   cur.execute('INSERT INTO [勤務体系設備マスタ] ([勤務体系ID],[設備名],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,Now(),Now())',
+               [pattern_id,nm,uid,uid])
+
+def shift_pattern_rows(c,equipment=None):
+ """勤務体系の一覧。equipment指定時はその設備が割当に含まれる体系、
+ 未指定なら割当0件の体系(=全設備既定)。equipment='__all__'で全件。"""
+ ensure_shift_pattern_tables(c)
+ cur=c.cursor()
+ cur.execute('SELECT [勤務体系ID],[適用設備],[名称],[表示順],[有効] FROM [勤務体系マスタ] ORDER BY [表示順],[勤務体系ID]')
  rows=[r for r in cur.fetchall() if (True if r[4] is None else bool(r[4]))]
  if equipment=='__all__':return rows
- target=normalize_equipment_name(equipment) if equipment else ''
- return [r for r in rows if normalize_equipment_name(r[1])==target]
+ assigned=shift_pattern_equipment_map(c)
+ if not equipment:
+  # 全設備既定 = どの設備にも割り当てていない体系
+  return [r for r in rows if not assigned.get(r[0])]
+ target=normalize_equipment_name(equipment)
+ return [r for r in rows
+         if any(normalize_equipment_name(n)==target for n in assigned.get(r[0],[]))]
 
 def shift_segment_rows(c,pattern_id):
  ensure_shift_pattern_tables(c)
@@ -539,27 +605,40 @@ def shift_rows(c,equipment=None):
  migrate_shift_patterns(c)
  patterns=shift_pattern_rows(c,equipment)
  if not patterns:return []
- pid,eq=patterns[0][0],patterns[0][1]
+ # [適用設備]列は移行済みで空。呼び出し元が渡した設備名をそのまま載せる
+ # (resolve_shift_label()は形しか見ないが、意味のある値を入れておく)。
+ pid=patterns[0][0]
+ eq=str(equipment or '')
  return [(r[0],eq,r[2],r[3],r[4],r[5],r[6]) for r in shift_segment_rows(c,pid)]
 
 def shift_pattern_upsert(c,pattern_id,equipment,name,uid):
+ """equipmentは設備名のリスト(複数可)。空リスト=全設備既定。
+ 互換のため単一の文字列を渡された場合も1件のリストとして扱う。"""
  ensure_shift_pattern_tables(c)
- equipment=str(equipment or '').strip();name=str(name or '').strip()
+ if isinstance(equipment,str):equipment=[equipment] if equipment.strip() else []
+ names=[str(n).strip() for n in (equipment or []) if str(n or '').strip()]
+ name=str(name or '').strip()
  if not name:raise ValueError('勤務体系の名称を入力してください。')
  cur=c.cursor()
  if pattern_id:
-  cur.execute('UPDATE [勤務体系マスタ] SET [適用設備]=?,[名称]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [勤務体系ID]=?',[equipment,name,uid,pattern_id])
+  # [適用設備]列は移行済みで読まれない。単一の情報源を保つため空のまま更新する。
+  cur.execute('UPDATE [勤務体系マスタ] SET [適用設備]=?,[名称]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [勤務体系ID]=?',['',name,uid,pattern_id])
   if cur.rowcount==0:raise ValueError('指定の勤務体系が見つかりません。')
+  set_shift_pattern_equipment(c,pattern_id,names,uid)
   return pattern_id,False
- cur.execute('SELECT Max([表示順]) FROM [勤務体系マスタ] WHERE [適用設備]=?',[equipment])
+ cur.execute('SELECT Max([表示順]) FROM [勤務体系マスタ]')
  order=int((cur.fetchone()[0]) or 0)+10
- cur.execute('INSERT INTO [勤務体系マスタ] ([適用設備],[名称],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,-1,?,?,Now(),Now())',[equipment,name,order,uid,uid])
- return cur.lastrowid,True
+ cur.execute('INSERT INTO [勤務体系マスタ] ([適用設備],[名称],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,-1,?,?,Now(),Now())',['',name,order,uid,uid])
+ new_id=cur.lastrowid
+ set_shift_pattern_equipment(c,new_id,names,uid)
+ return new_id,True
 
 def shift_pattern_delete(c,pattern_id,uid):
  ensure_shift_pattern_tables(c)
  cur=c.cursor()
  cur.execute('UPDATE [勤務体系マスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [勤務体系ID]=?',[uid,pattern_id])
+ # 無効化した体系の設備割当は残さない(再登録したときに古い割当が復活しないよう)
+ cur.execute('DELETE FROM [勤務体系設備マスタ] WHERE [勤務体系ID]=?',[pattern_id])
  return cur.rowcount
 
 _TIME_RE=None
@@ -641,7 +720,7 @@ def ensure_config_master_tables(mc):
  ensure_shift_table(mc)
  ensure_shift_pattern_tables(mc)
 
-CONFIG_MASTER_TABLES=('稼働カレンダーマスタ','設備停止マスタ','設備停止分類マスタ','負荷率上書きマスタ','勤務形態マスタ','勤務体系マスタ','勤務区分マスタ')
+CONFIG_MASTER_TABLES=('稼働カレンダーマスタ','設備停止マスタ','設備停止分類マスタ','負荷率上書きマスタ','勤務形態マスタ','勤務体系マスタ','勤務区分マスタ','勤務体系設備マスタ')
 
 def config_master_conn():
  """設定系4マスタの保存先(master.sqlite3)への書込可能な接続。

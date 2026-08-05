@@ -2585,11 +2585,13 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
    --------------------------------------------------------------- */
 .sc-row-head,.sc-row-line{
  display:grid;
- grid-template-columns:calc(18px * var(--ui-scale)) calc(92px * var(--ui-scale)) calc(50px * var(--ui-scale))
+ /* ハンドル/区分/作業可否/日付/時刻/勤務/残り/内容/見積/実績/備考/操作 */
+ grid-template-columns:calc(18px * var(--ui-scale)) calc(92px * var(--ui-scale)) calc(44px * var(--ui-scale))
+  calc(50px * var(--ui-scale))
   calc(112px * var(--ui-scale)) calc(58px * var(--ui-scale)) calc(88px * var(--ui-scale))
   minmax(calc(150px * var(--ui-scale)),1fr) calc(62px * var(--ui-scale)) calc(88px * var(--ui-scale))
   calc(112px * var(--ui-scale)) calc(148px * var(--ui-scale));
- align-items:center;column-gap:8px;min-width:calc(1064px * var(--ui-scale));
+ align-items:center;column-gap:8px;min-width:calc(1116px * var(--ui-scale));
 }
 .sc-row-head{padding:3px 8px 4px;position:sticky;top:0;z-index:1;background:#f4f7f8;font-size:var(--fs-micro);font-weight:800;color:#8a9aa0;border-bottom:1px solid var(--line)}
 .sc-row-line{padding:var(--row-pad-y) 8px;min-height:var(--row-h);border-radius:4px;background:#fff;border-bottom:1px solid #eef1f2}
@@ -3097,3 +3099,29 @@ body.rp-mode #printCurrentView,body.qa-mode #printCurrentView{display:none!impor
 .rne-job b{min-width:9em}
 .rne-job.is-ng{color:var(--danger)}
 .rne-note{font-size:var(--fs-sm);color:var(--muted);margin:.5em 0 0;line-height:1.5}
+
+/* 勤務体系の適用設備(複数選択)。1つの体系を複数設備へ同時に割り当てられる。 */
+.shift-eq-picker{display:flex;flex-wrap:wrap;gap:6px;padding:6px 0}
+.shift-eq-chip{
+ display:inline-flex;align-items:center;gap:6px;height:var(--ctl-h-sm);padding:0 12px;
+ border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--nav);
+ font-size:var(--fs-sm);cursor:pointer;user-select:none;
+}
+.shift-eq-chip:hover{border-color:var(--teal);background:var(--pale)}
+.shift-eq-chip.is-on{border-color:var(--teal);background:var(--teal);color:#fff;font-weight:700}
+.shift-eq-chip input{accent-color:currentColor;margin:0}
+
+/* 作業可否フラグ(§9.51)。「残仕掛設備ｺｰｽ」がこの設備で始まっていれば作業可。
+   まだ来ていないロットを一目で外せるようにする(色と濃度の両方で示す)。 */
+.sc-row-workable{
+ justify-self:center;min-width:calc(34px * var(--ui-scale));text-align:center;
+ padding:1px 6px;border-radius:999px;border:1px solid transparent;
+ font-size:var(--fs-badge);font-weight:800;line-height:1.5;
+}
+.sc-row-workable.is-ok{background:var(--success-bg);border-color:var(--success-border);color:var(--success)}
+.sc-row-workable.is-ng{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger)}
+.sc-row-workable.is-unknown{background:var(--warn-bg);border-color:var(--warn-border);color:var(--warn-fg)}
+.sc-row-workable.is-na{color:#b6c3c7}
+/* 作業できない行は薄く。並べ替えや削除はできるので消しはしない。 */
+.sc-row-line.sc-row-not-workable .sc-row-title,
+.sc-row-line.sc-row-not-workable .sc-row-time{opacity:.55}
