@@ -995,13 +995,38 @@
     ある(前工程が終わっていない)。現場の判断基準そのままに、仕掛データの
     **「残仕掛設備ｺｰｽ」がこの設備名で始まっているか**を作業可否とする。
 
-    判定に使うのは予定投入時のスナップショット(detail)ではなく、**現在の
-    仕掛データ**。スナップショットは投入した時点の値で固まっており、
-    工程が進んでも変わらないため、これで判定すると「まだ来ていないロットを
-    作業可能と見せる」ことになりフラグの意味が無くなる。 */
+    判定材料の持ち方(§9.67で全面的に見直し)。
+
+    以前は「スナップショットは古くなるから使わない。毎回、現在の仕掛データを
+    引いて判定する」という作りだった。これは正しくないうえに遅い:
+      - 仕掛一覧から投入したロットは、**投入したその行に残仕掛設備ｺｰｽが
+        載っている**。それを使えば往復ゼロで即座に判定できるのに、わざわざ
+        仕掛を500件ずつ何ページも辿り直していた(実測10往復・3秒超)。
+      - 1件追加するたびに索引を作り直していたため、既に判定済みの行まで
+        巻き込んで「?」へ戻り、しばらくしてまた変わる、というちらつきが出た。
+
+    **工程は前へしか進まない**という性質を使うと整理できる:
+      - 投入時点で「可」(残仕掛設備ｺｰｽがこの設備で始まる)だったロットは、
+        その後この設備から出ていくことはあっても、「まだ来ていない」状態へ
+        戻ることはない。**可はそのまま信用してよい**。
+      - 逆に「不可」「?」は、工程が進んで到着した可能性があるので取り直す。
+
+    そこで:
+      1. 予定投入時に残仕掛設備ｺｰｽをdetailへ保存する(buildScheduleDetailが
+         既にaliasキーで保存している)。フラグはまずこれで即座に作る。
+      2. 取り直しの対象は**可になっていない行だけ**。全件を引き直さない。
+      3. 取り直した値は索引(scWorkable.map)へ**併合**する(作り直さない)。
+         作り直すと、前回判定できていた行が一時的に「?」へ戻る。
+      4. 対象が少なければロット単位の絞り込み問い合わせだけで済ませる
+         (ページ送りより往復が少ないため)。 */
  const WORKABLE_TTL_MS=180000;   // 3分(仕掛一覧のキャッシュ§9.46と同じ考え方)
  let scWorkable={at:0,map:null};
- function invalidateWorkable(){scWorkable={at:0,map:null}}
+ /* 判定材料の「取り直しが要る」印を付けるだけで、**分かっている値は捨てない**
+    (§9.67)。以前はmapごと捨てていたため、予定を1件足すたびに全行が「?」へ
+    戻り、仕掛を辿り終えるまで戻らなかった(ちらつきの実体)。
+    取り直しの対象はどのみち「可になっていない行」だけなので、既に判定済みの
+    値を残しておいても古い判定が居座ることはない。 */
+ function invalidateWorkable(){scWorkable={...scWorkable,at:0}}
  /* 仕掛一覧から「ロット番号 -> 残仕掛設備ｺｰｽ」を作る。列表示マスタで
     残仕掛設備ｺｰｽが非表示にされていても判定に要るので include_hidden=1
     を付ける(CLAUDE.md「内部計算用の問い合わせには include_hidden=1」)。 */
@@ -1021,18 +1046,65 @@
  const WORKABLE_PAGE_SIZE=500;    // サーバー側の上限(これ以上を要求しても切り詰められる)
  const WORKABLE_MAX_PAGES=40;     // 20000件ぶん。際限なく辿らないための歯止め
  const WORKABLE_FILL_LIMIT=60;    // 個別に補う上限(往復が増えるため)
- /* 予定に出ているロット番号(判定が必要な集合)。 */
- function plannedLotKeys(){
-  return new Set((scState.entries||[])
-   .filter(e=>e.kind==='作業')
-   .map(e=>normalizeLotKey(e.lotNo||contentValueOf(e.detail,'lotNo')))
-   .filter(Boolean));
+ /* この件数までなら、ページ送りせずロット単位の絞り込みだけで済ませる。
+    1件追加した直後のような「取り直したいのは1〜数件」の場面で、仕掛を
+    何ページも辿り直さないための分岐(往復数を必要な分だけに保つ)。 */
+ const WORKABLE_DIRECT_MAX=8;
+ function entryLotKey(e){return normalizeLotKey(e.lotNo||contentValueOf(e.detail,'lotNo'))}
+ /* 予定投入時に保存した残仕掛設備ｺｰｽ(§9.67)。仕掛一覧から投入した行には
+    必ず入っている(buildScheduleDetailがalias名・生カラム名の両方で保存)。 */
+ function storedCourseOf(e){
+  const v=contentValueOf(e&&e.detail,'residualCourse');
+  return v===undefined||v===null?'':String(v);
  }
- async function loadWorkableIndex(force){
+ /* 取り直しが要るロット番号 = 予定の作業行のうち、今「可」になっていないもの。
+    可は工程が戻らない限り覆らないので取り直さない(§9.67)。 */
+ /* 予定に載っている作業ロットの全体(明示的な再計算で使う)。 */
+ function allPlannedWorkLots(){
+  const out=new Set();
+  (scState.entries||[]).forEach(e=>{
+   if(e.kind!=='作業')return;
+   const lot=entryLotKey(e);if(lot)out.add(lot);
+  });
+  return out;
+ }
+ function lotsNeedingLookup(){
+  const out=new Set();
+  (scState.entries||[]).forEach(e=>{
+   if(e.kind!=='作業')return;
+   const lot=entryLotKey(e);
+   if(!lot)return;
+   if(workableOf(e).state!=='ok')out.add(lot);
+  });
+  return out;
+ }
+ /* opts.ignoreTtl   : 鮮度に関わらず取り直す
+    opts.revalidateAll: 「可」も含めて全予定を検証し直す。
+       利用者が明示的に「再計算」を押したときだけ立てる。工程は前へしか
+       進まないので普段は可を再確認しないが、**利用者が最新を求めた操作**
+       では情報源そのものを取り直すのが筋(§9.67)。 */
+ async function loadWorkableIndex(opts){
+  const o=(opts===true?{ignoreTtl:true}:(opts||{}));
+  const force=!!o.ignoreTtl;
   if(!force&&scWorkable.map&&Date.now()-scWorkable.at<WORKABLE_TTL_MS)return scWorkable.map;
-  const map=new Map();
-  let cols=null,table=null,pages=0,scanned=0,total=0;
-  const needed=plannedLotKeys();
+  if(o.revalidateAll){
+   // 全件検証: 覚えている値を捨ててから、予定の全作業ロットを対象にする
+   scWorkable={...scWorkable,map:new Map()};
+  }
+  // 索引は**作り直さず併合する**。作り直すと、前回判定できていた行が
+  // 一時的に「?」へ戻り、しばらくしてまた変わる、というちらつきになる。
+  const map=scWorkable.map instanceof Map?scWorkable.map:new Map();
+  let cols=scWorkable.cols||null,table=scWorkable.table||null;
+  let pages=0,scanned=0,total=scWorkable.total||0;
+  const needed=o.revalidateAll?allPlannedWorkLots():lotsNeedingLookup();
+  // 全部「可」で確定しているなら、取り直す理由が無い(往復ゼロ)。
+  if(!needed.size){scWorkable={...scWorkable,at:Date.now(),map,cols,table,pages:0,scanned:0,total};return map}
+  // 取り直したいのが数件だけなら、ページ送りせずロット単位で引く。
+  if(needed.size<=WORKABLE_DIRECT_MAX&&table&&cols&&cols.lotCol&&cols.resCol){
+   scWorkable={...scWorkable,at:Date.now(),map,cols,table};
+   await fillMissingLots([...needed]);
+   return scWorkable.map;
+  }
   try{
    const t=await api('/api/tables?db=SIKALOTNOW');
    table=(t.tables||[])[0];
@@ -1051,7 +1123,9 @@
      rows.forEach(r=>{
       const lot=normalizeLotKey(r[cols.lotCol]);
       if(!lot)return;
-      map.set(lot,String(r[cols.resCol]??''));
+      const course=String(r[cols.resCol]??'');
+      map.set(lot,course);
+      if(needed.has(lot))rememberCourseOnEntries(lot,course);
       needed.delete(lot);
      });
      // 必要な分が揃った / 最後のページまで来た なら打ち切る
@@ -1066,6 +1140,17 @@
   scWorkable={at:Date.now(),map,table,cols,pages,scanned,total};
   if(needed.size)await fillMissingLots([...needed]);
   return scWorkable.map;
+ }
+ /* 索引で分かった値を、その予定行のdetailへも書き戻す(§9.67)。
+    同じセッション内で描き直すたびに索引を引き直さずに済み、
+    次にこの設備を開いたときも保存済みの値から即座に判定できる。
+    共有DBへは書かない(1件ごとに取得→適用→反映のサイクルが要るため)。 */
+ function rememberCourseOnEntries(lot,course){
+  (scState.entries||[]).forEach(e=>{
+   if(e.kind!=='作業'||entryLotKey(e)!==lot)return;
+   if(!e.detail||typeof e.detail!=='object')e.detail={};
+   e.detail.residualCourse=course;
+  });
  }
  /* 辿っても見つからなかったロットを個別に引いて確定させる。
     全件を引き直すのではなく、判定が要る行だけに絞る。 */
@@ -1084,7 +1169,9 @@
      const row=(d.rows||[])[0];
      // 見つからなければ「仕掛に無い」ことが確定するので、空文字で入れて
      // 「?」ではなく「不可」として扱えるようにする。
-     map.set(lot,row?String(row[cols.resCol]??''):'');
+     const course=row?String(row[cols.resCol]??''):'';
+     map.set(lot,course);
+     rememberCourseOnEntries(lot,course);
     }catch(e){/* 引けなければ「?」のまま(勝手に可にしない) */}
    }
   }));
@@ -1098,11 +1185,17 @@
  function workableOf(e){
   const eq=String(scState.equipment||'').trim();
   if(e.kind!=='作業')return {state:'na',course:''};
+  if(!eq)return {state:'unknown',course:''};
+  const lot=entryLotKey(e);
   const map=scWorkable.map;
-  if(!eq||!map||!map.size)return {state:'unknown',course:''};
-  const lot=normalizeLotKey(e.lotNo||contentValueOf(e.detail,'lotNo'));
-  if(!lot||!map.has(lot))return {state:'unknown',course:''};
-  const course=String(map.get(lot)||'');
+  // 取り直した値(索引)があればそちらを優先し、無ければ投入時の保存値を使う。
+  // 保存値があるおかげで、仕掛一覧から投入した予定は**往復ゼロで即座に**
+  // 判定できる(§9.67)。索引しか見ていなかった頃は、ここが必ず「?」で
+  // 始まり、仕掛を何ページも辿り終わるまで変わらなかった。
+  let course=null;
+  if(lot&&map&&map.has(lot))course=String(map.get(lot)||'');
+  else{const stored=storedCourseOf(e);if(stored!=='')course=stored}
+  if(course===null)return {state:'unknown',course:''};
   const norm=v=>String(v||'').trim().toUpperCase();
   return {state:norm(course).startsWith(norm(eq))?'ok':'ng',course};
  }
@@ -1155,11 +1248,11 @@
   const entries=scState.entries||[];
   const pending=entries.some(e=>e.kind==='作業'&&e.state==='予定'&&workableOf(e).state!=='ok');
   if(!pending)return;
-  workableTimer=setTimeout(()=>{refreshWorkableInBackground(true)},WORKABLE_WATCH_MS);
+  workableTimer=setTimeout(()=>{refreshWorkableInBackground(true,false)},WORKABLE_WATCH_MS);
  }
- async function refreshWorkableInBackground(force){
+ async function refreshWorkableInBackground(force,revalidateAll){
   try{
-   await loadWorkableIndex(force);
+   await loadWorkableIndex({ignoreTtl:!!force,revalidateAll:!!revalidateAll});
    applyWorkableFlags();
    scheduleWorkableWatch();
   }catch(err){console.warn('作業可否の更新に失敗しました',err)}
@@ -1197,7 +1290,9 @@
   // 作業可否(§9.51)の判定材料は**待たない**。仕掛一覧の取得は共有越しだと
   // 時間がかかることがあり、待つとその間ずっと予定が出ない。先に予定を描き、
   // 可否は取れ次第そのセルだけ差し替える(操作は一切止めない)。
-  refreshWorkableInBackground(force);
+  // 利用者が押した「再計算」(force)では、可も含めて情報源を取り直す。
+  // 画面を開いた・設備を切り替えただけのときは可でない行だけを追いかける。
+  refreshWorkableInBackground(force,force);
   if(scState.fullControl)await loadStopReasons();
   report({progress:'仕掛一覧を並べて表示しています',step:2});
   await showSplitList();
