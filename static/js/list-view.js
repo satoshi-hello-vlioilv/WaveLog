@@ -97,11 +97,23 @@ function renderGrid(){
  const canPlan=isWork&&window.accessMode?.mode==='schedule';
  const lotCol=hasLotDsp?findColumnFor('lotNo'):null,castCol=hasLotDsp?findColumnFor('castingNo'):null;
  const filteredCols=new Set((S.genericFilters||[]).map(f=>f.column));
+ // 既にスケジュールへ投入済みのロットは一覧から消す(§9.15新設)。今開いて
+ // いる設備の作業スケジュール(schedule-view.js側のscState.entries)に無い
+ // ロットだけを残す。対象外(スケジュール画面を開いていない・schedule
+ // モードでない等)ではwindow.scScheduledLotSet?.()がnullを返し、
+ // フィルタしない(通常の全件表示)。
+ const scheduledLots=canPlan?window.scScheduledLotSet?.():null;
+ const visibleRows=(scheduledLots&&scheduledLots.size)?S.rows.filter(r=>!scheduledLots.has(pick(r,'lotNo'))):S.rows;
+ // スケジュール列表示マスタ(§9.18新設): scheduleモードで設備ごとに選んだ
+ // 列だけへ絞る(未設定の設備・schedule以外のモードではnullが返り、
+ // 通常どおり全列を表示する)。
+ const columnAllowlist=canPlan?window.scColumnAllowlist?.():null;
+ const visibleColumns=columnAllowlist?S.columns.filter(c=>columnAllowlist.includes(c)):S.columns;
  // 予定追加ボタン(+予定)は多数の列を横に比較しながら選ぶ運用(§9.5)のため
  // 毎回右端までスクロールさせないよう、選択チェックボックスと並べて最左列へ
  // 置く(§9.15改訂。以前は最右列だった)。
  const t=document.createElement('table');
- t.innerHTML='<thead><tr>'+(canPlan?'<th class="plan-select-head"><input type="checkbox" id="planSelectAll" title="このページの全行を選択/解除"></th><th class="plan-action-head">予定</th>':'')+'<th>#</th>'+(isWork?'<th class="split-flag-head" title="親子管理_子カード／コンマ5本分割_切断巾に実データがある場合「分割あり」と表示します">分割</th>':'')+S.columns.map(c=>{
+ t.innerHTML='<thead><tr>'+(canPlan?'<th class="plan-select-head"><input type="checkbox" id="planSelectAll" title="このページの全行を選択/解除"></th><th class="plan-action-head">予定</th>':'')+'<th>#</th>'+(isWork?'<th class="split-flag-head" title="親子管理_子カード／コンマ5本分割_切断巾に実データがある場合「分割あり」と表示します">分割</th>':'')+visibleColumns.map(c=>{
   const filtered=filteredCols.has(c),sorted=S.sortColumn===c,arrow=sorted?(S.sortDir==='desc'?' ▼':' ▲'):'';
   return `<th class="sortable-col ${filtered?'col-filtered':''} ${sorted?'col-sorted':''}" data-sort-col="${esc(c)}" tabindex="0" role="button" aria-label="${esc(c)}列で並び替え" title="クリックで並び替え${filtered?'（絞り込み中の列です）':''}">${esc(c)}${arrow}${filtered?'<i class="col-filter-badge" aria-hidden="true" title="この列にフィルタが適用されています">▼</i>':''}</th>`;
  }).join('')+(isWork?'<th class="measurement-action-head">測定</th>':'')+'</tr></thead>';
@@ -123,7 +135,7 @@ function renderGrid(){
  // 3の行は分割済みの子ロット自身であるため、親ロットを逆引き検索して
  // 気づけるようにする対象を集める(下のcheckParentLookupRows参照)。
  const parentCheckTargets=[];
- S.rows.forEach((r,i)=>{
+ visibleRows.forEach((r,i)=>{
   const tr=document.createElement('tr');
   let splitCell='';
   if(isWork){
@@ -138,7 +150,7 @@ function renderGrid(){
     if(typeof window.isChildCardClassifiedRow==='function'&&window.isChildCardClassifiedRow(r))parentCheckTargets.push({tr,row:r});
    }
   }
-  tr.innerHTML=(canPlan?`<td class="plan-select-cell"><input type="checkbox" class="plan-select-checkbox"></td><td class="plan-action-cell"><button type="button" class="plan-action-button" title="この行の設備の作業スケジュールへ追加します">+ 予定</button></td>`:'')+`<td>${(S.page-1)*+$('#pageSize').value+i+1}</td>`+splitCell+S.columns.map(c=>{
+  tr.innerHTML=(canPlan?`<td class="plan-select-cell"><input type="checkbox" class="plan-select-checkbox"></td><td class="plan-action-cell"><button type="button" class="plan-action-button" title="この行の設備の作業スケジュールへ追加します">+ 予定</button></td>`:'')+`<td>${(S.page-1)*+$('#pageSize').value+i+1}</td>`+splitCell+visibleColumns.map(c=>{
    if(c===lotCol){const lotVal=r[c];return `<td class="lot-cell"><button type="button" class="lot-dsp-link grid-lot-link" title="クリックでLotDspをこのロット番号で開きます">${esc(lotVal)||'—'}</button></td>`}
    return `<td>${esc(r[c])}</td>`;
   }).join('')+(isWork?'<td class="measurement-action-cell"><button type="button" class="measurement-action-button">開く</button></td>':'');
@@ -166,7 +178,7 @@ function renderGrid(){
     checkbox.addEventListener('change',()=>{
      if(checkbox.checked)S.selectedRows.add(r);else S.selectedRows.delete(r);
      tr.classList.toggle('is-plan-selected',checkbox.checked);
-     syncPlanSelectAll();renderPlanSelectBar(true);
+     syncPlanSelectAll(visibleRows);renderPlanSelectBar(true);
     });
    }
    // 分割表示(§9.10)でのドラッグ投入。チェックボックスで複数選択済みの
@@ -193,9 +205,9 @@ function renderGrid(){
  if(canPlan){
   const selectAll=$('#planSelectAll');
   if(selectAll){
-   syncPlanSelectAll();
+   syncPlanSelectAll(visibleRows);
    selectAll.onchange=()=>{
-    S.rows.forEach(r=>{if(selectAll.checked)S.selectedRows.add(r);else S.selectedRows.delete(r)});
+    visibleRows.forEach(r=>{if(selectAll.checked)S.selectedRows.add(r);else S.selectedRows.delete(r)});
     renderGrid();
    };
   }
@@ -205,10 +217,12 @@ function renderGrid(){
  checkParentLookupRows(parentCheckTargets);
 }
 /* 複数選択→スケジュールへ一括投入(§9.5)。ヘッダーの全選択チェックボックスは
-   このページの行のみを対象にする(indeterminate状態で「一部選択中」を示す)。 */
-function syncPlanSelectAll(){
+   このページの表示行(投入済みでスケジュールから除外表示している行を除く、
+   §9.15)のみを対象にする(indeterminate状態で「一部選択中」を示す)。 */
+function syncPlanSelectAll(rows){
  const selectAll=$('#planSelectAll');if(!selectAll)return;
- const total=S.rows.length,checked=S.rows.filter(r=>S.selectedRows.has(r)).length;
+ const target=rows||S.rows;
+ const total=target.length,checked=target.filter(r=>S.selectedRows.has(r)).length;
  selectAll.checked=total>0&&checked===total;
  selectAll.indeterminate=checked>0&&checked<total;
 }
