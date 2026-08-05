@@ -1,5 +1,11 @@
-"""rne_scheduler.py: 仕掛/品質データのローカル運用(sikalot_source=local)時に、
-RNEからSQLite3を定期的に抽出・更新する背景スレッド。
+"""rne_scheduler.py: RNEからSQLite3を定期的に抽出・更新する背景スレッド。
+
+**抽出は取得元(sikalot_source)と独立して実行できる。** 抽出の成果物を
+仕掛一覧が読むかどうか(sikalot_source)と、抽出を回すかどうかは別の関心事で、
+共有から読みつつローカルの複製を作っておきたい/設定を試したい、という
+運用があるため。定期実行の可否はパス設定マスタの"rne_extract_enabled"
+('auto'=localのときだけ / 'on' / 'off')で決め、毎周回で読み直す。
+手動の「今すぐ抽出」は、資材(RNE・symnavim.conf)が置いてあればいつでも動く。
 
 SIKALOTNOW/SIKALOTDEFの2ジョブを毎回並列(サブプロセス)で実行する。Navigator
 API/COMセッションはプロセス間で安全に共有できないため、ジョブごとに独立した
@@ -101,7 +107,9 @@ def last_status():
  with _last_lock:
   snapshot=dict(_last);snapshot['jobs']=list(_last['jobs'])
  snapshot['source']=SIKALOT_SOURCE
- snapshot['enabled']=(SIKALOT_SOURCE=='local')
+ snapshot['scheduleMode']=str(path_config_value('rne_extract_enabled','auto') or 'auto')
+ snapshot['enabled']=schedule_enabled()        # 定期実行が回るか
+ snapshot['canRun']=extract_possible()          # 手動実行できるか(資材の有無)
  snapshot['intervalSec']=_interval_sec()
  snapshot['assetsDir']=str(RNE_ASSETS_DIR)
  # 抽出資材が置かれているか(未配置なら「起動しない」理由がこれ)。
@@ -170,15 +178,34 @@ def _interval_sec():
 
 def _loop():
  while True:
-  # 手動実行と重なったときは今回の周回を飛ばす(次の周回で追いつく)
-  try:run_batch('schedule')
-  except RuntimeError:pass
-  except Exception as e:app_logger().warning('RNE抽出の周回で例外: %s',e)
+  # 定期実行の可否・間隔は毎周回で読み直す(設定変更に再起動を要らなくする)。
+  if schedule_enabled() and extract_possible():
+   # 手動実行と重なったときは今回の周回を飛ばす(次の周回で追いつく)
+   try:run_batch('schedule')
+   except RuntimeError:pass
+   except Exception as e:app_logger().warning('RNE抽出の周回で例外: %s',e)
   time.sleep(_interval_sec())
 
 
+def extract_possible():
+ """抽出を実行できる状態か(資材が置いてあるか)。取得元(sikalot_source)とは
+ 独立。共有から読む運用でも、ローカルの複製を作る・設定を試す目的で
+ 実行できてよいため、実行可否は資材の有無だけで決める。"""
+ if not (RNE_ASSETS_DIR/'symnavim.conf').exists():return False
+ return all((RNE_ASSETS_DIR/'rne'/j['rne']).exists() for j in JOBS)
+
+def schedule_enabled():
+ """定期実行を回すか。パス設定マスタの rne_extract_enabled で決める。
+    'auto'(既定): sikalot_source=='local' のときだけ(従来の挙動)
+    'on'  : 取得元に関わらず回す / 'off': 回さない
+    いずれの設定でも「今すぐ抽出」は資材があれば実行できる。"""
+ mode=str(path_config_value('rne_extract_enabled','auto') or 'auto').strip().lower()
+ if mode=='on':return True
+ if mode=='off':return False
+ return SIKALOT_SOURCE=='local'
+
 def start():
  """抽出の背景スレッドを開始する(デーモンスレッド)。
-    sikalot_source=local以外(既定はnetwork)なら何もしない。"""
- if SIKALOT_SOURCE!='local':return
+    定期実行の可否は毎周回で読み直すため、ここでは常にスレッドを立てる
+    (設定を'on'へ変えたら再起動なしで回り始める)。"""
  threading.Thread(target=_loop,daemon=True,name='rne-scheduler').start()

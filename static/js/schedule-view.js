@@ -570,6 +570,7 @@
   hideSplitList();
   stopLockPolling();
   stopSessionHeartbeat();
+  stopWorkableWatch();   // 画面を出たら可否の裏取りも止める(§9.51)
   if(scSessionHeldFor){releaseSessionFire(scSessionHeldFor);scSessionHeldFor=null}
   scState.sessionHeld=false;scState.sessionHolder=null;scState.sessionError=null;
  }
@@ -1036,6 +1037,68 @@
   na:{text:'—',cls:'is-na',title:'作業以外の予定です。'},
  };
 
+/* 可否の反映は**画面を作り直さない**。renderTimeline()を呼ぶと行が総入れ替えに
+    なり、ドラッグ中・詳細を開いている最中・スクロール位置がすべて飛ぶ。
+    既にある行の可否セルと開始ボタンだけを差し替える。 */
+ function applyWorkableFlags(){
+  document.querySelectorAll('.sc-row-line').forEach(row=>{
+   const e=row.__scEntry;if(!e)return;
+   const w=workableOf(e);
+   const label=WORKABLE_LABEL[w.state]||WORKABLE_LABEL.unknown;
+   const cell=row.querySelector('.sc-row-workable');
+   if(cell){
+    cell.textContent=label.text;
+    cell.className='sc-row-workable '+label.cls;
+    cell.title=w.course?`${label.title}\n残仕掛設備ｺｰｽ: ${w.course}`:label.title;
+   }
+   row.classList.toggle('sc-row-not-workable',w.state==='ng');
+   // 可否が変わったら開始ボタンの有無も合わせる(可になったらすぐ着手できる)
+   const canStart=scState.canStartWork&&e.kind==='作業'&&e.state==='予定'
+                  &&!e.__pending&&!e.unplanned&&w.state==='ok';
+   const actions=row.querySelector('.sc-row-actions');
+   const existing=row.querySelector('.sc-row-start');
+   if(canStart&&!existing&&actions){
+    const btn=document.createElement('button');
+    btn.type='button';btn.className='sc-row-btn sc-row-start';
+    btn.title='この予定の測定画面を開いて作業を開始します';btn.textContent='▶ 開始';
+    btn.onclick=ev=>{ev.stopPropagation();startWorkFromEntry(e)};
+    actions.prepend(btn);
+   }else if(!canStart&&existing){
+    existing.remove();
+   }
+  });
+ }
+ /* 可でない行は、工程が進めば可へ変わる。利用者に「再読込」を押させずに
+    自動で追いつくよう、可でない予定が残っている間だけ裏で取り直す。
+    全部可になったら見張る理由が無いので止める(無駄な問い合わせを残さない)。 */
+ const WORKABLE_WATCH_MS=120000;   // 2分
+ let workableTimer=null;
+ function stopWorkableWatch(){if(workableTimer){clearTimeout(workableTimer);workableTimer=null}}
+ function scheduleWorkableWatch(){
+  stopWorkableWatch();
+  const entries=scState.entries||[];
+  const pending=entries.some(e=>e.kind==='作業'&&e.state==='予定'&&workableOf(e).state!=='ok');
+  if(!pending)return;
+  workableTimer=setTimeout(()=>{refreshWorkableInBackground(true)},WORKABLE_WATCH_MS);
+ }
+ async function refreshWorkableInBackground(force){
+  try{
+   await loadWorkableIndex(force);
+   applyWorkableFlags();
+   scheduleWorkableWatch();
+  }catch(err){console.warn('作業可否の更新に失敗しました',err)}
+ }
+ /* 仕掛一覧を取り直した直後など、外から可否を更新したいときの入口。 */
+ window.refreshScheduleWorkable=refreshWorkableInBackground;
+ /* 可否がなぜその値なのかを確認するための状態。全部「?」のときに
+    「仕掛が読めていない」のか「該当ロットが無い」のかを切り分ける。 */
+ window.scheduleWorkableState=()=>({
+  watching:workableTimer!==null,
+  indexSize:scWorkable.map?scWorkable.map.size:0,
+  fetchedAt:scWorkable.at||null,
+  equipment:scState.equipment||'',
+ });
+
  async function refreshAll(force){
   // キャッシュから出せるならWAITING表示ごと省く(一瞬で出るのにスピナーが
   // 瞬くと、かえって「また読み込んでいる」ように見えるため)。
@@ -1051,11 +1114,11 @@
   // 使うため、先に取得しておく(後から取得すると初回描画が古い/未設定の
   // プリファレンスのまま出て、直後に列が変わるちらつきが起きる)。
   if(scState.fullControl){await loadScheduleColumnPrefs();await loadScheduleContentPrefs()}
-  // 作業可否(§9.51)の判定材料。予定より先に用意しないと、初回描画が
-  // 全行「?」になってから一拍おいて書き換わる(ちらつく)。
-  report({progress:'仕掛の残コースを確認しています',step:1});
-  await loadWorkableIndex(force);
   await loadPlan(force);
+  // 作業可否(§9.51)の判定材料は**待たない**。仕掛一覧の取得は共有越しだと
+  // 時間がかかることがあり、待つとその間ずっと予定が出ない。先に予定を描き、
+  // 可否は取れ次第そのセルだけ差し替える(操作は一切止めない)。
+  refreshWorkableInBackground(force);
   if(scState.fullControl)await loadStopReasons();
   report({progress:'仕掛一覧を並べて表示しています',step:2});
   await showSplitList();
@@ -1064,6 +1127,7 @@
   scState.entries=r.entries||[];scState.anchor=r.anchor;scState.warnings=r.warnings||[];
   scState.planFetchedAt=fetchedAt;
   renderWarnings();renderTimeline();updateFreshnessUi(fetchedAt);
+  scheduleWorkableWatch();   // 可でない行が残っていれば裏で追いかける(§9.51)
  }
  async function loadPlan(force){
   if(!scState.equipment)return;
@@ -1398,6 +1462,7 @@
    row.className='sc-row-line '+stateRowClass(e.state)
     +(e.__pending?' sc-row-pending':'')+(locked?' sc-row-locked':'')+(e.ongoing?' sc-row-ongoing':'');
    row.dataset.id=e.id;
+   row.__scEntry=e;   // 作業可否だけ後から差し替えるときの参照(§9.51)
    // ロック(§9.38)された行はその日時に釘付けなので、並べ替えても時刻が
    // 変わらない。動かせるのに何も起きない状態は紛らわしいためドラッグ対象
    // から外す(解除すれば通常のロットと同じように流れる)。

@@ -662,6 +662,7 @@ def access_permission_master_delete():
 _PATH_CONFIG_DEFAULTS={
  'sikalot_source':'network','sikalotnow_path':'','sikalotdef_path':'',
  'records_backup_export_path':'','schedule_share_path':'',
+ 'rne_extract_enabled':'auto',
  'rne_extract_interval_sec':str(RNE_EXTRACT_INTERVAL_SEC_DEFAULT),
  'schedule_lock_ttl_sec':str(SCHEDULE_LOCK_TTL_SEC_DEFAULT),
  'schedule_lock_verify_delay_ms':str(SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT),
@@ -688,6 +689,7 @@ def path_config_master_get():
    'sikalotdef_path':str(DBS['SIKALOTDEF']['path']),'sikalotdef_engine':DBS['SIKALOTDEF']['engine'],
    'records_backup_export_path':str(RECORDS_BACKUP_EXPORT_PATH) if RECORDS_BACKUP_EXPORT_PATH else '',
    'schedule_share_path':str(SCHEDULE_SHARE_PATH) if SCHEDULE_SHARE_PATH else '',
+   'rne_extract_enabled':str(path_config_value('rne_extract_enabled','auto') or 'auto'),
    'rne_extract_interval_sec':str(path_config_value('rne_extract_interval_sec',RNE_EXTRACT_INTERVAL_SEC_DEFAULT)),
    'schedule_lock_ttl_sec':str(path_config_value('schedule_lock_ttl_sec',SCHEDULE_LOCK_TTL_SEC_DEFAULT)),
    'schedule_lock_verify_delay_ms':str(path_config_value('schedule_lock_verify_delay_ms',SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT)),
@@ -712,6 +714,9 @@ def path_config_master_update():
    except ValueError:errors.append(f'{label}は整数で入力してください。');continue
    if n<minimum:errors.append(f'{label}は{minimum}以上で入力してください。');continue
    numeric_values[key]=str(n)
+  rne_enabled=str(x.get('rne_extract_enabled') or '').strip()
+  if rne_enabled and rne_enabled not in ('auto','on','off'):
+   errors.append('RNE抽出の定期実行は「auto」「on」「off」のいずれかを指定してください。')
   if errors:return jsonify(error=' / '.join(errors)),400
   updates={
    'sikalot_source':sikalot_source,
@@ -719,6 +724,7 @@ def path_config_master_update():
    'sikalotdef_path':str(x.get('sikalotdef_path') or '').strip(),
    'records_backup_export_path':str(x.get('records_backup_export_path') or '').strip(),
    'schedule_share_path':str(x.get('schedule_share_path') or '').strip(),
+   'rne_extract_enabled':rne_enabled,
    **numeric_values,
   }
   path=DBS['MASTER']['path']
@@ -805,14 +811,16 @@ def rne_extract_run():
  画面は /status をポーリングして結果を見る(要求は即座に返す)。"""
  from .. import rne_scheduler
  import threading as _th
- if rne_scheduler.SIKALOT_SOURCE!='local':
-  return jsonify(error='仕掛/品質データがローカル運用(sikalot_source=local)ではありません。'
-                       'パス設定で「local」に変更してサーバーを再起動すると抽出が有効になります。'),400
+ # 手動実行は取得元(sikalot_source)に関わらず行える。共有から読む運用でも、
+ # ローカルの複製を用意する・配置と接続を試す目的で実行できてよいため。
  missing=[j['rne'] for j in rne_scheduler.JOBS
           if not (rne_scheduler.RNE_ASSETS_DIR/'rne'/j['rne']).exists()]
  if missing:
   return jsonify(error=f'抽出定義(RNE)が配置されていません: {", ".join(missing)}。'
                        f'{rne_scheduler.RNE_ASSETS_DIR/"rne"} へ配置してください。'),400
+ if not (rne_scheduler.RNE_ASSETS_DIR/'symnavim.conf').exists():
+  return jsonify(error=f'接続情報 symnavim.conf が配置されていません'
+                       f'({rne_scheduler.RNE_ASSETS_DIR})。'),400
  status=rne_scheduler.last_status()
  if status.get('running'):
   return jsonify(error='抽出が既に実行中です。完了までお待ちください。'),409

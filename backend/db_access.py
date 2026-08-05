@@ -198,7 +198,12 @@ PATH_CONFIG_TABLE='パス設定マスタ'
 PATH_CONFIG_STATIC_KEYS=('sikalot_source','sikalotnow_path','sikalotdef_path','records_backup_export_path','schedule_share_path')
 # 呼び出しのたびに読み直せる項目(間隔・タイムアウト値のみで、接続先には
 # 影響しないため、変更を再起動無しで反映できる)。
-PATH_CONFIG_LIVE_KEYS=('rne_extract_interval_sec','schedule_lock_ttl_sec','schedule_lock_verify_delay_ms')
+# rne_extract_enabled: RNE抽出(定期実行)を動かすかどうか。
+#   'auto'(既定) … sikalot_source=='local' のときだけ動かす(従来どおり)
+#   'on'          … 取得元に関わらず動かす(共有から読みつつローカルも更新する等)
+#   'off'         … 定期実行しない(手動の「今すぐ抽出」は別途いつでも実行できる)
+# 抽出そのものは取得元と独立して動けるようにしてある(§9.50)。
+PATH_CONFIG_LIVE_KEYS=('rne_extract_interval_sec','rne_extract_enabled','schedule_lock_ttl_sec','schedule_lock_verify_delay_ms')
 PATH_CONFIG_KEYS=PATH_CONFIG_STATIC_KEYS+PATH_CONFIG_LIVE_KEYS
 
 def ensure_path_config_table(c):

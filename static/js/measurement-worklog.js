@@ -1351,6 +1351,11 @@
     ${pathField('sikalotdef_path','品質データ(SIKALOTDEF)の読み込み先（個別上書き）','file')}
     ${pathField('records_backup_export_path','測定データバックアップの閲覧用複製先','dir','複製先の「フォルダ」を選びます。空欄なら複製しません。')}
     ${pathField('schedule_share_path','スケジュール機能の共有データ置き場（schedule.sqlite3）','file','共有フォルダ上のschedule.sqlite3を選びます。空欄ならスケジュール機能は無効です。')}
+    <label class="mm-field"><span>RNE抽出の定期実行</span><select data-pc-field="rne_extract_enabled">${
+     [['','（既定）auto: 取得元がlocalのときだけ'],['auto','auto: 取得元がlocalのときだけ'],
+      ['on','on: 取得元に関わらず定期実行する'],['off','off: 定期実行しない（手動のみ）']]
+      .map(([val,label])=>`<option value="${esc(val)}"${(v.rne_extract_enabled||'')===val?' selected':''}>${esc(label)}</option>`).join('')
+    }</select><small class="mm-field-hint">「今すぐ抽出」は、この設定に関わらず資材が配置されていれば実行できます。</small></label>
     ${numField('rne_extract_interval_sec','RNE抽出間隔','秒',60,60)}
     ${numField('schedule_lock_ttl_sec','スケジュール書込ロックの有効期限','秒',5,1)}
     ${numField('schedule_lock_verify_delay_ms','ロック確認までの待機時間','ミリ秒',100,0)}
@@ -1390,21 +1395,26 @@
   catch(e){const b=$('#rneBody');if(b)b.innerHTML=`<div class="rne-note">状態を取得できません: ${esc(e.message)}</div>`;return}
   const state=$('#rneState'),body=$('#rneBody'),btn=$('#rneRunBtn');
   if(!state||!body||!btn)return;
-  state.textContent=s.running?'抽出中…':(s.enabled?'有効':'停止中（network運用）');
+  state.textContent=s.running?'抽出中…':(s.enabled?'定期実行 有効':'定期実行 停止中');
   state.className='rne-state '+(s.running?'is-running':(s.enabled?'is-on':'is-off'));
-  btn.disabled=!!s.running;
+  // 手動実行は取得元に関わらず、資材が配置されていれば押せる
+  btn.disabled=!!s.running||!s.canRun;
+  btn.title=s.canRun?'取得元の設定に関わらず、今この場でRNEから抽出し直します。'
+                    :'抽出に必要なファイル(RNE定義・symnavim.conf)が配置されていません。';
   const jobs=(s.jobs||[]).map(j=>`<div class="rne-job${j.ok?'':' is-ng'}"><b>${esc(j.name)}</b>${
     j.ok?`成功 ${esc(String(j.rows??'-'))}行 / ${(j.elapsed||0).toFixed(1)}秒`:`失敗: ${esc(j.error||'')}`}</div>`).join('');
   const outs=(s.outputs||[]).map(o=>`<div class="rne-job"><b>${esc(o.name)}</b>${
     o.exists?`最終更新 ${esc(fmtWhen(o.mtime))}`:'まだ作成されていません'}</div>`).join('');
   const missing=(s.assets&&s.assets.rneMissing)||[];
   body.innerHTML=`
-   ${s.enabled?'':`<div class="rne-note"><b>現在はネットワーク共有から直接読む運用です。</b>抽出を使うには、上の「仕掛/品質データの取得元」を <b>local</b> にして保存し、<b>サーバーを再起動</b>してください（取得元は起動時に1回だけ確定するため、保存だけでは切り替わりません）。</div>`}
+   ${s.enabled?'':`<div class="rne-note"><b>定期実行は停止中です</b>（設定: ${esc(s.scheduleMode||'auto')}${s.scheduleMode==='off'?'':` / 取得元: ${esc(s.source||'')}`}）。
+     定期実行を回すには、上の「RNE抽出の定期実行」を <b>on</b> にするか、「仕掛/品質データの取得元」を <b>local</b> にしてください（取得元の変更はサーバー再起動後に反映されます。定期実行の設定は再起動不要です）。
+     <b>「今すぐ抽出」は取得元の設定に関わらず実行できます。</b></div>`}
    ${missing.length?`<div class="rne-note" style="color:var(--danger)"><b>抽出定義(RNE)が未配置です: ${esc(missing.join(', '))}</b><br>${esc(s.assetsDir||'')}\\rne へ配置してください（機密のためリポジトリには含まれません。config/rne_extract/README.md 参照）。</div>`:''}
    ${(s.assets&&!s.assets.symnavimConf)?`<div class="rne-note" style="color:var(--danger)">接続情報 symnavim.conf が未配置です（${esc(s.assetsDir||'')}）。</div>`:''}
    <div class="rne-jobs">${outs}</div>
    ${jobs?`<div class="rne-jobs">${jobs}</div>`:''}
-   <div class="rne-note">自動実行: ${s.enabled?`起動直後に1回、以降 ${esc(String(s.intervalSec))}秒ごと`:'（停止中）'} ／ 直近の実行: ${esc(fmtWhen(s.finishedAt||s.startedAt))}${s.trigger?`（${s.trigger==='manual'?'手動':'定期'}）`:''}</div>`;
+   <div class="rne-note">定期実行: ${s.enabled?`起動直後に1回、以降 ${esc(String(s.intervalSec))}秒ごと`:'（停止中）'} ／ 手動実行: ${s.canRun?'可能':'資材が未配置のため不可'} ／ 直近の実行: ${esc(fmtWhen(s.finishedAt||s.startedAt))}${s.trigger?`（${s.trigger==='manual'?'手動':'定期'}）`:''}</div>`;
   btn.onclick=async()=>{
    btn.disabled=true;
    try{

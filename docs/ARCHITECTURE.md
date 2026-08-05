@@ -197,13 +197,13 @@ API経由でRNE(Navigator問い合わせ定義)を実行し、ローカルSQLite
   のためリポジトリへ含めず、PCごとに`config/rne_extract/`配下へ手動配置
   する(配置形態の詳細は`config/rne_extract/README.md`、テンプレートは
   `symnavim.conf.example`)。`.gitignore`で実体(`rne/`・`NAVIAP/`・
-  `symnavim.conf`)を除外し、README/exampleのみ追跡する方針。
-- **既知の不一致**: 上記の方針にもかかわらず、`config/rne_extract/rne/*.RNE`と
-  `config/rne_extract/NAVIAP/**/SymNaviA.dll`は**現在リポジトリに追跡されている**
-  (`.gitignore`は未追跡ファイルの追加を防ぐだけで、既に追跡済みのファイルは
-  除外されないため)。接続パスワードを含む`symnavim.conf`は追跡されていない
-  (`.example`のみ)ので資格情報の流出は無い。是正するかどうか(追跡解除だけ/
-  履歴からの除去まで)は運用側の判断が要るため、現状を事実として記録しておく。
+  `symnavim.conf`)を除外し、README/exampleのみ追跡する。
+- **リポジトリには実体が無い**。`*.RNE`と`SymNaviA.dll`は追跡解除済みで、
+  クローンしただけの状態では`config/rne_extract/`にREADMEと
+  `symnavim.conf.example`しか無い。実環境ではセットアップ時にPCごとへ
+  配置する(配置しないと抽出は動かないが、アプリの他の機能には影響しない)。
+  なお過去のコミット履歴にはこれらのファイルが残っている(追跡解除は
+  以後の追跡を止めるだけで、履歴は書き換えない)。
 
 **状態表示と手動実行**
 
