@@ -631,7 +631,16 @@
   const search=document.querySelector('#masterMaintPanel .mm-search');if(search)search.style.display=show?'':'none';
   const cnt=$('#masterMaintCount');if(cnt)cnt.style.display=show?'':'none';
  }
+ // マスタは共有DBを読む種類があり数秒かかることがある。無反応に見えて
+ // タブを連打されないよう、読み込みはWAITING表示で包む(records-store.jsの
+ // withWaiting。速いときは出ないので通常の操作感は変わらない)。
  async function loadMaint(force){
+  const def=currentDef();
+  if(typeof withWaiting!=='function')return loadMaintInner(force);
+  return withWaiting({title:def.label+'マスタを読み込んでいます',detail:'マスタDB: '+(def.endpoint||'-'),
+   progress:'登録済みの内容を取得しています'},()=>loadMaintInner(force));
+ }
+ async function loadMaintInner(force){
   const def=currentDef();const title=$('#masterMaintTitle');if(title)title.textContent=def.label+'マスタ';
   if(def.special==='column-display'){setMaintSearchVisible(false);return loadColumnDisplayMaint(force)}
   if(def.special==='import-backup'){setMaintSearchVisible(false);return loadImportBackupMaint(force)}

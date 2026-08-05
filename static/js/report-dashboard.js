@@ -916,7 +916,14 @@
 
  async function runDashboard(force){
   const panel=$id('dashboardPanel');if(!panel||panel.hidden)return;
+  if(typeof withWaiting!=='function')return runDashboardInner(force,()=>{});
+  return withWaiting({title:'分析データを集計しています',detail:'この端末の測定データを読み込んでいます',
+   progress:'対象データを取得しています',step:1},report=>runDashboardInner(force,report));
+ }
+ async function runDashboardInner(force,report){
+  const panel=$id('dashboardPanel');if(!panel||panel.hidden)return;
   const all=await ensureData(force);
+  report({progress:'指標を計算してグラフを描画しています',step:2});
   const statusFilter=val('dbStatus')||'done';
   const startStr=val('dbStart'),endStr=val('dbEnd');
   const startD=startStr?new Date(startStr+'T00:00:00'):null;

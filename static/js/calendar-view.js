@@ -63,8 +63,16 @@
  /* ---------- 状態 ---------- */
  let calState={cursor:new Date(),status:'done',metric:'weight',selectedKey:'',items:[],loaded:false};
 
+ // 端末内(IndexedDB)の測定データを全件走査するため、件数が増えると数秒
+ // かかる。読み込み中と分かるようWAITING表示で包む(withWaitingは速いときは
+ // 出さないので、件数が少ない端末では今までどおり)。
  async function ensureData(force){
   if(calState.loaded&&!force)return calState.items;
+  if(typeof withWaiting!=='function')return ensureDataInner();
+  return withWaiting({title:'実績カレンダーを読み込んでいます',detail:'この端末の測定データを集計しています',
+   progress:'保存済みのロットを日付ごとに集計しています'},()=>ensureDataInner());
+ }
+ async function ensureDataInner(){
   const all=await reliableAll();
   calState.items=all.map(x=>{
    const date=recordDate(x);if(!date)return null;

@@ -427,7 +427,13 @@
   }
  }
 
+ // 品質データ(SIKALOTDEF)は最大2万行を集計するため待たされることがある。
  async function run(){
+  if(typeof withWaiting!=='function')return runInner();
+  return withWaiting({title:'品質データを集計しています',detail:'テーブル: '+((typeof S!=='undefined'&&S.table)||'-'),
+   progress:'条件に合う行を集計してグラフを作成しています'},()=>runInner());
+ }
+ async function runInner(){
   const panel=ensurePanel();if(panel.hidden)return;
   $id('qaChart').innerHTML='<div class="qa-empty">グラフを作成しています…</div>';
   const q=new URLSearchParams({table:S.table||'',group_col:val('qaGroupCol'),metric:val('qaMetric')||'count',value_col:val('qaValueCol'),stack_col:val('qaSeriesCol'),date_col:val('qaDateCol'),search:val('qaSearch'),bucket:val('qaBucket')||'day',dimension:val('qaDimension')||'category',max_rows:'20000'});

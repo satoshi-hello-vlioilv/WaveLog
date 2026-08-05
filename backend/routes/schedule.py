@@ -167,13 +167,21 @@ def plan_list():
  # (状態の動的導出)まで行った完成形を返す(DBへは書き戻さない)。
  equipment=str(request.args.get('equipment') or '').strip()
  if not equipment:return jsonify(error='どの設備の予定か指定してください(equipment)。'),400
- result,stale,err=_read(lambda c:schedule_calc.expand_plan(c,equipment))
+ # history_hours(§9.33): 計画外実績の完了分をどこまでさかのぼるか。画面の
+ # 「表示範囲」と同じ値をフロントが送る。青天井にすると端末の全測定履歴が
+ # 毎回合成されるため、上限を切っておく。
+ history_hours=schedule_calc.DEFAULT_HISTORY_HOURS
+ raw=request.args.get('history_hours')
+ if raw is not None:
+  try:history_hours=max(0.0,min(float(raw),24.0*90))
+  except (TypeError,ValueError):pass
+ result,stale,err=_read(lambda c:schedule_calc.expand_plan(c,equipment,history_hours=history_hours))
  if err=='not_configured':return jsonify(ok=True,configured=False,equipment=equipment,entries=[],anchor=None,warnings=[])
  if err:return jsonify(error=err),503
  warnings=list(result.get('warnings') or [])
  if stale:warnings.append('スケジュールデータの取得に失敗したため、直前のローカルキャッシュを表示しています。')
  return jsonify(ok=True,configured=True,equipment=equipment,entries=result['entries'],anchor=result.get('anchor'),
-                loadFactor=result.get('loadFactor'),warnings=warnings)
+                loadFactor=result.get('loadFactor'),historyHours=history_hours,warnings=warnings)
 
 @bp.post('/api/schedule/plan/add')
 def plan_add():
@@ -520,7 +528,10 @@ def overview():
   equipment_names=[str(r[1]).strip() for r in equipment_master_rows(mc) if str(r[1] or '').strip()]
  now=datetime.now()
  def fn(c):
-  return [_overview_row(eq,schedule_calc.expand_plan(c,eq,now=now),now) for eq in equipment_names]
+  # 俯瞰ボードは「今どこが動いているか/残りどれだけか」だけを見るため、
+  # 計画外実績(§9.33)の完了分は合成しない(history_hours=None)。実施中の
+  # 分は合成されるので、予定を立てずに始めた作業も「● 稼働中」に出る。
+  return [_overview_row(eq,schedule_calc.expand_plan(c,eq,now=now,history_hours=None),now) for eq in equipment_names]
  result,stale,err=_read(fn)
  if err=='not_configured':return jsonify(ok=True,configured=False,equipment=[],generatedAt=now.isoformat())
  if err:return jsonify(error=err),503
