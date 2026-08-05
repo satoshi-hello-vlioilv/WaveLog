@@ -2509,11 +2509,11 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
    --------------------------------------------------------------- */
 .sc-row-head,.sc-row-line{
  display:grid;
- grid-template-columns:calc(18px * var(--ui-scale)) calc(22px * var(--ui-scale)) calc(50px * var(--ui-scale))
-  calc(108px * var(--ui-scale)) calc(58px * var(--ui-scale)) calc(88px * var(--ui-scale))
+ grid-template-columns:calc(18px * var(--ui-scale)) calc(92px * var(--ui-scale)) calc(50px * var(--ui-scale))
+  calc(112px * var(--ui-scale)) calc(58px * var(--ui-scale)) calc(88px * var(--ui-scale))
   minmax(calc(150px * var(--ui-scale)),1fr) calc(62px * var(--ui-scale)) calc(88px * var(--ui-scale))
-  calc(100px * var(--ui-scale)) calc(72px * var(--ui-scale));
- align-items:center;column-gap:8px;min-width:calc(900px * var(--ui-scale));
+  calc(112px * var(--ui-scale)) calc(104px * var(--ui-scale));
+ align-items:center;column-gap:8px;min-width:calc(1020px * var(--ui-scale));
 }
 .sc-row-head{padding:3px 8px 4px;position:sticky;top:0;z-index:1;background:#f4f7f8;font-size:var(--fs-micro);font-weight:800;color:#8a9aa0;border-bottom:1px solid var(--line)}
 .sc-row-line{padding:var(--row-pad-y) 8px;min-height:var(--row-h);border-radius:4px;background:#fff;border-bottom:1px solid #eef1f2}
@@ -2530,9 +2530,21 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
 .sc-row-line.sc-row-pending{opacity:.6;background:repeating-linear-gradient(135deg,#fff,#fff 8px,#f7f5ea 8px,#f7f5ea 16px)}
 .sc-flag-pending{color:#a4832a;font-weight:800}
 .sc-row-handle{color:#9fb0b5;font-size:var(--fs-base-sm);text-align:center}
-.sc-row-icon{font-size:var(--fs-base-sm);text-align:center;color:#7c9095}
-.sc-row-line.sc-row-active .sc-row-icon{color:var(--success)}
-.sc-row-line.sc-row-cancel .sc-row-icon{color:var(--danger)}
+/* 区分(§9.39): 完了済み/作業中/作業予定を行の中の列で持つ。以前は
+   セクション見出しで分けていたが、日付・勤務でまとめ直したいときに
+   見出しが二重になるため、列へ移した。 */
+.sc-row-cat{
+ display:inline-flex;align-items:center;gap:4px;justify-self:start;max-width:100%;
+ height:var(--ctl-h-xs);padding:0 8px;border-radius:11px;
+ font-size:var(--fs-sm);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+ background:#eef2f4;color:#5c777e;border:1px solid transparent;
+}
+.sc-row-cat i{font-style:normal;font-size:var(--fs-sm);line-height:1}
+.sc-cat-doing{background:var(--success-bg);color:var(--success);border-color:var(--success-border)}
+.sc-cat-done{background:#eef2f4;color:#7c9095}
+.sc-cat-planned{background:var(--pale);color:#0c5d67;border-color:#cfe6ea}
+.sc-cat-cancel{background:var(--danger-bg);color:var(--danger);border-color:var(--danger-border)}
+.sc-cat-stop{background:var(--warn-bg);color:var(--warn-fg);border-color:var(--warn-border)}
 .sc-row-date{font-size:var(--fs-sm);color:#5c777e;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}
 .sc-row-time{font-size:var(--fs-base-sm);color:#3a565d;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}
 .sc-row-shift{font-size:var(--fs-sm);color:#3a565d;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -2889,3 +2901,14 @@ body.rp-mode #printCurrentView,body.qa-mode #printCurrentView{display:none!impor
 .sc-history-range{display:inline-flex;align-items:center;gap:5px;font-size:var(--fs-sm);color:#5c777e;white-space:nowrap}
 .sc-history-range[hidden]{display:none}
 .sc-history-range select{height:var(--ctl-h-sm);padding:0 6px;border:1px solid var(--line);border-radius:6px;background:#fff;font-size:var(--fs-sm);color:#3a565d}
+
+/* ---------- 日時ロック(§9.38)と作業中(§9.37) ----------
+   ロックした行はその日時に釘付け。ロックしていない行は現在時刻を起点に
+   前から詰めて並ぶため、時間が経つほど後ろへずれていく。この違いが
+   一目で分かるよう、ロック行は左端に色帯を出す。 */
+.sc-row-line.sc-row-locked{border-left:3px solid var(--warn-border);padding-left:5px}
+.sc-flag-locked{color:var(--warn-fg);font-weight:800;white-space:nowrap}
+.sc-row-lock.active{background:var(--warn-bg);border-color:var(--warn-border);color:var(--warn-fg)}
+/* 作業中は予定終了が常に現在時刻(継続中)。進行中であることを時刻欄でも示す。 */
+.sc-row-line.sc-row-ongoing .sc-row-time{font-weight:800;color:var(--success)}
+.sc-row-line.sc-row-ongoing .sc-row-rel{color:var(--success);font-weight:700}
