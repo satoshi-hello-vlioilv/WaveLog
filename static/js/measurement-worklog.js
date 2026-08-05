@@ -971,6 +971,10 @@
  }
  async function loadMaintInner(force){
   const def=currentDef();const title=$('#masterMaintTitle');if(title)title.textContent=def.label+'マスタ';
+  // 設定ページ形式(パス設定・§9.68)はフォーム自体がスクロール領域になる。
+  // タブを移ったら必ず外す(付いたままだと他のマスタで上部フォームが
+  // 伸び縮みして一覧の高さが安定しない)。
+  $('#masterMaintForm')?.classList.remove('mm-form-page');
   if(def.special==='column-display'){setMaintSearchVisible(false);return loadColumnDisplayMaint(force)}
   if(def.special==='import-backup'){setMaintSearchVisible(false);return loadImportBackupMaint(force)}
   if(def.special==='load-factor'){setMaintSearchVisible(false);return loadLoadFactorMaint(force)}
@@ -1204,14 +1208,30 @@
     <b>注意: この操作はこの端末のIndexedDB（編集中/完了データ）を書き換えます。</b>
     <span>records.sqlite3（Web測定バックアップ）の内容を、この端末のローカルデータへ取り込みます。同じIDの既存データは上書きされ、元に戻せません。PC更新・端末交換時の引継ぎなど、特別な場合以外は実行しないでください。</span>
    </div>
+   <div class="mm-imp-state">
+    <div class="mm-imp-state-col">
+     <span class="mm-imp-state-label">いまの状態</span>
+     <ul class="mm-imp-state-list">
+      <li>バックアップ(records.sqlite3): <b>${esc(String(items.length))}</b>件</li>
+      <li>うちこの端末にも有る: <b>${esc(String(items.length-orphans.length))}</b>件</li>
+      <li>うちこの端末に<b>無い</b>: <b class="${orphans.length?'is-warn':''}">${esc(String(orphans.length))}</b>件</li>
+      <li>取込できる形式: <b>${esc(String(supported.length))}</b>件${supported.length<items.length?`（非対応 ${esc(String(items.length-supported.length))}件）`:''}</li>
+     </ul>
+    </div>
+    <div class="mm-imp-arrow" aria-hidden="true">→</div>
+    <div class="mm-imp-state-col">
+     <span class="mm-imp-state-label">選択中の操作で起きること</span>
+     <div id="mmImpPreview" class="mm-imp-preview">まだ何も選ばれていません。下の一覧で対象を選ぶと、ここに変化の予定が出ます。</div>
+    </div>
+   </div>
    <div class="mm-cd-toolbar">
-    <span class="mm-form-hint">records.sqlite3: ${esc(String(items.length))}件（うち取込可能 ${esc(String(supported.length))}件${orphans.length?` ／ <b>この端末に無い ${esc(String(orphans.length))}件</b>`:''}）</span>
     <div class="mm-cd-actions">
      <button type="button" id="mmImpReload" class="mm-btn-ghost sm">再読込</button>
      <button type="button" id="mmImpSelectAll" class="mm-btn-ghost sm">取込可能をすべて選択</button>
      <button type="button" id="mmImpSelectOrphan" class="mm-btn-ghost sm"${orphans.length?'':' disabled'}>この端末に無いものを選択</button>
      <button type="button" id="mmImpSelectNone" class="mm-btn-ghost sm">選択解除</button>
-     <button type="button" id="mmImpRun" class="mm-btn-danger">選択した項目をインポート</button>
+     <button type="button" id="mmImpRun" class="mm-btn-primary">選択した項目をこの端末へ取り込む</button>
+     <span class="mm-cd-sep" aria-hidden="true"></span>
      <button type="button" id="mmImpDelete" class="mm-btn-danger">選択した項目をバックアップから削除</button>
     </div>
    </div>
@@ -1228,22 +1248,53 @@
   const selOrphan=$('#mmImpSelectOrphan'),del=$('#mmImpDelete');
   if(selOrphan)selOrphan.onclick=()=>{
    document.querySelectorAll('#masterMaintList [data-imp-id]').forEach(b=>{b.checked=b.dataset.impOrphan==='1'});
+   updateImportPreview();
   };
   if(del)del.onclick=()=>deleteBackupSelection();
+  [selAll,selNone].forEach(b=>{if(b){const prev=b.onclick;b.onclick=()=>{prev&&prev();updateImportPreview()}}});
+  updateImportPreview();
+ }
+ /* 選択した内容で「何がどう変わるか」を実行前に言葉で示す(§9.68)。
+    取り込みも削除も元に戻せないので、押す前に結果を読めることが重要。 */
+ function updateImportPreview(){
+  const box=$('#mmImpPreview');if(!box)return;
+  const checked=[...document.querySelectorAll('#masterMaintList [data-imp-id]:checked')];
+  if(!checked.length){
+   box.className='mm-imp-preview';
+   box.textContent='まだ何も選ばれていません。下の一覧で対象を選ぶと、ここに変化の予定が出ます。';
+   return;
+  }
+  const orphan=checked.filter(b=>b.dataset.impOrphan==='1').length;
+  const overwrite=checked.length-orphan;
+  box.className='mm-imp-preview is-active';
+  box.innerHTML=`<div class="mm-imp-preview-row"><b>${esc(String(checked.length))}件</b>を選択中</div>
+   <div class="mm-imp-preview-plan"><span class="mm-imp-plan-title">「この端末へ取り込む」を押すと</span>
+    <ul><li>この端末へ<b>新しく追加</b>: ${esc(String(orphan))}件</li>
+     <li>既存データを<b>上書き</b>（元に戻せません）: ${esc(String(overwrite))}件</li></ul></div>
+   <div class="mm-imp-preview-plan"><span class="mm-imp-plan-title">「バックアップから削除」を押すと</span>
+    <ul><li>バックアップから<b>消える</b>: ${esc(String(checked.length))}件</li>
+     <li>作業スケジュールの実績表示から消える: ${esc(String(checked.length))}件</li>
+     <li>この端末のデータ一覧は<b>変わらない</b>（端末内データは残ります）</li></ul></div>`;
  }
  function renderImportBackupList(){
   const list=$('#masterMaintList');if(!list)return;
   const items=importBackupState.items;
   if(!items.length){list.innerHTML='<div class="mm-empty">records.sqlite3に取込可能なバックアップがありません。</div>';return}
-  const tmpl='40px minmax(90px,1fr) minmax(70px,.7fr) minmax(60px,.6fr) minmax(70px,.7fr) minmax(90px,.8fr) minmax(90px,.9fr) 90px 92px';
-  const head=`<div class="mm-row head" style="grid-template-columns:${tmpl}"><span></span><span>ロット番号</span><span>検査番号</span><span>状態</span><span>設備</span><span>更新日時</span><span>形式</span><span>取込先</span><span>端末内</span></div>`;
+  const tmpl='40px minmax(90px,1fr) minmax(70px,.7fr) minmax(60px,.6fr) minmax(70px,.7fr) minmax(90px,.8fr) minmax(90px,.9fr) minmax(230px,1.4fr)';
+  const head=`<div class="mm-row head" style="grid-template-columns:${tmpl}"><span></span><span>ロット番号</span><span>検査番号</span><span>状態</span><span>設備</span><span>更新日時</span><span>形式</span><span>いまの状態 → 取り込むと</span></div>`;
   const rows=items.map(it=>{
    const supported=it.codec==='json-full-v32';
    const conflict=importBackupState.localIds.has(it.id);
    // 端末内(IndexedDB)に対応するデータが無い行。データ一覧には出ないのに
    // 作業スケジュールの実績突合には効いてしまう「残骸」の候補(§9.52)。
    const orphan=!conflict;
-   const targetLabel=supported?(conflict?'<span class="mm-imp-badge overwrite">上書き</span>':'<span class="mm-imp-badge new">新規</span>'):'<span class="mm-imp-badge unsupported">非対応</span>';
+   // 「今どうなっていて、取り込むとどうなるか」を1つの列で示す(§9.68)。
+   // 以前は「取込先(新規/上書き)」と「端末内(有り/無し)」が別々の列で、
+   // 2列を突き合わせないと変化が読み取れなかった。
+   const targetLabel=supported
+    ?(conflict?'<span class="mm-imp-flow"><span class="mm-imp-badge has">端末内に有り</span><i>→</i><span class="mm-imp-badge overwrite">上書きされる</span></span>'
+              :'<span class="mm-imp-flow"><span class="mm-imp-badge orphan">端末内に無し</span><i>→</i><span class="mm-imp-badge new">新しく追加</span></span>')
+    :'<span class="mm-imp-badge unsupported">非対応（取り込めません）</span>';
    return `<div class="mm-row${orphan?' is-orphan':''}" style="grid-template-columns:${tmpl}">`+
     `<span><input type="checkbox" data-imp-id="${esc(it.id)}" data-imp-orphan="${orphan?1:0}"${supported?'':' disabled'}></span>`+
     `<span title="${esc(it.lotNo)}">${esc(it.lotNo)||'<em class="mm-blank">—</em>'}</span>`+
@@ -1252,10 +1303,11 @@
     `<span title="${esc(it.equipment)}">${esc(it.equipment)||'<em class="mm-blank">—</em>'}</span>`+
     `<span class="mm-date">${esc(fmtDT(it.updated_at))}</span>`+
     `<span>${esc(it.codec)||'<em class="mm-blank">—</em>'}</span>`+
-    `<span>${targetLabel}</span>`+
-    `<span>${orphan?'<span class="mm-imp-badge orphan" title="この端末のデータ一覧には無い行です。削除しないと作業スケジュールの実績には残り続けます。">無し</span>':'<span class="mm-imp-badge has">有り</span>'}</span></div>`;
+    `<span>${targetLabel}</span></div>`;
   }).join('');
   list.innerHTML=head+rows;
+  list.querySelectorAll('[data-imp-id]').forEach(b=>b.addEventListener('change',updateImportPreview));
+  updateImportPreview();
  }
 /* バックアップ(records.sqlite3)から選択行を削除する(§9.52)。
     端末内データの削除はreliableDelete()がバックアップも消すようになったが、
@@ -1288,10 +1340,18 @@
   if(!checked.length){showToast&&showToast('取込対象が選択されていません','取込可能な項目にチェックを付けてください。',4000);return}
   const targets=importBackupState.items.filter(it=>checked.includes(it.id));
   const overwriteCount=targets.filter(it=>importBackupState.localIds.has(it.id)).length;
-  const warn=`選択した${targets.length}件をこの端末のIndexedDBへインポートします。`+
-   (overwriteCount?`\nうち${overwriteCount}件は既存データを上書きし、元に戻せません。`:'\n既存データとの重複はありません。')+
-   '\n\n本当に実行しますか？（PC引継ぎ等の特別な場合以外は「キャンセル」してください）';
-  if(!confirm(warn))return;
+  // 取り消せない操作なので、何がどう変わるかを箇条書きで示してから確認する
+  // (以前はブラウザ標準のconfirm()で、他画面の確認と作法が揃っていなかった)。
+  const okRun=typeof confirmModal==='function'?await confirmModal({
+   eyebrow:'IMPORT TO THIS TERMINAL',title:'この端末へ取り込みます',
+   danger:true,confirmLabel:'取り込む',
+   bodyHtml:`<p class="confirm-modal-message">選択した <b>${esc(String(targets.length))}件</b> をこの端末のデータへ取り込みます。</p>
+    <ul class="confirm-modal-points">
+     <li>新しく追加: <b>${esc(String(targets.length-overwriteCount))}</b>件</li>
+     <li>既存データを上書き: <b>${esc(String(overwriteCount))}</b>件${overwriteCount?'（<b>元に戻せません</b>）':''}</li>
+     <li>PC更新・端末交換の引継ぎ以外では実行しないでください。</li>
+    </ul>`}):window.confirm(`選択した${targets.length}件を取り込みます。よろしいですか?`);
+  if(!okRun)return;
   let okCount=0,ngCount=0;const errors=[];
   try{
    setMaintLoading(true,`インポートしています… (0/${targets.length})`);
@@ -1349,25 +1409,40 @@
   const numField=(key,label,unit,step,min)=>`<label class="mm-field mm-field-num"><span>${esc(label)}</span>${
    numFieldHtml({k:key,label,unit,step,min},v[key]||'',`data-pc-field="${key}"`)
   }<small class="mm-field-hint">未入力なら既定値 ${esc(pathConfigState.defaults[key]||'')}${esc(unit||'')} を使用します。</small></label>`;
-  form.innerHTML=`<div class="mm-form-head"><span class="mm-mode-chip new">パス設定</span></div>
-   <p class="mm-def-hint">仕掛/品質データの読み込み先・共有パスなど、端末ごとに変わり得る設定です。空欄で保存すると既定値に戻ります。<b>取得元・読み込み先・複製先・共有パスの変更はサーバー再起動後に反映されます</b>（下の一覧で保存値と現在有効な値を見比べられます）。抽出間隔・ロック関連は再起動不要で次回から反映されます。</p>
-   <div class="mm-form-fields">
-    <label class="mm-field"><span>仕掛/品質データの取得元</span><select data-pc-field="sikalot_source">${sourceOpts}</select></label>
+  /* 設定ページとして1本のスクロール領域にまとめる(§9.68)。
+     以前は説明・9項目・RNE状態・保存ボタンをすべて.mm-form(スクロールを
+     持たない)へ入れており、パネル(.mm-panel{overflow:hidden})に切られて
+     **下部が見切れたまま触れない**状態だった(保存ボタンごと画面外)。
+     項目は「何のための設定か」でまとめ、反映のタイミング(再起動が要るか)を
+     各グループの見出しに出す。保存ボタンは下端に貼り付けて常に押せる。 */
+  const group=(title,when,whenCls,body)=>`<section class="mm-set-group">
+    <div class="mm-set-group-head"><h4>${esc(title)}</h4><span class="mm-apply-badge ${whenCls}">${esc(when)}</span></div>
+    <div class="mm-set-group-body">${body}</div></section>`;
+  form.className='mm-form mm-form-page';
+  form.innerHTML=`<div class="mm-set-scroll">
+   <p class="mm-def-hint">仕掛/品質データの読み込み先・共有パスなど、<b>この端末だけ</b>の設定です。空欄で保存すると既定値へ戻ります。反映のタイミングは項目のまとまりごとに示しています。</p>
+   ${group('データの取得元','サーバー再起動後に反映','is-restart',`
+    <label class="mm-field"><span>仕掛/品質データの取得元</span><select data-pc-field="sikalot_source">${sourceOpts}</select>
+     <small class="mm-field-hint">network=共有フォルダを読む / local=この端末でRNEから抽出したものを読む。</small></label>
     ${pathField('sikalotnow_path','仕掛(SIKALOTNOW)の読み込み先（個別上書き）','file')}
-    ${pathField('sikalotdef_path','品質データ(SIKALOTDEF)の読み込み先（個別上書き）','file')}
-    ${pathField('records_backup_export_path','測定データバックアップの閲覧用複製先','dir','複製先の「フォルダ」を選びます。空欄なら複製しません。')}
+    ${pathField('sikalotdef_path','品質データ(SIKALOTDEF)の読み込み先（個別上書き）','file')}`)}
+   ${group('共有・複製','サーバー再起動後に反映','is-restart',`
     ${pathField('schedule_share_path','スケジュール機能の共有データ置き場（schedule.sqlite3）','file','共有フォルダ上のschedule.sqlite3を選びます。空欄ならスケジュール機能は無効です。')}
+    ${pathField('records_backup_export_path','測定データバックアップの閲覧用複製先','dir','複製先の「フォルダ」を選びます。空欄なら複製しません。')}`)}
+   ${group('RNE抽出','保存後すぐ反映','is-live',`
     <label class="mm-field"><span>RNE抽出の定期実行</span><select data-pc-field="rne_extract_enabled">${
      [['','（既定）auto: 取得元がlocalのときだけ'],['auto','auto: 取得元がlocalのときだけ'],
       ['on','on: 取得元に関わらず定期実行する'],['off','off: 定期実行しない（手動のみ）']]
       .map(([val,label])=>`<option value="${esc(val)}"${(v.rne_extract_enabled||'')===val?' selected':''}>${esc(label)}</option>`).join('')
     }</select><small class="mm-field-hint">「今すぐ抽出」は、この設定に関わらず資材が配置されていれば実行できます。</small></label>
     ${numField('rne_extract_interval_sec','RNE抽出間隔','秒',60,60)}
+    ${rneStatusPanelHtml()}`)}
+   ${group('スケジュールの排他制御','保存後すぐ反映','is-live',`
     ${numField('schedule_lock_ttl_sec','スケジュール書込ロックの有効期限','秒',5,1)}
-    ${numField('schedule_lock_verify_delay_ms','ロック確認までの待機時間','ミリ秒',100,0)}
-   </div>
-   ${rneStatusPanelHtml()}
-   <div class="mm-form-tail"><button type="submit" class="mm-btn-primary">パス設定を保存</button><span class="mm-form-hint">更新者IDは画面右上の入力欄を使用します。</span></div>`;
+    ${numField('schedule_lock_verify_delay_ms','ロック確認までの待機時間','ミリ秒',100,0)}`)}
+   ${group('いま効いている値','確認用','is-info',`<div id="pathConfigActive"></div>`)}
+  </div>
+  <div class="mm-form-tail mm-set-sticky"><button type="submit" class="mm-btn-primary">パス設定を保存</button><span class="mm-form-hint">更新者IDは画面右上の入力欄を使用します。</span></div>`;
   form.onsubmit=ev=>{ev.preventDefault();savePathConfigMaint()};
   bindInputHelpers(form);
   refreshRneStatus();
@@ -1433,7 +1508,10 @@
   if(s.running)rneTimer=setTimeout(refreshRneStatus,2000);
  }
  function renderPathConfigList(){
-  const list=$('#masterMaintList');if(!list)return;
+  // 保存値と「今このプロセスで効いている値」の対比。設定ページの一部として
+  // 同じスクロールの中に置く(別の枠に離すと、再起動待ちかどうかを見比べる
+  // ために視線が画面の上下を往復することになる)。§9.68
+  const list=$('#pathConfigActive');if(!list)return;
   const v=pathConfigState.values||{},a=pathConfigState.active||{};
   const activeText={
    sikalot_source:a.sikalot_source||'',
@@ -1450,8 +1528,18 @@
    schedule_share_path:v.schedule_share_path||'（未設定・機能無効）',
   };
   const tmpl='minmax(150px,1fr) minmax(200px,1.6fr) minmax(200px,1.6fr)';
-  const head=`<div class="mm-row head" style="grid-template-columns:${tmpl}"><span>設定項目</span><span>保存値（次回起動から反映）</span><span>現在有効な値（このプロセス）</span></div>`;
-  const rows=PATH_CONFIG_RESTART_FIELDS.map(([key,label])=>`<div class="mm-row" style="grid-template-columns:${tmpl}"><span>${esc(label)}</span><span title="${esc(savedText[key])}">${esc(savedText[key])}</span><span title="${esc(activeText[key])}">${esc(activeText[key])}</span></div>`).join('');
+  const head=`<div class="mm-row head" style="grid-template-columns:${tmpl}"><span>設定項目</span><span>いま効いている値</span><span>保存値（次回起動から）</span></div>`;
+  // 保存値と実際に効いている値が食い違う=再起動待ち。目で追えるよう印を付ける。
+  const rows=PATH_CONFIG_RESTART_FIELDS.map(([key,label])=>{
+   /* 「再起動待ち」の判定は**表示文字列ではなく生の値**で行う。
+      表示側は現在値にエンジン種別「（sqlite）」を添えたり、未設定を
+      「（既定）network」と書き換えたりするので、文字列比較では中身が同じ
+      行まで再起動待ちに見えてしまう(実際にそう出た)。
+      保存値が空＝既定を使う指定なので、待ちにはしない。 */
+   const savedRaw=String(v[key]||'').trim(),activeRaw=String(a[key]||'').trim();
+   const pending=!!savedRaw&&savedRaw!==activeRaw;
+   return `<div class="mm-row${pending?' is-pending-restart':''}" style="grid-template-columns:${tmpl}"><span>${esc(label)}</span><span title="${esc(activeText[key])}">${esc(activeText[key])}</span><span title="${esc(savedText[key])}">${esc(savedText[key])}${pending?'<b class="mm-restart-flag">再起動待ち</b>':''}</span></div>`;
+  }).join('');
   list.innerHTML=head+rows+`<p class="mm-def-hint" style="margin-top:10px">RNE抽出間隔: 保存値 ${esc(v.rne_extract_interval_sec||pathConfigState.defaults.rne_extract_interval_sec||'')}秒 / スケジュールロック有効期限: ${esc(v.schedule_lock_ttl_sec||pathConfigState.defaults.schedule_lock_ttl_sec||'')}秒 / ロック確認待機: ${esc(v.schedule_lock_verify_delay_ms||pathConfigState.defaults.schedule_lock_verify_delay_ms||'')}ミリ秒（いずれも再起動不要で次回から反映）</p>`;
  }
  async function savePathConfigMaint(){

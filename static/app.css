@@ -1783,6 +1783,70 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .mm-form-hint{color:#6a7d83;font-size:var(--fs-sm)}
 /* 入力項目が多いマスタ(ARCHITECTURE.md「マスタ管理の画面形態」、defUsesEditorModal)は上部フォームを
    「追加ボタン+説明」だけに縮め、その分を一覧の表示領域へ回す。 */
+/* ---------- 設定ページ形式のマスタ(パス設定) §9.68 ----------
+   一覧を編集するマスタではなく「設定画面」なので、上部フォーム+下部一覧では
+   なく**1本のスクロール**にまとめる。以前は説明・9項目・RNE状態・保存ボタンを
+   すべてスクロールを持たない.mm-formへ入れていたため、パネル
+   (.mm-panel{overflow:hidden})に切られて下部が見切れ、**保存ボタンごと
+   触れない**状態だった。 */
+.mm-form-page{flex:1;min-height:0;padding:0;border-bottom:0;gap:0}
+/* 設定ページのときは下段の一覧枠を畳む。畳まないと.mm-list-wrap{flex:1}と
+   高さを半分ずつ分け合い、設定側が不必要に狭くなる(中身は空なのに)。 */
+.mm-form-page+.mm-list-wrap{display:none}
+.mm-set-scroll{flex:1;min-height:0;overflow-y:auto;padding:14px 18px 16px;
+ display:flex;flex-direction:column;gap:var(--space-3)}
+/* flex:none は必須。縦並びのflexコンテナの子は既定で縮むため、
+   これが無いと各グループが枠に押し込まれ、overflow:hiddenで入力欄ごと
+   切り取られる(スクロールも出ない=中身が縮んで収まってしまうため)。 */
+.mm-set-scroll>*{flex:none}
+.mm-set-group{background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.mm-set-group-head{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;
+ padding:8px 14px;background:#eef4f5;border-bottom:1px solid var(--line)}
+.mm-set-group-head h4{margin:0;font-size:var(--fs-base-sm);color:#173842}
+.mm-set-group-body{padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+/* 反映のタイミングを見出しに出す。「保存したのに変わらない」の原因が
+   再起動待ちであることを、設定を触る前に分かるようにする。 */
+.mm-apply-badge{margin-left:auto;padding:2px 9px;border-radius:11px;
+ font-size:var(--fs-micro);font-weight:800;border:1px solid transparent;white-space:nowrap}
+.mm-apply-badge.is-restart{background:var(--warn-bg);border-color:var(--warn-border);color:var(--warn-fg)}
+.mm-apply-badge.is-live{background:var(--success-bg);border-color:var(--success-border);color:var(--success)}
+.mm-apply-badge.is-info{background:#eef2f4;border-color:#d5e0e3;color:#61757c}
+/* 保存ボタンは下端に貼り付ける(スクロールしても常に押せる) */
+.mm-set-sticky{position:sticky;bottom:0;z-index:2;margin:0;padding:10px 18px;
+ background:#fbfdfd;border-top:1px solid var(--line);box-shadow:0 -4px 12px #17384214}
+/* 保存値と実際に効いている値が食い違う行(=再起動待ち) */
+.mm-row.is-pending-restart{background:var(--warn-bg)}
+.mm-restart-flag{margin-left:8px;padding:1px 7px;border-radius:9px;font-size:var(--fs-micro);
+ background:var(--warn);color:#3d2a00;white-space:nowrap}
+
+/* ---------- データ引継ぎ: 現状 → 実行後 の見える化(§9.68) ----------
+   PC引継ぎ専用の、取り消せない操作。押す前に「今どうなっていて、実行すると
+   どうなるか」が読めることを最優先にする。 */
+.mm-imp-state{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1.3fr);
+ align-items:stretch;gap:var(--space-3);padding:12px 14px;margin-bottom:10px;
+ background:#fff;border:1px solid var(--line);border-radius:10px}
+.mm-imp-state-col{display:flex;flex-direction:column;gap:6px;min-width:0}
+.mm-imp-state-label{font-size:var(--fs-micro);font-weight:800;color:#6f8f96;letter-spacing:.04em}
+.mm-imp-state-list{margin:0;padding-left:18px;font-size:var(--fs-sm);color:#3a565d;line-height:1.8}
+.mm-imp-state-list b{font-variant-numeric:tabular-nums;color:#173842}
+.mm-imp-state-list b.is-warn{color:var(--warn-fg)}
+.mm-imp-arrow{align-self:center;font-size:var(--fs-lg);color:#9fb4ba;font-weight:800}
+.mm-imp-preview{padding:9px 12px;border:1px dashed var(--line);border-radius:8px;
+ background:#f7fafb;color:#7b8e95;font-size:var(--fs-sm);line-height:1.7}
+.mm-imp-preview.is-active{border-style:solid;border-color:var(--teal);background:#f2fbfa;color:#3a565d}
+.mm-imp-preview-row{font-size:var(--fs-base-sm);margin-bottom:6px}
+.mm-imp-preview-plan+.mm-imp-preview-plan{margin-top:8px}
+.mm-imp-plan-title{font-size:var(--fs-micro);font-weight:800;color:#0c5d67}
+.mm-imp-preview-plan ul{margin:2px 0 0;padding-left:18px;line-height:1.7}
+.mm-imp-preview-plan b{color:var(--danger)}
+/* 行内の「いまの状態 → 取り込むと」 */
+.mm-imp-flow{display:inline-flex;align-items:center;gap:6px;flex-wrap:nowrap;min-width:0}
+.mm-imp-flow i{font-style:normal;color:#9fb4ba;font-weight:800}
+@media(max-width:1100px){
+ .mm-imp-state{grid-template-columns:1fr}
+ .mm-imp-arrow{transform:rotate(90deg);align-self:start}
+}
+
 .mm-form-compact{padding:8px 18px}
 .mm-form-compact .mm-form-head{gap:var(--space-3)}
 
@@ -1818,6 +1882,9 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .mm-cd-tab:hover{border-color:#9fb4ba}
 .mm-cd-tab.active{border-color:var(--teal);background:var(--teal);color:#fff}
 .mm-cd-actions{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
+/* 逆の結果になるボタン(取り込む / 削除する)を隣り合わせで並べない。
+   間に仕切りを入れ、色も分ける(取り違えると元に戻せないため)。§9.68 */
+.mm-cd-sep{width:1px;align-self:stretch;margin:0 var(--space-2);background:var(--line)}
 .mm-cd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:4px 14px;padding:6px 4px}
 .mm-cd-checkbox{padding:6px 4px;border-radius:6px}
 .mm-cd-checkbox:hover{background:#eafafa}
