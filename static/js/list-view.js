@@ -248,7 +248,11 @@ function renderGrid(){
    if(info.hasSplit){
     const patternShort=info.widthPattern==='same'?'同幅':info.widthPattern==='different'?'異幅':'';
     const patternFull=info.widthPattern==='same'?'同一幅分割':info.widthPattern==='different'?'異幅分割':'幅パターン不明';
-    splitCell=`<td class="split-flag-cell split-yes" title="推定${info.lotCount}ロットへの分割・${patternFull}(実際の子ロット数・幅は測定画面で確定します)">分割あり(${info.lotCount})${patternShort?'・'+patternShort:''}</td>`;
+    /* ロット数と条数は別物なので両方出す(以前は条数をロット数として
+       「分割あり(6)」のように表示していた)。セルは狭いので「ロット/条」
+       の並びで短く、詳しくはツールチップで言い分ける。 */
+    const strips=Number.isFinite(info.stripCount)?info.stripCount:info.lotCount;
+    splitCell=`<td class="split-flag-cell split-yes" title="推定 ${info.lotCount}ロット / ${strips}条・${patternFull}（実際の子ロット数・条数・幅は測定画面で確定します）">分割あり(${info.lotCount}ロット/${strips}条)${patternShort?'・'+patternShort:''}</td>`;
     splitCheckTargets.push({tr,row:r});
    }else{
     splitCell='<td class="split-flag-cell split-no">分割なし</td>';

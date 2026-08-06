@@ -231,7 +231,36 @@ let b=null;
    return (panel?.textContent||'').replace(/\s+/g,' ');
   });
   rec('離して置いた同じ子ロットを二重に数えない',
-   /2ロットに分割/.test(split)&&!/3ロットに分割/.test(split),split.slice(0,90));
+   /2ロット/.test(split)&&!/3ロット/.test(split),split.slice(0,110));
+  rec('ロット数と条数を別々に出す',/2ロット\s*\/\s*3条/.test(split),split.slice(0,110));
+
+  /* ---- 5) 分割数(条)とロット数は別物 ----
+     1つの子ロットを何条にも割れるので、条数をロット数として数えてはいけない。
+     子カード2枠(=2ロット)・切断巾6枠(=6条)の行で、両者が分かれることを見る。 */
+  const counts=await page.evaluate(()=>{
+   const row={'ロット番号':'L00001'};
+   for(let i=1;i<=2;i++)row['親子管理_子カード'+i]=i;
+   for(let i=1;i<=6;i++)row['コンマ5本分割_切断巾'+i]=100+i;
+   const a=window.analyzeRowSplit(row);
+   // 分割データが無い行は分割なし
+   const b=window.analyzeRowSplit({'ロット番号':'L00002'});
+   return {a,b};
+  });
+  rec('ロット数は子カードから数える(条数を流用しない)',
+   counts.a.lotCount===2,JSON.stringify(counts.a));
+  rec('条数は切断巾から数える',counts.a.stripCount===6,JSON.stringify(counts.a));
+  rec('分割データが無ければ分割なし',counts.b.hasSplit===false,JSON.stringify(counts.b));
+
+  // 仕掛一覧のセルも「Nロット/M条」で言い分ける
+  await page.evaluate(()=>{document.getElementById('measureModal').hidden=true});
+  await page.click('aside [data-db-key="SIKALOTNOW"]');await page.waitForTimeout(3000);
+  const cell=await page.evaluate(()=>{
+   const c=document.querySelector('.split-flag-cell.split-yes');
+   return c?{text:c.textContent.trim(),title:c.title}:null;
+  });
+  rec('仕掛一覧の分割セルもロットと条を言い分ける',
+   !cell||(/ロット/.test(cell.text)&&/条/.test(cell.text)&&/ロット/.test(cell.title)&&/条/.test(cell.title)),
+   JSON.stringify(cell));
 
   await page.evaluate(async()=>{
    if(typeof S!=='undefined'&&S.measure&&typeof reliableDelete==='function')

@@ -243,6 +243,25 @@ API経由でRNE(Navigator問い合わせ定義)を実行し、ローカルSQLite
 | `measurement-input.js` | `deviceParse`・`processDeviceInput`・`focusCurrent`・`renderMeasureGrid(Vertical)`・`judgeInput`・公差計算（`toleranceDetail`/`toleranceDataForSource`/`compactTolerance*`）・公差数直線の値→縦位置の写像（`WL.toleranceScaleView`、下記） |
 | `records-store.js` | IndexedDB/ミラー永続化・`saveLocal`/`persistAndTransition`・`openMeasurement`・`openRecords`/`renderRecordListRows`・`loadMeasurementContext`・使用設備設定/設備マスタ・Access同期の未完了キューと再送・アプリ起動呼び出し（末尾） |
 
+### 分割数（条数）とロット数は別物
+
+条割まわりで**必ず区別する**。混同すると、1つの子ロットを何条にも割った品で
+条数がそのままロット数として表示される（2ロットを6条に割った品が「6ロット」）。
+
+| | 数える対象 | 出所 | 上限 |
+|---|---|---|---|
+| 条数（分割数） | スリットで割った条 | `コンマ5本分割_切断巾*` / 横割数 | **40** |
+| ロット数 | その条が属する子ロット | `親子管理_子カード*` / `LTNO*` | **9** |
+
+- `analyzeRowSplit(row)` は `lotCount` と `stripCount` の**両方**を返す。
+  以前は `Math.max(子カード数, 切断巾の件数)` で1つにまとめていた。
+- 上限は `MAX_STRIPS=40` / `MAX_CHILD_LOTS=9`（`lot-split.js`）。`applySplit` が
+  条数とロット数を別々に確認する。区間（連続したかたまり）の数で見てはいけない
+  ——同じ2ロットを交互に置くと区間だけが増える。
+- 表示は「Nロット / M条」と両方を出す（`summarizeAppliedGroups`、仕掛一覧の
+  分割セル、幅分割情報パネル）。
+- 回帰は `tests/test_defect.js`。
+
 ### 現場段取りの対象設備（複数指定と「すべての設備」）
 
 アクセス権限マスタの`現場段取り対象設備`はTEXT1列のまま、3つの書式を持つ。

@@ -57,6 +57,14 @@
      切断巾<N>」であることが実データで確認された(旧VBA変数名KOCARD/K05JO等は
      内部エイリアスであり、Accessの生カラム名ではなかった)。全角/半角ゆれや
      旧エイリアスも候補として保持し、複数パターンを試す。 */
+  /* 上限。**分割数(条数)とロット数は別物**なので値も別に持つ。
+     ・条数   … スリットで割った条の数。横割数(#horizontalCount)と同じ上限40。
+     ・ロット数 … その条が属する子ロットの数。1つの子ロットを何条にも割れるので
+                  条数以下になる。作業として成立する上限は9ロット。
+     以前は「8を超える分割は設定できません」という1つの上限しか持たず、しかも
+     数えていたのは条の連続区間の数だった(§異幅分割)。 */
+  const MAX_STRIPS=40;
+  const MAX_CHILD_LOTS=9;
   const CHILD_CARD_PREFIXES=['親子管理_子カード','親子管理_子ｶｰﾄﾞ','KOCARD'];
   const CHILD_CUTWIDTH_PREFIXES=['コンマ5本分割_切断巾','ｺﾝﾏ5本分割_切断巾','K05W'];
   const CHILD_COUNT_PREFIXES=['YK','K05JO'];
@@ -99,12 +107,14 @@
     }
     return out;
   }
-  // 同一行に子ロット番号が直接入っているケース(LTNO1..8)。
+  // 同一行に子ロット番号が直接入っているケース(LTNO1..9)。
+  // 走査するのはロットの上限(MAX_CHILD_LOTS)まで。以前は8で打ち切っており、
+  // 9ロットに分けた品の9つ目を取りこぼしていた。
   // rowを省略すると現在開いている測定(S.measure.source)を対象にする(既存呼び出し
   // 互換)。仕掛一覧のグリッド行など、測定を開く前の生データにも使えるようにする。
   function directChildLotNumbers(row){
     const r=row||S.measure?.source||{},out=[];
-    for(let i=1;i<=8;i++){
+    for(let i=1;i<=MAX_CHILD_LOTS;i++){
       const lot=r['LTNO'+i]||r['分割ロット'+i];
       if(lot)out.push({lot:String(lot),index:i});
     }
@@ -159,17 +169,26 @@
      コンマ5本分割_切断巾*が2件以上あれば、その値同士を比較して判定する。
      判定材料が無ければwidthPattern='unknown'とする。 */
   function analyzeRowSplit(row){
-    if(!row||!rowHasSplitData(row))return{hasSplit:false,lotCount:1,widthPattern:'none'};
+    if(!row||!rowHasSplitData(row))return{hasSplit:false,lotCount:1,stripCount:1,widthPattern:'none'};
+    /* **ロット数と分割数(条数)は別物**。
+       ・ロット数 = 子ロットの数。親子管理_子カード(またはLTNO)から数える。上限9。
+       ・分割数   = 条の数。コンマ5本分割_切断巾から数える。上限40(横割数と同じ)。
+       以前はこの2つを Math.max(子カード数, 切断巾の件数) でひとまとめにして
+       「Nロット」と呼んでいたため、1つの子ロットを何条にも割った品では
+       条数がそのままロット数として表示されていた(例: 2ロットを6条に割った品を
+       「6ロット」と表示)。数える対象を分けて、呼び名どおりの値を返す。 */
     let cardCount=0;
     for(let i=1;i<=10;i++){const v=childCardValue(row,i);if(v!==undefined&&Number(v)!==0)cardCount++}
     const cutWidths=[];
     for(let i=1;i<=10;i++){const w=childCutWidthValue(row,i);if(w!==undefined&&Number(w)!==0)cutWidths.push(Number(w))}
-    // 割った後はすべて子ロットになり親の持ち分は残らないため、子カード/切断巾の
-    // 検出件数がそのままロット数になる(自分(親)を+1する必要はない)。
-    const lotCount=Math.max(cardCount,cutWidths.length,1);
+    // 子ロット番号として実際に復元できた数を優先する(子カードの枠が埋まって
+    // いても同じ番号を指していれば1ロット)。復元できなければ枠の数で代用する。
+    const lots=expectedChildLotsForRow(row,typeof pick==='function'?String(pick(row,'lotNo')||''):'');
+    const lotCount=Math.min(MAX_CHILD_LOTS,Math.max(lots.length||cardCount,1));
+    const stripCount=Math.min(MAX_STRIPS,Math.max(cutWidths.length,lotCount,1));
     let widthPattern='unknown';
     if(cutWidths.length>=2)widthPattern=cutWidths.every(w=>Math.abs(w-cutWidths[0])<0.05)?'same':'different';
-    return{hasSplit:true,lotCount,widthPattern};
+    return{hasSplit:true,lotCount,stripCount,widthPattern};
   }
   window.analyzeRowSplit=analyzeRowSplit;
   function widthPatternLabel(p){return p==='same'?'同一幅分割':p==='different'?'異幅分割':'幅パターン不明'}
@@ -182,10 +201,13 @@
        分割数は**異なる子ロットの数**なので、そちらで数える。 */
     const lots=[...new Set(groups.map(g=>g.lot).filter(Boolean))];
     const widths=lots.map(lot=>groups.find(g=>g.lot===lot)?.base?.width).filter(w=>Number.isFinite(w));
+    const strips=groups.reduce((a,g)=>a+(Number(g.count)||0),0);
     let pattern='幅情報なし';
     if(widths.length>=2)pattern=widths.every(w=>Math.abs(w-widths[0])<0.05)?'同一幅分割':'異幅分割';
     else if(widths.length===1)pattern='単一幅';
-    return `${lots.length||groups.length}ロットに分割（${pattern}）`;
+    // ロット数と条数の両方を出す。1つの子ロットを何条にも割れるので、
+    // どちらか一方だけでは「何がいくつなのか」が伝わらない。
+    return `${lots.length||groups.length}ロット / ${strips}条に分割（${pattern}）`;
   }
 
   /* 仕掛一覧(SIKALOTNOW)の列表示マスタで「親子管理_子カード*」「コンマ5本
@@ -884,11 +906,13 @@
     if(seq.some(x=>x==null)){alert('全条分を登録してください。');return}
     const map=Object.fromEntries(sources.map(x=>[x.lot,x])),groups=[];
     seq.forEach(lot=>{const last=groups.at(-1);if(last&&last.lot===lot)last.count++;else groups.push({lot,count:1,source:map[lot]})});
-    // 上限もロット数(異なる子ロットの数)で数える。区間数で数えると、同じ2つの
-    // 子ロットを交互に置いた並べ方が9区間になっただけで「8を超える分割」と
-    // 拒否されてしまう(分割数は2なのに)。
+    /* 上限は**条数とロット数を別々に**見る。以前は区間(連続したかたまり)の数を
+       1つの上限だけで見ており、同じ2つの子ロットを交互に置いた並べ方が
+       9区間になっただけで拒否されていた(ロットは2つ・条も9で、どちらの上限にも
+       掛かっていない)。 */
     const lotCount=new Set(groups.map(g=>g.lot).filter(Boolean)).size;
-    if(lotCount>8){alert('システム上8を超える分割は設定できません。');return}
+    if(total>MAX_STRIPS){alert(`条は最大${MAX_STRIPS}条までです（現在 ${total}条）。`);return}
+    if(lotCount>MAX_CHILD_LOTS){alert(`1つの親ロットを分ける子ロットは最大${MAX_CHILD_LOTS}ロットまでです（現在 ${lotCount}ロット）。`);return}
     const splitGroups=groups.map(g=>({lot:g.lot,count:g.count,base:g.source?.base||null,tol:g.source?.tolData||null,missing:!!g.source?.missing}));
     const positionGroup=[];splitGroups.forEach((g,gi)=>{for(let k=0;k<g.count;k++)positionGroup.push(gi)});
     S.measure.settings.splitGroups=splitGroups;
@@ -1371,7 +1395,7 @@
   // 遷移できるボタンを置く(操作導線)。
   function renderPendingCandidatesPanel(el,sources,info){
     if(!sources.length){
-      el.innerHTML=`<div class="split-panel-status split-panel-status-pending">⚠ このロットには分割データがあります（推定${info.lotCount}ロット・${esc(widthPatternLabel(info.widthPattern))}）が、子ロットの詳細を取得できませんでした。</div>
+      el.innerHTML=`<div class="split-panel-status split-panel-status-pending">⚠ このロットには分割データがあります（推定 ${info.lotCount}ロット / ${info.stripCount}条・${esc(widthPatternLabel(info.widthPattern))}）が、子ロットの詳細を取得できませんでした。</div>
         <button type="button" class="split-panel-open-btn" id="splitPanelOpenBtn">条割変更を開く →</button>`;
       wireSplitPanelButtons(el);
       return;
@@ -1430,7 +1454,7 @@
     if(splitSourcesCache&&splitSourcesCacheKey===key){
       renderPendingCandidatesPanel(el,splitSourcesCache,info);
     }else{
-      el.innerHTML=`<div class="split-panel-status split-panel-status-pending">⚠ このロットには分割データがあります（推定${info.lotCount}ロット・${esc(widthPatternLabel(info.widthPattern))}）。子ロット情報を取得しています…</div>`;
+      el.innerHTML=`<div class="split-panel-status split-panel-status-pending">⚠ このロットには分割データがあります（推定 ${info.lotCount}ロット / ${info.stripCount}条・${esc(widthPatternLabel(info.widthPattern))}）。子ロット情報を取得しています…</div>`;
       ensureSplitCandidatesLoaded();
     }
     updateScrapWidthDisplay();
