@@ -47,6 +47,11 @@ _mode='edit'  # 'edit' | 'view' | 'schedule'
 _WRITE_ALLOWED_MODES={
  'measurement':{'edit'},
  'masters':{'edit'},
+ # masters から分離したBlueprint(フェーズ4.1)。分離前と同じ許可を維持する。
+ # **未宣言のままにするとfail-open(全モード素通し)** で、閲覧モードからも
+ # 書けてしまう(下の_guard_writeの `if allowed is None: return None`)。
+ 'path_config':{'edit'},
+ 'rne':{'edit'},
  'schedule':{'schedule'},
 }
 # 上の表より広く許可する例外(エンドポイント名 -> 追加で許可するモード)。
@@ -86,7 +91,10 @@ _ENDPOINT_EXTRA_MODES={
 }
 # 書込ではないがPOSTで受けるもの(§9.50の「今すぐ抽出」)。データを書き換えず、
 # 抽出元(RNE)から読み直すだけなので、閲覧モードの端末からも実行できてよい。
-_READ_ONLY_POST_ENDPOINTS={'masters.rne_extract_run'}
+# キーは「Blueprint名.関数名」。フェーズ4.1でRNEをrne.pyへ分離したため
+# masters. → rne. へ更新した(合わせないと、全モードで叩けたはずの手動実行が
+# editモード以外で403になる)。
+_READ_ONLY_POST_ENDPOINTS={'rne.rne_extract_run'}
 # editモードで許可する際、さらに「現場段取り可否」を要求するエンドポイント。
 # 作業予定を実際に動かす操作だけが対象で、設定系マスタの保存は含めない。
 _FIELD_REORDER_ENDPOINTS={'schedule.plan_reorder'}

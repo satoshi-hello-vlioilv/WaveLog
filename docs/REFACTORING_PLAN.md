@@ -421,6 +421,29 @@ edit/view/scheduleすべて200)。計画時の記述もCLAUDE.mdの記述も逆�
 先に`tests/test_modeguard.py`(モード×エンドポイントの許可表を実測で固定)を
 追加した。Blueprint分割とガード表の更新は同一コミットで行う。
 
+#### 4.1 の実施結果(2026-08-06)
+
+`backend/routes/masters.py` 831行 → **651行**。
+`path_config.py` 168行(パス設定マスタ+パス参照ダイアログ)、`rne.py` 52行。
+ロジックは移動のみ、URLは全て従来どおり。
+
+ガード表はBlueprint分割と**同一コミット**で更新した:
+
+- `_WRITE_ALLOWED_MODES` へ `'path_config':{'edit'}` / `'rne':{'edit'}` を追加
+- `_READ_ONLY_POST_ENDPOINTS` を `masters.rne_extract_run` →
+  `rne.rne_extract_run` へ
+
+**テストが本当に効くことを負の対照で確認した**(表を更新し忘れた状態を作って
+`tests/test_modeguard.py`を走らせる)。8/12へ落ち、内訳は予想どおり2種類:
+
+| 更新し忘れ | 観測された結果 |
+|---|---|
+| `path_config`を未宣言のまま | **閲覧モードでも200**(設定が保存できてしまう) |
+| `rne.rne_extract_run`へ直さない | **view/scheduleで403**(手動実行が壊れる) |
+
+正しく更新すると12/12。**落ちることを確認していないテストは安全網ではない**
+ので、この種の「表の同期」を守るテストは必ず負の対照まで取る。
+
 ### 4.2 schedule_repo.py の接続引数の明名化
 
 CRUD関数は接続`c`を受け取り、**どちらのDB(共有schedule.sqlite3 /
