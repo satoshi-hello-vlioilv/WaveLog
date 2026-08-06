@@ -29,6 +29,8 @@ from ..repositories.master_repo import (
  rename_equipment_references,
  SPOOL_MASTER_TABLE, ensure_spool_master_table, normalize_spool_name, spool_master_rows,
  INNER_MASTER_TABLE, ensure_inner_master_table, normalize_inner_name, inner_master_rows,
+ BURR_MASTER_TABLE, ensure_burr_master_table, normalize_burr_name, burr_master_rows,
+ COIL_STOP_MASTER_TABLE, ensure_coil_stop_master_table, normalize_coil_stop_name, coil_stop_master_rows,
  DEVICE_MASTER_TABLE, ensure_device_master_table, normalize_device_name, device_master_rows,
  FILTER_PRESET_TABLE, ensure_filter_preset_table, filter_preset_rows,
  COLUMN_DISPLAY_TABLE, ensure_column_display_table, hidden_columns_for, set_hidden_columns,
@@ -348,6 +350,80 @@ def inner_master_delete():
    cur.execute('UPDATE [内径種別マスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [内径ID]=?',[uid,iid]);c.commit()
   return jsonify(ok=True,id=iid,updated_by=uid)
  except Exception as e:return jsonify(error=f'内径種別マスタ削除失敗: {e}'),500
+
+# ------------------------------------------------------------------------
+# 選択肢だけの単純マスタ（バリ揃え・コイル止め）のCRUD。
+# 中身はスプール種別/内径種別と同じ流れなので、エンドポイントを生成して
+# 束ねる。個別に写経すると片方だけ直って食い違うため。
+# Blueprintは 'masters' のままなので、書込ガード(_WRITE_ALLOWED_MODES)は
+# 他のマスタと同じ edit 限定がそのまま効く。
+# ------------------------------------------------------------------------
+def _register_simple_master(url,table,id_col,name_col,label,ensure_table,rows_fn,normalize):
+ def list_route():
+  try:
+   path=DBS['MASTER']['path']
+   with connect(path,False) as c:
+    before=table in tables(c);ensure_table(c);rows=rows_fn(c)
+    items=[{'id':r[0],'name':str(r[1] or '').strip(),'order':r[2] or 0,'active':True,
+            'updated_at':r[4].isoformat() if r[4] else None,
+            'updated_by':(str(r[5]).strip() if len(r)>5 and r[5] else '')} for r in rows]
+   return jsonify(ok=True,items=items,table=table,created=not before,empty=len(items)==0,master_path=str(path))
+  except Exception as e:return jsonify(error=f'{label}マスタ読込失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
+ def register_route():
+  try:
+   x=request.get_json(force=True) or {};name=str(x.get('name') or '').strip();note=str(x.get('note') or '').strip();uid=request_user_id(x)
+   if not name:return jsonify(error=f'{label}を入力してください。'),400
+   with connect(DBS['MASTER']['path'],False) as c:
+    ensure_table(c);cur=c.cursor();cur.execute(f'SELECT [{id_col}],[{name_col}] FROM [{table}]');rows=cur.fetchall()
+    target=normalize(name);existing=next((r for r in rows if normalize(r[1])==target),None)
+    if existing:
+     # 既存は有効化のみ。備考は指定があるときだけ更新する。
+     if note:cur.execute(f'UPDATE [{table}] SET [有効]=-1,[備考]=?,[更新者ID]=?,[更新日時]=Now() WHERE [{id_col}]=?',[note,uid,existing[0]])
+     else:cur.execute(f'UPDATE [{table}] SET [有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [{id_col}]=?',[uid,existing[0]])
+     registered=False;stored=str(existing[1]).strip()
+    else:
+     cur.execute(f'SELECT Max([表示順]) FROM [{table}]');maximum=cur.fetchone()[0];order=int(maximum or 0)+10
+     cur.execute(f'INSERT INTO [{table}] ([{name_col}],[備考],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,-1,?,?,Now(),Now())',[name,note,order,uid,uid])
+     registered=True;stored=name
+    c.commit()
+   return jsonify(ok=True,name=stored,registered=registered,updated_by=uid,
+                  message=(f'{label}マスタへ新規登録しました。' if registered else f'{label}マスタの登録済み項目を有効化しました。'))
+  except Exception as e:return jsonify(error=f'{label}マスタ登録失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
+ def update_route():
+  try:
+   x=request.get_json(force=True) or {};rid=x.get('id');name=str(x.get('name') or '').strip();note=str(x.get('note') or '').strip();uid=request_user_id(x)
+   if rid is None:return jsonify(error='更新対象IDがありません。'),400
+   if not name:return jsonify(error=f'{label}を入力してください。'),400
+   with connect(DBS['MASTER']['path'],False) as c:
+    ensure_table(c);cur=c.cursor();cur.execute(f'SELECT [{id_col}],[{name_col}] FROM [{table}]');rows=cur.fetchall();target=normalize(name)
+    dup=next((r for r in rows if normalize(r[1])==target and str(r[0])!=str(rid)),None)
+    if dup:return jsonify(error=f'同名が既に存在するため変更できません: {str(dup[1]).strip()}'),409
+    cur.execute(f'UPDATE [{table}] SET [{name_col}]=?,[備考]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [{id_col}]=?',[name,note,uid,rid]);c.commit()
+   return jsonify(ok=True,id=rid,name=name,updated_by=uid,message=f'{label}を更新しました。')
+  except Exception as e:return jsonify(error=f'{label}マスタ更新失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
+ def delete_route():
+  try:
+   x=request.get_json(force=True) or {};rid=x.get('id');uid=request_user_id(x)
+   if rid is None:return jsonify(error='削除対象IDがありません。'),400
+   with connect(DBS['MASTER']['path'],False) as c:
+    ensure_table(c);cur=c.cursor()
+    # 物理削除ではなく無効化し、履歴を残す。
+    cur.execute(f'UPDATE [{table}] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [{id_col}]=?',[uid,rid]);c.commit()
+   return jsonify(ok=True,id=rid,updated_by=uid)
+  except Exception as e:return jsonify(error=f'{label}マスタ削除失敗: {e}'),500
+ # Flaskはエンドポイント名を関数名から取るため、生成した関数は名前が衝突する。
+ # endpoint= で明示し、アクセスモードの許可表(Blueprint名.関数名)からも
+ # 一意に指せるようにする。
+ key=url.replace('-','_')
+ bp.add_url_rule(f'/api/{url}',endpoint=f'{key}_list',view_func=list_route,methods=['GET'])
+ bp.add_url_rule(f'/api/{url}',endpoint=f'{key}_register',view_func=register_route,methods=['POST'])
+ bp.add_url_rule(f'/api/{url}/update',endpoint=f'{key}_update',view_func=update_route,methods=['POST'])
+ bp.add_url_rule(f'/api/{url}/delete',endpoint=f'{key}_delete',view_func=delete_route,methods=['POST'])
+
+_register_simple_master('burr-master',BURR_MASTER_TABLE,'バリ揃えID','バリ揃え','バリ揃え',
+                        ensure_burr_master_table,burr_master_rows,normalize_burr_name)
+_register_simple_master('coil-stop-master',COIL_STOP_MASTER_TABLE,'コイル止めID','コイル止め','コイル止め',
+                        ensure_coil_stop_master_table,coil_stop_master_rows,normalize_coil_stop_name)
 
 @bp.get('/api/device-master')
 def device_master_list():

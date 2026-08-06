@@ -6,6 +6,7 @@ from flask import Blueprint, request, jsonify
 
 from ..db_access import DBS, MEAS_DB, RECORDS_BACKUP_EXPORT_PATH, qi, connect, cols, tables, ensure_backup_table, read_backup_rows, invalidate_backup_rows_cache
 from ..repositories.master_repo import read_operator_names, read_spool_names, read_inner_names, read_device_names, ensure_operator_master, ensure_spool_master, ensure_inner_master, ensure_device_master, ensure_operator_equipment, OPERATOR_MASTER_TABLE, SPOOL_MASTER_TABLE, INNER_MASTER_TABLE, DEVICE_MASTER_TABLE
+from ..repositories.master_repo import read_burr_names, read_coil_stop_names, ensure_burr_master, ensure_coil_stop_master, BURR_MASTER_TABLE, COIL_STOP_MASTER_TABLE
 from .. import records_export
 
 bp=Blueprint('measurement',__name__)
@@ -14,7 +15,7 @@ bp=Blueprint('measurement',__name__)
 def measurement_context():
  try:
   lot=request.args.get('lot','').strip();equipment=request.args.get('equipment','').strip()
-  result={'quality':[],'operators':[],'inspectors':[],'packers':[],'thickness_gauges':[],'width_gauges':[],'inner_diameters':[],'spools':[],'diagnostics':{'master_path':str(DBS['MASTER']['path']),'master_exists':DBS['MASTER']['path'].exists(),'tables':[],'matches':{}}}
+  result={'quality':[],'operators':[],'inspectors':[],'packers':[],'thickness_gauges':[],'width_gauges':[],'inner_diameters':[],'spools':[],'burr_types':[],'coil_stops':[],'diagnostics':{'master_path':str(DBS['MASTER']['path']),'master_exists':DBS['MASTER']['path'].exists(),'tables':[],'matches':{}}}
   def norm(v):return str(v or '').strip()
   def matching_table(ts,aliases):
    for a in aliases:
@@ -61,6 +62,13 @@ def measurement_context():
    try:
     d_created=ensure_device_master(master);result['diagnostics']['device_master']={'created':d_created}
    except Exception as _e:result['diagnostics']['device_master_error']=str(_e)
+   # バリ揃え・コイル止めマスタ（作成時に既定の選択肢を種として入れる）。
+   try:
+    b_created=ensure_burr_master(master);result['diagnostics']['burr_master']={'created':b_created}
+   except Exception as _e:result['diagnostics']['burr_master_error']=str(_e)
+   try:
+    cs_created=ensure_coil_stop_master(master);result['diagnostics']['coil_stop_master']={'created':cs_created}
+   except Exception as _e:result['diagnostics']['coil_stop_master_error']=str(_e)
    with connect(master,True) as c:
     ts=tables(c);result['diagnostics']['tables']=ts
     def read_values(table_aliases,col_aliases,extra=None):
@@ -102,6 +110,11 @@ def measurement_context():
     spools=read_spool_names(c)
     result['diagnostics']['matches']['スプール種別マスタ']={'table':SPOOL_MASTER_TABLE,'column':'種別名','count':len(spools)}
     result['spools']=spools
+    # バリ揃え・コイル止め（以前は画面に直接書かれていた固定の選択肢）。
+    burrs=read_burr_names(c);coil_stops=read_coil_stop_names(c)
+    result['diagnostics']['matches']['バリ揃えマスタ']={'table':BURR_MASTER_TABLE,'column':'バリ揃え','count':len(burrs)}
+    result['diagnostics']['matches']['コイル止めマスタ']={'table':COIL_STOP_MASTER_TABLE,'column':'コイル止め','count':len(coil_stops)}
+    result['burr_types']=burrs;result['coil_stops']=coil_stops
   return jsonify(result)
  except Exception as e:return jsonify(error=str(e)),500
 

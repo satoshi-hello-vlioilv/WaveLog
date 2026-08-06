@@ -84,6 +84,11 @@ function applyContextSnapshot(x){
  optionFill('operator',x.operators,m.settings.operator);optionFill('inspector',x.inspectors||x.operators,m.settings.inspector);
  optionFill('thicknessGauge',x.thickness_gauges,m.settings.thicknessGauge);optionFill('widthGauge',x.width_gauges,m.settings.widthGauge);
  optionFill('innerDiameter',x.inner_diameters,m.settings.innerDiameter);optionFill('spool',x.spools,m.settings.spool);
+ /* バリ揃え・コイル止めはマスタ化前まで画面へ直接書かれていた選択肢なので、
+    マスタが空(未作成・全件無効化)でも選べる値が消えないよう既定を持つ。
+    先頭の'-'は付けない——「指定なし」が既にその意味の選択肢のため。 */
+ WL.optionList('burr',x.burr_types?.length?x.burr_types:['上バリ揃え','下バリ揃え','指定なし'],m.settings.burr);
+ WL.optionList('coilStop',x.coil_stops?.length?x.coil_stops:['内巻両面テープ','指定なし'],m.settings.coilStop);
  if(x.quality?.length){m.qualityInfo=qualityText(x.quality)}
  $('#qualityInfo').value=m.qualityInfo||'異常情報なし';if($('#motherQualityInfo')){$('#motherQualityInfo').value=$('#qualityInfo').value;if($('#motherQualitySum'))$('#motherQualitySum').textContent=$('#qualityInfo').value.split('\n')[0]}
  $('#masterDiagnostic').textContent=JSON.stringify(x.diagnostics||{},null,2);

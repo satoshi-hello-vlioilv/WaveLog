@@ -490,7 +490,10 @@
    ${qualityInfoSection(x)}
    <div class="rp-zone rp-zone-quality">
     ${qualityGradeSection(x)}
-    ${reportSection('測定条件',[['登録設備',equipment],['入力内容',s.measureType],['丈位置',s.lengthPos],['縦割数',s.verticalCount],['横割数',s.horizontalCount],['巻出方向',s.unwind],['内径',s.innerDiameter],['スプール',s.spool],['板厚測定器',s.thicknessGauge],['板幅測定器',s.widthGauge],['条入力順',s.widthOrder],['方向',s.widthDirection],['バリ揃え',s.burr],['内巻両面テープ',s.innerTape?'あり':'なし']],4)}
+    ${reportSection('測定条件',[['登録設備',equipment],['入力内容',s.measureType],['丈位置',s.lengthPos],['縦割数',s.verticalCount],['横割数',s.horizontalCount],['巻出方向',s.unwind],['内径',s.innerDiameter],['スプール',s.spool],['板厚測定器',s.thicknessGauge],['板幅測定器',s.widthGauge],['条入力順',s.widthOrder],['方向',s.widthDirection],['バリ揃え',s.burr],
+     /* コイル止めはマスタ化前まで「内巻両面テープ」チェックボックス(真偽値)
+        だった。過去の帳票が空欄にならないよう旧値も読む。 */
+     ['コイル止め',s.coilStop||(s.innerTape===undefined?'':(s.innerTape?'内巻両面テープ':'指定なし'))]],4)}
     ${crewSection(x)}
    </div>
    <div class="rp-zone rp-zone-length">

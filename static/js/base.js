@@ -75,6 +75,19 @@ function setActiveNav(key){
 }
 function bindTabs(group,panel){document.querySelectorAll(`[data-${group}tab]`).forEach(btn=>btn.onclick=()=>{document.querySelectorAll(`[data-${group}tab]`).forEach(x=>x.classList.toggle('active',x===btn));document.querySelectorAll(`[data-${group}panel]`).forEach(x=>x.hidden=x.dataset[group+'panel']!==btn.dataset[group+'tab'])})}
 function optionFill(id,items,current='-'){const el=$('#'+id);if(!el)return;const vals=['-',...new Set(items||[])];el.innerHTML=vals.map(v=>`<option>${esc(v)}</option>`).join('');if(vals.includes(current))el.value=current}
+/* optionFillの「先頭に'-'(未選択)を足す」をしない版。バリ揃え・コイル止めの
+   ように「指定なし」という選択肢そのものがマスタ側にある項目で使う
+   ('-'と「指定なし」が並ぶと、どちらを選べばよいのか分からなくなる)。
+   選択中の値が候補に無い場合(マスタから消された等)は、値を失わないよう
+   先頭へ残す。 */
+function optionList(id,items,current=''){
+ const el=$('#'+id);if(!el)return;
+ const vals=[...new Set(items||[])].filter(v=>String(v).trim()!=='');
+ const cur=String(current??'').trim();
+ if(cur&&!vals.includes(cur))vals.unshift(cur);
+ el.innerHTML=vals.map(v=>`<option>${esc(v)}</option>`).join('');
+ if(vals.includes(cur))el.value=cur;
+}
 function qualityText(items){if(!items?.length)return '異常情報なし';return items.slice(0,4).map((q,i)=>`(${i+1}) ${q['発生設備']||''} ${q['登録日時']||''} ${q['異常内容']||''}\nコメント：${q['コメント']||''}\n最終処置：${q['最終処置']||''}\n保留設定日：${q['保留設定日']||''}　保留解除日：${q['保留解除']||''}`).join('\n\n')}
 function widthSequence(max,order,dir){let a=Array.from({length:max},(_,i)=>i);if(order==='奇数条優先')a=[...a.filter(i=>i%2===0),...a.filter(i=>i%2===1)];if(order==='偶数条優先')a=[...a.filter(i=>i%2===1),...a.filter(i=>i%2===0)];if(dir==='降順')a=a.reverse();return a}
 function lengthIndex(){const el=$('#lengthPos');if(!el)return 0;const opts=[...el.options],idx=opts.findIndex(o=>o.value===el.value);return Math.max(0,Math.min(LENGTH_SLOTS-1,idx>=0?idx:0))}
@@ -524,4 +537,4 @@ window.applyUiSize=applyUiSize;
 })();
 
 /* ---------- WL名前空間への公開(定義は上記) ---------- */
-Object.assign(window.WL,{registerView,enterView,withInternalDbSwitch,isInternalDbSwitch,ttlCache});
+Object.assign(window.WL,{registerView,enterView,withInternalDbSwitch,isInternalDbSwitch,ttlCache,optionList});

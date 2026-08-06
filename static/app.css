@@ -709,9 +709,6 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 .dense-controls .major-list select option{min-height:31px;padding:6px 8px;border-bottom:1px solid #edf1f2;white-space:nowrap}
 .dense-controls .major-list select option:checked{background:linear-gradient(#0b79c9,#0b79c9);color:#fff}
 
-.center-pane fieldset{display:flex;align-items:center;min-height:44px;margin-top:8px;padding:6px 10px;gap:14px;border:1px solid #aebdc2;border-radius:10px;background:#fbfcfc}
-.center-pane fieldset legend{padding:0 5px;white-space:nowrap}
-.center-pane fieldset label{margin:0;white-space:nowrap}
 
 /* ---------- 7. 右ペイン: 伝送状態 / タブ ---------- */
 /* この欄は板厚/板幅・バリ(自動転送専用の測定種)でしか表示されない
@@ -1353,7 +1350,6 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .field label,.selectors label,.dense-controls label,.dense-controls .major-list select,
 .dense-controls .major-list select option,.material-grid label,
 .flatness-entry label,.flat-panel label,
-.center-pane fieldset,.center-pane fieldset label,.center-pane fieldset legend,
 .tolerance-source-control label,.tolerance-source-control select,
 .quality-grade-item b,.quality-grade-item span,.data-management-grid b,.data-management-grid span,
 .work-time-item span,.work-time-item input,.work-time-item button,.work-time-panel>small,
@@ -3467,3 +3463,86 @@ body.nav-collapsed #navResizeHandle{pointer-events:none;opacity:.35}
 .db-equip-grid .db-card{align-items:stretch;text-align:left}
 .db-equip-grid .db-card h3{margin:0 0 var(--space-2);font-size:var(--fs-base-sm);font-weight:800;color:#173842}
 .db-equip-grid .db-card-wide{grid-column:1/-1}
+
+/* ============================================================
+   異常位置判定（defect-locator.js）
+   欠陥の位置から「OSから何条目・どの子ロットか」を求める画面。
+   帯グラフの見せ方は条割の視覚図(.split-visual-*)に合わせる
+   ——同じロットの並びを見ているので、別の見た目にすると読み替えが要る。
+   ============================================================ */
+.defect-dialog{
+  display:flex;flex-direction:column;width:min(1080px,94vw);max-height:92vh;
+  background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius-card);
+  box-shadow:0 18px 48px #0000003d;overflow:hidden;
+}
+.defect-dialog>header{
+  display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);
+  padding:10px 18px;background:var(--header-bar-bg);color:var(--header-bar-fg);
+}
+.defect-dialog>header h2{margin:0;font-size:var(--fs-title);font-weight:800}
+.defect-dialog>header .defect-sub{display:block;margin-top:2px;font-size:var(--fs-micro);opacity:.85}
+.defect-dialog>header button{background:transparent;border:0;color:inherit;font-size:var(--fs-lg);cursor:pointer}
+.defect-body{flex:1;min-height:0;overflow:auto;padding:var(--space-3);display:flex;flex-direction:column;gap:var(--space-3)}
+.defect-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:var(--space-2)}
+.defect-form label{display:flex;flex-direction:column;gap:3px;min-width:0;font-size:var(--fs-sm);font-weight:700;color:#31474d}
+.defect-form label input,.defect-form label select{min-width:0}
+.defect-form .defect-memo-field{grid-column:span 2;min-width:0}
+.defect-basis-note{
+  display:flex;flex-wrap:wrap;gap:var(--space-2);margin-top:var(--space-2);padding:5px 9px;
+  border-radius:var(--radius-card);background:var(--computed-bg);color:var(--computed-fg);
+  font-size:var(--fs-micro);font-weight:700;font-variant-numeric:tabular-nums;
+}
+.defect-basis-note .defect-note-warn{color:#8a5a10}
+.defect-visual-head{display:flex;align-items:baseline;gap:var(--space-2);margin-bottom:5px}
+.defect-visual-head b{font-size:var(--fs-title)}
+.defect-visual-head .defect-visual-scale{font-size:var(--fs-micro);color:#61757c}
+/* 帯本体。条・屑・欠陥をすべて母材全幅に対する％で置く。 */
+.defect-strip{position:relative;flex:1;height:58px;min-width:0;border:1px solid #9caeb4;border-radius:6px;background:#eef3f4;overflow:hidden}
+.defect-lane{position:absolute;top:0;bottom:0;border-right:1px solid #ffffff8c;color:#fff;overflow:hidden}
+.defect-lane:last-of-type{border-right:0}
+.defect-lane.is-hit{outline:2px solid #d02e2e;outline-offset:-2px;filter:saturate(1.35) brightness(1.08)}
+.defect-lane-label{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;line-height:1.1;pointer-events:none}
+.defect-lane-label b{font-size:var(--fs-micro);font-weight:900}
+.defect-lane-label small{font-size:9px;opacity:.85}
+.defect-scrap{position:absolute;top:0;bottom:0;background:repeating-linear-gradient(45deg,#cbd6d9,#cbd6d9 4px,#dde5e7 4px,#dde5e7 8px);display:flex;align-items:center;justify-content:center}
+.defect-scrap span{font-size:9px;font-weight:800;color:#5b6c72}
+.defect-centerline{position:absolute;top:0;bottom:0;left:50%;width:0;border-left:1px dashed #ffffffcc;pointer-events:none}
+.defect-mark{position:absolute;top:0;bottom:0;min-width:2px;background:#d02e2ecc;box-shadow:0 0 0 1px #fff;z-index:3;pointer-events:none}
+.defect-mark-flag{position:absolute;top:-2px;transform:translateX(-50%);z-index:4;padding:1px 5px;border-radius:6px;background:#d02e2e;color:#fff;font-size:9px;font-weight:900;font-variant-numeric:tabular-nums;pointer-events:none}
+.defect-answer{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--space-2);padding:7px 11px;border-radius:var(--radius-card);background:#e7f4ef;border:1px solid #9ccdb8}
+.defect-answer b{font-size:var(--fs-lg);color:#0d5c46}
+.defect-answer span{font-size:var(--fs-sm);color:#31474d}
+.defect-answer-none{background:var(--warn-bg);border-color:var(--warn-border)}
+.defect-answer-none b{color:#8a5a10}
+.defect-error,.defect-warn{margin-top:var(--space-2);padding:7px 11px;border-radius:var(--radius-card);background:var(--warn-bg);border:1px solid var(--warn-border);color:#7a4f0c;font-size:var(--fs-sm);font-weight:700}
+.defect-calc{display:flex;flex-wrap:wrap;gap:var(--space-2);margin-top:var(--space-2);font-size:var(--fs-micro);color:#41575d;font-variant-numeric:tabular-nums}
+.defect-calc span{padding:2px 7px;border-radius:6px;background:#f3f7f8;border:1px solid #dde6e8}
+.defect-table{width:100%;margin-top:var(--space-2);border-collapse:collapse;font-size:var(--fs-sm);font-variant-numeric:tabular-nums}
+.defect-table th,.defect-table td{padding:3px 7px;border:1px solid #d6e0e3;text-align:right}
+.defect-table thead th{background:#eef3f4;text-align:center;font-weight:800}
+.defect-table tbody th{text-align:center;background:#f7fafb}
+.defect-actions{display:flex;align-items:center;justify-content:flex-end;gap:var(--space-2);padding:9px 18px;border-top:1px solid var(--card-border);background:#f6f9f9}
+.defect-actions .defect-hint{margin-right:auto;font-size:var(--fs-micro);color:#61757c}
+/* 帳票。画面では隠し、印刷時だけ本文と入れ替える(帳票一括印刷と同じ方式)。 */
+.df-print-area{display:none}
+@media print{
+  body.df-print>*:not(.df-print-area){display:none!important}
+  body.df-print .df-print-area{display:block!important}
+}
+.df-page{padding:8mm;box-sizing:border-box;font-size:11px;color:#111}
+.df-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding-bottom:4px;border-bottom:2px solid #333}
+.df-head h2{margin:0;font-size:16px}
+.df-section{margin-top:8px;break-inside:avoid}
+.df-section h3{margin:0 0 3px;padding:2px 6px;background:#eef3f4;border-left:3px solid #3f7f78;font-size:12px}
+.df-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:2px 8px}
+.df-field{display:flex;justify-content:space-between;gap:6px;padding:2px 4px;border-bottom:1px dotted #bbb;min-width:0}
+.df-field span{color:#555;white-space:nowrap}
+.df-field b{text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.df-strip-row{display:flex;align-items:center;gap:6px;margin-top:4px}
+.df-strip-row>span{font-weight:800;font-size:10px}
+.df-strip{position:relative;flex:1;height:52px;border:1px solid #666;overflow:hidden}
+.df-table{width:100%;margin-top:4px;border-collapse:collapse;font-size:11px}
+.df-table th,.df-table td{border:1px solid #888;padding:2px 5px;text-align:right}
+.df-table thead th{background:#eee;text-align:center}
+.df-answer{margin:4px 0;font-size:13px}
+.df-foot{margin-top:10px;padding-top:4px;border-top:1px solid #999;font-size:9px;color:#555}

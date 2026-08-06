@@ -243,6 +243,32 @@ API経由でRNE(Navigator問い合わせ定義)を実行し、ローカルSQLite
 | `measurement-input.js` | `deviceParse`・`processDeviceInput`・`focusCurrent`・`renderMeasureGrid(Vertical)`・`judgeInput`・公差計算（`toleranceDetail`/`toleranceDataForSource`/`compactTolerance*`）・公差数直線の値→縦位置の写像（`WL.toleranceScaleView`、下記） |
 | `records-store.js` | IndexedDB/ミラー永続化・`saveLocal`/`persistAndTransition`・`openMeasurement`・`openRecords`/`renderRecordListRows`・`loadMeasurementContext`・使用設備設定/設備マスタ・Access同期の未完了キューと再送・アプリ起動呼び出し（末尾） |
 
+### 異常位置判定（defect-locator.js）
+
+欠陥を見つけた位置から「OSから何条目・どの子ロットか」を求める機能
+（測定画面のメニュー「異常位置判定」→ `#defectModal`）。
+
+- **追加入力は基準位置からの距離だけ**。条の幅・並び・子ロット番号は
+  `settings.splitGroups`/`splitPositionGroup`（`lot-split.js`が確定させたもの）、
+  元幅は `basic.originalWidth`、屑幅は「元幅 − 条幅合計」から組み立てる。
+  条割が未確定なら製造板幅×横割数で等分する（その旨を画面に出す）。
+- **内部は「製品座標」に一本化**する。条1のOS端を0、DS方向を正とする軸へ
+  基準位置4通りをすべて落としてから条に当てる。屑は左右均等に付く前提
+  （条割の視覚図 `renderScrapAndRuler` と同じ）なので、屑幅を含む基準
+  （元幅）で測った値は屑幅の半分を引いて製品座標にする。
+  **屑幅を含む/含まないの取り違えは屑幅の半分ぶんずれる**ため、
+  基準幅は必ず選ばせる（既定は元幅）。
+- 欠陥は幅を持つ（既定5mm）。その幅に少しでも掛かる条をすべて該当とする。
+  幅0のときだけ「点がどの条の区間に入るか」で1条に決める。
+- 帯グラフは条割の視覚図と同じ見せ方（左OS・右DS・屑帯・センターライン）に
+  欠陥の帯と位置を重ねる。**別の見た目にすると同じ並びを読み替える手間が
+  生まれる**ので、クラス名も `.split-visual-*` を流用できるところは流用する。
+- 入力と結果は `settings.defectLocation` へ保存し、途中再開でも復元する。
+- 帳票は `.df-print-area` を印刷時だけ本文と入れ替える方式（測定帳票の
+  一括印刷 `rp-bulk-print` と同じ）。
+- 公開は `WL.defect`（`open`/`close`/`compute`/`lanes`/`refresh`）。
+  回帰は `tests/test_defect.js`。
+
 ### 公差数直線（測定画面の左側）
 
 板幅・バリ等の測定ブロックの左に出る縦の数直線。上限・下限・**基準値**の

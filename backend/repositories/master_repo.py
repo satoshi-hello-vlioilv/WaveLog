@@ -282,6 +282,68 @@ def read_inner_names(c):
  return out
 
 # ========================================================================
+# 選択肢だけの単純マスタ（バリ揃え・コイル止め）
+#  - 測定画面の「バリ揃え」「コイル止め」は、以前は画面へ直接書かれた固定の
+#    選択肢（ラジオ／チェックボックス）だった。他の選択項目（オペレータ・
+#    内径・スプール・機器）がすべてマスタから引いているのに、この2つだけ
+#    現場で増やせず、見た目も他と揃っていなかったため、同じ作りへ揃える。
+#  - 構造はスプール種別マスタ／内径種別マスタと同一（オートナンバー・
+#    有効フラグ・表示順・論理削除）。2種類が完全に同じ形なので、写経して
+#    片方だけ直る事故を避けるため生成関数でまとめる。
+#  - **作成時に既定値を種として入れる**。空のマスタにすると選べる値が無く
+#    なり、これまで通りの入力ができなくなるため（画面側にも同じ既定値の
+#    フォールバックを持たせて二重に守る）。
+# ========================================================================
+BURR_MASTER_TABLE='バリ揃えマスタ'
+COIL_STOP_MASTER_TABLE='コイル止めマスタ'
+BURR_MASTER_SEED=['上バリ揃え','下バリ揃え','指定なし']
+COIL_STOP_MASTER_SEED=['内巻両面テープ','指定なし']
+
+def _build_simple_master(table,id_col,name_col,seed):
+ """名称+備考だけの単純マスタ一式(ensure_table/ensure/rows/read_names/normalize)を作る。"""
+ def ensure_table(c):
+  created=False
+  if table not in tables(c):
+   cur=c.cursor()
+   cur.execute(f'CREATE TABLE [{table}] ([{id_col}] INTEGER PRIMARY KEY AUTOINCREMENT, [{name_col}] TEXT, [備考] TEXT, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
+   cur.execute(f'CREATE UNIQUE INDEX [UX_{table}_{name_col}] ON [{table}] ([{name_col}])')
+   for i,nm in enumerate(seed):
+    cur.execute(f'INSERT INTO [{table}] ([{name_col}],[備考],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,-1,?,?,Now(),Now())',[nm,'',(i+1)*10,'seed','seed'])
+   c.commit();created=True
+  ensure_audit_columns(c,table)
+  return created
+ def ensure(path):
+  with connect(path,False) as c:
+   return ensure_table(c)
+ def rows(c):
+  ensure_table(c)
+  cur=c.cursor()
+  cur.execute(f'SELECT [{id_col}],[{name_col}],[表示順],[有効],[更新日時],[更新者ID] FROM [{table}] ORDER BY [表示順],[{name_col}]')
+  out=[]
+  for r in cur.fetchall():
+   active=True if r[3] is None else bool(r[3])
+   if active and str(r[1] or '').strip():out.append(r)
+  return out
+ def read_names(c):
+  # 読み取り専用接続から、有効な名称を表示順で取得する。
+  if table not in tables(c):return []
+  cur=c.cursor();cur.execute(f'SELECT [{name_col}],[表示順],[有効] FROM [{table}] ORDER BY [表示順],[{name_col}]')
+  out=[];seen=set()
+  for r in cur.fetchall():
+   active=True if r[2] is None else bool(r[2]);nm=str(r[0] or '').strip()
+   if active and nm and nm.casefold() not in seen:seen.add(nm.casefold());out.append(nm)
+  return out
+ def normalize(value):
+  import unicodedata
+  return unicodedata.normalize('NFKC',str(value or '')).strip().upper()
+ return ensure_table,ensure,rows,read_names,normalize
+
+ensure_burr_master_table,ensure_burr_master,burr_master_rows,read_burr_names,normalize_burr_name=\
+ _build_simple_master(BURR_MASTER_TABLE,'バリ揃えID','バリ揃え',BURR_MASTER_SEED)
+ensure_coil_stop_master_table,ensure_coil_stop_master,coil_stop_master_rows,read_coil_stop_names,normalize_coil_stop_name=\
+ _build_simple_master(COIL_STOP_MASTER_TABLE,'コイル止めID','コイル止め',COIL_STOP_MASTER_SEED)
+
+# ========================================================================
 # 機器マスタ（一般的なオートナンバー方式）
 #  - 主キーは COUNTER（オートナンバー）で人手管理不要。
 #  - 測定区分（板厚/板幅 等）を1列で保持し、用途別に読み分ける。
