@@ -29,6 +29,12 @@ let b=null;
   drag:[...document.querySelectorAll('.sc-row-line')].some(x=>x.draggable),
  }));
  const toasts=()=>page.$$eval('.toast',n=>n.map(x=>x.innerText.replace(/\n/g,' | ')));
+ // 並べ替えの対象は予定行だけ。他のテストが残した計画外実績(data-idが
+ // 「actual:」で始まる)がタイムラインの先頭に載るため、行を添字で掴むと
+ // 実績行を掴んでしまい、キー操作が何も起こさない(実際に落ちた)。
+ const planIds=()=>page.$$eval('.sc-row-line',n=>n
+  .filter(x=>x.draggable&&!/^actual:/.test(x.dataset.id||''))
+  .map(x=>x.dataset.id));
 
  // 現場段取りバッジ・注記はeditモードの端末に出す表示なので、モードを固定してから始める
  // (他のテストがscheduleモードへ切り替えたまま終わっていても影響を受けないように)
@@ -60,13 +66,13 @@ let b=null;
  rec('対象設備が一致すればドラッグできる',st.drag,JSON.stringify(st));
  rec('注記は通常表示に戻る',!!st.note&&/並べ替えのみ可能/.test(st.note.txt)&&!st.note.warn,JSON.stringify(st.note));
  rec('バッジも「並べ替え可」に戻る',!!st.badge&&/並べ替え可/.test(st.badge.txt)&&!st.badge.warn,JSON.stringify(st.badge));
- const ids=await page.$$eval('.sc-row-line',n=>n.map(x=>x.dataset.id));
+ const ids=await planIds();
  posts=0;
- await (await page.$(`.sc-row-line[data-id="${ids[1]}"]`)).focus();
+ await (await page.$(`.sc-row-line[data-id="${ids[0]}"]`)).focus();
  await page.keyboard.down('Alt');await page.keyboard.press('ArrowDown');await page.keyboard.up('Alt');
  await page.waitForTimeout(3500);
- const after=await page.$$eval('.sc-row-line',n=>n.map(x=>x.dataset.id));
- rec('実際に並べ替えできる',posts===1&&after[1]!==ids[1],`POST=${posts} before=${ids.slice(0,3)} after=${after.slice(0,3)}`);
+ const after=await planIds();
+ rec('実際に並べ替えできる',posts===1&&after[0]!==ids[0],`POST=${posts} before=${ids.slice(0,3)} after=${after.slice(0,3)}`);
  rec('成功時はエラー通知を出さない',(await toasts()).length===0,JSON.stringify(await toasts()));
 
  /* ===== (D) サーバーが拒否したときの通知は1回だけ ===== */
@@ -78,19 +84,19 @@ let b=null;
   await r.fulfill({status:403,contentType:'application/json',
    body:JSON.stringify({error:'この端末には、この設備の現場段取り(並べ替え)権限がありません。'})});
  });
- const ids2=await page.$$eval('.sc-row-line',n=>n.map(x=>x.dataset.id));
+ const ids2=await planIds();
  posts=0;
- await (await page.$(`.sc-row-line[data-id="${ids2[1]}"]`)).focus();
+ await (await page.$(`.sc-row-line[data-id="${ids2[0]}"]`)).focus();
  await page.keyboard.down('Alt');await page.keyboard.press('ArrowDown');await page.keyboard.up('Alt');
  await page.waitForTimeout(700);
- const during=await page.$$eval('.sc-row-line',n=>n.map(x=>x.dataset.id));
+ const during=await planIds();
  rec('拒否される前は画面上で入れ替わっている(楽観的更新)',
   JSON.stringify(during)!==JSON.stringify(ids2),`before=${ids2.slice(0,3)} during=${during.slice(0,3)}`);
  await page.waitForTimeout(6000);
  const t=await toasts();
  rec('403はリトライしない(呼び出しは1回)',posts===1,'POST='+posts);
  rec('失敗の通知は1件だけ(同じ文言が並ばない)',t.length===1,JSON.stringify(t));
- const after2=await page.$$eval('.sc-row-line',n=>n.map(x=>x.dataset.id));
+ const after2=await planIds();
  rec('拒否された並びを画面に残さない(元へ戻す)',
   JSON.stringify(after2)===JSON.stringify(ids2),`before=${ids2.slice(0,3)} after=${after2.slice(0,3)}`);
 
