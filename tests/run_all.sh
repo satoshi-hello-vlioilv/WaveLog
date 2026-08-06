@@ -97,14 +97,22 @@ restore_paths(){
 trap restore_paths EXIT INT TERM
 
 save_paths
+# 共有スケジュールDBはテストが書き換える(予定の追加・並べ替え・ロック)ので、
+# gitが持つ原本ではなく作業用コピーを使う。原本を直接使うと、テストを回すたびに
+# 追跡ファイルが変わり `git status` が汚れ続け、意味のないバイナリ差分が
+# コミットに混ざる。仕掛/品質データは読み取り専用なので原本のままでよい。
+WORK="$FIXTURE/work"
+rm -rf "$WORK"; mkdir -p "$WORK"
+cp "$FIXTURE/share/schedule.sqlite3" "$WORK/schedule.sqlite3"
+export WAVELOG_FIXTURE_SHARE="$WORK/schedule.sqlite3"
 apply_paths "$(python3 - <<PY
 import json
 print(json.dumps({'sikalotnow_path':'$FIXTURE/sikalotnow_test.sqlite3',
                   'sikalotdef_path':'$FIXTURE/sikalotdef_test.sqlite3',
-                  'schedule_share_path':'$FIXTURE/share/schedule.sqlite3'},ensure_ascii=False))
+                  'schedule_share_path':'$WORK/schedule.sqlite3'},ensure_ascii=False))
 PY
 )"
-echo "検証用フィクスチャへ切り替えました: $FIXTURE"
+echo "検証用フィクスチャへ切り替えました: $FIXTURE (共有DBは $WORK の作業用コピー)"
 restart_server || exit 1
 
 # ---- 実行 ------------------------------------------------------------

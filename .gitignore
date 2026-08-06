@@ -25,9 +25,13 @@ schedule.sessions.json
 !db/test_fixture/**/
 !db/test_fixture/**/*.sqlite3
 !db/test_fixture/*.sqlite3
+# 共有スケジュールDBの作業用コピー(ランナーが毎回原本から作り直す)。原本を
+# 直接書き換えると、テストを回すたびに追跡ファイルが汚れてしまう。
+db/test_fixture/work/
 # テスト実行時に出る一時ファイル(tests/*.log・*.png は tests/.gitignore 側)
 db/test_fixture/share/schedule.sessions.json
 db/test_fixture/share/schedule.lock.json
+db/test_fixture/share/*.tmp
 
 # UNCパス(\\server\share\...)はWindows以外だとただのファイル名になるため、
 # 本番既定のパス設定のままLinuxで起動するとリポジトリ直下に

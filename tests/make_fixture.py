@@ -20,12 +20,16 @@
 テストが書き換えないため作り直さない。
 """
 from __future__ import annotations
+import os
 import sqlite3
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SHARE = ROOT / 'db' / 'test_fixture' / 'share' / 'schedule.sqlite3'
+# 既定はgitが持つ原本。ランナーは原本を汚さないよう作業用コピーを作り、
+# その置き場所を WAVELOG_FIXTURE_SHARE で渡してくる。
+SHARE = Path(os.environ.get('WAVELOG_FIXTURE_SHARE')
+             or ROOT / 'db' / 'test_fixture' / 'share' / 'schedule.sqlite3')
 NOW = ROOT / 'db' / 'test_fixture' / 'sikalotnow_test.sqlite3'
 
 # 種データの量。テストが必要とする最低限より少し多めに置く:
