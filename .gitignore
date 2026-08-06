@@ -43,3 +43,6 @@ db/test_fixture/share/*.tmp
 # 前後比較に使う一時成果物で、PNGなので差分が読めずリポジトリも重くなる。
 # 撮り直せば同じものが得られるためコミットしない。
 tests/visual/shots/
+
+# テストランナーの二重起動防止ロック(実行中のみ存在)
+tests/.run_all.lock

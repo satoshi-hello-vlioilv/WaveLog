@@ -32,16 +32,28 @@
    経由して同じ軸へ落とす。屑を左右均等に振る前提は条割の視覚図
    (lot-split.js renderScrapAndRuler)と同じ。
 
+   ■ 一時データと「保存」の違い（§9.70）
+   入力は開いている間ずっと settings.defectLocation へ書き戻す(閉じて
+   開き直しても続きから使えるようにするため)。ただしこれは**一時データ**で、
+   帳票には出さない——オペレータが「もし◯mmの位置なら何条目か」を
+   試算しただけ、という解釈。**保存ボタンを押したときだけ** その時点の
+   判定を settings.defectLocation.saved へ凍結し、帳票へ載せる対象にする。
+   保存後に入力を変えた場合は「保存し直すまで帳票は古いまま」を明示する。
+
    公開は WL.defect 名前空間（素の window.* を増やさない）。
    ============================================================ */
 (function(){
  if(typeof $!=='function'||typeof S==='undefined')return;
  const $id=id=>document.getElementById(id);
- const num=v=>{const n=Number(String(v??'').trim());return Number.isFinite(n)?n:NaN};
+ /* 空欄は「未入力」。Number('')は0なので素直に通すと、距離を1文字も
+    入れていない状態が「OS端ちょうど(0mm)」として判定されてしまう。 */
+ const num=v=>{const s=String(v??'').trim();if(s==='')return NaN;
+  const n=Number(s);return Number.isFinite(n)?n:NaN};
  const fmt=(v,d=1)=>Number.isFinite(v)?v.toFixed(d):'－';
  const BASIS_LABEL={os:'OSから',ds:'DSから','center-os':'センターからOSへ','center-ds':'センターからDSへ'};
  const WIDTH_BASIS_LABEL={original:'元幅（屑幅を含む）',product:'製品幅合計（屑幅を含まない）'};
  const DEFAULT_DEFECT_WIDTH=5;
+ const INPUT_KEYS=['basis','distance','widthBasis','defectWidth','memo'];
 
  /* ---------- 条の並びを組み立てる ----------
     条割が確定していれば子ロットごとの実幅で、未確定なら製造板幅×横割数で
@@ -68,14 +80,16 @@
  /* ---------- 判定 ---------- */
  function compute(input){
   const L=lanes();
-  if(!L.complete)return{error:'条ごとの幅が分かりません。「条割変更」で子ロットを確定するか、製造板幅を確認してください。',lanes:L};
+  if(!L.complete)return{error:'条ごとの幅が分かりません。「条割変更」で子ロットを確定するか、製造板幅を確認してください。',
+                        errorKind:'lanes',lanes:L};
   const original=num(S.measure?.basic?.originalWidth);
   const scrap=Number.isFinite(original)?original-L.slit:NaN;
   const d=num(input.distance);
-  if(!Number.isFinite(d))return{error:'基準位置からの距離を入力してください。',lanes:L,original,scrap};
+  if(!Number.isFinite(d))return{error:'基準位置からの距離を入力してください。',errorKind:'input',lanes:L,original,scrap};
   let baseWidth,toProduct;
   if(input.widthBasis==='original'){
-   if(!Number.isFinite(original))return{error:'元幅（実績）が取得できないため、屑幅を含む基準では計算できません。基準幅を「製品幅合計」にしてください。',lanes:L,original,scrap};
+   if(!Number.isFinite(original))return{error:'元幅（実績）が取得できないため、屑幅を含む基準では計算できません。基準幅を「製品幅合計」にしてください。',
+                                        errorKind:'basis',lanes:L,original,scrap};
    baseWidth=original;toProduct=scrap/2;      // 屑は左右均等
   }else{baseWidth=L.slit;toProduct=0}
   let posBase;
@@ -93,73 +107,132 @@
   let outside='';
   if(hi<=0)outside='os';else if(lo>=L.slit)outside='ds';
   return{lanes:L,original,scrap,baseWidth,toProduct,posBase,pos,lo,hi,defectWidth:w,hits,outside,
-         basis:input.basis,widthBasis:input.widthBasis,memo:input.memo||''};
+         distance:d,basis:input.basis,widthBasis:input.widthBasis,memo:input.memo||''};
  }
 
  /* ---------- 色 ----------
-    子ロットごとに安定した色。条割の視覚図と同系統の色数で揃える。 */
- const PALETTE=['#3f7f78','#7a6bb0','#b0783f','#4d7fb0','#a05070','#5f8f45','#8a6a3f','#556d7a'];
+    子ロットごとに安定した色。条割の視覚図と**同じ並び**の色相を使い
+    (同じロットの並びを見ているので、別の配色にすると読み替えが要る)、
+    彩度だけ一段落とす。**この図で唯一の高彩度は欠陥の赤**にしたい——
+    条が原色で塗られていると、赤がその中に埋もれて「どこが欠陥か」を
+    面積の大きい方から拾ってしまう(前景/背景の対比が効かない)。
+    色だけに意味を持たせないため、該当条は枠線と条番号の反転バッジ、
+    図の上の▼マーカーでも示す。 */
+ const PALETTE=['#5b8f88','#8b81bb','#b98d5f','#6d92b8','#ab7086','#7ba061','#9c8460','#6e828c'];
+ const NEUTRAL='#8a9a97';
  function colorFor(list){
-  const map={},lots=[...new Set(list.map(l=>l.lot).filter(Boolean))];
+  const map={},lots=[...new Set((list||[]).map(l=>l.lot).filter(Boolean))];
   lots.forEach((lot,i)=>{map[lot]=PALETTE[i%PALETTE.length]});
   return map;
  }
  const lot3=lot=>{const s=String(lot||'');return s.length>3?s.slice(-3):s};
+ /* 端に寄ったラベルは、中央揃えのままだと図の外へ出て見切れる。
+    どちら側に寄っているかだけをクラスで渡し、寄せ方はCSSに持たせる。 */
+ const edgeClass=p=>p<8?' at-start':p>92?' at-end':'';
+ /* 結論は1行で読み切れる長さに畳む。幅のある欠陥は20条以上に掛かることが
+    あり、番号を全部並べると結論欄が2〜3行になって図の位置まで動く。
+    連番は「17〜22」にまとめ、ロット名は3件で打ち切って残数を添える。 */
+ function rangeLabel(nums){
+  const a=[...nums].sort((x,y)=>x-y),out=[];
+  let i=0;
+  while(i<a.length){
+   let j=i;while(j+1<a.length&&a[j+1]===a[j]+1)j++;
+   out.push(j-i>=2?`${a[i]}〜${a[j]}`:a.slice(i,j+1).join('・'));
+   i=j+1;
+  }
+  return out.join('・');
+ }
+ function lotsLabel(lots){
+  return lots.length>3?`${lots.slice(0,3).join(' / ')} ほか${lots.length-3}件`:lots.join(' / ');
+ }
 
  /* ---------- 視覚化 ----------
     条割の視覚図と同じ見せ方(左OS・右DS・屑帯・センターライン)に、
-    欠陥の帯と位置ラベルを重ねる。 */
- function visualHtml(r){
-  const L=r.lanes,list=L.list;
-  const showScrap=Number.isFinite(r.scrap)&&r.scrap>0;
-  const total=showScrap?r.original:L.slit;
-  const off=showScrap?r.scrap/2:0;
-  if(!(total>0))return '<div class="split-visual-empty">幅の情報が足りないため図示できません。</div>';
-  const colors=colorFor(list);
-  const pct=v=>(v/total*100);
+    欠陥の帯を重ねる。位置の数値ラベルは帯の外(.defect-flags)へ出す
+    ——帯はoverflow:hiddenなので、中に置くと上端で切られて読めない。 */
+ function figureScale(r){
+  const L=r.lanes,showScrap=Number.isFinite(r.scrap)&&r.scrap>0;
+  const total=showScrap?r.original:(L?L.slit:NaN);
+  return {ok:total>0,total,off:showScrap?r.scrap/2:0,showScrap,pct:v=>v/total*100};
+ }
+ function visualHtml(r,cls){
+  const c=cls||'defect';
+  const L=r.lanes,list=L?.list||[],sc=figureScale(r);
+  if(!sc.ok)return '';
+  const colors=colorFor(list),pct=sc.pct;
   let html='';
-  if(showScrap){
-   html+=`<div class="defect-scrap" style="left:0;width:${pct(off).toFixed(3)}%" title="屑幅(OS側) ${esc(fmt(off))}"><span>屑</span></div>`;
-   html+=`<div class="defect-scrap" style="left:${pct(off+L.slit).toFixed(3)}%;width:${pct(off).toFixed(3)}%" title="屑幅(DS側) ${esc(fmt(off))}"><span>屑</span></div>`;
+  if(sc.showScrap){
+   html+=`<div class="${c}-scrap" style="left:0;width:${pct(sc.off).toFixed(3)}%" title="屑幅(OS側) ${esc(fmt(sc.off))}"><span>屑</span></div>`;
+   html+=`<div class="${c}-scrap" style="left:${pct(sc.off+L.slit).toFixed(3)}%;width:${pct(sc.off).toFixed(3)}%" title="屑幅(DS側) ${esc(fmt(sc.off))}"><span>屑</span></div>`;
   }
   list.forEach(l=>{
-   const left=pct(off+l.start),width=pct(l.width),hit=r.hits?.some(h=>h.index===l.index);
-   html+=`<div class="defect-lane${hit?' is-hit':''}" data-idx="${l.index}" style="left:${left.toFixed(3)}%;width:${width.toFixed(3)}%;background-color:${colors[l.lot]||'#8a9a97'}" `
+   const left=pct(sc.off+l.start),width=pct(l.width),hit=r.hits?.some(h=>h.index===l.index);
+   html+=`<div class="${c}-lane${hit?' is-hit':''}" data-idx="${l.index}" style="left:${left.toFixed(3)}%;width:${width.toFixed(3)}%;--defect-lane-bg:${colors[l.lot]||NEUTRAL}" `
        +`title="${esc(l.index+1)}条目 ／ ${esc(l.lot||'ロット不明')} ／ 幅${esc(fmt(l.width))}">`
-       +`${width>4?`<span class="defect-lane-label"><b>${esc(l.index+1)}</b><small>${esc(lot3(l.lot))}</small></span>`:''}</div>`;
+       +`${width>4?`<span class="${c}-lane-label"><b>${esc(l.index+1)}</b><small>${esc(lot3(l.lot))}</small></span>`:''}</div>`;
   });
-  html+='<div class="defect-centerline" title="センターライン"></div>';
+  html+=`<div class="${c}-centerline" title="センターライン"></div>`;
   if(Number.isFinite(r.pos)){
-   const dl=Math.max(0,Math.min(100,pct(off+r.lo))),dw=Math.max(.6,pct(Math.max(r.defectWidth,total*.004)));
-   html+=`<div class="defect-mark" style="left:${dl.toFixed(3)}%;width:${dw.toFixed(3)}%" title="欠陥位置 ${esc(fmt(r.pos))}（製品座標）"></div>`;
-   const lp=Math.max(0,Math.min(100,pct(off+r.pos)));
-   html+=`<div class="defect-mark-flag" style="left:${lp.toFixed(3)}%"><b>${esc(fmt(r.pos))}</b></div>`;
+   const dl=Math.max(0,Math.min(100,pct(sc.off+r.lo)));
+   const dw=Math.max(.6,pct(Math.max(r.defectWidth,sc.total*.004)));
+   html+=`<div class="${c}-mark" style="left:${dl.toFixed(3)}%;width:${dw.toFixed(3)}%" title="欠陥位置 ${esc(fmt(r.pos))}（製品座標）"></div>`;
   }
   return html;
  }
- function rulerHtml(r){
-  const L=r.lanes,showScrap=Number.isFinite(r.scrap)&&r.scrap>0;
-  const total=showScrap?r.original:L.slit;
-  if(!(total>0))return '';
-  let html='';
-  [0,.25,.5,.75,1].forEach(f=>{
-   html+=`<div class="split-visual-tick" style="left:${(f*100).toFixed(3)}%"><span class="split-visual-tick-label">${fmt(total*f,0)}</span></div>`;
-  });
-  return html;
+ /* 帯の上に置く位置ラベル(▼付き)。 */
+ function flagsHtml(r,cls){
+  const c=cls||'defect',sc=figureScale(r);
+  if(!sc.ok||!Number.isFinite(r.pos))return '';
+  const p=Math.max(0,Math.min(100,sc.pct(sc.off+r.pos)));
+  return `<div class="${c}-flag${edgeClass(p)}" style="left:${p.toFixed(3)}%"><b>${esc(fmt(r.pos))}</b><i></i></div>`;
+ }
+ function rulerHtml(r,cls){
+  const c=cls||'defect',sc=figureScale(r);
+  if(!sc.ok)return '';
+  return [0,.25,.5,.75,1].map(f=>{
+   const p=f*100;
+   return `<div class="${c}-tick" style="left:${p.toFixed(3)}%"></div>`
+        +`<div class="${c}-tick-label${edgeClass(p)}" style="left:${p.toFixed(3)}%">${esc(fmt(sc.total*f,0))}</div>`;
+  }).join('');
+ }
+ /* 条が細いとロット番号を帯の中へ書けない。色と番号の対応を1行で添える。 */
+ function legendHtml(r,cls){
+  const c=cls||'defect',list=r.lanes?.list||r.lanes||[];
+  const colors=colorFor(list),lots=[...new Set(list.map(l=>l.lot).filter(Boolean))];
+  if(lots.length<2)return '';
+  return lots.map(lot=>{
+   const idx=list.filter(l=>l.lot===lot).map(l=>l.index+1);
+   return `<span style="--defect-lane-bg:${colors[lot]}"><i></i>${esc(lot)}<b>${esc(rangeLabel(idx))}条</b></span>`;
+  }).join('');
  }
 
- /* ---------- 結果表 ---------- */
- function resultHtml(r){
-  if(r.error)return `<div class="defect-error">${esc(r.error)}</div>`;
-  const rows=r.hits.map(h=>`<tr><th>${h.index+1}条目</th><td>${esc(h.lot||'－')}</td><td>${esc(fmt(h.width))}</td><td>${esc(fmt(h.fromLaneOs))}</td></tr>`).join('');
+ /* ---------- 結論 ----------
+    「答え」の場所は1つだけ。入力途中でもエラーでも同じ枠に同じ形で出す
+    (器の高さが変わらないので、視線と押したいボタンの位置が動かない)。 */
+ function answerHtml(r){
+  const box=(cls,head,sub)=>`<div class="defect-answer ${cls}"><b>${esc(head)}</b><span>${esc(sub)}</span></div>`;
+  if(r.error){
+   if(r.errorKind==='input')return box('defect-answer-wait','距離を入力してください','基準位置からの距離（mm）を入れると、該当する条をすぐに判定します');
+   return box('defect-answer-error','いまは判定できません',r.error);
+  }
+  if(!r.hits.length){
+   return box('defect-answer-none','製品に掛かる条はありません',
+    r.outside==='os'?'OS側の屑幅の中です':r.outside==='ds'?'DS側の屑幅の中です':'条の範囲から外れています');
+  }
   const lots=[...new Set(r.hits.map(h=>h.lot).filter(Boolean))];
-  const head=r.hits.length
-   ? `<div class="defect-answer"><b>OSから ${r.hits.map(h=>h.index+1).join('・')} 条目</b>`
-     +`<span>${lots.length?`対象ロット ${esc(lots.join(' / '))}`:'ロット番号は取得できていません'}</span></div>`
-   : `<div class="defect-answer defect-answer-none"><b>製品に掛かる条はありません</b><span>${
-       r.outside==='os'?'OS側の屑幅の中です':r.outside==='ds'?'DS側の屑幅の中です':'条の範囲から外れています'}</span></div>`;
+  return `<div class="defect-answer"><b>OSから ${esc(rangeLabel(r.hits.map(h=>h.index+1)))} 条目</b>`
+   +`<span>${lots.length?`対象ロット ${esc(lotsLabel(lots))}`:'ロット番号は取得できていません'}</span>`
+   +`<span>該当 ${esc(r.hits.length)} 条</span></div>`;
+ }
+ /* ---------- 内訳（伸び縮みしてよい唯一の場所） ---------- */
+ function detailHtml(r){
+  const head=`<div class="defect-detail-head">計算の内訳<span>屑幅は左右均等に付く前提で計算しています</span></div>`;
+  if(r.error&&r.errorKind!=='basis')
+   return head+`<div class="defect-detail-empty">${esc(r.error)}</div>`;
   const warn=Number.isFinite(r.scrap)&&r.scrap<0
    ? '<div class="defect-warn">元幅（実績）より条幅合計のほうが大きく、屑幅がマイナスです。元幅か条割を確認してください。</div>':'';
+  if(r.error)return head+warn+`<div class="defect-detail-empty">${esc(r.error)}</div>`;
+  const rows=r.hits.map(h=>`<tr><th>${h.index+1}条目</th><td>${esc(h.lot||'－')}</td><td>${esc(fmt(h.width))}</td><td>${esc(fmt(h.fromLaneOs))}</td></tr>`).join('');
   return head+warn
    +`<div class="defect-calc">`
    +`<span>基準幅 <b>${esc(fmt(r.baseWidth))}</b>（${esc(WIDTH_BASIS_LABEL[r.widthBasis]||'')}）</span>`
@@ -168,7 +241,8 @@
    +`<span>欠陥の幅 <b>${esc(fmt(r.defectWidth))}</b>（${esc(fmt(r.lo))}〜${esc(fmt(r.hi))}）</span>`
    +(Number.isFinite(r.scrap)?`<span>屑幅（両耳合計） <b>${esc(fmt(r.scrap))}</b>／片側 ${esc(fmt(r.scrap/2))}</span>`:'')
    +`</div>`
-   +(rows?`<table class="defect-table"><thead><tr><th>条</th><th>ロット№</th><th>条幅</th><th>条のOS端から</th></tr></thead><tbody>${rows}</tbody></table>`:'');
+   +(rows?`<table class="defect-table"><thead><tr><th>条</th><th>ロット№</th><th>条幅</th><th>条のOS端から</th></tr></thead><tbody>${rows}</tbody></table>`
+        :`<div class="defect-detail-empty">該当する条はありません。</div>`);
  }
 
  /* ---------- 入力の読み書き ---------- */
@@ -179,16 +253,18 @@
          defectWidth:$id('defectWidth')?.value??DEFAULT_DEFECT_WIDTH,
          memo:$id('defectMemo')?.value||''};
  }
+ const sameInput=(a,b)=>!!a&&!!b&&INPUT_KEYS.every(k=>String(a[k]??'')===String(b[k]??''));
+ /* 一時データの書き戻し。開いて眺めただけで「未保存の変更あり」にならない
+    よう、中身が変わっていないときは何もしない。**保存済みスナップショット
+    (saved)は絶対に落とさない**——ここで作り直すと、入力を1文字触った
+    だけで帳票から消える。 */
  function saveInput(r){
   if(!S.measure)return;
   const i=readInput();
   S.measure.settings=S.measure.settings||{};
-  /* 中身が変わっていないなら書かない。開いて眺めただけで「未保存の変更あり」に
-     なると、閉じるときに毎回破棄の確認が出る。 */
   const prev=S.measure.settings.defectLocation;
-  if(prev&&['basis','distance','widthBasis','defectWidth','memo']
-     .every(k=>String(prev[k]??'')===String(i[k]??'')))return;
-  S.measure.settings.defectLocation={...i,
+  if(prev&&sameInput(prev,i))return;
+  S.measure.settings.defectLocation={...i,saved:prev?.saved,
    // 判定の答えも一緒に保存する。帳票と一覧で再計算しなくても出せるように。
    lanes:r&&!r.error?r.hits.map(h=>({index:h.index,lot:h.lot,width:h.width})):[],
    position:r&&!r.error?r.pos:null,updatedAt:new Date().toISOString()};
@@ -204,31 +280,103 @@
   if($id('defectMemo'))$id('defectMemo').value=saved.memo||'';
  }
 
+ /* ---------- 保存（帳票へ載せる/載せない を決める唯一の操作） ----------
+    帳票側は再計算せずこのスナップショットだけを見る。条の並びも一緒に
+    凍結するので、後から条割を変えても「保存した時点の判定」が残る。 */
+ function snapshot(r){
+  const i=readInput();
+  /* input は入力欄の生の文字列(「保存後に入力が変わったか」の比較用)。
+     distance/defectWidth は数値(帳票が fmt() で整形するため)。
+     文字列と数値を1つのキーに混ぜると「270」と「270.0」で変更扱いになる。 */
+  return{savedAt:new Date().toISOString(),input:i,
+   basis:r.basis,widthBasis:r.widthBasis,distance:r.distance,
+   defectWidth:r.defectWidth,memo:i.memo,
+   baseWidth:r.baseWidth,original:r.original,scrap:r.scrap,slit:r.lanes.slit,
+   pos:r.pos,lo:r.lo,hi:r.hi,
+   lanes:r.lanes.list.map(l=>({index:l.index,lot:l.lot,width:l.width,start:l.start,end:l.end})),
+   hits:r.hits.map(h=>({index:h.index,lot:h.lot,width:h.width,fromLaneOs:h.fromLaneOs}))};
+ }
+ function savedRecord(){return S.measure?.settings?.defectLocation?.saved||null}
+ function renderSaveState(r){
+  const el=$id('defectSaveState'),save=$id('defectSave'),unsave=$id('defectUnsave');
+  const sv=savedRecord(),cur=readInput();
+  const stale=!!sv&&!sameInput(sv.input||sv,cur);
+  if(unsave)unsave.hidden=!sv;
+  if(save){
+   save.disabled=!!r&&!!r.error;
+   save.textContent=sv?(stale?'保存を更新':'保存済み'):'この判定を保存';
+   save.title=r&&r.error?`判定できていないため保存できません（${r.error}）`
+    :stale?'いま画面に出ている判定で、保存内容を上書きします'
+    :'この判定を保存します。保存すると測定帳票にも載せられます（正式な測定値ではなく、参考のシミュレーション結果として扱います）';
+  }
+  if(!el)return;
+  el.classList.toggle('is-saved',!!sv&&!stale);
+  el.classList.toggle('is-stale',stale);
+  if(!sv)el.textContent='未保存（この判定は帳票に出ません）';
+  else if(stale)el.textContent='保存後に入力が変わりました。帳票にはまだ保存時の内容が出ます';
+  else el.innerHTML=`保存済み <b>${esc(new Date(sv.savedAt).toLocaleString('ja-JP'))}</b> ／ 帳票に表示できます`;
+ }
+ function doSave(){
+  const r=lastResult;
+  if(!S.measure||!r||r.error){showToast?.('保存できません','判定できていないため保存しません');return}
+  S.measure.settings=S.measure.settings||{};
+  const prev=S.measure.settings.defectLocation||{};
+  S.measure.settings.defectLocation={...prev,...readInput(),
+   lanes:r.hits.map(h=>({index:h.index,lot:h.lot,width:h.width})),position:r.pos,
+   updatedAt:new Date().toISOString(),saved:snapshot(r)};
+  if(typeof markDirty==='function')markDirty();
+  renderSaveState(r);
+  showToast?.('異常位置判定を保存しました','測定帳票の「異常位置判定（参考）」に表示されます');
+ }
+ function doUnsave(){
+  const d=S.measure?.settings?.defectLocation;
+  if(!d?.saved)return;
+  delete d.saved;
+  if(typeof markDirty==='function')markDirty();
+  renderSaveState(lastResult);
+  showToast?.('保存を取り消しました','測定帳票には表示されなくなります');
+ }
+
  let lastResult=null;
+ /* 画面の更新は「必ず全部の枠を埋める」。以前はエラー時に図と目盛りを
+    空文字で潰していたため、枠ごと消えて印刷ボタンの位置まで動いた。 */
  function refresh(){
   if(!S.measure)return;
   const input=readInput(),r=compute(input);
   lastResult=r;
-  const strip=$id('defectStrip'),ruler=$id('defectRuler'),res=$id('defectResult');
-  if(strip)strip.innerHTML=r.error&&!r.lanes?.complete?'':visualHtml(r);
-  if(ruler)ruler.innerHTML=r.error&&!r.lanes?.complete?'':rulerHtml(r);
-  if(res)res.innerHTML=resultHtml(r);
+  const sc=figureScale(r),drawable=sc.ok;
+  const set=(id,html)=>{const el=$id(id);if(el)el.innerHTML=html};
+  set('defectResult',answerHtml(r));
+  set('defectStrip',drawable?visualHtml(r)
+   :'<div class="defect-figure-empty">条ごとの幅が分かると、ここに条の並びと欠陥の位置を描きます。</div>');
+  set('defectFlags',drawable?flagsHtml(r):'');
+  set('defectRuler',drawable?rulerHtml(r):'');
+  set('defectLegend',drawable?legendHtml(r):'');
+  set('defectDetail',detailHtml(r));
   const note=$id('defectBasisNote');
   if(note){
    const L=r.lanes;
    note.innerHTML=`<span>条数 <b>${L?L.list.length:0}</b></span>`
     +`<span>条幅合計 <b>${esc(fmt(L?L.slit:NaN))}</b></span>`
     +`<span>元幅（実績） <b>${esc(fmt(r.original))}</b></span>`
+    +`<span>屑幅（両耳合計） <b>${esc(fmt(r.scrap))}</b></span>`
     +(L&&!L.split?'<span class="defect-note-warn">条割が未確定のため、製造板幅で等分して計算しています。</span>':'');
   }
   const scaleNote=$id('defectScaleNote');
-  if(scaleNote)scaleNote.textContent=Number.isFinite(r.scrap)&&r.scrap>0?'両端の薄い帯は屑幅（左右均等）':'屑幅は元幅（実績）が分かると表示されます';
+  if(scaleNote)scaleNote.textContent=Number.isFinite(r.scrap)&&r.scrap>0
+   ?'左OS・右DS／両端の斜線は屑幅（左右均等）':'左OS・右DS／屑幅は元幅（実績）が分かると表示されます';
+  /* ボタンは消さない。押せない状態でも、なぜ押せないかをtitleで示す。 */
   const printBtn=$id('defectPrint');
-  if(printBtn)printBtn.disabled=!!r.error;
+  if(printBtn){
+   printBtn.disabled=!!r.error;
+   printBtn.title=r.error?`判定できていないため印刷できません（${r.error}）`
+    :'ロットの基本情報と判定結果を1枚の帳票として印刷します';
+  }
+  renderSaveState(r);
   if(!r.error)saveInput(r);
  }
 
- /* ---------- 帳票 ---------- */
+ /* ---------- 帳票（この判定だけの1枚） ---------- */
  function ensurePrintArea(){
   let el=$id('defectPrintArea');if(el)return el;
   el=document.createElement('div');el.id='defectPrintArea';el.className='df-print-area';
@@ -249,7 +397,7 @@
     ${field('元幅（実績）',fmt(r.original))}${field('登録設備',s.registeredEquipment)}${field('オペレータ',s.operator)}
    </div></section>
    <section class="df-section"><h3>判定条件</h3><div class="df-grid">
-    ${field('基準位置',BASIS_LABEL[r.basis])}${field('基準位置からの距離',fmt(num(readInput().distance)))}
+    ${field('基準位置',BASIS_LABEL[r.basis])}${field('基準位置からの距離',fmt(r.distance))}
     ${field('基準幅の取り方',WIDTH_BASIS_LABEL[r.widthBasis])}${field('基準幅',fmt(r.baseWidth))}
     ${field('欠陥の幅',fmt(r.defectWidth))}${field('欠陥の内容',r.memo)}
     ${field('条幅合計',fmt(r.lanes.slit))}${field('屑幅（両耳合計）',fmt(r.scrap))}
@@ -259,10 +407,10 @@
     <div class="df-strip-row"><span>OS</span><div class="df-strip">${visualHtml(r)}</div><span>DS</span></div>
    </section>
    <section class="df-section"><h3>該当条</h3>
-    <p class="df-answer">${r.hits.length?`OSから <b>${r.hits.map(h=>h.index+1).join('・')}</b> 条目`:'製品に掛かる条はありません'}</p>
+    <p class="df-answer">${r.hits.length?`OSから <b>${rangeLabel(r.hits.map(h=>h.index+1))}</b> 条目（${r.hits.length}条）`:'製品に掛かる条はありません'}</p>
     ${rows?`<table class="df-table"><thead><tr><th>条</th><th>ロット№</th><th>条幅</th><th>条のOS端から</th></tr></thead><tbody>${rows}</tbody></table>`:''}
    </section>
-   <div class="df-foot">この判定は、条割で確定した子ロットの幅と、屑幅を左右均等とする前提で算出しています。</div>
+   <div class="df-foot">この判定は、条割で確定した子ロットの幅と、屑幅を左右均等とする前提で算出した参考値です（測定値ではありません）。</div>
   </div>`;
   document.body.classList.add('df-print');
   const prevTitle=document.title;
@@ -273,6 +421,48 @@
   // 描画が反映されてから印刷ダイアログを開く(同期的に呼ぶと白紙になる)。
   requestAnimationFrame(()=>requestAnimationFrame(()=>window.print()));
  }
+
+ /* ---------- 測定帳票への相乗り（保存されたときだけ） ----------
+    report-dashboard.js から呼ばれる。保存スナップショットだけを見るので、
+    いま開いているロットでなくても(一覧から選んだ過去データでも)描ける。
+    A4に載せるため .rp-* 側の px 固定スタイルを使い、高さは条数によらず一定。 */
+ function reportSectionHtml(x){
+  const sv=x?.settings?.defectLocation?.saved;
+  if(!sv||!Array.isArray(sv.lanes)||!sv.lanes.length)return '';
+  const r={lanes:{list:sv.lanes,slit:sv.slit},original:sv.original,scrap:sv.scrap,
+           pos:sv.pos,lo:sv.lo,hi:sv.hi,defectWidth:sv.defectWidth,hits:sv.hits||[]};
+  const sc=figureScale(r);
+  if(!sc.ok)return '';
+  const hits=r.hits;
+  const lots=[...new Set(hits.map(h=>h.lot).filter(Boolean))];
+  const fact=(label,value,cls)=>`<div class="rp-defect-fact${cls?' '+cls:''}"><span>${esc(label)}</span><b>${esc(value||'－')}</b></div>`;
+  const answer=hits.length?`OSから ${rangeLabel(hits.map(h=>h.index+1))} 条目（${hits.length}条）`:'製品に掛かる条なし';
+  return `<section class="rp-section"><h3>異常位置判定（参考）</h3>
+   <div class="rp-defect-body">
+    <div class="rp-defect-figure">
+     <div class="rp-defect-row"><span class="rp-defect-end">OS</span>
+      <div class="rp-defect-measure">
+       <div class="rp-defect-flags">${flagsHtml(r,'rp-defect')}</div>
+       <div class="rp-defect-strip">${visualHtml(r,'rp-defect')}</div>
+       <div class="rp-defect-ruler">${rulerHtml(r,'rp-defect')}</div>
+      </div>
+      <span class="rp-defect-end">DS</span></div>
+     <div class="rp-defect-legend">${legendHtml(r,'rp-defect')}</div>
+    </div>
+    <div class="rp-defect-facts">
+     ${fact('該当条',answer,'rp-defect-fact-hit')}
+     ${fact('対象ロット',lotsLabel(lots))}
+     ${fact('基準',`${BASIS_LABEL[sv.basis]||''} ${fmt(sv.distance)}mm`)}
+     ${fact('基準幅',`${fmt(sv.baseWidth)}（${sv.widthBasis==='original'?'元幅':'製品幅合計'}）`)}
+     ${fact('欠陥の幅',`${fmt(sv.defectWidth)}mm`)}
+     ${fact('製品座標',`${fmt(sv.pos)}mm`)}
+     ${fact('内容',sv.memo)}
+    </div>
+   </div>
+   <div class="rp-defect-foot">オペレータが算出した参考値です（測定値ではありません）。屑幅は左右均等・条幅は判定時の条割にもとづきます。判定 ${esc(new Date(sv.savedAt).toLocaleString('ja-JP'))}</div>
+  </section>`;
+ }
+ const hasSavedDefect=x=>!!x?.settings?.defectLocation?.saved?.lanes?.length;
 
  /* ---------- 開閉と結線 ---------- */
  function open(){
@@ -290,6 +480,8 @@
  $id('openDefect')?.addEventListener('click',open);
  $id('closeDefect')?.addEventListener('click',close);
  $id('defectPrint')?.addEventListener('click',printReport);
+ $id('defectSave')?.addEventListener('click',doSave);
+ $id('defectUnsave')?.addEventListener('click',doUnsave);
  $id('defectReset')?.addEventListener('click',()=>{
   if($id('defectDistance'))$id('defectDistance').value='';
   if($id('defectMemo'))$id('defectMemo').value='';
@@ -303,5 +495,6 @@
  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$id('defectModal')?.hidden)close()},true);
 
  window.WL=window.WL||{};
- window.WL.defect={open,close,compute,lanes,refresh};
+ window.WL.defect={open,close,compute,lanes,refresh,save:doSave,unsave:doUnsave,
+                   reportSectionHtml,hasSaved:hasSavedDefect};
 })();

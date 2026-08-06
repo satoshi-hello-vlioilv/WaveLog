@@ -21,6 +21,10 @@
  // 条ごとのロット№/公差ラベルを、連続する行でも毎回表示するか、変化した
  // 行だけに表示するか(見た目上のグルーピング)を切り替えられるようにする。
  let rpRepeatLabels=true;
+ /* 異常位置判定(参考)を帳票へ載せるか。載るのは**モーダルで保存された
+    ロットだけ**で、保存が無ければこのトグルに関わらず出ない。保存は
+    「オペレータが意図的に残した」という合図なので、既定は表示ON。 */
+ let rpShowDefect=true;
  // 帳票の一括印刷用の複数選択。ロットを切り替えるたびにクリアはしない
  // (絞り込みや並び替えを挟んでも選択を保てるようにするため)。
  let rpSelectedIds=new Set();
@@ -82,9 +86,10 @@
       <label class="rp-foot-selectall" title="表示中のロットをすべて選択/解除します"><input type="checkbox" id="reportSelectAll">全選択</label>
       <button type="button" id="reportBulkPrintBtn" class="rp-foot-btn rp-foot-btn--primary" disabled title="チェックした帳票をまとめて1回の印刷で出力します(1ロット1ページ)">選択した帳票を印刷 (<span id="reportBulkCount">0</span>)</button>
      </div>
-     <div class="rp-nav-foot">
+     <div class="rp-nav-foot rp-display-foot">
       <span class="rp-foot-label">表示</span>
       <button type="button" id="reportLabelToggle" class="rp-foot-btn" title="条ごとのロット№・板幅公差のラベルを、連続する行でも毎回表示するか、変化した行だけに表示するかを切り替えます">ラベル: 毎行表示</button>
+      <button type="button" id="reportDefectToggle" class="rp-foot-btn" title="異常位置判定モーダルで保存した判定を、帳票へ載せるかどうかを切り替えます（保存されていないロットには出ません）">異常位置判定: 載せる</button>
      </div>
     </nav>
     <section class="rp-main">
@@ -101,6 +106,7 @@
   $id('reportPrint').onclick=printReport;$id('reportPdf').onclick=printReport;
   $id('reportBack').onclick=backToRecordList;
   $id('reportLabelToggle').onclick=()=>{rpRepeatLabels=!rpRepeatLabels;updateLabelToggle();const cur=rpState.items.find(i=>i.id===rpState.selectedId);if(cur)renderReport(cur)};
+  $id('reportDefectToggle').onclick=()=>{rpShowDefect=!rpShowDefect;updateDefectToggle();const cur=rpState.items.find(i=>i.id===rpState.selectedId);if(cur)renderReport(cur)};
   $id('reportSelectAll').onchange=e=>{
    const items=sortedFiltered();
    if(e.target.checked)items.forEach(x=>rpSelectedIds.add(x.id));else items.forEach(x=>rpSelectedIds.delete(x.id));
@@ -120,7 +126,7 @@
    document.querySelectorAll('[data-seg="rpZoomSeg"] button').forEach(b=>b.classList.remove('active'));
    applyScale(rpCurrentScale*(e.deltaY<0?1.1:1/1.1));
   },{passive:false});
-  updateLabelToggle();
+  updateLabelToggle();updateDefectToggle();
   return panel;
  }
 
@@ -133,6 +139,18 @@
   const b=$id('reportLabelToggle');if(!b)return;
   b.textContent=rpRepeatLabels?'ラベル: 毎行表示':'ラベル: 変化時のみ表示';
   b.classList.toggle('active',!rpRepeatLabels);
+ }
+ function updateDefectToggle(){
+  const b=$id('reportDefectToggle');if(!b)return;
+  b.textContent=rpShowDefect?'異常位置判定: 載せる':'異常位置判定: 載せない';
+  b.classList.toggle('active',!rpShowDefect);
+ }
+ /* 異常位置判定(参考)。描画は defect-locator.js が持つ(モーダルの図と
+    同じ計算・同じ配色を1箇所に置き、帳票側で作り直さないため)。
+    保存されていないロットでは空文字が返るので、そのまま連結してよい。 */
+ function defectSection(x){
+  if(!rpShowDefect)return '';
+  return (window.WL&&WL.defect&&WL.defect.reportSectionHtml)?WL.defect.reportSectionHtml(x)||'':'';
  }
  /* ---------- 用紙の向き（A4縦 / A4横） ----------
     横向きは列の多い測定データ表(板幅ほか15列)に効く。用紙寸法はCSSの
@@ -510,6 +528,7 @@
     ${isDimensional?thicknessMeasurementSection(x):'<div></div>'}
    </div>
    ${showWidthTable?widthMeasurementSection(x):''}
+   ${defectSection(x)}
    <div class="rp-zone rp-zone-2">
     ${reportSection('作業時間',[['開始時刻',formatWorkTime(w.startAt)],['終了時刻',formatWorkTime(w.endAt)],['実働時間',dur]])}
     ${reportSection('登録状態',[['状態',statusLabel(x.status)],['更新日時',fmtDT(x.updatedAt)],['NG回数',s.ngCount||0]])}

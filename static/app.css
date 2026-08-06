@@ -510,7 +510,10 @@ th.col-sorted{background:#d7eff1;color:#075e67}
 th.col-sorted:hover{background:#c7e7ea}
 .lot-cell{padding:var(--space-1)}
 .grid-lot-link{min-height:29px}
-footer{height:40px;display:flex;align-items:center;justify-content:space-between;padding:0 15px;background:#fff;border-top:1px solid var(--line)}
+/* ページャ(一覧の下端)。要素セレクタのままだと**モーダルの操作列まで巻き込む**
+   ため、<main>直下のページ下端だけに絞る(実際に異常位置判定モーダルの
+   フッターが各モードで display:none にされ、印刷ボタンが消えていた)。 */
+main>footer{height:40px;display:flex;align-items:center;justify-content:space-between;padding:0 15px;background:#fff;border-top:1px solid var(--line)}
 /* ---------- 4. 測定モーダル 骨格 ---------- */
 .modal[hidden]{display:none}
 .modal{position:fixed;inset:0;z-index:100}
@@ -2119,6 +2122,10 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .rp-foot-btn--primary:hover:not(:disabled){background:var(--teal-dark)}
 .rp-foot-btn--primary:disabled{opacity:.45;cursor:not-allowed}
 /* 帳票の一括印刷: 全選択チェック＋件数ボタン。 */
+/* 表示切替が2つ以上並ぶ行。1行に詰めると両方が省略記号で切れて何のトグルか
+   読めなくなるため、見出しを縦に通してボタンを1つずつ積む。 */
+.rp-display-foot{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:4px 6px}
+.rp-display-foot .rp-foot-label{grid-row:1/3}
 .rp-bulk-foot{background:#eef2f4}
 .rp-foot-selectall{
   display:flex;align-items:center;gap:5px;flex:none;font-size:var(--fs-micro);font-weight:700;color:#2c5049;
@@ -2207,6 +2214,46 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .rp-product-table{min-width:0;width:100%;table-layout:fixed}
 .rp-product-table th,.rp-product-table td{padding:1px 2px;font-size:7.5px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rp-product-table tbody th{white-space:nowrap}
+/* ---------- 異常位置判定（参考） ----------
+   モーダルで**保存された場合だけ**帳票へ載せる参考情報(オペレータの
+   シミュレーション結果であり、測定値ではない)。板幅の実測表は条番号で
+   引くので、その**直後**に置くと視線を戻さずに条を突き合わせられる。
+   高さは条数によらず一定(帯の高さ固定・該当条は右の要点欄に文字で出す)。
+   要点欄はラベルを折り返さず値だけを折り返して、見切れを起こさない。 */
+.rp-defect-body{display:grid;grid-template-columns:minmax(0,1fr) 54mm;gap:0 6px;align-items:start;margin-top:2px}
+.rp-defect-figure{display:flex;flex-direction:column;min-width:0}
+.rp-defect-row{display:flex;align-items:center;gap:3px;min-width:0}
+.rp-defect-end{flex:0 0 auto;width:6mm;align-self:stretch;display:flex;align-items:center;justify-content:center;border:1px solid #d6e0e3;border-radius:3px;background:#f7fafb;color:#60747b;font-size:7px;font-weight:800}
+.rp-defect-measure{flex:1;min-width:0;display:flex;flex-direction:column}
+.rp-defect-flags{position:relative;height:11px;min-width:0}
+.rp-defect-strip{position:relative;height:11mm;min-width:0;border:1px solid #9caeb4;border-radius:3px;background:#eef2f4;overflow:hidden}
+.rp-defect-ruler{position:relative;height:11px;min-width:0}
+.rp-defect-lane{position:absolute;top:0;bottom:0;background-color:var(--defect-lane-bg,#8a9a97);border-right:1px solid #ffffff8c;color:#fff;overflow:hidden}
+.rp-defect-lane-label{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.05;font-size:6.5px;font-weight:800}
+.rp-defect-scrap{position:absolute;top:0;bottom:0;overflow:hidden;background:repeating-linear-gradient(45deg,#dde5e7,#dde5e7 3px,#eef2f4 3px,#eef2f4 6px)}
+.rp-defect-scrap span{display:none}
+.rp-defect-centerline{position:absolute;top:0;bottom:0;left:50%;width:0;border-left:1px dashed #ffffffcc}
+.rp-defect-mark{position:absolute;top:0;bottom:0;min-width:2px;box-sizing:border-box;border-left:1px solid #a32424;border-right:1px solid #a32424}
+.rp-defect-mark::before{content:"";position:absolute;inset:0;background:#a32424;opacity:.32}
+.rp-defect-flag{position:absolute;bottom:0;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;white-space:nowrap}
+.rp-defect-flag b{padding:0 3px;border-radius:6px;background:#a32424;color:#fff;font-size:6.5px;font-weight:800}
+.rp-defect-flag i{width:0;height:0;border-left:3px solid transparent;border-right:3px solid transparent;border-top:3px solid #a32424}
+.rp-defect-flag.at-start{align-items:flex-start;transform:translateX(-4px)}
+.rp-defect-flag.at-end{align-items:flex-end;transform:translateX(calc(-100% + 4px))}
+.rp-defect-tick{position:absolute;top:0;width:0;height:3px;border-left:1px solid #9caeb4}
+.rp-defect-tick-label{position:absolute;top:3px;transform:translateX(-50%);color:#60747b;font-size:6.5px;white-space:nowrap}
+.rp-defect-tick-label.at-start{transform:translateX(0)}
+.rp-defect-tick-label.at-end{transform:translateX(-100%)}
+.rp-defect-legend{display:flex;flex-wrap:wrap;gap:1px 8px;margin-top:1px}
+.rp-defect-legend span{display:inline-flex;align-items:center;gap:3px;color:#60747b;font-size:7px;font-weight:700}
+.rp-defect-legend i{width:6px;height:6px;border-radius:1px;background:var(--defect-lane-bg,#8a9a97)}
+.rp-defect-legend b{color:#17272d}
+.rp-defect-facts{display:grid;align-content:start;min-width:0}
+.rp-defect-fact{display:grid;grid-template-columns:min-content minmax(0,1fr);gap:4px;padding:.5px 2px;border-bottom:1px solid #eef2f4;font-size:8px}
+.rp-defect-fact span{color:#60747b;font-weight:700;white-space:nowrap}
+.rp-defect-fact b{color:#17272d;font-weight:800;text-align:right;overflow-wrap:break-word;white-space:normal}
+.rp-defect-fact-hit b{color:#a32424}
+.rp-defect-foot{margin-top:1px;color:#8a9a97;font-size:7px}
 @media(max-width:1000px){.rp-body{grid-template-columns:1fr}.rp-nav{max-height:220px}}
 /* ============================================================
  2026-07-21 生産管理ダッシュボード（KPI集計）
@@ -3132,59 +3179,170 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
    欠陥の位置から「OSから何条目・どの子ロットか」を求める画面。
    帯グラフの見せ方は条割の視覚図(.split-visual-*)に合わせる
    ——同じロットの並びを見ているので、別の見た目にすると読み替えが要る。
+
+   ■ 大きさを固定する理由
+   以前は .defect-dialog に height が無く max-height だけだったため、
+   該当条が増える・エラー文が出る等で中身の高さが変わるたびにモーダル自体が
+   伸び縮みしていた。読み手からは「押そうとしたボタンが動く・消える」
+   (フッターが画面外へ押し出される)ように見え、実際に「印刷ボタンが
+   消える」という指摘になった。**中身の量に関係なく器の大きさは一定**にし、
+   はみ出す可能性があるのは内訳(.defect-detail)だけに閉じ込める。
+   結論(.defect-answer-slot)と図(.defect-figure)も高さを確保しておき、
+   入力途中でも空にせずプレースホルダを置く(視線の位置が動かない)。
+
+   ■ 情報の並び(情報アーキテクチャ)
+   左＝入力(何を聞かれているか)、右＝出力(結論→図→内訳)の2カラム。
+   右カラムは上から「答え」「図」「根拠」の順で、知りたい順に並べる。
    ============================================================ */
 .defect-dialog{
-  display:flex;flex-direction:column;width:min(1080px,94vw);max-height:92vh;
+  display:grid;grid-template-rows:auto minmax(0,1fr) auto;
+  width:min(1180px,95vw);height:min(780px,92vh);
   background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius-card);
   box-shadow:0 18px 48px #0000003d;overflow:hidden;
 }
 .defect-dialog>header{
   display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);
-  padding:10px 18px;background:var(--header-bar-bg);color:var(--header-bar-fg);
+  padding:var(--space-2) var(--space-4);background:var(--header-bar-bg);color:var(--header-bar-fg);
 }
 .defect-dialog>header h2{margin:0;font-size:var(--fs-title);font-weight:800}
 .defect-dialog>header .defect-sub{display:block;margin-top:2px;font-size:var(--fs-micro);opacity:.85}
-.defect-dialog>header button{background:transparent;border:0;color:inherit;font-size:var(--fs-lg);cursor:pointer}
-.defect-body{flex:1;min-height:0;overflow:auto;padding:var(--space-3);display:flex;flex-direction:column;gap:var(--space-3)}
-.defect-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:var(--space-2)}
-.defect-form label{display:flex;flex-direction:column;gap:3px;min-width:0;font-size:var(--fs-sm);font-weight:700;color:#31474d}
-.defect-form label input,.defect-form label select{min-width:0}
-.defect-form .defect-memo-field{grid-column:span 2;min-width:0}
-.defect-basis-note{
-  display:flex;flex-wrap:wrap;gap:var(--space-2);margin-top:var(--space-2);padding:5px 9px;
+.defect-dialog>header button{background:transparent;border:0;box-shadow:none;color:inherit;font-size:var(--fs-lg);line-height:1}
+.defect-body{
+  display:grid;grid-template-columns:minmax(250px,310px) minmax(0,1fr);
+  gap:var(--space-3);padding:var(--space-3);min-height:0;overflow:hidden;
+}
+/* ---------- 入力（左） ---------- */
+.defect-input{display:flex;flex-direction:column;gap:var(--space-2);min-width:0;min-height:0;overflow:auto}
+/* 「1 どこから測ったか」「2 どこに見つけたか」の2段階。作業記憶の負荷を
+   下げるため、5つの入力欄を意味のまとまりへ割り、番号で順序を示す。 */
+.defect-step{display:flex;align-items:center;gap:var(--space-2);font-size:var(--fs-base-sm);font-weight:800;color:var(--ink)}
+.defect-step:not(:first-child){margin-top:var(--space-2)}
+.defect-step-no{
+  flex:0 0 auto;display:grid;place-items:center;width:var(--ctl-h-xs);height:var(--ctl-h-xs);
+  border-radius:50%;background:var(--teal);color:#fff;font-size:var(--fs-sm);font-weight:800;
+}
+.defect-field{display:flex;flex-direction:column;gap:var(--space-1);min-width:0;font-size:var(--fs-sm);font-weight:700;color:var(--ink-2)}
+.defect-field select,.defect-field input{min-width:0;width:100%;box-sizing:border-box}
+.defect-unit{position:relative;display:flex;align-items:center;min-width:0}
+.defect-unit input{padding-right:2.6em;text-align:right}
+.defect-unit i{position:absolute;right:var(--space-2);font-style:normal;font-size:var(--fs-micro);font-weight:700;color:var(--ink-soft);pointer-events:none}
+/* 利用者が入れるのではなく、こちらが前提として使っている値。入力欄と
+   同じ見た目にすると「まだ入れていない欄」に見えるので、自動計算値の
+   トークン(--computed-*)で塗り分けて下端へ寄せる。 */
+.defect-given{
+  margin-top:auto;display:grid;gap:var(--space-1);padding:var(--space-2);
   border-radius:var(--radius-card);background:var(--computed-bg);color:var(--computed-fg);
   font-size:var(--fs-micro);font-weight:700;font-variant-numeric:tabular-nums;
 }
-.defect-basis-note .defect-note-warn{color:#8a5a10}
-.defect-visual-head{display:flex;align-items:baseline;gap:var(--space-2);margin-bottom:5px}
-.defect-visual-head b{font-size:var(--fs-title)}
-.defect-visual-head .defect-visual-scale{font-size:var(--fs-micro);color:#60747b}
-/* 帯本体。条・屑・欠陥をすべて母材全幅に対する％で置く。 */
-.defect-strip{position:relative;flex:1;height:58px;min-width:0;border:1px solid #9caeb4;border-radius:6px;background:#eef2f4;overflow:hidden}
-.defect-lane{position:absolute;top:0;bottom:0;border-right:1px solid #ffffff8c;color:#fff;overflow:hidden}
+.defect-given span{display:flex;justify-content:space-between;gap:var(--space-2);min-width:0}
+.defect-given .defect-note-warn{display:block;color:var(--warn-fg)}
+/* ---------- 出力（右） ----------
+   3段(結論・図・内訳)。伸び縮みしてよいのは内訳だけ。 */
+/* 暗黙の列は auto = 最小幅が中身の min-content になり、条が40本ある・
+   対象ロットが6件あるといった「横に長い中身」で列そのものが器より広がる
+   (実測で結論欄・内訳の表・凡例が右へはみ出した)。minmax(0,1fr)で
+   はみ出しを列の中の折り返し/スクロールへ閉じ込める。 */
+.defect-output{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr);gap:var(--space-2);min-width:0;min-height:0;overflow:hidden}
+.defect-answer-slot{display:flex;min-height:62px}
+.defect-answer{
+  flex:1;display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-1) var(--space-3);
+  padding:var(--space-2) var(--space-3);border-radius:var(--radius-card);
+  background:var(--success-bg);border:1px solid var(--success-border);
+}
+.defect-answer b,.defect-answer span{min-width:0;overflow-wrap:anywhere}
+.defect-answer b{font-size:var(--fs-lg);font-weight:900;color:var(--success)}
+.defect-answer span{font-size:var(--fs-sm);color:var(--ink-2)}
+/* 「該当なし」は失敗ではなく答えのひとつなので警告色まで、
+   「計算できない」は対処が要るので危険色にする(意味で色を分ける)。 */
+.defect-answer-none{background:var(--warn-bg);border-color:var(--warn-border)}
+.defect-answer-none b{color:var(--warn-fg);font-size:var(--fs-title)}
+.defect-answer-error{background:var(--danger-bg);border-color:var(--danger-border)}
+.defect-answer-error b{color:var(--danger);font-size:var(--fs-title)}
+.defect-answer-wait{background:var(--surface-2);border-color:var(--line-mid)}
+.defect-answer-wait b{color:var(--ink-3);font-size:var(--fs-title)}
+/* ---------- 図 ---------- */
+.defect-figure{
+  display:flex;flex-direction:column;gap:var(--space-1);min-width:0;padding:var(--space-2);
+  border:1px solid var(--line-soft);border-radius:var(--radius-card);background:var(--surface);
+}
+.defect-figure-head{display:flex;align-items:baseline;gap:var(--space-2)}
+.defect-figure-head b{font-size:var(--fs-base-sm);color:var(--ink)}
+.defect-figure-scale{margin-left:auto;font-size:var(--fs-micro);color:var(--muted)}
+.defect-figure-row{display:flex;align-items:center;gap:var(--space-2)}
+.defect-end{
+  flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:28px;align-self:stretch;
+  border-radius:8px;background:var(--surface-3);color:var(--ink-3);
+  font-size:var(--fs-micro);font-weight:800;letter-spacing:.03em;
+}
+.defect-measure{flex:1;min-width:0;display:flex;flex-direction:column}
+/* 位置ラベルの置き場。以前は帯(.defect-strip)の中へ負のtopで置いていたため
+   overflow:hidden に切られて数字が読めなかった。帯の外へ出して見切れを無くす。 */
+.defect-flags{position:relative;height:22px;min-width:0}
+.defect-strip{position:relative;height:84px;min-width:0;border:1px solid var(--line-strong);border-radius:6px;background:var(--surface-3);overflow:hidden}
+.defect-ruler{position:relative;height:18px;min-width:0}
+/* 条の色はJSが --defect-lane-bg で渡す(インラインで background を直接
+   書かない。どのレイヤより強く、状態クラスで上書きできなくなるため)。 */
+.defect-lane{position:absolute;top:0;bottom:0;background-color:var(--defect-lane-bg,#8a9a97);border-right:1px solid #ffffff8c;color:#fff;overflow:hidden}
 .defect-lane:last-of-type{border-right:0}
 .defect-lane-label{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;line-height:1.1;pointer-events:none}
 .defect-lane-label b{font-size:var(--fs-micro);font-weight:900}
 .defect-lane-label small{font-size:var(--fs-tiny);opacity:.85}
-.defect-scrap{position:absolute;top:0;bottom:0;background:repeating-linear-gradient(45deg,#cbd6d9,#cbd6d9 4px,#dde5e7 4px,#dde5e7 8px);display:flex;align-items:center;justify-content:center}
-.defect-scrap span{font-size:var(--fs-tiny);font-weight:800;color:#5b6c72}
+.defect-scrap{position:absolute;top:0;bottom:0;overflow:hidden;background:repeating-linear-gradient(45deg,var(--surface-3),var(--surface-3) 4px,var(--line-soft) 4px,var(--line-soft) 8px);display:flex;align-items:center;justify-content:center}
+.defect-scrap span{font-size:var(--fs-tiny);font-weight:800;color:var(--ink-3)}
 .defect-centerline{position:absolute;top:0;bottom:0;left:50%;width:0;border-left:1px dashed #ffffffcc;pointer-events:none}
-.defect-mark{position:absolute;top:0;bottom:0;min-width:2px;background:#d02e2ecc;box-shadow:0 0 0 1px #fff;z-index:3;pointer-events:none}
-.defect-mark-flag{position:absolute;top:-2px;transform:translateX(-50%);z-index:4;padding:1px 5px;border-radius:6px;background:#d02e2e;color:#fff;font-size:var(--fs-tiny);font-weight:900;font-variant-numeric:tabular-nums;pointer-events:none}
-.defect-answer{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--space-2);padding:7px 11px;border-radius:var(--radius-card);background:#e7f4ef;border:1px solid #9ccdb8}
-.defect-answer b{font-size:var(--fs-lg);color:#0d5c46}
-.defect-answer span{font-size:var(--fs-sm);color:#31474d}
-.defect-answer-none{background:var(--warn-bg);border-color:var(--warn-border)}
-.defect-answer-none b{color:#8a5a10}
-.defect-error,.defect-warn{margin-top:var(--space-2);padding:7px 11px;border-radius:var(--radius-card);background:var(--warn-bg);border:1px solid var(--warn-border);color:#7a4f0c;font-size:var(--fs-sm);font-weight:700}
-.defect-calc{display:flex;flex-wrap:wrap;gap:var(--space-2);margin-top:var(--space-2);font-size:var(--fs-micro);color:#41575d;font-variant-numeric:tabular-nums}
-.defect-calc span{padding:2px 7px;border-radius:6px;background:#f7fafb;border:1px solid #dde6e8}
+/* 図の中で唯一の高彩度＝欠陥。条は彩度を落としてあるので、面積が小さくても
+   赤が最初に目に入る(前景/背景の対比)。色だけに頼らないよう、該当条には
+   枠線(@layer state の .is-hit)と▼マーカーも併せて出す。 */
+/* 幅のある欠陥は複数の条にまたがる。塗りつぶすと下の条が見えなくなるので
+   わずかに透かし、条の色と番号を残したまま範囲を示す。 */
+.defect-mark{position:absolute;top:0;bottom:0;min-width:3px;box-sizing:border-box;z-index:3;pointer-events:none;border-left:2px solid var(--danger);border-right:2px solid var(--danger)}
+.defect-mark::before{content:"";position:absolute;inset:0;background:var(--danger);opacity:.32}
+.defect-flag{position:absolute;bottom:0;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;pointer-events:none;white-space:nowrap}
+.defect-flag b{padding:1px 6px;border-radius:20px;background:var(--danger);color:#fff;font-size:var(--fs-tiny);font-weight:900;font-variant-numeric:tabular-nums}
+.defect-flag i{width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid var(--danger)}
+/* 端に寄ったときはラベルだけ内側へ寄せる(▼はほぼ位置どおりのまま)。
+   translateX(-50%)のままだと数字が図の外へ出て見切れる。 */
+.defect-flag.at-start{align-items:flex-start;transform:translateX(-6px)}
+.defect-flag.at-end{align-items:flex-end;transform:translateX(calc(-100% + 6px))}
+.defect-tick{position:absolute;top:0;width:0;height:5px;border-left:1px solid var(--line-strong)}
+.defect-tick-label{position:absolute;top:6px;transform:translateX(-50%);font-size:var(--fs-tiny);font-weight:700;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.defect-tick-label.at-start{transform:translateX(0)}
+.defect-tick-label.at-end{transform:translateX(-100%)}
+/* 条が細いと帯の中にロット番号を書けない。色と番号の対応表を1行で置く。 */
+.defect-legend{display:flex;gap:var(--space-3);min-width:0;min-height:18px;overflow-x:auto;overflow-y:hidden}
+.defect-legend span{display:inline-flex;align-items:center;gap:var(--space-1);flex:0 0 auto;font-size:var(--fs-tiny);font-weight:700;color:var(--ink-3);white-space:nowrap}
+.defect-legend i{width:10px;height:10px;border-radius:3px;background:var(--defect-lane-bg,#8a9a97)}
+.defect-legend b{color:var(--ink-2)}
+.defect-figure-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:0 var(--space-3);text-align:center;color:var(--muted);font-size:var(--fs-sm);font-weight:700}
+/* ---------- 内訳（伸び縮みしてよい唯一の場所） ---------- */
+.defect-detail{min-height:0;overflow:auto;padding:var(--space-2);border:1px solid var(--line-soft);border-radius:var(--radius-card);background:var(--surface)}
+.defect-detail-head{display:flex;align-items:baseline;gap:var(--space-2);margin-bottom:var(--space-1);font-size:var(--fs-base-sm);font-weight:800;color:var(--ink)}
+.defect-detail-head span{margin-left:auto;font-size:var(--fs-micro);font-weight:700;color:var(--muted)}
+.defect-detail-empty{padding:var(--space-3);text-align:center;color:var(--muted);font-size:var(--fs-sm)}
+.defect-warn{margin-bottom:var(--space-2);padding:5px 9px;border-radius:var(--radius-card);background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn-fg);font-size:var(--fs-sm);font-weight:700}
+.defect-calc{display:flex;flex-wrap:wrap;gap:var(--space-1) var(--space-2);font-size:var(--fs-micro);color:var(--ink-3);font-variant-numeric:tabular-nums}
+.defect-calc span{padding:2px 7px;border-radius:6px;background:var(--surface-2);border:1px solid var(--line-soft)}
 .defect-table{width:100%;margin-top:var(--space-2);border-collapse:collapse;font-size:var(--fs-sm);font-variant-numeric:tabular-nums}
-.defect-table th,.defect-table td{padding:3px 7px;border:1px solid #d6e0e3;text-align:right}
-.defect-table thead th{background:#eef2f4;text-align:center;font-weight:800}
-.defect-table tbody th{text-align:center;background:#f7fafb}
-.defect-actions{display:flex;align-items:center;justify-content:flex-end;gap:var(--space-2);padding:9px 18px;border-top:1px solid var(--card-border);background:#f7fafb}
-.defect-actions .defect-hint{margin-right:auto;font-size:var(--fs-micro);color:#60747b}
+.defect-table th,.defect-table td{padding:3px 7px;border:1px solid var(--line-mid);text-align:right}
+.defect-table thead th{background:var(--surface-3);text-align:center;font-weight:800}
+.defect-table tbody th{text-align:center;background:var(--surface-2)}
+/* ---------- 操作（常に見えている） ---------- */
+.defect-actions{display:flex;align-items:center;gap:var(--space-2);padding:var(--space-2) var(--space-4);border-top:1px solid var(--card-border);background:var(--surface-2)}
+.defect-actions button{height:var(--ctl-h);padding:0 var(--space-3);font-size:var(--fs-sm);font-weight:700}
+.defect-ghost-btn{background:var(--surface);color:var(--ink-2)}
+.defect-primary-btn{background:var(--teal);border-color:var(--teal-dark);color:#fff}
+.defect-primary-btn:hover{background:var(--teal-dark);border-color:var(--teal-dark)}
+/* 保存したかどうかは、この判定が帳票へ載るかどうかを決める唯一の合図。
+   ボタンの左に常設し、押した結果がその場で読めるようにする。 */
+.defect-save-state{margin-right:auto;display:flex;align-items:center;gap:var(--space-1);min-width:0;font-size:var(--fs-micro);font-weight:700;color:var(--muted)}
+.defect-save-state b{font-weight:800}
+.defect-save-state.is-saved{color:var(--success)}
+.defect-save-state.is-stale{color:var(--warn-fg)}
+/* 幅の狭い端末では1カラムへ落とす。器の高さは変えず、body側をスクロールさせる。 */
+@media (max-width:900px){
+  .defect-body{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);overflow:auto}
+  .defect-input{overflow:visible}
+}
 /* 帳票。画面では隠し、印刷時だけ本文と入れ替える(帳票一括印刷と同じ方式)。 */
 .df-print-area{display:none}
 .df-page{padding:8mm;box-sizing:border-box;font-size:11px;color:#111}
@@ -3373,7 +3531,11 @@ tbody tr.is-plan-selected:hover{background:#d9f0ee}
    出ないのに作業スケジュールの実績には効くため、色で気付けるようにする。 */
 .mm-row.is-orphan{background:var(--warn-bg)}
 .mm-import-warning.is-orphan{border-color:var(--warn-border);background:var(--warn-bg)}
-.defect-lane.is-hit{outline:2px solid #d02e2e;outline-offset:-2px;filter:saturate(1.35) brightness(1.08)}
+/* 該当条。色覚差でも読めるよう、赤の枠線・明度上げ・条番号の反転バッジの
+   3つで示す(色だけに意味を持たせない)。 */
+.defect-lane.is-hit{outline:2px solid var(--danger);outline-offset:-2px;filter:saturate(1.25) brightness(1.12)}
+.defect-lane.is-hit .defect-lane-label b{padding:0 4px;border-radius:6px;background:#fff;color:var(--danger)}
+.rp-defect-lane.is-hit{outline:1.5px solid #a32424;outline-offset:-1.5px;filter:saturate(1.2) brightness(1.12)}
 }
 
 
@@ -3400,23 +3562,23 @@ body.view-mode #openMasterMaint{opacity:.45;pointer-events:none}
 - ツールバー折り返し＋最小幅で見切れ解消 / 一覧は最大エリア表示
 ============================================================ *//* 元データ(#grid)・フッター・汎用フィルタは元データビューのみ表示 */
 body.qa-mode #grid{display:none}
-body.qa-mode footer{display:none}
+body.qa-mode main>footer{display:none}
 body.qa-mode #genericFilterBar{display:none}
 body.qa-mode.qa-view-raw #grid{display:block}
-body.qa-mode.qa-view-raw footer{display:flex}
+body.qa-mode.qa-view-raw main>footer{display:flex}
 body.qa-mode.qa-view-raw #genericFilterBar{display:block}
 /* 測定帳票・ダッシュボードもモーダルではなくメイン画面の表示切り替え
    とし、qa-modeと同様に他の要素を隠して表示エリアを最大化する。 */
-body.rp-mode #grid,body.rp-mode #listToolbar,body.rp-mode footer,body.rp-mode #tabs,body.rp-mode #genericFilterBar,body.rp-mode .qa-v7{display:none}
-body.db-mode #grid,body.db-mode #listToolbar,body.db-mode footer,body.db-mode #tabs,body.db-mode #genericFilterBar,body.db-mode .qa-v7{display:none}
+body.rp-mode #grid,body.rp-mode #listToolbar,body.rp-mode main>footer,body.rp-mode #tabs,body.rp-mode #genericFilterBar,body.rp-mode .qa-v7{display:none}
+body.db-mode #grid,body.db-mode #listToolbar,body.db-mode main>footer,body.db-mode #tabs,body.db-mode #genericFilterBar,body.db-mode .qa-v7{display:none}
 /* 編集中/完了データ一覧も同様にモーダルではなくメイン画面表示にする。 */
-body.rec-mode #grid,body.rec-mode #listToolbar,body.rec-mode footer,body.rec-mode #tabs,body.rec-mode #genericFilterBar,body.rec-mode .qa-v7{display:none}
+body.rec-mode #grid,body.rec-mode #listToolbar,body.rec-mode main>footer,body.rec-mode #tabs,body.rec-mode #genericFilterBar,body.rec-mode .qa-v7{display:none}
 /* 実績カレンダーも同様にメイン画面表示にする。 */
-body.cal-mode #grid,body.cal-mode #listToolbar,body.cal-mode footer,body.cal-mode #tabs,body.cal-mode #genericFilterBar,body.cal-mode .qa-v7{display:none}
+body.cal-mode #grid,body.cal-mode #listToolbar,body.cal-mode main>footer,body.cal-mode #tabs,body.cal-mode #genericFilterBar,body.cal-mode .qa-v7{display:none}
 /* 作業スケジュール(スケジュールモード等)も同様にメイン画面表示にする。 */
-body.sc-mode #grid,body.sc-mode #listToolbar,body.sc-mode footer,body.sc-mode #tabs,body.sc-mode #genericFilterBar,body.sc-mode .qa-v7{display:none}
+body.sc-mode #grid,body.sc-mode #listToolbar,body.sc-mode main>footer,body.sc-mode #tabs,body.sc-mode #genericFilterBar,body.sc-mode .qa-v7{display:none}
 /* マスタ管理(ARCHITECTURE.md「マスタ管理の画面形態」)も同様にメイン画面表示にする(旧: 全画面シェード付きモーダル)。 */
-body.mm-mode #grid,body.mm-mode #listToolbar,body.mm-mode footer,body.mm-mode #tabs,body.mm-mode #genericFilterBar,body.mm-mode .qa-v7{display:none}
+body.mm-mode #grid,body.mm-mode #listToolbar,body.mm-mode main>footer,body.mm-mode #tabs,body.mm-mode #genericFilterBar,body.mm-mode .qa-v7{display:none}
 /* 保険: 他のメイン画面統合ビューが開いている間はマスタ管理パネルを必ず隠す。
    各ビューのopenXxxがwindow.exitMasterMaint()を呼ぶのが本筋だが、呼び忘れても
    画面が重なって見えないようにしておく(実際に、データ一覧へ移動したときだけ
@@ -3437,12 +3599,12 @@ body.sc-mode.sc-list-modal-open #listToolbar{display:flex}
    db-mode/rec-mode/cal-mode/sc-modeの詳細度2のルールより優先されてしまい、品質データ表示中に
    帳票・ダッシュボード・編集中/完了一覧・実績カレンダー・作業スケジュールを開くと元の#gridが透けて見える
    不具合があった。詳細度を合わせて確実に上書きする。 */
-body.rp-mode.qa-mode.qa-view-raw #grid,body.rp-mode.qa-mode.qa-view-raw footer,body.rp-mode.qa-mode.qa-view-raw #genericFilterBar,
-body.db-mode.qa-mode.qa-view-raw #grid,body.db-mode.qa-mode.qa-view-raw footer,body.db-mode.qa-mode.qa-view-raw #genericFilterBar,
-body.rec-mode.qa-mode.qa-view-raw #grid,body.rec-mode.qa-mode.qa-view-raw footer,body.rec-mode.qa-mode.qa-view-raw #genericFilterBar,
-body.cal-mode.qa-mode.qa-view-raw #grid,body.cal-mode.qa-mode.qa-view-raw footer,body.cal-mode.qa-mode.qa-view-raw #genericFilterBar,
-body.mm-mode.qa-mode.qa-view-raw #grid,body.mm-mode.qa-mode.qa-view-raw footer,body.mm-mode.qa-mode.qa-view-raw #genericFilterBar,
-body.sc-mode.qa-mode.qa-view-raw #grid,body.sc-mode.qa-mode.qa-view-raw footer,body.sc-mode.qa-mode.qa-view-raw #genericFilterBar{display:none}
+body.rp-mode.qa-mode.qa-view-raw #grid,body.rp-mode.qa-mode.qa-view-raw main>footer,body.rp-mode.qa-mode.qa-view-raw #genericFilterBar,
+body.db-mode.qa-mode.qa-view-raw #grid,body.db-mode.qa-mode.qa-view-raw main>footer,body.db-mode.qa-mode.qa-view-raw #genericFilterBar,
+body.rec-mode.qa-mode.qa-view-raw #grid,body.rec-mode.qa-mode.qa-view-raw main>footer,body.rec-mode.qa-mode.qa-view-raw #genericFilterBar,
+body.cal-mode.qa-mode.qa-view-raw #grid,body.cal-mode.qa-mode.qa-view-raw main>footer,body.cal-mode.qa-mode.qa-view-raw #genericFilterBar,
+body.mm-mode.qa-mode.qa-view-raw #grid,body.mm-mode.qa-mode.qa-view-raw main>footer,body.mm-mode.qa-mode.qa-view-raw #genericFilterBar,
+body.sc-mode.qa-mode.qa-view-raw #grid,body.sc-mode.qa-mode.qa-view-raw main>footer,body.sc-mode.qa-mode.qa-view-raw #genericFilterBar{display:none}
 /* ============================================================
  2026-07-21 測定帳票（ロット別レポート）
  モーダルではなくメイン画面の表示切り替え（qa-v7と同じ形式）。
@@ -3529,7 +3691,7 @@ body.sc-mode .hd-status .hd-chip-equip{display:none}
 @layer print {
 /* 印刷 */
 @media print{
- body.qa-mode #grid,body.qa-mode footer,body.qa-mode #genericFilterBar,.qa-v7 .qa-step-tabs,.qa-v7 .qa-recipe,.qa-v7 .qa-chart-toolbar .qa-chart-options,.qa-v7 .qa-actions{display:none}
+ body.qa-mode #grid,body.qa-mode main>footer,body.qa-mode #genericFilterBar,.qa-v7 .qa-step-tabs,.qa-v7 .qa-recipe,.qa-v7 .qa-chart-toolbar .qa-chart-options,.qa-v7 .qa-actions{display:none}
  .qa-v7{display:block;margin:0;border:0;box-shadow:none;overflow:visible}
  .qa-v7 .qa-design-pane{display:block;padding:0}
  .qa-v7 .qa-chart-main{display:block}

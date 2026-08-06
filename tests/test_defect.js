@@ -218,6 +218,229 @@ let b=null;
   rec('帳票に判定条件と該当条が載る',rep.cond&&rep.hit,JSON.stringify(rep));
   rec('帳票にも帯グラフが載る',rep.strip,String(rep.strip));
 
+  /* ---------- 3b) 器の大きさは中身で変わらない（VER1.84.0） ----------
+     以前は .defect-dialog に height が無く、該当条が増える・エラー文が出る
+     たびにモーダル自体が伸び縮みしていた。フッターが画面外へ押し出され
+     「印刷ボタンが消える」という指摘になっていたので、外形が一定であること・
+     どの状態でも操作列がモーダルの中に収まっていることを固定する。 */
+  const dialogBox=()=>page.evaluate(()=>{
+   const d=document.querySelector('#defectModal .defect-dialog').getBoundingClientRect();
+   return {w:Math.round(d.width),h:Math.round(d.height)};
+  });
+  const clearDistance=()=>page.evaluate(()=>{
+   const el=document.getElementById('defectDistance');
+   el.value='';el.dispatchEvent(new Event('input',{bubbles:true}));
+  });
+  await set({basis:'os',widthBasis:'product',distance:250,defectWidth:0});   // 該当1条
+  const box1=await dialogBox();
+  await set({basis:'os',widthBasis:'product',distance:450,defectWidth:900}); // 全条該当
+  const box2=await dialogBox();
+  await clearDistance();                                                     // 未入力(案内表示)
+  const box3=await dialogBox();
+  rec('該当条の数が変わってもモーダルの大きさは変わらない',
+   box1.h===box2.h&&box1.w===box2.w,`1条${JSON.stringify(box1)} 全条${JSON.stringify(box2)}`);
+  rec('入力途中でもモーダルの大きさは変わらない',
+   box1.h===box3.h&&box1.w===box3.w,`判定済${JSON.stringify(box1)} 未入力${JSON.stringify(box3)}`);
+
+  /* 操作列とプレビュー枠は、判定できない状態でも消えない・器からはみ出さない */
+  const visible=()=>page.evaluate(()=>{
+   const dlg=document.querySelector('#defectModal .defect-dialog').getBoundingClientRect();
+   const inside=el=>{if(!el||el.hidden)return false;const b=el.getBoundingClientRect();
+    return b.width>0&&b.height>0&&b.top>=dlg.top-1&&b.bottom<=dlg.bottom+1};
+   const q=id=>inside(document.getElementById(id));
+   return {print:q('defectPrint'),save:q('defectSave'),reset:q('defectReset'),
+           strip:q('defectStrip'),answer:q('defectResult'),detail:q('defectDetail'),
+           disabled:document.getElementById('defectPrint').disabled,
+           title:document.getElementById('defectPrint').title,
+           placeholder:!!document.querySelector('#defectStrip .defect-figure-empty, #defectStrip .defect-lane')};
+  });
+  const vEmpty=await visible();
+  rec('判定できない状態でも印刷・保存ボタンがモーダルの中に残る',
+   vEmpty.print&&vEmpty.save&&vEmpty.reset,JSON.stringify(vEmpty));
+  rec('判定できない状態でもプレビュー枠と結論欄が残る',
+   vEmpty.strip&&vEmpty.answer&&vEmpty.detail&&vEmpty.placeholder,JSON.stringify(vEmpty));
+  rec('押せない印刷ボタンは消さず、理由をツールチップに出す',
+   vEmpty.disabled&&/判定できていない/.test(vEmpty.title),vEmpty.title);
+  await set({basis:'os',widthBasis:'product',distance:450,defectWidth:900});
+  const vFull=await visible();
+  rec('全条が該当しても操作列は器の中に収まる',
+   vFull.print&&vFull.save&&vFull.reset&&!vFull.disabled,JSON.stringify(vFull));
+
+  /* 条数が最大(40条)でも器の大きさは同じ */
+  await page.evaluate(()=>{
+   const groups=[],pos=[];
+   for(let i=0;i<40;i++){groups.push({lot:'Z'+String(i).padStart(5,'0'),count:1,base:{width:25}});pos.push(i)}
+   S.measure.settings.splitGroups=groups;S.measure.settings.splitPositionGroup=pos;
+   document.getElementById('horizontalCount').value='40';
+   WL.defect.refresh();
+  });
+  const box40=await dialogBox();
+  rec('条が40本でもモーダルの大きさは変わらない',
+   box1.h===box40.h&&box1.w===box40.w,`6条${JSON.stringify(box1)} 40条${JSON.stringify(box40)}`);
+  // 元の3ロット6条へ戻す
+  await page.evaluate(([lots,original])=>{
+   const groups=lots.map(g=>({lot:g.lot,count:g.count,base:{width:g.width},tol:null,missing:false}));
+   const pos=[];groups.forEach((g,gi)=>{for(let k=0;k<g.count;k++)pos.push(gi)});
+   S.measure.settings.splitGroups=groups;S.measure.settings.splitPositionGroup=pos;
+   S.measure.basic.originalWidth=original;
+   document.getElementById('horizontalCount').value=String(pos.length);
+   WL.defect.refresh();
+  },[LOTS,ORIGINAL]);
+
+  /* 位置ラベル(帯の外に出した▼付きバッジ)が図の端でも見切れない */
+  const flagBox=async d=>{
+   await set({basis:'os',widthBasis:'product',distance:d});
+   return page.evaluate(()=>{
+    const wrap=document.getElementById('defectFlags').getBoundingClientRect();
+    const f=document.querySelector('#defectFlags .defect-flag');
+    if(!f)return null;const b=f.getBoundingClientRect();
+    return {inLeft:Math.round(b.left-wrap.left),inRight:Math.round(wrap.right-b.right),cls:f.className};
+   });
+  };
+  /* WAVELOG_SHOT=<dir> を付けたときだけ、各状態のモーダルを書き出す。
+     見た目の変更をレビューするための補助で、判定には使わない。 */
+  if(process.env.WAVELOG_SHOT){
+   const dir=process.env.WAVELOG_SHOT;
+   const el=await page.$('#defectModal .defect-dialog');
+   await set({basis:'os',widthBasis:'original',distance:270,defectWidth:5});
+   await el.screenshot({path:dir+'/defect_ok.png'});
+   await clearDistance();await el.screenshot({path:dir+'/defect_empty.png'});
+   await set({basis:'os',widthBasis:'original',distance:450,defectWidth:120});
+   await el.screenshot({path:dir+'/defect_wide.png'});
+   await page.evaluate(()=>{
+    const groups=[],pos=[];
+    for(let i=0;i<40;i++){groups.push({lot:'Z'+String(i%7).padStart(5,'0'),count:1,base:{width:22.5}});pos.push(i)}
+    S.measure.settings.splitGroups=groups;S.measure.settings.splitPositionGroup=pos;
+    document.getElementById('horizontalCount').value='40';WL.defect.refresh();
+   });
+   await el.screenshot({path:dir+'/defect_40.png'});
+   await page.evaluate(([lots,original])=>{
+    const groups=lots.map(g=>({lot:g.lot,count:g.count,base:{width:g.width},tol:null,missing:false}));
+    const pos=[];groups.forEach((g,gi)=>{for(let k=0;k<g.count;k++)pos.push(gi)});
+    S.measure.settings.splitGroups=groups;S.measure.settings.splitPositionGroup=pos;
+    S.measure.basic.originalWidth=original;
+    document.getElementById('horizontalCount').value=String(pos.length);WL.defect.refresh();
+   },[LOTS,ORIGINAL]);
+  }
+  const nearOs=await flagBox(1),nearDs=await flagBox(899);
+  rec('OS端でも位置ラベルが図からはみ出さない',
+   !!nearOs&&nearOs.inLeft>=-1&&/at-start/.test(nearOs.cls),JSON.stringify(nearOs));
+  rec('DS端でも位置ラベルが図からはみ出さない',
+   !!nearDs&&nearDs.inRight>=-1&&/at-end/.test(nearDs.cls),JSON.stringify(nearDs));
+
+  /* ---------- 3c) 保存はユーザーが押したときだけ ----------
+     入力は一時データとして残る(開き直して続きができる)が、帳票へ載るのは
+     保存ボタンを押したときだけ。シミュレーションと正式な記載を分ける。 */
+  await set({basis:'os',widthBasis:'original',distance:270,defectWidth:5});
+  const beforeSave=await page.evaluate(()=>({
+   temp:!!S.measure.settings.defectLocation,
+   saved:!!S.measure.settings.defectLocation?.saved,
+   state:document.getElementById('defectSaveState').textContent,
+   unsaveHidden:document.getElementById('defectUnsave').hidden}));
+  rec('入力しただけでは一時データに留まり、帳票用の保存はされない',
+   beforeSave.temp&&!beforeSave.saved,JSON.stringify(beforeSave));
+  rec('未保存であることを操作列に出す',/未保存/.test(beforeSave.state),beforeSave.state);
+  rec('未保存なら「帳票から外す」は出さない',beforeSave.unsaveHidden,String(beforeSave.unsaveHidden));
+
+  const afterSave=await page.evaluate(()=>{
+   document.getElementById('defectSave').click();
+   const sv=S.measure.settings.defectLocation.saved;
+   return {saved:!!sv,hits:(sv?.hits||[]).map(h=>h.index+1).join(','),lanes:(sv?.lanes||[]).length,
+    pos:sv?.pos,state:document.getElementById('defectSaveState').textContent,
+    unsave:!document.getElementById('defectUnsave').hidden};
+  });
+  rec('保存ボタンで判定が凍結される',
+   afterSave.saved&&afterSave.hits==='3'&&afterSave.lanes===6&&Math.abs(afterSave.pos-250)<1e-6,
+   JSON.stringify(afterSave));
+  rec('保存済みであることを操作列に出す',/保存済み/.test(afterSave.state),afterSave.state);
+  rec('保存後は「帳票から外す」を出す',afterSave.unsave,String(afterSave.unsave));
+
+  await set({basis:'os',widthBasis:'original',distance:520});
+  const stale=await page.evaluate(()=>({
+   state:document.getElementById('defectSaveState').textContent,
+   isStale:document.getElementById('defectSaveState').classList.contains('is-stale'),
+   kept:(S.measure.settings.defectLocation.saved?.hits||[]).map(h=>h.index+1).join(','),
+   label:document.getElementById('defectSave').textContent}));
+  rec('保存後に入力を変えても保存内容は据え置く',stale.kept==='3',JSON.stringify(stale));
+  rec('保存が古くなったことを知らせる',
+   stale.isStale&&/入力が変わりました/.test(stale.state)&&/保存を更新/.test(stale.label),JSON.stringify(stale));
+  const resaved=await page.evaluate(()=>{
+   document.getElementById('defectSave').click();
+   return {hits:(S.measure.settings.defectLocation.saved?.hits||[]).map(h=>h.index+1).join(','),
+           isStale:document.getElementById('defectSaveState').classList.contains('is-stale')};
+  });
+  rec('保存し直すと内容が更新される',resaved.hits==='4,5'&&!resaved.isStale,JSON.stringify(resaved));
+
+  /* ---------- 3d) 保存したときだけ測定帳票に載る ---------- */
+  await set({basis:'os',widthBasis:'original',distance:270});
+  await page.evaluate(()=>document.getElementById('defectSave').click());
+  const repSec=await page.evaluate(()=>{
+   const html=WL.defect.reportSectionHtml(S.measure)||'';
+   const d=document.createElement('div');d.innerHTML=html;
+   return {has:!!html,title:/異常位置判定（参考）/.test(html),
+    lanes:d.querySelectorAll('.rp-defect-lane').length,
+    hits:d.querySelectorAll('.rp-defect-lane.is-hit').length,
+    mark:d.querySelectorAll('.rp-defect-mark').length,
+    flag:d.querySelectorAll('.rp-defect-flag').length,
+    facts:[...d.querySelectorAll('.rp-defect-fact')].map(x=>x.textContent.replace(/\s+/g,'')).join('|')};
+  });
+  rec('保存済みなら帳票用のセクションを作れる',
+   repSec.has&&repSec.title&&repSec.lanes===6&&repSec.mark===1&&repSec.flag===1,JSON.stringify(repSec).slice(0,200));
+  rec('帳票の図でも該当条を強調する',repSec.hits===1,String(repSec.hits));
+  rec('帳票に該当条・基準・欠陥幅などの要点が載る',
+   /該当条/.test(repSec.facts)&&/基準幅/.test(repSec.facts)&&/欠陥の幅/.test(repSec.facts),repSec.facts.slice(0,180));
+
+  /* 実際の帳票プレビューへ出るか・ツールバーで消せるか */
+  const inReport=await page.evaluate(async()=>{
+   await reliablePut(collect());
+   const id=S.measure.id;
+   document.getElementById('defectModal').hidden=true;
+   await window.openReportForRecord(id);
+   const read=()=>{
+    const c=document.getElementById('reportContent');
+    return {text:/異常位置判定（参考）/.test(c.innerText),
+            lanes:c.querySelectorAll('.rp-defect-lane').length};
+   };
+   const on=read();
+   const btn=document.getElementById('reportDefectToggle');
+   const label=btn.textContent;
+   btn.click();const off=read();
+   btn.click();const back=read();
+   return {on,off,back,label,id};
+  });
+  if(process.env.WAVELOG_SHOT){
+   await page.evaluate(()=>{document.getElementById('measureModal').hidden=true;
+    document.querySelector('[data-seg="rpZoomSeg"] [data-val="100"]').click()});
+   await page.screenshot({path:process.env.WAVELOG_SHOT+'/defect_report.png',fullPage:false});
+   const sec=await page.evaluateHandle(()=>[...document.querySelectorAll('#reportContent .rp-section')]
+    .find(x=>x.querySelector('.rp-defect-body')));
+   const secEl=sec.asElement();
+   if(secEl)await secEl.screenshot({path:process.env.WAVELOG_SHOT+'/defect_report_zoom.png'});
+   await page.evaluate(()=>{document.getElementById('measureModal').hidden=false});
+  }
+  rec('帳票プレビューに異常位置判定(参考)が出る',
+   inReport.on.text&&inReport.on.lanes===6,JSON.stringify(inReport.on));
+  rec('既定は「載せる」',/載せる/.test(inReport.label),inReport.label);
+  rec('ツールバーのトグルで帳票から外せる',!inReport.off.text&&inReport.off.lanes===0,JSON.stringify(inReport.off));
+  rec('もう一度押すと戻る',inReport.back.text&&inReport.back.lanes===6,JSON.stringify(inReport.back));
+
+  const unsavedReport=await page.evaluate(async()=>{
+   delete S.measure.settings.defectLocation.saved;
+   await reliablePut(collect());
+   const html=WL.defect.reportSectionHtml(S.measure)||'';
+   return {html,hasSaved:WL.defect.hasSaved(S.measure)};
+  });
+  rec('保存されていないロットは帳票に出ない',
+   unsavedReport.html===''&&!unsavedReport.hasSaved,JSON.stringify(unsavedReport).slice(0,120));
+
+  // 以降の検証は測定画面へ戻ってから続ける
+  await page.evaluate(()=>{
+   document.getElementById('reportBack')?.click();
+   document.getElementById('measureModal').hidden=false;
+  });
+  await page.waitForTimeout(400);
+  await page.evaluate(()=>{document.getElementById('defectModal').hidden=false;WL.defect.refresh()});
+
   /* ---------- 4) 「Nロットに分割」は子ロットの数 ---------- */
   const split=await page.evaluate(()=>{
    document.getElementById('closeDefect').click();

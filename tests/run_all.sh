@@ -52,6 +52,20 @@ restart_server(){
 # 実行が「今の値」を退避すると、退避されるのは検証用フィクスチャのパスで、
 # 本来の設定が上書きで永久に失われる(実際に起きた)。ファイルが残っていたら
 # 前回が復元前に終わった証拠なので、そちらを真とする。
+# ---- 二重起動の禁止 -------------------------------------------------
+# 2本同時に走ると、先に終わった方のtrapが**実行中のもう1本の足元で**
+# パス設定を本番へ戻してサーバーを再起動する。走っている方はそこから
+# 本番の共有パスを読みに行って全部500になり、ブラウザも落とされて
+# FATALが連鎖する(実際に起きた)。原因が分かりにくいのでここで止める。
+LOCK="$ROOT/tests/.run_all.lock"
+if [ -e "$LOCK" ] && kill -0 "$(cat "$LOCK" 2>/dev/null)" 2>/dev/null; then
+  echo "!! すでに tests/run_all.sh が動いています (PID $(cat "$LOCK"))。" >&2
+  echo "   終わってから実行してください。強制解除するなら $LOCK を消します。" >&2
+  exit 2
+fi
+echo $$ > "$LOCK"
+release_lock(){ [ "$(cat "$LOCK" 2>/dev/null)" = "$$" ] && rm -f "$LOCK"; }
+
 SAVED_PATHS=""
 SAVED_FILE="$ROOT/tests/.saved_paths.json"
 save_paths(){
@@ -94,7 +108,7 @@ restore_paths(){
   SAVED_PATHS=""
   restart_server >/dev/null 2>&1
 }
-trap restore_paths EXIT INT TERM
+trap 'restore_paths; release_lock' EXIT INT TERM
 
 save_paths
 # 共有スケジュールDBはテストが書き換える(予定の追加・並べ替え・ロック)ので、
