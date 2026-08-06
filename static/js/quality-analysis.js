@@ -178,7 +178,8 @@
   return p;
  }
 
- function updateColor(){const dot=$id('qaColorDot');if(dot)dot.style.background=baseColor()}
+ /* 色は値だけを渡す(background を直接書くとCSS側から打ち消せなくなる)。 */
+ function updateColor(){const dot=$id('qaColorDot');if(dot)dot.style.setProperty('--qa-dot-color',baseColor())}
  function setSeg(group,value){document.querySelectorAll(`[data-seg="${group}"] button`).forEach(b=>b.classList.toggle('active',b.dataset.val===value))}
  function toggle(id,show){const el=$id(id);if(el)el.hidden=!show}
  function setText(id,t){const el=$id(id);if(el)el.textContent=t}
@@ -384,7 +385,7 @@
   if(flags.combo){const bm=val('qaBarMetric')||'count',lm=val('qaLineMetric')||'sum';return `<span class="qa-lg"><i class="sw" style="background:${baseColor()};opacity:.5"></i>棒: ${METRIC_LABEL[bm]}</span><span class="qa-lg"><i class="ln" style="background:${baseColor()}"></i>折れ線: ${METRIC_LABEL[lm]}</span>`}
   if(flags.pie){return `<div class="qa-stack-legend">${items.map((it,i)=>`<span><i style="background:${seriesColor(it.label,i)}"></i>${html(ell(it.label,16))}</span>`).join('')}</div>`}
   if(hasSeries)return `<div class="qa-stack-legend">${(data.stack_keys||[]).map((k,i)=>`<span><i style="background:${seriesColor(k,i)}"></i>${html(k)}</span>`).join('')}</div>`;
-  return `<span class="qa-color-dot" style="background:${baseColor()}"></span>${METRIC_LABEL[metric]||''}`;
+  return `<span class="qa-color-dot" style="--qa-dot-color:${baseColor()}"></span>${METRIC_LABEL[metric]||''}`;
  }
 
  function listHtml(data){const cols=data.list_columns||[],rows=data.rows||[];if(!rows.length)return '<div class="qa-empty">対象データがありません。</div>';return `<table><thead><tr>${cols.map(c=>`<th>${html(c)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>`<td>${html(r[c]??'')}</td>`).join('')}</tr>`).join('')}</tbody></table>`}

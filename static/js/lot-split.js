@@ -700,7 +700,7 @@
       const tolText=lot?esc(tolMap[lot]||''):'';
       const wide=width>4;
       const cellLabel=lot?`<span class="split-visual-block-label"><b>${esc(lotSuffix3(lot))}</b>${hasWidth?`<small>${widthText}</small>`:''}</span>`:'';
-      html+=`<div class="split-visual-block${lot?'':' empty'}" data-start="${i}" data-end="${i}" data-lot="${lot?esc(lot):''}" style="left:${left}%;width:${width}%;background-color:${bg}" title="${fullLabel} ／ ${i+1}条目${hasWidth?` ／ 幅${widthText}`:''}${tolText?` ／ ${tolText}`:''}">${wide?cellLabel:''}</div>`;
+      html+=`<div class="split-visual-block${lot?'':' empty'}" data-start="${i}" data-end="${i}" data-lot="${lot?esc(lot):''}" style="left:${left}%;width:${width}%;--split-block-bg:${bg}" title="${fullLabel} ／ ${i+1}条目${hasWidth?` ／ 幅${widthText}`:''}${tolText?` ／ ${tolText}`:''}">${wide?cellLabel:''}</div>`;
     }
     html+='<div class="split-visual-ghost" id="splitVisualGhost" hidden></div></div>';
     strip.innerHTML=html;
@@ -755,7 +755,7 @@
     ghost.hidden=false;
     ghost.style.left=(cum[dropIndex]/totalUnits*100)+'%';
     ghost.style.width=(widthUnits/totalUnits*100)+'%';
-    ghost.style.background=dragBlock.color||'#8a9a97';
+    ghost.style.setProperty('--split-block-bg',dragBlock.color||'#8a9a97');
     ghost.innerHTML=`<span class="split-visual-block-label"><b>${esc(lotSuffix3(dragBlock.lot||''))}</b></span>`;
   }
   function hideGhost(){const ghost=$('#splitVisualGhost');if(ghost)ghost.hidden=true}

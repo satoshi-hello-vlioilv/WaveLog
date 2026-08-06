@@ -93,8 +93,9 @@ let b=null;
    bg.pending!=='rgb(255, 240, 214)',bg.pending);
 
   const blue=await page.evaluate(()=>{
-   const st=[...document.styleSheets].flatMap(s=>{try{return [...s.cssRules]}catch(e){return []}})
-    .map(r=>r.cssText||'').join('\n');
+   /* @layerで入れ子になっているので再帰で集める(VER1.83.0) */
+   const all=rules=>[...rules].flatMap(r=>r.cssRules?[r.cssText||'',...all(r.cssRules)]:[r.cssText||'']);
+   const st=[...document.styleSheets].flatMap(s=>{try{return all(s.cssRules)}catch(e){return []}}).join('\n');
    return /0b79c9/i.test(st);
   });
   rec('一覧の選択色がパレット外の原色ではない',!blue,String(blue));
