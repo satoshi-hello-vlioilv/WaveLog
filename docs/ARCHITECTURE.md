@@ -352,7 +352,6 @@ Box等のクラウド同期フォルダへ複製し、他端末はそれを閲�
 
 `measurement-tolerance.js` → `lot-split.js` → `measure-progress.js` →
 `filters.js` → `measurement-worklog.js` → `master-maint.js` →
-`worktime-benchmark.js` →
 `quality-analysis.js` → `report-dashboard.js` → `calendar-view.js`
 
 各ファイルはIIFE（即時関数）で自身のヘルパを閉じ込め、コアの関数を

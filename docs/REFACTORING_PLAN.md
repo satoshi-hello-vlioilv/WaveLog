@@ -283,29 +283,71 @@ measurement-worklogを開く」状態が誤読・誤編集の温床**(§9.68の�
 どのファイルを開くか」が元のままになる**)。CHANGELOGの過去エントリは履歴なので
 そのまま。
 
-### 3.2 schedule-view.js の分割(その後)
+### 3.2 schedule-view.js — 実測の結果、分割しない(2026-08-06)
 
-2,668行の単一IIFE。§で節は分かれているので、節の境界どおりに割る:
+**当初案**: 2,668行の単一IIFEを`schedule-core.js`/`schedule-board.js`/
+`schedule-timeline.js`/`schedule-split.js`の4つへ、節の境界どおりに割る。
 
-| 新ファイル | 中身(現在の節) |
+**実測して取り下げた**。節は文書上は分かれていても、コードの依存はそうでは
+なかった。4分割案で各節をグループへ割り当てて数えると:
+
+| 指標 | 実測 |
 |---|---|
-| `schedule-core.js` | 状態(scState)・API・キャッシュ・編集セッション・書込キュー(§9.11/§9.22) |
-| `schedule-board.js` | 俯瞰ボード(§9.9) |
-| `schedule-timeline.js` | タイムライン描画・並べ替え・行操作・作業可否(§9.4/§9.51/§9.67) |
-| `schedule-split.js` | 仕掛分割表示・フローティング窓・列/内容マスタ連携(§9.10/§9.16/§9.18) |
+| トップレベル定義 | 185個 |
+| **グループをまたいで参照される定義** | **63個(34%)** |
+| 内訳 | core 20 / split 20 / timeline 14 / board 9 |
+| `scState`の参照 | 193箇所(行32〜2634、ファイル全域) |
 
-- IIFE間の共有は`window.*`を増やさず、`window.scCore`名前空間1つに束ねる。
-- 分割は**移動のみ**。挙動・関数名は変えない。
+しかも依存が**双方向**になる(core↔split、core↔timeline、board↔timeline)。
+`hideSplitList`/`closeListModal`/`closeStopModal`/`closeColumnModal`はsplitで
+定義されcoreとboardから呼ばれ、`refreshAll`/`renderTimeline`/
+`renderTimelineMessage`はtimelineで定義されcoreとboardから呼ばれる。
+
+これは層になっていない。分割すると「1つの大きなファイル」が
+「**読み込み順に依存する63個の暗黙の契約を持つ4ファイル**」になる——
+フェーズ2で解消したばかりの構造を作り直すことになる(判定基準②
+「依存の方向が違うものは独立が正しい」の裏返しで、方向が定まらないものは
+割ってはいけない。基準④のとおりJSはファイル1つ=`index.html`の読み込み順の
+管理コスト1件でもある)。measurement-worklog.jsの分割(相互参照ゼロ)とは
+事情が違う。
+
+部分的に切り出せる単位も探したが、どれも双方向だった:
+
+| 候補 | 外→中 | 中→外 |
+|---|---|---|
+| 列表示+内容欄マスタ(285行) | 8 | 5 |
+| 予定から測定を開始(150行) | 5 | 10 |
+| 設備停止ポップアップ(46行) | 3 | 3 |
+| 汎用フローティング窓(61行) | 1 | **0** |
+
+唯一きれいに切れるのは汎用フローティング窓だが61行しかなく、
+ファイルを1つ増やす管理コストに見合わない。
+
+**結論**: 現状維持 + ファイル先頭に節目次を置く(3.4のapp.cssと同じ扱い)。
+分割するとしたら、先に`scState`への直接参照を減らして依存の向きを
+一方向に整えるのが順序で、それは「移動のみ」のリファクタでは済まない
+(挙動を変えない保証が難しくなる)。**行数ではなく依存の向きで判断する**。
 
 ### 3.3 分割されすぎの解消(統合)
 
 基準0.2-3で洗った結果、フロントの統合候補は1件:
 
-- **`worktime-benchmark.js`(157行) → `measurement-view.js`へ吸収**。
+- **`worktime-benchmark.js`(157行) → `measurement-worklog.js`へ吸収**(実施済み)。
   `window.*`公開ゼロ・他ファイルからの参照ゼロの自己完結IIFEで、
   測定画面左ペインの1カード(作業時間の過去実績比較)を描くだけ。
   独立ファイルである利益が無く、読み込み順の管理項目が1つ減る。
-  IIFEのまま`measurement-view.js`末尾へ移し、`index.html`から1行削除。
+
+  **統合先は当初案の`measurement-view.js`ではなく`measurement-worklog.js`**。
+  このIIFEは冒頭で`idbAll`(records-store.js)の存在を確認して早期returnし、
+  `saveLocal`(records-store.js)/`renderMeasurement`(measurement-view.js)/
+  `markDirty`(base.js)をラップする。`measurement-view.js`は
+  records-store.jsより**先に**読まれるため、そこへ移すとガードに掛かって
+  **機能が丸ごと黙って死ぬ**(エラーも出ない)。`measurement-worklog.js`は
+  元の`worktime-benchmark.js`の直前に読まれるので、その末尾へ置けば実行順は
+  元のまま。責務の面でも、統合後の`measurement-worklog.js`は
+  「指示値表示・作業時間UI」で、作業時間タブに出るこのカードと一致する。
+  **統合先は行数や名前ではなく、読み込み順の制約で決まる**という実例
+  (判定基準①)。
 
 **統合しないと判定したもの**(候補に見えるが理由がある):
 
