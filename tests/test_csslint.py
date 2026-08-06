@@ -22,7 +22,12 @@ def rec(name,ok,detail=''):
     R.append((name,ok,detail))
     print(('PASS' if ok else 'FAIL')+': '+name+((' -- '+detail) if detail else ''))
 
-EXPECTED=['reset','tokens','base','layout','component','state','mode','print','utility']
+# component から layout を更に切り出すことは、いまはしていない。
+# 一度試したが `.right-pane.layout-mother .work-tabs{display:none}` のような
+# 「部品を器で絞り込んだ」ルールまで器側と見なしてしまい、部品側の
+# `.work-tabs{display:flex}` に負けて隠れていたタブが出た(45画面中20枚が相違)。
+# 切り出すならセレクタの主語(右端)で判定し、1件ずつ画面で確かめること。
+EXPECTED=['reset','tokens','base','component','state','mode','print','utility']
 
 # ---- 1) レイヤ宣言があり、順序が意図どおり ----
 m=re.search(r'@layer\s+([^;{]+);',CODE)

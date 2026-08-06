@@ -1,9 +1,9 @@
 /* =============================================================
    測定伝送システム KEN  --  app.css
    -------------------------------------------------------------
-   設計方針:
+   このファイルは v24〜v32 で積み重なった重複・!important 依存を
+   解消するために全面再構築した版です。設計方針:
      - **優先順位は @layer だけで決める。`!important` は使わない**
-       (下の「カスケードの順序」を参照)
      - 文字サイズは :root のタイプスケールに一元化
      - レイアウトは box-sizing:border-box + min-width:0 を徹底し
        グリッドのはみ出しを構造的に防止
@@ -21,11 +21,10 @@
    これがこのファイルの唯一の優先順位の決め方で、`!important` は使わない
    (使うとレイヤ順が逆転して、この表が意味を失う)。
 
-     reset      箱の初期化(box-sizing など)
+     reset      箱の初期化(box-sizing)
      tokens     :root のデザイントークン。値だけを置く
-     base       素の要素の既定(button / input / table / 見出し)
-     layout     ページの器(左ナビ・main・ヘッダー・3ペイン・モーダルの枠)
-     component  部品。アプリのCSSの大半
+     base       素の要素の既定(button / input / body)
+     component  部品。アプリのCSSの大半。**元の並び順をそのまま保つ**
      state      実行時にJSが付ける状態クラス(.validation-* / .is-* など)
      mode       画面モードによる出し分け(body.sc-mode など)
      print      印刷時の上書き
@@ -35,8 +34,14 @@
    詳細度が同点のまま同じプロパティを二重に指定している箇所が実測で2403件
    あり、新機能を末尾へ足すたびに既存のどこかが静かに変わっていた
    (実例: 実績カレンダーの2択で選択中が薄く見えていた不具合)。
+
+   **component から更に layout を切り出すことは、いまはしていない。**
+   一度試したが、`.right-pane.layout-mother .work-tabs{display:none}` のように
+   「部品を器で絞り込んだ」ルールまで器側だと見なしてしまい、部品側の
+   `.work-tabs{display:flex}` に負けて隠れていたタブが出た。切り出すなら
+   セレクタの主語(右端)で判定し、1件ずつ画面で確かめる必要がある。
    ============================================================ */
-@layer reset, tokens, base, layout, component, state, mode, print, utility;
+@layer reset, tokens, base, component, state, mode, print, utility;
 
 
 /* ============================================================
@@ -232,168 +237,6 @@ button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-vis
   box-shadow:0 0 0 3px #087c8928;
   border-color:var(--focus);
 }
-tbody tr:nth-child(even){background:#f7fafb}
-tbody tr:hover{background:#e5f2f3;cursor:pointer}
-@keyframes split-missing-pulse{0%,100%{background:var(--danger-bg)}50%{background:#f8c9c9}}
-@keyframes split-apply-pop{0%{transform:scale(.55)}65%{transform:scale(1.2)}100%{transform:scale(1)}}
-@keyframes splitVisualFlash{0%,100%{box-shadow:none}30%{box-shadow:0 0 0 3px #fff,0 0 0 7px var(--teal)}}
-@keyframes split-status-flash{0%{background:#bdf0d4}100%{background:var(--success-bg)}}
-@keyframes waiting-card-in{from{opacity:0;transform:translateY(6px) scale(.98)}to{opacity:1;transform:none}}
-@keyframes waiting-spin{to{transform:rotate(360deg)}}
-@keyframes waiting-pulse{0%,100%{opacity:.35;transform:scale(.85)}50%{opacity:1;transform:scale(1.15)}}
-@keyframes toast-in{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:none}}
-/* 到着直後だけ縁に淡いブランドカラーの光彩が広がって消える、瞬間的な
-   「届いた」フィードバック(保存成功トーストの体感速度を上げる)。 */
-@keyframes toast-glow{0%{box-shadow:0 8px 28px #001b2433,0 0 0 0 #087c8959}100%{box-shadow:0 8px 28px #001b2433,0 0 0 10px #087c8900}}
-@keyframes swarmLastPulse{
-  0%,100%{box-shadow:0 0 0 2px #fff,0 0 0 5px rgba(255,183,3,.85)}
-  50%{box-shadow:0 0 0 2px #fff,0 0 0 8px rgba(255,183,3,.35)}
-}
-@keyframes numberline-pending-pulse{0%,100%{opacity:1;transform:translate(-50%,-50%) scale(1)}50%{opacity:.55;transform:translate(-50%,-50%) scale(1.25)}}
-@keyframes numberline-land{0%{transform:scale(.4);opacity:.4}60%{transform:scale(1.35)}100%{transform:scale(1)}}
-}
-
-
-/* ============================================================
-   @layer layout
-   ============================================================ */
-@layer layout {
-/* ---------- 3. アプリ骨格（サイドバー + メイン） ---------- *//* 左ナビの幅はドラッグでリサイズできる(base.jsが#navResizeHandleを
-   <aside>の直後へ挿入し、--nav-wを書き換える。既定242px、localStorageへ
-   保存)。 */
-.layout{height:100vh;display:grid;grid-template-columns:var(--nav-w,242px) 4px 1fr}
-.layout>aside{background:var(--nav);color:#fff;padding:18px 12px;display:flex;flex-direction:column;overflow-y:auto}
-#navResizeHandle{cursor:col-resize;background:transparent}
-#navResizeHandle:hover,#navResizeHandle.dragging{background:var(--teal)}
-/* ---------- 3a. サイドバー: ブランド ---------- */
-.layout>aside .brand{padding:0 6px 14px;margin-bottom:12px;border-bottom:1px solid #2c4750;display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
-.layout>aside .brand h2{margin:0;font-size:var(--fs-title);letter-spacing:.01em}
-.layout>aside .brand small{display:inline-flex;margin-top:0;color:#8fb3ba}
-#nav{margin-top:0}
-main{display:flex;min-width:0;min-height:0;flex-direction:column}
-/* ヘッダーは2段のグリッド。1段目は「画面名 / 状態チップ / 全体操作」で、
-   狭い幅でも**段が増えない**(flexでwrapさせると、幅が足りないときに
-   チップ群が勝手に2段目へ落ちて高さが不安定になる)。2段目は画面ごとの
-   操作列(#headerViewBar)専用で、載っているときだけ高さを持つ。
-   画面名はここだけが持ち、各画面のパネルは本文だけを持つ。 */
-main>header{
-  display:grid;grid-template-columns:minmax(0,1fr) max-content max-content;
-  align-items:center;gap:var(--space-1) var(--space-3);
-  min-height:54px;padding:4px 15px;background:#fff;border-bottom:1px solid var(--line);
-}
-main>header>.hd-context{grid-column:1;grid-row:1}
-main>header>.hd-status{grid-column:2;grid-row:1}
-main>header>.hd-actions{grid-column:3;grid-row:1}
-main>header>.hd-viewbar{grid-column:1/-1;grid-row:2}
-main>header b,main>header small{display:block}
-main>header small{color:#687a81;margin-top:2px}
-/* ---------- メイン画面ヘッダー(§9.48) ----------
-   以前は「モードバッジ(角丸19pxの塗り)」「使用設備(角丸6pxの枠)」「検索入力」
-   「件数select」「再読込ボタン」「サイズバッジ(角丸19px)」が横一列に並び、
-   形も高さも色の意味もバラバラだった。並び順にも意味が無く、状態を見せる
-   ものと操作するものが混ざっていた。
-
-   役割で3つに分け、役割ごとに見た目を1つに決める:
-     hd-context 今どこを見ているか(読むだけ)
-     hd-status  この端末の状態(モード・使用設備。押すと変えられる)
-     hd-actions 今の一覧への操作(検索・件数・再読込・表示サイズ)
-   高さはすべて --ctl-h、角丸は8pxに統一する。状態は「小さなキー + 太い値」
-   の2段組チップ、操作は四角いボタン/入力、と形で種類が分かるようにする。 */
-main>header{gap:var(--space-4)}
-#tabs{height:var(--ctl-h);display:flex;background:#fff;border-bottom:1px solid var(--line)}
-#grid{flex:1;min-height:0;margin:9px 14px;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:8px}
-/* 元々は要素セレクタ(table/th/td)のみで、仕掛一覧・品質データの一覧
-   グリッド(#grid内のtable)向けに書かれたものだったが、要素セレクタの
-   ままだと帳票プレビュー等、アプリ内の他のtable/th/tdにも無差別に
-   波及してしまう(特にth{position:sticky}が帳票の各表のヘッダーに
-   まで適用され、プレビューをスクロールするとヘッダーだけ本来の行から
-   外れて浮いてしまい、列がずれて見える不具合の原因になっていた)。
-   #grid配下のみへ明示的にスコープする。 */
-#grid table{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%}
-/* 行の高さ・余白は表示サイズ(--ui-scale)に連動する。作業スケジュール画面
-   だけにあった「高密度」トグル(#grid.sc-dense)は、アプリ全体で調整したいと
-   いう要望に合わせて表示サイズ5段階へ統合したため廃止した。 */
-#grid th,#grid td{padding:var(--row-pad-y) var(--row-pad-x);height:var(--row-h);border-right:1px solid #d6e0e3;border-bottom:1px solid #d6e0e3;white-space:nowrap}
-#grid th{position:sticky;top:0;background:var(--pale);text-align:left}
-footer{height:40px;display:flex;align-items:center;justify-content:space-between;padding:0 15px;background:#fff;border-top:1px solid var(--line)}
-/* ---------- 4. 測定モーダル 骨格 ---------- */
-.modal[hidden]{display:none}
-.modal{position:fixed;inset:0;z-index:100}
-.shade{position:absolute;inset:0;background:#071c2280}
-.measure-shell{
-  position:absolute;inset:.5vh .35vw;
-  background:#f5f5f3;border-radius:10px;box-shadow:0 20px 70px #0005;
-  display:grid;
-  grid-template-columns:160px minmax(0,1fr);
-  grid-template-rows:62px auto minmax(0,1fr);
-  overflow:hidden;
-  font-size:var(--fs);
-}
-.measure-head{
-  grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:18px;
-  padding:0 16px;background:#fff;border-bottom:1px solid var(--line);min-width:0;
-}
-.measure-head>div:first-child{min-width:0;overflow:hidden}
-.measure-head small{color:var(--teal);font-weight:800;letter-spacing:.1em}
-.measure-head h1{margin:2px 0 0;font-size:var(--fs-lg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* ヘッダー固定のミニ進捗表示(#railProgressと同じ集計をmeasure-progress.js
-   から複製表示)。左端の操作レールは縦に長くなると視界から外れ得るが、
-   ヘッダーは常に見えているため、タブ・入力内容を切り替えていても進捗が
-   常時見える場所として設ける。 */
-.measure-head-progress{display:flex;align-items:center;gap:8px;flex:0 0 auto;padding:0 16px;border-left:1px solid var(--line);border-right:1px solid var(--line);height:34px}
-.measure-head-progress-label{font-size:var(--fs-micro);font-weight:800;color:#60747b;letter-spacing:.04em;white-space:nowrap}
-.measure-head-progress-bar{width:70px;height:7px;border-radius:4px;background:var(--bg);border:1px solid var(--muted-border);overflow:hidden}
-.measure-head-progress-bar i{display:block;height:100%;background:var(--teal);transition:width .2s}
-.measure-head-progress-bar--done i{background:var(--success)}
-.measure-head-progress-frac{min-width:34px;text-align:right;font-size:var(--fs-base-sm);font-weight:800;color:var(--nav);font-variant-numeric:tabular-nums}
-.rail-group{display:grid;gap:6px}
-.rail-label{height:20px;display:flex;align-items:center;padding:0 4px;color:#36515c;font-size:var(--fs-micro);font-weight:800;letter-spacing:.06em;white-space:nowrap}
-.rail-bottom{margin-top:auto}
-/* --- 本体 3 ペイン（比率 3 : 4 : 4） --- */
-.measure-body{
-  grid-row:3;grid-column:2;
-  display:grid;
-  grid-template-columns:minmax(0,3fr) minmax(0,4fr) minmax(0,4fr);
-  min-height:0;width:100%;max-width:100%;overflow:hidden;
-  border-bottom:1px solid var(--line);
-}
-.left-pane,.center-pane,.right-pane{
-  min-width:0;max-width:100%;padding:var(--space-2);overflow:auto;border-right:1px solid var(--line);
-}
-.center-pane{container-type:inline-size;overflow-x:hidden}
-.right-pane{border-right:0;overflow:hidden}
-.right-pane.layout-mother .work-tabs,
-.right-pane.layout-measure .work-tabs,
-.right-pane.layout-product .work-tabs{display:none}
-.right-pane.layout-mother .input-status,
-.right-pane.layout-product .input-status{display:none}
-/* 見出し・パネルタイトルは 15px で統一 */
-.measure-head h1{font-size:var(--fs-lg)}
-/* メニューのマスタ閲覧ボタンは非表示（マスタ管理へ集約） */
-#nav [data-db-key="MASTER"]{display:none}
-/* 仕掛一覧の行をドラッグ可能にする(スケジュールモードのみ、list-view.js)。
-   通常のクリック選択(is-selected)・チェックボックス複数選択
-   (is-plan-selected)と視覚的に競合しないよう、ドラッグ中だけ別の合図
-   (縮小+破線)を重ねる。 */
-#grid tbody tr[draggable="true"]{cursor:grab}
-/* 操作レールのサマリ。項目名は再掲せず、全体・丈位置・作業時間だけを出す。 */
-.rail-progress-group{gap:var(--space-1)}
-.rail-progress-bar{height:7px;border-radius:4px;background:#fff;border:1px solid #9eb2bc;overflow:hidden}
-.rail-progress-bar i{display:block;height:100%;background:var(--teal);transition:width .2s}
-.rail-progress-line{
-  font-size:var(--fs-micro);color:#36515c;display:flex;align-items:center;gap:5px;flex-wrap:wrap;
-}
-.rail-progress-line b{font-size:var(--fs-base-sm);color:var(--nav);font-variant-numeric:tabular-nums}
-.rail-progress-skip{color:#6d7f85}
-.rail-progress-lengths{display:flex;flex-wrap:wrap;gap:3px}
-.rail-len{
-  font-size:var(--fs-micro);padding:1px 5px;border-radius:9px;white-space:nowrap;
-  background:var(--required-bg);border:1px solid var(--required);color:#7a5200;
-}
-.rail-len--done{background:var(--teal);border-color:var(--teal);color:#fff}
-.rail-len--part{background:#fff;border-color:var(--teal);color:var(--computed-fg)}
-.rail-progress-worktime--done{color:var(--computed-fg)}
-.rail-progress-worktime--todo,.rail-progress-worktime--part{color:#a06a00;font-weight:700}
 }
 
 
@@ -401,6 +244,13 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
    @layer component
    ============================================================ */
 @layer component {
+/* ---------- 3. アプリ骨格（サイドバー + メイン） ---------- *//* 左ナビの幅はドラッグでリサイズできる(base.jsが#navResizeHandleを
+   <aside>の直後へ挿入し、--nav-wを書き換える。既定242px、localStorageへ
+   保存)。 */
+.layout{height:100vh;display:grid;grid-template-columns:var(--nav-w,242px) 4px 1fr}
+.layout>aside{background:var(--nav);color:#fff;padding:18px 12px;display:flex;flex-direction:column;overflow-y:auto}
+#navResizeHandle{cursor:col-resize;background:transparent}
+#navResizeHandle:hover,#navResizeHandle.dragging{background:var(--teal)}
 .build-badge{display:inline-block;margin-left:5px;padding:2px 6px;border-radius:9px;background:#35c2a6;color:#17272d;font-weight:800}
 .build-badge-clickable{cursor:pointer;border:0;font:inherit}
 .build-badge-clickable:hover{background:#28a88f}
@@ -417,6 +267,10 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 .changelog-entry li+li{margin-top:4px}
 .changelog-loading{color:#60747b}
 .measure-build-badge{font-size:var(--fs-sm);vertical-align:middle}
+/* ---------- 3a. サイドバー: ブランド ---------- */
+.layout>aside .brand{padding:0 6px 14px;margin-bottom:12px;border-bottom:1px solid #2c4750;display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
+.layout>aside .brand h2{margin:0;font-size:var(--fs-title);letter-spacing:.01em}
+.layout>aside .brand small{display:inline-flex;margin-top:0;color:#8fb3ba}
 /* ---------- 3b. サイドバー: 使用設備ステータスカード ----------
    ナビ項目（操作＝ボタン）と混同しないよう、破線/実線の
    カード形態で「現在の状態」を示す別レーンとして独立させる。 */
@@ -473,11 +327,42 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 .nav-item--admin.active .nav-icon{opacity:1}
 .nav-item--admin.active:hover{background:var(--teal);color:#fff}
 .nav-item--primary.active{background:var(--teal-dark)}
+#nav{margin-top:0}
+main{display:flex;min-width:0;min-height:0;flex-direction:column}
+/* ヘッダーは2段のグリッド。1段目は「画面名 / 状態チップ / 全体操作」で、
+   狭い幅でも**段が増えない**(flexでwrapさせると、幅が足りないときに
+   チップ群が勝手に2段目へ落ちて高さが不安定になる)。2段目は画面ごとの
+   操作列(#headerViewBar)専用で、載っているときだけ高さを持つ。
+   画面名はここだけが持ち、各画面のパネルは本文だけを持つ。 */
+main>header{
+  display:grid;grid-template-columns:minmax(0,1fr) max-content max-content;
+  align-items:center;gap:var(--space-1) var(--space-3);
+  min-height:54px;padding:4px 15px;background:#fff;border-bottom:1px solid var(--line);
+}
+main>header>.hd-context{grid-column:1;grid-row:1}
+main>header>.hd-status{grid-column:2;grid-row:1}
+main>header>.hd-actions{grid-column:3;grid-row:1}
+main>header>.hd-viewbar{grid-column:1/-1;grid-row:2}
+main>header b,main>header small{display:block}
+main>header small{color:#687a81;margin-top:2px}
 /* ヘッダーのコントロールは高さをトークンへ統一する(ARCHITECTURE.md「コントロールサイズの統一」)。以前は
    使用設備ボタン/モードバッジ=38px、検索・ページサイズ・再読込=paddingのみ
    (実測34px前後)、現場段取りバッジ=26pxと三者三様で、横一列に並ぶのに
    上下の中心も高さも揃っていなかった。 */
 .global-actions{display:flex;align-items:center;gap:var(--space-2)}
+/* ---------- メイン画面ヘッダー(§9.48) ----------
+   以前は「モードバッジ(角丸19pxの塗り)」「使用設備(角丸6pxの枠)」「検索入力」
+   「件数select」「再読込ボタン」「サイズバッジ(角丸19px)」が横一列に並び、
+   形も高さも色の意味もバラバラだった。並び順にも意味が無く、状態を見せる
+   ものと操作するものが混ざっていた。
+
+   役割で3つに分け、役割ごとに見た目を1つに決める:
+     hd-context 今どこを見ているか(読むだけ)
+     hd-status  この端末の状態(モード・使用設備。押すと変えられる)
+     hd-actions 今の一覧への操作(検索・件数・再読込・表示サイズ)
+   高さはすべて --ctl-h、角丸は8pxに統一する。状態は「小さなキー + 太い値」
+   の2段組チップ、操作は四角いボタン/入力、と形で種類が分かるようにする。 */
+main>header{gap:var(--space-4)}
 .hd-context{display:flex;align-items:baseline;gap:var(--space-2);min-width:0}
 .hd-context #fileName{font-size:var(--fs-title);font-weight:800;color:#173842;
  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:38vw}
@@ -559,19 +444,36 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 .ui-size-swatch[data-swatch="lg"]{font-size:var(--fs-title)}
 .ui-size-swatch[data-swatch="xl"]{font-size:18px}
 .field-reorder-badge{display:inline-flex;align-items:center;height:var(--ctl-h-xs);padding:0 10px;border:1.5px solid var(--warn-border);border-radius:13px;background:var(--warn-bg);color:var(--warn-fg);font-weight:700;font-size:var(--fs-micro);white-space:nowrap}
+#tabs{height:var(--ctl-h);display:flex;background:#fff;border-bottom:1px solid var(--line)}
 .tab{border:0;border-bottom:3px solid transparent;border-radius:0;background:#fff}
 .tab.active{border-color:var(--teal);font-weight:700}
 /* 一覧のツールバー(表示列の選択・品質データ結合の状態)。#gridと一緒に
    分割表示・ポップアップへ移動するため、#gridの直前の兄弟として置く。 */
 .list-toolbar{display:flex;align-items:center;gap:var(--space-2);margin:6px 14px 0;flex-wrap:wrap}
 /* id付きセレクタで書くこと。分割/ポップアップ表示の再表示ルール
-   (body.sc-mode.sc-split #listToolbar{display:flex})より詳細度を
+   (body.sc-mode.sc-split #listToolbar{display:flex!important})より詳細度を
    高くしないと、出す中身が無いときでも空のツールバーが表示されてしまう。 */
 .list-toolbar-btn{height:var(--ctl-h-sm);padding:0 12px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer;font-size:var(--fs-sm);font-weight:700;color:#60747b}
 .list-toolbar-btn:hover{border-color:var(--teal);background:#f7fafb}
 .list-join-chip{display:inline-flex;align-items:center;height:var(--ctl-h-xs);padding:0 10px;border-radius:13px;font-size:var(--fs-micro);font-weight:700;white-space:nowrap;cursor:help}
 :is(.sc-split-wrap,.sc-float-body) .list-toolbar{margin:4px 6px 0;gap:4px}
 :is(.sc-split-wrap,.sc-float-body) .list-toolbar-btn{height:var(--ctl-h-xs);padding:0 8px;font-size:var(--fs-micro)}
+#grid{flex:1;min-height:0;margin:9px 14px;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:8px}
+/* 元々は要素セレクタ(table/th/td)のみで、仕掛一覧・品質データの一覧
+   グリッド(#grid内のtable)向けに書かれたものだったが、要素セレクタの
+   ままだと帳票プレビュー等、アプリ内の他のtable/th/tdにも無差別に
+   波及してしまう(特にth{position:sticky}が帳票の各表のヘッダーに
+   まで適用され、プレビューをスクロールするとヘッダーだけ本来の行から
+   外れて浮いてしまい、列がずれて見える不具合の原因になっていた)。
+   #grid配下のみへ明示的にスコープする。 */
+#grid table{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%}
+/* 行の高さ・余白は表示サイズ(--ui-scale)に連動する。作業スケジュール画面
+   だけにあった「高密度」トグル(#grid.sc-dense)は、アプリ全体で調整したいと
+   いう要望に合わせて表示サイズ5段階へ統合したため廃止した。 */
+#grid th,#grid td{padding:var(--row-pad-y) var(--row-pad-x);height:var(--row-h);border-right:1px solid #d6e0e3;border-bottom:1px solid #d6e0e3;white-space:nowrap}
+#grid th{position:sticky;top:0;background:var(--pale);text-align:left}
+tbody tr:nth-child(even){background:#f7fafb}
+tbody tr:hover{background:#e5f2f3;cursor:pointer}
 .measurement-row td:first-child{border-left:4px solid var(--teal)}
 .measurement-row:hover{background:#d7eff1}
 .measurement-action-head{min-width:86px;text-align:center;background:#cde5e7}
@@ -587,6 +489,7 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 .split-flag-cell.split-yes{background:#fff2cc;color:#8a6600}
 .split-flag-cell.split-no{background:inherit;color:#8a9a97}
 .split-flag-cell.split-missing{background:var(--danger-bg);color:var(--danger);animation:split-missing-pulse 1.6s ease-in-out 2}
+@keyframes split-missing-pulse{0%,100%{background:var(--danger-bg)}50%{background:#f8c9c9}}
 .plan-select-head,.plan-select-cell{width:26px;text-align:center;padding:4px 2px}
 .plan-select-checkbox,#planSelectAll{width:15px;height:15px;cursor:pointer;accent-color:var(--teal)}
 .plan-select-bar{display:flex;align-items:center;gap:10px;margin:0 0 8px;padding:6px 12px;background:var(--computed-bg);border:1px solid #9cd6ce;border-radius:8px;font-size:var(--fs-sm);font-weight:700;color:var(--computed-fg)}
@@ -607,6 +510,37 @@ th.col-sorted{background:#d7eff1;color:#075e67}
 th.col-sorted:hover{background:#c7e7ea}
 .lot-cell{padding:var(--space-1)}
 .grid-lot-link{min-height:29px}
+footer{height:40px;display:flex;align-items:center;justify-content:space-between;padding:0 15px;background:#fff;border-top:1px solid var(--line)}
+/* ---------- 4. 測定モーダル 骨格 ---------- */
+.modal[hidden]{display:none}
+.modal{position:fixed;inset:0;z-index:100}
+.shade{position:absolute;inset:0;background:#071c2280}
+.measure-shell{
+  position:absolute;inset:.5vh .35vw;
+  background:#f5f5f3;border-radius:10px;box-shadow:0 20px 70px #0005;
+  display:grid;
+  grid-template-columns:160px minmax(0,1fr);
+  grid-template-rows:62px auto minmax(0,1fr);
+  overflow:hidden;
+  font-size:var(--fs);
+}
+.measure-head{
+  grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:18px;
+  padding:0 16px;background:#fff;border-bottom:1px solid var(--line);min-width:0;
+}
+.measure-head>div:first-child{min-width:0;overflow:hidden}
+.measure-head small{color:var(--teal);font-weight:800;letter-spacing:.1em}
+.measure-head h1{margin:2px 0 0;font-size:var(--fs-lg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* ヘッダー固定のミニ進捗表示(#railProgressと同じ集計をmeasure-progress.js
+   から複製表示)。左端の操作レールは縦に長くなると視界から外れ得るが、
+   ヘッダーは常に見えているため、タブ・入力内容を切り替えていても進捗が
+   常時見える場所として設ける。 */
+.measure-head-progress{display:flex;align-items:center;gap:8px;flex:0 0 auto;padding:0 16px;border-left:1px solid var(--line);border-right:1px solid var(--line);height:34px}
+.measure-head-progress-label{font-size:var(--fs-micro);font-weight:800;color:#60747b;letter-spacing:.04em;white-space:nowrap}
+.measure-head-progress-bar{width:70px;height:7px;border-radius:4px;background:var(--bg);border:1px solid var(--muted-border);overflow:hidden}
+.measure-head-progress-bar i{display:block;height:100%;background:var(--teal);transition:width .2s}
+.measure-head-progress-bar--done i{background:var(--success)}
+.measure-head-progress-frac{min-width:34px;text-align:right;font-size:var(--fs-base-sm);font-weight:800;color:var(--nav);font-variant-numeric:tabular-nums}
 @media(prefers-reduced-motion:reduce){.measure-head-progress-bar i{transition:none}}
 @media(max-width:1180px){.measure-head-progress-label{display:none}.measure-head-progress{padding:0 10px;gap:6px}.measure-head-progress-bar{width:44px}}
 .save-state{display:flex;align-items:center;gap:var(--space-3);min-width:250px;justify-content:flex-end;flex:0 0 auto}
@@ -630,6 +564,9 @@ th.col-sorted:hover{background:#c7e7ea}
   grid-row:3;width:160px;display:flex;flex-direction:column;gap:10px;
   padding:9px 8px;background:#d7e5ee;border-right:1px solid #9fb2bf;overflow-y:auto;
 }
+.rail-group{display:grid;gap:6px}
+.rail-label{height:20px;display:flex;align-items:center;padding:0 4px;color:#36515c;font-size:var(--fs-micro);font-weight:800;letter-spacing:.06em;white-space:nowrap}
+.rail-bottom{margin-top:auto}
 .action-rail button{
   width:100%;height:42px;min-height:42px;padding:0 7px;
   border:1px solid #9eb2bc;border-radius:6px;background:#fff;color:#243a42;
@@ -638,6 +575,19 @@ th.col-sorted:hover{background:#c7e7ea}
 .action-rail .rail-primary{background:var(--teal);color:#fff;border-color:var(--teal)}
 .action-rail .rail-success{background:var(--success);color:#fff;border-color:var(--success)}
 .action-rail .rail-danger{background:var(--danger-bg);color:var(--danger);border-color:var(--danger-border)}
+/* --- 本体 3 ペイン（比率 3 : 4 : 4） --- */
+.measure-body{
+  grid-row:3;grid-column:2;
+  display:grid;
+  grid-template-columns:minmax(0,3fr) minmax(0,4fr) minmax(0,4fr);
+  min-height:0;width:100%;max-width:100%;overflow:hidden;
+  border-bottom:1px solid var(--line);
+}
+.left-pane,.center-pane,.right-pane{
+  min-width:0;max-width:100%;padding:var(--space-2);overflow:auto;border-right:1px solid var(--line);
+}
+.center-pane{container-type:inline-size;overflow-x:hidden}
+.right-pane{border-right:0;overflow:hidden}
 /* ---------- 5. 左ペイン ---------- */
 .tabs{display:flex}
 .tabs button{border-radius:var(--radius-tab) var(--radius-tab) 0 0;min-height:36px;display:flex;align-items:center;justify-content:center;white-space:nowrap;border:1px solid transparent;background:transparent;color:#4a6169;box-shadow:none}
@@ -716,6 +666,7 @@ th.col-sorted:hover{background:#c7e7ea}
    (applySplit()参照。パネル同期の再描画では付与しないため、
    タブを開き直しただけで再生されることはない)。 */
 .split-tab-badge-pop{animation:split-apply-pop .4s cubic-bezier(.34,1.56,.64,1)}
+@keyframes split-apply-pop{0%{transform:scale(.55)}65%{transform:scale(1.2)}100%{transform:scale(1)}}
 @media(prefers-reduced-motion:reduce){.split-tab-badge-pop{animation:none}}
 .work-time-panel{height:250px;margin:0;padding:var(--space-3);border:1px solid var(--line);border-radius:10px;background:#fff}
 .work-time-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}
@@ -811,6 +762,11 @@ th.col-sorted:hover{background:#c7e7ea}
 .work-tabs button{flex:1;min-height:36px;border-radius:var(--radius-tab) var(--radius-tab) 0 0;padding:8px 5px;font-weight:700;border:1px solid transparent;background:transparent;color:#4a6169;box-shadow:none}
 .work-tabs button:hover{border-color:transparent;background:#eef2f4}
 .work-tabs button.active{background:var(--teal);color:#fff}
+.right-pane.layout-mother .work-tabs,
+.right-pane.layout-measure .work-tabs,
+.right-pane.layout-product .work-tabs{display:none}
+.right-pane.layout-mother .input-status,
+.right-pane.layout-product .input-status{display:none}
 .work-panel{padding-top:7px}
 /* ---------- 8. 測定エディタ ---------- */
 .work-panel[data-workpanel="measure"]{height:calc(100% - 82px);overflow:hidden}
@@ -1155,7 +1111,7 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .split-visual-tick-label{position:absolute;top:-15px;left:0;transform:translateX(-50%);font-size:var(--fs-tiny);font-weight:700;color:#748a90;white-space:nowrap}
 .split-visual-track{position:relative;width:100%;height:100%}
 /* 条の色はJSが --split-block-bg で渡す(background-colorを直接書かない。
-   インラインstyleはCSSのどのレイヤより強く、空欄条の淡色を打ち消せなくなるため)。 */
+   インラインはCSSのどのレイヤより強く、空欄条の淡色を打ち消せなくなるため)。 */
 .split-visual-block{position:absolute;top:0;bottom:0;background-color:var(--split-block-bg,#8a9a97);box-sizing:border-box;display:flex;align-items:center;justify-content:center;overflow:hidden;border-right:2px solid #eef2f4;color:#fff;text-shadow:0 1px 1px #0006;cursor:grab;transition:filter .1s}
 .split-visual-block:hover{filter:brightness(1.07)}
 .split-visual-block:last-child{border-right:0}
@@ -1164,6 +1120,7 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .split-visual-block-label{display:flex;flex-direction:column;align-items:center;line-height:1.25;font-size:var(--fs-sm);font-weight:800;white-space:nowrap;padding:0 4px}
 .split-visual-block-label small{font-size:var(--fs-badge);font-weight:700;opacity:.85}
 .split-visual-block.flash{animation:splitVisualFlash .9s ease}
+@keyframes splitVisualFlash{0%,100%{box-shadow:none}30%{box-shadow:0 0 0 3px #fff,0 0 0 7px var(--teal)}}
 .split-visual-block.lifted{opacity:.35}
 .split-visual-ghost{background:var(--split-block-bg,#8a9a97);position:absolute;top:-5px;bottom:-5px;display:flex;align-items:center;justify-content:center;border:2px dashed #fff;border-radius:8px;box-shadow:0 0 0 3px var(--nav),0 6px 14px #00000040;color:#fff;text-shadow:0 1px 1px #0006;overflow:hidden;pointer-events:none;z-index:3;transition:left .05s linear,width .05s linear}
 .split-visual-ghost[hidden]{display:none}
@@ -1193,6 +1150,7 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 /* 条割「適用」ボタン押下の直後だけJSが付与する一撃アニメーション
    (applySplit()参照。パネルを開き直しただけの再同期では付与しない)。 */
 .split-panel-status-applied.just-applied{animation:split-status-flash .5s ease-out}
+@keyframes split-status-flash{0%{background:#bdf0d4}100%{background:var(--success-bg)}}
 @media(prefers-reduced-motion:reduce){.split-panel-status-applied.just-applied{animation:none}}
 .split-panel-table{width:100%;border-collapse:collapse;margin-bottom:var(--space-2);background:var(--surface);font-size:var(--fs);font-variant-numeric:tabular-nums}
 .split-panel-table th,.split-panel-table td{padding:var(--space-1) 7px;border:1px solid var(--line-mid);text-align:left}
@@ -1329,6 +1287,7 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .save-overlay{position:fixed;inset:0;z-index:1100;display:grid;place-items:center;background:#0d2b3199;backdrop-filter:blur(2px)}
 .save-overlay[hidden]{display:none}
 .save-overlay>div{min-width:340px;max-width:420px;padding:22px 26px;border-radius:14px;background:#fff;box-shadow:0 20px 60px #0d2b3140,0 2px 8px #0d2b3126;animation:waiting-card-in .22s ease-out}
+@keyframes waiting-card-in{from{opacity:0;transform:translateY(6px) scale(.98)}to{opacity:1;transform:none}}
 .waiting-overlay>div{display:grid;grid-template-columns:40px minmax(260px,1fr);column-gap:14px;align-items:center;text-align:left}
 .waiting-overlay b,.waiting-overlay small,.waiting-progress,.waiting-steps{grid-column:2}
 .save-overlay b{display:block;font-size:var(--fs-title);font-weight:800;color:var(--nav);margin-bottom:4px}
@@ -1336,6 +1295,8 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .waiting-spinner{grid-column:1;grid-row:1/4;position:relative;width:36px;height:36px}
 .waiting-spinner-ring{position:absolute;inset:0;border:3px solid var(--pale);border-top-color:var(--teal);border-radius:50%;animation:waiting-spin 1s cubic-bezier(.5,.1,.5,.9) infinite}
 .waiting-spinner-dot{position:absolute;inset:0;margin:auto;width:7px;height:7px;border-radius:50%;background:var(--teal);animation:waiting-pulse 1s ease-in-out infinite}
+@keyframes waiting-spin{to{transform:rotate(360deg)}}
+@keyframes waiting-pulse{0%,100%{opacity:.35;transform:scale(.85)}50%{opacity:1;transform:scale(1.15)}}
 /* ステップドット: 2段階の現在地を示す(1=受付/準備, 2=データ取得/反映)。
    activeは強調、doneは完了済みの塗り。テキストの「N/3」表記に頼らず、
    視覚のみで進捗を把握できるようにする。 */
@@ -1358,6 +1319,10 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .toast b{display:block;margin-bottom:3px}
 .toast small{display:block;color:#527078}
 .toast.out{opacity:0;transform:translateX(30px);transition:opacity .2s ease-in,transform .2s ease-in}
+@keyframes toast-in{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:none}}
+/* 到着直後だけ縁に淡いブランドカラーの光彩が広がって消える、瞬間的な
+   「届いた」フィードバック(保存成功トーストの体感速度を上げる)。 */
+@keyframes toast-glow{0%{box-shadow:0 8px 28px #001b2433,0 0 0 0 #087c8959}100%{box-shadow:0 8px 28px #001b2433,0 0 0 10px #087c8900}}
 @media(prefers-reduced-motion:reduce){.toast{animation:none}.toast.out{transition:none}}
 .load-error{margin:30px;padding:18px;border:1px solid #d19a9a;border-radius:10px;background:#fff1f1;color:#7c2323}
 .load-error b,.load-error span{display:block}
@@ -1392,6 +1357,8 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .dimension>*,.field output{
   font-size:var(--fs);
 }
+/* 見出し・パネルタイトルは 15px で統一 */
+.measure-head h1{font-size:var(--fs-lg)}
 .panel-title:not(.row-title),.row-title>span:first-child,
 .analysis h3,.quality h3,.editor-head h3,.measure-grid-block-title,
 .work-time-title b,.product-head b,.flatness-table-head b,
@@ -1465,6 +1432,10 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
   z-index:4;
   box-shadow:0 0 0 2px #fff,0 0 0 5px rgba(255,183,3,.85);
   animation:swarmLastPulse 1.4s ease-in-out infinite;
+}
+@keyframes swarmLastPulse{
+  0%,100%{box-shadow:0 0 0 2px #fff,0 0 0 5px rgba(255,183,3,.85)}
+  50%{box-shadow:0 0 0 2px #fff,0 0 0 8px rgba(255,183,3,.35)}
 }
 .compact-last-value{
   position:absolute;
@@ -1541,12 +1512,14 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
    (輪郭のみ・点滅)、「まだ確定していない」ことが一目でわかるようにする。 */
 .numberline-pending{position:absolute;left:var(--nl-track);width:16px;height:16px;border-radius:50%;transform:translate(-50%,-50%);z-index:7;border:3px solid var(--success);box-shadow:0 0 0 2px #fff;pointer-events:none;animation:numberline-pending-pulse 1s ease-in-out infinite}
 .numberline-pending.ng{border-color:var(--danger)}
+@keyframes numberline-pending-pulse{0%,100%{opacity:1;transform:translate(-50%,-50%) scale(1)}50%{opacity:.55;transform:translate(-50%,-50%) scale(1.25)}}
 @media(prefers-reduced-motion:reduce){.numberline-pending{animation:none}}
 /* 公差判定の着地演出: 先読みリング(.numberline-pending)が確定して
    .numberline-measureへ切り替わった瞬間だけ、ドットが軽くバウンドして
    「判定が確定した」ことを伝える(付与はJS側で新規確定時のみ、既存値の
    再描画では付与しない)。 */
 .numberline-measure.just-landed .nl-dot{animation:numberline-land .32s cubic-bezier(.34,1.56,.64,1)}
+@keyframes numberline-land{0%{transform:scale(.4);opacity:.4}60%{transform:scale(1.35)}100%{transform:scale(1)}}
 @media(prefers-reduced-motion:reduce){.numberline-measure.just-landed .nl-dot{animation:none}}
 /* ---- 汎用フィルタ バー ---- */
 .generic-filter-bar{margin:6px 14px 0;border:1px solid #b7c7cc;border-radius:8px;background:#fff;overflow:hidden}
@@ -1936,6 +1909,8 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .mm-loading{position:absolute;inset:0;z-index:10;display:grid;place-items:center;background:#ffffffcc;backdrop-filter:blur(1px)}
 .mm-loading[hidden]{display:none}
 .mm-loading-box{display:flex;align-items:center;gap:var(--space-3);padding:14px 22px;border:1px solid #bcd9dd;border-radius:12px;background:#fff;box-shadow:0 12px 34px #0b2b3333;color:#0a6570;font-weight:800}
+/* メニューのマスタ閲覧ボタンは非表示（マスタ管理へ集約） */
+#nav [data-db-key="MASTER"]{display:none}
 @media(max-width:900px){.mm-body{grid-template-columns:1fr}.mm-nav{flex-direction:row;flex-wrap:wrap;border-right:0;border-bottom:1px solid var(--line)}.mm-search input{width:200px}}
 /* ============================================================
 2026-07-21 Quality analysis / print / listbox height update
@@ -2156,7 +2131,9 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .rp-main{display:flex;flex-direction:column;min-width:0;min-height:0}
 .rp-scroll{flex:1;min-height:0;overflow:auto;padding:var(--space-2);background:#dbe4e6;display:flex;justify-content:center;align-items:flex-start}
 /* 拡大率はJSが --rp-scale / --rp-box-w / --rp-box-h をインラインで渡す。
-   値だけを受け取り、どう使うかはここで決める(印刷時に等倍へ戻せる)。 */
+   値だけを受け取り、どう使うかはここで決める(印刷時に等倍へ戻せる)。
+   transform/width をJSが直接書くと、インラインはどのレイヤより強いので
+   印刷用の指定が効かず、打ち消すために !important が必要になっていた。 */
 .rp-page-box{overflow:visible;width:var(--rp-box-w,auto);height:var(--rp-box-h,auto)}
 /* A4実寸。画面プレビューは印刷と同じ密度のCSSで組み、実際に印刷
    される見た目そのままをページ枠内に収める（WYSIWYG）。 */
@@ -2609,6 +2586,11 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .sc-content-add:hover{border-style:solid;border-color:var(--teal);background:#f7fafb}
 .sc-split-toggle{height:var(--ctl-h-sm);padding:0 12px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer;font-size:var(--fs-sm);font-weight:700;color:#60747b}
 .sc-split-toggle.active{background:var(--pale);border-color:var(--teal);color:#075e67}
+/* 仕掛一覧の行をドラッグ可能にする(スケジュールモードのみ、list-view.js)。
+   通常のクリック選択(is-selected)・チェックボックス複数選択
+   (is-plan-selected)と視覚的に競合しないよう、ドラッグ中だけ別の合図
+   (縮小+破線)を重ねる。 */
+#grid tbody tr[draggable="true"]{cursor:grab}
 /* ドロップ受入側(タイムライン)。ドラッグでファイルを覆っている間だけ、
    受け入れ可能であることを枠線と背景の変化で示す(ドラッグ&ドロップの
    基本合図。 crossbrowserで安定するCSSのみで表現し、JS側はクラス切替のみ
@@ -2847,6 +2829,24 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .type-chip--part:hover{background:var(--computed-bg)}
 .type-chip--skip{background:#e9edee;border:1px dashed #8b9ca2;color:#6d7f85}
 .type-chip--skip:hover{background:#dfe5e6;border-color:#6d7f85}
+/* 操作レールのサマリ。項目名は再掲せず、全体・丈位置・作業時間だけを出す。 */
+.rail-progress-group{gap:var(--space-1)}
+.rail-progress-bar{height:7px;border-radius:4px;background:#fff;border:1px solid #9eb2bc;overflow:hidden}
+.rail-progress-bar i{display:block;height:100%;background:var(--teal);transition:width .2s}
+.rail-progress-line{
+  font-size:var(--fs-micro);color:#36515c;display:flex;align-items:center;gap:5px;flex-wrap:wrap;
+}
+.rail-progress-line b{font-size:var(--fs-base-sm);color:var(--nav);font-variant-numeric:tabular-nums}
+.rail-progress-skip{color:#6d7f85}
+.rail-progress-lengths{display:flex;flex-wrap:wrap;gap:3px}
+.rail-len{
+  font-size:var(--fs-micro);padding:1px 5px;border-radius:9px;white-space:nowrap;
+  background:var(--required-bg);border:1px solid var(--required);color:#7a5200;
+}
+.rail-len--done{background:var(--teal);border-color:var(--teal);color:#fff}
+.rail-len--part{background:#fff;border-color:var(--teal);color:var(--computed-fg)}
+.rail-progress-worktime--done{color:var(--computed-fg)}
+.rail-progress-worktime--todo,.rail-progress-worktime--part{color:#a06a00;font-weight:700}
 @media(max-width:1450px){
   .type-chip{font-size:var(--fs-micro);padding:1px 5px}
 }
@@ -3429,7 +3429,7 @@ body.cal-mode #masterMaintPanel,body.sc-mode #masterMaintPanel,body.qa-mode #mas
 body.sc-mode.sc-split #grid,body.sc-mode.sc-split #genericFilterBar{display:block}
 body.sc-mode.sc-split #listToolbar{display:flex}
 /* 仕掛一覧のポップアップ表示(§9.14新設)。分割表示と同じ理由(body.sc-mode
-   #grid{display:none}の上書き)でbodyへクラスを付ける方式にする。 */
+   #grid{display:none!important}の上書き)でbodyへクラスを付ける方式にする。 */
 body.sc-mode.sc-list-modal-open #grid,body.sc-mode.sc-list-modal-open #genericFilterBar{display:block}
 body.sc-mode.sc-list-modal-open #listToolbar{display:flex}
 /* 品質データの「元データ表示」(qa-view-raw)は#grid等を強制的に再表示する
@@ -3580,7 +3580,7 @@ body.sc-mode .hd-status .hd-chip-equip{display:none}
    作者スタイルで`.foo{display:flex}`と書いた時点で常に負ける(詳細度ではなく
    カスケードの出所で決まる)。この取りこぼしで「未同期0件でも同期バナーが
    出続ける」「使わないチップが常時見えている」等の表示崩れが7要素で
-   起きていた。以前は個別に`.foo[hidden]{display:none}`を23箇所へ
+   起きていた。以前は個別に`.foo[hidden]{display:none!important}`を23箇所へ
    足して回っていたが、**このレイヤが最後に来る**ようになったので、
    詳細度も`!important`も要らずこの1行だけで足りる。
    **JSは要素の表示/非表示をhidden属性で切り替える**のが本アプリの約束で、

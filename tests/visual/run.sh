@@ -87,6 +87,23 @@ trap restore_paths EXIT INT TERM
 
 save_paths
 
+# 撮り比べが成立するには、両方の実行が**同じデータ**から始まる必要がある。
+#  1) 種データを作り直してから作業用コピーを取る。逆順にすると、前回の実行が
+#     残した「作業中」「完了」の行を引き継いだまま撮ってしまい、行が1本増減した
+#     だけでその帯が丸ごと差分になる(実測で5画面が6〜8%相違)。
+#  2) 測定バックアップ(db/records.sqlite3)も空にする。キャプチャ自身が測定画面を
+#     開くので1件増え、次の実行の「データ引継ぎ」タブの行数が変わる。
+python3 "$ROOT/tests/make_fixture.py" >/dev/null 2>&1
+python3 - <<'PY'
+import pathlib,sqlite3
+p=pathlib.Path('/home/user/WaveLog/db/records.sqlite3')
+if p.exists():
+    c=sqlite3.connect(p)
+    for (t,) in c.execute("select name from sqlite_master where type='table'"):
+        try:c.execute(f'delete from "{t}"')
+        except Exception:pass
+    c.commit();c.close()
+PY
 WORK="$FIXTURE/work"
 rm -rf "$WORK"; mkdir -p "$WORK"
 cp "$FIXTURE/share/schedule.sqlite3" "$WORK/schedule.sqlite3"
@@ -100,9 +117,6 @@ PY
 )"
 echo "検証用フィクスチャへ切り替えました"
 restart_server || exit 1
-
-# 種データへ戻す(撮るたびに中身が違うと比較が成立しない)
-python3 "$ROOT/tests/make_fixture.py" >/dev/null 2>&1
 mode edit
 
 DEST="$SHOTS/$TARGET"
