@@ -128,9 +128,14 @@ let b=null;
     const x=await inspect();
     rec('測定画面: 横にはみ出していない',x.overflowX<=1,`overflowX=${x.overflowX}px`);
     rec('測定画面: hidden属性が効いている',x.hiddenButVisible.length===0,JSON.stringify(x.hiddenButVisible));
-    // 未保存にしてから別画面へ移ると、閉じずに残ること(VER1.74.14)
+    // 未保存にしてから別画面へ移ると、閉じずに残ること(VER1.74.14)。
+    // **サイドバーのクリックでは到達しない**: .modal{inset:0}が全面を覆うため
+    // 測定中はナビを押せない(Playwrightも「measureModalがpointer eventsを
+    // 遮る」で30秒待って失敗する)。ガードが効く必要があるのは画面切替を
+    // プログラムから呼ぶ経路なので、そちらで確かめる。
     await page.evaluate(()=>{if(typeof markDirty==='function')markDirty()});
-    await page.click('#homeDrafts');await page.waitForTimeout(2000);
+    await page.evaluate(()=>WL.enterView('records'));
+    await page.waitForTimeout(1200);
     const kept=await page.evaluate(()=>!document.querySelector('#measureModal')?.hidden);
     rec('測定画面: 未保存なら画面を移っても閉じない',kept,`hidden=${!kept}`);
     // 後始末: 破棄して閉じる
