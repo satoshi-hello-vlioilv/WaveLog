@@ -232,6 +232,56 @@ async function withInternalDbSwitch(fn){
 function isInternalDbSwitch(){return internalDbSwitchDepth>0}
 window.withInternalDbSwitch=withInternalDbSwitch;
 window.isInternalDbSwitch=isInternalDbSwitch;
+/* ---------- TTL付きキャッシュ(新しく作るキャッシュはこれを使う) ----------
+   同種のキャッシュが微妙に違う実装で6箇所以上あり(tableCache/tablesCache/
+   scPlanCache/scWorkable/dbCache/sikaTablePromise)、書くたびに
+   「期限切れの判定」「取得中の重複呼び出し」を作り直していた。
+   ここで2つの決まりごとを1箇所にまとめる:
+
+     1. 期限切れは**読むときに捨てる**(書くときに掃除しない)。
+        件数の上限も設け、条件を変えるたびに際限なく増えるのを防ぐ。
+     2. **取得中のPromiseを持つ**。同じキーへ同時に問い合わせが来ても
+        呼び出しは1回にする。ただし失敗したPromiseは必ず捨てる——
+        残すと以後ずっと同じ失敗を返し続け、再試行できなくなる
+        (lot-split.jsのresolveSikaTableが`.catch`で消しているのと同じ理由)。
+
+   **既存のキャッシュは置き換えないこと**。それぞれ無効化の条件が業務仕様と
+   絡んでおり(例: §9.67の作業可否は「一度可になったら再取得しない」)、
+   一括置換はその仕様を落とす。新規のみこのヘルパを使う。 */
+function ttlCache(ttlMs,maxEntries=40){
+ const store=new Map(),inflight=new Map();
+ const alive=e=>e&&(Date.now()-e.at)<=ttlMs;
+ return {
+  get(key){
+   const e=store.get(key);
+   if(!alive(e)){if(e)store.delete(key);return null}
+   return e.value;
+  },
+  set(key,value){
+   store.set(key,{value,at:Date.now()});
+   if(store.size>maxEntries)store.delete(store.keys().next().value);
+   return value;
+  },
+  /* キャッシュにあればそれを返し、無ければloader()で取る。取得中に同じキーが
+     来たら同じPromiseを返す(呼び出しは1回)。失敗したら取得中の記録を消す。 */
+  async fetch(key,loader){
+   const hit=this.get(key);
+   if(hit!==null)return hit;
+   if(inflight.has(key))return inflight.get(key);
+   const p=Promise.resolve().then(loader)
+    .then(v=>{inflight.delete(key);return this.set(key,v)})
+    .catch(e=>{inflight.delete(key);throw e});
+   inflight.set(key,p);
+   return p;
+  },
+  invalidate(key){
+   if(key===undefined){store.clear();inflight.clear();return}
+   store.delete(key);inflight.delete(key);
+  },
+  get size(){return store.size},
+ };
+}
+window.ttlCache=ttlCache;
 /* レコードのstatus文字列からバッジ用のCSSクラス/表示ラベルを求める共通関数。
    以前はcalendar-view.js/report-dashboard.jsに同一内容が重複定義され、
    records-store.jsは一覧行のレンダリングで同じ判定をインラインで
