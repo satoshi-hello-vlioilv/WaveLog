@@ -379,7 +379,7 @@
     </header>
     <form class="mm-editor-body" id="maintEditorForm"></form>
     <!-- 下段は<footer>ではなく<div>にすること。メイン画面統合型ビューの
-         共通ルール(body.mm-mode footer{display:none!important}等)は要素
+         共通ルール(body.mm-mode footer{display:none}等、@layer mode)は要素
          セレクタのfooterを対象にしているため、<footer>で組むとこのモーダルの
          保存・キャンセルボタンごと消える(実装時に踏んだ不具合)。 -->
     <div class="mm-editor-foot">

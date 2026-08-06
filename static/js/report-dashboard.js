@@ -191,18 +191,26 @@
   document.querySelectorAll('[data-seg="rpZoomSeg"] button').forEach(b=>b.classList.toggle('active',b.dataset.val===v));
   if(v==='fit')fitPage();else if(v==='width')fitWidth();else applyScale(1);
  }
+ /* 拡大率は**カスタムプロパティで渡す**(transform/width/heightを直接書かない)。
+    インラインstyleはCSSのどのレイヤより強いので、直接書くと印刷用の
+    「等倍で出す」指定が効かず、打ち消すために !important が必要になっていた。
+    値だけをインラインで渡し、その値をどう使うかはCSS側に残す。 */
  function applyScale(scale){
   const box=$id('rpPageBox'),page=$id('reportContent');if(!box||!page)return;
   scale=Math.max(.25,Math.min(3,scale));
   rpCurrentScale=scale;
   const pw=page.offsetWidth,ph=page.offsetHeight;
-  page.style.transform=`scale(${scale})`;
-  if(pw&&ph){box.style.width=`${pw*scale}px`;box.style.height=`${ph*scale}px`}
+  page.style.setProperty('--rp-scale',scale);
+  if(pw&&ph){
+   box.style.setProperty('--rp-box-w',`${pw*scale}px`);
+   box.style.setProperty('--rp-box-h',`${ph*scale}px`);
+  }
   const readout=$id('rpZoomReadout');if(readout)readout.textContent=`${Math.round(scale*100)}%`;
  }
  function resetPageScale(){
   const box=$id('rpPageBox'),page=$id('reportContent');if(!box||!page)return;
-  page.style.transform='';box.style.width='';box.style.height='';
+  page.style.removeProperty('--rp-scale');
+  box.style.removeProperty('--rp-box-w');box.style.removeProperty('--rp-box-h');
  }
  function fitPage(){
   if(rpZoom!=='fit')return;

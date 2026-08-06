@@ -519,7 +519,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(splitWrap)hideSplitList();
   moveGridTo(modal.querySelector('#scListModalBody'));
   modal.hidden=false;listModalOpen=true;
-  // body.sc-mode #grid{display:none!important}(通常モード)を、分割表示の
+  // body.sc-mode #grid{display:none}(通常モード、@layer mode)を、分割表示の
   // body.sc-mode.sc-split #gridと同じ考え方で上書きする(§9.14)。
   document.body.classList.add('sc-list-modal-open');
   updateSplitToggleUi();
