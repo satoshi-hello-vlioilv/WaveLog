@@ -27,7 +27,7 @@ import threading
 import time
 import webbrowser
 
-import launch_guard
+from backend.launcher import guard as launch_guard
 from backend import boot_status
 from backend.config import APP_NAME, PORT, REQUIRED_PACKAGES, app_url
 from backend.logging_setup import launcher_logger, log_environment
@@ -161,7 +161,7 @@ def main():
 
  try:
   boot_status.report('app','アプリを読み込んでいます')
-  import server
+  from backend.launcher import server
   boot_status.report('server',f'ポート {PORT} で待ち受けを開始します')
   server.run()
  except Exception as e:

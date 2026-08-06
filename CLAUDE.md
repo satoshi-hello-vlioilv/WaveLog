@@ -10,10 +10,10 @@
   `pkill`でPythonをプロセス名だけで一括終了しないこと（他のPythonを巻き添えに
   する。停止は必ず`process_manager.py`経由）。
 - **起動基盤に触るとき**: 起動・停止・監視の処理は `start_app.py` /
-  `launch_guard.py` / `server.py` / `process_manager.py` / `backend/watchdog.py`
-  が所有する。業務APIをこれらへ足さない（逆に`app.py`へ起動制御を戻さない）。
+  `backend/launcher/guard.py` / `backend/launcher/server.py` /
+  `process_manager.py` / `backend/watchdog.py` が所有する。業務APIをこれらへ足さない（逆に`app.py`へ起動制御を戻さない）。
   ポート・アプリID・表示名などのアプリ固有値は `backend/config.py` に集約
-  してあるので、他ファイルへ直接書かない。`server.py`の`flask_app.run(...)`から
+  してあるので、他ファイルへ直接書かない。`backend/launcher/server.py`の`flask_app.run(...)`から
   **`threaded=True`を外さないこと**（既定のシングルスレッドに戻すと、仕掛/
   品質データ等ネットワーク共有I/Oが不調で1件のリクエストが長時間ブロックした
   だけで、ハートビート・停止スクリプトの生存確認まで一切応答できなくなり、
@@ -95,7 +95,12 @@
   参照、`.gitignore`済み）。検証後は`sikalot_source`を戻し忘れないこと
   （上記と同じ理由）。詳細は`docs/ARCHITECTURE.md`の「仕掛/品質データの
   ローカル運用」節を参照。
-- **フォルダ構成**: `app.py`(エントリポイント)と`start_app.bat`はルート直下。
+- **フォルダ構成**: リポジトリ直下のPythonは**直接実行されるものだけ**
+  (`app.py`/`start_app.py`/`process_manager.py`/`_pycache_bootstrap.py`)。
+  importされるだけの起動部品は`backend/launcher/`へ置く
+  (`guard.py`=旧launch_guard.py、`server.py`)。起動スクリプト
+  (`Start.vbs`/`start_app.bat`/`stop.bat`)が直接呼ぶのは残留組だけなので、
+  **CP932の`start_app.bat`に触る必要はない**。
   それ以外のバックエンドPythonは`backend/`パッケージへ、ローカルDB
   (`master.sqlite3`/`records.sqlite3`、無ければ初回書き込み時に自動生成)は
   `db/`フォルダへまとめている。旧Access資産(`マスタ.accdb`等)は移行完了済みの

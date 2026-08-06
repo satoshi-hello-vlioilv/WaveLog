@@ -47,5 +47,5 @@ rne_scheduler.start()
 if __name__=='__main__':
  # 直接 python app.py で起動された場合も、通常の起動経路(Start.vbs /
  # start_app.bat)と同じ処理を通すため server.py へ委譲する。
- import server
+ from backend.launcher import server
  server.run()

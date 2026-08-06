@@ -92,10 +92,10 @@ Start.vbs                  通常起動(コンソール非表示)
 start_app.bat              診断起動(コンソール表示)
 stop.bat                   明示停止
 start_app.py               Python側の起動開始点(環境確認→多重起動判定→サーバー起動)
-launch_guard.py            多重起動の防止・起動中インスタンスの記録
-server.py                  Webサーバーの起動のみ(起動監視とWeb処理の境界)
 process_manager.py         対象アプリだけを安全に停止する
 _pycache_bootstrap.py      .pycキャッシュをローカル領域へ逃がす(各エントリポイントの最初のimport)
+backend/launcher/guard.py  多重起動の防止・起動中インスタンスの記録(旧launch_guard.py)
+backend/launcher/server.py Webサーバーの起動のみ(起動監視とWeb処理の境界。旧server.py)
 loading.html               起動待機画面(サーバーより先に開かれる)
 app.py                     Flask本体・一覧/測定コンテキスト/バックアップ/品質分析API
 requirements.txt           必要パッケージ

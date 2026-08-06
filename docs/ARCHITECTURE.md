@@ -24,7 +24,7 @@
 ## ディレクトリ構成
 
 起動・停止に関わるファイル(`Start.vbs`/`start_app.bat`/`stop.bat`/
-`start_app.py`/`launch_guard.py`/`server.py`/`process_manager.py`/
+`start_app.py`/`backend/launcher/guard.py`/`backend/launcher/server.py`/`process_manager.py`/
 `loading.html`)と `app.py` をルート直下に置く。それ以外のバックエンド
 ロジックは `backend/` パッケージへ、ローカルDBファイルは `db/` フォルダへ
 まとめている(全体の一覧は `README.md` を参照)。
@@ -41,8 +41,8 @@
 | `start_app.bat` | 診断起動。コンソールを表示したまま同じ `start_app.py` を実行する |
 | `stop.bat` | 明示停止。`process_manager.py stop` を呼ぶ |
 | `start_app.py` | Python側の起動開始点。ログ初期化→待機画面を開く→多重起動判定→パッケージ確認→サーバー起動 |
-| `launch_guard.py` | ポートの使用状況と `app_id` の照合による多重起動判定(`OURS`/`FOREIGN`/`UNRESPONSIVE`/`FREE`)、起動中インスタンスの記録。`UNRESPONSIVE`(ポート使用中だがHTTP応答が無い)は自プロセスが重い処理でブロックされている可能性を含むため、即座に別アプリ(`FOREIGN`)と決め付けず`process_manager.py`側でinstance.jsonのapp_root照合による強制終了判断へ委ねる |
-| `server.py` | Webサーバーの起動のみ。起動監視とWeb処理の境界 |
+| `backend/launcher/guard.py`(旧`launch_guard.py`) | ポートの使用状況と `app_id` の照合による多重起動判定(`OURS`/`FOREIGN`/`UNRESPONSIVE`/`FREE`)、起動中インスタンスの記録。`UNRESPONSIVE`(ポート使用中だがHTTP応答が無い)は自プロセスが重い処理でブロックされている可能性を含むため、即座に別アプリ(`FOREIGN`)と決め付けず`process_manager.py`側でinstance.jsonのapp_root照合による強制終了判断へ委ねる |
+| `backend/launcher/server.py`(旧`server.py`) | Webサーバーの起動のみ。起動監視とWeb処理の境界 |
 | `process_manager.py` | 対象アプリだけの安全な停止（正常終了要求→記録済みPID。プロセス名では判定しない） |
 | `loading.html` | 起動待機画面。サーバーより先に `file://` で開かれ、`/api/ready.js` の応答を待ってからアプリへ遷移する。段階表示は `boot_status.js` を読んで**実際の進捗**を出す |
 | `backend/boot_status.py` | 起動の段階(6つ)をアプリ直下の `boot_status.js` へ書き出す。待機画面はまだサーバーが無い状態なので、`<script src>` で読み取れるJSファイルを介す。書き込みに失敗しても起動は止めない。`/api/ready.js` で削除する(`.gitignore`済み) |
@@ -53,8 +53,10 @@
 | `backend/logging_setup.py` | ログ初期化。`launcher.log`(起動・停止) と `app.log`(本体) の2系統 |
 | `backend/watchdog.py` | プロセスの生存管理。ハートビート監視・明示停止(`/api/shutdown`) |
 
-`_pycache_bootstrap.py` は `start_app.py`・`process_manager.py`・`server.py`・
-`app.py` の4つすべてで最初にimportしている。単独で起動され得る経路が複数
+`_pycache_bootstrap.py` は `start_app.py`・`process_manager.py`・
+`app.py` の3つすべてで最初にimportしている(直接実行され得るのはこの3本。
+`backend/launcher/server.py` はimportされるだけになったので不要になった)。
+単独で起動され得る経路が複数
 あり、1箇所だけに書くと別経路で `.pyc` がアプリ側へ生成されてしまう
 (`process_manager.py stop` を単体実行した際にこれが起きることを実測で確認し、
 全エントリポイントへ追加した)。
@@ -94,7 +96,7 @@
 | `backend/rne_worker.py` | `rne_extract.extract_one`をサブプロセスとして実行するエントリポイント(`python -m backend.rne_worker`) |
 | `backend/rne_scheduler.py` | 仕掛/品質データのローカル運用(`sikalot_source=local`)時、RNE抽出を定期的に並列実行する背景スレッド |
 
-依存方向は `start_app.py → server.py → app.py → backend.routes.* →
+依存方向は `start_app.py → backend.launcher.server → app.py → backend.routes.* →
 backend.repositories.master_repo → backend.db_access`（逆参照なし）。
 `backend.routes.tables`/`backend.routes.measurement` は
 `backend.repositories.master_repo` の読み取り関数(`hidden_columns_for_db`/

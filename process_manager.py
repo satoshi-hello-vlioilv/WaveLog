@@ -21,7 +21,7 @@ import sys
 import time
 import urllib.request
 
-import launch_guard
+from backend.launcher import guard as launch_guard
 from backend.config import HOST, PORT
 from backend.paths import APP_ROOT
 from backend.logging_setup import launcher_logger
