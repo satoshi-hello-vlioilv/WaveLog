@@ -243,6 +243,27 @@ API経由でRNE(Navigator問い合わせ定義)を実行し、ローカルSQLite
 | `measurement-input.js` | `deviceParse`・`processDeviceInput`・`focusCurrent`・`renderMeasureGrid(Vertical)`・`judgeInput`・公差計算（`toleranceDetail`/`toleranceDataForSource`/`compactTolerance*`）・公差数直線の値→縦位置の写像（`WL.toleranceScaleView`、下記） |
 | `records-store.js` | IndexedDB/ミラー永続化・`saveLocal`/`persistAndTransition`・`openMeasurement`・`openRecords`/`renderRecordListRows`・`loadMeasurementContext`・使用設備設定/設備マスタ・Access同期の未完了キューと再送・アプリ起動呼び出し（末尾） |
 
+### 画面ごとの操作列をヘッダーへ相乗りさせる（#headerViewBar）
+
+各画面は「画面名＋操作」の見出しバーを自前で持っていた。画面名はヘッダーの
+`#fileName`と同じ文字が二重に出るうえ、バー1本ぶん本文の高さを食う。
+
+- **画面名はヘッダーだけが持つ**。パネル側の見出し(`.sc-title`/`#recordTitle`/
+  ダッシュボードの`.rp-head`)は廃止。
+- 操作列は `registerView({toolbar:'#scHead'})` で宣言し、`WL.enterView` の
+  `mountViewToolbar()` が `#headerViewBar` へ **DOMごと移動**させる。
+  移動なのでハンドラ・id参照はそのまま生きる。退出時は元の親へ戻す
+  (`toolbarHome` が親と兄弟を覚えている)。
+- **パネルが `enterView` の後に組み立てられる画面**(ensurePanel等)は、
+  組み立て後に `WL.syncViewToolbar('key')` を呼んで載せ直す。呼ばないと
+  操作列がパネル内に残る(実際に踏んだ)。
+- ヘッダーの2行目として全幅で置く。1行目へ詰め込むと画面によって入りきらず
+  切れる。独立した行にすると位置と高さがどの画面でも同じになる。
+- 一覧専用の操作(検索・表示件数・再読込)は、一覧以外の画面では出さない
+  (`body.sc-mode .global-actions .hd-search{display:none}` 等)。表示サイズは
+  全画面共通なので残す。
+- 回帰は `tests/test_theme.js`。
+
 ### 分割数（条数）とロット数は別物
 
 条割まわりで**必ず区別する**。データ上の持ち方が違う。

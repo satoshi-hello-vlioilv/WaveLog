@@ -148,9 +148,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   let panel=$('#schedulePanel');if(panel)return panel;
   panel=document.createElement('section');panel.className='sc-panel';panel.id='schedulePanel';panel.hidden=true;
   panel.innerHTML=`
-   <div class="sc-head">
+   <div class="sc-head" id="scHead">
     <div class="sc-head-left">
-     <b class="sc-title">作業スケジュール</b>
      <div class="sc-mode-toggle" id="scModeToggle" hidden>
       <button type="button" class="sc-mode-toggle-btn" id="scModeBoard" data-mode="board">▦ 全体</button>
       <button type="button" class="sc-mode-toggle-btn" id="scModeSingle" data-mode="single">☰ 個別</button>
@@ -178,7 +177,6 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      <button type="button" class="sc-split-toggle" id="scListModalBtn" hidden title="仕掛一覧をポップアップで表示してドラッグで追加します">⧉ ポップアップ</button>
      <button type="button" class="sc-split-toggle" id="scStopModalBtn" hidden title="設備停止をポップアップから追加します">⛔ 設備停止</button>
      <button type="button" class="sc-refresh" id="scRefresh">再計算</button>
-     <button type="button" class="sc-close" id="scClose" title="閉じる">×</button>
     </div>
    </div>
    <div class="sc-session-banner" id="scSessionBanner" hidden></div>
@@ -201,7 +199,6 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    </div>`;
   const grid=$('#grid');
   if(grid&&grid.parentNode)grid.parentNode.insertBefore(panel,grid);else document.body.appendChild(panel);
-  $('#scClose').onclick=exitScheduleView;
   $('#scRefresh').onclick=()=>refreshCurrentMode();
   const grp=$('#scGroupSelect');
   scState.groupMode=loadGroupMode();
@@ -628,12 +625,15 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  }
  window.exitScheduleView=exitScheduleView;
 
- WL.registerView({key:'schedule',bodyClass:'sc-mode',nav:'openSchedule',
+ /* 操作列(#scHead)はヘッダーの#headerViewBarへ移す。画面名はヘッダーが持ち、
+    パネルは本文だけを持つ(WL.enterViewのmountViewToolbar参照)。 */
+ WL.registerView({key:'schedule',bodyClass:'sc-mode',nav:'openSchedule',toolbar:'#scHead',
   header:['作業スケジュール','設備ごとの作業予定と実績'],exit:exitScheduleView});
 
  async function openScheduleView(){
   WL.enterView('schedule');
   const panel=ensurePanel();panel.hidden=false;
+  WL.syncViewToolbar('schedule');   // 操作列(#scHead)はパネル生成後にヘッダーへ載せる
 
   const am=window.accessMode||{mode:'edit',canFieldReorder:false,fieldReorderEquipment:''};
   // fullControl: 追加・削除・設備停止投入まで可能なのはscheduleモードだけ

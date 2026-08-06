@@ -298,7 +298,20 @@ button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-vis
 #nav{margin-top:0}
 
 main{display:flex;min-width:0;min-height:0;flex-direction:column}
-main>header{height:54px;display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);padding:0 15px;background:#fff;border-bottom:1px solid var(--line)}
+/* ヘッダーは2段のグリッド。1段目は「画面名 / 状態チップ / 全体操作」で、
+   狭い幅でも**段が増えない**(flexでwrapさせると、幅が足りないときに
+   チップ群が勝手に2段目へ落ちて高さが不安定になる)。2段目は画面ごとの
+   操作列(#headerViewBar)専用で、載っているときだけ高さを持つ。
+   画面名はここだけが持ち、各画面のパネルは本文だけを持つ。 */
+main>header{
+  display:grid;grid-template-columns:minmax(0,1fr) max-content max-content;
+  align-items:center;gap:var(--space-1) var(--space-3);
+  min-height:54px;padding:4px 15px;background:#fff;border-bottom:1px solid var(--line);
+}
+main>header>.hd-context{grid-column:1;grid-row:1}
+main>header>.hd-status{grid-column:2;grid-row:1}
+main>header>.hd-actions{grid-column:3;grid-row:1}
+main>header>.hd-viewbar{grid-column:1/-1;grid-row:2}
 main>header b,main>header small{display:block}
 main>header small{color:#687a81;margin-top:2px}
 /* ヘッダーのコントロールは高さをトークンへ統一する(ARCHITECTURE.md「コントロールサイズの統一」)。以前は
@@ -3603,3 +3616,65 @@ body.nav-collapsed #navResizeHandle{pointer-events:none;opacity:.35}
 .df-table thead th{background:#eee;text-align:center}
 .df-answer{margin:4px 0;font-size:13px}
 .df-foot{margin-top:10px;padding-top:4px;border-top:1px solid #999;font-size:9px;color:#555}
+
+/* ============================================================
+   画面ごとの操作列をヘッダーへ相乗りさせる（#headerViewBar）
+   ------------------------------------------------------------
+   各画面が持っていた見出しバーは「画面名（ヘッダーと同じ文字）＋操作」で、
+   名前は二重、バー1本ぶん(40〜50px)本文の高さを食っていた。名前はヘッダー
+   だけが持ち、操作だけをここへ移す(WL.enterView→mountViewToolbar)。
+   移すのはDOMの移動なので、画面側が張ったハンドラはそのまま生きる。
+   ============================================================ */
+/* 操作列はヘッダーの2行目として全幅で置く。1行目(画面名・状態チップ・全体操作)
+   と混ぜて詰め込むと、画面によって入りきらず切れる。独立した行にすると
+   どの画面でも同じ位置に同じ高さで出るので、目で探す位置が変わらない。
+   それでも、各画面が持っていた見出しバー(画面名+枠+余白)より低い。 */
+.hd-viewbar{
+  display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2);
+  min-width:0;min-height:var(--ctl-h-sm);
+  padding-top:var(--space-1);border-top:1px solid var(--line);
+  font-size:var(--fs-sm);color:var(--ink-2);
+}
+.hd-viewbar:empty{display:none}
+/* 元パネル向けの枠・余白・背景は落とし、ヘッダーのコントロールと同じ寸法・
+   同じ色づかい(白地+--line枠)へ揃える。 */
+.hd-viewbar>*{margin:0;min-width:0}
+.hd-viewbar .sc-head,.hd-viewbar .rp-head-actions,.hd-viewbar .record-searchbar{
+  display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2);width:100%;min-width:0;
+  margin:0;padding:0;border:0;background:transparent;box-shadow:none;
+}
+.hd-viewbar .sc-head-left,.hd-viewbar .sc-head-right{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2);min-width:0}
+.hd-viewbar .sc-head-right{margin-left:auto}
+.hd-viewbar label{display:inline-flex;align-items:center;gap:var(--space-1);white-space:nowrap;font-size:var(--fs-sm);color:var(--muted)}
+.hd-viewbar select,.hd-viewbar input{height:var(--ctl-h-sm);padding:0 8px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink-2);font-size:var(--fs-sm)}
+.hd-viewbar button{
+  height:var(--ctl-h-sm);padding:0 12px;border:1px solid var(--line);border-radius:8px;background:#fff;
+  color:var(--ink-2);font-size:var(--fs-sm);font-weight:700;cursor:pointer;
+}
+.hd-viewbar button:hover{border-color:var(--teal);background:var(--pale);color:#0c5d67}
+.hd-viewbar button.active,.hd-viewbar [role="tab"].active{background:var(--teal);border-color:var(--teal);color:#fff}
+.hd-viewbar .db-viewtabs,.hd-viewbar .sc-mode-toggle{display:flex;gap:2px;padding:2px;border-radius:9px;background:var(--bg)}
+.hd-viewbar .db-viewtabs button,.hd-viewbar .sc-mode-toggle-btn{height:calc(var(--ctl-h-sm) - 4px);border-color:transparent;background:transparent}
+.hd-viewbar .sc-equipment-fixed{padding:3px 10px;border-radius:999px;background:var(--pale);border:1px solid var(--card-border);color:var(--nav);font-size:var(--fs-sm);font-weight:700;white-space:nowrap}
+.hd-viewbar .sc-lock-badge{padding:3px 9px;border-radius:999px;font-size:var(--fs-micro)}
+.hd-viewbar .sc-history-range{display:inline-flex;align-items:center;gap:var(--space-1);white-space:nowrap}
+.hd-viewbar .sc-freshness,.hd-viewbar .sc-field-reorder-note,.hd-viewbar .record-search-result{
+  font-size:var(--fs-micro);color:var(--muted);white-space:nowrap;
+}
+.hd-viewbar .sc-refresh,.hd-viewbar .rp-btn-secondary{border-color:var(--teal);color:#0c5d67}
+/* 一覧専用の操作(検索・表示件数・再読込)は、一覧を見ていない画面では出さない。
+   「意味のないメニュー」を並べたままにしないためと、画面ごとの操作列へ
+   横幅を渡すため。表示サイズ(A)は全画面共通なので残す。 */
+body.sc-mode .global-actions .hd-search,body.sc-mode .global-actions .hd-field,body.sc-mode .global-actions #reload,
+body.db-mode .global-actions .hd-search,body.db-mode .global-actions .hd-field,body.db-mode .global-actions #reload,
+body.rp-mode .global-actions .hd-search,body.rp-mode .global-actions .hd-field,body.rp-mode .global-actions #reload,
+body.mm-mode .global-actions .hd-search,body.mm-mode .global-actions .hd-field,body.mm-mode .global-actions #reload,
+body.cal-mode .global-actions .hd-search,body.cal-mode .global-actions .hd-field,body.cal-mode .global-actions #reload,
+body.rec-mode .global-actions .hd-search,body.rec-mode .global-actions .hd-field,body.rec-mode .global-actions #reload{display:none}
+/* パネル側に残った見出しバーの枠は、中身をヘッダーへ移したぶん詰める。 */
+.sc-panel .sc-head:empty,.db-panel .rp-head-actions:empty{display:none}
+
+/* ---- ヘッダー相乗り時の整理（重複する情報・使わない操作を出さない） ---- */
+/* 使用設備は画面ごとの操作列(スケジュールの設備選択)が持つので、ヘッダーの
+   チップと二重にしない。モード・現場段取りは画面に関係なく効く状態なので残す。 */
+body.sc-mode .hd-status .hd-chip-equip{display:none}

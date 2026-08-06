@@ -817,7 +817,9 @@
   $id('openDashboard')?.classList.remove('active');
   const panel=$id('dashboardPanel');if(panel)panel.hidden=true;
  }
- WL.registerView({key:'dashboard',bodyClass:'db-mode',nav:'openDashboard',
+ /* 表示切替タブと再読込はヘッダーの#headerViewBarへ移す。画面名の無い
+    見出しバーが1本残っていて本文の高さを食っていた。 */
+ WL.registerView({key:'dashboard',bodyClass:'db-mode',nav:'openDashboard',toolbar:'#dbHeadActions',
   header:['ダッシュボード','作業予定と測定実績の集計'],exit:exitDashboardView});
 
  const AXIS_OPTS=[['time','時系列'],['equipment','設備'],['crewSize','作業人数'],['productType','品種（用途名・丈数×条数）'],['purposeName','用途名'],['operator','オペレータ'],['measureType','入力内容']];
@@ -834,16 +836,14 @@
   let panel=$id('dashboardPanel');if(panel)return panel;
   panel=document.createElement('section');panel.className='db-panel';panel.id='dashboardPanel';panel.hidden=true;
   panel.innerHTML=`
-    <header class="rp-head">
-     <div class="rp-head-actions">
+    <div class="rp-head-actions db-head-actions" id="dbHeadActions">
       <div class="db-viewtabs" role="tablist" aria-label="表示の切り替え">
        <button type="button" role="tab" data-dbview="status" class="active" title="作業予定と実績から、いまの稼働状況をまとめて表示します">稼働状況</button>
        <button type="button" role="tab" data-dbview="equipment" title="この端末の使用設備にしぼって、実績ベースで表示します">自設備</button>
        <button type="button" role="tab" data-dbview="pivot" title="期間・軸・指標を自分で選んで集計します">自由集計</button>
       </div>
       <button type="button" id="dbStatusRefresh" class="rp-btn-secondary" title="作業予定と実績を取り直します">再読込</button>
-     </div>
-    </header>
+    </div>
     <div class="db-status-view" id="dbStatusView">
      <div class="db-summary" id="dbStatusKpi"></div>
      <div class="db-status-grid">
@@ -1211,6 +1211,7 @@
  async function openDashboardView(){
   WL.enterView('dashboard');
   const panel=ensurePanel();panel.hidden=false;
+  WL.syncViewToolbar('dashboard');   // 操作列(#dbHeadActions)はパネル生成後にヘッダーへ載せる
   // 自由集計側の初期条件は最初の1回だけ整えておく(タブを開いたときに
   // 条件未設定の空表示にならないようにする)。既定で見せるのは稼働状況(§9.64)。
   if(!panel.dataset.inited){

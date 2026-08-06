@@ -244,8 +244,40 @@ function enterView(key,opts){
  if(def.nav)document.getElementById(def.nav)?.classList.add('active');
  const h=opts?.header||def.header;
  if(h)setHeaderContext(h[0],h[1]);
+ mountViewToolbar(def);
  return def;
 }
+/* ---------- 画面ごとの操作列をヘッダーへ相乗りさせる ----------
+   各画面は自前の見出しバー(画面名+操作ボタン)を持っていた。画面名は
+   ヘッダーの`#fileName`と同じ文字が二重に出るうえ、バー1本ぶん(40〜50px)
+   本文の高さを食う。**画面名はヘッダーだけが持ち、操作ボタンは
+   ヘッダーの`#headerViewBar`へ移す**。
+
+   DOMを「移動」させる(コピーではない)ので、既に張られているイベント
+   ハンドラ・id参照はそのまま生きる。退出時は元の親へ戻すため、画面側の
+   組み立てコード(ensurePanel等)は自分の構造を知っていればよい。
+   registerView({toolbar:'#scHeadRight'}) のようにセレクタで指定する。 */
+const toolbarHome=new WeakMap();
+function mountViewToolbar(def){
+ const slot=document.getElementById('headerViewBar');
+ if(!slot)return;
+ // 直前の画面のものを元の場所へ戻す(戻し先を覚えていないものは捨てない)。
+ [...slot.children].forEach(el=>{
+  const home=toolbarHome.get(el);
+  if(home&&home.parent)home.parent.insertBefore(el,home.next&&home.next.parentNode===home.parent?home.next:null);
+  else el.remove();
+ });
+ const sel=def&&def.toolbar;
+ if(!sel)return;
+ const el=document.querySelector(sel);
+ if(!el||el.parentNode===slot)return;
+ if(!toolbarHome.has(el))toolbarHome.set(el,{parent:el.parentNode,next:el.nextSibling});
+ slot.appendChild(el);
+}
+/* 画面のパネルは enterView の**後**に組み立てられることが多い(ensurePanel等)。
+   その場合、enterView の時点では操作列のDOMがまだ無く移せない。パネルを
+   組み立て終えた画面はこれを呼んで載せ直す(何度呼んでも安全)。 */
+function syncViewToolbar(key){mountViewToolbar(VIEW_REGISTRY.get(key))}
 /* 画面の切替としての`selectDb()`と、ある画面が自分の中身を組み立てるために
    一覧を読み直すだけの`selectDb()`を区別する。後者(スケジュールの分割表示)で
    画面の切替を起こすと、組み立て中のスケジュール画面自身が畳まれてしまう。
@@ -537,4 +569,4 @@ window.applyUiSize=applyUiSize;
 })();
 
 /* ---------- WL名前空間への公開(定義は上記) ---------- */
-Object.assign(window.WL,{registerView,enterView,withInternalDbSwitch,isInternalDbSwitch,ttlCache,optionList});
+Object.assign(window.WL,{registerView,enterView,withInternalDbSwitch,isInternalDbSwitch,ttlCache,optionList,mountViewToolbar,syncViewToolbar});

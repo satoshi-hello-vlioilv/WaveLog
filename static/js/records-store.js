@@ -349,7 +349,7 @@ function bindV32Navigation(){
 /* データ一覧(#recordModal)。半透明のモーダルなので、他の画面を閉じずに
    開くと下の画面が透けて重なる(実績カレンダー表示中に開いて実際に起きた)。
    閉じ方をここで登録し、他画面へ移るときはenterView()が呼んでくれる。 */
-WL.registerView({key:'records',nav:'homeDrafts',
+WL.registerView({key:'records',nav:'homeDrafts',bodyClass:'rec-mode',toolbar:'#recordSearchBar',
  exit:()=>{document.getElementById('recordModal')?.setAttribute('hidden','')}});
 /* 一覧を開く(読み込み中表示→エラー時は再試行ボタン)。 */
 async function openRecordsSafe(status='編集中'){
@@ -359,8 +359,9 @@ async function openRecordsSafe(status='編集中'){
  // バックアップ削除を片付けて、一覧とバックアップの食い違いを縮める(§9.52)。
  flushPendingBackupDeletes().catch(e=>console.warn('バックアップ削除の再試行に失敗',e));
  try{
- const modal=$('#recordModal'),title=$('#recordTitle'),list=$('#recordList');
- title.textContent=status==='履歴'?'完了データ一覧':'編集中データ一覧';
+ const modal=$('#recordModal'),list=$('#recordList');
+ // 画面名はヘッダー(#fileName)が持つ。パネル側に同じ文字を出すと二重になる。
+ setHeaderContext(status==='履歴'?'完了データ一覧':'編集中データ一覧','この端末に保存された測定データ');
  list.innerHTML='<div class="record-loading">保存データを読み込んでいます...</div>';
  modal.hidden=false;
  try{await openRecords(status)}catch(error){
@@ -413,8 +414,12 @@ function sortedFilteredRecords(){let items=recordListState.items.filter(x=>recor
    トグル操作後の再読込時は直前のトグル状態(recordListState.statuses)を
    維持する。 */
 function updateRecordListTitle(){
- const st=recordListState.statuses||{},title=$('#recordTitle');if(!title)return;
- title.textContent=st.editing&&st.done?'データ一覧（編集中＋完了）':st.done?'完了データ一覧':'編集中データ一覧';
+ // 見出しはヘッダーだけが持つ(パネル側の見出しは廃止)。絞り込みの切替に
+ // 追随させたいのはこのヘッダー表示のほう。
+ if(!document.body.classList.contains('rec-mode'))return;
+ const st=recordListState.statuses||{};
+ setHeaderContext(st.editing&&st.done?'データ一覧（編集中＋完了）':st.done?'完了データ一覧':'編集中データ一覧',
+  'この端末に保存された測定データ');
 }
 function syncStatusFilterButtons(){
  const st=recordListState.statuses||{};

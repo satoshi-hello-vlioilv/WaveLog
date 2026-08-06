@@ -56,16 +56,22 @@ let b=null;
  await page.click('#uiSizeBadge');await page.waitForSelector('#uiSizeMenu',{timeout:4000});
  await page.click('#uiSizeMenu [data-ui-size-option="md"]');await page.waitForTimeout(400);
 
- /* 6. 横幅が狭くても操作群が折り返して縦に伸びない */
+ /* 6. 横幅が狭くても操作群が折り返して縦に伸びない
+    (画面ごとの操作列#headerViewBarは「ヘッダーの2行目」として意図的に
+     別の行に置く。ここで見るのは1行目の並び——画面名・状態チップ・全体操作が
+     狭い幅で折り返して段が増えないこと。) */
  await page.setViewportSize({width:1100,height:900});
  await page.waitForTimeout(400);
  const narrow=await page.evaluate(()=>{
   const h=document.querySelector('header').getBoundingClientRect();
   const list=[...document.querySelectorAll('header .hd-chip,header .hd-btn,header .hd-search,header .hd-field')]
-    .filter(e=>e.offsetParent).map(e=>Math.round(e.getBoundingClientRect().top));
-  return {height:Math.round(h.height),rows:[...new Set(list)].length};
+    .filter(e=>e.offsetParent&&!e.closest('#headerViewBar')).map(e=>Math.round(e.getBoundingClientRect().top));
+  const bar=document.getElementById('headerViewBar');
+  const barShown=!!(bar&&bar.offsetParent);
+  return {height:Math.round(h.height),rows:[...new Set(list)].length,barShown};
  });
- rec('幅1100pxでもヘッダーが1行に収まる',narrow.rows===1&&narrow.height<80,JSON.stringify(narrow));
+ rec('幅1100pxでもヘッダーの1行目が1行に収まる',
+   narrow.rows===1&&narrow.height<(narrow.barShown?130:80),JSON.stringify(narrow));
 
  await b.close();
  const ng=R.filter(x=>!x.ok);
