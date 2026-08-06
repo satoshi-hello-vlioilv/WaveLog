@@ -122,8 +122,24 @@
 
 ## 検証
 
+- **回帰テストは `tests/` にある。実行は `tests/run_all.sh` だけ**（約440件）。
+  引数にテスト名を並べるとそれだけ実行する（`tests/run_all.sh test_sccat`）。
+  ランナーがパス設定マスタの退避→検証用フィクスチャへ差し替え→復元まで
+  行うので、**手でパスを戻す必要はない**（`trap`で異常終了時も戻し、退避値は
+  `tests/.saved_paths.json`にも残すのでコンテナごと落ちても次回が復元する）。
+  テストを書くときの約束（後始末は`finally`・**落ちてもブラウザを閉じる**・
+  固定待ち禁止・識別子は実行ごとに一意）は `tests/README.md` に、
+  フィクスチャの作り直しは `python3 tests/make_fixture.py` にある。以前は
+  scratchpad に置いておりセッションのたびに消えていた
+  （`docs/REFACTORING_PLAN.md` フェーズ0で常設化）。
+- **テストがブラウザを閉じずに落ちると連鎖する**: 残ったChromiumが設備の
+  編集セッションを掴んだままハートビートを打ち続け、後続のスケジュール系の
+  書込が全て「編集中です」で弾かれる（実際に1本のFATALから8本が落ち、
+  ロックが効かない・並べ替えが反映されないという別々の不具合に見えた）。
+  各テストは終了処理で必ず閉じ、ランナーも1本ごとに掃除する。
 - Playwright ヘッドレス（Chromium: `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`、
-  `NODE_PATH=/opt/node22/lib/node_modules`）。テストは scratchpad の `test_*.js`。
+  `NODE_PATH=/opt/node22/lib/node_modules`）。環境が違う場合は
+  `WAVELOG_CHROMIUM`/`WAVELOG_PLAYWRIGHT`/`WAVELOG_NODE` で上書きする。
 - サンドボックスにAccessドライバは無く、仕掛/品質データ系API(`/api/table`等、
   SIKALOTNOW/SIKALOTDEF)は接続先がAccessのままのため500を返す。実データ依存の
   検証は`page.route`でモックして行う。一方マスタ系API(`/api/operator-master`等)
@@ -134,5 +150,5 @@
 
 ## Git
 
-- 開発は featureブランチ（現行: `claude/quality-data-graph-layout-ban528`）で行い、
+- 開発は featureブランチ（現行: `claude/path-config-master-management-djha13`）で行い、
   ユーザーの明示指示があった場合のみ main へマージする。

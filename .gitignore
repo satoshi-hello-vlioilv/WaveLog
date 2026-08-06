@@ -18,3 +18,19 @@ boot_status.js
 schedule.lock.json
 schedule.sessions.json
 *.tmp
+
+# 検証用フィクスチャ(tests/run_all.sh が読む)。*.sqlite3 の除外に対する例外。
+# これが無いとクローン直後にテストが走らない=安全網が持ち運べない。
+!db/test_fixture/
+!db/test_fixture/**/
+!db/test_fixture/**/*.sqlite3
+!db/test_fixture/*.sqlite3
+# テスト実行時に出る一時ファイル(tests/*.log・*.png は tests/.gitignore 側)
+db/test_fixture/share/schedule.sessions.json
+db/test_fixture/share/schedule.lock.json
+
+# UNCパス(\\server\share\...)はWindows以外だとただのファイル名になるため、
+# 本番既定のパス設定のままLinuxで起動するとリポジトリ直下に
+# 「\\Nlmsrvngy03\Read\...」という名前のファイルが生まれる。中身は
+# 行き場を失った共有スケジュールDBなのでコミットしない。
+[\\]*
