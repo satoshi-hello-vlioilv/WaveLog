@@ -326,14 +326,14 @@ function bindV32Navigation(){
  const open=async status=>{try{await openRecords(status)}catch(e){console.error(e);alert('保存データ一覧を開けません: '+e.message)}};
  [['homeDrafts','編集中'],['openDrafts','編集中']].forEach(([id,status])=>{const b=$('#'+id);if(b){b.onclick=null;b.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();open(status)})}})
 }
-/* 一覧を開く(読み込み中表示→エラー時は再試行ボタン)。
-   実績カレンダー表示中にデータ一覧を開くと、カレンダーパネル(cal-mode)が
-   隠れないまま半透明の#recordModalが重なって表示が被る不具合があったため、
-   帳票/ダッシュボード表示への遷移と同様にカレンダー表示を必ず抜ける。 */
+/* データ一覧(#recordModal)。半透明のモーダルなので、他の画面を閉じずに
+   開くと下の画面が透けて重なる(実績カレンダー表示中に開いて実際に起きた)。
+   閉じ方をここで登録し、他画面へ移るときはenterView()が呼んでくれる。 */
+registerView({key:'records',nav:'homeDrafts',
+ exit:()=>{document.getElementById('recordModal')?.setAttribute('hidden','')}});
+/* 一覧を開く(読み込み中表示→エラー時は再試行ボタン)。 */
 async function openRecordsSafe(status='編集中'){
- window.exitCalendarView?.();
- window.exitScheduleView?.();
- window.exitMasterMaint?.();
+ enterView('records');
  showWaiting(status==='履歴'?'完了データを取得しています':'編集中データを取得しています','この端末の保存領域を確認中','IndexedDBと代替保存領域を照合しています');
  // 一覧を開くのは「端末内に何があるか」を確かめる操作。ここでも未処理の
  // バックアップ削除を片付けて、一覧とバックアップの食い違いを縮める(§9.52)。

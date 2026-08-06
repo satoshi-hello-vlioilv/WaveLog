@@ -175,6 +175,47 @@ function setHeaderContext(title,source){
  if(typeof window.updateListFreshness==='function'&&!source)window.updateListFreshness(null);
 }
 window.setHeaderContext=setHeaderContext;
+/* ---------- 画面(ビュー)の登録簿 ----------
+   トップレベルの画面(データ一覧・仕掛/品質・スケジュール・ダッシュボード・
+   実績カレンダー・マスタ管理・帳票)は排他で、常にどれか1つだけが開いている。
+
+   以前は各openXxxが「他の画面を全部閉じる」コードを自前で持っていた
+   (6画面 × 約10行)。画面を1つ足すたびに既存の全ファイルへ退出処理を足す
+   掛け算構造で、**§9.60(ヘッダー表示の取り残し)はこの構造の取りこぼし**。
+   実際、統一する直前の時点で次の不揃いが残っていた:
+     - #measureModal を閉じるのは6画面中3画面だけ
+     - ナビの選択解除が #nav だけで #analysisNav / #planNav を取りこぼす画面が4つ
+     - #qualityAnalysisPanel を隠すのは実績カレンダーだけ
+   各画面は「自分の閉じ方と見出し」だけを登録し、切替の手順はenterView()に
+   一本化する。これで退出処理の抜けが構造的に起きなくなる。 */
+const VIEW_REGISTRY=new Map();
+function registerView(def){VIEW_REGISTRY.set(def.key,def);return def}
+window.registerView=registerView;
+/* 新しい画面へ入る。key以外の登録済み画面を全て閉じ、ナビの選択状態・
+   ヘッダー表示・bodyクラスを新しい画面のものへ揃える。
+   **画面を開く関数は、自分の描画を始める前にこれを1回呼ぶこと。**
+   opts.header で見出しを差し替えられる(同じ画面で見出しが変わる場合)。 */
+function enterView(key,opts){
+ VIEW_REGISTRY.forEach((v,k)=>{
+  if(k===key)return;
+  // 1つの画面の終了処理が例外を投げても、残りの画面は必ず閉じる
+  // (閉じ残しは画面の重なりとして必ず表に出るため、握り潰さず警告は出す)。
+  try{v.exit?.()}catch(e){console.warn('画面の終了処理で例外',k,e)}
+ });
+ // 画面をまたいで残ると重なるオーバーレイ。閉じるのは全画面共通。
+ document.getElementById('measureModal')?.setAttribute('hidden','');
+ // ナビの選択は排他。どのナビ群に置かれたボタンでも一度全部外す。
+ document.querySelectorAll('aside .nav-item,#nav button.db,#analysisNav button.db,#planNav button.db')
+  .forEach(b=>b.classList.remove('active'));
+ const def=VIEW_REGISTRY.get(key);
+ if(!def)return null;
+ if(def.bodyClass)document.body.classList.add(def.bodyClass);
+ if(def.nav)document.getElementById(def.nav)?.classList.add('active');
+ const h=opts?.header||def.header;
+ if(h)setHeaderContext(h[0],h[1]);
+ return def;
+}
+window.enterView=enterView;
 /* レコードのstatus文字列からバッジ用のCSSクラス/表示ラベルを求める共通関数。
    以前はcalendar-view.js/report-dashboard.jsに同一内容が重複定義され、
    records-store.jsは一覧行のレンダリングで同じ判定をインラインで

@@ -602,18 +602,11 @@
   };
  }
 
+ registerView({key:'schedule',bodyClass:'sc-mode',nav:'openSchedule',
+  header:['作業スケジュール','設備ごとの作業予定と実績'],exit:exitScheduleView});
+
  async function openScheduleView(){
-  window.exitCalendarView?.();
-  window.exitMasterMaint?.();
-  document.body.classList.remove('qa-mode','qa-view-raw');
-  document.getElementById('reportPanel')?.setAttribute('hidden','');document.body.classList.remove('rp-mode');
-  document.getElementById('dashboardPanel')?.setAttribute('hidden','');document.body.classList.remove('db-mode');
-  document.getElementById('recordModal')?.setAttribute('hidden','');
-  document.getElementById('measureModal')?.setAttribute('hidden','');
-  document.querySelectorAll('#nav button.db,#analysisNav button.db,#planNav button.db').forEach(b=>b.classList.remove('active'));
-  document.body.classList.add('sc-mode');
-  document.getElementById('openSchedule')?.classList.add('active');
-  setHeaderContext('作業スケジュール','設備ごとの作業予定と実績');
+  enterView('schedule');
   const panel=ensurePanel();panel.hidden=false;
 
   const am=window.accessMode||{mode:'edit',canFieldReorder:false,fieldReorderEquipment:''};

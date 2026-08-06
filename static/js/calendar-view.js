@@ -120,21 +120,11 @@
  window.exitCalendarView=exitCalendarView;
  if(typeof selectDb==='function'){const oldSelectDb=selectDb;selectDb=async function(k,b){exitCalendarView();return oldSelectDb(k,b)}}
 
+ registerView({key:'calendar',bodyClass:'cal-mode',nav:'openCalendar',
+  header:['実績カレンダー','この端末に保存された測定データ'],exit:exitCalendarView});
+
  async function openCalendarView(){
-  window.exitScheduleView?.();
-  window.exitMasterMaint?.();
-  document.body.classList.remove('qa-mode','qa-view-raw');
-  $id('qualityAnalysisPanel')?.setAttribute('hidden','');
-  document.body.classList.remove('rp-mode');
-  $id('reportPanel')?.setAttribute('hidden','');
-  document.body.classList.remove('db-mode');
-  $id('dashboardPanel')?.setAttribute('hidden','');
-  $id('openDashboard')?.classList.remove('active');
-  $id('recordModal')?.setAttribute('hidden','');
-  document.querySelectorAll('#nav button.db').forEach(b=>b.classList.remove('active'));
-  document.body.classList.add('cal-mode');
-  $id('openCalendar')?.classList.add('active');
-  setHeaderContext('実績カレンダー','この端末に保存された測定データ');
+  enterView('calendar');
   const panel=ensurePanel();panel.hidden=false;
   calState.selectedKey='';
   await ensureData(true);

@@ -286,6 +286,8 @@
   document.getElementById('openMasterMaint')?.classList.remove('active');
  }
  window.exitMasterMaint=exitMasterMaint;
+ registerView({key:'master',bodyClass:'mm-mode',nav:'openMasterMaint',
+  header:['マスタ管理','master.sqlite3'],exit:exitMasterMaint});
  function syncNav(){document.querySelectorAll('#masterMaintNav [data-master]').forEach(b=>b.classList.toggle('active',b.dataset.master===maintState.defKey))}
  function requireMaintUser(){const el=$('#masterUserId');const id=String(el?el.value:'').trim();if(!id){showToast('更新者IDを入力してください','マスタ更新には更新者IDが必要です。',4200);el&&el.focus();return null}setUserId(id);return id}
 
@@ -1819,21 +1821,8 @@
  }
 
  function openMasterMaint(){
-  // 他のメイン画面統合ビューを閉じる(schedule-view.jsのopenScheduleView等と
-  // 同じ「個別に他ビューを閉じる」方式に合わせる)。
-  window.exitScheduleView?.();
-  window.exitCalendarView?.();
-  document.body.classList.remove('qa-mode','qa-view-raw');
-  document.getElementById('reportPanel')?.setAttribute('hidden','');document.body.classList.remove('rp-mode');
-  document.getElementById('dashboardPanel')?.setAttribute('hidden','');document.body.classList.remove('db-mode');
-  document.getElementById('recordModal')?.setAttribute('hidden','');
-  document.getElementById('measureModal')?.setAttribute('hidden','');
-  document.querySelectorAll('#nav button.db,#analysisNav button.db,#planNav button.db').forEach(b=>b.classList.remove('active'));
-
+  enterView('master');
   const panel=ensureMaintPanel();
-  document.body.classList.add('mm-mode');
-  document.getElementById('openMasterMaint')?.classList.add('active');
-  setHeaderContext('マスタ管理','master.sqlite3');
   renderMaintNav();
   const uid=$('#masterUserId');if(uid)uid.value=currentUserId();
   if(!maintDefVisible(currentDef()))maintState.defKey=firstVisibleDefKey();

@@ -153,6 +153,14 @@ async function load(force){
    即座に描ける切替でオーバーレイを出すと、一瞬の点滅と表示待ちの描画
    フレームが挟まるぶん、速くなったのにかえって遅く見えるため。 */
 const tablesCache=new Map();   // テーブル構成は運用中に変わらないので保持する
+/* 一覧(データ一覧/仕掛/品質データ)。品質データを選んだときだけ品質分析の
+   パネルが上に付く(qa-mode)ので、一覧から他の画面へ移るときはそれも一緒に
+   畳む。以前はこの後始末を各画面のopenXxxが個別に書いており、
+   #qualityAnalysisPanelを実際に隠していたのは実績カレンダーだけだった。 */
+registerView({key:'list',exit:()=>{
+ document.body.classList.remove('qa-mode','qa-view-raw');
+ document.getElementById('qualityAnalysisPanel')?.setAttribute('hidden','');
+}});
 async function selectDb(k,b){
  const label=databaseLabel(k);
  return withWaiting({title:`${label}へ切り替えています`,detail:`接続先を確認しています: ${label}`,

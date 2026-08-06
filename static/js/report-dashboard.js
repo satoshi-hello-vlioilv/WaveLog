@@ -37,6 +37,7 @@
   document.body.classList.remove('rp-mode');
   const panel=$id('reportPanel');if(panel)panel.hidden=true;
  }
+ registerView({key:'report',bodyClass:'rp-mode',header:['測定帳票',''],exit:exitReportView});
  if(typeof selectDb==='function'){const old=selectDb;selectDb=async function(k,b){exitReportView();return old(k,b)}}
 
  function ensurePanel(){
@@ -524,21 +525,11 @@
   setTimeout(()=>{document.title=prevTitle},500);
  }
 
+ /* 帳票は測定画面から開く場合もある。重なって残らないよう#measureModalを
+    閉じるのはenterView()の共通処理(測定内容は呼び出し側で保存済み。
+    戻る操作で開き直す)。 */
  async function openReportView(){
-  window.exitCalendarView?.();
-  window.exitScheduleView?.();
-  window.exitMasterMaint?.();
-  document.body.classList.remove('qa-mode','qa-view-raw');
-  document.getElementById('dashboardPanel')?.setAttribute('hidden','');
-  document.body.classList.remove('db-mode');
-  document.getElementById('recordModal')?.setAttribute('hidden','');
-  /* 測定画面から開く場合もあるため、重なって残らないよう閉じる
-     (測定内容は呼び出し側で保存済み。戻る操作で開き直す)。 */
-  document.getElementById('measureModal')?.setAttribute('hidden','');
-  document.getElementById('openDashboard')?.classList.remove('active');
-  document.body.classList.add('rp-mode');
-  document.querySelectorAll('#nav button.db').forEach(b=>b.classList.remove('active'));
-  setHeaderContext('測定帳票','');
+  enterView('report');
   ensurePanel().hidden=false;
   setZoom(rpZoom);
   $id('reportSelectedTitle').textContent='ロットを選択してください';
@@ -824,6 +815,8 @@
   $id('openDashboard')?.classList.remove('active');
   const panel=$id('dashboardPanel');if(panel)panel.hidden=true;
  }
+ registerView({key:'dashboard',bodyClass:'db-mode',nav:'openDashboard',
+  header:['ダッシュボード','作業予定と測定実績の集計'],exit:exitDashboardView});
  if(typeof selectDb==='function'){const old=selectDb;selectDb=async function(k,b){exitDashboardView();return old(k,b)}}
 
  const AXIS_OPTS=[['time','時系列'],['equipment','設備'],['crewSize','作業人数'],['productType','品種（用途名・丈数×条数）'],['purposeName','用途名'],['operator','オペレータ'],['measureType','入力内容']];
@@ -1106,18 +1099,7 @@
  }
 
  async function openDashboardView(){
-  window.exitCalendarView?.();
-  window.exitScheduleView?.();
-  window.exitMasterMaint?.();
-  document.body.classList.remove('qa-mode','qa-view-raw');
-  document.getElementById('reportPanel')?.setAttribute('hidden','');
-  document.body.classList.remove('rp-mode');
-  document.getElementById('openReportList')?.classList.remove('active');
-  document.getElementById('recordModal')?.setAttribute('hidden','');
-  document.body.classList.add('db-mode');
-  document.querySelectorAll('#nav button.db').forEach(b=>b.classList.remove('active'));
-  $id('openDashboard')?.classList.add('active');
-  setHeaderContext('ダッシュボード','作業予定と測定実績の集計');
+  enterView('dashboard');
   const panel=ensurePanel();panel.hidden=false;
   // 自由集計側の初期条件は最初の1回だけ整えておく(タブを開いたときに
   // 条件未設定の空表示にならないようにする)。既定で見せるのは稼働状況(§9.64)。
