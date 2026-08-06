@@ -32,7 +32,8 @@
   **呼び出し側も`WL.enterView(...)`のように名前空間付きで書く**（どのファイルの
   機能に依存しているかが呼び出し箇所で分かるのが目的なので、定義がグローバル
   関数宣言でも素の名前では呼ばない）。現在`WL`にあるのは
-  `registerView`/`enterView`/`withInternalDbSwitch`/`isInternalDbSwitch`/`ttlCache`。
+  `registerView`/`enterView`/`withInternalDbSwitch`/`isInternalDbSwitch`/`ttlCache`/
+  `refreshScheduleIfOpen`。
 - **新しいキャッシュは`WL.ttlCache()`を使う**（`base.js`）。期限切れの判定・件数の
   上限・取得中のPromise共有（同時呼び出しを1回にまとめ、失敗したPromiseは
   捨てて再試行できるようにする）を持つ。**既存のキャッシュは置き換えない**

@@ -142,7 +142,16 @@ function markSyncResult(m,ok,error){
    (呼び出し元が既にreliablePut済みのmを渡す想定。ここでの再保存は
    syncStateだけが変わった差分を確実に永続化するため)。 */
 async function backupAndTrackSync(m){
- try{await backupRecord(m);markSyncResult(m,true)}
+ try{
+  await backupRecord(m);markSyncResult(m,true);
+  /* 作業スケジュールの実績突合はサーバーのバックアップを見る(§9.52)。保存で
+     その中身が変わったので、スケジュール側の予定キャッシュを捨てて次に開いた
+     ときに取り直させる。捨てないと「作業を始めた/終えたのにスケジュールが
+     前のまま」になる。削除(reliableDelete)は以前から捨てており、
+     **保存側だけ抜けていた**。 */
+  if(typeof window.invalidateSchedulePlanCache==='function')
+   window.invalidateSchedulePlanCache(m.registeredEquipment||m.settings?.registeredEquipment||undefined);
+ }
  catch(e){markSyncResult(m,false,e)}
  finally{try{await reliablePut(m)}catch(e){console.warn('syncState保存失敗',e)}}
  return m.syncState.status==='synced';
@@ -370,10 +379,17 @@ $('#backupNow').onclick=async()=>{
   else showToast('バックアップ失敗',`${m.basic.lotNo||''} / ${m.syncState?.lastError||''}（未同期として記録し、後で再送できます）`,7000);
  }catch(e){hideSaveOverlay();alert('バックアップ失敗: '+e.message)}
 };
-$('#discard').onclick=async()=>{if(await confirmModal('端末内の測定データを削除しますか？')){await reliableDelete(S.measure.id);await refreshDraftCount();$('#measureModal').hidden=true}};
+$('#discard').onclick=async()=>{if(await confirmModal('端末内の測定データを削除しますか？')){await reliableDelete(S.measure.id);await refreshDraftCount();$('#measureModal').hidden=true;WL.refreshScheduleIfOpen?.()}};
 $('#ngLot').onclick=registerNg;
 {const btn=$('#recordSyncNowBtn');if(btn)btn.onclick=()=>syncPendingRecords({silent:false})}
-async function closeMeasureModal(){if(measureDirty&&!(await confirmModal('保存されていない変更があります。破棄して閉じますか？')))return;$('#measureModal').hidden=true}
+/* 測定画面はスケジュール画面の上に重なって開く。閉じたときに下の
+   スケジュールを描き直さないと、作業を始めた/終えた結果が反映されないまま
+   前の並びが残る(キャッシュを捨てるだけでは、既に描かれている行は変わらない)。 */
+async function closeMeasureModal(){
+ if(measureDirty&&!(await confirmModal('保存されていない変更があります。破棄して閉じますか？')))return;
+ $('#measureModal').hidden=true;
+ WL.refreshScheduleIfOpen?.();
+}
 $('#closeModal').onclick=closeMeasureModal;$('.shade').onclick=closeMeasureModal;
 /* 編集中データ一覧と完了データ一覧は1つの統合リストとして表示する。
    statuses.editing/doneはそれぞれ独立したトグルで、両方ONにすると
@@ -494,7 +510,7 @@ function ensureEquipmentSettingsModal(){
  let modal=$('#appSettingsModal');
  if(modal&&$('#configuredEquipment')&&$('#equipmentSettingStatus')&&$('#saveAppSettings'))return modal;
  modal?.remove();
- const wrapper=document.createElement('div');wrapper.className='record-modal';wrapper.hidden=true;wrapper.id='appSettingsModal';wrapper.innerHTML=`<div class="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="equipmentSettingsTitle"><header><div><small>APPLICATION SETTINGS</small><h2 id="equipmentSettingsTitle">使用設備の設定</h2></div><button id="closeAppSettings" type="button" aria-label="閉じる">×</button></header><div class="settings-body"><p>この端末で測定する設備を登録します。登録設備は、仕掛データの設計コースとの照合と保存データの識別に使用します。</p><label>使用設備名<input autocomplete="off" id="configuredEquipment" placeholder="例: LS4" type="text"/></label><div class="setting-status warn" id="equipmentSettingStatus">使用設備は未登録です</div><div class="settings-actions"><button id="cancelAppSettings" type="button">キャンセル</button><button id="saveAppSettings" type="button">この設備を登録</button></div></div></div>`;
+ const wrapper=document.createElement('div');wrapper.className='record-modal';wrapper.hidden=true;wrapper.id='appSettingsModal';wrapper.innerHTML=`<div class="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="equipmentSettingsTitle"><header><div><h2 id="equipmentSettingsTitle">使用設備の設定</h2></div><button id="closeAppSettings" type="button" aria-label="閉じる">×</button></header><div class="settings-body"><p>この端末で測定する設備を登録します。登録設備は、仕掛データの設計コースとの照合と保存データの識別に使用します。</p><label>使用設備名<input autocomplete="off" id="configuredEquipment" placeholder="例: LS4" type="text"/></label><div class="setting-status warn" id="equipmentSettingStatus">使用設備は未登録です</div><div class="settings-actions"><button id="cancelAppSettings" type="button">キャンセル</button><button id="saveAppSettings" type="button">この設備を登録</button></div></div></div>`;
  document.body.append(wrapper);return wrapper;
 }
 function updateEquipmentEntryPoints(){

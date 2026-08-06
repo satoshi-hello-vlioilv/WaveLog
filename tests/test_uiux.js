@@ -56,11 +56,17 @@ let b=null;
  await page.click('#openDashboard');await page.waitForTimeout(3000);
  const head=await page.evaluate(()=>{
   const h=document.querySelector('#dashboardPanel .rp-head');const cs=getComputedStyle(h);
-  const h2=getComputedStyle(h.querySelector('h2'));
-  return {bg:cs.backgroundColor,pad:cs.paddingTop,margin:h2.marginTop,color:h2.color};
+  // パネル側は画面名を繰り返さない(ヘッダーの#fileNameが担う)。以前は
+  // ダッシュボード/実績カレンダー/マスタ管理が同じ名前を二重に出しており、
+  // メインの表示領域をそのぶん狭くしていた。
+  const screenName=document.querySelector('#fileName')?.textContent?.trim()||'';
+  const dup=[...document.querySelectorAll('#dashboardPanel h1,#dashboardPanel h2,#dashboardPanel h3')]
+   .map(x=>x.textContent.trim()).filter(t=>t===screenName);
+  return {bg:cs.backgroundColor,pad:cs.paddingTop,screenName,dup};
  });
- rec('パネル見出しに様式が当たっている(素の見出しではない)',
-   head.bg!=='rgba(0, 0, 0, 0)'&&head.margin==='0px',JSON.stringify(head));
+ rec('パネル見出しの帯に様式が当たっている(素の見出しではない)',
+   head.bg!=='rgba(0, 0, 0, 0)',JSON.stringify({bg:head.bg,pad:head.pad}));
+ rec('パネル側がヘッダーの画面名を繰り返さない',head.dup.length===0,JSON.stringify(head));
 
  // ---- §9.64 ダッシュボード ----
  const dash=await page.evaluate(()=>({

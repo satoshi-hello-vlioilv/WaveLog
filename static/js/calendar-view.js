@@ -132,9 +132,6 @@
   let panel=$id('calendarPanel');if(panel)return panel;
   panel=document.createElement('section');panel.className='cal-panel';panel.id='calendarPanel';panel.hidden=true;
   panel.innerHTML=`
-   <header class="rp-head">
-    <div class="rp-head-title"><h2>実績カレンダー</h2><span class="rp-sub">端末保存済みの測定データを、日ごとの作業実績として確認します。</span></div>
-   </header>
    <div class="cal-layout">
     <section class="cal-main">
      <div class="cal-toolbar">

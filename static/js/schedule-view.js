@@ -81,6 +81,15 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(typeof invalidateWorkable==='function')invalidateWorkable();
  }
  window.invalidateSchedulePlanCache=invalidatePlanCache;
+ /* 測定画面(スケジュールの上に重なる)を閉じたときに呼ばれる。作業の開始・
+    保存・完了はサーバーのバックアップを変えるが、既に描かれている行はそれを
+    知らない。スケジュールを開いたままなら描き直して即時に反映させる。
+    開いていなければ何もしない(次に開くときキャッシュ破棄済みなので取り直す)。 */
+ WL.refreshScheduleIfOpen=function(){
+  if(!document.body.classList.contains('sc-mode'))return;
+  if(scState.boardMode==='board')loadOverviewBoard();
+  else if(scState.equipment)refreshAll(true);
+ };
  function fmtFetchedAt(ts){
   if(!ts)return '';
   const min=Math.floor((Date.now()-ts)/60000);
@@ -491,7 +500,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(modal)return modal;
   modal=document.createElement('div');modal.className='sc-float-win';modal.id='scListModal';modal.hidden=true;
   modal.innerHTML=`
-   <div class="sc-float-header"><div><small>SIKALOTNOW</small><h2>仕掛一覧(ドラッグでスケジュールへ追加)</h2></div><button type="button" id="scListModalClose" title="閉じる">×</button></div>
+   <div class="sc-float-header"><div><h2>仕掛一覧(ドラッグでスケジュールへ追加)</h2></div><button type="button" id="scListModalClose" title="閉じる">×</button></div>
    <div class="sc-float-body" id="scListModalBody"></div>
    <!-- 下端の細い帯。一覧(#grid)の横スクロールバーとリサイズのつまみが
         同じ位置に重なると、角をドラッグしてもスクロールバーを掴んでしまい
@@ -2209,7 +2218,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(modal)return modal;
   modal=document.createElement('div');modal.className='sc-float-win';modal.id='scStopModal';modal.hidden=true;
   modal.innerHTML=`
-   <div class="sc-float-header"><div><small>STOP REASON</small><h2>設備停止を追加</h2></div><button type="button" id="scStopModalClose" title="閉じる">×</button></div>
+   <div class="sc-float-header"><div><h2>設備停止を追加</h2></div><button type="button" id="scStopModalClose" title="閉じる">×</button></div>
    <div class="sc-float-body" id="scStopModalBody"></div>
    <div class="sc-float-resize" title="ドラッグでサイズ変更"></div>`;
   document.body.appendChild(modal);
@@ -2269,7 +2278,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(modal)return modal;
   modal=document.createElement('div');modal.className='sc-float-win';modal.id='scColumnModal';modal.hidden=true;
   modal.innerHTML=`
-   <div class="sc-float-header"><div><small>LIST COLUMNS</small><h2>仕掛一覧に表示する列</h2></div><button type="button" id="scColumnModalClose" title="閉じる">×</button></div>
+   <div class="sc-float-header"><div><h2>仕掛一覧に表示する列</h2></div><button type="button" id="scColumnModalClose" title="閉じる">×</button></div>
    <div class="sc-float-body" id="scColumnModalBody"></div>
    <div class="sc-float-foot" id="scColumnModalFoot"></div>
    <div class="sc-float-resize" title="ドラッグで大きさを変えられます"></div>`;
@@ -2360,7 +2369,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   // 以前は本文の末尾に置いていたため、候補が多い設備では最後まで
   // スクロールしないと保存ボタンが見えず見逃しやすかった。
   modal.innerHTML=`
-   <div class="sc-float-header"><div><small>CONTENT</small><h2>「内容」欄に出す項目</h2></div><button type="button" id="scContentModalClose" title="閉じる">×</button></div>
+   <div class="sc-float-header"><div><h2>「内容」欄に出す項目</h2></div><button type="button" id="scContentModalClose" title="閉じる">×</button></div>
    <div class="sc-float-body" id="scContentModalBody"></div>
    <div class="sc-float-foot" id="scContentModalFoot"></div>
    <div class="sc-float-resize" title="ドラッグで大きさを変えられます"></div>`;

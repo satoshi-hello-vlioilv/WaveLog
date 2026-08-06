@@ -112,7 +112,7 @@
   panel=document.createElement('section');panel.className='mm-panel';panel.id='masterMaintPanel';panel.hidden=true;
   panel.innerHTML=`<div class="mm-dialog">
    <header class="mm-head">
-    <div class="mm-head-title"><h2>マスタ管理</h2><span class="mm-sub">登録内容の追加・編集・無効化。更新はすべて更新者IDとともに記録されます。</span></div>
+    <div class="mm-head-title"><span class="mm-sub">登録内容の追加・編集・無効化。更新はすべて更新者IDとともに記録されます。</span></div>
     <label class="mm-head-user">更新者ID<input id="masterUserId" type="text" autocomplete="off" placeholder="社員番号など"></label>
     <button id="closeMasterMaint" class="mm-close" type="button" aria-label="マスタ管理を閉じる" title="マスタ管理を閉じる">×</button>
    </header>
@@ -533,7 +533,7 @@
   modal=document.createElement('div');
   modal.className='record-modal';modal.id='pathPickerModal';modal.hidden=true;
   modal.innerHTML=`<div class="settings-dialog pathpick-dialog" role="dialog" aria-modal="true" aria-labelledby="pathPickerTitle">
-    <header><div><small>SELECT PATH</small><h2 id="pathPickerTitle">場所を選択</h2></div>
+    <header><div><h2 id="pathPickerTitle">場所を選択</h2></div>
      <button id="pathPickerClose" type="button" aria-label="閉じる">×</button></header>
     <div class="settings-body pathpick-body">
      <div class="pathpick-bar">

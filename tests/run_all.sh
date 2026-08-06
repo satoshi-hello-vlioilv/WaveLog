@@ -157,7 +157,7 @@ for t in test_stopcat test_workable test_wkbg test_orphan test_audit test_sub te
          test_calscale test_hdr test_listcache test_ttlcache test_flows; do run $NODE $t.js; done
 
 echo "--- スケジュール (テスト側でモードを切り替える) ---"
-for t in test_screport test_startwork test_sccat test_scbalance test_scbatch \
+for t in test_screport test_startwork test_scsync test_sccat test_scbalance test_scbatch \
          test_screorder test_scperm test_scperf test_wkfast; do run $NODE $t.js; done
 
 echo "--- スケジュール (scheduleモード固定) ---"

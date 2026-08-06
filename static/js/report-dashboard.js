@@ -479,7 +479,7 @@
   const showProduct=s.measureType==='揃い/肉厚/長さ'||hasProductData;
   return `
    <div class="rp-report-head">
-    <div><small>MEASUREMENT REPORT</small><h2>${esc(b.lotNo||x.id)}</h2></div>
+    <div><h2>${esc(b.lotNo||x.id)}</h2></div>
     <div class="rp-report-head-meta"><span class="rp-status-badge ${statusClass(x.status)}">${esc(statusLabel(x.status))}</span><span>帳票作成: ${esc(fmtDT(new Date().toISOString()))}</span></div>
    </div>
    <div class="rp-zone rp-zone-3">
@@ -832,7 +832,6 @@
   panel=document.createElement('section');panel.className='db-panel';panel.id='dashboardPanel';panel.hidden=true;
   panel.innerHTML=`
     <header class="rp-head">
-     <div class="rp-head-title"><h2>ダッシュボード</h2><span class="rp-sub" id="dbHeadSub">いま設備がどう動いているかを、作業予定と測定実績から見ます。</span></div>
      <div class="rp-head-actions">
       <div class="db-viewtabs" role="tablist" aria-label="表示の切り替え">
        <button type="button" role="tab" data-dbview="status" class="active" title="作業予定と実績から、いまの稼働状況をまとめて表示します">稼働状況</button>
@@ -921,9 +920,6 @@
   });
   $id('dbStatusView').hidden=(dbView!=='status');
   $id('dbPivotView').hidden=(dbView!=='pivot');
-  $id('dbHeadSub').textContent=dbView==='status'
-   ?'いま設備がどう動いているかを、作業予定と測定実績から見ます。'
-   :'期間・軸・指標を選んで、端末に保存された測定データを自由に集計します。';
   if(dbView==='status')runStatusView();else runDashboard();
  }
 
