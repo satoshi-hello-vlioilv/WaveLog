@@ -89,6 +89,12 @@ function applyContextSnapshot(x){
     先頭の'-'は付けない——「指定なし」が既にその意味の選択肢のため。 */
  WL.optionList('burr',x.burr_types?.length?x.burr_types:['上バリ揃え','下バリ揃え','指定なし'],m.settings.burr);
  WL.optionList('coilStop',x.coil_stops?.length?x.coil_stops:['内巻両面テープ','指定なし'],m.settings.coilStop);
+ /* この設備で割れる最大条数(設備マスタ)。横割数の入力上限と条割の上限確認に
+    使う。取得できない場合は触らない(既定=構造上の上限40で動く)。 */
+ if(Number.isFinite(Number(x.max_strips))&&Number(x.max_strips)>=1){
+  m.settings.maxStrips=Math.min(40,Math.round(Number(x.max_strips)));
+  if(typeof applyMaxStripsToInputs==='function')applyMaxStripsToInputs();
+ }
  if(x.quality?.length){m.qualityInfo=qualityText(x.quality)}
  $('#qualityInfo').value=m.qualityInfo||'異常情報なし';if($('#motherQualityInfo')){$('#motherQualityInfo').value=$('#qualityInfo').value;if($('#motherQualitySum'))$('#motherQualitySum').textContent=$('#qualityInfo').value.split('\n')[0]}
  $('#masterDiagnostic').textContent=JSON.stringify(x.diagnostics||{},null,2);

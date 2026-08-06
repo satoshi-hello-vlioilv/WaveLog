@@ -58,13 +58,26 @@
      内部エイリアスであり、Accessの生カラム名ではなかった)。全角/半角ゆれや
      旧エイリアスも候補として保持し、複数パターンを試す。 */
   /* 上限。**分割数(条数)とロット数は別物**なので値も別に持つ。
-     ・条数   … スリットで割った条の数。横割数(#horizontalCount)と同じ上限40。
-     ・ロット数 … その条が属する子ロットの数。1つの子ロットを何条にも割れるので
-                  条数以下になる。作業として成立する上限は9ロット。
+     ・条数   … 各子ロットの条数の合計。**設備ごとの上限**(設備マスタの
+                「最大条数」)。現在の主対象LS4が40条で、これが測定データの
+                構造上の上限(STRIP_LIMIT)でもある。他の設備はこれより小さい。
+     ・ロット数 … 親ロットを分けた子ロットの数。1つの子ロットを何条にも
+                  割れるので条数以下になる。作業として成立する上限は9ロット。
      以前は「8を超える分割は設定できません」という1つの上限しか持たず、しかも
-     数えていたのは条の連続区間の数だった(§異幅分割)。 */
-  const MAX_STRIPS=40;
+     数えていたのは条の連続区間の数だった。 */
+  const STRIP_LIMIT=40;              // 測定データ(40列)と条ストリップ(20行×2列)の構造上の上限
   const MAX_CHILD_LOTS=9;
+  const CHILD_SLOTS=10;              // 子カード/切断巾の枠数(データ側の器。ロット数の上限とは別)
+  /* この設備で割れる最大条数。/api/measurement/context が設備マスタから返した値を
+     records-store.js が S.measure.settings.maxStrips へ入れる。取れないうちは
+     構造上の上限で動かす(狭める方向の設定なので、未取得のあいだ緩いほうへ
+     倒しても取り違えた条数を保存することはない——保存時に再確認する)。 */
+  function maxStripsForEquipment(){
+    const n=Number(S.measure?.settings?.maxStrips);
+    return Number.isFinite(n)&&n>=1?Math.min(n,STRIP_LIMIT):STRIP_LIMIT;
+  }
+  window.WL=window.WL||{};
+  window.WL.maxStripsForEquipment=maxStripsForEquipment;
   const CHILD_CARD_PREFIXES=['親子管理_子カード','親子管理_子ｶｰﾄﾞ','KOCARD'];
   const CHILD_CUTWIDTH_PREFIXES=['コンマ5本分割_切断巾','ｺﾝﾏ5本分割_切断巾','K05W'];
   const CHILD_COUNT_PREFIXES=['YK','K05JO'];
@@ -96,7 +109,7 @@
     lotNo=lotNo!==undefined?lotNo:String(S.measure?.basic?.lotNo||'');
     if(!lotNo)return [];
     const out=[];
-    for(let i=1;i<=10;i++){
+    for(let i=1;i<=CHILD_SLOTS;i++){
       const raw=childCardValue(r,i);
       if(raw===undefined)break;
       const n=Number(raw);
@@ -151,11 +164,11 @@
   // 意味のある値(0以外)があれば分割ありとみなす。
   function rowHasSplitData(row){
     if(!row)return false;
-    for(let i=1;i<=10;i++){
+    for(let i=1;i<=CHILD_SLOTS;i++){
       const v=childCardValue(row,i);
       if(v!==undefined&&Number(v)!==0)return true;
     }
-    for(let i=1;i<=10;i++){
+    for(let i=1;i<=CHILD_SLOTS;i++){
       const v=childCutWidthValue(row,i);
       if(v!==undefined&&Number(v)!==0)return true;
     }
@@ -170,22 +183,29 @@
      判定材料が無ければwidthPattern='unknown'とする。 */
   function analyzeRowSplit(row){
     if(!row||!rowHasSplitData(row))return{hasSplit:false,lotCount:1,stripCount:1,widthPattern:'none'};
-    /* **ロット数と分割数(条数)は別物**。
-       ・ロット数 = 子ロットの数。親子管理_子カード(またはLTNO)から数える。上限9。
-       ・分割数   = 条の数。コンマ5本分割_切断巾から数える。上限40(横割数と同じ)。
+    /* **ロット数と分割数(条数)は別物**。データ上の持ち方が違う。
+       ・ロット数 = 子ロットの数。親子管理_子カード / コンマ5本分割_切断巾 の
+                    「枠」が1枠=1子ロット(枠は10まで、作業として成立するのは9)。
+                    切断巾N はその子ロットの製品幅。
+       ・条数     = 各子ロットが持つ条数(YK・K05JO、無ければ横割数)の**合計**。
+                    1つの子ロットを何条にも割れるので、枠の数とは一致しない。
        以前はこの2つを Math.max(子カード数, 切断巾の件数) でひとまとめにして
-       「Nロット」と呼んでいたため、1つの子ロットを何条にも割った品では
-       条数がそのままロット数として表示されていた(例: 2ロットを6条に割った品を
-       「6ロット」と表示)。数える対象を分けて、呼び名どおりの値を返す。 */
+       「Nロット」と呼んでいたため、条数がロット数として表示されていた。 */
     let cardCount=0;
-    for(let i=1;i<=10;i++){const v=childCardValue(row,i);if(v!==undefined&&Number(v)!==0)cardCount++}
-    const cutWidths=[];
-    for(let i=1;i<=10;i++){const w=childCutWidthValue(row,i);if(w!==undefined&&Number(w)!==0)cutWidths.push(Number(w))}
+    for(let i=1;i<=CHILD_SLOTS;i++){const v=childCardValue(row,i);if(v!==undefined&&Number(v)!==0)cardCount++}
+    const cutWidths=[],slots=[];
+    for(let i=1;i<=CHILD_SLOTS;i++){
+      const w=childCutWidthValue(row,i);
+      if(w!==undefined&&Number(w)!==0){cutWidths.push(Number(w));slots.push(i)}
+    }
     // 子ロット番号として実際に復元できた数を優先する(子カードの枠が埋まって
     // いても同じ番号を指していれば1ロット)。復元できなければ枠の数で代用する。
     const lots=expectedChildLotsForRow(row,typeof pick==='function'?String(pick(row,'lotNo')||''):'');
-    const lotCount=Math.min(MAX_CHILD_LOTS,Math.max(lots.length||cardCount,1));
-    const stripCount=Math.min(MAX_STRIPS,Math.max(cutWidths.length,lotCount,1));
+    const lotCount=Math.max(lots.length||cardCount||cutWidths.length,1);
+    // 条数は枠ごとの条数の合計。枠に条数が入っていなければ1条として数える
+    // (childCountの安全側フォールバックと同じ)。
+    const usedSlots=slots.length?slots:Array.from({length:Math.max(cardCount,1)},(_,i)=>i+1);
+    const stripCount=Math.max(usedSlots.reduce((a,i)=>a+(childCount(i,row)||0),0),lotCount,1);
     let widthPattern='unknown';
     if(cutWidths.length>=2)widthPattern=cutWidths.every(w=>Math.abs(w-cutWidths[0])<0.05)?'same':'different';
     return{hasSplit:true,lotCount,stripCount,widthPattern};
@@ -911,7 +931,8 @@
        9区間になっただけで拒否されていた(ロットは2つ・条も9で、どちらの上限にも
        掛かっていない)。 */
     const lotCount=new Set(groups.map(g=>g.lot).filter(Boolean)).size;
-    if(total>MAX_STRIPS){alert(`条は最大${MAX_STRIPS}条までです（現在 ${total}条）。`);return}
+    const maxStrips=maxStripsForEquipment();
+    if(total>maxStrips){alert(`この設備で割れるのは最大${maxStrips}条までです（現在 ${total}条）。設備ごとの上限はマスタ管理 > 設備の「最大条数」で変更できます。`);return}
     if(lotCount>MAX_CHILD_LOTS){alert(`1つの親ロットを分ける子ロットは最大${MAX_CHILD_LOTS}ロットまでです（現在 ${lotCount}ロット）。`);return}
     const splitGroups=groups.map(g=>({lot:g.lot,count:g.count,base:g.source?.base||null,tol:g.source?.tolData||null,missing:!!g.source?.missing}));
     const positionGroup=[];splitGroups.forEach((g,gi)=>{for(let k=0;k<g.count;k++)positionGroup.push(gi)});

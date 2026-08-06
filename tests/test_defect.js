@@ -238,18 +238,74 @@ let b=null;
      1つの子ロットを何条にも割れるので、条数をロット数として数えてはいけない。
      子カード2枠(=2ロット)・切断巾6枠(=6条)の行で、両者が分かれることを見る。 */
   const counts=await page.evaluate(()=>{
+   /* データ上の持ち方:
+      ・切断巾N / 子カードN の「枠」1つ = 子ロット1つ(枠は10まで)
+      ・各枠の条数は YKN / K05JON。条数はその合計。
+      ここでは3ロット(枠3つ)で条数 4+6+2=12 の行を作る。 */
    const row={'ロット番号':'L00001'};
-   for(let i=1;i<=2;i++)row['親子管理_子カード'+i]=i;
-   for(let i=1;i<=6;i++)row['コンマ5本分割_切断巾'+i]=100+i;
+   [1,2,3].forEach(i=>{row['親子管理_子カード'+i]=i;row['コンマ5本分割_切断巾'+i]=100+i});
+   row['YK1']=4;row['YK2']=6;row['YK3']=2;
    const a=window.analyzeRowSplit(row);
-   // 分割データが無い行は分割なし
+   // 条数フィールドが無い場合は1枠=1条として安全側に数える
+   const row2={'ロット番号':'L00003'};
+   [1,2].forEach(i=>{row2['親子管理_子カード'+i]=i;row2['コンマ5本分割_切断巾'+i]=200+i});
+   const c=window.analyzeRowSplit(row2);
    const b=window.analyzeRowSplit({'ロット番号':'L00002'});
-   return {a,b};
+   return {a,b,c};
   });
-  rec('ロット数は子カードから数える(条数を流用しない)',
-   counts.a.lotCount===2,JSON.stringify(counts.a));
-  rec('条数は切断巾から数える',counts.a.stripCount===6,JSON.stringify(counts.a));
+  rec('ロット数は子ロットの枠の数(切断巾＝ロットの分割数)',
+   counts.a.lotCount===3,JSON.stringify(counts.a));
+  rec('条数は各子ロットの条数の合計',counts.a.stripCount===12,JSON.stringify(counts.a));
+  rec('条数が入っていなければ1枠=1条で安全側に数える',
+   counts.c.lotCount===2&&counts.c.stripCount===2,JSON.stringify(counts.c));
   rec('分割データが無ければ分割なし',counts.b.hasSplit===false,JSON.stringify(counts.b));
+
+  /* ---- 6) 最大条数は設備マスタから ---- */
+  const eq=await page.evaluate(async()=>{
+   const r=await (await fetch('/api/equipment-master')).json();
+   return {ok:r.ok,limit:r.stripLimit,def:r.defaultMaxStrips,
+           sample:(r.items||[])[0]||null,
+           hasField:(r.items||[]).every(i=>'maxStrips' in i&&'maxStripsEffective' in i)};
+  });
+  rec('設備マスタが最大条数を返す',eq.ok&&eq.hasField,JSON.stringify(eq).slice(0,160));
+  rec('構造上の上限と既定値を返す',eq.limit===40&&eq.def===40,`limit=${eq.limit} 既定=${eq.def}`);
+
+  const eqSave=await page.evaluate(async()=>{
+   const post=(u,b)=>fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},
+     body:JSON.stringify(Object.assign({user_id:'tests'},b))}).then(r=>r.json());
+   const before=await (await fetch('/api/equipment-master')).json();
+   const target=(before.items||[]).find(i=>i.name==='テスト設備A');
+   if(!target)return {skip:true};
+   const r1=await post('/api/equipment-master/update',{id:target.id,name:'テスト設備A',maxStrips:12});
+   const mid=await (await fetch('/api/equipment-master')).json();
+   const after=(mid.items||[]).find(i=>i.id===target.id);
+   // 上限(40)を超える指定は丸める
+   await post('/api/equipment-master/update',{id:target.id,name:'テスト設備A',maxStrips:99});
+   const over=((await (await fetch('/api/equipment-master')).json()).items||[]).find(i=>i.id===target.id);
+   // 空欄へ戻すと「未設定＝既定」
+   await post('/api/equipment-master/update',{id:target.id,name:'テスト設備A',maxStrips:''});
+   const cleared=((await (await fetch('/api/equipment-master')).json()).items||[]).find(i=>i.id===target.id);
+   return {ok:r1.ok,saved:after?.maxStrips,savedEff:after?.maxStripsEffective,
+           over:over?.maxStrips,cleared:cleared?.maxStrips,clearedEff:cleared?.maxStripsEffective};
+  });
+  rec('設備ごとに最大条数を保存できる',
+   eqSave.skip||(eqSave.saved===12&&eqSave.savedEff===12),JSON.stringify(eqSave));
+  rec('構造上の上限(40)を超える指定は丸める',eqSave.skip||eqSave.over===40,JSON.stringify(eqSave));
+  rec('空欄へ戻すと未設定(既定40)になる',
+   eqSave.skip||(eqSave.cleared===''&&eqSave.clearedEff===40),JSON.stringify(eqSave));
+
+  const applied=await page.evaluate(()=>{
+   S.measure.settings.maxStrips=12;
+   applyMaxStripsToInputs();
+   const el=document.getElementById('horizontalCount');
+   const before=el.value;
+   el.value='30';el.dispatchEvent(new Event('change',{bubbles:true}));
+   const after=el.value;
+   return {max:el.max,title:el.title,before,after,limit:WL.maxStripsForEquipment()};
+  });
+  rec('横割数の入力上限が設備の最大条数になる',applied.max==='12',JSON.stringify(applied));
+  rec('上限を超える条数は入力時に戻す',applied.after==='12',JSON.stringify(applied));
+  rec('条割の上限判定も設備の最大条数を見る',applied.limit===12,String(applied.limit));
 
   // 仕掛一覧のセルも「Nロット/M条」で言い分ける
   await page.evaluate(()=>{document.getElementById('measureModal').hidden=true});

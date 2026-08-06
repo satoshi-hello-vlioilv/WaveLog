@@ -32,8 +32,11 @@
    fields:[{k:'name',label:'コイル止め',required:true,key:true},{k:'note',label:'備考'}],
    cols:[{k:'name',label:'コイル止め',grow:2},{k:'note',label:'備考',grow:3}]},
   {group:'equip',key:'equipment',label:'設備',icon:'設',endpoint:'/api/equipment-master',hasDelete:true,
-   fields:[{k:'name',label:'設備名',required:true,key:true}],
-   cols:[{k:'name',label:'設備名',grow:2}]},
+   fields:[{k:'name',label:'設備名',required:true,key:true},
+           {k:'maxStrips',label:'最大条数',type:'number',min:1,max:40,
+            hint:'この設備で幅方向に割れる条数の上限。空欄なら40（測定データの構造上の上限）。'}],
+   cols:[{k:'name',label:'設備名',grow:2},{k:'maxStrips',label:'最大条数',grow:1,format:'maxStrips'}],
+   hint:'「最大条数」は幅分割（条割）で割れる条数の上限です。設備によって割れる本数が違うため設備ごとに登録します。空欄のままなら40条（測定データの構造上の上限）として扱います。子ロットの数（最大9ロット）とは別の値です。'},
   {group:'system',key:'accessPermission',label:'アクセス権限',icon:'権',endpoint:'/api/access-permission-master',hasDelete:true,
    fields:[{k:'loginId',label:'ログインID',key:true},{k:'pcName',label:'PC名',key:true},
            {k:'canEdit',label:'編集可否',type:'select',options:['編集可','閲覧のみ']},
@@ -240,6 +243,7 @@
  /* 一覧の表示用テキスト。保存値そのままだと '*' が生で見えて意味が伝わらない。 */
  function cellText(col,value){
   const v=String(value??'');
+  if(col.format==='maxStrips')return v.trim()===''?'40（既定）':v;
   if(col.format==='equipmentTarget'){
    if(!v.trim())return '';
    return v.trim()===EQUIPMENT_ALL?'すべての設備':v.replace(/、/g,',').split(',').map(s=>s.trim()).filter(Boolean).join(' / ');

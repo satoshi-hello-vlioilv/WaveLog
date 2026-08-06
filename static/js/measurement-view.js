@@ -72,7 +72,21 @@ function collect(){
 function activateWorkspace(name){document.querySelectorAll('[data-worktab]').forEach(b=>b.classList.toggle('active',b.dataset.worktab===name));document.querySelectorAll('[data-workpanel]').forEach(p=>p.hidden=p.dataset.workpanel!==name)}
 /* 丈位置・条数のセレクト内容とフラットネス備考の入出力。 */
 function updateLengthOptions(count){const el=$('#lengthPos');if(!el)return;const current=el.value||S.measure?.settings?.lengthPos||'1(頭)',n=Math.max(1,Math.min(9,+count||1)),values=[];for(let i=1;i<=n;i++)values.push(`${i}(頭)`);values.push(`${n}(尾)`);el.innerHTML=[...new Set(values)].map(v=>`<option>${v}</option>`).join('');el.value=[...el.options].some(o=>o.value===current)?current:values[0]}
-function updateCoilOptions(count){const el=$('#coilNo');if(!el)return;const n=Math.max(1,Math.min(40,+count||1)),current=+el.value||1;el.innerHTML=Array.from({length:n},(_,i)=>`<option value="${i+1}">${i+1}条</option>`).join('');el.value=Math.min(current,n);loadFlatComment()}
+/* 横割数(条数)の入力上限を、この設備の最大条数(設備マスタ)へ合わせる。
+   設備ごとに割れる条数が違うため、40固定だと他設備で入れられてしまう。
+   マスタが未設定/未取得のときは構造上の上限(40)のまま。 */
+function currentMaxStrips(){
+ const n=Number(S.measure?.settings?.maxStrips);
+ return Number.isFinite(n)&&n>=1?Math.min(40,Math.round(n)):40;
+}
+function applyMaxStripsToInputs(){
+ const max=currentMaxStrips(),el=$('#horizontalCount');
+ if(!el)return;
+ el.max=String(max);
+ el.title=`この設備で割れる最大条数は${max}条です（マスタ管理 > 設備の「最大条数」）。`;
+ if(Number(el.value)>max){el.value=String(max);if(typeof markDirty==='function')markDirty()}
+}
+function updateCoilOptions(count){const el=$('#coilNo');if(!el)return;const n=Math.max(1,Math.min(currentMaxStrips(),+count||1)),current=+el.value||1;el.innerHTML=Array.from({length:n},(_,i)=>`<option value="${i+1}">${i+1}条</option>`).join('');el.value=Math.min(current,n);loadFlatComment()}
 /* v35: フラットネスは入力内容(measureType)の一項目として、巻ずれ・テレスコープと
    同じ条グリッドで判定記号(〇/△/×)を入力する形に変更。備考のみ対象条を選んで
    入力するミニパネルとして残す（#coilNo/#coilCommentはフラットネス選択時のみ
@@ -412,5 +426,14 @@ document.querySelectorAll('[data-worktab]').forEach(b=>b.onclick=()=>activateWor
 bindTabs('left','left');
 $('#reloadMaster').onclick=()=>loadMeasurementContext(true);
 $('#verticalCount').addEventListener('change',()=>{updateLengthOptions($('#verticalCount').value);renderMeasureGrid()});
-$('#horizontalCount').addEventListener('change',()=>{updateCoilOptions($('#horizontalCount').value);renderMeasureGrid()});
+$('#horizontalCount').addEventListener('change',()=>{
+ /* 設備ごとの最大条数を超えた入力はその場で戻す。max属性だけだとスピナーは
+    止まるが、手打ち・貼り付けは通ってしまう。 */
+ const el=$('#horizontalCount'),max=currentMaxStrips();
+ if(Number(el.value)>max){
+  el.value=String(max);
+  showToast?.('条数を上限に合わせました',`この設備で割れるのは最大${max}条です。`,4000);
+ }
+ updateCoilOptions(el.value);renderMeasureGrid();
+});
 function lockCounts(){const has=Object.values(S.measure.measurements).some(a=>a.flat().some(v=>v!==''));$('#verticalCount').disabled=has;$('#horizontalCount').disabled=has}

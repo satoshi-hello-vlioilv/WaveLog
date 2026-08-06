@@ -24,6 +24,7 @@ from ..db_access import (
 )
 from ..repositories.master_repo import (
  EQUIPMENT_MASTER_TABLE, ensure_equipment_master_table, normalize_equipment_name, equipment_master_rows,
+ MAX_STRIPS_COLUMN, STRIP_LIMIT, DEFAULT_MAX_STRIPS, clamp_max_strips,
  OPERATOR_MASTER_TABLE, ensure_operator_master_table, normalize_operator_name, operator_master_rows,
  OPERATOR_EQUIPMENT_TABLE, ensure_operator_equipment_table, operator_equipment_map, set_operator_equipment,
  rename_equipment_references,
@@ -50,8 +51,12 @@ def equipment_master_list():
   path=DBS['MASTER']['path']
   with connect(path,False) as c:
    before=EQUIPMENT_MASTER_TABLE in tables(c);rows=equipment_master_rows(c)
-   items=[{'id':r[0],'name':str(r[1] or '').strip(),'order':r[2] or 0,'active':True,'updated_at':r[4].isoformat() if r[4] else None,'updated_by':(str(r[5]).strip() if len(r)>5 and r[5] else '')} for r in rows]
-  return jsonify(ok=True,items=items,table=EQUIPMENT_MASTER_TABLE,created=not before,empty=len(items)==0,master_path=str(path))
+   items=[{'id':r[0],'name':str(r[1] or '').strip(),'order':r[2] or 0,'active':True,'updated_at':r[4].isoformat() if r[4] else None,'updated_by':(str(r[5]).strip() if len(r)>5 and r[5] else ''),
+            # 最大条数は未設定なら空で返す(画面側が「既定40」と補って見せる)。
+            'maxStrips':('' if (len(r)<7 or r[6] in (None,'')) else int(r[6])),
+            'maxStripsEffective':clamp_max_strips(r[6] if len(r)>6 else None)} for r in rows]
+  return jsonify(ok=True,items=items,table=EQUIPMENT_MASTER_TABLE,created=not before,empty=len(items)==0,
+                 stripLimit=STRIP_LIMIT,defaultMaxStrips=DEFAULT_MAX_STRIPS,master_path=str(path))
  except Exception as e:return jsonify(error=f'設備マスタ読込失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
 
 @bp.post('/api/equipment-master')
@@ -101,14 +106,14 @@ def equipment_master_register():
     cur.execute('UPDATE [設備マスタ] SET [設備名]=?,[更新者ID]=?,[更新日時]=Now() WHERE [設備ID]=?',[retired_name,uid,existing[0]])
     renamed=rename_equipment_references(c,name,retired_name)
     cur.execute('SELECT Max([表示順]) FROM [設備マスタ]');maximum=cur.fetchone()[0];order=int(maximum or 0)+10
-    cur.execute('INSERT INTO [設備マスタ] ([設備名],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,-1,?,?,Now(),Now())',[name,order,uid,uid])
+    cur.execute('INSERT INTO [設備マスタ] ([設備名],[最大条数],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,-1,?,?,Now(),Now())',[name,(None if str(x.get('maxStrips') or '').strip()=='' else clamp_max_strips(x.get('maxStrips'))),order,uid,uid])
     c.commit()
     return jsonify(ok=True,name=name,registered=True,reused=False,retiredAs=retired_name,retiredReferences=renamed,updated_by=uid,
                     message=f'「{name}」を新しい設備として登録しました。過去の設備は「{retired_name}」として履歴に残ります。')
 
    # 同名の既存行が無い場合: 通常の新規登録。
    cur.execute('SELECT Max([表示順]) FROM [設備マスタ]');maximum=cur.fetchone()[0];order=int(maximum or 0)+10
-   cur.execute('INSERT INTO [設備マスタ] ([設備名],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,-1,?,?,Now(),Now())',[name,order,uid,uid]);c.commit()
+   cur.execute('INSERT INTO [設備マスタ] ([設備名],[最大条数],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,-1,?,?,Now(),Now())',[name,(None if str(x.get('maxStrips') or '').strip()=='' else clamp_max_strips(x.get('maxStrips'))),order,uid,uid]);c.commit()
    return jsonify(ok=True,name=name,registered=True,reused=False,updated_by=uid,
                    message='設備マスタへ新規登録しました。次回から設備リストに表示されます。')
  except Exception as e:return jsonify(error=f'設備マスタ登録失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
@@ -125,7 +130,10 @@ def equipment_master_update():
    dup=next((r for r in rows if normalize_equipment_name(r[1])==target and str(r[0])!=str(eid)),None)
    if dup:return jsonify(error=f'同名の設備が既に存在するため変更できません: {str(dup[1]).strip()}'),409
    current=next((r for r in rows if str(r[0])==str(eid)),None);old_name=str(current[1]).strip() if current and current[1] else ''
-   cur.execute('UPDATE [設備マスタ] SET [設備名]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [設備ID]=?',[name,uid,eid])
+   # 最大条数: 空欄は「未設定＝既定値」の意味なのでNULLへ戻す(0を入れない)。
+   raw_max=str(x.get('maxStrips') or '').strip()
+   max_strips=None if raw_max=='' else clamp_max_strips(raw_max)
+   cur.execute('UPDATE [設備マスタ] SET [設備名]=?,[最大条数]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [設備ID]=?',[name,max_strips,uid,eid])
    # 設備名は他マスタ(オペレータ設備マスタ等、EQUIPMENT_NAME_REFERENCES参照)から
    # 文字列で参照されているため、改名時はそちら側も追従させる(改名連動)。
    renamed=rename_equipment_references(c,old_name,name) if old_name else 0
