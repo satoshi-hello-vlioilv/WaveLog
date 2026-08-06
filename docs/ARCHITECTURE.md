@@ -240,8 +240,35 @@ API経由でRNE(Navigator問い合わせ定義)を実行し、ローカルSQLite
 | `base.js` | `S`(状態)・`api`・`esc`・`aliases`/`pick`・`fmtDim`・`showToast`・`normalizedFieldName`・`sourceField`・使用設備/ユーザーIDの取得・`durationMs` |
 | `list-view.js` | `init`・`selectDb`/`selectTable`/`load`・`fetchTableData`(取得キャッシュ。`filters.js`の`load()`と共用)・`renderGrid`・更新履歴モーダル・検索/ページャ |
 | `measurement-view.js` | `ensureMeasureShape`・`collect`・`renderMeasurement`・各パネル描画（品質等級/コース/製品丈/作業時間）・入力検証（`updateValidationVisuals`）・`updateMeasurementHeading` |
-| `measurement-input.js` | `deviceParse`・`processDeviceInput`・`focusCurrent`・`renderMeasureGrid(Vertical)`・`judgeInput`・公差計算（`toleranceDetail`/`toleranceDataForSource`/`compactTolerance*`） |
+| `measurement-input.js` | `deviceParse`・`processDeviceInput`・`focusCurrent`・`renderMeasureGrid(Vertical)`・`judgeInput`・公差計算（`toleranceDetail`/`toleranceDataForSource`/`compactTolerance*`）・公差数直線の値→縦位置の写像（`WL.toleranceScaleView`、下記） |
 | `records-store.js` | IndexedDB/ミラー永続化・`saveLocal`/`persistAndTransition`・`openMeasurement`・`openRecords`/`renderRecordListRows`・`loadMeasurementContext`・使用設備設定/設備マスタ・Access同期の未完了キューと再送・アプリ起動呼び出し（末尾） |
+
+### 公差数直線（測定画面の左側）
+
+板幅・バリ等の測定ブロックの左に出る縦の数直線。上限・下限・**基準値**の
+目盛りと、測定済みの値をスウォームプロット（近い値は左右へずらす）で示す。
+
+- 描画本体は `filters.js` が `compactToleranceScale` を上書きして持つ
+  （`measurement-input.js` の素の実装 → `measurement-tolerance.js` →
+  `filters.js` → `measurement-worklog.js` の順にラップされ、**読み込み順で
+  最後が勝つ**。指示型のときだけ `measurement-worklog.js` が専用カードへ
+  差し替える）。
+- **値→縦位置(%)の写像は `WL.toleranceScaleView` に一本化する**。数直線の本体と、
+  測定器から受信中（確定前）の先読みリング `#numberlinePending`
+  （`updateNumberlinePending`）の2箇所が使う。以前は両者が別々に式を持ち、
+  端の丸め方だけ違った（3%/97% と 5%/95%）ため、リングの高さと確定後の点の
+  高さがずれていた。**新しく点を打つコードもこの関数を経由すること**。
+- 中央の目盛りが指すのは**範囲の中点ではなく基準値**。公差が非対称
+  （例 +3/-1）だと中点1001に対し基準値は1000で、狙うべき値は後者。
+  片側公差で基準値が上限・下限と重なるときは、目盛りを2枚重ねずに
+  限界値のラベルへ「(基準)」を添える。基準値の出所は公差カードと同じ
+  `compactToleranceData`（分割ロットは条ごとに基準値が変わるため）。
+- 表示範囲は公差幅の上下±25%を既定とし、**公差外の測定値が入るところまで
+  広げる**。固定窓だと外れ値がすべて上端／下端に張り付き、1つ外れと大きく
+  外れが同じ高さに見えた。広げるのは公差幅の1.5倍まで（桁違いの誤入力
+  1件で公差帯が線に潰れないように）。
+- 回帰は `tests/test_tolscale.js`。フィクスチャの仕掛データに公差カラムが
+  無いため、非対称公差を注入してから実測する。
 
 ### Access同期の未完了キューと再送（records-store.js）
 

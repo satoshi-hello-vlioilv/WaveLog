@@ -672,22 +672,33 @@
   /* ---- 公差数直線: 縦軸を左へ寄せ、測定済みの全値をスウォームプロット(蜂群図)
      で表示する。直前の値だけドット＋条番号/数値のフルラベルで大きく強調し、
      それ以外は小さな点(ツールチップに条番号/数値)としてトラック脇に並べ、
-     値が近いものは重ならないよう左右にずらす。 ---- */
+     値が近いものは重ならないよう左右にずらす。
+
+     値→縦位置の写像はWL.toleranceScaleView(measurement-input.js)が持つ。
+     ここで独自に計算すると、確定前の先読みリング(updateNumberlinePending)と
+     別の式になり、リングと確定後の点が別の高さに出る。 ---- */
   const numberlineLastSeen={};
   if(typeof compactToleranceScale==='function'){
     compactToleranceScale=function(kind,values,count){
       const facts=compactToleranceFacts(kind),range=facts.range;if(!range)return facts.html;
-      const low=Number(range[0]),high=Number(range[1]),span=Math.max(high-low,.000001);
-      const viewLow=low-span*.25,viewHigh=high+span*.25;
-      const pct=v=>Math.max(0,Math.min(100,(viewHigh-v)/(viewHigh-viewLow)*100));
-      const upper=pct(high),lower=pct(low),center=pct((low+high)/2);
+      /* 基準値は公差カードと同じ出所(compactToleranceData)から取る。分割ロットは
+         条ごとに基準値が変わるため、カードと数直線が別の値を指さないようにする。 */
+      const card=typeof compactToleranceData==='function'?compactToleranceData(kind):null;
+      const view=WL.toleranceScaleView({range,base:card&&card.base},values,count);
+      if(!view)return facts.html;
+      const {low,high,base,pct,clamp}=view;
+      const upper=pct(high),lower=pct(low),basePos=pct(base);
+      /* 片側公差(＋のみ／－のみ)では基準値が上限か下限と重なる。目盛りを
+         2枚重ねると数字が読めなくなるので、その時は限界値のラベルへ
+         「(基準)」を添えて1枚にまとめる。 */
+      const span=Math.max(high-low,.000001),atHigh=Math.abs(base-high)<span*.02,atLow=Math.abs(base-low)<span*.02;
       const last=(function(){for(let i=Math.min(values.length,count)-1;i>=0;i--){const raw=String(values[i]??'').trim(),n=Number(raw);if(raw!==''&&Number.isFinite(n))return{raw,n,index:i}}return null})();
       const dots=[];
       for(let i=0;i<Math.min(values.length,count);i++){
         if(last&&i===last.index)continue;
         const raw=String(values[i]??'').trim();if(raw==='')continue;
         const n=Number(raw);if(!Number.isFinite(n))continue;
-        const p=Math.max(5,Math.min(95,pct(n))),ng=n<low||n>high;
+        const p=clamp(n),ng=n<low||n>high;
         dots.push(`<i class="numberline-swarm-dot ${ng?'ng':'ok'}" style="top:${p}%" data-pos="${p}" title="条${i+1}: ${esc(raw)}"></i>`);
       }
       /* 確定した最新値(.numberline-measure)は数直線全体の再描画のたびに
@@ -696,17 +707,18 @@
          回だけ着地アニメーションが鳴るよう、kindごとに直前の確定値を
          記憶して差分がある時だけクラスを付与する。 */
       const mark=last?(()=>{
-        const p=Math.max(5,Math.min(95,pct(last.n))),ng=last.n<low||last.n>high;
+        const p=clamp(last.n),ng=last.n<low||last.n>high;
         const seenKey=`${last.index}:${last.raw}`,isNew=numberlineLastSeen[kind]!==seenKey;
         numberlineLastSeen[kind]=seenKey;
         return `<div class="numberline-measure ${ng?'ng':'ok'}${isNew?' just-landed':''}" style="top:${p}%"><span class="nl-dot"></span><b><span>条${last.index+1}</span>${esc(last.raw)}</b></div>`;
       })():'';
-      return facts.html+`<div class="accurate-numberline" data-swarm="1" style="--upper:${upper}%;--lower:${lower}%;--center:${center}%">
+      const tick=(cls,label,value)=>`<div class="numberline-tick ${cls}"><b><span>${label}</span>${esc(formatTol(kind,value))}</b></div>`;
+      return facts.html+`<div class="accurate-numberline" data-swarm="1" style="--upper:${upper}%;--lower:${lower}%;--base:${basePos}%">
         <div class="numberline-band high"></div><div class="numberline-band ok"></div><div class="numberline-band low"></div>
         <div class="numberline-track"></div>
-        <div class="numberline-tick upper"><b><span>上限</span>${esc(formatTol(kind,high))}</b></div>
-        <div class="numberline-tick center"><b><span>中央</span>${esc(formatTol(kind,(low+high)/2))}</b></div>
-        <div class="numberline-tick lower"><b><span>下限</span>${esc(formatTol(kind,low))}</b></div>
+        ${tick('upper',atHigh?'上限(基準)':'上限',high)}
+        ${atHigh||atLow?'':tick('base','基準',base)}
+        ${tick('lower',atLow?'下限(基準)':'下限',low)}
         ${dots.join('')}
         ${mark}
         <div class="numberline-pending" id="numberlinePending" hidden></div>

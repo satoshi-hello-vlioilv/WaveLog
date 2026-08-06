@@ -24,11 +24,19 @@ function updateNumberlinePending(raw){
  if(!S.measure||S.measure.settings?.inputMode==='manual'||!raw){marker.hidden=true;return}
  const kind=numberlinePendingKind(raw);
  if(!kind){marker.hidden=true;return}
- const facts=typeof compactToleranceFacts==='function'?compactToleranceFacts(kind):null,range=facts&&facts.range;
- if(!range){marker.hidden=true;return}
- const v=deviceParse(raw).value,low=range[0],high=range[1],span=Math.max(high-low,.000001),viewLow=low-span*.25,viewHigh=high+span*.25;
- const pos=Math.max(3,Math.min(97,(viewHigh-v)/(viewHigh-viewLow)*100)),ng=v<low||v>high;
- marker.hidden=false;marker.className='numberline-pending'+(ng?' ng':' ok');marker.style.top=pos+'%';
+ /* 数直線本体とまったく同じ写像(WL.toleranceScaleView)で位置を決める。
+    表示範囲は実測値の広がりで変わるため、描画に使ったのと同じ値の並びを
+    渡さないとリングだけ別の高さに出る。 */
+ const li=typeof lengthIndex==='function'?lengthIndex():0;
+ const values=S.measure.measurements?.[kind]?.[li]||[];
+ const count=Math.max(1,Math.min(40,+($('#horizontalCount')?.value)||1));
+ // 公差はcompactToleranceDataから取る(compactToleranceFactsはカードのHTMLまで
+ // 組み立てるので、測定器から1文字届くたびに呼ぶには重い)。
+ const card=typeof compactToleranceData==='function'?compactToleranceData(kind):null;
+ const view=WL.toleranceScaleView({range:card&&card.range,base:card&&card.base},values,count);
+ if(!view){marker.hidden=true;return}
+ const v=deviceParse(raw).value,ng=v<view.low||v>view.high;
+ marker.hidden=false;marker.className='numberline-pending'+(ng?' ng':' ok');marker.style.top=view.clamp(v)+'%';
 }
 /* 板厚/板幅は測定器の種別(マイクロメータ/ノギス等)でデータが自動的に
    板厚・板幅へ振り分けられるため、どちらを先に測っても問題ない設計。
@@ -312,6 +320,44 @@ function compactToleranceFacts(kind){
  if(!data)return{html:'<div class="compact-tol-three-row no-data"><b>公差情報なし</b><span>判定条件を取得できません</span></div>',range:null};
  return{range:data.range,html:`<div class="compact-tol-three-row"><div class="tol-line tol-line-base"><span class="compact-tol-source">${esc(data.source)}</span><span class="tol-value-pair"><small>基準</small><b>${esc(data.base)}</b></span></div><div class="tol-line tol-line-plusminus"><span class="tol-value-pair"><small>公差＋</small><b>+${esc(data.plus)}</b></span><span class="tol-value-pair"><small>公差－</small><b>-${esc(data.minus)}</b></span></div><div class="tol-line tol-line-range"><small>判定範囲</small><b>${esc(data.low)} ～ ${esc(data.high)}</b></div></div>`};
 }
+/* 公差数直線の「値→縦位置(%)」の写像。数直線の本体(filters.js)と、確定前の
+   先読みリング(updateNumberlinePending)の両方がこれを使う。以前は両者が
+   それぞれ式を持っており、表示範囲の余白は同じでも端の丸め方が違ったため
+   (3%/97%と5%/95%)、リングの高さと確定後の点の高さがずれていた。
+
+   表示範囲は既定で公差幅の上下±25%。公差外の測定値はここへ収まらず端で
+   潰れる——1つ外れも大きく外れも同じ高さに見えてしまう——ので、実測値が
+   入るところまで窓を広げる。ただし桁違いの誤入力1件で公差帯が線に
+   潰れてしまわないよう、広げるのは公差幅の1.5倍まで。それより外れた値は
+   端へ寄せる(位置は頭打ちだが、NGであることは色で分かる)。
+
+   基準値(detail.base)は範囲の中点ではない。公差が非対称(例 +3/-1)なら
+   中点1001に対し基準値は1000で、図示すべきなのは基準値のほう。 */
+function toleranceScaleView(detail,values,count){
+ const range=detail&&detail.range;
+ if(!range)return null;
+ const low=Number(range[0]),high=Number(range[1]);
+ if(!Number.isFinite(low)||!Number.isFinite(high))return null;
+ const span=Math.max(high-low,.000001);
+ /* base は「無ければ null」で渡ってくることがある。Number(null) は 0 なので
+    そのまま数値化すると基準値0として通ってしまう。空扱いを先に落とす。 */
+ const num=v=>(v===null||v===undefined||v==='')?NaN:Number(v);
+ const declared=num(detail.base);
+ const base=Number.isFinite(declared)?declared
+  :(Number.isFinite(num(detail.minus))?low+num(detail.minus):(low+high)/2);
+ const n=count==null?(values||[]).length:count;
+ const nums=(values||[]).slice(0,n).map(v=>String(v??'').trim()).filter(v=>v!=='')
+  .map(Number).filter(Number.isFinite);
+ // 一番外れた値の外側にも公差幅の1/4を残す。余白を詰めると、外れ値の点が
+ // 枠の縁に接して「どれだけ外れたか」が読めなくなる。
+ const pad=over=>Math.min(span*1.5,Math.max(span*.25,over+span*.25));
+ const padHigh=pad(Math.max(0,...nums.map(v=>v-high),base-high));
+ const padLow=pad(Math.max(0,...nums.map(v=>low-v),low-base));
+ const viewHigh=high+padHigh,viewLow=low-padLow,width=Math.max(viewHigh-viewLow,.000001);
+ const pct=v=>(viewHigh-Number(v))/width*100;
+ // 端の丸めは軸(.numberline-track)の上下端(6%/94%)に合わせる。
+ return{low,high,base,viewLow,viewHigh,pct,clamp:v=>Math.max(6,Math.min(94,pct(v)))};
+}
 function compactToleranceScale(kind,values,count){
  const facts=compactToleranceFacts(kind),range=facts.range;
  if(!range)return facts.html;
@@ -320,3 +366,4 @@ function compactToleranceScale(kind,values,count){
  return `${facts.html}<div class="compact-tol-scale"><span class="compact-scale-label upper">上限 <b>${esc(fixedToleranceValue(kind,high))}</b></span><span class="compact-scale-safe">公差内</span>${marks}<span class="compact-scale-label lower">下限 <b>${esc(fixedToleranceValue(kind,low))}</b></span></div>`;
 }
 function renderMeasureGrid(){renderMeasureGridVertical();requestAnimationFrame(updateValidationVisuals)}
+window.WL=window.WL||{};Object.assign(window.WL,{toleranceScaleView});

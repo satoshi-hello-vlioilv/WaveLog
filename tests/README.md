@@ -69,6 +69,12 @@ tests/run_all.sh test_screport test_sccat
 | `WAVELOG_PLAYWRIGHT` | `/opt/node22/lib/node_modules/playwright` |
 | `WAVELOG_CHROMIUM` | `/opt/pw-browsers/chromium-1194/chrome-linux/chrome` |
 
+診断用（既定は無効。指定したときだけ出力する）:
+
+| 環境変数 | 用途 |
+|---|---|
+| `WAVELOG_TOLDUMP` | `test_tolscale.js`が公差数直線の実測値をJSONで、同名の`.png`でスクリーンショットを書き出す。ランナーは各テストの標準出力からPASS/FAIL行しか拾わないので、位置がずれた原因を追うときはこれで数値と絵を残す。 |
+
 ## 個別実行
 
 サーバーが起動していれば単体でも動く。ただし**モードは自分で合わせる**

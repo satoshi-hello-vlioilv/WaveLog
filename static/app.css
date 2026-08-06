@@ -1500,11 +1500,13 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .numberline-tick b{position:absolute;right:7px;top:50%;transform:translateY(-50%);display:inline-flex;align-items:baseline;gap:2px;padding:2px 4px;border-radius:6px;background:#ffffffee;border:1px solid #b8c9cd;color:#173842;font-size:var(--fs-micro);font-weight:900;white-space:nowrap;font-variant-numeric:tabular-nums}
 .numberline-tick b span{font-size:9px;font-weight:800;color:#61757c}
 .numberline-tick.upper{top:var(--upper)}
-.numberline-tick.center{top:var(--center)}
 .numberline-tick.lower{top:var(--lower)}
-.numberline-tick.center::before{background:#839399}
-.numberline-tick.center b{background:#f4f8f9}
-.numberline-tick.center b span{color:#526970}
+/* 基準値の目盛り。範囲の中点ではなく製造値そのものを指す(公差が非対称
+   なら両者はずれる)。狙う値なので上限/下限より目立たせる。 */
+.numberline-tick.base{top:var(--base)}
+.numberline-tick.base::before{width:16px;height:3px;background:var(--teal)}
+.numberline-tick.base b{border-color:var(--teal);color:#075e67;background:#f2fbfa}
+.numberline-tick.base b span{color:#2c7f78}
 .numberline-measure{position:absolute;left:var(--nl-track);right:5px;height:0;z-index:6;display:flex;align-items:center;gap:5px;transform:translateY(-50%)}
 .numberline-measure .nl-dot{flex:0 0 auto;width:12px;height:12px;margin-left:-6px;border-radius:50%;background:var(--teal);box-shadow:0 0 0 2px #fff,0 0 0 3px #8fc9c2}
 .numberline-measure b{min-width:0;padding:2px 6px;border-radius:8px;border:1px solid #8fc9c2;background:#fff;color:#075e67;font-weight:900;font-size:var(--fs-micro);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
