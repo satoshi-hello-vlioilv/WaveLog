@@ -947,6 +947,17 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 .strip-row input{width:100%;height:100%;min-width:0;max-width:100%;border:0;border-radius:0;padding:0 33px 0 6px;text-align:right;font-variant-numeric:tabular-nums}
 .strip-row.inactive input{background:#e3e7e8;color:#90999c}
 .strip-row.inactive label{color:#a0a8aa}
+/* 分割ありのとき、条の入力欄の左端へ子ロット番号(下3桁)のバッジを出す。
+   色は条割の視覚図(.split-visual-block)と同じ配色をJSがインラインで指定する
+   ——帯グラフと入力欄が同じ色で結び付くようにするため。バッジのぶんだけ
+   入力欄の左padding を広げ、数字がバッジに重ならないようにする。 */
+.strip-lot-badge{
+  position:absolute;left:3px;top:50%;transform:translateY(-50%);z-index:1;
+  min-width:27px;padding:0 3px;border-radius:5px;
+  color:#fff;text-align:center;font-size:var(--fs-micro);font-weight:800;
+  line-height:1.5;letter-spacing:.02em;pointer-events:none;
+}
+.strip-row .strip-input-wrap.has-lot-badge input{padding-left:34px}
 .judge-pill{position:absolute;right:3px;top:50%;transform:translateY(-50%);min-width:27px;padding:0 2px;border-radius:7px;text-align:center;font-size:var(--fs-micro);font-weight:900;pointer-events:none}
 .judge-pill.ok{background:var(--teal);color:#fff}
 .judge-pill.ng{background:#d02e2e;color:#fff}
@@ -1151,8 +1162,8 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .split-ghost-btn:hover:not(:disabled){background:#eef2f4;border-color:#9aabab}
 .split-ghost-btn:disabled{color:#b6c2c4;cursor:not-allowed}
 .split-tolerance-legend{margin-top:8px;padding:var(--space-2);background:#fff8e0;border:1px solid #d8c47a;border-radius:4px}
-.split-tolerance-legend>b{display:block;margin-bottom:6px;font-size:var(--fs-sm);color:#6b5a10}
-.split-tolerance-legend table{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
+.split-tolerance-legend>b{display:block;margin-bottom:6px;font-size:var(--fs-base-sm);color:#6b5a10}
+.split-tolerance-legend table{width:100%;border-collapse:collapse;font-size:var(--fs-base-sm);font-variant-numeric:tabular-nums}
 .split-tolerance-legend th,.split-tolerance-legend td{padding:3px 6px;border:1px solid #d8c47a;text-align:left}
 .split-tolerance-legend th{background:#f2e6b3;position:sticky;top:0}
 .split-legend-missing td{color:var(--danger);background:var(--danger-bg)}
@@ -1161,24 +1172,37 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 
 /* 幅分割情報パネル(#splitGrid)。分割候補/確定結果を能動的に表示し、
    条割変更モーダルへの導線ボタンを常設する(視覚導線・操作導線の強化)。 */
-.split-panel-status{display:block;padding:7px 8px;border-radius:4px;font-weight:700;margin-bottom:8px}
-.split-panel-status-none{background:#eef2f4;color:#60747b}
-.split-panel-status-pending{background:#fff2cc;color:#8a6600;border:1px solid #e0b23d}
+/* 左ペインの他のパネル(基本情報・作業時間・測定データ分析)はいずれも本文
+   14px・見出し15pxで組んである。このパネルだけ表と補足行を12pxで組んで
+   いたため、同じ列に並べたときに一段小さく沈んで見えていた。角丸・枠線も
+   カードのトークン(--radius-card/--card-border)へ揃える。 */
+.split-panel-status{display:block;padding:var(--space-2);border-radius:var(--radius-card);font-weight:700;margin-bottom:var(--space-2)}
+.split-panel-status-none{background:var(--bg);color:var(--muted)}
+.split-panel-status-pending{background:var(--warn-bg);color:var(--warn-fg);border:1px solid var(--warn-border)}
 .split-panel-status-applied{background:var(--success-bg);color:var(--success);border:1px solid var(--success-border)}
 /* 条割「適用」ボタン押下の直後だけJSが付与する一撃アニメーション
    (applySplit()参照。パネルを開き直しただけの再同期では付与しない)。 */
 .split-panel-status-applied.just-applied{animation:split-status-flash .5s ease-out}
 @keyframes split-status-flash{0%{background:#bdf0d4}100%{background:var(--success-bg)}}
 @media(prefers-reduced-motion:reduce){.split-panel-status-applied.just-applied{animation:none}}
-.split-panel-table{width:100%;border-collapse:collapse;font-size:var(--fs-sm);margin-bottom:8px;background:#fff}
-.split-panel-table th,.split-panel-table td{padding:4px 6px;border:1px solid #c4d0d4;text-align:left}
-.split-panel-table th{background:#eef2f4;position:sticky;top:0}
+.split-panel-table{width:100%;border-collapse:collapse;margin-bottom:var(--space-2);background:var(--surface);font-size:var(--fs);font-variant-numeric:tabular-nums}
+.split-panel-table th,.split-panel-table td{padding:var(--space-1) 7px;border:1px solid var(--line-mid);text-align:left}
+/* ロット№・条数・幅は数字なので右づめ。#と状態は狭いので中央。 */
+.split-panel-table th:nth-child(1),.split-panel-table td:nth-child(1),
+.split-panel-table th:nth-child(5),.split-panel-table td:nth-child(5){text-align:center;width:1%;white-space:nowrap}
+.split-panel-table th:nth-child(3),.split-panel-table td:nth-child(3),
+.split-panel-table th:nth-child(4),.split-panel-table td:nth-child(4){text-align:right;width:1%;white-space:nowrap}
+/* 見出し行は本文と同じ大きさのまま、色と太さで段差をつける(サイズを
+   落とすと表の中だけ字が小さくなり、周りとの落差がまた生まれる)。 */
+.split-panel-table th{background:var(--surface-2);color:var(--muted);font-weight:700;position:sticky;top:0}
 .split-panel-table tr.split-legend-missing td{color:var(--danger);background:var(--danger-bg)}
-.split-panel-open-btn{display:block;width:100%;height:36px;margin-top:2px;background:var(--teal);color:#fff;border:1px solid var(--teal);border-radius:5px;font-weight:800;cursor:pointer}
+/* ロット№の頭の色丸。入力欄のバッジ・条割の視覚図と同じ色。 */
+.split-lot-dot{display:inline-block;width:9px;height:9px;margin-right:6px;border-radius:50%;vertical-align:baseline;box-shadow:0 0 0 1px #ffffffcc}
+.split-panel-open-btn{display:block;width:100%;height:var(--ctl-h);margin-top:2px;background:var(--teal);color:#fff;border:1px solid var(--teal);border-radius:8px;font-size:var(--fs);font-weight:700;cursor:pointer}
 .split-panel-open-btn:hover{filter:brightness(1.08)}
-.split-mismatch-badge{margin-bottom:8px;padding:5px 7px;background:var(--danger-bg);border:1px solid var(--danger-border);color:var(--danger);border-radius:4px;font-size:var(--fs-sm);font-weight:700}
-.split-scrap-line{margin-bottom:8px;padding:6px 7px;background:#f7fafb;border:1px solid #c4d0d4;border-radius:4px;font-size:var(--fs-sm)}
-.split-scrap-line b{font-size:var(--fs-base-sm)}
+.split-mismatch-badge{margin-bottom:var(--space-2);padding:5px 7px;background:var(--danger-bg);border:1px solid var(--danger-border);color:var(--danger);border-radius:var(--radius-card);font-size:var(--fs-base-sm);font-weight:700}
+.split-scrap-line{margin-bottom:var(--space-2);padding:6px 7px;background:var(--surface-2);border:1px solid var(--line-mid);border-radius:var(--radius-card);font-size:var(--fs-base-sm);font-variant-numeric:tabular-nums}
+.split-scrap-line b{font-size:var(--fs)}
 .split-scrap-warn{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger)}
 
 /* ---------- 11. 保存データ一覧モーダル ---------- */

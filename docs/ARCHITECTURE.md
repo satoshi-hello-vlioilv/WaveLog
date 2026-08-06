@@ -266,7 +266,15 @@ API経由でRNE(Navigator問い合わせ定義)を実行し、ローカルSQLite
   分割セル、幅分割情報パネル）。
 - 横割数(`#horizontalCount`)の`max`と`updateCoilOptions`の丸めも、設備の最大条数へ
   追随する（`applyMaxStripsToInputs`/`currentMaxStrips`、measurement-view.js）。
-- 回帰は `tests/test_defect.js`。
+- 条の入力欄には、**分割ありのときだけ**子ロット番号の下3桁バッジを出す
+  (`.strip-lot-badge`、lot-split.jsが`makeMeasureInputV29`をラップして注入)。
+  色は `appliedLotColorMap()` が返す**異なるロットの並び順**の配色で、
+  条割の視覚図・幅分割情報パネルのロット№の色丸(`.split-lot-dot`)と同じ。
+  表・入力欄・帯グラフが同じ色でつながることが狙いなので、**色を決める場所は
+  この関数1つ**にする。単一ロットでは出さない(全行に同じバッジが並んでも
+  情報が増えないため)。
+- 回帰は `tests/test_defect.js`(数え方) と `tests/test_theme.js`(バッジと文字の
+  大きさ)。
 
 ### 現場段取りの対象設備（複数指定と「すべての設備」）
 

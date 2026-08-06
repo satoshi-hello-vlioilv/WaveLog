@@ -1434,7 +1434,12 @@
   // 設定済み(applySplit確定済み)状態の表示。
   function renderAppliedGroupsPanel(el,groups){
     const summary=summarizeAppliedGroups(groups);
-    const rows=groups.map((g,i)=>`<tr class="${g.missing?'split-legend-missing':''}"><td>${i+1}</td><td>${esc(g.lot)}</td><td>${g.count}条</td><td>${Number.isFinite(g.base?.width)?esc(String(g.base.width)):'—'}</td><td>${g.missing?'取得失敗':'OK'}</td></tr>`).join('');
+    /* ロット№の頭に色の丸を置く。入力欄のバッジ(.strip-lot-badge)・条割の
+       視覚図と同じ色なので、表・入力欄・帯グラフが同じ色で結び付く。 */
+    const{map:lotColors,lots}=appliedLotColorMap(groups);
+    const dot=lot=>lots.length>1&&lotColors[lot]
+      ? `<i class="split-lot-dot" style="background-color:${esc(lotColors[lot])}"></i>`:'';
+    const rows=groups.map((g,i)=>`<tr class="${g.missing?'split-legend-missing':''}"><td>${i+1}</td><td>${dot(g.lot)}${esc(g.lot)}</td><td>${g.count}条</td><td>${Number.isFinite(g.base?.width)?esc(String(g.base.width)):'—'}</td><td>${g.missing?'取得失敗':'OK'}</td></tr>`).join('');
     const needsReconfigure=S.measure?.settings?.splitNeedsReconfigure;
     el.innerHTML=`
       <div class="split-panel-status split-panel-status-applied">✓ ${esc(summary)}</div>
@@ -1486,6 +1491,46 @@
     renderMeasurement=function(){baseRenderMeasurementSplitStatus();refreshSplitStatusPanel()};
   }
   $('#horizontalCount')?.addEventListener('change',()=>refreshSplitStatusPanel());
+
+  /* ---- 条の入力欄へロット番号のバッジを付ける ----
+     分割ありのロットでは、同じ40行のストリップに複数の子ロットが混ざる。
+     どの行がどのロットかは幅分割情報パネルの「1〜2条」のような範囲表記でしか
+     分からず、入力しながら目で追うには一度パネルへ視線を移す必要があった。
+     入力欄の左端に子ロット番号の下3桁を出し、色は条割の視覚図と同じ配色に
+     して、帯グラフと入力欄が同じ色で結び付くようにする。
+     **分割ありのときだけ**付ける(単一ロットで全行に同じバッジが並んでも
+     情報が増えないため)。 */
+  /* 確定済みの条割から「子ロット→色」を作る。groupsは連続した区間の配列なので
+     同じロットが複数回現れる(A B A)。色は**異なるロットの並び順**で決める。
+     幅分割情報パネルの表・入力欄のバッジ・条割の視覚図がすべてこれを使う。 */
+  function appliedLotColorMap(groups){
+    const lots=[...new Set((groups||[]).map(g=>g.lot).filter(Boolean))],map={};
+    lots.forEach((lot,i)=>{map[lot]=SPLIT_VISUAL_COLORS[i%SPLIT_VISUAL_COLORS.length]});
+    return{map,lots};
+  }
+  function stripLotBadgeFor(index){
+    const st=S.measure?.settings,groups=st?.splitGroups,posMap=st?.splitPositionGroup;
+    if(!Array.isArray(groups)||!Array.isArray(posMap))return null;
+    const{map,lots}=appliedLotColorMap(groups);
+    if(lots.length<2)return null;                       // 分割ありと言えるのは2ロット以上
+    const gi=posMap[index];
+    if(!Number.isInteger(gi))return null;
+    const lot=groups[gi]?.lot;
+    if(!lot)return null;
+    return{lot,color:map[lot]};
+  }
+  if(typeof makeMeasureInputV29==='function'){
+    const baseMakeMeasureInputV29=makeMeasureInputV29;
+    makeMeasureInputV29=function(key,i,j,value,active=true){
+      const html=baseMakeMeasureInputV29(key,i,j,value,active);
+      const badge=active?stripLotBadgeFor(j):null;
+      if(!badge)return html;
+      // .strip-input-wrap の中へ差し込む(入力欄と同じ枠内に置くため)。
+      return html.replace('<div class="strip-input-wrap">',
+        `<div class="strip-input-wrap has-lot-badge">`
+        +`<span class="strip-lot-badge" style="background-color:${esc(badge.color)}" title="${esc(badge.lot)}">${esc(lotSuffix3(badge.lot))}</span>`);
+    };
+  }
 
   // ---- 判定への配線 ----
   function groupForIndex(index){

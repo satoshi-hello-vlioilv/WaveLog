@@ -99,6 +99,82 @@ let b=null;
   });
   rec('一覧の選択色がパレット外の原色ではない',!blue,String(blue));
 
+  /* ---- 4b) 幅分割情報パネルの文字サイズが左ペインの他と揃っている ----
+     このパネルだけ表と補足行を12pxで組んでおり、基本情報(14px)・作業時間
+     (14/15px)・測定データ分析(14px)と並べると一段沈んで見えていた。 */
+  const splitPanel=await page.evaluate(async()=>{
+   const lots=[{lot:'AAA111',width:100,count:2},{lot:'BBB222',width:150,count:2},{lot:'CCC333',width:200,count:2}];
+   const groups=lots.map(g=>({lot:g.lot,count:g.count,base:{width:g.width},tol:null,missing:false}));
+   const pos=[];groups.forEach((g,gi)=>{for(let k=0;k<g.count;k++)pos.push(gi)});
+   S.measure.settings.splitGroups=groups;S.measure.settings.splitPositionGroup=pos;
+   S.measure.basic.originalWidth=940;
+   document.getElementById('horizontalCount').value='6';
+   refreshSplitStatusPanel();renderMeasureGrid();
+   document.querySelector('[data-infotab="split"]')?.click();
+   await new Promise(r=>setTimeout(r,300));
+   const fs=s=>{const e=document.querySelector(s);return e?parseFloat(getComputedStyle(e).fontSize):0};
+   return {
+    body:fs('.basic-card .field label'),          // 左ペインの本文基準
+    analysis:fs('.analysis table'),               // 同じペインの別の表
+    table:fs('.split-panel-table td'),
+    head:fs('.split-panel-table th'),
+    status:fs('.split-panel-status-applied'),
+    scrap:fs('.split-scrap-line'),
+    openBtn:fs('.split-panel-open-btn'),
+    dots:document.querySelectorAll('.split-lot-dot').length,
+   };
+  });
+  rec('幅分割情報の表が同じペインの他の表と同じ文字サイズ',
+   splitPanel.table===splitPanel.analysis&&splitPanel.table===splitPanel.body,
+   JSON.stringify(splitPanel));
+  rec('表の見出しも本文と同じ大きさ(表の中だけ小さくしない)',
+   splitPanel.head===splitPanel.table,JSON.stringify(splitPanel));
+  rec('パネル内の文字が本文より小さくても1段まで',
+   [splitPanel.status,splitPanel.scrap,splitPanel.openBtn].every(v=>v>=splitPanel.body-1.5&&v<=splitPanel.body+1.5),
+   JSON.stringify(splitPanel));
+  rec('ロット№に色の丸が付く(入力欄のバッジと対応)',
+   splitPanel.dots===3,String(splitPanel.dots));
+
+  /* ---- 4c) 分割ありのとき、条の入力欄にロット番号の下3桁バッジ ---- */
+  const badges=await page.evaluate(()=>{
+   const rows=[...document.querySelectorAll('#measurementGrid .strip-row')];
+   const got=[...document.querySelectorAll('.strip-lot-badge')].map(b=>({
+    t:b.textContent.trim(),title:b.title,
+    bg:getComputedStyle(b).backgroundColor,
+    left:Math.round(b.getBoundingClientRect().left),
+    inputLeft:Math.round(b.parentElement.querySelector('input').getBoundingClientRect().left),
+    padLeft:getComputedStyle(b.parentElement.querySelector('input')).paddingLeft}));
+   return {n:got.length,got:got.slice(0,6),rows:rows.length};
+  });
+  rec('分割ありの条にロット番号バッジが付く',badges.n===6,JSON.stringify(badges).slice(0,180));
+  rec('バッジはロット番号の下3桁',
+   badges.got.slice(0,6).map(b=>b.t).join(',')==='111,111,222,222,333,333',
+   badges.got.map(b=>b.t).join(','));
+  rec('ツールチップはロット番号の全体',
+   badges.got.every(b=>/^[A-Z]{3}\d{3}$/.test(b.title)),
+   badges.got.map(b=>b.title).join(','));
+  rec('ロットごとに色を変える(条割の帯グラフと同じ配色)',
+   new Set(badges.got.map(b=>b.bg)).size===3,
+   [...new Set(badges.got.map(b=>b.bg))].join(' / '));
+  rec('バッジは入力欄の左端に置き、数値と重ならない',
+   badges.got.every(b=>b.left>=b.inputLeft&&parseFloat(b.padLeft)>=30),
+   JSON.stringify(badges.got[0]));
+
+  // 分割が無い(単一ロット)ならバッジは出さない
+  const single=await page.evaluate(async()=>{
+   S.measure.settings.splitGroups=[{lot:'AAA111',count:6,base:{width:100},tol:null,missing:false}];
+   S.measure.settings.splitPositionGroup=[0,0,0,0,0,0];
+   renderMeasureGrid();
+   await new Promise(r=>setTimeout(r,200));
+   const n=document.querySelectorAll('.strip-lot-badge').length;
+   S.measure.settings.splitGroups=null;S.measure.settings.splitPositionGroup=null;
+   renderMeasureGrid();
+   await new Promise(r=>setTimeout(r,200));
+   return {single:n,none:document.querySelectorAll('.strip-lot-badge').length};
+  });
+  rec('単一ロット・分割なしではバッジを出さない',
+   single.single===0&&single.none===0,JSON.stringify(single));
+
   /* ---- 5) 作業スケジュールの削除ボタン表記 ----
      実績削除のボタンは「実績のある行」にしか出ない。フィクスチャの予定には
      実績が無いので、いま開いている測定画面を「編集中」で保存して作業中に
