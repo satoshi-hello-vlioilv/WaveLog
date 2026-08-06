@@ -1,16 +1,12 @@
 """tables.py: 汎用DB一覧API — カタログ/テーブル一覧/データ取得(フィルタ・検索・並替)。
 
-app.pyから移設(Phase 3)。移設後、db=MASTER(SQLite)に対してのみ以下を修正した
-(db=SIKALOTNOW/SIKALOTDEF(Access)側の挙動は変更していない):
-  - 一覧取得(SELECT TOP N)がAccess専用構文でSQLiteでは構文エラーになる
-    不具合。エンジンに応じてLIMITへ出し分けるようにした。
-  - 検索・フィルタで使うCStr()/Val()がAccess専用のSQL関数で、SQLite
-    接続には存在せず"no such function"で失敗する不具合。db_access.pyへ
-    ユーザー定義関数として登録し吸収した。
-  - 上記Val()経由の数値範囲フィルタ(gt/gte/lt/lte)で、SQLiteは値の
-    ストレージクラス優先で比較するため、Val()が返す数値と文字列
-    パラメータを比べると常に不成立になる不具合。SQLite接続時のみ
-    パラメータ側もPython側で数値化してから渡すようにした。
+app.pyから移設(Phase 3)。接続先は全てSQLite(Access接続は廃止)。
+
+SQL方言について: 検索・フィルタで使うCStr()/Val()はAccess方言のSQL関数で
+SQLiteには無いため、db_access.pyのconnect()がユーザー定義関数として登録して
+吸収している。またVal()経由の数値範囲フィルタ(gt/gte/lt/lte)は、SQLiteが値の
+ストレージクラス優先で比較する仕様のため、パラメータ側もPythonで数値化してから
+渡す(そうしないとVal()が返す数値と文字列パラメータの比較が常に不成立になる)。
 """
 import json, re, unicodedata
 from flask import Blueprint, request, jsonify
@@ -19,7 +15,7 @@ from ..db_access import DBS, qi, connect, cols, tables, cfg
 from ..logging_setup import app_logger
 from ..repositories.master_repo import hidden_columns_for_db
 
-# 品質データ結合のIN句を小分けにする単位(Access側のパラメータ数上限対策)。
+# 品質データ結合のIN句を小分けにする単位(パラメータ数の上限対策)。
 _JOIN_IN_CHUNK=100
 
 bp=Blueprint('tables',__name__)
@@ -33,7 +29,7 @@ def _numeric_value(value):
 # 品質データの結合表示(§9.21新設): スケジュールモードの仕掛一覧(分割/
 # ポップアップ表示)だけで、ロット番号+鋳造番号+製造材質をキーに品質データ
 # (SIKALOTDEF)を突合し、列をアプリ側でマージする。SIKALOTNOWとSIKALOTDEFは
-# 別々のAccess/SQLite接続先(CLAUDE.mdのDBエンジン使い分け参照)のため、単一
+# 別々の接続先(CLAUDE.mdの接続先の節を参照)のため、単一
 # のSQL JOINでは書けず、ここでPython側で結合する。既定のSIKALOTNOW単独表示
 # には一切影響しないよう、明示的なjoin_quality=1指定時のみ動く(オプトイン)。
 # ========================================================================
@@ -111,8 +107,8 @@ def _join_quality_data(sikalotnow_cols,row_dicts):
     app_logger().warning('品質データ結合: %s (%s)',info['reason'],def_cfg['path'])
     return sikalotnow_cols,row_dicts,info
    # ロット番号だけでSQL側を軽く絞り、鋳造番号・製造材質の正確な一致は
-   # Python側で行う(複合IN条件はAccess/SQLite両対応で書きにくいため)。
-   # INのパラメータ数が多いとAccess側で失敗するため小分けにする。
+   # Python側で行う(複合IN条件はSQLで書きにくいため)。
+   # INのパラメータ数が多いと失敗するため小分けにする。
    quality_index={};cur=c.cursor()
    for i in range(0,len(lot_values),_JOIN_IN_CHUNK):
     chunk=lot_values[i:i+_JOIN_IN_CHUNK]
@@ -184,10 +180,8 @@ def api_table():
      parts.append(f'Val(CStr({col})) {sign} ?')
      # SQLiteは値の型(ストレージクラス)優先で比較するため、REALを返す
      # Val()の結果と文字列パラメータを比べると常にREAL<TEXT扱いで不成立に
-     # なる。SQLite接続時のみパラメータ側もこちらで数値化してから渡す
-     # (Access接続は元々パラメータの型に関わらず数値として比較されるため、
-     # 挙動を変えないよう文字列のまま渡す)。
-     params.append(_numeric_value(value) if cf['engine']=='sqlite' else value)
+     # なる。パラメータ側もこちらで数値化してから渡す。
+     params.append(_numeric_value(value))
    return parts,params
   with connect(cf['path'],cf['role']=='readonly') as c:
    cs=cols(c,t,source=cf['path']);where_parts=[];params=[]
@@ -198,13 +192,8 @@ def api_table():
    sort_col=request.args.get('sort','').strip();sort_dir='DESC' if request.args.get('sort_dir','').strip().lower()=='desc' else 'ASC'
    order=f' ORDER BY {qi(sort_col)} {sort_dir}' if sort_col in cs else ''
    cur=c.cursor();cur.execute(f'SELECT COUNT(*) FROM {qi(t)}'+where,params);count=int(cur.fetchone()[0]);top=page*size
-   # TOP N はAccess専用構文でSQLite(マスタ)には無いため、接続先エンジンで
-   # 出し分ける。件数の頭からtop件を取り、Python側でページ分だけ切り出す
-   # 挙動(rows[start:start+size])はどちらのエンジンでも同じにする。
-   if cf['engine']=='sqlite':
-    cur.execute(f'SELECT * FROM {qi(t)}'+where+order+f' LIMIT {top}',params)
-   else:
-    cur.execute(f'SELECT TOP {top} * FROM {qi(t)}'+where+order,params)
+   # 件数の頭からtop件を取り、Python側でページ分だけ切り出す(rows[start:start+size])。
+   cur.execute(f'SELECT * FROM {qi(t)}'+where+order+f' LIMIT {top}',params)
    rows=cur.fetchmany(top);start=(page-1)*size;rows=rows[start:start+size]
   # 表示マスタで非表示指定された列は、検索/絞込/並替の対象(cs)には残しつつ、
   # 返却するcolumns/rowsからのみ除外する(生の行タプルはcs全体の順序と対応するため、

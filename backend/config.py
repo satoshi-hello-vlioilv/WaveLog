@@ -21,7 +21,7 @@ PORT=5029
 LOCAL_DIR_NAME='WaveLog'
 
 # 起動時に不足していれば requirements.txt から導入を試みるパッケージ
-REQUIRED_PACKAGES=('flask','pyodbc')
+REQUIRED_PACKAGES=('flask',)
 
 # ========================================================================
 # ウォッチドッグ(開いているタブの存在監視)のしきい値

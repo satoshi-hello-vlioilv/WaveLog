@@ -1,0 +1,159 @@
+/* test_flows.js: 測定・スケジュール・メンテナンスの各導線を巡回し、
+   「実行エラー」と「レイアウト崩れ」を機械的に検出する。
+   ------------------------------------------------------------
+   個別機能のテストは他ファイルが持つ。ここが見るのは画面をまたいだときの
+   壊れ方で、リファクタリング(画面切替の一本化・ファイル分割・接続のSQLite統一)
+   で壊れるとすればこの層。各画面について:
+
+     - JS実行時エラー(pageerror)とconsole.error
+     - 失敗したリクエスト(4xx/5xx)
+     - 横スクロールの発生(画面が横にはみ出していないか)
+     - hidden属性が付いているのに見えている要素(§9.73と同じ事故)
+     - トップレベルのパネルが2つ以上同時に見えている(画面の重なり)
+     - スクロールできないのに中身がはみ出している要素(パス設定の見切れと同種)
+*/
+const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+const API='http://127.0.0.1:5029';
+const setMode=async m=>{await fetch(`${API}/api/access-mode`,
+ {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})};
+let b=null;
+(async()=>{
+ b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
+ const page=await b.newPage({viewport:{width:1600,height:1000}});
+ const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
+
+ // --- 収集器(画面ごとに切り分けられるようラベルを差し替える) ---
+ let where='起動';
+ const errs=[],bad=[];
+ page.on('pageerror',e=>errs.push(`${where}: ${e.message}`));
+ page.on('console',m=>{if(m.type()==='error')errs.push(`${where}[console]: ${m.text().slice(0,160)}`)});
+ page.on('response',r=>{
+  if(r.status()>=400)bad.push(`${where}: HTTP ${r.status()} ${r.url().replace(API,'')}`);
+ });
+ page.on('dialog',d=>d.accept());
+
+ /* 画面の健全性をまとめて測る。数値で返し、判定は呼び出し側で行う。 */
+ const inspect=()=>page.evaluate(()=>{
+  const vis=el=>{const s=getComputedStyle(el);
+   return s.display!=='none'&&s.visibility!=='hidden'&&el.getClientRects().length>0};
+  // hidden属性が付いているのに見えている要素
+  const hiddenButVisible=[...document.querySelectorAll('[hidden]')]
+   .filter(vis).map(el=>el.id||el.className||el.tagName).slice(0,5);
+  // トップレベルのパネルが同時に見えていないか(画面の重なり)
+  const PANELS=['recordModal','schedulePanel','calendarPanel','reportPanel',
+                'dashboardPanel','masterMaintPanel','qualityAnalysisPanel'];
+  const shown=PANELS.filter(id=>{const el=document.getElementById(id);return el&&vis(el)});
+  // スクロールできないのに中身がはみ出している(見切れ)
+  const clipped=[...document.querySelectorAll('section,div')].filter(el=>{
+   if(!vis(el))return false;
+   const s=getComputedStyle(el);
+   if(s.overflowY==='auto'||s.overflowY==='scroll'||s.overflowY==='visible')return false;
+   return el.scrollHeight-el.clientHeight>24&&el.clientHeight>80;
+  }).map(el=>`${el.id||el.className}(${el.scrollHeight-el.clientHeight}px超過)`).slice(0,5);
+  return {
+   overflowX:document.documentElement.scrollWidth-document.documentElement.clientWidth,
+   hiddenButVisible,shown,clipped,
+   header:document.querySelector('#fileName')?.textContent||'',
+  };
+ });
+
+ /* 1画面ぶんの検証。遷移→安定待ち→計測→記録。 */
+ const check=async(label,go,opts={})=>{
+  where=label;
+  const before=errs.length,beforeBad=bad.length;
+  await go();
+  await page.waitForTimeout(opts.settle||1500);
+  const x=await inspect();
+  rec(`${label}: JS実行時エラーが出ない`,errs.length===before,errs.slice(before).join(' / ').slice(0,200));
+  rec(`${label}: 失敗したリクエストが無い`,bad.length===beforeBad,bad.slice(beforeBad).join(' / ').slice(0,200));
+  rec(`${label}: 横にはみ出していない`,x.overflowX<=1,`overflowX=${x.overflowX}px`);
+  rec(`${label}: hidden属性が効いている`,x.hiddenButVisible.length===0,JSON.stringify(x.hiddenButVisible));
+  rec(`${label}: パネルが重なっていない`,x.shown.length<=1,JSON.stringify(x.shown));
+  rec(`${label}: 見切れている領域が無い`,x.clipped.length===0,JSON.stringify(x.clipped));
+  if(opts.header)rec(`${label}: 見出しが「${opts.header}」`,x.header===opts.header,x.header);
+  return x;
+ };
+
+ try{
+  await setMode('edit');
+  // --- 起動〜仕掛一覧(測定作業の入口) ---
+  await check('起動(仕掛一覧)',async()=>{
+   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
+   await page.waitForSelector('#openSchedule',{timeout:20000});
+   await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
+   await page.reload({waitUntil:'domcontentloaded'});
+   await page.waitForSelector('#grid',{timeout:20000});
+  },{settle:3000});
+
+  // --- 測定作業導線 ---
+  await check('データ一覧',()=>page.click('#homeDrafts'),{header:'データ一覧',settle:2500});
+  await check('仕掛一覧',()=>page.click('aside [data-db-key="SIKALOTNOW"]'),{header:'仕掛一覧',settle:2500});
+  await check('品質データ',()=>page.click('aside [data-db-key="SIKALOTDEF"]'),{header:'品質データ',settle:2500});
+
+  // --- スケジュール作業導線 ---
+  await check('作業スケジュール',()=>page.click('#openSchedule'),
+   {header:'作業スケジュール',settle:4000});
+  const rows=await page.$$eval('.sc-row-line',n=>n.length);
+  rec('作業スケジュール: 予定行が描かれている',rows>0,`行数=${rows}`);
+
+  // --- 分析導線 ---
+  await check('ダッシュボード',()=>page.click('#openDashboard'),{header:'ダッシュボード',settle:3000});
+  await check('実績カレンダー',()=>page.click('#openCalendar'),{header:'実績カレンダー',settle:3000});
+
+  // --- メンテナンス導線(マスタ管理の各タブ) ---
+  await check('マスタ管理',()=>page.click('#openMasterMaint'),{header:'マスタ管理',settle:2500});
+  const tabs=await page.$$eval('#masterMaintNav [data-master]',n=>n.map(x=>x.dataset.master));
+  rec('マスタ管理: タブが並んでいる',tabs.length>=8,`${tabs.length}件: ${tabs.slice(0,6)}`);
+  // 見切れ・実行エラーが出やすい特殊タブを重点的に見る
+  for(const key of ['pathConfig','dataImport','shiftPattern','loadFactor','columnDisplay']){
+   if(!tabs.includes(key))continue;
+   await check(`マスタ管理/${key}`,async()=>{
+    await page.click(`#masterMaintNav [data-master="${key}"]`);
+   },{settle:2200});
+  }
+
+  // --- 測定画面(未保存の保護。今回の変更点) ---
+  where='測定画面';
+  await page.click('#openSchedule');await page.waitForTimeout(3500);
+  const started=await page.evaluate(()=>{
+   const r=[...document.querySelectorAll('.sc-row-line')].find(x=>x.querySelector('.sc-row-start'));
+   if(r)r.querySelector('.sc-row-start').click();
+   return !!r;
+  });
+  if(started){
+   await page.waitForTimeout(4000);
+   const open=await page.evaluate(()=>!document.querySelector('#measureModal')?.hidden);
+   rec('測定画面: 予定から開始できる',open);
+   if(open){
+    const x=await inspect();
+    rec('測定画面: 横にはみ出していない',x.overflowX<=1,`overflowX=${x.overflowX}px`);
+    rec('測定画面: hidden属性が効いている',x.hiddenButVisible.length===0,JSON.stringify(x.hiddenButVisible));
+    // 未保存にしてから別画面へ移ると、閉じずに残ること(VER1.74.14)
+    await page.evaluate(()=>{if(typeof markDirty==='function')markDirty()});
+    await page.click('#homeDrafts');await page.waitForTimeout(2000);
+    const kept=await page.evaluate(()=>!document.querySelector('#measureModal')?.hidden);
+    rec('測定画面: 未保存なら画面を移っても閉じない',kept,`hidden=${!kept}`);
+    // 後始末: 破棄して閉じる
+    await page.evaluate(()=>{if(typeof measureDirty!=='undefined')measureDirty=false;
+     const m=document.querySelector('#measureModal');if(m)m.hidden=true});
+   }
+  }else rec('測定画面: 予定から開始できる',false,'開始ボタンのある行が無い');
+
+  console.log('\n=== 収集したエラー ===');
+  errs.slice(0,10).forEach(e=>console.log('  [err]',e));
+  bad.slice(0,10).forEach(e=>console.log('  [http]',e));
+
+  console.log('\n=== SUMMARY ===');
+  const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
+  f.forEach(x=>console.log(' -',x.n,x.d||''));
+  await b.close();process.exit(f.length?1:0);
+ }catch(e){
+  console.error('FATAL',e);
+  await b.close().catch(()=>{});
+  process.exit(2);
+ }
+})().catch(async e=>{
+ console.error('FATAL',e);
+ if(b)await b.close().catch(()=>{});
+ process.exit(2);
+});

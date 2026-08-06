@@ -34,14 +34,8 @@ def measurement_context():
     if t:
      cs=cols(c,t,source=DBS['SIKALOTDEF']['path']);lot_col=matching_col(cs,['ロット番号','ﾛｯﾄ番号','ロット№','LTNO'])
      if lot_col:
-      # SELECT TOP N はAccess専用構文でSQLiteでは構文エラーになる(engine='sqlite'は
-      # sikalot_source=localやsikalotdef_pathで品質データをSQLiteへ切り替えた場合に
-      # 発生する。tables.pyの/api/tableと同じくエンジンに応じて出し分ける)。
       cur=c.cursor()
-      if DBS['SIKALOTDEF']['engine']=='sqlite':
-       cur.execute(f'SELECT * FROM {qi(t)} WHERE CStr({qi(lot_col)})=? LIMIT 50',[lot])
-      else:
-       cur.execute(f'SELECT TOP 50 * FROM {qi(t)} WHERE CStr({qi(lot_col)})=?',[lot])
+      cur.execute(f'SELECT * FROM {qi(t)} WHERE CStr({qi(lot_col)})=? LIMIT 50',[lot])
       rows=cur.fetchall()
       for row in rows:
        d=dict(zip(cs,row));result['quality'].append({k:norm(d.get(matching_col(cs,[k]) or k)) for k in ['発生設備','登録日時','異常内容','コメント','最終処置','保留設定日','保留解除']})

@@ -1,15 +1,15 @@
-"""db_access.py: Access/SQLiteデータベースへの接続と共通ヘルパ。
+"""db_access.py: SQLiteデータベースへの接続と共通ヘルパ。
 
 - DBS: 画面から選択できるデータベース(仕掛/品質/マスタ)の定義
 - MEAS_DB: 測定データのバックアップ先(db/records.sqlite3)
-- connect/cols/tables/qi: 接続とスキーマ操作の基本関数(Access/SQLite両対応)
+- connect/cols/tables/qi: 接続とスキーマ操作の基本関数(SQLite専用)
 - パス設定マスタ: 仕掛/品質データの読み込み先・スケジュール共有パス等、
   アプリ運用中に変わり得るパス/間隔設定をdb/master.sqlite3側で管理する
   (旧config/local.json。詳細は下記「パス設定マスタ」節を参照)
 - 監査列(登録者ID/更新者ID)とバックアップテーブルの整備
 
 仕掛(SIKALOTNOW)・品質データ(SIKALOTDEF)は工場側の別システムが所有・書込する
-読み取り専用のAccessファイルのため、これらは引き続きpyodbc経由でAccessのまま
+読み取り専用だが、接続先は実機を含め全てSQLiteへ統一した(Access接続は廃止)。旧記述:
 読み取る。一方、マスタ(オペレータ/設備/フィルタ等)と測定データバックアップは
 本アプリ自身が読み書きするローカルストアのため、SQLite(db/フォルダ)へ移行した。
 """
@@ -19,7 +19,6 @@ from urllib.parse import quote
 import sqlite3
 import threading
 import time
-import pyodbc
 
 from .paths import APP_ROOT, configured_path, load_local_config
 from .logging_setup import app_logger
@@ -34,14 +33,19 @@ from .logging_setup import app_logger
 # 設定手段(起動時に一度だけ読む、ブートストラップ専用の最小限のファイル)。
 DB_DIR=configured_path('db_dir') or APP_ROOT/"db"
 SIKA_DIR=Path(r"\\Nlmsrvngy03\Read\【New】仕掛\台帳")
-DRIVER="Microsoft Access Driver (*.mdb, *.accdb)"
+# 接続はSQLiteのみ。以前はAccess(pyodbc)にも接続できたが、実機を含め全ての
+# 接続先をSQLiteへ統一したため廃止した。古い設定が残っていても黙って落ちない
+# よう、Accessの拡張子が指定されていたら理由を添えて弾く(_reject_access_path)。
+ACCESS_SUFFIXES=('.accdb','.mdb')
 
-def _engine_for(path):
- """パスの拡張子からAccess/SQLiteを判定する(connect()の自動判定と同一基準)。
-    工場側システムが将来SQLiteへ移行した場合でも、DBS/connect双方が同じ
-    基準で判定するため、ファイル名を差し替えるだけで読み替えられる。
-    拡張子の判定は大文字/小文字を区別しない(.SQLITE3等も自動判定する)。"""
- return 'sqlite' if str(path).lower().endswith(('.sqlite3','.sqlite','.db')) else 'access'
+def _reject_access_path(path):
+ """Accessのパスが設定されていたら、何をすればよいかを添えて弾く。
+    分岐を消すだけだと、古いパス設定が残った端末で「接続できない」理由が
+    分からないまま失敗する。"""
+ if str(path).lower().endswith(ACCESS_SUFFIXES):
+  raise RuntimeError(
+   f"Accessファイルへは接続できません(接続先はSQLiteへ統一しました): {path}\n"
+   "マスタ管理 > パス設定 で .sqlite3 のパスを指定し、サーバーを再起動してください。")
 
 # ========================================================================
 # SQLite側のAccess SQL互換関数
@@ -82,20 +86,22 @@ def _sqlite_ro_uri(path):
   return 'file://'+quote(posix)+'?mode=ro'
  return resolved.as_uri()+'?mode=ro'
 def connect(path,readonly=False,engine=None):
- if engine is None:
-  engine='sqlite' if str(path).lower().endswith(('.sqlite3','.sqlite','.db')) else 'access'
- if engine=='sqlite':
-  if readonly:
-   if not path.exists():raise FileNotFoundError(f"データベースが見つかりません: {path}")
-   c=sqlite3.connect(_sqlite_ro_uri(path),uri=True,timeout=10,detect_types=sqlite3.PARSE_DECLTYPES)
-  else:
-   path.parent.mkdir(parents=True,exist_ok=True)
-   c=sqlite3.connect(str(path),timeout=10,detect_types=sqlite3.PARSE_DECLTYPES)
-  c.create_function('Now',0,_sqlite_now);c.create_function('Nz',2,_sqlite_nz)
-  c.create_function('CStr',1,_sqlite_cstr);c.create_function('Val',1,_sqlite_val)
-  return c
- if not path.exists(): raise FileNotFoundError(f"データベースが見つかりません: {path}")
- c=pyodbc.connect(f"DRIVER={{{DRIVER}}};DBQ={path};"+("READONLY=1;" if readonly else ""),autocommit=False,timeout=10)
+ """SQLiteへ接続する。engine引数は呼び出し側の互換のため残しているが
+    'sqlite'以外は受け付けない。"""
+ _reject_access_path(path)
+ if engine not in (None,'sqlite'):
+  raise ValueError(f"未対応のエンジンです(SQLiteのみ対応): {engine}")
+ if readonly:
+  if not path.exists():raise FileNotFoundError(f"データベースが見つかりません: {path}")
+  c=sqlite3.connect(_sqlite_ro_uri(path),uri=True,timeout=10,detect_types=sqlite3.PARSE_DECLTYPES)
+ else:
+  path.parent.mkdir(parents=True,exist_ok=True)
+  c=sqlite3.connect(str(path),timeout=10,detect_types=sqlite3.PARSE_DECLTYPES)
+ # Now()/Nz()/CStr()/Val()はAccess方言のSQL関数。masters.pyのSQLが今もこの
+ # 方言で書かれているため、SQLite側へユーザー定義関数として登録して吸収する。
+ # **接続をSQLiteへ統一した後も残す**(消すと全マスタSQLの書き換えが要る)。
+ c.create_function('Now',0,_sqlite_now);c.create_function('Nz',2,_sqlite_nz)
+ c.create_function('CStr',1,_sqlite_cstr);c.create_function('Val',1,_sqlite_val)
  return c
 
 # 列名の取得は「1行だけSELECTして description を見る」実装のため、共有越しの
@@ -116,7 +122,7 @@ def cols(c,t,use_cache=True,source=None):
  (DBファイルのパス)。呼び出し側が接続先を知っているときだけ渡すこと。
 
  以前は接続オブジェクトへ目印(_wavelog_source)を付けて接続先を引く実装
- だったが、sqlite3.Connection・pyodbc.Connectionはどちらも属性を追加でき
+ だったが、sqlite3.Connectionは属性を追加でき
  ないC実装のため**目印付けは常に失敗**し、キャッシュキーが
  `id(type(c))`(=同じエンジンなら全DB共通の定数)へ落ちていた。結果、
  「同じ名前のテーブルを持つ別のDB」を続けて開くと、先に開いた方の列名が
@@ -132,8 +138,7 @@ def cols(c,t,use_cache=True,source=None):
    hit=_cols_cache.get(key)
   if hit and (now-hit[0])<COLS_CACHE_TTL_SEC:return list(hit[1])
  cur=c.cursor()
- if isinstance(c,sqlite3.Connection):cur.execute(f"SELECT * FROM {qi(t)} LIMIT 1")
- else:cur.execute(f"SELECT TOP 1 * FROM {qi(t)}")
+ cur.execute(f"SELECT * FROM {qi(t)} LIMIT 1")
  out=[x[0] for x in cur.description]
  if key:
   with _cols_cache_lock:_cols_cache[key]=(time.time(),list(out))
@@ -327,12 +332,12 @@ SIKALOTDEF_LOCAL_PATH=DB_DIR/"sikalotdef.sqlite3"
 # (従来からの開発/検証用の上書き挙動を変えないため)。上書き先の拡張子が
 # .sqlite3等であれば自動的にSQLiteとして接続する(_engine_for)。
 _sikalotnow_override=_static_path_cfg('sikalotnow_path')
-_SIKALOTNOW_PATH=Path(_sikalotnow_override) if _sikalotnow_override else (SIKALOTNOW_LOCAL_PATH if SIKALOT_SOURCE=='local' else SIKA_DIR/"SIKALOTNOW.accdb")
+_SIKALOTNOW_PATH=Path(_sikalotnow_override) if _sikalotnow_override else (SIKALOTNOW_LOCAL_PATH if SIKALOT_SOURCE=='local' else SIKA_DIR/"SIKALOTNOW.sqlite3")
 _sikalotdef_override=_static_path_cfg('sikalotdef_path')
-_SIKALOTDEF_PATH=Path(_sikalotdef_override) if _sikalotdef_override else (SIKALOTDEF_LOCAL_PATH if SIKALOT_SOURCE=='local' else SIKA_DIR/"SIKALOTDEF.accdb")
+_SIKALOTDEF_PATH=Path(_sikalotdef_override) if _sikalotdef_override else (SIKALOTDEF_LOCAL_PATH if SIKALOT_SOURCE=='local' else SIKA_DIR/"SIKALOTDEF.sqlite3")
 DBS={
- "SIKALOTNOW":{"path":_SIKALOTNOW_PATH,"label":"仕掛（現在）","role":"readonly","preferred":"仕掛","engine":_engine_for(_SIKALOTNOW_PATH)},
- "SIKALOTDEF":{"path":_SIKALOTDEF_PATH,"label":"品質データ","role":"readonly","preferred":"仕掛","engine":_engine_for(_SIKALOTDEF_PATH)},
+ "SIKALOTNOW":{"path":_SIKALOTNOW_PATH,"label":"仕掛（現在）","role":"readonly","preferred":"仕掛","engine":"sqlite"},
+ "SIKALOTDEF":{"path":_SIKALOTDEF_PATH,"label":"品質データ","role":"readonly","preferred":"仕掛","engine":"sqlite"},
  "MASTER":{"path":_MASTER_PATH,"label":"マスタ一覧","role":"master","preferred":"オペレータマスタ","engine":"sqlite"}}
 # 閲覧用の追加複製先(パス設定マスタの"records_backup_export_path")。
 # 未設定ならNoneのままで、records_export.pyは複製を一切行わない(既定は現状維持)。

@@ -44,14 +44,18 @@
   `normalizedFieldName`/`exactFieldNumber` 系を使い、直接文字列比較しない。
   分割関連の実カラム名は「親子管理_子カード<N>」「コンマ5本分割_切断巾<N>」
   （旧VBA名 KOCARD/K05JO はエイリアスであり実カラム名ではない）。
-- **DBエンジンの使い分け**: 仕掛(SIKALOTNOW)・品質データ(SIKALOTDEF)は工場側の
-  別システムが所有するネットワーク共有上の読み取り専用Accessファイルのため、
-  既定は今後もpyodbc経由でAccessのまま読む。マスタ(`db/master.sqlite3`)・測定
-  データバックアップ(`db/records.sqlite3`)は本アプリ自身が読み書きするローカルの
-  SQLiteで、`backend/db_access.py`の`connect()`がパス拡張子でAccess/SQLiteを
-  自動判別する。`backend/masters.py`のSQLはNow()/Nz()等のAccess関数をそのまま
-  使っているが、`connect()`がSQLite接続へユーザー定義関数として登録して吸収
-  している。**UNC共有パス(`\\server\share\...`)上の`.sqlite3`を読み取り専用で
+- **接続先はすべてSQLite（Access接続は廃止）**: 仕掛(SIKALOTNOW)・品質データ
+  (SIKALOTDEF)・マスタ(`db/master.sqlite3`)・測定データバックアップ
+  (`db/records.sqlite3`)のいずれも`.sqlite3`で読む。以前はpyodbc経由でAccessにも
+  接続できたが、実機を含め全てSQLiteで構築するため`connect()`をSQLite専用にした
+  （pyodbcへの依存も外したので、実機にAccessランタイムは不要）。
+  古い設定が残っていても黙って落ちないよう、`.accdb`/`.mdb`が指定されていたら
+  `_reject_access_path()`が対処を添えて弾く。
+  **`connect()`が登録するNow()/Nz()/CStr()/Val()は消さないこと**——
+  `backend/masters.py`のSQLは今もこのAccess方言で書かれており、これらの
+  ユーザー定義関数が吸収している（消すと全マスタSQLの書き換えが要る）。
+  同様に、有効フラグの`-1`と項目名の全角/半角ゆれ吸収もAccess由来だが
+  **データ側の資産**なので接続の統一とは無関係に残る。**UNC共有パス(`\\server\share\...`)上の`.sqlite3`を読み取り専用で
   開く際は要注意**: `connect()`はfile: URIで開くが、pathlib標準の`as_uri()`が
   返す2スラッシュ形式(`file://server/share/...`)だとサーバー名をURIの
   authorityと解釈され、`SQLITE_ALLOW_URI_AUTHORITY`無しでビルドされた標準的な
@@ -60,12 +64,11 @@
   直して回避しているため、この関数を経由せず独自にURIを組み立てるコードを
   追加しないこと。仕掛/品質データの読み込み先自体はパス設定マスタ(下記、マスタ管理
   画面の「パス設定」タブ)の`sikalotnow_path`/`sikalotdef_path`で上書き可能で、
-  拡張子が`.sqlite3`等なら自動的にSQLiteとして読む（`db_access.py`の
-  `_engine_for`）。**この2項目とsikalot_source/records_backup_export_path/
+  **この2項目とsikalot_source/records_backup_export_path/
   schedule_share_pathは、接続先をプロセス起動時に1回だけ確定させる設計のため、
   マスタ管理画面で保存してもサーバー再起動まで反映されない**（画面内の「保存値」
   「現在有効な値」の一覧で反映状況を確認できる）。サンドボックス検証で一時的に
-  使う場合は検証後にマスタ管理 > パス設定から既定のAccdb/ネットワーク共有パスへ
+  使う場合は検証後にマスタ管理 > パス設定から既定のネットワーク共有パスへ
   戻してから再起動すること（戻し忘れると以降の起動が上書き先を読み続けてしまう）。
 - **マスタの保存先は`db/master.sqlite3`に集約**: 共有の`schedule.sqlite3`
   （ネットワーク共有上、`backend/schedule_sync.py`がロック＋改訂番号で排他制御）
@@ -166,11 +169,10 @@
 - Playwright ヘッドレス（Chromium: `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`、
   `NODE_PATH=/opt/node22/lib/node_modules`）。環境が違う場合は
   `WAVELOG_CHROMIUM`/`WAVELOG_PLAYWRIGHT`/`WAVELOG_NODE` で上書きする。
-- サンドボックスにAccessドライバは無く、仕掛/品質データ系API(`/api/table`等、
-  SIKALOTNOW/SIKALOTDEF)は接続先がAccessのままのため500を返す。実データ依存の
-  検証は`page.route`でモックして行う。一方マスタ系API(`/api/operator-master`等)
-  はSQLite化済みのため、サンドボックスでもモック無しで実際にサーバー経由の
-  読み書きを検証できる。
+- **接続先が全てSQLiteになったため、仕掛/品質データ系API(`/api/table`等)も
+  モック無しで検証できる**。ランナーが`db/test_fixture/`の`.sqlite3`を指すので、
+  実際にサーバー経由で読める（以前はAccessドライバが無く500を返すため
+  `page.route`でモックしていた。その必要は無い）。
 - `openMeasurement`/`resumeStoredMeasure` は内部のマスタ問い合わせ失敗で
   例外を投げ得る。後続処理を確実に実行したいラップは `finally` に置く。
 

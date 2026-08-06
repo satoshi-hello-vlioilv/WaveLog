@@ -5,9 +5,9 @@
 
 ## 全体像
 
-- **バックエンド**: Flask (`app.py`)。仕掛(`SIKALOTNOW.accdb`)・品質データ
-  (`SIKALOTDEF.accdb`)は工場側の別システムが所有する読み取り専用のAccess
-  ファイル(ネットワーク共有)を pyodbc で参照。マスタ・測定データバックアップは
+- **バックエンド**: Flask (`app.py`)。仕掛(`SIKALOTNOW.sqlite3`)・品質データ
+  (`SIKALOTDEF.sqlite3`)は工場側の別システムが所有する読み取り専用のSQLite
+  ファイル(ネットワーク共有)を参照。マスタ・測定データバックアップは
   本アプリ自身が読み書きするローカルの SQLite(`sqlite3`標準ライブラリ)で、
   `db/` フォルダ配下に置く。ビルド工程なし。
   仕掛/品質データの読み込み先ファイル自体もパス設定マスタ(`db/master.sqlite3`、
@@ -90,7 +90,7 @@
 | `backend/routes/rne.py` | RNE抽出の状態表示と手動実行のBlueprint（`masters.py`から分離）。手動実行は「読み直すだけのPOST」として`access_mode._READ_ONLY_POST_ENDPOINTS`に`rne.rne_extract_run`で登録 |
 | `backend/repositories/master_repo.py` | 各種マスタのデータアクセス層。テーブル定義(`ensure_*_table`)・正規化(`normalize_*_name`)・読み取り(`*_master_rows`/`read_*_names`)・書き込み補助(`set_operator_equipment`/`set_hidden_columns`)。Flaskに依存しない |
 | `backend/changelog_data.py` | `APP_VERSION` と `CHANGELOG`（データのみ。リリースごとにここを更新） |
-| `backend/db_access.py` | `DBS`(接続先定義)・`APP_ROOT`/`DB_DIR`(パス基準)・`connect`/`cols`/`tables`/`qi`(Access/SQLite両対応)・監査列・バックアップテーブル整備・パス設定マスタ(`PATH_CONFIG_TABLE`、旧`config/local.json`。仕掛/品質データの読み込み先・共有パス・各種間隔設定を`db/master.sqlite3`側で管理し、`master_repo.py`と同じ形のCRUDヘルパを提供する) |
+| `backend/db_access.py` | `DBS`(接続先定義)・`APP_ROOT`/`DB_DIR`(パス基準)・`connect`/`cols`/`tables`/`qi`(SQLite専用。`.accdb`/`.mdb`は対処を添えて拒否)・監査列・バックアップテーブル整備・パス設定マスタ(`PATH_CONFIG_TABLE`、旧`config/local.json`。仕掛/品質データの読み込み先・共有パス・各種間隔設定を`db/master.sqlite3`側で管理し、`master_repo.py`と同じ形のCRUDヘルパを提供する) |
 | `backend/records_export.py` | 測定データバックアップ(`records.sqlite3`)の閲覧用複製(定期・差分あり時のみ) |
 | `backend/access_mode.py` | 編集可能モード/閲覧モードの判定・切替API・書込系APIのガード(`before_request`) |
 | `backend/navigator_api.py` | SymfoNavi Navigator API(`SymNaviA.dll`)のctypesラッパー(Windows専用、SymfoNavi-Data-Hubから移植) |
@@ -121,9 +121,9 @@ import(`from backend.xxx import ...`)、`backend` 内のモジュール同士は
 
 ### 仕掛/品質データのローカル運用(RNE定期抽出)
 
-仕掛(SIKALOTNOW)・品質データ(SIKALOTDEF)は既定でネットワーク共有
-(`\\Nlmsrvngy03\Read\【New】仕掛\台帳`)上のAccessファイルを直接読む
-（工場側の別システムが所有・書込する読み取り専用データ)。この既定は
+仕掛(SIKALOTNOW)・品質データ(SIKALOTDEF)は既定でネットワーク共有上の
+SQLiteファイルを直接読む（工場側の別システムが所有・書込する読み取り専用
+データ。実際の場所はパス設定マスタの`sikalotnow_path`/`sikalotdef_path`)。この既定は
 変えず、共有への到達性が無い/不安定な環境向けに、WaveLog自身がNavigator
 API経由でRNE(Navigator問い合わせ定義)を実行し、ローカルSQLite3として
 定期更新する運用へ切り替えられるようにしてある(SymfoNavi-Data-Hubの
@@ -850,12 +850,11 @@ A4縦は `fit` 倍率が**高さで決まる**（210×297mm を横長の画面�
   `app.py`・`templates`・`static` を変更したら Flask を再起動して確認する
   (`python3 process_manager.py stop` → `python3 -u start_app.py`)。プロセス名で
   一括終了する `pkill` は、同じPCの他のPythonを巻き添えにするため使わない。
-- **回帰テスト**: Playwright のヘッドレステスト群（開発環境のscratchpadに
-  `test_*.js`）を変更のたびに実行する。仕掛/品質データ(`/api/table` 等)は
-  引き続きAccess接続のため、Accessドライバの無い環境では `page.route` で
-  モックして検証する。一方マスタ(`/api/operator-master` 等)はSQLite化に
-  伴いAccessドライバ無しの環境でも実際にサーバー経由で読み書きして検証できる
-  （マスタ系のテストはモック不要）。
+- **回帰テスト**: `tests/` に常設（実行は `tests/run_all.sh` のみ）。
+  接続先が全てSQLiteになったため、仕掛/品質データ(`/api/table` 等)もマスタ
+  (`/api/operator-master` 等)も**モック無しで実際にサーバー経由で検証できる**
+  （ランナーが `db/test_fixture/` の `.sqlite3` を指す）。以前は仕掛/品質が
+  Access接続で、ドライバの無い環境では `page.route` でモックする必要があった。
 - **リリース**: 意味のある変更ごとに `backend/changelog_data.py` の
   `APP_VERSION` を上げ、`CHANGELOG` 先頭にエントリを追記する（アプリ内の
   更新履歴表示がこれを直接参照する）。

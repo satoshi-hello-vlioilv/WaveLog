@@ -1,9 +1,9 @@
 # WaveLog 測定伝送システム
 
 板金・コイル加工ラインの測定器（マイクロメータ・ノギス等）から送られてくる
-測定データを受信し、Microsoft Access（.accdb）の仕掛データと突き合わせながら
+測定データを受信し、SQLite（.sqlite3）の仕掛データと突き合わせながら
 記録・帳票化するための、Flask製の社内向けWebアプリです。仕掛・品質データは
-工場側の別システムが所有するAccessファイルを読み取り専用で参照し、本アプリ
+工場側の別システムが所有するデータベースを読み取り専用で参照し、本アプリ
 自身が読み書きするマスタ・測定データバックアップはSQLite（.sqlite3）に
 保存します。
 
@@ -21,17 +21,17 @@
   ロット番号から、LotDsp（社内システム）の該当ロットを直接開けます。
 - **測定帳票**: 編集中/完了データ一覧の各行から、そのロットのA4帳票
   プレビューを開き、印刷・PDF保存ができます。
-- **品質データ分析・生産管理ダッシュボード**: Accessの仕掛データを集計した
+- **品質データ分析・生産管理ダッシュボード**: 仕掛データを集計した
   グラフ表示、KPIダッシュボード。
 - **更新履歴の表示**: 画面のバージョンバッジ（例: `VER1.9.2`）をクリックすると、
   アプリ内でこれまでの更新内容を一覧表示できます。
 
 ## 動作環境
 
-- Windows（仕掛・品質データの参照にMicrosoft Access ODBC ドライバーが必要なため）
+- Windows（起動スクリプト・RNE抽出がWindows前提のため。Accessドライバーは不要）
 - Python 3.9 以降
-- 必要パッケージ: `flask`, `pyodbc`（`sqlite3` は標準ライブラリのため追加インストール不要）
-- 参照する仕掛データ（`SIKALOTNOW.accdb` / `SIKALOTDEF.accdb`）は、工場側の
+- 必要パッケージ: `flask`（`sqlite3` は標準ライブラリのため追加インストール不要）
+- 参照する仕掛データ（`SIKALOTNOW.sqlite3` / `SIKALOTDEF.sqlite3`）は、工場側の
   別システムが所有・書込する社内ネットワーク共有（`backend/db_access.py` の
   `SIKA_DIR`）を読み取り専用で参照します。ローカルのマスタ（`db/master.sqlite3`）・
   測定データバックアップ（`db/records.sqlite3`）は本アプリ自身が読み書きする
@@ -58,7 +58,7 @@ Windows環境では **`Start.vbs` をダブルクリック**します（通常�
 開発時は次でも起動できます。
 
 ```
-pip install flask pyodbc
+pip install flask
 python start_app.py       # 通常の起動経路(推奨)
 python app.py             # 同じ経路へ委譲されます
 ```
@@ -107,7 +107,7 @@ backend/                   Flask本体以外のバックエンドロジック(Py
   logging_setup.py           ログ初期化(launcher / app の2系統)
   watchdog.py                プロセスの生存管理(ハートビート監視・明示停止)
   changelog_data.py          バージョン番号(APP_VERSION)と更新履歴(CHANGELOG)
-  db_access.py                Access(ODBC)/SQLite接続・DB定義・共通ヘルパ
+  db_access.py                SQLite接続・DB定義・共通ヘルパ
   masters.py                   各種マスタCRUD API(Blueprint、db/master.sqlite3)
 db/                         ローカルDBの既定の置き場所(config/local.jsonで変更可)
   master.sqlite3               本アプリが読み書きするマスタ(無ければ初回書き込み時に自動生成)

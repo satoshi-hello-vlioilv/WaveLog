@@ -84,11 +84,9 @@ def quality_analysis():
    if stack_col not in cs:stack_col=''
    if date_col not in cs:date_col=first_existing(cs,['登録日時','発生日','発生日時','保留設定日']) or ''
    cur=c.cursor()
-   # SELECT TOP N はAccess専用構文でSQLiteでは構文エラーになる(engine='sqlite'は
    # sikalot_source=localやsikalotdef_pathで品質データをSQLiteへ切り替えた場合に
    # 発生する。tables.pyの/api/tableと同じくエンジンに応じて出し分ける)。
-   if cf['engine']=='sqlite':cur.execute(f'SELECT * FROM {qi(table)} LIMIT {max_rows}')
-   else:cur.execute(f'SELECT TOP {max_rows} * FROM {qi(table)}')
+   cur.execute(f'SELECT * FROM {qi(table)} LIMIT {max_rows}')
    raw=[dict(zip(cs,row)) for row in cur.fetchall()]
   filtered=[]
   for row in raw:
