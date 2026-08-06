@@ -1221,10 +1221,8 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 /* ---------- 11. 保存データ一覧モーダル ---------- */
 .record-modal{position:fixed;inset:0;z-index:1500;background:#071c2280;display:grid;place-items:center}
 .record-dialog{width:min(1480px,97vw);height:min(900px,94vh);background:#f7fafb;border-radius:14px;box-shadow:0 20px 60px #0005;display:flex;flex-direction:column;overflow:hidden}
-.record-dialog>header{display:flex;align-items:center;justify-content:space-between;padding:10px 18px;background:var(--nav);color:#fff}
-.record-dialog h2{margin:0;font-size:var(--fs-title);font-weight:800}
-.record-dialog small{color:#8fd4d4}
-.record-dialog>header button{font-size:var(--fs-lg);color:#fff;background:transparent;border:0}
+/* データ一覧の見出しバンドは廃止(画面名はヘッダーの#fileNameが持つ)。
+   絞り込み(.record-searchbar)はヘッダーの#headerViewBarへ移る。 */
 .record-searchbar{display:grid;grid-template-columns:auto minmax(300px,1fr) 250px 110px auto;gap:10px;align-items:end;padding:12px 16px;border-bottom:1px solid #d6e0e3;background:#fff}
 .record-searchbar label{display:grid;gap:var(--space-1)}
 .record-searchbar label>span{font-size:var(--fs-micro);font-weight:800;color:#526970}
@@ -1794,14 +1792,12 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .mm-panel[hidden]{display:none!important}
 .mm-panel .mm-dialog{width:100%;max-width:none;height:100%;border-radius:0;box-shadow:none}
 .mm-dialog{position:relative;width:96vw;max-width:1500px;height:94vh;display:flex;flex-direction:column;background:#f7fafb;border-radius:14px;overflow:hidden;box-shadow:0 30px 80px #00000055}
-.mm-head{display:flex;align-items:center;gap:var(--space-4);padding:10px 18px;background:linear-gradient(90deg,var(--nav),#1f5560);color:#fff}
-.mm-head-title{display:flex;flex-direction:column;gap:2px;min-width:0}
-.mm-head-title h2{margin:0;font-size:var(--fs-title);font-weight:800}
-.mm-sub{color:#bfe0e4;font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.mm-head-user{margin-left:auto;display:flex;align-items:center;gap:var(--space-2);color:#dff1f3;font-weight:700;font-size:var(--fs-base-sm);white-space:nowrap}
-.mm-head-user input{height:var(--ctl-h);min-width:180px;padding:6px 10px;border:1px solid #7fc0c8;border-radius:8px;background:#fff;color:#12333a;font-weight:700}
-.mm-close{width:var(--ctl-h);height:var(--ctl-h);border:0;border-radius:8px;background:#ffffff22;color:#fff;font-size:calc(22px * var(--ui-scale));line-height:1;cursor:pointer}
-.mm-close:hover{background:#ffffff33}
+/* 見出しの濃色バンドは廃止(画面名はヘッダーの#fileNameが持つ)。残るのは
+   更新者IDの入力で、これはヘッダーの操作列(#headerViewBar)へ移る。パネル内に
+   置かれたまま(移設前の一瞬)でも崩れないよう素の行として組む。 */
+.mm-head{display:flex;align-items:center;gap:var(--space-3);padding:0}
+.mm-head-user{display:flex;align-items:center;gap:var(--space-2);color:var(--muted);font-weight:700;font-size:var(--fs-sm);white-space:nowrap}
+.mm-head-user input{height:var(--ctl-h-sm);min-width:calc(180px * var(--ui-scale));padding:0 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);font-weight:700}
 .mm-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(150px,calc(200px * var(--ui-scale))) minmax(0,1fr)}
 .mm-nav{display:flex;flex-direction:column;gap:2px;padding:12px 10px;background:#e7eff1;border-right:1px solid var(--line);overflow:auto}
 /* マスタ種別のグループ見出し(情報アーキテクチャ)。左ナビのnav-group-labelと
@@ -2473,19 +2469,12 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
  ごとの作業効率をクライアント側で集計する。品質データ分析(qa-v7)
  と同じ「軸×系列×指標」の汎用設計・見た目の言語を踏襲する。
  ============================================================ */
-/* ---------- パネル見出し(.rp-head) (§9.63) ----------
-   ダッシュボード・実績カレンダー・帳票が共通で使う見出し。**このクラスには
-   これまでスタイルが1行も無く**、`<h2>`のブラウザ既定マージンと素の`<span>`が
-   そのまま出ていた。そのため見出しだけ余白も色も他画面と揃わず、崩れて
-   見えていた(calendar-view.jsの冒頭コメントは「ダッシュボードと同じ視覚語彙
-   (.rp-head)」と書いているが、その定義自体が存在しなかった)。
-   データ一覧(.record-dialog>header)と同じ濃色バンドに揃える。 */
-.rp-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);
- padding:10px 18px;background:var(--nav);color:#fff;flex-wrap:wrap}
-.rp-head-title{display:flex;align-items:baseline;gap:var(--space-3);min-width:0}
-.rp-head-title h2{margin:0;font-size:var(--fs-title);font-weight:800;color:#fff;white-space:nowrap}
-.rp-sub{font-size:var(--fs-sm);color:#a8d6dc;min-width:0;
- overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* ---------- パネルの操作列(.rp-head-actions) (§9.63 → VER1.82.0) ----------
+   かつては`.rp-head`という濃色の見出しバンド(画面名＋操作)をダッシュボード・
+   実績カレンダー・帳票が共有していた。画面名はヘッダーの`#fileName`と二重で、
+   バー1本ぶん本文の高さを食っていたため**バンドごと廃止**し、操作だけを
+   ヘッダーの`#headerViewBar`へ移した(ARCHITECTURE.md「画面ごとの操作列を
+   ヘッダーへ相乗りさせる」)。残すのは操作を横に並べる箱だけ。 */
 .rp-head-actions{display:flex;align-items:center;gap:var(--space-2);margin-left:auto}
 /* .rp-btn-primary/.rp-btn-secondary も**基底の定義が無く**、ブラウザ既定の
    ボタンのまま出ていた(実績カレンダーの「‹ › 今月」やダッシュボードの
@@ -2505,9 +2494,6 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
 .rp-btn-primary:disabled,.rp-btn-secondary:disabled{
  opacity:.45;cursor:not-allowed;background:#eef2f4;border-color:#d6e0e3;color:#93a5ab}
 .rp-btn-icon{width:var(--ctl-h);padding:0;font-size:var(--fs-title);line-height:1}
-/* 濃色ヘッダーの中に置く場合は白枠のゴースト表現にする(背景に沈まないように) */
-.rp-head .rp-btn-secondary{background:transparent;border-color:#3d6673;color:#cfe9ed;height:calc(var(--ctl-h) - 8px)}
-.rp-head .rp-btn-secondary:hover{background:#173842;border-color:#5b8894;color:#fff}
 .db-panel{flex:1;min-height:0;margin:9px 14px;display:flex;flex-direction:column;background:#f7fafb;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .db-panel[hidden]{display:none!important}
 .db-layout{flex:1;min-height:0;display:grid;grid-template-columns:calc(260px * var(--ui-scale)) minmax(0,1fr);overflow:hidden}
@@ -2664,13 +2650,11 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none!impor
 .sc-panel[hidden]{display:none!important}
 .sc-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap}
 .sc-head-left,.sc-head-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.sc-title{font-size:var(--fs-title);color:#173842}
-.sc-equipment-select{height:32px;padding:0 8px;border:1px solid var(--line);border-radius:6px;background:#fff}
+.sc-equipment-select{height:var(--ctl-h-sm);padding:0 8px;border:1px solid var(--line);border-radius:6px;background:#fff}
 .sc-equipment-fixed{font-size:var(--fs-base-sm);font-weight:700;color:#3a565d;background:#eafafa;border:1px solid var(--teal);border-radius:14px;padding:4px 10px}
 .sc-lock-badge{font-size:var(--fs-sm);font-weight:700;color:var(--warn-fg);background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:12px;padding:3px 9px}
 .sc-field-reorder-note{font-size:var(--fs-micro);font-weight:700;color:var(--warn-fg)}
-.sc-refresh,.sc-close{height:30px;padding:0 12px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer}
-.sc-close{width:var(--ctl-h-sm);padding:0;font-size:var(--fs-title);line-height:1}
+.sc-refresh{height:var(--ctl-h-sm);padding:0 12px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer}
 .sc-warnings{padding:6px 14px;background:var(--warn-bg);border-bottom:1px solid var(--warn-border)}
 .sc-warning{font-size:var(--fs-sm);color:var(--warn-fg)}
 /* 編集セッション(§9.11新設)。他端末が既にこの設備を編集中の間、追加・削除・
@@ -3639,9 +3623,10 @@ body.nav-collapsed #navResizeHandle{pointer-events:none;opacity:.35}
 /* 元パネル向けの枠・余白・背景は落とし、ヘッダーのコントロールと同じ寸法・
    同じ色づかい(白地+--line枠)へ揃える。 */
 .hd-viewbar>*{margin:0;min-width:0}
-.hd-viewbar .sc-head,.hd-viewbar .rp-head-actions,.hd-viewbar .record-searchbar{
+.hd-viewbar .sc-head,.hd-viewbar .rp-head-actions,.hd-viewbar .record-searchbar,
+.hd-viewbar .cal-toolbar,.hd-viewbar .mm-head{
   display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2);width:100%;min-width:0;
-  margin:0;padding:0;border:0;background:transparent;box-shadow:none;
+  margin:0;padding:0;border:0;background:transparent;box-shadow:none;color:inherit;
 }
 .hd-viewbar .sc-head-left,.hd-viewbar .sc-head-right{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2);min-width:0}
 .hd-viewbar .sc-head-right{margin-left:auto}
@@ -3662,6 +3647,30 @@ body.nav-collapsed #navResizeHandle{pointer-events:none;opacity:.35}
   font-size:var(--fs-micro);color:var(--muted);white-space:nowrap;
 }
 .hd-viewbar .sc-refresh,.hd-viewbar .rp-btn-secondary{border-color:var(--teal);color:#0c5d67}
+/* 実績カレンダー: 月送り・今月と、指標/対象ステータスの2択(.db-seg)。 */
+.hd-viewbar .cal-nav,.hd-viewbar .cal-toolbar-right{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;min-width:0}
+.hd-viewbar .cal-toolbar-right{margin-left:auto}
+.hd-viewbar .cal-month-label{font-size:var(--fs-base-sm);font-weight:800;color:var(--ink);white-space:nowrap;min-width:8em;text-align:center}
+/* ‹ › は文字ではなく記号なので、本文用の--fs-smだと潰れて読めない。
+   アイコンのみのボタンは他画面の.rp-btn-iconと同じ--fs-titleで揃える
+   (文字サイズの統一を見る回帰テストもこの一群は別扱いにしている)。 */
+.hd-viewbar .rp-btn-icon{width:var(--ctl-h-sm);padding:0;font-size:var(--fs-title);line-height:1}
+.hd-viewbar .db-seg{display:flex;gap:2px;padding:2px;border-radius:9px;background:var(--bg)}
+.hd-viewbar .db-seg button{height:calc(var(--ctl-h-sm) - 4px);border-color:transparent;background:transparent}
+/* 2択・タブの「選ばれている方」。上の`.hd-viewbar button.active`と同じ
+   詳細度(0,2,1)で、かつ後から来る`.db-seg button`等が地の色へ戻してしまう
+   ため、選択中だけは詳細度を1段上げて宣言し直す(ダッシュボードのタブは
+   `[role="tab"]`があるので偶然勝っていたが、カレンダーの2択は負けていた)。 */
+.hd-viewbar .db-seg button.active,
+.hd-viewbar .db-viewtabs button.active,
+.hd-viewbar .sc-mode-toggle-btn.active{background:var(--teal);border-color:var(--teal);color:#fff}
+.hd-viewbar .db-seg button:hover:not(.active),
+.hd-viewbar .db-viewtabs button:hover:not(.active),
+.hd-viewbar .sc-mode-toggle-btn:hover:not(.active){background:#fff;border-color:var(--teal);color:#0c5d67}
+/* マスタ管理: 更新者IDだけを残す(説明はヘッダーの副題、閉じるは左メニュー)。 */
+.hd-viewbar .mm-head-user{display:inline-flex;align-items:center;gap:var(--space-2);margin:0;
+  color:var(--muted);font-size:var(--fs-sm);font-weight:700;white-space:nowrap}
+.hd-viewbar .mm-head-user input{min-width:calc(180px * var(--ui-scale));font-weight:700}
 /* 一覧専用の操作(検索・表示件数・再読込)は、一覧を見ていない画面では出さない。
    「意味のないメニュー」を並べたままにしないためと、画面ごとの操作列へ
    横幅を渡すため。表示サイズ(A)は全画面共通なので残す。 */
@@ -3672,7 +3681,8 @@ body.mm-mode .global-actions .hd-search,body.mm-mode .global-actions .hd-field,b
 body.cal-mode .global-actions .hd-search,body.cal-mode .global-actions .hd-field,body.cal-mode .global-actions #reload,
 body.rec-mode .global-actions .hd-search,body.rec-mode .global-actions .hd-field,body.rec-mode .global-actions #reload{display:none}
 /* パネル側に残った見出しバーの枠は、中身をヘッダーへ移したぶん詰める。 */
-.sc-panel .sc-head:empty,.db-panel .rp-head-actions:empty{display:none}
+.sc-panel .sc-head:empty,.db-panel .rp-head-actions:empty,
+.cal-panel .cal-toolbar:empty,.mm-panel .mm-head:empty{display:none}
 
 /* ---- ヘッダー相乗り時の整理（重複する情報・使わない操作を出さない） ---- */
 /* 使用設備は画面ごとの操作列(スケジュールの設備選択)が持つので、ヘッダーの

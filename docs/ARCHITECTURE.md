@@ -249,7 +249,7 @@ API経由でRNE(Navigator問い合わせ定義)を実行し、ローカルSQLite
 `#fileName`と同じ文字が二重に出るうえ、バー1本ぶん本文の高さを食う。
 
 - **画面名はヘッダーだけが持つ**。パネル側の見出し(`.sc-title`/`#recordTitle`/
-  ダッシュボードの`.rp-head`)は廃止。
+  ダッシュボードの`.rp-head`/マスタ管理の`.mm-head`の濃色バンド)は廃止。
 - 操作列は `registerView({toolbar:'#scHead'})` で宣言し、`WL.enterView` の
   `mountViewToolbar()` が `#headerViewBar` へ **DOMごと移動**させる。
   移動なのでハンドラ・id参照はそのまま生きる。退出時は元の親へ戻す
@@ -262,7 +262,23 @@ API経由でRNE(Navigator問い合わせ定義)を実行し、ローカルSQLite
 - 一覧専用の操作(検索・表示件数・再読込)は、一覧以外の画面では出さない
   (`body.sc-mode .global-actions .hd-search{display:none}` 等)。表示サイズは
   全画面共通なので残す。
-- 回帰は `tests/test_theme.js`。
+- **画面ごとの「×(閉じる)」は置かない**。左のメニューから別の画面へ移れば
+  `enterView` が閉じるので、その画面だけ閉じ方が違う状態になる
+  (作業スケジュールの`#scClose`・マスタ管理の`#closeMasterMaint`を廃止)。
+
+| 画面 | `toolbar` | 中身 |
+|---|---|---|
+| 作業スケジュール | `#scHead` | 設備選択・まとめ単位・表示範囲・ポップアップ・再計算 |
+| ダッシュボード | `#dbHeadActions` | 稼働状況/自設備/自由集計のタブ・再読込 |
+| 実績カレンダー | `#calToolbar` | 月送り・今月・作業重量/ロット数・完了のみ/すべて |
+| マスタ管理 | `#mmHead` | 更新者ID |
+| データ一覧 | `#recordSearchBar` | 編集中/完了・絞り込み・並び順・検索解除 |
+
+寸法は `--ctl-h-sm`(30px)、その中へ入れ子になる2択・タブだけ `-4px`(26px)。
+文字は `--fs-sm` 一本で、`‹ ›` のようなアイコンのみのボタンだけ `--fs-title`
+(記号なので本文サイズだと潰れる)。
+
+- 回帰は `tests/test_theme.js`（5画面すべてで載せ替え・寸法・文字サイズを見る）。
 
 ### 分割数（条数）とロット数は別物
 

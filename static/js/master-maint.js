@@ -119,12 +119,13 @@
  function ensureMaintPanel(){
   let panel=$('#masterMaintPanel');if(panel)return panel;
   panel=document.createElement('section');panel.className='mm-panel';panel.id='masterMaintPanel';panel.hidden=true;
+  /* 見出しの帯は持たない。画面名と説明はヘッダー(#fileName)が、更新者IDは
+     ヘッダーの操作列(#headerViewBar)が受け持つ。「×」も置かない——他の画面に
+     無く、左のメニューから移れば閉じるため、この画面だけ閉じ方が違っていた。 */
   panel.innerHTML=`<div class="mm-dialog">
-   <header class="mm-head">
-    <div class="mm-head-title"><span class="mm-sub">登録内容の追加・編集・無効化。更新はすべて更新者IDとともに記録されます。</span></div>
+   <div class="mm-head" id="mmHead">
     <label class="mm-head-user">更新者ID<input id="masterUserId" type="text" autocomplete="off" placeholder="社員番号など"></label>
-    <button id="closeMasterMaint" class="mm-close" type="button" aria-label="マスタ管理を閉じる" title="マスタ管理を閉じる">×</button>
-   </header>
+   </div>
    <div class="mm-body">
     <nav class="mm-nav" id="masterMaintNav" aria-label="マスタ種別"></nav>
     <section class="mm-main">
@@ -141,7 +142,6 @@
    </div>
   </div>`;
   const grid=$('#grid');grid?.parentNode?.insertBefore(panel,grid);
-  $('#closeMasterMaint').onclick=()=>exitMasterMaint();
   const uid=$('#masterUserId');if(uid){uid.value=currentUserId();uid.onchange=()=>setUserId(uid.value)}
   $('#reloadMasterMaint').onclick=()=>loadMaint(true);
   const search=$('#masterMaintSearch');if(search){search.oninput=()=>{maintState.query=search.value;renderMaintList()}}
@@ -156,8 +156,12 @@
   document.getElementById('openMasterMaint')?.classList.remove('active');
  }
  window.exitMasterMaint=exitMasterMaint;
- WL.registerView({key:'master',bodyClass:'mm-mode',nav:'openMasterMaint',
-  header:['マスタ管理','master.sqlite3'],exit:exitMasterMaint});
+ /* 更新者IDの入力はヘッダーの#headerViewBarへ移す(WL.enterViewの
+    mountViewToolbar参照)。副題は保存先のファイル名ではなく、この画面で
+    何ができるかを書く(ファイル名は開発者向けの情報で、現場では読めても
+    意味が無い)。 */
+ WL.registerView({key:'master',bodyClass:'mm-mode',nav:'openMasterMaint',toolbar:'#mmHead',
+  header:['マスタ管理','登録内容の追加・編集・無効化（更新者IDとともに記録）'],exit:exitMasterMaint});
  function syncNav(){document.querySelectorAll('#masterMaintNav [data-master]').forEach(b=>b.classList.toggle('active',b.dataset.master===maintState.defKey))}
  function requireMaintUser(){const el=$('#masterUserId');const id=String(el?el.value:'').trim();if(!id){showToast('更新者IDを入力してください','マスタ更新には更新者IDが必要です。',4200);el&&el.focus();return null}setUserId(id);return id}
 
@@ -1747,6 +1751,7 @@
  function openMasterMaint(){
   WL.enterView('master');
   const panel=ensureMaintPanel();
+  WL.syncViewToolbar('master');   // 更新者ID(#mmHead)はパネル生成後にヘッダーへ載せる
   renderMaintNav();
   const uid=$('#masterUserId');if(uid)uid.value=currentUserId();
   if(!maintDefVisible(currentDef()))maintState.defKey=firstVisibleDefKey();

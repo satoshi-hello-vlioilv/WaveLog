@@ -216,15 +216,24 @@ let b=null;
     const bar=document.getElementById('headerViewBar');
     const title=(document.getElementById('fileName')?.textContent||'').trim();
     // 本文側に画面名と同じ文字を持つ見出しが残っていないか
-    const dupes=[...document.querySelectorAll('main .sc-title,main #recordTitle,#schedulePanel h2,#dashboardPanel h2')]
+    const dupes=[...document.querySelectorAll('main .sc-title,main #recordTitle,#schedulePanel h2,#dashboardPanel h2,#masterMaintPanel .mm-head-title')]
       .map(e=>e.textContent.trim()).filter(t=>t&&title.includes(t));
     const g=document.querySelector('.global-actions');
+    // 画面ごとの操作列に並ぶコントロールの寸法。‹ ›のようなアイコンのみの
+    // ボタンは「文字」ではなく記号なので、文字サイズの揃いからは外す。
+    const vis=e=>e.offsetParent!==null;
+    const ctls=[...document.querySelectorAll('#headerViewBar button,#headerViewBar select,#headerViewBar input')].filter(vis);
     out[name]={title,mounted:bar?bar.children.length:-1,dupes,
-      listActions:g?[...g.querySelectorAll('.hd-search,.hd-field,#reload')].filter(e=>e.offsetParent!==null).length:-1,
-      sizeBtn:!!document.getElementById('uiSizeBadge')?.offsetParent};
+      listActions:g?[...g.querySelectorAll('.hd-search,.hd-field,#reload')].filter(vis).length:-1,
+      sizeBtn:!!document.getElementById('uiSizeBadge')?.offsetParent,
+      ctlH:[...new Set(ctls.map(e=>Math.round(e.getBoundingClientRect().height)))].sort((a,b)=>a-b),
+      ctlFs:[...new Set(ctls.filter(e=>!e.classList.contains('rp-btn-icon'))
+                            .map(e=>getComputedStyle(e).fontSize))]};
    };
    document.getElementById('openSchedule').click();await snap('schedule');
    document.getElementById('openDashboard').click();await snap('dashboard');
+   document.getElementById('openCalendar').click();await snap('calendar');
+   document.getElementById('openMasterMaint').click();await snap('master');
    document.getElementById('homeDrafts').click();await snap('records');
    document.querySelector('aside [data-db-key="SIKALOTNOW"]').click();await snap('list');
    return out;
@@ -232,36 +241,42 @@ let b=null;
   rec('画面名はヘッダーだけが持つ(本文側に同じ見出しを残さない)',
    Object.values(views).every(v=>v.dupes.length===0),
    JSON.stringify(Object.fromEntries(Object.entries(views).map(([k,v])=>[k,v.dupes]))));
-  rec('作業スケジュールの操作列がヘッダーへ載る',views.schedule.mounted===1,JSON.stringify(views.schedule));
-  rec('ダッシュボードの操作列がヘッダーへ載る',views.dashboard.mounted===1,JSON.stringify(views.dashboard));
-  rec('データ一覧の絞り込みがヘッダーへ載る',views.records.mounted===1,JSON.stringify(views.records));
+  for(const [key,label] of [['schedule','作業スケジュール'],['dashboard','ダッシュボード'],
+                            ['calendar','実績カレンダー'],['master','マスタ管理'],['records','データ一覧']]){
+   rec(`${label}の操作列がヘッダーへ載る`,views[key].mounted===1,JSON.stringify(views[key]));
+  }
   rec('一覧画面へ戻ると操作列は元へ戻る(持ち越さない)',views.list.mounted===0,JSON.stringify(views.list));
   rec('データ一覧の見出しは絞り込みの状態を表す',
    /データ一覧/.test(views.records.title),views.records.title);
   rec('一覧専用の操作は一覧画面でだけ出す',
-   views.schedule.listActions===0&&views.dashboard.listActions===0&&views.records.listActions===0
+   ['schedule','dashboard','calendar','master','records'].every(k=>views[k].listActions===0)
    &&views.list.listActions>0,
    JSON.stringify(Object.fromEntries(Object.entries(views).map(([k,v])=>[k,v.listActions]))));
   rec('表示サイズの切替はどの画面でも出す(全体に効く操作のため)',
    Object.values(views).every(v=>v.sizeBtn),
    JSON.stringify(Object.fromEntries(Object.entries(views).map(([k,v])=>[k,v.sizeBtn]))));
 
-  /* ---- 5c) ヘッダーに並ぶコントロールの高さ・文字の揃い ---- */
+  /* ---- 5c) ヘッダーに並ぶコントロールの高さ・文字の揃い ----
+     どの画面でも、操作列のボタン・選択欄・入力欄は
+     --ctl-h-sm(=30px)か、その中に入れ子になる2択(-4px=26px)のどちらか。
+     文字は--fs-sm一本(アイコンのみのボタンは記号なので除く)。 */
+  const bars=['schedule','dashboard','calendar','master','records'];
+  const badH=bars.filter(k=>{
+   const h=views[k].ctlH;return !(h.length>0&&h.every(v=>v===30||v===26));
+  });
+  rec('どの画面でも操作列の高さがトークン(30/26px)に収まる',badH.length===0,
+   JSON.stringify(Object.fromEntries(bars.map(k=>[k,views[k].ctlH]))));
+  const allFs=[...new Set(bars.flatMap(k=>views[k].ctlFs))];
+  rec('どの画面でも操作列の文字サイズが1種類に揃う',allFs.length===1,
+   JSON.stringify(Object.fromEntries(bars.map(k=>[k,views[k].ctlFs]))));
   const ctl=await page.evaluate(async()=>{
    document.getElementById('openSchedule').click();
    await new Promise(r=>setTimeout(r,1500));
-   const pick=sel=>[...document.querySelectorAll(sel)].filter(e=>e.offsetParent!==null)
-     .map(e=>({h:Math.round(e.getBoundingClientRect().height),fs:getComputedStyle(e).fontSize,
-               t:(e.textContent||'').trim().slice(0,8)}));
-   return {bar:pick('#headerViewBar button,#headerViewBar select'),
-           act:pick('.global-actions .hd-btn')};
+   return [...document.querySelectorAll('.global-actions .hd-btn')].filter(e=>e.offsetParent!==null)
+     .map(e=>Math.round(e.getBoundingClientRect().height));
   });
-  const barH=[...new Set(ctl.bar.map(x=>x.h))],barF=[...new Set(ctl.bar.map(x=>x.fs))];
-  rec('ヘッダーの操作列はボタン・選択欄の高さが揃う',
-   ctl.bar.length>0&&barH.length===1,JSON.stringify({barH,items:ctl.bar.length}));
-  rec('ヘッダーの操作列は文字サイズも揃う',barF.length===1,JSON.stringify(barF));
-  const actH=[...new Set(ctl.act.map(x=>x.h))];
-  rec('全体操作のボタンも高さが揃う',ctl.act.length>0&&actH.length===1,JSON.stringify(actH));
+  const actH=[...new Set(ctl)];
+  rec('全体操作のボタンも高さが揃う',ctl.length>0&&actH.length===1,JSON.stringify(actH));
 
   /* ---- 6) アクセス権限: 対象設備の複数指定と「すべての設備」 ---- */
   const rule=await page.evaluate(()=>({

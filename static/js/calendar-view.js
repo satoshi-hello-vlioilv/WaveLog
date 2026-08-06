@@ -116,12 +116,16 @@
  }
  window.exitCalendarView=exitCalendarView;
 
- WL.registerView({key:'calendar',bodyClass:'cal-mode',nav:'openCalendar',
+ /* 月送り・指標・対象ステータスの操作列はヘッダーの#headerViewBarへ移す
+    (WL.enterViewのmountViewToolbar参照)。カレンダーのマスは縦に詰まりやすく、
+    バー1本ぶんでも本文へ回したいため。 */
+ WL.registerView({key:'calendar',bodyClass:'cal-mode',nav:'openCalendar',toolbar:'#calToolbar',
   header:['実績カレンダー','この端末に保存された測定データ'],exit:exitCalendarView});
 
  async function openCalendarView(){
   WL.enterView('calendar');
   const panel=ensurePanel();panel.hidden=false;
+  WL.syncViewToolbar('calendar');   // 操作列(#calToolbar)はパネル生成後にヘッダーへ載せる
   calState.selectedKey='';
   await ensureData(true);
   renderAll();
@@ -134,7 +138,7 @@
   panel.innerHTML=`
    <div class="cal-layout">
     <section class="cal-main">
-     <div class="cal-toolbar">
+     <div class="cal-toolbar" id="calToolbar">
       <div class="cal-nav">
        <button type="button" id="calPrev" class="rp-btn-secondary rp-btn-icon" aria-label="前の月へ" title="前の月へ">‹</button>
        <b id="calMonthLabel" class="cal-month-label"></b>
