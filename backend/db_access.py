@@ -183,7 +183,7 @@ SCHEDULE_CACHE_PATH=DB_DIR/'schedule_cache.sqlite3'
 
 # ========================================================================
 # パス設定マスタ（仕掛/品質データの読み込み先・共有パス等の運用設定）
-#  - 旧config/local.json相当。マスタ管理画面(measurement-worklog.jsの
+#  - 旧config/local.json相当。マスタ管理画面(master-maint.jsの
 #    MASTER_DEFS、key:pathConfig)から編集できるよう、db/master.sqlite3の
 #    テーブルとして持つ(他の各種マスタと同じくキー1件=1行、値の無い項目は
 #    行自体が無い＝既定値を使う、という互換ポリシー)。

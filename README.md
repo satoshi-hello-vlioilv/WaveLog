@@ -123,7 +123,8 @@ static/js/                 (index.htmlの記載順に読み込み)
   measurement-tolerance.js 公差判定の拡張・寸法ロック
   lot-split.js             条割(ロット分割): 検出・条割変更モーダル・条ごと公差・屑幅
   filters.js               一覧の絞り込み・フィルタプリセット・スウォーム表示
-  measurement-worklog.js   マスタ管理モーダル・列表示マスタ・データ引継ぎ
+  measurement-worklog.js   指示値表示・作業時間UI
+  master-maint.js          マスタ管理画面・列表示マスタ・データ引継ぎ・パス設定
   worktime-benchmark.js    作業時間の過去実績比較
   quality-analysis.js      品質データ分析グラフ
   report-dashboard.js      測定帳票・生産管理ダッシュボード

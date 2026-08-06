@@ -296,7 +296,7 @@ Box等のクラウド同期フォルダへ複製し、他端末はそれを閲�
 
 - `ログインID`×`PC名`の組み合わせ（完全一致、表記ゆれはNFKC正規化+大文字化で
   吸収）で編集可否を管理する。他マスタと同じソフトデリート方式のテーブルで、
-  マスタ管理画面（`measurement-worklog.js`の`MASTER_DEFS`、key:
+  マスタ管理画面（`master-maint.js`の`MASTER_DEFS`、key:
   `accessPermission`）から登録・編集できる。
 - **該当行が無い組み合わせは既定で「編集可能」**（`has_edit_permission`）。
   複数PCでの単一書き込み運用を壊さないための互換ポリシーで、閲覧専用に
@@ -351,7 +351,8 @@ Box等のクラウド同期フォルダへ複製し、他端末はそれを閲�
 ### 2. 機能拡張ファイル（コアの後に読み込み）
 
 `measurement-tolerance.js` → `lot-split.js` → `measure-progress.js` →
-`filters.js` → `measurement-worklog.js` → `worktime-benchmark.js` →
+`filters.js` → `measurement-worklog.js` → `master-maint.js` →
+`worktime-benchmark.js` →
 `quality-analysis.js` → `report-dashboard.js` → `calendar-view.js`
 
 各ファイルはIIFE（即時関数）で自身のヘルパを閉じ込め、コアの関数を
@@ -508,7 +509,7 @@ UI は「入力内容」セレクトをチップへ置換する（面積は増�
 換算係数・パス設定といった特殊タブの描画コードはそのまま動く
 （`.mm-panel .mm-dialog` で寸法だけ上書きする。`.rec-panel .record-dialog` と同じ手法）。
 
-**モーダルを使う基準はここに一本化する**（`measurement-worklog.js` の
+**モーダルを使う基準はここに一本化する**（`master-maint.js` の
 `defUsesEditorModal()`）。
 
 | 形態 | 使う場面 | 理由 |

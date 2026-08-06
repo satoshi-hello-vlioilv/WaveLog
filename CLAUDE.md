@@ -70,7 +70,7 @@
   （旧`config/local.json`）を保存する。キー1件=1行で、値の無い項目は行自体が
   無い＝既定値を使う（他マスタと同じ互換ポリシー）。CRUD APIは`backend/routes/
   masters.py`の`/api/path-config-master`、UIはマスタ管理画面の「パス設定」タブ
-  （`static/js/measurement-worklog.js`のMASTER_DEFS、key:pathConfig）。
+  （`static/js/master-maint.js`のMASTER_DEFS、key:pathConfig）。
   本来なら`backend/repositories/master_repo.py`が持つべき層だが、
   `db_access.py`自身が起動時に接続先を1回だけ確定させる必要があり
   `master_repo.py`はdb_accessに依存する側のため、循環importを避けて
@@ -122,7 +122,7 @@
 
 ## 検証
 
-- **回帰テストは `tests/` にある。実行は `tests/run_all.sh` だけ**（約440件）。
+- **回帰テストは `tests/` にある。実行は `tests/run_all.sh` だけ**（455件）。
   引数にテスト名を並べるとそれだけ実行する（`tests/run_all.sh test_sccat`）。
   ランナーがパス設定マスタの退避→検証用フィクスチャへ差し替え→復元まで
   行うので、**手でパスを戻す必要はない**（`trap`で異常終了時も戻し、退避値は
