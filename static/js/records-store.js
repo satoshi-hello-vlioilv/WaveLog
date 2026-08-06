@@ -329,11 +329,11 @@ function bindV32Navigation(){
 /* データ一覧(#recordModal)。半透明のモーダルなので、他の画面を閉じずに
    開くと下の画面が透けて重なる(実績カレンダー表示中に開いて実際に起きた)。
    閉じ方をここで登録し、他画面へ移るときはenterView()が呼んでくれる。 */
-registerView({key:'records',nav:'homeDrafts',
+WL.registerView({key:'records',nav:'homeDrafts',
  exit:()=>{document.getElementById('recordModal')?.setAttribute('hidden','')}});
 /* 一覧を開く(読み込み中表示→エラー時は再試行ボタン)。 */
 async function openRecordsSafe(status='編集中'){
- enterView('records');
+ WL.enterView('records');
  showWaiting(status==='履歴'?'完了データを取得しています':'編集中データを取得しています','この端末の保存領域を確認中','IndexedDBと代替保存領域を照合しています');
  // 一覧を開くのは「端末内に何があるか」を確かめる操作。ここでも未処理の
  // バックアップ削除を片付けて、一覧とバックアップの食い違いを縮める(§9.52)。
@@ -589,13 +589,13 @@ queueMicrotask(()=>{updateEquipmentEntryPoints();const badge=$('#registeredEquip
  if(!panel||!grid?.parentNode)return;
  grid.parentNode.insertBefore(panel,grid);
  /* サイドバーの「編集中データ」はopenRecordsSafeを通らずopenRecordsを直接
-    呼ぶ経路があるため、退出処理はこの表示検知にも要る。enterView('records')
+    呼ぶ経路があるため、退出処理はこの表示検知にも要る。WL.enterView('records')
     はデータ一覧自身のexit(=#recordModalを隠す)は呼ばないので、ここから
     呼んでも再入しない。 */
  const sync=()=>{
   const showing=!panel.hidden;
   document.body.classList.toggle('rec-mode',showing);
-  if(showing)enterView('records');
+  if(showing)WL.enterView('records');
  };
  new MutationObserver(sync).observe(panel,{attributes:true,attributeFilter:['hidden']});
  sync();

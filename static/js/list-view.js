@@ -157,7 +157,7 @@ const tablesCache=new Map();   // テーブル構成は運用中に変わらな�
    パネルが上に付く(qa-mode)ので、一覧から他の画面へ移るときはそれも一緒に
    畳む。以前はこの後始末を各画面のopenXxxが個別に書いており、
    #qualityAnalysisPanelを実際に隠していたのは実績カレンダーだけだった。 */
-registerView({key:'list',exit:()=>{
+WL.registerView({key:'list',exit:()=>{
  document.body.classList.remove('qa-mode','qa-view-raw');
  document.getElementById('qualityAnalysisPanel')?.setAttribute('hidden','');
 }});
@@ -166,7 +166,7 @@ async function selectDb(k,b){
     「他の画面を閉じる」処理を各ファイルがselectDbを順に包むモンキーパッチ
     (6箇所)で足しており、読み込み順に依存する連鎖になっていた。
     内部からの呼び出し(スケジュールの分割表示)では切り替えない。 */
- if(!isInternalDbSwitch())enterView('list');
+ if(!WL.isInternalDbSwitch())WL.enterView('list');
  const label=databaseLabel(k);
  return withWaiting({title:`${label}へ切り替えています`,detail:`接続先を確認しています: ${label}`,
    progress:'テーブル構成を確認しています',step:1},async report=>{

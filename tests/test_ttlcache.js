@@ -1,4 +1,4 @@
-/* base.js の ttlCache(フェーズ5)の検証。
+/* base.js の WL.ttlCache(フェーズ5)の検証。
    新しいキャッシュはこのヘルパを使う規約にするので、規約側が正しいことを
    固定しておく。**使われていないヘルパは腐る**ので、最低限ここで縛る。 */
 const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
@@ -9,12 +9,12 @@ let b=null;
  const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
  page.on('pageerror',e=>console.log('[pageerror]',e.message));
  await page.goto('http://127.0.0.1:5029/',{waitUntil:'domcontentloaded'});
- await page.waitForFunction(()=>typeof window.ttlCache==='function',null,{timeout:15000});
+ await page.waitForFunction(()=>typeof window.WL?.ttlCache==='function',null,{timeout:15000});
 
  const r=await page.evaluate(async()=>{
   const out={};
   // --- 保存して取り出せる / 期限が切れたら捨てる ---
-  const c=ttlCache(50);
+  const c=WL.ttlCache(50);
   c.set('a',1);
   out.hit=c.get('a');
   await new Promise(r=>setTimeout(r,80));
@@ -22,20 +22,20 @@ let b=null;
   out.sizeAfterExpire=c.size;   // 読んだときに捨てるので0になる
 
   // --- 件数の上限 ---
-  const cap=ttlCache(60000,3);
+  const cap=WL.ttlCache(60000,3);
   ['k1','k2','k3','k4'].forEach((k,i)=>cap.set(k,i));
   out.capped=cap.size;
   out.oldestDropped=cap.get('k1');
 
   // --- 取得中は1回にまとめる ---
-  const dedup=ttlCache(60000);
+  const dedup=WL.ttlCache(60000);
   let calls=0;
   const load=()=>{calls++;return new Promise(r=>setTimeout(()=>r('v'),30))};
   const [x,y,z]=await Promise.all([dedup.fetch('same',load),dedup.fetch('same',load),dedup.fetch('same',load)]);
   out.calls=calls;out.values=[x,y,z].join(',');
 
   // --- 失敗したPromiseは残さない(再試行できる) ---
-  const flaky=ttlCache(60000);
+  const flaky=WL.ttlCache(60000);
   let n=0;
   const sometimes=()=>{n++;return n===1?Promise.reject(new Error('boom')):Promise.resolve('ok')};
   try{await flaky.fetch('f',sometimes)}catch(e){out.firstError=e.message}
@@ -43,7 +43,7 @@ let b=null;
   out.retryCalls=n;
 
   // --- 破棄 ---
-  const inv=ttlCache(60000);
+  const inv=WL.ttlCache(60000);
   inv.set('p',1);inv.set('q',2);
   inv.invalidate('p');
   // join()はnullを空文字にするのでJSONで持つ(比較の取り違えを避ける)

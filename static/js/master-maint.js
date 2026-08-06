@@ -7,7 +7,7 @@
    関数はそのまま移しており、改名・再分割はしていない(移動と分割を同時に
    やると差分レビューが不能になるため)。
 
-   読み込み順は templates/index.html を参照。base.js の registerView() を
+   読み込み順は templates/index.html を参照。base.js の WL.registerView() を
    使うので base.js より後、access-mode.js より前に置くこと。
    ============================================================ */
 (function(){
@@ -147,7 +147,7 @@
   document.getElementById('openMasterMaint')?.classList.remove('active');
  }
  window.exitMasterMaint=exitMasterMaint;
- registerView({key:'master',bodyClass:'mm-mode',nav:'openMasterMaint',
+ WL.registerView({key:'master',bodyClass:'mm-mode',nav:'openMasterMaint',
   header:['マスタ管理','master.sqlite3'],exit:exitMasterMaint});
  function syncNav(){document.querySelectorAll('#masterMaintNav [data-master]').forEach(b=>b.classList.toggle('active',b.dataset.master===maintState.defKey))}
  function requireMaintUser(){const el=$('#masterUserId');const id=String(el?el.value:'').trim();if(!id){showToast('更新者IDを入力してください','マスタ更新には更新者IDが必要です。',4200);el&&el.focus();return null}setUserId(id);return id}
@@ -1682,7 +1682,7 @@
  }
 
  function openMasterMaint(){
-  enterView('master');
+  WL.enterView('master');
   const panel=ensureMaintPanel();
   renderMaintNav();
   const uid=$('#masterUserId');if(uid)uid.value=currentUserId();

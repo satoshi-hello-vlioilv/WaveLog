@@ -188,9 +188,16 @@ window.setHeaderContext=setHeaderContext;
      - #qualityAnalysisPanel を隠すのは実績カレンダーだけ
    各画面は「自分の閉じ方と見出し」だけを登録し、切替の手順はenterView()に
    一本化する。これで退出処理の抜けが構造的に起きなくなる。 */
+/* このセッションで新設した共通機能の公開先。CLAUDE.mdの規約どおり、
+   新しく公開するものは素の window.X ではなく名前空間へ入れる
+   (素の window.X を増やすとファイル間の暗黙の契約が増え、読み込み順への
+   依存が見えなくなる)。既存の約70件は動いている契約なので触らない。
+   呼び出し側も WL.enterView(...) のように書き、どのファイルの機能に
+   依存しているかが呼び出し箇所で分かるようにする。 */
+window.WL=window.WL||{};
+
 const VIEW_REGISTRY=new Map();
 function registerView(def){VIEW_REGISTRY.set(def.key,def);return def}
-window.registerView=registerView;
 /* 新しい画面へ入る。key以外の登録済み画面を全て閉じ、ナビの選択状態・
    ヘッダー表示・bodyクラスを新しい画面のものへ揃える。
    **画面を開く関数は、自分の描画を始める前にこれを1回呼ぶこと。**
@@ -203,7 +210,18 @@ function enterView(key,opts){
   try{v.exit?.()}catch(e){console.warn('画面の終了処理で例外',k,e)}
  });
  // 画面をまたいで残ると重なるオーバーレイ。閉じるのは全画面共通。
- document.getElementById('measureModal')?.setAttribute('hidden','');
+ // ただし**未保存の変更があるときは閉じない**。ここでhidden属性を立てるのは
+ // closeMeasureModal()の破棄確認(「保存されていない変更があります。破棄して
+ // 閉じますか？」)を迂回する経路で、そのまま閉じると入力中の測定値を無言で
+ // 捨てることになる。現状は.modal{inset:0}が全面を覆うので測定中にサイドバーを
+ // 押せず到達しないが、モーダルを全画面でなくしたり測定中に押せる導線を足すと
+ // 静かなデータ損失に化ける。閉じない場合は理由を知らせる。
+ const measureModal=document.getElementById('measureModal');
+ if(measureModal&&!measureModal.hidden){
+  if(measureDirty)showToast('測定画面はそのままにしました',
+   '保存されていない変更があります。測定画面の「閉じる」から破棄を確認してください。',5200);
+  else measureModal.setAttribute('hidden','');
+ }
  // ナビの選択は排他。どのナビ群に置かれたボタンでも一度全部外す。
  document.querySelectorAll('aside .nav-item,#nav button.db,#analysisNav button.db,#planNav button.db')
   .forEach(b=>b.classList.remove('active'));
@@ -215,7 +233,6 @@ function enterView(key,opts){
  if(h)setHeaderContext(h[0],h[1]);
  return def;
 }
-window.enterView=enterView;
 /* 画面の切替としての`selectDb()`と、ある画面が自分の中身を組み立てるために
    一覧を読み直すだけの`selectDb()`を区別する。後者(スケジュールの分割表示)で
    画面の切替を起こすと、組み立て中のスケジュール画面自身が畳まれてしまう。
@@ -230,8 +247,6 @@ async function withInternalDbSwitch(fn){
  try{return await fn()}finally{internalDbSwitchDepth--}
 }
 function isInternalDbSwitch(){return internalDbSwitchDepth>0}
-window.withInternalDbSwitch=withInternalDbSwitch;
-window.isInternalDbSwitch=isInternalDbSwitch;
 /* ---------- TTL付きキャッシュ(新しく作るキャッシュはこれを使う) ----------
    同種のキャッシュが微妙に違う実装で6箇所以上あり(tableCache/tablesCache/
    scPlanCache/scWorkable/dbCache/sikaTablePromise)、書くたびに
@@ -281,7 +296,6 @@ function ttlCache(ttlMs,maxEntries=40){
   get size(){return store.size},
  };
 }
-window.ttlCache=ttlCache;
 /* レコードのstatus文字列からバッジ用のCSSクラス/表示ラベルを求める共通関数。
    以前はcalendar-view.js/report-dashboard.jsに同一内容が重複定義され、
    records-store.jsは一覧行のレンダリングで同じ判定をインラインで
@@ -508,3 +522,6 @@ window.applyUiSize=applyUiSize;
  // ラベルの初期表示(applyUiSizeはDOM構築前に走るため、ここで一度描き直す)。
  if(typeof applyUiSize==='function'&&typeof currentUiSize==='function')applyUiSize(currentUiSize());
 })();
+
+/* ---------- WL名前空間への公開(定義は上記) ---------- */
+Object.assign(window.WL,{registerView,enterView,withInternalDbSwitch,isInternalDbSwitch,ttlCache});

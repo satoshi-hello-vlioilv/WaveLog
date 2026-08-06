@@ -29,7 +29,11 @@
   なのでそのまま（触らない）。**新しく公開するものは`window.WL.*`か機能別の
   名前空間（`scCore`等）に入れる**こと。素の`window.X`を増やすと、
   ファイル間の暗黙の契約が増えて読み込み順への依存が見えなくなる。
-- **新しいキャッシュは`ttlCache()`を使う**（`base.js`）。期限切れの判定・件数の
+  **呼び出し側も`WL.enterView(...)`のように名前空間付きで書く**（どのファイルの
+  機能に依存しているかが呼び出し箇所で分かるのが目的なので、定義がグローバル
+  関数宣言でも素の名前では呼ばない）。現在`WL`にあるのは
+  `registerView`/`enterView`/`withInternalDbSwitch`/`isInternalDbSwitch`/`ttlCache`。
+- **新しいキャッシュは`WL.ttlCache()`を使う**（`base.js`）。期限切れの判定・件数の
   上限・取得中のPromise共有（同時呼び出しを1回にまとめ、失敗したPromiseは
   捨てて再試行できるようにする）を持つ。**既存のキャッシュは置き換えない**
   ——それぞれ無効化の条件が業務仕様と絡んでおり（例: §9.67の作業可否は
@@ -78,7 +82,7 @@
   `PATH_CONFIG_TABLE`）: 仕掛/品質データの読み込み先・共有パス・各種間隔設定
   （旧`config/local.json`）を保存する。キー1件=1行で、値の無い項目は行自体が
   無い＝既定値を使う（他マスタと同じ互換ポリシー）。CRUD APIは`backend/routes/
-  masters.py`の`/api/path-config-master`、UIはマスタ管理画面の「パス設定」タブ
+  path_config.py`の`/api/path-config-master`、UIはマスタ管理画面の「パス設定」タブ
   （`static/js/master-maint.js`のMASTER_DEFS、key:pathConfig）。
   本来なら`backend/repositories/master_repo.py`が持つべき層だが、
   `db_access.py`自身が起動時に接続先を1回だけ確定させる必要があり
@@ -144,7 +148,7 @@
 
 ## 検証
 
-- **回帰テストは `tests/` にある。実行は `tests/run_all.sh` だけ**（455件）。
+- **回帰テストは `tests/` にある。実行は `tests/run_all.sh` だけ**（478件）。
   引数にテスト名を並べるとそれだけ実行する（`tests/run_all.sh test_sccat`）。
   ランナーがパス設定マスタの退避→検証用フィクスチャへ差し替え→復元まで
   行うので、**手でパスを戻す必要はない**（`trap`で異常終了時も戻し、退避値は

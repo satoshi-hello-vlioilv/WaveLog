@@ -37,7 +37,7 @@
   document.body.classList.remove('rp-mode');
   const panel=$id('reportPanel');if(panel)panel.hidden=true;
  }
- registerView({key:'report',bodyClass:'rp-mode',header:['測定帳票',''],exit:exitReportView});
+ WL.registerView({key:'report',bodyClass:'rp-mode',header:['測定帳票',''],exit:exitReportView});
 
  function ensurePanel(){
   let panel=$id('reportPanel');if(panel)return panel;
@@ -528,7 +528,7 @@
     閉じるのはenterView()の共通処理(測定内容は呼び出し側で保存済み。
     戻る操作で開き直す)。 */
  async function openReportView(){
-  enterView('report');
+  WL.enterView('report');
   ensurePanel().hidden=false;
   setZoom(rpZoom);
   $id('reportSelectedTitle').textContent='ロットを選択してください';
@@ -814,7 +814,7 @@
   $id('openDashboard')?.classList.remove('active');
   const panel=$id('dashboardPanel');if(panel)panel.hidden=true;
  }
- registerView({key:'dashboard',bodyClass:'db-mode',nav:'openDashboard',
+ WL.registerView({key:'dashboard',bodyClass:'db-mode',nav:'openDashboard',
   header:['ダッシュボード','作業予定と測定実績の集計'],exit:exitDashboardView});
 
  const AXIS_OPTS=[['time','時系列'],['equipment','設備'],['crewSize','作業人数'],['productType','品種（用途名・丈数×条数）'],['purposeName','用途名'],['operator','オペレータ'],['measureType','入力内容']];
@@ -1097,7 +1097,7 @@
  }
 
  async function openDashboardView(){
-  enterView('dashboard');
+  WL.enterView('dashboard');
   const panel=ensurePanel();panel.hidden=false;
   // 自由集計側の初期条件は最初の1回だけ整えておく(タブを開いたときに
   // 条件未設定の空表示にならないようにする)。既定で見せるのは稼働状況(§9.64)。

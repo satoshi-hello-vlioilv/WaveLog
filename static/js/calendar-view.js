@@ -116,11 +116,11 @@
  }
  window.exitCalendarView=exitCalendarView;
 
- registerView({key:'calendar',bodyClass:'cal-mode',nav:'openCalendar',
+ WL.registerView({key:'calendar',bodyClass:'cal-mode',nav:'openCalendar',
   header:['実績カレンダー','この端末に保存された測定データ'],exit:exitCalendarView});
 
  async function openCalendarView(){
-  enterView('calendar');
+  WL.enterView('calendar');
   const panel=ensurePanel();panel.hidden=false;
   calState.selectedKey='';
   await ensureData(true);

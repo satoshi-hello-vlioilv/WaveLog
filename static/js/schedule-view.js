@@ -377,7 +377,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    const navBtn=document.querySelector('aside [data-db-key="SIKALOTNOW"]');
    // 分割表示を組み立てるための内部呼び出し。画面の切替ではないので、
    // ここでスケジュール画面が畳まれないようwithInternalDbSwitchで囲う。
-   await withInternalDbSwitch(async()=>{
+   await WL.withInternalDbSwitch(async()=>{
     try{
      if(S.db!=='SIKALOTNOW')await selectDb('SIKALOTNOW',navBtn);
      else if(!scSplitJoinApplied&&typeof load==='function')await load();
@@ -525,7 +525,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
       背後のスケジュール画面ごと畳んでいた(exitScheduleViewはcloseListModal()
       も呼ぶため、開いたモーダルもその場で閉じる)。通常はS.dbが既に
       SIKALOTNOWなので表に出ていなかった。 */
-   await withInternalDbSwitch(async()=>{
+   await WL.withInternalDbSwitch(async()=>{
     try{await selectDb('SIKALOTNOW',navBtn)}catch(e){/* ベストエフォート */}
    });
   }
@@ -619,11 +619,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  }
  window.exitScheduleView=exitScheduleView;
 
- registerView({key:'schedule',bodyClass:'sc-mode',nav:'openSchedule',
+ WL.registerView({key:'schedule',bodyClass:'sc-mode',nav:'openSchedule',
   header:['作業スケジュール','設備ごとの作業予定と実績'],exit:exitScheduleView});
 
  async function openScheduleView(){
-  enterView('schedule');
+  WL.enterView('schedule');
   const panel=ensurePanel();panel.hidden=false;
 
   const am=window.accessMode||{mode:'edit',canFieldReorder:false,fieldReorderEquipment:''};
