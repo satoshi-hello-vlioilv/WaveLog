@@ -36,18 +36,18 @@ from .master_repo import normalize_equipment_name
 PLAN_TABLE='作業予定'
 PLAN_REORDERABLE_STATE='予定'
 
-def ensure_plan_table(c):
- names=tables(c);created=False
+def ensure_plan_table(c_share):
+ names=tables(c_share);created=False
  if PLAN_TABLE not in names:
-  cur=c.cursor()
+  cur=c_share.cursor()
   cur.execute('CREATE TABLE [作業予定] ([予定ID] INTEGER PRIMARY KEY AUTOINCREMENT, [設備名] TEXT, [表示順] INTEGER, [種別] TEXT, [ロット番号] TEXT, [検査番号] TEXT, [鋳造番号] TEXT, [予定名称] TEXT, [明細JSON] TEXT, [固定開始日時] TEXT, [見積分] REAL, [状態] TEXT, [実績測定ID] TEXT, [備考] TEXT, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
   cur.execute('CREATE INDEX [IX_作業予定_設備順] ON [作業予定] ([設備名],[表示順])')
-  c.commit();created=True
+  c_share.commit();created=True
  return created
 
-def plan_rows(c,equipment=None,include_inactive=False):
- ensure_plan_table(c)
- cur=c.cursor()
+def plan_rows(c_share,equipment=None,include_inactive=False):
+ ensure_plan_table(c_share)
+ cur=c_share.cursor()
  cur.execute('SELECT [予定ID],[設備名],[表示順],[種別],[ロット番号],[検査番号],[鋳造番号],[予定名称],[明細JSON],[固定開始日時],[見積分],[状態],[実績測定ID],[備考],[有効],[登録日時],[更新日時],[更新者ID] FROM [作業予定] ORDER BY [設備名],[表示順]')
  target=normalize_equipment_name(equipment) if equipment else ''
  rows=[]
@@ -58,28 +58,28 @@ def plan_rows(c,equipment=None,include_inactive=False):
   rows.append(r)
  return rows
 
-def plan_row(c,plan_id):
- ensure_plan_table(c)
- cur=c.cursor()
+def plan_row(c_share,plan_id):
+ ensure_plan_table(c_share)
+ cur=c_share.cursor()
  cur.execute('SELECT [予定ID],[設備名],[表示順],[種別],[ロット番号],[検査番号],[鋳造番号],[予定名称],[明細JSON],[固定開始日時],[見積分],[状態],[実績測定ID],[備考],[有効],[登録日時],[更新日時],[更新者ID] FROM [作業予定] WHERE [予定ID]=?',[plan_id])
  return cur.fetchone()
 
-def _next_plan_order(c,equipment):
- cur=c.cursor()
+def _next_plan_order(c_share,equipment):
+ cur=c_share.cursor()
  cur.execute('SELECT Max([表示順]) FROM [作業予定] WHERE [設備名]=? AND ([有効] IS NULL OR [有効]<>0)',[equipment])
  return int(cur.fetchone()[0] or 0)+1
 
-def plan_add(c,equipment,kind,uid,position='end',lot_no='',inspection_no='',casting_no='',title='',detail=None,stop_reason_id=None,estimate_minutes=None,fixed_start=None,remark=''):
+def plan_add(c_share,equipment,kind,uid,position='end',lot_no='',inspection_no='',casting_no='',title='',detail=None,stop_reason_id=None,estimate_minutes=None,fixed_start=None,remark=''):
  # §8.2。kind='作業'はdetail(仕掛行スナップショット、辞書)をそのままJSON化して
  # 持つ(サーバー側で仕掛を引き直さない。フロントが送った時点の見え方を固定)。
  # kind='設備停止'はstopReasonIdから設備停止マスタの[名称]をスナップショットし、
  # マスタ行の[設備名]がリクエストのequipmentと一致しなければ拒否する(§5.3、
  # 他設備の停止理由IDの誤流用を防ぐ)。
- ensure_plan_table(c)
+ ensure_plan_table(c_share)
  equipment=str(equipment or '').strip()
  if not equipment:raise ValueError('設備名を指定してください。')
  if kind not in ('作業','設備停止'):raise ValueError('種別は作業または設備停止を指定してください。')
- cur=c.cursor()
+ cur=c_share.cursor()
  title_snapshot=str(title or '').strip();detail_json='';est=estimate_minutes
  if kind=='設備停止':
   if not stop_reason_id:raise ValueError('設備停止の予定には停止理由(stopReasonId)を指定してください。')
@@ -112,16 +112,16 @@ def plan_add(c,equipment,kind,uid,position='end',lot_no='',inspection_no='',cast
   cur.execute('UPDATE [作業予定] SET [表示順]=[表示順]+1 WHERE [設備名]=? AND ([有効] IS NULL OR [有効]<>0) AND ([状態] IS NULL OR [状態]=?)',[equipment,PLAN_REORDERABLE_STATE])
   order=fixed_max+1
  else:
-  order=_next_plan_order(c,equipment)
+  order=_next_plan_order(c_share,equipment)
  cur.execute('INSERT INTO [作業予定] ([設備名],[表示順],[種別],[ロット番号],[検査番号],[鋳造番号],[予定名称],[明細JSON],[固定開始日時],[見積分],[状態],[備考],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,-1,?,?,Now(),Now())',
              [equipment,order,kind,lot_no,inspection_no,casting_no,title_snapshot,detail_json,fixed_start,est,PLAN_REORDERABLE_STATE,remark,uid,uid])
  return cur.lastrowid
 
 _PLAN_UPDATE_FIELDS={'estimateMinutes':'見積分','fixedStart':'固定開始日時','remark':'備考','state':'状態'}
 
-def plan_update(c,plan_id,uid,**fields):
- ensure_plan_table(c)
- cur=c.cursor()
+def plan_update(c_share,plan_id,uid,**fields):
+ ensure_plan_table(c_share)
+ cur=c_share.cursor()
  cur.execute('SELECT [予定ID] FROM [作業予定] WHERE [予定ID]=?',[plan_id])
  if not cur.fetchone():raise ValueError('指定の予定が見つかりません。')
  sets=[];params=[]
@@ -133,13 +133,13 @@ def plan_update(c,plan_id,uid,**fields):
  cur.execute(f'UPDATE [作業予定] SET {",".join(sets)},[更新者ID]=?,[更新日時]=Now() WHERE [予定ID]=?',params)
  return cur.rowcount
 
-def plan_delete(c,plan_id,uid):
- ensure_plan_table(c)
- cur=c.cursor()
+def plan_delete(c_share,plan_id,uid):
+ ensure_plan_table(c_share)
+ cur=c_share.cursor()
  cur.execute('UPDATE [作業予定] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [予定ID]=?',[uid,plan_id])
  return cur.rowcount
 
-def plan_reorder(c,equipment,ordered_ids,uid,reorderable_ids=None):
+def plan_reorder(c_share,equipment,ordered_ids,uid,reorderable_ids=None):
  # §5.1.1・§7.5。未着手(実質的に「予定」状態)の予定だけが並べ替え対象。
  # 着手中・完了・取消の予定は物理的な作業順序として既に確定しているため
  # 動かせない(実運用では常に「これから」の作業が「済み」の後ろに来る)。
@@ -152,10 +152,10 @@ def plan_reorder(c,equipment,ordered_ids,uid,reorderable_ids=None):
  # なIDの集合。渡されなければ、DBの[状態]列だけを見た簡易判定にフォール
  # バックする(schedule_calc抜きの直接呼び出し・単体テスト向け。実績突合が
  # 絡む本番の並べ替えでは必ずreorderable_idsを渡すこと)。
- ensure_plan_table(c)
+ ensure_plan_table(c_share)
  equipment=str(equipment or '').strip()
  if not equipment:raise ValueError('設備名を指定してください。')
- cur=c.cursor()
+ cur=c_share.cursor()
  cur.execute('SELECT [予定ID],[表示順],[状態] FROM [作業予定] WHERE [設備名]=? AND ([有効] IS NULL OR [有効]<>0)',[equipment])
  active_rows=cur.fetchall()
  if reorderable_ids is None:
@@ -176,20 +176,20 @@ def plan_reorder(c,equipment,ordered_ids,uid,reorderable_ids=None):
 # ========================================================================
 CALENDAR_TABLE='稼働カレンダーマスタ'
 
-def ensure_calendar_table(c):
- names=tables(c);created=False
+def ensure_calendar_table(c_master):
+ names=tables(c_master);created=False
  if CALENDAR_TABLE not in names:
-  cur=c.cursor()
+  cur=c_master.cursor()
   cur.execute('CREATE TABLE [稼働カレンダーマスタ] ([カレンダーID] INTEGER PRIMARY KEY AUTOINCREMENT, [設備名] TEXT, [区分] TEXT, [曜日] INTEGER, [日付] TEXT, [稼働] INTEGER, [開始時刻] TEXT, [終了時刻] TEXT, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
   cur.execute('CREATE INDEX [IX_稼働カレンダーマスタ_設備] ON [稼働カレンダーマスタ] ([設備名])')
-  c.commit();created=True
+  c_master.commit();created=True
  return created
 
-def calendar_rows(c,equipment=None):
+def calendar_rows(c_master,equipment=None):
  # equipment未指定なら全設備既定([設備名]='')・指定ありならその設備専用行のみ。
  # 適用時の優先順位(特異日>設備別の曜日>全設備既定)の解決はschedule_calc.py側で行う。
- ensure_calendar_table(c)
- cur=c.cursor()
+ ensure_calendar_table(c_master)
+ cur=c_master.cursor()
  cur.execute('SELECT [カレンダーID],[設備名],[区分],[曜日],[日付],[稼働],[開始時刻],[終了時刻],[表示順],[有効] FROM [稼働カレンダーマスタ] ORDER BY [設備名],[区分],[曜日],[日付],[表示順]')
  target=normalize_equipment_name(equipment) if equipment else ''
  rows=[]
@@ -200,15 +200,15 @@ def calendar_rows(c,equipment=None):
   rows.append(r)
  return rows
 
-def calendar_sync(c,equipment,entries,uid):
+def calendar_sync(c_master,equipment,entries,uid):
  # §8のPOST /api/schedule/calendar(完全同期)。曜日×複数行(2交替等)の
  # 組み合わせは単純な列名の集合では一意化できないため、対象スコープ
  # (equipment、空文字は全設備既定)の既存行を全削除してentriesを丸ごと
  # 作り直す(表示マスタ等の「増分diff」方式ではなく、set_hidden_columnsより
  # 単純な全置換方式を採る)。
- ensure_calendar_table(c)
+ ensure_calendar_table(c_master)
  equipment=str(equipment or '').strip()
- cur=c.cursor()
+ cur=c_master.cursor()
  cur.execute('DELETE FROM [稼働カレンダーマスタ] WHERE [設備名]=?',[equipment])
  count=0
  for e in (entries or []):
@@ -234,53 +234,53 @@ STOP_CATEGORY_TABLE='設備停止分類マスタ'
 # マスタに別の分類が入っていれば、それも同時に取り込む(下の移行処理)。
 STOP_CATEGORY_SEEDS=('保全','段取り','待ち','突発')
 
-def ensure_stop_category_table(c):
- names=tables(c);created=False
+def ensure_stop_category_table(c_master):
+ names=tables(c_master);created=False
  if STOP_CATEGORY_TABLE not in names:
-  cur=c.cursor()
+  cur=c_master.cursor()
   cur.execute('CREATE TABLE [設備停止分類マスタ] ([分類ID] INTEGER PRIMARY KEY AUTOINCREMENT, [名称] TEXT, [色キー] TEXT, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
   cur.execute('CREATE UNIQUE INDEX [UX_設備停止分類マスタ_名称] ON [設備停止分類マスタ] ([名称])')
-  c.commit();created=True
-  _seed_stop_categories(c)
+  c_master.commit();created=True
+  _seed_stop_categories(c_master)
  return created
 
-def _seed_stop_categories(c):
+def _seed_stop_categories(c_master):
  """初回作成時だけ走る移行。既定の4分類と、既に設備停止マスタで使われている
  分類を取り込む(空欄で作ると、既存データの分類が選択肢から消えてしまう)。"""
  seen=[]
  for name in STOP_CATEGORY_SEEDS:
   if name not in seen:seen.append(name)
  try:
-  if STOP_REASON_TABLE in tables(c):
-   cur=c.cursor()
+  if STOP_REASON_TABLE in tables(c_master):
+   cur=c_master.cursor()
    cur.execute('SELECT DISTINCT [分類] FROM [設備停止マスタ]')
    for (v,) in cur.fetchall():
     v=str(v or '').strip()
     if v and v not in seen:seen.append(v)
  except Exception:
   pass  # 取り込めなくても既定の4分類だけで動く
- cur=c.cursor()
+ cur=c_master.cursor()
  for i,name in enumerate(seen):
   cur.execute('INSERT INTO [設備停止分類マスタ] ([名称],[色キー],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,-1,?,?,Now(),Now())',
               [name,'',(i+1)*10,'migrate:seed','migrate:seed'])
- c.commit()
+ c_master.commit()
 
-def stop_category_rows(c):
- ensure_stop_category_table(c)
- cur=c.cursor()
+def stop_category_rows(c_master):
+ ensure_stop_category_table(c_master)
+ cur=c_master.cursor()
  cur.execute('SELECT [分類ID],[名称],[色キー],[表示順],[有効],[更新日時],[更新者ID] FROM [設備停止分類マスタ] ORDER BY [表示順],[名称]')
  return [r for r in cur.fetchall() if (True if r[4] is None else bool(r[4]))]
 
-def stop_category_names(c):
- return [str(r[1] or '').strip() for r in stop_category_rows(c) if str(r[1] or '').strip()]
+def stop_category_names(c_master):
+ return [str(r[1] or '').strip() for r in stop_category_rows(c_master) if str(r[1] or '').strip()]
 
-def stop_category_upsert(c,name,uid,color_key='',category_id=None):
+def stop_category_upsert(c_master,name,uid,color_key='',category_id=None):
  """分類の登録・改名。名称が自然キー(全設備共通なので設備名は持たない)。
  category_idを渡した場合はその行の改名として扱う(他マスタと同じリネーム更新)。"""
- ensure_stop_category_table(c)
+ ensure_stop_category_table(c_master)
  name=str(name or '').strip()
  if not name:raise ValueError('分類名を入力してください。')
- cur=c.cursor()
+ cur=c_master.cursor()
  cur.execute('SELECT [分類ID],[名称],[有効] FROM [設備停止分類マスタ]')
  rows=cur.fetchall()
  same=next((r for r in rows if str(r[1] or '').strip()==name),None)
@@ -302,21 +302,21 @@ def stop_category_upsert(c,name,uid,color_key='',category_id=None):
              [name,color_key,order,uid,uid])
  return cur.lastrowid,True
 
-def stop_category_delete(c,category_id,uid):
- ensure_stop_category_table(c)
- cur=c.cursor()
+def stop_category_delete(c_master,category_id,uid):
+ ensure_stop_category_table(c_master)
+ cur=c_master.cursor()
  cur.execute('UPDATE [設備停止分類マスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [分類ID]=?',[uid,category_id])
  return cur.rowcount
 
-def stop_category_usage(c,category_id):
+def stop_category_usage(c_master,category_id):
  """この分類を使っている設備停止マスタの行数(削除前の確認用)。"""
- ensure_stop_category_table(c)
- cur=c.cursor()
+ ensure_stop_category_table(c_master)
+ cur=c_master.cursor()
  cur.execute('SELECT [名称] FROM [設備停止分類マスタ] WHERE [分類ID]=?',[category_id])
  row=cur.fetchone()
  if not row:return None,0
  name=str(row[0] or '').strip()
- if STOP_REASON_TABLE not in tables(c):return name,0
+ if STOP_REASON_TABLE not in tables(c_master):return name,0
  cur.execute('SELECT [分類],[有効] FROM [設備停止マスタ]')
  n=0
  for cat,active in cur.fetchall():
@@ -328,18 +328,18 @@ def stop_category_usage(c,category_id):
 # ========================================================================
 STOP_REASON_TABLE='設備停止マスタ'
 
-def ensure_stop_reason_table(c):
- names=tables(c);created=False
+def ensure_stop_reason_table(c_master):
+ names=tables(c_master);created=False
  if STOP_REASON_TABLE not in names:
-  cur=c.cursor()
+  cur=c_master.cursor()
   cur.execute('CREATE TABLE [設備停止マスタ] ([停止理由ID] INTEGER PRIMARY KEY AUTOINCREMENT, [設備名] TEXT, [分類] TEXT, [名称] TEXT, [標準所要分] REAL, [色キー] TEXT, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
   cur.execute('CREATE UNIQUE INDEX [UX_設備停止マスタ_名称] ON [設備停止マスタ] ([設備名],[名称])')
-  c.commit();created=True
+  c_master.commit();created=True
  return created
 
-def stop_reason_rows(c,equipment=None):
- ensure_stop_reason_table(c)
- cur=c.cursor()
+def stop_reason_rows(c_master,equipment=None):
+ ensure_stop_reason_table(c_master)
+ cur=c_master.cursor()
  cur.execute('SELECT [停止理由ID],[設備名],[分類],[名称],[標準所要分],[色キー],[表示順],[有効],[更新日時],[更新者ID] FROM [設備停止マスタ] ORDER BY [設備名],[表示順],[名称]')
  target=normalize_equipment_name(equipment) if equipment else ''
  rows=[]
@@ -350,11 +350,11 @@ def stop_reason_rows(c,equipment=None):
   rows.append(r)
  return rows
 
-def stop_reason_upsert(c,equipment,name,uid,category='',standard_minutes=None,color_key=''):
+def stop_reason_upsert(c_master,equipment,name,uid,category='',standard_minutes=None,color_key=''):
  # §5.3。設備名は必須(空なら拒否、他マスタの必須チェックと同じ方式)。
  # (設備名,名称)の一意組で自然キー照合し、既存なら更新・無ければ新規登録する
  # (backend/routes/masters.pyのaccess_permission_master_registerと同じ方式)。
- ensure_stop_reason_table(c)
+ ensure_stop_reason_table(c_master)
  equipment=str(equipment or '').strip();name=str(name or '').strip()
  if not equipment:raise ValueError('設備名を入力してください。')
  if not name:raise ValueError('名称を入力してください。')
@@ -362,8 +362,8 @@ def stop_reason_upsert(c,equipment,name,uid,category='',standard_minutes=None,co
  # ためだけに別画面へ移動させないための連動(未登録の分類を入力したら、その場で
  # マスタにも増える)。空欄(分類なし)は登録しない。
  category=str(category or '').strip()
- if category:stop_category_upsert(c,category,uid)
- cur=c.cursor()
+ if category:stop_category_upsert(c_master,category,uid)
+ cur=c_master.cursor()
  # 設備名は表記ゆれを吸収して照合する(他の設備名参照と同じ方式)。名称は
  # UNIQUE INDEXの実体に合わせて完全一致(前後空白除去のみ)で照合する。
  cur.execute('SELECT [停止理由ID],[設備名],[名称] FROM [設備停止マスタ]')
@@ -380,19 +380,19 @@ def stop_reason_upsert(c,equipment,name,uid,category='',standard_minutes=None,co
              [equipment,category,name,standard_minutes,color_key,order,uid,uid])
  return cur.lastrowid,True
 
-def stop_reason_delete(c,stop_reason_id,uid):
- ensure_stop_reason_table(c)
- cur=c.cursor()
+def stop_reason_delete(c_master,stop_reason_id,uid):
+ ensure_stop_reason_table(c_master)
+ cur=c_master.cursor()
  cur.execute('UPDATE [設備停止マスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [停止理由ID]=?',[uid,stop_reason_id])
  return cur.rowcount
 
-def stop_reason_standard_minutes(c,equipment,name):
+def stop_reason_standard_minutes(c_master,equipment,name):
  # §5.1: 設備停止の予定は[見積分]がNULLなら、追加時点ではなく展開の都度
  # このマスタの現在値を引く(スナップショットしない。plan_addのコメント参照)。
  # 予定側にはstopReasonIdの参照列が無いため、(設備名,名称)の自然キーで
  # 引き直す(設備名は表記ゆれ吸収、名称は完全一致。stop_reason_upsertと同じ方式)。
- ensure_stop_reason_table(c)
- cur=c.cursor()
+ ensure_stop_reason_table(c_master)
+ cur=c_master.cursor()
  cur.execute('SELECT [設備名],[名称],[標準所要分],[有効] FROM [設備停止マスタ]')
  target_eq=normalize_equipment_name(equipment);target_name=str(name or '').strip()
  for eq,nm,minutes,active in cur.fetchall():
@@ -408,21 +408,21 @@ def stop_reason_standard_minutes(c,equipment,name):
 # ========================================================================
 LOAD_FACTOR_OVERRIDE_TABLE='負荷率上書きマスタ'
 
-def ensure_load_factor_override_table(c):
- names=tables(c);created=False
+def ensure_load_factor_override_table(c_master):
+ names=tables(c_master);created=False
  if LOAD_FACTOR_OVERRIDE_TABLE not in names:
-  cur=c.cursor()
+  cur=c_master.cursor()
   cur.execute('CREATE TABLE [負荷率上書きマスタ] ([上書きID] INTEGER PRIMARY KEY AUTOINCREMENT, [設備名] TEXT, [因子] TEXT, [水準] TEXT, [係数] REAL, [理由] TEXT, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
   cur.execute('CREATE UNIQUE INDEX [UX_負荷率上書き] ON [負荷率上書きマスタ] ([設備名],[因子],[水準])')
-  c.commit();created=True
+  c_master.commit();created=True
  return created
 
-def load_factor_override_rows(c,equipment=None):
+def load_factor_override_rows(c_master,equipment=None):
  # §5.4。設備名は空文字が「全設備共通」の意味を持つため、他マスタと違い
  # normalize_equipment_nameでの絞り込みはしない(呼び出し側で設備別/全体
  # 共通の両方を必要に応じて引く。load_factor.pyのresolve_overrides参照)。
- ensure_load_factor_override_table(c)
- cur=c.cursor()
+ ensure_load_factor_override_table(c_master)
+ cur=c_master.cursor()
  cur.execute('SELECT [上書きID],[設備名],[因子],[水準],[係数],[理由],[有効],[更新日時],[更新者ID] FROM [負荷率上書きマスタ] ORDER BY [設備名],[因子],[水準]')
  rows=[]
  for r in cur.fetchall():
@@ -432,12 +432,12 @@ def load_factor_override_rows(c,equipment=None):
   rows.append(r)
  return rows
 
-def load_factor_override_upsert(c,equipment,factor,level,uid,coefficient=None,reason=''):
+def load_factor_override_upsert(c_master,equipment,factor,level,uid,coefficient=None,reason=''):
  # 因子='BASE'のときは[水準]は空文字固定(§5.4「因子='BASE'のときは空」)。
- ensure_load_factor_override_table(c)
+ ensure_load_factor_override_table(c_master)
  equipment=str(equipment or '').strip();factor=str(factor or '').strip();level='' if factor=='BASE' else str(level or '').strip()
  if not factor:raise ValueError('因子を指定してください。')
- cur=c.cursor()
+ cur=c_master.cursor()
  cur.execute('SELECT [上書きID] FROM [負荷率上書きマスタ] WHERE [設備名]=? AND [因子]=? AND [水準]=?',[equipment,factor,level])
  existing=cur.fetchone()
  if existing:
@@ -448,18 +448,18 @@ def load_factor_override_upsert(c,equipment,factor,level,uid,coefficient=None,re
              [equipment,factor,level,coefficient,reason,uid,uid])
  return cur.lastrowid,True
 
-def load_factor_override_delete(c,override_id,uid):
- ensure_load_factor_override_table(c)
- cur=c.cursor()
+def load_factor_override_delete(c_master,override_id,uid):
+ ensure_load_factor_override_table(c_master)
+ cur=c_master.cursor()
  cur.execute('UPDATE [負荷率上書きマスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [上書きID]=?',[uid,override_id])
  return cur.rowcount
 
-def base_minutes_override(c,equipment):
+def base_minutes_override(c_master,equipment):
  # §6.1のT0(基準時間)。因子='BASE'(水準は空)の行を設備別優先で読む。
  # フェーズ5(load_factor.py)が実績から自動算出するまでの間、
  # schedule_calc.pyの「一律見積(係数1.0)」はこの値(無ければ既定値)を使う。
- ensure_load_factor_override_table(c)
- cur=c.cursor()
+ ensure_load_factor_override_table(c_master)
+ cur=c_master.cursor()
  cur.execute("SELECT [設備名],[係数],[有効] FROM [負荷率上書きマスタ] WHERE [因子]='BASE'")
  rows=[r for r in cur.fetchall() if (True if r[2] is None else bool(r[2]))]
  target=normalize_equipment_name(equipment)
@@ -480,17 +480,17 @@ SHIFT_TABLE='勤務形態マスタ'          # 旧・フラット構造(移行�
 SHIFT_PATTERN_TABLE='勤務体系マスタ'   # 親: 日勤 / 交替勤務(1,2,3直) など
 SHIFT_SEGMENT_TABLE='勤務区分マスタ'   # 子: 1直 7:00-15:00 など
 
-def ensure_shift_table(c):
+def ensure_shift_table(c_master):
  """旧フラット構造。移行元として読むだけなので、無ければ作るだけで使わない。"""
- names=tables(c);created=False
+ names=tables(c_master);created=False
  if SHIFT_TABLE not in names:
-  cur=c.cursor()
+  cur=c_master.cursor()
   cur.execute('CREATE TABLE [勤務形態マスタ] ([勤務ID] INTEGER PRIMARY KEY AUTOINCREMENT, [設備名] TEXT, [名称] TEXT, [開始時刻] TEXT, [終了時刻] TEXT, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
   cur.execute('CREATE INDEX [IX_勤務形態マスタ_設備] ON [勤務形態マスタ] ([設備名])')
-  c.commit();created=True
+  c_master.commit();created=True
  return created
 
-def ensure_shift_pattern_tables(c):
+def ensure_shift_pattern_tables(c_master):
  """勤務体系(親)と勤務区分(子)の2テーブル。
  現場の言い方に合わせた2階層にする:
    日勤              -> 日勤 8:15-17:05
@@ -499,23 +499,23 @@ def ensure_shift_pattern_tables(c):
  以前は「名称+開始+終了」のフラットな1テーブルだったため、どの直が
  どの勤務体系に属するのかを表現できず、体系ごと切り替えることもできなかった。
  [適用設備]は他のマスタと同じ規約で、空文字=全設備既定・設備名指定=その設備専用。"""
- names=tables(c);created=False
+ names=tables(c_master);created=False
  if SHIFT_PATTERN_TABLE not in names:
-  cur=c.cursor()
+  cur=c_master.cursor()
   cur.execute('CREATE TABLE [勤務体系マスタ] ([勤務体系ID] INTEGER PRIMARY KEY AUTOINCREMENT, [適用設備] TEXT, [名称] TEXT, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
   cur.execute('CREATE INDEX [IX_勤務体系マスタ_設備] ON [勤務体系マスタ] ([適用設備])')
-  c.commit();created=True
+  c_master.commit();created=True
  if SHIFT_SEGMENT_TABLE not in names:
-  cur=c.cursor()
+  cur=c_master.cursor()
   cur.execute('CREATE TABLE [勤務区分マスタ] ([勤務区分ID] INTEGER PRIMARY KEY AUTOINCREMENT, [勤務体系ID] INTEGER, [名称] TEXT, [開始時刻] TEXT, [終了時刻] TEXT, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
   cur.execute('CREATE INDEX [IX_勤務区分マスタ_体系] ON [勤務区分マスタ] ([勤務体系ID])')
-  c.commit();created=True
+  c_master.commit();created=True
  if SHIFT_PATTERN_EQUIPMENT_TABLE not in names:
-  cur=c.cursor()
+  cur=c_master.cursor()
   cur.execute('CREATE TABLE [勤務体系設備マスタ] ([ID] INTEGER PRIMARY KEY AUTOINCREMENT, [勤務体系ID] INTEGER, [設備名] TEXT, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
   cur.execute('CREATE UNIQUE INDEX [UX_勤務体系設備マスタ] ON [勤務体系設備マスタ] ([勤務体系ID],[設備名])')
-  c.commit();created=True
- _migrate_shift_pattern_equipment(c)
+  c_master.commit();created=True
+ _migrate_shift_pattern_equipment(c_master)
  return created
 
 # ------------------------------------------------------------------------
@@ -529,12 +529,12 @@ def ensure_shift_pattern_tables(c):
 SHIFT_PATTERN_EQUIPMENT_TABLE='勤務体系設備マスタ'
 _SHIFT_PATTERN_EQUIPMENT_MIGRATED=False
 
-def _migrate_shift_pattern_equipment(c):
+def _migrate_shift_pattern_equipment(c_master):
  """旧[適用設備](単一値)を子テーブルへ1回だけ移す。"""
  global _SHIFT_PATTERN_EQUIPMENT_MIGRATED
  if _SHIFT_PATTERN_EQUIPMENT_MIGRATED:return
  try:
-  cur=c.cursor()
+  cur=c_master.cursor()
   cur.execute('SELECT [勤務体系ID],[適用設備] FROM [勤務体系マスタ]')
   pending=[(pid,str(eq or '').strip()) for pid,eq in cur.fetchall() if str(eq or '').strip()]
   for pid,eq in pending:
@@ -543,15 +543,15 @@ def _migrate_shift_pattern_equipment(c):
    cur.execute('INSERT INTO [勤務体系設備マスタ] ([勤務体系ID],[設備名],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,Now(),Now())',
                [pid,eq,'migrate:shift-equipment','migrate:shift-equipment'])
    cur.execute('UPDATE [勤務体系マスタ] SET [適用設備]=? WHERE [勤務体系ID]=?',['',pid])
-  if pending:c.commit()
+  if pending:c_master.commit()
   _SHIFT_PATTERN_EQUIPMENT_MIGRATED=True
  except Exception:
   pass   # 移行できなくても、子テーブルが空=全設備既定として動く
 
-def shift_pattern_equipment_map(c):
+def shift_pattern_equipment_map(c_master):
  """{勤務体系ID: [設備名, ...]}。割当の無い体系はキー自体が無い(=全設備既定)。"""
- ensure_shift_pattern_tables(c)
- cur=c.cursor()
+ ensure_shift_pattern_tables(c_master)
+ cur=c_master.cursor()
  cur.execute('SELECT [勤務体系ID],[設備名] FROM [勤務体系設備マスタ] ORDER BY [設備名]')
  out={}
  for pid,name in cur.fetchall():
@@ -559,10 +559,10 @@ def shift_pattern_equipment_map(c):
   if nm:out.setdefault(pid,[]).append(nm)
  return out
 
-def set_shift_pattern_equipment(c,pattern_id,names,uid):
+def set_shift_pattern_equipment(c_master,pattern_id,names,uid):
  """指定体系の適用設備を names の内容へ完全同期する(増分の追加・削除)。"""
- ensure_shift_pattern_tables(c)
- cur=c.cursor()
+ ensure_shift_pattern_tables(c_master)
+ cur=c_master.cursor()
  wanted={str(n).strip() for n in (names or []) if str(n or '').strip()}
  cur.execute('SELECT [ID],[設備名] FROM [勤務体系設備マスタ] WHERE [勤務体系ID]=?',[pattern_id])
  existing={str(r[1] or '').strip():r[0] for r in cur.fetchall()}
@@ -573,15 +573,15 @@ def set_shift_pattern_equipment(c,pattern_id,names,uid):
    cur.execute('INSERT INTO [勤務体系設備マスタ] ([勤務体系ID],[設備名],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,Now(),Now())',
                [pattern_id,nm,uid,uid])
 
-def shift_pattern_rows(c,equipment=None):
+def shift_pattern_rows(c_master,equipment=None):
  """勤務体系の一覧。equipment指定時はその設備が割当に含まれる体系、
  未指定なら割当0件の体系(=全設備既定)。equipment='__all__'で全件。"""
- ensure_shift_pattern_tables(c)
- cur=c.cursor()
+ ensure_shift_pattern_tables(c_master)
+ cur=c_master.cursor()
  cur.execute('SELECT [勤務体系ID],[適用設備],[名称],[表示順],[有効] FROM [勤務体系マスタ] ORDER BY [表示順],[勤務体系ID]')
  rows=[r for r in cur.fetchall() if (True if r[4] is None else bool(r[4]))]
  if equipment=='__all__':return rows
- assigned=shift_pattern_equipment_map(c)
+ assigned=shift_pattern_equipment_map(c_master)
  if not equipment:
   # 全設備既定 = どの設備にも割り当てていない体系
   return [r for r in rows if not assigned.get(r[0])]
@@ -589,53 +589,53 @@ def shift_pattern_rows(c,equipment=None):
  return [r for r in rows
          if any(normalize_equipment_name(n)==target for n in assigned.get(r[0],[]))]
 
-def shift_segment_rows(c,pattern_id):
- ensure_shift_pattern_tables(c)
- cur=c.cursor()
+def shift_segment_rows(c_master,pattern_id):
+ ensure_shift_pattern_tables(c_master)
+ cur=c_master.cursor()
  cur.execute('SELECT [勤務区分ID],[勤務体系ID],[名称],[開始時刻],[終了時刻],[表示順],[有効] FROM [勤務区分マスタ] WHERE [勤務体系ID]=? ORDER BY [表示順],[勤務区分ID]',[pattern_id])
  return [r for r in cur.fetchall() if (True if r[6] is None else bool(r[6]))]
 
-def shift_rows(c,equipment=None):
+def shift_rows(c_master,equipment=None):
  """勤務名称の解決に使う勤務区分の一覧。
  **戻り値のタプル形は旧フラット構造のまま**
  (勤務ID,設備名,名称,開始時刻,終了時刻,表示順,有効)にしてある。
  schedule_calc.resolve_shift_label()は形しか見ないため、階層化しても
  あちらは無改修で済む(呼び出し規約: equipment未指定=全設備既定)。
  該当設備の勤務体系が複数あれば表示順で最初の1件を使う。"""
- migrate_shift_patterns(c)
- patterns=shift_pattern_rows(c,equipment)
+ migrate_shift_patterns(c_master)
+ patterns=shift_pattern_rows(c_master,equipment)
  if not patterns:return []
  # [適用設備]列は移行済みで空。呼び出し元が渡した設備名をそのまま載せる
  # (resolve_shift_label()は形しか見ないが、意味のある値を入れておく)。
  pid=patterns[0][0]
  eq=str(equipment or '')
- return [(r[0],eq,r[2],r[3],r[4],r[5],r[6]) for r in shift_segment_rows(c,pid)]
+ return [(r[0],eq,r[2],r[3],r[4],r[5],r[6]) for r in shift_segment_rows(c_master,pid)]
 
-def shift_pattern_upsert(c,pattern_id,equipment,name,uid):
+def shift_pattern_upsert(c_master,pattern_id,equipment,name,uid):
  """equipmentは設備名のリスト(複数可)。空リスト=全設備既定。
  互換のため単一の文字列を渡された場合も1件のリストとして扱う。"""
- ensure_shift_pattern_tables(c)
+ ensure_shift_pattern_tables(c_master)
  if isinstance(equipment,str):equipment=[equipment] if equipment.strip() else []
  names=[str(n).strip() for n in (equipment or []) if str(n or '').strip()]
  name=str(name or '').strip()
  if not name:raise ValueError('勤務体系の名称を入力してください。')
- cur=c.cursor()
+ cur=c_master.cursor()
  if pattern_id:
   # [適用設備]列は移行済みで読まれない。単一の情報源を保つため空のまま更新する。
   cur.execute('UPDATE [勤務体系マスタ] SET [適用設備]=?,[名称]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [勤務体系ID]=?',['',name,uid,pattern_id])
   if cur.rowcount==0:raise ValueError('指定の勤務体系が見つかりません。')
-  set_shift_pattern_equipment(c,pattern_id,names,uid)
+  set_shift_pattern_equipment(c_master,pattern_id,names,uid)
   return pattern_id,False
  cur.execute('SELECT Max([表示順]) FROM [勤務体系マスタ]')
  order=int((cur.fetchone()[0]) or 0)+10
  cur.execute('INSERT INTO [勤務体系マスタ] ([適用設備],[名称],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,-1,?,?,Now(),Now())',['',name,order,uid,uid])
  new_id=cur.lastrowid
- set_shift_pattern_equipment(c,new_id,names,uid)
+ set_shift_pattern_equipment(c_master,new_id,names,uid)
  return new_id,True
 
-def shift_pattern_delete(c,pattern_id,uid):
- ensure_shift_pattern_tables(c)
- cur=c.cursor()
+def shift_pattern_delete(c_master,pattern_id,uid):
+ ensure_shift_pattern_tables(c_master)
+ cur=c_master.cursor()
  cur.execute('UPDATE [勤務体系マスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [勤務体系ID]=?',[uid,pattern_id])
  # 「何件消せたか」は**この無効化の結果**。あとに続くDELETEでcur.rowcountが
  # 上書きされるため、ここで確定させておく(呼び出し元は0を「対象が無い」と
@@ -652,10 +652,10 @@ def _valid_hm(v):
   import re as _re;_TIME_RE=_re.compile(r'^([01]?\d|2[0-3]):[0-5]\d$')
  return bool(_TIME_RE.match(str(v or '').strip()))
 
-def shift_segment_sync(c,pattern_id,segments,uid):
+def shift_segment_sync(c_master,pattern_id,segments,uid):
  """勤務区分を渡された内容へ完全同期する(稼働カレンダーcalendar_syncと同じ
  全置換方式)。渡された順序がそのまま表示順になる。"""
- ensure_shift_pattern_tables(c)
+ ensure_shift_pattern_tables(c_master)
  if not pattern_id:raise ValueError('勤務体系を指定してください。')
  cleaned=[]
  for seg in (segments or []):
@@ -667,7 +667,7 @@ def shift_segment_sync(c,pattern_id,segments,uid):
    raise ValueError(f'「{name}」の時刻はHH:MM(00:00〜23:59)で指定してください。')
   if start==end:raise ValueError(f'「{name}」の開始時刻と終了時刻が同じです。')
   cleaned.append((name,start,end))
- cur=c.cursor()
+ cur=c_master.cursor()
  cur.execute('DELETE FROM [勤務区分マスタ] WHERE [勤務体系ID]=?',[pattern_id])
  for i,(name,start,end) in enumerate(cleaned,start=1):
   cur.execute('INSERT INTO [勤務区分マスタ] ([勤務体系ID],[名称],[開始時刻],[終了時刻],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,-1,?,?,Now(),Now())',
@@ -675,17 +675,17 @@ def shift_segment_sync(c,pattern_id,segments,uid):
  return len(cleaned)
 
 _shift_migration_done=False
-def migrate_shift_patterns(c):
+def migrate_shift_patterns(c_master):
  """旧フラット勤務形態マスタ -> 勤務体系/勤務区分 への一度きりの移行。
  設備ごとに1つの勤務体系へまとめる(どの直が同じ体系かは旧構造では
  表現されていなかったため、設備単位でまとめる以上の推測はしない)。"""
  global _shift_migration_done
  if _shift_migration_done:return
- ensure_shift_pattern_tables(c)
+ ensure_shift_pattern_tables(c_master)
  try:
-  if SHIFT_TABLE not in tables(c):
+  if SHIFT_TABLE not in tables(c_master):
    _shift_migration_done=True;return
-  cur=c.cursor()
+  cur=c_master.cursor()
   cur.execute('SELECT COUNT(*) FROM [勤務体系マスタ]')
   if int(cur.fetchone()[0] or 0)>0:
    _shift_migration_done=True;return
@@ -697,9 +697,9 @@ def migrate_shift_patterns(c):
   for r in old:by_eq.setdefault(str(r[0] or '').strip(),[]).append(r)
   for eq,rows in by_eq.items():
    label='既定の勤務' if not eq else f'{eq}の勤務'
-   pid,_=shift_pattern_upsert(c,None,eq,label,'migrate:勤務形態マスタ')
-   shift_segment_sync(c,pid,[{'name':r[1],'start':r[2],'end':r[3]} for r in rows],'migrate:勤務形態マスタ')
-  c.commit()
+   pid,_=shift_pattern_upsert(c_master,None,eq,label,'migrate:勤務形態マスタ')
+   shift_segment_sync(c_master,pid,[{'name':r[1],'start':r[2],'end':r[3]} for r in rows],'migrate:勤務形態マスタ')
+  c_master.commit()
   from ..logging_setup import app_logger
   app_logger().info('勤務形態マスタを勤務体系/勤務区分の階層構造へ移行しました: %s',{k or '(全設備既定)':len(v) for k,v in by_eq.items()})
  except Exception as e:
@@ -707,12 +707,12 @@ def migrate_shift_patterns(c):
   app_logger().warning('勤務形態マスタの階層移行に失敗しました: %s',e)
  _shift_migration_done=True
 
-def ensure_schedule_tables(c):
+def ensure_schedule_tables(c_share):
  # 共有schedule.sqlite3側。作業予定だけを用意する(設定系マスタは
  # master.sqlite3へ移したため、下のensure_config_master_tablesが受け持つ)。
  # with_write()のapply_fn冒頭やGET系ルートの前処理から呼ぶ想定
  # (ensure_*_tableは冪等なので複数回呼んでも安全)。
- ensure_plan_table(c)
+ ensure_plan_table(c_share)
 
 def ensure_config_master_tables(mc):
  # master.sqlite3側。設定系マスタをまとめて用意する。
