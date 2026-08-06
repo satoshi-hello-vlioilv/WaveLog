@@ -3418,3 +3418,24 @@ body.nav-collapsed .registered-equipment-badge a,
 body.nav-collapsed .registered-equipment-badge::after{display:none}
 /* 畳んでいる間は幅調整バーを無効化(掴んでも動かないので触らせない) */
 body.nav-collapsed #navResizeHandle{pointer-events:none;opacity:.35}
+
+/* ---------- フィルタ条件の変数チップ(§9.74) ----------
+   「{使用設備}」のような変数を手打ちさせないための挿入ボタン。条件の値欄の
+   すぐ下に置き、今の値をtitleで示す。 */
+.filter-vars{display:flex;flex-wrap:wrap;gap:var(--space-2);align-items:center}
+.filter-var-chip{padding:2px 9px;border:1px dashed var(--teal);border-radius:11px;
+ background:#f2fbfc;color:#17606c;font-size:var(--fs-sm);font-weight:700;line-height:1.6}
+.filter-var-chip::before{content:"{ }";margin-right:4px;opacity:.6;font-weight:800}
+.filter-var-chip:hover{background:#e2f5f8;border-style:solid}
+
+/* ---------- ダッシュボード「自設備」ビュー(§9.74) ----------
+   稼働状況・自由集計は全設備を見渡すスケジューラ視点。こちらは端末の使用設備
+   だけに絞った現場視点で、カード・表は既存の視覚語彙(.db-card/.db-table)を
+   そのまま使う(新しい見た目を増やさない)。 */
+.db-equip-view{display:flex;flex-direction:column;gap:var(--space-4);padding:var(--space-4);overflow:auto}
+.db-equip-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);flex-wrap:wrap}
+.db-equip-head>b{font-size:var(--fs-base-sm);font-weight:800;color:#173842}
+.db-equip-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:var(--space-4)}
+.db-equip-grid .db-card{align-items:stretch;text-align:left}
+.db-equip-grid .db-card h3{margin:0 0 var(--space-2);font-size:var(--fs-base-sm);font-weight:800;color:#173842}
+.db-equip-grid .db-card-wide{grid-column:1/-1}

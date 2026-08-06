@@ -835,6 +835,7 @@
      <div class="rp-head-actions">
       <div class="db-viewtabs" role="tablist" aria-label="表示の切り替え">
        <button type="button" role="tab" data-dbview="status" class="active" title="作業予定と実績から、いまの稼働状況をまとめて表示します">稼働状況</button>
+       <button type="button" role="tab" data-dbview="equipment" title="この端末の使用設備にしぼって、実績ベースで表示します">自設備</button>
        <button type="button" role="tab" data-dbview="pivot" title="期間・軸・指標を自分で選んで集計します">自由集計</button>
       </div>
       <button type="button" id="dbStatusRefresh" class="rp-btn-secondary" title="作業予定と実績を取り直します">再読込</button>
@@ -851,6 +852,22 @@
        <div class="db-status-card-head"><b>直近の実績</b><span>この端末に保存された測定データ</span></div>
        <div class="db-status-body" id="dbRecentActual"></div>
       </section>
+     </div>
+    </div>
+    <div class="db-equip-view" id="dbEquipView" hidden>
+     <div class="db-equip-head">
+      <b id="dbEquipName">使用設備が未登録です</b>
+      <div class="db-seg" data-seg="dbEquipRangeSeg" role="group" aria-label="対象期間">
+       <button type="button" data-val="7" title="直近7日の実績で集計します">7日</button>
+       <button type="button" data-val="30" class="active" title="直近30日の実績で集計します">30日</button>
+       <button type="button" data-val="90" title="直近90日の実績で集計します">90日</button>
+      </div>
+     </div>
+     <div class="db-summary" id="dbEquipKpi"></div>
+     <div class="db-equip-grid">
+      <section class="db-card"><h3>品種別の平均作業時間</h3><div id="dbEquipProduct"></div></section>
+      <section class="db-card"><h3>オペレータ別の実績</h3><div id="dbEquipOperator"></div></section>
+      <section class="db-card db-card-wide"><h3>直近の実績</h3><div id="dbEquipRecent"></div></section>
      </div>
     </div>
     <div class="db-layout" id="dbPivotView" hidden>
@@ -898,7 +915,15 @@
   $id('dbRefresh').onclick=()=>runDashboard(true);
   panel.querySelectorAll('[data-preset]').forEach(b=>b.onclick=()=>applyPreset(b.dataset.preset));
   panel.querySelectorAll('[data-dbview]').forEach(b=>b.onclick=()=>setDashboardView(b.dataset.dbview));
-  $id('dbStatusRefresh').onclick=()=>{dbView==='status'?runStatusView(true):runDashboard(true)};
+  $id('dbStatusRefresh').onclick=()=>{
+   if(dbView==='status')runStatusView(true);
+   else if(dbView==='equipment')runEquipmentView(true);
+   else runDashboard(true);
+  };
+  panel.querySelectorAll('[data-seg="dbEquipRangeSeg"] button').forEach(b=>b.onclick=()=>{
+   panel.querySelectorAll('[data-seg="dbEquipRangeSeg"] button').forEach(x=>x.classList.toggle('active',x===b));
+   runEquipmentView();
+  });
   return panel;
  }
 
@@ -912,15 +937,18 @@
     自由集計は「自由集計」タブとしてそのまま残す(汎用の集計機能は担保する)。 */
  let dbView='status';
  function setDashboardView(view){
-  dbView=view==='pivot'?'pivot':'status';
+  dbView=['pivot','equipment'].includes(view)?view:'status';
   const panel=$id('dashboardPanel');if(!panel)return;
   panel.querySelectorAll('[data-dbview]').forEach(b=>{
    const on=b.dataset.dbview===dbView;
    b.classList.toggle('active',on);b.setAttribute('aria-selected',String(on));
   });
   $id('dbStatusView').hidden=(dbView!=='status');
+  $id('dbEquipView').hidden=(dbView!=='equipment');
   $id('dbPivotView').hidden=(dbView!=='pivot');
-  if(dbView==='status')runStatusView();else runDashboard();
+  if(dbView==='status')runStatusView();
+  else if(dbView==='equipment')runEquipmentView();
+  else runDashboard();
  }
 
  let scheduleOverviewCache=null;
@@ -1064,6 +1092,91 @@
   $id('dashboardChart').innerHTML=svg||'<div class="db-empty">対象データがありません。条件を見直してください。</div>';
   $id('dashboardSummary').innerHTML=summaryCards(scopeRows);
   $id('dashboardTable').innerHTML=tableHtml(data,ctx);
+ }
+
+ /* ---------- 自設備ビュー(§9.74) ----------
+    稼働状況・自由集計は「全設備を見渡す」スケジューラ視点で、設備で作業する
+    人にとってはマクロすぎる。この端末の使用設備だけに絞り、実績ベースで
+    「自分の設備がどうだったか」を出す。全設備平均との差を併記するのは、
+    自設備の数字だけでは速いのか遅いのか判断できないため。 */
+ function equipRangeDays(){
+  const b=document.querySelector('#dashboardPanel [data-seg="dbEquipRangeSeg"] button.active');
+  return Math.max(1,+(b?.dataset.val)||30);
+ }
+ function statOf(rows){
+  const durs=rows.map(r=>r.durationMin).filter(v=>Number.isFinite(v)&&v>0);
+  const sum=durs.reduce((a,b)=>a+b,0);
+  return {count:rows.length,measured:durs.length,sumMin:sum,
+          avgMin:durs.length?sum/durs.length:null};
+ }
+ function fmtMin(v){return Number.isFinite(v)?`${Math.round(v)}分`:'-'}
+ function fmtHour(v){return Number.isFinite(v)?`${(v/60).toFixed(1)}時間`:'-'}
+ async function runEquipmentView(force){
+  const panel=$id('dashboardPanel');if(!panel||panel.hidden)return;
+  if(typeof withWaiting!=='function')return runEquipmentViewInner(force);
+  return withWaiting({title:'自設備の実績を集計しています',
+   detail:'この端末に保存された測定データを読み込んでいます',
+   progress:'対象期間の実績を集計しています'},()=>runEquipmentViewInner(force));
+ }
+ async function runEquipmentViewInner(force){
+  const panel=$id('dashboardPanel');if(!panel||panel.hidden||dbView!=='equipment')return;
+  const eq=(typeof currentConfiguredEquipment==='function'?currentConfiguredEquipment():'')||'';
+  const nameEl=$id('dbEquipName');
+  if(nameEl)nameEl.textContent=eq?`使用設備: ${eq}`:'使用設備が未登録です';
+  const kpi=$id('dbEquipKpi');
+  if(!eq){
+   if(kpi)kpi.innerHTML='<div class="db-empty">ヘッダーの「使用設備」から設備を登録すると、この設備の実績を集計します。</div>';
+   ['dbEquipProduct','dbEquipOperator','dbEquipRecent'].forEach(id=>{const e=$id(id);if(e)e.innerHTML=''});
+   return;
+  }
+  const all=await ensureData(force);
+  const days=equipRangeDays(),since=new Date(Date.now()-days*86400000);
+  const inRange=all.filter(r=>r.status==='完了'&&r.date&&r.date>=since);
+  const mine=inRange.filter(r=>r.equipment===eq);
+  const others=inRange.filter(r=>r.equipment!==eq);
+  const me=statOf(mine),ot=statOf(others);
+
+  /* 比較は「自設備の平均 − 全設備(自設備以外)の平均」。速い=マイナス。
+     色だけに頼らず符号と語(速い/遅い)も出す。 */
+  const diff=(Number.isFinite(me.avgMin)&&Number.isFinite(ot.avgMin))?me.avgMin-ot.avgMin:null;
+  const diffText=diff===null?'比較できる実績がありません'
+   :(Math.abs(diff)<0.5?'他設備とほぼ同じ'
+     :`他設備より${fmtMin(Math.abs(diff))}${diff<0?'速い':'遅い'}`);
+  const perDay=me.count/days;
+  if(kpi)kpi.innerHTML=[
+   ['完了ロット',`${me.count}件`,`直近${days}日`],
+   ['合計作業時間',fmtHour(me.sumMin),`実測できた${me.measured}件ぶん`],
+   ['平均作業時間',fmtMin(me.avgMin),diffText],
+   ['1日あたり',`${perDay.toFixed(1)}件`,`直近${days}日の平均`],
+  // 稼働状況ビューと同じ視覚語彙(.db-card)を使う。新しいクラスを作ると
+  // 同じ意味の要素が2種類の見た目になる(統一の逆行)。
+  ].map(([k,v,sub])=>`<div class="db-card"><span class="db-card-label">${esc(k)}</span>`
+    +`<b class="db-card-value">${esc(v)}</b><small class="db-card-note">${esc(sub)}</small></div>`).join('');
+
+  /* 品種別・オペレータ別。件数の多い順に出す(自設備で何を多く流しているか
+     が先に目に入る方が、現場の判断に近い)。 */
+  const groupTable=(rows,keyOf,emptyText)=>{
+   const map=new Map();
+   rows.forEach(r=>{const k=keyOf(r)||'-';if(!map.has(k))map.set(k,[]);map.get(k).push(r)});
+   const list=[...map.entries()].map(([k,v])=>({k,...statOf(v)}))
+    .sort((a,b)=>b.count-a.count).slice(0,12);
+   if(!list.length)return `<div class="db-empty">${esc(emptyText)}</div>`;
+   return `<table class="db-table"><thead><tr><th>区分</th><th>件数</th><th>平均</th></tr></thead><tbody>`
+    +list.map(x=>`<tr><td>${esc(x.k)}</td><td class="num">${x.count}</td>`
+      +`<td class="num">${esc(fmtMin(x.avgMin))}</td></tr>`).join('')
+    +`</tbody></table>`;
+  };
+  $id('dbEquipProduct').innerHTML=groupTable(mine,r=>r.productType,'この期間の完了実績がありません。');
+  $id('dbEquipOperator').innerHTML=groupTable(mine,r=>r.operator,'この期間の完了実績がありません。');
+
+  const recent=[...mine].sort((a,b)=>b.date-a.date).slice(0,15);
+  $id('dbEquipRecent').innerHTML=recent.length
+   ?`<table class="db-table"><thead><tr><th>日時</th><th>ロット</th><th>用途</th><th>作業時間</th></tr></thead><tbody>`
+     +recent.map(r=>`<tr><td>${esc(r.date?r.date.toLocaleString('ja-JP',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'-')}</td>`
+       +`<td>${esc(r.lotNo||'-')}</td><td>${esc(r.purposeName||'-')}</td>`
+       +`<td class="num">${esc(fmtMin(r.durationMin))}</td></tr>`).join('')
+     +`</tbody></table>`
+   :'<div class="db-empty">この期間の完了実績がありません。</div>';
  }
 
  async function runDashboard(force){

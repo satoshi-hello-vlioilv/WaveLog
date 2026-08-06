@@ -95,6 +95,36 @@
     const bucket=all[usageScopeKey()];
     return (bucket&&typeof bucket==='object')?bucket:{};
   }
+  /* ---------- 条件値の変数(§9.74) ----------
+     フィルタを「この端末の使用設備で絞る」形で保存できるようにする。値へ
+     直接設備名を書くと、その端末でしか使えない条件になり、設備を変えるたびに
+     作り直すことになる。変数のまま保存し、**問い合わせを組み立てる瞬間に
+     展開する**ので、同じ条件を全端末で共有でき、使用設備を変えれば自動的に
+     追随する(保存時に展開してしまうとこの利点が消えるので、展開は必ず
+     送信直前に行うこと)。 */
+  const FILTER_VARS=[
+    {token:'{使用設備}',label:'使用設備',
+     hint:'この端末に登録している使用設備の名前に置き換わります',
+     resolve:()=>(typeof currentConfiguredEquipment==='function'?currentConfiguredEquipment():'')||''},
+  ];
+  function filterVarFor(value){
+    const v=String(value??'');
+    return FILTER_VARS.find(x=>v.includes(x.token))||null;
+  }
+  /* 変数を今の値へ置き換える。未設定(使用設備が未登録)ならトークンをそのまま
+     残さず空文字にする——残すと「{使用設備}」という文字列で検索してしまい、
+     0件なのか未設定なのか区別できなくなる。 */
+  function expandFilterVars(value){
+    let out=String(value??'');
+    FILTER_VARS.forEach(v=>{if(out.includes(v.token))out=out.split(v.token).join(v.resolve())});
+    return out;
+  }
+  function expandFilterList(list){
+    return (list||[]).map(f=>filterVarFor(f.value)?{...f,value:expandFilterVars(f.value)}:f);
+  }
+  window.WL=window.WL||{};
+  WL.expandFilterVars=expandFilterVars;
+
   function opLabel(op){return OPS.find(x=>x[0]===op)?.[1]||op}
   function opShort(op){return (OPS.find(x=>x[0]===op)?.[1]||op).split(' ')[0]}
   function noValueOp(op){return ['empty','not_empty'].includes(op)}
@@ -106,7 +136,17 @@
      本来空欄は発生しない想定。ファイル/テーブルごとに完全に個別管理する
      ため、空欄=汎用というフォールバックは廃止する。 */
   function currentTablePresets(){return (S.filterPresets||[]).filter(p=>p.db===S.db&&p.table===S.table)}
-  function condLabel(f){return `${f.column} ${opShort(f.op)}${noValueOp(f.op)?'':' '+f.value}`}
+  function condLabel(f){
+    if(noValueOp(f.op))return `${f.column} ${opShort(f.op)}`;
+    // 変数を使っている条件は、変数名と「今の値」を併記する(どちらか片方だと
+    // 何で絞られているのか・なぜ0件なのかが分からない)。
+    const v=filterVarFor(f.value);
+    if(v){
+      const now=expandFilterVars(f.value);
+      return `${f.column} ${opShort(f.op)} ${f.value}${now?`（=${now}）`:'（未設定）'}`;
+    }
+    return `${f.column} ${opShort(f.op)} ${f.value}`;
+  }
   function bumpCondUsage(f){
     // どのDB/テーブルで使った条件かを必ず添えて記録する(V2、上記コメント参照)。
     const scope=usageScopeKey();if(!S.db||!S.table)return;
@@ -332,6 +372,7 @@
           <label>カラム<select id="filterColumn"></select></label>
           <label>比較<select id="filterOp"></select></label>
           <label>検査値<input id="filterValue" list="filterSuggestList" placeholder="値を入力/候補から選択"><datalist id="filterSuggestList"></datalist></label>
+          <div class="filter-vars" id="filterVarChips" role="group" aria-label="変数を挿入"></div>
           <button id="addGenericFilter" type="button">追加</button>
         </div>
       </div>`;
@@ -343,6 +384,21 @@
     $('#filterOp').innerHTML=OPS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
     $('#filterColumn').onchange=updateFilterSuggestions;
     $('#filterOp').onchange=()=>{$('#filterValue').disabled=noValueOp($('#filterOp').value)};
+    /* 変数の挿入チップ。手で「{使用設備}」と打たせない(綴りを間違えると
+       ただの文字列として検索され、0件の理由が分からなくなる)。 */
+    {
+      const wrap=$('#filterVarChips');
+      if(wrap)wrap.innerHTML=FILTER_VARS.map(v=>{
+        const now=v.resolve();
+        return `<button type="button" class="filter-var-chip" data-var="${esc(v.token)}" `
+          +`title="${esc(v.hint)}${now?`（今: ${now}）`:'（使用設備が未登録です）'}">`
+          +`${esc(v.label)}</button>`;
+      }).join('');
+      wrap?.querySelectorAll('[data-var]').forEach(b=>b.onclick=()=>{
+        const input=$('#filterValue');if(!input||input.disabled)return;
+        input.value=b.dataset.var;input.focus();
+      });
+    }
     $('#addGenericFilter').onclick=()=>{const f={column:$('#filterColumn').value,op:$('#filterOp').value,value:$('#filterValue').value.trim()};if(!f.column)return;if(!noValueOp(f.op)&&!f.value){$('#filterValue').focus();return}addGenericFilter(f);$('#filterValue').value=''};
     $('#saveFilterPreset').onclick=saveCurrentFiltersToMaster;
     $('#openFilterPresets').onclick=openFilterPresetModal;
@@ -594,7 +650,9 @@
   if(typeof load==='function'){
     load=async function(force){
       const q=new URLSearchParams({db:S.db,table:S.table,page:S.page,page_size:$('#pageSize').value,search:$('#search').value});
-      if(S.genericFilters?.length)q.set('filters',JSON.stringify(S.genericFilters));
+      // 変数(例: {使用設備})はここで今の値へ展開する。保存されている条件は
+      // 変数のままなので、端末や設備が変わってもそのまま使い回せる。
+      if(S.genericFilters?.length)q.set('filters',JSON.stringify(expandFilterList(S.genericFilters)));
       if(S.sortColumn){q.set('sort',S.sortColumn);q.set('sort_dir',S.sortDir||'asc')}
       // list-view.jsのload()と同じ品質データ結合オプトイン(§9.21)。この
       // ファイルはload()を丸ごと置き換えているため、あちらだけ直しても
