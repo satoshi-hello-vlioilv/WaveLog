@@ -711,9 +711,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     権限はあるのに対象設備が違う/未設定のときは、黙って無効にせず理由を出す
     (マスタ管理で直せる内容なので、何を直せばよいか分かる文言にする)。 */
  function applyFieldReorderPermission(){
-  const norm=v=>String(v||'').trim().toUpperCase();
-  const matched=scState.fieldReorderGranted&&!!scState.fieldReorderTarget
-   &&norm(scState.fieldReorderTarget)===norm(scState.equipment);
+  // 対象設備は複数指定・「すべての設備」('*')も書ける。判定はaccess-mode.jsの
+  // 共通関数へ寄せる(サーバー側のfield_reorder_equipment_allowsと同じ規則)。
+  const matched=scState.fieldReorderGranted
+   &&(WL.fieldReorderAllows?.(scState.fieldReorderTarget,scState.equipment)??false);
   scState.fieldReorderOnly=matched;
   scState.editable=scState.fullControl||matched;
   const note=$('#scFieldReorderNote');
@@ -724,8 +725,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    note.title='この設備の未着手の予定を並べ替えられます。';
   }else if(scState.fieldReorderGranted){
    note.hidden=false;note.classList.add('is-warn');
-   note.textContent=scState.fieldReorderTarget
-    ?`現場段取りの対象設備は「${scState.fieldReorderTarget}」です`
+   const label=WL.fieldReorderLabel?.(scState.fieldReorderTarget)||'';
+   note.textContent=label
+    ?`現場段取りの対象設備は「${label}」です`
     :'現場段取りの対象設備が未設定です';
    note.title='マスタ管理 > アクセス権限マスタの「現場段取り対象設備」に'
     +'この設備名を登録すると、並べ替えができるようになります。';
@@ -1759,7 +1761,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      ${canReport?`<button type="button" class="sc-row-btn sc-row-report" title="このロットの帳票を表示します">📄</button>`:''}
      ${detailHtml?`<button type="button" class="sc-row-btn sc-row-detail-toggle" title="詳細を表示">▾</button>`:''}
      ${canDelete?`<button type="button" class="sc-row-btn sc-row-delete" title="この予定を削除します">🗑</button>`:''}
-     ${canDeleteHistory?`<button type="button" class="sc-row-btn sc-row-btn-danger sc-row-delete-history" title="この実績（測定データ）を削除します。取り消せません">🗑 実績</button>`:''}
+     ${canDeleteHistory?`<button type="button" class="sc-row-btn sc-row-btn-danger sc-row-delete-history" title="このロットの測定データ（実績）を削除します。取り消せません">🗑 削除</button>`:''}
     </span>`;
    row.classList.toggle('sc-row-not-workable',workable.state==='ng');
    if(canDrag)wireDrag(row);

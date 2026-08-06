@@ -25,7 +25,7 @@ from .. import schedule_sync
 from .. import schedule_calc
 from .. import load_factor
 from ..repositories import schedule_repo as sr
-from ..repositories.master_repo import normalize_equipment_name, equipment_master_rows
+from ..repositories.master_repo import normalize_equipment_name, equipment_master_rows, field_reorder_equipment_allows
 from ..db_access import connect, request_user_id, DBS
 from ..access_mode import current_login_id, current_pc_name, get_mode, current_permission_flags
 
@@ -283,7 +283,7 @@ def _apply_plan_op(c,op,uid):
   # 個別エンドポイント(plan_reorder)と同じ現場段取り権限の確認。
   if get_mode()=='edit':
    flags=current_permission_flags()
-   if not flags['canFieldReorder'] or normalize_equipment_name(flags['fieldReorderEquipment'])!=normalize_equipment_name(equipment):
+   if not flags['canFieldReorder'] or not field_reorder_equipment_allows(flags['fieldReorderEquipment'],equipment):
     raise PermissionError('この端末には、この設備の現場段取り(並べ替え)権限がありません。')
   _check_session(equipment)
   expanded=schedule_calc.expand_plan(c,equipment)
@@ -333,7 +333,7 @@ def plan_reorder():
  if not equipment:return jsonify(error='どの設備の並べ替えか指定してください。'),400
  if get_mode()=='edit':
   flags=current_permission_flags()
-  if not flags['canFieldReorder'] or normalize_equipment_name(flags['fieldReorderEquipment'])!=normalize_equipment_name(equipment):
+  if not flags['canFieldReorder'] or not field_reorder_equipment_allows(flags['fieldReorderEquipment'],equipment):
    return jsonify(error='この端末には、この設備の現場段取り(並べ替え)権限がありません。'),403
  ordered_ids=x.get('orderedIds') or x.get('planIds') or []
  def fn(c):

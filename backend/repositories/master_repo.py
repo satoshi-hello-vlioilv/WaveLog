@@ -474,6 +474,30 @@ def has_edit_permission(c,login_id,pc_name):
 
 _DEFAULT_PERMISSION_FLAGS={'canEdit':True,'canSchedule':False,'canFieldReorder':False,'fieldReorderEquipment':''}
 
+# 現場段取りの対象設備。1設備だけでなく、複数設備とワイルドカードも書ける。
+#   ''          … 未設定（権限なし。空欄は「全設備許可」ではない）
+#   '*'         … すべての設備（開発・保守用の全設備権限）
+#   'A,B,C'     … 列挙した設備だけ
+# 保存はTEXT1列のまま。列を増やすと既存行の移行が要るうえ、判定する場所
+# (サーバー2箇所・画面2箇所)を全部直さないと食い違うため、文字列の書式で
+# 表現して**判定はこの関数1つに集約**する。
+FIELD_REORDER_ALL='*'
+def field_reorder_equipment_list(stored):
+ """保存文字列を設備名のリストへ。'*'は ['*'] を返す。"""
+ s=str(stored or '').strip()
+ if not s:return []
+ if s==FIELD_REORDER_ALL:return [FIELD_REORDER_ALL]
+ return [p.strip() for p in s.replace('、',',').split(',') if p.strip()]
+
+def field_reorder_equipment_allows(stored,equipment):
+ """この保存内容で、指定の設備の並べ替えを許してよいか。"""
+ items=field_reorder_equipment_list(stored)
+ if not items:return False
+ if items[0]==FIELD_REORDER_ALL:return True
+ target=normalize_equipment_name(equipment)
+ if not target:return False
+ return any(normalize_equipment_name(x)==target for x in items)
+
 def permission_flags(c,login_id,pc_name):
  # ログインID・PC名は汎用的に使えるよう、どちらか一方だけの登録
  # (もう一方は空欄)も許す(register/update側もどちらか一方の入力のみで

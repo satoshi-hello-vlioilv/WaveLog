@@ -39,9 +39,9 @@
            {k:'canEdit',label:'編集可否',type:'select',options:['編集可','閲覧のみ']},
            {k:'canSchedule',label:'スケジュール可否',type:'select',options:['不可','可']},
            {k:'canFieldReorder',label:'現場段取り可否',type:'select',options:['不可','可']},
-           {k:'fieldReorderEquipment',label:'現場段取り対象設備',type:'equipment-select'}],
-   cols:[{k:'loginId',label:'ログインID',grow:2},{k:'pcName',label:'PC名',grow:2},{k:'canEdit',label:'編集可否',grow:1},{k:'canSchedule',label:'スケジュール',grow:1},{k:'canFieldReorder',label:'現場段取り',grow:1},{k:'fieldReorderEquipment',label:'対象設備',grow:1}],
-   hint:'ログインID・PC名はどちらか一方だけの登録もできます(汎用的な運用のため)。片方だけ登録した場合、もう一方は「問わない」という意味になります(例: ログインIDだけ登録すると、そのユーザーはどの端末からでもこの権限になります)。両方登録した組み合わせが最優先で一致し、次に片方だけの登録、両方空欄の登録(全端末共通の既定)の順に判定します。登録の無い組み合わせは既定で編集可能・スケジュール不可・現場段取り不可として扱われます。特定の端末を閲覧専用にしたい場合はその端末を「閲覧のみ」で、作業スケジュールを操作させたい場合は「スケジュール可否」を「可」で登録してください。「現場段取り可否」は編集モードの端末に限り、対象設備の並べ替えだけを追加で許可します。'},
+           {k:'fieldReorderEquipment',label:'現場段取り対象設備',type:'equipment-multi-text'}],
+   cols:[{k:'loginId',label:'ログインID',grow:2},{k:'pcName',label:'PC名',grow:2},{k:'canEdit',label:'編集可否',grow:1},{k:'canSchedule',label:'スケジュール',grow:1},{k:'canFieldReorder',label:'現場段取り',grow:1},{k:'fieldReorderEquipment',label:'対象設備',grow:2,format:'equipmentTarget'}],
+   hint:'ログインID・PC名はどちらか一方だけの登録もできます(汎用的な運用のため)。片方だけ登録した場合、もう一方は「問わない」という意味になります(例: ログインIDだけ登録すると、そのユーザーはどの端末からでもこの権限になります)。両方登録した組み合わせが最優先で一致し、次に片方だけの登録、両方空欄の登録(全端末共通の既定)の順に判定します。登録の無い組み合わせは既定で編集可能・スケジュール不可・現場段取り不可として扱われます。特定の端末を閲覧専用にしたい場合はその端末を「閲覧のみ」で、作業スケジュールを操作させたい場合は「スケジュール可否」を「可」で登録してください。「現場段取り可否」は編集モードの端末に限り、対象設備の並べ替えだけを追加で許可します。対象設備は複数選べます。「すべての設備」を選ぶと全設備の並べ替えを許可します（開発・保守用。設備が増えても権限行を足さずに済みます）。'},
   {group:'schedule',key:'loadFactor',label:'換算係数',icon:'率',special:'load-factor',endpoint:'/api/schedule/load-factors'},
   {group:'schedule',key:'stopCategory',label:'設備停止分類',icon:'類',endpoint:'/api/schedule/stop-category-master',hasDelete:true,
    fields:[{k:'name',label:'分類名',required:true,key:true}],
@@ -171,7 +171,7 @@
     現状: オペレータ(タグ入力)・アクセス権限(6項目)・設備停止(4項目)・
     勤務形態(4項目)がモーダル、機器/スプール/内径/設備はインラインのまま。 */
  const EDITOR_MODAL_MIN_FIELDS=4;
- const RICH_FIELD_TYPES=['equipment-multi'];
+ const RICH_FIELD_TYPES=['equipment-multi','equipment-multi-text'];
  function defUsesEditorModal(def){
   if(!def||!Array.isArray(def.fields)||!def.fields.length)return false;
   if(def.editorModal===true)return true;
@@ -233,6 +233,19 @@
    comboCache.set(source.endpoint,list);return list;
   }catch(e){comboCache.set(source.endpoint,[]);return []}
  }
+ /* 「すべての設備」を表す保存値。backend/repositories/master_repo.py の
+    FIELD_REORDER_ALL と必ず同じにすること(判定はサーバー側と画面側の
+    両方にあり、片方だけ変えると権限の見え方と実際が食い違う)。 */
+ const EQUIPMENT_ALL='*';
+ /* 一覧の表示用テキスト。保存値そのままだと '*' が生で見えて意味が伝わらない。 */
+ function cellText(col,value){
+  const v=String(value??'');
+  if(col.format==='equipmentTarget'){
+   if(!v.trim())return '';
+   return v.trim()===EQUIPMENT_ALL?'すべての設備':v.replace(/、/g,',').split(',').map(s=>s.trim()).filter(Boolean).join(' / ');
+  }
+  return v;
+ }
  function buildFieldControls(def,editing){
   return def.fields.map(f=>{
    const val=editing?String(editing[f.k]??''):'';
@@ -243,6 +256,27 @@
     }
     const optHtml=opts.map(eq=>`<option value="${esc(eq.name)}"${eq.name===val?' selected':''}>${esc(eq.name)}</option>`).join('');
     return `<label class="mm-field"><span>${esc(f.label)}${f.required?'<i>*</i>':''}${f.key?'<em class="mm-keytag">キー</em>':''}</span><select data-field="${f.k}"><option value="">選択...</option>${optHtml}</select></label>`;
+   }
+   /* 対象設備を複数選べる欄。作業可能設備(equipment-multi)と同じタグUIだが、
+      保存先が配列ではなくカンマ区切りの1列で、さらに「すべての設備」という
+      ワイルドカード('*')を持つ。開発・保守用に全設備の権限を1行で渡せる
+      ようにするため(設備を増やすたびに権限行を足さなくてよい)。 */
+   if(f.type==='equipment-multi-text'){
+    const raw=String(editing?(editing[f.k]??''):'').trim();
+    const isAll=raw===EQUIPMENT_ALL;
+    const selected=new Set(isAll?[]:raw.replace(/、/g,',').split(',').map(s=>s.trim()).filter(Boolean));
+    const opts=equipmentMasterState.items||[];
+    const hiddenBoxes=opts.map(eq=>`<input type="checkbox" data-equipment-field="${f.k}" value="${esc(eq.name)}"${selected.has(eq.name)?' checked':''} hidden>`).join('');
+    // マスタから消えた設備名も選択として残す(黙って権限が消えないように)。
+    const strays=[...selected].filter(n=>!opts.some(eq=>eq.name===n));
+    const strayBoxes=strays.map(n=>`<input type="checkbox" data-equipment-field="${f.k}" value="${esc(n)}" checked hidden>`).join('');
+    return `<div class="mm-field mm-tagfield" data-tagfield="${f.k}" data-tagfield-all="1"><span>${esc(f.label)}</span>
+     <div class="mm-tagfield-inner">
+      <label class="mm-tag-all"><input type="checkbox" data-equipment-all="${f.k}"${isAll?' checked':''}>すべての設備</label>
+      <div class="mm-tag-box" data-equipment-box="${f.k}" tabindex="-1">${strayBoxes}<input type="text" class="mm-tag-search" data-equipment-search="${f.k}" placeholder="設備名で検索・追加" autocomplete="off">${hiddenBoxes}</div>
+      <div class="mm-tag-suggest" data-equipment-suggest="${f.k}" hidden></div>
+     </div>
+     <small class="mm-field-hint">複数選べます。「すべての設備」は開発・保守用の全設備権限です（設備を増やしても権限行を足さずに済みます）。未選択は「未設定」＝権限なしです。</small></div>`;
    }
    if(f.type==='equipment-multi'){
     const selected=new Set((editing&&Array.isArray(editing[f.k])?editing[f.k]:[]).map(String));
@@ -651,6 +685,18 @@
    });
    search.addEventListener('blur',()=>{setTimeout(()=>{if(document.activeElement!==search)suggest.hidden=true},150)});
    box.addEventListener('mousedown',ev=>{if(ev.target===box){ev.preventDefault();search.focus()}});
+   /* 「すべての設備」を選んでいるあいだは個別選択を触らせない。両方が
+      効いているように見えると、どちらが保存されるのか分からなくなる。 */
+   const all=field.querySelector(`[data-equipment-all="${fk}"]`);
+   if(all){
+    const syncAll=()=>{
+     box.classList.toggle('is-disabled',all.checked);
+     search.disabled=all.checked;
+     if(all.checked)suggest.hidden=true;
+    };
+    all.addEventListener('change',syncAll);
+    syncAll();
+   }
    renderTags();
   });
  }
@@ -697,6 +743,12 @@
   if(editing)body.id=editing.id;
   def.fields.forEach(f=>{
    if(f.type==='equipment-multi'){body[f.k]=[...document.querySelectorAll(`${root} [data-equipment-field="${f.k}"]:checked`)].map(el=>el.value);return}
+   if(f.type==='equipment-multi-text'){
+    const all=document.querySelector(`${root} [data-equipment-all="${f.k}"]`);
+    body[f.k]=all&&all.checked?EQUIPMENT_ALL
+     :[...document.querySelectorAll(`${root} [data-equipment-field="${f.k}"]:checked`)].map(el=>el.value).join(',');
+    return;
+   }
    const el=$(`${root} [data-field="${f.k}"]`);
    // 数値欄は表示用の3桁区切りが入っているので、送る前に外す(§9.49)
    const v=f.type==='number'?numRaw(el?el.value:''):String(el?el.value:'').trim();
@@ -808,7 +860,8 @@
    // 列として出さない監査情報(更新者・更新日時)は行のツールチップで補う。
    const audit=`更新者: ${it.updated_by||'-'} / 更新日時: ${fmtDT(it.updated_at)}`;
    row.title=showAudit?'クリックで編集フォームに読み込みます':`クリックで編集\n${audit}`;
-   const cells=def.cols.map(c=>`<span title="${esc(it[c.k]??'')}">${esc(it[c.k]??'')||'<em class="mm-blank">—</em>'}</span>`).join('');
+   const cells=def.cols.map(c=>{const v=cellText(c,it[c.k]);
+    return `<span title="${esc(v)}">${esc(v)||'<em class="mm-blank">—</em>'}</span>`}).join('');
    row.innerHTML=`${cells}${showAudit?`<span class="mm-user" title="${esc(it.updated_by||'')}">${esc(it.updated_by||'-')}</span><span class="mm-date">${esc(fmtDT(it.updated_at))}</span>`:''}<span class="mm-act"><button type="button" class="mm-edit" title="この行の内容を編集します">編集</button>${def.hasDelete?'<button type="button" class="mm-del" title="この行を削除します（確認画面が出ます）">削除</button>':''}</span>`;
    // 入力項目が多いマスタは編集専用モーダル、少ないマスタは従来どおり
    // 上部のインラインフォームへ読み込む(ARCHITECTURE.md「マスタ管理の画面形態」、defUsesEditorModal)。
@@ -852,8 +905,8 @@
   if(def.special==='raw-table'){setMaintSearchVisible(false);return loadRawTableMaint(force)}
   setMaintSearchVisible(true);
   const list=$('#masterMaintList');if(list&&force)list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
-  const multiField=def.fields.find(f=>f.type==='equipment-multi');
-  const needsEquipmentMaster=multiField||def.fields.some(f=>f.type==='equipment-select');
+  const multiField=def.fields.find(f=>f.type==='equipment-multi'||f.type==='equipment-multi-text');
+  const needsEquipmentMaster=multiField||def.fields.some(f=>f.type==='equipment-select'||f.type==='equipment-multi-text');
   // force未指定(キャッシュ利用)のままだと、設備マスタタブで新規登録・削除した
   // 直後でもオペレータ/設備停止タブの選択肢が古いままになる。loadMaint()の
   // forceをそのまま伝播し、タブを開き直すたびに最新の設備マスタを反映する。

@@ -30,6 +30,33 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
  let accessMode={mode:'edit',canEdit:true,canSchedule:false,canFieldReorder:false,fieldReorderEquipment:'',loginId:'',pcName:''};
  window.accessMode=accessMode;
 
+ /* 現場段取り対象設備の書式(空/'*'/カンマ区切り)を解く。
+    **backend/repositories/master_repo.py の field_reorder_equipment_* と
+    同じ規則**にすること。画面が「並べ替え可」と出したのにAPIが403を返す、
+    という食い違いはここがずれると必ず起きる。 */
+ const EQUIPMENT_ALL='*';
+ function fieldReorderTargets(stored){
+  const s=String(stored||'').trim();
+  if(!s)return [];
+  if(s===EQUIPMENT_ALL)return [EQUIPMENT_ALL];
+  return s.replace(/、/g,',').split(',').map(x=>x.trim()).filter(Boolean);
+ }
+ function fieldReorderAllowsAll(stored){return fieldReorderTargets(stored)[0]===EQUIPMENT_ALL}
+ function fieldReorderAllows(stored,equipment){
+  const list=fieldReorderTargets(stored);
+  if(!list.length)return false;
+  if(list[0]===EQUIPMENT_ALL)return true;
+  const t=String(equipment||'').trim().toUpperCase();
+  return !!t&&list.some(x=>x.trim().toUpperCase()===t);
+ }
+ function fieldReorderLabel(stored){
+  const list=fieldReorderTargets(stored);
+  if(!list.length)return '';
+  return list[0]===EQUIPMENT_ALL?'すべての設備':list.join(' / ');
+ }
+ window.WL=window.WL||{};
+ Object.assign(window.WL,{fieldReorderAllows,fieldReorderAllowsAll,fieldReorderLabel});
+
  async function refreshAccessMode(){
   try{
    const r=await api('/api/access-mode');
@@ -80,17 +107,18 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
    // §9.44: 「並べ替え可」は対象設備が決まっていて初めて実際に使える権限。
    // 対象設備が未設定/この端末の使用設備と違う場合に「可」とだけ出すと、
    // 動かした瞬間に403で弾かれて食い違う。バッジ自体で状態を言い分ける。
-   const target=String(accessMode.fieldReorderEquipment||'').trim();
+   const stored=accessMode.fieldReorderEquipment;
+   const label=fieldReorderLabel(stored);
    const own=typeof currentConfiguredEquipment==='function'?currentConfiguredEquipment():'';
-   const norm=v=>String(v||'').trim().toUpperCase();
-   const usable=!!target&&(!own||norm(target)===norm(own));
+   // 使用設備が未設定のうちは、対象設備が入っていれば「可」と出す(照合できないため)。
+   const usable=!!label&&(!own||fieldReorderAllows(stored,own));
    fieldBadge.classList.toggle('is-warn',!usable);
    const val=fieldBadge.querySelector('.hd-chip-val');
    if(val)val.textContent=usable?'並べ替え可':'設定要';
    else fieldBadge.textContent=usable?'並べ替え可':'設定要';
    fieldBadge.title=usable
-    ?`現場段取り: ${target} の未着手の予定を並べ替えられます`
-    :(target?`現場段取りの対象設備は「${target}」です(この端末の使用設備: ${own||'未設定'})`
+    ?`現場段取り: ${label} の未着手の予定を並べ替えられます`
+    :(label?`現場段取りの対象設備は「${label}」です(この端末の使用設備: ${own||'未設定'})`
             :'現場段取りの対象設備が未設定です。マスタ管理 > アクセス権限マスタで設定してください');
   }
  }

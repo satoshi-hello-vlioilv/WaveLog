@@ -33,7 +33,16 @@
   機能に依存しているかが呼び出し箇所で分かるのが目的なので、定義がグローバル
   関数宣言でも素の名前では呼ばない）。現在`WL`にあるのは
   `registerView`/`enterView`/`withInternalDbSwitch`/`isInternalDbSwitch`/`ttlCache`/
-  `refreshScheduleIfOpen`/`expandFilterVars`/`toleranceScaleView`/`optionList`/`defect`。
+  `refreshScheduleIfOpen`/`expandFilterVars`/`toleranceScaleView`/`optionList`/`defect`/
+  `fieldReorderAllows`/`fieldReorderAllowsAll`/`fieldReorderLabel`。
+- **色と文字サイズは`:root`のトークンから選ぶ**。リテラルの16進・pxを新しく
+  足さない。面/枠線/文字の中間色は`--surface`/`--surface-2`/`--surface-3`/
+  `--line-soft`/`--line-mid`/`--line`/`--line-strong`/`--ink`/`--ink-2`/`--ink-3`/
+  `--ink-soft`/`--muted`、文字は`--fs-*`。同じ役割の色が画面ごとに少しずつ違う
+  値で書かれていたのが「揃っていない」印象の主因だった（枠線8種・補助文字10種）。
+  **例外はA4帳票(`.rp-page`/`.df-page`配下)だけ**——用紙の割り付けが表示サイズ
+  倍率で崩れるため、あそこはpx固定が正しい。`tests/test_theme.js`が
+  「リテラルpxが印刷物以外に無いこと」を固定している。
 - **新しいキャッシュは`WL.ttlCache()`を使う**（`base.js`）。期限切れの判定・件数の
   上限・取得中のPromise共有（同時呼び出しを1回にまとめ、失敗したPromiseは
   捨てて再試行できるようにする）を持つ。**既存のキャッシュは置き換えない**

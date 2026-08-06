@@ -243,6 +243,27 @@ API経由でRNE(Navigator問い合わせ定義)を実行し、ローカルSQLite
 | `measurement-input.js` | `deviceParse`・`processDeviceInput`・`focusCurrent`・`renderMeasureGrid(Vertical)`・`judgeInput`・公差計算（`toleranceDetail`/`toleranceDataForSource`/`compactTolerance*`）・公差数直線の値→縦位置の写像（`WL.toleranceScaleView`、下記） |
 | `records-store.js` | IndexedDB/ミラー永続化・`saveLocal`/`persistAndTransition`・`openMeasurement`・`openRecords`/`renderRecordListRows`・`loadMeasurementContext`・使用設備設定/設備マスタ・Access同期の未完了キューと再送・アプリ起動呼び出し（末尾） |
 
+### 現場段取りの対象設備（複数指定と「すべての設備」）
+
+アクセス権限マスタの`現場段取り対象設備`はTEXT1列のまま、3つの書式を持つ。
+
+| 保存値 | 意味 |
+|---|---|
+| `''` | 未設定（権限なし）。**空欄は全設備許可ではない** |
+| `*` | すべての設備（開発・保守用） |
+| `A,B,C` | 列挙した設備だけ |
+
+- 列を増やさないのは、既存行の移行が要るうえ、判定する場所が
+  **サーバー2箇所・画面2箇所**あり、全部直さないと「画面は並べ替え可と出すのに
+  APIが403」という食い違いが起きるため。判定は
+  `master_repo.field_reorder_equipment_allows()`（サーバー）と
+  `WL.fieldReorderAllows()`（画面、access-mode.js）の**2つだけ**に集約し、
+  同じ規則で書く。片方を変えたら必ずもう片方も変える。
+- 入力欄はマスタ管理のタグ入力（`equipment-multi-text`）。「すべての設備」を
+  選んでいるあいだは個別選択を触らせない（両方効いて見えると、どちらが
+  保存されるのか分からなくなる）。
+- 回帰は `tests/test_theme.js`。
+
 ### 異常位置判定（defect-locator.js）
 
 欠陥を見つけた位置から「OSから何条目・どの子ロットか」を求める機能
