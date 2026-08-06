@@ -62,21 +62,31 @@ let b=null;
  rec('ロック行は固定日時どおり表示順の前方へ割り込む',
   domNow.indexOf(lockTargetId)<6,`表示位置=${domNow.indexOf(lockTargetId)} (元は6)`);
  reorderBody=null;
- const t2=await page.$(`.sc-row-line[data-id="${domNow.find(id=>id!==lockTargetId)}"]`);
- await t2.focus();
- await page.keyboard.down('Alt');await page.keyboard.press('ArrowDown');await page.keyboard.up('Alt');
- await page.waitForTimeout(2500);
- if(reorderBody){
-  const ids2=JSON.parse(reorderBody).orderedIds.map(String);
-  rec('ロック行は表示順ではなく元の予定順の位置のまま送られる',
-   ids2.indexOf(lockTargetId)>=5,`予定順での位置=${ids2.indexOf(lockTargetId)} / 表示順=${domNow.indexOf(lockTargetId)}`);
-  rec('ロック行を含めて並べ替え対象の全件が送られる',ids2.length===domNow.length,`ids=${ids2.length} rows=${domNow.length}`);
- }else rec('ロック時も並べ替えAPIが呼ばれる',false);
- // 後片付け
- await page.evaluate(async id=>{
-  await fetch('/api/schedule/plan/update',{method:'POST',headers:{'Content-Type':'application/json'},
-   body:JSON.stringify({id:Number(id),fixedStart:'',user_id:'test'})});
- },lockTargetId);
+ try{
+  const otherId=domNow.find(id=>id!==lockTargetId);
+  // 行が取れないまま .focus() を呼ぶとFATALで落ち、下の後片付け(ロック解除)が
+  // 走らない。残ったロックは後続テストの並べ替えを黙って失敗させるので、
+  // ここは必ずFAILとして記録し、後片付けまで到達させる(実際に落ちた)。
+  const t2=otherId?await page.$(`.sc-row-line[data-id="${otherId}"]`):null;
+  if(!t2)rec('ロック行以外の予定行を掴める',false,`domNow=${domNow.slice(0,4)} lock=${lockTargetId}`);
+  else{
+   await t2.focus();
+   await page.keyboard.down('Alt');await page.keyboard.press('ArrowDown');await page.keyboard.up('Alt');
+   await page.waitForTimeout(2500);
+   if(reorderBody){
+    const ids2=JSON.parse(reorderBody).orderedIds.map(String);
+    rec('ロック行は表示順ではなく元の予定順の位置のまま送られる',
+     ids2.indexOf(lockTargetId)>=5,`予定順での位置=${ids2.indexOf(lockTargetId)} / 表示順=${domNow.indexOf(lockTargetId)}`);
+    rec('ロック行を含めて並べ替え対象の全件が送られる',ids2.length===domNow.length,`ids=${ids2.length} rows=${domNow.length}`);
+   }else rec('ロック時も並べ替えAPIが呼ばれる',false);
+  }
+ }finally{
+  // 後片付け
+  await page.evaluate(async id=>{
+   await fetch('/api/schedule/plan/update',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({id:Number(id),fixedStart:'',user_id:'test'})});
+  },lockTargetId).catch(()=>{});
+ }
 
  console.log('\n=== SUMMARY ===');
  const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);

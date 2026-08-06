@@ -49,7 +49,12 @@ try:
         ong=[e for e in m.values() if e.get('ongoing')]
         if not ong:continue
         o=ong[0]
-        nxt=sorted([e for e in m.values() if e['state']=='予定' and e.get('plannedStart')],key=lambda e:e['plannedStart'])
+        # ロック(固定開始)した行は現在時刻に追随せずその日時に留まるので、
+        # 作業中の直後に来るのは「ロックしていない予定」のうち最も早いもの。
+        # 除かないと、このテスト自身がロックした行を掴んで落ちる。
+        nxt=sorted([e for e in m.values() if e['state']=='予定'
+                    and e.get('plannedStart') and not e.get('fixedStart')],
+                   key=lambda e:e['plannedStart'])
         exp=(t0+timedelta(hours=h)).isoformat()
         rec('now+%dh: 作業中の予定終了が現在時刻'%h,o['plannedEnd']==exp,o['plannedEnd'])
         rec('now+%dh: 直後の予定開始が作業中の終了と一致'%h,

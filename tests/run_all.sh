@@ -119,9 +119,17 @@ want(){
   return 1
 }
 
+# テストごとに作業予定を種データへ戻す。テストは共有フィクスチャを書き換える
+# ので、戻さないと「前のテストが並べ替えた順」「後片付け前に落ちたテストが
+# 残したロック」を次のテストが引き継ぐ。行を位置で掴むテストが、単体では
+# 通るのに通しで回すと落ちる原因になっていた(実際に3本が落ちた)。
+# 実行のたびに結果が変わるのでは安全網にならないので、1本ごとに揃える。
+reseed(){ python3 "$ROOT/tests/make_fixture.py" >/dev/null 2>&1; }
+
 TOT=0; NG=0
 run(){
   want "$2" || return 0
+  reseed
   out=$($1 "$2" 2>&1)
   p=$(echo "$out" | grep -c '^PASS'); f=$(echo "$out" | grep -c '^FAIL')
   fatal=$(echo "$out" | grep -c 'FATAL')
