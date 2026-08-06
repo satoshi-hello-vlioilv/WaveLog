@@ -29,16 +29,32 @@ let b=null;
  });
  rec('押せるボタンはpointerになる',base.cursor==='pointer',base.cursor);
  rec('押せないボタンはnot-allowed+減光',base.disCursor==='not-allowed'&&base.disOpacity<1,JSON.stringify(base));
+ /* CSSは@layerで包んであるので、ルールは入れ子になっている。
+    最上位だけ舐めると見つからない(VER1.83.0でここが落ちた)。 */
  const pressRule=await page.evaluate(()=>{
+  const hit=rules=>{
+   for(const r of rules){
+    if(r.selectorText&&/^button.*:active/.test(r.selectorText)&&/filter/.test(r.style.cssText))return r.selectorText;
+    if(r.cssRules){const d=hit(r.cssRules);if(d)return d}
+   }
+   return '';
+  };
   for(const sh of document.styleSheets){let l;try{l=sh.cssRules}catch(e){continue}
-   for(const r of l){if(r.selectorText&&/^button.*:active/.test(r.selectorText)&&/filter/.test(r.style.cssText))return r.selectorText}}
+   const d=hit(l);if(d)return d}
   return '';
  });
  rec('押した瞬間の見た目変化が全ボタン共通で定義されている',!!pressRule,pressRule);
  rec('押下フィードバックはtransformを使わない(配置を壊さないため)',
    !/transform/.test(await page.evaluate(()=>{
+     const hit=rules=>{
+      for(const r of rules){
+       if(r.selectorText&&/^button.*:active/.test(r.selectorText))return r.style.cssText;
+       if(r.cssRules){const d=hit(r.cssRules);if(d)return d}
+      }
+      return '';
+     };
      for(const sh of document.styleSheets){let l;try{l=sh.cssRules}catch(e){continue}
-      for(const r of l){if(r.selectorText&&/^button.*:active/.test(r.selectorText))return r.style.cssText}}
+      const d=hit(l);if(d)return d}
      return '';})));
  // 左ナビが押せる形に見える(実測でpointerが無かった箇所)
  const navCur=await page.evaluate(()=>getComputedStyle(document.querySelector('#openSchedule')).cursor);
