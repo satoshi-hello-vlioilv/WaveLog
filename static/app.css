@@ -628,17 +628,24 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 .field label{color:#7b8e95;font-size:var(--fs-micro);white-space:nowrap;text-align:right}
 .field output{display:block;min-height:0;padding:3px 6px;border:1px solid #d6e0e3;border-radius:5px;background:#ffffff;
  font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* コース情報(設計/実績/残)は設備の連なりなので、他の項目と違って長くなる。
-   2列グリッドの半分の幅へ nowrap+省略記号で入れると末尾が切れ、ホバーして
-   title を読まないと分からなかった(実機で見切れの指摘)。
-   ただし**常に全幅にすると3項目が3行を占め**、短い値のときに縦を無駄遣いする
-   (2列なら2行で済む。実際、特大表示で測定画面の左ペインがはみ出した)。
-   そこで入りきらないものだけ .is-long を付けて全幅+折り返しにする
-   (判定は描画後の実測。文字数では表示サイズやフォントの違いを拾えない)。
+/* コース情報(設計/実績/残)は設備の連なりで、実機では
+   「3文字+空白」×25程度=100文字近くまで伸びる(平均でも4文字×10=40文字前後)。
+   **3項目とも縦に並べて常に全幅**を使う。以前は「入りきらないものだけ
+   全幅(.is-long)」にしていたが、2列の半分では平均的な長さすら入らないため
+   ほぼ常に全幅になり、しかも短い値のときだけ2列へ戻って行の位置が動いていた。
+   常に同じ形にした方が読み取りも安定する。
+   ラベル列はコースだけ狭くしてよい(「設計コース」の5文字ぶんで足りる)。
+   値へ渡せる横幅を1文字でも増やすのが目的。
    設備名の区切りは半角/全角スペースとは限らないので overflow-wrap:anywhere。 */
-.info-grid .course-stack-field.is-long,.info-grid .residual-course-field.is-long{grid-column:1/-1}
-.info-grid .course-stack-field.is-long output,.info-grid .residual-course-field.is-long output{
- white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;line-height:1.5}
+.info-grid .course-stack-field,.info-grid .residual-course-field{
+ grid-column:1/-1;grid-template-columns:minmax(0,max-content) minmax(0,1fr)}
+/* 3項目が縦に3行を占めるぶん、行の高さは他の項目より少しだけ詰める
+   (上下パディングを1px・行送りを詰める)。特大表示でも左ペインへ収める
+   ための余白で、tests/test_maint.js の「表示サイズを特大にしても収まる」が
+   1pxの差で落ちるところまで実測して決めた。 */
+.info-grid .course-stack-field output,.info-grid .residual-course-field output{
+ padding:2px 6px;white-space:normal;overflow:visible;text-overflow:clip;
+ overflow-wrap:anywhere;line-height:1.35}
 /* かたまりの見出し。線ではなく小さな見出し＋上余白で切る。 */
 .info-group{
  grid-column:1/-1;margin-top:6px;padding-bottom:1px;

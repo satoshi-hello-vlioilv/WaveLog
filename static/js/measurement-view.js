@@ -358,17 +358,14 @@ function renderCourseHierarchy(){
  if(!S.measure)return;const design=designCourseValue(),actual=actualCourseValue(),residual=residualCourseValue();S.measure.basic.designCourse=design;S.measure.basic.course=actual;S.measure.basic.residualCourse=residual;
  const basic=$('#basicInfo .info-grid');if(basic){[...basic.querySelectorAll('.course-stack-field,.residual-course-field')].forEach(x=>x.remove());const old=[...basic.querySelectorAll('.field')].find(x=>x.querySelector('label')?.textContent==='実績コース');if(old)old.remove();
   /* コースは「設計→実績→残」の順に意味がつながる1かたまり(§9.55)。
-     全幅で3行使わず、コース見出しの直後へ並べて詰める。 */
+     コース見出しの直後へこの順で並べる。**3項目とも縦に1行ずつ**で、
+     横幅はエリアいっぱい(全幅・折り返し)——実機のコースは
+     「3文字+空白」×25程度まで伸びるので、2列の半分では平均的な長さすら
+     入らない。幅の確保はCSS(.course-stack-field)側で行うため、ここでは
+     長さを測って出し分けることはしない(短いときだけ2列へ戻ると、行の位置が
+     ロットごとに動いて読み取りにくかった)。 */
   const anchor=basic.querySelector('.info-group-course')||[...basic.querySelectorAll('.field')].find(x=>x.querySelector('label')?.textContent==='納入先');
   [['設計コース',design],['実績コース',actual],['残コース',residual]].forEach(([label,value])=>{const item=document.createElement('div');item.className='field course-stack-field';item.innerHTML=`<label>${label}</label><output title="${esc(value)}">${esc(value||'未設定')}</output>`;if(anchor){const prior=[...basic.querySelectorAll('.course-stack-field')].at(-1);(prior||anchor).after(item)}else basic.append(item)})
-  /* 入りきらないものだけ全幅+折り返しにする。上の「全幅で3行使わず詰める」を
-     保ったまま、実機の長いコース(設備の連なり)を切らないための例外。
-     判定は描画後の実測にする——文字数で決めると表示サイズやフォントの違いを
-     拾えず、短いのに全幅になったり長いのに切れたりする。 */
-  basic.querySelectorAll('.course-stack-field').forEach(f=>{
-   const o=f.querySelector('output');
-   if(o&&o.scrollWidth>o.clientWidth+1)f.classList.add('is-long');
-  });
  }
  const grid=$('#dataManagementPanel .data-management-grid');if(grid){const pairs=[];for(let i=0;i<grid.children.length;i+=2)pairs.push([grid.children[i]?.textContent,grid.children[i+1]?.textContent]);const keep=pairs.filter(([label])=>!['設計コース','実績コース','残コース'].includes(label));const insertAt=Math.max(0,keep.findIndex(([label])=>label==='オーダー番号'));keep.splice(insertAt,0,['設計コース',design||'未設定'],['実績コース',actual||'未設定'],['残コース',residual||'未設定']);grid.innerHTML=keep.map(([label,value])=>`<b>${esc(label||'')}</b><span title="${esc(value||'')}">${esc(value||'未設定')}</span>`).join('')}
  updateCourseGuard();
