@@ -93,6 +93,29 @@ for i,l in enumerate(CSS.split('\n')):
     stray_fs.append(f'L{i+1} {l.strip()[:70]}')
 rec('文字サイズのリテラルpxは印刷物とサイズ見本だけ',not stray_fs,'; '.join(stray_fs[:5]))
 
+# ---- 8) 箱のスケールもトークンから選ぶ(§9.71) ----
+# 文字サイズはトークン化済みだったのに「揃って見えない」原因は箱の側だった。
+# 実測で角丸28種・コントロールの高さ15種・横余白11種が使われており、
+# 同じ役割のカードやボタンが画面ごとに1〜2px違う形で並んでいた。
+missing_tok=[t for t in ['--radius-xs','--radius-sm','--radius-md','--radius-lg','--radius-pill',
+                         '--radius-round','--ctl-pad-x-xs','--ctl-pad-x-sm','--ctl-pad-x']
+             if f'{t}:' not in CODE]
+rec('箱のスケール(角丸・コントロール余白)のトークンが揃っている',not missing_tok,f'不足: {missing_tok}')
+
+stray_rad=[]
+for i,l in enumerate(CSS.split('\n')):
+    if not re.search(r'border-radius:\s*[^;}]*[0-9]',l): continue
+    if re.search(r'border-radius:\s*0(\s|;|\}|$)',l.strip()): continue
+    if 'var(--radius' in l: continue
+    # A4帳票(.rp-page/.df-page配下)だけは用紙の割り付けのためpx固定が正しい。
+    if re.search(r'\.(rp|df)-(page|report|section|field|dim|grade|info|note|wide|product|label|defect|strip|table|head|answer|foot|print)',l): continue
+    stray_rad.append(f'L{i+1} {l.strip()[:70]}')
+rec('角丸のリテラルpxは帳票だけ',not stray_rad,'; '.join(stray_rad[:5]))
+
+# 役割ごとの寸法をまとめたブロックが残っていること(消すと元の15種類へ戻る)
+rec('役割ごとの寸法を1箇所で決めるブロックがある',
+    '0. 役割ごとの寸法' in CSS and '文字の役割（見出し・要約・バッジ）' in CSS)
+
 ng=[x for x in R if not x[1]]
 print('\n=== SUMMARY ===')
 print(f'{len(R)-len(ng)}/{len(R)} passed')
