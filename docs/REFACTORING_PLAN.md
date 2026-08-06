@@ -407,10 +407,19 @@ measurement-worklogを開く」状態が誤読・誤編集の温床**(§9.68の�
 `routes/path_config.py` / `routes/rne.py` へ移す。
 
 **注意(この計画で最も事故りやすい点)**: 書込ガードは
-`_WRITE_ALLOWED_MODES` がBlueprint名をキーに判定し、**未宣言のBlueprintは
-全モード書込不可へ倒れる**(安全側だが、移動しただけで保存が403になる)。
-Blueprint分割とガード表の更新は同一コミットで行い、
-`test_scperm.js`相当のモード×エンドポイント検証をtests/へ足してから着手する。
+`_WRITE_ALLOWED_MODES` がBlueprint名をキーに判定する。着手前に実測したところ、
+**未宣言のBlueprintは全モード書込不可ではなくfail-open(素通し)** だった
+(`if allowed is None: return None`。テスト用Blueprintを登録して確認、
+edit/view/scheduleすべて200)。計画時の記述もCLAUDE.mdの記述も逆だった。
+
+つまり移動先を表へ登録し忘れたときの結果は「保存が403になる」ではなく
+**「閲覧モードからも書けるようになる」**——気付きにくく、影響も大きい側。
+さらに`_ENDPOINT_EXTRA_MODES`と`_READ_ONLY_POST_ENDPOINTS`のキーは
+`Blueprint名.関数名`なので、移動しただけで黙って一致しなくなる
+(`masters.rne_extract_run` → `rne.rne_extract_run`)。
+
+先に`tests/test_modeguard.py`(モード×エンドポイントの許可表を実測で固定)を
+追加した。Blueprint分割とガード表の更新は同一コミットで行う。
 
 ### 4.2 schedule_repo.py の接続引数の明名化
 

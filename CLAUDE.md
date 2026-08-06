@@ -112,9 +112,17 @@
   (Blueprint名→書込を許可するモード集合)と`_ENDPOINT_EXTRA_MODES`(個別
   エンドポイント→追加で許可するモード。現場段取りの並べ替えAPI等)の2段で
   `before_request`が判定する。**新しい書込系APIを追加する場合、そのBlueprintが
-  `_WRITE_ALLOWED_MODES`に含まれるか確認すること**(未宣言のBlueprintは安全側
-  ＝どのモードでも書込不可の側へ倒れる。既存の許可モードを広げたい場合のみ
-  `_ENDPOINT_EXTRA_MODES`へ個別追記し、ハンドラ側でも権限を二重チェックする)。
+  `_WRITE_ALLOWED_MODES`に含まれるか必ず確認すること**。未宣言のBlueprintは
+  **fail-open(素通し)** で、閲覧モードからでも書けてしまう
+  （`if allowed is None: return None`。以前ここには「安全側＝書込不可へ倒れる」と
+  逆の説明が書かれていたが、実際にテスト用Blueprintを登録して確かめたところ
+  edit/view/scheduleの全モードで200が返る）。
+  また`_ENDPOINT_EXTRA_MODES`と`_READ_ONLY_POST_ENDPOINTS`のキーは
+  `Blueprint名.関数名`なので、**エンドポイントを別のBlueprintへ移すだけで
+  許可が黙って変わる**。移動時は必ず両方の表を更新し、`tests/test_modeguard.py`
+  （モード×エンドポイントの許可表を固定するテスト）で確認する。
+  既存の許可モードを広げたい場合のみ`_ENDPOINT_EXTRA_MODES`へ個別追記し、
+  ハンドラ側でも権限を二重チェックする。
   詳細は`docs/SCHEDULE_MODE_DESIGN.md`§3を参照。フロント側の入口ガード・
   閲覧データの読み込みは`static/js/access-mode.js`(最後に読み込むファイル)が持つ。
 - **start_app.batの文字コード**: このファイルは**CP932(Shift-JIS)で保存する**
