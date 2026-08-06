@@ -216,6 +216,22 @@ function enterView(key,opts){
  return def;
 }
 window.enterView=enterView;
+/* 画面の切替としての`selectDb()`と、ある画面が自分の中身を組み立てるために
+   一覧を読み直すだけの`selectDb()`を区別する。後者(スケジュールの分割表示)で
+   画面の切替を起こすと、組み立て中のスケジュール画面自身が畳まれてしまう。
+   「scheduleモードかつ設備選択済みなら閉じない」という**状態**による代用は
+   避けること——それだと利用者がサイドバーの「仕掛(現在)」を押して一覧へ
+   移ったつもりでも、スケジュールパネルと幅調整の分割バーが残る
+   (実際に報告された不具合。schedule-view.jsのコメント参照)。判定は
+   あくまで「呼び出し元が内部かどうか」で行う。 */
+let internalDbSwitchDepth=0;
+async function withInternalDbSwitch(fn){
+ internalDbSwitchDepth++;
+ try{return await fn()}finally{internalDbSwitchDepth--}
+}
+function isInternalDbSwitch(){return internalDbSwitchDepth>0}
+window.withInternalDbSwitch=withInternalDbSwitch;
+window.isInternalDbSwitch=isInternalDbSwitch;
 /* レコードのstatus文字列からバッジ用のCSSクラス/表示ラベルを求める共通関数。
    以前はcalendar-view.js/report-dashboard.jsに同一内容が重複定義され、
    records-store.jsは一覧行のレンダリングで同じ判定をインラインで

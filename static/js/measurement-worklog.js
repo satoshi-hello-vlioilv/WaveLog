@@ -1849,7 +1849,6 @@
     残ったまま重なる不具合になっていた(クリックの横取りに依存する作りは
     読み込み順序に左右されて壊れるので使わない)。 */
  // 一覧(DB)切替でも閉じる(report-dashboard.jsのexitReportViewと同じ考え方)。
- if(typeof selectDb==='function'){const base=selectDb;selectDb=async function(k,b){exitMasterMaint();return base(k,b)}}
  document.addEventListener('keydown',e=>{
   if(e.key!=='Escape')return;
   // 編集モーダルが開いていればそちらだけ閉じる(画面自体は開いたまま)。

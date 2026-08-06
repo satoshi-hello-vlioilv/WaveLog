@@ -162,6 +162,11 @@ registerView({key:'list',exit:()=>{
  document.getElementById('qualityAnalysisPanel')?.setAttribute('hidden','');
 }});
 async function selectDb(k,b){
+ /* 利用者の操作で一覧へ移るなら、これが画面の切替そのもの。以前は
+    「他の画面を閉じる」処理を各ファイルがselectDbを順に包むモンキーパッチ
+    (6箇所)で足しており、読み込み順に依存する連鎖になっていた。
+    内部からの呼び出し(スケジュールの分割表示)では切り替えない。 */
+ if(!isInternalDbSwitch())enterView('list');
  const label=databaseLabel(k);
  return withWaiting({title:`${label}へ切り替えています`,detail:`接続先を確認しています: ${label}`,
    progress:'テーブル構成を確認しています',step:1},async report=>{

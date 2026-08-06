@@ -114,11 +114,7 @@
   $id('openCalendar')?.classList.remove('active');
   const panel=$id('calendarPanel');if(panel)panel.hidden=true;
  }
- // report-dashboard.js内のopenReportView/openDashboardViewはIIFEローカルで
- // グローバルから直接ラップできないため、window経由で公開し、
- // report-dashboard.js側から呼び出してもらう（selectDbは真にグローバルなためラップで足りる）。
  window.exitCalendarView=exitCalendarView;
- if(typeof selectDb==='function'){const oldSelectDb=selectDb;selectDb=async function(k,b){exitCalendarView();return oldSelectDb(k,b)}}
 
  registerView({key:'calendar',bodyClass:'cal-mode',nav:'openCalendar',
   header:['実績カレンダー','この端末に保存された測定データ'],exit:exitCalendarView});

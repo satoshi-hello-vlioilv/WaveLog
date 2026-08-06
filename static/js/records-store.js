@@ -588,23 +588,17 @@ queueMicrotask(()=>{updateEquipmentEntryPoints();const badge=$('#registeredEquip
  const grid=document.getElementById('grid');
  if(!panel||!grid?.parentNode)return;
  grid.parentNode.insertBefore(panel,grid);
+ /* サイドバーの「編集中データ」はopenRecordsSafeを通らずopenRecordsを直接
+    呼ぶ経路があるため、退出処理はこの表示検知にも要る。enterView('records')
+    はデータ一覧自身のexit(=#recordModalを隠す)は呼ばないので、ここから
+    呼んでも再入しない。 */
  const sync=()=>{
   const showing=!panel.hidden;
   document.body.classList.toggle('rec-mode',showing);
-  if(showing){
-   document.getElementById('reportPanel')?.setAttribute('hidden','');
-   document.body.classList.remove('rp-mode');
-   document.getElementById('dashboardPanel')?.setAttribute('hidden','');
-   document.body.classList.remove('db-mode');
-   window.exitScheduleView?.();
-   /* 他のトップレベル表示先と同じく、サイドバーで現在地が分かるようにする。 */
-   if(typeof setActiveNav==='function')setActiveNav('homeDrafts');
-  }
+  if(showing)enterView('records');
  };
  new MutationObserver(sync).observe(panel,{attributes:true,attributeFilter:['hidden']});
  sync();
- const baseSelectDb=typeof selectDb==='function'?selectDb:null;
- if(baseSelectDb)selectDb=async function(k,b){panel.hidden=true;return baseSelectDb(k,b)};
 })();
 /* ---- 未同期データの自動再送 ----
    工場の共有フォルダは瞬断し得るため、失敗を放置せず自動で回収する。

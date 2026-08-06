@@ -38,7 +38,6 @@
   const panel=$id('reportPanel');if(panel)panel.hidden=true;
  }
  registerView({key:'report',bodyClass:'rp-mode',header:['測定帳票',''],exit:exitReportView});
- if(typeof selectDb==='function'){const old=selectDb;selectDb=async function(k,b){exitReportView();return old(k,b)}}
 
  function ensurePanel(){
   let panel=$id('reportPanel');if(panel)return panel;
@@ -817,7 +816,6 @@
  }
  registerView({key:'dashboard',bodyClass:'db-mode',nav:'openDashboard',
   header:['ダッシュボード','作業予定と測定実績の集計'],exit:exitDashboardView});
- if(typeof selectDb==='function'){const old=selectDb;selectDb=async function(k,b){exitDashboardView();return old(k,b)}}
 
  const AXIS_OPTS=[['time','時系列'],['equipment','設備'],['crewSize','作業人数'],['productType','品種（用途名・丈数×条数）'],['purposeName','用途名'],['operator','オペレータ'],['measureType','入力内容']];
  const SERIES_OPTS=[['','なし'],['equipment','設備'],['crewSize','作業人数'],['productType','品種'],['operator','オペレータ']];

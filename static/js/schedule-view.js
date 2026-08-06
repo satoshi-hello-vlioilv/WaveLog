@@ -255,10 +255,6 @@
  let splitListWidth=(()=>{try{const v=+localStorage.getItem('scSplitListWidthV1');return v>0?v:380}catch(e){return 380}})();
  let splitListCollapsed=(()=>{try{return localStorage.getItem('scSplitListCollapsedV1')==='1'}catch(e){return false}})();
  let splitWrap=null;
- /* 分割表示を組み立てるためにこちらから呼ぶselectDb()と、利用者がサイドバーを
-    押して画面を移動するselectDb()を区別するためのフラグ(下のselectDbラッパー
-    参照)。利用者の操作では必ずスケジュール画面から出るようにするため。 */
- let scInternalDbSwitch=false;
  // §9.22: 品質データ結合(join_quality=1)はlist-view.jsのload()がscheduleモード
  // かどうかで自動的に付け外しする。showSplitList()は元々S.db!=='SIKALOTNOW'の
  // 時しか再取得しなかったため、既にSIKALOTNOWを開いた状態(例:編集モードで
@@ -350,13 +346,14 @@
   document.body.classList.add('sc-split');
   if(typeof S!=='undefined'&&typeof selectDb==='function'){
    const navBtn=document.querySelector('aside [data-db-key="SIKALOTNOW"]');
-   // 内部からの切替なのでスケジュール画面は閉じない(上のscInternalDbSwitch)。
-   scInternalDbSwitch=true;
-   try{
-    if(S.db!=='SIKALOTNOW')await selectDb('SIKALOTNOW',navBtn);
-    else if(!scSplitJoinApplied&&typeof load==='function')await load();
-   }catch(e){/* 一覧が読めなくてもスケジュール自体の表示は継続する */}
-   finally{scInternalDbSwitch=false}
+   // 分割表示を組み立てるための内部呼び出し。画面の切替ではないので、
+   // ここでスケジュール画面が畳まれないようwithInternalDbSwitchで囲う。
+   await withInternalDbSwitch(async()=>{
+    try{
+     if(S.db!=='SIKALOTNOW')await selectDb('SIKALOTNOW',navBtn);
+     else if(!scSplitJoinApplied&&typeof load==='function')await load();
+    }catch(e){/* 一覧が読めなくてもスケジュール自体の表示は継続する */}
+   });
    scSplitJoinApplied=true;
   }
  }
@@ -493,7 +490,15 @@
   updateSplitToggleUi();
   if(typeof S!=='undefined'&&typeof selectDb==='function'&&S.db!=='SIKALOTNOW'){
    const navBtn=document.querySelector('aside [data-db-key="SIKALOTNOW"]');
-   try{await selectDb('SIKALOTNOW',navBtn)}catch(e){/* ベストエフォート */}
+   /* 分割表示と同じく、モーダルの中身を用意するための内部呼び出し。
+      旧実装ではここだけ内部フラグで囲われておらず、S.dbがSIKALOTNOW以外の
+      ときにモーダルを開くと、selectDbのラッパーがexitScheduleView()を呼んで
+      背後のスケジュール画面ごと畳んでいた(exitScheduleViewはcloseListModal()
+      も呼ぶため、開いたモーダルもその場で閉じる)。通常はS.dbが既に
+      SIKALOTNOWなので表に出ていなかった。 */
+   await withInternalDbSwitch(async()=>{
+    try{await selectDb('SIKALOTNOW',navBtn)}catch(e){/* ベストエフォート */}
+   });
   }
  }
  function closeListModal(){
@@ -584,23 +589,6 @@
   scState.sessionHeld=false;scState.sessionHolder=null;scState.sessionError=null;
  }
  window.exitScheduleView=exitScheduleView;
- /* 分割表示を組み立てるためにこちらから呼ぶselectDb()と、利用者が
-    サイドバーを押して画面を移動するselectDb()を区別するためのフラグ。
-    以前は「scheduleモード+設備選択済みならSIKALOTNOWへの切替では画面を
-    閉じない」という特例で分けていたが、これだと利用者がサイドバーの
-    「仕掛（現在）」を押して一覧へ移動したつもりでも、スケジュールパネルと
-    幅調整の分割バーが残ったままになる(サイドバーは画面の切替である、という
-    docs/ARCHITECTURE.md「画面の開き方・閉じ方の約束」に反する。実際に
-    「スケジュールの幅位置調整スライダーが他の画面へ侵食する」として
-    報告された不具合)。判定を「呼び出し元が内部かどうか」に変え、利用者の
-    操作では必ずスケジュール画面から出るようにした。 */
- if(typeof selectDb==='function'){
-  const oldSelectDb=selectDb;
-  selectDb=async function(k,b){
-   if(!scInternalDbSwitch)exitScheduleView();
-   return oldSelectDb(k,b);
-  };
- }
 
  registerView({key:'schedule',bodyClass:'sc-mode',nav:'openSchedule',
   header:['作業スケジュール','設備ごとの作業予定と実績'],exit:exitScheduleView});
