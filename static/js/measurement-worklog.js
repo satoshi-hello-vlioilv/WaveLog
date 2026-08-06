@@ -1132,8 +1132,8 @@
    <div><small>精度: MAPE相当</small><b>${Math.round((acc.mape||0)*100)}%(n=${acc.n})</b></div>`:''}
   </div>`;
   const overrideMap={};
-  (model.overrides||[]).forEach(o=>{overrideMap[o.factor+' '+(o.level||'')]=o});
-  const baseOverride=overrideMap['BASE '];
+  (model.overrides||[]).forEach(o=>{overrideMap[o.factor+'\u0000'+(o.level||'')]=o});
+  const baseOverride=overrideMap['BASE\u0000'];
   const baseRow=`<div class="lf-row lf-row-base">
    <span class="lf-row-key">BASE</span><span class="lf-row-level">基準時間T0</span>
    <span class="lf-row-value">${fmtLfMinutes(model.T0)}</span><span class="lf-row-n">n=${model.n}</span>
@@ -1141,7 +1141,7 @@
    <span class="lf-row-actions"><button type="button" class="mm-btn-ghost sm" data-lf-save="BASE|">保存</button>${baseOverride?'<button type="button" class="mm-btn-ghost sm" data-lf-clear="BASE|">解除</button>':''}</span>
   </div>`;
   const factorRows=(model.factors||[]).map(f=>{
-   const ov=overrideMap[f.key+' '+f.level];
+   const ov=overrideMap[f.key+'\u0000'+f.level];
    return `<div class="lf-row">
     <span class="lf-row-key">${esc(f.key)}</span><span class="lf-row-level">${esc(f.level)}</span>
     <span class="lf-row-value">×${f.value}</span><span class="lf-row-n">n=${f.n}</span>

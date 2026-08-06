@@ -89,7 +89,7 @@
   function writeUsage(){try{localStorage.setItem(USAGE_STORE,JSON.stringify(S.filterCondUsage||{}))}catch(_){}}
   /* 利用履歴・アクティブ条件のスコープキー。プリセット(currentTablePresets)が
      以前からdb+tableの完全一致で管理されているのに合わせる。 */
-  function usageScopeKey(){return `${S.db||''}${S.table||''}`}
+  function usageScopeKey(){return `${S.db||''}\u001f${S.table||''}`}
   function scopedUsage(){
     const all=S.filterCondUsage||{};
     const bucket=all[usageScopeKey()];
