@@ -1507,18 +1507,33 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .numberline-tick.base::before{width:16px;height:3px;background:var(--teal)}
 .numberline-tick.base b{border-color:var(--teal);color:#075e67;background:#f2fbfa}
 .numberline-tick.base b span{color:#2c7f78}
-.numberline-measure{position:absolute;left:var(--nl-track);right:5px;height:0;z-index:6;display:flex;align-items:center;gap:5px;transform:translateY(-50%)}
+/* 直前値: 点は軸の上、ラベルは右端へ寄せ、あいだを引出線でつなぐ。ラベルを
+   点の真横に置いていたころは、値が近い点(数px差)をまとめて覆い隠していた。 */
+.numberline-measure{position:absolute;left:var(--nl-track);right:4px;height:0;z-index:6;display:flex;align-items:center;transform:translateY(-50%)}
 .numberline-measure .nl-dot{flex:0 0 auto;width:12px;height:12px;margin-left:-6px;border-radius:50%;background:var(--teal);box-shadow:0 0 0 2px #fff,0 0 0 3px #8fc9c2}
-.numberline-measure b{min-width:0;padding:2px 6px;border-radius:8px;border:1px solid #8fc9c2;background:#fff;color:#075e67;font-weight:900;font-size:var(--fs-micro);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.numberline-measure .nl-leader{flex:1 1 auto;min-width:4px;height:0;border-top:1px dashed #9fbdb8;opacity:.85}
+.numberline-measure.ng .nl-leader{border-top-color:#e0a3a3}
+.numberline-measure b{flex:0 0 auto;max-width:62%;padding:2px 6px;border-radius:8px;border:1px solid #8fc9c2;background:#fff;color:#075e67;font-weight:900;font-size:var(--fs-micro);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .numberline-measure b span{margin-right:3px;color:#4a6b60;font-weight:800}
 .numberline-measure.ng .nl-dot{background:#d02e2e;box-shadow:0 0 0 2px #fff,0 0 0 3px #f0a5a5}
 .numberline-measure.ng b{border-color:#d02e2e;color:#9b1b1b;background:#fff5f5}
 .numberline-measure.ng b span{color:#9b6b6b}
-/* スウォームプロット: 直前以外の測定値を小さな点で表示する。値が近い点は
-   layoutSwarmDots()がleftをトラックの右へ段階的にずらして重なりを避ける。 */
-.numberline-swarm-dot{position:absolute;left:var(--nl-track);width:8px;height:8px;border-radius:50%;transform:translate(-50%,-50%);z-index:5;box-shadow:0 0 0 1px #fff;transition:left .15s ease}
+/* スウォームプロット: 直前以外の測定値も全て点で表示する。値が近い点は
+   layoutSwarmDots()がleftをトラックの右へ段階的にずらして重なりを避ける
+   (しきい値は点の直径以上。狭いと隣り合う値が重なったままになる)。 */
+.numberline-swarm-dot{position:absolute;left:var(--nl-track);width:8px;height:8px;border-radius:50%;transform:translate(-50%,-50%);z-index:5;box-shadow:0 0 0 1.5px #fff;transition:left .15s ease,width .12s ease,height .12s ease}
 .numberline-swarm-dot.ok{background:var(--teal)}
 .numberline-swarm-dot.ng{background:#d02e2e}
+/* 入力位置(クリックしたセル)の条。セルの強調(outline:#f39a18)と同じ色にして、
+   どのセルがどの点かを一目で結び付けられるようにする。 */
+.numberline-swarm-dot.is-current{width:13px;height:13px;z-index:7;box-shadow:0 0 0 2px #fff,0 0 0 4px #f39a18}
+.numberline-measure.is-current .nl-dot{box-shadow:0 0 0 2px #fff,0 0 0 4px #f39a18}
+.numberline-measure.is-current b{border-color:#f39a18;box-shadow:0 0 0 1px #f39a1855}
+/* 現在の条の値と基準値との差。公差幅に対して差が小さいと点の移動が数pxに
+   しかならないため、数値でも読めるようにする。 */
+.numberline-current-note{position:absolute;left:3px;right:3px;bottom:2px;z-index:8;padding:1px 5px;border-radius:6px;background:#ffffffe8;border:1px solid #cfdcdf;color:#173842;font-size:var(--fs-micro);font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center}
+.numberline-current-note b{color:#f08c00;margin-right:3px}
+.numberline-current-note small{color:#61757c;font-size:var(--fs-micro);margin-left:3px}
 /* 公差NGの先読み警告: 受信欄への転送中(確定前)の値を、リング状のマーカーで
    その場所に速報表示する。確定済みの.numberline-measureとは見た目を変え
    (輪郭のみ・点滅)、「まだ確定していない」ことが一目でわかるようにする。 */

@@ -692,6 +692,10 @@
          2枚重ねると数字が読めなくなるので、その時は限界値のラベルへ
          「(基準)」を添えて1枚にまとめる。 */
       const span=Math.max(high-low,.000001),atHigh=Math.abs(base-high)<span*.02,atLow=Math.abs(base-low)<span*.02;
+      /* 基準値との差。公差幅に対して差が小さいと点の高さの違いが数pxに
+         なり「動いていない」ように見えるため、数値でも読めるようにする
+         (ツールチップと、下端の現在値キャプション)。 */
+      const dev=n=>{const d=n-base;return (d>0?'+':d<0?'':'')+formatTol(kind,d)};
       const last=(function(){for(let i=Math.min(values.length,count)-1;i>=0;i--){const raw=String(values[i]??'').trim(),n=Number(raw);if(raw!==''&&Number.isFinite(n))return{raw,n,index:i}}return null})();
       const dots=[];
       for(let i=0;i<Math.min(values.length,count);i++){
@@ -699,7 +703,7 @@
         const raw=String(values[i]??'').trim();if(raw==='')continue;
         const n=Number(raw);if(!Number.isFinite(n))continue;
         const p=clamp(n),ng=n<low||n>high;
-        dots.push(`<i class="numberline-swarm-dot ${ng?'ng':'ok'}" style="top:${p}%" data-pos="${p}" title="条${i+1}: ${esc(raw)}"></i>`);
+        dots.push(`<i class="numberline-swarm-dot ${ng?'ng':'ok'}" style="top:${p}%" data-pos="${p}" data-idx="${i}" data-raw="${esc(raw)}" data-dev="${esc(dev(n))}" title="条${i+1}: ${esc(raw)}（基準比 ${esc(dev(n))}）"></i>`);
       }
       /* 確定した最新値(.numberline-measure)は数直線全体の再描画のたびに
          作り直されるため、単純にCSSアニメーションを付けると無関係な
@@ -710,7 +714,9 @@
         const p=clamp(last.n),ng=last.n<low||last.n>high;
         const seenKey=`${last.index}:${last.raw}`,isNew=numberlineLastSeen[kind]!==seenKey;
         numberlineLastSeen[kind]=seenKey;
-        return `<div class="numberline-measure ${ng?'ng':'ok'}${isNew?' just-landed':''}" style="top:${p}%"><span class="nl-dot"></span><b><span>条${last.index+1}</span>${esc(last.raw)}</b></div>`;
+        /* 点は軸の上、ラベルは右端へ寄せ、間を引出線でつなぐ。以前はラベルが
+           点の真横に居座り、近い値の点(数px差)をまとめて覆い隠していた。 */
+        return `<div class="numberline-measure ${ng?'ng':'ok'}${isNew?' just-landed':''}" style="top:${p}%" data-idx="${last.index}" data-raw="${esc(last.raw)}" data-dev="${esc(dev(last.n))}" title="条${last.index+1}: ${esc(last.raw)}（基準比 ${esc(dev(last.n))}）"><span class="nl-dot"></span><span class="nl-leader"></span><b><span>条${last.index+1}</span>${esc(last.raw)}</b></div>`;
       })():'';
       const tick=(cls,label,value)=>`<div class="numberline-tick ${cls}"><b><span>${label}</span>${esc(formatTol(kind,value))}</b></div>`;
       return facts.html+`<div class="accurate-numberline" data-swarm="1" style="--upper:${upper}%;--lower:${lower}%;--base:${basePos}%">
@@ -722,6 +728,7 @@
         ${dots.join('')}
         ${mark}
         <div class="numberline-pending" id="numberlinePending" hidden></div>
+        <div class="numberline-current-note" hidden></div>
       </div>`;
     };
   }
@@ -729,32 +736,67 @@
   /* スウォームプロットの重なり回避: top%(値)が近い点をクラスタ化し、
      クラスタ内で左右に等間隔ジグザグ配置する。実測ピクセル寸法を使うため
      DOM挿入後に実行する必要があり、renderMeasureGridVertical完了後に呼ぶ。 */
+  /* スウォームの重なり回避。判定のしきい値は**点の直径以上**にする。以前は
+     6pxで束ねていたが点は8px角だったため、7pxだけ離れた2点は「別クラスタ」
+     と判定されて左右にずらされず、ほぼ重なったまま描かれていた。公差幅に
+     対して測定値の散らばりが小さいと(例: 公差4mmに対し0.1mm刻み)これが常に
+     起き、点が増えても1点しか見えず「値を変えても動かない」ように見えた。 */
+  const SWARM_DOT=8,SWARM_STEP=9,SWARM_GAP=2;
   function layoutSwarmDots(){
     document.querySelectorAll?.('.accurate-numberline[data-swarm="1"]').forEach(box=>{
       const dots=[...box.querySelectorAll('.numberline-swarm-dot')];
-      if(dots.length<2)return;
-      const h=box.clientHeight||190,w=box.clientWidth||200,step=7;
+      if(!dots.length)return;
+      const h=box.clientHeight||190,w=box.clientWidth||200;
       const trackLeft=parseFloat(getComputedStyle(box).getPropertyValue('--nl-track'))||70;
-      const maxSpread=Math.max(0,w-trackLeft-14);
+      // 右端は直前値ラベルの領域。そこへ食い込むと点がラベルに隠れる。
+      const maxSpread=Math.max(0,w-trackLeft-58);
+      const columns=Math.max(1,Math.floor(maxSpread/SWARM_STEP)+1);
       const items=dots.map(el=>({el,y:(parseFloat(el.dataset.pos)||50)/100*h})).sort((a,b)=>a.y-b.y);
       const clusters=[];let cur=[];
       items.forEach(it=>{
-        if(cur.length&&it.y-cur[cur.length-1].y>6){clusters.push(cur);cur=[]}
+        if(cur.length&&it.y-cur[cur.length-1].y>SWARM_DOT+SWARM_GAP){clusters.push(cur);cur=[]}
         cur.push(it);
       });
       if(cur.length)clusters.push(cur);
       clusters.forEach(cluster=>{
-        const n=cluster.length;
-        cluster.forEach((it,i)=>{
-          const offset=Math.max(0,Math.min(maxSpread,i*step));
-          it.el.style.left=`calc(var(--nl-track) + ${offset}px)`;
+        // 束ねる判定は高さ順だが、並べるのは条の順。値の大小で左右が決まると
+        // 入力した順に点が飛び、どれが何条目か追えない。
+        [...cluster].sort((a,b)=>(+a.el.dataset.idx||0)-(+b.el.dataset.idx||0)).forEach((it,i)=>{
+          // 列を使い切ったら先頭へ折り返す(残りを全部右端に積むと潰れるため)。
+          const offset=(i%columns)*SWARM_STEP;
+          it.el.style.left=`calc(var(--nl-track) + ${SWARM_STEP+offset}px)`;
         });
       });
     });
   }
+  /* 入力位置(クリックしたセル)の条を数直線側でも強調する。どの点が今の条か
+     分からないと、値を入れ直したときにどれが動いたのか追えない。再描画では
+     なくクラスの付け替えだけで済ませる(入力のたびに走るため)。 */
+  function markCurrentNumberlineDot(){
+    const idx=Number(S?.measure?.settings?.wStep)||0;
+    document.querySelectorAll?.('.accurate-numberline').forEach(box=>{
+      let hit=null;
+      box.querySelectorAll('.numberline-swarm-dot,.numberline-measure').forEach(el=>{
+        const on=Number(el.dataset.idx)===idx;
+        el.classList.toggle('is-current',on);
+        if(on)hit=el;
+      });
+      const note=box.querySelector('.numberline-current-note');
+      if(!note)return;
+      if(hit){note.hidden=false;note.innerHTML=`<b>条${idx+1}</b> ${esc(hit.dataset.raw||'')} <small>基準比 ${esc(hit.dataset.dev||'')}</small>`}
+      else{note.hidden=false;note.innerHTML=`<b>条${idx+1}</b> <small>未測定</small>`}
+    });
+  }
   if(typeof renderMeasureGridVertical==='function'){
     const baseRenderForSwarm=renderMeasureGridVertical;
-    renderMeasureGridVertical=function(){baseRenderForSwarm();layoutSwarmDots()};
+    renderMeasureGridVertical=function(){baseRenderForSwarm();layoutSwarmDots();markCurrentNumberlineDot()};
+  }
+  if(typeof focusCurrent==='function'){
+    /* lot-split.jsのfocusCurrentラッパーが公差側のinnerHTMLを丸ごと描き直す
+       (条ごとに公差が変わる分割ロット対応)。その後に並べ直さないと、
+       重なり回避で入れたleftが毎回消えて点が一直線に重なる。 */
+    const baseFocusForSwarm=focusCurrent;
+    focusCurrent=function(){baseFocusForSwarm();layoutSwarmDots();markCurrentNumberlineDot()};
   }
 
   // 一覧を開くたび（テーブル切替時）にデフォルトフィルタを自動適用する。

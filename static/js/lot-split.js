@@ -176,11 +176,16 @@
   // applySplit後の確定データ(子ロット自身から取得した実際の幅)を使った、
   // より正確な同一幅/異幅・ロット数の要約。
   function summarizeAppliedGroups(groups){
-    const widths=groups.map(g=>g.base?.width).filter(w=>Number.isFinite(w));
+    /* groupsは「同じ子ロットが連続した区間」の配列であって、子ロットの配列では
+       ない。同じ子ロットを離れた位置へ置く並べ方(例 A B A)では区間が3つに
+       割れるため、区間数を数えると実際の分割数より多く見える。ロットとしての
+       分割数は**異なる子ロットの数**なので、そちらで数える。 */
+    const lots=[...new Set(groups.map(g=>g.lot).filter(Boolean))];
+    const widths=lots.map(lot=>groups.find(g=>g.lot===lot)?.base?.width).filter(w=>Number.isFinite(w));
     let pattern='幅情報なし';
     if(widths.length>=2)pattern=widths.every(w=>Math.abs(w-widths[0])<0.05)?'同一幅分割':'異幅分割';
     else if(widths.length===1)pattern='単一幅';
-    return `${groups.length}ロットに分割（${pattern}）`;
+    return `${lots.length||groups.length}ロットに分割（${pattern}）`;
   }
 
   /* 仕掛一覧(SIKALOTNOW)の列表示マスタで「親子管理_子カード*」「コンマ5本
@@ -879,7 +884,11 @@
     if(seq.some(x=>x==null)){alert('全条分を登録してください。');return}
     const map=Object.fromEntries(sources.map(x=>[x.lot,x])),groups=[];
     seq.forEach(lot=>{const last=groups.at(-1);if(last&&last.lot===lot)last.count++;else groups.push({lot,count:1,source:map[lot]})});
-    if(groups.length>8){alert('システム上8を超える分割は設定できません。');return}
+    // 上限もロット数(異なる子ロットの数)で数える。区間数で数えると、同じ2つの
+    // 子ロットを交互に置いた並べ方が9区間になっただけで「8を超える分割」と
+    // 拒否されてしまう(分割数は2なのに)。
+    const lotCount=new Set(groups.map(g=>g.lot).filter(Boolean)).size;
+    if(lotCount>8){alert('システム上8を超える分割は設定できません。');return}
     const splitGroups=groups.map(g=>({lot:g.lot,count:g.count,base:g.source?.base||null,tol:g.source?.tolData||null,missing:!!g.source?.missing}));
     const positionGroup=[];splitGroups.forEach((g,gi)=>{for(let k=0;k<g.count;k++)positionGroup.push(gi)});
     S.measure.settings.splitGroups=splitGroups;

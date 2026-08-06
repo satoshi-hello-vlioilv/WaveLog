@@ -180,6 +180,63 @@ let b=null;
    Math.abs(u.capViewHigh-(1003+ (1003-999)*1.5))<1e-6&&u.capClamp===6,
    `viewHigh=${u.capViewHigh} clamp=${u.capClamp}`);
 
+  /* --- 7) 基準値のすぐ近くを測ったときの見え方 ---
+     公差4mmに対し0.1mm刻みだと点の高さの差は数pxしかない。以前は
+     (a)重なり回避のしきい値が点の直径より狭く左右にずれなかった
+     (b)直前値のラベルが点の真横に居座って近い点をまとめて覆った
+     の2つが重なり、点が増えても1つしか見えず「値を変えても動かない」
+     ように見えていた。 */
+  const near=await page.evaluate(async()=>{
+   document.querySelector('[data-mode="manual"]')?.click();
+   const w=S.measure.measurements.width[lengthIndex()];
+   ['1000.0','1000.1','1000.2','999.2','1002.9'].forEach((v,i)=>w[i]=v);
+   renderMeasureGrid();
+   await new Promise(r=>setTimeout(r,300));
+   const box=document.querySelector('.accurate-numberline'),br=box.getBoundingClientRect();
+   const dots=[...box.querySelectorAll('.numberline-swarm-dot')].map(e=>{
+    const r=e.getBoundingClientRect();
+    return {idx:+e.dataset.idx,raw:e.dataset.raw,dev:e.dataset.dev,
+            y:+(r.top-br.top+r.height/2).toFixed(1),x:+(r.left-br.left+r.width/2).toFixed(1),d:r.width};
+   });
+   return {dots,lastY:(()=>{const m=box.querySelector('.numberline-measure');
+     if(!m)return null;const r=m.getBoundingClientRect();return +(r.top-br.top+r.height/2).toFixed(1)})()};
+  });
+  rec('直前値以外の測定点も全て描かれる',near.dots.length===4,
+   near.dots.map(d=>`条${d.idx+1}:${d.raw}`).join(' / '));
+  const nearTrio=near.dots.filter(d=>d.idx<3);
+  // 中心間の距離が半径の和以上なら重なっていない(入力位置の点は一回り
+  // 大きく描かれるので、直径ではなく2点それぞれの半径で見る)。
+  rec('高さの近い点(0.1mm差)でも重ならない',
+   nearTrio.length===3&&nearTrio.every((d,i)=>nearTrio.slice(i+1).every(o=>
+     Math.hypot(d.x-o.x,d.y-o.y)>=(d.d+o.d)/2)),
+   nearTrio.map(d=>`条${d.idx+1}(x${d.x},y${d.y},径${d.d})`).join(' / '));
+  rec('近い点は条の順に左から並ぶ',
+   nearTrio.every((d,i)=>i===0||d.x>nearTrio[i-1].x),
+   nearTrio.map(d=>`条${d.idx+1}:x${d.x}`).join(' / '));
+  rec('基準値との差を各点が持つ',
+   near.dots.every(d=>d.dev!==undefined&&d.dev!==''),
+   near.dots.map(d=>`${d.raw}→${d.dev}`).join(' / '));
+
+  /* --- 8) クリックした条の点を強調する --- */
+  const clicked=await page.evaluate(async()=>{
+   const cell=document.querySelector('input[data-mkey="width"][data-j="0"]');
+   cell?.click();cell?.focus();
+   await new Promise(r=>setTimeout(r,300));
+   const box=document.querySelector('.accurate-numberline');
+   const cur=[...box.querySelectorAll('.is-current')];
+   return {count:cur.length,idx:cur.map(e=>+e.dataset.idx),
+           raw:cur.map(e=>e.dataset.raw),
+           size:cur.map(e=>Math.round(e.getBoundingClientRect().width)),
+           plain:Math.round(box.querySelector('.numberline-swarm-dot:not(.is-current)')?.getBoundingClientRect().width||0),
+           note:(box.querySelector('.numberline-current-note')?.textContent||'').trim()};
+  });
+  rec('クリックした条の点だけが強調される',
+   clicked.count===1&&clicked.idx[0]===0,JSON.stringify(clicked));
+  rec('強調された点は他の点より大きい',
+   clicked.size[0]>clicked.plain,`強調${clicked.size[0]}px / 通常${clicked.plain}px`);
+  rec('現在の条の値と基準比を数直線内に出す',
+   /条1/.test(clicked.note)&&/1000\.0/.test(clicked.note)&&/基準比/.test(clicked.note),clicked.note);
+
   await page.evaluate(async()=>{
    if(typeof S!=='undefined'&&S.measure&&typeof reliableDelete==='function')
     await reliableDelete(S.measure.id);

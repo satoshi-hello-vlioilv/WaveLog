@@ -355,8 +355,10 @@ function toleranceScaleView(detail,values,count){
  const padLow=pad(Math.max(0,...nums.map(v=>low-v),low-base));
  const viewHigh=high+padHigh,viewLow=low-padLow,width=Math.max(viewHigh-viewLow,.000001);
  const pct=v=>(viewHigh-Number(v))/width*100;
- // 端の丸めは軸(.numberline-track)の上下端(6%/94%)に合わせる。
- return{low,high,base,viewLow,viewHigh,pct,clamp:v=>Math.max(6,Math.min(94,pct(v)))};
+ /* 端の丸めは軸(.numberline-track)の上端(6%)と、下端は現在値キャプション
+    (.numberline-current-note)の手前(92%)。94%まで許すとキャプションと
+    直前値ラベルが重なる。 */
+ return{low,high,base,viewLow,viewHigh,pct,clamp:v=>Math.max(6,Math.min(92,pct(v)))};
 }
 function compactToleranceScale(kind,values,count){
  const facts=compactToleranceFacts(kind),range=facts.range;
