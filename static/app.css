@@ -590,6 +590,17 @@ footer{height:40px;display:flex;align-items:center;justify-content:space-between
 .field label{color:#7b8e95;font-size:var(--fs-micro);white-space:nowrap;text-align:right}
 .field output{display:block;min-height:0;padding:3px 6px;border:1px solid #d6e0e3;border-radius:5px;background:#fbfdfd;
  font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* コース情報(設計/実績/残)は設備の連なりなので、他の項目と違って長くなる。
+   2列グリッドの半分の幅へ nowrap+省略記号で入れると末尾が切れ、ホバーして
+   title を読まないと分からなかった(実機で見切れの指摘)。
+   ただし**常に全幅にすると3項目が3行を占め**、短い値のときに縦を無駄遣いする
+   (2列なら2行で済む。実際、特大表示で測定画面の左ペインがはみ出した)。
+   そこで入りきらないものだけ .is-long を付けて全幅+折り返しにする
+   (判定は描画後の実測。文字数では表示サイズやフォントの違いを拾えない)。
+   設備名の区切りは半角/全角スペースとは限らないので overflow-wrap:anywhere。 */
+.info-grid .course-stack-field.is-long,.info-grid .residual-course-field.is-long{grid-column:1/-1}
+.info-grid .course-stack-field.is-long output,.info-grid .residual-course-field.is-long output{
+ white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;line-height:1.5}
 /* かたまりの見出し。線ではなく小さな見出し＋上余白で切る。 */
 .info-group{
  grid-column:1/-1;margin-top:6px;padding-bottom:1px;
