@@ -200,9 +200,24 @@ def plan_add():
                    casting_no=str(x.get('castingNo') or ''),title=str(x.get('title') or ''),
                    detail=x.get('detail') or {},stop_reason_id=x.get('stopReasonId'),
                    estimate_minutes=x.get('estimateMinutes'),fixed_start=x.get('fixedStart'),
-                   remark=str(x.get('remark') or ''))
+                   remark=str(x.get('remark') or ''),
+                   children=_plan_children(x.get('children')))
   return {'id':pid}
  return _write_response(fn)
+
+def _plan_children(raw):
+ """分割ありの親ロットにぶら下げる子ロット(§9.83)。画面が投入時に仕掛から
+    引いた行をそのまま受ける。上限は分割の上限(9ロット)に合わせる。"""
+ if not isinstance(raw,(list,tuple)):return []
+ out=[]
+ for c in raw[:9]:
+  if not isinstance(c,dict):continue
+  lot=str(c.get('lotNo') or '').strip()
+  if not lot:continue
+  out.append({'lotNo':lot,'inspectionNo':str(c.get('inspectionNo') or ''),
+              'castingNo':str(c.get('castingNo') or ''),
+              'detail':c.get('detail') if isinstance(c.get('detail'),dict) else {}})
+ return out
 
 @bp.post('/api/schedule/plan/update')
 def plan_update():
@@ -258,7 +273,8 @@ def _apply_plan_op(c,op,uid):
                    casting_no=str(op.get('castingNo') or ''),title=str(op.get('title') or ''),
                    detail=op.get('detail') or {},stop_reason_id=op.get('stopReasonId'),
                    estimate_minutes=op.get('estimateMinutes'),fixed_start=op.get('fixedStart'),
-                   remark=str(op.get('remark') or ''))
+                   remark=str(op.get('remark') or ''),
+                   children=_plan_children(op.get('children')))
   return {'id':pid}
  if kind=='update':
   plan_id=op.get('id')

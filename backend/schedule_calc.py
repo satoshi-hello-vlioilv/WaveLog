@@ -346,7 +346,10 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
    except Exception:detail={}
   entry={'id':r[0],'order':r[2],'kind':r[3],'lotNo':r[4],'inspectionNo':r[5],'castingNo':r[6],
          'title':r[7],'detail':detail,'fixedStart':r[9],'estimateMinutes':r[10],
-         'storedState':r[11],'actualRecordId':r[12],'remark':r[13]}
+         'storedState':r[11],'actualRecordId':r[12],'remark':r[13],
+         # 分割ありの親ロットにぶら下がる子ロット(§9.83)。時間を持たない
+         # 明細行なので、下の時刻展開ループでは飛ばす。
+         'parentId':r[18]}
   actual=match_actual(actual_index,detail.get('lotNo') or r[4],detail.get('castingNo') or r[6],detail.get('mfgMaterial')) if entry['kind']=='作業' else None
   entry['state']=derive_state(entry['storedState'],actual)
   entry['actual']=actual
@@ -389,7 +392,18 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
 
  cursor=anchor
  truncated=False
+ # 子ロット(§9.83)は親の予定時刻をそのまま借りる。展開が終わってから
+ # 親の値を写すため、ここでIDから引けるようにしておく。
+ parent_of={e['id']:e.get('parentId') for e in entries if e.get('parentId') is not None}
  for idx,e in enumerate(entries):
+  if e.get('parentId') is not None:
+   # **カーソルを進めない**。親ロット1本をスリットする1回の作業なので、
+   # タイムラインの長さを決めるのは親の見積だけ(子に時間を持たせると、
+   # 分割ありのロットだけ予定終了が子の数だけ後ろへ伸びる)。
+   e['plannedStart']=None;e['plannedEnd']=None;e['startsInMinutes']=None
+   e['estimate']=None;e['reorderable']=False;e['spansNonWorking']=False
+   e['overdueMinutes']=0;e['shift']=None
+   continue
   if e['state'] in PLAN_TERMINAL_STATES:
    e['plannedStart']=None;e['plannedEnd']=None;e['startsInMinutes']=None
    e['estimate']=None;e['reorderable']=False;e['spansNonWorking']=False;e['overdueMinutes']=0;e['shift']=None
@@ -463,6 +477,17 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
   e['spansNonWorking']=bool(spans)
   e['overdueMinutes']=round(overdue,1)
   e['shift']=resolve_shift_label(specific_shift,global_shift,planned_start)
+
+ # 子ロットへ親の予定時刻を写す(§9.83)。画面は子を親の下に畳んで出すので、
+ # 時刻そのものは親と同じで構わない。持たせておくと、日付・勤務でまとめる
+ # 表示(§9.39)でも親と同じ束へ入る。
+ if parent_of:
+  by_id={e['id']:e for e in entries}
+  for e in entries:
+   p=by_id.get(e.get('parentId'))
+   if p is None:continue
+   e['plannedStart']=p.get('plannedStart');e['plannedEnd']=p.get('plannedEnd')
+   e['startsInMinutes']=p.get('startsInMinutes');e['shift']=p.get('shift')
 
  for e in entries:
   actual=e.pop('actual')

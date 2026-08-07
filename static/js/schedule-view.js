@@ -1551,8 +1551,21 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const t=new Date(iso).getTime();
   return Number.isNaN(t)?null:t;
  }
+ /* 分割ありの親ロットにぶら下がる子ロット(§9.83)。時間を持たない明細行
+    なので、タイムラインの並びからは外して親の下へ畳む。ここで混ぜると
+    並べ替えの対象にも数えられてしまう(サーバーは親だけを受け付ける)。 */
+ function childEntriesByParent(){
+  const map=new Map();
+  scState.entries.forEach(e=>{
+   if(e.parentId==null)return;
+   if(!map.has(e.parentId))map.set(e.parentId,[]);
+   map.get(e.parentId).push(e);
+  });
+  return map;
+ }
  function visibleEntries(){
   const list=scState.entries.filter(e=>{
+   if(e.parentId!=null)return false;
    if(e.state==='完了'||e.state==='取消')return withinHistory(e);
    return true;
   });
@@ -1641,10 +1654,95 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    if(bucket.label)box.insertAdjacentHTML('beforeend',groupHeadHtml(bucket.label,bucket.rows.length));
    box.insertAdjacentHTML('beforeend',ROW_HEAD_HTML);
    let lastEnd=null;
-   bucket.rows.forEach(e=>renderEntryRow(box,e,true,()=>lastEnd,v=>{lastEnd=v}));
+   const kids=childEntriesByParent();
+   bucket.rows.forEach(e=>{
+    renderEntryRow(box,e,true,()=>lastEnd,v=>{lastEnd=v});
+    renderChildRows(box,e,kids.get(e.id)||[]);
+   });
    timeline.append(box);
   });
   refreshScheduledLotFilter();
+ }
+
+ /* ---------- 子ロットのまとまり(§9.83) ----------
+    親のすぐ下へ、既定は畳んだ状態で置く。**.sc-row-line にはしない**
+    ——並べ替え(commitDragOrder/moveCard)はその class でDOMを走査するので、
+    子を同じ class にすると並べ替えの対象に混ざり、サーバーが受け付ける
+    「親だけ」の一覧と食い違って並べ替えが丸ごと通らなくなる。
+    開閉は設備ごとに覚える(畳んだつもりが開き直る、の逆も煩わしい)。 */
+ const CHILD_OPEN_KEY='scChildOpenV1';
+ function childOpenSet(){
+  try{return new Set(JSON.parse(localStorage.getItem(CHILD_OPEN_KEY)||'[]'))}
+  catch(e){return new Set()}
+ }
+ function setChildOpen(id,open){
+  const s=childOpenSet();
+  open?s.add(String(id)):s.delete(String(id));
+  try{localStorage.setItem(CHILD_OPEN_KEY,JSON.stringify([...s].slice(-200)))}catch(e){}
+ }
+ function childSummary(e){
+  const d=e.detail||{};
+  const bits=[];
+  if(d.__childWidth!=null)bits.push(`幅${d.__childWidth}`);
+  if(d.__childStrips)bits.push(`${d.__childStrips}条`);
+  if(d.__childTol&&d.__childTol.plus!=null)bits.push(`+${d.__childTol.plus}/-${d.__childTol.minus}`);
+  if(d.__childMissing)bits.push('⚠仕掛に無し');
+  return bits.join(' / ');
+ }
+ function renderChildRows(box,parent,children){
+  if(!children.length)return;
+  const open=childOpenSet().has(String(parent.id));
+  const wrap=document.createElement('div');
+  wrap.className='sc-child-box';
+  wrap.dataset.parent=parent.id;
+  wrap.hidden=!open;
+  children.forEach(c=>{
+   const line=document.createElement('div');
+   line.className='sc-child-line'+(c.detail&&c.detail.__childMissing?' is-missing':'');
+   line.dataset.id=c.id;
+   const summary=childSummary(c);
+   line.innerHTML=`<span class="sc-child-mark">└</span>`
+    +`<span class="sc-child-lot">${esc(c.lotNo||'')}</span>`
+    +`<span class="sc-child-info" title="${esc(summary)}">${esc(summary)}</span>`;
+   wrap.append(line);
+  });
+  box.append(wrap);
+  /* 親行へ開閉のつまみを差し込む。**内容の欄(.sc-row-title)の中へ**入れる。
+     - 素の兄弟として足すと1列ぶんずれて全部の行の桁が合わなくなる
+       (行はグリッドで列が決まっている)。
+     - 印の欄(.sc-row-flags)は幅が固定でoverflow:hiddenなので、入れても
+       切られて**見えない**(実際に最初そうなった。幅は0でないので
+       「出ている」と誤判定しやすい)。
+     内容の欄は伸縮する唯一の列なので、つまみを縮まない要素として置き、
+     文字側だけ省略記号で詰める。ロット番号のすぐ隣に出るので、
+     「この行は畳んだ中身を持つ」ことが読み取りやすい。
+     行のHTMLを組み立て直さずに済むよう描画後に足す(renderEntryRowは
+     他の呼び出し元とも共有しているため)。 */
+  const row=box.querySelector(`.sc-row-line[data-id="${CSS.escape(String(parent.id))}"]`);
+  if(!row)return;
+  row.classList.add('sc-row-has-children');
+  const title=row.querySelector('.sc-row-title');
+  if(!title)return;
+  const btn=document.createElement('button');
+  btn.type='button';
+  btn.className='sc-child-toggle'+(open?' is-open':'');
+  btn.title=`分割後の子ロット${children.length}件を${open?'隠す':'表示する'}`;
+  btn.innerHTML=`<i>${open?'▾':'▸'}</i>子ロット${children.length}`;
+  btn.onclick=ev=>{
+   ev.stopPropagation();
+   const nowOpen=wrap.hidden;
+   wrap.hidden=!nowOpen;
+   btn.classList.toggle('is-open',nowOpen);
+   btn.querySelector('i').textContent=nowOpen?'▾':'▸';
+   btn.title=`分割後の子ロット${children.length}件を${nowOpen?'隠す':'表示する'}`;
+   setChildOpen(parent.id,nowOpen);
+  };
+  const text=document.createElement('span');
+  text.className='sc-row-title-text';
+  text.textContent=title.textContent;
+  title.textContent='';
+  title.classList.add('has-children');
+  title.append(btn,text);
  }
 
  function renderEntryRow(timeline,e,showGaps,getLastEnd,setLastEnd){
@@ -2622,28 +2720,71 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const h=scState.sessionHolder;
   return h?`${scState.equipment}は${h.loginId||'?'}@${h.pcName||'?'}が編集中です`:`${scState.equipment}は他端末が編集中です`;
  }
- function planAddPayload(target,row){
-  return withUserId({equipment:target,kind:'作業',position:'end',
+ function planAddPayload(target,row,children){
+  const p=withUserId({equipment:target,kind:'作業',position:'end',
    lotNo:pick(row,'lotNo')||'',inspectionNo:pick(row,'inspectionNo')||'',castingNo:pick(row,'castingNo')||'',detail:buildScheduleDetail(row)});
+  if(children&&children.length)p.children=children;
+  return p;
+ }
+ /* ---------- 分割ありの親ロット(§9.83) ----------
+    予定へ入れた「そのタイミングで」子ロットの仕掛データを引き、親に
+    ぶら下げて一緒に登録する。あとから引き直すのではなく投入時に固める
+    のは、予定は「その時点の見え方を固定したスナップショット」だから
+    (buildScheduleDetailと同じ考え方)。子ロットは仕掛から外れることが
+    あるので、後で引くと消えていることがある。 */
+ async function childPayloadFor(row){
+  const api=window.WL&&window.WL.split;
+  if(!api||!api.hasSplit(row))return [];
+  let kids=[];
+  try{kids=await api.childRowsForRow(row)}
+  catch(e){console.warn('子ロットを取得できませんでした',e);return []}
+  return kids.map(k=>({
+   lotNo:k.lot,
+   inspectionNo:k.row?(pick(k.row,'inspectionNo')||''):'',
+   castingNo:k.row?(pick(k.row,'castingNo')||''):'',
+   // 子ロット自身の仕掛行があればそれを、無ければ分かっている範囲だけを
+   // スナップショットする。__で始まるキーは仕掛の実カラム名と衝突しない。
+   detail:Object.assign(k.row?buildScheduleDetail(k.row):{lotNo:k.lot},
+                        {__childLot:true,__childWidth:k.width,__childStrips:k.strips,
+                         __childTol:k.tol,__childMissing:!!k.missing}),
+  }));
+ }
+ // 子ロットの仮表示。親の直後に並べる(サーバーの並びと同じ)。
+ function makeOptimisticChildren(parentEntry,children){
+  return (children||[]).map(c=>makeOptimisticEntry('作業',{
+   lotNo:c.lotNo,title:c.lotNo,detail:c.detail,
+   parentId:parentEntry.id,reorderable:false,
+  }));
  }
  async function addRowToSchedule(row,equipment){
   const target=equipment||scState.equipment;
   if(!target){showToast&&showToast('設備を選択してください','',3200);return}
+  const children=await childPayloadFor(row);
   if(target!==scState.equipment){
    // 今開いていない設備への追加(§9.5): 楽観描画の対象タイムラインが無い
    // ため従来どおり即時反映する。
    try{
-    await api('/api/schedule/plan/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(planAddPayload(target,row))});
-    showToast&&showToast('予定へ追加しました',`${target}の予定に追加しました`,3200);
+    await api('/api/schedule/plan/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(planAddPayload(target,row,children))});
+    showToast&&showToast('予定へ追加しました',childAddedNote(target,children),3200);
    }catch(e){showToast&&showToast('追加に失敗しました',e.message,5000)}
    return;
   }
   if(sessionBlocked()){showToast&&showToast('追加できません',sessionHolderMessage(),4000);return}
   const entry=makeOptimisticEntry('作業',{lotNo:pick(row,'lotNo')||'',detail:buildScheduleDetail(row)});
   scState.entries.push(entry);
+  const kidEntries=makeOptimisticChildren(entry,children);
+  scState.entries.push(...kidEntries);
   renderTimeline();
-  queuePlanOp({op:'add',...planAddPayload(target,row),
-   onSuccess:r=>resolveOptimisticEntry(entry,r),onFailure:()=>discardOptimisticEntry(entry)});
+  queuePlanOp({op:'add',...planAddPayload(target,row,children),
+   onSuccess:r=>{kidEntries.forEach(k=>{k.parentId=r.id});resolveOptimisticEntry(entry,r)},
+   onFailure:()=>{kidEntries.forEach(discardOptimisticEntry);discardOptimisticEntry(entry)}});
+  if(children.length)showToast&&showToast('予定へ追加しました',childAddedNote(target,children),3600);
+ }
+ function childAddedNote(target,children){
+  if(!children||!children.length)return `${target}の予定に追加しました`;
+  const missing=children.filter(c=>c.detail&&c.detail.__childMissing).length;
+  return `${target}の予定に追加しました（子ロット${children.length}件を含む`
+   +(missing?`／うち${missing}件は仕掛に見つかりません`:'')+'）';
  }
  window.scheduleAddFromRow=function(row){addRowToSchedule(row,pick(row,'equipment')||'')};
 
@@ -2655,16 +2796,25 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  async function addRowsToSchedule(rows,equipment){
   const target=equipment||scState.equipment;
   if(!target){showToast&&showToast('設備を選択してください','',3200);return}
+  // 分割ありの行だけ子ロットを引く(§9.83)。先頭5桁が同じ親が並んでいても
+  // searchByLotPrefix側でキャッシュが効くので、往復は実質1ロット1回以下。
+  const childrenOf=new Map();
+  let childTotal=0;
+  for(const row of rows){
+   const kids=await childPayloadFor(row);
+   if(kids.length){childrenOf.set(row,kids);childTotal+=kids.length}
+  }
+  const withKids=n=>childTotal?`${n}（子ロット${childTotal}件を含む）`:n;
   if(target!==scState.equipment){
    let okCount=0;const failedLots=[];
    for(const row of rows){
     try{
-     await api('/api/schedule/plan/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(planAddPayload(target,row))});
+     await api('/api/schedule/plan/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(planAddPayload(target,row,childrenOf.get(row)))});
      okCount++;
     }catch(e){failedLots.push(pick(row,'lotNo')||'?')}
    }
    if(failedLots.length)showToast&&showToast(`${okCount}/${rows.length}件を追加しました`,`失敗したロット: ${failedLots.join('・')}`,7000);
-   else showToast&&showToast('一括追加しました',`${target}の予定へ${okCount}件追加しました`,3800);
+   else showToast&&showToast('一括追加しました',withKids(`${target}の予定へ${okCount}件追加しました`),3800);
    window.clearListSelection?.();
    return;
   }
@@ -2672,11 +2822,15 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   rows.forEach(row=>{
    const entry=makeOptimisticEntry('作業',{lotNo:pick(row,'lotNo')||'',detail:buildScheduleDetail(row)});
    scState.entries.push(entry);
-   queuePlanOp({op:'add',...planAddPayload(target,row),
-    onSuccess:r=>resolveOptimisticEntry(entry,r),onFailure:()=>discardOptimisticEntry(entry)});
+   const kids=childrenOf.get(row)||[];
+   const kidEntries=makeOptimisticChildren(entry,kids);
+   scState.entries.push(...kidEntries);
+   queuePlanOp({op:'add',...planAddPayload(target,row,kids),
+    onSuccess:r=>{kidEntries.forEach(k=>{k.parentId=r.id});resolveOptimisticEntry(entry,r)},
+    onFailure:()=>{kidEntries.forEach(discardOptimisticEntry);discardOptimisticEntry(entry)}});
   });
   renderTimeline();
-  showToast&&showToast(`${rows.length}件をキューへ追加しました`,`${target}の予定へ反映中です…`,3200);
+  showToast&&showToast(`${rows.length}件をキューへ追加しました`,withKids(`${target}の予定へ反映中です…`),3200);
   window.clearListSelection?.();
  }
 

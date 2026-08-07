@@ -444,6 +444,53 @@
   }
   window.findMissingChildLots=findMissingChildLots;
 
+  /* ---------- 予定投入時の子ロット取得(§9.83) ----------
+     作業スケジュールへ分割ありの親ロットを入れるとき、その場で子ロットの
+     仕掛データも引いて一緒に登録する。子ロットは親と先頭5桁を共有するので
+     **1回の問い合わせでまとめて**引く(findMissingChildLots と同じ形)。
+     子ロットごとに引くと、9分割なら9往復。共有越し(1回150ms)では
+     「予定へ追加」を押してから1秒以上待たされることになる。
+
+     仕掛に見つからない子ロット(作業済みで仕掛から外れている等)も
+     **落とさずに返す**。missing:true を付けて、そのまま予定へ載せる。
+     黙って消すと「9分割のはずが7件しか出ない」という気づけない欠落になる。
+
+     新しい公開はWL名前空間へ入れる(CLAUDE.mdの約束)。既存のwindow.*は
+     動いている契約なのでそのまま。 */
+  async function childRowsForRow(row){
+    if(!row||!rowHasSplitData(row))return [];
+    const lotNo=String(pick(row,'lotNo')||'');
+    const expected=expectedChildLotsForRow(row,lotNo);
+    if(!expected.length)return [];
+    let found=new Map();
+    try{
+      const table=await resolveSikaTable();
+      const columns=table?await resolveSikaColumns(table):[];
+      if(table&&columns.length&&lotNo.length>=5){
+        const rows=await searchByLotPrefix(table,columns,lotNo.slice(0,5));
+        rows.forEach(r=>found.set(String(pick(r,'lotNo')||''),r));
+      }
+    }catch(e){
+      // 引けなくても予定への投入自体は止めない(番号だけで載せる)。
+      console.warn('子ロットの取得に失敗しました: '+lotNo,e);
+    }
+    return expected.map((lot,i)=>{
+      const child=found.get(lot)||null;
+      const width=child?baseFromRow(child,'width'):NaN;
+      const tol=child?toleranceFromRow(child,'width','manufacturing')||toleranceFromRow(child,'width','order'):null;
+      return {lot,row:child,missing:!child,
+              width:Number.isFinite(width)?width:null,
+              strips:child?childOwnCount(child,childCount(i+1,row)||1):(childCount(i+1,row)||1),
+              tol:tol?{plus:tol.plus,minus:tol.minus}:null};
+    });
+  }
+  window.WL=window.WL||{};
+  window.WL.split=Object.assign(window.WL.split||{},{
+    hasSplit:rowHasSplitData,
+    childLots:expectedChildLotsForRow,
+    childRowsForRow,
+  });
+
   // 割った後の材料はすべて子ロットになり、開いている親ロット自身の「持ち分」
   // という概念は存在しない。条割の組み合わせは検出できた子ロットのみで構成する。
   function buildCandidateList(){
