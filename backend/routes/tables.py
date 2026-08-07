@@ -13,6 +13,7 @@ from flask import Blueprint, request, jsonify
 
 from ..db_access import DBS, qi, connect, cols, tables, cfg
 from ..logging_setup import app_logger
+from ..errors import os_error_hint
 from ..repositories.master_repo import hidden_columns_for_db
 
 # 品質データ結合のIN句を小分けにする単位(パラメータ数の上限対策)。
@@ -138,15 +139,13 @@ def _join_quality_data(sikalotnow_cols,row_dicts):
 
 
 def _error_hint(e):
- """画面へ出す一言の手がかり。原因の切り分けを現地でできるようにする。"""
- win=getattr(e,'winerror',None)
- if win in (59,64,1231,53,55,67):
-  return ('ネットワーク共有への問い合わせが失敗しました(WinError %s)。'
-          '共有への到達性・SMBの設定・ウイルス対策の除外設定を確認してください。'
-          ' /api/db-diagnose?db=SIKALOTNOW を開くと、どの段階で失敗しているかが分かります。'%win)
+ """画面へ出す一言の手がかり。原因の切り分けを現地でできるようにする。
+    文面は backend/errors.py が全経路ぶんを持っているので、そこから借りる
+    (同じ現象に2種類の説明が出ると、どちらが正しいのか分からなくなる)。"""
+ hint=os_error_hint(e)
  if isinstance(e,FileNotFoundError):
   return 'マスタ管理 > パス設定 で指定したファイルが見つかりません。パスを確認し、サーバーを再起動してください。'
- return ''
+ return hint
 
 @bp.get('/api/db-diagnose')
 def api_db_diagnose():

@@ -10,9 +10,17 @@ import _pycache_bootstrap  # 他のimportより前に。単独実行(python app.
 
 from flask import Flask
 
+from backend.logging_setup import app_logger
+
+# **Flaskが app.logger へ触れるより前に**、こちらのファイル出力を付けておく。
+# Flaskはハンドラの無いロガーに既定のStreamHandler(標準エラー)を勝手に足し、
+# 通常起動(Start.vbs)はコンソールを持たないため、そこへ出た内容は消える。
+# 未処理例外のtracebackを取り逃がさないための1行(§9.77)。
+app_logger()
+
 app=Flask(__name__)
 
-from backend import watchdog, records_export, access_mode, rne_scheduler
+from backend import watchdog, records_export, access_mode, rne_scheduler, errors
 from backend.routes.core import bp as core_bp
 from backend.routes.tables import bp as tables_bp
 from backend.routes.measurement import bp as measurement_bp
@@ -38,6 +46,10 @@ def no_cache(response):
  response.headers['Expires']='0'
  return response
 
+# 想定外の例外を必ずログへ残し、画面には日本語で原因と次の一手を出す。
+# (既定のFlaskは英語1行の Internal Server Error だけで、traceback がどこにも
+#  残らない。別端末での「起動時に Internal Server Error」が切り分けできなかった)
+errors.install(app)
 # プロセスの生存管理(ハートビート監視・明示停止)は backend/watchdog.py が
 # 所有する。業務機能の変更が起動・停止の挙動へ影響しないよう分離している。
 watchdog.install(app)
