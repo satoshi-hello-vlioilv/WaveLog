@@ -244,23 +244,23 @@
 .rp-btn-icon{width:var(--ctl-h);padding:0;font-size:var(--fs-title);line-height:1}
 .db-panel{flex:1;min-height:0;margin:9px 14px;display:flex;flex-direction:column;background:#f7fafb;border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden}
 .db-layout{flex:1;min-height:0;display:grid;grid-template-columns:calc(260px * var(--ui-scale)) minmax(0,1fr);overflow:hidden}
-.db-controls{display:flex;flex-direction:column;gap:14px;padding:var(--space-4);background:#e7eff1;border-right:1px solid var(--line);overflow-y:auto}
-.db-presets{display:flex;flex-wrap:wrap;gap:6px}
+.db-controls{display:flex;flex-direction:column;gap:var(--gap-section);padding:var(--space-4);background:#e7eff1;border-right:1px solid var(--line);overflow-y:auto}
+.db-presets{display:flex;flex-wrap:wrap;gap:var(--gap-inline)}
 .db-presets button{padding:6px 10px;border:1px solid #9fb9b2;border-radius:var(--radius-lg);background:#fff;color:#2c5049;font-weight:700;font-size:var(--fs-sm);cursor:pointer}
 .db-presets button.active{background:var(--teal);border-color:var(--teal);color:#fff}
-.db-ctl-group{display:flex;flex-direction:column;gap:6px}
+.db-ctl-group{display:flex;flex-direction:column;gap:var(--gap-inline)}
 .db-ctl-label{font-size:var(--fs-micro);font-weight:800;color:#526970;letter-spacing:.02em}
-.db-ctl-group select{height:var(--ctl-h);padding:0 8px;border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff}
+.db-ctl-group select{height:var(--ctl-h);padding:0 var(--ctl-pad-x-xs);border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff}
 .db-seg{display:flex;flex-wrap:wrap;gap:var(--space-1)}
 .db-seg button{padding:5px 9px;border:1px solid #c4d0d4;border-radius:var(--radius-lg);background:#fff;color:#3a565d;font-size:var(--fs-micro);cursor:pointer}
 .db-seg button.active{background:var(--teal);border-color:var(--teal);color:#fff}
 .db-seg-sm button{padding:3px 8px;font-size:var(--fs-badge)}
-.db-field-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-.db-field-grid label{display:flex;flex-direction:column;gap:2px;font-size:var(--fs-micro);color:#60747b}
-.db-field-grid input{height:var(--ctl-h-sm);padding:0 6px;border:1px solid var(--line);border-radius:var(--radius-sm)}
+.db-field-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--gap-inline)}
+.db-field-grid label{display:flex;flex-direction:column;gap:var(--gap-hair);font-size:var(--fs-micro);color:#60747b}
+.db-field-grid input{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-xs);border:1px solid var(--line);border-radius:var(--radius-sm)}
 .db-sub{display:flex;flex-direction:column;gap:var(--space-1);margin-top:2px;font-size:var(--fs-micro);color:#60747b}
-.db-main{display:flex;flex-direction:column;min-width:0;min-height:0;padding:var(--space-4);gap:14px;overflow-y:auto}
-.db-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.db-main{display:flex;flex-direction:column;min-width:0;min-height:0;padding:var(--space-4);gap:var(--gap-section);overflow-y:auto}
+.db-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--gap-section)}
 .db-card{display:flex;flex-direction:column;gap:var(--space-1);padding:var(--pad-card);background:#fff;border:1px solid #d6e0e3;border-radius:var(--radius-md)}
 .db-card-label{font-size:var(--fs-micro);color:#60747b;font-weight:700}
 .db-card-value{font-size:var(--fs-lg);color:#173842;font-variant-numeric:tabular-nums}
@@ -287,7 +287,7 @@
    ダッシュボードを開いた直後に見えるのはこちら。条件を組み立てなくても
    「いま何が動いていて、何が残っていて、遅れていないか」が分かる状態を作る。 */
 .db-viewtabs{display:flex;gap:0;background:#0f2a32;border:1px solid #2c4750;border-radius:var(--radius-sm);padding:2px}
-.db-viewtabs button{height:calc(var(--ctl-h) - 8px);padding:0 14px;border:0;border-radius:var(--radius-sm);
+.db-viewtabs button{height:calc(var(--ctl-h) - 8px);padding:0 var(--ctl-pad-x);border:0;border-radius:var(--radius-sm);
  background:transparent;color:#a8d6dc;font-size:var(--fs-sm);font-weight:700;cursor:pointer;
  transition:background .12s,color .12s}
 .db-viewtabs button:hover{color:#fff;background:#173842}

@@ -13,7 +13,7 @@
 .db-status-table tbody th{text-align:left;color:#173842;font-weight:700}
 .db-status-table .db-lot{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em}
 .db-late{color:var(--warn-fg)}
-.db-state-badge{display:inline-block;padding:1px 8px;border-radius:var(--radius-md);
+.db-state-badge{display:inline-block;padding:var(--pad-chip);border-radius:var(--radius-md);
  font-size:var(--fs-micro);font-weight:800;border:1px solid transparent}
 .db-state-badge.running{background:var(--success-bg);border-color:var(--success-border);color:var(--success)}
 .db-state-badge.idle{background:#eef2f4;border-color:#d6e0e3;color:#7b8e95}
@@ -25,21 +25,21 @@
 .cal-panel{flex:1;min-height:0;margin:9px 14px;display:flex;flex-direction:column;background:#f7fafb;border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden}
 .cal-layout{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) calc(320px * var(--ui-scale));overflow:hidden}
 .cal-main{display:flex;flex-direction:column;gap:var(--space-3);min-width:0;min-height:0;padding:var(--space-4);overflow-y:auto}
-.cal-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.cal-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--gap-section)}
 .cal-nav{display:flex;align-items:center;gap:var(--space-2)}
 .cal-nav .rp-btn-secondary{padding:0 var(--ctl-pad-x-sm)}
 .cal-month-label{font-size:var(--fs-title);color:#173842;min-width:calc(104px * var(--ui-scale));text-align:center}
-.cal-toolbar-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-#calSummary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.cal-toolbar-right{display:flex;align-items:center;gap:var(--gap-section);flex-wrap:wrap}
+#calSummary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--gap-section)}
 .cal-card-warn{border-color:#e5b3b3;background:#fff8f8}
 .cal-card-warn .db-card-label{color:#a34848}
 .cal-card-sub{display:block;font-size:var(--fs-micro);font-weight:600;color:#60747b;margin-top:1px}
-.cal-weekday-row{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;padding:0 2px}
+.cal-weekday-row{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:var(--gap-inline);padding:0 2px}
 .cal-weekday-row span{text-align:center;font-size:var(--fs-micro);font-weight:800;color:#60747b;padding:2px 0}
 .cal-weekday-row span.sun{color:#c92c2c}
 .cal-weekday-row span.sat{color:#2563eb}
-.cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));grid-auto-rows:minmax(calc(74px * var(--ui-scale)),auto);gap:6px}
-.cal-day{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:6px 8px;border:1px solid #e3ebee;border-radius:var(--radius-sm);background:#fff;cursor:pointer;text-align:left;transition:box-shadow .12s,border-color .12s}
+.cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));grid-auto-rows:minmax(calc(74px * var(--ui-scale)),auto);gap:var(--gap-inline)}
+.cal-day{display:flex;flex-direction:column;align-items:flex-start;gap:var(--gap-hair);padding:6px 8px;border:1px solid #e3ebee;border-radius:var(--radius-sm);background:#fff;cursor:pointer;text-align:left;transition:box-shadow .12s,border-color .12s}
 .cal-day-blank{background:transparent;border-color:transparent;cursor:default}
 .cal-day:not(.cal-day-blank):hover{border-color:#9fc3c8;box-shadow:0 1px 4px #102a3314}
 .cal-day.selected{border-color:var(--teal);box-shadow:0 0 0 2px #087c8940}
@@ -58,7 +58,7 @@
 .cal-day.lvl-3 .cal-day-metric,.cal-day.lvl-4 .cal-day-metric{color:#fff}
 .cal-day.lvl-3 .cal-day-sub,.cal-day.lvl-4 .cal-day-sub{color:#e3f6f4}
 .cal-day.lvl-4.today .cal-day-num{color:#fff;text-decoration-color:#fff}
-.cal-legend{display:flex;align-items:center;gap:var(--space-1);justify-content:flex-end;font-size:var(--fs-micro);color:#60747b;padding:2px 4px}
+.cal-legend{display:flex;align-items:center;gap:var(--space-1);justify-content:flex-end;font-size:var(--fs-micro);color:#60747b;padding:var(--pad-chip)}
 .cal-legend-swatch{width:calc(14px * var(--ui-scale));height:calc(14px * var(--ui-scale));border-radius:var(--radius-xs);border:1px solid #e3ebee;background:#fff}
 .cal-legend-swatch.lvl-1{background:#e6f4f3}
 .cal-legend-swatch.lvl-2{background:#b9e2dd}
@@ -74,7 +74,7 @@
 .cal-lot-main{display:flex;align-items:center;gap:var(--space-2)}
 .cal-lot-no{font-size:var(--fs-base-sm);color:#087c89;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
 .cal-lot-no:hover{color:var(--teal-dark)}
-.cal-lot-sub{display:flex;flex-wrap:wrap;gap:6px 10px;font-size:var(--fs-micro);color:#60747b}
+.cal-lot-sub{display:flex;flex-wrap:wrap;gap:var(--gap-inline) var(--gap-section);font-size:var(--fs-micro);color:#60747b}
 .cal-lot-weight{font-size:var(--fs-sm);font-weight:800;color:#173842;font-variant-numeric:tabular-nums}
 .cal-blank{color:#aab6b9;font-style:normal;font-weight:600}
 /* 幅分割情報パネル(.split-pane)は固定250pxのままだと、分割データの
@@ -86,18 +86,18 @@
 @media(max-width:1000px){.cal-layout{grid-template-columns:1fr}.cal-detail{border-left:0;border-top:1px solid var(--line);max-height:320px}#calSummary{grid-template-columns:repeat(2,minmax(0,1fr))}}
 /* ---------- 作業スケジュール(順次作業表示、docs/SCHEDULE_MODE_DESIGN.md §9) ---------- */
 .sc-panel{flex:1;min-height:0;margin:9px 14px;display:flex;flex-direction:column;background:#f7fafb;border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden}
-.sc-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:var(--pad-card);background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap}
-.sc-head-left,.sc-head-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.sc-equipment-select{height:var(--ctl-h-sm);padding:0 8px;border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff}
+.sc-head{display:flex;align-items:center;justify-content:space-between;gap:var(--gap-section);padding:var(--pad-card);background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.sc-head-left,.sc-head-right{display:flex;align-items:center;gap:var(--gap-section);flex-wrap:wrap}
+.sc-equipment-select{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-xs);border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff}
 .sc-equipment-fixed{font-size:var(--fs-base-sm);font-weight:700;color:#3a565d;background:#eafafa;border:1px solid var(--teal);border-radius:var(--radius-lg);padding:4px 10px}
-.sc-lock-badge{font-size:var(--fs-sm);font-weight:700;color:var(--warn-fg);background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:var(--radius-md);padding:3px 9px}
+.sc-lock-badge{font-size:var(--fs-sm);font-weight:700;color:var(--warn-fg);background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:var(--radius-md);padding:var(--pad-chip)}
 .sc-field-reorder-note{font-size:var(--fs-micro);font-weight:700;color:var(--warn-fg)}
-.sc-refresh{height:var(--ctl-h-sm);padding:0 12px;border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;cursor:pointer}
+.sc-refresh{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x);border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;cursor:pointer}
 .sc-warnings{padding:6px 14px;background:var(--warn-bg);border-bottom:1px solid var(--warn-border)}
 .sc-warning{font-size:var(--fs-sm);color:var(--warn-fg)}
 /* 編集セッション(§9.11新設)。他端末が既にこの設備を編集中の間、追加・削除・
    並べ替えを止めていることをタイムライン閲覧の邪魔にならない帯で伝える。 */
-.sc-session-banner{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 14px;font-size:var(--fs-sm);font-weight:700}
+.sc-session-banner{display:flex;align-items:center;justify-content:space-between;gap:var(--gap-section);padding:7px 14px;font-size:var(--fs-sm);font-weight:700}
 .sc-session-banner button{background:#fff;font-weight:700;cursor:pointer;flex-shrink:0}
 /* 他端末が編集中と確定できた場合(操作を止める、§9.11)。 */
 .sc-session-banner-blocked{background:var(--warn-bg);border-bottom:1px solid var(--warn-border);color:var(--warn-fg)}

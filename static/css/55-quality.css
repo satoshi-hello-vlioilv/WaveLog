@@ -29,7 +29,7 @@
 .qa-v7 .qa-sub-inline{display:flex;align-items:center;gap:var(--space-2);color:#4f6a70;font-size:var(--fs-sm);font-weight:700;flex-wrap:wrap}
 .qa-v7 .qa-hint{margin:0;padding:7px 9px;border-left:3px solid #9fd0cf;background:#eef8f9;color:#4a6b6f;line-height:1.5;border-radius:0 var(--radius-sm) var(--radius-sm) 0}
 /* セグメント（トグル） */
-.qa-v7 .qa-seg{display:inline-flex;width:100%;padding:3px;gap:3px;border:1px solid #cddde0;border-radius:var(--radius-md);background:#eef2f4;box-sizing:border-box}
+.qa-v7 .qa-seg{display:inline-flex;width:100%;padding:3px;gap:var(--gap-tight);border:1px solid #cddde0;border-radius:var(--radius-md);background:#eef2f4;box-sizing:border-box}
 .qa-v7 .qa-seg.qa-seg-wrap{flex-wrap:wrap}
 .qa-v7 .qa-seg button{flex:1 1 0;min-width:58px;border:0;background:transparent;color:#40606a;font-weight:800;cursor:pointer;white-space:nowrap;box-shadow:none}
 .qa-v7 .qa-seg button:hover{background:#e3ebee}
@@ -37,34 +37,34 @@
 .qa-v7 .qa-seg.qa-seg-sm{width:auto;display:inline-flex}
 .qa-v7 .qa-seg.qa-seg-sm button{min-width:42px;flex:0 0 auto}
 /* 固定フッター */
-.qa-v7 .qa-recipe-foot{flex:0 0 auto;display:flex;flex-direction:column;gap:10px;padding-top:2px;border-top:1px solid #dbe7ea}
-.qa-v7 .qa-search-field{display:grid;gap:5px;color:#4f6a70;font-size:var(--fs-sm);font-weight:700}
+.qa-v7 .qa-recipe-foot{flex:0 0 auto;display:flex;flex-direction:column;gap:var(--gap-section);padding-top:2px;border-top:1px solid #dbe7ea}
+.qa-v7 .qa-search-field{display:grid;gap:var(--gap-tight);color:#4f6a70;font-size:var(--fs-sm);font-weight:700}
 .qa-v7 .qa-search-field input{height:var(--ctl-h);border:1px solid var(--line-mid);border-radius:var(--radius-sm);background:var(--surface);padding:0 var(--ctl-pad-x-sm);box-sizing:border-box}
-.qa-v7 .qa-result-summary{display:flex;gap:6px;flex-wrap:wrap}
+.qa-v7 .qa-result-summary{display:flex;gap:var(--gap-inline);flex-wrap:wrap}
 .qa-v7 .qa-chip{border-radius:var(--radius-pill);background:#eaf6f7;border:1px solid #b9d5d9;color:#075e67;line-height:1.2}
 .qa-v7 .qa-primary-large{width:100%;border:0;background:var(--teal);color:#fff;cursor:pointer;box-shadow:0 4px 12px #087c8940}
 .qa-v7 .qa-primary-large:hover{background:var(--teal-dark)}
 /* 右: グラフ */
 .qa-v7 .qa-chart-main{min-width:0;min-height:0;display:flex;flex-direction:column;overflow:visible}
 /* ツールバー: 折り返し可・各行に十分な高さ → 下部の潰れ/見切れ防止 */
-.qa-v7 .qa-chart-toolbar{display:flex;flex-wrap:wrap;align-items:flex-start;gap:10px;padding:var(--pad-card);border:1px solid #d6e0e3;border-radius:var(--radius-md);background:#fff;margin-bottom:8px;flex:0 0 auto;overflow:visible}
-.qa-v7 .qa-chart-options{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;width:100%}
-.qa-v7 .qa-opt{display:flex;align-items:center;gap:7px;min-height:38px;flex:0 0 auto}
+.qa-v7 .qa-chart-toolbar{display:flex;flex-wrap:wrap;align-items:flex-start;gap:var(--gap-section);padding:var(--pad-card);border:1px solid #d6e0e3;border-radius:var(--radius-md);background:#fff;margin-bottom:8px;flex:0 0 auto;overflow:visible}
+.qa-v7 .qa-chart-options{display:flex;flex-wrap:wrap;gap:var(--gap-section) var(--gap-section);align-items:center;width:100%}
+.qa-v7 .qa-opt{display:flex;align-items:center;gap:var(--gap-inline);min-height:38px;flex:0 0 auto}
 .qa-v7 .qa-opt>span{font-size:var(--fs-sm);font-weight:700;color:var(--ink-3);white-space:nowrap}
 .qa-v7 .qa-opt select{height:var(--ctl-h);box-sizing:border-box;line-height:1.2;border:1px solid var(--line-mid);border-radius:var(--radius-sm);background:var(--surface);padding:0 var(--ctl-pad-x-sm);min-width:0}
 .qa-v7 .qa-opt select#qaChartType{min-width:190px}
 .qa-v7 .qa-opt select#qaSort{min-width:126px}
 .qa-v7 .qa-opt select#qaLimit,.qa-v7 .qa-opt select#qaColor,.qa-v7 .qa-opt select#qaBarWidth,.qa-v7 .qa-opt select#qaBarMetric,.qa-v7 .qa-opt select#qaLineMetric{min-width:96px}
-.qa-v7 .qa-color-inline{display:inline-flex;align-items:center;gap:7px}
-.qa-v7 .qa-check{gap:6px}
+.qa-v7 .qa-color-inline{display:inline-flex;align-items:center;gap:var(--gap-inline)}
+.qa-v7 .qa-check{gap:var(--gap-inline)}
 .qa-v7 .qa-check input{width:var(--ctl-box);height:var(--ctl-box)}
 .qa-v7 .qa-color-dot{background:var(--qa-dot-color,var(--teal));width:18px;height:18px;border-radius:var(--radius-round);display:inline-block;border:2px solid #fff;box-shadow:0 0 0 1px #91a8ae;flex:0 0 auto}
 .qa-v7 .qa-legend{width:100%;display:flex;gap:var(--space-2) var(--space-3);align-items:center;flex-wrap:wrap;color:var(--ink-3);font-weight:700;font-size:var(--fs-micro);min-width:0;padding-top:var(--space-2);margin-top:2px;border-top:1px dashed var(--surface-3)}
-.qa-v7 .qa-legend .qa-lg{display:inline-flex;align-items:center;gap:5px}
+.qa-v7 .qa-legend .qa-lg{display:inline-flex;align-items:center;gap:var(--gap-tight)}
 .qa-v7 .qa-legend .qa-lg .sw{width:13px;height:11px;border-radius:var(--radius-xs);display:inline-block}
 .qa-v7 .qa-legend .qa-lg .ln{width:16px;height:3px;border-radius:var(--radius-xs);display:inline-block}
-.qa-v7 .qa-stack-legend{display:flex;gap:8px 12px;align-items:center;flex-wrap:wrap}
-.qa-v7 .qa-stack-legend span{display:inline-flex;align-items:center;gap:5px;font-size:var(--fs-micro);color:#4f6a70;font-weight:700}
+.qa-v7 .qa-stack-legend{display:flex;gap:var(--gap-inline) var(--gap-section);align-items:center;flex-wrap:wrap}
+.qa-v7 .qa-stack-legend span{display:inline-flex;align-items:center;gap:var(--gap-tight);font-size:var(--fs-micro);color:#4f6a70;font-weight:700}
 .qa-v7 .qa-stack-legend i{display:inline-block;width:11px;height:11px;border-radius:var(--radius-xs)}
 /* 描画エリア: 実寸フィット。中身は左上基準、横溢れは出さない */
 .qa-v7 .qa-graph-stage{flex:1 1 auto;min-height:0;border:1px solid #d6e0e3;border-radius:var(--radius-lg);background:#fff;padding:10px;overflow:auto}
@@ -90,7 +90,7 @@
 /* 対象データ一覧: 残り領域を最大活用 */
 .qa-v7 .qa-list{flex:1 1 auto;min-height:0;margin:14px 14px 8px;overflow:auto;border:1px solid #d6e0e3;border-radius:var(--radius-md);background:#fff}
 .qa-v7 .qa-list table{width:max-content;min-width:100%;border-collapse:separate;border-spacing:0}
-.qa-v7 .qa-list th{position:sticky;top:0;background:#e6f1f2;color:#28464e;font-weight:800;white-space:nowrap;padding:8px 10px;border-bottom:1px solid #b7c7cc}
+.qa-v7 .qa-list th{position:sticky;top:0;background:#e6f1f2;color:#28464e;font-weight:800;white-space:nowrap;padding:var(--pad-card);border-bottom:1px solid #b7c7cc}
 .qa-v7 .qa-list td{padding:7px 10px;border-bottom:1px solid #e3ebee;white-space:nowrap}
 /* 一覧下部の状態バー: 表示件数/対象件数を明示し、余白を情報として使う */
 .qa-v7 .qa-list-status{flex:0 0 auto;margin:0 14px 12px;padding:7px 12px;border-radius:var(--radius-sm);background:#eef8f9;border:1px solid #d6e0e3;color:#40606a;font-weight:700;font-size:var(--fs-sm)}

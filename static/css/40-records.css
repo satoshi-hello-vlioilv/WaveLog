@@ -11,13 +11,13 @@
 .record-dialog{width:min(1480px,97vw);height:min(900px,94vh);background:#f7fafb;border-radius:var(--radius-lg);box-shadow:0 20px 60px #0005;display:flex;flex-direction:column;overflow:hidden}
 /* データ一覧の見出しバンドは廃止(画面名はヘッダーの#fileNameが持つ)。
    絞り込み(.record-searchbar)はヘッダーの#headerViewBarへ移る。 */
-.record-searchbar{display:grid;grid-template-columns:auto minmax(300px,1fr) 250px 110px auto;gap:10px;align-items:end;padding:12px 16px;border-bottom:1px solid #d6e0e3;background:#fff}
+.record-searchbar{display:grid;grid-template-columns:auto minmax(300px,1fr) 250px 110px auto;gap:var(--gap-section);align-items:end;padding:12px 16px;border-bottom:1px solid #d6e0e3;background:#fff}
 .record-searchbar label{display:grid;gap:var(--space-1)}
 .record-searchbar label>span{font-size:var(--fs-micro);font-weight:800;color:#526970}
 .record-searchbar input,.record-searchbar select,.record-searchbar button{height:var(--ctl-h)}
 /* 編集中/完了はそれぞれ独立にON/OFFできるトグル(排他選択ではない)なので、
    セグメントコントロールではなくピル状のチェックボタンで表現する。 */
-.record-status-filter{display:flex;gap:6px}
+.record-status-filter{display:flex;gap:var(--gap-inline)}
 .status-filter-btn{border:1.5px solid #c7d4d8;background:#fff;color:#60747b;font-weight:800;cursor:pointer;transition:background .15s,border-color .15s,color .15s}
 .status-filter-btn:hover{border-color:#9fb4ba}
 .status-filter-btn.active{border-color:var(--teal);background:var(--teal);color:#fff}
@@ -30,13 +30,13 @@
   align-items:center;
 }
 .record-list-head{position:sticky;top:0;z-index:4;min-height:42px;background:#dcecef;border-bottom:1px solid #9caeb4;color:#28464e}
-.record-list-head>*{padding:8px 10px;border-right:1px solid #c4d0d4}
+.record-list-head>*{padding:var(--pad-card);border-right:1px solid #c4d0d4}
 .record-list-row{min-height:56px;background:#fff;border-bottom:1px solid #d6e0e3;cursor:pointer}
 .record-list-row:nth-child(even){background:#f7fafb}
 .record-list-row:hover{background:#edfafa}
 .record-list-row:focus{outline:3px solid #087c8950;outline-offset:-3px}
-.record-list-cell{min-width:0;padding:8px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.record-list-cell.primary{padding:6px}
+.record-list-cell{min-width:0;padding:var(--pad-card);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.record-list-cell.primary{padding:var(--space-2)}
 .record-list-cell.primary .grid-lot-link{width:100%;height:100%;min-height:0}
 .record-list-cell.primary{font-weight:800;color:#173842}
 .record-list-cell.secondary{font-size:var(--fs-sm);color:#526970}
@@ -45,7 +45,7 @@
 /* 続きから再開/帳票/削除の3ボタンは役割で色分けしつつ、サイズ・文字サイズ・
    角丸は完全に統一する(特定のボタンだけ大きくしない)。均等幅(flex:1)に
    して列内でタップしやすい大きさを揃える。 */
-.record-list-actions{display:flex;align-items:stretch;gap:6px;padding:7px 8px}
+.record-list-actions{display:flex;align-items:stretch;gap:var(--gap-inline);padding:7px 8px}
 .record-list-actions button{flex:1;font-weight:700;white-space:nowrap}
 .record-list-actions .resume{background:var(--teal);color:#fff;border-color:var(--teal)}
 .record-list-actions .resume:disabled{opacity:.45;cursor:not-allowed}
@@ -64,8 +64,8 @@
 .settings-dialog small{color:#8fd4d4}
 .settings-dialog header button{border:0;background:transparent;color:#fff;font-size:var(--fs-lg)}
 .settings-body{padding:var(--space-5)}
-.settings-body>p{margin:0 0 18px;padding:10px 12px;border-left:4px solid var(--teal);background:#eef8f9;color:#526970;line-height:1.7}
-.settings-body label{display:grid;gap:6px;font-weight:700}
+.settings-body>p{margin:0 0 18px;padding:var(--pad-card);border-left:4px solid var(--teal);background:#eef8f9;color:#526970;line-height:1.7}
+.settings-body label{display:grid;gap:var(--gap-inline);font-weight:700}
 .settings-body select{width:100%;height:44px;background:#fff}
 .new-equipment-entry{margin-top:10px}
 .new-equipment-entry[hidden]{display:none}
@@ -83,14 +83,14 @@
 .settings-actions .danger{min-width:120px;height:42px;background:#c62828;color:#fff;border-color:#c62828;font-weight:800}
 .settings-actions .danger:hover{background:#a31f1f}
 /* ---------- データ削除の確認モーダル(何も入力がないデータ以外はここでしっかり警告する) ---------- */
-.delete-confirm-summary{display:flex;flex-direction:column;gap:2px;margin-bottom:14px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--radius-sm);background:#f7fafb}
+.delete-confirm-summary{display:flex;flex-direction:column;gap:var(--gap-hair);margin-bottom:14px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--radius-sm);background:#f7fafb}
 .delete-confirm-row{display:flex;justify-content:space-between;gap:var(--space-3);padding:3px 0;font-size:var(--fs-base-sm);color:#3a565d}
 .delete-confirm-row span{color:#60747b;font-weight:700}
 .delete-confirm-row b{color:#17272d}
-.delete-confirm-warning{margin:0;padding:10px 12px;border-left:4px solid #c62828;background:#fdecec;color:#7a1f1f;line-height:1.7;font-weight:700}
+.delete-confirm-warning{margin:0;padding:var(--pad-card);border-left:4px solid #c62828;background:#fdecec;color:#7a1f1f;line-height:1.7;font-weight:700}
 /* 共通確認モーダル(confirmModal)のメッセージ本文。confirm()の改行表現を
    引き継ぐため、\nをそのまま改行として表示する。 */
-.confirm-modal-message{margin:0;padding:10px 12px;border-left:4px solid var(--teal);background:#eef8f9;color:#3a565d;line-height:1.7;white-space:pre-line}
+.confirm-modal-message{margin:0;padding:var(--pad-card);border-left:4px solid var(--teal);background:#eef8f9;color:#3a565d;line-height:1.7;white-space:pre-line}
 /* 取り消せない操作の確認で「何が起きるか」を箇条書きにする(§9.61)。
    本文を長い一段落にすると読み飛ばされるため、影響範囲を1行1件で示す。 */
 .confirm-modal-points{margin:10px 0 0;padding:0 0 0 20px;color:#3a565d;
@@ -110,7 +110,7 @@
 }
 .equipment-setup-banner.configured{display:none}
 .equipment-setup-icon{display:grid;place-items:center;width:38px;height:38px;border-radius:var(--radius-round);background:var(--warn);color:var(--nav);font-weight:900}
-.equipment-setup-copy{display:grid;gap:3px}
+.equipment-setup-copy{display:grid;gap:var(--gap-tight)}
 .equipment-setup-copy b{font-size:var(--fs-title)}
 .equipment-setup-copy span{color:#526970}
 .equipment-setup-banner>button{min-width:160px;border-color:var(--teal);background:var(--teal);color:#fff;font-weight:800}
@@ -238,7 +238,7 @@
   right:auto;
   width:max-content;
   max-width:38%;
-  padding:2px 6px;
+  padding:var(--pad-chip);
   border-radius:var(--radius-md);
   background:#e9f8f2;
   border:1px solid #98cdbb;
@@ -251,7 +251,7 @@
   left:50%;
   transform:translate(-50%,-50%);
   z-index:3;
-  padding:2px 6px;
+  padding:var(--pad-chip);
   border:1px solid #9fb2bf;
   border-radius:var(--radius-sm);
   background:#ffffffee;

@@ -41,15 +41,15 @@
 .hd-viewbar .sc-head-left,.hd-viewbar .sc-head-right{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2);min-width:0}
 .hd-viewbar .sc-head-right{margin-left:auto}
 .hd-viewbar label{display:inline-flex;align-items:center;gap:var(--space-1);white-space:nowrap;font-size:var(--fs-sm);color:var(--muted)}
-.hd-viewbar select,.hd-viewbar input{height:var(--ctl-h-sm);padding:0 8px;border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;color:var(--ink-2);font-size:var(--fs-sm)}
+.hd-viewbar select,.hd-viewbar input{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-xs);border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;color:var(--ink-2);font-size:var(--fs-sm)}
 .hd-viewbar button{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);font-size:var(--fs-sm);border-radius:var(--radius-sm);border:1px solid var(--line);background:#fff;
   color:var(--ink-2);font-weight:700;cursor:pointer}
 .hd-viewbar button:hover{border-color:var(--teal);background:var(--pale);color:#0c5d67}
 .hd-viewbar button.active,.hd-viewbar [role="tab"].active{background:var(--teal);border-color:var(--teal);color:#fff}
-.hd-viewbar .db-viewtabs,.hd-viewbar .sc-mode-toggle{display:flex;gap:2px;padding:2px;border-radius:var(--radius-sm);background:var(--bg)}
+.hd-viewbar .db-viewtabs,.hd-viewbar .sc-mode-toggle{display:flex;gap:var(--gap-hair);padding:2px;border-radius:var(--radius-sm);background:var(--bg)}
 .hd-viewbar .db-viewtabs button,.hd-viewbar .sc-mode-toggle-btn{height:calc(var(--ctl-h-sm) - 4px);border-color:transparent;background:transparent}
 .hd-viewbar .sc-equipment-fixed{padding:3px 10px;border-radius:var(--radius-pill);background:var(--pale);border:1px solid var(--card-border);color:var(--nav);font-size:var(--fs-sm);font-weight:700;white-space:nowrap}
-.hd-viewbar .sc-lock-badge{padding:3px 9px;border-radius:var(--radius-pill);font-size:var(--fs-micro)}
+.hd-viewbar .sc-lock-badge{padding:var(--pad-chip);border-radius:var(--radius-pill);font-size:var(--fs-micro)}
 .hd-viewbar .sc-history-range{display:inline-flex;align-items:center;gap:var(--space-1);white-space:nowrap}
 .hd-viewbar .sc-freshness,.hd-viewbar .sc-field-reorder-note,.hd-viewbar .record-search-result{
   font-size:var(--fs-micro);color:var(--muted);white-space:nowrap;
@@ -63,7 +63,7 @@
    アイコンのみのボタンは他画面の.rp-btn-iconと同じ--fs-titleで揃える
    (文字サイズの統一を見る回帰テストもこの一群は別扱いにしている)。 */
 .hd-viewbar .rp-btn-icon{width:var(--ctl-h-sm);padding:0;font-size:var(--fs-title);line-height:1}
-.hd-viewbar .db-seg{display:flex;gap:2px;padding:2px;border-radius:var(--radius-sm);background:var(--bg)}
+.hd-viewbar .db-seg{display:flex;gap:var(--gap-hair);padding:2px;border-radius:var(--radius-sm);background:var(--bg)}
 .hd-viewbar .db-seg button{height:calc(var(--ctl-h-sm) - 4px);border-color:transparent;background:transparent}
 /* 2択・タブの「選ばれている方」。上の`.hd-viewbar button.active`と同じ
    詳細度(0,2,1)で、かつ後から来る`.db-seg button`等が地の色へ戻してしまう

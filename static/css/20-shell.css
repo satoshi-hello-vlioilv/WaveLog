@@ -15,7 +15,7 @@
 .layout>aside{background:var(--nav);color:#fff;padding:18px 12px;display:flex;flex-direction:column;overflow-y:auto}
 #navResizeHandle{cursor:col-resize;background:transparent}
 #navResizeHandle:hover,#navResizeHandle.dragging{background:var(--teal)}
-.build-badge{display:inline-block;margin-left:5px;padding:2px 6px;border-radius:var(--radius-sm);background:#35c2a6;color:#17272d;font-weight:800}
+.build-badge{display:inline-block;margin-left:5px;padding:var(--pad-chip);border-radius:var(--radius-sm);background:#35c2a6;color:#17272d;font-weight:800}
 .build-badge-clickable{cursor:pointer;border:0;font:inherit}
 .build-badge-clickable:hover{background:#28a88f}
 .build-badge-clickable:focus-visible{outline:2px solid var(--nav);outline-offset:2px}
@@ -40,14 +40,14 @@
    カード形態で「現在の状態」を示す別レーンとして独立させる。 */
 .registered-equipment-badge{
   display:flex;align-items:center;gap:var(--space-2);width:100%;
-  margin:0 0 16px;min-height:var(--ctl-h);padding:0 10px;
+  margin:0 0 16px;min-height:var(--ctl-h);padding:0 var(--ctl-pad-x-sm);
   border:1px solid #2c4750;border-radius:var(--radius-sm);
   background:#1f3d47;color:#cfe6ea;font-size:var(--fs-sm);font-weight:700;cursor:pointer;text-align:left;
 }
 .registered-equipment-badge .nav-icon{flex:none;opacity:.85}
 .registered-equipment-badge .equip-badge-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .registered-equipment-badge:hover{filter:brightness(1.15)}
-.registered-equipment-badge::after{content:"変更";flex:none;padding:2px 7px;border-radius:var(--radius-sm);background:#2c4750;color:#cfe6ea;font-size:var(--fs-badge);font-weight:800}
+.registered-equipment-badge::after{content:"変更";flex:none;padding:var(--pad-chip);border-radius:var(--radius-sm);background:#2c4750;color:#cfe6ea;font-size:var(--fs-badge);font-weight:800}
 .registered-equipment-badge.unregistered{border-color:var(--warn-border);border-style:dashed;background:#4a3418;color:#ffd8a0}
 .registered-equipment-badge.unregistered::after{content:"要設定";background:var(--warn);color:#3a2400}
 /* ---------- 3c. サイドバー: ナビグループ共通 ----------
@@ -61,7 +61,7 @@
    無く、paddingとテキストの行高だけで決まっていたため、ヘッダーのボタン類や
    使用設備カードと縦のリズムが合っていなかった。 */
 .nav-item{
-  display:flex;align-items:center;gap:9px;width:100%;min-height:var(--ctl-h);padding:0 10px;
+  display:flex;align-items:center;gap:var(--gap-inline);width:100%;min-height:var(--ctl-h);padding:0 var(--ctl-pad-x-sm);
   border:1px solid transparent;border-radius:var(--radius-sm);background:transparent;color:#cfe6ea;
   text-align:left;font-size:var(--fs-base-sm);font-weight:600;box-shadow:none;
 }
@@ -139,7 +139,7 @@ main>header{gap:var(--space-4)}
 /* 状態チップ: キー(小)+値(太)の2段組。押せるものだけ枠が反応する。 */
 .hd-chip{
  display:inline-flex;flex-direction:column;align-items:flex-start;justify-content:center;
- height:var(--ctl-h);padding:0 12px;border:1px solid var(--line);border-radius:var(--radius-sm);
+ height:var(--ctl-h);padding:0 var(--ctl-pad-x);border:1px solid var(--line);border-radius:var(--radius-sm);
  background:#fff;color:#3a565d;white-space:nowrap;line-height:1.15;
  font-family:inherit;text-align:left;
 }
@@ -159,21 +159,21 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  height:var(--ctl-h);border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;
 }
 .hd-actions .hd-btn{font-weight:700;color:#3a565d;cursor:pointer;
- display:inline-flex;align-items:center;gap:6px;transition:border-color .12s,background .12s}
+ display:inline-flex;align-items:center;gap:var(--gap-inline);transition:border-color .12s,background .12s}
 .hd-actions .hd-btn:hover{border-color:var(--teal);background:var(--pale);color:#0c5d67}
-.hd-btn-icon{padding:0 12px}
+.hd-btn-icon{padding:0 var(--ctl-pad-x)}
 .hd-size-a{font-size:var(--fs-title);font-weight:800;line-height:1}
-.hd-search{display:inline-flex;align-items:center;gap:6px;padding:0 10px}
+.hd-search{display:inline-flex;align-items:center;gap:var(--gap-inline);padding:0 var(--ctl-pad-x-sm)}
 .hd-search:focus-within{border-color:var(--teal);box-shadow:0 0 0 3px #087c8922}
 .hd-search-icon{font-size:var(--fs-sm);opacity:.6}
 .hd-actions #search{border:0;outline:0;background:transparent;height:auto;padding:0;
  width:min(200px,18vw);font-size:var(--fs-base-sm)}
-.hd-field{display:inline-flex;align-items:center;gap:6px;padding:0 10px}
+.hd-field{display:inline-flex;align-items:center;gap:var(--gap-inline);padding:0 var(--ctl-pad-x-sm)}
 .hd-field>span{font-size:var(--fs-tiny);font-weight:700;color:#8a9aa0;white-space:nowrap}
 .hd-actions #pageSize{border:0;outline:0;background:transparent;height:auto;padding:0;
  font-size:var(--fs-base-sm);font-weight:700;color:#3a565d}
 /* quality-analysis.jsが後から差し込む「画面を印刷」も同じ見た目へ揃える */
-.hd-actions #printCurrentView{height:var(--ctl-h);padding:0 14px;border:1px solid var(--line);
+.hd-actions #printCurrentView{height:var(--ctl-h);padding:0 var(--ctl-pad-x);border:1px solid var(--line);
  border-radius:var(--radius-sm);background:#fff;font-size:var(--fs-base-sm);font-weight:700;color:#3a565d;cursor:pointer}
 .hd-actions #printCurrentView:hover{border-color:var(--teal);background:var(--pale);color:#0c5d67}
 @media(max-width:1180px){
@@ -181,25 +181,25 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  .hd-actions #search{width:min(140px,14vw)}
  .hd-field>span{display:none}
 }
-.equipment-header-button{display:flex;align-items:center;gap:7px;min-width:150px;border:1px solid var(--teal);background:#eafafa;color:#164e55}
+.equipment-header-button{display:flex;align-items:center;gap:var(--gap-inline);min-width:150px;border:1px solid var(--teal);background:#eafafa;color:#164e55}
 .equipment-header-button span{font-size:var(--fs-micro)}
 .equipment-header-button b{max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* 編集可能モード/閲覧モード/スケジュールモードの表示・切替(access-mode.js)。
    既定は編集可能モードで、権限マスタの設定に応じて閲覧モード/スケジュール
    モードで起動する端末もある。クリックで(権限のあるモードの範囲で)切り替えられる。 */
-.access-mode-badge{height:var(--ctl-h);padding:0 14px;border:1.5px solid var(--success-border);border-radius:var(--radius-pill);background:var(--success-bg);color:var(--success);font-weight:800;font-size:var(--fs-base-sm);cursor:pointer;white-space:nowrap;position:relative}
+.access-mode-badge{height:var(--ctl-h);padding:0 var(--ctl-pad-x);border:1.5px solid var(--success-border);border-radius:var(--radius-pill);background:var(--success-bg);color:var(--success);font-weight:800;font-size:var(--fs-base-sm);cursor:pointer;white-space:nowrap;position:relative}
 .access-mode-badge:disabled{cursor:not-allowed;opacity:.7}
-.access-mode-menu{position:fixed;z-index:1000;min-width:190px;padding:6px;border:1px solid var(--line);border-radius:var(--radius-md);background:#fff;box-shadow:0 8px 24px rgba(0,0,0,.16)}
-.access-mode-menu button{display:flex;flex-direction:column;align-items:flex-start;gap:1px;width:100%;padding:8px 10px;border:0;border-radius:var(--radius-sm);background:transparent;text-align:left;font-weight:700;font-size:var(--fs-base-sm);color:var(--ink,#222);cursor:pointer}
+.access-mode-menu{position:fixed;z-index:1000;min-width:190px;padding:var(--space-2);border:1px solid var(--line);border-radius:var(--radius-md);background:#fff;box-shadow:0 8px 24px rgba(0,0,0,.16)}
+.access-mode-menu button{display:flex;flex-direction:column;align-items:flex-start;gap:var(--gap-hair);width:100%;padding:var(--pad-card);border:0;border-radius:var(--radius-sm);background:transparent;text-align:left;font-weight:700;font-size:var(--fs-base-sm);color:var(--ink,#222);cursor:pointer}
 .access-mode-menu button:hover{background:#eef2f4}
 .access-mode-menu button small{font-weight:500;color:#687a81;font-size:var(--fs-micro)}
 /* 表示サイズ切替(アプリ全体)。モードバッジと同じ言語で揃えつつ、
    意味が違う(権限ではなく見た目の設定)ので彩度を落とした中立色にする。 */
-.ui-size-badge{display:inline-flex;align-items:center;gap:6px;height:var(--ctl-h);padding:0 12px;border:1px solid var(--line);border-radius:var(--radius-pill);background:#fff;color:#3a565d;font-weight:700;font-size:var(--fs-base-sm);cursor:pointer;white-space:nowrap}
+.ui-size-badge{display:inline-flex;align-items:center;gap:var(--gap-inline);height:var(--ctl-h);padding:0 var(--ctl-pad-x);border:1px solid var(--line);border-radius:var(--radius-pill);background:#fff;color:#3a565d;font-weight:700;font-size:var(--fs-base-sm);cursor:pointer;white-space:nowrap}
 .ui-size-badge:hover{border-color:var(--teal);background:#f7fafb}
 .ui-size-badge span{font-size:var(--fs-title);line-height:1}
 .ui-size-badge b{font-weight:800}
-.ui-size-menu button>span{display:flex;align-items:center;gap:8px}
+.ui-size-menu button>span{display:flex;align-items:center;gap:var(--gap-inline)}
 /* 選択肢のプレビュー: 各段階の実際の比率で「Ａ」を出し、選ぶ前に大きさが分かるようにする。 */
 .ui-size-swatch{font-style:normal;display:inline-grid;place-items:center;width:22px;color:#0a6570}
 .ui-size-swatch[data-swatch="xs"]{font-size:var(--fs-badge)}
