@@ -284,18 +284,74 @@ def data_source_master_save():
  except Exception as e:
   return jsonify(error=f'データソース保存失敗: {e}'),500
 
+@bp.post('/api/data-source-master/update')
+def data_source_master_update():
+ """既存行の更新(§9.82)。登録側(POST /api/data-source-master)は**キーで
+    既存を探す**ため、キーを書き換えると別行の新規登録になってしまう。
+    ID指定のこの経路だけがキーそのものを付け替えられる。
+    マスタ管理画面の「編集」は元からこのURLへPOSTしており、ルートが無い
+    あいだは404で弾かれていた(設備停止マスタと同じ取りこぼし)。"""
+ try:
+  from ..db_access import ensure_data_source_table
+  x=request.get_json(force=True) or {};uid=request_user_id(x)
+  sid=x.get('id')
+  if sid is None or str(sid).strip()=='':return jsonify(error='更新対象IDがありません。'),400
+  sid=int(sid)
+  key=str(x.get('key') or '').strip().upper()
+  if not _KEY_RE.match(key):
+   return jsonify(error='キーは半角英数と _ で1〜40文字にしてください（一覧のURLに使うため）。'),400
+  if key=='MASTER':
+   return jsonify(error='MASTER はマスタDB自身に予約されています。別のキーにしてください。'),400
+  label=str(x.get('label') or '').strip() or key
+  path=DBS['MASTER']['path']
+  with connect(path,False) as c:
+   ensure_data_source_table(c);cur=c.cursor()
+   cur.execute('SELECT [ソースID] FROM [データソースマスタ] WHERE [ソースID]=?',[sid])
+   if not cur.fetchone():return jsonify(error='指定のデータソースが見つかりません。'),400
+   # 付け替え先のキーが別の行で使われていないか。キーは一覧を指す識別子で、
+   # 重なると「どちらの設定で読むのか」が決まらない。
+   cur.execute('SELECT [ソースID] FROM [データソースマスタ] WHERE [キー]=? AND [ソースID]<>?',[key,sid])
+   if cur.fetchone():
+    return jsonify(error=f'キー「{key}」は別のデータソースが使っています。'),400
+   cur.execute('UPDATE [データソースマスタ] SET [キー]=?,[表示名]=?,[RNEファイル]=?,[抽出テーブル]=?,'
+               '[出力ファイル]=?,[共有パス]=?,[既定テーブル]=?,[表示順]=?,[有効]=?,'
+               '[更新者ID]=?,[更新日時]=Now() WHERE [ソースID]=?',
+               [key,label,str(x.get('rne') or '').strip(),
+                str(x.get('table') or '').strip() or '仕掛',
+                str(x.get('output') or '').strip(),str(x.get('share') or '').strip(),
+                str(x.get('preferred') or '').strip(),
+                int(x.get('order') or 0),
+                0 if str(x.get('enabled') or '').strip()=='無効' else -1,
+                uid,sid])
+   c.commit()
+  return jsonify(ok=True,id=sid,key=key,registered=False,updated_by=uid,
+                 message='保存しました。キー・表示名・読み込み先の変更はサーバー再起動後に反映されます。')
+ except Exception as e:
+  return jsonify(error=f'データソース更新失敗: {e}'),500
+
 @bp.post('/api/data-source-master/delete')
 def data_source_master_delete():
  try:
   from ..db_access import ensure_data_source_table
   x=request.get_json(force=True) or {};uid=request_user_id(x)
+  # 画面の削除ボタンは他マスタと同じく id を送る。キー指定も受け付ける
+  # (APIを直接叩く運用・以前の呼び出し方との互換)。
+  sid=x.get('id')
   key=str(x.get('key') or '').strip().upper()
-  if not key:return jsonify(error='削除対象のキーがありません。'),400
+  if (sid is None or str(sid).strip()=='') and not key:
+   return jsonify(error='削除対象がありません。'),400
   path=DBS['MASTER']['path']
   with connect(path,False) as c:
    ensure_data_source_table(c);cur=c.cursor()
    # 物理削除ではなく無効化し、履歴を残す(他マスタと同じ方針)。
-   cur.execute('UPDATE [データソースマスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [キー]=?',[uid,key])
+   if sid is not None and str(sid).strip()!='':
+    cur.execute('UPDATE [データソースマスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [ソースID]=?',[uid,int(sid)])
+   else:
+    cur.execute('UPDATE [データソースマスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [キー]=?',[uid,key])
+   if cur.rowcount==0:return jsonify(error='指定のデータソースが見つかりません。'),400
+   if not key:
+    cur.execute('SELECT [キー] FROM [データソースマスタ] WHERE [ソースID]=?',[int(sid)])
+    r=cur.fetchone();key=str((r or [''])[0] or '')
    c.commit()
   return jsonify(ok=True,key=key,updated_by=uid,
                  message='無効にしました。一覧から消えるのはサーバー再起動後です。')

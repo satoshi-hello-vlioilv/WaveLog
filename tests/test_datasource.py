@@ -38,6 +38,7 @@ def rec(name, ok, detail=''):
 
 client = flask_app.app.test_client()
 KEY = 'PROBE_DS'
+KEY2 = 'PROBE_DS2'  # 編集でキーを付け替える先（§9.82）
 
 
 def sources():
@@ -100,13 +101,49 @@ rec('同じキーで保存すると更新になる（増えない）',
     and (next((x for x in again['items'] if x['key'] == KEY), {}) or {}).get('label') == '検証ソース2',
     f"{before_n}→{len(again.get('items', []))}")
 
+# ---- 3b) 編集（キーの付け替え、§9.82） ----
+# 登録側はキーで既存を探すので、キーを書き換えると別行の新規登録になる。
+# ID指定の /update だけが付け替えられる。マスタ管理画面の「編集」は元から
+# このURLへPOSTしており、ルートが無いあいだは404で弾かれていた。
+row = next((x for x in sources().get('items', []) if x['key'] == KEY), None)
+sid = row['id'] if row else None
+n_before = len(sources().get('items', []))
+r = client.post('/api/data-source-master/update', json={
+    'id': sid, 'key': KEY2, 'label': '改名した検証ソース', 'rne': 'PROBE.RNE',
+    'table': '仕掛', 'output': 'probe_ds.sqlite3', 'share': 'PROBE.sqlite3',
+    'preferred': '仕掛', 'order': 900, 'user_id': 'test'})
+rec('編集でキーを付け替えられる', r.status_code == 200, str(r.get_json())[:90])
+items = sources().get('items', [])
+renamed = next((x for x in items if x['key'] == KEY2), None)
+rec('付け替え後のキーで一覧に出る', renamed is not None and renamed.get('id') == sid,
+    f"id={renamed.get('id') if renamed else 'なし'} / 元={sid}")
+rec('元のキーは残らない', not any(x['key'] == KEY for x in items))
+rec('編集で行が増えない', len(items) == n_before, f'{n_before}→{len(items)}')
+rec('表示名も一緒に更新される',
+    (renamed or {}).get('label') == '改名した検証ソース', (renamed or {}).get('label', ''))
+# 別の行が使っているキーへは付け替えさせない（どちらの設定で読むか決まらない）
+other = next((x for x in items if x['key'] != KEY2), None)
+r = client.post('/api/data-source-master/update',
+                json={'id': sid, 'key': other['key'], 'label': 'x', 'user_id': 'test'})
+rec('別のデータソースが使っているキーへは付け替えない', r.status_code == 400, str(r.get_json())[:70])
+r = client.post('/api/data-source-master/update', json={'key': KEY2, 'label': 'x', 'user_id': 'test'})
+rec('ID無しの更新は断る', r.status_code == 400, str(r.get_json())[:70])
+
 # ---- 4) 壊れた入力を弾く ----
 r = client.post('/api/data-source-master', json={'key': 'bad key!', 'label': 'x', 'user_id': 'test'})
 rec('キーの形式が不正なら断る', r.status_code == 400, str(r.get_json())[:70])
 r = client.post('/api/data-source-master', json={'key': 'MASTER', 'label': 'x', 'user_id': 'test'})
 rec('MASTER は予約語として断る', r.status_code == 400, str(r.get_json())[:70])
 
-# 削除は無効化（履歴を残す）
+# 削除は無効化（履歴を残す）。画面の削除ボタンは他マスタと同じく id を送る
+# ので、キーだけでなく id でも消せること（§9.82。以前は id を無視して
+# 「削除対象のキーがありません」で断っていた）。
+r = client.post('/api/data-source-master/delete', json={'id': sid, 'user_id': 'test'})
+rec('画面と同じ id 指定で削除できる', r.status_code == 200, str(r.get_json())[:70])
+row = next((x for x in sources().get('items', []) if x['key'] == KEY2), None)
+rec('id指定の削除も無効化として効く', row is not None and row.get('active') is False,
+    f"active={row.get('active') if row else 'なし'}")
+KEY = KEY2  # 以降の後片付け・確認は付け替え後のキーで見る
 r = client.post('/api/data-source-master/delete', json={'key': KEY, 'user_id': 'test'})
 rec('削除できる', r.status_code == 200)
 row = next((x for x in sources().get('items', []) if x['key'] == KEY), None)
