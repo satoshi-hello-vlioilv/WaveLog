@@ -133,6 +133,16 @@
   一度だけパス設定マスタへ自動移行される（`_migrate_legacy_path_config`。以後は
   移行済みの目印を残し、`config/local.json`の内容は二度と見ない。マスタ管理画面
   で空欄に戻して既定へ戻す操作が復活しないようにするため）。
+- **参照データを増やすときは`データソースマスタ`の1行**（`db/master.sqlite3`、
+  定義は`backend/db_access.py`）: 「RNEから抽出→`.sqlite3`を作る→それを一覧
+  として読む」という1本の流れを1行で持つ。**`db_access.DBS`も
+  `rne_scheduler.jobs()`もここから作られる**ので、コードへ直接データソースを
+  足さないこと（以前は3箇所に分かれており、抽出先と読込先を別々に書けたため
+  「抽出しているのに読まない」設定が作れた）。パス設定マスタと同じ理由で
+  `db_access.py`に自己完結させてある（`master_repo.py`は`db_access`に依存する
+  側なので循環importになる）。接続先を決めるためサーバー再起動で反映。
+  RNE資材と`symnavim.conf`の置き場は`rne_assets_dir`/`rne_conf_path`
+  （こちらは都度読み直すので再起動不要）。固定は`tests/test_datasource.py`。
 - **仕掛/品質データのローカル運用**: パス設定マスタの`sikalot_source`を`local`に
   すると、ネットワーク共有ではなく`backend/rne_scheduler.py`が定期的にRNE
   (Navigator問い合わせ定義)から抽出・更新する`db/sikalotnow.sqlite3`/

@@ -10,7 +10,7 @@
 @layer component {
 .sc-panel.sc-session-locked .sc-row-delete{display:none}
 .sc-body{flex:1;min-height:0;display:flex;gap:0;overflow:hidden}
-.sc-timeline{flex:1;min-width:0;overflow-y:auto;overflow-x:auto;padding:8px 14px;display:flex;flex-direction:column;gap:var(--gap-hair)}
+.sc-timeline{flex:1;min-width:0;overflow-y:auto;overflow-x:auto;padding:var(--space-1) var(--space-2);display:flex;flex-direction:column;gap:0}
 .sc-side{width:300px;flex-shrink:0;border-left:1px solid var(--line);background:#fff;overflow-y:auto;padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-4)}
 /* .sc-body/.sc-mode-toggle/.sc-board-windowと同じ既知の落とし穴(§9.9参照):
    自身のクラスでdisplay:flexを指定しているため、hidden属性だけでは隠れない
@@ -214,14 +214,16 @@
 .sc-row-head,.sc-row-line{
  display:grid;
  /* ハンドル/区分/作業可否/日付/時刻/勤務/残り/内容/見積/実績/備考/操作 */
- grid-template-columns:calc(18px * var(--ui-scale)) calc(92px * var(--ui-scale)) calc(44px * var(--ui-scale))
+ grid-template-columns:calc(18px * var(--ui-scale)) calc(62px * var(--ui-scale)) calc(44px * var(--ui-scale))
   calc(50px * var(--ui-scale))
   calc(112px * var(--ui-scale)) calc(58px * var(--ui-scale)) calc(88px * var(--ui-scale))
   minmax(calc(150px * var(--ui-scale)),1fr) calc(62px * var(--ui-scale)) calc(88px * var(--ui-scale))
   calc(112px * var(--ui-scale)) calc(148px * var(--ui-scale));
- align-items:center;column-gap:8px;min-width:calc(1116px * var(--ui-scale));
+ /* 列の間は --gap-tight(4px)。以前は8pxで、11本ぶんで88px を余白に使って
+    いた。区分列も92→62pxへ詰めてあり、同じ幅で列が2つぶん多く入る。 */
+ align-items:center;column-gap:var(--gap-tight);min-width:calc(1042px * var(--ui-scale));
 }
-.sc-row-head{padding:3px 8px 4px;position:sticky;top:0;z-index:1;background:#f7fafb;font-size:var(--fs-micro);font-weight:800;color:#8a9aa0;border-bottom:1px solid var(--line)}
+.sc-row-head{padding:2px var(--space-2) 3px;position:sticky;top:0;z-index:1;background:#f7fafb;font-size:var(--fs-micro);font-weight:800;color:#8a9aa0;border-bottom:1px solid var(--line)}
 .sc-row-line{padding:var(--row-pad-y) 8px;min-height:var(--row-h);border-radius:var(--radius-xs);background:#fff;border-bottom:1px solid #eef2f4}
 .sc-row-line:hover{background:#f7fafb}
 .sc-row-line[draggable="true"]{cursor:grab}
@@ -239,18 +241,26 @@
 /* 区分(§9.39): 完了済み/作業中/作業予定を行の中の列で持つ。以前は
    セクション見出しで分けていたが、日付・勤務でまとめ直したいときに
    見出しが二重になるため、列へ移した。 */
+/* 区分は**ただの状態表示**なので、押せる部品と同じ大きさ(--ctl-h-xs=26px)を
+   取らせない。以前はその高さと丸み・枠線のせいで、1文字ぶんの情報に行の
+   高さいっぱいを使っていた(行を薄くしても区分だけが厚いままだった)。
+   面のごく淡い色と左端の色帯で状態を示し、高さは文字なりにする。 */
 .sc-row-cat{
- display:inline-flex;align-items:center;gap:var(--gap-tight);justify-self:start;max-width:100%;
- height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);border-radius:var(--radius-md);
- font-size:var(--fs-sm);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
- background:#eef2f4;color:#60747b;border:1px solid transparent;
+ display:inline-flex;align-items:center;gap:var(--gap-hair);justify-self:start;max-width:100%;
+ padding:0 var(--space-1);border-radius:var(--radius-xs);border-left:2px solid transparent;
+ /* **文字は小さくしない。** 区分もデータ列の1つなので、読める大きさ
+    (--fs-sm)を保つ(tests/test_scbalance.js が一覧のセルとの関係を固定
+    している)。詰めるのは箱の側——高さ・枠線・丸みを外すだけで足りる。 */
+ font-size:var(--fs-sm);font-weight:700;line-height:1.4;
+ white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+ background:transparent;color:#8a9aa0;
 }
 .sc-row-cat i{font-style:normal;font-size:var(--fs-sm);line-height:1}
-.sc-cat-doing{background:var(--success-bg);color:var(--success);border-color:var(--success-border)}
-.sc-cat-done{background:#eef2f4;color:#7b8e95}
-.sc-cat-planned{background:var(--pale);color:#0c5d67;border-color:#cfe6ea}
-.sc-cat-cancel{background:var(--danger-bg);color:var(--danger);border-color:var(--danger-border)}
-.sc-cat-stop{background:var(--warn-bg);color:var(--warn-fg);border-color:var(--warn-border)}
+.sc-cat-doing{background:var(--success-bg);color:var(--success);border-left-color:var(--success)}
+.sc-cat-done{background:transparent;color:#9caeb4;border-left-color:#cfdde0}
+.sc-cat-planned{background:transparent;color:#0c5d67;border-left-color:var(--teal)}
+.sc-cat-cancel{background:var(--danger-bg);color:var(--danger);border-left-color:var(--danger)}
+.sc-cat-stop{background:var(--warn-bg);color:var(--warn-fg);border-left-color:var(--warn-border)}
 .sc-row-date{font-size:var(--fs-sm);color:#60747b;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}
 .sc-row-time{font-size:var(--fs-base-sm);color:#3a565d;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}
 .sc-row-shift{font-size:var(--fs-sm);color:#3a565d;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -261,7 +271,20 @@
 .sc-row-actual{font-size:var(--fs-sm);color:#3a565d;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap;overflow:hidden}
 .sc-row-flags{display:flex;gap:var(--gap-tight);font-size:var(--fs-micro);align-items:center;white-space:nowrap;overflow:hidden}
 .sc-flag-overdue{color:var(--danger);font-weight:800}
-.sc-row-actions{display:flex;gap:var(--gap-tight);justify-content:flex-end}
+/* 操作(開始・固定・帳票・削除)は**一番右端の列**なので、ウィンドウを狭めたり
+   仕掛一覧との分割バーを動かすと真っ先に見えなくなり、横スクロールしないと
+   押せなかった。列の並びは変えずに、右端へ貼り付けて常に見えるようにする
+   (position:sticky)。背景は行から受け継ぎ、左に境目を1本入れて「浮いて
+   いる列」だと分かるようにする。ヘッダー側も同じ位置で止める。 */
+.sc-row-actions{
+ display:flex;gap:var(--gap-hair);justify-content:flex-end;
+ position:sticky;right:0;z-index:2;
+ background:inherit;padding-left:var(--space-1);
+ box-shadow:-6px 0 6px -6px rgba(23,56,66,.18);
+}
+/* 見出し側も同じ位置で止める。止めないと、横スクロールしたとき
+   ボタンだけが右端に残って「操作」の見出しが流れていってしまう。 */
+.sc-actions-head{position:sticky;right:0;z-index:2;background:#f7fafb;text-align:right;padding-left:var(--space-1)}
 .sc-row-btn{min-width:var(--ctl-h-xs);border:1px solid var(--line);background:#fff;line-height:1;cursor:pointer;color:#60747b;flex-shrink:0}
 .sc-row-btn:hover{border-color:var(--teal);color:#0c5d67}
 .sc-row-btn.active{background:var(--computed-bg);border-color:var(--teal);color:#0c5d67}

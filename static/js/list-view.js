@@ -469,8 +469,129 @@ function checkParentLookupRows(targets){
    参照し続ける潜在不具合があった)。 */
 $('#search').oninput=()=>{clearTimeout(S.t);S.t=setTimeout(()=>{S.page=1;load()},300)};
 $('#pageSize').onchange=()=>{S.page=1;load()};
-// 「再読込」は必ずサーバーから取り直す(キャッシュを返すと押しても何も
-// 起きないように見えるため)。
-$('#reload').onclick=()=>{invalidateTableCache();load(true)};
+/* ---------- RNE抽出の実行と進捗表示（§9.78） ----------
+   抽出は数十秒かかる背景処理。画面は覆わず(操作を止めない)、ヘッダーの下に
+   細い進捗帯を出す。**終わったジョブ数で数える**ので、バーは実際の進み方を
+   表す(backend/rne_scheduler.py が実行中でも jobs[] を更新する)。
+   ポーリングは1秒間隔。取りこぼしても最後に必ず状態を読み直して締める。 */
+window.WL=window.WL||{};
+WL.rne=(()=>{
+ const POLL_MS=1000, MAX_WAIT_MS=10*60*1000;
+ const el=id=>document.getElementById(id);
+ const status=()=>api('/api/rne-extract/status');
+ function show(on){const b=el('rneProgress');if(b)b.hidden=!on}
+ function paint(st,note){
+  const jobs=st?.jobs||[];
+  const done=jobs.filter(j=>j&&j.running===false).length;
+  const total=jobs.length||1;
+  const pct=Math.min(100,Math.round(done/total*100));
+  const bar=el('rneProgressBar'),fill=bar?.querySelector('i');
+  if(fill)fill.style.setProperty('--rne-pct',pct+'%');
+  if(bar)bar.setAttribute('aria-valuenow',String(pct));
+  const p=el('rneProgressPct');if(p)p.textContent=pct+'%';
+  const t=el('rneProgressTitle');
+  if(t)t.textContent=note||`RNEファイルから作成しています（${done}/${jobs.length||'?'}）`;
+  const box=el('rneProgressJobs');
+  if(box)box.innerHTML=jobs.map(j=>{
+   const cls=j.running?'is-running':(j.ok?'is-ok':'is-ng');
+   const mark=j.running?'…':(j.ok?'✓':'×');
+   const detail=j.running?'抽出中':(j.ok?`${j.rows??'-'}行`:(j.error||'失敗'));
+   return `<span class="rne-job ${cls}"><b>${mark}</b>${esc(j.name)} <small>${esc(String(detail))}</small></span>`;
+  }).join('');
+ }
+ async function runWithProgress(){
+  show(true);paint({jobs:[]},'抽出を開始しています');
+  try{
+   await api('/api/rne-extract/run',{method:'POST'});
+  }catch(e){
+   show(false);showToast?.('RNEからの作成を開始できませんでした',e.message,7000);return false;
+  }
+  const until=Date.now()+MAX_WAIT_MS;
+  let last=null;
+  while(Date.now()<until){
+   await new Promise(r=>setTimeout(r,POLL_MS));
+   try{last=await status()}catch(_){continue}
+   paint(last);
+   if(!last.running)break;
+  }
+  // 実行中フラグが立つ前に1周目を読むことがあるので、最後にもう一度締める。
+  try{last=await status();paint(last)}catch(_){}
+  const jobs=last?.jobs||[];
+  const ng=jobs.filter(j=>j&&j.running===false&&!j.ok);
+  if(ng.length){
+   showToast?.('RNEからの作成に失敗しました',ng.map(j=>`${j.name}: ${j.error}`).join(' / '),9000);
+  }else{
+   showToast?.('RNEファイルから作成しました',
+     jobs.map(j=>`${j.name} ${j.rows??'-'}行`).join(' / '),4200);
+  }
+  setTimeout(()=>show(false),1200);   // 100%を一瞬見せてから畳む
+  return !ng.length;
+ }
+ return {status,runWithProgress};
+})();
+
+/* ---------- 再読込（読み直し方を選ぶ、§9.78） ----------
+   仕掛・品質データは「共有にある元データを取り直す」だけでなく、
+   RNE(Navigator問い合わせ定義)から作り直すこともできる。以前は後者への
+   入口がマスタ管理 > パス設定の中にしか無く、一覧を見ている人からは
+   辿り着けなかった。モードバッジ・表示サイズと同じポップオーバーで
+   「どちらをするか」を選ばせる(押す前に選択肢が見える形に揃える)。 */
+const RNE_TARGET_DBS=['SIKALOTNOW','SIKALOTDEF'];
+function reloadList(){invalidateTableCache();load(true)}
+
+function closeReloadMenu(){
+ document.getElementById('reloadMenu')?.remove();
+ $('#reload')?.setAttribute('aria-expanded','false');
+ document.removeEventListener('click',onReloadOutside,true);
+}
+function onReloadOutside(e){
+ const menu=document.getElementById('reloadMenu');
+ if(menu&&!menu.contains(e.target)&&!e.target.closest('#reload'))closeReloadMenu();
+}
+async function openReloadMenu(anchor){
+ closeReloadMenu();
+ const menu=document.createElement('div');
+ menu.className='access-mode-menu reload-menu';menu.id='reloadMenu';
+ menu.innerHTML=`<button type="button" data-reload-action="list">`
+  +`<span>一覧を再読込</span><small>いま読んでいる場所から取り直します</small></button>`;
+ document.body.append(menu);
+ // 位置の決め方はモードバッジ・表示サイズのポップオーバーと同じ(base.js)。
+ const place=()=>{
+  const r=anchor.getBoundingClientRect();
+  menu.style.top=`${r.bottom+6}px`;
+  menu.style.left=`${Math.max(8,r.right-menu.offsetWidth)}px`;
+ };
+ place();
+ menu.querySelector('[data-reload-action="list"]').onclick=()=>{closeReloadMenu();reloadList()};
+ $('#reload').setAttribute('aria-expanded','true');
+ requestAnimationFrame(()=>document.addEventListener('click',onReloadOutside,true));
+
+ /* RNEからの作成は、この一覧が対象で、かつ抽出資材が置いてある端末だけ。
+    出せない理由がある場合も**黙って隠さず**、無効の項目として理由を出す
+    (「あるはずの機能が無い」と探させないため)。 */
+ if(!RNE_TARGET_DBS.includes(S.db))return;
+ const btn=document.createElement('button');
+ btn.type='button';btn.dataset.reloadAction='rne';
+ btn.innerHTML='<span>RNEファイルから作成して再読込</span><small>確認しています…</small>';
+ btn.disabled=true;menu.append(btn);place();
+ let st=null;
+ try{st=await WL.rne.status()}catch(e){st=null}
+ if(!document.getElementById('reloadMenu'))return;     // 待っている間に閉じられた
+ const small=btn.querySelector('small');
+ if(!st){small.textContent='抽出の状態を確認できませんでした';return}
+ if(st.running){small.textContent='いま抽出中です。完了までお待ちください';return}
+ if(!st.canRun){
+  const miss=(st.assets?.rneMissing||[]).join(' / ');
+  small.textContent=miss?`抽出定義が未配置です（${miss}）`:'接続情報(symnavim.conf)が未配置です';
+  return;
+ }
+ btn.disabled=false;
+ small.textContent='Navigatorから抽出し直してから読み込みます（数十秒）';
+ btn.onclick=async()=>{closeReloadMenu();await WL.rne.runWithProgress();reloadList()};
+}
+$('#reload').onclick=e=>{
+ if(document.getElementById('reloadMenu')){closeReloadMenu();return}
+ openReloadMenu(e.currentTarget);
+};
 $('#prev').onclick=()=>{if(S.page>1){S.page--;load()}};
 $('#next').onclick=()=>{S.page++;load()};

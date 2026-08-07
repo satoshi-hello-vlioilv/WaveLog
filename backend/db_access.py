@@ -250,7 +250,8 @@ PATH_CONFIG_STATIC_KEYS=('sikalot_source','sikalotnow_path','sikalotdef_path','r
 #   'on'          … 取得元に関わらず動かす(共有から読みつつローカルも更新する等)
 #   'off'         … 定期実行しない(手動の「今すぐ抽出」は別途いつでも実行できる)
 # 抽出そのものは取得元と独立して動けるようにしてある(§9.50)。
-PATH_CONFIG_LIVE_KEYS=('rne_extract_interval_sec','rne_extract_enabled','schedule_lock_ttl_sec','schedule_lock_verify_delay_ms')
+PATH_CONFIG_LIVE_KEYS=('rne_extract_interval_sec','rne_extract_enabled','schedule_lock_ttl_sec','schedule_lock_verify_delay_ms',
+                       'rne_assets_dir','rne_conf_path')
 PATH_CONFIG_KEYS=PATH_CONFIG_STATIC_KEYS+PATH_CONFIG_LIVE_KEYS
 
 def ensure_path_config_table(c):
@@ -303,6 +304,95 @@ def path_config_value(key,default=None):
  起動時に確定した値(DBS/SCHEDULE_SHARE_PATH等)を使うこと。"""
  v=_master_path_config().get(key)
  return v if v not in (None,'') else default
+
+# ========================================================================
+# データソースマスタ（§9.79）
+# ------------------------------------------------------------------------
+# 「RNEから抽出して .sqlite3 を作り、それを一覧として読む」というのが、
+# 参照データの唯一の作られ方。以前はその1本の流れが3箇所に分かれて
+# ハードコードされていた:
+#   ・何を抽出するか        rne_scheduler.JOBS
+#   ・どこへ書くか          JOBS[].output
+#   ・どこを読むか          db_access.DBS[].path
+# 増やすには3箇所を直す必要があり、しかも**抽出先と読込先を別々に書ける**
+# ため「抽出しているのに読まない」状態が作れてしまった。
+# 1行=1データソースにして、作る側と読む側を隣り合う欄に置く。
+#
+# パス設定マスタと同じくここ(db_access.py)に自己完結させる。master_repo.py
+# は db_access に依存する側なので、あちらへ置くと循環importになる。
+# ========================================================================
+DATA_SOURCE_TABLE='データソースマスタ'
+# 既定の2件。マスタが空のときだけ入れる(初回起動・既存環境の互換)。
+# 出力先/共有パスは下で解決するため、ここではファイル名だけを持つ。
+_DEFAULT_DATA_SOURCES=(
+ {'key':'SIKALOTNOW','label':'仕掛（現在）','rne':'SIKALOTNOW.RNE','table':'仕掛',
+  'output':'sikalotnow.sqlite3','share':'SIKALOTNOW.sqlite3','preferred':'仕掛','order':10},
+ {'key':'SIKALOTDEF','label':'品質データ','rne':'SIKALOTDEF.RNE','table':'仕掛',
+  'output':'sikalotdef.sqlite3','share':'SIKALOTDEF.sqlite3','preferred':'仕掛','order':20},
+)
+
+def ensure_data_source_table(c):
+ names=tables(c);created=False
+ if DATA_SOURCE_TABLE not in names:
+  c.cursor().execute(
+   'CREATE TABLE [データソースマスタ] ('
+   '[ソースID] INTEGER PRIMARY KEY AUTOINCREMENT, [キー] TEXT, [表示名] TEXT, '
+   '[RNEファイル] TEXT, [抽出テーブル] TEXT, [出力ファイル] TEXT, [共有パス] TEXT, '
+   '[既定テーブル] TEXT, [表示順] INTEGER, [有効] INTEGER, '
+   '[登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
+  c.commit();created=True
+ return created
+
+def data_source_rows(c,include_disabled=False):
+ """{キー: 設定}のリスト。テーブルが無ければ空(読み取り専用接続からも
+ 安全に呼べるよう、CREATEはしない)。"""
+ if DATA_SOURCE_TABLE not in tables(c):return []
+ cur=c.cursor()
+ cur.execute('SELECT [ソースID],[キー],[表示名],[RNEファイル],[抽出テーブル],[出力ファイル],'
+             '[共有パス],[既定テーブル],[表示順],[有効] FROM [データソースマスタ] '
+             'ORDER BY [表示順],[キー]')
+ out=[]
+ for r in cur.fetchall():
+  active=True if r[9] is None else bool(r[9])
+  key=str(r[1] or '').strip()
+  if not key or (not active and not include_disabled):continue
+  out.append({'id':r[0],'key':key,'label':str(r[2] or '').strip() or key,
+              'rne':str(r[3] or '').strip(),'table':str(r[4] or '').strip() or '仕掛',
+              'output':str(r[5] or '').strip(),'share':str(r[6] or '').strip(),
+              'preferred':str(r[7] or '').strip(),'order':int(r[8] or 0),'active':active})
+ return out
+
+_DATA_SOURCE_SEEDED_KEY='__data_sources_seeded__'
+
+def seed_data_sources(c):
+ """1件も無いときだけ既定を入れる。**既存環境の動作を変えないため**の種で、
+ 利用者が全部消した状態を勝手に復活させないよう「空のときだけ」に限る
+ ……とすると全削除が復活してしまうので、パス設定マスタの移行と同じく
+ 一度きりの目印で判定する(_DATA_SOURCE_SEEDED_KEY)。"""
+ ensure_data_source_table(c)
+ if path_config_rows(c).get(_DATA_SOURCE_SEEDED_KEY):return False
+ cur=c.cursor()
+ cur.execute('SELECT COUNT(*) FROM [データソースマスタ]')
+ if int(cur.fetchone()[0] or 0)==0:
+  for d in _DEFAULT_DATA_SOURCES:
+   cur.execute('INSERT INTO [データソースマスタ] ([キー],[表示名],[RNEファイル],[抽出テーブル],'
+               '[出力ファイル],[共有パス],[既定テーブル],[表示順],[有効],[登録者ID],[更新者ID],'
+               '[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,?,-1,?,?,Now(),Now())',
+               [d['key'],d['label'],d['rne'],d['table'],d['output'],d['share'],
+                d['preferred'],d['order'],'seed','seed'])
+ set_path_config(c,_DATA_SOURCE_SEEDED_KEY,'done','seed')
+ c.commit()
+ return True
+
+def _master_data_sources():
+ try:
+  if not _MASTER_PATH.exists():return []
+  with connect(_MASTER_PATH,False) as c:
+   seed_data_sources(c)
+   return data_source_rows(c)
+ except Exception as e:
+  app_logger().warning('データソースマスタを読めませんでした(既定の2件で続行します): %s',e)
+  return []
 
 _VALID_SIKALOT_SOURCES=('network','local')
 # 移行済みかどうかの目印。パス設定マスタ自身に1行として保存する(移行専用の
@@ -370,14 +460,40 @@ SIKALOTDEF_LOCAL_PATH=DB_DIR/"sikalotdef.sqlite3"
 # 複製したファイルを指す、等)はsikalot_sourceの切替より常に優先する
 # (従来からの開発/検証用の上書き挙動を変えないため)。上書き先の拡張子が
 # .sqlite3等であれば自動的にSQLiteとして接続する(_engine_for)。
-_sikalotnow_override=_static_path_cfg('sikalotnow_path')
-_SIKALOTNOW_PATH=Path(_sikalotnow_override) if _sikalotnow_override else (SIKALOTNOW_LOCAL_PATH if SIKALOT_SOURCE=='local' else SIKA_DIR/"SIKALOTNOW.sqlite3")
-_sikalotdef_override=_static_path_cfg('sikalotdef_path')
-_SIKALOTDEF_PATH=Path(_sikalotdef_override) if _sikalotdef_override else (SIKALOTDEF_LOCAL_PATH if SIKALOT_SOURCE=='local' else SIKA_DIR/"SIKALOTDEF.sqlite3")
-DBS={
- "SIKALOTNOW":{"path":_SIKALOTNOW_PATH,"label":"仕掛（現在）","role":"readonly","preferred":"仕掛","engine":"sqlite"},
- "SIKALOTDEF":{"path":_SIKALOTDEF_PATH,"label":"品質データ","role":"readonly","preferred":"仕掛","engine":"sqlite"},
- "MASTER":{"path":_MASTER_PATH,"label":"マスタ一覧","role":"master","preferred":"オペレータマスタ","engine":"sqlite"}}
+def _source_path(entry):
+ """1件のデータソースが「今どこを読むか」を決める。優先順位は
+    (1) パス設定マスタの個別上書き(sikalotnow_path 等。検証用に手元の複製へ
+        向ける従来の仕掛けで、常に最優先)
+    (2) sikalot_source が local なら 出力ファイル(RNEで作った成果物)
+    (3) それ以外は 共有パス
+    相対パスは、出力ファイルは db/、共有パスは仕掛の共有フォルダを基点にする
+    (現場は「ファイル名だけ」を入れることが多く、絶対パスを強制すると
+    設定の手間と打ち間違いが増えるため)。"""
+ override=_static_path_cfg(f"{entry['key'].lower()}_path")
+ if override:return Path(override)
+ local=entry.get('output') or ''
+ share=entry.get('share') or ''
+ if SIKALOT_SOURCE=='local' and local:
+  p=Path(local);return p if p.is_absolute() else DB_DIR/p
+ if share:
+  p=Path(share);return p if p.is_absolute() else SIKA_DIR/p
+ if local:
+  p=Path(local);return p if p.is_absolute() else DB_DIR/p
+ return DB_DIR/f"{entry['key'].lower()}.sqlite3"
+
+DATA_SOURCES=_master_data_sources() or [
+ # マスタを読めなかった場合の保険。既定の2件で従来どおり動かす。
+ {'key':d['key'],'label':d['label'],'rne':d['rne'],'table':d['table'],
+  'output':d['output'],'share':d['share'],'preferred':d['preferred'],
+  'order':d['order'],'active':True,'id':None}
+ for d in _DEFAULT_DATA_SOURCES]
+
+DBS={s['key']:{"path":_source_path(s),"label":s['label'],"role":"readonly",
+               "preferred":s.get('preferred') or s.get('table') or '仕掛',
+               "engine":"sqlite","source":s}
+     for s in DATA_SOURCES}
+DBS["MASTER"]={"path":_MASTER_PATH,"label":"マスタ一覧","role":"master",
+               "preferred":"オペレータマスタ","engine":"sqlite"}
 # 閲覧用の追加複製先(パス設定マスタの"records_backup_export_path")。
 # 未設定ならNoneのままで、records_export.pyは複製を一切行わない(既定は現状維持)。
 _records_backup_export_override=_static_path_cfg('records_backup_export_path')

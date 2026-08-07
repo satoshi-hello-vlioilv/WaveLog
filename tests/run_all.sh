@@ -93,7 +93,9 @@ import json,os,urllib.request
 v=json.loads(os.environ['WL_PAYLOAD'])
 keys=['sikalot_source','sikalotnow_path','sikalotdef_path','records_backup_export_path',
       'schedule_share_path','rne_extract_enabled','rne_extract_interval_sec',
-      'schedule_lock_ttl_sec','schedule_lock_verify_delay_ms']
+      'schedule_lock_ttl_sec','schedule_lock_verify_delay_ms',
+      # RNE資材・接続情報の置き場(§9.79)。テストが書き換えるので退避対象に含める。
+      'rne_assets_dir','rne_conf_path']
 body={k:v.get(k,'') for k in keys}; body['user_id']='tests'
 req=urllib.request.Request('http://127.0.0.1:5029/api/path-config-master',
   data=json.dumps(body).encode(),headers={'Content-Type':'application/json'})
@@ -168,7 +170,7 @@ sleep 3
 echo "--- 一般UI (editモード) ---"
 mode edit
 for t in test_stopcat test_workable test_wkbg test_orphan test_audit test_sub test_maint test_setpage test_nav test_navdyn test_hdctx test_uiux test_histdel test_uisize test_p11 test_p11c test_master test_shift test_waiting test_waiting2 \
-         test_calscale test_hdr test_listcache test_ttlcache test_flows test_dbequip test_course test_tolscale test_defect test_theme test_scale test_fit test_bootui; do run $NODE $t.js; done
+         test_calscale test_hdr test_listcache test_ttlcache test_flows test_dbequip test_course test_tolscale test_defect test_theme test_scale test_fit test_bootui test_density; do run $NODE $t.js; done
 
 echo "--- スケジュール (テスト側でモードを切り替える) ---"
 for t in test_screport test_startwork test_scsync test_sccat test_scbalance test_scbatch \
@@ -183,7 +185,7 @@ for t in test_cols test_content_ui test_content_apply test_listmodal test_split_
 echo "--- サーバー側 ---"
 mode schedule
 for t in test_sclock test_scwritespeed test_colscache test_colsripple test_modeguard test_noaccess \
-         test_csslint test_dbopen test_error; do run python3 $t.py; done
+         test_csslint test_dbopen test_error test_datasource; do run python3 $t.py; done
 
 echo
 echo "=================================================="

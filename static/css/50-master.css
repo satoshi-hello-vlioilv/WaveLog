@@ -304,4 +304,15 @@
 .qa-v7 .qa-design-pane{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:minmax(300px,336px) minmax(0,1fr);gap:var(--gap-section);padding:var(--space-3)}
 /* 左: レシピ（アコーディオン＋固定フッター） */
 .qa-v7 .qa-recipe{min-height:0;display:flex;flex-direction:column;gap:var(--gap-section)}
+
+/* ---------- 入力欄のグループ見出し(§9.79) ----------
+   項目が9個並ぶと「どれとどれが関係するのか」を毎回読み解くことになる。
+   3〜4個ずつに束ね、まとまりの名前で意味を渡す。行そのものではなく
+   グリッドの1行を丸ごと使う(欄の並びを崩さない)。 */
+.mm-fieldgroup{
+ grid-column:1/-1;margin:var(--space-3) 0 0;
+ padding-bottom:var(--space-1);border-bottom:1px solid var(--line-soft);
+ font-size:var(--fs-base-sm);font-weight:700;color:var(--teal-dark);
+}
+.mm-fieldgroup:first-child{margin-top:0}
 }
