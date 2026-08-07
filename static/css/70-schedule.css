@@ -1,0 +1,612 @@
+/* ============================================================
+   70-schedule.css — 作業スケジュール・勤務体系
+   ------------------------------------------------------------
+   app.css を分割したもの。**読み込み順を変えないこと。**
+   同じ @layer の中では「後に書いたほうが勝つ」が今も効いているため、
+   ファイルの順序＝カスケードの順序になる。順序は templates/index.html の
+   <link> の並びで決まり、tests/test_csslint.py が並びを固定している。
+   レイヤの宣言とトークンは 00-base.css が持つ。
+   ============================================================ */
+@layer component {
+.sc-panel.sc-session-locked .sc-row-delete{display:none}
+.sc-body{flex:1;min-height:0;display:flex;gap:0;overflow:hidden}
+.sc-timeline{flex:1;min-width:0;overflow-y:auto;overflow-x:auto;padding:8px 14px;display:flex;flex-direction:column;gap:2px}
+.sc-side{width:300px;flex-shrink:0;border-left:1px solid var(--line);background:#fff;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:16px}
+/* .sc-body/.sc-mode-toggle/.sc-board-windowと同じ既知の落とし穴(§9.9参照):
+   自身のクラスでdisplay:flexを指定しているため、hidden属性だけでは隠れない
+   (author-originのnormal宣言がUAデフォルトの[hidden]{display:none}に勝つ)。
+   editモードで「設備停止を追加」等がスケジュールモード用のヒント文言ごと
+   透けて見えていた実不具合を修正。 */
+/* .sc-side自体の折りたたみ(§9.13改訂)。既定は折りたたみ(scState.hidden相当は
+   schedule-view.jsのscSideCollapsed、既定true)。境界に常時見える細いタブ
+   (#scSideToggle)で開閉する。 */
+.sc-side-tab{width:16px;flex-shrink:0;align-self:stretch;border:0;border-left:1px solid var(--line);background:#f7fafb;cursor:pointer;font-size:var(--fs-micro);color:#8a9aa0;padding:0}
+.sc-side-tab:hover{background:var(--pale);color:#075e67}
+.sc-side-title{font-size:var(--fs-sm);font-weight:800;color:#60747b;margin-bottom:6px}
+.sc-empty-note{color:#8a9aa0;font-size:var(--fs);padding:10px 2px}
+/* 折りたたみ(§9.13新設)。「常時表示だとスケジュールの視野を圧迫する」との
+   指摘のため既定を閉にし(#scStopButtonsのhidden属性、schedule-view.js)、
+   ヘッダーのシェブロンで開閉状態を示す。 */
+.sc-side-section-toggle{display:flex;align-items:center;justify-content:space-between;width:100%;padding:0;border:0;background:transparent;cursor:pointer;margin-bottom:6px}
+.sc-side-section-toggle .sc-side-title{margin-bottom:0}
+.sc-collapse-chevron{font-size:var(--fs-micro);color:#8a9aa0;transition:transform .15s ease}
+.sc-side-section-toggle.open .sc-collapse-chevron{transform:rotate(180deg)}
+.sc-stop-groups{display:flex;flex-direction:column;gap:12px}
+.sc-stop-group-title{display:flex;align-items:center;gap:5px;font-size:var(--fs-sm);font-weight:800;color:#8a9aa0;margin-bottom:5px;text-transform:uppercase;letter-spacing:.02em}
+.sc-stop-group-icon{font-size:var(--fs-sm)}
+.sc-stop-buttons{display:flex;flex-wrap:wrap;gap:6px}
+.sc-stop-button{border:1px solid var(--line);background:#fff;cursor:grab}
+.sc-stop-button:hover{border-color:var(--teal)}
+@media(max-width:1000px){.sc-body{flex-direction:column}.sc-side{width:auto;border-left:0;border-top:1px solid var(--line)}}
+/* ---------------------------------------------------------------
+   フローティングウィンドウ(§9.13・§9.14・§9.16新設): 仕掛一覧・設備停止を、
+   常時確保された画面領域を使わずに素早く開ける代替の入口。全画面シェード
+   付きの.record-modalだと背景(タイムライン)へドラッグ&ドロップできない
+   ため(実際に報告された不具合)、シェードを持たない「浮いた」ウィンドウ
+   として作り直した。ヘッダー(.sc-float-header)をドラッグして移動、右下角
+   (.sc-float-resize)をドラッグしてリサイズできる(makeFloatingWindow、
+   schedule-view.js)。ウィンドウの外側は常に操作可能なため、開いたまま
+   タイムラインへドラッグ&ドロップできる。
+   --------------------------------------------------------------- */
+.sc-float-win{
+ position:fixed;z-index:1600;background:#fff;border:1px solid var(--teal);border-radius:var(--radius-md);
+ box-shadow:0 20px 60px #00000040;display:flex;flex-direction:column;overflow:hidden;
+}
+.sc-float-header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;background:var(--nav);color:#fff;cursor:move;flex-shrink:0;user-select:none}
+.sc-float-header h2{margin:1px 0 0;font-size:var(--fs-title)}
+.sc-float-header small{display:block;color:#8fd4d4;font-size:var(--fs-tiny);letter-spacing:.04em}
+.sc-float-header button{border:0;background:transparent;color:#fff;font-size:var(--fs-lg);cursor:pointer;line-height:1;flex-shrink:0}
+.sc-float-body{flex:1;min-height:0;overflow:auto;padding:var(--pad-card)}
+.sc-float-body #genericFilterBar{margin:0 0 8px}
+.sc-float-body #grid{margin:0;min-height:0;border:0}
+#scListModalBody{display:flex;flex-direction:column;overflow:hidden;padding-bottom:0}
+#scListModalBody #genericFilterBar,#scListModalBody #listToolbar{flex:0 0 auto}
+#scListModalBody #grid{flex:1 1 auto;min-height:0}
+.sc-float-resize{position:absolute;right:0;bottom:0;width:20px;height:20px;cursor:nwse-resize;z-index:2}
+/* つまみは目に入る濃さにする(以前は淡すぎて「サイズを変えられる」ことに
+   気づかれず、しかも本文末尾の保存ボタンと重なる位置にあった)。 */
+.sc-float-resize::after{content:'';position:absolute;right:3px;bottom:3px;width:10px;height:10px;border-right:2px solid #6f8f96;border-bottom:2px solid #6f8f96}
+.sc-float-resize:hover::after{border-color:var(--teal)}
+/* 主要動作を置く固定フッター(スクロールしない)。本文がいくら長くても
+   保存ボタンは常に見える。 */
+.sc-float-foot{flex:0 0 auto;display:flex;align-items:center;gap:var(--space-2);padding:8px 12px 8px;
+  border-top:1px solid var(--line);background:#f7fafb;flex-wrap:wrap}
+.sc-content-foot-actions{margin-left:auto;display:flex;gap:6px;align-items:center;padding-right:14px}
+.sc-float-foot button{border:1px solid var(--line);background:#fff;cursor:pointer;color:#60747b}
+.sc-float-foot button:hover{border-color:var(--teal);background:#f7fafb}
+.sc-float-foot .sc-column-save{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:800}
+.sc-float-foot .sc-column-save:hover{background:var(--teal-dark);color:#fff}
+.sc-column-count{font-size:var(--fs-micro);color:#60747b;font-weight:700}
+/* 保存前に結果を見せるプレビュー */
+.sc-content-preview{flex:1 1 100%;display:flex;align-items:baseline;gap:6px;min-width:0}
+.sc-content-preview-label{flex:none;font-size:var(--fs-tiny);font-weight:800;color:#8a9aa0}
+.sc-content-preview b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-sm);color:#173842}
+.sc-content-chosen-head{display:flex;align-items:center;gap:6px}
+.sc-content-chosen-head small{font-weight:600;color:#8a9aa0;font-size:var(--fs-tiny)}
+.sc-content-filter{margin-left:auto;height:var(--ctl-h-xs);min-width:0;flex:0 1 150px;padding:0 8px;border:1px solid var(--line);border-radius:var(--radius-md);background:#fff;font-size:var(--fs-micro)}
+/* スケジュール列表示マスタ(§9.18新設)のポップアップ内容。 */
+.sc-column-list{display:flex;flex-direction:column;gap:2px;margin:8px 0;max-height:calc(100% - 110px);overflow-y:auto}
+.sc-column-item{display:flex;align-items:center;gap:7px;padding:4px 6px;border-radius:var(--radius-xs);font-size:var(--fs-base-sm);color:#173842;cursor:pointer}
+.sc-column-item:hover{background:var(--pale)}
+.sc-column-item input{accent-color:var(--teal)}
+.sc-column-actions{display:flex;gap:6px;padding-top:8px;border-top:1px solid var(--line)}
+.sc-column-actions button{border:1px solid var(--line);background:#fff;cursor:pointer;color:#60747b}
+.sc-column-actions button:hover{border-color:var(--teal);color:#075e67}
+.sc-column-save{margin-left:auto;background:var(--teal);border-color:var(--teal);color:#fff;font-weight:700}
+.sc-column-save:hover{background:var(--teal-dark)}
+/* ---------------------------------------------------------------
+   分割表示(§9.10): 仕掛一覧(比較・多数選択)とスケジュール(投入先)を
+   同時に見せ、ドラッグで直接投入できるようにする。
+   認知心理学: 情報を探す画面(左)と結果を確認する画面(右)を空間的に
+     固定し、視線移動のパターンを一定に保つ(往復ナビゲーションによる
+     文脈の切替コストを無くす)。
+   情報アーキテクチャ: 「フィルタ→一覧→ドラッグ→タイムライン」が
+     左から右への一方向の流れになるよう配置する(グリッド列順=操作順)。
+   色彩調和: 新しい色相を増やさず、既存の--teal系統をドロップ受入の
+     合図として使う(選択行の強調と同じ色相で「これから起きること」の
+     一貫性を保つ)。
+   --------------------------------------------------------------- *//* リサイズ可能な分割バー(§9.12改訂・§9.17新設)。作業スケジュールが主で
+   あるべきという指摘のため、仕掛一覧側はJS制御の固定px幅(--sc-list-w、
+   既定380px)、スケジュールパネル側は残り全部(1fr)を取り、パネルの方が
+   確実に広くなるようにした。境界の.sc-split-dividerをドラッグすると
+   --sc-list-wを書き換えて幅を調整でき、中央のボタンでワンクリック
+   折りたたみもできる(schedule-view.jsのensureSplitDivider)。 */
+.sc-split-wrap{
+ flex:1;min-height:0;margin:9px 14px;overflow:hidden;
+ display:grid;grid-template-columns:var(--sc-list-w,380px) 10px 1fr;
+ grid-template-rows:auto auto 1fr;
+ grid-template-areas:"filter filter panel" "toolbar toolbar panel" "list divider panel";
+ gap:8px 0;
+}
+.sc-split-wrap #genericFilterBar{grid-area:filter;margin:0}
+.sc-split-wrap #listToolbar{grid-area:toolbar;margin:0}
+.sc-split-wrap #grid{grid-area:list;margin:0;min-height:0}
+.sc-split-wrap .sc-split-divider{grid-area:divider}
+.sc-split-wrap .sc-panel{grid-area:panel;margin:0;min-height:0}
+/* 畳んだら一覧の列は完全に無くし、取っ手だけを残す。取っ手は上下いっぱいの
+   帯にして「ここを押せば戻る」と分かる大きさにする(10pxの線に小さなボタンが
+   浮いているだけだと、掴む所が分かりにくい)。 */
+.sc-split-wrap.sc-list-collapsed{grid-template-columns:0 26px 1fr}
+.sc-split-divider{position:relative;cursor:col-resize;background:transparent}
+.sc-split-divider::before{content:'';position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--line);transform:translateX(-50%)}
+.sc-split-divider:hover,.sc-split-divider.dragging{background:var(--pale)}
+.sc-split-wrap.sc-list-collapsed .sc-split-divider{cursor:pointer}
+.sc-split-wrap.sc-list-collapsed .sc-split-divider::before{display:none}
+.sc-split-wrap.sc-list-collapsed .sc-split-divider:hover{background:transparent}
+.sc-split-collapse-btn{
+ position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1;
+ width:22px;height:38px;padding:0;border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;
+ cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;font-size:var(--fs-micro);color:#60747b;
+ transition:background .12s,border-color .12s,color .12s;
+}
+.sc-split-collapse-btn:hover{border-color:var(--teal);color:#075e67;background:var(--pale)}
+.sc-split-collapse-btn:active{background:var(--teal);border-color:var(--teal);color:#fff}
+.sc-split-wrap.sc-list-collapsed .sc-split-collapse-btn{
+ position:static;transform:none;width:100%;height:100%;flex-direction:column;
+ border-radius:var(--radius-sm) 0 0 var(--radius-sm);background:#eef2f4;border-right-color:transparent;
+}
+/* 畳んでいる間は「何が畳まれているか」を縦書きラベルで示す。アイコンだけだと
+   戻したとき何が出るのか分からない。 */
+.sc-split-collapse-label{writing-mode:vertical-rl;font-size:var(--fs-micro);
+ letter-spacing:.14em;color:#60747b;font-weight:700;white-space:nowrap}
+.sc-split-wrap:not(.sc-list-collapsed) .sc-split-collapse-label{display:none}
+@media(max-width:1280px){
+ .sc-split-wrap{grid-template-columns:1fr;grid-template-rows:auto auto minmax(220px,38vh) minmax(260px,1fr);grid-template-areas:"filter" "toolbar" "list" "panel"}
+ .sc-split-divider{display:none}
+}
+/* フィルタバーのコンパクト表示(§9.15新設)。分割表示・ポップアップ表示は
+   仕掛一覧側の幅が通常表示より狭いため、既定のフィルタバー(検索窓・
+   クイック条件・条件タグ)の文字サイズのままだと折り返し・見切れが起きる。
+   分割表示(.sc-split-wrap)・ポップアップ表示(.sc-float-body)の中だけ、
+   高さ・余白・文字サイズを縮めて詰める(通常表示は変更しない)。 */
+:is(.sc-split-wrap,.sc-float-body) .generic-filter-bar{font-size:var(--fs-micro)}
+:is(.sc-split-wrap,.sc-float-body) .filter-search-row{min-height:var(--ctl-h-sm);padding:4px 6px;gap:5px;flex-wrap:wrap}
+:is(.sc-split-wrap,.sc-float-body) .filter-search-row>b{font-size:var(--fs-micro)}
+:is(.sc-split-wrap,.sc-float-body) .filter-count{font-size:var(--fs-tiny);padding:1px 6px}
+:is(.sc-split-wrap,.sc-float-body) .filter-token-input{min-height:var(--ctl-h-xs);padding:2px 6px}
+:is(.sc-split-wrap,.sc-float-body) .filter-token-search{height:22px;flex-basis:80px;min-width:60px}
+:is(.sc-split-wrap,.sc-float-body) .filter-quick-row{padding:4px 6px;gap:4px}
+:is(.sc-split-wrap,.sc-float-body) .filter-quick-label{font-size:var(--fs-tiny)}
+:is(.sc-split-wrap,.sc-float-body) .suggest-chip.quick{height:calc(var(--ctl-h-xs) - 4px);padding:1px 7px;font-size:var(--fs-micro)}
+:is(.sc-split-wrap,.sc-float-body) .filter-tag{height:calc(var(--ctl-h-xs) - 4px);padding:1px 3px 1px 6px}
+:is(.sc-split-wrap,.sc-float-body) .filter-tag>span{max-width:70px;font-size:var(--fs-micro)}
+:is(.sc-split-wrap,.sc-float-body) .filter-tag em{max-width:80px;font-size:var(--fs-micro)}
+:is(.sc-split-wrap,.sc-float-body) .filter-tag b{font-size:var(--fs-tiny)}
+:is(.sc-split-wrap,.sc-float-body) .filter-search-row-actions button{height:var(--ctl-h-xs);padding:0 7px;font-size:var(--fs-micro)}
+:is(.sc-split-wrap,.sc-float-body) .filter-body{padding:5px 6px}
+:is(.sc-split-wrap,.sc-float-body) .filter-builder{grid-template-columns:1fr;gap:5px}
+:is(.sc-split-wrap,.sc-float-body) .filter-builder select,:is(.sc-split-wrap,.sc-float-body) .filter-builder input{height:var(--ctl-h-sm);font-size:var(--fs-micro)}
+/* 「内容」欄の項目ピッカー(順序つき) */
+.sc-content-chosen-head{margin:8px 0 4px;font-size:var(--fs-micro);font-weight:800;color:#60747b}
+.sc-content-chosen{display:flex;flex-direction:column;gap:3px}
+.sc-content-item{display:flex;align-items:center;gap:5px;padding:3px 6px;border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;font-size:var(--fs-sm)}
+.sc-content-ord{flex:none;display:grid;place-items:center;width:18px;height:18px;border-radius:var(--radius-round);background:var(--teal);color:#fff;font-size:var(--fs-tiny);font-weight:800}
+.sc-content-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#173842}
+.sc-content-item button{flex:none;width:22px;height:22px;padding:0;border:1px solid var(--line);border-radius:var(--radius-xs);background:#fff;font-size:var(--fs-tiny);line-height:1;cursor:pointer;color:#60747b}
+.sc-content-item button:disabled{opacity:.35;cursor:default}
+.sc-content-add{width:100%;text-align:left;padding:3px 6px;border:1px dashed var(--line);border-radius:var(--radius-sm);background:#fff;font-size:var(--fs-sm);color:#3a565d;cursor:pointer}
+.sc-content-add:hover{border-style:solid;border-color:var(--teal);background:#f7fafb}
+.sc-split-toggle{height:var(--ctl-h-sm);padding:0 12px;border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;cursor:pointer;font-size:var(--fs-sm);font-weight:700;color:#60747b}
+.sc-split-toggle.active{background:var(--pale);border-color:var(--teal);color:#075e67}
+/* 仕掛一覧の行をドラッグ可能にする(スケジュールモードのみ、list-view.js)。
+   通常のクリック選択(is-selected)・チェックボックス複数選択
+   (is-plan-selected)と視覚的に競合しないよう、ドラッグ中だけ別の合図
+   (縮小+破線)を重ねる。 */
+#grid tbody tr[draggable="true"]{cursor:grab}
+/* ドロップ受入側(タイムライン)。ドラッグでファイルを覆っている間だけ、
+   受け入れ可能であることを枠線と背景の変化で示す(ドラッグ&ドロップの
+   基本合図。 crossbrowserで安定するCSSのみで表現し、JS側はクラス切替のみ
+   行う)。 */
+.sc-drop-target{position:relative;transition:background-color .12s ease}
+.sc-drop-target.sc-drop-active{background:var(--computed-bg)}
+.sc-drop-target.sc-drop-active::after{
+ content:'';position:absolute;inset:4px;border:2px dashed var(--teal);border-radius:var(--radius-sm);pointer-events:none;
+}
+.sc-drop-hint{font-size:var(--fs-micro);color:#8a9aa0;padding:4px 14px 0}
+/* ---------------------------------------------------------------
+   高密度リスト(§9.3改訂)。「リスト形式並みの高密度、1ロット1行、
+   20行程度が1画面に見える」という要望に合わせ、縦長カードから表形式の
+   1行(.sc-row-line)へ作り直した。ヘッダー(.sc-row-head)と同じグリッド
+   列数で列を揃え、列の意味はヘッダーで1回だけ説明する(各行では値だけ)。
+   固定開始・見積の内訳は情報量が多く常時出すと行が伸びるため、1つの
+   詳細トグル(.sc-row-detail-toggle)へ統合して折りたたむ(既定は閉)。
+   --------------------------------------------------------------- */
+.sc-row-head,.sc-row-line{
+ display:grid;
+ /* ハンドル/区分/作業可否/日付/時刻/勤務/残り/内容/見積/実績/備考/操作 */
+ grid-template-columns:calc(18px * var(--ui-scale)) calc(92px * var(--ui-scale)) calc(44px * var(--ui-scale))
+  calc(50px * var(--ui-scale))
+  calc(112px * var(--ui-scale)) calc(58px * var(--ui-scale)) calc(88px * var(--ui-scale))
+  minmax(calc(150px * var(--ui-scale)),1fr) calc(62px * var(--ui-scale)) calc(88px * var(--ui-scale))
+  calc(112px * var(--ui-scale)) calc(148px * var(--ui-scale));
+ align-items:center;column-gap:8px;min-width:calc(1116px * var(--ui-scale));
+}
+.sc-row-head{padding:3px 8px 4px;position:sticky;top:0;z-index:1;background:#f7fafb;font-size:var(--fs-micro);font-weight:800;color:#8a9aa0;border-bottom:1px solid var(--line)}
+.sc-row-line{padding:var(--row-pad-y) 8px;min-height:var(--row-h);border-radius:var(--radius-xs);background:#fff;border-bottom:1px solid #eef2f4}
+.sc-row-line:hover{background:#f7fafb}
+.sc-row-line[draggable="true"]{cursor:grab}
+.sc-row-line.sc-dragging{opacity:.4}
+.sc-row-line.sc-row-active{background:var(--success-bg)}
+.sc-row-line.sc-row-active:hover{background:#dcf1e5}
+.sc-row-line.sc-row-done{opacity:.6}
+.sc-row-line.sc-row-cancel{opacity:.6}
+.sc-row-line.sc-row-cancel .sc-row-title{text-decoration:line-through}
+/* 楽観的追加(§9.11新設): サーバーへの反映(書込キュー)が完了するまでの
+   間、行を薄く表示して「まだ確定していない」ことを伝える。 */
+.sc-row-line.sc-row-pending{opacity:.6;background:repeating-linear-gradient(135deg,#fff,#fff 8px,#f7f5ea 8px,#f7f5ea 16px)}
+.sc-flag-pending{color:#a4832a;font-weight:800}
+.sc-row-handle{color:#9caeb4;font-size:var(--fs-base-sm);text-align:center}
+/* 区分(§9.39): 完了済み/作業中/作業予定を行の中の列で持つ。以前は
+   セクション見出しで分けていたが、日付・勤務でまとめ直したいときに
+   見出しが二重になるため、列へ移した。 */
+.sc-row-cat{
+ display:inline-flex;align-items:center;gap:4px;justify-self:start;max-width:100%;
+ height:var(--ctl-h-xs);padding:0 8px;border-radius:var(--radius-md);
+ font-size:var(--fs-sm);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+ background:#eef2f4;color:#60747b;border:1px solid transparent;
+}
+.sc-row-cat i{font-style:normal;font-size:var(--fs-sm);line-height:1}
+.sc-cat-doing{background:var(--success-bg);color:var(--success);border-color:var(--success-border)}
+.sc-cat-done{background:#eef2f4;color:#7b8e95}
+.sc-cat-planned{background:var(--pale);color:#0c5d67;border-color:#cfe6ea}
+.sc-cat-cancel{background:var(--danger-bg);color:var(--danger);border-color:var(--danger-border)}
+.sc-cat-stop{background:var(--warn-bg);color:var(--warn-fg);border-color:var(--warn-border)}
+.sc-row-date{font-size:var(--fs-sm);color:#60747b;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}
+.sc-row-time{font-size:var(--fs-base-sm);color:#3a565d;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}
+.sc-row-shift{font-size:var(--fs-sm);color:#3a565d;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc-row-rel{font-size:var(--fs-sm);color:#8a9aa0;white-space:nowrap;overflow:hidden}
+.sc-row-title{font-size:var(--fs);font-weight:700;color:#173842;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.sc-row-est{font-size:var(--fs-sm);color:#3a565d;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.sc-row-est.sc-est-default{color:#8a9aa0;font-style:italic}
+.sc-row-actual{font-size:var(--fs-sm);color:#3a565d;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap;overflow:hidden}
+.sc-row-flags{display:flex;gap:3px;font-size:var(--fs-micro);align-items:center;white-space:nowrap;overflow:hidden}
+.sc-flag-overdue{color:var(--danger);font-weight:800}
+.sc-row-actions{display:flex;gap:3px;justify-content:flex-end}
+.sc-row-btn{min-width:var(--ctl-h-xs);border:1px solid var(--line);background:#fff;line-height:1;cursor:pointer;color:#60747b;flex-shrink:0}
+.sc-row-btn:hover{border-color:var(--teal);color:#0c5d67}
+.sc-row-btn.active{background:var(--computed-bg);border-color:var(--teal);color:#0c5d67}
+.sc-row-delete:hover{border-color:var(--danger-border);background:var(--danger-bg);color:var(--danger)}
+/* 実績(測定データ)の削除は取り消せないので、押す前から危険色で見えるようにする
+   (§9.61)。予定の削除ボタンと隣り合うため、色と文字で区別を付ける。 */
+.sc-row-btn-danger{width:auto;padding:0 7px;border-color:var(--danger-border);
+ background:var(--danger-bg);color:var(--danger);font-weight:700}
+.sc-row-btn-danger:hover{background:var(--danger);border-color:var(--danger);color:#fff}
+/* 詳細(固定開始・見積の内訳)を1つの折りたたみへ統合。 */
+.sc-row-detail[hidden]{display:none}
+.sc-row-detail{margin:2px 8px 6px;padding:8px 10px;background:#eef2f4;border:1px solid var(--line);border-radius:var(--radius-sm);display:flex;flex-direction:column;gap:8px;min-width:640px}
+.sc-detail-heading{font-size:var(--fs-sm);font-weight:800;color:#60747b}
+.sc-estimate-row{font-size:var(--fs-sm);color:#3a565d}
+.sc-estimate-factor{display:flex;align-items:center;gap:6px;font-size:var(--fs-sm);color:#3a565d}
+.sc-ef-key{color:#60747b;min-width:110px}
+.sc-ef-level{font-weight:700;color:#173842}
+.sc-ef-value{font-variant-numeric:tabular-nums}
+.sc-ef-n{color:#8a9aa0}
+.sc-ef-source{margin-left:auto;font-size:var(--fs-micro);font-weight:800;padding:1px 7px;border-radius:var(--radius-sm);background:#eef2f4;color:#60747b}
+.sc-ef-source-override .sc-ef-source{background:var(--warn-bg);color:var(--warn-fg)}
+.sc-ef-source-unknown .sc-ef-source{background:var(--danger-bg);color:var(--danger)}
+.sc-fixed-start{display:flex;align-items:center;gap:6px;font-size:var(--fs-micro);color:#60747b}
+.sc-fixed-start-input{height:24px;padding:0 4px;border:1px solid var(--line);border-radius:var(--radius-xs);font-size:var(--fs-micro);font-family:inherit}
+.sc-fixed-start-clear{height:22px;padding:0 8px;border:1px solid var(--line);border-radius:var(--radius-md);background:#fff;font-size:var(--fs-badge);cursor:pointer}
+.sc-fixed-start-readonly{font-size:var(--fs-micro);color:#60747b}
+/* 非稼働帯の明示(§9.3「── 12:00 昼休み ──」)。稼働カレンダー上の空き・
+   固定開始日時による押し出しで、行間の時刻が連続しない箇所に挿む。 */
+.sc-gap-divider{font-size:var(--fs-micro);color:#8a9aa0;padding:1px 8px;text-align:center;min-width:700px}
+/* ---------------------------------------------------------------
+   全体俯瞰ボード(§9.9)。設備を1つ選ぶ前に「どこが空いているか」を
+   一覧できるようにする、schedule/viewモードの既定表示。
+   色は既存の--teal系統をそのまま濃淡展開した4段階(空き/軽/中/重)の
+   逐次(sequential)配色のみを使い、遅延等の状態は色相を変えず
+   アイコン+文言のバッジで別途示す(色だけに意味を持たせない)。
+   --------------------------------------------------------------- */
+.sc-mode-toggle{display:flex;border:1px solid var(--line);border-radius:var(--radius-lg);overflow:hidden;background:#fff}
+.sc-mode-toggle-btn{border:0;background:#fff;color:#60747b;font-weight:700;cursor:pointer}
+.sc-mode-toggle-btn.active{background:var(--teal);color:#fff}
+.sc-board-window{display:flex;border:1px solid var(--line);border-radius:var(--radius-lg);overflow:hidden;background:#fff}
+.sc-board-window-btn{border:0;background:#fff;color:#60747b;font-weight:700;cursor:pointer}
+.sc-board-window-btn.active{background:var(--pale);color:#075e67}
+.sc-board{flex:1;min-height:0;overflow-y:auto;padding:14px}
+.sc-board-toolbar{display:flex;justify-content:flex-end;margin-bottom:8px}
+.sc-board-sort{display:flex;border:1px solid var(--line);border-radius:var(--radius-md);overflow:hidden;background:#fff}
+.sc-board-sort-btn{border:0;background:#fff;color:#8a9aa0;cursor:pointer}
+.sc-board-sort-btn.active{background:#eef2f4;color:#173842;font-weight:700}
+.sc-board-axis,.sc-board-row{display:grid;grid-template-columns:calc(96px * var(--ui-scale)) calc(180px * var(--ui-scale)) 1fr calc(160px * var(--ui-scale)) calc(20px * var(--ui-scale));align-items:center;column-gap:10px}
+.sc-board-axis{padding:0 10px 6px;color:#8a9aa0;font-size:var(--fs-micro)}
+.sc-board-axis-label{grid-column:1}
+.sc-board-axis-track{grid-column:3;position:relative;height:14px}
+.sc-board-axis-tick{position:absolute;top:0;transform:translateX(-2px);white-space:nowrap}
+.sc-board-rows{display:flex;flex-direction:column;gap:6px}
+.sc-board-row{background:#fff;border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px 10px;cursor:pointer}
+.sc-board-row:hover{border-color:var(--teal)}
+.sc-board-row:focus-visible{outline:2px solid var(--teal);outline-offset:1px}
+.sc-board-name{font-size:var(--fs-base-sm);font-weight:800;color:#173842}
+.sc-board-swatch{display:inline-flex;align-items:center;height:var(--ctl-h-xs);padding:0 10px;border-radius:var(--radius-md);font-size:var(--fs-sm);font-weight:700;white-space:nowrap;justify-self:start}
+.sc-board-swatch.sc-lv-0{background:#f7fafb;color:#8a9aa0;border:1px dashed var(--line)}
+.sc-board-swatch.sc-lv-1{background:var(--pale);color:#0c5d67}
+.sc-board-swatch.sc-lv-2{background:#7fb9bf;color:#0a3f45}
+.sc-board-swatch.sc-lv-3{background:var(--teal);color:#fff}
+.sc-board-track{position:relative;height:20px;background:#f7fafb;border-left:2px solid var(--teal-dark);border-radius:var(--radius-xs)}
+.sc-board-block{position:absolute;top:2px;bottom:2px;border-radius:var(--radius-xs);min-width:2px}
+.sc-board-block-planned{background:var(--teal)}
+.sc-board-block-active{background:var(--success)}
+.sc-board-block-stop{background:repeating-linear-gradient(45deg,#c4d0d4,#c4d0d4 4px,#e3ebee 4px,#e3ebee 8px)}
+.sc-board-flags{display:flex;flex-wrap:wrap;gap:4px;justify-self:end}
+.sc-board-active-chip{font-size:var(--fs-badge);font-weight:800;color:var(--success);background:var(--success-bg);border:1px solid var(--success-border);border-radius:var(--radius-sm);padding:1px 7px;white-space:nowrap}
+.sc-board-overdue-chip{font-size:var(--fs-badge);font-weight:800;color:var(--danger);background:var(--danger-bg);border:1px solid var(--danger-border);border-radius:var(--radius-sm);padding:1px 7px;white-space:nowrap}
+.sc-board-chevron{color:#b7c7cc;font-size:var(--fs-title);justify-self:end}
+@media(max-width:900px){
+ .sc-board-axis,.sc-board-row{grid-template-columns:70px 1fr;row-gap:6px}
+ .sc-board-axis-label,.sc-board-axis-track{display:none}
+ .sc-board-swatch{grid-column:2;justify-self:start}
+ .sc-board-track{grid-column:1/-1;height:18px}
+ .sc-board-flags{grid-column:1/-1;justify-self:start}
+ .sc-board-chevron{display:none}
+}
+/* ---------------------------------------------------------------
+   接続断の明示。ハートビートが続けて失敗したときに最上部へ出す。
+   サーバーが終了していても画面上は普通に見えてしまうため、状態が
+   分かるようにするもの(仕様書2.9)。
+   --------------------------------------------------------------- */
+.connection-lost-bar{
+ position:fixed; inset:0 0 auto 0; z-index:9999;
+ display:flex; align-items:center; gap:10px;
+ padding:var(--pad-card); background:var(--invalid); color:#fff;
+ font-size:var(--fs); box-shadow:0 2px 10px rgba(0,0,0,.22);
+}
+.connection-lost-bar[hidden]{display:none}
+.connection-lost-bar svg{flex:0 0 auto}
+.connection-lost-text{display:flex; flex-direction:column; line-height:1.3; flex:1 1 auto; min-width:0}
+.connection-lost-text small{opacity:.9; font-size:var(--fs-micro)}
+.connection-lost-bar button{flex:0 0 auto;   font-family:inherit;
+ color:var(--invalid); background:#fff; border:0;  cursor:pointer}
+.connection-lost-bar button:hover{background:#ffecec}
+/* ---------------------------------------------------------------
+   子ロットデータの更新提案・差異一覧・履歴（幅分割情報パネル内）
+   保存済みの子ロットデータと実データに差異が出たときだけ現れる。
+   勝手に差し替えず、差異を示してオペレータに適用可否を選ばせる。
+   --------------------------------------------------------------- */
+.split-update-panel{
+ margin-top:10px; padding:var(--space-2); background:#fff7e6;
+ border:1px solid var(--warn); border-radius:var(--radius-card);
+}
+.split-update-head{font-size:var(--fs-sm); font-weight:800; color:#8a5a00; margin-bottom:6px; line-height:1.35}
+.split-diff-table{width:100%; border-collapse:collapse; font-size:var(--fs-sm); background:#fff; margin-bottom:6px}
+.split-diff-table th,.split-diff-table td{padding:3px 5px; border:1px solid #d8c49a; text-align:left}
+.split-diff-table th{background:#fdf0d5}
+.split-diff-table tr.split-diff-added td{background:#eaf7ee}
+.split-diff-table tr.split-diff-removed td{background:var(--danger-bg); color:var(--danger)}
+.split-update-blocked{
+ font-size:var(--fs-micro); color:#8a3b00; background:#ffe9d6;
+ border:1px solid #e0a878; border-radius:var(--radius-sm); padding:5px 6px; margin-bottom:6px; line-height:1.4;
+}
+.split-update-actions{display:flex; gap:6px}
+.split-update-actions button{flex:1 1 0;   font-family:inherit; cursor:pointer;
+ background:var(--teal); color:#fff; border:1px solid var(--teal);  font-weight:800}
+.split-update-actions button:hover:not(:disabled){filter:brightness(1.08)}
+.split-update-actions button:disabled{background:#c9d4d6; border-color:#c9d4d6; cursor:not-allowed}
+.split-update-actions .split-update-secondary{background:#fff; color:var(--nav); border-color:var(--line); font-weight:600}
+.split-update-actions .split-update-secondary:hover{background:#f2f6f7}
+/* 履歴。既定は展開、更新提案が出ているときだけ折りたたんだ状態で描画する
+   (更新提案側の確認を優先させるため)。開閉の見た目自体は.disclosure
+   共通部品(段階的開示パターン)を使う。 */
+.split-history{margin-top:8px; font-size:var(--fs-sm)}
+.split-history ul{list-style:none; margin:4px 0 6px; padding:0}
+.split-history li{padding:3px 0; border-top:1px solid var(--pale); line-height:1.5}
+.split-history li.split-history-current{color:var(--computed-fg); border-top:0}
+.split-history li.split-history-rejected{color:#8a5a00}
+.split-history-btn{
+ margin-left:4px; padding:1px 7px; font-size:var(--fs-micro); font-family:inherit; cursor:pointer;
+ background:#fff; color:var(--nav); border:1px solid var(--line); border-radius:var(--radius-xs);
+}
+.split-history-btn:hover{background:var(--pale)}
+.split-recheck-btn{width:100%;   font-family:inherit; cursor:pointer;
+ background:#fff; color:var(--nav); border:1px solid var(--line)}
+.split-recheck-btn:hover:not(:disabled){background:var(--pale)}
+.split-recheck-btn:disabled{color:#9aa; cursor:progress}
+/* ---------- 22. 測定進捗（入力内容チップ / 操作レールのサマリ） ----------
+   入力内容の選択そのものに状態を持たせ、切り替えのたびに全項目の進捗が
+   目に入るようにする。色は既存の語彙をそのまま使う:
+   オレンジ(--required)=未入力 / ティール(--teal)=完了 / 灰=対象外。 *//* 高さは隣の「オペレータ」「丈位置」リストと同じ行に合わせる。行の高さは
+   画面幅で変わるため固定値を持たず、グリッド行いっぱいに伸ばす。 */
+.type-chips{display:flex;flex-direction:column;gap:2px;min-height:0;height:100%;align-self:stretch;grid-row:2}
+.dense-controls .major-list .type-chips{width:100%}
+.type-chip{
+  flex:1 1 0;min-height:0;height:auto;
+  display:flex;align-items:center;justify-content:space-between;gap:var(--space-1);
+  padding:2px 6px;border-radius:var(--radius-sm);font-size:var(--fs-sm);font-weight:700;
+  background:var(--required-bg);border:1px solid var(--required);color:#7a5200;
+  box-shadow:none;text-align:left;overflow:hidden;cursor:pointer;
+}
+.type-chip-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.type-chip-state{font-size:var(--fs-micro);font-weight:700;opacity:.85;flex:none;font-variant-numeric:tabular-nums}
+.type-chip:hover{border-color:var(--teal);background:#fff7e8}
+.type-chip--done{background:var(--teal);border-color:var(--teal);color:#fff}
+.type-chip--done:hover{background:var(--teal-dark);border-color:var(--teal-dark)}
+.type-chip--part{background:#fff;border-color:var(--teal);color:var(--computed-fg)}
+.type-chip--part:hover{background:var(--computed-bg)}
+.type-chip--skip{background:#e9edee;border:1px dashed #8b9ca2;color:#6d7f85}
+.type-chip--skip:hover{background:#dfe5e6;border-color:#6d7f85}
+/* 操作レールのサマリ。項目名は再掲せず、全体・丈位置・作業時間だけを出す。 */
+.rail-progress-group{gap:var(--space-1)}
+.rail-progress-bar{height:7px;border-radius:var(--radius-xs);background:#fff;border:1px solid #9eb2bc;overflow:hidden}
+.rail-progress-bar i{display:block;height:100%;background:var(--teal);transition:width .2s}
+.rail-progress-line{
+  font-size:var(--fs-micro);color:#36515c;display:flex;align-items:center;gap:5px;flex-wrap:wrap;
+}
+.rail-progress-line b{font-size:var(--fs-base-sm);color:var(--nav);font-variant-numeric:tabular-nums}
+.rail-progress-skip{color:#6d7f85}
+.rail-progress-lengths{display:flex;flex-wrap:wrap;gap:3px}
+.rail-len{
+  font-size:var(--fs-micro);padding:1px 5px;border-radius:var(--radius-sm);white-space:nowrap;
+  background:var(--required-bg);border:1px solid var(--required);color:#7a5200;
+}
+.rail-len--done{background:var(--teal);border-color:var(--teal);color:#fff}
+.rail-len--part{background:#fff;border-color:var(--teal);color:var(--computed-fg)}
+.rail-progress-worktime--done{color:var(--computed-fg)}
+.rail-progress-worktime--todo,.rail-progress-worktime--part{color:#a06a00;font-weight:700}
+@media(max-width:1450px){
+  .type-chip{font-size:var(--fs-micro);padding:1px 5px}
+}
+@media(prefers-reduced-motion:reduce){.rail-progress-bar i{transition:none}}
+/* 使用設備が未登録のときの初期案内。仕掛一覧を取りに行く前に設定へ誘導する。 */
+.setup-first{
+  display:flex;flex-direction:column;gap:6px;margin:18px;padding:20px 22px;
+  background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius-card);
+}
+.setup-first b{font-size:var(--fs-title);color:var(--nav)}
+.setup-first span{color:#60747b;max-width:60ch}
+/* ---------- 24. Access同期の未完了キューと再送 ----------
+   backupRecord()の成否をsyncStateへ保存するようにしたのに合わせ、
+   サイドバー・データ一覧の両方で未同期の存在に気づける表示を追加する。 */
+.sync-warn-dot{
+  display:inline-block;width:8px;height:8px;border-radius:var(--radius-round);
+  background:var(--warn);margin-left:6px;flex:none;
+  box-shadow:0 0 0 2px rgba(255,255,255,.35);
+}
+.record-sync-bar{
+  display:flex;align-items:center;gap:var(--space-2);padding:var(--pad-card);margin:0 0 8px;
+  background:var(--required-bg);border:1px solid var(--required);border-radius:var(--radius-sm);
+  color:#7a5200;font-size:var(--fs-base-sm);
+}
+.record-sync-bar svg{flex:none;color:#a06a00}
+.record-sync-bar b{font-variant-numeric:tabular-nums}
+.record-sync-bar span{flex:1}
+.record-sync-bar button{flex:none;border:1px solid #d9a441;
+  background:#fff;color:#7a5200;font-weight:700;cursor:pointer}
+.record-sync-bar button:hover{background:#fff6e6}
+.record-sync-badge{
+  display:inline-block;margin-left:5px;padding:1px 6px;border-radius:var(--radius-sm);
+  background:var(--required-bg);border:1px solid var(--required);color:#7a5200;
+  font-size:var(--fs-tiny);font-weight:800;vertical-align:middle;
+}
+.record-sync-badge.record-sync-failed{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger)}
+/* ---------- 勤務体系マスタの専用エディタ(親: 勤務体系 / 子: 勤務区分) ----------
+   左に登録済みの体系、右にその中身。時刻はinput[type=time]で直打ちを避け、
+   24時間バーで「どの時間帯が埋まっているか」を色で示す。 */
+.shift-editor{display:grid;grid-template-columns:minmax(160px,220px) minmax(0,1fr);gap:var(--space-3);align-items:start}
+.shift-list{display:flex;flex-direction:column;gap:4px;min-width:0}
+.shift-list-head{font-size:var(--fs-badge);font-weight:800;letter-spacing:.06em;color:#6f8f96;padding:0 4px 2px}
+.shift-list-item{display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:var(--pad-card);border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;cursor:pointer;text-align:left;min-width:0;width:100%}
+.shift-list-item b{font-size:var(--fs-base-sm);color:#173842;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.shift-list-item small{font-size:var(--fs-micro);color:#7b8e95}
+.shift-list-item:hover{border-color:var(--teal);background:#f7fafb}
+.shift-list-item.active{background:var(--teal);border-color:var(--teal)}
+.shift-list-item.active b,.shift-list-item.active small{color:#fff}
+.shift-detail{min-width:0;display:flex;flex-direction:column;gap:var(--space-2)}
+.shift-fields{display:flex;flex-wrap:wrap;gap:var(--space-3)}
+.shift-fields .mm-field{flex:1 1 240px}
+.shift-fields input,.shift-fields select{width:100%}
+/* 24時間バー: 左端0時・右端24時。区分ごとに色を変え、日跨ぎは両端に分けて描く。 */
+.shift-bar{position:relative;height:22px;border:1px solid var(--line);border-radius:var(--radius-sm);background:repeating-linear-gradient(90deg,#f7fafb 0,#f7fafb calc(100%/24 - 1px),#e3ebee calc(100%/24 - 1px),#e3ebee calc(100%/24));overflow:hidden}
+.shift-bar-piece{position:absolute;top:0;bottom:0;opacity:.9}
+.shift-bar-noon{position:absolute;top:0;bottom:0;left:50%;width:1px;background:#9caeb4}
+.shift-bar-scale{display:flex;justify-content:space-between;font-size:var(--fs-tiny);color:#8a9aa0}
+.shift-bar-piece[data-i="0"],.shift-seg-dot[data-i="0"]{background:#0a8993}
+.shift-bar-piece[data-i="1"],.shift-seg-dot[data-i="1"]{background:#e08a2e}
+.shift-bar-piece[data-i="2"],.shift-seg-dot[data-i="2"]{background:#5a6fc0}
+.shift-bar-piece[data-i="3"],.shift-seg-dot[data-i="3"]{background:#3f9d6b}
+.shift-bar-piece[data-i="4"],.shift-seg-dot[data-i="4"]{background:#b05a8e}
+.shift-bar-piece[data-i="5"],.shift-seg-dot[data-i="5"]{background:#7b8e95}
+.shift-segs{display:flex;flex-direction:column;gap:4px}
+.shift-seg{display:flex;align-items:center;gap:6px;padding:4px 6px;border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;flex-wrap:wrap}
+.shift-seg-dot{flex:none;width:10px;height:10px;border-radius:var(--radius-round)}
+.shift-seg-name{flex:1 1 110px;min-width:80px;height:var(--ctl-h-sm)}
+.shift-seg-start,.shift-seg-end{flex:0 0 auto;height:var(--ctl-h-sm);font-variant-numeric:tabular-nums}
+.shift-seg-sep{color:#8a9aa0;font-size:var(--fs-sm)}
+.shift-seg-next{flex:none;min-width:34px;font-size:var(--fs-tiny);font-weight:800;color:var(--warn-fg);background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:var(--radius-sm);padding:1px 6px;text-align:center}
+.shift-seg button{flex:none;width:26px;border:1px solid var(--line);background:#fff;line-height:1;cursor:pointer;color:#60747b}
+.shift-seg button:disabled{opacity:.35;cursor:default}
+.shift-actions{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
+.shift-actions-tail{margin-left:auto;display:flex;gap:var(--space-2)}
+.shift-cov-ok{color:var(--success);font-weight:700}
+/* ---------- 狭い枠に置いた仕掛一覧の横スクロール ----------
+   ポップアップ表示(.sc-float-body)・分割表示(.sc-split-wrap)では、一覧の
+   幅より表の方が広いのが普通。既定のoverflow:autoだと「今は足りている」
+   ときにバーが消え、しかもChromiumのオーバーレイ表示だと触るまで見えず、
+   横に続きがあること自体に気づけない。ここでは常時表示(scroll)にし、
+   つまんで動かせる太さを与える。 */
+:is(.sc-float-body,.sc-split-wrap) #grid{overflow-x:scroll;overflow-y:auto}
+:is(.sc-float-body,.sc-split-wrap) #grid::-webkit-scrollbar{height:13px;width:13px}
+:is(.sc-float-body,.sc-split-wrap) #grid::-webkit-scrollbar-track{background:#eef2f4;border-top:1px solid var(--line)}
+:is(.sc-float-body,.sc-split-wrap) #grid::-webkit-scrollbar-thumb{background:#9caeb4;border:3px solid #eef2f4;border-radius:var(--radius-sm)}
+:is(.sc-float-body,.sc-split-wrap) #grid::-webkit-scrollbar-thumb:hover{background:var(--teal)}
+:is(.sc-float-body,.sc-split-wrap) #grid::-webkit-scrollbar-corner{background:#eef2f4}
+/* Firefox等 */
+:is(.sc-float-body,.sc-split-wrap) #grid{scrollbar-width:auto;scrollbar-color:#9caeb4 #eef2f4}
+/* 仕掛一覧ポップアップの下端の帯(リサイズのつまみ用の逃げを兼ねる) */
+.sc-list-foot{padding:5px 12px}
+.sc-list-foot span{font-size:var(--fs-tiny);color:#7b8e95;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:18px}
+/* ---------- 作業スケジュール: 実施中/予定/実績のグルーピング(§9.34) ----------
+   状態が混ざった1本の並びだと「今どれをやっているか」「さっき何が終わった
+   か」を目で追う必要があった。3つに切り分けて見出しを付ける。 */
+.sc-group{display:flex;flex-direction:column}
+.sc-group+.sc-group{margin-top:var(--space-3)}
+.sc-group-head{
+ display:flex;align-items:baseline;gap:var(--space-2);
+ padding:var(--space-1) 8px;border-left:3px solid var(--line);
+}
+.sc-group-label{font-size:var(--fs-title);font-weight:800;color:#173842}
+.sc-group-count{font-size:var(--fs-sm);font-weight:700;color:#8a9aa0;font-variant-numeric:tabular-nums}
+.sc-group-note{font-size:var(--fs-sm);color:#8a9aa0}
+.sc-group[data-group="running"] .sc-group-head{border-left-color:var(--success);background:var(--success-bg)}
+.sc-group[data-group="running"] .sc-group-label{color:var(--success)}
+.sc-group[data-group="planned"] .sc-group-head{border-left-color:var(--teal);background:var(--pale)}
+.sc-group[data-group="history"] .sc-group-head{border-left-color:#c4d0d4;background:#eef2f4}
+.sc-group[data-group="history"] .sc-group-label{color:#60747b}
+/* 計画外(§9.33): 予定に無いのに実績が上がっている行。予定と取り違えると
+   「消せない予定がある」と誤解されるため、必ずこのバッジを添える。 */
+.sc-flag-unplanned{
+ font-size:var(--fs-micro);font-weight:800;padding:1px 6px;border-radius:var(--radius-sm);
+ background:var(--warn-bg);color:var(--warn-fg);border:1px solid var(--warn-border);white-space:nowrap;
+}
+/* 予定から測定を開始する(§9.35)。行の中で最も目を引く操作なので、
+   他の行内ボタン(詳細▾・削除🗑)と違い塗りで出す。 */
+.sc-row-start{
+ min-width:auto;padding:0 8px;background:var(--teal);border-color:var(--teal);color:#fff;
+ font-weight:800;white-space:nowrap;
+}
+.sc-row-start:hover{background:var(--teal-dark);border-color:var(--teal-dark);color:#fff}
+/* 表示範囲(§9.34) */
+.sc-history-range{display:inline-flex;align-items:center;gap:5px;font-size:var(--fs-sm);color:#60747b;white-space:nowrap}
+.sc-history-range[hidden]{display:none}
+.sc-history-range select{height:var(--ctl-h-sm);padding:0 6px;border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;font-size:var(--fs-sm);color:#3a565d}
+/* ---------- 日時ロック(§9.38)と作業中(§9.37) ----------
+   ロックした行はその日時に釘付け。ロックしていない行は現在時刻を起点に
+   前から詰めて並ぶため、時間が経つほど後ろへずれていく。この違いが
+   一目で分かるよう、ロック行は左端に色帯を出す。 */
+.sc-row-line.sc-row-locked{border-left:3px solid var(--warn-border);padding-left:5px}
+.sc-flag-locked{color:var(--warn-fg);font-weight:800;white-space:nowrap}
+.sc-row-lock.active{background:var(--warn-bg);border-color:var(--warn-border);color:var(--warn-fg)}
+/* 作業中は予定終了が常に現在時刻(継続中)。進行中であることを時刻欄でも示す。 */
+.sc-row-line.sc-row-ongoing .sc-row-time{font-weight:800;color:var(--success)}
+.sc-row-line.sc-row-ongoing .sc-row-rel{color:var(--success);font-weight:700}
+/* 読込時点の表示(§9.42)。画面を開き直しても読み直さない設計なので、
+   「いつ時点か」を必ず見せる(古い情報を黙って見せない)。 */
+.sc-freshness{
+ font-size:var(--fs-sm);color:#8a9aa0;white-space:nowrap;
+ padding:0 8px;border-left:1px solid var(--line);
+}
+.sc-freshness[hidden]{display:none}
+/* 作業中の行はダブルクリックで再開できる(§9.43) */
+.sc-row-line.sc-row-resumable{cursor:pointer}
+.sc-row-resume{background:var(--success-bg);border-color:var(--success-border);color:var(--success);font-weight:800;white-space:nowrap}
+.sc-row-resume:hover{background:var(--success);border-color:var(--success);color:#fff}
+.sc-row-report:hover{border-color:var(--teal);background:var(--pale)}
+/* ---------- マスタ入力支援(§9.49) ----------
+   「マウスだけで最後まで入力できる」を基本にした共通部品。数値の上下ボタン、
+   日付のカレンダー、別マスタ連動の選択、パスの参照ダイアログ。
+   高さはヘッダー・左ナビと同じ --ctl-h トークンに揃える。 */
+.mm-num{display:inline-flex;align-items:stretch;gap:0;min-width:0}
+.mm-field .mm-num-input,.mm-editor-body .mm-field .mm-num-input{
+ width:9em;min-width:0;height:var(--ctl-h);
+ /* 数値は右づめ。桁数の違いが縦に揃って読めるようにする(3桁区切りとセット) */
+ text-align:right;font-variant-numeric:tabular-nums;
+ border:1px solid var(--line);border-left:0;border-right:0;border-radius:0;
+ padding:0 .5em;background:#fff;color:inherit;font-size:var(--fs);
+}
+.mm-field .mm-num-input:focus{outline:2px solid var(--teal);outline-offset:-2px;z-index:1;position:relative}
+.mm-num-btn{
+ width:calc(var(--ctl-h) * .82);height:var(--ctl-h);flex:0 0 auto;
+ border:1px solid var(--line);background:var(--pale);color:var(--nav);
+ font-size:var(--fs);line-height:1;cursor:pointer;user-select:none;
+}
+}

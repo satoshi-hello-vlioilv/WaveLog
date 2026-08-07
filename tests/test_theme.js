@@ -26,9 +26,13 @@ let b=null;
   await page.waitForTimeout(1500);
 
   /* ---- 1) CSSに残るリテラルの文字サイズは印刷物だけ ---- */
+  /* CSSは static/css/ 配下へ分割されている(§9.72)。読み込み順=カスケード順
+     なので、document.styleSheets の順に取って1枚として見る。 */
   const css=await page.evaluate(async()=>{
-   const link=[...document.styleSheets].map(s=>s.href).find(h=>h&&h.includes('app.css'));
-   return await (await fetch(link)).text();
+   const links=[...document.styleSheets].map(s=>s.href).filter(h=>h&&h.includes('app.css'));
+   const parts=[];
+   for(const h of links) parts.push(await (await fetch(h)).text());
+   return parts.join('\n');
   });
   const noComment=css.replace(/\/\*[\s\S]*?\*\//g,'');
   const literals=[];
@@ -36,9 +40,8 @@ let b=null;
    const m=l.match(/font-size:\s*[0-9.]+px/);
    if(m)literals.push({line:i+1,text:l.trim().slice(0,60)});
   });
-  // A4帳票(.rp-page配下 / .df-page配下)とサイズ見本だけが例外。
-  const pageStart=noComment.split('\n').findIndex(l=>l.startsWith('.rp-page{'));
-  const stray=literals.filter(x=>!/rp-|df-|ui-size-swatch/.test(x.text)&&x.line<pageStart);
+  // A4帳票(.rp-*/.df-*)とサイズ見本だけが例外。
+  const stray=literals.filter(x=>!/rp-|df-|ui-size-swatch/.test(x.text));
   rec('文字サイズのリテラルpxは印刷物とサイズ見本だけ',stray.length===0,
    stray.map(x=>`${x.line}:${x.text}`).join(' / ').slice(0,200));
 

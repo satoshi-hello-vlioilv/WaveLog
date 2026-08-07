@@ -1,0 +1,85 @@
+/* ============================================================
+   85-headerbar.css — ヘッダーの操作列（画面ごとの操作をヘッダーへ載せる）
+   ------------------------------------------------------------
+   app.css を分割したもの。**読み込み順を変えないこと。**
+   同じ @layer の中では「後に書いたほうが勝つ」が今も効いているため、
+   ファイルの順序＝カスケードの順序になる。順序は templates/index.html の
+   <link> の並びで決まり、tests/test_csslint.py が並びを固定している。
+   レイヤの宣言とトークンは 00-base.css が持つ。
+   ============================================================ */
+@layer component {
+.df-table th,.df-table td{border:1px solid #888;padding:2px 5px;text-align:right}
+.df-table thead th{background:#eee;text-align:center}
+.df-answer{margin:4px 0;font-size:13px}
+.df-foot{margin-top:10px;padding-top:4px;border-top:1px solid #999;font-size:9px;color:#555}
+/* ============================================================
+   画面ごとの操作列をヘッダーへ相乗りさせる（#headerViewBar）
+   ------------------------------------------------------------
+   各画面が持っていた見出しバーは「画面名（ヘッダーと同じ文字）＋操作」で、
+   名前は二重、バー1本ぶん(40〜50px)本文の高さを食っていた。名前はヘッダー
+   だけが持ち、操作だけをここへ移す(WL.enterView→mountViewToolbar)。
+   移すのはDOMの移動なので、画面側が張ったハンドラはそのまま生きる。
+   ============================================================ *//* 操作列はヘッダーの2行目として全幅で置く。1行目(画面名・状態チップ・全体操作)
+   と混ぜて詰め込むと、画面によって入りきらず切れる。独立した行にすると
+   どの画面でも同じ位置に同じ高さで出るので、目で探す位置が変わらない。
+   それでも、各画面が持っていた見出しバー(画面名+枠+余白)より低い。 */
+.hd-viewbar{
+  display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2);
+  min-width:0;min-height:var(--ctl-h-sm);
+  padding-top:var(--space-1);border-top:1px solid var(--line);
+  font-size:var(--fs-sm);color:var(--ink-2);
+}
+.hd-viewbar:empty{display:none}
+/* 元パネル向けの枠・余白・背景は落とし、ヘッダーのコントロールと同じ寸法・
+   同じ色づかい(白地+--line枠)へ揃える。 */
+.hd-viewbar>*{margin:0;min-width:0}
+.hd-viewbar .sc-head,.hd-viewbar .rp-head-actions,.hd-viewbar .record-searchbar,
+.hd-viewbar .cal-toolbar,.hd-viewbar .mm-head{
+  display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2);width:100%;min-width:0;
+  margin:0;padding:0;border:0;background:transparent;box-shadow:none;color:inherit;
+}
+.hd-viewbar .sc-head-left,.hd-viewbar .sc-head-right{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2);min-width:0}
+.hd-viewbar .sc-head-right{margin-left:auto}
+.hd-viewbar label{display:inline-flex;align-items:center;gap:var(--space-1);white-space:nowrap;font-size:var(--fs-sm);color:var(--muted)}
+.hd-viewbar select,.hd-viewbar input{height:var(--ctl-h-sm);padding:0 8px;border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;color:var(--ink-2);font-size:var(--fs-sm)}
+.hd-viewbar button{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);font-size:var(--fs-sm);border-radius:var(--radius-sm);border:1px solid var(--line);background:#fff;
+  color:var(--ink-2);font-weight:700;cursor:pointer}
+.hd-viewbar button:hover{border-color:var(--teal);background:var(--pale);color:#0c5d67}
+.hd-viewbar button.active,.hd-viewbar [role="tab"].active{background:var(--teal);border-color:var(--teal);color:#fff}
+.hd-viewbar .db-viewtabs,.hd-viewbar .sc-mode-toggle{display:flex;gap:2px;padding:2px;border-radius:var(--radius-sm);background:var(--bg)}
+.hd-viewbar .db-viewtabs button,.hd-viewbar .sc-mode-toggle-btn{height:calc(var(--ctl-h-sm) - 4px);border-color:transparent;background:transparent}
+.hd-viewbar .sc-equipment-fixed{padding:3px 10px;border-radius:var(--radius-pill);background:var(--pale);border:1px solid var(--card-border);color:var(--nav);font-size:var(--fs-sm);font-weight:700;white-space:nowrap}
+.hd-viewbar .sc-lock-badge{padding:3px 9px;border-radius:var(--radius-pill);font-size:var(--fs-micro)}
+.hd-viewbar .sc-history-range{display:inline-flex;align-items:center;gap:var(--space-1);white-space:nowrap}
+.hd-viewbar .sc-freshness,.hd-viewbar .sc-field-reorder-note,.hd-viewbar .record-search-result{
+  font-size:var(--fs-micro);color:var(--muted);white-space:nowrap;
+}
+.hd-viewbar .sc-refresh,.hd-viewbar .rp-btn-secondary{border-color:var(--teal);color:#0c5d67}
+/* 実績カレンダー: 月送り・今月と、指標/対象ステータスの2択(.db-seg)。 */
+.hd-viewbar .cal-nav,.hd-viewbar .cal-toolbar-right{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;min-width:0}
+.hd-viewbar .cal-toolbar-right{margin-left:auto}
+.hd-viewbar .cal-month-label{font-size:var(--fs-base-sm);font-weight:800;color:var(--ink);white-space:nowrap;min-width:8em;text-align:center}
+/* ‹ › は文字ではなく記号なので、本文用の--fs-smだと潰れて読めない。
+   アイコンのみのボタンは他画面の.rp-btn-iconと同じ--fs-titleで揃える
+   (文字サイズの統一を見る回帰テストもこの一群は別扱いにしている)。 */
+.hd-viewbar .rp-btn-icon{width:var(--ctl-h-sm);padding:0;font-size:var(--fs-title);line-height:1}
+.hd-viewbar .db-seg{display:flex;gap:2px;padding:2px;border-radius:var(--radius-sm);background:var(--bg)}
+.hd-viewbar .db-seg button{height:calc(var(--ctl-h-sm) - 4px);border-color:transparent;background:transparent}
+/* 2択・タブの「選ばれている方」。上の`.hd-viewbar button.active`と同じ
+   詳細度(0,2,1)で、かつ後から来る`.db-seg button`等が地の色へ戻してしまう
+   ため、選択中だけは詳細度を1段上げて宣言し直す(ダッシュボードのタブは
+   `[role="tab"]`があるので偶然勝っていたが、カレンダーの2択は負けていた)。 */
+.hd-viewbar .db-seg button.active,
+.hd-viewbar .db-viewtabs button.active,
+.hd-viewbar .sc-mode-toggle-btn.active{background:var(--teal);border-color:var(--teal);color:#fff}
+.hd-viewbar .db-seg button:hover:not(.active),
+.hd-viewbar .db-viewtabs button:hover:not(.active),
+.hd-viewbar .sc-mode-toggle-btn:hover:not(.active){background:#fff;border-color:var(--teal);color:#0c5d67}
+/* マスタ管理: 更新者IDだけを残す(説明はヘッダーの副題、閉じるは左メニュー)。 */
+.hd-viewbar .mm-head-user{display:inline-flex;align-items:center;gap:var(--space-2);margin:0;
+  color:var(--muted);font-size:var(--fs-sm);font-weight:700;white-space:nowrap}
+.hd-viewbar .mm-head-user input{min-width:calc(180px * var(--ui-scale));font-weight:700}
+/* パネル側に残った見出しバーの枠は、中身をヘッダーへ移したぶん詰める。 */
+.sc-panel .sc-head:empty,.db-panel .rp-head-actions:empty,
+.cal-panel .cal-toolbar:empty,.mm-panel .mm-head:empty{display:none}
+}

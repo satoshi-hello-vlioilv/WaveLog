@@ -113,7 +113,7 @@ db/                         ローカルDBの既定の置き場所(config/local.
   master.sqlite3               本アプリが読み書きするマスタ(無ければ初回書き込み時に自動生成)
   records.sqlite3              測定データバックアップ(無ければ初回書き込み時に自動生成)
 templates/index.html       画面の骨格（SPA）
-static/app.css             全画面共通スタイル
+static/css/*.css           全画面共通スタイル(読み込み順で16分割。docs/ARCHITECTURE.md参照)
 static/js/                 (index.htmlの記載順に読み込み)
   base.js                  共有基盤: グローバル状態S・api・共通ユーティリティ・別名定義
   list-view.js             起動処理・DB/テーブル選択・一覧グリッド

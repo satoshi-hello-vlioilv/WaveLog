@@ -1,0 +1,210 @@
+/* ============================================================
+   80-defect.css — 異常位置判定（画面と専用帳票）
+   ------------------------------------------------------------
+   app.css を分割したもの。**読み込み順を変えないこと。**
+   同じ @layer の中では「後に書いたほうが勝つ」が今も効いているため、
+   ファイルの順序＝カスケードの順序になる。順序は templates/index.html の
+   <link> の並びで決まり、tests/test_csslint.py が並びを固定している。
+   レイヤの宣言とトークンは 00-base.css が持つ。
+   ============================================================ */
+@layer component {
+.filter-var-chip{padding:2px 9px;border:1px dashed var(--teal);border-radius:var(--radius-md);
+ background:#f7fafb;color:#17606c;font-size:var(--fs-sm);font-weight:700;line-height:1.6}
+.filter-var-chip::before{content:"{ }";margin-right:4px;opacity:.6;font-weight:800}
+.filter-var-chip:hover{background:#e2f5f8;border-style:solid}
+/* ---------- ダッシュボード「自設備」ビュー(§9.74) ----------
+   稼働状況・自由集計は全設備を見渡すスケジューラ視点。こちらは端末の使用設備
+   だけに絞った現場視点で、カード・表は既存の視覚語彙(.db-card/.db-table)を
+   そのまま使う(新しい見た目を増やさない)。 */
+.db-equip-view{display:flex;flex-direction:column;gap:var(--space-4);padding:var(--space-4);overflow:auto}
+.db-equip-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);flex-wrap:wrap}
+.db-equip-head>b{font-size:var(--fs-base-sm);font-weight:800;color:#173842}
+.db-equip-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:var(--space-4)}
+.db-equip-grid .db-card{align-items:stretch;text-align:left}
+.db-equip-grid .db-card h3{margin:0 0 var(--space-2);font-size:var(--fs-base-sm);font-weight:800;color:#173842}
+.db-equip-grid .db-card-wide{grid-column:1/-1}
+/* ============================================================
+   異常位置判定（defect-locator.js）
+   欠陥の位置から「OSから何条目・どの子ロットか」を求める画面。
+   帯グラフの見せ方は条割の視覚図(.split-visual-*)に合わせる
+   ——同じロットの並びを見ているので、別の見た目にすると読み替えが要る。
+
+   ■ 大きさを固定する理由
+   以前は .defect-dialog に height が無く max-height だけだったため、
+   該当条が増える・エラー文が出る等で中身の高さが変わるたびにモーダル自体が
+   伸び縮みしていた。読み手からは「押そうとしたボタンが動く・消える」
+   (フッターが画面外へ押し出される)ように見え、実際に「印刷ボタンが
+   消える」という指摘になった。**中身の量に関係なく器の大きさは一定**にし、
+   はみ出す可能性があるのは内訳(.defect-detail)だけに閉じ込める。
+   結論(.defect-answer-slot)と図(.defect-figure)も高さを確保しておき、
+   入力途中でも空にせずプレースホルダを置く(視線の位置が動かない)。
+
+   ■ 情報の並び(情報アーキテクチャ)
+   左＝入力(何を聞かれているか)、右＝出力(結論→図→内訳)の2カラム。
+   右カラムは上から「答え」「図」「根拠」の順で、知りたい順に並べる。
+   ============================================================ */
+.defect-dialog{
+  display:grid;grid-template-rows:auto minmax(0,1fr) auto;
+  width:min(1180px,95vw);height:min(780px,92vh);
+  background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius-card);
+  box-shadow:0 18px 48px #0000003d;overflow:hidden;
+}
+.defect-dialog>header{
+  display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);
+  padding:var(--space-2) var(--space-4);background:var(--header-bar-bg);color:var(--header-bar-fg);
+}
+.defect-dialog>header h2{margin:0;font-size:var(--fs-title);font-weight:800}
+.defect-dialog>header .defect-sub{display:block;margin-top:2px;font-size:var(--fs-micro);opacity:.85}
+.defect-dialog>header button{background:transparent;border:0;box-shadow:none;color:inherit;font-size:var(--fs-lg);line-height:1}
+.defect-body{
+  display:grid;grid-template-columns:minmax(250px,310px) minmax(0,1fr);
+  gap:var(--space-3);padding:var(--space-3);min-height:0;overflow:hidden;
+}
+/* ---------- 入力（左） ---------- */
+.defect-input{display:flex;flex-direction:column;gap:var(--space-2);min-width:0;min-height:0;overflow:auto}
+/* 「1 どこから測ったか」「2 どこに見つけたか」の2段階。作業記憶の負荷を
+   下げるため、5つの入力欄を意味のまとまりへ割り、番号で順序を示す。 */
+.defect-step{display:flex;align-items:center;gap:var(--space-2);font-size:var(--fs-base-sm);font-weight:800;color:var(--ink)}
+.defect-step:not(:first-child){margin-top:var(--space-2)}
+.defect-step-no{
+  flex:0 0 auto;display:grid;place-items:center;width:var(--ctl-h-xs);height:var(--ctl-h-xs);
+  border-radius:var(--radius-round);background:var(--teal);color:#fff;font-size:var(--fs-sm);font-weight:800;
+}
+.defect-field{display:flex;flex-direction:column;gap:var(--space-1);min-width:0;font-size:var(--fs-sm);font-weight:700;color:var(--ink-2)}
+.defect-field select,.defect-field input{min-width:0;width:100%;box-sizing:border-box}
+.defect-unit{position:relative;display:flex;align-items:center;min-width:0}
+.defect-unit input{padding-right:2.6em;text-align:right}
+.defect-unit i{position:absolute;right:var(--space-2);font-style:normal;font-size:var(--fs-micro);font-weight:700;color:var(--ink-soft);pointer-events:none}
+/* 利用者が入れるのではなく、こちらが前提として使っている値。入力欄と
+   同じ見た目にすると「まだ入れていない欄」に見えるので、自動計算値の
+   トークン(--computed-*)で塗り分けて下端へ寄せる。 */
+.defect-given{
+  margin-top:auto;display:grid;gap:var(--space-1);padding:var(--space-2);
+  border-radius:var(--radius-card);background:var(--computed-bg);color:var(--computed-fg);
+  font-size:var(--fs-micro);font-weight:700;font-variant-numeric:tabular-nums;
+}
+.defect-given span{display:flex;justify-content:space-between;gap:var(--space-2);min-width:0}
+.defect-given .defect-note-warn{display:block;color:var(--warn-fg)}
+/* ---------- 出力（右） ----------
+   3段(結論・図・内訳)。伸び縮みしてよいのは内訳だけ。 */
+/* 暗黙の列は auto = 最小幅が中身の min-content になり、条が40本ある・
+   対象ロットが6件あるといった「横に長い中身」で列そのものが器より広がる
+   (実測で結論欄・内訳の表・凡例が右へはみ出した)。minmax(0,1fr)で
+   はみ出しを列の中の折り返し/スクロールへ閉じ込める。 */
+.defect-output{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr);gap:var(--space-2);min-width:0;min-height:0;overflow:hidden}
+.defect-answer-slot{display:flex;min-height:62px}
+.defect-answer{
+  flex:1;display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-1) var(--space-3);
+  padding:var(--space-2) var(--space-3);border-radius:var(--radius-card);
+  background:var(--success-bg);border:1px solid var(--success-border);
+}
+.defect-answer b,.defect-answer span{min-width:0;overflow-wrap:anywhere}
+.defect-answer b{font-size:var(--fs-lg);font-weight:900;color:var(--success)}
+.defect-answer span{font-size:var(--fs-sm);color:var(--ink-2)}
+/* 「該当なし」は失敗ではなく答えのひとつなので警告色まで、
+   「計算できない」は対処が要るので危険色にする(意味で色を分ける)。 */
+.defect-answer-none{background:var(--warn-bg);border-color:var(--warn-border)}
+.defect-answer-none b{color:var(--warn-fg);font-size:var(--fs-title)}
+.defect-answer-error{background:var(--danger-bg);border-color:var(--danger-border)}
+.defect-answer-error b{color:var(--danger);font-size:var(--fs-title)}
+.defect-answer-wait{background:var(--surface-2);border-color:var(--line-mid)}
+.defect-answer-wait b{color:var(--ink-3);font-size:var(--fs-title)}
+/* ---------- 図 ---------- */
+.defect-figure{
+  display:flex;flex-direction:column;gap:var(--space-1);min-width:0;padding:var(--space-2);
+  border:1px solid var(--line-soft);border-radius:var(--radius-card);background:var(--surface);
+}
+.defect-figure-head{display:flex;align-items:baseline;gap:var(--space-2)}
+.defect-figure-head b{font-size:var(--fs-base-sm);color:var(--ink)}
+.defect-figure-scale{margin-left:auto;font-size:var(--fs-micro);color:var(--muted)}
+.defect-figure-row{display:flex;align-items:center;gap:var(--space-2)}
+.defect-end{
+  flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:28px;align-self:stretch;
+  border-radius:var(--radius-sm);background:var(--surface-3);color:var(--ink-3);
+  font-size:var(--fs-micro);font-weight:800;letter-spacing:.03em;
+}
+.defect-measure{flex:1;min-width:0;display:flex;flex-direction:column}
+/* 位置ラベルの置き場。以前は帯(.defect-strip)の中へ負のtopで置いていたため
+   overflow:hidden に切られて数字が読めなかった。帯の外へ出して見切れを無くす。 */
+.defect-flags{position:relative;height:22px;min-width:0}
+.defect-strip{position:relative;height:84px;min-width:0;border:1px solid var(--line-strong);border-radius:var(--radius-sm);background:var(--surface-3);overflow:hidden}
+.defect-ruler{position:relative;height:18px;min-width:0}
+/* 条の色はJSが --defect-lane-bg で渡す(インラインで background を直接
+   書かない。どのレイヤより強く、状態クラスで上書きできなくなるため)。 */
+.defect-lane{position:absolute;top:0;bottom:0;background-color:var(--defect-lane-bg,#8a9a97);border-right:1px solid #ffffff8c;color:#fff;overflow:hidden}
+.defect-lane:last-of-type{border-right:0}
+.defect-lane-label{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;line-height:1.1;pointer-events:none}
+.defect-lane-label b{font-size:var(--fs-micro);font-weight:900}
+.defect-lane-label small{font-size:var(--fs-tiny);opacity:.85}
+.defect-scrap{position:absolute;top:0;bottom:0;overflow:hidden;background:repeating-linear-gradient(45deg,var(--surface-3),var(--surface-3) 4px,var(--line-soft) 4px,var(--line-soft) 8px);display:flex;align-items:center;justify-content:center}
+.defect-scrap span{font-size:var(--fs-tiny);font-weight:800;color:var(--ink-3)}
+.defect-centerline{position:absolute;top:0;bottom:0;left:50%;width:0;border-left:1px dashed #ffffffcc;pointer-events:none}
+/* 図の中で唯一の高彩度＝欠陥。条は彩度を落としてあるので、面積が小さくても
+   赤が最初に目に入る(前景/背景の対比)。色だけに頼らないよう、該当条には
+   枠線(@layer state の .is-hit)と▼マーカーも併せて出す。 */
+/* 幅のある欠陥は複数の条にまたがる。塗りつぶすと下の条が見えなくなるので
+   わずかに透かし、条の色と番号を残したまま範囲を示す。 */
+.defect-mark{position:absolute;top:0;bottom:0;min-width:3px;box-sizing:border-box;z-index:3;pointer-events:none;border-left:2px solid var(--danger);border-right:2px solid var(--danger)}
+.defect-mark::before{content:"";position:absolute;inset:0;background:var(--danger);opacity:.32}
+.defect-flag{position:absolute;bottom:0;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;pointer-events:none;white-space:nowrap}
+.defect-flag b{padding:1px 6px;border-radius:var(--radius-pill);background:var(--danger);color:#fff;font-size:var(--fs-tiny);font-weight:900;font-variant-numeric:tabular-nums}
+.defect-flag i{width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid var(--danger)}
+/* 端に寄ったときはラベルだけ内側へ寄せる(▼はほぼ位置どおりのまま)。
+   translateX(-50%)のままだと数字が図の外へ出て見切れる。 */
+.defect-flag.at-start{align-items:flex-start;transform:translateX(-6px)}
+.defect-flag.at-end{align-items:flex-end;transform:translateX(calc(-100% + 6px))}
+.defect-tick{position:absolute;top:0;width:0;height:5px;border-left:1px solid var(--line-strong)}
+.defect-tick-label{position:absolute;top:6px;transform:translateX(-50%);font-size:var(--fs-tiny);font-weight:700;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.defect-tick-label.at-start{transform:translateX(0)}
+.defect-tick-label.at-end{transform:translateX(-100%)}
+/* 条が細いと帯の中にロット番号を書けない。色と番号の対応表を1行で置く。 */
+.defect-legend{display:flex;gap:var(--space-3);min-width:0;min-height:18px;overflow-x:auto;overflow-y:hidden}
+.defect-legend span{display:inline-flex;align-items:center;gap:var(--space-1);flex:0 0 auto;font-size:var(--fs-tiny);font-weight:700;color:var(--ink-3);white-space:nowrap}
+.defect-legend i{width:10px;height:10px;border-radius:var(--radius-xs);background:var(--defect-lane-bg,#8a9a97)}
+.defect-legend b{color:var(--ink-2)}
+.defect-figure-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:0 var(--space-3);text-align:center;color:var(--muted);font-size:var(--fs-sm);font-weight:700}
+/* ---------- 内訳（伸び縮みしてよい唯一の場所） ---------- */
+.defect-detail{min-height:0;overflow:auto;padding:var(--space-2);border:1px solid var(--line-soft);border-radius:var(--radius-card);background:var(--surface)}
+.defect-detail-head{display:flex;align-items:baseline;gap:var(--space-2);margin-bottom:var(--space-1);font-size:var(--fs-base-sm);font-weight:800;color:var(--ink)}
+.defect-detail-head span{margin-left:auto;font-size:var(--fs-micro);font-weight:700;color:var(--muted)}
+.defect-detail-empty{padding:var(--space-3);text-align:center;color:var(--muted);font-size:var(--fs-sm)}
+.defect-warn{margin-bottom:var(--space-2);padding:5px 9px;border-radius:var(--radius-card);background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn-fg);font-size:var(--fs-sm);font-weight:700}
+.defect-calc{display:flex;flex-wrap:wrap;gap:var(--space-1) var(--space-2);font-size:var(--fs-micro);color:var(--ink-3);font-variant-numeric:tabular-nums}
+.defect-calc span{padding:2px 7px;border-radius:var(--radius-sm);background:var(--surface-2);border:1px solid var(--line-soft)}
+.defect-table{width:100%;margin-top:var(--space-2);border-collapse:collapse;font-size:var(--fs-sm);font-variant-numeric:tabular-nums}
+.defect-table th,.defect-table td{padding:3px 7px;border:1px solid var(--line-mid);text-align:right}
+.defect-table thead th{background:var(--surface-3);text-align:center;font-weight:800}
+.defect-table tbody th{text-align:center;background:var(--surface-2)}
+/* ---------- 操作（常に見えている） ---------- */
+.defect-actions{display:flex;align-items:center;gap:var(--space-2);padding:var(--space-2) var(--space-4);border-top:1px solid var(--card-border);background:var(--surface-2)}
+.defect-actions button{font-weight:700}
+.defect-ghost-btn{background:var(--surface);color:var(--ink-2)}
+.defect-primary-btn{background:var(--teal);border-color:var(--teal-dark);color:#fff}
+.defect-primary-btn:hover{background:var(--teal-dark);border-color:var(--teal-dark)}
+/* 保存したかどうかは、この判定が帳票へ載るかどうかを決める唯一の合図。
+   ボタンの左に常設し、押した結果がその場で読めるようにする。 */
+.defect-save-state{margin-right:auto;display:flex;align-items:center;gap:var(--space-1);min-width:0;font-size:var(--fs-micro);font-weight:700;color:var(--muted)}
+.defect-save-state b{font-weight:800}
+.defect-save-state.is-saved{color:var(--success)}
+.defect-save-state.is-stale{color:var(--warn-fg)}
+/* 幅の狭い端末では1カラムへ落とす。器の高さは変えず、body側をスクロールさせる。 */
+@media (max-width:900px){
+  .defect-body{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);overflow:auto}
+  .defect-input{overflow:visible}
+}
+/* 帳票。画面では隠し、印刷時だけ本文と入れ替える(帳票一括印刷と同じ方式)。 */
+.df-print-area{display:none}
+.df-page{padding:8mm;box-sizing:border-box;font-size:11px;color:#111}
+.df-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding-bottom:4px;border-bottom:2px solid #333}
+.df-head h2{margin:0;font-size:16px}
+.df-section{margin-top:8px;break-inside:avoid}
+.df-section h3{margin:0 0 3px;padding:2px 6px;background:#eef2f4;border-left:3px solid #3f7f78;font-size:12px}
+.df-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:2px 8px}
+.df-field{display:flex;justify-content:space-between;gap:6px;padding:2px 4px;border-bottom:1px dotted #bbb;min-width:0}
+.df-field span{color:#555;white-space:nowrap}
+.df-field b{text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.df-strip-row{display:flex;align-items:center;gap:6px;margin-top:4px}
+.df-strip-row>span{font-weight:800;font-size:10px}
+.df-strip{position:relative;flex:1;height:52px;border:1px solid #666;overflow:hidden}
+.df-table{width:100%;margin-top:4px;border-collapse:collapse;font-size:11px}
+}
