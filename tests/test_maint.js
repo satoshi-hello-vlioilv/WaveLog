@@ -75,11 +75,11 @@ let b=null;
  rec('項目を減らしていない(13項目)',info.fields===13,info.fields+'項目');
  rec('意味のかたまりで見出しが付いている',
    info.groups.join('/')==='識別番号/製品/コース',info.groups.join('/'));
- ['ロット№','検査No.','鋳造No.','オーダーNo.','引当No.','用途名','用途コード','取引先','納入先','設計コース','実績コース','残コース']
-  .forEach(l=>{if(!info.labels.includes(l))rec('項目が残っている: '+l,false,info.labels.join(','))});
- rec('必要な項目がすべて残っている',
-   ['ロット№','検査No.','鋳造No.','オーダーNo.','引当No.','用途名','用途コード','取引先','納入先','設計コース','実績コース','残コース']
-     .every(l=>info.labels.includes(l)));
+ /* コースの3項目のラベルは「設計」「実績」「残」(§9.81)。すぐ上に
+    「コース」という見出しが出ているので、行ごとに繰り返さない。 */
+ const NEEDED=['ロット№','検査No.','鋳造No.','オーダーNo.','引当No.','用途名','用途コード','取引先','納入先','設計','実績','残'];
+ NEEDED.forEach(l=>{if(!info.labels.includes(l))rec('項目が残っている: '+l,false,info.labels.join(','))});
+ rec('必要な項目がすべて残っている',NEEDED.every(l=>info.labels.includes(l)));
 
  // 打刻した時刻が読める(幅が足りている)
  await page.click('#stampWorkStart');await page.waitForTimeout(400);

@@ -127,4 +127,17 @@
 }
 /* --- 選択の切り替え（セグメント）は丸め切る形で「押して選ぶ」と分かる --- */
 .status-filter-btn,.qa-v7 .qa-step-tabs button{border-radius:var(--radius-pill)}
+
+/* ---------- 高さを決めた部品は上下パディングで行を潰さない(§9.81) ----------
+   素の指定は button/select/input とも padding:7px。高さを --ctl-h-* で
+   決めている部品では、7+7+枠2=16px が引かれる。--ctl-h-sm(30px)なら
+   残りは14pxで、本文(14px × 行送り1.3 ≒ 18px)が**入らない**。
+   実際、フィルタの「カラム」「比較」の選択肢が下から切れていた
+   (実測: 高さ30px / 行に使える14px / 必要18px。特大でも21px対14px)。
+   高さが決まっているなら、縦位置は中央揃えが決めるのでパディングは要らない。
+   横は据え置き(--ctl-pad-x-* が持つ役割)。 */
+.filter-builder select,.filter-builder input,
+.filter-token-search,
+.sc-content-filter,
+.record-searchbar input,.record-searchbar select{padding-block:0}
 }

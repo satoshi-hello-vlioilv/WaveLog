@@ -122,7 +122,10 @@
 .filter-tag-lock-icon{font-size:var(--fs-micro)}
 .filter-empty{color:#6d7e84;font-size:var(--fs-micro);white-space:nowrap}
 /* サジェスト・ドロップダウン（認知負荷を下げる: 再認＞想起 / チャンク化 / 段階的開示） */
-.filter-suggest{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:var(--z-popover);max-height:340px;overflow:auto;background:#fff;border:1px solid #9fc3c8;border-radius:var(--radius-md);box-shadow:0 16px 42px #0b2b3322;padding:var(--space-2)}
+/* 器(.generic-filter-bar)は角丸のため overflow:hidden を持つので、中に
+   absolute で置くと**開いても丸ごと切られる**(§9.81)。他のポップオーバーと
+   同じく fixed にし、位置はJS(placeSuggest)が入力欄へ合わせる。 */
+.filter-suggest{position:fixed;z-index:var(--z-popover);max-height:340px;overflow:auto;background:#fff;border:1px solid #9fc3c8;border-radius:var(--radius-md);box-shadow:0 16px 42px #0b2b3322;padding:var(--space-2)}
 .filter-suggest[hidden]{display:none}
 .filter-suggest-group+.filter-suggest-group{margin-top:4px;border-top:1px dashed #dbe7ea;padding-top:4px}
 .filter-suggest-head{display:flex;align-items:center;gap:var(--gap-inline);padding:4px 6px 3px;color:#526970;font-size:var(--fs-micro);font-weight:800}

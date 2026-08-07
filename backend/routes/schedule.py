@@ -423,7 +423,12 @@ def stop_category_delete():
 # ========================================================================
 def _stop_reason_entry(r):
  # r: 停止理由ID,設備名,分類,名称,標準所要分,色キー,表示順,有効,更新日時,更新者ID
- return {'id':r[0],'equipment':r[1],'category':r[2],'name':r[3],
+ # equipment は保存値そのまま(複数設備はカンマ区切り、全設備は'*'。§9.81)。
+ # 画面が書式を解釈し直さずに済むよう、配列と表示用の文字列も添える。
+ return {'id':r[0],'equipment':r[1],
+         'equipmentList':sr.stop_equipment_list(r[1]),
+         'equipmentLabel':sr.stop_equipment_label(r[1]),
+         'category':r[2],'name':r[3],
          'standardMinutes':r[4],'colorKey':r[5],
          'updatedAt':r[8].isoformat() if r[8] else None,'updatedBy':str(r[9] or '')}
 
@@ -433,18 +438,33 @@ def stop_reason_list():
  items=_cfg_read(lambda mc:[_stop_reason_entry(r) for r in sr.stop_reason_rows(mc,equipment or None)])
  return jsonify(ok=True,configured=True,items=items,stale=False)
 
-@bp.post('/api/schedule/stop-reason-master')
-def stop_reason_register():
- x=request.get_json(force=True) or {}
- equipment=str(x.get('equipment') or '').strip()
+def _stop_reason_save(x,stop_reason_id=None):
+ # 対象設備は文字列(カンマ区切り・'*')でもリストでも受ける。書式の正規化は
+ # schedule_repo.stop_equipment_text が一手に引き受ける(§9.81)。
+ equipment=x.get('equipment')
+ if not isinstance(equipment,(list,tuple)):equipment=str(equipment or '').strip()
  name=str(x.get('name') or '').strip()
  def fn(mc):
   sid,created=sr.stop_reason_upsert(mc,equipment,name,request_user_id(x),
                                      category=str(x.get('category') or ''),
                                      standard_minutes=x.get('standardMinutes'),
-                                     color_key=str(x.get('colorKey') or ''))
+                                     color_key=str(x.get('colorKey') or ''),
+                                     stop_reason_id=stop_reason_id)
   return {'id':sid,'created':created}
  return _cfg_write_response(fn)
+
+@bp.post('/api/schedule/stop-reason-master')
+def stop_reason_register():
+ return _stop_reason_save(request.get_json(force=True) or {})
+
+@bp.post('/api/schedule/stop-reason-master/update')
+def stop_reason_update():
+ # 既存行の更新(§9.81)。対象設備そのものを入れ替えられるのはこの経路だけで、
+ # 登録側(自然キー照合)では「対象設備を変える」と別行の新規登録になってしまう。
+ x=request.get_json(force=True) or {}
+ sid=x.get('id')
+ if sid is None or str(sid).strip()=='':return jsonify(error='更新対象IDがありません。'),400
+ return _stop_reason_save(x,stop_reason_id=sid)
 
 @bp.post('/api/schedule/stop-reason-master/delete')
 def stop_reason_delete():

@@ -66,7 +66,11 @@ let b=null;
  const uniq='検査'+Date.now().toString().slice(-5);
  await page.selectOption('[data-combo-select="category"]','__new__');
  await page.fill('[data-combo-new="category"]',uniq);
- await page.selectOption('[data-field="equipment"]','テスト設備A');
+ // 対象設備は単一選択のプルダウンから複数選択のタグ入力になった(§9.81)ので、
+ // 候補を出してから選ぶ。
+ await page.click('[data-equipment-search="equipment"]');
+ await page.waitForTimeout(300);
+ await page.click('[data-equipment-suggest="equipment"] [data-pick="テスト設備A"]');
  await page.fill('[data-field="name"]','連動テスト'+uniq);
  await page.click('#maintEditorSave');
  await page.waitForTimeout(2500);
@@ -91,6 +95,31 @@ let b=null;
  },uniq);
  rec('使用中の分類は件数を示して削除を止める',
    del.status===409&&del.body.code==='stop_category_in_use',JSON.stringify(del));
+
+ /* 後片付け: この2件を消してから先へ進む。設備停止マスタと分類マスタは
+    共有DBではなく master.sqlite3 にあり、ランナーのフィクスチャ差し替え
+    (仕掛/品質/共有スケジュール)では戻らない。**残すと実行のたびに増え続け**、
+    設備停止マスタの一覧も分類の選択肢も「連動テスト検査…」で埋まる
+    (実際に88件たまっていた)。使用中の分類は消せないので、停止理由が先。
+    削除は業務仕様どおり論理削除なので、行そのものは残る(有効=0)。ここで
+    確かめるのは「一覧・選択肢に出てこないこと」。 */
+ await page.evaluate(async u=>{
+  const post=(p,b)=>fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(Object.assign({user_id:'test'},b))});
+  const rs=await fetch('/api/schedule/stop-reason-master').then(x=>x.json());
+  for(const it of (rs.items||[])) if(it.name==='連動テスト'+u)
+    await post('/api/schedule/stop-reason-master/delete',{id:it.id});
+  const cs=await fetch('/api/schedule/stop-category-master').then(x=>x.json());
+  for(const it of (cs.items||[])) if(it.name===u)
+    await post('/api/schedule/stop-category-master/delete',{id:it.id});
+ },uniq);
+ const leftover=await page.evaluate(async u=>{
+  const rs=await fetch('/api/schedule/stop-reason-master').then(x=>x.json());
+  const cs=await fetch('/api/schedule/stop-category-master').then(x=>x.json());
+  return {stop:(rs.items||[]).some(x=>x.name==='連動テスト'+u),
+          cat:(cs.items||[]).some(x=>x.name===u)};
+ },uniq);
+ rec('検証で作ったデータを一覧・選択肢へ残さない',!leftover.stop&&!leftover.cat,JSON.stringify(leftover));
 
  // ---- (6) パス設定タブ: 参照ボタン・ドロップ領域・RNE状態表示 ----
  await openTab('pathConfig');
