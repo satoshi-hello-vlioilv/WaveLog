@@ -632,4 +632,47 @@
  border:1px solid var(--line);background:var(--pale);color:var(--nav);
  font-size:var(--fs);line-height:1;cursor:pointer;user-select:none;
 }
+
+/* ---------- 分割ありの親ロットと子ロットのまとまり(§9.83) ----------
+   子ロットは**時間を持たない明細行**。予定として時間を積むのは親だけ
+   なので、見た目も「予定の行」ではなく「親にぶら下がる内訳」に寄せる:
+   1段下げて、罫線でつなぎ、文字は一段小さく、操作は持たせない。
+   既定は畳んだ状態(hidden)で、印の欄のつまみで開く。 */
+.sc-row-title.has-children{display:flex;align-items:center;gap:var(--gap-inline);min-width:0}
+/* つまみは縮ませない。詰まったときに削るのは文字の方(省略記号で示す)。 */
+.sc-row-title-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.sc-child-toggle{
+ display:inline-flex;align-items:center;gap:2px;flex:0 0 auto;
+ padding:0 var(--space-1);height:var(--ctl-h-xs);
+ border:1px solid var(--line-mid);border-radius:var(--radius-pill);
+ background:var(--surface-2);color:var(--ink-2);
+ font-size:var(--fs-badge);font-weight:700;line-height:1;
+ cursor:pointer;white-space:nowrap;
+}
+.sc-child-toggle:hover{border-color:var(--teal);background:var(--pale);color:var(--nav)}
+.sc-child-toggle.is-open{border-color:var(--teal);background:var(--pale);color:var(--nav)}
+.sc-child-toggle i{font-style:normal;font-size:var(--fs-tiny)}
+.sc-row-line.sc-row-has-children{border-bottom-color:var(--line-mid)}
+
+.sc-child-box{
+ background:var(--surface-2);
+ border-bottom:1px solid var(--line-soft);
+ padding:var(--space-1) 8px var(--space-1) 0;
+}
+.sc-child-box[hidden]{display:none}
+.sc-child-line{
+ display:grid;
+ /* つなぎ / ロット番号 / 内訳 。親の桁には合わせない(別物として読ませる)。 */
+ grid-template-columns:calc(24px * var(--ui-scale)) calc(120px * var(--ui-scale)) minmax(0,1fr);
+ align-items:center;gap:var(--gap-inline);
+ min-height:calc(var(--row-h) * .78);
+ font-size:var(--fs-sm);color:var(--ink-2);
+}
+.sc-child-mark{color:var(--line-strong);text-align:center}
+.sc-child-lot{font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums;
+              white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc-child-info{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.sc-child-line.is-missing .sc-child-lot{color:var(--danger)}
+.sc-child-line.is-missing .sc-child-info{color:var(--danger)}
+
 }

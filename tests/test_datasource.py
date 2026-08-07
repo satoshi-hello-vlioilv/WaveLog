@@ -41,6 +41,28 @@ KEY = 'PROBE_DS'
 KEY2 = 'PROBE_DS2'  # 編集でキーを付け替える先（§9.82）
 
 
+def purge_probe_rows():
+    """検証で作った行を**物理的に**消す。
+
+    削除APIは業務仕様どおり論理削除(有効=0)なので、行そのものは残る。
+    残ったままだとキーの付け替え(KEY→KEY2)が「別のデータソースが使って
+    います」で弾かれ、**2回目の実行から落ちる**(実際に踏んだ)。
+    マスタDBはランナーのフィクスチャ差し替えの対象外で毎回同じものを使う
+    ため、このテストが自分で片付ける。"""
+    import sqlite3
+    path = db_access.DBS['MASTER']['path']
+    try:
+        conn = sqlite3.connect(path)
+        conn.execute("DELETE FROM [データソースマスタ] WHERE [キー] LIKE 'PROBE_DS%'")
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass  # テーブルが無い初回などは何もしない
+
+
+purge_probe_rows()
+
+
 def sources():
     return client.get('/api/data-source-master').get_json() or {}
 
@@ -174,6 +196,8 @@ rec('空欄で保存すると既定へ戻る',
 # ---- 6) 抽出は一覧に無いものを走らせない ----
 rec('RNE未設定のデータソースは抽出対象にならない',
     all(j.get('rne') for j in rne_scheduler.jobs()))
+
+purge_probe_rows()
 
 ng = [x for x in R if not x[1]]
 print('\n=== SUMMARY ===')

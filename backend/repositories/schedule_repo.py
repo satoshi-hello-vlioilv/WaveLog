@@ -36,19 +36,42 @@ from .master_repo import normalize_equipment_name
 PLAN_TABLE='作業予定'
 PLAN_REORDERABLE_STATE='予定'
 
+# 親予定ID: 分割ありの親ロットにぶら下がる子ロットの行(§9.83)。
+#   NULL … 通常の予定(まとまりの親、または単独の予定)
+#   値   … その予定IDの子。**時間を持たない明細行**として扱う
+#          (親ロット1本をスリットする1回の作業なので、タイムラインの
+#           長さを決めるのは親の見積だけ)。
+PLAN_PARENT_COLUMN='親予定ID'
+# 共有DBは既に現場で動いているため、作り直さず「無ければ足す」で移行する
+# (master_repo.ensure_audit_columns 等と同じ方式)。列が増えても
+# plan_rows/plan_row は列名を明示して読むので、古い版のアプリが書いた
+# 行(この列がNULL)もそのまま読める。
+_PLAN_SELECT=('SELECT [予定ID],[設備名],[表示順],[種別],[ロット番号],[検査番号],[鋳造番号],'
+              '[予定名称],[明細JSON],[固定開始日時],[見積分],[状態],[実績測定ID],[備考],'
+              '[有効],[登録日時],[更新日時],[更新者ID],[親予定ID] FROM [作業予定]')
+
 def ensure_plan_table(c_share):
  names=tables(c_share);created=False
  if PLAN_TABLE not in names:
   cur=c_share.cursor()
-  cur.execute('CREATE TABLE [作業予定] ([予定ID] INTEGER PRIMARY KEY AUTOINCREMENT, [設備名] TEXT, [表示順] INTEGER, [種別] TEXT, [ロット番号] TEXT, [検査番号] TEXT, [鋳造番号] TEXT, [予定名称] TEXT, [明細JSON] TEXT, [固定開始日時] TEXT, [見積分] REAL, [状態] TEXT, [実績測定ID] TEXT, [備考] TEXT, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
+  cur.execute('CREATE TABLE [作業予定] ([予定ID] INTEGER PRIMARY KEY AUTOINCREMENT, [設備名] TEXT, [表示順] INTEGER, [種別] TEXT, [ロット番号] TEXT, [検査番号] TEXT, [鋳造番号] TEXT, [予定名称] TEXT, [明細JSON] TEXT, [固定開始日時] TEXT, [見積分] REAL, [状態] TEXT, [実績測定ID] TEXT, [備考] TEXT, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME, [親予定ID] INTEGER)')
   cur.execute('CREATE INDEX [IX_作業予定_設備順] ON [作業予定] ([設備名],[表示順])')
   c_share.commit();created=True
+  return created
+ cur=c_share.cursor()
+ cols={str(r[1]) for r in cur.execute('PRAGMA table_info([作業予定])').fetchall()}
+ if PLAN_PARENT_COLUMN not in cols:
+  cur.execute('ALTER TABLE [作業予定] ADD COLUMN [親予定ID] INTEGER')
+  c_share.commit()
  return created
 
 def plan_rows(c_share,equipment=None,include_inactive=False):
  ensure_plan_table(c_share)
  cur=c_share.cursor()
- cur.execute('SELECT [予定ID],[設備名],[表示順],[種別],[ロット番号],[検査番号],[鋳造番号],[予定名称],[明細JSON],[固定開始日時],[見積分],[状態],[実績測定ID],[備考],[有効],[登録日時],[更新日時],[更新者ID] FROM [作業予定] ORDER BY [設備名],[表示順]')
+ # 子ロットは親と同じ[表示順]を持つ(§9.83)ので、同順のときは[予定ID]順に
+ # する。親は必ず子より先に作られるため、これで親→子の並びが確定する
+ # (同順の並びをSQLite任せにすると、子が親の前に出ることがある)。
+ cur.execute(_PLAN_SELECT+' ORDER BY [設備名],[表示順],[予定ID]')
  target=normalize_equipment_name(equipment) if equipment else ''
  rows=[]
  for r in cur.fetchall():
@@ -61,15 +84,22 @@ def plan_rows(c_share,equipment=None,include_inactive=False):
 def plan_row(c_share,plan_id):
  ensure_plan_table(c_share)
  cur=c_share.cursor()
- cur.execute('SELECT [予定ID],[設備名],[表示順],[種別],[ロット番号],[検査番号],[鋳造番号],[予定名称],[明細JSON],[固定開始日時],[見積分],[状態],[実績測定ID],[備考],[有効],[登録日時],[更新日時],[更新者ID] FROM [作業予定] WHERE [予定ID]=?',[plan_id])
+ cur.execute(_PLAN_SELECT+' WHERE [予定ID]=?',[plan_id])
  return cur.fetchone()
+
+def plan_child_rows(c_share,parent_id):
+ """この親にぶら下がる子ロットの行(有効なものだけ、表示順)。"""
+ ensure_plan_table(c_share)
+ cur=c_share.cursor()
+ cur.execute(_PLAN_SELECT+' WHERE [親予定ID]=? ORDER BY [表示順],[予定ID]',[parent_id])
+ return [r for r in cur.fetchall() if r[14] is None or bool(r[14])]
 
 def _next_plan_order(c_share,equipment):
  cur=c_share.cursor()
  cur.execute('SELECT Max([表示順]) FROM [作業予定] WHERE [設備名]=? AND ([有効] IS NULL OR [有効]<>0)',[equipment])
  return int(cur.fetchone()[0] or 0)+1
 
-def plan_add(c_share,equipment,kind,uid,position='end',lot_no='',inspection_no='',casting_no='',title='',detail=None,stop_reason_id=None,estimate_minutes=None,fixed_start=None,remark=''):
+def plan_add(c_share,equipment,kind,uid,position='end',lot_no='',inspection_no='',casting_no='',title='',detail=None,stop_reason_id=None,estimate_minutes=None,fixed_start=None,remark='',children=None):
  # §8.2。kind='作業'はdetail(仕掛行スナップショット、辞書)をそのままJSON化して
  # 持つ(サーバー側で仕掛を引き直さない。フロントが送った時点の見え方を固定)。
  # kind='設備停止'はstopReasonIdから設備停止マスタの[名称]をスナップショットし、
@@ -117,6 +147,36 @@ def plan_add(c_share,equipment,kind,uid,position='end',lot_no='',inspection_no='
   order=_next_plan_order(c_share,equipment)
  cur.execute('INSERT INTO [作業予定] ([設備名],[表示順],[種別],[ロット番号],[検査番号],[鋳造番号],[予定名称],[明細JSON],[固定開始日時],[見積分],[状態],[備考],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,-1,?,?,Now(),Now())',
              [equipment,order,kind,lot_no,inspection_no,casting_no,title_snapshot,detail_json,fixed_start,est,PLAN_REORDERABLE_STATE,remark,uid,uid])
+ plan_id=cur.lastrowid
+ # 分割ありの親ロット(§9.83)。子ロットは**同じ書込サイクルの中で**まとめて
+ # 作る。1件ずつ別の書込にすると、共有DBのロック→取得→適用→反映を子の数
+ # だけ回すことになるうえ、途中で失敗すると親だけが残る。
+ for child in (children or []):
+  plan_add_child(c_share,plan_id,equipment,uid,
+                 lot_no=str(child.get('lotNo') or ''),
+                 inspection_no=str(child.get('inspectionNo') or ''),
+                 casting_no=str(child.get('castingNo') or ''),
+                 detail=child.get('detail') or {},
+                 order=order)
+ return plan_id
+
+def plan_add_child(c_share,parent_id,equipment,uid,lot_no='',inspection_no='',casting_no='',detail=None,order=None):
+ """子ロットの行を1件足す(§9.83)。
+    **[見積分]は0で固定**する。親ロット1本をスリットする1回の作業なので、
+    タイムラインの長さを決めるのは親の見積だけ。子に時間を持たせると、
+    分割ありのロットだけ予定終了が子の数だけ後ろへ伸びてしまう。
+    [表示順]は親と同じにする。親のすぐ後ろに並び、並べ替えは親を動かせば
+    まとまりで動く(plan_reorder参照)。"""
+ ensure_plan_table(c_share)
+ cur=c_share.cursor()
+ if order is None:
+  cur.execute('SELECT [表示順],[設備名] FROM [作業予定] WHERE [予定ID]=?',[parent_id])
+  row=cur.fetchone()
+  if not row:raise ValueError('親の予定が見つかりません。')
+  order=row[0];equipment=equipment or row[1]
+ cur.execute('INSERT INTO [作業予定] ([設備名],[表示順],[種別],[ロット番号],[検査番号],[鋳造番号],[予定名称],[明細JSON],[見積分],[状態],[有効],[親予定ID],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,?,0,?,-1,?,?,?,Now(),Now())',
+            [equipment,order,'作業',lot_no,inspection_no,casting_no,lot_no,
+             _json.dumps(detail or {},ensure_ascii=False),PLAN_REORDERABLE_STATE,parent_id,uid,uid])
  return cur.lastrowid
 
 _PLAN_UPDATE_FIELDS={'estimateMinutes':'見積分','fixedStart':'固定開始日時','remark':'備考','state':'状態'}
@@ -139,7 +199,11 @@ def plan_delete(c_share,plan_id,uid):
  ensure_plan_table(c_share)
  cur=c_share.cursor()
  cur.execute('UPDATE [作業予定] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [予定ID]=?',[uid,plan_id])
- return cur.rowcount
+ n=cur.rowcount
+ # 子ロットは親にぶら下がる明細行(§9.83)。親を消したら一緒に消す。
+ # 残すと、親のいない子が単独の予定としてタイムラインに並んでしまう。
+ cur.execute('UPDATE [作業予定] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [親予定ID]=? AND ([有効] IS NULL OR [有効]<>0)',[uid,plan_id])
+ return n
 
 def plan_reorder(c_share,equipment,ordered_ids,uid,reorderable_ids=None):
  # §5.1.1・§7.5。未着手(実質的に「予定」状態)の予定だけが並べ替え対象。
@@ -158,19 +222,31 @@ def plan_reorder(c_share,equipment,ordered_ids,uid,reorderable_ids=None):
  equipment=str(equipment or '').strip()
  if not equipment:raise ValueError('設備名を指定してください。')
  cur=c_share.cursor()
- cur.execute('SELECT [予定ID],[表示順],[状態] FROM [作業予定] WHERE [設備名]=? AND ([有効] IS NULL OR [有効]<>0)',[equipment])
+ cur.execute('SELECT [予定ID],[表示順],[状態],[親予定ID] FROM [作業予定] WHERE [設備名]=? AND ([有効] IS NULL OR [有効]<>0)',[equipment])
  active_rows=cur.fetchall()
+ # 子ロット(§9.83)は単独で動かせない。親にぶら下がる明細行なので、
+ # 並べ替えの対象は親だけにして、子は親の新しい表示順へ後から揃える。
+ # 対象に混ぜると、画面が送らない(=まとまりとして畳んでいる)IDが
+ # 「一致しません」の判定に引っかかって並べ替え自体が通らなくなる。
+ children_of={}
+ for r in active_rows:
+  if r[3] is not None:children_of.setdefault(r[3],[]).append(r[0])
+ parent_rows=[r for r in active_rows if r[3] is None]
  if reorderable_ids is None:
-  reorderable={r[0] for r in active_rows if (r[2] or PLAN_REORDERABLE_STATE)==PLAN_REORDERABLE_STATE}
+  reorderable={r[0] for r in parent_rows if (r[2] or PLAN_REORDERABLE_STATE)==PLAN_REORDERABLE_STATE}
  else:
-  reorderable=set(reorderable_ids)
- fixed_orders=[r[1] or 0 for r in active_rows if r[0] not in reorderable]
+  parent_ids={r[0] for r in parent_rows}
+  reorderable={pid for pid in reorderable_ids if pid in parent_ids}
+ fixed_orders=[r[1] or 0 for r in parent_rows if r[0] not in reorderable]
  given=list(ordered_ids or [])
  if len(set(given))!=len(given):raise ValueError('並べ替え対象に重複があります。')
  if set(given)!=reorderable:raise ValueError('並べ替え対象が現在の未着手予定と一致しません(追加・削除の直後は最新の一覧を取得し直してください)。')
  base=max(fixed_orders) if fixed_orders else 0
  for idx,pid in enumerate(given,start=1):
   cur.execute('UPDATE [作業予定] SET [表示順]=?,[更新者ID]=?,[更新日時]=Now() WHERE [予定ID]=?',[base+idx,uid,pid])
+  # 子は親と同じ表示順にして、親のすぐ後ろから離れないようにする。
+  if children_of.get(pid):
+   cur.execute('UPDATE [作業予定] SET [表示順]=?,[更新者ID]=?,[更新日時]=Now() WHERE [親予定ID]=?',[base+idx,uid,pid])
  return len(given)
 
 # ========================================================================
