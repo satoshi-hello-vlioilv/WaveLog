@@ -34,14 +34,14 @@ def rne_extract_run():
  import threading as _th
  # 手動実行は取得元(sikalot_source)に関わらず行える。共有から読む運用でも、
  # ローカルの複製を用意する・配置と接続を試す目的で実行できてよいため。
- missing=[j['rne'] for j in rne_scheduler.JOBS
-          if not (rne_scheduler.RNE_ASSETS_DIR/'rne'/j['rne']).exists()]
+ missing=[j['rne'] for j in rne_scheduler.jobs()
+          if not rne_scheduler.rne_path(j['rne']).exists()]
  if missing:
   return jsonify(error=f'抽出定義(RNE)が配置されていません: {", ".join(missing)}。'
-                       f'{rne_scheduler.RNE_ASSETS_DIR/"rne"} へ配置してください。'),400
- if not (rne_scheduler.RNE_ASSETS_DIR/'symnavim.conf').exists():
+                       f'{rne_scheduler.assets_dir()/"rne"} へ配置してください。'),400
+ if not rne_scheduler.conf_path().exists():
   return jsonify(error=f'接続情報 symnavim.conf が配置されていません'
-                       f'({rne_scheduler.RNE_ASSETS_DIR})。'),400
+                       f'({rne_scheduler.conf_path()})。'),400
  status=rne_scheduler.last_status()
  if status.get('running'):
   return jsonify(error='抽出が既に実行中です。完了までお待ちください。'),409

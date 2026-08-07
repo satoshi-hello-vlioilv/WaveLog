@@ -35,11 +35,20 @@ let b=null;
     saveInsidePanel:sr.bottom<=panel.bottom+1&&sr.top>=panel.top,
     groups:document.querySelectorAll('.mm-set-group').length,
     badges:document.querySelectorAll('.mm-apply-badge').length,
-    fields:document.querySelectorAll('[data-pc-field]').length,
+    fields:[...document.querySelectorAll('[data-pc-field]')].map(e=>e.dataset.pcField),
     clipped,listWrap:getComputedStyle(document.querySelector('.mm-list-wrap')).display};
  });
  rec('パス設定が1本のスクロール領域になっている',p.scrollable,`${p.groups}グループ`);
- rec('設定項目が9件すべて出ている',p.fields===9,p.fields+'件');
+/* 件数ではなく**キーの一覧**で見る。項目は増える(RNE資材の置き場・
+    symnavim.confの場所を§9.79で追加した)ので、数を固定すると足すたびに
+    落ちる。「あるべきものが全部出ているか」が見たいこと。 */
+ const WANT=['sikalot_source','sikalotnow_path','sikalotdef_path',
+   'schedule_share_path','records_backup_export_path','rne_extract_enabled',
+   'rne_extract_interval_sec','rne_assets_dir','rne_conf_path',
+   'schedule_lock_ttl_sec','schedule_lock_verify_delay_ms'];
+ const missing=WANT.filter(k=>!p.fields.includes(k));
+ rec('設定項目が漏れなく出ている',missing.length===0,
+   missing.length?`不足: ${missing.join(',')}`:`${p.fields.length}件`);
  rec('入力欄が枠外へ切れていない',p.clipped===0,p.clipped+'件が見切れ');
  rec('反映タイミングがまとまりごとに示されている',p.badges>=4,p.badges+'個');
  rec('保存ボタンが常にパネル内に見えている',p.saveInsidePanel);

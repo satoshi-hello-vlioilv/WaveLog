@@ -62,6 +62,36 @@
   {group:'schedule',key:'shiftMaster',label:'勤務形態',icon:'勤',special:'shift-pattern',endpoint:'/api/schedule/shift-pattern-master'},
   {group:'system',key:'columnDisplay',label:'列表示',icon:'列',special:'column-display'},
   {group:'system',key:'importBackup',label:'データ引継ぎ',icon:'継',special:'import-backup'},
+  /* データソース(§9.79)。「RNEから抽出して .sqlite3 を作り、それを一覧として
+     読む」という1本の流れを1行で持つ。入力欄は**その流れの順**に3つへ束ねる:
+       ① どのデータか(名前) → ② どこから作るか(RNE) → ③ どこを読むか(ファイル)
+     ②と③を隣り合わせに置くのが要点で、以前は抽出先と読込先が別々のコードに
+     書かれていたため「抽出しているのに読まない」設定が作れた。 */
+  {group:'system',key:'dataSource',label:'データソース',icon:'源',endpoint:'/api/data-source-master',hasDelete:true,
+   fields:[{k:'key',label:'キー',required:true,key:true,fieldGroup:'① どのデータか',
+            hint:'一覧を指すための識別子です。半角英数と _ のみ（例: SIKALOTNOW）。あとから変えると、この一覧向けの登録フィルタ・表示列の設定が結び付かなくなります。'},
+           {k:'label',label:'表示名',required:true,fieldGroup:'① どのデータか',
+            hint:'左メニュー「一覧を見る」に出る名前です。'},
+           {k:'order',label:'表示順',type:'number',min:0,max:9999,fieldGroup:'① どのデータか',
+            hint:'小さいほど上に出ます。空欄は0扱いです。'},
+           {k:'enabled',label:'状態',type:'select',options:['有効','無効'],fieldGroup:'① どのデータか',
+            hint:'無効にすると一覧にも抽出対象にも出ません（記録は残ります）。'},
+           {k:'rne',label:'RNEファイル',fieldGroup:'② どこから作るか（RNE抽出）',
+            hint:'抽出定義のファイル名（例: SIKALOTNOW.RNE）。ファイル名だけなら「RNE資材の置き場」の rne/ 配下として探します。絶対パスも指定できます。空欄にすると抽出せず、③のファイルを読むだけになります。'},
+           {k:'table',label:'抽出テーブル',fieldGroup:'② どこから作るか（RNE抽出）',
+            hint:'RNEの中の表の名前。未入力なら「仕掛」です。'},
+           {k:'output',label:'出力ファイル',type:'path',fieldGroup:'③ どこを読むか',
+            hint:'②で作る .sqlite3 の置き場所。ファイル名だけなら db/ 配下です。パス設定の「仕掛/品質データの取得元」がローカルのとき、一覧はこのファイルを読みます。'},
+           {k:'share',label:'共有パス',type:'path',fieldGroup:'③ どこを読むか',
+            hint:'ネットワーク共有側の .sqlite3。取得元がネットワークのときはこちらを読みます。ファイル名だけなら仕掛の共有フォルダ配下です。'},
+           {k:'preferred',label:'既定テーブル',fieldGroup:'③ どこを読むか',
+            hint:'この一覧を開いた直後に選ぶ表の名前。未入力なら②の抽出テーブルと同じです。'}],
+   cols:[{k:'key',label:'キー',grow:1},{k:'label',label:'表示名',grow:2},
+         {k:'rne',label:'RNE',grow:2,format:'rneState'},
+         {k:'outputPath',label:'出力ファイル',grow:3,format:'fileState'},
+         {k:'activePath',label:'今読んでいる場所',grow:3},
+         {k:'enabled',label:'状態',grow:1}],
+   hint:'参照するデータは、すべて「RNEから抽出 → .sqlite3 を作る → それを一覧として読む」という同じ流れで増やせます。1行が1つのデータソースで、②で作る先と③で読む先が同じ行に並ぶので、「抽出しているのに読んでいない」というずれが起きません。キー・表示名・読み込み先の変更は、接続先を起動時に1回だけ決める設計のため、サーバーを再起動してから反映されます。RNEファイルと symnavim.conf の置き場は「パス設定」タブで指定します。'},
   {group:'system',key:'pathConfig',label:'パス設定',icon:'路',special:'path-config',endpoint:'/api/path-config-master'},
   // 旧「マスタ一覧」(サイドバーのMASTERナビ→汎用グリッド)をここへ統合した
   // (ARCHITECTURE.md「マスタ管理の画面形態」)。上のタブが扱わないテーブル(表示マスタ・スケジュール列表示マスタ
@@ -248,14 +278,39 @@
  function cellText(col,value){
   const v=String(value??'');
   if(col.format==='maxStrips')return v.trim()===''?'40（既定）':v;
+  /* 設定した場所に実物があるか。設定と実態のずれは、値だけ眺めていても
+     気づけない(「登録したのに動かない」の大半がこれ)。 */
+  if(col.format==='rneState'){
+   if(!v.trim())return '（抽出しない）';
+   return v+(col.row&&col.row.rneExists===false?'  ⚠ 未配置':'  ✓');
+  }
+  if(col.format==='fileState'){
+   if(!v.trim())return '';
+   return v+(col.row&&col.row.outputExists===false?'  （未作成）':'');
+  }
   if(col.format==='equipmentTarget'){
    if(!v.trim())return '';
    return v.trim()===EQUIPMENT_ALL?'すべての設備':v.replace(/、/g,',').split(',').map(s=>s.trim()).filter(Boolean).join(' / ');
   }
   return v;
  }
+ /* 入力欄をグループへ束ねる(§9.79)。fieldGroup を持つ欄が現れたら、その
+    直前に見出しを1枚挟む。項目が9個並ぶと「どれとどれが関係するのか」を
+    毎回読み解くことになるため、3〜4個ずつのまとまりにして、まとまりの
+    名前で意味を渡す(チャンク化)。fieldGroup を持たないマスタは従来どおり
+    平坦に並ぶ。 */
+ function groupFieldControls(def,html){
+  const groups=(def.fields||[]).map(f=>f.fieldGroup||'');
+  if(!groups.some(Boolean))return html.join('');
+  let prev=null;const out=[];
+  groups.forEach((g,i)=>{
+   if(g&&g!==prev)out.push(`<h4 class="mm-fieldgroup">${esc(g)}</h4>`);
+   prev=g||prev;out.push(html[i]);
+  });
+  return out.join('');
+ }
  function buildFieldControls(def,editing){
-  return def.fields.map(f=>{
+  return groupFieldControls(def,def.fields.map(f=>{
    const val=editing?String(editing[f.k]??''):'';
    if(f.type==='equipment-select'){
     const opts=equipmentMasterState.items||[];
@@ -335,7 +390,7 @@
       <small class="mm-field-hint">${esc(f.hint||'「参照…」で選ぶか、エクスプローラーからここへドラッグ&ドロップできます。')}</small></div>`;
    }
    return `<label class="mm-field">${fieldLabelHtml(f)}<input data-field="${f.k}" type="text" value="${esc(val)}" autocomplete="off"></label>`;
-  }).join('');
+  }));
  }
  function renderMaintForm(){
   const def=currentDef(),form=$('#masterMaintForm');if(!form)return;const editing=maintState.editing;
@@ -868,7 +923,7 @@
    // 列として出さない監査情報(更新者・更新日時)は行のツールチップで補う。
    const audit=`更新者: ${it.updated_by||'-'} / 更新日時: ${fmtDT(it.updated_at)}`;
    row.title=showAudit?'クリックで編集フォームに読み込みます':`クリックで編集\n${audit}`;
-   const cells=def.cols.map(c=>{const v=cellText(c,it[c.k]);
+   const cells=def.cols.map(c=>{const v=cellText({...c,row:it},it[c.k]);
     return `<span title="${esc(v)}">${esc(v)||'<em class="mm-blank">—</em>'}</span>`}).join('');
    row.innerHTML=`${cells}${showAudit?`<span class="mm-user" title="${esc(it.updated_by||'')}">${esc(it.updated_by||'-')}</span><span class="mm-date">${esc(fmtDT(it.updated_at))}</span>`:''}<span class="mm-act"><button type="button" class="mm-edit" title="この行の内容を編集します">編集</button>${def.hasDelete?'<button type="button" class="mm-del" title="この行を削除します（確認画面が出ます）">削除</button>':''}</span>`;
    // 入力項目が多いマスタは編集専用モーダル、少ないマスタは従来どおり
@@ -1366,6 +1421,8 @@
       .map(([val,label])=>`<option value="${esc(val)}"${(v.rne_extract_enabled||'')===val?' selected':''}>${esc(label)}</option>`).join('')
     }</select><small class="mm-field-hint">「今すぐ抽出」は、この設定に関わらず資材が配置されていれば実行できます。</small></label>
     ${numField('rne_extract_interval_sec','RNE抽出間隔','秒',60,60)}
+    ${pathField('rne_assets_dir','RNE資材の置き場（フォルダ）','dir','RNEファイルと symnavim.conf をまとめて置くフォルダです。RNEファイルはこの下の rne/ 配下に置きます。共有フォルダを指定すれば、端末ごとにコピーせず1式を共用できます。空欄ならアプリ内の config/rne_extract です。')}
+    ${pathField('rne_conf_path','接続情報 symnavim.conf の場所','file','認証情報だけを別の場所に置きたい場合に指定します。空欄なら上の資材置き場の直下（symnavim.conf）です。')}
     ${rneStatusPanelHtml()}`)}
    ${group('スケジュールの排他制御','保存後すぐ反映','is-live',`
     ${numField('schedule_lock_ttl_sec','スケジュール書込ロックの有効期限','秒',5,1)}

@@ -10,6 +10,7 @@ fail-open(全モード素通し)になる。この分離に合わせて 'path_co
 tests/test_modeguard.py がモード×エンドポイントの許可表を固定しているので、
 ここを変えると落ちる。
 """
+import re
 from pathlib import Path
 from flask import Blueprint, request, jsonify
 
@@ -37,6 +38,11 @@ _PATH_CONFIG_DEFAULTS={
  'sikalot_source':'network','sikalotnow_path':'','sikalotdef_path':'',
  'records_backup_export_path':'','schedule_share_path':'',
  'rne_extract_enabled':'auto',
+ # RNE資材(RNEファイル・symnavim.conf)の置き場。空欄なら config/rne_extract。
+ # 共有フォルダに1式だけ置いて全端末から参照する運用のため、端末ごとの
+ # コピーを強制しない(§9.79)。認証情報だけ別の場所に置きたい運用があるので
+ # symnavim.conf は個別に指定できる(空欄なら資材置き場の直下)。
+ 'rne_assets_dir':'','rne_conf_path':'',
  'rne_extract_interval_sec':str(RNE_EXTRACT_INTERVAL_SEC_DEFAULT),
  'schedule_lock_ttl_sec':str(SCHEDULE_LOCK_TTL_SEC_DEFAULT),
  'schedule_lock_verify_delay_ms':str(SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT),
@@ -57,10 +63,16 @@ def path_config_master_get():
   values={k:saved.get(k,'') for k in PATH_CONFIG_KEYS}
   # active: このプロセスで実際に使われている値(保存値は次回起動から反映)。
   # 突き合わせて画面上で「保存済みだが未反映」を示せるようにする。
+  from .. import rne_scheduler
+  # データソースは利用者が増減できる(データソースマスタ)。**キーが必ず在る
+  # 前提で書かない** —— 消された途端にパス設定画面ごと開けなくなる。
+  now=DBS.get('SIKALOTNOW') or {};dfn=DBS.get('SIKALOTDEF') or {}
   active={
    'sikalot_source':SIKALOT_SOURCE,
-   'sikalotnow_path':str(DBS['SIKALOTNOW']['path']),'sikalotnow_engine':DBS['SIKALOTNOW']['engine'],
-   'sikalotdef_path':str(DBS['SIKALOTDEF']['path']),'sikalotdef_engine':DBS['SIKALOTDEF']['engine'],
+   'sikalotnow_path':str(now.get('path','')),'sikalotnow_engine':now.get('engine',''),
+   'sikalotdef_path':str(dfn.get('path','')),'sikalotdef_engine':dfn.get('engine',''),
+   'rne_assets_dir':str(rne_scheduler.assets_dir()),
+   'rne_conf_path':str(rne_scheduler.conf_path()),
    'records_backup_export_path':str(RECORDS_BACKUP_EXPORT_PATH) if RECORDS_BACKUP_EXPORT_PATH else '',
    'schedule_share_path':str(SCHEDULE_SHARE_PATH) if SCHEDULE_SHARE_PATH else '',
    'rne_extract_enabled':str(path_config_value('rne_extract_enabled','auto') or 'auto'),
@@ -99,6 +111,9 @@ def path_config_master_update():
    'records_backup_export_path':str(x.get('records_backup_export_path') or '').strip(),
    'schedule_share_path':str(x.get('schedule_share_path') or '').strip(),
    'rne_extract_enabled':rne_enabled,
+   # RNE資材・接続情報の置き場(§9.79)。空欄なら既定へ戻る。
+   'rne_assets_dir':str(x.get('rne_assets_dir') or '').strip(),
+   'rne_conf_path':str(x.get('rne_conf_path') or '').strip(),
    **numeric_values,
   }
   path=DBS['MASTER']['path']
@@ -166,3 +181,104 @@ def browse_path():
  parent=str(target.parent) if target.parent!=target else ''
  return jsonify(ok=True,path=str(target),parent=parent,entries=entries,
                 places=_browse_places(),error=error)
+
+# ========================================================================
+# データソースマスタ（§9.79）
+# ------------------------------------------------------------------------
+# 「RNEから抽出して .sqlite3 を作り、それを一覧として読む」という1本の流れを
+# 1行で持つ。以前は "何を抽出するか"(rne_scheduler.JOBS) と
+# "どこを読むか"(db_access.DBS) が別々のコードに書かれていて、増やすには
+# 両方を直す必要があり、しかも別々に書けるため「抽出しているのに読まない」
+# 状態が作れた。
+#
+# **接続先を決める設定なので、保存してもこのプロセスには反映されない**
+# (パス設定マスタの sikalotnow_path 等と同じ。サーバー再起動で反映)。
+# 画面はその旨を出すため、保存値と「現在有効な値」の両方を返す。
+# ========================================================================
+@bp.get('/api/data-source-master')
+def data_source_master_list():
+ try:
+  from ..db_access import data_source_rows, seed_data_sources, DATA_SOURCES, DBS as _DBS
+  from .. import rne_scheduler
+  path=DBS['MASTER']['path']
+  with connect(path,False) as c:
+   seed_data_sources(c)
+   rows=data_source_rows(c,include_disabled=True)
+  # 「今このプロセスが実際に読んでいる場所」と、資材の有無を添える。
+  # 設定と実態がずれていることに、その場で気づけるようにするため。
+  active={s['key']:str((_DBS.get(s['key']) or {}).get('path','')) for s in DATA_SOURCES}
+  items=[]
+  for r in rows:
+   rne=rne_scheduler.rne_path(r['rne']) if r.get('rne') else None
+   out=rne_scheduler._output_path(r)
+   items.append({**r,
+                 'activePath':active.get(r['key'],''),
+                 'rnePath':str(rne) if rne else '',
+                 'rneExists':bool(rne and rne.exists()),
+                 'outputPath':str(out),
+                 'outputExists':out.exists(),
+                 'enabled':'有効' if r['active'] else '無効'})
+  return jsonify(ok=True,items=items,master_path=str(path),
+                 assetsDir=str(rne_scheduler.assets_dir()),
+                 confPath=str(rne_scheduler.conf_path()),
+                 confExists=rne_scheduler.conf_path().exists())
+ except Exception as e:
+  return jsonify(error=f'データソース読込失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
+
+_KEY_RE=re.compile(r'^[A-Za-z0-9_]{1,40}$')
+
+@bp.post('/api/data-source-master')
+def data_source_master_save():
+ try:
+  from ..db_access import ensure_data_source_table
+  x=request.get_json(force=True) or {};uid=request_user_id(x)
+  key=str(x.get('key') or '').strip().upper()
+  if not _KEY_RE.match(key):
+   return jsonify(error='キーは半角英数と _ で1〜40文字にしてください（一覧のURLに使うため）。'),400
+  if key=='MASTER':
+   return jsonify(error='MASTER はマスタDB自身に予約されています。別のキーにしてください。'),400
+  label=str(x.get('label') or '').strip() or key
+  path=DBS['MASTER']['path']
+  with connect(path,False) as c:
+   ensure_data_source_table(c);cur=c.cursor()
+   cur.execute('SELECT [ソースID] FROM [データソースマスタ] WHERE [キー]=?',[key])
+   row=cur.fetchone()
+   vals=[label,str(x.get('rne') or '').strip(),str(x.get('table') or '').strip() or '仕掛',
+         str(x.get('output') or '').strip(),str(x.get('share') or '').strip(),
+         str(x.get('preferred') or '').strip(),
+         int(x.get('order') or 0),
+         0 if str(x.get('enabled') or '').strip()=='無効' else -1,uid]
+   if row:
+    cur.execute('UPDATE [データソースマスタ] SET [表示名]=?,[RNEファイル]=?,[抽出テーブル]=?,'
+                '[出力ファイル]=?,[共有パス]=?,[既定テーブル]=?,[表示順]=?,[有効]=?,'
+                '[更新者ID]=?,[更新日時]=Now() WHERE [ソースID]=?',vals+[row[0]])
+    registered=False;sid=row[0]
+   else:
+    cur.execute('INSERT INTO [データソースマスタ] ([表示名],[RNEファイル],[抽出テーブル],'
+                '[出力ファイル],[共有パス],[既定テーブル],[表示順],[有効],[更新者ID],'
+                '[キー],[登録者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',
+                vals+[key,uid])
+    registered=True;sid=cur.lastrowid
+   c.commit()
+  return jsonify(ok=True,id=sid,key=key,registered=registered,updated_by=uid,
+                 message='保存しました。読み込み先の切り替えはサーバー再起動後に反映されます。')
+ except Exception as e:
+  return jsonify(error=f'データソース保存失敗: {e}'),500
+
+@bp.post('/api/data-source-master/delete')
+def data_source_master_delete():
+ try:
+  from ..db_access import ensure_data_source_table
+  x=request.get_json(force=True) or {};uid=request_user_id(x)
+  key=str(x.get('key') or '').strip().upper()
+  if not key:return jsonify(error='削除対象のキーがありません。'),400
+  path=DBS['MASTER']['path']
+  with connect(path,False) as c:
+   ensure_data_source_table(c);cur=c.cursor()
+   # 物理削除ではなく無効化し、履歴を残す(他マスタと同じ方針)。
+   cur.execute('UPDATE [データソースマスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [キー]=?',[uid,key])
+   c.commit()
+  return jsonify(ok=True,key=key,updated_by=uid,
+                 message='無効にしました。一覧から消えるのはサーバー再起動後です。')
+ except Exception as e:
+  return jsonify(error=f'データソース削除失敗: {e}'),500

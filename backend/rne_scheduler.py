@@ -28,21 +28,56 @@ import threading
 import time
 import uuid
 
+from pathlib import Path
+
 from .config import RNE_EXTRACT_INTERVAL_SEC_DEFAULT
-from .db_access import SIKALOT_SOURCE, SIKALOTDEF_LOCAL_PATH, SIKALOTNOW_LOCAL_PATH, path_config_value
+from .db_access import DATA_SOURCES, DB_DIR, SIKALOT_SOURCE, path_config_value
 from .logging_setup import app_logger
 from .paths import APP_ROOT, ensure_local_dirs
 
-RNE_ASSETS_DIR=APP_ROOT/'config'/'rne_extract'
+_DEFAULT_ASSETS_DIR=APP_ROOT/'config'/'rne_extract'
 _MIN_INTERVAL_SEC=60
 _WORKER_TIMEOUT_SEC=600
 
-# 2ジョブとも表定義(RNE)側のテーブル名は「仕掛」。抽出先はdb_access.pyが
-# sikalot_source=localのときに読みに行くパスと同じにする(単一の情報源)。
-JOBS=(
- {'name':'SIKALOTNOW','rne':'SIKALOTNOW.RNE','table':'仕掛','output':str(SIKALOTNOW_LOCAL_PATH)},
- {'name':'SIKALOTDEF','rne':'SIKALOTDEF.RNE','table':'仕掛','output':str(SIKALOTDEF_LOCAL_PATH)},
-)
+def assets_dir():
+ """RNE資材(RNEファイル・symnavim.conf)の置き場。パス設定マスタの
+ "rne_assets_dir"で変更できる。共有フォルダに1式だけ置いて全端末から
+ 参照する運用があるため、端末ごとのコピーを強制しない(§9.79)。"""
+ v=path_config_value('rne_assets_dir')
+ return Path(v) if v else _DEFAULT_ASSETS_DIR
+
+def conf_path():
+ """接続情報 symnavim.conf の場所。"rne_conf_path"で個別に指定できる
+ (資材置き場とは別の場所に、認証情報だけを置きたい運用があるため)。
+ 未指定なら資材置き場の直下。"""
+ v=path_config_value('rne_conf_path')
+ return Path(v) if v else assets_dir()/'symnavim.conf'
+
+def rne_path(name):
+ """RNEファイルの場所。マスタに絶対パスを入れてあればそれを使い、
+ ファイル名だけならば資材置き場の rne/ 配下として解決する。"""
+ p=Path(name)
+ return p if p.is_absolute() else assets_dir()/'rne'/name
+
+def _output_path(entry):
+ p=Path(entry.get('output') or f"{entry['key'].lower()}.sqlite3")
+ return p if p.is_absolute() else DB_DIR/p
+
+def jobs():
+ """抽出ジョブの一覧。**データソースマスタが唯一の定義場所**(§9.79)。
+ 以前はここに2件を直接書いており、参照データを増やすたびに
+ db_access.DBS とここの両方を直す必要があった(しかも別々に書けるため
+ 「抽出しているのに読まない」状態が作れた)。"""
+ out=[]
+ for s in DATA_SOURCES:
+  if not s.get('rne'):continue         # RNEが未設定＝抽出対象ではない
+  out.append({'name':s['key'],'rne':s['rne'],'table':s.get('table') or '仕掛',
+              'output':str(_output_path(s))})
+ return out
+
+# 旧来の参照名(モジュール読み込み時点の一覧)。**新しいコードは jobs() を使う**
+# ——マスタを編集したら次の呼び出しから反映されるのはjobs()の側だけ。
+JOBS=tuple(jobs())
 
 
 def _no_window():
@@ -55,8 +90,8 @@ def _no_window():
 def _conf():
  dirs=ensure_local_dirs()
  return {
-  'rne_dir':str(RNE_ASSETS_DIR/'rne'),
-  'symnavim_conf':str(RNE_ASSETS_DIR/'symnavim.conf'),
+  'rne_dir':str(assets_dir()/'rne'),
+  'symnavim_conf':str(conf_path()),
   'backup_dir':str(dirs['backup']/'rne_extract'),
   'base_dir':str(APP_ROOT),
  }
@@ -111,15 +146,18 @@ def last_status():
  snapshot['enabled']=schedule_enabled()        # 定期実行が回るか
  snapshot['canRun']=extract_possible()          # 手動実行できるか(資材の有無)
  snapshot['intervalSec']=_interval_sec()
- snapshot['assetsDir']=str(RNE_ASSETS_DIR)
+ snapshot['assetsDir']=str(assets_dir())
+ snapshot['confPath']=str(conf_path())
+ snapshot['sources']=[{'key':s['key'],'label':s['label'],'rne':s.get('rne',''),
+                       'output':str(_output_path(s))} for s in DATA_SOURCES]
  # 抽出資材が置かれているか(未配置なら「起動しない」理由がこれ)。
  snapshot['assets']={
-  'symnavimConf':(RNE_ASSETS_DIR/'symnavim.conf').exists(),
-  'rne':[j['rne'] for j in JOBS if (RNE_ASSETS_DIR/'rne'/j['rne']).exists()],
-  'rneMissing':[j['rne'] for j in JOBS if not (RNE_ASSETS_DIR/'rne'/j['rne']).exists()],
+  'symnavimConf':conf_path().exists(),
+  'rne':[j['rne'] for j in jobs() if rne_path(j['rne']).exists()],
+  'rneMissing':[j['rne'] for j in jobs() if not rne_path(j['rne']).exists()],
  }
  outputs=[]
- for job in JOBS:
+ for job in jobs():
   p=job['output']
   try:
    from pathlib import Path as _P
@@ -150,14 +188,15 @@ def run_batch(trigger='schedule'):
 
 def _run_batch_inner():
  conf=_conf()
- results=[None]*len(JOBS)
+ active=jobs()
+ results=[None]*len(active)
  # 実行中の進み具合を**途中でも**見せる(§9.78)。以前は全ジョブが終わって
  # から一度に jobs を差し替えていたため、画面からは「動いているらしい」
  # としか分からず、あと何割で終わるのかが出せなかった。開始時に全ジョブを
  # 'running' で並べ、終わったものから書き換える。
  with _last_lock:
   _last['jobs']=[{'name':j['name'],'running':True,'ok':None,'rows':None,
-                  'columns':None,'elapsed':None,'error':''} for j in JOBS]
+                  'columns':None,'elapsed':None,'error':''} for j in active]
  def _worker(i,job):
   results[i]=_run_job(job,conf)
   r=results[i] or {}
@@ -166,19 +205,23 @@ def _run_batch_inner():
     _last['jobs'][i]={'name':job['name'],'running':False,'ok':bool(r.get('ok')),
                       'rows':r.get('rows'),'columns':r.get('columns'),
                       'elapsed':r.get('elapsed'),'error':str(r.get('error') or '')}
- threads=[threading.Thread(target=_worker,args=(i,job),name=f"rne-extract-{job['name']}") for i,job in enumerate(JOBS)]
+ threads=[threading.Thread(target=_worker,args=(i,job),name=f"rne-extract-{job['name']}") for i,job in enumerate(active)]
  for t in threads:t.start()
  for t in threads:t.join()
- jobs=[]
- for job,result in zip(JOBS,results):
+ # **この変数を jobs という名前にしないこと。** モジュール直下の jobs()
+ # を隠してしまい、同じ関数の先頭にある active=jobs() が
+ # UnboundLocalError になる(Pythonは関数内のどこかで代入があれば
+ # その名前を最初からローカル扱いにする)。
+ done=[]
+ for job,result in zip(active,results):
   if result.get('ok'):
    app_logger().info('RNE抽出成功: %s (%s行 %s列 %.1f秒)',job['name'],result.get('rows'),result.get('columns'),result.get('elapsed') or 0)
   else:
    app_logger().warning('RNE抽出失敗: %s: %s',job['name'],result.get('error'))
-  jobs.append({'name':job['name'],'running':False,'ok':bool(result.get('ok')),'rows':result.get('rows'),
+  done.append({'name':job['name'],'running':False,'ok':bool(result.get('ok')),'rows':result.get('rows'),
                'columns':result.get('columns'),'elapsed':result.get('elapsed'),
                'error':str(result.get('error') or '')})
- with _last_lock:_last['jobs']=jobs
+ with _last_lock:_last['jobs']=done
  return results
 
 
@@ -204,8 +247,9 @@ def extract_possible():
  """抽出を実行できる状態か(資材が置いてあるか)。取得元(sikalot_source)とは
  独立。共有から読む運用でも、ローカルの複製を作る・設定を試す目的で
  実行できてよいため、実行可否は資材の有無だけで決める。"""
- if not (RNE_ASSETS_DIR/'symnavim.conf').exists():return False
- return all((RNE_ASSETS_DIR/'rne'/j['rne']).exists() for j in JOBS)
+ if not conf_path().exists():return False
+ active=jobs()
+ return bool(active) and all(rne_path(j['rne']).exists() for j in active)
 
 def schedule_enabled():
  """定期実行を回すか。パス設定マスタの rne_extract_enabled で決める。
