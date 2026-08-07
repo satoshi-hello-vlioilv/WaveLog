@@ -384,9 +384,7 @@ def stop_category_list():
  items=_cfg_read(lambda mc:[_stop_category_entry(r) for r in sr.stop_category_rows(mc)])
  return jsonify(ok=True,configured=True,items=items,stale=False)
 
-@bp.post('/api/schedule/stop-category-master')
-def stop_category_register():
- x=request.get_json(force=True) or {}
+def _stop_category_save(x):
  name=str(x.get('name') or '').strip()
  # idがあれば改名(他マスタと同じリネーム更新)。無ければ新規または再有効化。
  cid=x.get('id')
@@ -396,6 +394,19 @@ def stop_category_register():
                                       category_id=int(cid) if cid not in (None,'') else None)
   return {'id':gid,'created':created}
  return _cfg_write_response(fn)
+
+@bp.post('/api/schedule/stop-category-master')
+def stop_category_register():
+ return _stop_category_save(request.get_json(force=True) or {})
+
+@bp.post('/api/schedule/stop-category-master/update')
+def stop_category_update():
+ """マスタ管理画面の「編集」はどのマスタも <endpoint>/update へPOSTする
+    (static/js/master-maint.js の submitMaint)。改名の処理は登録側が
+    idを見て既に持っているのに、このURLだけ無く404で弾かれていた(§9.82)。"""
+ x=request.get_json(force=True) or {}
+ if x.get('id') in (None,''):return jsonify(error='更新対象IDがありません。'),400
+ return _stop_category_save(x)
 
 @bp.post('/api/schedule/stop-category-master/delete')
 def stop_category_delete():

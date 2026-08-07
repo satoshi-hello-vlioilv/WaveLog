@@ -76,6 +76,7 @@ _ENDPOINT_EXTRA_MODES={
  'schedule.stop_reason_update':{'edit'},
  'schedule.stop_reason_delete':{'edit'},
  'schedule.stop_category_register':{'edit'},
+ 'schedule.stop_category_update':{'edit'},
  'schedule.stop_category_delete':{'edit'},
  'schedule.shift_pattern_save':{'edit'},
  'schedule.shift_pattern_delete_route':{'edit'},
