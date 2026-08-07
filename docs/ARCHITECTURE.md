@@ -1088,6 +1088,56 @@ return withWaiting({title:'…を読み込んでいます', detail:'…', progre
   の3つ。そのかわり **いつ時点の内容かを必ず画面に出す**
   （§9.42。読み直さない設計で古い情報を黙って見せない）。
 
+### 共有DBを開く手順は最短にする（`Path.exists()` を前に置かない）
+
+読みたいのは**ファイルそのもの**で、`exists()` は別のファイルアクセス
+（`os.stat`）である。ローカルディスクなら両方成功するか両方失敗するかの
+どちらかだが、**ネットワーク共有では「stat だけ失敗して open は成功する」
+ことがある**。実際、`\\...\SIKALOTNOW.sqlite3` に対して
+
+- エクスプローラ／メモ帳で開ける
+- `sqlite3.connect()` も成功する（`exists=True` を返す端末もある）
+
+のに `/api/tables?db=SIKALOTNOW` だけが
+`[WinError 59] 予期しないネットワーク エラーが発生しました。` で失敗する端末が
+あった。原因は接続ではなく、接続の**手前に置いていた存在確認**だった。
+
+`pathlib.Path.exists()` は `OSError` のうち
+`ENOENT / ENOTDIR / EBADF / ELOOP` と `WinError 21 / 123 / 1921` だけを
+「無い」と読み替え、**それ以外はそのまま送出する**
+（CPython `pathlib` の `_IGNORED_ERRNOS` / `_IGNORED_WINERRORS`）。
+共有が一時的に応答しないときの `WinError 59 / 64 / 1231` はここに含まれないため、
+確認のつもりの1行が唯一の失敗原因になる。しかもメッセージが
+「ファイルが無い」ではなく生のネットワークエラーになるので、原因の見当がつかない。
+
+- **`connect(path, readonly=True)` は存在確認をせず、まず開く。**
+  失敗したときだけ `path_exists_safe()` で理由を切り分け、
+  「無い」なら `FileNotFoundError`、「確かめられなかった」なら共有の到達性を
+  促す文面にする（`backend/db_access.py`）。
+- **存在確認が要る場所では `path_exists_safe()` を使う。** 戻り値は
+  `True` / `False` / **`None`（確かめられなかった）** の3値。`None` を「無い」と
+  同じ扱いにしない——共有が不調なだけで、開けば読めることがある。
+- **絶対パスに `Path.resolve()` を掛けない。** Windows の `resolve()` は
+  `GetFinalPathNameByHandle` を呼ぶ実ファイルアクセスで、ここでも同じ理由で
+  落ちる。加えて UNC を `\\?\UNC\...` 形式へ書き換えることがあり、
+  4スラッシュ URI の組み立て前提（上記「UNC 共有」の項）が崩れる。
+- **共有を触る API は必ず traceback をログへ残す。** 以前 `/api/tables` は
+  `except Exception as e: return jsonify(error=str(e)),500` で、画面には
+  メッセージとパスしか出ず、**どの行で落ちたのかを現地で切り分けられなかった**。
+  いまは `app_logger().exception(...)` を残し、応答にも `hint`（WinError 別の
+  対処）を添える。
+- **現地で1段ずつ確かめる口**として `/api/db-diagnose?db=SIKALOTNOW` がある
+  （`backend/routes/tables.py`）。親フォルダの存在確認 → ファイルの存在確認 →
+  `stat` → `resolve` → 1バイト読む → URI 組み立て → SQLite 接続、の順に試して
+  結果を JSON で返す。読むだけで設定は変えない。
+- 固定は `tests/test_dbopen.py`（`Path.exists`/`stat`/`resolve` を WinError 59
+  相当で失敗させても DB を開けること）。
+
+なお **DB キーからパスへの解決は起動時に1回だけ**で、リクエストのたびの I/O は
+無い（`db_access.py` の `DBS` を import 時に組み立てる）。`cfg(k)` は辞書引き
+だけなので、この種の不具合の原因になり得るのは「開く直前に足したファイル
+アクセス」の側である。
+
 ### 権限の判定条件は画面とサーバーで必ず揃える
 
 画面が「できます」と見せているのにサーバーが弾く、という食い違いは

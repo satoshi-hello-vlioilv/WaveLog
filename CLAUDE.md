@@ -72,7 +72,18 @@
   sqlite3では`invalid uri authority`で拒否される。`connect()`内の
   `_sqlite_ro_uri()`が4スラッシュ形式(`file:////server/share/...`)へ組み立て
   直して回避しているため、この関数を経由せず独自にURIを組み立てるコードを
-  追加しないこと。仕掛/品質データの読み込み先自体はパス設定マスタ(下記、マスタ管理
+  追加しないこと。**共有DBを開く前に`Path.exists()`/`stat()`/`resolve()`を
+  置かないこと**——読みたいのはファイル本体で、これらは別のファイルアクセス
+  (`os.stat`)になる。共有越しでは「statだけ失敗してopenは成功する」ことがあり、
+  `Path.exists()`は`ENOENT/ENOTDIR/EBADF/ELOOP`と`WinError 21/123/1921`しか
+  「無い」と読み替えず**それ以外は送出する**ため、確認のつもりの1行が唯一の
+  失敗原因になる（実際に`[WinError 59] 予期しないネットワークエラー`で
+  仕掛一覧だけが開けない端末があった）。`connect(readonly=True)`は**まず開き、
+  失敗したときだけ**`path_exists_safe()`(True/False/**None=確かめられなかった**)
+  で理由を切り分ける。存在確認が要る箇所ではこの関数を使い、`None`を「無い」と
+  同じに扱わないこと。現地での切り分けには`/api/db-diagnose?db=SIKALOTNOW`
+  （存在確認→stat→resolve→1バイト読む→URI→接続を1段ずつ試す。読むだけ）。
+  固定は`tests/test_dbopen.py`。仕掛/品質データの読み込み先自体はパス設定マスタ(下記、マスタ管理
   画面の「パス設定」タブ)の`sikalotnow_path`/`sikalotdef_path`で上書き可能で、
   **この2項目とsikalot_source/records_backup_export_path/
   schedule_share_pathは、接続先をプロセス起動時に1回だけ確定させる設計のため、
