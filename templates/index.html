@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 
-<html lang="ja"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1" name="viewport"/><title>測定伝送システム</title><link rel="icon" href="{{url_for('static',filename='favicon.svg')}}" type="image/svg+xml"/><link href="{{url_for('static',filename='app.css')}}?t={{asset_token}}" rel="stylesheet"/></head><body>
+<html lang="ja"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1" name="viewport"/><title>測定伝送システム</title><link rel="icon" href="{{url_for('static',filename='favicon.svg')}}" type="image/svg+xml"/><link href="{{url_for('core.app_css')}}?t={{asset_token}}" rel="stylesheet"/></head><body>
 <div class="connection-lost-bar" hidden id="connectionLost" role="alert"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h.01"/><path d="M8.5 16.4a5 5 0 0 1 7 0"/><path d="M5 12.9a10 10 0 0 1 14 0"/><path d="m2 2 20 20"/></svg><div class="connection-lost-text"><b>サーバーとの接続が切れました</b><small>アプリが終了している可能性があります。入力中のデータはこの端末に保存されているため失われません。</small></div><button id="connectionLostReload" type="button">再読込</button></div>
 <div class="layout"><aside>
 <div class="brand"><h2>測定伝送システム</h2><small><b class="build-badge">最新版</b></small></div>

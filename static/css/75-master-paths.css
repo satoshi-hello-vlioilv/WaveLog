@@ -1,0 +1,108 @@
+/* ============================================================
+   75-master-paths.css — マスタ管理（パス設定・RNE抽出）
+   ------------------------------------------------------------
+   app.css を分割したもの。**読み込み順を変えないこと。**
+   同じ @layer の中では「後に書いたほうが勝つ」が今も効いているため、
+   ファイルの順序＝カスケードの順序になる。順序は templates/index.html の
+   <link> の並びで決まり、tests/test_csslint.py が並びを固定している。
+   レイヤの宣言とトークンは 00-base.css が持つ。
+   ============================================================ */
+@layer component {
+.mm-num-btn:first-of-type{border-radius:var(--radius-sm) 0 0 var(--radius-sm)}
+.mm-num-btn:last-of-type{border-radius:0 var(--radius-sm) var(--radius-sm) 0}
+.mm-num-btn:hover{background:var(--pale);border-color:var(--teal)}
+.mm-num-btn:active{background:var(--teal);color:#fff}
+.mm-num-unit{align-self:center;margin-left:.5em;font-size:var(--fs-sm);color:var(--muted)}
+.mm-date{display:inline-flex;align-items:center;gap:.4em}
+.mm-field .mm-date input[type=date]{min-width:0;height:var(--ctl-h);border:1px solid var(--line);border-radius:var(--radius-sm);padding:0 .5em;background:#fff;color:inherit;font-size:var(--fs)}
+.mm-date-today{
+ height:var(--ctl-h);padding:0 .8em;border:1px solid var(--line);border-radius:var(--radius-sm);
+ background:var(--pale);color:var(--nav);font-size:var(--fs-sm);cursor:pointer;
+}
+.mm-date-today:hover{background:var(--pale);border-color:var(--teal)}
+.mm-combo-inner{display:flex;flex-direction:column;gap:.4em}
+.mm-combo-inner select,.mm-combo-new{height:var(--ctl-h);border:1px solid var(--line);border-radius:var(--radius-sm);padding:0 .5em;background:#fff;color:inherit;font-size:var(--fs)}
+.mm-combo-new{border-color:var(--teal)}
+.mm-path{display:flex;align-items:stretch;gap:.4em;border-radius:var(--radius-sm)}
+.mm-field .mm-path input{flex:1 1 auto;min-width:0;min-width:0;height:var(--ctl-h);border:1px solid var(--line);border-radius:var(--radius-sm);padding:0 .5em;background:#fff;color:inherit;font-size:var(--fs-sm);font-family:ui-monospace,Consolas,monospace}
+.mm-path-browse{
+ flex:0 0 auto;height:var(--ctl-h);padding:0 .9em;border:1px solid var(--line);border-radius:var(--radius-sm);
+ background:var(--pale);color:var(--nav);font-size:var(--fs-sm);cursor:pointer;white-space:nowrap;
+}
+.mm-path-browse:hover{background:var(--pale);border-color:var(--teal)}
+/* パス参照ダイアログ */
+.pathpick-dialog{width:min(94vw,760px)}
+.pathpick-body{display:flex;flex-direction:column;gap:.6em}
+.pathpick-bar{display:flex;gap:.4em;align-items:stretch}
+.pathpick-bar input{flex:1 1 auto;min-width:0;height:var(--ctl-h);border:1px solid var(--line);border-radius:var(--radius-sm);padding:0 .5em;background:#fff;color:inherit;font-size:var(--fs-sm);font-family:ui-monospace,Consolas,monospace}
+.pathpick-places{display:flex;flex-wrap:wrap;gap:.35em}
+.pathpick-place{
+ height:var(--ctl-h-sm);padding:0 .7em;border:1px solid var(--line);border-radius:var(--radius-pill);
+ background:var(--pale);color:var(--muted);font-size:var(--fs-sm);cursor:pointer;
+ max-width:22em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.pathpick-place:hover{background:var(--pale);border-color:var(--teal);color:var(--nav)}
+.pathpick-list{
+ height:min(46vh,380px);overflow:auto;border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;
+}
+.pathpick-row{
+ display:flex;align-items:center;gap:.6em;width:100%;
+ padding:var(--row-pad-y) var(--row-pad-x);border:0;border-bottom:1px solid var(--pale);
+ background:none;color:inherit;font-size:var(--fs-sm);text-align:left;cursor:pointer;
+}
+.pathpick-row:hover{background:var(--pale)}
+.pathpick-icon{flex:0 0 auto}
+.pathpick-name{flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pathpick-size{flex:0 0 auto;color:var(--muted);font-variant-numeric:tabular-nums}
+.pathpick-empty,.pathpick-loading,.pathpick-error{padding:1.2em;text-align:center;color:var(--muted);font-size:var(--fs-sm)}
+.pathpick-error{color:var(--danger)}
+.pathpick-status{font-size:var(--fs-sm);color:var(--muted)}
+/* ---------- RNE抽出の状態表示(§9.50) ---------- */
+.rne-panel{border:1px solid var(--line);border-radius:var(--radius-md);padding:var(--pad-card);margin:1em 0;background:var(--pale)}
+.rne-head{display:flex;align-items:center;gap:.7em;flex-wrap:wrap;margin-bottom:.5em}
+.rne-head h4{margin:0;font-size:var(--fs)}
+.rne-state{padding:.15em .7em;border-radius:var(--radius-pill);font-size:var(--fs-badge);font-weight:700;border:1px solid var(--line)}
+.rne-jobs{display:grid;gap:.3em;margin:.5em 0 0;font-size:var(--fs-sm)}
+.rne-job{display:flex;gap:.6em;align-items:baseline}
+.rne-job b{min-width:9em}
+.rne-note{font-size:var(--fs-sm);color:var(--muted);margin:.5em 0 0;line-height:1.5}
+/* 勤務体系の適用設備(複数選択)。1つの体系を複数設備へ同時に割り当てられる。 */
+.shift-eq-picker{display:flex;flex-wrap:wrap;gap:6px;padding:6px 0}
+.shift-eq-chip{
+ display:inline-flex;align-items:center;gap:6px;height:var(--ctl-h-sm);padding:0 12px;
+ border:1px solid var(--line);border-radius:var(--radius-pill);background:#fff;color:var(--nav);
+ font-size:var(--fs-sm);cursor:pointer;user-select:none;
+}
+.shift-eq-chip:hover{border-color:var(--teal);background:var(--pale)}
+.shift-eq-chip input{accent-color:currentColor;margin:0}
+/* 作業可否フラグ(§9.51)。「残仕掛設備ｺｰｽ」がこの設備で始まっていれば作業可。
+   まだ来ていないロットを一目で外せるようにする(色と濃度の両方で示す)。 */
+.sc-row-workable{
+ justify-self:center;min-width:calc(34px * var(--ui-scale));text-align:center;
+ padding:1px 6px;border-radius:var(--radius-pill);border:1px solid transparent;
+ font-size:var(--fs-badge);font-weight:800;line-height:1.5;
+}
+/* 作業できない行は薄く。並べ替えや削除はできるので消しはしない。 */
+.sc-row-line.sc-row-not-workable .sc-row-title,
+.sc-row-line.sc-row-not-workable .sc-row-time{opacity:.55}
+.mm-imp-badge.orphan{background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn-fg)}
+.mm-imp-badge.has{background:var(--success-bg);border:1px solid var(--success-border);color:var(--success)}
+/* ---------- メインメニューの畳み込み(§9.58) ----------
+   畳んだときは幅54pxのアイコン帯にする。完全に隠さないのは、戻す手段と
+   行き先が常に見えている状態を保つため(隠すと「どこへ戻るか」を思い出す
+   必要が生まれる)。ラベルはツールチップへ移す。 */
+.nav-collapse-toggle{
+ margin-left:auto;flex:none;width:26px;height:26px;padding:0;
+ display:grid;place-items:center;
+ border:1px solid #2c4750;border-radius:var(--radius-sm);background:#173842;color:#9fc4cb;cursor:pointer;
+}
+.nav-collapse-toggle:hover{background:#22434d;border-color:#3d6673;color:#fff}
+.nav-collapse-toggle span{
+ display:block;width:9px;height:9px;border-left:2px solid currentColor;border-bottom:2px solid currentColor;
+ transform:rotate(45deg) translate(1px,-1px);transition:transform .15s;
+}
+/* ---------- フィルタ条件の変数チップ(§9.74) ----------
+   「{使用設備}」のような変数を手打ちさせないための挿入ボタン。条件の値欄の
+   すぐ下に置き、今の値をtitleで示す。 */
+.filter-vars{display:flex;flex-wrap:wrap;gap:var(--space-2);align-items:center}
+}

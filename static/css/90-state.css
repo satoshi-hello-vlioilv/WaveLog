@@ -1,0 +1,326 @@
+/* ============================================================
+   90-state.css — 状態クラス・画面モード・印刷・ユーティリティ
+   ------------------------------------------------------------
+   これらは @layer state / mode / print / utility に入るので、
+   **読み込み位置に関係なく** component より後に効く(レイヤの並びは
+   00-base.css が宣言している)。読む順として最後に置いてある。
+   ============================================================ */
+/* ============================================================
+   @layer state
+   ============================================================ */
+@layer state {
+.hd-chip-mode.is-view{border-color:var(--line);background:#eef2f4}
+.hd-chip-mode.is-view .hd-chip-val{color:#60747b}
+.hd-chip-mode.is-schedule{border-color:#9ec8dd;background:#eaf4fb}
+.hd-chip-mode.is-schedule .hd-chip-val{color:#1a5f86}
+/* 使用設備: 未設定は要対応なので警告色 */
+.hd-chip-equip.is-unset{border-color:var(--warn-border);background:var(--warn-bg)}
+.hd-chip-equip.is-unset .hd-chip-val{color:var(--warn-fg)}
+.hd-chip-static.is-warn{background:var(--danger-bg);border-color:var(--danger-border)}
+.hd-chip-static.is-warn .hd-chip-val{color:var(--danger)}
+.equipment-header-button.is-unset{border-color:var(--warn-border);background:var(--warn-bg);color:var(--warn-fg)}
+.access-mode-badge.is-view{border-color:#e5b3b3;background:#fff5f5;color:#8a2323}
+.access-mode-badge.is-schedule{border-color:#b9c4f0;background:#f2f4ff;color:#333e8a}
+.access-mode-menu button.is-current{background:#eafafa;color:#164e55}
+.list-join-chip.is-ok{background:var(--success-bg);color:var(--success);border:1px solid var(--success-border)}
+.list-join-chip.is-warn{background:var(--warn-bg);color:var(--warn-fg);border:1px solid var(--warn-border)}
+/* 行選択(シングルクリック): ホバーやmeasurement-row(測定可)の目印と
+   混同しないよう、色相の違う強調(青系の左ボーダー+淡い背景)にする。 */
+tbody tr.is-selected{background:#eef2ff;box-shadow:inset 4px 0 0 #2851d1}
+tbody tr.is-selected:hover{background:#e3e9ff}
+/* 複数選択(§9.5、スケジュールへの一括投入)。単一行選択(is-selected、青系)
+   とは意味が別のため、既存のスケジュール機能の色(teal)で区別する。 */
+tbody tr.is-plan-selected{background:var(--computed-bg);box-shadow:inset 4px 0 0 var(--teal)}
+tbody tr.is-plan-selected:hover{background:#d9f0ee}
+.measure-grid-block input.auto-locked,.strip-row input.auto-locked{cursor:pointer;caret-color:transparent;user-select:none}
+.record-list-row.is-same-lot{box-shadow:inset 4px 0 0 var(--teal);background:#eafafa}
+/* ---------- 14. 検証状態（空欄=橙 / 入力済=白 / 公差外=赤） ---------- *//* JSが実行時に付ける状態クラス。@layer state は component より後なので、
+   詳細度で競り合わなくても部品側の面・枠線に必ず勝つ。 */
+.validation-required{background:var(--required-bg);border-color:var(--required);box-shadow:inset 4px 0 0 var(--required)}
+.validation-valid{background:var(--valid-bg);border-color:#aebdc2;box-shadow:none}
+.validation-ng{background:var(--invalid-bg);border-color:var(--invalid);box-shadow:inset 4px 0 0 var(--invalid);color:#7a0000;font-weight:700}
+.work-time-item.validation-valid{background:#eefaf6;border-color:#62aa96;box-shadow:none}
+.validation-message{padding:8px 10px;margin:6px 0;border:1px solid var(--required);background:var(--required-bg);color:var(--warn-fg);font-weight:700;border-radius:var(--radius-sm)}
+/* 検査員・作業人数・内径・スプール・板厚測定器・板幅測定器: 選択必須ではないが、
+   「-」のまま未選択の間は目立たせ、何か選んだら白背景に戻す（確認漏れ防止の
+   視覚的な合図。activeRequiredControlsの必須判定とは独立） *//* 面を淡くした分、左端のアクセントバーで「まだ選んでいない」を示す(.validation-requiredと同じ言語)。 */
+.choice-pending{background:var(--required-bg);border-color:var(--required);box-shadow:inset 3px 0 0 var(--required)}
+.choice-made{background:#fff}
+#complete.validation-blocked{background:var(--warn-solid);border-color:var(--warn-solid)}
+.dimension-locked{
+  background:#e3ebee;
+  color:#66777c;
+  cursor:not-allowed;
+}
+.dimension-locked::placeholder{color:#66777c}
+/* 入力位置(クリックしたセル)の条。セルの強調(outline:#f39a18)と同じ色にして、
+   どのセルがどの点かを一目で結び付けられるようにする。 */
+.numberline-swarm-dot.is-current{width:13px;height:13px;z-index:7;box-shadow:0 0 0 2px #fff,0 0 0 4px #f39a18}
+.numberline-measure.is-current .nl-dot{box-shadow:0 0 0 2px #fff,0 0 0 4px #f39a18}
+.numberline-measure.is-current b{border-color:#f39a18;box-shadow:0 0 0 1px #f39a1855}
+.work-time-item.validation-ng input{background:var(--invalid-bg);border-color:var(--invalid)}
+#workTimeHint.is-invalid{font-weight:700}
+.mm-tag-box.is-disabled{opacity:.5;background:#eef2f4;cursor:not-allowed;pointer-events:none}
+.mm-apply-badge.is-restart{background:var(--warn-bg);border-color:var(--warn-border);color:var(--warn-fg)}
+.mm-apply-badge.is-live{background:var(--success-bg);border-color:var(--success-border);color:var(--success)}
+.mm-apply-badge.is-info{background:#eef2f4;border-color:#d6e0e3;color:#60747b}
+/* 保存値と実際に効いている値が食い違う行(=再起動待ち) */
+.mm-row.is-pending-restart{background:var(--warn-bg)}
+.mm-imp-state-list b.is-warn{color:var(--warn-fg)}
+.mm-imp-preview.is-active{border-style:solid;border-color:var(--teal);background:#f7fafb;color:#3a565d}
+.db-card.is-warn{border-color:var(--warn-border);background:var(--warn-bg)}
+.db-card.is-warn .db-card-label{color:var(--warn-fg)}
+.db-status-table tbody tr.is-running{background:#f7fafb}
+.db-status-table tbody tr.is-late{background:var(--warn-bg)}
+.sc-stop-button.is-disabled{opacity:.5;cursor:not-allowed}
+.sc-stop-button.is-row-dragging{opacity:.45;outline:1px dashed var(--teal)}
+#grid tbody tr.is-row-dragging{opacity:.45;outline:1px dashed var(--teal)}
+.type-chip.is-current{outline:2px solid var(--nav);outline-offset:1px}
+.shift-seg-next.is-empty{background:transparent;border-color:transparent}
+/* 現場段取りの権限はあるが対象設備が未設定/不一致のとき(§9.44)。
+   「可」と言い切ると、動かした瞬間にサーバーへ弾かれて食い違うため、
+   設定が要ることを色でも示す。 */
+.field-reorder-badge.is-warn{border-color:var(--danger-border);background:var(--danger-bg);color:var(--danger)}
+.sc-field-reorder-note.is-warn{color:var(--danger);font-weight:700}
+/* ドラッグ中は落とせる場所だと分かるように枠ごと光らせる */
+.mm-path.is-dragover{outline:2px dashed var(--teal);outline-offset:3px;background:var(--pale)}
+.pathpick-row.is-dir{font-weight:600}
+.pathpick-status.is-warn{color:var(--danger)}
+.rne-state.is-on{background:var(--success-bg);border-color:var(--success-border);color:var(--success)}
+.rne-state.is-off{background:#fff;color:var(--muted)}
+.rne-state.is-running{background:var(--pale);border-color:var(--teal);color:var(--teal)}
+.rne-job.is-ng{color:var(--danger)}
+.shift-eq-chip.is-on{border-color:var(--teal);background:var(--teal);color:#fff;font-weight:700}
+.sc-row-workable.is-ok{background:var(--success-bg);border-color:var(--success-border);color:var(--success)}
+.sc-row-workable.is-ng{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger)}
+.sc-row-workable.is-unknown{background:var(--warn-bg);border-color:var(--warn-border);color:var(--warn-fg)}
+.sc-row-workable.is-na{color:#b6c3c7}
+/* データ引継ぎ: 端末内に対応の無いバックアップ行(§9.52)。データ一覧には
+   出ないのに作業スケジュールの実績には効くため、色で気付けるようにする。 */
+.mm-row.is-orphan{background:var(--warn-bg)}
+.mm-import-warning.is-orphan{border-color:var(--warn-border);background:var(--warn-bg)}
+/* 該当条。色覚差でも読めるよう、赤の枠線・明度上げ・条番号の反転バッジの
+   3つで示す(色だけに意味を持たせない)。 */
+.defect-lane.is-hit{outline:2px solid var(--danger);outline-offset:-2px;filter:saturate(1.25) brightness(1.12)}
+.defect-lane.is-hit .defect-lane-label b{padding:0 4px;border-radius:var(--radius-sm);background:#fff;color:var(--danger)}
+.rp-defect-lane.is-hit{outline:1.5px solid #a32424;outline-offset:-1.5px;filter:saturate(1.2) brightness(1.12)}
+}
+
+
+/* ============================================================
+   @layer mode
+   ============================================================ */
+@layer mode {
+/* 閲覧モード・スケジュールモード中は測定系の書込導線を隠す。データ一覧の行は
+   閲覧用バックアップから描画するため「続きから再開」「削除」は意味を持たない
+   (帳票表示のみ残す)。スケジュールモードも測定データへは閲覧モードと同じく
+   書込不可のため同じ抑制を適用する。 */
+body.view-mode .record-list-actions .resume,
+body.view-mode .record-list-actions .danger,
+body.schedule-mode .record-list-actions .resume,
+body.schedule-mode .record-list-actions .danger{display:none}
+body.view-mode #recordSyncBar,
+body.schedule-mode #recordSyncBar{display:none}
+body.view-mode #openMasterMaint{opacity:.45;pointer-events:none}
+/* ============================================================
+2026-07-21 Quality analysis V7 : Power BI流フィールドウェル / SPA一画面
+- 3タブ（元データ/グラフ/対象データ一覧）。元データが既定
+- 上部汎用フィルタは元データビューのみ表示（潰れ解消）
+- グラフはコンテナ実寸へフィット（サイズ不変・横スクロールなし）
+- ツールバー折り返し＋最小幅で見切れ解消 / 一覧は最大エリア表示
+============================================================ *//* 元データ(#grid)・フッター・汎用フィルタは元データビューのみ表示 */
+body.qa-mode #grid{display:none}
+body.qa-mode main>footer{display:none}
+body.qa-mode #genericFilterBar{display:none}
+body.qa-mode.qa-view-raw #grid{display:block}
+body.qa-mode.qa-view-raw main>footer{display:flex}
+body.qa-mode.qa-view-raw #genericFilterBar{display:block}
+/* 測定帳票・ダッシュボードもモーダルではなくメイン画面の表示切り替え
+   とし、qa-modeと同様に他の要素を隠して表示エリアを最大化する。 */
+body.rp-mode #grid,body.rp-mode #listToolbar,body.rp-mode main>footer,body.rp-mode #tabs,body.rp-mode #genericFilterBar,body.rp-mode .qa-v7{display:none}
+body.db-mode #grid,body.db-mode #listToolbar,body.db-mode main>footer,body.db-mode #tabs,body.db-mode #genericFilterBar,body.db-mode .qa-v7{display:none}
+/* 編集中/完了データ一覧も同様にモーダルではなくメイン画面表示にする。 */
+body.rec-mode #grid,body.rec-mode #listToolbar,body.rec-mode main>footer,body.rec-mode #tabs,body.rec-mode #genericFilterBar,body.rec-mode .qa-v7{display:none}
+/* 実績カレンダーも同様にメイン画面表示にする。 */
+body.cal-mode #grid,body.cal-mode #listToolbar,body.cal-mode main>footer,body.cal-mode #tabs,body.cal-mode #genericFilterBar,body.cal-mode .qa-v7{display:none}
+/* 作業スケジュール(スケジュールモード等)も同様にメイン画面表示にする。 */
+body.sc-mode #grid,body.sc-mode #listToolbar,body.sc-mode main>footer,body.sc-mode #tabs,body.sc-mode #genericFilterBar,body.sc-mode .qa-v7{display:none}
+/* マスタ管理(ARCHITECTURE.md「マスタ管理の画面形態」)も同様にメイン画面表示にする(旧: 全画面シェード付きモーダル)。 */
+body.mm-mode #grid,body.mm-mode #listToolbar,body.mm-mode main>footer,body.mm-mode #tabs,body.mm-mode #genericFilterBar,body.mm-mode .qa-v7{display:none}
+/* 保険: 他のメイン画面統合ビューが開いている間はマスタ管理パネルを必ず隠す。
+   各ビューのopenXxxがwindow.exitMasterMaint()を呼ぶのが本筋だが、呼び忘れても
+   画面が重なって見えないようにしておく(実際に、データ一覧へ移動したときだけ
+   後始末が走らず画面下部にマスタ管理が残る不具合が起きた)。 */
+body.rp-mode #masterMaintPanel,body.db-mode #masterMaintPanel,body.rec-mode #masterMaintPanel,
+body.cal-mode #masterMaintPanel,body.sc-mode #masterMaintPanel,body.qa-mode #masterMaintPanel{display:none}
+/* スケジューリング分割表示(.sc-split-wrap、§9.10)中は、仕掛一覧(#grid)と
+   絞り込みバー(#genericFilterBar)をタイムラインの隣へ出す。詳細度を
+   body.sc-mode単体より上げて確実に上書きする(qa-view-rawと同じ考え方)。 */
+body.sc-mode.sc-split #grid,body.sc-mode.sc-split #genericFilterBar{display:block}
+body.sc-mode.sc-split #listToolbar{display:flex}
+/* 仕掛一覧のポップアップ表示(§9.14新設)。分割表示と同じ理由(body.sc-mode
+   #grid{display:none!important}の上書き)でbodyへクラスを付ける方式にする。 */
+body.sc-mode.sc-list-modal-open #grid,body.sc-mode.sc-list-modal-open #genericFilterBar{display:block}
+body.sc-mode.sc-list-modal-open #listToolbar{display:flex}
+/* 品質データの「元データ表示」(qa-view-raw)は#grid等を強制的に再表示する
+   詳細度3のルール(body.qa-mode.qa-view-raw #grid)を持つため、上のrp-mode/
+   db-mode/rec-mode/cal-mode/sc-modeの詳細度2のルールより優先されてしまい、品質データ表示中に
+   帳票・ダッシュボード・編集中/完了一覧・実績カレンダー・作業スケジュールを開くと元の#gridが透けて見える
+   不具合があった。詳細度を合わせて確実に上書きする。 */
+body.rp-mode.qa-mode.qa-view-raw #grid,body.rp-mode.qa-mode.qa-view-raw main>footer,body.rp-mode.qa-mode.qa-view-raw #genericFilterBar,
+body.db-mode.qa-mode.qa-view-raw #grid,body.db-mode.qa-mode.qa-view-raw main>footer,body.db-mode.qa-mode.qa-view-raw #genericFilterBar,
+body.rec-mode.qa-mode.qa-view-raw #grid,body.rec-mode.qa-mode.qa-view-raw main>footer,body.rec-mode.qa-mode.qa-view-raw #genericFilterBar,
+body.cal-mode.qa-mode.qa-view-raw #grid,body.cal-mode.qa-mode.qa-view-raw main>footer,body.cal-mode.qa-mode.qa-view-raw #genericFilterBar,
+body.mm-mode.qa-mode.qa-view-raw #grid,body.mm-mode.qa-mode.qa-view-raw main>footer,body.mm-mode.qa-mode.qa-view-raw #genericFilterBar,
+body.sc-mode.qa-mode.qa-view-raw #grid,body.sc-mode.qa-mode.qa-view-raw main>footer,body.sc-mode.qa-mode.qa-view-raw #genericFilterBar{display:none}
+/* ============================================================
+ 2026-07-21 測定帳票（ロット別レポート）
+ モーダルではなくメイン画面の表示切り替え（qa-v7と同じ形式）。
+ IA/認知心理学: 左=ロット一覧(再認)→右=帳票プレビュー(詳細)。
+ 帳票本体はセクション見出しでチャンク化し、視線移動と記憶負荷を抑える。
+ 画面プレビューは印刷と同じ密度のCSSでA4実寸(210mm×297mm)のまま
+ 組み、JSでコンテナに収まるscale()を掛けて「ページ全体」を既定表示
+ にする（WYSIWYG。100%表示にも切替可）。
+ ============================================================ *//* --- 帳票ビュー ---
+   A4縦(210x297mm)を出来るだけ大きく見せるため、縦方向のchromeを削る。
+   以前は「一覧用のアプリヘッダ(54px)+設備バナー(68px)+見出し帯(66px)+
+   ツールバー(57px)+PDF注意書き(26px)+余白(40px)」で900pxの画面の約340pxを
+   占有し、A4が49%表示になっていた。操作類は1本のバーへ統合し、
+   帳票表示中は一覧用のヘッダ類を隠す。 */
+body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none}
+/* ロット一覧を畳んだ状態。A4横は倍率が幅で決まるため、畳むと帳票が大きくなる。
+   列数は1列にする。`0 minmax(0,1fr)` の2列指定のままだと、display:noneで
+   グリッドから外れた.rp-navの代わりに.rp-mainが幅0の第1列へ自動配置され、
+   表示領域が潰れる(実測で内容幅16px・倍率が下限25%に落ちた)。 */
+.rp-body.rp-nav-hidden{grid-template-columns:minmax(0,1fr)}
+.rp-body.rp-nav-hidden .rp-nav{display:none}
+/* 折りたたみ(§9.62)。
+   **セレクタの詳細度に注意**: 一覧を出す側の`body.sc-mode.sc-split #grid`は
+   (id1・class2・要素1)で、畳む側を`.sc-split-wrap.sc-list-collapsed #grid`
+   (id1・class2・要素0)と書くと**要素1個分だけ負ける**。同じレイヤ内なので
+   詳細度で決まり、畳んでも一覧が消えず、幅0の列に押し込まれた破片だけが
+   左端に残る(実際にそう見えていた)。畳む側にもbody側の条件を付けて上回る。 */
+body.sc-mode.sc-split .sc-split-wrap.sc-list-collapsed #genericFilterBar,
+body.sc-mode.sc-split .sc-split-wrap.sc-list-collapsed #listToolbar,
+body.sc-mode.sc-split .sc-split-wrap.sc-list-collapsed #grid{display:none}
+/* バーの高さぶん本文を押し下げ、ヘッダーが隠れないようにする。 */
+body.connection-lost .layout{padding-top:52px}
+/* ---------- 23. ナビゲーションと印刷導線の整理 ----------
+   「印刷」は画面ごとに1つだけにする。ヘッダの「画面を印刷」は今の画面を
+   そのまま出す汎用操作だが、専用の印刷を持つ画面では重複するため隠す
+   (帳票=rp-mode は専用の印刷アイコン、品質データ分析=qa-mode はツールバーの
+   印刷ボタンを持つ)。 */
+body.rp-mode #printCurrentView,body.qa-mode #printCurrentView{display:none}
+body.nav-collapsed .nav-collapse-toggle span{transform:rotate(-135deg) translate(-1px,1px)}
+body.nav-collapsed .layout>aside{padding-left:5px;padding-right:5px;overflow:visible}
+body.nav-collapsed .layout>aside .brand{
+ padding:0 0 10px;margin-bottom:10px;justify-content:center;gap:0;
+}
+body.nav-collapsed .layout>aside .brand h2,
+body.nav-collapsed .layout>aside .brand small,
+body.nav-collapsed .nav-group-label,
+body.nav-collapsed .nav-item span,
+body.nav-collapsed .equip-badge-text{display:none}
+body.nav-collapsed .nav-collapse-toggle{margin-left:0}
+/* アイコンを中央へ。件数バッジはアイコンの右上へ小さく重ねる。 */
+body.nav-collapsed .nav-item{justify-content:center;padding-left:0;padding-right:0;position:relative}
+body.nav-collapsed .nav-item .nav-icon{opacity:1}
+body.nav-collapsed .nav-item b{
+ position:absolute;top:2px;right:2px;min-width:0;height:auto;padding:0 4px;
+ font-size:var(--fs-tiny);line-height:1.4;
+}
+body.nav-collapsed .nav-item .sync-warn-dot{position:absolute;top:3px;left:4px}
+/* 使用設備バッジはアイコンだけにする(変更はヘッダーの「使用設備」チップからも
+   できるので、細い帯にボタンを押し込まない)。 */
+body.nav-collapsed .registered-equipment-badge{justify-content:center;padding-left:0;padding-right:0;gap:0}
+body.nav-collapsed .registered-equipment-badge button,
+body.nav-collapsed .registered-equipment-badge a,
+body.nav-collapsed .registered-equipment-badge::after{display:none}
+/* 畳んでいる間は幅調整バーを無効化(掴んでも動かないので触らせない) */
+body.nav-collapsed #navResizeHandle{pointer-events:none;opacity:.35}
+/* 一覧専用の操作(検索・表示件数・再読込)は、一覧を見ていない画面では出さない。
+   「意味のないメニュー」を並べたままにしないためと、画面ごとの操作列へ
+   横幅を渡すため。表示サイズ(A)は全画面共通なので残す。 */
+body.sc-mode .global-actions .hd-search,body.sc-mode .global-actions .hd-field,body.sc-mode .global-actions #reload,
+body.db-mode .global-actions .hd-search,body.db-mode .global-actions .hd-field,body.db-mode .global-actions #reload,
+body.rp-mode .global-actions .hd-search,body.rp-mode .global-actions .hd-field,body.rp-mode .global-actions #reload,
+body.mm-mode .global-actions .hd-search,body.mm-mode .global-actions .hd-field,body.mm-mode .global-actions #reload,
+body.cal-mode .global-actions .hd-search,body.cal-mode .global-actions .hd-field,body.cal-mode .global-actions #reload,
+body.rec-mode .global-actions .hd-search,body.rec-mode .global-actions .hd-field,body.rec-mode .global-actions #reload{display:none}
+/* ---- ヘッダー相乗り時の整理（重複する情報・使わない操作を出さない） ---- *//* 使用設備は画面ごとの操作列(スケジュールの設備選択)が持つので、ヘッダーの
+   チップと二重にしない。モード・現場段取りは画面に関係なく効く状態なので残す。 */
+body.sc-mode .hd-status .hd-chip-equip{display:none}
+}
+
+
+/* ============================================================
+   @layer print
+   ============================================================ */
+@layer print {
+/* 印刷 */
+@media print{
+ body.qa-mode #grid,body.qa-mode main>footer,body.qa-mode #genericFilterBar,.qa-v7 .qa-step-tabs,.qa-v7 .qa-recipe,.qa-v7 .qa-chart-toolbar .qa-chart-options,.qa-v7 .qa-actions{display:none}
+ .qa-v7{display:block;margin:0;border:0;box-shadow:none;overflow:visible}
+ .qa-v7 .qa-design-pane{display:block;padding:0}
+ .qa-v7 .qa-chart-main{display:block}
+ .qa-v7 .qa-graph-stage{border:0;overflow:visible;min-height:auto}
+ .qa-v7 .qa-graph-stage svg{width:100%;height:auto}
+}
+/* ---------------------------------------------------------------
+   印刷（PDF保存含む）: プレビューと同じCSSのまま、縮小表示用の
+   transformだけ解除してA4実寸で出力する。データの間引きはせず、
+   控え欄（40行グリッド等）も旧帳票どおり確保する。
+   --------------------------------------------------------------- */
+@media print{
+ @page{size:A4;margin:5mm}
+ body.rp-mode .layout>aside,body.rp-mode #navResizeHandle,body.rp-mode main>*:not(#reportPanel){display:none}
+ body.rp-mode .layout{display:block;height:auto}
+ body.rp-mode main{display:block;height:auto}
+ #reportPanel{position:static;margin:0;border:0;border-radius:0;background:#fff;display:block;height:auto}
+ #reportPanel .rp-bar,#reportPanel .rp-nav{display:none}
+ #reportPanel .rp-body{display:block;height:auto}
+ #reportPanel .rp-main{display:block;height:auto;overflow:visible}
+ #reportPanel .rp-scroll{padding:0;overflow:visible;display:block;background:none}
+ #reportPanel .rp-page-box{width:auto;height:auto}
+ #reportPanel .rp-page{width:auto;min-height:0;margin:0;box-shadow:none;padding:0;transform:none}
+}
+/* 帳票の一括印刷: 通常の単一プレビュー(#reportPanel)は丸ごと隠し、
+   印刷専用領域(#reportBulkPrintArea)だけを表示する。ロットごとに
+   1ページとして、印刷時のみpage-break-afterで改ページする
+   （画面表示中は.rp-bulk-print-areaが常時display:noneのため無関係）。 */
+@media print{
+ body.rp-bulk-print #reportPanel{display:none}
+ body.rp-bulk-print .rp-bulk-print-area{display:block}
+ body.rp-bulk-print .rp-bulk-print-area .rp-page{width:auto;min-height:0;margin:0;box-shadow:none;padding:0;box-sizing:border-box;transform:none;page-break-after:always}
+ body.rp-bulk-print .rp-bulk-print-area .rp-page:last-child{page-break-after:auto}
+}
+@media print{
+  body.df-print>*:not(.df-print-area){display:none}
+  body.df-print .df-print-area{display:block}
+}
+}
+
+
+/* ============================================================
+   @layer utility
+   ============================================================ */
+@layer utility {
+/* hidden属性は必ず効かせる(§9.59)。
+   ブラウザ標準の`[hidden]{display:none}`は**UAスタイルシート**にあるため、
+   作者スタイルで`.foo{display:flex}`と書いた時点で常に負ける(詳細度ではなく
+   カスケードの出所で決まる)。この取りこぼしで「未同期0件でも同期バナーが
+   出続ける」「使わないチップが常時見えている」等の表示崩れが7要素で
+   起きていた。以前は個別に`.foo[hidden]{display:none!important}`を23箇所へ
+   足して回っていたが、**このレイヤが最後に来る**ようになったので、
+   詳細度も`!important`も要らずこの1行だけで足りる。
+   **JSは要素の表示/非表示をhidden属性で切り替える**のが本アプリの約束で、
+   この1行がその約束を担保する。 */
+[hidden]{display:none}
+/* チップに置き換えた<select>。display:none にすると操作できなくなるため、
+   場所を取らせずに残す(キーボード操作・支援技術・自動テスト用)。 */
+.visually-hidden-control{
+  position:absolute;width:1px;height:1px;
+  min-width:0;padding:0;margin:-1px;border:0;
+  overflow:hidden;clip-path:inset(50%);white-space:nowrap;
+}
+}

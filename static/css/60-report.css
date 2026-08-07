@@ -1,0 +1,310 @@
+/* ============================================================
+   60-report.css — 測定帳票（画面）・ダッシュボード
+   ------------------------------------------------------------
+   app.css を分割したもの。**読み込み順を変えないこと。**
+   同じ @layer の中では「後に書いたほうが勝つ」が今も効いているため、
+   ファイルの順序＝カスケードの順序になる。順序は templates/index.html の
+   <link> の並びで決まり、tests/test_csslint.py が並びを固定している。
+   レイヤの宣言とトークンは 00-base.css が持つ。
+   ============================================================ */
+@layer component {
+.rp-back-btn:hover{background:rgba(255,255,255,.24)}
+.rp-back-btn svg{flex:none}
+.rp-bar-title{
+  font-weight:800;font-size:var(--fs);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.rp-bar-actions{margin-left:auto;display:flex;align-items:center;gap:6px;flex:none}
+.rp-zoom-seg{display:flex;gap:2px;background:rgba(255,255,255,.14);border-radius:var(--radius-sm);padding:2px}
+.rp-zoom-seg button{
+  padding:5px 9px;border:0;border-radius:var(--radius-xs);background:transparent;color:#dbeaed;
+  font-size:var(--fs-sm);font-weight:700;cursor:pointer;
+}
+.rp-zoom-seg button:hover{background:rgba(255,255,255,.12)}
+.rp-zoom-seg button.active{background:#fff;color:#0d4650}
+.rp-zoom-readout{
+  min-width:40px;text-align:center;font-size:var(--fs-sm);font-weight:800;color:#cfe3e6;
+  font-variant-numeric:tabular-nums;cursor:help;
+}
+/* 操作ボタンはアイコン化。何のボタンかはtitle(ツールチップ)で示す。 */
+.rp-icon-btn{
+  display:flex;align-items:center;justify-content:center;flex:none;
+  width:32px;height:32px;padding:0;border:1px solid rgba(255,255,255,.35);border-radius:var(--radius-sm);
+  background:rgba(255,255,255,.12);color:#fff;cursor:pointer;transition:background .15s;
+}
+.rp-icon-btn:hover:not(:disabled){background:rgba(255,255,255,.26)}
+.rp-icon-btn:disabled{opacity:.35;cursor:not-allowed}
+.rp-icon-btn--primary{background:var(--teal);border-color:var(--teal)}
+.rp-icon-btn--primary:hover:not(:disabled){background:#0a95a4;border-color:#0a95a4}
+.rp-icon-btn.active{background:#fff;border-color:#fff;color:#0d4650}
+.rp-body{flex:1;min-height:0;display:grid;grid-template-columns:230px minmax(0,1fr)}
+.rp-nav{display:flex;flex-direction:column;min-height:0;background:#e7eff1;border-right:1px solid var(--line)}
+/* 検索と並び順は横1列。縦2段(102px)だった分をロット一覧の表示に回す。 */
+.rp-nav-toolbar{display:flex;align-items:center;gap:6px;padding:7px 8px}
+.rp-search{position:relative;display:flex;align-items:center;flex:1;min-width:0}
+.rp-search-icon{position:absolute;left:8px;display:flex;color:#6a8189;opacity:.75;pointer-events:none}
+.rp-search input{height:30px;width:100%;min-width:0;padding:5px 8px 5px 29px;border:1px solid var(--line);border-radius:var(--radius-lg);background:#fff}
+.rp-nav-toolbar select{height:30px;flex:none;width:92px;min-width:0;padding:4px 6px;background:#fff;font-size:var(--fs-sm)}
+.rp-lot-list{flex:1;min-height:0;overflow:auto;padding:0 8px 8px;display:flex;flex-direction:column;gap:5px}
+/* 行は「一括印刷のチェックボックス」+「プレビュー選択ボタン」の2要素。
+   button要素の中へinputをネストするのは仕様・アクセシビリティ上避けるため、
+   行自体はdiv、チェックボックスとボタンを横並びにする。 */
+.rp-lot-row{display:flex;align-items:stretch;gap:0;padding:0;border:1px solid #d6e0e3;border-radius:var(--radius-sm);background:#fff;overflow:hidden}
+.rp-lot-row:hover{border-color:#9fc3c8;background:#f7fafb}
+.rp-lot-row.active{border-color:var(--teal);background:#eafafa;box-shadow:0 0 0 2px #087c8930}
+.rp-lot-row.checked{border-color:#0a8993}
+.rp-lot-check{display:flex;align-items:center;padding:0 3px 0 9px;cursor:pointer;flex:none}
+.rp-lot-check input{margin:0;cursor:pointer}
+.rp-lot-main-btn{
+  flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;
+  padding:7px 9px 7px 4px;text-align:left;cursor:pointer;font:inherit;color:inherit;
+  background:transparent;border:0;
+}
+.rp-lot-main{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2)}
+.rp-lot-main b{font-size:var(--fs-base-sm);color:#173842;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rp-lot-sub{color:#60747b;font-size:var(--fs-micro);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rp-lot-date{color:#8a9aa0;font-size:var(--fs-badge);font-variant-numeric:tabular-nums}
+.rp-status-badge{flex:0 0 auto;padding:2px 7px;border-radius:var(--radius-md);background:#eef2f4;color:#526970;font-weight:800;font-size:var(--fs-badge);white-space:nowrap}
+.rp-status-badge.done{background:var(--success-bg);color:var(--success)}
+.rp-status-badge.ng{background:var(--danger-bg);color:var(--danger)}
+/* 表示設定は左パネルの最下段へ。操作バーを1層のまま薄く保つため。 */
+.rp-nav-foot{
+  flex:none;border-top:1px solid var(--line);padding:7px 8px;background:#e3ebee;
+  display:flex;align-items:center;gap:6px;
+}
+.rp-nav-foot .rp-foot-label{font-size:var(--fs-micro);font-weight:800;color:#3a565d;flex:none}
+.rp-foot-btn{flex:1;min-width:0;border:1px solid #9fb9b2;
+  background:#fff;color:#2c5049;font-weight:700;cursor:pointer;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rp-foot-btn.active{background:#eafafa;border-color:var(--teal);color:#075e67}
+.rp-foot-btn--primary{background:var(--teal);border-color:var(--teal);color:#fff}
+.rp-foot-btn--primary:hover:not(:disabled){background:var(--teal-dark)}
+.rp-foot-btn--primary:disabled{opacity:.45;cursor:not-allowed}
+/* 帳票の一括印刷: 全選択チェック＋件数ボタン。 */
+/* 表示切替が2つ以上並ぶ行。1行に詰めると両方が省略記号で切れて何のトグルか
+   読めなくなるため、見出しを縦に通してボタンを1つずつ積む。 */
+.rp-display-foot{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:4px 6px}
+.rp-display-foot .rp-foot-label{grid-row:1/3}
+.rp-bulk-foot{background:#eef2f4}
+.rp-foot-selectall{
+  display:flex;align-items:center;gap:5px;flex:none;font-size:var(--fs-micro);font-weight:700;color:#2c5049;
+  cursor:pointer;user-select:none;
+}
+.rp-foot-selectall input{margin:0;cursor:pointer}
+/* 一括印刷専用の領域。画面表示では常に隠し、印刷時のみ表示する
+   (既存の単一プレビュー#reportContentの状態は一切崩さない)。 */
+.rp-bulk-print-area{display:none}
+.rp-main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.rp-scroll{flex:1;min-height:0;overflow:auto;padding:var(--space-2);background:#dbe4e6;display:flex;justify-content:center;align-items:flex-start}
+/* 拡大率はJSが --rp-scale / --rp-box-w / --rp-box-h をインラインで渡す。
+   値だけを受け取り、どう使うかはここで決める(印刷時に等倍へ戻せる)。
+   transform/width をJSが直接書くと、インラインはどのレイヤより強いので
+   印刷用の指定が効かず、打ち消すために !important が必要になっていた。 */
+.rp-page-box{overflow:visible;width:var(--rp-box-w,auto);height:var(--rp-box-h,auto)}
+/* A4実寸。画面プレビューは印刷と同じ密度のCSSで組み、実際に印刷
+   される見た目そのままをページ枠内に収める（WYSIWYG）。 */
+.rp-page{width:210mm;min-height:297mm;background:#fff;box-shadow:0 6px 24px #00000030;padding:8mm;box-sizing:border-box;font-size:10px;transform-origin:top left;transform:scale(var(--rp-scale,1))}
+/* A4横。用紙寸法を入れ替えるだけで、倍率計算(fitPage/applyScale)は実寸を
+   読むため自動で追従する。印刷側の@pageはJS(updatePageSizeStyle)が差し替える。 */
+.rp-page.rp-landscape{width:297mm;min-height:210mm}
+/* A4横の測定データ表は1〜20条/21〜40条を左右に分けて高さを半減させる。 */
+.rp-wide-split{display:grid;grid-template-columns:1fr 1fr;gap:0 4px;align-items:start}
+.rp-empty{padding:40px;text-align:center;color:var(--muted);background:#fff;border:1px dashed var(--muted-border);border-radius:var(--radius-md)}
+.rp-empty button{margin-top:var(--space-3)}
+.rp-report-head{display:flex;align-items:flex-end;justify-content:space-between;gap:var(--space-3);padding-bottom:3px;margin-bottom:4px;border-bottom:2px solid #173842}
+.rp-report-head small{color:var(--teal);font-weight:800;letter-spacing:.1em}
+.rp-report-head h2{margin:2px 0 0;font-size:16px;color:#173842}
+.rp-report-head-meta{display:flex;flex-direction:column;align-items:flex-end;gap:2px;color:#60747b;font-size:9px}
+/* ゾーン: 関連するセクションを横に並べ、認知的なまとまり（チャンク）ごとに
+   視線移動を抑える。列数はゾーンごとに情報量に応じて変える。 */
+.rp-zone{display:grid;gap:var(--space-1);margin-bottom:3px;align-items:start}
+.rp-zone-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.rp-zone-3{grid-template-columns:1fr 1.6fr 1.4fr}
+/* 品質等級・測定条件は文字量に応じて幅配分を変える。 */
+.rp-zone-quality{grid-template-columns:.7fr 1.6fr .9fr}
+/* 母材実績・丈別データ(行=丈・列=長さ/肉厚/揃い/外観/備考の固定6列)・
+   測定データ(板厚、行=OS/CL/DS)はいずれも列数が少なく高さで内容量が
+   変わる表のため、ほぼ等幅で並べる。 */
+.rp-zone-length{grid-template-columns:.9fr 1.2fr .9fr}
+.rp-stack{display:flex;flex-direction:column;gap:3px;min-width:0}
+/* 旧帳票（B5帳票）の左上余白に相当。ラベル貼付や手書き用に空白のまま確保する
+   （中を埋めずキャプションだけ隅に添える）。 */
+.rp-label-area{min-height:0;height:100%;padding:3px 6px;border:1px dashed #b7c7cc;border-radius:8px;background:#ffffff;display:flex;align-items:flex-end;justify-content:flex-end;break-inside:avoid}
+.rp-label-caption{color:#aebfc4;font-size:7px}
+.rp-section{margin:0;break-inside:avoid}
+.rp-section h3{margin:0 0 2px;padding:1.5px 6px;background:#eef2f4;border-left:4px solid var(--teal);color:#173842;font-size:9px}
+.rp-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 8px}
+.rp-grid-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.rp-grid-1{grid-template-columns:minmax(0,1fr)}
+.rp-field{display:grid;grid-template-columns:min-content minmax(0,1fr);gap:var(--space-1);padding:1px 2px;border-bottom:1px solid #eef2f4;font-size:8.5px}
+.rp-field-label{color:#60747b;font-size:8px;font-weight:700;white-space:nowrap}
+/* 以前はwhite-space:nowrap+ellipsisで1行に切り詰めていたため、特に
+   測定条件など項目数の多いセクションで値の文字が見切れていた不具合が
+   あった。省略せず折り返して全文を表示するようにする(行が必要な分だけ
+   高くなる)。 */
+.rp-field-value{color:#17272d;font-weight:700;overflow-wrap:break-word;white-space:normal}
+.rp-dim-table{width:100%;border-collapse:collapse;margin-top:2px}
+.rp-dim-table th,.rp-dim-table td{height:auto;padding:1.5px 3px;border:1px solid #d6e0e3;text-align:center;font-size:8.5px}
+.rp-dim-table thead th{background:#eef2f4;color:#173842}
+.rp-dim-table tbody th{background:#f7fafb;text-align:left}
+/* 品質等級: ラベル(th)と値(td)を交互に並べた4ペア構成（コンパクト化） */
+.rp-grade-table th{background:#f7fafb;color:#60747b;font-weight:700;text-align:left;white-space:nowrap}
+.rp-grade-table td{font-weight:800;color:#173842}
+/* 品質情報・板幅測定データなど、ゾーン(グリッド)に属さず全幅で単独配置する
+   セクション同士の縦間隔。ゾーンの外に出た分、明示的に余白を持たせる。 */
+#reportContent>.rp-section{margin-bottom:3px}
+/* 品質情報: 仕掛の別ファイルから取得した異常/保留情報。文字量が多くなる
+   ことが多いため、狭い列に押し込めず全幅の専用行として常時確保する。
+   短文の場合でも面積が安定するよう最小高さを確保する。 */
+.rp-info-box{min-height:26px;padding:1px 5px;border:1px solid #d6e0e3;border-radius:0 0 6px 6px;background:#ffffff;color:#173842;font-size:7.5px;line-height:1.25;white-space:normal;word-break:break-word}
+/* 頭/尾を1枚に収める測定データ表。列数が多いため小さめのフォントで密に配置する */
+.rp-note{margin:0 0 2px;color:#60747b;font-size:7.5px}
+.rp-wide-wrap{overflow:visible}
+.rp-wide-table{min-width:0;width:100%}
+.rp-wide-table th,.rp-wide-table td{padding:1px 2px;font-size:7.5px;line-height:1.15}
+/* 条番号: 見切れない範囲でできるだけ幅を絞り、数字は右パディング付きの
+   右寄せにする。空いた分の幅は隣のロット№列(幅ロット分割対応)へ回す。 */
+.rp-wide-table th.rp-colno{width:8mm;max-width:8mm;padding-right:3px;text-align:right}
+.rp-wide-table td.rp-collot{width:13mm;max-width:13mm;overflow-wrap:break-word;white-space:normal}
+/* 丈別データ: 列数(丈/長さ/肉厚/揃い/外観/備考の6列)は丈数に関わらず常に
+   固定。table-layout:fixedで列幅を固定し、長い備考テキストが隣接する
+   測定データ(板厚)の領域まではみ出さないよう、はみ出す分は省略記号で
+   切り詰める(丈数が増えるのは行方向のみ)。 */
+.rp-product-table{min-width:0;width:100%;table-layout:fixed}
+.rp-product-table th,.rp-product-table td{padding:1px 2px;font-size:7.5px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rp-product-table tbody th{white-space:nowrap}
+/* ---------- 異常位置判定（参考） ----------
+   モーダルで**保存された場合だけ**帳票へ載せる参考情報(オペレータの
+   シミュレーション結果であり、測定値ではない)。板幅の実測表は条番号で
+   引くので、その**直後**に置くと視線を戻さずに条を突き合わせられる。
+   高さは条数によらず一定(帯の高さ固定・該当条は右の要点欄に文字で出す)。
+   要点欄はラベルを折り返さず値だけを折り返して、見切れを起こさない。 */
+.rp-defect-body{display:grid;grid-template-columns:minmax(0,1fr) 54mm;gap:0 6px;align-items:start;margin-top:2px}
+.rp-defect-figure{display:flex;flex-direction:column;min-width:0}
+.rp-defect-row{display:flex;align-items:center;gap:3px;min-width:0}
+.rp-defect-end{flex:0 0 auto;width:6mm;align-self:stretch;display:flex;align-items:center;justify-content:center;border:1px solid #d6e0e3;border-radius:3px;background:#f7fafb;color:#60747b;font-size:7px;font-weight:800}
+.rp-defect-measure{flex:1;min-width:0;display:flex;flex-direction:column}
+.rp-defect-flags{position:relative;height:11px;min-width:0}
+.rp-defect-strip{position:relative;height:11mm;min-width:0;border:1px solid #9caeb4;border-radius:3px;background:#eef2f4;overflow:hidden}
+.rp-defect-ruler{position:relative;height:11px;min-width:0}
+.rp-defect-lane{position:absolute;top:0;bottom:0;background-color:var(--defect-lane-bg,#8a9a97);border-right:1px solid #ffffff8c;color:#fff;overflow:hidden}
+.rp-defect-lane-label{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.05;font-size:6.5px;font-weight:800}
+.rp-defect-scrap{position:absolute;top:0;bottom:0;overflow:hidden;background:repeating-linear-gradient(45deg,#dde5e7,#dde5e7 3px,#eef2f4 3px,#eef2f4 6px)}
+.rp-defect-scrap span{display:none}
+.rp-defect-centerline{position:absolute;top:0;bottom:0;left:50%;width:0;border-left:1px dashed #ffffffcc}
+.rp-defect-mark{position:absolute;top:0;bottom:0;min-width:2px;box-sizing:border-box;border-left:1px solid #a32424;border-right:1px solid #a32424}
+.rp-defect-mark::before{content:"";position:absolute;inset:0;background:#a32424;opacity:.32}
+.rp-defect-flag{position:absolute;bottom:0;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;white-space:nowrap}
+.rp-defect-flag b{padding:0 3px;border-radius:6px;background:#a32424;color:#fff;font-size:6.5px;font-weight:800}
+.rp-defect-flag i{width:0;height:0;border-left:3px solid transparent;border-right:3px solid transparent;border-top:3px solid #a32424}
+.rp-defect-flag.at-start{align-items:flex-start;transform:translateX(-4px)}
+.rp-defect-flag.at-end{align-items:flex-end;transform:translateX(calc(-100% + 4px))}
+.rp-defect-tick{position:absolute;top:0;width:0;height:3px;border-left:1px solid #9caeb4}
+.rp-defect-tick-label{position:absolute;top:3px;transform:translateX(-50%);color:#60747b;font-size:6.5px;white-space:nowrap}
+.rp-defect-tick-label.at-start{transform:translateX(0)}
+.rp-defect-tick-label.at-end{transform:translateX(-100%)}
+.rp-defect-legend{display:flex;flex-wrap:wrap;gap:1px 8px;margin-top:1px}
+.rp-defect-legend span{display:inline-flex;align-items:center;gap:3px;color:#60747b;font-size:7px;font-weight:700}
+.rp-defect-legend i{width:6px;height:6px;border-radius:1px;background:var(--defect-lane-bg,#8a9a97)}
+.rp-defect-legend b{color:#17272d}
+.rp-defect-facts{display:grid;align-content:start;min-width:0}
+.rp-defect-fact{display:grid;grid-template-columns:min-content minmax(0,1fr);gap:4px;padding:.5px 2px;border-bottom:1px solid #eef2f4;font-size:8px}
+.rp-defect-fact span{color:#60747b;font-weight:700;white-space:nowrap}
+.rp-defect-fact b{color:#17272d;font-weight:800;text-align:right;overflow-wrap:break-word;white-space:normal}
+.rp-defect-fact-hit b{color:#a32424}
+.rp-defect-foot{margin-top:1px;color:#8a9a97;font-size:7px}
+@media(max-width:1000px){.rp-body{grid-template-columns:1fr}.rp-nav{max-height:220px}}
+/* ============================================================
+ 2026-07-21 生産管理ダッシュボード（KPI集計）
+ モーダルではなくメイン画面の表示切り替え（qa-v7・測定帳票と同じ
+ 形式）。端末保存済みの測定データを対象に、設備・作業人数・品種
+ ごとの作業効率をクライアント側で集計する。品質データ分析(qa-v7)
+ と同じ「軸×系列×指標」の汎用設計・見た目の言語を踏襲する。
+ ============================================================ *//* ---------- パネルの操作列(.rp-head-actions) (§9.63 → VER1.82.0) ----------
+   かつては`.rp-head`という濃色の見出しバンド(画面名＋操作)をダッシュボード・
+   実績カレンダー・帳票が共有していた。画面名はヘッダーの`#fileName`と二重で、
+   バー1本ぶん本文の高さを食っていたため**バンドごと廃止**し、操作だけを
+   ヘッダーの`#headerViewBar`へ移した(ARCHITECTURE.md「画面ごとの操作列を
+   ヘッダーへ相乗りさせる」)。残すのは操作を横に並べる箱だけ。 */
+.rp-head-actions{display:flex;align-items:center;gap:var(--space-2);margin-left:auto}
+/* .rp-btn-primary/.rp-btn-secondary も**基底の定義が無く**、ブラウザ既定の
+   ボタンのまま出ていた(実績カレンダーの「‹ › 今月」やダッシュボードの
+   「この条件で集計」)。ヘッダーの.hd-btnと同じ寸法トークンへ揃える。 */
+.rp-btn-primary,.rp-btn-secondary{border:1px solid var(--line);
+ font-weight:700;cursor:pointer;
+ display:inline-flex;align-items:center;justify-content:center;gap:6px;
+ transition:background .12s,border-color .12s,color .12s}
+.rp-btn-secondary{background:#fff;color:#3a565d}
+.rp-btn-secondary:hover{border-color:var(--teal);background:var(--pale);color:#0c5d67}
+.rp-btn-secondary:active{background:var(--teal);border-color:var(--teal);color:#fff}
+.rp-btn-primary{background:var(--teal);border-color:var(--teal);color:#fff}
+.rp-btn-primary:hover{background:var(--teal-dark);border-color:var(--teal-dark)}
+.rp-btn-primary:active{background:#06565f;border-color:#06565f}
+.rp-btn-primary:disabled,.rp-btn-secondary:disabled{
+ opacity:.45;cursor:not-allowed;background:#eef2f4;border-color:#d6e0e3;color:#93a5ab}
+.rp-btn-icon{width:var(--ctl-h);padding:0;font-size:var(--fs-title);line-height:1}
+.db-panel{flex:1;min-height:0;margin:9px 14px;display:flex;flex-direction:column;background:#f7fafb;border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden}
+.db-layout{flex:1;min-height:0;display:grid;grid-template-columns:calc(260px * var(--ui-scale)) minmax(0,1fr);overflow:hidden}
+.db-controls{display:flex;flex-direction:column;gap:14px;padding:var(--space-4);background:#e7eff1;border-right:1px solid var(--line);overflow-y:auto}
+.db-presets{display:flex;flex-wrap:wrap;gap:6px}
+.db-presets button{padding:6px 10px;border:1px solid #9fb9b2;border-radius:var(--radius-lg);background:#fff;color:#2c5049;font-weight:700;font-size:var(--fs-sm);cursor:pointer}
+.db-presets button.active{background:var(--teal);border-color:var(--teal);color:#fff}
+.db-ctl-group{display:flex;flex-direction:column;gap:6px}
+.db-ctl-label{font-size:var(--fs-micro);font-weight:800;color:#526970;letter-spacing:.02em}
+.db-ctl-group select{height:var(--ctl-h);padding:0 8px;border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff}
+.db-seg{display:flex;flex-wrap:wrap;gap:var(--space-1)}
+.db-seg button{padding:5px 9px;border:1px solid #c4d0d4;border-radius:var(--radius-lg);background:#fff;color:#3a565d;font-size:var(--fs-micro);cursor:pointer}
+.db-seg button.active{background:var(--teal);border-color:var(--teal);color:#fff}
+.db-seg-sm button{padding:3px 8px;font-size:var(--fs-badge)}
+.db-field-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.db-field-grid label{display:flex;flex-direction:column;gap:2px;font-size:var(--fs-micro);color:#60747b}
+.db-field-grid input{height:var(--ctl-h-sm);padding:0 6px;border:1px solid var(--line);border-radius:var(--radius-sm)}
+.db-sub{display:flex;flex-direction:column;gap:var(--space-1);margin-top:2px;font-size:var(--fs-micro);color:#60747b}
+.db-main{display:flex;flex-direction:column;min-width:0;min-height:0;padding:var(--space-4);gap:14px;overflow-y:auto}
+.db-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.db-card{display:flex;flex-direction:column;gap:var(--space-1);padding:var(--pad-card);background:#fff;border:1px solid #d6e0e3;border-radius:var(--radius-md)}
+.db-card-label{font-size:var(--fs-micro);color:#60747b;font-weight:700}
+.db-card-value{font-size:var(--fs-lg);color:#173842;font-variant-numeric:tabular-nums}
+.db-chart-wrap{background:#fff;border:1px solid #d6e0e3;border-radius:var(--radius-md);padding:10px;min-height:360px;display:flex}
+.db-chart{flex:1;min-width:0;min-height:340px}
+.db-chart svg{width:100%;height:100%}
+.db-empty{margin:auto;padding:20px;color:var(--muted);text-align:center}
+.db-table-wrap{background:#fff;border:1px solid #d6e0e3;border-radius:var(--radius-md);overflow:auto}
+.db-table{width:100%;border-collapse:collapse}
+.db-table th,.db-table td{padding:var(--row-pad-y) var(--row-pad-x);border-bottom:1px solid #eef2f4;text-align:center;font-size:var(--fs-sm);white-space:nowrap}
+.db-table thead th{background:#eef2f4;color:#173842;position:sticky;top:0}
+.db-table tbody th{text-align:left;color:#173842}
+.db-empty-cell{padding:var(--space-4);text-align:center;color:var(--muted)}
+.db-axis{stroke:#8299a0;stroke-width:1}
+.db-gridline{stroke:#e3ebee;stroke-width:1}
+.db-label{font-size:var(--fs-micro);fill:#3a565d}
+.db-value{font-size:var(--fs-micro);fill:#075e67;font-weight:800}
+.db-chart-title{font-size:var(--fs-title);font-weight:800;fill:#173842}
+.db-chart-subtitle{font-size:var(--fs-micro);font-weight:700;fill:#60747b}
+.db-axis-title{font-size:var(--fs-micro);font-weight:800;fill:#40606a}
+.db-svg-legend-label{font-size:var(--fs-micro);fill:#3a565d}
+@media(max-width:1000px){.db-layout{grid-template-columns:1fr}.db-controls{max-height:280px}.db-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* ---------- 稼働状況ビュー(§9.64) ----------
+   ダッシュボードを開いた直後に見えるのはこちら。条件を組み立てなくても
+   「いま何が動いていて、何が残っていて、遅れていないか」が分かる状態を作る。 */
+.db-viewtabs{display:flex;gap:0;background:#0f2a32;border:1px solid #2c4750;border-radius:var(--radius-sm);padding:2px}
+.db-viewtabs button{height:calc(var(--ctl-h) - 8px);padding:0 14px;border:0;border-radius:var(--radius-sm);
+ background:transparent;color:#a8d6dc;font-size:var(--fs-sm);font-weight:700;cursor:pointer;
+ transition:background .12s,color .12s}
+.db-viewtabs button:hover{color:#fff;background:#173842}
+.db-viewtabs button.active{background:var(--teal);color:#fff}
+.db-status-view{flex:1;min-height:0;display:flex;flex-direction:column;gap:var(--space-3);
+ padding:var(--space-4);overflow-y:auto}
+.db-card-note{font-size:var(--fs-micro);color:#7b8e95}
+.db-card-value small{font-size:var(--fs-sm);font-weight:700;margin-left:2px;color:#60747b}
+.db-status-grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:var(--space-3);
+ align-items:start}
+.db-status-card{background:#fff;border:1px solid #d6e0e3;border-radius:var(--radius-md);overflow:hidden;min-width:0}
+.db-status-card-head{display:flex;align-items:baseline;gap:var(--space-2);flex-wrap:wrap;
+ padding:var(--pad-card);border-bottom:1px solid #eef2f4;background:#f7fafb}
+.db-status-card-head b{font-size:var(--fs-base-sm);color:#173842}
+.db-status-card-head span{font-size:var(--fs-micro);color:#7b8e95}
+.db-status-body{max-height:min(46vh,460px);overflow:auto}
+.db-status-table{width:100%;border-collapse:collapse}
+.db-status-table th,.db-status-table td{padding:var(--row-pad-y) var(--row-pad-x);
+ border-bottom:1px solid #eef2f4;text-align:center;font-size:var(--fs-sm);white-space:nowrap}
+}

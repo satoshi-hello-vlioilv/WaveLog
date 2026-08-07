@@ -1,0 +1,130 @@
+/* ============================================================
+   10-roles.css — 役割ごとの寸法・文字（ここが唯一の決定場所）
+   ------------------------------------------------------------
+   app.css を分割したもの。**読み込み順を変えないこと。**
+   同じ @layer の中では「後に書いたほうが勝つ」が今も効いているため、
+   ファイルの順序＝カスケードの順序になる。順序は templates/index.html の
+   <link> の並びで決まり、tests/test_csslint.py が並びを固定している。
+   レイヤの宣言とトークンは 00-base.css が持つ。
+   ============================================================ */
+@layer component {
+/* ============================================================
+   0. 役割ごとの寸法（§9.71）
+   ------------------------------------------------------------
+   **同じ役割の部品は、どの画面でも同じ寸法にする。**
+   ここが唯一の決定場所で、各画面のクラスは下の表へ名前を連ねるだけ。
+   個別ルールには「その部品だけの違い」(配色・並び)しか書かない。
+
+   なぜ要ったか: 実測すると、ボタンの高さが 22/24/26/28/30/31/32/34/35/
+   36/38/40/42/44/46px の15種、横余白が 0/4/7/8/9/10/12/14/16/18/22px の
+   11種、文字サイズが --fs-tiny〜--fs-lg の8種に散っていた。文字サイズは
+   トークン化済みだったのに「揃って見えない」のはこれが原因で、同じ役割の
+   ボタンが画面ごとに違う高さ・違う詰まり方で並んでいた。
+
+   | 役割           | 高さ          | 横余白             | 文字        |
+   |----------------|---------------|--------------------|-------------|
+   | 主要な確定操作 | --ctl-h-lg 40 | --ctl-pad-x + 4px  | --fs        |
+   | 標準           | --ctl-h    36 | --ctl-pad-x   14px | --fs        |
+   | 補助(ツールバー)| --ctl-h-sm 30 | --ctl-pad-x-sm 10px| --fs-sm     |
+   | 表の中・タグ   | --ctl-h-xs 26 | --ctl-pad-x-xs 8px | --fs-sm     |
+   | タブ           | --ctl-h    36 | (タブ側の余白)     | (タブ側)    |
+
+   **新しいボタンを足すときは、まずこの表のどれかに名前を足す。**
+   ここに載らない寸法を個別ルールへ書くと、また15種類に戻る。
+   ============================================================ */
+/* --- 主要な確定操作（保存・実行・削除の確定） --- */
+.mm-btn-primary,.mm-btn-danger,.split-apply-btn,.qa-v7 .qa-primary-large,
+.equipment-setup-banner>button,.defect-primary-btn{
+  height:var(--ctl-h-lg);padding:0 calc(var(--ctl-pad-x) + 4px);
+  font-size:var(--fs);font-weight:800;border-radius:var(--radius-sm);
+}
+/* --- 標準（ヘッダー・ダイアログ・パネルの操作） --- */
+.hd-actions .hd-btn,.equipment-header-button,.split-panel-open-btn,
+.status-filter-btn,.record-list-actions button,.work-time-actions button,
+.mm-nav button,.mm-btn-ghost,.rp-btn-primary,.rp-btn-secondary,
+.defect-actions button,.qa-v7 .qa-primary,.qa-v7 .qa-secondary,
+.connection-lost-bar button,.split-update-actions button{
+  height:var(--ctl-h);padding:0 var(--ctl-pad-x);
+  font-size:var(--fs);border-radius:var(--radius-sm);
+}
+/* --- 補助（ツールバー・カード内の副次操作） --- */
+.list-toolbar-btn,.filter-search-row-actions button,.filter-builder button,
+.filter-preset-toolbar button,.mm-act button,.mm-btn-ghost.sm,.mm-btn-primary.sm,
+.sc-float-foot button,.record-sync-bar button,.rp-back-btn,
+.split-ghost-btn,.qa-v7 .qa-seg button,.sc-stop-button,.sc-column-actions button,
+.split-recheck-btn,.rp-foot-btn,.fp-lock-btn,main>footer #prev,main>footer #next{
+  height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
+  font-size:var(--fs-sm);border-radius:var(--radius-sm);
+}
+/* --- 表の中・タグ（行の高さに収まる小片） --- */
+.measurement-action-button,.plan-action-button,.plan-select-add,.plan-select-clear,
+.grid-lot-link,.lot-dsp-link,.sc-row-btn,.sc-board-window-btn,.sc-board-sort-btn,.sc-mode-toggle-btn,
+.sc-session-banner button,.shift-seg button,.qa-v7 .qa-seg.qa-seg-sm button{
+  height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);
+  font-size:var(--fs-sm);border-radius:var(--radius-sm);
+}
+/* --- タブ（高さだけ揃える。角丸・配色はタブごとの規則が持つ） --- */
+.tab,.tabs button,.subtabs button,.work-tabs button,.mode-tabs button,
+.product-length-tabs button,.qa-v7 .qa-step-tabs button{
+  min-height:var(--ctl-h);
+}
+/* --- 例外: 幅が決まっている部品 ---
+   アイコンだけのボタンと、狭い列に3つ並ぶ操作ボタン。横余白を上の表の
+   ままにすると中身が入らないので、**幅の制約がある部品だけ**を明示して外す
+   (「なんとなく狭くしたい」で外さない。外すたびに揃わなくなる)。 */
+.fp-lock-btn{padding:0}
+/* ロット№のセル内リンクは省略記号(…)を効かせるため display:block のまま。
+   ボタンと違って中身が自動で中央に来ないので、行の高さで縦位置を作る。 */
+.lot-dsp-link{line-height:calc(var(--ctl-h-xs) - 2px)}
+.record-list-actions button{padding:0 var(--space-1)}
+.sc-row-btn{padding:0 var(--space-1)}
+/* --- 文字の役割（見出し・要約・バッジ）（§9.71） ---
+   実測すると「見出しっぽい要素」が8種類、「ラベル」が6種類、「補足」が5種類、
+   「バッジ」が6種類のトークンに散っていた。**同じ役割なら同じ大きさ**にする。
+
+   | 役割             | トークン        | 重さ | 使うところ                     |
+   |------------------|-----------------|------|--------------------------------|
+   | パネル見出し     | --fs-title  15  | 800  | 画面の中の大きな区切りの表題   |
+   | カード見出し     | --fs-base-sm 13 | 800  | カード・アコーディオンの表題   |
+   | 要約・補足       | --fs-micro  11  | 700  | 見出しに添える説明・現在値     |
+   | 本文・入力値     | --fs        14  | 400  | 表の値・入力欄・標準ボタン     |
+   | ラベル・表ヘッダ | --fs-sm     12  | 700  | 項目名・th・タグ・補助ボタン   |
+   | チップ           | --fs-micro  11  | 800  | 条件・状態を単独で読ませる小片 |
+   | バッジ           | --fs-badge  10  | 800  | 件数・状態の最小表示           |
+
+   下は**その役割にいる部品の一覧**。個別ルールには配色と並びだけを書く。 */
+.qa-v7 .qa-tab-title b,.mm-head h2,.sc-panel-title,.split-visual-head b{
+  font-size:var(--fs-title);font-weight:800;color:var(--ink);
+}
+.qa-v7 .qa-acc-title,.split-candidate-head b,.disclosure-title,.wtb-title,
+.record-list-head,.split-tolerance-legend>b{
+  font-size:var(--fs-base-sm);font-weight:800;color:var(--ink);
+}
+.qa-v7 .qa-tab-title small,.qa-v7 .qa-acc-sum,.qa-v7 .qa-hint,
+.split-visual-hint,.split-hint-text,.disclosure-sum,.mm-editor-head small{
+  font-size:var(--fs-micro);font-weight:700;
+}
+.qa-v7 .qa-chip,.list-join-chip,.suggest-chip,.field-reorder-badge{
+  font-size:var(--fs-micro);font-weight:800;
+}
+/* --- 器の内側余白（§9.72） ---
+   ダイアログ・カード・チップの「中身の詰まり方」は3つだけ。
+   実測では器の内側余白に112種類の組み合わせが使われており、同じ役割の
+   ダイアログでもヘッダーが 10px20px / 15px18px / 12px18px / 12px16px と
+   画面ごとに違っていた。値は 00-base.css の --pad-* が持つ。
+
+   | 役割                     | トークン       |
+   |--------------------------|----------------|
+   | ダイアログの頭・胴・足   | --pad-dialog   |
+   | カード・パネル・バー     | --pad-card     |
+   | チップ・タグ             | --pad-chip     |
+
+   表のセルは行の高さと対で決まるため --row-pad-y/x が持つ(別の役割)。
+   密な並び(タイムライン・フィルタバー)の余白はここでは触らない——
+   画面が入り切るかどうかに直結しており、丸めると溢れる。 */
+.qa-v7 .qa-chip,.list-join-chip,.suggest-chip,.field-reorder-badge{
+  padding:var(--pad-chip);
+}
+/* --- 選択の切り替え（セグメント）は丸め切る形で「押して選ぶ」と分かる --- */
+.status-filter-btn,.qa-v7 .qa-step-tabs button{border-radius:var(--radius-pill)}
+}

@@ -13,7 +13,16 @@
 import re,sys,pathlib
 
 ROOT=pathlib.Path(__file__).resolve().parent.parent
-CSS=(ROOT/'static/app.css').read_text(encoding='utf-8')
+# CSSは static/css/ 配下へ分割してある(§9.72)。@layer の中では今も
+# 「後に書いたほうが勝つ」が効くので、**読み込み順＝カスケードの順序**。
+# ここでは読み込み順に連結したものを1枚のCSSとして検査する。
+# 並びの唯一の定義は backend/routes/core.py の CSS_FILES(そこが連結して配信する)。
+# ここでも同じものを読み、ディスクの中身と食い違っていないかを見る。
+_core=(ROOT/'backend/routes/core.py').read_text(encoding='utf-8')
+_m=re.search(r'CSS_FILES=\[(.*?)\]',_core,re.S)
+CSS_ORDER=re.findall(r"'([\w.-]+\.css)'",_m.group(1)) if _m else []
+CSS_DIR=ROOT/'static/css'
+CSS='\n'.join((CSS_DIR/n).read_text(encoding='utf-8') for n in CSS_ORDER)
 # コメントは対象外。ただし行番号は元のまま報告したいので、改行だけ残して潰す。
 CODE=re.sub(r'/\*[\s\S]*?\*/',lambda m:re.sub(r'[^\n]',' ',m.group(0)),CSS)
 
@@ -115,6 +124,27 @@ rec('角丸のリテラルpxは帳票だけ',not stray_rad,'; '.join(stray_rad[:
 # 役割ごとの寸法をまとめたブロックが残っていること(消すと元の15種類へ戻る)
 rec('役割ごとの寸法を1箇所で決めるブロックがある',
     '0. 役割ごとの寸法' in CSS and '文字の役割（見出し・要約・バッジ）' in CSS)
+
+# ---- 9) 分割したCSSの読み込み順(§9.72) ----
+# 順番が変わるとカスケードが変わる。テンプレートの<link>の並びが
+# CSS_ORDER と一致していること、余計なCSSが混ざっていないことを見る。
+rec('CSSの読み込み順が1箇所(core.pyのCSS_FILES)で定義されている',len(CSS_ORDER)>=10,
+    f'{len(CSS_ORDER)}件')
+html=(ROOT/'templates/index.html').read_text(encoding='utf-8')
+# 分割したCSSは実行時に1本へ連結して返す(<link>を分割数ぶん並べると、
+# 1ページ表示ごとに往復が増えて起動直後の一覧取得と競合する。実測で
+# テストが13件落ちた)。テンプレートが個別ファイルを直接読んでいないこと。
+rec('CSSはまとめて1本で読み込む',
+    "url_for('core.app_css')" in html and "filename='css/" not in html)
+on_disk=sorted(p.name for p in CSS_DIR.glob('*.css'))
+rec('static/css の中身と読み込み一覧が一致している',on_disk==sorted(CSS_ORDER),
+    f'disk={on_disk}')
+rec('分割前の app.css は残っていない',not (ROOT/'static/app.css').exists())
+# 各ファイルは「レイヤの中」だけを持つ。00-base 以外がレイヤを宣言し直すと
+# 並びが二重定義になるので禁止。
+redecl=[n for n in CSS_ORDER[1:]
+        if re.search(r'@layer\s+[\w-]+\s*,',(CSS_DIR/n).read_text(encoding='utf-8'))]
+rec('レイヤの並びを宣言しているのは00-base.cssだけ',not redecl,f'{redecl}')
 
 ng=[x for x in R if not x[1]]
 print('\n=== SUMMARY ===')
