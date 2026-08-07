@@ -431,6 +431,11 @@ def read_device_names(c,kind):
  return out
 
 FILTER_PRESET_TABLE='フィルタプリセットマスタ'
+# 対象モード('' = 共通 / 'schedule' = スケジュールモード専用)。同じ仕掛一覧でも
+# スケジュールモードは品質データを結合して列構成が変わるため、使う条件も
+# 別になる。混ざると「その表に無い列の条件」が並ぶので、保存先を分ける(§9.80)。
+_FILTER_PRESET_MODE_COLUMN=('対象モード','TEXT')
+
 def ensure_filter_preset_table(c):
  names=tables(c);created=False
  if FILTER_PRESET_TABLE not in names:
@@ -439,13 +444,18 @@ def ensure_filter_preset_table(c):
   cur.execute('CREATE TABLE [フィルタプリセットマスタ] ([プリセットID] INTEGER PRIMARY KEY AUTOINCREMENT, [名称] TEXT, [対象DB] TEXT, [対象テーブル] TEXT, [条件JSON] TEXT, [使用回数] INTEGER, [最終使用日時] DATETIME, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
   c.commit();created=True
  ensure_audit_columns(c,FILTER_PRESET_TABLE)
+ # 既存DBには無い列なので、他のマスタと同じ「無ければALTER TABLEで足す」方式。
+ name,decl=_FILTER_PRESET_MODE_COLUMN
+ if name not in {r[1] for r in c.cursor().execute(f'PRAGMA table_info([{FILTER_PRESET_TABLE}])')}:
+  c.cursor().execute(f'ALTER TABLE [{FILTER_PRESET_TABLE}] ADD COLUMN [{name}] {decl}')
+  c.commit()
  return created
 
 def filter_preset_rows(c):
  ensure_filter_preset_table(c)
  cur=c.cursor()
  # 全行取得後にPython側で有効判定する(使用回数の多い順で返す)。
- cur.execute('SELECT [プリセットID],[名称],[対象DB],[対象テーブル],[条件JSON],[使用回数],[最終使用日時],[有効],[更新日時],[更新者ID] FROM [フィルタプリセットマスタ] ORDER BY [使用回数] DESC,[表示順],[名称]')
+ cur.execute('SELECT [プリセットID],[名称],[対象DB],[対象テーブル],[条件JSON],[使用回数],[最終使用日時],[有効],[更新日時],[更新者ID],[対象モード] FROM [フィルタプリセットマスタ] ORDER BY [使用回数] DESC,[表示順],[名称]')
  rows=[]
  for r in cur.fetchall():
   active=True if r[7] is None else bool(r[7])

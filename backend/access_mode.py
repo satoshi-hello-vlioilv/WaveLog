@@ -88,6 +88,17 @@ _ENDPOINT_EXTRA_MODES={
  # 状態のまま残っていた。計画盤を整えるのは計画端末の役目なので、
  # scheduleモードにも開く。閲覧モードには開かない(既定のまま拒否)。
  'measurement.backup_delete':{'schedule'},
+ # 登録フィルタ(§9.80)。一覧の絞り込み条件は**その端末のその画面の見え方**の
+ # 設定で、測定データにも他マスタにも触れない。scheduleモードの端末は
+ # 仕掛一覧を主に使うのに、保存だけ403で弾かれていた(しかも画面は失敗を
+ # ローカル退避したうえで直後の再読込で消しており、「登録したのに出ない」
+ # としか見えなかった)。列表示マスタ(masters.schedule_column_master_save)を
+ # scheduleへ開けているのと同じ理由でここも開ける。
+ # 対象モードごとに保存先が分かれるので、scheduleで作った条件がeditの一覧へ
+ # 混ざることはない。
+ 'masters.filter_preset_register':{'schedule'},
+ 'masters.filter_preset_delete':{'schedule'},
+ 'masters.filter_preset_use':{'schedule'},
 }
 # 書込ではないがPOSTで受けるもの(§9.50の「今すぐ抽出」)。データを書き換えず、
 # 抽出元(RNE)から読み直すだけなので、閲覧モードの端末からも実行できてよい。

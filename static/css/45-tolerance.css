@@ -80,7 +80,7 @@
 /* ---- 汎用フィルタ バー ---- */
 .generic-filter-bar{margin:6px 14px 0;border:1px solid #b7c7cc;border-radius:var(--radius-sm);background:#fff;overflow:hidden}
 /* 1段目: 検索窓（トークン入力）＝汎用検索窓から次々に条件を追加する主導線 */
-.filter-search-row{position:relative;display:flex;align-items:center;gap:var(--space-2);min-height:40px;padding:var(--pad-row);background:#edf7f8}
+.filter-search-row{position:relative;display:flex;align-items:center;gap:var(--space-2);min-height:var(--ctl-h-lg);padding:var(--pad-row);background:#edf7f8}
 .filter-search-row>b{flex:0 0 auto;color:#173842;white-space:nowrap}
 .filter-count{flex:0 0 auto;padding:var(--pad-chip);border-radius:var(--radius-md);background:#fff;border:1px solid #9fc3c8;color:#075e67;font-weight:800;font-size:var(--fs-micro);white-space:nowrap}
 /* クイックフィルタ行: 詳細ビルダーを開かず、よく使う条件をワンクリックで
@@ -88,11 +88,11 @@
    にし、こちらは常時見える簡易な代替導線として検索バー直下に置く。 */
 .filter-quick-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-inline);padding:var(--pad-row);background:#f7fafb;border-top:1px solid #dbe7ea}
 .filter-quick-label{flex:0 0 auto;color:#526970;font-size:var(--fs-micro);font-weight:800;white-space:nowrap}
-.suggest-chip.quick{height:26px;padding:var(--pad-chip)}
+.suggest-chip.quick{min-height:var(--ctl-h-xs);padding:var(--pad-chip)}
 /* トークン入力: アクティブ条件タグ＋入力欄を1つの入力面に見せる（近接・グルーピング） */
 .filter-token-input{position:relative;flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:var(--gap-tight);flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;min-height:32px;padding:3px 8px;border:1px solid var(--teal);border-radius:var(--radius-sm);background:#fff}
 .filter-token-input.focus-within{box-shadow:0 0 0 3px #087c8928}
-.filter-token-search{flex:1 0 160px;min-width:120px;height:26px;border:0;border-radius:0;padding:0 2px;background:transparent;box-shadow:none}
+.filter-token-search{flex:1 0 160px;min-width:120px;height:var(--ctl-h-xs);border:0;border-radius:0;padding:0 2px;background:transparent;box-shadow:none}
 .filter-token-search:focus-visible{outline:0;box-shadow:none}
 .filter-search-row-actions{flex:0 0 auto;display:flex;gap:var(--gap-inline);align-items:center}
 .filter-search-row-actions button{white-space:nowrap}
@@ -101,11 +101,19 @@
    1件も無いときはボタン自体を出さない(JS側でhidden)。 */
 .filter-search-row-actions #filterQuickToggle.active{background:var(--pale);border-color:var(--teal);color:#0a6570;font-weight:700}
 /* アクティブ条件タグ（トークン） */
-.filter-tag{display:inline-flex;align-items:center;gap:var(--space-1);flex:0 0 auto;max-width:100%;height:26px;padding:2px 4px 2px 8px;border-radius:var(--radius-md);border:1px solid #8bbbc1;background:#eafafa;color:#173842}
+.filter-tag{display:inline-flex;align-items:center;gap:var(--space-1);flex:0 0 auto;max-width:100%;min-height:var(--ctl-h-xs);padding:2px 4px 2px 8px;border-radius:var(--radius-md);border:1px solid #8bbbc1;background:#eafafa;color:#173842}
 .filter-tag>span{font-weight:800;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .filter-tag b{font-size:var(--fs-micro);color:#075e67;white-space:nowrap}
 .filter-tag em{font-style:normal;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#3a565d}
 .filter-tag i{display:grid;place-items:center;width:18px;height:18px;border-radius:var(--radius-round);font-style:normal;color:#9b1b1b;font-weight:900;cursor:pointer}
+/* 条件ごとの登録ボタン(★=登録済み / ☆=未登録)。押せることと今の状態を
+   同じ場所で示す(§9.80)。 */
+.filter-tag u{display:grid;place-items:center;width:18px;height:18px;border-radius:var(--radius-round);
+  text-decoration:none;font-size:var(--fs-sm);line-height:1;color:var(--ink-soft);cursor:pointer}
+.filter-tag u:hover{background:var(--warn-bg);color:var(--warn-border)}
+.filter-tag u.is-saved{color:var(--warn-border);cursor:default}
+.filter-tag u.is-saved:hover{background:transparent}
+.filter-tag u:focus-visible{outline:2px solid var(--teal);outline-offset:1px}
 .filter-tag i:hover{background:#ffe1e1}
 .filter-tag i:focus-visible{outline:2px solid var(--teal);outline-offset:1px}
 .filter-tag-locked{background:#fff2cc;border-color:#e0b23d;color:#6b5200}
@@ -114,13 +122,13 @@
 .filter-tag-lock-icon{font-size:var(--fs-micro)}
 .filter-empty{color:#6d7e84;font-size:var(--fs-micro);white-space:nowrap}
 /* サジェスト・ドロップダウン（認知負荷を下げる: 再認＞想起 / チャンク化 / 段階的開示） */
-.filter-suggest{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:1600;max-height:340px;overflow:auto;background:#fff;border:1px solid #9fc3c8;border-radius:var(--radius-md);box-shadow:0 16px 42px #0b2b3322;padding:var(--space-2)}
+.filter-suggest{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:var(--z-popover);max-height:340px;overflow:auto;background:#fff;border:1px solid #9fc3c8;border-radius:var(--radius-md);box-shadow:0 16px 42px #0b2b3322;padding:var(--space-2)}
 .filter-suggest[hidden]{display:none}
 .filter-suggest-group+.filter-suggest-group{margin-top:4px;border-top:1px dashed #dbe7ea;padding-top:4px}
 .filter-suggest-head{display:flex;align-items:center;gap:var(--gap-inline);padding:4px 6px 3px;color:#526970;font-size:var(--fs-micro);font-weight:800}
 .filter-suggest-head .fs-icon{display:grid;place-items:center;width:16px;height:16px;border-radius:var(--radius-round);background:#e4f3f4;color:#075e67;font-size:var(--fs-badge)}
 .filter-suggest-items{display:flex;flex-wrap:wrap;gap:var(--gap-tight);padding:2px 4px 4px}
-.suggest-chip{display:inline-flex;align-items:center;gap:var(--gap-tight);max-width:100%;height:28px;border-radius:var(--radius-lg);border:1px solid #bcd6d9;background:#f7fafb;color:#173842;cursor:pointer}
+.suggest-chip{display:inline-flex;align-items:center;gap:var(--gap-tight);max-width:100%;min-height:var(--ctl-h-xs);border-radius:var(--radius-lg);border:1px solid #bcd6d9;background:#f7fafb;color:#173842;cursor:pointer}
 .suggest-chip:hover,.suggest-chip.active{background:var(--teal);border-color:var(--teal);color:#fff}
 .suggest-chip:hover b,.suggest-chip.active b,.suggest-chip:hover small,.suggest-chip.active small{color:#eafafa}
 .suggest-chip>span{font-weight:800;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -135,9 +143,19 @@
 .filter-body{padding:7px 8px;display:grid;gap:var(--gap-inline);border-top:1px solid #dbe7ea}
 .filter-body[hidden]{display:none}
 .filter-builder{display:grid;grid-template-columns:minmax(140px,1.3fr) 130px minmax(160px,1.6fr) auto;gap:var(--gap-inline);align-items:end}
-.filter-builder label{display:grid;grid-template-rows:16px 32px;gap:var(--gap-hair);color:#526970;font-size:var(--fs-sm);white-space:nowrap;min-width:0}
+/* **行の高さを固定pxにしない。** ラベルは --fs-sm、入力欄は --ctl-h-sm で
+   どちらも表示サイズ(--ui-scale)に追随するのに、行だけ 16px/32px 固定だった
+   ため「大」「特大」で中身が枠から溢れていた(VER1.87.0の母材パネルと同型)。
+   ラベル行は中身なり、入力行はコントロールの高さそのものにする。 */
+.filter-builder label{display:grid;grid-template-rows:auto var(--ctl-h-sm);gap:var(--gap-hair);color:#526970;font-size:var(--fs-sm);white-space:nowrap;min-width:0}
 .filter-builder select,.filter-builder input{height:var(--ctl-h-sm);width:100%;min-width:0;font-size:var(--fs)}
 .filter-builder button{white-space:nowrap}
+/* 「適用」と「登録」を並べる。用途が違うので**別のボタン**にし、主導線
+   (今すぐ効かせる=適用)を塗り、保存は枠線だけにして重みの差を付ける。 */
+.filter-builder-actions{display:flex;gap:var(--gap-inline);align-items:end}
+#registerGenericFilter{background:#fff;color:var(--teal-dark);border-color:var(--teal);font-weight:700}
+#registerGenericFilter:hover{background:var(--pale)}
+.filter-builder-note{margin:0;padding:0 2px;font-size:var(--fs-micro);color:var(--ink-soft)}
 #addGenericFilter{background:var(--teal);color:#fff;border-color:var(--teal);font-weight:800}
 @media(max-width:1400px){.filter-builder{grid-template-columns:1fr 125px 1fr auto}}
 /* インライン・ローディング（バー右端に小さく表示。ブロックしない軽処理向け） */
@@ -165,7 +183,7 @@
 .filter-preset-item .fp-actions .danger{color:#9d2020;background:#fff7f7;border-color:#dab0b0}
 .fp-default{display:flex;align-items:center;gap:var(--space-1);padding:var(--pad-row);border:1px solid #cddbde;border-radius:var(--radius-sm);background:#f7fafb;font-size:var(--fs-micro);font-weight:700;color:#40606a;white-space:nowrap;cursor:pointer}
 .fp-default input{margin:0}
-.fp-lock-btn{width:28px;line-height:1;border:1px solid #cddbde;background:#f7fafb;color:#40606a;cursor:pointer}
+.fp-lock-btn{width:var(--ctl-h-sm);height:var(--ctl-h-sm);line-height:1;border:1px solid #cddbde;background:#f7fafb;color:#40606a;cursor:pointer}
 .fp-lock-btn:hover{border-color:#9fc3c8}
 .fp-lock-btn.locked{background:#fff2cc;border-color:#e0b23d;color:#6b5200}
 .fp-cond{display:inline-flex;align-items:center;gap:var(--gap-tight);padding:var(--pad-chip);border-radius:var(--radius-md);border:1px solid #cddbde;background:#f7fafb;font-size:var(--fs-micro);white-space:nowrap}

@@ -25,7 +25,7 @@
 @layer component {
 
 #appBoot{
- position:fixed; inset:0; z-index:9000;
+ position:fixed; inset:0; z-index:var(--z-boot);
  display:flex; align-items:center; justify-content:center;
  color:var(--pale);
  /* loading.html と同じ配色。深い紺に斜めの光を2つ重ねる。

@@ -143,5 +143,5 @@
 .split-scrap-line b{font-size:var(--fs)}
 .split-scrap-warn{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger)}
 /* ---------- 11. 保存データ一覧モーダル ---------- */
-.record-modal{position:fixed;inset:0;z-index:1500;background:#071c2280;display:grid;place-items:center}
+.record-modal{position:fixed;inset:0;z-index:var(--z-modal);background:#071c2280;display:grid;place-items:center}
 }
