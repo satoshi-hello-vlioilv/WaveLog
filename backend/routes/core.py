@@ -9,6 +9,7 @@ from ..config import APP_ID, PORT
 from .. import boot_status
 from ..changelog_data import APP_VERSION, CHANGELOG
 from ..paths import APP_ROOT as BASE
+from ..logging_setup import app_logger
 
 bp=Blueprint('core',__name__)
 
@@ -42,17 +43,48 @@ CSS_FILES=[
 _CSS_CACHE={'token':None,'body':''}
 
 def _css_dir(): return BASE/'static'/'css'
+
+def _newest_mtime(paths,what):
+ """更新時刻の最大値。**ここで例外を出さない**。
+
+ アプリ本体が共有フォルダー上に置かれている場合、stat()はネットワーク越しの
+ 問い合わせになり、共有が一瞬応答しないだけで失敗し得る(WinError 59 等。
+ §9.75と同じ事故が、DBではなく静的ファイルの側で起きる)。この値は
+ ブラウザのキャッシュを捨てさせるためだけのものなので、取れなかった
+ ファイルは黙って飛ばし、**画面は必ず出す**。全部失敗したときだけ
+ バージョン番号で代用する(更新時に必ず変わるので実用上困らない)。"""
+ newest=0;failed=[]
+ for p in paths:
+  try:
+   v=p.stat().st_mtime_ns
+   if v>newest:newest=v
+  except OSError as e:
+   failed.append(f'{p.name}({e})')
+ if failed:
+  app_logger().warning('%sの更新時刻を取得できませんでした(%d件): %s',
+                       what,len(failed),' / '.join(failed[:5]))
+ return str(newest) if newest else APP_VERSION
+
 def _css_token():
  """CSSの更新時刻。連結結果のキャッシュ鍵と、<link>のキャッシュ破棄に使う。"""
  d=_css_dir()
- return str(max((d/n).stat().st_mtime_ns for n in CSS_FILES))
+ return _newest_mtime([d/n for n in CSS_FILES],'CSS')
 
 @bp.get('/css/app.css')
 def app_css():
  tok=_css_token()
  if _CSS_CACHE['token']!=tok:
   d=_css_dir()
-  parts=[f'/* ===== {n} ===== */\n'+(d/n).read_text(encoding='utf-8') for n in CSS_FILES]
+  parts=[];failed=[]
+  for n in CSS_FILES:
+   try:parts.append(f'/* ===== {n} ===== */\n'+(d/n).read_text(encoding='utf-8'))
+   except OSError as e:failed.append(f'{n}({e})')
+  if failed:
+   # 1枚でも読めなければ見た目は崩れるが、**画面を出さないよりはよい**。
+   # 直前に読めた内容が残っていればそちらを使う(共有の一瞬の断で崩さない)。
+   app_logger().error('CSSを読み込めませんでした(%d件): %s',len(failed),' / '.join(failed[:5]))
+   if _CSS_CACHE['body']:
+    return Response(_CSS_CACHE['body'],mimetype='text/css',headers={'Cache-Control':'no-cache'})
   _CSS_CACHE.update(token=tok,body='\n'.join(parts))
  return Response(_CSS_CACHE['body'],mimetype='text/css',
                  headers={'Cache-Control':'no-cache'})
@@ -71,8 +103,14 @@ GIT_VERSION=_git_version()
 
 @bp.get('/')
 def home():
- asset_files=list((BASE/'static'/'js').glob('*.js'))+[_css_dir()/n for n in CSS_FILES]
- token=str(max(f.stat().st_mtime_ns for f in asset_files))
+ # **最初の1リクエストで落とさない。** ここは起動直後に必ず通る経路で、
+ # 例外を出すと画面が一切出ない(実際に別端末から「起動時にInternal Server
+ # Error」とだけ報告が上がった)。更新時刻はキャッシュ破棄のための値なので、
+ # 取得できないファイルがあっても飛ばして進む(_newest_mtime)。
+ try:js=list((BASE/'static'/'js').glob('*.js'))
+ except OSError as e:
+  app_logger().warning('静的JSの一覧を取得できませんでした: %s',e);js=[]
+ token=_newest_mtime(js+[_css_dir()/n for n in CSS_FILES],'静的ファイル')
  # バージョンは起動オーバーレイが最初の描画で出すため、APIを待たずに埋め込む
  # (画面本体のバッジは従来どおり /api/build を読んで差し替える)。
  return render_template('index.html', build='current', asset_token=token, app_version=APP_VERSION)

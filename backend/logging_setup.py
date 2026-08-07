@@ -25,16 +25,32 @@ _BACKUP_COUNT=3
 _FORMAT='%(asctime)s %(levelname)-7s [%(name)s] %(message)s'
 
 def get_logger(name,filename,to_console=True):
- """名前付きロガーを返す。二重に呼んでもハンドラは重複追加しない。"""
+ """名前付きロガーを返す。二重に呼んでもハンドラは重複追加しない。
+
+ **「既にハンドラが1つでも付いていたら何もしない」にしないこと。**
+ Flaskは`app.logger`へ初めて触れたときに、ハンドラが無ければ既定の
+ StreamHandler(標準エラー)を自分で付ける。`Flask(__name__)`のnameは`app`
+ なので、これは`app_logger()`と**同じロガー**である。先にFlask側が付けて
+ しまうと、後から`app_logger()`を呼んでも「もうハンドラがある」と判断して
+ ファイルへの出力を足さず、以後アプリ本体のログが app.log へ一切
+ 残らなくなる。しかも通常起動(Start.vbs)はコンソールを持たないため、
+ 標準エラーへ出した内容はどこにも残らない——**未処理例外のtracebackが
+ 消える**。実際に別端末の「Internal Server Error」を調べようとして、
+ app.log に何も無く追えなかった(§9.77)。
+
+ そのため、自分が付けたハンドラかどうかを目印で判定し、無ければ足す。
+ """
  logger=logging.getLogger(name)
- if logger.handlers:
-  return logger
  logger.setLevel(logging.INFO)
  logger.propagate=False
+ mark='_wavelog_'+filename
+ if any(getattr(h,mark,False) for h in logger.handlers):
+  return logger
  try:
   handler=logging.handlers.RotatingFileHandler(
    logs_dir()/filename,maxBytes=_MAX_BYTES,backupCount=_BACKUP_COUNT,encoding='utf-8')
   handler.setFormatter(logging.Formatter(_FORMAT))
+  setattr(handler,mark,True)
   logger.addHandler(handler)
  except Exception:
   # ログを書けないこと自体でアプリを止めない(共有側が読み取り専用等)。
@@ -43,6 +59,7 @@ def get_logger(name,filename,to_console=True):
  if to_console and sys.stdout is not None:
   console=logging.StreamHandler(sys.stdout)
   console.setFormatter(logging.Formatter(_FORMAT))
+  setattr(console,mark,True)
   logger.addHandler(console)
  return logger
 
