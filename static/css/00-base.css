@@ -227,8 +227,12 @@
   /* 一覧(#grid)の行の高さ・余白も表示サイズへ連動させる。以前は作業スケジュール
      画面だけの「高密度」トグル(#grid.sc-dense)で切り替えていたが、
      「アプリ全体で調整したい」という要望のため表示サイズ側へ一本化した。 */
-  --row-h:calc(33px * var(--ui-scale));
-  --row-pad-y:calc(6px * var(--ui-scale));
+  /* 「1画面に入る件数を増やしたい」という要望で1段詰めた(33→28 / 6→4px)。
+     文字は変えていないので読みやすさはそのまま、行だけが薄くなる。
+     セルの height は表レイアウトでは下限として効くので、文字が入り切らない
+     ときは行が伸びる(切れない)。溢れは tests/test_fit.js が5段階で見る。 */
+  --row-h:calc(28px * var(--ui-scale));
+  --row-pad-y:calc(4px * var(--ui-scale));
   --row-pad-x:calc(9px * var(--ui-scale));
 }
 /* 表示サイズ5段階(base.jsがlocalStorageの値をhtml[data-ui-size]へ適用する)。

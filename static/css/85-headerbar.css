@@ -82,4 +82,8 @@
 /* パネル側に残った見出しバーの枠は、中身をヘッダーへ移したぶん詰める。 */
 .sc-panel .sc-head:empty,.db-panel .rp-head-actions:empty,
 .cal-panel .cal-toolbar:empty,.mm-panel .mm-head:empty{display:none}
+
+/* 押すと選択肢が出るボタンの目印(再読込)。モードバッジ・表示サイズと
+   同じポップオーバーを出すので、出ることが押す前に分かるようにする。 */
+.hd-caret{margin-left:var(--gap-hair);font-size:var(--fs-badge);opacity:.7;line-height:1}
 }

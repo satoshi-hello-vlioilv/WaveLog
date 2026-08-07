@@ -50,8 +50,12 @@ let b=null;
    fresh.hidden===false&&/内容$/.test(fresh.text||''),JSON.stringify(fresh));
 
  // --- 3. 再読込は必ずサーバーへ取りに行き、鮮度表示を消す ---
+ // 「再読込」は読み直し方を選ばせるポップオーバーになった(§9.78)。
+ // 単に取り直すのは、その中の「一覧を再読込」。
  mark=since();
  await page.click('#reload');
+ await page.waitForSelector('#reloadMenu [data-reload-action="list"]',{timeout:5000});
+ await page.click('#reloadMenu [data-reload-action="list"]');
  await page.waitForTimeout(2500);
  const reloaded=mark();
  rec('「再読込」は必ずサーバーから取り直す',

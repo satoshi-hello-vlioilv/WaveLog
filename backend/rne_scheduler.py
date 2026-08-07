@@ -151,8 +151,21 @@ def run_batch(trigger='schedule'):
 def _run_batch_inner():
  conf=_conf()
  results=[None]*len(JOBS)
+ # 実行中の進み具合を**途中でも**見せる(§9.78)。以前は全ジョブが終わって
+ # から一度に jobs を差し替えていたため、画面からは「動いているらしい」
+ # としか分からず、あと何割で終わるのかが出せなかった。開始時に全ジョブを
+ # 'running' で並べ、終わったものから書き換える。
+ with _last_lock:
+  _last['jobs']=[{'name':j['name'],'running':True,'ok':None,'rows':None,
+                  'columns':None,'elapsed':None,'error':''} for j in JOBS]
  def _worker(i,job):
   results[i]=_run_job(job,conf)
+  r=results[i] or {}
+  with _last_lock:
+   if i<len(_last['jobs']):
+    _last['jobs'][i]={'name':job['name'],'running':False,'ok':bool(r.get('ok')),
+                      'rows':r.get('rows'),'columns':r.get('columns'),
+                      'elapsed':r.get('elapsed'),'error':str(r.get('error') or '')}
  threads=[threading.Thread(target=_worker,args=(i,job),name=f"rne-extract-{job['name']}") for i,job in enumerate(JOBS)]
  for t in threads:t.start()
  for t in threads:t.join()
@@ -162,7 +175,7 @@ def _run_batch_inner():
    app_logger().info('RNE抽出成功: %s (%s行 %s列 %.1f秒)',job['name'],result.get('rows'),result.get('columns'),result.get('elapsed') or 0)
   else:
    app_logger().warning('RNE抽出失敗: %s: %s',job['name'],result.get('error'))
-  jobs.append({'name':job['name'],'ok':bool(result.get('ok')),'rows':result.get('rows'),
+  jobs.append({'name':job['name'],'running':False,'ok':bool(result.get('ok')),'rows':result.get('rows'),
                'columns':result.get('columns'),'elapsed':result.get('elapsed'),
                'error':str(result.get('error') or '')})
  with _last_lock:_last['jobs']=jobs

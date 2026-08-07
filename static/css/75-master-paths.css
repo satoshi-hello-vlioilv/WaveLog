@@ -105,4 +105,32 @@
    「{使用設備}」のような変数を手打ちさせないための挿入ボタン。条件の値欄の
    すぐ下に置き、今の値をtitleで示す。 */
 .filter-vars{display:flex;flex-wrap:wrap;gap:var(--space-2);align-items:center}
+
+/* ---------- RNE抽出の進捗(§9.78) ----------
+   「RNEファイルから作成」は数十秒かかる。以前は動いているのかどうかを
+   画面から見る手段が無く、待っているだけの時間になっていた。ジョブ単位で
+   終わったものから数えて、進んだ割合をバーで見せる(backend/rne_scheduler.py
+   が実行中でも jobs[] を更新する)。作業は止めないので、画面は覆わない。 */
+.rne-progress{
+ display:grid;gap:var(--gap-tight);
+ padding:var(--pad-card);margin:0;
+ background:var(--pale);border-bottom:1px solid var(--line);color:var(--nav);
+}
+.rne-progress[hidden]{display:none}
+.rne-progress-head{display:flex;align-items:baseline;gap:var(--gap-inline)}
+.rne-progress-head b{font-size:var(--fs-base-sm);font-weight:700}
+.rne-progress-pct{margin-left:auto;font-size:var(--fs-sm);font-weight:700;
+                  color:var(--teal-dark);font-variant-numeric:tabular-nums}
+.rne-progress-bar{height:6px;border-radius:var(--radius-pill);overflow:hidden;background:#fff}
+.rne-progress-bar i{
+ display:block;height:100%;width:var(--rne-pct,0%);border-radius:var(--radius-pill);
+ background:linear-gradient(90deg,var(--teal),var(--warn));
+ transition:width .4s cubic-bezier(.25,.8,.3,1);
+}
+.rne-progress-jobs{display:flex;flex-wrap:wrap;gap:var(--gap-inline);
+                   font-size:var(--fs-micro);color:#40606a}
+.rne-job{display:inline-flex;align-items:center;gap:var(--gap-tight)}
+.rne-job.is-running{color:var(--teal-dark);font-weight:700}
+.rne-job.is-ok{color:var(--success)}
+.rne-job.is-ng{color:var(--danger)}
 }

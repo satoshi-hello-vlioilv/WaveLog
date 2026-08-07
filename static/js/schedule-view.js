@@ -1491,7 +1491,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    .map(v=>String(v??'').trim()).filter(Boolean).join(' ');
  }
  const ROW_HEAD_HTML=`<div class="sc-row-head">
-  <span></span><span>区分</span><span>作業</span><span>日付</span><span>時刻</span><span>勤務</span><span>残り</span><span>内容</span><span>見積</span><span>実績</span><span>備考</span><span>操作</span>
+  <span></span><span>区分</span><span>作業</span><span>日付</span><span>時刻</span><span>勤務</span><span>残り</span><span>内容</span><span>見積</span><span>実績</span><span>備考</span><span class="sc-actions-head">操作</span>
  </div>`;
 
  /* ---------- 実施中/予定/実績のグルーピング(§9.34) ----------
