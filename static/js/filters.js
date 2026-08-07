@@ -613,6 +613,28 @@
     return out.slice(0,8);
   }
   let suggestFlat=[],suggestIndex=-1;
+  /* ---------- サジェストの位置合わせ(§9.81) ----------
+     以前は器(.generic-filter-bar)の中に position:absolute で置いていたが、
+     器は角丸のために overflow:hidden を持つため、**開いても丸ごと切られて
+     いた**(実測で51pxのうち見えているのは0px)。利用者からは「開いたのに
+     文字の頭だけ見えて下が切れている」状態に見える。
+     モードバッジ・表示サイズ・再読込と同じく position:fixed の
+     ポップオーバーにして、どの器の中にあっても切られないようにする
+     (分割表示やフローティングウィンドウの中でも同じ問題が起きる)。 */
+  function placeSuggest(){
+    const box=$('#filterSuggest'),anchor=$('#filterTokenInput');
+    if(!box||!anchor||box.hidden)return;
+    const r=anchor.getBoundingClientRect();
+    box.style.left=`${Math.round(r.left)}px`;
+    box.style.top=`${Math.round(r.bottom+4)}px`;
+    box.style.width=`${Math.round(r.width)}px`;
+    /* 下に入り切らないときは、入る高さまで縮める(画面外へ伸ばさない)。 */
+    box.style.maxHeight=`${Math.max(120,Math.round(window.innerHeight-r.bottom-16))}px`;
+  }
+  function showSuggest(){const box=$('#filterSuggest');if(!box)return;box.hidden=false;placeSuggest()}
+  window.addEventListener('resize',placeSuggest);
+  window.addEventListener('scroll',placeSuggest,true);
+
   function renderSuggest(){
     const box=$('#filterSuggest'),input=$('#filterTokenSearch');if(!box||!input)return;
     const q=input.value.trim(),nq=q.normalize('NFKC').toLowerCase();suggestFlat=[];suggestIndex=-1;
@@ -636,7 +658,7 @@
     if(vsug.length){
       groups.push({icon:'🔎',title:'候補の値（この一覧のデータから）',chips:vsug.map(v=>({cls:'op-select',col:v.f.column,op:opShort(v.f.op),val:noValueOp(v.f.op)?'':v.f.value,sub:v.tag,onpick:()=>{addGenericFilter(v.f);afterPick()}}))});
     }
-    if(!groups.length){box.innerHTML=`<div class="filter-suggest-empty">${q?`「${esc(q)}」に一致する候補はありません。詳細から条件を作成できます。`:'保存フィルタや利用履歴がここに提案されます。'}</div>`;box.hidden=false;return}
+    if(!groups.length){box.innerHTML=`<div class="filter-suggest-empty">${q?`「${esc(q)}」に一致する候補はありません。詳細から条件を作成できます。`:'保存フィルタや利用履歴がここに提案されます。'}</div>`;showSuggest();return}
     box.innerHTML=groups.map(g=>`
       <div class="filter-suggest-group">
         <div class="filter-suggest-head"><span class="fs-icon">${g.icon}</span>${esc(g.title)}</div>
@@ -651,7 +673,7 @@
         chip.onclick=c.onpick;wrap.appendChild(chip);suggestFlat.push(chip);
       });
     });
-    box.hidden=false;
+    showSuggest();
   }
   function afterPick(){const input=$('#filterTokenSearch');if(input){input.value='';input.focus()}renderSuggest()}
   function moveSuggest(dir){

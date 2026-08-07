@@ -58,8 +58,10 @@ let b=null;
 
   const probe=()=>page.evaluate(()=>{
    const g=document.querySelector('#basicInfo .info-grid');
-   const out=[...g.querySelectorAll('.field')]
-    .filter(f=>/コース/.test(f.querySelector('label')?.textContent||''))
+   /* 各行のラベルは「設計」「実績」「残」。すぐ上に「コース」という見出しが
+      出ているため、行ごとに「コース」を繰り返さない(§9.81)。掴むのは
+      ラベル文字ではなくクラスにする(文言を短くしただけで拾えなくなるため)。 */
+   const out=[...g.querySelectorAll('.course-stack-field,.residual-course-field')]
     .map(f=>{
      const o=f.querySelector('output');const r=o.getBoundingClientRect();
      const gs=getComputedStyle(o);
@@ -70,15 +72,28 @@ let b=null;
              cut:o.scrollWidth-o.clientWidth,
              wrap:gs.whiteSpace,
              fullWidth:Math.round(r.width),
+             left:Math.round(r.left),right:Math.round(r.right),
              top:Math.round(f.getBoundingClientRect().top),
              gridWidth:Math.round(g.getBoundingClientRect().width)};
     });
    const lp=document.querySelector('.left-pane');
-   return {out,over:lp.scrollHeight-lp.clientHeight};
+   const head=[...g.children].find(x=>x.classList.contains('info-group-course'));
+   return {out,over:lp.scrollHeight-lp.clientHeight,
+           heading:(head?.textContent||'').trim()};
   });
-  const {out:m}=await probe();
+  const {out:m,heading}=await probe();
   console.log('コース欄:',JSON.stringify(m,null,1));
   rec('コース欄が3つある(設計/実績/残)',m.length>=3,`${m.length}件`);
+  /* §9.81: 「＊コース」の「コース」は見出しと重複していて冗長。ラベルは
+     短くし、そのぶんの横幅を値へ回す。ラベル幅を固定したので、3つの値は
+     開始位置も終了位置も縦に揃う(以前は「設計コース」5文字と「残コース」
+     4文字で開始位置が14pxずれていた)。 */
+  rec('コースという見出しが1つ出ている',heading==='コース',heading);
+  rec('各行のラベルは「コース」を繰り返さない',
+   m.every(x=>['設計','実績','残'].includes(x.label)),m.map(x=>x.label).join('/'));
+  rec('3つの値が縦にきれいに揃う(開始位置も終了位置も)',
+   new Set(m.map(x=>x.left)).size===1&&new Set(m.map(x=>x.right)).size===1,
+   m.map(x=>`${x.label}:${x.left}〜${x.right}`).join(' / '));
   const long=m.filter(x=>x.text.length>20);
   rec('長い値が実際に入っている',long.length>0,long.map(x=>x.text.length+'文字').join(','));
   rec('横に切れていない(省略記号で隠れない)',
@@ -93,6 +108,19 @@ let b=null;
    new Set(m.map(x=>x.top)).size===m.length,m.map(x=>`${x.label}:${x.top}`).join(' / '));
   rec('全文がテキストとして読める(titleに頼らない)',
    m.every(x=>!x.text.includes('…')),m.map(x=>x.text.slice(0,20)).join(' / '));
+
+  /* §9.81: ロット№はこの画面の主識別子なのに、押せるボタンにしたぶん
+     文字が1段小さく(13px)なっていて、他の値より沈んで見えていた。 */
+  const lot=await page.evaluate(()=>{
+   const g=document.querySelector('#basicInfo .info-grid');
+   const link=g.querySelector('.info-lot .lot-dsp-link');
+   const values=[...g.querySelectorAll('.field output')]
+    .map(o=>parseFloat(getComputedStyle(o).fontSize));
+   return {ロット:link?parseFloat(getComputedStyle(link).fontSize):0,
+           他の値:values.length?Math.max(...values):0};
+  });
+  rec('ロット№が他の値より小さくない(押せる見た目でも沈ませない)',
+   lot.ロット>=lot.他の値,JSON.stringify(lot));
 
   /* 短い値でも同じ形(縦1行ずつ・全幅)であること。以前は長いときだけ全幅に
      切り替えていたので、ロットによって行の位置が動いていた。 */

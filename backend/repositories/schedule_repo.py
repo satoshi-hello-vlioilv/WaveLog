@@ -93,7 +93,9 @@ def plan_add(c_share,equipment,kind,uid,position='end',lot_no='',inspection_no='
   finally:
    mc.close()
   if not row:raise ValueError('指定の設備停止理由が見つかりません。')
-  if normalize_equipment_name(row[0])!=normalize_equipment_name(equipment):
+  # [設備名]は対象設備(複数設備・全設備'*'を取り得る、§9.81)なので、
+  # 文字列の一致ではなく「この設備を含むか」で判定する。
+  if not stop_equipment_matches(row[0],equipment):
    raise ValueError('指定の停止理由は別の設備に登録されています。')
   title_snapshot=str(row[1] or '').strip()
   # [見積分]はestimate_minutes(明示上書き)が無ければNULLのままにする(§5.1)。
@@ -328,6 +330,82 @@ def stop_category_usage(c_master,category_id):
 # ========================================================================
 STOP_REASON_TABLE='設備停止マスタ'
 
+# ------------------------------------------------------------------------
+# 対象設備(§9.81)
+#  [設備名]の1列に「この停止内容がどの設備に登録されているか」を書く。
+#  1設備だけでなく、複数設備とワイルドカードも1行で書ける。
+#    'A'      … 設備Aだけ(従来の登録はすべてこの形)
+#    'A,B,C'  … 列挙した設備
+#    '*'      … すべての設備
+#  書式はアクセス権限マスタの[現場段取り対象設備]
+#  (master_repo.FIELD_REORDER_ALL)と同じにしてある。列を増やすと既存行の
+#  移行が要るうえ、判定する場所(サーバー・画面)を全部直さないと
+#  「画面では対象なのにサーバーが弾く」といった食い違いが出るため、
+#  **書式は文字列のまま・判定はこの5関数へ集約**する
+#  (list / text / matches / named / label。呼び出し側で
+#   normalize_equipment_name() の直接比較を書かないこと)。
+STOP_EQUIPMENT_ALL='*'
+
+def stop_equipment_list(stored):
+ """保存文字列を設備名のリストへ。'*'は ['*'] を返す。"""
+ s=str(stored or '').strip()
+ if not s:return []
+ if s==STOP_EQUIPMENT_ALL:return [STOP_EQUIPMENT_ALL]
+ return [p.strip() for p in s.replace('、',',').split(',') if p.strip()]
+
+def stop_equipment_text(value):
+ """入力(文字列 or 設備名のリスト)を保存用の1列へ。表記ゆれの重複を落とす。
+    '*'が1つでも含まれていれば全設備の意味に丸める(併記しても意味が同じで、
+    残しておくと「Aと全設備」のような読めない値になるため)。"""
+ items=value if isinstance(value,(list,tuple)) else stop_equipment_list(value)
+ out=[];seen=set()
+ for x in items:
+  name=str(x or '').strip()
+  if not name:continue
+  if name==STOP_EQUIPMENT_ALL:return STOP_EQUIPMENT_ALL
+  key=normalize_equipment_name(name)
+  if key in seen:continue
+  seen.add(key);out.append(name)
+ return ','.join(out)
+
+def stop_equipment_matches(stored,equipment):
+ """この対象設備に、指定の設備が含まれるか。"""
+ items=stop_equipment_list(stored)
+ if not items:return False
+ if items[0]==STOP_EQUIPMENT_ALL:return True
+ target=normalize_equipment_name(equipment)
+ if not target:return False
+ return any(normalize_equipment_name(x)==target for x in items)
+
+def stop_equipment_named(stored,equipment):
+ """対象設備にこの設備名が**名指しで**書かれているか('*'は数えない)。
+    設備マスタの削除確認のように「その設備を消したら行き場を失う登録」だけを
+    数えたい場面で使う(全設備の行は1台消えても意味を失わないため)。"""
+ items=stop_equipment_list(stored)
+ if not items or items[0]==STOP_EQUIPMENT_ALL:return False
+ target=normalize_equipment_name(equipment)
+ return bool(target) and any(normalize_equipment_name(x)==target for x in items)
+
+def stop_equipment_label(stored):
+ """人が読む形("すべての設備" / "設備A / 設備B")。エラー文言と画面で共用。"""
+ items=stop_equipment_list(stored)
+ if not items:return '(未設定)'
+ if items[0]==STOP_EQUIPMENT_ALL:return 'すべての設備'
+ return ' / '.join(items)
+
+def _stop_equipment_overlaps(a,b):
+ """2つの対象設備が1台でも重なるか('*'はすべてと重なる)。"""
+ ia,ib=stop_equipment_list(a),stop_equipment_list(b)
+ if not ia or not ib:return False
+ if ia[0]==STOP_EQUIPMENT_ALL or ib[0]==STOP_EQUIPMENT_ALL:return True
+ sa={normalize_equipment_name(x) for x in ia}
+ return any(normalize_equipment_name(x) in sa for x in ib)
+
+def _stop_equipment_same(a,b):
+ """対象設備が同じ集合か(表記ゆれは吸収、並び順は問わない)。"""
+ ia,ib=stop_equipment_list(a),stop_equipment_list(b)
+ return {normalize_equipment_name(x) for x in ia}=={normalize_equipment_name(x) for x in ib}
+
 def ensure_stop_reason_table(c_master):
  names=tables(c_master);created=False
  if STOP_REASON_TABLE not in names:
@@ -341,22 +419,27 @@ def stop_reason_rows(c_master,equipment=None):
  ensure_stop_reason_table(c_master)
  cur=c_master.cursor()
  cur.execute('SELECT [停止理由ID],[設備名],[分類],[名称],[標準所要分],[色キー],[表示順],[有効],[更新日時],[更新者ID] FROM [設備停止マスタ] ORDER BY [設備名],[表示順],[名称]')
- target=normalize_equipment_name(equipment) if equipment else ''
  rows=[]
  for r in cur.fetchall():
   active=True if r[7] is None else bool(r[7])
   if not active:continue
-  if target and normalize_equipment_name(r[1])!=target:continue
+  # 設備を指定した問い合わせには、その設備を含む行だけを返す
+  # (複数設備の行・全設備('*')の行もここで拾う)。
+  if equipment and not stop_equipment_matches(r[1],equipment):continue
   rows.append(r)
  return rows
 
-def stop_reason_upsert(c_master,equipment,name,uid,category='',standard_minutes=None,color_key=''):
- # §5.3。設備名は必須(空なら拒否、他マスタの必須チェックと同じ方式)。
- # (設備名,名称)の一意組で自然キー照合し、既存なら更新・無ければ新規登録する
- # (backend/routes/masters.pyのaccess_permission_master_registerと同じ方式)。
+def stop_reason_upsert(c_master,equipment,name,uid,category='',standard_minutes=None,color_key='',stop_reason_id=None):
+ # §5.3 / §9.81。対象設備は必須(空なら拒否、他マスタの必須チェックと同じ方式)。
+ # 照合の順番:
+ #   ① stop_reason_id が来ていれば、その行の更新(対象設備そのものを
+ #      入れ替えられるのは、この経路だけ)。
+ #   ② 無ければ(対象設備,名称)の自然キーで既存を探し、あれば更新
+ #      (backend/routes/masters.pyのaccess_permission_master_registerと同じ方式)。
+ #   ③ それも無ければ新規登録。
  ensure_stop_reason_table(c_master)
- equipment=str(equipment or '').strip();name=str(name or '').strip()
- if not equipment:raise ValueError('設備名を入力してください。')
+ equipment=stop_equipment_text(equipment);name=str(name or '').strip()
+ if not equipment:raise ValueError('対象設備を選んでください。')
  if not name:raise ValueError('名称を入力してください。')
  # 分類は設備停止分類マスタ(§5.3.1)へ自動で登録する。分類の選択肢を増やす
  # ためだけに別画面へ移動させないための連動(未登録の分類を入力したら、その場で
@@ -364,17 +447,38 @@ def stop_reason_upsert(c_master,equipment,name,uid,category='',standard_minutes=
  category=str(category or '').strip()
  if category:stop_category_upsert(c_master,category,uid)
  cur=c_master.cursor()
- # 設備名は表記ゆれを吸収して照合する(他の設備名参照と同じ方式)。名称は
+ # 対象設備は表記ゆれを吸収して照合する(他の設備名参照と同じ方式)。名称は
  # UNIQUE INDEXの実体に合わせて完全一致(前後空白除去のみ)で照合する。
- cur.execute('SELECT [停止理由ID],[設備名],[名称] FROM [設備停止マスタ]')
- target_eq=normalize_equipment_name(equipment)
- existing_row=next((r for r in cur.fetchall() if normalize_equipment_name(r[1])==target_eq and str(r[2] or '').strip()==name),None)
- existing=(existing_row[0],) if existing_row else None
- if existing:
-  cur.execute('UPDATE [設備停止マスタ] SET [分類]=?,[標準所要分]=?,[色キー]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [停止理由ID]=?',
-              [category,standard_minutes,color_key,uid,existing[0]])
-  return existing[0],False
- cur.execute('SELECT Max([表示順]) FROM [設備停止マスタ] WHERE [設備名]=?',[equipment])
+ cur.execute('SELECT [停止理由ID],[設備名],[名称],[有効] FROM [設備停止マスタ]')
+ rows=cur.fetchall()
+ target_id=int(stop_reason_id) if str(stop_reason_id or '').strip() else None
+ if target_id is not None and not any(r[0]==target_id for r in rows):
+  raise ValueError('指定の設備停止理由が見つかりません。')
+ same_name=[r for r in rows if str(r[2] or '').strip()==name]
+ if target_id is None:
+  # 自然キーの照合は**無効化済みの行も対象**にする。削除は論理削除なので、
+  # 同じ(対象設備,名称)を登録し直したら元の行を復活させるのが従来の挙動で、
+  # かつUNIQUE INDEX([設備名],[名称])があるため新規INSERTでは弾かれる。
+  exact=next((r for r in same_name if _stop_equipment_same(r[1],equipment)),None)
+  if exact:target_id=exact[0]
+ # 同じ名称の行が同じ設備を二重に指すと、その設備には同じ停止内容が2つ並び、
+ # 予定の標準所要分をどちらから引くのかも決まらない('*'は全設備と重なる)。
+ # 登録の時点で弾き、重なっている相手を文言で示す。**無効化済みの行は数えない**
+ # (消したはずの登録が、別の設備の登録を止め続けてしまうため)。
+ conflict=next((r for r in same_name
+                if r[0]!=target_id and (r[3] is None or bool(r[3]))
+                and _stop_equipment_overlaps(r[1],equipment)),None)
+ if conflict:
+  raise ValueError('「%s」は %s に登録済みです。対象設備が重ならないようにしてください。'
+                   %(name,stop_equipment_label(conflict[1])))
+ if target_id is not None:
+  cur.execute('UPDATE [設備停止マスタ] SET [設備名]=?,[分類]=?,[名称]=?,[標準所要分]=?,[色キー]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [停止理由ID]=?',
+              [equipment,category,name,standard_minutes,color_key,uid,target_id])
+  return target_id,False
+ # 表示順は全体の最大+10。対象設備が複数設備・全設備を取れるようになり、
+ # 「その設備の中での最大」が一意に決まらなくなったため(同じ行が複数の設備に
+ # 属する)。設備ごとの並びは登録順のまま保たれる。
+ cur.execute('SELECT Max([表示順]) FROM [設備停止マスタ]')
  order=int((cur.fetchone()[0]) or 0)+10
  cur.execute('INSERT INTO [設備停止マスタ] ([設備名],[分類],[名称],[標準所要分],[色キー],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,-1,?,?,Now(),Now())',
              [equipment,category,name,standard_minutes,color_key,order,uid,uid])
@@ -389,15 +493,17 @@ def stop_reason_delete(c_master,stop_reason_id,uid):
 def stop_reason_standard_minutes(c_master,equipment,name):
  # §5.1: 設備停止の予定は[見積分]がNULLなら、追加時点ではなく展開の都度
  # このマスタの現在値を引く(スナップショットしない。plan_addのコメント参照)。
- # 予定側にはstopReasonIdの参照列が無いため、(設備名,名称)の自然キーで
- # 引き直す(設備名は表記ゆれ吸収、名称は完全一致。stop_reason_upsertと同じ方式)。
+ # 予定側にはstopReasonIdの参照列が無いため、(対象設備,名称)の自然キーで
+ # 引き直す(対象設備は複数設備・全設備を含めて照合、名称は完全一致。
+ # stop_reason_upsertと同じ方式)。同じ設備を指す同名の行はupsertが作らせない
+ # ため、最初に見つかった行で確定してよい。
  ensure_stop_reason_table(c_master)
  cur=c_master.cursor()
  cur.execute('SELECT [設備名],[名称],[標準所要分],[有効] FROM [設備停止マスタ]')
- target_eq=normalize_equipment_name(equipment);target_name=str(name or '').strip()
+ target_name=str(name or '').strip()
  for eq,nm,minutes,active in cur.fetchall():
   active=True if active is None else bool(active)
-  if active and normalize_equipment_name(eq)==target_eq and str(nm or '').strip()==target_name:
+  if active and str(nm or '').strip()==target_name and stop_equipment_matches(eq,equipment):
    return minutes
  return None
 

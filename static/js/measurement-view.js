@@ -341,7 +341,7 @@ function upgradeManualInputTypes(){
 }
 function renderResidualCourseEverywhere(){
  if(!S.measure)return;const residual=sourceField(['残仕掛設備ｺｰｽ','残仕掛設備コース']);S.measure.basic.residualCourse=residual;
- const basic=$('#basicInfo .info-grid');if(basic){basic.querySelectorAll('.residual-course-field').forEach(x=>x.remove());const course=[...basic.querySelectorAll('.field')].find(x=>x.querySelector('label')?.textContent==='実績コース');const item=document.createElement('div');item.className='field residual-course-field';item.innerHTML=`<label>残コース</label><output title="${esc(residual)}">${esc(residual||'未設定')}</output>`;if(course)course.after(item);else basic.append(item)}
+ const basic=$('#basicInfo .info-grid');if(basic){basic.querySelectorAll('.residual-course-field').forEach(x=>x.remove());const course=[...basic.querySelectorAll('.field')].find(x=>x.querySelector('label')?.textContent==='実績');const item=document.createElement('div');item.className='field residual-course-field';item.innerHTML=`<label>残</label><output title="${esc(residual)}">${esc(residual||'未設定')}</output>`;if(course)course.after(item);else basic.append(item)}
  const grid=$('#dataManagementPanel .data-management-grid');if(grid){[...grid.querySelectorAll('[data-residual-course]')].forEach(x=>x.remove());const children=[...grid.children],courseIndex=children.findIndex(x=>x.tagName==='B'&&x.textContent==='実績コース'),courseValue=courseIndex>=0?children[courseIndex+1]:null,label=document.createElement('b'),value=document.createElement('span');label.textContent='残コース';value.textContent=residual||'未設定';value.title=residual;label.dataset.residualCourse='1';value.dataset.residualCourse='1';if(courseValue)courseValue.after(label,value);else grid.append(label,value)}
 }
 /* 公差の内訳(基準値・±・計算式)を見出し領域へ表示する。 */
@@ -365,7 +365,12 @@ function renderCourseHierarchy(){
      長さを測って出し分けることはしない(短いときだけ2列へ戻ると、行の位置が
      ロットごとに動いて読み取りにくかった)。 */
   const anchor=basic.querySelector('.info-group-course')||[...basic.querySelectorAll('.field')].find(x=>x.querySelector('label')?.textContent==='納入先');
-  [['設計コース',design],['実績コース',actual],['残コース',residual]].forEach(([label,value])=>{const item=document.createElement('div');item.className='field course-stack-field';item.innerHTML=`<label>${label}</label><output title="${esc(value)}">${esc(value||'未設定')}</output>`;if(anchor){const prior=[...basic.querySelectorAll('.course-stack-field')].at(-1);(prior||anchor).after(item)}else basic.append(item)})
+  /* ラベルは「設計」「実績」「残」だけにする。**すぐ上に「コース」という
+     見出しが出ている**ので、各行に「コース」を繰り返すのは冗長で、その
+     ぶん値へ渡せる横幅が減っていた(実機のコースは長い)。
+     短くすると3つとも同じ文字数になり、値の開始位置も自然に揃う
+     (以前は「設計コース」5文字と「残コース」4文字で14pxずれていた)。 */
+  [['設計',design],['実績',actual],['残',residual]].forEach(([label,value])=>{const item=document.createElement('div');item.className='field course-stack-field';item.innerHTML=`<label>${label}</label><output title="${esc(value)}">${esc(value||'未設定')}</output>`;if(anchor){const prior=[...basic.querySelectorAll('.course-stack-field')].at(-1);(prior||anchor).after(item)}else basic.append(item)})
  }
  const grid=$('#dataManagementPanel .data-management-grid');if(grid){const pairs=[];for(let i=0;i<grid.children.length;i+=2)pairs.push([grid.children[i]?.textContent,grid.children[i+1]?.textContent]);const keep=pairs.filter(([label])=>!['設計コース','実績コース','残コース'].includes(label));const insertAt=Math.max(0,keep.findIndex(([label])=>label==='オーダー番号'));keep.splice(insertAt,0,['設計コース',design||'未設定'],['実績コース',actual||'未設定'],['残コース',residual||'未設定']);grid.innerHTML=keep.map(([label,value])=>`<b>${esc(label||'')}</b><span title="${esc(value||'')}">${esc(value||'未設定')}</span>`).join('')}
  updateCourseGuard();

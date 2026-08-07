@@ -185,8 +185,12 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    ラベル列はコースだけ狭くしてよい(「設計コース」の5文字ぶんで足りる)。
    値へ渡せる横幅を1文字でも増やすのが目的。
    設備名の区切りは半角/全角スペースとは限らないので overflow-wrap:anywhere。 */
+/* ラベル列は**固定幅**にする。max-content にすると行ごとに文字数の差が
+   そのまま列幅の差になり、値の開始位置が縦に揃わなかった
+   (「設計コース」と「残コース」で14pxずれていた)。ラベルは
+   「設計/実績/残」の2文字までなので、3文字ぶんあれば足りる。 */
 .info-grid .course-stack-field,.info-grid .residual-course-field{
- grid-column:1/-1;grid-template-columns:minmax(0,max-content) minmax(0,1fr)}
+ grid-column:1/-1;grid-template-columns:3.2em minmax(0,1fr)}
 /* 3項目が縦に3行を占めるぶん、行の高さは他の項目より少しだけ詰める
    (上下パディングを1px・行送りを詰める)。特大表示でも左ペインへ収める
    ための余白で、tests/test_maint.js の「表示サイズを特大にしても収まる」が
@@ -204,7 +208,10 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 /* 主識別(ロット№)。値だけ一段大きくして、開いた直後の確認を速くする。 */
 .info-lot{grid-template-columns:minmax(58px,auto) minmax(0,1fr);margin-bottom:2px}
 .info-lot label{font-weight:700;color:#60747b}
-.info-lot .lot-dsp-link{font-size:var(--fs-base-sm)}
+/* ロット№は主識別。**他の値より小さくしない。**--fs-base-sm(13px)は
+   他の値(--fs=14px)より小さく、「ここだけ字が小さい」という見え方に
+   なっていた。押せる部品でもあるので、一段大きくして視線の起点にする。 */
+.info-lot .lot-dsp-link{font-size:var(--fs-title)}
 /* ロット問い合わせボタン: グリッド・編集中/完了一覧・測定パネルの3箇所で
    共通のモダンなチップ状デザインに統一する(枠線+淡色背景+丸角、下線なし)。
    ホバーで塗りつぶし、押下でわずかに沈む触感を付ける。 */

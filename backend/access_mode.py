@@ -73,6 +73,7 @@ _ENDPOINT_EXTRA_MODES={
  'schedule.plan_reorder':{'edit'},
  'schedule.calendar_save':{'edit'},
  'schedule.stop_reason_register':{'edit'},
+ 'schedule.stop_reason_update':{'edit'},
  'schedule.stop_reason_delete':{'edit'},
  'schedule.stop_category_register':{'edit'},
  'schedule.stop_category_delete':{'edit'},

@@ -60,13 +60,24 @@ def path_config_master_get():
   saved={}
   if path.exists():
    with connect(path,True) as c:saved=path_config_rows(c)
+  # データソースごとの個別上書き(<キー小文字>_path)も保存値として返す。
   values={k:saved.get(k,'') for k in PATH_CONFIG_KEYS}
   # active: このプロセスで実際に使われている値(保存値は次回起動から反映)。
   # 突き合わせて画面上で「保存済みだが未反映」を示せるようにする。
   from .. import rne_scheduler
+  from ..db_access import DATA_SOURCES
   # データソースは利用者が増減できる(データソースマスタ)。**キーが必ず在る
   # 前提で書かない** —— 消された途端にパス設定画面ごと開けなくなる。
   now=DBS.get('SIKALOTNOW') or {};dfn=DBS.get('SIKALOTDEF') or {}
+  # 画面はこの一覧から欄を組み立てる(§9.81)。以前は「仕掛(SIKALOTNOW)」
+  # 「品質データ(SIKALOTDEF)」と決め打ちで書かれており、データソースを
+  # 増やしても増えず、名前を変えても古いままだった。
+  sources=[{'key':x['key'],'label':x['label'],
+            'valueKey':f"{x['key'].lower()}_path",
+            'saved':saved.get(f"{x['key'].lower()}_path",''),
+            'active':str((DBS.get(x['key']) or {}).get('path','')),
+            'output':str(rne_scheduler._output_path(x)),
+            'share':x.get('share',''),'rne':x.get('rne','')} for x in DATA_SOURCES]
   active={
    'sikalot_source':SIKALOT_SOURCE,
    'sikalotnow_path':str(now.get('path','')),'sikalotnow_engine':now.get('engine',''),
@@ -80,7 +91,9 @@ def path_config_master_get():
    'schedule_lock_ttl_sec':str(path_config_value('schedule_lock_ttl_sec',SCHEDULE_LOCK_TTL_SEC_DEFAULT)),
    'schedule_lock_verify_delay_ms':str(path_config_value('schedule_lock_verify_delay_ms',SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT)),
   }
-  return jsonify(ok=True,values=values,defaults=_PATH_CONFIG_DEFAULTS,active=active,master_path=str(path))
+  for src in sources:values.setdefault(src['valueKey'],src['saved'])
+  return jsonify(ok=True,values=values,defaults=_PATH_CONFIG_DEFAULTS,active=active,
+                 sources=sources,master_path=str(path))
  except Exception as e:return jsonify(error=f'パス設定読込失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
 
 @bp.post('/api/path-config-master')
@@ -90,7 +103,7 @@ def path_config_master_update():
   errors=[]
   sikalot_source=str(x.get('sikalot_source') or '').strip()
   if sikalot_source and sikalot_source not in ('network','local'):
-   errors.append('仕掛/品質データの取得元は「network」「local」のいずれかを指定してください。')
+   errors.append('参照データの取得元は「network」「local」のいずれかを指定してください。')
   numeric_values={}
   for key,(label,minimum) in _PATH_CONFIG_NUMERIC_FIELDS.items():
    raw=str(x.get(key) if x.get(key) is not None else '').strip()
@@ -116,12 +129,18 @@ def path_config_master_update():
    'rne_conf_path':str(x.get('rne_conf_path') or '').strip(),
    **numeric_values,
   }
+  # データソースごとの個別上書き(<キー小文字>_path)。マスタに登録された
+  # ぶんだけ受け付ける(任意のキーを書けるようにはしない)。
+  from ..db_access import DATA_SOURCES
+  for src in DATA_SOURCES:
+   k=f"{src['key'].lower()}_path"
+   if k in x:updates[k]=str(x.get(k) or '').strip()
   path=DBS['MASTER']['path']
   with connect(path,False) as c:
    for key,value in updates.items():
     set_path_config(c,key,value,uid)
   return jsonify(ok=True,updated_by=uid,
-                 message='パス設定を保存しました。仕掛/品質データの読み込み先・共有パスの変更はサーバー再起動後に反映されます。抽出間隔・ロック関連の設定は再起動不要で次回から反映されます。')
+                 message='パス設定を保存しました。参照データの読み込み先・共有パスの変更はサーバー再起動後に反映されます。抽出間隔・ロック関連の設定は再起動不要で次回から反映されます。')
  except Exception as e:return jsonify(error=f'パス設定保存失敗: {e}'),500
 
 # ========================================================================

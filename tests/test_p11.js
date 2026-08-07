@@ -67,8 +67,11 @@ let browser=null;
 
   await page.click('#masterMaintAdd');
   await page.waitForSelector('#maintEditorModal', { state:'visible', timeout:5000 });
+  /* 数えるのは入力欄の器(.mm-field)。専用コントロール(設備の複数選択タグ入力
+     など)は素の [data-field] を持たないので、そちらで数えると項目が
+     入れ替わるたびに数が合わなくなる(§9.81で対象設備がタグ入力になった)。 */
   const editor = await page.evaluate(() => ({
-    fields: document.querySelectorAll('#maintEditorForm [data-field]').length,
+    fields: document.querySelectorAll('#maintEditorForm .mm-field').length,
     title: document.querySelector('#maintEditorTitle')?.textContent,
   }));
   rec('編集専用モーダルが開き4項目すべて表示', editor.fields===4, JSON.stringify(editor));

@@ -51,14 +51,15 @@
    cols:[{k:'name',label:'分類名',grow:2}],
    hint:'設備停止マスタの「分類」の選択肢です。分類は設備をまたいだ集計・色分けに使うため、設備ごとではなく全設備共通で持ちます。設備停止マスタで未登録の分類を入力して保存すると、ここへも自動で登録されます(先にこの画面で作っておく必要はありません)。使用中の分類を削除しようとすると、何件で使われているかを確認したうえで消します。'},
   {group:'schedule',key:'stopReason',label:'設備停止',icon:'停',endpoint:'/api/schedule/stop-reason-master',hasDelete:true,
-   fields:[{k:'equipment',label:'設備名',type:'equipment-select',required:true,key:true},
+   fields:[{k:'equipment',label:'対象設備',type:'equipment-multi-text',required:true,key:true,
+            tagHint:'この停止内容をどの設備で選べるようにするかです。複数選べます。「すべての設備」を選ぶと、これから増える設備でも自動的に選べます。'},
            {k:'category',label:'分類',type:'master-combo',source:{endpoint:'/api/schedule/stop-category-master',valueKey:'name'},
             hint:'設備停止分類マスタから選びます。無い分類は「＋ 新しく追加…」で入力すると、保存時に分類マスタへも登録されます。'},
            {k:'name',label:'名称',required:true,key:true},
            {k:'standardMinutes',label:'標準所要分',required:true,type:'number',unit:'分',step:5,min:0,
-            hint:'この設備でこの停止に通常かかる時間です。＋−ボタンで5分ずつ増減できます。'}],
-   cols:[{k:'equipment',label:'設備名',grow:1},{k:'category',label:'分類',grow:1},{k:'name',label:'名称',grow:2},{k:'standardMinutes',label:'標準所要分',grow:1}],
-   hint:'作業スケジュール(docs/SCHEDULE_MODE_DESIGN.md §5.3)の設備停止予定で選べる名称と、その設備での標準所要分(分)です。同じ名称でも設備が異なれば別行として個別の時間を登録できます。「突発停止」は現場からの連絡を受けた計画担当が投入する運用のため、名称に登録しておくだけで自動では動きません。'},
+            hint:'この停止に通常かかる時間です。対象設備で時間が違う場合は、設備ごとに分けて登録してください。＋−ボタンで5分ずつ増減できます。'}],
+   cols:[{k:'equipment',label:'対象設備',grow:2,format:'equipmentTarget'},{k:'category',label:'分類',grow:1},{k:'name',label:'名称',grow:2},{k:'standardMinutes',label:'標準所要分',grow:1}],
+   hint:'作業スケジュール(docs/SCHEDULE_MODE_DESIGN.md §5.3)の設備停止予定で選べる名称と、標準所要分(分)です。1件の停止内容を複数の設備へまとめて登録できます。「すべての設備」を選べば、設備が増えても登録し直す必要がありません。標準所要分が設備ごとに違う場合は、設備を分けて別々に登録してください(同じ名称で対象設備が重なる登録はできません。どちらの時間が効くのか決まらなくなるためです)。「突発停止」は現場からの連絡を受けた計画担当が投入する運用のため、名称に登録しておくだけで自動では動きません。'},
   {group:'schedule',key:'shiftMaster',label:'勤務形態',icon:'勤',special:'shift-pattern',endpoint:'/api/schedule/shift-pattern-master'},
   {group:'system',key:'columnDisplay',label:'列表示',icon:'列',special:'column-display'},
   {group:'system',key:'importBackup',label:'データ引継ぎ',icon:'継',special:'import-backup'},
@@ -81,9 +82,9 @@
            {k:'table',label:'抽出テーブル',fieldGroup:'② どこから作るか（RNE抽出）',
             hint:'RNEの中の表の名前。未入力なら「仕掛」です。'},
            {k:'output',label:'出力ファイル',type:'path',fieldGroup:'③ どこを読むか',
-            hint:'②で作る .sqlite3 の置き場所。ファイル名だけなら db/ 配下です。パス設定の「仕掛/品質データの取得元」がローカルのとき、一覧はこのファイルを読みます。'},
+            hint:'②で作る .sqlite3 の置き場所。ファイル名だけなら db/ 配下です。パス設定の「参照データの取得元」がローカルのとき、一覧はこのファイルを読みます。'},
            {k:'share',label:'共有パス',type:'path',fieldGroup:'③ どこを読むか',
-            hint:'ネットワーク共有側の .sqlite3。取得元がネットワークのときはこちらを読みます。ファイル名だけなら仕掛の共有フォルダ配下です。'},
+            hint:'ネットワーク共有側の .sqlite3。取得元がネットワークのときはこちらを読みます。ファイル名だけなら既定の共有フォルダ配下として探します（絶対パスを入れればその場所を読みます）。'},
            {k:'preferred',label:'既定テーブル',fieldGroup:'③ どこを読むか',
             hint:'この一覧を開いた直後に選ぶ表の名前。未入力なら②の抽出テーブルと同じです。'}],
    cols:[{k:'key',label:'キー',grow:1},{k:'label',label:'表示名',grow:2},
@@ -333,13 +334,16 @@
     // マスタから消えた設備名も選択として残す(黙って権限が消えないように)。
     const strays=[...selected].filter(n=>!opts.some(eq=>eq.name===n));
     const strayBoxes=strays.map(n=>`<input type="checkbox" data-equipment-field="${f.k}" value="${esc(n)}" checked hidden>`).join('');
-    return `<div class="mm-field mm-tagfield" data-tagfield="${f.k}" data-tagfield-all="1"><span>${esc(f.label)}</span>
+    // 補足文はマスタごとに意味が違う(権限の対象か/停止内容の対象か)ので
+    // def側からf.tagHintで渡す。未指定はアクセス権限マスタの従来文言。
+    const tagHint=f.tagHint||'複数選べます。「すべての設備」は開発・保守用の全設備権限です（設備を増やしても権限行を足さずに済みます）。未選択は「未設定」＝権限なしです。';
+    return `<div class="mm-field mm-tagfield" data-tagfield="${f.k}" data-tagfield-all="1"><span>${esc(f.label)}${f.required?'<i>*</i>':''}${f.key?'<em class="mm-keytag">キー</em>':''}</span>
      <div class="mm-tagfield-inner">
       <label class="mm-tag-all"><input type="checkbox" data-equipment-all="${f.k}"${isAll?' checked':''}>すべての設備</label>
       <div class="mm-tag-box" data-equipment-box="${f.k}" tabindex="-1">${strayBoxes}<input type="text" class="mm-tag-search" data-equipment-search="${f.k}" placeholder="設備名で検索・追加" autocomplete="off">${hiddenBoxes}</div>
       <div class="mm-tag-suggest" data-equipment-suggest="${f.k}" hidden></div>
      </div>
-     <small class="mm-field-hint">複数選べます。「すべての設備」は開発・保守用の全設備権限です（設備を増やしても権限行を足さずに済みます）。未選択は「未設定」＝権限なしです。</small></div>`;
+     <small class="mm-field-hint">${esc(tagHint)}</small></div>`;
    }
    if(f.type==='equipment-multi'){
     const selected=new Set((editing&&Array.isArray(editing[f.k])?editing[f.k]:[]).map(String));
@@ -810,6 +814,9 @@
     const all=document.querySelector(`${root} [data-equipment-all="${f.k}"]`);
     body[f.k]=all&&all.checked?EQUIPMENT_ALL
      :[...document.querySelectorAll(`${root} [data-equipment-field="${f.k}"]:checked`)].map(el=>el.value).join(',');
+    // 必須のタグ欄(設備停止マスタの対象設備)は未選択で送らせない。素の入力欄と
+    // 違い、空でも「未設定」として通ってしまうため、ここで同じ扱いに揃える。
+    if(f.required&&!body[f.k])ok=false;
     return;
    }
    const el=$(`${root} [data-field="${f.k}"]`);
@@ -968,7 +975,10 @@
   if(def.special==='raw-table'){setMaintSearchVisible(false);return loadRawTableMaint(force)}
   setMaintSearchVisible(true);
   const list=$('#masterMaintList');if(list&&force)list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
-  const multiField=def.fields.find(f=>f.type==='equipment-multi'||f.type==='equipment-multi-text');
+  // 一覧に「作業可能設備」を文章で出すのは配列で持つequipment-multiだけ
+  // (equipment-multi-textは保存値が文字列で、列側はformat:'equipmentTarget'が
+  //  そのまま整形する。両方を拾うと使われない`〜Text`が生えるだけになる)。
+  const multiField=def.fields.find(f=>f.type==='equipment-multi');
   const needsEquipmentMaster=multiField||def.fields.some(f=>f.type==='equipment-select'||f.type==='equipment-multi-text');
   // force未指定(キャッシュ利用)のままだと、設備マスタタブで新規登録・削除した
   // 直後でもオペレータ/設備停止タブの選択肢が古いままになる。loadMaint()の
@@ -1353,27 +1363,34 @@
   await refreshDraftCount();importBackupState.loaded=false;await loadImportBackupMaint(true);
   showToast&&showToast('インポートが完了しました',`成功 ${okCount}件 / 失敗 ${ngCount}件`+(errors.length?`\n${errors.slice(0,3).join('\n')}`:''),8000);
  }
- /* ---------- パス設定（仕掛/品質データの読み込み先・共有パス・各種間隔。旧config/local.json） ----------
+ /* ---------- パス設定（参照データの読み込み先・共有パス・各種間隔。旧config/local.json） ----------
     複数の値を持つ一覧ではなく1組の設定値のため、列表示マスタと同じ「特別扱い」
     にする。sikalot_source/sikalotnow_path/sikalotdef_path/records_backup_export_path/
     schedule_share_pathはサーバー起動時に1回だけ接続先へ反映されるため、保存後も
     このプロセスでは反映されない(再起動が必要)。一覧欄には「保存値」と「現在
     有効な値(このプロセス)」を並べて表示し、反映済みかを確認できるようにする。 ---------- */
- let pathConfigState={values:{},defaults:{},active:{},loaded:false};
- const PATH_CONFIG_RESTART_FIELDS=[
-  ['sikalot_source','仕掛/品質データの取得元'],
-  ['sikalotnow_path','仕掛(SIKALOTNOW)の読み込み先'],
-  ['sikalotdef_path','品質データ(SIKALOTDEF)の読み込み先'],
+ let pathConfigState={values:{},defaults:{},active:{},sources:[],loaded:false};
+ /* 再起動しないと反映されない項目。データソースぶんは登録内容から作るので
+    ここには固定で書かない(§9.81)。以前は「仕掛(SIKALOTNOW)」等が直接
+    書かれており、データソースを増やしても増えず、名前を変えても古い
+    ままだった。 */
+ const PATH_CONFIG_RESTART_BASE=[['sikalot_source','参照データの取得元']];
+ const PATH_CONFIG_RESTART_TAIL=[
   ['records_backup_export_path','測定データバックアップの複製先'],
   ['schedule_share_path','スケジュール共有パス(schedule.sqlite3)'],
  ];
+ function pathConfigRestartFields(){
+  return [...PATH_CONFIG_RESTART_BASE,
+          ...(pathConfigState.sources||[]).map(src=>[src.valueKey,`${src.label}（${src.key}）の読み込み先`]),
+          ...PATH_CONFIG_RESTART_TAIL];
+ }
  async function loadPathConfigMaint(force){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
   if(!force&&pathConfigState.loaded){renderPathConfigForm();renderPathConfigList();return}
   form.innerHTML='';list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
   try{
    const r=await api('/api/path-config-master');
-   pathConfigState.values=r.values||{};pathConfigState.defaults=r.defaults||{};pathConfigState.active=r.active||{};
+   pathConfigState.values=r.values||{};pathConfigState.defaults=r.defaults||{};pathConfigState.active=r.active||{};pathConfigState.sources=r.sources||[];
    pathConfigState.loaded=true;
    renderPathConfigForm();renderPathConfigList();
   }catch(e){list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
@@ -1405,12 +1422,14 @@
     <div class="mm-set-group-body">${body}</div></section>`;
   form.className='mm-form mm-form-page';
   form.innerHTML=`<div class="mm-set-scroll">
-   <p class="mm-def-hint">仕掛/品質データの読み込み先・共有パスなど、<b>この端末だけ</b>の設定です。空欄で保存すると既定値へ戻ります。反映のタイミングは項目のまとまりごとに示しています。</p>
+   <p class="mm-def-hint">参照データの読み込み先・共有パスなど、<b>この端末だけ</b>の設定です。空欄で保存すると既定値へ戻ります。反映のタイミングは項目のまとまりごとに示しています。</p>
    ${group('データの取得元','サーバー再起動後に反映','is-restart',`
-    <label class="mm-field"><span>仕掛/品質データの取得元</span><select data-pc-field="sikalot_source">${sourceOpts}</select>
-     <small class="mm-field-hint">network=共有フォルダを読む / local=この端末でRNEから抽出したものを読む。</small></label>
-    ${pathField('sikalotnow_path','仕掛(SIKALOTNOW)の読み込み先（個別上書き）','file')}
-    ${pathField('sikalotdef_path','品質データ(SIKALOTDEF)の読み込み先（個別上書き）','file')}`)}
+    <label class="mm-field"><span>参照データの取得元</span><select data-pc-field="sikalot_source">${sourceOpts}</select>
+     <small class="mm-field-hint">network=共有フォルダを読む / local=この端末でRNEから抽出したものを読む。マスタ管理 &gt; データソース に登録したものすべてに効きます。</small></label>
+    ${(pathConfigState.sources||[]).map(src=>pathField(src.valueKey,
+       `${src.label}（${src.key}）の読み込み先 — 個別上書き`,'file',
+       `空欄なら取得元の設定にしたがって「${src.output||'—'}」（ローカル）か「${src.share||'—'}」（共有）を読みます。ここに入れた場合は取得元に関わらずそちらを優先します。`)).join('')
+     ||'<p class="mm-field-hint">データソースが登録されていません。マスタ管理 &gt; データソース で登録してください。</p>'}`)}
    ${group('共有・複製','サーバー再起動後に反映','is-restart',`
     ${pathField('schedule_share_path','スケジュール機能の共有データ置き場（schedule.sqlite3）','file','共有フォルダ上のschedule.sqlite3を選びます。空欄ならスケジュール機能は無効です。')}
     ${pathField('records_backup_export_path','測定データバックアップの閲覧用複製先','dir','複製先の「フォルダ」を選びます。空欄なら複製しません。')}`)}
@@ -1443,7 +1462,7 @@
  function rneStatusPanelHtml(){
   return `<div class="rne-panel" id="rnePanel">
     <div class="rne-head">
-     <h4>RNE抽出（仕掛/品質データのローカル運用）</h4>
+     <h4>RNE抽出（参照データのローカル運用）</h4>
      <span class="rne-state" id="rneState">確認中…</span>
      <button type="button" class="mm-btn-ghost sm" id="rneRunBtn">今すぐ抽出</button>
     </div>
@@ -1476,7 +1495,7 @@
   const missing=(s.assets&&s.assets.rneMissing)||[];
   body.innerHTML=`
    ${s.enabled?'':`<div class="rne-note"><b>定期実行は停止中です</b>（設定: ${esc(s.scheduleMode||'auto')}${s.scheduleMode==='off'?'':` / 取得元: ${esc(s.source||'')}`}）。
-     定期実行を回すには、上の「RNE抽出の定期実行」を <b>on</b> にするか、「仕掛/品質データの取得元」を <b>local</b> にしてください（取得元の変更はサーバー再起動後に反映されます。定期実行の設定は再起動不要です）。
+     定期実行を回すには、上の「RNE抽出の定期実行」を <b>on</b> にするか、「参照データの取得元」を <b>local</b> にしてください（取得元の変更はサーバー再起動後に反映されます。定期実行の設定は再起動不要です）。
      <b>「今すぐ抽出」は取得元の設定に関わらず実行できます。</b></div>`}
    ${missing.length?`<div class="rne-note" style="color:var(--danger)"><b>抽出定義(RNE)が未配置です: ${esc(missing.join(', '))}</b><br>${esc(s.assetsDir||'')}\\rne へ配置してください（機密のためリポジトリには含まれません。config/rne_extract/README.md 参照）。</div>`:''}
    ${(s.assets&&!s.assets.symnavimConf)?`<div class="rne-note" style="color:var(--danger)">接続情報 symnavim.conf が未配置です（${esc(s.assetsDir||'')}）。</div>`:''}
@@ -1502,22 +1521,24 @@
   const v=pathConfigState.values||{},a=pathConfigState.active||{};
   const activeText={
    sikalot_source:a.sikalot_source||'',
-   sikalotnow_path:`${a.sikalotnow_path||''}${a.sikalotnow_engine?`（${a.sikalotnow_engine}）`:''}`,
-   sikalotdef_path:`${a.sikalotdef_path||''}${a.sikalotdef_engine?`（${a.sikalotdef_engine}）`:''}`,
    records_backup_export_path:a.records_backup_export_path||'（未設定・複製しない）',
    schedule_share_path:a.schedule_share_path||'（未設定・機能無効）',
   };
   const savedText={
    sikalot_source:v.sikalot_source||'（既定）network',
-   sikalotnow_path:v.sikalotnow_path||'（既定値を使用）',
-   sikalotdef_path:v.sikalotdef_path||'（既定値を使用）',
    records_backup_export_path:v.records_backup_export_path||'（未設定・複製しない）',
    schedule_share_path:v.schedule_share_path||'（未設定・機能無効）',
   };
+  /* データソースぶんは登録内容から作る。「いま効いている値」は上書きの
+     有無に関わらずサーバーが解決した実際の読み込み先を出す。 */
+  (pathConfigState.sources||[]).forEach(src=>{
+   activeText[src.valueKey]=src.active||'（解決できていません）';
+   savedText[src.valueKey]=v[src.valueKey]||'（既定値を使用）';
+  });
   const tmpl='minmax(150px,1fr) minmax(200px,1.6fr) minmax(200px,1.6fr)';
   const head=`<div class="mm-row head" style="grid-template-columns:${tmpl}"><span>設定項目</span><span>いま効いている値</span><span>保存値（次回起動から）</span></div>`;
   // 保存値と実際に効いている値が食い違う=再起動待ち。目で追えるよう印を付ける。
-  const rows=PATH_CONFIG_RESTART_FIELDS.map(([key,label])=>{
+  const rows=pathConfigRestartFields().map(([key,label])=>{
    /* 「再起動待ち」の判定は**表示文字列ではなく生の値**で行う。
       表示側は現在値にエンジン種別「（sqlite）」を添えたり、未設定を
       「（既定）network」と書き換えたりするので、文字列比較では中身が同じ

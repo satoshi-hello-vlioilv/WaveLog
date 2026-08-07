@@ -527,7 +527,10 @@ def equipment_reference_counts(equipment):
  mc=sr.config_master_conn()
  try:
   calendar_rows=len(sr.calendar_rows(mc,equipment))
-  stop_reason_rows=len(sr.stop_reason_rows(mc,equipment))
+  # 設備停止マスタは1行が複数設備・全設備を指せる(§9.81)。ここで数えたいのは
+  # 「この設備を消したら宛先を失う登録」なので、名指しの行だけを数える
+  # (全設備('*')の行は1台消えても意味を失わないため対象外)。
+  stop_reason_rows=sum(1 for r in sr.stop_reason_rows(mc) if sr.stop_equipment_named(r[1],equipment))
   target=normalize_equipment_name(equipment)
   override_rows=sum(1 for r in sr.load_factor_override_rows(mc) if normalize_equipment_name(r[1])==target)
  finally:

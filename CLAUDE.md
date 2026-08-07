@@ -116,6 +116,19 @@
   触るときは、その読み書きがどちらのDBに対してかを必ず意識すること
   （`plan_add`が設備停止マスタを引く箇所のように、共有接続のまま残すと
   そこだけ壊れる）。詳細は`docs/SCHEDULE_MODE_DESIGN.md`§9.27。
+- **設備停止マスタの`[設備名]`は「対象設備」**（1設備とは限らない）:
+  `'A'`／`'A,B,C'`／`'*'`（すべての設備）の3通りを取る。書式はアクセス権限
+  マスタの`[現場段取り対象設備]`（`master_repo.FIELD_REORDER_ALL`）と同じ。
+  **判定は`schedule_repo.stop_equipment_*`の5関数に集約**してあるので、
+  `normalize_equipment_name()`での直接比較を新しく書かないこと（判定が散ると
+  画面とサーバーで「効いている設備」が食い違う）。設備を名指ししている行だけを
+  数えたい場面（設備マスタ削除の参照件数）は`stop_equipment_named()`を使う
+  ——`'*'`を「その設備の登録」と数えると、消しても行き場を失わない行まで
+  削除の警告に並ぶ。同じ名称で対象設備が重なる登録は`stop_reason_upsert`が
+  拒否する（どちらの標準所要分が効くのか決まらないため）。対象設備そのものを
+  入れ替えられるのは`POST /api/schedule/stop-reason-master/update`（ID指定）
+  だけで、登録側は自然キー照合のため別行の新規登録になる。固定は
+  `tests/test_stopeq.js`。
 - **パス設定マスタ**（`db/master.sqlite3`、`backend/db_access.py`の
   `PATH_CONFIG_TABLE`）: 仕掛/品質データの読み込み先・共有パス・各種間隔設定
   （旧`config/local.json`）を保存する。キー1件=1行で、値の無い項目は行自体が
