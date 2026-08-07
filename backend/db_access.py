@@ -69,6 +69,25 @@ sqlite3.register_adapter(datetime,lambda dt:dt.isoformat(sep=' '))
 sqlite3.register_converter('DATETIME',lambda b:datetime.fromisoformat(b.decode()))
 
 def qi(s): return '['+str(s).replace(']',']]')+']'
+def path_exists_safe(path):
+ """存在を確かめる。ただし**判定できなかった場合はNone**を返す。
+
+ pathlib の Path.exists() は OSError のうち ENOENT/ENOTDIR/EBADF/ELOOP と
+ WinError 21/123/1921 だけを「無し」と読み替え、**それ以外はそのまま送出する**。
+ ネットワーク共有では WinError 59(予期しないネットワークエラー)や
+ 64/1231 のように「一時的に問い合わせできない」種類のエラーが起こり、
+ これらは送出される。存在確認のつもりの1行が例外の発生源になり、しかも
+ メッセージが「ファイルが無い」ではなく生のネットワークエラーになるため、
+ 原因の見当がつかない(実際に、エクスプローラでも sqlite3.connect() でも
+ 開ける共有ファイルに対して、この行だけが WinError 59 で失敗した端末があった)。
+
+ 戻り値: True=ある / False=無い / None=確かめられなかった(共有が応答しない等)"""
+ try:
+  return path.exists()
+ except OSError as e:
+  app_logger().warning('存在確認に失敗しました(共有の応答不良の可能性): %s (%s)',path,e)
+  return None
+
 def _sqlite_ro_uri(path):
  """読み取り専用オープン用のfile: URIを組み立てる(str連結だとドライブレター
  区切りやUnicodeファイル名でURI解釈を誤り得るため、パーセントエンコードする)。
@@ -79,12 +98,18 @@ def _sqlite_ro_uri(path):
  される(実際にsikalotnow_path等をUNC上の.sqlite3へ向けたときに発生した)。
  authorityを空のままサーバー名をpath側に含める4スラッシュ形式
  (file:////server/share/...)にするとこの制限を回避できる
- (SQLiteのURI filename仕様に沿った回避策)。"""
- resolved=path.resolve()
- posix=resolved.as_posix()
+ (SQLiteのURI filename仕様に沿った回避策)。
+
+ **絶対パスに resolve() を掛けないこと**。resolve()はWindowsでは
+ GetFinalPathNameByHandle を呼ぶ実ファイルアクセスで、共有が不安定だと
+ ここでも WinError 59 等で失敗する。加えて UNC を「\\?\\UNC\\...」形式へ書き換える
+ ことがあり、URIの組み立て前提が崩れる。相対パス(開発時のみ)の解決に必要な
+ ときだけ resolve() する。"""
+ target=path if path.is_absolute() else path.resolve()
+ posix=target.as_posix()
  if posix.startswith('//'):
   return 'file://'+quote(posix)+'?mode=ro'
- return resolved.as_uri()+'?mode=ro'
+ return target.as_uri()+'?mode=ro'
 def connect(path,readonly=False,engine=None):
  """SQLiteへ接続する。engine引数は呼び出し側の互換のため残しているが
     'sqlite'以外は受け付けない。"""
@@ -92,8 +117,22 @@ def connect(path,readonly=False,engine=None):
  if engine not in (None,'sqlite'):
   raise ValueError(f"未対応のエンジンです(SQLiteのみ対応): {engine}")
  if readonly:
-  if not path.exists():raise FileNotFoundError(f"データベースが見つかりません: {path}")
-  c=sqlite3.connect(_sqlite_ro_uri(path),uri=True,timeout=10,detect_types=sqlite3.PARSE_DECLTYPES)
+  # **開く前に存在確認をしない**。読みたいのはファイルそのもので、確認は
+  # 別のファイルアクセス(os.stat)になる。共有越しでは「開けるのに stat だけ
+  # 失敗する」ことがあり(WinError 59 等)、確認のつもりの1行が唯一の失敗
+  # 原因になっていた。まず開き、失敗したときだけ理由を切り分ける。
+  try:
+   c=sqlite3.connect(_sqlite_ro_uri(path),uri=True,timeout=10,detect_types=sqlite3.PARSE_DECLTYPES)
+  except sqlite3.Error as e:
+   found=path_exists_safe(path)
+   if found is False:
+    raise FileNotFoundError(f"データベースが見つかりません: {path}") from e
+   raise RuntimeError(
+    f"データベースを開けませんでした: {path}\n"
+    f"SQLiteからの応答: {e}\n"
+    +("共有フォルダの応答を確認できませんでした。ネットワーク共有への接続を確認してください。"
+      if found is None else
+      "ファイルはありますが開けませんでした。読み取り権限と、他プロセスによる排他を確認してください。")) from e
  else:
   path.parent.mkdir(parents=True,exist_ok=True)
   c=sqlite3.connect(str(path),timeout=10,detect_types=sqlite3.PARSE_DECLTYPES)
@@ -379,7 +418,11 @@ def read_backup_rows(path):
  # backend/schedule_calc.py(実績突合、docs/SCHEDULE_MODE_DESIGN.md §7.4)が
  # 共用する。書き込みは一切行わない。戻り値: (行のlist of dict, path)。
  # ファイル自体が無ければ (None, path)。
- if path is None or not path.exists():return None,path
+ # 存在確認そのものが例外の発生源にならないようにする(path_exists_safe)。
+ # 「無い」と分かったときだけ打ち切り、**確かめられなかったときは開きにいく**
+ # ——共有越しでは stat だけ失敗して open は成功することがあるため
+ # (WinError 59。読めるかどうかは実際に開いた結果で決める)。
+ if path is None or path_exists_safe(path) is False:return None,path
  with connect(path,True) as c:
   if 'Web測定バックアップ' not in tables(c):return [],path
   cur=c.cursor()

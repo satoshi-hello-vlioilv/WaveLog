@@ -136,16 +136,79 @@ def _join_quality_data(sikalotnow_cols,row_dicts):
   info['reason']=f'キーが一致する品質データがありませんでした(照合先: {t})'
  return sikalotnow_cols+extra_cols,merged_rows,info
 
+
+def _error_hint(e):
+ """画面へ出す一言の手がかり。原因の切り分けを現地でできるようにする。"""
+ win=getattr(e,'winerror',None)
+ if win in (59,64,1231,53,55,67):
+  return ('ネットワーク共有への問い合わせが失敗しました(WinError %s)。'
+          '共有への到達性・SMBの設定・ウイルス対策の除外設定を確認してください。'
+          ' /api/db-diagnose?db=SIKALOTNOW を開くと、どの段階で失敗しているかが分かります。'%win)
+ if isinstance(e,FileNotFoundError):
+  return 'マスタ管理 > パス設定 で指定したファイルが見つかりません。パスを確認し、サーバーを再起動してください。'
+ return ''
+
+@bp.get('/api/db-diagnose')
+def api_db_diagnose():
+ """DBを開くまでの各段階を順に試して、どこで失敗するかを返す(§9.75)。
+
+ 別端末でだけ起きる接続不良は、エラーメッセージだけでは
+ 「パスの解決」「存在確認(os.stat)」「実際の接続」のどれで転んだのか
+ 分からない。ブラウザでこのURLを開けば、その端末で1つずつ確かめられる。
+ 読むだけで、設定は一切変更しない。"""
+ k=request.args.get('db','SIKALOTNOW')
+ out={'db':k,'steps':[]}
+ def step(name,fn):
+  try:
+   out['steps'].append({'name':name,'ok':True,'value':str(fn())})
+   return True
+  except Exception as ex:
+   out['steps'].append({'name':name,'ok':False,
+                        'error':f'{type(ex).__name__}: {ex}',
+                        'winerror':getattr(ex,'winerror',None)})
+   return False
+ try:
+  cf=cfg(k)
+ except Exception as ex:
+  out['steps'].append({'name':'DB名の解決','ok':False,'error':str(ex)})
+  return jsonify(out),200
+ path=cf['path']
+ out['path']=str(path)
+ out['is_absolute']=path.is_absolute()
+ out['is_unc']=str(path).startswith('\\\\')
+ step('親フォルダの存在確認 (Path.exists)',lambda:path.parent.exists())
+ step('ファイルの存在確認 (Path.exists / os.stat)',lambda:path.exists())
+ step('サイズ・更新時刻 (Path.stat)',lambda:path.stat().st_size)
+ step('パスの正規化 (Path.resolve)',lambda:path.resolve())
+ step('読み取りで1バイト開く (open)',lambda:open(path,'rb').read(1) and 'OK')
+ uri=[None]
+ def build_uri():
+  from ..db_access import _sqlite_ro_uri
+  uri[0]=_sqlite_ro_uri(path);return uri[0]
+ step('接続URIの組み立て',build_uri)
+ def open_db():
+  with connect(path,cf['role']=='readonly') as c:
+   return f"テーブル{len(tables(c))}件"
+ step('SQLiteへ接続してテーブル一覧を取得',open_db)
+ out['ok']=all(s.get('ok') for s in out['steps'])
+ return jsonify(out),200
+
 @bp.get('/api/catalog')
 def catalog(): return jsonify(databases=[{"key":k,"label":v['label'],"file_name":v['path'].name,"role":v['role']} for k,v in DBS.items()])
 @bp.get('/api/tables')
 def api_tables():
+ k=request.args.get('db','')
  try:
-  k=request.args['db'];cf=cfg(k)
+  cf=cfg(k)
   with connect(cf['path'],cf['role']=='readonly') as c: a=tables(c)
   if cf['preferred'] in a:a=[cf['preferred']]+[x for x in a if x!=cf['preferred']]
   return jsonify(tables=a)
- except Exception as e:return jsonify(error=str(e)),500
+ except Exception as e:
+  # **必ずtracebackをログへ残す**。以前はstr(e)だけを返しており、別端末で
+  # 「[WinError 59] 予期しないネットワークエラー」とパスだけが画面に出て、
+  # どの行から出たのか(存在確認なのか接続なのか)を現地で切り分けられなかった。
+  app_logger().exception('/api/tables db=%s で失敗しました',k)
+  return jsonify(error=str(e),db=k,hint=_error_hint(e)),500
 @bp.get('/api/table')
 def api_table():
  try:
