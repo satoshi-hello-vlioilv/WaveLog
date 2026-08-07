@@ -40,7 +40,7 @@ tbody tr.is-plan-selected:hover{background:#d9f0ee}
 .validation-valid{background:var(--valid-bg);border-color:#aebdc2;box-shadow:none}
 .validation-ng{background:var(--invalid-bg);border-color:var(--invalid);box-shadow:inset 4px 0 0 var(--invalid);color:#7a0000;font-weight:700}
 .work-time-item.validation-valid{background:#eefaf6;border-color:#62aa96;box-shadow:none}
-.validation-message{padding:8px 10px;margin:6px 0;border:1px solid var(--required);background:var(--required-bg);color:var(--warn-fg);font-weight:700;border-radius:var(--radius-sm)}
+.validation-message{padding:var(--pad-card);margin:6px 0;border:1px solid var(--required);background:var(--required-bg);color:var(--warn-fg);font-weight:700;border-radius:var(--radius-sm)}
 /* 検査員・作業人数・内径・スプール・板厚測定器・板幅測定器: 選択必須ではないが、
    「-」のまま未選択の間は目立たせ、何か選んだら白背景に戻す（確認漏れ防止の
    視覚的な合図。activeRequiredControlsの必須判定とは独立） *//* 面を淡くした分、左端のアクセントバーで「まだ選んでいない」を示す(.validation-requiredと同じ言語)。 */
@@ -102,7 +102,7 @@ tbody tr.is-plan-selected:hover{background:#d9f0ee}
 /* 該当条。色覚差でも読めるよう、赤の枠線・明度上げ・条番号の反転バッジの
    3つで示す(色だけに意味を持たせない)。 */
 .defect-lane.is-hit{outline:2px solid var(--danger);outline-offset:-2px;filter:saturate(1.25) brightness(1.12)}
-.defect-lane.is-hit .defect-lane-label b{padding:0 4px;border-radius:var(--radius-sm);background:#fff;color:var(--danger)}
+.defect-lane.is-hit .defect-lane-label b{padding:0 var(--space-1);border-radius:var(--radius-sm);background:#fff;color:var(--danger)}
 .rp-defect-lane.is-hit{outline:1.5px solid #a32424;outline-offset:-1.5px;filter:saturate(1.2) brightness(1.12)}
 }
 
@@ -226,7 +226,7 @@ body.nav-collapsed .nav-collapse-toggle{margin-left:0}
 body.nav-collapsed .nav-item{justify-content:center;padding-left:0;padding-right:0;position:relative}
 body.nav-collapsed .nav-item .nav-icon{opacity:1}
 body.nav-collapsed .nav-item b{
- position:absolute;top:2px;right:2px;min-width:0;height:auto;padding:0 4px;
+ position:absolute;top:2px;right:2px;min-width:0;height:auto;padding:0 var(--space-1);
  font-size:var(--fs-tiny);line-height:1.4;
 }
 body.nav-collapsed .nav-item .sync-warn-dot{position:absolute;top:3px;left:4px}
