@@ -568,5 +568,96 @@ window.applyUiSize=applyUiSize;
  if(typeof applyUiSize==='function'&&typeof currentUiSize==='function')applyUiSize(currentUiSize());
 })();
 
+/* ---------- 起動オーバーレイ(#appBoot)の進行と解除 ----------
+   起動待機画面(loading.html)から表示を引き継ぎ、**画面が組み上がるまで
+   本体を見せない**。実測すると、最初の描画(+85ms)から落ち着く(+451ms)まで
+   の間に「案内バーが出て消える」「ナビ項目が5→7に増える」「バージョン
+   バッジの文字が変わる」「モードバッジが現れてヘッダーが組み替わる」
+   「一覧の中身が入る」の5回、目に見える組み替えが起きていた。
+   これが「起動直後だけ一瞬崩れて見える」の正体。
+
+   進捗はサーバー側6段階＋ここの4段階＝10段階で1本。段階の定義は
+   backend/boot_status.py の STEPS / BROWSER_STEPS が持ち、
+   loading.html・templates/index.html の一覧と対応する
+   (tests/test_boot.py が3箇所の一致を固定している)。
+
+   **解除は必ず起きること**が最優先。どれかの段階が終わらなくても
+   BOOT_TIMEOUT_MS で必ず外す(画面が出ないまま固まるのが最悪の結果)。
+   index.htmlにも、base.js自体が読めなかった場合の保険を置いてある。
+   時間切れは8秒。通常は0.5秒ほどで済む(実測)ので、これを超えるのは
+   共有の応答が悪い等の異常時。そのときは覆いを外し、一覧側の読み込み
+   表示に任せる——待たせ続けるより、操作できる画面を出すほうがよい。 */
+const BOOT_SERVER_STEPS=6, BOOT_TOTAL_STEPS=10, BOOT_TIMEOUT_MS=8000;
+const bootGate=(()=>{
+ const root=document.documentElement;
+ const overlay=document.getElementById('appBoot');
+ const done=new Set();
+ let finished=false;
+ const startedAt=Date.now();
+ /* 段階ごとの一言。「何を待っているのか」が分かると、遅いときでも
+    止まっているのか進んでいるのかを判断できる。 */
+ const HINT={assets:'画面部品を読み込んでいます',permission:'この端末のモードを確認しています',
+             list:'仕掛一覧を取得しています',layout:'画面の寸法を確定しています'};
+ const el=id=>overlay&&overlay.querySelector('#'+id);
+ function paint(){
+  if(!overlay)return;
+  let current='';
+  overlay.querySelectorAll('[data-boot-step]').forEach(li=>{
+   const key=li.dataset.bootStep,isDone=done.has(key);
+   li.classList.toggle('is-done',isDone);
+   const isCurrent=!isDone&&!current;
+   li.classList.toggle('is-current',isCurrent);
+   if(isCurrent)current=key;
+  });
+  const pct=Math.min(100,Math.round((BOOT_SERVER_STEPS+done.size)/BOOT_TOTAL_STEPS*100));
+  const bar=el('bootBar'),fill=el('bootFill'),stage=el('bootStage'),
+        pctEl=el('bootPct'),detail=el('bootDetail');
+  /* 幅はカスタムプロパティで渡す(見た目の指定はCSS側に残す)。 */
+  if(fill)fill.style.setProperty('--boot-pct',pct+'%');
+  if(bar)bar.setAttribute('aria-valuenow',String(pct));
+  if(pctEl)pctEl.textContent=pct+'%';
+  if(stage)stage.textContent=current?stageLabel(current):'起動完了';
+  if(detail)detail.textContent=current?(HINT[current]||''):'';
+ }
+ function stageLabel(key){
+  const li=overlay&&overlay.querySelector(`[data-boot-step="${key}"] span`);
+  return li?li.textContent:'';
+ }
+ function tick(){
+  const sec=Math.floor((Date.now()-startedAt)/1000);
+  const e=el('bootElapsed');if(e)e.textContent='経過 '+sec+' 秒';
+ }
+ const timer=setInterval(()=>{if(finished)clearInterval(timer);else tick()},250);
+ function finish(){
+  if(finished)return;
+  finished=true;clearInterval(timer);
+  /* 本体を見せるのと、覆いが消えていくのを同時に始める。切り替わりが
+     継ぎ目に見えないのが狙い(§9.76)。 */
+  root.classList.remove('app-booting');
+  if(overlay){
+   overlay.classList.add('is-hiding');
+   setTimeout(()=>overlay.remove(),400);
+  }
+ }
+ setTimeout(()=>{
+  if(!finished)console.warn('起動オーバーレイを時間切れで解除しました(未完了:',
+   ['assets','permission','list','layout'].filter(k=>!done.has(k)).join(','),')');
+  finish();
+ },BOOT_TIMEOUT_MS);
+ function step(key){
+  if(finished||done.has(key))return;
+  done.add(key);paint();
+  if(done.has('permission')&&done.has('list')&&!done.has('layout')){
+   /* 残るは寸法の確定だけ。2フレーム待てば、この時点までのDOM変更が
+      すべて反映済みのレイアウトになる(1フレームでは足りないことがある)。 */
+   requestAnimationFrame(()=>requestAnimationFrame(()=>{step('layout');finish()}));
+  }
+ }
+ paint();tick();
+ /* すべてのJSが読み終わった時点で1段階目が済む。 */
+ document.addEventListener('DOMContentLoaded',()=>step('assets'));
+ return {step,isBooting:()=>!finished,finish};
+})();
+
 /* ---------- WL名前空間への公開(定義は上記) ---------- */
-Object.assign(window.WL,{registerView,enterView,withInternalDbSwitch,isInternalDbSwitch,ttlCache,optionList,mountViewToolbar,syncViewToolbar});
+Object.assign(window.WL,{registerView,enterView,withInternalDbSwitch,isInternalDbSwitch,ttlCache,optionList,mountViewToolbar,syncViewToolbar,boot:bootGate});

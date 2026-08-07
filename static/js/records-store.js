@@ -645,4 +645,6 @@ bindAppSettingsControls();
 init().catch(error=>{
  console.error('初期化エラー',error);
  const grid=$('#grid');if(grid)grid.innerHTML=`<div class="load-error"><b>画面を初期化できませんでした</b><span>${esc(error?.message||String(error))}</span></div>`;
-});
+/* 起動オーバーレイの「一覧を読み込み」はここで済む。**失敗しても進める**
+   (エラー表示ごと見せる必要がある。覆ったままにしない)。 */
+}).finally(()=>WL.boot.step('list'));

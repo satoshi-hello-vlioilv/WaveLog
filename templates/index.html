@@ -1,6 +1,21 @@
 <!DOCTYPE html>
 
-<html lang="ja"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1" name="viewport"/><title>測定伝送システム</title><link rel="icon" href="{{url_for('static',filename='favicon.svg')}}" type="image/svg+xml"/><link href="{{url_for('core.app_css')}}?t={{asset_token}}" rel="stylesheet"/></head><body>
+<!-- html.app-booting: 画面が組み上がるまで本体を伏せる印(static/css/95-boot.css)。
+     JSが外す(base.jsのWL.boot)。JS自体が読めなかった場合に画面が出ないまま
+     になるのを防ぐため、下に保険の解除も置いてある。 -->
+<html class="app-booting" lang="ja"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1" name="viewport"/><title>測定伝送システム</title><link rel="icon" href="{{url_for('static',filename='favicon.svg')}}" type="image/svg+xml"/><link href="{{url_for('core.app_css')}}?t={{asset_token}}" rel="stylesheet"/>
+<script>/* 保険。base.jsが読めない/例外で止まった場合でも、必ず本体を見せる。 */
+setTimeout(function(){document.documentElement.classList.remove('app-booting');
+ var o=document.getElementById('appBoot');if(o)o.remove()},12000);</script></head><body>
+<!-- 起動オーバーレイ。起動待機画面(loading.html)から意匠と段階リストを
+     そのまま引き継ぎ、7〜10段階目(ブラウザ側)を進める。 -->
+<div id="appBoot" role="status" aria-live="polite"><div class="boot-card">
+<div class="boot-head"><svg class="boot-logo" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#0f2c35"/><path d="M10 40c6-16 10 8 16-6s10 10 16-4 8 4 12-2" fill="none" stroke="#2ec9c0" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="50" cy="20" r="5" fill="#f5a30a"/></svg><div class="boot-title"><h1>測定伝送システム</h1><p>STARTING UP</p></div><span class="boot-ver" id="bootVer">VER{{app_version}}</span></div>
+<p class="boot-stage"><b id="bootStage">画面部品を読み込み</b><span class="boot-pct" id="bootPct">60%</span></p>
+<div class="boot-bar" id="bootBar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="60"><i id="bootFill"></i></div>
+<p class="boot-meta"><span id="bootElapsed">経過 0 秒</span><span class="boot-detail" id="bootDetail"></span></p>
+<ul class="boot-steps" id="bootSteps"><li class="is-done"><b></b><span>実行環境を確認</span></li><li class="is-done"><b></b><span>起動中のアプリを確認</span></li><li class="is-done"><b></b><span>必要な部品を確認</span></li><li class="is-done"><b></b><span>データの置き場所を確認</span></li><li class="is-done"><b></b><span>アプリを読み込み</span></li><li class="is-done"><b></b><span>Webサーバーを起動</span></li><li data-boot-step="assets"><b></b><span>画面部品を読み込み</span></li><li data-boot-step="permission"><b></b><span>権限を確認</span></li><li data-boot-step="list"><b></b><span>一覧を読み込み</span></li><li data-boot-step="layout"><b></b><span>表示を整える</span></li></ul>
+</div></div>
 <div class="connection-lost-bar" hidden id="connectionLost" role="alert"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h.01"/><path d="M8.5 16.4a5 5 0 0 1 7 0"/><path d="M5 12.9a10 10 0 0 1 14 0"/><path d="m2 2 20 20"/></svg><div class="connection-lost-text"><b>サーバーとの接続が切れました</b><small>アプリが終了している可能性があります。入力中のデータはこの端末に保存されているため失われません。</small></div><button id="connectionLostReload" type="button">再読込</button></div>
 <div class="layout"><aside>
 <div class="brand"><h2>測定伝送システム</h2><small><b class="build-badge">最新版</b></small></div>

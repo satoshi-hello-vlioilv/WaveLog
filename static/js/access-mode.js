@@ -250,5 +250,8 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
   };
  }
 
- queueMicrotask(refreshAccessMode);
+ /* 起動オーバーレイの「権限を確認」はここで済む(モードでヘッダーの
+    バッジが増減するため、確定してから本体を見せる)。refreshAccessMode は
+    失敗時も既定値で解決するが、念のため finally で必ず進める。 */
+ queueMicrotask(()=>{refreshAccessMode().finally(()=>WL.boot.step('permission'))});
 })();

@@ -13,82 +13,167 @@
   生成元をまたいで読み込める script 要素で生存確認する(サーバー側の
   /api/ready.js が JSONP 形式でアプリ識別情報を返す)。
   file:// から読むため外部ファイルを参照できない。CSS/JSは全て埋め込む。
+
+  ■ 進捗は「サーバーが応答するまで」では終わらない
+  Webサーバーが応答してからも、ブラウザが17本のJSを読んで画面を組み立てる
+  までに数百ミリ秒かかる。以前はその間に崩れた途中の画面が見えていた。
+  いまはアプリ側(templates/index.html の #appBoot)が**同じ意匠・同じ段階
+  リスト**で表示を引き継ぎ、組み立て終わってから本体を見せる。
+  そのため進捗バーの分母は「サーバー6段階＋ブラウザ4段階＝10」で、
+  この画面は6/10(=60%)まで進めて引き渡す。段階の定義は
+  backend/boot_status.py の STEPS / BROWSER_STEPS が持つ。増減させるときは
+  この画面と static/css/95-boot.css の一覧も合わせること
+  (tests/test_boot.py が3箇所の一致を固定している)。
 -->
 <style>
  :root{
-  --nav:#173842; --teal:#087c89; --pale:#dcecef; --bg:#eef2f4;
-  --line:#b7c7cc; --warn:#f5a30a; --invalid:#c92c2c;
+  --ink:#eaf3f5; --ink-2:#9fb9c0; --ink-3:#6f8c95;
+  --teal:#2ec9c0; --teal-2:#0f8f9b; --amber:#f5a30a; --danger:#ff6b6b;
+  --card:rgba(255,255,255,.055); --card-line:rgba(255,255,255,.115);
+  --track:rgba(255,255,255,.10);
  }
  *{box-sizing:border-box}
+ html,body{height:100%}
  body{
-  margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
-  background:var(--bg); color:var(--nav);
-  font-family:"Segoe UI","Meiryo",system-ui,sans-serif; font-size:14px; line-height:1.35;
+  margin:0; display:flex; align-items:center; justify-content:center;
+  color:var(--ink);
+  font-family:"Segoe UI","Meiryo",system-ui,sans-serif; font-size:14px; line-height:1.45;
+  /* 深い紺(アプリのナビと同系)に、斜めの光を2つ重ねる。単色より奥行きが出る。 */
+  background:
+   radial-gradient(120% 90% at 12% -10%, rgba(46,201,192,.20), transparent 58%),
+   radial-gradient(90% 80% at 108% 108%, rgba(245,163,10,.14), transparent 55%),
+   linear-gradient(158deg, #0d2029 0%, #12313a 46%, #0b1a21 100%);
+  background-attachment:fixed;
  }
+ /* ゆっくり呼吸する光。動きがあると「止まっていない」ことが伝わる。 */
+ body::after{
+  content:""; position:fixed; inset:-30vmax; pointer-events:none;
+  background:radial-gradient(closest-side, rgba(46,201,192,.10), transparent 70%);
+  animation:drift 14s ease-in-out infinite alternate;
+ }
+ @keyframes drift{
+  from{transform:translate3d(-6vmax,-3vmax,0) scale(.9)}
+  to  {transform:translate3d( 6vmax, 4vmax,0) scale(1.1)}
+ }
+
  .card{
-  width:min(92vw,460px); background:#fff; border:1px solid var(--line);
-  border-radius:10px; padding:28px 30px 24px; text-align:center;
-  box-shadow:0 2px 14px rgba(23,56,66,.10);
+  position:relative; z-index:1;
+  width:min(93vw,520px); padding:30px 34px 26px;
+  background:var(--card); border:1px solid var(--card-line); border-radius:20px;
+  box-shadow:0 30px 70px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);
+  backdrop-filter:blur(20px) saturate(140%);
+  -webkit-backdrop-filter:blur(20px) saturate(140%);
+  animation:rise .5s cubic-bezier(.2,.7,.3,1) both;
  }
- .logo{width:48px;height:48px;margin:0 auto 14px;display:block}
- h1{margin:0 0 4px; font-size:17px; letter-spacing:.02em}
- .sub{margin:0 0 22px; font-size:12px; color:#5d757e; letter-spacing:.08em}
- /* 二重リングのスピナー(アプリ内の待機表示と同じ意匠) */
- .spinner{width:38px;height:38px;margin:0 auto 16px;position:relative}
- .spinner i{
-  position:absolute; inset:0; border-radius:50%;
-  border:3px solid var(--pale); border-top-color:var(--teal);
-  animation:spin 1s linear infinite;
+ @keyframes rise{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:none}}
+
+ /* ---- 見出し(マーク・アプリ名・バージョン) ---- */
+ .head{display:flex; align-items:center; gap:13px; margin-bottom:24px}
+ .logo{width:42px;height:42px;flex:0 0 auto;border-radius:12px;display:block;
+       box-shadow:0 6px 18px rgba(0,0,0,.35)}
+ .title{min-width:0;flex:1 1 auto}
+ h1{margin:0; font-size:17px; font-weight:650; letter-spacing:.01em}
+ .sub{margin:2px 0 0; font-size:11px; color:var(--ink-3); letter-spacing:.22em}
+ .ver{
+  flex:0 0 auto; align-self:flex-start;
+  padding:4px 10px; border-radius:999px; font-size:11px; font-weight:600;
+  letter-spacing:.04em; color:var(--teal);
+  background:rgba(46,201,192,.12); border:1px solid rgba(46,201,192,.30);
+  font-variant-numeric:tabular-nums; white-space:nowrap;
  }
- .spinner i:last-child{
-  inset:8px; border-width:2px; border-top-color:var(--warn);
-  animation-duration:1.5s; animation-direction:reverse;
+
+ /* ---- 現在の段階 + 進捗バー ---- */
+ .stage{display:flex; align-items:baseline; gap:10px; margin:0 0 10px}
+ .stage b{font-size:15px; font-weight:600; letter-spacing:.01em}
+ .pct{margin-left:auto; font-size:13px; font-weight:650; color:var(--teal);
+      font-variant-numeric:tabular-nums}
+ .bar{height:7px; border-radius:999px; background:var(--track); overflow:hidden; position:relative}
+ .bar i{
+  display:block; height:100%; width:4%; border-radius:999px;
+  background:linear-gradient(90deg, var(--teal-2), var(--teal) 62%, var(--amber));
+  box-shadow:0 0 14px rgba(46,201,192,.55);
+  transition:width .45s cubic-bezier(.25,.8,.3,1);
  }
- @keyframes spin{to{transform:rotate(360deg)}}
- .stage{font-size:14px; font-weight:600; margin:0 0 6px; min-height:1.35em}
- .elapsed{font-size:12px; color:#5d757e; margin:0}
- .steps{list-style:none; margin:20px 0 0; padding:14px 0 0; border-top:1px solid var(--pale); text-align:left}
+ /* 満ちている部分を流れる光。進んでいる最中であることの合図。 */
+ .bar i::after{
+  content:""; position:absolute; inset:0;
+  background:linear-gradient(100deg, transparent 20%, rgba(255,255,255,.42) 50%, transparent 80%);
+  animation:sheen 1.7s linear infinite;
+ }
+ .meta{display:flex; gap:8px; margin:9px 0 0; font-size:11.5px; color:var(--ink-3);
+       font-variant-numeric:tabular-nums}
+ .meta .detail{margin-left:auto; text-align:right; min-width:0;
+               overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+ @keyframes sheen{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+
+ /* ---- 段階の一覧(2列) ---- */
+ .steps{
+  list-style:none; margin:22px 0 0; padding:18px 0 0;
+  border-top:1px solid rgba(255,255,255,.09);
+  /* 縦に読み下せる並び。左列が1〜5、右列が6〜10。 */
+  display:grid; grid-auto-flow:column; grid-template-rows:repeat(5,auto); gap:7px 18px;
+ }
  .steps li{
-  display:flex; align-items:center; gap:9px; padding:4px 0;
-  font-size:12.5px; color:#8fa3aa; transition:color .2s;
+  display:flex; align-items:center; gap:9px; min-width:0;
+  font-size:12px; color:var(--ink-3); transition:color .25s;
  }
+ .steps li span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
  .steps li b{
-  flex:0 0 auto; width:15px; height:15px; border-radius:50%;
-  border:2px solid currentColor; display:inline-block; position:relative;
+  flex:0 0 auto; width:14px; height:14px; border-radius:50%;
+  border:1.5px solid currentColor; position:relative; transition:all .25s;
  }
  .steps li.on{color:var(--teal); font-weight:600}
- .steps li.done{color:var(--nav)}
- .steps li.done b{background:var(--teal); border-color:var(--teal)}
- /* チェックマーク */
+ .steps li.on b{border-color:var(--teal); box-shadow:0 0 0 4px rgba(46,201,192,.14)}
+ .steps li.on b::after{
+  content:""; position:absolute; inset:2.5px; border-radius:50%;
+  background:var(--teal); animation:pulse 1.1s ease-in-out infinite;
+ }
+ @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.7)}}
+ .steps li.done{color:var(--ink-2)}
+ .steps li.done b{background:var(--teal-2); border-color:var(--teal-2)}
  .steps li.done b::after{
   content:""; position:absolute; left:3.5px; top:.5px;
-  width:3px; height:7px; border:solid #fff; border-width:0 2px 2px 0;
+  width:3px; height:7px; border:solid #08222a; border-width:0 1.8px 1.8px 0;
   transform:rotate(45deg);
  }
- .error{display:none; text-align:left}
- .error h2{margin:0 0 10px; font-size:15px; color:var(--invalid)}
- .error p{margin:0 0 10px; font-size:13px}
- .error ul{margin:0; padding-left:1.15em; font-size:12.5px; color:#41606b}
- .error li{margin-bottom:5px}
+ /* ブラウザ側で進む段階(7〜10)は、この画面では最後まで進まない。
+    「これから続きがある」ことが分かるよう、控えめな見た目にしておく。 */
+ .steps li.later{opacity:.55}
+
+ /* ---- 失敗時 ---- */
+ .error{display:none}
+ .error h2{margin:0 0 10px; font-size:15px; color:var(--danger)}
+ .error p{margin:0 0 12px; font-size:13px; color:var(--ink-2)}
+ .error ul{margin:0; padding-left:1.15em; font-size:12.5px; color:var(--ink-2)}
+ .error li{margin-bottom:6px}
  .retry{
-  margin-top:16px; width:100%; padding:9px; font-size:14px; font-family:inherit;
-  color:#fff; background:var(--teal); border:0; border-radius:8px; cursor:pointer;
+  margin-top:18px; width:100%; padding:11px; font-size:14px; font-family:inherit;
+  font-weight:600; color:#06222a; border:0; border-radius:11px; cursor:pointer;
+  background:linear-gradient(90deg, var(--teal), var(--teal-2));
  }
- .retry:hover{background:#096b75}
+ .retry:hover{filter:brightness(1.08)}
  body.failed .live{display:none}
  body.failed .error{display:block}
+ @media (prefers-reduced-motion:reduce){
+  *{animation:none!important; transition:none!important}
+ }
 </style>
 </head>
 <body>
 <div class="card">
- <svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="12" fill="#173842"/><path d="M14 18h36v28H14z" fill="#fff"/><path d="M20 24h24v5H20zm0 10h15v5H20z" fill="#087c89"/><circle cx="45" cy="42" r="9" fill="#f5a30a"/></svg>
- <h1>測定伝送システム</h1>
- <p class="sub">STARTING UP</p>
+ <div class="head">
+  <svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#0f2c35"/><path d="M10 40c6-16 10 8 16-6s10 10 16-4 8 4 12-2" fill="none" stroke="#2ec9c0" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="50" cy="20" r="5" fill="#f5a30a"/></svg>
+  <div class="title">
+   <h1>測定伝送システム</h1>
+   <p class="sub">STARTING UP</p>
+  </div>
+  <span class="ver" id="ver">起動中</span>
+ </div>
 
  <div class="live">
-  <div class="spinner" aria-hidden="true"><i></i><i></i></div>
-  <p class="stage" id="stage">実行環境を確認中…</p>
-  <p class="elapsed" id="elapsed">経過 0 秒</p>
+  <p class="stage"><b id="stage">実行環境を確認</b><span class="pct" id="pct">0%</span></p>
+  <div class="bar" role="progressbar" id="bar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="fill"></i></div>
+  <p class="meta"><span id="elapsed">経過 0 秒</span><span class="detail" id="detail"></span></p>
   <ul class="steps" id="steps">
    <li data-step="0"><b></b><span>実行環境を確認</span></li>
    <li data-step="1"><b></b><span>起動中のアプリを確認</span></li>
@@ -96,7 +181,10 @@
    <li data-step="3"><b></b><span>データの置き場所を確認</span></li>
    <li data-step="4"><b></b><span>アプリを読み込み</span></li>
    <li data-step="5"><b></b><span>Webサーバーを起動</span></li>
-   <li data-step="6"><b></b><span>起動完了</span></li>
+   <li class="later" data-step="6"><b></b><span>画面部品を読み込み</span></li>
+   <li class="later" data-step="7"><b></b><span>権限を確認</span></li>
+   <li class="later" data-step="8"><b></b><span>一覧を読み込み</span></li>
+   <li class="later" data-step="9"><b></b><span>表示を整える</span></li>
   </ul>
  </div>
 
@@ -118,10 +206,18 @@
 (function(){
  var PORT=5029, APP_ID='wavelog';
  var POLL_INTERVAL_MS=500, TIMEOUT_MS=90000;
+ /* 進捗バーの分母。サーバー6段階＋ブラウザ4段階(アプリ側の起動オーバーレイが
+    続きを進める)。backend/boot_status.py の TOTAL_STEPS と同じ値。 */
+ var TOTAL_STEPS=10, SERVER_STEPS=6;
  var started=Date.now(), timer=null, polling=true;
 
  var stageEl=document.getElementById('stage');
  var elapsedEl=document.getElementById('elapsed');
+ var detailEl=document.getElementById('detail');
+ var pctEl=document.getElementById('pct');
+ var barEl=document.getElementById('bar');
+ var fillEl=document.getElementById('fill');
+ var verEl=document.getElementById('ver');
  var steps=document.getElementById('steps').children;
 
  document.getElementById('errPort').textContent=PORT;
@@ -134,20 +230,37 @@
  var bootStep=-1, bootLabel='', bootDetail='';
  window.wavelogBootStatus=function(info){
   if(!polling||!info) return;
+  /* バージョンは起動処理の最初の書き出しから分かる(サーバーの応答を
+     待たなくてよい)。応答後は /api/ready.js の値でも上書きする。 */
+  if(info.version) showVersion(info.version);
+  if(typeof info.total==='number' && info.total>0) TOTAL_STEPS=info.total;
   if(typeof info.index==='number' && info.index>=bootStep){
    bootStep=info.index; bootLabel=info.label||''; bootDetail=info.detail||'';
   }
  };
+ function showVersion(v){ if(v) verEl.textContent='VER'+v }
+
+ /* 進捗は「完了した段階の数 / 全段階」。実行中の段階は半分だけ進めて
+    おくと、次の段階へ移るまでの待ちでもバーが止まって見えない。 */
  function paint(active){
   for(var i=0;i<steps.length;i++){
-   steps[i].className = i<active ? 'done' : (i===active ? 'on' : '');
+   /* まだ来ていない段階のうち、ブラウザ側(7〜10)は「この画面では
+      進まない」ので控えめに出す。 */
+   steps[i].className = i<active ? 'done'
+                      : i===active ? 'on'
+                      : (i>=SERVER_STEPS ? 'later' : '');
   }
+  var pct=Math.min(100,Math.round((active+.5)/TOTAL_STEPS*100));
+  fillEl.style.width=pct+'%';
+  pctEl.textContent=pct+'%';
+  barEl.setAttribute('aria-valuenow',String(pct));
  }
  function tick(){
   var sec=Math.floor((Date.now()-started)/1000);
-  elapsedEl.textContent='経過 '+sec+' 秒'+(bootDetail?' ・ '+bootDetail:'');
+  elapsedEl.textContent='経過 '+sec+' 秒';
+  detailEl.textContent=bootDetail||'';
   var s=bootStep<0?0:bootStep;
-  stageEl.textContent=(bootLabel||'実行環境を確認')+'…';
+  stageEl.textContent=bootLabel||'実行環境を確認';
   paint(s);
   if(Date.now()-started>TIMEOUT_MS) fail();
  }
@@ -167,10 +280,17 @@
   if(!polling) return;
   if(!info||info.app!==APP_ID||!info.ready) return; // 別アプリが同じポートに居る場合は無視して待ち続ける
   polling=false; clearInterval(timer);
-  stageEl.textContent='起動完了';
-  paint(steps.length-1); steps[steps.length-1].className='done';
+  showVersion(info.version);
+  stageEl.textContent='画面を準備しています';
+  /* サーバー側の6段階はここで完了。残り4段階はアプリ側の起動
+     オーバーレイが続ける(バーの値も引き継ぐ)。 */
+  paint(SERVER_STEPS-1);
+  for(var i=0;i<SERVER_STEPS;i++) steps[i].className='done';
+  var pct=Math.round(SERVER_STEPS/TOTAL_STEPS*100);
+  fillEl.style.width=pct+'%'; pctEl.textContent=pct+'%';
+  barEl.setAttribute('aria-valuenow',String(pct));
   var url=(info.url||('http://127.0.0.1:'+PORT+'/'));
-  setTimeout(function(){ location.replace(url) },250); // 完了表示を一瞬見せてから遷移
+  setTimeout(function(){ location.replace(url) },250); // 引き渡し前の表示を一瞬見せる
  };
 
  function probe(){
