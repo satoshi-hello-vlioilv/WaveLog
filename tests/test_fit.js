@@ -98,6 +98,33 @@ let b=null;
   };
 
   await visit('仕掛一覧',()=>page.click('aside [data-db-key="SIKALOTNOW"]'));
+  /* **既定で隠れているものも開いて測る(§9.80)。** ここが管理漏れだった——
+     フィルタの詳細ビルダー(#filterBody)も登録フィルタ一覧も既定はhiddenで、
+     「見えているものだけ」を測っていたため、表示サイズを上げたときに
+     ラベル行から文字が溢れているのを検出できなかった。
+     開かないと分からない場所こそ、人の目も届きにくい。 */
+  await visit('フィルタ詳細',async()=>{
+   await page.evaluate(()=>document.querySelector('#filterToggle')?.click());
+  });
+  await visit('よく使う条件',async()=>{
+   await page.evaluate(()=>{const t=document.querySelector('#filterQuickToggle');if(t&&!t.hidden)t.click()});
+  });
+  await visit('登録フィルタ一覧',async()=>{
+   await page.evaluate(()=>document.querySelector('#openFilterPresets')?.click());
+   await page.waitForTimeout(1200);
+  });
+  await visit('確認ダイアログ',async()=>{
+   await page.evaluate(()=>{typeof confirmModal==='function'&&confirmModal(
+     '長めの確認文をここに入れて、枠から溢れないかを見る。'
+     +'この条件は鍵付きの必須条件です。外すと一時的に条件が緩和されます。')});
+   await page.waitForTimeout(400);
+  });
+  await page.evaluate(()=>{
+   document.getElementById('appConfirmCancel')?.click();
+   const m=document.getElementById('filterPresetModal');if(m)m.hidden=true;
+   document.querySelector('#filterToggle')?.click();
+  });
+  await settle(500);
   await visit('品質データ',()=>page.click('aside [data-db-key="SIKALOTDEF"]'));
   await visit('品質データ_グラフ',async()=>{
    await page.click('[data-qa-tab="graph"]');await settle(700);

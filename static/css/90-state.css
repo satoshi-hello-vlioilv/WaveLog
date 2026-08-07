@@ -323,4 +323,9 @@ body.sc-mode .hd-status .hd-chip-equip{display:none}
   min-width:0;padding:0;margin:-1px;border:0;
   overflow:hidden;clip-path:inset(50%);white-space:nowrap;
 }
+
+/* 確認ダイアログは**何の上に出しても押せる**必要がある(§9.80)。
+   .record-modal と同じ 1500 のままだと、先に作られていた側が下敷きになる
+   (登録フィルタ一覧の削除が押せなかった。生成順で前後が決まっていた)。 */
+#appConfirmModal{z-index:var(--z-confirm)}
 }

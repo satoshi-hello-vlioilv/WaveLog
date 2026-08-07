@@ -89,7 +89,14 @@
   function writeUsage(){try{localStorage.setItem(USAGE_STORE,JSON.stringify(S.filterCondUsage||{}))}catch(_){}}
   /* 利用履歴・アクティブ条件のスコープキー。プリセット(currentTablePresets)が
      以前からdb+tableの完全一致で管理されているのに合わせる。 */
-  function usageScopeKey(){return `${S.db||''}\u001f${S.table||''}`}
+  /* ---------- 登録フィルタの置き場をモードで分ける(§9.80) ----------
+     同じ仕掛一覧でも、スケジュールモードは品質データを結合するので列構成が
+     変わる。条件を共有すると「その表に無い列の条件」が並ぶことになるため、
+     **スケジュールモードだけ別の置き場**にする(編集と閲覧は同じ列構成を
+     同じように見るので分けない。3つに割ると、どこで作ったかを覚えて
+     いなければ探せなくなる)。 */
+  function presetMode(){return (window.accessMode&&window.accessMode.mode)==='schedule'?'schedule':''}
+  function usageScopeKey(){return `${S.db||''}\u001f${S.table||''}\u001f${presetMode()}`}
   function scopedUsage(){
     const all=S.filterCondUsage||{};
     const bucket=all[usageScopeKey()];
@@ -177,8 +184,15 @@
     if(opts.inline!==false)setInlineLoading(true,'マスタからフィルタを読込中');
     try{
       const q=new URLSearchParams();if(S.db)q.set('db',S.db);if(S.table)q.set('table',S.table);
-      const r=await api('/api/filter-presets'+(q.toString()?'?'+q:''));
-      S.filterPresets=(r.items||[]).map(x=>({id:x.id,name:x.name,db:x.db,table:x.table,filters:Array.isArray(x.filters)?x.filters:[],uses:x.uses||0,lastUsed:x.last_used,updatedAt:x.updated_at,master:true}));
+      q.set('mode',presetMode());
+      const r=await api('/api/filter-presets?'+q);
+      const fromMaster=(r.items||[]).map(x=>({id:x.id,name:x.name,db:x.db,table:x.table,mode:x.mode||'',filters:Array.isArray(x.filters)?x.filters:[],uses:x.uses||0,lastUsed:x.last_used,updatedAt:x.updated_at,master:true}));
+      /* マスタへ書けなかったぶん(この端末だけの控え)は**捨てない**。
+         以前はマスタの内容で丸ごと置き換えていたため、保存に失敗して
+         ローカルへ退避した直後の再読込でそれごと消え、「登録したのに
+         一覧に出ない」という見え方になっていた。 */
+      const localOnly=(S.filterPresets||[]).filter(pz=>!pz.master);
+      S.filterPresets=[...localOnly,...fromMaster];
       S.filterPresetSource='master';writeLocalPresets();return true;
     }catch(e){
       S.filterPresets=readLocalPresets();S.filterPresetSource='local';console.warn('フィルタマスタ読込失敗、ローカルを使用',e);return false;
@@ -188,6 +202,46 @@
      として束ねるのではなく、条件1つずつを個別のプリセットとして登録する。
      組み合わせ単位だと再利用時に不要な条件までまとめて適用されてしまい
      使い勝手が悪いため、単一条件ずつ再利用できるようにする。 */
+  /* 登録名は**変数をトークンのまま**入れる(§9.80)。condLabel は
+     「{使用設備}（=LS4）」のように今の値を併記するため、そのまま名前に
+     すると設備を変えるたびに別名で登録され、同じ条件が増えていく。 */
+  function presetName(f){
+    if(noValueOp(f.op))return `${f.column} ${opShort(f.op)}`.slice(0,60);
+    return `${f.column} ${opShort(f.op)} ${f.value}`.slice(0,60);
+  }
+  /* この条件が「すでに登録されている単独の条件」か。タグの★/☆に使う。 */
+  function registeredPreset(f){
+    const k=filterKey(f);
+    return (S.filterPresets||[]).find(pz=>(pz.filters||[]).length===1
+      &&filterKey(pz.filters[0])===k&&pz.db===S.db&&pz.table===S.table)||null;
+  }
+  /* 条件1件をマスタへ登録する。**適用とは切り離す**——「今だけ効かせたい」と
+     「次回も使いたい」は別の意図なので、片方だけ選べる必要がある(§9.80)。 */
+  async function saveOneToMaster(f,{silent=false}={}){
+    if(registeredPreset(f)){
+      if(!silent)showToast?.('すでに登録済みです',presetName(f),3000);
+      return 'dup';
+    }
+    const payload={name:presetName(f),db:S.db,table:S.table,mode:presetMode(),filters:[f]};
+    try{
+      await api('/api/filter-presets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(withUserId(payload))});
+      await loadMasterPresets({inline:false});
+      if(!silent)showToast?.('条件を登録しました',
+        presetMode()==='schedule'?`${presetName(f)}（スケジュールモード用）`:presetName(f),3600);
+      renderGenericFilterBar();renderFilterPresetList();
+      return 'saved';
+    }catch(e){
+      /* マスタへ書けないときはこの端末だけの控えとして残す。以前は残した
+         直後の再読込で消えていた(loadMasterPresetsが丸ごと置き換えていた)。 */
+      const preset={id:crypto.randomUUID(),name:payload.name,db:S.db,table:S.table,
+                    mode:presetMode(),filters:[f],updatedAt:new Date().toISOString(),master:false};
+      S.filterPresets=[preset,...(S.filterPresets||[])].slice(0,120);writeLocalPresets();
+      showToast?.('マスタへ登録できませんでした',`${e.message}（この端末にだけ控えました）`,7000);
+      renderGenericFilterBar();renderFilterPresetList();
+      return 'local';
+    }
+  }
+
   async function saveCurrentFiltersToMaster(){
     const savable=S.genericFilters.filter(f=>!isLockedFilter(f));
     if(!savable.length){showToast?.('保存する条件がありません','条件を追加してから保存してください（使用設備の必須条件は保存対象外です）。',4200);return}
@@ -197,12 +251,12 @@
     for(const f of savable){
       const dup=(S.filterPresets||[]).some(p=>(p.filters||[]).length===1&&filterKey(p.filters[0])===filterKey(f)&&p.db===S.db&&p.table===S.table);
       if(dup){skipped++;continue}
-      const payload={name:condLabel(f).slice(0,60),db:S.db,table:S.table,filters:[f]};
+      const payload={name:presetName(f),db:S.db,table:S.table,mode:presetMode(),filters:[f]};
       try{
         await api('/api/filter-presets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(withUserId(payload))});
         saved++;
       }catch(e){
-        const preset={id:crypto.randomUUID(),name:payload.name,db:S.db,table:S.table,filters:[f],updatedAt:new Date().toISOString(),master:false};
+        const preset={id:crypto.randomUUID(),name:payload.name,db:S.db,table:S.table,mode:presetMode(),filters:[f],updatedAt:new Date().toISOString(),master:false};
         S.filterPresets=[preset,...(S.filterPresets||[])].slice(0,120);writeLocalPresets();S.filterPresetSource='local';
         failed++;
       }
@@ -240,7 +294,8 @@
   const DEFAULT_STORE='MeasurementDefaultFilterPresetsV1';
   function readDefaultPresetMap(){try{return JSON.parse(localStorage.getItem(DEFAULT_STORE)||'{}')}catch(_){return {}}}
   function writeDefaultPresetMap(map){try{localStorage.setItem(DEFAULT_STORE,JSON.stringify(map))}catch(_){}}
-  function defaultMapKey(db,table){return `${db||''}::${table||''}`}
+  // 既定・鍵の記憶もモードごと(上と同じ理由)。
+  function defaultMapKey(db,table){return `${db||''}::${table||''}::${presetMode()}`}
   function defaultPresetIdsFor(db,table){return (readDefaultPresetMap()[defaultMapKey(db,table)]||[]).map(String)}
   function isDefaultPreset(preset,db,table){return defaultPresetIdsFor(db,table).includes(String(preset.id))}
   function setDefaultPreset(preset,db,table,on){
@@ -360,8 +415,7 @@
         <span class="filter-inline-loading" id="filterInlineLoading" hidden><span class="mini-spinner"></span><span id="filterInlineLoadingText">読込中</span></span>
         <div class="filter-search-row-actions">
           <button id="filterQuickToggle" type="button" aria-expanded="false" aria-controls="filterQuickRow" hidden>よく使う条件</button>
-          <button id="filterToggle" type="button">詳細</button>
-          <button id="saveFilterPreset" type="button">マスタへ保存</button>
+          <button id="filterToggle" type="button">条件を作る</button>
           <button id="openFilterPresets" type="button">登録一覧</button>
           <button id="clearGenericFilters" type="button">全解除</button>
         </div>
@@ -373,11 +427,15 @@
           <label>比較<select id="filterOp"></select></label>
           <label>検査値<input id="filterValue" list="filterSuggestList" placeholder="値を入力/候補から選択"><datalist id="filterSuggestList"></datalist></label>
           <div class="filter-vars" id="filterVarChips" role="group" aria-label="変数を挿入"></div>
-          <button id="addGenericFilter" type="button">追加</button>
+          <div class="filter-builder-actions">
+           <button id="addGenericFilter" type="button" title="この条件を今の一覧へ追加します（保存はしません）">適用</button>
+           <button id="registerGenericFilter" type="button" title="この条件を登録フィルタとして保存します（一覧へは適用しません）">登録</button>
+          </div>
         </div>
+        <p class="filter-builder-note" id="filterBuilderNote">「適用」は今だけ効かせる／「登録」は次回も使えるように保存する。両方押せます。</p>
       </div>`;
     // 詳細ビルダー（段階的開示）
-    $('#filterToggle').onclick=()=>{const body=$('#filterBody');body.hidden=!body.hidden;$('#filterToggle').textContent=body.hidden?'詳細':'閉じる'};
+    $('#filterToggle').onclick=()=>{const body=$('#filterBody');body.hidden=!body.hidden;$('#filterToggle').textContent=body.hidden?'条件を作る':'閉じる'};
     // よく使う条件は既定で折りたたむ(段階的開示)。以前は該当条件があれば
     // 常時1行を占有しており、狭い分割表示では一覧の縦幅を圧迫していた。
     $('#filterQuickToggle').onclick=()=>{quickOpen=!quickOpen;writeQuickOpen();renderQuickFilters()};
@@ -399,8 +457,31 @@
         input.value=b.dataset.var;input.focus();
       });
     }
-    $('#addGenericFilter').onclick=()=>{const f={column:$('#filterColumn').value,op:$('#filterOp').value,value:$('#filterValue').value.trim()};if(!f.column)return;if(!noValueOp(f.op)&&!f.value){$('#filterValue').focus();return}addGenericFilter(f);$('#filterValue').value=''};
-    $('#saveFilterPreset').onclick=saveCurrentFiltersToMaster;
+    /* 「適用」と「登録」で入力を消さない。片方を押したあとにもう片方も
+       押せるようにするため(用途が違うだけで、対象は同じ1条件)。
+       今どちらを済ませたかは下の1行で示す。 */
+    const builderFilter=()=>{
+      const f={column:$('#filterColumn').value,op:$('#filterOp').value,value:$('#filterValue').value.trim()};
+      if(!f.column)return null;
+      if(!noValueOp(f.op)&&!f.value){$('#filterValue').focus();return null}
+      return f;
+    };
+    const note=(text)=>{const el=$('#filterBuilderNote');if(el)el.textContent=text};
+    const NOTE_DEFAULT='「適用」は今だけ効かせる／「登録」は次回も使えるように保存する。両方押せます。';
+    $('#addGenericFilter').onclick=()=>{
+      const f=builderFilter();if(!f)return;
+      addGenericFilter(f);note(`適用しました: ${condLabel(f)}　続けて「登録」も押せます`);
+    };
+    $('#registerGenericFilter').onclick=async()=>{
+      const f=builderFilter();if(!f)return;
+      const r=await saveOneToMaster(f);
+      note(r==='saved'?`登録しました: ${presetName(f)}　続けて「適用」も押せます`
+          :r==='dup'?`すでに登録済みです: ${presetName(f)}`
+          :`この端末にだけ控えました: ${presetName(f)}`);
+    };
+    ['#filterColumn','#filterOp','#filterValue'].forEach(sel=>{
+      const el=$(sel);if(el)el.addEventListener('input',()=>note(NOTE_DEFAULT));
+    });
     $('#openFilterPresets').onclick=openFilterPresetModal;
     $('#clearGenericFilters').onclick=async()=>{
       const lockedList=S.genericFilters.filter(isLockedFilter);
@@ -439,7 +520,17 @@
       const locked=isLockedFilter(f);
       const tag=document.createElement('span');tag.className='filter-tag'+(locked?' filter-tag-locked':'');
       tag.title=locked?`必須条件: ${lockedFilterDescription(f)}（一覧を開くたびに既定で適用されます）`:`${f.column} ${opLabel(f.op)}${noValueOp(f.op)?'':' '+f.value}`;
-      tag.innerHTML=`${locked?'<span class="filter-tag-lock-icon" aria-hidden="true">🔒</span>':''}<span>${esc(f.column)}</span><b>${esc(opShort(f.op))}</b>${noValueOp(f.op)?'':`<em>${esc(f.value)}</em>`}<i data-filter-index="${i}" tabindex="0" role="button" aria-label="この条件を解除" title="解除">×</i>`;
+      /* 条件ごとに「登録済みかどうか」を出し、その場で登録できるようにする
+         (§9.80)。候補やよく使う条件から足した条件も、作り直さずに次回へ
+         残せる。★=登録済み / ☆=未登録。以前はバーの「マスタへ保存」で
+         アクティブな条件を全部まとめて個別登録する作りで、何が登録された
+         のか・何が既に登録済みなのかが分からなかった。 */
+      const known=!!registeredPreset(f);
+      const star=locked?'':`<u data-filter-save="${i}" tabindex="0" role="button" `
+        +`class="${known?'is-saved':''}" `
+        +`aria-label="${known?'登録済みの条件です':'この条件を登録する'}" `
+        +`title="${known?'登録済み（登録一覧にあります）':'クリックで登録フィルタとして保存します'}">${known?'★':'☆'}</u>`;
+      tag.innerHTML=`${locked?'<span class="filter-tag-lock-icon" aria-hidden="true">🔒</span>':''}<span>${esc(f.column)}</span><b>${esc(opShort(f.op))}</b>${noValueOp(f.op)?'':`<em>${esc(f.value)}</em>`}${star}<i data-filter-index="${i}" tabindex="0" role="button" aria-label="この条件を解除" title="解除">×</i>`;
       const removeThis=async e=>{
         e.stopPropagation();
         if(locked&&!(await confirmRemoveLockedFilter(f)))return;
@@ -448,6 +539,12 @@
       const removeIcon=tag.querySelector('i');
       removeIcon.onclick=removeThis;
       removeIcon.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();removeThis(e)}};
+      const saveIcon=tag.querySelector('u[data-filter-save]');
+      if(saveIcon){
+        const doSave=async e=>{e.stopPropagation();if(registeredPreset(f))return;await saveOneToMaster(f)};
+        saveIcon.onclick=doSave;
+        saveIcon.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();doSave(e)}};
+      }
       box.insertBefore(tag,input);
     });
     const count=$('#filterCount');if(count)count.textContent=`${S.genericFilters.length}件`;

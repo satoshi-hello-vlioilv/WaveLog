@@ -491,6 +491,12 @@ def device_master_delete():
   return jsonify(ok=True,id=did,updated_by=uid)
  except Exception as e:return jsonify(error=f'機器マスタ削除失敗: {e}'),500
 
+def _filter_preset_mode(raw):
+ """登録フィルタの置き場(§9.80)。スケジュールモードだけを別に持ち、
+ それ以外(編集・閲覧)は共通の''にまとめる。**3つに分けない**——
+ 編集と閲覧で同じ一覧を同じ列構成で見るので、条件を分ける理由が無い。"""
+ return 'schedule' if str(raw or '').strip()=='schedule' else ''
+
 @bp.get('/api/filter-presets')
 def filter_preset_list():
  try:
@@ -503,13 +509,17 @@ def filter_preset_list():
     try:filters=json.loads(r[4] or '[]')
     except Exception:filters=[]
     if not isinstance(filters,list):filters=[]
-    items.append({'id':r[0],'name':str(r[1] or '').strip(),'db':str(r[2] or '').strip(),'table':str(r[3] or '').strip(),'filters':filters,'uses':int(r[5] or 0),'last_used':r[6].isoformat() if r[6] else None,'updated_at':r[8].isoformat() if r[8] else None,'updated_by':(str(r[9]).strip() if len(r)>9 and r[9] else '')})
+    items.append({'id':r[0],'name':str(r[1] or '').strip(),'db':str(r[2] or '').strip(),'table':str(r[3] or '').strip(),'filters':filters,'uses':int(r[5] or 0),'last_used':r[6].isoformat() if r[6] else None,'updated_at':r[8].isoformat() if r[8] else None,'updated_by':(str(r[9]).strip() if len(r)>9 and r[9] else ''),'mode':(str(r[10]).strip() if len(r)>10 and r[10] else '')})
   # ファイル(DB)＆テーブルごとに個別管理するため、対象DB/対象テーブルが
   # 空欄のプリセット(=以前の実装が汎用として扱っていたもの)であっても、
   # 厳密に一致しない限り対象外とする。
   if db_key:items=[x for x in items if x['db']==db_key]
   if table:items=[x for x in items if x['table']==table]
-  return jsonify(ok=True,items=items,table=FILTER_PRESET_TABLE,created=not before,master_path=str(path))
+  # 対象モード(§9.80)。同じ仕掛一覧でもスケジュールモードは列構成が変わるので、
+  # 条件の置き場も分ける。指定が無ければ共通('')のものだけを返す。
+  mode=_filter_preset_mode(request.args.get('mode'))
+  items=[x for x in items if x.get('mode','')==mode]
+  return jsonify(ok=True,items=items,mode=mode,table=FILTER_PRESET_TABLE,created=not before,master_path=str(path))
  except Exception as e:return jsonify(error=f'フィルタプリセット読込失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
 
 @bp.post('/api/filter-presets')
@@ -520,17 +530,18 @@ def filter_preset_register():
   filters=x.get('filters') or []
   if not isinstance(filters,list) or not filters:return jsonify(error='保存する条件がありません。'),400
   db_key=str(x.get('db') or '').strip();table=str(x.get('table') or '').strip();payload=json.dumps(filters,ensure_ascii=False)
+  mode=_filter_preset_mode(x.get('mode'))
   path=DBS['MASTER']['path']
   with connect(path,False) as c:
    ensure_filter_preset_table(c);cur=c.cursor()
-   cur.execute('SELECT [プリセットID],[名称],[対象DB],[対象テーブル] FROM [フィルタプリセットマスタ]');rows=cur.fetchall()
+   cur.execute('SELECT [プリセットID],[名称],[対象DB],[対象テーブル],[対象モード] FROM [フィルタプリセットマスタ]');rows=cur.fetchall()
    target=normalize_equipment_name(name)
-   existing=next((r for r in rows if normalize_equipment_name(r[1])==target and str(r[2] or '')==db_key and str(r[3] or '')==table),None)
+   existing=next((r for r in rows if normalize_equipment_name(r[1])==target and str(r[2] or '')==db_key and str(r[3] or '')==table and str(r[4] or '')==mode),None)
    if existing:
     cur.execute('UPDATE [フィルタプリセットマスタ] SET [条件JSON]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [プリセットID]=?',[payload,uid,existing[0]]);registered=False;preset_id=existing[0]
    else:
     cur.execute('SELECT Max([表示順]) FROM [フィルタプリセットマスタ]');maximum=cur.fetchone()[0];order=int(maximum or 0)+10
-    cur.execute('INSERT INTO [フィルタプリセットマスタ] ([名称],[対象DB],[対象テーブル],[条件JSON],[使用回数],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,0,?,-1,?,?,Now(),Now())',[name,db_key,table,payload,order,uid,uid]);registered=True
+    cur.execute('INSERT INTO [フィルタプリセットマスタ] ([名称],[対象DB],[対象テーブル],[対象モード],[条件JSON],[使用回数],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,0,?,-1,?,?,Now(),Now())',[name,db_key,table,mode,payload,order,uid,uid]);registered=True
     preset_id=cur.lastrowid
    c.commit()
   return jsonify(ok=True,name=name,id=preset_id,registered=registered,updated_by=uid,message=('フィルタマスタへ新規登録しました。' if registered else '登録済みフィルタを更新しました。'))
