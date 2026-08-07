@@ -71,15 +71,22 @@ rec('定義された全段階(6つ)が起動処理から実際に報告される
 rec('時間ベースの3段階より細かい段階を持つ',
     len(boot_status.STEPS) >= 6, '%d段階' % len(boot_status.STEPS))
 
-# 書き出しの中身が待機画面から読める形か(1段階ずつ実際に書いて確かめる)
+# 書き出しの中身が待機画面から読める形か(1段階ずつ実際に書いて確かめる)。
+# 分母は**ブラウザ側の4段階を含めた合計**(§9.76)。待機画面はサーバーの
+# 6段階ぶんだけ進めて、残りをアプリ内の起動オーバーレイへ引き渡す。
 ok_payload = True
 for key, label in boot_status.STEPS:
     boot_status.report(key, 'テスト')
     s = read_status()
-    if not s or s['step'] != key or s['label'] != label or s['total'] != len(boot_status.STEPS):
+    if not s or s['step'] != key or s['label'] != label or s['total'] != boot_status.TOTAL_STEPS:
         ok_payload = False
         break
 rec('各段階が「何番目/全何段階/作業名」を伴って書き出される', ok_payload)
+# バージョンは進捗ファイルの最初の1件から分かる(サーバーの応答を待たない)。
+boot_status.report('env', 'テスト')
+s = read_status()
+rec('進捗ファイルにバージョン番号が入っている',
+    bool(s) and s.get('version') == boot_status.APP_VERSION, (s or {}).get('version', '-'))
 boot_status.clear()
 
 rec('ステップ番号が後戻りせず単調に進む',
@@ -97,9 +104,45 @@ rec('起動完了後は進捗ファイルを残さない(次回起動で古い�
 html = (ROOT / 'loading.html').read_text(encoding='utf-8')
 rec('loading.htmlが進捗ファイルを読み込むコールバックを持つ',
     'window.wavelogBootStatus' in html and 'boot_status.js' in html)
-rec('loading.htmlのステップ一覧がboot_status.pyの段階数と一致する',
-    html.count('<li data-step=') == 7, '%d個' % html.count('<li data-step='))
 rec('時間だけで段階を決める旧ロジック(stageFor)は残っていない', 'stageFor' not in html)
+
+# --- 段階の一覧が3箇所(Python / 待機画面 / アプリ内オーバーレイ)で一致する ---
+# ここがずれると、進捗バーの分母と段階リストが食い違って「90%のまま
+# 終わる」「一覧に無い段階が現在になる」といった表示になる(§9.76)。
+ALL_LABELS = [label for _, label in boot_status.STEPS] + \
+             [label for _, label in boot_status.BROWSER_STEPS]
+
+def li_labels(src, pattern):
+    return re.findall(pattern, src)
+
+wait_labels = li_labels(html, r'<li[^>]*data-step="\d+"><b></b><span>([^<]+)</span></li>')
+rec('待機画面の段階リストがboot_status.pyと一致する',
+    wait_labels == ALL_LABELS, '待機画面=%s' % '/'.join(wait_labels))
+rec('待機画面の分母が合計段階数と一致する',
+    ('TOTAL_STEPS=%d' % boot_status.TOTAL_STEPS) in html.replace(' ', '') and
+    ('SERVER_STEPS=%d' % len(boot_status.STEPS)) in html.replace(' ', ''))
+
+index = (ROOT / 'templates' / 'index.html').read_text(encoding='utf-8')
+over_labels = li_labels(index, r'<li[^>]*><b></b><span>([^<]+)</span></li>')
+rec('アプリ内の起動オーバーレイの段階リストがboot_status.pyと一致する',
+    over_labels == ALL_LABELS, 'オーバーレイ=%s' % '/'.join(over_labels))
+# ブラウザ側の4段階だけがJSから進む(data-boot-step)。
+marked = re.findall(r'data-boot-step="([\w-]+)"', index)
+rec('ブラウザ側の段階だけにJSの進行印が付いている',
+    marked == [k for k, _ in boot_status.BROWSER_STEPS], '/'.join(marked))
+rec('起動が終わるまで本体を伏せる印がhtmlに付いている',
+    'class="app-booting"' in index)
+# base.jsが読めなかった場合でも必ず解除される保険。これが無いと、
+# 何かの拍子に画面が出ないまま固まる。
+rec('base.jsが読めなかった場合の解除(保険)がindex.htmlにある',
+    "classList.remove('app-booting')" in index and 'setTimeout' in index)
+
+base_js = (ROOT / 'static' / 'js' / 'base.js').read_text(encoding='utf-8')
+rec('base.jsの段階数がboot_status.pyと一致する',
+    ('BOOT_SERVER_STEPS=%d' % len(boot_status.STEPS)) in base_js.replace(' ', '') and
+    ('BOOT_TOTAL_STEPS=%d' % boot_status.TOTAL_STEPS) in base_js.replace(' ', ''))
+core = (ROOT / 'backend' / 'routes' / 'core.py').read_text(encoding='utf-8')
+rec('起動オーバーレイのCSSが配信一覧に入っている', "'95-boot.css'" in core)
 
 log.close()
 ng = [n for n, ok in R if not ok]

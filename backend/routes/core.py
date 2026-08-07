@@ -37,6 +37,7 @@ CSS_FILES=[
  '80-defect.css',      # 異常位置判定(画面と専用帳票)
  '85-headerbar.css',   # ヘッダーの操作列
  '90-state.css',       # state / mode / print / utility
+ '95-boot.css',        # 起動オーバーレイ(組み上がるまで本体を見せない)
 ]
 _CSS_CACHE={'token':None,'body':''}
 
@@ -72,7 +73,9 @@ GIT_VERSION=_git_version()
 def home():
  asset_files=list((BASE/'static'/'js').glob('*.js'))+[_css_dir()/n for n in CSS_FILES]
  token=str(max(f.stat().st_mtime_ns for f in asset_files))
- return render_template('index.html', build='current', asset_token=token)
+ # バージョンは起動オーバーレイが最初の描画で出すため、APIを待たずに埋め込む
+ # (画面本体のバッジは従来どおり /api/build を読んで差し替える)。
+ return render_template('index.html', build='current', asset_token=token, app_version=APP_VERSION)
 @bp.get('/api/build')
 def build(): return jsonify(build='current', version=APP_VERSION, feature='measurement-workflow-current', port=PORT, app_id=APP_ID, **GIT_VERSION)
 

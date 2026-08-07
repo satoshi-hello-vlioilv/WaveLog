@@ -19,6 +19,20 @@
   だけで、ハートビート・停止スクリプトの生存確認まで一切応答できなくなり、
   自動終了もstop.batでの停止も効かなくなる不具合が実際に発生した）。
   設計の背景と今後の再編計画は `docs/REBUILD_PLAN.md` を参照。
+- **起動オーバーレイ（`#appBoot`）**: 画面が組み上がるまで本体を見せない
+  仕掛け。`<html class="app-booting">`の間`static/css/95-boot.css`が
+  `body>*:not(#appBoot){visibility:hidden}`で伏せ、`base.js`の`WL.boot`が
+  ブラウザ側4段階（`assets`/`permission`/`list`/`layout`）の完了で解除する。
+  **`display:none`にしないこと**（寸法を測って組み立てている箇所が壊れる）。
+  **解除は必ず起きること**が最優先で、段階が終わらなくても8秒で外す
+  （画面が出ないまま固まるのは、崩れて見えるより悪い。`base.js`自体が
+  読めなかった場合の保険が`index.html`に12秒で入っている）。**新しく
+  「起動時に必ず終わらせたい処理」を足すときだけ`WL.boot.step()`を増やす**
+  ——増やすと`boot_status.py`の`BROWSER_STEPS`・`loading.html`・
+  `index.html`の3箇所の一覧も合わせる必要がある（`tests/test_boot.py`が
+  一致を、`tests/test_bootui.js`が「解除後に組み替えが起きないこと」を固定）。
+  起動待機画面(`loading.html`)は`file://`で開くため外部ファイルを参照できず、
+  意匠を共有できない。**片方だけ直すと引き継ぎで見た目が飛ぶ**ので両方直す。
 - **バージョン更新**: 意味のある変更をコミットするたびに
   `backend/changelog_data.py` の `APP_VERSION` を上げ、`CHANGELOG` 先頭へ
   エントリを追記する（新しい順）。

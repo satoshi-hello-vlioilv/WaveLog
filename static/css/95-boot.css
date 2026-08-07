@@ -1,0 +1,164 @@
+/* =============================================================
+   95-boot.css  --  起動オーバーレイ(#appBoot)
+   -------------------------------------------------------------
+   起動待機画面(loading.html)から**表示を引き継ぐ**ための画面。
+   意匠・段階リスト・進捗の分母(10段階)を loading.html と揃えてあり、
+   利用者から見ると1枚の起動画面がそのまま続いているように見える。
+
+   ■ なぜ要るか
+   Webサーバーが応答した時点ではまだ画面は出来ていない。実測すると、
+   最初の描画(+85ms)から落ち着く(+451ms)までの間に
+     ・使用設備の案内バーが出てすぐ消える(高さ68pxぶん一覧が飛ぶ)
+     ・ナビ項目が5→7に増える
+     ・バージョンバッジが「最新版」→「VER1.88.0」に変わる
+     ・モードバッジが現れてヘッダーが組み替わる
+     ・一覧の中身が入る
+   の5回、目に見える組み替えが起きていた。「一瞬崩れた画面が出てから
+   きれいになる」のはこれ。**組み上がるまで本体を見せない**ことで解決する。
+
+   ■ 隠し方は visibility
+   display:none にすると幅・高さが測れなくなり、初期化中に寸法を見て
+   組み立てている箇所(一覧のグリッド等)が壊れる。visibility:hidden なら
+   レイアウトはそのまま進むので、裏側で完成させてから見せられる。
+   ============================================================= */
+
+@layer component {
+
+#appBoot{
+ position:fixed; inset:0; z-index:9000;
+ display:flex; align-items:center; justify-content:center;
+ color:var(--pale);
+ /* loading.html と同じ配色。深い紺に斜めの光を2つ重ねる。
+    向こうはリテラル(#0d2029等)、こちらは同じ色をトークンから作る
+    (アプリ側のCSSには新しい16進を足さない約束のため)。 */
+ background:
+  radial-gradient(120% 90% at 12% -10%, color-mix(in srgb, var(--teal) 20%, transparent), transparent 58%),
+  radial-gradient(90% 80% at 108% 108%, color-mix(in srgb, var(--warn) 14%, transparent), transparent 55%),
+  linear-gradient(158deg,
+   color-mix(in srgb, var(--nav) 60%, black) 0%,
+   color-mix(in srgb, var(--nav) 88%, black) 46%,
+   color-mix(in srgb, var(--nav) 48%, black) 100%);
+ opacity:1; transition:opacity .34s ease;
+}
+.boot-card{
+ width:min(93vw,520px); padding:var(--space-6) calc(var(--space-6) + var(--space-1)) var(--space-5);
+ border-radius:calc(var(--radius-lg) + var(--space-1));
+ background:color-mix(in srgb, white 6%, transparent);
+ border:1px solid color-mix(in srgb, white 12%, transparent);
+ box-shadow:0 30px 70px rgba(0,0,0,.42);
+ backdrop-filter:blur(20px) saturate(140%);
+}
+
+/* ---- 見出し(マーク・アプリ名・バージョン) ---- */
+.boot-head{display:flex; align-items:center; gap:var(--gap-section); margin-bottom:var(--space-5)}
+.boot-logo{width:42px; height:42px; flex:0 0 auto; border-radius:var(--radius-md); display:block}
+.boot-title{min-width:0; flex:1 1 auto}
+.boot-title h1{margin:0; font-size:var(--fs-title); font-weight:650; letter-spacing:.01em}
+.boot-title p{margin:2px 0 0; font-size:var(--fs-micro); letter-spacing:.22em;
+              color:color-mix(in srgb, var(--pale) 52%, transparent)}
+.boot-ver{
+ flex:0 0 auto; align-self:flex-start; white-space:nowrap;
+ padding:var(--pad-chip); border-radius:var(--radius-pill);
+ font-size:var(--fs-micro); font-weight:600; letter-spacing:.04em;
+ font-variant-numeric:tabular-nums;
+ color:color-mix(in srgb, var(--teal) 55%, white);
+ background:color-mix(in srgb, var(--teal) 16%, transparent);
+ border:1px solid color-mix(in srgb, var(--teal) 34%, transparent);
+}
+
+/* ---- 現在の段階 + 進捗バー ---- */
+.boot-stage{display:flex; align-items:baseline; gap:var(--gap-inline); margin:0 0 var(--space-2)}
+.boot-stage b{font-size:var(--fs); font-weight:600}
+.boot-pct{margin-left:auto; font-size:var(--fs-base-sm); font-weight:650;
+          font-variant-numeric:tabular-nums;
+          color:color-mix(in srgb, var(--teal) 55%, white)}
+.boot-bar{height:7px; border-radius:var(--radius-pill); overflow:hidden; position:relative;
+          background:color-mix(in srgb, white 10%, transparent)}
+.boot-bar i{
+ /* 満ちている割合はJSが --boot-pct で渡す(見た目の指定はここに残す)。
+    既定値は待機画面から引き継いだ 6/10。 */
+ display:block; height:100%; width:var(--boot-pct,60%); border-radius:var(--radius-pill);
+ background:linear-gradient(90deg,
+  var(--teal),
+  color-mix(in srgb, var(--teal) 55%, white) 62%,
+  var(--warn));
+ transition:width .45s cubic-bezier(.25,.8,.3,1);
+}
+/* 満ちている部分を流れる光。進んでいる最中であることの合図。 */
+.boot-bar i::after{
+ content:""; position:absolute; inset:0;
+ background:linear-gradient(100deg, transparent 20%, color-mix(in srgb, white 42%, transparent) 50%, transparent 80%);
+ animation:bootSheen 1.7s linear infinite;
+}
+@keyframes bootSheen{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+.boot-meta{display:flex; gap:var(--gap-inline); margin:var(--space-2) 0 0;
+           font-size:var(--fs-micro); font-variant-numeric:tabular-nums;
+           color:color-mix(in srgb, var(--pale) 52%, transparent)}
+.boot-detail{margin-left:auto; text-align:right; min-width:0;
+             overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+
+/* ---- 段階の一覧(2列。loading.html と同じ10項目) ---- */
+.boot-steps{
+ list-style:none; margin:var(--space-5) 0 0; padding:var(--space-4) 0 0;
+ border-top:1px solid color-mix(in srgb, white 9%, transparent);
+ /* 縦に読み下せる並び。左列が1〜5、右列が6〜10。行方向に流すと
+    「1,2 / 3,4」と折り返す形になり、順番が追いにくい。 */
+ display:grid; grid-auto-flow:column; grid-template-rows:repeat(5,auto);
+ gap:var(--space-1) var(--space-4);
+}
+.boot-steps li{
+ display:flex; align-items:center; gap:var(--gap-inline); min-width:0;
+ font-size:var(--fs-sm); transition:color .25s;
+ color:color-mix(in srgb, var(--pale) 42%, transparent);
+}
+.boot-steps li span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.boot-steps li b{
+ flex:0 0 auto; width:14px; height:14px; border-radius:var(--radius-round);
+ border:1.5px solid currentColor; position:relative; transition:all .25s;
+}
+
+}
+
+
+@layer state {
+
+/* 組み上がるまで本体を見せない。#appBoot だけを残して他を伏せる
+   (display:none にしないのは、寸法を測って組み立てている箇所を
+   壊さないため。ファイル冒頭の説明を参照)。 */
+html.app-booting body>*:not(#appBoot){visibility:hidden}
+
+/* 実行中の段階 */
+.boot-steps li.is-current{color:color-mix(in srgb, var(--teal) 55%, white); font-weight:600}
+.boot-steps li.is-current b{
+ border-color:color-mix(in srgb, var(--teal) 55%, white);
+ box-shadow:0 0 0 4px color-mix(in srgb, var(--teal) 16%, transparent);
+}
+.boot-steps li.is-current b::after{
+ content:""; position:absolute; inset:2.5px; border-radius:var(--radius-round);
+ background:color-mix(in srgb, var(--teal) 55%, white);
+ animation:bootPulse 1.1s ease-in-out infinite;
+}
+@keyframes bootPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.7)}}
+
+/* 済んだ段階(チェックマーク) */
+.boot-steps li.is-done{color:color-mix(in srgb, var(--pale) 72%, transparent)}
+.boot-steps li.is-done b{background:var(--teal); border-color:var(--teal)}
+.boot-steps li.is-done b::after{
+ content:""; position:absolute; left:3.5px; top:.5px;
+ width:3px; height:7px;
+ border:solid color-mix(in srgb, var(--nav) 88%, black); border-width:0 1.8px 1.8px 0;
+ transform:rotate(45deg);
+}
+
+/* 解除。本体が見えるのと同時に消えていくので、切り替わりが継ぎ目に見えない。 */
+#appBoot.is-hiding{opacity:0; pointer-events:none}
+
+}
+
+
+@layer print {
+
+/* 起動画面は印刷対象ではない(帳票を開いたまま再読込した場合の保険)。 */
+@media print{ #appBoot{display:none} }
+
+}

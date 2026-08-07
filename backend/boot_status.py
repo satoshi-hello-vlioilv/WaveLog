@@ -18,6 +18,7 @@ import json
 import time
 
 from .paths import APP_ROOT
+from .changelog_data import APP_VERSION
 
 STATUS_FILENAME='boot_status.js'
 # 待機画面の一覧と対応させる。増減させるときは loading.html の steps も合わせる。
@@ -29,6 +30,18 @@ STEPS=(
  ('app','アプリを読み込み'),
  ('server','Webサーバーを起動'),
 )
+# 起動はここで終わりではない。Webサーバーが応答してからブラウザが画面を
+# 組み立て終えるまでにもう少し時間がかかり、以前はその間、崩れた途中の
+# 画面が見えていた。ブラウザ側も同じ「段階」として扱い、待機画面
+# (loading.html)とアプリ内の起動オーバーレイ(index.html)が**1本の進捗**を
+# 共有する。合計数をここで決め、両方がこの数を分母にする。
+BROWSER_STEPS=(
+ ('assets','画面部品を読み込み'),
+ ('permission','権限を確認'),
+ ('list','一覧を読み込み'),
+ ('layout','表示を整える'),
+)
+TOTAL_STEPS=len(STEPS)+len(BROWSER_STEPS)
 _STEP_INDEX={key:i for i,(key,_label) in enumerate(STEPS)}
 _started=time.time()
 
@@ -41,8 +54,9 @@ def report(step,detail='',failed=False):
  """現在の段階を書き出す。step は STEPS のキー。"""
  index=_STEP_INDEX.get(step)
  if index is None:return
- payload={'step':step,'index':index,'total':len(STEPS),
+ payload={'step':step,'index':index,'total':TOTAL_STEPS,
           'label':STEPS[index][1],'detail':str(detail or ''),
+          'version':APP_VERSION,
           'failed':bool(failed),'at':time.time(),'elapsed':round(time.time()-_started,1)}
  try:
   _path().write_text('window.wavelogBootStatus&&window.wavelogBootStatus('
