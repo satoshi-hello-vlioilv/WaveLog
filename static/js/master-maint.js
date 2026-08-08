@@ -33,10 +33,13 @@
    cols:[{k:'name',label:'コイル止め',grow:2},{k:'note',label:'備考',grow:3}]},
   {group:'equip',key:'equipment',label:'設備',icon:'設',endpoint:'/api/equipment-master',hasDelete:true,
    fields:[{k:'name',label:'設備名',required:true,key:true},
+           {k:'kind',label:'区分',type:'select',options:['','コイル','板'],
+            hint:'この設備が扱う材料の形です。空欄のままでも登録・編集できます（未設定）。'},
            {k:'maxStrips',label:'最大条数',type:'number',min:1,max:40,
             hint:'この設備で幅方向に割れる条数の上限。空欄なら40（測定データの構造上の上限）。'}],
-   cols:[{k:'name',label:'設備名',grow:2},{k:'maxStrips',label:'最大条数',grow:1,format:'maxStrips'}],
-   hint:'「最大条数」は幅分割（条割）で割れる条数の上限です。設備によって割れる本数が違うため設備ごとに登録します。空欄のままなら40条（測定データの構造上の上限）として扱います。子ロットの数（最大9ロット）とは別の値です。'},
+   cols:[{k:'name',label:'設備名',grow:2},{k:'kind',label:'区分',grow:1,format:'equipmentKind'},
+         {k:'maxStrips',label:'最大条数',grow:1,format:'maxStrips'}],
+   hint:'「区分」はその設備が扱う材料の形（コイル／板）です。既に登録してある設備は未設定のままでも今までどおり動きます。「最大条数」は幅分割（条割）で割れる条数の上限です。設備によって割れる本数が違うため設備ごとに登録します。空欄のままなら40条（測定データの構造上の上限）として扱います。子ロットの数（最大9ロット）とは別の値です。'},
   {group:'system',key:'accessPermission',label:'アクセス権限',icon:'権',endpoint:'/api/access-permission-master',hasDelete:true,
    fields:[{k:'loginId',label:'ログインID',key:true},{k:'pcName',label:'PC名',key:true},
            {k:'canEdit',label:'編集可否',type:'select',options:['編集可','閲覧のみ']},
@@ -279,6 +282,9 @@
  function cellText(col,value){
   const v=String(value??'');
   if(col.format==='maxStrips')return v.trim()===''?'40（既定）':v;
+  // 区分(§9.85)。空欄は「まだ決めていない」であって「無い」ではないので、
+  // 「—」ではなくそう書く(既存の設備は空のまま動く)。
+  if(col.format==='equipmentKind')return v.trim()===''?'未設定':v;
   /* 設定した場所に実物があるか。設定と実態のずれは、値だけ眺めていても
      気づけない(「登録したのに動かない」の大半がこれ)。 */
   if(col.format==='rneState'){
