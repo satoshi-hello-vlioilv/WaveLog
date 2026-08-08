@@ -66,6 +66,52 @@ let b=null;
  rec('横スクロールバーが出ない',await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1));
  await page.screenshot({path:'sched_balanced.png'});
 
+ /* ---- 縦の間隔(§9.84) ----
+    「リストの間隔が広いものと狭いものがあってバランスが悪い」という指摘。
+    実測した原因は2つ:
+     ・俯瞰ボードの印の欄が160px固定+折り返しで、チップが2つ付く行だけ
+       背が高くなっていた(61px 対 44px)
+     ・タイムラインの列見出しをまとめの箱ごとに入れており、日付＋勤務で
+       まとめると18回繰り返され、行と行の間に見出し2枚+空きが挟まっていた
+    どちらも「同じ意味の行は同じ高さ・同じ間隔」に揃える。 */
+ await setMode('schedule');
+ await page.reload({waitUntil:'domcontentloaded'});
+ await page.waitForSelector('#openSchedule',{timeout:20000});
+ await page.waitForTimeout(1500);
+ await page.click('#openSchedule');
+ await page.waitForSelector('.sc-board-row',{timeout:20000});
+ await page.waitForTimeout(1200);
+ const board=await page.$$eval('.sc-board-row',ns=>ns.map(n=>Math.round(n.getBoundingClientRect().height)));
+ rec('俯瞰ボードの行の高さが揃っている',new Set(board).size===1,`高さ=${[...new Set(board)].join('/')} (${board.length}行)`);
+
+ await page.evaluate(()=>{const r=[...document.querySelectorAll('.sc-board-row')]
+   .find(x=>x.dataset.equipment==='テスト設備A');if(r)r.click()});
+ await page.waitForSelector('.sc-row-line',{timeout:20000});
+ await page.waitForTimeout(1500);
+ // まとめ方を変えても、列見出しは1枚・行の間隔は一定であること
+ for(const mode of ['none','date','dateshift']){
+  await page.selectOption('#scGroupSelect',mode).catch(()=>{});
+  await page.waitForTimeout(1200);
+  const m=await page.evaluate(()=>{
+   const rows=[...document.querySelectorAll('.sc-row-line')];
+   const heads=document.querySelectorAll('.sc-row-head').length;
+   // 同じまとまりの中で連続する行どうしのピッチ
+   const pitch=[];
+   for(let i=1;i<rows.length;i++){
+    if(rows[i].parentElement!==rows[i-1].parentElement)continue;
+    if(rows[i].previousElementSibling!==rows[i-1])continue;  // 間に何か挟まる行は別扱い
+    pitch.push(Math.round((rows[i].getBoundingClientRect().top-rows[i-1].getBoundingClientRect().top)*10)/10);
+   }
+   return {heads,rows:rows.length,pitch:[...new Set(pitch)],
+           rowH:[...new Set(rows.map(r=>Math.round(r.getBoundingClientRect().height)))]};
+  });
+  rec(`まとめ「${mode}」で列見出しは1枚だけ`,m.heads===1,`${m.heads}枚 / ${m.rows}行`);
+  rec(`まとめ「${mode}」で行の高さが揃っている`,m.rowH.length===1,m.rowH.join('/'));
+  rec(`まとめ「${mode}」で連続する行の間隔が一定`,m.pitch.length<=1,m.pitch.join('/'));
+ }
+ await page.selectOption('#scGroupSelect','none').catch(()=>{});
+ await setMode('edit');
+
  console.log('\n=== SUMMARY ===');
  const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
  f.forEach(x=>console.log(' -',x.n,x.d||''));

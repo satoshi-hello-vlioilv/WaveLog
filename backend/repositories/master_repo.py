@@ -14,6 +14,17 @@ from ..db_access import DBS, connect, ensure_audit_columns, tables, cols, qi
 
 EQUIPMENT_MASTER_TABLE='設備マスタ'
 MAX_STRIPS_COLUMN='最大条数'
+# 設備が扱う材料の形(§9.85)。コイル(巻いたまま)か板(切板)かで、現場の
+# 段取りも測り方も変わるため、設備の属性として持つ。
+# **空欄('')は「未設定」**で、既存の登録をそのまま動かすための状態
+# (他マスタと同じ互換ポリシー。値を入れ直させない)。
+EQUIPMENT_KIND_COLUMN='区分'
+EQUIPMENT_KINDS=('コイル','板')
+
+def normalize_equipment_kind(value):
+ """入力を保存値へ。選択肢に無いものは未設定('')として扱う。"""
+ s=str(value or '').strip()
+ return s if s in EQUIPMENT_KINDS else ''
 # 測定データの構造上の上限。測定値の配列も画面の条ストリップ(20行×2列)も40条で
 # 組んであるため、設備ごとの設定はこれを超えられない。
 STRIP_LIMIT=40
@@ -32,14 +43,16 @@ def ensure_equipment_master_table(c):
  if EQUIPMENT_MASTER_TABLE not in names:
   # 制約と索引は別SQLで作成する。
   cur=c.cursor()
-  cur.execute('CREATE TABLE [設備マスタ] ([設備ID] INTEGER PRIMARY KEY AUTOINCREMENT, [設備名] TEXT, [最大条数] INTEGER, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
+  cur.execute('CREATE TABLE [設備マスタ] ([設備ID] INTEGER PRIMARY KEY AUTOINCREMENT, [設備名] TEXT, [区分] TEXT, [最大条数] INTEGER, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
   cur.execute('CREATE UNIQUE INDEX [UX_設備マスタ_設備名] ON [設備マスタ] ([設備名])')
   c.commit();created=True
- # 既存環境には[最大条数]が無い。空のまま足して「未設定＝既定値」で扱う
- # (他マスタと同じ互換ポリシー。値を入れ直させない)。
+ # 既存環境には[最大条数]・[区分]が無い。空のまま足して「未設定＝既定値」で
+ # 扱う(他マスタと同じ互換ポリシー。値を入れ直させない)。
  try:
-  if MAX_STRIPS_COLUMN not in set(cols(c,EQUIPMENT_MASTER_TABLE)):
-   cur=c.cursor();cur.execute(f'ALTER TABLE {qi(EQUIPMENT_MASTER_TABLE)} ADD COLUMN {qi(MAX_STRIPS_COLUMN)} INTEGER');c.commit()
+  have=set(cols(c,EQUIPMENT_MASTER_TABLE))
+  for name,decl in ((MAX_STRIPS_COLUMN,'INTEGER'),(EQUIPMENT_KIND_COLUMN,'TEXT')):
+   if name not in have:
+    cur=c.cursor();cur.execute(f'ALTER TABLE {qi(EQUIPMENT_MASTER_TABLE)} ADD COLUMN {qi(name)} {decl}');c.commit()
  except Exception:pass
  ensure_audit_columns(c,EQUIPMENT_MASTER_TABLE)
  return created
@@ -65,7 +78,7 @@ def equipment_master_rows(c):
  ensure_equipment_master_table(c)
  cur=c.cursor()
  # 全行取得後にPython側で有効判定する。
- cur.execute('SELECT [設備ID],[設備名],[表示順],[有効],[更新日時],[更新者ID],[最大条数] FROM [設備マスタ] ORDER BY [表示順],[設備名]')
+ cur.execute('SELECT [設備ID],[設備名],[表示順],[有効],[更新日時],[更新者ID],[最大条数],[区分] FROM [設備マスタ] ORDER BY [表示順],[設備名]')
  rows=[]
  for r in cur.fetchall():
   active=True if r[3] is None else bool(r[3])

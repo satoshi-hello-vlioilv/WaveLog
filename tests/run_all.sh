@@ -148,7 +148,20 @@ want(){
 # 残したロック」を次のテストが引き継ぐ。行を位置で掴むテストが、単体では
 # 通るのに通しで回すと落ちる原因になっていた(実際に3本が落ちた)。
 # 実行のたびに結果が変わるのでは安全網にならないので、1本ごとに揃える。
-reseed(){ python3 "$ROOT/tests/make_fixture.py" >/dev/null 2>&1; }
+# **失敗を握り潰さないこと。** 以前は `>/dev/null 2>&1` で捨てていたため、
+# 共有DBがロックされていて種入れが失敗しても気づけず、前のテストが残した
+# 予定のまま次が走っていた(通しで回したときだけ test_audit/test_nav が
+# 「索引が仕掛の全件をカバーする」で落ちる、という再現しにくい形で出た)。
+# 1度だけ待って再試行し、それでも駄目なら画面に出す。
+reseed(){
+  local out
+  out=$(python3 "$ROOT/tests/make_fixture.py" 2>&1) && return 0
+  sleep 1
+  out=$(python3 "$ROOT/tests/make_fixture.py" 2>&1) && return 0
+  echo "!! 種データを戻せませんでした(このあとのテストは前の状態を引き継ぎます)" >&2
+  echo "$out" | tail -3 | sed 's/^/   /' >&2
+  return 1
+}
 
 TOT=0; NG=0
 run(){
@@ -170,7 +183,7 @@ sleep 3
 echo "--- 一般UI (editモード) ---"
 mode edit
 for t in test_stopcat test_workable test_wkbg test_orphan test_audit test_sub test_maint test_setpage test_nav test_navdyn test_hdctx test_uiux test_histdel test_uisize test_p11 test_p11c test_master test_shift test_waiting test_waiting2 \
-         test_calscale test_hdr test_listcache test_ttlcache test_flows test_dbequip test_course test_tolscale test_defect test_theme test_scale test_fit test_bootui test_density test_filter test_stopeq; do run $NODE $t.js; done
+         test_calscale test_hdr test_listcache test_ttlcache test_flows test_dbequip test_course test_tolscale test_defect test_theme test_scale test_fit test_bootui test_density test_filter test_stopeq test_eqkind; do run $NODE $t.js; done
 
 echo "--- スケジュール (テスト側でモードを切り替える) ---"
 for t in test_screport test_startwork test_scsync test_sccat test_scbalance test_scbatch \
