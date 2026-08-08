@@ -1648,13 +1648,19 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    if(!last||last.key!==key){last={key,label:b?b.label:'',rows:[]};buckets.push(last)}
    last.rows.push(e);
   });
+  /* 列見出しは**タイムライン全体で1枚**(§9.84)。以前はまとめの箱ごとに
+     入れていたため、日付＋勤務でまとめると18回も繰り返され、
+     「まとめ見出し28px + 列見出し21px + 空き12px」が行と行の間に挟まって
+     間隔がばらついて見えていた(行どうしは35px)。列の意味は1回説明すれば
+     足りる(このファイル冒頭の高密度リストの説明どおり)。sticky なので
+     スクロールしても上に残る。 */
+  timeline.insertAdjacentHTML('beforeend',ROW_HEAD_HTML);
+  const kids=childEntriesByParent();
   buckets.forEach(bucket=>{
    const box=document.createElement('div');
    box.className='sc-group';box.dataset.group=bucket.key;
    if(bucket.label)box.insertAdjacentHTML('beforeend',groupHeadHtml(bucket.label,bucket.rows.length));
-   box.insertAdjacentHTML('beforeend',ROW_HEAD_HTML);
    let lastEnd=null;
-   const kids=childEntriesByParent();
    bucket.rows.forEach(e=>{
     renderEntryRow(box,e,true,()=>lastEnd,v=>{lastEnd=v});
     renderChildRows(box,e,kids.get(e.id)||[]);

@@ -296,7 +296,8 @@
 .sc-row-btn-danger:hover{background:var(--danger);border-color:var(--danger);color:#fff}
 /* 詳細(固定開始・見積の内訳)を1つの折りたたみへ統合。 */
 .sc-row-detail[hidden]{display:none}
-.sc-row-detail{margin:2px 8px 6px;padding:var(--pad-card);background:#eef2f4;border:1px solid var(--line);border-radius:var(--radius-sm);display:flex;flex-direction:column;gap:var(--gap-inline);min-width:640px}
+/* 上下の余白は揃える(以前は 2px / 6px で、開いたときだけ下が空いて見えた) */
+.sc-row-detail{margin:var(--space-1) var(--space-2);padding:var(--pad-card);background:#eef2f4;border:1px solid var(--line);border-radius:var(--radius-sm);display:flex;flex-direction:column;gap:var(--gap-inline);min-width:640px}
 .sc-detail-heading{font-size:var(--fs-sm);font-weight:800;color:#60747b}
 .sc-estimate-row{font-size:var(--fs-sm);color:#3a565d}
 .sc-estimate-factor{display:flex;align-items:center;gap:var(--gap-inline);font-size:var(--fs-sm);color:#3a565d}
@@ -332,7 +333,11 @@
 .sc-board-sort{display:flex;border:1px solid var(--line);border-radius:var(--radius-md);overflow:hidden;background:#fff}
 .sc-board-sort-btn{border:0;background:#fff;color:#8a9aa0;cursor:pointer}
 .sc-board-sort-btn.active{background:#eef2f4;color:#173842;font-weight:700}
-.sc-board-axis,.sc-board-row{display:grid;grid-template-columns:calc(96px * var(--ui-scale)) calc(180px * var(--ui-scale)) 1fr calc(160px * var(--ui-scale)) calc(20px * var(--ui-scale));align-items:center;column-gap:10px}
+/* 印の欄は**中身の幅**で取る(§9.84)。以前は160px固定で、「● 稼働中」と
+   「⚠ 遅延 19時間55分」の2つが付く行だけ折り返して、その行だけ背が高く
+   なっていた(61px 対 44px)。遅延の文字数は状況で変わるので固定幅では
+   決められない。伸縮するのは帯(track)の方に任せ、行の高さは常に同じにする。 */
+.sc-board-axis,.sc-board-row{display:grid;grid-template-columns:calc(96px * var(--ui-scale)) calc(180px * var(--ui-scale)) minmax(0,1fr) auto calc(20px * var(--ui-scale));align-items:center;column-gap:10px}
 .sc-board-axis{padding:0 10px 6px;color:#8a9aa0;font-size:var(--fs-micro)}
 .sc-board-axis-label{grid-column:1}
 .sc-board-axis-track{grid-column:3;position:relative;height:14px}
@@ -352,7 +357,7 @@
 .sc-board-block-planned{background:var(--teal)}
 .sc-board-block-active{background:var(--success)}
 .sc-board-block-stop{background:repeating-linear-gradient(45deg,#c4d0d4,#c4d0d4 4px,#e3ebee 4px,#e3ebee 8px)}
-.sc-board-flags{display:flex;flex-wrap:wrap;gap:var(--gap-tight);justify-self:end}
+.sc-board-flags{display:flex;flex-wrap:nowrap;gap:var(--gap-tight);justify-self:end}
 .sc-board-active-chip{font-size:var(--fs-badge);font-weight:800;color:var(--success);background:var(--success-bg);border:1px solid var(--success-border);border-radius:var(--radius-sm);padding:var(--pad-chip);white-space:nowrap}
 .sc-board-overdue-chip{font-size:var(--fs-badge);font-weight:800;color:var(--danger);background:var(--danger-bg);border:1px solid var(--danger-border);border-radius:var(--radius-sm);padding:var(--pad-chip);white-space:nowrap}
 .sc-board-chevron{color:#b7c7cc;font-size:var(--fs-title);justify-self:end}
@@ -562,10 +567,15 @@
    状態が混ざった1本の並びだと「今どれをやっているか」「さっき何が終わった
    か」を目で追う必要があった。3つに切り分けて見出しを付ける。 */
 .sc-group{display:flex;flex-direction:column}
-.sc-group+.sc-group{margin-top:var(--space-3)}
+/* まとまりの区切り(§9.84)。行どうしは --row-h の一定間隔で並ぶので、
+   見出しも**同じ高さの帯**にしてリズムを崩さない。以前は
+   padding だけで高さが決まり、まとめの前後だけ間隔が広く見えていた。
+   箱と箱の間の息継ぎは1段(--space-2)。 */
+.sc-group+.sc-group{margin-top:var(--space-2)}
 .sc-group-head{
- display:flex;align-items:baseline;gap:var(--space-2);
- padding:var(--space-1) 8px;border-left:3px solid var(--line);
+ display:flex;align-items:center;gap:var(--space-2);
+ min-height:var(--row-h);padding:var(--row-pad-y) var(--space-2);
+ border-left:3px solid var(--line);
 }
 .sc-group-label{font-size:var(--fs-title);font-weight:800;color:#173842}
 .sc-group-count{font-size:var(--fs-sm);font-weight:700;color:#8a9aa0;font-variant-numeric:tabular-nums}
