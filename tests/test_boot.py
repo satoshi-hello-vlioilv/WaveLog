@@ -130,8 +130,11 @@ rec('アプリ内の起動オーバーレイの段階リストがboot_status.py�
 marked = re.findall(r'data-boot-step="([\w-]+)"', index)
 rec('ブラウザ側の段階だけにJSの進行印が付いている',
     marked == [k for k, _ in boot_status.BROWSER_STEPS], '/'.join(marked))
+# 印は2つ付く。`app-booting`が本体を伏せる印、`boot-cold`は「最初の1枚を
+# 描くまでレイアウトを省く」印(§9.86)。後者は最初の描画で外れるので、
+# ここでは初期状態として両方が付いていることだけを見る。
 rec('起動が終わるまで本体を伏せる印がhtmlに付いている',
-    'class="app-booting"' in index)
+    re.search(r'<html[^>]*class="[^"]*\bapp-booting\b', index) is not None)
 # base.jsが読めなかった場合でも必ず解除される保険。これが無いと、
 # 何かの拍子に画面が出ないまま固まる。
 rec('base.jsが読めなかった場合の解除(保険)がindex.htmlにある',

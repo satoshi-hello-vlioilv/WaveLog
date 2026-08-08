@@ -209,6 +209,18 @@ window.setHeaderContext=setHeaderContext;
    依存しているかが呼び出し箇所で分かるようにする。 */
 window.WL=window.WL||{};
 
+/* DOMが組み上がってから動かす(§9.86)。
+   **`DOMContentLoaded` を直接待たないこと。** アプリのJSは起動オーバーレイを
+   先に描かせるため、index.htmlの起動ローダーが後から読み込む。その時点では
+   DOMContentLoadedは既に終わっているので、直接待ち受けても二度と呼ばれない
+   (実際に「再読込ボタンが効かない」形で踏んだ)。この関数は済んでいれば
+   すぐ呼ぶので、どちらの読まれ方でも1回だけ実行される。 */
+function onReady(fn){
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',fn,{once:true});
+ else queueMicrotask(fn);
+}
+window.WL.onReady=onReady;
+
 const VIEW_REGISTRY=new Map();
 function registerView(def){VIEW_REGISTRY.set(def.key,def);return def}
 /* 新しい画面へ入る。key以外の登録済み画面を全て閉じ、ナビの選択状態・
@@ -400,7 +412,7 @@ async function sendHeartbeat(){
  }
 }
 sendHeartbeat();setInterval(sendHeartbeat,HEARTBEAT_INTERVAL_MS);
-document.addEventListener('DOMContentLoaded',()=>{
+WL.onReady(()=>{
  const btn=document.getElementById('connectionLostReload');
  if(btn)btn.onclick=()=>location.reload();
 });
@@ -654,7 +666,11 @@ const bootGate=(()=>{
   }
  }
  paint();tick();
- /* すべてのJSが読み終わった時点で1段階目が済む。 */
+ /* すべてのJSが読み終わった時点で1段階目が済む。通常は index.html の
+    起動ローダーが最後の1本を読み終えたところで WL.boot.step('assets') を
+    呼ぶ(その時点でDOMContentLoadedは既に終わっている)。ここの待ち受けは、
+    ローダーを通さずに読み込まれた場合の保険。**二重に呼ばれても
+    step() は1回しか効かない。** */
  document.addEventListener('DOMContentLoaded',()=>step('assets'));
  return {step,isBooting:()=>!finished,finish};
 })();
