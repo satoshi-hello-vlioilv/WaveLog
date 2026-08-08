@@ -21,8 +21,17 @@ bp=Blueprint('core',__name__)
 # **この並びがカスケードの順序そのもの**。同じ@layerの中では今も
 # 「後に書いたほうが勝つ」が効くので、順番を変えると見た目が変わる。
 # 並びの唯一の定義はここで、tests/test_csslint.py が同じ並びを固定している。
-CSS_FILES=[
+# **起動用の小さな束**(§9.86)。この2本だけは描画をブロックして先に読ませる。
+# 起動オーバーレイ(#appBoot)を最初の描画で出すために必要な最小限で、
+# 残り(BODY_CSS_FILES)は描画をブロックしない形で後から読む。
+# 分けた理由は実測: 全部を1本のブロッキングCSSにしていると、アプリ本体の
+# 最初の描画までブラウザは**何も描かない**(白いまま)。起動待機画面から
+# 引き渡した直後の「一瞬の白」がこれだった。
+BOOT_CSS_FILES=[
  '00-base.css',        # レイヤの宣言 + トークン + 素の要素
+ '95-boot.css',        # 起動オーバーレイ(組み上がるまで本体を見せない)
+]
+BODY_CSS_FILES=[
  '10-roles.css',       # 役割ごとの寸法・文字(唯一の決定場所)
  '20-shell.css',       # 骨格・左ナビ・ヘッダー・一覧・タブ・ページャ
  '30-measure.css',     # 測定画面
@@ -38,9 +47,11 @@ CSS_FILES=[
  '80-defect.css',      # 異常位置判定(画面と専用帳票)
  '85-headerbar.css',   # ヘッダーの操作列
  '90-state.css',       # state / mode / print / utility
- '95-boot.css',        # 起動オーバーレイ(組み上がるまで本体を見せない)
 ]
+# カスケードの順序そのもの。**起動用が先、本体が後**の並びで読み込まれる。
+CSS_FILES=BOOT_CSS_FILES+BODY_CSS_FILES
 _CSS_CACHE={'token':None,'body':''}
+_BOOT_CSS_CACHE={'token':None,'body':''}
 
 def _css_dir(): return BASE/'static'/'css'
 
@@ -70,24 +81,42 @@ def _css_token():
  d=_css_dir()
  return _newest_mtime([d/n for n in CSS_FILES],'CSS')
 
-@bp.get('/css/app.css')
-def app_css():
+def _css_bundle(files,cache):
+ """指定のCSSを連結して返す。読めない1枚で画面を落とさない。"""
  tok=_css_token()
- if _CSS_CACHE['token']!=tok:
+ if cache['token']!=tok:
   d=_css_dir()
   parts=[];failed=[]
-  for n in CSS_FILES:
+  for n in files:
    try:parts.append(f'/* ===== {n} ===== */\n'+(d/n).read_text(encoding='utf-8'))
    except OSError as e:failed.append(f'{n}({e})')
   if failed:
    # 1枚でも読めなければ見た目は崩れるが、**画面を出さないよりはよい**。
    # 直前に読めた内容が残っていればそちらを使う(共有の一瞬の断で崩さない)。
    app_logger().error('CSSを読み込めませんでした(%d件): %s',len(failed),' / '.join(failed[:5]))
-   if _CSS_CACHE['body']:
-    return Response(_CSS_CACHE['body'],mimetype='text/css',headers={'Cache-Control':'no-cache'})
-  _CSS_CACHE.update(token=tok,body='\n'.join(parts))
- return Response(_CSS_CACHE['body'],mimetype='text/css',
-                 headers={'Cache-Control':'no-cache'})
+   if cache['body']:
+    # 読めなかった回の内容は**キャッシュさせない**(次の表示で直っていて
+    # ほしいので、長期キャッシュの対象から外す)。
+    return Response(cache['body'],mimetype='text/css',headers={'Cache-Control':'no-cache'})
+  cache.update(token=tok,body='\n'.join(parts))
+ # URLに更新時刻(?t=)が入っているので、内容が変わればURLごと変わる。
+ # **だから長期キャッシュしてよい。** 以前は no-cache で毎回取り直して
+ # おり、起動のたびに数百KBを読み直すうえ、media=print から all へ移す
+ # ときに再取得(実測30ms)まで発生していた。
+ return Response(cache['body'],mimetype='text/css',
+                 headers={'Cache-Control':'public, max-age=31536000, immutable'})
+
+@bp.get('/css/boot.css')
+def boot_css():
+ """起動オーバーレイを最初の描画で出すための最小の束(§9.86)。
+ **これだけが描画をブロックする。** 小さいほど白い画面が短くなる。"""
+ return _css_bundle(BOOT_CSS_FILES,_BOOT_CSS_CACHE)
+
+@bp.get('/css/app.css')
+def app_css():
+ """画面本体のCSS。描画をブロックしない形で読み込まれ、読み終わってから
+ アプリのJSを動かす(順序は templates/index.html の起動ローダーが持つ)。"""
+ return _css_bundle(BODY_CSS_FILES,_CSS_CACHE)
 
 def _git_version():
  # 参考情報(ツールチップ用)。git非対応の配布環境では取得できないため

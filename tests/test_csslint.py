@@ -18,9 +18,16 @@ ROOT=pathlib.Path(__file__).resolve().parent.parent
 # ここでは読み込み順に連結したものを1枚のCSSとして検査する。
 # 並びの唯一の定義は backend/routes/core.py の CSS_FILES(そこが連結して配信する)。
 # ここでも同じものを読み、ディスクの中身と食い違っていないかを見る。
+# 配信は2本立て(§9.86)。起動オーバーレイを最初の描画で出すための小さな
+# BOOT_CSS_FILES(描画をブロックする)と、残りの BODY_CSS_FILES(ブロックしない)。
+# カスケードの順序は「起動用 → 本体」なので、この順に連結して検査する。
 _core=(ROOT/'backend/routes/core.py').read_text(encoding='utf-8')
-_m=re.search(r'CSS_FILES=\[(.*?)\]',_core,re.S)
-CSS_ORDER=re.findall(r"'([\w.-]+\.css)'",_m.group(1)) if _m else []
+def _css_list(name):
+    m=re.search(name+r'=\[(.*?)\]',_core,re.S)
+    return re.findall(r"'([\w.-]+\.css)'",m.group(1)) if m else []
+BOOT_CSS_ORDER=_css_list('BOOT_CSS_FILES')
+BODY_CSS_ORDER=_css_list('BODY_CSS_FILES')
+CSS_ORDER=BOOT_CSS_ORDER+BODY_CSS_ORDER
 CSS_DIR=ROOT/'static/css'
 CSS='\n'.join((CSS_DIR/n).read_text(encoding='utf-8') for n in CSS_ORDER)
 # コメントは対象外。ただし行番号は元のまま報告したいので、改行だけ残して潰す。
@@ -131,11 +138,20 @@ rec('役割ごとの寸法を1箇所で決めるブロックがある',
 rec('CSSの読み込み順が1箇所(core.pyのCSS_FILES)で定義されている',len(CSS_ORDER)>=10,
     f'{len(CSS_ORDER)}件')
 html=(ROOT/'templates/index.html').read_text(encoding='utf-8')
-# 分割したCSSは実行時に1本へ連結して返す(<link>を分割数ぶん並べると、
+# 分割したCSSは実行時にまとめて返す(<link>を分割数ぶん並べると、
 # 1ページ表示ごとに往復が増えて起動直後の一覧取得と競合する。実測で
 # テストが13件落ちた)。テンプレートが個別ファイルを直接読んでいないこと。
-rec('CSSはまとめて1本で読み込む',
-    "url_for('core.app_css')" in html and "filename='css/" not in html)
+# **2本だけ**: 起動用(描画をブロック)と本体(ブロックしない)。§9.86
+rec('CSSはまとめて2本で読み込む(起動用と本体)',
+    "url_for('core.boot_css')" in html and "url_for('core.app_css')" in html
+    and "filename='css/" not in html)
+# 起動用は「最初の描画で起動オーバーレイを出す」ための最小限。ここへ画面の
+# CSSを足すと、また白い画面が戻る(小さいほど白が短い)。
+rec('起動用CSSは最小限(トークンと起動オーバーレイだけ)',
+    BOOT_CSS_ORDER==['00-base.css','95-boot.css'],f'{BOOT_CSS_ORDER}')
+# 本体CSSは描画をブロックしない形で読み、読み終わってからJSを動かす。
+rec('本体CSSは描画をブロックしない形で読み込む',
+    'id="appCss"' in html and 'media="print"' in html)
 on_disk=sorted(p.name for p in CSS_DIR.glob('*.css'))
 rec('static/css の中身と読み込み一覧が一致している',on_disk==sorted(CSS_ORDER),
     f'disk={on_disk}')

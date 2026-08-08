@@ -2,10 +2,13 @@
 
 <!-- html.app-booting: 画面が組み上がるまで本体を伏せる印(static/css/95-boot.css)。
      JSが外す(base.jsのWL.boot)。JS自体が読めなかった場合に画面が出ないまま
-     になるのを防ぐため、下に保険の解除も置いてある。 -->
-<html class="app-booting" lang="ja"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1" name="viewport"/><title>測定伝送システム</title><link rel="icon" href="{{url_for('static',filename='favicon.svg')}}" type="image/svg+xml"/><link href="{{url_for('core.app_css')}}?t={{asset_token}}" rel="stylesheet"/>
+     になるのを防ぐため、下に保険の解除も置いてある。
+     html.boot-cold: 最初の1枚を描くまで、覆い以外のレイアウトを省く印(§9.86)。
+     起動ローダーが「描画された」合図で外す。**CSS側は .app-booting との
+     組で効かせてある**ので、下の保険で app-booting が外れれば一緒に無効化される。 -->
+<html class="app-booting boot-cold" lang="ja"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1" name="viewport"/><title>測定伝送システム</title><link rel="icon" href="{{url_for('static',filename='favicon.svg')}}" type="image/svg+xml"/><link href="{{url_for('core.boot_css')}}?t={{asset_token}}" rel="stylesheet"/><link id="appCss" href="{{url_for('core.app_css')}}?t={{asset_token}}" rel="stylesheet" media="print"/>
 <script>/* 保険。base.jsが読めない/例外で止まった場合でも、必ず本体を見せる。 */
-setTimeout(function(){document.documentElement.classList.remove('app-booting');
+setTimeout(function(){var r=document.documentElement;r.classList.remove('app-booting');r.classList.remove('boot-cold');
  var o=document.getElementById('appBoot');if(o)o.remove()},12000);</script></head><body>
 <!-- 起動オーバーレイ。起動待機画面(loading.html)から意匠と段階リストを
      そのまま引き継ぎ、7〜10段階目(ブラウザ側)を進める。 -->
@@ -93,21 +96,79 @@ setTimeout(function(){document.documentElement.classList.remove('app-booting');
 <button disabled="" id="applySplit" class="split-apply-btn">この内容で条割を実行</button>
 </section>
 </div></div></div>
-</section></div><section class="rec-panel" hidden id="recordModal"><div class="record-dialog"><div class="record-sync-bar" id="recordSyncBar" hidden role="status"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg><span>バックアップDB（db/records.sqlite3）へ未送信のデータが <b id="recordSyncCount">0</b> 件あります</span><button id="recordSyncNowBtn" type="button" title="未送信のデータをまとめてバックアップDBへ送信します">今すぐ送信</button></div><div class="record-searchbar" id="recordSearchBar"><div class="record-status-filter" role="group" aria-label="状態フィルタ"><button class="status-filter-btn active" data-status-filter="editing" type="button" title="編集中のデータを一覧に含めるかを切り替えます">編集中</button><button class="status-filter-btn" data-status-filter="done" type="button" title="完了したデータを一覧に含めるかを切り替えます">完了</button></div><label><span>絞り込み</span><input autocomplete="off" id="recordSearch" placeholder="ロット・検査番号・鋳造番号・設備で検索" type="search"/></label><label><span>並び順</span><select id="recordSort"><option value="updated-desc">更新日時の新しい順</option><option value="updated-asc">更新日時の古い順</option><option value="lot-asc">ロット番号順</option></select></label><button id="clearRecordSearch" type="button" title="絞り込みの入力を消して、すべてのデータを表示します">検索解除</button><div class="record-search-result" id="recordSearchResult"></div></div><div id="recordList"></div></div></section><div class="record-modal" hidden="" id="appSettingsModal"><div class="settings-dialog"><header><div><h2>アプリ使用設備の設定</h2></div><button id="closeAppSettings" type="button">×</button></header><div class="settings-body"><p>この端末で使用する設備名を登録します。仕掛データの「設計_設備ｺｰｽ」に登録設備が含まれているかを確認し、対象外の場合は測定画面上部に警告します。</p><label>使用設備名<select id="configuredEquipment"><option value="">設備マスタを読み込んでいます</option></select></label><div class="new-equipment-entry" id="newEquipmentEntry" hidden><label>新しく登録する設備名<input autocomplete="off" id="newEquipmentName" placeholder="設備名を入力" type="text"/></label></div><div class="equipment-master-help" id="equipmentMasterHelp">設備マスタを読み込んでいます。</div><div class="setting-status" id="equipmentSettingStatus">未登録</div><hr class="settings-divider"/><label>LotDsp検索で開くタブ番号<select id="lotDspTabSetting"><option value="0">Tab 0</option><option value="1">Tab 1</option><option value="2">Tab 2</option><option value="3">Tab 3</option><option value="4">Tab 4</option><option value="5">Tab 5</option><option value="6">Tab 6</option><option value="7">Tab 7</option></select></label><p class="settings-hint">ロット№をクリックした際にLotDspで開くタブです。選ぶとすぐに反映されます。</p><div class="settings-actions"><button id="cancelAppSettings" type="button">キャンセル</button><button id="saveAppSettings" type="button">設定を保存</button></div></div></div></div><div class="record-modal" hidden id="changelogModal"><div class="settings-dialog changelog-dialog"><header><div><h2>更新履歴</h2></div><button id="closeChangelog" type="button" aria-label="閉じる">×</button></header><div class="settings-body"><div id="changelogList"><p class="changelog-loading">読み込んでいます…</p></div></div></div></div><script src="{{url_for('static',filename='js/base.js')}}?t={{asset_token}}"></script>
-<script src="{{url_for('static',filename='js/list-view.js')}}?t={{asset_token}}"></script>
-<script src="{{url_for('static',filename='js/measurement-view.js')}}?t={{asset_token}}"></script>
-<script src="{{url_for('static',filename='js/measurement-input.js')}}?t={{asset_token}}"></script>
-<script src="{{url_for('static',filename='js/records-store.js')}}?t={{asset_token}}"></script>
-<script src="{{url_for('static',filename='js/measurement-tolerance.js')}}?t={{asset_token}}"></script>
-<script src="{{url_for('static',filename='js/lot-split.js')}}?t={{asset_token}}"></script>
-<script src="{{url_for('static',filename='js/measure-progress.js')}}?t={{asset_token}}"></script>
-<script src="{{url_for('static',filename='js/defect-locator.js')}}?t={{asset_token}}"></script>
-<script src="{{url_for('static',filename='js/filters.js')}}?t={{asset_token}}"></script>
-<script src="{{url_for('static',filename='js/measurement-worklog.js')}}?t={{asset_token}}"></script>
-<script src="{{url_for('static',filename='js/master-maint.js')}}?t={{asset_token}}"></script>
-<script src="{{url_for('static',filename='js/quality-analysis.js')}}?t={{asset_token}}"></script>
-<script src="{{url_for('static',filename='js/report-dashboard.js')}}?t={{asset_token}}"></script>
-<script src="{{url_for('static',filename='js/calendar-view.js')}}?t={{asset_token}}"></script>
-<script src="{{url_for('static',filename='js/schedule-view.js')}}?t={{asset_token}}"></script>
-<script src="{{url_for('static',filename='js/access-mode.js')}}?t={{asset_token}}"></script>
+</section></div><section class="rec-panel" hidden id="recordModal"><div class="record-dialog"><div class="record-sync-bar" id="recordSyncBar" hidden role="status"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg><span>バックアップDB（db/records.sqlite3）へ未送信のデータが <b id="recordSyncCount">0</b> 件あります</span><button id="recordSyncNowBtn" type="button" title="未送信のデータをまとめてバックアップDBへ送信します">今すぐ送信</button></div><div class="record-searchbar" id="recordSearchBar"><div class="record-status-filter" role="group" aria-label="状態フィルタ"><button class="status-filter-btn active" data-status-filter="editing" type="button" title="編集中のデータを一覧に含めるかを切り替えます">編集中</button><button class="status-filter-btn" data-status-filter="done" type="button" title="完了したデータを一覧に含めるかを切り替えます">完了</button></div><label><span>絞り込み</span><input autocomplete="off" id="recordSearch" placeholder="ロット・検査番号・鋳造番号・設備で検索" type="search"/></label><label><span>並び順</span><select id="recordSort"><option value="updated-desc">更新日時の新しい順</option><option value="updated-asc">更新日時の古い順</option><option value="lot-asc">ロット番号順</option></select></label><button id="clearRecordSearch" type="button" title="絞り込みの入力を消して、すべてのデータを表示します">検索解除</button><div class="record-search-result" id="recordSearchResult"></div></div><div id="recordList"></div></div></section><div class="record-modal" hidden="" id="appSettingsModal"><div class="settings-dialog"><header><div><h2>アプリ使用設備の設定</h2></div><button id="closeAppSettings" type="button">×</button></header><div class="settings-body"><p>この端末で使用する設備名を登録します。仕掛データの「設計_設備ｺｰｽ」に登録設備が含まれているかを確認し、対象外の場合は測定画面上部に警告します。</p><label>使用設備名<select id="configuredEquipment"><option value="">設備マスタを読み込んでいます</option></select></label><div class="new-equipment-entry" id="newEquipmentEntry" hidden><label>新しく登録する設備名<input autocomplete="off" id="newEquipmentName" placeholder="設備名を入力" type="text"/></label></div><div class="equipment-master-help" id="equipmentMasterHelp">設備マスタを読み込んでいます。</div><div class="setting-status" id="equipmentSettingStatus">未登録</div><hr class="settings-divider"/><label>LotDsp検索で開くタブ番号<select id="lotDspTabSetting"><option value="0">Tab 0</option><option value="1">Tab 1</option><option value="2">Tab 2</option><option value="3">Tab 3</option><option value="4">Tab 4</option><option value="5">Tab 5</option><option value="6">Tab 6</option><option value="7">Tab 7</option></select></label><p class="settings-hint">ロット№をクリックした際にLotDspで開くタブです。選ぶとすぐに反映されます。</p><div class="settings-actions"><button id="cancelAppSettings" type="button">キャンセル</button><button id="saveAppSettings" type="button">設定を保存</button></div></div></div></div><div class="record-modal" hidden id="changelogModal"><div class="settings-dialog changelog-dialog"><header><div><h2>更新履歴</h2></div><button id="closeChangelog" type="button" aria-label="閉じる">×</button></header><div class="settings-body"><div id="changelogList"><p class="changelog-loading">読み込んでいます…</p></div></div></div></div><script>
+/* 起動ローダー(§9.86)。**アプリのJSは、起動オーバーレイが画面に出てから**
+   読み込む。以前は17本の<script>をここに並べていたが、パーサーはそこで
+   止まって全部を実行し終えるまで1度も描画しないため、起動待機画面から
+   引き渡した直後に「白い画面」が数百ミリ秒見えていた(実測)。
+   順番は次の3つを満たしてから: (1)最初の描画が済んだ (2)本体CSSが適用済み
+   (3)どちらも来なければ時間切れで進む。**止まらないことが最優先**なので、
+   CSSが失敗しても必ずJSは動かす(見た目より、操作できることを優先する)。 */
+(function(){
+ var FILES=[
+  'base.js',
+  'list-view.js',
+  'measurement-view.js',
+  'measurement-input.js',
+  'records-store.js',
+  'measurement-tolerance.js',
+  'lot-split.js',
+  'measure-progress.js',
+  'defect-locator.js',
+  'filters.js',
+  'measurement-worklog.js',
+  'master-maint.js',
+  'quality-analysis.js',
+  'report-dashboard.js',
+  'calendar-view.js',
+  'schedule-view.js',
+  'access-mode.js'
+ ],TOKEN='?t={{asset_token}}',BOOT_WAIT_MS=1500,started=false;
+ function inject(){
+  if(started)return;started=true;
+  var left=FILES.length;
+  FILES.forEach(function(name){
+   var s=document.createElement('script');
+   s.src='{{url_for("static",filename="js/")}}'+name+TOKEN;
+   s.async=false;  // 挿入順で実行させる(依存関係がある)
+   s.onload=s.onerror=function(){
+    if(--left>0)return;
+    /* 全部読み終わった=起動オーバーレイの1段階目。パーサーが並べた
+       <script>ではないためDOMContentLoadedは既に終わっており、
+       base.js側の待ち受けは動かない。ここから明示的に伝える。 */
+    try{window.WL&&WL.boot&&WL.boot.step('assets')}catch(e){}
+   };
+   document.body.appendChild(s);
+  });
+ }
+ /* **描画が先、JSは後。** この2つが揃って初めて読み込む。
+    片方だけで進めると元の木阿弥で、CSSが来た瞬間にJSが走り出し、
+    起動オーバーレイが出る前に主スレッドが埋まる(実際にそう書いて、
+    最初の描画が416ms・最初のJSが265msという逆転をテストが捕まえた)。 */
+ var css=document.getElementById('appCss'),painted=false,cssReady=false;
+ /* media="print" で読ませておき、読み終わってから "all" へ移す。
+    こうすると規則は既に解析済みなので、切り替えは即座に効く。 */
+ function useCss(){ if(css&&css.media!=='all')css.media='all' }
+ function ready(){ if(painted&&cssReady)inject() }
+ if(css){
+  css.addEventListener('load',function(){useCss();cssReady=true;ready()});
+  css.addEventListener('error',function(){cssReady=true;ready()});
+  if(css.sheet){useCss();cssReady=true}
+ }else cssReady=true;
+ /* **描画された合図は paint の記録で取る。**
+    requestAnimationFrame は「描画された」保証にならない——実測では
+    2つのrAFが3ms差で連続して走り、実際の描画はその117ms後だった。
+    rAFで代用すると、描画前にJSを流し込んで主スレッドを埋めてしまう。 */
+ try{
+  new PerformanceObserver(function(list){
+   if(!list.getEntries().length)return;
+   document.documentElement.classList.remove('boot-cold');
+   painted=true;ready();
+  }).observe({type:'paint',buffered:true});
+ }catch(e){painted=true}
+ /* 保険。描画の記録が取れないブラウザでも必ず起動する。
+    **待たせ続けるより、操作できる画面を出すほうがよい。** */
+ setTimeout(function(){document.documentElement.classList.remove('boot-cold');useCss();inject()},BOOT_WAIT_MS);
+})();
+</script>
 </body></html>

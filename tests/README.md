@@ -117,6 +117,18 @@ NODE_PATH=/opt/node22/lib/node_modules /opt/node22/bin/node tests/test_nav.js
 これで落ちた。描画の完了そのものを `waitForFunction` / `waitForSelector`
 で待つこと。
 
+### 前提は「他のテストの残骸」に頼らず自分で作る
+
+`test_audit` / `test_nav` の作業可否の索引の検証は、長いあいだ
+**`test_sccat` が残した実績行**(`ZZZZ1`/`ZZZZ2` = 仕掛に無いロット)に
+暗黙に頼っていた。`test_sccat` はこの2本より**後**に走るので、効いていたのは
+前回の実行の残骸であり、それが表示範囲(直近N時間)に入っているかどうかで
+結果が変わっていた。直前に流していれば通り、間が空くと落ちる。
+**実行履歴で結果が変わる安全網は安全網にならない。**
+
+必要な前提はテストが自前で用意して自前で消す。仕掛に無いロットの予定は
+`tests/orphan_lot.js` の `addOrphanPlan()` で作れる(`remove()` で消す)。
+
 ### 依存する前提
 
 - 設備マスタに `テスト設備A` / `テスト設備B` があること

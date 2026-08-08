@@ -463,7 +463,7 @@
  if(typeof selectDb==='function'){const old=selectDb;selectDb=async function(k,b){const r=await old(k,b);sync();return r}}
  if(typeof selectTable==='function'){const old=selectTable;selectTable=async function(t){const r=await old(t);sync();return r}}
  window.addEventListener('resize',()=>{clearTimeout(window._qaRz);window._qaRz=setTimeout(()=>{const p=$id('qualityAnalysisPanel');if(last&&p&&!p.hidden&&p.dataset.view==='graph')render(last)},150)});
- document.addEventListener('DOMContentLoaded',sync);queueMicrotask(sync);
+ WL.onReady(sync);queueMicrotask(sync);
 })();
 
 

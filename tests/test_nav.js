@@ -1,16 +1,22 @@
 /* メインメニューの畳み込み(§9.58)と、
    作業可否フラグを予定ロット全件へ行き渡らせる修正(§9.57)の検証 */
 const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+const { addOrphanPlan } = require('./orphan_lot');
 const B='http://127.0.0.1:5029';
+const EQ='テスト設備A';
 const setMode=async m=>{await fetch(B+'/api/access-mode',{method:'POST',
  headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})};
-let b=null;
+let b=null,orphan=null;
 (async()=>{
  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
  const page=await b.newPage({viewport:{width:1600,height:950}});
  const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
  page.on('pageerror',e=>console.log('[pageerror]',e.message.slice(0,140)));
  page.on('dialog',d=>d.accept());
+
+ // 作業可否の検証(後半)の前提: 仕掛に無いロットの予定が1件あること。
+ // 無いと索引は1ページ目で打ち切られる(それが正しい動き)。
+ orphan=await addOrphanPlan(EQ);
 
  // ---------- メニューの畳み込み ----------
  await setMode('edit');
@@ -79,13 +85,16 @@ let b=null;
  });
  rec('予定に「?」(判定できない)が残らない',
    !wk.counts['is-unknown'],JSON.stringify(wk.counts));
+ rec('前提: 仕掛に無いロットの予定を用意できた',orphan.ok,`${orphan.lotNo} / ${orphan.detail}`);
  rec('仕掛の500件上限を越えて索引を作れている',
    wk.state.scanned>500&&wk.state.pages>1,
    `${wk.state.pages}ページ / ${wk.state.scanned}件走査 / 全${wk.state.total}件`);
  rec('索引が仕掛の全件をカバーしている',
    wk.state.indexSize>=wk.state.total,`索引${wk.state.indexSize}件 / 仕掛${wk.state.total}件`);
 
- await b.close();
+ await b.close();b=null;
+ // 自分で足した予定は必ず消す(残すと後続テストの「不可」の件数や行位置が変わる)。
+ await orphan.remove();
  // このテストは途中でscheduleモードへ切り替えるので、後続テスト(編集モード前提)の
  // ために必ずeditへ戻してから終わる。
  await setMode('edit');
@@ -98,5 +107,7 @@ let b=null;
  // 連鎖的に落ちる(実際に1本のFATALから8本が落ちた)。
  console.error('FATAL',e);
  if(b)await b.close().catch(()=>{});
+ if(orphan)await orphan.remove().catch(()=>{});
+ await setMode('edit').catch(()=>{});
  process.exit(2);
 });
