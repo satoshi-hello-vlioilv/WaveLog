@@ -12,37 +12,73 @@ async function init(){
   badge.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openChangelog()}};
  });
  const d=await api('/api/catalog');S.catalog=d.databases;
- const nav=$('#nav');
- d.databases.forEach(x=>{
-  /* 読み取り専用の業務データ(仕掛・品質データ)だけを「一覧を見る」へ出す。
-     ARCHITECTURE.md「マスタ管理の画面形態」: マスタ(role='master')はサイドバーへ独立したナビ項目を作らない。
-     「マスタ一覧」(生テーブルの汎用グリッド)と「マスタ管理」(編集画面)が
-     別々の入口に分かれていて紛らわしいという指摘のため、生テーブル閲覧は
-     マスタ管理画面の中の「テーブル生データ」タブへ統合し、入口を
-     「マスタ管理」1つに絞った(S.catalogには従来どおり残すため、
-     databaseLabel()やselectDb('MASTER')自体は引き続き動く)。 */
-  if(x.role==='master')return;
-  let b=document.querySelector(`aside [data-db-key="${x.key}"]`);
-  if(!b){
-   b=document.createElement('button');b.type='button';b.dataset.dbKey=x.key;
-   /* 静的に置いてある兄弟(仕掛・品質データ)と見た目を揃えるためアイコンを付ける。 */
-   b.innerHTML='<svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"/><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"/></svg><span></span>';
-   b.className='db nav-item nav-item--view';
-   nav?.append(b);
-  }
-  (b.querySelector('span')||b).textContent=x.label;b.onclick=()=>selectDb(x.key,b);
- });
+ WL.dataSource.setCatalog(d);
+ renderDbNav();
  const drafts=$('#homeDrafts');if(drafts)drafts.onclick=()=>openRecords('編集中');
  bindAppSettingsControls();await refreshDraftCount();showQuota();
  /* 起動直後の初期画面。使用設備が未登録のうちは絞り込みも対象判定もできず、
-    仕掛一覧を取得しても使えないため、先に設備登録へ誘導する。 */
- const initialDbBtn=nav?.querySelector('[data-db-key="SIKALOTNOW"]');
+    仕掛一覧を取得しても使えないため、先に設備登録へ誘導する。
+    **どの一覧を最初に出すかはキーで決め打ちしない**(§9.87)。役割が「作業」の
+    データソース、無ければ一覧の先頭を開く。 */
+ const nav=$('#nav');
+ const initialKey=WL.dataSource.workKey()||(WL.dataSource.views()[0]||{}).key||'';
+ const initialDbBtn=initialKey?nav?.querySelector(`[data-db-key="${CSS.escape(initialKey)}"]`):null;
  const equipped=typeof currentConfiguredEquipment==='function'&&currentConfiguredEquipment();
- if(initialDbBtn&&equipped){try{await selectDb('SIKALOTNOW',initialDbBtn)}catch(e){console.warn('初期表示(仕掛一覧)の読み込みに失敗しました',e)}}
+ if(initialDbBtn&&equipped){try{await selectDb(initialKey,initialDbBtn)}catch(e){console.warn('初期表示(仕掛一覧)の読み込みに失敗しました',e)}}
  else if(!equipped)$('#grid').innerHTML='<div class="setup-first"><b>最初に使用設備を設定してください</b><span>この端末で使用する設備を登録すると、仕掛一覧を設備で絞り込んで表示できます。上の「使用設備を設定」から登録してください。</span></div>';
  }catch(e){console.error('初期化エラー',e);showToast('初期化の一部に失敗',e.message,8000)}
  finally{bindV32Navigation()}
 }
+/* 「一覧を見る」のボタンを、データソースマスタの内容そのままに組み直す(§9.87)。
+   ------------------------------------------------------------
+   **左メニューはカタログが唯一の正**。以前はindex.htmlに仕掛・品質データの
+   ボタンを直接置き、カタログには「無ければ足す」だけをしていた。そのため
+   マスタでキーを変えると、
+     ・古いキーの静的ボタンが残る(押すと「データベース指定が不正です」)
+     ・マスタの行から作られたボタンが別に増える(同じ名前が2つ並ぶ)
+   という状態になった(実機で発生、再現済み)。**消す処理が無いのが原因**
+   なので、毎回この関数が全部作り直す。
+   マスタ(role='master')は出さない。生テーブルの閲覧は「マスタ管理」画面の
+   「テーブル生データ」タブへ統合済みで、入口を1つに絞ってあるため
+   (S.catalogには残るので databaseLabel()/selectDb('MASTER') は動く)。 */
+const DB_NAV_ICONS={
+ /* 役割で選ぶ。キーの綴りに依存させない。 */
+ work:'<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
+ quality:'<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
+ other:'<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"/><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"/>',
+};
+function renderDbNav(){
+ const nav=$('#nav');if(!nav)return;
+ const views=WL.dataSource.views();
+ const wanted=new Set(views.map(x=>x.key));
+ // カタログに無いボタンは消す。**これが無いと重複と「不正です」が残る。**
+ nav.querySelectorAll('[data-db-key]').forEach(b=>{
+  if(!wanted.has(b.dataset.dbKey))b.remove();
+ });
+ // 並べる基準はグループ見出し。その直後から順に置く。
+ let prev=nav.querySelector('.nav-group-label')||null;
+ views.forEach(x=>{
+  let b=nav.querySelector(`[data-db-key="${CSS.escape(x.key)}"]`);
+  if(!b){
+   b=document.createElement('button');b.type='button';b.dataset.dbKey=x.key;
+   b.className='db nav-item nav-item--view';
+   b.innerHTML='<svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"></svg><span></span>';
+  }
+  const icon=WL.dataSource.isWork(x.key)?DB_NAV_ICONS.work
+            :WL.dataSource.isQuality(x.key)?DB_NAV_ICONS.quality:DB_NAV_ICONS.other;
+  const svg=b.querySelector('.nav-icon');if(svg)svg.innerHTML=icon;
+  (b.querySelector('span')||b).textContent=x.label;
+  b.title=`${x.label}（キー: ${x.key} / ファイル: ${x.file_name||'—'}）`;
+  b.onclick=()=>selectDb(x.key,b);
+  // マスタの表示順どおりに並べ直す(行を入れ替えたら画面もその順になる)。
+  if(prev)prev.after(b);else nav.prepend(b);
+  prev=b;
+ });
+ return views.length;
+}
+// 新しく公開するものは名前空間へ入れる(CLAUDE.md「window.*への新規公開」)。
+WL.renderDbNav=renderDbNav;
+
 /* バージョンバッジをクリックすると更新履歴の一覧を表示する。 */
 let changelogLoaded=false;
 async function openChangelog(){
@@ -138,10 +174,10 @@ window.fetchTableData=fetchTableData;
 
 async function load(force){
  const q=new URLSearchParams({db:S.db,table:S.table,page:S.page,page_size:$('#pageSize').value,search:$('#search').value});
- // スケジュールモードの仕掛一覧のみ、品質データ(SIKALOTDEF)を結合して表示する
- // (§9.21)。通常の仕掛一覧閲覧では付けない(オプトインでSIKALOTNOW単独表示に
- // 影響を与えない)。
- if(S.db==='SIKALOTNOW'&&window.accessMode?.mode==='schedule')q.set('join_quality','1');
+ // スケジュールモードの作業対象一覧のみ、品質データを結合して表示する
+ // (§9.21)。通常の閲覧では付けない(オプトインで単独表示に影響を与えない)。
+ // どちらが作業対象/品質かはデータソースマスタの役割で決まる(§9.87)。
+ if(WL.dataSource.isWork(S.db)&&window.accessMode?.mode==='schedule')q.set('join_quality','1');
  await fetchTableData(String(q),force);
  renderGrid();
 }
@@ -195,10 +231,11 @@ function findColumnFor(key){return (aliases[key]||[]).find(n=>S.columns.includes
 function renderGrid(){
  bumpGridGeneration();   // 前の描画に紐づく非同期判定を打ち切る(下のcheck*参照)
  /* ロット問い合わせ(LotDsp)は仕掛一覧・品質データのどちらでも使えるように
-    する。「測定」列(測定画面を開く)は仕掛一覧(SIKALOTNOW)専用のまま。
-    「予定」列(スケジュールへ追加、§9.5)もSIKALOTNOW専用で、スケジュール
-    モードのときだけ出す(押せないボタンを他モードで見せない)。 */
- const isWork=S.db==='SIKALOTNOW',hasLotDsp=S.db==='SIKALOTNOW'||S.db==='SIKALOTDEF';
+    する。「測定」列(測定画面を開く)は**役割が「作業」のデータソース**専用。
+    「予定」列(スケジュールへ追加、§9.5)も同じで、スケジュールモードの
+    ときだけ出す(押せないボタンを他モードで見せない)。判定はキーの文字列
+    ではなくデータソースマスタの役割で行う(§9.87)。 */
+ const isWork=WL.dataSource.isWork(S.db),hasLotDsp=WL.dataSource.hasLot(S.db);
  const canPlan=isWork&&window.accessMode?.mode==='schedule';
  const lotCol=hasLotDsp?findColumnFor('lotNo'):null,castCol=hasLotDsp?findColumnFor('castingNo'):null;
  const filteredCols=new Set((S.genericFilters||[]).map(f=>f.column));
@@ -353,7 +390,7 @@ function ensureListToolbar(){
 function renderListToolbar(){
  const bar=ensureListToolbar();if(!bar)return;
  // 表示列の選択は、設備ごとの設定を持つスケジュールモードの仕掛一覧でのみ扱う。
- const canPickColumns=S.db==='SIKALOTNOW'&&window.accessMode?.mode==='schedule'&&!!window.scColumnPickerAvailable?.();
+ const canPickColumns=WL.dataSource.isWork(S.db)&&window.accessMode?.mode==='schedule'&&!!window.scColumnPickerAvailable?.();
  const btn=bar.querySelector('#listColumnBtn');
  if(btn)btn.hidden=!canPickColumns;
  // 品質データ結合(join_quality)の結果を、成功・失敗どちらも一覧の脇に出す。
@@ -536,7 +573,9 @@ WL.rne=(()=>{
    入口がマスタ管理 > パス設定の中にしか無く、一覧を見ている人からは
    辿り着けなかった。モードバッジ・表示サイズと同じポップオーバーで
    「どちらをするか」を選ばせる(押す前に選択肢が見える形に揃える)。 */
-const RNE_TARGET_DBS=['SIKALOTNOW','SIKALOTDEF'];
+/* RNEから作り直せるのは、抽出定義(RNEファイル)を持つデータソース。
+   キーで決め打ちしない(§9.87)。 */
+function rneTargetDbs(){return WL.dataSource.views().map(x=>x.key)}
 function reloadList(){invalidateTableCache();load(true)}
 
 function closeReloadMenu(){
@@ -569,7 +608,7 @@ async function openReloadMenu(anchor){
  /* RNEからの作成は、この一覧が対象で、かつ抽出資材が置いてある端末だけ。
     出せない理由がある場合も**黙って隠さず**、無効の項目として理由を出す
     (「あるはずの機能が無い」と探させないため)。 */
- if(!RNE_TARGET_DBS.includes(S.db))return;
+ if(!rneTargetDbs().includes(S.db))return;
  const btn=document.createElement('button');
  btn.type='button';btn.dataset.reloadAction='rne';
  btn.innerHTML='<span>RNEファイルから作成して再読込</span><small>確認しています…</small>';

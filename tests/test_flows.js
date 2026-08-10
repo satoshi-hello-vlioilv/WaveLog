@@ -87,8 +87,14 @@ let b=null;
 
   // --- 測定作業導線 ---
   await check('データ一覧',()=>page.click('#homeDrafts'),{header:'データ一覧',settle:2500});
-  await check('仕掛一覧',()=>page.click('aside [data-db-key="SIKALOTNOW"]'),{header:'仕掛一覧',settle:2500});
-  await check('品質データ',()=>page.click('aside [data-db-key="SIKALOTDEF"]'),{header:'品質データ',settle:2500});
+  /* 一覧の見出しは**データソースマスタの表示名**(§9.87)。コード内に
+     固定で書いていた頃は、左メニュー(表示名)とヘッダー(固定文字列)で
+     別の名前が出ていた。表示名を変えても追随するよう、期待値もマスタから取る。 */
+  const dsLabel=k=>page.evaluate(key=>WL.dataSource.label(key),k);
+  await check('仕掛一覧',()=>page.click('aside [data-db-key="SIKALOTNOW"]'),
+    {header:await dsLabel('SIKALOTNOW'),settle:2500});
+  await check('品質データ',()=>page.click('aside [data-db-key="SIKALOTDEF"]'),
+    {header:await dsLabel('SIKALOTDEF'),settle:2500});
 
   // --- スケジュール作業導線 ---
   await check('作業スケジュール',()=>page.click('#openSchedule'),

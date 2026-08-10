@@ -148,7 +148,46 @@ function sourceField(names){
 }
 // Waiting feedback on the initial navigation. Yield one frame so acknowledgement appears immediately.
 function nextPaint(){return new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))}
-function databaseLabel(key){return key==='SIKALOTNOW'?'仕掛一覧':key==='SIKALOTDEF'?'品質データ':key==='MASTER'?'マスタ':'データ'}
+/* ---------- データソースの役割(§9.87) ----------
+   「どれが作業対象の一覧(仕掛)で、どれが品質データか」は
+   **データソースマスタの[役割]が決める**。以前は 'SIKALOTNOW' という
+   キーの文字列を各画面で直接比較しており、マスタでキーを変えると
+   左メニューに古いキーのボタンが残って「データベース指定が不正です」に
+   なり、測定・予定・品質結合・条割の再検索が黙って消えた(実機で発生)。
+   キーは利用者が自由に付けてよい**ただの識別子**に戻し、判定はここへ集約する。
+   /api/catalog の結果で list-view.js の init() が満たす。 */
+const dataSource=(()=>{
+ let list=[],workKey=null,qualityKey=null;
+ function setCatalog(d){
+  list=(d&&d.databases)||[];
+  // サーバーが決めた役割を正とする(1件だけに絞る判定もサーバー側にある)。
+  workKey=(d&&d.workKey)||null;qualityKey=(d&&d.qualityKey)||null;
+ }
+ const of=key=>list.find(x=>x.key===key)||null;
+ return {
+  setCatalog,
+  all:()=>list.slice(),
+  /* 一覧として左メニューへ出すもの(マスタは別入口)。 */
+  views:()=>list.filter(x=>x.role!=='master'),
+  has:key=>!!of(key),
+  get:of,
+  workKey:()=>workKey,
+  qualityKey:()=>qualityKey,
+  /* 測定・予定投入の対象になる一覧か。 */
+  isWork:key=>!!workKey&&key===workKey,
+  isQuality:key=>!!qualityKey&&key===qualityKey,
+  /* ロット問い合わせ(LotDsp)が使えるのは、ロットを持つ業務データ全般。 */
+  hasLot:key=>{const x=of(key);return !!x&&x.role!=='master'},
+  label:key=>{const x=of(key);return (x&&x.label)||''},
+ };
+})();
+// 名前空間の宣言はこのファイルの下の方にあるが、ここで先に要るので用意する。
+window.WL=window.WL||{};
+window.WL.dataSource=dataSource;
+function databaseLabel(key){
+ if(key==='MASTER')return 'マスタ';
+ return WL.dataSource.label(key)||'データ';
+}
 // Application equipment setting and design-course guard.
 const APP_EQUIPMENT_KEY='AccessMeasurementConfiguredEquipment';
 function currentConfiguredEquipment(){return String(localStorage.getItem(APP_EQUIPMENT_KEY)||'').trim()}

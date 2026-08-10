@@ -261,10 +261,14 @@
     sikaTablePromise=null;sikaColumnsCache.clear();prefixSearchCache.clear();
   }
   window.invalidateSplitQueryCache=invalidateSplitQueryCache;
+  /* 条割の再検索先＝作業対象の一覧。データソースマスタの役割が決めるので、
+     'SIKALOTNOW'というキーの綴りに依存させない(§9.87)。 */
+  function workDb(){return WL.dataSource.workKey()||''}
   async function resolveSikaTable(){
     if(S.measure?.settings?.sourceTable)return S.measure.settings.sourceTable;
+    if(!workDb())return null;
     if(!sikaTablePromise){
-      sikaTablePromise=api('/api/tables?db=SIKALOTNOW')
+      sikaTablePromise=api('/api/tables?db='+encodeURIComponent(workDb()))
         .then(info=>info.tables?.[0]||null)
         .catch(e=>{sikaTablePromise=null;throw e});
     }
@@ -276,7 +280,7 @@
     // 引数が変わり得る。キーはテーブル名にする。
     if(!sikaColumnsCache.has(table)){
       sikaColumnsCache.set(table,
-        api('/api/table?'+new URLSearchParams({db:'SIKALOTNOW',table,page:1,page_size:1,include_hidden:1}))
+        api('/api/table?'+new URLSearchParams({db:workDb(),table,page:1,page_size:1,include_hidden:1}))
           .then(d=>d.columns||[])
           .catch(e=>{sikaColumnsCache.delete(table);throw e}));
     }
@@ -294,7 +298,7 @@
     if(hit&&Date.now()-hit.at<SPLIT_QUERY_TTL_MS)return hit.promise;
     const filters=[{column:lotCol,op:'starts',value:prefix}];
     if(equipCol&&equipment)filters.push({column:equipCol,op:'contains',value:equipment});
-    const params=new URLSearchParams({db:'SIKALOTNOW',table,page:1,page_size:50,include_hidden:1,filters:JSON.stringify(filters)});
+    const params=new URLSearchParams({db:workDb(),table,page:1,page_size:50,include_hidden:1,filters:JSON.stringify(filters)});
     const promise=api('/api/table?'+params).then(d=>d.rows||[])
       .catch(e=>{prefixSearchCache.delete(key);throw e});
     prefixSearchCache.set(key,{at:Date.now(),promise});
@@ -328,7 +332,7 @@
       const filters=[{column:lotCol,op:'eq',value:lotNo}];
       const equipCol=findColumn(columns,aliases.equipment),equipment=typeof currentConfiguredEquipment==='function'?currentConfiguredEquipment():'';
       if(equipCol&&equipment)filters.push({column:equipCol,op:'contains',value:equipment});
-      const params=new URLSearchParams({db:'SIKALOTNOW',table,page:1,page_size:5,include_hidden:1,filters:JSON.stringify(filters)});
+      const params=new URLSearchParams({db:workDb(),table,page:1,page_size:5,include_hidden:1,filters:JSON.stringify(filters)});
       const d=await api('/api/table?'+params);
       return d.rows?.[0]||null;
     }catch(e){console.warn('子ロット再検索に失敗しました: '+lotNo,e);return null}
@@ -409,7 +413,7 @@
   window.findParentLotFor=findParentLotFor;
   // 子ロットと判定された場合、確認の上で親ロットの行に差し替える。
   async function resolveToParentIfChild(row){
-    if(!row||S.db!=='SIKALOTNOW')return row;
+    if(!row||!WL.dataSource.isWork(S.db))return row;
     const parent=await findParentLotFor(row);
     if(!parent)return row;
     const childLotNo=pick(row,'lotNo'),parentLotNo=pick(parent,'lotNo');
@@ -1636,7 +1640,7 @@
     const baseOpenMeasurement=openMeasurement;
     openMeasurement=async function(row){
       row=await resolveToParentIfChild(row);
-      if(row&&S.db==='SIKALOTNOW'){
+      if(row&&WL.dataSource.isWork(S.db)){
         const missingInfo=await findMissingChildLots(row);
         if(missingInfo&&missingInfo.missing.length){
           const proceed=await confirmModal(`このロットは分割データがありますが、次の子ロットが仕掛データに見つかりません:\n${missingInfo.missing.join('、')}\n\n子ロットが仕掛から外れている場合、既に作業済みである可能性が高く、このまま測定を始めると目標幅・公差の一部が欠けたまま判定されます。\n\nこのまま測定を開始しますか？`);
@@ -1646,7 +1650,7 @@
       try{
         return await baseOpenMeasurement(row);
       }finally{
-        if(S.measure&&S.db==='SIKALOTNOW'){
+        if(S.measure&&WL.dataSource.isWork(S.db)){
           S.measure.settings=S.measure.settings||{};S.measure.settings.sourceTable=S.table;S.measure.settings.sourceColumns=(S.columns||[]).slice();
           await refreshSelfSourceFull();
           refreshSplitStatusPanel();

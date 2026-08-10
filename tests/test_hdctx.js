@@ -20,9 +20,15 @@ let b=null;
    src:document.querySelector('#headerContextSource')?.hidden?'':document.querySelector('#headerContextSource').textContent.trim()}));
  const go=async(sel,wait=1800)=>{await page.click(sel);await page.waitForTimeout(wait)};
 
+ /* ヘッダーの画面名は**データソースマスタの表示名**を使う(§9.87)。
+    以前は'SIKALOTNOW'なら'仕掛一覧'と固定で書いており、左メニュー
+    (マスタの表示名＝「仕掛（現在）」)とヘッダーで別の名前が出ていた。
+    表示名を変えても追随するよう、期待値もマスタから取る。 */
+ const navLabel=k=>page.evaluate(key=>WL.dataSource.label(key),k);
  await go('[data-db-key="SIKALOTNOW"]',2500);
  let c=await ctx();
- rec('仕掛(現在): 画面名が主・ファイル名が副',c.title==='仕掛一覧'&&/sikalotnow/i.test(c.src),JSON.stringify(c));
+ rec('仕掛(現在): 画面名が主・ファイル名が副',
+   c.title===await navLabel('SIKALOTNOW')&&/sikalotnow/i.test(c.src),JSON.stringify(c));
  // ここから他画面へ移り、DBファイル名が残らないことを見る
  for(const [sel,want] of [['#homeDrafts','データ一覧'],['#openDashboard','ダッシュボード'],
                           ['#openCalendar','実績カレンダー'],['#openSchedule','作業スケジュール'],
@@ -33,7 +39,7 @@ let b=null;
  }
  // 品質データ→データ一覧でも残らない
  await go('[data-db-key="SIKALOTDEF"]',2500);c=await ctx();
- rec('品質データ: 画面名が主',c.title==='品質データ',JSON.stringify(c));
+ rec('品質データ: 画面名が主',c.title===await navLabel('SIKALOTDEF'),JSON.stringify(c));
  await go('#homeDrafts',2200);c=await ctx();
  rec('品質データ→データ一覧でも名残なし',c.title==='データ一覧'&&!/sikalot/i.test(c.src),JSON.stringify(c));
 

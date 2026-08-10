@@ -25,6 +25,27 @@ FOREIGN='foreign'          # 別のアプリがポートを使用中(HTTP応答�
 UNRESPONSIVE='unresponsive'# ポートは使用中だがHTTPが応答しない(自分自身が重い処理でブロックされている可能性を含む)
 FREE='free'                # 誰も使っていない
 
+# ローカルホストへの問い合わせは**絶対にプロキシを経由させない**。
+# urllib は既定でプロキシ設定を見る。Windowsでは環境変数だけでなく
+# **レジストリのIE/Edgeのプロキシ設定まで読む**ため、社内プロキシが
+# 設定された端末では 127.0.0.1 宛ての確認まで社内プロキシへ送られ、
+# 認証が通らず 407 Proxy Authentication Required が返る。probe()は
+# 「HTTPで何かが応答した=別のアプリ」と解釈するので、**自分自身が
+# 起動しているのに「別のアプリが使用しています」と誤判定して
+# stop.batが停止できなくなる**(実際に起きた。タスクマネージャーから
+# 落とすしかない状態になっていた)。ProxyHandler({})でプロキシを
+# 明示的に空にした専用のopenerを使い、この経路を断つ。
+_LOCAL_OPENER=urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+# プロキシが返す典型的なステータス。これらは「ポートの向こうに別のアプリが
+# いる」証拠ではなく、**そもそも問い合わせが目的地へ届いていない**印。
+_PROXY_STATUSES=(407,502,503,504)
+
+
+def urlopen_local(url,timeout=2.0,**kw):
+ """このPC自身(127.0.0.1)への問い合わせ。プロキシを経由しない。"""
+ return _LOCAL_OPENER.open(url,timeout=timeout,**kw)
+
 
 def port_in_use(timeout=0.4):
  """ポートに誰かがbindしているか(HTTPかどうかは問わない)。"""
@@ -38,11 +59,17 @@ def probe(timeout=2.0):
  if not port_in_use():
   return FREE,None
  try:
-  with urllib.request.urlopen(f'http://{HOST}:{PORT}/api/build',timeout=timeout) as r:
+  with urlopen_local(f'http://{HOST}:{PORT}/api/build',timeout=timeout) as r:
    info=json.loads(r.read().decode('utf-8','replace'))
  except urllib.error.HTTPError as e:
-  # 何かが応答している=このアプリではない。原因調査のため、返ってきた
-  # ステータスだけでも記録しておく(FOREIGN自体の判定には使わない)。
+  # 何かが応答している=このアプリではない……とは限らない。プロキシ由来の
+  # ステータス(407等)は「届いていない」印なので、別アプリと決めつけずに
+  # UNRESPONSIVE(応答なし)として扱う。**こちらなら停止は記録済みPIDの
+  # 経路へ進める**(force_stop()がinstance.jsonのapp_rootを照合するので、
+  # 別フォルダーのアプリを巻き添えにすることはない)。
+  if e.code in _PROXY_STATUSES:
+   return UNRESPONSIVE,{'http_status':e.code,'note':'プロキシ経由の応答の可能性'}
+  # 原因調査のため、返ってきたステータスだけでも記録しておく。
   return FOREIGN,{'http_status':e.code}
  except Exception:
   # bindはされているがHTTPとして応答しない(タイムアウト・接続断など)。

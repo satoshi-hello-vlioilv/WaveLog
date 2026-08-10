@@ -27,10 +27,12 @@ setTimeout(function(){var r=document.documentElement;r.classList.remove('app-boo
 <div class="nav-group-label">測定データ</div>
 <button class="db nav-item nav-item--primary" data-open-records="編集中" id="homeDrafts" type="button"><svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg><span>データ一覧</span><b id="homeDraftCount">0</b><i class="sync-warn-dot" id="homeDraftSyncWarn" hidden title="バックアップDBへ未送信のデータがあります" aria-hidden="true"></i></button>
 </nav>
+<!-- 「一覧を見る」の中身はデータソースマスタから作る(§9.87)。ここへ直接
+     ボタンを書かないこと——マスタでキーを変えると、消えない静的ボタンが
+     「データベース指定が不正です」を出し、マスタ由来のボタンと二重に並ぶ
+     (実機で発生)。組み立ては list-view.js の renderDbNav()。 -->
 <nav class="nav-group view-nav" id="nav" aria-label="一覧を見る">
 <div class="nav-group-label">一覧を見る</div>
-<button class="db nav-item nav-item--view" data-db-key="SIKALOTNOW" type="button"><svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg><span>仕掛（現在）</span></button>
-<button class="db nav-item nav-item--view" data-db-key="SIKALOTDEF" type="button"><svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><span>品質データ</span></button>
 </nav>
 <nav class="nav-group plan-nav" id="planNav" aria-label="計画">
 <div class="nav-group-label">計画</div>

@@ -197,6 +197,88 @@ rec('空欄で保存すると既定へ戻る',
 rec('RNE未設定のデータソースは抽出対象にならない',
     all(j.get('rne') for j in rne_scheduler.jobs()))
 
+# ---- 7) 役割(§9.87): どれが作業対象/品質かをマスタが持つ ----
+# なぜ要るか: 以前は 'SIKALOTNOW' というキーの文字列を全画面で直接比較して
+# いた。マスタでキーを変えると、左メニューに古いキーのボタンが残って
+# 「データベース指定が不正です」になり、測定・予定・品質結合・条割の再検索が
+# 黙って消えた(実機で発生)。役割で判定すれば、キーはただの識別子に戻る。
+cat = client.get('/api/catalog').get_json() or {}
+rec('カタログが役割つきで返る',
+    all('purpose' in x for x in cat.get('databases', [])),
+    str([x.get('purpose') for x in cat.get('databases', [])]))
+rec('カタログが作業対象のキーを返す', bool(cat.get('workKey')), str(cat.get('workKey')))
+rec('カタログが品質データのキーを返す', bool(cat.get('qualityKey')), str(cat.get('qualityKey')))
+rec('作業対象は実在するデータソース',
+    cat.get('workKey') in {x['key'] for x in cat.get('databases', [])})
+
+# 同じ役割が2件に付くと「どちらを使うか」が決まらないので拒否する。
+r = client.post('/api/data-source-master', json={
+    'key': KEY, 'label': '役割かぶり', 'purpose': '作業', 'user_id': 'test'})
+body = r.get_json() or {}
+rec('役割が重なる登録は理由付きで弾く',
+    r.status_code == 400 and '1つの役割は1件だけ' in (body.get('error') or ''),
+    f"{r.status_code} {body.get('error', '')[:60]}")
+purge_probe_rows()
+
+# 存在しないキーを指定したときは、**選べるキーまで**返す(原因に辿り着けるように)
+try:
+    db_access.cfg('NO_SUCH_KEY')
+    rec('存在しないキーは弾かれる', False, '例外が出なかった')
+except ValueError as e:
+    msg = str(e)
+    rec('存在しないキーは弾かれる', True)
+    rec('エラーに指定値と選べるキーが載る',
+        'NO_SUCH_KEY' in msg and (cat.get('workKey') or 'SIKALOTNOW') in msg, msg[:90])
+
+# ---- 8) 役割の移行: キーを変えてある既存DBでも機能を減らさない ----
+# 実機はキーが既定から変わっていた。役割の対応表(キー→役割)が1件も当たらない
+# ため、そのままでは作業対象が決まらず測定も予定投入もできない画面になる。
+# 表示順の先頭を作業対象とみなす(以前の「先頭の一覧＝仕掛」という暗黙の扱い)。
+import sqlite3 as _sqlite3, tempfile  # noqa: E402
+def _legacy_master(rows):
+    """役割列が無い時代のマスタDBを作る。"""
+    fd = tempfile.NamedTemporaryFile(suffix='.sqlite3', delete=False)
+    fd.close()
+    c = _sqlite3.connect(fd.name)
+    c.execute('CREATE TABLE [データソースマスタ] ('
+              '[ソースID] INTEGER PRIMARY KEY AUTOINCREMENT, [キー] TEXT, [表示名] TEXT, '
+              '[RNEファイル] TEXT, [抽出テーブル] TEXT, [出力ファイル] TEXT, [共有パス] TEXT, '
+              '[既定テーブル] TEXT, [表示順] INTEGER, [有効] INTEGER, '
+              '[登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
+    for key, label, order in rows:
+        c.execute('INSERT INTO [データソースマスタ] ([キー],[表示名],[表示順],[有効]) '
+                  'VALUES (?,?,?,-1)', [key, label, order])
+    c.commit()
+    return fd.name, c
+
+for title, rows, want in (
+        ('既定のキーなら対応表どおり',
+         [('SIKALOTNOW', '仕掛（現在）', 10), ('SIKALOTDEF', '品質データ', 20)],
+         ('SIKALOTNOW', '品質データ')),
+        ('キーを変えてあっても表示順の先頭が作業対象になる',
+         [('SIKA_A', '仕掛（現在）', 10), ('SIKA_B', '品質データ', 20)],
+         ('SIKA_A', None)),
+):
+    name, conn = _legacy_master(rows)
+    try:
+        db_access.ensure_data_source_table(conn)
+        got = db_access.data_source_rows(conn)
+        work = [x['key'] for x in got if x['purpose'] == db_access.PURPOSE_WORK]
+        rec(f'役割の移行: {title}', work == [want[0]], f'作業={work}')
+    finally:
+        conn.close()
+        pathlib.Path(name).unlink(missing_ok=True)
+
+# 同じキーが2行あると、DBSは辞書なので黙って1つに潰れ、画面には2つ並ぶ。
+name, conn = _legacy_master([('DUP', 'いち', 10), ('DUP', 'に', 20)])
+try:
+    db_access.ensure_data_source_table(conn)
+    got = db_access.data_source_rows(conn)
+    rec('同じキーの行が2つあっても1件に絞る', len(got) == 1, f'{len(got)}件')
+finally:
+    conn.close()
+    pathlib.Path(name).unlink(missing_ok=True)
+
 purge_probe_rows()
 
 ng = [x for x in R if not x[1]]
