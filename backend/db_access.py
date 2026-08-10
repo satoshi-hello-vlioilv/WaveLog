@@ -188,7 +188,13 @@ def tables(c):
   return sorted({r[0] for r in cur.fetchall() if r[0]},key=str.casefold)
  return sorted({r.table_name for r in c.cursor().tables(tableType='TABLE') if r.table_name and not r.table_name.startswith(('MSys','USys','~'))},key=str.casefold)
 def cfg(k):
- if k not in DBS: raise ValueError('データベース指定が不正です')
+ if k not in DBS:
+  # **何が正しいのかまで書く。** 以前は「不正です」だけを返しており、
+  # データソースマスタでキーを変えた端末では、左メニューに残った古いキーの
+  # ボタンがこの文言だけを出して原因に辿り着けなかった(実機で発生)。
+  raise ValueError(f'データベース指定が不正です（指定: {k or "(空欄)"} / '
+                   f'選べるのは: {"、".join(DBS)}）。'
+                   'マスタ管理 > データソースの「キー」と合っているか確認してください。')
  return DBS[k]
 
 # ========================================================================
@@ -322,13 +328,31 @@ def path_config_value(key,default=None):
 # は db_access に依存する側なので、あちらへ置くと循環importになる。
 # ========================================================================
 DATA_SOURCE_TABLE='データソースマスタ'
+# ---- 役割(§9.87) -------------------------------------------------------
+# 「どれが作業対象の一覧(仕掛)で、どれが品質データか」を**1行の設定として
+# 持つ**。以前はキーの文字列そのもの('SIKALOTNOW'/'SIKALOTDEF')を全画面で
+# 直接比較しており、マスタでキーを変えると
+#   ・左メニューに古いキーのボタンが残って「データベース指定が不正です」
+#   ・測定/予定の列・品質データ結合・条割の再検索が黙って消える
+# という壊れ方をした(実機で発生)。役割で判定すれば、キーは利用者が自由に
+# 付けてよい**ただの識別子**に戻る。
+PURPOSE_WORK='作業'      # 作業対象の一覧(仕掛)。測定・予定投入の対象
+PURPOSE_QUALITY='品質'   # 品質データ。仕掛への結合元
+PURPOSE_OTHER=''         # その他(一覧として見るだけ)
+DATA_SOURCE_PURPOSES=(PURPOSE_WORK,PURPOSE_QUALITY,PURPOSE_OTHER)
+# 役割が未設定の既存行を、初回だけこのキーで補う(移行)。ここに載っていない
+# キーは PURPOSE_OTHER のまま＝「一覧として見るだけ」。
+_LEGACY_PURPOSE_BY_KEY={'SIKALOTNOW':PURPOSE_WORK,'SIKALOTDEF':PURPOSE_QUALITY}
+
 # 既定の2件。マスタが空のときだけ入れる(初回起動・既存環境の互換)。
 # 出力先/共有パスは下で解決するため、ここではファイル名だけを持つ。
 _DEFAULT_DATA_SOURCES=(
  {'key':'SIKALOTNOW','label':'仕掛（現在）','rne':'SIKALOTNOW.RNE','table':'仕掛',
-  'output':'sikalotnow.sqlite3','share':'SIKALOTNOW.sqlite3','preferred':'仕掛','order':10},
+  'output':'sikalotnow.sqlite3','share':'SIKALOTNOW.sqlite3','preferred':'仕掛','order':10,
+  'purpose':PURPOSE_WORK},
  {'key':'SIKALOTDEF','label':'品質データ','rne':'SIKALOTDEF.RNE','table':'仕掛',
-  'output':'sikalotdef.sqlite3','share':'SIKALOTDEF.sqlite3','preferred':'仕掛','order':20},
+  'output':'sikalotdef.sqlite3','share':'SIKALOTDEF.sqlite3','preferred':'仕掛','order':20,
+  'purpose':PURPOSE_QUALITY},
 )
 
 def ensure_data_source_table(c):
@@ -338,28 +362,70 @@ def ensure_data_source_table(c):
    'CREATE TABLE [データソースマスタ] ('
    '[ソースID] INTEGER PRIMARY KEY AUTOINCREMENT, [キー] TEXT, [表示名] TEXT, '
    '[RNEファイル] TEXT, [抽出テーブル] TEXT, [出力ファイル] TEXT, [共有パス] TEXT, '
-   '[既定テーブル] TEXT, [表示順] INTEGER, [有効] INTEGER, '
+   '[既定テーブル] TEXT, [表示順] INTEGER, [有効] INTEGER, [役割] TEXT, '
    '[登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
   c.commit();created=True
+ elif '役割' not in {n for n in cols(c,DATA_SOURCE_TABLE)}:
+  # 既存環境への追加(§9.87)。今までどおり動くよう、役割を補ってから使う。
+  cur=c.cursor()
+  cur.execute('ALTER TABLE [データソースマスタ] ADD COLUMN [役割] TEXT')
+  for key,purpose in _LEGACY_PURPOSE_BY_KEY.items():
+   cur.execute('UPDATE [データソースマスタ] SET [役割]=? WHERE [キー]=?',[purpose,key])
+  # キーを既定から変えている環境では、上の対応表が1件も当たらない。
+  # その場合に役割「作業」が空のままだと、測定も予定投入もできない画面に
+  # なってしまう。**移行で機能を減らさない**ため、表示順が先頭の有効な行を
+  # 作業対象とみなす(以前の「先頭の一覧＝仕掛」という暗黙の扱いと同じ)。
+  # 違っていればマスタ管理 > データソースで選び直せる。
+  cur.execute("SELECT COUNT(*) FROM [データソースマスタ] WHERE [役割]=?",[PURPOSE_WORK])
+  if not int(cur.fetchone()[0] or 0):
+   cur.execute('SELECT [ソースID],[キー] FROM [データソースマスタ] WHERE [有効]<>0 '
+               'ORDER BY [表示順],[キー] LIMIT 1')
+   first=cur.fetchone()
+   if first:
+    cur.execute('UPDATE [データソースマスタ] SET [役割]=? WHERE [ソースID]=?',[PURPOSE_WORK,first[0]])
+    app_logger().warning('データソースマスタに役割を追加しました。既定のキーから変更されているため、'
+                         '表示順が先頭の「%s」を役割「%s」としました。違う場合は'
+                         'マスタ管理 > データソースで選び直してください。',first[1],PURPOSE_WORK)
+  c.commit()
  return created
 
 def data_source_rows(c,include_disabled=False):
  """{キー: 設定}のリスト。テーブルが無ければ空(読み取り専用接続からも
- 安全に呼べるよう、CREATEはしない)。"""
+ 安全に呼べるよう、CREATEはしない)。
+
+ **同じキーの行が2つあったら後の行は捨てる。** DBS は辞書なので黙って
+ 片方に潰れ、画面には2つ並ぶ(=どちらを押しても同じものが出る)という
+ 分かりにくい状態になるため、読む時点で1つに決めて警告を残す。"""
  if DATA_SOURCE_TABLE not in tables(c):return []
+ has_purpose='役割' in {n for n in cols(c,DATA_SOURCE_TABLE)}
  cur=c.cursor()
  cur.execute('SELECT [ソースID],[キー],[表示名],[RNEファイル],[抽出テーブル],[出力ファイル],'
-             '[共有パス],[既定テーブル],[表示順],[有効] FROM [データソースマスタ] '
+             '[共有パス],[既定テーブル],[表示順],[有効]'
+             +(',[役割]' if has_purpose else '')+' FROM [データソースマスタ] '
              'ORDER BY [表示順],[キー]')
- out=[]
+ out=[];seen={}
  for r in cur.fetchall():
   active=True if r[9] is None else bool(r[9])
   key=str(r[1] or '').strip()
   if not key or (not active and not include_disabled):continue
+  if key in seen:
+   app_logger().warning('データソースマスタにキー%rの行が複数あります。表示順が先のソースID=%s'
+                        'を使い、ソースID=%sは読み飛ばしました。',key,seen[key],r[0])
+   continue
+  seen[key]=r[0]
+  purpose=str((r[10] if has_purpose else '') or '').strip()
+  if purpose not in DATA_SOURCE_PURPOSES:
+   # 想定外の値は「その他」として扱う(勝手に作業対象へ昇格させない)。
+   if purpose:
+    app_logger().warning('データソースマスタの役割(%r, キー=%s)は%sのいずれでもないため'
+                         '「その他」として扱います。',purpose,key,
+                         '/'.join(x or '空欄' for x in DATA_SOURCE_PURPOSES))
+   purpose=PURPOSE_OTHER
   out.append({'id':r[0],'key':key,'label':str(r[2] or '').strip() or key,
               'rne':str(r[3] or '').strip(),'table':str(r[4] or '').strip() or '仕掛',
               'output':str(r[5] or '').strip(),'share':str(r[6] or '').strip(),
-              'preferred':str(r[7] or '').strip(),'order':int(r[8] or 0),'active':active})
+              'preferred':str(r[7] or '').strip(),'order':int(r[8] or 0),'active':active,
+              'purpose':purpose})
  return out
 
 _DATA_SOURCE_SEEDED_KEY='__data_sources_seeded__'
@@ -485,15 +551,35 @@ DATA_SOURCES=_master_data_sources() or [
  # マスタを読めなかった場合の保険。既定の2件で従来どおり動かす。
  {'key':d['key'],'label':d['label'],'rne':d['rne'],'table':d['table'],
   'output':d['output'],'share':d['share'],'preferred':d['preferred'],
-  'order':d['order'],'active':True,'id':None}
+  'order':d['order'],'active':True,'id':None,'purpose':d['purpose']}
  for d in _DEFAULT_DATA_SOURCES]
 
 DBS={s['key']:{"path":_source_path(s),"label":s['label'],"role":"readonly",
                "preferred":s.get('preferred') or s.get('table') or '仕掛',
+               "purpose":s.get('purpose') or PURPOSE_OTHER,
                "engine":"sqlite","source":s}
      for s in DATA_SOURCES}
 DBS["MASTER"]={"path":_MASTER_PATH,"label":"マスタ一覧","role":"master",
+               "purpose":PURPOSE_OTHER,
                "preferred":"オペレータマスタ","engine":"sqlite"}
+
+def _purpose_key(purpose):
+ """その役割を担うデータソースのキー。無ければNone。
+ **役割は1件だけ**(2件以上あってもどちらを使うか決められないので先頭)。"""
+ hit=[s['key'] for s in DATA_SOURCES if (s.get('purpose') or PURPOSE_OTHER)==purpose]
+ if len(hit)>1:
+  app_logger().warning('データソースマスタに役割「%s」の行が%d件あります(%s)。'
+                       '先頭の%sを使います。',purpose,len(hit),'/'.join(hit),hit[0])
+ return hit[0] if hit else None
+
+# 「作業対象の一覧」「品質データ」がどのキーかは**ここだけが決める**。
+# 画面・APIはキーの文字列を直接比較せず、この2つを参照すること(§9.87)。
+WORK_DB_KEY=_purpose_key(PURPOSE_WORK)
+QUALITY_DB_KEY=_purpose_key(PURPOSE_QUALITY)
+if not WORK_DB_KEY:
+ app_logger().warning('データソースマスタに役割「%s」の行がありません。'
+                      '測定・予定投入の対象一覧が決まらないため、一覧は閲覧のみになります。'
+                      'マスタ管理 > データソースで役割を選んでください。',PURPOSE_WORK)
 # 閲覧用の追加複製先(パス設定マスタの"records_backup_export_path")。
 # 未設定ならNoneのままで、records_export.pyは複製を一切行わない(既定は現状維持)。
 _records_backup_export_override=_static_path_cfg('records_backup_export_path')

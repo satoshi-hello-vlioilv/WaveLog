@@ -162,10 +162,12 @@ def _size_text(n):
 def _browse_places():
  """よく使う場所。1クリックで飛べるようにして手入力を減らす。"""
  places=[{'label':'アプリの場所','path':str(BASE_DIR)},{'label':'データ(db)','path':str(BASE_DIR/'db')}]
- for key in ('SIKALOTNOW','SIKALOTDEF'):
+ # データソースは利用者が増減できる。**キーを決め打ちで書かない**(§9.87)。
+ for key,cfg in DBS.items():
+  if (cfg or {}).get('role')!='readonly':continue
   try:
-   parent=DBS[key]['path'].parent
-   places.append({'label':f'{key}の場所','path':str(parent)})
+   places.append({'label':f'{cfg.get("label") or key}の場所',
+                  'path':str(cfg['path'].parent)})
   except Exception:
    pass
  if SCHEDULE_SHARE_PATH:
@@ -236,7 +238,8 @@ def data_source_master_list():
                  'rneExists':bool(rne and rne.exists()),
                  'outputPath':str(out),
                  'outputExists':out.exists(),
-                 'enabled':'有効' if r['active'] else '無効'})
+                 'enabled':'有効' if r['active'] else '無効',
+                 'purpose':r.get('purpose') or 'その他'})
   return jsonify(ok=True,items=items,master_path=str(path),
                  assetsDir=str(rne_scheduler.assets_dir()),
                  confPath=str(rne_scheduler.conf_path()),
@@ -245,6 +248,28 @@ def data_source_master_list():
   return jsonify(error=f'データソース読込失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
 
 _KEY_RE=re.compile(r'^[A-Za-z0-9_]{1,40}$')
+
+def _purpose_of(x):
+ """画面から来た役割を正規化する(§9.87)。「作業」「品質」以外は「その他」。"""
+ from ..db_access import DATA_SOURCE_PURPOSES,PURPOSE_OTHER
+ v=str(x.get('purpose') or '').strip()
+ if v in ('その他','—','-'):return PURPOSE_OTHER
+ return v if v in DATA_SOURCE_PURPOSES else PURPOSE_OTHER
+
+def _purpose_conflict(cur,purpose,exclude_id=None):
+ """同じ役割が2行に付くのを防ぐ。**どちらを使うか決められない**ため。
+    戻り値: 問題があればメッセージ、無ければ None。"""
+ from ..db_access import PURPOSE_OTHER
+ if not purpose or purpose==PURPOSE_OTHER:return None
+ sql='SELECT [キー] FROM [データソースマスタ] WHERE [役割]=? AND [有効]<>0'
+ args=[purpose]
+ if exclude_id is not None:sql+=' AND [ソースID]<>?';args.append(exclude_id)
+ cur.execute(sql,args)
+ row=cur.fetchone()
+ if row:
+  return (f'役割「{purpose}」は既に「{row[0]}」に付いています。'
+          '1つの役割は1件だけです。先にそちらを「その他」へ変えてください。')
+ return None
 
 @bp.post('/api/data-source-master')
 def data_source_master_save():
@@ -257,25 +282,28 @@ def data_source_master_save():
   if key=='MASTER':
    return jsonify(error='MASTER はマスタDB自身に予約されています。別のキーにしてください。'),400
   label=str(x.get('label') or '').strip() or key
+  purpose=_purpose_of(x)
   path=DBS['MASTER']['path']
   with connect(path,False) as c:
    ensure_data_source_table(c);cur=c.cursor()
    cur.execute('SELECT [ソースID] FROM [データソースマスタ] WHERE [キー]=?',[key])
    row=cur.fetchone()
+   err=_purpose_conflict(cur,purpose,exclude_id=row[0] if row else None)
+   if err:return jsonify(error=err),400
    vals=[label,str(x.get('rne') or '').strip(),str(x.get('table') or '').strip() or '仕掛',
          str(x.get('output') or '').strip(),str(x.get('share') or '').strip(),
          str(x.get('preferred') or '').strip(),
          int(x.get('order') or 0),
-         0 if str(x.get('enabled') or '').strip()=='無効' else -1,uid]
+         0 if str(x.get('enabled') or '').strip()=='無効' else -1,purpose,uid]
    if row:
     cur.execute('UPDATE [データソースマスタ] SET [表示名]=?,[RNEファイル]=?,[抽出テーブル]=?,'
-                '[出力ファイル]=?,[共有パス]=?,[既定テーブル]=?,[表示順]=?,[有効]=?,'
+                '[出力ファイル]=?,[共有パス]=?,[既定テーブル]=?,[表示順]=?,[有効]=?,[役割]=?,'
                 '[更新者ID]=?,[更新日時]=Now() WHERE [ソースID]=?',vals+[row[0]])
     registered=False;sid=row[0]
    else:
     cur.execute('INSERT INTO [データソースマスタ] ([表示名],[RNEファイル],[抽出テーブル],'
-                '[出力ファイル],[共有パス],[既定テーブル],[表示順],[有効],[更新者ID],'
-                '[キー],[登録者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',
+                '[出力ファイル],[共有パス],[既定テーブル],[表示順],[有効],[役割],[更新者ID],'
+                '[キー],[登録者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',
                 vals+[key,uid])
     registered=True;sid=cur.lastrowid
    c.commit()
@@ -303,6 +331,7 @@ def data_source_master_update():
   if key=='MASTER':
    return jsonify(error='MASTER はマスタDB自身に予約されています。別のキーにしてください。'),400
   label=str(x.get('label') or '').strip() or key
+  purpose=_purpose_of(x)
   path=DBS['MASTER']['path']
   with connect(path,False) as c:
    ensure_data_source_table(c);cur=c.cursor()
@@ -313,8 +342,10 @@ def data_source_master_update():
    cur.execute('SELECT [ソースID] FROM [データソースマスタ] WHERE [キー]=? AND [ソースID]<>?',[key,sid])
    if cur.fetchone():
     return jsonify(error=f'キー「{key}」は別のデータソースが使っています。'),400
+   err=_purpose_conflict(cur,purpose,exclude_id=sid)
+   if err:return jsonify(error=err),400
    cur.execute('UPDATE [データソースマスタ] SET [キー]=?,[表示名]=?,[RNEファイル]=?,[抽出テーブル]=?,'
-               '[出力ファイル]=?,[共有パス]=?,[既定テーブル]=?,[表示順]=?,[有効]=?,'
+               '[出力ファイル]=?,[共有パス]=?,[既定テーブル]=?,[表示順]=?,[有効]=?,[役割]=?,'
                '[更新者ID]=?,[更新日時]=Now() WHERE [ソースID]=?',
                [key,label,str(x.get('rne') or '').strip(),
                 str(x.get('table') or '').strip() or '仕掛',
@@ -322,7 +353,7 @@ def data_source_master_update():
                 str(x.get('preferred') or '').strip(),
                 int(x.get('order') or 0),
                 0 if str(x.get('enabled') or '').strip()=='無効' else -1,
-                uid,sid])
+                purpose,uid,sid])
    c.commit()
   return jsonify(ok=True,id=sid,key=key,registered=False,updated_by=uid,
                  message='保存しました。キー・表示名・読み込み先の変更はサーバー再起動後に反映されます。')

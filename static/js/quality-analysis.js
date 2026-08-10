@@ -444,7 +444,7 @@
 
  function sync(){
   ensurePrintButton();const panel=ensurePanel();
-  const isQ=typeof S!=='undefined'&&S.db==='SIKALOTDEF';
+  const isQ=typeof S!=='undefined'&&!!window.WL&&WL.dataSource.isQuality(S.db);
   panel.hidden=!isQ;document.body.classList.toggle('qa-mode',!!isQ);
   if(!isQ){prevQa=false;return}
   /* パネルを汎用フィルタバーの前に置き、元データビューで両者を上から順に表示 */

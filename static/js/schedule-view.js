@@ -1104,6 +1104,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
        利用者が明示的に「再計算」を押したときだけ立てる。工程は前へしか
        進まないので普段は可を再確認しないが、**利用者が最新を求めた操作**
        では情報源そのものを取り直すのが筋(§9.67)。 */
+ /* 作業可否の判定材料(仕掛)を引く先。データソースマスタで役割が「作業」の
+    ものを使う。キーの綴りに依存させない(§9.87)。 */
+ function workDbKey(){return (window.WL&&WL.dataSource&&WL.dataSource.workKey())||''}
  async function loadWorkableIndex(opts){
   const o=(opts===true?{ignoreTtl:true}:(opts||{}));
   const force=!!o.ignoreTtl;
@@ -1127,11 +1130,18 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    return scWorkable.map;
   }
   try{
-   const t=await api('/api/tables?db=SIKALOTNOW');
+   // 役割が「作業」のデータソースが無ければ判定材料が引けない。勝手に
+   // 「可」にはせず「?」のまま返す(確認できないものを作業させないため)。
+   if(!workDbKey()){
+    console.warn('作業可否: 役割が「作業」のデータソースが登録されていません');
+    scWorkable={at:Date.now(),map,table,cols,pages,scanned,total};
+    return map;
+   }
+   const t=await api('/api/tables?db='+encodeURIComponent(workDbKey()));
    table=(t.tables||[])[0];
    if(table){
     for(let page=1;page<=WORKABLE_MAX_PAGES;page++){
-     const q=new URLSearchParams({db:'SIKALOTNOW',table,page,page_size:WORKABLE_PAGE_SIZE,
+     const q=new URLSearchParams({db:workDbKey(),table,page,page_size:WORKABLE_PAGE_SIZE,
        search:'',include_hidden:'1'});
      const d=await api('/api/table?'+q);
      pages=page;total=Number(d.count||0);
@@ -1184,7 +1194,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    while(idx<targets.length){
     const lot=targets[idx++];
     try{
-     const q=new URLSearchParams({db:'SIKALOTNOW',table,page:1,page_size:1,include_hidden:'1',
+     const q=new URLSearchParams({db:workDbKey(),table,page:1,page_size:1,include_hidden:'1',
       filters:JSON.stringify([{column:cols.lotCol,op:'eq',value:lot}])});
      const d=await api('/api/table?'+q);
      const row=(d.rows||[])[0];
@@ -1923,7 +1933,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  // 一覧から消える(§9.15)よう#gridを再描画する。SIKALOTNOWを見ていない
  // 時は無駄なので、S.dbで確認してから呼ぶ。
  function refreshScheduledLotFilter(){
-  if(typeof renderGrid==='function'&&typeof S!=='undefined'&&S.db==='SIKALOTNOW')renderGrid();
+  if(typeof renderGrid==='function'&&typeof S!=='undefined'&&WL.dataSource.isWork(S.db))renderGrid();
  }
 
  /* ---------- 書込キュー(§9.11新設): 画面描画を先行させ、実際のAPI呼び出しは

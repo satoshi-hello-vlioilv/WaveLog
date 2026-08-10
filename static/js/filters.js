@@ -777,7 +777,7 @@
       // ファイルはload()を丸ごと置き換えているため、あちらだけ直しても
       // 実際にはこちらが動いてしまい反映されない。キャッシュ(§9.46)も同じ理由で
       // 両方から同じヘルパー(tableCacheGet/applyTableData)を呼ぶ。
-      if(S.db==='SIKALOTNOW'&&window.accessMode?.mode==='schedule')q.set('join_quality','1');
+      if(WL.dataSource.isWork(S.db)&&window.accessMode?.mode==='schedule')q.set('join_quality','1');
       await fetchTableData(String(q),force);
       renderGrid();renderGenericFilterBar();
     };

@@ -31,7 +31,9 @@ def request_shutdown(timeout=3.0):
  """アプリ自身へ正常終了を要求する。受け付けられたらTrue。"""
  req=urllib.request.Request(f'http://{HOST}:{PORT}/api/shutdown',method='POST',data=b'')
  try:
-  with urllib.request.urlopen(req,timeout=timeout) as r:
+  # プロキシを経由させない(guard.urlopen_local参照。社内プロキシ設定のある
+  # 端末では127.0.0.1宛てまで転送され、407で停止できなくなる)。
+  with launch_guard.urlopen_local(req,timeout=timeout) as r:
    return json.loads(r.read().decode('utf-8','replace')).get('stopping') is True
  except Exception:
   return False

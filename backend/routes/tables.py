@@ -11,7 +11,7 @@ SQLiteには無いため、db_access.pyのconnect()がユーザー定義関数�
 import json, re, unicodedata
 from flask import Blueprint, request, jsonify
 
-from ..db_access import DBS, qi, connect, cols, tables, cfg
+from ..db_access import DBS, qi, connect, cols, tables, cfg, WORK_DB_KEY, QUALITY_DB_KEY
 from ..logging_setup import app_logger
 from ..errors import os_error_hint
 from ..repositories.master_repo import hidden_columns_for_db
@@ -95,7 +95,13 @@ def _join_quality_data(sikalotnow_cols,row_dicts):
  if not lot_values:
   info['reason']='表示中の行にロット番号がありません'
   return sikalotnow_cols,row_dicts,info
- def_cfg=DBS['SIKALOTDEF']
+ # 品質データがどのデータソースかは役割で決まる(§9.87)。キーは利用者が
+ # 自由に付けられるので、'SIKALOTDEF'という文字列で探さないこと。
+ def_cfg=DBS.get(QUALITY_DB_KEY or '')
+ if not def_cfg:
+  info['reason']=('役割が「品質」のデータソースが登録されていません。'
+                  'マスタ管理 > データソースで役割を選んでください。')
+  return sikalotnow_cols,row_dicts,info
  try:
   if not def_cfg['path'].exists():
    info['reason']=f'品質データのファイルが見つかりません: {def_cfg["path"]}'
@@ -193,7 +199,13 @@ def api_db_diagnose():
  return jsonify(out),200
 
 @bp.get('/api/catalog')
-def catalog(): return jsonify(databases=[{"key":k,"label":v['label'],"file_name":v['path'].name,"role":v['role']} for k,v in DBS.items()])
+def catalog():
+ # purpose(役割)まで返す。画面はキーの文字列ではなくこれで「作業対象の
+ # 一覧か/品質データか」を判断する(§9.87)。
+ return jsonify(databases=[{"key":k,"label":v['label'],"file_name":v['path'].name,
+                            "role":v['role'],"purpose":v.get('purpose') or ''}
+                           for k,v in DBS.items()],
+                workKey=WORK_DB_KEY,qualityKey=QUALITY_DB_KEY)
 @bp.get('/api/tables')
 def api_tables():
  k=request.args.get('db','')
@@ -269,7 +281,8 @@ def api_table():
   visible_cs=[x for x in cs if x not in hidden] if hidden else cs
   if hidden:row_dicts=[{col:v for col,v in d.items() if col not in hidden} for d in row_dicts]
   join_info=None
-  if k=='SIKALOTNOW' and request.args.get('join_quality')=='1':
+  # 結合できるのは役割が「作業」の一覧だけ(§9.87)。
+  if WORK_DB_KEY and k==WORK_DB_KEY and request.args.get('join_quality')=='1':
    visible_cs,row_dicts,join_info=_join_quality_data(visible_cs,row_dicts)
   return jsonify(columns=visible_cs,rows=row_dicts,count=count,filters_applied=len(filters),joinQuality=join_info)
  except Exception as e:return jsonify(error=str(e)),500
