@@ -27,7 +27,13 @@ let b=null;
  page.on('pageerror',e=>errs.push(e.message));
  try{
   await page.goto(B+'/',{waitUntil:'load'});
-  await page.waitForFunction(()=>window.WL&&WL.dataSource&&typeof WL.renderDbNav==='function',{timeout:20000});
+  /* **本物のカタログが入り終わるまで待つ。** アプリのJSは起動オーバーレイが
+     描かれてから読み込まれ(§9.86)、init()が/api/catalogを取ってから
+     setCatalog()する。関数が生えた時点で差し替えると、あとから届いた本物に
+     上書きされて「キーを変えても作業対象」が落ちる(通しで回したときだけ
+     落ちる形で実際に踏んだ)。all()が入っていれば本物の反映は済んでいる。 */
+  await page.waitForFunction(()=>window.WL&&WL.dataSource&&typeof WL.renderDbNav==='function'
+    &&WL.dataSource.all().length>0,{timeout:20000});
 
   /* 画面の状態を作らずに、カタログだけを与えて左メニューを組み直す。 */
   const navFor=cat=>page.evaluate(c=>{
