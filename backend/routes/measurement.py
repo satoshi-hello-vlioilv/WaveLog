@@ -4,7 +4,7 @@ app.pyから移設。ロジックは変更していない(移動のみ)。
 """
 from flask import Blueprint, request, jsonify
 
-from ..db_access import DBS, MEAS_DB, RECORDS_BACKUP_EXPORT_PATH, qi, connect, cols, tables, ensure_backup_table, read_backup_rows, invalidate_backup_rows_cache
+from ..db_access import DBS, MEAS_DB, RECORDS_BACKUP_EXPORT_PATH, qi, connect, cols, tables, ensure_backup_table, read_backup_rows, invalidate_backup_rows_cache, QUALITY_DB_KEY
 from ..repositories.master_repo import read_operator_names, read_spool_names, read_inner_names, read_device_names, ensure_operator_master, ensure_spool_master, ensure_inner_master, ensure_device_master, ensure_operator_equipment, OPERATOR_MASTER_TABLE, SPOOL_MASTER_TABLE, INNER_MASTER_TABLE, DEVICE_MASTER_TABLE
 from ..repositories.master_repo import read_burr_names, read_coil_stop_names, ensure_burr_master, ensure_coil_stop_master, BURR_MASTER_TABLE, COIL_STOP_MASTER_TABLE
 from ..repositories.master_repo import read_equipment_max_strips, STRIP_LIMIT, DEFAULT_MAX_STRIPS
@@ -30,11 +30,15 @@ def measurement_context():
    for c in cs:
     if any(a.lower() in c.lower() for a in aliases):return c
    return None
-  if lot and DBS['SIKALOTDEF']['path'].exists():
-   with connect(DBS['SIKALOTDEF']['path'],True) as c:
+  # 品質データは役割で引く(§9.87)。キーの綴りで探すと、マスタでキーを
+  # 変えた端末で KeyError になり測定画面ごと開けなくなる。
+  qcfg=DBS.get(QUALITY_DB_KEY or '') or {}
+  qpath=qcfg.get('path')
+  if lot and qpath and qpath.exists():
+   with connect(qpath,True) as c:
     ts=tables(c);t=matching_table(ts,['仕掛','品質情報','品質','保留'])
     if t:
-     cs=cols(c,t,source=DBS['SIKALOTDEF']['path']);lot_col=matching_col(cs,['ロット番号','ﾛｯﾄ番号','ロット№','LTNO'])
+     cs=cols(c,t,source=qpath);lot_col=matching_col(cs,['ロット番号','ﾛｯﾄ番号','ロット№','LTNO'])
      if lot_col:
       cur=c.cursor()
       cur.execute(f'SELECT * FROM {qi(t)} WHERE CStr({qi(lot_col)})=? LIMIT 50',[lot])
