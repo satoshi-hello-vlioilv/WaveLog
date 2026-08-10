@@ -27,11 +27,11 @@ let b=null;
  page.on('pageerror',e=>errs.push(e.message));
  try{
   await page.goto(B+'/',{waitUntil:'load'});
-  await page.waitForFunction(()=>window.WL&&WL.dataSource&&typeof renderDbNav==='function',{timeout:20000});
+  await page.waitForFunction(()=>window.WL&&WL.dataSource&&typeof WL.renderDbNav==='function',{timeout:20000});
 
   /* 画面の状態を作らずに、カタログだけを与えて左メニューを組み直す。 */
   const navFor=cat=>page.evaluate(c=>{
-   WL.dataSource.setCatalog(c);renderDbNav();
+   WL.dataSource.setCatalog(c);WL.renderDbNav();
    return [...document.querySelectorAll('#nav [data-db-key]')]
      .map(n=>({key:n.dataset.dbKey,label:n.querySelector('span')?.textContent||''}));
   },cat);

@@ -76,6 +76,8 @@ function renderDbNav(){
  });
  return views.length;
 }
+// 新しく公開するものは名前空間へ入れる(CLAUDE.md「window.*への新規公開」)。
+WL.renderDbNav=renderDbNav;
 
 /* バージョンバッジをクリックすると更新履歴の一覧を表示する。 */
 let changelogLoaded=false;
