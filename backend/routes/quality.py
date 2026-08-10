@@ -4,7 +4,7 @@ app.pyから移設。ロジックは変更していない(移動のみ)。
 """
 from flask import Blueprint, request, jsonify
 
-from ..db_access import DBS, cfg, connect, tables, cols, qi
+from ..db_access import DBS, cfg, connect, tables, cols, qi, QUALITY_DB_KEY
 
 bp=Blueprint('quality',__name__)
 
@@ -53,7 +53,12 @@ def _quality_parse_datetime(value):
 @bp.get('/api/quality/analysis')
 def quality_analysis():
  try:
-  table=request.args.get('table','').strip() or DBS['SIKALOTDEF']['preferred']
+  # 品質データがどのデータソースかは役割で決まる(§9.87)。
+  qcfg=DBS.get(QUALITY_DB_KEY or '')
+  if not qcfg:
+   return jsonify(error='役割が「品質」のデータソースが登録されていません。'
+                        'マスタ管理 > データソースで役割を選んでください。'),400
+  table=request.args.get('table','').strip() or qcfg['preferred']
   group_col=request.args.get('group_col','').strip()
   value_col=request.args.get('value_col','').strip()
   stack_col=request.args.get('stack_col','').strip()
@@ -65,7 +70,7 @@ def quality_analysis():
   bucket=request.args.get('bucket','day').strip() or 'day'
   dimension=request.args.get('dimension','category').strip() or 'category'
   max_rows=min(30000,max(100,int(request.args.get('max_rows',10000))))
-  cf=cfg('SIKALOTDEF')
+  cf=qcfg
   start_dt=_quality_parse_datetime(start) if start else None
   end_dt=_quality_parse_datetime(end) if end else None
   def bucket_label(dt):

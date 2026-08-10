@@ -161,7 +161,7 @@ def api_db_diagnose():
  「パスの解決」「存在確認(os.stat)」「実際の接続」のどれで転んだのか
  分からない。ブラウザでこのURLを開けば、その端末で1つずつ確かめられる。
  読むだけで、設定は一切変更しない。"""
- k=request.args.get('db','SIKALOTNOW')
+ k=request.args.get('db','') or WORK_DB_KEY or 'MASTER'
  out={'db':k,'steps':[]}
  def step(name,fn):
   try:

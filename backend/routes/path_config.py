@@ -68,7 +68,8 @@ def path_config_master_get():
   from ..db_access import DATA_SOURCES
   # データソースは利用者が増減できる(データソースマスタ)。**キーが必ず在る
   # 前提で書かない** —— 消された途端にパス設定画面ごと開けなくなる。
-  now=DBS.get('SIKALOTNOW') or {};dfn=DBS.get('SIKALOTDEF') or {}
+  from ..db_access import WORK_DB_KEY,QUALITY_DB_KEY
+  now=DBS.get(WORK_DB_KEY or '') or {};dfn=DBS.get(QUALITY_DB_KEY or '') or {}
   # 画面はこの一覧から欄を組み立てる(§9.81)。以前は「仕掛(SIKALOTNOW)」
   # 「品質データ(SIKALOTDEF)」と決め打ちで書かれており、データソースを
   # 増やしても増えず、名前を変えても古いままだった。

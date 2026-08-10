@@ -379,13 +379,14 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(listModalOpen)closeListModal();
   ensureSplitWrap();
   document.body.classList.add('sc-split');
-  if(typeof S!=='undefined'&&typeof selectDb==='function'){
-   const navBtn=document.querySelector('aside [data-db-key="SIKALOTNOW"]');
+  const workKey=workDbKey();
+  if(typeof S!=='undefined'&&typeof selectDb==='function'&&workKey){
+   const navBtn=document.querySelector(`aside [data-db-key="${CSS.escape(workKey)}"]`);
    // 分割表示を組み立てるための内部呼び出し。画面の切替ではないので、
    // ここでスケジュール画面が畳まれないようwithInternalDbSwitchで囲う。
    await WL.withInternalDbSwitch(async()=>{
     try{
-     if(S.db!=='SIKALOTNOW')await selectDb('SIKALOTNOW',navBtn);
+     if(S.db!==workKey)await selectDb(workKey,navBtn);
      else if(!scSplitJoinApplied&&typeof load==='function')await load();
     }catch(e){/* 一覧が読めなくてもスケジュール自体の表示は継続する */}
    });
@@ -523,16 +524,17 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   // body.sc-mode.sc-split #gridと同じ考え方で上書きする(§9.14)。
   document.body.classList.add('sc-list-modal-open');
   updateSplitToggleUi();
-  if(typeof S!=='undefined'&&typeof selectDb==='function'&&S.db!=='SIKALOTNOW'){
-   const navBtn=document.querySelector('aside [data-db-key="SIKALOTNOW"]');
+  const workKey2=workDbKey();
+  if(typeof S!=='undefined'&&typeof selectDb==='function'&&workKey2&&S.db!==workKey2){
+   const navBtn=document.querySelector(`aside [data-db-key="${CSS.escape(workKey2)}"]`);
    /* 分割表示と同じく、モーダルの中身を用意するための内部呼び出し。
-      旧実装ではここだけ内部フラグで囲われておらず、S.dbがSIKALOTNOW以外の
+      旧実装ではここだけ内部フラグで囲われておらず、S.dbが作業対象以外の
       ときにモーダルを開くと、selectDbのラッパーがexitScheduleView()を呼んで
       背後のスケジュール画面ごと畳んでいた(exitScheduleViewはcloseListModal()
       も呼ぶため、開いたモーダルもその場で閉じる)。通常はS.dbが既に
-      SIKALOTNOWなので表に出ていなかった。 */
+      作業対象なので表に出ていなかった。 */
    await WL.withInternalDbSwitch(async()=>{
-    try{await selectDb('SIKALOTNOW',navBtn)}catch(e){/* ベストエフォート */}
+    try{await selectDb(workKey2,navBtn)}catch(e){/* ベストエフォート */}
    });
   }
  }
@@ -1104,8 +1106,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
        利用者が明示的に「再計算」を押したときだけ立てる。工程は前へしか
        進まないので普段は可を再確認しないが、**利用者が最新を求めた操作**
        では情報源そのものを取り直すのが筋(§9.67)。 */
- /* 作業可否の判定材料(仕掛)を引く先。データソースマスタで役割が「作業」の
-    ものを使う。キーの綴りに依存させない(§9.87)。 */
+ /* 作業対象の一覧(仕掛)のキー。データソースマスタで役割が「作業」のものを
+    使う。**キーの綴りに依存させない**(§9.87)。作業可否の判定材料を引く先と、
+    スケジュール画面の中に出す仕掛一覧(分割表示・ポップアップ)の両方が使う。
+    役割が決まっていなければ空文字を返すので、呼び出し側は必ず確認すること。 */
  function workDbKey(){return (window.WL&&WL.dataSource&&WL.dataSource.workKey())||''}
  async function loadWorkableIndex(opts){
   const o=(opts===true?{ignoreTtl:true}:(opts||{}));

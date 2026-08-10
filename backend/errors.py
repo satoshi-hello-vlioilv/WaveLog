@@ -33,6 +33,17 @@ _WIN_NET_ERRORS={
 }
 
 
+def _diagnose_key():
+ """診断URLへ載せるデータソースのキー。**決め打ちで書かない**(§9.87)。
+    マスタでキーを変えている端末に、存在しないキーのURLを案内しないため。
+    importは関数内で行う(db_accessはerrorsに依存する側のため循環を避ける)。"""
+ try:
+  from .db_access import WORK_DB_KEY,DBS
+  return WORK_DB_KEY or next(iter(DBS),'MASTER')
+ except Exception:
+  return 'MASTER'
+
+
 def os_error_hint(e):
  """画面へ出す一言の手がかり。原因の切り分けを現地でできるようにする。"""
  win=getattr(e,'winerror',None)
@@ -41,7 +52,7 @@ def os_error_hint(e):
           f'（WinError {win}: {_WIN_NET_ERRORS[win]}）。'
           '共有への到達性・SMBの設定・ウイルス対策の除外設定を確認してください。'
           '一時的な断であれば、再読込で回復することがあります。'
-          ' /api/db-diagnose?db=SIKALOTNOW を開くと、どの段階で失敗しているかが分かります。')
+          f' /api/db-diagnose?db={_diagnose_key()} を開くと、どの段階で失敗しているかが分かります。')
  if isinstance(e,FileNotFoundError):
   return ('必要なファイルが見つかりません。アプリ一式が揃っているか'
           '（コピー漏れ・ウイルス対策による隔離が無いか）と、'
