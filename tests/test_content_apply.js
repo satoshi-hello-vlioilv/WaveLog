@@ -16,17 +16,20 @@ let b=null;
 
  // 「予定」行だけを見る。先頭行は計画外実績(他テストが残したバックアップ行から
  // 合成される)になることがあり、その行の内容は元データ次第で用途名を持たない。
+ // §9.88 段6で内容欄は項目ごとの独立した列(1セル1値)になった。行ごとに
+ // 内容セルを全部集め、値の集合で見る。
  const before=await page.$$eval('.sc-row-line',ns=>ns
    .filter(n=>(n.querySelector('.sc-row-cat')||{}).textContent?.includes('予定'))
-   .map(n=>(n.querySelector('.sc-row-title')||{}).textContent||''));
+   .map(n=>[...n.querySelectorAll('.sc-row-title')].map(c=>c.textContent.trim())));
  // 先頭行に限定しない。共有フィクスチャには検証用にAPIで直接作った
  // 用途名を持たない予定も混ざるため、「既定の組み立てが効いている行が
  // あること」で見る(変更後は全行が材質のみになることを後段で確認する)。
- rec('変更前は既定の組み立て',before.some(t=>t.includes('一般用材')),
+ rec('変更前は既定の組み立て',before.some(cells=>cells.includes('一般用材')),
    `${before.length}件中 例=${JSON.stringify(before.slice(0,3))}`);
- rec('欠けている項目があっても二重空白にならない',
-   !before.some(t=>/\s{2,}/.test(t)),
-   JSON.stringify(before.filter(t=>/\s{2,}/.test(t)).slice(0,3)));
+ // 段6の要点は「1セル1値」。項目が欠けても隣の値と混ざらないこと。
+ rec('項目が欠けても1セルに複数の値が混ざらない',
+   !before.some(cells=>cells.some(t=>t.includes(' / ')||/\s{2,}/.test(t))),
+   JSON.stringify(before.filter(cells=>cells.some(t=>t.includes(' / ')||/\s{2,}/.test(t))).slice(0,3)));
 
  await page.click('#scContentModalBtn');
  await page.waitForSelector('#scContentModal',{state:'visible',timeout:5000});

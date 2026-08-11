@@ -102,6 +102,20 @@
   （品質データ結合とキャッシュで実際に2度起きた）。`filters.js`が足すのは
   絞り込み条件だけ。固定は`tests/test_collayout.js`・`tests/test_colformat.js`・
   `tests/test_colrule.js`・`tests/test_colsort.js`・`tests/test_displayrule.py`。
+- **タイムラインの「内容」も同じ列レイアウトマスタ**（対象`timeline:<設備>`、
+  1セル1値）: `.sc-row-head`と`.sc-row-line`が**同じグリッド定義**を共有し、
+  内容のトラックだけを`var(--sc-content-cols)`（JSが
+  `applyTimelineContentColumns()`で組み立てる）へ差し替える。**片方だけ別の
+  組み立てにしないこと**——見出しとセルの左端がずれて表として読めなくなる。
+  見出しの文字は**表示名→内容項目の日本語ラベル→キー**の順に落とす
+  （生のキー`mfgTemper`を出さない）。**どの項目を出すか**を決める
+  スケジュール内容表示マスタを読むのは**scheduleモードだけ**
+  （`scState.fullControl`。編集モードは既定の4項目固定なので、ここを
+  取り違えると「項目を変えても何も起きない」と誤診断する）。親子の
+  折りたたみつまみは**最初の内容セルの中**へ入れる（素の兄弟にすると
+  1列ぶんずれる）。**CSSのコメントに`**/`を書かないこと**——そこで
+  コメントが閉じてグリッド定義が壊れ、内容が1列に潰れる（実際に起きた）。
+  固定は`tests/test_sccols.js`。
 - **フィールド名**: Accessの実カラム名は全角/半角ゆれがある。照合は
   `normalizedFieldName`/`exactFieldNumber` 系を使い、直接文字列比較しない。
   分割関連の実カラム名は「親子管理_子カード<N>」「コンマ5本分割_切断巾<N>」

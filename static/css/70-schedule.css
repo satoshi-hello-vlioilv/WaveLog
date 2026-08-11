@@ -213,16 +213,34 @@
    --------------------------------------------------------------- */
 .sc-row-head,.sc-row-line{
  display:grid;
- /* ハンドル/区分/作業可否/日付/時刻/勤務/残り/内容/見積/実績/備考/操作 */
+ /* ハンドル/区分/作業可否/日付/時刻/勤務/残り/内容(項目ごと)/見積/実績/備考/操作
+    内容だけは項目数がマスタ次第で変わるので、--sc-content-cols へ
+    JS(applyTimelineContentColumns)が列の定義を差し込む(§9.88 段6)。
+    ここへ直接書かないこと——項目を足すたびにCSSを直す羽目になる。
+    (この注記に「アスタリスク2つ+スラッシュ」を書かないこと。コメントが
+     そこで閉じてしまい、以降がCSSとして解釈されてルールごと壊れる。
+     実際にこれで内容の列が1列に潰れた。) */
  grid-template-columns:calc(18px * var(--ui-scale)) calc(62px * var(--ui-scale)) calc(44px * var(--ui-scale))
   calc(50px * var(--ui-scale))
   calc(112px * var(--ui-scale)) calc(58px * var(--ui-scale)) calc(88px * var(--ui-scale))
-  minmax(calc(150px * var(--ui-scale)),1fr) calc(62px * var(--ui-scale)) calc(88px * var(--ui-scale))
+  var(--sc-content-cols,minmax(calc(150px * var(--ui-scale)),1fr))
+  calc(62px * var(--ui-scale)) calc(88px * var(--ui-scale))
   calc(112px * var(--ui-scale)) calc(148px * var(--ui-scale));
  /* 列の間は --gap-tight(4px)。以前は8pxで、11本ぶんで88px を余白に使って
     いた。区分列も92→62pxへ詰めてあり、同じ幅で列が2つぶん多く入る。 */
- align-items:center;column-gap:var(--gap-tight);min-width:calc(1042px * var(--ui-scale));
+ align-items:center;column-gap:var(--gap-tight);
+ min-width:var(--sc-row-min,calc(1042px * var(--ui-scale)));
 }
+/* 内容の見出し。掴んで並べ替え、右端の取っ手で幅(一覧の見出しと同じ作法)。 */
+.sc-row-title-head{position:relative;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+ cursor:grab;user-select:none}
+.sc-row-title-head .col-resize{position:absolute;top:0;right:0;width:6px;height:100%;
+ cursor:col-resize}
+.sc-row-title-head.col-dragging{opacity:.45}
+.sc-row-title-head.col-drop-before::before,.sc-row-title-head.col-drop-after::before{
+ content:"";position:absolute;top:0;bottom:0;width:2px;background:var(--teal)}
+.sc-row-title-head.col-drop-before::before{left:-1px}
+.sc-row-title-head.col-drop-after::before{right:-1px}
 .sc-row-head{padding:2px var(--space-2) 3px;position:sticky;top:0;z-index:1;background:#f7fafb;font-size:var(--fs-micro);font-weight:800;color:#8a9aa0;border-bottom:1px solid var(--line)}
 /* **行の高さは内容で変わらない**(§9.88)。以前は min-height だったため、
    セルの中身が1pxでも高ければその行だけ伸びていた。行ごとに出るものが

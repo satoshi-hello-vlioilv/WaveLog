@@ -192,7 +192,7 @@ for t in test_screport test_startwork test_scsync test_sccat test_scbalance test
 echo "--- スケジュール (scheduleモード固定) ---"
 mode schedule
 resetcontent
-for t in test_cols test_content_ui test_content_apply test_listmodal test_split_layout; do
+for t in test_cols test_content_ui test_content_apply test_listmodal test_split_layout test_sccols; do
   run $NODE $t.js; resetcontent; done
 
 echo "--- サーバー側 ---"

@@ -45,12 +45,16 @@ let b=null;
  await page.waitForTimeout(2000);
  // §9.39で区分はセクションではなく行内の「区分」列になった。投入した予定は
  // 「予定」区分の最後の行(末尾へ追加されるため)。
- const plannedTitles=()=>page.evaluate(()=>[...document.querySelectorAll('.sc-row-line')]
+ // §9.88 段6で内容欄は項目ごとの独立した列(1セル1値)になったので、
+ // 1つの文字列ではなく行の内容セル全部を集めて中身の集合で見る。
+ const plannedContents=()=>page.evaluate(()=>[...document.querySelectorAll('.sc-row-line')]
    .filter(r=>/予定/.test(r.querySelector('.sc-row-cat')?.textContent||''))
-   .map(r=>r.querySelector('.sc-row-title')?.textContent||''));
- const beforeList=await plannedTitles();
- const before=beforeList.length?beforeList[beforeList.length-1]:'';
- rec('未設定の設備は既定の組み立てで内容欄を表示',/L0001/.test(before)&&/一般用材/.test(before),before);
+   .map(r=>[...r.querySelectorAll('.sc-row-title')].map(c=>c.textContent.trim())));
+ const beforeList=await plannedContents();
+ const before=beforeList.length?beforeList[beforeList.length-1]:[];
+ rec('未設定の設備は既定の組み立てで内容欄を表示',
+   before.includes('L0001')&&before.includes('一般用材'),JSON.stringify(before));
+ rec('1セルに複数の値が詰め込まれない',before.every(t=>!t.includes(' / ')),JSON.stringify(before));
 
  // --- 内容の項目を「検査結果 → 公差判定」の順で設定 ---
  await page.click('#scContentModalBtn');
@@ -68,10 +72,11 @@ let b=null;
  await page.waitForTimeout(2000);
  // この検証で追加した予定(最後の行)の内容欄を見る。古い予定は投入時点の
  // 仕掛データを保存しているため、その項目を持たなければ既定表示のままになる。
- const titles=await plannedTitles();
- const last=titles[titles.length-1]||'';
+ const contents=await plannedContents();
+ const last=contents[contents.length-1]||[];
  rec('内容欄が選んだ項目だけに変わる(仕掛一覧の列数とは独立)',
-   last.includes('合格')&&last.includes('OK')&&!last.includes('L0001'),'last='+last);
+   last.length===2&&last.includes('合格')&&last.includes('OK')&&!last.includes('L0001'),
+   'last='+JSON.stringify(last));
 
  // 一覧の列数は内容欄の設定に影響されない
  const colsAfter=await page.evaluate(()=>document.querySelectorAll('#grid thead th').length);
