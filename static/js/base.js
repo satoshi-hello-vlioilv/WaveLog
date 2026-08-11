@@ -963,14 +963,30 @@ const bootGate=(()=>{
   }
  }
  setTimeout(()=>{
-  if(!finished)console.warn('起動オーバーレイを時間切れで解除しました(未完了:',
-   ['assets','permission','list','layout'].filter(k=>!done.has(k)).join(','),')');
+  if(!finished){
+   const rest=['assets','permission','list','layout'].filter(k=>!done.has(k));
+   console.warn('起動オーバーレイを時間切れで解除しました(未完了:',rest.join(','),')');
+   /* **崩れた画面をそのまま見せない**(§9.92)。時間切れは「一覧がまだ
+      来ていない」ことがほとんどで、そのまま覆いを外すと**中身の無い枠**が
+      数秒見えて「崩れてから組み上がる」と受け取られる。枠の中に読み込み
+      中だと分かる置き換えを入れてから外す——待たせ続けるより操作できる
+      画面を出す、という原則(§9.86)は変えない。 */
+   if(rest.includes('list')){
+    const grid=document.getElementById('grid');
+    if(grid&&!grid.textContent.trim())
+     grid.innerHTML='<div class="setup-first"><b>一覧を読み込んでいます…</b>'
+      +'<span>共有フォルダの応答が遅いようです。読み込みが終わると自動で表示されます。</span></div>';
+   }
+  }
   finish();
  },BOOT_TIMEOUT_MS);
  function step(key){
   if(finished||done.has(key))return;
   done.add(key);paint();
-  if(done.has('permission')&&done.has('list')&&!done.has('layout')){
+  /* **assetsも揃ってから**外す(§9.92)。以前は permission と list だけを
+     見ていたため、読み込みの遅い端末では最後のJSが走る前に本体が見え、
+     そのぶんの組み替えが利用者の目に入っていた。 */
+  if(done.has('assets')&&done.has('permission')&&done.has('list')&&!done.has('layout')){
    /* 残るは寸法の確定だけ。2フレーム待てば、この時点までのDOM変更が
       すべて反映済みのレイアウトになる(1フレームでは足りないことがある)。 */
    requestAnimationFrame(()=>requestAnimationFrame(()=>{step('layout');finish()}));

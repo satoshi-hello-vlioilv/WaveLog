@@ -108,6 +108,34 @@ let b=null;
   }));
   rec('読み込み後にWL.onReadyへ渡した処理もすぐ動く',late===true,String(late));
 
+  /* ---- 引き継ぎの継ぎ目(§9.92) ----
+     起動待機画面(loading.html)から location.replace で移ってくるとき、
+     新しい文書の最初の1枚までブラウザは既定の白を塗る。待機画面もこの
+     画面も深い紺なので、そこだけが白く光って「覆いが一度消えてまた
+     出た」ように見えていた。**CSSの到着を待たずに**効く必要があるため、
+     背景は html の属性で持たせてある。 */
+  /* 生のHTMLで見る。**JSが --nav-w 等を足すため live DOM の style 属性は
+     書き換わる**ので、そちらで正規表現を当てると取り違える。 */
+  const rawHtml=await (await fetch(API+'/')).text();
+  const painted=await page.evaluate(()=>getComputedStyle(document.documentElement).backgroundColor);
+  rec('引き継ぎの白い一瞬を消す背景がhtmlに直接ある',
+   /<html[^>]*style="[^"]*background:\s*#0d2029/i.test(rawHtml),
+   (rawHtml.match(/<html[^>]*>/)||[''])[0].slice(0,90));
+  rec('その背景が実際に塗られている',painted==='rgb(13, 32, 41)',painted);
+
+  /* 覆いを外す条件に assets を含める(§9.92)。読み込みの遅い端末で
+     最後のJSが走る前に本体が見えると、そのぶんの組み替えが目に入る。 */
+  const gate=await page.evaluate(()=>{
+   const src=[...document.querySelectorAll('script[src]')].map(s2=>s2.src).find(u=>/base\.js/.test(u));
+   return src||'';
+  });
+  const baseSrc=gate?await (await fetch(gate)).text():'';
+  rec('覆いはassetsも揃ってから外す',
+   /done\.has\('assets'\)&&done\.has\('permission'\)&&done\.has\('list'\)/.test(baseSrc),
+   baseSrc?'base.jsを確認':'base.jsを取得できない');
+  rec('時間切れでも中身の無い枠を見せない(読み込み中の置き換えを入れる)',
+   /一覧を読み込んでいます/.test(baseSrc),'');
+
   console.log('\n=== SUMMARY ===');
   const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
   f.forEach(x=>console.log(' -',x.n,x.d||''));
