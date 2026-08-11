@@ -234,4 +234,43 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  .list-rowgap{display:inline-flex;align-items:center;gap:var(--gap-inline);
   font-size:var(--fs-sm);color:var(--muted)}
  .list-rowgap input[type="range"]{width:calc(84px * var(--ui-scale));accent-color:var(--teal)}
+ /* ---------- 列の設定パネル(§9.88 段2) ----------
+    左に全列・右に選んだ列・下に実データ。**下のプレビューが主役**なので、
+    高さを与えて常に見えるようにする(スクロールの下に隠さない)。 */
+ .lc-body{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);
+  gap:var(--gap-block);align-items:start;overflow:auto}
+ .lc-side{display:flex;flex-direction:column;gap:var(--gap-inline);min-width:0}
+ .lc-filter{width:100%}
+ .lc-list{display:flex;flex-direction:column;gap:var(--gap-hair);min-width:0}
+ .lc-item{display:flex;align-items:center;gap:var(--gap-inline);
+  padding:var(--space-1) var(--space-2);border:1px solid transparent;
+  border-radius:var(--radius-xs);cursor:pointer;min-width:0}
+ .lc-item:hover{background:var(--surface-2)}
+ .lc-item.is-picked{background:var(--pale);border-color:var(--teal)}
+ .lc-item.lc-dragging{opacity:.45}
+ .lc-grip{color:var(--line-strong);cursor:grab}
+ .lc-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:var(--fs-sm)}
+ .lc-renamed{font-style:normal;font-size:var(--fs-micro);color:var(--teal);
+  border:1px solid var(--teal);border-radius:var(--radius-xs);padding:0 var(--space-1)}
+ .lc-detail{display:flex;flex-direction:column;gap:var(--gap-inline);min-width:0}
+ .lc-detail-head{font-size:var(--fs-title);font-weight:800;color:var(--ink);
+  display:flex;flex-direction:column;gap:var(--gap-hair)}
+ .lc-detail-head small{font-size:var(--fs-micro);font-weight:400;color:var(--muted)}
+ .lc-field{display:flex;align-items:center;gap:var(--gap-inline);font-size:var(--fs-sm)}
+ .lc-field>span:first-child{width:calc(64px * var(--ui-scale));color:var(--muted)}
+ .lc-field input[type="text"]{flex:1;min-width:0}
+ .lc-width{display:inline-flex;align-items:center;gap:var(--gap-hair);color:var(--muted)}
+ .lc-width input{width:calc(88px * var(--ui-scale))}
+ .lc-hint{font-size:var(--fs-micro);color:var(--muted);margin:0}
+ .lc-preview{border-top:1px solid var(--line);padding:var(--space-2);
+  display:flex;flex-direction:column;gap:var(--gap-hair);min-height:0}
+ .lc-preview-label{font-size:var(--fs-micro);color:var(--muted);font-weight:700}
+ /* 広い表は**この中だけ**を横に流す(ウィンドウごと横スクロールさせない)。 */
+ .lc-preview-scroll{overflow:auto;max-height:calc(120px * var(--ui-scale))}
+ .lc-preview table{border-collapse:collapse;font-size:var(--fs-sm)}
+ .lc-preview th,.lc-preview td{border:1px solid var(--line-soft);
+  padding:var(--space-1) var(--space-2);white-space:nowrap;text-align:left}
+ .lc-preview th{background:var(--surface-2);color:var(--ink-2);font-weight:700}
+ .lc-count{font-size:var(--fs-sm);color:var(--muted)}
 }

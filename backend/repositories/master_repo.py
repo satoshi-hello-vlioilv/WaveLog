@@ -767,15 +767,17 @@ def ensure_column_layout_table(c):
  if COLUMN_LAYOUT_TABLE not in names:
   cur=c.cursor()
   cur.execute('CREATE TABLE [列レイアウトマスタ] ([ID] INTEGER PRIMARY KEY AUTOINCREMENT, '
-              '[対象] TEXT, [列名] TEXT, [表示順] INTEGER, [幅] INTEGER, [表示] INTEGER, '
+              '[対象] TEXT, [列名] TEXT, [表示名] TEXT, [表示順] INTEGER, [幅] INTEGER, [表示] INTEGER, '
               '[登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
   cur.execute('CREATE UNIQUE INDEX [UX_列レイアウトマスタ] ON [列レイアウトマスタ] ([対象],[列名])')
   c.commit();created=True
  ensure_audit_columns(c,COLUMN_LAYOUT_TABLE)
  # 既存DBへの追加(他マスタと同じ「無ければALTER TABLEで足す」方式)。
- if '表示' not in {r[1] for r in c.cursor().execute(f'PRAGMA table_info([{COLUMN_LAYOUT_TABLE}])')}:
-  c.cursor().execute(f'ALTER TABLE [{COLUMN_LAYOUT_TABLE}] ADD COLUMN [表示] INTEGER')
-  c.commit()
+ have={r[1] for r in c.cursor().execute(f'PRAGMA table_info([{COLUMN_LAYOUT_TABLE}])')}
+ for name,decl in (('表示','INTEGER'),('表示名','TEXT')):
+  if name not in have:
+   c.cursor().execute(f'ALTER TABLE [{COLUMN_LAYOUT_TABLE}] ADD COLUMN [{name}] {decl}')
+   c.commit()
  return created
 
 # 幅の下限・上限。狭すぎると掴めなくなり、広すぎると他の列が押し出される。
@@ -794,24 +796,28 @@ def column_layout_for(c,target):
 
  **hiddenは「この対象で隠す列」**。[表示]がNULLの行は表示(既定)として扱う
  ——列を足したときに既存の行が勝手に隠れないようにするため。"""
- empty={'order':[],'widths':{},'hidden':[]}
+ empty={'order':[],'widths':{},'hidden':[],'names':{}}
  if COLUMN_LAYOUT_TABLE not in tables(c):return dict(empty)
  target=str(target or '').strip()
  if not target:return dict(empty)
- has_visible='表示' in {r[1] for r in c.cursor().execute(f'PRAGMA table_info([{COLUMN_LAYOUT_TABLE}])')}
+ have={r[1] for r in c.cursor().execute(f'PRAGMA table_info([{COLUMN_LAYOUT_TABLE}])')}
+ has_visible='表示' in have;has_label='表示名' in have
  cur=c.cursor()
- cur.execute('SELECT [列名],[表示順],[幅]'+(',[表示]' if has_visible else '')+
+ cur.execute('SELECT [列名],[表示順],[幅]'+(',[表示]' if has_visible else ',NULL')
+             +(',[表示名]' if has_label else ',NULL')+
              ' FROM [列レイアウトマスタ] WHERE [対象]=? ORDER BY [表示順],[ID]',[target])
- order=[];widths={};hidden=[]
+ order=[];widths={};hidden=[];names={}
  for row in cur.fetchall():
   name=str(row[0] or '').strip()
   if not name:continue
   order.append(name)
   if row[2] not in (None,''):widths[name]=int(row[2])
-  if has_visible and row[3] is not None and not bool(row[3]):hidden.append(name)
- return {'order':order,'widths':widths,'hidden':hidden}
+  if row[3] is not None and not bool(row[3]):hidden.append(name)
+  label=str(row[4] or '').strip()
+  if label:names[name]=label
+ return {'order':order,'widths':widths,'hidden':hidden,'names':names}
 
-def set_column_layout(c,target,order,widths,uid,hidden=None):
+def set_column_layout(c,target,order,widths,uid,hidden=None,names=None):
  """全置換方式(他の列マスタと同じ)。渡された順序がそのまま表示順になる。
 
  **幅だけを変えたいときも並び全体を送る**こと。部分更新にすると、
@@ -821,6 +827,7 @@ def set_column_layout(c,target,order,widths,uid,hidden=None):
  if not target:raise ValueError('対象を指定してください。')
  widths=widths if isinstance(widths,dict) else {}
  hide={str(x or '').strip() for x in (hidden or []) if str(x or '').strip()}
+ label=names if isinstance(names,dict) else {}
  cur=c.cursor()
  cur.execute('DELETE FROM [列レイアウトマスタ] WHERE [対象]=?',[target])
  seq=0
@@ -828,9 +835,10 @@ def set_column_layout(c,target,order,widths,uid,hidden=None):
   name=str(name or '').strip()
   if not name:continue
   seq+=1
-  cur.execute('INSERT INTO [列レイアウトマスタ] ([対象],[列名],[表示順],[幅],[表示],'
-              '[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,Now(),Now())',
-              [target,name,seq,normalize_column_width(widths.get(name)),
+  cur.execute('INSERT INTO [列レイアウトマスタ] ([対象],[列名],[表示名],[表示順],[幅],[表示],'
+              '[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,?,Now(),Now())',
+              [target,name,str(label.get(name) or '').strip() or None,seq,
+               normalize_column_width(widths.get(name)),
                0 if name in hide else -1,uid,uid])
  # 並びに載っていない列の幅だけが指定されている場合も残す(列が増減しても
  # 幅の記憶が消えないように。表示順は末尾扱いの0にしておく)。
@@ -839,9 +847,10 @@ def set_column_layout(c,target,order,widths,uid,hidden=None):
   if not name or name in (order or []):continue
   w=normalize_column_width(width)
   if w is None:continue
-  cur.execute('INSERT INTO [列レイアウトマスタ] ([対象],[列名],[表示順],[幅],[表示],'
-              '[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,0,?,?,?,?,Now(),Now())',
-              [target,name,w,0 if name in hide else -1,uid,uid])
+  cur.execute('INSERT INTO [列レイアウトマスタ] ([対象],[列名],[表示名],[表示順],[幅],[表示],'
+              '[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,0,?,?,?,?,Now(),Now())',
+              [target,name,str(label.get(name) or '').strip() or None,w,
+               0 if name in hide else -1,uid,uid])
  c.commit()
  return seq
 

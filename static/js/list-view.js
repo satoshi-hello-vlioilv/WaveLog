@@ -402,7 +402,7 @@ function renderGrid(){
   /* 見出しは3役: クリックで並び替え / 掴んで左右へ動かすと列の並べ替え /
      右端の取っ手を引くと列幅。**取っ手はクリックを飲み込む**(引くつもりが
      並び替わると操作を取り消せない)。 */
-  return `<th class="sortable-col ${filtered?'col-filtered':''} ${sorted?'col-sorted':''}" data-sort-col="${esc(c)}" draggable="true" tabindex="0" role="button" aria-label="${esc(c)}列で並び替え" title="クリックで並び替え／ドラッグで列の入れ替え${filtered?'（絞り込み中の列です）':''}">${esc(c)}${arrow}${filtered?'<i class="col-filter-badge" aria-hidden="true" title="この列にフィルタが適用されています">▼</i>':''}<i class="col-resize" title="ドラッグで列幅を調整（ダブルクリックで既定へ）" aria-hidden="true"></i></th>`;
+  return `<th class="sortable-col ${filtered?'col-filtered':''} ${sorted?'col-sorted':''}" data-sort-col="${esc(c)}" draggable="true" tabindex="0" role="button" aria-label="${esc(WL.columnLayout.label(layoutTarget,c))}列で並び替え" title="${esc(c)}｜クリックで並び替え／ドラッグで列の入れ替え${filtered?'（絞り込み中の列です）':''}">${esc(WL.columnLayout.label(layoutTarget,c))}${arrow}${filtered?'<i class="col-filter-badge" aria-hidden="true" title="この列にフィルタが適用されています">▼</i>':''}<i class="col-resize" title="ドラッグで列幅を調整（ダブルクリックで既定へ）" aria-hidden="true"></i></th>`;
  }).join('')+(isWork?'<th class="measurement-action-head">測定</th>':'')+'</tr></thead>';
  // 幅はcolgroupで与える。thへ直接書くと、セル側の内容で押し広げられる。
  if(visibleColumns.length){
@@ -545,7 +545,9 @@ function ensureListToolbar(){
     <input type="range" id="listRowGap" min="1" max="5" step="1" value="3" aria-label="行の間隔"></label>
    <span class="list-join-chip" id="listJoinChip" hidden></span>`;
   grid.parentNode.insertBefore(bar,grid);
-  bar.querySelector('#listColumnBtn').onclick=()=>window.openListColumnPicker?.();
+  /* 列の設定はこの一覧の設定パネルへ集約する(§9.88 段2)。名前・並び・幅・
+     表示を1箇所で決められるので、ボタンの行き先もここ1つでよい。 */
+  bar.querySelector('#listColumnBtn').onclick=()=>WL.listColumns?.toggle();
   const gap=bar.querySelector('#listRowGap');
   gap.addEventListener('input',()=>applyRowGap(Number(gap.value)));
   gap.addEventListener('change',()=>saveRowGap(Number(gap.value)));
@@ -564,7 +566,9 @@ function renderListToolbar(){
  const gapEl=bar.querySelector('#listRowGap');
  if(gapEl){gapEl.value=String(rowGapValue);applyRowGap(rowGapValue)}
  // 表示列の選択は、設備ごとの設定を持つスケジュールモードの仕掛一覧でのみ扱う。
- const canPickColumns=WL.dataSource.isWork(S.db)&&window.accessMode?.mode==='schedule'&&!!window.scColumnPickerAvailable?.();
+ // 列の設定はどの一覧でも使える(§9.88)。以前はスケジュールモードの
+ // 仕掛一覧だけだったが、並び・幅・表示名はどの一覧でも要る。
+ const canPickColumns=!!(S.db&&S.table);
  const btn=bar.querySelector('#listColumnBtn');
  if(btn)btn.hidden=!canPickColumns;
  // 品質データ結合(join_quality)の結果を、成功・失敗どちらも一覧の脇に出す。
