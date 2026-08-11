@@ -198,6 +198,25 @@ def api_db_diagnose():
  out['ok']=all(s.get('ok') for s in out['steps'])
  return jsonify(out),200
 
+@bp.get('/api/db-mirror')
+def api_db_mirror():
+ """共有DBの写しの状態(§9.89)。いつの写しを読んでいるかを画面へ出す。"""
+ from .. import db_mirror
+ return jsonify(ok=True,enabled=db_mirror.enabled(),
+                interval_sec=db_mirror.interval_sec(),
+                items=db_mirror.status())
+
+@bp.post('/api/db-mirror/refresh')
+def api_db_mirror_refresh():
+ """今すぐ写し直す(一覧の「再読込」から呼ぶ)。**待たせない**——
+ 背景スレッドを起こすだけで、結果は次の取得から反映される。"""
+ from .. import db_mirror
+ x=request.get_json(silent=True) or {}
+ if x.get('wait'):
+  return jsonify(ok=True,results=db_mirror.refresh_all(force=bool(x.get('force'))))
+ db_mirror.wake()
+ return jsonify(ok=True,queued=True)
+
 @bp.get('/api/catalog')
 def catalog():
  # purpose(役割)まで返す。画面はキーの文字列ではなくこれで「作業対象の

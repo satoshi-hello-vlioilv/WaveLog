@@ -46,3 +46,6 @@ tests/visual/shots/
 
 # テストランナーの二重起動防止ロック(実行中のみ存在)
 tests/.run_all.lock
+
+# 共有DBの写し(db_mirror。手元の作業用なので共有しない)
+db/cache/

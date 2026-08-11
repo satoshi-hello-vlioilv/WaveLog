@@ -198,7 +198,7 @@ for t in test_cols test_content_ui test_content_apply test_listmodal test_split_
 echo "--- サーバー側 ---"
 mode schedule
 for t in test_sclock test_scwritespeed test_colscache test_colsripple test_modeguard test_noaccess \
-         test_csslint test_dbopen test_error test_datasource test_dskeylint test_crudroutes; do run python3 $t.py; done
+         test_csslint test_dbopen test_error test_datasource test_dskeylint test_dbmirror test_crudroutes; do run python3 $t.py; done
 
 echo
 echo "=================================================="
