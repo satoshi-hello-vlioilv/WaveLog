@@ -66,6 +66,147 @@ async function loadRowGap(){
 }
 WL.rowGap={apply:applyRowGap,save:saveRowGap,load:loadRowGap,value:()=>rowGapValue};
 
+/* ---------- 並び順(§9.88 段5) ----------
+   複数キーで並べられるようにし、その組み合わせに名前を付けて保存する
+   （「いつも使う並び」）。フィルタの登録条件とまったく同じ構成にしてある
+   ——同じ形の機能は同じ操作で使えるべきで、覚えることを増やさない。
+
+   見出しのクリックは**1キーへの置き換え**、Shift+クリックは**キーの追加**。
+   既定を置き換えにしてあるのは、日々の操作のほとんどが「この列で並べたい」
+   だから。2つ目以降が要る場面は少ないので、そちらに修飾キーを割り当てる。 */
+const listSort=(()=>{
+ let keys=[];                        // [{column,dir}] 先頭が第一キー
+ const clean=list=>(Array.isArray(list)?list:[]).map(x=>({
+   column:String(x&&x.column||'').trim(),
+   dir:String(x&&x.dir||'').toLowerCase()==='desc'?'desc':'asc',
+  })).filter((x,i,a)=>x.column&&a.findIndex(y=>y.column===x.column)===i).slice(0,4);
+ return {
+  keys:()=>keys.map(k=>({...k})),
+  set(list){keys=clean(list)},
+  clear(){keys=[]},
+  dirOf:col=>(keys.find(k=>k.column===col)||{}).dir||'',
+  rankOf:col=>{const i=keys.findIndex(k=>k.column===col);return i<0?0:i+1},
+  /* 見出しのクリック。add=false は置き換え、add=true は追加(Shift+クリック)。
+     同じ列をもう一度押したら向きが変わる。 */
+  toggle(col,add){
+   const at=keys.findIndex(k=>k.column===col);
+   const flip=at>=0?(keys[at].dir==='asc'?'desc':'asc'):'asc';
+   if(!add){keys=[{column:col,dir:flip}];return}
+   if(at>=0)keys[at]={column:col,dir:flip};
+   else keys=clean([...keys,{column:col,dir:'asc'}]);
+  },
+  remove(col){keys=keys.filter(k=>k.column!==col)},
+ };
+})();
+WL.listSort=listSort;
+
+/* いつも使う並びの保存・再利用。対象はフィルタと同じ「DB×テーブル×モード」。 */
+const sortPresets=(()=>{
+ let items=[],picked=null;
+ const mode=()=>window.accessMode?.mode==='schedule'?'schedule':'';
+ async function load(){
+  items=[];
+  if(!S.db||!S.table)return items;
+  try{
+   const q=new URLSearchParams({db:S.db,table:S.table,mode:mode()});
+   const r=await api('/api/sort-presets?'+q);
+   items=(r.items||[]).sort((a,b)=>(b.uses||0)-(a.uses||0)||a.name.localeCompare(b.name,'ja'));
+  }catch(e){/* 読めなくても並び替えそのものは使える(fail-open) */}
+  return items;
+ }
+ return {load,all:()=>items,picked:()=>picked,setPicked:v=>{picked=v},
+         find:id=>items.find(x=>String(x.id)===String(id))||null,
+         mode};
+})();
+
+/* 並び順のツールバー。今の並びを見せ、いつも使う並びを選び、保存する。 */
+function bindSortControls(bar){
+ const sel=bar.querySelector('#listSortPreset');
+ const save=bar.querySelector('#listSortSave');
+ const del=bar.querySelector('#listSortDel');
+ if(!sel||!save||!del)return;
+ sel.onchange=async()=>{
+  const id=sel.value;
+  sortPresets.setPicked(id||null);
+  if(!id){WL.listSort.clear();S.page=1;renderSortBar();load();return}
+  const p=sortPresets.find(id);
+  if(!p)return;
+  WL.listSort.set(p.sorts||[]);
+  S.page=1;renderSortBar();
+  // 使った回数を数えて、よく使うものが上に来るようにする(フィルタと同じ)。
+  api('/api/sort-presets/use',{method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify(withUserId({id:p.id}))}).catch(()=>{});
+  load();
+ };
+ save.onclick=async()=>{
+  const keys=WL.listSort.keys();
+  if(!keys.length){
+   showToast&&showToast('保存する並び順がありません','見出しをクリックして並べ替えてから保存してください',3600);return;
+  }
+  const label=keys.map(k=>`${WL.columnLayout.label(listLayoutTarget(),k.column)}${k.dir==='desc'?'↓':'↑'}`).join(' → ');
+  const name=prompt(`この並び順に名前を付けて保存します。\n${label}`,'');
+  if(name===null)return;
+  const nm=String(name).trim();
+  if(!nm){showToast&&showToast('名前を入れてください','次に選ぶときの目印になります',3200);return}
+  try{
+   const r=await api('/api/sort-presets',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(withUserId({name:nm,db:S.db,table:S.table,mode:sortPresets.mode(),sorts:keys}))});
+   await sortPresets.load();
+   sortPresets.setPicked(String(r.id||''));
+   renderSortBar();
+   showToast&&showToast(r.registered?'並び順を登録しました':'登録済みの並び順を更新しました',nm,2600);
+  }catch(e){showToast&&showToast('保存に失敗しました',e.message,5000)}
+ };
+ del.onclick=async()=>{
+  const p=sortPresets.find(sortPresets.picked());
+  if(!p)return;
+  if(!confirm(`並び順「${p.name}」を削除します。よろしいですか？`))return;
+  try{
+   await api('/api/sort-presets/delete',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(withUserId({id:p.id}))});
+   await sortPresets.load();
+   sortPresets.setPicked(null);
+   renderSortBar();
+   showToast&&showToast('並び順を削除しました',p.name,2400);
+  }catch(e){showToast&&showToast('削除に失敗しました',e.message,5000)}
+ };
+}
+
+/* 今の並びを見せる。**列名ではなく表示名で出す**(§9.88 段2)——画面に出て
+   いる見出しと同じ言葉でないと、どの列のことか分からない。 */
+function renderSortBar(){
+ const box=document.getElementById('listSort');if(!box)return;
+ box.hidden=!(S.db&&S.table);
+ const keys=WL.listSort.keys(),target=listLayoutTarget();
+ const chips=document.getElementById('listSortKeys');
+ if(chips){
+  chips.innerHTML=keys.length?keys.map((k,i)=>
+   `<button type="button" class="list-sort-chip" data-col="${esc(k.column)}"
+     title="クリックで昇順／降順を入れ替え、×でこのキーを外します">${
+     keys.length>1?`<b>${i+1}</b>`:''}${esc(WL.columnLayout.label(target,k.column))}${
+     k.dir==='desc'?' ▼':' ▲'}<i class="list-sort-x" data-col="${esc(k.column)}" title="このキーを外す">×</i></button>`
+  ).join(''):'<span class="list-sort-none">指定なし（見出しをクリック／Shift+クリックで2つ目）</span>';
+  chips.querySelectorAll('.list-sort-chip').forEach(el=>{
+   el.onclick=e=>{
+    const col=el.dataset.col;
+    if(e.target.classList.contains('list-sort-x'))WL.listSort.remove(col);
+    else WL.listSort.toggle(col,true);
+    S.page=1;renderSortBar();load();
+   };
+  });
+ }
+ const sel=document.getElementById('listSortPreset');
+ if(sel){
+  const cur=sortPresets.picked()||'';
+  sel.innerHTML=`<option value="">いつも使う並び…</option>`+
+   sortPresets.all().map(p=>`<option value="${esc(String(p.id))}"${String(p.id)===cur?' selected':''}>${esc(p.name)}</option>`).join('');
+  sel.value=cur;
+ }
+ const del=document.getElementById('listSortDel');
+ if(del)del.hidden=!sortPresets.find(sortPresets.picked());
+}
+WL.listSortBar={render:renderSortBar,presets:sortPresets};
+
 /* ---------- 見出しの操作: 列の並べ替えと列幅(§9.88) ----------
    よく使う操作は設定画面を開かずに表の上で完結させる。**離した時点で保存**し、
    確認は出さない(すぐ元に戻せる操作なので、確認は邪魔になるだけ)。
@@ -302,6 +443,7 @@ async function fetchTableData(key,force){
  // 用意しておく(どちらも読めなければ既定の見せ方で一覧は出る)。
  try{await WL.columnLayout.load(listLayoutTarget())}catch(e){}
  try{await WL.displayRules.load()}catch(e){}
+ try{await sortPresets.load()}catch(e){}
  try{await loadRowGap()}catch(e){}
  const hit=force?null:tableCacheGet(key);
  if(hit){applyTableData(hit.data);updateListFreshness(hit.at);return}
@@ -314,13 +456,27 @@ async function fetchTableData(key,force){
 }
 window.fetchTableData=fetchTableData;
 
-async function load(force){
- const q=new URLSearchParams({db:S.db,table:S.table,page:S.page,page_size:$('#pageSize').value,search:$('#search').value});
+/* 一覧を取りに行くときの問い合わせを**1箇所で組み立てる**。
+   ------------------------------------------------------------
+   filters.js が load() を丸ごと差し替えるため、両方に同じ組み立てを書くと
+   片方だけ直した状態になる(実際に品質データ結合とキャッシュで2度起きた)。
+   条件(filters)は絞り込みを持つfilters.js側が足すが、それ以外は必ずここを通す。 */
+function listQuery(){
+ const q=new URLSearchParams({db:S.db,table:S.table,page:S.page,
+                              page_size:$('#pageSize').value,search:$('#search').value});
+ // 並び順は複数キー(§9.88 段5)。1キーでも同じ形で送る。
+ const sorts=WL.listSort.keys();
+ if(sorts.length)q.set('sorts',JSON.stringify(sorts));
  // スケジュールモードの作業対象一覧のみ、品質データを結合して表示する
  // (§9.21)。通常の閲覧では付けない(オプトインで単独表示に影響を与えない)。
  // どちらが作業対象/品質かはデータソースマスタの役割で決まる(§9.87)。
  if(WL.dataSource.isWork(S.db)&&window.accessMode?.mode==='schedule')q.set('join_quality','1');
- await fetchTableData(String(q),force);
+ return q;
+}
+WL.listQuery=listQuery;
+
+async function load(force){
+ await fetchTableData(String(listQuery()),force);
  renderGrid();
 }
 /* データベース切替→テーブル選択は、実際に目視できる2段階で待機表示する
@@ -360,7 +516,7 @@ async function selectDb(k,b){
 /* reportは呼び出し元(selectDb)が待機表示を握っているときだけ渡ってくる。
    単独で呼ばれたとき(タブのクリック)は自分で遅延表示を用意する。 */
 async function selectTable(t,report){
- S.table=t;S.page=1;S.sortColumn=null;S.sortDir=null;renderTabs();const label=databaseLabel(S.db);
+ S.table=t;S.page=1;WL.listSort.clear();renderTabs();const label=databaseLabel(S.db);
  if(report){report({detail:`テーブル: ${t}`,progress:'列情報と一覧データを取得しています',step:2});return load()}
  return withWaiting({title:`${label}を読み込んでいます`,detail:`テーブル: ${t}`,
    progress:'列情報と一覧データを取得しています'},()=>load());
@@ -408,7 +564,15 @@ function renderGrid(){
  const numCol=c=>colFmt.get(c)?.kind==='number';
  const t=document.createElement('table');
  t.innerHTML='<thead><tr>'+(canPlan?'<th class="plan-select-head"><input type="checkbox" id="planSelectAll" title="このページの全行を選択/解除"></th><th class="plan-action-head">予定</th>':'')+'<th>#</th>'+(isWork?'<th class="split-flag-head" title="親子管理_子カード／コンマ5本分割_切断巾に実データがある場合「分割あり」と表示します">分割</th>':'')+visibleColumns.map(c=>{
-  const filtered=filteredCols.has(c),sorted=S.sortColumn===c,arrow=sorted?(S.sortDir==='desc'?' ▼':' ▲'):'';
+  const filtered=filteredCols.has(c);
+  /* 並び順の合図。**2つ以上のキーがあるときは順番も出す**——「何で並んで
+     いるか」は分かっても「どちらが先か」が分からないと結果を読めない。 */
+  const dir=WL.listSort.dirOf(c),rank=WL.listSort.rankOf(c),multi=WL.listSort.keys().length>1;
+  const sorted=!!dir;
+  /* 順番は**矢印の後ろ**に丸数字で置く。列名の直後に数字を置くと
+     「製造材質2」のように列名の一部に見える(実際にそう見えた)。 */
+  const arrow=sorted?((dir==='desc'?' ▼':' ▲')
+    +(multi?`<i class="col-sort-rank" title="${rank}番目のキー">${'①②③④'[rank-1]||rank}</i>`:'')):'';
   /* 見出しは3役: クリックで並び替え / 掴んで左右へ動かすと列の並べ替え /
      右端の取っ手を引くと列幅。**取っ手はクリックを飲み込む**(引くつもりが
      並び替わると操作を取り消せない)。 */
@@ -429,14 +593,16 @@ function renderGrid(){
   t.insertBefore(cg,t.firstChild);
  }
  bindColumnHeaderTools(t,layoutTarget,visibleColumns,allowed);
- const sortByHeader=th=>{
-  const col=th.dataset.sortCol;
-  S.sortDir=(S.sortColumn===col&&S.sortDir==='asc')?'desc':'asc';
-  S.sortColumn=col;S.page=1;load();
+ /* クリック=この列だけで並べ替え / Shift+クリック=キーを追加(§9.88 段5)。
+    既定を置き換えにしてあるのは、日々の操作のほとんどが「この列で並べたい」
+    だから。2つ目以降が要る場面は少ないので、そちらへ修飾キーを割り当てる。 */
+ const sortByHeader=(th,add)=>{
+  WL.listSort.toggle(th.dataset.sortCol,!!add);
+  S.page=1;load();
  };
  t.querySelectorAll('th[data-sort-col]').forEach(th=>{
-  th.onclick=()=>sortByHeader(th);
-  th.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();sortByHeader(th)}};
+  th.onclick=e=>sortByHeader(th,e.shiftKey);
+  th.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();sortByHeader(th,e.shiftKey)}};
  });
  const b=document.createElement('tbody');
  // 分割データはあるが子ロットが仕掛から見つからない行(=作業済みで仕掛から
@@ -558,6 +724,13 @@ function ensureListToolbar(){
   bar.innerHTML=`<button type="button" id="listColumnBtn" class="list-toolbar-btn" title="この一覧に表示する列を選びます">☰ 表示列</button>
    <label class="list-rowgap" title="行の間隔を変えます（この一覧ごとに覚えます）"><span>行間</span>
     <input type="range" id="listRowGap" min="1" max="5" step="1" value="3" aria-label="行の間隔"></label>
+   <span class="list-sort" id="listSort" hidden>
+    <span class="list-sort-label">並び</span>
+    <span class="list-sort-keys" id="listSortKeys"></span>
+    <select id="listSortPreset" class="list-sort-preset" title="いつも使う並びを選びます"></select>
+    <button type="button" id="listSortSave" class="list-toolbar-btn" title="今の並び順に名前を付けて保存します">保存</button>
+    <button type="button" id="listSortDel" class="list-toolbar-btn" title="選んでいる並びを削除します" hidden>削除</button>
+   </span>
    <span class="list-join-chip" id="listJoinChip" hidden></span>`;
   grid.parentNode.insertBefore(bar,grid);
   /* 列の設定はこの一覧の設定パネルへ集約する(§9.88 段2)。名前・並び・幅・
@@ -565,6 +738,7 @@ function ensureListToolbar(){
   bar.querySelector('#listColumnBtn').onclick=()=>WL.listColumns?.toggle();
   const gap=bar.querySelector('#listRowGap');
   gap.addEventListener('input',()=>applyRowGap(Number(gap.value)));
+  bindSortControls(bar);
   gap.addEventListener('change',()=>saveRowGap(Number(gap.value)));
   // ツールバーは描き直されることがある。作った直後に今の値を入れておかないと
   // 見た目(既定)と実際の行間がずれる。
@@ -586,6 +760,7 @@ function renderListToolbar(){
  const canPickColumns=!!(S.db&&S.table);
  const btn=bar.querySelector('#listColumnBtn');
  if(btn)btn.hidden=!canPickColumns;
+ renderSortBar();
  // 品質データ結合(join_quality)の結果を、成功・失敗どちらも一覧の脇に出す。
  // 以前はサーバー側で黙って素通ししていたため、結合されない理由が分からなかった。
  const chip=bar.querySelector('#listJoinChip');

@@ -237,6 +237,30 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
     26/30/36/40 のいずれかに固定している。既定のrangeは32pxで外れる)。 */
  .list-rowgap input[type="range"]{width:calc(84px * var(--ui-scale));
   height:var(--ctl-h-xs);accent-color:var(--teal)}
+ /* ---------- 並び順(§9.88 段5) ----------
+    今の並びを見せる札と、いつも使う並びの選択。フィルタの登録条件と
+    同じ並び(状態→選ぶ→保存)にして、覚えることを増やさない。 */
+ .list-sort{display:inline-flex;align-items:center;gap:var(--gap-hair);min-width:0;
+  font-size:var(--fs-sm);color:var(--muted)}
+ .list-sort-label{white-space:nowrap}
+ .list-sort-keys{display:inline-flex;align-items:center;gap:var(--gap-hair);
+  flex-wrap:wrap;min-width:0}
+ .list-sort-none{color:var(--muted);font-size:var(--fs-micro);white-space:nowrap}
+ .list-sort-chip{display:inline-flex;align-items:center;gap:var(--gap-hair);
+  height:var(--ctl-h-xs);padding:0 var(--space-1);border:1px solid var(--teal);
+  border-radius:var(--radius-xs);background:var(--pale);color:var(--ink);
+  font-size:var(--fs-micro);cursor:pointer;white-space:nowrap}
+ /* 何番目のキーかを示す番号。2つ以上のときだけ出る。 */
+ .list-sort-chip b{display:inline-flex;align-items:center;justify-content:center;
+  min-width:calc(14px * var(--ui-scale));height:calc(14px * var(--ui-scale));
+  border-radius:var(--radius-round);background:var(--teal);color:#fff;font-size:var(--fs-badge)}
+ .list-sort-x{font-style:normal;color:var(--muted);padding-left:var(--space-1)}
+ .list-sort-x:hover{color:var(--danger)}
+ /* 高さもトークンから取る(既定のselectは32pxで、26/30/36/40のどれにも
+    当たらない。行間のつまみと同じ理由)。 */
+ .list-sort-preset{max-width:calc(150px * var(--ui-scale));height:var(--ctl-h-xs)}
+ /* 見出しに出す「何番目のキーか」。矢印だけでは先後が分からない。 */
+ .col-sort-rank{font-style:normal;color:var(--teal)}
  /* ---------- 列の設定パネル(§9.88 段2) ----------
     左に全列・右に選んだ列・下に実データ。**下のプレビューが主役**なので、
     高さを与えて常に見えるようにする(スクロールの下に隠さない)。 */

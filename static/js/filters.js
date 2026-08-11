@@ -768,16 +768,14 @@
   // /api/table へフィルタ条件を送信する。
   if(typeof load==='function'){
     load=async function(force){
-      const q=new URLSearchParams({db:S.db,table:S.table,page:S.page,page_size:$('#pageSize').value,search:$('#search').value});
+      /* **問い合わせの組み立てはWL.listQuery()に一本化してある。** この
+         ファイルはload()を丸ごと置き換えるため、ここで独自に組み立てると
+         list-view.js側だけ直した変更が実際には効かない(品質データ結合と
+         キャッシュで2度起きた)。ここが足すのは絞り込み条件だけ。 */
+      const q=WL.listQuery();
       // 変数(例: {使用設備})はここで今の値へ展開する。保存されている条件は
       // 変数のままなので、端末や設備が変わってもそのまま使い回せる。
       if(S.genericFilters?.length)q.set('filters',JSON.stringify(expandFilterList(S.genericFilters)));
-      if(S.sortColumn){q.set('sort',S.sortColumn);q.set('sort_dir',S.sortDir||'asc')}
-      // list-view.jsのload()と同じ品質データ結合オプトイン(§9.21)。この
-      // ファイルはload()を丸ごと置き換えているため、あちらだけ直しても
-      // 実際にはこちらが動いてしまい反映されない。キャッシュ(§9.46)も同じ理由で
-      // 両方から同じヘルパー(tableCacheGet/applyTableData)を呼ぶ。
-      if(WL.dataSource.isWork(S.db)&&window.accessMode?.mode==='schedule')q.set('join_quality','1');
       await fetchTableData(String(q),force);
       renderGrid();renderGenericFilterBar();
     };
