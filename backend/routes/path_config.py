@@ -38,6 +38,8 @@ _PATH_CONFIG_DEFAULTS={
  'sikalot_source':'network','sikalotnow_path':'','sikalotdef_path':'',
  'records_backup_export_path':'','schedule_share_path':'',
  'rne_extract_enabled':'auto',
+ # 共有DBを手元へ写してから読むか(§9.89)。既定は有効。
+ 'db_mirror_enabled':'auto','db_mirror_interval_sec':'60',
  # RNE資材(RNEファイル・symnavim.conf)の置き場。空欄なら config/rne_extract。
  # 共有フォルダに1式だけ置いて全端末から参照する運用のため、端末ごとの
  # コピーを強制しない(§9.79)。認証情報だけ別の場所に置きたい運用があるので
@@ -89,6 +91,8 @@ def path_config_master_get():
    'schedule_share_path':str(SCHEDULE_SHARE_PATH) if SCHEDULE_SHARE_PATH else '',
    'rne_extract_enabled':str(path_config_value('rne_extract_enabled','auto') or 'auto'),
    'rne_extract_interval_sec':str(path_config_value('rne_extract_interval_sec',RNE_EXTRACT_INTERVAL_SEC_DEFAULT)),
+   'db_mirror_enabled':str(path_config_value('db_mirror_enabled','auto') or 'auto'),
+   'db_mirror_interval_sec':str(path_config_value('db_mirror_interval_sec','60')),
    'schedule_lock_ttl_sec':str(path_config_value('schedule_lock_ttl_sec',SCHEDULE_LOCK_TTL_SEC_DEFAULT)),
    'schedule_lock_verify_delay_ms':str(path_config_value('schedule_lock_verify_delay_ms',SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT)),
   }

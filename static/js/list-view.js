@@ -576,7 +576,17 @@ WL.rne=(()=>{
 /* RNEから作り直せるのは、抽出定義(RNEファイル)を持つデータソース。
    キーで決め打ちしない(§9.87)。 */
 function rneTargetDbs(){return WL.dataSource.views().map(x=>x.key)}
-function reloadList(){invalidateTableCache();load(true)}
+/* 「再読込」は、**共有からの写しを取り直してから**読み直す(§9.89)。
+   画面が読んでいるのは手元の写しなので、写しを更新せずに読み直しても
+   同じ内容が出るだけ。押した人の期待(最新が見たい)と食い違う。
+   写しの更新は共有への往復を伴うので待つが、失敗しても読み直しは行う
+   (共有が不調でも、手元の写しで一覧は出る)。 */
+async function reloadList(){
+ try{await api('/api/db-mirror/refresh',{method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({wait:true})})}
+ catch(e){console.warn('共有からの写しを更新できませんでした',e)}
+ invalidateTableCache();load(true);
+}
 
 function closeReloadMenu(){
  document.getElementById('reloadMenu')?.remove();
