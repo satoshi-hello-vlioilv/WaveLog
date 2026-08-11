@@ -572,6 +572,14 @@
   font-size:var(--fs-tiny);font-weight:800;vertical-align:middle;
 }
 .record-sync-badge.record-sync-failed{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger)}
+/* 他のPCで保存された測定データ(§9.91)。端末内にあるものと**見分けが付く**
+   ことが要点で、色は「注意」ではなく「情報」の側に置く。 */
+.record-remote-badge{
+  display:inline-block;margin-left:5px;padding:var(--pad-chip);border-radius:var(--radius-sm);
+  background:var(--pale);border:1px solid var(--teal);color:#0c5d67;
+  font-size:var(--fs-tiny);font-weight:800;vertical-align:middle;
+}
+.record-remote-badge.is-newer{background:var(--warn-bg);border-color:var(--warn-border);color:var(--warn-fg)}
 /* ---------- 勤務体系マスタの専用エディタ(親: 勤務体系 / 子: 勤務区分) ----------
    左に登録済みの体系、右にその中身。時刻はinput[type=time]で直打ちを避け、
    24時間バーで「どの時間帯が埋まっているか」を色で示す。 */
