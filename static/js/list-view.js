@@ -81,9 +81,12 @@ function bindColumnHeaderTools(table,target,visibleColumns,allColumns){
   const known=(layout.order||[]).filter(c=>allColumns.includes(c));
   return [...known,...allColumns.filter(c=>!known.includes(c))];
  };
+ /* 保存は全置換なので、**触っていない設定も一緒に送る**こと。
+    並びだけを送ると、表示名や書式が黙って消える(全置換で行ごと作り直すため)。 */
  const persist=async(order,widths)=>{
   try{
-   await WL.columnLayout.save(target,{order,widths:widths||layout.widths,hidden:layout.hidden});
+   await WL.columnLayout.save(target,{order,widths:widths||layout.widths,hidden:layout.hidden,
+                                      names:layout.names,formats:layout.formats});
    showToast&&showToast('表示の並びを保存しました','この一覧を次に開いたときも同じ並びで出ます',2400);
   }catch(e){showToast&&showToast('並びを保存できませんでした',e.message,5000)}
  };
@@ -396,13 +399,18 @@ function renderGrid(){
  // 予定追加ボタン(+予定)は多数の列を横に比較しながら選ぶ運用(§9.5)のため
  // 毎回右端までスクロールさせないよう、選択チェックボックスと並べて最左列へ
  // 置く(§9.15改訂。以前は最右列だった)。
+ /* 書式(§9.88 段3)は列ごとに1度だけ引いて、セルの描画で使い回す。
+    数値の書式を当てた列は**列ごと**右づめにする(桁を縦に揃えて読むため)。
+    値ごとに決めると、数値として読めない値が1つ混ざった列で揃い方が乱れる。 */
+ const colFmt=new Map(visibleColumns.map(c=>[c,WL.columnLayout.format(layoutTarget,c)]));
+ const numCol=c=>colFmt.get(c)?.kind==='number';
  const t=document.createElement('table');
  t.innerHTML='<thead><tr>'+(canPlan?'<th class="plan-select-head"><input type="checkbox" id="planSelectAll" title="このページの全行を選択/解除"></th><th class="plan-action-head">予定</th>':'')+'<th>#</th>'+(isWork?'<th class="split-flag-head" title="親子管理_子カード／コンマ5本分割_切断巾に実データがある場合「分割あり」と表示します">分割</th>':'')+visibleColumns.map(c=>{
   const filtered=filteredCols.has(c),sorted=S.sortColumn===c,arrow=sorted?(S.sortDir==='desc'?' ▼':' ▲'):'';
   /* 見出しは3役: クリックで並び替え / 掴んで左右へ動かすと列の並べ替え /
      右端の取っ手を引くと列幅。**取っ手はクリックを飲み込む**(引くつもりが
      並び替わると操作を取り消せない)。 */
-  return `<th class="sortable-col ${filtered?'col-filtered':''} ${sorted?'col-sorted':''}" data-sort-col="${esc(c)}" draggable="true" tabindex="0" role="button" aria-label="${esc(WL.columnLayout.label(layoutTarget,c))}列で並び替え" title="${esc(c)}｜クリックで並び替え／ドラッグで列の入れ替え${filtered?'（絞り込み中の列です）':''}">${esc(WL.columnLayout.label(layoutTarget,c))}${arrow}${filtered?'<i class="col-filter-badge" aria-hidden="true" title="この列にフィルタが適用されています">▼</i>':''}<i class="col-resize" title="ドラッグで列幅を調整（ダブルクリックで既定へ）" aria-hidden="true"></i></th>`;
+  return `<th class="sortable-col ${numCol(c)?'col-num':''} ${filtered?'col-filtered':''} ${sorted?'col-sorted':''}" data-sort-col="${esc(c)}" draggable="true" tabindex="0" role="button" aria-label="${esc(WL.columnLayout.label(layoutTarget,c))}列で並び替え" title="${esc(c)}｜クリックで並び替え／ドラッグで列の入れ替え${filtered?'（絞り込み中の列です）':''}">${esc(WL.columnLayout.label(layoutTarget,c))}${arrow}${filtered?'<i class="col-filter-badge" aria-hidden="true" title="この列にフィルタが適用されています">▼</i>':''}<i class="col-resize" title="ドラッグで列幅を調整（ダブルクリックで既定へ）" aria-hidden="true"></i></th>`;
  }).join('')+(isWork?'<th class="measurement-action-head">測定</th>':'')+'</tr></thead>';
  // 幅はcolgroupで与える。thへ直接書くと、セル側の内容で押し広げられる。
  if(visibleColumns.length){
@@ -458,7 +466,11 @@ function renderGrid(){
   }
   tr.innerHTML=(canPlan?`<td class="plan-select-cell"><input type="checkbox" class="plan-select-checkbox"></td><td class="plan-action-cell"><button type="button" class="plan-action-button" title="この行の設備の作業スケジュールへ追加します">+ 予定</button></td>`:'')+`<td>${(S.page-1)*+$('#pageSize').value+i+1}</td>`+splitCell+visibleColumns.map(c=>{
    if(c===lotCol){const lotVal=r[c];return `<td class="lot-cell"><button type="button" class="lot-dsp-link grid-lot-link" title="クリックでLotDspをこのロット番号で開きます">${esc(lotVal)||'—'}</button></td>`}
-   return `<td>${esc(r[c])}</td>`;
+   /* 書式(§9.88 段3)を通してから出す。整形できない値は生のまま出るので、
+      書式の指定を間違えても値が消えることはない。 */
+   const shown=WL.cellFormat.value(colFmt.get(c),r[c]);
+   const raw=String(r[c]==null?'':r[c]);
+   return `<td${numCol(c)?' class="col-num"':''}${shown!==raw?` title="${esc(raw)}"`:''}>${esc(shown)}</td>`;
   }).join('')+(isWork?'<td class="measurement-action-cell"><button type="button" class="measurement-action-button">開く</button></td>':'');
   if(r===S.selectedRow)tr.classList.add('is-selected');
   if(canPlan&&S.selectedRows.has(r))tr.classList.add('is-plan-selected');

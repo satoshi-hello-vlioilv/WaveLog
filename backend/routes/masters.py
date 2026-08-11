@@ -39,6 +39,7 @@ from ..repositories.master_repo import (
  SCHEDULE_COLUMN_TABLE, ensure_schedule_column_table, schedule_columns_for, set_schedule_columns,
  SCHEDULE_CONTENT_TABLE, ensure_schedule_content_table, schedule_content_items_for, set_schedule_content_items,
  COLUMN_LAYOUT_TABLE, ensure_column_layout_table, column_layout_for, set_column_layout,
+ FORMAT_KINDS, normalize_format,
  SORT_PRESET_TABLE, ensure_sort_preset_table, sort_preset_rows, normalize_sort_keys,
  LIST_VIEW_TABLE, ensure_list_view_table, list_view_settings_for, set_list_view_settings,
  ROW_GAP_DEFAULT,
@@ -782,6 +783,7 @@ def column_layout_master_save():
   target=str(x.get('target') or '').strip()
   if not target:return jsonify(error='対象(target)を指定してください。'),400
   order=x.get('order');widths=x.get('widths');hidden=x.get('hidden');names=x.get('names')
+  formats=x.get('formats')
   if order is not None and not isinstance(order,list):
    return jsonify(error='並び(order)の指定が不正です。'),400
   if widths is not None and not isinstance(widths,dict):
@@ -791,7 +793,8 @@ def column_layout_master_save():
   path=DBS['MASTER']['path']
   with connect(path,False) as c:
    n=set_column_layout(c,target,order or [],widths or {},uid,hidden=hidden or [],
-                       names=names if isinstance(names,dict) else {})
+                       names=names if isinstance(names,dict) else {},
+                       formats=formats if isinstance(formats,dict) else {})
   return jsonify(ok=True,target=target,columns=n,updated_by=uid,message='表示の並びを保存しました。')
  except Exception as e:return jsonify(error=f'列レイアウト保存失敗: {e}'),500
 

@@ -487,6 +487,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   window.addEventListener('resize',()=>applyRect());
   applyRect();
  }
+ /* 他の画面(列の設定パネル等)も同じ浮いたウィンドウで出す。**公開しないと
+    黙って素通しになる**——list-columns.jsは`typeof makeFloatingWindow`で
+    存在を確かめてから呼ぶ作りだったため、公開漏れに気づけず、位置も大きさも
+    与えられないパネルが画面外に開いていた(実際に起きた)。 */
+ window.WL=window.WL||{};WL.makeFloatingWindow=makeFloatingWindow;
 
  /* ---------- 仕掛一覧のポップアップ表示(§9.14新設) ----------
     折りたたみ・画面が狭い時でも、分割表示へ切り替えずに一覧からドラッグで

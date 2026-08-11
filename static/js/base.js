@@ -192,22 +192,23 @@ window.WL.dataSource=dataSource;
    実際の列へ当てはめるだけ。記録に無い列は末尾へ回し、記録にあってデータ側
    に無い列は黙って捨てる(列が増減しても設定が壊れない)。 */
 const columnLayout=(()=>{
- const cache=new Map();                 // target -> {order,widths,hidden}
- const empty=()=>({order:[],widths:{},hidden:[],names:{}});
+ const cache=new Map();                 // target -> {order,widths,hidden,names,formats}
+ const empty=()=>({order:[],widths:{},hidden:[],names:{},formats:{}});
  async function load(target){
   if(!target)return empty();
   if(cache.has(target))return cache.get(target);
   let v=empty();
   try{
    const r=await api('/api/column-layout-master?target='+encodeURIComponent(target));
-   v={order:r.order||[],widths:r.widths||{},hidden:r.hidden||[],names:r.names||{}};
+   v={order:r.order||[],widths:r.widths||{},hidden:r.hidden||[],names:r.names||{},formats:r.formats||{}};
   }catch(e){/* 読めなくても既定の並びで一覧は出す(fail-open) */}
   cache.set(target,v);return v;
  }
  function get(target){return cache.get(target)||empty()}
  async function save(target,layout){
   if(!target)return;
-  const v={order:layout.order||[],widths:layout.widths||{},hidden:layout.hidden||[],names:layout.names||{}};
+  const v={order:layout.order||[],widths:layout.widths||{},hidden:layout.hidden||[],
+           names:layout.names||{},formats:layout.formats||{}};
   cache.set(target,v);
   await api('/api/column-layout-master',{method:'POST',headers:{'Content-Type':'application/json'},
    body:JSON.stringify(withUserId({target,...v}))});
@@ -224,9 +225,114 @@ const columnLayout=(()=>{
  return {load,get,save,forget,apply,
          width:(target,col)=>get(target).widths[col]||null,
          /* 画面に出す名前。未設定なら元の項目名のまま(§9.88)。 */
-         label:(target,col)=>get(target).names[col]||col};
+         label:(target,col)=>get(target).names[col]||col,
+         /* この列の書式指定。未設定ならnull(=そのまま表示)。 */
+         format:(target,col)=>get(target).formats[col]||null};
 })();
 window.WL.columnLayout=columnLayout;
+
+/* ---------- セルの見せ方(§9.88 段3) ----------
+   生の値を「表示する文字列」へ整える。**整形できなかったら生の値を返す**
+   ——空欄になるより、見慣れない形でも値が見えるほうがよい(現場で「データが
+   消えた」と判断されるのが最悪)。並べ替え・絞り込みは生の値のまま効かせたい
+   ので、整形はサーバーへ持ち込まず画面側だけで行う。
+   段4(読み替え)はこのパイプラインの**手前**に入る。 */
+const cellFormat=(()=>{
+ const WEEK=['日','月','火','水','木','金','土'];
+ const isBlank=v=>v===null||v===undefined||String(v).trim()==='';
+ const pad=(n,w)=>String(Math.abs(n)).padStart(w,'0');
+
+ /* 日付時刻の解釈。取れなかった部分はnullにして、書式側で「その部分を
+    求められたら失敗」とする(時刻だけの値に yyyy を要求されたら生の値へ倒す)。
+    実データは '2026-08-11 09:30:00' / '2026/08/11' / '20260811' と揺れる。 */
+ function parts(v){
+  if(v instanceof Date)return isNaN(v)?null:
+   {y:v.getFullYear(),M:v.getMonth()+1,d:v.getDate(),H:v.getHours(),mi:v.getMinutes(),s:v.getSeconds()};
+  const t=String(v==null?'':v).trim();
+  if(!t)return null;
+  // 日付を持たない値(時刻だけ)もあるので、**null は「無い」であって不正ではない**。
+  const ok=p=>((p.M==null||(p.M>=1&&p.M<=12))&&(p.d==null||(p.d>=1&&p.d<=31))
+               &&p.H<=23&&p.mi<=59&&p.s<=59)?p:null;
+  let m=/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/.exec(t);
+  if(m)return ok({y:+m[1],M:+m[2],d:+m[3],H:+(m[4]||0),mi:+(m[5]||0),s:+(m[6]||0)});
+  m=/^(\d{4})(\d{2})(\d{2})(?:[ T]?(\d{2})(\d{2})(\d{2})?)?$/.exec(t);
+  if(m)return ok({y:+m[1],M:+m[2],d:+m[3],H:+(m[4]||0),mi:+(m[5]||0),s:+(m[6]||0)});
+  m=/^(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?$/.exec(t);
+  if(m)return ok({y:null,M:null,d:null,H:+m[1],mi:+m[2],s:+(m[3]||0)});
+  return null;
+ }
+ /* Excel/.NET風のパターン。日=d 月=M 時=H 分=m と大文字小文字で区別する
+    (Excelの「文脈で月か分か決まる」は説明できないので採らない)。
+    'リテラル' で囲むとその文字はそのまま出る。 */
+ const TOKEN=/yyyy|yy|MM|M|dddd|ddd|dd|d|HH|H|hh|h|mm|m|ss|s|tt|'[^']*'/g;
+ function stamp(p,pattern){
+  const need=k=>{if(p[k]==null)throw 0;return p[k]};
+  const h12=()=>{const h=need('H')%12;return h===0?12:h};
+  return String(pattern).replace(TOKEN,tok=>{
+   switch(tok){
+    case 'yyyy':return pad(need('y'),4);
+    case 'yy':return pad(need('y')%100,2);
+    case 'MM':return pad(need('M'),2);
+    case 'M':return String(need('M'));
+    case 'dddd':case 'ddd':{
+     const w=WEEK[new Date(need('y'),need('M')-1,need('d')).getDay()];
+     return tok==='dddd'?w+'曜日':w;
+    }
+    case 'dd':return pad(need('d'),2);
+    case 'd':return String(need('d'));
+    case 'HH':return pad(need('H'),2);
+    case 'H':return String(need('H'));
+    case 'hh':return pad(h12(),2);
+    case 'h':return String(h12());
+    case 'mm':return pad(need('mi'),2);
+    case 'm':return String(need('mi'));
+    case 'ss':return pad(need('s'),2);
+    case 's':return String(need('s'));
+    case 'tt':return need('H')<12?'午前':'午後';
+    default:return tok.slice(1,-1);       // 'リテラル'
+   }
+  });
+ }
+ function groupThousands(s){
+  const m=/^(-?)(\d+)(\.\d+)?$/.exec(s);
+  if(!m)return s;
+  return m[1]+m[2].replace(/\B(?=(\d{3})+(?!\d))/g,',')+(m[3]||'');
+ }
+ function asNumber(v){
+  const t=String(v==null?'':v).trim().replace(/,/g,'');
+  if(!t||!/^[-+]?(\d+\.?\d*|\.\d+)$/.test(t))return null;
+  const n=Number(t);
+  return Number.isFinite(n)?n:null;
+ }
+ /* 指定1つを値へ当てる。整形できなければnullを返し、呼び出し側が生の値を出す。 */
+ function run(spec,raw){
+  if(!spec)return null;
+  const kind=spec.kind||'';
+  if(kind==='number'){
+   const n=asNumber(raw);
+   if(n===null)return null;
+   let s=spec.decimals==null||spec.decimals===''?String(n):n.toFixed(spec.decimals);
+   if(spec.thousands)s=groupThousands(s);
+   return (spec.prefix||'')+s+(spec.suffix||'');
+  }
+  if(kind==='datetime'){
+   const p=parts(raw);
+   if(!p)return null;
+   try{return stamp(p,spec.pattern||'yyyy/MM/dd')}catch(e){return null}
+  }
+  if(kind==='text')return (spec.prefix||'')+String(raw).trim()+(spec.suffix||'');
+  return null;                            // 種別なし=そのまま
+ }
+ /* 表示用の文字列。**空欄は空欄のまま**(単位だけが並ぶ列にしない)。 */
+ function value(spec,raw){
+  if(isBlank(raw))return '';
+  const out=run(spec,raw);
+  return out===null?String(raw):out;
+ }
+ return {value,parts,
+         text:(target,col,raw)=>value(columnLayout.format(target,col),raw)};
+})();
+window.WL.cellFormat=cellFormat;
 function databaseLabel(key){
  if(key==='MASTER')return 'マスタ';
  return WL.dataSource.label(key)||'データ';

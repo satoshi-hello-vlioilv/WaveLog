@@ -762,19 +762,47 @@ def set_schedule_content_items(c,equipment,item_names,uid):
 # ========================================================================
 COLUMN_LAYOUT_TABLE='列レイアウトマスタ'
 
+# ---- 書式(§9.88 段3) ----------------------------------------------------
+# 値を「どう整形して見せるか」。**保存するのは指定だけ**で、整形そのものは
+# 画面側が行う(サーバーは生の値を返す。並べ替えや絞り込みは生の値で効く
+# ままにしたいので、整形をサーバーへ持ち込まない)。
+FORMAT_KINDS=('','number','datetime','text')
+
+def normalize_format(raw):
+ """保存できる書式指定へ整える。何も指定が無ければNone(=そのまま表示)。"""
+ if not isinstance(raw,dict):return None
+ kind=str(raw.get('kind') or '').strip()
+ if kind not in FORMAT_KINDS:kind=''
+ pattern=str(raw.get('pattern') or '').strip()[:60]
+ try:decimals=int(raw.get('decimals')) if raw.get('decimals') not in (None,'') else None
+ except (TypeError,ValueError):decimals=None
+ if decimals is not None:decimals=max(0,min(6,decimals))
+ thousands=bool(raw.get('thousands'))
+ prefix=str(raw.get('prefix') or '')[:8]
+ suffix=str(raw.get('suffix') or '')[:8]
+ if not kind and not pattern and decimals is None and not thousands and not prefix and not suffix:
+  return None
+ return {'kind':kind,'pattern':pattern,'decimals':decimals,
+         'thousands':thousands,'prefix':prefix,'suffix':suffix}
+
+
 def ensure_column_layout_table(c):
  names=tables(c);created=False
  if COLUMN_LAYOUT_TABLE not in names:
   cur=c.cursor()
   cur.execute('CREATE TABLE [列レイアウトマスタ] ([ID] INTEGER PRIMARY KEY AUTOINCREMENT, '
               '[対象] TEXT, [列名] TEXT, [表示名] TEXT, [表示順] INTEGER, [幅] INTEGER, [表示] INTEGER, '
+              '[書式種別] TEXT, [書式パターン] TEXT, [小数桁] INTEGER, [桁区切り] INTEGER, '
+              '[単位前] TEXT, [単位後] TEXT, '
               '[登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
   cur.execute('CREATE UNIQUE INDEX [UX_列レイアウトマスタ] ON [列レイアウトマスタ] ([対象],[列名])')
   c.commit();created=True
  ensure_audit_columns(c,COLUMN_LAYOUT_TABLE)
  # 既存DBへの追加(他マスタと同じ「無ければALTER TABLEで足す」方式)。
  have={r[1] for r in c.cursor().execute(f'PRAGMA table_info([{COLUMN_LAYOUT_TABLE}])')}
- for name,decl in (('表示','INTEGER'),('表示名','TEXT')):
+ for name,decl in (('表示','INTEGER'),('表示名','TEXT'),
+                   ('書式種別','TEXT'),('書式パターン','TEXT'),('小数桁','INTEGER'),
+                   ('桁区切り','INTEGER'),('単位前','TEXT'),('単位後','TEXT')):
   if name not in have:
    c.cursor().execute(f'ALTER TABLE [{COLUMN_LAYOUT_TABLE}] ADD COLUMN [{name}] {decl}')
    c.commit()
@@ -796,17 +824,18 @@ def column_layout_for(c,target):
 
  **hiddenは「この対象で隠す列」**。[表示]がNULLの行は表示(既定)として扱う
  ——列を足したときに既存の行が勝手に隠れないようにするため。"""
- empty={'order':[],'widths':{},'hidden':[],'names':{}}
+ empty={'order':[],'widths':{},'hidden':[],'names':{},'formats':{}}
  if COLUMN_LAYOUT_TABLE not in tables(c):return dict(empty)
  target=str(target or '').strip()
  if not target:return dict(empty)
  have={r[1] for r in c.cursor().execute(f'PRAGMA table_info([{COLUMN_LAYOUT_TABLE}])')}
- has_visible='表示' in have;has_label='表示名' in have
+ col=lambda n:('['+n+']') if n in have else 'NULL'
  cur=c.cursor()
- cur.execute('SELECT [列名],[表示順],[幅]'+(',[表示]' if has_visible else ',NULL')
-             +(',[表示名]' if has_label else ',NULL')+
+ cur.execute('SELECT [列名],[表示順],[幅],'+col('表示')+','+col('表示名')+','
+             +col('書式種別')+','+col('書式パターン')+','+col('小数桁')+','
+             +col('桁区切り')+','+col('単位前')+','+col('単位後')+
              ' FROM [列レイアウトマスタ] WHERE [対象]=? ORDER BY [表示順],[ID]',[target])
- order=[];widths={};hidden=[];names={}
+ order=[];widths={};hidden=[];names={};formats={}
  for row in cur.fetchall():
   name=str(row[0] or '').strip()
   if not name:continue
@@ -815,9 +844,12 @@ def column_layout_for(c,target):
   if row[3] is not None and not bool(row[3]):hidden.append(name)
   label=str(row[4] or '').strip()
   if label:names[name]=label
- return {'order':order,'widths':widths,'hidden':hidden,'names':names}
+  f=normalize_format({'kind':row[5],'pattern':row[6],'decimals':row[7],
+                      'thousands':row[8],'prefix':row[9],'suffix':row[10]})
+  if f:formats[name]=f
+ return {'order':order,'widths':widths,'hidden':hidden,'names':names,'formats':formats}
 
-def set_column_layout(c,target,order,widths,uid,hidden=None,names=None):
+def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=None):
  """全置換方式(他の列マスタと同じ)。渡された順序がそのまま表示順になる。
 
  **幅だけを変えたいときも並び全体を送る**こと。部分更新にすると、
@@ -828,29 +860,40 @@ def set_column_layout(c,target,order,widths,uid,hidden=None,names=None):
  widths=widths if isinstance(widths,dict) else {}
  hide={str(x or '').strip() for x in (hidden or []) if str(x or '').strip()}
  label=names if isinstance(names,dict) else {}
+ fmt=formats if isinstance(formats,dict) else {}
  cur=c.cursor()
  cur.execute('DELETE FROM [列レイアウトマスタ] WHERE [対象]=?',[target])
- seq=0
- for name in (order or []):
-  name=str(name or '').strip()
-  if not name:continue
-  seq+=1
+
+ def write(name,seq):
+  f=normalize_format(fmt.get(name)) or {}
   cur.execute('INSERT INTO [列レイアウトマスタ] ([対象],[列名],[表示名],[表示順],[幅],[表示],'
-              '[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,?,Now(),Now())',
+              '[書式種別],[書式パターン],[小数桁],[桁区切り],[単位前],[単位後],'
+              '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
+              'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',
               [target,name,str(label.get(name) or '').strip() or None,seq,
                normalize_column_width(widths.get(name)),
-               0 if name in hide else -1,uid,uid])
- # 並びに載っていない列の幅だけが指定されている場合も残す(列が増減しても
- # 幅の記憶が消えないように。表示順は末尾扱いの0にしておく)。
- for name,width in widths.items():
+               0 if name in hide else -1,
+               f.get('kind') or None,f.get('pattern') or None,
+               f.get('decimals'),(-1 if f.get('thousands') else 0) if f else None,
+               f.get('prefix') or None,f.get('suffix') or None,uid,uid])
+
+ seq=0;seen=set()
+ for name in (order or []):
   name=str(name or '').strip()
-  if not name or name in (order or []):continue
-  w=normalize_column_width(width)
-  if w is None:continue
-  cur.execute('INSERT INTO [列レイアウトマスタ] ([対象],[列名],[表示名],[表示順],[幅],[表示],'
-              '[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,0,?,?,?,?,Now(),Now())',
-              [target,name,str(label.get(name) or '').strip() or None,w,
-               0 if name in hide else -1,uid,uid])
+  if not name or name in seen:continue
+  seq+=1;seen.add(name)
+  write(name,seq)
+ # 並びに載っていない列でも、幅・表示名・書式・非表示のどれかが指定されて
+ # いれば残す(列が増減しても記憶が消えないように。表示順は末尾扱いの0)。
+ # **どれか1つでも拾い漏らすと、その設定だけが黙って消える**——並びを
+ # 送らずに書式だけ保存した場合に実際に起きた。
+ extra=[n for n in (list(widths)+list(label)+list(fmt)+sorted(hide))
+        if str(n or '').strip() and str(n).strip() not in seen]
+ for name in extra:
+  name=str(name).strip()
+  if name in seen:continue
+  seen.add(name)
+  write(name,0)
  c.commit()
  return seq
 
