@@ -59,7 +59,8 @@
   `refreshScheduleIfOpen`/`expandFilterVars`/`toleranceScaleView`/`optionList`/`defect`/
   `fieldReorderAllows`/`fieldReorderAllowsAll`/`fieldReorderLabel`/`boot`/`onReady`/
   `dataSource`/`columnLayout`/`cellFormat`/`displayRules`/`listColumns`/`listRules`/
-  `rowGap`/`renderDbNav`/`bindColumnHeaderTools`/`makeFloatingWindow`。
+  `rowGap`/`listSort`/`listSortBar`/`listQuery`/`renderDbNav`/
+  `bindColumnHeaderTools`/`makeFloatingWindow`。
   **公開漏れは黙って素通しになる**ことに注意——`typeof makeFloatingWindow==='function'`の
   ように「あれば使う」書き方で呼んでいると、公開し忘れても例外が出ず、
   機能だけが静かに欠ける（列の設定パネルが位置も大きさも与えられないまま
@@ -96,8 +97,11 @@
   **1件だけ**落とし、壊れた正規表現は「当たらない」で済ませ、ルールを消しても
   列側の参照は残す（無いルール名＝読み替えなし）。詳細は
   `docs/COLUMN_PRESENTATION_DESIGN.md`と`docs/SCHEDULE_MODE_DESIGN.md`§9.88。
-  固定は`tests/test_collayout.js`・`tests/test_colformat.js`・
-  `tests/test_colrule.js`・`tests/test_displayrule.py`。
+  **一覧の問い合わせは`WL.listQuery()`で組み立てる**——`filters.js`が
+  `load()`を丸ごと差し替えるため、両方に書くと片方だけ直した状態になる
+  （品質データ結合とキャッシュで実際に2度起きた）。`filters.js`が足すのは
+  絞り込み条件だけ。固定は`tests/test_collayout.js`・`tests/test_colformat.js`・
+  `tests/test_colrule.js`・`tests/test_colsort.js`・`tests/test_displayrule.py`。
 - **フィールド名**: Accessの実カラム名は全角/半角ゆれがある。照合は
   `normalizedFieldName`/`exactFieldNumber` 系を使い、直接文字列比較しない。
   分割関連の実カラム名は「親子管理_子カード<N>」「コンマ5本分割_切断巾<N>」
