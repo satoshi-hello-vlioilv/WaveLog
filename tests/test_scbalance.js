@@ -115,6 +115,40 @@ let b=null;
  console.log('\n=== SUMMARY ===');
  const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
  f.forEach(x=>console.log(' -',x.n,x.d||''));
+
+ /* ---- 行の高さは中身で変わらない(§9.88 段0) ----
+    以前は min-height だったため、その行にだけ出るもの(開始ボタン・遅延
+    バッジ・子ロットの折りたたみ等)が1pxでも高いと、その行だけ伸びていた。
+    「行間がバラバラ」の正体がこれ。**縦の刻みを一定にする**のが一覧の
+    読みやすさの土台なので、高さは --row-h で決め打ちにしてある。 */
+ const fixed=await page.evaluate(()=>{
+  const rows=[...document.querySelectorAll('.sc-row-line')];
+  if(rows.length<2)return null;
+  const before=Math.round(rows[1].getBoundingClientRect().height);
+  const cell=rows[1].querySelector('.sc-row-title')||rows[1].firstElementChild;
+  const tall=document.createElement('div');tall.style.height='120px';
+  cell.appendChild(tall);
+  const after=Math.round(rows[1].getBoundingClientRect().height);
+  tall.remove();
+  // 行間のつまみ1本で全行が揃って動くこと(利用者が調整する土台)
+  const root=document.documentElement;
+  root.style.setProperty('--row-gap','10px');
+  const wide=[...new Set([...document.querySelectorAll('.sc-row-line')]
+    .map(x=>Math.round(x.getBoundingClientRect().height)))];
+  root.style.removeProperty('--row-gap');
+  const back=[...new Set([...document.querySelectorAll('.sc-row-line')]
+    .map(x=>Math.round(x.getBoundingClientRect().height)))];
+  return {before,after,wide,back};
+ });
+ rec('背の高い中身を入れても行の高さが変わらない',
+   !!fixed&&fixed.before===fixed.after,fixed?`${fixed.before}px → ${fixed.after}px`:'行が足りない');
+ rec('行間のつまみで全行が揃って変わる',
+   !!fixed&&fixed.wide.length===1&&fixed.wide[0]>fixed.before,
+   fixed?`--row-gap:10px で ${fixed.wide.join('/')}px`:'');
+ rec('つまみを戻すと元の高さへ戻る',
+   !!fixed&&fixed.back.length===1&&fixed.back[0]===fixed.before,
+   fixed?`${fixed.back.join('/')}px`:'');
+
  await b.close();process.exit(f.length?1:0);
 })().catch(async e=>{
  // 落ちてもブラウザは必ず閉じる。閉じ忘れると開いたままの画面が設備の

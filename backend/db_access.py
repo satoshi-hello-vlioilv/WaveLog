@@ -188,6 +188,12 @@ def tables(c):
   return sorted({r[0] for r in cur.fetchall() if r[0]},key=str.casefold)
  return sorted({r.table_name for r in c.cursor().tables(tableType='TABLE') if r.table_name and not r.table_name.startswith(('MSys','USys','~'))},key=str.casefold)
 def cfg(k):
+ """そのデータソースの設定。**読む場所は写し(あれば)を指す**(§9.89)。
+
+ 共有上の .sqlite3 は別PCの別アプリが更新しており、直接読むと更新と
+ 重なったときに正しく読めない。db_mirror が手元へ写しているので、
+ 読むときはそちらを見る。設定として保存されている元のパスは
+ ['path_remote'] に残す(パス設定画面・接続診断はこちらを使う)。"""
  if k not in DBS:
   # **何が正しいのかまで書く。** 以前は「不正です」だけを返しており、
   # データソースマスタでキーを変えた端末では、左メニューに残った古いキーの
@@ -195,7 +201,16 @@ def cfg(k):
   raise ValueError(f'データベース指定が不正です（指定: {k or "(空欄)"} / '
                    f'選べるのは: {"、".join(DBS)}）。'
                    'マスタ管理 > データソースの「キー」と合っているか確認してください。')
- return DBS[k]
+ entry=DBS[k]
+ if entry.get('role')!='readonly':return entry
+ try:
+  from . import db_mirror
+  local=db_mirror.read_path(k,entry['path'])
+ except Exception:
+  return entry
+ if Path(local)==Path(entry['path']):return entry
+ out=dict(entry);out['path_remote']=entry['path'];out['path']=Path(local);out['mirrored']=True
+ return out
 
 # ========================================================================
 # 更新対象者（ユーザーID）の管理
@@ -256,8 +271,12 @@ PATH_CONFIG_STATIC_KEYS=('sikalot_source','sikalotnow_path','sikalotdef_path','r
 #   'on'          … 取得元に関わらず動かす(共有から読みつつローカルも更新する等)
 #   'off'         … 定期実行しない(手動の「今すぐ抽出」は別途いつでも実行できる)
 # 抽出そのものは取得元と独立して動けるようにしてある(§9.50)。
+# 共有上の読み取り専用DBを手元へ写してから読むか(§9.89)。
+#   'auto'(既定)/'on' … 写して読む  /  'off' … 従来どおり共有を直接読む
+# 別PCの別アプリが更新している .sqlite3 を直接読むと、更新と重なったときに
+# 正しく読めない(SQLiteのロックは共有では当てにならない)。詳細はbackend/db_mirror.py。
 PATH_CONFIG_LIVE_KEYS=('rne_extract_interval_sec','rne_extract_enabled','schedule_lock_ttl_sec','schedule_lock_verify_delay_ms',
-                       'rne_assets_dir','rne_conf_path')
+                       'rne_assets_dir','rne_conf_path','db_mirror_enabled','db_mirror_interval_sec')
 PATH_CONFIG_KEYS=PATH_CONFIG_STATIC_KEYS+PATH_CONFIG_LIVE_KEYS
 
 def ensure_path_config_table(c):

@@ -16,6 +16,16 @@ def run():
  log=launcher_logger()
  from app import app as flask_app          # Flaskアプリ本体(業務機能)
  watchdog.start()
+ # 共有上の読み取り専用DBを手元へ写す背景処理(§9.89)。共有の更新と読み取りが
+ # 重なると正しく読めないため、画面は常に手元の写しを読む。写せなくても
+ # 画面は前の写し(または共有)で動くので、ここでの失敗は起動を止めない。
+ try:
+  from backend import db_mirror
+  if db_mirror.enabled():
+   db_mirror.start()
+   log.info('共有DBの写し: %d秒ごとに更新します',db_mirror.interval_sec())
+ except Exception as e:
+  log.warning('共有DBの写しを開始できませんでした: %s',e)
  log.info('Webサーバー: 起動します (%s:%s)',HOST,PORT)
  try:
   # threaded=True: 既定(シングルスレッド)のままだと、仕掛/品質データや

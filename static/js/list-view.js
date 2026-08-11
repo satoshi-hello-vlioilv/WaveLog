@@ -29,6 +29,136 @@ async function init(){
  }catch(e){console.error('初期化エラー',e);showToast('初期化の一部に失敗',e.message,8000)}
  finally{bindV32Navigation()}
 }
+/* ---------- 行間(§9.88) ----------
+   一覧全体の密度。列ごとの設定とは別物なので、保存先も別
+   (一覧表示設定マスタ)。段階(1〜5)で持ち、実際の余白は --row-gap へ流す。
+   **1本のつまみで行の高さが決まる**構造にしてあるので(§9.88 段0)、
+   ここはその値を差し替えるだけで済む。 */
+const ROW_GAP_STEPS={1:'2px',2:'3px',3:'4px',4:'6px',5:'9px'};
+let rowGapValue=3;
+function applyRowGap(step){
+ rowGapValue=Math.max(1,Math.min(5,Number(step)||3));
+ const grid=document.querySelector('#grid');
+ if(!grid)return;
+ const v=ROW_GAP_STEPS[rowGapValue];
+ /* **--row-pad-y も一緒に差し替える。** :root で
+    `--row-pad-y: var(--row-gap)` と定義してあるが、カスタムプロパティは
+    定義した場所で値が解決されるため、子孫で --row-gap を上書きしても
+    --row-pad-y は :root の値のまま(実際にこれで効かなかった)。 */
+ grid.style.setProperty('--row-gap',v);
+ grid.style.setProperty('--row-pad-y',v);
+}
+async function saveRowGap(step){
+ applyRowGap(step);
+ const target=listLayoutTarget();if(!target)return;
+ try{
+  await api('/api/list-view-master',{method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify(withUserId({target,rowGap:rowGapValue}))});
+ }catch(e){showToast&&showToast('行間を保存できませんでした',e.message,5000)}
+}
+async function loadRowGap(){
+ const target=listLayoutTarget();if(!target)return;
+ try{
+  const r=await api('/api/list-view-master?target='+encodeURIComponent(target));
+  applyRowGap(r.rowGap);
+  const el=document.querySelector('#listRowGap');if(el)el.value=String(rowGapValue);
+ }catch(e){/* 読めなくても既定の密度で出す(fail-open) */}
+}
+WL.rowGap={apply:applyRowGap,save:saveRowGap,load:loadRowGap,value:()=>rowGapValue};
+
+/* ---------- 見出しの操作: 列の並べ替えと列幅(§9.88) ----------
+   よく使う操作は設定画面を開かずに表の上で完結させる。**離した時点で保存**し、
+   確認は出さない(すぐ元に戻せる操作なので、確認は邪魔になるだけ)。
+   保存するのは「今見えている並び」ではなく**許可された全列の並び**。
+   見えている分だけ保存すると、非表示にしていた列の位置が失われる。 */
+function bindColumnHeaderTools(table,target,visibleColumns,allColumns){
+ if(!target)return;
+ const layout=WL.columnLayout.get(target);
+ const heads=[...table.querySelectorAll('th[data-sort-col]')];
+
+ /* 覚えている並びを、許可された全列に対して作り直す。 */
+ const fullOrder=()=>{
+  const known=(layout.order||[]).filter(c=>allColumns.includes(c));
+  return [...known,...allColumns.filter(c=>!known.includes(c))];
+ };
+ const persist=async(order,widths)=>{
+  try{
+   await WL.columnLayout.save(target,{order,widths:widths||layout.widths,hidden:layout.hidden});
+   showToast&&showToast('表示の並びを保存しました','この一覧を次に開いたときも同じ並びで出ます',2400);
+  }catch(e){showToast&&showToast('並びを保存できませんでした',e.message,5000)}
+ };
+
+ // ---- 並べ替え(ヘッダーを掴んで左右へ) ----
+ let dragCol=null;
+ heads.forEach(th=>{
+  th.addEventListener('dragstart',e=>{
+   dragCol=th.dataset.sortCol;th.classList.add('col-dragging');
+   try{e.dataTransfer.setData('text/plain',dragCol);e.dataTransfer.effectAllowed='move'}catch(_){}
+  });
+  th.addEventListener('dragend',()=>{
+   dragCol=null;th.classList.remove('col-dragging');
+   heads.forEach(x=>x.classList.remove('col-drop-before','col-drop-after'));
+  });
+  th.addEventListener('dragover',e=>{
+   if(!dragCol||th.dataset.sortCol===dragCol)return;
+   e.preventDefault();
+   // 掴んだ列を、この列の左右どちらへ落とすかを線で見せる
+   const r=th.getBoundingClientRect(),after=(e.clientX-r.left)>r.width/2;
+   th.classList.toggle('col-drop-after',after);
+   th.classList.toggle('col-drop-before',!after);
+  });
+  th.addEventListener('dragleave',()=>th.classList.remove('col-drop-before','col-drop-after'));
+  th.addEventListener('drop',e=>{
+   if(!dragCol||th.dataset.sortCol===dragCol)return;
+   e.preventDefault();e.stopPropagation();
+   const to=th.dataset.sortCol;
+   const r=th.getBoundingClientRect(),after=(e.clientX-r.left)>r.width/2;
+   const order=fullOrder();
+   const from=order.indexOf(dragCol);if(from<0)return;
+   order.splice(from,1);
+   let at=order.indexOf(to);if(at<0)return;
+   order.splice(after?at+1:at,0,dragCol);
+   layout.order=order;
+   persist(order);
+   renderGrid();
+  });
+ });
+
+ // ---- 列幅(右端の取っ手を引く) ----
+ heads.forEach(th=>{
+  const grip=th.querySelector('.col-resize');if(!grip)return;
+  const col=th.dataset.sortCol;
+  grip.addEventListener('mousedown',e=>{
+   e.preventDefault();e.stopPropagation();     // 並び替え・ドラッグへ渡さない
+   const cg=table.querySelector('colgroup');
+   const lead=cg?cg.children.length-visibleColumns.length-((table.querySelector('.measurement-action-head'))?1:0):0;
+   const target2=cg?cg.children[lead+visibleColumns.indexOf(col)]:null;
+   const startX=e.clientX,startW=th.getBoundingClientRect().width;
+   const move=ev=>{
+    const w=Math.max(40,Math.min(900,Math.round(startW+(ev.clientX-startX))));
+    if(target2)target2.style.width=w+'px';
+    th.dataset.resizing=String(w);
+   };
+   const up=()=>{
+    document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);
+    const w=Number(th.dataset.resizing||0);delete th.dataset.resizing;
+    if(!w)return;
+    const widths={...(layout.widths||{}),[col]:w};
+    layout.widths=widths;persist(fullOrder(),widths);
+   };
+   document.addEventListener('mousemove',move);document.addEventListener('mouseup',up);
+  });
+  // ダブルクリックで既定(内容なり)へ戻す
+  grip.addEventListener('dblclick',e=>{
+   e.preventDefault();e.stopPropagation();
+   const widths={...(layout.widths||{})};delete widths[col];
+   layout.widths=widths;persist(fullOrder(),widths);renderGrid();
+  });
+  grip.addEventListener('click',e=>{e.stopPropagation()});   // 並び替えを誘発しない
+ });
+}
+WL.bindColumnHeaderTools=bindColumnHeaderTools;
+
 /* 「一覧を見る」のボタンを、データソースマスタの内容そのままに組み直す(§9.87)。
    ------------------------------------------------------------
    **左メニューはカタログが唯一の正**。以前はindex.htmlに仕掛・品質データの
@@ -160,7 +290,15 @@ window.applyTableData=applyTableData;
    共通の振る舞いはすべてここへ集約する(片方だけ直して反映されない事故を防ぐ)。
    待機表示はwithWaitingの遅延表示に任せる: キャッシュ命中なら一度も出ないし、
    本当にサーバーを待つときだけ出る。 */
+/* この一覧の列レイアウト(並び・幅・表示)を覚えておくスコープ(§9.88)。
+   モードで分けない——同じ表を見ているのに並びが変わると混乱するため。 */
+function listLayoutTarget(){return (S.db&&S.table)?`list:${S.db}:${S.table}`:''}
+
 async function fetchTableData(key,force){
+ // 列レイアウトは描画時に同期で参照するので、取得と一緒に用意しておく
+ // (読めなくても既定の並びで一覧は出る)。
+ try{await WL.columnLayout.load(listLayoutTarget())}catch(e){}
+ try{await loadRowGap()}catch(e){}
  const hit=force?null:tableCacheGet(key);
  if(hit){applyTableData(hit.data);updateListFreshness(hit.at);return}
  const label=databaseLabel(S.db),table=S.table||'テーブル';
@@ -250,15 +388,37 @@ function renderGrid(){
  // 列だけへ絞る(未設定の設備・schedule以外のモードではnullが返り、
  // 通常どおり全列を表示する)。
  const columnAllowlist=canPlan?window.scColumnAllowlist?.():null;
- const visibleColumns=columnAllowlist?S.columns.filter(c=>columnAllowlist.includes(c)):S.columns;
+ const allowed=columnAllowlist?S.columns.filter(c=>columnAllowlist.includes(c)):S.columns;
+ // 利用者が決めた並び・非表示を重ねる(§9.88)。記録に無い列は末尾へ回るので、
+ // データ側の項目が増えても設定は壊れない。
+ const layoutTarget=listLayoutTarget();
+ const visibleColumns=WL.columnLayout.apply(layoutTarget,allowed);
  // 予定追加ボタン(+予定)は多数の列を横に比較しながら選ぶ運用(§9.5)のため
  // 毎回右端までスクロールさせないよう、選択チェックボックスと並べて最左列へ
  // 置く(§9.15改訂。以前は最右列だった)。
  const t=document.createElement('table');
  t.innerHTML='<thead><tr>'+(canPlan?'<th class="plan-select-head"><input type="checkbox" id="planSelectAll" title="このページの全行を選択/解除"></th><th class="plan-action-head">予定</th>':'')+'<th>#</th>'+(isWork?'<th class="split-flag-head" title="親子管理_子カード／コンマ5本分割_切断巾に実データがある場合「分割あり」と表示します">分割</th>':'')+visibleColumns.map(c=>{
   const filtered=filteredCols.has(c),sorted=S.sortColumn===c,arrow=sorted?(S.sortDir==='desc'?' ▼':' ▲'):'';
-  return `<th class="sortable-col ${filtered?'col-filtered':''} ${sorted?'col-sorted':''}" data-sort-col="${esc(c)}" tabindex="0" role="button" aria-label="${esc(c)}列で並び替え" title="クリックで並び替え${filtered?'（絞り込み中の列です）':''}">${esc(c)}${arrow}${filtered?'<i class="col-filter-badge" aria-hidden="true" title="この列にフィルタが適用されています">▼</i>':''}</th>`;
+  /* 見出しは3役: クリックで並び替え / 掴んで左右へ動かすと列の並べ替え /
+     右端の取っ手を引くと列幅。**取っ手はクリックを飲み込む**(引くつもりが
+     並び替わると操作を取り消せない)。 */
+  return `<th class="sortable-col ${filtered?'col-filtered':''} ${sorted?'col-sorted':''}" data-sort-col="${esc(c)}" draggable="true" tabindex="0" role="button" aria-label="${esc(WL.columnLayout.label(layoutTarget,c))}列で並び替え" title="${esc(c)}｜クリックで並び替え／ドラッグで列の入れ替え${filtered?'（絞り込み中の列です）':''}">${esc(WL.columnLayout.label(layoutTarget,c))}${arrow}${filtered?'<i class="col-filter-badge" aria-hidden="true" title="この列にフィルタが適用されています">▼</i>':''}<i class="col-resize" title="ドラッグで列幅を調整（ダブルクリックで既定へ）" aria-hidden="true"></i></th>`;
  }).join('')+(isWork?'<th class="measurement-action-head">測定</th>':'')+'</tr></thead>';
+ // 幅はcolgroupで与える。thへ直接書くと、セル側の内容で押し広げられる。
+ if(visibleColumns.length){
+  const lead=(canPlan?2:0)+1+(isWork?1:0);       // 選択/予定 + # + 分割
+  const cg=document.createElement('colgroup');
+  for(let i=0;i<lead;i++)cg.appendChild(document.createElement('col'));
+  visibleColumns.forEach(c=>{
+   const col=document.createElement('col');
+   const w=WL.columnLayout.width(layoutTarget,c);
+   if(w)col.style.width=w+'px';
+   cg.appendChild(col);
+  });
+  if(isWork)cg.appendChild(document.createElement('col'));
+  t.insertBefore(cg,t.firstChild);
+ }
+ bindColumnHeaderTools(t,layoutTarget,visibleColumns,allowed);
  const sortByHeader=th=>{
   const col=th.dataset.sortCol;
   S.sortDir=(S.sortColumn===col&&S.sortDir==='asc')?'desc':'asc';
@@ -377,10 +537,23 @@ function ensureListToolbar(){
  if(!grid||!grid.parentNode)return null;
  if(!bar){
   bar=document.createElement('div');bar.id='listToolbar';bar.className='list-toolbar';bar.hidden=true;
+  /* 行間(§9.88)は**動かした瞬間に反映**する。数値を入れて確定させる形にすると、
+     どの値が自分に合うのかを試せない(見て決めるものなので、見ながら動かす)。
+     保存は離した時点で1回だけ(動かしている間ずっと書きに行かない)。 */
   bar.innerHTML=`<button type="button" id="listColumnBtn" class="list-toolbar-btn" title="この一覧に表示する列を選びます">☰ 表示列</button>
+   <label class="list-rowgap" title="行の間隔を変えます（この一覧ごとに覚えます）"><span>行間</span>
+    <input type="range" id="listRowGap" min="1" max="5" step="1" value="3" aria-label="行の間隔"></label>
    <span class="list-join-chip" id="listJoinChip" hidden></span>`;
   grid.parentNode.insertBefore(bar,grid);
-  bar.querySelector('#listColumnBtn').onclick=()=>window.openListColumnPicker?.();
+  /* 列の設定はこの一覧の設定パネルへ集約する(§9.88 段2)。名前・並び・幅・
+     表示を1箇所で決められるので、ボタンの行き先もここ1つでよい。 */
+  bar.querySelector('#listColumnBtn').onclick=()=>WL.listColumns?.toggle();
+  const gap=bar.querySelector('#listRowGap');
+  gap.addEventListener('input',()=>applyRowGap(Number(gap.value)));
+  gap.addEventListener('change',()=>saveRowGap(Number(gap.value)));
+  // ツールバーは描き直されることがある。作った直後に今の値を入れておかないと
+  // 見た目(既定)と実際の行間がずれる。
+  gap.value=String(rowGapValue);applyRowGap(rowGapValue);
  }else if(bar.nextElementSibling!==grid){
   // #gridが別の親(分割/ポップアップ)へ移動したら追従させる。
   grid.parentNode.insertBefore(bar,grid);
@@ -389,8 +562,13 @@ function ensureListToolbar(){
 }
 function renderListToolbar(){
  const bar=ensureListToolbar();if(!bar)return;
+ // 読み込んだ行間を毎回反映する(一覧を切り替えるとスコープごと変わる)。
+ const gapEl=bar.querySelector('#listRowGap');
+ if(gapEl){gapEl.value=String(rowGapValue);applyRowGap(rowGapValue)}
  // 表示列の選択は、設備ごとの設定を持つスケジュールモードの仕掛一覧でのみ扱う。
- const canPickColumns=WL.dataSource.isWork(S.db)&&window.accessMode?.mode==='schedule'&&!!window.scColumnPickerAvailable?.();
+ // 列の設定はどの一覧でも使える(§9.88)。以前はスケジュールモードの
+ // 仕掛一覧だけだったが、並び・幅・表示名はどの一覧でも要る。
+ const canPickColumns=!!(S.db&&S.table);
  const btn=bar.querySelector('#listColumnBtn');
  if(btn)btn.hidden=!canPickColumns;
  // 品質データ結合(join_quality)の結果を、成功・失敗どちらも一覧の脇に出す。
@@ -576,7 +754,17 @@ WL.rne=(()=>{
 /* RNEから作り直せるのは、抽出定義(RNEファイル)を持つデータソース。
    キーで決め打ちしない(§9.87)。 */
 function rneTargetDbs(){return WL.dataSource.views().map(x=>x.key)}
-function reloadList(){invalidateTableCache();load(true)}
+/* 「再読込」は、**共有からの写しを取り直してから**読み直す(§9.89)。
+   画面が読んでいるのは手元の写しなので、写しを更新せずに読み直しても
+   同じ内容が出るだけ。押した人の期待(最新が見たい)と食い違う。
+   写しの更新は共有への往復を伴うので待つが、失敗しても読み直しは行う
+   (共有が不調でも、手元の写しで一覧は出る)。 */
+async function reloadList(){
+ try{await api('/api/db-mirror/refresh',{method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({wait:true})})}
+ catch(e){console.warn('共有からの写しを更新できませんでした',e)}
+ invalidateTableCache();load(true);
+}
 
 function closeReloadMenu(){
  document.getElementById('reloadMenu')?.remove();

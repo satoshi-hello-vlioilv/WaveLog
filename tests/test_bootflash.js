@@ -77,7 +77,7 @@ let b=null;
     onReady:typeof (window.WL||{}).onReady,
    };
   });
-  rec('アプリのJSは全部読み込まれている',s.scripts===17&&s.jsCount>=17,`script=${s.scripts} / 資源=${s.jsCount}`);
+  rec('アプリのJSは全部読み込まれている',s.scripts===18&&s.jsCount>=18,`script=${s.scripts} / 資源=${s.jsCount}`);
   rec('本体CSSは最終的に適用される(media=all)',s.cssMedia==='all',s.cssMedia);
   /* **これが崩れると、スタイルの当たっていない状態でJSが寸法を測る。** */
   rec('本体CSSが適用されてからアプリのJSが動く',

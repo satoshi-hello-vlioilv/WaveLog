@@ -207,4 +207,73 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 .ui-size-swatch[data-swatch="md"]{font-size:var(--fs)}
 .ui-size-swatch[data-swatch="lg"]{font-size:var(--fs-title)}
 .ui-size-swatch[data-swatch="xl"]{font-size:18px}
+ /* ---------- 見出しの操作: 列の並べ替えと列幅(§9.88) ----------
+    よく使う操作は設定画面を開かずに表の上で完結させる。取っ手は普段は
+    目立たせず、その列に触れたときだけ出す(常時見えていると、値より先に
+    罫線が目に入る)。 */
+ #grid th.sortable-col{position:relative}
+ #grid th.sortable-col .col-resize{
+  position:absolute;top:0;right:calc(var(--space-1) * -1);width:calc(var(--space-2) + 2px);height:100%;
+  cursor:col-resize;opacity:0;transition:opacity .12s ease;
+ }
+ #grid th.sortable-col:hover .col-resize{opacity:1}
+ /* 取っ手そのものは細い線1本。掴める幅は線より広く取る(掴めないと苛立つ)。 */
+ #grid th.sortable-col .col-resize::after{
+  content:"";position:absolute;top:15%;bottom:15%;left:50%;width:2px;
+  background:var(--line-strong);border-radius:var(--radius-xs);
+ }
+ #grid th.col-dragging{opacity:.45}
+ /* 落とす位置を縦線で示す。**落ちる場所が分かってから離せる**ようにする。 */
+ #grid th.col-drop-before::before,#grid th.col-drop-after::before{
+  content:"";position:absolute;top:0;bottom:0;width:2px;background:var(--teal);
+ }
+ #grid th.col-drop-before::before{left:-1px}
+ #grid th.col-drop-after::before{right:-1px}
+ /* 行間のつまみ(§9.88)。表示列ボタンの隣に置く——どちらも「この一覧の
+    見せ方」の設定で、探す場所を1箇所にまとめる。 */
+ .list-rowgap{display:inline-flex;align-items:center;gap:var(--gap-inline);
+  font-size:var(--fs-sm);color:var(--muted)}
+ /* 高さもトークンから取る(tests/test_uiux.js が全コントロールの高さを
+    26/30/36/40 のいずれかに固定している。既定のrangeは32pxで外れる)。 */
+ .list-rowgap input[type="range"]{width:calc(84px * var(--ui-scale));
+  height:var(--ctl-h-xs);accent-color:var(--teal)}
+ /* ---------- 列の設定パネル(§9.88 段2) ----------
+    左に全列・右に選んだ列・下に実データ。**下のプレビューが主役**なので、
+    高さを与えて常に見えるようにする(スクロールの下に隠さない)。 */
+ .lc-body{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);
+  gap:var(--gap-block);align-items:start;overflow:auto}
+ .lc-side{display:flex;flex-direction:column;gap:var(--gap-inline);min-width:0}
+ .lc-filter{width:100%}
+ .lc-list{display:flex;flex-direction:column;gap:var(--gap-hair);min-width:0}
+ .lc-item{display:flex;align-items:center;gap:var(--gap-inline);
+  padding:var(--space-1) var(--space-2);border:1px solid transparent;
+  border-radius:var(--radius-xs);cursor:pointer;min-width:0}
+ .lc-item:hover{background:var(--surface-2)}
+ .lc-item.is-picked{background:var(--pale);border-color:var(--teal)}
+ .lc-item.lc-dragging{opacity:.45}
+ .lc-grip{color:var(--line-strong);cursor:grab}
+ .lc-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:var(--fs-sm)}
+ .lc-renamed{font-style:normal;font-size:var(--fs-micro);color:var(--teal);
+  border:1px solid var(--teal);border-radius:var(--radius-xs);padding:0 var(--space-1)}
+ .lc-detail{display:flex;flex-direction:column;gap:var(--gap-inline);min-width:0}
+ .lc-detail-head{font-size:var(--fs-title);font-weight:800;color:var(--ink);
+  display:flex;flex-direction:column;gap:var(--gap-hair)}
+ .lc-detail-head small{font-size:var(--fs-micro);font-weight:400;color:var(--muted)}
+ .lc-field{display:flex;align-items:center;gap:var(--gap-inline);font-size:var(--fs-sm)}
+ .lc-field>span:first-child{width:calc(64px * var(--ui-scale));color:var(--muted)}
+ .lc-field input[type="text"]{flex:1;min-width:0}
+ .lc-width{display:inline-flex;align-items:center;gap:var(--gap-hair);color:var(--muted)}
+ .lc-width input{width:calc(88px * var(--ui-scale))}
+ .lc-hint{font-size:var(--fs-micro);color:var(--muted);margin:0}
+ .lc-preview{border-top:1px solid var(--line);padding:var(--space-2);
+  display:flex;flex-direction:column;gap:var(--gap-hair);min-height:0}
+ .lc-preview-label{font-size:var(--fs-micro);color:var(--muted);font-weight:700}
+ /* 広い表は**この中だけ**を横に流す(ウィンドウごと横スクロールさせない)。 */
+ .lc-preview-scroll{overflow:auto;max-height:calc(120px * var(--ui-scale))}
+ .lc-preview table{border-collapse:collapse;font-size:var(--fs-sm)}
+ .lc-preview th,.lc-preview td{border:1px solid var(--line-soft);
+  padding:var(--space-1) var(--space-2);white-space:nowrap;text-align:left}
+ .lc-preview th{background:var(--surface-2);color:var(--ink-2);font-weight:700}
+ .lc-count{font-size:var(--fs-sm);color:var(--muted)}
 }
