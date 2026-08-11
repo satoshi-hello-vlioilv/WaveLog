@@ -224,7 +224,17 @@
  align-items:center;column-gap:var(--gap-tight);min-width:calc(1042px * var(--ui-scale));
 }
 .sc-row-head{padding:2px var(--space-2) 3px;position:sticky;top:0;z-index:1;background:#f7fafb;font-size:var(--fs-micro);font-weight:800;color:#8a9aa0;border-bottom:1px solid var(--line)}
-.sc-row-line{padding:var(--row-pad-y) 8px;min-height:var(--row-h);border-radius:var(--radius-xs);background:#fff;border-bottom:1px solid #eef2f4}
+/* **行の高さは内容で変わらない**(§9.88)。以前は min-height だったため、
+   セルの中身が1pxでも高ければその行だけ伸びていた。行ごとに出るものが
+   違う(開始ボタン・遅延バッジ・子ロットの折りたたみ・停止の分類など)ので、
+   結果として「行間がバラバラ」に見えていた。**縦の刻みを一定にする**のが
+   一覧の読みやすさの土台なので、高さは --row-h で決め打ちにし、入り切ら
+   ないものはセル側で省略する(セルは既に nowrap + overflow:hidden)。
+   --row-h は利用者が行間として調整できる(表示設定)。 */
+.sc-row-line{padding:var(--row-pad-y) 8px;height:var(--row-h);border-radius:var(--radius-xs);background:#fff;border-bottom:1px solid #eef2f4}
+/* 中身がはみ出しても行を押し広げない。grid の子は既定で min-height:auto に
+   なるため、これが無いと内容の高いセルが行の高さを決めてしまう。 */
+.sc-row-line>*{min-height:0;max-height:100%;overflow:hidden}
 .sc-row-line:hover{background:#f7fafb}
 .sc-row-line[draggable="true"]{cursor:grab}
 .sc-row-line.sc-dragging{opacity:.4}
@@ -574,7 +584,7 @@
 .sc-group+.sc-group{margin-top:var(--space-2)}
 .sc-group-head{
  display:flex;align-items:center;gap:var(--space-2);
- min-height:var(--row-h);padding:var(--row-pad-y) var(--space-2);
+ height:var(--row-h);padding:var(--row-pad-y) var(--space-2);
  border-left:3px solid var(--line);
 }
 .sc-group-label{font-size:var(--fs-title);font-weight:800;color:#173842}
@@ -675,9 +685,10 @@
  /* つなぎ / ロット番号 / 内訳 。親の桁には合わせない(別物として読ませる)。 */
  grid-template-columns:calc(24px * var(--ui-scale)) calc(120px * var(--ui-scale)) minmax(0,1fr);
  align-items:center;gap:var(--gap-inline);
- min-height:calc(var(--row-h) * .78);
+ height:calc(var(--row-h) * .78);
  font-size:var(--fs-sm);color:var(--ink-2);
 }
+.sc-child-line>*{min-height:0;max-height:100%;overflow:hidden}
 .sc-child-mark{color:var(--line-strong);text-align:center}
 .sc-child-lot{font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums;
               white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

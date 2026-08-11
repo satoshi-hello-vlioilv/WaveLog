@@ -248,8 +248,15 @@
   --z-boot:9000;       /* 起動オーバーレイ */
   --z-alert:9999;      /* 接続断の帯(最上部に貼り付く) */
 
-  --row-h:calc(28px * var(--ui-scale));
-  --row-pad-y:calc(4px * var(--ui-scale));
+  /* 行の高さ(§9.88)。**中に入る一番背の高い部品＋上下の余白＋罫線**で
+     決まる、という関係をそのまま式にしてある。以前は 28px の決め打ちで、
+     実際に描かれる高さ(35px)と一致していなかった——min-height だったため
+     中身の高い行だけが伸び、「行間がバラバラ」に見える原因になっていた。
+     行間を詰める/広げるときは --row-gap を動かす(利用者が調整できる)。
+     ここを固定値へ戻さないこと。戻すと中身がはみ出して切れる。 */
+  --row-gap:calc(4px * var(--ui-scale));
+  --row-pad-y:var(--row-gap);
+  --row-h:calc(var(--ctl-h-xs) + var(--row-pad-y) * 2 + 1px);
   --row-pad-x:calc(9px * var(--ui-scale));
 }
 /* 表示サイズ5段階(base.jsがlocalStorageの値をhtml[data-ui-size]へ適用する)。
