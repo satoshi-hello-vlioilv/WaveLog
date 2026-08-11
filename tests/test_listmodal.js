@@ -29,7 +29,11 @@ let b=null;
  });
  rec('横スクロールバーが常に表示される設定になっている',g.overflowX==='scroll',`overflow-x=${g.overflowX}, scrollW=${g.scrollW}/${g.clientW}`);
  rec('行数が多く一覧が枠いっぱいでも、つまみが一覧の下端と重ならない',g.gripClearOfGrid,JSON.stringify({rows:g.rows,gridBottom:g.gridBottom,handleTop:g.handleTop}));
- rec('つまみの位置で拾える要素がリサイズハンドル',String(g.elemAtGrip).includes('sc-float-resize'),g.elemAtGrip);
+ /* §9.90で端は8方向になった。右下では角のつまみ(.sc-float-grip-se)が
+    目印(.sc-float-resize)より手前に来る。**どちらもリサイズの受け口**
+    なので、拾えたのがそのどちらかであることを見る。 */
+ rec('つまみの位置で拾える要素がリサイズハンドル',
+  /sc-float-resize|sc-float-grip/.test(String(g.elemAtGrip)),g.elemAtGrip);
 
  const before=await page.evaluate(()=>{const r=document.querySelector('#scListModal').getBoundingClientRect();return {w:Math.round(r.width),h:Math.round(r.height),r:r.right,b:r.bottom}});
  await page.mouse.move(before.r-6,before.b-6);

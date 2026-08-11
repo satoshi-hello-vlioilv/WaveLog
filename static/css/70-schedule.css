@@ -227,10 +227,23 @@
  /* **この表のセルの文字サイズを1つ決める**(§9.90)。以前は日付12px・
     時刻13px・内容14px・作業可否10pxのように列ごとに違い、同じ行の中で
     大きさがちぐはぐだった(実測で内容だけ2段大きかった)。
-    タイムラインは15列並ぶ密な表なので --fs-sm を基準にし、印(計画外・
-    ロック等)だけを1段落とす。値のセルは全部これを見る。 */
- --tbl-fs:var(--fs-sm);
- --tbl-fs-mark:var(--fs-micro);
+    **揃える先は本文(--fs)**——内容欄は仕掛一覧のセルと同じ大きさである、
+    という決まりが先にある(§9.36、tests/test_scbalance.js)。小さいほうへ
+    揃えると今度は一覧と食い違うので、**他の列を内容に合わせて上げる**。
+    印(計画外・ロック・作業可否)だけを1段落とす。
+    行の高さも一覧の既定と揃える(§9.36の「離れすぎない」)。この表は
+    一覧の行間つまみの対象ではないので、余白は自前で持つ。
+    **--row-h/--row-ctl-h はここで定義し直すこと**——カスタム
+    プロパティは定義した場所で解決されるため、:root のままでは
+    この行の余白が反映されない。 */
+ --tbl-fs:var(--fs);
+ --tbl-fs-mark:var(--fs-sm);
+ /* **--row-gap から切り離さないこと。** 行間のつまみ1本で全行が揃って
+    動くのがこの表の土台(§9.36、tests/test_scbalance.js)。一覧の行の高さへ
+    寄せるための差分(3px)だけを足す。 */
+ --row-pad-y:calc(var(--row-gap) + 3px * var(--ui-scale));
+ --row-h:calc(var(--fs) * var(--lh) + var(--row-pad-y) * 2 + 1px);
+ --row-ctl-h:min(var(--ctl-h-xs),calc(var(--row-h) - 2px));
  font-size:var(--tbl-fs);
  display:grid;
  /* ハンドル/区分/作業可否/日付/時刻/勤務/残り/内容(項目ごと)/見積/実績/備考/操作
@@ -240,7 +253,9 @@
     (この注記に「アスタリスク2つ+スラッシュ」を書かないこと。コメントが
      そこで閉じてしまい、以降がCSSとして解釈されてルールごと壊れる。
      実際にこれで内容の列が1列に潰れた。) */
- grid-template-columns:calc(18px * var(--ui-scale)) calc(62px * var(--ui-scale)) calc(44px * var(--ui-scale))
+ /* 区分は 62→74px。文字を本文(14px)へ上げた分、「▶ 作業中」が入り切らず
+    末尾が省略されていた(実測で4〜7pxはみ出し)。 */
+ grid-template-columns:calc(18px * var(--ui-scale)) calc(74px * var(--ui-scale)) calc(44px * var(--ui-scale))
   calc(50px * var(--ui-scale))
   calc(112px * var(--ui-scale)) calc(58px * var(--ui-scale)) calc(88px * var(--ui-scale))
   var(--sc-content-cols,minmax(calc(150px * var(--ui-scale)),1fr))
