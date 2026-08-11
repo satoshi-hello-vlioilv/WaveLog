@@ -264,8 +264,69 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  .lc-field>span:first-child{width:calc(64px * var(--ui-scale));color:var(--muted)}
  .lc-field input[type="text"]{flex:1;min-width:0}
  .lc-width{display:inline-flex;align-items:center;gap:var(--gap-hair);color:var(--muted)}
- .lc-width input{width:calc(88px * var(--ui-scale))}
+ .lc-width input{width:calc(112px * var(--ui-scale))}
  .lc-hint{font-size:var(--fs-micro);color:var(--muted);margin:0}
+ /* ---------- 書式(§9.88 段3) ----------
+    種別を選ぶと、その種別の項目だけが下に開く。使わない項目を常時
+    見せない(一度に見せる情報を絞るのが右ペインの役目)。 */
+ .lc-field-kind{align-items:flex-start}
+ .lc-kinds{display:flex;flex-wrap:wrap;gap:var(--gap-inline);flex:1;min-width:0}
+ .lc-kind{display:inline-flex;align-items:center;gap:var(--gap-hair);cursor:pointer}
+ .lc-sub{display:flex;flex-direction:column;gap:var(--gap-inline);
+  margin-left:calc(64px * var(--ui-scale));padding-left:var(--space-2);
+  border-left:2px solid var(--line-soft)}
+ .lc-check{display:flex;align-items:center;gap:var(--gap-hair);font-size:var(--fs-sm);
+  color:var(--ink-2);cursor:pointer}
+ .lc-units{display:inline-flex;align-items:center;gap:var(--gap-hair);flex:1;min-width:0;
+  color:var(--muted);font-size:var(--fs-micro)}
+ .lc-units input{width:calc(56px * var(--ui-scale))}
+ .lc-hint-tokens{font-family:ui-monospace,Consolas,monospace}
+ /* 「例: 生の値 → 見え方」。書式は結果を見て決めるものなので目立たせる。 */
+ .lc-sample{font-size:var(--fs-sm);color:var(--ink-2);background:var(--surface-2);
+  border:1px solid var(--line-soft);border-radius:var(--radius-xs);
+  padding:var(--space-1) var(--space-2)}
+ .lc-sample b{color:var(--ink);font-weight:700}
+ .lc-rulepick{display:inline-flex;align-items:center;gap:var(--gap-hair);flex:1;min-width:0}
+ .lc-rulepick select{flex:1;min-width:0}
+ /* ---------- 表示ルールの編集(§9.88 段4) ----------
+    1行が1つの読み替え。「もし〜ならば〜と表示」の日本語の順に並べる。
+    条件は「かつ」でぶら下がり(AND)、行同士がOR。 */
+ /* スクロールは**body の1本だけ**にする。行の一覧を独立したスクロール領域に
+    すると、入りきらない行が(つまみも出ないまま)見えなくなる——3行目が
+    消えて見える状態が実際に出た。「試してみる」は sticky で下に貼り付け、
+    スクロールしても結果が見えたまま条件を書けるようにする。 */
+ .lr-body{display:flex;flex-direction:column;gap:var(--gap-inline);overflow:auto}
+ .lr-lead{margin:0;font-size:var(--fs-sm);color:var(--muted);flex:0 0 auto}
+ .lr-lead b{color:var(--ink)}
+ .lr-rows{display:flex;flex-direction:column;gap:var(--gap-inline);flex:0 0 auto}
+ .lr-add{flex:0 0 auto;align-self:flex-start}
+ .lr-row{border:1px solid var(--line-soft);border-radius:var(--radius-sm);
+  padding:var(--space-2);display:flex;flex-direction:column;gap:var(--gap-hair);
+  background:var(--surface);flex:0 0 auto}
+ .lr-row-conds{display:flex;flex-direction:column;gap:var(--gap-hair)}
+ .lr-cond,.lr-row-then{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-hair);
+  font-size:var(--fs-sm)}
+ /* 接続詞(もし/かつ/→ 表示)の幅を揃えると、行が縦に読める。 */
+ .lr-conj{color:var(--muted);white-space:nowrap;min-width:calc(52px * var(--ui-scale))}
+ .lr-cond-any .lr-conj{min-width:0;font-weight:700;color:var(--ink-2)}
+ .lr-cond select,.lr-row-then select{max-width:calc(160px * var(--ui-scale))}
+ .lr-cond input[type="text"]{width:calc(120px * var(--ui-scale))}
+ .lr-row-then input[type="text"]{flex:1;min-width:calc(120px * var(--ui-scale))}
+ .lr-cond-del,.lr-row-del{color:var(--muted)}
+ .lr-row-then{margin-top:var(--space-1);border-top:1px dashed var(--line-soft);
+  padding-top:var(--space-1)}
+ .lr-delete{color:var(--danger)}
+ /* 「試してみる」。保存前に実データでの結果が見えることがこの画面の要。 */
+ .lr-try{border-top:1px solid var(--line);padding-top:var(--space-2);
+  flex:0 0 auto;max-height:calc(140px * var(--ui-scale));overflow:auto;
+  position:sticky;bottom:0;background:var(--surface);margin-top:auto}
+ .lr-try-label{font-size:var(--fs-micro);color:var(--muted);font-weight:700;
+  margin-bottom:var(--space-1)}
+ .lr-try-list{margin:0;padding-left:var(--space-3);display:flex;flex-direction:column;
+  gap:var(--gap-hair);font-size:var(--fs-sm);color:var(--ink-2)}
+ .lr-try-list code{color:var(--muted)}
+ .lr-try-list b{color:var(--ink)}
+ .lr-nohit{color:var(--muted);font-size:var(--fs-micro);margin-left:var(--space-1)}
  .lc-preview{border-top:1px solid var(--line);padding:var(--space-2);
   display:flex;flex-direction:column;gap:var(--gap-hair);min-height:0}
  .lc-preview-label{font-size:var(--fs-micro);color:var(--muted);font-weight:700}

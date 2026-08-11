@@ -90,6 +90,26 @@ def probe_path_config():
     return call('POST', '/api/path-config-master', payload)
 
 
+def probe_column_layout():
+    """一覧の見せ方(§9.88)。**書式や読み替えを消さない叩き方**にする:
+    GETした現在値をそのまま書き戻す(冪等)。全置換なので、空で送ると
+    その一覧の設定が消える。"""
+    target = 'list:__modeguard__:T'
+    st, body = call('GET', '/api/column-layout-master?target=' + urllib.parse.quote(target))
+    cur = json.loads(body) if st == 200 else {}
+    return call('POST', '/api/column-layout-master',
+                {'target': target, 'order': cur.get('order') or [],
+                 'widths': cur.get('widths') or {}, 'hidden': cur.get('hidden') or [],
+                 'names': cur.get('names') or {}, 'formats': cur.get('formats') or {},
+                 'rules': cur.get('rules') or {}, 'user_id': 'test-modeguard'})
+
+
+def probe_display_rule():
+    """表示ルール。名前を専用のものにして、実運用のルールへ触れないようにする。"""
+    return call('POST', '/api/display-rule-master',
+                {'name': '__modeguard__', 'rows': [], 'user_id': 'test-modeguard'})
+
+
 def probe_schedule_column():
     st, body = call('GET', '/api/schedule-column-master?equipment=' + urllib.parse.quote('テスト設備A'))
     cols = (json.loads(body).get('columns') or []) if st == 200 else []
@@ -102,6 +122,8 @@ PROBES = {
     'パス設定(path-config-master)': probe_path_config,
     'スケジュール列表示(schedule-column-master)': probe_schedule_column,
     'RNE手動実行(rne-extract/run)': lambda: call('POST', '/api/rne-extract/run', {}),
+    '列レイアウト(column-layout-master)': probe_column_layout,
+    '表示ルール(display-rule-master)': probe_display_rule,
 }
 
 # 現在の許可表(実測で固定する)。True=ガードを通る / False=ガードが弾く
@@ -112,6 +134,11 @@ EXPECTED = {
     'スケジュール列表示(schedule-column-master)': {'edit': True,  'view': False, 'schedule': True},
     # §9.50: 読み直すだけのPOSTなのでガード対象外(全モードで通る)
     'RNE手動実行(rne-extract/run)':               {'edit': True,  'view': True,  'schedule': True},
+    # §9.88: 「その画面の見え方」の設定。scheduleモードの端末は仕掛一覧を
+    # 主に使うので、列を動かした瞬間だけ403になることのないよう開けている
+    # (登録フィルタ・スケジュール列表示と同じ理由)。閲覧モードには開かない。
+    '列レイアウト(column-layout-master)':         {'edit': True,  'view': False, 'schedule': True},
+    '表示ルール(display-rule-master)':            {'edit': True,  'view': False, 'schedule': True},
 }
 
 

@@ -192,22 +192,24 @@ window.WL.dataSource=dataSource;
    実際の列へ当てはめるだけ。記録に無い列は末尾へ回し、記録にあってデータ側
    に無い列は黙って捨てる(列が増減しても設定が壊れない)。 */
 const columnLayout=(()=>{
- const cache=new Map();                 // target -> {order,widths,hidden}
- const empty=()=>({order:[],widths:{},hidden:[],names:{}});
+ const cache=new Map();                 // target -> {order,widths,hidden,names,formats}
+ const empty=()=>({order:[],widths:{},hidden:[],names:{},formats:{},rules:{}});
  async function load(target){
   if(!target)return empty();
   if(cache.has(target))return cache.get(target);
   let v=empty();
   try{
    const r=await api('/api/column-layout-master?target='+encodeURIComponent(target));
-   v={order:r.order||[],widths:r.widths||{},hidden:r.hidden||[],names:r.names||{}};
+   v={order:r.order||[],widths:r.widths||{},hidden:r.hidden||[],names:r.names||{},
+      formats:r.formats||{},rules:r.rules||{}};
   }catch(e){/* 読めなくても既定の並びで一覧は出す(fail-open) */}
   cache.set(target,v);return v;
  }
  function get(target){return cache.get(target)||empty()}
  async function save(target,layout){
   if(!target)return;
-  const v={order:layout.order||[],widths:layout.widths||{},hidden:layout.hidden||[],names:layout.names||{}};
+  const v={order:layout.order||[],widths:layout.widths||{},hidden:layout.hidden||[],
+           names:layout.names||{},formats:layout.formats||{},rules:layout.rules||{}};
   cache.set(target,v);
   await api('/api/column-layout-master',{method:'POST',headers:{'Content-Type':'application/json'},
    body:JSON.stringify(withUserId({target,...v}))});
@@ -224,9 +226,227 @@ const columnLayout=(()=>{
  return {load,get,save,forget,apply,
          width:(target,col)=>get(target).widths[col]||null,
          /* 画面に出す名前。未設定なら元の項目名のまま(§9.88)。 */
-         label:(target,col)=>get(target).names[col]||col};
+         label:(target,col)=>get(target).names[col]||col,
+         /* この列の書式指定。未設定ならnull(=そのまま表示)。 */
+         format:(target,col)=>get(target).formats[col]||null,
+         /* この列に効く読み替えルールの名前。未設定なら''(=読み替えなし)。 */
+         rule:(target,col)=>get(target).rules[col]||''};
 })();
 window.WL.columnLayout=columnLayout;
+
+/* ---------- 値の読み替え(§9.88 段4) ----------
+   「00」を「なし」と見せる類の置き換え。ルール名でまとめて登録し、
+   複数の列から使い回す(列に紐づけると「00→なし」を列の数だけ書かせる
+   ことになる)。1ルールは行の配列で、**上から見て最初に当たったものを採用**
+   する。行の中の条件はAND、行同士がOR。
+   **判定は画面側だけ**で行う(サーバーは生の値を返し、並べ替え・絞り込みは
+   生の値のまま効かせる。書式と同じ方針)。 */
+const displayRules=(()=>{
+ let cache=null,inflight=null;
+ const num=v=>{
+  const t=String(v==null?'':v).trim().replace(/,/g,'');
+  if(!t||!/^[-+]?(\d+\.?\d*|\.\d+)$/.test(t))return null;
+  const n=Number(t);return Number.isFinite(n)?n:null;
+ };
+ /* 条件の片側を実際の値へ。self=この列 / column=他の列 / value=固定値。
+    **他の列を見られる**ので「区分が3のときだけ○○と出す」が書ける。 */
+ function operand(side,row,selfCol){
+  if(!side)return '';
+  if(side.kind==='self')return row?row[selfCol]:'';
+  if(side.kind==='column')return row?row[side.column]:'';
+  return side.value;
+ }
+ /* 両辺が数値として読めるときだけ数値で比べ、そうでなければ文字列で比べる
+    (実データは同じ項目でも '5' と '05' と '5.0' が混ざる)。 */
+ function compare(a,b){
+  const x=num(a),y=num(b);
+  if(x!==null&&y!==null)return x<y?-1:x>y?1:0;
+  const s=String(a==null?'':a),t=String(b==null?'':b);
+  return s<t?-1:s>t?1:0;
+ }
+ function test(cond,row,selfCol){
+  const L=operand(cond.left,row,selfCol);
+  const ls=String(L==null?'':L);
+  if(cond.op==='empty')return ls.trim()==='';
+  if(cond.op==='notEmpty')return ls.trim()!=='';
+  const R=operand(cond.right,row,selfCol);
+  const rs=String(R==null?'':R);
+  switch(cond.op){
+   case 'eq':return ls===rs||compare(L,R)===0;
+   case 'ne':return !(ls===rs||compare(L,R)===0);
+   case 'contains':return rs!==''&&ls.includes(rs);
+   case 'startsWith':return rs!==''&&ls.startsWith(rs);
+   case 'endsWith':return rs!==''&&ls.endsWith(rs);
+   case 'gt':return compare(L,R)>0;
+   case 'ge':return compare(L,R)>=0;
+   case 'lt':return compare(L,R)<0;
+   case 'le':return compare(L,R)<=0;
+   case 'between':{
+    const R2=operand(cond.right2,row,selfCol);
+    return compare(L,R)>=0&&compare(L,R2)<=0;
+   }
+   case 'regex':
+    // 書き間違いで一覧が壊れないように、不正な正規表現は「当たらない」。
+    try{return new RegExp(rs).test(ls)}catch(e){return false}
+   default:return false;
+  }
+ }
+ /* 当たった行を返す(色も使うので行ごと返す)。当たらなければnull。 */
+ function match(name,row,selfCol){
+  const rows=(cache&&cache[name])||null;
+  if(!rows||!rows.length)return null;
+  for(const r of rows){
+   const conds=r.conditions||[];
+   // **条件が空の行＝どれにも当てはまらなかったとき**の既定。
+   if(!conds.length)return r;
+   let all=true;
+   for(const c of conds){if(!test(c,row,selfCol)){all=false;break}}
+   if(all)return r;
+  }
+  return null;
+ }
+ async function load(force){
+  if(cache&&!force)return cache;
+  if(inflight&&!force)return inflight;
+  inflight=(async()=>{
+   try{
+    const r=await api('/api/display-rule-master');
+    cache=r.rules||{};
+   }catch(e){cache=cache||{}}   // 読めなくても読み替えなしで一覧は出す
+   inflight=null;return cache;
+  })();
+  return inflight;
+ }
+ return {load,match,test,
+         all:()=>cache||{},
+         names:()=>Object.keys(cache||{}).sort(),
+         get:name=>(cache&&cache[name])||[],
+         /* 編集画面が保存した直後に、一覧へすぐ反映させるための差し替え。 */
+         put:(name,rows)=>{cache=cache||{};if(rows&&rows.length)cache[name]=rows;else delete cache[name]},
+         forget:()=>{cache=null}};
+})();
+window.WL.displayRules=displayRules;
+
+/* ---------- セルの見せ方(§9.88 段3) ----------
+   生の値を「表示する文字列」へ整える。**整形できなかったら生の値を返す**
+   ——空欄になるより、見慣れない形でも値が見えるほうがよい(現場で「データが
+   消えた」と判断されるのが最悪)。並べ替え・絞り込みは生の値のまま効かせたい
+   ので、整形はサーバーへ持ち込まず画面側だけで行う。
+   段4(読み替え)はこのパイプラインの**手前**に入る。 */
+const cellFormat=(()=>{
+ const WEEK=['日','月','火','水','木','金','土'];
+ const isBlank=v=>v===null||v===undefined||String(v).trim()==='';
+ const pad=(n,w)=>String(Math.abs(n)).padStart(w,'0');
+
+ /* 日付時刻の解釈。取れなかった部分はnullにして、書式側で「その部分を
+    求められたら失敗」とする(時刻だけの値に yyyy を要求されたら生の値へ倒す)。
+    実データは '2026-08-11 09:30:00' / '2026/08/11' / '20260811' と揺れる。 */
+ function parts(v){
+  if(v instanceof Date)return isNaN(v)?null:
+   {y:v.getFullYear(),M:v.getMonth()+1,d:v.getDate(),H:v.getHours(),mi:v.getMinutes(),s:v.getSeconds()};
+  const t=String(v==null?'':v).trim();
+  if(!t)return null;
+  // 日付を持たない値(時刻だけ)もあるので、**null は「無い」であって不正ではない**。
+  const ok=p=>((p.M==null||(p.M>=1&&p.M<=12))&&(p.d==null||(p.d>=1&&p.d<=31))
+               &&p.H<=23&&p.mi<=59&&p.s<=59)?p:null;
+  let m=/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/.exec(t);
+  if(m)return ok({y:+m[1],M:+m[2],d:+m[3],H:+(m[4]||0),mi:+(m[5]||0),s:+(m[6]||0)});
+  m=/^(\d{4})(\d{2})(\d{2})(?:[ T]?(\d{2})(\d{2})(\d{2})?)?$/.exec(t);
+  if(m)return ok({y:+m[1],M:+m[2],d:+m[3],H:+(m[4]||0),mi:+(m[5]||0),s:+(m[6]||0)});
+  m=/^(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?$/.exec(t);
+  if(m)return ok({y:null,M:null,d:null,H:+m[1],mi:+m[2],s:+(m[3]||0)});
+  return null;
+ }
+ /* Excel/.NET風のパターン。日=d 月=M 時=H 分=m と大文字小文字で区別する
+    (Excelの「文脈で月か分か決まる」は説明できないので採らない)。
+    'リテラル' で囲むとその文字はそのまま出る。 */
+ const TOKEN=/yyyy|yy|MM|M|dddd|ddd|dd|d|HH|H|hh|h|mm|m|ss|s|tt|'[^']*'/g;
+ function stamp(p,pattern){
+  const need=k=>{if(p[k]==null)throw 0;return p[k]};
+  const h12=()=>{const h=need('H')%12;return h===0?12:h};
+  return String(pattern).replace(TOKEN,tok=>{
+   switch(tok){
+    case 'yyyy':return pad(need('y'),4);
+    case 'yy':return pad(need('y')%100,2);
+    case 'MM':return pad(need('M'),2);
+    case 'M':return String(need('M'));
+    case 'dddd':case 'ddd':{
+     const w=WEEK[new Date(need('y'),need('M')-1,need('d')).getDay()];
+     return tok==='dddd'?w+'曜日':w;
+    }
+    case 'dd':return pad(need('d'),2);
+    case 'd':return String(need('d'));
+    case 'HH':return pad(need('H'),2);
+    case 'H':return String(need('H'));
+    case 'hh':return pad(h12(),2);
+    case 'h':return String(h12());
+    case 'mm':return pad(need('mi'),2);
+    case 'm':return String(need('mi'));
+    case 'ss':return pad(need('s'),2);
+    case 's':return String(need('s'));
+    case 'tt':return need('H')<12?'午前':'午後';
+    default:return tok.slice(1,-1);       // 'リテラル'
+   }
+  });
+ }
+ function groupThousands(s){
+  const m=/^(-?)(\d+)(\.\d+)?$/.exec(s);
+  if(!m)return s;
+  return m[1]+m[2].replace(/\B(?=(\d{3})+(?!\d))/g,',')+(m[3]||'');
+ }
+ function asNumber(v){
+  const t=String(v==null?'':v).trim().replace(/,/g,'');
+  if(!t||!/^[-+]?(\d+\.?\d*|\.\d+)$/.test(t))return null;
+  const n=Number(t);
+  return Number.isFinite(n)?n:null;
+ }
+ /* 指定1つを値へ当てる。整形できなければnullを返し、呼び出し側が生の値を出す。 */
+ function run(spec,raw){
+  if(!spec)return null;
+  const kind=spec.kind||'';
+  if(kind==='number'){
+   const n=asNumber(raw);
+   if(n===null)return null;
+   let s=spec.decimals==null||spec.decimals===''?String(n):n.toFixed(spec.decimals);
+   if(spec.thousands)s=groupThousands(s);
+   return (spec.prefix||'')+s+(spec.suffix||'');
+  }
+  if(kind==='datetime'){
+   const p=parts(raw);
+   if(!p)return null;
+   try{return stamp(p,spec.pattern||'yyyy/MM/dd')}catch(e){return null}
+  }
+  if(kind==='text')return (spec.prefix||'')+String(raw).trim()+(spec.suffix||'');
+  return null;                            // 種別なし=そのまま
+ }
+ /* 表示用の文字列。**空欄は空欄のまま**(単位だけが並ぶ列にしない)。 */
+ function value(spec,raw){
+  if(isBlank(raw))return '';
+  const out=run(spec,raw);
+  return out===null?String(raw):out;
+ }
+ /* 1つのセルが表示されるまで(設計の順序をそのままここに置く)。
+      生の値 → 読み替えが当たれば**その言葉で確定**(整形しない)
+             → 当たらなければ書式で整形
+             → 整形できなければ生の値
+    読み替えが先なのは、読み替えが生の値を見て判断するものだから
+    ('00'を'0'へ整形してから読み替えると当たらない)。
+    戻り値は {text, color}。colorは読み替えが指定したときだけ入る。 */
+ function cell(opt){
+  const raw=opt&&opt.raw;
+  const rule=opt&&opt.rule;
+  if(rule){
+   const hit=displayRules.match(rule,opt.row,opt.column);
+   // 表示値が空の行は「元の値のまま出す」(当たったことは色で示せる)。
+   if(hit)return {text:hit.text!==''&&hit.text!=null?String(hit.text):value(opt.format,raw),
+                  color:hit.color||''};
+  }
+  return {text:value(opt.format,raw),color:''};
+ }
+ return {value,parts,cell,
+         text:(target,col,raw)=>value(columnLayout.format(target,col),raw)};
+})();
+window.WL.cellFormat=cellFormat;
 function databaseLabel(key){
  if(key==='MASTER')return 'マスタ';
  return WL.dataSource.label(key)||'データ';

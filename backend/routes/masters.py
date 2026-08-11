@@ -39,6 +39,9 @@ from ..repositories.master_repo import (
  SCHEDULE_COLUMN_TABLE, ensure_schedule_column_table, schedule_columns_for, set_schedule_columns,
  SCHEDULE_CONTENT_TABLE, ensure_schedule_content_table, schedule_content_items_for, set_schedule_content_items,
  COLUMN_LAYOUT_TABLE, ensure_column_layout_table, column_layout_for, set_column_layout,
+ FORMAT_KINDS, normalize_format,
+ DISPLAY_RULE_TABLE, ensure_display_rule_table, display_rules, set_display_rule,
+ delete_display_rule, display_rule_usage, RULE_OPS, RULE_COLORS,
  SORT_PRESET_TABLE, ensure_sort_preset_table, sort_preset_rows, normalize_sort_keys,
  LIST_VIEW_TABLE, ensure_list_view_table, list_view_settings_for, set_list_view_settings,
  ROW_GAP_DEFAULT,
@@ -782,6 +785,7 @@ def column_layout_master_save():
   target=str(x.get('target') or '').strip()
   if not target:return jsonify(error='対象(target)を指定してください。'),400
   order=x.get('order');widths=x.get('widths');hidden=x.get('hidden');names=x.get('names')
+  formats=x.get('formats');rules=x.get('rules')
   if order is not None and not isinstance(order,list):
    return jsonify(error='並び(order)の指定が不正です。'),400
   if widths is not None and not isinstance(widths,dict):
@@ -791,9 +795,70 @@ def column_layout_master_save():
   path=DBS['MASTER']['path']
   with connect(path,False) as c:
    n=set_column_layout(c,target,order or [],widths or {},uid,hidden=hidden or [],
-                       names=names if isinstance(names,dict) else {})
+                       names=names if isinstance(names,dict) else {},
+                       formats=formats if isinstance(formats,dict) else {},
+                       rules=rules if isinstance(rules,dict) else {})
   return jsonify(ok=True,target=target,columns=n,updated_by=uid,message='表示の並びを保存しました。')
  except Exception as e:return jsonify(error=f'列レイアウト保存失敗: {e}'),500
+
+
+# ========================================================================
+# 表示ルールマスタ(§9.88 段4): 値の読み替え。
+#  - ルール名でまとめて全置換する(列レイアウトマスタと同じ方式)。
+#    行の順序がそのまま評価順になるので、部分更新にすると「どちらの順が
+#    正か」が決まらなくなる。
+#  - 判定は画面側が行う。ここは保存と読み出しだけ。
+# ========================================================================
+@bp.get('/api/display-rule-master')
+def display_rule_master_get():
+ try:
+  path=DBS['MASTER']['path']
+  if not path.exists():
+   return jsonify(ok=True,rules={},ops=list(RULE_OPS),colors=list(RULE_COLORS))
+  with connect(path,True) as c:
+   rules=display_rules(c)
+  return jsonify(ok=True,rules=rules,ops=list(RULE_OPS),colors=list(RULE_COLORS),
+                 table=DISPLAY_RULE_TABLE)
+ except Exception as e:
+  # ルールが読めなくても一覧そのものは出せる(読み替えなしで表示)。
+  return jsonify(error=f'表示ルール読込失敗: {e}'),500
+
+@bp.post('/api/display-rule-master')
+def display_rule_master_save():
+ try:
+  x=request.get_json(force=True) or {};uid=request_user_id(x)
+  name=str(x.get('name') or '').strip()
+  if not name:return jsonify(error='ルール名を指定してください。'),400
+  rows=x.get('rows')
+  if rows is not None and not isinstance(rows,list):
+   return jsonify(error='ルールの行(rows)の指定が不正です。'),400
+  path=DBS['MASTER']['path']
+  with connect(path,False) as c:
+   n=set_display_rule(c,name,rows or [],uid)
+   rules=display_rules(c)
+  return jsonify(ok=True,name=name,rows=n,rules=rules,updated_by=uid,
+                 message=f'表示ルール「{name}」を保存しました。')
+ except ValueError as e:return jsonify(error=str(e)),400
+ except Exception as e:return jsonify(error=f'表示ルール保存失敗: {e}'),500
+
+@bp.post('/api/display-rule-master/delete')
+def display_rule_master_delete():
+ try:
+  x=request.get_json(force=True) or {}
+  name=str(x.get('name') or '').strip()
+  if not name:return jsonify(error='ルール名を指定してください。'),400
+  path=DBS['MASTER']['path']
+  with connect(path,False) as c:
+   # 参照している列があっても消せる(無いルール名は読み替えなしとして扱う)。
+   # ただし**どこで使っていたかは返す**——消した後で「表示が戻った」と
+   # 言われたときに、原因へたどり着けるようにするため。
+   used=display_rule_usage(c,name)
+   n=delete_display_rule(c,name)
+   rules=display_rules(c)
+  return jsonify(ok=True,name=name,deleted=n,used_by=used,rules=rules,
+                 message=f'表示ルール「{name}」を削除しました。')
+ except ValueError as e:return jsonify(error=str(e)),400
+ except Exception as e:return jsonify(error=f'表示ルール削除失敗: {e}'),500
 
 
 # ========================================================================

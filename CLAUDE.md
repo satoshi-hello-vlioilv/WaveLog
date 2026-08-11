@@ -57,7 +57,14 @@
   関数宣言でも素の名前では呼ばない）。現在`WL`にあるのは
   `registerView`/`enterView`/`withInternalDbSwitch`/`isInternalDbSwitch`/`ttlCache`/
   `refreshScheduleIfOpen`/`expandFilterVars`/`toleranceScaleView`/`optionList`/`defect`/
-  `fieldReorderAllows`/`fieldReorderAllowsAll`/`fieldReorderLabel`。
+  `fieldReorderAllows`/`fieldReorderAllowsAll`/`fieldReorderLabel`/`boot`/`onReady`/
+  `dataSource`/`columnLayout`/`cellFormat`/`displayRules`/`listColumns`/`listRules`/
+  `rowGap`/`renderDbNav`/`bindColumnHeaderTools`/`makeFloatingWindow`。
+  **公開漏れは黙って素通しになる**ことに注意——`typeof makeFloatingWindow==='function'`の
+  ように「あれば使う」書き方で呼んでいると、公開し忘れても例外が出ず、
+  機能だけが静かに欠ける（列の設定パネルが位置も大きさも与えられないまま
+  画面外に開いていた。実際に起きた）。「無ければ困る」ものは
+  `else console.error(...)`を添えるか、テストで存在を固定すること。
 - **色と文字サイズは`:root`のトークンから選ぶ**。リテラルの16進・pxを新しく
   足さない。面/枠線/文字の中間色は`--surface`/`--surface-2`/`--surface-3`/
   `--line-soft`/`--line-mid`/`--line`/`--line-strong`/`--ink`/`--ink-2`/`--ink-3`/
@@ -73,6 +80,24 @@
   「一度可になったら再取得しない」）、一括置換はその仕様を落とす。
 - **列表示マスタ**: `/api/table` は表示設定で列を落とす。内部計算用の
   問い合わせには `include_hidden=1` を付ける。
+- **一覧の見せ方（`列レイアウトマスタ`／`一覧表示設定マスタ`）は全置換**:
+  対象(`list:<DB>:<表>` / `timeline:<設備>`)ごとに行を消して入れ直す。
+  **触っていない設定も一緒に送らないと消える**——見出しのD&Dで並びだけを
+  送っていたため、並べ替えると表示名が消える不具合が実際に出た。
+  サーバー側(`set_column_layout`)も、並びに載っていない列を幅・表示名・
+  書式・非表示のどれかが指定されていれば残す（片方だけ拾う実装だと、
+  その設定だけが黙って消える）。値の整形は**画面側だけ**で行う
+  （`WL.cellFormat`。並べ替え・絞り込みを生の値で効かせたままにするため）。
+  **整形に失敗したら生の値を出す**のが原則で、空欄にしない。
+  **読み替え（`表示ルールマスタ`）は書式より先**に効く（生の値を見て判断する
+  ため。'00'を'0'へ整形してから読み替えると当たらない）。ルールは列に属さず
+  名前で参照し、**表示順の上から見て最初に当たった行を採用**する
+  （行の中の条件はAND・行同士がOR、条件が空の行は既定）。壊れた条件は
+  **1件だけ**落とし、壊れた正規表現は「当たらない」で済ませ、ルールを消しても
+  列側の参照は残す（無いルール名＝読み替えなし）。詳細は
+  `docs/COLUMN_PRESENTATION_DESIGN.md`と`docs/SCHEDULE_MODE_DESIGN.md`§9.88。
+  固定は`tests/test_collayout.js`・`tests/test_colformat.js`・
+  `tests/test_colrule.js`・`tests/test_displayrule.py`。
 - **フィールド名**: Accessの実カラム名は全角/半角ゆれがある。照合は
   `normalizedFieldName`/`exactFieldNumber` 系を使い、直接文字列比較しない。
   分割関連の実カラム名は「親子管理_子カード<N>」「コンマ5本分割_切断巾<N>」

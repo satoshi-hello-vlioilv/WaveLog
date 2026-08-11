@@ -762,19 +762,48 @@ def set_schedule_content_items(c,equipment,item_names,uid):
 # ========================================================================
 COLUMN_LAYOUT_TABLE='列レイアウトマスタ'
 
+# ---- 書式(§9.88 段3) ----------------------------------------------------
+# 値を「どう整形して見せるか」。**保存するのは指定だけ**で、整形そのものは
+# 画面側が行う(サーバーは生の値を返す。並べ替えや絞り込みは生の値で効く
+# ままにしたいので、整形をサーバーへ持ち込まない)。
+FORMAT_KINDS=('','number','datetime','text')
+
+def normalize_format(raw):
+ """保存できる書式指定へ整える。何も指定が無ければNone(=そのまま表示)。"""
+ if not isinstance(raw,dict):return None
+ kind=str(raw.get('kind') or '').strip()
+ if kind not in FORMAT_KINDS:kind=''
+ pattern=str(raw.get('pattern') or '').strip()[:60]
+ try:decimals=int(raw.get('decimals')) if raw.get('decimals') not in (None,'') else None
+ except (TypeError,ValueError):decimals=None
+ if decimals is not None:decimals=max(0,min(6,decimals))
+ thousands=bool(raw.get('thousands'))
+ prefix=str(raw.get('prefix') or '')[:8]
+ suffix=str(raw.get('suffix') or '')[:8]
+ if not kind and not pattern and decimals is None and not thousands and not prefix and not suffix:
+  return None
+ return {'kind':kind,'pattern':pattern,'decimals':decimals,
+         'thousands':thousands,'prefix':prefix,'suffix':suffix}
+
+
 def ensure_column_layout_table(c):
  names=tables(c);created=False
  if COLUMN_LAYOUT_TABLE not in names:
   cur=c.cursor()
   cur.execute('CREATE TABLE [列レイアウトマスタ] ([ID] INTEGER PRIMARY KEY AUTOINCREMENT, '
               '[対象] TEXT, [列名] TEXT, [表示名] TEXT, [表示順] INTEGER, [幅] INTEGER, [表示] INTEGER, '
+              '[書式種別] TEXT, [書式パターン] TEXT, [小数桁] INTEGER, [桁区切り] INTEGER, '
+              '[単位前] TEXT, [単位後] TEXT, [読み替えルール] TEXT, '
               '[登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
   cur.execute('CREATE UNIQUE INDEX [UX_列レイアウトマスタ] ON [列レイアウトマスタ] ([対象],[列名])')
   c.commit();created=True
  ensure_audit_columns(c,COLUMN_LAYOUT_TABLE)
  # 既存DBへの追加(他マスタと同じ「無ければALTER TABLEで足す」方式)。
  have={r[1] for r in c.cursor().execute(f'PRAGMA table_info([{COLUMN_LAYOUT_TABLE}])')}
- for name,decl in (('表示','INTEGER'),('表示名','TEXT')):
+ for name,decl in (('表示','INTEGER'),('表示名','TEXT'),
+                   ('書式種別','TEXT'),('書式パターン','TEXT'),('小数桁','INTEGER'),
+                   ('桁区切り','INTEGER'),('単位前','TEXT'),('単位後','TEXT'),
+                   ('読み替えルール','TEXT')):
   if name not in have:
    c.cursor().execute(f'ALTER TABLE [{COLUMN_LAYOUT_TABLE}] ADD COLUMN [{name}] {decl}')
    c.commit()
@@ -796,17 +825,19 @@ def column_layout_for(c,target):
 
  **hiddenは「この対象で隠す列」**。[表示]がNULLの行は表示(既定)として扱う
  ——列を足したときに既存の行が勝手に隠れないようにするため。"""
- empty={'order':[],'widths':{},'hidden':[],'names':{}}
+ empty={'order':[],'widths':{},'hidden':[],'names':{},'formats':{},'rules':{}}
  if COLUMN_LAYOUT_TABLE not in tables(c):return dict(empty)
  target=str(target or '').strip()
  if not target:return dict(empty)
  have={r[1] for r in c.cursor().execute(f'PRAGMA table_info([{COLUMN_LAYOUT_TABLE}])')}
- has_visible='表示' in have;has_label='表示名' in have
+ col=lambda n:('['+n+']') if n in have else 'NULL'
  cur=c.cursor()
- cur.execute('SELECT [列名],[表示順],[幅]'+(',[表示]' if has_visible else ',NULL')
-             +(',[表示名]' if has_label else ',NULL')+
+ cur.execute('SELECT [列名],[表示順],[幅],'+col('表示')+','+col('表示名')+','
+             +col('書式種別')+','+col('書式パターン')+','+col('小数桁')+','
+             +col('桁区切り')+','+col('単位前')+','+col('単位後')+','
+             +col('読み替えルール')+
              ' FROM [列レイアウトマスタ] WHERE [対象]=? ORDER BY [表示順],[ID]',[target])
- order=[];widths={};hidden=[];names={}
+ order=[];widths={};hidden=[];names={};formats={};rules={}
  for row in cur.fetchall():
   name=str(row[0] or '').strip()
   if not name:continue
@@ -815,9 +846,15 @@ def column_layout_for(c,target):
   if row[3] is not None and not bool(row[3]):hidden.append(name)
   label=str(row[4] or '').strip()
   if label:names[name]=label
- return {'order':order,'widths':widths,'hidden':hidden,'names':names}
+  f=normalize_format({'kind':row[5],'pattern':row[6],'decimals':row[7],
+                      'thousands':row[8],'prefix':row[9],'suffix':row[10]})
+  if f:formats[name]=f
+  rule=str(row[11] or '').strip()
+  if rule:rules[name]=rule
+ return {'order':order,'widths':widths,'hidden':hidden,'names':names,
+         'formats':formats,'rules':rules}
 
-def set_column_layout(c,target,order,widths,uid,hidden=None,names=None):
+def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=None,rules=None):
  """全置換方式(他の列マスタと同じ)。渡された順序がそのまま表示順になる。
 
  **幅だけを変えたいときも並び全体を送る**こと。部分更新にすると、
@@ -828,29 +865,42 @@ def set_column_layout(c,target,order,widths,uid,hidden=None,names=None):
  widths=widths if isinstance(widths,dict) else {}
  hide={str(x or '').strip() for x in (hidden or []) if str(x or '').strip()}
  label=names if isinstance(names,dict) else {}
+ fmt=formats if isinstance(formats,dict) else {}
+ rule=rules if isinstance(rules,dict) else {}
  cur=c.cursor()
  cur.execute('DELETE FROM [列レイアウトマスタ] WHERE [対象]=?',[target])
- seq=0
- for name in (order or []):
-  name=str(name or '').strip()
-  if not name:continue
-  seq+=1
+
+ def write(name,seq):
+  f=normalize_format(fmt.get(name)) or {}
   cur.execute('INSERT INTO [列レイアウトマスタ] ([対象],[列名],[表示名],[表示順],[幅],[表示],'
-              '[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,?,Now(),Now())',
+              '[書式種別],[書式パターン],[小数桁],[桁区切り],[単位前],[単位後],'
+              '[読み替えルール],[登録者ID],[更新者ID],[登録日時],[更新日時]) '
+              'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',
               [target,name,str(label.get(name) or '').strip() or None,seq,
                normalize_column_width(widths.get(name)),
-               0 if name in hide else -1,uid,uid])
- # 並びに載っていない列の幅だけが指定されている場合も残す(列が増減しても
- # 幅の記憶が消えないように。表示順は末尾扱いの0にしておく)。
- for name,width in widths.items():
+               0 if name in hide else -1,
+               f.get('kind') or None,f.get('pattern') or None,
+               f.get('decimals'),(-1 if f.get('thousands') else 0) if f else None,
+               f.get('prefix') or None,f.get('suffix') or None,
+               str(rule.get(name) or '').strip() or None,uid,uid])
+
+ seq=0;seen=set()
+ for name in (order or []):
   name=str(name or '').strip()
-  if not name or name in (order or []):continue
-  w=normalize_column_width(width)
-  if w is None:continue
-  cur.execute('INSERT INTO [列レイアウトマスタ] ([対象],[列名],[表示名],[表示順],[幅],[表示],'
-              '[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,0,?,?,?,?,Now(),Now())',
-              [target,name,str(label.get(name) or '').strip() or None,w,
-               0 if name in hide else -1,uid,uid])
+  if not name or name in seen:continue
+  seq+=1;seen.add(name)
+  write(name,seq)
+ # 並びに載っていない列でも、幅・表示名・書式・非表示のどれかが指定されて
+ # いれば残す(列が増減しても記憶が消えないように。表示順は末尾扱いの0)。
+ # **どれか1つでも拾い漏らすと、その設定だけが黙って消える**——並びを
+ # 送らずに書式だけ保存した場合に実際に起きた。
+ extra=[n for n in (list(widths)+list(label)+list(fmt)+list(rule)+sorted(hide))
+        if str(n or '').strip() and str(n).strip() not in seen]
+ for name in extra:
+  name=str(name).strip()
+  if name in seen:continue
+  seen.add(name)
+  write(name,0)
  c.commit()
  return seq
 
@@ -963,3 +1013,148 @@ def set_list_view_settings(c,target,row_gap,uid):
               '[登録日時],[更新日時]) VALUES (?,?,?,?,Now(),Now())',[target,gap,uid,uid])
  c.commit()
  return gap
+
+
+# ========================================================================
+# 表示ルールマスタ（§9.88 段4・読み替え）
+#  - 「00」を「なし」と見せるような**値の読み替え**を、ルール名でまとめて
+#    登録し、複数の列から使い回す。列に紐づけると「00→なし」を列の数だけ
+#    書かせることになるので、ルールは列に属さない(列側は名前で参照する)。
+#  - **1行 = 1つのルールの1行分**。[表示順]の上から評価して、最初に
+#    当てはまったものを採用する(Excelの条件付き書式と同じ考え方。
+#    「上から順に見て、最初に当てはまったものを表示する」とだけ覚えればよい)。
+#  - [条件JSON]は条件の配列で、**中はAND**。ORは行を分ける
+#    (「ORもANDも1画面で」は破綻しやすいので、行=OR・行の中=ANDと決める)。
+#    **空配列＝どれにも当てはまらなかったとき**の既定行。
+#  - 判定そのものは画面側(WL.displayRules)が行う。サーバーは生の値を返し、
+#    並べ替え・絞り込みは生の値のまま効かせる(書式と同じ方針)。
+# ========================================================================
+DISPLAY_RULE_TABLE='表示ルールマスタ'
+
+# 演算子。増やすときは画面(list-rules.js)の選択肢と評価(base.js)も足すこと。
+RULE_OPS=('eq','ne','contains','startsWith','endsWith','empty','notEmpty',
+          'gt','ge','lt','le','between','regex')
+# 右辺を持たない演算子。UIで値欄を出さない判断にも使う。
+RULE_OPS_NO_RIGHT=('empty','notEmpty')
+# 色。バッジの意味を4つに絞る(増やすと「どれを選ぶか」で迷いが生まれる)。
+RULE_COLORS=('','ok','ng','warn','muted')
+
+def _normalize_operand(raw,allow_value=True):
+ """条件の片側。self(この列) / column(他の列) / value(固定値)。"""
+ if not isinstance(raw,dict):return None
+ kind=str(raw.get('kind') or '').strip()
+ if kind=='self':return {'kind':'self'}
+ if kind=='column':
+  col=str(raw.get('column') or '').strip()[:120]
+  return {'kind':'column','column':col} if col else None
+ if kind=='value' and allow_value:
+  return {'kind':'value','value':str(raw.get('value') if raw.get('value') is not None else '')[:120]}
+ return None
+
+def normalize_rule_conditions(raw):
+ """保存できる条件の配列へ整える。壊れた条件は落とす(全体は捨てない)。
+
+ **落とすのは1件だけにする**——1つの入力ミスでルール全体が消えると、
+ 利用者からは「保存したのに戻っている」としか見えない。"""
+ if not isinstance(raw,list):return []
+ out=[]
+ for item in raw:
+  if not isinstance(item,dict):continue
+  op=str(item.get('op') or '').strip()
+  if op not in RULE_OPS:continue
+  left=_normalize_operand(item.get('left'))
+  if not left:continue
+  cond={'left':left,'op':op}
+  if op not in RULE_OPS_NO_RIGHT:
+   right=_normalize_operand(item.get('right'))
+   if not right:continue
+   cond['right']=right
+   if op=='between':
+    right2=_normalize_operand(item.get('right2'))
+    if not right2:continue
+    cond['right2']=right2
+  out.append(cond)
+ return out
+
+def ensure_display_rule_table(c):
+ names=tables(c);created=False
+ if DISPLAY_RULE_TABLE not in names:
+  cur=c.cursor()
+  cur.execute('CREATE TABLE [表示ルールマスタ] ([ID] INTEGER PRIMARY KEY AUTOINCREMENT, '
+              '[ルール名] TEXT, [表示順] INTEGER, [条件JSON] TEXT, [表示値] TEXT, [色] TEXT, '
+              '[登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
+  cur.execute('CREATE INDEX [IX_表示ルールマスタ] ON [表示ルールマスタ] ([ルール名],[表示順])')
+  c.commit();created=True
+ ensure_audit_columns(c,DISPLAY_RULE_TABLE)
+ return created
+
+def display_rules(c):
+ """{ルール名: [{'conditions':[...], 'text':..., 'color':...}, ...]}。
+
+ 壊れたJSONの行は**その行だけ**落とす(ルールごと消さない)。"""
+ import json
+ if DISPLAY_RULE_TABLE not in tables(c):return {}
+ cur=c.cursor()
+ cur.execute('SELECT [ルール名],[表示順],[条件JSON],[表示値],[色] FROM [表示ルールマスタ] '
+             'ORDER BY [ルール名],[表示順],[ID]')
+ out={}
+ for name,_seq,cond,text,color in cur.fetchall():
+  name=str(name or '').strip()
+  if not name:continue
+  try:parsed=json.loads(cond) if cond else []
+  except Exception:continue
+  out.setdefault(name,[]).append({
+   'conditions':normalize_rule_conditions(parsed),
+   'text':str(text or ''),
+   'color':str(color or '').strip() if str(color or '').strip() in RULE_COLORS else '',
+  })
+ return out
+
+def set_display_rule(c,name,rows,uid):
+ """1つのルールを全置換する(列レイアウトマスタと同じ方式)。
+
+ 行の順序がそのまま評価順になる。**空の行(表示値も条件も無い)は捨てる**
+ ——編集画面で足しただけの行が保存されて評価順を乱さないように。"""
+ import json
+ ensure_display_rule_table(c)
+ name=str(name or '').strip()[:60]
+ if not name:raise ValueError('ルール名を指定してください。')
+ cur=c.cursor()
+ cur.execute('DELETE FROM [表示ルールマスタ] WHERE [ルール名]=?',[name])
+ seq=0
+ for row in (rows or []):
+  if not isinstance(row,dict):continue
+  conds=normalize_rule_conditions(row.get('conditions'))
+  text=str(row.get('text') if row.get('text') is not None else '')[:120]
+  color=str(row.get('color') or '').strip()
+  if color not in RULE_COLORS:color=''
+  if not conds and not text and not color:continue
+  seq+=1
+  cur.execute('INSERT INTO [表示ルールマスタ] ([ルール名],[表示順],[条件JSON],[表示値],[色],'
+              '[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,Now(),Now())',
+              [name,seq,json.dumps(conds,ensure_ascii=False),text,color or None,uid,uid])
+ c.commit()
+ return seq
+
+def delete_display_rule(c,name):
+ """ルールを丸ごと消す。列側の参照は残るが、無いルール名は読み替えなしとして
+ 扱う(他マスタと同じ互換ポリシー。参照が残っていても一覧は出る)。"""
+ if DISPLAY_RULE_TABLE not in tables(c):return 0
+ name=str(name or '').strip()
+ if not name:raise ValueError('ルール名を指定してください。')
+ cur=c.cursor()
+ cur.execute('SELECT COUNT(*) FROM [表示ルールマスタ] WHERE [ルール名]=?',[name])
+ n=cur.fetchone()[0]
+ cur.execute('DELETE FROM [表示ルールマスタ] WHERE [ルール名]=?',[name])
+ c.commit()
+ return n
+
+def display_rule_usage(c,name):
+ """そのルールを参照している列の一覧(対象と列名)。削除前の確認に使う。"""
+ if COLUMN_LAYOUT_TABLE not in tables(c):return []
+ have={r[1] for r in c.cursor().execute(f'PRAGMA table_info([{COLUMN_LAYOUT_TABLE}])')}
+ if '読み替えルール' not in have:return []
+ cur=c.cursor()
+ cur.execute('SELECT [対象],[列名] FROM [列レイアウトマスタ] WHERE [読み替えルール]=? '
+             'ORDER BY [対象],[表示順]',[str(name or '').strip()])
+ return [{'target':str(t or ''),'column':str(col or '')} for t,col in cur.fetchall()]
