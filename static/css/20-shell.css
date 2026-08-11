@@ -233,7 +233,10 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
     見せ方」の設定で、探す場所を1箇所にまとめる。 */
  .list-rowgap{display:inline-flex;align-items:center;gap:var(--gap-inline);
   font-size:var(--fs-sm);color:var(--muted)}
- .list-rowgap input[type="range"]{width:calc(84px * var(--ui-scale));accent-color:var(--teal)}
+ /* 高さもトークンから取る(tests/test_uiux.js が全コントロールの高さを
+    26/30/36/40 のいずれかに固定している。既定のrangeは32pxで外れる)。 */
+ .list-rowgap input[type="range"]{width:calc(84px * var(--ui-scale));
+  height:var(--ctl-h-xs);accent-color:var(--teal)}
  /* ---------- 列の設定パネル(§9.88 段2) ----------
     左に全列・右に選んだ列・下に実データ。**下のプレビューが主役**なので、
     高さを与えて常に見えるようにする(スクロールの下に隠さない)。 */
