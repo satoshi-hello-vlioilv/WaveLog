@@ -80,7 +80,9 @@
 .sc-row-workable{
  justify-self:center;min-width:calc(34px * var(--ui-scale));text-align:center;
  padding:1px 6px;border-radius:var(--radius-pill);border:1px solid transparent;
- font-size:var(--fs-badge);font-weight:800;line-height:1.5;
+ /* 印なので値のセルから1段下げる(--tbl-fs-mark)。以前は --fs-badge(10px)で、
+    同じ行の値(14px)から3段離れていた(§9.90)。 */
+ font-size:var(--tbl-fs-mark);font-weight:800;line-height:1.5;
 }
 /* 作業できない行は薄く。並べ替えや削除はできるので消しはしない。 */
 .sc-row-line.sc-row-not-workable .sc-row-title,

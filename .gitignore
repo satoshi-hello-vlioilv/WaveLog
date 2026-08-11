@@ -49,3 +49,6 @@ tests/.run_all.lock
 
 # 共有DBの写し(db_mirror。手元の作業用なので共有しない)
 db/cache/
+
+# 実測用に立てる開発サーバーの作業コピー(tests/run_all.sh の work/ と同じ役割)
+db/test_fixture/devwork/

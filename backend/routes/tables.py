@@ -8,7 +8,7 @@ SQLiteには無いため、db_access.pyのconnect()がユーザー定義関数�
 ストレージクラス優先で比較する仕様のため、パラメータ側もPythonで数値化してから
 渡す(そうしないとVal()が返す数値と文字列パラメータの比較が常に不成立になる)。
 """
-import json, re, unicodedata
+import json, re, time, unicodedata
 from flask import Blueprint, request, jsonify
 
 from ..db_access import DBS, qi, connect, cols, tables, cfg, WORK_DB_KEY, QUALITY_DB_KEY
@@ -241,6 +241,13 @@ def api_tables():
   return jsonify(error=str(e),db=k,hint=_error_hint(e)),500
 @bp.get('/api/table')
 def api_table():
+ # 一覧が出るまでの内訳を測って返す(§9.90)。「遅い」という報告に対して、
+ # 共有から読んでいるのか・件数の数え上げなのか・結合なのか・単に量が多くて
+ # 転送と描画に時間がかかっているのかを、現地で切り分けられるようにする。
+ # 測るのは**サーバー側でできるところまで**で、転送と描画は画面側が足す。
+ timing={};t0=time.perf_counter()
+ def lap(name,since):
+  timing[name]=round((time.perf_counter()-since)*1000)
  try:
   k=request.args['db'];t=request.args['table'];page=max(1,int(request.args.get('page',1)));size=min(500,max(50,int(request.args.get('page_size',200))));q=request.args.get('search','').strip();cf=cfg(k)
   filter_payload=request.args.get('filters','').strip()
@@ -276,8 +283,12 @@ def api_table():
      # なる。パラメータ側もこちらで数値化してから渡す。
      params.append(_numeric_value(value))
    return parts,params
+  t_open=time.perf_counter()
   with connect(cf['path'],cf['role']=='readonly') as c:
-   cs=cols(c,t,source=cf['path']);where_parts=[];params=[]
+   lap('open',t_open)
+   t_cols=time.perf_counter()
+   cs=cols(c,t,source=cf['path']);lap('cols',t_cols)
+   where_parts=[];params=[]
    if q:
     where_parts.append('('+' OR '.join(f'CStr({qi(x)}) LIKE ?' for x in cs)+')');params += [f'%{q}%']*len(cs)
    filters=safe_filters(filter_payload,cs);fp,filter_params=build_filter_where(filters);where_parts += fp;params += filter_params
@@ -302,10 +313,14 @@ def api_table():
     sort_dir='DESC' if request.args.get('sort_dir','').strip().lower()=='desc' else 'ASC'
     if sort_col in cs:order_parts.append((sort_col,sort_dir))
    order=(' ORDER BY '+','.join(f'{qi(c2)} {d}' for c2,d in order_parts)) if order_parts else ''
+   t_count=time.perf_counter()
    cur=c.cursor();cur.execute(f'SELECT COUNT(*) FROM {qi(t)}'+where,params);count=int(cur.fetchone()[0]);top=page*size
+   lap('count',t_count)
    # 件数の頭からtop件を取り、Python側でページ分だけ切り出す(rows[start:start+size])。
+   t_fetch=time.perf_counter()
    cur.execute(f'SELECT * FROM {qi(t)}'+where+order+f' LIMIT {top}',params)
    rows=cur.fetchmany(top);start=(page-1)*size;rows=rows[start:start+size]
+   lap('fetch',t_fetch)
   # 表示マスタで非表示指定された列は、検索/絞込/並替の対象(cs)には残しつつ、
   # 返却するcolumns/rowsからのみ除外する(生の行タプルはcs全体の順序と対応するため、
   # zip自体はcs全体で行い、その後に非表示列をdictから取り除く)。
@@ -320,6 +335,18 @@ def api_table():
   join_info=None
   # 結合できるのは役割が「作業」の一覧だけ(§9.87)。
   if WORK_DB_KEY and k==WORK_DB_KEY and request.args.get('join_quality')=='1':
+   t_join=time.perf_counter()
    visible_cs,row_dicts,join_info=_join_quality_data(visible_cs,row_dicts)
-  return jsonify(columns=visible_cs,rows=row_dicts,count=count,filters_applied=len(filters),joinQuality=join_info)
+   lap('join',t_join)
+  timing['server']=round((time.perf_counter()-t0)*1000)
+  # どこのファイルを読んだのかも一緒に返す。共有を直接読んでいるのか、
+  # 手元の写し(§9.89)を読んでいるのかで、遅さの意味がまったく違う。
+  timing['source']='mirror' if cf.get('mirrored') else ('share' if cf.get('role')=='readonly' else 'local')
+  timing['rows']=len(row_dicts);timing['columns']=len(visible_cs)
+  resp=jsonify(columns=visible_cs,rows=row_dicts,count=count,
+               filters_applied=len(filters),joinQuality=join_info,timing=timing)
+  # 開発者ツールのネットワーク欄でも同じ内訳が読めるようにする。
+  resp.headers['Server-Timing']=','.join(
+   f'{n};dur={v}' for n,v in timing.items() if isinstance(v,int))
+  return resp
  except Exception as e:return jsonify(error=str(e)),500

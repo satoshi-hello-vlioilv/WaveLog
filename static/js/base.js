@@ -215,6 +215,15 @@ const columnLayout=(()=>{
    body:JSON.stringify(withUserId({target,...v}))});
  }
  function forget(target){if(target)cache.delete(target);else cache.clear()}
+ /* **保存せずに今の画面へ当てる**(§9.90)。列の設定パネルは、触った結果が
+    そのまま一覧に出るのが分かりやすい——設定画面の中の小さな見本で
+    想像させるより、本物の一覧が変わるほうが確実に伝わる。
+    保存は別操作なので、閉じるときは stage(target, 元の値) で戻す。 */
+ function stage(target,layout){
+  if(!target)return;
+  cache.set(target,{order:layout.order||[],widths:layout.widths||{},hidden:layout.hidden||[],
+                    names:layout.names||{},formats:layout.formats||{},rules:layout.rules||{}});
+ }
  /* 覚えている並びを、実際にある列へ当てはめる。 */
  function apply(target,columns){
   const {order,hidden}=get(target);
@@ -223,7 +232,7 @@ const columnLayout=(()=>{
   const rest=columns.filter(c=>!order.includes(c));   // 新しく増えた列は末尾
   return [...known,...rest].filter(c=>!hide.has(c));
  }
- return {load,get,save,forget,apply,
+ return {load,get,save,forget,apply,stage,
          width:(target,col)=>get(target).widths[col]||null,
          /* 画面に出す名前。未設定なら元の項目名のまま(§9.88)。 */
          label:(target,col)=>get(target).names[col]||col,

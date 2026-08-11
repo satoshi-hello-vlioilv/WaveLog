@@ -14,16 +14,36 @@
 .tab.active{border-color:var(--teal);font-weight:700}
 /* 一覧のツールバー(表示列の選択・品質データ結合の状態)。#gridと一緒に
    分割表示・ポップアップへ移動するため、#gridの直前の兄弟として置く。 */
-.list-toolbar{display:flex;align-items:center;gap:var(--space-2);margin:6px 14px 0;flex-wrap:wrap}
+/* ツールバーは役割ごとの「群」を並べる(§9.90)。群の中は詰め、群と群の間は
+   あける——近接だけでまとまりが読めるので、区切り線を増やさずに済む。
+   状態(結合チップ)は操作ではないので右端へ寄せる。 */
+.list-toolbar{display:flex;align-items:center;gap:var(--gap-section);margin:6px 14px 0;flex-wrap:wrap}
+.lt-group{display:inline-flex;align-items:center;gap:var(--gap-inline);min-width:0;
+ padding:var(--space-1) var(--space-2);border:1px solid var(--line-soft);
+ border-radius:var(--radius-sm);background:var(--surface-2)}
+.list-toolbar .list-join-chip{margin-left:auto}
 /* id付きセレクタで書くこと。分割/ポップアップ表示の再表示ルール
    (body.sc-mode.sc-split #listToolbar{display:flex!important})より詳細度を
    高くしないと、出す中身が無いときでも空のツールバーが表示されてしまう。 */
 .list-toolbar-btn{border:1px solid var(--line);background:#fff;cursor:pointer;font-weight:700;color:#60747b}
 .list-toolbar-btn:hover{border-color:var(--teal);background:#f7fafb}
 .list-join-chip{display:inline-flex;align-items:center;height:var(--ctl-h-xs);border-radius:var(--radius-md);white-space:nowrap;cursor:help}
+/* 読み込みにかかった時間(§9.90)。速いときは控えめ、遅いときだけ色が付く。 */
+.list-load-chip{display:inline-flex;align-items:center;height:var(--ctl-h-xs);
+ padding:var(--pad-chip);border-radius:var(--radius-md);white-space:nowrap;cursor:help;
+ font-size:var(--fs-micro);font-weight:800;color:var(--muted);background:var(--surface-2);
+ border:1px solid var(--line-soft)}
+.list-load-chip.is-slow{color:var(--warn-fg);background:var(--warn-bg);border-color:var(--warn-border)}
 :is(.sc-split-wrap,.sc-float-body) .list-toolbar{margin:4px 6px 0;gap:var(--gap-tight)}
 :is(.sc-split-wrap,.sc-float-body) .list-toolbar-btn{height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs)}
-#grid{flex:1;min-height:0;margin:9px 14px;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:var(--radius-sm)}
+/* **行の高さと行内ボタンの高さは #grid で解決させる。** カスタム
+   プロパティは**定義した場所で値が解決される**ため、:root の
+   --row-h/--row-ctl-h は :root の --row-pad-y(既定)を見てしまい、
+   行間つまみ(JSが #grid へ --row-pad-y を差す)が効かない。
+   ここで定義し直すことで、つまみの値がそのまま行の高さになる。 */
+#grid{flex:1;min-height:0;margin:9px 14px;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:var(--radius-sm);
+ --row-h:calc(var(--fs) * var(--lh) + var(--row-pad-y) * 2 + 1px);
+ --row-ctl-h:min(var(--ctl-h-xs),calc(var(--row-h) - 2px))}
 /* 元々は要素セレクタ(table/th/td)のみで、仕掛一覧・品質データの一覧
    グリッド(#grid内のtable)向けに書かれたものだったが、要素セレクタの
    ままだと帳票プレビュー等、アプリ内の他のtable/th/tdにも無差別に
@@ -35,8 +55,15 @@
 /* 行の高さ・余白は表示サイズ(--ui-scale)に連動する。作業スケジュール画面
    だけにあった「高密度」トグル(#grid.sc-dense)は、アプリ全体で調整したいと
    いう要望に合わせて表示サイズ5段階へ統合したため廃止した。 */
-#grid th,#grid td{padding:var(--row-pad-y) var(--row-pad-x);height:var(--row-h);border-right:1px solid #d6e0e3;border-bottom:1px solid #d6e0e3;white-space:nowrap}
-#grid th{position:sticky;top:0;background:var(--pale);text-align:left}
+/* 数字は**表全体で等幅**にする(§9.90)。以前は書式を当てた列(.col-num)だけ
+   だったため、同じ表の中で桁幅の揃う数字と揃わない数字が混ざり、数字だけ
+   大きさが違って見えていた。字面の話なので、右づめにするかどうかとは別。 */
+#grid th,#grid td{padding:var(--row-pad-y) var(--row-pad-x);height:var(--row-h);border-right:1px solid #d6e0e3;border-bottom:1px solid #d6e0e3;white-space:nowrap;font-variant-numeric:tabular-nums;font-size:var(--tbl-fs)}
+/* 見出しは**折り返さない**(§9.90)。中途半端に2行になると行の高さが変わり、
+   表として読めなくなる。入り切らないときは左右の余白を先に詰め、それでも
+   足りなければ省略記号にする(幅は列ごとに指定できる)。 */
+#grid th{position:sticky;top:0;background:var(--pale);text-align:left;
+ padding-inline:var(--row-pad-x-head);overflow:hidden;text-overflow:ellipsis}
 tbody tr:nth-child(even){background:#f7fafb}
 tbody tr:hover{background:#e5f2f3;cursor:pointer}
 .measurement-row td:first-child{border-left:4px solid var(--teal)}
@@ -50,7 +77,8 @@ tbody tr:hover{background:#e5f2f3;cursor:pointer}
 .plan-action-button{border:1px solid #6a5acd;background:#fff;color:#4b3fa8;font-weight:700;white-space:nowrap;cursor:pointer}
 .plan-action-button:hover{background:#6a5acd;color:#fff}
 .split-flag-head{min-width:112px;text-align:center;background:#f2e6b3}
-.split-flag-cell{text-align:center;font-weight:700;white-space:nowrap;font-size:var(--fs-sm)}
+/* セルの中の言葉なので、値と同じ大きさで読む(§9.90)。 */
+.split-flag-cell{text-align:center;font-weight:700;white-space:nowrap}
 .split-flag-cell.split-yes{background:#fff2cc;color:#8a6600}
 .split-flag-cell.split-no{background:inherit;color:#8a9a97}
 .split-flag-cell.split-missing{background:var(--danger-bg);color:var(--danger);animation:split-missing-pulse 1.6s ease-in-out 2}
@@ -64,7 +92,8 @@ tbody tr:hover{background:#e5f2f3;cursor:pointer}
 /* フィルタ適用中の列見出し: どの列が絞り込まれているか一目で分かるよう、
    ホバー等とは異なる暖色(アンバー)でヘッダーだけを強調する。 */
 th.col-filtered{background:#ffe6ac;color:#6b4a00}
-.col-filter-badge{margin-left:4px;font-size:var(--fs-badge);color:#a06b00}
+/* 印なので値のセルから1段だけ下げる(§9.90)。 */
+.col-filter-badge{margin-left:4px;font-size:var(--tbl-fs-mark);color:#a06b00}
 /* カラムクリックソート: ホバーで操作可能なことを示し、現在のソート列は
    矢印(▲/▼)と配色で分かるようにする。フィルタ列と重なった場合も
    矢印記号自体は消えないため、どちらの状態も見失わない。 */
@@ -78,8 +107,7 @@ th.col-sorted:hover{background:#c7e7ea}
    その列の中で揃い方は変わらない。
    見出し側は`#grid th`(ID付き=詳細度が上)が左づめを指定しているため、
    同じだけ詳細度を上げないと効かない。 */
-#grid th.col-num,#grid td.col-num,.lc-preview th.col-num,.lc-preview td.col-num{
- text-align:right;font-variant-numeric:tabular-nums}
+#grid th.col-num,#grid td.col-num{text-align:right;font-variant-numeric:tabular-nums}
 /* 読み替え(§9.88 段4)が色を指定したセル。意味は状態バッジと同じ3種+控えめ
    に絞る(増やすと「どれを選ぶか」で迷いが生まれる)。**面ではなく文字**へ
    色を置く——一覧は行が多く、面で塗ると数行当たっただけで画面が騒がしくなる。 */

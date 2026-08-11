@@ -110,25 +110,34 @@ async function cleanup(){
   await page.reload({waitUntil:'load'});
   await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});
   await page.waitForTimeout(1400);
-  const opts=await page.evaluate(()=>[...document.querySelectorAll('#listSortPreset option')].map(o=>o.textContent));
+  /* §9.90で「選ぶ・保存する・消す」は1つのメニューへ畳んだ(固定幅のselectは
+     長い名前が途中で切れていた)。**開いてから**中身を見る。 */
+  await page.click('#listSortPresetBtn');
+  await page.waitForTimeout(400);
+  const opts=await page.evaluate(()=>[...document.querySelectorAll('#listSortMenu .lsm-use')].map(o=>o.textContent.trim()));
   rec('保存した並びが選択肢に出る',opts.some(t=>t.includes(NAME)),JSON.stringify(opts));
+  rec('今の並びがメニューの先頭に出る',
+   await page.evaluate(()=>!!document.querySelector('#listSortMenu .lsm-now b')));
 
   await page.evaluate(n=>{
-   const sel=document.getElementById('listSortPreset');
-   const opt=[...sel.options].find(o=>o.textContent===n);
-   sel.value=opt.value;sel.dispatchEvent(new Event('change',{bubbles:true}));
+   const btn=[...document.querySelectorAll('#listSortMenu .lsm-use')].find(o=>o.textContent.includes(n));
+   if(btn)btn.click();
   },NAME);
   await page.waitForTimeout(1000);
   const applied=await keys();
   rec('選ぶとその並びが復元される',
    applied.length===2&&applied[0].column===c1&&applied[0].dir==='desc'&&applied[1].column===c2,
    JSON.stringify(applied));
-  rec('削除ボタンが出る',await page.evaluate(()=>!document.getElementById('listSortDel').hidden));
-
-  // 「いつも使う並び…」へ戻すと並びが外れる
+  rec('選んでいる並びの名前がボタンに出る',
+   await page.evaluate(n=>(document.getElementById('listSortPresetBtn')?.textContent||'').includes(n),NAME));
+  // メニューの「並びを解除」で外れる
+  await page.click('#listSortPresetBtn');
+  await page.waitForTimeout(400);
+  rec('メニューに削除の口がある',
+   await page.evaluate(()=>!!document.querySelector('#listSortMenu .lsm-del')));
   await page.evaluate(()=>{
-   const sel=document.getElementById('listSortPreset');
-   sel.value='';sel.dispatchEvent(new Event('change',{bubbles:true}));
+   const btn=document.querySelector('#listSortMenu [data-act="clear"]');
+   if(btn)btn.click();
   });
   await page.waitForTimeout(900);
   rec('選択を外すと並びの指定も外れる',(await keys()).length===0);
