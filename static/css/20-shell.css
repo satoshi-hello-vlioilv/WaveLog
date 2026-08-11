@@ -63,7 +63,10 @@
 .nav-item{
   display:flex;align-items:center;gap:var(--gap-inline);width:100%;min-height:var(--ctl-h);padding:0 var(--ctl-pad-x-sm);
   border:1px solid transparent;border-radius:var(--radius-sm);background:transparent;color:#cfe6ea;
-  text-align:left;font-size:var(--fs-base-sm);font-weight:600;box-shadow:none;
+  /* 高さが --ctl-h(36px)の標準コントロールなので、文字も標準(--fs)。
+     以前だけ --fs-base-sm(13px)で、同じ36pxのヘッダーボタン(14px)と
+     並んだときに1段小さく見えていた(§9.90)。 */
+  text-align:left;font-size:var(--fs);font-weight:600;box-shadow:none;
 }
 .nav-item .nav-icon{flex:none;opacity:.8}
 .nav-item span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -167,14 +170,14 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 .hd-search:focus-within{border-color:var(--teal);box-shadow:0 0 0 3px #087c8922}
 .hd-search-icon{font-size:var(--fs-sm);opacity:.6}
 .hd-actions #search{border:0;outline:0;background:transparent;height:auto;padding:0;
- width:min(200px,18vw);font-size:var(--fs-base-sm)}
+ width:min(200px,18vw);font-size:var(--fs)}
 .hd-field{display:inline-flex;align-items:center;gap:var(--gap-inline);padding:0 var(--ctl-pad-x-sm)}
 .hd-field>span{font-size:var(--fs-tiny);font-weight:700;color:#8a9aa0;white-space:nowrap}
 .hd-actions #pageSize{border:0;outline:0;background:transparent;height:auto;padding:0;
- font-size:var(--fs-base-sm);font-weight:700;color:#3a565d}
+ font-size:var(--fs);font-weight:700;color:#3a565d}
 /* quality-analysis.jsが後から差し込む「画面を印刷」も同じ見た目へ揃える */
 .hd-actions #printCurrentView{height:var(--ctl-h);padding:0 var(--ctl-pad-x);border:1px solid var(--line);
- border-radius:var(--radius-sm);background:#fff;font-size:var(--fs-base-sm);font-weight:700;color:#3a565d;cursor:pointer}
+ border-radius:var(--radius-sm);background:#fff;font-size:var(--fs);font-weight:700;color:#3a565d;cursor:pointer}
 .hd-actions #printCurrentView:hover{border-color:var(--teal);background:var(--pale);color:#0c5d67}
 @media(max-width:1180px){
  .hd-context #fileName{max-width:22vw}
@@ -256,30 +259,95 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
   border-radius:var(--radius-round);background:var(--teal);color:#fff;font-size:var(--fs-badge)}
  .list-sort-x{font-style:normal;color:var(--muted);padding-left:var(--space-1)}
  .list-sort-x:hover{color:var(--danger)}
- /* 高さもトークンから取る(既定のselectは32pxで、26/30/36/40のどれにも
-    当たらない。行間のつまみと同じ理由)。 */
- .list-sort-preset{max-width:calc(150px * var(--ui-scale));height:var(--ctl-h-xs)}
+ /* ---------- いつも使う並び(§9.90) ----------
+    選ぶ・保存する・消すを1つのメニューへ畳んだ。常に見えている必要が
+    あるのは「今どれを使っているか」だけ。以前は固定幅のselectだったため
+    「いつも使う並び…」の文字が途中で切れていた(実機の画面で確認)。 */
+ .list-sort-preset-wrap{position:relative;display:inline-flex}
+ #listSortPresetBtn{display:inline-flex;align-items:center;gap:var(--gap-hair);
+  max-width:calc(220px * var(--ui-scale));overflow:hidden;white-space:nowrap;
+  text-overflow:ellipsis}
+ #listSortPresetBtn i{font-style:normal;color:var(--muted)}
+ #listSortPresetBtn.is-on{border-color:var(--teal);background:var(--pale);color:var(--ink)}
+ .list-sort-menu{position:absolute;top:calc(100% + 4px);left:0;z-index:var(--z-popover);
+  min-width:calc(280px * var(--ui-scale));max-width:calc(420px * var(--ui-scale));
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-sm);
+  box-shadow:0 10px 30px #0002;padding:var(--pad-card);
+  display:flex;flex-direction:column;gap:var(--gap-inline)}
+ .list-sort-menu[hidden]{display:none}
+ .lsm-now{font-size:var(--fs-micro);color:var(--muted);display:flex;flex-direction:column;
+  gap:var(--gap-hair)}
+ .lsm-now b{font-size:var(--fs-sm);color:var(--ink);font-weight:700;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .lsm-list{display:flex;flex-direction:column;gap:1px;max-height:calc(220px * var(--ui-scale));
+  overflow:auto;border-block:1px solid var(--line-soft);padding-block:var(--space-1)}
+ .lsm-item{display:flex;align-items:center;gap:var(--gap-hair)}
+ .lsm-use{flex:1;min-width:0;text-align:left;border:0;background:transparent;
+  height:var(--ctl-h-sm);padding:0 var(--space-1);font-size:var(--fs-sm);color:var(--ink);
+  cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .lsm-item:hover{background:var(--surface-2)}
+ .lsm-item.is-on .lsm-use{color:var(--teal);font-weight:700}
+ .lsm-del{border:0;background:transparent;color:var(--muted);cursor:pointer;
+  height:var(--ctl-h-sm);padding:0 var(--space-2)}
+ .lsm-del:hover{color:var(--danger)}
+ .lsm-empty{font-size:var(--fs-micro);color:var(--muted);padding:var(--space-1)}
+ .lsm-actions{display:flex;gap:var(--gap-inline)}
+ .lsm-actions button{flex:1;height:var(--ctl-h-sm);font-size:var(--fs-sm);
+  border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);
+  cursor:pointer;white-space:nowrap}
+ .lsm-actions button:hover:not(:disabled){border-color:var(--teal)}
+ .lsm-actions button:disabled{color:var(--muted);cursor:default}
  /* 見出しに出す「何番目のキーか」。矢印だけでは先後が分からない。 */
  .col-sort-rank{font-style:normal;color:var(--teal)}
- /* ---------- 列の設定パネル(§9.88 段2) ----------
-    左に全列・右に選んだ列・下に実データ。**下のプレビューが主役**なので、
-    高さを与えて常に見えるようにする(スクロールの下に隠さない)。 */
- .lc-body{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);
-  gap:var(--gap-block);align-items:start;overflow:auto}
- .lc-side{display:flex;flex-direction:column;gap:var(--gap-inline);min-width:0}
- .lc-filter{width:100%}
- .lc-list{display:flex;flex-direction:column;gap:var(--gap-hair);min-width:0}
- .lc-item{display:flex;align-items:center;gap:var(--gap-inline);
-  padding:var(--space-1) var(--space-2);border:1px solid transparent;
-  border-radius:var(--radius-xs);cursor:pointer;min-width:0}
+ /* ---------- 列の設定パネル(§9.88 段2 / §9.90で作り直し) ----------
+    左が**列のリスト**(1行=1列。表示・並び・見え方が同じ行に並ぶ)、
+    右が選んだ1列の設定。下段にあった横長のプレビュー表は、リストの中の
+    「見え方」に置き換えて廃止した(視線が縦のリストと横の表を往復しない)。
+    リストだけが伸び縮みし、右ペインは中身の分だけ。 */
+ .lc-body{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);
+  gap:var(--gap-block);align-items:stretch;overflow:hidden;min-height:0}
+ .lc-side{display:flex;flex-direction:column;gap:var(--gap-hair);min-width:0;min-height:0}
+ .lc-side-head{display:flex;align-items:center;gap:var(--gap-inline)}
+ .lc-filter{flex:1;min-width:0}
+ /* リストの見出し。**セルの並びと同じ列割り**にする(下の .lc-item と対)。 */
+ .lc-list-head,.lc-item{display:grid;
+  grid-template-columns:var(--ctl-box) auto minmax(calc(90px * var(--ui-scale)),1fr) auto minmax(0,1.1fr);
+  align-items:center;gap:var(--gap-inline);min-width:0}
+ .lc-list-head{padding:0 var(--space-2) var(--space-1);font-size:var(--fs-micro);
+  color:var(--muted);font-weight:700;border-bottom:1px solid var(--line-soft);
+  white-space:nowrap;overflow:hidden}
+ /* 見出しは3語だけ。チェック欄・つまみ・名前・印をまたいで割り付ける。 */
+ .lc-list-head>span:first-child{grid-column:1;font-size:var(--fs-tiny)}
+ .lc-list-head>span:nth-child(2){grid-column:2/5}
+ .lc-list-head>span:last-child{grid-column:5;overflow:hidden;text-overflow:ellipsis}
+ .lc-list{display:flex;flex-direction:column;gap:1px;min-width:0;
+  overflow:auto;flex:1;min-height:0}
+ .lc-item{padding:var(--space-1) var(--space-2);border:1px solid transparent;
+  border-radius:var(--radius-xs);cursor:pointer}
  .lc-item:hover{background:var(--surface-2)}
  .lc-item.is-picked{background:var(--pale);border-color:var(--teal)}
- .lc-item.lc-dragging{opacity:.45}
- .lc-grip{color:var(--line-strong);cursor:grab}
- .lc-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  font-size:var(--fs-sm)}
- .lc-renamed{font-style:normal;font-size:var(--fs-micro);color:var(--teal);
+ .lc-item.is-off .lc-name,.lc-item.is-off .lc-eg{opacity:.45}
+ .lc-item.lc-dragging{opacity:.4}
+ .lc-grip{color:var(--line-strong);cursor:grab;user-select:none}
+ .lc-grip:active{cursor:grabbing}
+ /* 並べ替えで「ここに入る」を示す線。掴んだ手応えが無いと、動いたのか
+    どうかが分からない。 */
+ .lc-drop-mark{height:2px;background:var(--teal);border-radius:var(--radius-xs);
+  margin:0 var(--space-2)}
+ /* **列名は折り返さない**(§9.90)。入り切らないときは省略記号。 */
+ .lc-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .lc-marks{display:inline-flex;gap:var(--gap-hair);white-space:nowrap}
+ .lc-mark{font-style:normal;font-size:var(--fs-micro);color:var(--teal);
   border:1px solid var(--teal);border-radius:var(--radius-xs);padding:0 var(--space-1)}
+ /* 実データ1件の見え方。生の値から変わったときだけ「元の値 → 見え方」。 */
+ .lc-eg{min-width:0;display:flex;align-items:center;gap:var(--gap-hair);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:var(--fs-sm)}
+ .lc-eg s{color:var(--muted);text-decoration-color:var(--line-strong)}
+ .lc-eg b{font-weight:700;color:var(--ink);overflow:hidden;text-overflow:ellipsis}
+ .lc-eg-none{font-style:normal;color:var(--muted);font-size:var(--fs-micro)}
+ .lc-sub{font-size:var(--fs-micro);color:var(--muted);font-weight:400}
+ .lc-foot-note{font-size:var(--fs-sm);color:var(--muted);min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
  .lc-detail{display:flex;flex-direction:column;gap:var(--gap-inline);min-width:0}
  .lc-detail-head{font-size:var(--fs-title);font-weight:800;color:var(--ink);
   display:flex;flex-direction:column;gap:var(--gap-hair)}
@@ -287,8 +355,14 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  .lc-field{display:flex;align-items:center;gap:var(--gap-inline);font-size:var(--fs-sm)}
  .lc-field>span:first-child{width:calc(64px * var(--ui-scale));color:var(--muted)}
  .lc-field input[type="text"]{flex:1;min-width:0}
- .lc-width{display:inline-flex;align-items:center;gap:var(--gap-hair);color:var(--muted)}
- .lc-width input{width:calc(112px * var(--ui-scale))}
+ /* 単位(px)やボタンが**次の行へ折れない**ようにする(§9.90)。入力欄のほうが
+    縮む(min-width:0 + flex)。折れると1行の設定が2行に見えて、どこまでが
+    1つの項目なのか分からなくなる。 */
+ .lc-width{display:inline-flex;align-items:center;gap:var(--gap-hair);color:var(--muted);
+  flex-wrap:nowrap;white-space:nowrap;flex:1;min-width:0}
+ .lc-width input{width:calc(112px * var(--ui-scale));min-width:calc(72px * var(--ui-scale))}
+ .lc-vis{display:inline-flex;align-items:center;justify-content:center}
+ .lc-vis input{width:var(--ctl-box);height:var(--ctl-box);cursor:pointer;accent-color:var(--teal)}
  .lc-hint{font-size:var(--fs-micro);color:var(--muted);margin:0}
  /* ---------- 書式(§9.88 段3) ----------
     種別を選ぶと、その種別の項目だけが下に開く。使わない項目を常時
@@ -310,8 +384,11 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
   border:1px solid var(--line-soft);border-radius:var(--radius-xs);
   padding:var(--space-1) var(--space-2)}
  .lc-sample b{color:var(--ink);font-weight:700}
- .lc-rulepick{display:inline-flex;align-items:center;gap:var(--gap-hair);flex:1;min-width:0}
- .lc-rulepick select{flex:1;min-width:0}
+ /* 選択欄と「ルールを編集」が折れないようにする(§9.90)。 */
+ .lc-rulepick{display:inline-flex;align-items:center;gap:var(--gap-hair);flex:1;min-width:0;
+  flex-wrap:nowrap}
+ .lc-rulepick select{flex:1;min-width:calc(90px * var(--ui-scale))}
+ .lc-rulepick button{flex:0 0 auto;white-space:nowrap}
  /* ---------- 表示ルールの編集(§9.88 段4) ----------
     1行が1つの読み替え。「もし〜ならば〜と表示」の日本語の順に並べる。
     条件は「かつ」でぶら下がり(AND)、行同士がOR。 */
@@ -351,14 +428,7 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  .lr-try-list code{color:var(--muted)}
  .lr-try-list b{color:var(--ink)}
  .lr-nohit{color:var(--muted);font-size:var(--fs-micro);margin-left:var(--space-1)}
- .lc-preview{border-top:1px solid var(--line);padding:var(--space-2);
-  display:flex;flex-direction:column;gap:var(--gap-hair);min-height:0}
- .lc-preview-label{font-size:var(--fs-micro);color:var(--muted);font-weight:700}
- /* 広い表は**この中だけ**を横に流す(ウィンドウごと横スクロールさせない)。 */
- .lc-preview-scroll{overflow:auto;max-height:calc(120px * var(--ui-scale))}
- .lc-preview table{border-collapse:collapse;font-size:var(--fs-sm)}
- .lc-preview th,.lc-preview td{border:1px solid var(--line-soft);
-  padding:var(--space-1) var(--space-2);white-space:nowrap;text-align:left}
- .lc-preview th{background:var(--surface-2);color:var(--ink-2);font-weight:700}
- .lc-count{font-size:var(--fs-sm);color:var(--muted)}
+ /* 右ペインは中身が増えても縦に流れるだけにする(パネルごと伸ばさない)。 */
+ .lc-detail{overflow:auto;min-height:0}
+ .lc-count{font-size:var(--fs-sm);color:var(--muted);white-space:nowrap}
 }

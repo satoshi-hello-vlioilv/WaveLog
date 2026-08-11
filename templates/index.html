@@ -6,7 +6,13 @@
      html.boot-cold: 最初の1枚を描くまで、覆い以外のレイアウトを省く印(§9.86)。
      起動ローダーが「描画された」合図で外す。**CSS側は .app-booting との
      組で効かせてある**ので、下の保険で app-booting が外れれば一緒に無効化される。 -->
-<html class="app-booting boot-cold" lang="ja"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1" name="viewport"/><title>測定伝送システム</title><link rel="icon" href="{{url_for('static',filename='favicon.svg')}}" type="image/svg+xml"/><link href="{{url_for('core.boot_css')}}?t={{asset_token}}" rel="stylesheet"/><link id="appCss" href="{{url_for('core.app_css')}}?t={{asset_token}}" rel="stylesheet" media="print"/>
+<!-- style の背景は**この1行だけ**。起動待機画面(loading.html)から
+     location.replace で移ってくるとき、新しい文書が最初の1枚を描くまでの
+     ごく短い間、ブラウザは既定の白を塗る。待機画面もこの画面も深い紺の
+     ため、そこだけが白く光って「覆いが一度消えてまた出た」ように見える
+     (§9.92)。CSSの到着を待たずに効かせる必要があるので属性で持つ。
+     色は loading.html の背景の起点と同じ値。 -->
+<html class="app-booting boot-cold" lang="ja" style="background:#0d2029"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1" name="viewport"/><title>測定伝送システム</title><link rel="icon" href="{{url_for('static',filename='favicon.svg')}}" type="image/svg+xml"/><link href="{{url_for('core.boot_css')}}?t={{asset_token}}" rel="stylesheet"/><link id="appCss" href="{{url_for('core.app_css')}}?t={{asset_token}}" rel="stylesheet" media="print"/>
 <script>/* 保険。base.jsが読めない/例外で止まった場合でも、必ず本体を見せる。 */
 setTimeout(function(){var r=document.documentElement;r.classList.remove('app-booting');r.classList.remove('boot-cold');
  var o=document.getElementById('appBoot');if(o)o.remove()},12000);</script></head><body>

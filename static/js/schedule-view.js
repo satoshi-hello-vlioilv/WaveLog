@@ -474,16 +474,47 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    function onUp(){document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);save()}
    document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
   }
-  function dragToResize(startEvent){
+  /* **端ならどこを掴んでもリサイズできる**(§9.90)。以前は右下角の
+     つまみ1つだけで、左や上へ広げたいときは一度動かしてから角を引く、と
+     いう2手順が要った。四辺+四隅の8方向を用意し、上・左へ伸ばすときは
+     反対側の辺を固定する(left/topも一緒に動かす)。 */
+  const DIRS=['n','s','e','w','ne','nw','se','sw'];
+  function dragToResize(startEvent,dir){
    startEvent.preventDefault();startEvent.stopPropagation();
    const startX=startEvent.clientX,startY=startEvent.clientY;
-   const startW=rect.width,startH=rect.height;
-   function onMove(ev){rect.width=Math.max(o.minWidth,startW+(ev.clientX-startX));rect.height=Math.max(o.minHeight,startH+(ev.clientY-startY));applyRect()}
+   const box=el.getBoundingClientRect();
+   const startW=box.width,startH=box.height,startL=box.left,startT=box.top;
+   function onMove(ev){
+    const dx=ev.clientX-startX,dy=ev.clientY-startY;
+    if(dir.includes('e'))rect.width=Math.max(o.minWidth,startW+dx);
+    if(dir.includes('s'))rect.height=Math.max(o.minHeight,startH+dy);
+    if(dir.includes('w')){
+     rect.width=Math.max(o.minWidth,startW-dx);
+     rect.left=startL+(startW-rect.width);   // 右端を固定したまま左へ伸ばす
+    }
+    if(dir.includes('n')){
+     rect.height=Math.max(o.minHeight,startH-dy);
+     rect.top=startT+(startH-rect.height);   // 下端を固定したまま上へ伸ばす
+    }
+    if(rect.left==null&&dir.includes('w'))rect.left=startL;
+    applyRect();
+   }
    function onUp(){document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);save()}
    document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
   }
+  /* つまみはJSで足す。**HTML側に8個書かせない**——浮きウィンドウは
+     4箇所で作られており、書き漏らすとその窓だけ端を掴めなくなる。 */
+  DIRS.forEach(d=>{
+   const g=document.createElement('div');
+   g.className='sc-float-grip sc-float-grip-'+d;
+   g.dataset.dir=d;
+   g.title='ドラッグで大きさを変えられます';
+   g.addEventListener('mousedown',e=>dragToResize(e,d));
+   el.appendChild(g);
+  });
   if(header)header.addEventListener('mousedown',dragToMove);
-  if(resizeHandle)resizeHandle.addEventListener('mousedown',dragToResize);
+  // 既存の右下つまみ(見た目の目印)も引き続き効かせる。
+  if(resizeHandle)resizeHandle.addEventListener('mousedown',e=>dragToResize(e,'se'));
   window.addEventListener('resize',()=>applyRect());
   applyRect();
  }
@@ -1326,6 +1357,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   // 使うため、先に取得しておく(後から取得すると初回描画が古い/未設定の
   // プリファレンスのまま出て、直後に列が変わるちらつきが起きる)。
   if(scState.fullControl){await loadScheduleColumnPrefs();await loadScheduleContentPrefs()}
+  /* 内容の列の見せ方(並び・幅・表示名・書式・読み替え)も先に取っておく
+     (§9.88 段6)。描画時に同期で参照するので、後から取ると初回だけ
+     既定の見た目で出て直後に組み替わる。読めなくても既定で出る(fail-open)。 */
+  try{await WL.columnLayout.load(timelineTarget())}catch(e){}
+  try{await WL.displayRules.load()}catch(e){}
   await loadPlan(force);
   // 作業可否(§9.51)の判定材料は**待たない**。仕掛一覧の取得は共有越しだと
   // 時間がかかることがあり、待つとその間ずっと予定が出ない。先に予定を描き、
@@ -1489,6 +1525,41 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     フォールバックする(どの設備・どの仕掛データ構成でも成立する既定値)。
     以前は仕掛一覧の表示列マスタを流用していたため、一覧に出したい列数
     (10列など)がそのまま内容欄の要素数になってしまい実用にならなかった。 */
+ /* ---------- 内容を項目ごとの独立した列へ(§9.88 段6) ----------
+    以前は選んだ項目を「 / 」で繋いだ1つの文字列だった。1セルに複数の値が
+    入ると、桁が揃わず目で追えないうえ、項目ごとの幅も書式も指定できない。
+    **1セル1値**にすると、一覧とまったく同じ仕組み(列レイアウトマスタ)が
+    そのまま効く——タイムライン専用の設定画面を作らずに済む。
+    対象は`timeline:<設備名>`。どの項目を出すかは従来どおり
+    スケジュール内容表示マスタが決める(責務を混ぜない)。 */
+ const TIMELINE_DEFAULT_KEYS=['lotNo','purposeName','mfgMaterial','mfgTemper'];
+ function timelineTarget(){return scState.equipment?`timeline:${scState.equipment}`:''}
+ function timelineContentKeys(){
+  const items=(scContentPrefs.equipment===scState.equipment)?scContentPrefs.items:null;
+  const keys=(items&&items.length)?items.slice():TIMELINE_DEFAULT_KEYS.slice();
+  /* 並びと表示/非表示は列レイアウトマスタが上書きする(見出しのD&Dで
+     覚えた並び)。記録に無い項目は末尾へ回るので、内容の項目を足しても
+     設定は壊れない。 */
+  const t=timelineTarget();
+  return t?WL.columnLayout.apply(t,keys):keys;
+ }
+ /* 1行ぶんのセル。作業以外(設備停止)は最初の列へ名称を出し、残りは空にする
+    ——列の数を行ごとに変えると桁が合わなくなる。 */
+ function timelineContentCells(e){
+  const keys=timelineContentKeys();
+  const t=timelineTarget();
+  if(e.kind!=='作業'){
+   const title=(e.title||'設備停止').trim();
+   return keys.map((k,i)=>({key:k,text:i===0?title:'',raw:i===0?title:'',color:''}));
+  }
+  return keys.map(k=>{
+   const raw=contentValueOf(e.detail,k);
+   const out=WL.cellFormat.cell({raw,format:t?WL.columnLayout.format(t,k):null,
+                                 rule:t?WL.columnLayout.rule(t,k):'',
+                                 row:e.detail||{},column:k});
+   return {key:k,text:out.text,raw:String(raw==null?'':raw),color:out.color};
+  });
+ }
  function entryContentText(e){
   if(e.kind!=='作業')return (e.title||'設備停止').trim();
   const items=(scContentPrefs.equipment===scState.equipment)?scContentPrefs.items:null;
@@ -1509,9 +1580,25 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
           material?`${material}${temper?'-'+temper:''}`:(temper||'')]
    .map(v=>String(v??'').trim()).filter(Boolean).join(' ');
  }
- const ROW_HEAD_HTML=`<div class="sc-row-head">
-  <span></span><span>区分</span><span>作業</span><span>日付</span><span>時刻</span><span>勤務</span><span>残り</span><span>内容</span><span>見積</span><span>実績</span><span>備考</span><span class="sc-actions-head">操作</span>
+ /* 見出し。内容の欄は項目ごとに分かれるので、**見出しも項目名で出す**
+    (「内容」という名前のままでは何が入っているのか分からない)。表示名は
+    列レイアウトマスタが持つので、一覧と同じ言葉で出せる。 */
+ function rowHeadHtml(){
+  const t=timelineTarget();
+  const cells=timelineContentKeys().map(k=>{
+   /* 見出しの言葉。**まず列レイアウトマスタの表示名**、無ければ項目の
+      日本語名(contentItemLabel。alias表の先頭)。生のキー(mfgTemper等)を
+      そのまま出すと、選んだ本人以外には何の列か分からない。 */
+   const named=t?WL.columnLayout.label(t,k):k;
+   const label=(named&&named!==k)?named:contentItemLabel(k);
+   return `<span class="sc-row-title-head" data-content-col="${esc(k)}" draggable="true"`
+    +` title="${esc(k)}｜ドラッグで並べ替え／右端の取っ手で幅">${esc(label)}`
+    +`<i class="col-resize" title="ドラッグで列幅を調整（ダブルクリックで既定へ）" aria-hidden="true"></i></span>`;
+  }).join('');
+  return `<div class="sc-row-head">
+  <span></span><span>区分</span><span>作業</span><span>日付</span><span>時刻</span><span>勤務</span><span>残り</span>${cells}<span>見積</span><span>実績</span><span>備考</span><span class="sc-actions-head">操作</span>
  </div>`;
+ }
 
  /* ---------- 実施中/予定/実績のグルーピング(§9.34) ----------
     以前は予定・実施中・完了が1本の並びに混ざっており、「今どれをやって
@@ -1645,6 +1732,101 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    +`<span class="sc-group-count">${count}件</span></div>`;
  }
 
+/* 内容の列数はマスタ次第で変わるので、**グリッドの定義も一緒に作り直す**。
+   CSSは`--sc-content-cols`を差し込むだけにしてあり、他の11列は固定のまま。
+   幅の指定が無い項目は`minmax(...,1fr)`で残りを分け合う(1つも無いと
+   タイムラインが右端まで伸びない)。 */
+ function applyTimelineContentColumns(timeline){
+  const t=timelineTarget();
+  const keys=timelineContentKeys();
+  const cols=keys.map(k=>{
+   const w=t?WL.columnLayout.width(t,k):null;
+   return w?`${w}px`:'minmax(calc(110px * var(--ui-scale)),1fr)';
+  }).join(' ')||'minmax(calc(150px * var(--ui-scale)),1fr)';
+  timeline.style.setProperty('--sc-content-cols',cols);
+  // 最小幅も列数で変える(11列ぶん + 内容の列)。足りないと桁がずれる。
+  timeline.style.setProperty('--sc-row-min',
+   `calc(${892+Math.max(1,keys.length)*110}px * var(--ui-scale))`);
+ }
+
+ /* 見出しの操作(§9.88 段1と同じ作法)。掴んで並べ替え、右端の取っ手で幅。
+    保存先は`timeline:<設備名>`で、一覧とまったく同じ列レイアウトマスタ。
+    **保存は全置換**なので、触っていない設定(表示名・書式・読み替え)も
+    一緒に送ること。 */
+ function bindTimelineHeadTools(timeline){
+  const target=timelineTarget();
+  if(!target)return;
+  const heads=[...timeline.querySelectorAll('.sc-row-head [data-content-col]')];
+  if(!heads.length)return;
+  const layout=WL.columnLayout.get(target);
+  const keys=timelineContentKeys();
+  const persist=async(order,widths)=>{
+   try{
+    await WL.columnLayout.save(target,{order,widths:widths||layout.widths,hidden:layout.hidden,
+                                       names:layout.names,formats:layout.formats,rules:layout.rules});
+    showToast&&showToast('内容の列を保存しました','この設備のタイムラインで次も同じ形で出ます',2400);
+   }catch(e){showToast&&showToast('列の設定を保存できませんでした',e.message,5000)}
+  };
+  let dragKey=null;
+  heads.forEach(h=>{
+   h.addEventListener('dragstart',e=>{
+    dragKey=h.dataset.contentCol;h.classList.add('col-dragging');
+    try{e.dataTransfer.setData('text/plain',dragKey);e.dataTransfer.effectAllowed='move'}catch(_){}
+   });
+   h.addEventListener('dragend',()=>{
+    dragKey=null;h.classList.remove('col-dragging');
+    heads.forEach(x=>x.classList.remove('col-drop-before','col-drop-after'));
+   });
+   h.addEventListener('dragover',e=>{
+    if(!dragKey||h.dataset.contentCol===dragKey)return;
+    e.preventDefault();
+    const r=h.getBoundingClientRect(),after=(e.clientX-r.left)>r.width/2;
+    h.classList.toggle('col-drop-after',after);
+    h.classList.toggle('col-drop-before',!after);
+   });
+   h.addEventListener('dragleave',()=>h.classList.remove('col-drop-before','col-drop-after'));
+   h.addEventListener('drop',e=>{
+    if(!dragKey||h.dataset.contentCol===dragKey)return;
+    e.preventDefault();e.stopPropagation();
+    const to=h.dataset.contentCol;
+    const r=h.getBoundingClientRect(),after=(e.clientX-r.left)>r.width/2;
+    const order=keys.slice();
+    const from=order.indexOf(dragKey);if(from<0)return;
+    order.splice(from,1);
+    const at=order.indexOf(to);if(at<0)return;
+    order.splice(after?at+1:at,0,dragKey);
+    layout.order=order;
+    persist(order);
+    renderTimeline();
+   });
+   const grip=h.querySelector('.col-resize');
+   if(!grip)return;
+   const key=h.dataset.contentCol;
+   grip.addEventListener('mousedown',e=>{
+    e.preventDefault();e.stopPropagation();
+    const startX=e.clientX,startW=h.getBoundingClientRect().width;
+    const move=ev=>{
+     const w=Math.max(40,Math.min(900,Math.round(startW+(ev.clientX-startX))));
+     h.dataset.resizing=String(w);
+     const widths={...(layout.widths||{}),[key]:w};
+     layout.widths=widths;applyTimelineContentColumns(timeline);
+    };
+    const up=()=>{
+     document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);
+     const w=Number(h.dataset.resizing||0);delete h.dataset.resizing;
+     if(!w)return;
+     persist(keys,layout.widths);
+    };
+    document.addEventListener('mousemove',move);document.addEventListener('mouseup',up);
+   });
+   grip.addEventListener('dblclick',e=>{
+    e.preventDefault();e.stopPropagation();
+    const widths={...(layout.widths||{})};delete widths[key];
+    layout.widths=widths;persist(keys,widths);applyTimelineContentColumns(timeline);
+   });
+  });
+ }
+
  function renderTimeline(){
   const timeline=$('#scTimeline');
   const list=visibleEntries();
@@ -1673,7 +1855,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      間隔がばらついて見えていた(行どうしは35px)。列の意味は1回説明すれば
      足りる(このファイル冒頭の高密度リストの説明どおり)。sticky なので
      スクロールしても上に残る。 */
-  timeline.insertAdjacentHTML('beforeend',ROW_HEAD_HTML);
+  timeline.insertAdjacentHTML('beforeend',rowHeadHtml());
+  applyTimelineContentColumns(timeline);
+  bindTimelineHeadTools(timeline);
   const kids=childEntriesByParent();
   buckets.forEach(bucket=>{
    const box=document.createElement('div');
@@ -1746,6 +1930,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const row=box.querySelector(`.sc-row-line[data-id="${CSS.escape(String(parent.id))}"]`);
   if(!row)return;
   row.classList.add('sc-row-has-children');
+  // つまみは**最初の内容セル**へ入れる(段6で内容が複数列になった)。
   const title=row.querySelector('.sc-row-title');
   if(!title)return;
   const btn=document.createElement('button');
@@ -1799,7 +1984,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    row.draggable=canDrag;
    if(canDrag)row.tabIndex=0;
 
-   const lotText=entryContentText(e);
+   const lotText=entryContentText(e);      // ツールチップ・帳票用の1行要約
+   const contentCells=timelineContentCells(e);
    // 完了・取消は予定時刻を持たない(展開対象外)ので、実績の開始/終了を出す。
    // 以前は一律「-」で、実績セクションだけ時刻が全く読めなかった。
    const useActual=(e.state==='完了')&&e.actual&&e.actual.startAt;
@@ -1873,7 +2059,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     <span class="sc-row-time" title="${esc(timeTitle)}">${esc(timeText)}</span>
     <span class="sc-row-shift" title="勤務形態マスタで設定した名称です">${esc(shiftText)}</span>
     <span class="sc-row-rel">${esc(relText)}</span>
-    <span class="sc-row-title" title="${esc(lotText)}">${esc(lotText)}</span>
+    ${contentCells.map(c=>`<span class="sc-row-title${c.color?' cell-'+c.color:''}" data-content-col="${esc(c.key)}" title="${esc(c.raw||c.text)}">${esc(c.text)}</span>`).join('')}
     <span class="sc-row-est${estDefault?' sc-est-default':''}" title="${estDefault?'実績データが無いための暫定既定値です':''}">${estDefault?'~':''}${esc(estText)}</span>
     <span class="sc-row-actual">${esc(actualText)}</span>
     <span class="sc-row-flags">${flags}</span>

@@ -56,12 +56,24 @@
   height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
   font-size:var(--fs-sm);border-radius:var(--radius-sm);
 }
-/* --- 表の中・タグ（行の高さに収まる小片） --- */
+/* --- 表の中・タグ（行の高さに収まる小片） ---
+   **行はひとつの読み単位**なので、行の中のボタン・リンクは**セルの値と
+   同じ大きさ**にする(§9.90)。以前はセル14pxに対しボタン12px・分割フラグ
+   12px・バッジ10pxで、実測すると1行の中に文字サイズが3種類あった
+   (仕掛一覧で600箇所)。同じ距離で同時に読むものが違う大きさだと、
+   表全体が「揃っていない」と感じられる。
+   高さは --row-ctl-h(行に合わせて縮む)。行間を最密にしたときに
+   ボタンだけが行より背高になって行を押し広げるのを防ぐ。 */
 .measurement-action-button,.plan-action-button,.plan-select-add,.plan-select-clear,
 .grid-lot-link,.lot-dsp-link,.sc-row-btn,.sc-board-window-btn,.sc-board-sort-btn,.sc-mode-toggle-btn,
 .sc-session-banner button,.shift-seg button,.qa-v7 .qa-seg.qa-seg-sm button{
-  height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);
-  font-size:var(--fs-sm);border-radius:var(--radius-sm);
+  height:var(--row-ctl-h);padding:0 var(--ctl-pad-x-xs);
+  font-size:var(--tbl-fs);border-radius:var(--radius-sm);
+}
+/* 表の外にあるタグ・チップは従来どおり(行の密度に引きずられない)。 */
+.sc-board-window-btn,.sc-board-sort-btn,.sc-mode-toggle-btn,
+.sc-session-banner button,.shift-seg button,.qa-v7 .qa-seg.qa-seg-sm button{
+  height:var(--ctl-h-xs);font-size:var(--fs-sm);
 }
 /* --- タブ（高さだけ揃える。角丸・配色はタブごとの規則が持つ） --- */
 .tab,.tabs button,.subtabs button,.work-tabs button,.mode-tabs button,
@@ -75,7 +87,7 @@
 .fp-lock-btn{padding:0}
 /* ロット№のセル内リンクは省略記号(…)を効かせるため display:block のまま。
    ボタンと違って中身が自動で中央に来ないので、行の高さで縦位置を作る。 */
-.lot-dsp-link{line-height:calc(var(--ctl-h-xs) - 2px)}
+.lot-dsp-link{line-height:var(--row-ctl-h)}
 .record-list-actions button{padding:0 var(--space-1)}
 .sc-row-btn{padding:0 var(--space-1)}
 /* --- 文字の役割（見出し・要約・バッジ）（§9.71） ---

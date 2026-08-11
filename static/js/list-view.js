@@ -34,7 +34,12 @@ async function init(){
    (一覧表示設定マスタ)。段階(1〜5)で持ち、実際の余白は --row-gap へ流す。
    **1本のつまみで行の高さが決まる**構造にしてあるので(§9.88 段0)、
    ここはその値を差し替えるだけで済む。 */
-const ROW_GAP_STEPS={1:'2px',2:'3px',3:'4px',4:'6px',5:'9px'};
+/* **詰める側へ寄せてある**(§9.90)。以前は 2/3/4/6/9px だったが、行の高さが
+   `--ctl-h-xs(26px固定) + 余白×2 + 罫線` だったため、最密でも31pxより
+   詰まらず「小さくする方向に調整できない」状態だった。行の高さを文字から
+   作る形へ変えた(00-base.css)ので、ここが素直に効く。
+   最密(1)で約22px、既定(3)で約28px、最疎(5)で約42px。 */
+const ROW_GAP_STEPS={1:'1px',2:'2px',3:'4px',4:'7px',5:'11px'};
 let rowGapValue=3;
 function applyRowGap(step){
  rowGapValue=Math.max(1,Math.min(5,Number(step)||3));
@@ -119,26 +124,42 @@ const sortPresets=(()=>{
          mode};
 })();
 
-/* 並び順のツールバー。今の並びを見せ、いつも使う並びを選び、保存する。 */
+/* 並び順のツールバー。今の並びを見せ、いつも使う並びを選び、保存する。
+   選ぶ・保存する・消すは**1つのメニューの中**に置く(§9.90)。 */
 function bindSortControls(bar){
- const sel=bar.querySelector('#listSortPreset');
- const save=bar.querySelector('#listSortSave');
- const del=bar.querySelector('#listSortDel');
- if(!sel||!save||!del)return;
- sel.onchange=async()=>{
-  const id=sel.value;
-  sortPresets.setPicked(id||null);
-  if(!id){WL.listSort.clear();S.page=1;renderSortBar();load();return}
-  const p=sortPresets.find(id);
-  if(!p)return;
-  WL.listSort.set(p.sorts||[]);
-  S.page=1;renderSortBar();
-  // 使った回数を数えて、よく使うものが上に来るようにする(フィルタと同じ)。
-  api('/api/sort-presets/use',{method:'POST',headers:{'Content-Type':'application/json'},
-   body:JSON.stringify(withUserId({id:p.id}))}).catch(()=>{});
-  load();
+ const btn=bar.querySelector('#listSortPresetBtn');
+ const menu=bar.querySelector('#listSortMenu');
+ if(!btn||!menu)return;
+ const closeMenu=()=>{menu.hidden=true;btn.setAttribute('aria-expanded','false')};
+ btn.onclick=e=>{
+  e.stopPropagation();
+  if(!menu.hidden){closeMenu();return}
+  renderSortMenu();menu.hidden=false;btn.setAttribute('aria-expanded','true');
  };
- save.onclick=async()=>{
+ document.addEventListener('click',e=>{if(!menu.hidden&&!menu.contains(e.target))closeMenu()});
+ menu.addEventListener('click',async e=>{
+  const act=e.target.closest('[data-act]');if(!act)return;
+  e.stopPropagation();
+  const id=act.dataset.id||'';
+  if(act.dataset.act==='use'){
+   sortPresets.setPicked(id||null);
+   const p=sortPresets.find(id);
+   if(p){
+    WL.listSort.set(p.sorts||[]);
+    // 使った回数を数えて、よく使うものが上に来るようにする(フィルタと同じ)。
+    api('/api/sort-presets/use',{method:'POST',headers:{'Content-Type':'application/json'},
+     body:JSON.stringify(withUserId({id:p.id}))}).catch(()=>{});
+   }
+   closeMenu();S.page=1;renderSortBar();load();return;
+  }
+  if(act.dataset.act==='clear'){
+   sortPresets.setPicked(null);WL.listSort.clear();
+   closeMenu();S.page=1;renderSortBar();load();return;
+  }
+  if(act.dataset.act==='save'){closeMenu();await saveCurrentSort();return}
+  if(act.dataset.act==='del'){closeMenu();await deleteSortPreset(id);return}
+ });
+ async function saveCurrentSort(){
   const keys=WL.listSort.keys();
   if(!keys.length){
    showToast&&showToast('保存する並び順がありません','見出しをクリックして並べ替えてから保存してください',3600);return;
@@ -156,20 +177,47 @@ function bindSortControls(bar){
    renderSortBar();
    showToast&&showToast(r.registered?'並び順を登録しました':'登録済みの並び順を更新しました',nm,2600);
   }catch(e){showToast&&showToast('保存に失敗しました',e.message,5000)}
- };
- del.onclick=async()=>{
-  const p=sortPresets.find(sortPresets.picked());
+ }
+ async function deleteSortPreset(id){
+  const p=sortPresets.find(id);
   if(!p)return;
   if(!confirm(`並び順「${p.name}」を削除します。よろしいですか？`))return;
   try{
    await api('/api/sort-presets/delete',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify(withUserId({id:p.id}))});
    await sortPresets.load();
-   sortPresets.setPicked(null);
+   if(String(sortPresets.picked()||'')===String(id))sortPresets.setPicked(null);
    renderSortBar();
    showToast&&showToast('並び順を削除しました',p.name,2400);
   }catch(e){showToast&&showToast('削除に失敗しました',e.message,5000)}
- };
+ }
+}
+
+/* いつも使う並びのメニュー。**今の状態→選ぶ→作る**の順に並べる
+   (フィルタの登録条件と同じ並び。同じ形の機能は同じ操作で使えるべき)。 */
+function renderSortMenu(){
+ const menu=document.getElementById('listSortMenu');if(!menu)return;
+ const cur=String(sortPresets.picked()||'');
+ const items=sortPresets.all();
+ const target=listLayoutTarget();
+ const now=WL.listSort.keys();
+ const nowLabel=now.length
+  ? now.map(k=>`${WL.columnLayout.label(target,k.column)}${k.dir==='desc'?'↓':'↑'}`).join(' → ')
+  : '指定なし';
+ menu.innerHTML=`
+  <div class="lsm-now">今の並び<b>${esc(nowLabel)}</b></div>
+  <div class="lsm-list">${items.length?items.map(p=>`
+    <div class="lsm-item${String(p.id)===cur?' is-on':''}">
+     <button type="button" class="lsm-use" data-act="use" data-id="${esc(String(p.id))}"
+      title="${esc(p.sorts?.map(s=>WL.columnLayout.label(target,s.column)+(s.dir==='desc'?'↓':'↑')).join(' → ')||'')}">
+      ${String(p.id)===cur?'●':'○'} ${esc(p.name)}</button>
+     <button type="button" class="lsm-del" data-act="del" data-id="${esc(String(p.id))}" title="この並びを削除">×</button>
+    </div>`).join('')
+   :'<div class="lsm-empty">まだ登録がありません。見出しをクリックして並べ替えてから「今の並びを保存」を押します。</div>'}</div>
+  <div class="lsm-actions">
+   <button type="button" data-act="save">今の並びを保存…</button>
+   <button type="button" data-act="clear"${now.length?'':' disabled'}>並びを解除</button>
+  </div>`;
 }
 
 /* 今の並びを見せる。**列名ではなく表示名で出す**(§9.88 段2)——画面に出て
@@ -195,15 +243,16 @@ function renderSortBar(){
    };
   });
  }
- const sel=document.getElementById('listSortPreset');
- if(sel){
-  const cur=sortPresets.picked()||'';
-  sel.innerHTML=`<option value="">いつも使う並び…</option>`+
-   sortPresets.all().map(p=>`<option value="${esc(String(p.id))}"${String(p.id)===cur?' selected':''}>${esc(p.name)}</option>`).join('');
-  sel.value=cur;
+ /* ボタンには**選んでいる並びの名前**を出す。何も選んでいなければ役割名。
+    固定幅のselectをやめたので、長い名前でも途中で切れない(§9.90)。 */
+ const btn=document.getElementById('listSortPresetBtn');
+ if(btn){
+  const p=sortPresets.find(sortPresets.picked());
+  btn.classList.toggle('is-on',!!p);
+  btn.innerHTML=p?`★ ${esc(p.name)}<i>▾</i>`:'★ いつも使う並び<i>▾</i>';
  }
- const del=document.getElementById('listSortDel');
- if(del)del.hidden=!sortPresets.find(sortPresets.picked());
+ const menu=document.getElementById('listSortMenu');
+ if(menu&&!menu.hidden)renderSortMenu();
 }
 WL.listSortBar={render:renderSortBar,presets:sortPresets};
 
@@ -449,11 +498,49 @@ async function fetchTableData(key,force){
  if(hit){applyTableData(hit.data);updateListFreshness(hit.at);return}
  const label=databaseLabel(S.db),table=S.table||'テーブル';
  await withWaiting({title:`${label}を読み込んでいます`,detail:`テーブル: ${table}`,
-   progress:'検索条件を反映して一覧データを取得しています'},async()=>{
-  const d=await api('/api/table?'+key);
+   progress:'サーバーが読み出しています'},async(report)=>{
+  const d=await fetchWithBreakdown('/api/table?'+key,report);
   tableCacheSet(key,d);applyTableData(d);updateListFreshness(null);
  });
 }
+/* ---------- 読み込みの内訳(§9.90) ----------
+   「一覧が出るまで時間がかかる」という報告に対して、**どこで待っている
+   のか**が分からないと打ち手が決まらない(共有が遅いのか、量が多くて
+   転送に時間がかかっているのか、描画なのか)。4つに分けて測る。
+     読み出し … サーバー側(DBを開く→数える→取り出す→結合する)
+     転送     … 本文を受け取り切るまで
+     整形     … JSONを組み立てるまで
+     表示     … 画面に並べるまで(applyTableData→renderGrid)
+   サーバー側の内訳は /api/table が timing で返す(Server-Timingにも同じ値)。
+   最初の1バイトが来るまで(TTFB)を測るために fetch を直接使う。 */
+let lastLoadBreakdown=null;
+async function fetchWithBreakdown(url,report){
+ const t0=performance.now();
+ const res=await fetch(url,{headers:{'Accept':'application/json'}});
+ const tHead=performance.now();
+ report&&report({progress:'データを受け取っています'});
+ const text=await res.text();
+ const tBody=performance.now();
+ report&&report({progress:'画面に並べています'});
+ let d;
+ try{d=JSON.parse(text)}
+ catch(e){throw new Error(`応答を読み取れませんでした(${res.status})`)}
+ if(!res.ok)throw new Error(d&&d.error||`HTTP ${res.status}`);
+ const tParse=performance.now();
+ lastLoadBreakdown={
+  server:d.timing&&d.timing.server||Math.round(tHead-t0),
+  detail:d.timing||null,
+  wait:Math.round(tHead-t0),          // 送ってから最初の応答まで
+  transfer:Math.round(tBody-tHead),   // 本文を受け取り切るまで
+  parse:Math.round(tParse-tBody),
+  bytes:text.length,rows:(d.rows||[]).length,columns:(d.columns||[]).length,
+  render:0,at:Date.now(),
+ };
+ return d;
+}
+/* 描画にかかった分を後から足す(呼び出し側が並べ終えてから分かるため)。 */
+function noteRenderTime(ms){if(lastLoadBreakdown)lastLoadBreakdown.render=Math.round(ms)}
+WL.loadBreakdown=()=>lastLoadBreakdown&&{...lastLoadBreakdown};
 window.fetchTableData=fetchTableData;
 
 /* 一覧を取りに行くときの問い合わせを**1箇所で組み立てる**。
@@ -478,6 +565,29 @@ WL.listQuery=listQuery;
 async function load(force){
  await fetchTableData(String(listQuery()),force);
  renderGrid();
+}
+/* 内訳を一覧の脇に出す。**遅かったときだけ**目立たせる(速いときに
+   出しても読む理由が無い)。押すと内訳の内わけが出る。 */
+function renderLoadChip(){
+ const chip=document.getElementById('listLoadChip');
+ const b=lastLoadBreakdown;
+ if(!chip)return;
+ if(!b){chip.hidden=true;return}
+ const total=b.wait+b.transfer+b.parse+b.render;
+ chip.hidden=false;
+ const slow=total>=1500;
+ chip.className='list-load-chip'+(slow?' is-slow':'');
+ const kb=Math.round(b.bytes/1024);
+ const src={mirror:'手元の写し',share:'共有を直接',local:'手元'}[b.detail&&b.detail.source]||'';
+ chip.textContent=`${(total/1000).toFixed(1)}秒`;
+ chip.title=[
+  `読み出し ${b.wait}ms（サーバー側 ${b.server}ms${src?' / '+src:''}）`,
+  b.detail?`　└ 開く${b.detail.open??'-'}ms・列${b.detail.cols??'-'}ms・件数${b.detail.count??'-'}ms・取り出し${b.detail.fetch??'-'}ms`
+           +(b.detail.join!=null?`・品質結合${b.detail.join}ms`:''):'',
+  `転送 ${b.transfer}ms（${kb}KB）`,
+  `整形 ${b.parse}ms`,
+  `表示 ${b.render}ms（${b.rows}行 × ${b.columns}列）`,
+ ].filter(Boolean).join('\n');
 }
 /* データベース切替→テーブル選択は、実際に目視できる2段階で待機表示する
    (テーブル構成の確認→列情報・一覧データの取得)。以前は3段階だったが、
@@ -527,6 +637,14 @@ async function selectTable(t,report){
 function findColumnFor(key){return (aliases[key]||[]).find(n=>S.columns.includes(n))||null}
 // Add an explicit virtual action column instead of writing into the last data column.
 function renderGrid(){
+ /* **描画にかかった時間はここで測る。** filters.js が load() を丸ごと
+    置き換えるため、load()側に置くと絞り込みを使ったときだけ測れなくなる
+    (§9.88と同じ落とし穴)。renderGridは両方の経路が必ず通る。 */
+ const _t0=performance.now();
+ try{return renderGridInner()}
+ finally{noteRenderTime(performance.now()-_t0);renderLoadChip()}
+}
+function renderGridInner(){
  bumpGridGeneration();   // 前の描画に紐づく非同期判定を打ち切る(下のcheck*参照)
  /* ロット問い合わせ(LotDsp)は仕掛一覧・品質データのどちらでも使えるように
     する。「測定」列(測定画面を開く)は**役割が「作業」のデータソース**専用。
@@ -721,16 +839,32 @@ function ensureListToolbar(){
   /* 行間(§9.88)は**動かした瞬間に反映**する。数値を入れて確定させる形にすると、
      どの値が自分に合うのかを試せない(見て決めるものなので、見ながら動かす)。
      保存は離した時点で1回だけ(動かしている間ずっと書きに行かない)。 */
-  bar.innerHTML=`<button type="button" id="listColumnBtn" class="list-toolbar-btn" title="この一覧に表示する列を選びます">☰ 表示列</button>
-   <label class="list-rowgap" title="行の間隔を変えます（この一覧ごとに覚えます）"><span>行間</span>
-    <input type="range" id="listRowGap" min="1" max="5" step="1" value="3" aria-label="行の間隔"></label>
-   <span class="list-sort" id="listSort" hidden>
+  /* ツールバーは**3つの群**に分ける(§9.90)。以前は「表示列・行間・並びの札・
+     いつも使う並び(選択)・保存・削除・結合の状態」が同じ高さで一列に並び、
+     どれが設定でどれが状態なのか、どこまでが1つのまとまりなのかが
+     読み取れなかった。近接と囲みで群を作る(ゲシュタルトの近接・共通領域)。
+       [ 見せ方 ] 表示列・行間      … この一覧の見た目を決める
+       [ 並び   ] 今の並び・いつも使う並び … 並べ替えに関するものだけ
+       [ 状態   ] 品質データ結合     … 操作ではなく結果。右端へ寄せる
+     「いつも使う並び」は**選択+保存+削除の3つを1つのメニューへ畳んだ**。
+     常に出しておく必要があるのは「今どの並びか」だけで、保存・削除は
+     必要になったときに開けばよい(段階的な開示)。固定幅のselectを
+     やめたので、長い名前が途中で切れることも無くなる。 */
+  bar.innerHTML=`<span class="lt-group" role="group" aria-label="見せ方">
+    <button type="button" id="listColumnBtn" class="list-toolbar-btn" title="この一覧に出す列・並び・幅・書式をまとめて設定します">☰ 表示列</button>
+    <label class="list-rowgap" title="行の間隔を変えます（この一覧ごとに覚えます）"><span>行間</span>
+     <input type="range" id="listRowGap" min="1" max="5" step="1" value="3" aria-label="行の間隔"></label>
+   </span>
+   <span class="lt-group list-sort" id="listSort" role="group" aria-label="並び" hidden>
     <span class="list-sort-label">並び</span>
     <span class="list-sort-keys" id="listSortKeys"></span>
-    <select id="listSortPreset" class="list-sort-preset" title="いつも使う並びを選びます"></select>
-    <button type="button" id="listSortSave" class="list-toolbar-btn" title="今の並び順に名前を付けて保存します">保存</button>
-    <button type="button" id="listSortDel" class="list-toolbar-btn" title="選んでいる並びを削除します" hidden>削除</button>
+    <span class="list-sort-preset-wrap">
+     <button type="button" id="listSortPresetBtn" class="list-toolbar-btn" aria-haspopup="true" aria-expanded="false"
+      title="いつも使う並びを選ぶ・今の並びを保存する">★ いつも使う並び<i>▾</i></button>
+     <div class="list-sort-menu" id="listSortMenu" hidden></div>
+    </span>
    </span>
+   <span class="list-load-chip" id="listLoadChip" title="読み込みにかかった時間の内訳" hidden></span>
    <span class="list-join-chip" id="listJoinChip" hidden></span>`;
   grid.parentNode.insertBefore(bar,grid);
   /* 列の設定はこの一覧の設定パネルへ集約する(§9.88 段2)。名前・並び・幅・

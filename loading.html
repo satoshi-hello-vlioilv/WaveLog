@@ -282,7 +282,11 @@
   fillEl.style.width=pct+'%'; pctEl.textContent=pct+'%';
   barEl.setAttribute('aria-valuenow',String(pct));
   var url=(info.url||('http://127.0.0.1:'+PORT+'/'));
-  setTimeout(function(){ location.replace(url) },250); // 引き渡し前の表示を一瞬見せる
+  /* **待たずに移る**(§9.92)。以前は250ms待って「6段階すべて完了」を
+     見せていたが、進捗はこの行の直前に既に描き終えており、待ちは
+     引き継ぎの間(=画面が止まって見える時間)を延ばすだけだった。
+     次の描画が済んでから移ることだけ保証する。 */
+  requestAnimationFrame(function(){ requestAnimationFrame(function(){ location.replace(url) }) });
  };
 
  function probe(){

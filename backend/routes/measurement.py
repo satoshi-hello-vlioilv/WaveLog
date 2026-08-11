@@ -9,6 +9,7 @@ from ..repositories.master_repo import read_operator_names, read_spool_names, re
 from ..repositories.master_repo import read_burr_names, read_coil_stop_names, ensure_burr_master, ensure_coil_stop_master, BURR_MASTER_TABLE, COIL_STOP_MASTER_TABLE
 from ..repositories.master_repo import read_equipment_max_strips, STRIP_LIMIT, DEFAULT_MAX_STRIPS
 from .. import records_export
+from ..logging_setup import app_logger
 
 bp=Blueprint('measurement',__name__)
 
@@ -183,6 +184,42 @@ def backup_delete():
   # 実績突合が次の描画で必ず消えた状態を見るようにする(§9.41のキャッシュ)。
   invalidate_backup_rows_cache()
   return jsonify(ok=True,deleted=deleted,requested=len(ids))
+ except Exception as e:return jsonify(error=str(e)),500
+
+@bp.get('/api/measurement/backup/summary')
+def backup_summary():
+ """データ一覧に**他のPCで保存された測定データ**を出すための軽い一覧(§9.91)。
+
+ 従来、途中経過は端末内(IndexedDB+localStorage)にしか無く、データ一覧も
+ そこだけを読んでいたため、**別のPCからは同じロットの続きが見えなかった**
+ (子ロットデータもレコードの中(settings.splitSourcesCache)にあるので同じ)。
+ ここは records.sqlite3 の行を**ペイロード抜き**で返す。一覧に出すのに
+ 必要なのは見出しだけで、中身は開くときに1件だけ取ればよい
+ (全件のペイロードを毎回運ぶと、共有越しでは一覧を開くたびに数MBになる)。
+
+ 読み取り専用。書き込みは一切しない。
+ """
+ try:
+  items,path=read_backup_rows(MEAS_DB)
+  if items is None:return jsonify(ok=True,items=[],count=0,table_exists=False,meas_path=str(path))
+  slim=[{k:v for k,v in r.items() if k!='payload'} for r in items]
+  return jsonify(ok=True,items=slim,count=len(slim),table_exists=True,meas_path=str(path))
+ except Exception as e:
+  # 一覧そのものは端末内のデータで出せるので、ここで500にしても画面は壊さない。
+  app_logger().warning('/api/measurement/backup/summary で失敗: %s',e)
+  return jsonify(error=f'共有データの一覧を読めませんでした: {e}',meas_path=str(MEAS_DB)),500
+
+@bp.get('/api/measurement/backup/get')
+def backup_get():
+ """1件だけペイロード込みで返す(§9.91)。他のPCで保存された続きを開くとき、
+ その1件だけを取り込むために使う。"""
+ rid=str(request.args.get('id') or '').strip()
+ if not rid:return jsonify(error='記録IDがありません。'),400
+ try:
+  items,path=read_backup_rows(MEAS_DB)
+  if items is None:return jsonify(ok=True,item=None,table_exists=False,meas_path=str(path))
+  hit=next((r for r in items if r.get('id')==rid),None)
+  return jsonify(ok=True,item=hit,table_exists=True,meas_path=str(path))
  except Exception as e:return jsonify(error=str(e)),500
 
 @bp.get('/api/measurement/backup/list')

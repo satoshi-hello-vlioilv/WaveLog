@@ -1,19 +1,25 @@
 "use strict";
-/* list-columns.js: 列の設定パネル(§9.88 段2-3)
+/* list-columns.js: 列の設定パネル(§9.88 段2-3 / §9.90で作り直し)
    ============================================================
    1つの列の設定は1箇所に集める。名前・幅・並び・表示・書式を別々の画面へ
    散らすと、利用者は毎回「これはどこで設定するんだったか」を思い出す
    ことになる——認知コストの最大の発生源はそこ。
 
-   画面は3面:
-     左  この一覧の全列(D&Dで並べ替え・チェックで表示/非表示)
+   画面は2面:
+     左  **列のリスト**(縦に並ぶ。1行=1列)。チェックで表示/非表示、
+         つまみで並べ替え、右端に**その列の実データ1件がどう見えるか**
      右  選んだ1列の設定だけ(一度に見せる情報を絞る)
-     下  実データのプレビュー ← **この画面の主役**
 
-   下のプレビューが主役なのは、書式や読み替えが「仕様を読んで想像する
-   もの」ではなく「結果を見て決めるもの」だから。右ペインにも
-   「例: 生の値 → 見え方」を常に出し、打つそばから結果が見えるようにする。
-   段4(読み替え)はここへ項目が増えるだけで済む。
+   §9.90で下段の横長プレビュー表をやめ、**例をリストの中へ入れた**。
+   横長の表は「1行ぶんの見え方」を確かめるには向くが、37列あると端が
+   見えず、並べ替えの操作(縦のリスト)と結果(横の表)が別の場所に出るため
+   視線が往復する。1行=1列で「名前・出す/出さない・見え方」が同じ行に
+   並んでいれば、その行だけを見て判断できる。**例は1件でよい**——
+   書式や読み替えが効いているかは1件見れば分かる。
+
+   触った結果は**そのまま後ろの一覧へ即反映**する(WL.columnLayout.stage)。
+   設定画面の中の見本で想像させるより、本物の一覧が変わるほうが速く確実。
+   保存は別操作で、閉じるときに保存していなければ元へ戻す。
 
    計算列・ボタン列(#・分割・測定・予定)も同じ一覧に並べる。利用者から
    見れば同じ「列」で、別扱いする理由が無い。ただし値を持たないので、
@@ -21,7 +27,7 @@
    ============================================================ */
 (function(){
  const PANEL_ID='listColumnPanel';
- let target='',draft=null,picked='';
+ let target='',draft=null,picked='',original=null,saved=false;
 
  /* 値を持たない列(行番号・ボタン)。並びと幅と名前は変えられるが、
     書式や読み替えは持たない。 */
@@ -60,18 +66,23 @@
   el=document.createElement('div');
   el.className='sc-float-win';el.id=PANEL_ID;el.hidden=true;
   el.innerHTML=`
-   <div class="sc-float-header"><div><h2>列の設定</h2></div>
+   <div class="sc-float-header"><div><h2>列の設定</h2>
+     <small class="lc-sub">変えたものはすぐ後ろの一覧に出ます。残すときは保存を押します。</small></div>
     <button type="button" id="lcClose" title="閉じる">×</button></div>
    <div class="sc-float-body lc-body">
     <div class="lc-side">
-     <input type="search" id="lcFilter" class="lc-filter" placeholder="列名で絞り込み" autocomplete="off">
+     <div class="lc-side-head">
+      <input type="search" id="lcFilter" class="lc-filter" placeholder="列名で絞り込み" autocomplete="off">
+     </div>
+     <div class="lc-list-head"><span>出す</span><span>列（上下にドラッグで並べ替え）</span>
+      <span>この列の見え方（実データ1件）</span></div>
      <div class="lc-list" id="lcList"></div>
     </div>
     <div class="lc-detail" id="lcDetail"></div>
    </div>
-   <div class="lc-preview" id="lcPreview"></div>
    <div class="sc-float-foot">
     <span class="lc-count" id="lcCount"></span>
+    <span class="lc-foot-note" id="lcFootNote"></span>
     <div class="sc-content-foot-actions">
      <button type="button" id="lcReset">既定に戻す</button>
      <button type="button" id="lcSave" class="sc-column-save">保存</button>
@@ -85,10 +96,14 @@
   el.querySelector('#lcFilter').addEventListener('input',renderList);
   /* 位置と大きさは共通のフローティングウィンドウに任せる(§9.16)。
      **これが効かないとパネルは画面外へ開く**(幅も高さも与えられず、
-     中身の実データの列数だけ横に伸びる)ので、無ければ気づけるようにする。 */
+     中身の実データの列数だけ横に伸びる)ので、無ければ気づけるようにする。
+     §9.90で既定を広げた(880×620→1180×760)。列が37本ある一覧で
+     11本しか見えず、下段のプレビュー表が場所を取っていたため。
+     保存キーも変える——既に小さい値を覚えている端末があるので、
+     同じキーのままだと新しい既定が誰にも見えない。 */
   if(typeof WL.makeFloatingWindow==='function')
-   WL.makeFloatingWindow(el,{storageKey:'listColumnPanelRectV2',defaultWidth:880,defaultHeight:620,
-                             defaultTop:70,minWidth:560,minHeight:400});
+   WL.makeFloatingWindow(el,{storageKey:'listColumnPanelRectV3',defaultWidth:1180,defaultHeight:760,
+                             defaultTop:60,minWidth:720,minHeight:460});
   else console.error('列の設定パネル: WL.makeFloatingWindow が見つかりません');
   return el;
  }
@@ -121,45 +136,123 @@
   if(!picked||!draft.order.includes(picked))picked=draft.order.find(k=>!isVirtual(k))||draft.order[0]||'';
  }
 
+ /* この列の実データ1件が、今の設定でどう見えるか。書式・読み替えを
+    通した結果をそのまま出す(一覧のセルと同じ関数)。 */
+ function sampleCell(k){
+  if(isVirtual(k))return {text:'（ボタン）',color:'',raw:''};
+  const raw=sampleValue(k);
+  if(raw==='')return {text:'',color:'',raw:''};
+  const row=(S.rows||[]).find(r=>String(r[k]??'')===String(raw));
+  const out=WL.cellFormat.cell({raw,format:draft.formats[k]||null,rule:draft.rules[k]||'',row,column:k});
+  return {text:out.text,color:out.color,raw:String(raw)};
+ }
+
  function renderList(){
   const box=document.getElementById('lcList');if(!box)return;
   const q=String(document.getElementById('lcFilter')?.value||'').trim().toLowerCase();
   const rows=draft.order.filter(k=>!q||labelOf(k).toLowerCase().includes(q)||k.toLowerCase().includes(q));
-  box.innerHTML=rows.map(k=>`
-   <div class="lc-item${k===picked?' is-picked':''}" data-key="${esc(k)}" draggable="true">
-    <input type="checkbox" ${draft.hidden.has(k)?'':'checked'} title="一覧に出すかどうか">
-    <span class="lc-grip" title="ドラッグで並べ替え">⠿</span>
+  box.innerHTML=rows.map(k=>{
+   const s=sampleCell(k);
+   const changed=s.raw&&s.raw!==s.text;
+   return `
+   <div class="lc-item${k===picked?' is-picked':''}${draft.hidden.has(k)?' is-off':''}" data-key="${esc(k)}">
+    <label class="lc-vis" title="一覧に出すかどうか">
+     <input type="checkbox" ${draft.hidden.has(k)?'':'checked'}></label>
+    <span class="lc-grip" title="上下にドラッグして並べ替え">⠿</span>
     <span class="lc-name" title="${esc(k)}">${esc(labelOf(k))}</span>
-    ${draft.names[k]?'<i class="lc-renamed" title="表示名を変えています">名</i>':''}
-    ${draft.formats[k]?`<i class="lc-renamed" title="${esc(fmtNote(draft.formats[k]))}">書</i>`:''}
-    ${draft.rules[k]?`<i class="lc-renamed" title="読み替え: ${esc(draft.rules[k])}">替</i>`:''}
-   </div>`).join('')||'<div class="sc-empty-note">該当する列がありません</div>';
+    <span class="lc-marks">${draft.names[k]?'<i class="lc-mark" title="表示名を変えています">名</i>':''}${
+      draft.formats[k]?`<i class="lc-mark" title="${esc(fmtNote(draft.formats[k]))}">書</i>`:''}${
+      draft.rules[k]?`<i class="lc-mark" title="読み替え: ${esc(draft.rules[k])}">替</i>`:''}</span>
+    <span class="lc-eg">${changed?`<s>${esc(s.raw)}</s>`:''}<b class="${s.color?'cell-'+s.color:''}">${
+      esc(s.text)||'<i class="lc-eg-none">（値のある行がありません）</i>'}</b></span>
+   </div>`}).join('')||'<div class="sc-empty-note">該当する列がありません</div>';
   box.querySelectorAll('.lc-item').forEach(el=>{
    const k=el.dataset.key;
-   el.querySelector('input').onchange=e=>{
+   /* **チェックは click で受ける。** change は click の後(=行の
+      クリックで作り直した後)に飛ぶため、以前は反映されなかった
+      ——外しても一覧に残る、という不具合として出ていた(実測で確認)。
+      ここで止めておけば行のクリック(=列を選ぶ)とも衝突しない。 */
+   el.querySelector('.lc-vis').addEventListener('click',e=>{
     e.stopPropagation();
-    if(e.target.checked)draft.hidden.delete(k);else draft.hidden.add(k);
-    renderCount();renderPreview();
-   };
-   el.onclick=()=>{picked=k;renderList();renderDetail();};
-   el.addEventListener('dragstart',e=>{e.dataTransfer.setData('text/plain',k);el.classList.add('lc-dragging')});
-   el.addEventListener('dragend',()=>el.classList.remove('lc-dragging'));
-   el.addEventListener('dragover',e=>e.preventDefault());
-   el.addEventListener('drop',e=>{
-    e.preventDefault();
-    const from=e.dataTransfer.getData('text/plain');if(!from||from===k)return;
-    const o=draft.order,i=o.indexOf(from);if(i<0)return;
-    o.splice(i,1);o.splice(o.indexOf(k),0,from);
-    renderList();renderPreview();
+    const on=el.querySelector('input').checked;   // clickの時点で反転済み
+    if(on)draft.hidden.delete(k);else draft.hidden.add(k);
+    el.classList.toggle('is-off',!on);
+    renderCount();applyLive();
+   });
+   /* **選ぶのは click。** mouseup で選ぶ作りにすると、`el.click()` のような
+      素のクリック(キーボード操作・自動化・支援技術)で選べなくなる。 */
+   el.addEventListener('click',e=>{
+    if(e.target.closest('.lc-vis'))return;
+    picked=k;renderList();renderDetail();
+   });
+   /* **行のどこを掴んでも並べ替えられる**。つまみは目印で、そこしか
+      掴めない作りにすると「掴めない＝並べ替えられない」と受け取られる。
+      動かさなければ何もしない(上の click が選ぶ)、**4px以上動かしたら
+      並べ替え**、としきい値で分けるので、選ぶ操作とは衝突しない。 */
+   el.addEventListener('mousedown',e=>{
+    if(e.button!==0||e.target.closest('.lc-vis'))return;
+    const sx=e.clientX,sy=e.clientY;let started=false;
+    const move=ev=>{
+     if(started)return;
+     if(Math.abs(ev.clientX-sx)+Math.abs(ev.clientY-sy)<4)return;
+     started=true;cleanup();startReorder(ev,el,k);
+    };
+    const up=()=>cleanup();
+    function cleanup(){document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up)}
+    document.addEventListener('mousemove',move);document.addEventListener('mouseup',up);
+    e.preventDefault();   // 掴んでいる間に文字が選択されるのを防ぐ(clickは残る)
    });
   });
   renderCount();
  }
 
+ /* 並べ替えは**ポインタで掴んで動かす**(§9.90)。HTML5のD&Dは行の
+    クリック(列を選ぶ)と紛れやすく、掴んだ手応えも出ない。掴んでいる間は
+    入る位置に線を出し、離した時点で確定してそのまま一覧へ反映する。 */
+ function startReorder(ev,el,key){
+  ev.preventDefault();ev.stopPropagation();
+  const box=el.parentElement;
+  el.classList.add('lc-dragging');
+  const mark=document.createElement('div');mark.className='lc-drop-mark';
+  const place=y=>{
+   const items=[...box.querySelectorAll('.lc-item:not(.lc-dragging)')];
+   let before=null;
+   for(const it of items){
+    const r=it.getBoundingClientRect();
+    if(y<r.top+r.height/2){before=it;break}
+   }
+   box.insertBefore(mark,before);
+   return before?before.dataset.key:null;
+  };
+  let beforeKey=place(ev.clientY);
+  const onMove=e=>{beforeKey=place(e.clientY)};
+  const onUp=()=>{
+   document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);
+   mark.remove();el.classList.remove('lc-dragging');
+   const o=draft.order,i=o.indexOf(key);
+   if(i>=0){
+    o.splice(i,1);
+    const at=beforeKey?o.indexOf(beforeKey):o.length;
+    o.splice(at<0?o.length:at,0,key);
+   }
+   renderList();applyLive();
+  };
+  document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
+ }
+
+ /* 触った結果を**保存せずに**後ろの一覧へ当てる(§9.90)。 */
+ function applyLive(){
+  WL.columnLayout.stage(target,{order:draft.order,widths:draft.widths,hidden:[...draft.hidden],
+                                names:draft.names,formats:draft.formats,rules:draft.rules});
+  if(typeof renderGrid==='function')renderGrid();
+  const note=document.getElementById('lcFootNote');
+  if(note)note.textContent='一覧に反映しています（保存すると次に開いたときも同じ形で出ます）';
+ }
+
  function renderCount(){
   const el=document.getElementById('lcCount');if(!el)return;
   const shown=draft.order.filter(k=>!draft.hidden.has(k)).length;
-  el.textContent=`${shown} / ${draft.order.length} 列を表示`;
+  el.textContent=`${shown} / ${draft.order.length} 列`;
  }
 
  /* 日付時刻のよく使う形。**書き方を覚えなくても選べる**ようにするのが目的で、
@@ -270,7 +363,7 @@
   box.querySelector('#lcName').addEventListener('input',e=>{
    const v=e.target.value.trim();
    if(v)draft.names[picked]=v;else delete draft.names[picked];
-   renderList();renderPreview();
+   renderPreview();
   });
   box.querySelector('#lcWidth').addEventListener('input',e=>{
    const n=Number(e.target.value);
@@ -319,55 +412,55 @@
   on('#lcRuleEdit','click',()=>editRule(draft.rules[picked]||''));
  }
 
- /* 実データのプレビュー。**設定を変えるたびに更新する。** */
- function renderPreview(){
-  const box=document.getElementById('lcPreview');if(!box)return;
-  const shown=draft.order.filter(k=>!draft.hidden.has(k));
-  const rows=(S.rows||[]).slice(0,3);
-  const cell=(r,k)=>{
-   if(isVirtual(k))return {text:'—',color:''};
-   return WL.cellFormat.cell({raw:r[k],format:draft.formats[k]||null,rule:draft.rules[k]||'',row:r,column:k});
-  };
-  // 一覧と同じ見え方にする(右づめも含めて)。ここで確かめたとおりに出ないと
-  // プレビューの意味が無い。
-  const cls=(k,color)=>{
-   const c=[draft.formats[k]?.kind==='number'?'col-num':'',color?'cell-'+color:''].filter(Boolean);
-   return c.length?` class="${c.join(' ')}"`:'';
-  };
-  box.innerHTML=`<div class="lc-preview-label">プレビュー（実データの先頭${rows.length}件）</div>
-   <div class="lc-preview-scroll"><table><thead><tr>${
-    shown.map(k=>`<th${cls(k,'')}${draft.widths[k]?` style="width:${draft.widths[k]}px"`:''}>${esc(labelOf(k))}</th>`).join('')
-   }</tr></thead><tbody>${
-    rows.map(r=>`<tr>${shown.map(k=>{
-     const o=cell(r,k);
-     return `<td${cls(k,o.color)}>${esc(o.text)}</td>`;
-    }).join('')}</tr>`).join('')
-    ||'<tr><td>データがありません</td></tr>'
-   }</tbody></table></div>`;
- }
+ /* 一覧そのものが見本なので、パネルの中に別の表は持たない(§9.90)。
+    設定を変えたら**リストの「見え方」と後ろの一覧の両方**を描き直す。
+    **リストを忘れないこと**——書式や読み替えを変えても行の例が古いままだと、
+    「効いていない」と受け取られる(実際にそう見える状態を作ってしまった)。 */
+ function renderPreview(){renderList();applyLive()}
 
  async function save(){
   try{
    await WL.columnLayout.save(target,{order:draft.order,widths:draft.widths,
                                       hidden:[...draft.hidden],names:draft.names,
                                       formats:draft.formats,rules:draft.rules});
+   saved=true;
+   original={order:[...draft.order],hidden:[...draft.hidden],widths:{...draft.widths},
+             names:{...draft.names},formats:JSON.parse(JSON.stringify(draft.formats)),
+             rules:{...draft.rules}};
    showToast&&showToast('列の設定を保存しました','この一覧を次に開いたときも同じ形で出ます',2600);
+   const note=document.getElementById('lcFootNote');
+   if(note)note.textContent='保存しました';
    if(typeof renderGrid==='function')renderGrid();
   }catch(e){showToast&&showToast('保存に失敗しました',e.message,5000)}
  }
  async function reset(){
   draft={order:allKeys(),hidden:new Set(),widths:{},names:{},formats:{},rules:{}};
-  renderList();renderDetail();renderPreview();
+  renderList();renderDetail();applyLive();
  }
 
  function open(){
   target=typeof listLayoutTarget==='function'?listLayoutTarget():'';
   if(!target){showToast&&showToast('一覧を先に開いてください','列の設定はその一覧ごとに保存します',3200);return}
-  ensurePanel();loadDraft();
-  renderList();renderDetail();renderPreview();
+  ensurePanel();
+  /* 閉じたときに戻せるよう、開いた時点の値を控える。 */
+  const cur=WL.columnLayout.get(target);
+  original={order:[...(cur.order||[])],hidden:[...(cur.hidden||[])],widths:{...(cur.widths||{})},
+            names:{...(cur.names||{})},formats:JSON.parse(JSON.stringify(cur.formats||{})),
+            rules:{...(cur.rules||{})}};
+  saved=false;
+  loadDraft();
+  renderList();renderDetail();
   document.getElementById(PANEL_ID).hidden=false;
  }
- function close(){const el=document.getElementById(PANEL_ID);if(el)el.hidden=true}
+ /* 保存せずに閉じたら、後ろの一覧を開いたときの形へ戻す。**触った結果が
+    そのまま残ると「保存」の意味が無くなる**(何が保存済みか分からなくなる)。 */
+ function close(){
+  const el=document.getElementById(PANEL_ID);if(el)el.hidden=true;
+  if(!saved&&original&&target){
+   WL.columnLayout.stage(target,original);
+   if(typeof renderGrid==='function')renderGrid();
+  }
+ }
  function toggle(){
   const el=document.getElementById(PANEL_ID);
   if(el&&!el.hidden)close();else open();

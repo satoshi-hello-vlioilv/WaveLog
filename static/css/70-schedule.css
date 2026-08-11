@@ -62,6 +62,18 @@
 #scListModalBody{display:flex;flex-direction:column;overflow:hidden;padding-bottom:0}
 #scListModalBody #genericFilterBar,#scListModalBody #listToolbar{flex:0 0 auto}
 #scListModalBody #grid{flex:1 1 auto;min-height:0}
+/* 端のつかみ代(§9.90)。四辺+四隅の8方向。JSが差し込むので、窓ごとの
+   HTMLには書かない。辺は6px・角は12pxで、角のほうが手前(z-index)。 */
+.sc-float-grip{position:absolute;z-index:3}
+.sc-float-grip-n{top:-3px;left:0;right:0;height:6px;cursor:ns-resize}
+.sc-float-grip-s{bottom:-3px;left:0;right:0;height:6px;cursor:ns-resize}
+.sc-float-grip-w{left:-3px;top:0;bottom:0;width:6px;cursor:ew-resize}
+.sc-float-grip-e{right:-3px;top:0;bottom:0;width:6px;cursor:ew-resize}
+.sc-float-grip-nw,.sc-float-grip-ne,.sc-float-grip-sw,.sc-float-grip-se{width:12px;height:12px;z-index:4}
+.sc-float-grip-nw{top:-3px;left:-3px;cursor:nwse-resize}
+.sc-float-grip-se{bottom:-3px;right:-3px;cursor:nwse-resize}
+.sc-float-grip-ne{top:-3px;right:-3px;cursor:nesw-resize}
+.sc-float-grip-sw{bottom:-3px;left:-3px;cursor:nesw-resize}
 .sc-float-resize{position:absolute;right:0;bottom:0;width:20px;height:20px;cursor:nwse-resize;z-index:2}
 /* つまみは目に入る濃さにする(以前は淡すぎて「サイズを変えられる」ことに
    気づかれず、しかも本文末尾の保存ボタンと重なる位置にあった)。 */
@@ -212,17 +224,58 @@
    詳細トグル(.sc-row-detail-toggle)へ統合して折りたたむ(既定は閉)。
    --------------------------------------------------------------- */
 .sc-row-head,.sc-row-line{
+ /* **この表のセルの文字サイズを1つ決める**(§9.90)。以前は日付12px・
+    時刻13px・内容14px・作業可否10pxのように列ごとに違い、同じ行の中で
+    大きさがちぐはぐだった(実測で内容だけ2段大きかった)。
+    **揃える先は本文(--fs)**——内容欄は仕掛一覧のセルと同じ大きさである、
+    という決まりが先にある(§9.36、tests/test_scbalance.js)。小さいほうへ
+    揃えると今度は一覧と食い違うので、**他の列を内容に合わせて上げる**。
+    印(計画外・ロック・作業可否)だけを1段落とす。
+    行の高さも一覧の既定と揃える(§9.36の「離れすぎない」)。この表は
+    一覧の行間つまみの対象ではないので、余白は自前で持つ。
+    **--row-h/--row-ctl-h はここで定義し直すこと**——カスタム
+    プロパティは定義した場所で解決されるため、:root のままでは
+    この行の余白が反映されない。 */
+ --tbl-fs:var(--fs);
+ --tbl-fs-mark:var(--fs-sm);
+ /* **--row-gap から切り離さないこと。** 行間のつまみ1本で全行が揃って
+    動くのがこの表の土台(§9.36、tests/test_scbalance.js)。一覧の行の高さへ
+    寄せるための差分(3px)だけを足す。 */
+ --row-pad-y:calc(var(--row-gap) + 3px * var(--ui-scale));
+ --row-h:calc(var(--fs) * var(--lh) + var(--row-pad-y) * 2 + 1px);
+ --row-ctl-h:min(var(--ctl-h-xs),calc(var(--row-h) - 2px));
+ font-size:var(--tbl-fs);
  display:grid;
- /* ハンドル/区分/作業可否/日付/時刻/勤務/残り/内容/見積/実績/備考/操作 */
- grid-template-columns:calc(18px * var(--ui-scale)) calc(62px * var(--ui-scale)) calc(44px * var(--ui-scale))
+ /* ハンドル/区分/作業可否/日付/時刻/勤務/残り/内容(項目ごと)/見積/実績/備考/操作
+    内容だけは項目数がマスタ次第で変わるので、--sc-content-cols へ
+    JS(applyTimelineContentColumns)が列の定義を差し込む(§9.88 段6)。
+    ここへ直接書かないこと——項目を足すたびにCSSを直す羽目になる。
+    (この注記に「アスタリスク2つ+スラッシュ」を書かないこと。コメントが
+     そこで閉じてしまい、以降がCSSとして解釈されてルールごと壊れる。
+     実際にこれで内容の列が1列に潰れた。) */
+ /* 区分は 62→74px。文字を本文(14px)へ上げた分、「▶ 作業中」が入り切らず
+    末尾が省略されていた(実測で4〜7pxはみ出し)。 */
+ grid-template-columns:calc(18px * var(--ui-scale)) calc(74px * var(--ui-scale)) calc(44px * var(--ui-scale))
   calc(50px * var(--ui-scale))
   calc(112px * var(--ui-scale)) calc(58px * var(--ui-scale)) calc(88px * var(--ui-scale))
-  minmax(calc(150px * var(--ui-scale)),1fr) calc(62px * var(--ui-scale)) calc(88px * var(--ui-scale))
+  var(--sc-content-cols,minmax(calc(150px * var(--ui-scale)),1fr))
+  calc(62px * var(--ui-scale)) calc(88px * var(--ui-scale))
   calc(112px * var(--ui-scale)) calc(148px * var(--ui-scale));
  /* 列の間は --gap-tight(4px)。以前は8pxで、11本ぶんで88px を余白に使って
     いた。区分列も92→62pxへ詰めてあり、同じ幅で列が2つぶん多く入る。 */
- align-items:center;column-gap:var(--gap-tight);min-width:calc(1042px * var(--ui-scale));
+ align-items:center;column-gap:var(--gap-tight);
+ min-width:var(--sc-row-min,calc(1042px * var(--ui-scale)));
 }
+/* 内容の見出し。掴んで並べ替え、右端の取っ手で幅(一覧の見出しと同じ作法)。 */
+.sc-row-title-head{position:relative;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+ cursor:grab;user-select:none}
+.sc-row-title-head .col-resize{position:absolute;top:0;right:0;width:6px;height:100%;
+ cursor:col-resize}
+.sc-row-title-head.col-dragging{opacity:.45}
+.sc-row-title-head.col-drop-before::before,.sc-row-title-head.col-drop-after::before{
+ content:"";position:absolute;top:0;bottom:0;width:2px;background:var(--teal)}
+.sc-row-title-head.col-drop-before::before{left:-1px}
+.sc-row-title-head.col-drop-after::before{right:-1px}
 .sc-row-head{padding:2px var(--space-2) 3px;position:sticky;top:0;z-index:1;background:#f7fafb;font-size:var(--fs-micro);font-weight:800;color:#8a9aa0;border-bottom:1px solid var(--line)}
 /* **行の高さは内容で変わらない**(§9.88)。以前は min-height だったため、
    セルの中身が1pxでも高ければその行だけ伸びていた。行ごとに出るものが
@@ -247,7 +300,7 @@
    間、行を薄く表示して「まだ確定していない」ことを伝える。 */
 .sc-row-line.sc-row-pending{opacity:.6;background:repeating-linear-gradient(135deg,#fff,#fff 8px,#f7f5ea 8px,#f7f5ea 16px)}
 .sc-flag-pending{color:#a4832a;font-weight:800}
-.sc-row-handle{color:#9caeb4;font-size:var(--fs-base-sm);text-align:center}
+.sc-row-handle{color:#9caeb4;font-size:var(--tbl-fs);text-align:center}
 /* 区分(§9.39): 完了済み/作業中/作業予定を行の中の列で持つ。以前は
    セクション見出しで分けていたが、日付・勤務でまとめ直したいときに
    見出しが二重になるため、列へ移した。 */
@@ -261,25 +314,27 @@
  /* **文字は小さくしない。** 区分もデータ列の1つなので、読める大きさ
     (--fs-sm)を保つ(tests/test_scbalance.js が一覧のセルとの関係を固定
     している)。詰めるのは箱の側——高さ・枠線・丸みを外すだけで足りる。 */
- font-size:var(--fs-sm);font-weight:700;line-height:1.4;
+ font-size:var(--tbl-fs);font-weight:700;line-height:1.4;
  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
  background:transparent;color:#8a9aa0;
 }
-.sc-row-cat i{font-style:normal;font-size:var(--fs-sm);line-height:1}
+.sc-row-cat i{font-style:normal;font-size:var(--tbl-fs);line-height:1}
 .sc-cat-doing{background:var(--success-bg);color:var(--success);border-left-color:var(--success)}
 .sc-cat-done{background:transparent;color:#9caeb4;border-left-color:#cfdde0}
 .sc-cat-planned{background:transparent;color:#0c5d67;border-left-color:var(--teal)}
 .sc-cat-cancel{background:var(--danger-bg);color:var(--danger);border-left-color:var(--danger)}
 .sc-cat-stop{background:var(--warn-bg);color:var(--warn-fg);border-left-color:var(--warn-border)}
-.sc-row-date{font-size:var(--fs-sm);color:#60747b;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}
-.sc-row-time{font-size:var(--fs-base-sm);color:#3a565d;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}
-.sc-row-shift{font-size:var(--fs-sm);color:#3a565d;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.sc-row-rel{font-size:var(--fs-sm);color:#8a9aa0;white-space:nowrap;overflow:hidden}
-.sc-row-title{font-size:var(--fs);font-weight:700;color:#173842;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-.sc-row-est{font-size:var(--fs-sm);color:#3a565d;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.sc-row-date{font-size:var(--tbl-fs);color:#60747b;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}
+.sc-row-time{font-size:var(--tbl-fs);color:#3a565d;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}
+.sc-row-shift{font-size:var(--tbl-fs);color:#3a565d;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc-row-rel{font-size:var(--tbl-fs);color:#8a9aa0;white-space:nowrap;overflow:hidden}
+.sc-row-title{font-size:var(--tbl-fs);font-weight:700;color:#173842;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.sc-row-est{font-size:var(--tbl-fs);color:#3a565d;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
 .sc-row-est.sc-est-default{color:#8a9aa0;font-style:italic}
-.sc-row-actual{font-size:var(--fs-sm);color:#3a565d;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap;overflow:hidden}
-.sc-row-flags{display:flex;gap:var(--gap-tight);font-size:var(--fs-micro);align-items:center;white-space:nowrap;overflow:hidden}
+.sc-row-actual{font-size:var(--tbl-fs);color:#3a565d;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap;overflow:hidden}
+/* 行の中の印。**セルの値から1段だけ**下げる(§9.90)。以前は --fs-micro(11px)
+   で、行の値(14px)から2段離れており、同じ行の中で大きさがちぐはぐだった。 */
+.sc-row-flags{display:flex;gap:var(--gap-tight);font-size:var(--tbl-fs-mark);align-items:center;white-space:nowrap;overflow:hidden}
 .sc-flag-overdue{color:var(--danger);font-weight:800}
 /* 操作(開始・固定・帳票・削除)は**一番右端の列**なので、ウィンドウを狭めたり
    仕掛一覧との分割バーを動かすと真っ先に見えなくなり、横スクロールしないと
@@ -517,6 +572,14 @@
   font-size:var(--fs-tiny);font-weight:800;vertical-align:middle;
 }
 .record-sync-badge.record-sync-failed{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger)}
+/* 他のPCで保存された測定データ(§9.91)。端末内にあるものと**見分けが付く**
+   ことが要点で、色は「注意」ではなく「情報」の側に置く。 */
+.record-remote-badge{
+  display:inline-block;margin-left:5px;padding:var(--pad-chip);border-radius:var(--radius-sm);
+  background:var(--pale);border:1px solid var(--teal);color:#0c5d67;
+  font-size:var(--fs-tiny);font-weight:800;vertical-align:middle;
+}
+.record-remote-badge.is-newer{background:var(--warn-bg);border-color:var(--warn-border);color:var(--warn-fg)}
 /* ---------- 勤務体系マスタの専用エディタ(親: 勤務体系 / 子: 勤務区分) ----------
    左に登録済みの体系、右にその中身。時刻はinput[type=time]で直打ちを避け、
    24時間バーで「どの時間帯が埋まっているか」を色で示す。 */
@@ -598,7 +661,7 @@
 /* 計画外(§9.33): 予定に無いのに実績が上がっている行。予定と取り違えると
    「消せない予定がある」と誤解されるため、必ずこのバッジを添える。 */
 .sc-flag-unplanned{
- font-size:var(--fs-micro);font-weight:800;padding:var(--pad-chip);border-radius:var(--radius-sm);
+ font-size:var(--fs-sm);font-weight:800;padding:var(--pad-chip);border-radius:var(--radius-sm);
  background:var(--warn-bg);color:var(--warn-fg);border:1px solid var(--warn-border);white-space:nowrap;
 }
 /* 予定から測定を開始する(§9.35)。行の中で最も目を引く操作なので、
