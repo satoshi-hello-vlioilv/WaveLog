@@ -59,8 +59,8 @@
   `refreshScheduleIfOpen`/`expandFilterVars`/`toleranceScaleView`/`optionList`/`defect`/
   `fieldReorderAllows`/`fieldReorderAllowsAll`/`fieldReorderLabel`/`boot`/`onReady`/
   `dataSource`/`columnLayout`/`cellFormat`/`displayRules`/`listColumns`/`listRules`/
-  `rowGap`/`listSort`/`listSortBar`/`listQuery`/`renderDbNav`/
-  `bindColumnHeaderTools`/`makeFloatingWindow`。
+  `rowGap`/`listSort`/`listSortBar`/`listQuery`/`listHooks`/`renderDbNav`/
+  `bindColumnHeaderTools`/`makeFloatingWindow`/`loadBreakdown`。
   **公開漏れは黙って素通しになる**ことに注意——`typeof makeFloatingWindow==='function'`の
   ように「あれば使う」書き方で呼んでいると、公開し忘れても例外が出ず、
   機能だけが静かに欠ける（列の設定パネルが位置も大きさも与えられないまま
@@ -94,7 +94,27 @@
   ——それぞれ無効化の条件が業務仕様と絡んでおり（例: §9.67の作業可否は
   「一度可になったら再取得しない」）、一括置換はその仕様を落とす。
 - **列表示マスタ**: `/api/table` は表示設定で列を落とす。内部計算用の
-  問い合わせには `include_hidden=1` を付ける。
+  問い合わせには `include_hidden=1` を付ける。**内部の問い合わせは
+  `columns=`で要る列だけ頼む**（§9.94）——実データは200列を超えるため、
+  「そのロット番号が居るか」を見るだけの問い合わせでも1回450KBになり、
+  受け取ったJSONを解くたびに画面が数百ms止まる（実機で「一覧に切り替えると
+  固まる」と報告された原因の半分）。`columns=`が効くのは**戻す量だけ**で、
+  絞り込み・並べ替えの対象は絞らない。1つも当たらなければ絞らない
+  （打ち間違えたときに空の表を黙って返さない）。同じ理由で、先頭一致を
+  何本も投げる場面は`starts_any`（カンマ区切り）で1回にまとめる。
+- **一覧の描画で「ブラウザに測らせない・一度に渡さない」**（§9.94、
+  `tests/test_listperf.js`）: `#grid table`は`table-layout:fixed`で、
+  **全列ぶんの幅を`renderGridInner()`が必ず入れる**（`estimateColumnWidth()`
+  が見出しとデータの先頭40行から字幅で見積もる）。`auto`へ戻すと列幅を
+  決めるために全セルを測り、200行×214列で**3.4秒メインスレッドが止まる**。
+  幅を決め打ちにする以上、**切れたセルには生の値の`title`を必ず付ける**。
+  8,000セルを超える表は`requestAnimationFrame`で継ぎ足す。**継ぎ足しは
+  1回ごとに表全体のレイアウトが起きる**ので細かく割るほど合計は増える
+  （20行ずつ4.7秒 / 5行ずつ7.3秒）。最初だけ小さく・あとは倍々にしてある。
+  行ごとの追い判定（分割ありの子ロット確認・子カード行の親逆引き）は
+  **一覧を描き終えてから・手が空いてから**（`requestIdleCallback`）始め、
+  先頭5桁は`prefetchLotPrefixes()`でまとめて引く。**測定を開く側は全列のまま**
+  ——親ロットの板厚・公差を使うので、軽い行（`{light:true}`）を渡すと壊れる。
 - **一覧の見せ方（`列レイアウトマスタ`／`一覧表示設定マスタ`）は全置換**:
   対象(`list:<DB>:<表>` / `timeline:<設備>`)ごとに行を消して入れ直す。
   **触っていない設定も一緒に送らないと消える**——見出しのD&Dで並びだけを
@@ -111,10 +131,14 @@
   **1件だけ**落とし、壊れた正規表現は「当たらない」で済ませ、ルールを消しても
   列側の参照は残す（無いルール名＝読み替えなし）。詳細は
   `docs/COLUMN_PRESENTATION_DESIGN.md`と`docs/SCHEDULE_MODE_DESIGN.md`§9.88。
-  **一覧の問い合わせは`WL.listQuery()`で組み立てる**——`filters.js`が
-  `load()`を丸ごと差し替えるため、両方に書くと片方だけ直した状態になる
-  （品質データ結合とキャッシュで実際に2度起きた）。`filters.js`が足すのは
-  絞り込み条件だけ。固定は`tests/test_collayout.js`・`tests/test_colformat.js`・
+  **一覧の問い合わせは`WL.listQuery()`で組み立てる**——両方に書くと片方だけ
+  直した状態になる（品質データ結合とキャッシュで実際に2度起きた）。
+  **`load()`を丸ごと置き換えないこと**（§9.93）。以前は`filters.js`が
+  `load=async function(){...}`で全置換しており、元の定義をgrepで辿っても
+  最終的な実装に行き着かなかった。拡張したい側は**`WL.listHooks`へ登録する**
+  （`onQuery(fn)`=問い合わせへ条件を足す／`onAfter(fn)`=描き終えた後）。
+  `filters.js`が足すのは絞り込み条件だけ。
+  固定は`tests/test_collayout.js`・`tests/test_colformat.js`・
   `tests/test_colrule.js`・`tests/test_colsort.js`・`tests/test_displayrule.py`。
 - **列の設定パネルは触った結果をそのまま一覧へ出す**（§9.90、
   `WL.columnLayout.stage()`で保存せずに当てる）。**保存せずに閉じたら開いた
@@ -356,7 +380,7 @@
 
 ## 検証
 
-- **回帰テストは `tests/` にある。実行は `tests/run_all.sh` だけ**（478件）。
+- **回帰テストは `tests/` にある。実行は `tests/run_all.sh` だけ**（503件）。
   引数にテスト名を並べるとそれだけ実行する（`tests/run_all.sh test_sccat`）。
   ランナーがパス設定マスタの退避→検証用フィクスチャへ差し替え→復元まで
   行うので、**手でパスを戻す必要はない**（`trap`で異常終了時も戻し、退避値は

@@ -2,7 +2,16 @@
 /* list-view.js: 起動処理・DB/テーブル選択・一覧グリッド(仕掛一覧/品質データ)。 */
 async function init(){
  try{
- const build=await api('/api/build');document.title='測定伝送システム';
+ /* **一覧を出すまでの往復を減らす**(§9.93)。以前は
+    `build → catalog → 件数バッジ → 使用量 → 一覧` と直列で、
+    実測すると一覧の取得が始まるのは表示開始から631ms地点だった。
+    共有フォルダ越しの実機では1往復が数百msになるため、直列に並べた数だけ
+    そのまま待ち時間になる。**互いに依存しないものは束ねて投げる。**
+    バージョンバッジと件数バッジは一覧の表示に必要ないので、
+    待たずに進める(遅れて入っても画面は崩れない)。 */
+ const catalogPromise=api('/api/catalog');
+ const buildPromise=api('/api/build').catch(e=>{console.warn('版数の取得に失敗',e);return{}});
+ const build=await buildPromise;document.title='測定伝送システム';
  document.querySelectorAll('.build-badge').forEach(badge=>{
   badge.textContent=build.version?`VER${build.version}`:'バージョン不明';
   badge.title=(build.commit?`コミット: ${build.commit}${build.commit_at?' / '+new Date(build.commit_at).toLocaleString('ja-JP'):''}${build.dirty?'（未コミットの変更あり）':''} / `:'')+'クリックで更新履歴を表示';
@@ -11,11 +20,15 @@ async function init(){
   badge.onclick=openChangelog;
   badge.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openChangelog()}};
  });
- const d=await api('/api/catalog');S.catalog=d.databases;
+ const d=await catalogPromise;S.catalog=d.databases;
  WL.dataSource.setCatalog(d);
  renderDbNav();
  const drafts=$('#homeDrafts');if(drafts)drafts.onclick=()=>openRecords('編集中');
- bindAppSettingsControls();await refreshDraftCount();showQuota();
+ bindAppSettingsControls();
+ /* 件数バッジと保存領域の使用量は**一覧の表示を待たせない**。どちらも
+    数字が少し遅れて入るだけで、画面の組み立てには影響しない。 */
+ refreshDraftCount().catch(e=>console.warn('件数バッジの更新に失敗',e));
+ showQuota();
  /* 起動直後の初期画面。使用設備が未登録のうちは絞り込みも対象判定もできず、
     仕掛一覧を取得しても使えないため、先に設備登録へ誘導する。
     **どの一覧を最初に出すかはキーで決め打ちしない**(§9.87)。役割が「作業」の
@@ -478,9 +491,10 @@ function applyTableData(d){
  S.selectedRows.clear();
 }
 window.applyTableData=applyTableData;
-/* 一覧データ取得の本体(キャッシュ判定→取得→鮮度更新)。filters.jsはクエリの
-   組み立てを差し替えるためにload()を丸ごと置き換えているので、そこと
-   共通の振る舞いはすべてここへ集約する(片方だけ直して反映されない事故を防ぐ)。
+/* 一覧データ取得の本体(キャッシュ判定→取得→鮮度更新)。**読み込みの経路は
+   この1本だけ**で、拡張したい側は`WL.listHooks`へ登録する(§9.93。以前は
+   filters.jsがload()を丸ごと置き換えており、片方だけ直して反映されない事故が
+   3回起きた)。
    待機表示はwithWaitingの遅延表示に任せる: キャッシュ命中なら一度も出ないし、
    本当にサーバーを待つときだけ出る。 */
 /* この一覧の列レイアウト(並び・幅・表示)を覚えておくスコープ(§9.88)。
@@ -488,18 +502,29 @@ window.applyTableData=applyTableData;
 function listLayoutTarget(){return (S.db&&S.table)?`list:${S.db}:${S.table}`:''}
 
 async function fetchTableData(key,force){
- // 列レイアウトと読み替えルールは描画時に同期で参照するので、取得と一緒に
- // 用意しておく(どちらも読めなければ既定の見せ方で一覧は出る)。
- try{await WL.columnLayout.load(listLayoutTarget())}catch(e){}
- try{await WL.displayRules.load()}catch(e){}
- try{await sortPresets.load()}catch(e){}
- try{await loadRowGap()}catch(e){}
+ /* **見せ方の設定と一覧データは同時に取りに行く**(§9.93)。
+    以前は4つの設定を1つずつ`await`してから一覧を取りに行っており、
+    実測すると一覧の取得が始まるのは表示開始から631ms地点で、その前に
+    往復が9本並んでいた。共有フォルダ越しの実機では1往復が数百msになる
+    ため、ここだけで数秒を失う。設定はどれも一覧データに依存しないので、
+    **束ねて並列に投げ、揃うのを待つ**。どれが読めなくても既定の見せ方で
+    一覧は出す(fail-open)。 */
+ const settings=Promise.all([
+  WL.columnLayout.load(listLayoutTarget()).catch(()=>{}),
+  WL.displayRules.load().catch(()=>{}),
+  sortPresets.load().catch(()=>{}),
+  loadRowGap().catch(()=>{}),
+ ]);
  const hit=force?null:tableCacheGet(key);
- if(hit){applyTableData(hit.data);updateListFreshness(hit.at);return}
+ if(hit){await settings;applyTableData(hit.data);updateListFreshness(hit.at);return}
  const label=databaseLabel(S.db),table=S.table||'テーブル';
  await withWaiting({title:`${label}を読み込んでいます`,detail:`テーブル: ${table}`,
    progress:'サーバーが読み出しています'},async(report)=>{
-  const d=await fetchWithBreakdown('/api/table?'+key,report);
+  /* 一覧データの取得も**設定と同時に**始める。描く直前に両方が揃っていれば
+     よく、順番に待つ理由が無い。 */
+  const data=fetchWithBreakdown('/api/table?'+key,report);
+  await settings;
+  const d=await data;
   tableCacheSet(key,d);applyTableData(d);updateListFreshness(null);
  });
 }
@@ -548,6 +573,28 @@ window.fetchTableData=fetchTableData;
    filters.js が load() を丸ごと差し替えるため、両方に同じ組み立てを書くと
    片方だけ直した状態になる(実際に品質データ結合とキャッシュで2度起きた)。
    条件(filters)は絞り込みを持つfilters.js側が足すが、それ以外は必ずここを通す。 */
+/* ---------- 一覧の読み込みの拡張点(フック) ----------
+   **`load()`を丸ごと置き換えないこと。** 以前は`filters.js`が
+   `load=async function(){...}`で全置換しており、元の定義をgrepで辿っても
+   最終的な実装に行き着かなかった。実際、品質データ結合・キャッシュ・
+   読み込み時間の計測の3回、「list-view.js側だけ直して効いていない」が起きた。
+   拡張したい側は**フックを登録する**——本体は1箇所のままで、誰が何を
+   足しているかが登録の行から分かる。
+     query : 問い合わせの組み立て後に呼ばれる。URLSearchParamsを受け取り、
+             条件を足す(戻り値は不要)
+     after : 一覧を描き終えた後に呼ばれる */
+const listHooks={query:[],after:[]};
+WL.listHooks={
+ onQuery:fn=>{if(typeof fn==='function')listHooks.query.push(fn)},
+ onAfter:fn=>{if(typeof fn==='function')listHooks.after.push(fn)},
+ count:()=>({query:listHooks.query.length,after:listHooks.after.length}),
+};
+function runListHooks(kind,arg){
+ listHooks[kind].forEach(fn=>{
+  // 1つのフックが転んでも一覧は出す(fail-open)。
+  try{fn(arg)}catch(e){console.error('一覧の'+kind+'フックで例外',e)}
+ });
+}
 function listQuery(){
  const q=new URLSearchParams({db:S.db,table:S.table,page:S.page,
                               page_size:$('#pageSize').value,search:$('#search').value});
@@ -558,6 +605,8 @@ function listQuery(){
  // (§9.21)。通常の閲覧では付けない(オプトインで単独表示に影響を与えない)。
  // どちらが作業対象/品質かはデータソースマスタの役割で決まる(§9.87)。
  if(WL.dataSource.isWork(S.db)&&window.accessMode?.mode==='schedule')q.set('join_quality','1');
+ /* 絞り込み条件は`filters.js`がフックで足す(全置換をやめた経緯は上記)。 */
+ runListHooks('query',q);
  return q;
 }
 WL.listQuery=listQuery;
@@ -565,6 +614,7 @@ WL.listQuery=listQuery;
 async function load(force){
  await fetchTableData(String(listQuery()),force);
  renderGrid();
+ runListHooks('after');
 }
 /* 内訳を一覧の脇に出す。**遅かったときだけ**目立たせる(速いときに
    出しても読む理由が無い)。押すと内訳の内わけが出る。 */
@@ -596,7 +646,30 @@ function renderLoadChip(){
    待機表示そのものはwithWaitingの遅延表示に委ねる(§9.46)。キャッシュから
    即座に描ける切替でオーバーレイを出すと、一瞬の点滅と表示待ちの描画
    フレームが挟まるぶん、速くなったのにかえって遅く見えるため。 */
-const tablesCache=new Map();   // テーブル構成は運用中に変わらないので保持する
+/* テーブル構成は運用中に変わらないので保持する。**端末にも残す**(§9.93)。
+   起動のたびに「カタログ→テーブル一覧→一覧データ」と3往復してからでないと
+   一覧を取りに行けず、共有越しでは1往復が数百msになるため、ここが毎回
+   効いてくる。前回**実際に確認した**一覧なので推測ではない
+   (データソースの`preferred`は設定値で、そのDBに実在するとは限らない
+   ——品質データの既定が「仕掛」のまま、という実例がある)。
+   起動直後はこれを使って先に進み、裏で取り直して食い違えば入れ替える。 */
+const TABLES_CACHE_KEY='listTablesCacheV1';
+const tablesCache=new Map();
+/* **裏での取り直しは1つのDBにつきこの起動で1回だけ。** 端末に残した一覧は
+   前回の実測なので確かめる価値はあるが、切り替えるたびに投げると
+   「戻るときは往復ゼロ」(§9.46)が崩れる。確かめ済みのDBはここに入れる。 */
+const tablesVerified=new Set();
+try{
+ const saved=JSON.parse(localStorage.getItem(TABLES_CACHE_KEY)||'{}');
+ Object.entries(saved).forEach(([k,v])=>{if(v&&Array.isArray(v.tables))tablesCache.set(k,v)});
+}catch(e){/* 壊れていても取り直せばよい */}
+function rememberTables(k,result){
+ tablesCache.set(k,result);tablesVerified.add(k);
+ try{
+  const out={};tablesCache.forEach((v,kk)=>{out[kk]={tables:v.tables}});
+  localStorage.setItem(TABLES_CACHE_KEY,JSON.stringify(out));
+ }catch(e){/* 保存できなくても動作は続く */}
+}
 /* 一覧(データ一覧/仕掛/品質データ)。品質データを選んだときだけ品質分析の
    パネルが上に付く(qa-mode)ので、一覧から他の画面へ移るときはそれも一緒に
    畳む。以前はこの後始末を各画面のopenXxxが個別に書いており、
@@ -616,7 +689,20 @@ async function selectDb(k,b){
    progress:'テーブル構成を確認しています',step:1},async report=>{
   try{S.db=k;setActiveNav(k);
    let result=tablesCache.get(k);
-   if(!result){result=await api(`/api/tables?db=${encodeURIComponent(k)}`);tablesCache.set(k,result)}
+   if(!result){result=await api(`/api/tables?db=${encodeURIComponent(k)}`);rememberTables(k,result)}
+   else if(!tablesVerified.has(k)){
+    /* 覚えている一覧で先に進みつつ、**裏で取り直して食い違えば入れ替える**
+       (§9.93)。テーブル構成が変わるのは運用の切り替え時だけなので、
+       毎回待つ理由が無い。確かめるのはこの起動で1回だけ(2回目以降の切替は
+       往復ゼロ)。 */
+    tablesVerified.add(k);
+    api(`/api/tables?db=${encodeURIComponent(k)}`).then(r=>{
+     const changed=JSON.stringify(r.tables)!==JSON.stringify(result.tables);
+     rememberTables(k,r);
+     if(changed&&S.db===k){S.tables=r.tables;renderTabs();
+      if(r.tables.length&&!r.tables.includes(S.table))selectTable(r.tables[0]);}
+    }).catch(()=>{tablesVerified.delete(k)/* 取り直せなくても覚えている一覧で動く */});
+   }
    S.tables=result.tables;renderTabs();
    if(S.tables.length)await selectTable(S.tables[0],report);
    else $('#grid').textContent='表示可能なテーブルがありません。';
@@ -635,6 +721,38 @@ async function selectTable(t,report){
    実際にS.columnsへ含まれているものを探してロット番号・鋳造番号の
    列を特定する(見つからなければ通常表示のまま)。 */
 function findColumnFor(key){return (aliases[key]||[]).find(n=>S.columns.includes(n))||null}
+/* ---------- 列幅の見積り(§9.94) ----------
+   `table-layout:fixed`にした以上、**全列に幅を与えるのはこちらの仕事**
+   (与えないと等分になり、短い列が間延びし長い列が潰れる)。
+   ブラウザに測らせないのが目的なので、実際に描いて測る方法は採れない。
+   文字の幅から数える: 半角は約0.55em、全角(CJK・かな)は1em。
+   見出しとデータの先頭数十行を見て、広いほうを採る。
+     ・見出しは折り返さない約束(§9.90)なので、見出しは必ず入る幅にする
+     ・データ側は青天井にしない(1列で画面が埋まると表として読めない) */
+const COL_W_MIN=52,COL_W_MAX=320,COL_W_SAMPLE=40;
+function textWidthEm(s){
+ let w=0;
+ for(const ch of String(s==null?'':s)){
+  const c=ch.codePointAt(0);
+  // ASCII・半角カナは狭い。それ以外(漢字・かな・全角記号)は1文字ぶん。
+  w+=(c<0x2e80||(c>=0xff61&&c<=0xff9f))?0.55:1;
+ }
+ return w;
+}
+function estimateColumnWidth(label,values,fs,padX){
+ let em=textWidthEm(label);
+ for(const v of values){const w=textWidthEm(v);if(w>em)em=w}
+ return Math.round(Math.min(COL_W_MAX,Math.max(COL_W_MIN,em*fs+padX*2+2)));
+}
+/* 表の文字サイズと左右余白は表示サイズ(--ui-scale)で変わるので、
+   描くたびに1度だけ読む(セルごとに読むと数万回になる)。 */
+function gridMetrics(){
+ const g=document.getElementById('grid');
+ const cs=g?getComputedStyle(g):null;
+ const fs=parseFloat(cs&&cs.getPropertyValue('font-size'))||14;
+ const px=parseFloat(cs&&cs.getPropertyValue('--row-pad-x'))||6;
+ return {fs,padX:px};
+}
 // Add an explicit virtual action column instead of writing into the last data column.
 function renderGrid(){
  /* **描画にかかった時間はここで測る。** filters.js が load() を丸ごと
@@ -680,6 +798,16 @@ function renderGridInner(){
  const colFmt=new Map(visibleColumns.map(c=>[c,WL.columnLayout.format(layoutTarget,c)]));
  const colRule=new Map(visibleColumns.map(c=>[c,WL.columnLayout.rule(layoutTarget,c)]));
  const numCol=c=>colFmt.get(c)?.kind==='number';
+ /* 列幅は**セルを描く前に決める**(§9.94)。colgroupへ入れるだけでなく、
+    「その幅に入り切らない値へtitleを付ける」判断にも使うため。 */
+ const metrics=gridMetrics();
+ const widthSample=visibleRows.slice(0,COL_W_SAMPLE);
+ const colW=new Map(visibleColumns.map(c=>[c,
+   WL.columnLayout.width(layoutTarget,c)
+   ||estimateColumnWidth(WL.columnLayout.label(layoutTarget,c),
+                         widthSample.map(r=>r[c]),metrics.fs,metrics.padX)]));
+ // その列に何文字ぶん入るか(em)。これを超える値は省略記号になる。
+ const colEm=new Map(visibleColumns.map(c=>[c,(colW.get(c)-metrics.padX*2-2)/metrics.fs]));
  const t=document.createElement('table');
  t.innerHTML='<thead><tr>'+(canPlan?'<th class="plan-select-head"><input type="checkbox" id="planSelectAll" title="このページの全行を選択/解除"></th><th class="plan-action-head">予定</th>':'')+'<th>#</th>'+(isWork?'<th class="split-flag-head" title="親子管理_子カード／コンマ5本分割_切断巾に実データがある場合「分割あり」と表示します">分割</th>':'')+visibleColumns.map(c=>{
   const filtered=filteredCols.has(c);
@@ -696,18 +824,20 @@ function renderGridInner(){
      並び替わると操作を取り消せない)。 */
   return `<th class="sortable-col ${numCol(c)?'col-num':''} ${filtered?'col-filtered':''} ${sorted?'col-sorted':''}" data-sort-col="${esc(c)}" draggable="true" tabindex="0" role="button" aria-label="${esc(WL.columnLayout.label(layoutTarget,c))}列で並び替え" title="${esc(c)}｜クリックで並び替え／ドラッグで列の入れ替え${filtered?'（絞り込み中の列です）':''}">${esc(WL.columnLayout.label(layoutTarget,c))}${arrow}${filtered?'<i class="col-filter-badge" aria-hidden="true" title="この列にフィルタが適用されています">▼</i>':''}<i class="col-resize" title="ドラッグで列幅を調整（ダブルクリックで既定へ）" aria-hidden="true"></i></th>`;
  }).join('')+(isWork?'<th class="measurement-action-head">測定</th>':'')+'</tr></thead>';
- // 幅はcolgroupで与える。thへ直接書くと、セル側の内容で押し広げられる。
+ /* 幅はcolgroupで与える。thへ直接書くと、セル側の内容で押し広げられる。
+    `table-layout:fixed`にしたので**全列に必ず幅を入れる**(§9.94)。
+    入れ忘れた列は等分に割られ、見出しも値も潰れる。 */
  if(visibleColumns.length){
-  const lead=(canPlan?2:0)+1+(isWork?1:0);       // 選択/予定 + # + 分割
+  const lead=[];                                  // 選択/予定 + # + 分割
+  if(canPlan)lead.push(30,74);
+  lead.push(Math.round(3*0.55*metrics.fs+metrics.padX*2+2));   // 行番号(3桁ぶん)
+  if(isWork)lead.push(150);                       // 分割の印(「分割あり(9ロット/40条)・異幅」)
   const cg=document.createElement('colgroup');
-  for(let i=0;i<lead;i++)cg.appendChild(document.createElement('col'));
+  lead.forEach(w=>{const col=document.createElement('col');col.style.width=w+'px';cg.appendChild(col)});
   visibleColumns.forEach(c=>{
-   const col=document.createElement('col');
-   const w=WL.columnLayout.width(layoutTarget,c);
-   if(w)col.style.width=w+'px';
-   cg.appendChild(col);
+   const col=document.createElement('col');col.style.width=colW.get(c)+'px';cg.appendChild(col);
   });
-  if(isWork)cg.appendChild(document.createElement('col'));
+  if(isWork){const col=document.createElement('col');col.style.width='86px';cg.appendChild(col)}
   t.insertBefore(cg,t.firstChild);
  }
  bindColumnHeaderTools(t,layoutTarget,visibleColumns,allowed);
@@ -731,7 +861,7 @@ function renderGridInner(){
  // 3の行は分割済みの子ロット自身であるため、親ロットを逆引き検索して
  // 気づけるようにする対象を集める(下のcheckParentLookupRows参照)。
  const parentCheckTargets=[];
- visibleRows.forEach((r,i)=>{
+ const buildRow=(r,i)=>{
   const tr=document.createElement('tr');
   let splitCell='';
   if(isWork){
@@ -757,7 +887,12 @@ function renderGridInner(){
    const out=WL.cellFormat.cell({raw:r[c],format:colFmt.get(c),rule:colRule.get(c),row:r,column:c});
    const raw=String(r[c]==null?'':r[c]);
    const cls=[numCol(c)?'col-num':'',out.color?'cell-'+out.color:''].filter(Boolean).join(' ');
-   return `<td${cls?` class="${cls}"`:''}${out.text!==raw?` title="${esc(raw)}"`:''}>${esc(out.text)}</td>`;
+   /* 幅を決め打ちする以上、入り切らない値は省略記号になる(§9.94)。
+      **切れたものは必ずtitleで読めるようにする**——読めない文字が
+      黙って消えるのは、狭い列より悪い。 */
+   const clipped=textWidthEm(out.text)>colEm.get(c);
+   const tip=(out.text!==raw||clipped)?` title="${esc(raw)}"`:'';
+   return `<td${cls?` class="${cls}"`:''}${tip}>${esc(out.text)}</td>`;
   }).join('')+(isWork?'<td class="measurement-action-cell"><button type="button" class="measurement-action-button">開く</button></td>':'');
   if(r===S.selectedRow)tr.classList.add('is-selected');
   if(canPlan&&S.selectedRows.has(r))tr.classList.add('is-plan-selected');
@@ -805,7 +940,30 @@ function renderGridInner(){
    if(lotBtn)lotBtn.onclick=e=>{e.preventDefault();e.stopPropagation();openLotDsp(pick(r,'lotNo'),castCol?r[castCol]:pick(r,'castingNo'),localStorage.getItem('LotDspLastTabV1')||'1')};
   }
   b.append(tr);
- });
+ };
+ /* ---------- 大きい表は少しずつ並べる(§9.94) ----------
+    セル数(行×列)に比例してブラウザのレイアウトが重くなる。実測すると
+    200行×214列=42,800セルで**約3秒、その間まったく操作できない**
+    (罫線もCSSも外した素の表でも1秒近くかかるので、書き方の問題ではなく
+    セルの数そのもの)。一度に全部を渡すと、その3秒が1つの塊になる。
+    最初の一塊だけ描いて渡し、**残りはフレームごとに継ぎ足す**。合計の
+    時間は変わらないが、その間ずっとスクロールも切替もできる。
+    小さい表(下のしきい値以下)は今までどおり一度に描く——分割すると
+    「1行ずつ現れる」だけで、速くも見やすくもならない。
+
+    継ぎ足しは**1回ごとに表全体のレイアウトが起きる**ので、細かく割るほど
+    合計は増える(実測: 20行ずつで合計4.7秒、5行ずつだと7.3秒)。そこで
+    **最初だけ小さく、あとは倍々に**する——最初の一画面はすぐ出て、
+    そのあとは大きく取って回数を減らす。 */
+ const FIRST_CELLS=700,MAX_CELLS=9000;
+ /* このセル数までは一度に描く。**下回る表では分けない**——分けても
+    速くならず、「行が後から生えてくる」動きだけが増える。 */
+ const CHUNK_MIN_CELLS=8000;
+ const colCount=visibleColumns.length+2+(isWork?2:0)+(canPlan?2:0);
+ const rowsFor=cells=>Math.max(5,Math.floor(cells/Math.max(1,colCount)));
+ const chunked=visibleRows.length*colCount>CHUNK_MIN_CELLS&&visibleRows.length>rowsFor(FIRST_CELLS);
+ const first=chunked?rowsFor(FIRST_CELLS):visibleRows.length;
+ for(let i=0;i<first;i++)buildRow(visibleRows[i],i);
  t.append(b);$('#grid').replaceChildren(t);$('#count').textContent=`全 ${S.count.toLocaleString()}件`;$('#page').textContent=`${S.page}ページ`;$('#prev').disabled=S.page===1;$('#next').disabled=S.page*+$('#pageSize').value>=S.count;
  if(canPlan){
   const selectAll=$('#planSelectAll');
@@ -819,8 +977,36 @@ function renderGridInner(){
  }
  renderPlanSelectBar(canPlan);
  renderListToolbar();
- checkSplitRowsForMissingChildren(splitCheckTargets);
- checkParentLookupRows(parentCheckTargets);
+ const gen=gridGeneration;
+ /* 追い判定は**全部並べ終えてから**(§9.94)。継ぎ足しの途中で始めると、
+    まだ作られていない行の印を付け損なう。 */
+ const afterRows=()=>{
+  if(gen!==gridGeneration)return;
+  if(!splitCheckTargets.length&&!parentCheckTargets.length)return;
+  whenIdle(()=>{
+   if(gen!==gridGeneration)return;
+   prefetchSplitLookups([...splitCheckTargets,...parentCheckTargets]).then(()=>{
+    if(gen!==gridGeneration)return;
+    checkSplitRowsForMissingChildren(splitCheckTargets);
+    checkParentLookupRows(parentCheckTargets);
+   });
+  });
+ };
+ if(!chunked){afterRows();return}
+ const t0=performance.now();
+ let at=first,cells=FIRST_CELLS*2;
+ const more=()=>{
+  if(gen!==gridGeneration)return;              // 描き直された: 続きは要らない
+  const end=Math.min(visibleRows.length,at+rowsFor(cells));
+  cells=Math.min(MAX_CELLS,cells*2);
+  for(;at<end;at++)buildRow(visibleRows[at],at);
+  if(at<visibleRows.length){requestAnimationFrame(more);return}
+  // 全部並べ終えた時点の時間を「表示」として記録し直す(内訳の札を正しくする)
+  noteRenderTime((lastLoadBreakdown?.render||0)+(performance.now()-t0));
+  renderLoadChip();
+  afterRows();
+ };
+ requestAnimationFrame(more);
 }
 
 /* ---------- 一覧のツールバー ----------
@@ -968,12 +1154,33 @@ function runLimited(items,limit,worker){
  });
  return Promise.all(runners);
 }
+/* ---------- 行ごとの追い判定は「一覧が出てから」(§9.94) ----------
+   分割ありの行の子ロット確認・子カード行の親ロット逆引きは、**一覧を
+   読むのに要らない**(印を後から足すだけ)。それを描画の直後に始めていた
+   ため、開いた瞬間に数十本の問い合わせと、そのぶんのJSON解読が
+   走り、画面が固まったように見えていた(実機で報告、再現済み)。
+   ・**手が空いてから**始める(requestIdleCallback。無ければ短い遅延)
+   ・**先頭をまとめて先に引く**(lot-split.jsのprefetchLotPrefixes)
+   ・以後は1行ずつでも手元の結果で済む */
+function whenIdle(fn,timeout=1200){
+ if(typeof requestIdleCallback==='function')return requestIdleCallback(fn,{timeout});
+ return setTimeout(fn,120);
+}
+/* 追い判定に使う先頭5桁を、この画面ぶんまとめて先に引いておく。 */
+function prefetchSplitLookups(targets){
+ if(!targets.length||typeof window.prefetchLotPrefixes!=='function')return Promise.resolve();
+ const prefixes=[...new Set(targets
+   .map(({row})=>String(pick(row,'lotNo')||''))
+   .filter(x=>x.length>=5).map(x=>x.slice(0,5)))];
+ if(!prefixes.length)return Promise.resolve();
+ return window.prefetchLotPrefixes(prefixes).catch(()=>{});
+}
 function checkSplitRowsForMissingChildren(targets){
  if(!targets.length||typeof window.findMissingChildLots!=='function')return;
  const gen=gridGeneration;
  runLimited(targets,3,async({tr,row})=>{
   if(gen!==gridGeneration)return;          // 描き直された: この判定はもう不要
-  const info=await window.findMissingChildLots(row);
+  const info=await window.findMissingChildLots(row,{light:true});
   if(gen!==gridGeneration)return;
   if(!info||!info.missing.length)return;
   const cell=tr.querySelector('.split-flag-cell');if(!cell)return;
@@ -991,7 +1198,7 @@ function checkParentLookupRows(targets){
  const gen=gridGeneration;
  runLimited(targets,3,async({tr,row})=>{
   if(gen!==gridGeneration)return;          // 描き直された: この判定はもう不要
-  const parent=await window.findParentLotFor(row);
+  const parent=await window.findParentLotFor(row,{light:true});
   if(gen!==gridGeneration)return;
   const cell=tr.querySelector('.split-flag-cell');if(!cell)return;
   if(parent){

@@ -765,21 +765,19 @@
     });
   }
 
-  // /api/table へフィルタ条件を送信する。
-  if(typeof load==='function'){
-    load=async function(force){
-      /* **問い合わせの組み立てはWL.listQuery()に一本化してある。** この
-         ファイルはload()を丸ごと置き換えるため、ここで独自に組み立てると
-         list-view.js側だけ直した変更が実際には効かない(品質データ結合と
-         キャッシュで2度起きた)。ここが足すのは絞り込み条件だけ。 */
-      const q=WL.listQuery();
-      // 変数(例: {使用設備})はここで今の値へ展開する。保存されている条件は
-      // 変数のままなので、端末や設備が変わってもそのまま使い回せる。
-      if(S.genericFilters?.length)q.set('filters',JSON.stringify(expandFilterList(S.genericFilters)));
-      await fetchTableData(String(q),force);
-      renderGrid();renderGenericFilterBar();
-    };
-  }
+  /* /api/table へ絞り込み条件を送る。
+     **load()を丸ごと置き換えない**(§9.93)。以前はここで全置換しており、
+     元の定義をgrepで辿っても最終的な実装に行き着かなかった。実際、
+     品質データ結合・キャッシュ・読み込み時間の計測の3回、「list-view.js側
+     だけ直して効いていない」が起きている。このファイルが足すのは
+     **絞り込み条件と、絞り込みバーの描き直し**の2つだけなので、
+     その2つをフックとして登録する。 */
+  WL.listHooks.onQuery(q=>{
+    // 変数(例: {使用設備})はここで今の値へ展開する。保存されている条件は
+    // 変数のままなので、端末や設備が変わってもそのまま使い回せる。
+    if(S.genericFilters?.length)q.set('filters',JSON.stringify(expandFilterList(S.genericFilters)));
+  });
+  WL.listHooks.onAfter(()=>renderGenericFilterBar());
   if(typeof renderTabs==='function'){
     const baseRenderTabs=renderTabs;renderTabs=function(){baseRenderTabs();ensureGenericFilterBar();renderGenericFilterBar();};
   }
