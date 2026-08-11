@@ -743,3 +743,155 @@ def set_schedule_content_items(c,equipment,item_names,uid):
               [equipment,name,order,uid,uid])
  c.commit()
  return order
+
+
+# ========================================================================
+# 列レイアウトマスタ（§9.88新設）
+#  - 一覧・タイムラインの「列の並び順」と「列幅」を覚える。
+#  - 既存の3つの列関連マスタとは**軸が違う**ので別テーブルにする:
+#      表示マスタ             … DB単位・どの列を隠すか(ブロックリスト)
+#      スケジュール列表示マスタ … 設備単位・どの列を出すか(アローリスト)
+#      スケジュール内容表示マスタ … 設備単位・「内容」に出す項目と順序
+#    こちらは**どの画面でも使える「並びと幅」**だけを持つ。列を出すか
+#    どうかは上の3つが決める(責務を混ぜない)。
+#  - [対象]は画面ごとのスコープ文字列。呼び出し側が組み立てる:
+#      list:<DBキー>:<テーブル名>   一覧グリッド(モードによらず共有)
+#      timeline:<設備名>            作業スケジュールのタイムライン
+#  - 行が1件も無い対象＝未設定＝既定の並び・既定の幅(他マスタと同じ互換
+#    ポリシー)。**幅だけ・並びだけ**の保存もできるよう、幅はNULL可。
+# ========================================================================
+COLUMN_LAYOUT_TABLE='列レイアウトマスタ'
+
+def ensure_column_layout_table(c):
+ names=tables(c);created=False
+ if COLUMN_LAYOUT_TABLE not in names:
+  cur=c.cursor()
+  cur.execute('CREATE TABLE [列レイアウトマスタ] ([ID] INTEGER PRIMARY KEY AUTOINCREMENT, '
+              '[対象] TEXT, [列名] TEXT, [表示順] INTEGER, [幅] INTEGER, [表示] INTEGER, '
+              '[登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
+  cur.execute('CREATE UNIQUE INDEX [UX_列レイアウトマスタ] ON [列レイアウトマスタ] ([対象],[列名])')
+  c.commit();created=True
+ ensure_audit_columns(c,COLUMN_LAYOUT_TABLE)
+ # 既存DBへの追加(他マスタと同じ「無ければALTER TABLEで足す」方式)。
+ if '表示' not in {r[1] for r in c.cursor().execute(f'PRAGMA table_info([{COLUMN_LAYOUT_TABLE}])')}:
+  c.cursor().execute(f'ALTER TABLE [{COLUMN_LAYOUT_TABLE}] ADD COLUMN [表示] INTEGER')
+  c.commit()
+ return created
+
+# 幅の下限・上限。狭すぎると掴めなくなり、広すぎると他の列が押し出される。
+COLUMN_WIDTH_MIN=40
+COLUMN_WIDTH_MAX=900
+
+def normalize_column_width(value):
+ """保存できる幅へ丸める。数値でなければNone(=既定の幅)。"""
+ if value in (None,''):return None
+ try:w=int(float(value))
+ except (TypeError,ValueError):return None
+ return max(COLUMN_WIDTH_MIN,min(COLUMN_WIDTH_MAX,w))
+
+def column_layout_for(c,target):
+ """{'order':[列名...], 'widths':{列名:幅}, 'hidden':[列名...]}。未設定なら空。
+
+ **hiddenは「この対象で隠す列」**。[表示]がNULLの行は表示(既定)として扱う
+ ——列を足したときに既存の行が勝手に隠れないようにするため。"""
+ empty={'order':[],'widths':{},'hidden':[]}
+ if COLUMN_LAYOUT_TABLE not in tables(c):return dict(empty)
+ target=str(target or '').strip()
+ if not target:return dict(empty)
+ has_visible='表示' in {r[1] for r in c.cursor().execute(f'PRAGMA table_info([{COLUMN_LAYOUT_TABLE}])')}
+ cur=c.cursor()
+ cur.execute('SELECT [列名],[表示順],[幅]'+(',[表示]' if has_visible else '')+
+             ' FROM [列レイアウトマスタ] WHERE [対象]=? ORDER BY [表示順],[ID]',[target])
+ order=[];widths={};hidden=[]
+ for row in cur.fetchall():
+  name=str(row[0] or '').strip()
+  if not name:continue
+  order.append(name)
+  if row[2] not in (None,''):widths[name]=int(row[2])
+  if has_visible and row[3] is not None and not bool(row[3]):hidden.append(name)
+ return {'order':order,'widths':widths,'hidden':hidden}
+
+def set_column_layout(c,target,order,widths,uid,hidden=None):
+ """全置換方式(他の列マスタと同じ)。渡された順序がそのまま表示順になる。
+
+ **幅だけを変えたいときも並び全体を送る**こと。部分更新にすると、
+ 並べ替えと幅変更が別々に走ったときにどちらが正か決まらなくなる。"""
+ ensure_column_layout_table(c)
+ target=str(target or '').strip()
+ if not target:raise ValueError('対象を指定してください。')
+ widths=widths if isinstance(widths,dict) else {}
+ hide={str(x or '').strip() for x in (hidden or []) if str(x or '').strip()}
+ cur=c.cursor()
+ cur.execute('DELETE FROM [列レイアウトマスタ] WHERE [対象]=?',[target])
+ seq=0
+ for name in (order or []):
+  name=str(name or '').strip()
+  if not name:continue
+  seq+=1
+  cur.execute('INSERT INTO [列レイアウトマスタ] ([対象],[列名],[表示順],[幅],[表示],'
+              '[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,Now(),Now())',
+              [target,name,seq,normalize_column_width(widths.get(name)),
+               0 if name in hide else -1,uid,uid])
+ # 並びに載っていない列の幅だけが指定されている場合も残す(列が増減しても
+ # 幅の記憶が消えないように。表示順は末尾扱いの0にしておく)。
+ for name,width in widths.items():
+  name=str(name or '').strip()
+  if not name or name in (order or []):continue
+  w=normalize_column_width(width)
+  if w is None:continue
+  cur.execute('INSERT INTO [列レイアウトマスタ] ([対象],[列名],[表示順],[幅],[表示],'
+              '[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,0,?,?,?,?,Now(),Now())',
+              [target,name,w,0 if name in hide else -1,uid,uid])
+ c.commit()
+ return seq
+
+
+# ========================================================================
+# ソートプリセットマスタ（§9.88新設）
+#  - 「いつも使う並び順」を保存して再利用する。フィルタプリセットマスタと
+#    同じ構成(対象DB・対象テーブル・対象モード・使用回数)にしてあるので、
+#    画面も同じ形で作れる。
+#  - 並びは複数キーを持てる: [{'column':'ロット番号','dir':'asc'}, ...]。
+#    1キーしか使わない運用でも、保存する価値があるのは複数キーのときなので
+#    最初から配列で持つ。
+# ========================================================================
+SORT_PRESET_TABLE='ソートプリセットマスタ'
+
+def ensure_sort_preset_table(c):
+ names=tables(c);created=False
+ if SORT_PRESET_TABLE not in names:
+  cur=c.cursor()
+  cur.execute('CREATE TABLE [ソートプリセットマスタ] ([プリセットID] INTEGER PRIMARY KEY AUTOINCREMENT, '
+              '[名称] TEXT, [対象DB] TEXT, [対象テーブル] TEXT, [対象モード] TEXT, [並びJSON] TEXT, '
+              '[使用回数] INTEGER, [最終使用日時] DATETIME, [表示順] INTEGER, [有効] INTEGER, '
+              '[登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
+  c.commit();created=True
+ ensure_audit_columns(c,SORT_PRESET_TABLE)
+ return created
+
+def sort_preset_rows(c):
+ ensure_sort_preset_table(c)
+ cur=c.cursor()
+ cur.execute('SELECT [プリセットID],[名称],[対象DB],[対象テーブル],[並びJSON],[使用回数],'
+             '[最終使用日時],[有効],[更新日時],[更新者ID],[対象モード] FROM [ソートプリセットマスタ] '
+             'ORDER BY [使用回数] DESC,[表示順],[名称]')
+ rows=[]
+ for r in cur.fetchall():
+  active=True if r[7] is None else bool(r[7])
+  if active and str(r[1] or '').strip():rows.append(r)
+ return rows
+
+def normalize_sort_keys(raw):
+ """保存・適用できる形へ整える。列名が空のものは捨てる。
+ 同じ列を2回指定しても後勝ちにはせず**先勝ち**で1回だけ残す
+ (SQLのORDER BYで同じ列を並べても2つ目に意味が無いため)。"""
+ out=[];seen=set()
+ for item in (raw or []):
+  if isinstance(item,str):item={'column':item}
+  if not isinstance(item,dict):continue
+  col=str(item.get('column') or '').strip()
+  if not col or col in seen:continue
+  seen.add(col)
+  out.append({'column':col,
+              'dir':'desc' if str(item.get('dir') or '').strip().lower()=='desc' else 'asc'})
+ return out

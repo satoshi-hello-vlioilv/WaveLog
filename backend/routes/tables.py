@@ -263,8 +263,26 @@ def api_table():
     where_parts.append('('+' OR '.join(f'CStr({qi(x)}) LIKE ?' for x in cs)+')');params += [f'%{q}%']*len(cs)
    filters=safe_filters(filter_payload,cs);fp,filter_params=build_filter_where(filters);where_parts += fp;params += filter_params
    where=(' WHERE '+' AND '.join(where_parts)) if where_parts else ''
-   sort_col=request.args.get('sort','').strip();sort_dir='DESC' if request.args.get('sort_dir','').strip().lower()=='desc' else 'ASC'
-   order=f' ORDER BY {qi(sort_col)} {sort_dir}' if sort_col in cs else ''
+   # 並び順は複数キーを受け付ける(§9.88)。sorts=[{"column":..,"dir":"asc"}..]
+   # のJSON。従来の sort / sort_dir (1列)も引き続き使える(見出しクリック)。
+   # **実在する列だけを通す**(cs との照合)。qi()で括ってはいるが、そもそも
+   # 列名を組み立てに使う箇所なので、素性の分かるものだけに絞る。
+   order_parts=[]
+   raw_sorts=request.args.get('sorts','').strip()
+   if raw_sorts:
+    try:items=json.loads(raw_sorts)
+    except Exception:items=[]
+    for it in (items if isinstance(items,list) else []):
+     if isinstance(it,str):it={'column':it}
+     if not isinstance(it,dict):continue
+     col=str(it.get('column') or '').strip()
+     if col not in cs or any(col==x[0] for x in order_parts):continue
+     order_parts.append((col,'DESC' if str(it.get('dir') or '').lower()=='desc' else 'ASC'))
+   if not order_parts:
+    sort_col=request.args.get('sort','').strip()
+    sort_dir='DESC' if request.args.get('sort_dir','').strip().lower()=='desc' else 'ASC'
+    if sort_col in cs:order_parts.append((sort_col,sort_dir))
+   order=(' ORDER BY '+','.join(f'{qi(c2)} {d}' for c2,d in order_parts)) if order_parts else ''
    cur=c.cursor();cur.execute(f'SELECT COUNT(*) FROM {qi(t)}'+where,params);count=int(cur.fetchone()[0]);top=page*size
    # 件数の頭からtop件を取り、Python側でページ分だけ切り出す(rows[start:start+size])。
    cur.execute(f'SELECT * FROM {qi(t)}'+where+order+f' LIMIT {top}',params)

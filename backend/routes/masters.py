@@ -38,6 +38,8 @@ from ..repositories.master_repo import (
  COLUMN_DISPLAY_TABLE, ensure_column_display_table, hidden_columns_for, set_hidden_columns,
  SCHEDULE_COLUMN_TABLE, ensure_schedule_column_table, schedule_columns_for, set_schedule_columns,
  SCHEDULE_CONTENT_TABLE, ensure_schedule_content_table, schedule_content_items_for, set_schedule_content_items,
+ COLUMN_LAYOUT_TABLE, ensure_column_layout_table, column_layout_for, set_column_layout,
+ SORT_PRESET_TABLE, ensure_sort_preset_table, sort_preset_rows, normalize_sort_keys,
  ACCESS_PERMISSION_TABLE, ensure_access_permission_table, normalize_identity_part, access_permission_master_rows,
  field_reorder_terminal_count,
 )
@@ -748,3 +750,139 @@ def access_permission_master_delete():
    cur.execute('UPDATE [アクセス権限マスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [権限ID]=?',[uid,aid]);c.commit()
   return jsonify(ok=True,id=aid,updated_by=uid)
  except Exception as e:return jsonify(error=f'アクセス権限マスタ削除失敗: {e}'),500
+
+
+# ========================================================================
+# 列レイアウトマスタ(§9.88新設): 一覧・タイムラインの「並び順」と「列幅」。
+# 対象(target)は画面が組み立てるスコープ文字列(list:<DB>:<表> / timeline:<設備>)。
+# **どの列を出すかは別マスタ**(表示マスタ/スケジュール列表示マスタ)が決める。
+# ここは並びと幅だけを持つので、列が増減しても保存内容は壊れない
+# (知らない列は無視し、記録に無い列は既定の位置・既定の幅になる)。
+# ========================================================================
+@bp.get('/api/column-layout-master')
+def column_layout_master_get():
+ try:
+  target=str(request.args.get('target') or '').strip()
+  if not target:return jsonify(error='対象(target)を指定してください。'),400
+  path=DBS['MASTER']['path']
+  if not path.exists():return jsonify(ok=True,target=target,order=[],widths={})
+  with connect(path,True) as c:
+   layout=column_layout_for(c,target)
+  return jsonify(ok=True,target=target,**layout)
+ except Exception as e:
+  # 並びが読めなくても一覧そのものは出せる(既定の並び)。画面はfail-openで扱う。
+  return jsonify(error=f'列レイアウト読込失敗: {e}'),500
+
+@bp.post('/api/column-layout-master')
+def column_layout_master_save():
+ try:
+  x=request.get_json(force=True) or {};uid=request_user_id(x)
+  target=str(x.get('target') or '').strip()
+  if not target:return jsonify(error='対象(target)を指定してください。'),400
+  order=x.get('order');widths=x.get('widths');hidden=x.get('hidden')
+  if order is not None and not isinstance(order,list):
+   return jsonify(error='並び(order)の指定が不正です。'),400
+  if widths is not None and not isinstance(widths,dict):
+   return jsonify(error='列幅(widths)の指定が不正です。'),400
+  if hidden is not None and not isinstance(hidden,list):
+   return jsonify(error='非表示列(hidden)の指定が不正です。'),400
+  path=DBS['MASTER']['path']
+  with connect(path,False) as c:
+   n=set_column_layout(c,target,order or [],widths or {},uid,hidden=hidden or [])
+  return jsonify(ok=True,target=target,columns=n,updated_by=uid,message='表示の並びを保存しました。')
+ except Exception as e:return jsonify(error=f'列レイアウト保存失敗: {e}'),500
+
+
+# ========================================================================
+# ソートプリセットマスタ(§9.88新設): 「いつも使う並び順」。
+# フィルタプリセット(/api/filter-presets)と同じ構成・同じ操作にしてある。
+# ========================================================================
+@bp.get('/api/sort-presets')
+def sort_preset_list():
+ try:
+  db_key=str(request.args.get('db') or '').strip();table=str(request.args.get('table') or '').strip()
+  path=DBS['MASTER']['path']
+  with connect(path,False) as c:
+   rows=sort_preset_rows(c)
+  items=[]
+  for r in rows:
+   try:keys=json.loads(r[4] or '[]')
+   except Exception:keys=[]
+   items.append({'id':r[0],'name':str(r[1] or '').strip(),'db':str(r[2] or '').strip(),
+                 'table':str(r[3] or '').strip(),'sorts':normalize_sort_keys(keys),
+                 'uses':int(r[5] or 0),
+                 'last_used':r[6].isoformat() if r[6] else None,
+                 'updated_at':r[8].isoformat() if r[8] else None,
+                 'updated_by':(str(r[9]).strip() if len(r)>9 and r[9] else ''),
+                 'mode':(str(r[10]).strip() if len(r)>10 and r[10] else '')})
+  if db_key:items=[x for x in items if x['db']==db_key]
+  if table:items=[x for x in items if x['table']==table]
+  mode=_filter_preset_mode(request.args.get('mode'))
+  items=[x for x in items if x.get('mode','')==mode]
+  return jsonify(ok=True,items=items,mode=mode,table=SORT_PRESET_TABLE,master_path=str(path))
+ except Exception as e:return jsonify(error=f'ソートプリセット読込失敗: {e}'),500
+
+@bp.post('/api/sort-presets')
+def sort_preset_register():
+ try:
+  x=request.get_json(force=True) or {};name=str(x.get('name') or '').strip();uid=request_user_id(x)
+  if not name:return jsonify(error='並び順の名前を入力してください。'),400
+  keys=normalize_sort_keys(x.get('sorts'))
+  if not keys:return jsonify(error='保存する並び順がありません。'),400
+  db_key=str(x.get('db') or '').strip();table=str(x.get('table') or '').strip()
+  mode=_filter_preset_mode(x.get('mode'));payload=json.dumps(keys,ensure_ascii=False)
+  path=DBS['MASTER']['path']
+  with connect(path,False) as c:
+   ensure_sort_preset_table(c);cur=c.cursor()
+   cur.execute('SELECT [プリセットID],[名称],[対象DB],[対象テーブル],[対象モード] FROM [ソートプリセットマスタ]')
+   target=normalize_equipment_name(name)
+   existing=next((r for r in cur.fetchall()
+                  if normalize_equipment_name(r[1])==target and str(r[2] or '')==db_key
+                  and str(r[3] or '')==table and str(r[4] or '')==mode),None)
+   if existing:
+    cur.execute('UPDATE [ソートプリセットマスタ] SET [並びJSON]=?,[有効]=-1,[更新者ID]=?,'
+                '[更新日時]=Now() WHERE [プリセットID]=?',[payload,uid,existing[0]])
+    registered=False;pid=existing[0]
+   else:
+    cur.execute('SELECT Max([表示順]) FROM [ソートプリセットマスタ]')
+    order=int(cur.fetchone()[0] or 0)+10
+    cur.execute('INSERT INTO [ソートプリセットマスタ] ([名称],[対象DB],[対象テーブル],[対象モード],'
+                '[並びJSON],[使用回数],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) '
+                'VALUES (?,?,?,?,?,0,?,-1,?,?,Now(),Now())',
+                [name,db_key,table,mode,payload,order,uid,uid])
+    registered=True;pid=cur.lastrowid
+   c.commit()
+  return jsonify(ok=True,name=name,id=pid,registered=registered,updated_by=uid,
+                 message=('並び順を登録しました。' if registered else '登録済みの並び順を更新しました。'))
+ except Exception as e:return jsonify(error=f'ソートプリセット登録失敗: {e}'),500
+
+@bp.post('/api/sort-presets/use')
+def sort_preset_use():
+ # よく使う順に並べるため、適用時に使用回数を加算する(フィルタと同じ)。
+ try:
+  x=request.get_json(force=True) or {};pid=x.get('id');uid=request_user_id(x)
+  if pid is None:return jsonify(ok=True,skipped=True)
+  path=DBS['MASTER']['path']
+  if not path.exists():return jsonify(ok=True,skipped=True)
+  with connect(path,False) as c:
+   ensure_sort_preset_table(c);cur=c.cursor()
+   cur.execute('UPDATE [ソートプリセットマスタ] SET [使用回数]=Nz([使用回数],0)+1,'
+               '[最終使用日時]=Now(),[更新者ID]=? WHERE [プリセットID]=?',[uid,pid])
+   c.commit()
+  return jsonify(ok=True,id=pid,updated_by=uid)
+ except Exception as e:return jsonify(error=f'使用回数更新失敗: {e}'),500
+
+@bp.post('/api/sort-presets/delete')
+def sort_preset_delete():
+ try:
+  x=request.get_json(force=True) or {};pid=x.get('id');uid=request_user_id(x)
+  if pid is None:return jsonify(error='削除対象IDがありません。'),400
+  path=DBS['MASTER']['path']
+  with connect(path,False) as c:
+   ensure_sort_preset_table(c);cur=c.cursor()
+   # 物理削除ではなく無効化(フィルタプリセットと同じ方針)。
+   cur.execute('UPDATE [ソートプリセットマスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() '
+               'WHERE [プリセットID]=?',[uid,pid])
+   c.commit()
+  return jsonify(ok=True,id=pid,updated_by=uid)
+ except Exception as e:return jsonify(error=f'ソートプリセット削除失敗: {e}'),500
