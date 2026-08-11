@@ -895,3 +895,62 @@ def normalize_sort_keys(raw):
   out.append({'column':col,
               'dir':'desc' if str(item.get('dir') or '').strip().lower()=='desc' else 'asc'})
  return out
+
+
+# ========================================================================
+# 一覧表示設定マスタ（§9.88）
+#  - 「その一覧をどの密度で見せるか」= 行間。列ではなく**一覧全体**の設定
+#    なので、列表示定義マスタ(1行=1列)とは別テーブルにする。混ぜると
+#    「列名が空の行」という読めない行が混ざる。
+#  - 対象は列レイアウトマスタと同じスコープ文字列。
+#  - 行が無い対象＝未設定＝既定(3)。
+# ========================================================================
+LIST_VIEW_TABLE='一覧表示設定マスタ'
+ROW_GAP_MIN=1
+ROW_GAP_MAX=5
+ROW_GAP_DEFAULT=3
+
+def ensure_list_view_table(c):
+ names=tables(c);created=False
+ if LIST_VIEW_TABLE not in names:
+  cur=c.cursor()
+  cur.execute('CREATE TABLE [一覧表示設定マスタ] ([ID] INTEGER PRIMARY KEY AUTOINCREMENT, '
+              '[対象] TEXT, [行間] INTEGER, '
+              '[登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
+  cur.execute('CREATE UNIQUE INDEX [UX_一覧表示設定マスタ] ON [一覧表示設定マスタ] ([対象])')
+  c.commit();created=True
+ ensure_audit_columns(c,LIST_VIEW_TABLE)
+ return created
+
+def normalize_row_gap(value):
+ """行間の段階へ丸める。数値でなければ既定。"""
+ try:n=int(float(value))
+ except (TypeError,ValueError):return ROW_GAP_DEFAULT
+ return max(ROW_GAP_MIN,min(ROW_GAP_MAX,n))
+
+def list_view_settings_for(c,target):
+ if LIST_VIEW_TABLE not in tables(c):return {'rowGap':ROW_GAP_DEFAULT}
+ target=str(target or '').strip()
+ if not target:return {'rowGap':ROW_GAP_DEFAULT}
+ cur=c.cursor()
+ cur.execute('SELECT [行間] FROM [一覧表示設定マスタ] WHERE [対象]=?',[target])
+ row=cur.fetchone()
+ if not row or row[0] is None:return {'rowGap':ROW_GAP_DEFAULT}
+ return {'rowGap':normalize_row_gap(row[0])}
+
+def set_list_view_settings(c,target,row_gap,uid):
+ ensure_list_view_table(c)
+ target=str(target or '').strip()
+ if not target:raise ValueError('対象を指定してください。')
+ gap=normalize_row_gap(row_gap)
+ cur=c.cursor()
+ cur.execute('SELECT [ID] FROM [一覧表示設定マスタ] WHERE [対象]=?',[target])
+ row=cur.fetchone()
+ if row:
+  cur.execute('UPDATE [一覧表示設定マスタ] SET [行間]=?,[更新者ID]=?,[更新日時]=Now() WHERE [ID]=?',
+              [gap,uid,row[0]])
+ else:
+  cur.execute('INSERT INTO [一覧表示設定マスタ] ([対象],[行間],[登録者ID],[更新者ID],'
+              '[登録日時],[更新日時]) VALUES (?,?,?,?,Now(),Now())',[target,gap,uid,uid])
+ c.commit()
+ return gap

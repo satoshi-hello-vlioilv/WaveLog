@@ -29,6 +29,43 @@ async function init(){
  }catch(e){console.error('初期化エラー',e);showToast('初期化の一部に失敗',e.message,8000)}
  finally{bindV32Navigation()}
 }
+/* ---------- 行間(§9.88) ----------
+   一覧全体の密度。列ごとの設定とは別物なので、保存先も別
+   (一覧表示設定マスタ)。段階(1〜5)で持ち、実際の余白は --row-gap へ流す。
+   **1本のつまみで行の高さが決まる**構造にしてあるので(§9.88 段0)、
+   ここはその値を差し替えるだけで済む。 */
+const ROW_GAP_STEPS={1:'2px',2:'3px',3:'4px',4:'6px',5:'9px'};
+let rowGapValue=3;
+function applyRowGap(step){
+ rowGapValue=Math.max(1,Math.min(5,Number(step)||3));
+ const grid=document.querySelector('#grid');
+ if(!grid)return;
+ const v=ROW_GAP_STEPS[rowGapValue];
+ /* **--row-pad-y も一緒に差し替える。** :root で
+    `--row-pad-y: var(--row-gap)` と定義してあるが、カスタムプロパティは
+    定義した場所で値が解決されるため、子孫で --row-gap を上書きしても
+    --row-pad-y は :root の値のまま(実際にこれで効かなかった)。 */
+ grid.style.setProperty('--row-gap',v);
+ grid.style.setProperty('--row-pad-y',v);
+}
+async function saveRowGap(step){
+ applyRowGap(step);
+ const target=listLayoutTarget();if(!target)return;
+ try{
+  await api('/api/list-view-master',{method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify(withUserId({target,rowGap:rowGapValue}))});
+ }catch(e){showToast&&showToast('行間を保存できませんでした',e.message,5000)}
+}
+async function loadRowGap(){
+ const target=listLayoutTarget();if(!target)return;
+ try{
+  const r=await api('/api/list-view-master?target='+encodeURIComponent(target));
+  applyRowGap(r.rowGap);
+  const el=document.querySelector('#listRowGap');if(el)el.value=String(rowGapValue);
+ }catch(e){/* 読めなくても既定の密度で出す(fail-open) */}
+}
+WL.rowGap={apply:applyRowGap,save:saveRowGap,load:loadRowGap,value:()=>rowGapValue};
+
 /* ---------- 見出しの操作: 列の並べ替えと列幅(§9.88) ----------
    よく使う操作は設定画面を開かずに表の上で完結させる。**離した時点で保存**し、
    確認は出さない(すぐ元に戻せる操作なので、確認は邪魔になるだけ)。
@@ -261,6 +298,7 @@ async function fetchTableData(key,force){
  // 列レイアウトは描画時に同期で参照するので、取得と一緒に用意しておく
  // (読めなくても既定の並びで一覧は出る)。
  try{await WL.columnLayout.load(listLayoutTarget())}catch(e){}
+ try{await loadRowGap()}catch(e){}
  const hit=force?null:tableCacheGet(key);
  if(hit){applyTableData(hit.data);updateListFreshness(hit.at);return}
  const label=databaseLabel(S.db),table=S.table||'テーブル';
@@ -499,10 +537,21 @@ function ensureListToolbar(){
  if(!grid||!grid.parentNode)return null;
  if(!bar){
   bar=document.createElement('div');bar.id='listToolbar';bar.className='list-toolbar';bar.hidden=true;
+  /* 行間(§9.88)は**動かした瞬間に反映**する。数値を入れて確定させる形にすると、
+     どの値が自分に合うのかを試せない(見て決めるものなので、見ながら動かす)。
+     保存は離した時点で1回だけ(動かしている間ずっと書きに行かない)。 */
   bar.innerHTML=`<button type="button" id="listColumnBtn" class="list-toolbar-btn" title="この一覧に表示する列を選びます">☰ 表示列</button>
+   <label class="list-rowgap" title="行の間隔を変えます（この一覧ごとに覚えます）"><span>行間</span>
+    <input type="range" id="listRowGap" min="1" max="5" step="1" value="3" aria-label="行の間隔"></label>
    <span class="list-join-chip" id="listJoinChip" hidden></span>`;
   grid.parentNode.insertBefore(bar,grid);
   bar.querySelector('#listColumnBtn').onclick=()=>window.openListColumnPicker?.();
+  const gap=bar.querySelector('#listRowGap');
+  gap.addEventListener('input',()=>applyRowGap(Number(gap.value)));
+  gap.addEventListener('change',()=>saveRowGap(Number(gap.value)));
+  // ツールバーは描き直されることがある。作った直後に今の値を入れておかないと
+  // 見た目(既定)と実際の行間がずれる。
+  gap.value=String(rowGapValue);applyRowGap(rowGapValue);
  }else if(bar.nextElementSibling!==grid){
   // #gridが別の親(分割/ポップアップ)へ移動したら追従させる。
   grid.parentNode.insertBefore(bar,grid);
@@ -511,6 +560,9 @@ function ensureListToolbar(){
 }
 function renderListToolbar(){
  const bar=ensureListToolbar();if(!bar)return;
+ // 読み込んだ行間を毎回反映する(一覧を切り替えるとスコープごと変わる)。
+ const gapEl=bar.querySelector('#listRowGap');
+ if(gapEl){gapEl.value=String(rowGapValue);applyRowGap(rowGapValue)}
  // 表示列の選択は、設備ごとの設定を持つスケジュールモードの仕掛一覧でのみ扱う。
  const canPickColumns=WL.dataSource.isWork(S.db)&&window.accessMode?.mode==='schedule'&&!!window.scColumnPickerAvailable?.();
  const btn=bar.querySelector('#listColumnBtn');

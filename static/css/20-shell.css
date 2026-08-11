@@ -229,4 +229,9 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  }
  #grid th.col-drop-before::before{left:-1px}
  #grid th.col-drop-after::before{right:-1px}
+ /* 行間のつまみ(§9.88)。表示列ボタンの隣に置く——どちらも「この一覧の
+    見せ方」の設定で、探す場所を1箇所にまとめる。 */
+ .list-rowgap{display:inline-flex;align-items:center;gap:var(--gap-inline);
+  font-size:var(--fs-sm);color:var(--muted)}
+ .list-rowgap input[type="range"]{width:calc(84px * var(--ui-scale));accent-color:var(--teal)}
 }

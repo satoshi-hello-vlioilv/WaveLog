@@ -40,6 +40,8 @@ from ..repositories.master_repo import (
  SCHEDULE_CONTENT_TABLE, ensure_schedule_content_table, schedule_content_items_for, set_schedule_content_items,
  COLUMN_LAYOUT_TABLE, ensure_column_layout_table, column_layout_for, set_column_layout,
  SORT_PRESET_TABLE, ensure_sort_preset_table, sort_preset_rows, normalize_sort_keys,
+ LIST_VIEW_TABLE, ensure_list_view_table, list_view_settings_for, set_list_view_settings,
+ ROW_GAP_DEFAULT,
  ACCESS_PERMISSION_TABLE, ensure_access_permission_table, normalize_identity_part, access_permission_master_rows,
  field_reorder_terminal_count,
 )
@@ -886,3 +888,30 @@ def sort_preset_delete():
    c.commit()
   return jsonify(ok=True,id=pid,updated_by=uid)
  except Exception as e:return jsonify(error=f'ソートプリセット削除失敗: {e}'),500
+
+# ========================================================================
+# 一覧表示設定マスタ(§9.88): 行間。列ではなく一覧全体の設定。
+# ========================================================================
+@bp.get('/api/list-view-master')
+def list_view_master_get():
+ try:
+  target=str(request.args.get('target') or '').strip()
+  if not target:return jsonify(error='対象(target)を指定してください。'),400
+  path=DBS['MASTER']['path']
+  if not path.exists():return jsonify(ok=True,target=target,rowGap=ROW_GAP_DEFAULT)
+  with connect(path,True) as c:
+   v=list_view_settings_for(c,target)
+  return jsonify(ok=True,target=target,**v)
+ except Exception as e:return jsonify(error=f'一覧表示設定読込失敗: {e}'),500
+
+@bp.post('/api/list-view-master')
+def list_view_master_save():
+ try:
+  x=request.get_json(force=True) or {};uid=request_user_id(x)
+  target=str(x.get('target') or '').strip()
+  if not target:return jsonify(error='対象(target)を指定してください。'),400
+  path=DBS['MASTER']['path']
+  with connect(path,False) as c:
+   gap=set_list_view_settings(c,target,x.get('rowGap'),uid)
+  return jsonify(ok=True,target=target,rowGap=gap,updated_by=uid,message='行間を保存しました。')
+ except Exception as e:return jsonify(error=f'一覧表示設定保存失敗: {e}'),500
