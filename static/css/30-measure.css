@@ -80,6 +80,13 @@ th.col-sorted:hover{background:#c7e7ea}
    同じだけ詳細度を上げないと効かない。 */
 #grid th.col-num,#grid td.col-num,.lc-preview th.col-num,.lc-preview td.col-num{
  text-align:right;font-variant-numeric:tabular-nums}
+/* 読み替え(§9.88 段4)が色を指定したセル。意味は状態バッジと同じ3種+控えめ
+   に絞る(増やすと「どれを選ぶか」で迷いが生まれる)。**面ではなく文字**へ
+   色を置く——一覧は行が多く、面で塗ると数行当たっただけで画面が騒がしくなる。 */
+.cell-ok{color:var(--success);font-weight:700}
+.cell-ng{color:var(--danger);font-weight:700}
+.cell-warn{color:var(--warn-fg);font-weight:700}
+.cell-muted{color:var(--muted)}
 .lot-cell{padding:var(--space-1)}
 /* ページャ(一覧の下端)。要素セレクタのままだと**モーダルの操作列まで巻き込む**
    ため、<main>直下のページ下端だけに絞る(実際に異常位置判定モーダルの

@@ -193,14 +193,15 @@ window.WL.dataSource=dataSource;
    に無い列は黙って捨てる(列が増減しても設定が壊れない)。 */
 const columnLayout=(()=>{
  const cache=new Map();                 // target -> {order,widths,hidden,names,formats}
- const empty=()=>({order:[],widths:{},hidden:[],names:{},formats:{}});
+ const empty=()=>({order:[],widths:{},hidden:[],names:{},formats:{},rules:{}});
  async function load(target){
   if(!target)return empty();
   if(cache.has(target))return cache.get(target);
   let v=empty();
   try{
    const r=await api('/api/column-layout-master?target='+encodeURIComponent(target));
-   v={order:r.order||[],widths:r.widths||{},hidden:r.hidden||[],names:r.names||{},formats:r.formats||{}};
+   v={order:r.order||[],widths:r.widths||{},hidden:r.hidden||[],names:r.names||{},
+      formats:r.formats||{},rules:r.rules||{}};
   }catch(e){/* 読めなくても既定の並びで一覧は出す(fail-open) */}
   cache.set(target,v);return v;
  }
@@ -208,7 +209,7 @@ const columnLayout=(()=>{
  async function save(target,layout){
   if(!target)return;
   const v={order:layout.order||[],widths:layout.widths||{},hidden:layout.hidden||[],
-           names:layout.names||{},formats:layout.formats||{}};
+           names:layout.names||{},formats:layout.formats||{},rules:layout.rules||{}};
   cache.set(target,v);
   await api('/api/column-layout-master',{method:'POST',headers:{'Content-Type':'application/json'},
    body:JSON.stringify(withUserId({target,...v}))});
@@ -227,9 +228,104 @@ const columnLayout=(()=>{
          /* 画面に出す名前。未設定なら元の項目名のまま(§9.88)。 */
          label:(target,col)=>get(target).names[col]||col,
          /* この列の書式指定。未設定ならnull(=そのまま表示)。 */
-         format:(target,col)=>get(target).formats[col]||null};
+         format:(target,col)=>get(target).formats[col]||null,
+         /* この列に効く読み替えルールの名前。未設定なら''(=読み替えなし)。 */
+         rule:(target,col)=>get(target).rules[col]||''};
 })();
 window.WL.columnLayout=columnLayout;
+
+/* ---------- 値の読み替え(§9.88 段4) ----------
+   「00」を「なし」と見せる類の置き換え。ルール名でまとめて登録し、
+   複数の列から使い回す(列に紐づけると「00→なし」を列の数だけ書かせる
+   ことになる)。1ルールは行の配列で、**上から見て最初に当たったものを採用**
+   する。行の中の条件はAND、行同士がOR。
+   **判定は画面側だけ**で行う(サーバーは生の値を返し、並べ替え・絞り込みは
+   生の値のまま効かせる。書式と同じ方針)。 */
+const displayRules=(()=>{
+ let cache=null,inflight=null;
+ const num=v=>{
+  const t=String(v==null?'':v).trim().replace(/,/g,'');
+  if(!t||!/^[-+]?(\d+\.?\d*|\.\d+)$/.test(t))return null;
+  const n=Number(t);return Number.isFinite(n)?n:null;
+ };
+ /* 条件の片側を実際の値へ。self=この列 / column=他の列 / value=固定値。
+    **他の列を見られる**ので「区分が3のときだけ○○と出す」が書ける。 */
+ function operand(side,row,selfCol){
+  if(!side)return '';
+  if(side.kind==='self')return row?row[selfCol]:'';
+  if(side.kind==='column')return row?row[side.column]:'';
+  return side.value;
+ }
+ /* 両辺が数値として読めるときだけ数値で比べ、そうでなければ文字列で比べる
+    (実データは同じ項目でも '5' と '05' と '5.0' が混ざる)。 */
+ function compare(a,b){
+  const x=num(a),y=num(b);
+  if(x!==null&&y!==null)return x<y?-1:x>y?1:0;
+  const s=String(a==null?'':a),t=String(b==null?'':b);
+  return s<t?-1:s>t?1:0;
+ }
+ function test(cond,row,selfCol){
+  const L=operand(cond.left,row,selfCol);
+  const ls=String(L==null?'':L);
+  if(cond.op==='empty')return ls.trim()==='';
+  if(cond.op==='notEmpty')return ls.trim()!=='';
+  const R=operand(cond.right,row,selfCol);
+  const rs=String(R==null?'':R);
+  switch(cond.op){
+   case 'eq':return ls===rs||compare(L,R)===0;
+   case 'ne':return !(ls===rs||compare(L,R)===0);
+   case 'contains':return rs!==''&&ls.includes(rs);
+   case 'startsWith':return rs!==''&&ls.startsWith(rs);
+   case 'endsWith':return rs!==''&&ls.endsWith(rs);
+   case 'gt':return compare(L,R)>0;
+   case 'ge':return compare(L,R)>=0;
+   case 'lt':return compare(L,R)<0;
+   case 'le':return compare(L,R)<=0;
+   case 'between':{
+    const R2=operand(cond.right2,row,selfCol);
+    return compare(L,R)>=0&&compare(L,R2)<=0;
+   }
+   case 'regex':
+    // 書き間違いで一覧が壊れないように、不正な正規表現は「当たらない」。
+    try{return new RegExp(rs).test(ls)}catch(e){return false}
+   default:return false;
+  }
+ }
+ /* 当たった行を返す(色も使うので行ごと返す)。当たらなければnull。 */
+ function match(name,row,selfCol){
+  const rows=(cache&&cache[name])||null;
+  if(!rows||!rows.length)return null;
+  for(const r of rows){
+   const conds=r.conditions||[];
+   // **条件が空の行＝どれにも当てはまらなかったとき**の既定。
+   if(!conds.length)return r;
+   let all=true;
+   for(const c of conds){if(!test(c,row,selfCol)){all=false;break}}
+   if(all)return r;
+  }
+  return null;
+ }
+ async function load(force){
+  if(cache&&!force)return cache;
+  if(inflight&&!force)return inflight;
+  inflight=(async()=>{
+   try{
+    const r=await api('/api/display-rule-master');
+    cache=r.rules||{};
+   }catch(e){cache=cache||{}}   // 読めなくても読み替えなしで一覧は出す
+   inflight=null;return cache;
+  })();
+  return inflight;
+ }
+ return {load,match,test,
+         all:()=>cache||{},
+         names:()=>Object.keys(cache||{}).sort(),
+         get:name=>(cache&&cache[name])||[],
+         /* 編集画面が保存した直後に、一覧へすぐ反映させるための差し替え。 */
+         put:(name,rows)=>{cache=cache||{};if(rows&&rows.length)cache[name]=rows;else delete cache[name]},
+         forget:()=>{cache=null}};
+})();
+window.WL.displayRules=displayRules;
 
 /* ---------- セルの見せ方(§9.88 段3) ----------
    生の値を「表示する文字列」へ整える。**整形できなかったら生の値を返す**
@@ -329,7 +425,25 @@ const cellFormat=(()=>{
   const out=run(spec,raw);
   return out===null?String(raw):out;
  }
- return {value,parts,
+ /* 1つのセルが表示されるまで(設計の順序をそのままここに置く)。
+      生の値 → 読み替えが当たれば**その言葉で確定**(整形しない)
+             → 当たらなければ書式で整形
+             → 整形できなければ生の値
+    読み替えが先なのは、読み替えが生の値を見て判断するものだから
+    ('00'を'0'へ整形してから読み替えると当たらない)。
+    戻り値は {text, color}。colorは読み替えが指定したときだけ入る。 */
+ function cell(opt){
+  const raw=opt&&opt.raw;
+  const rule=opt&&opt.rule;
+  if(rule){
+   const hit=displayRules.match(rule,opt.row,opt.column);
+   // 表示値が空の行は「元の値のまま出す」(当たったことは色で示せる)。
+   if(hit)return {text:hit.text!==''&&hit.text!=null?String(hit.text):value(opt.format,raw),
+                  color:hit.color||''};
+  }
+  return {text:value(opt.format,raw),color:''};
+ }
+ return {value,parts,cell,
          text:(target,col,raw)=>value(columnLayout.format(target,col),raw)};
 })();
 window.WL.cellFormat=cellFormat;

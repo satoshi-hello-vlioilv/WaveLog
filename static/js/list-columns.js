@@ -33,6 +33,17 @@
  };
  const isVirtual=k=>Object.prototype.hasOwnProperty.call(VIRTUAL,k);
  const labelOf=k=>isVirtual(k)?VIRTUAL[k].label:(draft.names[k]||k);
+ /* 読み替えルールの編集を開く。閉じたら、作った(or 消した)結果を
+    この列の選択へ反映する——「作ったのに選ばれていない」を無くすため。 */
+ function editRule(name){
+  if(typeof WL.listRules?.open!=='function'){
+   console.error('列の設定パネル: WL.listRules が見つかりません');return;
+  }
+  WL.listRules.open({name,column:picked,onDone:saved=>{
+   if(saved)draft.rules[picked]=saved;else delete draft.rules[picked];
+   renderDetail();renderList();renderPreview();
+  }});
+ }
  /* 一覧の「書」バッジの説明。何の書式が効いているかを一言で。 */
  function fmtNote(f){
   if(!f)return '';
@@ -105,6 +116,7 @@
    widths:{...(l.widths||{})},
    names:{...(l.names||{})},
    formats:JSON.parse(JSON.stringify(l.formats||{})),
+   rules:{...(l.rules||{})},
   };
   if(!picked||!draft.order.includes(picked))picked=draft.order.find(k=>!isVirtual(k))||draft.order[0]||'';
  }
@@ -120,6 +132,7 @@
     <span class="lc-name" title="${esc(k)}">${esc(labelOf(k))}</span>
     ${draft.names[k]?'<i class="lc-renamed" title="表示名を変えています">名</i>':''}
     ${draft.formats[k]?`<i class="lc-renamed" title="${esc(fmtNote(draft.formats[k]))}">書</i>`:''}
+    ${draft.rules[k]?`<i class="lc-renamed" title="読み替え: ${esc(draft.rules[k])}">替</i>`:''}
    </div>`).join('')||'<div class="sc-empty-note">該当する列がありません</div>';
   box.querySelectorAll('.lc-item').forEach(el=>{
    const k=el.dataset.key;
@@ -178,8 +191,11 @@
  function renderSample(){
   const el=document.getElementById('lcSample');if(!el||isVirtual(picked))return;
   const sample=sampleValue(picked);
+  const out=WL.cellFormat.cell({raw:sample,format:fmtOf(picked),rule:draft.rules[picked]||'',
+                               row:(S.rows||[]).find(r=>String(r[picked]??'')===String(sample)),
+                               column:picked});
   el.innerHTML=sample===''?'この列に値のある行がまだありません'
-   :`例: <b>${esc(String(sample))}</b> → <b>${esc(WL.cellFormat.value(fmtOf(picked),sample))}</b>`;
+   :`例: <b>${esc(String(sample))}</b> → <b class="${out.color?'cell-'+out.color:''}">${esc(out.text)}</b>`;
  }
  /* この列の実データの先頭(空でないもの)。書式の「例」に使う。 */
  function sampleValue(k){
@@ -224,7 +240,9 @@
   const virt=isVirtual(picked);
   const f=fmtOf(picked);
   const sample=virt?'':sampleValue(picked);
-  const shown=virt?'':WL.cellFormat.value(f,sample);
+  const shown=virt?'':WL.cellFormat.cell({raw:sample,format:f,rule:draft.rules[picked]||'',
+                                          row:(S.rows||[]).find(r=>String(r[picked]??'')===String(sample)),
+                                          column:picked}).text;
   box.innerHTML=`
    <div class="lc-detail-head">${esc(labelOf(picked))}
     <small>${virt?esc(VIRTUAL[picked].note):'元の項目名: '+esc(picked)}</small></div>
@@ -239,9 +257,16 @@
     <div class="lc-kinds" id="lcKinds">${[['','そのまま'],['number','数値'],['datetime','日付・時刻'],['text','文字']]
      .map(([v,t])=>`<label class="lc-kind"><input type="radio" name="lcKind" value="${v}"${(f?.kind||'')===v?' checked':''}><span>${t}</span></label>`).join('')}</div></div>
    ${formatFields(f)}
+   <label class="lc-field"><span>読み替え</span>
+    <span class="lc-rulepick">
+     <select id="lcRule">${[['','しない'],...WL.displayRules.names().map(n=>[n,n])]
+      .map(([v,t])=>`<option value="${esc(v)}"${(draft.rules[picked]||'')===v?' selected':''}>${esc(t)}</option>`).join('')}
+      <option value="__new__">＋ 新しいルールを作る…</option></select>
+     <button type="button" id="lcRuleEdit" ${draft.rules[picked]?'':'disabled'}>ルールを編集</button>
+    </span></label>
    <div class="lc-sample" id="lcSample">${sample===''?'この列に値のある行がまだありません'
      :`例: <b>${esc(String(sample))}</b> → <b>${esc(shown)}</b>`}</div>
-   <p class="lc-hint">読み替え（00→なし 等）は次の段でここへ増えます。整形できない値は元のまま表示します。</p>`}`;
+   <p class="lc-hint">読み替えが当たった行はその言葉で確定し、当たらなければ書式で整形します。どちらもできない値は元のまま表示します。</p>`}`;
   box.querySelector('#lcName').addEventListener('input',e=>{
    const v=e.target.value.trim();
    if(v)draft.names[picked]=v;else delete draft.names[picked];
@@ -281,6 +306,17 @@
    const sel=box.querySelector('#lcPreset');
    if(sel)sel.value=DATE_PRESETS.some(([p])=>p===e.target.value)?e.target.value:'';
   });
+  /* 読み替え(段4)。ルールは列に属さないので、ここでは**名前を選ぶだけ**。
+     中身の編集は専用の画面へ渡す(同じルールを複数の列から使うため)。 */
+  on('#lcRule','change',e=>{
+   if(e.target.value==='__new__'){
+    e.target.value=draft.rules[picked]||'';
+    editRule('');return;
+   }
+   if(e.target.value)draft.rules[picked]=e.target.value;else delete draft.rules[picked];
+   renderDetail();renderList();renderPreview();
+  });
+  on('#lcRuleEdit','click',()=>editRule(draft.rules[picked]||''));
  }
 
  /* 実データのプレビュー。**設定を変えるたびに更新する。** */
@@ -288,15 +324,24 @@
   const box=document.getElementById('lcPreview');if(!box)return;
   const shown=draft.order.filter(k=>!draft.hidden.has(k));
   const rows=(S.rows||[]).slice(0,3);
-  const cell=(r,k)=>isVirtual(k)?'—':esc(WL.cellFormat.value(draft.formats[k]||null,r[k]));
+  const cell=(r,k)=>{
+   if(isVirtual(k))return {text:'—',color:''};
+   return WL.cellFormat.cell({raw:r[k],format:draft.formats[k]||null,rule:draft.rules[k]||'',row:r,column:k});
+  };
   // 一覧と同じ見え方にする(右づめも含めて)。ここで確かめたとおりに出ないと
   // プレビューの意味が無い。
-  const cls=k=>draft.formats[k]?.kind==='number'?' class="col-num"':'';
+  const cls=(k,color)=>{
+   const c=[draft.formats[k]?.kind==='number'?'col-num':'',color?'cell-'+color:''].filter(Boolean);
+   return c.length?` class="${c.join(' ')}"`:'';
+  };
   box.innerHTML=`<div class="lc-preview-label">プレビュー（実データの先頭${rows.length}件）</div>
    <div class="lc-preview-scroll"><table><thead><tr>${
-    shown.map(k=>`<th${cls(k)}${draft.widths[k]?` style="width:${draft.widths[k]}px"`:''}>${esc(labelOf(k))}</th>`).join('')
+    shown.map(k=>`<th${cls(k,'')}${draft.widths[k]?` style="width:${draft.widths[k]}px"`:''}>${esc(labelOf(k))}</th>`).join('')
    }</tr></thead><tbody>${
-    rows.map(r=>`<tr>${shown.map(k=>`<td${cls(k)}>${cell(r,k)}</td>`).join('')}</tr>`).join('')
+    rows.map(r=>`<tr>${shown.map(k=>{
+     const o=cell(r,k);
+     return `<td${cls(k,o.color)}>${esc(o.text)}</td>`;
+    }).join('')}</tr>`).join('')
     ||'<tr><td>データがありません</td></tr>'
    }</tbody></table></div>`;
  }
@@ -305,13 +350,13 @@
   try{
    await WL.columnLayout.save(target,{order:draft.order,widths:draft.widths,
                                       hidden:[...draft.hidden],names:draft.names,
-                                      formats:draft.formats});
+                                      formats:draft.formats,rules:draft.rules});
    showToast&&showToast('列の設定を保存しました','この一覧を次に開いたときも同じ形で出ます',2600);
    if(typeof renderGrid==='function')renderGrid();
   }catch(e){showToast&&showToast('保存に失敗しました',e.message,5000)}
  }
  async function reset(){
-  draft={order:allKeys(),hidden:new Set(),widths:{},names:{},formats:{}};
+  draft={order:allKeys(),hidden:new Set(),widths:{},names:{},formats:{},rules:{}};
   renderList();renderDetail();renderPreview();
  }
 

@@ -86,7 +86,7 @@ function bindColumnHeaderTools(table,target,visibleColumns,allColumns){
  const persist=async(order,widths)=>{
   try{
    await WL.columnLayout.save(target,{order,widths:widths||layout.widths,hidden:layout.hidden,
-                                      names:layout.names,formats:layout.formats});
+                                      names:layout.names,formats:layout.formats,rules:layout.rules});
    showToast&&showToast('表示の並びを保存しました','この一覧を次に開いたときも同じ並びで出ます',2400);
   }catch(e){showToast&&showToast('並びを保存できませんでした',e.message,5000)}
  };
@@ -298,9 +298,10 @@ window.applyTableData=applyTableData;
 function listLayoutTarget(){return (S.db&&S.table)?`list:${S.db}:${S.table}`:''}
 
 async function fetchTableData(key,force){
- // 列レイアウトは描画時に同期で参照するので、取得と一緒に用意しておく
- // (読めなくても既定の並びで一覧は出る)。
+ // 列レイアウトと読み替えルールは描画時に同期で参照するので、取得と一緒に
+ // 用意しておく(どちらも読めなければ既定の見せ方で一覧は出る)。
  try{await WL.columnLayout.load(listLayoutTarget())}catch(e){}
+ try{await WL.displayRules.load()}catch(e){}
  try{await loadRowGap()}catch(e){}
  const hit=force?null:tableCacheGet(key);
  if(hit){applyTableData(hit.data);updateListFreshness(hit.at);return}
@@ -403,6 +404,7 @@ function renderGrid(){
     数値の書式を当てた列は**列ごと**右づめにする(桁を縦に揃えて読むため)。
     値ごとに決めると、数値として読めない値が1つ混ざった列で揃い方が乱れる。 */
  const colFmt=new Map(visibleColumns.map(c=>[c,WL.columnLayout.format(layoutTarget,c)]));
+ const colRule=new Map(visibleColumns.map(c=>[c,WL.columnLayout.rule(layoutTarget,c)]));
  const numCol=c=>colFmt.get(c)?.kind==='number';
  const t=document.createElement('table');
  t.innerHTML='<thead><tr>'+(canPlan?'<th class="plan-select-head"><input type="checkbox" id="planSelectAll" title="このページの全行を選択/解除"></th><th class="plan-action-head">予定</th>':'')+'<th>#</th>'+(isWork?'<th class="split-flag-head" title="親子管理_子カード／コンマ5本分割_切断巾に実データがある場合「分割あり」と表示します">分割</th>':'')+visibleColumns.map(c=>{
@@ -466,11 +468,12 @@ function renderGrid(){
   }
   tr.innerHTML=(canPlan?`<td class="plan-select-cell"><input type="checkbox" class="plan-select-checkbox"></td><td class="plan-action-cell"><button type="button" class="plan-action-button" title="この行の設備の作業スケジュールへ追加します">+ 予定</button></td>`:'')+`<td>${(S.page-1)*+$('#pageSize').value+i+1}</td>`+splitCell+visibleColumns.map(c=>{
    if(c===lotCol){const lotVal=r[c];return `<td class="lot-cell"><button type="button" class="lot-dsp-link grid-lot-link" title="クリックでLotDspをこのロット番号で開きます">${esc(lotVal)||'—'}</button></td>`}
-   /* 書式(§9.88 段3)を通してから出す。整形できない値は生のまま出るので、
-      書式の指定を間違えても値が消えることはない。 */
-   const shown=WL.cellFormat.value(colFmt.get(c),r[c]);
+   /* 読み替え(段4)→書式(段3)の順で通してから出す。どちらも失敗したら
+      生の値が出るので、指定を間違えても値が消えることはない。 */
+   const out=WL.cellFormat.cell({raw:r[c],format:colFmt.get(c),rule:colRule.get(c),row:r,column:c});
    const raw=String(r[c]==null?'':r[c]);
-   return `<td${numCol(c)?' class="col-num"':''}${shown!==raw?` title="${esc(raw)}"`:''}>${esc(shown)}</td>`;
+   const cls=[numCol(c)?'col-num':'',out.color?'cell-'+out.color:''].filter(Boolean).join(' ');
+   return `<td${cls?` class="${cls}"`:''}${out.text!==raw?` title="${esc(raw)}"`:''}>${esc(out.text)}</td>`;
   }).join('')+(isWork?'<td class="measurement-action-cell"><button type="button" class="measurement-action-button">開く</button></td>':'');
   if(r===S.selectedRow)tr.classList.add('is-selected');
   if(canPlan&&S.selectedRows.has(r))tr.classList.add('is-plan-selected');

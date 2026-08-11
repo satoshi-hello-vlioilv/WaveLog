@@ -101,6 +101,18 @@ _ENDPOINT_EXTRA_MODES={
  'masters.filter_preset_register':{'schedule'},
  'masters.filter_preset_delete':{'schedule'},
  'masters.filter_preset_use':{'schedule'},
+ # 一覧の見せ方(§9.88)。列の並び・幅・表示名・書式・読み替え・行間・
+ # いつも使う並び順は、**その画面の見え方**の設定で、測定データにも
+ # 業務マスタにも触れない。登録フィルタ・列表示マスタと同じ理由で
+ # scheduleへ開ける(スケジュールモードの端末は仕掛一覧を主に使うのに、
+ # 列を動かした瞬間だけ403で弾かれる、という形で出る)。
+ 'masters.column_layout_master_save':{'schedule'},
+ 'masters.list_view_master_save':{'schedule'},
+ 'masters.display_rule_master_save':{'schedule'},
+ 'masters.display_rule_master_delete':{'schedule'},
+ 'masters.sort_preset_register':{'schedule'},
+ 'masters.sort_preset_delete':{'schedule'},
+ 'masters.sort_preset_use':{'schedule'},
 }
 # 書込ではないがPOSTで受けるもの(§9.50の「今すぐ抽出」)。データを書き換えず、
 # 抽出元(RNE)から読み直すだけなので、閲覧モードの端末からも実行できてよい。

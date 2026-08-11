@@ -58,8 +58,8 @@
   `registerView`/`enterView`/`withInternalDbSwitch`/`isInternalDbSwitch`/`ttlCache`/
   `refreshScheduleIfOpen`/`expandFilterVars`/`toleranceScaleView`/`optionList`/`defect`/
   `fieldReorderAllows`/`fieldReorderAllowsAll`/`fieldReorderLabel`/`boot`/`onReady`/
-  `dataSource`/`columnLayout`/`cellFormat`/`listColumns`/`rowGap`/`renderDbNav`/
-  `bindColumnHeaderTools`/`makeFloatingWindow`。
+  `dataSource`/`columnLayout`/`cellFormat`/`displayRules`/`listColumns`/`listRules`/
+  `rowGap`/`renderDbNav`/`bindColumnHeaderTools`/`makeFloatingWindow`。
   **公開漏れは黙って素通しになる**ことに注意——`typeof makeFloatingWindow==='function'`の
   ように「あれば使う」書き方で呼んでいると、公開し忘れても例外が出ず、
   機能だけが静かに欠ける（列の設定パネルが位置も大きさも与えられないまま
@@ -89,9 +89,15 @@
   その設定だけが黙って消える）。値の整形は**画面側だけ**で行う
   （`WL.cellFormat`。並べ替え・絞り込みを生の値で効かせたままにするため）。
   **整形に失敗したら生の値を出す**のが原則で、空欄にしない。
-  詳細は`docs/COLUMN_PRESENTATION_DESIGN.md`と
-  `docs/SCHEDULE_MODE_DESIGN.md`§9.88。固定は`tests/test_collayout.js`・
-  `tests/test_colformat.js`。
+  **読み替え（`表示ルールマスタ`）は書式より先**に効く（生の値を見て判断する
+  ため。'00'を'0'へ整形してから読み替えると当たらない）。ルールは列に属さず
+  名前で参照し、**表示順の上から見て最初に当たった行を採用**する
+  （行の中の条件はAND・行同士がOR、条件が空の行は既定）。壊れた条件は
+  **1件だけ**落とし、壊れた正規表現は「当たらない」で済ませ、ルールを消しても
+  列側の参照は残す（無いルール名＝読み替えなし）。詳細は
+  `docs/COLUMN_PRESENTATION_DESIGN.md`と`docs/SCHEDULE_MODE_DESIGN.md`§9.88。
+  固定は`tests/test_collayout.js`・`tests/test_colformat.js`・
+  `tests/test_colrule.js`・`tests/test_displayrule.py`。
 - **フィールド名**: Accessの実カラム名は全角/半角ゆれがある。照合は
   `normalizedFieldName`/`exactFieldNumber` 系を使い、直接文字列比較しない。
   分割関連の実カラム名は「親子管理_子カード<N>」「コンマ5本分割_切断巾<N>」
