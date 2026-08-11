@@ -184,6 +184,47 @@ const dataSource=(()=>{
 // 名前空間の宣言はこのファイルの下の方にあるが、ここで先に要るので用意する。
 window.WL=window.WL||{};
 window.WL.dataSource=dataSource;
+
+/* ---------- 列の並び・幅・表示(§9.88) ----------
+   一覧やタイムラインの「どの順で、どの幅で、出すか出さないか」を覚える。
+   対象(target)は画面ごとのスコープ文字列(list:<DB>:<表> / timeline:<設備>)。
+   **どの列が存在するかはデータ側が決める**ので、ここは覚えている並びを
+   実際の列へ当てはめるだけ。記録に無い列は末尾へ回し、記録にあってデータ側
+   に無い列は黙って捨てる(列が増減しても設定が壊れない)。 */
+const columnLayout=(()=>{
+ const cache=new Map();                 // target -> {order,widths,hidden}
+ const empty=()=>({order:[],widths:{},hidden:[]});
+ async function load(target){
+  if(!target)return empty();
+  if(cache.has(target))return cache.get(target);
+  let v=empty();
+  try{
+   const r=await api('/api/column-layout-master?target='+encodeURIComponent(target));
+   v={order:r.order||[],widths:r.widths||{},hidden:r.hidden||[]};
+  }catch(e){/* 読めなくても既定の並びで一覧は出す(fail-open) */}
+  cache.set(target,v);return v;
+ }
+ function get(target){return cache.get(target)||empty()}
+ async function save(target,layout){
+  if(!target)return;
+  const v={order:layout.order||[],widths:layout.widths||{},hidden:layout.hidden||[]};
+  cache.set(target,v);
+  await api('/api/column-layout-master',{method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify(withUserId({target,...v}))});
+ }
+ function forget(target){if(target)cache.delete(target);else cache.clear()}
+ /* 覚えている並びを、実際にある列へ当てはめる。 */
+ function apply(target,columns){
+  const {order,hidden}=get(target);
+  const have=new Set(columns),hide=new Set(hidden);
+  const known=order.filter(c=>have.has(c));
+  const rest=columns.filter(c=>!order.includes(c));   // 新しく増えた列は末尾
+  return [...known,...rest].filter(c=>!hide.has(c));
+ }
+ return {load,get,save,forget,apply,
+         width:(target,col)=>get(target).widths[col]||null};
+})();
+window.WL.columnLayout=columnLayout;
 function databaseLabel(key){
  if(key==='MASTER')return 'マスタ';
  return WL.dataSource.label(key)||'データ';

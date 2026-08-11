@@ -207,4 +207,26 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 .ui-size-swatch[data-swatch="md"]{font-size:var(--fs)}
 .ui-size-swatch[data-swatch="lg"]{font-size:var(--fs-title)}
 .ui-size-swatch[data-swatch="xl"]{font-size:18px}
+ /* ---------- 見出しの操作: 列の並べ替えと列幅(§9.88) ----------
+    よく使う操作は設定画面を開かずに表の上で完結させる。取っ手は普段は
+    目立たせず、その列に触れたときだけ出す(常時見えていると、値より先に
+    罫線が目に入る)。 */
+ #grid th.sortable-col{position:relative}
+ #grid th.sortable-col .col-resize{
+  position:absolute;top:0;right:calc(var(--space-1) * -1);width:calc(var(--space-2) + 2px);height:100%;
+  cursor:col-resize;opacity:0;transition:opacity .12s ease;
+ }
+ #grid th.sortable-col:hover .col-resize{opacity:1}
+ /* 取っ手そのものは細い線1本。掴める幅は線より広く取る(掴めないと苛立つ)。 */
+ #grid th.sortable-col .col-resize::after{
+  content:"";position:absolute;top:15%;bottom:15%;left:50%;width:2px;
+  background:var(--line-strong);border-radius:var(--radius-xs);
+ }
+ #grid th.col-dragging{opacity:.45}
+ /* 落とす位置を縦線で示す。**落ちる場所が分かってから離せる**ようにする。 */
+ #grid th.col-drop-before::before,#grid th.col-drop-after::before{
+  content:"";position:absolute;top:0;bottom:0;width:2px;background:var(--teal);
+ }
+ #grid th.col-drop-before::before{left:-1px}
+ #grid th.col-drop-after::before{right:-1px}
 }
