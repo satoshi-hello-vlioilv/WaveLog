@@ -632,6 +632,44 @@ CLAUDE.mdは既に「拡張ファイルからは`const base=fn; fn=function(){..
 
 **想定。** 3〜4コミット(1.load / 2.公差系 / 3.残り+lint)。
 
+### フェーズAの実施結果(2026-08-12、VER2.10.0、回帰1,346/1,346)
+
+**上表(2.0.1)は数え違いだった。** 目で拾った7件のうち3件
+(`updateValidationVisuals`/`persistAndTransition`/`bindMeasureInputs`)は
+**既にラップ形式**で、`const base=…`で退避して呼んでいた。機械的に数え直すと
+差し替えは全部で37件、うち退避なしの全置換は**4件**だった。
+以後は`tests/test_patchlint.py`が数える(目で数えない)。
+
+**やったこと。**
+
+1. **`load()`をフックへ**(§9.93、VER2.8.0で実施済み)。`WL.listHooks`の
+   `onQuery`/`onAfter`へ`filters.js`が登録する形にした。全置換は消えた。
+2. **`compactToleranceScale`の重複を1つ消した。** 同じ関数を3ファイルが
+   定義しており、読み込み順は
+   `measurement-input.js`(定義) → `measurement-tolerance.js`(置換) →
+   `filters.js`(置換) → `measurement-worklog.js`(ラップ)。
+   つまり**真ん中の`measurement-tolerance.js`版は一度も実行されない**。
+   実際に動いているのが`filters.js`の数直線であることを画面で確かめてから
+   (`compactToleranceFacts`を差し替えて出力のクラス名を見る)削除した。
+   ヘルパー3つ(`lastMeasuredValue`/`currentKindLabel`/`formatTol`)も
+   これで参照が無くなったので一緒に消した。測定画面の回帰(212件)は不変。
+3. **機械的な歯止め**(`tests/test_patchlint.py`)。「既存のグローバル関数へ
+   代入していて、直前6行以内に退避が無い」ものを数え、
+   **ALLOWEDに理由付きで載っているもの以外が増えたら落ちる**。
+   併せて「同じ関数を2ファイル以上が全置換していないか」も見る
+   (これが起きると、先に読まれた側が死んだコードになる)。
+
+**残り3件**(ALLOWEDに理由付きで記載)。どれも「元の実装を呼ばずに
+丸ごと差し替える」ことに業務上の理由があるもので、消すには**登録表**
+(上記2の方針)へ移す必要がある。挙動を変えずに移す作業なので、
+測定画面の回帰が効く状態でまとめてやる。
+
+| 場所 | 対象 | なぜ全置換のままか |
+|---|---|---|
+| `filters.js:797` | `compactToleranceScale` | 公差数直線の実装そのもの。`measurement-input.js`の定義を丸ごと置き換える |
+| `lot-split.js:1702` | `compactToleranceData` | 分割ロットは条ごとに公差が変わるため、`index`の既定値ごと差し替える |
+| `measurement-worklog.js:154` | `updateWorkTimePanel` | 作業時間パネルをworklog側の同期処理へ置き換える |
+
 ---
 
 ## フェーズB: 契約面の増加を止める lint【小・即効・ROI最大】

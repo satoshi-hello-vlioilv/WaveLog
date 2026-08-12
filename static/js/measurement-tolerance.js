@@ -87,32 +87,17 @@
     const openSplit=$('#openSplit');if(openSplit){openSplit.disabled=locked;openSplit.title=locked?'測定データ入力後は条割を変更できません。対象データをすべて消すと変更できます。':''}
     return locked;
   }
-  function lastMeasuredValue(values,count){
-    for(let i=Math.min(values.length,count)-1;i>=0;i--){const raw=String(values[i]??'').trim();const n=Number(raw);if(raw!==''&&Number.isFinite(n))return{value:n,index:i,raw};}
-    return null;
-  }
-  function currentKindLabel(kind){return kind==='thickness'?'板厚':kind==='width'?'板幅':($('#measureType')?.value||'測定値')}
-  function formatTol(kind,v){return typeof fixedToleranceValue==='function'?fixedToleranceValue(kind,v):(Number.isFinite(Number(v))?String(v):'-')}
-
-  // 図示は「直前に測定した1点」だけを表示し、公差内ラベルを左寄せ、中央基準値も表示する。
-  // (この後filters.jsが数直線デザインへさらに上書きするため、これは中間段階の見た目。)
-  if(typeof compactToleranceScale==='function'){
-    compactToleranceScale=function(kind,values,count){
-      const facts=compactToleranceFacts(kind),range=facts.range;
-      if(!range)return facts.html;
-      const low=range[0],high=range[1],span=Math.max(high-low,.000001),viewLow=low-span*.3,viewHigh=high+span*.3;
-      const last=lastMeasuredValue(values,count);
-      const mark=last?(()=>{const pos=Math.max(3,Math.min(97,(viewHigh-last.value)/(viewHigh-viewLow)*100)),ng=last.value<low||last.value>high,label=currentKindLabel(kind)+' '+(last.index+1)+' : '+last.raw;return '<div class="compact-value-mark last '+(ng?'ng':'ok')+'" style="top:'+pos+'%" title="直前データ '+esc(label)+'"></div><div class="compact-last-value '+(ng?'ng':'ok')+'" style="top:'+pos+'%">直前 '+esc(last.raw)+'</div>'})():'';
-      const center=(low+high)/2;
-      return facts.html+'<div class="compact-tol-scale">'
-        +'<div class="compact-scale-label upper">上限 <b>'+esc(formatTol(kind,high))+'</b></div>'
-        +'<div class="compact-scale-safe compact-scale-safe-left">公差内</div>'
-        +'<div class="compact-scale-center">中央 <b>'+esc(formatTol(kind,center))+'</b></div>'
-        +mark
-        +'<div class="compact-scale-label lower">下限 <b>'+esc(formatTol(kind,low))+'</b></div>'
-        +'</div>';
-    };
-  }
+  /* 公差の図示(compactToleranceScale)はここには**無い**。
+     ------------------------------------------------------------
+     以前はこのファイルにも「直前の1点だけを出す中間段階の見た目」の実装が
+     あったが、`filters.js`(このファイルより後に読み込まれる)が同じ関数を
+     **退避せずに丸ごと置き換える**ため、**一度も実行されない死んだコード**
+     だった。3ファイルが同じ名前を定義していて、勝つのは読み込み順で最後の
+     もの——読む側は`index.html`の並びを知らないと追えない。
+     実際に画面へ出ているのは`filters.js`の数直線(`.accurate-numberline`)で、
+     `measurement-worklog.js`がその上に指示型のカードをラップで足している。
+     消しても画面の出力は1文字も変わらないことを実測で確かめてある
+     (§9.96)。同じ名前の定義を増やさないよう`tests/test_patchlint.py`で見張る。 */
 
   // 手動入力モード切替時の警告と記録。
   function bindManualModeWarning(){

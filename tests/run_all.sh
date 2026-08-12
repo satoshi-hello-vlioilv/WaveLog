@@ -164,14 +164,21 @@ reseed(){
 }
 
 TOT=0; NG=0
+# 所要時間も出す。**遅いテストは「固定待ち」を書いている**ことが多く、
+# 削るか直すかを決めるのに数字が要る(docs/REFACTORING_PLAN.md フェーズF)。
+# 秒数はマシンで変わるので、判断に使うのは**本数あたりの秒数**。
+TIMES=""
 run(){
   want "$2" || return 0
   reseed
+  t0=$(date +%s)
   out=$($1 "$2" 2>&1)
+  dt=$(( $(date +%s) - t0 ))
   p=$(echo "$out" | grep -c '^PASS'); f=$(echo "$out" | grep -c '^FAIL')
   fatal=$(echo "$out" | grep -c 'FATAL')
   TOT=$((TOT+p+f)); NG=$((NG+f+fatal))
-  printf '%-24s %3d PASS / %d FAIL%s\n' "$2" "$p" "$f" "$([ $fatal -gt 0 ] && echo ' [FATAL]')"
+  TIMES="$TIMES$dt $((p+f)) $2\n"
+  printf '%-24s %3d PASS / %d FAIL  %4ds%s\n' "$2" "$p" "$f" "$dt" "$([ $fatal -gt 0 ] && echo ' [FATAL]')"
   echo "$out" | grep -E '^FAIL|FATAL' | head -4 | sed 's/^/      /'
   reap_browsers
 }
@@ -198,8 +205,15 @@ for t in test_cols test_content_ui test_content_apply test_listmodal test_split_
 echo "--- サーバー側 ---"
 mode schedule
 for t in test_sclock test_scwritespeed test_colscache test_colsripple test_modeguard test_noaccess \
-         test_csslint test_dbopen test_error test_datasource test_dskeylint test_dbmirror test_displayrule test_crudroutes test_tablequery; do run python3 $t.py; done
+         test_csslint test_dbopen test_error test_datasource test_dskeylint test_dbmirror test_displayrule test_crudroutes test_tablequery test_patchlint; do run python3 $t.py; done
 
+echo
+echo "-- 時間のかかったテスト(上位10) --"
+printf '%b' "$TIMES" | sort -rn | head -10 | while read -r sec n name; do
+  [ -z "$name" ] && continue
+  [ "${n:-0}" -gt 0 ] 2>/dev/null && per=$(( sec * 10 / n )) || per=0
+  printf '   %4ds  %3d件  1件あたり%s.%s秒  %s\n' "$sec" "$n" "$((per/10))" "$((per%10))" "$name"
+done
 echo
 echo "=================================================="
 echo "  合計 $((TOT-NG))/$TOT PASS  (FAIL/FATAL: $NG)"
