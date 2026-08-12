@@ -8,8 +8,22 @@ app.pyから起動制御を切り離したもの。業務機能の変更が起�
 POST /api/heartbeat?tab=<id> で自分の存在を伝える。タブを閉じる・別ページへ
 移動する際は pagehide から POST /api/heartbeat/close?tab=<id> を送り、その
 タブが無くなったことを明示的に知らせる(リロード時も pagehide は発火するが、
-同じtab idのハートビートが直後に届くため EMPTY_GRACE_SEC 以内なら消えたと
-判定しない)。開いているタブが0件のままEMPTY_GRACE_SEC秒経過したら終了する。
+直後に新しいタブIDのハートビートが届くため、猶予以内なら消えたと判定しない)。
+
+【0件の意味を2つに分ける】(§9.98)
+同じ「開いているタブが0件」でも、**そうなった経緯で意味が違う**。
+
+  閉じたと告げられた   … CLOSED_GRACE_SEC(8秒)。利用者がタブを閉じた場合で、
+                         もう戻ってこないと分かっている。リロードだけは
+                         直後に新しいIDのハートビートが来るので、それを
+                         待てるぶんだけ残す。
+  気づいたら0件だった … EMPTY_GRACE_SEC(90秒)。通知が届かなかった場合で、
+                         本当に閉じたのか一時的なものか分からない。
+
+以前はどちらも90秒だったため、**タブを閉じてもアプリが1分半残っていた**
+(実測85秒)。さらに監視は10秒間隔で寝ているので、通知が届いても最大10秒
+気づかない。終了通知で監視を起こし(_wake)、閉じた直後だけ1秒間隔で見る。
+結果、閉じてから約8秒で終了する。
 
 判定基準を「通信が届くかどうか」ではなく「タブが存在するかどうか」にして
 いるのは、Wi-Fi瞬断など単なる通信断でもタブ自体は開いたままのケースがあり、
@@ -26,12 +40,20 @@ import os
 import threading
 import time
 
-from .config import EMPTY_GRACE_SEC, HEARTBEAT_STALE_SEC, WATCHDOG_CHECK_INTERVAL_SEC
+from .config import (CLOSED_GRACE_SEC, EMPTY_GRACE_SEC, HEARTBEAT_STALE_SEC,
+                     WATCHDOG_CHECK_INTERVAL_SEC, WATCHDOG_CLOSING_INTERVAL_SEC)
 from .logging_setup import launcher_logger
 
 _active_tabs={}
 _tabs_lock=threading.Lock()
 _empty_since=time.monotonic()
+# 終了通知が届いた瞬間に監視を起こす。**寝ている間は気づけない**ので、
+# これが無いと「8秒の猶予」の前に最大10秒の寝落ちが挟まる(実測18秒)。
+_wake=threading.Event()
+# **最後の1件が「閉じた」と告げて消えたのか**(§9.98)。
+# 同じ0件でも意味が違う: 閉じたと分かっているなら短く待てばよく、
+# 気づいたら0件だった(通知が届かなかった)なら長く待つ。
+_closed_notice=False
 
 def _tab_key():
  return request.args.get('tab') or 'default'
@@ -54,14 +76,22 @@ def install(app):
  """Flaskアプリへハートビート関連のルートを登録する。"""
  @app.post('/api/heartbeat')
  def heartbeat():
+  global _closed_notice
   with _tabs_lock:
    _active_tabs[_tab_key()]=time.monotonic()
+   # 1件でも生きているなら「閉じた」の記憶は捨てる。リロードは
+   # close→(すぐに)新しいIDのheartbeat、という順で届くため、
+   # ここで戻さないと読み直しただけで終了してしまう。
+   _closed_notice=False
   return jsonify(ok=True)
 
  @app.post('/api/heartbeat/close')
  def heartbeat_close():
+  global _closed_notice
   with _tabs_lock:
    _active_tabs.pop(_tab_key(),None)
+   if not _active_tabs:_closed_notice=True
+  _wake.set()          # 寝て待たずに、すぐ数え始める
   return jsonify(ok=True)
 
  @app.post('/api/shutdown')
@@ -76,19 +106,27 @@ def install(app):
 def _loop():
  global _empty_since
  while True:
-  time.sleep(WATCHDOG_CHECK_INTERVAL_SEC)
+  # 「閉じた」と告げられた直後だけ細かく見る(§9.98)。10秒間隔のままだと
+  # 8秒の猶予を確かめるのが最大10秒後になり、結局18秒近くかかる。
+  _wake.wait(WATCHDOG_CLOSING_INTERVAL_SEC if _closed_notice else WATCHDOG_CHECK_INTERVAL_SEC)
+  _wake.clear()
   now=time.monotonic()
   with _tabs_lock:
    for tab in [t for t,last in _active_tabs.items() if now-last>HEARTBEAT_STALE_SEC]:
     del _active_tabs[tab]
    empty=not _active_tabs
+   closed=_closed_notice
   if not empty:
    _empty_since=None
    continue
   if _empty_since is None:
    _empty_since=now
-  elif now-_empty_since>EMPTY_GRACE_SEC:
-   _exit(f'開いているタブが{EMPTY_GRACE_SEC}秒以上存在しない(ブラウザを閉じたと判断)')
+   continue
+  # 閉じたと分かっているなら短く、気づいたら0件だったなら長く待つ。
+  grace=CLOSED_GRACE_SEC if closed else EMPTY_GRACE_SEC
+  if now-_empty_since>grace:
+   _exit(f'開いているタブが{grace}秒以上存在しない'
+         +('(タブが閉じられた通知を受け取った)' if closed else '(ブラウザを閉じたと判断)'))
 
 def start():
  """監視スレッドを開始する。デーモンスレッドなので本体終了を妨げない。"""
