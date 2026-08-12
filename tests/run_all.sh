@@ -1,7 +1,9 @@
 #!/bin/bash
 # WaveLog 回帰テスト一括実行
 # ============================================================
-# 使い方: tests/run_all.sh
+# 使い方: tests/run_all.sh              全部回す(コミット前はこれ)
+#         tests/run_all.sh test_sccat   名前を並べるとそれだけ
+#         tests/run_all.sh --changed    変更ファイルに関係するものだけ(§9.103)
 #
 # このランナーが保証すること(手作業だった前後処理をここへ集約):
 #  1. パス設定マスタ(仕掛/品質/共有スケジュールの接続先)を実行前に退避し、
@@ -24,6 +26,23 @@ NODE="${WAVELOG_NODE:-/opt/node22/bin/node}"
 export NODE_PATH="${NODE_PATH:-/opt/node22/lib/node_modules}"
 API=http://127.0.0.1:5029
 FIXTURE="$ROOT/db/test_fixture"
+
+# ---- --changed: 変更ファイルから絞り込む(§9.103) ---------------------
+# **フィクスチャへ差し替える前に決めること。** 差し替えの副産物(共有DBの
+# 作業用コピー・退避ファイル)まで「変更」と読むと、規則に当たらないので
+# 毎回「分からない＝全部」へ倒れ、絞り込みが一度も効かなくなる。
+# 選ばれたものが空なら SELECT も空＝全件(pick_tests.py の安全側の答え)。
+if [ "$1" = "--changed" ]; then
+  shift
+  PICKED="$(python3 "$ROOT/tests/pick_tests.py" "$@")"
+  if [ -z "$PICKED" ]; then
+    echo "変更が広い(または規則に無いファイル)ため、全件を実行します"
+  else
+    echo "変更に関係するテストだけ実行します: $PICKED"
+    echo "  ※ 絞り込みは手掛かりです。**コミット前は引数なしで通しを回すこと。**"
+  fi
+  set -- $PICKED
+fi
 
 mode(){ curl -s -X POST $API/api/access-mode -H 'Content-Type: application/json' -d "{\"mode\":\"$1\"}" >/dev/null; }
 resetcontent(){ curl -s -X POST $API/api/schedule-content-master -H 'Content-Type: application/json' \
@@ -211,7 +230,7 @@ for t in test_cols test_content_ui test_content_apply test_listmodal test_split_
 echo "--- サーバー側 ---"
 mode schedule
 for t in test_sclock test_scwritespeed test_colscache test_colsripple test_modeguard test_noaccess \
-         test_csslint test_dbopen test_error test_datasource test_dskeylint test_dbmirror test_displayrule test_crudroutes test_tablequery test_patchlint test_globallint test_assetcache test_tabclose test_logs test_docindex; do run python3 $t.py; done
+         test_csslint test_dbopen test_error test_datasource test_dskeylint test_dbmirror test_displayrule test_crudroutes test_tablequery test_patchlint test_globallint test_assetcache test_tabclose test_logs test_docindex test_pick; do run python3 $t.py; done
 
 echo
 echo "-- 時間のかかったテスト(上位10) --"
