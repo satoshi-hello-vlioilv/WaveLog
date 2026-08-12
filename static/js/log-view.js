@@ -261,6 +261,81 @@
   await loadFiles();await load();
  };
 
+ /* ---------- 接続の診断(§9.101) ----------
+    別端末でだけ起きる接続不良は、エラーの文言だけでは「パスの解決」
+    「存在確認(os.stat)」「実際の接続」のどれで転んだのか分からない。
+    サーバー側(/api/db-diagnose)は前からあったが**画面が無く**、現地では
+    URLを直打ちするしかなかった。ここが「ログ・診断」の診断の側。
+    **読むだけ**で設定は一切変えない。 */
+ const diagState={last:null};
+ const renderDiag=d=>{
+  const box=$id('lgDiagBody'),verdict=$id('lgDiagVerdict');
+  if(!box)return;
+  if(!d){box.innerHTML='';if(verdict)verdict.textContent='';return}
+  /* **「走った」と「答えが是」は別物**。存在確認は例外を出さなければ
+     ok=true だが、値が False なら「無い」という答え。✓を付けると
+     見た人が成功と読んでしまう(実際に紛らわしかった)ので、印を分ける。 */
+  const answerNo=s=>s.ok&&String(s.value)==='False';
+  const firstBad=(d.steps||[]).find(s=>!s.ok||answerNo(s));
+  if(verdict){
+   verdict.textContent=d.ok?'すべて成功':(firstBad?`「${firstBad.name.replace(/\s*\(.*$/,'')}」で止まった`:'失敗あり');
+   verdict.className='lg-diag-verdict '+(d.ok?'is-ok':'is-ng');
+  }
+  const head=[['読み込み先',d.path||''],
+              ['絶対パス',d.is_absolute?'はい':'いいえ'],
+              ['共有パス(UNC)',d.is_unc?'はい':'いいえ']]
+   .map(([k,v])=>`<div class="lg-diag-kv"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('');
+  /* **最初に転んだ段階が原因**。そこから先は道連れなので、見分けが
+     つくように印を分ける(失敗 / それ以降 / 成功)。 */
+  let broken=false;
+  const rows=(d.steps||[]).map(s=>{
+   /* **最初に転んだ段階が原因**で、その先は道連れ。原因だけを強く出し、
+      以降は薄くする(全部を赤くすると、どれを見ればよいか分からなくなる)。 */
+   const no=answerNo(s),bad=!s.ok||no;
+   const cls=!bad?'is-ok':(broken?'is-after':(no?'is-no':'is-ng'));
+   if(bad)broken=true;
+   const detail=s.ok?(no?'ありません':(s.value||'')):((s.error||'')+(s.winerror?` (WinError ${s.winerror})`:''));
+   return `<div class="lg-diag-step ${cls}">
+    <span class="lg-diag-mark">${!s.ok?'×':no?'−':'✓'}</span>
+    <span class="lg-diag-name">${esc(s.name)}</span>
+    <span class="lg-diag-detail">${esc(detail)}</span></div>`;
+  }).join('');
+  box.innerHTML=`<div class="lg-diag-head">${head}</div>${rows}`;
+ };
+ const diagText=d=>{
+  if(!d)return '';
+  const lines=[`接続の診断: ${d.db}`,`読み込み先: ${d.path}`,
+               `結果: ${d.ok?'すべて成功':'失敗あり'}`,''];
+  (d.steps||[]).forEach(s=>lines.push(
+   `${s.ok?'OK  ':'NG  '}${s.name}: ${s.ok?(s.value||''):(s.error||'')}`
+   +(s.winerror?` (WinError ${s.winerror})`:'')));
+  return lines.join('\n');
+ };
+ const runDiag=async()=>{
+  const box=$id('lgDiagBody');
+  const key=$id('lgDiagDb')?.value||'';
+  if(box)box.innerHTML='<div class="lg-empty">試しています…</div>';
+  try{
+   const d=await api('/api/db-diagnose?db='+encodeURIComponent(key));
+   diagState.last=d;
+   fillDiagTargets(d.targets);
+   renderDiag(d);
+  }catch(e){
+   diagState.last=null;
+   if(box)box.innerHTML=`<div class="lg-empty">診断できませんでした。${esc(e.message||String(e))}</div>`;
+  }
+ };
+ /* 選択肢はサーバーが返した接続先から作る。**決め打ちにしない**
+    ——データソースを増やしたときに、画面だけ古いままにならないように。 */
+ const fillDiagTargets=list=>{
+  const sel=$id('lgDiagDb');
+  if(!sel||!Array.isArray(list)||!list.length||sel.dataset.filled==='1')return;
+  const keep=sel.value;
+  sel.innerHTML=list.map(t=>`<option value="${esc(t.key)}">${esc(t.label)}（${esc(t.key)}）</option>`).join('');
+  sel.dataset.filled='1';
+  if(keep&&[...sel.options].some(o=>o.value===keep))sel.value=keep;
+ };
+
  /* ---------- 画面の組み立て ---------- */
  const wire=()=>{
   $id('lgReload').onclick=()=>load();
@@ -282,6 +357,12 @@
   $id('lgCollapse').onclick=()=>document.querySelectorAll('#lgTree details').forEach(d=>d.open=false);
   $id('lgRotate').onclick=rotate;
   $id('lgDownload').onclick=()=>{location.href='/api/logs/download?file='+encodeURIComponent(currentFile().split(',')[0])};
+  $id('lgDiagRun').onclick=runDiag;
+  $id('lgDiagCopy').onclick=()=>copyLines(diagText(diagState.last).split('\n'),'診断の結果をコピーしました');
+  // 開いた時点で1回だけ試す(開くまでは何もしない=画面を開くだけで共有を叩かない)
+  $id('lgDiag').addEventListener('toggle',()=>{
+   if($id('lgDiag').open&&!diagState.last)runDiag();
+  });
  };
 
  const ensurePanel=()=>{
@@ -319,6 +400,16 @@
      <button type="button" id="lgRotate" title="いまのログを1つ古い世代へ送り、新しいログを始めます">ここで区切る</button>
      <button type="button" id="lgDownload" title="このログをファイルとして保存します">保存</button></span>
    </div>
+   <details class="lg-diag" id="lgDiag">
+    <summary><b>接続の診断</b><span>データベースを開くまでを1段ずつ試します（読むだけ）</span></summary>
+    <div class="lg-diag-bar">
+     <label>対象<select id="lgDiagDb"></select></label>
+     <button type="button" id="lgDiagRun">診断を実行</button>
+     <button type="button" id="lgDiagCopy">結果をコピー</button>
+     <span class="lg-diag-verdict" id="lgDiagVerdict"></span>
+    </div>
+    <div class="lg-diag-body" id="lgDiagBody"></div>
+   </details>
    <div class="lg-tree" id="lgTree"><div class="lg-empty">読み込んでいます…</div></div>`;
   (document.querySelector('main')||document.body).append(panel);
   wire();

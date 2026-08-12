@@ -93,4 +93,54 @@
  background:var(--surface-2);color:var(--ink-2);white-space:pre-wrap;overflow-x:auto;
  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:var(--fs-sm);line-height:var(--lh)}
 .lg-empty{padding:var(--pad-dialog);color:var(--ink-soft);text-align:center}
+
+/* ---- 接続の診断(§9.101) --------------------------------------------
+   既定は畳んでおく。**開くまで共有へ触らない**——画面を開いただけで
+   応答の遅い共有フォルダを叩くと、ログを読みに来ただけの人を待たせる。 */
+.lg-diag{border:1px solid var(--line-soft);border-radius:var(--radius-md);background:var(--surface-2)}
+.lg-diag>summary{display:flex;align-items:baseline;gap:var(--gap-inline);padding:var(--pad-row);
+ cursor:pointer;list-style:none}
+.lg-diag>summary::-webkit-details-marker{display:none}
+.lg-diag>summary::before{content:'';flex:0 0 auto;width:.5em;height:.5em;align-self:center;
+ border-right:2px solid var(--ink-soft);border-bottom:2px solid var(--ink-soft);
+ transform:rotate(-45deg);transition:transform .15s ease}
+.lg-diag[open]>summary::before{transform:rotate(45deg)}
+.lg-diag>summary b{color:var(--ink);font-size:var(--fs-base-sm)}
+.lg-diag>summary span{color:var(--ink-soft);font-size:var(--fs-sm)}
+.lg-diag-bar{display:flex;align-items:center;gap:var(--gap-inline);flex-wrap:wrap;
+ padding:var(--pad-row);border-top:1px solid var(--line-soft)}
+.lg-diag-bar label{display:flex;align-items:center;gap:var(--gap-tight);
+ color:var(--ink-3);font-size:var(--fs-sm);font-weight:700}
+.lg-diag-bar select{height:var(--ctl-h-sm);border:1px solid var(--line-mid);border-radius:var(--radius-sm);
+ background:var(--surface);padding:0 var(--ctl-pad-x-sm);color:var(--ink)}
+.lg-diag-bar button{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);border:1px solid var(--line-mid);
+ border-radius:var(--radius-sm);background:var(--surface);color:var(--ink-2);font-weight:700;cursor:pointer}
+.lg-diag-bar button:hover{background:var(--surface-2)}
+.lg-diag-verdict{margin-left:auto;font-size:var(--fs-sm);font-weight:800}
+.lg-diag-verdict.is-ok{color:var(--teal)}
+.lg-diag-verdict.is-ng{color:var(--danger)}
+.lg-diag-body{padding:0 var(--space-2) var(--space-2)}
+.lg-diag-head{display:flex;flex-wrap:wrap;gap:var(--gap-section);padding:var(--pad-row);
+ background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--radius-sm);
+ margin-bottom:var(--space-2)}
+.lg-diag-kv{display:flex;align-items:baseline;gap:var(--gap-tight);min-width:0}
+.lg-diag-kv span{color:var(--ink-soft);font-size:var(--fs-sm)}
+.lg-diag-kv b{color:var(--ink);font-size:var(--fs-sm);overflow-wrap:anywhere}
+/* 1段階=1行。**最初に転んだところが原因**で、その先は道連れなので、
+   失敗(×)・それ以降(薄い)・成功(✓)を見分けられるようにする。 */
+.lg-diag-step{display:flex;align-items:baseline;gap:var(--gap-inline);padding:var(--pad-chip) var(--space-2);
+ border-top:1px solid var(--line-soft);font-size:var(--fs-sm)}
+.lg-diag-mark{flex:0 0 auto;width:1.2em;text-align:center;font-weight:800}
+.lg-diag-name{flex:0 0 auto;color:var(--ink)}
+.lg-diag-detail{flex:1 1 auto;min-width:0;color:var(--ink-3);overflow-wrap:anywhere;
+ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.lg-diag-step.is-ok .lg-diag-mark{color:var(--teal)}
+.lg-diag-step.is-ng{background:var(--danger-bg)}
+.lg-diag-step.is-ng .lg-diag-mark,.lg-diag-step.is-ng .lg-diag-name{color:var(--danger)}
+.lg-diag-step.is-after{color:var(--ink-soft)}
+/* 走ったが答えが「無い」段階。例外は出ていないので×ではないが、
+   ✓でもない——ここで止まっている、という3つ目の状態。 */
+.lg-diag-step.is-no{background:var(--warn-bg)}
+.lg-diag-step.is-no .lg-diag-mark,.lg-diag-step.is-no .lg-diag-name{color:var(--warn-fg)}
+.lg-diag-step.is-after .lg-diag-name,.lg-diag-step.is-after .lg-diag-detail{color:var(--ink-soft)}
 }

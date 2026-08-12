@@ -196,6 +196,10 @@ def api_db_diagnose():
    return f"テーブル{len(tables(c))}件"
  step('SQLiteへ接続してテーブル一覧を取得',open_db)
  out['ok']=all(s.get('ok') for s in out['steps'])
+ # 診断できる接続先の一覧も返す。画面(ログ・診断)がここから選択肢を作るので、
+ # **データソースを増やしても画面を直さなくてよい**(決め打ちにしない)。
+ out['targets']=[{'key':key,'label':(d.get('label') or key),'role':d.get('role','')}
+                 for key,d in DBS.items()]
  return jsonify(out),200
 
 @bp.get('/api/db-mirror')

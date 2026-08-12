@@ -160,6 +160,98 @@ const FIXTURE={ok:true,total:6,matched:6,shown:6,clipped:false,
      sent.map(x=>x.url).join(' '));
  await page.unroute(/\/api\/logs\/(clear|rotate|delete-old|delete-lines)$/);
 
+ /* ---- 接続の診断(§9.101) ----
+    「ログ・診断」の診断の側。**開くまでは共有へ触らない**(応答の遅い共有を
+    画面を開いただけで叩くと、ログを読みに来た人を待たせる)。 */
+ const diagBefore=await page.evaluate(()=>({
+  open:document.getElementById('lgDiag').open,
+  body:document.getElementById('lgDiagBody').innerHTML.trim().length,
+ }));
+ rec('診断は畳んだ状態で始まる（開くまで共有へ触らない）',
+     diagBefore.open===false&&diagBefore.body===0,JSON.stringify(diagBefore));
+
+ await page.click('#lgDiag > summary');
+ await page.waitForFunction(()=>document.querySelectorAll('#lgDiagBody .lg-diag-step').length>0,
+                            null,{timeout:20000});
+ const diag=await page.evaluate(()=>({
+  steps:document.querySelectorAll('#lgDiagBody .lg-diag-step').length,
+  targets:[...document.querySelectorAll('#lgDiagDb option')].map(o=>o.value),
+  verdict:document.getElementById('lgDiagVerdict').textContent,
+  head:document.querySelectorAll('#lgDiagBody .lg-diag-kv').length,
+ }));
+ rec('開くと段階ごとの結果が出る',diag.steps>=5,diag.steps+'段階');
+ rec('対象の選択肢はサーバーが返した接続先から作る（決め打ちにしない）',
+     diag.targets.length>=3&&diag.targets.includes('MASTER'),JSON.stringify(diag.targets));
+ rec('読み込み先・UNCかどうかを添える',diag.head>=3,diag.head+'項目');
+
+ /* **「走った」と「答えが是」を分ける。** 存在確認は例外を出さなければ
+    ok=true だが、値が False なら「無い」という答え。✓を付けると成功と
+    読めてしまうので、印を分けている（実際に紛らわしかった）。 */
+ await page.selectOption('#lgDiagDb','MASTER');
+ await page.click('#lgDiagRun');
+ await page.waitForFunction(()=>/成功|止まった|失敗/.test(
+   document.getElementById('lgDiagVerdict').textContent||''),null,{timeout:20000});
+ const okCase=await page.evaluate(()=>({
+  verdict:document.getElementById('lgDiagVerdict').textContent,
+  ng:document.querySelectorAll('#lgDiagBody .lg-diag-step.is-ng').length,
+  no:document.querySelectorAll('#lgDiagBody .lg-diag-step.is-no').length,
+ }));
+ rec('手元のDBは全段階を通る',okCase.verdict==='すべて成功'&&okCase.ng===0&&okCase.no===0,
+     JSON.stringify(okCase));
+
+ /* 届かないDBの見せ方は**応答を差し替えて**確かめる。検証用フィクスチャでは
+    仕掛DBも手元に実在して全段階通ってしまい、失敗の描き分けを試せないため。
+    ここで見たいのはサーバーの判定ではなく、**画面がどう見せるか**。 */
+ const diagCase=async steps=>{
+  await page.unroute(/\/api\/db-diagnose/).catch(()=>{});
+  await page.route(/\/api\/db-diagnose/,route=>route.fulfill({status:200,
+   contentType:'application/json',body:JSON.stringify({
+    db:'SIKALOTNOW',path:'\\\\server\\share\\SIKALOTNOW.sqlite3',
+    is_absolute:false,is_unc:true,ok:false,
+    targets:[{key:'SIKALOTNOW',label:'仕掛（現在）'},{key:'MASTER',label:'マスタ一覧'}],
+    steps})}));
+  await page.evaluate(()=>{document.getElementById('lgDiagVerdict').textContent=''});
+  await page.click('#lgDiagRun');
+  await page.waitForFunction(()=>/止まった/.test(
+    document.getElementById('lgDiagVerdict').textContent||''),null,{timeout:10000});
+  return page.evaluate(()=>{
+   const el=[...document.querySelectorAll('#lgDiagBody .lg-diag-step')];
+   return {verdict:document.getElementById('lgDiagVerdict').textContent,
+           marks:el.map(e=>e.querySelector('.lg-diag-mark').textContent),
+           cls:el.map(e=>e.className.replace('lg-diag-step ','')),
+           text:document.getElementById('lgDiagBody').textContent};
+  });
+ };
+
+ /* (1) 例外は出ていないが答えが「無い」——**✓を付けない**。
+    存在確認は例外を出さなければ ok=true なので、値を見ないと
+    「確認できた＝有る」と読めてしまう(実際に紛らわしかった)。 */
+ const noCase=await diagCase([
+  {name:'親フォルダの存在確認 (Path.exists)',ok:true,value:'True'},
+  {name:'ファイルの存在確認 (Path.exists / os.stat)',ok:true,value:'False'},
+  {name:'サイズ・更新時刻 (Path.stat)',ok:false,error:'FileNotFoundError: なし'},
+  {name:'SQLiteへ接続してテーブル一覧を取得',ok:false,error:'OperationalError'},
+ ]);
+ rec('どの段階で止まったかを名指しする',/「ファイルの存在確認」で止まった/.test(noCase.verdict),noCase.verdict);
+ rec('答えが「無い」段階に✓を付けない',noCase.marks[1]==='−'&&noCase.cls[1]==='is-no',
+     JSON.stringify(noCase.marks)+' / '+JSON.stringify(noCase.cls));
+ rec('答えが「無い」ことを日本語で書く',/ありません/.test(noCase.text));
+ rec('その先は道連れとして薄く出す（原因と取り違えない）',
+     noCase.cls.slice(2).every(c=>c==='is-after'),JSON.stringify(noCase.cls));
+
+ /* (2) 例外で落ちた場合。最初の1件だけが×で、WinErrorは添える
+    (現地の切り分けでは番号が決め手になる)。 */
+ const errCase=await diagCase([
+  {name:'親フォルダの存在確認 (Path.exists)',ok:true,value:'True'},
+  {name:'サイズ・更新時刻 (Path.stat)',ok:false,error:'OSError: 予期しないネットワークエラー',winerror:59},
+  {name:'SQLiteへ接続してテーブル一覧を取得',ok:false,error:'OperationalError'},
+ ]);
+ rec('例外で落ちた最初の段階は×',errCase.marks[1]==='×'&&errCase.cls[1]==='is-ng',
+     JSON.stringify(errCase.marks)+' / '+JSON.stringify(errCase.cls));
+ rec('WinErrorがあれば添える（現地の切り分けで効く）',/WinError 59/.test(errCase.text));
+ rec('2件目以降の失敗は薄くする',errCase.cls[2]==='is-after',JSON.stringify(errCase.cls));
+ await page.unroute(/\/api\/db-diagnose/);
+
  // ---- 6. 画面を出ると自動更新が止まる ----
  await page.check('#lgAuto');
  const running=await page.evaluate(()=>WL.logView.state.auto);
