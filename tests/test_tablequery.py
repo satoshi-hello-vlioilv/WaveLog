@@ -103,6 +103,29 @@ def main():
     rec('starts_any の値が空でも落ちない（0件でよい）',
         st == 200 and d.get('count') == 0, f'{st} / {d.get("count")}')
 
+    # ---- 5. 結合した列は「名前」も返す(§9.105) ----
+    # 列の設定画面が「どれが結合されてきた列か」を見分けるのに使う。
+    # **件数(addedColumns)だけでは足りない**——数は分かっても、どの項目が
+    # よそから来たのかは名前が無いと言えない。結合できたかどうかは環境に
+    # よるので、できたときだけ中身を確かめる(できないこと自体は
+    # 品質データ結合側の検証が受け持つ)。
+    st, d = get(table='仕掛', page=1, page_size=5, include_hidden=1, join_quality=1)
+    info = (d or {}).get('joinQuality') or {}
+    rec('join_quality=1 は結合の診断情報を返す', st == 200 and isinstance(info, dict) and 'applied' in info,
+        json.dumps(info, ensure_ascii=False)[:160])
+    if info.get('applied'):
+        names = info.get('addedColumnNames')
+        rec('結合で足した列の名前を返す（件数と一致する）',
+            isinstance(names, list) and len(names) == info.get('addedColumns'),
+            f'{info.get("addedColumns")}列 / {type(names).__name__}')
+        cs = d.get('columns') or []
+        rec('返した名前は実際に列として並んでいる',
+            bool(names) is False or all(n in cs for n in names),
+            ','.join((names or [])[:4]))
+    else:
+        rec('結合できないときも理由が付く（名前が無いのは想定どおり）',
+            bool(info.get('reason')), str(info.get('reason'))[:120])
+
     ng = [x for x in R if not x[1]]
     print(f'\n== {len(R) - len(ng)}/{len(R)} PASS ==')
     sys.exit(1 if ng else 0)

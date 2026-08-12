@@ -87,11 +87,16 @@ restore_paths(){
 trap 'restore_paths; release_lock' EXIT INT TERM
 
 save_paths
-python3 "$ROOT/tests/make_fixture.py" >/dev/null 2>&1
+# **種入れは作業用コピーへ切り替えてから。** 以前はここで先に
+# make_fixture.py を呼んでおり、WAVELOG_FIXTURE_SHARE がまだ空なので
+# **gitが持つ原本(db/test_fixture/share/schedule.sqlite3)を書き換えて**
+# いた。調査で1回動かすたびに追跡ファイルが変わり、意味のないバイナリ差分が
+# コミットに混ざる(実際に混ざった)。run_all.sh は元からこの順序。
 WORK="$FIXTURE/work"
 rm -rf "$WORK"; mkdir -p "$WORK"
 cp "$FIXTURE/share/schedule.sqlite3" "$WORK/schedule.sqlite3"
 export WAVELOG_FIXTURE_SHARE="$WORK/schedule.sqlite3"
+python3 "$ROOT/tests/make_fixture.py" >/dev/null 2>&1
 apply_paths "$(python3 - <<PY
 import json
 print(json.dumps({'sikalotnow_path':'$FIXTURE/sikalotnow_test.sqlite3',

@@ -50,7 +50,8 @@ G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 't
 G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'test_flows',
              'test_p11', 'test_p11c', 'test_waiting', 'test_waiting2']
 G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'test_density',
-               'test_uiux', 'test_hdr', 'test_headbar', 'test_calscale', 'test_bootui']
+               'test_uiux', 'test_hdr', 'test_headbar', 'test_calscale', 'test_bootui',
+               'test_gridhead']
 G['起動'] = ['test_boot', 'test_bootui', 'test_bootflash', 'test_assetcache', 'test_tabclose']
 G['接続'] = ['test_dbopen', 'test_dbmirror', 'test_datasource', 'test_tablequery']
 G['権限'] = ['test_modeguard', 'test_noaccess', 'test_scperm']
@@ -107,6 +108,8 @@ RULES = [
     # --- 見た目(CSS) -------------------------------------------------
     # CSSは1枚に閉じない(トークンは:rootで共有し、@layerで順序が決まる)。
     # だから個別に割らず、寸法・溢れを見る網をまとめて回す。
+    ('static/css/20-shell.css', g('見た目', '一覧', 'test_gridhead')),
+    ('static/css/30-measure.css', g('見た目', '一覧', '測定', 'test_gridhead')),
     ('static/css/95-boot.css', g('見た目', '起動')),
     ('static/css/70-schedule.css', g('見た目', 'test_sccols', 'test_split_layout')),
     ('static/css/88-logs.css', g('見た目', 'test_logview')),

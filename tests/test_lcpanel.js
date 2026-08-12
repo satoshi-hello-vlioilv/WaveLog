@@ -40,7 +40,8 @@ async function cleanup(){
   await page.waitForSelector('#openSchedule',{timeout:30000});
   await page.evaluate(e=>localStorage.setItem('AccessMeasurementConfiguredEquipment',e),EQ);
   // 前回の大きさを覚えていると既定の検証にならないので消しておく。
-  await page.evaluate(()=>localStorage.removeItem('listColumnPanelRectV3'));
+  await page.evaluate(()=>{localStorage.removeItem('listColumnPanelRectV3');
+                          localStorage.removeItem('listColumnPanelRectV4')});
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForSelector('#grid table',{timeout:30000});
   await page.waitForTimeout(1500);
@@ -216,6 +217,214 @@ async function cleanup(){
    return out;
   });
   rec('設定の1行が2行に折れない',wrap.length===0,wrap.slice(0,4).join(' / '));
+
+  /* ---- 9) 出どころの分類(§9.105) ----
+     列を前にして最初に知りたいのは「この項目はどこから来たのか」。
+     元データ／結合／計算・操作の3つを、**色だけでなく文字と件数**で示す。 */
+  const cls=await page.evaluate(()=>{
+   const p=document.getElementById('listColumnPanel');
+   const chips=[...p.querySelectorAll('.lc-origin-chip')].map(c=>({
+    origin:c.dataset.origin,text:c.textContent.trim(),n:Number(c.querySelector('b')?.textContent||0),
+    disabled:c.disabled}));
+   const rows=[...p.querySelectorAll('.lc-item')];
+   const kinds={};rows.forEach(r=>{kinds[r.dataset.origin]=(kinds[r.dataset.origin]||0)+1});
+   const dot=c=>{const d=p.querySelector(`.lc-item[data-origin="${c}"] .lc-dot`);
+                 return d?getComputedStyle(d).backgroundColor:''};
+   return {chips,kinds,行数:rows.length,
+           点の色:{source:dot('source'),calc:dot('calc')},
+           印付き:rows.filter(r=>r.querySelector('.lc-dot')).length};
+  });
+  rec('出どころのチップが「すべて＋3分類」ある',cls.chips.length===4,
+    cls.chips.map(c=>c.text).join(' / '));
+  rec('チップは件数を数字で出す（色だけに頼らない）',
+    cls.chips.every(c=>/\d/.test(c.text)),cls.chips.map(c=>c.text).join(' / '));
+  rec('3分類の合計が全列数と合う',
+    cls.chips.filter(c=>c.origin).reduce((a,c)=>a+c.n,0)===cls.行数,
+    JSON.stringify(cls.kinds));
+  rec('どの行にも出どころの印が付く',cls.印付き===cls.行数,`${cls.印付き}/${cls.行数}`);
+  rec('分類ごとに色が違う（元データと計算列）',
+    !!cls.点の色.source&&cls.点の色.source!==cls.点の色.calc,JSON.stringify(cls.点の色));
+  rec('0件の分類は押せない（押しても何も起きないボタンを見せない）',
+    cls.chips.filter(c=>c.origin&&c.n===0).every(c=>c.disabled),
+    cls.chips.filter(c=>c.n===0).map(c=>c.text).join(','));
+
+  /* 分類で絞ると、その分類の行だけになる。 */
+  const calcN=cls.chips.find(c=>c.origin==='calc')?.n||0;
+  await page.evaluate(()=>document.querySelector('.lc-origin-chip[data-origin="calc"]')?.click());
+  await page.waitForTimeout(250);
+  const filtered=await page.evaluate(()=>{
+   const rows=[...document.querySelectorAll('#listColumnPanel .lc-item')];
+   return {n:rows.length,ok:rows.every(r=>r.dataset.origin==='calc')};
+  });
+  rec('分類で絞るとその分類だけになる',filtered.ok&&filtered.n===calcN,
+    `${filtered.n}行 / 期待${calcN}行`);
+  /* まとめて出す/隠すは「出す」列の見出しのチェック(§9.106)。
+     **押す場所と効く場所が同じ列**にあり、効くのは絞り込んで見えている列だけ。 */
+  const headsBefore=await page.$$eval('#grid thead th',ns=>ns.length);
+  const allBox=await page.evaluate(()=>{
+   const b=document.getElementById('lcAllVis');
+   return b?{checked:b.checked,indeterminate:b.indeterminate}:null;
+  });
+  rec('「出す」の見出しに全選択チェックがある',!!allBox,JSON.stringify(allBox));
+  await page.click('#lcAllVis');                    // いま絞り込み中の3列を隠す
+  await page.waitForTimeout(400);
+  const headsHidden=await page.$$eval('#grid thead th',ns=>ns.length);
+  rec('全選択チェックを外すと絞り込んだぶんだけ隠れる',
+    headsHidden===headsBefore-calcN,`${headsBefore} → ${headsHidden}（計算列${calcN}本）`);
+  const midway=await page.evaluate(()=>{
+   const b=document.getElementById('lcAllVis');return {checked:b.checked,ind:b.indeterminate};
+  });
+  rec('全部隠したらチェックも外れる',midway.checked===false&&midway.ind===false,JSON.stringify(midway));
+  await page.click('#lcAllVis');
+  await page.waitForTimeout(400);
+  const headsShown=await page.$$eval('#grid thead th',ns=>ns.length);
+  rec('チェックし直すと戻る',headsShown===headsBefore,`${headsHidden} → ${headsShown}`);
+  await page.evaluate(()=>document.querySelector('.lc-origin-chip[data-origin=""]')?.click());
+  await page.waitForTimeout(250);
+
+  /* 一部だけ出ている状態では中間表示にする(外れて見えると「全部隠れている」と読める)。 */
+  await page.evaluate(()=>{
+   const r=[...document.querySelectorAll('#listColumnPanel .lc-item')][0];
+   r?.querySelector('.lc-vis input')?.click();
+  });
+  await page.waitForTimeout(350);
+  const partial=await page.evaluate(()=>{
+   const b=document.getElementById('lcAllVis');return {checked:b.checked,ind:b.indeterminate};
+  });
+  rec('一部だけ出ているときは中間表示になる',partial.ind===true,JSON.stringify(partial));
+  await page.evaluate(()=>{
+   const r=[...document.querySelectorAll('#listColumnPanel .lc-item')][0];
+   r?.querySelector('.lc-vis input')?.click();
+  });
+  await page.waitForTimeout(300);
+  await page.evaluate(()=>document.querySelector('.lc-origin-chip[data-origin=""]')?.click());
+  await page.waitForTimeout(250);
+
+  /* ---- 9b) 幅を内容に合わせる(§9.106) ---- */
+  const fit=await page.evaluate(async()=>{
+   const key=[...document.querySelectorAll('#listColumnPanel .lc-item')]
+     .find(r=>r.dataset.origin==='source')?.dataset.key;
+   if(!key)return null;
+   const th=()=>document.querySelector(`#grid thead th[data-sort-col="${CSS.escape(key)}"]`);
+   const before=Math.round(th().getBoundingClientRect().width);
+   // わざと広げてから「幅を内容に合わせる」で戻す
+   const t=listLayoutTarget();
+   const cur=WL.columnLayout.get(t);
+   WL.columnLayout.stage(t,{...cur,widths:{...(cur.widths||{}),[key]:600}});
+   renderGrid();
+   await new Promise(r=>setTimeout(r,300));
+   const wide=Math.round(th().getBoundingClientRect().width);
+   return {key,before,wide};
+  });
+  if(fit){
+   rec('幅を手で決めると一覧の列も広がる',fit.wide>fit.before+100,JSON.stringify(fit));
+   /* パネルを開き直して(下地の値を読ませて)からオートフィット。 */
+   await page.click('#lcClose');await page.waitForTimeout(300);
+   await page.click('#listColumnBtn');
+   await page.waitForSelector('#listColumnPanel .lc-item',{timeout:10000});
+   await page.waitForTimeout(400);
+   await page.click('#lcAutoFit');
+   await page.waitForTimeout(500);
+   const after=await page.evaluate(k=>Math.round(
+     document.querySelector(`#grid thead th[data-sort-col="${CSS.escape(k)}"]`).getBoundingClientRect().width),fit.key);
+   rec('「幅を内容に合わせる」で余分な幅が消える',after<fit.wide-100,
+     `${fit.wide}px → ${after}px（元 ${fit.before}px）`);
+  }
+
+  /* ---- 10) 右ペインは「素性 → ①②③ → 結果」の順(§9.105) ---- */
+  await page.evaluate(()=>{
+   const r=[...document.querySelectorAll('#listColumnPanel .lc-item')]
+     .find(x=>x.dataset.origin==='source');
+   if(r)r.click();
+  });
+  await page.waitForTimeout(350);
+  const pane=await page.evaluate(()=>{
+   const d=document.getElementById('lcDetail');
+   const y=s=>{const e=d.querySelector(s);return e?Math.round(e.getBoundingClientRect().top):-1};
+   return {カード:y('.lc-card'),手順:[...d.querySelectorAll('.lc-step-no')].map(n=>n.textContent),
+           手順の位置:[...d.querySelectorAll('.lc-step')].map(e=>Math.round(e.getBoundingClientRect().top)),
+           結果:y('.lc-preview'),
+           素性の数:d.querySelectorAll('.lc-facts dt').length,
+           分類チップ:(d.querySelector('.lc-chip')?.textContent||'').trim(),
+           プレビュー行:d.querySelectorAll('.lc-pv tbody tr').length};
+  });
+  rec('右ペインの先頭に「この列は何者か」のカードが出る',
+    pane.カード>=0&&pane.素性の数>=2&&!!pane.分類チップ,JSON.stringify(pane.分類チップ));
+  rec('手順に番号が振ってある（①②③）',pane.手順.join()==='1,2,3',pane.手順.join(','));
+  rec('番号の順に上から並んでいる',
+    pane.手順の位置.every((v,i,a)=>i===0||v>a[i-1]),JSON.stringify(pane.手順の位置));
+  rec('結果は手順のあと（下）に出る',
+    pane.結果>Math.max(...pane.手順の位置),`結果${pane.結果} / 手順${pane.手順の位置.join(',')}`);
+  /* **1件では「たまたま」と区別が付かない**ので複数件で見せる。 */
+  rec('結果は実データを複数件そろえて見せる',pane.プレビュー行>=2&&pane.プレビュー行<=3,
+    `${pane.プレビュー行}件`);
+
+  /* 計算列は値を持たないので、②③を出さずに理由を書く。 */
+  await page.evaluate(()=>{
+   const r=[...document.querySelectorAll('#listColumnPanel .lc-item')]
+     .find(x=>x.dataset.origin==='calc');
+   if(r)r.click();
+  });
+  await page.waitForTimeout(350);
+  const virt=await page.evaluate(()=>{
+   const d=document.getElementById('lcDetail');
+   return {手順:d.querySelectorAll('.lc-step').length,
+           断り:(d.querySelector('.lc-note-calc')?.textContent||'').trim().slice(0,24),
+           結果:!!d.querySelector('.lc-preview')};
+  });
+  rec('計算列では書式・読み替えを出さず、理由を書く',
+    virt.手順===1&&!!virt.断り&&!virt.結果,JSON.stringify(virt));
+
+  /* ---- 11) モーダルの並び＝一覧の並び(§9.106) ----
+     番号・ボタンの列(#・分割・測定・予定)も**データ列と同じ1本の並び**に
+     載っていること。以前はデータ列だけを並べ替え、番号・ボタンは決まった
+     位置へ無条件に描いていたため、パネルで動かしても一覧は変わらなかった。 */
+  const same=async()=>page.evaluate(()=>{
+   const panel=[...document.querySelectorAll('#listColumnPanel .lc-item')]
+     .filter(r=>r.querySelector('.lc-vis input').checked).map(r=>r.dataset.key);
+   const label=k=>{
+    const el=document.querySelector(`#listColumnPanel .lc-item[data-key="${CSS.escape(k)}"] .lc-name`);
+    return (el?.textContent||'').trim();
+   };
+   const grid=[...document.querySelectorAll('#grid thead th')].map(th=>th.textContent.trim());
+   return {panel,grid,panelLabels:panel.map(label)};
+  });
+  const ord0=await same();
+  rec('見えている列の本数がモーダルと一覧で一致する',
+    ord0.panel.length===ord0.grid.length,`モーダル${ord0.panel.length} / 一覧${ord0.grid.length}`);
+
+  /* `#`を下へ動かすと、一覧でも同じ位置へ動くこと。 */
+  const moved=await page.evaluate(async()=>{
+   const list=document.getElementById('lcList');
+   const rows=[...list.querySelectorAll('.lc-item')];
+   const from=rows.findIndex(r=>r.dataset.key==='#');
+   if(from<0)return {skip:true};
+   const src=rows[from],dst=rows[from+3];
+   if(!dst)return {skip:true};
+   const box=e=>e.getBoundingClientRect();
+   const a=box(src),b2=box(dst);
+   const ev=(t,x,y)=>src.dispatchEvent(new MouseEvent(t,{bubbles:true,clientX:x,clientY:y,button:0}));
+   ev('mousedown',a.left+40,a.top+a.height/2);
+   for(let i=1;i<=6;i++){
+    const y=a.top+a.height/2+(b2.bottom-a.top)*i/6;
+    document.dispatchEvent(new MouseEvent('mousemove',{bubbles:true,clientX:a.left+40,clientY:y}));
+   }
+   document.dispatchEvent(new MouseEvent('mouseup',{bubbles:true,clientX:a.left+40,clientY:b2.bottom}));
+   await new Promise(r=>setTimeout(r,500));
+   return {skip:false};
+  });
+  if(moved.skip){
+   rec('「#」を動かすと一覧の並びも同じになる',false,'並べ替えの起点が見つからなかった');
+  }else{
+   await page.waitForTimeout(600);
+   const ord1=await same();
+   const idxPanel=ord1.panel.indexOf('#');
+   /* 一覧側の「#」の位置は見出しの文字で探す(パネルの表示名と同じ)。 */
+   const idxGrid=ord1.grid.indexOf('#');
+   rec('「#」がモーダルで先頭から動いた',idxPanel>0,`モーダル ${idxPanel}番目`);
+   rec('「#」を動かすと一覧の並びも同じ位置になる',idxPanel===idxGrid&&idxGrid>0,
+     `モーダル${idxPanel} / 一覧${idxGrid}`);
+  }
 
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
 

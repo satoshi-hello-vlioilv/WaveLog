@@ -214,7 +214,15 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
     よく使う操作は設定画面を開かずに表の上で完結させる。取っ手は普段は
     目立たせず、その列に触れたときだけ出す(常時見えていると、値より先に
     罫線が目に入る)。 */
- #grid th.sortable-col{position:relative}
+ /* **`position:relative`を書かないこと(§9.104)。** ここは`#grid th`より
+    詳細度が高いので、書くと`#grid th{position:sticky;top:0}`(30-measure.css)
+    を打ち消し、**この`.sortable-col`が付いた列＝データ列の見出しだけが
+    固定されなくなる**。先頭の`#`・`分割`には付かないので、そちらは残る
+    ——「スクロールすると項目名だけ流れて消える／左端の何列かは残る」と
+    いう見え方になり、実機でそう報告された。
+    取っ手(`.col-resize`)の`position:absolute`の基準は`sticky`が兼ねる
+    (sticky も位置指定済みの要素なので、絶対配置の包含ブロックになる)。
+    わざわざ`relative`にする必要はない。 */
  #grid th.sortable-col .col-resize{
   position:absolute;top:0;right:calc(var(--space-1) * -1);width:calc(var(--space-2) + 2px);height:100%;
   cursor:col-resize;opacity:0;transition:opacity .12s ease;
@@ -299,16 +307,69 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  .lsm-actions button:disabled{color:var(--muted);cursor:default}
  /* 見出しに出す「何番目のキーか」。矢印だけでは先後が分からない。 */
  .col-sort-rank{font-style:normal;color:var(--teal)}
- /* ---------- 列の設定パネル(§9.88 段2 / §9.90で作り直し) ----------
-    左が**列のリスト**(1行=1列。表示・並び・見え方が同じ行に並ぶ)、
-    右が選んだ1列の設定。下段にあった横長のプレビュー表は、リストの中の
-    「見え方」に置き換えて廃止した(視線が縦のリストと横の表を往復しない)。
-    リストだけが伸び縮みし、右ペインは中身の分だけ。 */
- .lc-body{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);
-  gap:var(--gap-block);align-items:stretch;overflow:hidden;min-height:0}
- .lc-side{display:flex;flex-direction:column;gap:var(--gap-hair);min-width:0;min-height:0}
+/* ---------- 列の設定パネル(§9.88 段2 / §9.90 / §9.105で作り直し) ----------
+    左が**列のリスト**(1行=1列。出どころ・表示・並び・見え方が同じ行に並ぶ)、
+    右が選んだ1列の設定を**上から読める順**に置いたもの。
+    §9.105で右ペインを「素性 → ①見せ方 → ②値の整え方 → ③読み替え → 結果」
+    の5段に組み直した。以前はラベルと入力欄が同じ重さで並ぶだけで、
+    どれが説明でどれが操作か、どの順に触ればよいかが形から分からなかった。 */
+ /* **`.sc-float-header`より詳細度を上げること。** 共通の浮き窓の指定は
+    70-schedule.css にあり、同じ詳細度なら**後ろのファイルが勝つ**ので、
+    `.lc-header`だけでは display:flex に負けて説明文が題名の隣へ並ぶ
+    (実際にそうなった)。 */
+ .sc-float-header.lc-header{display:grid;grid-template-columns:minmax(0,1fr) auto;
+  align-items:start;row-gap:var(--gap-hair);
+  background:linear-gradient(112deg,var(--nav),var(--teal-dark))}
+ .lc-title{display:flex;flex-direction:column;gap:0}
+ /* 上に小さく分野、下に画面名。名前だけより「何の設定か」が先に入る。 */
+ .lc-eyebrow{font-size:var(--fs-tiny);font-weight:800;letter-spacing:.12em;color:#9fdbdb}
+ .lc-lead{grid-column:1/-1;margin:0;font-size:var(--fs-sm);color:#d4e8ea;line-height:1.5}
+ .lc-lead b{color:#fff;font-weight:700}
+ /* 閉じるは**必ず右上**。行を明示しないと、説明文(1/-1)に押し出されて
+    下の段へ落ちる(実際に落ちた)。 */
+ .lc-close{grid-column:2;grid-row:1;align-self:start;
+  border-radius:var(--radius-sm);padding:0 var(--space-2)}
+ .lc-close:hover{background:#ffffff26}
+ .lc-body{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(calc(360px * var(--ui-scale)),1fr);
+  gap:var(--gap-section);align-items:stretch;overflow:hidden;min-height:0}
+ .lc-side{display:flex;flex-direction:column;gap:var(--gap-tight);min-width:0;min-height:0}
  .lc-side-head{display:flex;align-items:center;gap:var(--gap-inline)}
  .lc-filter{flex:1;min-width:0}
+ .lc-side-btn{flex:0 0 auto;height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
+  font-size:var(--fs-sm);border:1px solid var(--line);border-radius:var(--radius-sm);
+  background:var(--surface);color:var(--ink-2);cursor:pointer;white-space:nowrap}
+ .lc-side-btn:hover{border-color:var(--teal);background:var(--surface-2)}
+ /* 「出す」の見出しに置く全選択。行のチェックと**同じ列・同じ形**にする
+    (離れた場所にあると、どの列に効くのかが読まないと分からない)。 */
+ .lc-vis-all input{width:var(--ctl-box);height:var(--ctl-box);cursor:pointer;accent-color:var(--teal)}
+ /* 掴んだ行の写し。指の横に浮かせ、下の行の判定を邪魔しない。 */
+ .lc-ghost{position:fixed;z-index:60;pointer-events:none;
+  background:var(--surface);border:1px solid var(--teal);border-left:3px solid var(--teal);
+  border-radius:var(--radius-xs);box-shadow:0 8px 20px rgba(23,56,66,.28);
+  padding:var(--space-1) var(--space-2);opacity:.95}
+ /* ---------- 出どころの分類(§9.105) ----------
+    **色だけで意味を伝えない**——分類名と件数を必ず文字で書き、色は
+    見分けを速くするための補助に留める(色覚の差でも読める)。 */
+ .lc-origins{display:flex;flex-wrap:wrap;gap:var(--gap-tight)}
+ .lc-origin-chip{display:inline-flex;align-items:center;gap:var(--gap-hair);
+  height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);
+  border:1px solid var(--line);border-radius:var(--radius-pill);
+  background:var(--surface);color:var(--ink-2);font-size:var(--fs-sm);font-weight:700;
+  cursor:pointer;white-space:nowrap}
+ .lc-origin-chip b{font-weight:800;font-size:var(--fs-micro);color:var(--muted)}
+ .lc-origin-chip:hover:not(:disabled){border-color:var(--teal)}
+ .lc-origin-chip:disabled{opacity:.45;cursor:default}
+ .lc-origin-chip.is-on{color:#fff;background:var(--nav);border-color:var(--nav)}
+ .lc-origin-chip.is-on b{color:#cfe6ea}
+ .lc-origin-chip.lc-origin-source.is-on{background:var(--origin-source);border-color:var(--origin-source)}
+ .lc-origin-chip.lc-origin-join.is-on{background:var(--origin-join);border-color:var(--origin-join)}
+ .lc-origin-chip.lc-origin-calc.is-on{background:var(--origin-calc);border-color:var(--origin-calc)}
+ /* リストの行頭に置く小さな点。分類名はチップとツールチップが持つ。 */
+ .lc-dot{flex:none;width:var(--space-2);height:var(--space-2);margin-right:var(--space-2);
+  border-radius:var(--radius-round);display:inline-block;vertical-align:middle}
+ .lc-dot.lc-origin-source{background:var(--origin-source)}
+ .lc-dot.lc-origin-join{background:var(--origin-join)}
+ .lc-dot.lc-origin-calc{background:var(--origin-calc)}
  /* リストの見出し。**セルの並びと同じ列割り**にする(下の .lc-item と対)。 */
  .lc-list-head,.lc-item{display:grid;
   grid-template-columns:var(--ctl-box) auto minmax(calc(90px * var(--ui-scale)),1fr) auto minmax(0,1.1fr);
@@ -316,26 +377,26 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  .lc-list-head{padding:0 var(--space-2) var(--space-1);font-size:var(--fs-micro);
   color:var(--muted);font-weight:700;border-bottom:1px solid var(--line-soft);
   white-space:nowrap;overflow:hidden}
- /* 見出しは3語だけ。チェック欄・つまみ・名前・印をまたいで割り付ける。 */
  .lc-list-head>span:first-child{grid-column:1;font-size:var(--fs-tiny)}
  .lc-list-head>span:nth-child(2){grid-column:2/5}
  .lc-list-head>span:last-child{grid-column:5;overflow:hidden;text-overflow:ellipsis}
  .lc-list{display:flex;flex-direction:column;gap:1px;min-width:0;
   overflow:auto;flex:1;min-height:0}
  .lc-item{padding:var(--space-1) var(--space-2);border:1px solid transparent;
-  border-radius:var(--radius-xs);cursor:pointer}
+  border-left:3px solid transparent;border-radius:var(--radius-xs);cursor:pointer}
  .lc-item:hover{background:var(--surface-2)}
- .lc-item.is-picked{background:var(--pale);border-color:var(--teal)}
+ /* 選択中は**左の帯**で示す。面を塗るより、隣の行との差が静かに出る。 */
+ .lc-item.is-picked{background:var(--pale);border-color:var(--teal);border-left-color:var(--teal)}
+ .lc-item.is-off{background:var(--surface-2)}
  .lc-item.is-off .lc-name,.lc-item.is-off .lc-eg{opacity:.45}
  .lc-item.lc-dragging{opacity:.4}
  .lc-grip{color:var(--line-strong);cursor:grab;user-select:none}
  .lc-grip:active{cursor:grabbing}
- /* 並べ替えで「ここに入る」を示す線。掴んだ手応えが無いと、動いたのか
-    どうかが分からない。 */
  .lc-drop-mark{height:2px;background:var(--teal);border-radius:var(--radius-xs);
   margin:0 var(--space-2)}
  /* **列名は折り返さない**(§9.90)。入り切らないときは省略記号。 */
- .lc-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .lc-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  display:flex;align-items:center}
  .lc-marks{display:inline-flex;gap:var(--gap-hair);white-space:nowrap}
  .lc-mark{font-style:normal;font-size:var(--fs-micro);color:var(--teal);
   border:1px solid var(--teal);border-radius:var(--radius-xs);padding:0 var(--space-1)}
@@ -346,30 +407,68 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  .lc-eg b{font-weight:700;color:var(--ink);overflow:hidden;text-overflow:ellipsis}
  .lc-eg-none{font-style:normal;color:var(--muted);font-size:var(--fs-micro)}
  .lc-sub{font-size:var(--fs-micro);color:var(--muted);font-weight:400}
+ .sc-float-foot.lc-foot{background:var(--surface-2)}
  .lc-foot-note{font-size:var(--fs-sm);color:var(--muted);min-width:0;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
- .lc-detail{display:flex;flex-direction:column;gap:var(--gap-inline);min-width:0}
- .lc-detail-head{font-size:var(--fs-title);font-weight:800;color:var(--ink);
-  display:flex;flex-direction:column;gap:var(--gap-hair)}
- .lc-detail-head small{font-size:var(--fs-micro);font-weight:400;color:var(--muted)}
+ .lc-btn-primary{min-width:calc(96px * var(--ui-scale))}
+ /* ---------- 右ペイン(§9.105) ---------- */
+ .lc-detail{display:flex;flex-direction:column;gap:var(--gap-section);min-width:0;
+  overflow:auto;padding-right:var(--space-1)}
+ /* この列は何者か。名前・分類・素性を1枚のカードにまとめて先頭へ置く。 */
+ .lc-card{border:1px solid var(--line-soft);border-radius:var(--radius-md);
+  background:var(--surface-2);padding:var(--pad-card)}
+ .lc-card-top{display:flex;align-items:center;gap:var(--gap-inline);min-width:0}
+ .lc-card-name{margin:0;font-size:var(--fs-lg);font-weight:800;color:var(--ink);
+  min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .lc-chip{flex:none;padding:var(--pad-chip);border-radius:var(--radius-pill);
+  font-size:var(--fs-micro);font-weight:800;border:1px solid transparent;white-space:nowrap}
+ .lc-chip.lc-origin-source{color:var(--origin-source);background:var(--origin-source-bg);border-color:var(--origin-source-border)}
+ .lc-chip.lc-origin-join{color:var(--origin-join);background:var(--origin-join-bg);border-color:var(--origin-join-border)}
+ .lc-chip.lc-origin-calc{color:var(--origin-calc);background:var(--origin-calc-bg);border-color:var(--origin-calc-border)}
+ /* 素性は「見出し＋値」の対を並べる。数字は**書式を決める手がかり**なので、
+    飾りではなく読ませるために置いている。 */
+ .lc-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(calc(140px * var(--ui-scale)),1fr));
+  gap:var(--gap-inline);margin:var(--space-2) 0 0}
+ .lc-facts>div{min-width:0}
+ .lc-facts dt{font-size:var(--fs-tiny);font-weight:700;color:var(--muted);letter-spacing:.04em}
+ .lc-facts dd{margin:0;font-size:var(--fs-sm);font-weight:700;color:var(--ink);
+  min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .lc-fact-sub{display:block;font-style:normal;font-size:var(--fs-tiny);font-weight:400;color:var(--ink-3)}
+ .lc-mono{font-family:ui-monospace,Consolas,monospace}
+ /* 手順。番号を振り、見出しに副題を添えて「ここで何が決まるか」を言う。 */
+ .lc-step{display:flex;flex-direction:column;gap:var(--gap-inline);min-width:0}
+ .lc-step-head{display:flex;align-items:center;gap:var(--gap-inline);margin:0;
+  padding-bottom:var(--space-1);border-bottom:1px solid var(--line-soft);
+  font-size:var(--fs-base-sm);font-weight:800;color:var(--ink-2)}
+ .lc-step-head small{font-weight:400;font-size:var(--fs-micro);color:var(--muted)}
+ .lc-step-no{flex:none;display:grid;place-items:center;
+  width:calc(var(--fs) * 1.5);height:calc(var(--fs) * 1.5);border-radius:var(--radius-round);
+  background:var(--teal);color:#fff;font-style:normal;font-size:var(--fs-micro);font-weight:800}
+ .lc-note-calc{border:1px solid var(--origin-calc-border);border-left:3px solid var(--origin-calc);
+  border-radius:var(--radius-sm);background:var(--origin-calc-bg);
+  padding:var(--pad-card);font-size:var(--fs-sm);color:var(--ink-2);line-height:1.5}
  .lc-field{display:flex;align-items:center;gap:var(--gap-inline);font-size:var(--fs-sm)}
  .lc-field>span:first-child{width:calc(64px * var(--ui-scale));color:var(--muted)}
  .lc-field input[type="text"]{flex:1;min-width:0}
- /* 単位(px)やボタンが**次の行へ折れない**ようにする(§9.90)。入力欄のほうが
-    縮む(min-width:0 + flex)。折れると1行の設定が2行に見えて、どこまでが
-    1つの項目なのか分からなくなる。 */
+ /* 単位(px)やボタンが**次の行へ折れない**ようにする(§9.90)。 */
  .lc-width{display:inline-flex;align-items:center;gap:var(--gap-hair);color:var(--muted);
   flex-wrap:nowrap;white-space:nowrap;flex:1;min-width:0}
  .lc-width input{width:calc(112px * var(--ui-scale));min-width:calc(72px * var(--ui-scale))}
  .lc-vis{display:inline-flex;align-items:center;justify-content:center}
  .lc-vis input{width:var(--ctl-box);height:var(--ctl-box);cursor:pointer;accent-color:var(--teal)}
- .lc-hint{font-size:var(--fs-micro);color:var(--muted);margin:0}
+ .lc-hint{font-size:var(--fs-micro);color:var(--muted);margin:0;line-height:1.5}
  /* ---------- 書式(§9.88 段3) ----------
-    種別を選ぶと、その種別の項目だけが下に開く。使わない項目を常時
-    見せない(一度に見せる情報を絞るのが右ペインの役目)。 */
+    種別を選ぶと、その種別の項目だけが下に開く。 */
  .lc-field-kind{align-items:flex-start}
- .lc-kinds{display:flex;flex-wrap:wrap;gap:var(--gap-inline);flex:1;min-width:0}
- .lc-kind{display:inline-flex;align-items:center;gap:var(--gap-hair);cursor:pointer}
+ .lc-kinds{display:flex;flex-wrap:wrap;gap:var(--gap-tight);flex:1;min-width:0}
+ /* 選べる4つは**押せる面**にする。素のラジオは的が小さく、
+    どれが選ばれているかも点1つでしか分からなかった。 */
+ .lc-kind{display:inline-flex;align-items:center;gap:var(--gap-hair);cursor:pointer;
+  height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
+  border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface)}
+ .lc-kind:hover{border-color:var(--teal);background:var(--surface-2)}
+ .lc-kind:has(input:checked){background:var(--pale);border-color:var(--teal);color:var(--computed-fg);font-weight:700}
+ .lc-kind input{accent-color:var(--teal)}
  .lc-sub{display:flex;flex-direction:column;gap:var(--gap-inline);
   margin-left:calc(64px * var(--ui-scale));padding-left:var(--space-2);
   border-left:2px solid var(--line-soft)}
@@ -379,11 +478,26 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
   color:var(--muted);font-size:var(--fs-micro)}
  .lc-units input{width:calc(56px * var(--ui-scale))}
  .lc-hint-tokens{font-family:ui-monospace,Consolas,monospace}
- /* 「例: 生の値 → 見え方」。書式は結果を見て決めるものなので目立たせる。 */
- .lc-sample{font-size:var(--fs-sm);color:var(--ink-2);background:var(--surface-2);
-  border:1px solid var(--line-soft);border-radius:var(--radius-xs);
-  padding:var(--space-1) var(--space-2)}
- .lc-sample b{color:var(--ink);font-weight:700}
+ /* ---------- 結果(§9.105) ----------
+    **1件では「たまたま」と区別が付かない**ので、違う値を3件並べて
+    「元の値 → 一覧に出る値」を左右に置く。変わらない行もそう書く。 */
+ .lc-preview{border:1px solid var(--line-soft);border-radius:var(--radius-md);
+  background:var(--computed-bg);padding:var(--pad-card);min-width:0}
+ .lc-preview-head{display:flex;align-items:baseline;gap:var(--gap-inline);
+  font-size:var(--fs-base-sm);font-weight:800;color:var(--computed-fg)}
+ .lc-preview-head small{font-weight:400;font-size:var(--fs-micro);color:var(--ink-3)}
+ .lc-preview-empty{margin:var(--space-1) 0 0;font-size:var(--fs-sm);color:var(--ink-3)}
+ .lc-pv{width:100%;border-collapse:collapse;margin-top:var(--space-2);table-layout:fixed}
+ .lc-pv th{text-align:left;font-size:var(--fs-tiny);font-weight:700;color:var(--muted);
+  padding:0 var(--space-1) var(--space-1)}
+ .lc-pv th:nth-child(2){width:calc(24px * var(--ui-scale))}
+ .lc-pv td{padding:var(--pad-row);font-size:var(--fs-sm);border-top:1px solid var(--line-soft);
+  min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .lc-pv-raw{color:var(--ink-3);font-family:ui-monospace,Consolas,monospace}
+ .lc-pv-arrow{color:var(--teal);text-align:center;font-weight:800}
+ .lc-pv-out b{color:var(--ink);font-weight:700}
+ .lc-pv .is-same .lc-pv-out b{color:var(--ink-3);font-weight:400}
+ .lc-pv-same{font-style:normal;margin-left:var(--space-2);font-size:var(--fs-tiny);color:var(--muted)}
  /* 選択欄と「ルールを編集」が折れないようにする(§9.90)。 */
  .lc-rulepick{display:inline-flex;align-items:center;gap:var(--gap-hair);flex:1;min-width:0;
   flex-wrap:nowrap}

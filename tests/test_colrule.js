@@ -159,12 +159,20 @@ async function cleanup(){
    renderGrid();
   },{col,rule:RULE});
   await page.waitForTimeout(300);
-  const cellOf=c=>page.evaluate(x=>{
-   const i=[...document.querySelectorAll('#grid th[data-sort-col]')].findIndex(t=>t.dataset.sortCol===x);
-   const lead=[...document.querySelectorAll('#grid thead th')].findIndex(t=>t.dataset.sortCol);
-   const td=document.querySelector('#grid tbody tr').children[lead+i];
-   return {text:td.textContent.trim(),cls:td.className,title:td.title};
-  },c);
+  /* 列は`data-col`で引く(§9.104)。本文は「列の窓」の中しか作らないので、
+     先頭からの位置では当たらない(窓の外は colspan の空セルに畳まれる)。 */
+  const cellOf=async c=>{
+   await page.evaluate(x=>{
+    document.querySelector(`#grid th[data-sort-col="${CSS.escape(x)}"]`)
+      ?.scrollIntoView({block:'nearest',inline:'nearest'});
+   },c);
+   await page.waitForFunction(x=>!!document.querySelector(
+     `#grid tbody tr td[data-col="${CSS.escape(x)}"]`),c,{timeout:10000});
+   return page.evaluate(x=>{
+    const td=document.querySelector(`#grid tbody tr td[data-col="${CSS.escape(x)}"]`);
+    return {text:td.textContent.trim(),cls:td.className,title:td.title};
+   },c);
+  };
   const shown=await cellOf(col);
   rec('読み替えが一覧のセルに効く',shown.text==='置き換え済',JSON.stringify(shown));
   rec('色がセルに付く',/cell-ok/.test(shown.cls),shown.cls);

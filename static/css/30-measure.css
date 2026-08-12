@@ -673,5 +673,9 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 /* 行の窓(§9.95)で上下に挟む「高さだけの行」。中身が無いので、罫線も
    背景も付けない——ここに線が出ると表が途中で切れて見える。 */
 #grid tr.grid-virtual-spacer td{border:0;padding:0;background:transparent}
+/* 列の窓(§9.104)で畳んだ、窓の外の列ぶんの空セル。**幅はcolgroupが
+   決める**ので何も指定しない(指定すると畳んだ幅と実際の列の合計がずれ、
+   見出しと本文の左端が合わなくなる)。中身も罫線も持たない。 */
+#grid td.grid-col-spacer{border:0;padding:0;background:transparent}
 #grid tr.grid-virtual-spacer:hover{background:transparent;cursor:default}
 }

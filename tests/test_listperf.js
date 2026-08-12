@@ -14,8 +14,14 @@
     3. **大きい表は少しずつ並べる**
        セル数に比例してレイアウトが重くなるので、一度に全部渡すと
        その間ずっと操作できない。最初の一塊を出してから継ぎ足す。
+    4. **横に見えている列だけ作る**(§9.104、「列の窓」)
+       実データは214列あるが画面に入るのは16列。残り約200列は見えない
+       のに毎回並べ直されていた。実測(214列×50行の1回の組み直し)で
+       **962ms→23ms**。`display:none`で隠すだけでは501msにしか下がらない
+       ——作ってしまうとレイアウトから外れないので、**作らない**。
+       見出し(thead)とcolgroupは全列のまま置き、本文だけ畳む。
 
-   ここで固定するのは「速さ」ではなく**この3つの作りが残っていること**。
+   ここで固定するのは「速さ」ではなく**この4つの作りが残っていること**。
    実時間はマシンで変わるので、往復回数・DOMの形・順序で見る。
    ============================================================ */
 const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
@@ -118,6 +124,77 @@ let b=null;
   await page.waitForTimeout(2500);
   const afterSort=await page.evaluate(()=>document.querySelectorAll('#grid tbody tr').length);
   rec('継ぎ足しのあとに並べ替えても行が壊れない',afterSort>0,`${afterSort}行`);
+
+  // ---- 6. 横に見えている列だけ作る（列の窓、§9.104） ----
+  await page.selectOption('#pageSize','200');
+  await page.waitForFunction(()=>document.querySelectorAll('#grid tbody tr').length>10,{timeout:20000});
+  const win=await page.evaluate(()=>{
+   const g=document.getElementById('grid');
+   const tr=g.querySelector('tbody tr:not(.grid-virtual-spacer)');
+   return {列:g.querySelectorAll('thead th[data-sort-col]').length,
+           本文のセル:tr.querySelectorAll('td[data-col]').length,
+           畳んだ空セル:tr.querySelectorAll('td.grid-col-spacer').length,
+           表の幅:Math.round(g.scrollWidth),器の幅:Math.round(g.clientWidth)};
+  });
+  /* 器に収まらないほど広いときだけ畳む。収まっているなら畳む先が無いので
+     全列そのままが正しい——どちらの側も固定する。 */
+  const wide=win.表の幅>win.器の幅+320;
+  rec('見出しは全列そろっている（列の窓は本文だけ畳む）',
+    win.列>0&&win.表の幅>0,JSON.stringify(win));
+  if(wide){
+   rec('本文は横に見えている列だけ作る',win.本文のセル<win.列,
+     `${win.本文のセル} / ${win.列}列`);
+   rec('窓の外はcolspanの空セルに畳む',win.畳んだ空セル>0,`${win.畳んだ空セル}個`);
+  }else{
+   rec('器に収まる表は畳まない（全列そのまま）',
+     win.本文のセル===win.列&&win.畳んだ空セル===0,JSON.stringify(win));
+  }
+  /* **畳んでも見出しと本文はずれない。** `table-layout:fixed`では
+     colspanで束ねた幅が元の列幅の合計になるので、1pxもずれない。
+     ここがずれると表として読めなくなる(この作りの一番の危険). */
+  const aligned=await page.evaluate(async()=>{
+   const g=document.getElementById('grid');
+   const check=()=>{
+    const tr=g.querySelector('tbody tr:not(.grid-virtual-spacer)');
+    const bad=[];let n=0;
+    tr.querySelectorAll('td[data-col]').forEach(td=>{
+     const th=g.querySelector(`thead th[data-sort-col="${CSS.escape(td.dataset.col)}"]`);
+     if(!th)return;
+     const a=th.getBoundingClientRect(),c=td.getBoundingClientRect();
+     n++;
+     if(Math.abs(a.left-c.left)>1||Math.abs(a.width-c.width)>1)
+      bad.push(`${td.dataset.col}:${Math.round(a.left)}≠${Math.round(c.left)}`);
+    });
+    return {n,bad};
+   };
+   const raf=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   const out={n:0,bad:[]};
+   for(const x of [0,Math.round(g.scrollWidth/2),g.scrollWidth]){
+    g.scrollLeft=x;await raf();await raf();
+    const r=check();out.n+=r.n;out.bad.push(...r.bad);
+   }
+   return out;
+  });
+  rec('畳んでも見出しと本文の左端・幅がずれない',aligned.bad.length===0,
+    aligned.bad.length?aligned.bad.slice(0,3).join(' / '):`${aligned.n}列を照合`);
+  /* 横へスクロールしたら、そこにある列が本文にも出ていること
+     (畳んだままなら、右のほうの列が永久に空欄に見える)。 */
+  const scrolled=await page.evaluate(async()=>{
+   const g=document.getElementById('grid');
+   g.scrollLeft=g.scrollWidth;
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   await new Promise(r=>setTimeout(r,300));
+   const gr=g.getBoundingClientRect();
+   const tr=g.querySelector('tbody tr:not(.grid-virtual-spacer)');
+   const shown=[...g.querySelectorAll('thead th[data-sort-col]')]
+     .filter(th=>{const r=th.getBoundingClientRect();return r.right>gr.left+2&&r.left<gr.right-2});
+   const missing=shown.filter(th=>!tr.querySelector(
+     `td[data-col="${CSS.escape(th.dataset.sortCol)}"]`)).map(th=>th.dataset.sortCol);
+   g.scrollLeft=0;
+   return {見えている:shown.length,本文に無い:missing};
+  });
+  rec('右端までスクロールしても、見えている列は本文にも出る',
+    scrolled.本文に無い.length===0,JSON.stringify(scrolled));
 
   rec('コンソールに例外が出ていない',errs.length===0,errs.slice(0,2).join(' / '));
  }catch(e){
