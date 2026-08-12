@@ -239,6 +239,19 @@
   showToast('古いログを削除しました',`${removed}件`);
   await load();
  };
+ const clearAll=async()=>{
+  const files=currentFile().split(',').filter(Boolean);
+  // 「区切る」との違いを押す前に言う。区切りは古い内容が1世代前へ残るが、
+  // 消去は残らない。取り違えると調べる材料ごと失う。
+  if(!confirm(`${files.join('・')}の中身を空にします。**1世代前にも残りません。**\n`
+             +'古い内容を取っておきたいときは「ここで区切る」を使ってください。'))return;
+  try{
+   for(const file of files)await postJson('/api/logs/clear',{file});
+  }catch(e){return showToast('消去できませんでした',e.message||String(e),5200)}
+  state.picked.clear();
+  showToast('ログを消去しました',files.join('・'));
+  await loadFiles();await load();
+ };
  const rotate=async()=>{
   if(!confirm('いまのログを1つ古い世代へ送り、新しいログを始めます。'))return;
   try{
@@ -264,6 +277,7 @@
   $id('lgCopyShown').onclick=()=>copyLines(state.records.flatMap(r=>r.lines),'表示中のログをコピーしました');
   $id('lgDelPicked').onclick=deletePicked;
   $id('lgDelOld').onclick=deleteOld;
+  $id('lgClear').onclick=clearAll;
   $id('lgExpand').onclick=()=>document.querySelectorAll('#lgTree details').forEach(d=>d.open=true);
   $id('lgCollapse').onclick=()=>document.querySelectorAll('#lgTree details').forEach(d=>d.open=false);
   $id('lgRotate').onclick=rotate;
@@ -295,7 +309,8 @@
      <button type="button" id="lgCopyShown">表示中</button></span>
     <span class="lg-act is-danger"><i>削除</i>
      <button type="button" class="lg-danger" id="lgDelPicked">選んだ件</button>
-     <button type="button" class="lg-danger" id="lgDelOld">指定期間より前</button></span>
+     <button type="button" class="lg-danger" id="lgDelOld">指定期間より前</button>
+     <button type="button" class="lg-danger" id="lgClear" title="このログの中身を空にします。1世代前にも残りません">すべて</button></span>
     <span class="lg-act"><i>表示</i>
      <button type="button" id="lgExpand">すべて開く</button>
      <button type="button" id="lgCollapse">畳む</button></span>

@@ -12,8 +12,9 @@
 
    2〜4は**中身が決まっていないと確かめられない**ので、そこだけ
    `/api/logs` の応答を差し替える。1・5・6は本物のサーバーで確かめる。
-   **消す操作はここでは押さない**（この端末の本物のログを消してしまうため。
-   削除・区切りは tests/test_logs.py が一時フォルダで確かめている）。
+   **消す操作は押すが、応答を差し替えて本物のログには届かせない**（この端末の
+   記録を消さないため）。見たいのは「ボタンが本当にAPIへ繋がっているか」で、
+   消えた結果は tests/test_logs.py が一時フォルダで確かめている。
    ============================================================ */
 const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
 const B='http://127.0.0.1:5029';
@@ -137,6 +138,27 @@ const FIXTURE={ok:true,total:6,matched:6,shown:6,clipped:false,
   marked:document.querySelectorAll('#lgTree .lg-group.is-picked').length,
  }));
  rec('起動のまとまりごと選べる',groupPick.checked===3&&groupPick.marked===1,JSON.stringify(groupPick));
+
+ /* ---- 消す操作が本当にサーバーへ届く ----
+    **押しても本物のログは消さない**: 応答を差し替えて、届いた宛先だけを見る。
+    画面にボタンがあるのにAPIへ繋がっていない（またはAPIがあるのにボタンが
+    無い）状態は、押すまで気づけないので機械で見る。 */
+ const sent=[];
+ await page.route(/\/api\/logs\/(clear|rotate|delete-old|delete-lines)$/,async route=>{
+  sent.push({url:route.request().url().replace(/^.*\/api/,'/api'),body:route.request().postData()});
+  await route.fulfill({status:200,contentType:'application/json',body:'{"ok":true,"removed":0}'});
+ });
+ await page.evaluate(()=>{window.confirm=()=>true});
+ await page.click('#lgClear');
+ await page.waitForTimeout(500);
+ const clearReq=sent.find(x=>/clear$/.test(x.url));
+ rec('「すべて」消去がサーバーへ届く（押せるのに繋がっていない、が無い）',
+     !!clearReq&&/app\.log|launcher\.log/.test(clearReq.body||''),JSON.stringify(clearReq||null));
+ await page.click('#lgRotate');
+ await page.waitForTimeout(500);
+ rec('「ここで区切る」もサーバーへ届く',sent.some(x=>/rotate$/.test(x.url)),
+     sent.map(x=>x.url).join(' '));
+ await page.unroute(/\/api\/logs\/(clear|rotate|delete-old|delete-lines)$/);
 
  // ---- 6. 画面を出ると自動更新が止まる ----
  await page.check('#lgAuto');

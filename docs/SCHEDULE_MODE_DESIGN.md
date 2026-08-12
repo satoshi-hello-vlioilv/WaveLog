@@ -4196,13 +4196,19 @@ ALLOWEDへ理由付きで載せたうえで残してある(`docs/REFACTORING_PLA
 | `GET /api/logs/files` | 置かれているファイル(系統・世代・大きさ・更新時刻) |
 | `GET /api/logs` | 末尾を読み、畳み、並べ、絞って返す |
 | `POST /api/logs/rotate` | いまのログを1つ古い世代へ送る |
-| `POST /api/logs/clear` | 中身を空にする |
+| `POST /api/logs/clear` | 中身を空にする（区切りと違い1世代前にも残らない） |
 | `POST /api/logs/delete-lines` | 選んだ件(物理行の集合)を消す |
 | `POST /api/logs/delete-old` | 指定日数より前の**件**を消す |
 | `GET /api/logs/download` | そのままの1本を保存する |
 
+**作ったAPIに画面からの呼び出しがあることも機械で見る。** `clear` を作った
+のに画面へボタンを置き忘れ、**一度も動かない実装**になっていた(§9.96と同じ
+形。押すまで気づけない)。`tests/test_logs.py` が `@bp.get/post` の一覧と
+`log-view.js` を突き合わせ、`tests/test_logview.js` が逆向き——ボタンを押すと
+本当にそのAPIへ届くか——を、応答を差し替えて本物のログに触れずに見る。
+
 固定は `tests/test_logs.py`(折りたたみ・絞り込み・件単位の削除・置き場の外を
-断ること・区切りと追記の続き)と `tests/test_logview.js`(まとめ方・1件の扱い・
+断ること・区切りと追記の続き・呼ばれないAPIが無いこと)と `tests/test_logview.js`(まとめ方・1件の扱い・
 選択・取り直し・画面を出ると自動更新が止まること)。**画面のテストで消す操作は
 押さない**——この端末の本物のログを消してしまうため、削除と区切りは
 Python側が一時フォルダで確かめている。

@@ -15,14 +15,15 @@
     ログ置き場の外まで読み書きできる。
 
 ここで固定するのは、折りたたみ・絞り込み・件単位の削除・置き場の外を
-断ること・区切り(rotate)の5点。**本物のログには触らない**——`logs_dir()`を
-一時フォルダへ差し替えて動かす(この端末で動いているサーバーのログを
+断ること・区切り(rotate)・**作ったAPIが画面から呼ばれていること**の6点。
+**本物のログには触らない**——`logs_dir()`を一時フォルダへ差し替えて動かす(この端末で動いているサーバーのログを
 テストが消してしまわないようにするため)。
 ============================================================
 """
 import logging
 import logging.handlers
 import pathlib
+import re
 import shutil
 import sys
 import tempfile
@@ -192,7 +193,18 @@ def main():
         except Exception:
             pass
 
-    # ---- 7. 消す操作はeditモードだけ ----
+    # ---- 7. 画面から呼ばれないAPIを作らない ----
+    # `/api/logs/clear` を作ったのに画面へボタンを置き忘れ、**一度も動かない
+    # 実装**になっていた(§9.96と同じ形。押すまで気づけない)。エンドポイントと
+    # 画面の呼び出しを機械的に突き合わせる。
+    src = (ROOT / 'backend' / 'routes' / 'logs.py').read_text(encoding='utf-8')
+    view = (ROOT / 'static' / 'js' / 'log-view.js').read_text(encoding='utf-8')
+    routes = set(re.findall(r"@bp\.(?:get|post)\('([^']+)'\)", src))
+    unused = sorted(r for r in routes if r not in view)
+    rec('作ったAPIは画面から呼ばれている（一度も動かない実装を残さない）',
+        not unused, ', '.join(unused))
+
+    # ---- 8. 消す操作はeditモードだけ ----
     rec('消す・区切るはeditモードだけ（書込ガードに宣言してある）',
         access_mode._WRITE_ALLOWED_MODES.get('logs') == {'edit'},
         access_mode._WRITE_ALLOWED_MODES.get('logs'))
