@@ -59,7 +59,15 @@ def rec(name, ok, detail=''):
 
 
 def scan():
-    windows, globals_by_file, wl = {}, {}, set()
+    """`window.*` の公開・**本当のグローバル関数**・`WL.*` を数える。
+
+    グローバル関数の数え方を2026-08-12に直した。以前は
+    `^\\s*function NAME(` で数えており、**字下げを見ているだけ**だった——
+    即時関数で包んだファイルの中の入れ子関数まで「グローバル」と数えるので、
+    schedule-view.js は161個と出るのに実際のグローバルは**0個**。
+    行頭(桁0)の宣言だけがグローバルになるので、そちらを数える。
+    """
+    windows, globals_by_file, wrapped, wl = {}, {}, {}, set()
     for path in sorted(JS.glob('*.js')):
         text = path.read_text(encoding='utf-8')
         # `window.WL=window.WL||{}` は名前空間そのものの用意なので数えない
@@ -67,17 +75,20 @@ def scan():
         w = [x for x in re.findall(r'\bwindow\.([A-Za-z_$][\w$]*)\s*=(?!=)', text) if x != 'WL']
         if w:
             windows[path.name] = sorted(set(w))
-        g = re.findall(r'^\s*(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(', text, re.M)
+        g = re.findall(r'^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(', text, re.M)
         if g:
             globals_by_file[path.name] = sorted(set(g))
+        # 即時関数で丸ごと包んでいるか。包んであれば中の宣言はグローバルに
+        # ならないので、**字下げされた宣言まで断る必要が無い**。
+        wrapped[path.name] = '(function(' in text and text.rstrip().endswith(');')
         wl |= set(re.findall(r'\bWL\.([A-Za-z_$][\w$]*)\s*=(?!=)', text))
-    return windows, globals_by_file, wl
+    return windows, globals_by_file, wrapped, wl
 
 
 def main():
-    windows, globals_by_file, wl = scan()
+    windows, globals_by_file, wrapped, wl = scan()
     total = sum(len(v) for v in windows.values())
-    rec('画面側のJSを読めている', len(globals_by_file) >= 15, f'{len(globals_by_file)}ファイル')
+    rec('画面側のJSを読めている', len(wrapped) >= 15, f'{len(wrapped)}ファイル')
 
     rec(f'`window.*` への公開が増えていない（上限 {WINDOW_LIMIT}）',
         total <= WINDOW_LIMIT, f'{total}件')
@@ -97,6 +108,12 @@ def main():
     rec('新しいJSファイルは素のグローバル関数を作っていない',
         not newcomers,
         '; '.join(f'{f}: {", ".join(g[:4])}' for f, g in newcomers.items()))
+
+    # …そのうえで、**丸ごと即時関数で包む**ことも要求する。行頭の宣言だけを
+    # 見る数え方は「字下げした行頭宣言」を見逃すが(字下げしてもグローバルに
+    # なる)、包んであればそもそもグローバルにならないので両方で塞ぐ。
+    naked = sorted(f for f, ok in wrapped.items() if not ok and f not in LEGACY_FILES)
+    rec('新しいJSファイルは即時関数で包んでいる', not naked, ', '.join(naked))
 
     # 読み込み一覧(index.html)と実ファイルが食い違っていないか。
     # 足したのに読み込まれない/消したのに残っている、はどちらも静かに壊れる。

@@ -669,7 +669,6 @@ async function loadEquipmentMaster(force=false){
  })();
  return equipmentMasterLoading;
 }
-function findMasterEquipment(name){const n=normalizeCourseText(name);return equipmentMasterState.items.find(x=>normalizeCourseText(x.name)===n)||null}
 /* reuseExisting:trueを明示し、過去に削除された同名設備があっても常に復元する
    (従来どおりの挙動)。この入口は使用設備を選ぶだけの軽い操作のため、
    「新しい設備として登録」の選択肢はマスタ管理画面(設備タブ)側のみで扱う。 */

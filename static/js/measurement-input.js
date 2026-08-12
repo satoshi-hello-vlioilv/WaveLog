@@ -228,7 +228,6 @@ function applyInputProtection(){
    判定公差はセレクタ(製造/オーダー)と測定種(板厚板幅以外は指示公差)から決まる。
    フィールド名の全角半角ゆれはnormalizedFieldNameベースの照合で吸収する。 */
 function configuredToleranceSource(){return S.measure?.settings?.toleranceSource||'manufacturing'}
-function toleranceFieldValue(names){const r=S.measure?.source||S.measure?.snapshot?.source||{};for(const n of names){const v=r[n];if(v!==undefined&&v!==null&&String(v).trim()!==''){const num=Number(v);if(Number.isFinite(num))return num}}return NaN}
 function fieldNumberByRule({prefixes=[],contains=[],sign}){
  const r=S.measure?.source||S.measure?.snapshot?.source||{},signWord=sign==='plus'?'プラス':'マイナス';
  for(const [key,value] of Object.entries(r)){
