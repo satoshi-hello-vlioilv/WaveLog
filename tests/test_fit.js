@@ -35,16 +35,40 @@ let b=null;
  page.on('pageerror',e=>console.log('[pageerror]',e.message));
  page.on('dialog',d=>d.accept());
  try{
-  const settle=async(ms=800)=>{
-   await page.waitForTimeout(ms);
-   await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+  /* 待ちは「時間」ではなく「条件」で置く(§9.102)。以前は固定待ちの合計が
+     58秒あり、この網が持っている3つの判定より待ち時間の方がずっと長かった。
+       ・paint(): 描画が1巡するまで(requestAnimationFrame 2回)。
+         表示サイズの切替は`data-ui-size`の付け替え＝CSS変数の再計算だけで、
+         **寸法を動かすtransitionは1つも無い**(動くのはtransform/opacity/色と、
+         進捗バー2本のwidthだけ)。だから寸法を測る前に要るのは
+         「レイアウトが確定したか」であって、時間ではない。
+       ・idle(): 取得が止まって quiet ミリ秒 静かなら次へ。画面の切替は
+         その画面ぶんのデータを取り終わるまで待つ必要があるが、それが
+         何ミリ秒かは画面によって違う(固定待ちは速い画面で無駄に待ち、
+         遅い画面では足りない)。一覧は描き終えたあと requestIdleCallback で
+         追加の問い合わせを出すので「0件になった瞬間」では早すぎる。
+         ハートビート(15秒ごと)は画面と無関係なので数から外す。 */
+  const paint=()=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+  let inflight=0;
+  const counted=r=>!/\/api\/heartbeat/.test(r.url());
+  page.on('request',r=>{if(counted(r))inflight++});
+  page.on('requestfinished',r=>{if(counted(r))inflight--});
+  page.on('requestfailed',r=>{if(counted(r))inflight--});
+  const idle=async(quiet=400,cap=6000)=>{
+   const t0=Date.now();let calm=Date.now();
+   while(Date.now()-t0<cap){
+    if(inflight>0)calm=Date.now();
+    else if(Date.now()-calm>=quiet)break;
+    await page.waitForTimeout(50);
+   }
+   await paint();
   };
   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openSchedule',{timeout:20000});
   await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openSchedule',{timeout:20000});
-  await settle(1500);
+  await idle();
 
   const probe=(slack)=>page.evaluate(sl=>{
    const out=[];
@@ -85,16 +109,16 @@ let b=null;
 
   const findings=[];let pageX=0;
   const visit=async(name,fn)=>{
-   await fn(); await settle(1400);
+   await fn(); await idle();
    for(const size of SIZES){
     await page.evaluate(s=>{document.documentElement.dataset.uiSize=s},size);
-    await settle(500);
+    await paint();
     const r=await probe(SLACK);
     r.items.forEach(i=>findings.push({...i,screen:name,size}));
     pageX=Math.max(pageX,r.pageX);
    }
    await page.evaluate(()=>{document.documentElement.dataset.uiSize='md'});
-   await settle(300);
+   await paint();
   };
 
   await visit('仕掛一覧',()=>page.click('aside [data-db-key="SIKALOTNOW"]'));
@@ -111,38 +135,41 @@ let b=null;
   });
   await visit('登録フィルタ一覧',async()=>{
    await page.evaluate(()=>document.querySelector('#openFilterPresets')?.click());
-   await page.waitForTimeout(1200);
+   await page.waitForSelector('#filterPresetModal:not([hidden])',{timeout:10000}).catch(()=>{});
   });
   await visit('確認ダイアログ',async()=>{
    await page.evaluate(()=>{typeof confirmModal==='function'&&confirmModal(
      '長めの確認文をここに入れて、枠から溢れないかを見る。'
      +'この条件は鍵付きの必須条件です。外すと一時的に条件が緩和されます。')});
-   await page.waitForTimeout(400);
+   await page.waitForSelector('#appConfirmCancel',{state:'visible',timeout:10000}).catch(()=>{});
   });
   await page.evaluate(()=>{
    document.getElementById('appConfirmCancel')?.click();
    const m=document.getElementById('filterPresetModal');if(m)m.hidden=true;
    document.querySelector('#filterToggle')?.click();
   });
-  await settle(500);
+  await paint();
   await visit('品質データ',()=>page.click('aside [data-db-key="SIKALOTDEF"]'));
   await visit('品質データ_グラフ',async()=>{
-   await page.click('[data-qa-tab="graph"]');await settle(700);
+   await page.click('[data-qa-tab="graph"]');await idle();
    await page.evaluate(()=>document.querySelectorAll('.qa-acc:not(.open) .qa-acc-head').forEach(x=>x.click()));
   });
-  await page.click('[data-qa-tab="raw"]');await settle(500);
+  await page.click('[data-qa-tab="raw"]');await idle();
   await visit('作業スケジュール',()=>page.click('#openSchedule'));
   await visit('ダッシュボード',()=>page.click('#openDashboard'));
   await visit('実績カレンダー',()=>page.click('#openCalendar'));
   await visit('マスタ管理',()=>page.click('#openMasterMaint'));
   /* 測定画面。左ペインが一番きつい(VER1.85.0で3px溢れを踏んだ場所)。 */
-  await page.click('aside [data-db-key="SIKALOTNOW"]');await settle(2200);
+  await page.click('aside [data-db-key="SIKALOTNOW"]');
+  await page.waitForSelector('.measurement-action-button',{timeout:20000}).catch(()=>{});
+  await idle();
   const opened=await page.evaluate(()=>{
    const b=document.querySelector('.measurement-action-button');if(b){b.click();return true}return false;
   });
   if(opened){
    await page.waitForFunction(()=>!document.querySelector('#measureModal')?.hidden,null,{timeout:20000}).catch(()=>{});
-   await settle(2500);
+   /* 測定画面は開いたあともマスタを何本か引く。静けさの窓を広めに取る。 */
+   await idle(700,10000);
    await visit('測定画面',async()=>{});
   }
   rec('測定画面を開けた',opened);
