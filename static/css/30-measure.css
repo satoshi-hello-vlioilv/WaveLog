@@ -670,4 +670,8 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
    色は候補カード・視覚図・結果プレビューの3箇所で共通(splitLotColorMap)
    にして対応関係を掴みやすくする。 */
 .record-modal[hidden]{display:none}
+/* 行の窓(§9.95)で上下に挟む「高さだけの行」。中身が無いので、罫線も
+   背景も付けない——ここに線が出ると表が途中で切れて見える。 */
+#grid tr.grid-virtual-spacer td{border:0;padding:0;background:transparent}
+#grid tr.grid-virtual-spacer:hover{background:transparent;cursor:default}
 }

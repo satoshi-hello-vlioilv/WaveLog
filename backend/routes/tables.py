@@ -328,12 +328,16 @@ def api_table():
     if sort_col in cs:order_parts.append((sort_col,sort_dir))
    order=(' ORDER BY '+','.join(f'{qi(c2)} {d}' for c2,d in order_parts)) if order_parts else ''
    t_count=time.perf_counter()
-   cur=c.cursor();cur.execute(f'SELECT COUNT(*) FROM {qi(t)}'+where,params);count=int(cur.fetchone()[0]);top=page*size
+   cur=c.cursor();cur.execute(f'SELECT COUNT(*) FROM {qi(t)}'+where,params);count=int(cur.fetchone()[0])
    lap('count',t_count)
-   # 件数の頭からtop件を取り、Python側でページ分だけ切り出す(rows[start:start+size])。
+   # そのページぶんだけ取り出す。以前は頭からpage*size件を取ってPython側で
+   # 切り出しており、後ろのページほど無駄が増えていた(§9.95。「全件」は
+   # ページを順に読み進めるので、1..12ページで19,500行を読んで3,000行を
+   # 使う、という形になっていた)。SQLiteはOFFSETを解するので素直に渡す。
    t_fetch=time.perf_counter()
-   cur.execute(f'SELECT * FROM {qi(t)}'+where+order+f' LIMIT {top}',params)
-   rows=cur.fetchmany(top);start=(page-1)*size;rows=rows[start:start+size]
+   start=(page-1)*size
+   cur.execute(f'SELECT * FROM {qi(t)}'+where+order+f' LIMIT {size} OFFSET {start}',params)
+   rows=cur.fetchall()
    lap('fetch',t_fetch)
   # 表示マスタで非表示指定された列は、検索/絞込/並替の対象(cs)には残しつつ、
   # 返却するcolumns/rowsからのみ除外する(生の行タプルはcs全体の順序と対応するため、

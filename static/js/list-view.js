@@ -528,6 +528,54 @@ async function fetchTableData(key,force){
   tableCacheSet(key,d);applyTableData(d);updateListFreshness(null);
  });
 }
+/* ---------- 全件の続きを裏で読む(§9.95) ----------
+   1ページ目は普通に出したうえで、2ページ目以降を**待たせずに**読み続ける。
+   ・1回ぶんが小さい(500件)ので、受け取って解く時間も小さく刻まれる
+   ・読んでいる間もスクロール・切替・測定を開くことができる
+   ・**画面を切り替えたら止める**(世代が変わったら次を頼まない)
+   全部そろってから1度だけ描き直す。描き直しの前後で**見ている位置を保つ**
+   ——読み終わった拍子に先頭へ飛ぶと、探していた行を見失う。 */
+let allRowsRun=0;
+function stopAllRowsLoad(){allRowsRun++}
+/* 件数の表示。全件で**まだ途中**のときだけ、どこまで読めたかを添える
+   (「全2,003件」とだけ出ていると、下まで見たつもりで見落とす)。 */
+function allRowsProgress(loaded,total){
+ const el=$('#count');if(!el)return;
+ el.textContent=(isAllRows()&&total&&loaded<total)
+   ? `全 ${total.toLocaleString()}件（${loaded.toLocaleString()}件まで読み込み済み…）`
+   : `全 ${(total||loaded||0).toLocaleString()}件`;
+}
+async function continueAllRows(key){
+ const run=++allRowsRun;
+ const total=S.count|0;
+ if(!total||S.rows.length>=total)return;
+ allRowsProgress(S.rows.length,total);
+ const params=new URLSearchParams(key);
+ const rows=S.rows.slice();
+ for(let page=2;(page-1)*ALL_BATCH<total;page++){
+  if(run!==allRowsRun)return;                 // 別の読み込みが始まった
+  params.set('page',String(page));
+  let d=null;
+  try{d=await api('/api/table?'+params)}
+  catch(e){
+   // 途中で読めなくなっても、**そこまでの分はそのまま使える**。
+   if(run===allRowsRun)allRowsProgress(rows.length,total);
+   showToast&&showToast('全件の読み込みを中断しました',
+     `${rows.length.toLocaleString()}件まで表示しています（${e.message}）`,6000);
+   return;
+  }
+  if(run!==allRowsRun)return;
+  rows.push(...(d.rows||[]));
+  allRowsProgress(rows.length,total);
+ }
+ if(run!==allRowsRun)return;
+ keepGridScroll();             // 読み終わった拍子に先頭へ飛ばさない
+ S.rows=rows;
+ // 取り直したときに使い回せるよう、キャッシュも全件の形へ入れ替える。
+ tableCacheSet(key,{columns:S.columns,rows,count:S.count,joinQuality:S.joinQuality});
+ renderGrid();
+ allRowsProgress(rows.length,total);
+}
 /* ---------- 読み込みの内訳(§9.90) ----------
    「一覧が出るまで時間がかかる」という報告に対して、**どこで待っている
    のか**が分からないと打ち手が決まらない(共有が遅いのか、量が多くて
@@ -595,9 +643,27 @@ function runListHooks(kind,arg){
   try{fn(arg)}catch(e){console.error('一覧の'+kind+'フックで例外',e)}
  });
 }
+/* ---------- 「全件」(§9.95) ----------
+   表示件数に「全件」を足した。サーバーは1回に500件までしか返さない
+   (それ以上を1度に運ぶと転送も解読も1つの塊になり、そのあいだ操作できない)
+   ので、**全件は「500件ずつ最後まで取り続ける」**という意味にする。
+   最初の500件はいつもどおり出し、残りは裏で読む。 */
+const ALL_ROWS='all';
+/* 1回に取る件数。**大きいほど往復は減るが、1回ぶんの解読が長くなる**。
+   実データ(214列)では500件で1回4.5MB・解読に1.3秒かかり、そのあいだ
+   画面が止まる。250件なら0.5秒級まで下がり、往復も倍にしかならない。 */
+const ALL_BATCH=250;
+function pageSizeValue(){return $('#pageSize')?.value||'200'}
+function isAllRows(){return pageSizeValue()===ALL_ROWS}
+/* 1ページの件数。全件のときは1回ぶんの取得単位を返す(ページ番号の計算にも使う)。 */
+function effectivePageSize(){return isAllRows()?ALL_BATCH:(+pageSizeValue()||200)}
 function listQuery(){
+ /* 全件でも**サーバーへ送るのは1回ぶん**。`all=1`は「この問い合わせは
+    全件の1ページ目」という目印で、サーバーは見ない(キャッシュのキーと、
+    続きを読むかどうかの判定に使う)。 */
  const q=new URLSearchParams({db:S.db,table:S.table,page:S.page,
-                              page_size:$('#pageSize').value,search:$('#search').value});
+                              page_size:String(effectivePageSize()),search:$('#search').value});
+ if(isAllRows())q.set('all','1');
  // 並び順は複数キー(§9.88 段5)。1キーでも同じ形で送る。
  const sorts=WL.listSort.keys();
  if(sorts.length)q.set('sorts',JSON.stringify(sorts));
@@ -612,9 +678,13 @@ function listQuery(){
 WL.listQuery=listQuery;
 
 async function load(force){
- await fetchTableData(String(listQuery()),force);
+ stopAllRowsLoad();                       // 前回の「全件の続き」は打ち切る
+ const key=String(listQuery());
+ await fetchTableData(key,force);
  renderGrid();
  runListHooks('after');
+ // 全件は1ページ目を出してから続きを読む。**待たない**(画面は使える)。
+ if(isAllRows())continueAllRows(key);
 }
 /* 内訳を一覧の脇に出す。**遅かったときだけ**目立たせる(速いときに
    出しても読む理由が無い)。押すと内訳の内わけが出る。 */
@@ -880,7 +950,7 @@ function renderGridInner(){
     if(typeof window.isChildCardClassifiedRow==='function'&&window.isChildCardClassifiedRow(r))parentCheckTargets.push({tr,row:r});
    }
   }
-  tr.innerHTML=(canPlan?`<td class="plan-select-cell"><input type="checkbox" class="plan-select-checkbox"></td><td class="plan-action-cell"><button type="button" class="plan-action-button" title="この行の設備の作業スケジュールへ追加します">+ 予定</button></td>`:'')+`<td>${(S.page-1)*+$('#pageSize').value+i+1}</td>`+splitCell+visibleColumns.map(c=>{
+  tr.innerHTML=(canPlan?`<td class="plan-select-cell"><input type="checkbox" class="plan-select-checkbox"></td><td class="plan-action-cell"><button type="button" class="plan-action-button" title="この行の設備の作業スケジュールへ追加します">+ 予定</button></td>`:'')+`<td>${(S.page-1)*effectivePageSize()+i+1}</td>`+splitCell+visibleColumns.map(c=>{
    if(c===lotCol){const lotVal=r[c];return `<td class="lot-cell"><button type="button" class="lot-dsp-link grid-lot-link" title="クリックでLotDspをこのロット番号で開きます">${esc(lotVal)||'—'}</button></td>`}
    /* 読み替え(段4)→書式(段3)の順で通してから出す。どちらも失敗したら
       生の値が出るので、指定を間違えても値が消えることはない。 */
@@ -961,10 +1031,27 @@ function renderGridInner(){
  const CHUNK_MIN_CELLS=8000;
  const colCount=visibleColumns.length+2+(isWork?2:0)+(canPlan?2:0);
  const rowsFor=cells=>Math.max(5,Math.floor(cells/Math.max(1,colCount)));
- const chunked=visibleRows.length*colCount>CHUNK_MIN_CELLS&&visibleRows.length>rowsFor(FIRST_CELLS);
- const first=chunked?rowsFor(FIRST_CELLS):visibleRows.length;
+ /* ---------- 行が多いときは見えている分だけ置く(§9.95) ----------
+    「全件」を入れると行数が桁で増える。3,000行×214列=642,000セルは、
+    少しずつ並べても**並べ終えるまでに数十秒**かかる(セル数に比例するのは
+    §9.94のとおり)。人が一度に読めるのは画面に入る数十行だけなので、
+    **DOMへ置くのも画面の前後だけ**にする。データ(S.rows)は全部持っている
+    ので、件数・並べ替え・絞り込み・検索は今までどおり全件に効く。
+    しきい値を超えたときだけ効かせる——200件・500件の表は今までと1行も
+    変わらない(既存の見え方・テストをそのまま残すため)。 */
+ const VIRTUAL_MIN_ROWS=600, VIRTUAL_OVERSCAN=14;
+ const virtual=visibleRows.length>VIRTUAL_MIN_ROWS;
+ const chunked=!virtual&&visibleRows.length*colCount>CHUNK_MIN_CELLS
+               &&visibleRows.length>rowsFor(FIRST_CELLS);
+ const first=(virtual||chunked)?rowsFor(FIRST_CELLS):visibleRows.length;
  for(let i=0;i<first;i++)buildRow(visibleRows[i],i);
- t.append(b);$('#grid').replaceChildren(t);$('#count').textContent=`全 ${S.count.toLocaleString()}件`;$('#page').textContent=`${S.page}ページ`;$('#prev').disabled=S.page===1;$('#next').disabled=S.page*+$('#pageSize').value>=S.count;
+ t.append(b);$('#grid').replaceChildren(t);
+ /* 全件はページの概念が無い(1枚に全部出す)。ページ送りは押せなくする
+    ——押せるのに何も起きないボタンは「壊れている」と受け取られる。 */
+ allRowsProgress(S.rows.length,S.count);
+ $('#page').textContent=isAllRows()?'全件':`${S.page}ページ`;
+ $('#prev').disabled=isAllRows()||S.page===1;
+ $('#next').disabled=isAllRows()||S.page*effectivePageSize()>=S.count;
  if(canPlan){
   const selectAll=$('#planSelectAll');
   if(selectAll){
@@ -982,6 +1069,7 @@ function renderGridInner(){
     まだ作られていない行の印を付け損なう。 */
  const afterRows=()=>{
   if(gen!==gridGeneration)return;
+  applyPendingScroll();
   if(!splitCheckTargets.length&&!parentCheckTargets.length)return;
   whenIdle(()=>{
    if(gen!==gridGeneration)return;
@@ -992,6 +1080,11 @@ function renderGridInner(){
    });
   });
  };
+ if(virtual){setupVirtualRows({gen,grid:$('#grid'),tbody:b,rows:visibleRows,
+   colCount,overscan:VIRTUAL_OVERSCAN,buildRow,
+   reset:()=>{splitCheckTargets.length=0;parentCheckTargets.length=0},
+   afterRows});
+  return}
  if(!chunked){afterRows();return}
  const t0=performance.now();
  let at=first,cells=FIRST_CELLS*2;
@@ -1144,6 +1237,66 @@ window.clearListSelection=clearListSelection;
    問い合わせも無駄に走り切る。世代が変わったら打ち切る。 */
 let gridGeneration=0;
 function bumpGridGeneration(){return ++gridGeneration}
+/* 描き直したあとに戻したい位置。**並べ終えてから**戻す(§9.95)
+   ——描いた直後は表がまだ短く、指定してもブラウザに切り詰められる。 */
+let pendingGridScroll=null;
+function keepGridScroll(){
+ const g=$('#grid');
+ if(g)pendingGridScroll={top:g.scrollTop,left:g.scrollLeft};
+}
+function applyPendingScroll(){
+ const g=$('#grid');
+ if(g&&pendingGridScroll){g.scrollTop=pendingGridScroll.top;g.scrollLeft=pendingGridScroll.left}
+ pendingGridScroll=null;
+}
+/* ---------- 行の窓(§9.95) ----------
+   `#grid`の中で、**画面に入っている行の前後だけ**をDOMへ置く。
+   上下に高さだけを持つ空の行を挟んで、スクロールバーの長さは全行ぶんに
+   見せる。行の高さは`table-layout:fixed`＋`height:var(--row-h)`で全行
+   そろっているので、実際に描いた1行を測ってそれを使う(トークンから
+   計算すると罫線や表示サイズのぶんでずれる)。
+   スクロールのたびに作り直すが、**動いた量が窓の余分に収まるうちは
+   作り直さない**(1行スクロールするたびに組み直すと、それ自体が重い)。 */
+function setupVirtualRows({gen,grid,tbody,rows,colCount,overscan,buildRow,reset,afterRows}){
+ if(!grid)return;
+ const probe=tbody.querySelector('tr');
+ const rowH=Math.max(1,Math.round((probe?probe.getBoundingClientRect().height:0)||24));
+ const spacer=h=>{
+  const tr=document.createElement('tr');tr.className='grid-virtual-spacer';
+  const td=document.createElement('td');td.colSpan=colCount;td.style.height=h+'px';
+  tr.appendChild(td);return tr;
+ };
+ let start=-1;
+ const draw=()=>{
+  if(gen!==gridGeneration)return true;                 // 描き直された: 降りる
+  const view=Math.ceil(grid.clientHeight/rowH)+overscan*2;
+  const want=Math.max(0,Math.floor(grid.scrollTop/rowH)-overscan);
+  // 窓の中に収まっているうちは組み直さない
+  if(start>=0&&want>=start&&want+Math.ceil(grid.clientHeight/rowH)<=start+view)return false;
+  start=Math.min(want,Math.max(0,rows.length-view));
+  const end=Math.min(rows.length,start+view);
+  reset&&reset();
+  tbody.replaceChildren();
+  if(start>0)tbody.appendChild(spacer(start*rowH));
+  for(let i=start;i<end;i++)buildRow(rows[i],i);
+  if(end<rows.length)tbody.appendChild(spacer((rows.length-end)*rowH));
+  afterRows&&afterRows();
+  return false;
+ };
+ let queued=false;
+ const onScroll=()=>{
+  if(queued)return;queued=true;
+  requestAnimationFrame(()=>{
+   queued=false;
+   // 世代が変わっていたら聞くのをやめる(前の一覧のスクロールで作り直さない)
+   if(draw())grid.removeEventListener('scroll',onScroll);
+  });
+ };
+ grid.addEventListener('scroll',onScroll);
+ draw();
+ applyPendingScroll();
+ draw();                       // 戻した位置に合わせてもう一度窓を合わせる
+}
 function runLimited(items,limit,worker){
  let idx=0;
  const runners=Array.from({length:Math.min(limit,items.length)},async()=>{
