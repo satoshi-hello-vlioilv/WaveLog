@@ -53,6 +53,11 @@ _WRITE_ALLOWED_MODES={
  'path_config':{'edit'},
  'rne':{'edit'},
  'schedule':{'schedule'},
+ # 一覧系(tables)。**業務データを書くルートは1本も無い**が、宣言しないと
+ # fail-openのまま「たまたま安全」な状態になる。ここに本物の書込を1本
+ # 足した瞬間、閲覧モードから書けてしまう。唯一の非GETである
+ # 共有DBの写し直しは_READ_ONLY_POST_ENDPOINTS側で全モードへ開けてある。
+ 'tables':{'edit'},
  # ログ・診断(§9.99)。読み出し(GET)は全モードから通る(ガードはGETを見ない)。
  # **消す・区切るだけをeditへ絞る**——ログは端末ごとのローカルファイルで
  # 共有データではないが、消えると調査ができなくなる。
@@ -123,7 +128,9 @@ _ENDPOINT_EXTRA_MODES={
 # キーは「Blueprint名.関数名」。フェーズ4.1でRNEをrne.pyへ分離したため
 # masters. → rne. へ更新した(合わせないと、全モードで叩けたはずの手動実行が
 # editモード以外で403になる)。
-_READ_ONLY_POST_ENDPOINTS={'rne.rne_extract_run'}
+# 共有DBの写し直し(§9.89)も同じ性質。一覧の「再読込」から呼ばれ、共有上の
+# .sqlite3 を手元のキャッシュへ写すだけで、業務データは1行も書き換えない。
+_READ_ONLY_POST_ENDPOINTS={'rne.rne_extract_run','tables.api_db_mirror_refresh'}
 # editモードで許可する際、さらに「現場段取り可否」を要求するエンドポイント。
 # 作業予定を実際に動かす操作だけが対象で、設定系マスタの保存は含めない。
 _FIELD_REORDER_ENDPOINTS={'schedule.plan_reorder'}

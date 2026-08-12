@@ -417,7 +417,12 @@
   **fail-open(素通し)** で、閲覧モードからでも書けてしまう
   （`if allowed is None: return None`。以前ここには「安全側＝書込不可へ倒れる」と
   逆の説明が書かれていたが、実際にテスト用Blueprintを登録して確かめたところ
-  edit/view/scheduleの全モードで200が返る）。
+  edit/view/scheduleの全モードで200が返る）。**宣言漏れは`tests/test_modeguard.py`が
+  機械で見る**——非GETを持つBlueprintを実際のURLマップから拾い、全部が
+  `_WRITE_ALLOWED_MODES`に載っているかを確かめる。**読み取り専用のPOSTしか
+  持たないBlueprintも宣言する**こと（除外すると、後から本物の書込を1本足した
+  ときに、その人がテストを回すまで無防備なままになる。実際に`tables`が
+  その状態だった）。
   また`_ENDPOINT_EXTRA_MODES`と`_READ_ONLY_POST_ENDPOINTS`のキーは
   `Blueprint名.関数名`なので、**エンドポイントを別のBlueprintへ移すだけで
   許可が黙って変わる**。移動時は必ず両方の表を更新し、`tests/test_modeguard.py`

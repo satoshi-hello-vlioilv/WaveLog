@@ -34,8 +34,10 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 
 API = 'http://127.0.0.1:5029'
+ROOT = Path(__file__).resolve().parent.parent
 R = []
 
 
@@ -152,6 +154,63 @@ EXPECTED = {
 }
 
 
+def check_all_blueprints_declared():
+    """**非GETを持つBlueprintが全部宣言されているか**を、実際のURLマップから見る。
+
+    書込ガードはBlueprint名で判定し、**未宣言はfail-open(全モード素通し)**。
+    上のPROBESは「今ある入口」を1本ずつ叩くので、**表に載せ忘れたBlueprintは
+    そもそも検査されない**——載せ忘れこそが事故なのに、載せ忘れると
+    静かになる、という穴があった。
+
+    実際に2件見つかった:
+      logs   … このセッションで新設したとき、宣言を忘れても何も言われなかった
+      tables … 唯一の非GETが「共有DBの写し直し」で業務データを書かないため、
+               **宣言していないから安全なのではなく、たまたま安全**だった。
+               ここに本物の書込を1本足した瞬間、閲覧モードから書けてしまう。
+
+    **読み直すだけのPOSTでも宣言は要る。** 最初はここで
+    _READ_ONLY_POST_ENDPOINTS を除外していたが、それだと tables のように
+    「唯一の非GETが読み取り専用」なBlueprintが検査の対象から外れ、
+    宣言を消しても落ちなかった(実際に外して確かめたら素通りした)。
+    除外してよいのは**リクエスト時の判定**(_guard_write)であって、
+    「宣言が要るかどうか」ではない——宣言してあれば、後から本物の書込を
+    1本足したときに**その時点から**ガードが効く。除外していると、
+    足した人がテストを回すまで無防備なままになる。
+    """
+    import sys
+    sys.path.insert(0, str(ROOT))
+    import app as flask_app
+    from backend import access_mode as am
+
+    writable = {}
+    for rule in flask_app.app.url_map.iter_rules():
+        if '.' not in rule.endpoint:
+            continue                        # app直付け(モード切替・shutdown)は対象外
+        if not (rule.methods & {'POST', 'PUT', 'PATCH', 'DELETE'}):
+            continue
+        writable.setdefault(rule.endpoint.split('.')[0], []).append(rule.endpoint)
+
+    rec('非GETを持つBlueprintを実際のURLマップから拾える', len(writable) >= 5, f'{len(writable)}個')
+    undeclared = sorted(bp for bp in writable if bp not in am._WRITE_ALLOWED_MODES)
+    rec('非GETを持つBlueprintが全部_WRITE_ALLOWED_MODESに宣言されている',
+        not undeclared,
+        '; '.join(f'{bp}({len(writable[bp])}本, 例: {writable[bp][0]})' for bp in undeclared))
+
+    # 逆向き: 宣言だけ残って実体が無いBlueprint(分割・改名の取り残し)
+    stale = sorted(bp for bp in am._WRITE_ALLOWED_MODES
+                   if bp not in {r.endpoint.split('.')[0]
+                                 for r in flask_app.app.url_map.iter_rules() if '.' in r.endpoint})
+    rec('実体の無いBlueprintが許可表に残っていない', not stale, ', '.join(stale))
+
+    # _ENDPOINT_EXTRA_MODES / _READ_ONLY_POST_ENDPOINTS のキーも実在を見る。
+    # **キーはBlueprint名.関数名**なので、エンドポイントを別Blueprintへ移すと
+    # 黙って一致しなくなる(CLAUDE.mdが警告している足の速い壊れ方)。
+    known = {r.endpoint for r in flask_app.app.url_map.iter_rules()}
+    ghosts = sorted((set(am._ENDPOINT_EXTRA_MODES) | am._READ_ONLY_POST_ENDPOINTS
+                     | am._FIELD_REORDER_ENDPOINTS) - known)
+    rec('例外表のキーが実在するエンドポイントを指している', not ghosts, ', '.join(ghosts))
+
+
 def main():
     try:
         for mode in ('edit', 'view', 'schedule'):
@@ -166,6 +225,8 @@ def main():
                     passed == want, f'status={st} {body[:80]}')
     finally:
         set_mode('edit')
+
+    check_all_blueprints_declared()
 
     print('\n=== SUMMARY ===')
     print('%d/%d passed' % (sum(R), len(R)))
