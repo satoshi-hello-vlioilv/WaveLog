@@ -440,7 +440,18 @@ $('#closeModal').onclick=closeMeasureModal;$('.shade').onclick=closeMeasureModal
 /* 編集中データ一覧と完了データ一覧は1つの統合リストとして表示する。
    statuses.editing/doneはそれぞれ独立したトグルで、両方ONにすると
    編集中＋完了を同時に確認できる。既定は編集中のみON。 */
-let recordListState={statuses:{editing:true,done:false},items:[],query:'',sort:'updated-desc'};
+/* notice/emptyHtml/sourceNote は**この一覧を開いた側が入れる説明文**(§9.107)。
+   編集モード以外でここを開くと、読めるのは共有された閲覧用データだけで、
+   この端末のIndexedDBにある編集中データは開けない。そのとき
+   「表示できるデータがありません」とだけ出すと**データが無い**と誤読される
+   (スケジュールモードで「データがあるのに見えない」と実機から報告された)。
+   一覧の描画はここが1箇所で持ち続け、**理由の文言は開いた側(access-mode.js)
+   から受け取る**——モードの判定・権限の有無はあちらが持っているため。 */
+let recordListState={statuses:{editing:true,done:false},items:[],query:'',sort:'updated-desc',
+ notice:'',emptyHtml:'',sourceNote:''};
+/* 編集モードの経路(openRecords)へ戻ったときに、閲覧モードで入れた説明が
+   残っていると嘘になる。開き直すたびに必ず消す。 */
+function clearRecordListNotice(){recordListState.notice='';recordListState.emptyHtml='';recordListState.sourceNote=''}
 function recordMatchesStatusFilter(x){const done=x.status==='完了';return done?!!recordListState.statuses?.done:!!recordListState.statuses?.editing}
 function recordSearchText(x){return [x.basic?.lotNo,x.basic?.inspectionNo,x.basic?.castingNo,x.basic?.equipment,x.settings?.registeredEquipment,x.registeredEquipment,x.status].map(v=>String(v||'').normalize('NFKC').toLowerCase()).join(' ')}
 function sortedFilteredRecords(){let items=recordListState.items.filter(x=>recordMatchesStatusFilter(x)&&recordSearchText(x).includes(recordListState.query.normalize('NFKC').toLowerCase()));items=[...items];if(recordListState.sort==='updated-asc')items.sort((a,b)=>String(a.updatedAt||'').localeCompare(String(b.updatedAt||'')));else if(recordListState.sort==='lot-asc')items.sort((a,b)=>String(a.basic?.lotNo||'').localeCompare(String(b.basic?.lotNo||''),'ja'));else items.sort((a,b)=>String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')));return items}
@@ -452,8 +463,10 @@ function updateRecordListTitle(){
  // 追随させたいのはこのヘッダー表示のほう。
  if(!document.body.classList.contains('rec-mode'))return;
  const st=recordListState.statuses||{};
+ // 副題は「どこのデータを見ているか」。閲覧用バックアップを見ている間も
+ // 「この端末に保存された測定データ」と出すと、見えない理由が分からなくなる。
  setHeaderContext(st.editing&&st.done?'データ一覧（編集中＋完了）':st.done?'完了データ一覧':'編集中データ一覧',
-  'この端末に保存された測定データ');
+  recordListState.sourceNote||'この端末に保存された測定データ');
 }
 function syncStatusFilterButtons(){
  const st=recordListState.statuses||{};
@@ -518,6 +531,7 @@ async function refreshRecordList(){
  renderRecordListRows();
 }
 async function openRecords(status){
+ clearRecordListNotice();
  if(status==='編集中')recordListState.statuses={editing:true,done:false};
  else if(status==='履歴')recordListState.statuses={editing:false,done:true};
  else if(!recordListState.statuses)recordListState.statuses={editing:true,done:false};
@@ -594,9 +608,11 @@ function confirmDeleteRecord(x){
 /* 分割(条割変更)が実際に行われたかどうか: splitGroupsが2ロット以上に
    分かれている場合のみ「分割あり」とする(単一ロットのデフォルト値は分割なし扱い)。 */
 function recordSplitLabel(x){return Array.isArray(x.settings?.splitGroups)&&x.settings.splitGroups.length>1?'あり':'-'}
-function renderRecordListRows(){const list=$('#recordList'),items=sortedFilteredRecords(),currentLot=normalizedLot(S.current?pick(S.current,'lotNo'):'');if(!list)return;list.innerHTML='<div class="record-list-head"><span>状態</span><span>ロット番号</span><span>検査番号</span><span>製造材質</span><span>製造板厚</span><span>用途名</span><span>コース</span><span>オペレータ</span><span>検査員</span><span>作業人数</span><span>分割</span><span>作業開始時刻</span><span>更新日時</span><span>実作業時間</span><span>操作</span></div>';if(!items.length){
+function renderRecordListRows(){const list=$('#recordList'),items=sortedFilteredRecords(),currentLot=normalizedLot(S.current?pick(S.current,'lotNo'):'');if(!list)return;list.innerHTML=(recordListState.notice||'')+'<div class="record-list-head"><span>状態</span><span>ロット番号</span><span>検査番号</span><span>製造材質</span><span>製造板厚</span><span>用途名</span><span>コース</span><span>オペレータ</span><span>検査員</span><span>作業人数</span><span>分割</span><span>作業開始時刻</span><span>更新日時</span><span>実作業時間</span><span>操作</span></div>';if(!items.length){
  const q=recordListState.query;
- list.insertAdjacentHTML('beforeend',q?`<div class="record-empty"><b>「${esc(q)}」に一致するデータはありません。</b><button id="recordEmptyClearSearch" type="button">検索条件を解除</button></div>`:'<div class="record-empty">表示できるデータがありません。</div>');
+ // 絞り込みの結果0件なのか、そもそも見せてもらえていないのか(§9.107)は
+ // 別のこと。後者は開いた側が emptyHtml で理由を渡してくる。
+ list.insertAdjacentHTML('beforeend',q?`<div class="record-empty"><b>「${esc(q)}」に一致するデータはありません。</b><button id="recordEmptyClearSearch" type="button">検索条件を解除</button></div>`:(recordListState.emptyHtml||'<div class="record-empty">表示できるデータがありません。</div>'));
  const clearBtn=$('#recordEmptyClearSearch');
  if(clearBtn)clearBtn.onclick=()=>{recordListState.query='';const search=$('#recordSearch');if(search)search.value='';renderRecordListRows()};
 }

@@ -54,7 +54,7 @@ G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'tes
                'test_gridhead']
 G['起動'] = ['test_boot', 'test_bootui', 'test_bootflash', 'test_assetcache', 'test_tabclose']
 G['接続'] = ['test_dbopen', 'test_dbmirror', 'test_datasource', 'test_tablequery']
-G['権限'] = ['test_modeguard', 'test_noaccess', 'test_scperm']
+G['権限'] = ['test_modeguard', 'test_noaccess', 'test_scperm', 'test_recperm']
 G['ログ'] = ['test_logs', 'test_logview', 'test_error']
 
 ALL = '*'  # 「全部回す」を表す印
@@ -102,7 +102,7 @@ RULES = [
     ('static/js/wl-window.js', g('test_lcpanel', 'test_listmodal', 'test_split_layout',
                                  'test_scsplit')),
     ('static/js/measure-progress.js', g('test_waiting', 'test_waiting2')),
-    ('static/js/records-store.js', g('test_share', 'test_flows', 'test_p11')),
+    ('static/js/records-store.js', g('test_share', 'test_flows', 'test_p11', 'test_recperm')),
     ('static/js/measurement-', g('測定')),          # measurement-*.js
 
     # --- 見た目(CSS) -------------------------------------------------

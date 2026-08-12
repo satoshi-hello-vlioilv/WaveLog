@@ -568,6 +568,14 @@ Box等のクラウド同期フォルダへ複製し、他端末はそれを閲�
   `renderRecordListRows()`を呼ぶ（`recordListState`/`openRecords`/
   `renderRecordListRows`はrecords-store.js側がIIFEを持たないため、
   他ファイルから直接参照・再代入できる）。
+- **そのため一覧が0件になっても「データが無い」わけではない**（§9.107）。
+  端末内の編集中データは読んでいないだけで、そこにある。
+  `recordListState`の`notice`/`emptyHtml`/`sourceNote`へ
+  access-mode.js側が理由の文言を入れ、`renderRecordListRows()`がそれを描く
+  （描画は1箇所のまま、理由はモードを知っている側が渡す）。件数は
+  `reliableAll()`で数え、0件の理由は「置き場が未設定」「読めなかった」
+  「該当が無い」の3つに分ける（判定は文言ではなく`err.code`）。
+  `openRecords()`が開くたびに3欄を消すので、編集モードへ戻れば案内も消える。
 - 帳票（report-dashboard.js）も同様に、`openReportView()`内で
   `window.accessMode.mode==='view'`なら`reliableAll()`の代わりに
   `window.loadViewModeRecords()`を呼ぶよう直接編集してある（IIFEで閉じた

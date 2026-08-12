@@ -213,7 +213,13 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
     トップレベル変数・関数(IIFE無し)のため、ここから直接参照できる。 */
  async function loadViewModeRecords(){
   const r=await api('/api/measurement/backup/list-view');
-  if(!r.configured)throw Error('閲覧用のバックアップ出力先が設定されていません。管理者にconfig/local.jsonのrecords_backup_export_pathの設定を確認してください。');
+  if(!r.configured){
+   // 呼び出し側が「未設定」と「読めなかった」を言い分けられるように印を付ける
+   // (文言での判定は文言を直すたびに壊れる)。
+   const err=Error('閲覧用データの出力先（マスタ管理 > パス設定の records_backup_export_path）が未設定です。');
+   err.code='unconfigured';
+   throw err;
+  }
   return (r.items||[]).map(it=>{
    try{const rec=ensureMeasureShape(JSON.parse(it.payload));rec.id=it.id;return rec}
    catch(e){return null}
@@ -221,20 +227,94 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
  }
  window.loadViewModeRecords=loadViewModeRecords;
 
+ /* ---------- 「データが無い」と「このモードでは見せられない」を言い分ける ----------
+    §9.107。edit以外のモードでは、この端末のIndexedDBにある編集中データを
+    開かない(書き込まない端末なので、共有された閲覧用データだけを見る)。
+    ところが一覧は0件のとき「表示できるデータがありません」とだけ出していた
+    ため、**手元にデータがあるのに消えたように見えた**(スケジュールモードで
+    実機から報告)。事実は「無い」ではなく「このモードでは開けない」なので、
+    端末内の件数を数えて、そう書く。 */
+ async function localRecordCounts(){
+  try{
+   const all=await reliableAll();
+   let editing=0,done=0;
+   // 状態の分け方は一覧の絞り込み(recordMatchesStatusFilter)と同じ
+   // ——「完了」だけが完了で、測定値NG等は編集中の側に入る。
+   all.forEach(x=>{if(String(x.status||'')==='完了')done++;else editing++});
+   return {editing,done,total:all.length};
+  }catch(e){console.warn('端末内データの件数を数えられませんでした',e);return {editing:0,done:0,total:0}}
+ }
+ const modeName=()=>MODE_LABELS[accessMode.mode]||accessMode.mode;
+ function localCountText(c){
+  const parts=[];
+  if(c.editing)parts.push(`編集中 ${c.editing}件`);
+  if(c.done)parts.push(`完了 ${c.done}件`);
+  return parts.join('・');
+ }
+ /* 切り替えの導線。**編集権限が無い端末ではボタンを出さない**——押しても
+    変わらないボタンほど分かりにくいものはないので、代わりに「誰の権限が
+    足りないか」を書く(アクセス権限マスタはログインID+PC名で引く)。 */
+ function switchHintHtml(){
+  return accessMode.canEdit
+   ? '<button type="button" class="record-mode-switch">編集モードへ切り替えて表示する</button>'
+   : `<p class="record-mode-denied">この端末（${esc(accessMode.loginId||'?')} @ ${esc(accessMode.pcName||'?')}）には編集権限がありません。表示するにはマスタ管理 &gt; アクセス権限マスタで編集可否を許可してください。</p>`;
+ }
+ function viewModeNoticeHtml(counts){
+  const has=localCountText(counts);
+  return `<div class="record-mode-notice"><div class="rmn-head"><span class="rmn-mode">${esc(modeName())}</span>`
+   +`<b>この一覧に出るのは「共有された閲覧用データ」だけです</b></div>`
+   +`<p class="rmn-body">${esc(modeName())}は測定データを読み取り専用で扱うため、<b>この端末に保存された編集中データはここに出ません。</b>`
+   +(has?`（この端末には ${esc(has)} が保存されています。<b>データが無いのではなく、このモードでは開けません。</b>）`:'')
+   +`</p><div class="rmn-actions">${switchHintHtml()}</div></div>`;
+ }
+ /* 0件のときの本文。理由は3つあり、どれなのかで打つ手が違う。
+      unconfigured … 共有の置き場が未設定(設定の話)
+      error        … 置き場はあるが読めなかった(接続・共有の話)
+      ''           … 読めたが該当が無い(本当に0件か、権限の話) */
+ function viewModeEmptyHtml(counts,reason,message){
+  const has=localCountText(counts);
+  const why=reason==='unconfigured'
+   ?`<p class="record-empty-why">共有された閲覧用データの置き場が未設定のため、${esc(modeName())}で読めるものがありません。（${esc(message||'')}）</p>`
+   :reason==='error'
+   ?`<p class="record-empty-why">共有された閲覧用データを読めませんでした。（${esc(message||'')}）</p>`
+   :`<p class="record-empty-why">共有された閲覧用データには、この条件に合うものがありませんでした。</p>`;
+  const head=has
+   ?'<b>この端末のデータは、このモードでは表示できません。</b>'
+   :'<b>表示できるデータがありません。</b>';
+  const mine=has
+   ?`<p class="record-empty-why">この端末に保存されている ${esc(has)} は、${esc(modeName())}の権限では開けません（上の案内を参照）。<b>データが無いのではなく、権限の範囲外です。</b></p>`
+   :'';
+  // 切り替えボタンは上の帯が1つだけ持つ。同じボタンを2つ出さない。
+  return `<div class="record-empty">${head}${why}${mine}</div>`;
+ }
+ /* ボタンは一覧を描き直すたびに作り直される(絞り込み・並べ替えのたび)ので、
+    その都度つなぐのではなく委譲で1本だけ持つ。 */
+ document.addEventListener('click',e=>{
+  const btn=e.target.closest('.record-mode-switch');
+  if(!btn)return;
+  e.preventDefault();e.stopPropagation();
+  switchAccessMode('edit');
+ });
+
  async function openRecordsViewMode(status){
   if(status==='編集中')recordListState.statuses={editing:true,done:false};
   else if(status==='履歴')recordListState.statuses={editing:false,done:true};
   else if(!recordListState.statuses)recordListState.statuses={editing:true,done:false};
   recordListState.query='';recordListState.sort='updated-desc';
+  recordListState.sourceNote=`共有された閲覧用データ（${modeName()}は読み取り専用）`;
   updateRecordListTitle();syncStatusFilterButtons();$('#recordModal').hidden=false;
   const list=$('#recordList');if(list)list.innerHTML='<div class="record-empty">閲覧データを読み込んでいます…</div>';
+  const counts=await localRecordCounts();
+  recordListState.notice=viewModeNoticeHtml(counts);
+  let reason='',message='';
   try{
    recordListState.items=await loadViewModeRecords();
   }catch(e){
-   if(list)list.innerHTML=`<div class="record-empty">${esc(e.message)}</div>`;
    recordListState.items=[];
-   return;
+   reason=e&&e.code==='unconfigured'?'unconfigured':'error';
+   message=e&&e.message||String(e);
   }
+  recordListState.emptyHtml=viewModeEmptyHtml(counts,reason,message);
   const search=$('#recordSearch'),sort=$('#recordSort'),clear=$('#clearRecordSearch');
   if(search){search.value='';search.oninput=()=>{recordListState.query=search.value;renderRecordListRows()}}
   if(sort){sort.value='updated-desc';sort.onchange=()=>{recordListState.sort=sort.value;renderRecordListRows()}}
