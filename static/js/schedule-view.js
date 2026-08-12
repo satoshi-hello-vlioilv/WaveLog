@@ -427,102 +427,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   updateSideUi();
  }
 
- /* ---------- 汎用フローティングウィンドウ(§9.16新設) ----------
-    仕掛一覧・設備停止のポップアップ表示に使う共通基盤。既存の.record-modal
-    (全画面シェード+中央ダイアログ)はシェードが背景を覆うため、ウィンドウの
-    外側=タイムラインへドラッグ&ドロップできないという不具合があった
-    (実際に報告された不具合)。ここでは全画面シェードを持たず、ヘッダーの
-    ドラッグで移動・右下角のドラッグでリサイズできる「浮いた」ウィンドウに
-    し、背景(タイムライン)は常に操作可能なままにする。位置・大きさは
-    localStorageへ保存し次回も再現する。 */
- function makeFloatingWindow(el,opts){
-  const o=Object.assign({storageKey:'',defaultWidth:520,defaultHeight:480,defaultTop:86,defaultRight:24,minWidth:300,minHeight:220},opts||{});
-  const header=el.querySelector('.sc-float-header');
-  const resizeHandle=el.querySelector('.sc-float-resize');
-  let rect={width:o.defaultWidth,height:o.defaultHeight,top:o.defaultTop,left:null};
-  try{
-   const saved=o.storageKey&&JSON.parse(localStorage.getItem(o.storageKey)||'null');
-   if(saved&&typeof saved==='object')rect=Object.assign(rect,saved);
-  }catch(e){/* 保存値が壊れていても既定値で開始する */}
-  function clampToViewport(){
-   // ウィンドウ全体(右下角の抽出ハンドル・閉じるボタン含む)が画面外へ
-   // 出てしまうと、以後リサイズも移動もできなくなり実質操作不能になる。
-   // 固定マージンではなく実際の幅・高さを差し引いて上限を決める。
-   rect.width=Math.min(rect.width,Math.max(o.minWidth,window.innerWidth-20));
-   rect.height=Math.min(rect.height,Math.max(o.minHeight,window.innerHeight-20));
-   const maxLeft=Math.max(0,window.innerWidth-rect.width);
-   const maxTop=Math.max(0,window.innerHeight-rect.height);
-   if(rect.left!=null)rect.left=Math.min(Math.max(0,rect.left),maxLeft);
-   rect.top=Math.min(Math.max(0,rect.top),maxTop);
-  }
-  function applyRect(){
-   clampToViewport();
-   el.style.width=rect.width+'px';
-   el.style.height=rect.height+'px';
-   el.style.top=rect.top+'px';
-   if(rect.left==null){el.style.left='';el.style.right=o.defaultRight+'px'}
-   else{el.style.left=rect.left+'px';el.style.right=''}
-  }
-  function save(){try{if(o.storageKey)localStorage.setItem(o.storageKey,JSON.stringify(rect))}catch(e){/* 保存できなくても表示自体は継続する */}}
-  function dragToMove(startEvent){
-   if(startEvent.target.closest('button'))return;
-   startEvent.preventDefault();
-   const startX=startEvent.clientX,startY=startEvent.clientY;
-   const startBox=el.getBoundingClientRect();
-   const startLeft=startBox.left,startTop=startBox.top;
-   function onMove(ev){rect.left=startLeft+(ev.clientX-startX);rect.top=startTop+(ev.clientY-startY);applyRect()}
-   function onUp(){document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);save()}
-   document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
-  }
-  /* **端ならどこを掴んでもリサイズできる**(§9.90)。以前は右下角の
-     つまみ1つだけで、左や上へ広げたいときは一度動かしてから角を引く、と
-     いう2手順が要った。四辺+四隅の8方向を用意し、上・左へ伸ばすときは
-     反対側の辺を固定する(left/topも一緒に動かす)。 */
-  const DIRS=['n','s','e','w','ne','nw','se','sw'];
-  function dragToResize(startEvent,dir){
-   startEvent.preventDefault();startEvent.stopPropagation();
-   const startX=startEvent.clientX,startY=startEvent.clientY;
-   const box=el.getBoundingClientRect();
-   const startW=box.width,startH=box.height,startL=box.left,startT=box.top;
-   function onMove(ev){
-    const dx=ev.clientX-startX,dy=ev.clientY-startY;
-    if(dir.includes('e'))rect.width=Math.max(o.minWidth,startW+dx);
-    if(dir.includes('s'))rect.height=Math.max(o.minHeight,startH+dy);
-    if(dir.includes('w')){
-     rect.width=Math.max(o.minWidth,startW-dx);
-     rect.left=startL+(startW-rect.width);   // 右端を固定したまま左へ伸ばす
-    }
-    if(dir.includes('n')){
-     rect.height=Math.max(o.minHeight,startH-dy);
-     rect.top=startT+(startH-rect.height);   // 下端を固定したまま上へ伸ばす
-    }
-    if(rect.left==null&&dir.includes('w'))rect.left=startL;
-    applyRect();
-   }
-   function onUp(){document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);save()}
-   document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
-  }
-  /* つまみはJSで足す。**HTML側に8個書かせない**——浮きウィンドウは
-     4箇所で作られており、書き漏らすとその窓だけ端を掴めなくなる。 */
-  DIRS.forEach(d=>{
-   const g=document.createElement('div');
-   g.className='sc-float-grip sc-float-grip-'+d;
-   g.dataset.dir=d;
-   g.title='ドラッグで大きさを変えられます';
-   g.addEventListener('mousedown',e=>dragToResize(e,d));
-   el.appendChild(g);
-  });
-  if(header)header.addEventListener('mousedown',dragToMove);
-  // 既存の右下つまみ(見た目の目印)も引き続き効かせる。
-  if(resizeHandle)resizeHandle.addEventListener('mousedown',e=>dragToResize(e,'se'));
-  window.addEventListener('resize',()=>applyRect());
-  applyRect();
- }
- /* 他の画面(列の設定パネル等)も同じ浮いたウィンドウで出す。**公開しないと
-    黙って素通しになる**——list-columns.jsは`typeof makeFloatingWindow`で
-    存在を確かめてから呼ぶ作りだったため、公開漏れに気づけず、位置も大きさも
-    与えられないパネルが画面外に開いていた(実際に起きた)。 */
- window.WL=window.WL||{};WL.makeFloatingWindow=makeFloatingWindow;
+ /* 汎用フローティングウィンドウは static/js/wl-window.js が持つ(§9.17)。
+    ここに置いていたが、スケジュールの状態を一切見ない部品で、
+    list-columns.js からも使われている。呼ぶときは WL.makeFloatingWindow。 */
 
  /* ---------- 仕掛一覧のポップアップ表示(§9.14新設) ----------
     折りたたみ・画面が狭い時でも、分割表示へ切り替えずに一覧からドラッグで
@@ -548,7 +455,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   // closeListModal()はこのクリックハンドラを経由しないため、無関係な場面で
   // 分割表示を再構築してしまうことはない。
   modal.querySelector('#scListModalClose').onclick=()=>{closeListModal();showSplitList()};
-  makeFloatingWindow(modal,{storageKey:'scListModalRectV2',defaultWidth:760,defaultHeight:600,defaultTop:80,minWidth:360,minHeight:320});
+  WL.makeFloatingWindow(modal,{storageKey:'scListModalRectV2',defaultWidth:760,defaultHeight:600,defaultTop:80,minWidth:360,minHeight:320});
   return modal;
  }
  async function openListModal(){
@@ -2534,7 +2441,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    <div class="sc-float-resize" title="ドラッグでサイズ変更"></div>`;
   document.body.appendChild(modal);
   modal.querySelector('#scStopModalClose').onclick=()=>closeStopModal();
-  makeFloatingWindow(modal,{storageKey:'scStopModalRectV1',defaultWidth:360,defaultHeight:420,defaultTop:80,minWidth:260,minHeight:200});
+  WL.makeFloatingWindow(modal,{storageKey:'scStopModalRectV1',defaultWidth:360,defaultHeight:420,defaultTop:80,minWidth:260,minHeight:200});
   return modal;
  }
  function openStopModal(){
@@ -2595,7 +2502,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    <div class="sc-float-resize" title="ドラッグで大きさを変えられます"></div>`;
   document.body.appendChild(modal);
   modal.querySelector('#scColumnModalClose').onclick=()=>closeColumnModal();
-  makeFloatingWindow(modal,{storageKey:'scColumnModalRectV2',defaultWidth:360,defaultHeight:500,defaultTop:80,minWidth:300,minHeight:300});
+  WL.makeFloatingWindow(modal,{storageKey:'scColumnModalRectV2',defaultWidth:360,defaultHeight:500,defaultTop:80,minWidth:300,minHeight:300});
   return modal;
  }
  function renderColumnModalBody(){
@@ -2686,7 +2593,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    <div class="sc-float-resize" title="ドラッグで大きさを変えられます"></div>`;
   document.body.appendChild(modal);
   modal.querySelector('#scContentModalClose').onclick=()=>closeContentModal();
-  makeFloatingWindow(modal,{storageKey:'scContentModalRectV2',defaultWidth:460,defaultHeight:520,defaultTop:80,minWidth:340,minHeight:300});
+  WL.makeFloatingWindow(modal,{storageKey:'scContentModalRectV2',defaultWidth:460,defaultHeight:520,defaultTop:80,minWidth:340,minHeight:300});
   return modal;
  }
  /* 未設定のときに「内容」欄を組み立てている既定の項目(entryContentTextの

@@ -19,7 +19,18 @@ let b=null;
  await setMode('schedule');
  await page.goto('http://127.0.0.1:5029/',{waitUntil:'domcontentloaded'});
  await page.waitForSelector('#openSchedule',{timeout:15000});
- await page.waitForTimeout(1200);
+ /* ---- 待ち方(§フェーズF) ----
+    このテストは「操作のあとサーバーへ何回行ったか」を数える。数える前に
+    **画面が組み上がるのを待つ**必要があるが、固定待ちで待つと、その秒数が
+    そのままテストの所要時間になる(実測で34秒中31秒が待ち時間だった)。
+    「その状態になるまで待つ」+「取りこぼしの要求を拾う短い落ち着き」に
+    分けると、同じことを確かめたまま速くなる。落ち着きを0にしないこと——
+    描画の直後に飛ぶ要求を数え損ねる。 */
+ const SETTLE=350;
+ const until=async(fn,ms=15000)=>{await page.waitForFunction(fn,null,{timeout:ms}).catch(()=>{});
+   await page.waitForTimeout(SETTLE)};
+ const untilRows=()=>until(()=>document.querySelectorAll('.sc-row-line').length>0);
+ const untilBoard=()=>until(()=>document.querySelectorAll('.sc-board-row').length>0);
 
  // --- 初回 ---
  reset();
@@ -29,7 +40,7 @@ let b=null;
  const firstBoardMs=Date.now()-t;
  rec('初回は俯瞰ボードを取得する',api.overview===1,`overview=${api.overview} ${firstBoardMs}ms`);
  await page.evaluate(()=>{const r=[...document.querySelectorAll('.sc-board-row')].find(x=>x.dataset.equipment==='テスト設備A');if(r)r.click()});
- await page.waitForTimeout(4000);
+ await untilRows();
  rec('設備を開くと予定を1回取得する',api.plan===1,`plan=${api.plan}`);
  rec('読込時点がヘッダーに出る',
   await page.evaluate(()=>{const e=document.querySelector('#scFreshness');return !!e&&!e.hidden&&/時点/.test(e.textContent)}),
@@ -38,8 +49,10 @@ let b=null;
  // --- 画面を離れて戻る(ここが遅かった) ---
  reset();
  t=Date.now();
- await page.click('#openMasterMaint'); await page.waitForTimeout(2000);
- await page.click('#openSchedule'); await page.waitForTimeout(2500);
+ await page.click('#openMasterMaint');
+ await until(()=>!document.body.classList.contains('sc-mode'));
+ await page.click('#openSchedule');
+ await until(()=>document.querySelectorAll('.sc-row-line,.sc-board-row').length>0);
  const backMs=Date.now()-t;
  rec('画面を離れて戻っても再読込しない',api.overview===0&&api.plan===0,
   `overview=${api.overview} plan=${api.plan} table=${api.table}`);
@@ -48,20 +61,20 @@ let b=null;
 
  // --- 設備を切り替えて戻る ---
  reset();
- await page.click('#scModeBoard'); await page.waitForTimeout(1500);
+ await page.click('#scModeBoard'); await untilBoard();
  rec('全体ボードへ戻るときも再取得しない',api.overview===0,`overview=${api.overview}`);
  await page.evaluate(()=>{const r=[...document.querySelectorAll('.sc-board-row')].find(x=>x.dataset.equipment==='テスト設備B');if(r)r.click()});
- await page.waitForTimeout(3500);
+ await untilRows();
  rec('未読込の設備は取得する',api.plan===1,`plan=${api.plan}`);
  reset();
- await page.click('#scModeBoard'); await page.waitForTimeout(1200);
+ await page.click('#scModeBoard'); await untilBoard();
  await page.evaluate(()=>{const r=[...document.querySelectorAll('.sc-board-row')].find(x=>x.dataset.equipment==='テスト設備A');if(r)r.click()});
- await page.waitForTimeout(2500);
+ await untilRows();
  rec('一度読んだ設備へ戻るときは取得しない',api.plan===0,`plan=${api.plan}`);
 
  // --- 再計算は必ず取り直す ---
  reset();
- await page.click('#scRefresh'); await page.waitForTimeout(3000);
+ await page.click('#scRefresh'); await untilRows();
  rec('「再計算」は必ず取り直す',api.plan===1,`plan=${api.plan}`);
 
  // --- 予定を変えるとキャッシュを捨てる ---
@@ -69,21 +82,23 @@ let b=null;
  const id=await page.evaluate(()=>{const r=[...document.querySelectorAll('.sc-row-line')]
    .find(x=>x.querySelector('.sc-row-lock'));return r?r.dataset.id:null});
  await page.click(`.sc-row-line[data-id="${id}"] .sc-row-lock`);
- await page.waitForTimeout(2500);
+ await untilRows();
  reset();
- await page.click('#scModeBoard'); await page.waitForTimeout(1200);
+ await page.click('#scModeBoard'); await untilBoard();
  await page.evaluate(()=>{const r=[...document.querySelectorAll('.sc-board-row')].find(x=>x.dataset.equipment==='テスト設備A');if(r)r.click()});
- await page.waitForTimeout(3000);
+ await untilRows();
  rec('予定を変えた後は次に開いたとき取り直す',api.plan===1,`plan=${api.plan}`);
- await page.click(`.sc-row-line[data-id="${id}"] .sc-row-lock`); await page.waitForTimeout(2000);
+ await page.click(`.sc-row-line[data-id="${id}"] .sc-row-lock`); await untilRows();
 
  // --- 日付＋勤務のまとめ ---
- await page.selectOption('#scGroupSelect','dateshift'); await page.waitForTimeout(700);
+ await page.selectOption('#scGroupSelect','dateshift');
+ await until(()=>document.querySelectorAll('.sc-group-head').length>0);
  const heads=await page.$$eval('.sc-group-head .sc-group-label',n=>n.map(x=>x.textContent));
  rec('「日付＋勤務ごと」で日付と勤務を組にした見出しが出る',
   heads.length>0&&heads.every(h=>/\d{4}\/\d{2}\/\d{2}/.test(h))&&heads.some(h=>/直|勤務/.test(h)),
   heads.slice(0,4).join(' / '));
- await page.selectOption('#scGroupSelect','none'); await page.waitForTimeout(500);
+ await page.selectOption('#scGroupSelect','none');
+ await until(()=>document.querySelectorAll('.sc-group-head').length===0);
 
  console.log(`\n(参考) 初回の俯瞰ボード ${firstBoardMs}ms / 離れて戻る ${backMs}ms`);
  console.log('\n=== SUMMARY ===');

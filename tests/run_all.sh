@@ -164,14 +164,27 @@ reseed(){
 }
 
 TOT=0; NG=0
+# 所要時間も出す。**遅いテストは「固定待ち」を書いている**ことが多く、
+# 削るか直すかを決めるのに数字が要る(docs/REFACTORING_PLAN.md フェーズF)。
+# 秒数はマシンで変わるので、判断に使うのは**本数あたりの秒数**。
+TIMES=""
 run(){
   want "$2" || return 0
   reseed
+  # **1本ごとにサーバーの生存を確かめる。** VER2.12.0でタブを閉じてから
+  # 終了するまでが90秒→8秒になったため、テストがブラウザを閉じてから次の
+  # テストが画面を開くまでに8秒以上あくと、その隙にアプリが自分で終了する
+  # (「開いているタブが0件」の正しい振る舞い)。以前は90秒あったので偶然
+  # 間に合っていただけで、テストを1本足すだけで崩れる。curl 1回で防ぐ。
+  server_up || restart_server || echo "!! サーバーを起動できないまま $2 を実行します" >&2
+  t0=$(date +%s)
   out=$($1 "$2" 2>&1)
+  dt=$(( $(date +%s) - t0 ))
   p=$(echo "$out" | grep -c '^PASS'); f=$(echo "$out" | grep -c '^FAIL')
   fatal=$(echo "$out" | grep -c 'FATAL')
   TOT=$((TOT+p+f)); NG=$((NG+f+fatal))
-  printf '%-24s %3d PASS / %d FAIL%s\n' "$2" "$p" "$f" "$([ $fatal -gt 0 ] && echo ' [FATAL]')"
+  TIMES="$TIMES$dt $((p+f)) $2\n"
+  printf '%-24s %3d PASS / %d FAIL  %4ds%s\n' "$2" "$p" "$f" "$dt" "$([ $fatal -gt 0 ] && echo ' [FATAL]')"
   echo "$out" | grep -E '^FAIL|FATAL' | head -4 | sed 's/^/      /'
   reap_browsers
 }
@@ -183,7 +196,7 @@ sleep 3
 echo "--- 一般UI (editモード) ---"
 mode edit
 for t in test_stopcat test_workable test_wkbg test_orphan test_audit test_sub test_maint test_setpage test_nav test_navdyn test_hdctx test_uiux test_histdel test_uisize test_p11 test_p11c test_master test_shift test_waiting test_waiting2 \
-         test_calscale test_hdr test_listcache test_ttlcache test_flows test_dbequip test_course test_tolscale test_defect test_theme test_scale test_fit test_bootui test_density test_filter test_stopeq test_eqkind test_bootflash test_dsnav test_collayout test_colformat test_colrule test_colsort test_typescale test_lcpanel test_share; do run $NODE $t.js; done
+         test_calscale test_hdr test_listcache test_ttlcache test_flows test_dbequip test_course test_tolscale test_defect test_theme test_scale test_fit test_bootui test_density test_filter test_stopeq test_eqkind test_bootflash test_dsnav test_collayout test_colformat test_colrule test_colsort test_typescale test_lcpanel test_share test_listperf test_allrows test_logview test_headbar; do run $NODE $t.js; done
 
 echo "--- スケジュール (テスト側でモードを切り替える) ---"
 for t in test_screport test_startwork test_scsync test_sccat test_scbalance test_scbatch \
@@ -198,8 +211,15 @@ for t in test_cols test_content_ui test_content_apply test_listmodal test_split_
 echo "--- サーバー側 ---"
 mode schedule
 for t in test_sclock test_scwritespeed test_colscache test_colsripple test_modeguard test_noaccess \
-         test_csslint test_dbopen test_error test_datasource test_dskeylint test_dbmirror test_displayrule test_crudroutes; do run python3 $t.py; done
+         test_csslint test_dbopen test_error test_datasource test_dskeylint test_dbmirror test_displayrule test_crudroutes test_tablequery test_patchlint test_globallint test_assetcache test_tabclose test_logs test_docindex; do run python3 $t.py; done
 
+echo
+echo "-- 時間のかかったテスト(上位10) --"
+printf '%b' "$TIMES" | sort -rn | head -10 | while read -r sec n name; do
+  [ -z "$name" ] && continue
+  [ "${n:-0}" -gt 0 ] 2>/dev/null && per=$(( sec * 10 / n )) || per=0
+  printf '   %4ds  %3d件  1件あたり%s.%s秒  %s\n' "$sec" "$n" "$((per/10))" "$((per%10))" "$name"
+done
 echo
 echo "=================================================="
 echo "  合計 $((TOT-NG))/$TOT PASS  (FAIL/FATAL: $NG)"

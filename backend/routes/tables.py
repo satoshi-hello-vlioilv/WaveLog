@@ -221,6 +221,11 @@ def api_db_mirror_refresh():
 def catalog():
  # purpose(役割)まで返す。画面はキーの文字列ではなくこれで「作業対象の
  # 一覧か/品質データか」を判断する(§9.87)。
+ # **`preferred`(既定テーブル)はここから返さない**(§9.93)。往復を1本
+ # 減らすために一度返したが、あれは**設定値**で、そのDBに実在するとは
+ # 限らない(品質データの既定が「仕掛」のまま、という実例がある)。
+ # 実在しないテーブルを開きに行って読み直す羽目になったので、画面側は
+ # 「前回**実際に確認した**テーブル一覧」を端末に覚える方式にした。
  return jsonify(databases=[{"key":k,"label":v['label'],"file_name":v['path'].name,
                             "role":v['role'],"purpose":v.get('purpose') or ''}
                            for k,v in DBS.items()],
@@ -256,7 +261,7 @@ def api_table():
    try:items=json.loads(text)
    except Exception:return []
    if not isinstance(items,list):return []
-   allowed_ops={'contains','not_contains','eq','neq','starts','ends','gt','gte','lt','lte','empty','not_empty'}
+   allowed_ops={'contains','not_contains','eq','neq','starts','starts_any','ends','gt','gte','lt','lte','empty','not_empty'}
    out=[]
    for item in items[:20]:
     if not isinstance(item,dict):continue
@@ -272,6 +277,15 @@ def api_table():
     elif op=='eq':parts.append(f'CStr({col})=?');params.append(value)
     elif op=='neq':parts.append(f'(CStr({col})<>? OR {col} IS NULL)');params.append(value)
     elif op=='starts':parts.append(f'CStr({col}) LIKE ?');params.append(f'{value}%')
+    elif op=='starts_any':
+     # 「この先頭のどれかで始まる」(§9.94)。仕掛一覧の行ごとの追い判定は
+     # 先頭5桁の一族を引くが、1ページに数十の先頭が並ぶため1件ずつ引くと
+     # 往復が数十本になる。まとめて1回で引けるようにする。
+     vals=[x for x in (value.split(',') if value else []) if x][:60]
+     if not vals:parts.append('0=1')
+     else:
+      parts.append('('+' OR '.join(f'CStr({col}) LIKE ?' for _ in vals)+')')
+      params += [f'{v}%' for v in vals]
     elif op=='ends':parts.append(f'CStr({col}) LIKE ?');params.append(f'%{value}')
     elif op=='empty':parts.append(f'({col} IS NULL OR CStr({col})=\'\')')
     elif op=='not_empty':parts.append(f'({col} IS NOT NULL AND CStr({col})<>\'\')')
@@ -314,12 +328,16 @@ def api_table():
     if sort_col in cs:order_parts.append((sort_col,sort_dir))
    order=(' ORDER BY '+','.join(f'{qi(c2)} {d}' for c2,d in order_parts)) if order_parts else ''
    t_count=time.perf_counter()
-   cur=c.cursor();cur.execute(f'SELECT COUNT(*) FROM {qi(t)}'+where,params);count=int(cur.fetchone()[0]);top=page*size
+   cur=c.cursor();cur.execute(f'SELECT COUNT(*) FROM {qi(t)}'+where,params);count=int(cur.fetchone()[0])
    lap('count',t_count)
-   # 件数の頭からtop件を取り、Python側でページ分だけ切り出す(rows[start:start+size])。
+   # そのページぶんだけ取り出す。以前は頭からpage*size件を取ってPython側で
+   # 切り出しており、後ろのページほど無駄が増えていた(§9.95。「全件」は
+   # ページを順に読み進めるので、1..12ページで19,500行を読んで3,000行を
+   # 使う、という形になっていた)。SQLiteはOFFSETを解するので素直に渡す。
    t_fetch=time.perf_counter()
-   cur.execute(f'SELECT * FROM {qi(t)}'+where+order+f' LIMIT {top}',params)
-   rows=cur.fetchmany(top);start=(page-1)*size;rows=rows[start:start+size]
+   start=(page-1)*size
+   cur.execute(f'SELECT * FROM {qi(t)}'+where+order+f' LIMIT {size} OFFSET {start}',params)
+   rows=cur.fetchall()
    lap('fetch',t_fetch)
   # 表示マスタで非表示指定された列は、検索/絞込/並替の対象(cs)には残しつつ、
   # 返却するcolumns/rowsからのみ除外する(生の行タプルはcs全体の順序と対応するため、
@@ -329,9 +347,20 @@ def api_table():
   # 実データに依存する場面では、非表示設定によってデータ自体が欠落しては
   # ならないため(一覧を出す通常のリクエストでは指定しない)。
   hidden=set() if request.args.get('include_hidden')=='1' else hidden_columns_for_db(k)
+  # 欲しい列だけを返す(§9.94)。**絞り込み・並べ替えの対象(cs)は絞らない**
+  # ——効かせるのは戻す量だけ。仕掛の実データは200列を超えることがあり、
+  # 「ロット番号があるかどうか」を知りたいだけの内部問い合わせでも1回
+  # 450KBを運んでいた(1ページの追い判定で30MB。受け取ったJSONを解くたびに
+  # 画面が止まり、実機で「固まる」と報告された)。
+  want=[x.strip() for x in (request.args.get('columns','') or '').split(',') if x.strip()]
+  keep=set(x for x in want if x in cs) or None
+  # **1つも当たらなければ絞らない**(fail-open)。列名を打ち間違えた・
+  # データ側で列名が変わった場合に、空の表を黙って返すのが一番困る。
   row_dicts=[dict(zip(cs,r)) for r in rows]
-  visible_cs=[x for x in cs if x not in hidden] if hidden else cs
-  if hidden:row_dicts=[{col:v for col,v in d.items() if col not in hidden} for d in row_dicts]
+  visible_cs=[x for x in cs if x not in hidden and (keep is None or x in keep)]
+  if hidden or keep is not None:
+   drop=lambda col:(col in hidden) or (keep is not None and col not in keep)
+   row_dicts=[{col:v for col,v in d.items() if not drop(col)} for d in row_dicts]
   join_info=None
   # 結合できるのは役割が「作業」の一覧だけ(§9.87)。
   if WORK_DB_KEY and k==WORK_DB_KEY and request.args.get('join_quality')=='1':

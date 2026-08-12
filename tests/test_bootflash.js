@@ -23,6 +23,11 @@
    といった、崩れたら必ず白が戻る条件を見る。 */
 const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
 const API='http://127.0.0.1:5029';
+/* 本数は起動ローダーの一覧(index.htmlのFILES)から数える。**直値で持たない**
+   ——JSを1本足すたびにこのテストだけが落ちて、意味のない数字合わせになる
+   (実際に19→20で落ちた)。見たいのは「一覧にあるものが全部読み込まれたか」。 */
+const EXPECTED_JS=(require('fs').readFileSync(require('path').join(__dirname,'..','templates','index.html'),'utf8')
+  .match(/var FILES=\[[\s\S]*?\]/)||[''])[0].match(/'[a-z0-9-]+\.js'/g)?.length||0;
 let b=null;
 (async()=>{
  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
@@ -77,7 +82,9 @@ let b=null;
     onReady:typeof (window.WL||{}).onReady,
    };
   });
-  rec('アプリのJSは全部読み込まれている',s.scripts===19&&s.jsCount>=19,`script=${s.scripts} / 資源=${s.jsCount}`);
+  rec('アプリのJSは全部読み込まれている',
+      EXPECTED_JS>0&&s.scripts===EXPECTED_JS&&s.jsCount>=EXPECTED_JS,
+      `script=${s.scripts} / 資源=${s.jsCount} / 一覧=${EXPECTED_JS}`);
   rec('本体CSSは最終的に適用される(media=all)',s.cssMedia==='all',s.cssMedia);
   /* **これが崩れると、スタイルの当たっていない状態でJSが寸法を測る。** */
   rec('本体CSSが適用されてからアプリのJSが動く',

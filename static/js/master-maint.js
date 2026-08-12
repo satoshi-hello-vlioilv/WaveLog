@@ -162,16 +162,17 @@
   panel.innerHTML=`<div class="mm-dialog">
    <div class="mm-head" id="mmHead">
     <label class="mm-head-user">更新者ID<input id="masterUserId" type="text" autocomplete="off" placeholder="社員番号など"></label>
+    <div class="mm-search"><span class="mm-search-icon" aria-hidden="true">🔍</span><input id="masterMaintSearch" type="search" placeholder="一覧を絞り込み（名称・更新者など）" autocomplete="off"></div>
+    <button id="reloadMasterMaint" type="button" class="mm-btn-ghost">再読込</button>
    </div>
    <div class="mm-body">
     <nav class="mm-nav" id="masterMaintNav" aria-label="マスタ種別"></nav>
     <section class="mm-main">
+     <!-- 見出しだけを残す。絞り込みと再読込は**操作**なのでヘッダーの
+          操作列(#mmHead → #headerViewBar)が持つ(§9.100)。ここに残すと、
+          この画面だけ操作の置き場が2段になる。 -->
      <div class="mm-toolbar">
       <div class="mm-toolbar-left"><b id="masterMaintTitle">オペレータ</b><span class="mm-count" id="masterMaintCount"></span></div>
-      <div class="mm-toolbar-right">
-       <div class="mm-search"><span class="mm-search-icon" aria-hidden="true">🔍</span><input id="masterMaintSearch" type="search" placeholder="一覧を絞り込み（名称・更新者など）" autocomplete="off"></div>
-       <button id="reloadMasterMaint" type="button" class="mm-btn-ghost">再読込</button>
-      </div>
      </div>
      <form class="mm-form" id="masterMaintForm"></form>
      <div class="mm-list-wrap"><div class="mm-list" id="masterMaintList"></div></div>

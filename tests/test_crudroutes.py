@@ -64,9 +64,43 @@ def master_defs():
         r"endpoint:'([^']+)',hasDelete:true,", js)
 
 
+def simple_masters():
+    """サーバー側の宣言表(masters.SIMPLE_MASTERS)を読む。
+
+    「名前だけ」の単純マスタは4本を写経せず、**1宣言から生成**している
+    (docs/REFACTORING_PLAN.md フェーズC)。生成に切り替えたことで、
+    宣言を足したのにURLが生えない/エンドポイント名が変わって
+    アクセスモードの許可表(Blueprint名.関数名)から外れる、という
+    新しい壊れ方ができた。宣言と実際のURL登録を突き合わせる。"""
+    import sys
+    sys.path.insert(0, str(ROOT))
+    import app as flask_app
+    from backend.routes.masters import SIMPLE_MASTERS
+    rules = {(r.rule, m) for r in flask_app.app.url_map.iter_rules() for m in r.methods}
+    names = {r.endpoint for r in flask_app.app.url_map.iter_rules()}
+    return SIMPLE_MASTERS, rules, names
+
+
 def main():
     defs = master_defs()
     rec('マスタ管理の汎用CRUDを画面定義から拾える', len(defs) >= 10, f'{len(defs)}件')
+
+    # ---- 宣言から4本が生成されている ----
+    specs, rules, names = simple_masters()
+    rec('サーバー側の宣言表を読める', len(specs) >= 5, f'{len(specs)}件')
+    for spec in specs:
+        url = '/api/' + spec['url']
+        key = spec.get('endpoint') or spec['url'].replace('-', '_')
+        ok = (
+            (url, 'GET') in rules and (url, 'POST') in rules
+            and (url + '/update', 'POST') in rules and (url + '/delete', 'POST') in rules
+        )
+        rec(f"{spec['label']}: 宣言から4本が生成されている", ok, url)
+        # エンドポイント名は畳む前の関数名のまま。ここが変わると
+        # _ENDPOINT_EXTRA_MODES 等のキーが黙って一致しなくなる。
+        missing = [n for n in ('list', 'register', 'update', 'delete')
+                   if f'masters.{key}_{n}' not in names]
+        rec(f"{spec['label']}: エンドポイント名が畳む前のまま", not missing, ', '.join(missing))
 
     for key, label, ep in defs:
         rec(f'{label}: 一覧が引ける', call('GET', ep) == 200, ep)

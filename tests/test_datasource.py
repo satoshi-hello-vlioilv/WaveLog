@@ -173,10 +173,17 @@ rec('削除は無効化で、記録は残る', row is not None and row.get('acti
     f"active={row.get('active') if row else 'なし'}")
 
 # ---- 5) RNE資材・接続情報の場所を設定できる ----
+# **パス設定の保存は全置換**（送らなかったキーは既定へ戻る）。ここで2項目だけ
+# 送ると、ランナーが差し替えた仕掛/品質/共有スケジュールの接続先まで一緒に
+# 消える。実際この後に走るサーバー側のテストが本番の共有パスを読みに行って
+# 落ちた（test_tablequery を足したときに露見。それまでは、後ろに仕掛データを
+# 読むテストが1つも無かったので気づけなかった）。**退避して必ず戻す。**
 pc = client.get('/api/path-config-master').get_json() or {}
+SAVED_PATHS = dict(pc.get('values') or {})
 rec('パス設定にRNE資材の置き場がある', 'rne_assets_dir' in (pc.get('values') or {}))
 rec('パス設定にsymnavim.confの場所がある', 'rne_conf_path' in (pc.get('values') or {}))
-client.post('/api/path-config-master', json={'rne_assets_dir': '/tmp/wavelog_probe_assets',
+client.post('/api/path-config-master', json={**SAVED_PATHS,
+                                             'rne_assets_dir': '/tmp/wavelog_probe_assets',
                                              'rne_conf_path': '/tmp/wavelog_probe/symnavim.conf',
                                              'user_id': 'test'})
 rec('資材の置き場が保存後すぐ効く（再起動不要）',
@@ -189,9 +196,14 @@ rec('RNEファイルは資材の置き場のrne/配下として解決される',
 rec('絶対パスのRNEはそのまま使う',
     str(rne_scheduler.rne_path('/tmp/abs/Y.RNE')) == '/tmp/abs/Y.RNE')
 # 空欄で既定へ戻す（他のパス設定と同じ互換ポリシー）
-client.post('/api/path-config-master', json={'rne_assets_dir': '', 'rne_conf_path': '', 'user_id': 'test'})
+client.post('/api/path-config-master', json={**SAVED_PATHS, 'rne_assets_dir': '',
+                                             'rne_conf_path': '', 'user_id': 'test'})
 rec('空欄で保存すると既定へ戻る',
     str(rne_scheduler.assets_dir()).endswith('config/rne_extract'), str(rne_scheduler.assets_dir()))
+# 触ったのはこの2項目だけ、という状態へ戻す（上記のとおり全置換のため）
+client.post('/api/path-config-master', json={**SAVED_PATHS, 'user_id': 'test'})
+rec('検証で触ったパス設定を元へ戻した',
+    (client.get('/api/path-config-master').get_json() or {}).get('values') == SAVED_PATHS)
 
 # ---- 6) 抽出は一覧に無いものを走らせない ----
 rec('RNE未設定のデータソースは抽出対象にならない',

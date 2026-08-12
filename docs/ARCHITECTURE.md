@@ -127,9 +127,10 @@
 | `backend/routes/tables.py` | 汎用DB一覧API(`/api/catalog`・`/api/tables`・`/api/table`) |
 | `backend/routes/measurement.py` | 測定コンテキスト・マスタ診断・バックアップAPI |
 | `backend/routes/quality.py` | 品質データ分析API(`/api/quality/analysis`) |
-| `backend/routes/masters.py` | 各種マスタCRUDのBlueprint（設備/オペレータ/スプール/内径/機器/フィルタプリセット/列表示/アクセス権限）。URLは分離前と同一。リクエスト受付とレスポンス整形のみを行い、データアクセスは`repositories/master_repo.py`へ委譲 |
+| `backend/routes/masters.py` | 各種マスタCRUDのBlueprint（設備/オペレータ/スプール/内径/機器/フィルタプリセット/列表示/アクセス権限）。URLは分離前と同一。リクエスト受付とレスポンス整形のみを行い、データアクセスは`repositories/master_repo.py`へ委譲。**「名前だけ」の単純マスタ(スプール種別・内径種別・機器・バリ揃え・コイル止め)は宣言表`SIMPLE_MASTERS`から4本(一覧/登録/編集/削除)を生成する**（写経すると片方だけ直って食い違うため。オペレータ・設備・アクセス権限は個別の処理を持つので畳んでいない。docs/REFACTORING_PLAN.md フェーズC） |
 | `backend/routes/path_config.py` | パス設定マスタとパス参照ダイアログのBlueprint（`masters.py`から分離）。データアクセスは例外的に`db_access.py`（起動時に接続先を確定させる都合、`master_repo.py`はdb_accessに依存する側のため） |
 | `backend/routes/rne.py` | RNE抽出の状態表示と手動実行のBlueprint（`masters.py`から分離）。手動実行は「読み直すだけのPOST」として`access_mode._READ_ONLY_POST_ENDPOINTS`に`rne.rne_extract_run`で登録 |
+| `backend/routes/logs.py` | ログ・診断のBlueprint（`/api/logs*`）。末尾読み・**日時で始まらない行を直前の件へ畳む解析**・2系統(`launcher.log`/`app.log`)の時間軸統合・件単位の削除・区切り(rotate)・保存。書き換えはロガーのハンドラを掴んでから行う（`_with_handlers`）。消す・区切るは`access_mode._WRITE_ALLOWED_MODES`に`'logs':{'edit'}`でeditへ限定 |
 | `backend/repositories/master_repo.py` | 各種マスタのデータアクセス層。テーブル定義(`ensure_*_table`)・正規化(`normalize_*_name`)・読み取り(`*_master_rows`/`read_*_names`)・書き込み補助(`set_operator_equipment`/`set_hidden_columns`)。Flaskに依存しない |
 | `backend/changelog_data.py` | `APP_VERSION` と `CHANGELOG`（データのみ。リリースごとにここを更新） |
 | `backend/db_access.py` | `DBS`(接続先定義)・`APP_ROOT`/`DB_DIR`(パス基準)・`connect`/`cols`/`tables`/`qi`(SQLite専用。`.accdb`/`.mdb`は対処を添えて拒否)・監査列・バックアップテーブル整備・パス設定マスタ(`PATH_CONFIG_TABLE`、旧`config/local.json`。仕掛/品質データの読み込み先・共有パス・各種間隔設定を`db/master.sqlite3`側で管理し、`master_repo.py`と同じ形のCRUDヘルパを提供する) |

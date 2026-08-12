@@ -117,6 +117,28 @@ NODE_PATH=/opt/node22/lib/node_modules /opt/node22/bin/node tests/test_nav.js
 これで落ちた。描画の完了そのものを `waitForFunction` / `waitForSelector`
 で待つこと。
 
+**固定待ちは所要時間にそのまま乗る。** `run_all.sh`が1本ごとの秒数と
+上位10本を出すので、遅い本はまずここを疑う。実測(2026-08-12)では
+`test_scperf`が34秒のうち**31秒が固定待ち**だった。
+
+「何も起きないこと」を確かめる検証(例: 画面へ戻っても再取得しない)は、
+待たないと確かめられないように見えるが、**2つに分けると速くなる**。
+
+```js
+const SETTLE=350;                                   // 取りこぼしを拾う短い落ち着き
+const until=async(fn,ms=15000)=>{
+  await page.waitForFunction(fn,null,{timeout:ms}).catch(()=>{});
+  await page.waitForTimeout(SETTLE);
+};
+await page.click('#openSchedule');
+await until(()=>document.querySelectorAll('.sc-row-line').length>0);
+```
+
+画面が組み上がるのを**条件で**待ち、そのあと短く落ち着かせる。
+`test_scperf`はこの形で**34秒→11秒**になった(検証内容は同じ11件、
+3回連続で同結果)。**落ち着きを0にしないこと**——描画の直後に飛ぶ
+要求を数え損ねる。
+
 ### 前提は「他のテストの残骸」に頼らず自分で作る
 
 `test_audit` / `test_nav` の作業可否の索引の検証は、長いあいだ

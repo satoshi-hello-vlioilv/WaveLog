@@ -147,6 +147,8 @@ body.cal-mode #grid,body.cal-mode #listToolbar,body.cal-mode main>footer,body.ca
 body.sc-mode #grid,body.sc-mode #listToolbar,body.sc-mode main>footer,body.sc-mode #tabs,body.sc-mode #genericFilterBar,body.sc-mode .qa-v7{display:none}
 /* マスタ管理(ARCHITECTURE.md「マスタ管理の画面形態」)も同様にメイン画面表示にする(旧: 全画面シェード付きモーダル)。 */
 body.mm-mode #grid,body.mm-mode #listToolbar,body.mm-mode main>footer,body.mm-mode #tabs,body.mm-mode #genericFilterBar,body.mm-mode .qa-v7{display:none}
+/* ログ・診断(§9.99)も同様にメイン画面表示にする。 */
+body.lg-mode #grid,body.lg-mode #listToolbar,body.lg-mode main>footer,body.lg-mode #tabs,body.lg-mode #genericFilterBar,body.lg-mode .qa-v7{display:none}
 /* 保険: 他のメイン画面統合ビューが開いている間はマスタ管理パネルを必ず隠す。
    各ビューのopenXxxがwindow.exitMasterMaint()を呼ぶのが本筋だが、呼び忘れても
    画面が重なって見えないようにしておく(実際に、データ一覧へ移動したときだけ
@@ -246,6 +248,7 @@ body.db-mode .global-actions .hd-search,body.db-mode .global-actions .hd-field,b
 body.rp-mode .global-actions .hd-search,body.rp-mode .global-actions .hd-field,body.rp-mode .global-actions #reload,
 body.mm-mode .global-actions .hd-search,body.mm-mode .global-actions .hd-field,body.mm-mode .global-actions #reload,
 body.cal-mode .global-actions .hd-search,body.cal-mode .global-actions .hd-field,body.cal-mode .global-actions #reload,
+body.lg-mode .global-actions .hd-search,body.lg-mode .global-actions .hd-field,body.lg-mode .global-actions #reload,
 body.rec-mode .global-actions .hd-search,body.rec-mode .global-actions .hd-field,body.rec-mode .global-actions #reload{display:none}
 /* ---- ヘッダー相乗り時の整理（重複する情報・使わない操作を出さない） ---- *//* 使用設備は画面ごとの操作列(スケジュールの設備選択)が持つので、ヘッダーの
    チップと二重にしない。モード・現場段取りは画面に関係なく効く状態なので残す。 */

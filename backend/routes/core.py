@@ -46,6 +46,7 @@ BODY_CSS_FILES=[
  '75-master-paths.css',# マスタ管理(パス設定・RNE抽出)
  '80-defect.css',      # 異常位置判定(画面と専用帳票)
  '85-headerbar.css',   # ヘッダーの操作列
+ '88-logs.css',        # ログ・診断(ログビュワー)
  '90-state.css',       # state / mode / print / utility
 ]
 # カスケードの順序そのもの。**起動用が先、本体が後**の並びで読み込まれる。
@@ -96,8 +97,10 @@ def _css_bundle(files,cache):
    app_logger().error('CSSを読み込めませんでした(%d件): %s',len(failed),' / '.join(failed[:5]))
    if cache['body']:
     # 読めなかった回の内容は**キャッシュさせない**(次の表示で直っていて
-    # ほしいので、長期キャッシュの対象から外す)。
-    return Response(cache['body'],mimetype='text/css',headers={'Cache-Control':'no-cache'})
+    # ほしいので、長期キャッシュの対象から外す)。**`no-store`で言うこと**
+    # ——`app.py`のcache_policyはこれを「ビューが明示的に降りた」合図として
+    # 見る(`no-cache`はFlaskの静的配信が既定で付けるので、合図に使えない)。
+    return Response(cache['body'],mimetype='text/css',headers={'Cache-Control':'no-store'})
   cache.update(token=tok,body='\n'.join(parts))
  # URLに更新時刻(?t=)が入っているので、内容が変わればURLごと変わる。
  # **だから長期キャッシュしてよい。** 以前は no-cache で毎回取り直して

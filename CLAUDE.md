@@ -19,6 +19,31 @@
   だけで、ハートビート・停止スクリプトの生存確認まで一切応答できなくなり、
   自動終了もstop.batでの停止も効かなくなる不具合が実際に発生した）。
   設計の背景と今後の再編計画は `docs/REBUILD_PLAN.md` を参照。
+- **「開いているタブが0件」は2つの意味を持つ**（§9.98、`backend/watchdog.py`）:
+  **閉じたと告げられた**（`POST /api/heartbeat/close`で最後の1件が消えた＝
+  `CLOSED_GRACE_SEC`8秒）と、**気づいたら0件だった**（通知が届かなかった＝
+  `EMPTY_GRACE_SEC`90秒）。**この2つを1つに戻さないこと**——90秒へ揃えると
+  タブを閉じてもアプリが1分半残り（実測85秒）、8秒へ揃えるとリロードや
+  別ページへの移動で終了してしまう（`pagehide`は読み直しでも発火する）。
+  終了通知は`_wake`(Event)で監視を**起こす**。**寝ている間は気づけない**ので、
+  起こさないと8秒の猶予の前に最大10秒の寝落ちが挟まる（実測18秒）。
+  ハートビート途絶だけを根拠にした終了(`HEARTBEAT_STALE_SEC`=丸1日)は
+  異常系の保険で、短くしないこと（スリープ復帰・タブの間引きで誤終了する）。
+  固定は`tests/test_tabclose.py`。
+- **ログビュワー（`backend/routes/logs.py`／`static/js/log-view.js`）は「1行」でなく
+  「1件」で扱う**（§9.99）: `logging_setup.py`の書式では**1件は必ず日時で始まる**が、
+  `log.exception()`のトレースバックは日時を持たない行が続く。`parse_records()`が
+  **日時で始まらない行を直前の件へ畳む**ので、物理行のまま扱う実装を新しく
+  書かないこと（画面では原因の行が散らばり、削除では**見出しだけ消えて中身が
+  残る**）。まとまりの区切りは`launcher.log`の`--- 起動 ---`で、
+  `app.log`と合わせて1本の時間軸へ並べる。
+  **書き換えは必ず`_with_handlers()`を通す**——削除・区切り・消去はロガーが
+  開いたままのファイルへ触るため、ロック→flush→close→書き換えの順にしないと
+  次の追記が元の位置へ行き**先頭がNULで埋まる**。世代の押し出しは
+  `RotatingFileHandler.doRollover()`に任せる（自前の`os.replace`はハンドラの
+  世代数と食い違う）。扱ってよいのは`_resolve()`が認めたログ置き場の中だけ。
+  絞り込み（`level`/`q`/`days`/`limit`）は**サーバーだけが持つ**。
+  固定は`tests/test_logs.py`・`tests/test_logview.js`。
 - **起動オーバーレイ（`#appBoot`）**: 画面が組み上がるまで本体を見せない
   仕掛け。`<html class="app-booting">`の間`static/css/95-boot.css`が
   `body>*:not(#appBoot){visibility:hidden}`で伏せ、`base.js`の`WL.boot`が
@@ -48,6 +73,14 @@
 - **関数の定義は1箇所**: コア5ファイル内で同名関数を再定義しない。
   拡張ファイルからは `const base=fn; fn=function(){...base()...}` のラップのみ可、
   全置換は不可。IIFE内から公開する関数は `window.X=X` を明示。
+  **見張りは`tests/test_patchlint.py`**（§9.96）——「既存のグローバル関数へ
+  代入していて直前6行以内に退避が無い」ものを数え、ALLOWEDに理由付きで
+  載っているもの以外が増えたら落ちる。**目で数えないこと**（一覧を人手で
+  作ったときは7件としていたが、機械的に数えると差し替え37件・退避なし4件で、
+  3件は既にラップ形式だった）。**同じ関数を2ファイル以上が全置換すると、
+  先に読まれた側は一度も実行されない死んだコードになる**（`compactToleranceScale`が
+  3ファイルにあり、真ん中の`measurement-tolerance.js`版がそれだった。
+  そうと知らずに直しても画面は変わらない）。
 - **`window.*`への新規公開は名前空間経由**: 既存の約70件は動いている契約
   なのでそのまま（触らない）。**新しく公開するものは`window.WL.*`か機能別の
   名前空間（`scCore`等）に入れる**こと。素の`window.X`を増やすと、
@@ -59,8 +92,12 @@
   `refreshScheduleIfOpen`/`expandFilterVars`/`toleranceScaleView`/`optionList`/`defect`/
   `fieldReorderAllows`/`fieldReorderAllowsAll`/`fieldReorderLabel`/`boot`/`onReady`/
   `dataSource`/`columnLayout`/`cellFormat`/`displayRules`/`listColumns`/`listRules`/
-  `rowGap`/`listSort`/`listSortBar`/`listQuery`/`renderDbNav`/
-  `bindColumnHeaderTools`/`makeFloatingWindow`。
+  `rowGap`/`listSort`/`listSortBar`/`listQuery`/`listHooks`/`renderDbNav`/
+  `bindColumnHeaderTools`/`makeFloatingWindow`/`loadBreakdown`。
+  **見張りは`tests/test_globallint.py`**——`window.*`は現在値63件を上限に
+  固定し、増えたら落ちる（`WL.*`は数えない。増えてよい側なので上限をかけると
+  方針と逆向きの圧力になる）。**新しく足したJSファイルは素のグローバル関数を
+  作らない**ことも見る（既存19本は対象外＝触らない方針）。
   **公開漏れは黙って素通しになる**ことに注意——`typeof makeFloatingWindow==='function'`の
   ように「あれば使う」書き方で呼んでいると、公開し忘れても例外が出ず、
   機能だけが静かに欠ける（列の設定パネルが位置も大きさも与えられないまま
@@ -94,7 +131,37 @@
   ——それぞれ無効化の条件が業務仕様と絡んでおり（例: §9.67の作業可否は
   「一度可になったら再取得しない」）、一括置換はその仕様を落とす。
 - **列表示マスタ**: `/api/table` は表示設定で列を落とす。内部計算用の
-  問い合わせには `include_hidden=1` を付ける。
+  問い合わせには `include_hidden=1` を付ける。**内部の問い合わせは
+  `columns=`で要る列だけ頼む**（§9.94）——実データは200列を超えるため、
+  「そのロット番号が居るか」を見るだけの問い合わせでも1回450KBになり、
+  受け取ったJSONを解くたびに画面が数百ms止まる（実機で「一覧に切り替えると
+  固まる」と報告された原因の半分）。`columns=`が効くのは**戻す量だけ**で、
+  絞り込み・並べ替えの対象は絞らない。1つも当たらなければ絞らない
+  （打ち間違えたときに空の表を黙って返さない）。同じ理由で、先頭一致を
+  何本も投げる場面は`starts_any`（カンマ区切り）で1回にまとめる。
+- **一覧の描画で「ブラウザに測らせない・一度に渡さない」**（§9.94、
+  `tests/test_listperf.js`）: `#grid table`は`table-layout:fixed`で、
+  **全列ぶんの幅を`renderGridInner()`が必ず入れる**（`estimateColumnWidth()`
+  が見出しとデータの先頭40行から字幅で見積もる）。`auto`へ戻すと列幅を
+  決めるために全セルを測り、200行×214列で**3.4秒メインスレッドが止まる**。
+  幅を決め打ちにする以上、**切れたセルには生の値の`title`を必ず付ける**。
+  8,000セルを超える表は`requestAnimationFrame`で継ぎ足す。**継ぎ足しは
+  1回ごとに表全体のレイアウトが起きる**ので細かく割るほど合計は増える
+  （20行ずつ4.7秒 / 5行ずつ7.3秒）。最初だけ小さく・あとは倍々にしてある。
+  行ごとの追い判定（分割ありの子ロット確認・子カード行の親逆引き）は
+  **一覧を描き終えてから・手が空いてから**（`requestIdleCallback`）始め、
+  先頭5桁は`prefetchLotPrefixes()`でまとめて引く。**測定を開く側は全列のまま**
+  ——親ロットの板厚・公差を使うので、軽い行（`{light:true}`）を渡すと壊れる。
+- **表示件数の「全件」は「250件ずつ最後まで取り続ける」**（§9.95、
+  `tests/test_allrows.js`）: 1回で全部運ぶと実データで27MB・数十秒その場で
+  止まる。1回目を出してから`continueAllRows()`が裏で読み、**画面を切り替えたら
+  止める**（世代を数えている）。1回の件数を増やさないこと——500件だと1回の
+  解読が1.3秒かかり、そのあいだ画面が止まる。**600行を超えたらDOMへ置くのは
+  画面の前後だけ**（`setupVirtualRows`。上下は高さだけの空行で埋める）。
+  行の高さは**実際に描いた1行を測って**使う（トークンから計算すると罫線と
+  表示サイズのぶんでずれる）。**しきい値以下の表は今までどおり全部置く**
+  ——200件・500件の見え方を変えないため。描き直しのあとに位置を戻すのは
+  **並べ終えてから**（`pendingGridScroll`。直後は表が短く切り詰められる）。
 - **一覧の見せ方（`列レイアウトマスタ`／`一覧表示設定マスタ`）は全置換**:
   対象(`list:<DB>:<表>` / `timeline:<設備>`)ごとに行を消して入れ直す。
   **触っていない設定も一緒に送らないと消える**——見出しのD&Dで並びだけを
@@ -111,10 +178,14 @@
   **1件だけ**落とし、壊れた正規表現は「当たらない」で済ませ、ルールを消しても
   列側の参照は残す（無いルール名＝読み替えなし）。詳細は
   `docs/COLUMN_PRESENTATION_DESIGN.md`と`docs/SCHEDULE_MODE_DESIGN.md`§9.88。
-  **一覧の問い合わせは`WL.listQuery()`で組み立てる**——`filters.js`が
-  `load()`を丸ごと差し替えるため、両方に書くと片方だけ直した状態になる
-  （品質データ結合とキャッシュで実際に2度起きた）。`filters.js`が足すのは
-  絞り込み条件だけ。固定は`tests/test_collayout.js`・`tests/test_colformat.js`・
+  **一覧の問い合わせは`WL.listQuery()`で組み立てる**——両方に書くと片方だけ
+  直した状態になる（品質データ結合とキャッシュで実際に2度起きた）。
+  **`load()`を丸ごと置き換えないこと**（§9.93）。以前は`filters.js`が
+  `load=async function(){...}`で全置換しており、元の定義をgrepで辿っても
+  最終的な実装に行き着かなかった。拡張したい側は**`WL.listHooks`へ登録する**
+  （`onQuery(fn)`=問い合わせへ条件を足す／`onAfter(fn)`=描き終えた後）。
+  `filters.js`が足すのは絞り込み条件だけ。
+  固定は`tests/test_collayout.js`・`tests/test_colformat.js`・
   `tests/test_colrule.js`・`tests/test_colsort.js`・`tests/test_displayrule.py`。
 - **列の設定パネルは触った結果をそのまま一覧へ出す**（§9.90、
   `WL.columnLayout.stage()`で保存せずに当てる）。**保存せずに閉じたら開いた
@@ -285,6 +356,15 @@
   差し替える。**写す対象は`role=='readonly'`だけ**（マスタ・共有スケジュールは
   自分が書くので写すと反映されない事故になる）。**共有へ触るのは背景スレッド
   だけ**にすること。固定は`tests/test_dbmirror.py`。詳細は`docs/ARCHITECTURE.md`。
+- **資材(JS/CSS)は`?t=`付きなら長期キャッシュへ回す**（§9.97、
+  `tests/test_assetcache.py`）: `app.py`の`cache_policy`が、画面(HTML)と
+  APIへは`no-store`（古い在庫を見せない）、**版がURLに入っている資材だけ**
+  `public, max-age=31536000, immutable`を返す。ここを「全部`no-store`」へ
+  戻さないこと——起動のたびに1.4MBを読み直すことになり、しかも
+  `core.py`が明示していた長期キャッシュ指定を`after_request`が黙って
+  上書きする（**実際に一度も効いていなかった**）。ビューが「降りる」合図は
+  `no-store`で書く——`no-cache`はFlaskの静的配信が既定で付けるため合図に
+  使えない。版は全資材の最新更新時刻なので、1つ更新すれば全部が取り直される。
 - **ループバック(127.0.0.1)への問い合わせはプロキシを通さない**:
   `urllib`は既定でプロキシ設定を見る（Windowsでは**レジストリのIE/Edge設定まで**）。
   社内プロキシのある端末では`127.0.0.1`宛ての生存確認まで転送されて**407**が返り、
@@ -356,7 +436,7 @@
 
 ## 検証
 
-- **回帰テストは `tests/` にある。実行は `tests/run_all.sh` だけ**（478件）。
+- **回帰テストは `tests/` にある。実行は `tests/run_all.sh` だけ**（535件）。
   引数にテスト名を並べるとそれだけ実行する（`tests/run_all.sh test_sccat`）。
   ランナーがパス設定マスタの退避→検証用フィクスチャへ差し替え→復元まで
   行うので、**手でパスを戻す必要はない**（`trap`で異常終了時も戻し、退避値は

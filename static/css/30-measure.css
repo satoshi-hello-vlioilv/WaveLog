@@ -51,7 +51,18 @@
    まで適用され、プレビューをスクロールするとヘッダーだけ本来の行から
    外れて浮いてしまい、列がずれて見える不具合の原因になっていた)。
    #grid配下のみへ明示的にスコープする。 */
-#grid table{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%}
+/* **列幅はJSが全列ぶん指定し、ブラウザには測らせない**(§9.94)。
+   既定の table-layout:auto は「どの列をどこまで広げるか」を決めるために
+   全セルの自然幅を測る。実データは200列を超えることがあり、200行×214列で
+   42,800セル。実測すると**一覧が出た直後にメインスレッドが3.4秒止まって
+   いた**(実機で「切り替えると固まる」と報告された現象の主因)。
+   fixedなら1行目(＝colgroup)を見て決まるので、行数×列数に効かない。
+   幅はrenderGridInner()のestimateColumnWidth()が見出しとデータの先頭数十行
+   から見積もる(利用者が決めた幅があればそちら)。 */
+#grid table{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;table-layout:fixed}
+/* 幅を決め打ちする以上、入り切らない値は**溢れさせずに省略記号**にする
+   (溢れると隣の列の上へ重なって読めなくなる)。生の値はtitleで読める。 */
+#grid td{overflow:hidden;text-overflow:ellipsis}
 /* 行の高さ・余白は表示サイズ(--ui-scale)に連動する。作業スケジュール画面
    だけにあった「高密度」トグル(#grid.sc-dense)は、アプリ全体で調整したいと
    いう要望に合わせて表示サイズ5段階へ統合したため廃止した。 */
@@ -659,4 +670,8 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
    色は候補カード・視覚図・結果プレビューの3箇所で共通(splitLotColorMap)
    にして対応関係を掴みやすくする。 */
 .record-modal[hidden]{display:none}
+/* 行の窓(§9.95)で上下に挟む「高さだけの行」。中身が無いので、罫線も
+   背景も付けない——ここに線が出ると表が途中で切れて見える。 */
+#grid tr.grid-virtual-spacer td{border:0;padding:0;background:transparent}
+#grid tr.grid-virtual-spacer:hover{background:transparent;cursor:default}
 }

@@ -257,8 +257,9 @@
   let sikaTablePromise=null;
   const sikaColumnsCache=new Map();   // テーブル名ごとに持つ(測定中はsourceTableが優先されるため)
   const prefixSearchCache=new Map();
+  const prefixLightCache=new Map();   // 一覧の追い判定用(必要な列だけ、下記)
   function invalidateSplitQueryCache(){
-    sikaTablePromise=null;sikaColumnsCache.clear();prefixSearchCache.clear();
+    sikaTablePromise=null;sikaColumnsCache.clear();prefixSearchCache.clear();prefixLightCache.clear();
   }
   window.invalidateSplitQueryCache=invalidateSplitQueryCache;
   /* 条割の再検索先＝作業対象の一覧。データソースマスタの役割が決めるので、
@@ -302,6 +303,83 @@
     const promise=api('/api/table?'+params).then(d=>d.rows||[])
       .catch(e=>{prefixSearchCache.delete(key);throw e});
     prefixSearchCache.set(key,{at:Date.now(),promise});
+    return promise;
+  }
+  /* ---------- 一覧の追い判定用の「軽い」先頭検索(§9.94) ----------
+     上のsearchByLotPrefixは**行の中身をそのまま使う**(測定を開くときに
+     親ロットの板厚・公差まで要る)ため、非表示列も含めた全列を運ぶ。
+     ところが一覧の追い判定に要るのは
+       ・候補のロット番号     … その子ロットが仕掛に居るか
+       ・候補の親子管理_子カード … その候補がこの行の親か
+     の2種類だけ。実データは200列を超えるので、1回の問い合わせが450KB、
+     1ページぶんで30MBになり、**受け取ったJSONを解くたびに画面が数百ms
+     止まっていた**(実機で「一覧に切り替えると固まる」と報告された)。
+     必要な列だけを頼み(columns=)、さらに**先頭をまとめて1回で引く**
+     (starts_any)。 */
+  const LIGHT_CHUNK=25;             // 1回の問い合わせにまとめる先頭の数
+  const LIGHT_PAGE_SIZE=500;        // サーバー側の上限と同じ
+  function lightColumns(columns){
+    const lotCol=findColumn(columns,aliases.lotNo);
+    const want=lotCol?[lotCol]:[];
+    // 親判定に使う子カード列(実カラム名のゆれは候補名で拾う)
+    for(let i=1;i<=CHILD_SLOTS;i++)
+      for(const p of CHILD_CARD_PREFIXES){const n=p+i;if(columns.includes(n))want.push(n)}
+    return want;
+  }
+  function lightKey(table,prefix,equipment){return `${table}|${prefix}|${equipment||''}`}
+  /* 1ページぶんの先頭をまとめて引いておく。**取れなくても何も壊れない**
+     ——個別の検索がそのまま動く(取りこぼした先頭だけ1件ずつ引く)。 */
+  async function prefetchLotPrefixes(prefixes){
+    const table=await resolveSikaTable();if(!table)return;
+    const columns=await resolveSikaColumns(table);if(!columns.length)return;
+    const lotCol=findColumn(columns,aliases.lotNo);if(!lotCol)return;
+    const equipCol=findColumn(columns,aliases.equipment);
+    const equipment=typeof currentConfiguredEquipment==='function'?currentConfiguredEquipment():'';
+    const eq=equipCol&&equipment?equipment:'';
+    const want=[...new Set(prefixes)].filter(p=>{
+      const hit=prefixLightCache.get(lightKey(table,p,eq));
+      return !(hit&&Date.now()-hit.at<SPLIT_QUERY_TTL_MS);
+    });
+    if(!want.length)return;
+    const cols2=lightColumns(columns);
+    for(let i=0;i<want.length;i+=LIGHT_CHUNK){
+      const chunk=want.slice(i,i+LIGHT_CHUNK);
+      const filters=[{column:lotCol,op:'starts_any',value:chunk.join(',')}];
+      if(eq)filters.push({column:equipCol,op:'contains',value:eq});
+      const params=new URLSearchParams({db:workDb(),table,page:1,page_size:LIGHT_PAGE_SIZE,
+        include_hidden:1,columns:cols2.join(','),filters:JSON.stringify(filters)});
+      let rows=null;
+      try{rows=(await api('/api/table?'+params)).rows||[]}catch(e){continue}
+      // 上限に達していたら取りこぼしがあり得る。**この塊は覚えない**
+      // (個別の検索がそのまま引き直す。半端な結果を正として残さない)。
+      if(rows.length>=LIGHT_PAGE_SIZE)continue;
+      const byPrefix=new Map(chunk.map(p=>[p,[]]));
+      rows.forEach(r=>{
+        const lot=String(r[lotCol]||'');
+        const list=byPrefix.get(lot.slice(0,5));
+        if(list)list.push(r);
+      });
+      byPrefix.forEach((list,p)=>
+        prefixLightCache.set(lightKey(table,p,eq),{at:Date.now(),promise:Promise.resolve(list)}));
+    }
+  }
+  window.prefetchLotPrefixes=prefetchLotPrefixes;
+  /* まとめ引きが効いていればその場で返る。効いていなければ1件だけ引く。 */
+  async function searchByLotPrefixLight(table,columns,prefix){
+    const lotCol=findColumn(columns,aliases.lotNo);if(!lotCol)return [];
+    const equipCol=findColumn(columns,aliases.equipment);
+    const equipment=typeof currentConfiguredEquipment==='function'?currentConfiguredEquipment():'';
+    const eq=equipCol&&equipment?equipment:'';
+    const key=lightKey(table,prefix,eq);
+    const hit=prefixLightCache.get(key);
+    if(hit&&Date.now()-hit.at<SPLIT_QUERY_TTL_MS)return hit.promise;
+    const filters=[{column:lotCol,op:'starts',value:prefix}];
+    if(eq)filters.push({column:equipCol,op:'contains',value:eq});
+    const params=new URLSearchParams({db:workDb(),table,page:1,page_size:50,include_hidden:1,
+      columns:lightColumns(columns).join(','),filters:JSON.stringify(filters)});
+    const promise=api('/api/table?'+params).then(d=>d.rows||[])
+      .catch(e=>{prefixLightCache.delete(key);throw e});
+    prefixLightCache.set(key,{at:Date.now(),promise});
     return promise;
   }
   function findColumn(columns,candidates){
@@ -393,14 +471,17 @@
      異なる構成のため、同じ先頭5桁を持つ候補行の中から、親子管理_子カード
      が実際にこのロット番号を指しているものを探して親ロットとする。
      行が自分自身の子カードを持つ(=既に親ロット)場合は探さない。 */
-  async function findParentLotFor(row){
+  /* light=true は**一覧の印を付けるため**の呼び出し(§9.94)。返す行は
+     ロット番号と子カードだけの軽い行なので、**測定を開く側では使わない**
+     ——あちらは親ロットの板厚・公差まで要る。 */
+  async function findParentLotFor(row,{light=false}={}){
     if(!row||rowHasSplitData(row))return null;
     const lotNo=String(pick(row,'lotNo')||'');
     if(lotNo.length<6)return null;
     try{
       const table=await resolveSikaTable();if(!table)return null;
       const columns=await resolveSikaColumns(table);if(!columns.length)return null;
-      const rows=await searchByLotPrefix(table,columns,lotNo.slice(0,5));
+      const rows=await (light?searchByLotPrefixLight:searchByLotPrefix)(table,columns,lotNo.slice(0,5));
       for(const cand of rows){
         const candLotNo=String(pick(cand,'lotNo')||'');
         if(!candLotNo||candLotNo===lotNo)continue;
@@ -431,7 +512,7 @@
      せず、先頭5桁が一致する仕掛データを1回の問い合わせでまとめて取得し、期待される
      子ロット番号がその中に存在するかを確認する(findParentLotForと同じ問い合わせ
      パターンを流用)。分割データが無い行はfalseを返さずnull(対象外)とする。 */
-  async function findMissingChildLots(row){
+  async function findMissingChildLots(row,{light=false}={}){
     if(!row||!rowHasSplitData(row))return null;
     const lotNo=String(pick(row,'lotNo')||'');
     if(lotNo.length<5)return null;
@@ -440,7 +521,9 @@
     try{
       const table=await resolveSikaTable();if(!table)return null;
       const columns=await resolveSikaColumns(table);if(!columns.length)return null;
-      const rows=await searchByLotPrefix(table,columns,lotNo.slice(0,5));
+      // 要るのは「そのロット番号が仕掛に居るか」だけなので、一覧からの
+      // 呼び出しは軽い方(ロット番号だけ)で足りる(§9.94)。
+      const rows=await (light?searchByLotPrefixLight:searchByLotPrefix)(table,columns,lotNo.slice(0,5));
       const present=new Set(rows.map(r=>String(pick(r,'lotNo')||'')));
       const missing=expected.filter(lot=>!present.has(lot));
       return{expected,missing};
