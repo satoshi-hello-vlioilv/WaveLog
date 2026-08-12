@@ -53,6 +53,10 @@ _WRITE_ALLOWED_MODES={
  'path_config':{'edit'},
  'rne':{'edit'},
  'schedule':{'schedule'},
+ # ログ・診断(§9.99)。読み出し(GET)は全モードから通る(ガードはGETを見ない)。
+ # **消す・区切るだけをeditへ絞る**——ログは端末ごとのローカルファイルで
+ # 共有データではないが、消えると調査ができなくなる。
+ 'logs':{'edit'},
 }
 # 上の表より広く許可する例外(エンドポイント名 -> 追加で許可するモード)。
 # 現場段取り: 並べ替えAPI(schedule.plan_reorder)だけをeditにも開ける。

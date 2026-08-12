@@ -29,6 +29,7 @@ from backend.routes.masters import bp as masters_bp
 from backend.routes.path_config import bp as path_config_bp
 from backend.routes.rne import bp as rne_bp
 from backend.routes.schedule import bp as schedule_bp
+from backend.routes.logs import bp as logs_bp
 
 app.register_blueprint(core_bp)
 app.register_blueprint(tables_bp)
@@ -38,6 +39,7 @@ app.register_blueprint(masters_bp)
 app.register_blueprint(path_config_bp)
 app.register_blueprint(rne_bp)
 app.register_blueprint(schedule_bp)
+app.register_blueprint(logs_bp)
 
 # ========================================================================
 # キャッシュの方針(§9.97)

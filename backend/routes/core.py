@@ -46,6 +46,7 @@ BODY_CSS_FILES=[
  '75-master-paths.css',# マスタ管理(パス設定・RNE抽出)
  '80-defect.css',      # 異常位置判定(画面と専用帳票)
  '85-headerbar.css',   # ヘッダーの操作列
+ '88-logs.css',        # ログ・診断(ログビュワー)
  '90-state.css',       # state / mode / print / utility
 ]
 # カスケードの順序そのもの。**起動用が先、本体が後**の並びで読み込まれる。

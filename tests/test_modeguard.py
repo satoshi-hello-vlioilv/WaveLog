@@ -117,6 +117,12 @@ def probe_schedule_column():
                 {'equipment': 'テスト設備A', 'columns': cols, 'user_id': 'test-modeguard'})
 
 
+def probe_logs():
+    """ログ・診断(§9.99)。**消さない叩き方**にする: 消す行を空で送るので、
+    ガードを通っても removed=0 で何も起きない。"""
+    return call('POST', '/api/logs/delete-lines', {'file': 'app.log', 'lines': []})
+
+
 PROBES = {
     'マスタCRUD(operator-master)': lambda: call('POST', '/api/operator-master', {}),
     'パス設定(path-config-master)': probe_path_config,
@@ -124,6 +130,7 @@ PROBES = {
     'RNE手動実行(rne-extract/run)': lambda: call('POST', '/api/rne-extract/run', {}),
     '列レイアウト(column-layout-master)': probe_column_layout,
     '表示ルール(display-rule-master)': probe_display_rule,
+    'ログの整理(logs/delete-lines)': probe_logs,
 }
 
 # 現在の許可表(実測で固定する)。True=ガードを通る / False=ガードが弾く
@@ -139,6 +146,9 @@ EXPECTED = {
     # (登録フィルタ・スケジュール列表示と同じ理由)。閲覧モードには開かない。
     '列レイアウト(column-layout-master)':         {'edit': True,  'view': False, 'schedule': True},
     '表示ルール(display-rule-master)':            {'edit': True,  'view': False, 'schedule': True},
+    # §9.99: 読み出し(GET)は全モードから。**消す・区切るはeditだけ**。
+    # ログは端末ごとのローカルファイルだが、消えると調査ができなくなる。
+    'ログの整理(logs/delete-lines)':              {'edit': True,  'view': False, 'schedule': False},
 }
 
 

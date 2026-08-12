@@ -30,6 +30,20 @@
   ハートビート途絶だけを根拠にした終了(`HEARTBEAT_STALE_SEC`=丸1日)は
   異常系の保険で、短くしないこと（スリープ復帰・タブの間引きで誤終了する）。
   固定は`tests/test_tabclose.py`。
+- **ログビュワー（`backend/routes/logs.py`／`static/js/log-view.js`）は「1行」でなく
+  「1件」で扱う**（§9.99）: `logging_setup.py`の書式では**1件は必ず日時で始まる**が、
+  `log.exception()`のトレースバックは日時を持たない行が続く。`parse_records()`が
+  **日時で始まらない行を直前の件へ畳む**ので、物理行のまま扱う実装を新しく
+  書かないこと（画面では原因の行が散らばり、削除では**見出しだけ消えて中身が
+  残る**）。まとまりの区切りは`launcher.log`の`--- 起動 ---`で、
+  `app.log`と合わせて1本の時間軸へ並べる。
+  **書き換えは必ず`_with_handlers()`を通す**——削除・区切り・消去はロガーが
+  開いたままのファイルへ触るため、ロック→flush→close→書き換えの順にしないと
+  次の追記が元の位置へ行き**先頭がNULで埋まる**。世代の押し出しは
+  `RotatingFileHandler.doRollover()`に任せる（自前の`os.replace`はハンドラの
+  世代数と食い違う）。扱ってよいのは`_resolve()`が認めたログ置き場の中だけ。
+  絞り込み（`level`/`q`/`days`/`limit`）は**サーバーだけが持つ**。
+  固定は`tests/test_logs.py`・`tests/test_logview.js`。
 - **起動オーバーレイ（`#appBoot`）**: 画面が組み上がるまで本体を見せない
   仕掛け。`<html class="app-booting">`の間`static/css/95-boot.css`が
   `body>*:not(#appBoot){visibility:hidden}`で伏せ、`base.js`の`WL.boot`が
