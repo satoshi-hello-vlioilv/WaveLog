@@ -8,7 +8,7 @@
 """
 import _pycache_bootstrap  # 他のimportより前に。単独実行(python app.py)される場合に備える
 
-from flask import Flask
+from flask import Flask, request
 
 from backend.logging_setup import app_logger
 
@@ -39,8 +39,42 @@ app.register_blueprint(path_config_bp)
 app.register_blueprint(rne_bp)
 app.register_blueprint(schedule_bp)
 
+# ========================================================================
+# キャッシュの方針(§9.97)
+# ------------------------------------------------------------------------
+# 画面(HTML)とAPIの応答は**毎回取り直させる**。古い在庫・古いマスタを
+# 見せないため、ここは今までどおり no-store。
+#
+# **ただし版がURLに入っている資材は別。** JS/CSSは `?t=<全資材の最新更新
+# 時刻>` を付けて読み込んでおり(templates/index.html の起動ローダーと
+# core.home())、中身が変われば**URLごと変わる**。だから長期キャッシュして
+# よい——というより、しないと起動のたびに1.4MB(JS 1.0MB + CSS 0.4MB)を
+# 読み直すことになる。
+#
+# 以前ここは**全ての応答へ無条件に no-store を付けていた**。そのため
+# `core.py` の `_css_bundle()` が明示していた
+# `public, max-age=31536000, immutable` は、後から走るこの関数に
+# 上書きされて**一度も効いていなかった**(「以前は no-cache で毎回取り直して
+# おり…」というコメント付きの対処が、効かないまま残っていた)。
+# after_request はビューの後に走るので、ビューの指定を消さないこと。
+#
+# 資材が読めなかった回など、**ビューが自分で `no-store` を宣言している応答**は
+# そのまま尊重する(次の表示で直っていてほしいものを長期キャッシュしない)。
+# 合図に `no-cache` を使わないこと——Flaskの静的配信が既定で付けるため、
+# それを合図にすると`/static/`が1つも長期キャッシュにならない(実際にそうなった)。
+# ========================================================================
+_LONG_CACHE='public, max-age=31536000, immutable'
+_VERSIONED_ENDPOINTS={'static','core.app_css','core.boot_css'}
+
 @app.after_request
-def no_cache(response):
+def cache_policy(response):
+ declared=response.headers.get('Cache-Control','')
+ if (request.args.get('t') and request.endpoint in _VERSIONED_ENDPOINTS
+         and 'no-store' not in declared and response.status_code==200):
+  response.headers['Cache-Control']=_LONG_CACHE
+  response.headers.pop('Pragma',None)
+  response.headers.pop('Expires',None)
+  return response
  response.headers['Cache-Control']='no-store, no-cache, must-revalidate, max-age=0'
  response.headers['Pragma']='no-cache'
  response.headers['Expires']='0'

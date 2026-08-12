@@ -96,8 +96,10 @@ def _css_bundle(files,cache):
    app_logger().error('CSSを読み込めませんでした(%d件): %s',len(failed),' / '.join(failed[:5]))
    if cache['body']:
     # 読めなかった回の内容は**キャッシュさせない**(次の表示で直っていて
-    # ほしいので、長期キャッシュの対象から外す)。
-    return Response(cache['body'],mimetype='text/css',headers={'Cache-Control':'no-cache'})
+    # ほしいので、長期キャッシュの対象から外す)。**`no-store`で言うこと**
+    # ——`app.py`のcache_policyはこれを「ビューが明示的に降りた」合図として
+    # 見る(`no-cache`はFlaskの静的配信が既定で付けるので、合図に使えない)。
+    return Response(cache['body'],mimetype='text/css',headers={'Cache-Control':'no-store'})
   cache.update(token=tok,body='\n'.join(parts))
  # URLに更新時刻(?t=)が入っているので、内容が変わればURLごと変わる。
  # **だから長期キャッシュしてよい。** 以前は no-cache で毎回取り直して

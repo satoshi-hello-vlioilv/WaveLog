@@ -69,6 +69,10 @@
   `dataSource`/`columnLayout`/`cellFormat`/`displayRules`/`listColumns`/`listRules`/
   `rowGap`/`listSort`/`listSortBar`/`listQuery`/`listHooks`/`renderDbNav`/
   `bindColumnHeaderTools`/`makeFloatingWindow`/`loadBreakdown`。
+  **見張りは`tests/test_globallint.py`**——`window.*`は現在値63件を上限に
+  固定し、増えたら落ちる（`WL.*`は数えない。増えてよい側なので上限をかけると
+  方針と逆向きの圧力になる）。**新しく足したJSファイルは素のグローバル関数を
+  作らない**ことも見る（既存19本は対象外＝触らない方針）。
   **公開漏れは黙って素通しになる**ことに注意——`typeof makeFloatingWindow==='function'`の
   ように「あれば使う」書き方で呼んでいると、公開し忘れても例外が出ず、
   機能だけが静かに欠ける（列の設定パネルが位置も大きさも与えられないまま
@@ -327,6 +331,15 @@
   差し替える。**写す対象は`role=='readonly'`だけ**（マスタ・共有スケジュールは
   自分が書くので写すと反映されない事故になる）。**共有へ触るのは背景スレッド
   だけ**にすること。固定は`tests/test_dbmirror.py`。詳細は`docs/ARCHITECTURE.md`。
+- **資材(JS/CSS)は`?t=`付きなら長期キャッシュへ回す**（§9.97、
+  `tests/test_assetcache.py`）: `app.py`の`cache_policy`が、画面(HTML)と
+  APIへは`no-store`（古い在庫を見せない）、**版がURLに入っている資材だけ**
+  `public, max-age=31536000, immutable`を返す。ここを「全部`no-store`」へ
+  戻さないこと——起動のたびに1.4MBを読み直すことになり、しかも
+  `core.py`が明示していた長期キャッシュ指定を`after_request`が黙って
+  上書きする（**実際に一度も効いていなかった**）。ビューが「降りる」合図は
+  `no-store`で書く——`no-cache`はFlaskの静的配信が既定で付けるため合図に
+  使えない。版は全資材の最新更新時刻なので、1つ更新すれば全部が取り直される。
 - **ループバック(127.0.0.1)への問い合わせはプロキシを通さない**:
   `urllib`は既定でプロキシ設定を見る（Windowsでは**レジストリのIE/Edge設定まで**）。
   社内プロキシのある端末では`127.0.0.1`宛ての生存確認まで転送されて**407**が返り、
@@ -398,7 +411,7 @@
 
 ## 検証
 
-- **回帰テストは `tests/` にある。実行は `tests/run_all.sh` だけ**（519件）。
+- **回帰テストは `tests/` にある。実行は `tests/run_all.sh` だけ**（535件）。
   引数にテスト名を並べるとそれだけ実行する（`tests/run_all.sh test_sccat`）。
   ランナーがパス設定マスタの退避→検証用フィクスチャへ差し替え→復元まで
   行うので、**手でパスを戻す必要はない**（`trap`で異常終了時も戻し、退避値は
