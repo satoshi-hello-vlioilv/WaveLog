@@ -1079,11 +1079,18 @@ function renderGridInner(){
   /* 1本の並びを辿ってセルを作る(§9.106)。窓の外は`colspan`でまとめた
      空セルにする(§9.104)——**幅は1pxもずれない**(`table-layout:fixed`では
      colspanで束ねた幅がcolgroupの合計になる)。 */
+  /* **番号・ボタンの列は窓の外でも必ず作る**(§9.106)。畳んでしまうと、
+     横へスクロールしただけで「測定」「＋予定」のボタンが**DOMごと消える**
+     ——列を隠した覚えがないのに押せなくなる(実際に回帰テストが落ちた)。
+     数は多くて5列なので、常に作っても重さに響かない。
+     畳むのはデータ列だけで、続いた畳みぶんは1つのcolspanにまとめる。 */
   const {from,to}=colWin.get();
   const gap=n=>n>0?`<td class="grid-col-spacer" colspan="${n}"></td>`:'';
-  let cells='';
-  for(let ci=from;ci<to;ci++){
+  let cells='',skipped=0;
+  for(let ci=0;ci<ordered.length;ci++){
    const c=ordered[ci];
+   if(!isVirtualColumn(c)&&(ci<from||ci>=to)){skipped++;continue}
+   if(skipped){cells+=gap(skipped);skipped=0}
    if(c==='__select__'){cells+='<td class="plan-select-cell"><input type="checkbox" class="plan-select-checkbox"></td>';continue}
    if(c==='__plan__'){cells+='<td class="plan-action-cell"><button type="button" class="plan-action-button" title="この行の設備の作業スケジュールへ追加します">+ 予定</button></td>';continue}
    if(c==='#'){cells+=`<td class="grid-no-cell">${(S.page-1)*effectivePageSize()+i+1}</td>`;continue}
@@ -1102,7 +1109,7 @@ function renderGridInner(){
    const tip=(out.text!==raw||clipped)?` title="${esc(raw)}"`:'';
    cells+=`<td data-col="${esc(c)}"${cls?` class="${cls}"`:''}${tip}>${esc(out.text)}</td>`;
   }
-  tr.innerHTML=gap(from)+cells+gap(ordered.length-to);
+  tr.innerHTML=cells+gap(skipped);
   if(r===S.selectedRow)tr.classList.add('is-selected');
   if(canPlan&&S.selectedRows.has(r))tr.classList.add('is-plan-selected');
   tr.addEventListener('click',()=>{
