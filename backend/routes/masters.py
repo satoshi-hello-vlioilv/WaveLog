@@ -254,253 +254,178 @@ def operator_master_delete():
   return jsonify(ok=True,id=oid,updated_by=uid)
  except Exception as e:return jsonify(error=f'オペレータマスタ削除失敗: {e}'),500
 
-@bp.get('/api/spool-master')
-def spool_master_list():
- try:
-  path=DBS['MASTER']['path']
-  with connect(path,False) as c:
-   before=SPOOL_MASTER_TABLE in tables(c);ensure_spool_master_table(c);rows=spool_master_rows(c)
-   items=[{'id':r[0],'name':str(r[1] or '').strip(),'order':r[2] or 0,'active':True,'updated_at':r[4].isoformat() if r[4] else None,'updated_by':(str(r[5]).strip() if len(r)>5 and r[5] else '')} for r in rows]
-  return jsonify(ok=True,items=items,table=SPOOL_MASTER_TABLE,created=not before,empty=len(items)==0,master_path=str(path))
- except Exception as e:return jsonify(error=f'スプール種別マスタ読込失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
-
-@bp.post('/api/spool-master')
-def spool_master_register():
- try:
-  x=request.get_json(force=True) or {};name=str(x.get('name') or '').strip();note=str(x.get('note') or '').strip();uid=request_user_id(x)
-  if not name:return jsonify(error='種別名を入力してください。'),400
-  path=DBS['MASTER']['path']
-  with connect(path,False) as c:
-   ensure_spool_master_table(c);cur=c.cursor();cur.execute('SELECT [スプールID],[種別名] FROM [スプール種別マスタ]');rows=cur.fetchall();target=normalize_spool_name(name);existing=next((r for r in rows if normalize_spool_name(r[1])==target),None)
-   if existing:
-    # 既存種別は有効化のみ。備考は指定があるときだけ更新する（値の有無で分岐する）。
-    if note:cur.execute('UPDATE [スプール種別マスタ] SET [有効]=-1,[備考]=?,[更新者ID]=?,[更新日時]=Now() WHERE [スプールID]=?',[note,uid,existing[0]])
-    else:cur.execute('UPDATE [スプール種別マスタ] SET [有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [スプールID]=?',[uid,existing[0]])
-    registered=False;stored_name=str(existing[1]).strip()
-   else:
-    cur.execute('SELECT Max([表示順]) FROM [スプール種別マスタ]');maximum=cur.fetchone()[0];order=int(maximum or 0)+10
-    cur.execute('INSERT INTO [スプール種別マスタ] ([種別名],[備考],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,-1,?,?,Now(),Now())',[name,note,order,uid,uid]);registered=True;stored_name=name
-   c.commit()
-  return jsonify(ok=True,name=stored_name,registered=registered,updated_by=uid,message=('スプール種別マスタへ新規登録しました。' if registered else 'スプール種別マスタの登録済み種別を有効化しました。'))
- except Exception as e:return jsonify(error=f'スプール種別マスタ登録失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
-
-@bp.post('/api/spool-master/update')
-def spool_master_update():
- try:
-  x=request.get_json(force=True) or {};sid=x.get('id');name=str(x.get('name') or '').strip();note=str(x.get('note') or '').strip();uid=request_user_id(x)
-  if sid is None:return jsonify(error='更新対象IDがありません。'),400
-  if not name:return jsonify(error='種別名を入力してください。'),400
-  path=DBS['MASTER']['path']
-  with connect(path,False) as c:
-   ensure_spool_master_table(c);cur=c.cursor();cur.execute('SELECT [スプールID],[種別名] FROM [スプール種別マスタ]');rows=cur.fetchall();target=normalize_spool_name(name)
-   dup=next((r for r in rows if normalize_spool_name(r[1])==target and str(r[0])!=str(sid)),None)
-   if dup:return jsonify(error=f'同名の種別が既に存在するため変更できません: {str(dup[1]).strip()}'),409
-   cur.execute('UPDATE [スプール種別マスタ] SET [種別名]=?,[備考]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [スプールID]=?',[name,note,uid,sid]);c.commit()
-  return jsonify(ok=True,id=sid,name=name,updated_by=uid,message='スプール種別を更新しました。')
- except Exception as e:return jsonify(error=f'スプール種別マスタ更新失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
-
-@bp.post('/api/spool-master/delete')
-def spool_master_delete():
- try:
-  x=request.get_json(force=True) or {};sid=x.get('id');uid=request_user_id(x)
-  if sid is None:return jsonify(error='削除対象IDがありません。'),400
-  path=DBS['MASTER']['path']
-  with connect(path,False) as c:
-   ensure_spool_master_table(c);cur=c.cursor()
-   # 物理削除ではなく無効化し、履歴を残す。無効化した更新者も記録する。
-   cur.execute('UPDATE [スプール種別マスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [スプールID]=?',[uid,sid]);c.commit()
-  return jsonify(ok=True,id=sid,updated_by=uid)
- except Exception as e:return jsonify(error=f'スプール種別マスタ削除失敗: {e}'),500
-
-@bp.get('/api/inner-master')
-def inner_master_list():
- try:
-  path=DBS['MASTER']['path']
-  with connect(path,False) as c:
-   before=INNER_MASTER_TABLE in tables(c);ensure_inner_master_table(c);rows=inner_master_rows(c)
-   items=[{'id':r[0],'name':str(r[1] or '').strip(),'order':r[2] or 0,'active':True,'updated_at':r[4].isoformat() if r[4] else None,'updated_by':(str(r[5]).strip() if len(r)>5 and r[5] else '')} for r in rows]
-  return jsonify(ok=True,items=items,table=INNER_MASTER_TABLE,created=not before,empty=len(items)==0,master_path=str(path))
- except Exception as e:return jsonify(error=f'内径種別マスタ読込失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
-
-@bp.post('/api/inner-master')
-def inner_master_register():
- try:
-  x=request.get_json(force=True) or {};name=str(x.get('name') or '').strip();note=str(x.get('note') or '').strip();uid=request_user_id(x)
-  if not name:return jsonify(error='内径種別を入力してください。'),400
-  path=DBS['MASTER']['path']
-  with connect(path,False) as c:
-   ensure_inner_master_table(c);cur=c.cursor();cur.execute('SELECT [内径ID],[内径種別] FROM [内径種別マスタ]');rows=cur.fetchall();target=normalize_inner_name(name);existing=next((r for r in rows if normalize_inner_name(r[1])==target),None)
-   if existing:
-    # 既存種別は有効化のみ。備考は指定があるときだけ更新する（値の有無で分岐する）。
-    if note:cur.execute('UPDATE [内径種別マスタ] SET [有効]=-1,[備考]=?,[更新者ID]=?,[更新日時]=Now() WHERE [内径ID]=?',[note,uid,existing[0]])
-    else:cur.execute('UPDATE [内径種別マスタ] SET [有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [内径ID]=?',[uid,existing[0]])
-    registered=False;stored_name=str(existing[1]).strip()
-   else:
-    cur.execute('SELECT Max([表示順]) FROM [内径種別マスタ]');maximum=cur.fetchone()[0];order=int(maximum or 0)+10
-    cur.execute('INSERT INTO [内径種別マスタ] ([内径種別],[備考],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,-1,?,?,Now(),Now())',[name,note,order,uid,uid]);registered=True;stored_name=name
-   c.commit()
-  return jsonify(ok=True,name=stored_name,registered=registered,updated_by=uid,message=('内径種別マスタへ新規登録しました。' if registered else '内径種別マスタの登録済み種別を有効化しました。'))
- except Exception as e:return jsonify(error=f'内径種別マスタ登録失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
-
-@bp.post('/api/inner-master/update')
-def inner_master_update():
- try:
-  x=request.get_json(force=True) or {};iid=x.get('id');name=str(x.get('name') or '').strip();note=str(x.get('note') or '').strip();uid=request_user_id(x)
-  if iid is None:return jsonify(error='更新対象IDがありません。'),400
-  if not name:return jsonify(error='内径種別を入力してください。'),400
-  path=DBS['MASTER']['path']
-  with connect(path,False) as c:
-   ensure_inner_master_table(c);cur=c.cursor();cur.execute('SELECT [内径ID],[内径種別] FROM [内径種別マスタ]');rows=cur.fetchall();target=normalize_inner_name(name)
-   dup=next((r for r in rows if normalize_inner_name(r[1])==target and str(r[0])!=str(iid)),None)
-   if dup:return jsonify(error=f'同名の内径種別が既に存在するため変更できません: {str(dup[1]).strip()}'),409
-   cur.execute('UPDATE [内径種別マスタ] SET [内径種別]=?,[備考]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [内径ID]=?',[name,note,uid,iid]);c.commit()
-  return jsonify(ok=True,id=iid,name=name,updated_by=uid,message='内径種別を更新しました。')
- except Exception as e:return jsonify(error=f'内径種別マスタ更新失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
-
-@bp.post('/api/inner-master/delete')
-def inner_master_delete():
- try:
-  x=request.get_json(force=True) or {};iid=x.get('id');uid=request_user_id(x)
-  if iid is None:return jsonify(error='削除対象IDがありません。'),400
-  path=DBS['MASTER']['path']
-  with connect(path,False) as c:
-   ensure_inner_master_table(c);cur=c.cursor()
-   # 物理削除ではなく無効化し、履歴を残す。無効化した更新者も記録する。
-   cur.execute('UPDATE [内径種別マスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [内径ID]=?',[uid,iid]);c.commit()
-  return jsonify(ok=True,id=iid,updated_by=uid)
- except Exception as e:return jsonify(error=f'内径種別マスタ削除失敗: {e}'),500
-
 # ------------------------------------------------------------------------
-# 選択肢だけの単純マスタ（バリ揃え・コイル止め）のCRUD。
-# 中身はスプール種別/内径種別と同じ流れなので、エンドポイントを生成して
-# 束ねる。個別に写経すると片方だけ直って食い違うため。
+# 「名前だけ」の単純マスタのCRUD（スプール種別・内径種別・機器・バリ揃え・
+# コイル止め）。**1マスタ=1宣言**で4本(一覧/登録/編集/削除)を生成する。
+#
+# なぜ生成するか。画面(master-maint.jsのsubmitMaint)は
+# `GET <endpoint>` / `POST <endpoint>` / `POST <endpoint>/update` /
+# `POST <endpoint>/delete` を決め打ちで呼ぶので、**サーバー側の1本を
+# 書き忘れても押すまで気づけない**(404のHTMLがそのままトーストに出る。
+# 実際に設備停止・設備停止分類・データソースの3つで起きた)。個別に写経すると
+# 片方だけ直って食い違う事故も同じ根から出る。
+#
+# **畳んだのはこの5つだけ**で、オペレータ(作業可能設備の別表)・設備(参照件数の
+# 確認と最大条数・区分)・アクセス権限(6項目)は畳んでいない。フラグで吸収すると
+# 生成側が読めなくなり、重複より高くつくため(docs/REFACTORING_PLAN.md フェーズC)。
+#
 # Blueprintは 'masters' のままなので、書込ガード(_WRITE_ALLOWED_MODES)は
 # 他のマスタと同じ edit 限定がそのまま効く。
 # ------------------------------------------------------------------------
-def _register_simple_master(url,table,id_col,name_col,label,ensure_table,rows_fn,normalize):
+# 文言はマスタごとに言い回しだけが違う。**既定を持ち、違う行だけ差し替える**
+# (畳む前の文面をそのまま残すため。ここを揃えると画面に出る文が変わる)。
+_MASTER_WORDS={
+ 'required':'{label}を入力してください。',
+ 'created' :'{label}マスタへ新規登録しました。',
+ 'enabled' :'{label}マスタの登録済み項目を有効化しました。',
+ 'dup'     :'同名が既に存在するため変更できません: {name}',
+ 'updated' :'{label}を更新しました。',
+}
+
+def _simple_item(r):
+ """[ID],[名前],[表示順],[有効],[更新日時],[更新者ID] の並びを画面の形へ。"""
+ return {'id':r[0],'name':str(r[1] or '').strip(),'order':r[2] or 0,'active':True,
+         'updated_at':r[4].isoformat() if r[4] else None,
+         'updated_by':(str(r[5]).strip() if len(r)>5 and r[5] else '')}
+
+def _device_item(r):
+ """機器マスタだけ[測定区分]が1列入るので、位置が1つずつ後ろへずれる。"""
+ return {'id':r[0],'name':str(r[1] or '').strip(),'kind':str(r[2] or '').strip(),
+         'order':r[3] or 0,'active':True,
+         'updated_at':r[5].isoformat() if r[5] else None,
+         'updated_by':(str(r[6]).strip() if len(r)>6 and r[6] else '')}
+
+def _register_simple_master(spec):
+ """宣言1つから4本のエンドポイントを生成する。
+
+ spec のキー:
+   url/table/id/name/label/ensure/rows/normalize … 必須
+   item  … 1行を画面の形へ直す関数(既定 _simple_item)
+   extra … 名前のほかに1列持つマスタ用。{'col':列名,'key':受け渡し名}。
+           **同一判定にもこの列を含める**(機器は測定区分＋機器名で1件)。
+   words … 文言の差し替え(_MASTER_WORDS の一部)
+ """
+ url,table,id_col,name_col=spec['url'],spec['table'],spec['id'],spec['name']
+ label,ensure_table,rows_fn=spec['label'],spec['ensure'],spec['rows']
+ normalize=spec['normalize'];item_fn=spec.get('item') or _simple_item
+ extra=spec.get('extra');ex_col=extra['col'] if extra else '';ex_key=extra['key'] if extra else ''
+ words=dict(_MASTER_WORDS);words.update(spec.get('words') or {})
+ def say(key,**kw):return words[key].format(label=label,**kw)
+
  def list_route():
   try:
    path=DBS['MASTER']['path']
    with connect(path,False) as c:
     before=table in tables(c);ensure_table(c);rows=rows_fn(c)
-    items=[{'id':r[0],'name':str(r[1] or '').strip(),'order':r[2] or 0,'active':True,
-            'updated_at':r[4].isoformat() if r[4] else None,
-            'updated_by':(str(r[5]).strip() if len(r)>5 and r[5] else '')} for r in rows]
+    items=[item_fn(r) for r in rows]
    return jsonify(ok=True,items=items,table=table,created=not before,empty=len(items)==0,master_path=str(path))
   except Exception as e:return jsonify(error=f'{label}マスタ読込失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
+
  def register_route():
   try:
-   x=request.get_json(force=True) or {};name=str(x.get('name') or '').strip();note=str(x.get('note') or '').strip();uid=request_user_id(x)
-   if not name:return jsonify(error=f'{label}を入力してください。'),400
+   x=request.get_json(force=True) or {};name=str(x.get('name') or '').strip()
+   ex=str(x.get(ex_key) or '').strip() if extra else ''
+   note=str(x.get('note') or '').strip();uid=request_user_id(x)
+   if not name:return jsonify(error=say('required')),400
    with connect(DBS['MASTER']['path'],False) as c:
-    ensure_table(c);cur=c.cursor();cur.execute(f'SELECT [{id_col}],[{name_col}] FROM [{table}]');rows=cur.fetchall()
-    target=normalize(name);existing=next((r for r in rows if normalize(r[1])==target),None)
+    ensure_table(c);cur=c.cursor()
+    cur.execute(f'SELECT [{id_col}],[{name_col}]'+(f',[{ex_col}]' if extra else '')+f' FROM [{table}]')
+    rows=cur.fetchall();target=normalize(name);ex_target=normalize(ex) if extra else None
+    existing=next((r for r in rows if normalize(r[1])==target
+                   and (not extra or normalize(r[2])==ex_target)),None)
     if existing:
-     # 既存は有効化のみ。備考は指定があるときだけ更新する。
+     # 既存は有効化のみ。備考は指定があるときだけ更新する（値の有無で分岐する）。
      if note:cur.execute(f'UPDATE [{table}] SET [有効]=-1,[備考]=?,[更新者ID]=?,[更新日時]=Now() WHERE [{id_col}]=?',[note,uid,existing[0]])
      else:cur.execute(f'UPDATE [{table}] SET [有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [{id_col}]=?',[uid,existing[0]])
      registered=False;stored=str(existing[1]).strip()
     else:
      cur.execute(f'SELECT Max([表示順]) FROM [{table}]');maximum=cur.fetchone()[0];order=int(maximum or 0)+10
-     cur.execute(f'INSERT INTO [{table}] ([{name_col}],[備考],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,-1,?,?,Now(),Now())',[name,note,order,uid,uid])
+     head=f'[{name_col}],'+(f'[{ex_col}],' if extra else '')+'[備考],[表示順]'
+     marks='?,'*(3 if extra else 2)+'?'
+     cur.execute(f'INSERT INTO [{table}] ({head},[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) '
+                 f'VALUES ({marks},-1,?,?,Now(),Now())',
+                 ([name,ex,note,order] if extra else [name,note,order])+[uid,uid])
      registered=True;stored=name
     c.commit()
-   return jsonify(ok=True,name=stored,registered=registered,updated_by=uid,
-                  message=(f'{label}マスタへ新規登録しました。' if registered else f'{label}マスタの登録済み項目を有効化しました。'))
+   out={'ok':True,'name':stored,'registered':registered,'updated_by':uid,
+        'message':(say('created') if registered else say('enabled'))}
+   if extra:out[ex_key]=ex
+   return jsonify(**out)
   except Exception as e:return jsonify(error=f'{label}マスタ登録失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
+
  def update_route():
   try:
-   x=request.get_json(force=True) or {};rid=x.get('id');name=str(x.get('name') or '').strip();note=str(x.get('note') or '').strip();uid=request_user_id(x)
+   x=request.get_json(force=True) or {};rid=x.get('id');name=str(x.get('name') or '').strip()
+   ex=str(x.get(ex_key) or '').strip() if extra else ''
+   note=str(x.get('note') or '').strip();uid=request_user_id(x)
    if rid is None:return jsonify(error='更新対象IDがありません。'),400
-   if not name:return jsonify(error=f'{label}を入力してください。'),400
+   if not name:return jsonify(error=say('required')),400
    with connect(DBS['MASTER']['path'],False) as c:
-    ensure_table(c);cur=c.cursor();cur.execute(f'SELECT [{id_col}],[{name_col}] FROM [{table}]');rows=cur.fetchall();target=normalize(name)
-    dup=next((r for r in rows if normalize(r[1])==target and str(r[0])!=str(rid)),None)
-    if dup:return jsonify(error=f'同名が既に存在するため変更できません: {str(dup[1]).strip()}'),409
-    cur.execute(f'UPDATE [{table}] SET [{name_col}]=?,[備考]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [{id_col}]=?',[name,note,uid,rid]);c.commit()
-   return jsonify(ok=True,id=rid,name=name,updated_by=uid,message=f'{label}を更新しました。')
+    ensure_table(c);cur=c.cursor()
+    cur.execute(f'SELECT [{id_col}],[{name_col}]'+(f',[{ex_col}]' if extra else '')+f' FROM [{table}]')
+    rows=cur.fetchall();target=normalize(name);ex_target=normalize(ex) if extra else None
+    dup=next((r for r in rows if normalize(r[1])==target
+              and (not extra or normalize(r[2])==ex_target) and str(r[0])!=str(rid)),None)
+    if dup:return jsonify(error=say('dup',name=str(dup[1]).strip())),409
+    sets=f'[{name_col}]=?,'+(f'[{ex_col}]=?,' if extra else '')+'[備考]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now()'
+    cur.execute(f'UPDATE [{table}] SET {sets} WHERE [{id_col}]=?',
+                ([name,ex,note,uid,rid] if extra else [name,note,uid,rid]))
+    c.commit()
+   out={'ok':True,'id':rid,'name':name,'updated_by':uid,'message':say('updated')}
+   if extra:out[ex_key]=ex
+   return jsonify(**out)
   except Exception as e:return jsonify(error=f'{label}マスタ更新失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
+
  def delete_route():
   try:
    x=request.get_json(force=True) or {};rid=x.get('id');uid=request_user_id(x)
    if rid is None:return jsonify(error='削除対象IDがありません。'),400
    with connect(DBS['MASTER']['path'],False) as c:
     ensure_table(c);cur=c.cursor()
-    # 物理削除ではなく無効化し、履歴を残す。
+    # 物理削除ではなく無効化し、履歴を残す。無効化した更新者も記録する。
     cur.execute(f'UPDATE [{table}] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [{id_col}]=?',[uid,rid]);c.commit()
    return jsonify(ok=True,id=rid,updated_by=uid)
   except Exception as e:return jsonify(error=f'{label}マスタ削除失敗: {e}'),500
+
  # Flaskはエンドポイント名を関数名から取るため、生成した関数は名前が衝突する。
  # endpoint= で明示し、アクセスモードの許可表(Blueprint名.関数名)からも
- # 一意に指せるようにする。
- key=url.replace('-','_')
+ # 一意に指せるようにする。**畳む前の関数名をそのまま使う**ので、
+ # _WRITE_ALLOWED_MODES/_ENDPOINT_EXTRA_MODES の見え方は変わらない。
+ key=spec.get('endpoint') or url.replace('-','_')
  bp.add_url_rule(f'/api/{url}',endpoint=f'{key}_list',view_func=list_route,methods=['GET'])
  bp.add_url_rule(f'/api/{url}',endpoint=f'{key}_register',view_func=register_route,methods=['POST'])
  bp.add_url_rule(f'/api/{url}/update',endpoint=f'{key}_update',view_func=update_route,methods=['POST'])
  bp.add_url_rule(f'/api/{url}/delete',endpoint=f'{key}_delete',view_func=delete_route,methods=['POST'])
 
-_register_simple_master('burr-master',BURR_MASTER_TABLE,'バリ揃えID','バリ揃え','バリ揃え',
-                        ensure_burr_master_table,burr_master_rows,normalize_burr_name)
-_register_simple_master('coil-stop-master',COIL_STOP_MASTER_TABLE,'コイル止めID','コイル止め','コイル止め',
-                        ensure_coil_stop_master_table,coil_stop_master_rows,normalize_coil_stop_name)
-
-@bp.get('/api/device-master')
-def device_master_list():
- try:
-  path=DBS['MASTER']['path']
-  with connect(path,False) as c:
-   before=DEVICE_MASTER_TABLE in tables(c);ensure_device_master_table(c);rows=device_master_rows(c)
-   items=[{'id':r[0],'name':str(r[1] or '').strip(),'kind':str(r[2] or '').strip(),'order':r[3] or 0,'active':True,'updated_at':r[5].isoformat() if r[5] else None,'updated_by':(str(r[6]).strip() if len(r)>6 and r[6] else '')} for r in rows]
-  return jsonify(ok=True,items=items,table=DEVICE_MASTER_TABLE,created=not before,empty=len(items)==0,master_path=str(path))
- except Exception as e:return jsonify(error=f'機器マスタ読込失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
-
-@bp.post('/api/device-master')
-def device_master_register():
- try:
-  x=request.get_json(force=True) or {};name=str(x.get('name') or '').strip();kind=str(x.get('kind') or '').strip();note=str(x.get('note') or '').strip();uid=request_user_id(x)
-  if not name:return jsonify(error='機器名を入力してください。'),400
-  path=DBS['MASTER']['path']
-  with connect(path,False) as c:
-   ensure_device_master_table(c);cur=c.cursor();cur.execute('SELECT [機器ID],[機器名],[測定区分] FROM [機器マスタ]');rows=cur.fetchall();tn=normalize_device_name(name);tk=normalize_device_name(kind);existing=next((r for r in rows if normalize_device_name(r[1])==tn and normalize_device_name(r[2])==tk),None)
-   if existing:
-    # 既存（区分＋機器名一致）は有効化のみ。備考は指定があるときだけ更新する（値の有無で分岐する）。
-    if note:cur.execute('UPDATE [機器マスタ] SET [有効]=-1,[備考]=?,[更新者ID]=?,[更新日時]=Now() WHERE [機器ID]=?',[note,uid,existing[0]])
-    else:cur.execute('UPDATE [機器マスタ] SET [有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [機器ID]=?',[uid,existing[0]])
-    registered=False;stored_name=str(existing[1]).strip()
-   else:
-    cur.execute('SELECT Max([表示順]) FROM [機器マスタ]');maximum=cur.fetchone()[0];order=int(maximum or 0)+10
-    cur.execute('INSERT INTO [機器マスタ] ([機器名],[測定区分],[備考],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,-1,?,?,Now(),Now())',[name,kind,note,order,uid,uid]);registered=True;stored_name=name
-   c.commit()
-  return jsonify(ok=True,name=stored_name,kind=kind,registered=registered,updated_by=uid,message=('機器マスタへ新規登録しました。' if registered else '機器マスタの登録済み機器を有効化しました。'))
- except Exception as e:return jsonify(error=f'機器マスタ登録失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
-
-@bp.post('/api/device-master/update')
-def device_master_update():
- try:
-  x=request.get_json(force=True) or {};did=x.get('id');name=str(x.get('name') or '').strip();kind=str(x.get('kind') or '').strip();note=str(x.get('note') or '').strip();uid=request_user_id(x)
-  if did is None:return jsonify(error='更新対象IDがありません。'),400
-  if not name:return jsonify(error='機器名を入力してください。'),400
-  path=DBS['MASTER']['path']
-  with connect(path,False) as c:
-   ensure_device_master_table(c);cur=c.cursor();cur.execute('SELECT [機器ID],[機器名],[測定区分] FROM [機器マスタ]');rows=cur.fetchall();tn=normalize_device_name(name);tk=normalize_device_name(kind)
-   dup=next((r for r in rows if normalize_device_name(r[1])==tn and normalize_device_name(r[2])==tk and str(r[0])!=str(did)),None)
-   if dup:return jsonify(error=f'同じ測定区分・機器名が既に存在するため変更できません: {str(dup[1]).strip()}'),409
-   cur.execute('UPDATE [機器マスタ] SET [機器名]=?,[測定区分]=?,[備考]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [機器ID]=?',[name,kind,note,uid,did]);c.commit()
-  return jsonify(ok=True,id=did,name=name,kind=kind,updated_by=uid,message='機器を更新しました。')
- except Exception as e:return jsonify(error=f'機器マスタ更新失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
-
-@bp.post('/api/device-master/delete')
-def device_master_delete():
- try:
-  x=request.get_json(force=True) or {};did=x.get('id');uid=request_user_id(x)
-  if did is None:return jsonify(error='削除対象IDがありません。'),400
-  path=DBS['MASTER']['path']
-  with connect(path,False) as c:
-   ensure_device_master_table(c);cur=c.cursor()
-   # 物理削除ではなく無効化し、履歴を残す。無効化した更新者も記録する。
-   cur.execute('UPDATE [機器マスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [機器ID]=?',[uid,did]);c.commit()
-  return jsonify(ok=True,id=did,updated_by=uid)
- except Exception as e:return jsonify(error=f'機器マスタ削除失敗: {e}'),500
+# **新しい単純マスタはここへ1行足すだけ**。4本が揃うので書き忘れが起きない。
+SIMPLE_MASTERS=[
+ {'url':'spool-master','table':SPOOL_MASTER_TABLE,'id':'スプールID','name':'種別名',
+  'label':'スプール種別','endpoint':'spool_master',
+  'ensure':ensure_spool_master_table,'rows':spool_master_rows,'normalize':normalize_spool_name,
+  'words':{'required':'種別名を入力してください。',
+           'enabled':'スプール種別マスタの登録済み種別を有効化しました。',
+           'dup':'同名の種別が既に存在するため変更できません: {name}'}},
+ {'url':'inner-master','table':INNER_MASTER_TABLE,'id':'内径ID','name':'内径種別',
+  'label':'内径種別','endpoint':'inner_master',
+  'ensure':ensure_inner_master_table,'rows':inner_master_rows,'normalize':normalize_inner_name,
+  'words':{'enabled':'内径種別マスタの登録済み種別を有効化しました。',
+           'dup':'同名の内径種別が既に存在するため変更できません: {name}'}},
+ {'url':'device-master','table':DEVICE_MASTER_TABLE,'id':'機器ID','name':'機器名',
+  'label':'機器','endpoint':'device_master','item':_device_item,
+  'ensure':ensure_device_master_table,'rows':device_master_rows,'normalize':normalize_device_name,
+  # 機器は「測定区分＋機器名」で1件。同一判定にも保存にも区分が要る。
+  'extra':{'col':'測定区分','key':'kind'},
+  'words':{'required':'機器名を入力してください。',
+           'enabled':'機器マスタの登録済み機器を有効化しました。',
+           'dup':'同じ測定区分・機器名が既に存在するため変更できません: {name}'}},
+ {'url':'burr-master','table':BURR_MASTER_TABLE,'id':'バリ揃えID','name':'バリ揃え',
+  'label':'バリ揃え',
+  'ensure':ensure_burr_master_table,'rows':burr_master_rows,'normalize':normalize_burr_name},
+ {'url':'coil-stop-master','table':COIL_STOP_MASTER_TABLE,'id':'コイル止めID','name':'コイル止め',
+  'label':'コイル止め',
+  'ensure':ensure_coil_stop_master_table,'rows':coil_stop_master_rows,'normalize':normalize_coil_stop_name},
+]
+for _spec in SIMPLE_MASTERS:_register_simple_master(_spec)
 
 def _filter_preset_mode(raw):
  """登録フィルタの置き場(§9.80)。スケジュールモードだけを別に持ち、

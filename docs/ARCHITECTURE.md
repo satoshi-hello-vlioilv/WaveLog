@@ -127,7 +127,7 @@
 | `backend/routes/tables.py` | 汎用DB一覧API(`/api/catalog`・`/api/tables`・`/api/table`) |
 | `backend/routes/measurement.py` | 測定コンテキスト・マスタ診断・バックアップAPI |
 | `backend/routes/quality.py` | 品質データ分析API(`/api/quality/analysis`) |
-| `backend/routes/masters.py` | 各種マスタCRUDのBlueprint（設備/オペレータ/スプール/内径/機器/フィルタプリセット/列表示/アクセス権限）。URLは分離前と同一。リクエスト受付とレスポンス整形のみを行い、データアクセスは`repositories/master_repo.py`へ委譲 |
+| `backend/routes/masters.py` | 各種マスタCRUDのBlueprint（設備/オペレータ/スプール/内径/機器/フィルタプリセット/列表示/アクセス権限）。URLは分離前と同一。リクエスト受付とレスポンス整形のみを行い、データアクセスは`repositories/master_repo.py`へ委譲。**「名前だけ」の単純マスタ(スプール種別・内径種別・機器・バリ揃え・コイル止め)は宣言表`SIMPLE_MASTERS`から4本(一覧/登録/編集/削除)を生成する**（写経すると片方だけ直って食い違うため。オペレータ・設備・アクセス権限は個別の処理を持つので畳んでいない。docs/REFACTORING_PLAN.md フェーズC） |
 | `backend/routes/path_config.py` | パス設定マスタとパス参照ダイアログのBlueprint（`masters.py`から分離）。データアクセスは例外的に`db_access.py`（起動時に接続先を確定させる都合、`master_repo.py`はdb_accessに依存する側のため） |
 | `backend/routes/rne.py` | RNE抽出の状態表示と手動実行のBlueprint（`masters.py`から分離）。手動実行は「読み直すだけのPOST」として`access_mode._READ_ONLY_POST_ENDPOINTS`に`rne.rne_extract_run`で登録 |
 | `backend/routes/logs.py` | ログ・診断のBlueprint（`/api/logs*`）。末尾読み・**日時で始まらない行を直前の件へ畳む解析**・2系統(`launcher.log`/`app.log`)の時間軸統合・件単位の削除・区切り(rotate)・保存。書き換えはロガーのハンドラを掴んでから行う（`_with_handlers`）。消す・区切るは`access_mode._WRITE_ALLOWED_MODES`に`'logs':{'edit'}`でeditへ限定 |
