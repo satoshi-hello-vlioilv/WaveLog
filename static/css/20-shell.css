@@ -214,7 +214,15 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
     よく使う操作は設定画面を開かずに表の上で完結させる。取っ手は普段は
     目立たせず、その列に触れたときだけ出す(常時見えていると、値より先に
     罫線が目に入る)。 */
- #grid th.sortable-col{position:relative}
+ /* **`position:relative`を書かないこと(§9.104)。** ここは`#grid th`より
+    詳細度が高いので、書くと`#grid th{position:sticky;top:0}`(30-measure.css)
+    を打ち消し、**この`.sortable-col`が付いた列＝データ列の見出しだけが
+    固定されなくなる**。先頭の`#`・`分割`には付かないので、そちらは残る
+    ——「スクロールすると項目名だけ流れて消える／左端の何列かは残る」と
+    いう見え方になり、実機でそう報告された。
+    取っ手(`.col-resize`)の`position:absolute`の基準は`sticky`が兼ねる
+    (sticky も位置指定済みの要素なので、絶対配置の包含ブロックになる)。
+    わざわざ`relative`にする必要はない。 */
  #grid th.sortable-col .col-resize{
   position:absolute;top:0;right:calc(var(--space-1) * -1);width:calc(var(--space-2) + 2px);height:100%;
   cursor:col-resize;opacity:0;transition:opacity .12s ease;

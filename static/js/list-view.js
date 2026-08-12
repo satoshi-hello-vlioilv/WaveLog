@@ -823,6 +823,72 @@ function gridMetrics(){
  const px=parseFloat(cs&&cs.getPropertyValue('--row-pad-x'))||6;
  return {fs,padX:px};
 }
+/* ---------- 列の窓(§9.104) ----------
+   実データの仕掛一覧は**214列**あるが、1600pxの画面に入るのは**16列**。
+   残り200列ぶんのセルは、見えないのに毎回組み立てられ、毎回並べ直されて
+   いた。実測(214列・50行を1回組み直す):
+
+     作る  44ms + 並べる 918ms = 962ms   全列そのまま(いままで)
+     作る  91ms + 並べる 410ms = 501ms   全部作って display:none で隠す
+     作る   1ms + 並べる  22ms =  23ms   **16列だけ作る(この窓)**
+
+   **隠すだけでは足りない**(作ってしまうとレイアウトから外れない)ので、
+   窓の外は**作らない**。行の窓(§9.95)と同じ考えを横方向にも当てる。
+
+   **見出し(thead)とcolgroupは全列のまま置く。** 1行ぶんなので安く、
+   列の並べ替え・幅の調整・並び替えの当たり判定と、列を数えている既存の
+   作りをそのまま残せる。畳むのは本文の行だけで、窓の外は`colspan`を
+   持たせた空セル2つにまとめる(`table-layout:fixed`なので、k列ぶんを
+   colspanで束ねた幅は元のk列の合計と1pxもずれない)。 */
+const COL_WINDOW_OVERSCAN=6;
+/* 窓を出すのは**器に収まらないほど広いとき**だけ。全部見えているなら
+   畳む先が無く、横スクロールのたびに組み直す手間だけが増える。 */
+function makeColumnWindow({grid,columns,widthOf,leadWidth}){
+ const edge=[0];
+ columns.forEach(c=>edge.push(edge[edge.length-1]+(widthOf(c)||0)));
+ const total=edge[edge.length-1];
+ const all={from:0,to:columns.length};
+ /* 器の幅が取れないとき(まだ画面に出ていない・隠れている)は**畳まない**。
+    幅0を「何も入らない」と読むと、見えるようになった瞬間に空の表になる。 */
+ const on=()=>!!grid&&grid.clientWidth>0&&total>grid.clientWidth+COL_W_MAX;
+ let win=all;
+ const compute=()=>{
+  if(!on())return all;
+  const l=Math.max(0,(grid.scrollLeft||0)-leadWidth), r=l+grid.clientWidth;
+  let from=0;while(from<columns.length&&edge[from+1]<=l)from++;
+  let to=from;while(to<columns.length&&edge[to]<r)to++;
+  return {from:Math.max(0,from-COL_WINDOW_OVERSCAN),
+          to:Math.min(columns.length,to+COL_WINDOW_OVERSCAN)};
+ };
+ return {
+  get:()=>win,
+  enabled:on,
+  reset(){win=compute();return win},
+  /* 窓が動いたか。**余分(overscan)の中に収まっているうちは動かさない**
+     ——1列ぶんスクロールするたびに組み直すと、それ自体が重い。 */
+  moved(){
+   if(!on())return false;
+   const next=compute();
+   if(next.from===win.from&&next.to===win.to)return false;
+   win=next;return true;
+  },
+ };
+}
+/* 横スクロールで窓が動いたら本文だけ作り直す。世代が変われば降りる
+   (前の一覧のスクロールで作り直さない。行の窓と同じ約束)。 */
+function setupColumnWindow({gen,grid,colWin,redraw}){
+ if(!grid||!colWin.enabled())return;
+ let queued=false;
+ const onScroll=()=>{
+  if(queued)return;queued=true;
+  requestAnimationFrame(()=>{
+   queued=false;
+   if(gen!==gridGeneration){grid.removeEventListener('scroll',onScroll);return}
+   if(colWin.moved())redraw();
+  });
+ };
+ grid.addEventListener('scroll',onScroll);
+}
 // Add an explicit virtual action column instead of writing into the last data column.
 function renderGrid(){
  /* **描画にかかった時間はここで測る。** filters.js が load() を丸ごと
@@ -897,11 +963,11 @@ function renderGridInner(){
  /* 幅はcolgroupで与える。thへ直接書くと、セル側の内容で押し広げられる。
     `table-layout:fixed`にしたので**全列に必ず幅を入れる**(§9.94)。
     入れ忘れた列は等分に割られ、見出しも値も潰れる。 */
+ const lead=[];                                   // 選択/予定 + # + 分割
+ if(canPlan)lead.push(30,74);
+ lead.push(Math.round(3*0.55*metrics.fs+metrics.padX*2+2));    // 行番号(3桁ぶん)
+ if(isWork)lead.push(150);                        // 分割の印(「分割あり(9ロット/40条)・異幅」)
  if(visibleColumns.length){
-  const lead=[];                                  // 選択/予定 + # + 分割
-  if(canPlan)lead.push(30,74);
-  lead.push(Math.round(3*0.55*metrics.fs+metrics.padX*2+2));   // 行番号(3桁ぶん)
-  if(isWork)lead.push(150);                       // 分割の印(「分割あり(9ロット/40条)・異幅」)
   const cg=document.createElement('colgroup');
   lead.forEach(w=>{const col=document.createElement('col');col.style.width=w+'px';cg.appendChild(col)});
   visibleColumns.forEach(c=>{
@@ -910,6 +976,10 @@ function renderGridInner(){
   if(isWork){const col=document.createElement('col');col.style.width='86px';cg.appendChild(col)}
   t.insertBefore(cg,t.firstChild);
  }
+ /* 本文の行は**窓の中の列だけ**組み立てる(§9.104)。見出しは全列のまま。 */
+ const colWin=makeColumnWindow({grid:$('#grid'),columns:visibleColumns,
+   widthOf:c=>colW.get(c),leadWidth:lead.reduce((a,b)=>a+b,0)});
+ colWin.reset();
  bindColumnHeaderTools(t,layoutTarget,visibleColumns,allowed);
  /* クリック=この列だけで並べ替え / Shift+クリック=キーを追加(§9.88 段5)。
     既定を置き換えにしてあるのは、日々の操作のほとんどが「この列で並べたい」
@@ -950,8 +1020,14 @@ function renderGridInner(){
     if(typeof window.isChildCardClassifiedRow==='function'&&window.isChildCardClassifiedRow(r))parentCheckTargets.push({tr,row:r});
    }
   }
-  tr.innerHTML=(canPlan?`<td class="plan-select-cell"><input type="checkbox" class="plan-select-checkbox"></td><td class="plan-action-cell"><button type="button" class="plan-action-button" title="この行の設備の作業スケジュールへ追加します">+ 予定</button></td>`:'')+`<td>${(S.page-1)*effectivePageSize()+i+1}</td>`+splitCell+visibleColumns.map(c=>{
-   if(c===lotCol){const lotVal=r[c];return `<td class="lot-cell"><button type="button" class="lot-dsp-link grid-lot-link" title="クリックでLotDspをこのロット番号で開きます">${esc(lotVal)||'—'}</button></td>`}
+  /* 窓の外は`colspan`でまとめた空セルにする(§9.104)。**幅は1pxもずれない**
+     ——`table-layout:fixed`ではcolspanで束ねた幅がcolgroupの合計になる。 */
+  const {from,to}=colWin.get();
+  const gap=n=>n>0?`<td class="grid-col-spacer" colspan="${n}"></td>`:'';
+  let cells='';
+  for(let ci=from;ci<to;ci++){
+   const c=visibleColumns[ci];
+   if(c===lotCol){const lotVal=r[c];cells+=`<td class="lot-cell" data-col="${esc(c)}"><button type="button" class="lot-dsp-link grid-lot-link" title="クリックでLotDspをこのロット番号で開きます">${esc(lotVal)||'—'}</button></td>`;continue}
    /* 読み替え(段4)→書式(段3)の順で通してから出す。どちらも失敗したら
       生の値が出るので、指定を間違えても値が消えることはない。 */
    const out=WL.cellFormat.cell({raw:r[c],format:colFmt.get(c),rule:colRule.get(c),row:r,column:c});
@@ -962,8 +1038,11 @@ function renderGridInner(){
       黙って消えるのは、狭い列より悪い。 */
    const clipped=textWidthEm(out.text)>colEm.get(c);
    const tip=(out.text!==raw||clipped)?` title="${esc(raw)}"`:'';
-   return `<td${cls?` class="${cls}"`:''}${tip}>${esc(out.text)}</td>`;
-  }).join('')+(isWork?'<td class="measurement-action-cell"><button type="button" class="measurement-action-button">開く</button></td>':'');
+   cells+=`<td data-col="${esc(c)}"${cls?` class="${cls}"`:''}${tip}>${esc(out.text)}</td>`;
+  }
+  tr.innerHTML=(canPlan?`<td class="plan-select-cell"><input type="checkbox" class="plan-select-checkbox"></td><td class="plan-action-cell"><button type="button" class="plan-action-button" title="この行の設備の作業スケジュールへ追加します">+ 予定</button></td>`:'')+`<td>${(S.page-1)*effectivePageSize()+i+1}</td>`+splitCell
+   +gap(from)+cells+gap(visibleColumns.length-to)
+   +(isWork?'<td class="measurement-action-cell"><button type="button" class="measurement-action-button">開く</button></td>':'');
   if(r===S.selectedRow)tr.classList.add('is-selected');
   if(canPlan&&S.selectedRows.has(r))tr.classList.add('is-plan-selected');
   tr.addEventListener('click',()=>{
@@ -1080,12 +1159,22 @@ function renderGridInner(){
    });
   });
  };
- if(virtual){setupVirtualRows({gen,grid:$('#grid'),tbody:b,rows:visibleRows,
-   colCount,overscan:VIRTUAL_OVERSCAN,buildRow,
-   reset:()=>{splitCheckTargets.length=0;parentCheckTargets.length=0},
-   afterRows});
+ const clearTargets=()=>{splitCheckTargets.length=0;parentCheckTargets.length=0};
+ if(virtual){
+  const rows=setupVirtualRows({gen,grid:$('#grid'),tbody:b,rows:visibleRows,
+   colCount,overscan:VIRTUAL_OVERSCAN,buildRow,reset:clearTargets,afterRows});
+  // 横に動いたら、いま出ている行だけを組み直す(行の窓に組み直しを頼む)。
+  setupColumnWindow({gen,grid:$('#grid'),colWin,redraw:rows.redraw});
   return}
- if(!chunked){afterRows();return}
+ /* 行の窓が要らない表(しきい値以下)でも、列の窓は効かせる。横に動いたら
+    その場で全行を作り直す——窓の中は十数列なので、500行でも1万セル級。 */
+ const redrawAll=()=>{
+  if(gen!==gridGeneration)return;
+  clearTargets();b.replaceChildren();
+  for(let i=0;i<visibleRows.length;i++)buildRow(visibleRows[i],i);
+  afterRows();
+ };
+ if(!chunked){afterRows();setupColumnWindow({gen,grid:$('#grid'),colWin,redraw:redrawAll});return}
  const t0=performance.now();
  let at=first,cells=FIRST_CELLS*2;
  const more=()=>{
@@ -1098,6 +1187,8 @@ function renderGridInner(){
   noteRenderTime((lastLoadBreakdown?.render||0)+(performance.now()-t0));
   renderLoadChip();
   afterRows();
+  // 継ぎ足しが終わってから聞き始める(途中で作り直すと`at`が食い違う)。
+  setupColumnWindow({gen,grid:$('#grid'),colWin,redraw:redrawAll});
  };
  requestAnimationFrame(more);
 }
@@ -1296,6 +1387,9 @@ function setupVirtualRows({gen,grid,tbody,rows,colCount,overscan,buildRow,reset,
  draw();
  applyPendingScroll();
  draw();                       // 戻した位置に合わせてもう一度窓を合わせる
+ /* 列の窓(§9.104)が動いたときは、行の位置が同じでも組み直す必要がある
+    ——`start`を無効にしてから描き直す。 */
+ return {redraw(){start=-1;draw()}};
 }
 function runLimited(items,limit,worker){
  let idx=0;

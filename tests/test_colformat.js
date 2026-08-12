@@ -85,13 +85,24 @@ const clear=()=>target?post('/api/column-layout-master',{target,order:[],widths:
   const cols=await page.evaluate(()=>[...document.querySelectorAll('#grid th[data-sort-col]')].map(t=>t.dataset.sortCol));
   const textCol=cols.find(c=>c==='製造材質')||cols[1];
   const numCol=cols.find(c=>c==='オーダー番号')||cols[2];
-  const cellOf=col=>page.evaluate(c=>{
-   const i=[...document.querySelectorAll('#grid th[data-sort-col]')].findIndex(t=>t.dataset.sortCol===c);
-   const th=document.querySelectorAll('#grid thead th');
-   const lead=[...th].findIndex(t=>t.dataset.sortCol)-0;
-   const tr=document.querySelector('#grid tbody tr');
-   return tr?tr.children[lead+i].textContent.trim():'';
-  },col);
+  /* 列は`data-col`で引く(§9.104)。**位置で数えないこと**——本文は
+     「列の窓」の中しか作らないので、先頭からの位置とデータ列の位置は
+     一致しない(窓の外は colspan の空セル1つに畳まれている)。
+     窓の外にある列は、見出しを画面へ入れてから読む。 */
+  const cellIn=async(col,pick)=>{
+   await page.evaluate(c=>{
+    document.querySelector(`#grid th[data-sort-col="${CSS.escape(c)}"]`)
+      ?.scrollIntoView({block:'nearest',inline:'nearest'});
+   },col);
+   await page.waitForFunction(c=>!!document.querySelector(
+     `#grid tbody tr td[data-col="${CSS.escape(c)}"]`),col,{timeout:10000});
+   return page.evaluate(([c,what])=>{
+    const td=document.querySelector(`#grid tbody tr td[data-col="${CSS.escape(c)}"]`);
+    return what==='align'?getComputedStyle(td).textAlign
+         : what==='title'?td.title : td.textContent.trim();
+   },[col,pick]);
+  };
+  const cellOf=col=>cellIn(col,'text');
   const rawOf=col=>page.evaluate(c=>String(S.rows[0][c]??''),col);
 
   const rawText=await rawOf(textCol),rawNum=await rawOf(numCol);
@@ -109,22 +120,16 @@ const clear=()=>target?post('/api/column-layout-master',{target,order:[],widths:
    `${rawNum} -> ${await cellOf(numCol)}`);
   /* 数値の書式を当てた列は列ごと右づめ(桁を縦に揃えて読むため)。値ごとに
      決めると、数値として読めない値が1つ混ざった列で揃い方が乱れる。 */
-  const align=col=>page.evaluate(c=>{
-   const i=[...document.querySelectorAll('#grid th[data-sort-col]')].findIndex(t=>t.dataset.sortCol===c);
-   const lead=[...document.querySelectorAll('#grid thead th')].findIndex(t=>t.dataset.sortCol);
-   const td=document.querySelector('#grid tbody tr').children[lead+i];
-   return {th:getComputedStyle(document.querySelectorAll('#grid th[data-sort-col]')[i]).textAlign,
-           td:getComputedStyle(td).textAlign};
-  },col);
+  const align=async col=>({
+   th:await page.evaluate(c=>getComputedStyle(
+     document.querySelector(`#grid th[data-sort-col="${CSS.escape(c)}"]`)).textAlign,col),
+   td:await cellIn(col,'align'),
+  });
   const alignNum=await align(numCol),alignText=await align(textCol);
   rec('数値の列は見出しもセルも右づめ',alignNum.th==='right'&&alignNum.td==='right',JSON.stringify(alignNum));
   rec('数値以外の列は右づめにしない',alignText.td!=='right',JSON.stringify(alignText));
   rec('整形した値はツールチップで元の値が分かる',
-   await page.evaluate(c=>{
-    const i=[...document.querySelectorAll('#grid th[data-sort-col]')].findIndex(t=>t.dataset.sortCol===c);
-    const lead=[...document.querySelectorAll('#grid thead th')].findIndex(t=>t.dataset.sortCol);
-    return document.querySelector('#grid tbody tr').children[lead+i].title;
-   },textCol)===rawText);
+   await cellIn(textCol,'title')===rawText);
 
   /* ---- 4) 開き直しても残る / 他の設定を巻き添えにしない ---- */
   await page.reload({waitUntil:'load'});
