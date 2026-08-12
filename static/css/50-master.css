@@ -52,6 +52,18 @@
    更新者IDの入力で、これはヘッダーの操作列(#headerViewBar)へ移る。パネル内に
    置かれたまま(移設前の一瞬)でも崩れないよう素の行として組む。 */
 .mm-head{display:flex;align-items:center;gap:var(--space-3);padding:0}
+/* 絞り込み・再読込はヘッダーの操作列へ相乗りする(§9.100)。更新者IDは左、
+   操作は右寄せ。**高さは--ctl-h-sm・文字は--fs-sm**に揃える——操作列に
+   並ぶものは全画面で30px/1種類、というのが tests/test_theme.js の約束。 */
+.mm-head .mm-search{margin-left:auto}
+/* **ヘッダーの操作列へ移すと左右の余白が上書きされる**。85-headerbar.css の
+   `.hd-viewbar select,.hd-viewbar input{padding:0 var(--ctl-pad-x-xs)}` が
+   後から効くため、`.mm-search input` が持っていた「アイコンぶんの左余白
+   30px」が消え、虫めがねが文字に重なった(移してから実測で気づいた)。
+   アイコンの幅ぶんを開ける指定をここで取り戻す。 */
+.mm-head .mm-search input{height:var(--ctl-h-sm);font-size:var(--fs-sm);
+ padding:0 var(--ctl-pad-x-sm) 0 calc(var(--ctl-pad-x-sm) + 1.5em)}
+.mm-head .mm-btn-ghost{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);border-radius:var(--radius-sm);font-size:var(--fs-sm)}
 .mm-head-user{display:flex;align-items:center;gap:var(--space-2);color:var(--muted);font-weight:700;font-size:var(--fs-sm);white-space:nowrap}
 .mm-head-user input{height:var(--ctl-h-sm);min-width:calc(180px * var(--ui-scale));padding:0 var(--ctl-pad-x-sm);border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;color:var(--ink);font-weight:700}
 .mm-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(150px,calc(200px * var(--ui-scale))) minmax(0,1fr)}
@@ -67,11 +79,11 @@
 .mm-nav button.active .mm-nav-ico{background:#ffffff30;color:#fff}
 .mm-nav-label{font-size:var(--fs)}
 .mm-main{min-width:0;display:flex;flex-direction:column;min-height:0}
-.mm-toolbar{display:flex;align-items:center;gap:var(--space-3);padding:var(--pad-dialog);background:#fff;border-bottom:1px solid var(--line)}
+/* 操作が抜けて見出しだけになったので、行の高さは文字ぶんで足りる。 */
+.mm-toolbar{display:flex;align-items:center;gap:var(--space-3);padding:var(--pad-card);background:#fff;border-bottom:1px solid var(--line)}
 .mm-toolbar-left{display:flex;align-items:baseline;gap:var(--gap-section);min-width:0}
 .mm-toolbar-left b{font-size:var(--fs-title);color:#173842;white-space:nowrap}
 .mm-count{color:#607981;font-size:var(--fs-sm);font-weight:700;white-space:nowrap}
-.mm-toolbar-right{margin-left:auto;display:flex;align-items:center;gap:var(--gap-section)}
 .mm-search{position:relative;display:flex;align-items:center}
 .mm-search-icon{position:absolute;left:10px;font-size:var(--fs-base-sm);opacity:.6;pointer-events:none}
 .mm-search input{height:var(--ctl-h);width:300px;max-width:40vw;padding:6px 12px 6px 30px;border:1px solid var(--line);border-radius:var(--radius-pill);background:#f7fafb}
