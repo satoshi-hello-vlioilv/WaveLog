@@ -336,9 +336,13 @@ function bindColumnHeaderTools(table,target,visibleColumns,allColumns){
   const col=th.dataset.sortCol;
   grip.addEventListener('mousedown',e=>{
    e.preventDefault();e.stopPropagation();     // 並び替え・ドラッグへ渡さない
+   /* colgroupは**1本の並び(§9.106)と1対1**になったので、見出しの位置を
+      そのまま使える。以前は「先頭の何列ぶんか」を数え直しており、
+      番号・ボタンの出し入れで基準がずれる作りだった。 */
    const cg=table.querySelector('colgroup');
-   const lead=cg?cg.children.length-visibleColumns.length-((table.querySelector('.measurement-action-head'))?1:0):0;
-   const target2=cg?cg.children[lead+visibleColumns.indexOf(col)]:null;
+   const heads2=[...table.querySelectorAll('thead th')];
+   const at=heads2.indexOf(th);
+   const target2=(cg&&at>=0)?cg.children[at]:null;
    const startX=e.clientX,startW=th.getBoundingClientRect().width;
    const move=ev=>{
     const w=Math.max(40,Math.min(900,Math.round(startW+(ev.clientX-startX))));
@@ -809,9 +813,18 @@ function textWidthEm(s){
  }
  return w;
 }
+/* **いちばん長い1件に合わせない**(§9.106)。最大値で決めると、たまたま
+   長い値が1件あるだけで列が画面の1/4を占め、他の列が押し出される
+   (「不要な余白が広い」と報告された状態)。上位1割を外した長さに合わせ、
+   はみ出す少数は省略記号＋`title`で読ませる(§9.94の約束どおり)。
+   **見出しは必ず入る幅にする**——見出しが読めない表は列を選べない。 */
 function estimateColumnWidth(label,values,fs,padX){
- let em=textWidthEm(label);
- for(const v of values){const w=textWidthEm(v);if(w>em)em=w}
+ const lens=[];
+ for(const v of values){const w=textWidthEm(v);if(w>0)lens.push(w)}
+ lens.sort((a,b)=>a-b);
+ // 90パーセンタイル(件数が少ないときは最大値のまま)
+ const p90=lens.length?lens[Math.min(lens.length-1,Math.floor(lens.length*0.9))]:0;
+ const em=Math.max(textWidthEm(label),p90);
  return Math.round(Math.min(COL_W_MAX,Math.max(COL_W_MIN,em*fs+padX*2+2)));
 }
 /* 表の文字サイズと左右余白は表示サイズ(--ui-scale)で変わるので、
@@ -889,6 +902,38 @@ function setupColumnWindow({gen,grid,colWin,redraw}){
  };
  grid.addEventListener('scroll',onScroll);
 }
+/* ---------- 一覧の列の並び(§9.106) ----------
+   番号・ボタンの列も**データ列と同じ1本の並び**に載せる。列の設定パネルと
+   一覧が同じ並びを見るための**唯一の出どころ**で、片方だけに列を足すと
+   「設定画面では動かせるのに一覧は変わらない」が生まれる(実際に生まれた)。
+   `__select__`(選択)と`__plan__`(＋予定)は**別の列**として持つ——1つに
+   まとめると、colgroupと本文のセル数が合わなくなる。 */
+const VIRTUAL_COLUMNS={
+ '__select__':{label:'選択',width:30},
+ '__plan__':{label:'予定',width:74},
+ '#':{label:'#',width:0},                 // 幅は文字サイズから作る(下記)
+ '__split__':{label:'分割',width:150},
+ '__measure__':{label:'測定',width:86},
+};
+const isVirtualColumn=k=>Object.prototype.hasOwnProperty.call(VIRTUAL_COLUMNS,k);
+const virtualColumnWidth=(k,metrics)=>
+  k==='#'?Math.round(3*0.55*metrics.fs+metrics.padX*2+2)   // 行番号(3桁ぶん)
+         :(VIRTUAL_COLUMNS[k]||{}).width||80;
+/* 今の画面で出しうる列を既定の並びで返す。`cols`を省くと`S.columns`。 */
+function listColumnKeys(cols){
+ const isWork=WL.dataSource.isWork(S.db);
+ const canPlan=isWork&&window.accessMode?.mode==='schedule';
+ const out=[];
+ if(canPlan)out.push('__select__','__plan__');
+ out.push('#');
+ if(isWork)out.push('__split__');
+ out.push(...(cols||S.columns||[]));
+ if(isWork)out.push('__measure__');
+ return out;
+}
+WL.listColumnKeys=listColumnKeys;
+WL.isVirtualColumn=isVirtualColumn;
+WL.virtualColumnLabel=k=>(VIRTUAL_COLUMNS[k]||{}).label||k;
 // Add an explicit virtual action column instead of writing into the last data column.
 function renderGrid(){
  /* **描画にかかった時間はここで測る。** filters.js が load() を丸ごと
@@ -924,29 +969,43 @@ function renderGridInner(){
  // 利用者が決めた並び・非表示を重ねる(§9.88)。記録に無い列は末尾へ回るので、
  // データ側の項目が増えても設定は壊れない。
  const layoutTarget=listLayoutTarget();
- const visibleColumns=WL.columnLayout.apply(layoutTarget,allowed);
- // 予定追加ボタン(+予定)は多数の列を横に比較しながら選ぶ運用(§9.5)のため
- // 毎回右端までスクロールさせないよう、選択チェックボックスと並べて最左列へ
- // 置く(§9.15改訂。以前は最右列だった)。
+ /* ---------- 並びは1本(§9.106) ----------
+    番号・ボタンの列(`#`/`分割`/`測定`/`予定`/選択)も**データ列と同じ1本の
+    並び**に載せる。以前はデータ列だけを`apply()`で並べ替え、番号・ボタンは
+    `renderGridInner()`が決まった位置へ無条件に描いていたため、
+    **列の設定パネルで動かした並びと実際の並びが食い違い**、チェックを
+    外しても消えなかった(実機で報告された)。設定画面と一覧が同じ並びを
+    見るために、出どころは`listColumnKeys()`ただ1つにする。 */
+ const ordered=WL.columnLayout.apply(layoutTarget,listColumnKeys(allowed));
+ const dataCols=ordered.filter(k=>!isVirtualColumn(k));
+ const visibleColumns=dataCols;         // 以降の互換(件数・書式の対象はデータ列)
  /* 書式(§9.88 段3)は列ごとに1度だけ引いて、セルの描画で使い回す。
     数値の書式を当てた列は**列ごと**右づめにする(桁を縦に揃えて読むため)。
     値ごとに決めると、数値として読めない値が1つ混ざった列で揃い方が乱れる。 */
- const colFmt=new Map(visibleColumns.map(c=>[c,WL.columnLayout.format(layoutTarget,c)]));
- const colRule=new Map(visibleColumns.map(c=>[c,WL.columnLayout.rule(layoutTarget,c)]));
+ const colFmt=new Map(dataCols.map(c=>[c,WL.columnLayout.format(layoutTarget,c)]));
+ const colRule=new Map(dataCols.map(c=>[c,WL.columnLayout.rule(layoutTarget,c)]));
  const numCol=c=>colFmt.get(c)?.kind==='number';
  /* 列幅は**セルを描く前に決める**(§9.94)。colgroupへ入れるだけでなく、
     「その幅に入り切らない値へtitleを付ける」判断にも使うため。 */
  const metrics=gridMetrics();
  const widthSample=visibleRows.slice(0,COL_W_SAMPLE);
- const colW=new Map(visibleColumns.map(c=>[c,
-   WL.columnLayout.width(layoutTarget,c)
-   ||estimateColumnWidth(WL.columnLayout.label(layoutTarget,c),
-                         widthSample.map(r=>r[c]),metrics.fs,metrics.padX)]));
+ const colW=new Map(ordered.map(k=>[k,
+   WL.columnLayout.width(layoutTarget,k)
+   ||(isVirtualColumn(k)?virtualColumnWidth(k,metrics)
+      :estimateColumnWidth(WL.columnLayout.label(layoutTarget,k),
+                           widthSample.map(r=>r[k]),metrics.fs,metrics.padX))]));
  // その列に何文字ぶん入るか(em)。これを超える値は省略記号になる。
- const colEm=new Map(visibleColumns.map(c=>[c,(colW.get(c)-metrics.padX*2-2)/metrics.fs]));
- const t=document.createElement('table');
- t.innerHTML='<thead><tr>'+(canPlan?'<th class="plan-select-head"><input type="checkbox" id="planSelectAll" title="このページの全行を選択/解除"></th><th class="plan-action-head">予定</th>':'')+'<th>#</th>'+(isWork?'<th class="split-flag-head" title="親子管理_子カード／コンマ5本分割_切断巾に実データがある場合「分割あり」と表示します">分割</th>':'')+visibleColumns.map(c=>{
-  const filtered=filteredCols.has(c);
+ const colEm=new Map(dataCols.map(c=>[c,(colW.get(c)-metrics.padX*2-2)/metrics.fs]));
+  const t=document.createElement('table');
+ /* 見出し。**1本の並び(ordered)をそのまま辿る**ので、番号・ボタンの列が
+    データ列の間に入っていてもそのとおりに出る(§9.106)。 */
+ const headOf=k=>{
+  if(k==='__select__')return '<th class="plan-select-head"><input type="checkbox" id="planSelectAll" title="このページの全行を選択/解除"></th>';
+  if(k==='__plan__')return '<th class="plan-action-head">予定</th>';
+  if(k==='#')return '<th class="grid-no-head">#</th>';
+  if(k==='__split__')return '<th class="split-flag-head" title="親子管理_子カード／コンマ5本分割_切断巾に実データがある場合「分割あり」と表示します">分割</th>';
+  if(k==='__measure__')return '<th class="measurement-action-head">測定</th>';
+  const c=k,filtered=filteredCols.has(c);
   /* 並び順の合図。**2つ以上のキーがあるときは順番も出す**——「何で並んで
      いるか」は分かっても「どちらが先か」が分からないと結果を読めない。 */
   const dir=WL.listSort.dirOf(c),rank=WL.listSort.rankOf(c),multi=WL.listSort.keys().length>1;
@@ -959,26 +1018,23 @@ function renderGridInner(){
      右端の取っ手を引くと列幅。**取っ手はクリックを飲み込む**(引くつもりが
      並び替わると操作を取り消せない)。 */
   return `<th class="sortable-col ${numCol(c)?'col-num':''} ${filtered?'col-filtered':''} ${sorted?'col-sorted':''}" data-sort-col="${esc(c)}" draggable="true" tabindex="0" role="button" aria-label="${esc(WL.columnLayout.label(layoutTarget,c))}列で並び替え" title="${esc(c)}｜クリックで並び替え／ドラッグで列の入れ替え${filtered?'（絞り込み中の列です）':''}">${esc(WL.columnLayout.label(layoutTarget,c))}${arrow}${filtered?'<i class="col-filter-badge" aria-hidden="true" title="この列にフィルタが適用されています">▼</i>':''}<i class="col-resize" title="ドラッグで列幅を調整（ダブルクリックで既定へ）" aria-hidden="true"></i></th>`;
- }).join('')+(isWork?'<th class="measurement-action-head">測定</th>':'')+'</tr></thead>';
+ };
+ t.innerHTML='<thead><tr>'+ordered.map(headOf).join('')+'</tr></thead>';
  /* 幅はcolgroupで与える。thへ直接書くと、セル側の内容で押し広げられる。
     `table-layout:fixed`にしたので**全列に必ず幅を入れる**(§9.94)。
     入れ忘れた列は等分に割られ、見出しも値も潰れる。 */
- const lead=[];                                   // 選択/予定 + # + 分割
- if(canPlan)lead.push(30,74);
- lead.push(Math.round(3*0.55*metrics.fs+metrics.padX*2+2));    // 行番号(3桁ぶん)
- if(isWork)lead.push(150);                        // 分割の印(「分割あり(9ロット/40条)・異幅」)
- if(visibleColumns.length){
+ if(ordered.length){
   const cg=document.createElement('colgroup');
-  lead.forEach(w=>{const col=document.createElement('col');col.style.width=w+'px';cg.appendChild(col)});
-  visibleColumns.forEach(c=>{
-   const col=document.createElement('col');col.style.width=colW.get(c)+'px';cg.appendChild(col);
+  ordered.forEach(k=>{
+   const col=document.createElement('col');col.style.width=colW.get(k)+'px';cg.appendChild(col);
   });
-  if(isWork){const col=document.createElement('col');col.style.width='86px';cg.appendChild(col)}
   t.insertBefore(cg,t.firstChild);
  }
- /* 本文の行は**窓の中の列だけ**組み立てる(§9.104)。見出しは全列のまま。 */
- const colWin=makeColumnWindow({grid:$('#grid'),columns:visibleColumns,
-   widthOf:c=>colW.get(c),leadWidth:lead.reduce((a,b)=>a+b,0)});
+ /* 本文の行は**窓の中の列だけ**組み立てる(§9.104)。見出しは全列のまま。
+    窓は**1本の並び全体**に掛ける(番号・ボタンも並びの一部なので、
+    左端に固定されているとは限らない)。 */
+ const colWin=makeColumnWindow({grid:$('#grid'),columns:ordered,
+   widthOf:k=>colW.get(k),leadWidth:0});
  colWin.reset();
  bindColumnHeaderTools(t,layoutTarget,visibleColumns,allowed);
  /* クリック=この列だけで並べ替え / Shift+クリック=キーを追加(§9.88 段5)。
@@ -1001,10 +1057,11 @@ function renderGridInner(){
  // 3の行は分割済みの子ロット自身であるため、親ロットを逆引き検索して
  // 気づけるようにする対象を集める(下のcheckParentLookupRows参照)。
  const parentCheckTargets=[];
- const buildRow=(r,i)=>{
+  const buildRow=(r,i)=>{
   const tr=document.createElement('tr');
-  let splitCell='';
-  if(isWork){
+  /* 分割の印。**セルを作らないときも判定は要らない**ので、窓の中に
+     入っているときだけ組み立てる(追い判定の対象もそのときだけ集める)。 */
+  const splitCellHtml=()=>{
    const info=typeof window.analyzeRowSplit==='function'?window.analyzeRowSplit(r):{hasSplit:false};
    if(info.hasSplit){
     const patternShort=info.widthPattern==='same'?'同幅':info.widthPattern==='different'?'異幅':'';
@@ -1013,20 +1070,25 @@ function renderGridInner(){
        「分割あり(6)」のように表示していた)。セルは狭いので「ロット/条」
        の並びで短く、詳しくはツールチップで言い分ける。 */
     const strips=Number.isFinite(info.stripCount)?info.stripCount:info.lotCount;
-    splitCell=`<td class="split-flag-cell split-yes" title="推定 ${info.lotCount}ロット / ${strips}条・${patternFull}（実際の子ロット数・条数・幅は測定画面で確定します）">分割あり(${info.lotCount}ロット/${strips}条)${patternShort?'・'+patternShort:''}</td>`;
     splitCheckTargets.push({tr,row:r});
-   }else{
-    splitCell='<td class="split-flag-cell split-no">分割なし</td>';
-    if(typeof window.isChildCardClassifiedRow==='function'&&window.isChildCardClassifiedRow(r))parentCheckTargets.push({tr,row:r});
+    return `<td class="split-flag-cell split-yes" title="推定 ${info.lotCount}ロット / ${strips}条・${patternFull}（実際の子ロット数・条数・幅は測定画面で確定します）">分割あり(${info.lotCount}ロット/${strips}条)${patternShort?'・'+patternShort:''}</td>`;
    }
-  }
-  /* 窓の外は`colspan`でまとめた空セルにする(§9.104)。**幅は1pxもずれない**
-     ——`table-layout:fixed`ではcolspanで束ねた幅がcolgroupの合計になる。 */
+   if(typeof window.isChildCardClassifiedRow==='function'&&window.isChildCardClassifiedRow(r))parentCheckTargets.push({tr,row:r});
+   return '<td class="split-flag-cell split-no">分割なし</td>';
+  };
+  /* 1本の並びを辿ってセルを作る(§9.106)。窓の外は`colspan`でまとめた
+     空セルにする(§9.104)——**幅は1pxもずれない**(`table-layout:fixed`では
+     colspanで束ねた幅がcolgroupの合計になる)。 */
   const {from,to}=colWin.get();
   const gap=n=>n>0?`<td class="grid-col-spacer" colspan="${n}"></td>`:'';
   let cells='';
   for(let ci=from;ci<to;ci++){
-   const c=visibleColumns[ci];
+   const c=ordered[ci];
+   if(c==='__select__'){cells+='<td class="plan-select-cell"><input type="checkbox" class="plan-select-checkbox"></td>';continue}
+   if(c==='__plan__'){cells+='<td class="plan-action-cell"><button type="button" class="plan-action-button" title="この行の設備の作業スケジュールへ追加します">+ 予定</button></td>';continue}
+   if(c==='#'){cells+=`<td class="grid-no-cell">${(S.page-1)*effectivePageSize()+i+1}</td>`;continue}
+   if(c==='__split__'){cells+=splitCellHtml();continue}
+   if(c==='__measure__'){cells+='<td class="measurement-action-cell"><button type="button" class="measurement-action-button">開く</button></td>';continue}
    if(c===lotCol){const lotVal=r[c];cells+=`<td class="lot-cell" data-col="${esc(c)}"><button type="button" class="lot-dsp-link grid-lot-link" title="クリックでLotDspをこのロット番号で開きます">${esc(lotVal)||'—'}</button></td>`;continue}
    /* 読み替え(段4)→書式(段3)の順で通してから出す。どちらも失敗したら
       生の値が出るので、指定を間違えても値が消えることはない。 */
@@ -1040,9 +1102,7 @@ function renderGridInner(){
    const tip=(out.text!==raw||clipped)?` title="${esc(raw)}"`:'';
    cells+=`<td data-col="${esc(c)}"${cls?` class="${cls}"`:''}${tip}>${esc(out.text)}</td>`;
   }
-  tr.innerHTML=(canPlan?`<td class="plan-select-cell"><input type="checkbox" class="plan-select-checkbox"></td><td class="plan-action-cell"><button type="button" class="plan-action-button" title="この行の設備の作業スケジュールへ追加します">+ 予定</button></td>`:'')+`<td>${(S.page-1)*effectivePageSize()+i+1}</td>`+splitCell
-   +gap(from)+cells+gap(visibleColumns.length-to)
-   +(isWork?'<td class="measurement-action-cell"><button type="button" class="measurement-action-button">開く</button></td>':'');
+  tr.innerHTML=gap(from)+cells+gap(ordered.length-to);
   if(r===S.selectedRow)tr.classList.add('is-selected');
   if(canPlan&&S.selectedRows.has(r))tr.classList.add('is-plan-selected');
   tr.addEventListener('click',()=>{
@@ -1054,8 +1114,11 @@ function renderGridInner(){
   if(isWork){
    tr.classList.add('measurement-row');
    const open=e=>{e.preventDefault();e.stopPropagation();openMeasurement(r).catch(err=>alert('測定画面を開けません: '+err.message))};
+   /* 行のダブルクリックは**ボタンを消しても残す**——測定を開く導線が
+      1つも無くなると、列を隠しただけで機能ごと失われる。 */
    tr.addEventListener('dblclick',open);
-   tr.querySelector('.measurement-action-button').onclick=open;
+   const mb=tr.querySelector('.measurement-action-button');
+   if(mb)mb.onclick=open;
   }
   if(canPlan){
    const planBtn=tr.querySelector('.plan-action-button');
@@ -1108,7 +1171,7 @@ function renderGridInner(){
  /* このセル数までは一度に描く。**下回る表では分けない**——分けても
     速くならず、「行が後から生えてくる」動きだけが増える。 */
  const CHUNK_MIN_CELLS=8000;
- const colCount=visibleColumns.length+2+(isWork?2:0)+(canPlan?2:0);
+ const colCount=ordered.length;
  const rowsFor=cells=>Math.max(5,Math.floor(cells/Math.max(1,colCount)));
  /* ---------- 行が多いときは見えている分だけ置く(§9.95) ----------
     「全件」を入れると行数が桁で増える。3,000行×214列=642,000セルは、

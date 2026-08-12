@@ -138,7 +138,11 @@ def _join_quality_data(sikalotnow_cols,row_dicts):
   merged=dict(qd) if qd else {}
   merged.update(d)  # 重複列は仕掛(SIKALOTNOW)側を優先
   merged_rows.append(merged)
- info.update(applied=True,matched=matched,addedColumns=len(extra_cols),table=t)
+ # **足した列の名前も返す**(§9.105)。件数だけでは、列の設定画面で
+ # 「どれが結合されてきた列か」を見分けられない(利用者が最初に知りたい
+ # のは「この項目はどこから来たのか」で、何列増えたかではない)。
+ info.update(applied=True,matched=matched,addedColumns=len(extra_cols),
+             addedColumnNames=list(extra_cols),table=t)
  if not matched:
   info['reason']=f'キーが一致する品質データがありませんでした(照合先: {t})'
  return sikalotnow_cols+extra_cols,merged_rows,info

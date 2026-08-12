@@ -232,7 +232,13 @@ const columnLayout=(()=>{
   const rest=columns.filter(c=>!order.includes(c));   // 新しく増えた列は末尾
   return [...known,...rest].filter(c=>!hide.has(c));
  }
- return {load,get,save,forget,apply,stage,
+ /* 番号・ボタンの列(`#`/`__split__`/`__measure__`/`__plan__`)も
+    「出す/出さない」を持つ(§9.105)。以前は列の設定画面でチェックを外せる
+    のに一覧は必ず出しており、**外しても何も起きない**という状態だった
+    (押した通りに動かないUIは、動かない機能より質が悪い)。
+    データ列の並べ替え(`apply`)とは別に、キー1つの可否だけを答える。 */
+ const shows=(target,col)=>!(get(target).hidden||[]).includes(col);
+ return {load,get,save,forget,apply,stage,shows,
          width:(target,col)=>get(target).widths[col]||null,
          /* 画面に出す名前。未設定なら元の項目名のまま(§9.88)。 */
          label:(target,col)=>get(target).names[col]||col,
