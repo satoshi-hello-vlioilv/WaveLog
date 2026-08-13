@@ -195,6 +195,58 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 .access-mode-menu{position:fixed;z-index:var(--z-popover);min-width:190px;padding:var(--space-2);border:1px solid var(--line);border-radius:var(--radius-md);background:#fff;box-shadow:0 8px 24px rgba(0,0,0,.16)}
 .access-mode-menu button{display:flex;flex-direction:column;align-items:flex-start;gap:var(--gap-hair);width:100%;padding:var(--pad-card);border:0;border-radius:var(--radius-sm);background:transparent;text-align:left;font-weight:700;font-size:var(--fs-base-sm);color:var(--ink,#222);cursor:pointer}
 .access-mode-menu button:hover{background:#eef2f4}
+/* 一覧の見出しを右クリックしたときの小さなメニュー(§9.110)。
+   列を1つ隠すためだけに設定パネルを開かせない。**戻す操作も同じ場所**に
+   置く——隠した本人が次に探すのはここなので、別の場所を覚えさせない。 */
+.col-head-menu{position:fixed;z-index:var(--z-popover);min-width:210px;max-width:320px;
+  max-height:70vh;overflow:auto;padding:var(--space-1);border:1px solid var(--line);
+  border-radius:var(--radius-md);background:#fff;box-shadow:0 10px 28px rgba(0,0,0,.18)}
+.col-head-menu .chm-head{padding:var(--space-1) var(--space-2);border-bottom:1px solid var(--line-soft);
+  margin-bottom:var(--space-1);font-size:var(--fs-micro);font-weight:800;color:var(--ink-3);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.col-head-menu button{display:block;width:100%;padding:var(--space-1) var(--space-2);border:0;
+  border-radius:var(--radius-sm);background:transparent;text-align:left;font-size:var(--fs-sm);
+  font-weight:700;color:var(--ink);cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.col-head-menu button:hover{background:var(--surface-2)}
+.col-head-menu button:focus-visible{outline:2px solid var(--teal);outline-offset:-2px}
+.col-head-menu .chm-sep{margin:var(--space-1) 0;border-top:1px solid var(--line-soft)}
+.col-head-menu .chm-label{padding:var(--space-1) var(--space-2);font-size:var(--fs-micro);
+  font-weight:800;color:var(--muted)}
+.col-head-menu .chm-show{color:var(--ink-2)}
+.col-head-menu .chm-show::before{content:'＋';margin-right:var(--space-1);color:var(--teal);font-weight:800}
+.col-head-menu .chm-more{padding:var(--space-1) var(--space-2);font-size:var(--fs-micro);color:var(--muted)}
+/* 名前を付けて覚えさせる帯(§9.111)。足元(保存/既定に戻す)とは役割が違う
+   ——あちらは「この一覧の設定」、こちらは「設定の出し入れ」なので、
+   同じ行に混ぜず1段上に置く。 */
+.lc-presets{display:flex;align-items:center;gap:var(--gap-inline);flex-wrap:wrap;
+  padding:var(--space-2) var(--space-4);border-top:1px solid var(--line-soft);background:var(--surface-2)}
+.lc-presets .lc-preset-pick{display:flex;align-items:center;gap:var(--gap-inline);min-width:0}
+.lc-presets .lc-preset-pick>span{font-size:var(--fs-micro);font-weight:800;color:var(--ink-3);white-space:nowrap}
+.lc-presets select{max-width:280px;height:var(--ctl-h-sm);font-size:var(--fs-sm)}
+.lc-presets .lc-preset-sep{flex:1 1 auto}
+.lc-presets button[disabled]{opacity:.45;cursor:not-allowed}
+/* 式で作る列(§9.111 ⑦)。**書いたそばから確かめられる**ことが要点で、
+   式は書き間違えても一覧では空欄になるだけなので、ここで言わないと
+   原因に辿り着けない。 */
+.lc-step-fx .lc-fx-input{width:100%;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:var(--fs-sm);line-height:1.6;padding:var(--pad-card);border:1px solid var(--line);
+  border-radius:var(--radius-sm);resize:vertical}
+.lc-step-fx .lc-fx-state{margin-top:var(--space-1);font-size:var(--fs-micro);font-weight:700}
+.lc-step-fx .lc-fx-state.is-ok{color:var(--ok-fg,#1e624d)}
+.lc-step-fx .lc-fx-state.is-ng{color:var(--warn-fg)}
+.lc-step-fx .lc-fx-samples{margin-top:var(--space-2);padding:var(--pad-card);
+  border:1px solid var(--line-soft);border-radius:var(--radius-sm);background:var(--surface-2)}
+.lc-step-fx .lc-fx-samples>span{display:block;margin-bottom:var(--space-1);
+  font-size:var(--fs-micro);font-weight:800;color:var(--ink-3)}
+.lc-step-fx .lc-fx-row code{font-size:var(--fs-sm)}
+.lc-step-fx .lc-fx-help{margin-top:var(--space-2);font-size:var(--fs-micro);color:var(--ink-3)}
+.lc-step-fx .lc-fx-help summary{cursor:pointer;font-weight:800}
+.lc-step-fx .lc-fx-help dl{margin:var(--space-2) 0 0;display:grid;gap:var(--space-1)}
+.lc-step-fx .lc-fx-help dt{font-weight:700}
+.lc-step-fx .lc-fx-help dd{margin:0 0 0 var(--space-3);color:var(--muted)}
+.lc-step-fx .lc-fx-note{margin:var(--space-2) 0 0;font-size:var(--fs-micro);
+  line-height:1.6;color:var(--ink-3)}
+.lc-step-fx .lc-fx-del{margin-top:var(--space-2);color:var(--danger,#9d2020)}
 .access-mode-menu button small{font-weight:500;color:#687a81;font-size:var(--fs-micro)}
 /* 表示サイズ切替(アプリ全体)。モードバッジと同じ言語で揃えつつ、
    意味が違う(権限ではなく見た目の設定)ので彩度を落とした中立色にする。 */

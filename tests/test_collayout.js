@@ -97,6 +97,55 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   rec('非表示の指定も保存されている',(saved.hidden||[]).includes(base[1]),
    JSON.stringify(saved.hidden));
 
+  /* ---- 6) 見出し側の操作で番号・ボタンの列を落とさない(§9.110) ----
+     **実機で「列の移動が正しく反映されない」として報告された不具合。**
+     見出しの幅を引く／見出しをD&Dすると、そのとき保存される並びが
+     データ列だけで作られており、`#`/`分割`/`測定`が並びから丸ごと
+     消えていた。消えると次に開いたとき「知らない列」として末尾へ回る
+     ので、**幅を少し引いただけで番号・ボタンが右端へ飛ぶ**。 */
+  await post('/api/column-layout-master',{target,order:[],widths:{},hidden:[],user_id:'test'});
+  await page.evaluate(()=>{WL.columnLayout.forget();return load()});
+  await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});
+  await page.waitForTimeout(400);
+  const headKeys=()=>page.evaluate(()=>[...document.querySelectorAll('#grid thead th')]
+    .map(t=>t.dataset.col||t.textContent.trim()));
+  const beforeGrip=await headKeys();
+  const grip=await page.$('#grid thead th[data-sort-col] .col-resize');
+  const gb=await grip.boundingBox();
+  await page.mouse.move(gb.x+gb.width/2,gb.y+gb.height/2);
+  await page.mouse.down();
+  await page.mouse.move(gb.x+gb.width/2+60,gb.y+gb.height/2,{steps:6});
+  await page.mouse.up();
+  await page.waitForTimeout(900);
+  const savedAfterGrip=await (await fetch(B+'/api/column-layout-master?target='+encodeURIComponent(target))).json();
+  const virt=['#','__split__','__measure__'].filter(k=>beforeGrip.length&&true);
+  rec('列幅を変えても番号・ボタンの列が並びから消えない',
+   virt.every(k=>(savedAfterGrip.order||[]).includes(k)),
+   virt.filter(k=>!(savedAfterGrip.order||[]).includes(k)).join(' / ')||'すべて残っている');
+  await page.evaluate(()=>{WL.columnLayout.forget();return load()});
+  await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});
+  await page.waitForTimeout(400);
+  const afterGrip=await headKeys();
+  rec('列幅を変えても番号・ボタンの列が右端へ飛ばない',
+   afterGrip[0]===beforeGrip[0]&&afterGrip[1]===beforeGrip[1]
+   &&afterGrip[afterGrip.length-1]===beforeGrip[beforeGrip.length-1],
+   `${afterGrip.slice(0,2).join('/')} … ${afterGrip[afterGrip.length-1]}`);
+
+  /* ---- 7) 既に壊れた形で保存された並びは、読むときに直す ----
+     直しただけでは足りない——**実機には壊れた設定が既に保存されている**
+     ので、こちらが直さないと利用者が手で引きずり戻すことになる。 */
+  const dataCols=beforeGrip.filter(k=>k!=='#'&&k!=='分割'&&k!=='測定');
+  const brokenOrder=[dataCols[2],dataCols[0],dataCols[1],...dataCols.slice(3)];
+  await post('/api/column-layout-master',{target,order:brokenOrder,widths:{},hidden:[],user_id:'test'});
+  await page.evaluate(()=>{WL.columnLayout.forget();return load()});
+  await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});
+  await page.waitForTimeout(400);
+  const healed=await headKeys();
+  rec('番号・ボタンの列が無い古い並びでも先頭へ戻る',
+   healed[0]==='#'&&healed[1]==='分割',healed.slice(0,3).join(' / '));
+  rec('その直しでデータ列の並びは崩さない',
+   healed[2]===brokenOrder[0]&&healed[3]===brokenOrder[1],healed.slice(2,5).join(' / '));
+
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
 
   console.log('\n=== SUMMARY ===');

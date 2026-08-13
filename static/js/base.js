@@ -193,7 +193,7 @@ window.WL.dataSource=dataSource;
    に無い列は黙って捨てる(列が増減しても設定が壊れない)。 */
 const columnLayout=(()=>{
  const cache=new Map();                 // target -> {order,widths,hidden,names,formats}
- const empty=()=>({order:[],widths:{},hidden:[],names:{},formats:{},rules:{}});
+ const empty=()=>({order:[],widths:{},hidden:[],names:{},formats:{},rules:{},formulas:{}});
  async function load(target){
   if(!target)return empty();
   if(cache.has(target))return cache.get(target);
@@ -201,7 +201,7 @@ const columnLayout=(()=>{
   try{
    const r=await api('/api/column-layout-master?target='+encodeURIComponent(target));
    v={order:r.order||[],widths:r.widths||{},hidden:r.hidden||[],names:r.names||{},
-      formats:r.formats||{},rules:r.rules||{}};
+      formats:r.formats||{},rules:r.rules||{},formulas:r.formulas||{}};
   }catch(e){/* 読めなくても既定の並びで一覧は出す(fail-open) */}
   cache.set(target,v);return v;
  }
@@ -209,7 +209,8 @@ const columnLayout=(()=>{
  async function save(target,layout){
   if(!target)return;
   const v={order:layout.order||[],widths:layout.widths||{},hidden:layout.hidden||[],
-           names:layout.names||{},formats:layout.formats||{},rules:layout.rules||{}};
+           names:layout.names||{},formats:layout.formats||{},rules:layout.rules||{},
+           formulas:layout.formulas||{}};
   cache.set(target,v);
   await api('/api/column-layout-master',{method:'POST',headers:{'Content-Type':'application/json'},
    body:JSON.stringify(withUserId({target,...v}))});
@@ -222,7 +223,8 @@ const columnLayout=(()=>{
  function stage(target,layout){
   if(!target)return;
   cache.set(target,{order:layout.order||[],widths:layout.widths||{},hidden:layout.hidden||[],
-                    names:layout.names||{},formats:layout.formats||{},rules:layout.rules||{}});
+                    names:layout.names||{},formats:layout.formats||{},rules:layout.rules||{},
+                    formulas:layout.formulas||{}});
  }
  /* 覚えている並びを、実際にある列へ当てはめる。 */
  function apply(target,columns){
@@ -245,7 +247,10 @@ const columnLayout=(()=>{
          /* この列の書式指定。未設定ならnull(=そのまま表示)。 */
          format:(target,col)=>get(target).formats[col]||null,
          /* この列に効く読み替えルールの名前。未設定なら''(=読み替えなし)。 */
-         rule:(target,col)=>get(target).rules[col]||''};
+         rule:(target,col)=>get(target).rules[col]||'',
+         /* 計算で作る列の式(§9.111 ⑦)。未設定なら''(=データ側の列)。 */
+         formula:(target,col)=>get(target).formulas[col]||'',
+         formulas:target=>({...get(target).formulas})};
 })();
 window.WL.columnLayout=columnLayout;
 

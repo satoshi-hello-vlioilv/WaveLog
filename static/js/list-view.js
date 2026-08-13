@@ -279,10 +279,18 @@ function bindColumnHeaderTools(table,target,visibleColumns,allColumns){
  const layout=WL.columnLayout.get(target);
  const heads=[...table.querySelectorAll('th[data-sort-col]')];
 
- /* 覚えている並びを、許可された全列に対して作り直す。 */
+ /* 覚えている並びを、許可された全列に対して作り直す。
+
+    **数えるのは`listColumnKeys()`の1本の並び(§9.106)**——`allColumns`は
+    データ列だけなので、それを基準にすると番号・ボタンの列
+    (`#`/`分割`/`測定`/`予定`)が保存する並びから丸ごと落ちる。落ちると
+    次に開いたとき`apply()`が「知らない列」として**末尾へ回す**ので、
+    **列幅を少し引いただけで#・分割・測定が右端へ飛ぶ**(§9.110。実機で
+    「列の移動が正しく反映されない」として報告された)。 */
  const fullOrder=()=>{
-  const known=(layout.order||[]).filter(c=>allColumns.includes(c));
-  return [...known,...allColumns.filter(c=>!known.includes(c))];
+  const all=WL.listColumnKeys(allColumns);
+  const known=(layout.order||[]).filter(c=>all.includes(c));
+  return [...known,...all.filter(c=>!known.includes(c))];
  };
  /* 保存は全置換なので、**触っていない設定も一緒に送る**こと。
     並びだけを送ると、表示名や書式が黙って消える(全置換で行ごと作り直すため)。 */
@@ -366,8 +374,101 @@ function bindColumnHeaderTools(table,target,visibleColumns,allColumns){
   });
   grip.addEventListener('click',e=>{e.stopPropagation()});   // 並び替えを誘発しない
  });
+
+ // ---- 右クリックで出す小さなメニュー(§9.110) ----
+ /* 列を1つ隠すためだけに設定パネルを開かせない。**押した列がそこにある**
+    ので、「この列を隠す」は迷いようがない。戻す操作も同じ場所へ置く
+    ——隠した本人が次に探すのはここなので、「戻せる場所が別にある」と
+    覚えさせない。 */
+ table.querySelectorAll('thead th[data-col]').forEach(th=>{
+  th.addEventListener('contextmenu',e=>{
+   e.preventDefault();e.stopPropagation();
+   openColumnHeaderMenu(e,th.dataset.col,target,allColumns);
+  });
+ });
 }
 WL.bindColumnHeaderTools=bindColumnHeaderTools;
+
+function closeColumnHeaderMenu(){
+ document.querySelector('.col-head-menu')?.remove();
+ document.removeEventListener('mousedown',onColumnMenuOutside,true);
+ document.removeEventListener('keydown',onColumnMenuKey,true);
+}
+function onColumnMenuOutside(e){if(!e.target.closest('.col-head-menu'))closeColumnHeaderMenu()}
+function onColumnMenuKey(e){if(e.key==='Escape'){e.stopPropagation();closeColumnHeaderMenu()}}
+function openColumnHeaderMenu(ev,col,target,allColumns){
+ closeColumnHeaderMenu();
+ if(!target||!col)return;
+ const layout=WL.columnLayout.get(target);
+ const hidden=[...(layout.hidden||[])];
+ const nameOf=k=>WL.isVirtualColumn(k)?WL.virtualColumnLabel(k):WL.columnLayout.label(target,k);
+ const menu=document.createElement('div');
+ menu.className='col-head-menu';
+ const item=(label,cls)=>`<button type="button" class="${cls||''}">${esc(label)}</button>`;
+ /* 隠している列は**この場で戻せる**。多いときは全部は並べない
+    (メニューが画面を覆うと、それ自体が操作の邪魔になる)。 */
+ const RESTORE_MAX=10;
+ const shown=hidden.slice(0,RESTORE_MAX);
+ menu.innerHTML=
+  `<div class="chm-head" title="${esc(col)}">${esc(nameOf(col))}</div>`
+  +item('この列を隠す','chm-hide')
+  +item('幅を内容に合わせる','chm-autofit')
+  +(hidden.length?`<div class="chm-sep"></div><div class="chm-label">隠している列（${hidden.length}）</div>`
+    +shown.map(k=>`<button type="button" class="chm-show" data-key="${esc(k)}">${esc(nameOf(k))}</button>`).join('')
+    +(hidden.length>shown.length?`<div class="chm-more">ほか${hidden.length-shown.length}件は「表示列」から</div>`:'')
+    +item('すべての列を表示','chm-all'):'')
+  +`<div class="chm-sep"></div>`+item('表示列の設定を開く…','chm-panel');
+ document.body.appendChild(menu);
+ const w=menu.offsetWidth,h=menu.offsetHeight;
+ menu.style.left=`${Math.max(6,Math.min(ev.clientX,innerWidth-w-6))}px`;
+ menu.style.top=`${Math.max(6,Math.min(ev.clientY,innerHeight-h-6))}px`;
+
+ const persist=async patch=>{
+  const v=WL.columnLayout.get(target);
+  const all=WL.listColumnKeys(allColumns);
+  const known=(v.order||[]).filter(c=>all.includes(c));
+  await WL.columnLayout.save(target,{order:[...known,...all.filter(c=>!known.includes(c))],
+                                     widths:v.widths,hidden:v.hidden,names:v.names,
+                                     formats:v.formats,rules:v.rules,...patch});
+  renderGrid();
+ };
+ menu.querySelector('.chm-hide').onclick=async()=>{
+  closeColumnHeaderMenu();
+  const v=WL.columnLayout.get(target);
+  const next=[...new Set([...(v.hidden||[]),col])];
+  /* **最後の1列まで隠せてしまうと、戻す取っ掛かりが画面から消える。**
+     見出しが1つも無い表は右クリックする場所も無い。 */
+  const visible=WL.listColumnKeys(allColumns).filter(k=>!next.includes(k));
+  if(!visible.length){showToast&&showToast('最後の1列は隠せません','「表示列」から設定してください',4000);return}
+  await persist({hidden:next});
+  showToast&&showToast(`「${nameOf(col)}」を隠しました`,'見出しの右クリックから戻せます',3000);
+ };
+ menu.querySelector('.chm-autofit').onclick=async()=>{
+  closeColumnHeaderMenu();
+  const v=WL.columnLayout.get(target);
+  const widths={...(v.widths||{})};delete widths[col];
+  await persist({widths});
+ };
+ menu.querySelectorAll('.chm-show').forEach(b=>{
+  b.onclick=async()=>{
+   closeColumnHeaderMenu();
+   const v=WL.columnLayout.get(target);
+   await persist({hidden:(v.hidden||[]).filter(k=>k!==b.dataset.key)});
+  };
+ });
+ menu.querySelector('.chm-all')?.addEventListener('click',async()=>{
+  closeColumnHeaderMenu();await persist({hidden:[]});
+ });
+ menu.querySelector('.chm-panel').onclick=()=>{
+  closeColumnHeaderMenu();
+  document.getElementById('listColumnBtn')?.click();
+ };
+ requestAnimationFrame(()=>{
+  document.addEventListener('mousedown',onColumnMenuOutside,true);
+  document.addEventListener('keydown',onColumnMenuKey,true);
+ });
+}
+WL.openColumnHeaderMenu=openColumnHeaderMenu;
 
 /* 「一覧を見る」のボタンを、データソースマスタの内容そのままに組み直す(§9.87)。
    ------------------------------------------------------------
@@ -928,10 +1029,43 @@ function listColumnKeys(cols){
  out.push('#');
  if(isWork)out.push('__split__');
  out.push(...(cols||S.columns||[]));
+ /* 計算で作る列(§9.111 ⑦)は**データ側に無い**ので、ここで足さないと
+    どこにも出てこない。並び・幅・書式はデータ列と同じ仕組みに乗る。 */
+ const target=typeof listLayoutTarget==='function'?listLayoutTarget():'';
+ if(target){
+  Object.keys(WL.columnLayout.formulas(target)).forEach(k=>{if(!out.includes(k))out.push(k)});
+ }
  if(isWork)out.push('__measure__');
  return out;
 }
 WL.listColumnKeys=listColumnKeys;
+/* 覚えている並びを当てはめる。**番号・ボタンの列が1つも入っていない
+   並びは、データ列だけを保存していた頃のもの**(§9.110)なので、末尾へ
+   流さず本来の位置へ戻す。
+
+   直しただけでは足りない——**既に壊れた形で保存された設定が実機に残って
+   いる**ので、読むときに直す(こちらが直さないと、利用者が#・分割・測定を
+   手で引きずり戻すことになる)。データ列の並びは覚えているものを尊重し、
+   番号・ボタンの列だけを`listColumnKeys()`の位置へ差し戻す。 */
+function healedColumnOrder(target,cols){
+ const canonical=listColumnKeys(cols);
+ const stored=WL.columnLayout.get(target).order||[];
+ const known=stored.filter(c=>canonical.includes(c));
+ if(!stored.length||stored.some(isVirtualColumn))
+  return [...known,...canonical.filter(c=>!known.includes(c))];
+ // データ列は覚えている順のまま、番号・ボタンの列だけ本来の位置へ戻す。
+ const dataOrder=[...known.filter(c=>!isVirtualColumn(c)),
+                  ...canonical.filter(c=>!isVirtualColumn(c)&&!known.includes(c))];
+ let i=0;
+ return canonical.map(k=>isVirtualColumn(k)?k:dataOrder[i++]).filter(Boolean);
+}
+/* 実際に描く列。上の並びから「出さない」を落とすだけ。 */
+function orderedListColumns(target,cols){
+ const hide=new Set(WL.columnLayout.get(target).hidden||[]);
+ return healedColumnOrder(target,cols).filter(c=>!hide.has(c));
+}
+WL.healedColumnOrder=healedColumnOrder;
+WL.orderedListColumns=orderedListColumns;
 WL.isVirtualColumn=isVirtualColumn;
 WL.virtualColumnLabel=k=>(VIRTUAL_COLUMNS[k]||{}).label||k;
 // Add an explicit virtual action column instead of writing into the last data column.
@@ -976,7 +1110,7 @@ function renderGridInner(){
     **列の設定パネルで動かした並びと実際の並びが食い違い**、チェックを
     外しても消えなかった(実機で報告された)。設定画面と一覧が同じ並びを
     見るために、出どころは`listColumnKeys()`ただ1つにする。 */
- const ordered=WL.columnLayout.apply(layoutTarget,listColumnKeys(allowed));
+ const ordered=orderedListColumns(layoutTarget,allowed);
  const dataCols=ordered.filter(k=>!isVirtualColumn(k));
  const visibleColumns=dataCols;         // 以降の互換(件数・書式の対象はデータ列)
  /* 書式(§9.88 段3)は列ごとに1度だけ引いて、セルの描画で使い回す。
@@ -984,6 +1118,16 @@ function renderGridInner(){
     値ごとに決めると、数値として読めない値が1つ混ざった列で揃い方が乱れる。 */
  const colFmt=new Map(dataCols.map(c=>[c,WL.columnLayout.format(layoutTarget,c)]));
  const colRule=new Map(dataCols.map(c=>[c,WL.columnLayout.rule(layoutTarget,c)]));
+ /* 計算で作る列(§9.111 ⑦)。**式は列ごとに1回だけ解いて使い回す**
+    ——行ごとに解き直すと200行×列数ぶん効いてくる。壊れた式は
+    その列を出さないのではなく、値を空にして残す(直せる場所へ辿れる)。 */
+ const colCalc=new Map();
+ dataCols.forEach(c=>{
+  const src=WL.columnLayout.formula(layoutTarget,c);
+  if(!src)return;
+  try{colCalc.set(c,WL.formula.compile(src))}
+  catch(e){colCalc.set(c,{run:()=>''})}
+ });
  const numCol=c=>colFmt.get(c)?.kind==='number';
  /* 列幅は**セルを描く前に決める**(§9.94)。colgroupへ入れるだけでなく、
     「その幅に入り切らない値へtitleを付ける」判断にも使うため。 */
@@ -993,18 +1137,24 @@ function renderGridInner(){
    WL.columnLayout.width(layoutTarget,k)
    ||(isVirtualColumn(k)?virtualColumnWidth(k,metrics)
       :estimateColumnWidth(WL.columnLayout.label(layoutTarget,k),
-                           widthSample.map(r=>r[k]),metrics.fs,metrics.padX))]));
+                           // 計算で作る列は**計算した値**で幅を見積もる
+                           // (生のr[k]は無いので、そのままだと見出しの幅になる)。
+                           widthSample.map(r=>colCalc.has(k)?colCalc.get(k).run(r):r[k]),
+                           metrics.fs,metrics.padX))]));
  // その列に何文字ぶん入るか(em)。これを超える値は省略記号になる。
  const colEm=new Map(dataCols.map(c=>[c,(colW.get(c)-metrics.padX*2-2)/metrics.fs]));
   const t=document.createElement('table');
  /* 見出し。**1本の並び(ordered)をそのまま辿る**ので、番号・ボタンの列が
     データ列の間に入っていてもそのとおりに出る(§9.106)。 */
+ /* **どの見出しにも`data-col`を付ける**。セルと同じで、位置で数えずキーで
+    引けるようにするため(§9.104)。見出しの右クリック(§9.110)は番号・
+    ボタンの列にも効かせたいので、そこだけ属性が無いと分岐が増える。 */
  const headOf=k=>{
-  if(k==='__select__')return '<th class="plan-select-head"><input type="checkbox" id="planSelectAll" title="このページの全行を選択/解除"></th>';
-  if(k==='__plan__')return '<th class="plan-action-head">予定</th>';
-  if(k==='#')return '<th class="grid-no-head">#</th>';
-  if(k==='__split__')return '<th class="split-flag-head" title="親子管理_子カード／コンマ5本分割_切断巾に実データがある場合「分割あり」と表示します">分割</th>';
-  if(k==='__measure__')return '<th class="measurement-action-head">測定</th>';
+  if(k==='__select__')return '<th class="plan-select-head" data-col="__select__"><input type="checkbox" id="planSelectAll" title="このページの全行を選択/解除"></th>';
+  if(k==='__plan__')return '<th class="plan-action-head" data-col="__plan__">予定</th>';
+  if(k==='#')return '<th class="grid-no-head" data-col="#">#</th>';
+  if(k==='__split__')return '<th class="split-flag-head" data-col="__split__" title="親子管理_子カード／コンマ5本分割_切断巾に実データがある場合「分割あり」と表示します">分割</th>';
+  if(k==='__measure__')return '<th class="measurement-action-head" data-col="__measure__">測定</th>';
   const c=k,filtered=filteredCols.has(c);
   /* 並び順の合図。**2つ以上のキーがあるときは順番も出す**——「何で並んで
      いるか」は分かっても「どちらが先か」が分からないと結果を読めない。 */
@@ -1017,7 +1167,7 @@ function renderGridInner(){
   /* 見出しは3役: クリックで並び替え / 掴んで左右へ動かすと列の並べ替え /
      右端の取っ手を引くと列幅。**取っ手はクリックを飲み込む**(引くつもりが
      並び替わると操作を取り消せない)。 */
-  return `<th class="sortable-col ${numCol(c)?'col-num':''} ${filtered?'col-filtered':''} ${sorted?'col-sorted':''}" data-sort-col="${esc(c)}" draggable="true" tabindex="0" role="button" aria-label="${esc(WL.columnLayout.label(layoutTarget,c))}列で並び替え" title="${esc(c)}｜クリックで並び替え／ドラッグで列の入れ替え${filtered?'（絞り込み中の列です）':''}">${esc(WL.columnLayout.label(layoutTarget,c))}${arrow}${filtered?'<i class="col-filter-badge" aria-hidden="true" title="この列にフィルタが適用されています">▼</i>':''}<i class="col-resize" title="ドラッグで列幅を調整（ダブルクリックで既定へ）" aria-hidden="true"></i></th>`;
+  return `<th class="sortable-col ${numCol(c)?'col-num':''} ${filtered?'col-filtered':''} ${sorted?'col-sorted':''}" data-sort-col="${esc(c)}" data-col="${esc(c)}" draggable="true" tabindex="0" role="button" aria-label="${esc(WL.columnLayout.label(layoutTarget,c))}列で並び替え" title="${esc(c)}｜クリックで並び替え／ドラッグで列の入れ替え${filtered?'（絞り込み中の列です）':''}">${esc(WL.columnLayout.label(layoutTarget,c))}${arrow}${filtered?'<i class="col-filter-badge" aria-hidden="true" title="この列にフィルタが適用されています">▼</i>':''}<i class="col-resize" title="ドラッグで列幅を調整（ダブルクリックで既定へ）" aria-hidden="true"></i></th>`;
  };
  t.innerHTML='<thead><tr>'+ordered.map(headOf).join('')+'</tr></thead>';
  /* 幅はcolgroupで与える。thへ直接書くと、セル側の内容で押し広げられる。
@@ -1099,8 +1249,12 @@ function renderGridInner(){
    if(c===lotCol){const lotVal=r[c];cells+=`<td class="lot-cell" data-col="${esc(c)}"><button type="button" class="lot-dsp-link grid-lot-link" title="クリックでLotDspをこのロット番号で開きます">${esc(lotVal)||'—'}</button></td>`;continue}
    /* 読み替え(段4)→書式(段3)の順で通してから出す。どちらも失敗したら
       生の値が出るので、指定を間違えても値が消えることはない。 */
-   const out=WL.cellFormat.cell({raw:r[c],format:colFmt.get(c),rule:colRule.get(c),row:r,column:c});
-   const raw=String(r[c]==null?'':r[c]);
+   /* 計算で作る列(§9.111 ⑦)は、その行の値から作ってから同じ道を通す
+      ——書式・読み替え・省略記号の扱いをデータ側の列と分けない。 */
+   const calc=colCalc.get(c);
+   const rawVal=calc?calc.run(r):r[c];
+   const out=WL.cellFormat.cell({raw:rawVal,format:colFmt.get(c),rule:colRule.get(c),row:r,column:c});
+   const raw=String(rawVal==null?'':rawVal);
    const cls=[numCol(c)?'col-num':'',out.color?'cell-'+out.color:''].filter(Boolean).join(' ');
    /* 幅を決め打ちする以上、入り切らない値は省略記号になる(§9.94)。
       **切れたものは必ずtitleで読めるようにする**——読めない文字が

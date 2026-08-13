@@ -41,7 +41,7 @@ async function cleanup(){
   await page.evaluate(e=>localStorage.setItem('AccessMeasurementConfiguredEquipment',e),EQ);
   // 前回の大きさを覚えていると既定の検証にならないので消しておく。
   await page.evaluate(()=>{localStorage.removeItem('listColumnPanelRectV3');
-                          localStorage.removeItem('listColumnPanelRectV4')});
+                          localStorage.removeItem('listColumnPanelRectV5')});
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForSelector('#grid table',{timeout:30000});
   await page.waitForTimeout(1500);

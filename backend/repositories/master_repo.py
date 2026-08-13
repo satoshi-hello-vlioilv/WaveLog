@@ -10,6 +10,8 @@ backend/routes/masters.py が持つ。
 フィルタプリセット/列表示(表示マスタ)を提供する。すべてdb/master.sqlite3に保存し、
 テーブルが無ければ初回アクセス時に自動作成する。
 """
+import json
+
 from ..db_access import DBS, connect, ensure_audit_columns, tables, cols, qi
 
 EQUIPMENT_MASTER_TABLE='設備マスタ'
@@ -800,10 +802,12 @@ def ensure_column_layout_table(c):
  ensure_audit_columns(c,COLUMN_LAYOUT_TABLE)
  # 既存DBへの追加(他マスタと同じ「無ければALTER TABLEで足す」方式)。
  have={r[1] for r in c.cursor().execute(f'PRAGMA table_info([{COLUMN_LAYOUT_TABLE}])')}
+ # 計算式(§9.111 ⑦): データ側に無い列を、既にある列から作る。**列の1行**
+ # として持つので、並び・幅・書式・読み替えはそのまま効く。
  for name,decl in (('表示','INTEGER'),('表示名','TEXT'),
                    ('書式種別','TEXT'),('書式パターン','TEXT'),('小数桁','INTEGER'),
                    ('桁区切り','INTEGER'),('単位前','TEXT'),('単位後','TEXT'),
-                   ('読み替えルール','TEXT')):
+                   ('読み替えルール','TEXT'),('計算式','TEXT')):
   if name not in have:
    c.cursor().execute(f'ALTER TABLE [{COLUMN_LAYOUT_TABLE}] ADD COLUMN [{name}] {decl}')
    c.commit()
@@ -825,7 +829,7 @@ def column_layout_for(c,target):
 
  **hiddenは「この対象で隠す列」**。[表示]がNULLの行は表示(既定)として扱う
  ——列を足したときに既存の行が勝手に隠れないようにするため。"""
- empty={'order':[],'widths':{},'hidden':[],'names':{},'formats':{},'rules':{}}
+ empty={'order':[],'widths':{},'hidden':[],'names':{},'formats':{},'rules':{},'formulas':{}}
  if COLUMN_LAYOUT_TABLE not in tables(c):return dict(empty)
  target=str(target or '').strip()
  if not target:return dict(empty)
@@ -835,9 +839,9 @@ def column_layout_for(c,target):
  cur.execute('SELECT [列名],[表示順],[幅],'+col('表示')+','+col('表示名')+','
              +col('書式種別')+','+col('書式パターン')+','+col('小数桁')+','
              +col('桁区切り')+','+col('単位前')+','+col('単位後')+','
-             +col('読み替えルール')+
+             +col('読み替えルール')+','+col('計算式')+
              ' FROM [列レイアウトマスタ] WHERE [対象]=? ORDER BY [表示順],[ID]',[target])
- order=[];widths={};hidden=[];names={};formats={};rules={}
+ order=[];widths={};hidden=[];names={};formats={};rules={};formulas={}
  for row in cur.fetchall():
   name=str(row[0] or '').strip()
   if not name:continue
@@ -851,10 +855,13 @@ def column_layout_for(c,target):
   if f:formats[name]=f
   rule=str(row[11] or '').strip()
   if rule:rules[name]=rule
+  formula=str(row[12] or '').strip()
+  if formula:formulas[name]=formula
  return {'order':order,'widths':widths,'hidden':hidden,'names':names,
-         'formats':formats,'rules':rules}
+         'formats':formats,'rules':rules,'formulas':formulas}
 
-def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=None,rules=None):
+def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=None,rules=None,
+                      formulas=None):
  """全置換方式(他の列マスタと同じ)。渡された順序がそのまま表示順になる。
 
  **幅だけを変えたいときも並び全体を送る**こと。部分更新にすると、
@@ -867,6 +874,7 @@ def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=N
  label=names if isinstance(names,dict) else {}
  fmt=formats if isinstance(formats,dict) else {}
  rule=rules if isinstance(rules,dict) else {}
+ formula=formulas if isinstance(formulas,dict) else {}
  cur=c.cursor()
  cur.execute('DELETE FROM [列レイアウトマスタ] WHERE [対象]=?',[target])
 
@@ -874,15 +882,16 @@ def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=N
   f=normalize_format(fmt.get(name)) or {}
   cur.execute('INSERT INTO [列レイアウトマスタ] ([対象],[列名],[表示名],[表示順],[幅],[表示],'
               '[書式種別],[書式パターン],[小数桁],[桁区切り],[単位前],[単位後],'
-              '[読み替えルール],[登録者ID],[更新者ID],[登録日時],[更新日時]) '
-              'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',
+              '[読み替えルール],[計算式],[登録者ID],[更新者ID],[登録日時],[更新日時]) '
+              'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',
               [target,name,str(label.get(name) or '').strip() or None,seq,
                normalize_column_width(widths.get(name)),
                0 if name in hide else -1,
                f.get('kind') or None,f.get('pattern') or None,
                f.get('decimals'),(-1 if f.get('thousands') else 0) if f else None,
                f.get('prefix') or None,f.get('suffix') or None,
-               str(rule.get(name) or '').strip() or None,uid,uid])
+               str(rule.get(name) or '').strip() or None,
+               str(formula.get(name) or '').strip() or None,uid,uid])
 
  seq=0;seen=set()
  for name in (order or []):
@@ -894,7 +903,7 @@ def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=N
  # いれば残す(列が増減しても記憶が消えないように。表示順は末尾扱いの0)。
  # **どれか1つでも拾い漏らすと、その設定だけが黙って消える**——並びを
  # 送らずに書式だけ保存した場合に実際に起きた。
- extra=[n for n in (list(widths)+list(label)+list(fmt)+list(rule)+sorted(hide))
+ extra=[n for n in (list(widths)+list(label)+list(fmt)+list(rule)+list(formula)+sorted(hide))
         if str(n or '').strip() and str(n).strip() not in seen]
  for name in extra:
   name=str(name).strip()
@@ -903,6 +912,104 @@ def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=N
   write(name,0)
  c.commit()
  return seq
+
+
+# ========================================================================
+# 列プリセットマスタ（§9.111新設）
+#  - 列の設定一式（並び・出す出さない・幅・表示名・書式・読み替え）に名前を
+#    付けて保存し、あとから読み出す。**マスタに置くのが要点**で、
+#    そうすると他のPCからも同じ形を呼び出せる（要望の主目的）。
+#  - 中身は列レイアウトマスタと同じ構造をそのままJSONで持つ。列ごとに1行へ
+#    展開しないのは、プリセットは**丸ごと出し入れするもの**で、1列だけ
+#    引くことが無いため（展開すると行数が列数×プリセット数になる）。
+#  - 対象(list:<DB>:<表>)ごとに名前が一意。同じ名前で保存し直すと上書き。
+# ========================================================================
+COLUMN_PRESET_TABLE='列プリセットマスタ'
+
+def ensure_column_preset_table(c):
+ names=tables(c);created=False
+ if COLUMN_PRESET_TABLE not in names:
+  cur=c.cursor()
+  cur.execute('CREATE TABLE [列プリセットマスタ] ([プリセットID] INTEGER PRIMARY KEY AUTOINCREMENT, '
+              '[対象] TEXT, [名称] TEXT, [説明] TEXT, [内容JSON] TEXT, [表示順] INTEGER, [有効] INTEGER, '
+              '[登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
+  c.commit();created=True
+ ensure_audit_columns(c,COLUMN_PRESET_TABLE)
+ return created
+
+def normalize_column_preset(body):
+ """保存できる形へ整える。**知らないキーは捨てる**——ファイルから読み込んだ
+ ものをそのまま入れると、次の版で意味の変わったキーが紛れ込む。"""
+ body=body if isinstance(body,dict) else {}
+ order=[str(x).strip() for x in (body.get('order') or []) if str(x or '').strip()]
+ seen=set();uniq=[]
+ for name in order:
+  if name in seen:continue
+  seen.add(name);uniq.append(name)
+ widths={}
+ for k,v in (body.get('widths') or {}).items():
+  w=normalize_column_width(v)
+  if w is not None:widths[str(k)]=w
+ hidden=sorted({str(x).strip() for x in (body.get('hidden') or []) if str(x or '').strip()})
+ names={str(k):str(v).strip() for k,v in (body.get('names') or {}).items() if str(v or '').strip()}
+ formats={}
+ for k,v in (body.get('formats') or {}).items():
+  f=normalize_format(v)
+  if f:formats[str(k)]=f
+ rules={str(k):str(v).strip() for k,v in (body.get('rules') or {}).items() if str(v or '').strip()}
+ formulas={str(k):str(v).strip() for k,v in (body.get('formulas') or {}).items() if str(v or '').strip()}
+ return {'order':uniq,'widths':widths,'hidden':hidden,'names':names,
+         'formats':formats,'rules':rules,'formulas':formulas}
+
+def column_presets(c,target=''):
+ ensure_column_preset_table(c)
+ target=str(target or '').strip()
+ cur=c.cursor()
+ if target:
+  cur.execute('SELECT [プリセットID],[対象],[名称],[説明],[内容JSON],[更新日時],[更新者ID] '
+              'FROM [列プリセットマスタ] WHERE [対象]=? AND ([有効] IS NULL OR [有効]<>0) '
+              'ORDER BY [表示順],[名称]',[target])
+ else:
+  cur.execute('SELECT [プリセットID],[対象],[名称],[説明],[内容JSON],[更新日時],[更新者ID] '
+              'FROM [列プリセットマスタ] WHERE ([有効] IS NULL OR [有効]<>0) '
+              'ORDER BY [対象],[表示順],[名称]')
+ out=[]
+ for r in cur.fetchall():
+  name=str(r[2] or '').strip()
+  if not name:continue
+  try:body=json.loads(r[4] or '{}')
+  except Exception:body={}
+  out.append({'id':r[0],'target':r[1],'name':name,'note':str(r[3] or ''),
+              'body':normalize_column_preset(body),
+              'updatedAt':r[5],'updatedBy':r[6]})
+ return out
+
+def save_column_preset(c,target,name,body,uid,note=''):
+ """同じ対象・同じ名前があれば上書き、無ければ追加。"""
+ ensure_column_preset_table(c)
+ target=str(target or '').strip();name=str(name or '').strip()
+ if not target:raise ValueError('対象を指定してください。')
+ if not name:raise ValueError('プリセットの名前を入力してください。')
+ payload=json.dumps(normalize_column_preset(body),ensure_ascii=False)
+ cur=c.cursor()
+ cur.execute('SELECT [プリセットID] FROM [列プリセットマスタ] WHERE [対象]=? AND [名称]=?',[target,name])
+ row=cur.fetchone()
+ if row:
+  cur.execute('UPDATE [列プリセットマスタ] SET [内容JSON]=?,[説明]=?,[有効]=-1,[更新者ID]=?,'
+              '[更新日時]=Now() WHERE [プリセットID]=?',[payload,str(note or ''),uid,row[0]])
+  c.commit();return row[0]
+ cur.execute('INSERT INTO [列プリセットマスタ] ([対象],[名称],[説明],[内容JSON],[表示順],[有効],'
+             '[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,-1,?,?,Now(),Now())',
+             [target,name,str(note or ''),payload,0,uid,uid])
+ c.commit()
+ return cur.lastrowid
+
+def delete_column_preset(c,preset_id):
+ ensure_column_preset_table(c)
+ cur=c.cursor()
+ cur.execute('DELETE FROM [列プリセットマスタ] WHERE [プリセットID]=?',[preset_id])
+ c.commit()
+ return cur.rowcount
 
 
 # ========================================================================
