@@ -47,7 +47,7 @@ G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'te
                      'test_scwritespeed', 'test_split_layout', 'test_content_ui',
                      'test_content_apply', 'test_sccols']
 G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 'test_eqkind',
-               'test_shift', 'test_dbequip', 'test_crudroutes', 'test_setpage']
+               'test_shift', 'test_dbequip', 'test_crudroutes', 'test_setpage', 'test_eqstd']
 G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'test_flows',
              'test_p11', 'test_p11c', 'test_waiting', 'test_waiting2']
 G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'test_density',
@@ -142,10 +142,10 @@ RULES = [
                                'test_scsync', 'test_datasource')),
     ('backend/repositories/master_repo.py', g('マスタ', '列', 'test_workable')),
     ('backend/repositories/schedule_repo.py', g('スケジュール', 'test_stopeq')),
-    ('backend/schedule_calc.py', g('スケジュール')),
+    ('backend/schedule_calc.py', g('スケジュール', 'test_eqstd')),
     ('backend/schedule_sync.py', g('test_sclock', 'test_scsync', 'test_scwritespeed',
                                    'test_screorder', 'test_atomicio')),
-    ('backend/load_factor.py', g('test_scbalance', 'test_sccat', 'test_screport')),
+    ('backend/load_factor.py', g('test_scbalance', 'test_sccat', 'test_screport', 'test_eqstd')),
     ('backend/records_export.py', g('test_share', 'test_flows')),
     ('backend/logging_setup.py', g('ログ')),
     ('backend/boot_status.py', g('起動')),

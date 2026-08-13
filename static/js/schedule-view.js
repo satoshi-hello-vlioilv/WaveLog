@@ -1325,13 +1325,38 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
 
  /* ---------- 見積の内訳(§6.8・§9.3、換算係数モデルの根拠を開示) ---------- */
  function estimateSourceLabel(src){
-  return {model:'モデル',override:'手動上書き','stop-reason-master':'設備停止マスタ',remaining:'残り時間',default:'暫定既定値'}[src]||src||'';
+  return {model:'モデル',override:'手動上書き','stop-reason-master':'設備停止マスタ',remaining:'残り時間',
+          'equipment-standard':'設備の標準時間',default:'暫定既定値'}[src]||src||'';
+ }
+ /* 見積が**実績から出たものではない**ときの説明(§9.114)。数字だけを出すと
+    「実績に基づく予測」と読まれてしまうので、何を根拠にしたのかを添える。
+    設備の標準時間と暫定既定値は**打つ手が違う**(前者は登録済みの値なので
+    直せば効く／後者は設備マスタが未設定)ため、言い分ける。 */
+ function estimateNoteOf(src){
+  if(src==='equipment-standard')
+   return '設備マスタの「1ロットあたり標準時間」です。実績がまだ無いための暫定値で、'
+        +'実績がたまると自動で実績由来の見積へ切り替わります。';
+  if(src==='default')
+   return '実績が無く、設備マスタに標準時間も登録されていないための暫定既定値です。'
+        +'マスタ管理 > 設備 で「1ロットあたり標準時間」を登録すると、そちらが使われます。';
+  return '';
  }
  function factorSourceLabel(src){
   return {auto:'自動',override:'上書き',unknown:'未知'}[src]||src||'';
  }
  function estimateBreakdownHtml(e){
   const est=e.estimate;
+  /* 因子が無い＝実績から出していない見積(§9.114)。**それでも内訳は出す**
+     ——「何分か」だけ出して根拠を出さないと、実績に基づく予測と区別が
+     付かない。出どころと、どうすれば良くなるかを1行で書く。 */
+  if(est&&(!est.factors||!est.factors.length)){
+   const note=estimateNoteOf(est.source);
+   if(!note)return '';
+   return `<div class="sc-detail-block"><div class="sc-detail-heading">見積の根拠</div>`
+    +`<div class="sc-estimate-row sc-estimate-base">${esc(fmtMinutes(est.minutes))}`
+    +`（${esc(estimateSourceLabel(est.source))}）</div>`
+    +`<div class="sc-estimate-row sc-estimate-note">${esc(note)}</div></div>`;
+  }
   if(!est||!est.factors||!est.factors.length)return '';
   const baseLine=est.base?`<div class="sc-estimate-row sc-estimate-base">基準時間 T0=${fmtMinutes(est.base.T0)}(実績${est.base.n}件)</div>`:'';
   const rangeLine=(est.low!=null&&est.high!=null)?`<div class="sc-estimate-row sc-estimate-range">予測区間 ${fmtMinutes(est.low)} 〜 ${fmtMinutes(est.high)}</div>`:'';
@@ -1915,7 +1940,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     ?'作業中'
     :(e.startsInMinutes!=null?(fmtRelative(e.startsInMinutes)||'今'):'-');
    const estText=e.estimate?fmtCompact(e.estimate.minutes):'-';
-   const estDefault=e.estimate&&e.estimate.source==='default';
+   /* 見積が実績由来かどうかを行の中で見分けられるようにする(§9.114)。
+      **「実績」「設備の標準時間」「暫定」の3つを言い分ける**——どれも
+      同じ数字に見えるが、当たるかどうかの見込みがまるで違う。 */
+   const estSrc=(e.estimate&&e.estimate.source)||'';
+   const estProvisional=estSrc==='equipment-standard'||estSrc==='default';
+   const estNote=estimateNoteOf(estSrc);
    let actualText='-';
    if(e.actual){
     if(e.state==='着手')actualText=fmtCompact(e.actual.elapsedMinutes)+' 経過';
@@ -1967,7 +1997,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     <span class="sc-row-shift" title="勤務形態マスタで設定した名称です">${esc(shiftText)}</span>
     <span class="sc-row-rel">${esc(relText)}</span>
     ${contentCells.map(c=>`<span class="sc-row-title${c.color?' cell-'+c.color:''}" data-content-col="${esc(c.key)}" title="${esc(c.raw||c.text)}">${esc(c.text)}</span>`).join('')}
-    <span class="sc-row-est${estDefault?' sc-est-default':''}" title="${estDefault?'実績データが無いための暫定既定値です':''}">${estDefault?'~':''}${esc(estText)}</span>
+    <span class="sc-row-est${estProvisional?' sc-est-default':''}${estSrc==='equipment-standard'?' sc-est-standard':''}" title="${esc(estNote)}">${estProvisional?'~':''}${esc(estText)}</span>
     <span class="sc-row-actual">${esc(actualText)}</span>
     <span class="sc-row-flags">${flags}</span>
     <span class="sc-row-actions">

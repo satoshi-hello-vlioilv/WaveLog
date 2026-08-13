@@ -376,6 +376,9 @@
 .sc-row-detail{margin:var(--space-1) var(--space-2);padding:var(--pad-card);background:#eef2f4;border:1px solid var(--line);border-radius:var(--radius-sm);display:flex;flex-direction:column;gap:var(--gap-inline);min-width:640px}
 .sc-detail-heading{font-size:var(--fs-sm);font-weight:800;color:#60747b}
 .sc-estimate-row{font-size:var(--fs-sm);color:#3a565d}
+/* 実績由来でない見積の説明(§9.114)。**読み飛ばされない程度に**は目立たせ、
+   かといって警告には見せない(異常ではなく、まだ実績が無いというだけ)。 */
+.sc-estimate-note{color:var(--muted);white-space:normal}
 .sc-estimate-factor{display:flex;align-items:center;gap:var(--gap-inline);font-size:var(--fs-sm);color:#3a565d}
 .sc-ef-key{color:#60747b;min-width:110px}
 .sc-ef-level{font-weight:700;color:#173842}

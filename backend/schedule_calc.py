@@ -281,7 +281,12 @@ def resolve_estimate(c,equipment,plan_row_dict):
  # 種別='作業': 換算係数モデル(§6)による見積。basisがequipment/pooledなら
  # 実績由来のsource='model'、モデル自体が無ければsource='default'。
  result=load_factor.estimate_work(c,equipment,plan_row_dict.get('detail') or {})
- source='model' if result.get('basis') in ('equipment','pooled') else 'default'
+ # 見積の出どころは画面へそのまま出す(§9.114)。「実績から出したのか、
+ # 設備の標準時間なのか、何も無いので暫定なのか」で読み手の受け取り方が
+ # 変わるため、`default`とひとまとめにしないこと。
+ basis=result.get('basis')
+ source=('model' if basis in ('equipment','pooled')
+         else 'equipment-standard' if basis=='equipment-standard' else 'default')
  return {'minutes':result['minutes'],'source':source,'low':result.get('low'),'high':result.get('high'),
          'sigmaLog':result.get('sigmaLog'),'base':result.get('base'),'factors':result.get('factors') or []}
 
