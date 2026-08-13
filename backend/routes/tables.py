@@ -208,10 +208,18 @@ def api_db_diagnose():
 
 @bp.get('/api/db-mirror')
 def api_db_mirror():
- """共有DBの写しの状態(§9.89)。いつの写しを読んでいるかを画面へ出す。"""
- from .. import db_mirror
+ """共有DBの写しの状態(§9.89)。いつの写しを読んでいるかを画面へ出す。
+
+ 置き換えの再試行の実績(§9.108)も返す。**「たまに」なのか「毎回」なのかは
+ 数字でしか分からない**ので、回線の揺らぎ(再試行で吸収され、failedは
+ 増えない)と構造的な問題(failedが積み上がる)を切り分けられるようにする。"""
+ from .. import atomic_io, db_mirror
+ cache=str(db_mirror.cache_dir())
  return jsonify(ok=True,enabled=db_mirror.enabled(),
                 interval_sec=db_mirror.interval_sec(),
+                cacheDir=cache,
+                cacheCloudSync=atomic_io.cloud_sync_hint(cache),
+                replaceStats=atomic_io.stats(),
                 items=db_mirror.status())
 
 @bp.post('/api/db-mirror/refresh')

@@ -16,6 +16,8 @@ import configparser, csv, os, shutil, sqlite3, time
 from datetime import datetime
 from pathlib import Path
 
+from . import atomic_io
+
 def qi(s):return '"'+str(s).replace('"','""')+'"'
 
 def unique_headers(values):
@@ -106,9 +108,11 @@ def publish(src,dst,backup_dir,generations=5):
     os.replace(incoming,dst)
     if dst.stat().st_size!=src.stat().st_size:raise IOError('公開後サイズ不一致')
     return {'published':True,'path':str(dst)}
-   except PermissionError as e:last=e;time.sleep(.25)
    except OSError as e:
-    if getattr(e,'winerror',None) in (5,32,33):last=e;time.sleep(.25)
+    # 「待てば直る失敗」の見分けはbackend/atomic_io.pyが1箇所で持つ(§9.108)。
+    # ここは保留(pending)へ逃がす独自の受け皿があるので、共通の再試行では
+    # なく自前のループのままにしてある。
+    if atomic_io.is_transient(e):last=e;time.sleep(.25)
     else:raise
   pending=dst.parent/f'{dst.stem}.pending_{stamp}{dst.suffix}';os.replace(incoming,pending)
   return {'published':False,'path':str(dst),'pending':str(pending),'reason':'公開先が使用中のため保留しました'}
@@ -134,7 +138,9 @@ def apply_pending(dst,backup_dir,generations=5):
    for item in old[generations:]:
     try:item.unlink()
     except OSError:pass
-  os.replace(newest,dst)
+  # 保留を適用するここは再試行が無かった(publish()側にはあった)。
+  # 使用中で保留したものを適用しに来るのだから、ここでこそ粘る必要がある。
+  atomic_io.replace(newest,dst,label='rne.apply_pending')
   for old in pending[1:]:
    try:old.unlink()
    except OSError:pass

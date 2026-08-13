@@ -53,7 +53,8 @@ G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'tes
                'test_uiux', 'test_hdr', 'test_headbar', 'test_calscale', 'test_bootui',
                'test_gridhead']
 G['起動'] = ['test_boot', 'test_bootui', 'test_bootflash', 'test_assetcache', 'test_tabclose']
-G['接続'] = ['test_dbopen', 'test_dbmirror', 'test_datasource', 'test_tablequery']
+G['接続'] = ['test_dbopen', 'test_dbmirror', 'test_datasource', 'test_tablequery',
+             'test_atomicio']
 G['権限'] = ['test_modeguard', 'test_noaccess', 'test_scperm', 'test_recperm']
 G['ログ'] = ['test_logs', 'test_logview', 'test_error']
 
@@ -131,12 +132,16 @@ RULES = [
     # --- サーバー(その他) --------------------------------------------
     ('backend/access_mode.py', g('権限', 'test_nav', 'test_crudroutes')),
     ('backend/db_access.py', g('接続', '一覧', 'test_setpage')),
-    ('backend/db_mirror.py', g('test_dbmirror', 'test_dbopen', 'test_listcache')),
+    ('backend/db_mirror.py', g('test_dbmirror', 'test_dbopen', 'test_listcache',
+                               'test_atomicio')),
+    # 置き換えの粘り(§9.108)は写し・共有JSON・RNE公開の全部が通る土台。
+    ('backend/atomic_io.py', g('test_atomicio', 'test_dbmirror', 'test_sclock',
+                               'test_scsync', 'test_datasource')),
     ('backend/repositories/master_repo.py', g('マスタ', '列', 'test_workable')),
     ('backend/repositories/schedule_repo.py', g('スケジュール', 'test_stopeq')),
     ('backend/schedule_calc.py', g('スケジュール')),
     ('backend/schedule_sync.py', g('test_sclock', 'test_scsync', 'test_scwritespeed',
-                                   'test_screorder')),
+                                   'test_screorder', 'test_atomicio')),
     ('backend/load_factor.py', g('test_scbalance', 'test_sccat', 'test_screport')),
     ('backend/records_export.py', g('test_share', 'test_flows')),
     ('backend/logging_setup.py', g('ログ')),
@@ -145,7 +150,7 @@ RULES = [
     ('backend/errors.py', g('test_error')),
     ('backend/paths.py', g('test_setpage', 'test_dbopen', 'test_datasource')),
     ('backend/changelog_data.py', g('test_docindex', 'test_boot')),
-    ('backend/rne_', g('test_datasource', 'test_setpage')),
+    ('backend/rne_', g('test_datasource', 'test_setpage', 'test_atomicio')),
     ('backend/navigator_api.py', g('test_datasource')),
     ('backend/launcher/', g('起動')),
 

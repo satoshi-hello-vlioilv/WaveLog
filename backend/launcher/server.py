@@ -20,10 +20,19 @@ def run():
  # 重なると正しく読めないため、画面は常に手元の写しを読む。写せなくても
  # 画面は前の写し(または共有)で動くので、ここでの失敗は起動を止めない。
  try:
-  from backend import db_mirror
+  from backend import atomic_io, db_mirror
   if db_mirror.enabled():
    db_mirror.start()
    log.info('共有DBの写し: %d秒ごとに更新します',db_mirror.interval_sec())
+   # 写しの置き場がクラウド同期フォルダの中だと、同期のあいだファイルを
+   # 掴まれて置き換え・削除が拒まれる(§9.108)。世代名にしたので致命傷では
+   # 無くなったが、無駄な同期が毎分走るので起動時に1度だけ知らせる。
+   hint=atomic_io.cloud_sync_hint(db_mirror.cache_dir())
+   if hint:
+    log.warning('共有DBの写しの置き場が%sの中にあります(%s)。'
+                '同期のあいだファイルが掴まれるうえ、写しが毎回クラウドへ上がります。'
+                'config/local.jsonのdb_dirを実ローカル(例: C:\\WaveLog\\db)へ移すことを勧めます。',
+                hint,db_mirror.cache_dir())
  except Exception as e:
   log.warning('共有DBの写しを開始できませんでした: %s',e)
  log.info('Webサーバー: 起動します (%s:%s)',HOST,PORT)
