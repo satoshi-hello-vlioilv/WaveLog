@@ -428,6 +428,18 @@
   `tests/test_dbmirror.py`（`os.replace`/`os.unlink`を差し替えてWindowsの
   規則を持ち込む。**「前提」の確認を先に置くこと**——真似が効いていないと
   両方PASSして何も確かめられない）。
+- **作り直せるファイルの置き場は`paths.work_dir()`が決める**（§9.109）:
+  `db_dir`がクラウド同期フォルダー（Box/OneDrive等）やUNC・ネットワーク
+  ドライブの上なら、**利用者に設定を求めず**`%LOCALAPPDATA%\WaveLog\work\
+  <識別子>`へ自動で逃がす。手元なら`db_dir`のまま（**健全な端末の挙動を
+  変えない**）。**移してよいのは「消えても取り直せるもの」だけ**——写し
+  （`cache/`）とスケジュールの作業コピーはwork_dir側、**マスタDB・測定
+  データDBは`db_dir`のまま**（本物のデータを黙って移すと、同期されている
+  つもりのデータが同期対象から外れる）。**判定は1回だけ**行って覚える
+  （`resolve()`を伴うので、リクエストのたびに呼ぶと共有不調時にそれ自体が
+  失敗原因になる）。UNCの判定は**`resolve()`の前に生の文字列で**行うこと
+  ——Linuxでは`\\server\share`も`//server/share`も潰れて判定が消える。
+  固定は`tests/test_localwork.py`。
 - **資材(JS/CSS)は`?t=`付きなら長期キャッシュへ回す**（§9.97、
   `tests/test_assetcache.py`）: `app.py`の`cache_policy`が、画面(HTML)と
   APIへは`no-store`（古い在庫を見せない）、**版がURLに入っている資材だけ**

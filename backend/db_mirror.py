@@ -95,8 +95,51 @@ _wake = threading.Event()
 # 置き場所
 # ------------------------------------------------------------------
 def cache_dir():
+ """写しの置き場。**db/ とは限らない**(§9.109)。
+
+ `db_dir`が共有・クラウド同期フォルダーの上だと、Windowsでは置き換えを
+ 拒まれて写しが更新できなくなる(§9.108)。その場合だけ`paths.work_dir()`が
+ ユーザー別のローカル領域を返すので、こちらは黙ってそれに従う
+ (利用者に設定を求めない)。"""
+ from . import paths
+ return Path(paths.work_dir()) / _CACHE_DIRNAME
+
+
+def _former_cache_dir():
+ """手元へ逃がす前に使っていた置き場(逃がしていなければNone)。"""
+ from . import paths
  from .db_access import DB_DIR
+ if not paths.work_dir_relocated():
+  return None
  return Path(DB_DIR) / _CACHE_DIRNAME
+
+
+def sweep_former_cache():
+ """前の置き場に残った**自分の生成物だけ**を片付ける。
+
+ 写しは作り直せるので運ぶ必要が無い(運ぶほうが遅く、しかも運ぶ先が
+ 掴まれていたら失敗する)。**消せなくてよい**——共有やクラウドの上なので
+ 消せないことがあるし、消せなくても実害は「置きっぱなし」だけ。
+ **自分が作った名前しか触らない**こと(利用者のファイルを消さない)。"""
+ old = _former_cache_dir()
+ if old is None:
+  return 0
+ try:
+  if not old.is_dir() or old.resolve() == cache_dir().resolve():
+   return 0
+  victims = [p for p in old.iterdir()
+             if p.is_file() and (p.name == _SIGNATURE_FILE
+                                 or p.suffix == '.sqlite3'
+                                 or p.name.endswith('.sqlite3.tmp'))]
+ except OSError:
+  return 0
+ gone = 0
+ for p in victims:
+  if atomic_io.unlink(p, budget_sec=0.2, label='mirror.former'):
+   gone += 1
+ if gone:
+  app_logger().info('前の置き場に残っていた写しを%d件片付けました(%s)', gone, old)
+ return gone
 
 
 def _safe_key(key):
@@ -428,6 +471,12 @@ def refresh_all(force=False):
 def _loop():
  # 起動直後は少し待つ(起動処理と共有I/Oを重ねない)。
  _wake.wait(3)
+ # 置き場が手元へ移っていたら、前の置き場の残骸を1度だけ片付ける
+ # (背景スレッドの中で行う。共有・クラウドへ触る可能性があるため)。
+ try:
+  sweep_former_cache()
+ except Exception as e:
+  app_logger().debug('前の置き場の片付けに失敗しました: %s', e)
  while True:
   try:
    if enabled():

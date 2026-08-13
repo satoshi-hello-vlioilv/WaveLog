@@ -188,30 +188,9 @@ def unlink(path, *, budget_sec=DEFAULT_BUDGET_SEC, label='', missing_ok=True):
   return False
 
 
-# ------------------------------------------------------------------
-# クラウド同期フォルダの見分け
-# ------------------------------------------------------------------
-# 実機の写しの置き場は C:\boxdrive\Box\...\WaveLog_v1\db\cache だった。
-# Box Drive・OneDrive等は同期のあいだファイルを掴むため、**掴む時間が
-# 桁違いに長い**(数秒〜数分)。再試行では吸収しきれないので、置き場を
-# 実ローカルへ移してもらうしかない。名前で見分けて案内する。
-_CLOUD_MARKERS = (
- ('boxdrive', 'Box Drive'), ('/box/', 'Box'), ('\\box\\', 'Box'),
- ('onedrive', 'OneDrive'), ('dropbox', 'Dropbox'),
- ('google drive', 'Google ドライブ'), ('googledrive', 'Google ドライブ'),
- ('icloud', 'iCloud'), ('nextcloud', 'Nextcloud'),
-)
-
-
-def cloud_sync_hint(path):
- """そのパスがクラウド同期フォルダの中に見えるなら、その名前を返す。
-
- 見分けは名前だけなので**確証ではない**。だから止めるのではなく、
- 「置き換えに失敗したときの心当たり」として添えるに留める。"""
- s = str(path or '').lower()
- if not s:
-  return ''
- for marker, name in _CLOUD_MARKERS:
-  if marker in s:
-   return name
- return ''
+# クラウド同期フォルダの見分けは**パスの分類**なので paths.py が持つ
+# (§9.109で、置き場を自動で手元へ寄せる判断にも使うようになったため)。
+# ここから使っていた呼び出し元のために名前だけ引き継ぐ。
+# paths は logging_setup より下にあるので、この向きの import だけが可能
+# (paths→atomic_io にすると logging_setup を挟んで循環する)。
+from .paths import cloud_sync_hint  # noqa: E402,F401

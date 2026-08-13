@@ -54,7 +54,7 @@ G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'tes
                'test_gridhead']
 G['起動'] = ['test_boot', 'test_bootui', 'test_bootflash', 'test_assetcache', 'test_tabclose']
 G['接続'] = ['test_dbopen', 'test_dbmirror', 'test_datasource', 'test_tablequery',
-             'test_atomicio']
+             'test_atomicio', 'test_localwork']
 G['権限'] = ['test_modeguard', 'test_noaccess', 'test_scperm', 'test_recperm']
 G['ログ'] = ['test_logs', 'test_logview', 'test_error']
 
@@ -148,7 +148,8 @@ RULES = [
     ('backend/boot_status.py', g('起動')),
     ('backend/watchdog.py', g('test_tabclose', 'test_boot')),
     ('backend/errors.py', g('test_error')),
-    ('backend/paths.py', g('test_setpage', 'test_dbopen', 'test_datasource')),
+    ('backend/paths.py', g('test_setpage', 'test_dbopen', 'test_datasource',
+                           'test_localwork', 'test_dbmirror', '起動')),
     ('backend/changelog_data.py', g('test_docindex', 'test_boot')),
     ('backend/rne_', g('test_datasource', 'test_setpage', 'test_atomicio')),
     ('backend/navigator_api.py', g('test_datasource')),

@@ -20,6 +20,7 @@ import sqlite3
 import threading
 import time
 
+from . import paths
 from .paths import APP_ROOT, configured_path, load_local_config
 from .logging_setup import app_logger
 
@@ -31,7 +32,14 @@ from .logging_setup import app_logger
 # そのマスタDBの中に保存すると、読みに行く先が分からないまま読みに行く
 # (鶏と卵)になるため、この3つに限り引き続きconfig/local.jsonが唯一の
 # 設定手段(起動時に一度だけ読む、ブートストラップ専用の最小限のファイル)。
-DB_DIR=configured_path('db_dir') or APP_ROOT/"db"
+DB_DIR=paths.db_dir()
+# 作り直せるファイル(共有からの写し・スケジュールの作業コピー)の置き場は
+# DB_DIRとは別に決まる(§9.109)。DB_DIRが共有/クラウド同期フォルダーの上
+# だと、Windowsでは置き換えが拒まれて更新できなくなるため、その場合だけ
+# 自動でユーザー別のローカル領域へ逃がす。**本物のデータ(マスタ・測定
+# データ)はDB_DIRのまま**——黙って移すと、同期されているつもりのデータが
+# 同期対象から外れる。
+WORK_DIR=paths.work_dir()
 SIKA_DIR=Path(r"\\Nlmsrvngy03\Read\【New】仕掛\台帳")
 # 接続はSQLiteのみ。以前はAccess(pyodbc)にも接続できたが、実機を含め全ての
 # 接続先をSQLiteへ統一したため廃止した。古い設定が残っていても黙って落ちない
@@ -244,7 +252,10 @@ def resolve_local_db(name,legacy_names):
 # 使える。
 _MASTER_PATH=configured_path('master_db_path') or resolve_local_db('master.sqlite3',['マスタ.sqlite3','マスタデータ.sqlite3','Master.sqlite3'])
 MEAS_DB=configured_path('records_db_path') or resolve_local_db('records.sqlite3',['測定データ.sqlite3','Measurement.sqlite3']); MEAS_ENGINE='sqlite'
-SCHEDULE_CACHE_PATH=DB_DIR/'schedule_cache.sqlite3'
+# 共有スケジュールDBのローカル作業コピー。**共有から取り直せる**ので
+# WORK_DIR側(§9.109)。毎回の取得で丸ごと置き換えるため、共有・クラウド
+# 同期フォルダーの上にあると置き換えを拒まれる(§9.108)。
+SCHEDULE_CACHE_PATH=WORK_DIR/'schedule_cache.sqlite3'
 
 # ========================================================================
 # パス設定マスタ（仕掛/品質データの読み込み先・共有パス等の運用設定）
