@@ -45,8 +45,24 @@ if [ "$1" = "--changed" ]; then
 fi
 
 mode(){ curl -s -X POST $API/api/access-mode -H 'Content-Type: application/json' -d "{\"mode\":\"$1\"}" >/dev/null; }
-resetcontent(){ curl -s -X POST $API/api/schedule-content-master -H 'Content-Type: application/json' \
-  -d '{"equipment":"テスト設備A","items":[],"user_id":"test"}' >/dev/null; }
+# 「見せ方」の設定(内容欄の項目・列レイアウト)を検証用設備ぶんだけ白紙へ戻す。
+# **これらはマスタDBに残り、実行をまたいで生き延びる。** 共有スケジュールDBは
+# 作業用コピーを作り直す・作業予定は1本ごとにreseedする、と手当てがあるのに
+# ここだけ素通しだったため、後片付け前に落ちたテストや手元の確認スクリプトが
+# 残した設定を**次の実行が丸ごと引き継いだ**。しかも壊れ方が遠い——
+# `timeline:テスト設備A` で lotNo が非表示のまま残っていたせいで、内容欄とは
+# 何の関係も無い test_orphan が「実績がスケジュールに出ない」で3件落ちた
+# (行の題名はロット番号を出す内容セルなので、隠すと探せなくなる)。
+# 実行のたびに結果が変わるのでは安全網にならないので、**開始時に必ず戻す**。
+resetcontent(){
+  curl -s -X POST $API/api/schedule-content-master -H 'Content-Type: application/json' \
+    -d '{"equipment":"テスト設備A","items":[],"user_id":"test"}' >/dev/null
+  # 列レイアウトマスタは全置換なので、空を送れば対象の行が消える(§9.113)。
+  for tg in 'timeline:テスト設備A' 'print:テスト設備A'; do
+    curl -s -X POST $API/api/column-layout-master -H 'Content-Type: application/json' \
+      -d "{\"target\":\"$tg\",\"order\":[],\"hidden\":[],\"widths\":{},\"names\":{},\"formats\":{},\"rules\":{},\"formulas\":{},\"locks\":[],\"user_id\":\"test\"}" >/dev/null
+  done
+}
 
 server_up(){ curl -s -m 3 -o /dev/null "$API/" 2>/dev/null; }
 
@@ -209,6 +225,10 @@ run(){
 }
 
 echo "--- 起動(サーバーを再起動する) ---"
+# 前の実行の置き土産(内容欄の項目・列レイアウト)をここで落とす。1本だけ
+# 実行するとき(`run_all.sh test_orphan`)も同じ白紙から始められるように、
+# テストを選ぶより前に置く。
+resetcontent
 run python3 test_boot.py
 sleep 3
 
@@ -219,12 +239,12 @@ for t in test_stopcat test_workable test_wkbg test_orphan test_audit test_sub te
 
 echo "--- スケジュール (テスト側でモードを切り替える) ---"
 for t in test_screport test_startwork test_scsync test_sccat test_scbalance test_scbatch \
-         test_screorder test_scperm test_scperf test_wkfast test_scsplit test_scprint test_scdrop test_recperm; do run $NODE $t.js; done
+         test_screorder test_scperm test_scperf test_wkfast test_scsplit test_scprint test_scdrop test_sccontent test_recperm; do run $NODE $t.js; done
 
 echo "--- スケジュール (scheduleモード固定) ---"
 mode schedule
 resetcontent
-for t in test_cols test_content_ui test_content_apply test_listmodal test_split_layout test_sccols; do
+for t in test_cols test_listmodal test_split_layout test_sccols; do
   run $NODE $t.js; resetcontent; done
 
 echo "--- サーバー側 ---"

@@ -237,7 +237,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   $('#scModeSingle').onclick=()=>switchToSingle();
   $('#scListModalBtn').onclick=()=>listModalOpen?closeListModal():openListModal();
   $('#scStopModalBtn').onclick=()=>stopModalOpen?closeStopModal():openStopModal();
-  $('#scContentModalBtn').onclick=()=>contentModalOpen?closeContentModal():openContentModal();
+  /* 内容欄の設定は**仕掛一覧と同じパネル**で開く(§9.120)。専用モーダルの
+     実装は当面残す（他から呼ばれていないかを通しで確かめるまでの保険）。 */
+  $('#scContentModalBtn').onclick=()=>openContentPanel();
   $('#scSideToggle').onclick=()=>toggleSideCollapsed();
   $('#scStopSectionToggle').onclick=()=>{
    const box=$('#scStopButtons');if(!box)return;
@@ -421,7 +423,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const modalBtn=$('#scListModalBtn');
   if(modalBtn){modalBtn.hidden=!applicable;modalBtn.classList.toggle('active',listModalOpen)}
   const contentBtn=$('#scContentModalBtn');
-  if(contentBtn){contentBtn.hidden=!applicable;contentBtn.classList.toggle('active',contentModalOpen)}
+  if(contentBtn){contentBtn.hidden=!applicable;contentBtn.classList.toggle('active',contentPanelOpen())}
  }
 
  /* ---------- .sc-side(案内文+設備停止)の折りたたみ(§9.13改訂) ----------
@@ -578,7 +580,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   document.body.classList.remove('sc-mode');
   document.getElementById('schedulePanel')?.setAttribute('hidden','');
   document.getElementById('openSchedule')?.classList.remove('active');
-  closeListModal();closeStopModal();closeColumnModal();closeContentModal();
+  closeListModal();closeStopModal();closeColumnModal();closeContentPanel();
   hideSplitList();
   stopLockPolling();
   stopSessionHeartbeat();
@@ -659,7 +661,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   // 全体俯瞰ボードや対象設備が無い状態では分割表示(§9.10)の意味が無いため
   // 畳む(仕掛一覧を隣に出したまま設備を切り替えても違和感が無いよう、
   // 個別タイムライン表示中はshowSplitList側で改めて出す)。
-  if(inBoard){hideSplitList();closeListModal();closeStopModal();closeColumnModal();closeContentModal()}
+  if(inBoard){hideSplitList();closeListModal();closeStopModal();closeColumnModal();closeContentPanel()}
   syncSession();
  }
  async function switchToBoard(){
@@ -2681,24 +2683,6 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    scContentPrefs={equipment:eq,items:null}; // 取得に失敗しても既定の組み立てへフォールバック(fail-open)
   }
  }
- let contentModalOpen=false,contentDraft=[],contentFilter='';
- function ensureContentModal(){
-  let modal=document.getElementById('scContentModal');
-  if(modal)return modal;
-  modal=document.createElement('div');modal.className='sc-float-win';modal.id='scContentModal';modal.hidden=true;
-  // 主要動作(保存)はスクロール領域の外(.sc-float-foot)へ固定で置く。
-  // 以前は本文の末尾に置いていたため、候補が多い設備では最後まで
-  // スクロールしないと保存ボタンが見えず見逃しやすかった。
-  modal.innerHTML=`
-   <div class="sc-float-header"><div><h2>「内容」欄に出す項目</h2></div><button type="button" id="scContentModalClose" title="閉じる">×</button></div>
-   <div class="sc-float-body" id="scContentModalBody"></div>
-   <div class="sc-float-foot" id="scContentModalFoot"></div>
-   <div class="sc-float-resize" title="ドラッグで大きさを変えられます"></div>`;
-  document.body.appendChild(modal);
-  modal.querySelector('#scContentModalClose').onclick=()=>closeContentModal();
-  WL.makeFloatingWindow(modal,{storageKey:'scContentModalRectV2',defaultWidth:460,defaultHeight:520,defaultTop:80,minWidth:340,minHeight:300});
-  return modal;
- }
  /* 未設定のときに「内容」欄を組み立てている既定の項目(entryContentTextの
     フォールバックと同じ並び)。指定が無い設備でもピッカーを開いた時点で
     “今表示されているもの”が選択済みで見えるようにするための初期値。 */
@@ -2755,97 +2739,110 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   raw.forEach(k=>{const c=canonicalContentKey(k);if(!seen.has(c)){seen.add(c);out.push(c)}});
   return out;
  }
- // 保存前でも結果が分かるよう、先頭の予定を使って「内容」欄の見え方を作る。
- function contentPreviewText(items){
-  const sample=scState.entries.find(e=>e.kind==='作業'&&e.detail&&Object.keys(e.detail).length);
-  if(!items.length)return '(既定の組み立て)';
-  if(!sample)return items.map(contentItemLabel).join(' / ');
-  const parts=items.map(k=>contentValueOf(sample.detail,k)).filter(v=>v!==undefined);
-  return parts.length?parts.map(v=>String(v).trim()).join(' / '):'(この予定には該当データがありません)';
- }
- function renderContentModalBody(){
-  const body=document.getElementById('scContentModalBody'),foot=document.getElementById('scContentModalFoot');
-  if(!body||!foot)return;
-  if(!scState.equipment){body.innerHTML='<div class="sc-empty-note">設備を選択してください。</div>';foot.innerHTML='';return}
-  const candidates=contentCandidateKeys();
-  const chosen=contentDraft;
-  const q=String(contentFilter||'').trim().toLowerCase();
-  const rest=candidates.filter(k=>!chosen.includes(k))
-   .filter(k=>!q||contentItemLabel(k).toLowerCase().includes(q)||String(k).toLowerCase().includes(q));
-  const isDefault=sameItems(chosen,DEFAULT_CONTENT_ITEMS);
-  body.innerHTML=`<p class="sc-drop-hint">${esc(scState.equipment)}のタイムライン「内容」欄に出す項目を、出したい順に選びます。${isDefault?'いまは既定と同じ組み合わせです。':''}<br>※予定に入れた時点の仕掛データを保存して表示しているため、その項目をまだ持っていない古い予定は既定の表示のままになります(新しく追加した予定から反映されます)。</p>
-   <div class="sc-content-chosen-head">表示する項目<small>上から順に並びます</small></div>
-   <div class="sc-content-chosen" id="scContentChosen">${
-     chosen.length?chosen.map((k,i)=>`<div class="sc-content-item" data-i="${i}"><span class="sc-content-ord">${i+1}</span><span class="sc-content-name" title="${esc(k)}">${esc(contentItemLabel(k))}</span>
-       <button type="button" data-act="up" title="上へ"${i===0?' disabled':''}>▲</button>
-       <button type="button" data-act="down" title="下へ"${i===chosen.length-1?' disabled':''}>▼</button>
-       <button type="button" data-act="del" title="外す">×</button></div>`).join('')
-     :'<div class="sc-empty-note">未選択（既定の組み立てで表示します）</div>'}</div>
-   <div class="sc-content-chosen-head">追加できる項目
-     <input type="search" id="scContentFilter" class="sc-content-filter" placeholder="項目名で絞り込み" value="${esc(contentFilter||'')}" autocomplete="off"></div>
-   <div class="sc-column-list" id="scContentRest">${rest.map(k=>`<button type="button" class="sc-content-add" data-key="${esc(k)}" title="${esc(k)}">＋ ${esc(contentItemLabel(k))}</button>`).join('')||'<div class="sc-empty-note">該当する項目がありません</div>'}</div>`;
+ /* 内容の項目まわりの道具はここまで。**モーダルのUIだけを消し**、
+    値の取り出し・項目名・候補の作り方は残す——タイムラインの見出しと
+    セルがこれらを使っている(まとめて消して、行が1つも出なくなった)。 */
+ /* 内容欄の設定は仕掛一覧と同じパネルで開く(§9.120)。**専用モーダルは
+    消した**——設定画面が2つ残ると、どちらが正か分からなくなり、片方に
+    しか無い機能ができる(§9.96「一度も動かない実装を作らない」)。 */
+ const contentPanelOpen=()=>{
+  const p=document.getElementById('listColumnPanel');
+  return !!p&&!p.hidden;
+ };
 
-  // 保存はスクロールの外(固定フッター)。押す前に結果が分かるようプレビューを添える。
-  foot.innerHTML=`<div class="sc-content-preview"><span class="sc-content-preview-label">表示例</span><b>${esc(contentPreviewText(chosen))}</b></div>
-   <div class="sc-content-foot-actions">
-    <button type="button" id="scContentDefault" title="既定の組み合わせに戻します">既定に戻す</button>
-    <button type="button" id="scContentClear">すべて外す</button>
-    <button type="button" id="scContentSave" class="sc-column-save">保存</button>
-   </div>`;
+ /* ---------- 内容欄の設定を、仕掛一覧と同じパネルで開く(§9.120) ----------
+    以前は専用の小さなモーダルで「どの項目を出すか」だけを選べた。だが
+    内容欄も**列レイアウトマスタに乗った列**（§9.88 段6）なので、並び・幅・
+    表示名・書式・読み替えは仕掛一覧とまったく同じ仕組みで効く。設定画面を
+    2つ持つ理由が無い——覚えることが2倍になり、片方にしか無い機能ができる。
 
-  body.querySelectorAll('#scContentChosen .sc-content-item').forEach(el=>{
-   const i=+el.dataset.i;
-   el.querySelectorAll('button[data-act]').forEach(b=>{
-    b.onclick=()=>{
-     const act=b.dataset.act;
-     if(act==='del')contentDraft.splice(i,1);
-     else if(act==='up'&&i>0)contentDraft.splice(i-1,0,contentDraft.splice(i,1)[0]);
-     else if(act==='down'&&i<contentDraft.length-1)contentDraft.splice(i+1,0,contentDraft.splice(i,1)[0]);
-     renderContentModalBody();
-    };
-   });
-  });
-  body.querySelectorAll('.sc-content-add').forEach(b=>{b.onclick=()=>{contentDraft.push(b.dataset.key);renderContentModalBody()}});
-  const filter=body.querySelector('#scContentFilter');
-  if(filter)filter.oninput=()=>{
-   contentFilter=filter.value;
-   const pos=filter.selectionStart;
-   renderContentModalBody();
-   const again=document.getElementById('scContentFilter');
-   if(again){again.focus();try{again.setSelectionRange(pos,pos)}catch(e){/* 位置復元は補助的なもの */}}
-  };
-  foot.querySelector('#scContentClear').onclick=()=>{contentDraft=[];renderContentModalBody()};
-  foot.querySelector('#scContentDefault').onclick=()=>{contentDraft=[...DEFAULT_CONTENT_ITEMS];renderContentModalBody()};
-  foot.querySelector('#scContentSave').onclick=saveContentSelection;
- }
- async function saveContentSelection(){
-  if(!scState.equipment)return;
+    **保存先だけが2つに分かれる。** 「どの項目を出すか」はスケジュール内容
+    表示マスタ、それ以外は列レイアウトマスタ。**振り分けはこの1箇所**で行い、
+    パネルには知らせない（画面を割る理由にはしない）。 */
+ function contentPanelSource(){
   const eq=scState.equipment;
-  // 既定と同じ並びなら「未設定」として保存する。表示のされ方は変わらないのに
-  // 設定済み扱いになると、既定側を後から変えても追随しなくなるため。
-  const toSave=sameItems(contentDraft,DEFAULT_CONTENT_ITEMS)?[]:[...contentDraft];
-  try{
-   await api('/api/schedule-content-master',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify(withUserId({equipment:eq,items:toSave}))});
-   scContentPrefs={equipment:eq,items:toSave.length?toSave:null};
-   showToast&&showToast('内容欄の項目を保存しました',toSave.length?`${eq}: ${toSave.join(' / ')}`:`${eq}: 既定の組み立てに戻しました`,3600);
-   if(scState.entries.length)renderTimeline();
-  }catch(e){showToast&&showToast('保存に失敗しました',e.message,5000)}
+  return {
+   key:'timeline',
+   eyebrow:'作業スケジュール',
+   title:()=>`内容欄の項目（${eq}）`,
+   lead:'左で<b>出す項目と並び</b>を決め、右で<b>選んだ1項目の見え方</b>を整えます。'
+       +'触った結果はすぐタイムラインに出ます（<b>保存するまでは元に戻せます</b>）。',
+   target:()=>timelineTarget(),
+   noTargetToast:'設備を先に選んでください',
+   noTargetNote:'内容欄の設定は設備ごとに保存します',
+   savedToast:'内容欄の設定を保存しました',
+   savedNote:'この設備のタイムラインで次も同じ形で出ます',
+   /* 候補は**今出している項目＋選べる項目すべて**。出していないものも
+      並べる（消すと、足せることに気づけない）。 */
+   keys:()=>{
+    const chosen=timelineContentKeys();
+    const all=contentCandidateKeys();
+    const seen=new Set(),out=[];
+    [...chosen,...all].forEach(k=>{if(k&&!seen.has(k)){seen.add(k);out.push(k)}});
+    return out;
+   },
+   /* 内容欄には番号・ボタンの列が無いので、直し方(§9.110)も要らない。 */
+   healed:()=>null,
+   /* **「出す項目」はスケジュール内容表示マスタが持つ**ので、いま出して
+      いないものを「出さない」として開く。列レイアウトマスタのhiddenを
+      そのまま使うと（あちらは空なので）候補が全部チェック済みになり、
+      保存した瞬間に**選んだ覚えの無い項目まで内容欄へ並ぶ**。 */
+   initialHidden:keys=>{
+    const chosen=new Set(timelineContentKeys());
+    return keys.filter(k=>!chosen.has(k));
+   },
+   /* 見本は**予定が持つ仕掛データのスナップショット**。1件では
+      「たまたま」と区別が付かないので、中身のある予定を集める。 */
+   rows:()=>(scState.entries||[])
+     .filter(e=>e.kind==='作業'&&e.detail&&Object.keys(e.detail).length)
+     .map(e=>e.detail).slice(0,40),
+   /* **値の取り出しはcontentValueOf経由**(§9.69)。投入した時期によって
+      alias名だけの予定と生カラム名を持つ予定が混ざるので、直接引くと
+      古い予定で1件も出ない。 */
+   valueOf:(row,k)=>contentValueOf(row,k),
+   /* **項目名は日本語で出す。** 内容欄のキーは`lotNo`/`purposeName`という
+      alias名なので、そのまま並べると選んだ本人以外には何の項目か分からない
+      （タイムラインの見出しが日本語なのに、設定画面だけ生のキーという
+      ちぐはぐな状態になる）。表示名を付けていればそちらが勝つ。 */
+   labelOf:k=>contentItemLabel(k),
+   virtual:()=>({}),
+   joined:()=>new Set(),
+   joinFrom:()=>'',
+   /* 計算式は持たない（内容欄の値は予定のスナップショットで、一覧の行を
+      前提にした式とは土俵が違う）。プリセットと入出力は使える。 */
+   /* 内容欄の項目はすべて元データ由来なので、分類は1つで足りる。 */
+   origins:()=>['source'],
+   features:{formula:false,preset:true,width:true,format:true,rule:true},
+   afterApply:()=>{if(scState.entries&&scState.entries.length)renderTimeline()},
+   save:async(target,body)=>{
+    /* ① 出す項目＝チェックの入っている列を、**並びの順**で内容表示マスタへ。
+       既定と同じ並びなら「未設定」で保存する（既定側を後から変えたときに
+       追随しなくなるため。従来の作法をそのまま引き継ぐ）。 */
+    const hide=new Set(body.hidden||[]);
+    const items=(body.order||[]).filter(k=>!hide.has(k));
+    const toSave=sameItems(items,DEFAULT_CONTENT_ITEMS)?[]:[...items];
+    await api('/api/schedule-content-master',{method:'POST',
+     headers:{'Content-Type':'application/json'},
+     body:JSON.stringify(withUserId({equipment:eq,items:toSave}))});
+    scContentPrefs={equipment:eq,items:toSave.length?toSave:null};
+    // ② 残り(並び・幅・表示名・書式・読み替え)は列レイアウトマスタへ。
+    await WL.columnLayout.save(target,body);
+   },
+  };
  }
- function openContentModal(){
-  ensureContentModal();
-  // 未設定なら「今表示されている既定の組み立て」を選択済みの状態で開く
-  // (何も選ばれていない空の画面から始めさせない)。
-  contentDraft=(scContentPrefs.equipment===scState.equipment&&scContentPrefs.items)?[...scContentPrefs.items]:[...DEFAULT_CONTENT_ITEMS];
-  contentFilter='';
-  renderContentModalBody();
-  document.getElementById('scContentModal').hidden=false;contentModalOpen=true;
-  updateSplitToggleUi();
+ function openContentPanel(){
+  if(typeof WL.listColumns?.open!=='function'){
+   console.error('内容欄の設定: WL.listColumns が見つかりません');return;
+  }
+  WL.listColumns.open(contentPanelSource());
  }
- function closeContentModal(){
-  const modal=document.getElementById('scContentModal');
-  if(!modal||modal.hidden)return;
-  modal.hidden=true;contentModalOpen=false;
+
+ /* 画面を離れるときに閉じる。**開いていなければ触らない**——他の画面で
+    同じパネルを開いている最中に閉じてしまわないよう、対象が内容欄のとき
+    だけ閉じる。 */
+ function closeContentPanel(){
+  if(!contentPanelOpen())return;
+  if(typeof WL.listColumns?.close==='function')WL.listColumns.close();
   updateSplitToggleUi();
  }
 

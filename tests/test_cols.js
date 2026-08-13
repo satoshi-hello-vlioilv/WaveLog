@@ -56,20 +56,33 @@ let b=null;
    before.includes('L0001')&&before.includes('一般用材'),JSON.stringify(before));
  rec('1セルに複数の値が詰め込まれない',before.every(t=>!t.includes(' / ')),JSON.stringify(before));
 
- // --- 内容の項目を「検査結果 → 公差判定」の順で設定 ---
+ /* --- 内容の項目を「検査結果 / 公差判定」だけにする ---
+    内容欄の設定は**仕掛一覧と同じパネル**で開く(§9.120)。専用モーダルは
+    消したので、チェックの付け外しで選ぶ。並びはパネルの並び順に従う。 */
  await page.click('#scContentModalBtn');
- await page.waitForSelector('#scContentModal',{state:'visible',timeout:5000});
- const cand=await page.$$eval('.sc-content-add',bs=>bs.map(x=>x.dataset.key));
+ await page.waitForSelector('#listColumnPanel:not([hidden])',{timeout:10000});
+ await page.waitForTimeout(600);
+ const cand=await page.$$eval('#lcList .lc-item',ns=>ns.map(x=>x.dataset.key));
  rec('内容の項目候補に結合済みの品質列も出る',cand.includes('検査結果')&&cand.includes('公差判定'),cand.slice(0,12).join(','));
- await page.click('#scContentClear'); await page.waitForTimeout(250);
- await page.click('.sc-content-add[data-key="検査結果"]');
- await page.waitForTimeout(200);
- await page.click('.sc-content-add[data-key="公差判定"]');
- await page.waitForTimeout(200);
- const ordered=await page.$$eval('#scContentChosen .sc-content-name',ns=>ns.map(n=>n.textContent));
- rec('選んだ順に並ぶ(順序を持てる)',ordered.join(',')==='検査結果,公差判定',ordered.join(','));
- await page.click('#scContentSave');
- await page.waitForTimeout(2000);
+ const chosen=await page.evaluate(async()=>{
+  const want=new Set(['検査結果','公差判定']);
+  const items=[...document.querySelectorAll('#lcList .lc-item')];
+  for(const it of items){
+   const box=it.querySelector('.lc-vis input');
+   if(!box)continue;
+   const on=want.has(it.dataset.key);
+   if(box.checked!==on){box.click();await new Promise(r=>setTimeout(r,30))}
+  }
+  await new Promise(r=>setTimeout(r,400));
+  return [...document.querySelectorAll('#lcList .lc-item')]
+    .filter(x=>x.querySelector('.lc-vis input')?.checked).map(x=>x.dataset.key);
+ });
+ rec('選んだ項目だけがチェック済みになる',
+  chosen.length===2&&chosen.includes('検査結果')&&chosen.includes('公差判定'),chosen.join(','));
+ await page.click('#lcSave');
+ await page.waitForTimeout(2200);
+ await page.evaluate(()=>WL.listColumns.close());
+ await page.waitForTimeout(600);
  // この検証で追加した予定(最後の行)の内容欄を見る。古い予定は投入時点の
  // 仕掛データを保存しているため、その項目を持たなければ既定表示のままになる。
  const contents=await plannedContents();
