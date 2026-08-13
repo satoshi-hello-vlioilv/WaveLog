@@ -56,6 +56,23 @@
 .record-toolbar button{background:var(--teal);color:#fff}
 .record-empty,.record-loading{margin:var(--space-5);padding:30px;text-align:center;background:#fff;border:1px dashed var(--muted-border);border-radius:var(--radius-md);color:var(--muted)}
 .record-empty button{margin-top:var(--space-3)}
+/* ---------- モードで見えるものが変わることを一覧の中で言い切る帯(§9.107) ----------
+   編集モード以外では、この一覧に出るのは共有された閲覧用データだけで、
+   端末内の編集中データは開けない。0件のときに「表示できるデータがありません」
+   とだけ出すと**データが消えた**ように読めるため、理由と件数をここで示す。
+   警告色(--warn-*)を使うのは「うまくいっていない」からではなく、
+   **見えているものが全部ではない**という注意を促すため。 */
+.record-mode-notice{margin:var(--space-4) var(--space-5) 0;padding:var(--pad-card);border:1px solid var(--warn-border);border-left:4px solid var(--warn-fg);border-radius:var(--radius-md);background:var(--warn-bg);color:var(--warn-fg)}
+.record-mode-notice .rmn-head{display:flex;align-items:center;gap:var(--gap-inline);font-size:var(--fs)}
+.record-mode-notice .rmn-mode{padding:var(--space-1) var(--space-2);border-radius:var(--radius-sm);background:var(--warn-fg);color:#fff;font-size:var(--fs-micro);font-weight:800;white-space:nowrap}
+.record-mode-notice .rmn-body{margin:var(--space-2) 0 0;font-size:var(--fs-sm);line-height:1.7}
+.record-mode-notice .rmn-actions{margin-top:var(--space-3);display:flex;align-items:center;gap:var(--gap-inline)}
+.record-mode-notice .rmn-actions:empty{display:none}
+.record-mode-switch{background:var(--teal);color:#fff;border-color:var(--teal);font-weight:700}
+.record-mode-denied{margin:0;font-size:var(--fs-sm);line-height:1.6}
+/* 見出しは中央でよいが、理由は2〜3行の説明文になる。中央揃えのまま伸ばすと
+   行頭が揃わず読みにくいので、幅を決めて左揃えにする。 */
+.record-empty .record-empty-why{max-width:76ch;margin:var(--space-2) auto 0;font-size:var(--fs-sm);line-height:1.7;text-align:left;color:var(--ink-3)}
 /* ---------- 12. 設備設定モーダル ---------- */
 #appSettingsModal{z-index:var(--z-settings);background:#071c22b8;backdrop-filter:blur(2px)}
 .settings-dialog{width:min(620px,94vw);background:#fff;border:2px solid var(--teal);border-radius:var(--radius-md);overflow:hidden;box-shadow:0 28px 90px #0009}

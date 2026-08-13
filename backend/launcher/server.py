@@ -20,10 +20,16 @@ def run():
  # 重なると正しく読めないため、画面は常に手元の写しを読む。写せなくても
  # 画面は前の写し(または共有)で動くので、ここでの失敗は起動を止めない。
  try:
-  from backend import db_mirror
+  from backend import db_mirror, paths
   if db_mirror.enabled():
    db_mirror.start()
    log.info('共有DBの写し: %d秒ごとに更新します',db_mirror.interval_sec())
+   # 置き場が共有・クラウド同期フォルダーの上なら、写しは自動で手元へ
+   # 逃がしてある(§9.109)。**利用者に設定を求めない**ので、ここは
+   # 「こうしてください」ではなく「こうしました」を残すだけにする。
+   if paths.work_dir_relocated():
+    log.info('作業用ファイル(写し・作業コピー)は手元へ置きます: %s（%s）',
+             paths.work_dir(),paths.work_dir_reason())
  except Exception as e:
   log.warning('共有DBの写しを開始できませんでした: %s',e)
  log.info('Webサーバー: 起動します (%s:%s)',HOST,PORT)

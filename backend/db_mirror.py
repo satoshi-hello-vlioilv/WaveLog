@@ -35,6 +35,25 @@
 os.replace() の1手**(同じフォルダー内の置き換えは不可分)なので、
 画面が中途半端な写しを開くことはない。
 
+**写しは世代名で置く**(§9.108)
+------------------------------------------------------------
+以前は`db/cache/<キー>.sqlite3`という決まった名前へ毎回上書きしていた。
+Linuxではこれで何も起きないが、**Windowsでは置き換え先が開かれていると
+置き換えられない**(`MoveFileEx`が`ERROR_ACCESS_DENIED`。SQLiteは
+`FILE_SHARE_DELETE`を付けずに開くため、**こちらが1件読んでいる間その写しは
+置き換えられない**)。実機で毎分のように失敗していた:
+
+    SIKALOT の写しを置き換えられませんでした: [WinError 5] アクセスが
+    拒否されました。: '...\\db\\cache\\SIKALOT.sqlite3.tmp'
+      -> '...\\db\\cache\\SIKALOT.sqlite3'
+
+**上書きしなければ起きない。** 写しは`<キー>.g<世代>.sqlite3`という
+**毎回新しい名前**で作り、台帳(`_mirror.json`)の`file`が今読むべき世代を
+指す。読み手は開いた世代を最後まで読み切れ、書き手は誰も開いていない
+新しい名前へ書くので、両者がぶつからない。古い世代は**消せたときに消す**
+(消せなくても次の周回でまた試す。消せないのは誰かが読んでいるときだけで、
+放っておけばいずれ消える)。
+
 置き換えのポリシー
 ------------------------------------------------------------
 ・写す判断は元ファイルの更新時刻とサイズで行う(変わっていなければ写さない)。
@@ -54,6 +73,7 @@ import threading
 import time
 from pathlib import Path
 
+from . import atomic_io
 from .logging_setup import app_logger
 
 # 写しの置き場。db/cache/<キー>.sqlite3
@@ -75,31 +95,120 @@ _wake = threading.Event()
 # 置き場所
 # ------------------------------------------------------------------
 def cache_dir():
+ """写しの置き場。**db/ とは限らない**(§9.109)。
+
+ `db_dir`が共有・クラウド同期フォルダーの上だと、Windowsでは置き換えを
+ 拒まれて写しが更新できなくなる(§9.108)。その場合だけ`paths.work_dir()`が
+ ユーザー別のローカル領域を返すので、こちらは黙ってそれに従う
+ (利用者に設定を求めない)。"""
+ from . import paths
+ return Path(paths.work_dir()) / _CACHE_DIRNAME
+
+
+def _former_cache_dir():
+ """手元へ逃がす前に使っていた置き場(逃がしていなければNone)。"""
+ from . import paths
  from .db_access import DB_DIR
+ if not paths.work_dir_relocated():
+  return None
  return Path(DB_DIR) / _CACHE_DIRNAME
 
 
+def sweep_former_cache():
+ """前の置き場に残った**自分の生成物だけ**を片付ける。
+
+ 写しは作り直せるので運ぶ必要が無い(運ぶほうが遅く、しかも運ぶ先が
+ 掴まれていたら失敗する)。**消せなくてよい**——共有やクラウドの上なので
+ 消せないことがあるし、消せなくても実害は「置きっぱなし」だけ。
+ **自分が作った名前しか触らない**こと(利用者のファイルを消さない)。"""
+ old = _former_cache_dir()
+ if old is None:
+  return 0
+ try:
+  if not old.is_dir() or old.resolve() == cache_dir().resolve():
+   return 0
+  victims = [p for p in old.iterdir()
+             if p.is_file() and (p.name == _SIGNATURE_FILE
+                                 or p.suffix == '.sqlite3'
+                                 or p.name.endswith('.sqlite3.tmp'))]
+ except OSError:
+  return 0
+ gone = 0
+ for p in victims:
+  if atomic_io.unlink(p, budget_sec=0.2, label='mirror.former'):
+   gone += 1
+ if gone:
+  app_logger().info('前の置き場に残っていた写しを%d件片付けました(%s)', gone, old)
+ return gone
+
+
+def _safe_key(key):
+ return ''.join(ch if (ch.isalnum() or ch in '-_') else '_' for ch in str(key or 'db'))
+
+
+def _generation_path(key, gen):
+ """世代付きの写しの置き場所。**毎回新しい名前**なので上書きが起きない。"""
+ return cache_dir() / f'{_safe_key(key)}.g{int(gen)}.sqlite3'
+
+
+def _legacy_path(key):
+ """世代を導入する前の決まった名前。既にある端末のために読むだけ読む。"""
+ return cache_dir() / f'{_safe_key(key)}.sqlite3'
+
+
 def mirror_path(key):
- """そのデータソースの写しの置き場所。"""
- safe = ''.join(ch if (ch.isalnum() or ch in '-_') else '_' for ch in str(key or 'db'))
- return cache_dir() / f'{safe}.sqlite3'
+ """そのデータソースの**今の**写しの置き場所。
+
+ 台帳が世代を指していればその世代、まだ無ければ旧来の決まった名前。"""
+ entry = _entry(key)
+ name = (entry or {}).get('file')
+ if name:
+  return cache_dir() / str(name)
+ return _legacy_path(key)
 
 
 def _signature_path():
  return cache_dir() / _SIGNATURE_FILE
 
 
-def _load_signatures():
+def _load_ledger():
  try:
-  return json.loads(_signature_path().read_text(encoding='utf-8'))
+  data = json.loads(_signature_path().read_text(encoding='utf-8'))
+  return data if isinstance(data, dict) else {}
  except Exception:
   return {}
 
 
-def _save_signatures(sig):
+def _entry(key):
+ """台帳の1件を、旧い形(印だけの平らな辞書)も含めて読む。
+
+ **古い台帳をそのまま読めること**が要点——読めないと、世代を入れた版へ
+ 上げた瞬間に全データソースを写し直すことになる(共有越しに数十MB)。"""
+ raw = _load_ledger().get(key)
+ if not isinstance(raw, dict):
+  return None
+ if 'signature' in raw:
+  return raw
+ # 旧い形: {'source':..,'size':..,'mtime_ns':..} がそのまま入っていた。
+ return {'signature': raw, 'file': _legacy_path(key).name}
+
+
+def _signature_of(key):
+ return (_entry(key) or {}).get('signature')
+
+
+def _save_entry(key, signature, filename):
+ """台帳を書き換える。**台帳自体も一時ファイル経由で置き換える**——
+ 直接書くと、読み手が書きかけのJSONを読んで「写しが無い」と判断し、
+ その1回だけ共有を直接読みに行く(共有が不調だと画面が固まる)。"""
+ led = _load_ledger()
+ led[key] = {'signature': signature, 'file': str(filename)}
  try:
   cache_dir().mkdir(parents=True, exist_ok=True)
-  _signature_path().write_text(json.dumps(sig, ensure_ascii=False, indent=1), encoding='utf-8')
+  path = _signature_path()
+  tmp = path.with_suffix('.json.tmp')
+  tmp.write_text(json.dumps(led, ensure_ascii=False, indent=1), encoding='utf-8')
+  atomic_io.replace(tmp, path, label='mirror.ledger')
  except Exception as e:
   app_logger().warning('写しの台帳を書けませんでした: %s', e)
 
@@ -173,15 +282,16 @@ def refresh_one(key, remote, force=False):
  local = mirror_path(key)
  result = {'key': key, 'remote': str(remote), 'local': str(local),
            'updated': False, 'reason': '', 'at': time.time()}
- sigs = _load_signatures()
  sig = _remote_signature(remote)
  if sig is None and not local.exists():
   result['reason'] = '共有の元ファイルへ到達できず、写しもまだありません'
   _record(key, result)
   return result
- if sig is not None and not force and sigs.get(key) == sig and local.exists():
+ if sig is not None and not force and _signature_of(key) == sig and local.exists():
   result['reason'] = '元ファイルは変わっていません'
   result['skipped'] = True
+  # 変わっていない周回でも、前に消し損ねた世代があれば片付ける。
+  _sweep_old_generations(key, local)
   _record(key, result)
   return result
  if sig is None:
@@ -190,11 +300,11 @@ def refresh_one(key, remote, force=False):
   return result
 
  cache_dir().mkdir(parents=True, exist_ok=True)
- tmp = local.with_suffix('.sqlite3.tmp')
- try:
-  tmp.unlink()
- except OSError:
-  pass
+ # **今と違う名前**へ書く。上書きしないので、読み手が今の写しを開いていても
+ # ぶつからない(§9.108)。
+ target = _generation_path(key, _next_generation(key))
+ tmp = target.with_suffix('.sqlite3.tmp')
+ atomic_io.unlink(tmp, budget_sec=1.0, label='mirror.tmp')
  how = ''
  try:
   try:
@@ -221,28 +331,65 @@ def refresh_one(key, remote, force=False):
   return result
 
  try:
-  os.replace(tmp, local)          # 同じフォルダー内の置き換えは不可分
+  # targetはまだ存在しない新しい名前なので、ここで置き換え先を掴まれている
+  # ことは無い。それでも同じフォルダー内の1手にするために replace を使う
+  # (書きかけの .tmp を読み手に見せないため)。
+  atomic_io.replace(tmp, target, label='mirror.swap')
  except OSError as e:
+  hint = atomic_io.cloud_sync_hint(cache_dir())
   result['reason'] = f'写しを置き換えられませんでした: {e}'
+  if hint:
+   result['reason'] += f'（写しの置き場が{hint}の中にあります。同期中は掴まれるため、db_dirを実ローカルへ移してください）'
   app_logger().warning('%s の写しを置き換えられませんでした: %s', key, e)
   _cleanup(tmp)
   _record(key, result)
   return result
 
- sigs[key] = sig
- _save_signatures(sigs)
+ _save_entry(key, sig, target.name)
+ result['local'] = str(target)
  result.update(updated=True, how=how,
                reason=f'写しを更新しました({"バックアップAPI" if how=="backup" else "コピー"})')
- app_logger().info('%s: 共有から手元へ写しました(%s, %d bytes)', key, how, sig.get('size', 0))
+ app_logger().info('%s: 共有から手元へ写しました(%s, %d bytes, %s)',
+                   key, how, sig.get('size', 0), target.name)
+ _sweep_old_generations(key, target)
  _record(key, result)
  return result
 
 
-def _cleanup(tmp):
+def _next_generation(key):
+ """次の世代番号。今ある世代の最大+1(台帳が消えても衝突しない)。"""
+ top = 0
+ prefix = f'{_safe_key(key)}.g'
  try:
-  Path(tmp).unlink()
+  for p in cache_dir().glob(f'{prefix}*.sqlite3'):
+   try:
+    top = max(top, int(p.name[len(prefix):-len('.sqlite3')]))
+   except ValueError:
+    continue
  except OSError:
   pass
+ return top + 1
+
+
+def _sweep_old_generations(key, keep):
+ """今の世代以外を片付ける。**消せなくてよい**——読み手が開いている間は
+ Windowsで消せないので、次の周回でまた試す。"""
+ keep = Path(keep).name
+ prefix = f'{_safe_key(key)}.g'
+ try:
+  olds = [p for p in cache_dir().glob(f'{prefix}*.sqlite3') if p.name != keep]
+ except OSError:
+  return
+ # 世代を入れる前の決まった名前も、もう誰も読まないので片付ける。
+ legacy = _legacy_path(key)
+ if keep != legacy.name and legacy.exists():
+  olds.append(legacy)
+ for p in olds:
+  atomic_io.unlink(p, budget_sec=0.2, label='mirror.sweep')
+
+
+def _cleanup(tmp):
+ atomic_io.unlink(tmp, budget_sec=1.0, label='mirror.tmp')
 
 
 def _record(key, result):
@@ -298,14 +445,15 @@ def read_path(key, remote):
  元を直接読む)。"""
  if not enabled():
   return Path(remote)
+ entry = _entry(key) or {}
+ sig = entry.get('signature') or {}
+ if sig.get('source') and str(sig['source']) != str(remote):
+  return Path(remote)
  local = mirror_path(key)
  try:
   if not local.exists():
    return Path(remote)
  except OSError:
-  return Path(remote)
- sig = _load_signatures().get(key) or {}
- if sig.get('source') and str(sig['source']) != str(remote):
   return Path(remote)
  return local
 
@@ -323,6 +471,12 @@ def refresh_all(force=False):
 def _loop():
  # 起動直後は少し待つ(起動処理と共有I/Oを重ねない)。
  _wake.wait(3)
+ # 置き場が手元へ移っていたら、前の置き場の残骸を1度だけ片付ける
+ # (背景スレッドの中で行う。共有・クラウドへ触る可能性があるため)。
+ try:
+  sweep_former_cache()
+ except Exception as e:
+  app_logger().debug('前の置き場の片付けに失敗しました: %s', e)
  while True:
   try:
    if enabled():

@@ -39,6 +39,7 @@ from pathlib import Path
 
 import json
 
+from . import atomic_io
 from .config import SCHEDULE_LOCK_TTL_SEC_DEFAULT, SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT
 from .db_access import SCHEDULE_SHARE_PATH, SCHEDULE_CACHE_PATH, connect, path_config_value
 from .logging_setup import app_logger
@@ -164,8 +165,10 @@ def release_lock(token):
  path=_lock_path()
  current=_read_lock()
  if current and current.get('token')==token:
-  try:path.unlink(missing_ok=True)
-  except Exception as e:app_logger().warning('スケジュールロックの解放に失敗しました: %s',e)
+  # 削除も置き換えと同じで、別のPCが読んでいる最中はWindowsで拒まれる。
+  # 消せないまま黙ると次の書込が待たされるので、少し粘ってから諦める。
+  if not atomic_io.unlink(path,label='schedule.lock'):
+   app_logger().warning('スケジュールロックの解放に失敗しました(TTLで自動的に切れます): %s',path)
 
 
 
@@ -216,11 +219,22 @@ def _prune_expired(sessions):
 
 
 def _write_sessions(sessions):
+ """セッション表を共有上のJSONへ書く。
+
+ **置き換えは再試行する**(§9.108)。このJSONは全PCが数十秒ごとに読み書き
+ するため、置き換えようとした瞬間に別のPCが読んでいる確率が普通に高い。
+ Windowsは開かれているファイルを置き換えられない(WinError 5)ので、
+ 1回で諦めると解放が落ちて設備が最大TTLぶん掴まれたままになる
+ (実機で「アクセスが拒否されました」として観測された)。"""
  path=_sessions_path()
  path.parent.mkdir(parents=True,exist_ok=True)
  tmp=path.with_suffix(f'.{uuid.uuid4().hex}.tmp')
  tmp.write_text(json.dumps(sessions,ensure_ascii=False),encoding='utf-8')
- tmp.replace(path)
+ try:
+  atomic_io.replace(tmp,path,label='schedule.sessions')
+ except OSError:
+  atomic_io.unlink(tmp,budget_sec=0.5,label='schedule.sessions.tmp')
+  raise
 
 
 def _own_or_free(entry,login_id,pc_name):
@@ -387,7 +401,9 @@ def fetch_snapshot():
    finally:
     src.close()
    if _verify_integrity(tmp):
-    tmp.replace(SCHEDULE_CACHE_PATH)
+    # 置き換え先(ローカルの作業コピー)は自分が読んでいる最中のことがある。
+    # Windowsでは開かれていると置き換えられないので粘る(§9.108)。
+    atomic_io.replace(tmp,SCHEDULE_CACHE_PATH,label='schedule.cache')
     return SCHEDULE_CACHE_PATH,False
    last_error='取得結果が壊れていました(整合性チェック失敗)'
    app_logger().warning('スケジュールデータの取得結果が壊れていたため破棄しました: %s',shared)
@@ -428,7 +444,9 @@ def _push(local_path,shared_path):
    dst.close()
  finally:
   src.close()
- tmp.replace(shared_path)
+ # 共有側は他のPCが読んでいる最中のことがある(§9.108)。1回で諦めると
+ # 書込サイクル全体が失敗し、ロックを取り直すところからやり直しになる。
+ atomic_io.replace(tmp,shared_path,label='schedule.push')
 
 
 @contextmanager

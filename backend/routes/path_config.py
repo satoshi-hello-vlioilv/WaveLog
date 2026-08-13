@@ -14,6 +14,7 @@ import re
 from pathlib import Path
 from flask import Blueprint, request, jsonify
 
+from .. import paths
 from ..paths import APP_ROOT as BASE_DIR
 from ..config import (RNE_EXTRACT_INTERVAL_SEC_DEFAULT, SCHEDULE_LOCK_TTL_SEC_DEFAULT,
                       SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT)
@@ -95,6 +96,11 @@ def path_config_master_get():
    'db_mirror_interval_sec':str(path_config_value('db_mirror_interval_sec','60')),
    'schedule_lock_ttl_sec':str(path_config_value('schedule_lock_ttl_sec',SCHEDULE_LOCK_TTL_SEC_DEFAULT)),
    'schedule_lock_verify_delay_ms':str(path_config_value('schedule_lock_verify_delay_ms',SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT)),
+   # 作り直せるファイル(写し・スケジュールの作業コピー)の実際の置き場(§9.109)。
+   # **設定項目ではない**——db_dirが共有/クラウド同期フォルダーの上のときだけ
+   # 自動で手元へ移るので、どこになったかを確かめるためだけに出す。
+   'work_dir':str(paths.work_dir()),
+   'work_dir_reason':paths.work_dir_reason(),
   }
   for src in sources:values.setdefault(src['valueKey'],src['saved'])
   return jsonify(ok=True,values=values,defaults=_PATH_CONFIG_DEFAULTS,active=active,

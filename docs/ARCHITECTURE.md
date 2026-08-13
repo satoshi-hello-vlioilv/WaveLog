@@ -568,6 +568,14 @@ Box等のクラウド同期フォルダへ複製し、他端末はそれを閲�
   `renderRecordListRows()`を呼ぶ（`recordListState`/`openRecords`/
   `renderRecordListRows`はrecords-store.js側がIIFEを持たないため、
   他ファイルから直接参照・再代入できる）。
+- **そのため一覧が0件になっても「データが無い」わけではない**（§9.107）。
+  端末内の編集中データは読んでいないだけで、そこにある。
+  `recordListState`の`notice`/`emptyHtml`/`sourceNote`へ
+  access-mode.js側が理由の文言を入れ、`renderRecordListRows()`がそれを描く
+  （描画は1箇所のまま、理由はモードを知っている側が渡す）。件数は
+  `reliableAll()`で数え、0件の理由は「置き場が未設定」「読めなかった」
+  「該当が無い」の3つに分ける（判定は文言ではなく`err.code`）。
+  `openRecords()`が開くたびに3欄を消すので、編集モードへ戻れば案内も消える。
 - 帳票（report-dashboard.js）も同様に、`openReportView()`内で
   `window.accessMode.mode==='view'`なら`reliableAll()`の代わりに
   `window.loadViewModeRecords()`を呼ぶよう直接編集してある（IIFEで閉じた
@@ -1481,7 +1489,7 @@ return withWaiting({title:'…を読み込んでいます', detail:'…', progre
 ```
 共有 → ①バックアップAPI（失敗したら②バイトコピー）
      → ③PRAGMA quick_check で検査（通らなければ捨てて前の写しを継続）
-     → ④os.replace() で1手で置き換え → db/cache/<キー>.sqlite3
+     → ④os.replace() で1手で採用 → db/cache/<キー>.g<世代>.sqlite3
 ```
 
 **バックアップAPIを第一候補にするのが要点。** 生のファイルコピーは書き込み
@@ -1498,10 +1506,26 @@ return withWaiting({title:'…を読み込んでいます', detail:'…', progre
 - **共有へ触るのは背景スレッドだけ。** リクエストの中で共有へ `stat` を
   掛けない（共有不調時の既知の事故要因）。
 - 写しがまだ無い/使えないときは共有を直接読む（fail-open）。
+- **写しは世代名で置き、決まった名前へ上書きしない**（§9.108）。Windowsは
+  開かれているファイルを置き換えられない（`MoveFileEx` が WinError 5。SQLite
+  は `FILE_SHARE_DELETE` を付けずに開く）ため、**こちらが1件読んでいる間その
+  写しは置き換えられない**。実機で毎分失敗していた。`<キー>.g<世代>.sqlite3`
+  という毎回新しい名前へ書き、台帳（`_mirror.json`）の `file` が今読むべき
+  世代を指す。読み手は開いた世代を読み切れ、書き手は誰も開いていない名前へ
+  書く。古い世代は**消せたときに消す**（消せないのは誰かが読んでいるときだけ
+  なので次の周回で片付く）。旧い形の台帳と決まった名前の写しはそのまま読める
+  （読めないと版を上げた瞬間に全部を写し直すことになる）。
+- **置き場をクラウド同期フォルダ（Box/OneDrive等）に置かない。** 同期のあいだ
+  ファイルを掴まれるうえ、写しが毎回クラウドへ上がる。`db_dir` を実ローカルに
+  すること。名前で見分けて起動時に警告する（`atomic_io.cloud_sync_hint()`）。
 
 設定は パス設定 の `db_mirror_enabled`（既定 auto=有効 / off で従来動作）と
 `db_mirror_interval_sec`（既定60秒・下限10秒）。状態は `GET /api/db-mirror`、
 即時更新は `POST /api/db-mirror/refresh`（一覧の「再読込」がこれを呼ぶ）。
+`GET /api/db-mirror` は置き換えの再試行の実績（`replaceStats`）と置き場の
+クラウド判定（`cacheCloudSync`）も返す——**「たまに」なのか「毎回」なのかは
+数字でしか分からない**ため（回線の揺らぎなら再試行で吸収されて `failed` は
+増えず、構造的な問題なら積み上がる）。
 固定は `tests/test_dbmirror.py`。
 
 **根本解は書き手側にある。** 先方アプリが「一時ファイルへ書き切ってから
