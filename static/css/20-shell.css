@@ -516,6 +516,19 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  .lc-width{display:inline-flex;align-items:center;gap:var(--gap-hair);color:var(--muted);
   flex-wrap:nowrap;white-space:nowrap;flex:1;min-width:0}
  .lc-width input{width:calc(112px * var(--ui-scale));min-width:calc(72px * var(--ui-scale))}
+ /* 幅の3つの状態(§9.119)。**いまどれなのかを常に見せる**——以前は数値欄が
+    空かどうかで暗黙に決まっており、一度触った列を自動へ戻す手立てが
+    画面のどこにも無かった。 */
+ .lc-field-width{align-items:flex-start}
+ .lc-widthbox{flex:1;min-width:0;display:flex;flex-direction:column;gap:var(--gap-hair)}
+ .lc-widthmodes{display:flex;gap:var(--gap-inline);flex-wrap:wrap}
+ .lc-widthmode{display:inline-flex;align-items:center;gap:2px;cursor:pointer;
+  font-size:var(--fs-sm);color:var(--ink-2);white-space:nowrap}
+ .lc-widthmode input{accent-color:var(--teal);cursor:pointer}
+ .lc-widthbox .lc-hint{margin:0;font-size:var(--fs-micro);color:var(--muted)}
+ /* 固定した列の取っ手は掴めない。**消さずに印を残す**——消すと、
+    固定しているのか壊れているのかが分からない。 */
+ .col-resize.is-locked{cursor:not-allowed;opacity:.45}
  .lc-vis{display:inline-flex;align-items:center;justify-content:center}
  .lc-vis input{width:var(--ctl-box);height:var(--ctl-box);cursor:pointer;accent-color:var(--teal)}
  .lc-hint{font-size:var(--fs-micro);color:var(--muted);margin:0;line-height:1.5}

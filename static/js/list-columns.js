@@ -39,6 +39,15 @@
   '__select__':{label:'選択',note:'まとめて選ぶチェックボックス'},
  };
  const isVirtual=k=>Object.prototype.hasOwnProperty.call(VIRTUAL,k);
+ /* 幅の3つの状態(§9.119)。**「自動か手動か」を暗黙にしない**——以前は
+    数値欄が空かどうかで決まっており、画面のどこにも書いていなかったため、
+    一度触った列が二度と自動へ戻らない(戻し方が分からない)状態だった。 */
+ const widthModeOf=k=>draft.locks.has(k)?'locked':(draft.widths[k]?'manual':'auto');
+ const WIDTH_MODE_NOTE={
+  auto:'見出しと実データの先頭40行から幅を決め直します。',
+  manual:'入れた幅にします。入り切らない文字は「…」で切り、元の値はマウスを乗せると出ます。',
+  locked:'幅を動かしません。見出しの右端の取っ手も掴めなくなります。',
+ };
  const labelOf=k=>isVirtual(k)?VIRTUAL[k].label:(draft.names[k]||k);
 
  /* ---------- 出どころの分類(§9.105) ----------
@@ -233,6 +242,7 @@
    formats:JSON.parse(JSON.stringify(l.formats||{})),
    rules:{...(l.rules||{})},
    formulas:{...(l.formulas||{})},
+   locks:new Set((l.locks||[]).filter(k=>keys.includes(k))),
   };
   if(!picked||!draft.order.includes(picked))picked=draft.order.find(k=>!isVirtual(k))||draft.order[0]||'';
  }
@@ -417,7 +427,8 @@
 
  /* 触った結果を**保存せずに**後ろの一覧へ当てる(§9.90)。 */
  function applyLive(){
-  WL.columnLayout.stage(target,{order:draft.order,widths:draft.widths,hidden:[...draft.hidden],
+  WL.columnLayout.stage(target,{locks:[...draft.locks],
+                                order:draft.order,widths:draft.widths,hidden:[...draft.hidden],
                                 formulas:draft.formulas,
                                 names:draft.names,formats:draft.formats,rules:draft.rules});
   if(typeof renderGrid==='function')renderGrid();
@@ -657,9 +668,20 @@
     <label class="lc-field"><span>表示名</span>
      <input type="text" id="lcName" value="${esc(draft.names[picked]||'')}"
       placeholder="${esc(virt?VIRTUAL[picked].label:picked)}" autocomplete="off"></label>
-    <label class="lc-field"><span>幅</span>
-     <span class="lc-width"><input type="number" id="lcWidth" min="40" max="900" step="10"
-      value="${draft.widths[picked]||''}" placeholder="内容に合わせる"> px</span></label>
+    <div class="lc-field lc-field-width"><span>幅</span>
+     <div class="lc-widthbox">
+      <div class="lc-widthmodes" id="lcWidthMode">${[
+        ['auto','自動','見出しと実データの長さに合わせます'],
+        ['manual','手で決める','入れた幅にします（文字が長くても狭くできます）'],
+        ['locked','固定','いまの幅から動かしません（見出しの取っ手も掴めなくなります）'],
+       ].map(([v,t,note])=>`<label class="lc-widthmode" title="${esc(note)}">
+        <input type="radio" name="lcWidthMode" value="${v}"${widthModeOf(picked)===v?' checked':''}>
+        <span>${t}</span></label>`).join('')}</div>
+      <span class="lc-width"><input type="number" id="lcWidth" min="40" max="900" step="10"
+       value="${draft.widths[picked]||''}" placeholder="自動"
+       ${widthModeOf(picked)==='auto'?'disabled':''}> px</span>
+      <small class="lc-hint">${esc(WIDTH_MODE_NOTE[widthModeOf(picked)]||'')}</small>
+     </div></div>
    </div>
    ${fx?formulaStepHtml():''}
    ${virt?`<div class="lc-note-calc"><b>この列は値を持ちません。</b>
@@ -693,6 +715,23 @@
    if(n>=40)draft.widths[picked]=Math.min(900,n);else delete draft.widths[picked];
    renderPreview();
   });
+  /* 幅の3つの状態(§9.119)。**「自動へ戻す」は幅を消す**——数値を残したまま
+     自動にすると、次に開いたときその数値が復活して「戻したのに戻っていない」
+     ことになる。固定は幅を持ったまま動かさない状態なので、幅が無ければ
+     **いま画面に出ている幅**を書き留める(でないと固定した意味が無い)。 */
+  box.querySelectorAll('input[name="lcWidthMode"]').forEach(el=>el.addEventListener('change',ev=>{
+   const mode=ev.target.value;
+   if(mode==='auto'){delete draft.widths[picked];draft.locks.delete(picked)}
+   else{
+    if(draft.widths[picked]==null){
+     const th=document.querySelector(`#grid thead th[data-col="${CSS.escape(picked)}"]`);
+     const w=th?Math.round(th.getBoundingClientRect().width):0;
+     draft.widths[picked]=w>=40?Math.min(900,w):120;
+    }
+    if(mode==='locked')draft.locks.add(picked);else draft.locks.delete(picked);
+   }
+   renderDetail();renderList();applyLive();
+  }));
   /* 式の段の配線。**入力のたびに一覧まで作り直さない**——214列の一覧では
      1文字ごとに数百msかかる。式が通ったときだけ当てる。 */
   const fxIn=box.querySelector('#lcFormula');
@@ -767,11 +806,11 @@
    await WL.columnLayout.save(target,{order:draft.order,widths:draft.widths,
                                       hidden:[...draft.hidden],names:draft.names,
                                       formats:draft.formats,rules:draft.rules,
-                                      formulas:draft.formulas});
+                                      formulas:draft.formulas,locks:[...draft.locks]});
    saved=true;
    original={order:[...draft.order],hidden:[...draft.hidden],widths:{...draft.widths},
              names:{...draft.names},formats:JSON.parse(JSON.stringify(draft.formats)),
-             rules:{...draft.rules},formulas:{...draft.formulas}};
+             rules:{...draft.rules},formulas:{...draft.formulas},locks:[...draft.locks]};
    showToast&&showToast('列の設定を保存しました','この一覧を次に開いたときも同じ形で出ます',2600);
    const note=document.getElementById('lcFootNote');
    if(note)note.textContent='保存しました';
@@ -785,7 +824,7 @@
  const draftBody=()=>({order:[...draft.order],widths:{...draft.widths},
                        hidden:[...draft.hidden],names:{...draft.names},
                        formats:JSON.parse(JSON.stringify(draft.formats)),rules:{...draft.rules},
-                       formulas:{...draft.formulas}});
+                       formulas:{...draft.formulas},locks:[...draft.locks]});
  function renderPresets(){
   const sel=document.getElementById('lcPresetSel');if(!sel)return;
   const cur=sel.value;
@@ -804,20 +843,49 @@
  }
  /* 読み込んだ設定は**保存せずに当てる**(§9.90と同じ)。押した結果がその場で
     一覧に出て、気に入らなければ閉じれば戻る。 */
+ /* ---------- 設定を読み込む(プリセット・ファイル) ----------
+    **今ある列だけに当てる**(§9.119)。元データの項目名は変わることがあり、
+    保存した設定に無くなった列名が混ざる。**当たらない列は黙って捨てる**
+    のが正しい(そこで止めると、1つ変わっただけで設定全体が使えなくなる)。
+
+    ただし**捨てたことは必ず言う**——以前は「読み込みました」とだけ出て
+    いたので、10列ぶんの設定を読んで2列しか当たらなくても気づけなかった。
+    「効かなかった」のか「そもそも当たっていない」のかが分かれるのは大きい。 */
+ function pickKnown(map,keys){
+  const out={},lost=[];
+  Object.keys(map||{}).forEach(k=>{if(keys.includes(k))out[k]=map[k];else lost.push(k)});
+  return {out,lost};
+ }
  function useBody(body,note){
   const keys=allKeys();
   const known=(body.order||[]).filter(k=>keys.includes(k));
+  const lostOrder=(body.order||[]).filter(k=>!keys.includes(k));
+  const w=pickKnown(body.widths,keys),n=pickKnown(body.names,keys);
+  const f=pickKnown(body.formats,keys),r=pickKnown(body.rules,keys);
+  /* **計算式で作る列だけは、今ある列に無くても復元する**——その設定
+     こそが列の定義なので、落とすと列そのものが消える。 */
+  const formulas={...(body.formulas||{})};
   draft={
-   order:[...known,...keys.filter(k=>!known.includes(k))],
-   hidden:new Set((body.hidden||[]).filter(k=>keys.includes(k))),
-   widths:{...(body.widths||{})},names:{...(body.names||{})},
-   formats:JSON.parse(JSON.stringify(body.formats||{})),rules:{...(body.rules||{})},
-   formulas:{...(body.formulas||{})},
+   order:[...known,...Object.keys(formulas).filter(k=>!known.includes(k)),
+          ...keys.filter(k=>!known.includes(k)&&!formulas[k])],
+   hidden:new Set((body.hidden||[]).filter(k=>keys.includes(k)||formulas[k])),
+   widths:w.out,names:n.out,
+   formats:JSON.parse(JSON.stringify(f.out)),rules:r.out,
+   formulas,
+   locks:new Set((body.locks||[]).filter(k=>keys.includes(k)||formulas[k])),
   };
   if(!draft.order.includes(picked))picked=draft.order.find(k=>!isVirtual(k))||draft.order[0]||'';
   renderOrigins();renderList();renderDetail();applyLive();
+  const lost=new Set([...lostOrder,...w.lost,...n.lost,...f.lost,...r.lost]
+                     .filter(k=>!formulas[k]));
   const foot=document.getElementById('lcFootNote');
-  if(foot)foot.textContent=note||'読み込みました（保存するまでは元に戻せます）';
+  const base=note||'読み込みました（保存するまでは元に戻せます）';
+  if(foot)foot.textContent=lost.size
+   ? `${base}／この一覧に無い ${lost.size}列は飛ばしました: ${[...lost].slice(0,4).join('、')}${lost.size>4?' ほか':''}`
+   : base;
+  if(lost.size)showToast&&showToast(`${lost.size}列ぶんは飛ばしました`,
+   `この一覧に無い列名です: ${[...lost].slice(0,6).join('、')}${lost.size>6?` ほか${lost.size-6}件`:''}`,6000);
+  return {applied:known.length,skipped:lost.size};
  }
  function applyPreset(id){
   const del=document.getElementById('lcPresetDel');if(del)del.disabled=!id;
@@ -886,7 +954,7 @@
   /* 式で作った列は**残す**——「既定に戻す」で消えると、作った本人が
      作り直すことになる(見せ方の初期化と、列そのものの削除は別の操作)。 */
   draft={order:allKeys(),hidden:new Set(),widths:{},names:{},formats:{},rules:{},
-         formulas:{...(draft&&draft.formulas||{})}};
+         formulas:{...(draft&&draft.formulas||{})},locks:new Set()};
   renderOrigins();renderList();renderDetail();applyLive();
  }
 
@@ -898,7 +966,8 @@
   const cur=WL.columnLayout.get(target);
   original={order:[...(cur.order||[])],hidden:[...(cur.hidden||[])],widths:{...(cur.widths||{})},
             names:{...(cur.names||{})},formats:JSON.parse(JSON.stringify(cur.formats||{})),
-            rules:{...(cur.rules||{})},formulas:{...(cur.formulas||{})}};
+            rules:{...(cur.rules||{})},formulas:{...(cur.formulas||{})},
+            locks:[...(cur.locks||[])]};
   saved=false;
   /* 結合されてきた列は一覧を読むたびに変わり得る(結合できたかどうかで
      増えたり減ったりする)ので、**開くたびに取り直す**。 */

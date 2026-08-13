@@ -85,6 +85,22 @@ let b=null;
    return {over:over.length,withTitle:over.filter(td=>td.title).length};
   });
   rec('切れているセルには生の値のtitleが付く',tipped.over===tipped.withTitle,JSON.stringify(tipped));
+  /* **自動で決めた幅なら、そもそも溢れない**(§9.119)。titleは保険で、
+     こちらは「自動＝入り切る幅にする」という約束そのもの。
+     表の幅を列幅の合計で固定するまでは、CSSのwidth:max-contentが表を
+     広げて吸収していた(指定より広く描かれていた)ため、見積りが数px
+     足りないことに誰も気づけなかった。 */
+  const autoFit=await page.evaluate(()=>{
+   const t=listLayoutTarget();
+   const w=WL.columnLayout.get(t).widths||{};
+   const tds=[...document.querySelectorAll('#grid tbody tr td[data-col]')]
+     .filter(td=>w[td.dataset.col]==null);          // 幅を手で決めていない列だけ
+   const over=tds.filter(td=>td.scrollWidth>td.clientWidth+1);
+   return {自動の列のセル:tds.length,
+           溢れ:over.map(td=>({列:td.dataset.col,幅:Math.round(td.clientWidth),
+                               要る:td.scrollWidth})).slice(0,4)};
+  });
+  rec('自動で決めた幅の列は溢れない',autoFit.溢れ.length===0,JSON.stringify(autoFit));
 
   // ---- 4. 行ごとの追い判定は一覧が出たあとで、まとめて引く ----
   const atPaint=lookups.length;

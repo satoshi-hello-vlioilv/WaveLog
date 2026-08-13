@@ -193,7 +193,10 @@ window.WL.dataSource=dataSource;
    に無い列は黙って捨てる(列が増減しても設定が壊れない)。 */
 const columnLayout=(()=>{
  const cache=new Map();                 // target -> {order,widths,hidden,names,formats}
- const empty=()=>({order:[],widths:{},hidden:[],names:{},formats:{},rules:{},formulas:{}});
+ /* locks=幅を固定した列(§9.119)。**幅の「自動/手動/固定」は3つの状態**で、
+    自動と手動はwidthsの有無で分かるが、固定はもう1つの状態なので別に持つ。 */
+ const empty=()=>({order:[],widths:{},hidden:[],names:{},formats:{},rules:{},formulas:{},
+                   locks:[]});
  async function load(target){
   if(!target)return empty();
   if(cache.has(target))return cache.get(target);
@@ -201,16 +204,18 @@ const columnLayout=(()=>{
   try{
    const r=await api('/api/column-layout-master?target='+encodeURIComponent(target));
    v={order:r.order||[],widths:r.widths||{},hidden:r.hidden||[],names:r.names||{},
-      formats:r.formats||{},rules:r.rules||{},formulas:r.formulas||{}};
+      formats:r.formats||{},rules:r.rules||{},formulas:r.formulas||{},locks:r.locks||[]};
   }catch(e){/* 読めなくても既定の並びで一覧は出す(fail-open) */}
   cache.set(target,v);return v;
  }
  function get(target){return cache.get(target)||empty()}
  async function save(target,layout){
   if(!target)return;
+  /* **渡し漏れた設定は消える**(全置換。§9.113)。locksを足したときも同じで、
+     save()を呼ぶ側が渡さなければ固定は解けてしまう。 */
   const v={order:layout.order||[],widths:layout.widths||{},hidden:layout.hidden||[],
            names:layout.names||{},formats:layout.formats||{},rules:layout.rules||{},
-           formulas:layout.formulas||{}};
+           formulas:layout.formulas||{},locks:layout.locks||[]};
   cache.set(target,v);
   await api('/api/column-layout-master',{method:'POST',headers:{'Content-Type':'application/json'},
    body:JSON.stringify(withUserId({target,...v}))});
@@ -224,7 +229,7 @@ const columnLayout=(()=>{
   if(!target)return;
   cache.set(target,{order:layout.order||[],widths:layout.widths||{},hidden:layout.hidden||[],
                     names:layout.names||{},formats:layout.formats||{},rules:layout.rules||{},
-                    formulas:layout.formulas||{}});
+                    formulas:layout.formulas||{},locks:layout.locks||[]});
  }
  /* 覚えている並びを、実際にある列へ当てはめる。 */
  function apply(target,columns){
@@ -240,8 +245,15 @@ const columnLayout=(()=>{
     (押した通りに動かないUIは、動かない機能より質が悪い)。
     データ列の並べ替え(`apply`)とは別に、キー1つの可否だけを答える。 */
  const shows=(target,col)=>!(get(target).hidden||[]).includes(col);
- return {load,get,save,forget,apply,stage,shows,
+ /* 幅を固定した列か(§9.119)。固定した列は取っ手を出さず、
+    「幅を内容に合わせる」でも触らない。 */
+ const locked=(target,col)=>(get(target).locks||[]).includes(col);
+ return {load,get,save,forget,apply,stage,shows,locked,
          width:(target,col)=>get(target).widths[col]||null,
+         /* 幅の状態を1語で。'auto'=内容に合わせる / 'manual'=手で決めた /
+            'locked'=固定(手で決めた幅から動かさない)。 */
+         widthMode:(target,col)=>locked(target,col)?'locked'
+                                 :(get(target).widths[col]?'manual':'auto'),
          /* 画面に出す名前。未設定なら元の項目名のまま(§9.88)。 */
          label:(target,col)=>get(target).names[col]||col,
          /* この列の書式指定。未設定ならnull(=そのまま表示)。 */

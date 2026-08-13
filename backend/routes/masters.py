@@ -719,19 +719,23 @@ def column_layout_master_save():
   if not target:return jsonify(error='対象(target)を指定してください。'),400
   order=x.get('order');widths=x.get('widths');hidden=x.get('hidden');names=x.get('names')
   formats=x.get('formats');rules=x.get('rules');formulas=x.get('formulas')
+  locks=x.get('locks')          # 幅を固定する列(§9.119)
   if order is not None and not isinstance(order,list):
    return jsonify(error='並び(order)の指定が不正です。'),400
   if widths is not None and not isinstance(widths,dict):
    return jsonify(error='列幅(widths)の指定が不正です。'),400
   if hidden is not None and not isinstance(hidden,list):
    return jsonify(error='非表示列(hidden)の指定が不正です。'),400
+  if locks is not None and not isinstance(locks,list):
+   return jsonify(error='幅を固定する列(locks)の指定が不正です。'),400
   path=DBS['MASTER']['path']
   with connect(path,False) as c:
    n=set_column_layout(c,target,order or [],widths or {},uid,hidden=hidden or [],
                        names=names if isinstance(names,dict) else {},
                        formats=formats if isinstance(formats,dict) else {},
                        rules=rules if isinstance(rules,dict) else {},
-                       formulas=formulas if isinstance(formulas,dict) else {})
+                       formulas=formulas if isinstance(formulas,dict) else {},
+                       locks=locks if isinstance(locks,list) else [])
   return jsonify(ok=True,target=target,columns=n,updated_by=uid,message='表示の並びを保存しました。')
  except Exception as e:return jsonify(error=f'列レイアウト保存失敗: {e}'),500
 

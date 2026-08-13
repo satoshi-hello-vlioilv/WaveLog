@@ -1712,8 +1712,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const keys=timelineContentKeys();
   const persist=async(order,widths)=>{
    try{
-    await WL.columnLayout.save(target,{order,widths:widths||layout.widths,hidden:layout.hidden,
-                                       names:layout.names,formats:layout.formats,rules:layout.rules});
+    /* **保存は全置換なので、渡す設定を1つも書き漏らさない**(§9.113)。
+       控えは保存のたびに取り直す(save()はキャッシュを差し替えるため)。 */
+    const cur=WL.columnLayout.get(target);
+    await WL.columnLayout.save(target,{order,widths:widths||cur.widths,hidden:cur.hidden,
+                                       names:cur.names,formats:cur.formats,rules:cur.rules,
+                                       formulas:cur.formulas,locks:cur.locks});
     showToast&&showToast('内容の列を保存しました','この設備のタイムラインで次も同じ形で出ます',2400);
    }catch(e){showToast&&showToast('列の設定を保存できませんでした',e.message,5000)}
   };

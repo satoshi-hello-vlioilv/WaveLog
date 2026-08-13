@@ -598,7 +598,7 @@
     order:lp.rows.map(r=>r.key),
     hidden:lp.rows.filter(r=>!r.on).map(r=>r.key),
     widths,names,
-    formats:cur.formats,rules:cur.rules,formulas:cur.formulas,
+    formats:cur.formats,rules:cur.rules,formulas:cur.formulas,locks:cur.locks,
    });
    showToast&&showToast('紙のレイアウトを保存しました',`${on.length}列（${lp.equipment}）`,2800);
    closeLayoutPanel();
