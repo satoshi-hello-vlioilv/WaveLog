@@ -31,14 +31,58 @@
 
  /* 値を持たない列(行番号・ボタン)。並びと幅と名前は変えられるが、
     書式や読み替えは持たない。 */
- const VIRTUAL={
+ const LIST_VIRTUAL={
   '#':{label:'#（行番号）',note:'行の番号'},
   '__split__':{label:'分割',note:'分割の有無'},
   '__measure__':{label:'測定',note:'測定画面を開くボタン'},
   '__plan__':{label:'予定',note:'スケジュールへ追加するボタン'},
   '__select__':{label:'選択',note:'まとめて選ぶチェックボックス'},
  };
- const isVirtual=k=>Object.prototype.hasOwnProperty.call(VIRTUAL,k);
+
+ /* ---------- 差し替え口(§9.120) ----------
+    このパネルが**画面を触る口はここだけ**にしてある。既定は仕掛一覧で、
+    `open(source)`へ別の口を渡すと、同じパネルを別の対象へ使える
+    （作業スケジュールの「内容」欄がそれ。設定画面を2つ作らない）。
+
+    **仕掛一覧の側は既定の口をそのまま使う**ので、動きは1つも変わらない
+    ——汎用化のために既存の画面が変わるなら、それは作り直しであって
+    流用ではない。 */
+ const LIST_SOURCE={
+  key:'list',
+  title:()=>'表示列の設定',
+  target:()=>typeof listLayoutTarget==='function'?listLayoutTarget():'',
+  /* 候補の全列。**並びの出どころは一覧側と同じ1本**(§9.106)——ここで
+     別に組み立てると、設定画面で動かした並びが一覧に出ない。 */
+  keys:()=>{
+   if(typeof WL.listColumnKeys!=='function'){
+    console.error('列の設定パネル: WL.listColumnKeys が見つかりません');
+    return [...(S.columns||[])];
+   }
+   return WL.listColumnKeys();
+  },
+  /* 覚えている並びの直し方。一覧と同じ関数を通す(§9.110)。 */
+  healed:t=>typeof WL.healedColumnOrder==='function'?WL.healedColumnOrder(t):null,
+  rows:()=>S.rows||[],
+  valueOf:(row,k)=>row?row[k]:undefined,
+  virtual:()=>LIST_VIRTUAL,
+  /* 結合されてきた列の名前は**サーバーが返す**(§9.105)。列名から
+     見分ける手がかりは無いので、画面側で推測しない。 */
+  joined:()=>new Set(Array.isArray(S.joinQuality&&S.joinQuality.addedColumnNames)
+                      ?S.joinQuality.addedColumnNames:[]),
+  joinFrom:()=>{const t=S.joinQuality&&S.joinQuality.table;
+                return t?`品質データ（${t}）`:'別のデータソース'},
+  /* 使う分類(§9.105)。内容欄のように1つしか無い対象では減らす
+     ——「結合0 / 計算・操作0」が並んでも、覚える手間が増えるだけ。 */
+  origins:()=>ORIGIN_ORDER,
+  features:{formula:true,preset:true,width:true,format:true,rule:true},
+  afterApply:()=>{if(typeof renderGrid==='function')renderGrid()},
+  save:null,        // null=列レイアウトマスタへそのまま保存する
+ };
+ /* **`src`という名前は使わない**——式の編集が`const src=…`(式の文字列)を
+    既に使っており、その関数の中では差し替え口が文字列に隠れて
+    `panel.rows is not a function`になる(実際に踏んだ)。 */
+ let panelSrc=LIST_SOURCE;
+ const isVirtual=k=>Object.prototype.hasOwnProperty.call(panelSrc.virtual(),k);
  /* 幅の3つの状態(§9.119)。**「自動か手動か」を暗黙にしない**——以前は
     数値欄が空かどうかで決まっており、画面のどこにも書いていなかったため、
     一度触った列が二度と自動へ戻らない(戻し方が分からない)状態だった。 */
@@ -48,7 +92,16 @@
   manual:'入れた幅にします。入り切らない文字は「…」で切り、元の値はマウスを乗せると出ます。',
   locked:'幅を動かしません。見出しの右端の取っ手も掴めなくなります。',
  };
- const labelOf=k=>isVirtual(k)?VIRTUAL[k].label:(draft.names[k]||k);
+ /* 表示名 → **口が知っている元の呼び名** → キー、の順に落とす(§9.120)。
+    内容欄の項目は`lotNo`/`purposeName`のようなalias名なので、キーをそのまま
+    出すと選んだ本人以外には何の項目か分からない。仕掛一覧の列名は元から
+    日本語なので、既定の口は`labelOf`を持たない(＝今までどおりキーが出る)。 */
+ const srcLabel=k=>{
+  if(typeof panelSrc.labelOf!=='function')return '';
+  const s=panelSrc.labelOf(k);
+  return (s&&s!==k)?String(s):'';
+ };
+ const labelOf=k=>isVirtual(k)?panelSrc.virtual()[k].label:(draft.names[k]||srcLabel(k)||k);
 
  /* ---------- 出どころの分類(§9.105) ----------
     利用者が列を前にして最初に思うのは「この項目はどこから来たのか」
@@ -70,10 +123,7 @@
  /* 結合されてきた列の名前はサーバーが返す(`joinQuality.addedColumnNames`)。
     **画面側で推測しないこと**——どのデータソースをどのキーで結合したかを
     知っているのはサーバーだけで、列名から見分ける手がかりは無い。 */
- function joinedKeys(){
-  const names=S.joinQuality&&S.joinQuality.addedColumnNames;
-  return new Set(Array.isArray(names)?names:[]);
- }
+ function joinedKeys(){return panelSrc.joined()}
  let joined=new Set();
  /* 式で作った列(§9.111 ⑦)も「計算・操作」。元データにも結合にも属さない。
     **キーの有無で見る**——作った直後は式が空文字なので、値の真偽で
@@ -82,10 +132,7 @@
    &&Object.prototype.hasOwnProperty.call(draft.formulas,k);
  const originOf=k=>(isVirtual(k)||isFormulaCol(k))?'calc':(joined.has(k)?'join':'source');
  /* 結合元のデータソース名。分類の説明に添える(「どこから」まで言う)。 */
- function joinFrom(){
-  const t=S.joinQuality&&S.joinQuality.table;
-  return t?`品質データ（${t}）`:'別のデータソース';
- }
+ function joinFrom(){return panelSrc.joinFrom()}
  /* 読み替えルールの編集を開く。閉じたら、作った(or 消した)結果を
     この列の選択へ反映する——「作ったのに選ばれていない」を無くすため。 */
  function editRule(name){
@@ -115,10 +162,10 @@
   el.innerHTML=`
    <div class="sc-float-header lc-header">
     <div class="lc-title">
-     <small class="lc-eyebrow">一覧の見せ方</small>
-     <h2>列の設定</h2>
+     <small class="lc-eyebrow" id="lcEyebrow">一覧の見せ方</small>
+     <h2 id="lcTitle">列の設定</h2>
     </div>
-    <p class="lc-lead">左で<b>出す列と並び</b>を決め、右で<b>選んだ1列の見え方</b>を整えます。
+    <p class="lc-lead" id="lcLead">左で<b>出す列と並び</b>を決め、右で<b>選んだ1列の見え方</b>を整えます。
      触った結果はすぐ後ろの一覧に出ます（<b>保存するまでは元に戻せます</b>）。</p>
     <button type="button" id="lcClose" class="lc-close" title="閉じる（保存していない変更は元に戻ります）">×</button></div>
    <div class="sc-float-body lc-body">
@@ -213,13 +260,7 @@
  /* 今の一覧の全列(番号・ボタンを含む)。表示中かどうかに関わらず並べる。
     **並びの出どころは一覧側と同じ1本**(§9.106)——ここで別に組み立てると、
     設定画面で動かした並びが一覧に出ない(実際にそうなっていた)。 */
- function allKeys(){
-  if(typeof WL.listColumnKeys!=='function'){
-   console.error('列の設定パネル: WL.listColumnKeys が見つかりません');
-   return [...(S.columns||[])];
-  }
-  return WL.listColumnKeys();
- }
+ function allKeys(){return panelSrc.keys()}
 
  function loadDraft(){
   const l=WL.columnLayout.get(target);
@@ -231,12 +272,15 @@
      したものを、直し方の違いで2本に戻してしまう)。
      非表示の列もパネルには出す(チェックの外れた行として)ので、
      **非表示を落とさない`healedColumnOrder`のほう**を借りる。 */
-  const order=typeof WL.healedColumnOrder==='function'
-   ? WL.healedColumnOrder(target)
-   : [...known,...keys.filter(k=>!known.includes(k))];
+  const order=panelSrc.healed(target)||[...known,...keys.filter(k=>!known.includes(k))];
   draft={
    order,
-   hidden:new Set((l.hidden||[]).filter(k=>keys.includes(k))),
+   /* **「出す/出さない」の出どころが別のこともある**(§9.120)。内容欄は
+      スケジュール内容表示マスタが持つので、差し替え口が答える。
+      指定が無ければ従来どおり列レイアウトマスタのhidden。 */
+   hidden:new Set((typeof panelSrc.initialHidden==='function'
+                    ? panelSrc.initialHidden(keys,l)
+                    : (l.hidden||[])).filter(k=>keys.includes(k))),
    widths:{...(l.widths||{})},
    names:{...(l.names||{})},
    formats:JSON.parse(JSON.stringify(l.formats||{})),
@@ -253,7 +297,7 @@
   if(isVirtual(k))return {text:'（ボタン）',color:'',raw:''};
   const raw=sampleValue(k);
   if(raw==='')return {text:'',color:'',raw:''};
-  const row=(S.rows||[]).find(r=>String(r[k]??'')===String(raw));
+  const row=panelSrc.rows().find(r=>String(panelSrc.valueOf(r,k)??'')===String(raw));
   const out=WL.cellFormat.cell({raw,format:draft.formats[k]||null,rule:draft.rules[k]||'',row,column:k});
   return {text:out.text,color:out.color,raw:String(raw)};
  }
@@ -311,7 +355,7 @@
   box.innerHTML=
    `<button type="button" class="lc-origin-chip lc-origin-all${originFilter?'':' is-on'}" data-origin=""
      aria-pressed="${originFilter?'false':'true'}" title="すべての列">すべて<b>${pool.length}</b></button>`
-   +ORIGIN_ORDER.map(o=>chip(o,ORIGIN[o].label,n(o),
+   +(panelSrc.origins?panelSrc.origins():ORIGIN_ORDER).map(o=>chip(o,ORIGIN[o].label,n(o),
        o==='join'?`${ORIGIN[o].note}（${joinFrom()}）`:ORIGIN[o].note)).join('');
   box.querySelectorAll('.lc-origin-chip').forEach(b=>{
    b.onclick=()=>{originFilter=b.dataset.origin||'';renderOrigins();renderList()};
@@ -431,7 +475,7 @@
                                 order:draft.order,widths:draft.widths,hidden:[...draft.hidden],
                                 formulas:draft.formulas,
                                 names:draft.names,formats:draft.formats,rules:draft.rules});
-  if(typeof renderGrid==='function')renderGrid();
+  panelSrc.afterApply();
   const note=document.getElementById('lcFootNote');
   if(note)note.textContent='一覧に反映しています（保存すると次に開いたときも同じ形で出ます）';
  }
@@ -479,10 +523,10 @@
     それが分かって初めて書式を決められる。表示中の行から数える
     (全件の統計ではないので、そう言い切れる範囲だけを出す)。 */
  function columnStats(k){
-  const rows=S.rows||[];
+  const rows=panelSrc.rows();
   const vals=[];
   for(const r of rows){
-   const v=r[k];
+   const v=panelSrc.valueOf(r,k);
    if(v!==null&&v!==undefined&&String(v).trim()!=='')vals.push(String(v));
   }
   const set=new Set(vals);
@@ -506,8 +550,8 @@
     出す(変わらないと分かることも結果のうち)。 */
  function previewSamples(k,max){
   const out=[],seen=new Set();
-  for(const r of (S.rows||[])){
-   const v=r[k];
+  for(const r of panelSrc.rows()){
+   const v=panelSrc.valueOf(r,k);
    if(v===null||v===undefined||String(v).trim()==='')continue;
    const s=String(v);
    if(seen.has(s))continue;
@@ -536,8 +580,8 @@
  }
  /* この列の実データの先頭(空でないもの)。書式の「例」に使う。 */
  function sampleValue(k){
-  for(const r of (S.rows||[])){
-   const v=r[k];
+  for(const r of panelSrc.rows()){
+   const v=panelSrc.valueOf(r,k);
    if(v!==null&&v!==undefined&&String(v).trim()!=='')return v;
   }
   return '';
@@ -606,7 +650,7 @@
  function formulaStepHtml(){
   const src=draft.formulas[picked]||'';
   const chk=src.trim()?WL.formula.check(src):{ok:false,error:'まだ式が入っていません'};
-  const rows=(S.rows||[]).slice(0,3);
+  const rows=panelSrc.rows().slice(0,3);
   let sampleHtml='';
   if(chk.ok&&rows.length){
    const c=WL.formula.compile(src);
@@ -641,7 +685,7 @@
   const f=fmtOf(picked);
   const sample=virt?'':sampleValue(picked);
   const shown=virt?'':WL.cellFormat.cell({raw:sample,format:f,rule:draft.rules[picked]||'',
-                                          row:(S.rows||[]).find(r=>String(r[picked]??'')===String(sample)),
+                                          row:panelSrc.rows().find(r=>String(panelSrc.valueOf(r,picked)??'')===String(sample)),
                                           column:picked}).text;
   const o=originOf(picked);
   const st=columnStats(picked);
@@ -658,7 +702,7 @@
     <dl class="lc-facts">
      <div><dt>元の項目名</dt><dd class="lc-mono" title="${esc(picked)}">${esc(virt?'（この列はデータを持ちません）':picked)}</dd></div>
      ${o==='join'?`<div><dt>取得元</dt><dd>${esc(joinFrom())}</dd></div>`:''}
-     ${virt?`<div><dt>役割</dt><dd>${esc(VIRTUAL[picked].note)}</dd></div>`
+     ${virt?`<div><dt>役割</dt><dd>${esc(panelSrc.virtual()[picked].note)}</dd></div>`
            :`<div><dt>値のある行</dt><dd>${st.filled} / ${st.total}<i class="lc-fact-sub">${st.blank?`空欄 ${st.blank}`:'空欄なし'}</i></dd></div>
              <div><dt>値の種類</dt><dd>${st.distinct}<i class="lc-fact-sub">${esc(st.kindGuess)}</i></dd></div>`}
     </dl>
@@ -667,7 +711,7 @@
     <h4 class="lc-step-head"><i class="lc-step-no">1</i>見せ方<small>一覧の見出しと列の幅</small></h4>
     <label class="lc-field"><span>表示名</span>
      <input type="text" id="lcName" value="${esc(draft.names[picked]||'')}"
-      placeholder="${esc(virt?VIRTUAL[picked].label:picked)}" autocomplete="off"></label>
+      placeholder="${esc(virt?panelSrc.virtual()[picked].label:picked)}" autocomplete="off"></label>
     <div class="lc-field lc-field-width"><span>幅</span>
      <div class="lc-widthbox">
       <div class="lc-widthmodes" id="lcWidthMode">${[
@@ -683,7 +727,7 @@
       <small class="lc-hint">${esc(WIDTH_MODE_NOTE[widthModeOf(picked)]||'')}</small>
      </div></div>
    </div>
-   ${fx?formulaStepHtml():''}
+   ${fx&&panelSrc.features.formula?formulaStepHtml():''}
    ${virt?`<div class="lc-note-calc"><b>この列は値を持ちません。</b>
       番号やボタンを出す列なので、書式や読み替えはありません。名前と幅、出す/出さないだけを決められます。</div>`:`
    <div class="lc-step">
@@ -803,18 +847,24 @@
 
  async function save(){
   try{
-   await WL.columnLayout.save(target,{order:draft.order,widths:draft.widths,
-                                      hidden:[...draft.hidden],names:draft.names,
-                                      formats:draft.formats,rules:draft.rules,
-                                      formulas:draft.formulas,locks:[...draft.locks]});
+   /* 保存先が違う対象もある(§9.120)。作業スケジュールの内容欄は
+      「どの項目を出すか」だけスケジュール内容表示マスタが持つので、
+      **振り分けは差し替え口の1箇所**で行う(パネルは知らなくてよい)。 */
+   const body={order:draft.order,widths:draft.widths,
+               hidden:[...draft.hidden],names:draft.names,
+               formats:draft.formats,rules:draft.rules,
+               formulas:draft.formulas,locks:[...draft.locks]};
+   if(typeof panelSrc.save==='function')await panelSrc.save(target,body);
+   else await WL.columnLayout.save(target,body);
    saved=true;
    original={order:[...draft.order],hidden:[...draft.hidden],widths:{...draft.widths},
              names:{...draft.names},formats:JSON.parse(JSON.stringify(draft.formats)),
              rules:{...draft.rules},formulas:{...draft.formulas},locks:[...draft.locks]};
-   showToast&&showToast('列の設定を保存しました','この一覧を次に開いたときも同じ形で出ます',2600);
+   showToast&&showToast(panelSrc.savedToast||'列の設定を保存しました',
+                        panelSrc.savedNote||'この一覧を次に開いたときも同じ形で出ます',2600);
    const note=document.getElementById('lcFootNote');
    if(note)note.textContent='保存しました';
-   if(typeof renderGrid==='function')renderGrid();
+   panelSrc.afterApply();
   }catch(e){showToast&&showToast('保存に失敗しました',e.message,5000)}
  }
  /* ---------- 名前を付けて覚えさせる(§9.111) ----------
@@ -958,9 +1008,12 @@
   renderOrigins();renderList();renderDetail();applyLive();
  }
 
- function open(){
-  target=typeof listLayoutTarget==='function'?listLayoutTarget():'';
-  if(!target){showToast&&showToast('一覧を先に開いてください','列の設定はその一覧ごとに保存します',3200);return}
+ /* source を渡すと別の対象へ同じパネルを使う(§9.120)。省略＝仕掛一覧。 */
+ function open(source){
+  panelSrc=source||LIST_SOURCE;
+  target=panelSrc.target();
+  if(!target){showToast&&showToast(panelSrc.noTargetToast||'一覧を先に開いてください',
+                                   panelSrc.noTargetNote||'列の設定はその一覧ごとに保存します',3200);return}
   ensurePanel();
   /* 閉じたときに戻せるよう、開いた時点の値を控える。 */
   const cur=WL.columnLayout.get(target);
@@ -969,6 +1022,19 @@
             rules:{...(cur.rules||{})},formulas:{...(cur.formulas||{})},
             locks:[...(cur.locks||[])]};
   saved=false;
+  /* **どの対象の設定かを見出しに出す。** 同じ見た目のパネルを別の対象へ
+     使い回すので、名前が変わらないと「いま何を触っているか」が分からない。 */
+  const eb=document.getElementById('lcEyebrow'),ti=document.getElementById('lcTitle'),
+        ld=document.getElementById('lcLead');
+  if(eb)eb.textContent=panelSrc.eyebrow||'一覧の見せ方';
+  if(ti)ti.textContent=panelSrc.title?panelSrc.title():'列の設定';
+  if(ld&&panelSrc.lead)ld.innerHTML=panelSrc.lead;
+  /* 使えない機能は**ボタンごと消す**(§9.120)——押せるのに何も起きない、
+     では壊れているようにしか見えない。内容欄は計算式を持たない。 */
+  const fxBtn=document.getElementById('lcAddCol');
+  if(fxBtn)fxBtn.hidden=!(panelSrc.features&&panelSrc.features.formula);
+  const presetBox=document.querySelector('#'+PANEL_ID+' .lc-presets');
+  if(presetBox)presetBox.hidden=!(panelSrc.features&&panelSrc.features.preset);
   /* 結合されてきた列は一覧を読むたびに変わり得る(結合できたかどうかで
      増えたり減ったりする)ので、**開くたびに取り直す**。 */
   joined=joinedKeys();
@@ -987,7 +1053,7 @@
   const el=document.getElementById(PANEL_ID);if(el)el.hidden=true;
   if(!saved&&original&&target){
    WL.columnLayout.stage(target,original);
-   if(typeof renderGrid==='function')renderGrid();
+   panelSrc.afterApply();
   }
  }
  function toggle(){

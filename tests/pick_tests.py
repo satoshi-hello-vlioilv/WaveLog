@@ -42,10 +42,9 @@ G['列'] = ['test_collayout', 'test_colformat', 'test_colrule', 'test_colsort', 
            'test_colpreset', 'test_formula']
 G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'test_sccat',
                      'test_scbalance', 'test_scbatch', 'test_screorder', 'test_scperm',
-                     'test_scperf', 'test_wkfast', 'test_scsplit', 'test_scprint', 'test_scdrop', 'test_workable',
+                     'test_scperf', 'test_wkfast', 'test_scsplit', 'test_scprint', 'test_scdrop', 'test_sccontent', 'test_workable',
                      'test_wkbg', 'test_orphan', 'test_histdel', 'test_sclock',
-                     'test_scwritespeed', 'test_split_layout', 'test_content_ui',
-                     'test_content_apply', 'test_sccols']
+                     'test_scwritespeed', 'test_split_layout', 'test_sccols']
 G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 'test_eqkind',
                'test_shift', 'test_dbequip', 'test_crudroutes', 'test_setpage', 'test_eqstd']
 G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'test_flows',
@@ -88,7 +87,7 @@ RULES = [
 
     # --- 画面(JS) ----------------------------------------------------
     ('static/js/list-view.js', g('一覧', '列', 'test_fit', 'test_uiux')),
-    ('static/js/list-columns.js', g('列', 'test_content_ui', 'test_content_apply',
+    ('static/js/list-columns.js', g('列', 'test_sccontent',
                                     'test_sccols', 'test_cols', 'test_lcpanel')),
     ('static/js/list-rules.js', g('列')),
     ('static/js/list-formula.js', g('test_formula', 'test_colpreset', 'test_lcpanel')),
