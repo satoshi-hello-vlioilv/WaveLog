@@ -134,7 +134,9 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   /* ---- 7) 既に壊れた形で保存された並びは、読むときに直す ----
      直しただけでは足りない——**実機には壊れた設定が既に保存されている**
      ので、こちらが直さないと利用者が手で引きずり戻すことになる。 */
-  const dataCols=beforeGrip.filter(k=>k!=='#'&&k!=='分割'&&k!=='測定');
+  // **キーで弾く。** 見出しの表示文字（分割/測定）で弾くと、data-colを
+  // 全見出しへ付けた時点(§9.110)で素通りして仮想列が混ざる(実際に混ざった)。
+  const dataCols=beforeGrip.filter(k=>k!=='#'&&!String(k).startsWith('__'));
   const brokenOrder=[dataCols[2],dataCols[0],dataCols[1],...dataCols.slice(3)];
   await post('/api/column-layout-master',{target,order:brokenOrder,widths:{},hidden:[],user_id:'test'});
   await page.evaluate(()=>{WL.columnLayout.forget();return load()});
@@ -142,7 +144,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   await page.waitForTimeout(400);
   const healed=await headKeys();
   rec('番号・ボタンの列が無い古い並びでも先頭へ戻る',
-   healed[0]==='#'&&healed[1]==='分割',healed.slice(0,3).join(' / '));
+   healed[0]==='#'&&healed[1]==='__split__',healed.slice(0,3).join(' / '));
   rec('その直しでデータ列の並びは崩さない',
    healed[2]===brokenOrder[0]&&healed[3]===brokenOrder[1],healed.slice(2,5).join(' / '));
 
