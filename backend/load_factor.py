@@ -16,7 +16,7 @@ from datetime import datetime
 from .config import LOAD_FACTOR_CACHE_TTL_SEC, MIN_SAMPLES
 from .db_access import MEAS_DB, RECORDS_BACKUP_EXPORT_PATH, merged_backup_rows
 from .repositories import schedule_repo as sr
-from .repositories.master_repo import normalize_equipment_name
+from .repositories.master_repo import normalize_equipment_name, read_equipment_standard_minutes
 
 FACTOR_KEYS=('purposeName','mfgMaterial','mfgTemper','mfgThickness','mfgWidth','mfgLength','boxHorizontalCount','boxVerticalCount','crewSize')
 NUMERIC_FACTORS={'mfgThickness','mfgWidth','mfgLength','boxHorizontalCount','boxVerticalCount'}
@@ -254,9 +254,28 @@ def estimate_work(c,equipment,detail,crew_size=None):
  """§6.7の種別='作業'見積。detail: 明細JSON相当のdict(aliasesキー空間)。
  戻り値は§6.8のentries[].estimate相当(minutes/low/high/sigmaLog/basis/base/factors)。"""
  model=get_model(equipment)
- if model is None:
-  return {'minutes':DEFAULT_ESTIMATE_MINUTES,'low':None,'high':None,'sigmaLog':None,
-          'basis':'default','base':None,'factors':[]}
+ # 設備マスタの「1ロットあたり標準時間」(§9.114)。**その設備の実績が
+ # 足りないとき**の保険で、優先順位は次のとおり。
+ #
+ #   ① その設備自身の実績モデル (basis='equipment')
+ #   ② 設備マスタの1ロットあたり標準時間 (basis='equipment-standard')
+ #   ③ 全設備をまとめたモデル (basis='pooled')
+ #   ④ 全体の暫定既定値 120分 (basis='default')
+ #
+ # **②が③より先**なのが要点。'pooled'は他の設備の実績まで混ぜた統計で、
+ # 設備ごとの差をならした値になる——1ロットの所要が設備でまるで違うから
+ # こそ「設備単位で持たせたい」という要望なので、そこへ他設備の平均を
+ # 当てるとこの設定の意味が無くなる。逆に**その設備自身の実績が溜まったら
+ # ①が勝つ**(標準時間で実績を上書きしない。上書きすると実績が集まっても
+ # 精度が上がらない)。
+ std=read_equipment_standard_minutes(c,equipment) if c is not None else None
+ if model is None or (std is not None and model.get('basis')!='equipment'):
+  if std is not None:
+   return {'minutes':round(float(std),1),'low':None,'high':None,'sigmaLog':None,
+           'basis':'equipment-standard','base':None,'factors':[]}
+  if model is None:
+   return {'minutes':DEFAULT_ESTIMATE_MINUTES,'low':None,'high':None,'sigmaLog':None,
+           'basis':'default','base':None,'factors':[]}
  overrides=resolve_overrides(c,equipment)
  base_override=overrides.get(('BASE',''))
  t0=base_override if base_override is not None else model['T0']

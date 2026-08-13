@@ -31,15 +31,23 @@
   {group:'equip',key:'coilStop',label:'コイル止め',icon:'止',endpoint:'/api/coil-stop-master',hasDelete:true,
    fields:[{k:'name',label:'コイル止め',required:true,key:true},{k:'note',label:'備考'}],
    cols:[{k:'name',label:'コイル止め',grow:2},{k:'note',label:'備考',grow:3}]},
+  /* 設備はインラインのまま(§9.114)。項目が4つになってモーダルの基準に
+     かかるが、**どれも短い1行**なのでフォームは縦に伸びず、モーダルにする
+     理由(一覧を圧迫する)が当てはまらない。設備の登録は他マスタの下ごしらえ
+     として一番よく使うので、1画面で完結するほうが速い。 */
   {group:'equip',key:'equipment',label:'設備',icon:'設',endpoint:'/api/equipment-master',hasDelete:true,
+   editorModal:false,
    fields:[{k:'name',label:'設備名',required:true,key:true},
            {k:'kind',label:'区分',type:'select',options:['','コイル','板'],
             hint:'この設備が扱う材料の形です。空欄のままでも登録・編集できます（未設定）。'},
            {k:'maxStrips',label:'最大条数',type:'number',min:1,max:40,
-            hint:'この設備で幅方向に割れる条数の上限。空欄なら40（測定データの構造上の上限）。'}],
+            hint:'この設備で幅方向に割れる条数の上限。空欄なら40（測定データの構造上の上限）。'},
+           {k:'standardMinutes',label:'1ロットあたり標準時間（分）',type:'number',min:1,max:1440,step:1,
+            hint:'実績がまだ無いときに作業スケジュールの見積として使う分数です。空欄なら120分（全体の暫定既定値）。実績がたまると自動で実績由来の見積へ切り替わります。'}],
    cols:[{k:'name',label:'設備名',grow:2},{k:'kind',label:'区分',grow:1,format:'equipmentKind'},
-         {k:'maxStrips',label:'最大条数',grow:1,format:'maxStrips'}],
-   hint:'「区分」はその設備が扱う材料の形（コイル／板）です。既に登録してある設備は未設定のままでも今までどおり動きます。「最大条数」は幅分割（条割）で割れる条数の上限です。設備によって割れる本数が違うため設備ごとに登録します。空欄のままなら40条（測定データの構造上の上限）として扱います。子ロットの数（最大9ロット）とは別の値です。'},
+         {k:'maxStrips',label:'最大条数',grow:1,format:'maxStrips'},
+         {k:'standardMinutes',label:'標準時間',grow:1,format:'standardMinutes'}],
+   hint:'「区分」はその設備が扱う材料の形（コイル／板）です。既に登録してある設備は未設定のままでも今までどおり動きます。「最大条数」は幅分割（条割）で割れる条数の上限です。設備によって割れる本数が違うため設備ごとに登録します。空欄のままなら40条（測定データの構造上の上限）として扱います。子ロットの数（最大9ロット）とは別の値です。「1ロットあたり標準時間」は、実績がまだ1件も無い設備の作業スケジュールで見積として使う分数です。実績がたまると実績から算出した見積（換算係数）が優先されるため、あくまで最初の保険として登録します。'},
   {group:'system',key:'accessPermission',label:'アクセス権限',icon:'権',endpoint:'/api/access-permission-master',hasDelete:true,
    fields:[{k:'loginId',label:'ログインID',key:true},{k:'pcName',label:'PC名',key:true},
            {k:'canEdit',label:'編集可否',type:'select',options:['編集可','閲覧のみ']},
@@ -214,11 +222,20 @@
     判定は「入力項目がEDITOR_MODAL_MIN_FIELDS以上」「専用コントロール
     (設備の複数選択タグ入力)を含む」「defで明示(editorModal:true)」のいずれか。
     現状: オペレータ(タグ入力)・アクセス権限(6項目)・設備停止(4項目)・
-    勤務形態(4項目)がモーダル、機器/スプール/内径/設備はインラインのまま。 */
+    勤務形態(4項目)がモーダル、機器/スプール/内径/設備はインラインのまま。
+
+    **項目数はあくまで「フォームが縦に伸びるか」の目安**であって、目的
+    そのものではない(§9.114)。短い1行の項目が4つ並ぶだけならフォームは
+    伸びないので、モーダルにする理由が無い。`editorModal:false`で外せる
+    ようにしてあるが、**理由の書けるものだけ**にすること
+    ——外すたびに「どの画面がどちらなのか」が覚えられなくなる。
+    しきい値そのものを動かさないこと: 5へ上げると設備停止(4項目)・
+    勤務形態(4項目)が黙ってインラインへ戻り、頼まれていない画面が変わる。 */
  const EDITOR_MODAL_MIN_FIELDS=4;
  const RICH_FIELD_TYPES=['equipment-multi','equipment-multi-text'];
  function defUsesEditorModal(def){
   if(!def||!Array.isArray(def.fields)||!def.fields.length)return false;
+  if(def.editorModal===false)return false;   // 明示で外す(理由はdef側に書く)
   if(def.editorModal===true)return true;
   if(def.fields.some(f=>RICH_FIELD_TYPES.includes(f.type)))return true;
   return def.fields.length>=EDITOR_MODAL_MIN_FIELDS;
@@ -286,6 +303,9 @@
  function cellText(col,value){
   const v=String(value??'');
   if(col.format==='maxStrips')return v.trim()===''?'40（既定）':v;
+  /* 1ロットあたり標準時間(§9.114)。**未設定を「0分」に見せない**——
+     空欄は「登録していない＝全体の暫定既定値を使う」であって0分ではない。 */
+  if(col.format==='standardMinutes')return v.trim()===''?'120分（既定）':`${v}分`;
   // 区分(§9.85)。空欄は「まだ決めていない」であって「無い」ではないので、
   // 「—」ではなくそう書く(既存の設備は空のまま動く)。
   if(col.format==='equipmentKind')return v.trim()===''?'未設定':v;

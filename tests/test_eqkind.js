@@ -68,7 +68,7 @@ async function cleanup(){
            options:sel?[...sel.options].map(o=>o.value):null,
            heads:[...document.querySelectorAll('#masterMaintList .mm-row.head span')].map(s=>s.textContent.trim())};
   });
-  rec('設備タブは上のフォームで直接入力する形式のまま（項目3つ）',form.inline,JSON.stringify(form.inline));
+  rec('設備タブは上のフォームで直接入力する形式のまま（項目が増えてもモーダルにしない）',form.inline,JSON.stringify(form.inline));
   rec('区分の選択欄がある',form.exists);
   rec('選択肢は 未選択／コイル／板',form.exists&&form.options.join('|')==='|コイル|板',JSON.stringify(form.options));
   rec('一覧に区分列がある',form.heads.includes('区分'),form.heads.join('/'));

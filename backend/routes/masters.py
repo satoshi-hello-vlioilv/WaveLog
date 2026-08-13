@@ -26,6 +26,7 @@ from ..repositories.master_repo import (
  EQUIPMENT_MASTER_TABLE, ensure_equipment_master_table, normalize_equipment_name, equipment_master_rows,
  MAX_STRIPS_COLUMN, STRIP_LIMIT, DEFAULT_MAX_STRIPS, clamp_max_strips,
  EQUIPMENT_KINDS, normalize_equipment_kind,
+ STANDARD_MINUTES_MAX, normalize_standard_minutes,
  OPERATOR_MASTER_TABLE, ensure_operator_master_table, normalize_operator_name, operator_master_rows,
  OPERATOR_EQUIPMENT_TABLE, ensure_operator_equipment_table, operator_equipment_map, set_operator_equipment,
  rename_equipment_references,
@@ -43,7 +44,7 @@ from ..repositories.master_repo import (
  delete_column_preset, normalize_column_preset,
  FORMAT_KINDS, normalize_format,
  DISPLAY_RULE_TABLE, ensure_display_rule_table, display_rules, set_display_rule,
- delete_display_rule, display_rule_usage, RULE_OPS, RULE_COLORS,
+ delete_display_rule, display_rule_usage, display_rule_usage_all, RULE_OPS, RULE_COLORS,
  SORT_PRESET_TABLE, ensure_sort_preset_table, sort_preset_rows, normalize_sort_keys,
  LIST_VIEW_TABLE, ensure_list_view_table, list_view_settings_for, set_list_view_settings,
  ROW_GAP_DEFAULT,
@@ -66,9 +67,14 @@ def equipment_master_list():
             'maxStrips':('' if (len(r)<7 or r[6] in (None,'')) else int(r[6])),
             'maxStripsEffective':clamp_max_strips(r[6] if len(r)>6 else None),
             # 区分(コイル/板、§9.85)。未設定は空で返す(画面が「未設定」と見せる)。
-            'kind':normalize_equipment_kind(r[7] if len(r)>7 else '')} for r in rows]
+            'kind':normalize_equipment_kind(r[7] if len(r)>7 else ''),
+            # 1ロットあたりの標準時間(分、§9.114)。未設定は空("")で返す
+            # ——0を返すと「0分」という設定に見えるが、そんな作業は無い。
+            'standardMinutes':('' if (len(r)<9 or normalize_standard_minutes(r[8]) is None)
+                               else normalize_standard_minutes(r[8]))} for r in rows]
   return jsonify(ok=True,items=items,table=EQUIPMENT_MASTER_TABLE,created=not before,empty=len(items)==0,
                  stripLimit=STRIP_LIMIT,defaultMaxStrips=DEFAULT_MAX_STRIPS,
+                 standardMinutesMax=STANDARD_MINUTES_MAX,
                  equipmentKinds=list(EQUIPMENT_KINDS),master_path=str(path))
  except Exception as e:return jsonify(error=f'設備マスタ読込失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
 
@@ -119,14 +125,14 @@ def equipment_master_register():
     cur.execute('UPDATE [設備マスタ] SET [設備名]=?,[更新者ID]=?,[更新日時]=Now() WHERE [設備ID]=?',[retired_name,uid,existing[0]])
     renamed=rename_equipment_references(c,name,retired_name)
     cur.execute('SELECT Max([表示順]) FROM [設備マスタ]');maximum=cur.fetchone()[0];order=int(maximum or 0)+10
-    cur.execute('INSERT INTO [設備マスタ] ([設備名],[区分],[最大条数],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,-1,?,?,Now(),Now())',[name,normalize_equipment_kind(x.get('kind')),(None if str(x.get('maxStrips') or '').strip()=='' else clamp_max_strips(x.get('maxStrips'))),order,uid,uid])
+    cur.execute('INSERT INTO [設備マスタ] ([設備名],[区分],[最大条数],[標準時間分],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,-1,?,?,Now(),Now())',[name,normalize_equipment_kind(x.get('kind')),(None if str(x.get('maxStrips') or '').strip()=='' else clamp_max_strips(x.get('maxStrips'))),normalize_standard_minutes(x.get('standardMinutes')),order,uid,uid])
     c.commit()
     return jsonify(ok=True,name=name,registered=True,reused=False,retiredAs=retired_name,retiredReferences=renamed,updated_by=uid,
                     message=f'「{name}」を新しい設備として登録しました。過去の設備は「{retired_name}」として履歴に残ります。')
 
    # 同名の既存行が無い場合: 通常の新規登録。
    cur.execute('SELECT Max([表示順]) FROM [設備マスタ]');maximum=cur.fetchone()[0];order=int(maximum or 0)+10
-   cur.execute('INSERT INTO [設備マスタ] ([設備名],[区分],[最大条数],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,-1,?,?,Now(),Now())',[name,normalize_equipment_kind(x.get('kind')),(None if str(x.get('maxStrips') or '').strip()=='' else clamp_max_strips(x.get('maxStrips'))),order,uid,uid]);c.commit()
+   cur.execute('INSERT INTO [設備マスタ] ([設備名],[区分],[最大条数],[標準時間分],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,-1,?,?,Now(),Now())',[name,normalize_equipment_kind(x.get('kind')),(None if str(x.get('maxStrips') or '').strip()=='' else clamp_max_strips(x.get('maxStrips'))),normalize_standard_minutes(x.get('standardMinutes')),order,uid,uid]);c.commit()
    return jsonify(ok=True,name=name,registered=True,reused=False,updated_by=uid,
                    message='設備マスタへ新規登録しました。次回から設備リストに表示されます。')
  except Exception as e:return jsonify(error=f'設備マスタ登録失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
@@ -146,7 +152,7 @@ def equipment_master_update():
    # 最大条数: 空欄は「未設定＝既定値」の意味なのでNULLへ戻す(0を入れない)。
    raw_max=str(x.get('maxStrips') or '').strip()
    max_strips=None if raw_max=='' else clamp_max_strips(raw_max)
-   cur.execute('UPDATE [設備マスタ] SET [設備名]=?,[区分]=?,[最大条数]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [設備ID]=?',[name,normalize_equipment_kind(x.get('kind')),max_strips,uid,eid])
+   cur.execute('UPDATE [設備マスタ] SET [設備名]=?,[区分]=?,[最大条数]=?,[標準時間分]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [設備ID]=?',[name,normalize_equipment_kind(x.get('kind')),max_strips,normalize_standard_minutes(x.get('standardMinutes')),uid,eid])
    # 設備名は他マスタ(オペレータ設備マスタ等、EQUIPMENT_NAME_REFERENCES参照)から
    # 文字列で参照されているため、改名時はそちら側も追従させる(改名連動)。
    renamed=rename_equipment_references(c,old_name,name) if old_name else 0
@@ -823,10 +829,13 @@ def display_rule_master_get():
  try:
   path=DBS['MASTER']['path']
   if not path.exists():
-   return jsonify(ok=True,rules={},ops=list(RULE_OPS),colors=list(RULE_COLORS))
+   return jsonify(ok=True,rules={},usage={},ops=list(RULE_OPS),colors=list(RULE_COLORS))
   with connect(path,True) as c:
    rules=display_rules(c)
-  return jsonify(ok=True,rules=rules,ops=list(RULE_OPS),colors=list(RULE_COLORS),
+   # **どの列で使われているかも一緒に返す。** 編集画面が「このルールを直すと
+   # どこへ効くか」を出せるようにするため(読み替えは複数の列で使い回す)。
+   usage=display_rule_usage_all(c)
+  return jsonify(ok=True,rules=rules,usage=usage,ops=list(RULE_OPS),colors=list(RULE_COLORS),
                  table=DISPLAY_RULE_TABLE)
  except Exception as e:
   # ルールが読めなくても一覧そのものは出せる(読み替えなしで表示)。

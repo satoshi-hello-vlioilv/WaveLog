@@ -249,6 +249,109 @@ async function cleanup(){
   rec('行を足せる',await page.evaluate(()=>document.querySelectorAll('#listRulePanel .lr-row').length)>=2);
   await page.evaluate(()=>WL.listRules.close());
 
+  /* ============================================================
+     §9.117 条件式ビルダーの作り直し。
+     どれも「作った本人が確かめられない」を潰すためのもの。
+     ============================================================ */
+  await post('/api/display-rule-master',{name:RULE,user_id:'test',rows:[
+   {conditions:[{left:{kind:'self'},op:'eq',right:{kind:'value',value:'A'}}],text:'あ',color:'ok'},
+   {conditions:[{left:{kind:'self'},op:'eq',right:{kind:'value',value:'B'}}],text:'い',color:'warn'},
+  ]});
+  await page.evaluate(async a=>{await WL.displayRules.load(true);
+                                await WL.listRules.open({name:a.rule,column:a.col})},{rule:RULE,col});
+  await page.waitForSelector('#listRulePanel:not([hidden])',{timeout:8000});
+
+  /* ---- 評価順を画面から変えられる（「上から順に最初に当たったもの」が
+         決まりなのに、並べ替えができなかった） ---- */
+  const order0=await page.evaluate(()=>[...document.querySelectorAll('#lrRows .lr-text')].map(i=>i.value));
+  await page.evaluate(()=>document.querySelector('#lrRows .lr-row[data-row="1"] .lr-up').click());
+  const order1=await page.evaluate(()=>[...document.querySelectorAll('#lrRows .lr-text')].map(i=>i.value));
+  rec('行を上へ動かせる（評価順を変えられる）',
+      order0.join()==='あ,い'&&order1.join()==='い,あ',`${order0.join()} → ${order1.join()}`);
+  await page.evaluate(()=>document.querySelector('#lrRows .lr-row[data-row="0"] .lr-down').click());
+  rec('下へも動かせる（元へ戻る）',
+      (await page.evaluate(()=>[...document.querySelectorAll('#lrRows .lr-text')].map(i=>i.value))).join()==='あ,い');
+  rec('先頭の▲と末尾の▼は押せない',await page.evaluate(()=>{
+   const up=document.querySelector('#lrRows .lr-row[data-row="0"] .lr-up');
+   const rows=document.querySelectorAll('#lrRows .lr-row');
+   const down=rows[rows.length-1].querySelector('.lr-down');
+   return up.disabled&&down.disabled;
+  }));
+
+  /* ---- 行ごとの当たり件数（当たらない行はその場で分かる） ---- */
+  const stats=await page.evaluate(()=>[...document.querySelectorAll('#lrRows .lr-row-stat')]
+    .map(e=>e.textContent.trim()));
+  rec('行ごとに当たり具合が出る',stats.length>=2&&stats.every(t=>/件|当たり/.test(t)),
+      JSON.stringify(stats).slice(0,140));
+
+  /* ---- 既定の行を画面から作れる（以前は作る手立てが1つも無かった） ---- */
+  await page.evaluate(()=>document.getElementById('lrAddDefault').click());
+  const withDef=await page.evaluate(()=>({
+   rows:document.querySelectorAll('#lrRows .lr-row').length,
+   any:document.querySelectorAll('#lrRows .lr-cond-any').length,
+   addDisabled:document.getElementById('lrAddDefault').disabled,
+  }));
+  rec('「どれにも当てはまらないとき」を足せる',withDef.rows===3&&withDef.any===1,JSON.stringify(withDef));
+  rec('既定の行は1つだけ（2つ目は足せない）',withDef.addDisabled===true);
+
+  /* ---- 既定より下の行は「決して来ない」と言う ---- */
+  await page.evaluate(()=>document.getElementById('lrAddRow').click());
+  const dead=await page.evaluate(()=>{
+   const rows=[...document.querySelectorAll('#lrRows .lr-row')];
+   const last=rows[rows.length-1];
+   return {dead:last.classList.contains('lr-row-dead'),
+           note:(last.querySelector('.lr-row-stat')||{}).textContent||''};
+  });
+  rec('既定より下の行は「決して来ない」と分かる',
+      dead.dead&&/決して/.test(dead.note),JSON.stringify(dead));
+
+  /* ---- 最後の条件を消すと既定の行になる（条件0＝既定という評価側の約束） ---- */
+  await page.evaluate(()=>{
+   // 既定より前の1行目の条件をすべて消す
+   const del=document.querySelector('#lrRows .lr-row[data-row="0"] .lr-cond-del');
+   del.click();
+  });
+  rec('最後の条件も消せる（消すと既定の行になる）',await page.evaluate(()=>{
+   const row=document.querySelector('#lrRows .lr-row[data-row="0"]');
+   return !!row.querySelector('.lr-cond-any');
+  }));
+
+  /* ---- 「試してみる」がどの行に当たったかを言う ---- */
+  const which=await page.evaluate(()=>[...document.querySelectorAll('.lr-try-list li')]
+    .map(li=>(li.querySelector('.lr-which')||li.querySelector('.lr-nohit')||{}).textContent||''));
+  rec('試した結果に「何行目が当たったか」が出る',
+      which.length>0&&which.some(t=>/行目/.test(t)),JSON.stringify(which.slice(0,4)));
+  await page.evaluate(()=>WL.listRules.close());
+
+  /* ---- どの列で使っているかを出す（使い回す前提の仕組みなので、
+         直すと他の列にも効くことを知らずに直せる状態にしない） ---- */
+  await page.evaluate(async a=>{await WL.displayRules.load(true);
+                                await WL.listRules.open({name:a.rule,column:a.col})},{rule:RULE,col});
+  await page.waitForSelector('#listRulePanel:not([hidden])',{timeout:8000});
+  const usage=await page.evaluate(()=>({
+   text:document.getElementById('lrUsage').textContent.trim(),
+   /* 読めなかった(null)と「使っていない」(空配列)を取り違えないこと。 */
+   api:(()=>{const u=WL.displayRules.usage('__no_such_rule__');return u===null?-1:u.length})(),
+  }));
+  rec('このルールを使っている列が出る',/使っている列|まだどの列でも/.test(usage.text),usage.text);
+  rec('使っていないルールは0件（読めなかったのとは区別する）',usage.api===0,String(usage.api));
+  await page.evaluate(()=>WL.listRules.close());
+
+  /* ---- 名前は素のprompt()で聞かない（浮きウィンドウの裏に隠れる） ---- */
+  const usedPrompt=await page.evaluate(async()=>{
+   let called=false;const orig=window.prompt;window.prompt=()=>{called=true;return null};
+   const p=WL.listRules.open({column:(S.columns||[])[0]});
+   await new Promise(r=>setTimeout(r,400));
+   const modal=document.getElementById('appConfirmModal');
+   const shown=!!modal&&!modal.hidden&&!!document.getElementById('lrNewName');
+   document.getElementById('appConfirmCancel')?.click();
+   await p.catch(()=>{});
+   window.prompt=orig;
+   return {called,shown};
+  });
+  rec('新規作成の名前をprompt()で聞かない',usedPrompt.called===false,JSON.stringify(usedPrompt));
+  rec('名前はアプリの確認モーダルで聞く',usedPrompt.shown===true,JSON.stringify(usedPrompt));
+
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
 
   console.log('\n=== SUMMARY ===');

@@ -576,10 +576,34 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  .lr-lead{margin:0;font-size:var(--fs-sm);color:var(--muted);flex:0 0 auto}
  .lr-lead b{color:var(--ink)}
  .lr-rows{display:flex;flex-direction:column;gap:var(--gap-inline);flex:0 0 auto}
- .lr-add{flex:0 0 auto;align-self:flex-start}
+ .lr-adds{display:flex;gap:var(--gap-inline);flex:0 0 auto;flex-wrap:wrap}
+ .lr-add{flex:0 0 auto}
+ /* 1行=1つの読み替え。**左端に順位と上下の矢印**を置く(§9.117)——評価順が
+    この並びそのものなので、順番が目に入る位置に無いと「なぜ当たらないか」に
+    気づけない。 */
  .lr-row{border:1px solid var(--line-soft);border-radius:var(--radius-sm);
-  padding:var(--space-2);display:flex;flex-direction:column;gap:var(--gap-hair);
+  padding:var(--space-2);display:flex;gap:var(--gap-inline);
   background:var(--surface);flex:0 0 auto}
+ .lr-row-rank{display:flex;flex-direction:column;align-items:center;gap:var(--gap-hair);
+  flex:0 0 auto}
+ .lr-rank-no{font-size:var(--fs-sm);font-weight:700;color:var(--ink-3);
+  min-width:calc(18px * var(--ui-scale));text-align:center}
+ .lr-up,.lr-down{padding:0;min-width:calc(22px * var(--ui-scale));
+  height:var(--ctl-h-xs);line-height:1;color:var(--ink-3)}
+ .lr-row-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:var(--gap-hair)}
+ /* 既定の行(どれにも当てはまらないとき)は面で見分ける。 */
+ .lr-row-default{background:var(--surface-2)}
+ /* 決して来ない行。**色だけで伝えない**ので、必ず理由の文も出す。 */
+ .lr-row-dead{border-color:var(--line-mid);opacity:.72}
+ .lr-row-stat{font-size:var(--fs-micro);color:var(--muted)}
+ .lr-row-stat.is-dead{color:var(--danger)}
+ .lr-which{color:var(--muted);font-size:var(--fs-micro);margin-left:var(--space-1)}
+ /* **`.sc-float-header small`より詳細度を上げること。** 共通の浮き窓の指定
+    (70-schedule.css)が --fs-tiny(9.5px)を当てており、そのままでは
+    「直すと全部に効きます」が読めない大きさになる。 */
+ .sc-float-header .lr-usage{display:block;font-size:var(--fs-micro);line-height:1.5;
+  margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .lr-name-input{width:100%;margin-top:var(--space-2)}
  .lr-row-conds{display:flex;flex-direction:column;gap:var(--gap-hair)}
  .lr-cond,.lr-row-then{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-hair);
   font-size:var(--fs-sm)}

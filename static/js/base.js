@@ -262,7 +262,7 @@ window.WL.columnLayout=columnLayout;
    **判定は画面側だけ**で行う(サーバーは生の値を返し、並べ替え・絞り込みは
    生の値のまま効かせる。書式と同じ方針)。 */
 const displayRules=(()=>{
- let cache=null,inflight=null;
+ let cache=null,inflight=null,usageMap=null;
  const num=v=>{
   const t=String(v==null?'':v).trim().replace(/,/g,'');
   if(!t||!/^[-+]?(\d+\.?\d*|\.\d+)$/.test(t))return null;
@@ -331,7 +331,7 @@ const displayRules=(()=>{
   inflight=(async()=>{
    try{
     const r=await api('/api/display-rule-master');
-    cache=r.rules||{};
+    cache=r.rules||{};usageMap=r.usage||{};
    }catch(e){cache=cache||{}}   // 読めなくても読み替えなしで一覧は出す
    inflight=null;return cache;
   })();
@@ -341,6 +341,10 @@ const displayRules=(()=>{
          all:()=>cache||{},
          names:()=>Object.keys(cache||{}).sort(),
          get:name=>(cache&&cache[name])||[],
+         /* そのルールを参照している列(対象・列名)。**分からないときは
+            nullを返す**——空配列と同じに扱うと「どこにも使われていない」と
+            言い切ってしまう(読めなかっただけかもしれない)。 */
+         usage:name=>usageMap?((usageMap[name]||[]).slice()):null,
          /* 編集画面が保存した直後に、一覧へすぐ反映させるための差し替え。 */
          put:(name,rows)=>{cache=cache||{};if(rows&&rows.length)cache[name]=rows;else delete cache[name]},
          forget:()=>{cache=null}};
