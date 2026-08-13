@@ -3066,6 +3066,19 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   /* 内容欄の文字は**画面と同じ組み立て**を通す。設備ごとに選んだ項目・
      読み替え・書式がそのまま紙にも乗る(紙だけ別の組み立てにしない)。 */
   contentTextOf:e=>entryContentText(e),
+  /* 紙が「内容」を**項目ごとの列**へ割りたいときに使う(§9.118)。
+     画面のタイムラインが出している項目を、キー・見出し・整えた値の形で
+     そのまま渡す。**紙だけ別の組み立てにしない**——読み替えも書式も
+     画面と同じものが乗っていないと、紙と画面で違う値が出る。 */
+  contentKeys:()=>timelineContentKeys(),
+  contentLabelOf:k=>{
+   const t=timelineTarget();
+   const named=t?WL.columnLayout.label(t,k):k;
+   return (named&&named!==k)?named:contentItemLabel(k);
+  },
+  /* 1行ぶんまとめて返す([{key,text,raw,color}])。項目ごとに呼ぶ形にすると
+     行×項目の回数だけ組み立て直すことになる。 */
+  contentCellsOf:e=>timelineContentCells(e),
   equipmentNames:()=>{
    const items=(typeof equipmentMasterState!=='undefined'?equipmentMasterState.items:[])||[];
    const names=items.map(x=>String(x.name||'').trim()).filter(Boolean);
