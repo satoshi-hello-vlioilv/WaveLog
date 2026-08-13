@@ -239,11 +239,16 @@
  --tbl-fs:var(--fs);
  --tbl-fs-mark:var(--fs-sm);
  /* **--row-gap から切り離さないこと。** 行間のつまみ1本で全行が揃って
-    動くのがこの表の土台(§9.36、tests/test_scbalance.js)。一覧の行の高さへ
-    寄せるための差分(3px)だけを足す。 */
- --row-pad-y:calc(var(--row-gap) + 3px * var(--ui-scale));
+    動くのがこの表の土台(§9.36、tests/test_scbalance.js)。
+    **差分は足さない**(§9.112)。以前は「一覧の行の高さへ寄せるため」として
+    3pxを足していたが、そのとき一覧の行が高かったのは行内ボタンが
+    --row-ctl-h の計算違いで7px膨らんでいたからで、寄せる先そのものが
+    狂っていた。直った今この3pxを残すと、タイムラインのほうが一覧より
+    背が高くなる——「一覧より少しだけ密」という決まりの逆になる。 */
+ --row-pad-y:var(--row-gap);
  --row-h:calc(var(--fs) * var(--lh) + var(--row-pad-y) * 2 + 1px);
- --row-ctl-h:min(var(--ctl-h-xs),calc(var(--row-h) - 2px));
+ --row-inner-h:calc(var(--row-h) - var(--row-pad-y) * 2 - 1px);
+ --row-ctl-h:min(var(--ctl-h-xs),var(--row-inner-h));
  font-size:var(--tbl-fs);
  display:grid;
  /* ハンドル/区分/作業可否/日付/時刻/勤務/残り/内容(項目ごと)/見積/実績/備考/操作
@@ -334,7 +339,10 @@
 .sc-row-actual{font-size:var(--tbl-fs);color:#3a565d;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap;overflow:hidden}
 /* 行の中の印。**セルの値から1段だけ**下げる(§9.90)。以前は --fs-micro(11px)
    で、行の値(14px)から2段離れており、同じ行の中で大きさがちぐはぐだった。 */
-.sc-row-flags{display:flex;gap:var(--gap-tight);font-size:var(--tbl-fs-mark);align-items:center;white-space:nowrap;overflow:hidden}
+/* 印は行の高さの中で組む(§9.112)。`line-height` を素のままにすると、
+   印の文字送り(1.35)ぶんが行に入れる高さを超えて上下を削られる。 */
+.sc-row-flags{display:flex;gap:var(--gap-tight);font-size:var(--tbl-fs-mark);align-items:center;
+ line-height:1.2;max-height:100%;white-space:nowrap;overflow:hidden}
 .sc-flag-overdue{color:var(--danger);font-weight:800}
 /* 操作(開始・固定・帳票・削除)は**一番右端の列**なので、ウィンドウを狭めたり
    仕掛一覧との分割バーを動かすと真っ先に見えなくなり、横スクロールしないと
@@ -350,7 +358,10 @@
 /* 見出し側も同じ位置で止める。止めないと、横スクロールしたとき
    ボタンだけが右端に残って「操作」の見出しが流れていってしまう。 */
 .sc-actions-head{position:sticky;right:0;z-index:2;background:#f7fafb;text-align:right;padding-left:var(--space-1)}
-.sc-row-btn{min-width:var(--ctl-h-xs);border:1px solid var(--line);background:#fff;line-height:1;cursor:pointer;color:#60747b;flex-shrink:0}
+/* 記号だけのボタンは**正方形**にする。幅の下限を --ctl-h-xs(行の外の
+   ボタンの高さ)に置くと、行に合わせて縮んだ高さ(--row-ctl-h)との差が
+   そのまま横長の歪みになる(§9.112)。 */
+.sc-row-btn{min-width:var(--row-ctl-h);border:1px solid var(--line);background:#fff;line-height:1;cursor:pointer;color:#60747b;flex-shrink:0}
 .sc-row-btn:hover{border-color:var(--teal);color:#0c5d67}
 .sc-row-btn.active{background:var(--computed-bg);border-color:var(--teal);color:#0c5d67}
 .sc-row-delete:hover{border-color:var(--danger-border);background:var(--danger-bg);color:var(--danger)}

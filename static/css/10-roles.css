@@ -86,8 +86,14 @@
    (「なんとなく狭くしたい」で外さない。外すたびに揃わなくなる)。 */
 .fp-lock-btn{padding:0}
 /* ロット№のセル内リンクは省略記号(…)を効かせるため display:block のまま。
-   ボタンと違って中身が自動で中央に来ないので、行の高さで縦位置を作る。 */
-.lot-dsp-link{line-height:var(--row-ctl-h)}
+   ボタンと違って中身が自動で中央に来ないので、行の高さで縦位置を作る。
+   **上下の罫線1pxずつを引くこと**(§9.112)——`box-sizing:border-box`では
+   `height`に罫線が含まれるので、中身が入れる高さは`--row-ctl-h`より2px低い。
+   引かずに`--row-ctl-h`をそのまま行の高さにすると、1行しか無いのに
+   中身(scrollHeight)が器(clientHeight)を2px超え、**全部のロット№リンクが
+   見切れる**(実機で「文字が見切れている」と報告された。表示サイズを
+   変えても2pxのまま残るので大きくしても直らない)。 */
+.lot-dsp-link{line-height:calc(var(--row-ctl-h) - 2px)}
 .record-list-actions button{padding:0 var(--space-1)}
 .sc-row-btn{padding:0 var(--space-1)}
 /* --- 文字の役割（見出し・要約・バッジ）（§9.71） ---

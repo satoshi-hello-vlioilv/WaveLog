@@ -171,16 +171,32 @@ let b=null;
     const rows=[...document.querySelectorAll('#grid tbody tr')].slice(0,10);
     const hs=[...new Set(rows.map(r=>Math.round(r.getBoundingClientRect().height)))];
     const btn=document.querySelector('#grid .measurement-action-button');
-    return {hs,btn:btn?Math.round(btn.getBoundingClientRect().height):null};
+    const cell=btn?btn.closest('td'):null;
+    return {hs,btn:btn?btn.getBoundingClientRect().height:null,
+            /* ボタンが実際に置かれている**セルの内側**の高さ。行の外寸では
+               ないので注意——行の上下の余白と罫線はここに入らない。 */
+            cell:cell?cell.clientHeight:null};
    });
   };
   const dense=await rowH(1),normal=await rowH(3),loose=await rowH(5);
-  rec('最密の行は既定より明確に低い',dense.hs[0]<normal.hs[0]-6,
-   `最密${dense.hs[0]}px / 既定${normal.hs[0]}px / 最疎${loose.hs[0]}px`);
+  /* 「明確に低い」は**割合**で見る。px差で見ると表示サイズごとに意味が
+     変わるうえ、以前の閾値(6px差)は行内ボタンが行を膨らませていた頃の
+     数字で、そこが直ると同じ「明確さ」でも差が縮む(§9.112)。 */
+  rec('最密の行は既定より明確に低い',dense.hs[0]<=normal.hs[0]*0.85,
+   `最密${dense.hs[0]}px / 既定${normal.hs[0]}px / 最疎${loose.hs[0]}px`
+   +` (最密は既定の${(dense.hs[0]/normal.hs[0]*100).toFixed(0)}%)`);
   rec('最密でも文字1行は入る',dense.hs[0]>=tokens.fs*tokens.lh,`${dense.hs[0]}px`);
-  /* **行内ボタンが行を押し広げない。** 以前はここが下限を決めていた。 */
-  rec('行内のボタンは行に合わせて縮む',dense.btn!==null&&dense.btn<normal.btn,
-   `最密${dense.btn}px / 既定${normal.btn}px`);
+  /* **行内ボタンが行からはみ出さない**(§9.112)。セルは overflow:hidden
+     なので、はみ出したぶんは押せるが**見えない**。以前 --row-ctl-h は
+     行の**外寸**から作られており、行の上下の余白ぶん(7〜9px)必ず器より
+     高くなっていた——実機で「操作ボタンと文字が見切れている」と報告された。
+     行間を変えても入れる高さは変わらない(変わるのは余白のほう)ので、
+     「縮むこと」ではなく「**どの行間でも収まっていること**」で固定する。 */
+  const overflowed=[['最密',dense],['既定',normal],['最疎',loose]]
+   .filter(([,x])=>x.btn!==null&&x.cell!==null&&x.btn>x.cell+1);
+  rec('行内のボタンはどの行間でもセルに収まる',overflowed.length===0,
+   overflowed.length?overflowed.map(([n,x])=>`${n}: ボタン${x.btn.toFixed(1)} > セル${x.cell}`).join(' / ')
+                    :`最密${dense.btn.toFixed(1)}/${dense.cell} 既定${normal.btn.toFixed(1)}/${normal.cell}`);
   rec('どの行間でも行の高さは揃う',dense.hs.length===1&&normal.hs.length===1&&loose.hs.length===1,
    JSON.stringify([dense.hs,normal.hs,loose.hs]));
   await page.evaluate(()=>WL.rowGap.apply(3));

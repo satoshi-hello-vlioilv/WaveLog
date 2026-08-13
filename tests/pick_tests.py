@@ -38,7 +38,8 @@ G['一覧'] = ['test_nav', 'test_navdyn', 'test_listcache', 'test_listperf', 'te
              'test_cols', 'test_hdctx', 'test_dsnav', 'test_listmodal', 'test_filter',
              'test_audit', 'test_sub', 'test_uisize', 'test_ttlcache']
 G['列'] = ['test_collayout', 'test_colformat', 'test_colrule', 'test_colsort', 'test_lcpanel',
-           'test_colscache', 'test_colsripple', 'test_displayrule']
+           'test_colscache', 'test_colsripple', 'test_displayrule', 'test_colmenu',
+           'test_colpreset', 'test_formula']
 G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'test_sccat',
                      'test_scbalance', 'test_scbatch', 'test_screorder', 'test_scperm',
                      'test_scperf', 'test_wkfast', 'test_scsplit', 'test_workable',
@@ -90,6 +91,7 @@ RULES = [
     ('static/js/list-columns.js', g('列', 'test_content_ui', 'test_content_apply',
                                     'test_sccols', 'test_cols', 'test_lcpanel')),
     ('static/js/list-rules.js', g('列')),
+    ('static/js/list-formula.js', g('test_formula', 'test_colpreset', 'test_lcpanel')),
     ('static/js/filters.js', g('test_filter', 'test_listcache', 'test_allrows', 'test_nav')),
     ('static/js/schedule-view.js', g('スケジュール', 'test_listmodal')),
     ('static/js/lot-split.js', g('test_scsplit', 'test_orphan', 'test_sub')),
@@ -109,14 +111,15 @@ RULES = [
     # --- 見た目(CSS) -------------------------------------------------
     # CSSは1枚に閉じない(トークンは:rootで共有し、@layerで順序が決まる)。
     # だから個別に割らず、寸法・溢れを見る網をまとめて回す。
-    ('static/css/20-shell.css', g('見た目', '一覧', 'test_gridhead')),
+    ('static/css/20-shell.css', g('見た目', '一覧', 'test_gridhead', 'test_lcpanel')),
     ('static/css/30-measure.css', g('見た目', '一覧', '測定', 'test_gridhead')),
     ('static/css/95-boot.css', g('見た目', '起動')),
-    ('static/css/70-schedule.css', g('見た目', 'test_sccols', 'test_split_layout')),
+    ('static/css/70-schedule.css', g('見た目', 'test_sccols', 'test_split_layout',
+                                      'test_scbalance')),
     ('static/css/88-logs.css', g('見た目', 'test_logview')),
 
     # --- サーバー(ルート) --------------------------------------------
-    ('backend/routes/tables.py', g('一覧', '接続', 'test_colscache', 'test_colsripple',
+    ('backend/routes/tables.py', g('一覧', '接続', '列', 'test_colscache', 'test_colsripple',
                                    'test_modeguard')),
     ('backend/routes/masters.py', g('マスタ', '列', 'test_modeguard')),
     ('backend/routes/schedule.py', g('スケジュール', 'test_modeguard', 'test_crudroutes')),

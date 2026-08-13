@@ -55,7 +55,7 @@
   join:  {label:'結合',short:'結',
           note:'別のデータソースから、キーが一致した行に足された項目です。'},
   calc:  {label:'計算・操作',short:'計',
-          note:'このアプリが足した列です。値ではなく番号やボタンが入ります。'},
+          note:'このアプリが足した列です。番号やボタン、式で作った列が入ります。'},
  };
  const ORIGIN_ORDER=['source','join','calc'];
  /* 結合されてきた列の名前はサーバーが返す(`joinQuality.addedColumnNames`)。
@@ -66,7 +66,12 @@
   return new Set(Array.isArray(names)?names:[]);
  }
  let joined=new Set();
- const originOf=k=>isVirtual(k)?'calc':(joined.has(k)?'join':'source');
+ /* 式で作った列(§9.111 ⑦)も「計算・操作」。元データにも結合にも属さない。
+    **キーの有無で見る**——作った直後は式が空文字なので、値の真偽で
+    見ると「作ったのに編集欄が出ない」ことになる(実際にそうなった)。 */
+ const isFormulaCol=k=>!!draft&&!!draft.formulas
+   &&Object.prototype.hasOwnProperty.call(draft.formulas,k);
+ const originOf=k=>(isVirtual(k)||isFormulaCol(k))?'calc':(joined.has(k)?'join':'source');
  /* 結合元のデータソース名。分類の説明に添える(「どこから」まで言う)。 */
  function joinFrom(){
   const t=S.joinQuality&&S.joinQuality.table;
@@ -111,6 +116,8 @@
     <div class="lc-side">
      <div class="lc-side-head">
       <input type="search" id="lcFilter" class="lc-filter" placeholder="列名で絞り込み" autocomplete="off">
+      <button type="button" id="lcAddCol" class="lc-side-btn"
+       title="いまある列から式で新しい列を作ります（元の列が無くても足せます）">＋ 列を作る</button>
       <button type="button" id="lcAutoFit" class="lc-side-btn"
        title="列の幅を、見出しと実データの長さに合わせて決め直します（手で決めた幅は消えます）">幅を内容に合わせる</button>
      </div>
@@ -127,6 +134,25 @@
     </div>
     <div class="lc-detail" id="lcDetail"></div>
    </div>
+   <!-- 名前を付けて覚えさせる(§9.111)。**マスタへ置くので他のPCからも
+        呼び出せる**——これが要望の主目的。ファイルへの書き出し/読み込みは
+        その場のバックアップと持ち出し用で、同じ中身をそのまま扱う。 -->
+   <div class="lc-presets">
+    <label class="lc-preset-pick">
+     <span>保存した設定</span>
+     <select id="lcPresetSel"><option value="">（選ぶと読み込みます）</option></select>
+    </label>
+    <button type="button" id="lcPresetSave" class="lc-side-btn"
+     title="今の設定に名前を付けてマスタへ登録します（他のPCからも読み出せます）">名前を付けて登録</button>
+    <button type="button" id="lcPresetDel" class="lc-side-btn" disabled
+     title="選んでいる設定をマスタから削除します">削除</button>
+    <span class="lc-preset-sep"></span>
+    <button type="button" id="lcExport" class="lc-side-btn"
+     title="今の設定をファイル(JSON)に書き出します">書き出し</button>
+    <button type="button" id="lcImport" class="lc-side-btn"
+     title="書き出したファイル(JSON)を読み込みます">読み込み</button>
+    <input type="file" id="lcImportFile" accept="application/json,.json" hidden>
+   </div>
    <div class="sc-float-foot lc-foot">
     <span class="lc-count" id="lcCount"></span>
     <span class="lc-foot-note" id="lcFootNote"></span>
@@ -140,6 +166,12 @@
   el.querySelector('#lcClose').onclick=close;
   el.querySelector('#lcSave').onclick=save;
   el.querySelector('#lcReset').onclick=reset;
+  el.querySelector('#lcPresetSel').onchange=e=>applyPreset(e.target.value);
+  el.querySelector('#lcPresetSave').onclick=savePreset;
+  el.querySelector('#lcPresetDel').onclick=deletePreset;
+  el.querySelector('#lcExport').onclick=exportPreset;
+  el.querySelector('#lcImport').onclick=()=>el.querySelector('#lcImportFile').click();
+  el.querySelector('#lcImportFile').onchange=importPreset;
   el.querySelector('#lcFilter').addEventListener('input',()=>{renderOrigins();renderList()});
   /* まとめて出す/隠すは**いま絞り込んで見えている列だけ**に効かせる。
      見えていない列まで動くと、何が起きたのか画面から分からない。 */
@@ -149,6 +181,7 @@
    setAllVisible(e.currentTarget.checked);
   });
   el.querySelector('#lcAutoFit').onclick=autoFitWidths;
+  el.querySelector('#lcAddCol').onclick=addFormulaColumn;
   /* 位置と大きさは共通のフローティングウィンドウに任せる(§9.16)。
      **これが効かないとパネルは画面外へ開く**(幅も高さも与えられず、
      中身の実データの列数だけ横に伸びる)ので、無ければ気づけるようにする。
@@ -157,11 +190,13 @@
      §9.105で更に広げた(1180×760→1440×820)——右ペインを「この列の素性・
      見せ方・整え方・読み替え・プレビュー」の5段に組み直したので、
      左のリストと右の設定が両方とも詰まらない幅が要る。
+     §9.111で高さを足した(820→880)——保存した設定の帯を1段増やしたぶん、
+     同じ高さのままだと足元の「保存」が画面の外へ出る(実測で切れていた)。
      **保存キーも変える**——既に小さい値を覚えている端末があるので、
      同じキーのままだと新しい既定が誰にも見えない。 */
   if(typeof WL.makeFloatingWindow==='function')
-   WL.makeFloatingWindow(el,{storageKey:'listColumnPanelRectV4',defaultWidth:1440,defaultHeight:820,
-                             defaultTop:48,minWidth:860,minHeight:520});
+   WL.makeFloatingWindow(el,{storageKey:'listColumnPanelRectV5',defaultWidth:1440,defaultHeight:880,
+                             defaultTop:40,minWidth:860,minHeight:560});
   else console.error('列の設定パネル: WL.makeFloatingWindow が見つかりません');
   return el;
  }
@@ -181,13 +216,23 @@
   const l=WL.columnLayout.get(target);
   const keys=allKeys();
   const known=(l.order||[]).filter(k=>keys.includes(k));
+  /* **一覧と同じ直し方を通す**(§9.110)。番号・ボタンの列が入っていない
+     古い並びは、一覧側が本来の位置へ戻して描く。ここで素直に末尾へ
+     並べると、パネルと一覧の並びが食い違って見える(§9.106で1本に
+     したものを、直し方の違いで2本に戻してしまう)。
+     非表示の列もパネルには出す(チェックの外れた行として)ので、
+     **非表示を落とさない`healedColumnOrder`のほう**を借りる。 */
+  const order=typeof WL.healedColumnOrder==='function'
+   ? WL.healedColumnOrder(target)
+   : [...known,...keys.filter(k=>!known.includes(k))];
   draft={
-   order:[...known,...keys.filter(k=>!known.includes(k))],
+   order,
    hidden:new Set((l.hidden||[]).filter(k=>keys.includes(k))),
    widths:{...(l.widths||{})},
    names:{...(l.names||{})},
    formats:JSON.parse(JSON.stringify(l.formats||{})),
    rules:{...(l.rules||{})},
+   formulas:{...(l.formulas||{})},
   };
   if(!picked||!draft.order.includes(picked))picked=draft.order.find(k=>!isVirtual(k))||draft.order[0]||'';
  }
@@ -373,6 +418,7 @@
  /* 触った結果を**保存せずに**後ろの一覧へ当てる(§9.90)。 */
  function applyLive(){
   WL.columnLayout.stage(target,{order:draft.order,widths:draft.widths,hidden:[...draft.hidden],
+                                formulas:draft.formulas,
                                 names:draft.names,formats:draft.formats,rules:draft.rules});
   if(typeof renderGrid==='function')renderGrid();
   const note=document.getElementById('lcFootNote');
@@ -514,10 +560,73 @@
   return '';
  }
 
+ /* ---------- 式で作る列(§9.111 ⑦) ----------
+    要望は「計算式で条件を追加できるが、元の列が無いと使えない」。
+    つまり**データ側に無い列を、既にある列から作って並べたい**。
+    作った列は列レイアウトマスタの1行として持つので、並び・幅・書式・
+    読み替えはデータ側の列とまったく同じ仕組みに乗る。 */
+ function addFormulaColumn(){
+  const name=prompt('新しい列の名前を入力してください（一覧の見出しになります）','計算列');
+  if(name===null)return;
+  const key=String(name).trim();
+  if(!key){showToast&&showToast('名前を入力してください','',3000);return}
+  if(draft.order.includes(key)){
+   showToast&&showToast('その名前の列はすでにあります',key,4000);return;
+  }
+  /* 選んでいる列の**次**へ入れる。末尾へ足すと214列の一覧では画面外に
+     でき、作った直後に見つけられない。 */
+  const at=draft.order.indexOf(picked);
+  draft.order.splice(at>=0?at+1:draft.order.length,0,key);
+  draft.formulas[key]='';
+  picked=key;
+  renderOrigins();renderList();renderDetail();applyLive();
+  requestAnimationFrame(()=>document.getElementById('lcFormula')?.focus());
+ }
+ function deleteFormulaColumn(key){
+  draft.order=draft.order.filter(k=>k!==key);
+  draft.hidden.delete(key);
+  delete draft.formulas[key];delete draft.names[key];delete draft.widths[key];
+  delete draft.formats[key];delete draft.rules[key];
+  picked=draft.order.find(k=>!isVirtual(k))||draft.order[0]||'';
+  renderOrigins();renderList();renderDetail();applyLive();
+ }
+ /* 式の段。**書いたそばから確かめられる**ようにする——式は書き間違えても
+    一覧では空欄になるだけなので、ここで言わないと原因に辿り着けない。 */
+ function formulaStepHtml(){
+  const src=draft.formulas[picked]||'';
+  const chk=src.trim()?WL.formula.check(src):{ok:false,error:'まだ式が入っていません'};
+  const rows=(S.rows||[]).slice(0,3);
+  let sampleHtml='';
+  if(chk.ok&&rows.length){
+   const c=WL.formula.compile(src);
+   sampleHtml=rows.map(r=>{
+    const v=c.run(r);
+    return `<div class="lc-fx-row"><code>${esc(String(v==null?'':v))||'<i class="lc-eg-none">（空）</i>'}</code></div>`;
+   }).join('');
+  }
+  return `
+   <div class="lc-step lc-step-fx">
+    <h4 class="lc-step-head"><i class="lc-step-no">式</i>この列の作り方
+     <small>いまある列から値を作ります</small></h4>
+    <textarea id="lcFormula" class="lc-fx-input" rows="2" spellcheck="false"
+     placeholder="例: [製造板厚] * [幅]　／　if([数量] > 100, '大', '小')">${esc(src)}</textarea>
+    <div class="lc-fx-state ${chk.ok?'is-ok':'is-ng'}">${chk.ok
+      ?`使える式です${chk.columns.length?`（使っている列: ${esc(chk.columns.join('、'))}）`:''}`
+      :esc(chk.error)}</div>
+    ${sampleHtml?`<div class="lc-fx-samples"><span>先頭3件の結果</span>${sampleHtml}</div>`:''}
+    <details class="lc-fx-help"><summary>書き方</summary>
+     <dl>${WL.formula.help.map(([a,b])=>`<div><dt><code>${esc(a)}</code></dt><dd>${esc(b)}</dd></div>`).join('')}</dl>
+    </details>
+    <p class="lc-fx-note"><b>この列は表示だけです。</b>並べ替え・絞り込みは元のデータに対して行うため、
+     この列は対象になりません。式が空のまま保存すると、この列は消えます。</p>
+    <button type="button" id="lcFormulaDel" class="lc-btn-ghost lc-fx-del">この列を削除する</button>
+   </div>`;
+ }
  function renderDetail(){
   const box=document.getElementById('lcDetail');if(!box)return;
   if(!picked){box.innerHTML='<div class="sc-empty-note">左の一覧から列を選んでください。</div>';return}
   const virt=isVirtual(picked);
+  const fx=isFormulaCol(picked);
   const f=fmtOf(picked);
   const sample=virt?'':sampleValue(picked);
   const shown=virt?'':WL.cellFormat.cell({raw:sample,format:f,rule:draft.rules[picked]||'',
@@ -552,6 +661,7 @@
      <span class="lc-width"><input type="number" id="lcWidth" min="40" max="900" step="10"
       value="${draft.widths[picked]||''}" placeholder="内容に合わせる"> px</span></label>
    </div>
+   ${fx?formulaStepHtml():''}
    ${virt?`<div class="lc-note-calc"><b>この列は値を持ちません。</b>
       番号やボタンを出す列なので、書式や読み替えはありません。名前と幅、出す/出さないだけを決められます。</div>`:`
    <div class="lc-step">
@@ -583,6 +693,27 @@
    if(n>=40)draft.widths[picked]=Math.min(900,n);else delete draft.widths[picked];
    renderPreview();
   });
+  /* 式の段の配線。**入力のたびに一覧まで作り直さない**——214列の一覧では
+     1文字ごとに数百msかかる。式が通ったときだけ当てる。 */
+  const fxIn=box.querySelector('#lcFormula');
+  if(fxIn){
+   let timer=null;
+   fxIn.addEventListener('input',e=>{
+    draft.formulas[picked]=e.target.value;
+    clearTimeout(timer);
+    timer=setTimeout(()=>{
+     const at=fxIn.selectionStart;
+     renderDetail();
+     const again=document.getElementById('lcFormula');
+     if(again){again.focus();try{again.setSelectionRange(at,at)}catch(_){}}
+     if(WL.formula.check(draft.formulas[picked]||'').ok){renderList();applyLive()}
+    },350);
+   });
+   box.querySelector('#lcFormulaDel').onclick=async()=>{
+    if(await confirmModal(`列「${labelOf(picked)}」を削除しますか？\n式で作った列なので、元のデータには影響しません。`))
+     deleteFormulaColumn(picked);
+   };
+  }
   if(virt)return;
   box.querySelectorAll('input[name="lcKind"]').forEach(el=>{
    el.onchange=()=>{
@@ -635,19 +766,127 @@
   try{
    await WL.columnLayout.save(target,{order:draft.order,widths:draft.widths,
                                       hidden:[...draft.hidden],names:draft.names,
-                                      formats:draft.formats,rules:draft.rules});
+                                      formats:draft.formats,rules:draft.rules,
+                                      formulas:draft.formulas});
    saved=true;
    original={order:[...draft.order],hidden:[...draft.hidden],widths:{...draft.widths},
              names:{...draft.names},formats:JSON.parse(JSON.stringify(draft.formats)),
-             rules:{...draft.rules}};
+             rules:{...draft.rules},formulas:{...draft.formulas}};
    showToast&&showToast('列の設定を保存しました','この一覧を次に開いたときも同じ形で出ます',2600);
    const note=document.getElementById('lcFootNote');
    if(note)note.textContent='保存しました';
    if(typeof renderGrid==='function')renderGrid();
   }catch(e){showToast&&showToast('保存に失敗しました',e.message,5000)}
  }
+ /* ---------- 名前を付けて覚えさせる(§9.111) ----------
+    保存するのは**今パネルに出ている下書き**(draft)。「保存」を押していない
+    状態でも登録できるほうが自然で、そのまま一覧にも当たっている。 */
+ let presets=[];
+ const draftBody=()=>({order:[...draft.order],widths:{...draft.widths},
+                       hidden:[...draft.hidden],names:{...draft.names},
+                       formats:JSON.parse(JSON.stringify(draft.formats)),rules:{...draft.rules},
+                       formulas:{...draft.formulas}});
+ function renderPresets(){
+  const sel=document.getElementById('lcPresetSel');if(!sel)return;
+  const cur=sel.value;
+  sel.innerHTML='<option value="">（選ぶと読み込みます）</option>'
+   +presets.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');
+  if(presets.some(p=>String(p.id)===String(cur)))sel.value=cur;
+  const del=document.getElementById('lcPresetDel');
+  if(del)del.disabled=!sel.value;
+ }
+ async function loadPresets(){
+  try{
+   const r=await api('/api/column-preset-master?target='+encodeURIComponent(target));
+   presets=r.items||[];
+  }catch(e){presets=[];console.warn('列プリセットを読めませんでした',e)}
+  renderPresets();
+ }
+ /* 読み込んだ設定は**保存せずに当てる**(§9.90と同じ)。押した結果がその場で
+    一覧に出て、気に入らなければ閉じれば戻る。 */
+ function useBody(body,note){
+  const keys=allKeys();
+  const known=(body.order||[]).filter(k=>keys.includes(k));
+  draft={
+   order:[...known,...keys.filter(k=>!known.includes(k))],
+   hidden:new Set((body.hidden||[]).filter(k=>keys.includes(k))),
+   widths:{...(body.widths||{})},names:{...(body.names||{})},
+   formats:JSON.parse(JSON.stringify(body.formats||{})),rules:{...(body.rules||{})},
+   formulas:{...(body.formulas||{})},
+  };
+  if(!draft.order.includes(picked))picked=draft.order.find(k=>!isVirtual(k))||draft.order[0]||'';
+  renderOrigins();renderList();renderDetail();applyLive();
+  const foot=document.getElementById('lcFootNote');
+  if(foot)foot.textContent=note||'読み込みました（保存するまでは元に戻せます）';
+ }
+ function applyPreset(id){
+  const del=document.getElementById('lcPresetDel');if(del)del.disabled=!id;
+  if(!id)return;
+  const p=presets.find(x=>String(x.id)===String(id));
+  if(!p)return;
+  useBody(p.body||{},`「${p.name}」を読み込みました（保存するまでは元に戻せます）`);
+ }
+ async function savePreset(){
+  const sel=document.getElementById('lcPresetSel');
+  const suggest=(presets.find(x=>String(x.id)===String(sel&&sel.value))||{}).name||'';
+  const name=prompt('この設定に付ける名前を入力してください（同じ名前があれば上書きします）',suggest);
+  if(name===null)return;
+  if(!String(name).trim()){showToast&&showToast('名前を入力してください','',3000);return}
+  try{
+   const r=await api('/api/column-preset-master',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(withUserId({target,name:String(name).trim(),body:draftBody()}))});
+   presets=r.items||[];renderPresets();
+   const hit=presets.find(p=>p.name===String(name).trim());
+   if(hit&&sel)sel.value=hit.id;
+   renderPresets();
+   showToast&&showToast('登録しました',`「${String(name).trim()}」は他のPCからも読み出せます`,3600);
+  }catch(e){showToast&&showToast('登録できませんでした',e.message,5000)}
+ }
+ async function deletePreset(){
+  const sel=document.getElementById('lcPresetSel');
+  const p=presets.find(x=>String(x.id)===String(sel&&sel.value));
+  if(!p)return;
+  if(!(await confirmModal(`「${p.name}」を削除しますか？\nこの一覧の保存済み設定から消えます（今の表示は変わりません）。`)))return;
+  try{
+   const r=await api('/api/column-preset-master/delete',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(withUserId({id:p.id,target}))});
+   presets=r.items||[];if(sel)sel.value='';renderPresets();
+   showToast&&showToast('削除しました',p.name,2600);
+  }catch(e){showToast&&showToast('削除できませんでした',e.message,5000)}
+ }
+ /* ファイルへの書き出し・読み込み。**対象(target)も一緒に書く**——
+    別の一覧のファイルを読み込んだときに気づけるようにするため。 */
+ function exportPreset(){
+  const payload={kind:'wavelog-column-preset',version:1,target,
+                 savedAt:new Date().toISOString(),body:draftBody()};
+  const blob=new Blob([JSON.stringify(payload,null,1)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`列の設定_${target.replace(/[^\w一-龠ぁ-んァ-ヶー]+/g,'_')}.json`;
+  document.body.appendChild(a);a.click();
+  requestAnimationFrame(()=>{URL.revokeObjectURL(a.href);a.remove()});
+ }
+ async function importPreset(e){
+  const file=e.target.files&&e.target.files[0];
+  e.target.value='';
+  if(!file)return;
+  try{
+   const data=JSON.parse(await file.text());
+   if(!data||data.kind!=='wavelog-column-preset'||!data.body)
+    throw Error('この一覧の設定ファイルではありません。');
+   if(data.target&&data.target!==target
+      &&!(await confirmModal(`このファイルは別の一覧（${data.target}）のものです。\n列名が違うと当たらない設定は捨てられます。読み込みますか？`)))return;
+   useBody(data.body,`ファイル「${file.name}」を読み込みました（保存するまでは元に戻せます）`);
+  }catch(err){showToast&&showToast('読み込めませんでした',err.message,5000)}
+ }
+
  async function reset(){
-  draft={order:allKeys(),hidden:new Set(),widths:{},names:{},formats:{},rules:{}};
+  /* 式で作った列は**残す**——「既定に戻す」で消えると、作った本人が
+     作り直すことになる(見せ方の初期化と、列そのものの削除は別の操作)。 */
+  draft={order:allKeys(),hidden:new Set(),widths:{},names:{},formats:{},rules:{},
+         formulas:{...(draft&&draft.formulas||{})}};
   renderOrigins();renderList();renderDetail();applyLive();
  }
 
@@ -659,7 +898,7 @@
   const cur=WL.columnLayout.get(target);
   original={order:[...(cur.order||[])],hidden:[...(cur.hidden||[])],widths:{...(cur.widths||{})},
             names:{...(cur.names||{})},formats:JSON.parse(JSON.stringify(cur.formats||{})),
-            rules:{...(cur.rules||{})}};
+            rules:{...(cur.rules||{})},formulas:{...(cur.formulas||{})}};
   saved=false;
   /* 結合されてきた列は一覧を読むたびに変わり得る(結合できたかどうかで
      増えたり減ったりする)ので、**開くたびに取り直す**。 */
@@ -668,6 +907,10 @@
   loadDraft();
   renderOrigins();renderList();renderDetail();
   document.getElementById(PANEL_ID).hidden=false;
+  /* 保存済みの設定は**開くたびに取り直す**——他のPCで登録されたものが
+     あるので、覚えたままだと出てこない(それが登録先をマスタにした理由)。
+     一覧の描画は待たせない。 */
+  loadPresets();
  }
  /* 保存せずに閉じたら、後ろの一覧を開いたときの形へ戻す。**触った結果が
     そのまま残ると「保存」の意味が無くなる**(何が保存済みか分からなくなる)。 */

@@ -43,7 +43,8 @@
    ここで定義し直すことで、つまみの値がそのまま行の高さになる。 */
 #grid{flex:1;min-height:0;margin:9px 14px;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:var(--radius-sm);
  --row-h:calc(var(--fs) * var(--lh) + var(--row-pad-y) * 2 + 1px);
- --row-ctl-h:min(var(--ctl-h-xs),calc(var(--row-h) - 2px))}
+ --row-inner-h:calc(var(--row-h) - var(--row-pad-y) * 2 - 1px);
+ --row-ctl-h:min(var(--ctl-h-xs),var(--row-inner-h))}
 /* 元々は要素セレクタ(table/th/td)のみで、仕掛一覧・品質データの一覧
    グリッド(#grid内のtable)向けに書かれたものだったが、要素セレクタの
    ままだと帳票プレビュー等、アプリ内の他のtable/th/tdにも無差別に

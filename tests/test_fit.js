@@ -17,8 +17,12 @@ const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_m
 const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const API='http://127.0.0.1:5029';
 const SIZES=['xs','sm','md','lg','xl'];
-/* 数px の溢れは字形の丸めでも出るので、これを超えたものだけ数える。 */
-const SLACK=2;
+/* 溢れは字形の丸めでも出るので、これを超えたものだけ数える。
+   **1px を超えたら不具合として数える。** 以前は2pxで、`.lot-dsp-link`が
+   罫線(上下1pxずつ)を引かずに`--row-ctl-h`を行の高さにしていたため
+   **ちょうど+2px**溢れ、5段階すべてで158件見切れていたのにこの網を
+   素通りした(§9.112)。字形の丸めで出るのは1pxまで。 */
+const SLACK=1;
 
 /* 例外。**理由が書けるものだけ**載せる。 */
 const EXCEPT=[
@@ -89,8 +93,14 @@ let b=null;
     if(r.width<2||r.height<2)return;
     const s=getComputedStyle(el);
     if(s.visibility==='hidden')return;
-    const scrollY=/auto|scroll/.test(s.overflowY)||scrollable(el,'y');
-    const scrollX=/auto|scroll/.test(s.overflowX)||scrollable(el,'x');
+    /* **自分自身が overflow:hidden なら、先祖のスクロールは言い訳にならない**
+       (§9.112)。器ごと動かせても、その器の中で切り落とされた分は出てこない。
+       以前は先祖に `#grid`(overflow:auto)がいるだけで中身を全部見逃しており、
+       `.lot-dsp-link` が5段階すべてで158件見切れていたのに0件と報告した。 */
+    const clipsY=s.overflowY==='hidden'||s.overflowY==='clip';
+    const clipsX=s.overflowX==='hidden'||s.overflowX==='clip';
+    const scrollY=/auto|scroll/.test(s.overflowY)||(!clipsY&&scrollable(el,'y'));
+    const scrollX=/auto|scroll/.test(s.overflowX)||(!clipsX&&scrollable(el,'x'));
     /* 「…」で切り詰める指定がある欄は、はみ出して切れるのが設計どおり
        (画面名・使用設備名など、長い文字列を1行に収める箇所)。 */
     const ellipsis=s.textOverflow==='ellipsis';

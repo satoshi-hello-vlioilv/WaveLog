@@ -39,6 +39,8 @@ from ..repositories.master_repo import (
  SCHEDULE_COLUMN_TABLE, ensure_schedule_column_table, schedule_columns_for, set_schedule_columns,
  SCHEDULE_CONTENT_TABLE, ensure_schedule_content_table, schedule_content_items_for, set_schedule_content_items,
  COLUMN_LAYOUT_TABLE, ensure_column_layout_table, column_layout_for, set_column_layout,
+ COLUMN_PRESET_TABLE, ensure_column_preset_table, column_presets, save_column_preset,
+ delete_column_preset, normalize_column_preset,
  FORMAT_KINDS, normalize_format,
  DISPLAY_RULE_TABLE, ensure_display_rule_table, display_rules, set_display_rule,
  delete_display_rule, display_rule_usage, RULE_OPS, RULE_COLORS,
@@ -710,7 +712,7 @@ def column_layout_master_save():
   target=str(x.get('target') or '').strip()
   if not target:return jsonify(error='対象(target)を指定してください。'),400
   order=x.get('order');widths=x.get('widths');hidden=x.get('hidden');names=x.get('names')
-  formats=x.get('formats');rules=x.get('rules')
+  formats=x.get('formats');rules=x.get('rules');formulas=x.get('formulas')
   if order is not None and not isinstance(order,list):
    return jsonify(error='並び(order)の指定が不正です。'),400
   if widths is not None and not isinstance(widths,dict):
@@ -722,9 +724,91 @@ def column_layout_master_save():
    n=set_column_layout(c,target,order or [],widths or {},uid,hidden=hidden or [],
                        names=names if isinstance(names,dict) else {},
                        formats=formats if isinstance(formats,dict) else {},
-                       rules=rules if isinstance(rules,dict) else {})
+                       rules=rules if isinstance(rules,dict) else {},
+                       formulas=formulas if isinstance(formulas,dict) else {})
   return jsonify(ok=True,target=target,columns=n,updated_by=uid,message='表示の並びを保存しました。')
  except Exception as e:return jsonify(error=f'列レイアウト保存失敗: {e}'),500
+
+
+# ========================================================================
+# 列プリセットマスタ(§9.111): 列の設定一式に名前を付けて保存する。
+#  - **マスタへ置くので他のPCからも読み出せる**(これが要望の主目的)。
+#  - 中身は列レイアウトマスタと同じ構造をJSONで丸ごと持つ。プリセットは
+#    出し入れが丸ごとなので、列ごとに行へ展開しない。
+#  - ファイルへの書き出し/読み込みは画面側だけで完結する(このAPIが返す
+#    JSONをそのまま保存し、読み込んだJSONをそのまま当てる)。
+# ========================================================================
+@bp.get('/api/column-preset-master')
+def column_preset_master_get():
+ try:
+  target=str(request.args.get('target') or '').strip()
+  path=DBS['MASTER']['path']
+  if not path.exists():return jsonify(ok=True,target=target,items=[])
+  with connect(path,False) as c:
+   items=column_presets(c,target)
+  return jsonify(ok=True,target=target,items=items)
+ except Exception as e:return jsonify(error=f'列プリセット読込失敗: {e}'),500
+
+@bp.post('/api/column-preset-master')
+def column_preset_master_save():
+ try:
+  x=request.get_json(force=True) or {};uid=request_user_id(x)
+  target=str(x.get('target') or '').strip()
+  name=str(x.get('name') or '').strip()
+  body=x.get('body')
+  if not isinstance(body,dict):return jsonify(error='内容(body)の指定が不正です。'),400
+  with connect(DBS['MASTER']['path'],False) as c:
+   pid=save_column_preset(c,target,name,body,uid,note=str(x.get('note') or ''))
+   items=column_presets(c,target)
+  return jsonify(ok=True,id=pid,target=target,items=items,updated_by=uid,
+                 message=f'「{name}」として保存しました。')
+ except ValueError as e:return jsonify(error=str(e)),400
+ except Exception as e:return jsonify(error=f'列プリセット保存失敗: {e}'),500
+
+@bp.post('/api/column-preset-master/update')
+def column_preset_master_update():
+ """名前の付け替え・内容の差し替え(ID指定)。登録側は同名を上書きする自然キー
+ 照合なので、**名前そのものを変える操作はこちらでしか表現できない**
+ (登録側へ送ると別のプリセットが増える)。"""
+ try:
+  x=request.get_json(force=True) or {};uid=request_user_id(x)
+  pid=x.get('id')
+  if pid in (None,''):return jsonify(error='プリセットIDを指定してください。'),400
+  name=str(x.get('name') or '').strip()
+  if not name:return jsonify(error='プリセットの名前を入力してください。'),400
+  with connect(DBS['MASTER']['path'],False) as c:
+   ensure_column_preset_table(c)
+   cur=c.cursor()
+   cur.execute('SELECT [対象],[内容JSON] FROM [列プリセットマスタ] WHERE [プリセットID]=?',[pid])
+   row=cur.fetchone()
+   if not row:return jsonify(error='そのプリセットが見つかりません。'),404
+   target=row[0]
+   body=x.get('body')
+   if not isinstance(body,dict):
+    import json as _json
+    try:body=_json.loads(row[1] or '{}')
+    except Exception:body={}
+   cur.execute('UPDATE [列プリセットマスタ] SET [名称]=?,[説明]=?,[内容JSON]=?,[更新者ID]=?,'
+               '[更新日時]=Now() WHERE [プリセットID]=?',
+               [name,str(x.get('note') or ''),
+                __import__('json').dumps(normalize_column_preset(body),ensure_ascii=False),uid,pid])
+   c.commit()
+   items=column_presets(c,target)
+  return jsonify(ok=True,id=pid,target=target,items=items,updated_by=uid,message='更新しました。')
+ except Exception as e:return jsonify(error=f'列プリセット更新失敗: {e}'),500
+
+@bp.post('/api/column-preset-master/delete')
+def column_preset_master_delete():
+ try:
+  x=request.get_json(force=True) or {}
+  pid=x.get('id')
+  if pid in (None,''):return jsonify(error='プリセットIDを指定してください。'),400
+  target=str(x.get('target') or '').strip()
+  with connect(DBS['MASTER']['path'],False) as c:
+   n=delete_column_preset(c,pid)
+   items=column_presets(c,target)
+  return jsonify(ok=True,deleted=n,target=target,items=items,message='削除しました。')
+ except Exception as e:return jsonify(error=f'列プリセット削除失敗: {e}'),500
 
 
 # ========================================================================
