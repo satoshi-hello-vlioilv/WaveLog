@@ -1294,6 +1294,24 @@ def delete_display_rule(c,name):
  c.commit()
  return n
 
+def display_rule_usage_all(c):
+ """ルール名 → 参照している列の一覧。**編集画面で「どこで使っているか」を
+ 出すため**に使う。列側の参照はルールに書かれていないので、ここで引かないと
+ 「他の列にも効くと知らずに直す」ことになる(読み替えは複数の列で使い回す
+ 前提で作ってあるので、これは実際に起こる)。1回のクエリでまとめて返す
+ ——ルールごとに引くと、ルールの数だけ問い合わせが増える。"""
+ if COLUMN_LAYOUT_TABLE not in tables(c):return {}
+ have={r[1] for r in c.cursor().execute(f'PRAGMA table_info([{COLUMN_LAYOUT_TABLE}])')}
+ if '読み替えルール' not in have:return {}
+ cur=c.cursor()
+ cur.execute('SELECT [読み替えルール],[対象],[列名] FROM [列レイアウトマスタ] '
+             "WHERE [読み替えルール] IS NOT NULL AND [読み替えルール]<>'' "
+             'ORDER BY [対象],[表示順]')
+ out={}
+ for rule,target,col in cur.fetchall():
+  out.setdefault(str(rule or ''),[]).append({'target':str(target or ''),'column':str(col or '')})
+ return out
+
 def display_rule_usage(c,name):
  """そのルールを参照している列の一覧(対象と列名)。削除前の確認に使う。"""
  if COLUMN_LAYOUT_TABLE not in tables(c):return []

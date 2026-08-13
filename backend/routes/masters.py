@@ -44,7 +44,7 @@ from ..repositories.master_repo import (
  delete_column_preset, normalize_column_preset,
  FORMAT_KINDS, normalize_format,
  DISPLAY_RULE_TABLE, ensure_display_rule_table, display_rules, set_display_rule,
- delete_display_rule, display_rule_usage, RULE_OPS, RULE_COLORS,
+ delete_display_rule, display_rule_usage, display_rule_usage_all, RULE_OPS, RULE_COLORS,
  SORT_PRESET_TABLE, ensure_sort_preset_table, sort_preset_rows, normalize_sort_keys,
  LIST_VIEW_TABLE, ensure_list_view_table, list_view_settings_for, set_list_view_settings,
  ROW_GAP_DEFAULT,
@@ -829,10 +829,13 @@ def display_rule_master_get():
  try:
   path=DBS['MASTER']['path']
   if not path.exists():
-   return jsonify(ok=True,rules={},ops=list(RULE_OPS),colors=list(RULE_COLORS))
+   return jsonify(ok=True,rules={},usage={},ops=list(RULE_OPS),colors=list(RULE_COLORS))
   with connect(path,True) as c:
    rules=display_rules(c)
-  return jsonify(ok=True,rules=rules,ops=list(RULE_OPS),colors=list(RULE_COLORS),
+   # **どの列で使われているかも一緒に返す。** 編集画面が「このルールを直すと
+   # どこへ効くか」を出せるようにするため(読み替えは複数の列で使い回す)。
+   usage=display_rule_usage_all(c)
+  return jsonify(ok=True,rules=rules,usage=usage,ops=list(RULE_OPS),colors=list(RULE_COLORS),
                  table=DISPLAY_RULE_TABLE)
  except Exception as e:
   # ルールが読めなくても一覧そのものは出せる(読み替えなしで表示)。

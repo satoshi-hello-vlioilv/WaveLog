@@ -9,7 +9,9 @@
    ============================================================ */
 @layer component {
 .sc-panel.sc-session-locked .sc-row-delete{display:none}
-.sc-body{flex:1;min-height:0;display:flex;gap:0;overflow:hidden}
+/* 予定から外す受け皿(§9.116)を下端へ重ねるため、ここが位置の基準になる。
+   **overflow:hiddenのまま**——帯は器の中に出したいので、はみ出させない。 */
+.sc-body{flex:1;min-height:0;display:flex;gap:0;overflow:hidden;position:relative}
 .sc-timeline{flex:1;min-width:0;overflow-y:auto;overflow-x:auto;padding:var(--space-1) var(--space-2);display:flex;flex-direction:column;gap:0}
 .sc-side{width:300px;flex-shrink:0;border-left:1px solid var(--line);background:#fff;overflow-y:auto;padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-4)}
 /* .sc-body/.sc-mode-toggle/.sc-board-windowと同じ既知の落とし穴(§9.9参照):
@@ -772,5 +774,98 @@
 .sc-child-info{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .sc-child-line.is-missing .sc-child-lot{color:var(--danger)}
 .sc-child-line.is-missing .sc-child-info{color:var(--danger)}
+
+/* ---------- 作業予定表の印刷(§9.115) ----------
+   現場へ配る紙。**画面のタイムラインは刷らない**（15列以上あり、A4へ
+   押し込むと読めない大きさになる）ので、専用の割り付けをここに持つ。
+
+   **用紙の寸法はmm・文字はpxで固定する。** 表示サイズ(--ui-scale)へ
+   追随させると、画面の拡大率で紙の行数が変わってしまう
+   （CLAUDE.mdの「例外はA4帳票だけ」と同じ理由。既存の .rp-page に揃える）。
+
+   画面では常に隠れていて、@media print のときだけ出る（90-state.css）。 */
+.sp-print-area{display:none}
+/* **`font-size`は必ずセレクタと同じ行に書くこと。** リテラルpxの見張り
+   (`tests/test_csslint.py`)は行単位で「その行に紙のセレクタがあるか」を見る
+   ので、次の行へ送ると紙の例外だと分かってもらえず落ちる。 */
+.sp-page{width:210mm;min-height:297mm;padding:8mm;box-sizing:border-box;font-size:10px;
+ background:#fff;color:#000;display:flex;flex-direction:column}
+/* 見出し。**設備名を一番大きく**する——配られた人が最初に確かめるのは
+   「これは自分のラインの紙か」なので、そこが読めないと配れない。 */
+.sp-head{border-bottom:1.2mm solid #000;padding-bottom:2mm;margin-bottom:3mm}
+.sp-head-main{display:flex;align-items:baseline;gap:6mm}
+.sp-title{font-size:13px;font-weight:800;letter-spacing:.08em}
+.sp-equip{font-size:20px;font-weight:800}
+.sp-head-sub{display:flex;justify-content:space-between;margin-top:1.5mm;font-size:11px}
+.sp-day{font-weight:700}
+.sp-count{color:#333}
+/* 表。**罫線は濃く**（現場のコピー機で薄い線は飛ぶ）。
+   **表を`flex:1`で伸ばさないこと**——1枚に7件しか載らない日でも表が用紙の
+   高さいっぱいまで引き伸ばされ、1行が指3本ぶんの高さになる（実測で
+   1行30px→140px）。行の高さは中身で決め、余った下は空けたままにする。 */
+.sp-table{width:100%;border-collapse:collapse;table-layout:fixed}
+.sp-table th,.sp-table td{border:0.3mm solid #000;padding:1.2mm 1mm;
+ vertical-align:middle;overflow:hidden;word-break:break-all}
+.sp-table th{background:#e8e8e8;font-size:9px;font-weight:700;text-align:center}
+.sp-table td{font-size:11px;height:8mm}
+/* **画面のしま模様を紙へ持ち込まないこと。** 30-measure.cssの
+   `tbody tr:nth-child(even){background:#f7fafb}` は要素セレクタなので
+   この表にも当たり、1行おきに薄い水色が刷られる（白黒コピーでは灰色の帯に
+   なり、記入欄が塗り潰されて見える）。詳細度を上げて打ち消しておく
+   ——同じ@layer内の書き順に頼ると、ファイルの読み込み順を入れ替えた
+   ときに黙って戻る。 */
+.sp-page .sp-table tbody tr{background:#fff}
+/* 見出しはページをまたぐたびに刷り直す（2枚目に見出しが無いと読めない）。 */
+.sp-table thead{display:table-header-group}
+.sp-table tbody tr{page-break-inside:avoid}
+.sp-c-no{width:7mm;text-align:center}
+.sp-c-state{width:13mm;text-align:center}
+.sp-c-time{width:25mm;text-align:center;white-space:nowrap}
+.sp-c-shift{width:11mm;text-align:center}
+.sp-c-lot{width:26mm;font-weight:700}
+.sp-c-content{width:auto}
+.sp-c-est{width:13mm;text-align:right;white-space:nowrap}
+/* 記入欄は**空のまま罫線だけ**にする。薄い下線を入れると書きにくい。 */
+.sp-c-write{width:20mm}
+.sp-c-check{width:10mm}
+/* 設備停止の行は面で区別する（白黒なので色ではなく濃淡で分ける）。 */
+.sp-row-stop td{background:#f0f0f0}
+.sp-empty{text-align:center;color:#555;height:14mm}
+/* 表を伸ばさなくなったので、下の余りは脚が引き受ける(`margin-top:auto`)。
+   件数が少ない日でも脚は用紙の下端に来る。 */
+.sp-foot{display:flex;justify-content:space-between;gap:4mm;font-size:9px;color:#333;
+ margin-top:auto;padding-top:1.5mm;border-top:0.3mm solid #000}
+.sp-foot-note{flex:1;text-align:center}
+/* ---------- 印刷の設定（確認モーダルの中に出る） ---------- */
+.sp-options{display:flex;flex-direction:column;gap:var(--gap-inline);margin-top:var(--space-3)}
+.sp-opt{display:flex;align-items:flex-start;gap:var(--gap-inline);cursor:pointer}
+.sp-opt input{width:var(--ctl-box);height:var(--ctl-box);margin-top:2px;accent-color:var(--teal);flex:none}
+.sp-opt span{display:flex;flex-direction:column;gap:2px;min-width:0}
+.sp-opt b{font-size:var(--fs-sm);font-weight:700;color:var(--ink)}
+.sp-opt small{font-size:var(--fs-micro);color:var(--muted)}
+
+/* ---------- 予定から外す受け皿(§9.116) ----------
+   行を掴んでいる間だけ、タイムラインの下端に出る帯。**常設しない**
+   ——「消す場所」が居座ると、並べ替えのたびに押し間違いの的になる。
+   危険色は使うが、**塗りつぶさない**（掴んでいる最中に赤い面が広がると
+   もう消えたように見える）。落とせる状態(.is-over)で初めて面が付く。 */
+.sc-drop-remove{
+ position:absolute;left:var(--space-3);right:var(--space-3);bottom:var(--space-3);
+ z-index:var(--z-drag);
+ display:flex;align-items:center;justify-content:center;gap:var(--gap-inline);
+ min-height:var(--ctl-h-lg);padding:var(--pad-card);
+ border:2px dashed var(--danger-border);border-radius:var(--radius-md);
+ background:var(--surface);color:var(--danger);
+ box-shadow:0 6px 18px rgba(23,56,66,.18);
+ pointer-events:auto;
+}
+.sc-drop-remove.is-over{background:var(--danger-bg);border-style:solid}
+.sc-drop-remove-icon{font-size:var(--fs-title);line-height:1}
+/* 中の文字はポインタを飲まない。**帯の上に子要素があると dragleave が
+   毎回飛んで**、点滅したり落とせなくなる(仕掛パネルのD&Dで既に踏んだ罠)。 */
+.sc-drop-remove-text{display:flex;flex-direction:column;gap:2px;
+ font-size:var(--fs-sm);font-weight:700;pointer-events:none}
+.sc-drop-remove-text small{font-size:var(--fs-micro);font-weight:400;color:var(--muted)}
+.sc-drop-remove-icon{pointer-events:none}
 
 }

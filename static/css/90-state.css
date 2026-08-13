@@ -301,6 +301,20 @@ body.sc-mode .hd-status .hd-chip-equip{display:none}
   body.df-print>*:not(.df-print-area){display:none}
   body.df-print .df-print-area{display:block}
 }
+/* 作業予定表(§9.115)。**画面のタイムラインは刷らない**——15列以上あり、
+   A4へ押し込むと読めない大きさになる。schedule-print.jsが組み立てた
+   専用の紙(#schedulePrintArea)だけを出す。
+   `@page`に向きを書かないのは、**縦で収まる列構成にしてあり、横で出したい
+   人はブラウザの印刷ダイアログで選べる**ため(こちらで固定すると選べない)。 */
+@media print{
+  @page{size:A4;margin:0}
+  body.sc-print>*:not(.sp-print-area){display:none}
+  body.sc-print .sp-print-area{display:block}
+  /* 1枚ずつ改ページ。**最後の1枚のあとには入れない**——入れると白紙が
+     1枚余計に出る(現場へ配る紙なので、余った白紙は毎回捨てる手間になる)。 */
+  body.sc-print .sp-page{page-break-after:always;box-shadow:none}
+  body.sc-print .sp-page:last-child{page-break-after:auto}
+}
 }
 
 

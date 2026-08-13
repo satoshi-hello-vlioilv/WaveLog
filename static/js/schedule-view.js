@@ -176,6 +176,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      <button type="button" class="sc-split-toggle" id="scContentModalBtn" hidden title="タイムラインの「内容」欄に出す項目と順序を設備ごとに選びます">📝 内容の項目</button>
      <button type="button" class="sc-split-toggle" id="scListModalBtn" hidden title="仕掛一覧をポップアップで表示してドラッグで追加します">⧉ ポップアップ</button>
      <button type="button" class="sc-split-toggle" id="scStopModalBtn" hidden title="設備停止をポップアップから追加します">⛔ 設備停止</button>
+     <button type="button" class="sc-split-toggle" id="scPrintBtn" title="いま表示している予定を、現場へ配る形（A4）で印刷します">🖨 印刷</button>
      <button type="button" class="sc-refresh" id="scRefresh">再計算</button>
     </div>
    </div>
@@ -184,6 +185,14 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    <div class="sc-board" id="scBoard" hidden></div>
    <div class="sc-body" id="scSingleBody">
     <div class="sc-timeline" id="scTimeline"></div>
+    <!-- 予定から外す受け皿(§9.116)。**掴んでいる間だけ出す**——常設すると
+         「消す場所」が画面に居座り、押し間違いの的になる。掴んで初めて
+         現れるので、外す意思があるときにしか目に入らない。 -->
+    <div class="sc-drop-remove" id="scDropRemove" hidden aria-hidden="true">
+     <span class="sc-drop-remove-icon">🗑</span>
+     <span class="sc-drop-remove-text">ここへ落とすと<b>この予定を外します</b>
+      <small>確認してから外します。仕掛一覧へ戻るので、また入れ直せます</small></span>
+    </div>
     <button type="button" class="sc-side-tab" id="scSideToggle" hidden title="設備停止・案内パネルの表示/非表示">◀</button>
     <div class="sc-side" id="scSide" hidden>
      <div class="sc-side-section" id="scSplitHint">
@@ -216,6 +225,14 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    if(scState.equipment)loadPlan(true);
   };
   $('#scEquipmentSelect').onchange=e=>{scState.equipment=e.target.value;switchToSingle()};
+  /* 印刷(§9.115)。紙の割り付けは schedule-print.js が持つ。
+     **無ければ黙って消さない**——「あれば使う」で書くと、読み込み順を
+     間違えた日に機能だけが静かに欠ける(§9.105と同じ罠)。 */
+  const printBtn=$('#scPrintBtn');
+  if(printBtn)printBtn.onclick=()=>{
+   if(typeof WL.schedulePrint?.open==='function')WL.schedulePrint.open();
+   else console.error('作業スケジュールの印刷: WL.schedulePrint が見つかりません');
+  };
   $('#scModeBoard').onclick=()=>switchToBoard();
   $('#scModeSingle').onclick=()=>switchToSingle();
   $('#scListModalBtn').onclick=()=>listModalOpen?closeListModal():openListModal();
@@ -235,6 +252,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    };
   });
   wireDropTarget(panel);
+  wireRemoveZone();          // 予定から外す受け皿(§9.116)
   return panel;
  }
 
@@ -2291,11 +2309,62 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  }
 
  /* ---------- ドラッグ並べ替え(§7.5・§9.4) + Alt+↑/↓ ---------- */
+ /* ---------- 予定から外す受け皿(§9.116) ----------
+    行を掴んで下端の帯へ落とすと、その予定を外す。**掴んでいる間だけ出す**
+    ——常設すると「消す場所」が画面に居座り、並べ替えのたびに押し間違いの的に
+    なる。外せない行(実施中・完了・計画外・現場段取り権限)では**そもそも出さない**
+    ——出しておいて落としたら断る、では掴んだ手間が無駄になる。
+    消す確認は deleteEntry() が持っているものをそのまま通す(確認の文言と
+    取り消しの作法を2つに増やさない)。 */
+ function removableEntry(id){
+  const e=(scState.entries||[]).find(x=>String(x.id)===String(id));
+  if(!e)return null;
+  return (scState.fullControl&&e.state==='予定'&&!e.__pending&&!e.unplanned)?e:null;
+ }
+ function showRemoveZone(id){
+  const z=$('#scDropRemove');if(!z)return;
+  if(!removableEntry(id)){z.hidden=true;return}
+  z.hidden=false;z.classList.remove('is-over');
+ }
+ function hideRemoveZone(){
+  const z=$('#scDropRemove');if(!z)return;
+  z.hidden=true;z.classList.remove('is-over');
+ }
+ function wireRemoveZone(){
+  const z=$('#scDropRemove');if(!z||z.dataset.wired)return;
+  z.dataset.wired='1';
+  z.addEventListener('dragover',e=>{
+   if(!scState.dragId||!removableEntry(scState.dragId))return;
+   e.preventDefault();e.dataTransfer.dropEffect='move';
+   z.classList.add('is-over');
+  });
+  z.addEventListener('dragleave',e=>{if(e.target===z)z.classList.remove('is-over')});
+  z.addEventListener('drop',e=>{
+   /* **idは持ち主の型で渡す。** 掴んだidは dataset 由来の**文字列**だが、
+      deleteEntry() は `e.id===id` で探すので、文字列のまま渡すと
+      見つからず**確認だけ出て何も消えない**（実際にそうなっていた）。
+      引き当てた行の id をそのまま渡す。 */
+   const entry=removableEntry(scState.dragId);
+   if(!entry)return;
+   const id=entry.id;
+   e.preventDefault();e.stopPropagation();
+   /* **並べ替えとして確定させない。** 帯へ来るまでに行のdragoverでDOMが
+      動いているが、commitDragOrder()は呼ばない(外すのが目的なので、
+      途中で通り過ぎた位置を保存する意味が無い)。deleteEntry()が
+      renderTimeline()を呼ぶので、見た目は状態から作り直される。 */
+   hideRemoveZone();
+   deleteEntry(id);
+  });
+ }
+
  function wireDrag(card){
   // idは文字列のまま扱う。計画外実績(§9.33)の合成idは'actual:<記録ID>'で
   // 数値化するとNaNになり、比較もMap引きも静かに壊れる。
-  card.addEventListener('dragstart',e=>{scState.dragId=card.dataset.id;card.classList.add('sc-dragging');e.dataTransfer.effectAllowed='move'});
-  card.addEventListener('dragend',()=>{card.classList.remove('sc-dragging');scState.dragId=null});
+  card.addEventListener('dragstart',e=>{
+   scState.dragId=card.dataset.id;card.classList.add('sc-dragging');e.dataTransfer.effectAllowed='move';
+   showRemoveZone(card.dataset.id);
+  });
+  card.addEventListener('dragend',()=>{card.classList.remove('sc-dragging');scState.dragId=null;hideRemoveZone()});
   card.addEventListener('dragover',e=>{
    if(scState.dragId==null)return;
    e.preventDefault();
@@ -2981,6 +3050,35 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   showToast&&showToast(`${rows.length}件をキューへ追加しました`,withKids(`${target}の予定へ反映中です…`),3200);
   window.clearListSelection?.();
  }
+
+ /* ---------- 印刷への受け渡し(§9.115) ----------
+    紙の割り付けは schedule-print.js が持つ。ここが渡すのは**いま画面に
+    出ている状態そのもの**で、印刷のために取り直さない——取り直すと画面と
+    紙で件数が食い違い、どちらが正か分からなくなる(現場は紙を見て動くので、
+    画面と違う紙が出るのが一番困る)。
+
+    別ファイルから触れるのはこの4つだけにしておく。scStateやentryContentText
+    をそのまま公開すると、印刷側から画面の状態を書き換えられてしまう。 */
+ WL.scheduleView={
+  equipment:()=>scState.equipment||'',
+  /* 写しを渡す(印刷側が並べ替えても画面の並びを壊さない)。 */
+  entries:()=>(scState.entries||[]).slice(),
+  /* 内容欄の文字は**画面と同じ組み立て**を通す。設備ごとに選んだ項目・
+     読み替え・書式がそのまま紙にも乗る(紙だけ別の組み立てにしない)。 */
+  contentTextOf:e=>entryContentText(e),
+  equipmentNames:()=>{
+   const items=(typeof equipmentMasterState!=='undefined'?equipmentMasterState.items:[])||[];
+   const names=items.map(x=>String(x.name||'').trim()).filter(Boolean);
+   return names.length?names:(scState.equipment?[scState.equipment]:[]);
+  },
+  /* 他の設備ぶんは画面が持っていないので取りに行く。**表示範囲は画面と
+     同じ値**を使う(紙だけ違う範囲で出すと突き合わせられない)。 */
+  fetchEntries:async name=>{
+   const r=await api('/api/schedule/plan?equipment='+encodeURIComponent(name)
+    +'&history_hours='+encodeURIComponent(scState.historyHours));
+   return r.entries||[];
+  },
+ };
 
  /* ---------- ナビ ----------
     「作業スケジュール」は全モードで常時表示するため(§9.1)、動的注入
