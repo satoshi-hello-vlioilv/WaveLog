@@ -103,7 +103,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
      データ列だけで作られており、`#`/`分割`/`測定`が並びから丸ごと
      消えていた。消えると次に開いたとき「知らない列」として末尾へ回る
      ので、**幅を少し引いただけで番号・ボタンが右端へ飛ぶ**。 */
-  await post('/api/column-layout-master',{target,order:[],widths:{},hidden:[],user_id:'test'});
+  await post('/api/column-layout-master',{target,order:[],widths:{},hidden:[],locks:[],user_id:'test'});
   await page.evaluate(()=>{WL.columnLayout.forget();return load()});
   await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});
   await page.waitForTimeout(400);
@@ -155,7 +155,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
      名前が重なりうる出どころは複数ある(結合してきた列・計算で作った列・
      ビュー越しの取得)ので、**入口の`listColumnKeys()`で1回だけ落とす**。
      ここは実データに重複が無くても確かめられるよう、**注ぎ込んで**見る。 */
-  await post('/api/column-layout-master',{target,order:[],widths:{},hidden:[],user_id:'test'});
+  await post('/api/column-layout-master',{target,order:[],widths:{},hidden:[],locks:[],user_id:'test'});
   await page.evaluate(()=>{WL.columnLayout.forget();return load()});
   await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});
   await page.waitForTimeout(400);
@@ -216,6 +216,97 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   }),fxKey);
   rec('見出しをドラッグしても計算列が消えない',fxAfter.ある&&fxAfter.見出し,JSON.stringify(fxAfter));
 
+  /* ============================================================
+     §9.119 幅は「自動 / 手で決めた / 固定」の3つ
+     ============================================================ */
+  /* **要点**: 手で決めた幅は**文字列の長さによらず狭くできる**。
+     以前は #grid table の width:max-content が効いており、
+     table-layout:fixed でも「各列の中身の最大幅」で解かれて
+     colgroupの指定を見出しの文字幅が上回っていた(45px指定→171px)。 */
+  const longCol=await page.evaluate(()=>{
+   const ths=[...document.querySelectorAll('#grid thead th[data-col]')];
+   let pick=null,best=0;
+   ths.forEach(th=>{const c=th.dataset.col;if(!c||c.startsWith('__')||c==='#')return;
+     const n=th.textContent.trim().length;if(n>best){best=n;pick=c}});
+   return pick;
+  });
+  const narrow=await page.evaluate(async c=>{
+   const t=listLayoutTarget(),l=WL.columnLayout.get(t);
+   await WL.columnLayout.save(t,{...l,widths:{...(l.widths||{}),[c]:45}});
+   renderGrid();
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   const th=document.querySelector(`#grid thead th[data-col="${CSS.escape(c)}"]`);
+   const tbl=document.querySelector('#grid table');
+   const cols=[...tbl.querySelectorAll('colgroup col')];
+   let sum=0;cols.forEach(x=>{sum+=parseFloat(x.style.width)||0});
+   return {実測:Math.round(th.getBoundingClientRect().width),
+           見出しの文字幅:Math.round(th.scrollWidth),
+           表の幅:Math.round(tbl.getBoundingClientRect().width),
+           列幅の合計:Math.round(sum)};
+  },longCol);
+  rec('手で決めた幅は見出しの文字より狭くできる',
+      narrow.実測<=46&&narrow.見出しの文字幅>narrow.実測+40,JSON.stringify(narrow));
+  rec('表の幅は列幅の合計になる（内容で押し広げない）',
+      Math.abs(narrow.表の幅-narrow.列幅の合計)<=2||narrow.表の幅>=narrow.列幅の合計,
+      JSON.stringify({表:narrow.表の幅,合計:narrow.列幅の合計}));
+
+  /* ---- 固定はサーバーを往復し、取っ手が掴めなくなる ---- */
+  const lock=await page.evaluate(async c=>{
+   const t=listLayoutTarget(),l=WL.columnLayout.get(t);
+   await WL.columnLayout.save(t,{...l,locks:[c]});
+   WL.columnLayout.forget(t);await WL.columnLayout.load(t);
+   renderGrid();
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   const th=document.querySelector(`#grid thead th[data-col="${CSS.escape(c)}"]`);
+   const grip=th.querySelector('.col-resize');
+   return {固定:WL.columnLayout.locked(t,c),状態:WL.columnLayout.widthMode(t,c),
+           取っ手:!!grip,掴めない:grip?grip.classList.contains('is-locked'):null};
+  },longCol);
+  rec('幅の固定がサーバーを往復する',lock.固定===true&&lock.状態==='locked',JSON.stringify(lock));
+  rec('固定した列は取っ手を掴めない',lock.取っ手&&lock.掴めない===true,JSON.stringify(lock));
+
+  /* ---- 幅を保存し直しても固定が消えない(全置換の書き漏らし。§9.113) ---- */
+  const keep=await page.evaluate(async c=>{
+   const t=listLayoutTarget(),l=WL.columnLayout.get(t);
+   // 見出しのD&Dや列を隠す操作と同じ経路(並びだけ送る)
+   await WL.columnLayout.save(t,{...l,order:[...(l.order||[])]});
+   WL.columnLayout.forget(t);await WL.columnLayout.load(t);
+   return WL.columnLayout.locked(t,c);
+  },longCol);
+  rec('並びを保存し直しても幅の固定が残る',keep===true,String(keep));
+
+  /* ---- 右クリックで列を隠しても計算式の列が消えない ----
+     openColumnHeaderMenu の persist が formulas を渡しておらず、
+     **列を1つ隠しただけで計算列が全部消えていた**(実バグ)。 */
+  const menuFx=await page.evaluate(async k=>{
+   const t=listLayoutTarget(),l=WL.columnLayout.get(t);
+   if(!(l.formulas||{})[k])return {前提なし:true};
+   const th=[...document.querySelectorAll('#grid thead th[data-col]')]
+     .find(x=>x.dataset.col&&x.dataset.col!==k&&!x.dataset.col.startsWith('__'));
+   th.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:100,clientY:100}));
+   const hide=document.querySelector('.col-head-menu .chm-hide');
+   if(!hide)return {メニューなし:true};
+   hide.click();
+   await new Promise(r=>setTimeout(r,1200));
+   WL.columnLayout.forget(t);await WL.columnLayout.load(t);
+   return {式が残る:(WL.columnLayout.get(t).formulas||{})[k]!==undefined};
+  },fxKey);
+  rec('右クリックで列を隠しても計算列が消えない',
+      menuFx.前提なし||menuFx.メニューなし?true:menuFx.式が残る===true,JSON.stringify(menuFx));
+
+  /* ---- 自動へ戻すと、幅も固定も消える ---- */
+  const back=await page.evaluate(async c=>{
+   const t=listLayoutTarget(),l=WL.columnLayout.get(t);
+   const w={...(l.widths||{})};delete w[c];
+   await WL.columnLayout.save(t,{...l,widths:w,locks:(l.locks||[]).filter(k=>k!==c)});
+   renderGrid();
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   const th=document.querySelector(`#grid thead th[data-col="${CSS.escape(c)}"]`);
+   return {状態:WL.columnLayout.widthMode(t,c),
+           実測:Math.round(th.getBoundingClientRect().width)};
+  },longCol);
+  rec('自動へ戻すと内容に合わせた幅になる',back.状態==='auto'&&back.実測>60,JSON.stringify(back));
+
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
 
   console.log('\n=== SUMMARY ===');
@@ -223,12 +314,12 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   f.forEach(x=>console.log(' -',x.n,x.d||''));
   await b.close();b=null;
   // 検証で作った並びは消す(次のテストや実機の設定を汚さない)。
-  if(target)await post('/api/column-layout-master',{target,order:[],widths:{},hidden:[],user_id:'test'});
+  if(target)await post('/api/column-layout-master',{target,order:[],widths:{},hidden:[],locks:[],user_id:'test'});
   process.exit(f.length?1:0);
  }catch(e){
   console.error('FATAL',e);
   if(b)await b.close().catch(()=>{});
-  if(target)await post('/api/column-layout-master',{target,order:[],widths:{},hidden:[],user_id:'test'}).catch(()=>{});
+  if(target)await post('/api/column-layout-master',{target,order:[],widths:{},hidden:[],locks:[],user_id:'test'}).catch(()=>{});
   process.exit(2);
  }
 })();

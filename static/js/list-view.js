@@ -301,12 +301,15 @@ function bindColumnHeaderTools(table,target,visibleColumns,allColumns){
     **控えは呼ばれた時点で取り直す**——`save()`はキャッシュを新しい
     オブジェクトへ差し替えるので、束縛した`layout`は1回保存した時点で
     古い写しになる(2回目以降が古い設定で上書きしてしまう)。 */
- const persist=async(order,widths)=>{
+ const persist=async(order,widths,locks)=>{
+  /* **控えは保存のたびに取り直す**(§9.113)。save()はキャッシュを新しい
+     オブジェクトへ差し替えるので、関数の頭で束縛すると1回保存した時点で
+     古い写しになる。渡し漏れた設定は消えるので、キーは1つも欠かさない。 */
   const cur=WL.columnLayout.get(target);
   try{
    await WL.columnLayout.save(target,{order,widths:widths||cur.widths,hidden:cur.hidden,
                                       names:cur.names,formats:cur.formats,rules:cur.rules,
-                                      formulas:cur.formulas});
+                                      formulas:cur.formulas,locks:locks||cur.locks});
    showToast&&showToast('表示の並びを保存しました','この一覧を次に開いたときも同じ並びで出ます',2400);
   }catch(e){showToast&&showToast('並びを保存できませんでした',e.message,5000)}
  };
@@ -351,6 +354,15 @@ function bindColumnHeaderTools(table,target,visibleColumns,allColumns){
  heads.forEach(th=>{
   const grip=th.querySelector('.col-resize');if(!grip)return;
   const col=th.dataset.sortCol;
+  /* 幅を固定した列は掴めない(§9.119)。**取っ手ごと消す**——出しておいて
+     引いても動かない、では壊れているようにしか見えない。 */
+  if(WL.columnLayout.locked(target,col)){
+   grip.classList.add('is-locked');
+   grip.title='この列は幅を固定しています（列の設定で解けます）';
+   grip.addEventListener('mousedown',e=>{e.preventDefault();e.stopPropagation()});
+   grip.addEventListener('click',e=>{e.stopPropagation()});
+   return;
+  }
   grip.addEventListener('mousedown',e=>{
    e.preventDefault();e.stopPropagation();     // 並び替え・ドラッグへ渡さない
    /* colgroupは**1本の並び(§9.106)と1対1**になったので、見出しの位置を
@@ -405,6 +417,9 @@ function closeColumnHeaderMenu(){
 }
 function onColumnMenuOutside(e){if(!e.target.closest('.col-head-menu'))closeColumnHeaderMenu()}
 function onColumnMenuKey(e){if(e.key==='Escape'){e.stopPropagation();closeColumnHeaderMenu()}}
+/* 幅の状態の呼び名(§9.119)。**画面の言葉を1箇所に持つ**——メニューと
+   設定パネルで違う言い方をすると、同じものだと分からなくなる。 */
+const WIDTH_MODE_LABEL={auto:'内容に合わせる（自動）',manual:'手で決めた幅',locked:'固定（動かさない）'};
 function openColumnHeaderMenu(ev,col,target,allColumns){
  closeColumnHeaderMenu();
  if(!target||!col)return;
@@ -421,7 +436,11 @@ function openColumnHeaderMenu(ev,col,target,allColumns){
  menu.innerHTML=
   `<div class="chm-head" title="${esc(col)}">${esc(nameOf(col))}</div>`
   +item('この列を隠す','chm-hide')
-  +item('幅を内容に合わせる','chm-autofit')
+  /* 幅の3つの状態(§9.119)。**いまどれなのかを文で出す**——「自動に戻す」が
+     押せるだけでは、今が自動なのか手動なのかが分からない。 */
+  +`<div class="chm-label">幅: ${esc(WIDTH_MODE_LABEL[WL.columnLayout.widthMode(target,col)]||'')}</div>`
+  +item('幅を内容に合わせる（自動）','chm-autofit')
+  +item(WL.columnLayout.locked(target,col)?'幅の固定を解く':'いまの幅で固定する','chm-lock')
   +(hidden.length?`<div class="chm-sep"></div><div class="chm-label">隠している列（${hidden.length}）</div>`
     +shown.map(k=>`<button type="button" class="chm-show" data-key="${esc(k)}">${esc(nameOf(k))}</button>`).join('')
     +(hidden.length>shown.length?`<div class="chm-more">ほか${hidden.length-shown.length}件は「表示列」から</div>`:'')
@@ -436,9 +455,14 @@ function openColumnHeaderMenu(ev,col,target,allColumns){
   const v=WL.columnLayout.get(target);
   const all=WL.listColumnKeys(allColumns);
   const known=(v.order||[]).filter(c=>all.includes(c));
+  /* **保存は全置換なので、渡す設定を1つでも書き漏らさない**(§9.113)。
+     ここは`formulas`が抜けており、**右クリックで列を1つ隠しただけで
+     計算式で作った列が全部消えていた**(bindColumnHeaderToolsのpersistで
+     同じ不具合を直したときに、こちらを見落としていた)。 */
   await WL.columnLayout.save(target,{order:[...known,...all.filter(c=>!known.includes(c))],
                                      widths:v.widths,hidden:v.hidden,names:v.names,
-                                     formats:v.formats,rules:v.rules,...patch});
+                                     formats:v.formats,rules:v.rules,
+                                     formulas:v.formulas,locks:v.locks,...patch});
   renderGrid();
  };
  menu.querySelector('.chm-hide').onclick=async()=>{
@@ -456,7 +480,28 @@ function openColumnHeaderMenu(ev,col,target,allColumns){
   closeColumnHeaderMenu();
   const v=WL.columnLayout.get(target);
   const widths={...(v.widths||{})};delete widths[col];
-  await persist({widths});
+  /* **固定も一緒に解く。** 幅を持たない「固定」は動かしようが無いので、
+     残すと「固定と出ているのに何も効いていない」列になる。 */
+  await persist({widths,locks:(v.locks||[]).filter(k=>k!==col)});
+ };
+ /* いまの幅で固定する / 固定を解く。固定するときに幅が無ければ、
+    **いま画面に出ている幅**をそのまま手動の幅として書き留める
+    ——「固定した」のに次に開くと自動で別の幅になるのでは固定ではない。 */
+ menu.querySelector('.chm-lock').onclick=async()=>{
+  closeColumnHeaderMenu();
+  const v=WL.columnLayout.get(target);
+  const locks=new Set(v.locks||[]);
+  const widths={...(v.widths||{})};
+  if(locks.has(col)){locks.delete(col)}
+  else{
+   locks.add(col);
+   if(widths[col]==null){
+    const th=document.querySelector(`#grid thead th[data-col="${CSS.escape(col)}"]`);
+    const w=th?Math.round(th.getBoundingClientRect().width):0;
+    if(w>0)widths[col]=w;
+   }
+  }
+  await persist({widths,locks:[...locks]});
  };
  menu.querySelectorAll('.chm-show').forEach(b=>{
   b.onclick=async()=>{
@@ -928,6 +973,13 @@ function textWidthEm(s){
    (「不要な余白が広い」と報告された状態)。上位1割を外した長さに合わせ、
    はみ出す少数は省略記号＋`title`で読ませる(§9.94の約束どおり)。
    **見出しは必ず入る幅にする**——見出しが読めない表は列を選べない。 */
+/* 見積りの余裕(§9.119)。`textWidthEm`は字幅の近似なので、実測より数px
+   小さく出ることがある。表の幅を列幅の合計で固定するまでは、CSSの
+   `width:max-content`が表を広げて吸収していた（＝指定より広く描かれて
+   いた）ため気づかなかったが、固定した途端に**自動で決めた幅なのに
+   4〜5px切れる**列が出た（用途名70/74・取引先64/69で実測）。
+   自動の見積りは「入り切る」ことが目的なので、近似の誤差ぶんを足す。 */
+const COL_W_SLACK=6;
 function estimateColumnWidth(label,values,fs,padX){
  const lens=[];
  for(const v of values){const w=textWidthEm(v);if(w>0)lens.push(w)}
@@ -935,7 +987,7 @@ function estimateColumnWidth(label,values,fs,padX){
  // 90パーセンタイル(件数が少ないときは最大値のまま)
  const p90=lens.length?lens[Math.min(lens.length-1,Math.floor(lens.length*0.9))]:0;
  const em=Math.max(textWidthEm(label),p90);
- return Math.round(Math.min(COL_W_MAX,Math.max(COL_W_MIN,em*fs+padX*2+2)));
+ return Math.round(Math.min(COL_W_MAX,Math.max(COL_W_MIN,em*fs+padX*2+2+COL_W_SLACK)));
 }
 /* 表の文字サイズと左右余白は表示サイズ(--ui-scale)で変わるので、
    描くたびに1度だけ読む(セルごとに読むと数万回になる)。 */
@@ -1205,6 +1257,15 @@ function renderGridInner(){
    const col=document.createElement('col');col.style.width=colW.get(k)+'px';cg.appendChild(col);
   });
   t.insertBefore(cg,t.firstChild);
+  /* **表の幅は決めた幅の合計にする**(§9.119)。CSSの`width:max-content`の
+     ままだと、`table-layout:fixed`でも表の幅を「各列の中身の最大幅」で
+     解いてしまい、**colgroupの指定より見出しの文字幅が勝つ**。実測で、
+     45pxを指定した列が171px(見出しの文字幅174px)になっていた——
+     手で狭くしたつもりが一切効かない状態。
+     合計を入れると指定どおりになり、器より狭いときはCSSの
+     `min-width:100%`が広げてくれる(横スクロールの挙動は変わらない)。 */
+  let total=0;ordered.forEach(k=>{total+=colW.get(k)||0});
+  t.style.width=total+'px';
  }
  /* 本文の行は**窓の中の列だけ**組み立てる(§9.104)。見出しは全列のまま。
     窓は**1本の並び全体**に掛ける(番号・ボタンも並びの一部なので、
