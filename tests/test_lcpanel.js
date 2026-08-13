@@ -118,7 +118,38 @@ async function cleanup(){
   await page.mouse.move(from.x,from.y);await page.mouse.down();
   await page.mouse.move(to.x,to.y,{steps:12});
   const marked=await page.$$eval('#listColumnPanel .lc-drop-mark',ns=>ns.length);
+  /* **掴んでいる最中のゴースト**(§9.112)。実機で「ゴーストが出ません」と
+     報告された不具合の安全網。ゴーストは body 直下に作られるので、
+     重なり順が浮きウィンドウ(--z-popover)より下だと**その裏に回って
+     一度も見えない**。DOMには居るので「存在するか」だけでは捕まらず、
+     **掴んだ元の器と重なり順を比べる**必要がある。 */
+  const ghost=await page.evaluate(()=>{
+   const g=document.querySelector('.lc-ghost');
+   if(!g)return {ある:false};
+   const cs=getComputedStyle(g),r=g.getBoundingClientRect();
+   const panel=document.getElementById('listColumnPanel');
+   const z=el=>{ // 祖先をたどって、実際に効いている重なり順を拾う
+    for(let n=el;n&&n!==document.documentElement;n=n.parentElement){
+     const v=parseInt(getComputedStyle(n).zIndex,10);
+     if(!Number.isNaN(v))return v;
+    }
+    return 0;
+   };
+   return {ある:true,body直下:g.parentElement===document.body,
+           z:z(g),元のz:z(panel),
+           w:Math.round(r.width),h:Math.round(r.height),
+           画面内:r.right>0&&r.bottom>0&&r.left<innerWidth&&r.top<innerHeight,
+           見た目:cs.transform!=='none'&&cs.boxShadow!=='none',
+           text:(g.textContent||'').trim().slice(0,14)};
+  });
   await page.mouse.up();await page.waitForTimeout(400);
+  rec('掴んでいる間、掴んだ行の写し(ゴースト)が出る',
+   ghost.ある&&ghost.w>0&&ghost.h>0&&ghost.画面内,JSON.stringify(ghost));
+  rec('ゴーストは掴んだ元の器より上に出る（裏に回らない）',
+   ghost.ある&&ghost.z>=ghost.元のz,`ゴースト=${ghost.z} / パネル=${ghost.元のz}`);
+  rec('ゴーストは持ち上がって見える（傾き・影）',ghost.ある&&ghost.見た目===true);
+  const ghostGone=await page.$$eval('.lc-ghost',ns=>ns.length);
+  rec('離したらゴーストは消える',ghostGone===0,`${ghostGone}件`);
   const orderAfter=await page.$$eval('#listColumnPanel .lc-item',ns=>ns.map(n=>n.dataset.key));
   rec('掴んでいる間、入る位置に線が出る',marked===1,`${marked}本`);
   rec('行のどこを掴んでも並べ替えられる',orderAfter.join()!==orderBefore.join(),

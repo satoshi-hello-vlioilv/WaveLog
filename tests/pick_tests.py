@@ -111,14 +111,15 @@ RULES = [
     # --- 見た目(CSS) -------------------------------------------------
     # CSSは1枚に閉じない(トークンは:rootで共有し、@layerで順序が決まる)。
     # だから個別に割らず、寸法・溢れを見る網をまとめて回す。
-    ('static/css/20-shell.css', g('見た目', '一覧', 'test_gridhead')),
+    ('static/css/20-shell.css', g('見た目', '一覧', 'test_gridhead', 'test_lcpanel')),
     ('static/css/30-measure.css', g('見た目', '一覧', '測定', 'test_gridhead')),
     ('static/css/95-boot.css', g('見た目', '起動')),
-    ('static/css/70-schedule.css', g('見た目', 'test_sccols', 'test_split_layout')),
+    ('static/css/70-schedule.css', g('見た目', 'test_sccols', 'test_split_layout',
+                                      'test_scbalance')),
     ('static/css/88-logs.css', g('見た目', 'test_logview')),
 
     # --- サーバー(ルート) --------------------------------------------
-    ('backend/routes/tables.py', g('一覧', '接続', 'test_colscache', 'test_colsripple',
+    ('backend/routes/tables.py', g('一覧', '接続', '列', 'test_colscache', 'test_colsripple',
                                    'test_modeguard')),
     ('backend/routes/masters.py', g('マスタ', '列', 'test_modeguard')),
     ('backend/routes/schedule.py', g('スケジュール', 'test_modeguard', 'test_crudroutes')),

@@ -16,8 +16,12 @@ const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_m
 const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const API='http://127.0.0.1:5029';
 
-/* コントロールの高さトークン(--ctl-h-xs/sm/(std)/lg、--ui-scale=1のとき) */
-const CTL_H=[26,30,36,40];
+/* コントロールの高さトークン。**直値で持たない**(§9.112)——
+   `--row-ctl-h`(表の行の中の部品)は行の中に入れる高さから決まるので、
+   26/30/36/40 の並びには乗らない。以前ここが直値だったため、
+   「行内ボタンは行に合わせて縮む」という決まり(§9.90)のほうを
+   落としてしまう網になっていた。ページから実測して比べる。 */
+const CTL_TOKENS=['--ctl-h-xs','--ctl-h-sm','--ctl-h','--ctl-h-lg','--row-ctl-h'];
 /* 角丸トークン(--radius-xs/sm/md/lg/pill/round)。0(角を落とす)も可。 */
 const RADIUS=['0px','4px','8px','10px','14px','999px'];
 /* 例外。**理由が書けるものだけ**載せる。 */
@@ -102,12 +106,25 @@ let b=null;
   await visit('実績カレンダー',()=>page.click('#openCalendar'));
   await visit('マスタ管理',()=>page.click('#openMasterMaint'));
 
+  /* トークンの実測値。宣言は calc(...) のまま返るので、当てて測る。 */
+  const CTL_H=await page.evaluate(names=>{
+   const probe=document.createElement('div');
+   probe.style.cssText='position:absolute;visibility:hidden;left:-9999px';
+   document.body.appendChild(probe);
+   const out=names.map(n=>{probe.style.height=`var(${n})`;
+                           return Math.round(parseFloat(getComputedStyle(probe).height))});
+   probe.remove();
+   return [...new Set(out)].sort((a,b)=>a-b);
+  },CTL_TOKENS);
   const excepted=c=>c.name.startsWith('box:')||
                     Object.keys(CTL_EXCEPT).some(k=>c.name.includes(k.replace('#','')));
   const badH=all.filter(c=>!CTL_H.includes(c.h)&&!excepted(c));
   const hKinds=[...new Set(all.filter(c=>!excepted(c)).map(c=>c.h))].sort((a,b)=>a-b);
-  rec('コントロールの高さがトークン(26/30/36/40)に収まる',badH.length===0,
+  rec(`コントロールの高さがトークン(${CTL_H.join('/')})に収まる`,badH.length===0,
    badH.length?[...new Set(badH.map(c=>`${c.screen}:${c.name}=${c.h}px`))].slice(0,6).join(' / '):`種類 ${hKinds.join(',')}`);
+  /* **トークンの種類が増えていないこと**も見る。実測へ変えた副作用で
+     「何でも通る」網にしないため(値は増やせても、種類は5つのまま)。 */
+  rec('高さのトークンは5種類のまま',CTL_H.length<=5,`${CTL_H.length}種 ${CTL_H.join(',')}`);
 
   const badR=all.filter(c=>!RADIUS.includes(c.radius)&&!excepted(c));
   rec('角丸がトークン(0/4/8/10/14/999)に収まる',badR.length===0,

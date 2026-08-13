@@ -72,6 +72,22 @@ def _quality_key_table(c,def_cfg):
   if all(k):return t,cs,k
  return None,None,None
 
+def _unique_columns(names):
+ """列名を一意にする(順序は最初に出てきた位置を残す)。§9.113。
+
+ **画面は列を名前で引く**(見出し・幅・書式・読み替え・並び順のすべてが
+ 列名を鍵にしている)ので、同じ名前が2つ入った列リストを返すと、そのまま
+ 見出しもセルも二重に描かれる(実機で「カラムが増殖した」と報告された形)。
+ 名前が重なりうる出どころは実際にある——品質データ側がビューで、
+ 元テーブルと同じ名前の列を2つ持っている場合や、`SELECT *`の結果に
+ 同名の列が並ぶ場合。行はdictなので**どのみち1つしか持てない**(後勝ち)
+ のに、列リストだけが2つあると数が食い違う。ここで1回だけ落とす。"""
+ seen=set();out=[]
+ for n in names or []:
+  if n in seen:continue
+  seen.add(n);out.append(n)
+ return out
+
 def _join_quality_data(sikalotnow_cols,row_dicts):
  """戻り値: (結合後の列名リスト, 結合後の行dictリスト, 診断情報dict)。
  重複する列名は仕掛(SIKALOTNOW)側の値を優先する(現在値としての信頼度が
@@ -145,7 +161,7 @@ def _join_quality_data(sikalotnow_cols,row_dicts):
              addedColumnNames=list(extra_cols),table=t)
  if not matched:
   info['reason']=f'キーが一致する品質データがありませんでした(照合先: {t})'
- return sikalotnow_cols+extra_cols,merged_rows,info
+ return _unique_columns(sikalotnow_cols+extra_cols),merged_rows,info
 
 
 def _error_hint(e):
@@ -377,7 +393,9 @@ def api_table():
   # **1つも当たらなければ絞らない**(fail-open)。列名を打ち間違えた・
   # データ側で列名が変わった場合に、空の表を黙って返すのが一番困る。
   row_dicts=[dict(zip(cs,r)) for r in rows]
-  visible_cs=[x for x in cs if x not in hidden and (keep is None or x in keep)]
+  # 名前は1つずつ(§9.113)。行はdictで同名を1つしか持てないので、列だけ
+  # 2つ返すと本数が食い違い、画面では列が増えて見える。
+  visible_cs=_unique_columns([x for x in cs if x not in hidden and (keep is None or x in keep)])
   if hidden or keep is not None:
    drop=lambda col:(col in hidden) or (keep is not None and col not in keep)
    row_dicts=[{col:v for col,v in d.items() if not drop(col)} for d in row_dicts]

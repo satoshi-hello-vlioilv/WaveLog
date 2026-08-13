@@ -293,11 +293,20 @@ function bindColumnHeaderTools(table,target,visibleColumns,allColumns){
   return [...known,...all.filter(c=>!known.includes(c))];
  };
  /* 保存は全置換なので、**触っていない設定も一緒に送る**こと。
-    並びだけを送ると、表示名や書式が黙って消える(全置換で行ごと作り直すため)。 */
+    並びだけを送ると、表示名や書式が黙って消える(全置換で行ごと作り直すため)。
+    **1つでも書き漏らすとその設定だけが黙って消える**(§9.113)——`formulas`を
+    渡していなかったため、**見出しを1回ドラッグしただけで計算式で作った列が
+    全部消えていた**(式が消えると`listColumnKeys()`がその列を並べなくなる)。
+    渡す中身は`save()`のキーと1対1で対応させること。
+    **控えは呼ばれた時点で取り直す**——`save()`はキャッシュを新しい
+    オブジェクトへ差し替えるので、束縛した`layout`は1回保存した時点で
+    古い写しになる(2回目以降が古い設定で上書きしてしまう)。 */
  const persist=async(order,widths)=>{
+  const cur=WL.columnLayout.get(target);
   try{
-   await WL.columnLayout.save(target,{order,widths:widths||layout.widths,hidden:layout.hidden,
-                                      names:layout.names,formats:layout.formats,rules:layout.rules});
+   await WL.columnLayout.save(target,{order,widths:widths||cur.widths,hidden:cur.hidden,
+                                      names:cur.names,formats:cur.formats,rules:cur.rules,
+                                      formulas:cur.formulas});
    showToast&&showToast('表示の並びを保存しました','この一覧を次に開いたときも同じ並びで出ます',2400);
   }catch(e){showToast&&showToast('並びを保存できませんでした',e.message,5000)}
  };
@@ -1020,6 +1029,19 @@ const isVirtualColumn=k=>Object.prototype.hasOwnProperty.call(VIRTUAL_COLUMNS,k)
 const virtualColumnWidth=(k,metrics)=>
   k==='#'?Math.round(3*0.55*metrics.fs+metrics.padX*2+2)   // 行番号(3桁ぶん)
          :(VIRTUAL_COLUMNS[k]||{}).width||80;
+/* **列名は1つずつしか出さない**(§9.113)。列は名前で引く(`data-col`・
+   幅・書式・読み替え・並び順のすべてが列名を鍵にしている)ので、同じ名前が
+   2つある並びは表として成り立たない——見出しもセルも二重に描かれ、
+   画面では「列が増殖した」ように見える。名前が重なりうる出どころは
+   いくつもある(結合してきた列、計算で作った列、データ側の列名変更、
+   ビュー越しの取得)ので、**入口で1回だけ**落とす。
+   最初に出てきた位置を残す(利用者が並べた順を崩さないため)。 */
+const uniqueKeys=keys=>{
+ const seen=new Set(),out=[];
+ (keys||[]).forEach(k=>{if(k==null||seen.has(k))return;seen.add(k);out.push(k)});
+ return out;
+};
+WL.uniqueColumnKeys=uniqueKeys;
 /* 今の画面で出しうる列を既定の並びで返す。`cols`を省くと`S.columns`。 */
 function listColumnKeys(cols){
  const isWork=WL.dataSource.isWork(S.db);
@@ -1036,7 +1058,7 @@ function listColumnKeys(cols){
   Object.keys(WL.columnLayout.formulas(target)).forEach(k=>{if(!out.includes(k))out.push(k)});
  }
  if(isWork)out.push('__measure__');
- return out;
+ return uniqueKeys(out);
 }
 WL.listColumnKeys=listColumnKeys;
 /* 覚えている並びを当てはめる。**番号・ボタンの列が1つも入っていない
@@ -1048,9 +1070,13 @@ WL.listColumnKeys=listColumnKeys;
    手で引きずり戻すことになる)。データ列の並びは覚えているものを尊重し、
    番号・ボタンの列だけを`listColumnKeys()`の位置へ差し戻す。 */
 function healedColumnOrder(target,cols){
- const canonical=listColumnKeys(cols);
+ const canonical=listColumnKeys(cols);          // ここで既に一意
  const stored=WL.columnLayout.get(target).order||[];
- const known=stored.filter(c=>canonical.includes(c));
+ /* **覚えている並びも一意にしてから使う**(§9.113)。マスタは書くときに
+    重複を落とすが、画面が保存前に当てている下書き(`stage`)や、古い端末が
+    書いた並びまでは保証できない。ここを素通しにすると`known`が二重になり、
+    そのまま見出しとセルが二重に出る。 */
+ const known=uniqueKeys(stored.filter(c=>canonical.includes(c)));
  if(!stored.length||stored.some(isVirtualColumn))
   return [...known,...canonical.filter(c=>!known.includes(c))];
  // データ列は覚えている順のまま、番号・ボタンの列だけ本来の位置へ戻す。

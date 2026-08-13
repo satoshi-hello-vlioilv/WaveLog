@@ -77,12 +77,17 @@
 .shift-eq-chip input{width:var(--ctl-box);height:var(--ctl-box);accent-color:currentColor;margin:0}
 /* 作業可否フラグ(§9.51)。「残仕掛設備ｺｰｽ」がこの設備で始まっていれば作業可。
    まだ来ていないロットを一目で外せるようにする(色と濃度の両方で示す)。 */
+/* **行に入る高さで作る**(§9.112)。以前は `padding:1px` + `line-height:1.5`
+   で、行の中に入れる高さ(--row-inner-h)を全表示サイズで3〜4px超えており、
+   セルの `overflow:hidden` に上下を削られていた(可/否の文字の頭と足が
+   欠けて見える)。高さは行なりにし、縦位置は中央揃えが作る。 */
 .sc-row-workable{
- justify-self:center;min-width:calc(34px * var(--ui-scale));text-align:center;
- padding:1px 6px;border-radius:var(--radius-pill);border:1px solid transparent;
+ display:inline-flex;align-items:center;justify-content:center;
+ justify-self:center;min-width:calc(34px * var(--ui-scale));max-height:100%;
+ padding:0 var(--space-1);border-radius:var(--radius-pill);border:1px solid transparent;
  /* 印なので値のセルから1段下げる(--tbl-fs-mark)。以前は --fs-badge(10px)で、
     同じ行の値(14px)から3段離れていた(§9.90)。 */
- font-size:var(--tbl-fs-mark);font-weight:800;line-height:1.5;
+ font-size:var(--tbl-fs-mark);font-weight:800;line-height:1.2;
 }
 /* 作業できない行は薄く。並べ替えや削除はできるので消しはしない。 */
 .sc-row-line.sc-row-not-workable .sc-row-title,

@@ -395,10 +395,16 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
     (離れた場所にあると、どの列に効くのかが読まないと分からない)。 */
  .lc-vis-all input{width:var(--ctl-box);height:var(--ctl-box);cursor:pointer;accent-color:var(--teal)}
  /* 掴んだ行の写し。指の横に浮かせ、下の行の判定を邪魔しない。 */
- .lc-ghost{position:fixed;z-index:60;pointer-events:none;
+ /* **重なり順はトークンで決める。** ここが直値(60)だったため、
+    浮きウィンドウ(--z-popover=1600)の裏に回って**一度も見えていなかった**
+    (§9.112)。ゴーストは掴んだ元より上に出る必要がある。 */
+ .lc-ghost{position:fixed;z-index:var(--z-drag);pointer-events:none;
   background:var(--surface);border:1px solid var(--teal);border-left:3px solid var(--teal);
-  border-radius:var(--radius-xs);box-shadow:0 8px 20px rgba(23,56,66,.28);
-  padding:var(--space-1) var(--space-2);opacity:.95}
+  border-radius:var(--radius-xs);box-shadow:0 10px 24px rgba(23,56,66,.34);
+  padding:var(--space-1) var(--space-2);opacity:.96;
+  /* 掴んでいる手応え。少し傾けて浮かせると「持ち上げている」ことが
+     形で分かる(スケジュールの移動と同じ見え方に揃える)。 */
+  transform:rotate(-1.2deg) scale(1.02);transform-origin:left center}
  /* ---------- 出どころの分類(§9.105) ----------
     **色だけで意味を伝えない**——分類名と件数を必ず文字で書き、色は
     見分けを速くするための補助に留める(色覚の差でも読める)。 */
@@ -441,11 +447,15 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  .lc-item.is-picked{background:var(--pale);border-color:var(--teal);border-left-color:var(--teal)}
  .lc-item.is-off{background:var(--surface-2)}
  .lc-item.is-off .lc-name,.lc-item.is-off .lc-eg{opacity:.45}
- .lc-item.lc-dragging{opacity:.4}
+ /* 掴んだ元の行は、そこに「空き」があると分かる程度に薄くする
+    (消すと行が詰まって、どこから抜いたのかが分からなくなる)。 */
+ .lc-item.lc-dragging{opacity:.32}
  .lc-grip{color:var(--line-strong);cursor:grab;user-select:none}
  .lc-grip:active{cursor:grabbing}
- .lc-drop-mark{height:2px;background:var(--teal);border-radius:var(--radius-xs);
-  margin:0 var(--space-2)}
+ /* 落ちる位置の線。**ゴーストが「何を」、この線が「どこへ」**を受け持つ。
+    細すぎると行の罫線と見分けが付かないので、はっきり太らせる。 */
+ .lc-drop-mark{height:3px;background:var(--teal);border-radius:var(--radius-xs);
+  margin:0 var(--space-2);box-shadow:0 0 0 2px rgba(12,93,103,.18)}
  /* **列名は折り返さない**(§9.90)。入り切らないときは省略記号。 */
  .lc-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   display:flex;align-items:center}

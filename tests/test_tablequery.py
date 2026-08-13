@@ -126,6 +126,68 @@ def main():
         rec('結合できないときも理由が付く（名前が無いのは想定どおり）',
             bool(info.get('reason')), str(info.get('reason'))[:120])
 
+    # ---- 5) 列名は必ず一意（§9.113） ----
+    # **画面は列を名前で引く**(見出し・幅・書式・読み替え・並び順)。同じ名前が
+    # 2つ返ると見出しもセルも二重に描かれ、実機で「カラムが増殖した」と
+    # 報告された形になる。行はdictなので**どのみち1つしか持てない**——
+    # 列だけ2つあると本数が食い違う。ここは絞り込み・並べ替え・結合の
+    # どの組み合わせでも崩れてはいけない。
+    for label, kw in (("素の一覧", {}),
+                      ('絞り込みあり', {'q': 'A'}),
+                      ('並べ替えあり', {'sort': cols[0], 'sort_dir': 'desc'}),
+                      ('絞り込み＋並べ替え', {'q': 'A', 'sort': cols[0], 'sort_dir': 'desc'}),
+                      ('結合あり', {'join_quality': 1}),
+                      ('結合＋絞り込み＋並べ替え',
+                       {'join_quality': 1, 'q': 'A', 'sort': cols[0], 'sort_dir': 'desc'})):
+        st, d = get(table='仕掛', page=1, page_size=5, include_hidden=1, **kw)
+        cs = (d or {}).get('columns') or []
+        seen, dupes = set(), []
+        for n in cs:
+            if n in seen:
+                dupes.append(n)
+            seen.add(n)
+        rec(f'列名が重複しない（{label}）', st == 200 and not dupes,
+            f'{len(cs)}列' + (f' / 重複 {dupes[:4]}' if dupes else ''))
+        # 行のキーは列の部分集合であること（列だけ増えていないことの裏取り）。
+        rows = (d or {}).get('rows') or []
+        extra = sorted({k for r in rows for k in r} - set(cs))
+        rec(f'行のキーが列に無い、が起きない（{label}）', not extra, str(extra[:4]))
+
+    # 重複した列名を渡したら1つに畳むこと（この関数が実際の防波堤）。
+    from backend.routes.tables import _unique_columns
+    rec('_unique_columns は重複を落として順序を保つ',
+        _unique_columns(['a', 'b', 'a', 'c', 'b']) == ['a', 'b', 'c'],
+        str(_unique_columns(['a', 'b', 'a', 'c', 'b'])))
+
+    # **本物の重複を注ぎ込んで確かめる。** 検証用DBの列名は重なっていない
+    # ので、上の「重複しない」は直す前でも通ってしまう(通るだけの網は
+    # 何も確かめていない)。列名の出どころ(cols()のキャッシュ)へ同じ名前を
+    # 2つ入れ、それでもAPIが一意で返すことを見る。実データでは、品質側が
+    # ビューで同名の列を持っていた場合などにこの形になる。
+    from backend import db_access as _dba
+    key = None
+    with _dba._cols_cache_lock:
+        for k in list(_dba._cols_cache):
+            if k[1] == '仕掛':
+                key = k
+                break
+    if key:
+        with _dba._cols_cache_lock:
+            ts, orig = _dba._cols_cache[key]
+            _dba._cols_cache[key] = (ts, list(orig) + [orig[0]])   # 先頭の列名をもう1つ
+        try:
+            st, d = get(table='仕掛', page=1, page_size=3, include_hidden=1)
+            cs = (d or {}).get('columns') or []
+            rec('同じ列名が2つ来ても一覧は1つに畳む（注入して確認）',
+                st == 200 and cs.count(orig[0]) == 1,
+                f'{orig[0]} × {cs.count(orig[0])}')
+        finally:
+            with _dba._cols_cache_lock:
+                _dba._cols_cache[key] = (ts, list(orig))
+    else:
+        rec('同じ列名が2つ来ても一覧は1つに畳む（注入して確認）', False,
+            'cols()のキャッシュに仕掛が見つからず、注入できなかった')
+
     ng = [x for x in R if not x[1]]
     print(f'\n== {len(R) - len(ng)}/{len(R)} PASS ==')
     sys.exit(1 if ng else 0)

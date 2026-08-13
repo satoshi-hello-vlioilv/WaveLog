@@ -148,6 +148,74 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   rec('その直しでデータ列の並びは崩さない',
    healed[2]===brokenOrder[0]&&healed[3]===brokenOrder[1],healed.slice(2,5).join(' / '));
 
+  /* ---- 8) 同じ列名が2つあっても、列は増殖しない(§9.113) ----
+     **実機で「カラムが増殖した」と報告された形。** 列は名前で引く
+     (見出し・幅・書式・読み替え・並び順のすべてが列名を鍵にしている)ので、
+     同じ名前が2つある並びは表として成り立たず、見出しもセルも二重に出る。
+     名前が重なりうる出どころは複数ある(結合してきた列・計算で作った列・
+     ビュー越しの取得)ので、**入口の`listColumnKeys()`で1回だけ落とす**。
+     ここは実データに重複が無くても確かめられるよう、**注ぎ込んで**見る。 */
+  await post('/api/column-layout-master',{target,order:[],widths:{},hidden:[],user_id:'test'});
+  await page.evaluate(()=>{WL.columnLayout.forget();return load()});
+  await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});
+  await page.waitForTimeout(400);
+  const injected=await page.evaluate(()=>{
+   const dup=a=>{const s=new Set(),d=[];a.forEach(x=>{if(s.has(x))d.push(x);s.add(x)});return d};
+   const orig=[...S.columns];
+   S.columns=[...orig,orig[0],orig[1]];      // 先頭2列の名前をもう1つずつ
+   const keys=WL.listColumnKeys();
+   renderGrid();
+   const heads=[...document.querySelectorAll('#grid thead th')].map(t=>t.dataset.col||t.textContent.trim());
+   const cg=document.querySelectorAll('#grid table colgroup col').length;
+   const cells=[...document.querySelectorAll('#grid tbody tr')].slice(0,2).map(tr=>{
+    let n=0;tr.querySelectorAll('td').forEach(td=>{n+=Number(td.getAttribute('colspan')||1)});return n});
+   S.columns=orig;renderGrid();
+   return {keysDup:dup(keys),headsDup:dup(heads),heads:heads.length,cg,cells};
+  });
+  rec('同じ列名が2つ来ても並びは1つに畳む',injected.keysDup.length===0,
+   JSON.stringify(injected.keysDup));
+  rec('同じ列名が2つ来ても見出しは二重にならない',injected.headsDup.length===0,
+   JSON.stringify(injected.headsDup));
+  rec('見出しとcolgroupと行のセル数が食い違わない',
+   injected.cells.every(n=>n===injected.cg)&&injected.heads===injected.cg,
+   `見出し${injected.heads} colgroup${injected.cg} 行${JSON.stringify(injected.cells)}`);
+
+  /* ---- 9) 見出しのD&Dで計算列が消えない(§9.113) ----
+     保存は全置換なので、**送り忘れた設定はその場で消える**。`formulas`を
+     渡していなかったため、**見出しを1回ドラッグしただけで計算式で作った列が
+     全部消えていた**(式が消えると`listColumnKeys()`がその列を並べなくなる)。 */
+  const fxKey='テスト計算列';
+  await page.evaluate(async k=>{
+   const t=listLayoutTarget();
+   const cur=WL.columnLayout.get(t);
+   await WL.columnLayout.save(t,{order:[...WL.listColumnKeys(),k],widths:cur.widths,
+     hidden:cur.hidden,names:cur.names,formats:cur.formats,rules:cur.rules,
+     formulas:{[k]:'"x"'}});
+   WL.columnLayout.forget();await WL.columnLayout.load(t);
+   return load();
+  },fxKey);
+  await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});
+  await page.waitForTimeout(500);
+  const fxBefore=await page.evaluate(k=>({
+   ある:(WL.columnLayout.get(listLayoutTarget()).formulas||{})[k]!==undefined,
+   見出し:[...document.querySelectorAll('#grid thead th')].some(t=>t.dataset.col===k),
+  }),fxKey);
+  rec('計算式で作った列が一覧に出る',fxBefore.ある&&fxBefore.見出し,JSON.stringify(fxBefore));
+  const hs=await page.$$('#grid thead th[data-sort-col]');
+  if(hs.length>=4){
+   const a=await hs[0].boundingBox(),z=await hs[3].boundingBox();
+   await page.mouse.move(a.x+a.width/2,a.y+a.height/2);
+   await page.mouse.down();
+   await page.mouse.move(z.x+z.width*0.7,z.y+z.height/2,{steps:12});
+   await page.mouse.up();
+   await page.waitForTimeout(1200);
+  }
+  const fxAfter=await page.evaluate(k=>({
+   ある:(WL.columnLayout.get(listLayoutTarget()).formulas||{})[k]!==undefined,
+   見出し:[...document.querySelectorAll('#grid thead th')].some(t=>t.dataset.col===k),
+  }),fxKey);
+  rec('見出しをドラッグしても計算列が消えない',fxAfter.ある&&fxAfter.見出し,JSON.stringify(fxAfter));
+
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
 
   console.log('\n=== SUMMARY ===');
