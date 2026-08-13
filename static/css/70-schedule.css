@@ -818,16 +818,19 @@
 /* 見出しはページをまたぐたびに刷り直す（2枚目に見出しが無いと読めない）。 */
 .sp-table thead{display:table-header-group}
 .sp-table tbody tr{page-break-inside:avoid}
-.sp-c-no{width:7mm;text-align:center}
-.sp-c-state{width:13mm;text-align:center}
-.sp-c-time{width:25mm;text-align:center;white-space:nowrap}
-.sp-c-shift{width:11mm;text-align:center}
-.sp-c-lot{width:26mm;font-weight:700}
-.sp-c-content{width:auto}
-.sp-c-est{width:13mm;text-align:right;white-space:nowrap}
+/* **幅はここに書かない**(§9.118)。列の幅は利用者が紙のレイアウトで
+   決められるので、colgroupがmmで与える。ここに残すと、CSSの指定が
+   colgroupと食い違って「設定しても変わらない列」ができる。
+   ここが持つのは揃え方と字面だけ。 */
+.sp-c-no{text-align:center}
+.sp-c-state{text-align:center}
+.sp-c-date{text-align:center;white-space:nowrap}
+.sp-c-time{text-align:center;white-space:nowrap}
+.sp-c-shift{text-align:center}
+.sp-c-lot{font-weight:700}
+.sp-c-est{text-align:right;white-space:nowrap}
 /* 記入欄は**空のまま罫線だけ**にする。薄い下線を入れると書きにくい。 */
-.sp-c-write{width:20mm}
-.sp-c-check{width:10mm}
+.sp-c-check{text-align:center}
 /* 設備停止の行は面で区別する（白黒なので色ではなく濃淡で分ける）。 */
 .sp-row-stop td{background:#f0f0f0}
 .sp-empty{text-align:center;color:#555;height:14mm}
@@ -836,7 +839,50 @@
 .sp-foot{display:flex;justify-content:space-between;gap:4mm;font-size:9px;color:#333;
  margin-top:auto;padding-top:1.5mm;border-top:0.3mm solid #000}
 .sp-foot-note{flex:1;text-align:center}
+/* ---------- 紙のレイアウト(§9.118) ----------
+   画面のタイムラインとは別に、紙へ出す列・並び・幅(mm)・見出しを決める。
+   **幅の合計と残りを常に出す**のがこの画面の要——紙幅は194mmしかなく、
+   超えると列が潰れて読めない紙が刷り上がる。刷ってから気づくのでは
+   紙も時間も無駄になる。 */
+.spl-body{display:flex;flex-direction:column;gap:var(--gap-inline);overflow:auto}
+.spl-lead{margin:0;font-size:var(--fs-sm);color:var(--muted);flex:0 0 auto}
+.spl-lead b{color:var(--ink)}
+.spl-gauge{flex:0 0 auto;display:flex;align-items:baseline;gap:var(--gap-inline);flex-wrap:wrap;
+ padding:var(--space-2);border:1px solid var(--line-soft);border-radius:var(--radius-sm);
+ background:var(--surface-2);font-size:var(--fs-sm);color:var(--ink-2)}
+.spl-gauge b{color:var(--ink);font-size:var(--fs)}
+.spl-gauge small{flex:1 0 100%;font-size:var(--fs-micro);color:var(--muted)}
+/* はみ出しは**色だけで伝えない**。文で「何mm多い」と必ず書く。 */
+.spl-gauge.is-over{border-color:var(--danger)}
+.spl-gauge.is-over small{color:var(--danger);font-weight:700}
+.spl-rows{display:flex;flex-direction:column;gap:var(--gap-hair);flex:0 0 auto}
+.spl-row{display:flex;align-items:center;gap:var(--gap-inline);
+ padding:var(--space-1) var(--space-2);border:1px solid var(--line-soft);
+ border-radius:var(--radius-sm);background:var(--surface);font-size:var(--fs-sm)}
+/* 出さない列も**一覧に残す**（消すと、足せることに気づけない）。 */
+.spl-row.is-off{background:var(--surface-2);color:var(--muted)}
+.spl-on input{width:var(--ctl-box);height:var(--ctl-box);accent-color:var(--teal);flex:none}
+/* 出どころ。**文字で書く**——「ロット番号」は予定にも内容欄にもあり、
+   名前だけでは同じ行が2つ並んで見える(実機の並びで確認した)。 */
+.spl-kind{flex:0 0 auto;min-width:calc(38px * var(--ui-scale));text-align:center;
+ font-size:var(--fs-micro);border-radius:var(--radius-pill);padding:0 var(--space-1);
+ border:1px solid var(--line-mid);color:var(--ink-3);background:var(--surface-2)}
+.spl-kind-content{border-color:var(--teal);color:var(--teal-dark)}
+.spl-kind-write{border-style:dashed}
+.spl-name{flex:0 0 auto;min-width:calc(96px * var(--ui-scale));font-weight:700;color:var(--ink-2);
+ overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.spl-row.is-off .spl-name{font-weight:400}
+.spl-alias{flex:1;min-width:calc(90px * var(--ui-scale))}
+.spl-mm{flex:0 0 auto;display:flex;align-items:center;gap:2px;color:var(--muted);
+ font-size:var(--fs-micro)}
+.spl-w{width:calc(58px * var(--ui-scale));text-align:right}
+.spl-up,.spl-down{padding:0;min-width:calc(22px * var(--ui-scale));
+ height:var(--ctl-h-xs);line-height:1;color:var(--ink-3);flex:0 0 auto}
+.spl-reset{color:var(--ink-3)}
+.sc-float-header .spl-sub{display:block;font-size:var(--fs-micro);line-height:1.5;margin-top:2px}
 /* ---------- 印刷の設定（確認モーダルの中に出る） ---------- */
+.sp-layout-open{margin-top:var(--space-3);align-self:flex-start}
+.sp-layout-note{margin:var(--space-1) 0 0;font-size:var(--fs-micro);color:var(--muted)}
 .sp-options{display:flex;flex-direction:column;gap:var(--gap-inline);margin-top:var(--space-3)}
 .sp-opt{display:flex;align-items:flex-start;gap:var(--gap-inline);cursor:pointer}
 .sp-opt input{width:var(--ctl-box);height:var(--ctl-box);margin-top:2px;accent-color:var(--teal);flex:none}

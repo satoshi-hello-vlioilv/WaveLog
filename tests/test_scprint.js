@@ -167,6 +167,132 @@ let b=null;
        return !!a&&!a.innerHTML&&getComputedStyle(a).display==='none';
       }));
 
+  /* ============================================================
+     §9.118 紙のレイアウトは画面と別に持てる
+     ============================================================ */
+  /* ---- 8) 何も設定していなければ、今までと同じ紙 ---- */
+  const base=await page.evaluate(()=>{
+   const o={includeDone:true,actualColumns:true,pageByDate:false};
+   const cat=WL.schedulePrint.paperCatalog();
+   return {列:WL.schedulePrint.paperColumns('テスト設備A',o).map(c=>c.key),
+           候補:cat.map(c=>c.key),
+           分類:[...new Set(cat.map(c=>c.kind))].sort(),
+           内容:cat.filter(c=>c.kind==='content').length};
+  });
+  rec('設定が無いときの紙は今までと同じ並び',
+      base.列.join(',')==='no,state,time,shift,lotNo,content,estimate,write:start,write:end,write:check',
+      base.列.join(','));
+  rec('紙に置ける候補に内容の項目が入る',base.内容>0,`内容項目 ${base.内容}件 / 候補 ${base.候補.length}件`);
+  rec('候補は出どころで分けてある（同名の列を見分けられる）',
+      base.分類.join(',')==='content,plan,write',base.分類.join(','));
+
+  /* ---- 9) 保存したレイアウトが紙に効く ---- */
+  const custom=await page.evaluate(async()=>{
+   const cat=WL.schedulePrint.paperCatalog();
+   const item=cat.find(c=>c.kind==='content');
+   const order=['no','date','lotNo',item?item.key:'content','write:check'];
+   const hidden=cat.map(c=>c.key).filter(k=>!order.includes(k));
+   await WL.columnLayout.save('print:テスト設備A',{
+    order:[...order,...hidden],hidden,
+    widths:{no:8,date:22,lotNo:30,'write:check':12},
+    names:{lotNo:'ロットNo.'},formats:{},rules:{},formulas:{}});
+   const o={includeDone:true,actualColumns:true,pageByDate:false};
+   const cols=WL.schedulePrint.paperColumns('テスト設備A',o);
+   const noWrite=WL.schedulePrint.paperColumns('テスト設備A',{...o,actualColumns:false});
+   return {列:cols.map(c=>c.key),見出し:cols.map(c=>c.label),幅:cols.map(c=>c.mm),
+           記入欄なし:noWrite.map(c=>c.key)};
+  });
+  rec('保存したレイアウトの列だけが紙に出る',custom.列.length===5,custom.列.join(','));
+  rec('保存した並びのとおりに出る',custom.列.join(',').startsWith('no,date,lotNo,'),custom.列.join(','));
+  rec('表示名の上書きが紙の見出しに出る',custom.見出し[2]==='ロットNo.',custom.見出し.join(','));
+  rec('幅(mm)の指定が効く',custom.幅[0]===8&&custom.幅[1]===22,JSON.stringify(custom.幅));
+  /* **紙は幅が有限**なので、載せていない列が勝手に増えないこと。
+     並びに**一度も載っていない**列で確かめる（hiddenで消した列だけを見ると、
+     「あとから内容の項目が増えたとき」を再現できず素通りする）。 */
+  const grew=await page.evaluate(async()=>{
+   const cat=WL.schedulePrint.paperCatalog();
+   const order=['no','lotNo','estimate'];          // 3列だけを保存(残りは並びに無い)
+   await WL.columnLayout.save('print:テスト設備A',{
+    order,hidden:[],widths:{},names:{},formats:{},rules:{},formulas:{}});
+   const cols=WL.schedulePrint.paperColumns('テスト設備A',
+     {includeDone:true,actualColumns:true,pageByDate:false});
+   return {列:cols.map(c=>c.key),候補:cat.length};
+  });
+  rec('並びに無い列は紙へ出ない（項目が増えても紙は変わらない）',
+      grew.列.join(',')==='no,lotNo,estimate',`${grew.列.join(',')}（候補${grew.候補}件）`);
+  rec('設定に無い列は紙へ出ない',!custom.列.includes('state')&&!custom.列.includes('content'),
+      custom.列.join(','));
+  /* 元の5列の設定へ戻す(このあとの検査が使う)。 */
+  await page.evaluate(async()=>{
+   const cat=WL.schedulePrint.paperCatalog();
+   const item=cat.find(c=>c.kind==='content');
+   const order=['no','date','lotNo',item?item.key:'content','write:check'];
+   const hidden=cat.map(c=>c.key).filter(k=>!order.includes(k));
+   await WL.columnLayout.save('print:テスト設備A',{
+    order:[...order,...hidden],hidden,
+    widths:{no:8,date:22,lotNo:30,'write:check':12},
+    names:{lotNo:'ロットNo.'},formats:{},rules:{},formulas:{}});
+  });
+  rec('「記入欄をつけない」は保存後も効く',
+      !custom.記入欄なし.some(k=>k.startsWith('write:')),custom.記入欄なし.join(','));
+
+  /* ---- 10) 組んだ紙もA4に収まる ---- */
+  const drawn=await build({includeDone:true,actualColumns:true,pageByDate:false});
+  rec('組んだレイアウトでもA4に収まる',drawn.over===0&&drawn.clipped===0&&drawn.wide===0,
+      JSON.stringify({高さ:drawn.heights,溢れ:drawn.clipped,横:drawn.wide}));
+  rec('組んだレイアウトでも行の高さは揃う',drawn.rowH.length===1,JSON.stringify(drawn.rowH));
+  /* 幅は**colgroupが持つ**（CSSに書くと利用者が変えられない）。 */
+  const widthSource=await page.evaluate(()=>{
+   const pg=document.querySelector('#schedulePrintArea .sp-page');
+   const cols=[...pg.querySelectorAll('colgroup col')];
+   const th=pg.querySelector('thead th');
+   return {col数:cols.length,先頭の幅:cols[0]?cols[0].style.width:'',
+           CSSの幅:getComputedStyle(th).width};
+  });
+  rec('幅はcolgroupがmmで与える',widthSource.col数===5&&/mm$/.test(widthSource.先頭の幅),
+      JSON.stringify(widthSource));
+  await clear();
+
+  /* ---- 11) レイアウトを組む画面 ---- */
+  await page.evaluate(()=>WL.schedulePrint.openLayoutPanel('テスト設備A'));
+  await page.waitForSelector('#schedulePrintLayoutPanel:not([hidden])',{timeout:8000});
+  const panel=await page.evaluate(()=>{
+   const p=document.getElementById('schedulePrintLayoutPanel');
+   const r=p.getBoundingClientRect();
+   return {行:p.querySelectorAll('.spl-row').length,
+           選択:p.querySelectorAll('.spl-row:not(.is-off)').length,
+           分類の印:p.querySelectorAll('.spl-kind').length,
+           目盛:document.getElementById('splGauge').textContent.replace(/\s+/g,' ').trim(),
+           画面内:r.left>=0&&r.top>=0&&r.right<=innerWidth+1&&r.bottom<=innerHeight+1};
+  });
+  rec('候補が全部並ぶ（出していない列も消さない）',
+      panel.行===base.候補.length,`${panel.行}行 / 候補${base.候補.length}件`);
+  rec('選んでいる列が先に並ぶ',panel.選択===5,String(panel.選択));
+  rec('行ごとに出どころが文字で出る',panel.分類の印===panel.行,`${panel.分類の印}/${panel.行}`);
+  rec('レイアウトの画面は画面の中に開く',panel.画面内,JSON.stringify(panel));
+  /* **要点**: 幅の合計と残りが見える。刷ってから気づくのでは紙が無駄になる。 */
+  rec('幅の合計と残りが出る',/幅の合計/.test(panel.目盛)&&/残り/.test(panel.目盛),
+      panel.目盛.slice(0,90));
+
+  const over=await page.evaluate(()=>{
+   const w=document.querySelector('#splRows [data-w]');
+   w.value='190';w.dispatchEvent(new Event('input',{bubbles:true}));
+   const g=document.getElementById('splGauge');
+   return {印:g.classList.contains('is-over'),文:g.querySelector('small').textContent.trim()};
+  });
+  rec('紙幅を超えたら「何mm多いか」を言う',over.印&&/はみ出/.test(over.文)&&/\d+mm/.test(over.文),
+      over.文.slice(0,60));
+  const reset=await page.evaluate(()=>{
+   document.getElementById('splReset').click();
+   return [...document.querySelectorAll('#splRows .spl-row:not(.is-off) .spl-name')].length;
+  });
+  rec('既定に戻せる',reset===10,`${reset}列`);
+  /* 「やめる」は保存しない＝紙は組んだままのはず。 */
+  await page.evaluate(()=>document.getElementById('splCancel').click());
+  rec('やめても保存済みの紙は変わらない',
+      (await page.evaluate(()=>WL.schedulePrint.paperColumns('テスト設備A',
+        {includeDone:true,actualColumns:true,pageByDate:false}).length))===5);
+
   console.log('\n=== SUMMARY ===');
   const ng=R.filter(x=>!x.ok);console.log(`${R.length-ng.length}/${R.length} passed`);
   ng.forEach(x=>console.log(' -',x.n,x.d||''));
@@ -178,6 +304,9 @@ let b=null;
   process.exit(2);
  }
  async function cleanup(){
+  /* 紙のレイアウトを保存するので必ず消す(残すと次の実行が既定でなくなる)。 */
+  try{await page.evaluate(async()=>{await WL.columnLayout.save('print:テスト設備A',
+    {order:[],hidden:[],widths:{},names:{},formats:{},rules:{},formulas:{}})})}catch(e){}
   try{await setMode('edit')}catch(e){}
   if(b)await b.close().catch(()=>{});
  }
