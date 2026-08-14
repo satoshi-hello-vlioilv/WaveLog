@@ -363,6 +363,16 @@
   });
  }
 
+ /* **表示サイズを変えたら測り直す**（§9.130）。幅は「そのときの文字サイズで
+    測った結果」なので、特大にすると文字だけが1.4倍になり、**選択肢が器から
+    溢れる**（実測: オペレータの一覧が横に12px。`test_fit`が捕まえた）。
+    表示サイズは`html[data-ui-size]`で伝わる（`base.js`）。 */
+ function watchUiSize(){
+  new MutationObserver(()=>{
+   requestAnimationFrame(()=>{try{fitControlWidths()}catch(e){}});
+  }).observe(document.documentElement,{attributes:true,attributeFilter:['data-ui-size']});
+ }
+
  /* 品質情報の本文は`.value`への代入で入るので、**paintが先に走ることが
     ある**（読み込みの順は場面によって違う）。器が出る瞬間にもう一度
     測り直せば、どちらの順でも正しい大きさになる。**onclickを奪わない**
@@ -536,7 +546,7 @@
  }
 
  WL.onReady(()=>{
-  bind();bindPrepMore();watchModal();watchInputs();watchProgress();watchWorkTabs();
+  bind();bindPrepMore();watchModal();watchInputs();watchProgress();watchWorkTabs();watchUiSize();
   const el=shell();if(el&&!el.classList.contains('mstep-1'))el.classList.add('mstep-1');
   paint();
  });
