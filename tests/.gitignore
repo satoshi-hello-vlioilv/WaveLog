@@ -4,3 +4,8 @@
 # 実行前に退避したパス設定。正常終了時に消える。残っている=前回が復元前に
 # 終わったということなので、次の実行がこれを見て元へ戻す。
 .saved_paths.json
+# 手元の確認スクリプト(scratchpad の probe.sh)側の同じもの。役割も寿命も
+# .saved_paths.json と同じなので、同じ理由でコミットしない。
+.probe_paths.json
+# 確認スクリプトの二重起動防止ロック(実行中のみ存在)。tests/.run_all.lock と同じ。
+.probe.lock
