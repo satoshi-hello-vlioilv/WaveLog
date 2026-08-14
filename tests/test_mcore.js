@@ -71,6 +71,12 @@ let b=null,page=null;
   await page.waitForFunction(()=>document.querySelector('#saveOverlay')?.hidden!==false,null,{timeout:30000}).catch(()=>{});
   await page.waitForFunction(()=>typeof S!=='undefined'&&!!S.measure,null,{timeout:25000});
 
+  /* 測定画面は「準備」から始まる（§9.123）。転送を受けるのは②測定なので、
+     ここで段を移す。**段の移動で受信欄のDOMは作り直されない**——それを
+     確かめるのは後半の「同じノードのままか」。 */
+  await page.evaluate(()=>WL.measureSteps.go('2'));
+  await page.waitForTimeout(500);
+
   /* ---- 受信の帯は「測定器を使う項目」でだけ出る ----
      既定の選択は母材で、母材は手動入力の項目（画面にも「母材は手動入力です」
      と書いてある）。このとき受信の帯は `display:none` で、受信欄は 0×0 になる。

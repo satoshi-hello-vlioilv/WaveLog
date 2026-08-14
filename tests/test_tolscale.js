@@ -40,6 +40,11 @@ let b=null;
   await page.waitForFunction(()=>!document.querySelector('#measureModal')?.hidden,null,{timeout:20000});
   await page.waitForFunction(()=>document.querySelector('#saveOverlay')?.hidden!==false,
    null,{timeout:30000}).catch(()=>{});
+  /* 公差数直線は測定パネルの中にある。測定画面は「準備」から始まる（§9.123）
+     ので、②測定へ移らないと**高さ0のまま測ることになる**（隠れている要素を
+     測って「上限が下限より上にない」と読み違える）。 */
+  await page.evaluate(()=>WL.measureSteps.go('2'));
+  await page.waitForTimeout(400);
 
   const inj=await page.evaluate(([base,plus,minus,vals])=>{
    const s=S.measure.source=S.measure.source||{};
