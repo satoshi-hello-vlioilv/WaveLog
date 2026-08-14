@@ -620,6 +620,94 @@ let b=null,page=null;
   /* 2列組なので左端は2種類（左列・右列）。3種類以上＝そろっていない。 */
   rec('情報欄の値の左端がそろっている',L.値の左端.length<=2,JSON.stringify(L.内訳));
 
+  /* ---- 11) 入れ物は中身の長さから決める（§9.130） ----
+     実測で、「-」しか入っていないプルダウンが239px、1桁しか入らない欄が
+     239px、日時の欄が494px、「異常情報なし」の6文字に1401×280pxだった。
+     **中身の実寸と画面の実寸を突き合わせる**——DOMの数や有無を見る網では、
+     器がグリッドの1マスぶんに伸びていても素通りする。
+     天井は80px（＝1マスぶん伸びれば必ず超える。矢印・余白の見積もりの
+     ずれでは超えない）。 */
+  const SLACK=80;
+  const wideBoxes=slack=>page.evaluate(sl=>{
+   const ctx=document.createElement('canvas').getContext('2d');
+   const out=[];
+   document.querySelectorAll('.measure-shell input,.measure-shell select,.measure-shell textarea')
+    .forEach(el=>{
+     const r=el.getBoundingClientRect();
+     if(r.width<1||r.height<1)return;
+     const cs=getComputedStyle(el);
+     if(cs.visibility==='hidden')return;
+     ctx.font=`${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+     const w=t=>ctx.measureText(t).width;
+     let need=0;
+     if(el.tagName==='SELECT'){
+      /* 選択肢の最長＋矢印（size付きは縦スクロールバー）。 */
+      for(const o of el.options)need=Math.max(need,w(o.text));
+      need+=28;
+     }else if(el.tagName==='TEXTAREA'){
+      for(const ln of (el.value||'').split('\n'))need=Math.max(need,w(ln));
+      need+=18;
+     }else if(el.type==='datetime-local'){
+      need=w('2026/08/14 15:04:05')+34;
+     }else{
+      /* **空の入力欄は「0文字」ではない。** これから入る値が収まる大きさが
+         要る。桁数の分かるもの（max付きの数値）はその桁数、測定値の欄は
+         `0000.00`、自由記述は24文字を下限にする（それ以上は折り返さない
+         1行なので、長くしても読みやすくならない）。 */
+      const free=el.type==='text'&&!el.classList.contains('numeric-input')
+        &&!el.closest('.strip-row,.thickness-vertical,.measure-grid-block');
+      const sample=el.value||el.placeholder
+        ||(el.type==='number'&&el.max?'0'.repeat(String(el.max).length)
+          :free?'あ'.repeat(24):'0000.00');
+      need=w(sample)+(el.type==='number'?30:20);
+     }
+     need+=parseFloat(cs.paddingLeft)+parseFloat(cs.paddingRight);
+     const over=Math.round(r.width-need);
+     if(over>sl)out.push(`${el.id||el.className||el.type}(${el.tagName}/${el.type}):幅${Math.round(r.width)}/要${Math.round(need)}`);
+    });
+   return out;
+  },slack);
+  const setType=async t=>{
+   await page.evaluate(v=>{const s=document.querySelector('#measureType');
+     s.value=v;s.dispatchEvent(new Event('change',{bubbles:true}))},t);
+   await page.waitForTimeout(500);
+  };
+  for(const st of ['1','2','3']){
+   await go(st);
+   const over=await wideBoxes(SLACK);
+   rec(`${st==='1'?'①':st==='2'?'②':'③'}に中身より${SLACK}px以上広い欄が無い`,
+       over.length===0,over.join(' / '));
+  }
+  /* **②は入力内容で中身がまるごと変わる**ので、代表的な3つで見る。
+     1つだけ見ると、そのとき選ばれていた項目しか網に掛からない
+     （最初はそうなっており、板厚の3点入力と備考欄を取りこぼした）。 */
+  await go('2');
+  for(const t of ['板厚/板幅','揃い/肉厚/長さ','母材']){
+   await setType(t);
+   const over=await wideBoxes(SLACK);
+   rec(`②「${t}」に中身より${SLACK}px以上広い欄が無い`,over.length===0,over.join(' / '));
+  }
+  /* 高さも同じ。読み取り専用の表示欄をpxで固定すると、6文字に280pxを
+     与えたままになる。**行数（rows）で決まっていること**を見る。 */
+  await go('2');
+  const qbox=await page.evaluate(()=>{
+   const el=document.getElementById('motherQualityInfo');
+   if(!el)return{無し:true};
+   const r=el.getBoundingClientRect(),cs=getComputedStyle(el);
+   return{幅:Math.round(r.width),高:Math.round(r.height),rows:el.rows,
+     行:(el.value||'').split('\n').length,
+     行高:Math.round(parseFloat(cs.lineHeight)||parseFloat(cs.fontSize)*1.4),
+     見:r.width>0&&r.height>0};
+  });
+  if(qbox.見){
+   /* 器の高さ ≒ rows×1行＋枠。行数ぶんの2倍を超えていたら「高すぎる」。 */
+   rec('品質情報の高さが中身の行数どおり',
+       qbox.高<=qbox.rows*qbox.行高+40&&qbox.rows<=Math.max(2,qbox.行+1),
+       JSON.stringify(qbox));
+   rec('品質情報の幅が中身なりに収まる',qbox.幅<=760,JSON.stringify(qbox));
+  }
+  await go('1');
+
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
 
   console.log('\n=== SUMMARY ===');
