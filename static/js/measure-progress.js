@@ -171,44 +171,19 @@ function chipsHtml(p){
  }).join('');
 }
 
-/* 操作レールのサマリ。チップと項目を重複させず、全体の充足と丈位置の内訳、
-   作業時間の記録有無だけを出す(完了ボタンの直上で最後に確認する用途)。 */
-function railHtml(p,m){
- const pct=p.activeCount?Math.round(p.doneCount/p.activeCount*100):0;
- const skipped=p.items.filter(x=>x.excluded).length;
- const c=countsOf(m);
- const perLength=Array.from({length:c.lengthSlots},(_,li)=>{
-  let f=0,t=0;
-  p.items.forEach(x=>{if(x.excluded||!x.perLength.length)return;const s=x.perLength[li];if(s){f+=s.filled;t+=s.total}});
-  return{label:lengthLabel(li),done:t>0&&f>=t,partial:f>0&&f<t};
- });
- const wt=m.workTime||{};
- const wtState=wt.startAt&&wt.endAt?'done':wt.startAt||wt.endAt?'part':'todo';
- return `<div class="rail-progress-bar"><i style="width:${pct}%"></i></div>`
-  +`<div class="rail-progress-line"><b>${p.doneCount}/${p.activeCount}</b> 項目`
-  +(skipped?`<span class="rail-progress-skip">対象外 ${skipped}</span>`:'')+`</div>`
-  +`<div class="rail-progress-lengths">`+perLength.map(x=>
-    `<span class="rail-len rail-len--${x.done?'done':x.partial?'part':'todo'}" title="丈位置 ${esc(x.label)}">${esc(x.label)}</span>`).join('')+`</div>`
-  +`<div class="rail-progress-line rail-progress-worktime rail-progress-worktime--${wtState}">作業時間 ${wtState==='done'?'記録済み':wtState==='part'?'途中':'未記録'}</div>`;
-}
-
-function lengthLabel(li){
- const el=$('#lengthPos');
- if(el&&el.options[li])return el.options[li].value;
- return String(li+1);
-}
-
 /* ヘッダー固定のミニ進捗表示。操作レール(#railProgress)は左端の縦長パネル
    内にあり、レールが長くなる・画面を狭くすると視界から外れ得る。ヘッダーは
    常に画面最上部に固定されているため、タブや入力内容を切り替えていても
    進捗(何項目済みか)が常に見える場所として、同じ集計をもう一箇所だけ
    ごく小さく複製する。 */
+/* **数字はここに出さない**（§9.129）。同じ「N/M 項目」が段ナビにも③の
+   確認表にも出ており、3つ並んでいた。ここはバー＝割合という別の表現に
+   徹する（正確な数はtitleで読める）。 */
 function headProgressHtml(p){
  const pct=p.activeCount?Math.round(p.doneCount/p.activeCount*100):0;
  const cls=pct>=100?'done':pct>0?'part':'todo';
  return `<span class="measure-head-progress-label">進捗</span>`
-  +`<span class="measure-head-progress-bar measure-head-progress-bar--${cls}"><i style="width:${pct}%"></i></span>`
-  +`<span class="measure-head-progress-frac">${p.doneCount}/${p.activeCount}</span>`;
+  +`<span class="measure-head-progress-bar measure-head-progress-bar--${cls}"><i style="width:${pct}%"></i></span>`;
 }
 
 function refreshMeasureProgress(){
@@ -224,10 +199,13 @@ function refreshMeasureProgress(){
   select.classList.add('visually-hidden-control');
   select.closest('label')?.classList.add('major-list--chips');
  }
- const rail=$('#railProgress');
- if(rail)rail.innerHTML=railHtml(p,m);
+ /* 操作レールの進捗ブロックは廃止した（§9.129）。同じ数字がヘッダー・
+    段ナビ・ここの3箇所に出ており、③には完了前の確認表、②には丈位置
+    くらべができて、レール側が担っていたものはすべて別の場所にある。
+    `railHtml()`は残さない——使われない組み立てが残ると、次に読む人が
+    「どこかで使っているはず」と探すことになる。 */
  const head=$('#headProgress');
- if(head)head.innerHTML=headProgressHtml(p);
+ if(head){head.innerHTML=headProgressHtml(p);head.title=`測定進捗 ${p.doneCount}/${p.activeCount} 項目`}
 }
 
 /* ---------- 対象外の切替 ---------- */

@@ -546,6 +546,80 @@ let b=null,page=null;
   rec('②へ戻ると受信欄にフォーカスが戻る（転送を受けられる）',
       keep.focus==='deviceInput',JSON.stringify(keep));
 
+  /* ---- 10) 見栄え: 重複・整列・枠の深さ（§9.129） ----
+     「同じ情報を重ねない」「情報欄は縦にそろえる」「枠を何重にもしない」を
+     **実測で**固定する。言葉で決めても、次に足す人には伝わらない。 */
+  await go('1');
+  const look=()=>page.evaluate(()=>{
+   const shell=document.querySelector('.measure-shell');
+   const vis=el=>{const r=el.getBoundingClientRect();
+     return r.width>0&&r.height>0&&getComputedStyle(el).visibility!=='hidden'};
+   /* 「N/M 項目」の形をした表示が画面にいくつあるか。役割が違っても、
+      同じ数字が3つ並べば読む側は数えることになる。 */
+   const frac=[...shell.querySelectorAll('*')].filter(el=>{
+    if(!vis(el))return false;
+    /* **日付（08/14）を拾わないこと。** 「N/M」そのもの、または
+       「N/M 項目」だけを数える（最初に書いた緩い正規表現は予定日を
+       拾って誤検知した）。 */
+    const own=[...el.childNodes].filter(n=>n.nodeType===3).map(n=>n.textContent).join('').trim();
+    return /^\d+\s*\/\s*\d+(\s*項目)?$/.test(own);
+   }).map(el=>el.className||el.tagName);
+   /* **枠の深さ。** 四辺すべてに線がある器を「枠」と数え、入れ子の深さを
+      見る。入力欄・ボタンは中身の的なので数えない（枠を持って当然）。 */
+   /* 「まとまりの枠」＝四辺に線がある**器**。キーの案内(kbd)・凡例の小さな
+      四角・数直線の目盛りラベルのように、**中身を囲っていない小さな印**は
+      数えない（最初に書いた判定はそれらを拾い、②だけ21個と出て意味の
+      ある数にならなかった）。入力欄・ボタンは的なので対象外。 */
+   const isFrame=el=>{
+    if(/^(INPUT|SELECT|TEXTAREA|BUTTON|KBD)$/.test(el.tagName))return false;
+    if(!el.children.length)return false;
+    const r=el.getBoundingClientRect();
+    if(r.width<120||r.height<32)return false;
+    const c=getComputedStyle(el);
+    return ['Top','Right','Bottom','Left']
+      .every(k=>parseFloat(c['border'+k+'Width'])>=1&&c['border'+k+'Style']!=='none');
+   };
+   /* **深さだけでは足りない**（実測: 公差カードに枠を戻しても深さは2の
+      ままで、注入が素通りした）。「同時に見えている枠の数」を数える
+      ——横に並ぶ枠が増えるほど画面は騒がしくなる。表のセルは器ごとに
+      1つと数える（罫線は表の中の仕切りで、まとまりの枠ではない）。 */
+   let deepest=0,deepestPath='';const frames=[];
+   [...shell.querySelectorAll('*')].forEach(el=>{
+    if(!vis(el)||!isFrame(el))return;
+    if(el.closest('table')&&/^(TD|TH|TR|THEAD|TBODY)$/.test(el.tagName))return;
+    frames.push(el.className||el.tagName);
+    let d=0,path=[],e=el;
+    while(e&&e!==shell){if(isFrame(e)){d++;path.unshift(e.className||e.tagName)}e=e.parentElement}
+    if(d>deepest){deepest=d;deepestPath=path.join(' > ')}
+   });
+   /* **情報欄の値の左端。** 左列・右列それぞれで1種類であること
+      （ラベル列が可変だと項目ごとにずれる）。 */
+   const outs=[...document.querySelectorAll('.basic-card .info-grid > .field:not(.full) output')]
+     .filter(vis).map(el=>({左:Math.round(el.getBoundingClientRect().left),
+       名:el.parentElement.querySelector('label')?.textContent.trim()||''}));
+   return{分数:frac,枠の深さ:deepest,深いところ:deepestPath,枠の数:frames.length,枠:frames,
+     値の左端:[...new Set(outs.map(x=>x.左))].sort((a,b)=>a-b),
+     内訳:outs.map(x=>x.名+'='+x.左)};
+  });
+  const L=await look();
+  await go('2');const L2=await look();
+  await go('3');const L3=await look();
+  await go('1');
+  /* ヘッダーはバー（割合）だけにした。数字は段ナビ＝1箇所。 */
+  rec('同じ「N/M」を画面に重ねない',L.分数.length<=1,JSON.stringify(L.分数));
+  /* 枠は「まとまり1段＋中身」まで。3段は「枠の中の枠の中の枠」。 */
+  rec('枠の入れ子は2段まで',L.枠の深さ<=2,`${L.枠の深さ}段: ${L.深いところ}`);
+  /* **枠の数は上限で固定する**（§9.129）。深さだけでは足りない——公差
+     カードに枠を戻しても深さは2のままで、注入が素通りした。**横に並ぶ
+     枠が増えるほど画面は騒がしくなる**ので、いまの数を天井にする。
+     増やしたくなったら、まず何を減らせるかを考えること。 */
+  const CAP={'①':4,'②':4,'③':6};
+  [['①',L],['②',L2],['③',L3]].forEach(([k,x])=>{
+   rec(`${k}のまとまりの枠は${CAP[k]}つまで`,x.枠の数<=CAP[k],`${x.枠の数}つ: ${x.枠.join(' / ')}`);
+  });
+  /* 2列組なので左端は2種類（左列・右列）。3種類以上＝そろっていない。 */
+  rec('情報欄の値の左端がそろっている',L.値の左端.length<=2,JSON.stringify(L.内訳));
+
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
 
   console.log('\n=== SUMMARY ===');
