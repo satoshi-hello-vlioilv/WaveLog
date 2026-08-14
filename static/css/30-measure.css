@@ -141,7 +141,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
   background:#f5f5f3;border-radius:var(--radius-md);box-shadow:0 20px 70px #0005;
   display:grid;
   grid-template-columns:160px minmax(0,1fr);
-  grid-template-rows:62px auto auto auto minmax(0,1fr);
+  grid-template-rows:62px auto auto minmax(0,1fr);
   overflow:hidden;
   font-size:var(--fs);
 }
@@ -182,7 +182,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    切り詰められない値にする。以前は136px(ボタン実幅109px)で、主要導線の
    「保存して一覧へ」までが「保存して一...」と省略されていた。 */
 .action-rail{
-  grid-row:5;width:160px;display:flex;flex-direction:column;gap:var(--gap-section);
+  grid-row:4;width:160px;display:flex;flex-direction:column;gap:var(--gap-section);
   padding:9px 8px;background:#d7e5ee;border-right:1px solid #9fb2bf;overflow-y:auto;
 }
 .rail-group{display:grid;gap:var(--gap-inline)}
@@ -202,10 +202,16 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    しても動かないこと**に価値があるので、ここへ段ごとの情報を混ぜない。
    進捗・保存状態はヘッダー(.measure-head)に常時出ているため重ねない
    （同じものが2箇所にあること自体が認知コスト）。 */
+.measure-bar{
+  grid-column:1/-1;display:flex;align-items:stretch;min-width:0;
+  background:var(--surface);border-bottom:1px solid var(--line);
+}
+/* **1本の帯に収める。** 段と文脈で2段に分けると、その2行ぶん本体が縮み、
+   表示サイズ特大で左ペインが溢れた(実測22px)。縦は測定表のものなので、
+   枠は最小限しか取らない。 */
 .measure-context{
-  grid-column:1/-1;display:flex;align-items:center;gap:var(--space-5);
-  padding:0 16px;min-height:var(--ctl-h-sm);
-  background:var(--surface-2);border-bottom:1px solid var(--line-soft);
+  display:flex;align-items:center;gap:var(--space-5);
+  margin-left:auto;padding:0 16px;min-width:0;
   font-size:var(--fs-sm);overflow:hidden;white-space:nowrap;
 }
 .mctx-item{display:flex;align-items:baseline;gap:var(--space-2);min-width:0}
@@ -214,10 +220,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 
 /* 段ナビ。**関門ではなくタブ**なので、いつでも押せる見た目にする。
    状態は色だけで伝えず、必ず文字（済／未／件数）を添える。 */
-.measure-steps{
-  grid-column:1/-1;display:flex;align-items:stretch;gap:0;
-  background:var(--surface);border-bottom:1px solid var(--line);
-}
+.measure-steps{display:flex;align-items:stretch;gap:0;flex:0 0 auto}
 .measure-steps .mstep{
   display:flex;align-items:center;gap:var(--space-2);
   height:var(--ctl-h-md);padding:0 var(--space-5);
@@ -242,7 +245,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .measure-steps .mstep.is-current .mstep-state{color:var(--teal-dark)}
 /* 進めない理由。言えることがあるときだけ出す（常設の注意書きは読まれない）。 */
 .mstep-note{
-  display:flex;align-items:center;margin-left:auto;padding:0 16px;
+  display:flex;align-items:center;padding:0 16px;min-width:0;flex:0 1 auto;
   color:var(--warn-fg);font-size:var(--fs-sm);font-weight:700;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
@@ -268,7 +271,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 
 /* --- 本体 3 ペイン（比率 3 : 4 : 4） --- */
 .measure-body{
-  grid-row:5;grid-column:2;
+  grid-row:4;grid-column:2;
   display:grid;
   grid-template-columns:minmax(0,3fr) minmax(0,4fr) minmax(0,4fr);
   min-height:0;width:100%;max-width:100%;overflow:hidden;
