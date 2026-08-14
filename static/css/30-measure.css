@@ -202,7 +202,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    しても動かないこと**に価値があるので、ここへ段ごとの情報を混ぜない。
    進捗・保存状態はヘッダー(.measure-head)に常時出ているため重ねない
    （同じものが2箇所にあること自体が認知コスト）。 */
-:root{--measure-items-w:19rem}
+:root{--measure-items-w:19rem;--strip-row-h:calc(var(--fs-sm) * var(--lh) + var(--space-1) * 2 + 1px)}
 .measure-bar{
   grid-column:1/-1;display:flex;align-items:stretch;min-width:0;
   background:var(--surface);border-bottom:1px solid var(--line);
@@ -332,6 +332,13 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 /* 「入力内容」「丈位置」は**②で使う道具**なので①には出さない。1回決める
    だけのものと、測りながら何度も切り替えるものを同じ場所に並べない。 */
 .measure-shell.mstep-1 .selectors>[data-prep="step2"]{display:none}
+/* リストの高さは①では**`size`（行数）に任せる**（§9.126）。px指定の
+   273pxは約8.8行という半端な値で、**最後の行が途中で切れた**うえ、
+   1行のコントロール2つと同じ行に並ぶため**隣の下に237pxの穴**ができて
+   いた（実測）。`size="7"`どおりなら切れず、穴も54px減る。
+   **行数は減らさないこと**——オペレータは実データで100人を超える。 */
+.measure-shell.mstep-1 .selectors .major-list{grid-template-rows:20px auto}
+.measure-shell.mstep-1 .selectors .major-list select{height:auto}
 /* その他の設定は畳む。**畳んだままでも値は読める**——要約に現在値を出し、
    既定と違うものには印を付ける(隠すなら、隠したものが何かは書く)。 */
 .measure-shell.mstep-1 .selectors:not(.prep-open)>label[data-prep="usual"]{display:none}
@@ -742,17 +749,38 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .compact-value-mark{position:absolute;left:50%;width:9px;height:9px;border-radius:var(--radius-round);transform:translate(-50%,-50%);box-shadow:0 0 0 1px #fff;transition:left .15s ease}
 .compact-value-mark.ok{background:var(--teal)}
 .compact-value-mark.ng{background:#d02e2e}
-/* 40 条ストリップ（20 行 × 2 列） */
+/* 条ストリップ（§9.126）。**列も行も、使う条数ぶんだけ。**
+   以前は`repeat(2,1fr)`×20行が固定で、DOMを条数ぶんに減らした後も
+   **器だけが40条ぶんの場所を取り続けていた**——②を全幅にしても右の
+   1/4（実測430px）が空き、ブロックの中も8条で340pxの白が残った。
+   列数はJSが`one-strip`で伝える（`stripColumnCount()`の1箇所で決める）。 */
 .compact-width{height:100%;display:flex;flex-direction:column}
 .compact-width .compact-width-body{flex:1;min-height:0}
 /* 板厚/板幅以外の測定種（ラテラルボー・バリ等）の単独ブロック */
 .compact-other{height:100%;display:flex;flex-direction:column;overflow:hidden}
 .compact-other .compact-width-body{flex:1;min-height:0}
+/* 1列のときは**公差と入力表を隣り合わせにし、余りは右端へ寄せる**。
+   最初は空いた幅を公差側へ回したが、**公差数直線は縦向き**なので幅を
+   渡しても使われず、空きが「右端」から「数直線と入力表のあいだ」へ
+   移っただけだった（実測900px）。**一緒に読むものを引き離さない。**
+   幅は2列のときの見え方（公差568px / 表416px）に合わせてある。 */
+.compact-width-body.one-strip{
+  grid-template-columns:minmax(0,36rem) minmax(0,26rem);justify-content:start;
+}
 .compact-strip-layout{
   display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(3px,.35vw,6px);
   width:100%;max-width:100%;min-width:0;height:100%;overflow:hidden;
 }
-.strip-column{display:grid;grid-template-columns:minmax(26px,18%) minmax(0,82%);grid-template-rows:20px repeat(20,minmax(0,1fr));min-width:0;max-width:100%}
+.one-strip .compact-strip-layout{grid-template-columns:minmax(0,1fr)}
+/* 行は`grid-auto-rows`で content ぶんだけ作り、**高さの上限は器のほうで
+   決める**（`--strip-rows`はJSが条数から入れる）。器いっぱいに伸ばすと
+   1条のロットで1行が700pxになり、20行に固定すると8条で12行ぶん白が残る。 */
+.strip-column{
+  display:grid;grid-template-columns:minmax(26px,18%) minmax(0,82%);
+  grid-template-rows:20px;grid-auto-rows:minmax(0,1fr);align-content:start;
+  min-width:0;max-width:100%;height:100%;
+  max-height:calc(20px + var(--strip-rows,20) * var(--strip-row-h));
+}
 .strip-column .strip-head{grid-column:1/-1;display:grid;grid-template-columns:minmax(26px,18%) minmax(0,82%);height:20px;font-weight:800;background:#f7fafb;border:1px solid #aebdc2}
 .strip-head span{display:flex;align-items:center;justify-content:center}
 .strip-row{display:contents}
