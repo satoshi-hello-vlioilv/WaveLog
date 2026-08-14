@@ -188,6 +188,9 @@ $('#deviceInput').onkeydown=e=>{
  }
  else if((e.key==='Delete'||e.key==='Backspace')&&!e.target.value){e.preventDefault();processDeviceInput('#DeleteMode#')}
  else if(e.key==='ArrowDown'||(e.key==='Enter'&&!e.target.value)){e.preventDefault();advanceWidth();focusCurrent()}
+ /* 受信欄から手を離さずに項目・丈位置を巡回する(§9.124)。割り当ての定義は
+    `WL.measureNav.handleKey`の1箇所で、セル側からも同じものを呼ぶ。 */
+ else if(WL.measureNav&&WL.measureNav.handleKey(e,!e.target.value)){/* 済 */}
  else if(e.key==='ArrowUp'){e.preventDefault();const seq=widthSequence(Math.max(1,+$('#horizontalCount').value||1),$('#widthOrder').value,$('#widthDirection').value),pos=seq.indexOf(S.measure.settings.wStep||0);S.measure.settings.wStep=seq[(pos-1+seq.length)%seq.length];focusCurrent()}
 };
 $('#lengthPos').onchange=()=>{renderMeasureGrid();$('#deviceInput').focus()};
@@ -203,7 +206,7 @@ function bindMeasureInputs(){
   // フォーカスが移動した場合も、強調表示(.current)をそのセルへ
   // 追従させる(自動モードは受信欄にフォーカスを固定するため対象外)。
   x.addEventListener('focus',()=>{if(S.measure.settings.inputMode!=='manual')return;syncStepFor(x);focusCurrent()});
-  x.oninput=()=>{m.measurements[x.dataset.mkey][+x.dataset.i][+x.dataset.j]=x.value;judgeInput(x,x.dataset.mkey,Number(x.value),+x.dataset.j);renderStats();markDirty()};x.onkeydown=e=>{if(S.measure.settings.inputMode!=='manual'){e.preventDefault();return}if(e.key==='Delete'){x.value='';x.oninput()}if(e.key==='Enter'){e.preventDefault();advanceWidth();focusCurrent()}}})
+  x.oninput=()=>{m.measurements[x.dataset.mkey][+x.dataset.i][+x.dataset.j]=x.value;judgeInput(x,x.dataset.mkey,Number(x.value),+x.dataset.j);renderStats();markDirty()};x.onkeydown=e=>{if(WL.measureNav&&WL.measureNav.handleKey(e,!x.value))return;if(S.measure.settings.inputMode!=='manual'){e.preventDefault();return}if(e.key==='Delete'){x.value='';x.oninput()}if(e.key==='Enter'){e.preventDefault();advanceWidth();focusCurrent()}}})
 
  document.querySelectorAll('[data-mkey="thickness"],[data-mkey="width"]').forEach(el=>{
   const previousBlur=el.onblur;

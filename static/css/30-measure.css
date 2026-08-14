@@ -274,7 +274,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .measure-shell.mstep-2 .center-pane{height:100%;overflow:hidden}
 .measure-shell.mstep-2 .center-pane>.selectors{height:100%;display:block}
 .measure-shell.mstep-2 #measureTypeGroup{
-  display:grid;grid-template-rows:auto minmax(0,1fr);height:100%;
+  display:grid;grid-template-rows:auto minmax(0,1fr) auto;height:100%;
 }
 .measure-shell.mstep-2 #measureTypeGroup .type-chips{
   height:100%;max-height:none;overflow:auto;justify-content:flex-start;
@@ -282,6 +282,21 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 /* **項目は中身ぶんの高さにする。** 器の高さを配ると1項目が異様に背高くなり、
    8つ並んでいるという事実が読み取りにくくなる(押す的の大きさは足りている)。 */
 .measure-shell.mstep-2 #measureTypeGroup .type-chip{flex:0 0 auto}
+/* **キーは画面に書く。** 覚えさせない——3組しか空いていない以上、
+   その3組は迷わず使えないと意味がない。②測定でだけ出す(他の段では
+   このキーは効かない。効かない案内を置かない)。 */
+.mnav-hint{display:none}
+.measure-shell.mstep-2 #measureTypeGroup .mnav-hint{
+  display:flex;flex-wrap:wrap;gap:var(--space-1) var(--space-3);
+  margin:var(--space-2) 0 0;padding:var(--space-2) 0 0;
+  border-top:1px solid var(--line-soft);
+  color:var(--ink-soft);font-size:var(--fs-micro);
+}
+.mnav-hint span{display:inline-flex;align-items:center;gap:var(--space-1);white-space:nowrap}
+.mnav-hint kbd{
+  padding:1px var(--space-1);border:1px solid var(--line-mid);border-radius:var(--radius-xs);
+  background:var(--surface);color:var(--ink-2);font-family:inherit;font-size:var(--fs-micro);
+}
 .measure-shell.mstep-3 .center-pane,
 .measure-shell.mstep-3 .right-pane{display:none}
 /* 面積は「頻度 × 重要度」で配る。②測定は作業時間の9割を占めるので、

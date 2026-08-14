@@ -142,6 +142,65 @@ let b=null,page=null;
   const m2b=await seen();
   rec('測定器を使う項目に変えたら理由は消える',(m2b.理由||'')==='',m2b.理由||'(空)');
 
+  /* ---- 5b) 受信欄から手を離さずに巡回できる（§9.124） ----
+     利用者はマウス＆キーボードで作業する。空いているキーは3組しかないので、
+     その3組が確実に効くこと、そして**フォーカスが常に「実際に入力する場所」へ
+     載る**ことを固定する（転送の項目＝受信欄、手動の項目＝セル）。 */
+  const where=()=>page.evaluate(()=>{
+   const a=document.activeElement;
+   return {項目:document.querySelector('#measureType').value,
+     丈:document.querySelector('#lengthPos')?.value||'',
+     居場所:!a?'なし':(a.id||(a.dataset&&a.dataset.mkey?'セル':a.tagName))};
+  });
+  await page.evaluate(()=>{const s=document.querySelector('#measureType');
+    s.value='板厚/板幅';s.dispatchEvent(new Event('change',{bubbles:true}))});
+  await page.waitForTimeout(500);
+  const k0=await where();
+  await page.keyboard.press('ArrowRight');await page.waitForTimeout(500);
+  const k1=await where();
+  rec('→ で次の項目へ移る',k1.項目!==k0.項目,`${k0.項目} → ${k1.項目}`);
+  rec('手動入力の項目ではセルへフォーカスが載る',k1.居場所==='セル',JSON.stringify(k1));
+  await page.keyboard.press('ArrowRight');await page.waitForTimeout(500);
+  const k2=await where();
+  rec('セルからでも → が効く（キーの割り当ては1箇所）',k2.項目!==k1.項目,
+      `${k1.項目} → ${k2.項目}`);
+  rec('転送で入れる項目では受信欄へフォーカスが載る',k2.居場所==='deviceInput',
+      JSON.stringify(k2));
+  await page.keyboard.press('ArrowLeft');await page.waitForTimeout(500);
+  rec('← で前の項目へ戻る',(await where()).項目===k1.項目,JSON.stringify(await where()));
+  const b4=await where();
+  await page.keyboard.press('PageDown');await page.waitForTimeout(500);
+  const af=await where();
+  rec('PageDown で丈位置が移る',af.丈!==b4.丈,`${b4.丈} → ${af.丈}`);
+  await page.keyboard.press('F2');await page.waitForTimeout(600);
+  const f2=await where();
+  rec('F2 で未測定の項目へ飛ぶ',f2.項目!==af.項目,`${af.項目} → ${f2.項目}`);
+
+  /* **打っている最中の ← → は奪わない。** 空でないときは文字の中を動く。 */
+  const typing=await page.evaluate(async()=>{
+   const el=document.getElementById('deviceInput');
+   if(!el||el.offsetParent===null)return{対象外:true};
+   el.focus();el.value='26.1';el.setSelectionRange(4,4);
+   const before=document.querySelector('#measureType').value;
+   el.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true,cancelable:true}));
+   await new Promise(r=>setTimeout(r,300));
+   const after=document.querySelector('#measureType').value;
+   el.value='';
+   return {項目が変わらない:before===after,前:before,後:after};
+  });
+  rec('数値を打っている最中は ← で項目を変えない',
+      typing.対象外===true||typing.項目が変わらない===true,JSON.stringify(typing));
+
+  /* キーは画面に書く（覚えさせない）。 */
+  const hint=await page.evaluate(()=>{
+   const h=document.querySelector('.mnav-hint');
+   if(!h)return null;const r=h.getBoundingClientRect();
+   return {文:h.textContent.replace(/\s+/g,' ').trim(),
+           見えている:r.width>0&&r.height>0&&getComputedStyle(h).display!=='none'};
+  });
+  rec('キーの案内が画面に出ている',
+      !!hint&&hint.見えている&&/F2/.test(hint.文)&&/項目/.test(hint.文),JSON.stringify(hint));
+
   /* ---- 6) ③確認 ---- */
   await go('3');
   const m3=await seen();

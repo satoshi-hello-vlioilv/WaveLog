@@ -137,6 +137,107 @@
 
  WL.measureSteps={go,current:()=>current,refresh:paint,reset};
 
+ /* ---------- 受信欄から手を離さずに巡回する（§9.124） ----------
+    利用者はマウス＆キーボードで作業する。だが**空いているキーは3組しかない**
+    ——`Tab`は測定器の確定、`Enter`は手動確定、`↑↓`は条の移動、
+    `Delete/BS`は削除モードで埋まっており、`Ctrl`系はブラウザの既定
+    ショートカット（タブ切替など）に取られるため`measurement-input.js`が
+    捨てている。残っていたのが `→ ←` `PageUp/PageDown` `F2`。
+
+    **段の移動はキーボード化しない。** ①→②、②→③は作業中に各1回しか
+    起きないので、数少ない空き席を割く価値がない。 */
+ const sel=id=>document.getElementById(id);
+ /* 項目や丈位置を変えると測定表が描き直され、**その拍子に受信欄から
+    フォーカスが外れる**（実測: 1回目の → は効くが、2回目以降が死ぬ）。
+    こちらから変えたのだから、こちらで戻す。**受信欄は作り直していない**
+    ので、戻すだけでよい（§9.122）。描き直しの後に回すため次のタスクで実行。 */
+ /* 項目を移ったあと、**入力できる場所へフォーカスを置き直す**。
+    どこへ置くかは項目で変わる（`measurement-view.js`の
+    `AUTO_ONLY_MEASURE_TYPES` / `MANUAL_ONLY_MEASURE_TYPES`）:
+      板厚/板幅・バリ            … 測定器からの転送 → **受信欄**
+      ラテラルボー・テレスコープ・巻ずれ・フラットネス … 手動入力 → **セル**
+      母材・揃い/肉厚/長さ        … 手動入力（別のパネル）→ 触らない
+    **描き直しが終わってから置く。** 実測すると、項目を変えた直後の受信欄は
+    高さ0で、寸法ゼロの要素はフォーカスを保持できないためブラウザが body へ
+    落とす。そのタイミングで`focus()`を呼んでも効かない（呼んだ直後も body の
+    ままだった）。`requestAnimationFrame`2回でレイアウトの確定を待つ。 */
+ function restoreEntryFocus(){
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+   if(!measuring())return;
+   const box=document.getElementById('inputStatusBox');
+   const inp=document.getElementById('deviceInput');
+   /* 受信の帯が出ている＝転送で入れる項目。**帯の有無で見る**——受信欄
+      そのものは転送専用で1×1に潰してあり、高さでは判断できない。 */
+   if(box&&inp&&box.offsetParent!==null&&S.measure.settings?.inputMode!=='manual'){
+    if(document.activeElement!==inp)inp.focus();
+    return;
+   }
+   /* 手動入力の項目は、いま入れるセル（`.current`）へ。ここが空だと
+      「移ったのにどこへ打てばいいか分からない」状態になる。 */
+   /* **readOnlyは属性ではなくプロパティで見る**——`applyInputProtection()`は
+      `el.readOnly=...`を代入するだけで属性を付け外ししないため、
+      `:not([readonly])`では実態と食い違う。 */
+   const cell=[...document.querySelectorAll('#measurementGrid input.current')]
+     .find(x=>!x.readOnly&&!x.disabled);
+   if(cell&&document.activeElement!==cell)cell.focus();
+  }));
+ }
+
+ function cycleSelect(id,dir){
+  const el=sel(id);
+  if(!el||!el.options||!el.options.length)return false;
+  const n=el.options.length;
+  el.selectedIndex=(el.selectedIndex+dir+n)%n;
+  el.dispatchEvent(new Event('change',{bubbles:true}));
+  restoreEntryFocus();
+  return true;
+ }
+ /* 未測定の項目のうち、いまの**次**のものへ移る（一巡したら先頭へ）。
+    いまの項目の中の次の空欄は転送のたびに自動で進むので、ここが担うのは
+    **項目をまたぐ移動**だけ。 */
+ function nextUnmeasured(){
+  const el=sel('measureType');
+  if(!el)return false;
+  let prog=null;
+  try{if(typeof measureProgress==='function')prog=measureProgress()}catch(e){}
+  if(!prog)return false;
+  const names=[...el.options].map(o=>o.value);
+  const rest=new Set(prog.unmeasured.map(x=>x.name));
+  const from=el.selectedIndex;
+  for(let k=1;k<=names.length;k++){
+   const i=(from+k)%names.length;
+   if(rest.has(names[i])){
+    el.selectedIndex=i;el.dispatchEvent(new Event('change',{bubbles:true}));
+    restoreEntryFocus();
+    return true;
+   }
+  }
+  return false;   // 全部済んでいる: 何も動かさない（黙って別の場所へ飛ばさない）
+ }
+ /* **キーの割り当ては1箇所だけ。** 受信欄とセルの両方から呼ぶので、
+    ここに書いて両方が使う（2箇所に書くと、片方だけ直した状態になる）。
+    `empty`＝いま打っている欄が空か。空でなければ ← → は文字の中を動かす
+    （手入力中のカーソル移動を奪わない）。
+    扱ったら true を返す——呼び出し側はそれを見て既定の処理を止める。 */
+ function handleKey(e,empty){
+  if(!e||e.ctrlKey||e.altKey||e.metaKey)return false;
+  const k=e.key;
+  if(k==='F2'){e.preventDefault();nextUnmeasured();return true}
+  if(k==='PageDown'){e.preventDefault();cycleSelect('lengthPos',1);return true}
+  if(k==='PageUp'){e.preventDefault();cycleSelect('lengthPos',-1);return true}
+  if((k==='ArrowRight'||k==='ArrowLeft')&&empty){
+   e.preventDefault();cycleSelect('measureType',k==='ArrowRight'?1:-1);return true;
+  }
+  return false;
+ }
+ WL.measureNav={
+  nextItem:()=>cycleSelect('measureType',1),
+  prevItem:()=>cycleSelect('measureType',-1),
+  nextLength:()=>cycleSelect('lengthPos',1),
+  prevLength:()=>cycleSelect('lengthPos',-1),
+  nextUnmeasured,handleKey,
+ };
+
  /* ---------- いつ描き直すか ----------
     **文脈バーは「常に正しい」ことが値打ち**なので、中身が変わる経路を
     ぜんぶ拾う。1つでも漏らすと、古い値を見せたまま平然と並ぶ——
