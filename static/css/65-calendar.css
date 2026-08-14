@@ -82,7 +82,12 @@
    スクロールバーが出てしまっていた。内容に合わせて自然に伸び、外側の
    左ペイン(.left-pane、overflow:auto)側で必要な時だけスクロールする
    ようにする(.work-time-panelの高さ調整と同じ考え方)。 */
-.split-pane{height:auto;min-height:290px}
+/* **下限は置かない**（§9.131）。290pxの下限は「分割データが入り切らない」
+   ための保険だったが、分割無しのロットでは**1行の文字に290pxの空箱**が
+   残っていた（実測。①準備で幅分割情報を常時出すようにして表面化した）。
+   高さは中身なりで、入り切らないぶんは外側の情報の壁（`.left-pane`）が
+   スクロールする。 */
+.split-pane{height:auto;min-height:0}
 @media(max-width:1000px){.cal-layout{grid-template-columns:1fr}.cal-detail{border-left:0;border-top:1px solid var(--line);max-height:320px}#calSummary{grid-template-columns:repeat(2,minmax(0,1fr))}}
 /* ---------- 作業スケジュール(順次作業表示、docs/SCHEDULE_MODE_DESIGN.md §9) ---------- */
 .sc-panel{flex:1;min-height:0;margin:9px 14px;display:flex;flex-direction:column;background:#f7fafb;border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden}

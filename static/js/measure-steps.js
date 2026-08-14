@@ -226,8 +226,31 @@
   restoreEntryFocus();
  });
 
+ /* ---------- 情報の壁を開く（§9.131） ----------
+    基本情報・品質等級・幅分割情報・作業時間・測定データ分析は、タブ／
+    サブタブで**1枚ずつしか出せなかった**。畳んでいた理由は場所が無いこと
+    だったが、実測すると場所は余っていた（①で253px、③で619px）。
+    タブを外して全部出す——どの段でどれを見せるかはCSSが決めるので、
+    ここは**hidden属性を外すだけ**。
+    `[hidden]{display:none}`はutilityレイヤ（最後）にあり、CSSからは
+    打ち消せない（§9.59「hidden属性は必ず効かせる」）ので、属性側で開ける。
+    デバッグ面だけは常に閉じたまま（普段見るものではない）。 */
+ /* **同じ値なら触らない。** `el.hidden=true`は属性が既にあっても
+    `setAttribute`を通るので、DOM仕様では**値が同じでも変更記録が積まれる**。
+    見張り（watchInfoWall）と組み合わせると記録→再実行→記録…がマイクロ
+    タスクで回り続け、**イベントループが返ってこなくなる**——実際にこれで
+    起動オーバーレイが外れず、画面が出ないまま固まった。 */
+ const setHidden=(el,v)=>{if(el.hidden!==v)el.hidden=v};
+ function openInfoWall(){
+  document.querySelectorAll('.measure-shell [data-infopanel]').forEach(p=>setHidden(p,false));
+  document.querySelectorAll('.measure-shell [data-leftpanel]').forEach(p=>{
+   setHidden(p,p.dataset.leftpanel==='debug');
+  });
+ }
+
  function paint(){
   const el=shell();if(!el)return;
+  try{openInfoWall()}catch(e){}
   const states=stepStates();
   STEP_KEYS.forEach(k=>{
    const btn=document.querySelector(`.mstep[data-mstep="${k}"]`);
@@ -276,30 +299,79 @@
   ctx.font=`${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
   return ctx.measureText(text).width;
  }
- /* 測り直すのは**選択肢か文字サイズが変わったときだけ**。オペレータは
-    実データで171件あり、毎回測ると入力のたびに171回の計測が走る。 */
- const fitSig=new WeakMap();
- function fitSelectWidth(id,extra){
-  const el=sel(id);
-  if(!el||!el.options||!el.options.length)return;
+ /* ---------- 幅は規格へ丸め、群の中でそろえる（§9.131） ----------
+    §9.130で中身から決めるようにしたが、**中身に忠実な幅をそのまま使うと
+    1画面に何種類もの幅が生まれる**（実測: ①準備で19種類）。隣どうしの
+    右端がばらばらだと、そろっていないという印象はむしろ強くなる。
+    直したのは2点:
+      ① 測った幅を`--w-*`の**直近上位へ丸める**（幅の種類が5段に収まる）
+      ② **同じ群の中は群の最大へそろえる**——縦に並ぶものの幅が同じで
+         あることが「整列して見える」条件そのもの。
+    単位はem（文字で決まるものなので）。表示サイズは文字側が持つため、
+    **特大にしても溢れない**（§9.130で12px溢れた事故の根も断てる）。 */
+ const W_EM=[4.5,7,11,15,22,32];
+ const snapEm=(need,fs)=>{
+  const em=need/(fs||14);
+  for(const s of W_EM)if(em<=s+0.01)return s;
+  return W_EM[W_EM.length-1];
+ };
+ /* 中身から必要な幅（px）を出す。**空欄を0文字と数えない**（§9.130）——
+    これから入る値が収まる大きさが要る。 */
+ function needWidth(el){
   const cs=getComputedStyle(el);
-  const sig=el.options.length+'|'+el.options[0].text+'|'
-    +el.options[el.options.length-1].text+'|'+cs.fontSize;
-  if(fitSig.get(el)===sig)return;
-  fitSig.set(el,sig);
   let w=0;
-  for(const o of el.options)w=Math.max(w,textWidth(el,o.text));
-  const pad=parseFloat(cs.paddingLeft)+parseFloat(cs.paddingRight)+2;
-  el.style.maxWidth=Math.ceil(w+pad+extra)+'px';
+  if(el.tagName==='SELECT'){
+   for(const o of el.options)w=Math.max(w,textWidth(el,o.text));
+  }else if(el.type==='number'){
+   const digits=String(el.max||'').length||4;
+   w=textWidth(el,'0'.repeat(Math.max(digits,3))+'.00');
+  }else if(el.type==='datetime-local'){
+   w=textWidth(el,'2026/08/14 15:04:05');
+  }else{
+   w=Math.max(textWidth(el,el.value||''),textWidth(el,el.placeholder||''),
+              textWidth(el,'あ'.repeat(8)));
+  }
+  const pad=parseFloat(cs.paddingLeft)+parseFloat(cs.paddingRight)
+    +parseFloat(cs.borderLeftWidth)+parseFloat(cs.borderRightWidth);
+  /* プルダウンの矢印・一覧のスクロールバーのぶん。 */
+  const extra=el.tagName==='SELECT'?(el.size>1?20:26):2;
+  return w+pad+extra;
  }
- /* 一覧(size付き)は矢印が無い代わりに縦スクロールバーが出る。 */
- const FIT_LISTS=['operator','lengthPos'];
- const FIT_MENUS=['inspector','crewSize','innerDiameter','spool',
-   'thicknessGauge','widthGauge','unwind','widthOrder','widthDirection',
-   'burr','coilStop','toleranceSource'];
+ /* 群＝「縦に並べて読むひとかたまり」。①準備の見出し（誰が測るか／測定表の
+    形／使う機材／その他）と、パネルごとの入力欄がそれにあたる。 */
+ const W_GROUPS=[
+  ['who',   ['inspector','crewSize']],
+  ['shape', ['verticalCount','horizontalCount']],
+  ['gear',  ['innerDiameter','spool','thicknessGauge','widthGauge']],
+  ['usual', ['unwind','widthOrder','widthDirection','burr','coilStop']],
+  /* オペレータと丈位置は**別の群**。どちらも`size`付きの一覧だが、
+     一緒に並ぶことが無い（オペレータは①、丈位置は②）ので、そろえる意味が
+     無い。まとめると人名の長さ（実データで171人）が丈位置にも効いてしまい、
+     「1(頭)」しか入らない欄が154pxになる。 */
+  ['op',    ['operator']],
+  ['len',   ['lengthPos']],
+  ['tol',   ['toleranceSource']],
+  ['time',  ['workStartAt','workEndAt']],
+ ];
+ /* 測り直すのは**選択肢か文字サイズが変わったときだけ**。オペレータは
+    実データで171件あり、毎回測ると入力のたびに171回の計測が走る。
+    署名は群ごとに持つ（1つでも変わったら群ごと測り直す）。 */
+ const fitSig=new WeakMap();
+ const groupSig={};
+ function fitGroup(key,ids){
+  const els=ids.map(sel).filter(x=>x&&!x.disabled);
+  if(!els.length)return;
+  const sig=els.map(el=>(el.options?el.options.length+':'+(el.options[0]||{}).text
+     +':'+(el.options[el.options.length-1]||{}).text:el.type+':'+el.max)
+     +':'+getComputedStyle(el).fontSize).join('|');
+  if(groupSig[key]===sig)return;
+  groupSig[key]=sig;
+  let em=0;
+  for(const el of els)em=Math.max(em,snapEm(needWidth(el),parseFloat(getComputedStyle(el).fontSize)));
+  for(const el of els)el.style.maxWidth=em+'em';
+ }
  function fitControlWidths(){
-  FIT_LISTS.forEach(id=>fitSelectWidth(id,20));
-  FIT_MENUS.forEach(id=>fitSelectWidth(id,28));
+  W_GROUPS.forEach(([k,ids])=>fitGroup(k,ids));
   READ_TEXT.forEach(([id,max])=>fitTextBox(id,max));
  }
 
@@ -311,7 +383,6 @@
     **値は`.value`への代入で入るので変化を検知できない**（DOMは変わらない）。
     段の描き直しと、**出る瞬間（作業タブの切り替え）**の両方で測り直す。 */
  const READ_TEXT=[['motherQualityInfo',16],['qualityInfo',20]];
- const READ_TEXT_EM=40;
  function fitTextBox(id,maxRows){
   const el=sel(id);
   if(!el||el.tagName!=='TEXTAREA')return;
@@ -326,9 +397,11 @@
   const lines=text.split('\n');
   let longest=0;
   for(const ln of lines)longest=Math.max(longest,textWidth(el,ln));
-  /* 縦スクロールバーのぶんを見込む（出ないときは余白になるだけ）。 */
-  const inner=Math.min(longest,fs*READ_TEXT_EM);
-  el.style.maxWidth=Math.ceil(inner+frame+18)+'px';
+  /* 本文の器も**規格へ丸める**（§9.131）。縦スクロールバーのぶんを
+     見込んでから丸めるので、丸めた幅の中に必ず収まる。 */
+  const em=snapEm(longest+frame+18,fs);
+  el.style.maxWidth=em+'em';
+  const inner=em*fs-frame-18;
   let rows=0;
   for(const ln of lines){
    const w=textWidth(el,ln);
@@ -377,6 +450,17 @@
     ある**（読み込みの順は場面によって違う）。器が出る瞬間にもう一度
     測り直せば、どちらの順でも正しい大きさになる。**onclickを奪わない**
     ようaddEventListenerで足し、切り替え後の値で測るため1フレーム待つ。 */
+ /* 情報の壁は**閉じられたら開き直す**。`renderMeasurement()`が開くたびに
+    `[data-leftpanel]`を1枚だけ残して畳むため（作業時間タブの初期化）、
+    段の描き直しの前に閉じられていることがある。同じ値の代入では変化
+    記録が出ないので、この見張りは回り続けない。 */
+ function watchInfoWall(){
+  const pane=document.querySelector('.measure-shell .left-pane');
+  if(!pane)return;
+  new MutationObserver(()=>{try{openInfoWall()}catch(e){}})
+   .observe(pane,{attributes:true,attributeFilter:['hidden'],subtree:true});
+ }
+
  function watchWorkTabs(){
   document.querySelectorAll('[data-worktab]').forEach(b=>{
    b.addEventListener('click',()=>{
@@ -546,7 +630,8 @@
  }
 
  WL.onReady(()=>{
-  bind();bindPrepMore();watchModal();watchInputs();watchProgress();watchWorkTabs();watchUiSize();
+  bind();bindPrepMore();watchModal();watchInputs();watchProgress();watchWorkTabs();
+  watchUiSize();watchInfoWall();
   const el=shell();if(el&&!el.classList.contains('mstep-1'))el.classList.add('mstep-1');
   paint();
  });

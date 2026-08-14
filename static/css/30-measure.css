@@ -202,7 +202,8 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    しても動かないこと**に価値があるので、ここへ段ごとの情報を混ぜない。
    進捗・保存状態はヘッダー(.measure-head)に常時出ているため重ねない
    （同じものが2箇所にあること自体が認知コスト）。 */
-:root{--measure-items-w:19rem;--strip-row-h:calc(var(--fs-sm) * var(--lh) + var(--space-1) * 2 + 1px)}
+:root{--measure-items-w:19rem;--measure-ref-w:24rem;
+ --strip-row-h:calc(var(--fs-sm) * var(--lh) + var(--space-1) * 2 + 1px)}
 .measure-bar{
   grid-column:1/-1;display:flex;align-items:stretch;min-width:0;
   background:var(--surface);border-bottom:1px solid var(--line);
@@ -257,10 +258,72 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    実機で転送が止まる（§9.122）。隠れているあいだフォーカスは外れるが、
    ②へ戻ったときに measure-steps.js が戻す。 */
 .measure-shell.mstep-1 .right-pane{display:none}
-.measure-shell.mstep-2 .left-pane{display:none}
-/* ②測定は「いま入れる場所」と「あと何が残っているか」の2つだけを言う。
-   入力内容(8項目)は状態付きの一覧として左へ細く残し、**それ以外の設定は
-   出さない**(1回決めるだけのものは①準備のもの)。項目の一覧は
+
+/* ---------- 情報の壁（§9.131） ----------
+   基本情報・品質等級・幅分割情報は3枚のタブ、作業時間・測定データ分析は
+   2枚のサブタブに畳まれていた。**畳む理由は場所が無いことだったが、
+   実測すると場所は余っていた**（①で253px、③で619px）。タブを外して
+   同時に出すと、5枚ぶんの情報が1画面に載り、タブという操作自体が消える。
+   置き場所は**explicitに決める**——自動配置に任せると、背の高いカード
+   （基本情報）の隣が引き伸ばされて縦の空きが戻る。 */
+.measure-shell.mstep-1 .left-pane,
+.measure-shell.mstep-2 .left-pane,
+.measure-shell.mstep-3 .left-pane{
+  display:grid;grid-auto-rows:min-content;align-content:start;
+  gap:var(--gap-section);
+}
+/* **面は中身なりの高さにする。** 既定の`stretch`だと、同じ行にある背の高い
+   面（品質等級・分析）に合わせて隣が引き伸ばされ、中身のない空きが器の中に
+   残る（実測: 幅分割188px・作業時間127px）。 */
+.measure-shell.mstep-1 .left-pane>*,
+.measure-shell.mstep-2 .left-pane>*,
+.measure-shell.mstep-3 .left-pane>*{align-self:start}
+/* タブは中身を全部出すので**ボタンごと消す**（押せるのに何も起きない
+   ボタンを残さない）。 */
+.measure-shell.mstep-1 .tabs,.measure-shell.mstep-1 .subtabs,
+.measure-shell.mstep-2 .tabs,.measure-shell.mstep-2 .subtabs,
+.measure-shell.mstep-3 .tabs,.measure-shell.mstep-3 .subtabs{display:none}
+/* ① 基本情報（背が高い）を1列目に置き、2列目へ品質等級・幅分割・作業時間。
+   **最後に「余り行」(1fr)を置き、背の高いカードのぶんはそこへ吸わせる。**
+   これが無いと、カードが跨いだ行が**等分に引き伸ばされ**、右列の3枚の
+   あいだに同じだけの隙間が空く（実測: 幅分割の器が280pxの空箱になった）。 */
+.measure-shell.mstep-1 .left-pane{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  grid-template-rows:min-content min-content min-content minmax(0,1fr);
+}
+.measure-shell.mstep-1 #basicInfo{grid-column:1;grid-row:1/-1;align-self:start}
+.measure-shell.mstep-1 #qualityGradePanel{grid-column:2;grid-row:1}
+.measure-shell.mstep-1 .split-pane{grid-column:2;grid-row:2}
+.measure-shell.mstep-1 .work-time-panel{grid-column:2;grid-row:3}
+/* 測定データ分析は**測ってからでないと中身が無い**ので①には出さない。 */
+.measure-shell.mstep-1 .analysis,.measure-shell.mstep-1 .debug-pane{display:none}
+/* ② 3列目は**根拠**だけ。1列（狭い）なので縦に積む。 */
+.measure-shell.mstep-2 .left-pane{
+  grid-template-columns:minmax(0,1fr);
+  grid-template-rows:min-content min-content minmax(0,1fr);
+  grid-column:3;grid-row:1;
+}
+.measure-shell.mstep-2 #qualityGradePanel,
+.measure-shell.mstep-2 .work-time-panel,
+.measure-shell.mstep-2 .analysis,
+.measure-shell.mstep-2 .debug-pane{display:none}
+/* ③ 確認シートの下段。基本情報／品質等級・幅分割／作業時間・分析の3列。 */
+.measure-shell.mstep-3 .left-pane{
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  grid-template-rows:min-content min-content minmax(0,1fr);
+  grid-column:1/-1;grid-row:2;
+}
+.measure-shell.mstep-3 #basicInfo{grid-column:1;grid-row:1/-1;align-self:start}
+.measure-shell.mstep-3 #qualityGradePanel{grid-column:2;grid-row:1}
+.measure-shell.mstep-3 .split-pane{grid-column:2;grid-row:2}
+.measure-shell.mstep-3 .work-time-panel{grid-column:3;grid-row:1}
+.measure-shell.mstep-3 .analysis{grid-column:3;grid-row:2}
+.measure-shell.mstep-3 .debug-pane{display:none}
+/* ②測定は「いま入れる場所」「あと何が残っているか」「根拠」の3つ。
+   入力内容(8項目)は状態付きの一覧として左へ細く残し、**設定は出さない**
+   (1回決めるだけのものは①準備のもの)。根拠(基本情報・幅分割情報)は
+   §9.131で3列目へ足した——母材・揃いのとき右が483〜542px空いており、
+   そこで見る値がタブの裏にあった。項目の一覧は
    measure-progress.js が作る`#measureTypeChips`をそのまま使う——同じものを
    もう1つ作ると、状態の集計が2箇所になる。 */
 .measure-shell.mstep-2 .center-pane{display:block;padding-right:0}
@@ -315,27 +378,49 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    ②の`.selectors>*`の規則を壊さないため。§9.122）。 */
 .prep-head{display:none}
 .measure-shell.mstep-1 .selectors>.prep-head{
-  display:flex;align-items:baseline;gap:var(--space-2);grid-column:1/-1;
+  display:flex;align-items:baseline;gap:var(--space-2);grid-column:2/-1;
   height:auto;margin:var(--space-3) 0 0;padding:0 0 var(--space-1);
   border:0;border-bottom:1px solid var(--line-soft);border-radius:0;
   background:transparent;box-shadow:none;
   color:var(--ink-2);font-size:var(--fs-sm);font-weight:800;text-align:left;
 }
-.measure-shell.mstep-1 .selectors>.prep-head[data-prep="who"]{margin-top:0;order:1}
-.measure-shell.mstep-1 .selectors>label[data-prep="who"]{order:2}
-.measure-shell.mstep-1 .selectors>.prep-head[data-prep="shape"]{order:3}
-.measure-shell.mstep-1 .selectors>label[data-prep="shape"]{order:4}
-.measure-shell.mstep-1 .selectors>.prep-head[data-prep="gear"]{order:5}
-.measure-shell.mstep-1 .selectors>label[data-prep="gear"]{order:6}
-.measure-shell.mstep-1 .selectors>.prep-head[data-prep="usual"]{order:7}
-.measure-shell.mstep-1 .selectors>label[data-prep="usual"]{order:8}
+.measure-shell.mstep-1 .selectors>.prep-head[data-prep="who"]{margin-top:0}
 /* 「入力内容」「丈位置」は**②で使う道具**なので①には出さない。1回決める
    だけのものと、測りながら何度も切り替えるものを同じ場所に並べない。 */
 .measure-shell.mstep-1 .selectors>[data-prep="step2"]{display:none}
-/* ①は**12列 × 各3列**にして4つずつそろえる（§9.129）。6列×span2だと
-   1行3つで、4つある「使う機材」が 3＋1 に割れて縦の線がそろわなかった。 */
-.measure-shell.mstep-1 .selectors{grid-template-columns:repeat(12,minmax(0,1fr))}
-.measure-shell.mstep-1 .selectors>label{grid-column:span 3}
+/* ---------- ①の割り付けは**1つずつ明示する**（§9.131） ----------
+   以前は12列の自動配置に任せていたが、自動配置は**空いたところから詰める**
+   ため、背の高いオペレータ一覧の隣に穴が空き、群の境目も列の境目と
+   ずれていた。ここは項目が固定の帳票なので、行と列を明示するのがいちばん
+   素直で、結果として**縦線が5本に収まる**。
+   列は「オペレータ（一覧・背が高い）｜項目4つぶん」。使う機材が4つあるので
+   4列——3列だと 3＋1 に割れて縦線がそろわない（§9.129）。
+   列幅は**5等分**。基準の1920×1080では1列が約162pxで`--w-md`(154px)を
+   満たすので、コントロールは規格幅のまま並び、**縦線が5本に固定される**。 */
+.measure-shell.mstep-1 .selectors{
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  grid-auto-rows:min-content;align-content:start;
+  gap:var(--gap-inline) var(--gap-section);
+}
+.measure-shell.mstep-1 .selectors>label{grid-column:auto}
+.measure-shell.mstep-1 .selectors>.prep-head[data-prep="who"]{grid-column:2/-1;grid-row:1}
+.measure-shell.mstep-1 .selectors>[data-f="operator"]{grid-column:1;grid-row:1/span 6}
+.measure-shell.mstep-1 .selectors>[data-f="inspector"]{grid-column:2;grid-row:2}
+.measure-shell.mstep-1 .selectors>[data-f="crewSize"]{grid-column:3;grid-row:2}
+.measure-shell.mstep-1 .selectors>.prep-head[data-prep="shape"]{grid-column:2/-1;grid-row:3}
+.measure-shell.mstep-1 .selectors>[data-f="verticalCount"]{grid-column:2;grid-row:4}
+.measure-shell.mstep-1 .selectors>[data-f="horizontalCount"]{grid-column:3;grid-row:4}
+.measure-shell.mstep-1 .selectors>.prep-head[data-prep="gear"]{grid-column:2/-1;grid-row:5}
+.measure-shell.mstep-1 .selectors>[data-f="innerDiameter"]{grid-column:2;grid-row:6}
+.measure-shell.mstep-1 .selectors>[data-f="spool"]{grid-column:3;grid-row:6}
+.measure-shell.mstep-1 .selectors>[data-f="thicknessGauge"]{grid-column:4;grid-row:6}
+.measure-shell.mstep-1 .selectors>[data-f="widthGauge"]{grid-column:5;grid-row:6}
+.measure-shell.mstep-1 .selectors>.prep-head[data-prep="usual"]{grid-column:1/-1;grid-row:7}
+.measure-shell.mstep-1 .selectors>[data-f="unwind"]{grid-column:1;grid-row:8}
+.measure-shell.mstep-1 .selectors>[data-f="widthOrder"]{grid-column:2;grid-row:8}
+.measure-shell.mstep-1 .selectors>[data-f="widthDirection"]{grid-column:3;grid-row:8}
+.measure-shell.mstep-1 .selectors>[data-f="burr"]{grid-column:4;grid-row:8}
+.measure-shell.mstep-1 .selectors>[data-f="coilStop"]{grid-column:5;grid-row:8}
 /* リストの高さは①では**`size`（行数）に任せる**（§9.126）。px指定の
    273pxは約8.8行という半端な値で、**最後の行が途中で切れた**うえ、
    1行のコントロール2つと同じ行に並ぶため**隣の下に237pxの穴**ができて
@@ -367,11 +452,42 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 
 .measure-shell.mstep-3 .center-pane,
 .measure-shell.mstep-3 .right-pane{display:none}
-/* 面積は「頻度 × 重要度」で配る。②測定は作業時間の9割を占めるので、
-   このときだけ本体を1枚で使う。 */
-.measure-shell.mstep-1 .measure-body{grid-template-columns:minmax(0,3fr) minmax(0,4fr)}
-.measure-shell.mstep-2 .measure-body{grid-template-columns:minmax(0,var(--measure-items-w)) minmax(0,1fr)}
-.measure-shell.mstep-3 .measure-body{grid-template-columns:minmax(0,4fr) minmax(0,5fr)}
+/* ---------- 段ごとの割り付け（§9.131 ゼロベースの組み直し） ----------
+   実測（1920×1080）では、①で左ペインの下に253px、②で母材・揃いのとき
+   右ペインの下に483〜542px、③で確認表の下に619pxの空きがあった。
+   **意味のない余白は「器が中身より大きい」ではなく「置くべきものを
+   別の場所（タブの裏）へ隠している」ことの現れ**だったので、隠していた
+   ものを出して埋める。面積の配分（頻度×重要度）は変えない——測定は
+   いちばん広い列のままで、余った幅にだけ根拠を置く。 */
+/* ①「このロットは何か」(左) → 「どう測るか」(右)。**割合で分ける**
+   （1:1）。基準の1920×1080では設定側が約873pxになり、規格幅5列
+   （--w-md × 5 ＋ 余白）がちょうど収まる。
+   **remで決め打ちにしないこと**——画面が狭い端末（1600px）や表示サイズを
+   大きくしたときに、設定側が一定のまま情報側だけが縮み、基本情報が
+   258pxまで潰れて**コース欄と品質等級が溢れた**（`test_course`・`test_fit`が
+   実際に落ちた）。割合なら両方が同じだけ縮む。
+   **`max-content`も使えない**——`.center-pane`は`container-type:inline-size`
+   （`.row-title`のコンテナクエリ）を持つので**中身から幅が決まらず**、
+   実測で17pxまで潰れて設定が画面から消えた。 */
+.measure-shell.mstep-1 .measure-body{
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+}
+.measure-shell.mstep-1 .left-pane{grid-column:1;grid-row:1}
+.measure-shell.mstep-1 .center-pane{grid-column:2;grid-row:1}
+/* ②「どこを測るか」→「入れる」→「根拠」。3列目は基本情報と幅分割情報で、
+   どちらも測っている最中に見る値（板厚/板幅の指示値・子ロット幅）。
+   **行も列も明示する**——自動配置に任せると、列を指定した1枚だけが別の行へ
+   落ちて上下2段になった（実測: 左535px / 中右385px）。 */
+.measure-shell.mstep-2 .measure-body{
+  grid-template-columns:minmax(0,var(--measure-items-w)) minmax(0,1fr) minmax(0,var(--measure-ref-w));
+  grid-template-rows:minmax(0,1fr);
+}
+.measure-shell.mstep-2 .center-pane{grid-column:1;grid-row:1}
+.measure-shell.mstep-2 .right-pane{grid-column:2;grid-row:1}
+/* ③は1枚の確認シート。上に「あと何が残っているか」、下に「何が記録されたか」。 */
+.measure-shell.mstep-3 .measure-body{
+  grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);
+}
 /* 危ない操作を主要動線に置かない。「このデータを削除」は③でだけ出す
    （今は「測定を完了」の真下にあり、押し間違いの的になっていた）。 */
 .measure-shell:not(.mstep-3) .rail-bottom{display:none}
@@ -382,16 +498,26 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    完了ボタンは操作レールに常時出ているので**ここには置かない**
    （同じボタンが2箇所にあること自体が認知コスト）。 */
 .finish-check{display:none}
+/* ③は**1枚の確認シート**（§9.131）。以前は左半分に確認表、右半分に基本情報
+   という2枚組で、確認表の下に619pxの空きがあった（実測）。上下に分けると
+   「あと何が残っているか（上）→ 何が記録されたか（下）」という読み順に
+   なり、下段を3列で使い切れる。 */
 .measure-shell.mstep-3 .finish-check{
-  display:block;order:-1;min-width:0;max-width:100%;
-  padding:var(--space-2);overflow:auto;border-right:1px solid var(--line);
+  display:block;min-width:0;max-width:100%;grid-column:1/-1;grid-row:1;
+  padding:var(--space-2);overflow:auto;
+  border-right:0;border-bottom:1px solid var(--line);
 }
 .fc-head{display:flex;align-items:baseline;gap:var(--space-3);margin:0 0 var(--space-2)}
 .fc-head h3{margin:0;font-size:var(--fs-lg);font-weight:800}
 .fc-head .fc-verdict{font-size:var(--fs-sm);font-weight:800}
 .fc-verdict--ready{color:var(--success)}
 .fc-verdict--rest{color:var(--warn-fg)}
-.fc-list{display:grid;gap:var(--gap-tight);margin:0;padding:0;list-style:none}
+/* 横に並べる（§9.131）。1件ずつ縦に積むと、4件でも横1747pxを1件が占め、
+   「測定 0/8 項目」の右に1400pxの空白が残る。 */
+.fc-list{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(22rem,1fr));
+  gap:var(--gap-inline);margin:0;padding:0;list-style:none;align-items:start;
+}
 .fc-row{
   display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;
   gap:var(--space-2) var(--space-3);
@@ -515,12 +641,20 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .dimension>*{padding:3px 2px;border:0;border-left:1px solid var(--line-soft);border-top:1px solid var(--line-soft);text-align:center;white-space:nowrap}
 .dimension>*:nth-child(6n+1){border-left:0}
 .dimension>*:nth-child(-n+6){border-top:0}
-.quality-grade-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--space-2)}
-.quality-grade-item{min-width:0;border:1px solid #c4d0d4;background:#f7fafb}
+/* **列数は器の幅で決める**（§9.131）。3列固定だと、①の情報の壁で
+   1列ぶん（実測343px）へ入ったときに1つが110pxになり、折り返さない
+   見出し（「生地外観」等）が溢れた（表示サイズを上げるほど広がり、
+   特大で32px。`test_fit`が捕まえた）。 */
+.quality-grade-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));gap:var(--space-2)}
+/* 項目ごとに枠を付けない（§9.129「ブロックの中で枠を重ねない」）。
+   パネルの枠の中に12個の枠が並ぶと、それだけで画面の枠が18個になる
+   （§9.131で常時表示にしたら実測でそうなった）。**地色だけでまとまりは
+   足りる。** */
+.quality-grade-item{min-width:0;border:0;border-radius:var(--radius-xs);background:var(--surface-2);overflow:hidden}
 .quality-grade-item b{display:block;padding:var(--pad-row);background:var(--header-bar-bg);color:var(--header-bar-fg);white-space:nowrap}
-.quality-grade-item span{display:block;min-height:34px;padding:7px;background:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.quality-grade-item span{display:block;min-height:var(--ctl-h);padding:var(--pad-row);background:transparent;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .data-management-grid{display:grid;grid-template-columns:130px minmax(0,1fr);border:1px solid #c4d0d4}
-.data-management-grid>*{min-height:34px;padding:7px;border-bottom:1px solid #d6e0e3}
+.data-management-grid>*{min-height:var(--ctl-h);padding:var(--pad-row);border-bottom:1px solid #d6e0e3}
 .data-management-grid b{background:var(--header-bar-bg);color:var(--header-bar-fg);white-space:nowrap}
 .data-management-grid span{background:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .subtabs{display:flex;margin-top:var(--space-1)}
@@ -536,15 +670,18 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .split-tab-badge-pop{animation:split-apply-pop .4s cubic-bezier(.34,1.56,.64,1)}
 @keyframes split-apply-pop{0%{transform:scale(.55)}65%{transform:scale(1.2)}100%{transform:scale(1)}}
 @media(prefers-reduced-motion:reduce){.split-tab-badge-pop{animation:none}}
-.work-time-panel{height:250px;margin:0;padding:var(--space-3);border:1px solid var(--line);border-radius:var(--radius-md);background:#fff}
-.work-time-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}
+/* 高さは中身なり（§9.131）。250px固定だと、記録済みで2行しか無いときも
+   同じ高さを取り、下に空きが残る。 */
+.work-time-panel{margin:0;padding:var(--pad-card);border:1px solid var(--line);border-radius:var(--radius-md);background:#fff}
+.work-time-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-2)}
 .work-time-title b{font-size:var(--fs-title)}
 .work-time-title span{font-variant-numeric:tabular-nums;font-weight:800;color:var(--teal)}
 .work-time-grid{display:grid;grid-template-columns:1fr;gap:var(--space-2)}
 .work-time-item{display:grid;grid-template-columns:1fr 140px;gap:var(--gap-tight);padding:7px;border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff}
 .work-time-item span{grid-column:1/-1;color:#526970;font-weight:800}
-/* 日時は書式が決まっている（2026/08/14 15:04:05）。494pxも要らない。 */
-.work-time-item input{min-width:0;max-width:15em;height:var(--ctl-h);background:#fff;font-variant-numeric:tabular-nums}
+/* 日時は書式が決まっている（2026/08/14 15:04:05）。494pxも要らない。
+   幅は規格から選ぶ（§9.131。JSも同じ段へ丸める）。 */
+.work-time-item input{min-width:0;max-width:var(--w-lg);height:var(--ctl-h);background:#fff;font-variant-numeric:tabular-nums}
 .work-time-item button{height:var(--ctl-h);white-space:nowrap;background:var(--teal);color:#fff;border-color:var(--teal)}
 .work-time-panel>small{display:block;margin-top:6px;color:var(--warn-fg)}
 .analysis{background:#fff;border:1px solid var(--line);border-radius:var(--radius-md);overflow:hidden}
@@ -555,7 +692,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .analysis th:first-child,.analysis td:first-child{text-align:left}
 .analysis tbody tr:last-child th,.analysis tbody tr:last-child td{border-bottom:0}
 .split-pane{overflow:auto}
-.debug-pane{height:250px;overflow:auto;padding:7px;background:#fff;border:1px solid var(--line);border-radius:var(--radius-md)}
+.debug-pane{height:250px;overflow:auto;padding:var(--pad-card);background:#fff;border:1px solid var(--line);border-radius:var(--radius-md)}
 .debug-pane pre{white-space:pre-wrap;font-size:var(--fs-micro)}
 /* ---------- 6. 中央ペイン（選択項目） ---------- *//* 見出しバー(.panel-title/.row-title)は、直下のカードと角丸半径・枠線色を
    共有し「見出し(天面角丸)+本体(底面角丸)」で1つの連続したカード輪郭に
@@ -598,7 +735,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    CSSで足りる（縦割数は1桁、横割数は2桁）。選択肢の長さがマスタ由来の
    ものは`fitControlWidths()`が測って`max-width`を入れる。 */
 .dense-controls select,.dense-controls input{width:100%;height:var(--ctl-h);min-width:0;margin:0;padding:var(--pad-row);background:var(--surface)}
-.dense-controls input[type="number"]{max-width:7em}
+.dense-controls input[type="number"]{max-width:var(--w-sm)}
 /* 縦割数・横割数・条入力順・方向はプリセット値のままで問題ないことが
    多いため、他の「要選択」項目と違い常に白背景にする。 */
 .dense-controls .major-list select{height:210px;padding:0;background:var(--surface)}
@@ -648,7 +785,49 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .right-pane.layout-product .work-tabs{display:none}
 .right-pane.layout-mother .input-status,
 .right-pane.layout-product .input-status{display:none}
-.work-panel{padding-top:7px}
+.work-panel{padding-top:var(--space-2)}
+/* ---------- ②の作業パネルは中身なりに並べる（§9.131） ----------
+   母材は入力12個・製品は9個しかないのに、器の1fr（実測1427px）へ横いっぱいに
+   広げていたため、1つの欄が239〜420pxになり、下には483〜542pxの空きが
+   残っていた。**横は中身なりに詰め、隣り合わせに置く**——母材の値と
+   品質情報は一緒に読むもので、離すと視線が往復する。 */
+.measure-shell.mstep-2 .work-panel[data-workpanel="mother"]{
+  display:grid;grid-template-columns:max-content max-content;
+  grid-auto-rows:min-content;gap:0 var(--gap-section);
+  justify-content:start;align-content:start;
+}
+.measure-shell.mstep-2 .work-panel[data-workpanel="mother"]>.panel-title{grid-column:1;grid-row:1}
+.measure-shell.mstep-2 .work-panel[data-workpanel="mother"]>.material-grid{grid-column:1;grid-row:2}
+.measure-shell.mstep-2 .work-panel[data-workpanel="mother"]>.mother-quality{
+  grid-column:2;grid-row:1/span 2;margin-top:0;
+}
+.measure-shell.mstep-2 .material-grid{grid-template-columns:repeat(4,max-content);justify-content:start}
+.measure-shell.mstep-2 .work-panel[data-workpanel="product"]{
+  display:grid;grid-auto-rows:min-content;align-content:start;
+}
+.measure-shell.mstep-2 .product-panel{align-content:start}
+/* 丈は**全部を1つの表で**出す（§9.131）。9丈 × 9項目は②の作業面
+   （実測1059×920px）に横スクロールなしで収まるので、丈番号タブで
+   1丈ずつ切り替える必要が無い。器は中身なりに詰める（`justify-self:start`）
+   ——表を器いっぱいへ伸ばすと、1桁の欄まで100px超になる（§9.130）。 */
+.product-rows-table{
+  width:auto;justify-self:start;border-collapse:collapse;background:#fff;
+  border:1px solid var(--line);border-top:0;font-size:var(--fs-sm);
+}
+.product-rows-table th,.product-rows-table td{
+  padding:var(--pad-row);border-right:1px solid var(--line-soft);
+  border-bottom:1px solid var(--line-soft);white-space:nowrap;text-align:left;
+}
+.product-rows-table thead th{
+  background:var(--header-bar-bg);color:var(--header-bar-fg);
+  font-weight:800;text-align:center;
+}
+.product-rows-table tbody th{
+  width:3em;text-align:center;color:var(--ink-soft);font-weight:700;background:var(--surface-2);
+}
+.product-rows-table input{width:100%;max-width:var(--w-sm);height:var(--ctl-h-sm);background:#fff}
+.product-rows-table td:last-child input{max-width:var(--w-xl)}
+.product-rows-table .product-judge{min-width:3em;text-align:center}
 /* ---------- 8. 測定エディタ ---------- */
 .work-panel[data-workpanel="measure"]{height:calc(100% - 82px);overflow:hidden}
 .measurement-editor{height:100%;display:flex;flex-direction:column;min-height:0;overflow:hidden}
@@ -921,8 +1100,9 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    (どれか1つが2行になっても、同じ段の入力欄の高さは揃う)。
    高さは表示サイズへ追随させる(36px固定だと特大で名前だけが大きくなる)。 */
 .material-grid label{display:grid;grid-template-rows:1fr var(--ctl-h);align-items:end;font-size:var(--fs-sm);line-height:1.25}
-/* 母材の数値欄は3桁ほど。器の1マス(346px)へ伸ばさない（§9.130）。 */
-.material-grid input{width:100%;max-width:9em;height:var(--ctl-h)}
+/* 母材の数値欄は3桁ほど。器の1マス(346px)へ伸ばさない（§9.130）。
+   幅は規格から選ぶ（§9.131）。 */
+.material-grid input{width:100%;max-width:var(--w-sm);height:var(--ctl-h)}
 .material-grid output{display:flex;align-items:center;justify-content:center;width:100%;height:var(--ctl-h);border:1px solid var(--line);background:#fff;font-weight:700}
 .mother-entry-note{grid-column:1/-1;padding:var(--pad-row);border-radius:var(--radius-sm);border:1px solid var(--card-border);border-left:3px solid var(--teal);background:#fff;color:var(--header-bar-fg);font-weight:700}
 .mother-auto-field{background:var(--computed-bg);border:1px solid #9cd6ce;border-radius:var(--radius-sm);padding:2px 4px}
@@ -959,11 +1139,11 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .disclosure.open .disclosure-body{display:block}
 @media(prefers-reduced-motion:reduce){.disclosure-chev{transition:none}}
 .product-panel{display:grid;gap:var(--space-2)}
-.product-head,.flatness-table-head{display:flex;justify-content:space-between;align-items:center;gap:var(--space-2);padding:7px 9px;background:var(--header-bar-bg);color:var(--header-bar-fg);border:1px solid var(--line)}
+.product-head,.flatness-table-head{display:flex;justify-content:space-between;align-items:center;gap:var(--space-2);padding:var(--pad-card);background:var(--header-bar-bg);color:var(--header-bar-fg);border:1px solid var(--line)}
 .product-head b,.flatness-table-head b{font-weight:800}
-.product-head span{padding:3px 10px;background:#fff;border:1px solid var(--line)}
-.product-head button,.flatness-table-head button{height:32px;white-space:nowrap;margin-left:auto}
-.product-rows-note{padding:6px 9px;color:#60747b;font-size:var(--fs-sm);background:#f7fafb;border:1px solid var(--line);border-top:0}
+.product-head span{padding:var(--pad-chip);background:#fff;border:1px solid var(--line)}
+.product-head button,.flatness-table-head button{height:var(--ctl-h-sm);white-space:nowrap;margin-left:auto}
+.product-rows-note{padding:var(--pad-card);color:#60747b;font-size:var(--fs-sm);background:#f7fafb;border:1px solid var(--line);border-top:0}
 /* 丈番号タブ: 横スクロール表を避け、1丈ずつ切り替えて縦並びで入力する。
    必須3項目(長さ/肉厚/揃いコード)が入力済みの丈にはドットを表示する。 */
 .product-length-tabs{display:flex;flex-wrap:wrap;gap:var(--space-1);padding:var(--space-2);background:#fff;border:1px solid var(--line);border-top:0}
@@ -975,12 +1155,12 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 /* 選択中の丈の入力項目を縦方向に並べる。auto-fitで幅に応じて折り返す
    ため、パネル幅に関わらず横スクロールバーは出ない。 */
 .product-length-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--space-2);padding:var(--space-3);background:#fff;border:1px solid var(--line);border-top:0}
-.product-length-fields label{display:grid;grid-template-rows:20px 36px;font-size:var(--fs-sm)}
+.product-length-fields label{display:grid;grid-template-rows:20px var(--ctl-h);font-size:var(--fs-sm)}
 .product-length-fields label.wide{grid-column:1/-1}
-.product-length-fields input{width:100%;height:36px;padding:2px 8px;background:#fff}
+.product-length-fields input{width:100%;height:var(--ctl-h);padding:var(--pad-row);background:#fff}
 /* 全幅にまたがる備考は、器なりに伸ばすと1401pxの1行になる（§9.130）。
-   1行で読める長さ（全角30文字ぶん）で止める。 */
-.product-length-fields label.wide input{max-width:30em}
+   幅は規格から選ぶ（§9.131）。 */
+.product-length-fields label.wide input{max-width:var(--w-xl)}
 .product-length-fields .product-judge{align-self:center;justify-self:start}
 .product-judge{display:inline-block;min-width:32px;padding:var(--pad-chip);border-radius:var(--radius-md);background:#eef2f4;color:#60747b;font-weight:800}
 .product-judge.ok{background:var(--success-bg);color:var(--success)}

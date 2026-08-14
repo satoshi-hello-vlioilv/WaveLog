@@ -103,7 +103,17 @@ let b=null,page=null;
     丈の行数:lp?lp.size:0,丈の選択肢:lp?lp.options.length:0,
    };
   });
-  rec('②では基本情報の面を出さない',m2.左.見===false,JSON.stringify(m2.左));
+  /* ②の3列目は**根拠だけ**（§9.131）。基本情報・幅分割情報は測っている
+     最中に見る値なので出すが、品質等級・作業時間・分析は①③のもの。
+     §9.124では左ペインごと隠していたが、実測すると母材・揃いのときに
+     483〜542pxが空いており、そこへ置くべきものがあった。 */
+  const ref2a=await page.evaluate(()=>[...document.querySelectorAll(
+    '.left-pane [data-infopanel],.left-pane [data-leftpanel]')]
+    .filter(x=>x.getBoundingClientRect().height>0)
+    .map(x=>x.dataset.infopanel||x.dataset.leftpanel));
+  rec('②に出すのは根拠（基本情報・幅分割情報）だけ',
+      ref2a.length===2&&ref2a.includes('basic')&&ref2a.includes('split'),
+      JSON.stringify(ref2a));
   rec('②に入力内容の一覧（8項目）が出る',items.一覧===8,JSON.stringify(items));
   rec('②では1回決めるだけの設定を出さない',items.ほかの設定===0,JSON.stringify(items));
   /* **丈位置は②に出す（§9.125）。** `PageUp/PageDown`で動かせるのに、
@@ -613,7 +623,12 @@ let b=null,page=null;
      カードに枠を戻しても深さは2のままで、注入が素通りした。**横に並ぶ
      枠が増えるほど画面は騒がしくなる**ので、いまの数を天井にする。
      増やしたくなったら、まず何を減らせるかを考えること。 */
-  const CAP={'①':4,'②':4,'③':6};
+  /* **上限は§9.131で引き上げた**（①4→6 / ②4→7 / ③6→10）。タブに畳んで
+     いた5枚を同時に出すようにしたので、まとまりの枠はその数だけ増える
+     ——これは「装飾が増えた」のではなく「情報が増えた」ぶん。
+     **入れ子は増やさない**（上の「枠の入れ子は2段まで」が本体の規則で、
+     品質等級の12項目は枠を外して地色だけにした）。 */
+  const CAP={'①':6,'②':7,'③':10};
   [['①',L],['②',L2],['③',L3]].forEach(([k,x])=>{
    rec(`${k}のまとまりの枠は${CAP[k]}つまで`,x.枠の数<=CAP[k],`${x.枠の数}つ: ${x.枠.join(' / ')}`);
   });
@@ -628,9 +643,20 @@ let b=null,page=null;
      天井は80px（＝1マスぶん伸びれば必ず超える。矢印・余白の見積もりの
      ずれでは超えない）。 */
   const SLACK=80;
-  const wideBoxes=slack=>page.evaluate(sl=>{
+  /* **群でそろえたものは、群の必要幅と比べる**（§9.131）。同じまとまりの
+     中を最大へそろえる以上、群の中の短い項目が「中身より広い」のは
+     正しい姿——ここを個別に見ると、そろえるほど落ちる網になる。
+     群の外のものは今までどおり自分の中身と比べる。 */
+  const W_GROUPS={who:['inspector','crewSize'],shape:['verticalCount','horizontalCount'],
+    gear:['innerDiameter','spool','thicknessGauge','widthGauge'],
+    usual:['unwind','widthOrder','widthDirection','burr','coilStop'],
+    time:['workStartAt','workEndAt']};
+  const wideBoxes=slack=>page.evaluate(([sl,G])=>{
    const ctx=document.createElement('canvas').getContext('2d');
    const out=[];
+   const groupOf={};
+   Object.keys(G).forEach(k=>G[k].forEach(id=>{groupOf[id]=k}));
+   const groupNeed={};
    document.querySelectorAll('.measure-shell input,.measure-shell select,.measure-shell textarea')
     .forEach(el=>{
      const r=el.getBoundingClientRect();
@@ -662,11 +688,14 @@ let b=null,page=null;
       need=w(sample)+(el.type==='number'?30:20);
      }
      need+=parseFloat(cs.paddingLeft)+parseFloat(cs.paddingRight);
-     const over=Math.round(r.width-need);
-     if(over>sl)out.push(`${el.id||el.className||el.type}(${el.tagName}/${el.type}):幅${Math.round(r.width)}/要${Math.round(need)}`);
+     const g=groupOf[el.id];
+     if(g)groupNeed[g]=Math.max(groupNeed[g]||0,need);
+     out.push({id:el.id||el.className||el.type,g,w:r.width,need,
+       tag:el.tagName,type:el.type});
     });
-   return out;
-  },slack);
+   return out.filter(x=>Math.round(x.w-(x.g?groupNeed[x.g]:x.need))>sl)
+     .map(x=>`${x.id}(${x.tag}/${x.type}):幅${Math.round(x.w)}/要${Math.round(x.g?groupNeed[x.g]:x.need)}`);
+  },[slack,W_GROUPS]);
   const setType=async t=>{
    await page.evaluate(v=>{const s=document.querySelector('#measureType');
      s.value=v;s.dispatchEvent(new Event('change',{bubbles:true}))},t);
@@ -706,6 +735,167 @@ let b=null,page=null;
        JSON.stringify(qbox));
    rec('品質情報の幅が中身なりに収まる',qbox.幅<=760,JSON.stringify(qbox));
   }
+  await go('1');
+
+  /* ---- 12) 規格・整列・情報密度（§9.131 ゼロベースの組み直し） ----
+     利用者からの指摘——「中身の長さでUIの大きさを決めるのはそうだが、
+     **いろんなサイズが生まれるときれいに並ばない。UIサイズも規格化し、
+     整列させることがセット**」「位置がバラバラ」「余白もバラバラ」
+     「**余白があるなら、タブで回避していた情報の配置を考え、情報量を
+     上げる**」。実測（1920×1080）で前後を比べられる数で固定する。 */
+  /* 幅の種類。**表の中は数えない**——測定表・丈位置くらべ・全丈表の欄は
+     列で決まる構造的な幅で、規格とは別の決まり方をする。 */
+  const widthKinds=()=>page.evaluate(()=>{
+   const skip='.strip-row,.thickness-vertical,.measure-grid-block,.product-rows-table,.lc-table';
+   const ws=[];
+   document.querySelectorAll('.measure-body input,.measure-body select,.measure-body textarea')
+    .forEach(el=>{
+     const r=el.getBoundingClientRect();
+     if(r.width<8||r.height<1)return;
+     if(getComputedStyle(el).visibility==='hidden')return;
+     if(el.closest(skip))return;
+     ws.push(Math.round(r.width));
+    });
+   const kinds=[];
+   for(const w of [...new Set(ws)].sort((a,b)=>a-b))
+    if(!kinds.length||w-kinds[kinds.length-1]>2)kinds.push(w);
+   return kinds;
+  });
+  /* 空き＝ペインの中身の下に残った面積。**本体の面積に対する割合**で見る
+     （ペイン単位だと、狭い列の空きも広い列の空きも同じ重さになる）。 */
+  const emptyRate=()=>page.evaluate(()=>{
+   const vis=el=>{const r=el.getBoundingClientRect();
+     return r.width>0&&r.height>0&&getComputedStyle(el).visibility!=='hidden'};
+   const body=document.querySelector('.measure-body').getBoundingClientRect();
+   let unused=0;const detail=[];
+   document.querySelectorAll('.left-pane,.center-pane,.right-pane,.finish-check')
+    .forEach(p=>{
+     if(!vis(p))return;
+     const pr=p.getBoundingClientRect();let maxB=pr.top;
+     p.querySelectorAll('*').forEach(el=>{
+      if(!vis(el))return;
+      const r=el.getBoundingClientRect();
+      if(r.width<1||r.height<1)return;
+      maxB=Math.max(maxB,Math.min(r.bottom,pr.bottom));
+     });
+     const rest=Math.round(pr.bottom-maxB);
+     unused+=Math.round(pr.width)*Math.max(0,rest);
+     detail.push(`${[...p.classList][0]}:余${rest}`);
+    });
+   return {率:Math.round(100*unused/(body.width*body.height)),内訳:detail.join(' ')};
+  });
+
+  await go('1');
+  const w1=await widthKinds(),e1=await emptyRate();
+  /* **同じ画面に何種類の幅があるか。** 直す前は①だけで19種類あった
+     （中身に忠実な幅をそのまま使うと必ずこうなる）。規格へ丸めたので、
+     実測では2種類（11em の選択欄と 4.5em の桁数欄）に収まる。 */
+  rec('①の入力欄の幅が4種類以内',w1.length<=4,JSON.stringify(w1));
+  /* **群の中でそろっているか**（縦に並ぶものの幅が同じであることが、
+     整列して見える条件そのもの）。 */
+  const groups=await page.evaluate(()=>{
+   const G={'誰が測るか':['inspector','crewSize'],'測定表の形':['verticalCount','horizontalCount'],
+     '使う機材':['innerDiameter','spool','thicknessGauge','widthGauge']};
+   const out={};
+   for(const k of Object.keys(G))
+    out[k]=[...new Set(G[k].map(id=>document.getElementById(id))
+      .filter(el=>el&&el.getBoundingClientRect().width>0)
+      .map(el=>Math.round(el.getBoundingClientRect().width)))];
+   return out;
+  });
+  for(const k of Object.keys(groups))
+   rec(`①「${k}」の欄の幅がそろう`,groups[k].length===1,JSON.stringify(groups[k]));
+  /* **タブで隠していたものを同時に出す**（余白があるのに畳んでいた）。 */
+  const wall=st=>page.evaluate(()=>({
+   タブ:[...document.querySelectorAll('.left-pane .tabs,.left-pane .subtabs')]
+     .filter(x=>x.getBoundingClientRect().height>0).length,
+   面:[...document.querySelectorAll('.left-pane [data-infopanel],.left-pane [data-leftpanel]')]
+     .filter(x=>x.getBoundingClientRect().height>0)
+     .map(x=>x.dataset.infopanel||x.dataset.leftpanel),
+  }));
+  const wall1=await wall();
+  rec('①でタブを出さない（中身を全部見せる）',wall1.タブ===0,JSON.stringify(wall1));
+  rec('①に基本情報・品質等級・幅分割・作業時間が同時に出る',
+      ['basic','grade','split','worktime'].every(k=>wall1.面.includes(k)),JSON.stringify(wall1));
+  /* **空き率は粗い目安**（中身の少ないロットでは正しく空く）。効くのは
+     こちら——**中身のない器を置かない**。`.split-pane`は分割の無いロットでも
+     290pxの下限を持っており、1行の文字に290pxの空箱が残っていた。 */
+  const emptyBox=()=>page.evaluate(()=>{
+   const out=[];
+   document.querySelectorAll('.left-pane [data-infopanel],.left-pane [data-leftpanel]')
+    .forEach(p=>{
+     const pr=p.getBoundingClientRect();
+     if(pr.height<1)return;
+     let maxB=pr.top;
+     p.querySelectorAll('*').forEach(el=>{
+      const r=el.getBoundingClientRect();
+      if(r.width<1||r.height<1)return;
+      maxB=Math.max(maxB,r.bottom);
+     });
+     const rest=Math.round(pr.bottom-maxB-parseFloat(getComputedStyle(p).paddingBottom||0));
+     if(rest>120)out.push(`${p.dataset.infopanel||p.dataset.leftpanel}:余${rest}`);
+    });
+   return out;
+  });
+  const box1=await emptyBox();
+  rec('①に中身のない器（120px超の空き）が無い',box1.length===0,box1.join(' / '));
+  rec('①の空きが本体の25%以下',e1.率<=25,JSON.stringify(e1));
+
+  /* ②は「項目｜入力｜根拠」の3列。根拠（基本情報・幅分割情報）は測っている
+     最中に見る値なので、空いた3列目へ出す。**測定表の列はいちばん広いまま**
+     （面積は頻度×重要度。§9.123の判断は変えない）。 */
+  await go('2');
+  await setType('板厚/板幅');
+  const ref2=await page.evaluate(()=>{
+   const rc=s=>{const el=document.querySelector(s);if(!el)return 0;
+     const r=el.getBoundingClientRect();
+     return getComputedStyle(el).display==='none'?0:Math.round(r.width)};
+   return {左:rc('.left-pane'),中:rc('.center-pane'),右:rc('.right-pane'),
+     面:[...document.querySelectorAll('.left-pane [data-infopanel]')]
+       .filter(x=>x.getBoundingClientRect().height>0).map(x=>x.dataset.infopanel)};
+  });
+  rec('②に根拠（基本情報・幅分割情報）が出る',
+      ref2.面.includes('basic')&&ref2.面.includes('split'),JSON.stringify(ref2));
+  rec('②の測定の列がいちばん広い',ref2.右>ref2.左&&ref2.右>ref2.中,JSON.stringify(ref2));
+  const e2=await emptyRate();
+  rec('②（板厚/板幅）の空きが本体の20%以下',e2.率<=20,JSON.stringify(e2));
+
+  /* 揃い/肉厚/長さは**全丈を1つの表**で出す（丈番号タブを廃止）。
+     タブは「横スクロールを避ける」ためだったが、②の作業面は実測1059×920pxで、
+     9丈 × 9項目は横スクロールなしで収まる。 */
+  await setType('揃い/肉厚/長さ');
+  const prod=await page.evaluate(()=>{
+   const t=document.querySelector('.product-rows-table');
+   const tabs=document.getElementById('productLengthTabs');
+   const n=Math.max(1,Math.min(9,+document.getElementById('verticalCount').value||1));
+   return {表:!!t&&t.getBoundingClientRect().height>0,
+     行:document.querySelectorAll('#productRowsBody tr').length,丈:n,
+     タブ:!!tabs&&tabs.getBoundingClientRect().height>0,
+     溢れ:t?Math.round(t.getBoundingClientRect().right
+       -document.querySelector('.right-pane').getBoundingClientRect().right):0};
+  });
+  rec('②の揃いは全丈を1つの表で出す',prod.表&&prod.行===prod.丈,JSON.stringify(prod));
+  rec('②の揃いに丈番号タブを出さない',prod.タブ===false,JSON.stringify(prod));
+  rec('②の全丈表が横に溢れない',prod.溢れ<=0,JSON.stringify(prod));
+
+  /* ③は1枚の確認シート。上に「あと何が残っているか」、下に「何が記録されたか」。 */
+  await go('3');
+  const f3=await page.evaluate(()=>{
+   const fc=document.querySelector('.finish-check').getBoundingClientRect();
+   const lp=document.querySelector('.left-pane').getBoundingClientRect();
+   const body=document.querySelector('.measure-body').getBoundingClientRect();
+   return {確認幅:Math.round(fc.width),本体幅:Math.round(body.width),
+     確認下:Math.round(fc.bottom),記録上:Math.round(lp.top),
+     カード:[...document.querySelectorAll('.fc-row')].map(x=>Math.round(x.getBoundingClientRect().top))};
+  });
+  rec('③の確認表が本体の全幅を使う',f3.確認幅>=f3.本体幅-2,JSON.stringify(f3));
+  rec('③は確認表が上・記録が下',f3.確認下<=f3.記録上+2,JSON.stringify(f3));
+  rec('③の確認カードが横に並ぶ',new Set(f3.カード).size===1,JSON.stringify(f3.カード));
+  const w3=await widthKinds(),e3=await emptyRate();
+  rec('③の入力欄の幅が4種類以内',w3.length<=4,JSON.stringify(w3));
+  const box3=await emptyBox();
+  rec('③に中身のない器（120px超の空き）が無い',box3.length===0,box3.join(' / '));
+  rec('③の空きが本体の25%以下',e3.率<=25,JSON.stringify(e3));
   await go('1');
 
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
