@@ -141,6 +141,49 @@ let b=null,page=null;
   rec('使わない行(灰色)を残さない',
       [r1,r6,r24,r40].every(x=>x.灰色の行===0),
       JSON.stringify([r1.灰色の行,r6.灰色の行,r24.灰色の行,r40.灰色の行]));
+
+  /* ---- 4c) 器も条数ぶんだけ（§9.126） ----
+     行を条数ぶんに減らした後も、**CSSが40条ぶんの場所を取り続けていた**
+     （`repeat(2,1fr)` × 20行が固定）。DOMの数を見るだけでは捕まらないので、
+     **実際の寸法**で見る。 */
+  const geom=async n=>{
+   await page.evaluate(v=>{const h=document.querySelector('#horizontalCount');
+     h.value=String(v);h.dispatchEvent(new Event('change',{bubbles:true}))},n);
+   await page.waitForTimeout(500);
+   return page.evaluate(()=>{
+    const r=e=>e?e.getBoundingClientRect():null;
+    const cols=[...document.querySelectorAll('#measurementGrid .compact-width .strip-column')];
+    const body=document.querySelector('#measurementGrid .compact-width .compact-width-body');
+    const tol=body&&body.querySelector('.compact-tolerance-side');
+    const rows=[...document.querySelectorAll('#measurementGrid .compact-width .strip-row label')];
+    const cr=cols.map(x=>r(x)),br=r(body),tr=r(tol);
+    const lay=document.querySelector('#measurementGrid .compact-width .compact-strip-layout');
+    const lr=r(lay);
+    return {列:cols.length,
+      /* **列の数だけでは足りない。** CSSが2列ぶんの場所を取ったままだと
+         DOMは1つでも幅は半分になる（実際にそれを見逃した）。 */
+      入力表の幅:cr.length?Math.round(cr[0].width):0,
+      器の幅:lr?Math.round(lr.width):0,
+      表の高さ:cr.length?Math.round(cr[0].height):0,
+      最後の行の下端:rows.length?Math.round(r(rows[rows.length-1]).bottom):0,
+      表の下端:cr.length?Math.round(cr[0].bottom):0,
+      公差と表のすきま:(tr&&cr.length)?Math.round(cr[0].left-tr.right):null,
+      器の右の余り:(br&&cr.length)?Math.round(br.right-cr[cr.length-1].right):null};
+   });
+  };
+  const g8=await geom(8),g40=await geom(40);
+  rec('20条までは1列',g8.列===1,JSON.stringify(g8));
+  rec('1列のときは入力表が器の幅いっぱいを使う',
+      g8.器の幅>0&&g8.入力表の幅>=g8.器の幅*0.9,JSON.stringify(g8));
+  rec('20条を超えたら2列',g40.列===2,JSON.stringify(g40));
+  /* 行の数だけ器を取る。最後の行の下と器の下がほぼ一致すること
+     （20行固定のままなら、8条では12行ぶん＝300px以上の白が残る）。 */
+  rec('使う行数ぶんの高さしか取らない',
+      Math.abs(g8.表の下端-g8.最後の行の下端)<=8,JSON.stringify(g8));
+  /* **一緒に読むものを引き離さない。** 公差数直線は縦向きなので、空いた
+     幅を公差側へ回すと数直線と入力表のあいだに900pxの空白ができる。 */
+  rec('公差と入力表が隣り合っている',g8.公差と表のすきま!==null&&g8.公差と表のすきま<40,
+      JSON.stringify(g8));
   await rowsFor(1);
 
   /* ---- 5) 進めない理由を書く ----
@@ -234,6 +277,23 @@ let b=null,page=null;
   });
   const p1=await prep();
   rec('①は役割ごとの見出しを持つ',p1.見出し.length===4,JSON.stringify(p1.見出し));
+  /* オペレータ一覧の高さは`size`（行数）で決める（§9.126）。pxで詰めると
+     **最後の行が途中で切れる**し、表示サイズを変えるとずれる。 */
+  const opList=await page.evaluate(()=>{
+   const el=document.getElementById('operator');
+   const r=el.getBoundingClientRect();
+   const opt=el.options[0]?el.options[0].getBoundingClientRect():null;
+   return {size:el.size,選択肢:el.options.length,高さ:Math.round(r.height),
+     行の高さ:opt?Math.round(opt.height):0,
+     はみ出し:Math.round(el.scrollHeight-el.clientHeight)};
+  });
+  /* **行数は減らさない。** 実データでオペレータは100人を超えるので、
+     見える行を減らすほど探すのが大変になる。直したのは「pxで半端に
+     詰めていた」ことのほうで、`size`の意図どおりの高さにする。 */
+  rec('①のオペレータ一覧の行数を減らさない',opList.size>=7,JSON.stringify(opList));
+  rec('オペレータ一覧が行の途中で切れない',
+      opList.行の高さ>0&&Math.abs(opList.高さ-opList.size*opList.行の高さ)<=4,
+      JSON.stringify(opList));
   rec('見出しは「誰が→形→機材→その他」の順',
       p1.見出し.join('/')==='誰が測るか/測定表の形/使う機材/その他の設定',
       p1.見出し.join('/'));

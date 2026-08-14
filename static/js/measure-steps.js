@@ -246,16 +246,21 @@
   try{paintFinish()}catch(e){}
  }
 
- /* 丈位置の一覧は**選択肢の数ぶんだけ**の高さにする。`size`は7で固定して
-    あったため、丈位置が2つのロットでも5行ぶんの空白が付いていた
-    （②では画面の高さを測定表に渡したい。§9.124と同じ理由）。
-    CSSでは中身に合わせられない（リストボックスの高さは`size`が決める）。 */
- function fitLengthList(){
-  const el=sel('lengthPos');
+ /* リストボックスの高さは**`size`（行数）で決める**。CSSのpx指定では
+    中身に合わせられず、**行の途中で切れる**（実測: 168pxにしたら最後の
+    名前が半分で切れた）。表示サイズを変えると1行の高さも変わるので、
+    pxで合わせ込むと必ずどこかでずれる。
+    丈位置は選択肢の数ぶんまで縮める（2つのロットで5行ぶんの空白が付いて
+    いた）。**オペレータは縮めない**——検証データで171人おり、行数を減らす
+    ほど探すのが大変になる。①の穴は`size="7"`どおりの高さにするだけで
+    54px減る（273pxという半端なpx指定が元凶だった。§9.126）。 */
+ function fitList(id,max,min){
+  const el=sel(id);
   if(!el||!el.options)return;
-  const n=Math.max(2,Math.min(7,el.options.length));
+  const n=Math.max(min,Math.min(max,el.options.length));
   if(el.size!==n)el.size=n;
  }
+ function fitLengthList(){fitList('lengthPos',7,2)}
 
  /* ---------- 段の切り替え ----------
     **CSSのクラスだけで見せ分ける。** ペインを別の器へ移し替えない

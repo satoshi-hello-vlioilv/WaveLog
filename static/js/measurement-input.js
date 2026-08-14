@@ -274,11 +274,16 @@ function compactMeasureStatus(done,total){return done===total?'測定完了':don
    大半を占めた。**使わない行は描かない**——探す対象が減る。
    20条を超えるときだけ2列にする(縦に41行並べると画面から溢れる)。
    **2箇所で同じループを書かない**(板厚/板幅とそれ以外で同じものが要る)。 */
+/* 列数は**行数と同じく条数から決まる**（§9.126）。CSSに`repeat(2,1fr)`と
+   書いてあったため、1列しか作らなくても**器は2列ぶん取ったまま**で、
+   ②を全幅にしても右の1/4が空いていた（実測430px）。判定の式は1箇所。 */
+function stripColumnCount(count){return count>20?2:1}
 function stripColumnsHtml(key,li,values,count){
- const cols=count>20?2:1,per=Math.ceil(count/cols);
+ const cols=stripColumnCount(count),per=Math.ceil(count/cols);
  let h='';
  for(let col=0;col<cols;col++){
-  h+='<div class="strip-column"><div class="strip-head"><span>条</span><span>測定値・判定</span></div>';
+  const rows=Math.min(per,count-col*per);
+  h+=`<div class="strip-column" style="--strip-rows:${rows}"><div class="strip-head"><span>条</span><span>測定値・判定</span></div>`;
   for(let row=0;row<per;row++){
    const j=col*per+row;
    if(j>=count)break;
@@ -288,19 +293,22 @@ function stripColumnsHtml(key,li,values,count){
  }
  return h;
 }
+/* 器の側のクラス。1列のときは**空いた幅を公差側へ回す**——公差数直線は
+   幅があるほど点の位置が読み取りやすくなるので、余らせるより値打ちがある。 */
+function stripBodyClass(count){return 'compact-width-body'+(stripColumnCount(count)===1?' one-strip':'')}
 function renderMeasureGridVertical(){
  const type=$('#measureType').value,key=activeMeasureKey(),m=S.measure,li=lengthIndex(),count=Math.max(1,Math.min(40,+$('#horizontalCount').value||1));
  if(type!=='板厚/板幅'){
   const actualKey=key==='mother'?'width':key,values=m.measurements[actualKey][li],done=values.slice(0,count).filter(v=>v!=='').length;
   const bulkBtn=type==='フラットネス'?'<span class="flat-pick-group"><span class="flat-pick-label">現在の条へ入力</span><button type="button" class="flat-pick" data-sym="〇">〇</button><button type="button" class="flat-pick" data-sym="△">△</button><button type="button" class="flat-pick" data-sym="×">×</button></span><button type="button" id="flatAllOk">全条 〇</button>':'';
-  let h=`<section class="measure-grid-block compact-other"><div class="measure-grid-block-title"><span>${esc(type)}</span><div class="measure-status-group"><span class="measure-status">${compactMeasureStatus(done,count)}</span>${bulkBtn}</div></div><div class="compact-width-body"><aside class="compact-tolerance-side">${compactToleranceScale(actualKey,values,count)}</aside><div class="strip-layout compact-strip-layout">`;
+  let h=`<section class="measure-grid-block compact-other"><div class="measure-grid-block-title"><span>${esc(type)}</span><div class="measure-status-group"><span class="measure-status">${compactMeasureStatus(done,count)}</span>${bulkBtn}</div></div><div class="${stripBodyClass(count)}"><aside class="compact-tolerance-side">${compactToleranceScale(actualKey,values,count)}</aside><div class="strip-layout compact-strip-layout">`;
   h+=stripColumnsHtml(actualKey,li,values,count);h+='</div></div></section>';
   if(type==='フラットネス')h+=`<section class="measure-grid-block flatness-note-block"><div class="measure-grid-block-title"><span>備考</span></div><div class="flatness-entry"><label>対象条<select id="coilNo"></select></label><label>備考<textarea id="coilComment"></textarea></label></div></section>`;
   $('#measurementGrid').innerHTML=h;
  }else{
   const thickness=m.measurements.thickness[li],width=m.measurements.width[li],tDone=thickness.filter(v=>v!=='').length,wDone=width.slice(0,count).filter(v=>v!=='').length;
   let h=`<div class="compact-dimension-workspace"><section class="measure-grid-block compact-thickness"><div class="measure-grid-block-title"><span>板厚</span><span class="measure-status">${compactMeasureStatus(tDone,3)}</span></div><div class="compact-thickness-body"><aside class="compact-tolerance-side thickness-side">${compactToleranceFacts('thickness').html}</aside><div class="thickness-vertical"><b>位置</b><b>OS</b><b>CL</b><b>DS</b><span>丈 ${li+1}</span>${thickness.map((v,j)=>makeMeasureInput('thickness',li,j,v)).join('')}</div></div></section>`;
-  h+=`<section class="measure-grid-block compact-width"><div class="measure-grid-block-title"><span>板幅</span><span class="measure-status">${compactMeasureStatus(wDone,count)}</span></div><div class="compact-width-body"><aside class="compact-tolerance-side">${compactToleranceScale('width',width,count)}</aside><div class="strip-layout compact-strip-layout">`;
+  h+=`<section class="measure-grid-block compact-width"><div class="measure-grid-block-title"><span>板幅</span><span class="measure-status">${compactMeasureStatus(wDone,count)}</span></div><div class="${stripBodyClass(count)}"><aside class="compact-tolerance-side">${compactToleranceScale('width',width,count)}</aside><div class="strip-layout compact-strip-layout">`;
   h+=stripColumnsHtml('width',li,width,count);h+='</div></div></section></div>';$('#measurementGrid').innerHTML=h;
  }
  bindMeasureInputs();applyInputProtection();focusCurrent();updateMeasurementHeading();const summary=$('#toleranceSummary');if(summary)summary.hidden=type==='板厚/板幅';
