@@ -85,16 +85,51 @@ let b=null,page=null;
   rec('段に状態の文字が付いている',v.段.every(x=>x.状態&&x.状態.trim()!==''),
       JSON.stringify(v.段.map(x=>x.状態)));
 
-  /* ---- 4) ②測定は本体を1枚で使う ---- */
+  /* ---- 4) ②測定は「項目リスト＋測定表」の2枚（§9.124） ----
+     基本情報（左）は出さず、設定（中）は**入力内容の一覧だけ**を残す。
+     1回決めるだけの設定は①のもの。 */
   await go('2');
   const m2=await seen();
-  rec('②では測定パネルだけになる',m2.右.見&&!m2.左.見&&!m2.中.見,
-      JSON.stringify({左:m2.左.見,中:m2.中.見,右:m2.右.見}));
-  rec('②の測定パネルは本体の全幅を使う',
-      Math.abs(m2.右.w-m2.本体.w)<=2,`測定=${m2.右.w} / 本体=${m2.本体.w}`);
-  /* 3ペインのときは本体の約4/10だった。1枚にして倍以上になることを数で見る。 */
-  rec('②の測定パネルは3ペインのときより広い',m2.右.w>m2.本体.w*0.9,
-      `${m2.右.w}px（本体 ${m2.本体.w}px）`);
+  const items=await page.evaluate(()=>({
+   一覧:document.querySelectorAll('#measureTypeGroup .type-chip').length,
+   ほかの設定:[...document.querySelectorAll('.selectors>label')]
+     .filter(x=>x.id!=='measureTypeGroup'&&x.getBoundingClientRect().height>0).length,
+   件数の文字:[...document.querySelectorAll('#measureTypeGroup .type-chip-state')]
+     .map(x=>x.textContent.trim()).filter(Boolean).length,
+  }));
+  rec('②では基本情報の面を出さない',m2.左.見===false,JSON.stringify(m2.左));
+  rec('②に入力内容の一覧（8項目）が出る',items.一覧===8,JSON.stringify(items));
+  rec('②では1回決めるだけの設定を出さない',items.ほかの設定===0,JSON.stringify(items));
+  rec('一覧の各項目に残り件数が文字で付く',items.件数の文字===8,JSON.stringify(items));
+  /* 測定表は本体の大半を取る。3ペインのときは本体の約4/10だった。 */
+  rec('②の測定表が本体の半分より広い',m2.右.w>m2.本体.w*0.5,
+      `測定=${m2.右.w} / 本体=${m2.本体.w}`);
+
+  /* ---- 4b) 測定表は「使う条数ぶんだけ」描く（§9.124） ----
+     以前は条数に関わらず 2列×20行＝40条を必ず描き、超えた行を灰色で残して
+     いた。1条のロットでも39行の空欄が並ぶ。**探す対象を増やさない。**
+     20条を超えたときだけ2列にする（縦に41行並べると画面から溢れる）。 */
+  await page.evaluate(()=>{const s=document.querySelector('#measureType');
+    s.value='板厚/板幅';s.dispatchEvent(new Event('change',{bubbles:true}))});
+  await page.waitForTimeout(500);
+  const rowsFor=async n=>{
+   await page.evaluate(v=>{const h=document.querySelector('#horizontalCount');
+     h.value=String(v);h.dispatchEvent(new Event('change',{bubbles:true}))},n);
+   await page.waitForTimeout(500);
+   return page.evaluate(()=>({
+    行:document.querySelectorAll('#measurementGrid .strip-row').length,
+    列:document.querySelectorAll('#measurementGrid .strip-column').length,
+    灰色の行:document.querySelectorAll('#measurementGrid .strip-row.inactive').length}));
+  };
+  const r1=await rowsFor(1),r6=await rowsFor(6),r24=await rowsFor(24),r40=await rowsFor(40);
+  rec('1条なら1行しか描かない',r1.行===1&&r1.列===1,JSON.stringify(r1));
+  rec('6条なら6行',r6.行===6&&r6.列===1,JSON.stringify(r6));
+  rec('20条を超えたら2列にする',r24.行===24&&r24.列===2,JSON.stringify(r24));
+  rec('40条でも数は合う',r40.行===40&&r40.列===2,JSON.stringify(r40));
+  rec('使わない行(灰色)を残さない',
+      [r1,r6,r24,r40].every(x=>x.灰色の行===0),
+      JSON.stringify([r1.灰色の行,r6.灰色の行,r24.灰色の行,r40.灰色の行]));
+  await rowsFor(1);
 
   /* ---- 5) 進めない理由を書く ----
      既定の入力内容は母材＝手動入力の項目なので、測定器からは受けられない。
@@ -106,6 +141,65 @@ let b=null,page=null;
   await page.waitForTimeout(600);
   const m2b=await seen();
   rec('測定器を使う項目に変えたら理由は消える',(m2b.理由||'')==='',m2b.理由||'(空)');
+
+  /* ---- 5b) 受信欄から手を離さずに巡回できる（§9.124） ----
+     利用者はマウス＆キーボードで作業する。空いているキーは3組しかないので、
+     その3組が確実に効くこと、そして**フォーカスが常に「実際に入力する場所」へ
+     載る**ことを固定する（転送の項目＝受信欄、手動の項目＝セル）。 */
+  const where=()=>page.evaluate(()=>{
+   const a=document.activeElement;
+   return {項目:document.querySelector('#measureType').value,
+     丈:document.querySelector('#lengthPos')?.value||'',
+     居場所:!a?'なし':(a.id||(a.dataset&&a.dataset.mkey?'セル':a.tagName))};
+  });
+  await page.evaluate(()=>{const s=document.querySelector('#measureType');
+    s.value='板厚/板幅';s.dispatchEvent(new Event('change',{bubbles:true}))});
+  await page.waitForTimeout(500);
+  const k0=await where();
+  await page.keyboard.press('ArrowRight');await page.waitForTimeout(500);
+  const k1=await where();
+  rec('→ で次の項目へ移る',k1.項目!==k0.項目,`${k0.項目} → ${k1.項目}`);
+  rec('手動入力の項目ではセルへフォーカスが載る',k1.居場所==='セル',JSON.stringify(k1));
+  await page.keyboard.press('ArrowRight');await page.waitForTimeout(500);
+  const k2=await where();
+  rec('セルからでも → が効く（キーの割り当ては1箇所）',k2.項目!==k1.項目,
+      `${k1.項目} → ${k2.項目}`);
+  rec('転送で入れる項目では受信欄へフォーカスが載る',k2.居場所==='deviceInput',
+      JSON.stringify(k2));
+  await page.keyboard.press('ArrowLeft');await page.waitForTimeout(500);
+  rec('← で前の項目へ戻る',(await where()).項目===k1.項目,JSON.stringify(await where()));
+  const b4=await where();
+  await page.keyboard.press('PageDown');await page.waitForTimeout(500);
+  const af=await where();
+  rec('PageDown で丈位置が移る',af.丈!==b4.丈,`${b4.丈} → ${af.丈}`);
+  await page.keyboard.press('F2');await page.waitForTimeout(600);
+  const f2=await where();
+  rec('F2 で未測定の項目へ飛ぶ',f2.項目!==af.項目,`${af.項目} → ${f2.項目}`);
+
+  /* **打っている最中の ← → は奪わない。** 空でないときは文字の中を動く。 */
+  const typing=await page.evaluate(async()=>{
+   const el=document.getElementById('deviceInput');
+   if(!el||el.offsetParent===null)return{対象外:true};
+   el.focus();el.value='26.1';el.setSelectionRange(4,4);
+   const before=document.querySelector('#measureType').value;
+   el.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true,cancelable:true}));
+   await new Promise(r=>setTimeout(r,300));
+   const after=document.querySelector('#measureType').value;
+   el.value='';
+   return {項目が変わらない:before===after,前:before,後:after};
+  });
+  rec('数値を打っている最中は ← で項目を変えない',
+      typing.対象外===true||typing.項目が変わらない===true,JSON.stringify(typing));
+
+  /* キーは画面に書く（覚えさせない）。 */
+  const hint=await page.evaluate(()=>{
+   const h=document.querySelector('.mnav-hint');
+   if(!h)return null;const r=h.getBoundingClientRect();
+   return {文:h.textContent.replace(/\s+/g,' ').trim(),
+           見えている:r.width>0&&r.height>0&&getComputedStyle(h).display!=='none'};
+  });
+  rec('キーの案内が画面に出ている',
+      !!hint&&hint.見えている&&/F2/.test(hint.文)&&/項目/.test(hint.文),JSON.stringify(hint));
 
   /* ---- 6) ③確認 ---- */
   await go('3');
@@ -164,11 +258,19 @@ let b=null,page=null;
   try{await page.evaluate(async()=>{
    const id=(typeof S!=='undefined'&&S.measure)?S.measure.id:'';
    if(id&&typeof reliableDelete==='function')await reliableDelete(id).catch(()=>{});
+   /* **消えるまで確かめる。** 共有(shareRecord)は画面を待たせずに送るので、
+      1回消しただけだと**遅れて届いた登録が後から復活する**（通しで1回だけ
+      test_scdrop が落ち、L0001に身に覚えのない実績が残っていた）。
+      消す→数える→残っていたらもう一度、を数回まで繰り返す。 */
    if(id){
-    const r=await fetch('/api/measurement/backup/list').then(x=>x.json()).catch(()=>({items:[]}));
-    const ids=(r.items||[]).map(i=>i.id).filter(x=>x===id||String(x).endsWith(id));
-    if(ids.length)await fetch('/api/measurement/backup/delete',{method:'POST',
-      headers:{'Content-Type':'application/json'},body:JSON.stringify({ids})}).catch(()=>{});
+    for(let k=0;k<6;k++){
+     const r=await fetch('/api/measurement/backup/list').then(x=>x.json()).catch(()=>({items:[]}));
+     const ids=(r.items||[]).map(i=>i.id).filter(x=>x===id||String(x).endsWith(id));
+     if(!ids.length)break;
+     await fetch('/api/measurement/backup/delete',{method:'POST',
+       headers:{'Content-Type':'application/json'},body:JSON.stringify({ids})}).catch(()=>{});
+     await new Promise(r2=>setTimeout(r2,250));
+    }
    }
    const m=document.querySelector('#measureModal');if(m)m.hidden=true;
   })}catch(e){}
