@@ -2,7 +2,20 @@
 /* records-store.js: 端末内保存(IndexedDB+localStorageミラー)・保存/完了遷移・
    編集中/完了データ一覧・参照データ(コンテキスト)取得・使用設備/設備マスタ設定。 */
 const DB='MeasurementLocal',STORE='lots';function idb(){return new Promise((ok,no)=>{const r=indexedDB.open(DB,1);r.onupgradeneeded=()=>r.result.createObjectStore(STORE,{keyPath:'id'});r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}async function idbGet(id){const d=await idb();return new Promise((o,n)=>{const r=d.transaction(STORE).objectStore(STORE).get(id);r.onsuccess=()=>o(r.result);r.onerror=()=>n(r.error)})}async function idbPut(v){const d=await idb();return new Promise((o,n)=>{const r=d.transaction(STORE,'readwrite').objectStore(STORE).put(v);r.onsuccess=()=>o();r.onerror=()=>n(r.error)})}async function idbDelete(id){const d=await idb();return new Promise((o,n)=>{const r=d.transaction(STORE,'readwrite').objectStore(STORE).delete(id);r.onsuccess=()=>o();r.onerror=()=>n(r.error)})}
-async function showQuota(){if(navigator.storage?.estimate){const q=await navigator.storage.estimate();$('#quota').textContent=`IndexedDB使用 ${(q.usage/1048576).toFixed(1)}MB / 上限目安 ${(q.quota/1073741824).toFixed(1)}GB`}}
+/* 端末内の保存容量（§9.129）。**普段は出さない。**「0.0MB / 上限目安 0.8GB」は
+   測定中ずっと出ていても打つ手が無く、主要動線の面積を取るだけだった。
+   保存できなくなる恐れが出たとき——半分を超えたとき——だけ言う
+   （「できないことは、できないと書く」のは、実際にできなくなる側の話）。 */
+const QUOTA_WARN_RATIO=0.5;
+async function showQuota(){
+ const el=$('#quota');if(!el)return;
+ if(!navigator.storage?.estimate){el.hidden=true;el.textContent='';return}
+ const q=await navigator.storage.estimate();
+ const used=q.usage||0,cap=q.quota||0;
+ if(!cap||used/cap<QUOTA_WARN_RATIO){el.hidden=true;el.textContent='';return}
+ el.hidden=false;
+ el.textContent=`端末内の保存容量が残り少なくなっています（使用 ${(used/1048576).toFixed(1)}MB / 目安 ${(cap/1073741824).toFixed(1)}GB）`;
+}
 async function idbAll(){const d=await idb();return new Promise((o,n)=>{const r=d.transaction(STORE).objectStore(STORE).getAll();r.onsuccess=()=>o(r.result||[]);r.onerror=()=>n(r.error)})}
 /* IndexedDB障害時もlocalStorageミラーで読み書きを継続する二重化層。 */
 const MIRROR_KEY='MeasurementLocalMirrorV31';

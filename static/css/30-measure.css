@@ -161,7 +161,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .measure-head-progress-bar{width:70px;height:7px;border-radius:var(--radius-xs);background:var(--bg);border:1px solid var(--muted-border);overflow:hidden}
 .measure-head-progress-bar i{display:block;height:100%;background:var(--teal);transition:width .2s}
 .measure-head-progress-bar--done i{background:var(--success)}
-.measure-head-progress-frac{min-width:34px;text-align:right;font-size:var(--fs);font-weight:800;color:var(--nav);font-variant-numeric:tabular-nums}
+
 @media(prefers-reduced-motion:reduce){.measure-head-progress-bar i{transition:none}}
 @media(max-width:1180px){.measure-head-progress-label{display:none}.measure-head-progress{padding:0 var(--ctl-pad-x-sm);gap:var(--gap-inline)}.measure-head-progress-bar{width:44px}}
 .save-state{display:flex;align-items:center;gap:var(--space-3);min-width:250px;justify-content:flex-end;flex:0 0 auto}
@@ -332,6 +332,10 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 /* 「入力内容」「丈位置」は**②で使う道具**なので①には出さない。1回決める
    だけのものと、測りながら何度も切り替えるものを同じ場所に並べない。 */
 .measure-shell.mstep-1 .selectors>[data-prep="step2"]{display:none}
+/* ①は**12列 × 各3列**にして4つずつそろえる（§9.129）。6列×span2だと
+   1行3つで、4つある「使う機材」が 3＋1 に割れて縦の線がそろわなかった。 */
+.measure-shell.mstep-1 .selectors{grid-template-columns:repeat(12,minmax(0,1fr))}
+.measure-shell.mstep-1 .selectors>label{grid-column:span 3}
 /* リストの高さは①では**`size`（行数）に任せる**（§9.126）。px指定の
    273pxは約8.8行という半端な値で、**最後の行が途中で切れた**うえ、
    1行のコントロール2つと同じ行に並ぶため**隣の下に237pxの穴**ができて
@@ -441,11 +445,22 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    - 主識別(ロット№)だけ大きく残す。一覧から開いた直後に「今どれを見て
      いるか」を確かめるのが最初の行動で、そこだけ視覚的な重みが要る */
 .info-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--gap-hair) var(--gap-section);align-content:start}
-.field{display:grid;grid-template-columns:minmax(58px,auto) minmax(0,1fr);align-items:center;gap:var(--gap-inline);min-width:0}
+/* ラベル列は**固定幅**。`auto`だと項目ごとに文字数の差がそのまま列幅の
+   差になり、**値の左端が縦にそろわない**（コース欄だけ過去に固定していた
+   のを全体へ広げた。§9.129）。ラベルは4文字までなので5emで足りる。 */
+.field{display:grid;grid-template-columns:6em minmax(0,1fr);align-items:center;gap:var(--gap-inline);min-width:0}
 .field.full{grid-column:1/-1}
-.field label{color:#7b8e95;font-size:var(--fs-micro);white-space:nowrap;text-align:right}
-.field output{display:block;min-height:0;padding:3px 6px;border:1px solid #d6e0e3;border-radius:var(--radius-xs);background:#ffffff;
- font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* ラベルが列より長いと**値の側へはみ出して間の余白を食う**
+   （「オーダーNo.」だけ値がくっついていた）。切り詰めて列を守る。 */
+.field label{color:#7b8e95;font-size:var(--fs-micro);white-space:nowrap;text-align:right;
+ min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* 値は**読み取り専用**。入力欄そっくりの枠と白地を与えると押せるように
+   見えるうえ、カードの枠と二重になる（§9.129）。枠を外し、そろえた列と
+   文字の強さだけで構造を出す。 */
+.field output{display:block;min-height:0;padding:3px 2px;border:0;border-radius:0;background:transparent;
+ color:var(--ink);font-size:var(--fs-sm);font-weight:600;
+ overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.field output:empty::before{content:"—";color:var(--ink-soft);font-weight:400}
 /* コース情報(設計/実績/残)は設備の連なりで、実機では
    「3文字+空白」×25程度=100文字近くまで伸びる(平均でも4文字×10=40文字前後)。
    **3項目とも縦に並べて常に全幅**を使う。以前は「入りきらないものだけ
@@ -457,10 +472,12 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    設備名の区切りは半角/全角スペースとは限らないので overflow-wrap:anywhere。 */
 /* ラベル列は**固定幅**にする。max-content にすると行ごとに文字数の差が
    そのまま列幅の差になり、値の開始位置が縦に揃わなかった
-   (「設計コース」と「残コース」で14pxずれていた)。ラベルは
-   「設計/実績/残」の2文字までなので、3文字ぶんあれば足りる。 */
+   (「設計コース」と「残コース」で14pxずれていた)。
+   **幅は他の項目と同じにする**（§9.129）——ここだけ3.2emにしていたため、
+   コースの3行だけ値が39px左に出て、縦の線が1本ではなく2本に見えていた。
+   全幅の行なので、ラベルを広げても値へ渡せる幅は他の項目の倍近くある。 */
 .info-grid .course-stack-field,.info-grid .residual-course-field{
- grid-column:1/-1;grid-template-columns:3.2em minmax(0,1fr)}
+ grid-column:1/-1;grid-template-columns:6em minmax(0,1fr)}
 /* 3項目が縦に3行を占めるぶん、行の高さは他の項目より少しだけ詰める
    (上下パディングを1px・行送りを詰める)。特大表示でも左ペインへ収める
    ための余白で、tests/test_maint.js の「表示サイズを特大にしても収まる」が
@@ -489,8 +506,15 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .lot-dsp-link:hover{background:var(--teal);border-color:var(--teal);color:#fff;box-shadow:0 2px 8px rgba(11,94,104,.28)}
 .lot-dsp-link:active{transform:translateY(1px);box-shadow:none}
 .lot-dsp-link:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
-.dimension{grid-column:1/-1;display:grid;grid-template-columns:54px repeat(5,minmax(0,1fr));gap:var(--gap-hair)}
-.dimension>*{padding:3px 2px;border:1px solid #c4d0d4;text-align:center;white-space:nowrap}
+/* 行の見出し列は**文字から決める**（§9.129）。54pxの直値では「オーダー」
+   （4文字×--fs）が入らず、右端が罫線に当たっていた。 */
+.dimension{grid-column:1/-1;display:grid;grid-template-columns:4.6em repeat(5,minmax(0,1fr));gap:var(--gap-hair)}
+/* 表はセルごとに枠を付けず、**内側の細線だけ**で区切る（§9.129）。
+   セル枠は隣どうしで二重になり、行数ぶん線が増えて濃く見える。 */
+.dimension{border:1px solid var(--line);border-radius:var(--radius-xs);overflow:hidden;gap:0}
+.dimension>*{padding:3px 2px;border:0;border-left:1px solid var(--line-soft);border-top:1px solid var(--line-soft);text-align:center;white-space:nowrap}
+.dimension>*:nth-child(6n+1){border-left:0}
+.dimension>*:nth-child(-n+6){border-top:0}
 .quality-grade-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--space-2)}
 .quality-grade-item{min-width:0;border:1px solid #c4d0d4;background:#f7fafb}
 .quality-grade-item b{display:block;padding:var(--pad-row);background:var(--header-bar-bg);color:var(--header-bar-fg);white-space:nowrap}
@@ -582,14 +606,20 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    バッジだけを見せてデータがスマートに入っていく演出にする。
    #deviceInputはキー入力イベントを受け続ける必要があるため、
    display:none/visibility:hiddenではなく視覚的にのみ隠す(クリップ)。 */
+/* 受信中かどうかは**地色と点**で伝わる。1語のために2pxの枠と40pxの箱を
+   使うのは装飾が勝ちすぎている（§9.129）。枠を落として帯を薄くし、
+   **状態の色は残す**（受信中・手動・受付不可で意味が違う）。
+   `#deviceInput`はこの中にあり、寸法ゼロだとフォーカスを保持できない
+   （§9.122）。**display/visibilityは触らない。** */
 .input-status{
-  display:flex;align-items:center;gap:var(--space-2);min-height:40px;padding:6px 12px;
-  border:2px solid #278b75;border-radius:var(--radius-sm);background:#e8f8f2;
+  display:flex;align-items:center;gap:var(--space-2);
+  min-height:var(--ctl-h-sm);padding:var(--space-1) var(--space-3);
+  border:0;border-left:3px solid #278b75;border-radius:var(--radius-xs);background:#e8f8f2;
 }
 .input-status[hidden]{display:none}
-.input-status.receiving{border-color:var(--teal);background:#e5f7fa}
-.input-status.manual-state{border-color:var(--warn-border);background:var(--warn-bg)}
-.input-status.not-ready-state{border-color:#b2bdc1;background:#eef2f4}
+.input-status.receiving{border-left-color:var(--teal);background:#e5f7fa}
+.input-status.manual-state{border-left-color:var(--warn-border);background:var(--warn-bg)}
+.input-status.not-ready-state{border-left-color:#b2bdc1;background:#eef2f4}
 .receive-state{display:flex;align-items:center;gap:var(--gap-inline);min-width:0}
 .receive-state>div{display:none}
 .auto-mode-label{font-weight:800;color:#0b5e68;letter-spacing:.02em}
@@ -660,7 +690,9 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
   padding:var(--pad-chip);background:var(--header-bar-bg);color:var(--header-bar-fg);border-bottom:1px solid #aebdc2;
   font-size:var(--fs-title);font-weight:800;
 }
-.measure-grid-block-title .measure-status{min-width:112px;text-align:center;padding:var(--pad-chip);background:#fff;border:1px solid #b7c7cc;font-weight:600}
+/* 見出しバーの中の状態は**文字だけ**。バーの中にさらに白い箱を置くと
+   枠の中の枠になる（§9.129）。 */
+.measure-grid-block-title .measure-status{min-width:112px;text-align:right;padding:var(--pad-chip);background:transparent;border:0;font-weight:700}
 /* 公差(40) : 測定入力(60) を both で統一 */
 .compact-thickness{min-height:142px;overflow:hidden}
 .compact-thickness-body,
@@ -679,7 +711,8 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 /* 板厚 3 点入力（位置ヘッダ + 丈行） */
 .thickness-vertical{
   display:grid;grid-template-columns:minmax(38px,.52fr) repeat(3,minmax(0,1fr));
-  width:100%;max-width:100%;min-width:0;min-height:62px;align-self:center;border:1px solid #9caeb4;
+  width:100%;max-width:100%;min-width:0;min-height:62px;align-self:center;
+  border:1px solid var(--line);border-radius:var(--radius-xs);overflow:hidden;
 }
 .thickness-vertical>*{min-width:0;max-width:100%;height:30px;display:flex;align-items:center;justify-content:center;border-right:1px solid #b7c7cc;border-bottom:1px solid #b7c7cc}
 .thickness-vertical>*:nth-child(4n){border-right:0}
@@ -687,7 +720,9 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 /* 公差 3 段表示（区分・基準 / ＋・－ / 判定範囲） */
 .compact-tol-three-row{
   display:grid;grid-template-rows:minmax(25px,auto) minmax(25px,auto) minmax(27px,auto);gap:var(--gap-tight);
-  min-height:102px;padding:var(--pad-row);border:1px solid var(--card-border);border-radius:var(--radius-card);background:var(--card-bg);overflow:visible;
+  /* ブロックの枠が既にグルーピングなので、**中で枠を重ねない**（§9.129）。
+     地色だけでまとまりは足りる。 */
+  min-height:102px;padding:var(--pad-row);border:0;border-radius:var(--radius-card);background:var(--card-bg);overflow:visible;
 }
 .compact-tol-three-row.no-data{grid-template-columns:max-content minmax(0,1fr);grid-template-rows:auto;align-items:center;border-color:var(--warn-border);background:var(--warn-bg)}
 .compact-tol-three-row.no-data span{margin-left:4px}
@@ -737,7 +772,8 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 /* 公差スケール（縦の帯グラフ） */
 .compact-tol-scale{
   position:relative;width:100%;max-width:100%;min-width:0;height:100%;overflow:hidden;
-  border:1px solid #aebdc2;border-radius:var(--radius-sm);
+  /* 帯そのものが境界になるので枠は要らない（§9.129）。 */
+  border:0;border-radius:var(--radius-sm);
   background:linear-gradient(to bottom,#f6dede 0 17%,#e3f5e8 17% 83%,#f6dede 83% 100%);
 }
 .compact-tol-scale::before{content:"";position:absolute;left:50%;top:17%;bottom:17%;width:3px;transform:translateX(-50%);background:#3a565d}
@@ -778,7 +814,8 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    **公差外はここでも印を付ける**（見えた時点で気づけるのが値打ち）。 */
 .length-compare{
   display:grid;grid-template-rows:auto minmax(0,1fr);min-width:0;min-height:0;
-  border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface);
+  /* ブロックの中なので**外枠は付けない**。入力表との境は細線1本（§9.129）。 */
+  padding-left:var(--space-3);border-left:1px solid var(--line-soft);background:transparent;
   overflow:hidden;
 }
 .lc-title{
