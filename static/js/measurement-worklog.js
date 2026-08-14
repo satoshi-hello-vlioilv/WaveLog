@@ -42,8 +42,8 @@
     if(parts.length>1){var u=String(parts[1]).trim();var um=u.match(/(\d+)\s*[mMｍＭ]/);unit=um?um[1]+'M':u;}
     return{value:value,unit:unit,raw:s};
   }
-  function instructionInfo(){
-    var type=currentType();var got=rawInstruction(type);if(!got)return null;
+  function instructionInfo(typeName){
+    var type=typeName||currentType();var got=rawInstruction(type);if(!got)return null;
     var parsed=parseInstruction(got.raw);if(!parsed)return null;parsed.key=got.key;parsed.type=type;return parsed;
   }
   // 指示値カード（測定データ側に表示）
@@ -62,14 +62,19 @@
   // toleranceDetail: 指示型は文字列の数値部を判定範囲[0,value]として返す（判定・図示に利用）。
   if(typeof toleranceDetail==='function'){
     var baseDetail=toleranceDetail;
-    toleranceDetail=function(kind,index){
-      var type=currentType();
+    /* 第3引数 typeName は「いま画面で選ばれている入力内容」の代わり（§9.125）。
+       **ラッパーが引数を捨てると、根の関数がいくら受け取れても届かない**
+       ——完了前の確認は描かれていない項目の公差外まで数えるので、ここで
+       落とすと全項目に「いま選ばれている項目の公差」を当ててしまう
+       （実際にそうなり、公差の無いラテラルボーが板幅の公差で判定された）。 */
+    toleranceDetail=function(kind,index,typeName){
+      var type=typeName||currentType();
       if(isInstructionType(type)){
-        var info=instructionInfo();
+        var info=instructionInfo(type);
         if(!info||!Number.isFinite(info.value))return null;
         return {range:[0,info.value],source:'instruction',fallback:false,plus:info.value,minus:0,plusKey:info.key,minusKey:'',base:0,single:true,instructionType:type,unit:info.unit,raw:info.raw};
       }
-      return baseDetail(kind,index);
+      return baseDetail(kind,index,typeName);
     };
   }
 

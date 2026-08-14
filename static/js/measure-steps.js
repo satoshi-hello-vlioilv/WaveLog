@@ -89,6 +89,143 @@
   return '';
  }
 
+ /* ---------- ①準備「その他の設定」（§9.125） ----------
+    18個の選択項目のうち、**毎回決めるもの**は誰が測るか・測定表の形・
+    使う機材で、残る5つは前の設定のままで済むことが多い（CSSに以前から
+    「条入力順・方向はプリセット値のままで問題ないことが多い」と書いてある）。
+    だから畳む。**ただし畳んだままでも値は読めること**——隠したものが何かを
+    書かずに隠すと、設定がそこにあること自体が忘れられる。
+    既定と違うものには印を付ける（「触っていない」ことも情報）。 */
+ const USUAL=[
+  {id:'unwind',       label:'巻出方向',  def:()=>'上出し'},
+  {id:'widthOrder',   label:'条入力順',  def:()=>'通常'},
+  {id:'widthDirection',label:'方向',     def:()=>'昇順'},
+  {id:'burr',         label:'バリ揃え',  def:()=>'指定なし'},
+  /* コイル止めの既定はロット由来（`measurement-view.js`が`innerTape`から入れる）。
+     定数で持つと、内巻両面テープのロットで常に「既定と違う」と出てしまう。 */
+  {id:'coilStop',     label:'コイル止め',def:()=>(S.measure?.settings?.innerTape?'内巻両面テープ':'指定なし')},
+ ];
+ function paintUsual(){
+  const state=document.getElementById('prepMoreState'),list=document.getElementById('prepMoreList');
+  if(!state||!list)return;
+  const parts=[];let changed=0;
+  USUAL.forEach(u=>{
+   const el=document.getElementById(u.id);if(!el)return;
+   const v=String(el.value||'').trim(),d=String(u.def()||'').trim();
+   const diff=!!v&&v!==d;if(diff)changed++;
+   const text=`${esc(u.label)} ${esc(v||'—')}`;
+   parts.push(diff?`<b>${text}</b>`:text);
+  });
+  list.innerHTML=parts.join(' / ');
+  state.textContent=changed?`${changed}件が既定と違います`:'すべて既定のまま';
+  state.classList.toggle('is-changed',changed>0);
+ }
+ function bindPrepMore(){
+  const btn=document.getElementById('prepMore');
+  const box=document.querySelector('.measure-shell .selectors');
+  if(btn&&box)btn.onclick=()=>{
+   const open=box.classList.toggle('prep-open');
+   btn.setAttribute('aria-expanded',open?'true':'false');
+  };
+  USUAL.forEach(u=>{
+   const el=document.getElementById(u.id);
+   if(el)el.addEventListener('change',()=>{try{paintUsual()}catch(e){}});
+  });
+ }
+
+ /* ---------- ③確認の完了前確認表（§9.125） ----------
+    以前は未測定も公差外も、**完了を押した後**の確認ダイアログでしか
+    分からなかった。押す前に見えれば直しに戻れる。
+    完了ボタンは操作レールに常時出ているので**ここには置かない**。 */
+ let fixMap={};
+ const wtText=v=>String(v||'').replace('T',' ');
+ /* 丈位置の呼び名は`#lengthPos`の選択肢が正（「1(頭)」「1(尾)」）。
+    番号だけ出すと画面のどことも一致しない。 */
+ const lengthLabel=li=>{
+  const el=document.getElementById('lengthPos');
+  return (el&&el.options[li]&&el.options[li].value)||`丈${li+1}`;
+ };
+ function finishRows(){
+  if(!measuring())return null;
+  const m=S.measure,rows=[];
+  let p=null;try{if(typeof measureProgress==='function')p=measureProgress()}catch(e){}
+  if(p){
+   const rest=p.unmeasured;
+   rows.push({key:'measure',name:'測定',state:rest.length?'todo':'done',
+    value:`${p.doneCount}/${p.activeCount} 項目`,
+    detail:rest.length
+     ?'未測定: '+rest.map(x=>`${x.name}（${x.state==='todo'?'未入力':x.filled+'/'+x.total}）`).join('・')
+     :'対象の項目はすべて入力済みです。',
+    fix:rest.length?{label:'測定へ',type:rest[0].name}:null});
+  }
+  let ng=null;try{ng=WL.measureReview&&WL.measureReview.outOfTolerance()}catch(e){}
+  if(ng){
+   /* **判定できなかった件数を隠さない。** 公差が引けない項目を「合格」と
+      同じに見せると、確認したつもりで何も確認していないことになる。 */
+   const un=ng.unjudged.length
+     ?` 公差が登録されていないため判定していない項目: ${ng.unjudged.join('・')}。`:'';
+   /* **どの丈位置かまで言う。** 件数だけでは、いま出ていない丈のものを
+      探しに行けない（そもそもこの集計は出ていない丈のためにある）。 */
+   const where=x=>{
+    const ls=[...new Set(x.hits.map(h=>lengthLabel(h.length)))];
+    return ls.length?`（${ls.join('・')}）`:'';
+   };
+   rows.push({key:'ng',name:'公差外',state:ng.total?'bad':'done',
+    value:ng.total?`${ng.total}件`:'なし',
+    detail:(ng.total?ng.items.map(x=>`${x.name} ${x.hits.length}件${where(x)}`).join('・')
+                    :'公差の外に出ている測定値はありません。')+un,
+    fix:ng.total?{label:'見に行く',type:ng.items[0].name,length:ng.items[0].hits[0].length}:null});
+  }
+  const wt=m.workTime||{},both=!!(wt.startAt&&wt.endAt);
+  rows.push({key:'worktime',name:'作業時間',state:both?'done':'todo',
+   value:both?'記録済み':(wt.startAt?'終了が未記録':(wt.endAt?'開始が未記録':'未記録')),
+   detail:both?`${wtText(wt.startAt)} → ${wtText(wt.endAt)}`
+              :'開始・終了の両方を記録してください（右の欄で直接編集もできます）。',
+   fix:both?null:{label:'記録する',focus:wt.startAt?'#workEndAt':'#workStartAt'}});
+  if(p){
+   const skipped=p.items.filter(x=>x.excluded).map(x=>x.name);
+   if(skipped.length)rows.push({key:'skip',name:'対象外',state:'info',
+    value:`${skipped.length}項目`,
+    detail:skipped.join('・')+'（意図して外した項目です。完了の確認からも外れます）',fix:null});
+  }
+  return rows;
+ }
+ function paintFinish(){
+  const box=document.getElementById('finishCheck');if(!box)return;
+  const rows=current==='3'?finishRows():null;
+  if(!rows){box.innerHTML='';fixMap={};return}
+  fixMap={};rows.forEach(r=>{if(r.fix)fixMap[r.key]=r.fix});
+  const rest=rows.filter(r=>r.state==='todo'||r.state==='bad').length;
+  box.innerHTML=`<div class="fc-head"><h3>完了前の確認</h3>`
+   +`<span class="fc-verdict fc-verdict--${rest?'rest':'ready'}">`
+   +esc(rest?`あと ${rest}件`:'このまま完了できます')+`</span></div>`
+   +`<ul class="fc-list">`+rows.map(r=>
+     `<li class="fc-row fc-row--${r.state}">`
+     +`<span class="fc-name">${esc(r.name)}</span>`
+     +`<span class="fc-value">${esc(r.value)}</span>`
+     +(r.fix?`<button type="button" class="fc-fix" data-fc-fix="${esc(r.key)}">${esc(r.fix.label)}</button>`:'<span></span>')
+     +`<span class="fc-detail">${esc(r.detail)}</span></li>`).join('')
+   +`</ul><p class="fc-note">確認できたら、左の「測定を完了」を押してください。</p>`;
+ }
+ /* 「直す」は**直せる場所まで連れて行く**。番号を言うだけでは探させることになる。 */
+ document.addEventListener('click',e=>{
+  const b=e.target.closest&&e.target.closest('[data-fc-fix]');if(!b)return;
+  const fix=fixMap[b.dataset.fcFix];if(!fix)return;
+  if(fix.focus){
+   const el=document.querySelector(fix.focus);
+   if(el){el.focus();el.scrollIntoView({block:'center'})}
+   return;
+  }
+  go('2');
+  const sel=document.getElementById('measureType');
+  if(sel&&fix.type){sel.value=fix.type;sel.dispatchEvent(new Event('change',{bubbles:true}))}
+  const lp=document.getElementById('lengthPos');
+  if(lp&&typeof fix.length==='number'&&lp.options[fix.length]){
+   lp.selectedIndex=fix.length;lp.dispatchEvent(new Event('change',{bubbles:true}));
+  }
+  restoreEntryFocus();
+ });
+
  function paint(){
   const el=shell();if(!el)return;
   const states=stepStates();
@@ -104,6 +241,20 @@
   const note=document.getElementById('mstepNote');
   if(note){const t=noteFor(current);note.textContent=t;note.hidden=!t}
   fillContext();
+  try{fitLengthList()}catch(e){}
+  try{paintUsual()}catch(e){}
+  try{paintFinish()}catch(e){}
+ }
+
+ /* 丈位置の一覧は**選択肢の数ぶんだけ**の高さにする。`size`は7で固定して
+    あったため、丈位置が2つのロットでも5行ぶんの空白が付いていた
+    （②では画面の高さを測定表に渡したい。§9.124と同じ理由）。
+    CSSでは中身に合わせられない（リストボックスの高さは`size`が決める）。 */
+ function fitLengthList(){
+  const el=sel('lengthPos');
+  if(!el||!el.options)return;
+  const n=Math.max(2,Math.min(7,el.options.length));
+  if(el.size!==n)el.size=n;
  }
 
  /* ---------- 段の切り替え ----------
@@ -133,7 +284,17 @@
  }
 
  /* 測定画面を開いたら①から始める。**次にすることが1つに決まる。** */
- function reset(){current='1';const el=shell();if(el)el.classList.remove('mstep-2','mstep-3');go('1')}
+ function reset(){
+  current='1';
+  const el=shell();if(el)el.classList.remove('mstep-2','mstep-3');
+  /* その他の設定は**開くたびに畳み直す**（前のロットで開いたまま閉じたら、
+     次のロットでも開いていた、という持ち越しを作らない）。 */
+  const box=document.querySelector('.measure-shell .selectors');
+  if(box)box.classList.remove('prep-open');
+  const btn=document.getElementById('prepMore');
+  if(btn)btn.setAttribute('aria-expanded','false');
+  go('1');
+ }
 
  WL.measureSteps={go,current:()=>current,refresh:paint,reset};
 
@@ -283,7 +444,7 @@
  }
 
  WL.onReady(()=>{
-  bind();watchModal();watchInputs();watchProgress();
+  bind();bindPrepMore();watchModal();watchInputs();watchProgress();
   const el=shell();if(el&&!el.classList.contains('mstep-1'))el.classList.add('mstep-1');
   paint();
  });

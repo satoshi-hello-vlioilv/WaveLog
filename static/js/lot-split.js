@@ -1673,8 +1673,8 @@
     const gi=posMap[index];
     return Number.isInteger(gi)?groups[gi]:null;
   }
-  function groupRangeFor(kind,index){
-    const type=$('#measureType')?.value||S.measure?.settings?.measureType||'';
+  function groupRangeFor(kind,index,typeName){
+    const type=typeName||$('#measureType')?.value||S.measure?.settings?.measureType||'';
     if(type!=='板厚/板幅')return null; // 分割は板厚/板幅の条位置に対してのみ意味を持つ
     const g=groupForIndex(index);
     if(!g||g.missing||!g.base||!g.tol)return null;
@@ -1687,10 +1687,15 @@
     return{range:[base-data.minus,base+data.plus],source,fallback,plus:data.plus,minus:data.minus,plusKey:data.plusKey,minusKey:data.minusKey,base,splitLot:g.lot};
   }
   const baseToleranceDetail=toleranceDetail;
-  toleranceDetail=function(kind,index=0){
-    const split=groupRangeFor(kind,index);
+  /* 第3引数 typeName は画面の選択の代わり（§9.125）。**受け取って渡す**
+     ——`toleranceDetail`は3つのファイルが順に包んでおり(ここ・
+     `measurement-worklog.js`・`measurement-tolerance.js`)、**1つでも
+     引数を落とすと根まで届かない**。実際にここで落ちており、完了前の
+     確認が全項目に「いま選ばれている項目の公差」を当てていた。 */
+  toleranceDetail=function(kind,index=0,typeName){
+    const split=groupRangeFor(kind,index,typeName);
     if(split)return split;
-    return baseToleranceDetail(kind,index);
+    return baseToleranceDetail(kind,index,typeName);
   };
 
   // compactToleranceData(表示用の公差テキスト生成)は従来 index を常に0扱いで
