@@ -26,28 +26,40 @@ let b=null;
  await page.click('#uiSizeBadge');
  await page.waitForSelector('#uiSizeMenu',{timeout:4000});
  const opts=await page.$$eval('#uiSizeMenu [data-ui-size-option]',bs=>bs.map(x=>x.dataset.uiSizeOption));
- rec('5段階の選択肢が出る',opts.length===5&&opts.join(',')==='xs,sm,md,lg,xl',opts.join(','));
+ rec('3段階の選択肢が出る',opts.length===3&&opts.join(',')==='sm,md,lg',opts.join(','));
 
- await page.click('#uiSizeMenu [data-ui-size-option="xl"]');
+ await page.click('#uiSizeMenu [data-ui-size-option="lg"]');
  await page.waitForTimeout(300);
- const xl=await measure();
- rec('特大にするとアプリ全体(本文・ナビ・バッジ)が同時に大きくなる',
-   parseFloat(xl.body)>parseFloat(md.body)&&xl.nav>md.nav&&parseFloat(xl.badge)>parseFloat(md.badge),
-   JSON.stringify(xl));
+ const lg=await measure();
+ rec('大にするとアプリ全体(本文・ナビ・バッジ)が同時に大きくなる',
+   parseFloat(lg.body)>parseFloat(md.body)&&lg.nav>md.nav&&parseFloat(lg.badge)>parseFloat(md.badge),
+   JSON.stringify(lg));
 
  await page.click('#uiSizeBadge');
  await page.waitForSelector('#uiSizeMenu',{timeout:4000});
- await page.click('#uiSizeMenu [data-ui-size-option="xs"]');
+ await page.click('#uiSizeMenu [data-ui-size-option="sm"]');
  await page.waitForTimeout(300);
- const xs=await measure();
- rec('極小にすると全体が小さくなる',
-   parseFloat(xs.body)<parseFloat(md.body)&&xs.nav<md.nav,JSON.stringify(xs));
+ const sm=await measure();
+ rec('小にすると全体が小さくなる',
+   parseFloat(sm.body)<parseFloat(md.body)&&sm.nav<md.nav,JSON.stringify(sm));
 
  // 永続化
  await page.reload({waitUntil:'domcontentloaded'});
  await page.waitForSelector('#uiSizeBadge',{timeout:10000});
  const after=await measure();
- rec('再読込後も選択した表示サイズが保持される',after.size==='xs',JSON.stringify(after));
+ rec('再読込後も選択した表示サイズが保持される',after.size==='sm',JSON.stringify(after));
+
+ /* 廃止した段(極小xs・特大xl)を保存している端末の行き先(§9.132)。
+    無効として既定(中)へ落とすと、**わざわざ選んでいた人ほど設定が黙って
+    戻る**ので、残った段のいちばん近いものへ寄せる。ここは実機に既に
+    保存されている値の話なので、消したから終わりにはできない。 */
+ for(const [old,want] of [['xl','lg'],['xs','sm']]){
+  await page.evaluate(v=>localStorage.setItem('MeasurementUiSizeV1',v),old);
+  await page.reload({waitUntil:'domcontentloaded'});
+  await page.waitForSelector('#uiSizeBadge',{timeout:10000});
+  const m=await measure();
+  rec(`廃止した段(${old})の保存値は近い段(${want})へ寄せる`,m.size===want,JSON.stringify(m));
+ }
 
  console.log('\n=== SUMMARY ===');
  const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);

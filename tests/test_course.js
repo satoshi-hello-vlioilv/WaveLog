@@ -136,7 +136,7 @@ let b=null;
    &&sh.every(x=>x.fullWidth>x.gridWidth*0.7),
    sh.map(x=>`${x.label}:${x.fullWidth}/${x.gridWidth}px@${x.top}`).join(' / '));
 
-  /* 実機の最長ケース(100文字)でも、表示サイズを特大にして左ペインが破綻しない。
+  /* 実機の最長ケース(100文字)でも、表示サイズを「大」にして左ペインが破綻しない。
      折り返して縦に伸びるぶんはスクロールで吸収する(切って隠すよりよい)。 */
   await page.evaluate(v=>{
    const src=S.measure.source=S.measure.source||{};
@@ -144,7 +144,7 @@ let b=null;
    if(typeof renderCourseHierarchy==='function')renderCourseHierarchy();
   },MAXCASE).catch(()=>{});
   const worst={};
-  for(const s of ['md','lg','xl']){
+  for(const s of ['sm','md','lg']){
    await page.evaluate(v=>{document.documentElement.dataset.uiSize=v},s);
    await page.waitForTimeout(400);
    const p=await probe();worst[s]={over:p.over,cut:p.out.map(x=>x.cut)};

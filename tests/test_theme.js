@@ -55,13 +55,13 @@ let b=null;
     return els.slice(0,6).map(e=>parseFloat(getComputedStyle(e).fontSize));
    };
    document.documentElement.dataset.uiSize='md';const md=pick();
-   document.documentElement.dataset.uiSize='xl';const xl=pick();
+   document.documentElement.dataset.uiSize='lg';const lg=pick();
    document.documentElement.dataset.uiSize='md';
-   return {md,xl};
+   return {md,lg};
   });
   rec('表示サイズの変更が全体の文字へ効く',
-   sizes.md.length>0&&sizes.md.every((v,i)=>sizes.xl[i]>v),
-   `中=${sizes.md.join(',')} / 特大=${sizes.xl.join(',')}`);
+   sizes.md.length>0&&sizes.md.every((v,i)=>sizes.lg[i]>v),
+   `中=${sizes.md.join(',')} / 大=${sizes.lg.join(',')}`);
 
   /* ---- 3) 中間色の種類が増えていない（同じ役割は同じ値） ---- */
   const neutrals=[...noComment.matchAll(/#([0-9a-fA-F]{6})\b/g)].map(m=>m[1].toLowerCase())

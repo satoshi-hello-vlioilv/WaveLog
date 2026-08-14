@@ -52,7 +52,7 @@ let b=null;
  rec('区分チップの文字がデータ列と同水準',sc.cat>=12&&sc.cat<=sc.title,`cat=${sc.cat} title=${sc.title}`);
 
  // 表示サイズを変えても関係が保たれる
- for(const size of ['xs','xl']){
+ for(const size of ['sm','lg']){
   await page.evaluate(v=>document.documentElement.setAttribute('data-ui-size',v),size);
   await page.waitForTimeout(300);
   const s2=await page.evaluate(()=>{
