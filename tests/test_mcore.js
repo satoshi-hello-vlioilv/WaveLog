@@ -279,11 +279,19 @@ let b=null,page=null;
   try{await page.evaluate(async()=>{
    const id=(typeof S!=='undefined'&&S.measure)?S.measure.id:'';
    if(id&&typeof reliableDelete==='function')await reliableDelete(id).catch(()=>{});
+   /* **消えるまで確かめる。** 共有(shareRecord)は画面を待たせずに送るので、
+      1回消しただけだと**遅れて届いた登録が後から復活する**（通しで1回だけ
+      test_scdrop が落ち、L0001に身に覚えのない実績が残っていた）。
+      消す→数える→残っていたらもう一度、を数回まで繰り返す。 */
    if(id){
-    const r=await fetch('/api/measurement/backup/list').then(x=>x.json()).catch(()=>({items:[]}));
-    const ids=(r.items||[]).map(i=>i.id).filter(x=>x===id||String(x).endsWith(id));
-    if(ids.length)await fetch('/api/measurement/backup/delete',{method:'POST',
-      headers:{'Content-Type':'application/json'},body:JSON.stringify({ids})}).catch(()=>{});
+    for(let k=0;k<6;k++){
+     const r=await fetch('/api/measurement/backup/list').then(x=>x.json()).catch(()=>({items:[]}));
+     const ids=(r.items||[]).map(i=>i.id).filter(x=>x===id||String(x).endsWith(id));
+     if(!ids.length)break;
+     await fetch('/api/measurement/backup/delete',{method:'POST',
+       headers:{'Content-Type':'application/json'},body:JSON.stringify({ids})}).catch(()=>{});
+     await new Promise(r2=>setTimeout(r2,250));
+    }
    }
    const m=document.querySelector('#measureModal');if(m)m.hidden=true;
   })}catch(e){}
