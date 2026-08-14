@@ -767,8 +767,54 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    移っただけだった（実測900px）。**一緒に読むものを引き離さない。**
    幅は2列のときの見え方（公差568px / 表416px）に合わせてある。 */
 .compact-width-body.one-strip{
-  grid-template-columns:minmax(0,36rem) minmax(0,26rem);justify-content:start;
+  grid-template-columns:minmax(0,36rem) minmax(0,26rem) minmax(0,1fr);
+  justify-content:start;
 }
+
+/* ---------- 丈位置くらべ（§9.128） ----------
+   ②では**いま選んでいる丈位置しか出ない**ので、頭と尾を見比べるには
+   丈を切り替えるしかなく、切り替えると今度はさっきの値が見えなかった。
+   1列のときに余る右側（実測430px）へ、同じ項目の全丈位置を1枚で出す。
+   **公差外はここでも印を付ける**（見えた時点で気づけるのが値打ち）。 */
+.length-compare{
+  display:grid;grid-template-rows:auto minmax(0,1fr);min-width:0;min-height:0;
+  border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface);
+  overflow:hidden;
+}
+.lc-title{
+  display:flex;align-items:baseline;gap:var(--space-2);
+  padding:var(--pad-chip);border-bottom:1px solid var(--line-soft);
+  background:var(--surface-2);color:var(--ink-2);font-size:var(--fs-sm);font-weight:800;
+}
+.lc-title small{color:var(--ink-soft);font-size:var(--fs-micro);font-weight:700}
+.lc-scroll{min-height:0;overflow:auto}
+.lc-table{width:100%;border-collapse:collapse;font-size:var(--tbl-fs);font-variant-numeric:tabular-nums}
+.lc-table th,.lc-table td{
+  padding:var(--pad-chip);border-bottom:1px solid var(--line-soft);
+  text-align:right;white-space:nowrap;
+}
+.lc-table thead th{
+  position:sticky;top:0;z-index:1;padding:0;
+  background:var(--surface-2);border-bottom:1px solid var(--line);
+  text-align:center;font-size:var(--fs-sm);
+}
+.lc-table thead th button{
+  width:100%;height:var(--ctl-h-xs);border:0;border-radius:0;
+  background:transparent;color:var(--ink-2);font-weight:800;font-size:var(--fs-sm);
+  box-shadow:none;white-space:nowrap;
+}
+.lc-table thead th button:hover{background:var(--pale);color:var(--nav)}
+.lc-table thead th.is-current{background:var(--pale)}
+.lc-table thead th.is-current button{color:var(--nav)}
+.lc-table tbody th{
+  width:var(--ctl-h-lg);color:var(--ink-soft);font-weight:700;text-align:right;
+}
+/* いま入力している丈位置の列。**入力表と同じ値がここにも出る**ので、
+   どこを見ているかが分かるように薄く敷く（色だけに頼らず、見出しの
+   文字色も変える）。 */
+.lc-table td.is-current{background:var(--pale)}
+.lc-table td.is-ng{background:var(--danger-bg);color:var(--danger);font-weight:800}
+.lc-empty{margin:var(--space-3);color:var(--ink-soft);font-size:var(--fs-sm)}
 .compact-strip-layout{
   display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(3px,.35vw,6px);
   width:100%;max-width:100%;min-width:0;height:100%;overflow:hidden;
