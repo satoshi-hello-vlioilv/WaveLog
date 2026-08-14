@@ -519,7 +519,7 @@
 .type-chips{display:flex;flex-direction:column;gap:var(--gap-hair);min-height:0;height:100%;align-self:stretch;grid-row:2}
 .dense-controls .major-list .type-chips{width:100%}
 .type-chip{
-  flex:1 1 0;min-height:0;height:auto;
+  flex:1 1 0;min-height:var(--ctl-h-xs);height:auto;
   display:flex;align-items:center;justify-content:space-between;gap:var(--space-1);
   padding:var(--pad-chip);border-radius:var(--radius-sm);font-size:var(--fs-sm);font-weight:700;
   background:var(--required-bg);border:1px solid var(--required);color:#7a5200;
@@ -541,7 +541,7 @@
 .rail-progress-line{
   font-size:var(--fs-micro);color:#36515c;display:flex;align-items:center;gap:var(--gap-tight);flex-wrap:wrap;
 }
-.rail-progress-line b{font-size:var(--fs-base-sm);color:var(--nav);font-variant-numeric:tabular-nums}
+.rail-progress-line b{font-size:var(--fs);color:var(--nav);font-variant-numeric:tabular-nums}
 .rail-progress-skip{color:#6d7f85}
 .rail-progress-lengths{display:flex;flex-wrap:wrap;gap:var(--gap-tight)}
 .rail-len{
