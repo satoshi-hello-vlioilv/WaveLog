@@ -48,7 +48,7 @@ G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'te
 G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 'test_eqkind',
                'test_shift', 'test_dbequip', 'test_crudroutes', 'test_setpage', 'test_eqstd']
 G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'test_flows',
-             'test_p11', 'test_p11c', 'test_waiting', 'test_waiting2', 'test_mcore']
+             'test_p11', 'test_p11c', 'test_waiting', 'test_waiting2', 'test_mcore', 'test_msteps']
 G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'test_density',
                'test_uiux', 'test_hdr', 'test_headbar', 'test_calscale', 'test_bootui',
                'test_gridhead']
@@ -105,6 +105,7 @@ RULES = [
     ('static/js/wl-window.js', g('test_lcpanel', 'test_listmodal', 'test_split_layout',
                                  'test_scsplit')),
     ('static/js/measure-progress.js', g('test_waiting', 'test_waiting2', 'test_mcore')),
+    ('static/js/measure-steps.js', g('測定', '見た目')),   # 段の枠は測定画面全体に効く
     ('static/js/records-store.js', g('test_share', 'test_flows', 'test_p11', 'test_recperm')),
     ('static/js/measurement-', g('測定')),          # measurement-*.js
 

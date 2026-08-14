@@ -141,7 +141,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
   background:#f5f5f3;border-radius:var(--radius-md);box-shadow:0 20px 70px #0005;
   display:grid;
   grid-template-columns:160px minmax(0,1fr);
-  grid-template-rows:62px auto minmax(0,1fr);
+  grid-template-rows:62px auto auto auto minmax(0,1fr);
   overflow:hidden;
   font-size:var(--fs);
 }
@@ -182,7 +182,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    切り詰められない値にする。以前は136px(ボタン実幅109px)で、主要導線の
    「保存して一覧へ」までが「保存して一...」と省略されていた。 */
 .action-rail{
-  grid-row:3;width:160px;display:flex;flex-direction:column;gap:var(--gap-section);
+  grid-row:5;width:160px;display:flex;flex-direction:column;gap:var(--gap-section);
   padding:9px 8px;background:#d7e5ee;border-right:1px solid #9fb2bf;overflow-y:auto;
 }
 .rail-group{display:grid;gap:var(--gap-inline)}
@@ -196,9 +196,79 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .action-rail .rail-primary{background:var(--teal);color:#fff;border-color:var(--teal)}
 .action-rail .rail-success{background:var(--success);color:#fff;border-color:var(--success)}
 .action-rail .rail-danger{background:var(--danger-bg);color:var(--danger);border-color:var(--danger-border)}
+
+/* ---------- 文脈バー / 段ナビ（§9.123 測定画面の3段構成） ----------
+   文脈バーは「このロットが何か」を段をまたいで固定して見せる。**段を移動
+   しても動かないこと**に価値があるので、ここへ段ごとの情報を混ぜない。
+   進捗・保存状態はヘッダー(.measure-head)に常時出ているため重ねない
+   （同じものが2箇所にあること自体が認知コスト）。 */
+.measure-context{
+  grid-column:1/-1;display:flex;align-items:center;gap:var(--space-5);
+  padding:0 16px;min-height:var(--ctl-h-sm);
+  background:var(--surface-2);border-bottom:1px solid var(--line-soft);
+  font-size:var(--fs-sm);overflow:hidden;white-space:nowrap;
+}
+.mctx-item{display:flex;align-items:baseline;gap:var(--space-2);min-width:0}
+.mctx-item small{flex:0 0 auto;color:var(--ink-soft);font-size:var(--fs-micro);font-weight:700;letter-spacing:.04em}
+.mctx-item b{min-width:0;color:var(--ink);font-weight:800;overflow:hidden;text-overflow:ellipsis}
+
+/* 段ナビ。**関門ではなくタブ**なので、いつでも押せる見た目にする。
+   状態は色だけで伝えず、必ず文字（済／未／件数）を添える。 */
+.measure-steps{
+  grid-column:1/-1;display:flex;align-items:stretch;gap:0;
+  background:var(--surface);border-bottom:1px solid var(--line);
+}
+.measure-steps .mstep{
+  display:flex;align-items:center;gap:var(--space-2);
+  height:var(--ctl-h-md);padding:0 var(--space-5);
+  border:0;border-bottom:3px solid transparent;border-radius:0;
+  background:transparent;color:var(--ink-3);font-weight:700;box-shadow:none;
+}
+.measure-steps .mstep:hover{background:var(--surface-2);color:var(--ink)}
+.measure-steps .mstep .mstep-no{
+  display:grid;place-items:center;flex:0 0 auto;
+  width:var(--ctl-h-xs);height:var(--ctl-h-xs);border-radius:var(--radius-round);
+  background:var(--surface-3);color:var(--ink-2);font-size:var(--fs-micro);font-weight:800;font-style:normal;
+}
+.measure-steps .mstep .mstep-name{font-size:var(--fs)}
+.measure-steps .mstep .mstep-state{
+  color:var(--ink-soft);font-size:var(--fs-micro);font-style:normal;font-weight:700;
+  font-variant-numeric:tabular-nums;
+}
+.measure-steps .mstep.is-current{
+  color:var(--nav);border-bottom-color:var(--teal);background:var(--pale);
+}
+.measure-steps .mstep.is-current .mstep-no{background:var(--teal);color:#fff}
+.measure-steps .mstep.is-current .mstep-state{color:var(--teal-dark)}
+/* 進めない理由。言えることがあるときだけ出す（常設の注意書きは読まれない）。 */
+.mstep-note{
+  display:flex;align-items:center;margin-left:auto;padding:0 16px;
+  color:var(--warn-fg);font-size:var(--fs-sm);font-weight:700;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.mstep-note[hidden]{display:none}
+
+/* ---------- 段ごとの見せ分け ----------
+   **表示/非表示だけで行い、DOMの親を変えない。** 受信欄を作り直すと
+   実機で転送が止まる（§9.122）。隠れているあいだフォーカスは外れるが、
+   ②へ戻ったときに measure-steps.js が戻す。 */
+.measure-shell.mstep-1 .right-pane{display:none}
+.measure-shell.mstep-2 .left-pane,
+.measure-shell.mstep-2 .center-pane{display:none}
+.measure-shell.mstep-3 .center-pane,
+.measure-shell.mstep-3 .right-pane{display:none}
+/* 面積は「頻度 × 重要度」で配る。②測定は作業時間の9割を占めるので、
+   このときだけ本体を1枚で使う。 */
+.measure-shell.mstep-1 .measure-body{grid-template-columns:minmax(0,3fr) minmax(0,4fr)}
+.measure-shell.mstep-2 .measure-body{grid-template-columns:minmax(0,1fr)}
+.measure-shell.mstep-3 .measure-body{grid-template-columns:minmax(0,1fr)}
+/* 危ない操作を主要動線に置かない。「このデータを削除」は③でだけ出す
+   （今は「測定を完了」の真下にあり、押し間違いの的になっていた）。 */
+.measure-shell:not(.mstep-3) .rail-bottom{display:none}
+
 /* --- 本体 3 ペイン（比率 3 : 4 : 4） --- */
 .measure-body{
-  grid-row:3;grid-column:2;
+  grid-row:5;grid-column:2;
   display:grid;
   grid-template-columns:minmax(0,3fr) minmax(0,4fr) minmax(0,4fr);
   min-height:0;width:100%;max-width:100%;overflow:hidden;
