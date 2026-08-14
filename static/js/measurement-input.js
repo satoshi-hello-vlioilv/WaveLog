@@ -257,8 +257,11 @@ function toleranceDataForSource(kind,source){
  return data;
 }
 function applyInstructionToleranceForOtherTargets(kind){const p=instructedTolerance(kind,'plus'),m=instructedTolerance(kind,'minus');return p&&m?{plus:p.value,minus:m.value,plusKey:p.key,minusKey:m.key}:null}
-function toleranceDetail(kind,index=0){
- const type=$('#measureType')?.value||S.measure?.settings?.measureType||'',isDimensional=type==='板厚/板幅',b=S.measure.basic,base=Number(kind==='thickness'?b.mfgThickness:b.mfgWidth);
+/* typeName は「いま画面で選ばれている入力内容」の代わりに使う省略可能な引数。
+   完了前の確認は**描かれていない項目の公差外まで数える**必要があり、画面の
+   選択に引きずられると1項目ぶんしか見られない(§9.125)。省略時は今までどおり。 */
+function toleranceDetail(kind,index=0,typeName){
+ const type=typeName||$('#measureType')?.value||S.measure?.settings?.measureType||'',isDimensional=type==='板厚/板幅',b=S.measure.basic,base=Number(kind==='thickness'?b.mfgThickness:b.mfgWidth);
  let requested=configuredToleranceSource();if(!isDimensional)requested='instruction';let data=requested==='instruction'?applyInstructionToleranceForOtherTargets(kind):toleranceDataForSource(kind,requested),source=requested,fallback=false;
  if(!data&&requested!=='manufacturing'){source='manufacturing';fallback=true;data=toleranceDataForSource(kind,'manufacturing')}
  return data&&Number.isFinite(base)?{range:[base-data.minus,base+data.plus],source,fallback,...data}:null;

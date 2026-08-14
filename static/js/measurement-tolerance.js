@@ -37,9 +37,11 @@
     return null;
   }
   var baseDetail=toleranceDetail;
-  toleranceDetail=function(kind,index){
-    var type=currentType();
-    if(DIMENSIONAL[type])return baseDetail(kind,index);
+  /* 第3引数 typeName は画面の選択の代わり（§9.125）。**受け取って渡す**
+     ——ここで捨てると、外側のラッパーが渡してきた項目名が根へ届かない。 */
+  toleranceDetail=function(kind,index,typeName){
+    var type=typeName||currentType();
+    if(DIMENSIONAL[type])return baseDetail(kind,index,typeName);
     var single=instructionSingle(type);
     if(!single)return null; // 指示公差の該当なし -> 表示しない
     return {range:[0,single.value],source:'instruction',fallback:false,plus:single.value,minus:0,plusKey:single.key,minusKey:'',base:0,single:true,instructionType:type};

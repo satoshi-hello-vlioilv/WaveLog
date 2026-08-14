@@ -90,16 +90,28 @@ let b=null,page=null;
      1回決めるだけの設定は①のもの。 */
   await go('2');
   const m2=await seen();
-  const items=await page.evaluate(()=>({
-   一覧:document.querySelectorAll('#measureTypeGroup .type-chip').length,
-   ほかの設定:[...document.querySelectorAll('.selectors>label')]
-     .filter(x=>x.id!=='measureTypeGroup'&&x.getBoundingClientRect().height>0).length,
-   件数の文字:[...document.querySelectorAll('#measureTypeGroup .type-chip-state')]
-     .map(x=>x.textContent.trim()).filter(Boolean).length,
-  }));
+  const items=await page.evaluate(()=>{
+   const lp=document.getElementById('lengthPos');
+   return {
+    一覧:document.querySelectorAll('#measureTypeGroup .type-chip').length,
+    ほかの設定:[...document.querySelectorAll('.selectors>label')]
+      .filter(x=>x.id!=='measureTypeGroup'&&x.id!=='lengthPosGroup'
+                 &&x.getBoundingClientRect().height>0).length,
+    件数の文字:[...document.querySelectorAll('#measureTypeGroup .type-chip-state')]
+      .map(x=>x.textContent.trim()).filter(Boolean).length,
+    丈が見える:document.getElementById('lengthPosGroup')?.getBoundingClientRect().height>0,
+    丈の行数:lp?lp.size:0,丈の選択肢:lp?lp.options.length:0,
+   };
+  });
   rec('②では基本情報の面を出さない',m2.左.見===false,JSON.stringify(m2.左));
   rec('②に入力内容の一覧（8項目）が出る',items.一覧===8,JSON.stringify(items));
   rec('②では1回決めるだけの設定を出さない',items.ほかの設定===0,JSON.stringify(items));
+  /* **丈位置は②に出す（§9.125）。** `PageUp/PageDown`で動かせるのに、
+     以前はどの段にも出ておらず「いま何丈目か」は`#stepStatus`の文でしか
+     分からなかった。高さは選択肢の数ぶん——7行固定だと空白が並ぶ。 */
+  rec('②に丈位置が出る',items.丈が見える===true,JSON.stringify(items));
+  rec('丈位置の高さは選択肢の数ぶん',items.丈の行数===Math.max(2,Math.min(7,items.丈の選択肢)),
+      JSON.stringify(items));
   rec('一覧の各項目に残り件数が文字で付く',items.件数の文字===8,JSON.stringify(items));
   /* 測定表は本体の大半を取る。3ペインのときは本体の約4/10だった。 */
   rec('②の測定表が本体の半分より広い',m2.右.w>m2.本体.w*0.5,
@@ -201,6 +213,62 @@ let b=null,page=null;
   rec('キーの案内が画面に出ている',
       !!hint&&hint.見えている&&/F2/.test(hint.文)&&/項目/.test(hint.文),JSON.stringify(hint));
 
+  /* ---- 5c) ①準備は役割ごとにまとまり、「その他」は畳む（§9.125） ----
+     18個の選択項目が意味なく並んでいた。**毎回決めるもの**（誰が・形・機材）
+     だけを出し、前の設定のままで済む5つは畳む。**畳んでも値は読める**
+     ——隠したものが何かを書かずに隠すと、設定の存在ごと忘れられる。 */
+  await go('1');
+  const prep=()=>page.evaluate(()=>{
+   const box=document.querySelector('.measure-shell .selectors');
+   const vis=x=>x.getBoundingClientRect().height>0;
+   const id=x=>x.querySelector('select,input')?.id||'';
+   return {
+    見出し:[...box.querySelectorAll('.prep-head')].filter(vis)
+      .map(x=>(x.querySelector('.prep-more-name')||x).textContent.trim()),
+    出ている項目:[...box.querySelectorAll('label')].filter(vis).map(id),
+    畳んでいる項目:[...box.querySelectorAll('label[data-prep="usual"]')].filter(x=>!vis(x)).map(id),
+    要約:document.querySelector('#prepMoreList')?.textContent.trim()||'',
+    状態:document.querySelector('#prepMoreState')?.textContent.trim()||'',
+    開いている:box.classList.contains('prep-open'),
+   };
+  });
+  const p1=await prep();
+  rec('①は役割ごとの見出しを持つ',p1.見出し.length===4,JSON.stringify(p1.見出し));
+  rec('見出しは「誰が→形→機材→その他」の順',
+      p1.見出し.join('/')==='誰が測るか/測定表の形/使う機材/その他の設定',
+      p1.見出し.join('/'));
+  /* ②で使う道具（入力内容・丈位置）は①に出さない。**1回決めるものと、
+     測りながら何度も切り替えるものを同じ場所に並べない。** */
+  rec('①に入力内容・丈位置を出さない',
+      !p1.出ている項目.includes('measureType')&&!p1.出ている項目.includes('lengthPos'),
+      JSON.stringify(p1.出ている項目));
+  rec('①に出るのは毎回決める9項目',
+      ['operator','inspector','crewSize','verticalCount','horizontalCount',
+       'innerDiameter','spool','thicknessGauge','widthGauge']
+        .every(k=>p1.出ている項目.includes(k))&&p1.出ている項目.length===9,
+      JSON.stringify(p1.出ている項目));
+  rec('その他の5項目は既定で畳んである',
+      p1.畳んでいる項目.length===5&&p1.開いている===false,JSON.stringify(p1.畳んでいる項目));
+  /* **畳んだままでも値が読めること。** ここが空だと、ただ隠しただけになる。 */
+  rec('畳んだままでも5項目の現在値が要約に出る',
+      ['巻出方向','条入力順','方向','バリ揃え','コイル止め'].every(k=>p1.要約.includes(k)),
+      p1.要約);
+  rec('触っていないことも書く',/既定/.test(p1.状態),p1.状態);
+  await page.click('#prepMore');await page.waitForTimeout(250);
+  const p2=await prep();
+  rec('押すと5項目が出る',p2.出ている項目.length===14&&p2.開いている===true,
+      JSON.stringify(p2.出ている項目.length));
+  /* 既定と違う値にしたら、畳んだままでもそれが分かる。 */
+  await page.evaluate(()=>{const s=document.getElementById('widthDirection');
+    s.value='降順';s.dispatchEvent(new Event('change',{bubbles:true}))});
+  await page.waitForTimeout(250);
+  const p3=await prep();
+  rec('既定と違う設定は件数で知らせる',/1件/.test(p3.状態),p3.状態);
+  await page.evaluate(()=>{const s=document.getElementById('widthDirection');
+    s.value='昇順';s.dispatchEvent(new Event('change',{bubbles:true}))});
+  await page.click('#prepMore');await page.waitForTimeout(250);
+  rec('もう一度押すと畳まる',(await prep()).開いている===false);
+
   /* ---- 6) ③確認 ---- */
   await go('3');
   const m3=await seen();
@@ -210,6 +278,113 @@ let b=null,page=null;
      見ないこと**——`||`で拾うと先に空でないほうしか見ず、主張が変わる。 */
   const rest3=(m3.理由||'')+' / '+(m3.段[2].状態||'');
   rec('③には残りの件数を数で書く',/\d+\s*項目/.test(rest3),rest3);
+
+  /* ---- 6b) 完了前の確認表（§9.125） ----
+     以前は未測定も公差外も**完了を押した後**の確認ダイアログでしか
+     分からなかった。押す前に見えれば直しに戻れる。 */
+  const check=()=>page.evaluate(()=>({
+   行:[...document.querySelectorAll('.fc-row')].map(x=>({
+     名:x.querySelector('.fc-name')?.textContent.trim()||'',
+     値:x.querySelector('.fc-value')?.textContent.trim()||'',
+     詳:x.querySelector('.fc-detail')?.textContent.trim()||'',
+     直:x.querySelector('.fc-fix')?.textContent.trim()||'',
+     状態:[...x.classList].find(c=>c.startsWith('fc-row--'))||''})),
+   判定:document.querySelector('.fc-verdict')?.textContent.trim()||'',
+   完了ボタン:document.querySelectorAll('.finish-check #complete, .finish-check button.rail-success').length,
+  }));
+  const c1=await check();
+  rec('③に完了前の確認表が出る',c1.行.length>=3,JSON.stringify(c1.行.map(x=>x.名)));
+  rec('確認表は測定・公差外・作業時間を並べる',
+      ['測定','公差外','作業時間'].every(n=>c1.行.some(x=>x.名===n)),
+      JSON.stringify(c1.行.map(x=>x.名)));
+  /* **状態を色だけで伝えない。** すべての行が数か言葉を持つこと。 */
+  rec('どの行も状態を文字で持つ',c1.行.every(x=>x.値!==''),JSON.stringify(c1.行.map(x=>x.値)));
+  rec('残り件数を見出しに出す',/あと|完了できます/.test(c1.判定),c1.判定);
+  /* 完了ボタンは操作レールに常時出ている。**同じボタンを2箇所に置かない。** */
+  rec('確認表に完了ボタンを重ねて置かない',c1.完了ボタン===0,String(c1.完了ボタン));
+
+  /* 公差外は**画面に描かれていない丈位置まで**数える。ここが画面依存だと、
+     別の丈にある公差外は完了まで誰も気づけない（この集計の存在理由）。
+     検証用フィクスチャには公差が入っていないので、**材料ごと注ぎ込む**
+     ——入れずに「0件」を見ても、壊れていても同じ結果になる。 */
+  const inject=await page.evaluate(()=>{
+   const m=S.measure;
+   m.basic.mfgWidth=100;m.basic.mfgThickness=2;
+   m.source=m.source||{};
+   m.source['板幅公差_製造_プラス']=0.5;m.source['板幅公差_製造_マイナス']=0.5;
+   m.settings.verticalCount=1;m.settings.horizontalCount=3;
+   const r=toleranceDetail('width',0,'板厚/板幅')?.range;
+   if(!r)return{skip:true,base:m.basic.mfgWidth,
+     公差の元:toleranceDataForSource('width','manufacturing'),
+     出どころ:configuredToleranceSource()};
+   m.measurements.width[0][0]=String((r[0]+r[1])/2);  // 合格（1丈目＝描かれている）
+   m.measurements.width[1][0]=String(r[1]+50);        // 上限超え（2丈目＝描かれていない）
+   m.measurements.width[1][1]=String(r[0]-50);        // 下限割れ
+   return{skip:false,range:r,集計:WL.measureReview.outOfTolerance()};
+  });
+  rec('公差の材料を注ぎ込めた',inject.skip===false,JSON.stringify(inject).slice(0,300));
+  rec('描かれていない丈位置の公差外も数える',
+      !inject.skip&&inject.集計.total===2
+      &&inject.集計.items.length===1
+      &&inject.集計.items[0].name==='板厚/板幅'
+      &&inject.集計.items[0].hits.every(h=>h.length===1),
+      JSON.stringify(inject.集計||{}));
+  /* **項目ごとに公差を引き直す。** ラッパー(`measurement-worklog.js`/
+     `measurement-tolerance.js`)が`#measureType`を見るため、項目名を
+     渡さないと「いま選ばれている項目の公差」が全項目に当たる。実際に
+     公差の無いラテラルボーが板幅の公差で判定され、偽の1件が出た。 */
+  rec('公差の無い項目を他項目の公差で判定しない',
+      !inject.skip&&!inject.集計.items.some(x=>x.name==='ラテラルボー'),
+      JSON.stringify((inject.集計||{}).items||[]));
+  rec('合格の値は数えない',!inject.skip&&inject.集計.items.every(x=>x.hits.every(h=>h.index<2)),
+      JSON.stringify(inject.集計||{}));
+  await go('1');await go('3');
+  const c2=await check();
+  const ngRow=c2.行.find(x=>x.名==='公差外');
+  rec('確認表が公差外を件数で言う',!!ngRow&&/2件/.test(ngRow.値),JSON.stringify(ngRow||{}));
+  rec('公差外はどの丈位置かまで言う',!!ngRow&&/1\(尾\)/.test(ngRow.詳),ngRow?.詳||'');
+  rec('公差外の行には直しに行く手立てがある',!!ngRow&&ngRow.直!=='',JSON.stringify(ngRow||{}));
+
+  /* 「見に行く」は**直せる場所まで連れて行く**。番号を言うだけでは探させる。 */
+  await page.evaluate(()=>{
+   const r=[...document.querySelectorAll('.fc-row')].find(x=>x.querySelector('.fc-name')?.textContent.trim()==='公差外');
+   r.querySelector('.fc-fix').click();
+  });
+  await page.waitForTimeout(700);
+  const jumped=await page.evaluate(()=>({
+   段:document.querySelector('.mstep.is-current .mstep-name')?.textContent.trim()||'',
+   項目:document.querySelector('#measureType').value,
+   丈:document.querySelector('#lengthPos').value,
+   NGセル:document.querySelectorAll('#measurementGrid input.ng').length,
+  }));
+  rec('「見に行く」で②の該当項目・該当丈へ行く',
+      jumped.段==='測定'&&jumped.項目==='板厚/板幅'&&jumped.丈==='1(尾)',
+      JSON.stringify(jumped));
+  rec('飛んだ先で公差外のセルに印が付いている',jumped.NGセル>0,JSON.stringify(jumped));
+
+  /* 公差が引けない値を「合格」に混ぜない。**判定していないなら、そう書く。** */
+  const unj=await page.evaluate(()=>{
+   const m=S.measure;
+   delete m.source['板幅公差_製造_プラス'];delete m.source['板幅公差_製造_マイナス'];
+   return WL.measureReview.outOfTolerance();
+  });
+  rec('公差が引けない項目は「判定していない」に回す',
+      unj.total===0&&unj.unjudged.includes('板厚/板幅'),JSON.stringify(unj));
+  await go('3');
+  const c3=await check();
+  rec('判定していない項目を画面にも出す',
+      /判定していない項目/.test((c3.行.find(x=>x.名==='公差外')||{}).詳||''),
+      (c3.行.find(x=>x.名==='公差外')||{}).詳||'');
+
+  /* 作業時間を記録したら、その行だけが済みになる。 */
+  await page.evaluate(()=>{
+   S.measure.workTime={startAt:'2026-08-14T09:00:00',endAt:'2026-08-14T10:00:00'};
+   WL.measureSteps.refresh();
+  });
+  await page.waitForTimeout(300);
+  const wt=(await check()).行.find(x=>x.名==='作業時間');
+  rec('作業時間を記録すると済みになる',!!wt&&wt.状態==='fc-row--done'&&/記録済み/.test(wt.値),
+      JSON.stringify(wt||{}));
 
   /* ---- 7) 危ない操作を主要動線から外す ----
      「このデータを削除」は「測定を完了」の真下にあり、押し間違いの的だった。 */

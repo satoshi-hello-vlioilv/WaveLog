@@ -109,6 +109,50 @@ function progressOf(m){
 }
 function measureProgress(){return progressOf(S.measure)}
 
+/* ---------- 公差外の集計（§9.125） ----------
+   **画面ではなくデータから数える。** `updateValidationVisuals()`が見るのは
+   いま描かれているグリッドだけなので、別の丈位置・別の項目にある公差外は
+   完了を押すまで誰も気づけない（進捗を全項目から数えているのと同じ理由）。
+   判定式は`judgeInput`と同じ——値があって数として読めて、公差の外なら1件。
+   公差が引けない項目は**判定しない**（「公差が無い＝合格」ではないので、
+   合格として数えない）。フラットネスは〇/△/×なので対象外。 */
+const NG_DEFS=ITEM_DEFS.filter(d=>d.scope==='length'&&d.name!=='フラットネス');
+function outOfToleranceOf(m){
+ if(!m||typeof toleranceDetail!=='function')return null;
+ const excluded=new Set(measureScopeOf(m).excluded),c=countsOf(m),items=[],unjudged=[];
+ let total=0;
+ NG_DEFS.forEach(def=>{
+  if(excluded.has(def.name))return;
+  const hits=[];let judged=false,filledAny=false;
+  def.keys.forEach(key=>{
+   let range=null;
+   /* **項目名を渡す。** 渡さないと画面でいま選ばれている項目の公差が
+      全項目に当たる（ラッパーが`#measureType`を見るため）。 */
+   try{range=toleranceDetail(key==='thickness'?'thickness':'width',0,def.name)?.range||null}catch(e){}
+   if(range)judged=true;
+   const rows=(m.measurements||{})[key]||[];
+   for(let li=0;li<c.lengthSlots;li++){
+    const row=rows[li]||[],n=key==='thickness'?3:c.horizontal;
+    for(let j=0;j<n;j++){
+     const raw=String(row[j]??'').trim();
+     if(raw==='')continue;
+     filledAny=true;
+     if(!range)continue;
+     const num=Number(raw);
+     if(!Number.isFinite(num))continue;
+     if(num<range[0]||num>range[1])hits.push({key,length:li,index:j,value:raw});
+    }
+   }
+  });
+  if(hits.length){items.push({name:def.name,hits});total+=hits.length}
+  /* 公差そのものが無い項目（バリ・テレスコープ・巻ずれ等。マスタに
+     プラス・マイナスが登録されていない）は**「合格」に混ぜない**。
+     値の件数ではなく項目名で言う——件数だと測るたびに増えて読まれなくなる。 */
+  if(filledAny&&!judged)unjudged.push(def.name);
+ });
+ return{total,items,unjudged};
+}
+
 /* ---------- 表示 ---------- */
 
 const STATE_LABEL={done:'済',part:'一部',todo:'未',skip:'対象外'};
@@ -296,6 +340,13 @@ if(basePersistAndTransition){
  };
  window.persistAndTransition=persistAndTransition;
 }
+
+/* 新しく公開するものは名前空間へ入れる（素の`window.*`は上限固定）。 */
+WL.measureReview={
+ progress:()=>progressOf(S.measure),
+ outOfTolerance:()=>outOfToleranceOf(S.measure),
+ review:completionReview,
+};
 
 window.measureProgress=measureProgress;
 window.refreshMeasureProgress=refreshMeasureProgress;
