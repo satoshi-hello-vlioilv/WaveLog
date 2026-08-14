@@ -85,16 +85,51 @@ let b=null,page=null;
   rec('段に状態の文字が付いている',v.段.every(x=>x.状態&&x.状態.trim()!==''),
       JSON.stringify(v.段.map(x=>x.状態)));
 
-  /* ---- 4) ②測定は本体を1枚で使う ---- */
+  /* ---- 4) ②測定は「項目リスト＋測定表」の2枚（§9.124） ----
+     基本情報（左）は出さず、設定（中）は**入力内容の一覧だけ**を残す。
+     1回決めるだけの設定は①のもの。 */
   await go('2');
   const m2=await seen();
-  rec('②では測定パネルだけになる',m2.右.見&&!m2.左.見&&!m2.中.見,
-      JSON.stringify({左:m2.左.見,中:m2.中.見,右:m2.右.見}));
-  rec('②の測定パネルは本体の全幅を使う',
-      Math.abs(m2.右.w-m2.本体.w)<=2,`測定=${m2.右.w} / 本体=${m2.本体.w}`);
-  /* 3ペインのときは本体の約4/10だった。1枚にして倍以上になることを数で見る。 */
-  rec('②の測定パネルは3ペインのときより広い',m2.右.w>m2.本体.w*0.9,
-      `${m2.右.w}px（本体 ${m2.本体.w}px）`);
+  const items=await page.evaluate(()=>({
+   一覧:document.querySelectorAll('#measureTypeGroup .type-chip').length,
+   ほかの設定:[...document.querySelectorAll('.selectors>label')]
+     .filter(x=>x.id!=='measureTypeGroup'&&x.getBoundingClientRect().height>0).length,
+   件数の文字:[...document.querySelectorAll('#measureTypeGroup .type-chip-state')]
+     .map(x=>x.textContent.trim()).filter(Boolean).length,
+  }));
+  rec('②では基本情報の面を出さない',m2.左.見===false,JSON.stringify(m2.左));
+  rec('②に入力内容の一覧（8項目）が出る',items.一覧===8,JSON.stringify(items));
+  rec('②では1回決めるだけの設定を出さない',items.ほかの設定===0,JSON.stringify(items));
+  rec('一覧の各項目に残り件数が文字で付く',items.件数の文字===8,JSON.stringify(items));
+  /* 測定表は本体の大半を取る。3ペインのときは本体の約4/10だった。 */
+  rec('②の測定表が本体の半分より広い',m2.右.w>m2.本体.w*0.5,
+      `測定=${m2.右.w} / 本体=${m2.本体.w}`);
+
+  /* ---- 4b) 測定表は「使う条数ぶんだけ」描く（§9.124） ----
+     以前は条数に関わらず 2列×20行＝40条を必ず描き、超えた行を灰色で残して
+     いた。1条のロットでも39行の空欄が並ぶ。**探す対象を増やさない。**
+     20条を超えたときだけ2列にする（縦に41行並べると画面から溢れる）。 */
+  await page.evaluate(()=>{const s=document.querySelector('#measureType');
+    s.value='板厚/板幅';s.dispatchEvent(new Event('change',{bubbles:true}))});
+  await page.waitForTimeout(500);
+  const rowsFor=async n=>{
+   await page.evaluate(v=>{const h=document.querySelector('#horizontalCount');
+     h.value=String(v);h.dispatchEvent(new Event('change',{bubbles:true}))},n);
+   await page.waitForTimeout(500);
+   return page.evaluate(()=>({
+    行:document.querySelectorAll('#measurementGrid .strip-row').length,
+    列:document.querySelectorAll('#measurementGrid .strip-column').length,
+    灰色の行:document.querySelectorAll('#measurementGrid .strip-row.inactive').length}));
+  };
+  const r1=await rowsFor(1),r6=await rowsFor(6),r24=await rowsFor(24),r40=await rowsFor(40);
+  rec('1条なら1行しか描かない',r1.行===1&&r1.列===1,JSON.stringify(r1));
+  rec('6条なら6行',r6.行===6&&r6.列===1,JSON.stringify(r6));
+  rec('20条を超えたら2列にする',r24.行===24&&r24.列===2,JSON.stringify(r24));
+  rec('40条でも数は合う',r40.行===40&&r40.列===2,JSON.stringify(r40));
+  rec('使わない行(灰色)を残さない',
+      [r1,r6,r24,r40].every(x=>x.灰色の行===0),
+      JSON.stringify([r1.灰色の行,r6.灰色の行,r24.灰色の行,r40.灰色の行]));
+  await rowsFor(1);
 
   /* ---- 5) 進めない理由を書く ----
      既定の入力内容は母材＝手動入力の項目なので、測定器からは受けられない。

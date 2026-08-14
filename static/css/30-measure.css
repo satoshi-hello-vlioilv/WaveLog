@@ -202,6 +202,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    しても動かないこと**に価値があるので、ここへ段ごとの情報を混ぜない。
    進捗・保存状態はヘッダー(.measure-head)に常時出ているため重ねない
    （同じものが2箇所にあること自体が認知コスト）。 */
+:root{--measure-items-w:19rem}
 .measure-bar{
   grid-column:1/-1;display:flex;align-items:stretch;min-width:0;
   background:var(--surface);border-bottom:1px solid var(--line);
@@ -256,14 +257,37 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    実機で転送が止まる（§9.122）。隠れているあいだフォーカスは外れるが、
    ②へ戻ったときに measure-steps.js が戻す。 */
 .measure-shell.mstep-1 .right-pane{display:none}
-.measure-shell.mstep-2 .left-pane,
-.measure-shell.mstep-2 .center-pane{display:none}
+.measure-shell.mstep-2 .left-pane{display:none}
+/* ②測定は「いま入れる場所」と「あと何が残っているか」の2つだけを言う。
+   入力内容(8項目)は状態付きの一覧として左へ細く残し、**それ以外の設定は
+   出さない**(1回決めるだけのものは①準備のもの)。項目の一覧は
+   measure-progress.js が作る`#measureTypeChips`をそのまま使う——同じものを
+   もう1つ作ると、状態の集計が2箇所になる。 */
+.measure-shell.mstep-2 .center-pane{display:block;padding-right:0}
+.measure-shell.mstep-2 .center-pane>*{display:none}
+.measure-shell.mstep-2 .center-pane>.selectors{display:block}
+.measure-shell.mstep-2 .selectors>*{display:none}
+/* 一覧はペインの高さいっぱいに縦へ伸ばす。**flexにしないこと**——
+   `.type-chips`は`grid-row:2`で置かれているので、器をflexにすると行の指定が
+   効かなくなり、8項目が同じ場所へ重なって読めなくなる(実際にそうなった)。
+   高さも`.major-list`の210px固定を上書きする(②では画面の高さぶん使う)。 */
+.measure-shell.mstep-2 .center-pane{height:100%;overflow:hidden}
+.measure-shell.mstep-2 .center-pane>.selectors{height:100%;display:block}
+.measure-shell.mstep-2 #measureTypeGroup{
+  display:grid;grid-template-rows:auto minmax(0,1fr);height:100%;
+}
+.measure-shell.mstep-2 #measureTypeGroup .type-chips{
+  height:100%;max-height:none;overflow:auto;justify-content:flex-start;
+}
+/* **項目は中身ぶんの高さにする。** 器の高さを配ると1項目が異様に背高くなり、
+   8つ並んでいるという事実が読み取りにくくなる(押す的の大きさは足りている)。 */
+.measure-shell.mstep-2 #measureTypeGroup .type-chip{flex:0 0 auto}
 .measure-shell.mstep-3 .center-pane,
 .measure-shell.mstep-3 .right-pane{display:none}
 /* 面積は「頻度 × 重要度」で配る。②測定は作業時間の9割を占めるので、
    このときだけ本体を1枚で使う。 */
 .measure-shell.mstep-1 .measure-body{grid-template-columns:minmax(0,3fr) minmax(0,4fr)}
-.measure-shell.mstep-2 .measure-body{grid-template-columns:minmax(0,1fr)}
+.measure-shell.mstep-2 .measure-body{grid-template-columns:minmax(0,var(--measure-items-w)) minmax(0,1fr)}
 .measure-shell.mstep-3 .measure-body{grid-template-columns:minmax(0,1fr)}
 /* 危ない操作を主要動線に置かない。「このデータを削除」は③でだけ出す
    （今は「測定を完了」の真下にあり、押し間違いの的になっていた）。 */
