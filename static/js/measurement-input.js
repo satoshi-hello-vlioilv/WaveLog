@@ -293,23 +293,76 @@ function stripColumnsHtml(key,li,values,count){
  }
  return h;
 }
-/* 器の側のクラス。1列のときは**空いた幅を公差側へ回す**——公差数直線は
-   幅があるほど点の位置が読み取りやすくなるので、余らせるより値打ちがある。 */
+/* 器の側のクラス。1列のときは公差と入力表を隣り合わせにし、余った幅へ
+   「丈位置くらべ」を置く（§9.128）。2列のときは場所が無いので出さない。 */
 function stripBodyClass(count){return 'compact-width-body'+(stripColumnCount(count)===1?' one-strip':'')}
+/* 丈位置の数。`updateLengthOptions`と同じく「縦割数+1」（1(頭)…N(頭) と N(尾)）。 */
+function lengthSlotCount(){
+ return Math.min(LENGTH_SLOTS,Math.max(1,Math.min(9,+$('#verticalCount').value||1))+1);
+}
+/* 他の丈位置の値（§9.128）。②では**いま選んでいる丈位置しか出ない**ため、
+   頭と尾を見比べるには丈を切り替えるしかなかった（切り替えると今度は
+   さっきの値が見えない）。空いた幅へ、同じ項目の全丈位置を1枚で出す。
+   **いまの丈の列も出す**——「切り替えた先がどこか」を同じ表の中で示せる。
+   見出しを押すとその丈へ移る（見えた値へすぐ行ける）。 */
+function lengthCompareHtml(key,count,type){
+ const m=S.measure,lp=$('#lengthPos'),slots=lengthSlotCount();
+ if(slots<2||stripColumnCount(count)!==1)return '';
+ const cur=lengthIndex();
+ let range=null;
+ try{range=toleranceDetail(key==='thickness'?'thickness':'width',0,type)?.range||null}catch(e){}
+ const label=li=>(lp&&lp.options[li]&&lp.options[li].value)||('丈'+(li+1));
+ const rows=(m.measurements&&m.measurements[key])||[];
+ let filled=0;
+ let body='';
+ for(let j=0;j<count;j++){
+  body+=`<tr><th scope="row">${j+1}</th>`;
+  for(let li=0;li<slots;li++){
+   const raw=String((rows[li]||[])[j]??'').trim(),num=Number(raw);
+   if(raw!=='')filled++;
+   const ng=raw!==''&&range&&Number.isFinite(num)&&(num<range[0]||num>range[1]);
+   body+=`<td class="${li===cur?'is-current':''}${ng?' is-ng':''}">${esc(raw)}</td>`;
+  }
+  body+='</tr>';
+ }
+ let head='';
+ for(let li=0;li<slots;li++)
+  head+=`<th class="${li===cur?'is-current':''}">`
+   +`<button type="button" data-lc-len="${li}" title="この丈位置へ移る">${esc(label(li))}</button></th>`;
+ /* **何も入っていないときは「まだ無い」と書く。** 空の表だけを出すと、
+    出す仕組みが壊れているのか値が無いのかを区別できない。 */
+ const note=filled?'':'<p class="lc-empty">まだどの丈位置にも値がありません。</p>';
+ return `<section class="length-compare"><div class="lc-title">丈位置くらべ<small>${esc(type)}</small></div>`
+  +`<div class="lc-scroll"><table class="lc-table"><thead><tr><th scope="col">条</th>${head}</tr></thead>`
+  +`<tbody>${body}</tbody></table>${note}</div></section>`;
+}
+/* 見出しを押したらその丈位置へ移る。**割り当ては1箇所**（丈位置を動かす
+   道具は`#lengthPos`のchangeだけ。ここで直接描き直さない）。 */
+document.addEventListener('click',e=>{
+ const btn=e.target.closest&&e.target.closest('[data-lc-len]');
+ if(!btn)return;
+ e.preventDefault();
+ const lp=$('#lengthPos'),li=Number(btn.dataset.lcLen);
+ if(lp&&lp.options[li]){lp.selectedIndex=li;lp.dispatchEvent(new Event('change',{bubbles:true}))}
+});
 function renderMeasureGridVertical(){
  const type=$('#measureType').value,key=activeMeasureKey(),m=S.measure,li=lengthIndex(),count=Math.max(1,Math.min(40,+$('#horizontalCount').value||1));
  if(type!=='板厚/板幅'){
   const actualKey=key==='mother'?'width':key,values=m.measurements[actualKey][li],done=values.slice(0,count).filter(v=>v!=='').length;
   const bulkBtn=type==='フラットネス'?'<span class="flat-pick-group"><span class="flat-pick-label">現在の条へ入力</span><button type="button" class="flat-pick" data-sym="〇">〇</button><button type="button" class="flat-pick" data-sym="△">△</button><button type="button" class="flat-pick" data-sym="×">×</button></span><button type="button" id="flatAllOk">全条 〇</button>':'';
   let h=`<section class="measure-grid-block compact-other"><div class="measure-grid-block-title"><span>${esc(type)}</span><div class="measure-status-group"><span class="measure-status">${compactMeasureStatus(done,count)}</span>${bulkBtn}</div></div><div class="${stripBodyClass(count)}"><aside class="compact-tolerance-side">${compactToleranceScale(actualKey,values,count)}</aside><div class="strip-layout compact-strip-layout">`;
-  h+=stripColumnsHtml(actualKey,li,values,count);h+='</div></div></section>';
+  h+=stripColumnsHtml(actualKey,li,values,count);h+='</div>';
+  h+=lengthCompareHtml(actualKey,count,type);
+  h+='</div></section>';
   if(type==='フラットネス')h+=`<section class="measure-grid-block flatness-note-block"><div class="measure-grid-block-title"><span>備考</span></div><div class="flatness-entry"><label>対象条<select id="coilNo"></select></label><label>備考<textarea id="coilComment"></textarea></label></div></section>`;
   $('#measurementGrid').innerHTML=h;
  }else{
   const thickness=m.measurements.thickness[li],width=m.measurements.width[li],tDone=thickness.filter(v=>v!=='').length,wDone=width.slice(0,count).filter(v=>v!=='').length;
   let h=`<div class="compact-dimension-workspace"><section class="measure-grid-block compact-thickness"><div class="measure-grid-block-title"><span>板厚</span><span class="measure-status">${compactMeasureStatus(tDone,3)}</span></div><div class="compact-thickness-body"><aside class="compact-tolerance-side thickness-side">${compactToleranceFacts('thickness').html}</aside><div class="thickness-vertical"><b>位置</b><b>OS</b><b>CL</b><b>DS</b><span>丈 ${li+1}</span>${thickness.map((v,j)=>makeMeasureInput('thickness',li,j,v)).join('')}</div></div></section>`;
   h+=`<section class="measure-grid-block compact-width"><div class="measure-grid-block-title"><span>板幅</span><span class="measure-status">${compactMeasureStatus(wDone,count)}</span></div><div class="${stripBodyClass(count)}"><aside class="compact-tolerance-side">${compactToleranceScale('width',width,count)}</aside><div class="strip-layout compact-strip-layout">`;
-  h+=stripColumnsHtml('width',li,width,count);h+='</div></div></section></div>';$('#measurementGrid').innerHTML=h;
+  h+=stripColumnsHtml('width',li,width,count);h+='</div>';
+  h+=lengthCompareHtml('width',count,type);
+  h+='</div></section></div>';$('#measurementGrid').innerHTML=h;
  }
  bindMeasureInputs();applyInputProtection();focusCurrent();updateMeasurementHeading();const summary=$('#toleranceSummary');if(summary)summary.hidden=type==='板厚/板幅';
  if(type==='フラットネス'){

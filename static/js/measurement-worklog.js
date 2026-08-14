@@ -265,8 +265,14 @@
 
   function renderBenchmarkCard(result){
     const card=ensureCard();
+    card.hidden=false;
+    /* **その時点で自明な「できない理由」は出さない**（§9.127）。板厚・板幅を
+       まだ測っていないのは①準備では必ずそうで、毎回・全ロットで同じ文が
+       出る＝読まれない。しかも常設のぶん高さを取り、表示サイズ特大では
+       左ペインが溢れる原因になっていた（実測15px）。設備が未登録のような
+       **直せる不備**は今までどおり書く。 */
     if(!result||!result.profile){
-      card.innerHTML='<div class="wtb-empty">実績板厚・板幅が測定されていないため、過去実績とは比較できません。</div>';
+      card.innerHTML='';card.hidden=true;
       return;
     }
     if(result.noEquipment){

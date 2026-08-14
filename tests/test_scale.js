@@ -31,8 +31,12 @@ const CTL_EXCEPT={
  'cal-day':'実績カレンダーのマス目。コントロールではなく面',
  'qa-acc-head':'アコーディオンの見出し行。主要動作と同じ--ctl-h-lg',
 };
+/* 「面」＝1行の的ではないもの。高さは中身（行数）が決めるので
+   26/30/36/40の並びには乗らない(§9.127)。**個別のidで例外にしない**
+   ——増えるたびに一覧を足すことになり、理由も薄くなる。
+   リストボックス(size>1のselect)と複数行の入力(textarea)がこれ。 */
 
-let b=null;
+let b=null,measureId='';
 (async()=>{
  b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
  const page=await b.newPage({viewport:{width:1700,height:1000}});
@@ -66,6 +70,12 @@ let b=null;
     if(el.tagName==='INPUT'&&(el.type==='checkbox'||el.type==='radio')){
      out.push({name:'box:'+el.tagName.toLowerCase(),h:Math.round(r.height),
                radius:s.borderTopLeftRadius,over:0,box:Math.round(r.width)});
+     return;
+    }
+    /* 面(リストボックス・複数行入力)は高さのスケールに乗らない。 */
+    if(el.tagName==='TEXTAREA'||(el.tagName==='SELECT'&&el.size>1)){
+     out.push({name:'area:'+el.tagName.toLowerCase()+(el.id?'#'+el.id:''),
+               h:Math.round(r.height),radius:s.borderTopLeftRadius,over:0});
      return;
     }
     out.push({name:el.tagName.toLowerCase()+(el.id?'#'+el.id:'')+
@@ -105,6 +115,25 @@ let b=null;
   await visit('ダッシュボード',()=>page.click('#openDashboard'));
   await visit('実績カレンダー',()=>page.click('#openCalendar'));
   await visit('マスタ管理',()=>page.click('#openMasterMaint'));
+  /* **測定画面も網に載せる（§9.127）。** ここが巡回に入っていなかったため、
+     アプリ全体の寸法を揃えた後も測定画面だけが取り残されていた
+     （実測でコントロールの高さ13種・文字7種）。3段それぞれを見る。 */
+  await visit('測定①準備',async()=>{
+   await page.click('#openSchedule');
+   await page.waitForSelector('.sc-row-line',{timeout:25000});
+   const ok=await page.evaluate(()=>{
+    const r=[...document.querySelectorAll('.sc-row-line')].find(x=>x.querySelector('.sc-row-start'));
+    if(!r)return false;r.querySelector('.sc-row-start').click();return true;
+   });
+   if(!ok)throw Error('開始できる行が無い');
+   await page.waitForFunction(()=>!document.querySelector('#measureModal')?.hidden,null,{timeout:25000});
+   await page.waitForFunction(()=>document.querySelector('#saveOverlay')?.hidden!==false,null,{timeout:30000}).catch(()=>{});
+   await page.waitForFunction(()=>typeof S!=='undefined'&&!!S.measure,null,{timeout:25000});
+   measureId=await page.evaluate(()=>S.measure?.id||'');
+  });
+  await visit('測定②測定',()=>page.evaluate(()=>WL.measureSteps.go('2')));
+  await visit('測定③確認',()=>page.evaluate(()=>WL.measureSteps.go('3')));
+  await page.evaluate(()=>{const m=document.querySelector('#measureModal');if(m)m.hidden=true});
 
   /* トークンの実測値。宣言は calc(...) のまま返るので、当てて測る。 */
   const CTL_H=await page.evaluate(names=>{
@@ -116,7 +145,7 @@ let b=null;
    probe.remove();
    return [...new Set(out)].sort((a,b)=>a-b);
   },CTL_TOKENS);
-  const excepted=c=>c.name.startsWith('box:')||
+  const excepted=c=>c.name.startsWith('box:')||c.name.startsWith('area:')||
                     Object.keys(CTL_EXCEPT).some(k=>c.name.includes(k.replace('#','')));
   const badH=all.filter(c=>!CTL_H.includes(c.h)&&!excepted(c));
   const hKinds=[...new Set(all.filter(c=>!excepted(c)).map(c=>c.h))].sort((a,b)=>a-b);
@@ -150,10 +179,29 @@ let b=null;
   console.log('\n=== SUMMARY ===');
   const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
   f.forEach(x=>console.log(' -',x.n,x.d||''));
-  await b.close();process.exit(f.length?1:0);
+  await cleanup();process.exit(f.length?1:0);
  }catch(e){
   console.error('FATAL',e);
-  await b.close().catch(()=>{});
+  await cleanup();
   process.exit(2);
+ }
+ /* 測定画面を開いた副作用のレコードを消す。**消えるまで確かめる**——
+    共有は画面を待たせずに送るので、1回消しただけでは後から復活する
+    （§9.122。残すと無関係なスケジュールのテストが落ちる）。 */
+ async function cleanup(){
+  try{
+   if(measureId)await page.evaluate(async id=>{
+    if(typeof reliableDelete==='function')await reliableDelete(id).catch(()=>{});
+    for(let k=0;k<6;k++){
+     const r=await fetch('/api/measurement/backup/list').then(x=>x.json()).catch(()=>({items:[]}));
+     const ids=(r.items||[]).map(i=>i.id).filter(x=>x===id||String(x).endsWith(id));
+     if(!ids.length)break;
+     await fetch('/api/measurement/backup/delete',{method:'POST',
+       headers:{'Content-Type':'application/json'},body:JSON.stringify({ids})}).catch(()=>{});
+     await new Promise(r2=>setTimeout(r2,250));
+    }
+   },measureId);
+  }catch(e){}
+  if(b)await b.close().catch(()=>{});
  }
 })().catch(async e=>{console.error('FATAL',e);if(b)await b.close().catch(()=>{});process.exit(2)});

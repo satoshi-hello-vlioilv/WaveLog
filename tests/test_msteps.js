@@ -184,6 +184,74 @@ let b=null,page=null;
      幅を公差側へ回すと数直線と入力表のあいだに900pxの空白ができる。 */
   rec('公差と入力表が隣り合っている',g8.公差と表のすきま!==null&&g8.公差と表のすきま<40,
       JSON.stringify(g8));
+
+  /* ---- 4d) 丈位置くらべ（§9.128） ----
+     ②では**いま選んでいる丈位置しか出ない**ので、頭と尾を見比べるには
+     丈を切り替えるしかなく、切り替えると今度はさっきの値が見えなかった。
+     1列のときに余る右側へ、同じ項目の全丈位置を1枚で出す。
+     **公差の材料ごと注ぎ込む**——検証用フィクスチャには公差が無い。 */
+  await rowsFor(8);
+  const lcSetup=await page.evaluate(()=>{
+   const m=S.measure;
+   m.basic.mfgWidth=100;m.basic.mfgThickness=2;
+   m.source=m.source||{};
+   m.source['板幅公差_製造_プラス']=0.5;m.source['板幅公差_製造_マイナス']=0.5;
+   m.measurements.width.forEach(r=>r.fill(''));
+   m.measurements.width[0][0]='100.2';   // 合格（1丈目＝いま出ている）
+   m.measurements.width[0][2]='150.0';   // 公差外
+   m.measurements.width[1][1]='99.6';    // 合格（2丈目＝出ていない）
+   renderMeasureGrid();
+   return !!toleranceDetail('width',0,'板厚/板幅');
+  });
+  await page.waitForTimeout(500);
+  rec('公差の材料を注ぎ込めた(丈位置くらべ)',lcSetup===true,String(lcSetup));
+  const lc=()=>page.evaluate(()=>{
+   const sec=document.querySelector('#measurementGrid .length-compare');
+   if(!sec)return{出ている:false};
+   const heads=[...sec.querySelectorAll('thead th')];
+   const rows=[...sec.querySelectorAll('tbody tr')];
+   const cellText=(r,c)=>rows[r]?.querySelectorAll('td')[c]?.textContent.trim()||'';
+   return{
+    出ている:true,
+    見出し:heads.map(x=>x.textContent.trim()),
+    行数:rows.length,
+    いまの列:heads.findIndex(x=>x.classList.contains('is-current')),
+    /* 出ていない丈の値がここには出ていること（これがこの表の存在理由）。 */
+    他の丈の値:cellText(1,1),
+    公差外の印:sec.querySelectorAll('td.is-ng').length,
+    公差外の値:[...sec.querySelectorAll('td.is-ng')].map(x=>x.textContent.trim()),
+    幅:Math.round(sec.getBoundingClientRect().width),
+   };
+  });
+  const lc1=await lc();
+  rec('②に丈位置くらべが出る',lc1.出ている===true&&lc1.幅>150,JSON.stringify(lc1));
+  rec('列は「条」＋丈位置の数',lc1.見出し.join('/')==='条/1(頭)/1(尾)',JSON.stringify(lc1.見出し));
+  rec('行は条数ぶん',lc1.行数===8,String(lc1.行数));
+  /* **出ていない丈の値が見えること。** ここが空なら、この表を出す意味がない。 */
+  rec('いま出ていない丈位置の値が見える',lc1.他の丈の値==='99.6',JSON.stringify(lc1));
+  rec('いま入力している丈位置が分かる',lc1.いまの列===1,JSON.stringify(lc1));
+  rec('公差外はここでも印が付く',lc1.公差外の印===1&&lc1.公差外の値[0]==='150.0',
+      JSON.stringify(lc1.公差外の値));
+  /* 見出しを押したらその丈位置へ移る（見えた値へすぐ行ける）。 */
+  await page.evaluate(()=>{
+   const b=[...document.querySelectorAll('#measurementGrid .length-compare thead th button')];
+   b[1].click();
+  });
+  await page.waitForTimeout(600);
+  const lc2=await lc();
+  const movedTo=await page.evaluate(()=>document.querySelector('#lengthPos').value);
+  rec('見出しを押すとその丈位置へ移る',movedTo==='1(尾)'&&lc2.いまの列===2,
+      JSON.stringify({movedTo,いまの列:lc2.いまの列}));
+  await page.evaluate(()=>{const lp=document.querySelector('#lengthPos');
+    lp.selectedIndex=0;lp.dispatchEvent(new Event('change',{bubbles:true}))});
+  await page.waitForTimeout(400);
+  /* 2列（20条超）のときは場所が無いので出さない。 */
+  await rowsFor(24);
+  rec('2列のときは出さない',(await lc()).出ている===false);
+  await rowsFor(8);
+  /* 後始末: 次の検証（③の公差外の集計）へ値を持ち越さない。 */
+  await page.evaluate(()=>{S.measure.measurements.width.forEach(r=>r.fill(''));renderMeasureGrid()});
+  await page.waitForTimeout(300);
   await rowsFor(1);
 
   /* ---- 5) 進めない理由を書く ----
@@ -373,6 +441,9 @@ let b=null,page=null;
    m.source=m.source||{};
    m.source['板幅公差_製造_プラス']=0.5;m.source['板幅公差_製造_マイナス']=0.5;
    m.settings.verticalCount=1;m.settings.horizontalCount=3;
+   /* **前の検証の値を持ち越さない**（この節の件数は自分で作った値だけで
+      決まるようにする）。 */
+   m.measurements.width.forEach(r=>r.fill(''));
    const r=toleranceDetail('width',0,'板厚/板幅')?.range;
    if(!r)return{skip:true,base:m.basic.mfgWidth,
      公差の元:toleranceDataForSource('width','manufacturing'),

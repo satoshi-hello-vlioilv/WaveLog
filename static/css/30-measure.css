@@ -161,12 +161,12 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .measure-head-progress-bar{width:70px;height:7px;border-radius:var(--radius-xs);background:var(--bg);border:1px solid var(--muted-border);overflow:hidden}
 .measure-head-progress-bar i{display:block;height:100%;background:var(--teal);transition:width .2s}
 .measure-head-progress-bar--done i{background:var(--success)}
-.measure-head-progress-frac{min-width:34px;text-align:right;font-size:var(--fs-base-sm);font-weight:800;color:var(--nav);font-variant-numeric:tabular-nums}
+.measure-head-progress-frac{min-width:34px;text-align:right;font-size:var(--fs);font-weight:800;color:var(--nav);font-variant-numeric:tabular-nums}
 @media(prefers-reduced-motion:reduce){.measure-head-progress-bar i{transition:none}}
 @media(max-width:1180px){.measure-head-progress-label{display:none}.measure-head-progress{padding:0 var(--ctl-pad-x-sm);gap:var(--gap-inline)}.measure-head-progress-bar{width:44px}}
 .save-state{display:flex;align-items:center;gap:var(--space-3);min-width:250px;justify-content:flex-end;flex:0 0 auto}
 .save-state #localState{padding:4px 9px;border-radius:var(--radius-md);background:var(--warn-bg);color:var(--warn-fg);max-width:210px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.save-state button{border:0;font-size:var(--fs-lg);box-shadow:none;background:transparent}
+.save-state button{height:var(--ctl-h);border:0;font-size:var(--fs-lg);box-shadow:none;background:transparent}
 .course-warning{
   grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2);
   min-height:46px;padding:9px 16px;border-bottom:1px solid #db9a69;
@@ -177,7 +177,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .course-warning-main{flex:1 1 520px}
 .course-warning-actions{display:flex;align-items:center;gap:var(--space-2);margin-left:auto}
 .course-suggestion{padding:5px 9px;border:1px solid #d59055;border-radius:var(--radius-sm);background:#fff;color:var(--warn-fg);font-weight:800}
-.course-warning-actions button{min-width:155px;border-color:#b44900;background:#b44900;color:#fff;font-weight:800}
+.course-warning-actions button{height:var(--ctl-h);min-width:155px;border-color:#b44900;background:#b44900;color:#fff;font-weight:800}
 /* --- 操作レール（左端の縦ボタン列） --- *//* 幅は最長のラベル(「このデータを削除」「データ一覧を開く」= 実測128px)が
    切り詰められない値にする。以前は136px(ボタン実幅109px)で、主要導線の
    「保存して一覧へ」までが「保存して一...」と省略されていた。 */
@@ -189,7 +189,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .rail-label{height:20px;display:flex;align-items:center;padding:0 var(--space-1);color:#36515c;font-size:var(--fs-micro);font-weight:800;letter-spacing:.06em;white-space:nowrap}
 .rail-bottom{margin-top:auto}
 .action-rail button{
-  width:100%;height:42px;min-height:42px;padding:0 7px;
+  width:100%;height:var(--ctl-h-lg);min-height:var(--ctl-h-lg);padding:0 7px;
   border:1px solid #9eb2bc;border-radius:var(--radius-sm);background:#fff;color:#243a42;
   font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center;
 }
@@ -224,7 +224,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .measure-steps{display:flex;align-items:stretch;gap:0;flex:0 0 auto}
 .measure-steps .mstep{
   display:flex;align-items:center;gap:var(--space-2);
-  height:var(--ctl-h-md);padding:0 var(--space-5);
+  height:var(--ctl-h-sm);padding:0 var(--space-5);
   border:0;border-bottom:3px solid transparent;border-radius:0;
   background:transparent;color:var(--ink-3);font-weight:700;box-shadow:none;
 }
@@ -342,7 +342,9 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 /* その他の設定は畳む。**畳んだままでも値は読める**——要約に現在値を出し、
    既定と違うものには印を付ける(隠すなら、隠したものが何かは書く)。 */
 .measure-shell.mstep-1 .selectors:not(.prep-open)>label[data-prep="usual"]{display:none}
-.measure-shell.mstep-1 .selectors>.prep-more{cursor:pointer;overflow:hidden}
+.measure-shell.mstep-1 .selectors>.prep-more{
+  cursor:pointer;overflow:hidden;min-height:var(--ctl-h-xs);
+}
 .prep-more-caret{
   flex:0 0 auto;width:0;height:0;border-style:solid;
   border-width:5px 0 5px 7px;border-color:transparent transparent transparent currentColor;
@@ -469,7 +471,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 /* かたまりの見出し。線ではなく小さな見出し＋上余白で切る。 */
 .info-group{
  grid-column:1/-1;margin-top:6px;padding-bottom:1px;
- color:#93a5ab;font-size:var(--fs-tiny);font-weight:800;letter-spacing:.08em;
+ color:#93a5ab;font-size:var(--fs-micro);font-weight:800;letter-spacing:.08em;
  border-bottom:1px solid #eef2f4;
 }
 .info-grid>.info-group:first-child,.info-grid>.field:first-child+.info-group{margin-top:0}
@@ -517,8 +519,8 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .work-time-grid{display:grid;grid-template-columns:1fr;gap:var(--space-2)}
 .work-time-item{display:grid;grid-template-columns:1fr 140px;gap:var(--gap-tight);padding:7px;border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff}
 .work-time-item span{grid-column:1/-1;color:#526970;font-weight:800}
-.work-time-item input{min-width:0;height:34px;background:#fff;font-variant-numeric:tabular-nums}
-.work-time-item button{height:34px;white-space:nowrap;background:var(--teal);color:#fff;border-color:var(--teal)}
+.work-time-item input{min-width:0;height:var(--ctl-h);background:#fff;font-variant-numeric:tabular-nums}
+.work-time-item button{height:var(--ctl-h);white-space:nowrap;background:var(--teal);color:#fff;border-color:var(--teal)}
 .work-time-panel>small{display:block;margin-top:6px;color:var(--warn-fg)}
 .analysis{background:#fff;border:1px solid var(--line);border-radius:var(--radius-md);overflow:hidden}
 .analysis h3{margin:0;padding:var(--pad-row);background:var(--header-bar-bg);color:var(--header-bar-fg);border-bottom:1px solid var(--line)}
@@ -545,7 +547,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
   display:grid;grid-template-columns:minmax(0,1fr) max-content max-content;
   align-items:center;gap:var(--gap-inline);min-width:0;overflow:hidden;
 }
-.title-actions button{height:34px;min-width:max-content;padding:4px 9px;white-space:nowrap}
+.title-actions button{height:var(--ctl-h);min-width:max-content;padding:4px 9px;white-space:nowrap}
 .tolerance-source-control{min-width:0;overflow:hidden}
 .tolerance-source-control label{
   display:grid;grid-template-columns:max-content minmax(0,1fr);align-items:center;gap:var(--gap-tight);
@@ -555,7 +557,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    さらに上限を置く——①準備で中央ペインが広くなり、選択肢2つの
    プルダウンだけが400px近くまで伸びて、重要度と面積が食い違っていた。 */
 .tolerance-source-control select{
-  width:64%;max-width:min(64%,14rem);min-width:0;height:34px;padding:4px 25px 4px 8px;justify-self:start;
+  width:64%;max-width:min(64%,14rem);min-width:0;height:var(--ctl-h);padding:4px 25px 4px 8px;justify-self:start;
 }
 .order-tolerance-unavailable{color:#8b969a}
 .selectors{display:grid;gap:var(--gap-tight)}
@@ -765,8 +767,54 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    移っただけだった（実測900px）。**一緒に読むものを引き離さない。**
    幅は2列のときの見え方（公差568px / 表416px）に合わせてある。 */
 .compact-width-body.one-strip{
-  grid-template-columns:minmax(0,36rem) minmax(0,26rem);justify-content:start;
+  grid-template-columns:minmax(0,36rem) minmax(0,26rem) minmax(0,1fr);
+  justify-content:start;
 }
+
+/* ---------- 丈位置くらべ（§9.128） ----------
+   ②では**いま選んでいる丈位置しか出ない**ので、頭と尾を見比べるには
+   丈を切り替えるしかなく、切り替えると今度はさっきの値が見えなかった。
+   1列のときに余る右側（実測430px）へ、同じ項目の全丈位置を1枚で出す。
+   **公差外はここでも印を付ける**（見えた時点で気づけるのが値打ち）。 */
+.length-compare{
+  display:grid;grid-template-rows:auto minmax(0,1fr);min-width:0;min-height:0;
+  border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface);
+  overflow:hidden;
+}
+.lc-title{
+  display:flex;align-items:baseline;gap:var(--space-2);
+  padding:var(--pad-chip);border-bottom:1px solid var(--line-soft);
+  background:var(--surface-2);color:var(--ink-2);font-size:var(--fs-sm);font-weight:800;
+}
+.lc-title small{color:var(--ink-soft);font-size:var(--fs-micro);font-weight:700}
+.lc-scroll{min-height:0;overflow:auto}
+.lc-table{width:100%;border-collapse:collapse;font-size:var(--tbl-fs);font-variant-numeric:tabular-nums}
+.lc-table th,.lc-table td{
+  padding:var(--pad-chip);border-bottom:1px solid var(--line-soft);
+  text-align:right;white-space:nowrap;
+}
+.lc-table thead th{
+  position:sticky;top:0;z-index:1;padding:0;
+  background:var(--surface-2);border-bottom:1px solid var(--line);
+  text-align:center;font-size:var(--fs-sm);
+}
+.lc-table thead th button{
+  width:100%;height:var(--ctl-h-xs);border:0;border-radius:0;
+  background:transparent;color:var(--ink-2);font-weight:800;font-size:var(--fs-sm);
+  box-shadow:none;white-space:nowrap;
+}
+.lc-table thead th button:hover{background:var(--pale);color:var(--nav)}
+.lc-table thead th.is-current{background:var(--pale)}
+.lc-table thead th.is-current button{color:var(--nav)}
+.lc-table tbody th{
+  width:var(--ctl-h-lg);color:var(--ink-soft);font-weight:700;text-align:right;
+}
+/* いま入力している丈位置の列。**入力表と同じ値がここにも出る**ので、
+   どこを見ているかが分かるように薄く敷く（色だけに頼らず、見出しの
+   文字色も変える）。 */
+.lc-table td.is-current{background:var(--pale)}
+.lc-table td.is-ng{background:var(--danger-bg);color:var(--danger);font-weight:800}
+.lc-empty{margin:var(--space-3);color:var(--ink-soft);font-size:var(--fs-sm)}
 .compact-strip-layout{
   display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(3px,.35vw,6px);
   width:100%;max-width:100%;min-width:0;height:100%;overflow:hidden;
