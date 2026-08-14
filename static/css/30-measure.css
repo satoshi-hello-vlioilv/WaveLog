@@ -543,7 +543,8 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .work-time-grid{display:grid;grid-template-columns:1fr;gap:var(--space-2)}
 .work-time-item{display:grid;grid-template-columns:1fr 140px;gap:var(--gap-tight);padding:7px;border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff}
 .work-time-item span{grid-column:1/-1;color:#526970;font-weight:800}
-.work-time-item input{min-width:0;height:var(--ctl-h);background:#fff;font-variant-numeric:tabular-nums}
+/* 日時は書式が決まっている（2026/08/14 15:04:05）。494pxも要らない。 */
+.work-time-item input{min-width:0;max-width:15em;height:var(--ctl-h);background:#fff;font-variant-numeric:tabular-nums}
 .work-time-item button{height:var(--ctl-h);white-space:nowrap;background:var(--teal);color:#fff;border-color:var(--teal)}
 .work-time-panel>small{display:block;margin-top:6px;color:var(--warn-fg)}
 .analysis{background:#fff;border:1px solid var(--line);border-radius:var(--radius-md);overflow:hidden}
@@ -593,7 +594,11 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    琥珀(#fff3d7)で塗っており、「要選択」の合図のつもりが常時塗りだったため
    状態を何も表さず、画面全体が一覧・スケジュールと違うトーンに見えていた。
    琥珀は本当に入力が要るとき(.validation-required)だけに残す。 */
+/* **入れ物は中身の長さから決める**（§9.130）。桁数が決まっている欄は
+   CSSで足りる（縦割数は1桁、横割数は2桁）。選択肢の長さがマスタ由来の
+   ものは`fitControlWidths()`が測って`max-width`を入れる。 */
 .dense-controls select,.dense-controls input{width:100%;height:var(--ctl-h);min-width:0;margin:0;padding:var(--pad-row);background:var(--surface)}
+.dense-controls input[type="number"]{max-width:7em}
 /* 縦割数・横割数・条入力順・方向はプリセット値のままで問題ないことが
    多いため、他の「要選択」項目と違い常に白背景にする。 */
 .dense-controls .major-list select{height:210px;padding:0;background:var(--surface)}
@@ -709,9 +714,11 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    DOM 順（カード→スケール）のまま。order 指定はしない。 */
 .compact-width-body .compact-tolerance-side{display:grid;grid-template-rows:minmax(102px,auto) minmax(0,1fr);gap:var(--gap-tight)}
 /* 板厚 3 点入力（位置ヘッダ + 丈行） */
+/* 3点の値が入るだけの表。器いっぱいに広げると1つの欄が239pxになり、
+   `1.234`（実測33px）に対して7倍だった（§9.130）。 */
 .thickness-vertical{
   display:grid;grid-template-columns:minmax(38px,.52fr) repeat(3,minmax(0,1fr));
-  width:100%;max-width:100%;min-width:0;min-height:62px;align-self:center;
+  width:100%;max-width:min(100%,26rem);min-width:0;min-height:62px;align-self:center;
   border:1px solid var(--line);border-radius:var(--radius-xs);overflow:hidden;
 }
 .thickness-vertical>*{min-width:0;max-width:100%;height:30px;display:flex;align-items:center;justify-content:center;border-right:1px solid #b7c7cc;border-bottom:1px solid #b7c7cc}
@@ -802,8 +809,12 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    渡しても使われず、空きが「右端」から「数直線と入力表のあいだ」へ
    移っただけだった（実測900px）。**一緒に読むものを引き離さない。**
    幅は2列のときの見え方（公差568px / 表416px）に合わせてある。 */
+/* 入力表の幅は**中身から**決める（§9.130）。26remのときは1つの欄が
+   339pxあり、`1234.56`（実測47px）に対して7倍だった。狭めたぶんは
+   **隣の丈位置くらべ**（1fr）が受け取る——一緒に読むものへ渡すなら
+   空きは移動ではなく活用になる。 */
 .compact-width-body.one-strip{
-  grid-template-columns:minmax(0,36rem) minmax(0,26rem) minmax(0,1fr);
+  grid-template-columns:minmax(0,36rem) minmax(0,13rem) minmax(0,1fr);
   justify-content:start;
 }
 
@@ -910,7 +921,8 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    (どれか1つが2行になっても、同じ段の入力欄の高さは揃う)。
    高さは表示サイズへ追随させる(36px固定だと特大で名前だけが大きくなる)。 */
 .material-grid label{display:grid;grid-template-rows:1fr var(--ctl-h);align-items:end;font-size:var(--fs-sm);line-height:1.25}
-.material-grid input{width:100%;height:var(--ctl-h)}
+/* 母材の数値欄は3桁ほど。器の1マス(346px)へ伸ばさない（§9.130）。 */
+.material-grid input{width:100%;max-width:9em;height:var(--ctl-h)}
 .material-grid output{display:flex;align-items:center;justify-content:center;width:100%;height:var(--ctl-h);border:1px solid var(--line);background:#fff;font-weight:700}
 .mother-entry-note{grid-column:1/-1;padding:var(--pad-row);border-radius:var(--radius-sm);border:1px solid var(--card-border);border-left:3px solid var(--teal);background:#fff;color:var(--header-bar-fg);font-weight:700}
 .mother-auto-field{background:var(--computed-bg);border:1px solid #9cd6ce;border-radius:var(--radius-sm);padding:2px 4px}
@@ -921,7 +933,10 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .schedule-info-field{background:var(--computed-bg);border:1px solid #9cd6ce;border-radius:var(--radius-sm);padding:2px 4px}
 .schedule-info-field output{background:#fff;color:var(--computed-fg);font-weight:700}
 .mother-quality{margin-top:8px}
-.mother-quality textarea{width:100%;height:280px;border:1px solid var(--card-border);border-radius:var(--radius-sm);resize:none;background:#fff}
+/* **高さはpxで決めない**（§9.130）。読み取り専用の表示欄なので、行数
+   （`rows`）と最長行から`fitTextBox()`が決める。280px固定だったころは
+   「異常情報なし」の6文字に1401×280pxを与えていた。 */
+.mother-quality textarea{width:100%;height:auto;border:1px solid var(--card-border);border-radius:var(--radius-sm);resize:none;background:#fff}
 /* 段階的開示(アコーディオン)の共通部品。品質データ分析(quality-analysis.js
    の.qa-acc)で確立した見た目(番号バッジ＋タイトル＋折りたたみ時の要約＋
    シェブロン)を、他の画面(条割モーダル・母材パネル等)でも同じ言語で
@@ -963,6 +978,9 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .product-length-fields label{display:grid;grid-template-rows:20px 36px;font-size:var(--fs-sm)}
 .product-length-fields label.wide{grid-column:1/-1}
 .product-length-fields input{width:100%;height:36px;padding:2px 8px;background:#fff}
+/* 全幅にまたがる備考は、器なりに伸ばすと1401pxの1行になる（§9.130）。
+   1行で読める長さ（全角30文字ぶん）で止める。 */
+.product-length-fields label.wide input{max-width:30em}
 .product-length-fields .product-judge{align-self:center;justify-self:start}
 .product-judge{display:inline-block;min-width:32px;padding:var(--pad-chip);border-radius:var(--radius-md);background:#eef2f4;color:#60747b;font-weight:800}
 .product-judge.ok{background:var(--success-bg);color:var(--success)}
@@ -979,7 +997,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .flat-pick:hover{background:var(--teal);color:#fff;border-color:var(--teal)}
 .quality{margin-top:8px}
 .quality h3{font-size:var(--fs-title)}
-.quality textarea{width:100%;height:420px;white-space:pre-wrap;resize:none}
+.quality textarea{width:100%;height:auto;white-space:pre-wrap;resize:none}
 /* 手入力欄の共通挙動 */
 input.numeric-input,input[type="number"]{text-align:right;font-variant-numeric:tabular-nums;padding-right:8px}
 input.text-input,input[type="text"],textarea{text-align:left}

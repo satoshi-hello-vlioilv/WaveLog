@@ -242,6 +242,7 @@
   if(note){const t=noteFor(current);note.textContent=t;note.hidden=!t}
   fillContext();
   try{fitLengthList()}catch(e){}
+  try{fitControlWidths()}catch(e){}
   try{paintUsual()}catch(e){}
   try{paintFinish()}catch(e){}
  }
@@ -261,6 +262,80 @@
   if(el.size!==n)el.size=n;
  }
  function fitLengthList(){fitList('lengthPos',7,2)}
+
+ /* ---------- 入れ物は中身の長さから決める（§9.130） ----------
+    グリッドの1マスへ自動で伸びるのを放置すると、「-」しか入っていない
+    プルダウンが239px、1桁しか入らない欄が239px、日時の欄が494pxになる
+    （実測）。**選択肢の長さはマスタ由来で事前に分からない**ので、
+    CSSで決め打ちにすると実データで切れる。実際の選択肢を測って決める。
+    桁数や書式が決まっているもの（数値・日時）はCSSの`max-width`で足りる。 */
+ let widthCanvas=null;
+ function textWidth(el,text){
+  widthCanvas=widthCanvas||document.createElement('canvas');
+  const ctx=widthCanvas.getContext('2d'),cs=getComputedStyle(el);
+  ctx.font=`${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+  return ctx.measureText(text).width;
+ }
+ /* 測り直すのは**選択肢か文字サイズが変わったときだけ**。オペレータは
+    実データで171件あり、毎回測ると入力のたびに171回の計測が走る。 */
+ const fitSig=new WeakMap();
+ function fitSelectWidth(id,extra){
+  const el=sel(id);
+  if(!el||!el.options||!el.options.length)return;
+  const cs=getComputedStyle(el);
+  const sig=el.options.length+'|'+el.options[0].text+'|'
+    +el.options[el.options.length-1].text+'|'+cs.fontSize;
+  if(fitSig.get(el)===sig)return;
+  fitSig.set(el,sig);
+  let w=0;
+  for(const o of el.options)w=Math.max(w,textWidth(el,o.text));
+  const pad=parseFloat(cs.paddingLeft)+parseFloat(cs.paddingRight)+2;
+  el.style.maxWidth=Math.ceil(w+pad+extra)+'px';
+ }
+ /* 一覧(size付き)は矢印が無い代わりに縦スクロールバーが出る。 */
+ const FIT_LISTS=['operator','lengthPos'];
+ const FIT_MENUS=['inspector','crewSize','innerDiameter','spool',
+   'thicknessGauge','widthGauge','unwind','widthOrder','widthDirection',
+   'burr','coilStop','toleranceSource'];
+ function fitControlWidths(){
+  FIT_LISTS.forEach(id=>fitSelectWidth(id,20));
+  FIT_MENUS.forEach(id=>fitSelectWidth(id,28));
+  READ_TEXT.forEach(([id,max])=>fitTextBox(id,max));
+ }
+
+ /* 読み取り専用の表示欄も**中身から**決める。品質情報は「異常情報なし」の
+    6文字しか無くても器は1401×280pxあった（実測）。ただし品質情報は
+    実データでは何行にもなるので、**行数の上限**を持たせて器の中で送る。
+    1行の長さは`READ_TEXT_EM`（全角40文字ぶん）まで——これ以上長い行は
+    目で追えなくなるので、幅を伸ばさず折り返す。
+    **値は`.value`への代入で入るので変化を検知できない**（DOMは変わらない）。
+    段の描き直しと、**出る瞬間（作業タブの切り替え）**の両方で測り直す。 */
+ const READ_TEXT=[['motherQualityInfo',16],['qualityInfo',20]];
+ const READ_TEXT_EM=40;
+ function fitTextBox(id,maxRows){
+  const el=sel(id);
+  if(!el||el.tagName!=='TEXTAREA')return;
+  const cs=getComputedStyle(el);
+  const text=el.value||'';
+  const sig='t|'+text.length+'|'+text.slice(0,60)+'|'+cs.fontSize;
+  if(fitSig.get(el)===sig)return;
+  fitSig.set(el,sig);
+  const fs=parseFloat(cs.fontSize)||14;
+  const frame=parseFloat(cs.paddingLeft)+parseFloat(cs.paddingRight)
+    +parseFloat(cs.borderLeftWidth)+parseFloat(cs.borderRightWidth);
+  const lines=text.split('\n');
+  let longest=0;
+  for(const ln of lines)longest=Math.max(longest,textWidth(el,ln));
+  /* 縦スクロールバーのぶんを見込む（出ないときは余白になるだけ）。 */
+  const inner=Math.min(longest,fs*READ_TEXT_EM);
+  el.style.maxWidth=Math.ceil(inner+frame+18)+'px';
+  let rows=0;
+  for(const ln of lines){
+   const w=textWidth(el,ln);
+   rows+=inner>0?Math.max(1,Math.ceil(w/inner)):1;
+  }
+  el.rows=Math.max(2,Math.min(maxRows,rows));
+ }
 
  /* ---------- 段の切り替え ----------
     **CSSのクラスだけで見せ分ける。** ペインを別の器へ移し替えない
@@ -285,6 +360,28 @@
  function bind(){
   document.querySelectorAll('.mstep[data-mstep]').forEach(b=>{
    b.onclick=()=>go(b.dataset.mstep);
+  });
+ }
+
+ /* **表示サイズを変えたら測り直す**（§9.130）。幅は「そのときの文字サイズで
+    測った結果」なので、特大にすると文字だけが1.4倍になり、**選択肢が器から
+    溢れる**（実測: オペレータの一覧が横に12px。`test_fit`が捕まえた）。
+    表示サイズは`html[data-ui-size]`で伝わる（`base.js`）。 */
+ function watchUiSize(){
+  new MutationObserver(()=>{
+   requestAnimationFrame(()=>{try{fitControlWidths()}catch(e){}});
+  }).observe(document.documentElement,{attributes:true,attributeFilter:['data-ui-size']});
+ }
+
+ /* 品質情報の本文は`.value`への代入で入るので、**paintが先に走ることが
+    ある**（読み込みの順は場面によって違う）。器が出る瞬間にもう一度
+    測り直せば、どちらの順でも正しい大きさになる。**onclickを奪わない**
+    ようaddEventListenerで足し、切り替え後の値で測るため1フレーム待つ。 */
+ function watchWorkTabs(){
+  document.querySelectorAll('[data-worktab]').forEach(b=>{
+   b.addEventListener('click',()=>{
+    requestAnimationFrame(()=>{try{fitControlWidths()}catch(e){}});
+   });
   });
  }
 
@@ -449,7 +546,7 @@
  }
 
  WL.onReady(()=>{
-  bind();bindPrepMore();watchModal();watchInputs();watchProgress();
+  bind();bindPrepMore();watchModal();watchInputs();watchProgress();watchWorkTabs();watchUiSize();
   const el=shell();if(el&&!el.classList.contains('mstep-1'))el.classList.add('mstep-1');
   paint();
  });
