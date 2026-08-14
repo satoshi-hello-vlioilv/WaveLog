@@ -261,13 +261,24 @@ let b=null,page=null;
   process.exit(2);
  }
  /* 後片付け: 作ったレコードを端末内・共有の両方から消す。**落ちた側でも通る**
-    ようにcatchからも呼ぶ（残すと計画外実績として次のテストのタイムラインに出る）。 */
+    ようにcatchからも呼ぶ。
+
+    **画面のidと保存側の記録IDは同じではない。** 画面では `|L0001|K0001|C001`
+    でも、共有DBには設備名が前に付いた `テスト設備A|L0001|K0001|C001` で入る。
+    画面のidだけで消すと当たらず、残った実績が計画外実績としてタイムラインに
+    出て、**無関係な test_scdrop を落とした**（§9.121）。一覧を引いて
+    **末尾一致で消す**——前置きの規則を推測するより、実際に入っている
+    idを見て消すほうが確実。 */
  async function cleanup(){
   try{await page.evaluate(async()=>{
    const id=(typeof S!=='undefined'&&S.measure)?S.measure.id:'';
-   if(id&&typeof reliableDelete==='function')await reliableDelete(id);
-   if(id)await fetch('/api/measurement/backup/delete',{method:'POST',
-     headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:[id]})}).catch(()=>{});
+   if(id&&typeof reliableDelete==='function')await reliableDelete(id).catch(()=>{});
+   if(id){
+    const r=await fetch('/api/measurement/backup/list').then(x=>x.json()).catch(()=>({items:[]}));
+    const ids=(r.items||[]).map(i=>i.id).filter(x=>x===id||String(x).endsWith(id));
+    if(ids.length)await fetch('/api/measurement/backup/delete',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({ids})}).catch(()=>{});
+   }
    const m=document.querySelector('#measureModal');if(m)m.hidden=true;
   })}catch(e){}
   try{await setMode('edit')}catch(e){}
