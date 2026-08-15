@@ -229,6 +229,9 @@ echo "--- 起動(サーバーを再起動する) ---"
 # 実行するとき(`run_all.sh test_orphan`)も同じ白紙から始められるように、
 # テストを選ぶより前に置く。
 resetcontent
+# 測定バックアップ(実績)も同じ理由で戻す。**異常終了した実行が残した実績が
+# 次の実行へ持ち越される**ため(§9.132、詳細は tests/reset_records.py)。
+python3 "$ROOT/tests/reset_records.py"
 run python3 test_boot.py
 sleep 3
 
