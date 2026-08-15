@@ -1617,7 +1617,34 @@
      分割データの有無を判定し、未設定でも子ロット候補を能動的に取得して
      表示する(条割変更モーダルを手動で開くまで待たない)。applySplit実行後
      もここで最新の設定内容へ更新する。 */
+  /* 骨子（§9.137）の①基本情報は「分割ロット」を持つ。子ロットは非同期で
+     取りに行くので、`measurement-view.js`は器だけ置き、埋めるのはここ
+     （分割の状態を知っているのはこのファイルだけ）。**分割が無いときは
+     行ごと出さない**——「分割無し」は条の設計カードが言っており、同じ
+     ことを2箇所に書かない（§9.129）。 */
+  function refreshBasicSplitRow(){
+    const el=$('#basicSplit');if(!el)return;
+    const groups=S.measure?.settings?.splitGroups;
+    let lots=[],strips=0;
+    if(Array.isArray(groups)&&groups.length){
+      lots=groups.map(g=>String(g.lot||'')).filter(Boolean);
+      strips=groups.reduce((a,g)=>a+(Number(g.count)||0),0);
+    }else{
+      const rows=splitSourceRows();
+      lots=rows.map(s=>String(s.lot||'')).filter(Boolean);
+      strips=rows.reduce((a,s)=>a+(Number(s.count)||0),0);
+    }
+    if(lots.length<2){el.hidden=true;el.innerHTML='';return;}
+    const list=lots.join('・');
+    el.innerHTML=`<span class="ii"><label>分割ロット</label>`
+      +`<output title="${esc(list)}">${esc(list)}</output></span>`
+      +`<span class="ii"><label>子ロット数</label><output>${lots.length}</output></span>`
+      +(strips?`<span class="ii"><label>条数</label><output>${strips}</output></span>`:'');
+    el.hidden=false;
+  }
+
   function refreshSplitStatusPanel(){
+    refreshBasicSplitRow();
     const el=$('#splitGrid');if(!el)return;
     const groups=S.measure?.settings?.splitGroups;
     if(Array.isArray(groups)&&groups.length){

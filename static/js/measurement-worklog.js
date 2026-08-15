@@ -142,7 +142,73 @@
    hint.classList.toggle('is-invalid',!!invalid);
   }
  }
- function afterWorkChange(){refreshWorkTime();markDirty();if(typeof updateValidationVisuals==='function')updateValidationVisuals()}
+ /* ---------- 自動で記録する時刻（§9.143、利用者の指示） ----------
+    開始・終了は実績として提出するものなので**手で入れる**が、
+    「何時に始めて何時に終えたか」は測定の操作そのものが知っている。
+    残すのは3つだけ:
+      入力を始めた    … このロットで最初に値が入った時刻
+      転送を受け始めた… 測定器からの転送を最初に受けた時刻
+      最後に入力した  … 直近で値が入った時刻
+    **勝手に開始・終了へ書き込まない**——操作ログと実績は別物で、
+    段取りや中断を含む実作業時間は人しか決められない。押したときだけ
+    入れる（`workFillFromAuto`）。 */
+ function autoStamps(){const w=wt();w.auto=w.auto||{firstInputAt:'',firstTransferAt:'',lastInputAt:''};return w.auto}
+ function noteInput(kind){
+  if(!S.measure)return;
+  const a=autoStamps(),iso=new Date().toISOString();
+  if(!a.firstInputAt)a.firstInputAt=iso;
+  if(kind==='transfer'&&!a.firstTransferAt)a.firstTransferAt=iso;
+  a.lastInputAt=iso;
+  refreshAutoStamps();
+ }
+ /* 参考値は**時刻だけ**でよい（同じ日の作業なので日付は開始・終了が持つ）。
+    ただし日をまたいだときに嘘にならないよう、開始と日が違えば日付も出す。 */
+ function stampText(iso){
+  if(!iso)return '—';
+  const d=new Date(iso);if(Number.isNaN(d.getTime()))return '—';
+  const today=new Date();
+  const sameDay=d.toDateString()===today.toDateString();
+  return sameDay?`${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`
+                :`${d.getMonth()+1}/${d.getDate()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+ }
+ function refreshAutoStamps(){
+  if(!S.measure)return;
+  const a=autoStamps();
+  const put=(id,iso)=>{const el=$('#'+id);if(!el)return;
+   const t=stampText(iso);if(el.textContent!==t)el.textContent=t;
+   el.title=iso?new Date(iso).toLocaleString('ja-JP'):'まだ記録がありません';};
+  put('waFirstInput',a.firstInputAt);
+  put('waFirstTransfer',a.firstTransferAt);
+  put('waLastInput',a.lastInputAt);
+  /* **できないことは、できないと書く**（押せるのに何も起きないボタンを
+     残さない）。理由は文で出す——灰色になっているだけでは分からない。 */
+  const btn=$('#workFillFromAuto'),hint=$('#workAutoHint');
+  const ready=!!(a.firstInputAt&&a.lastInputAt);
+  if(btn)btn.disabled=!ready;
+  if(hint)hint.textContent=ready
+   ?'開始←入力を始めた時刻／終了←最後に入力した時刻。入れたあとで直せます。'
+   :'まだ測定値が1つも入っていないため、参考値はありません。';
+ }
+ function fillFromAuto(){
+  if(!S.measure)return;
+  const a=autoStamps(),w=wt();
+  if(!a.firstInputAt||!a.lastInputAt)return;
+  w.startAt=a.firstInputAt;w.endAt=a.lastInputAt;
+  syncField('workStartAt');syncField('workEndAt');
+  afterWorkChange();
+  showToast&&showToast('参考値を入れました',`${stampText(a.firstInputAt)} 〜 ${stampText(a.lastInputAt)}`);
+ }
+ window.WL=window.WL||{};
+ WL.workStamp={note:noteInput,refresh:refreshAutoStamps};
+ /* 母材・製品の欄は`collect()`が保存時にまとめて読む作りで、1つずつの
+    書き込み点が無い。**持ち主のコードへ手を入れずに**捕まえるため、
+    ここで委譲で受ける（捕捉フェーズ。他のハンドラを奪わない）。 */
+ document.addEventListener('input',e=>{
+  const t=e.target;
+  if(!S.measure||!t||typeof t.matches!=='function')return;
+  if(t.matches('[data-mother],[data-product-field]'))noteInput('manual');
+ },true);
+ function afterWorkChange(){refreshWorkTime();refreshAutoStamps();markDirty();if(typeof updateValidationVisuals==='function')updateValidationVisuals()}
  function commitField(id){const el=$('#'+id);if(!el||!S.measure)return;const iso=localInputToIso(el.value);el.dataset.iso=iso;const w=wt();if(id==='workStartAt')w.startAt=iso;else w.endAt=iso;afterWorkChange()}
  function stampNow(id){if(!S.measure)return;const w=wt(),iso=new Date().toISOString();if(id==='workStartAt')w.startAt=iso;else w.endAt=iso;syncField(id);afterWorkChange();showToast&&showToast(id==='workStartAt'?'開始時刻を記録しました':'終了時刻を記録しました',formatWorkTime(iso))}
  function clearField(id){if(!S.measure)return;const w=wt();if(id==='workStartAt')w.startAt='';else w.endAt='';syncField(id);afterWorkChange()}
@@ -155,8 +221,10 @@
   if(eb){eb.disabled=false;eb.onclick=()=>stampNow('workEndAt')}
   if(sc)sc.onclick=()=>clearField('workStartAt');
   if(ec)ec.onclick=()=>clearField('workEndAt');
+  const fb=$('#workFillFromAuto');
+  if(fb)fb.onclick=()=>fillFromAuto();
  }
- updateWorkTimePanel=function(){if(!S.measure)return;syncField('workStartAt');syncField('workEndAt');bindWorkTime();refreshWorkTime()};
+ updateWorkTimePanel=function(){if(!S.measure)return;syncField('workStartAt');syncField('workEndAt');bindWorkTime();refreshWorkTime();refreshAutoStamps()};
 })();
 
 /* ============================================================

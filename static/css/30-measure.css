@@ -330,13 +330,22 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    マスいっぱいに伸びて**中身のない枠**が残る（実測: ①の品質規格で480px、
    ③で532px）。粗いグリッドではマスが余るのは織り込み済みだが、余るのは
    「マス」であって「枠の中」ではない——空の枠は壊れて見える。 */
+/* ①の品質カードは**品質規格の表＋品質情報の本文**の2つだけ（§9.143）。
+   本文には**カードの残りの高さをそのまま渡す**——利用者の指示
+   「品質情報については表示エリアを確保してください」。実データの品質情報は
+   何行にもなり、2行の窓で送りながら読むものではない。ここは§9.131の
+   「面は中身なりの高さ」の例外で、伸びるのは**空の枠ではなく本文の窓**。 */
 .measure-shell.mstep-1 .quality-pane{
   grid-template-columns:minmax(0,1fr);
-  grid-template-rows:min-content min-content;
-  align-content:start;
+  grid-template-rows:min-content min-content minmax(0,1fr);
+  align-content:stretch;
 }
 .measure-shell.mstep-1 .quality-pane>*,
 .measure-shell.mstep-3 .quality-pane>*{align-self:start}
+.measure-shell.mstep-1 .quality-pane>.quality-info-block{
+  display:flex;flex-direction:column;align-self:stretch;min-height:0;
+}
+.measure-shell.mstep-1 .quality-pane>.quality-info-block>textarea{flex:1 1 auto;min-height:0}
 .measure-shell.mstep-3 .analysis{align-self:start}
 /* 測定データ分析は**測ってからでないと中身が無い**ので①には出さない。 */
 .measure-shell.mstep-1 .analysis,.measure-shell.mstep-1 .debug-pane{display:none}
@@ -516,9 +525,12 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 }
 .prep-fold[aria-expanded="true"] .prep-chev{margin:3px 3px 0 0;transform:rotate(-135deg)}
 .prep-fold[aria-expanded="true"] .prep-sum{visibility:hidden}
-/* 作業時間は**2列ぶんを使う**。中の`.work-time-row`は入力欄に`min-width:190px`
-   （`50-master.css`が持つ）があり、1列（204px）では必ず溢れる。 */
-.measure-shell.mstep-1 .selectors>[data-f="workTime"]{grid-column:1/-1;grid-row:11}
+/* **作業時間は①に置かない**（§9.143、利用者の指示）。「準備の入力」は
+   測る前に1回決める設定の面で、時刻の記録はそこへ混ざると異物に見える。
+   置き場は③「確認して完了」——実作業時間は測り終えてから確定するもので、
+   完了前の確認と同じ面にあるのが作業の順番と合う。**DOMは動かさない**
+   （§9.122と同じ理由で、器を移し替えず段ごとに見せ分ける）。 */
+.measure-shell.mstep-1 .selectors>[data-f="workTime"]{display:none}
 /* ①のリストは`size`（行数）に任せる（§9.126）。②で使う「入力内容」だけが
    ここに残る（①では非表示）。 */
 .measure-shell.mstep-1 .selectors .major-list{grid-template-rows:20px auto}
@@ -559,6 +571,33 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 }
 .measure-shell.mstep-3 .selectors>*{display:none}
 .measure-shell.mstep-3 .selectors>[data-f="workTime"]{display:block;grid-column:1}
+/* ③ではこの器は作業時間だけの器になる。題は**作業時間パネル自身が
+   持っている**（見出し＋状態が1行に並ぶ）ので、カードの題を別に足すと
+   「作業時間」が縦に2つ並ぶ（§9.129「同じ情報を2箇所に出さない」）。
+   カードの題を消し、パネルの見出しをカードの題として組む。 */
+.measure-shell.mstep-3 .center-pane>.panel-title{display:none}
+.measure-shell.mstep-3 .work-time-title{margin-bottom:var(--space-2)}
+.measure-shell.mstep-3 .work-time-title b{color:var(--teal);font-size:var(--fs-base-sm);font-weight:800;letter-spacing:.02em}
+/* ---------- ③の作業時間（§9.143、ゼロベース） ----------
+   周りの群（誰が測るか／使う機材）と**同じ見え方**にする: 見出しは
+   `.prep-head`、行はラベル＋欄、枠は付けない（カードが枠を持っている）。
+   自動で記録した時刻は**参考**なので、記録欄より下・小さい文字で置く
+   ——面積は「頻度×重要度」で配る。 */
+.work-auto{margin-top:var(--space-2);padding-top:var(--space-2);border-top:1px dashed var(--line-soft)}
+.prep-head-static{
+  display:block;margin:0 0 var(--space-1);
+  color:var(--ink-3);font-size:var(--fs-micro);font-weight:800;letter-spacing:.04em;
+}
+/* **ラベル列は固定幅**（§9.129）。1つのグリッドに3行を入れているので、
+   `max-content`でも列は1本に決まり、値の左端がそろう。 */
+.work-auto-list{
+  display:grid;grid-template-columns:max-content minmax(0,1fr);
+  gap:var(--gap-hair) var(--gap-inline);align-items:baseline;
+}
+.wa-k{color:var(--ink-3);font-size:var(--fs-micro)}
+.wa-v{font-size:var(--fs-sm);font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink)}
+#workFillFromAuto{margin-top:var(--space-2);height:var(--ctl-h-sm)}
+#workAutoHint{display:block;margin-top:var(--space-1);color:var(--ink-soft);font-size:var(--fs-micro)}
 /* ---------- 段ごとの割り付け（§9.131 ゼロベースの組み直し） ----------
    実測（1920×1080）では、①で左ペインの下に253px、②で母材・揃いのとき
    右ペインの下に483〜542px、③で確認表の下に619pxの空きがあった。
@@ -694,8 +733,14 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 }
 .measure-body>.left-pane>.basic-card,
 .measure-body>.quality-pane>.quality-grade-panel,
+/* 作業時間は**カードの中の1つの群**で、他の群（誰が測るか／使う機材）と
+   同じ見え方にする（§9.142）。以前は枠付きのパネルのままで、カードの中に
+   もう1枚カードが乗っているように見えていた（§9.129「枠の中に枠を作らない」）。
+   **器そのものが`[data-f="workTime"]`**なので、`>`で子を指す書き方では
+   一度も当たっていなかった。 */
 .measure-body>.center-pane>.work-time-panel,
-.measure-shell.mstep-1 .selectors>[data-f="workTime"]>.work-time-panel{
+.measure-shell.mstep-1 .selectors>.work-time-panel[data-f="workTime"],
+.measure-shell.mstep-3 .selectors>.work-time-panel[data-f="workTime"]{
   padding:0;border:0;border-radius:0;background:transparent;
 }
 .center-pane{container-type:inline-size;overflow-x:hidden}
@@ -712,9 +757,10 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    区切りは破線1本だけ——**枠の中に枠を作らない**（§9.129）。 */
 .quality-info-block{margin-top:var(--space-2);padding-top:var(--space-2);border-top:1px dashed var(--line-soft);min-width:0}
 .qp-head{display:block;margin-bottom:var(--space-1);color:var(--ink-3);font-size:var(--fs-micro);font-weight:800;letter-spacing:.04em}
-/* 読み取り専用の本文は`fitTextBox()`が中身から幅と行数を決める（§9.130）。
-   ここが持つのは上限だけ。 */
-.quality-info-block textarea{width:100%;max-width:var(--w-2xl);min-width:0;resize:vertical}
+/* 読み取り専用の本文は**幅を器（カード）から、行数を中身から**決める
+   （§9.142）。真上の品質規格の表と右端をそろえるため、上限は置かない
+   ——ここだけ幅が違うと、カードの中で一番目につく不揃いになる。 */
+.quality-info-block textarea{width:100%;min-width:0;resize:vertical}
 /* ---------- 5. 左ペイン ---------- */
 .tabs{display:flex}
 .tabs button{border-radius:var(--radius-tab) var(--radius-tab) 0 0;display:flex;align-items:center;justify-content:center;white-space:nowrap;border:1px solid transparent;background:transparent;color:#4a6169;box-shadow:none}
@@ -899,6 +945,13 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
   align-items:center;gap:var(--gap-inline);min-width:0;overflow:hidden;
 }
 .title-actions button{height:var(--ctl-h);min-width:max-content;padding:4px 9px;white-space:nowrap}
+/* 判定公差の切替は**選べるときだけ出す**（§9.143、利用者の指示）。
+   通常は製造公差で触ることがなく、常設すると「選ぶもの」に見えてしまう。
+   出す段は②測定と③確認だけ——**実際に判定している場所**で見えれば足りる
+   （①は測る前で、まだ判定が1件も無い）。値そのもの（下限/基準/上限）は
+   `#toleranceFacts`が①でも出す（§9.137で分けた「図」と「値」の「値」側）。
+   選べるかどうかは`configureToleranceSelector()`が`hidden`で決める。 */
+.measure-shell.mstep-1 .tolerance-source-control{display:none}
 .tolerance-source-control{min-width:0;overflow:hidden}
 .tolerance-source-control label{
   display:grid;grid-template-columns:max-content minmax(0,1fr);align-items:center;gap:var(--gap-tight);

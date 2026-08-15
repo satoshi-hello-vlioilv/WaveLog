@@ -418,62 +418,60 @@ let b=null,page=null;
   rec('①に入力内容・丈位置を出さない',
       !p1.出ている項目.includes('measureType')&&!p1.出ている項目.includes('lengthPos'),
       JSON.stringify(p1.出ている項目));
-  /* **「いつもと同じ設定」の5つだけ畳む**(§9.140、§9.125へ戻す)。骨子の①
-     「準備の入力」は`1×2`しかなく、14項目を全部開くと実測113px溢れて
-     **作業時間が切れていた**。§9.133は「入力させる項目は折りたたまない」と
-     決めたが、骨子の面積とは両立しない。畳んでよいのはこの5つだけで、
-     **残りの9項目は必ず出ている**こと。 */
+  /* **①の入力項目14個は全部出ている**（§9.143）。§9.140では骨子の`1×2`に
+     収まらず「いつもと同じ設定」の5つを畳んでいたが、その溢れ（実測113px）の
+     原因だった作業時間が③へ移ったので、§9.133の「入力させる項目は折り
+     たたまない」へ戻せる。**畳む道具は残す**——畳んだときに現在値が読める
+     ことも合わせて見る。 */
   const FOLDED=['unwind','widthOrder','widthDirection','burr','coilStop'];
   const ALWAYS=['operator','inspector','crewSize','verticalCount','horizontalCount',
                 'innerDiameter','spool','thicknessGauge','widthGauge'];
-  rec('①の入力項目9つは常に出ている',
-      ALWAYS.every(k=>p1.出ている項目.includes(k))&&p1.出ている項目.length===ALWAYS.length,
+  const ALL14=[...ALWAYS,...FOLDED];
+  rec('①の入力項目14個は全部出ている',
+      ALL14.every(k=>p1.出ている項目.includes(k))&&p1.出ている項目.length===ALL14.length,
       JSON.stringify(p1.出ている項目));
-  rec('畳むのは「いつもと同じ設定」の5つだけ',
-      p1.畳んでいる項目.length===FOLDED.length&&FOLDED.every(k=>p1.畳んでいる項目.includes(k)),
-      JSON.stringify(p1.畳んでいる項目));
-  /* **畳んだままでも値は読めること**が条件（§9.125）。隠したものが何かを
-     書かずに隠すと、設定の存在ごと忘れられる。要約に5つの現在値が並ぶ。 */
-  const usual=await page.evaluate(()=>{
-   const sum=document.getElementById('usualSum'),btn=document.getElementById('usualFold');
+  rec('①に畳んだままの項目は無い',p1.畳んでいる項目.length===0,JSON.stringify(p1.畳んでいる項目));
+  /* 畳む道具は残っている。**畳んだときは値が読めること**が条件（§9.125）
+     ——隠したものが何かを書かずに隠すと、設定の存在ごと忘れられる。 */
+  const usual=await page.evaluate(async()=>{
+   const btn=document.getElementById('usualFold');
+   btn.click();
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   const sum=document.getElementById('usualSum');
    const vals=['unwind','widthOrder','widthDirection','burr','coilStop']
      .map(id=>{const e=document.getElementById(id);
        return e?((e.selectedOptions&&e.selectedOptions[0]?e.selectedOptions[0].text:e.value)||'').trim():''});
-   return{要約:(sum&&sum.textContent||'').trim(),値:vals,
-     畳んでいる:btn?btn.getAttribute('aria-expanded')==='false':null};
+   const 隠れた=['unwind','widthOrder','widthDirection','burr','coilStop']
+     .filter(id=>{const e=document.getElementById(id);
+       return e&&e.closest('label')&&e.closest('label').offsetParent===null});
+   return{要約:(sum&&sum.textContent||'').trim(),値:vals,隠れた,
+     畳んでいる:btn.getAttribute('aria-expanded')==='false'};
   });
-  rec('畳んだ状態で開く',usual.畳んでいる===true,JSON.stringify(usual));
-  rec('畳んだままでも5項目の現在値が読める',
+  rec('開いた状態で始まり、押せば畳める',
+      usual.畳んでいる===true&&usual.隠れた.length===FOLDED.length,JSON.stringify(usual));
+  rec('畳んだときは5項目の現在値が読める',
       usual.値.filter(v=>v&&v!=='-').every(v=>usual.要約.includes(v)),
       JSON.stringify(usual));
-  /* 開けば5つとも出る（「畳んである」＝「触れない」ではない）。 */
-  const opened=await page.evaluate(async()=>{
-   document.getElementById('usualFold').click();
-   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-   return ['unwind','widthOrder','widthDirection','burr','coilStop']
-     .filter(id=>{const e=document.getElementById(id);
-       return e&&e.closest('label')&&e.closest('label').offsetParent!==null});
-  });
-  rec('開けば5項目とも出る',opened.length===FOLDED.length,JSON.stringify(opened));
   await page.evaluate(()=>document.getElementById('usualFold').click());
   await page.waitForTimeout(120);
-  /* **開始/終了時刻は準備の面に置く**(§9.133、項目5)。以前は左の情報カードの
-     中にあり、準備の必須入力なのに導線から外れていた。 */
+  /* **作業時間は①に置かない**（§9.143、利用者の指示）。「準備の入力」は
+     測る前に1回決める設定の面で、時刻の記録はそこへ混ざると異物に見える。
+     ③「確認して完了」へ移した（実作業時間は測り終えてから確定するもの）。 */
   const prepWt=await page.evaluate(()=>{
-   const box=document.querySelector('.measure-shell .selectors');
-   const w=box?.querySelector('[data-f="workTime"]');
-   if(!w)return null;
-   const r=w.getBoundingClientRect(),b=box.getBoundingClientRect();
-   return {中にある:true,最後:Math.round(r.bottom)>=Math.round(b.bottom)-2,
-     全幅:Math.round(r.width)>=Math.round(b.width)-2,
-     開始:!!document.getElementById('workStartAt'),終了:!!document.getElementById('workEndAt')};
+   const w=document.querySelector('.measure-shell .selectors [data-f="workTime"]');
+   return {出ている:!!(w&&w.offsetParent!==null&&w.getBoundingClientRect().height>0),
+     欄はある:!!document.getElementById('workStartAt')};
   });
-  rec('開始/終了時刻が準備の入力面にある',!!prepWt&&prepWt.開始&&prepWt.終了,JSON.stringify(prepWt));
-  /* **置き場所は「いちばん右」から「いちばん下・全幅」へ**（§9.137）。準備の
-     入力は骨子で`1×2`＝1マス幅になり、カテゴリを縦に積む形になった。
-     作業時間は入力欄に`min-width:190px`があるので1列（204px）には入らず、
-     2列ぶんを使って最後に置く。 */
-  rec('開始/終了時刻は準備の最後に全幅で置く',!!prepWt&&prepWt.最後&&prepWt.全幅,JSON.stringify(prepWt));
+  rec('①に作業時間を出さない',prepWt.出ている===false&&prepWt.欄はある,JSON.stringify(prepWt));
+  /* **判定公差は①に出さない**（§9.143、利用者の指示）。通常は製造公差で
+     触ることがなく、判定しているのは②③。選べないときは②③でも出さない。 */
+  const tol1=await page.evaluate(()=>{
+   const box=document.querySelector('.tolerance-source-control');
+   return {出ている:!!(box&&box.offsetParent!==null&&box.getBoundingClientRect().height>0),
+     欄はある:!!document.getElementById('toleranceSource'),
+     値は出ている:!!document.querySelector('#toleranceFacts')};
+  });
+  rec('①に判定公差の切替を出さない',tol1.出ている===false&&tol1.欄はある,JSON.stringify(tol1));
 
   /* ---- 6) ③確認 ---- */
   await go('3');
@@ -486,6 +484,54 @@ let b=null,page=null;
      見ないこと**——`||`で拾うと先に空でないほうしか見ず、主張が変わる。 */
   const rest3=(m3.理由||'')+' / '+(m3.段[2].状態||'');
   rec('③には残りの件数を数で書く',/\d+\s*項目/.test(rest3),rest3);
+
+  /* ---- 6a) ③の作業時間（§9.143、利用者の指示でゼロベース） ----
+     手で入れる開始・終了のほかに、**測定の操作そのものが知っている時刻**を
+     3つだけ自動で残す（入力を始めた／転送を受け始めた／最後に入力した）。
+     参考であって、開始・終了を勝手に書き換えないこと——実作業時間は段取りや
+     中断を含み、人しか決められない。 */
+  const wt3=await page.evaluate(()=>{
+   const w=document.querySelector('.measure-shell .selectors [data-f="workTime"]');
+   const vis=x=>!!(x&&x.offsetParent!==null&&x.getBoundingClientRect().height>0);
+   const btn=document.getElementById('workFillFromAuto');
+   /* 「作業時間」という題が縦に2つ並んでいないこと（§9.129）。 */
+   const titles=[...document.querySelectorAll('.measure-shell .center-pane')]
+     .flatMap(c=>[...c.querySelectorAll('.panel-title,.work-time-title b')])
+     .filter(vis).map(x=>x.textContent.trim());
+   return {出ている:vis(w),
+     自動欄:['waFirstInput','waFirstTransfer','waLastInput'].filter(id=>vis(document.getElementById(id))),
+     ボタン:!!btn,押せる:btn?!btn.disabled:null,
+     理由:(document.getElementById('workAutoHint')||{}).textContent||'',
+     題:titles};
+  });
+  rec('③に作業時間がある',wt3.出ている,JSON.stringify(wt3.題));
+  rec('自動で記録した時刻を3つ出す',wt3.自動欄.length===3,JSON.stringify(wt3.自動欄));
+  /* **できないことは、できないと書く**。まだ値が1つも入っていないので
+     押せず、その理由が文で出ていること（灰色なだけでは伝わらない）。 */
+  rec('参考値が無いときは押せず、理由が書いてある',
+      wt3.ボタン&&wt3.押せる===false&&/まだ/.test(wt3.理由),JSON.stringify(wt3));
+  rec('「作業時間」の題が2つ並んでいない',
+      wt3.題.filter(t=>t==='作業時間').length===1,JSON.stringify(wt3.題));
+  /* 自動の記録が**実際に効く**こと。手入力で1つ値を入れると、
+     「入力を始めた」と「最後に入力した」が埋まり、押せるようになる。 */
+  const wtAfter=await page.evaluate(async()=>{
+   WL.workStamp.note('manual');
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   const btn=document.getElementById('workFillFromAuto');
+   const t=id=>(document.getElementById(id)||{}).textContent||'';
+   btn.click();
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   return {開始:t('waFirstInput'),転送:t('waFirstTransfer'),最終:t('waLastInput'),
+     押せた:!btn.disabled,
+     入った:!!(document.getElementById('workStartAt').value&&document.getElementById('workEndAt').value)};
+  });
+  rec('入力すると「入力を始めた」「最後に入力した」が埋まる',
+      /\d/.test(wtAfter.開始)&&/\d/.test(wtAfter.最終),JSON.stringify(wtAfter));
+  /* **手入力は「転送」に数えない**——混ぜると「転送を受け始めた時刻」が
+     作れない（測定器を使い始めた時刻が知りたいのであって、何か入れた
+     時刻ではない）。 */
+  rec('手入力は「転送を受け始めた」に数えない',!/\d/.test(wtAfter.転送),JSON.stringify(wtAfter));
+  rec('参考値を押すと開始・終了へ入る',wtAfter.押せた&&wtAfter.入った,JSON.stringify(wtAfter));
 
   /* ---- 6b) 完了前の確認表（§9.125） ----
      以前は未測定も公差外も**完了を押した後**の確認ダイアログでしか
@@ -741,6 +787,11 @@ let b=null,page=null;
       for(const o of el.options)need=Math.max(need,w(o.text));
       need+=28;
      }else if(el.tagName==='TEXTAREA'){
+      /* **読み取り専用の本文は器から幅をもらう**（§9.142/§9.143）ので、
+         中身と比べない。真上に置いた表と右端をそろえることが要件で、
+         そこだけ幅が違うほうが「そろっていない」（品質情報は実データでは
+         何行にもなる。窓の大きさを決めるのは行数のほう）。 */
+      if(el.readOnly)return;
       for(const ln of (el.value||'').split('\n'))need=Math.max(need,w(ln));
       need+=18;
      }else if(el.type==='datetime-local'){
@@ -898,7 +949,13 @@ let b=null,page=null;
     return !!e&&e.getBoundingClientRect().height>0});
   rec('①の常時表示は基本情報と幅分割',
       wall1.面.includes('basic')&&split1,JSON.stringify(wall1)+' split='+split1);
-  rec('①のタブは1枚だけ（品質規格・分析）',wall1.タブ===1,JSON.stringify(wall1));
+  /* **①にタブは1枚も置かない**（§9.143、利用者の指示）。測定データ分析は
+     「準備」の面に置く意味が無い——まだ1件も測っておらず、中身が空の面へ
+     切り替えるだけのボタンになる。**タブごと消す**（押せるのに何も無い
+     ボタンを残さない）。分析は③の記録の壁に別カードとして出る。 */
+  rec('①にタブを置かない',wall1.タブ===0,JSON.stringify(wall1));
+  rec('①は品質規格を常時出す',wall1.面.includes('grade'),JSON.stringify(wall1));
+  rec('①に測定データ分析を出さない',!wall1.面.includes('analysis'),JSON.stringify(wall1));
   rec('タブの裏は同時に2枚出さない',
       !(wall1.面.includes('grade')&&wall1.面.includes('analysis')),JSON.stringify(wall1));
   /* **空き率は粗い目安**（中身の少ないロットでは正しく空く）。効くのは

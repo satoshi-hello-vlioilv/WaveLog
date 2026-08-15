@@ -108,6 +108,9 @@ function processDeviceInputCore(raw){
  }else if(type==='テレスコープ'){
   if(!['depth','manual'].includes(p.device))return inputError('テレスコープはデプスゲージを使用してください');m.measurements.telescope[li][st.wStep||0]=p.value.toFixed(2);advanceWidth()
  }else{const key=activeMeasureKey();m.measurements[key][li][st.wStep||0]=type==='ラテラルボー'?(Math.ceil(p.value*2)/2).toFixed(1):p.value.toFixed(1);advanceWidth()}
+ /* 自動で記録する時刻（§9.143）。**転送は「転送」として数える**——
+    手入力と混ぜると「転送を受け始めた時刻」が作れない。 */
+ WL.workStamp.note('transfer');
  $('#deviceInput').classList.add('device-ok');$('#deviceInput').value='';renderMeasureGrid();renderStats();markDirty();focusCurrent();refocusDeviceInput()
 }
 /* 受信処理の入口。板幅のノギス系値は小数1桁へ丸めてから本処理へ渡し、
@@ -222,7 +225,7 @@ function bindMeasureInputs(){
   // フォーカスが移動した場合も、強調表示(.current)をそのセルへ
   // 追従させる(自動モードは受信欄にフォーカスを固定するため対象外)。
   x.addEventListener('focus',()=>{if(S.measure.settings.inputMode!=='manual')return;syncStepFor(x);focusCurrent()});
-  x.oninput=()=>{m.measurements[x.dataset.mkey][+x.dataset.i][+x.dataset.j]=x.value;judgeInput(x,x.dataset.mkey,Number(x.value),+x.dataset.j);renderStats();markDirty()};x.onkeydown=e=>{if(WL.measureNav&&WL.measureNav.handleKey(e,!x.value))return;if(S.measure.settings.inputMode!=='manual'){e.preventDefault();return}if(e.key==='Delete'){x.value='';x.oninput()}if(e.key==='Enter'){e.preventDefault();advanceSlot();focusCurrent()}}})
+  x.oninput=()=>{m.measurements[x.dataset.mkey][+x.dataset.i][+x.dataset.j]=x.value;judgeInput(x,x.dataset.mkey,Number(x.value),+x.dataset.j);renderStats();WL.workStamp.note('manual');markDirty()};x.onkeydown=e=>{if(WL.measureNav&&WL.measureNav.handleKey(e,!x.value))return;if(S.measure.settings.inputMode!=='manual'){e.preventDefault();return}if(e.key==='Delete'){x.value='';x.oninput()}if(e.key==='Enter'){e.preventDefault();advanceSlot();focusCurrent()}}})
 
  document.querySelectorAll('[data-mkey="thickness"],[data-mkey="width"]').forEach(el=>{
   const previousBlur=el.onblur;
@@ -411,7 +414,7 @@ function bindFlatnessInputs(){
   btn.onclick=()=>{
    const j=lengthIndex(),c=m.settings.wStep||0;
    m.measurements.flatness[j][c]=btn.dataset.sym;
-   advanceWidth();renderMeasureGrid();markDirty();focusFlatnessCurrentCell();
+   advanceWidth();renderMeasureGrid();WL.workStamp.note('manual');markDirty();focusFlatnessCurrentCell();
   };
  });
 }
