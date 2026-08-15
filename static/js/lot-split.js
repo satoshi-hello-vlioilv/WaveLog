@@ -1830,12 +1830,16 @@
     /* 板厚・板幅を別々の入力内容にしたので、描かれている数直線は
        **いま選んでいる項目のもの1つだけ**（§9.138）。枠の数も項目で
        違うため`slotCount`から取る（板厚は条数ではなく3）。 */
-    const side=document.querySelector('.compact-width-body .compact-tolerance-side');
-    if(side&&typeof compactToleranceScale==='function'){
+    /* 器は`.matrix-body`（§9.139で1つの表になったときの左側）。以前は
+       `.compact-width-body`——**板厚/板幅だけが持っていた2枚組の器**——を
+       探しており、§9.138でその器ごと無くなった後は**一度も当たっていな
+       かった**（例外も出ないので、条を移っても公差が追従しないことに
+       誰も気づけない）。 */
+    if(WL.measureTolerance){
       const key=WL.measureItem.kindOf(type);
       const li=typeof lengthIndex==='function'?lengthIndex():0,count=Math.max(1,Math.min(40,+($('#horizontalCount')?.value)||1));
       const values=S.measure?.measurements?.[key]?.[li]||[];
-      side.innerHTML=compactToleranceScale(key,values,WL.measureItem.slotCount(key,count));
+      WL.measureTolerance.repaint(key,values,WL.measureItem.slotCount(key,count));
     }
   }
   if(typeof focusCurrent==='function'){

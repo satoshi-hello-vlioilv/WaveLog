@@ -194,7 +194,17 @@ let b=null;
   const near=await page.evaluate(async()=>{
    document.querySelector('[data-mode="manual"]')?.click();
    const w=S.measure.measurements.width[lengthIndex()];
-   ['1000.0','1000.1','1000.2','999.2','1002.9'].forEach((v,i)=>w[i]=v);
+   /* **束ねられる差は器の高さから逆算する**（§9.140）。以前は0.1mm差を
+      決め打ちしていたが、公差の図を縦いっぱい（190px→786px）へ伸ばした
+      ことで同じ0.1mmが18px離れ、**左右にずらす経路そのものを一度も
+      通らなくなった**——点は元から離れているので「重ならない」は通り、
+      「条の順に並ぶ」だけが落ちる。器の高さが変わっても必ず束ねられる
+      差（点の直径8pxより近い3px相当）を作る。 */
+   const box0=document.querySelector('.accurate-numberline');
+   const h=(box0&&box0.clientHeight)||190;
+   const view=WL.toleranceScaleView({range:[999,1003],base:1000},['999.2','1002.9'],2);
+   const step=(view.viewHigh-view.viewLow)/h*3;
+   [1000,1000+step,1000+2*step,999.2,1002.9].forEach((v,i)=>w[i]=v.toFixed(3));
    renderMeasureGrid();
    await new Promise(r=>setTimeout(r,300));
    const box=document.querySelector('.accurate-numberline'),br=box.getBoundingClientRect();

@@ -199,7 +199,13 @@ let b=null,page=null;
       表の高さ:cr.length?Math.round(cr[0].height):0,
       最後の行の下端:rows.length?Math.round(r(rows[rows.length-1]).bottom):0,
       表の下端:cr.length?Math.round(cr[0].bottom):0,
-      公差と表のすきま:(tr&&cr.length)?Math.round(cr[0].left-tr.right):null,
+      /* 公差の図が無い項目（公差の登録が無い／指示公差）では左の列ごと
+         畳んで表へ渡す（§9.140）。畳んだ器は`display:none`で寸法が0に
+         なるので、**そのまま隙間を測ると1060pxという嘘の値になる**。
+         どちらの形かを先に持っておき、見るものを切り替える。 */
+      図あり:!!(body&&!body.classList.contains('no-graph')&&tr&&tr.width>0),
+      公差と表のすきま:(tr&&cr.length&&tr.width>0)?Math.round(cr[0].left-tr.right):null,
+      表の左と器の左のずれ:(br&&cr.length)?Math.round(cr[0].left-br.left):null,
       器の右の余り:(br&&cr.length)?Math.round(br.right-cr[cr.length-1].right):null};
    });
   };
@@ -217,7 +223,12 @@ let b=null,page=null;
       Math.abs(g8.表の下端-g8.最後の行の下端)<=8,JSON.stringify(g8));
   /* **一緒に読むものを引き離さない。** 公差数直線は縦向きなので、空いた
      幅を公差側へ回すと数直線と入力表のあいだに900pxの空白ができる。 */
-  rec('公差と入力表が隣り合っている',g8.公差と表のすきま!==null&&g8.公差と表のすきま<40,
+  /* 図が無い項目では列ごと畳むので（§9.140）、**表が器の左端から始まる**
+     ことで見る。畳んだ器の寸法(0)を使って隙間を測ると、どこに何があっても
+     通ってしまう。 */
+  rec('公差と入力表が隣り合っている',
+      g8.図あり?(g8.公差と表のすきま!==null&&g8.公差と表のすきま<40)
+              :(g8.表の左と器の左のずれ!==null&&g8.表の左と器の左のずれ<40),
       JSON.stringify(g8));
 
   /* ---- 4d) 丈位置は測定表の列そのもの（§9.136） ----

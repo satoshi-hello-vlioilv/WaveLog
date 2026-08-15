@@ -227,10 +227,13 @@
   .dense-controls .major-list{grid-template-rows:20px 180px}
   .dense-controls .major-list select{height:180px}
 }
+/* **カードの見出しは狭くても消さない**（§9.140）。この2つの規則は、見出し
+   バーが判定公差プルダウン等の操作を抱えていた頃に「操作を優先して題名を
+   捨てる」ためのものだった。操作を基本情報カードへ移した今は題名しか無く、
+   `.center-pane`は`container-type:inline-size`で幅422px＝560px未満のため、
+   **常に当たって「準備の入力」が消えていた**（題名の無いカードになる）。 */
 @media(max-width:1380px){
   .row-title{grid-template-columns:minmax(0,1fr)}
-  .row-title>span:first-child{display:none}
-  .title-actions{grid-template-columns:minmax(180px,1fr) max-content max-content}
 }
 @media(max-width:1180px){
   .measure-body{grid-template-columns:minmax(0,1fr) minmax(0,1fr);overflow-y:auto}
@@ -243,7 +246,6 @@
 }
 @container (max-width:560px){
   .row-title{grid-template-columns:minmax(0,1fr)}
-  .row-title>span:first-child{display:none}
 }
 /* ============================================================
  Current hotfix 2026-07-20

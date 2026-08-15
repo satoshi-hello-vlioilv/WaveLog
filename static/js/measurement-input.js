@@ -232,7 +232,16 @@ function bindMeasureInputs(){
 function toleranceInfoFor(key,index,value){
  if(key==='flatness'){const v=String(value||'').trim();return v===''?{tol:null,state:'wait',pos:50}:{tol:null,state:v==='〇'?'ok':'ng',pos:50}}
  const tol=toleranceFor(key==='thickness'?'thickness':'width',index),num=Number(value);if(!tol||!Number.isFinite(num))return{tol,state:'wait',pos:50};const low=tol[0],high=tol[1],span=Math.max(Math.abs(high-low),.000001),viewLow=low-span*.25,viewHigh=high+span*.25,pos=Math.max(0,Math.min(100,(viewHigh-num)/(viewHigh-viewLow)*100));return{tol,state:num<low||num>high?'ng':'ok',pos}}
-function makeMeasureInputV29(key,i,j,value,active=true){const info=toleranceInfoFor(key,j,value),pill=active&&value!==''?`<span class="judge-pill ${info.state}">${info.state==='ok'?'OK':'NG'}</span>`:'';return `<div class="strip-input-wrap">${makeMeasureInput(key,i,j,value)}${pill}</div>`}
+/* 印は**公差外だけ**（§9.137の②の約束「セル背景で公差内の位置を示す案は
+   却下。公差外の赤だけ」）。全セルに「OK」を添えると、24条×5丈で120個の
+   OKが並んで**読むべき赤が埋もれる**うえ、印は入力欄の上に重なるので
+   （`.judge-pill`は`position:absolute`）**値そのものが隠れて`998.20`が`9`に
+   見えていた**（実測）。印が出るセルだけ右余白を空ける。 */
+function makeMeasureInputV29(key,i,j,value,active=true){
+ const ng=active&&value!==''&&toleranceInfoFor(key,j,value).state==='ng';
+ const pill=ng?'<span class="judge-pill ng">NG</span>':'';
+ return `<div class="strip-input-wrap${ng?' has-judge':''}">${makeMeasureInput(key,i,j,value)}${pill}</div>`;
+}
 /* 入力欄の保護。自動転送中はセルを読み取り専用にする(母材・フラットネスは常時手入力可)。 */
 function applyInputProtection(){
  if(!S.measure)return;const manual=S.measure.settings.inputMode==='manual';document.querySelectorAll('[data-mkey]').forEach(el=>{el.readOnly=!manual;el.classList.toggle('auto-locked',!manual);el.tabIndex=manual?0:-1;el.title=manual?'手入力可能':'自動転送中。クリックは入力位置の選択のみです。'});document.querySelectorAll('[data-mother]').forEach(el=>{el.readOnly=!manual;el.tabIndex=manual?0:-1})
@@ -364,11 +373,13 @@ function renderMeasureGridVertical(){
  const slots=WL.measureItem.slotCount(actualKey,count);
  const values=m.measurements[actualKey][li],done=values.slice(0,slots).filter(v=>v!=='').length;
  const bulkBtn=type==='フラットネス'?'<span class="flat-pick-group"><span class="flat-pick-label">現在の条へ入力</span><button type="button" class="flat-pick" data-sym="〇">〇</button><button type="button" class="flat-pick" data-sym="△">△</button><button type="button" class="flat-pick" data-sym="×">×</button></span><button type="button" id="flatAllOk">全条 〇</button>':'';
- let h=`<section class="measure-grid-block compact-other"><div class="measure-grid-block-title"><span>${esc(type)}</span><div class="measure-status-group"><span class="measure-status">${compactMeasureStatus(done,slots)}</span>${bulkBtn}</div></div><div class="matrix-body"><aside class="compact-tolerance-side">${compactToleranceScale(actualKey,values,slots)}</aside>`;
+ const tol=WL.measureTolerance.parts(actualKey,values,slots);
+ let h=`<section class="measure-grid-block compact-other"><div class="measure-grid-block-title"><span>${esc(type)}</span><div class="measure-status-group"><span class="measure-status">${compactMeasureStatus(done,slots)}</span>${bulkBtn}</div></div><div class="matrix-body${tol.graph?'':' no-graph'}"><aside class="compact-tolerance-side">${tol.graph}</aside>`;
  h+=measureMatrixHtml(actualKey,slots,type);
  h+='</div></section>';
  if(type==='フラットネス')h+=`<section class="measure-grid-block flatness-note-block"><div class="measure-grid-block-title"><span>備考</span></div><div class="flatness-entry"><label>対象条<select id="coilNo"></select></label><label>備考<textarea id="coilComment"></textarea></label></div></section>`;
  $('#measurementGrid').innerHTML=h;
+ WL.measureTolerance.paintFacts(tol.facts);
  bindMeasureInputs();applyInputProtection();focusCurrent();updateMeasurementHeading();/* 寸法系（板厚・板幅）は横長の公差バーを出さない。数直線の隣の公差カード
    （`.compact-tolerance-side`）が基準値・公差±・判定範囲を既に持っており、
    **同じ数字を画面に2つ出さない**（§9.129。項目を分ける前の板厚/板幅と
@@ -462,5 +473,52 @@ function compactToleranceScale(kind,values,count){
  const marks=valid.slice(-20).map(v=>{const pos=Math.max(3,Math.min(97,(viewHigh-v)/(viewHigh-viewLow)*100)),ng=v<low||v>high;return `<i class="compact-value-mark ${ng?'ng':'ok'}" style="top:${pos}%" title="${esc(fixedToleranceValue(kind,v))}"></i>`}).join('');
  return `${facts.html}<div class="compact-tol-scale"><span class="compact-scale-label upper">上限 <b>${esc(fixedToleranceValue(kind,high))}</b></span><span class="compact-scale-safe">公差内</span>${marks}<span class="compact-scale-label lower">下限 <b>${esc(fixedToleranceValue(kind,low))}</b></span></div>`;
 }
+/* 公差の「図」と「値」は**別の問いに答えるので、別の場所へ置く**（§9.140、
+   骨子§9.137）。図＝いま公差のどのへんか（測定カードの左・選択中の丈位置
+   だけ）、値＝規格はいくつか（基本情報カード）。同じ数字を2箇所に出さない
+   （§9.129）。
+
+   組み立ては`compactToleranceScale`の**1本のまま**で、**出来上がりを2つに
+   配る**。引数で切り替える形にしないのは、この関数を3つのファイルが順に
+   包んでおり（`measurement-worklog.js`＝指示公差／`filters.js`＝スウォーム
+   数直線。§9.125の`toleranceDetail`と同じ形）、**1枚でも引数を落とすと
+   根まで届かず黙って効かなくなる**ため。出来上がりのHTMLから図の要素を
+   取り出す形なら、どの包みが勝っていても同じように分けられる。 */
+const TOLERANCE_GRAPH_SELECTOR='.accurate-numberline,.compact-tol-scale';
+window.WL=window.WL||{};
+WL.measureTolerance={
+ /* 図が作られない項目がある——公差そのものが無いもの（ラテラルボー等）と、
+    指示公差（`measurement-worklog.js`が専用カードへ置き換える）。そのときは
+    **左の列ごと畳んで表へ渡す**（`no-graph`）。空の器を210px残すのは
+    「意味のない余白」で、しかも**理由は基本情報カードの公差欄に既に
+    書いてある**（「公差情報なし」／指示値のカード）——同じことを2箇所に
+    書かない（§9.129）。 */
+ parts(kind,values,count){
+  const box=document.createElement('div');
+  box.innerHTML=(typeof compactToleranceScale==='function')?compactToleranceScale(kind,values,count):'';
+  const graph=box.querySelector(TOLERANCE_GRAPH_SELECTOR);
+  if(graph)graph.remove();
+  return{facts:box.innerHTML.trim(),graph:graph?graph.outerHTML:''};
+ },
+ /* 値の置き場は基本情報カードの中。**同じ値なら触らない**——`hidden`は値が
+    同じでも変更記録が積まれ、見張りと合わさると回り続ける（§9.131）。 */
+ paintFacts(html){
+  const host=typeof $==='function'?$('#toleranceFacts'):null;
+  if(!host)return;
+  if(host.innerHTML!==html)host.innerHTML=html||'';
+  const empty=!html;
+  if(host.hidden!==empty)host.hidden=empty;
+ },
+ /* 描き直しの入口。表そのものは触らないので、入力欄のフォーカスも
+    スクロール位置も動かない（条ごとに公差が変わる分割ロット用）。 */
+ repaint(kind,values,count){
+  const parts=this.parts(kind,values,count);
+  const body=document.querySelector('.matrix-body'),side=body&&body.querySelector('.compact-tolerance-side');
+  if(side)side.innerHTML=parts.graph;
+  if(body)body.classList.toggle('no-graph',!parts.graph);
+  this.paintFacts(parts.facts);
+  return parts;
+ },
+};
 function renderMeasureGrid(){renderMeasureGridVertical();requestAnimationFrame(updateValidationVisuals)}
-window.WL=window.WL||{};Object.assign(window.WL,{toleranceScaleView});
+Object.assign(window.WL,{toleranceScaleView});

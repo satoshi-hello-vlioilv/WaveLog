@@ -856,11 +856,11 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
   display:grid;grid-template-columns:max-content minmax(0,1fr);align-items:center;gap:var(--gap-tight);
   min-width:0;white-space:nowrap;
 }
-/* 判定公差プルダウン: 直前(80%)からさらに0.8倍＝64%に短縮。
-   さらに上限を置く——①準備で中央ペインが広くなり、選択肢2つの
-   プルダウンだけが400px近くまで伸びて、重要度と面積が食い違っていた。 */
+/* 判定公差プルダウンの幅は**選択肢の長さ**から決まる（§9.130。実測は
+   `fitControlWidths()`が`max-width`をemで入れる）。器の割合(%)で決めると、
+   置き場所を変えるたびに幅が変わってしまう。ここは実測が入る前の上限。 */
 .tolerance-source-control select{
-  width:64%;max-width:min(64%,14rem);min-width:0;height:var(--ctl-h);padding:4px 25px 4px 8px;justify-self:start;
+  width:100%;max-width:var(--w-lg);min-width:0;height:var(--ctl-h);padding:4px 25px 4px 8px;justify-self:start;
 }
 .order-tolerance-unavailable{color:#8b969a}
 .selectors{display:grid;gap:var(--gap-tight)}
@@ -1018,9 +1018,38 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    枠の中の枠になる（§9.129）。 */
 .measure-grid-block-title .measure-status{min-width:112px;text-align:right;padding:var(--pad-chip);background:transparent;border:0;font-weight:700}
 .compact-tolerance-side{min-width:0;max-width:100%;overflow:hidden}
-/* 並びは 上=公差情報カード / 下=図示スケール。
-   DOM 順（カード→スケール）のまま。order 指定はしない。 */
-.matrix-body .compact-tolerance-side{display:grid;grid-template-rows:minmax(102px,auto) minmax(0,1fr);gap:var(--gap-tight)}
+/* 測定カードの左は**図だけ**（§9.140）。公差の値は基本情報カードへ移した
+   ので、ここは数直線1枚が縦いっぱいに伸びる。以前は「上=値のカード /
+   下=図」の2段で、値のカードが高さの下限(102px)を取るぶん図が縮んでいた。 */
+.matrix-body .compact-tolerance-side{display:grid;grid-template-rows:minmax(0,1fr)}
+/* 図が作れない項目（公差が無い／指示公差）では**列ごと畳んで表へ渡す**。
+   空の器を残しても読むものが無く、理由は基本情報カードの公差欄に既に
+   書いてある（§9.129）。 */
+.matrix-body.no-graph{grid-template-columns:minmax(0,1fr)}
+.matrix-body.no-graph .compact-tolerance-side{display:none}
+/* ---- 公差の「値」は基本情報カードの中（§9.140） ----
+   **枠の中に枠を作らない**（§9.129）。区切りは破線1本だけで、地色も枠も
+   持たせない。区分名（製造公差/オーダー公差/指示公差）はカードの中に
+   既にあるので、見出しを足すと同じ言葉が2つ並ぶ。 */
+/* 「どちらの公差で判定するか」を選ぶ欄は、その結果である値のすぐ上に置く
+   ——**視覚導線と作業導線を一致させる**。以前は「準備の入力」の見出し行に
+   間借りしており、見出しの残り幅で潰れて「製造公:」と切れていた。 */
+.tol-block{margin-top:var(--space-2);padding-top:var(--space-2);border-top:1px dashed var(--line-soft)}
+.tol-facts{margin-top:var(--space-1)}
+.tol-facts .compact-tol-three-row,
+.tol-facts .compact-tol-card,.tol-facts .compact-tol-inline,.tol-facts .compact-tol-two-row,
+.tol-facts .instruction-tol-card{min-height:0;padding:0;border:0;background:transparent}
+.tol-facts .compact-tol-three-row{grid-template-rows:auto auto auto;gap:var(--gap-hair)}
+/* ±の行は**左から読む2組**にする。器いっぱいに引き離す（`space-between`＋
+   2等分）と、ラベルと値のあいだが100px以上空いて「公差＋」と「-1.0」が
+   どちらの組か読めなくなる（§9.129のラベル列と同じ話）。 */
+/* 区分名（製造公差／オーダー公差）は**すぐ上のプルダウンが言っている**ので
+   バッジは出さない（§9.129。同じ言葉を2つ並べない）。指示公差は自分の
+   カード（`.instruction-tol-card`）に見出しを持つので、そちらは残す。 */
+.tol-facts .compact-tol-three-row .compact-tol-source{display:none}
+.tol-facts .tol-line-plusminus{display:flex;gap:var(--gap-section);padding-top:0;border-top:0}
+.tol-facts .tol-value-pair{flex:0 0 auto;justify-content:flex-start;gap:var(--space-1)}
+.tol-facts .tol-line-plusminus .tol-value-pair+.tol-value-pair{padding-left:0;border-left:0}
 /* 公差 3 段表示（区分・基準 / ＋・－ / 判定範囲） */
 .compact-tol-three-row{
   display:grid;grid-template-rows:minmax(25px,auto) minmax(25px,auto) minmax(27px,auto);gap:var(--gap-tight);
@@ -1104,10 +1133,13 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    くらべ」の2枚で、同じ値が2箇所にあった（§9.129に反する）。1つの表に
    すれば、丈の切り替えは**どの列がアクティブか**だけになり、表そのものは
    動かない。
-   公差側は`20rem`——**数直線は縦向きなので幅を渡しても使われない**
-   （§9.126と同じ罠。36remのときは表が47pxまで潰れた）。 */
+   公差側は**図だけになったので`--w-lg`（15em）まで細くする**（§9.140）。
+   **数直線は縦向きなので幅を渡しても使われない**（§9.126と同じ罠。36remの
+   ときは表が47pxまで潰れ、20remでも「公差情報なし」の6文字に320pxあった）。
+   下限は目盛りラベルの領域(`--nl-track`=70px)＋直前値ラベルで、それを
+   下回ると数字が重なる。 */
 .matrix-body{
-  display:grid;grid-template-columns:minmax(0,20rem) minmax(0,1fr);
+  display:grid;grid-template-columns:minmax(0,var(--w-lg)) minmax(0,1fr);
   gap:var(--gap-section);padding:var(--space-1) 0 0;
   min-height:0;min-width:0;max-width:100%;overflow:hidden;
 }
@@ -1126,7 +1158,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    max-contentを決めてしまい、やはり190px級に広がる。**列数はJSが
    `--mx-cols`で渡す**（丈位置の数はロットで変わる）。余りは右に空ける。 */
 .measure-matrix{
-  width:100%;max-width:calc(3.4em + var(--mx-cols,4) * 5.5em);
+  width:100%;max-width:calc(3.4em + var(--mx-cols,4) * 6.2em);
   border-collapse:collapse;table-layout:fixed;
   font-size:var(--tbl-fs);font-variant-numeric:tabular-nums;
 }
@@ -1170,6 +1202,9 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .judge-pill.ok{background:var(--teal);color:#fff}
 .judge-pill.ng{background:#d02e2e;color:#fff}
 .judge-pill.wait{display:none}
+/* 印は入力欄の**上に重なる**ので、出るセルだけ右余白を空ける。
+   空けないと値の右端が印の下に隠れる（`998.20`が`9`に見えた。実測）。 */
+.strip-input-wrap.has-judge input{padding-right:31px}
 /* 測定セルの状態色 */
 .measure-grid-block input.current,.measure-matrix input.current{outline:3px solid #f39a18;outline-offset:-3px;background:#fff6d8}
 .measure-grid-block input.complete,.measure-matrix input.complete{background:#bdece5}
