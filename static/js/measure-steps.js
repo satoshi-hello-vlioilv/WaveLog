@@ -234,9 +234,48 @@
    .forEach(p=>setHidden(p,false));
  }
 
+ /* 「いつもと同じ設定」の畳み込み（§9.140、§9.125へ戻す）。骨子の①
+    「準備の入力」は`1×2`しかなく、5カテゴリ＋作業時間を全部開くと実測
+    113px溢れて**作業時間が切れる**。畳むかわりに、**畳んだままでも値は
+    読める**ようにする——見出しに現在値を並べる（隠したものが何かを書かずに
+    隠すと、設定の存在ごと忘れられる）。
+    **既定値との差を件数で言うことはしない**——コイル止めの既定はロット由来
+    （`innerTape`）で定数では持てず（§9.125）、思い込みの既定で「N件違う」と
+    出すほうが値そのものを並べるより不正確になる。 */
+ const USUAL_IDS=['unwind','widthOrder','widthDirection','burr','coilStop'];
+ function usualSummary(){
+  return USUAL_IDS.map(id=>{
+   const el=sel(id);if(!el)return '';
+   const v=(el.selectedOptions&&el.selectedOptions[0]?el.selectedOptions[0].text:el.value)||'';
+   return String(v).trim();
+  }).filter(v=>v&&v!=='-').join('・');
+ }
+ function refreshUsualFold(){
+  const btn=document.getElementById('usualFold'),sum=document.getElementById('usualSum');
+  const box=document.querySelector('.selectors');
+  if(!btn||!box)return;
+  const open=btn.getAttribute('aria-expanded')==='true';
+  /* **同じ値なら触らない**（§9.131。値が同じでも変更記録が積まれ、見張りと
+     合わさると回り続ける）。 */
+  if(box.classList.contains('usual-off')===open)box.classList.toggle('usual-off',!open);
+  if(sum){const t=usualSummary();if(sum.textContent!==t)sum.textContent=t;}
+ }
+ function bindUsualFold(){
+  const btn=document.getElementById('usualFold');
+  if(!btn||btn.dataset.bound)return;
+  btn.dataset.bound='1';
+  btn.addEventListener('click',()=>{
+   btn.setAttribute('aria-expanded',btn.getAttribute('aria-expanded')==='true'?'false':'true');
+   refreshUsualFold();
+   try{fitControlWidths()}catch(e){}
+  });
+  /* 値が変わったら要約も変える。**`.value`への代入ではDOMが変わらない**ので
+     （§9.130）、段の描き直し側でも呼ぶ。 */
+  USUAL_IDS.forEach(id=>{const el=sel(id);if(el)el.addEventListener('change',refreshUsualFold)});
+ }
  function paint(){
   const el=shell();if(!el)return;
-  try{openInfoWall();openRecordWall()}catch(e){}
+  try{openInfoWall();openRecordWall();bindUsualFold();refreshUsualFold()}catch(e){}
   const states=stepStates();
   STEP_KEYS.forEach(k=>{
    const btn=document.querySelector(`.mstep[data-mstep="${k}"]`);

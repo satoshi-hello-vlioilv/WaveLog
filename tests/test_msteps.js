@@ -387,7 +387,7 @@ let b=null,page=null;
    const id=x=>x.querySelector('select,input')?.id||'';
    return {
     見出し:[...box.querySelectorAll('.prep-head')].filter(vis)
-      .map(x=>(x.querySelector('.prep-more-name')||x).textContent.trim()),
+      .map(x=>(x.querySelector('.prep-fold-name')||x.querySelector('.prep-more-name')||x).textContent.trim()),
     出ている項目:[...box.querySelectorAll('label')].filter(vis).map(id),
     畳んでいる項目:[...box.querySelectorAll('label[data-prep="usual"]')].filter(x=>!vis(x)).map(id),
     要約:document.querySelector('#prepMoreList')?.textContent.trim()||'',
@@ -408,6 +408,8 @@ let b=null,page=null;
   rec('オペレータはプルダウン(リストボックスにしない)',opList.size<=1,JSON.stringify(opList));
   rec('オペレータの選択肢を減らしていない',opList.選択肢>=100,JSON.stringify(opList));
   rec('オペレータ欄が器の中でスクロールしない',opList.はみ出し<=1,JSON.stringify(opList));
+  /* 見出しの文字は**名前だけ**を見る。「いつもと同じ設定」の見出しには
+     畳んだ5項目の現在値が続くので、innerTextをそのまま比べると必ず落ちる。 */
   rec('見出しは「誰が→形→機材→いつもと同じ」の順',
       p1.見出し.join('/')==='誰が測るか/測定表の形/使う機材/いつもと同じ設定',
       p1.見出し.join('/'));
@@ -416,15 +418,45 @@ let b=null,page=null;
   rec('①に入力内容・丈位置を出さない',
       !p1.出ている項目.includes('measureType')&&!p1.出ている項目.includes('lengthPos'),
       JSON.stringify(p1.出ている項目));
-  /* **入力させる項目は折りたたまない**(§9.133)。畳むと現在値を要約でもう一度
-     書くことになり、同じ情報が2箇所に出る。場所は実測で足りている。 */
-  rec('①の入力項目は14個すべて出ている(折りたたまない)',
-      ['operator','inspector','crewSize','verticalCount','horizontalCount',
-       'innerDiameter','spool','thicknessGauge','widthGauge',
-       'unwind','widthOrder','widthDirection','burr','coilStop']
-        .every(k=>p1.出ている項目.includes(k))&&p1.出ている項目.length===14,
+  /* **「いつもと同じ設定」の5つだけ畳む**(§9.140、§9.125へ戻す)。骨子の①
+     「準備の入力」は`1×2`しかなく、14項目を全部開くと実測113px溢れて
+     **作業時間が切れていた**。§9.133は「入力させる項目は折りたたまない」と
+     決めたが、骨子の面積とは両立しない。畳んでよいのはこの5つだけで、
+     **残りの9項目は必ず出ている**こと。 */
+  const FOLDED=['unwind','widthOrder','widthDirection','burr','coilStop'];
+  const ALWAYS=['operator','inspector','crewSize','verticalCount','horizontalCount',
+                'innerDiameter','spool','thicknessGauge','widthGauge'];
+  rec('①の入力項目9つは常に出ている',
+      ALWAYS.every(k=>p1.出ている項目.includes(k))&&p1.出ている項目.length===ALWAYS.length,
       JSON.stringify(p1.出ている項目));
-  rec('畳んでいる項目が無い',p1.畳んでいる項目.length===0,JSON.stringify(p1.畳んでいる項目));
+  rec('畳むのは「いつもと同じ設定」の5つだけ',
+      p1.畳んでいる項目.length===FOLDED.length&&FOLDED.every(k=>p1.畳んでいる項目.includes(k)),
+      JSON.stringify(p1.畳んでいる項目));
+  /* **畳んだままでも値は読めること**が条件（§9.125）。隠したものが何かを
+     書かずに隠すと、設定の存在ごと忘れられる。要約に5つの現在値が並ぶ。 */
+  const usual=await page.evaluate(()=>{
+   const sum=document.getElementById('usualSum'),btn=document.getElementById('usualFold');
+   const vals=['unwind','widthOrder','widthDirection','burr','coilStop']
+     .map(id=>{const e=document.getElementById(id);
+       return e?((e.selectedOptions&&e.selectedOptions[0]?e.selectedOptions[0].text:e.value)||'').trim():''});
+   return{要約:(sum&&sum.textContent||'').trim(),値:vals,
+     畳んでいる:btn?btn.getAttribute('aria-expanded')==='false':null};
+  });
+  rec('畳んだ状態で開く',usual.畳んでいる===true,JSON.stringify(usual));
+  rec('畳んだままでも5項目の現在値が読める',
+      usual.値.filter(v=>v&&v!=='-').every(v=>usual.要約.includes(v)),
+      JSON.stringify(usual));
+  /* 開けば5つとも出る（「畳んである」＝「触れない」ではない）。 */
+  const opened=await page.evaluate(async()=>{
+   document.getElementById('usualFold').click();
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   return ['unwind','widthOrder','widthDirection','burr','coilStop']
+     .filter(id=>{const e=document.getElementById(id);
+       return e&&e.closest('label')&&e.closest('label').offsetParent!==null});
+  });
+  rec('開けば5項目とも出る',opened.length===FOLDED.length,JSON.stringify(opened));
+  await page.evaluate(()=>document.getElementById('usualFold').click());
+  await page.waitForTimeout(120);
   /* **開始/終了時刻は準備の面に置く**(§9.133、項目5)。以前は左の情報カードの
      中にあり、準備の必須入力なのに導線から外れていた。 */
   const prepWt=await page.evaluate(()=>{
