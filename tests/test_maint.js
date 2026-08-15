@@ -80,7 +80,11 @@ let b=null;
   const g=document.querySelector('#basicInfo .info-grid');
   const dt=document.querySelector('#basicDetail');
   const vis=x=>x.getBoundingClientRect().height>0;
-  return {常時:[...g.querySelectorAll('.field')].filter(vis).length,
+  /* **数えるのは「項目」であって「枠」ではない**（§9.139）。材質-調質と
+     板厚/板幅/板丈は1行に横並びにしたので、`.field`の箱は5つでも読める
+     項目は8つある。箱で数えると、まとめただけで落ちる。 */
+  return {常時:[...g.querySelectorAll('.field label')].filter(x=>vis(x)).length,
+          枠:[...g.querySelectorAll('.field')].filter(vis).length,
           詳細が畳んである:!!dt&&dt.hidden};
  });
  rec('基本情報は常時8項目',basicMain.常時===8,JSON.stringify(basicMain));
@@ -96,7 +100,7 @@ let b=null;
  });
  rec('詳細を開けば全項目が読める',basicAll.項目>=13,basicAll.項目+'項目');
  rec('意味のかたまりで見出しが付いている',
-   basicAll.groups.join('/')==='識別番号/製品/コース',basicAll.groups.join('/'));
+   basicAll.groups.join('/')==='材/寸法/識別番号/製品/コース',basicAll.groups.join('/'));
  info.labels=basicAll.labels;
  /* コースの3項目のラベルは「設計」「実績」「残」(§9.81)。すぐ上に
     「コース」という見出しが出ているので、行ごとに繰り返さない。 */

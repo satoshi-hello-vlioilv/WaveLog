@@ -1353,4 +1353,24 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .measure-shell.mstep-1 .selectors>[data-f="workTime"]{
   border-top:1px dashed var(--line-soft);padding-top:var(--space-2);margin-top:var(--space-2);
 }
+
+/* 基本情報の中の横並び（§9.139）。材質-調質・板厚/板幅/板丈は「1行で1つの
+   事実」。ラベルは小さく淡く、値は本文の大きさ——**カードの中で文字の
+   大きさを2種類に絞る**（以前は項目ごとに違って見えた）。 */
+.info-inline{display:flex;flex-wrap:wrap;gap:var(--space-1) var(--gap-section);align-items:baseline}
+.info-inline .ii{display:flex;align-items:baseline;gap:var(--space-1);min-width:0}
+.info-grid label,.info-inline label{color:var(--ink-soft);font-size:var(--fs-micro);font-weight:700}
+.info-grid output,.info-inline output{color:var(--ink);font-size:var(--fs);font-weight:700}
+/* 条割を変える手立ては、条の設計カードの見出しに置く（常時見えている
+   ものと、それを変える操作を同じ場所に置く）。 */
+#splitCard>.card-title{display:flex;align-items:center;gap:var(--gap-inline)}
+#splitCard>.card-title>button{margin-left:auto;height:var(--ctl-h-xs)}
+/* マスタ差異のバッジ。**変わった欄にだけ**出る（§9.139）。 */
+.master-diff-badge{
+  height:var(--ctl-h-xs);margin-top:var(--space-1);padding:var(--pad-chip);
+  border:1px solid var(--warn-border);border-radius:var(--radius-sm);
+  background:var(--warn-bg);color:var(--warn-fg);
+  font-size:var(--fs-micro);font-weight:700;box-shadow:none;
+}
+.selectors [data-f].has-master-diff>select{border-color:var(--warn-border)}
 }

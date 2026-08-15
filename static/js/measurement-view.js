@@ -243,11 +243,20 @@ function renderMeasurement(){
  const productFields=[['用途コード','purposeCode'],['取引先','customer'],['納入先','delivery']];
  const cell=([l,k])=>`<div class="field"><label>${l}</label><output title="${esc(b[k])}">${esc(b[k])||'—'}</output></div>`;
  const val=(l,v)=>`<div class="field"><label>${l}</label><output title="${esc(v)}">${esc(v)||'—'}</output></div>`;
+ /* 常時出す8項目も**カテゴリでまとめ、関係の近いものは横に並べる**
+    （§9.137の骨子。利用者の指示「材質-調質、寸法は横並び」）。材質と調質は
+    1つの材の呼び名、板厚・板幅・板丈は1つの寸法なので、**1行で1つの事実**
+    として読めるようにする。縦に5行並べると、5つの別々の事実に見える。 */
+ const inline=pairs=>'<div class="field full info-inline">'
+   +pairs.map(([l,v])=>`<span class="ii"><label>${l}</label><output title="${esc(v)}">${esc(v)||'—'}</output></span>`).join('')
+   +'</div>';
  let h='<div class="info-grid">'
   +`<div class="field full info-lot"><label>ロット№</label><button type="button" class="lot-dsp-link" title="クリックでLotDspをこのロット番号で開きます">${esc(b.lotNo)||'—'}</button></div>`
   +cell(['検査No.','inspectionNo'])+cell(['用途名','purposeName'])
-  +val('材質',b.mfgMaterial)+val('調質',b.mfgTemper)
-  +val('板厚',fmtDim(b.mfgThickness,3))+val('板幅',fmtDim(b.mfgWidth,1))+val('板丈',fmtDim(b.mfgLength,1))
+  +'<div class="info-group">材</div>'
+  +inline([['材質',b.mfgMaterial],['調質',b.mfgTemper]])
+  +'<div class="info-group">寸法</div>'
+  +inline([['板厚',fmtDim(b.mfgThickness,3)],['板幅',fmtDim(b.mfgWidth,1)],['板丈',fmtDim(b.mfgLength,1)]])
   +'<button type="button" class="info-more" id="basicMore" aria-expanded="false" aria-controls="basicDetail">詳細を見る</button>'
   +'<div class="info-detail" id="basicDetail" hidden>'
   +'<div class="info-group">識別番号</div>'+idFields.map(cell).join('')
@@ -280,6 +289,9 @@ function renderMeasurement(){
  document.querySelectorAll('[data-leftpanel]').forEach(x=>x.hidden=x.dataset.leftpanel!=='grade');
  updateWorkTimePanel();
  updateMeasurementHeading();
+ /* マスタの差異の見張りを始める（§9.139）。開いているあいだだけ回り、
+    閉じていれば`check()`が自分で降りる。 */
+ try{WL.masterDiff.start()}catch(e){}
 }
 // Unified required/valid/NG visual language.
 function hasValue(el){return String(el?.value??'').trim()!==''&&String(el?.value??'').trim()!=='-'}
@@ -498,7 +510,55 @@ function stampWorkTimeLocked(kind){if(!S.measure)return;S.measure.workTime=S.mea
 function updateWorkTimePanel(){if(!S.measure)return;S.measure.workTime=S.measure.workTime||{startAt:'',endAt:''};const start=$('#workStartAt'),end=$('#workEndAt');if(!start||!end)return;start.dataset.iso=S.measure.workTime.startAt||'';end.dataset.iso=S.measure.workTime.endAt||'';start.value=formatWorkTime(start.dataset.iso);end.value=formatWorkTime(end.dataset.iso);$('#stampWorkStart').disabled=!!S.measure.workTime.startAt;$('#stampWorkEnd').disabled=!S.measure.workTime.startAt||!!S.measure.workTime.endAt;[[ $('#workStartCard'),start.dataset.iso],[ $('#workEndCard'),end.dataset.iso]].forEach(([card,value])=>{card?.classList.toggle('validation-required',!value);card?.classList.toggle('validation-valid',!!value)});$('#workDuration').textContent=S.measure.workTime.endAt?`実作業時間 ${formatDuration(durationMs(S.measure))}`:S.measure.workTime.startAt?'作業中':'未計測';$('#stampWorkStart').onclick=()=>stampWorkTimeLocked('start');$('#stampWorkEnd').onclick=()=>stampWorkTimeLocked('end')}
 document.querySelectorAll('[data-worktab]').forEach(b=>b.onclick=()=>activateWorkspace(b.dataset.worktab));
 bindTabs('left','left');
-$('#reloadMaster').onclick=()=>loadMeasurementContext(true);
+/* ---------- マスタの差異はバッジで知らせる（§9.139） ----------
+   利用者の指示「マスタ再読込ボタンは、バックグラウンドで差異が見られた
+   場合にのみ、各入力内容ごとにバッジで出す」。常設のボタンは**押す理由が
+   分からない**（押しても何も変わらないことがほとんどで、変わったときだけ
+   意味がある）。裏で選択肢を突き合わせ、**変わった欄にだけ**印を出す。
+   印を押すとその場で取り込む。**取りに行けなかったときは黙る**——
+   知らせようがないので、出せない印を出さない。 */
+WL.masterDiff=(function(){
+ /* 見る欄と、応答のどのキーが対応するか。ここ1箇所（散らすと片方だけ
+    見張っている状態が簡単にできる）。 */
+ const FIELDS=[['operator','operators'],['inspector','inspectors'],
+   ['thicknessGauge','thickness_gauges'],['widthGauge','width_gauges'],
+   ['innerDiameter','inner_diameters'],['spool','spools']];
+ const CHECK_MS=120000;
+ let timer=null;
+ const listOf=id=>[...($('#'+id)?.options||[])].map(o=>o.value).filter(v=>v!=='-');
+ function mark(id,on){
+  const box=document.querySelector(`.selectors [data-f="${id}"]`);
+  if(!box)return;
+  box.classList.toggle('has-master-diff',!!on);
+  let b=box.querySelector('.master-diff-badge');
+  if(on&&!b){
+   b=document.createElement('button');
+   b.type='button';b.className='master-diff-badge';b.textContent='更新あり';
+   b.title='マスタの選択肢が変わりました。押すと取り込みます。';
+   b.onclick=async e=>{e.preventDefault();await loadMeasurementContext(true);check()};
+   box.append(b);
+  }else if(!on&&b)b.remove();
+ }
+ async function check(){
+  const m=S.measure;if(!m||document.querySelector('#measureModal')?.hidden)return;
+  let x=null;
+  try{
+   const u=new URLSearchParams({lot:m.basic.lotNo,equipment:currentConfiguredEquipment()||m.basic.equipment});
+   x=await api('/api/measurement/context?'+u);
+  }catch(e){return}   /* 取りに行けなかった＝差異は分からない。黙る。 */
+  if(!x)return;
+  FIELDS.forEach(([id,key])=>{
+   const fresh=[...new Set((key==='inspectors'?(x.inspectors||x.operators):x[key])||[])].map(String);
+   if(!fresh.length)return;   /* 空の応答で「全部消えた」と誤解しない。 */
+   const now=listOf(id);
+   mark(id,fresh.length!==now.length||fresh.some(v=>!now.includes(v)));
+  });
+ }
+ function start(){stop();timer=setInterval(()=>{check().catch(()=>{})},CHECK_MS)}
+ function stop(){if(timer){clearInterval(timer);timer=null}
+  FIELDS.forEach(([id])=>mark(id,false))}
+ return{check,start,stop};
+})();
 $('#verticalCount').addEventListener('change',()=>{updateLengthOptions($('#verticalCount').value);renderMeasureGrid()});
 $('#horizontalCount').addEventListener('change',()=>{
  /* 設備ごとの最大条数を超えた入力はその場で戻す。max属性だけだとスピナーは
