@@ -250,13 +250,19 @@ function renderMeasurement(){
  const inline=pairs=>'<div class="field full info-inline">'
    +pairs.map(([l,v])=>`<span class="ii"><label>${l}</label><output title="${esc(v)}">${esc(v)||'—'}</output></span>`).join('')
    +'</div>';
+ /* 常時出す8項目は**3行**に詰める（§9.139、利用者の指示）。
+      1行目＝管理番号（ロット№・検査No.）／2行目＝用途名／3行目＝材と寸法。
+    見出しを行ごとに足すと行数が倍になって密度が下がるので、**ラベルが
+    そのまま見出し**として働く並びにする。ロット№は`LotDsp`を開く
+    ボタンだが、**器は番号の桁数ぶん**——全幅に伸ばすと、押せる面積が
+    番号の何倍にもなって「番号」より「ボタン」に見える（§9.130）。 */
  let h='<div class="info-grid">'
-  +`<div class="field full info-lot"><label>ロット№</label><button type="button" class="lot-dsp-link" title="クリックでLotDspをこのロット番号で開きます">${esc(b.lotNo)||'—'}</button></div>`
-  +cell(['検査No.','inspectionNo'])+cell(['用途名','purposeName'])
-  +'<div class="info-group">材</div>'
-  +inline([['材質',b.mfgMaterial],['調質',b.mfgTemper]])
-  +'<div class="info-group">寸法</div>'
-  +inline([['板厚',fmtDim(b.mfgThickness,3)],['板幅',fmtDim(b.mfgWidth,1)],['板丈',fmtDim(b.mfgLength,1)]])
+  +'<div class="field full info-inline info-lot"><span class="ii"><label>ロット№</label>'
+  +`<button type="button" class="lot-dsp-link" title="クリックでLotDspをこのロット番号で開きます">${esc(b.lotNo)||'—'}</button></span>`
+  +`<span class="ii"><label>検査No.</label><output title="${esc(b.inspectionNo)}">${esc(b.inspectionNo)||'—'}</output></span></div>`
+  +inline([['用途名',b.purposeName]])
+  +inline([['材質',b.mfgMaterial],['調質',b.mfgTemper],
+    ['板厚',fmtDim(b.mfgThickness,3)],['板幅',fmtDim(b.mfgWidth,1)],['板丈',fmtDim(b.mfgLength,1)]])
   +'<button type="button" class="info-more" id="basicMore" aria-expanded="false" aria-controls="basicDetail">詳細を見る</button>'
   +'<div class="info-detail" id="basicDetail" hidden>'
   +'<div class="info-group">識別番号</div>'+idFields.map(cell).join('')

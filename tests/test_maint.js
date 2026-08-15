@@ -100,7 +100,7 @@ let b=null;
  });
  rec('詳細を開けば全項目が読める',basicAll.項目>=13,basicAll.項目+'項目');
  rec('意味のかたまりで見出しが付いている',
-   basicAll.groups.join('/')==='材/寸法/識別番号/製品/コース',basicAll.groups.join('/'));
+   basicAll.groups.join('/')==='識別番号/製品/コース',basicAll.groups.join('/'));
  info.labels=basicAll.labels;
  /* コースの3項目のラベルは「設計」「実績」「残」(§9.81)。すぐ上に
     「コース」という見出しが出ているので、行ごとに繰り返さない。 */

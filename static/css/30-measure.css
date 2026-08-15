@@ -1373,4 +1373,13 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
   font-size:var(--fs-micro);font-weight:700;box-shadow:none;
 }
 .selectors [data-f].has-master-diff>select{border-color:var(--warn-border)}
+
+/* ロット№のボタンは**番号の桁数ぶん**（§9.139）。全幅に伸ばすと、押せる
+   面積が番号の何倍にもなって「番号」より「ボタン」に見える。主役は番号で、
+   ボタンにしてあるのはロット検索（LotDsp）を同じ場所から開くため。 */
+.info-inline .lot-dsp-link{
+  width:max-content;max-width:100%;min-width:0;height:var(--ctl-h-xs);
+  padding:var(--pad-chip);
+  color:var(--ink);font-size:var(--fs);font-weight:700;font-variant-numeric:tabular-nums;
+}
 }
