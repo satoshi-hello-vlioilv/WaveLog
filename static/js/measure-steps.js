@@ -453,7 +453,7 @@
     **値は`.value`への代入で入るので変化を検知できない**（DOMは変わらない）。
     段の描き直しと、**出る瞬間（作業タブの切り替え）**の両方で測り直す。
     器の幅も署名に入れる——カードの幅が変われば折り返す行数が変わる。 */
- const READ_TEXT=[['motherQualityInfo',16],['qualityInfo',20]];
+ const READ_TEXT=[['qualityInfo',20]];
  function fitTextBox(id,maxRows){
   const el=sel(id);
   if(!el||el.tagName!=='TEXTAREA')return;

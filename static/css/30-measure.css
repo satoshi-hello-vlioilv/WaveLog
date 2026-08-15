@@ -347,7 +347,8 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .measure-shell.mstep-1 .left-pane>.quality-info-block>textarea,
 .measure-shell.mstep-2 .left-pane>.quality-info-block>textarea,
 .measure-shell.mstep-3 .left-pane>.quality-info-block>textarea{flex:1 1 auto;min-height:0}
-.measure-shell.mstep-3 .analysis{align-self:start}
+/* ③の記録の壁は**4枚とも同じ高さ**（§9.148）。ここだけ中身なりに詰めると、
+   隣が668pxで自分だけ310pxになり、壁が壁に見えない。 */
 /* 測定データ分析は**測ってからでないと中身が無い**ので①には出さない。 */
 .measure-shell.mstep-1 .analysis,.measure-shell.mstep-1 .debug-pane{display:none}
 /* ---- ③「記録した値」（§9.146） ----
@@ -670,9 +671,14 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .measure-shell.mstep-3 .recorded-pane{grid-column:2;grid-row:2/span 2}
 .measure-shell.mstep-3 .analysis{grid-column:3;grid-row:2/span 2}
 .measure-shell.mstep-3 .center-pane{grid-column:4;grid-row:2/span 2}
-/* 完了前の確認は**中身なりの高さ**にする（§9.131）。1frのマスいっぱいへ
-   伸ばすと、3枚のカードの下に180pxの空の枠が残る。 */
-.measure-shell.mstep-3 .finish-check{align-self:start}
+/* 完了前の確認は**マスの高さいっぱい**（§9.148、利用者の指摘「カードの高さが
+   不足してグリッドで決めた高さになっていない」）。以前は`align-self:start`で
+   中身なりに詰めていたが、**カードと下の段のあいだに150pxの帯**ができ、
+   グリッドで決めた形が画面から読めなくなっていた。
+   伸ばしたぶんは**空の枠にしない**——中の3件を縦に伸ばして器を満たす
+   （§9.131の「空の枠は壊れて見える」への答え）。 */
+.measure-shell.mstep-3 .finish-check{display:flex;flex-direction:column;min-height:0}
+.measure-shell.mstep-3 .finish-check>.fc-list{flex:1 1 auto;min-height:0;align-content:stretch}
 /* 危ない操作を主要動線に置かない。「このデータを削除」は③でだけ出す
    （今は「測定を完了」の真下にあり、押し間違いの的になっていた）。 */
 .measure-shell:not(.mstep-3) .rail-bottom{display:none}
@@ -709,18 +715,23 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    間隔は本文グリッドと同じ`--gap-section`。 */
 .fc-list{
   display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:var(--gap-section);margin:0;padding:0;list-style:none;align-items:start;
+  gap:var(--gap-section);margin:0;padding:0;list-style:none;align-items:stretch;
 }
+/* 対象外の有無で行数が変わるので、**公差外・作業時間は行をまたがせる**
+   （`1/-1`）。`grid-row:1`のままだと、対象外があるときだけこの2件が
+   半分の高さになる。 */
 .fc-row[data-fc="measure"]{grid-column:1;grid-row:1}
 .fc-row[data-fc="skip"]{grid-column:1;grid-row:2}
-.fc-row[data-fc="ng"]{grid-column:2;grid-row:1}
-.fc-row[data-fc="worktime"]{grid-column:3;grid-row:1}
+.fc-row[data-fc="ng"]{grid-column:2;grid-row:1/-1}
+.fc-row[data-fc="worktime"]{grid-column:3;grid-row:1/-1}
 .fc-row{
   display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;
   gap:var(--space-2) var(--space-3);
   padding:0 0 0 var(--space-3);
   border:0;border-left:3px solid var(--line-mid);
   background:transparent;
+  /* 器が伸びても**文字は上に置く**（縦中央だと3件の見出しの高さがそろわない）。 */
+  align-content:start;
 }
 .fc-row--done{border-left-color:var(--success)}
 .fc-row--todo{border-left-color:var(--warn-border)}
@@ -1127,9 +1138,6 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 }
 .measure-shell.mstep-2 .work-panel[data-workpanel="mother"]>.panel-title{grid-column:1;grid-row:1}
 .measure-shell.mstep-2 .work-panel[data-workpanel="mother"]>.material-grid{grid-column:1;grid-row:2}
-.measure-shell.mstep-2 .work-panel[data-workpanel="mother"]>.mother-quality{
-  grid-column:2;grid-row:1/span 2;margin-top:0;
-}
 .measure-shell.mstep-2 .material-grid{grid-template-columns:repeat(4,max-content);justify-content:start}
 .measure-shell.mstep-2 .work-panel[data-workpanel="product"]{
   display:grid;grid-auto-rows:min-content;align-content:start;
@@ -1489,11 +1497,9 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    出す「予定 2番目 / 予定開始 11:44 / 見積2時間32分」の1行。 */
 .schedule-info-field{background:var(--computed-bg);border:1px solid #9cd6ce;border-radius:var(--radius-sm);padding:2px 4px}
 .schedule-info-field output{background:#fff;color:var(--computed-fg);font-weight:700}
-.mother-quality{margin-top:8px}
 /* **高さはpxで決めない**（§9.130）。読み取り専用の表示欄なので、行数
    （`rows`）と最長行から`fitTextBox()`が決める。280px固定だったころは
    「異常情報なし」の6文字に1401×280pxを与えていた。 */
-.mother-quality textarea{width:100%;height:auto;border:1px solid var(--card-border);border-radius:var(--radius-sm);resize:none;background:#fff}
 /* 段階的開示(アコーディオン)の共通部品。品質データ分析(quality-analysis.js
    の.qa-acc)で確立した見た目(番号バッジ＋タイトル＋折りたたみ時の要約＋
    シェブロン)を、他の画面(条割モーダル・母材パネル等)でも同じ言語で

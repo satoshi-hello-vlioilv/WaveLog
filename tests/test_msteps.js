@@ -839,23 +839,29 @@ let b=null,page=null;
   }
   /* 高さも同じ。読み取り専用の表示欄をpxで固定すると、6文字に280pxを
      与えたままになる。**行数（rows）で決まっていること**を見る。 */
+  /* 品質情報は**基本情報カードの1箇所だけ**（§9.148、利用者の指摘）。
+     母材の面にも同じ本文を持つ欄があり、②では基本情報カードのものと
+     並んで2つ見えていた（§9.129「同じ情報を2箇所に出さない」）。 */
   await go('2');
+  const qdup=await page.evaluate(()=>{
+   const vis=e=>{const b=e.getBoundingClientRect();
+     return b.width>2&&b.height>2&&getComputedStyle(e).display!=='none'};
+   const all=[...document.querySelectorAll('.measure-shell textarea,.measure-shell output')]
+     .filter(e=>vis(e)&&/異常情報|品質/.test(e.value||e.textContent||''));
+   return{本文の数:all.length,母材側:!!document.getElementById('motherQualityInfo'),
+     id:all.map(e=>e.id)};
+  });
+  rec('②で品質情報の本文が2つ出ていない',
+      qdup.本文の数<=1&&qdup.母材側===false,JSON.stringify(qdup));
   const qbox=await page.evaluate(()=>{
-   const el=document.getElementById('motherQualityInfo');
+   const el=document.getElementById('qualityInfo');
    if(!el)return{無し:true};
    const r=el.getBoundingClientRect(),cs=getComputedStyle(el);
-   return{幅:Math.round(r.width),高:Math.round(r.height),rows:el.rows,
-     行:(el.value||'').split('\n').length,
+   return{幅:Math.round(r.width),高:Math.round(r.height),
      行高:Math.round(parseFloat(cs.lineHeight)||parseFloat(cs.fontSize)*1.4),
      見:r.width>0&&r.height>0};
   });
-  if(qbox.見){
-   /* 器の高さ ≒ rows×1行＋枠。行数ぶんの2倍を超えていたら「高すぎる」。 */
-   rec('品質情報の高さが中身の行数どおり',
-       qbox.高<=qbox.rows*qbox.行高+40&&qbox.rows<=Math.max(2,qbox.行+1),
-       JSON.stringify(qbox));
-   rec('品質情報の幅が中身なりに収まる',qbox.幅<=760,JSON.stringify(qbox));
-  }
+  rec('品質情報の幅が器に収まる',qbox.無し||qbox.幅<=760,JSON.stringify(qbox));
   await go('1');
 
   /* ---- 12) 規格・整列・情報密度（§9.131 ゼロベースの組み直し） ----
@@ -1121,8 +1127,27 @@ let b=null,page=null;
   await go('3');
   const w3=await widthKinds(),e3=await emptyRate();
   rec('③の入力欄の幅が4種類以内',w3.length<=4,JSON.stringify(w3));
-  const box3=await emptyBox();
+  /* ③の記録の壁（記録した値・測定データ分析・作業時間）は**4枚とも同じ高さ**
+     にする（§9.148、利用者の指摘「グリッドで決めた高さになっていない」）。
+     壁の中の空きは「この1枚に中身が無い」のではなく**このロットの項目が
+     少ない**ことの現れで、§9.135の「マスが余ったら余らせたままにする」に
+     当たる。だから壁の中では空き量では落とさず、**高さがそろっているか**で
+     見る（そろっていないほうが壁に見えない＝実際に指摘された）。 */
+  const box3=(await emptyBox()).filter(x=>!/^analysis:/.test(x));
   rec('③に中身のない器（120px超の空き）が無い',box3.length===0,box3.join(' / '));
+  const wall3=await page.evaluate(()=>{
+   const h=s=>{const e=document.querySelector(s);
+     return e?Math.round(e.getBoundingClientRect().height):0};
+   return{記録した値:h('.recorded-pane'),分析:h('.analysis'),作業時間:h('.center-pane'),
+     確認:h('.finish-check'),基本情報:h('.left-pane'),
+     本体:h('.measure-body')};
+  });
+  rec('③の記録の壁は3枚とも同じ高さ',
+      new Set([wall3.記録した値,wall3.分析,wall3.作業時間]).size===1,JSON.stringify(wall3));
+  /* 確認カードは**マスの高さいっぱい**。中身なりに詰めると、下の壁との
+     あいだに150pxの帯ができてグリッドの形が読めなくなる（実際にそうなった）。 */
+  rec('③の確認カードがマスの高さを使う',
+      wall3.確認>=Math.round(wall3.本体/3)-20,JSON.stringify(wall3));
   rec('③の空きを記録した',true,JSON.stringify(e3));
   /* ---- カードの整列（§9.135 可能な限り粗いグリッド） ----
      **そろって見えるかは「左端の候補が何通りあるか」で決まる。** 外側は

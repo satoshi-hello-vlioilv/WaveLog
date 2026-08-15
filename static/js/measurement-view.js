@@ -137,7 +137,6 @@ function applyRightLayout(){
  pane.classList.add('layout-'+layout); activateWorkspace(layout);
  if(layout==='measure'){renderMeasureGrid();updateMeasurementHeading()}
  if(layout==='product')renderProductPanel();
- if(layout==='mother'&&$('#motherQualityInfo')){const qi=S.measure.qualityInfo||'異常情報なし';$('#motherQualityInfo').value=qi;if($('#motherQualitySum'))$('#motherQualitySum').textContent=qi.split('\n')[0]}
 }
 /* v33: 「揃い/肉厚/長さ」は縦割数で分割した丈(1〜N)ごとに複数行で保持する。
    丈は旧VBA帳票の「丈」テーブル（長さ/肉厚/揃い/外観/備考）と同じ、
