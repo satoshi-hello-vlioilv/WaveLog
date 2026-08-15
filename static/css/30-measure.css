@@ -343,7 +343,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .measure-shell.mstep-3 .left-pane{
   grid-template-columns:repeat(2,minmax(0,1fr));
   grid-template-rows:min-content min-content min-content minmax(0,1fr);
-  grid-column:1/-1;grid-row:2;
+  grid-column:1/span 4;grid-row:2/span 2;
 }
 .measure-shell.mstep-3 #basicInfo{grid-column:1;grid-row:1/span 2;align-self:start}
 .measure-shell.mstep-3 .subtabs{grid-column:2;grid-row:1}
@@ -509,11 +509,9 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    **`max-content`も使えない**——`.center-pane`は`container-type:inline-size`
    （`.row-title`のコンテナクエリ）を持つので**中身から幅が決まらず**、
    実測で17pxまで潰れて設定が画面から消えた。 */
-.measure-shell.mstep-1 .measure-body{
-  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
-}
-.measure-shell.mstep-1 .left-pane{grid-column:1;grid-row:1}
-.measure-shell.mstep-1 .center-pane{grid-column:2;grid-row:1}
+/* ① 情報の壁 `2×3` ＋ 設定 `2×3`。 */
+.measure-shell.mstep-1 .left-pane{grid-column:1/span 2;grid-row:1/span 3}
+.measure-shell.mstep-1 .center-pane{grid-column:3/span 2;grid-row:1/span 3}
 /* ②「どこを測るか」→「入れる」→「根拠」。3列目は基本情報と幅分割情報で、
    どちらも測っている最中に見る値（板厚/板幅の指示値・子ロット幅）。
    **行も列も明示する**——自動配置に任せると、列を指定した1枚だけが別の行へ
@@ -522,17 +520,16 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    ①③が左、②だけ右端(x=1529)にあり、段を変えるたびに同じカードが画面の
    反対側へ飛んでいた。同じものは同じ場所にある、が守れていないと、
    目で探す手間が段の数だけ増える。 */
-.measure-shell.mstep-2 .measure-body{
-  grid-template-columns:minmax(0,var(--measure-ref-w)) minmax(0,var(--measure-items-w)) minmax(0,1fr);
-  grid-template-rows:minmax(0,1fr);
-}
-.measure-shell.mstep-2 .left-pane{grid-column:1;grid-row:1}
-.measure-shell.mstep-2 .center-pane{grid-column:2;grid-row:1}
-.measure-shell.mstep-2 .right-pane{grid-column:3;grid-row:1}
+/* ② 根拠 `1×2` ＋ 項目リスト `1×1` ＋ 測定表 `3×3`（主役）。
+   **主役を細らせない**——4列を 1:1:2 で割ると測定表が873pxになり、本体の
+   半分を下回った（丈位置くらべの列が47pxまで潰れた）。粗いグリッドの
+   代償は**主役以外**が引き受ける。項目リストは8項目の縦並びなので
+   1マスで足り、根拠の下へ回す。 */
+.measure-shell.mstep-2 .left-pane{grid-column:1;grid-row:1/span 2}
+.measure-shell.mstep-2 .center-pane{grid-column:1;grid-row:3}
+.measure-shell.mstep-2 .right-pane{grid-column:2/span 3;grid-row:1/span 3}
 /* ③は1枚の確認シート。上に「あと何が残っているか」、下に「何が記録されたか」。 */
-.measure-shell.mstep-3 .measure-body{
-  grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);
-}
+/* ③ 確認シート `4×1` ＋ 記録の壁 `4×2`。 */
 /* 危ない操作を主要動線に置かない。「このデータを削除」は③でだけ出す
    （今は「測定を完了」の真下にあり、押し間違いの的になっていた）。 */
 .measure-shell:not(.mstep-3) .rail-bottom{display:none}
@@ -588,10 +585,18 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .fc-note{margin:var(--space-3) 0 0;color:var(--ink-soft);font-size:var(--fs-sm)}
 
 /* --- 本体 3 ペイン（比率 3 : 4 : 4） --- */
+/* ---------- カードの外側グリッド（§9.135） ----------
+   **可能な限り粗く。** 外側は 横4×縦3 の12マスだけで、左端の候補は4通り、
+   上端は3通り。グリッドを細かくすると余白は詰められるが、**左端の候補が
+   増えてそろって見えなくなる**（横12にすると候補が12通り）。
+   **細かくするのはカードの内側だけ**——外から見えるのはカード1枚なので、
+   中が5列でも画面はがたつかない（器の枠が視線を止める）。
+   カードの形は6種類だけ: 1×1 / 2×1 / 1×2 / 2×2 / 4×1 / 2×3（主役は4×3）。 */
 .measure-body{
-  grid-row:4;grid-column:2;
+  grid-row:3;grid-column:2;
   display:grid;
-  grid-template-columns:minmax(0,3fr) minmax(0,4fr) minmax(0,4fr);
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  grid-template-rows:repeat(3,minmax(0,1fr));
   min-height:0;width:100%;max-width:100%;overflow:hidden;
   border-bottom:1px solid var(--line);
 }
