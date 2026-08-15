@@ -382,14 +382,13 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
   display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);
   height:100%;
 }
-/* **丈位置は②に出す。** `PageUp/PageDown`で動かせるのに画面のどこにも
-   出ていなかった(進んだ先は`#stepStatus`の文字でしか分からない)。
-   ①には出さない（1回決めるものではないため。上の`step2`の規則）。
-   ②では高さを詰める——丈位置は縦割数+1個しか無いので、7行ぶんは要らない。 */
-.measure-shell.mstep-2 #lengthPosGroup{display:grid;grid-template-rows:auto auto}
-/* 高さは`size`（選択肢の数。measure-steps.jsの`fitLengthList()`が合わせる）に
-   任せる。CSSで固定すると、丈位置が2つのロットでも空白が5行ぶん付く。 */
-.measure-shell.mstep-2 #lengthPosGroup select{height:auto;overflow:auto}
+/* **丈位置の一覧は②から降ろした**（§9.136）。測定表の列見出しが丈位置の
+   選択を兼ねるので、同じものを選ぶ道具が2つある状態になる（§9.129）。
+   `#lengthPos`そのものは残す——丈位置を持っているのはこの`select`で、
+   `PageUp/PageDown`・完了前の確認の「直す」・帳票まで全部がこれを見る。
+   見えている一覧を消すことと、状態の置き場を消すことは別
+   （§9.124の`#measureType`とチップの関係と同じ）。 */
+.measure-shell.mstep-2 #lengthPosGroup{display:none}
 .measure-shell.mstep-2 #measureTypeGroup{
   display:grid;grid-template-rows:auto minmax(0,1fr) auto;height:100%;
 }
@@ -1018,17 +1017,10 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 /* 見出しバーの中の状態は**文字だけ**。バーの中にさらに白い箱を置くと
    枠の中の枠になる（§9.129）。 */
 .measure-grid-block-title .measure-status{min-width:112px;text-align:right;padding:var(--pad-chip);background:transparent;border:0;font-weight:700}
-/* 公差(40) : 測定入力(60) */
-.compact-width-body{
-  display:grid;grid-template-columns:minmax(0,40fr) minmax(0,60fr);
-  gap:clamp(3px,.4vw,6px);padding:5px clamp(3px,.35vw,6px);
-  width:100%;max-width:100%;min-width:0;overflow:hidden;
-}
-.compact-width-body>*{min-width:0;max-width:100%}
 .compact-tolerance-side{min-width:0;max-width:100%;overflow:hidden}
 /* 並びは 上=公差情報カード / 下=図示スケール。
    DOM 順（カード→スケール）のまま。order 指定はしない。 */
-.compact-width-body .compact-tolerance-side{display:grid;grid-template-rows:minmax(102px,auto) minmax(0,1fr);gap:var(--gap-tight)}
+.matrix-body .compact-tolerance-side{display:grid;grid-template-rows:minmax(102px,auto) minmax(0,1fr);gap:var(--gap-tight)}
 /* 公差 3 段表示（区分・基準 / ＋・－ / 判定範囲） */
 .compact-tol-three-row{
   display:grid;grid-template-rows:minmax(25px,auto) minmax(25px,auto) minmax(27px,auto);gap:var(--gap-tight);
@@ -1103,95 +1095,66 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    以前は`repeat(2,1fr)`×20行が固定で、DOMを条数ぶんに減らした後も
    **器だけが40条ぶんの場所を取り続けていた**——②を全幅にしても右の
    1/4（実測430px）が空き、ブロックの中も8条で340pxの白が残った。
-   列数はJSが`one-strip`で伝える（`stripColumnCount()`の1箇所で決める）。 */
+   列数は`WL.measureItem.slotCount()`が決める（板厚は3、他は条数）。 */
 /* すべての測定種（板厚・板幅・ラテラルボー・バリ…）の単独ブロック */
 .compact-other{height:100%;display:flex;flex-direction:column;overflow:hidden}
-.compact-other .compact-width-body{flex:1;min-height:0}
-/* 1列のときは**公差と入力表を隣り合わせにし、余りは右端へ寄せる**。
-   最初は空いた幅を公差側へ回したが、**公差数直線は縦向き**なので幅を
-   渡しても使われず、空きが「右端」から「数直線と入力表のあいだ」へ
-   移っただけだった（実測900px）。**一緒に読むものを引き離さない。**
-   幅は2列のときの見え方（公差568px / 表416px）に合わせてある。 */
-/* 入力表の幅は**中身から**決める（§9.130）。26remのときは1つの欄が
-   339pxあり、`1234.56`（実測47px）に対して7倍だった。狭めたぶんは
-   **隣の丈位置くらべ**（1fr）が受け取る——一緒に読むものへ渡すなら
-   空きは移動ではなく活用になる。
-   **公差側は20rem**（§9.137）。測定カードが骨子の`2×3`＝873pxになったので、
-   36remでは公差側だけで576pxを取り、丈位置くらべが**47px**まで潰れていた。
-   数直線は縦向きなので幅を渡しても使われない（§9.126と同じ罠）。 */
-.compact-width-body.one-strip{
-  grid-template-columns:minmax(0,20rem) minmax(0,13rem) minmax(0,1fr);
-  justify-content:start;
+.compact-other .matrix-body{flex:1;min-height:0}
+/* ---------- ②の測定表は「丈位置×条」の1つの表（§9.136） ----------
+   左＝公差（数直線）、右＝表。以前は「いま選んでいる丈の帯」＋「丈位置
+   くらべ」の2枚で、同じ値が2箇所にあった（§9.129に反する）。1つの表に
+   すれば、丈の切り替えは**どの列がアクティブか**だけになり、表そのものは
+   動かない。
+   公差側は`20rem`——**数直線は縦向きなので幅を渡しても使われない**
+   （§9.126と同じ罠。36remのときは表が47pxまで潰れた）。 */
+.matrix-body{
+  display:grid;grid-template-columns:minmax(0,20rem) minmax(0,1fr);
+  gap:var(--gap-section);padding:var(--space-1) 0 0;
+  min-height:0;min-width:0;max-width:100%;overflow:hidden;
 }
-
-/* ---------- 丈位置くらべ（§9.128） ----------
-   ②では**いま選んでいる丈位置しか出ない**ので、頭と尾を見比べるには
-   丈を切り替えるしかなく、切り替えると今度はさっきの値が見えなかった。
-   1列のときに余る右側（実測430px）へ、同じ項目の全丈位置を1枚で出す。
-   **公差外はここでも印を付ける**（見えた時点で気づけるのが値打ち）。 */
-.length-compare{
-  display:grid;grid-template-rows:auto minmax(0,1fr);min-width:0;min-height:0;
-  /* ブロックの中なので**外枠は付けない**。入力表との境は細線1本（§9.129）。 */
-  padding-left:var(--space-3);border-left:1px solid var(--line-soft);background:transparent;
-  overflow:hidden;
+.matrix-body>*{min-width:0;max-width:100%;min-height:0}
+.mx-scroll{min-width:0;min-height:0;overflow:auto}
+/* **条は1列で40行まで。2段に折らない。** 丈は最大10列なので横は足りる。
+   行の中に置くものの高さは`--row-inner-h`から作る（§9.112。器の外寸
+   `--row-h`から作ると罫線と余白のぶん必ずはみ出す）。 */
+/* **列の幅は中身から決める**（§9.130）。`width:100%`だと丈位置が4つの
+   ロットで1セル222pxになり、`1234.56`（実測63px）に対して3倍以上だった。
+   測定値は`0000.00`の7桁なので5.5em。余った幅は右に空ける——器いっぱいに
+   引き伸ばすのは「中身から決める」の逆。 */
+/* 列は`fixed`で決め打ち、**表の幅は列数から上限を与える**（§9.130）。
+   `width:100%`だけだと丈位置4つで1セル222pxになり、`1234.56`（実測63px）の
+   3倍以上になる。逆に`width:auto`だと`input`の既定の見た目幅（約20文字）が
+   max-contentを決めてしまい、やはり190px級に広がる。**列数はJSが
+   `--mx-cols`で渡す**（丈位置の数はロットで変わる）。余りは右に空ける。 */
+.measure-matrix{
+  width:100%;max-width:calc(3.4em + var(--mx-cols,4) * 5.5em);
+  border-collapse:collapse;table-layout:fixed;
+  font-size:var(--tbl-fs);font-variant-numeric:tabular-nums;
 }
-.lc-title{
-  display:flex;align-items:baseline;gap:var(--space-2);
-  padding:var(--pad-chip);border-bottom:1px solid var(--line-soft);
-  background:var(--surface-2);color:var(--ink-2);font-size:var(--fs-sm);font-weight:800;
+.measure-matrix th,.measure-matrix td{border:1px solid var(--line-mid);padding:0;text-align:center}
+.measure-matrix thead th{
+  position:sticky;top:0;z-index:1;height:var(--ctl-h-xs);
+  background:var(--surface-2);color:var(--ink-2);font-weight:700;white-space:nowrap;
 }
-.lc-title small{color:var(--ink-soft);font-size:var(--fs-micro);font-weight:700}
-.lc-scroll{min-height:0;overflow:auto}
-.lc-table{width:100%;border-collapse:collapse;font-size:var(--tbl-fs);font-variant-numeric:tabular-nums}
-.lc-table th,.lc-table td{
-  padding:var(--pad-chip);border-bottom:1px solid var(--line-soft);
-  text-align:right;white-space:nowrap;
+.measure-matrix tbody th{width:3.4em;background:var(--surface-2);color:var(--ink-2);font-weight:700}
+.measure-matrix .mx-corner{width:3.4em}
+/* 列見出しが丈位置の選択を兼ねる（一覧は②から降ろした）。**いま測る列**は
+   地色と太字の両方で示す——色だけで伝えない。 */
+.measure-matrix thead th button{
+  width:100%;height:100%;min-width:0;padding:0 var(--space-1);
+  border:0;border-radius:0;background:transparent;box-shadow:none;
+  color:inherit;font-size:inherit;font-weight:inherit;white-space:nowrap;
 }
-.lc-table thead th{
-  position:sticky;top:0;z-index:1;padding:0;
-  background:var(--surface-2);border-bottom:1px solid var(--line);
-  text-align:center;font-size:var(--fs-sm);
+.measure-matrix thead th button:hover{background:var(--pale);color:var(--nav)}
+.measure-matrix thead th.is-current{background:var(--teal);color:#fff;font-weight:800}
+.measure-matrix thead th.is-current button:hover{background:var(--teal-dark);color:#fff}
+.measure-matrix td.is-current{background:var(--pale)}
+/* セルの中の入力欄は**枠を持たない**（表の罫線が枠。枠の中に枠を作らない）。 */
+.measure-matrix .strip-input-wrap{position:relative;min-width:0;max-width:100%}
+.measure-matrix input{
+  width:100%;min-width:0;max-width:100%;height:var(--row-inner-h);
+  border:0;border-radius:0;background:transparent;
+  padding:0 var(--space-1);text-align:right;font-variant-numeric:tabular-nums;
 }
-.lc-table thead th button{
-  width:100%;height:var(--ctl-h-xs);border:0;border-radius:0;
-  background:transparent;color:var(--ink-2);font-weight:800;font-size:var(--fs-sm);
-  box-shadow:none;white-space:nowrap;
-}
-.lc-table thead th button:hover{background:var(--pale);color:var(--nav)}
-.lc-table thead th.is-current{background:var(--pale)}
-.lc-table thead th.is-current button{color:var(--nav)}
-.lc-table tbody th{
-  width:var(--ctl-h-lg);color:var(--ink-soft);font-weight:700;text-align:right;
-}
-/* いま入力している丈位置の列。**入力表と同じ値がここにも出る**ので、
-   どこを見ているかが分かるように薄く敷く（色だけに頼らず、見出しの
-   文字色も変える）。 */
-.lc-table td.is-current{background:var(--pale)}
-.lc-table td.is-ng{background:var(--danger-bg);color:var(--danger);font-weight:800}
-.lc-empty{margin:var(--space-3);color:var(--ink-soft);font-size:var(--fs-sm)}
-.compact-strip-layout{
-  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(3px,.35vw,6px);
-  width:100%;max-width:100%;min-width:0;height:100%;overflow:hidden;
-}
-.one-strip .compact-strip-layout{grid-template-columns:minmax(0,1fr)}
-/* 行は`grid-auto-rows`で content ぶんだけ作り、**高さの上限は器のほうで
-   決める**（`--strip-rows`はJSが条数から入れる）。器いっぱいに伸ばすと
-   1条のロットで1行が700pxになり、20行に固定すると8条で12行ぶん白が残る。 */
-.strip-column{
-  display:grid;grid-template-columns:minmax(26px,18%) minmax(0,82%);
-  grid-template-rows:20px;grid-auto-rows:minmax(0,1fr);align-content:start;
-  min-width:0;max-width:100%;height:100%;
-  max-height:calc(20px + var(--strip-rows,20) * var(--strip-row-h));
-}
-.strip-column .strip-head{grid-column:1/-1;display:grid;grid-template-columns:minmax(26px,18%) minmax(0,82%);height:20px;font-weight:800;background:#f7fafb;border:1px solid #aebdc2}
-.strip-head span{display:flex;align-items:center;justify-content:center}
-.strip-row{display:contents}
-.strip-row label,.strip-row .strip-input-wrap{min-height:0;border-left:1px solid #aebdc2;border-bottom:1px solid #aebdc2}
-.strip-row label{display:flex;align-items:center;justify-content:flex-end;padding-right:4px;font-weight:700;background:#f7fafb}
-.strip-row .strip-input-wrap{position:relative;border-right:1px solid #aebdc2;min-width:0;max-width:100%}
-.strip-row input{width:100%;height:100%;min-width:0;max-width:100%;border:0;border-radius:0;padding:0 33px 0 6px;text-align:right;font-variant-numeric:tabular-nums}
-.strip-row.inactive input{background:#e3e7e8;color:#90999c}
-.strip-row.inactive label{color:#a0a8aa}
 /* 分割ありのとき、条の入力欄の左端へ子ロット番号(下3桁)のバッジを出す。
    色は条割の視覚図(.split-visual-block)と同じ配色をJSがインラインで指定する
    ——帯グラフと入力欄が同じ色で結び付くようにするため。バッジのぶんだけ
@@ -1202,15 +1165,15 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
   color:#fff;text-align:center;font-size:var(--fs-micro);font-weight:800;
   line-height:1.5;letter-spacing:.02em;pointer-events:none;
 }
-.strip-row .strip-input-wrap.has-lot-badge input{padding-left:34px}
+.strip-input-wrap.has-lot-badge input{padding-left:34px}
 .judge-pill{position:absolute;right:3px;top:50%;transform:translateY(-50%);min-width:27px;padding:0 2px;border-radius:var(--radius-sm);text-align:center;font-size:var(--fs-micro);font-weight:900;pointer-events:none}
 .judge-pill.ok{background:var(--teal);color:#fff}
 .judge-pill.ng{background:#d02e2e;color:#fff}
 .judge-pill.wait{display:none}
 /* 測定セルの状態色 */
-.measure-grid-block input.current,.strip-row input.current{outline:3px solid #f39a18;outline-offset:-3px;background:#fff6d8}
-.measure-grid-block input.complete,.strip-row input.complete{background:#bdece5}
-.measure-grid-block input.ng,.strip-row input.ng{background:#ff9e9e;color:#7a0000;font-weight:700}
+.measure-grid-block input.current,.measure-matrix input.current{outline:3px solid #f39a18;outline-offset:-3px;background:#fff6d8}
+.measure-grid-block input.complete,.measure-matrix input.complete{background:#bdece5}
+.measure-grid-block input.ng,.measure-matrix input.ng{background:#ff9e9e;color:#7a0000;font-weight:700}
 .device-ok{background:#dff7ee}
 .device-error{background:#ffd8d8}
 .device-detect{outline:3px solid #087c89;outline-offset:-2px}

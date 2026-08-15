@@ -99,8 +99,12 @@ let b=null,page=null;
                  &&x.getBoundingClientRect().height>0).length,
     件数の文字:[...document.querySelectorAll('#measureTypeGroup .type-chip-state')]
       .map(x=>x.textContent.trim()).filter(Boolean).length,
-    丈が見える:document.getElementById('lengthPosGroup')?.getBoundingClientRect().height>0,
-    丈の行数:lp?lp.size:0,丈の選択肢:lp?lp.options.length:0,
+    /* 丈位置は**測定表の列見出し**が兼ねる（§9.136）。一覧は②から降ろした。 */
+    丈が見える:[...document.querySelectorAll('#measurementGrid .measure-matrix thead th[class]')]
+      .filter(x=>x.getBoundingClientRect().width>0).length>0,
+    丈の列:document.querySelectorAll('#measurementGrid .measure-matrix thead th button').length,
+    丈の選択肢:lp?lp.options.length:0,
+    一覧を出していない:!(document.getElementById('lengthPosGroup')?.getBoundingClientRect().height>0),
    };
   });
   /* ②の3列目は**根拠だけ**（§9.131）。基本情報・幅分割情報は測っている
@@ -125,9 +129,13 @@ let b=null,page=null;
   /* **丈位置は②に出す（§9.125）。** `PageUp/PageDown`で動かせるのに、
      以前はどの段にも出ておらず「いま何丈目か」は`#stepStatus`の文でしか
      分からなかった。高さは選択肢の数ぶん——7行固定だと空白が並ぶ。 */
-  rec('②に丈位置が出る',items.丈が見える===true,JSON.stringify(items));
-  rec('丈位置の高さは選択肢の数ぶん',items.丈の行数===Math.max(2,Math.min(7,items.丈の選択肢)),
+  /* **見えているかは測る項目を選んでから**（下の「全丈位置の列が出る」）。
+     ここでは母材が選ばれており、測定表そのものが降りている。 */
+  rec('②の測定表に丈位置の列がある',items.丈の列===items.丈の選択肢&&items.丈の列>0,
       JSON.stringify(items));
+  /* **同じものを選ぶ道具を2つ置かない**（§9.129）。列見出しが選択を兼ねる
+     ので、一覧（リストボックス）は②から降ろした。 */
+  rec('丈位置の一覧は②に出さない',items.一覧を出していない===true,JSON.stringify(items));
   rec('一覧の各項目に残り件数が文字で付く',items.件数の文字===9,JSON.stringify(items));
   /* 測定表は本体のいちばん広いカード。骨子（§9.137）で`2×3`＝**本体の半分**
      と決めたので、しきい値も半分ちょうどで見る（以前は3列＝3/4だった）。
@@ -138,10 +146,10 @@ let b=null,page=null;
   rec('②の測定表が本体の半分を占める',m2.右.w>=Math.floor(m2.本体.w*0.5)-40,
       `測定=${m2.右.w} / 本体=${m2.本体.w}`);
 
-  /* ---- 4b) 測定表は「使う条数ぶんだけ」描く（§9.124） ----
+  /* ---- 4b) 測定表は「使う条数ぶんだけ」描く（§9.124／§9.136） ----
      以前は条数に関わらず 2列×20行＝40条を必ず描き、超えた行を灰色で残して
      いた。1条のロットでも39行の空欄が並ぶ。**探す対象を増やさない。**
-     20条を超えたときだけ2列にする（縦に41行並べると画面から溢れる）。 */
+     **条は1列で40行まで。2段に折らない**（§9.136）——横は丈位置が使う。 */
   await page.evaluate(()=>{const s=document.querySelector('#measureType');
     s.value='板幅';s.dispatchEvent(new Event('change',{bubbles:true}))});
   await page.waitForTimeout(500);
@@ -150,15 +158,16 @@ let b=null,page=null;
      h.value=String(v);h.dispatchEvent(new Event('change',{bubbles:true}))},n);
    await page.waitForTimeout(500);
    return page.evaluate(()=>({
-    行:document.querySelectorAll('#measurementGrid .strip-row').length,
-    列:document.querySelectorAll('#measurementGrid .strip-column').length,
-    灰色の行:document.querySelectorAll('#measurementGrid .strip-row.inactive').length}));
+    行:document.querySelectorAll('#measurementGrid .measure-matrix tbody tr').length,
+    /* 条の列は**1本だけ**。丈位置の列はこれとは別（横に並ぶ）。 */
+    条の列:document.querySelectorAll('#measurementGrid .measure-matrix tbody tr:first-child th').length,
+    灰色の行:document.querySelectorAll('#measurementGrid .measure-matrix tr.inactive').length}));
   };
   const r1=await rowsFor(1),r6=await rowsFor(6),r24=await rowsFor(24),r40=await rowsFor(40);
-  rec('1条なら1行しか描かない',r1.行===1&&r1.列===1,JSON.stringify(r1));
-  rec('6条なら6行',r6.行===6&&r6.列===1,JSON.stringify(r6));
-  rec('20条を超えたら2列にする',r24.行===24&&r24.列===2,JSON.stringify(r24));
-  rec('40条でも数は合う',r40.行===40&&r40.列===2,JSON.stringify(r40));
+  rec('1条なら1行しか描かない',r1.行===1&&r1.条の列===1,JSON.stringify(r1));
+  rec('6条なら6行',r6.行===6&&r6.条の列===1,JSON.stringify(r6));
+  rec('20条を超えても2段に折らない',r24.行===24&&r24.条の列===1,JSON.stringify(r24));
+  rec('40条でも1列40行',r40.行===40&&r40.条の列===1,JSON.stringify(r40));
   rec('使わない行(灰色)を残さない',
       [r1,r6,r24,r40].every(x=>x.灰色の行===0),
       JSON.stringify([r1.灰色の行,r6.灰色の行,r24.灰色の行,r40.灰色の行]));
@@ -173,17 +182,19 @@ let b=null,page=null;
    await page.waitForTimeout(500);
    return page.evaluate(()=>{
     const r=e=>e?e.getBoundingClientRect():null;
-    const cols=[...document.querySelectorAll('#measurementGrid .compact-other .strip-column')];
-    const body=document.querySelector('#measurementGrid .compact-other .compact-width-body');
+    const cols=[...document.querySelectorAll('#measurementGrid .compact-other .measure-matrix')];
+    const body=document.querySelector('#measurementGrid .compact-other .matrix-body');
     const tol=body&&body.querySelector('.compact-tolerance-side');
-    const rows=[...document.querySelectorAll('#measurementGrid .compact-other .strip-row label')];
+    const rows=[...document.querySelectorAll('#measurementGrid .compact-other .measure-matrix tbody th')];
     const cr=cols.map(x=>r(x)),br=r(body),tr=r(tol);
-    const lay=document.querySelector('#measurementGrid .compact-other .compact-strip-layout');
+    const lay=document.querySelector('#measurementGrid .compact-other .mx-scroll');
     const lr=r(lay);
-    return {列:cols.length,
+    return {列:document.querySelectorAll('#measurementGrid .measure-matrix tbody tr:first-child th').length,
       /* **列の数だけでは足りない。** CSSが2列ぶんの場所を取ったままだと
          DOMは1つでも幅は半分になる（実際にそれを見逃した）。 */
       入力表の幅:cr.length?Math.round(cr[0].width):0,
+      セルの幅:(()=>{const c=document.querySelector('#measurementGrid .measure-matrix tbody td');
+        return c?Math.round(c.getBoundingClientRect().width):0})(),
       器の幅:lr?Math.round(lr.width):0,
       表の高さ:cr.length?Math.round(cr[0].height):0,
       最後の行の下端:rows.length?Math.round(r(rows[rows.length-1]).bottom):0,
@@ -193,10 +204,13 @@ let b=null,page=null;
    });
   };
   const g8=await geom(8),g40=await geom(40);
-  rec('20条までは1列',g8.列===1,JSON.stringify(g8));
-  rec('1列のときは入力表が器の幅いっぱいを使う',
-      g8.器の幅>0&&g8.入力表の幅>=g8.器の幅*0.9,JSON.stringify(g8));
-  rec('20条を超えたら2列',g40.列===2,JSON.stringify(g40));
+  rec('条の列は1本（8条）',g8.列===1,JSON.stringify(g8));
+  /* **器いっぱいに引き伸ばさない**（§9.130）。器を埋めると丈位置4つの
+     ロットで1セル222pxになり、`1234.56`（実測63px）の3倍以上になる。
+     見るのは**下限**——値が入る幅があること（上の「中身より80px以上広い欄が
+     無い」が上限を見ているので、これで両側から挟める）。 */
+  rec('セルに値が入る幅がある',g8.セルの幅>=60,JSON.stringify(g8));
+  rec('条の列は1本のまま（40条）',g40.列===1,JSON.stringify(g40));
   /* 行の数だけ器を取る。最後の行の下と器の下がほぼ一致すること
      （20行固定のままなら、8条では12行ぶん＝300px以上の白が残る）。 */
   rec('使う行数ぶんの高さしか取らない',
@@ -206,10 +220,9 @@ let b=null,page=null;
   rec('公差と入力表が隣り合っている',g8.公差と表のすきま!==null&&g8.公差と表のすきま<40,
       JSON.stringify(g8));
 
-  /* ---- 4d) 丈位置くらべ（§9.128） ----
-     ②では**いま選んでいる丈位置しか出ない**ので、頭と尾を見比べるには
-     丈を切り替えるしかなく、切り替えると今度はさっきの値が見えなかった。
-     1列のときに余る右側へ、同じ項目の全丈位置を1枚で出す。
+  /* ---- 4d) 丈位置は測定表の列そのもの（§9.136） ----
+     以前は「いまの丈の帯」＋「丈位置くらべ」の2枚で、同じ値が2箇所に
+     あった。1つの表にしたので、**他の丈位置の値は同じ表の隣の列**にある。
      **公差の材料ごと注ぎ込む**——検証用フィクスチャには公差が無い。 */
   await rowsFor(8);
   const lcSetup=await page.evaluate(()=>{
@@ -225,27 +238,29 @@ let b=null,page=null;
    return !!toleranceDetail('width',0,'板幅');
   });
   await page.waitForTimeout(500);
-  rec('公差の材料を注ぎ込めた(丈位置くらべ)',lcSetup===true,String(lcSetup));
+  rec('公差の材料を注ぎ込めた(測定表)',lcSetup===true,String(lcSetup));
   const lc=()=>page.evaluate(()=>{
-   const sec=document.querySelector('#measurementGrid .length-compare');
+   const sec=document.querySelector('#measurementGrid .measure-matrix');
    if(!sec)return{出ている:false};
    const heads=[...sec.querySelectorAll('thead th')];
    const rows=[...sec.querySelectorAll('tbody tr')];
-   const cellText=(r,c)=>rows[r]?.querySelectorAll('td')[c]?.textContent.trim()||'';
+   /* 値は入力欄の中にある（この表は読むだけでなく**入れる**表）。 */
+   const cellVal=(r,c)=>rows[r]?.querySelectorAll('td')[c]?.querySelector('input')?.value||'';
+   const ng=[...sec.querySelectorAll('input.ng')];
    return{
     出ている:true,
     見出し:heads.map(x=>x.textContent.trim()),
     行数:rows.length,
     いまの列:heads.findIndex(x=>x.classList.contains('is-current')),
-    /* 出ていない丈の値がここには出ていること（これがこの表の存在理由）。 */
-    他の丈の値:cellText(1,1),
-    公差外の印:sec.querySelectorAll('td.is-ng').length,
-    公差外の値:[...sec.querySelectorAll('td.is-ng')].map(x=>x.textContent.trim()),
+    /* 別の丈位置の値が**同じ表の隣の列**に出ていること。 */
+    他の丈の値:cellVal(1,1),
+    公差外の印:ng.length,
+    公差外の値:ng.map(x=>x.value),
     幅:Math.round(sec.getBoundingClientRect().width),
    };
   });
   const lc1=await lc();
-  rec('②に丈位置くらべが出る',lc1.出ている===true&&lc1.幅>150,JSON.stringify(lc1));
+  rec('②の測定表に全丈位置の列が出る',lc1.出ている===true&&lc1.幅>150,JSON.stringify(lc1));
   rec('列は「条」＋丈位置の数',lc1.見出し.join('/')==='条/1(頭)/1(尾)',JSON.stringify(lc1.見出し));
   rec('行は条数ぶん',lc1.行数===8,String(lc1.行数));
   /* **出ていない丈の値が見えること。** ここが空なら、この表を出す意味がない。 */
@@ -255,7 +270,7 @@ let b=null,page=null;
       JSON.stringify(lc1.公差外の値));
   /* 見出しを押したらその丈位置へ移る（見えた値へすぐ行ける）。 */
   await page.evaluate(()=>{
-   const b=[...document.querySelectorAll('#measurementGrid .length-compare thead th button')];
+   const b=[...document.querySelectorAll('#measurementGrid .measure-matrix thead th button')];
    b[1].click();
   });
   await page.waitForTimeout(600);
@@ -266,9 +281,14 @@ let b=null,page=null;
   await page.evaluate(()=>{const lp=document.querySelector('#lengthPos');
     lp.selectedIndex=0;lp.dispatchEvent(new Event('change',{bubbles:true}))});
   await page.waitForTimeout(400);
-  /* 2列（20条超）のときは場所が無いので出さない。 */
+  /* **条数が増えても表は1つのまま**（§9.136）。以前は20条を超えると帯が
+     2列になり、その場所を取るために丈位置くらべを降ろしていた。1つの表に
+     したので、条が増えても列（丈位置）の並びは変わらない。 */
   await rowsFor(24);
-  rec('2列のときは出さない',(await lc()).出ている===false);
+  const lc3=await lc();
+  rec('条数が増えても丈位置の列は変わらない',
+      lc3.出ている===true&&lc3.見出し.length===lc1.見出し.length&&lc3.行数===24,
+      JSON.stringify({見出し:lc3.見出し,行数:lc3.行数}));
   await rowsFor(8);
   /* 後始末: 次の検証（③の公差外の集計）へ値を持ち越さない。 */
   await page.evaluate(()=>{S.measure.measurements.width.forEach(r=>r.fill(''));renderMeasureGrid()});
@@ -688,7 +708,7 @@ let b=null,page=null;
          `0000.00`、自由記述は24文字を下限にする（それ以上は折り返さない
          1行なので、長くしても読みやすくならない）。 */
       const free=el.type==='text'&&!el.classList.contains('numeric-input')
-        &&!el.closest('.strip-row,.measure-grid-block');
+        &&!el.closest('.measure-matrix,.measure-grid-block');
       const sample=el.value||el.placeholder
         ||(el.type==='number'&&el.max?'0'.repeat(String(el.max).length)
           :free?'あ'.repeat(24):'0000.00');
@@ -753,7 +773,7 @@ let b=null,page=null;
   /* 幅の種類。**表の中は数えない**——測定表・丈位置くらべ・全丈表の欄は
      列で決まる構造的な幅で、規格とは別の決まり方をする。 */
   const widthKinds=()=>page.evaluate(()=>{
-   const skip='.strip-row,.measure-grid-block,.product-rows-table,.lc-table';
+   const skip='.measure-matrix,.measure-grid-block,.product-rows-table';
    const ws=[];
    document.querySelectorAll('.measure-body input,.measure-body select,.measure-body textarea')
     .forEach(el=>{

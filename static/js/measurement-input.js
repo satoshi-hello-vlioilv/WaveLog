@@ -290,80 +290,68 @@ function compactMeasureStatus(done,total){return done===total?'測定完了':don
    大半を占めた。**使わない行は描かない**——探す対象が減る。
    20条を超えるときだけ2列にする(縦に41行並べると画面から溢れる)。
    **2箇所で同じループを書かない**(どの項目も同じものが要る)。 */
-/* 列数は**行数と同じく条数から決まる**（§9.126）。CSSに`repeat(2,1fr)`と
-   書いてあったため、1列しか作らなくても**器は2列ぶん取ったまま**で、
-   ②を全幅にしても右の1/4が空いていた（実測430px）。判定の式は1箇所。 */
-function stripColumnCount(count){return count>20?2:1}
-/* `count`は**その項目の枠の数**（板厚なら条数ではなく3）。呼び名も見出しも
-   `WL.measureItem`が答えるので、ここに項目ごとの分岐を書かない（§9.138）。 */
-function stripColumnsHtml(key,li,values,count){
- const labels=WL.measureItem.slotLabels(key,count),head=WL.measureItem.slotHead(key);
- const cols=stripColumnCount(count),per=Math.ceil(count/cols);
- let h='';
- for(let col=0;col<cols;col++){
-  const rows=Math.min(per,count-col*per);
-  h+=`<div class="strip-column" style="--strip-rows:${rows}"><div class="strip-head"><span>${esc(head)}</span><span>測定値・判定</span></div>`;
-  for(let row=0;row<per;row++){
-   const j=col*per+row;
-   if(j>=count)break;
-   h+=`<div class="strip-row"><label>${esc(labels[j]??String(j+1))}</label>${makeMeasureInputV29(key,li,j,values[j]||'',true)}</div>`;
-  }
-  h+='</div>';
- }
- return h;
-}
-/* 器の側のクラス。1列のときは公差と入力表を隣り合わせにし、余った幅へ
-   「丈位置くらべ」を置く（§9.128）。2列のときは場所が無いので出さない。 */
-function stripBodyClass(count){return 'compact-width-body'+(stripColumnCount(count)===1?' one-strip':'')}
+/* ---------- ②の測定表は「丈位置×条」の1つの表（§9.136） ----------
+   以前は「いま選んでいる丈位置の条を縦に並べた帯」＋「他の丈位置を見る
+   ための丈位置くらべ」の**2枚**だった。同じ値が2箇所にあり（§9.129に反する）、
+   丈を切り替えると帯のほうは中身が入れ替わるのに、くらべのほうは列の色だけが
+   動く——**同じものを見ているのに動き方が違う**ので、どちらを見ているのかを
+   その都度組み立て直す必要があった。
+   **横＝丈位置、縦＝条**の1つの表にすれば、切り替えは「どの列がアクティブか」
+   だけになり、**表そのものは動かない**。丈は最大10列（縦割9＋尾）なので
+   横は足りる。条は**1列で40行まで**——2段に折らない。
+   列見出しが丈位置の選択を兼ねる（`#lengthPos`の一覧は②から降ろした）。
+   **`#lengthPos`自体は残す**——丈位置を持っているのはこの`select`で、
+   `PageUp/PageDown`・完了前の確認の「直す」・帳票まで全部がこれを見る。
+   見えている一覧を消すことと、状態の置き場を消すことは別（§9.124の
+   `#measureType`とチップの関係と同じ）。 */
 /* 丈位置の数。`updateLengthOptions`と同じく「縦割数+1」（1(頭)…N(頭) と N(尾)）。 */
 function lengthSlotCount(){
  return Math.min(LENGTH_SLOTS,Math.max(1,Math.min(9,+$('#verticalCount').value||1))+1);
 }
-/* 他の丈位置の値（§9.128）。②では**いま選んでいる丈位置しか出ない**ため、
-   頭と尾を見比べるには丈を切り替えるしかなかった（切り替えると今度は
-   さっきの値が見えない）。空いた幅へ、同じ項目の全丈位置を1枚で出す。
-   **いまの丈の列も出す**——「切り替えた先がどこか」を同じ表の中で示せる。
-   見出しを押すとその丈へ移る（見えた値へすぐ行ける）。 */
-function lengthCompareHtml(key,count,type){
- const m=S.measure,lp=$('#lengthPos'),slots=lengthSlotCount();
- if(slots<2||stripColumnCount(count)!==1)return '';
- const cur=lengthIndex();
- let range=null;
- try{range=toleranceDetail(key==='thickness'?'thickness':'width',0,type)?.range||null}catch(e){}
+/* 行の呼び名と枠の数は`WL.measureItem`が答える（§9.138）。板厚は条ではなく
+   丈ごとに3点（エッジOS・中央CL・エッジDS）なので、行が3つになる。 */
+function measureMatrixHtml(key,count,type){
+ const m=S.measure,lp=$('#lengthPos'),slots=lengthSlotCount(),cur=lengthIndex();
+ const labels=WL.measureItem.slotLabels(key,count),head=WL.measureItem.slotHead(key);
  const label=li=>(lp&&lp.options[li]&&lp.options[li].value)||('丈'+(li+1));
- const slots2=WL.measureItem.slotLabels(key,count);
  const rows=(m.measurements&&m.measurements[key])||[];
- let filled=0;
+ let thead='';
+ for(let li=0;li<slots;li++)
+  thead+=`<th scope="col" class="${li===cur?'is-current':''}">`
+   +`<button type="button" data-mx-len="${li}" title="この丈位置を測る">${esc(label(li))}</button></th>`;
  let body='';
  for(let j=0;j<count;j++){
-  body+=`<tr><th scope="row">${esc(slots2[j]??String(j+1))}</th>`;
+  body+=`<tr><th scope="row">${esc(labels[j]??String(j+1))}</th>`;
   for(let li=0;li<slots;li++){
-   const raw=String((rows[li]||[])[j]??'').trim(),num=Number(raw);
-   if(raw!=='')filled++;
-   const ng=raw!==''&&range&&Number.isFinite(num)&&(num<range[0]||num>range[1]);
-   body+=`<td class="${li===cur?'is-current':''}${ng?' is-ng':''}">${esc(raw)}</td>`;
+   /* 判定の印（OK/NG）は**いま測っている列だけ**。全列に出すと最大400個
+      並んで、印そのものが背景になる。公差外の色は`judgeInput`が全列の
+      入力欄へ付けるので、**外れていることはどの列でも分かる**。 */
+   body+=`<td class="${li===cur?'is-current':''}">`
+    +makeMeasureInputV29(key,li,j,(rows[li]||[])[j]||'',li===cur)+'</td>';
   }
   body+='</tr>';
  }
- let head='';
- for(let li=0;li<slots;li++)
-  head+=`<th class="${li===cur?'is-current':''}">`
-   +`<button type="button" data-lc-len="${li}" title="この丈位置へ移る">${esc(label(li))}</button></th>`;
- /* **何も入っていないときは「まだ無い」と書く。** 空の表だけを出すと、
-    出す仕組みが壊れているのか値が無いのかを区別できない。 */
- const note=filled?'':'<p class="lc-empty">まだどの丈位置にも値がありません。</p>';
- return `<section class="length-compare"><div class="lc-title">丈位置くらべ<small>${esc(type)}</small></div>`
-  +`<div class="lc-scroll"><table class="lc-table"><thead><tr><th scope="col">${esc(WL.measureItem.slotHead(key))}</th>${head}</tr></thead>`
-  +`<tbody>${body}</tbody></table>${note}</div></section>`;
+ /* 表の幅の上限は**列数から**決まる（CSSの`--mx-cols`）。丈位置の数は
+    ロットで変わるので、決め打ちにできない。 */
+ return '<div class="mx-scroll"><table class="measure-matrix" style="--mx-cols:'+slots+'">'
+  +`<thead><tr><th scope="col" class="mx-corner">${esc(head)}</th>${thead}</tr></thead>`
+  +`<tbody>${body}</tbody></table></div>`;
 }
 /* 見出しを押したらその丈位置へ移る。**割り当ては1箇所**（丈位置を動かす
-   道具は`#lengthPos`のchangeだけ。ここで直接描き直さない）。 */
+   道具は`#lengthPos`のchangeだけ。ここで直接描き直さない）。
+   セルを押したときも同じ——**押した列がいま測る列になる**。押した先が
+   別の列なのに前の列のまま値が入ると、入れた本人にも気づけない。 */
+function gotoLengthSlot(li){
+ const lp=$('#lengthPos');
+ if(!lp||!lp.options[li]||lp.selectedIndex===li)return false;
+ lp.selectedIndex=li;lp.dispatchEvent(new Event('change',{bubbles:true}));
+ return true;
+}
 document.addEventListener('click',e=>{
- const btn=e.target.closest&&e.target.closest('[data-lc-len]');
- if(!btn)return;
- e.preventDefault();
- const lp=$('#lengthPos'),li=Number(btn.dataset.lcLen);
- if(lp&&lp.options[li]){lp.selectedIndex=li;lp.dispatchEvent(new Event('change',{bubbles:true}))}
+ const btn=e.target.closest&&e.target.closest('[data-mx-len]');
+ if(btn){e.preventDefault();gotoLengthSlot(Number(btn.dataset.mxLen));return}
+ const cell=e.target.closest&&e.target.closest('#measurementGrid input[data-mkey]');
+ if(cell)gotoLengthSlot(Number(cell.dataset.i));
 });
 /* 測定表の組み立ては**1本だけ**（§9.138）。以前は「板厚/板幅」だけが専用の
    2枚組ワークスペースを持っており、同じ`stripColumnsHtml`/`lengthCompareHtml`を
@@ -376,9 +364,8 @@ function renderMeasureGridVertical(){
  const slots=WL.measureItem.slotCount(actualKey,count);
  const values=m.measurements[actualKey][li],done=values.slice(0,slots).filter(v=>v!=='').length;
  const bulkBtn=type==='フラットネス'?'<span class="flat-pick-group"><span class="flat-pick-label">現在の条へ入力</span><button type="button" class="flat-pick" data-sym="〇">〇</button><button type="button" class="flat-pick" data-sym="△">△</button><button type="button" class="flat-pick" data-sym="×">×</button></span><button type="button" id="flatAllOk">全条 〇</button>':'';
- let h=`<section class="measure-grid-block compact-other"><div class="measure-grid-block-title"><span>${esc(type)}</span><div class="measure-status-group"><span class="measure-status">${compactMeasureStatus(done,slots)}</span>${bulkBtn}</div></div><div class="${stripBodyClass(slots)}"><aside class="compact-tolerance-side">${compactToleranceScale(actualKey,values,slots)}</aside><div class="strip-layout compact-strip-layout">`;
- h+=stripColumnsHtml(actualKey,li,values,slots);h+='</div>';
- h+=lengthCompareHtml(actualKey,slots,type);
+ let h=`<section class="measure-grid-block compact-other"><div class="measure-grid-block-title"><span>${esc(type)}</span><div class="measure-status-group"><span class="measure-status">${compactMeasureStatus(done,slots)}</span>${bulkBtn}</div></div><div class="matrix-body"><aside class="compact-tolerance-side">${compactToleranceScale(actualKey,values,slots)}</aside>`;
+ h+=measureMatrixHtml(actualKey,slots,type);
  h+='</div></section>';
  if(type==='フラットネス')h+=`<section class="measure-grid-block flatness-note-block"><div class="measure-grid-block-title"><span>備考</span></div><div class="flatness-entry"><label>対象条<select id="coilNo"></select></label><label>備考<textarea id="coilComment"></textarea></label></div></section>`;
  $('#measurementGrid').innerHTML=h;
