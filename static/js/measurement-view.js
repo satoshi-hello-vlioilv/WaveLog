@@ -263,6 +263,17 @@ function renderMeasurement(){
   +inline([['用途名',b.purposeName]])
   +inline([['材質',b.mfgMaterial],['調質',b.mfgTemper],
     ['板厚',fmtDim(b.mfgThickness,3)],['板幅',fmtDim(b.mfgWidth,1)],['板丈',fmtDim(b.mfgLength,1)]])
+  /* 骨子（§9.137）の①基本情報は「識別・製品・材・**分割ロット**・公差の値」。
+     子ロットは`lot-split.js`が非同期で取りに行くので、器だけ先に置いて
+     `refreshSplitStatusPanel()`が埋める。**分割が無いときは行ごと出さない**
+     ——「分割無し」は条の設計カードが言っており、同じことを2箇所に
+     書かない（§9.129）。 */
+  +'<div class="field full info-inline info-split" id="basicSplit" hidden></div>'
+  /* **詳細は畳んだまま**（§9.139、利用者の指示「基本情報は常時8項目」）。
+     カードが実測380px空いていたので§9.135の「タブの裏を出して埋める」で
+     開いてみたが、**開くと15px溢れる**（`test_maint`が検出）。8項目に絞る
+     という決めごとと、この器の高さは両立しており、埋めるために増やすのは
+     順序が逆——空きは条の設計カード側で使う。 */
   +'<button type="button" class="info-more" id="basicMore" aria-expanded="false" aria-controls="basicDetail">詳細を見る</button>'
   +'<div class="info-detail" id="basicDetail" hidden>'
   +'<div class="info-group">識別番号</div>'+idFields.map(cell).join('')
@@ -509,7 +520,13 @@ async function refreshScheduleInfo(){
  }
  renderScheduleInfo();
 }
-function configureToleranceSelector(){const el=$('#toleranceSource');if(!el||!S.measure)return;const type=$('#measureType').value,isDimensional=WL.measureItem.isDimensional(type),order=el.querySelector('option[value="order"]'),availability=orderToleranceAvailability();order.disabled=!availability.available;order.textContent=availability.available?'オーダー公差':'オーダー公差（データなし）';order.classList.toggle('order-tolerance-unavailable',!availability.available);if(!availability.available&&S.measure.settings.toleranceSource==='order')S.measure.settings.toleranceSource='manufacturing';el.value=S.measure.settings.toleranceSource||'manufacturing';el.disabled=!isDimensional;el.title=isDimensional?(availability.available?'製造公差またはオーダー公差を選択できます':'オーダー公差がないため製造公差のみ使用できます'):'板厚・板幅以外は指示公差を自動適用します';el.onchange=()=>{if(el.value==='order'&&!availability.available)return;S.measure.settings.toleranceSource=el.value;renderMeasureGrid();updateMeasurementHeading();markDirty()}}
+function configureToleranceSelector(){const el=$('#toleranceSource');if(!el||!S.measure)return;const type=$('#measureType').value,isDimensional=WL.measureItem.isDimensional(type),order=el.querySelector('option[value="order"]'),availability=orderToleranceAvailability();order.disabled=!availability.available;order.textContent=availability.available?'オーダー公差':'オーダー公差（データなし）';order.classList.toggle('order-tolerance-unavailable',!availability.available);if(!availability.available&&S.measure.settings.toleranceSource==='order')S.measure.settings.toleranceSource='manufacturing';el.value=S.measure.settings.toleranceSource||'manufacturing';el.disabled=!isDimensional;el.title=isDimensional?(availability.available?'製造公差またはオーダー公差を選択できます':'オーダー公差がないため製造公差のみ使用できます'):'板厚・板幅以外は指示公差を自動適用します';
+ /* **選べるときだけ出す**（§9.143、利用者の指示）。通常は製造公差のままで
+    触ることがなく、選択肢が1つしか無い状態で常設すると「選ぶもの」に
+    見えてしまう（機能としては残す必要があるので、消すのではなく隠す）。
+    出す段は②③だけ——そちらはCSSが持つ。 */
+ {const box=el.closest('.tolerance-source-control');
+  if(box){const usable=isDimensional&&availability.available;if(box.hidden!==!usable)box.hidden=!usable}}el.onchange=()=>{if(el.value==='order'&&!availability.available)return;S.measure.settings.toleranceSource=el.value;renderMeasureGrid();updateMeasurementHeading();markDirty()}}
 /* 作業時間パネル。開始→終了の順序を強制するロック付き打刻。 */
 function formatWorkTime(value){if(!value)return '';const d=new Date(value);return Number.isNaN(d.getTime())?'':d.toLocaleString('ja-JP',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'})}
 function stampWorkTimeLocked(kind){if(!S.measure)return;S.measure.workTime=S.measure.workTime||{};const now=new Date();if(kind==='start'){if(S.measure.workTime.endAt){showToast('開始時刻は変更できません','終了時刻の記録後は開始時刻を変更できません。');return}S.measure.workTime.startAt=now.toISOString()}else{if(!S.measure.workTime.startAt){showToast('開始時刻が未記録です','先に開始時刻を記録してください。');return}if(now<new Date(S.measure.workTime.startAt)){showToast('終了時刻を記録できません','終了時刻は開始時刻より後である必要があります。');return}S.measure.workTime.endAt=now.toISOString()}updateWorkTimePanel();markDirty();updateValidationVisuals()}

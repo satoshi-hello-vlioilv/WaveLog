@@ -1617,7 +1617,34 @@
      分割データの有無を判定し、未設定でも子ロット候補を能動的に取得して
      表示する(条割変更モーダルを手動で開くまで待たない)。applySplit実行後
      もここで最新の設定内容へ更新する。 */
+  /* 骨子（§9.137）の①基本情報は「分割ロット」を持つ。子ロットは非同期で
+     取りに行くので、`measurement-view.js`は器だけ置き、埋めるのはここ
+     （分割の状態を知っているのはこのファイルだけ）。**分割が無いときは
+     行ごと出さない**——「分割無し」は条の設計カードが言っており、同じ
+     ことを2箇所に書かない（§9.129）。 */
+  function refreshBasicSplitRow(){
+    const el=$('#basicSplit');if(!el)return;
+    const groups=S.measure?.settings?.splitGroups;
+    let lots=[],strips=0;
+    if(Array.isArray(groups)&&groups.length){
+      lots=groups.map(g=>String(g.lot||'')).filter(Boolean);
+      strips=groups.reduce((a,g)=>a+(Number(g.count)||0),0);
+    }else{
+      const rows=splitSourceRows();
+      lots=rows.map(s=>String(s.lot||'')).filter(Boolean);
+      strips=rows.reduce((a,s)=>a+(Number(s.count)||0),0);
+    }
+    if(lots.length<2){el.hidden=true;el.innerHTML='';return;}
+    const list=lots.join('・');
+    el.innerHTML=`<span class="ii"><label>分割ロット</label>`
+      +`<output title="${esc(list)}">${esc(list)}</output></span>`
+      +`<span class="ii"><label>子ロット数</label><output>${lots.length}</output></span>`
+      +(strips?`<span class="ii"><label>条数</label><output>${strips}</output></span>`:'');
+    el.hidden=false;
+  }
+
   function refreshSplitStatusPanel(){
+    refreshBasicSplitRow();
     const el=$('#splitGrid');if(!el)return;
     const groups=S.measure?.settings?.splitGroups;
     if(Array.isArray(groups)&&groups.length){
@@ -1830,12 +1857,16 @@
     /* 板厚・板幅を別々の入力内容にしたので、描かれている数直線は
        **いま選んでいる項目のもの1つだけ**（§9.138）。枠の数も項目で
        違うため`slotCount`から取る（板厚は条数ではなく3）。 */
-    const side=document.querySelector('.compact-width-body .compact-tolerance-side');
-    if(side&&typeof compactToleranceScale==='function'){
+    /* 器は`.matrix-body`（§9.139で1つの表になったときの左側）。以前は
+       `.compact-width-body`——**板厚/板幅だけが持っていた2枚組の器**——を
+       探しており、§9.138でその器ごと無くなった後は**一度も当たっていな
+       かった**（例外も出ないので、条を移っても公差が追従しないことに
+       誰も気づけない）。 */
+    if(WL.measureTolerance){
       const key=WL.measureItem.kindOf(type);
       const li=typeof lengthIndex==='function'?lengthIndex():0,count=Math.max(1,Math.min(40,+($('#horizontalCount')?.value)||1));
       const values=S.measure?.measurements?.[key]?.[li]||[];
-      side.innerHTML=compactToleranceScale(key,values,WL.measureItem.slotCount(key,count));
+      WL.measureTolerance.repaint(key,values,WL.measureItem.slotCount(key,count));
     }
   }
   if(typeof focusCurrent==='function'){

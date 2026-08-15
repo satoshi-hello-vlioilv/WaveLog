@@ -108,6 +108,9 @@ function processDeviceInputCore(raw){
  }else if(type==='テレスコープ'){
   if(!['depth','manual'].includes(p.device))return inputError('テレスコープはデプスゲージを使用してください');m.measurements.telescope[li][st.wStep||0]=p.value.toFixed(2);advanceWidth()
  }else{const key=activeMeasureKey();m.measurements[key][li][st.wStep||0]=type==='ラテラルボー'?(Math.ceil(p.value*2)/2).toFixed(1):p.value.toFixed(1);advanceWidth()}
+ /* 自動で記録する時刻（§9.143）。**転送は「転送」として数える**——
+    手入力と混ぜると「転送を受け始めた時刻」が作れない。 */
+ WL.workStamp.note('transfer');
  $('#deviceInput').classList.add('device-ok');$('#deviceInput').value='';renderMeasureGrid();renderStats();markDirty();focusCurrent();refocusDeviceInput()
 }
 /* 受信処理の入口。板幅のノギス系値は小数1桁へ丸めてから本処理へ渡し、
@@ -222,7 +225,7 @@ function bindMeasureInputs(){
   // フォーカスが移動した場合も、強調表示(.current)をそのセルへ
   // 追従させる(自動モードは受信欄にフォーカスを固定するため対象外)。
   x.addEventListener('focus',()=>{if(S.measure.settings.inputMode!=='manual')return;syncStepFor(x);focusCurrent()});
-  x.oninput=()=>{m.measurements[x.dataset.mkey][+x.dataset.i][+x.dataset.j]=x.value;judgeInput(x,x.dataset.mkey,Number(x.value),+x.dataset.j);renderStats();markDirty()};x.onkeydown=e=>{if(WL.measureNav&&WL.measureNav.handleKey(e,!x.value))return;if(S.measure.settings.inputMode!=='manual'){e.preventDefault();return}if(e.key==='Delete'){x.value='';x.oninput()}if(e.key==='Enter'){e.preventDefault();advanceSlot();focusCurrent()}}})
+  x.oninput=()=>{m.measurements[x.dataset.mkey][+x.dataset.i][+x.dataset.j]=x.value;judgeInput(x,x.dataset.mkey,Number(x.value),+x.dataset.j);renderStats();WL.workStamp.note('manual');markDirty()};x.onkeydown=e=>{if(WL.measureNav&&WL.measureNav.handleKey(e,!x.value))return;if(S.measure.settings.inputMode!=='manual'){e.preventDefault();return}if(e.key==='Delete'){x.value='';x.oninput()}if(e.key==='Enter'){e.preventDefault();advanceSlot();focusCurrent()}}})
 
  document.querySelectorAll('[data-mkey="thickness"],[data-mkey="width"]').forEach(el=>{
   const previousBlur=el.onblur;
@@ -232,7 +235,16 @@ function bindMeasureInputs(){
 function toleranceInfoFor(key,index,value){
  if(key==='flatness'){const v=String(value||'').trim();return v===''?{tol:null,state:'wait',pos:50}:{tol:null,state:v==='〇'?'ok':'ng',pos:50}}
  const tol=toleranceFor(key==='thickness'?'thickness':'width',index),num=Number(value);if(!tol||!Number.isFinite(num))return{tol,state:'wait',pos:50};const low=tol[0],high=tol[1],span=Math.max(Math.abs(high-low),.000001),viewLow=low-span*.25,viewHigh=high+span*.25,pos=Math.max(0,Math.min(100,(viewHigh-num)/(viewHigh-viewLow)*100));return{tol,state:num<low||num>high?'ng':'ok',pos}}
-function makeMeasureInputV29(key,i,j,value,active=true){const info=toleranceInfoFor(key,j,value),pill=active&&value!==''?`<span class="judge-pill ${info.state}">${info.state==='ok'?'OK':'NG'}</span>`:'';return `<div class="strip-input-wrap">${makeMeasureInput(key,i,j,value)}${pill}</div>`}
+/* 印は**公差外だけ**（§9.137の②の約束「セル背景で公差内の位置を示す案は
+   却下。公差外の赤だけ」）。全セルに「OK」を添えると、24条×5丈で120個の
+   OKが並んで**読むべき赤が埋もれる**うえ、印は入力欄の上に重なるので
+   （`.judge-pill`は`position:absolute`）**値そのものが隠れて`998.20`が`9`に
+   見えていた**（実測）。印が出るセルだけ右余白を空ける。 */
+function makeMeasureInputV29(key,i,j,value,active=true){
+ const ng=active&&value!==''&&toleranceInfoFor(key,j,value).state==='ng';
+ const pill=ng?'<span class="judge-pill ng">NG</span>':'';
+ return `<div class="strip-input-wrap${ng?' has-judge':''}">${makeMeasureInput(key,i,j,value)}${pill}</div>`;
+}
 /* 入力欄の保護。自動転送中はセルを読み取り専用にする(母材・フラットネスは常時手入力可)。 */
 function applyInputProtection(){
  if(!S.measure)return;const manual=S.measure.settings.inputMode==='manual';document.querySelectorAll('[data-mkey]').forEach(el=>{el.readOnly=!manual;el.classList.toggle('auto-locked',!manual);el.tabIndex=manual?0:-1;el.title=manual?'手入力可能':'自動転送中。クリックは入力位置の選択のみです。'});document.querySelectorAll('[data-mother]').forEach(el=>{el.readOnly=!manual;el.tabIndex=manual?0:-1})
@@ -290,80 +302,68 @@ function compactMeasureStatus(done,total){return done===total?'測定完了':don
    大半を占めた。**使わない行は描かない**——探す対象が減る。
    20条を超えるときだけ2列にする(縦に41行並べると画面から溢れる)。
    **2箇所で同じループを書かない**(どの項目も同じものが要る)。 */
-/* 列数は**行数と同じく条数から決まる**（§9.126）。CSSに`repeat(2,1fr)`と
-   書いてあったため、1列しか作らなくても**器は2列ぶん取ったまま**で、
-   ②を全幅にしても右の1/4が空いていた（実測430px）。判定の式は1箇所。 */
-function stripColumnCount(count){return count>20?2:1}
-/* `count`は**その項目の枠の数**（板厚なら条数ではなく3）。呼び名も見出しも
-   `WL.measureItem`が答えるので、ここに項目ごとの分岐を書かない（§9.138）。 */
-function stripColumnsHtml(key,li,values,count){
- const labels=WL.measureItem.slotLabels(key,count),head=WL.measureItem.slotHead(key);
- const cols=stripColumnCount(count),per=Math.ceil(count/cols);
- let h='';
- for(let col=0;col<cols;col++){
-  const rows=Math.min(per,count-col*per);
-  h+=`<div class="strip-column" style="--strip-rows:${rows}"><div class="strip-head"><span>${esc(head)}</span><span>測定値・判定</span></div>`;
-  for(let row=0;row<per;row++){
-   const j=col*per+row;
-   if(j>=count)break;
-   h+=`<div class="strip-row"><label>${esc(labels[j]??String(j+1))}</label>${makeMeasureInputV29(key,li,j,values[j]||'',true)}</div>`;
-  }
-  h+='</div>';
- }
- return h;
-}
-/* 器の側のクラス。1列のときは公差と入力表を隣り合わせにし、余った幅へ
-   「丈位置くらべ」を置く（§9.128）。2列のときは場所が無いので出さない。 */
-function stripBodyClass(count){return 'compact-width-body'+(stripColumnCount(count)===1?' one-strip':'')}
+/* ---------- ②の測定表は「丈位置×条」の1つの表（§9.136） ----------
+   以前は「いま選んでいる丈位置の条を縦に並べた帯」＋「他の丈位置を見る
+   ための丈位置くらべ」の**2枚**だった。同じ値が2箇所にあり（§9.129に反する）、
+   丈を切り替えると帯のほうは中身が入れ替わるのに、くらべのほうは列の色だけが
+   動く——**同じものを見ているのに動き方が違う**ので、どちらを見ているのかを
+   その都度組み立て直す必要があった。
+   **横＝丈位置、縦＝条**の1つの表にすれば、切り替えは「どの列がアクティブか」
+   だけになり、**表そのものは動かない**。丈は最大10列（縦割9＋尾）なので
+   横は足りる。条は**1列で40行まで**——2段に折らない。
+   列見出しが丈位置の選択を兼ねる（`#lengthPos`の一覧は②から降ろした）。
+   **`#lengthPos`自体は残す**——丈位置を持っているのはこの`select`で、
+   `PageUp/PageDown`・完了前の確認の「直す」・帳票まで全部がこれを見る。
+   見えている一覧を消すことと、状態の置き場を消すことは別（§9.124の
+   `#measureType`とチップの関係と同じ）。 */
 /* 丈位置の数。`updateLengthOptions`と同じく「縦割数+1」（1(頭)…N(頭) と N(尾)）。 */
 function lengthSlotCount(){
  return Math.min(LENGTH_SLOTS,Math.max(1,Math.min(9,+$('#verticalCount').value||1))+1);
 }
-/* 他の丈位置の値（§9.128）。②では**いま選んでいる丈位置しか出ない**ため、
-   頭と尾を見比べるには丈を切り替えるしかなかった（切り替えると今度は
-   さっきの値が見えない）。空いた幅へ、同じ項目の全丈位置を1枚で出す。
-   **いまの丈の列も出す**——「切り替えた先がどこか」を同じ表の中で示せる。
-   見出しを押すとその丈へ移る（見えた値へすぐ行ける）。 */
-function lengthCompareHtml(key,count,type){
- const m=S.measure,lp=$('#lengthPos'),slots=lengthSlotCount();
- if(slots<2||stripColumnCount(count)!==1)return '';
- const cur=lengthIndex();
- let range=null;
- try{range=toleranceDetail(key==='thickness'?'thickness':'width',0,type)?.range||null}catch(e){}
+/* 行の呼び名と枠の数は`WL.measureItem`が答える（§9.138）。板厚は条ではなく
+   丈ごとに3点（エッジOS・中央CL・エッジDS）なので、行が3つになる。 */
+function measureMatrixHtml(key,count,type){
+ const m=S.measure,lp=$('#lengthPos'),slots=lengthSlotCount(),cur=lengthIndex();
+ const labels=WL.measureItem.slotLabels(key,count),head=WL.measureItem.slotHead(key);
  const label=li=>(lp&&lp.options[li]&&lp.options[li].value)||('丈'+(li+1));
- const slots2=WL.measureItem.slotLabels(key,count);
  const rows=(m.measurements&&m.measurements[key])||[];
- let filled=0;
+ let thead='';
+ for(let li=0;li<slots;li++)
+  thead+=`<th scope="col" class="${li===cur?'is-current':''}">`
+   +`<button type="button" data-mx-len="${li}" title="この丈位置を測る">${esc(label(li))}</button></th>`;
  let body='';
  for(let j=0;j<count;j++){
-  body+=`<tr><th scope="row">${esc(slots2[j]??String(j+1))}</th>`;
+  body+=`<tr><th scope="row">${esc(labels[j]??String(j+1))}</th>`;
   for(let li=0;li<slots;li++){
-   const raw=String((rows[li]||[])[j]??'').trim(),num=Number(raw);
-   if(raw!=='')filled++;
-   const ng=raw!==''&&range&&Number.isFinite(num)&&(num<range[0]||num>range[1]);
-   body+=`<td class="${li===cur?'is-current':''}${ng?' is-ng':''}">${esc(raw)}</td>`;
+   /* 判定の印（OK/NG）は**いま測っている列だけ**。全列に出すと最大400個
+      並んで、印そのものが背景になる。公差外の色は`judgeInput`が全列の
+      入力欄へ付けるので、**外れていることはどの列でも分かる**。 */
+   body+=`<td class="${li===cur?'is-current':''}">`
+    +makeMeasureInputV29(key,li,j,(rows[li]||[])[j]||'',li===cur)+'</td>';
   }
   body+='</tr>';
  }
- let head='';
- for(let li=0;li<slots;li++)
-  head+=`<th class="${li===cur?'is-current':''}">`
-   +`<button type="button" data-lc-len="${li}" title="この丈位置へ移る">${esc(label(li))}</button></th>`;
- /* **何も入っていないときは「まだ無い」と書く。** 空の表だけを出すと、
-    出す仕組みが壊れているのか値が無いのかを区別できない。 */
- const note=filled?'':'<p class="lc-empty">まだどの丈位置にも値がありません。</p>';
- return `<section class="length-compare"><div class="lc-title">丈位置くらべ<small>${esc(type)}</small></div>`
-  +`<div class="lc-scroll"><table class="lc-table"><thead><tr><th scope="col">${esc(WL.measureItem.slotHead(key))}</th>${head}</tr></thead>`
-  +`<tbody>${body}</tbody></table>${note}</div></section>`;
+ /* 表の幅の上限は**列数から**決まる（CSSの`--mx-cols`）。丈位置の数は
+    ロットで変わるので、決め打ちにできない。 */
+ return '<div class="mx-scroll"><table class="measure-matrix" style="--mx-cols:'+slots+'">'
+  +`<thead><tr><th scope="col" class="mx-corner">${esc(head)}</th>${thead}</tr></thead>`
+  +`<tbody>${body}</tbody></table></div>`;
 }
 /* 見出しを押したらその丈位置へ移る。**割り当ては1箇所**（丈位置を動かす
-   道具は`#lengthPos`のchangeだけ。ここで直接描き直さない）。 */
+   道具は`#lengthPos`のchangeだけ。ここで直接描き直さない）。
+   セルを押したときも同じ——**押した列がいま測る列になる**。押した先が
+   別の列なのに前の列のまま値が入ると、入れた本人にも気づけない。 */
+function gotoLengthSlot(li){
+ const lp=$('#lengthPos');
+ if(!lp||!lp.options[li]||lp.selectedIndex===li)return false;
+ lp.selectedIndex=li;lp.dispatchEvent(new Event('change',{bubbles:true}));
+ return true;
+}
 document.addEventListener('click',e=>{
- const btn=e.target.closest&&e.target.closest('[data-lc-len]');
- if(!btn)return;
- e.preventDefault();
- const lp=$('#lengthPos'),li=Number(btn.dataset.lcLen);
- if(lp&&lp.options[li]){lp.selectedIndex=li;lp.dispatchEvent(new Event('change',{bubbles:true}))}
+ const btn=e.target.closest&&e.target.closest('[data-mx-len]');
+ if(btn){e.preventDefault();gotoLengthSlot(Number(btn.dataset.mxLen));return}
+ const cell=e.target.closest&&e.target.closest('#measurementGrid input[data-mkey]');
+ if(cell)gotoLengthSlot(Number(cell.dataset.i));
 });
 /* 測定表の組み立ては**1本だけ**（§9.138）。以前は「板厚/板幅」だけが専用の
    2枚組ワークスペースを持っており、同じ`stripColumnsHtml`/`lengthCompareHtml`を
@@ -376,12 +376,13 @@ function renderMeasureGridVertical(){
  const slots=WL.measureItem.slotCount(actualKey,count);
  const values=m.measurements[actualKey][li],done=values.slice(0,slots).filter(v=>v!=='').length;
  const bulkBtn=type==='フラットネス'?'<span class="flat-pick-group"><span class="flat-pick-label">現在の条へ入力</span><button type="button" class="flat-pick" data-sym="〇">〇</button><button type="button" class="flat-pick" data-sym="△">△</button><button type="button" class="flat-pick" data-sym="×">×</button></span><button type="button" id="flatAllOk">全条 〇</button>':'';
- let h=`<section class="measure-grid-block compact-other"><div class="measure-grid-block-title"><span>${esc(type)}</span><div class="measure-status-group"><span class="measure-status">${compactMeasureStatus(done,slots)}</span>${bulkBtn}</div></div><div class="${stripBodyClass(slots)}"><aside class="compact-tolerance-side">${compactToleranceScale(actualKey,values,slots)}</aside><div class="strip-layout compact-strip-layout">`;
- h+=stripColumnsHtml(actualKey,li,values,slots);h+='</div>';
- h+=lengthCompareHtml(actualKey,slots,type);
+ const tol=WL.measureTolerance.parts(actualKey,values,slots);
+ let h=`<section class="measure-grid-block compact-other"><div class="measure-grid-block-title"><span>${esc(type)}</span><div class="measure-status-group"><span class="measure-status">${compactMeasureStatus(done,slots)}</span>${bulkBtn}</div></div><div class="matrix-body${tol.graph?'':' no-graph'}"><aside class="compact-tolerance-side">${tol.graph}</aside>`;
+ h+=measureMatrixHtml(actualKey,slots,type);
  h+='</div></section>';
  if(type==='フラットネス')h+=`<section class="measure-grid-block flatness-note-block"><div class="measure-grid-block-title"><span>備考</span></div><div class="flatness-entry"><label>対象条<select id="coilNo"></select></label><label>備考<textarea id="coilComment"></textarea></label></div></section>`;
  $('#measurementGrid').innerHTML=h;
+ WL.measureTolerance.paintFacts(tol.facts);
  bindMeasureInputs();applyInputProtection();focusCurrent();updateMeasurementHeading();/* 寸法系（板厚・板幅）は横長の公差バーを出さない。数直線の隣の公差カード
    （`.compact-tolerance-side`）が基準値・公差±・判定範囲を既に持っており、
    **同じ数字を画面に2つ出さない**（§9.129。項目を分ける前の板厚/板幅と
@@ -413,7 +414,7 @@ function bindFlatnessInputs(){
   btn.onclick=()=>{
    const j=lengthIndex(),c=m.settings.wStep||0;
    m.measurements.flatness[j][c]=btn.dataset.sym;
-   advanceWidth();renderMeasureGrid();markDirty();focusFlatnessCurrentCell();
+   advanceWidth();renderMeasureGrid();WL.workStamp.note('manual');markDirty();focusFlatnessCurrentCell();
   };
  });
 }
@@ -475,5 +476,52 @@ function compactToleranceScale(kind,values,count){
  const marks=valid.slice(-20).map(v=>{const pos=Math.max(3,Math.min(97,(viewHigh-v)/(viewHigh-viewLow)*100)),ng=v<low||v>high;return `<i class="compact-value-mark ${ng?'ng':'ok'}" style="top:${pos}%" title="${esc(fixedToleranceValue(kind,v))}"></i>`}).join('');
  return `${facts.html}<div class="compact-tol-scale"><span class="compact-scale-label upper">上限 <b>${esc(fixedToleranceValue(kind,high))}</b></span><span class="compact-scale-safe">公差内</span>${marks}<span class="compact-scale-label lower">下限 <b>${esc(fixedToleranceValue(kind,low))}</b></span></div>`;
 }
+/* 公差の「図」と「値」は**別の問いに答えるので、別の場所へ置く**（§9.140、
+   骨子§9.137）。図＝いま公差のどのへんか（測定カードの左・選択中の丈位置
+   だけ）、値＝規格はいくつか（基本情報カード）。同じ数字を2箇所に出さない
+   （§9.129）。
+
+   組み立ては`compactToleranceScale`の**1本のまま**で、**出来上がりを2つに
+   配る**。引数で切り替える形にしないのは、この関数を3つのファイルが順に
+   包んでおり（`measurement-worklog.js`＝指示公差／`filters.js`＝スウォーム
+   数直線。§9.125の`toleranceDetail`と同じ形）、**1枚でも引数を落とすと
+   根まで届かず黙って効かなくなる**ため。出来上がりのHTMLから図の要素を
+   取り出す形なら、どの包みが勝っていても同じように分けられる。 */
+const TOLERANCE_GRAPH_SELECTOR='.accurate-numberline,.compact-tol-scale';
+window.WL=window.WL||{};
+WL.measureTolerance={
+ /* 図が作られない項目がある——公差そのものが無いもの（ラテラルボー等）と、
+    指示公差（`measurement-worklog.js`が専用カードへ置き換える）。そのときは
+    **左の列ごと畳んで表へ渡す**（`no-graph`）。空の器を210px残すのは
+    「意味のない余白」で、しかも**理由は基本情報カードの公差欄に既に
+    書いてある**（「公差情報なし」／指示値のカード）——同じことを2箇所に
+    書かない（§9.129）。 */
+ parts(kind,values,count){
+  const box=document.createElement('div');
+  box.innerHTML=(typeof compactToleranceScale==='function')?compactToleranceScale(kind,values,count):'';
+  const graph=box.querySelector(TOLERANCE_GRAPH_SELECTOR);
+  if(graph)graph.remove();
+  return{facts:box.innerHTML.trim(),graph:graph?graph.outerHTML:''};
+ },
+ /* 値の置き場は基本情報カードの中。**同じ値なら触らない**——`hidden`は値が
+    同じでも変更記録が積まれ、見張りと合わさると回り続ける（§9.131）。 */
+ paintFacts(html){
+  const host=typeof $==='function'?$('#toleranceFacts'):null;
+  if(!host)return;
+  if(host.innerHTML!==html)host.innerHTML=html||'';
+  const empty=!html;
+  if(host.hidden!==empty)host.hidden=empty;
+ },
+ /* 描き直しの入口。表そのものは触らないので、入力欄のフォーカスも
+    スクロール位置も動かない（条ごとに公差が変わる分割ロット用）。 */
+ repaint(kind,values,count){
+  const parts=this.parts(kind,values,count);
+  const body=document.querySelector('.matrix-body'),side=body&&body.querySelector('.compact-tolerance-side');
+  if(side)side.innerHTML=parts.graph;
+  if(body)body.classList.toggle('no-graph',!parts.graph);
+  this.paintFacts(parts.facts);
+  return parts;
+ },
+};
 function renderMeasureGrid(){renderMeasureGridVertical();requestAnimationFrame(updateValidationVisuals)}
-window.WL=window.WL||{};Object.assign(window.WL,{toleranceScaleView});
+Object.assign(window.WL,{toleranceScaleView});

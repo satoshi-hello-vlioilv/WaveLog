@@ -55,6 +55,36 @@ let b=null;
    if(typeof renderCourseHierarchy==='function')renderCourseHierarchy();
   },LONG).catch(()=>{});
   await page.waitForTimeout(1200);
+  /* コース欄は**「詳細を見る」の中**にある（§9.139で基本情報を常時8項目に
+     絞ったとき、識別番号・製品と一緒に畳まれた）。畳んだ要素は寸法が0なので、
+     開かずに測ると「幅0・左端0」が返り、**この網は何も確かめていなかった**
+     （実際に4件が落ちたまま残っていた）。測る前に開く。 */
+  /* **待ちは「時間」でなく「条件」で置く**（§9.102）。ここは開いた直後に
+     1回だけ測っていたため、通しで走らせると`hidden=false`なのに高さ0の
+     瞬間を拾って落ちた（マスタの非同期読み込みで基本情報が組み直る）。
+     開いていなければ押し、開くまで待つ。 */
+  /* **`.info-detail`は`display:contents`**（箱を持たない）ので、**自分の
+     高さは開いていても常に0**。開いたかどうかは**中の1つ**で見る
+     ——器の寸法で見る書き方に直すと、待っても永遠に0のままになる。 */
+  const detailOpen=()=>{
+   const b=document.getElementById('basicMore'),d=document.getElementById('basicDetail');
+   if(!b||!d)return false;
+   if(b.getAttribute('aria-expanded')!=='true'){b.click();return false}
+   const first=d.querySelector('.info-group,.field');
+   return !d.hidden&&!!first&&first.getBoundingClientRect().height>0;
+  };
+  const opened=await page.waitForFunction(detailOpen,null,{timeout:15000})
+    .then(()=>true).catch(()=>false);
+  /* **開けたことを主張しておく**——畳んだ要素は寸法0なので、開かないまま
+     測ると以降の網が「幅0・左端0」を見て素通りする。 */
+  const openDiag=await page.evaluate(()=>{
+   const d=document.getElementById('basicDetail');
+   const f=d&&d.querySelector('.info-group,.field');
+   return {詳細:!!d,hidden:d&&d.hidden,
+     中の高さ:f?Math.round(f.getBoundingClientRect().height):null,
+     項目:d?d.querySelectorAll('.field').length:0};
+  });
+  rec('コース欄を出すために詳細を開ける',opened&&openDiag.中の高さ>0,JSON.stringify(openDiag));
 
   const probe=()=>page.evaluate(()=>{
    const g=document.querySelector('#basicInfo .info-grid');
@@ -77,7 +107,10 @@ let b=null;
              gridWidth:Math.round(g.getBoundingClientRect().width)};
     });
    const lp=document.querySelector('.left-pane');
-   const head=[...g.children].find(x=>x.classList.contains('info-group-course'));
+   /* 見出しは`#basicDetail`の中にあり、`.info-grid`の**孫**なので
+      `children`では拾えない（拾えないまま「見出しが1つ出ている」を
+      見ていたため、ずっと落ちていた）。子孫から探す。 */
+   const head=g.querySelector('.info-group-course');
    return {out,over:lp.scrollHeight-lp.clientHeight,
            heading:(head?.textContent||'').trim()};
   });

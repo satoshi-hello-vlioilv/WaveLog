@@ -99,8 +99,12 @@ let b=null,page=null;
                  &&x.getBoundingClientRect().height>0).length,
     件数の文字:[...document.querySelectorAll('#measureTypeGroup .type-chip-state')]
       .map(x=>x.textContent.trim()).filter(Boolean).length,
-    丈が見える:document.getElementById('lengthPosGroup')?.getBoundingClientRect().height>0,
-    丈の行数:lp?lp.size:0,丈の選択肢:lp?lp.options.length:0,
+    /* 丈位置は**測定表の列見出し**が兼ねる（§9.136）。一覧は②から降ろした。 */
+    丈が見える:[...document.querySelectorAll('#measurementGrid .measure-matrix thead th[class]')]
+      .filter(x=>x.getBoundingClientRect().width>0).length>0,
+    丈の列:document.querySelectorAll('#measurementGrid .measure-matrix thead th button').length,
+    丈の選択肢:lp?lp.options.length:0,
+    一覧を出していない:!(document.getElementById('lengthPosGroup')?.getBoundingClientRect().height>0),
    };
   });
   /* ②の3列目は**根拠だけ**（§9.131）。基本情報・幅分割情報は測っている
@@ -125,9 +129,13 @@ let b=null,page=null;
   /* **丈位置は②に出す（§9.125）。** `PageUp/PageDown`で動かせるのに、
      以前はどの段にも出ておらず「いま何丈目か」は`#stepStatus`の文でしか
      分からなかった。高さは選択肢の数ぶん——7行固定だと空白が並ぶ。 */
-  rec('②に丈位置が出る',items.丈が見える===true,JSON.stringify(items));
-  rec('丈位置の高さは選択肢の数ぶん',items.丈の行数===Math.max(2,Math.min(7,items.丈の選択肢)),
+  /* **見えているかは測る項目を選んでから**（下の「全丈位置の列が出る」）。
+     ここでは母材が選ばれており、測定表そのものが降りている。 */
+  rec('②の測定表に丈位置の列がある',items.丈の列===items.丈の選択肢&&items.丈の列>0,
       JSON.stringify(items));
+  /* **同じものを選ぶ道具を2つ置かない**（§9.129）。列見出しが選択を兼ねる
+     ので、一覧（リストボックス）は②から降ろした。 */
+  rec('丈位置の一覧は②に出さない',items.一覧を出していない===true,JSON.stringify(items));
   rec('一覧の各項目に残り件数が文字で付く',items.件数の文字===9,JSON.stringify(items));
   /* 測定表は本体のいちばん広いカード。骨子（§9.137）で`2×3`＝**本体の半分**
      と決めたので、しきい値も半分ちょうどで見る（以前は3列＝3/4だった）。
@@ -138,10 +146,10 @@ let b=null,page=null;
   rec('②の測定表が本体の半分を占める',m2.右.w>=Math.floor(m2.本体.w*0.5)-40,
       `測定=${m2.右.w} / 本体=${m2.本体.w}`);
 
-  /* ---- 4b) 測定表は「使う条数ぶんだけ」描く（§9.124） ----
+  /* ---- 4b) 測定表は「使う条数ぶんだけ」描く（§9.124／§9.136） ----
      以前は条数に関わらず 2列×20行＝40条を必ず描き、超えた行を灰色で残して
      いた。1条のロットでも39行の空欄が並ぶ。**探す対象を増やさない。**
-     20条を超えたときだけ2列にする（縦に41行並べると画面から溢れる）。 */
+     **条は1列で40行まで。2段に折らない**（§9.136）——横は丈位置が使う。 */
   await page.evaluate(()=>{const s=document.querySelector('#measureType');
     s.value='板幅';s.dispatchEvent(new Event('change',{bubbles:true}))});
   await page.waitForTimeout(500);
@@ -150,15 +158,16 @@ let b=null,page=null;
      h.value=String(v);h.dispatchEvent(new Event('change',{bubbles:true}))},n);
    await page.waitForTimeout(500);
    return page.evaluate(()=>({
-    行:document.querySelectorAll('#measurementGrid .strip-row').length,
-    列:document.querySelectorAll('#measurementGrid .strip-column').length,
-    灰色の行:document.querySelectorAll('#measurementGrid .strip-row.inactive').length}));
+    行:document.querySelectorAll('#measurementGrid .measure-matrix tbody tr').length,
+    /* 条の列は**1本だけ**。丈位置の列はこれとは別（横に並ぶ）。 */
+    条の列:document.querySelectorAll('#measurementGrid .measure-matrix tbody tr:first-child th').length,
+    灰色の行:document.querySelectorAll('#measurementGrid .measure-matrix tr.inactive').length}));
   };
   const r1=await rowsFor(1),r6=await rowsFor(6),r24=await rowsFor(24),r40=await rowsFor(40);
-  rec('1条なら1行しか描かない',r1.行===1&&r1.列===1,JSON.stringify(r1));
-  rec('6条なら6行',r6.行===6&&r6.列===1,JSON.stringify(r6));
-  rec('20条を超えたら2列にする',r24.行===24&&r24.列===2,JSON.stringify(r24));
-  rec('40条でも数は合う',r40.行===40&&r40.列===2,JSON.stringify(r40));
+  rec('1条なら1行しか描かない',r1.行===1&&r1.条の列===1,JSON.stringify(r1));
+  rec('6条なら6行',r6.行===6&&r6.条の列===1,JSON.stringify(r6));
+  rec('20条を超えても2段に折らない',r24.行===24&&r24.条の列===1,JSON.stringify(r24));
+  rec('40条でも1列40行',r40.行===40&&r40.条の列===1,JSON.stringify(r40));
   rec('使わない行(灰色)を残さない',
       [r1,r6,r24,r40].every(x=>x.灰色の行===0),
       JSON.stringify([r1.灰色の行,r6.灰色の行,r24.灰色の行,r40.灰色の行]));
@@ -173,43 +182,58 @@ let b=null,page=null;
    await page.waitForTimeout(500);
    return page.evaluate(()=>{
     const r=e=>e?e.getBoundingClientRect():null;
-    const cols=[...document.querySelectorAll('#measurementGrid .compact-other .strip-column')];
-    const body=document.querySelector('#measurementGrid .compact-other .compact-width-body');
+    const cols=[...document.querySelectorAll('#measurementGrid .compact-other .measure-matrix')];
+    const body=document.querySelector('#measurementGrid .compact-other .matrix-body');
     const tol=body&&body.querySelector('.compact-tolerance-side');
-    const rows=[...document.querySelectorAll('#measurementGrid .compact-other .strip-row label')];
+    const rows=[...document.querySelectorAll('#measurementGrid .compact-other .measure-matrix tbody th')];
     const cr=cols.map(x=>r(x)),br=r(body),tr=r(tol);
-    const lay=document.querySelector('#measurementGrid .compact-other .compact-strip-layout');
+    const lay=document.querySelector('#measurementGrid .compact-other .mx-scroll');
     const lr=r(lay);
-    return {列:cols.length,
+    return {列:document.querySelectorAll('#measurementGrid .measure-matrix tbody tr:first-child th').length,
       /* **列の数だけでは足りない。** CSSが2列ぶんの場所を取ったままだと
          DOMは1つでも幅は半分になる（実際にそれを見逃した）。 */
       入力表の幅:cr.length?Math.round(cr[0].width):0,
+      セルの幅:(()=>{const c=document.querySelector('#measurementGrid .measure-matrix tbody td');
+        return c?Math.round(c.getBoundingClientRect().width):0})(),
       器の幅:lr?Math.round(lr.width):0,
       表の高さ:cr.length?Math.round(cr[0].height):0,
       最後の行の下端:rows.length?Math.round(r(rows[rows.length-1]).bottom):0,
       表の下端:cr.length?Math.round(cr[0].bottom):0,
-      公差と表のすきま:(tr&&cr.length)?Math.round(cr[0].left-tr.right):null,
+      /* 公差の図が無い項目（公差の登録が無い／指示公差）では左の列ごと
+         畳んで表へ渡す（§9.140）。畳んだ器は`display:none`で寸法が0に
+         なるので、**そのまま隙間を測ると1060pxという嘘の値になる**。
+         どちらの形かを先に持っておき、見るものを切り替える。 */
+      図あり:!!(body&&!body.classList.contains('no-graph')&&tr&&tr.width>0),
+      公差と表のすきま:(tr&&cr.length&&tr.width>0)?Math.round(cr[0].left-tr.right):null,
+      表の左と器の左のずれ:(br&&cr.length)?Math.round(cr[0].left-br.left):null,
       器の右の余り:(br&&cr.length)?Math.round(br.right-cr[cr.length-1].right):null};
    });
   };
   const g8=await geom(8),g40=await geom(40);
-  rec('20条までは1列',g8.列===1,JSON.stringify(g8));
-  rec('1列のときは入力表が器の幅いっぱいを使う',
-      g8.器の幅>0&&g8.入力表の幅>=g8.器の幅*0.9,JSON.stringify(g8));
-  rec('20条を超えたら2列',g40.列===2,JSON.stringify(g40));
+  rec('条の列は1本（8条）',g8.列===1,JSON.stringify(g8));
+  /* **器いっぱいに引き伸ばさない**（§9.130）。器を埋めると丈位置4つの
+     ロットで1セル222pxになり、`1234.56`（実測63px）の3倍以上になる。
+     見るのは**下限**——値が入る幅があること（上の「中身より80px以上広い欄が
+     無い」が上限を見ているので、これで両側から挟める）。 */
+  rec('セルに値が入る幅がある',g8.セルの幅>=60,JSON.stringify(g8));
+  rec('条の列は1本のまま（40条）',g40.列===1,JSON.stringify(g40));
   /* 行の数だけ器を取る。最後の行の下と器の下がほぼ一致すること
      （20行固定のままなら、8条では12行ぶん＝300px以上の白が残る）。 */
   rec('使う行数ぶんの高さしか取らない',
       Math.abs(g8.表の下端-g8.最後の行の下端)<=8,JSON.stringify(g8));
   /* **一緒に読むものを引き離さない。** 公差数直線は縦向きなので、空いた
      幅を公差側へ回すと数直線と入力表のあいだに900pxの空白ができる。 */
-  rec('公差と入力表が隣り合っている',g8.公差と表のすきま!==null&&g8.公差と表のすきま<40,
+  /* 図が無い項目では列ごと畳むので（§9.140）、**表が器の左端から始まる**
+     ことで見る。畳んだ器の寸法(0)を使って隙間を測ると、どこに何があっても
+     通ってしまう。 */
+  rec('公差と入力表が隣り合っている',
+      g8.図あり?(g8.公差と表のすきま!==null&&g8.公差と表のすきま<40)
+              :(g8.表の左と器の左のずれ!==null&&g8.表の左と器の左のずれ<40),
       JSON.stringify(g8));
 
-  /* ---- 4d) 丈位置くらべ（§9.128） ----
-     ②では**いま選んでいる丈位置しか出ない**ので、頭と尾を見比べるには
-     丈を切り替えるしかなく、切り替えると今度はさっきの値が見えなかった。
-     1列のときに余る右側へ、同じ項目の全丈位置を1枚で出す。
+  /* ---- 4d) 丈位置は測定表の列そのもの（§9.136） ----
+     以前は「いまの丈の帯」＋「丈位置くらべ」の2枚で、同じ値が2箇所に
+     あった。1つの表にしたので、**他の丈位置の値は同じ表の隣の列**にある。
      **公差の材料ごと注ぎ込む**——検証用フィクスチャには公差が無い。 */
   await rowsFor(8);
   const lcSetup=await page.evaluate(()=>{
@@ -225,27 +249,29 @@ let b=null,page=null;
    return !!toleranceDetail('width',0,'板幅');
   });
   await page.waitForTimeout(500);
-  rec('公差の材料を注ぎ込めた(丈位置くらべ)',lcSetup===true,String(lcSetup));
+  rec('公差の材料を注ぎ込めた(測定表)',lcSetup===true,String(lcSetup));
   const lc=()=>page.evaluate(()=>{
-   const sec=document.querySelector('#measurementGrid .length-compare');
+   const sec=document.querySelector('#measurementGrid .measure-matrix');
    if(!sec)return{出ている:false};
    const heads=[...sec.querySelectorAll('thead th')];
    const rows=[...sec.querySelectorAll('tbody tr')];
-   const cellText=(r,c)=>rows[r]?.querySelectorAll('td')[c]?.textContent.trim()||'';
+   /* 値は入力欄の中にある（この表は読むだけでなく**入れる**表）。 */
+   const cellVal=(r,c)=>rows[r]?.querySelectorAll('td')[c]?.querySelector('input')?.value||'';
+   const ng=[...sec.querySelectorAll('input.ng')];
    return{
     出ている:true,
     見出し:heads.map(x=>x.textContent.trim()),
     行数:rows.length,
     いまの列:heads.findIndex(x=>x.classList.contains('is-current')),
-    /* 出ていない丈の値がここには出ていること（これがこの表の存在理由）。 */
-    他の丈の値:cellText(1,1),
-    公差外の印:sec.querySelectorAll('td.is-ng').length,
-    公差外の値:[...sec.querySelectorAll('td.is-ng')].map(x=>x.textContent.trim()),
+    /* 別の丈位置の値が**同じ表の隣の列**に出ていること。 */
+    他の丈の値:cellVal(1,1),
+    公差外の印:ng.length,
+    公差外の値:ng.map(x=>x.value),
     幅:Math.round(sec.getBoundingClientRect().width),
    };
   });
   const lc1=await lc();
-  rec('②に丈位置くらべが出る',lc1.出ている===true&&lc1.幅>150,JSON.stringify(lc1));
+  rec('②の測定表に全丈位置の列が出る',lc1.出ている===true&&lc1.幅>150,JSON.stringify(lc1));
   rec('列は「条」＋丈位置の数',lc1.見出し.join('/')==='条/1(頭)/1(尾)',JSON.stringify(lc1.見出し));
   rec('行は条数ぶん',lc1.行数===8,String(lc1.行数));
   /* **出ていない丈の値が見えること。** ここが空なら、この表を出す意味がない。 */
@@ -255,7 +281,7 @@ let b=null,page=null;
       JSON.stringify(lc1.公差外の値));
   /* 見出しを押したらその丈位置へ移る（見えた値へすぐ行ける）。 */
   await page.evaluate(()=>{
-   const b=[...document.querySelectorAll('#measurementGrid .length-compare thead th button')];
+   const b=[...document.querySelectorAll('#measurementGrid .measure-matrix thead th button')];
    b[1].click();
   });
   await page.waitForTimeout(600);
@@ -266,9 +292,14 @@ let b=null,page=null;
   await page.evaluate(()=>{const lp=document.querySelector('#lengthPos');
     lp.selectedIndex=0;lp.dispatchEvent(new Event('change',{bubbles:true}))});
   await page.waitForTimeout(400);
-  /* 2列（20条超）のときは場所が無いので出さない。 */
+  /* **条数が増えても表は1つのまま**（§9.136）。以前は20条を超えると帯が
+     2列になり、その場所を取るために丈位置くらべを降ろしていた。1つの表に
+     したので、条が増えても列（丈位置）の並びは変わらない。 */
   await rowsFor(24);
-  rec('2列のときは出さない',(await lc()).出ている===false);
+  const lc3=await lc();
+  rec('条数が増えても丈位置の列は変わらない',
+      lc3.出ている===true&&lc3.見出し.length===lc1.見出し.length&&lc3.行数===24,
+      JSON.stringify({見出し:lc3.見出し,行数:lc3.行数}));
   await rowsFor(8);
   /* 後始末: 次の検証（③の公差外の集計）へ値を持ち越さない。 */
   await page.evaluate(()=>{S.measure.measurements.width.forEach(r=>r.fill(''));renderMeasureGrid()});
@@ -356,7 +387,7 @@ let b=null,page=null;
    const id=x=>x.querySelector('select,input')?.id||'';
    return {
     見出し:[...box.querySelectorAll('.prep-head')].filter(vis)
-      .map(x=>(x.querySelector('.prep-more-name')||x).textContent.trim()),
+      .map(x=>(x.querySelector('.prep-fold-name')||x.querySelector('.prep-more-name')||x).textContent.trim()),
     出ている項目:[...box.querySelectorAll('label')].filter(vis).map(id),
     畳んでいる項目:[...box.querySelectorAll('label[data-prep="usual"]')].filter(x=>!vis(x)).map(id),
     要約:document.querySelector('#prepMoreList')?.textContent.trim()||'',
@@ -377,6 +408,8 @@ let b=null,page=null;
   rec('オペレータはプルダウン(リストボックスにしない)',opList.size<=1,JSON.stringify(opList));
   rec('オペレータの選択肢を減らしていない',opList.選択肢>=100,JSON.stringify(opList));
   rec('オペレータ欄が器の中でスクロールしない',opList.はみ出し<=1,JSON.stringify(opList));
+  /* 見出しの文字は**名前だけ**を見る。「いつもと同じ設定」の見出しには
+     畳んだ5項目の現在値が続くので、innerTextをそのまま比べると必ず落ちる。 */
   rec('見出しは「誰が→形→機材→いつもと同じ」の順',
       p1.見出し.join('/')==='誰が測るか/測定表の形/使う機材/いつもと同じ設定',
       p1.見出し.join('/'));
@@ -385,32 +418,60 @@ let b=null,page=null;
   rec('①に入力内容・丈位置を出さない',
       !p1.出ている項目.includes('measureType')&&!p1.出ている項目.includes('lengthPos'),
       JSON.stringify(p1.出ている項目));
-  /* **入力させる項目は折りたたまない**(§9.133)。畳むと現在値を要約でもう一度
-     書くことになり、同じ情報が2箇所に出る。場所は実測で足りている。 */
-  rec('①の入力項目は14個すべて出ている(折りたたまない)',
-      ['operator','inspector','crewSize','verticalCount','horizontalCount',
-       'innerDiameter','spool','thicknessGauge','widthGauge',
-       'unwind','widthOrder','widthDirection','burr','coilStop']
-        .every(k=>p1.出ている項目.includes(k))&&p1.出ている項目.length===14,
+  /* **①の入力項目14個は全部出ている**（§9.143）。§9.140では骨子の`1×2`に
+     収まらず「いつもと同じ設定」の5つを畳んでいたが、その溢れ（実測113px）の
+     原因だった作業時間が③へ移ったので、§9.133の「入力させる項目は折り
+     たたまない」へ戻せる。**畳む道具は残す**——畳んだときに現在値が読める
+     ことも合わせて見る。 */
+  const FOLDED=['unwind','widthOrder','widthDirection','burr','coilStop'];
+  const ALWAYS=['operator','inspector','crewSize','verticalCount','horizontalCount',
+                'innerDiameter','spool','thicknessGauge','widthGauge'];
+  const ALL14=[...ALWAYS,...FOLDED];
+  rec('①の入力項目14個は全部出ている',
+      ALL14.every(k=>p1.出ている項目.includes(k))&&p1.出ている項目.length===ALL14.length,
       JSON.stringify(p1.出ている項目));
-  rec('畳んでいる項目が無い',p1.畳んでいる項目.length===0,JSON.stringify(p1.畳んでいる項目));
-  /* **開始/終了時刻は準備の面に置く**(§9.133、項目5)。以前は左の情報カードの
-     中にあり、準備の必須入力なのに導線から外れていた。 */
-  const prepWt=await page.evaluate(()=>{
-   const box=document.querySelector('.measure-shell .selectors');
-   const w=box?.querySelector('[data-f="workTime"]');
-   if(!w)return null;
-   const r=w.getBoundingClientRect(),b=box.getBoundingClientRect();
-   return {中にある:true,最後:Math.round(r.bottom)>=Math.round(b.bottom)-2,
-     全幅:Math.round(r.width)>=Math.round(b.width)-2,
-     開始:!!document.getElementById('workStartAt'),終了:!!document.getElementById('workEndAt')};
+  rec('①に畳んだままの項目は無い',p1.畳んでいる項目.length===0,JSON.stringify(p1.畳んでいる項目));
+  /* 畳む道具は残っている。**畳んだときは値が読めること**が条件（§9.125）
+     ——隠したものが何かを書かずに隠すと、設定の存在ごと忘れられる。 */
+  const usual=await page.evaluate(async()=>{
+   const btn=document.getElementById('usualFold');
+   btn.click();
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   const sum=document.getElementById('usualSum');
+   const vals=['unwind','widthOrder','widthDirection','burr','coilStop']
+     .map(id=>{const e=document.getElementById(id);
+       return e?((e.selectedOptions&&e.selectedOptions[0]?e.selectedOptions[0].text:e.value)||'').trim():''});
+   const 隠れた=['unwind','widthOrder','widthDirection','burr','coilStop']
+     .filter(id=>{const e=document.getElementById(id);
+       return e&&e.closest('label')&&e.closest('label').offsetParent===null});
+   return{要約:(sum&&sum.textContent||'').trim(),値:vals,隠れた,
+     畳んでいる:btn.getAttribute('aria-expanded')==='false'};
   });
-  rec('開始/終了時刻が準備の入力面にある',!!prepWt&&prepWt.開始&&prepWt.終了,JSON.stringify(prepWt));
-  /* **置き場所は「いちばん右」から「いちばん下・全幅」へ**（§9.137）。準備の
-     入力は骨子で`1×2`＝1マス幅になり、カテゴリを縦に積む形になった。
-     作業時間は入力欄に`min-width:190px`があるので1列（204px）には入らず、
-     2列ぶんを使って最後に置く。 */
-  rec('開始/終了時刻は準備の最後に全幅で置く',!!prepWt&&prepWt.最後&&prepWt.全幅,JSON.stringify(prepWt));
+  rec('開いた状態で始まり、押せば畳める',
+      usual.畳んでいる===true&&usual.隠れた.length===FOLDED.length,JSON.stringify(usual));
+  rec('畳んだときは5項目の現在値が読める',
+      usual.値.filter(v=>v&&v!=='-').every(v=>usual.要約.includes(v)),
+      JSON.stringify(usual));
+  await page.evaluate(()=>document.getElementById('usualFold').click());
+  await page.waitForTimeout(120);
+  /* **作業時間は①に置かない**（§9.143、利用者の指示）。「準備の入力」は
+     測る前に1回決める設定の面で、時刻の記録はそこへ混ざると異物に見える。
+     ③「確認して完了」へ移した（実作業時間は測り終えてから確定するもの）。 */
+  const prepWt=await page.evaluate(()=>{
+   const w=document.querySelector('.measure-shell .selectors [data-f="workTime"]');
+   return {出ている:!!(w&&w.offsetParent!==null&&w.getBoundingClientRect().height>0),
+     欄はある:!!document.getElementById('workStartAt')};
+  });
+  rec('①に作業時間を出さない',prepWt.出ている===false&&prepWt.欄はある,JSON.stringify(prepWt));
+  /* **判定公差は①に出さない**（§9.143、利用者の指示）。通常は製造公差で
+     触ることがなく、判定しているのは②③。選べないときは②③でも出さない。 */
+  const tol1=await page.evaluate(()=>{
+   const box=document.querySelector('.tolerance-source-control');
+   return {出ている:!!(box&&box.offsetParent!==null&&box.getBoundingClientRect().height>0),
+     欄はある:!!document.getElementById('toleranceSource'),
+     値は出ている:!!document.querySelector('#toleranceFacts')};
+  });
+  rec('①に判定公差の切替を出さない',tol1.出ている===false&&tol1.欄はある,JSON.stringify(tol1));
 
   /* ---- 6) ③確認 ---- */
   await go('3');
@@ -423,6 +484,54 @@ let b=null,page=null;
      見ないこと**——`||`で拾うと先に空でないほうしか見ず、主張が変わる。 */
   const rest3=(m3.理由||'')+' / '+(m3.段[2].状態||'');
   rec('③には残りの件数を数で書く',/\d+\s*項目/.test(rest3),rest3);
+
+  /* ---- 6a) ③の作業時間（§9.143、利用者の指示でゼロベース） ----
+     手で入れる開始・終了のほかに、**測定の操作そのものが知っている時刻**を
+     3つだけ自動で残す（入力を始めた／転送を受け始めた／最後に入力した）。
+     参考であって、開始・終了を勝手に書き換えないこと——実作業時間は段取りや
+     中断を含み、人しか決められない。 */
+  const wt3=await page.evaluate(()=>{
+   const w=document.querySelector('.measure-shell .selectors [data-f="workTime"]');
+   const vis=x=>!!(x&&x.offsetParent!==null&&x.getBoundingClientRect().height>0);
+   const btn=document.getElementById('workFillFromAuto');
+   /* 「作業時間」という題が縦に2つ並んでいないこと（§9.129）。 */
+   const titles=[...document.querySelectorAll('.measure-shell .center-pane')]
+     .flatMap(c=>[...c.querySelectorAll('.panel-title,.work-time-title b')])
+     .filter(vis).map(x=>x.textContent.trim());
+   return {出ている:vis(w),
+     自動欄:['waFirstInput','waFirstTransfer','waLastInput'].filter(id=>vis(document.getElementById(id))),
+     ボタン:!!btn,押せる:btn?!btn.disabled:null,
+     理由:(document.getElementById('workAutoHint')||{}).textContent||'',
+     題:titles};
+  });
+  rec('③に作業時間がある',wt3.出ている,JSON.stringify(wt3.題));
+  rec('自動で記録した時刻を3つ出す',wt3.自動欄.length===3,JSON.stringify(wt3.自動欄));
+  /* **できないことは、できないと書く**。まだ値が1つも入っていないので
+     押せず、その理由が文で出ていること（灰色なだけでは伝わらない）。 */
+  rec('参考値が無いときは押せず、理由が書いてある',
+      wt3.ボタン&&wt3.押せる===false&&/まだ/.test(wt3.理由),JSON.stringify(wt3));
+  rec('「作業時間」の題が2つ並んでいない',
+      wt3.題.filter(t=>t==='作業時間').length===1,JSON.stringify(wt3.題));
+  /* 自動の記録が**実際に効く**こと。手入力で1つ値を入れると、
+     「入力を始めた」と「最後に入力した」が埋まり、押せるようになる。 */
+  const wtAfter=await page.evaluate(async()=>{
+   WL.workStamp.note('manual');
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   const btn=document.getElementById('workFillFromAuto');
+   const t=id=>(document.getElementById(id)||{}).textContent||'';
+   btn.click();
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   return {開始:t('waFirstInput'),転送:t('waFirstTransfer'),最終:t('waLastInput'),
+     押せた:!btn.disabled,
+     入った:!!(document.getElementById('workStartAt').value&&document.getElementById('workEndAt').value)};
+  });
+  rec('入力すると「入力を始めた」「最後に入力した」が埋まる',
+      /\d/.test(wtAfter.開始)&&/\d/.test(wtAfter.最終),JSON.stringify(wtAfter));
+  /* **手入力は「転送」に数えない**——混ぜると「転送を受け始めた時刻」が
+     作れない（測定器を使い始めた時刻が知りたいのであって、何か入れた
+     時刻ではない）。 */
+  rec('手入力は「転送を受け始めた」に数えない',!/\d/.test(wtAfter.転送),JSON.stringify(wtAfter));
+  rec('参考値を押すと開始・終了へ入る',wtAfter.押せた&&wtAfter.入った,JSON.stringify(wtAfter));
 
   /* ---- 6b) 完了前の確認表（§9.125） ----
      以前は未測定も公差外も**完了を押した後**の確認ダイアログでしか
@@ -678,6 +787,11 @@ let b=null,page=null;
       for(const o of el.options)need=Math.max(need,w(o.text));
       need+=28;
      }else if(el.tagName==='TEXTAREA'){
+      /* **読み取り専用の本文は器から幅をもらう**（§9.142/§9.143）ので、
+         中身と比べない。真上に置いた表と右端をそろえることが要件で、
+         そこだけ幅が違うほうが「そろっていない」（品質情報は実データでは
+         何行にもなる。窓の大きさを決めるのは行数のほう）。 */
+      if(el.readOnly)return;
       for(const ln of (el.value||'').split('\n'))need=Math.max(need,w(ln));
       need+=18;
      }else if(el.type==='datetime-local'){
@@ -688,7 +802,7 @@ let b=null,page=null;
          `0000.00`、自由記述は24文字を下限にする（それ以上は折り返さない
          1行なので、長くしても読みやすくならない）。 */
       const free=el.type==='text'&&!el.classList.contains('numeric-input')
-        &&!el.closest('.strip-row,.measure-grid-block');
+        &&!el.closest('.measure-matrix,.measure-grid-block');
       const sample=el.value||el.placeholder
         ||(el.type==='number'&&el.max?'0'.repeat(String(el.max).length)
           :free?'あ'.repeat(24):'0000.00');
@@ -753,7 +867,7 @@ let b=null,page=null;
   /* 幅の種類。**表の中は数えない**——測定表・丈位置くらべ・全丈表の欄は
      列で決まる構造的な幅で、規格とは別の決まり方をする。 */
   const widthKinds=()=>page.evaluate(()=>{
-   const skip='.strip-row,.measure-grid-block,.product-rows-table,.lc-table';
+   const skip='.measure-matrix,.measure-grid-block,.product-rows-table';
    const ws=[];
    document.querySelectorAll('.measure-body input,.measure-body select,.measure-body textarea')
     .forEach(el=>{
@@ -835,7 +949,13 @@ let b=null,page=null;
     return !!e&&e.getBoundingClientRect().height>0});
   rec('①の常時表示は基本情報と幅分割',
       wall1.面.includes('basic')&&split1,JSON.stringify(wall1)+' split='+split1);
-  rec('①のタブは1枚だけ（品質規格・分析）',wall1.タブ===1,JSON.stringify(wall1));
+  /* **①にタブは1枚も置かない**（§9.143、利用者の指示）。測定データ分析は
+     「準備」の面に置く意味が無い——まだ1件も測っておらず、中身が空の面へ
+     切り替えるだけのボタンになる。**タブごと消す**（押せるのに何も無い
+     ボタンを残さない）。分析は③の記録の壁に別カードとして出る。 */
+  rec('①にタブを置かない',wall1.タブ===0,JSON.stringify(wall1));
+  rec('①は品質規格を常時出す',wall1.面.includes('grade'),JSON.stringify(wall1));
+  rec('①に測定データ分析を出さない',!wall1.面.includes('analysis'),JSON.stringify(wall1));
   rec('タブの裏は同時に2枚出さない',
       !(wall1.面.includes('grade')&&wall1.面.includes('analysis')),JSON.stringify(wall1));
   /* **空き率は粗い目安**（中身の少ないロットでは正しく空く）。効くのは

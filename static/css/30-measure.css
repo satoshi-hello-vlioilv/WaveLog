@@ -330,13 +330,22 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    マスいっぱいに伸びて**中身のない枠**が残る（実測: ①の品質規格で480px、
    ③で532px）。粗いグリッドではマスが余るのは織り込み済みだが、余るのは
    「マス」であって「枠の中」ではない——空の枠は壊れて見える。 */
+/* ①の品質カードは**品質規格の表＋品質情報の本文**の2つだけ（§9.143）。
+   本文には**カードの残りの高さをそのまま渡す**——利用者の指示
+   「品質情報については表示エリアを確保してください」。実データの品質情報は
+   何行にもなり、2行の窓で送りながら読むものではない。ここは§9.131の
+   「面は中身なりの高さ」の例外で、伸びるのは**空の枠ではなく本文の窓**。 */
 .measure-shell.mstep-1 .quality-pane{
   grid-template-columns:minmax(0,1fr);
-  grid-template-rows:min-content min-content;
-  align-content:start;
+  grid-template-rows:min-content min-content minmax(0,1fr);
+  align-content:stretch;
 }
 .measure-shell.mstep-1 .quality-pane>*,
 .measure-shell.mstep-3 .quality-pane>*{align-self:start}
+.measure-shell.mstep-1 .quality-pane>.quality-info-block{
+  display:flex;flex-direction:column;align-self:stretch;min-height:0;
+}
+.measure-shell.mstep-1 .quality-pane>.quality-info-block>textarea{flex:1 1 auto;min-height:0}
 .measure-shell.mstep-3 .analysis{align-self:start}
 /* 測定データ分析は**測ってからでないと中身が無い**ので①には出さない。 */
 .measure-shell.mstep-1 .analysis,.measure-shell.mstep-1 .debug-pane{display:none}
@@ -382,14 +391,13 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
   display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);
   height:100%;
 }
-/* **丈位置は②に出す。** `PageUp/PageDown`で動かせるのに画面のどこにも
-   出ていなかった(進んだ先は`#stepStatus`の文字でしか分からない)。
-   ①には出さない（1回決めるものではないため。上の`step2`の規則）。
-   ②では高さを詰める——丈位置は縦割数+1個しか無いので、7行ぶんは要らない。 */
-.measure-shell.mstep-2 #lengthPosGroup{display:grid;grid-template-rows:auto auto}
-/* 高さは`size`（選択肢の数。measure-steps.jsの`fitLengthList()`が合わせる）に
-   任せる。CSSで固定すると、丈位置が2つのロットでも空白が5行ぶん付く。 */
-.measure-shell.mstep-2 #lengthPosGroup select{height:auto;overflow:auto}
+/* **丈位置の一覧は②から降ろした**（§9.136）。測定表の列見出しが丈位置の
+   選択を兼ねるので、同じものを選ぶ道具が2つある状態になる（§9.129）。
+   `#lengthPos`そのものは残す——丈位置を持っているのはこの`select`で、
+   `PageUp/PageDown`・完了前の確認の「直す」・帳票まで全部がこれを見る。
+   見えている一覧を消すことと、状態の置き場を消すことは別
+   （§9.124の`#measureType`とチップの関係と同じ）。 */
+.measure-shell.mstep-2 #lengthPosGroup{display:none}
 .measure-shell.mstep-2 #measureTypeGroup{
   display:grid;grid-template-rows:auto minmax(0,1fr) auto;height:100%;
 }
@@ -425,7 +433,12 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    まとまりの**始まり**に線を引いている）。 */
 .measure-shell.mstep-1 .selectors>.prep-head{
   display:flex;align-items:baseline;gap:var(--space-2);grid-column:1/-1;
-  height:auto;margin:var(--space-2) 0 0;padding:var(--space-2) 0 0;
+  /* 「いつもと同じ設定」は押せる見出し＝`<button>`なので、**高さはトークンに
+     乗せる**（§9.127。`test_scale`の巡回対象になる）。4枚の見出しがそろって
+     見えるよう、押せないほうも同じ高さにする。その2pxぶんは見出しの上下
+     余白（8px→4px）で返す——器は`1×2`しかない（§9.140）。 */
+  min-height:var(--ctl-h-xs);
+  height:auto;margin:var(--space-1) 0 0;padding:var(--space-1) 0 0;
   border:0;border-top:1px dashed var(--line-soft);border-radius:0;
   background:transparent;box-shadow:none;
   color:var(--ink-soft);font-size:var(--fs-micro);font-weight:700;text-align:left;
@@ -479,9 +492,45 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .measure-shell.mstep-1 .selectors>[data-f="widthDirection"]{grid-column:3;grid-row:9}
 .measure-shell.mstep-1 .selectors>[data-f="burr"]{grid-column:1;grid-row:10}
 .measure-shell.mstep-1 .selectors>[data-f="coilStop"]{grid-column:2;grid-row:10}
-/* 作業時間は**2列ぶんを使う**。中の`.work-time-row`は入力欄に`min-width:190px`
-   （`50-master.css`が持つ）があり、1列（204px）では必ず溢れる。 */
-.measure-shell.mstep-1 .selectors>[data-f="workTime"]{grid-column:1/-1;grid-row:11}
+/* **「いつもと同じ設定」は畳む**（§9.125へ戻す）。骨子の①「準備の入力」は
+   `1×2`＝422×631pxで、5カテゴリ＋作業時間を全部開くと**実測113px溢れて
+   作業時間が切れていた**。§9.133で「入力させる項目は全部見せる」として
+   折りたたみを廃止したが、骨子の面積とは両立しない。**畳んだままでも値は
+   読める**こと（見出しに現在値を並べる）が条件で、それを満たせば
+   「見せる」の趣旨は守れる。 */
+.measure-shell.mstep-1 .selectors.usual-off>[data-f="unwind"],
+.measure-shell.mstep-1 .selectors.usual-off>[data-f="widthOrder"],
+.measure-shell.mstep-1 .selectors.usual-off>[data-f="widthDirection"],
+.measure-shell.mstep-1 .selectors.usual-off>[data-f="burr"],
+.measure-shell.mstep-1 .selectors.usual-off>[data-f="coilStop"]{display:none}
+/* 見出しは押せるので、押せると分かる見た目にする（枠は付けない——
+   まとまりの枠と混ざる。§9.129）。 */
+.prep-fold{
+  display:flex;align-items:center;gap:var(--gap-inline);width:100%;min-width:0;
+  padding:0;border:0;background:transparent;text-align:left;cursor:pointer;
+}
+.prep-fold-name{flex:0 0 auto}
+.prep-sum{
+  flex:1 1 auto;min-width:0;color:var(--ink-3);font-size:var(--fs-micro);font-weight:600;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+/* **回った四角は元の枠からはみ出す。** 9pxの正方形を45度回すと対角線が
+   12.7pxになり、右端に置くと器から2px出る（`test_scale`が「ボタンの文字が
+   あふれていない」で捕まえた）。`transform`は場所を取らないので、
+   はみ出すぶんの余白を`margin`で先に空けておく。 */
+.prep-chev{
+  flex:0 0 auto;align-self:center;width:9px;height:9px;margin:0 3px 3px 0;
+  border-right:2px solid var(--ink-3);border-bottom:2px solid var(--ink-3);
+  transform:rotate(45deg);
+}
+.prep-fold[aria-expanded="true"] .prep-chev{margin:3px 3px 0 0;transform:rotate(-135deg)}
+.prep-fold[aria-expanded="true"] .prep-sum{visibility:hidden}
+/* **作業時間は①に置かない**（§9.143、利用者の指示）。「準備の入力」は
+   測る前に1回決める設定の面で、時刻の記録はそこへ混ざると異物に見える。
+   置き場は③「確認して完了」——実作業時間は測り終えてから確定するもので、
+   完了前の確認と同じ面にあるのが作業の順番と合う。**DOMは動かさない**
+   （§9.122と同じ理由で、器を移し替えず段ごとに見せ分ける）。 */
+.measure-shell.mstep-1 .selectors>[data-f="workTime"]{display:none}
 /* ①のリストは`size`（行数）に任せる（§9.126）。②で使う「入力内容」だけが
    ここに残る（①では非表示）。 */
 .measure-shell.mstep-1 .selectors .major-list{grid-template-rows:20px auto}
@@ -522,6 +571,33 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 }
 .measure-shell.mstep-3 .selectors>*{display:none}
 .measure-shell.mstep-3 .selectors>[data-f="workTime"]{display:block;grid-column:1}
+/* ③ではこの器は作業時間だけの器になる。題は**作業時間パネル自身が
+   持っている**（見出し＋状態が1行に並ぶ）ので、カードの題を別に足すと
+   「作業時間」が縦に2つ並ぶ（§9.129「同じ情報を2箇所に出さない」）。
+   カードの題を消し、パネルの見出しをカードの題として組む。 */
+.measure-shell.mstep-3 .center-pane>.panel-title{display:none}
+.measure-shell.mstep-3 .work-time-title{margin-bottom:var(--space-2)}
+.measure-shell.mstep-3 .work-time-title b{color:var(--teal);font-size:var(--fs-base-sm);font-weight:800;letter-spacing:.02em}
+/* ---------- ③の作業時間（§9.143、ゼロベース） ----------
+   周りの群（誰が測るか／使う機材）と**同じ見え方**にする: 見出しは
+   `.prep-head`、行はラベル＋欄、枠は付けない（カードが枠を持っている）。
+   自動で記録した時刻は**参考**なので、記録欄より下・小さい文字で置く
+   ——面積は「頻度×重要度」で配る。 */
+.work-auto{margin-top:var(--space-2);padding-top:var(--space-2);border-top:1px dashed var(--line-soft)}
+.prep-head-static{
+  display:block;margin:0 0 var(--space-1);
+  color:var(--ink-3);font-size:var(--fs-micro);font-weight:800;letter-spacing:.04em;
+}
+/* **ラベル列は固定幅**（§9.129）。1つのグリッドに3行を入れているので、
+   `max-content`でも列は1本に決まり、値の左端がそろう。 */
+.work-auto-list{
+  display:grid;grid-template-columns:max-content minmax(0,1fr);
+  gap:var(--gap-hair) var(--gap-inline);align-items:baseline;
+}
+.wa-k{color:var(--ink-3);font-size:var(--fs-micro)}
+.wa-v{font-size:var(--fs-sm);font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink)}
+#workFillFromAuto{margin-top:var(--space-2);height:var(--ctl-h-sm)}
+#workAutoHint{display:block;margin-top:var(--space-1);color:var(--ink-soft);font-size:var(--fs-micro)}
 /* ---------- 段ごとの割り付け（§9.131 ゼロベースの組み直し） ----------
    実測（1920×1080）では、①で左ペインの下に253px、②で母材・揃いのとき
    右ペインの下に483〜542px、③で確認表の下に619pxの空きがあった。
@@ -657,8 +733,14 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 }
 .measure-body>.left-pane>.basic-card,
 .measure-body>.quality-pane>.quality-grade-panel,
+/* 作業時間は**カードの中の1つの群**で、他の群（誰が測るか／使う機材）と
+   同じ見え方にする（§9.142）。以前は枠付きのパネルのままで、カードの中に
+   もう1枚カードが乗っているように見えていた（§9.129「枠の中に枠を作らない」）。
+   **器そのものが`[data-f="workTime"]`**なので、`>`で子を指す書き方では
+   一度も当たっていなかった。 */
 .measure-body>.center-pane>.work-time-panel,
-.measure-shell.mstep-1 .selectors>[data-f="workTime"]>.work-time-panel{
+.measure-shell.mstep-1 .selectors>.work-time-panel[data-f="workTime"],
+.measure-shell.mstep-3 .selectors>.work-time-panel[data-f="workTime"]{
   padding:0;border:0;border-radius:0;background:transparent;
 }
 .center-pane{container-type:inline-size;overflow-x:hidden}
@@ -668,6 +750,17 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
   margin:0 0 var(--space-1);
   color:var(--teal);font-size:var(--fs-base-sm);font-weight:800;letter-spacing:.02em;
 }
+/* 品質情報の本文は品質カードの中（骨子§9.137の①「品質情報の本文（②から
+   移設）＋品質規格の表」）。②の作業タブに置いてあったため、①で品質を
+   確かめるのにタブを1枚めくる必要があった。移した結果タブの中身が空に
+   なったので**ボタンごと消してある**（押せるのに何も無いボタンを残さない）。
+   区切りは破線1本だけ——**枠の中に枠を作らない**（§9.129）。 */
+.quality-info-block{margin-top:var(--space-2);padding-top:var(--space-2);border-top:1px dashed var(--line-soft);min-width:0}
+.qp-head{display:block;margin-bottom:var(--space-1);color:var(--ink-3);font-size:var(--fs-micro);font-weight:800;letter-spacing:.04em}
+/* 読み取り専用の本文は**幅を器（カード）から、行数を中身から**決める
+   （§9.142）。真上の品質規格の表と右端をそろえるため、上限は置かない
+   ——ここだけ幅が違うと、カードの中で一番目につく不揃いになる。 */
+.quality-info-block textarea{width:100%;min-width:0;resize:vertical}
 /* ---------- 5. 左ペイン ---------- */
 .tabs{display:flex}
 .tabs button{border-radius:var(--radius-tab) var(--radius-tab) 0 0;display:flex;align-items:center;justify-content:center;white-space:nowrap;border:1px solid transparent;background:transparent;color:#4a6169;box-shadow:none}
@@ -852,16 +945,23 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
   align-items:center;gap:var(--gap-inline);min-width:0;overflow:hidden;
 }
 .title-actions button{height:var(--ctl-h);min-width:max-content;padding:4px 9px;white-space:nowrap}
+/* 判定公差の切替は**選べるときだけ出す**（§9.143、利用者の指示）。
+   通常は製造公差で触ることがなく、常設すると「選ぶもの」に見えてしまう。
+   出す段は②測定と③確認だけ——**実際に判定している場所**で見えれば足りる
+   （①は測る前で、まだ判定が1件も無い）。値そのもの（下限/基準/上限）は
+   `#toleranceFacts`が①でも出す（§9.137で分けた「図」と「値」の「値」側）。
+   選べるかどうかは`configureToleranceSelector()`が`hidden`で決める。 */
+.measure-shell.mstep-1 .tolerance-source-control{display:none}
 .tolerance-source-control{min-width:0;overflow:hidden}
 .tolerance-source-control label{
   display:grid;grid-template-columns:max-content minmax(0,1fr);align-items:center;gap:var(--gap-tight);
   min-width:0;white-space:nowrap;
 }
-/* 判定公差プルダウン: 直前(80%)からさらに0.8倍＝64%に短縮。
-   さらに上限を置く——①準備で中央ペインが広くなり、選択肢2つの
-   プルダウンだけが400px近くまで伸びて、重要度と面積が食い違っていた。 */
+/* 判定公差プルダウンの幅は**選択肢の長さ**から決まる（§9.130。実測は
+   `fitControlWidths()`が`max-width`をemで入れる）。器の割合(%)で決めると、
+   置き場所を変えるたびに幅が変わってしまう。ここは実測が入る前の上限。 */
 .tolerance-source-control select{
-  width:64%;max-width:min(64%,14rem);min-width:0;height:var(--ctl-h);padding:4px 25px 4px 8px;justify-self:start;
+  width:100%;max-width:var(--w-lg);min-width:0;height:var(--ctl-h);padding:4px 25px 4px 8px;justify-self:start;
 }
 .order-tolerance-unavailable{color:#8b969a}
 .selectors{display:grid;gap:var(--gap-tight)}
@@ -1018,17 +1118,51 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 /* 見出しバーの中の状態は**文字だけ**。バーの中にさらに白い箱を置くと
    枠の中の枠になる（§9.129）。 */
 .measure-grid-block-title .measure-status{min-width:112px;text-align:right;padding:var(--pad-chip);background:transparent;border:0;font-weight:700}
-/* 公差(40) : 測定入力(60) */
-.compact-width-body{
-  display:grid;grid-template-columns:minmax(0,40fr) minmax(0,60fr);
-  gap:clamp(3px,.4vw,6px);padding:5px clamp(3px,.35vw,6px);
-  width:100%;max-width:100%;min-width:0;overflow:hidden;
-}
-.compact-width-body>*{min-width:0;max-width:100%}
 .compact-tolerance-side{min-width:0;max-width:100%;overflow:hidden}
-/* 並びは 上=公差情報カード / 下=図示スケール。
-   DOM 順（カード→スケール）のまま。order 指定はしない。 */
-.compact-width-body .compact-tolerance-side{display:grid;grid-template-rows:minmax(102px,auto) minmax(0,1fr);gap:var(--gap-tight)}
+/* 測定カードの左は**図だけ**（§9.140）。公差の値は基本情報カードへ移した
+   ので、ここは数直線1枚が縦いっぱいに伸びる。以前は「上=値のカード /
+   下=図」の2段で、値のカードが高さの下限(102px)を取るぶん図が縮んでいた。 */
+.matrix-body .compact-tolerance-side{display:grid;grid-template-rows:minmax(0,1fr)}
+/* 図が作れない項目（公差が無い／指示公差）では**列ごと畳んで表へ渡す**。
+   空の器を残しても読むものが無く、理由は基本情報カードの公差欄に既に
+   書いてある（§9.129）。 */
+.matrix-body.no-graph{grid-template-columns:minmax(0,1fr)}
+.matrix-body.no-graph .compact-tolerance-side{display:none}
+/* ---- 公差の「値」は基本情報カードの中（§9.140） ----
+   **枠の中に枠を作らない**（§9.129）。区切りは破線1本だけで、地色も枠も
+   持たせない。区分名（製造公差/オーダー公差/指示公差）はカードの中に
+   既にあるので、見出しを足すと同じ言葉が2つ並ぶ。 */
+/* 「どちらの公差で判定するか」を選ぶ欄は、その結果である値のすぐ上に置く
+   ——**視覚導線と作業導線を一致させる**。以前は「準備の入力」の見出し行に
+   間借りしており、見出しの残り幅で潰れて「製造公:」と切れていた。 */
+.tol-block{margin-top:var(--space-2);padding-top:var(--space-2);border-top:1px dashed var(--line-soft)}
+/* **`display`は明示する。** 器を`.left-pane`直下へ移したところ、どこかの
+   既存規則で`grid`になっており、中の公差カードが66pxまで潰れて「公差情報／
+   なし」と1文字ずつ折り返していた（実測。親が396pxあっても中が縮む）。 */
+.tol-facts{display:block;margin-top:var(--space-1)}
+.tol-facts .compact-tol-three-row,
+.tol-facts .compact-tol-card,.tol-facts .compact-tol-inline,.tol-facts .compact-tol-two-row,
+.tol-facts .instruction-tol-card{min-height:0;padding:0;border:0;background:transparent}
+.tol-facts .compact-tol-three-row{grid-template-rows:auto auto auto;gap:var(--gap-hair)}
+/* 公差が取れないときの1行。**`max-content`の2列を持ち込まない**——
+   基本情報カードへ移したことで器が変わり、「公差情報なし」が1文字ずつ
+   縦に折り返して読めなくなっていた（実測）。左から素直に流す。 */
+.tol-facts .compact-tol-three-row.no-data{
+  display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--gap-inline);
+  min-height:0;padding:0;border:0;background:transparent;
+}
+.tol-facts .compact-tol-three-row.no-data b{color:var(--warn-fg)}
+.tol-facts .compact-tol-three-row.no-data span{margin-left:0;color:var(--ink-3);font-size:var(--fs-sm)}
+/* ±の行は**左から読む2組**にする。器いっぱいに引き離す（`space-between`＋
+   2等分）と、ラベルと値のあいだが100px以上空いて「公差＋」と「-1.0」が
+   どちらの組か読めなくなる（§9.129のラベル列と同じ話）。 */
+/* 区分名（製造公差／オーダー公差）は**すぐ上のプルダウンが言っている**ので
+   バッジは出さない（§9.129。同じ言葉を2つ並べない）。指示公差は自分の
+   カード（`.instruction-tol-card`）に見出しを持つので、そちらは残す。 */
+.tol-facts .compact-tol-three-row .compact-tol-source{display:none}
+.tol-facts .tol-line-plusminus{display:flex;gap:var(--gap-section);padding-top:0;border-top:0}
+.tol-facts .tol-value-pair{flex:0 0 auto;justify-content:flex-start;gap:var(--space-1)}
+.tol-facts .tol-line-plusminus .tol-value-pair+.tol-value-pair{padding-left:0;border-left:0}
 /* 公差 3 段表示（区分・基準 / ＋・－ / 判定範囲） */
 .compact-tol-three-row{
   display:grid;grid-template-rows:minmax(25px,auto) minmax(25px,auto) minmax(27px,auto);gap:var(--gap-tight);
@@ -1103,95 +1237,69 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    以前は`repeat(2,1fr)`×20行が固定で、DOMを条数ぶんに減らした後も
    **器だけが40条ぶんの場所を取り続けていた**——②を全幅にしても右の
    1/4（実測430px）が空き、ブロックの中も8条で340pxの白が残った。
-   列数はJSが`one-strip`で伝える（`stripColumnCount()`の1箇所で決める）。 */
+   列数は`WL.measureItem.slotCount()`が決める（板厚は3、他は条数）。 */
 /* すべての測定種（板厚・板幅・ラテラルボー・バリ…）の単独ブロック */
 .compact-other{height:100%;display:flex;flex-direction:column;overflow:hidden}
-.compact-other .compact-width-body{flex:1;min-height:0}
-/* 1列のときは**公差と入力表を隣り合わせにし、余りは右端へ寄せる**。
-   最初は空いた幅を公差側へ回したが、**公差数直線は縦向き**なので幅を
-   渡しても使われず、空きが「右端」から「数直線と入力表のあいだ」へ
-   移っただけだった（実測900px）。**一緒に読むものを引き離さない。**
-   幅は2列のときの見え方（公差568px / 表416px）に合わせてある。 */
-/* 入力表の幅は**中身から**決める（§9.130）。26remのときは1つの欄が
-   339pxあり、`1234.56`（実測47px）に対して7倍だった。狭めたぶんは
-   **隣の丈位置くらべ**（1fr）が受け取る——一緒に読むものへ渡すなら
-   空きは移動ではなく活用になる。
-   **公差側は20rem**（§9.137）。測定カードが骨子の`2×3`＝873pxになったので、
-   36remでは公差側だけで576pxを取り、丈位置くらべが**47px**まで潰れていた。
-   数直線は縦向きなので幅を渡しても使われない（§9.126と同じ罠）。 */
-.compact-width-body.one-strip{
-  grid-template-columns:minmax(0,20rem) minmax(0,13rem) minmax(0,1fr);
-  justify-content:start;
+.compact-other .matrix-body{flex:1;min-height:0}
+/* ---------- ②の測定表は「丈位置×条」の1つの表（§9.136） ----------
+   左＝公差（数直線）、右＝表。以前は「いま選んでいる丈の帯」＋「丈位置
+   くらべ」の2枚で、同じ値が2箇所にあった（§9.129に反する）。1つの表に
+   すれば、丈の切り替えは**どの列がアクティブか**だけになり、表そのものは
+   動かない。
+   公差側は**図だけになったので`--w-lg`（15em）まで細くする**（§9.140）。
+   **数直線は縦向きなので幅を渡しても使われない**（§9.126と同じ罠。36remの
+   ときは表が47pxまで潰れ、20remでも「公差情報なし」の6文字に320pxあった）。
+   下限は目盛りラベルの領域(`--nl-track`=70px)＋直前値ラベルで、それを
+   下回ると数字が重なる。 */
+.matrix-body{
+  display:grid;grid-template-columns:minmax(0,var(--w-lg)) minmax(0,1fr);
+  gap:var(--gap-section);padding:var(--space-1) 0 0;
+  min-height:0;min-width:0;max-width:100%;overflow:hidden;
 }
-
-/* ---------- 丈位置くらべ（§9.128） ----------
-   ②では**いま選んでいる丈位置しか出ない**ので、頭と尾を見比べるには
-   丈を切り替えるしかなく、切り替えると今度はさっきの値が見えなかった。
-   1列のときに余る右側（実測430px）へ、同じ項目の全丈位置を1枚で出す。
-   **公差外はここでも印を付ける**（見えた時点で気づけるのが値打ち）。 */
-.length-compare{
-  display:grid;grid-template-rows:auto minmax(0,1fr);min-width:0;min-height:0;
-  /* ブロックの中なので**外枠は付けない**。入力表との境は細線1本（§9.129）。 */
-  padding-left:var(--space-3);border-left:1px solid var(--line-soft);background:transparent;
-  overflow:hidden;
+.matrix-body>*{min-width:0;max-width:100%;min-height:0}
+.mx-scroll{min-width:0;min-height:0;overflow:auto}
+/* **条は1列で40行まで。2段に折らない。** 丈は最大10列なので横は足りる。
+   行の中に置くものの高さは`--row-inner-h`から作る（§9.112。器の外寸
+   `--row-h`から作ると罫線と余白のぶん必ずはみ出す）。 */
+/* **列の幅は中身から決める**（§9.130）。`width:100%`だと丈位置が4つの
+   ロットで1セル222pxになり、`1234.56`（実測63px）に対して3倍以上だった。
+   測定値は`0000.00`の7桁なので5.5em。余った幅は右に空ける——器いっぱいに
+   引き伸ばすのは「中身から決める」の逆。 */
+/* 列は`fixed`で決め打ち、**表の幅は列数から上限を与える**（§9.130）。
+   `width:100%`だけだと丈位置4つで1セル222pxになり、`1234.56`（実測63px）の
+   3倍以上になる。逆に`width:auto`だと`input`の既定の見た目幅（約20文字）が
+   max-contentを決めてしまい、やはり190px級に広がる。**列数はJSが
+   `--mx-cols`で渡す**（丈位置の数はロットで変わる）。余りは右に空ける。 */
+.measure-matrix{
+  width:100%;max-width:calc(3.4em + var(--mx-cols,4) * 6.2em);
+  border-collapse:collapse;table-layout:fixed;
+  font-size:var(--tbl-fs);font-variant-numeric:tabular-nums;
 }
-.lc-title{
-  display:flex;align-items:baseline;gap:var(--space-2);
-  padding:var(--pad-chip);border-bottom:1px solid var(--line-soft);
-  background:var(--surface-2);color:var(--ink-2);font-size:var(--fs-sm);font-weight:800;
+.measure-matrix th,.measure-matrix td{border:1px solid var(--line-mid);padding:0;text-align:center}
+.measure-matrix thead th{
+  position:sticky;top:0;z-index:1;height:var(--ctl-h-xs);
+  background:var(--surface-2);color:var(--ink-2);font-weight:700;white-space:nowrap;
 }
-.lc-title small{color:var(--ink-soft);font-size:var(--fs-micro);font-weight:700}
-.lc-scroll{min-height:0;overflow:auto}
-.lc-table{width:100%;border-collapse:collapse;font-size:var(--tbl-fs);font-variant-numeric:tabular-nums}
-.lc-table th,.lc-table td{
-  padding:var(--pad-chip);border-bottom:1px solid var(--line-soft);
-  text-align:right;white-space:nowrap;
+.measure-matrix tbody th{width:3.4em;background:var(--surface-2);color:var(--ink-2);font-weight:700}
+.measure-matrix .mx-corner{width:3.4em}
+/* 列見出しが丈位置の選択を兼ねる（一覧は②から降ろした）。**いま測る列**は
+   地色と太字の両方で示す——色だけで伝えない。 */
+.measure-matrix thead th button{
+  width:100%;height:100%;min-width:0;padding:0 var(--space-1);
+  border:0;border-radius:0;background:transparent;box-shadow:none;
+  color:inherit;font-size:inherit;font-weight:inherit;white-space:nowrap;
 }
-.lc-table thead th{
-  position:sticky;top:0;z-index:1;padding:0;
-  background:var(--surface-2);border-bottom:1px solid var(--line);
-  text-align:center;font-size:var(--fs-sm);
+.measure-matrix thead th button:hover{background:var(--pale);color:var(--nav)}
+.measure-matrix thead th.is-current{background:var(--teal);color:#fff;font-weight:800}
+.measure-matrix thead th.is-current button:hover{background:var(--teal-dark);color:#fff}
+.measure-matrix td.is-current{background:var(--pale)}
+/* セルの中の入力欄は**枠を持たない**（表の罫線が枠。枠の中に枠を作らない）。 */
+.measure-matrix .strip-input-wrap{position:relative;min-width:0;max-width:100%}
+.measure-matrix input{
+  width:100%;min-width:0;max-width:100%;height:var(--row-inner-h);
+  border:0;border-radius:0;background:transparent;
+  padding:0 var(--space-1);text-align:right;font-variant-numeric:tabular-nums;
 }
-.lc-table thead th button{
-  width:100%;height:var(--ctl-h-xs);border:0;border-radius:0;
-  background:transparent;color:var(--ink-2);font-weight:800;font-size:var(--fs-sm);
-  box-shadow:none;white-space:nowrap;
-}
-.lc-table thead th button:hover{background:var(--pale);color:var(--nav)}
-.lc-table thead th.is-current{background:var(--pale)}
-.lc-table thead th.is-current button{color:var(--nav)}
-.lc-table tbody th{
-  width:var(--ctl-h-lg);color:var(--ink-soft);font-weight:700;text-align:right;
-}
-/* いま入力している丈位置の列。**入力表と同じ値がここにも出る**ので、
-   どこを見ているかが分かるように薄く敷く（色だけに頼らず、見出しの
-   文字色も変える）。 */
-.lc-table td.is-current{background:var(--pale)}
-.lc-table td.is-ng{background:var(--danger-bg);color:var(--danger);font-weight:800}
-.lc-empty{margin:var(--space-3);color:var(--ink-soft);font-size:var(--fs-sm)}
-.compact-strip-layout{
-  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(3px,.35vw,6px);
-  width:100%;max-width:100%;min-width:0;height:100%;overflow:hidden;
-}
-.one-strip .compact-strip-layout{grid-template-columns:minmax(0,1fr)}
-/* 行は`grid-auto-rows`で content ぶんだけ作り、**高さの上限は器のほうで
-   決める**（`--strip-rows`はJSが条数から入れる）。器いっぱいに伸ばすと
-   1条のロットで1行が700pxになり、20行に固定すると8条で12行ぶん白が残る。 */
-.strip-column{
-  display:grid;grid-template-columns:minmax(26px,18%) minmax(0,82%);
-  grid-template-rows:20px;grid-auto-rows:minmax(0,1fr);align-content:start;
-  min-width:0;max-width:100%;height:100%;
-  max-height:calc(20px + var(--strip-rows,20) * var(--strip-row-h));
-}
-.strip-column .strip-head{grid-column:1/-1;display:grid;grid-template-columns:minmax(26px,18%) minmax(0,82%);height:20px;font-weight:800;background:#f7fafb;border:1px solid #aebdc2}
-.strip-head span{display:flex;align-items:center;justify-content:center}
-.strip-row{display:contents}
-.strip-row label,.strip-row .strip-input-wrap{min-height:0;border-left:1px solid #aebdc2;border-bottom:1px solid #aebdc2}
-.strip-row label{display:flex;align-items:center;justify-content:flex-end;padding-right:4px;font-weight:700;background:#f7fafb}
-.strip-row .strip-input-wrap{position:relative;border-right:1px solid #aebdc2;min-width:0;max-width:100%}
-.strip-row input{width:100%;height:100%;min-width:0;max-width:100%;border:0;border-radius:0;padding:0 33px 0 6px;text-align:right;font-variant-numeric:tabular-nums}
-.strip-row.inactive input{background:#e3e7e8;color:#90999c}
-.strip-row.inactive label{color:#a0a8aa}
 /* 分割ありのとき、条の入力欄の左端へ子ロット番号(下3桁)のバッジを出す。
    色は条割の視覚図(.split-visual-block)と同じ配色をJSがインラインで指定する
    ——帯グラフと入力欄が同じ色で結び付くようにするため。バッジのぶんだけ
@@ -1202,15 +1310,18 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
   color:#fff;text-align:center;font-size:var(--fs-micro);font-weight:800;
   line-height:1.5;letter-spacing:.02em;pointer-events:none;
 }
-.strip-row .strip-input-wrap.has-lot-badge input{padding-left:34px}
+.strip-input-wrap.has-lot-badge input{padding-left:34px}
 .judge-pill{position:absolute;right:3px;top:50%;transform:translateY(-50%);min-width:27px;padding:0 2px;border-radius:var(--radius-sm);text-align:center;font-size:var(--fs-micro);font-weight:900;pointer-events:none}
 .judge-pill.ok{background:var(--teal);color:#fff}
 .judge-pill.ng{background:#d02e2e;color:#fff}
 .judge-pill.wait{display:none}
+/* 印は入力欄の**上に重なる**ので、出るセルだけ右余白を空ける。
+   空けないと値の右端が印の下に隠れる（`998.20`が`9`に見えた。実測）。 */
+.strip-input-wrap.has-judge input{padding-right:31px}
 /* 測定セルの状態色 */
-.measure-grid-block input.current,.strip-row input.current{outline:3px solid #f39a18;outline-offset:-3px;background:#fff6d8}
-.measure-grid-block input.complete,.strip-row input.complete{background:#bdece5}
-.measure-grid-block input.ng,.strip-row input.ng{background:#ff9e9e;color:#7a0000;font-weight:700}
+.measure-grid-block input.current,.measure-matrix input.current{outline:3px solid #f39a18;outline-offset:-3px;background:#fff6d8}
+.measure-grid-block input.complete,.measure-matrix input.complete{background:#bdece5}
+.measure-grid-block input.ng,.measure-matrix input.ng{background:#ff9e9e;color:#7a0000;font-weight:700}
 .device-ok{background:#dff7ee}
 .device-error{background:#ffd8d8}
 .device-detect{outline:3px solid #087c89;outline-offset:-2px}

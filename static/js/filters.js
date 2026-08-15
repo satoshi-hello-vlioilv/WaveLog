@@ -856,7 +856,11 @@
      と判定されて左右にずらされず、ほぼ重なったまま描かれていた。公差幅に
      対して測定値の散らばりが小さいと(例: 公差4mmに対し0.1mm刻み)これが常に
      起き、点が増えても1点しか見えず「値を変えても動かない」ように見えた。 */
-  const SWARM_DOT=8,SWARM_STEP=9,SWARM_GAP=2;
+  /* 横のずらし幅(SWARM_STEP)は**入力位置の点の大きさ**で決まる。その点だけ
+     一回り大きく描く(直径13px)ので、9pxずらしただけでは高さが3px違う隣と
+     まだ重なる(中心間9.5px < 半径の和10.5px)。§9.140で図を縦いっぱいへ
+     伸ばしたことで束ねられる点の高さ差が縮み、この差が表に出た。 */
+  const SWARM_DOT=8,SWARM_STEP=11,SWARM_GAP=2;
   function layoutSwarmDots(){
     document.querySelectorAll?.('.accurate-numberline[data-swarm="1"]').forEach(box=>{
       const dots=[...box.querySelectorAll('.numberline-swarm-dot')];

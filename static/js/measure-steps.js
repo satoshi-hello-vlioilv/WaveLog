@@ -234,9 +234,48 @@
    .forEach(p=>setHidden(p,false));
  }
 
+ /* 「いつもと同じ設定」の畳み込み（§9.140、§9.125へ戻す）。骨子の①
+    「準備の入力」は`1×2`しかなく、5カテゴリ＋作業時間を全部開くと実測
+    113px溢れて**作業時間が切れる**。畳むかわりに、**畳んだままでも値は
+    読める**ようにする——見出しに現在値を並べる（隠したものが何かを書かずに
+    隠すと、設定の存在ごと忘れられる）。
+    **既定値との差を件数で言うことはしない**——コイル止めの既定はロット由来
+    （`innerTape`）で定数では持てず（§9.125）、思い込みの既定で「N件違う」と
+    出すほうが値そのものを並べるより不正確になる。 */
+ const USUAL_IDS=['unwind','widthOrder','widthDirection','burr','coilStop'];
+ function usualSummary(){
+  return USUAL_IDS.map(id=>{
+   const el=sel(id);if(!el)return '';
+   const v=(el.selectedOptions&&el.selectedOptions[0]?el.selectedOptions[0].text:el.value)||'';
+   return String(v).trim();
+  }).filter(v=>v&&v!=='-').join('・');
+ }
+ function refreshUsualFold(){
+  const btn=document.getElementById('usualFold'),sum=document.getElementById('usualSum');
+  const box=document.querySelector('.selectors');
+  if(!btn||!box)return;
+  const open=btn.getAttribute('aria-expanded')==='true';
+  /* **同じ値なら触らない**（§9.131。値が同じでも変更記録が積まれ、見張りと
+     合わさると回り続ける）。 */
+  if(box.classList.contains('usual-off')===open)box.classList.toggle('usual-off',!open);
+  if(sum){const t=usualSummary();if(sum.textContent!==t)sum.textContent=t;}
+ }
+ function bindUsualFold(){
+  const btn=document.getElementById('usualFold');
+  if(!btn||btn.dataset.bound)return;
+  btn.dataset.bound='1';
+  btn.addEventListener('click',()=>{
+   btn.setAttribute('aria-expanded',btn.getAttribute('aria-expanded')==='true'?'false':'true');
+   refreshUsualFold();
+   try{fitControlWidths()}catch(e){}
+  });
+  /* 値が変わったら要約も変える。**`.value`への代入ではDOMが変わらない**ので
+     （§9.130）、段の描き直し側でも呼ぶ。 */
+  USUAL_IDS.forEach(id=>{const el=sel(id);if(el)el.addEventListener('change',refreshUsualFold)});
+ }
  function paint(){
   const el=shell();if(!el)return;
-  try{openInfoWall();openRecordWall()}catch(e){}
+  try{openInfoWall();openRecordWall();bindUsualFold();refreshUsualFold()}catch(e){}
   const states=stepStates();
   STEP_KEYS.forEach(k=>{
    const btn=document.querySelector(`.mstep[data-mstep="${k}"]`);
@@ -355,38 +394,77 @@
   for(const el of els)em=Math.max(em,snapEm(needWidth(el),parseFloat(getComputedStyle(el).fontSize)));
   for(const el of els)el.style.maxWidth=em+'em';
  }
+ /* ---------- 幅は「同じ列に並ぶもの」でそろえる（§9.142） ----------
+    §9.131で群（誰が測るか／使う機材…）の中をそろえたが、**群は意味の
+    まとまりであって、目に見える列ではない**。実測すると①準備の3列に
+    124px（選択肢）と63px（1〜2桁の数値）が縦に重なっており、右端が61px
+    ずれていた——**中身に忠実であるほど、列の右端はばらばらになる**。
+    中身から決めることと整列は、「同じ列は同じ幅」まで上げて初めて両立する。
+    そろえ先は列の最大の段。**器（トラック）が上限を兼ねる**ので
+    （どの部品も`width:100%`）、段を上げても器より広くはならない。
+    ボタンは対象外——文字の長さで決まるのが正しく、そろえると「クリア」が
+    「現在」ぶんの空白を抱えることになる。 */
+ const ALIGN_CARDS='.measure-shell .left-pane,.measure-shell .center-pane,'
+   +'.measure-shell .quality-pane,.measure-shell .right-pane,.measure-shell .split-pane';
+ /* 幅を持たない（`width:100%`が効かない）種類は、そろえても位置が動かない
+    どころか、`max-width`を上げると器いっぱいに伸びてしまう。 */
+ const NO_WIDTH=/^(checkbox|radio|button|submit|reset|hidden|range|color|image|file)$/;
+ function alignColumnWidths(){
+  document.querySelectorAll(ALIGN_CARDS).forEach(card=>{
+   const cols=new Map();
+   card.querySelectorAll('select,input,textarea').forEach(el=>{
+    /* 受信欄は触らない（§9.122）。表の中のセルは行が幅を持つ。
+       1pxに切り詰めてある状態の部品も対象外。 */
+    if(el.id==='deviceInput'||el.closest('table'))return;
+    if(el.tagName==='INPUT'&&NO_WIDTH.test(el.type))return;
+    if(el.offsetParent===null)return;
+    const b=el.getBoundingClientRect();
+    if(b.width<8)return;
+    const cs=getComputedStyle(el);
+    const fs=parseFloat(cs.fontSize)||14;
+    const em=cs.maxWidth==='none'?Infinity:parseFloat(cs.maxWidth)/fs;
+    const key=Math.round(b.left);
+    const col=cols.get(key)||{em:0,els:[]};
+    col.em=Math.max(col.em,em);col.els.push(el);
+    cols.set(key,col);
+   });
+   cols.forEach(col=>{
+    if(col.els.length<2)return;
+    const v=col.em===Infinity?'none':(Math.round(col.em*100)/100)+'em';
+    for(const el of col.els)if(el.style.maxWidth!==v)el.style.maxWidth=v;
+   });
+  });
+ }
  function fitControlWidths(){
   W_GROUPS.forEach(([k,ids])=>fitGroup(k,ids));
   READ_TEXT.forEach(([id,max])=>fitTextBox(id,max));
+  alignColumnWidths();
  }
 
- /* 読み取り専用の表示欄も**中身から**決める。品質情報は「異常情報なし」の
-    6文字しか無くても器は1401×280pxあった（実測）。ただし品質情報は
-    実データでは何行にもなるので、**行数の上限**を持たせて器の中で送る。
-    1行の長さは`READ_TEXT_EM`（全角40文字ぶん）まで——これ以上長い行は
-    目で追えなくなるので、幅を伸ばさず折り返す。
+ /* 読み取り専用の表示欄は**幅を器から、高さ（行数）を中身から**決める
+    （§9.142）。§9.130では幅も中身から決めていたが、855pxのカードの中で
+    本文だけが210pxになり、真上に置いた品質規格の表と右端が645pxずれて
+    いた——**器の中で1つだけ幅が違うものは、それだけで「そろっていない」**。
+    §9.130が直したかったのは「6文字に1401×280px」という**高さも含めた**
+    無駄で、器をカードの幅に、高さを中身に決めればその趣旨は満たせる
+    （骨子でカードの大きさが決まったので、器そのものが暴れなくなった）。
     **値は`.value`への代入で入るので変化を検知できない**（DOMは変わらない）。
-    段の描き直しと、**出る瞬間（作業タブの切り替え）**の両方で測り直す。 */
+    段の描き直しと、**出る瞬間（作業タブの切り替え）**の両方で測り直す。
+    器の幅も署名に入れる——カードの幅が変われば折り返す行数が変わる。 */
  const READ_TEXT=[['motherQualityInfo',16],['qualityInfo',20]];
  function fitTextBox(id,maxRows){
   const el=sel(id);
   if(!el||el.tagName!=='TEXTAREA')return;
+  if(el.style.maxWidth)el.style.maxWidth='';
   const cs=getComputedStyle(el);
   const text=el.value||'';
-  const sig='t|'+text.length+'|'+text.slice(0,60)+'|'+cs.fontSize;
+  const frame=parseFloat(cs.paddingLeft)+parseFloat(cs.paddingRight);
+  /* 縦スクロールバーのぶん(18px)を引いてから数える。 */
+  const inner=el.clientWidth-frame-18;
+  const sig='t|'+text.length+'|'+text.slice(0,60)+'|'+cs.fontSize+'|'+Math.round(inner);
   if(fitSig.get(el)===sig)return;
   fitSig.set(el,sig);
-  const fs=parseFloat(cs.fontSize)||14;
-  const frame=parseFloat(cs.paddingLeft)+parseFloat(cs.paddingRight)
-    +parseFloat(cs.borderLeftWidth)+parseFloat(cs.borderRightWidth);
   const lines=text.split('\n');
-  let longest=0;
-  for(const ln of lines)longest=Math.max(longest,textWidth(el,ln));
-  /* 本文の器も**規格へ丸める**（§9.131）。縦スクロールバーのぶんを
-     見込んでから丸めるので、丸めた幅の中に必ず収まる。 */
-  const em=snapEm(longest+frame+18,fs);
-  el.style.maxWidth=em+'em';
-  const inner=em*fs-frame-18;
   let rows=0;
   for(const ln of lines){
    const w=textWidth(el,ln);

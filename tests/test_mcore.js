@@ -211,14 +211,17 @@ let b=null,page=null;
    await page.waitForTimeout(700);
   };
   await setType('板厚');
+  /* 測定表は「丈位置×条」の1つの表（§9.136）なので、**行**が3つになる
+     （枠の数は 3行 × 丈位置の数）。 */
   const tGrid=await page.evaluate(()=>({
-   枠:document.querySelectorAll('#measurementGrid [data-mkey="thickness"]').length,
-   名:[...document.querySelectorAll('#measurementGrid .strip-row label')].map(x=>x.textContent),
+   行:document.querySelectorAll('#measurementGrid .measure-matrix tbody tr').length,
+   名:[...document.querySelectorAll('#measurementGrid .measure-matrix tbody th')].map(x=>x.textContent),
+   丈の列:document.querySelectorAll('#measurementGrid .measure-matrix thead th button').length,
    見出し:document.querySelector('#measurePanelTitle')?.textContent||'',
    focus:document.activeElement?.id||'',
   }));
   rec('板厚は丈ごとに3点（OS/CL/DS）だけ描く',
-      tGrid.枠===3&&JSON.stringify(tGrid.名)===JSON.stringify(['OS','CL','DS']),JSON.stringify(tGrid));
+      tGrid.行===3&&JSON.stringify(tGrid.名)===JSON.stringify(['OS','CL','DS']),JSON.stringify(tGrid));
   rec('板厚に切り替えても受信欄にフォーカスが載る',tGrid.focus==='deviceInput',JSON.stringify(tGrid));
   await send('DT100+003.015');
   const th1=await page.evaluate(()=>({

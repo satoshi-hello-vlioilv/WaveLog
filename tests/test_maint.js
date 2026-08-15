@@ -108,7 +108,14 @@ let b=null;
  NEEDED.forEach(l=>{if(!info.labels.includes(l))rec('項目が残っている: '+l,false,info.labels.join(','))});
  rec('必要な項目がすべて残っている',NEEDED.every(l=>info.labels.includes(l)));
 
- // 打刻した時刻が読める(幅が足りている)
+ /* 打刻した時刻が読める(幅が足りている)。**作業時間は③にある**（§9.143。
+    ①「準備の入力」は測る前に1回決める設定の面で、時刻の記録はそこへ
+    混ざると異物に見えるため③へ移した）。段を移ってから押す。 */
+ await page.evaluate(()=>document.querySelector('.mstep[data-mstep="3"]').click());
+ await page.waitForFunction(()=>{
+  const b=document.querySelector('#stampWorkStart');
+  return !!b&&b.getBoundingClientRect().height>0;
+ },null,{timeout:5000});
  await page.click('#stampWorkStart');await page.waitForTimeout(400);
  const stamp=await page.evaluate(()=>{
   const i=document.querySelector('#workStartAt');
@@ -125,6 +132,10 @@ let b=null;
  });
  rec('打刻後も切り落とさない',
      afterStamp.はみ出し<=0||/auto|scroll/.test(afterStamp.overflowY),JSON.stringify(afterStamp));
+ /* 以降は①で測る（基本情報カードは①②③のどこにも出るが、いちばん項目が
+    多いのは①）。 */
+ await page.evaluate(()=>document.querySelector('.mstep[data-mstep="1"]').click());
+ await page.waitForTimeout(300);
 
  /* 表示サイズを変えても収まる（§9.137）。**測るのは畳んだ状態**——基本情報は
     骨子で`1×2`（実測651px）のカードに固定したので、13項目の詳細を開けば
