@@ -44,10 +44,20 @@ let b=null,measureId='';
  page.on('pageerror',e=>console.log('[pageerror]',e.message));
  page.on('dialog',d=>d.accept());
  try{
-  const settle=async(ms=900)=>{
-   await page.waitForTimeout(ms);
+  /* **待つのは「取得が静まって、割り付けが確定したこと」**(§9.102)。
+     以前は画面ごとに1.8秒の固定待ちで、7画面で12.6秒を数えるだけに使って
+     いた。速い画面では無駄、遅い画面では足りない。 */
+  const quiet=async(ms=8000)=>{
+   const t0=Date.now();
+   let last=-1,same=0;
+   while(Date.now()-t0<ms){
+    const n=await page.evaluate(()=>(window.__pending||0)+document.querySelectorAll('.mm-empty,.sc-loading').length);
+    if(n===last){if(++same>=3)break}else{same=0;last=n}
+    await new Promise(r=>setTimeout(r,120));
+   }
    await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
   };
+  const settle=async(ms=900)=>{await quiet(Math.min(ms*3,8000))};
   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openSchedule',{timeout:20000});
   await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
@@ -154,6 +164,13 @@ let b=null,measureId='';
   /* **トークンの種類が増えていないこと**も見る。実測へ変えた副作用で
      「何でも通る」網にしないため(値は増やせても、種類は5つのまま)。 */
   rec('高さのトークンは5種類のまま',CTL_H.length<=5,`${CTL_H.length}種 ${CTL_H.join(',')}`);
+  /* **「同じものを見ている」ことを数で固定する**(§9.102)。待ちを固定時間から
+     条件へ変えた(25秒→8秒)ので、**早すぎて画面が出来ていないと、数える対象が
+     減っただけで全部PASSしてしまう**。実測360件を下限として置く——増えるのは
+     構わないが、大きく減ったら「速くなった」のではなく「見ていない」。 */
+  const perScreen={};all.forEach(c=>{perScreen[c.screen]=(perScreen[c.screen]||0)+1});
+  rec('数えた部品の数が減っていない(早すぎて空振りしていない)',all.length>=360,
+   `${all.length}件 ${Object.entries(perScreen).map(([k,v])=>k+':'+v).join(' ')}`);
 
   const badR=all.filter(c=>!RADIUS.includes(c.radius)&&!excepted(c));
   rec('角丸がトークン(0/4/8/10/14/999)に収まる',badR.length===0,

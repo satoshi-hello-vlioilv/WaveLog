@@ -1,6 +1,34 @@
 "use strict";
 /* measurement-view.js: 測定画面の構成 — データ形状(ensureMeasureShape/collect)、
    画面全体の描画(renderMeasurement)、左右パネル、入力検証、作業時間、公差表示の見出し。 */
+/* 入力内容の素性を決めるのは**ここ1箇所**（§9.138）。以前は
+   `type==='板厚/板幅'`という文字列比較が6ファイル・十数箇所に散っており、
+   項目を「板厚」「板幅」の2つへ分けるだけで**片方だけ直った状態**が簡単に
+   できてしまう（公差の出どころ・幅分割公差・自動転送の固定・帳票の節・
+   入力欄の数——どれか1つ落とすと、そこだけ黙って別の項目の公差で判定する）。
+   §9.125で`toleranceDetail`の第3引数を3ファイルへ通し忘れて偽の公差外を
+   出したのと同じ壊れ方なので、判定は関数にして散らさない。 */
+WL.measureItem={
+ /* 保存済みレコードが持つ旧名。選択肢から消えた値をそのまま`select.value`へ
+    入れると**空文字になる**（＝どの項目でもない状態で開く）ので、読み込む
+    時点で今の名前へ寄せる。板幅が条ごと・板厚が丈ごとなので、旧名は
+    「条ごと」側＝板幅として開く。 */
+ LEGACY:'板厚/板幅',
+ KEYS:{母材:'mother',板厚:'thickness',板幅:'width',ラテラルボー:'lateral',バリ:'burr',
+  テレスコープ:'telescope',巻ずれ:'offset',フラットネス:'flatness','板厚/板幅':'width'},
+ normalize(type){const t=String(type??'');return t===this.LEGACY?'板幅':t},
+ /* 板厚・板幅か（＝製造/オーダー公差を選べる寸法系か）。 */
+ isDimensional(type){const t=String(type??'');return t==='板厚'||t==='板幅'||t===this.LEGACY},
+ current(){return (typeof $==='function'&&$('#measureType')?.value)||S.measure?.settings?.measureType||''},
+ /* 公差・基準値をどちらの寸法で引くか。 */
+ kindOf(type){return this.normalize(type??this.current())==='板厚'?'thickness':'width'},
+ /* 1丈位置あたりの枠の数と呼び名。**板厚だけは条ごとではなく丈ごとに3点**
+    （エッジOS・中央CL・エッジDS）で、条数が40でも枠は3つしかない。 */
+ slotCount(key,count){return key==='thickness'?3:count},
+ slotLabels(key,count){return key==='thickness'?['OS','CL','DS']
+  :Array.from({length:count},(_,j)=>String(j+1))},
+ slotHead(key){return key==='thickness'?'位置':'条'},
+};
 // 横割数(条数)・縦割数(丈割数)の初期値は仕掛データ側の「BOX設計_横割数」
 // 「BOX設計_縦割数」から読む。値が無い/数値でない/範囲外の場合のみ、従来
 // 通り1を初期値とする(安全側。#horizontalCountは1〜40、#verticalCountは
@@ -24,6 +52,10 @@ m.basic=m.basic||{};m.settings={operator:'-',inspector:'-',lengthPos:'1(頭)',me
    だった。マスタ化して選択欄になったので、過去のデータは真偽値から
    名称へ読み替える(旧レコードを開いたときに「指定なし」へ化けないように)。
    innerTape自体は残さない——両方あると、どちらが正か分からなくなる。 */
+/* 入力内容の「板厚/板幅」は板厚(丈ごと3点)と板幅(条ごと)へ分けた(§9.138)。
+   旧レコードを開いたときに選択肢の無い値が入って**どの項目でもない状態**に
+   ならないよう、読み込む時点で今の名前へ寄せる(coilStopと同じ方針)。 */
+m.settings.measureType=WL.measureItem.normalize(m.settings.measureType);
 if(m.settings.innerTape!==undefined){
  if(!(m.settings||{}).coilStop||m.settings.coilStop==='指定なし')
   m.settings.coilStop=m.settings.innerTape?'内巻両面テープ':'指定なし';
@@ -106,7 +138,6 @@ function applyRightLayout(){
  if(layout==='measure'){renderMeasureGrid();updateMeasurementHeading()}
  if(layout==='product')renderProductPanel();
  if(layout==='mother'&&$('#motherQualityInfo')){const qi=S.measure.qualityInfo||'異常情報なし';$('#motherQualityInfo').value=qi;if($('#motherQualitySum'))$('#motherQualitySum').textContent=qi.split('\n')[0]}
- const summary=$('#toleranceSummary');if(summary&&$('#measureType')?.value==='板厚/板幅')summary.hidden=true;
 }
 /* v33: 「揃い/肉厚/長さ」は縦割数で分割した丈(1〜N)ごとに複数行で保持する。
    丈は旧VBA帳票の「丈」テーブル（長さ/肉厚/揃い/外観/備考）と同じ、
@@ -168,14 +199,14 @@ if($('#productAllOk'))$('#productAllOk').onclick=()=>{
 };
 $('#verticalCount')?.addEventListener('change',()=>{if($('#measureType').value==='揃い/肉厚/長さ')renderProductPanel()});
 /* 測定種ごとに運用が固定されているため、入力モードの切替UI自体を出さない。
-   - 板厚/板幅・バリ: 測定器からの自動転送のみ。
+   - 板厚・板幅・バリ: 測定器からの自動転送のみ。
    - ラテラルボー・テレスコープ・巻ずれ・フラットネス: 実運用は手動入力のみ
      (対応する自動転送デバイスがないため)。伝送状態欄(受信欄・検知回数等)
      も自動転送を前提にした表示のため、手動固定の測定種では丸ごと隠す。 */
 /* 設定系入力の変更はすべて未保存フラグを立てる(個別のonchangeを持つ要素は
    この後の個別割当が優先される。この行は必ず個別割当より先に実行すること)。 */
 document.querySelectorAll('.selectors input,.selectors select,.material-grid input').forEach(x=>x.onchange=markDirty);
-const AUTO_ONLY_MEASURE_TYPES={'板厚/板幅':1,'バリ':1};
+const AUTO_ONLY_MEASURE_TYPES={'板厚':1,'板幅':1,'バリ':1};
 const MANUAL_ONLY_MEASURE_TYPES={'ラテラルボー':1,'テレスコープ':1,'巻ずれ':1,'フラットネス':1};
 function syncInputModeLock(){
  if(!S.measure)return;
@@ -201,14 +232,46 @@ function renderMeasurement(){
     4かたまりへ束ね、参照用の項目はラベルと値を1行に収める。以前は全項目が
     ラベル上・値下の同じ見た目で、短い値(コース等)まで全幅を1行使っていたため
     縦に収まらず常時スクロールしていた。 */
- const idFields=[['検査No.','inspectionNo'],['鋳造No.','castingNo'],['オーダーNo.','orderNo'],['引当No.','allocationNo']];
- const productFields=[['用途名','purposeName'],['用途コード','purposeCode'],['取引先','customer'],['納入先','delivery']];
+ /* **常に見せるのは8項目だけ**(§9.133)。測定中に本当に要るのは
+    「どのロットか(ロット№・検査No.)」「何を作るか(用途名)」
+    「どんな材か(製造の材質・調質・板厚・板幅・板丈)」で、残りの
+    識別番号・取引先・オーダー寸法・コースは**普段は見ない**。
+    以前は13項目＋寸法表＋コースを常時出しており、段を切り替えるたびに
+    同じ情報が別の大きさ・別の場所に現れて散らかって見えていた。
+    **消すのではなく畳む**——「詳細」で今までどおり全部読める。 */
+ const idFields=[['鋳造No.','castingNo'],['オーダーNo.','orderNo'],['引当No.','allocationNo']];
+ const productFields=[['用途コード','purposeCode'],['取引先','customer'],['納入先','delivery']];
  const cell=([l,k])=>`<div class="field"><label>${l}</label><output title="${esc(b[k])}">${esc(b[k])||'—'}</output></div>`;
+ const val=(l,v)=>`<div class="field"><label>${l}</label><output title="${esc(v)}">${esc(v)||'—'}</output></div>`;
+ /* 常時出す8項目も**カテゴリでまとめ、関係の近いものは横に並べる**
+    （§9.137の骨子。利用者の指示「材質-調質、寸法は横並び」）。材質と調質は
+    1つの材の呼び名、板厚・板幅・板丈は1つの寸法なので、**1行で1つの事実**
+    として読めるようにする。縦に5行並べると、5つの別々の事実に見える。 */
+ const inline=pairs=>'<div class="field full info-inline">'
+   +pairs.map(([l,v])=>`<span class="ii"><label>${l}</label><output title="${esc(v)}">${esc(v)||'—'}</output></span>`).join('')
+   +'</div>';
+ /* 常時出す8項目は**3行**に詰める（§9.139、利用者の指示）。
+      1行目＝管理番号（ロット№・検査No.）／2行目＝用途名／3行目＝材と寸法。
+    見出しを行ごとに足すと行数が倍になって密度が下がるので、**ラベルが
+    そのまま見出し**として働く並びにする。ロット№は`LotDsp`を開く
+    ボタンだが、**器は番号の桁数ぶん**——全幅に伸ばすと、押せる面積が
+    番号の何倍にもなって「番号」より「ボタン」に見える（§9.130）。 */
  let h='<div class="info-grid">'
-  +`<div class="field full info-lot"><label>ロット№</label><button type="button" class="lot-dsp-link" title="クリックでLotDspをこのロット番号で開きます">${esc(b.lotNo)||'—'}</button></div>`
+  +'<div class="field full info-inline info-lot"><span class="ii"><label>ロット№</label>'
+  +`<button type="button" class="lot-dsp-link" title="クリックでLotDspをこのロット番号で開きます">${esc(b.lotNo)||'—'}</button></span>`
+  +`<span class="ii"><label>検査No.</label><output title="${esc(b.inspectionNo)}">${esc(b.inspectionNo)||'—'}</output></span></div>`
+  +inline([['用途名',b.purposeName]])
+  +inline([['材質',b.mfgMaterial],['調質',b.mfgTemper],
+    ['板厚',fmtDim(b.mfgThickness,3)],['板幅',fmtDim(b.mfgWidth,1)],['板丈',fmtDim(b.mfgLength,1)]])
+  +'<button type="button" class="info-more" id="basicMore" aria-expanded="false" aria-controls="basicDetail">詳細を見る</button>'
+  +'<div class="info-detail" id="basicDetail" hidden>'
   +'<div class="info-group">識別番号</div>'+idFields.map(cell).join('')
   +'<div class="info-group">製品</div>'+productFields.map(cell).join('')
-  +'<div class="info-group info-group-course">コース</div>';h+=`<div class="dimension"><b></b><b>材質</b><b>調質</b><b>板厚</b><b>板幅</b><b>板丈</b><b>オーダー</b><span>${esc(b.orderMaterial)}</span><span>${esc(b.orderTemper)}</span><span>${esc(fmtDim(b.orderThickness,3))}</span><span>${esc(fmtDim(b.orderWidth,1))}</span><span>${esc(fmtDim(b.orderLength,1))}</span><b>製造</b><span>${esc(b.mfgMaterial)}</span><span>${esc(b.mfgTemper)}</span><span>${esc(fmtDim(b.mfgThickness,3))}</span><span>${esc(fmtDim(b.mfgWidth,1))}</span><span>${esc(fmtDim(b.mfgLength,1))}</span></div></div>`;$('#basicInfo').innerHTML=h;Object.entries(m.settings).forEach(([k,v])=>{const el=$('#'+k);if(el){if(el.type==='checkbox')el.checked=v;else el.value=v}});$('#qualityInfo').value=m.qualityInfo;document.querySelectorAll('[data-mother]').forEach(x=>x.value=m.mother[x.dataset.mother]||'');$('#motherOriginalWidth').textContent=fmtDim(b.originalWidth,1)||'－';renderMeasureGrid();renderStats();setState('IndexedDB読込済み')
+  +'<div class="info-group info-group-course">コース</div>';h+=`<div class="dimension"><b></b><b>材質</b><b>調質</b><b>板厚</b><b>板幅</b><b>板丈</b><b>オーダー</b><span>${esc(b.orderMaterial)}</span><span>${esc(b.orderTemper)}</span><span>${esc(fmtDim(b.orderThickness,3))}</span><span>${esc(fmtDim(b.orderWidth,1))}</span><span>${esc(fmtDim(b.orderLength,1))}</span><b>製造</b><span>${esc(b.mfgMaterial)}</span><span>${esc(b.mfgTemper)}</span><span>${esc(fmtDim(b.mfgThickness,3))}</span><span>${esc(fmtDim(b.mfgWidth,1))}</span><span>${esc(fmtDim(b.mfgLength,1))}</span></div></div></div>`;$('#basicInfo').innerHTML=h;
+ {const mb=$('#basicMore'),dt=$('#basicDetail');
+  if(mb&&dt)mb.onclick=()=>{const open=dt.hidden;dt.hidden=!open;
+   mb.setAttribute('aria-expanded',open?'true':'false');
+   mb.textContent=open?'詳細を閉じる':'詳細を見る';};}Object.entries(m.settings).forEach(([k,v])=>{const el=$('#'+k);if(el){if(el.type==='checkbox')el.checked=v;else el.value=v}});$('#qualityInfo').value=m.qualityInfo;document.querySelectorAll('[data-mother]').forEach(x=>x.value=m.mother[x.dataset.mother]||'');$('#motherOriginalWidth').textContent=fmtDim(b.originalWidth,1)||'－';renderMeasureGrid();renderStats();setState('IndexedDB読込済み')
  {const mode=S.measure.settings.inputMode||'auto';document.querySelectorAll('[data-mode]').forEach(x=>x.classList.toggle('active',x.dataset.mode===mode))}
  activateWorkspace($('#measureType').value==='母材'?'mother':'measure');
  applyInputProtection();
@@ -224,10 +287,17 @@ function renderMeasurement(){
  renderCourseHierarchy();
  renderScheduleInfo();
  configureToleranceSelector();
- document.querySelectorAll('[data-lefttab]').forEach(x=>x.classList.toggle('active',x.dataset.lefttab==='worktime'));
- document.querySelectorAll('[data-leftpanel]').forEach(x=>x.hidden=x.dataset.leftpanel!=='worktime');
+ /* 既定のサブタブは**品質規格**。以前は`'worktime'`を指していたが、作業時間は
+    ①の「準備の入力」へ移してサブタブから外れており、**どのタブにも当たらない
+    値だったため`[data-leftpanel]`が全部隠れていた**（①の品質カードが空のまま
+    出ていた原因。カードの器だけが残るので、レイアウトの不具合に見える）。 */
+ document.querySelectorAll('[data-lefttab]').forEach(x=>x.classList.toggle('active',x.dataset.lefttab==='grade'));
+ document.querySelectorAll('[data-leftpanel]').forEach(x=>x.hidden=x.dataset.leftpanel!=='grade');
  updateWorkTimePanel();
  updateMeasurementHeading();
+ /* マスタの差異の見張りを始める（§9.139）。開いているあいだだけ回り、
+    閉じていれば`check()`が自分で降りる。 */
+ try{WL.masterDiff.start()}catch(e){}
 }
 // Unified required/valid/NG visual language.
 function hasValue(el){return String(el?.value??'').trim()!==''&&String(el?.value??'').trim()!=='-'}
@@ -309,7 +379,30 @@ const QUALITY_GRADE_SOURCE={
  '直角度':['品質ｸﾞﾚｰﾄﾞ_直角度'],'方向性':['品質ｸﾞﾚｰﾄﾞ_方向性'],'強度':['品質ｸﾞﾚｰﾄﾞ_強度'],
  'アルマイト':['品質ｸﾞﾚｰﾄﾞ_ｱﾙﾏｲﾄ','品質ｸﾞﾚｰﾄﾞ_アルマイト'],'表面処理':['品質ｸﾞﾚｰﾄﾞ_表面処理']
 };
-function renderQualityGradePanel(){const panel=$('#qualityGradePanel');if(!panel)return;const m=S.measure;m.qualityGrades=m.qualityGrades||{};Object.entries(QUALITY_GRADE_SOURCE).forEach(([label,names])=>m.qualityGrades[label]=sourceValue(names));panel.innerHTML=`<div class="quality-grade-grid">${Object.keys(QUALITY_GRADE_SOURCE).map(label=>`<div class="quality-grade-item"><b>${esc(label)}</b><span title="${esc(m.qualityGrades[label]||'')}">${esc(m.qualityGrades[label]||'未設定')}</span></div>`).join('')}</div>`}
+/* 品質規格は**縦4×横3の表**(§9.133)。12項目あり、カードを敷き詰めると
+   器の幅で3列になったり4列になったりして、開くたびに違う形に見えていた。
+   行と列を決め打ちにすれば「いつもの表」として読める。
+   **重要度は低い**(測定中に見る値ではない)ので、主要導線から外してタブの
+   裏へ置く——場所を取らせない代わりに、1回の操作で必ず出せる。 */
+function renderQualityGradePanel(){
+ const panel=$('#qualityGradePanel');if(!panel)return;
+ const m=S.measure;m.qualityGrades=m.qualityGrades||{};
+ const labels=Object.keys(QUALITY_GRADE_SOURCE);
+ Object.entries(QUALITY_GRADE_SOURCE).forEach(([label,names])=>m.qualityGrades[label]=sourceValue(names));
+ const COLS=3,ROWS=Math.ceil(labels.length/COLS);
+ let rows='';
+ for(let r=0;r<ROWS;r++){
+  let tds='';
+  for(let c=0;c<COLS;c++){
+   const label=labels[r*COLS+c];
+   if(label===undefined){tds+='<th></th><td></td>';continue}
+   const v=m.qualityGrades[label]||'';
+   tds+=`<th>${esc(label)}</th><td title="${esc(v)}">${esc(v||'未設定')}</td>`;
+  }
+  rows+=`<tr>${tds}</tr>`;
+ }
+ panel.innerHTML=`<table class="quality-grade-table"><tbody>${rows}</tbody></table>`;
+}
 function renderDataManagementPanel(){
  const panel=$('#dataManagementPanel');if(!panel)return;hydrateBusinessFields();const b=S.measure.basic;
  const rows=[['取引先',b.customer],['納入先',b.delivery],['実績コース',b.course],['オーダー番号',b.orderNo],['オーダー材質',b.orderMaterial],['オーダー調質',b.orderTemper],['オーダー板厚',b.orderThickness],['オーダー板幅',b.orderWidth],['オーダー板丈',b.orderLength]];
@@ -338,14 +431,14 @@ function upgradeManualInputTypes(){
 }
 function renderResidualCourseEverywhere(){
  if(!S.measure)return;const residual=sourceField(['残仕掛設備ｺｰｽ','残仕掛設備コース']);S.measure.basic.residualCourse=residual;
- const basic=$('#basicInfo .info-grid');if(basic){basic.querySelectorAll('.residual-course-field').forEach(x=>x.remove());const course=[...basic.querySelectorAll('.field')].find(x=>x.querySelector('label')?.textContent==='実績');const item=document.createElement('div');item.className='field residual-course-field';item.innerHTML=`<label>残</label><output title="${esc(residual)}">${esc(residual||'未設定')}</output>`;if(course)course.after(item);else basic.append(item)}
+ const basic=$('#basicDetail')||$('#basicInfo .info-grid');if(basic){basic.querySelectorAll('.residual-course-field').forEach(x=>x.remove());const course=[...basic.querySelectorAll('.field')].find(x=>x.querySelector('label')?.textContent==='実績');const item=document.createElement('div');item.className='field residual-course-field';item.innerHTML=`<label>残</label><output title="${esc(residual)}">${esc(residual||'未設定')}</output>`;if(course)course.after(item);else basic.append(item)}
  const grid=$('#dataManagementPanel .data-management-grid');if(grid){[...grid.querySelectorAll('[data-residual-course]')].forEach(x=>x.remove());const children=[...grid.children],courseIndex=children.findIndex(x=>x.tagName==='B'&&x.textContent==='実績コース'),courseValue=courseIndex>=0?children[courseIndex+1]:null,label=document.createElement('b'),value=document.createElement('span');label.textContent='残コース';value.textContent=residual||'未設定';value.title=residual;label.dataset.residualCourse='1';value.dataset.residualCourse='1';if(courseValue)courseValue.after(label,value);else grid.append(label,value)}
 }
 /* 公差の内訳(基準値・±・計算式)を見出し領域へ表示する。 */
 function updateMeasurementHeading(){
- const type=$('#measureType').value;$('#measurePanelTitle').textContent=type==='板厚/板幅'?'板厚・板幅測定':type+'測定';
+ const type=$('#measureType').value;$('#measurePanelTitle').textContent=type+'測定';
  if(type==='フラットネス'){$('#toleranceSummary').innerHTML='<div class="tol-status no-data"><b>判定基準</b><span>〇＝OK　△・×＝NG　条ごとに記号を入力してください。</span></div>';return}
- const kind=type==='板厚/板幅'?'thickness':'width',detail=toleranceDetail(kind),base=Number(kind==='thickness'?S.measure.basic.mfgThickness:S.measure.basic.mfgWidth);
+ const kind=WL.measureItem.kindOf(type),detail=toleranceDetail(kind),base=Number(kind==='thickness'?S.measure.basic.mfgThickness:S.measure.basic.mfgWidth);
  if(!detail){$('#toleranceSummary').innerHTML='<div class="tol-status no-data"><b>公差情報なし</b><span>選択した公差区分に使用可能なプラス・マイナス値がありません。</span></div>';return}
  const labels={manufacturing:'製造公差',order:'オーダー公差',instruction:'指示公差'},sourceLabel=labels[detail.source],requestedLabel=labels[configuredToleranceSource()],fallback=detail.fallback?`${requestedLabel}が不足しているため製造公差を使用`:'';
  $('#toleranceSummary').innerHTML=`<div class="tol-source-row"><span class="tolerance-source-badge ${detail.source==='order'?'order':''}">${sourceLabel}</span>${fallback?`<span class="tol-fallback">${esc(fallback)}</span>`:''}</div><div class="tol-facts"><div><small>基準値</small><b>${base}</b></div><div><small>公差 ＋</small><b>+${detail.plus}</b><em>${esc(detail.plusKey)}</em></div><div><small>公差 －</small><b>-${detail.minus}</b><em>${esc(detail.minusKey)}</em></div><div class="tol-result"><small>判定範囲</small><b>${detail.range[0]} ～ ${detail.range[1]}</b></div></div><div class="tol-formula">計算: ${base} - ${detail.minus} = ${detail.range[0]} ／ ${base} + ${detail.plus} = ${detail.range[1]}</div>`;
@@ -353,7 +446,7 @@ function updateMeasurementHeading(){
 // Design, actual and residual courses are rendered as one ordered information group.
 function renderCourseHierarchy(){
  if(!S.measure)return;const design=designCourseValue(),actual=actualCourseValue(),residual=residualCourseValue();S.measure.basic.designCourse=design;S.measure.basic.course=actual;S.measure.basic.residualCourse=residual;
- const basic=$('#basicInfo .info-grid');if(basic){[...basic.querySelectorAll('.course-stack-field,.residual-course-field')].forEach(x=>x.remove());const old=[...basic.querySelectorAll('.field')].find(x=>x.querySelector('label')?.textContent==='実績コース');if(old)old.remove();
+ const basic=$('#basicDetail')||$('#basicInfo .info-grid');if(basic){[...basic.querySelectorAll('.course-stack-field,.residual-course-field')].forEach(x=>x.remove());const old=[...basic.querySelectorAll('.field')].find(x=>x.querySelector('label')?.textContent==='実績コース');if(old)old.remove();
   /* コースは「設計→実績→残」の順に意味がつながる1かたまり(§9.55)。
      コース見出しの直後へこの順で並べる。**3項目とも縦に1行ずつ**で、
      横幅はエリアいっぱい(全幅・折り返し)——実機のコースは
@@ -386,7 +479,7 @@ function scheduleMinutesLabel(min){
  return `${Math.floor(v/60)}時間${v%60?(v%60)+'分':''}`;
 }
 function renderScheduleInfo(){
- const basic=$('#basicInfo .info-grid');if(!basic)return;
+ const basic=$('#basicDetail')||$('#basicInfo .info-grid');if(!basic)return;
  basic.querySelectorAll('.schedule-info-field').forEach(x=>x.remove());
  const lotNo=S.measure?.basic?.lotNo;
  if(!lotNo||!scheduleInfoCache||normalizedLot(scheduleInfoCache.lotNo)!==normalizedLot(lotNo))return;
@@ -416,14 +509,62 @@ async function refreshScheduleInfo(){
  }
  renderScheduleInfo();
 }
-function configureToleranceSelector(){const el=$('#toleranceSource');if(!el||!S.measure)return;const type=$('#measureType').value,isDimensional=type==='板厚/板幅',order=el.querySelector('option[value="order"]'),availability=orderToleranceAvailability();order.disabled=!availability.available;order.textContent=availability.available?'オーダー公差':'オーダー公差（データなし）';order.classList.toggle('order-tolerance-unavailable',!availability.available);if(!availability.available&&S.measure.settings.toleranceSource==='order')S.measure.settings.toleranceSource='manufacturing';el.value=S.measure.settings.toleranceSource||'manufacturing';el.disabled=!isDimensional;el.title=isDimensional?(availability.available?'製造公差またはオーダー公差を選択できます':'オーダー公差がないため製造公差のみ使用できます'):'板厚・板幅以外は指示公差を自動適用します';el.onchange=()=>{if(el.value==='order'&&!availability.available)return;S.measure.settings.toleranceSource=el.value;renderMeasureGrid();updateMeasurementHeading();markDirty()}}
+function configureToleranceSelector(){const el=$('#toleranceSource');if(!el||!S.measure)return;const type=$('#measureType').value,isDimensional=WL.measureItem.isDimensional(type),order=el.querySelector('option[value="order"]'),availability=orderToleranceAvailability();order.disabled=!availability.available;order.textContent=availability.available?'オーダー公差':'オーダー公差（データなし）';order.classList.toggle('order-tolerance-unavailable',!availability.available);if(!availability.available&&S.measure.settings.toleranceSource==='order')S.measure.settings.toleranceSource='manufacturing';el.value=S.measure.settings.toleranceSource||'manufacturing';el.disabled=!isDimensional;el.title=isDimensional?(availability.available?'製造公差またはオーダー公差を選択できます':'オーダー公差がないため製造公差のみ使用できます'):'板厚・板幅以外は指示公差を自動適用します';el.onchange=()=>{if(el.value==='order'&&!availability.available)return;S.measure.settings.toleranceSource=el.value;renderMeasureGrid();updateMeasurementHeading();markDirty()}}
 /* 作業時間パネル。開始→終了の順序を強制するロック付き打刻。 */
 function formatWorkTime(value){if(!value)return '';const d=new Date(value);return Number.isNaN(d.getTime())?'':d.toLocaleString('ja-JP',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'})}
 function stampWorkTimeLocked(kind){if(!S.measure)return;S.measure.workTime=S.measure.workTime||{};const now=new Date();if(kind==='start'){if(S.measure.workTime.endAt){showToast('開始時刻は変更できません','終了時刻の記録後は開始時刻を変更できません。');return}S.measure.workTime.startAt=now.toISOString()}else{if(!S.measure.workTime.startAt){showToast('開始時刻が未記録です','先に開始時刻を記録してください。');return}if(now<new Date(S.measure.workTime.startAt)){showToast('終了時刻を記録できません','終了時刻は開始時刻より後である必要があります。');return}S.measure.workTime.endAt=now.toISOString()}updateWorkTimePanel();markDirty();updateValidationVisuals()}
 function updateWorkTimePanel(){if(!S.measure)return;S.measure.workTime=S.measure.workTime||{startAt:'',endAt:''};const start=$('#workStartAt'),end=$('#workEndAt');if(!start||!end)return;start.dataset.iso=S.measure.workTime.startAt||'';end.dataset.iso=S.measure.workTime.endAt||'';start.value=formatWorkTime(start.dataset.iso);end.value=formatWorkTime(end.dataset.iso);$('#stampWorkStart').disabled=!!S.measure.workTime.startAt;$('#stampWorkEnd').disabled=!S.measure.workTime.startAt||!!S.measure.workTime.endAt;[[ $('#workStartCard'),start.dataset.iso],[ $('#workEndCard'),end.dataset.iso]].forEach(([card,value])=>{card?.classList.toggle('validation-required',!value);card?.classList.toggle('validation-valid',!!value)});$('#workDuration').textContent=S.measure.workTime.endAt?`実作業時間 ${formatDuration(durationMs(S.measure))}`:S.measure.workTime.startAt?'作業中':'未計測';$('#stampWorkStart').onclick=()=>stampWorkTimeLocked('start');$('#stampWorkEnd').onclick=()=>stampWorkTimeLocked('end')}
 document.querySelectorAll('[data-worktab]').forEach(b=>b.onclick=()=>activateWorkspace(b.dataset.worktab));
 bindTabs('left','left');
-$('#reloadMaster').onclick=()=>loadMeasurementContext(true);
+/* ---------- マスタの差異はバッジで知らせる（§9.139） ----------
+   利用者の指示「マスタ再読込ボタンは、バックグラウンドで差異が見られた
+   場合にのみ、各入力内容ごとにバッジで出す」。常設のボタンは**押す理由が
+   分からない**（押しても何も変わらないことがほとんどで、変わったときだけ
+   意味がある）。裏で選択肢を突き合わせ、**変わった欄にだけ**印を出す。
+   印を押すとその場で取り込む。**取りに行けなかったときは黙る**——
+   知らせようがないので、出せない印を出さない。 */
+WL.masterDiff=(function(){
+ /* 見る欄と、応答のどのキーが対応するか。ここ1箇所（散らすと片方だけ
+    見張っている状態が簡単にできる）。 */
+ const FIELDS=[['operator','operators'],['inspector','inspectors'],
+   ['thicknessGauge','thickness_gauges'],['widthGauge','width_gauges'],
+   ['innerDiameter','inner_diameters'],['spool','spools']];
+ const CHECK_MS=120000;
+ let timer=null;
+ const listOf=id=>[...($('#'+id)?.options||[])].map(o=>o.value).filter(v=>v!=='-');
+ function mark(id,on){
+  const box=document.querySelector(`.selectors [data-f="${id}"]`);
+  if(!box)return;
+  box.classList.toggle('has-master-diff',!!on);
+  let b=box.querySelector('.master-diff-badge');
+  if(on&&!b){
+   b=document.createElement('button');
+   b.type='button';b.className='master-diff-badge';b.textContent='更新あり';
+   b.title='マスタの選択肢が変わりました。押すと取り込みます。';
+   b.onclick=async e=>{e.preventDefault();await loadMeasurementContext(true);check()};
+   box.append(b);
+  }else if(!on&&b)b.remove();
+ }
+ async function check(){
+  const m=S.measure;if(!m||document.querySelector('#measureModal')?.hidden)return;
+  let x=null;
+  try{
+   const u=new URLSearchParams({lot:m.basic.lotNo,equipment:currentConfiguredEquipment()||m.basic.equipment});
+   x=await api('/api/measurement/context?'+u);
+  }catch(e){return}   /* 取りに行けなかった＝差異は分からない。黙る。 */
+  if(!x)return;
+  FIELDS.forEach(([id,key])=>{
+   const fresh=[...new Set((key==='inspectors'?(x.inspectors||x.operators):x[key])||[])].map(String);
+   if(!fresh.length)return;   /* 空の応答で「全部消えた」と誤解しない。 */
+   const now=listOf(id);
+   mark(id,fresh.length!==now.length||fresh.some(v=>!now.includes(v)));
+  });
+ }
+ function start(){stop();timer=setInterval(()=>{check().catch(()=>{})},CHECK_MS)}
+ function stop(){if(timer){clearInterval(timer);timer=null}
+  FIELDS.forEach(([id])=>mark(id,false))}
+ return{check,start,stop};
+})();
 $('#verticalCount').addEventListener('change',()=>{updateLengthOptions($('#verticalCount').value);renderMeasureGrid()});
 $('#horizontalCount').addEventListener('change',()=>{
  /* 設備ごとの最大条数を超えた入力はその場で戻す。max属性だけだとスピナーは

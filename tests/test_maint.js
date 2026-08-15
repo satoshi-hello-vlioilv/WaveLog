@@ -72,9 +72,36 @@ let b=null;
    groups:[...g.querySelectorAll('.info-group')].map(x=>x.textContent),
    labels:[...g.querySelectorAll('.field label')].map(x=>x.textContent)};
  });
- rec('項目を減らしていない(13項目)',info.fields===13,info.fields+'項目');
+ /* **常時見せるのは8項目**(§9.133)。測定中に本当に要るのは「どのロットか」
+    「何を作るか」「どんな材か」だけで、残りは「詳細を見る」で読める。
+    **減らしたのではなく畳んだ**ので、詳細を開けば全項目が揃っていること
+    も見る(隠したまま消えていたら、それは減らしたのと同じ)。 */
+ const basicMain=await page.evaluate(()=>{
+  const g=document.querySelector('#basicInfo .info-grid');
+  const dt=document.querySelector('#basicDetail');
+  const vis=x=>x.getBoundingClientRect().height>0;
+  /* **数えるのは「項目」であって「枠」ではない**（§9.139）。材質-調質と
+     板厚/板幅/板丈は1行に横並びにしたので、`.field`の箱は5つでも読める
+     項目は8つある。箱で数えると、まとめただけで落ちる。 */
+  return {常時:[...g.querySelectorAll('.field label')].filter(x=>vis(x)).length,
+          枠:[...g.querySelectorAll('.field')].filter(vis).length,
+          詳細が畳んである:!!dt&&dt.hidden};
+ });
+ rec('基本情報は常時8項目',basicMain.常時===8,JSON.stringify(basicMain));
+ rec('詳細は畳んである',basicMain.詳細が畳んである,JSON.stringify(basicMain));
+ await page.click('#basicMore');
+ await page.waitForFunction(()=>!document.querySelector('#basicDetail').hidden,null,{timeout:5000});
+ const basicAll=await page.evaluate(()=>{
+  const g=document.querySelector('#basicInfo .info-grid');
+  const vis=x=>x.getBoundingClientRect().height>0;
+  return {項目:[...g.querySelectorAll('.field')].filter(vis).length,
+    groups:[...g.querySelectorAll('.info-group')].filter(vis).map(x=>x.textContent),
+    labels:[...g.querySelectorAll('.field label')].filter(x=>vis(x.parentElement)).map(x=>x.textContent)};
+ });
+ rec('詳細を開けば全項目が読める',basicAll.項目>=13,basicAll.項目+'項目');
  rec('意味のかたまりで見出しが付いている',
-   info.groups.join('/')==='識別番号/製品/コース',info.groups.join('/'));
+   basicAll.groups.join('/')==='識別番号/製品/コース',basicAll.groups.join('/'));
+ info.labels=basicAll.labels;
  /* コースの3項目のラベルは「設計」「実績」「残」(§9.81)。すぐ上に
     「コース」という見出しが出ているので、行ごとに繰り返さない。 */
  const NEEDED=['ロット№','検査No.','鋳造No.','オーダーNo.','引当No.','用途名','用途コード','取引先','納入先','設計','実績','残'];
@@ -88,17 +115,46 @@ let b=null;
   return {val:i.value,cut:i.scrollWidth>i.clientWidth+1,w:Math.round(i.getBoundingClientRect().width)};
  });
  rec('打刻した日時が切れずに読める',!!stamp.val&&!stamp.cut,`幅${stamp.w}px "${stamp.val}"`);
- const afterStamp=await page.evaluate(()=>{const lp=document.querySelector('.left-pane');return lp.scrollHeight-lp.clientHeight});
- rec('打刻後もスクロールバーが出ない',afterStamp<=0,`はみ出し${afterStamp}px`);
+ /* 打刻の時点では**詳細（13項目）を開いたまま**。基本情報カードは骨子で
+    `1×2`に固定したので、開いた状態で器を超えることはある（下の
+    「どの表示サイズでも収まる」は畳んだ状態で見る）。ここで大事なのは
+    **打刻して値が増えても切り落とさない**こと。 */
+ const afterStamp=await page.evaluate(()=>{
+  const lp=document.querySelector('.left-pane');
+  return {はみ出し:lp.scrollHeight-lp.clientHeight,overflowY:getComputedStyle(lp).overflowY};
+ });
+ rec('打刻後も切り落とさない',
+     afterStamp.はみ出し<=0||/auto|scroll/.test(afterStamp.overflowY),JSON.stringify(afterStamp));
 
- // 表示サイズを変えても収まる(既定〜特大)
+ /* 表示サイズを変えても収まる（§9.137）。**測るのは畳んだ状態**——基本情報は
+    骨子で`1×2`（実測651px）のカードに固定したので、13項目の詳細を開けば
+    いちばん大きい表示サイズでは入り切らないことがある（実測lg +10px）。
+    詳細は求められたときだけ開く付け足しなので、**入り切らないこと自体は
+    不具合ではない**。不具合になるのは「開いたのに読めない」ことなので、
+    そちらは下で別に見る（器がスクロールできること＝切り落としていない）。 */
+ await page.click('#basicMore');
+ await page.waitForFunction(()=>document.querySelector('#basicDetail').hidden,null,{timeout:5000});
  const sizes={};
  for(const s of ['sm','md','lg']){
   await page.evaluate(v=>{document.documentElement.dataset.uiSize=v},s);
   await page.waitForTimeout(300);
   sizes[s]=await page.evaluate(()=>{const lp=document.querySelector('.left-pane');return lp.scrollHeight-lp.clientHeight});
  }
- rec('表示サイズを特大にしても収まる',Object.values(sizes).every(v=>v<=0),JSON.stringify(sizes));
+ rec('どの表示サイズでも基本情報が収まる',Object.values(sizes).every(v=>v<=0),JSON.stringify(sizes));
+ /* **詳細を開いたときに切り落とさない。** 器より高くなったら、器の側が
+    スクロールできること（`overflow`が`visible`のままだと、はみ出した項目へ
+    到達する手立てが無くなる）。 */
+ await page.evaluate(()=>{document.documentElement.dataset.uiSize='lg'});
+ await page.click('#basicMore');
+ await page.waitForFunction(()=>!document.querySelector('#basicDetail').hidden,null,{timeout:5000});
+ await page.waitForTimeout(300);
+ const opened=await page.evaluate(()=>{
+  const lp=document.querySelector('.left-pane');
+  return {はみ出し:lp.scrollHeight-lp.clientHeight,overflowY:getComputedStyle(lp).overflowY};
+ });
+ rec('詳細を開いて器を超えても読める（切り落とさない）',
+     opened.はみ出し<=0||/auto|scroll/.test(opened.overflowY),JSON.stringify(opened));
+ await page.evaluate(()=>{document.documentElement.dataset.uiSize='md'});
 
  await b.close();
  const ng=R.filter(x=>!x.ok);

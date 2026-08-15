@@ -1330,3 +1330,69 @@ def display_rule_usage(c,name):
  cur.execute('SELECT [対象],[列名] FROM [列レイアウトマスタ] WHERE [読み替えルール]=? '
              'ORDER BY [対象],[表示順]',[str(name or '').strip()])
  return [{'target':str(t or ''),'column':str(col or '')} for t,col in cur.fetchall()]
+
+# ------------------------------------------------------------------------
+# 選択履歴マスタ(設備ごと・項目ごとの使用回数、§9.133)
+# ------------------------------------------------------------------------
+# 準備の入力欄(オペレータ・検査員・板厚測定器・板幅測定器…)は、選択肢が
+# マスタ由来で**増え続ける**。実データのオペレータは171人おり、五十音順に
+# 並べると「いつもの人」を毎回探すことになる。ここに設備ごとの使用回数を
+# 持ち、**よく使うものを上へ**並べる。
+#
+# **なぜ端末(localStorage)ではなくマスタDBか。** 同じ設備を別のPCから
+# 開くことがあり、端末に持つと台数ぶん別々に育つ。「その設備でよく使う人」
+# は設備の性質であって端末の性質ではない。
+#
+# **なぜ測定データから数えないか。** 実績(records.sqlite3)にも設定は
+# 入っているが、数えるには全件のペイロードを解く必要があり、選択肢を
+# 並べるだけのために毎回それをやるのは重い(§9.91と同じ理由)。
+CHOICE_USAGE_TABLE='選択履歴マスタ'
+def ensure_choice_usage_table(c):
+ names=tables(c);created=False
+ if CHOICE_USAGE_TABLE not in names:
+  cur=c.cursor()
+  cur.execute('CREATE TABLE [選択履歴マスタ] ([ID] INTEGER PRIMARY KEY AUTOINCREMENT, [設備名] TEXT, [項目] TEXT, [値] TEXT, [使用回数] INTEGER, [最終使用日時] DATETIME, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
+  cur.execute('CREATE INDEX [IX_選択履歴マスタ_設備項目] ON [選択履歴マスタ] ([設備名],[項目])')
+  c.commit();created=True
+ ensure_audit_columns(c,CHOICE_USAGE_TABLE)
+ return created
+
+def choice_usage_for(c,equipment):
+ """設備の使用回数を {項目:{値:回数}} で返す。**未登録は空**(=マスタの
+ 並び順のまま)。設備名の全角/半角ゆれは normalize_equipment_name で吸収。"""
+ if CHOICE_USAGE_TABLE not in tables(c):return {}
+ cur=c.cursor()
+ cur.execute('SELECT [設備名],[項目],[値],[使用回数] FROM [選択履歴マスタ]')
+ target=normalize_equipment_name(equipment)
+ out={}
+ for eq,field,value,cnt in cur.fetchall():
+  if not target or normalize_equipment_name(eq)!=target:continue
+  f=str(field or '').strip();v=str(value or '').strip()
+  if not f or not v:continue
+  try:n=int(cnt or 0)
+  except Exception:n=0
+  out.setdefault(f,{})[v]=n
+ return out
+
+def choice_usage_bump(c,equipment,picks,uid):
+ """選ばれた値の回数を1つずつ増やす。picks は {項目:値}。
+ **'-'や空は数えない**(「選んでいない」を上位に押し上げないため)。
+ 戻り値は数えた件数。"""
+ equipment=str(equipment or '').strip()
+ if not equipment:raise ValueError('設備名を指定してください。')
+ ensure_choice_usage_table(c)
+ cur=c.cursor();n=0
+ for field,value in (picks or {}).items():
+  f=str(field or '').strip();v=str(value or '').strip()
+  if not f or not v or v=='-':continue
+  cur.execute('SELECT [ID],[設備名] FROM [選択履歴マスタ] WHERE [項目]=? AND [値]=?',[f,v])
+  target=normalize_equipment_name(equipment)
+  rid=next((r[0] for r in cur.fetchall() if normalize_equipment_name(r[1])==target),None)
+  if rid is None:
+   cur.execute('INSERT INTO [選択履歴マスタ] ([設備名],[項目],[値],[使用回数],[最終使用日時],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,1,Now(),?,?,Now(),Now())',
+               [equipment,f,v,uid,uid])
+  else:
+   cur.execute('UPDATE [選択履歴マスタ] SET [使用回数]=Nz([使用回数],0)+1,[最終使用日時]=Now(),[更新者ID]=?,[更新日時]=Now() WHERE [ID]=?',[uid,rid])
+  n+=1
+ c.commit()
+ return n

@@ -26,18 +26,28 @@ let b=null;
   const c={};document.querySelectorAll('.sc-row-line .sc-row-workable').forEach(n=>{
    const k=[...n.classList].find(x=>x.startsWith('is-'));c[k]=(c[k]||0)+1});return c});
  const planRows=()=>page.evaluate(()=>document.querySelectorAll('.sc-row-line').length);
+ /* 可否の裏取りが落ち着くまで待つ(§9.102: 待ちは時間でなく条件で置く)。
+    「?」が1つも無い状態を待つ。取り直しが要らなければ即座に真になるので、
+    速い画面では待たない。**取り直しが本当に終わらない場合の保険**として
+    上限を置き、超えたら黙って先へ進む(その先の判定でFAILとして出る)。 */
+ const settleFlags=(pg,ms=30000)=>pg.waitForFunction(
+   ()=>{const ns=[...document.querySelectorAll('.sc-row-line .sc-row-workable')];
+        return ns.length>0&&!ns.some(n=>n.classList.contains('is-unknown'))},
+   null,{timeout:ms}).catch(()=>{});
 
  await page.goto(B+'/',{waitUntil:'domcontentloaded'});
  await page.waitForSelector('#openSchedule',{timeout:15000});
  await page.evaluate(e=>localStorage.setItem('AccessMeasurementConfiguredEquipment',e),EQ);
  await page.reload({waitUntil:'domcontentloaded'});
- await page.waitForTimeout(1800);
+ await page.waitForSelector('#openSchedule',{timeout:15000});
  await page.click('#openSchedule');
  await page.waitForSelector('.sc-board-row',{timeout:15000});
  await page.evaluate(e=>{const r=[...document.querySelectorAll('.sc-board-row')]
    .find(x=>x.dataset.equipment===e);if(r)r.click()},EQ);
  await page.waitForSelector('.sc-row-line',{timeout:20000});
- await page.waitForTimeout(3000);
+ // **時間でなく状態で待つ**(§9.102): 可否の裏取りが止まる=「?」が無くなるまで。
+ // 取り直しが要らない予定ばかりなら即座に真になる。
+ await settleFlags(page);
  // 追加前の予定IDを控えておく(後始末で自分が足したぶんだけ消すため)。
  // 消さずに終わると共有フィクスチャが実行のたびに増え、後続テストの
  // 読み込みが遅くなって時間切れで落ちる(実際にtest_colsを巻き込んだ)。
@@ -69,7 +79,7 @@ let b=null;
  rec('判定のための仕掛への問い合わせが発生しない',tableCalls===0,tableCalls+'回');
 
  // --- 既存行のフラグが「?」へ戻らない ---
- await page.waitForTimeout(2500);
+ await settleFlags(page);
  const after=await flags();
  rec('追加しても既存行が「?」へ戻らない',!after['is-unknown'],JSON.stringify(after));
  rec('可の行が減っていない',(after['is-ok']||0)>=(before['is-ok']||0),
@@ -78,17 +88,18 @@ let b=null;
  // --- 続けて数件追加しても問い合わせが増えない ---
  tableCalls=0;
  for(let i=0;i<3;i++){
+  const n=await planRows();
   await page.evaluate(()=>document.querySelector('.plan-action-button')?.click());
-  await page.waitForTimeout(500);
+  await page.waitForFunction(x=>document.querySelectorAll('.sc-row-line').length>x,n,{timeout:10000}).catch(()=>{});
  }
- await page.waitForTimeout(2500);
+ await settleFlags(page);
  const after3=await flags();
  rec('続けて追加しても全件走査が起きない',tableCalls===0,tableCalls+'回');
  rec('追加後も「?」が出ない',!after3['is-unknown'],JSON.stringify(after3));
 
  // --- 再読み込みしても保存値から判定できる(往復ゼロ) ---
  await page.reload({waitUntil:'domcontentloaded'});
- await page.waitForTimeout(1800);
+ await page.waitForSelector('#openSchedule',{timeout:15000});
  await page.click('#openSchedule');
  await page.waitForSelector('.sc-board-row',{timeout:15000});
  await page.evaluate(e=>{const r=[...document.querySelectorAll('.sc-board-row')]
@@ -114,7 +125,10 @@ let b=null;
  // --- 「再計算」は可も含めて情報源を取り直す ---
  tableCalls=0;
  await page.evaluate(()=>document.querySelector('#scRefresh').click());
- await page.waitForTimeout(6000);
+ // 取り直しが**始まった**ことは問い合わせ回数で分かるので、そこまで待つ
+ // (6秒固定で待っていた箇所。速い機械では無駄、遅い機械では足りない)。
+ for(let i=0;i<100&&tableCalls===0;i++)await new Promise(r=>setTimeout(r,100));
+ await settleFlags(page);
  rec('「再計算」では情報源を取り直す(全件検証)',tableCalls>0,tableCalls+'回');
  const afterRecalc=await flags();
  rec('再計算後も判定が崩れない',!afterRecalc['is-unknown']&&(afterRecalc['is-ok']||0)>0,

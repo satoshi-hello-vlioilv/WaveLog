@@ -94,6 +94,9 @@ async function reliableDelete(id){
 }
 function applyContextSnapshot(x){
  const m=S.measure;if(!m||!x)return;
+ /* **選択肢を並べる前に使用回数を渡す**(§9.133)。順序が逆だと、最初の
+    1回だけマスタ順のまま出て、次に開いたときから並びが変わる。 */
+ WL.choiceUsage.set(x.choice_usage);
  optionFill('operator',x.operators,m.settings.operator);optionFill('inspector',x.inspectors||x.operators,m.settings.inspector);
  optionFill('thicknessGauge',x.thickness_gauges,m.settings.thicknessGauge);optionFill('widthGauge',x.width_gauges,m.settings.widthGauge);
  optionFill('innerDiameter',x.inner_diameters,m.settings.innerDiameter);optionFill('spool',x.spools,m.settings.spool);

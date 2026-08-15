@@ -1566,6 +1566,29 @@
     wireSplitPanelButtons(el);
   }
   // 設定済み(applySplit確定済み)状態の表示。
+  /* ---- 幅分割の視覚図(§9.133 指摘⑨) ----
+     どの子ロットがどの幅で並んでいるかは**帯で見るもの**。表だけだと
+     「1〜2条 / 3〜5条」という範囲表記を頭の中で並べ直すことになる。
+     幅(mm)に比例した帯にし、色は入力欄のバッジ・条割の視覚図と同じ
+     `appliedLotColorMap`から取る——表・入力欄・帯が同じ色で結び付く。
+     **狭い区間でも文字が消えないように**、帯の下へ番号を出す。 */
+  function splitBandHtml(groups){
+    if(!Array.isArray(groups)||!groups.length)return '';
+    const{map:lotColors,lots}=appliedLotColorMap(groups);
+    const wOf=g=>{const w=Number(g.base?.width);return Number.isFinite(w)&&w>0?w:1};
+    const total=groups.reduce((a,g)=>a+wOf(g)*(Number(g.count)||1),0)||1;
+    const segs=groups.map((g,i)=>{
+      const span=wOf(g)*(Number(g.count)||1);
+      const pct=Math.max(2,Math.round(span/total*1000)/10);
+      const color=lots.length>1&&lotColors[g.lot]?lotColors[g.lot]:'var(--teal)';
+      const w=Number.isFinite(Number(g.base?.width))?String(g.base.width):'—';
+      return `<span class="split-band-seg${g.missing?' is-missing':''}" style="flex:${pct} 1 0;background-color:${esc(color)}"`
+        +` title="${esc(g.lot)} / ${g.count}条 / 幅${esc(w)}">`
+        +`<b>${esc(w)}</b><small>${g.count}条</small></span>`;
+    }).join('');
+    return `<div class="split-band" aria-label="幅分割の並び">${segs}</div>`;
+  }
+
   function renderAppliedGroupsPanel(el,groups){
     const summary=summarizeAppliedGroups(groups);
     /* ロット№の頭に色の丸を置く。入力欄のバッジ(.strip-lot-badge)・条割の
@@ -1577,6 +1600,7 @@
     const needsReconfigure=S.measure?.settings?.splitNeedsReconfigure;
     el.innerHTML=`
       <div class="split-panel-status split-panel-status-applied">✓ ${esc(summary)}</div>
+      ${splitBandHtml(groups)}
       <table class="split-panel-table"><thead><tr><th>#</th><th>ロット№</th><th>条数</th><th>幅</th><th>状態</th></tr></thead><tbody>${rows}</tbody></table>
       ${needsReconfigure?'<div class="split-mismatch-badge">子ロットデータの更新で条数の構成が変わりました。「条割変更」で再設定してください。</div>':''}
       ${scrapWidthLineHtml()}
@@ -1675,7 +1699,7 @@
   }
   function groupRangeFor(kind,index,typeName){
     const type=typeName||$('#measureType')?.value||S.measure?.settings?.measureType||'';
-    if(type!=='板厚/板幅')return null; // 分割は板厚/板幅の条位置に対してのみ意味を持つ
+    if(!WL.measureItem.isDimensional(type))return null; // 分割は板厚・板幅の条位置に対してのみ意味を持つ
     const g=groupForIndex(index);
     if(!g||g.missing||!g.base||!g.tol)return null;
     const base=g.base[kind];
@@ -1789,7 +1813,7 @@
       const el=$('#toleranceSummary');if(!el)return;
       const type=$('#measureType')?.value;
       el.querySelectorAll('.split-tolerance-legend').forEach(x=>x.remove());
-      if(type==='板厚/板幅'){const html=splitLegendHtml();if(html)el.insertAdjacentHTML('beforeend',html)}
+      if(WL.measureItem.isDimensional(type)){const html=splitLegendHtml();if(html)el.insertAdjacentHTML('beforeend',html)}
     };
   }
 
@@ -1801,15 +1825,17 @@
   // 保つため、公差表示部分のみDOMを直接更新する)。
   function refreshFocusedToleranceDisplay(){
     const type=$('#measureType')?.value;
-    if(type!=='板厚/板幅')return;
+    if(!WL.measureItem.isDimensional(type))return;
     if(typeof updateMeasurementHeading==='function')updateMeasurementHeading();
-    const tSide=document.querySelector('.compact-thickness-body .compact-tolerance-side');
-    if(tSide&&typeof compactToleranceFacts==='function')tSide.innerHTML=compactToleranceFacts('thickness').html;
-    const wSide=document.querySelector('.compact-width-body .compact-tolerance-side');
-    if(wSide&&typeof compactToleranceScale==='function'){
+    /* 板厚・板幅を別々の入力内容にしたので、描かれている数直線は
+       **いま選んでいる項目のもの1つだけ**（§9.138）。枠の数も項目で
+       違うため`slotCount`から取る（板厚は条数ではなく3）。 */
+    const side=document.querySelector('.compact-width-body .compact-tolerance-side');
+    if(side&&typeof compactToleranceScale==='function'){
+      const key=WL.measureItem.kindOf(type);
       const li=typeof lengthIndex==='function'?lengthIndex():0,count=Math.max(1,Math.min(40,+($('#horizontalCount')?.value)||1));
-      const width=S.measure?.measurements?.width?.[li]||[];
-      wSide.innerHTML=compactToleranceScale('width',width,count);
+      const values=S.measure?.measurements?.[key]?.[li]||[];
+      side.innerHTML=compactToleranceScale(key,values,WL.measureItem.slotCount(key,count));
     }
   }
   if(typeof focusCurrent==='function'){

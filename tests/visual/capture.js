@@ -164,7 +164,7 @@ const shots=[];
    if(await click('[data-lefttab="analysis"]',1400)) await shot('73-測定画面-測定データ分析');
    await click('[data-lefttab="worktime"]',1200);
    // 入力内容(右ペインの描画がここで切り替わる)
-   for(const [val,name] of [['板厚/板幅','74-測定画面-板厚板幅'],
+   for(const [val,name] of [['板厚','74-測定画面-板厚'],['板幅','74b-測定画面-板幅'],
                             ['バリ','75-測定画面-バリ']]){
     const ok=await page.selectOption('#measureType',val).then(()=>true).catch(()=>false);
     if(ok){await settle(1600);await shot(name)}else{console.log('  (選べず) 入力内容',val)}

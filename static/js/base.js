@@ -74,7 +74,37 @@ function setActiveNav(key){
   b.classList.toggle('active',!!key&&(b.id===key||b.dataset.dbKey===key)));
 }
 function bindTabs(group,panel){document.querySelectorAll(`[data-${group}tab]`).forEach(btn=>btn.onclick=()=>{document.querySelectorAll(`[data-${group}tab]`).forEach(x=>x.classList.toggle('active',x===btn));document.querySelectorAll(`[data-${group}panel]`).forEach(x=>x.hidden=x.dataset[group+'panel']!==btn.dataset[group+'tab'])})}
-function optionFill(id,items,current='-'){const el=$('#'+id);if(!el)return;const vals=['-',...new Set(items||[])];el.innerHTML=vals.map(v=>`<option>${esc(v)}</option>`).join('');if(vals.includes(current))el.value=current}
+/* ---------- よく使う選択肢を上へ(§9.133) ----------
+   準備の入力欄(オペレータ・検査員・測定器)は選択肢がマスタ由来で増え続ける
+   ——実データのオペレータは171人。五十音順のままだと「いつもの人」を毎回
+   探すことになるので、**設備ごとの使用回数の多い順**に並べ替える。
+   回数は`/api/measurement/context`が一緒に返す(選択肢と同時に要るので、
+   別のAPIにすると「選択肢は出たが並びは前のまま」の瞬間ができる)。
+   **同数のときはマスタの並び順を保つ**(五十音順が崩れて見えないように)。
+   使ったことのないものは下だが、消えはしない。 */
+window.WL=window.WL||{};   /* この位置でも使えるように(定義は後方にもある) */
+WL.choiceUsage={
+ counts:{},
+ set(map){this.counts=(map&&typeof map==='object')?map:{}},
+ order(field,items){
+  const c=this.counts[field];
+  const list=[...(items||[])];
+  if(!c)return list;
+  return list.map((v,i)=>({v,i,n:Number(c[v])||0}))
+             .sort((a,b)=>(b.n-a.n)||(a.i-b.i)).map(x=>x.v);
+ },
+ /* 選ばれた瞬間に数える。**画面は結果を待たない**(数が1つ増えないだけ)。 */
+ bump(equipment,field,value){
+  if(!equipment||!field||!value||value==='-')return;
+  const c=this.counts[field]||(this.counts[field]={});
+  c[value]=(Number(c[value])||0)+1;
+  try{
+   fetch('/api/measurement/choice-usage',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({equipment,picks:{[field]:value},user_id:(window.currentUserId||'')})}).catch(()=>{});
+  }catch(e){}
+ },
+};
+function optionFill(id,items,current='-'){const el=$('#'+id);if(!el)return;const vals=['-',...WL.choiceUsage.order(id,[...new Set(items||[])])];el.innerHTML=vals.map(v=>`<option>${esc(v)}</option>`).join('');if(vals.includes(current))el.value=current}
 /* optionFillの「先頭に'-'(未選択)を足す」をしない版。バリ揃え・コイル止めの
    ように「指定なし」という選択肢そのものがマスタ側にある項目で使う
    ('-'と「指定なし」が並ぶと、どちらを選べばよいのか分からなくなる)。

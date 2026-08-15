@@ -89,47 +89,22 @@
   return '';
  }
 
- /* ---------- ①準備「その他の設定」（§9.125） ----------
-    18個の選択項目のうち、**毎回決めるもの**は誰が測るか・測定表の形・
-    使う機材で、残る5つは前の設定のままで済むことが多い（CSSに以前から
-    「条入力順・方向はプリセット値のままで問題ないことが多い」と書いてある）。
-    だから畳む。**ただし畳んだままでも値は読めること**——隠したものが何かを
-    書かずに隠すと、設定がそこにあること自体が忘れられる。
-    既定と違うものには印を付ける（「触っていない」ことも情報）。 */
- const USUAL=[
-  {id:'unwind',       label:'巻出方向',  def:()=>'上出し'},
-  {id:'widthOrder',   label:'条入力順',  def:()=>'通常'},
-  {id:'widthDirection',label:'方向',     def:()=>'昇順'},
-  {id:'burr',         label:'バリ揃え',  def:()=>'指定なし'},
-  /* コイル止めの既定はロット由来（`measurement-view.js`が`innerTape`から入れる）。
-     定数で持つと、内巻両面テープのロットで常に「既定と違う」と出てしまう。 */
-  {id:'coilStop',     label:'コイル止め',def:()=>(S.measure?.settings?.innerTape?'内巻両面テープ':'指定なし')},
- ];
- function paintUsual(){
-  const state=document.getElementById('prepMoreState'),list=document.getElementById('prepMoreList');
-  if(!state||!list)return;
-  const parts=[];let changed=0;
-  USUAL.forEach(u=>{
-   const el=document.getElementById(u.id);if(!el)return;
-   const v=String(el.value||'').trim(),d=String(u.def()||'').trim();
-   const diff=!!v&&v!==d;if(diff)changed++;
-   const text=`${esc(u.label)} ${esc(v||'—')}`;
-   parts.push(diff?`<b>${text}</b>`:text);
-  });
-  list.innerHTML=parts.join(' / ');
-  state.textContent=changed?`${changed}件が既定と違います`:'すべて既定のまま';
-  state.classList.toggle('is-changed',changed>0);
- }
- function bindPrepMore(){
-  const btn=document.getElementById('prepMore');
-  const box=document.querySelector('.measure-shell .selectors');
-  if(btn&&box)btn.onclick=()=>{
-   const open=box.classList.toggle('prep-open');
-   btn.setAttribute('aria-expanded',open?'true':'false');
-  };
-  USUAL.forEach(u=>{
-   const el=document.getElementById(u.id);
-   if(el)el.addEventListener('change',()=>{try{paintUsual()}catch(e){}});
+ /* **選ばれた値の使用回数を数える**(§9.133)。オペレータは実データで171人
+    おり、五十音順のままでは「いつもの人」を毎回探すことになる。設備ごとに
+    数えて、次に開いたときは使った回数の多い順に並べる。
+    数えるのは**人と機材**だけ——巻出方向のような2択は並べ替えても意味が
+    無く、むしろ順番が動くと選び間違える。 */
+ const COUNTED=['operator','inspector','thicknessGauge','widthGauge','innerDiameter','spool'];
+ function bindChoiceUsage(){
+  COUNTED.forEach(id=>{
+   const el=document.getElementById(id);
+   if(!el)return;
+   el.addEventListener('change',()=>{
+    try{
+     const eq=(S.measure&&S.measure.equipment)||localStorage.getItem('AccessMeasurementConfiguredEquipment')||'';
+     WL.choiceUsage.bump(eq,id,String(el.value||'').trim());
+    }catch(e){}
+   });
   });
  }
 
@@ -243,14 +218,25 @@
  const setHidden=(el,v)=>{if(el.hidden!==v)el.hidden=v};
  function openInfoWall(){
   document.querySelectorAll('.measure-shell [data-infopanel]').forEach(p=>setHidden(p,false));
-  document.querySelectorAll('.measure-shell [data-leftpanel]').forEach(p=>{
-   setHidden(p,p.dataset.leftpanel==='debug');
-  });
+  /* **`[data-leftpanel]`は触らない**（§9.133）。品質規格と測定データ分析は
+     タブの裏へ戻したので、ここで全部開くと**2枚が同じ場所に重なる**
+     （③で実測: 品質規格 y=398-518 と 分析 y=398-638 が同時に出ていた）。
+     どちらを出すかはタブ（`bindTabs`）が決める。 */
+ }
+ /* ③の記録の壁だけは**タブの裏を出す**（§9.137）。品質規格と測定データ分析は
+    ①②ではタブで切り替えるが、③では別々のカードとして同時に並べる
+    （骨子の`1×2`×4枚）。**`[hidden]`はutilityレイヤなのでCSSからは
+    打ち消せない**ので属性側で開ける。①②で重ならないのは、あちらは
+    `display:none`をCSSが与えているから。 */
+ function openRecordWall(){
+  if(current!=='3')return;
+  document.querySelectorAll('.measure-shell [data-leftpanel="grade"],.measure-shell [data-leftpanel="analysis"]')
+   .forEach(p=>setHidden(p,false));
  }
 
  function paint(){
   const el=shell();if(!el)return;
-  try{openInfoWall()}catch(e){}
+  try{openInfoWall();openRecordWall()}catch(e){}
   const states=stepStates();
   STEP_KEYS.forEach(k=>{
    const btn=document.querySelector(`.mstep[data-mstep="${k}"]`);
@@ -266,7 +252,6 @@
   fillContext();
   try{fitLengthList()}catch(e){}
   try{fitControlWidths()}catch(e){}
-  try{paintUsual()}catch(e){}
   try{paintFinish()}catch(e){}
  }
 
@@ -473,12 +458,6 @@
  function reset(){
   current='1';
   const el=shell();if(el)el.classList.remove('mstep-2','mstep-3');
-  /* その他の設定は**開くたびに畳み直す**（前のロットで開いたまま閉じたら、
-     次のロットでも開いていた、という持ち越しを作らない）。 */
-  const box=document.querySelector('.measure-shell .selectors');
-  if(box)box.classList.remove('prep-open');
-  const btn=document.getElementById('prepMore');
-  if(btn)btn.setAttribute('aria-expanded','false');
   go('1');
  }
 
@@ -501,7 +480,7 @@
  /* 項目を移ったあと、**入力できる場所へフォーカスを置き直す**。
     どこへ置くかは項目で変わる（`measurement-view.js`の
     `AUTO_ONLY_MEASURE_TYPES` / `MANUAL_ONLY_MEASURE_TYPES`）:
-      板厚/板幅・バリ            … 測定器からの転送 → **受信欄**
+      板厚・板幅・バリ            … 測定器からの転送 → **受信欄**
       ラテラルボー・テレスコープ・巻ずれ・フラットネス … 手動入力 → **セル**
       母材・揃い/肉厚/長さ        … 手動入力（別のパネル）→ 触らない
     **描き直しが終わってから置く。** 実測すると、項目を変えた直後の受信欄は
@@ -630,7 +609,7 @@
  }
 
  WL.onReady(()=>{
-  bind();bindPrepMore();watchModal();watchInputs();watchProgress();watchWorkTabs();
+  bind();bindChoiceUsage();watchModal();watchInputs();watchProgress();watchWorkTabs();
   watchUiSize();watchInfoWall();
   const el=shell();if(el&&!el.classList.contains('mstep-1'))el.classList.add('mstep-1');
   paint();
