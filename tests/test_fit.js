@@ -1,4 +1,4 @@
-/* test_fit.js: 中身が器から溢れていないかを、表示サイズ5段階で実測する。
+/* test_fit.js: 中身が器から溢れていないかを、表示サイズ3段階で実測する。
    ------------------------------------------------------------
    §9.73。余白(gap/padding)を役割へ揃える作業は、値をそろえると同時に
    **画面に収まるかどうか**を動かす。実際、タブの高さを表示サイズへ追随
@@ -11,16 +11,18 @@
      ・ページ全体に横スクロールが出ていないか
 
    スクロールできる器(overflow:auto/scroll)は、はみ出して当たり前なので数えない。
-   表示サイズは xs〜xl の5段階すべてで見る——既定(md)だけ合わせても、
-   現場で特大にした瞬間に崩れるのでは意味がない。 */
+   表示サイズは sm〜lg の3段階すべてで見る——既定(md)だけ合わせても、
+   現場で「大」にした瞬間に崩れるのでは意味がない。
+   (段は§9.132で5→3へ減らした。倍率の幅が広いほど「ある段でだけ溢れる」
+   箇所が増えるため、幅そのものを.92〜1.10へ狭めてある。) */
 const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
 const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const API='http://127.0.0.1:5029';
-const SIZES=['xs','sm','md','lg','xl'];
+const SIZES=['sm','md','lg'];
 /* 溢れは字形の丸めでも出るので、これを超えたものだけ数える。
    **1px を超えたら不具合として数える。** 以前は2pxで、`.lot-dsp-link`が
    罫線(上下1pxずつ)を引かずに`--row-ctl-h`を行の高さにしていたため
-   **ちょうど+2px**溢れ、5段階すべてで158件見切れていたのにこの網を
+   **ちょうど+2px**溢れ、当時の5段階すべてで158件見切れていたのにこの網を
    素通りした(§9.112)。字形の丸めで出るのは1pxまで。 */
 const SLACK=1;
 
@@ -96,7 +98,7 @@ let b=null;
     /* **自分自身が overflow:hidden なら、先祖のスクロールは言い訳にならない**
        (§9.112)。器ごと動かせても、その器の中で切り落とされた分は出てこない。
        以前は先祖に `#grid`(overflow:auto)がいるだけで中身を全部見逃しており、
-       `.lot-dsp-link` が5段階すべてで158件見切れていたのに0件と報告した。 */
+       `.lot-dsp-link` が当時の5段階すべてで158件見切れていたのに0件と報告した。 */
     const clipsY=s.overflowY==='hidden'||s.overflowY==='clip';
     const clipsX=s.overflowX==='hidden'||s.overflowX==='clip';
     const scrollY=/auto|scroll/.test(s.overflowY)||(!clipsY&&scrollable(el,'y'));

@@ -257,11 +257,9 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 .ui-size-menu button>span{display:flex;align-items:center;gap:var(--gap-inline)}
 /* 選択肢のプレビュー: 各段階の実際の比率で「Ａ」を出し、選ぶ前に大きさが分かるようにする。 */
 .ui-size-swatch{font-style:normal;display:inline-grid;place-items:center;width:22px;color:#0a6570}
-.ui-size-swatch[data-swatch="xs"]{font-size:var(--fs-badge)}
 .ui-size-swatch[data-swatch="sm"]{font-size:var(--fs-sm)}
 .ui-size-swatch[data-swatch="md"]{font-size:var(--fs)}
 .ui-size-swatch[data-swatch="lg"]{font-size:var(--fs-title)}
-.ui-size-swatch[data-swatch="xl"]{font-size:18px}
  /* ---------- 見出しの操作: 列の並べ替えと列幅(§9.88) ----------
     よく使う操作は設定画面を開かずに表の上で完結させる。取っ手は普段は
     目立たせず、その列に触れたときだけ出す(常時見えていると、値より先に

@@ -98,9 +98,15 @@ let b=null;
  if(doing3){
   // どの行が先頭の作業中になるかは実績の開始時刻で決まる(他テストの実績も
   // 混ざる)。行が表示しているロット番号と、開いた測定画面のロットを突き合わせる。
+  // **ロット番号は内容セル(data-content-col="lotNo")から読む。** 以前は行の
+  // 文字列へ /L\d{4}|M\d{4}/ を当てていたが、これは検証用に作る番号の形しか
+  // 知らない。前の実行の置き土産(killされた実行が残した実績)が先頭に来ると、
+  // 実データ由来のロット(ZZ9T4813)に当たらず「行のロット=」が空のまま落ちる
+  // ——**画面は正しく開いているのに**(§9.121・§9.132)。番号の形を仮定しない。
   const doingLot=await page.evaluate(id=>{
-   const t=document.querySelector(`.sc-row-line[data-id="${id}"] .sc-row-title`)?.textContent||'';
-   return (/(L\d{4}|M\d{4})/.exec(t)||[])[1]||'';},doing3.id);
+   const row=document.querySelector(`.sc-row-line[data-id="${id}"]`);
+   const cell=row?.querySelector('.sc-row-title[data-content-col="lotNo"]');
+   return (cell?.textContent||'').trim();},doing3.id);
   await page.dblclick(`.sc-row-line[data-id="${doing3.id}"] .sc-row-title`);
   await page.waitForFunction(()=>{
    const m=document.querySelector('#measureModal');

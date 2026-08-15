@@ -93,7 +93,7 @@ let b=null;
 
  // 表示サイズを変えても収まる(既定〜特大)
  const sizes={};
- for(const s of ['md','lg','xl']){
+ for(const s of ['sm','md','lg']){
   await page.evaluate(v=>{document.documentElement.dataset.uiSize=v},s);
   await page.waitForTimeout(300);
   sizes[s]=await page.evaluate(()=>{const lp=document.querySelector('.left-pane');return lp.scrollHeight-lp.clientHeight});

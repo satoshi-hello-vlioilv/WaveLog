@@ -191,14 +191,14 @@ const shots=[];
 
   // ---- 表示サイズ・メニュー畳み込み ----
   await click('[data-db-key="SIKALOTNOW"]',2400);
-  for(const size of ['xs','xl']){
+  for(const size of ['sm','lg']){
    await page.evaluate(v=>{document.documentElement.dataset.uiSize=v},size);
    await settle(900); await shot(`80-仕掛一覧-表示サイズ-${size}`);
   }
   await page.evaluate(()=>{document.documentElement.dataset.uiSize='md'});
   await settle(700);
   await click('#openSchedule',2600);
-  for(const size of ['xs','xl']){
+  for(const size of ['sm','lg']){
    await page.evaluate(v=>{document.documentElement.dataset.uiSize=v},size);
    await settle(900); await shot(`81-スケジュール-表示サイズ-${size}`);
   }

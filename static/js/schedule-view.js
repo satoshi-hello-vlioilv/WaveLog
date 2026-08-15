@@ -511,7 +511,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  }
 
  /* 仕掛一覧の表示密度は、作業スケジュール画面だけの「高密度」トグルから
-    アプリ全体の表示サイズ5段階(base.jsのapplyUiSize、html[data-ui-size])へ
+    アプリ全体の表示サイズ(base.jsのapplyUiSize、html[data-ui-size])へ
     統合した。行の高さ・余白・文字サイズはapp.cssの --row-h ・--row-pad-y ・
     --row-pad-x ・--fs 系トークンが --ui-scale を掛けて決めるため、この画面
     固有の切替は不要になった。 */

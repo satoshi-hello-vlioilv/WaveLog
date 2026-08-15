@@ -153,7 +153,7 @@ let b=null;
 
   /* 表示サイズを変えても関係は崩れない。 */
   const scaled=[];
-  for(const size of ['xs','xl']){
+  for(const size of ['sm','lg']){
    await page.evaluate(s=>document.documentElement.setAttribute('data-ui-size',s),size);
    await page.waitForTimeout(200);
    scaled.push(await readTokens());

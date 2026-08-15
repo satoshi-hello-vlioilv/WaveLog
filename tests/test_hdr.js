@@ -48,11 +48,11 @@ let b=null;
  /* 5. 表示サイズを変えるとヘッダーも一括で追随する(統一が崩れない) */
  const md=await metrics();
  await page.click('#uiSizeBadge');await page.waitForSelector('#uiSizeMenu',{timeout:4000});
- await page.click('#uiSizeMenu [data-ui-size-option="xl"]');await page.waitForTimeout(400);
- const xl=await metrics();
- const xlHs=[...new Set(xl.map(x=>x.h))];
- rec('特大でもヘッダーの高さが揃ったまま拡大する',
-   xlHs.length===1&&xlHs[0]>md[0].h,'md='+md[0].h+' xl='+xlHs.join('/'));
+ await page.click('#uiSizeMenu [data-ui-size-option="lg"]');await page.waitForTimeout(400);
+ const lg=await metrics();
+ const lgHs=[...new Set(lg.map(x=>x.h))];
+ rec('大でもヘッダーの高さが揃ったまま拡大する',
+   lgHs.length===1&&lgHs[0]>md[0].h,'md='+md[0].h+' lg='+lgHs.join('/'));
  await page.click('#uiSizeBadge');await page.waitForSelector('#uiSizeMenu',{timeout:4000});
  await page.click('#uiSizeMenu [data-ui-size-option="md"]');await page.waitForTimeout(400);
 

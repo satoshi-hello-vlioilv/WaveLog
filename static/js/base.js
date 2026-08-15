@@ -843,7 +843,7 @@ window.addEventListener('unload',notifyTabClosed);
  });
 })();
 
-/* ---------- 表示サイズ(5段階、アプリ全体) ----------
+/* ---------- 表示サイズ(3段階、アプリ全体) ----------
    文字サイズ・コントロールの高さ・一覧の行の高さは、すべてapp.cssの
    :rootトークンが--ui-scaleを掛けた値で決まる(docs/ARCHITECTURE.md
    「コントロールサイズの統一」)。ここではその倍率を選ぶ段階を
@@ -852,21 +852,32 @@ window.addEventListener('unload',notifyTabClosed);
    文字サイズは調整できなかった(画面ごとにサイズ感がばらつく原因)。
    base.jsは読み込み順の先頭(=他のJSが画面を組み立てる前)に走るため、
    ここでhtmlへ属性を付けておけば、後から描かれる画面も最初から正しい
-   サイズで組み上がる。 */
+   サイズで組み上がる。
+
+   **段は3つ。以前の5段(極小.84〜特大1.22)から両端を落とした**(§9.132)。
+   倍率の幅が広いほど「ある段でだけ溢れる」箇所が増え、直す側は全段で
+   確かめ直すことになる。実際に手当てしてきた溢れも特大でのものが大半
+   だった。段を減らすと、器を1つ触ったときに見る組み合わせが5→3になる。 */
 const UI_SIZE_KEY='MeasurementUiSizeV1';
 const UI_SIZES=[
- {key:'xs',label:'極小',hint:'一度に見える情報量を最優先'},
- {key:'sm',label:'小',hint:'情報量を少し優先'},
+ {key:'sm',label:'小',hint:'一度に見える情報量を優先'},
  {key:'md',label:'中',hint:'標準'},
- {key:'lg',label:'大',hint:'読みやすさを少し優先'},
- {key:'xl',label:'特大',hint:'読みやすさを最優先'},
+ {key:'lg',label:'大',hint:'読みやすさを優先'},
 ];
+/* 廃止した段を選んでいた端末の保存値の行き先。単に無効として既定(中)へ
+   落とすと、**わざわざ選んでいた人ほど設定が黙って戻る**ので、残った段の
+   いちばん近いものへ寄せる。 */
+const UI_SIZE_ALIASES={xs:'sm',xl:'lg'};
 function currentUiSize(){
- try{const v=localStorage.getItem(UI_SIZE_KEY);if(UI_SIZES.some(s=>s.key===v))return v}catch(e){}
+ try{
+  const v=localStorage.getItem(UI_SIZE_KEY);
+  if(UI_SIZES.some(s=>s.key===v))return v;
+  if(UI_SIZE_ALIASES[v])return UI_SIZE_ALIASES[v];
+ }catch(e){}
  return 'md';
 }
 function applyUiSize(key){
- const size=UI_SIZES.some(s=>s.key===key)?key:'md';
+ const size=UI_SIZES.some(s=>s.key===key)?key:(UI_SIZE_ALIASES[key]||'md');
  document.documentElement.dataset.uiSize=size;
  try{localStorage.setItem(UI_SIZE_KEY,size)}catch(e){/* 保存できなくても表示自体は継続する */}
  const label=document.getElementById('uiSizeLabel');
