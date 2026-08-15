@@ -108,7 +108,7 @@ let b=null,page=null;
   await page.waitForTimeout(700);
   await page.evaluate(()=>{
    const s=document.querySelector('#measureType');
-   s.value='板厚/板幅';s.dispatchEvent(new Event('change',{bubbles:true}));
+   s.value='板幅';s.dispatchEvent(new Event('change',{bubbles:true}));
   });
   await page.waitForTimeout(700);
 
@@ -137,12 +137,18 @@ let b=null,page=null;
   rec('続けて送ると2条目へ入る',row[0]==='26.10'&&row[1]==='26.20',JSON.stringify(row));
   rec('2件目のあとも条が進む',st===2,'wStep='+st);
 
-  /* ---- 3) マイクロメータは板厚へ入り、板幅を汚さない ---- */
+  /* ---- 3) 板厚は別の入力内容なので、板幅のままでは受け取らない（§9.138） ----
+     板厚は**丈ごとに3点**（エッジOS・中央CL・エッジDS）、板幅は**条ごと**で
+     枠の数がまるで違うため、入力内容を分けた。分けた以上、受け取れる測定器も
+     項目ごとに決まる（バリ＝マイクロメータ、テレスコープ＝デプスゲージ と
+     同じ形）。**板幅のままマイクロメータを送っても、どこにも入らない。** */
   await send('DT100+003.015');
-  const th=await page.evaluate(()=>(S.measure.measurements.thickness?.[0]||[]).slice(0,3));
+  const th0=await page.evaluate(()=>(S.measure.measurements.thickness?.[0]||[]).slice(0,3));
   row=await widthRow();
-  rec('マイクロメータの転送は板厚へ入る',th[0]==='3.015',JSON.stringify(th));
-  rec('板厚を入れても板幅は変わらない',row[0]==='26.10'&&row[1]==='26.20',JSON.stringify(row));
+  rec('板幅のままマイクロメータを送っても板厚へは入らない',th0.every(v=>v===''),JSON.stringify(th0));
+  rec('受け取れない測定器では板幅も汚さない',row[0]==='26.10'&&row[1]==='26.20',JSON.stringify(row));
+  rec('受け取れない測定器では受信欄で合図を出す',
+      /device-error/.test(await page.evaluate(()=>document.querySelector('#deviceInput').className)));
 
   /* ---- 4) 測定器を通さない生の数値も受け付ける ---- */
   await send('27.5');
@@ -189,11 +195,40 @@ let b=null,page=null;
   /* ---- 9) 進捗が増える ---- */
   const prog=await page.evaluate(()=>{
    const chips=document.querySelector('#measureTypeChips')?.textContent||'';
-   const m=chips.match(/板厚\/板幅(\d+)\/(\d+)/);
+   const m=chips.match(/板幅(\d+)\/(\d+)/);
    return {分子:m?+m[1]:null,分母:m?+m[2]:null,生:chips.slice(0,60)};
   });
   rec('測定した項目の進捗が0より増える',prog.分子>0,JSON.stringify(prog));
   rec('進捗は分母を持つ（何件中いくつかが分かる）',prog.分母>0,JSON.stringify(prog));
+
+  /* ---- 9b) 板厚へ切り替えると3点（OS/CL/DS）の表になる（§9.138） ----
+     枠の数と呼び名は`WL.measureItem`が1箇所で答える。**条の番号のまま
+     3行だけ出す**のでも、40行出すのでもない——板厚は丈ごとに中央1点と
+     エッジ2点で、条とは別の数え方をする。 */
+  const setType=async v=>{
+   await page.evaluate(t=>{const s=document.querySelector('#measureType');
+     s.value=t;s.dispatchEvent(new Event('change',{bubbles:true}))},v);
+   await page.waitForTimeout(700);
+  };
+  await setType('板厚');
+  const tGrid=await page.evaluate(()=>({
+   枠:document.querySelectorAll('#measurementGrid [data-mkey="thickness"]').length,
+   名:[...document.querySelectorAll('#measurementGrid .strip-row label')].map(x=>x.textContent),
+   見出し:document.querySelector('#measurePanelTitle')?.textContent||'',
+   focus:document.activeElement?.id||'',
+  }));
+  rec('板厚は丈ごとに3点（OS/CL/DS）だけ描く',
+      tGrid.枠===3&&JSON.stringify(tGrid.名)===JSON.stringify(['OS','CL','DS']),JSON.stringify(tGrid));
+  rec('板厚に切り替えても受信欄にフォーカスが載る',tGrid.focus==='deviceInput',JSON.stringify(tGrid));
+  await send('DT100+003.015');
+  const th1=await page.evaluate(()=>({
+   値:(S.measure.measurements.thickness?.[0]||[]).slice(0,3),tStep:S.measure.settings.tStep}));
+  rec('板厚ではマイクロメータの転送がOSへ入る',th1.値[0]==='3.015',JSON.stringify(th1));
+  rec('板厚は次の点（CL）へ進む',th1.tStep===1,JSON.stringify(th1));
+  const wAfter=await widthRow();
+  rec('板厚を入れても板幅は変わらない',wAfter[0]==='26.10'&&wAfter[1]==='26.20',JSON.stringify(wAfter));
+  /* この先の節は板幅の表を見るので戻す。 */
+  await setType('板幅');
 
   /* ---- 10) 公差が無いときに、勝手にNGにしない ----
      このフィクスチャは公差を持たない(compactToleranceData が null)。

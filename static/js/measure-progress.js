@@ -25,7 +25,12 @@
 const ITEM_DEFS=[
  {name:'母材',          scope:'lot'},
  {name:'揃い/肉厚/長さ', scope:'piece'},
- {name:'板厚/板幅',      scope:'length',keys:['thickness','width']},
+ /* 板厚と板幅は**枠の数がまるで違う**ので別々の項目にした(§9.138)。
+    板厚は丈ごとに3点(エッジOS・中央CL・エッジDS)、板幅は条ごと。
+    1つの項目のままだと進捗が「3+条数」の合算になり、板幅だけ終わって
+    いるのか板厚だけ終わっているのかが数字から読めなかった。 */
+ {name:'板厚',          scope:'length',keys:['thickness']},
+ {name:'板幅',          scope:'length',keys:['width']},
  {name:'ラテラルボー',   scope:'length',keys:['lateral']},
  {name:'バリ',          scope:'length',keys:['burr']},
  {name:'テレスコープ',   scope:'length',keys:['telescope']},

@@ -1,6 +1,34 @@
 "use strict";
 /* measurement-view.js: 測定画面の構成 — データ形状(ensureMeasureShape/collect)、
    画面全体の描画(renderMeasurement)、左右パネル、入力検証、作業時間、公差表示の見出し。 */
+/* 入力内容の素性を決めるのは**ここ1箇所**（§9.138）。以前は
+   `type==='板厚/板幅'`という文字列比較が6ファイル・十数箇所に散っており、
+   項目を「板厚」「板幅」の2つへ分けるだけで**片方だけ直った状態**が簡単に
+   できてしまう（公差の出どころ・幅分割公差・自動転送の固定・帳票の節・
+   入力欄の数——どれか1つ落とすと、そこだけ黙って別の項目の公差で判定する）。
+   §9.125で`toleranceDetail`の第3引数を3ファイルへ通し忘れて偽の公差外を
+   出したのと同じ壊れ方なので、判定は関数にして散らさない。 */
+WL.measureItem={
+ /* 保存済みレコードが持つ旧名。選択肢から消えた値をそのまま`select.value`へ
+    入れると**空文字になる**（＝どの項目でもない状態で開く）ので、読み込む
+    時点で今の名前へ寄せる。板幅が条ごと・板厚が丈ごとなので、旧名は
+    「条ごと」側＝板幅として開く。 */
+ LEGACY:'板厚/板幅',
+ KEYS:{母材:'mother',板厚:'thickness',板幅:'width',ラテラルボー:'lateral',バリ:'burr',
+  テレスコープ:'telescope',巻ずれ:'offset',フラットネス:'flatness','板厚/板幅':'width'},
+ normalize(type){const t=String(type??'');return t===this.LEGACY?'板幅':t},
+ /* 板厚・板幅か（＝製造/オーダー公差を選べる寸法系か）。 */
+ isDimensional(type){const t=String(type??'');return t==='板厚'||t==='板幅'||t===this.LEGACY},
+ current(){return (typeof $==='function'&&$('#measureType')?.value)||S.measure?.settings?.measureType||''},
+ /* 公差・基準値をどちらの寸法で引くか。 */
+ kindOf(type){return this.normalize(type??this.current())==='板厚'?'thickness':'width'},
+ /* 1丈位置あたりの枠の数と呼び名。**板厚だけは条ごとではなく丈ごとに3点**
+    （エッジOS・中央CL・エッジDS）で、条数が40でも枠は3つしかない。 */
+ slotCount(key,count){return key==='thickness'?3:count},
+ slotLabels(key,count){return key==='thickness'?['OS','CL','DS']
+  :Array.from({length:count},(_,j)=>String(j+1))},
+ slotHead(key){return key==='thickness'?'位置':'条'},
+};
 // 横割数(条数)・縦割数(丈割数)の初期値は仕掛データ側の「BOX設計_横割数」
 // 「BOX設計_縦割数」から読む。値が無い/数値でない/範囲外の場合のみ、従来
 // 通り1を初期値とする(安全側。#horizontalCountは1〜40、#verticalCountは
@@ -24,6 +52,10 @@ m.basic=m.basic||{};m.settings={operator:'-',inspector:'-',lengthPos:'1(頭)',me
    だった。マスタ化して選択欄になったので、過去のデータは真偽値から
    名称へ読み替える(旧レコードを開いたときに「指定なし」へ化けないように)。
    innerTape自体は残さない——両方あると、どちらが正か分からなくなる。 */
+/* 入力内容の「板厚/板幅」は板厚(丈ごと3点)と板幅(条ごと)へ分けた(§9.138)。
+   旧レコードを開いたときに選択肢の無い値が入って**どの項目でもない状態**に
+   ならないよう、読み込む時点で今の名前へ寄せる(coilStopと同じ方針)。 */
+m.settings.measureType=WL.measureItem.normalize(m.settings.measureType);
 if(m.settings.innerTape!==undefined){
  if(!(m.settings||{}).coilStop||m.settings.coilStop==='指定なし')
   m.settings.coilStop=m.settings.innerTape?'内巻両面テープ':'指定なし';
@@ -106,7 +138,6 @@ function applyRightLayout(){
  if(layout==='measure'){renderMeasureGrid();updateMeasurementHeading()}
  if(layout==='product')renderProductPanel();
  if(layout==='mother'&&$('#motherQualityInfo')){const qi=S.measure.qualityInfo||'異常情報なし';$('#motherQualityInfo').value=qi;if($('#motherQualitySum'))$('#motherQualitySum').textContent=qi.split('\n')[0]}
- const summary=$('#toleranceSummary');if(summary&&$('#measureType')?.value==='板厚/板幅')summary.hidden=true;
 }
 /* v33: 「揃い/肉厚/長さ」は縦割数で分割した丈(1〜N)ごとに複数行で保持する。
    丈は旧VBA帳票の「丈」テーブル（長さ/肉厚/揃い/外観/備考）と同じ、
@@ -168,14 +199,14 @@ if($('#productAllOk'))$('#productAllOk').onclick=()=>{
 };
 $('#verticalCount')?.addEventListener('change',()=>{if($('#measureType').value==='揃い/肉厚/長さ')renderProductPanel()});
 /* 測定種ごとに運用が固定されているため、入力モードの切替UI自体を出さない。
-   - 板厚/板幅・バリ: 測定器からの自動転送のみ。
+   - 板厚・板幅・バリ: 測定器からの自動転送のみ。
    - ラテラルボー・テレスコープ・巻ずれ・フラットネス: 実運用は手動入力のみ
      (対応する自動転送デバイスがないため)。伝送状態欄(受信欄・検知回数等)
      も自動転送を前提にした表示のため、手動固定の測定種では丸ごと隠す。 */
 /* 設定系入力の変更はすべて未保存フラグを立てる(個別のonchangeを持つ要素は
    この後の個別割当が優先される。この行は必ず個別割当より先に実行すること)。 */
 document.querySelectorAll('.selectors input,.selectors select,.material-grid input').forEach(x=>x.onchange=markDirty);
-const AUTO_ONLY_MEASURE_TYPES={'板厚/板幅':1,'バリ':1};
+const AUTO_ONLY_MEASURE_TYPES={'板厚':1,'板幅':1,'バリ':1};
 const MANUAL_ONLY_MEASURE_TYPES={'ラテラルボー':1,'テレスコープ':1,'巻ずれ':1,'フラットネス':1};
 function syncInputModeLock(){
  if(!S.measure)return;
@@ -241,8 +272,12 @@ function renderMeasurement(){
  renderCourseHierarchy();
  renderScheduleInfo();
  configureToleranceSelector();
- document.querySelectorAll('[data-lefttab]').forEach(x=>x.classList.toggle('active',x.dataset.lefttab==='worktime'));
- document.querySelectorAll('[data-leftpanel]').forEach(x=>x.hidden=x.dataset.leftpanel!=='worktime');
+ /* 既定のサブタブは**品質規格**。以前は`'worktime'`を指していたが、作業時間は
+    ①の「準備の入力」へ移してサブタブから外れており、**どのタブにも当たらない
+    値だったため`[data-leftpanel]`が全部隠れていた**（①の品質カードが空のまま
+    出ていた原因。カードの器だけが残るので、レイアウトの不具合に見える）。 */
+ document.querySelectorAll('[data-lefttab]').forEach(x=>x.classList.toggle('active',x.dataset.lefttab==='grade'));
+ document.querySelectorAll('[data-leftpanel]').forEach(x=>x.hidden=x.dataset.leftpanel!=='grade');
  updateWorkTimePanel();
  updateMeasurementHeading();
 }
@@ -383,9 +418,9 @@ function renderResidualCourseEverywhere(){
 }
 /* 公差の内訳(基準値・±・計算式)を見出し領域へ表示する。 */
 function updateMeasurementHeading(){
- const type=$('#measureType').value;$('#measurePanelTitle').textContent=type==='板厚/板幅'?'板厚・板幅測定':type+'測定';
+ const type=$('#measureType').value;$('#measurePanelTitle').textContent=type+'測定';
  if(type==='フラットネス'){$('#toleranceSummary').innerHTML='<div class="tol-status no-data"><b>判定基準</b><span>〇＝OK　△・×＝NG　条ごとに記号を入力してください。</span></div>';return}
- const kind=type==='板厚/板幅'?'thickness':'width',detail=toleranceDetail(kind),base=Number(kind==='thickness'?S.measure.basic.mfgThickness:S.measure.basic.mfgWidth);
+ const kind=WL.measureItem.kindOf(type),detail=toleranceDetail(kind),base=Number(kind==='thickness'?S.measure.basic.mfgThickness:S.measure.basic.mfgWidth);
  if(!detail){$('#toleranceSummary').innerHTML='<div class="tol-status no-data"><b>公差情報なし</b><span>選択した公差区分に使用可能なプラス・マイナス値がありません。</span></div>';return}
  const labels={manufacturing:'製造公差',order:'オーダー公差',instruction:'指示公差'},sourceLabel=labels[detail.source],requestedLabel=labels[configuredToleranceSource()],fallback=detail.fallback?`${requestedLabel}が不足しているため製造公差を使用`:'';
  $('#toleranceSummary').innerHTML=`<div class="tol-source-row"><span class="tolerance-source-badge ${detail.source==='order'?'order':''}">${sourceLabel}</span>${fallback?`<span class="tol-fallback">${esc(fallback)}</span>`:''}</div><div class="tol-facts"><div><small>基準値</small><b>${base}</b></div><div><small>公差 ＋</small><b>+${detail.plus}</b><em>${esc(detail.plusKey)}</em></div><div><small>公差 －</small><b>-${detail.minus}</b><em>${esc(detail.minusKey)}</em></div><div class="tol-result"><small>判定範囲</small><b>${detail.range[0]} ～ ${detail.range[1]}</b></div></div><div class="tol-formula">計算: ${base} - ${detail.minus} = ${detail.range[0]} ／ ${base} + ${detail.plus} = ${detail.range[1]}</div>`;
@@ -456,7 +491,7 @@ async function refreshScheduleInfo(){
  }
  renderScheduleInfo();
 }
-function configureToleranceSelector(){const el=$('#toleranceSource');if(!el||!S.measure)return;const type=$('#measureType').value,isDimensional=type==='板厚/板幅',order=el.querySelector('option[value="order"]'),availability=orderToleranceAvailability();order.disabled=!availability.available;order.textContent=availability.available?'オーダー公差':'オーダー公差（データなし）';order.classList.toggle('order-tolerance-unavailable',!availability.available);if(!availability.available&&S.measure.settings.toleranceSource==='order')S.measure.settings.toleranceSource='manufacturing';el.value=S.measure.settings.toleranceSource||'manufacturing';el.disabled=!isDimensional;el.title=isDimensional?(availability.available?'製造公差またはオーダー公差を選択できます':'オーダー公差がないため製造公差のみ使用できます'):'板厚・板幅以外は指示公差を自動適用します';el.onchange=()=>{if(el.value==='order'&&!availability.available)return;S.measure.settings.toleranceSource=el.value;renderMeasureGrid();updateMeasurementHeading();markDirty()}}
+function configureToleranceSelector(){const el=$('#toleranceSource');if(!el||!S.measure)return;const type=$('#measureType').value,isDimensional=WL.measureItem.isDimensional(type),order=el.querySelector('option[value="order"]'),availability=orderToleranceAvailability();order.disabled=!availability.available;order.textContent=availability.available?'オーダー公差':'オーダー公差（データなし）';order.classList.toggle('order-tolerance-unavailable',!availability.available);if(!availability.available&&S.measure.settings.toleranceSource==='order')S.measure.settings.toleranceSource='manufacturing';el.value=S.measure.settings.toleranceSource||'manufacturing';el.disabled=!isDimensional;el.title=isDimensional?(availability.available?'製造公差またはオーダー公差を選択できます':'オーダー公差がないため製造公差のみ使用できます'):'板厚・板幅以外は指示公差を自動適用します';el.onchange=()=>{if(el.value==='order'&&!availability.available)return;S.measure.settings.toleranceSource=el.value;renderMeasureGrid();updateMeasurementHeading();markDirty()}}
 /* 作業時間パネル。開始→終了の順序を強制するロック付き打刻。 */
 function formatWorkTime(value){if(!value)return '';const d=new Date(value);return Number.isNaN(d.getTime())?'':d.toLocaleString('ja-JP',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'})}
 function stampWorkTimeLocked(kind){if(!S.measure)return;S.measure.workTime=S.measure.workTime||{};const now=new Date();if(kind==='start'){if(S.measure.workTime.endAt){showToast('開始時刻は変更できません','終了時刻の記録後は開始時刻を変更できません。');return}S.measure.workTime.startAt=now.toISOString()}else{if(!S.measure.workTime.startAt){showToast('開始時刻が未記録です','先に開始時刻を記録してください。');return}if(now<new Date(S.measure.workTime.startAt)){showToast('終了時刻を記録できません','終了時刻は開始時刻より後である必要があります。');return}S.measure.workTime.endAt=now.toISOString()}updateWorkTimePanel();markDirty();updateValidationVisuals()}

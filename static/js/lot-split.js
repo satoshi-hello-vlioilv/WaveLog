@@ -1699,7 +1699,7 @@
   }
   function groupRangeFor(kind,index,typeName){
     const type=typeName||$('#measureType')?.value||S.measure?.settings?.measureType||'';
-    if(type!=='板厚/板幅')return null; // 分割は板厚/板幅の条位置に対してのみ意味を持つ
+    if(!WL.measureItem.isDimensional(type))return null; // 分割は板厚・板幅の条位置に対してのみ意味を持つ
     const g=groupForIndex(index);
     if(!g||g.missing||!g.base||!g.tol)return null;
     const base=g.base[kind];
@@ -1813,7 +1813,7 @@
       const el=$('#toleranceSummary');if(!el)return;
       const type=$('#measureType')?.value;
       el.querySelectorAll('.split-tolerance-legend').forEach(x=>x.remove());
-      if(type==='板厚/板幅'){const html=splitLegendHtml();if(html)el.insertAdjacentHTML('beforeend',html)}
+      if(WL.measureItem.isDimensional(type)){const html=splitLegendHtml();if(html)el.insertAdjacentHTML('beforeend',html)}
     };
   }
 
@@ -1825,15 +1825,17 @@
   // 保つため、公差表示部分のみDOMを直接更新する)。
   function refreshFocusedToleranceDisplay(){
     const type=$('#measureType')?.value;
-    if(type!=='板厚/板幅')return;
+    if(!WL.measureItem.isDimensional(type))return;
     if(typeof updateMeasurementHeading==='function')updateMeasurementHeading();
-    const tSide=document.querySelector('.compact-thickness-body .compact-tolerance-side');
-    if(tSide&&typeof compactToleranceFacts==='function')tSide.innerHTML=compactToleranceFacts('thickness').html;
-    const wSide=document.querySelector('.compact-width-body .compact-tolerance-side');
-    if(wSide&&typeof compactToleranceScale==='function'){
+    /* 板厚・板幅を別々の入力内容にしたので、描かれている数直線は
+       **いま選んでいる項目のもの1つだけ**（§9.138）。枠の数も項目で
+       違うため`slotCount`から取る（板厚は条数ではなく3）。 */
+    const side=document.querySelector('.compact-width-body .compact-tolerance-side');
+    if(side&&typeof compactToleranceScale==='function'){
+      const key=WL.measureItem.kindOf(type);
       const li=typeof lengthIndex==='function'?lengthIndex():0,count=Math.max(1,Math.min(40,+($('#horizontalCount')?.value)||1));
-      const width=S.measure?.measurements?.width?.[li]||[];
-      wSide.innerHTML=compactToleranceScale('width',width,count);
+      const values=S.measure?.measurements?.[key]?.[li]||[];
+      side.innerHTML=compactToleranceScale(key,values,WL.measureItem.slotCount(key,count));
     }
   }
   if(typeof focusCurrent==='function'){

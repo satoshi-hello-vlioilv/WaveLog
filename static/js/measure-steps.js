@@ -223,10 +223,20 @@
      （③で実測: 品質規格 y=398-518 と 分析 y=398-638 が同時に出ていた）。
      どちらを出すかはタブ（`bindTabs`）が決める。 */
  }
+ /* ③の記録の壁だけは**タブの裏を出す**（§9.137）。品質規格と測定データ分析は
+    ①②ではタブで切り替えるが、③では別々のカードとして同時に並べる
+    （骨子の`1×2`×4枚）。**`[hidden]`はutilityレイヤなのでCSSからは
+    打ち消せない**ので属性側で開ける。①②で重ならないのは、あちらは
+    `display:none`をCSSが与えているから。 */
+ function openRecordWall(){
+  if(current!=='3')return;
+  document.querySelectorAll('.measure-shell [data-leftpanel="grade"],.measure-shell [data-leftpanel="analysis"]')
+   .forEach(p=>setHidden(p,false));
+ }
 
  function paint(){
   const el=shell();if(!el)return;
-  try{openInfoWall()}catch(e){}
+  try{openInfoWall();openRecordWall()}catch(e){}
   const states=stepStates();
   STEP_KEYS.forEach(k=>{
    const btn=document.querySelector(`.mstep[data-mstep="${k}"]`);
@@ -470,7 +480,7 @@
  /* 項目を移ったあと、**入力できる場所へフォーカスを置き直す**。
     どこへ置くかは項目で変わる（`measurement-view.js`の
     `AUTO_ONLY_MEASURE_TYPES` / `MANUAL_ONLY_MEASURE_TYPES`）:
-      板厚/板幅・バリ            … 測定器からの転送 → **受信欄**
+      板厚・板幅・バリ            … 測定器からの転送 → **受信欄**
       ラテラルボー・テレスコープ・巻ずれ・フラットネス … 手動入力 → **セル**
       母材・揃い/肉厚/長さ        … 手動入力（別のパネル）→ 触らない
     **描き直しが終わってから置く。** 実測すると、項目を変えた直後の受信欄は

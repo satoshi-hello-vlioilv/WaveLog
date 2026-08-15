@@ -2,7 +2,7 @@
 /* measurement-tolerance.js: 判定公差ソース・測定ロック/監査 */
 /* ============================================================
    測定種別の判定公差ソース（2026-07-20 追加）
-   - 板厚/板幅・母材・揃い/肉厚/長さ: 従来の判定公差ロジックを使用。
+   - 板厚・板幅・母材・揃い/肉厚/長さ: 従来の判定公差ロジックを使用。
    - ラテラルボー等（板厚でも板幅でもない項目）: 「指示_<項目>」の
      単一値を判定公差として取得。該当フィールドが無い測定種
      (テレスコープ・バリ・巻ずれ 等) は公差を表示しない。
@@ -18,7 +18,10 @@
     'そり巾':['指示_そり巾_方向高さ','指示_そり巾'],
     'そり丈':['指示_そり丈_方向高さ','指示_そり丈']
   };
-  var DIMENSIONAL={'板厚/板幅':1,'母材':1,'揃い/肉厚/長さ':1};
+  /* 板厚・板幅は別々の入力内容(§9.138)。どちらも寸法系なので、判定公差は
+     従来どおり製造/オーダー公差から引く（旧名も残す——保存済みレコードを
+     `ensureMeasureShape`を通さずに読む帳票側から渡ってくることがある）。 */
+  var DIMENSIONAL={'板厚':1,'板幅':1,'板厚/板幅':1,'母材':1,'揃い/肉厚/長さ':1};
   function norm(s){return (typeof normalizedFieldName==='function')?normalizedFieldName(s):String(s||'').normalize('NFKC').replace(/[\s　]+/g,'').toLowerCase();}
   function currentType(){return ($('#measureType')&&$('#measureType').value)||(S.measure&&S.measure.settings&&S.measure.settings.measureType)||'';}
   function instructionSingle(type){

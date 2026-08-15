@@ -50,7 +50,7 @@ let b=null;
    const s=S.measure.source=S.measure.source||{};
    s['製造板幅']=base;s['板幅公差_製造_ﾌﾟﾗｽ']=plus;s['板幅公差_製造_ﾏｲﾅｽ']=minus;
    S.measure.basic.mfgWidth=base;
-   document.querySelector('#measureType').value='板厚/板幅';
+   document.querySelector('#measureType').value='板幅';
    document.querySelector('#horizontalCount').value=String(vals.length);
    const w=S.measure.measurements.width[lengthIndex()];
    vals.forEach((v,i)=>w[i]=v);

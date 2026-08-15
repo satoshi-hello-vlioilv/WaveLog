@@ -498,9 +498,12 @@
   const b=x.basic||{},s=x.settings||{},w=x.workTime||{};
   const equipment=s.registeredEquipment||x.registeredEquipment||x.snapshot?.registeredEquipment||'-';
   const dur=w.startAt&&w.endAt?formatDuration(new Date(w.endAt)-new Date(w.startAt)):(w.startAt?'作業中':'未計測');
-  const isDimensional=s.measureType==='板厚/板幅'||hasMeasurementValues(x,['thickness']);
+  /* 保存済みレコードは旧名`板厚/板幅`を持つ（§9.138で板厚・板幅へ分けた）。
+     帳票は`ensureMeasureShape`を通さない生のレコードも読むので、**両方**を
+     見る——落とすと過去の帳票からその節が黙って消える。 */
+  const isDimensional=s.measureType==='板厚'||s.measureType==='板幅'||s.measureType==='板厚/板幅'||hasMeasurementValues(x,['thickness']);
   const hasWidthTableData=hasMeasurementValues(x,['width','lateral','burr','offset','telescope','flatness']);
-  const showWidthTable=['板厚/板幅','ラテラルボー','バリ','テレスコープ','巻ずれ','フラットネス'].includes(s.measureType)||hasWidthTableData;
+  const showWidthTable=['板厚','板幅','板厚/板幅','ラテラルボー','バリ','テレスコープ','巻ずれ','フラットネス'].includes(s.measureType)||hasWidthTableData;
   const hasProductData=(x.product?.rows||[]).some(r=>r&&['productLength','wallThickness','alignmentCode'].some(k=>String(r[k]||'').trim()!==''));
   const showProduct=s.measureType==='揃い/肉厚/長さ'||hasProductData;
   return `

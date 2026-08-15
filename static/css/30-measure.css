@@ -290,10 +290,19 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    （基本情報）の隣が引き伸ばされて縦の空きが戻る。 */
 .measure-shell.mstep-1 .left-pane,
 .measure-shell.mstep-2 .left-pane,
-.measure-shell.mstep-3 .left-pane{
+.measure-shell.mstep-3 .left-pane,
+.measure-shell.mstep-1 .quality-pane,
+.measure-shell.mstep-3 .quality-pane{
   display:grid;grid-auto-rows:min-content;align-content:start;
   gap:var(--gap-section);
 }
+/* **カード1枚＝グリッドのマス群**（§9.137）。以前は情報の壁(.left-pane)の
+   中にもう1つ2列のグリッドを作り、基本情報と品質規格を横に並べていた。
+   骨子は「基本情報1列目 → 準備の入力2列目 → 品質3〜4列目」なので、
+   **1つの器に入っている限り、そのあいだへ準備の入力を置けない**。
+   基本情報だけを.left-paneに残し、品質規格と測定データ分析は本文グリッドの
+   直下のカードへ出す（#splitCardと同じ扱い）。 */
+.measure-shell.mstep-2 .quality-pane{display:none}
 /* **面は中身なりの高さにする。** 既定の`stretch`だと、同じ行にある背の高い
    面（品質等級・分析）に合わせて隣が引き伸ばされ、中身のない空きが器の中に
    残る（実測: 幅分割188px・作業時間127px）。 */
@@ -317,21 +326,16 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    図で見るものなので、細い1列に押し込むと読めない。
    最後の「余り行」(1fr)は残す：背の高いカードのぶんをそこへ吸わせないと、
    跨いだ行が等分に伸びて隙間になる（実測280pxの空箱）。 */
-.measure-shell.mstep-1 .left-pane{
-  grid-template-columns:repeat(2,minmax(0,1fr));
-  grid-template-rows:min-content min-content min-content minmax(0,1fr);
+.measure-shell.mstep-1 .quality-pane{
+  grid-template-columns:minmax(0,1fr);
+  grid-template-rows:min-content minmax(0,1fr);
 }
-.measure-shell.mstep-1 #basicInfo{grid-column:1;grid-row:1/span 2;align-self:start}
-.measure-shell.mstep-1 .subtabs{grid-column:2;grid-row:1}
-.measure-shell.mstep-1 #qualityGradePanel,
-.measure-shell.mstep-1 .analysis{grid-column:2;grid-row:2;align-self:start}
 /* 測定データ分析は**測ってからでないと中身が無い**ので①には出さない。 */
 .measure-shell.mstep-1 .analysis,.measure-shell.mstep-1 .debug-pane{display:none}
 /* ② 1列目は**根拠**だけ。1列（狭い）なので縦に積む。 */
 .measure-shell.mstep-2 .left-pane{
   grid-template-columns:minmax(0,1fr);
   grid-template-rows:min-content min-content minmax(0,1fr);
-  grid-column:1;grid-row:1;
 }
 .measure-shell.mstep-2 #qualityGradePanel,
 .measure-shell.mstep-2 .work-time-panel,
@@ -339,15 +343,14 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .measure-shell.mstep-2 .debug-pane{display:none}
 /* ③ 確認シートの下段。**①と同じ並び**にする(§9.133)——左＝基本情報、
    右＝タブの裏、下段＝幅分割。段を変えても同じものが同じ場所にある。 */
-.measure-shell.mstep-3 .left-pane{
-  grid-template-columns:repeat(2,minmax(0,1fr));
-  grid-template-rows:min-content min-content min-content minmax(0,1fr);
-  grid-column:1/span 4;grid-row:2/span 2;
+/* ③の記録の壁は**1枚ずつ別のカード**（§9.137）。タブで切り替えていた
+   品質規格と測定データ分析を同時に出す（「余白があるならタブの裏を出す」）。
+   同時に出す以上、切り替えの`.subtabs`はここでは要らない。 */
+.measure-shell.mstep-3 .quality-pane{
+  grid-template-columns:minmax(0,1fr);
+  grid-template-rows:minmax(0,1fr);
 }
-.measure-shell.mstep-3 #basicInfo{grid-column:1;grid-row:1/span 2;align-self:start}
-.measure-shell.mstep-3 .subtabs{grid-column:2;grid-row:1}
-.measure-shell.mstep-3 #qualityGradePanel,
-.measure-shell.mstep-3 .analysis{grid-column:2;grid-row:2;align-self:start}
+.measure-shell.mstep-3 .subtabs{display:none}
 .measure-shell.mstep-3 .debug-pane{display:none}
 /* ②測定は「いま入れる場所」「あと何が残っているか」「根拠」の3つ。
    入力内容(8項目)は状態付きの一覧として左へ細く残し、**設定は出さない**
@@ -507,11 +510,12 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    **`max-content`も使えない**——`.center-pane`は`container-type:inline-size`
    （`.row-title`のコンテナクエリ）を持つので**中身から幅が決まらず**、
    実測で17pxまで潰れて設定が画面から消えた。 */
-/* ① 情報の壁 `2×3` ＋ 設定 `2×3`。 */
-.measure-shell.mstep-1 .left-pane{grid-column:1/span 2;grid-row:1/span 3}
-.measure-shell.mstep-1 .center-pane{grid-column:3/span 2;grid-row:1/span 3}
+/* ① 基本情報`1×2` ＋ 準備の入力`1×2` ＋ 品質`2×2` ＋ 条の設計`4×1`（§9.137）。 */
+.measure-shell.mstep-1 .left-pane{grid-column:1;grid-row:1/span 2}
+.measure-shell.mstep-1 .center-pane{grid-column:2;grid-row:1/span 2}
+.measure-shell.mstep-1 .quality-pane{grid-column:3/span 2;grid-row:1/span 2}
 /* ②「どこを測るか」→「入れる」→「根拠」。3列目は基本情報と幅分割情報で、
-   どちらも測っている最中に見る値（板厚/板幅の指示値・子ロット幅）。
+   どちらも測っている最中に見る値（板厚・板幅の指示値・子ロット幅）。
    **行も列も明示する**——自動配置に任せると、列を指定した1枚だけが別の行へ
    落ちて上下2段になった（実測: 左535px / 中右385px）。 */
 /* **基本情報は3段とも「メニューの右横のいちばん左」**(§9.133)。以前は
@@ -519,15 +523,21 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    反対側へ飛んでいた。同じものは同じ場所にある、が守れていないと、
    目で探す手間が段の数だけ増える。 */
 /* ② 根拠 `1×2` ＋ 項目リスト `1×1` ＋ 測定表 `3×3`（主役）。
-   **主役を細らせない**——4列を 1:1:2 で割ると測定表が873pxになり、本体の
-   半分を下回った（丈位置くらべの列が47pxまで潰れた）。粗いグリッドの
-   代償は**主役以外**が引き受ける。項目リストは8項目の縦並びなので
-   1マスで足り、根拠の下へ回す。 */
+   **骨子（§9.137）どおりに置く**——基本情報`1×2`／入力内容`1×2`／
+   条の設計`2×1`／測定`2×3`。以前は入力内容を条の設計と同じマス
+   （1列目・3行）へ置いていたため**2枚が重なって描かれ**、測定は
+   2〜4列目まで伸びていた。②の主役は測定表だが、丈位置×条の1つの表
+   （§9.136）は最大10列×40行なので2マス幅で足りる。 */
 .measure-shell.mstep-2 .left-pane{grid-column:1;grid-row:1/span 2}
-.measure-shell.mstep-2 .center-pane{grid-column:1;grid-row:3}
-.measure-shell.mstep-2 .right-pane{grid-column:2/span 3;grid-row:1/span 3}
+.measure-shell.mstep-2 .center-pane{grid-column:2;grid-row:1/span 2}
+.measure-shell.mstep-2 .right-pane{grid-column:3/span 2;grid-row:1/span 3}
 /* ③は1枚の確認シート。上に「あと何が残っているか」、下に「何が記録されたか」。 */
-/* ③ 確認シート `4×1` ＋ 記録の壁 `4×2`。 */
+/* ③ 確認シート`4×1` ＋ 記録の壁（1枚ずつ`1×2`）（§9.137）。以前は記録の壁を
+   `.left-pane`という1枚の器に入れて`4×2`で置き、その中でさらに2列へ割って
+   いた。**外から見えるのがカード1枚でないと、粗いグリッドに乗らない。** */
+.measure-shell.mstep-3 .left-pane{grid-column:1;grid-row:2/span 2}
+.measure-shell.mstep-3 .quality-pane{grid-column:2;grid-row:2/span 2}
+.measure-shell.mstep-3 .analysis{grid-column:3;grid-row:2/span 2}
 /* 危ない操作を主要動線に置かない。「このデータを削除」は③でだけ出す
    （今は「測定を完了」の真下にあり、押し間違いの的になっていた）。 */
 .measure-shell:not(.mstep-3) .rail-bottom{display:none}
@@ -819,7 +829,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .dense-controls .major-list select option{min-height:31px;padding:var(--pad-row);border-bottom:1px solid var(--line-soft);white-space:nowrap}
 /* 選択行はアプリの基調色(teal)。以前は原色に近い青(#0b79c9)でここだけ浮いていた。 */
 .dense-controls .major-list select option:checked{background:linear-gradient(var(--teal),var(--teal));color:#fff}
-/* ---------- 7. 右ペイン: 伝送状態 / タブ ---------- *//* この欄は板厚/板幅・バリ(自動転送専用の測定種)でしか表示されない
+/* ---------- 7. 右ペイン: 伝送状態 / タブ ---------- *//* この欄は板厚・板幅・バリ(自動転送専用の測定種)でしか表示されない
    (手動専用の測定種ではsyncInputModeLockがボックスごと隠す)ため、
    詳細な受信状態テキストや受信欄そのものは見せず、「自動モード」の
    バッジだけを見せてデータがスマートに入っていく演出にする。
@@ -925,7 +935,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .mode-tabs button.active{background:var(--teal);color:#fff}
 .tolerance-summary{flex:0 0 auto;min-height:34px;margin:3px 0;padding:var(--space-3);background:#f7fafb;border:1px solid #bdcdd1;border-radius:var(--radius-md)}
 .tolerance-summary[hidden]{display:none}
-/* 公差サマリー内部（板厚/板幅以外の測定種で表示） */
+/* 公差サマリー内部 */
 .tol-source-row{display:flex;align-items:center;gap:var(--space-2);margin-bottom:8px}
 .tolerance-source-badge{display:inline-flex;align-items:center;padding:var(--pad-chip);border-radius:var(--radius-md);background:var(--teal);color:#fff;font-weight:800;font-size:var(--fs-micro)}
 .tolerance-source-badge.order{background:#7652a8}
@@ -940,11 +950,10 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .tol-formula{margin-top:7px;padding:var(--pad-row);border-radius:var(--radius-sm);background:#eef2f4;color:#445d65;font-size:var(--fs-micro);font-variant-numeric:tabular-nums}
 @media(max-width:1300px){.tol-facts{grid-template-columns:1fr 1fr}.tol-facts .tol-result{grid-column:1/-1}}
 #measurementGrid{flex:1 1 auto;min-height:0;overflow:hidden}
-/* --- 板厚/板幅 統合ワークスペース --- */
-.compact-dimension-workspace{
-  height:100%;width:100%;max-width:100%;min-width:0;
-  display:grid;grid-template-rows:minmax(142px,auto) minmax(0,1fr);gap:var(--gap-tight);overflow:hidden;
-}
+/* --- 測定表のブロック ---
+   板厚と板幅を別々の入力内容にしたので、専用の2枚組ワークスペース
+   （`.compact-dimension-workspace`／`.compact-thickness`／`.thickness-vertical`）は
+   廃止した（§9.138）。どの項目も`.compact-other`1枚で描く。 */
 .measure-grid-block{min-height:0;border:1px solid #aebdc2;background:#fff;overflow:hidden}
 .measure-grid-block-title{
   display:flex;align-items:center;justify-content:space-between;min-height:26px;
@@ -954,32 +963,17 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 /* 見出しバーの中の状態は**文字だけ**。バーの中にさらに白い箱を置くと
    枠の中の枠になる（§9.129）。 */
 .measure-grid-block-title .measure-status{min-width:112px;text-align:right;padding:var(--pad-chip);background:transparent;border:0;font-weight:700}
-/* 公差(40) : 測定入力(60) を both で統一 */
-.compact-thickness{min-height:142px;overflow:hidden}
-.compact-thickness-body,
+/* 公差(40) : 測定入力(60) */
 .compact-width-body{
   display:grid;grid-template-columns:minmax(0,40fr) minmax(0,60fr);
   gap:clamp(3px,.4vw,6px);padding:5px clamp(3px,.35vw,6px);
   width:100%;max-width:100%;min-width:0;overflow:hidden;
 }
-.compact-thickness-body{min-height:112px;align-items:stretch}
-.compact-thickness-body>*,.compact-width-body>*{min-width:0;max-width:100%}
+.compact-width-body>*{min-width:0;max-width:100%}
 .compact-tolerance-side{min-width:0;max-width:100%;overflow:hidden}
-.compact-thickness-body .compact-tolerance-side{min-height:102px;overflow:visible}
-/* 板幅（および板厚以外の測定種）の並び: 上=公差情報カード / 下=図示スケール。
+/* 並びは 上=公差情報カード / 下=図示スケール。
    DOM 順（カード→スケール）のまま。order 指定はしない。 */
 .compact-width-body .compact-tolerance-side{display:grid;grid-template-rows:minmax(102px,auto) minmax(0,1fr);gap:var(--gap-tight)}
-/* 板厚 3 点入力（位置ヘッダ + 丈行） */
-/* 3点の値が入るだけの表。器いっぱいに広げると1つの欄が239pxになり、
-   `1.234`（実測33px）に対して7倍だった（§9.130）。 */
-.thickness-vertical{
-  display:grid;grid-template-columns:minmax(38px,.52fr) repeat(3,minmax(0,1fr));
-  width:100%;max-width:min(100%,26rem);min-width:0;min-height:62px;align-self:center;
-  border:1px solid var(--line);border-radius:var(--radius-xs);overflow:hidden;
-}
-.thickness-vertical>*{min-width:0;max-width:100%;height:30px;display:flex;align-items:center;justify-content:center;border-right:1px solid #b7c7cc;border-bottom:1px solid #b7c7cc}
-.thickness-vertical>*:nth-child(4n){border-right:0}
-.thickness-vertical input{width:100%;height:100%;min-width:0;border:0;border-radius:0;text-align:right;padding:var(--pad-chip);font-variant-numeric:tabular-nums}
 /* 公差 3 段表示（区分・基準 / ＋・－ / 判定範囲） */
 .compact-tol-three-row{
   display:grid;grid-template-rows:minmax(25px,auto) minmax(25px,auto) minmax(27px,auto);gap:var(--gap-tight);
@@ -1055,9 +1049,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    **器だけが40条ぶんの場所を取り続けていた**——②を全幅にしても右の
    1/4（実測430px）が空き、ブロックの中も8条で340pxの白が残った。
    列数はJSが`one-strip`で伝える（`stripColumnCount()`の1箇所で決める）。 */
-.compact-width{height:100%;display:flex;flex-direction:column}
-.compact-width .compact-width-body{flex:1;min-height:0}
-/* 板厚/板幅以外の測定種（ラテラルボー・バリ等）の単独ブロック */
+/* すべての測定種（板厚・板幅・ラテラルボー・バリ…）の単独ブロック */
 .compact-other{height:100%;display:flex;flex-direction:column;overflow:hidden}
 .compact-other .compact-width-body{flex:1;min-height:0}
 /* 1列のときは**公差と入力表を隣り合わせにし、余りは右端へ寄せる**。
@@ -1276,8 +1268,6 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
    見出しと本文の左端が合わなくなる)。中身も罫線も持たない。 */
 #grid td.grid-col-spacer{border:0;padding:0;background:transparent}
 #grid tr.grid-virtual-spacer:hover{background:transparent;cursor:default}
-}
-
 /* ---------- 条の設計（幅の割り付け）＝本文グリッドの1枚のカード（§9.137） ----------
    以前は情報の壁(.left-pane)の**中**にあったため、①では全幅、②では下段左、
    という骨子の割り付けができなかった。**同じ部品を3段で使い回す**ので、
@@ -1288,3 +1278,4 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .measure-shell.mstep-2 #splitCard{grid-column:1/span 2;grid-row:3}
 .measure-shell.mstep-3 #splitCard{display:none}
 .card-title{font-size:var(--fs-base-sm);font-weight:800;color:var(--teal);margin-bottom:var(--space-1)}
+}
