@@ -16,7 +16,9 @@ grepで辿っても最終的な実装に行き着かない**。読む側は`inde
     読み込み順は measurement-input(定義) → measurement-tolerance(置換) →
     filters(置換) → measurement-worklog(ラップ)。つまり真ん中の
     measurement-tolerance版は**一度も実行されない死んだコード**で、
-    そこを直しても何も変わらない。
+    そこを直しても何も変わらない。§9.150で図を作り直したとき、
+    filters.js の置換を外して measurement-input.js の定義を live に戻した
+    ——**一覧の絞り込みのファイルが測定画面の図を持っていたこと自体が誤り**。
 
 CLAUDE.mdは既に「拡張ファイルからはラップのみ可、全置換は不可」と
 定めている。**規約はあったが機械的な歯止めが無かった**ので、ここで見る。
@@ -41,9 +43,6 @@ JS = ROOT / 'static' / 'js'
 
 # 残っている全置換。**増やさないこと。** 減らしたらここからも消す。
 ALLOWED = {
-    ('filters.js', 'compactToleranceScale'):
-        '公差数直線の実装そのもの。measurement-input.js の定義を丸ごと置き換える。'
-        '登録表へ移すのがフェーズAの残り(docs/REFACTORING_PLAN.md)。',
     ('lot-split.js', 'compactToleranceData'):
         '分割ロットでは条ごとに公差が変わるため、index の既定値ごと差し替える。',
     ('measurement-worklog.js', 'updateWorkTimePanel'):

@@ -55,9 +55,6 @@ tbody tr.is-plan-selected:hover{background:#d9f0ee}
 .dimension-locked::placeholder{color:#66777c}
 /* 入力位置(クリックしたセル)の条。セルの強調(outline:#f39a18)と同じ色にして、
    どのセルがどの点かを一目で結び付けられるようにする。 */
-.numberline-swarm-dot.is-current{width:13px;height:13px;z-index:7;box-shadow:0 0 0 2px #fff,0 0 0 4px #f39a18}
-.numberline-measure.is-current .nl-dot{box-shadow:0 0 0 2px #fff,0 0 0 4px #f39a18}
-.numberline-measure.is-current b{border-color:#f39a18;box-shadow:0 0 0 1px #f39a1855}
 .work-time-item.validation-ng input{background:var(--invalid-bg);border-color:var(--invalid)}
 #workTimeHint.is-invalid{font-weight:700}
 .mm-tag-box.is-disabled{opacity:.5;background:#eef2f4;cursor:not-allowed;pointer-events:none}

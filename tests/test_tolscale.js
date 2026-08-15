@@ -74,81 +74,85 @@ let b=null;
     const c=getComputedStyle(e),r=e.getBoundingClientRect();
     chain.push(`${e.tagName}.${(e.className||'').toString().split(' ')[0]}#${e.id||''} d=${c.display} h=${Math.round(r.height)} hid=${e.hidden}`);}
    const br=box.getBoundingClientRect(),side=box.parentElement,sr=side.getBoundingClientRect();
-   const cs=getComputedStyle(box);
-   /* 位置は要素の中心で測る。点(.numberline-swarm-dot)は8px角をtranslateで
-      中心合わせしているので、上端で測ると常に4pxずれた値になる。 */
+   /* 図は**縦＝条・横＝測定値**（§9.150）。位置は要素の中心のXで測る
+      （点はtranslateで中心合わせしているので左端で測ると半径ぶんずれる）。 */
    const pick=sel=>[...box.querySelectorAll(sel)].map(e=>{const r=e.getBoundingClientRect();
-     return {cls:e.className,styleTop:e.style.top||'',
-             y:+(r.top-br.top+r.height/2).toFixed(1),h:+r.height.toFixed(1),
+     return {cls:(e.className||'').toString(),
+             x:+(r.left-br.left+r.width/2).toFixed(1),
+             y:+(r.top-br.top+r.height/2).toFixed(1),w:+r.width.toFixed(1),
              text:(e.textContent||'').trim(),title:e.title||'',
-             inside:r.top>=sr.top-1&&r.bottom<=sr.bottom+1};});
+             inside:r.left>=br.left-1&&r.right<=br.right+1};});
+   /* **行が測定表とそろっているか**——この図の値打ちそのもの。 */
+   const rows=[...box.querySelectorAll('.tc-row')];
+   const trs=[...document.querySelectorAll('#measurementGrid .measure-matrix tbody tr')];
+   let rowGap=null;
+   if(rows.length===trs.length&&rows.length){
+    rowGap=0;
+    rows.forEach((r,i)=>{const u=r.getBoundingClientRect(),v=trs[i].getBoundingClientRect();
+      rowGap=Math.max(rowGap,Math.abs((u.top+u.height/2)-(v.top+v.height/2)))});
+    rowGap=+rowGap.toFixed(1);
+   }
    return {
     chain,boxH:+br.height.toFixed(1),boxW:+br.width.toFixed(1),
-    minH:cs.minHeight,cssVars:{upper:cs.getPropertyValue('--upper'),lower:cs.getPropertyValue('--lower'),
-                               base:cs.getPropertyValue('--base')},
-    sideH:+sr.height.toFixed(1),sideScrollH:side.scrollHeight,sideOverflow:getComputedStyle(side).overflow,
-    overflowPx:+(br.bottom-sr.bottom).toFixed(1),
-    ticks:pick('.numberline-tick'),bands:pick('.numberline-band'),
-    dots:pick('.numberline-swarm-dot'),measure:pick('.numberline-measure'),
+    sideH:+sr.height.toFixed(1),overflowPx:+(br.bottom-sr.bottom).toFixed(1),
+    行:rows.length,表の行:trs.length,行のずれ:rowGap,
+    ticks:pick('.tc-tick'),lines:pick('.tc-line'),dots:pick('.tc-dot'),
+    現在行:box.querySelectorAll('.tc-row.is-current').length,
     summary:(document.querySelector('#toleranceSummary')?.innerText||'').replace(/\s+/g,' ').slice(0,200),
    };
   });
   if(DUMP){fs.writeFileSync(DUMP,JSON.stringify(g,null,1));
-   const el=await page.$('.compact-width-body');
+   const el=await page.$('.compact-tolerance-side');
    if(el)await el.screenshot({path:DUMP.replace(/\.json$/,'.png')}).catch(()=>{});}
-  rec('数直線が描かれる',!g.none,g.none?'.accurate-numberline が無い':`高さ${g.boxH}px`);
-  if(g.none)throw Error('数直線が描かれない');
+  rec('公差の図が描かれる',!g.none,g.none?'.accurate-numberline が無い':`高さ${g.boxH}px`);
+  if(g.none)throw Error('公差の図が描かれない');
 
-  /* --- 1) はみ出し: 数直線が入れ物より高いと下端(下限側)が切れて見えない --- */
-  rec('数直線が入れ物からはみ出していない',g.overflowPx<=1,
-   `はみ出し${g.overflowPx}px (数直線${g.boxH} / 枠${g.sideH}, min-height=${g.minH})`);
-  rec('目盛りが全て枠内に収まる',g.ticks.every(t=>t.inside),
+  /* --- 1) はみ出し: 図が入れ物より高いと下端の条が切れて見えない --- */
+  rec('図が入れ物からはみ出していない',g.overflowPx<=1,
+   `はみ出し${g.overflowPx}px (図${g.boxH} / 枠${g.sideH})`);
+  rec('目盛りの札が全て枠内に収まる',g.ticks.every(t=>t.inside),
    g.ticks.map(t=>`${t.text}:${t.inside?'可視':'見切れ'}`).join(' / '));
 
-  /* --- 2) 基準値: 非対称公差では範囲の中点(1001)と基準値(1000)がずれる。
-     図示すべきなのは基準値のほう。 --- */
-  const tickText=g.ticks.map(t=>t.text).join(' ');
-  rec('基準値の目盛りがある',/基準/.test(tickText),tickText);
-  const baseTick=g.ticks.find(t=>/基準/.test(t.text));
+  /* --- 2) この図の値打ち: **1条1行で、測定表の行と1対1にそろう**（§9.150）。
+     ずれると「外れている条を目を横に振るだけで読む」ができなくなり、
+     スウォーム時代の「どの点が何条か分からない」へ逆戻りする。 --- */
+  rec('図の行数が測定表の行数と同じ',g.行>0&&g.行===g.表の行,`図${g.行} / 表${g.表の行}`);
+  rec('図の行が測定表の行と同じ高さに並ぶ',
+   g.行のずれ!==null&&g.行のずれ<=2,`最大ずれ ${g.行のずれ}px`);
+
+  /* --- 3) 位置の整合: 値→横位置の写像が線形で、上限/下限/基準の線と一致する。
+     非対称公差なので範囲の中点(1001)と基準値(1000)はずれる。図示すべきなのは
+     基準値のほう。 --- */
+  const lineX={};g.lines.forEach(l=>{
+   if(/tc-line-low/.test(l.cls))lineX.low=l.x;
+   if(/tc-line-high/.test(l.cls))lineX.high=l.x;
+   if(/tc-line-base/.test(l.cls))lineX.base=l.x;});
+  const expect=v=>{const hi=BASE+PLUS,lo=BASE-MINUS;
+   return lineX.low+(v-lo)/(hi-lo)*(lineX.high-lineX.low)};
   const mid=(BASE-MINUS+BASE+PLUS)/2;
-  rec('基準値の目盛りが基準値そのもの(範囲の中点ではない)',
-   !!baseTick&&baseTick.text.includes(String(BASE))&&!baseTick.text.includes(String(mid)),
-   baseTick?baseTick.text:'(無し)');
-
-  /* --- 3) 位置の整合: 値→縦位置の写像が線形で、上限/下限/基準が一致する --- */
-  const pos={};g.ticks.forEach(t=>{if(/上限/.test(t.text))pos.upper=t.y;
-   if(/下限/.test(t.text))pos.lower=t.y;if(/基準/.test(t.text))pos.base=t.y;});
-  const expect=(v)=>{ // 上限と下限の実測位置から線形補間した期待位置
-   const hi=BASE+PLUS,lo=BASE-MINUS;
-   return pos.upper+(hi-v)/(hi-lo)*(pos.lower-pos.upper);
-  };
-  rec('上限が下限より上にある',pos.upper<pos.lower,`上限y=${pos.upper} 下限y=${pos.lower}`);
-  rec('基準値の目盛りが値どおりの位置にある',
-   Math.abs(pos.base-expect(BASE))<=2,
-   `基準y=${pos.base} 期待=${expect(BASE).toFixed(1)}(範囲中点なら${expect(mid).toFixed(1)})`);
-
-  const measured=g.measure[0];
-  const lastVal=Number([...VALUES].reverse().find(v=>v!==''));
-  rec('直前値のマーカーが値どおりの位置にある',
-   !!measured&&Math.abs(measured.y-expect(lastVal))<=2,
-   measured?`y=${measured.y} 期待=${expect(lastVal).toFixed(1)} (${measured.text})`:'(マーカー無し)');
+  rec('下限が上限より左にある',lineX.low<lineX.high,
+   `下限x=${lineX.low} 上限x=${lineX.high}`);
+  /* 基準の線は**札を畳んでも必ず引く**（狙う値がどこかが図から消えるため）。 */
+  rec('基準の線がある',Number.isFinite(lineX.base),JSON.stringify(lineX));
+  rec('基準の線が基準値そのものを指す(範囲の中点ではない)',
+   Number.isFinite(lineX.base)&&Math.abs(lineX.base-expect(BASE))<=2
+   &&Math.abs(lineX.base-expect(mid))>2,
+   `基準x=${lineX.base} 期待=${expect(BASE).toFixed(1)} (中点なら${expect(mid).toFixed(1)})`);
 
   const dotErr=g.dots.map(d=>{
    const v=Number((d.title.match(/:\s*([\d.]+)/)||[])[1]);
-   return Number.isFinite(v)?{v,y:d.y,err:+(d.y-expect(v)).toFixed(1)}:null;
+   return Number.isFinite(v)?{v,x:d.x,y:d.y,err:+(d.x-expect(v)).toFixed(1)}:null;
   }).filter(Boolean);
-  rec('他の測定点も値どおりの位置にある',
+  rec('測定点が値どおりの位置にある',
    dotErr.length>0&&dotErr.every(d=>Math.abs(d.err)<=2),
    dotErr.map(d=>`${d.v}:ズレ${d.err}px`).join(' / '));
 
-  /* --- 4) 公差外の値も見える位置に置かれる(端で潰さない)。
-     以前は表示範囲を公差幅の±25%で固定していたため、上限を25%超えた値は
-     すべて同じ高さ(上端5%)に張り付き、1つ外れと大きく外れが同じに見えた。 --- */
+  /* --- 4) 公差外の値も見える位置に置かれる(端で潰さない)。 --- */
   const ngDot=dotErr.find(d=>d.v>BASE+PLUS);
-  rec('公差外(上振れ)の点が上限より上に描かれる',
-   !!ngDot&&ngDot.y<pos.upper,ngDot?JSON.stringify(ngDot):'(該当点なし)');
-  rec('公差外の点が上端に張り付いていない(はみ出し量が読める)',
-   !!ngDot&&ngDot.y>4,ngDot?`y=${ngDot.y} (数直線の高さ${g.boxH})`:'(該当点なし)');
+  rec('公差外(上振れ)の点が上限より右に描かれる',
+   !!ngDot&&ngDot.x>lineX.high,ngDot?JSON.stringify(ngDot):'(該当点なし)');
+  rec('公差外の点が右端に張り付いていない(はみ出し量が読める)',
+   !!ngDot&&ngDot.x<g.boxW-4,ngDot?`x=${ngDot.x} (図の幅${g.boxW})`:'(該当点なし)');
 
   /* --- 5) 確定前の先読みリングが確定後の点と同じ写像で置かれる --- */
   const pend=await page.evaluate(()=>{
@@ -156,12 +160,12 @@ let b=null;
    const m=document.querySelector('#numberlinePending'),box=document.querySelector('.accurate-numberline');
    if(!m||!box)return null;
    const r=m.getBoundingClientRect(),br=box.getBoundingClientRect();
-   return {hidden:m.hidden,y:+(r.top-br.top+r.height/2).toFixed(1)};
+   return {hidden:m.hidden,x:+(r.left-br.left+r.width/2).toFixed(1)};
   });
   rec('確定前の先読みリングが出る',!!pend&&!pend.hidden,JSON.stringify(pend));
-  rec('先読みリングが確定後の点と同じ高さに出る',
-   !!pend&&!pend.hidden&&Math.abs(pend.y-expect(1002.8))<=2,
-   pend?`y=${pend.y} 期待=${expect(1002.8).toFixed(1)}`:'(リング無し)');
+  rec('先読みリングが確定後の点と同じ横位置に出る',
+   !!pend&&!pend.hidden&&Math.abs(pend.x-expect(1002.8))<=2,
+   pend?`x=${pend.x} 期待=${expect(1002.8).toFixed(1)}`:'(リング無し)');
 
   /* --- 6) 写像そのものの境界(WL.toleranceScaleView を直接) --- */
   const u=await page.evaluate(()=>{
@@ -185,72 +189,59 @@ let b=null;
    Math.abs(u.capViewHigh-(1003+ (1003-999)*1.5))<1e-6&&u.capClamp===6,
    `viewHigh=${u.capViewHigh} clamp=${u.capClamp}`);
 
-  /* --- 7) 基準値のすぐ近くを測ったときの見え方 ---
-     公差4mmに対し0.1mm刻みだと点の高さの差は数pxしかない。以前は
-     (a)重なり回避のしきい値が点の直径より狭く左右にずれなかった
-     (b)直前値のラベルが点の真横に居座って近い点をまとめて覆った
-     の2つが重なり、点が増えても1つしか見えず「値を変えても動かない」
-     ように見えていた。 */
+  /* --- 7) 基準値のすぐ近くを測ったときの見え方（§9.150）---
+     スウォームのころは、公差4mmに対し0.1mm刻みだと点の高さの差が数pxしか
+     なく、重なり回避の左右ずらしが要った。**縦を条に取れば重なりようがない**
+     ——同じ値でも別の行に居る。ここではその約束（近い値でも全部見える・
+     行の順は条の順）を固定する。 */
   const near=await page.evaluate(async()=>{
    document.querySelector('[data-mode="manual"]')?.click();
    const w=S.measure.measurements.width[lengthIndex()];
-   /* **束ねられる差は器の高さから逆算する**（§9.140）。以前は0.1mm差を
-      決め打ちしていたが、公差の図を縦いっぱい（190px→786px）へ伸ばした
-      ことで同じ0.1mmが18px離れ、**左右にずらす経路そのものを一度も
-      通らなくなった**——点は元から離れているので「重ならない」は通り、
-      「条の順に並ぶ」だけが落ちる。器の高さが変わっても必ず束ねられる
-      差（点の直径8pxより近い3px相当）を作る。 */
-   const box0=document.querySelector('.accurate-numberline');
-   const h=(box0&&box0.clientHeight)||190;
-   const view=WL.toleranceScaleView({range:[999,1003],base:1000},['999.2','1002.9'],2);
-   const step=(view.viewHigh-view.viewLow)/h*3;
-   [1000,1000+step,1000+2*step,999.2,1002.9].forEach((v,i)=>w[i]=v.toFixed(3));
+   [1000,1000.02,1000.04,999.2,1002.9].forEach((v,i)=>w[i]=v.toFixed(3));
    renderMeasureGrid();
    await new Promise(r=>setTimeout(r,300));
    const box=document.querySelector('.accurate-numberline'),br=box.getBoundingClientRect();
-   const dots=[...box.querySelectorAll('.numberline-swarm-dot')].map(e=>{
+   const rows=[...box.querySelectorAll('.tc-row')];
+   const dots=rows.map((row,i)=>{
+    const e=row.querySelector('.tc-dot');if(!e)return null;
     const r=e.getBoundingClientRect();
-    return {idx:+e.dataset.idx,raw:e.dataset.raw,dev:e.dataset.dev,
-            y:+(r.top-br.top+r.height/2).toFixed(1),x:+(r.left-br.left+r.width/2).toFixed(1),d:r.width};
-   });
-   return {dots,lastY:(()=>{const m=box.querySelector('.numberline-measure');
-     if(!m)return null;const r=m.getBoundingClientRect();return +(r.top-br.top+r.height/2).toFixed(1)})()};
+    return {idx:i,title:e.title,
+            x:+(r.left-br.left+r.width/2).toFixed(1),
+            y:+(r.top-br.top+r.height/2).toFixed(1),d:r.width};
+   }).filter(Boolean);
+   return {dots,行:rows.length};
   });
-  rec('直前値以外の測定点も全て描かれる',near.dots.length===4,
-   near.dots.map(d=>`条${d.idx+1}:${d.raw}`).join(' / '));
+  rec('測定した条ぶんの点が全て描かれる',near.dots.length===5,
+   near.dots.map(d=>`条${d.idx+1}:${d.title}`).join(' / '));
+  /* 同じ値に近い3条（1000 / 1000.02 / 1000.04）でも、行が違うので重ならない。 */
   const nearTrio=near.dots.filter(d=>d.idx<3);
-  // 中心間の距離が半径の和以上なら重なっていない(入力位置の点は一回り
-  // 大きく描かれるので、直径ではなく2点それぞれの半径で見る)。
-  rec('高さの近い点(0.1mm差)でも重ならない',
+  rec('値がほぼ同じ条でも点が重ならない(行が違うため)',
    nearTrio.length===3&&nearTrio.every((d,i)=>nearTrio.slice(i+1).every(o=>
      Math.hypot(d.x-o.x,d.y-o.y)>=(d.d+o.d)/2)),
    nearTrio.map(d=>`条${d.idx+1}(x${d.x},y${d.y},径${d.d})`).join(' / '));
-  rec('近い点は条の順に左から並ぶ',
-   nearTrio.every((d,i)=>i===0||d.x>nearTrio[i-1].x),
-   nearTrio.map(d=>`条${d.idx+1}:x${d.x}`).join(' / '));
-  rec('基準値との差を各点が持つ',
-   near.dots.every(d=>d.dev!==undefined&&d.dev!==''),
-   near.dots.map(d=>`${d.raw}→${d.dev}`).join(' / '));
+  rec('点は条の順に上から並ぶ',
+   near.dots.every((d,i)=>i===0||d.y>near.dots[i-1].y),
+   near.dots.map(d=>`条${d.idx+1}:y${d.y}`).join(' / '));
+  rec('点は条番号と測定値を持つ(印だけにしない)',
+   near.dots.every(d=>/:/.test(d.title||'')),
+   near.dots.map(d=>d.title).join(' / '));
 
-  /* --- 8) クリックした条の点を強調する --- */
+  /* --- 8) クリックした条の行を強調する --- */
   const clicked=await page.evaluate(async()=>{
    const cell=document.querySelector('input[data-mkey="width"][data-j="0"]');
    cell?.click();cell?.focus();
    await new Promise(r=>setTimeout(r,300));
    const box=document.querySelector('.accurate-numberline');
-   const cur=[...box.querySelectorAll('.is-current')];
-   return {count:cur.length,idx:cur.map(e=>+e.dataset.idx),
-           raw:cur.map(e=>e.dataset.raw),
-           size:cur.map(e=>Math.round(e.getBoundingClientRect().width)),
-           plain:Math.round(box.querySelector('.numberline-swarm-dot:not(.is-current)')?.getBoundingClientRect().width||0),
-           note:(box.querySelector('.numberline-current-note')?.textContent||'').trim()};
+   const cur=[...box.querySelectorAll('.tc-row.is-current')];
+   const rows=[...box.querySelectorAll('.tc-row')];
+   const size=e=>Math.round((e?.querySelector('.tc-dot')||e)?.getBoundingClientRect().width||0);
+   return {count:cur.length,idx:cur.map(e=>rows.indexOf(e)),
+           強調:size(cur[0]),通常:size(rows.find(r=>!r.classList.contains('is-current')))};
   });
-  rec('クリックした条の点だけが強調される',
+  rec('クリックした条の行だけが強調される',
    clicked.count===1&&clicked.idx[0]===0,JSON.stringify(clicked));
-  rec('強調された点は他の点より大きい',
-   clicked.size[0]>clicked.plain,`強調${clicked.size[0]}px / 通常${clicked.plain}px`);
-  rec('現在の条の値と基準比を数直線内に出す',
-   /条1/.test(clicked.note)&&/1000\.0/.test(clicked.note)&&/基準比/.test(clicked.note),clicked.note);
+  rec('強調された条の点は他の条より大きい',
+   clicked.強調>clicked.通常,`強調${clicked.強調}px / 通常${clicked.通常}px`);
 
   await page.evaluate(async()=>{
    if(typeof S!=='undefined'&&S.measure&&typeof reliableDelete==='function')

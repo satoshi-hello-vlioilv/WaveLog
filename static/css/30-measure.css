@@ -1220,7 +1220,10 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 /* 見出しバーの中の状態は**文字だけ**。バーの中にさらに白い箱を置くと
    枠の中の枠になる（§9.129）。 */
 .measure-grid-block-title .measure-status{min-width:112px;text-align:right;padding:var(--pad-chip);background:transparent;border:0;font-weight:700}
-.compact-tolerance-side{min-width:0;max-width:100%;overflow:hidden}
+.compact-tolerance-side{
+  min-width:0;max-width:100%;overflow:hidden;
+  position:sticky;left:0;z-index:2;background:var(--surface);
+}
 /* 測定カードの左は**図だけ**（§9.140）。公差の値は基本情報カードへ移した
    ので、ここは数直線1枚が縦いっぱいに伸びる。以前は「上=値のカード /
    下=図」の2段で、値のカードが高さの下限(102px)を取るぶん図が縮んでいた。 */
@@ -1377,13 +1380,17 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    ときは表が47pxまで潰れ、20remでも「公差情報なし」の6文字に320pxあった）。
    下限は目盛りラベルの領域(`--nl-track`=70px)＋直前値ラベルで、それを
    下回ると数字が重なる。 */
+/* 図と表は**同じ器でいっしょにスクロールする**（§9.150）。図の1行は表の
+   1行と同じ高さで並ぶので、片方だけ動くと対応が崩れる。図の列は
+   `position:sticky`で左に留め、丈位置が多くて横へ流れても残す。 */
 .matrix-body{
   display:grid;grid-template-columns:minmax(0,var(--w-lg)) minmax(0,1fr);
+  align-items:start;
   gap:var(--gap-section);padding:var(--space-1) 0 0;
-  min-height:0;min-width:0;max-width:100%;overflow:hidden;
+  min-height:0;min-width:0;max-width:100%;overflow:auto;
 }
 .matrix-body>*{min-width:0;max-width:100%;min-height:0}
-.mx-scroll{min-width:0;min-height:0;overflow:auto}
+.mx-scroll{min-width:0;min-height:0;overflow:visible}
 /* **条は1列で40行まで。2段に折らない。** 丈は最大10列なので横は足りる。
    行の中に置くものの高さは`--row-inner-h`から作る（§9.112。器の外寸
    `--row-h`から作ると罫線と余白のぶん必ずはみ出す）。 */

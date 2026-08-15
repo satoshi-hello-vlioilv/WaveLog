@@ -11,72 +11,63 @@
 .compact-last-value.ng{border-color:#d02e2e;color:#9b1b1b;background:#fff5f5}
 /* ============================================================
    Hotfix 2026-07-20 D: 公差数直線 / 汎用フィルタ（コンパクト・サジェスト・ローディング）
-   ============================================================ *//* ---- 公差数直線: 縦軸を左へ寄せ、測定値はドット＋条番号/数値 ---- */
+   ============================================================ *//* ---- 板幅測定値の視覚表示（§9.150。骨子§9.137「公差と測定値の縦グラフ」）----
+   **縦＝条（右の測定表の行と1対1）／横＝測定値**。行の高さは`alignToleranceChart()`
+   が実際の表を測って`--tc-head`/`--tc-row`へ入れる（トークンから計算すると
+   罫線と表示サイズのぶんでずれる）。 */
 .accurate-numberline{
-  position:relative;
-  width:100%;
-  min-height:190px;
-  height:100%;
-  border:1px solid #aebdc2;
-  border-radius:var(--radius-sm);
-  background:#fff;
-  overflow:hidden;
-  /* 縦軸のX位置。左側は目盛ラベル専用ガター。ラベルが見切れない範囲で限界まで左へ寄せる。 */
-  --nl-track:70px;
+  --tc-head:var(--ctl-h-xs);--tc-row:var(--row-inner-h);
+  position:relative;display:flex;flex-direction:column;
+  width:100%;min-width:0;height:100%;min-height:0;
+  border:1px solid var(--line-mid);border-radius:var(--radius-sm);
+  background:#fff;overflow:hidden;
 }
-.numberline-track{position:absolute;top:6%;bottom:6%;left:var(--nl-track);width:3px;transform:translateX(-50%);background:#2f4a52;z-index:3}
-.numberline-band{position:absolute;left:calc(var(--nl-track) - 9px);width:18px;z-index:1;border-left:1px solid #ffffffaa;border-right:1px solid #ffffffaa}
-.numberline-band.high{top:6%;height:calc(var(--upper) - 6%);background:#f5dada}
-.numberline-band.ok{top:var(--upper);height:calc(var(--lower) - var(--upper));background:#dff4e6}
-.numberline-band.low{top:var(--lower);bottom:6%;background:#f5dada}
-.numberline-tick{position:absolute;left:0;width:var(--nl-track);height:0;z-index:5;pointer-events:none}
-.numberline-tick::before{content:"";position:absolute;right:0;width:12px;height:2px;background:#2f4a52;transform:translateX(50%) translateY(-1px)}
-.numberline-tick b{position:absolute;right:7px;top:50%;transform:translateY(-50%);display:inline-flex;align-items:baseline;gap:var(--gap-hair);padding:2px 4px;border-radius:var(--radius-sm);background:#ffffffee;border:1px solid #b7c7cc;color:#173842;font-size:var(--fs-micro);font-weight:900;white-space:nowrap;font-variant-numeric:tabular-nums}
-.numberline-tick b span{font-size:var(--fs-tiny);font-weight:800;color:#60747b}
-.numberline-tick.upper{top:var(--upper)}
-.numberline-tick.lower{top:var(--lower)}
-/* 基準値の目盛り。範囲の中点ではなく製造値そのものを指す(公差が非対称
-   なら両者はずれる)。狙う値なので上限/下限より目立たせる。 */
-.numberline-tick.base{top:var(--base)}
-.numberline-tick.base::before{width:16px;height:3px;background:var(--teal)}
-.numberline-tick.base b{border-color:var(--teal);color:#075e67;background:#f7fafb}
-.numberline-tick.base b span{color:#2c7f78}
-/* 直前値: 点は軸の上、ラベルは右端へ寄せ、あいだを引出線でつなぐ。ラベルを
-   点の真横に置いていたころは、値が近い点(数px差)をまとめて覆い隠していた。 */
-.numberline-measure{position:absolute;left:var(--nl-track);right:4px;height:0;z-index:6;display:flex;align-items:center;transform:translateY(-50%)}
-.numberline-measure .nl-dot{flex:0 0 auto;width:12px;height:12px;margin-left:-6px;border-radius:var(--radius-round);background:var(--teal);box-shadow:0 0 0 2px #fff,0 0 0 3px #8fc9c2}
-.numberline-measure .nl-leader{flex:1 1 auto;min-width:4px;height:0;border-top:1px dashed #9fbdb8;opacity:.85}
-.numberline-measure.ng .nl-leader{border-top-color:#e0a3a3}
-.numberline-measure b{flex:0 0 auto;max-width:62%;padding:var(--pad-chip);border-radius:var(--radius-sm);border:1px solid #8fc9c2;background:#fff;color:#075e67;font-weight:900;font-size:var(--fs-micro);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.numberline-measure b span{margin-right:3px;color:#4a6b60;font-weight:800}
-.numberline-measure.ng .nl-dot{background:#d02e2e;box-shadow:0 0 0 2px #fff,0 0 0 3px #f0a5a5}
-.numberline-measure.ng b{border-color:#d02e2e;color:#9b1b1b;background:#fff5f5}
-.numberline-measure.ng b span{color:#9b6b6b}
-/* スウォームプロット: 直前以外の測定値も全て点で表示する。値が近い点は
-   layoutSwarmDots()がleftをトラックの右へ段階的にずらして重なりを避ける
-   (しきい値は点の直径以上。狭いと隣り合う値が重なったままになる)。 */
-.numberline-swarm-dot{position:absolute;left:var(--nl-track);width:8px;height:8px;border-radius:var(--radius-round);transform:translate(-50%,-50%);z-index:5;box-shadow:0 0 0 1.5px #fff;transition:left .15s ease,width .12s ease,height .12s ease}
-.numberline-swarm-dot.ok{background:var(--teal)}
-.numberline-swarm-dot.ng{background:#d02e2e}
-/* 現在の条の値と基準値との差。公差幅に対して差が小さいと点の移動が数pxに
-   しかならないため、数値でも読めるようにする。 */
-.numberline-current-note{position:absolute;left:3px;right:3px;bottom:2px;z-index:8;padding:var(--pad-chip);border-radius:var(--radius-sm);background:#ffffffe8;border:1px solid #cfdcdf;color:#173842;font-size:var(--fs-micro);font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center}
-.numberline-current-note b{color:#f08c00;margin-right:3px}
-.numberline-current-note small{color:#60747b;font-size:var(--fs-micro);margin-left:3px}
-/* 公差NGの先読み警告: 受信欄への転送中(確定前)の値を、リング状のマーカーで
-   その場所に速報表示する。確定済みの.numberline-measureとは見た目を変え
-   (輪郭のみ・点滅)、「まだ確定していない」ことが一目でわかるようにする。 */
-.numberline-pending{position:absolute;left:var(--nl-track);width:16px;height:16px;border-radius:var(--radius-round);transform:translate(-50%,-50%);z-index:7;border:3px solid var(--success);box-shadow:0 0 0 2px #fff;pointer-events:none;animation:numberline-pending-pulse 1s ease-in-out infinite}
+/* 目盛りの札。**値は書かない**——公差の値は測定カード上の帯が言っている
+   （§9.129。同じ数字を2箇所に出さない）。ここは「どこが境か」だけ。 */
+.tc-head{position:relative;flex:0 0 auto;height:var(--tc-head);border-bottom:1px solid var(--line-mid);background:var(--surface-2)}
+.tc-tick{
+  position:absolute;top:50%;transform:translate(-50%,-50%);
+  padding:0 2px;color:var(--ink-3);font-size:var(--fs-micro);font-weight:800;white-space:nowrap;
+}
+.tc-low{left:var(--nl-low)}
+.tc-high{left:var(--nl-high)}
+.tc-base{left:var(--nl-base);color:var(--teal-dark)}
+.tc-body{position:relative;flex:1 1 auto;min-height:0}
+/* 公差帯は**面**（内＝淡い緑、外＝淡い赤）。境は1本の線で示す。 */
+.tc-band{
+  position:absolute;inset:0;z-index:0;
+  background:linear-gradient(90deg,
+    var(--danger-bg) 0 var(--nl-low),
+    var(--success-bg) var(--nl-low) var(--nl-high),
+    var(--danger-bg) var(--nl-high) 100%);
+}
+.tc-line{position:absolute;top:0;bottom:0;width:1px;z-index:1;background:var(--line-strong)}
+.tc-line-low{left:var(--nl-low)}
+.tc-line-high{left:var(--nl-high)}
+.tc-line-base{left:var(--nl-base);background:var(--teal);width:2px;transform:translateX(-.5px)}
+/* 1条＝1行。**右の表の行と同じ高さ**なので、外れている条が目を横に振るだけで
+   読める。行そのものは背景を持たない（帯が見えるように）。 */
+.tc-row{position:relative;z-index:2;height:var(--tc-row);min-height:0}
+.tc-row.is-current{background:#f39a1826;box-shadow:inset 0 0 0 1px #f39a1866}
+.tc-dot{
+  position:absolute;top:50%;width:9px;height:9px;border-radius:var(--radius-round);
+  transform:translate(-50%,-50%);box-shadow:0 0 0 1.5px #fff;
+}
+.tc-dot.ok{background:var(--teal)}
+.tc-dot.ng{background:var(--danger)}
+.tc-row.is-current .tc-dot{width:13px;height:13px;box-shadow:0 0 0 2px #fff,0 0 0 3px #f39a18}
+/* 公差NGの先読み: 転送中(確定前)の値を、**いま入れている条の行**へリングで
+   速報する。縦位置は`--tc-cur`（条の番号）から決まるので、JSが動かすのは
+   左右だけ（§9.150）。 */
+.numberline-pending{
+  position:absolute;z-index:3;width:16px;height:16px;border-radius:var(--radius-round);
+  top:calc((var(--tc-cur,0) + .5) * var(--tc-row));
+  transform:translate(-50%,-50%);border:3px solid var(--success);box-shadow:0 0 0 2px #fff;
+  pointer-events:none;animation:numberline-pending-pulse 1s ease-in-out infinite;
+}
 .numberline-pending.ng{border-color:var(--danger)}
 @keyframes numberline-pending-pulse{0%,100%{opacity:1;transform:translate(-50%,-50%) scale(1)}50%{opacity:.55;transform:translate(-50%,-50%) scale(1.25)}}
 @media(prefers-reduced-motion:reduce){.numberline-pending{animation:none}}
-/* 公差判定の着地演出: 先読みリング(.numberline-pending)が確定して
-   .numberline-measureへ切り替わった瞬間だけ、ドットが軽くバウンドして
-   「判定が確定した」ことを伝える(付与はJS側で新規確定時のみ、既存値の
-   再描画では付与しない)。 */
-.numberline-measure.just-landed .nl-dot{animation:numberline-land .32s cubic-bezier(.34,1.56,.64,1)}
-@keyframes numberline-land{0%{transform:scale(.4);opacity:.4}60%{transform:scale(1.35)}100%{transform:scale(1)}}
-@media(prefers-reduced-motion:reduce){.numberline-measure.just-landed .nl-dot{animation:none}}
 /* ---- 汎用フィルタ バー ---- */
 .generic-filter-bar{margin:6px 14px 0;border:1px solid #b7c7cc;border-radius:var(--radius-sm);background:#fff;overflow:hidden}
 /* 1段目: 検索窓（トークン入力）＝汎用検索窓から次々に条件を追加する主導線 */
