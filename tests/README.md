@@ -157,6 +157,27 @@ NODE_PATH=/opt/node22/lib/node_modules /opt/node22/bin/node tests/test_nav.js
 
 ### 待ち方
 
+**固定待ちは実行時間の半分を占める。** 実測(§9.133): 101本1,989件で16.3分の
+うち、`waitForTimeout`等の固定待ちが373箇所・**7.8分**あった。速い画面では
+無駄に待ち、遅い画面では足りない。手当てした3本の実績:
+
+| テスト | 前 | 後 | 何に置き換えたか |
+|---|---|---|---|
+| `test_wkfast` | 29秒 | 6秒 | 可否の「?」が消えるまで(`settleFlags`) |
+| `test_scale` | 25秒 | 8秒 | 取得が静まるまで(`quiet`)。7画面×1.8秒を数えるだけに使っていた |
+| `test_waiting`(+旧waiting2) | 29秒 | 10秒 | 画面が出来上がるまで／覆いが出て閉じるまで |
+
+**残っている上位**(固定待ちの合計): `test_startwork` 17.9秒 /
+`test_uiux` 15.6秒 / `test_theme` 14.4秒 / `test_nav` 13.9秒 /
+`test_scbalance` 13.7秒 / `test_orphan` 13.4秒 / `test_listcache` 13.0秒 /
+`test_scperm` 12.9秒 / `test_screorder` 12.7秒。
+
+**速くしたら「同じものを見ている」ことを数で確かめる**(§9.102)。早すぎて
+画面が出来ていないと、**数える対象が減っただけで全部PASSする**。
+`test_scale`には「数えた部品が360件を下回らない」を入れてある。
+
+
+
 `waitForTimeout` の固定待ちは**フィクスチャが育つと必ず落ちる**。
 実際に`test_cols.js`/`test_split_layout.js`と内容欄のテスト(当時の
 `test_content_apply.js`。いまは`test_sccontent.js`)が
