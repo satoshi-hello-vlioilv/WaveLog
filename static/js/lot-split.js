@@ -1566,6 +1566,29 @@
     wireSplitPanelButtons(el);
   }
   // 設定済み(applySplit確定済み)状態の表示。
+  /* ---- 幅分割の視覚図(§9.133 指摘⑨) ----
+     どの子ロットがどの幅で並んでいるかは**帯で見るもの**。表だけだと
+     「1〜2条 / 3〜5条」という範囲表記を頭の中で並べ直すことになる。
+     幅(mm)に比例した帯にし、色は入力欄のバッジ・条割の視覚図と同じ
+     `appliedLotColorMap`から取る——表・入力欄・帯が同じ色で結び付く。
+     **狭い区間でも文字が消えないように**、帯の下へ番号を出す。 */
+  function splitBandHtml(groups){
+    if(!Array.isArray(groups)||!groups.length)return '';
+    const{map:lotColors,lots}=appliedLotColorMap(groups);
+    const wOf=g=>{const w=Number(g.base?.width);return Number.isFinite(w)&&w>0?w:1};
+    const total=groups.reduce((a,g)=>a+wOf(g)*(Number(g.count)||1),0)||1;
+    const segs=groups.map((g,i)=>{
+      const span=wOf(g)*(Number(g.count)||1);
+      const pct=Math.max(2,Math.round(span/total*1000)/10);
+      const color=lots.length>1&&lotColors[g.lot]?lotColors[g.lot]:'var(--teal)';
+      const w=Number.isFinite(Number(g.base?.width))?String(g.base.width):'—';
+      return `<span class="split-band-seg${g.missing?' is-missing':''}" style="flex:${pct} 1 0;background-color:${esc(color)}"`
+        +` title="${esc(g.lot)} / ${g.count}条 / 幅${esc(w)}">`
+        +`<b>${esc(w)}</b><small>${g.count}条</small></span>`;
+    }).join('');
+    return `<div class="split-band" aria-label="幅分割の並び">${segs}</div>`;
+  }
+
   function renderAppliedGroupsPanel(el,groups){
     const summary=summarizeAppliedGroups(groups);
     /* ロット№の頭に色の丸を置く。入力欄のバッジ(.strip-lot-badge)・条割の
@@ -1577,6 +1600,7 @@
     const needsReconfigure=S.measure?.settings?.splitNeedsReconfigure;
     el.innerHTML=`
       <div class="split-panel-status split-panel-status-applied">✓ ${esc(summary)}</div>
+      ${splitBandHtml(groups)}
       <table class="split-panel-table"><thead><tr><th>#</th><th>ロット№</th><th>条数</th><th>幅</th><th>状態</th></tr></thead><tbody>${rows}</tbody></table>
       ${needsReconfigure?'<div class="split-mismatch-badge">子ロットデータの更新で条数の構成が変わりました。「条割変更」で再設定してください。</div>':''}
       ${scrapWidthLineHtml()}

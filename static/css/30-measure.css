@@ -706,6 +706,21 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .info-more:hover{background:var(--surface-2);color:var(--ink)}
 .info-detail{grid-column:1/-1;display:contents}
 .info-detail[hidden]{display:none}
+/* 幅分割の視覚図(§9.133 指摘⑨)。幅(mm)に比例した帯で、色は入力欄の
+   バッジ・条割の視覚図と同じ。**狭い区間でも読めるように**帯の中の文字は
+   はみ出さず省略し、`title`に生の値を残す。 */
+.split-band{
+  display:flex;align-items:stretch;gap:2px;width:100%;
+  height:var(--ctl-h-lg);margin:var(--space-2) 0;
+  border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden;background:var(--surface);
+}
+.split-band-seg{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  min-width:0;color:#fff;overflow:hidden;white-space:nowrap;
+}
+.split-band-seg b{font-size:var(--fs-sm);font-weight:800;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.split-band-seg small{font-size:var(--fs-micro);opacity:.85}
+.split-band-seg.is-missing{background-image:repeating-linear-gradient(45deg,#0003 0 6px,transparent 6px 12px)}
 .quality-grade-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:var(--fs-sm)}
 .quality-grade-table th,.quality-grade-table td{
   padding:var(--pad-row);border:1px solid var(--line-soft);
