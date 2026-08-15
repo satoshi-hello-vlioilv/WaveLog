@@ -282,7 +282,7 @@ function renderMeasurement(){
  {const mb=$('#basicMore'),dt=$('#basicDetail');
   if(mb&&dt)mb.onclick=()=>{const open=dt.hidden;dt.hidden=!open;
    mb.setAttribute('aria-expanded',open?'true':'false');
-   mb.textContent=open?'詳細を閉じる':'詳細を見る';};}Object.entries(m.settings).forEach(([k,v])=>{const el=$('#'+k);if(el){if(el.type==='checkbox')el.checked=v;else el.value=v}});$('#qualityInfo').value=m.qualityInfo;document.querySelectorAll('[data-mother]').forEach(x=>x.value=m.mother[x.dataset.mother]||'');$('#motherOriginalWidth').textContent=fmtDim(b.originalWidth,1)||'－';renderMeasureGrid();renderStats();setState('IndexedDB読込済み')
+   mb.textContent=open?'詳細を閉じる':'詳細を見る';};}Object.entries(m.settings).forEach(([k,v])=>{const el=$('#'+k);if(el){if(el.type==='checkbox')el.checked=v;else el.value=v}});$('#qualityInfo').value=m.qualityInfo;paintQualityInfo();document.querySelectorAll('[data-mother]').forEach(x=>x.value=m.mother[x.dataset.mother]||'');$('#motherOriginalWidth').textContent=fmtDim(b.originalWidth,1)||'－';renderMeasureGrid();renderStats();setState('IndexedDB読込済み')
  {const mode=S.measure.settings.inputMode||'auto';document.querySelectorAll('[data-mode]').forEach(x=>x.classList.toggle('active',x.dataset.mode===mode))}
  activateWorkspace($('#measureType').value==='母材'?'mother':'measure');
  applyInputProtection();
@@ -293,6 +293,7 @@ function renderMeasurement(){
  upgradeManualInputTypes();
  renderQualityGradePanel();
  bindInfoTabs();
+ bindBasicTabs();
  renderDataManagementPanel();
  renderResidualCourseEverywhere();
  renderCourseHierarchy();
@@ -302,8 +303,9 @@ function renderMeasurement(){
     ①の「準備の入力」へ移してサブタブから外れており、**どのタブにも当たらない
     値だったため`[data-leftpanel]`が全部隠れていた**（①の品質カードが空のまま
     出ていた原因。カードの器だけが残るので、レイアウトの不具合に見える）。 */
- document.querySelectorAll('[data-lefttab]').forEach(x=>x.classList.toggle('active',x.dataset.lefttab==='grade'));
- document.querySelectorAll('[data-leftpanel]').forEach(x=>x.hidden=x.dataset.leftpanel!=='grade');
+ /* 品質規格・品質情報は基本情報カードへ移した（§9.145）ので、ここが見るのは
+    測定データ分析とデバッグ面だけ。**gradeという面はもう無い。** */
+ document.querySelectorAll('[data-leftpanel]').forEach(x=>x.hidden=true);
  updateWorkTimePanel();
  updateMeasurementHeading();
  /* マスタの差異の見張りを始める（§9.139）。開いているあいだだけ回り、
@@ -426,6 +428,75 @@ function renderDataManagementPanel(){
  if(ref){ref.after(label,value)}else grid.append(label,value);
  }
 }
+/* 基本情報カードのタブ（§9.145）。品質規格は「測る前に1回だけ確かめる」もので、
+   マスを1つ使うほどではないが1回の操作で必ず出せる場所に置く。
+   **`onclick`を毎回張り直す**（`renderMeasurement`のたびに呼ばれる）。 */
+function bindBasicTabs(){
+ const btns=[...document.querySelectorAll('[data-basictab]')];
+ if(!btns.length)return;
+ const show=key=>{
+  btns.forEach(b=>b.classList.toggle('active',b.dataset.basictab===key));
+  document.querySelectorAll('[data-basicpanel]').forEach(p=>{
+   const on=p.dataset.basicpanel===key;
+   if(p.hidden!==!on)p.hidden=!on;
+  });
+ };
+ btns.forEach(b=>{b.onclick=()=>show(b.dataset.basictab)});
+ show(btns.find(b=>b.classList.contains('active'))?.dataset.basictab||'basic');
+}
+/* ③の「記録した値」（§9.146、骨子§9.137の記録の壁4枚のうちの1枚）。
+   **数字の要約は測定データ分析が持っている**ので、ここが受け持つのは
+   「数値以外に何を残すか」——誰が測ったか・測定表の形・使う機材・
+   その他の設定・母材の実測。同じ数字を2箇所に出さない（§9.129）。
+   ①準備で決めた値をそのまま並べるので、完了前に**①へ戻らずに確かめられる**。 */
+const RECORD_GROUPS=[
+ ['誰が測ったか',[['operator','オペレータ'],['inspector','検査員'],['crewSize','人数']]],
+ ['測定表の形',[['verticalCount','丈数'],['horizontalCount','条数']]],
+ ['使う機材',[['innerDiameter','内径'],['spool','スプール'],['thicknessGauge','板厚計'],['widthGauge','板幅計']]],
+ ['その他の設定',[['unwind','巻出方向'],['widthOrder','条入力順'],['widthDirection','方向'],['burr','バリ揃え'],['coilStop','コイル止め']]],
+];
+/* 母材の項目名は**画面のラベルから取る**（マスタでも定数でもない）。
+   ここで別の名前を持つと、②で見た欄名と③の一覧で言葉が変わる。 */
+function motherRecordRows(){
+ const rows=[];
+ [['motherOriginalWidth','元幅（実績）'],['motherScrapWidth','屑幅（両耳合計）']].forEach(([id,label])=>{
+  const el=$('#'+id);if(el)rows.push([label,el.textContent]);
+ });
+ document.querySelectorAll('[data-mother]').forEach(el=>{
+  const lab=el.closest('label');
+  const name=lab?[...lab.childNodes].filter(n=>n.nodeType===3).map(n=>n.textContent.trim()).join(''):'';
+  rows.push([name||el.dataset.mother,el.value]);
+ });
+ return rows;
+}
+function renderRecordedValues(){
+ const host=$('#recordedList');
+ if(!host||!S.measure)return;
+ const st=S.measure.settings||{};
+ const shown=v=>{const s=String(v??'').trim();return s===''||s==='-'||s==='－'?'':s};
+ const line=(l,v)=>`<div><dt>${esc(l)}</dt><dd>${esc(shown(v)||'—')}</dd></div>`;
+ let h=RECORD_GROUPS.map(([title,items])=>
+  `<div class="rv-group"><b>${esc(title)}</b><dl>`
+  +items.map(([k,label])=>line(label,st[k])).join('')+'</dl></div>').join('');
+ const mother=motherRecordRows().filter(([,v])=>shown(v));
+ h+='<div class="rv-group"><b>母材</b>'
+  +(mother.length?`<dl>${mother.map(([l,v])=>line(l,v)).join('')}</dl>`
+   :'<p class="rv-empty">まだ入力がありません。</p>')+'</div>';
+ if(host.innerHTML!==h)host.innerHTML=h;
+}
+/* 品質情報の見出しに**件数を文字で**添える（§9.144）。状態を色だけで伝えない。
+   本文は`qualityText()`が`(1) …`の塊を空行で連ねたもので、件数はその印の数。
+   **値は`.value`への代入で入るのでDOMは変わらない**（§9.130と同じ）——
+   代入した側が呼ぶ。**呼ぶのは2箇所**（開いたとき／共有DBから読んだとき）。 */
+function paintQualityInfo(){
+ const box=document.querySelector('.quality-info-block'),badge=$('#qualityInfoBadge'),ta=$('#qualityInfo');
+ if(!box||!badge||!ta)return;
+ const n=(String(ta.value||'').match(/^\(\d+\)/gm)||[]).length;
+ badge.textContent=n?`異常 ${n}件`:'異常なし';
+ badge.classList.toggle('qi-some',!!n);
+ badge.classList.toggle('qi-none',!n);
+ box.classList.toggle('qi-has',!!n);
+}
 function bindInfoTabs(){document.querySelectorAll('[data-infotab]').forEach(btn=>btn.onclick=()=>{document.querySelectorAll('[data-infotab]').forEach(x=>x.classList.toggle('active',x===btn));document.querySelectorAll('[data-infopanel]').forEach(p=>p.hidden=p.dataset.infopanel!==btn.dataset.infotab)})}
 function upgradeManualInputTypes(){
  document.querySelectorAll('input[data-mother],input[data-product-field]').forEach(el=>{
@@ -447,7 +518,9 @@ function renderResidualCourseEverywhere(){
 }
 /* 公差の内訳(基準値・±・計算式)を見出し領域へ表示する。 */
 function updateMeasurementHeading(){
- const type=$('#measureType').value;$('#measurePanelTitle').textContent=type+'測定';
+ /* カードの名前は骨子どおり「測定」。**項目名は表の見出しが言っている**ので
+    ここでは繰り返さない（§9.129。以前は上が「板幅測定」下が「板幅」だった）。 */
+ const type=$('#measureType').value;$('#measurePanelTitle').textContent='測定';
  if(type==='フラットネス'){$('#toleranceSummary').innerHTML='<div class="tol-status no-data"><b>判定基準</b><span>〇＝OK　△・×＝NG　条ごとに記号を入力してください。</span></div>';return}
  const kind=WL.measureItem.kindOf(type),detail=toleranceDetail(kind),base=Number(kind==='thickness'?S.measure.basic.mfgThickness:S.measure.basic.mfgWidth);
  if(!detail){$('#toleranceSummary').innerHTML='<div class="tol-status no-data"><b>公差情報なし</b><span>選択した公差区分に使用可能なプラス・マイナス値がありません。</span></div>';return}

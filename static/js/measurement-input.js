@@ -322,11 +322,27 @@ function lengthSlotCount(){
 }
 /* 行の呼び名と枠の数は`WL.measureItem`が答える（§9.138）。板厚は条ではなく
    丈ごとに3点（エッジOS・中央CL・エッジDS）なので、行が3つになる。 */
+/* 表の大きさは**条数と丈数から2段で決める**（§9.146）。
+   「40条が全部入る小ささ」を8条のロットにも当てると、器の中に空きが残る
+   うえ、1行19pxの帯を狙って押すことになる（実機で「余白の問題と使いにくさ」
+   として報告された）。**25条までは通常の見やすい大きさ**、26条以上で
+   今までの詰まった見た目。
+   列も同じ。丈数は設計上9まであるが**実際は3、まれに4**——丈3以下は
+   `lengthSlotCount()`が4を返すので、**4列がきれいに収まる幅**を主に置き、
+   5列以上のときだけ詰める。 */
+const MX_ROOMY_ROWS=25,MX_WIDE_SLOTS=4;
 function measureMatrixHtml(key,count,type){
  const m=S.measure,lp=$('#lengthPos'),slots=lengthSlotCount(),cur=lengthIndex();
  const labels=WL.measureItem.slotLabels(key,count),head=WL.measureItem.slotHead(key);
  const label=li=>(lp&&lp.options[li]&&lp.options[li].value)||('丈'+(li+1));
  const rows=(m.measurements&&m.measurements[key])||[];
+ /* 子ロットの印は**専用の1列**にまとめる（§9.146）。ロット№は条で決まり、
+    **丈位置が変わっても同じ**なので、丈の数だけ同じバッジを並べる意味が
+    無い——入力欄の中に置いていたときは、そのぶん数値の場所が狭くなり、
+    丈を全部出すと画面も圧迫していた。板厚は行が条ではなく
+    エッジOS/中央CL/エッジDSの3点なので、この列は付けない。 */
+ const badges=key==='thickness'?[]:WL.split.lotColumn(count);
+ const hasLot=badges.some(Boolean);
  let thead='';
  for(let li=0;li<slots;li++)
   thead+=`<th scope="col" class="${li===cur?'is-current':''}">`
@@ -334,6 +350,10 @@ function measureMatrixHtml(key,count,type){
  let body='';
  for(let j=0;j<count;j++){
   body+=`<tr><th scope="row">${esc(labels[j]??String(j+1))}</th>`;
+  if(hasLot){
+   const b=badges[j];
+   body+=`<td class="mx-lot">`+(b?`<span class="strip-lot-badge" style="background-color:${esc(b.color)}" title="${esc(b.lot)}">${esc(b.suffix)}</span>`:'')+'</td>';
+  }
   for(let li=0;li<slots;li++){
    /* 判定の印（OK/NG）は**いま測っている列だけ**。全列に出すと最大400個
       並んで、印そのものが背景になる。公差外の色は`judgeInput`が全列の
@@ -344,11 +364,38 @@ function measureMatrixHtml(key,count,type){
   body+='</tr>';
  }
  /* 表の幅の上限は**列数から**決まる（CSSの`--mx-cols`）。丈位置の数は
-    ロットで変わるので、決め打ちにできない。 */
- return '<div class="mx-scroll"><table class="measure-matrix" style="--mx-cols:'+slots+'">'
-  +`<thead><tr><th scope="col" class="mx-corner">${esc(head)}</th>${thead}</tr></thead>`
+    ロットで変わるので、決め打ちにできない。ロット列のぶんは`mx-has-lot`。 */
+ const cls='measure-matrix '+(count<=MX_ROOMY_ROWS?'mx-roomy':'mx-dense')
+  +(slots<=MX_WIDE_SLOTS?' mx-wide':'')+(hasLot?' mx-has-lot':'');
+ return '<div class="mx-scroll"><table class="'+cls+'" style="--mx-cols:'+slots+'">'
+  +`<thead><tr><th scope="col" class="mx-corner">${esc(head)}</th>`
+  +(hasLot?'<th scope="col" class="mx-lot-head">ロット</th>':'')
+  +`${thead}</tr></thead>`
   +`<tbody>${body}</tbody></table></div>`;
 }
+/* 条が40に達したら公差の基準は畳む（§9.146、利用者の指示「40以上の時は
+   公差情報は折りたたみ」）。**畳んだままでも開けること**が条件なので、
+   ボタンごと消さずに見出しボタンへ変える。40未満では畳む必要が無いので
+   ボタンを出さない（押せるのに意味の無いものを置かない）。 */
+function applyToleranceFold(count){
+ const box=document.querySelector('.tol-block'),btn=$('#tolFold');
+ if(!box||!btn)return;
+ const foldable=count>=40;
+ if(box.classList.contains('tol-foldable')!==foldable){
+  box.classList.toggle('tol-foldable',foldable);
+  if(foldable)box.classList.remove('tol-open');
+ }
+ if(btn.hidden!==!foldable)btn.hidden=!foldable;
+ btn.setAttribute('aria-expanded',String(!foldable||box.classList.contains('tol-open')));
+}
+document.addEventListener('click',e=>{
+ const btn=e.target.closest&&e.target.closest('#tolFold');
+ if(!btn)return;
+ const box=btn.closest('.tol-block');if(!box)return;
+ const open=!box.classList.contains('tol-open');
+ box.classList.toggle('tol-open',open);
+ btn.setAttribute('aria-expanded',String(open));
+});
 /* 見出しを押したらその丈位置へ移る。**割り当ては1箇所**（丈位置を動かす
    道具は`#lengthPos`のchangeだけ。ここで直接描き直さない）。
    セルを押したときも同じ——**押した列がいま測る列になる**。押した先が
@@ -383,6 +430,7 @@ function renderMeasureGridVertical(){
  if(type==='フラットネス')h+=`<section class="measure-grid-block flatness-note-block"><div class="measure-grid-block-title"><span>備考</span></div><div class="flatness-entry"><label>対象条<select id="coilNo"></select></label><label>備考<textarea id="coilComment"></textarea></label></div></section>`;
  $('#measurementGrid').innerHTML=h;
  WL.measureTolerance.paintFacts(tol.facts);
+ applyToleranceFold(slots);
  bindMeasureInputs();applyInputProtection();focusCurrent();updateMeasurementHeading();/* 寸法系（板厚・板幅）は横長の公差バーを出さない。数直線の隣の公差カード
    （`.compact-tolerance-side`）が基準値・公差±・判定範囲を既に持っており、
    **同じ数字を画面に2つ出さない**（§9.129。項目を分ける前の板厚/板幅と

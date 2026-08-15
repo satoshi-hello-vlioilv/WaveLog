@@ -954,7 +954,21 @@ let b=null,page=null;
      切り替えるだけのボタンになる。**タブごと消す**（押せるのに何も無い
      ボタンを残さない）。分析は③の記録の壁に別カードとして出る。 */
   rec('①にタブを置かない',wall1.タブ===0,JSON.stringify(wall1));
-  rec('①は品質規格を常時出す',wall1.面.includes('grade'),JSON.stringify(wall1));
+  /* **品質規格は基本情報カードのタブ裏**（§9.145、利用者の指示「品質規格は
+     タブに回し」）。測る前に1回だけ確かめるもので、マスを1つ使うほどでは
+     ない——ただし**1回の操作で必ず出せる場所**に置く。 */
+  const grade1=await page.evaluate(()=>{
+   const btn=[...document.querySelectorAll('[data-basictab]')].find(b=>b.dataset.basictab==='grade');
+   if(!btn)return{ボタン:false};
+   btn.click();
+   const p=document.querySelector('[data-basicpanel="grade"]');
+   const on=!!p&&!p.hidden;
+   document.querySelector('[data-basictab="basic"]').click();
+   const back=document.querySelector('[data-basicpanel="basic"]');
+   return{ボタン:true,開ける:on,戻せる:!!back&&!back.hidden};
+  });
+  rec('①の品質規格はタブ1枚で出せる',
+      grade1.ボタン&&grade1.開ける&&grade1.戻せる,JSON.stringify(grade1));
   rec('①に測定データ分析を出さない',!wall1.面.includes('analysis'),JSON.stringify(wall1));
   rec('タブの裏は同時に2枚出さない',
       !(wall1.面.includes('grade')&&wall1.面.includes('analysis')),JSON.stringify(wall1));
@@ -1025,19 +1039,31 @@ let b=null,page=null;
   rec('②の揃いに丈番号タブを出さない',prod.タブ===false,JSON.stringify(prod));
   rec('②の全丈表が横に溢れない',prod.溢れ<=0,JSON.stringify(prod));
 
-  /* ③は1枚の確認シート。上に「あと何が残っているか」、下に「何が記録されたか」。 */
+  /* ③は基本情報が1×3で左に立ち、右の3列が「確認 → その根拠」の縦の対
+     （§9.146、利用者の指示）。確認の3枚は真下のカードと**左端がそろう**。 */
   await go('3');
   const f3=await page.evaluate(()=>{
-   const fc=document.querySelector('.finish-check').getBoundingClientRect();
-   const lp=document.querySelector('.left-pane').getBoundingClientRect();
-   const body=document.querySelector('.measure-body').getBoundingClientRect();
+   const R=e=>e?e.getBoundingClientRect():null;
+   const fc=R(document.querySelector('.finish-check'));
+   const lp=R(document.querySelector('.left-pane'));
+   const body=R(document.querySelector('.measure-body'));
+   const rows=[...document.querySelectorAll('.fc-row')];
+   const 対=k=>{const r=rows.find(x=>x.dataset.fc===k);return r?Math.round(R(r).left):null};
+   const 下=s=>{const e=document.querySelector(s);return e?Math.round(R(e).left):null};
    return {確認幅:Math.round(fc.width),本体幅:Math.round(body.width),
-     確認下:Math.round(fc.bottom),記録上:Math.round(lp.top),
-     カード:[...document.querySelectorAll('.fc-row')].map(x=>Math.round(x.getBoundingClientRect().top))};
+     確認左:Math.round(fc.left),基本左:Math.round(lp.left),基本高:Math.round(lp.height),
+     本体高:Math.round(body.height),
+     対:{測定:対('measure'),公差外:対('ng'),作業時間:対('worktime')},
+     下:{記録した値:下('.recorded-pane'),分析:下('.analysis'),作業時間:下('.center-pane')},
+     カード:rows.filter(x=>x.dataset.fc!=='skip').map(x=>Math.round(R(x).top))};
   });
-  /* 本文の左右の余白（`--gap-section`×2）を差し引いて比べる（§9.137の意匠）。 */
-  rec('③の確認表が本体の全幅を使う',f3.確認幅>=f3.本体幅-40,JSON.stringify(f3));
-  rec('③は確認表が上・記録が下',f3.確認下<=f3.記録上+2,JSON.stringify(f3));
+  /* 基本情報は1×3。本文の縦をほぼ使い切る（上下の余白ぶんだけ短い）。 */
+  rec('③の基本情報は縦3マスを使う',f3.基本高>=f3.本体高-40,JSON.stringify(f3));
+  rec('③の確認表は基本情報の右（2〜4列）',f3.確認左>f3.基本左,JSON.stringify(f3));
+  /* **確認の3枚は真下のカードと左端がそろう。** ずれると「縦の対」に見えない。 */
+  rec('③の確認は真下のカードと縦にそろう',
+      f3.対.測定===f3.下.記録した値&&f3.対.公差外===f3.下.分析&&f3.対.作業時間===f3.下.作業時間,
+      JSON.stringify({対:f3.対,下:f3.下}));
   rec('③の確認カードが横に並ぶ',new Set(f3.カード).size===1,JSON.stringify(f3.カード));
   const w3=await widthKinds(),e3=await emptyRate();
   rec('③の入力欄の幅が4種類以内',w3.length<=4,JSON.stringify(w3));

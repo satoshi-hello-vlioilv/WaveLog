@@ -112,7 +112,7 @@ function applyContextSnapshot(x){
   if(typeof applyMaxStripsToInputs==='function')applyMaxStripsToInputs();
  }
  if(x.quality?.length){m.qualityInfo=qualityText(x.quality)}
- $('#qualityInfo').value=m.qualityInfo||'異常情報なし';if($('#motherQualityInfo')){$('#motherQualityInfo').value=$('#qualityInfo').value;if($('#motherQualitySum'))$('#motherQualitySum').textContent=$('#qualityInfo').value.split('\n')[0]}
+ $('#qualityInfo').value=m.qualityInfo||'異常情報なし';paintQualityInfo();if($('#motherQualityInfo')){$('#motherQualityInfo').value=$('#qualityInfo').value;if($('#motherQualitySum'))$('#motherQualitySum').textContent=$('#qualityInfo').value.split('\n')[0]}
  $('#masterDiagnostic').textContent=JSON.stringify(x.diagnostics||{},null,2);
 }
 /* 仕掛・品質・マスタの参照データを取得し、スナップショットとして保存データへ

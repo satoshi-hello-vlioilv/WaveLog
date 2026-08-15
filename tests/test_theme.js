@@ -119,40 +119,56 @@ let b=null;
    document.querySelector('[data-infotab="split"]')?.click();
    await new Promise(r=>setTimeout(r,300));
    const fs=s=>{const e=document.querySelector(s);return e?parseFloat(getComputedStyle(e).fontSize):0};
+   const bg=s=>[...document.querySelectorAll(s)].map(e=>getComputedStyle(e).backgroundColor);
    return {
     body:fs('.basic-card .field label'),          // 左ペインの本文基準
     analysis:fs('.analysis table'),               // 同じペインの別の表
-    table:fs('.split-panel-table td'),
-    head:fs('.split-panel-table th'),
     status:fs('.split-panel-status-applied'),
     scrap:fs('.split-scrap-line'),
-    openBtn:fs('.split-panel-open-btn'),
-    dots:document.querySelectorAll('.split-lot-dot').length,
+    /* 「1段」は**トークンで決まる**（`--fs`14px→`--fs-sm`12px）。px差の
+       決め打ちにすると、表示サイズ倍率でも段の定義でも合わなくなる。
+       **カスタムプロパティは生の文字列で返る**（`calc(12px * var(--ui-scale))`）
+       ので、実際に当てた要素を測る。 */
+    一段下:(()=>{const p=document.createElement('span');p.style.fontSize='var(--fs-sm)';
+      document.body.appendChild(p);const v=parseFloat(getComputedStyle(p).fontSize);p.remove();return v})(),
+    帯:bg('.split-band-seg'),
+    バッジ:bg('.strip-lot-badge'),
    };
   });
-  rec('幅分割情報の表が同じペインの他の表と同じ文字サイズ',
-   splitPanel.table===splitPanel.analysis&&splitPanel.table===splitPanel.body,
-   JSON.stringify(splitPanel));
-  rec('表の見出しも本文と同じ大きさ(表の中だけ小さくしない)',
-   splitPanel.head===splitPanel.table,JSON.stringify(splitPanel));
+  /* 条の設計カードは**状態1行＋帯**（§9.145でモーダルを廃止し、候補の表は
+     編集面が持つようになった）。文字は本文より小さくても1段まで。 */
   rec('パネル内の文字が本文より小さくても1段まで',
-   [splitPanel.status,splitPanel.scrap,splitPanel.openBtn].every(v=>v>=splitPanel.body-1.5&&v<=splitPanel.body+1.5),
+   [splitPanel.status,splitPanel.scrap].every(v=>v>=splitPanel.一段下&&v<=splitPanel.body+1.5),
    JSON.stringify(splitPanel));
-  rec('ロット№に色の丸が付く(入力欄のバッジと対応)',
-   splitPanel.dots===3,String(splitPanel.dots));
+  /* **帯グラフと測定表のロット列は同じ配色**（§9.146）。色で結び付けている
+     のが値打ちなので、片方だけ配色を変えたら落ちること。 */
+  rec('帯グラフのロット色が測定表のバッジと一致する',
+   splitPanel.帯.length===3&&new Set(splitPanel.バッジ).size===3
+   &&[...new Set(splitPanel.バッジ)].every(c=>splitPanel.帯.includes(c)),
+   JSON.stringify({帯:splitPanel.帯,バッジ:[...new Set(splitPanel.バッジ)]}));
 
-  /* ---- 4c) 分割ありのとき、条の入力欄にロット番号の下3桁バッジ ---- */
+  /* ---- 4c) 分割ありのとき、専用のロット列へ下3桁バッジ（§9.146） ----
+     **入力欄の中ではなく1列にまとめる。** ロット番号は条で決まり丈位置では
+     変わらないので、丈の数だけ同じバッジを並べても情報が増えない。 */
   const badges=await page.evaluate(()=>{
-   const rows=[...document.querySelectorAll('#measurementGrid .strip-row')];
    const got=[...document.querySelectorAll('.strip-lot-badge')].map(b=>({
     t:b.textContent.trim(),title:b.title,
     bg:getComputedStyle(b).backgroundColor,
-    left:Math.round(b.getBoundingClientRect().left),
-    inputLeft:Math.round(b.parentElement.querySelector('input').getBoundingClientRect().left),
-    padLeft:getComputedStyle(b.parentElement.querySelector('input')).paddingLeft}));
-   return {n:got.length,got:got.slice(0,6),rows:rows.length};
+    列:b.closest('td')?.className||'',
+    /* **並びはDOMの順で見る**——この時点の測定表は①の裏（`display:none`）に
+       あり、座標はどれも0になる。0<0で「そろっている」と読めてしまう。 */
+    列番:[...(b.closest('tr')?.children||[])].indexOf(b.closest('td')),
+    値の列番:[...(b.closest('tr')?.children||[])].indexOf(
+      b.closest('tr')?.querySelector('td:not(.mx-lot)'))}));
+   return {n:got.length,got:got.slice(0,6),
+    行:document.querySelectorAll('.measure-matrix tbody tr').length,
+    ロット列:document.querySelectorAll('.measure-matrix td.mx-lot').length,
+    入力欄の中:document.querySelectorAll('.strip-input-wrap .strip-lot-badge').length};
   });
-  rec('分割ありの条にロット番号バッジが付く',badges.n===6,JSON.stringify(badges).slice(0,180));
+  rec('分割ありの条にロット番号バッジが付く',badges.n===6&&badges.ロット列===6,JSON.stringify(badges).slice(0,180));
+  rec('バッジは専用のロット列に置き、入力欄の中には入れない',
+   badges.入力欄の中===0&&badges.got.every(b=>b.列.includes('mx-lot')),
+   JSON.stringify({入力欄の中:badges.入力欄の中,列:badges.got.map(b=>b.列)}));
   rec('バッジはロット番号の下3桁',
    badges.got.slice(0,6).map(b=>b.t).join(',')==='111,111,222,222,333,333',
    badges.got.map(b=>b.t).join(','));
@@ -162,8 +178,8 @@ let b=null;
   rec('ロットごとに色を変える(条割の帯グラフと同じ配色)',
    new Set(badges.got.map(b=>b.bg)).size===3,
    [...new Set(badges.got.map(b=>b.bg))].join(' / '));
-  rec('バッジは入力欄の左端に置き、数値と重ならない',
-   badges.got.every(b=>b.left>=b.inputLeft&&parseFloat(b.padLeft)>=30),
+  rec('ロット列は測定値の列より左（条の見出し側）に置く',
+   badges.got.every(b=>b.列番>=0&&b.列番<b.値の列番),
    JSON.stringify(badges.got[0]));
 
   // 分割が無い(単一ロット)ならバッジは出さない
