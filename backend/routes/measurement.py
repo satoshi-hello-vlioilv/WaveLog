@@ -8,6 +8,7 @@ from ..db_access import DBS, MEAS_DB, RECORDS_BACKUP_EXPORT_PATH, qi, connect, c
 from ..repositories.master_repo import read_operator_names, read_spool_names, read_inner_names, read_device_names, ensure_operator_master, ensure_spool_master, ensure_inner_master, ensure_device_master, ensure_operator_equipment, OPERATOR_MASTER_TABLE, SPOOL_MASTER_TABLE, INNER_MASTER_TABLE, DEVICE_MASTER_TABLE
 from ..repositories.master_repo import read_burr_names, read_coil_stop_names, ensure_burr_master, ensure_coil_stop_master, BURR_MASTER_TABLE, COIL_STOP_MASTER_TABLE
 from ..repositories.master_repo import read_equipment_max_strips, STRIP_LIMIT, DEFAULT_MAX_STRIPS
+from ..repositories.master_repo import choice_usage_for, choice_usage_bump
 from .. import records_export
 from ..logging_setup import app_logger
 
@@ -125,7 +126,33 @@ def measurement_context():
     # 横割数の入力上限に使う。
     result['max_strips']=read_equipment_max_strips(c,equipment)
     result['diagnostics']['matches']['設備マスタ_最大条数']={'equipment':equipment,'value':result['max_strips'],'limit':STRIP_LIMIT}
+    # 設備ごとの使用回数(§9.133)。**ここへ相乗りさせる**——選択肢を並べる
+    # ためだけに往復を増やさない(選択肢そのものと同時に要るデータなので、
+    # 別のAPIにすると「選択肢は出たが並びは前のまま」という瞬間ができる)。
+    result['choice_usage']=choice_usage_for(c,equipment)
   return jsonify(result)
+ except Exception as e:return jsonify(error=str(e)),500
+
+@bp.post('/api/measurement/choice-usage')
+def measurement_choice_usage():
+ """準備で選んだ値の使用回数を1つ増やす(§9.133)。
+
+ オペレータは実データで171人おり、五十音順のままだと「いつもの人」を毎回
+ 探すことになる。設備ごとに数えて、よく使うものを上へ並べるための記録。
+ **選ばれた瞬間に数える**(保存まで待たない)——同じ人を選び直しただけでも
+ 使ったことに変わりはなく、待つと「今日はまだ上に来ない」が起きる。
+
+ 画面は結果を待たないので、失敗しても測定は止めない(数が1つ増えないだけ)。
+ """
+ try:
+  x=request.get_json(force=True) or {}
+  equipment=str(x.get('equipment') or '').strip()
+  picks=x.get('picks') or {}
+  if not equipment:return jsonify(error='設備名を指定してください。'),400
+  if not isinstance(picks,dict):return jsonify(error='picksはオブジェクトで指定してください。'),400
+  with connect(DBS['MASTER']['path']) as c:
+   n=choice_usage_bump(c,equipment,picks,str(x.get('user_id') or ''))
+  return jsonify(ok=True,counted=n)
  except Exception as e:return jsonify(error=str(e)),500
 
 @bp.get('/api/measurement/master-diagnostics')

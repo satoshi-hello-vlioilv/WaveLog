@@ -168,7 +168,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .save-state #localState{padding:4px 9px;border-radius:var(--radius-md);background:var(--warn-bg);color:var(--warn-fg);max-width:210px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .save-state button{height:var(--ctl-h);border:0;font-size:var(--fs-lg);box-shadow:none;background:transparent}
 .course-warning{
-  grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2);
+  grid-column:2;display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2);
   min-height:46px;padding:9px 16px;border-bottom:1px solid #db9a69;
   background:var(--warn-bg);color:var(--warn-fg);font-weight:800;
 }
@@ -181,8 +181,10 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 /* --- 操作レール（左端の縦ボタン列） --- *//* 幅は最長のラベル(「このデータを削除」「データ一覧を開く」= 実測128px)が
    切り詰められない値にする。以前は136px(ボタン実幅109px)で、主要導線の
    「保存して一覧へ」までが「保存して一...」と省略されていた。 */
+/* タイトルのすぐ下から最下段まで。**進捗バーより上位の階層**なので、
+   バーに縦を分断させない(§9.133)。 */
 .action-rail{
-  grid-row:4;width:160px;display:flex;flex-direction:column;gap:var(--gap-section);
+  grid-row:2/-1;grid-column:1;width:160px;display:flex;flex-direction:column;gap:var(--gap-section);
   padding:9px 8px;background:#d7e5ee;border-right:1px solid #9fb2bf;overflow-y:auto;
 }
 .rail-group{display:grid;gap:var(--gap-inline)}
@@ -204,20 +206,29 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    （同じものが2箇所にあること自体が認知コスト）。 */
 :root{--measure-items-w:19rem;--measure-ref-w:24rem;
  --strip-row-h:calc(var(--fs-sm) * var(--lh) + var(--space-1) * 2 + 1px)}
+/* **進捗バーは本文と同じ列に置く**(§9.133)。以前は`1/-1`で操作レール
+   （測定画面の左メニュー）の上まで伸びており、バーの左端(x=7)と本文の
+   左端(x=167)が**160pxずれていた**。画面の階層は
+   「タイトル → メニュー(操作レール) → 進捗 → 測定」の順で、
+   **メニューの方が上位**なのだから、進捗がその上に乗ってはいけない。 */
 .measure-bar{
-  grid-column:1/-1;display:flex;align-items:stretch;min-width:0;
+  grid-column:2;display:flex;align-items:stretch;min-width:0;
   background:var(--surface);border-bottom:1px solid var(--line);
 }
 /* **1本の帯に収める。** 段と文脈で2段に分けると、その2行ぶん本体が縮み、
    表示サイズ特大で左ペインが溢れた(実測22px)。縦は測定表のものなので、
    枠は最小限しか取らない。 */
+/* **値は本文と同じ大きさ**(--fs)にする(§9.133)。ロット・製品は測定中に
+   何度も確かめるもので、測定値と同じ距離で読む。12px(--fs-sm)だと
+   測定表の値(14px)より小さく、同じ画面の中で「格下」に見えていた。
+   項目名(small)だけは添え物なので1段下げる。 */
 .measure-context{
   display:flex;align-items:center;gap:var(--space-5);
   margin-left:auto;padding:0 16px;min-width:0;
-  font-size:var(--fs-sm);overflow:hidden;white-space:nowrap;
+  font-size:var(--fs);overflow:hidden;white-space:nowrap;
 }
 .mctx-item{display:flex;align-items:baseline;gap:var(--space-2);min-width:0}
-.mctx-item small{flex:0 0 auto;color:var(--ink-soft);font-size:var(--fs-micro);font-weight:700;letter-spacing:.04em}
+.mctx-item small{flex:0 0 auto;color:var(--ink-soft);font-size:var(--fs-sm);font-weight:700;letter-spacing:.04em}
 .mctx-item b{min-width:0;color:var(--ink);font-weight:800;overflow:hidden;text-overflow:ellipsis}
 
 /* 段ナビ。**関門ではなくタブ**なので、いつでも押せる見た目にする。
@@ -330,6 +341,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .measure-shell.mstep-2 .center-pane>*{display:none}
 .measure-shell.mstep-2 .center-pane>.selectors{display:block}
 .measure-shell.mstep-2 .selectors>*{display:none}
+.measure-shell.mstep-2 .selectors>[data-f="workTime"]{display:none}
 /* 一覧はペインの高さいっぱいに縦へ伸ばす。**flexにしないこと**——
    `.type-chips`は`grid-row:2`で置かれているので、器をflexにすると行の指定が
    効かなくなり、8項目が同じ場所へ重なって読めなくなる(実際にそうなった)。
@@ -403,34 +415,41 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
   gap:var(--gap-inline) var(--gap-section);
 }
 .measure-shell.mstep-1 .selectors>label{grid-column:auto}
-.measure-shell.mstep-1 .selectors>.prep-head[data-prep="who"]{grid-column:2/-1;grid-row:1}
-.measure-shell.mstep-1 .selectors>[data-f="operator"]{grid-column:1;grid-row:1/span 6}
+/* **左から右・上から下が、実際にする順番と同じ**になるように置く(§9.133)。
+   ①誰が測るか → ②測定表の形 → ③使う機材 → ④いつもと同じ設定 と降りていき、
+   **作業時間(開始/終了)は一番右**——準備の必須入力なので、他の設定と同じ
+   面に置き、探させない(以前は左の情報カードの中にあり、準備の導線から
+   外れていた)。オペレータは**プルダウン**(リストボックスは器の中で
+   5,394pxスクロールしており、1画面に収める方針にも反していた)。
+   **折りたたみは廃止**——入力させる項目は全部見せる。 */
+.measure-shell.mstep-1 .selectors>.prep-head[data-prep="who"]{grid-column:1/4;grid-row:1}
+.measure-shell.mstep-1 .selectors>[data-f="operator"]{grid-column:1;grid-row:2}
 .measure-shell.mstep-1 .selectors>[data-f="inspector"]{grid-column:2;grid-row:2}
 .measure-shell.mstep-1 .selectors>[data-f="crewSize"]{grid-column:3;grid-row:2}
-.measure-shell.mstep-1 .selectors>.prep-head[data-prep="shape"]{grid-column:2/-1;grid-row:3}
-.measure-shell.mstep-1 .selectors>[data-f="verticalCount"]{grid-column:2;grid-row:4}
-.measure-shell.mstep-1 .selectors>[data-f="horizontalCount"]{grid-column:3;grid-row:4}
-.measure-shell.mstep-1 .selectors>.prep-head[data-prep="gear"]{grid-column:2/-1;grid-row:5}
-.measure-shell.mstep-1 .selectors>[data-f="innerDiameter"]{grid-column:2;grid-row:6}
-.measure-shell.mstep-1 .selectors>[data-f="spool"]{grid-column:3;grid-row:6}
-.measure-shell.mstep-1 .selectors>[data-f="thicknessGauge"]{grid-column:4;grid-row:6}
-.measure-shell.mstep-1 .selectors>[data-f="widthGauge"]{grid-column:5;grid-row:6}
+.measure-shell.mstep-1 .selectors>[data-f="workTime"]{grid-column:4/-1;grid-row:1/span 4}
+.measure-shell.mstep-1 .selectors>.prep-head[data-prep="shape"]{grid-column:1/4;grid-row:3}
+.measure-shell.mstep-1 .selectors>[data-f="verticalCount"]{grid-column:1;grid-row:4}
+.measure-shell.mstep-1 .selectors>[data-f="horizontalCount"]{grid-column:2;grid-row:4}
+.measure-shell.mstep-1 .selectors>.prep-head[data-prep="gear"]{grid-column:1/-1;grid-row:5}
+.measure-shell.mstep-1 .selectors>[data-f="innerDiameter"]{grid-column:1;grid-row:6}
+.measure-shell.mstep-1 .selectors>[data-f="spool"]{grid-column:2;grid-row:6}
+.measure-shell.mstep-1 .selectors>[data-f="thicknessGauge"]{grid-column:3;grid-row:6}
+.measure-shell.mstep-1 .selectors>[data-f="widthGauge"]{grid-column:4;grid-row:6}
 .measure-shell.mstep-1 .selectors>.prep-head[data-prep="usual"]{grid-column:1/-1;grid-row:7}
 .measure-shell.mstep-1 .selectors>[data-f="unwind"]{grid-column:1;grid-row:8}
 .measure-shell.mstep-1 .selectors>[data-f="widthOrder"]{grid-column:2;grid-row:8}
 .measure-shell.mstep-1 .selectors>[data-f="widthDirection"]{grid-column:3;grid-row:8}
 .measure-shell.mstep-1 .selectors>[data-f="burr"]{grid-column:4;grid-row:8}
 .measure-shell.mstep-1 .selectors>[data-f="coilStop"]{grid-column:5;grid-row:8}
-/* リストの高さは①では**`size`（行数）に任せる**（§9.126）。px指定の
-   273pxは約8.8行という半端な値で、**最後の行が途中で切れた**うえ、
-   1行のコントロール2つと同じ行に並ぶため**隣の下に237pxの穴**ができて
-   いた（実測）。`size="7"`どおりなら切れず、穴も54px減る。
-   **行数は減らさないこと**——オペレータは実データで100人を超える。 */
+/* ①のリストは`size`（行数）に任せる（§9.126）。②で使う「入力内容」だけが
+   ここに残る（①では非表示）。 */
 .measure-shell.mstep-1 .selectors .major-list{grid-template-rows:20px auto}
 .measure-shell.mstep-1 .selectors .major-list select{height:auto}
 /* その他の設定は畳む。**畳んだままでも値は読める**——要約に現在値を出し、
    既定と違うものには印を付ける(隠すなら、隠したものが何かは書く)。 */
-.measure-shell.mstep-1 .selectors:not(.prep-open)>label[data-prep="usual"]{display:none}
+/* **入力させる項目は折りたたまない**(§9.133)。以前は「その他の設定」を
+   畳んでいたが、畳むと現在値を要約でもう一度書く必要が生まれ、同じ情報が
+   2箇所に出ていた。場所は実測で足りている。 */
 .measure-shell.mstep-1 .selectors>.prep-more{
   cursor:pointer;overflow:hidden;min-height:var(--ctl-h-xs);
 }
