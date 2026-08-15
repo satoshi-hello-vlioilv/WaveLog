@@ -326,10 +326,18 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    図で見るものなので、細い1列に押し込むと読めない。
    最後の「余り行」(1fr)は残す：背の高いカードのぶんをそこへ吸わせないと、
    跨いだ行が等分に伸びて隙間になる（実測280pxの空箱）。 */
+/* **面は中身なりの高さにする**（§9.131）。既定の`stretch`だと、カードが
+   マスいっぱいに伸びて**中身のない枠**が残る（実測: ①の品質規格で480px、
+   ③で532px）。粗いグリッドではマスが余るのは織り込み済みだが、余るのは
+   「マス」であって「枠の中」ではない——空の枠は壊れて見える。 */
 .measure-shell.mstep-1 .quality-pane{
   grid-template-columns:minmax(0,1fr);
-  grid-template-rows:min-content minmax(0,1fr);
+  grid-template-rows:min-content min-content;
+  align-content:start;
 }
+.measure-shell.mstep-1 .quality-pane>*,
+.measure-shell.mstep-3 .quality-pane>*{align-self:start}
+.measure-shell.mstep-3 .analysis{align-self:start}
 /* 測定データ分析は**測ってからでないと中身が無い**ので①には出さない。 */
 .measure-shell.mstep-1 .analysis,.measure-shell.mstep-1 .debug-pane{display:none}
 /* ② 1列目は**根拠**だけ。1列（狭い）なので縦に積む。 */
@@ -348,7 +356,8 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    同時に出す以上、切り替えの`.subtabs`はここでは要らない。 */
 .measure-shell.mstep-3 .quality-pane{
   grid-template-columns:minmax(0,1fr);
-  grid-template-rows:minmax(0,1fr);
+  grid-template-rows:min-content;
+  align-content:start;
 }
 .measure-shell.mstep-3 .subtabs{display:none}
 .measure-shell.mstep-3 .debug-pane{display:none}
@@ -422,47 +431,49 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 /* 「入力内容」「丈位置」は**②で使う道具**なので①には出さない。1回決める
    だけのものと、測りながら何度も切り替えるものを同じ場所に並べない。 */
 .measure-shell.mstep-1 .selectors>[data-prep="step2"]{display:none}
-/* ---------- ①の割り付けは**1つずつ明示する**（§9.131） ----------
-   以前は12列の自動配置に任せていたが、自動配置は**空いたところから詰める**
-   ため、背の高いオペレータ一覧の隣に穴が空き、群の境目も列の境目と
-   ずれていた。ここは項目が固定の帳票なので、行と列を明示するのがいちばん
-   素直で、結果として**縦線が5本に収まる**。
-   列は「オペレータ（一覧・背が高い）｜項目4つぶん」。使う機材が4つあるので
-   4列——3列だと 3＋1 に割れて縦線がそろわない（§9.129）。
-   列幅は**5等分**。基準の1920×1080では1列が約162pxで`--w-md`(154px)を
-   満たすので、コントロールは規格幅のまま並び、**縦線が5本に固定される**。 */
+/* ---------- ①の割り付けは**1つずつ明示する**（§9.131／§9.137） ----------
+   自動配置は**空いたところから詰める**ため、背の高い欄の隣に穴が空き、
+   群の境目と列の境目がずれる。ここは項目が固定の帳票なので、行と列を
+   明示するのがいちばん素直。
+   **列は2つ**（§9.137）。骨子で準備の入力は`1×2`＝1マス幅（実測437px）に
+   なったので、以前の5列（1列162px）は入らない——作業時間の欄だけで
+   最低325px要り、実測で横に100px溢れていた（`test_fit`が検出）。
+   2列なら1列204pxで規格幅`--w-md`(154px)を満たし、**カテゴリは縦に積む**。
+   縦は器（651px）を超えたらペインがスクロールする（横は溢れさせない）。 */
 .measure-shell.mstep-1 .selectors{
-  grid-template-columns:repeat(5,minmax(0,1fr));
+  grid-template-columns:repeat(2,minmax(0,1fr));
   grid-auto-rows:min-content;align-content:start;
   gap:var(--gap-inline) var(--gap-section);
 }
 .measure-shell.mstep-1 .selectors>label{grid-column:auto}
-/* **左から右・上から下が、実際にする順番と同じ**になるように置く(§9.133)。
-   ①誰が測るか → ②測定表の形 → ③使う機材 → ④いつもと同じ設定 と降りていき、
-   **作業時間(開始/終了)は一番右**——準備の必須入力なので、他の設定と同じ
-   面に置き、探させない(以前は左の情報カードの中にあり、準備の導線から
-   外れていた)。オペレータは**プルダウン**(リストボックスは器の中で
-   5,394pxスクロールしており、1画面に収める方針にも反していた)。
-   **折りたたみは廃止**——入力させる項目は全部見せる。 */
-.measure-shell.mstep-1 .selectors>.prep-head[data-prep="who"]{grid-column:1/4;grid-row:1}
+/* **上から下が、実際にする順番と同じ**になるように置く(§9.133)。
+   ①誰が測るか → ②測定表の形 → ③使う機材 → ④いつもと同じ設定 と降り、
+   **作業時間は最後**——準備の必須入力なので同じ面に置き、探させない。
+   オペレータは**プルダウン**(リストボックスは器の中で5,394pxスクロール
+   していた)。**折りたたみは廃止**——入力させる項目は全部見せる。
+   **カテゴリの違うものを横に並べない**ので、余ったマスは空けたままにする。 */
+.measure-shell.mstep-1 .selectors>.prep-head{grid-column:1/-1}
+.measure-shell.mstep-1 .selectors>.prep-head[data-prep="who"]{grid-row:1}
 .measure-shell.mstep-1 .selectors>[data-f="operator"]{grid-column:1;grid-row:2}
 .measure-shell.mstep-1 .selectors>[data-f="inspector"]{grid-column:2;grid-row:2}
-.measure-shell.mstep-1 .selectors>[data-f="crewSize"]{grid-column:3;grid-row:2}
-.measure-shell.mstep-1 .selectors>[data-f="workTime"]{grid-column:4/-1;grid-row:1/span 4}
-.measure-shell.mstep-1 .selectors>.prep-head[data-prep="shape"]{grid-column:1/4;grid-row:3}
-.measure-shell.mstep-1 .selectors>[data-f="verticalCount"]{grid-column:1;grid-row:4}
-.measure-shell.mstep-1 .selectors>[data-f="horizontalCount"]{grid-column:2;grid-row:4}
-.measure-shell.mstep-1 .selectors>.prep-head[data-prep="gear"]{grid-column:1/-1;grid-row:5}
-.measure-shell.mstep-1 .selectors>[data-f="innerDiameter"]{grid-column:1;grid-row:6}
-.measure-shell.mstep-1 .selectors>[data-f="spool"]{grid-column:2;grid-row:6}
-.measure-shell.mstep-1 .selectors>[data-f="thicknessGauge"]{grid-column:3;grid-row:6}
-.measure-shell.mstep-1 .selectors>[data-f="widthGauge"]{grid-column:4;grid-row:6}
-.measure-shell.mstep-1 .selectors>.prep-head[data-prep="usual"]{grid-column:1/-1;grid-row:7}
-.measure-shell.mstep-1 .selectors>[data-f="unwind"]{grid-column:1;grid-row:8}
-.measure-shell.mstep-1 .selectors>[data-f="widthOrder"]{grid-column:2;grid-row:8}
-.measure-shell.mstep-1 .selectors>[data-f="widthDirection"]{grid-column:3;grid-row:8}
-.measure-shell.mstep-1 .selectors>[data-f="burr"]{grid-column:4;grid-row:8}
-.measure-shell.mstep-1 .selectors>[data-f="coilStop"]{grid-column:5;grid-row:8}
+.measure-shell.mstep-1 .selectors>[data-f="crewSize"]{grid-column:1;grid-row:3}
+.measure-shell.mstep-1 .selectors>.prep-head[data-prep="shape"]{grid-row:4}
+.measure-shell.mstep-1 .selectors>[data-f="verticalCount"]{grid-column:1;grid-row:5}
+.measure-shell.mstep-1 .selectors>[data-f="horizontalCount"]{grid-column:2;grid-row:5}
+.measure-shell.mstep-1 .selectors>.prep-head[data-prep="gear"]{grid-row:6}
+.measure-shell.mstep-1 .selectors>[data-f="innerDiameter"]{grid-column:1;grid-row:7}
+.measure-shell.mstep-1 .selectors>[data-f="spool"]{grid-column:2;grid-row:7}
+.measure-shell.mstep-1 .selectors>[data-f="thicknessGauge"]{grid-column:1;grid-row:8}
+.measure-shell.mstep-1 .selectors>[data-f="widthGauge"]{grid-column:2;grid-row:8}
+.measure-shell.mstep-1 .selectors>.prep-head[data-prep="usual"]{grid-row:9}
+.measure-shell.mstep-1 .selectors>[data-f="unwind"]{grid-column:1;grid-row:10}
+.measure-shell.mstep-1 .selectors>[data-f="widthOrder"]{grid-column:2;grid-row:10}
+.measure-shell.mstep-1 .selectors>[data-f="widthDirection"]{grid-column:1;grid-row:11}
+.measure-shell.mstep-1 .selectors>[data-f="burr"]{grid-column:2;grid-row:11}
+.measure-shell.mstep-1 .selectors>[data-f="coilStop"]{grid-column:1;grid-row:12}
+/* 作業時間は**2列ぶんを使う**。中の`.work-time-row`は入力欄に`min-width:190px`
+   （`50-master.css`が持つ）があり、1列（204px）では必ず溢れる。 */
+.measure-shell.mstep-1 .selectors>[data-f="workTime"]{grid-column:1/-1;grid-row:13}
 /* ①のリストは`size`（行数）に任せる（§9.126）。②で使う「入力内容」だけが
    ここに残る（①では非表示）。 */
 .measure-shell.mstep-1 .selectors .major-list{grid-template-rows:20px auto}
@@ -491,8 +502,18 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 }
 .prep-more-list b{color:var(--warn-fg);font-weight:700}
 
-.measure-shell.mstep-3 .center-pane,
+/* ③の記録の壁は**4枚**（§9.137）。作業時間は①の「準備の入力」の中に
+   あるので、③では**その器を作業時間だけの表示にして**4枚目に置く
+   （DOMは動かさない——②で同じやり方をしている）。 */
 .measure-shell.mstep-3 .right-pane{display:none}
+.measure-shell.mstep-3 .center-pane{display:block;grid-column:3;grid-row:2/span 2}
+.measure-shell.mstep-3 .center-pane>*{display:none}
+.measure-shell.mstep-3 .center-pane>.selectors{
+  display:grid;grid-template-columns:minmax(0,1fr);
+  grid-auto-rows:min-content;align-content:start;gap:var(--gap-inline);
+}
+.measure-shell.mstep-3 .selectors>*{display:none}
+.measure-shell.mstep-3 .selectors>[data-f="workTime"]{display:block;grid-column:1}
 /* ---------- 段ごとの割り付け（§9.131 ゼロベースの組み直し） ----------
    実測（1920×1080）では、①で左ペインの下に253px、②で母材・揃いのとき
    右ペインの下に483〜542px、③で確認表の下に619pxの空きがあった。
@@ -537,7 +558,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    いた。**外から見えるのがカード1枚でないと、粗いグリッドに乗らない。** */
 .measure-shell.mstep-3 .left-pane{grid-column:1;grid-row:2/span 2}
 .measure-shell.mstep-3 .quality-pane{grid-column:2;grid-row:2/span 2}
-.measure-shell.mstep-3 .analysis{grid-column:3;grid-row:2/span 2}
+.measure-shell.mstep-3 .analysis{grid-column:4;grid-row:2/span 2}
 /* 危ない操作を主要動線に置かない。「このデータを削除」は③でだけ出す
    （今は「測定を完了」の真下にあり、押し間違いの的になっていた）。 */
 .measure-shell:not(.mstep-3) .rail-bottom{display:none}
@@ -1060,9 +1081,12 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 /* 入力表の幅は**中身から**決める（§9.130）。26remのときは1つの欄が
    339pxあり、`1234.56`（実測47px）に対して7倍だった。狭めたぶんは
    **隣の丈位置くらべ**（1fr）が受け取る——一緒に読むものへ渡すなら
-   空きは移動ではなく活用になる。 */
+   空きは移動ではなく活用になる。
+   **公差側は20rem**（§9.137）。測定カードが骨子の`2×3`＝873pxになったので、
+   36remでは公差側だけで576pxを取り、丈位置くらべが**47px**まで潰れていた。
+   数直線は縦向きなので幅を渡しても使われない（§9.126と同じ罠）。 */
 .compact-width-body.one-strip{
-  grid-template-columns:minmax(0,36rem) minmax(0,13rem) minmax(0,1fr);
+  grid-template-columns:minmax(0,20rem) minmax(0,13rem) minmax(0,1fr);
   justify-content:start;
 }
 

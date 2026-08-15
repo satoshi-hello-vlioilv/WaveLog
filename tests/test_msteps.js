@@ -129,8 +129,10 @@ let b=null,page=null;
   rec('丈位置の高さは選択肢の数ぶん',items.丈の行数===Math.max(2,Math.min(7,items.丈の選択肢)),
       JSON.stringify(items));
   rec('一覧の各項目に残り件数が文字で付く',items.件数の文字===9,JSON.stringify(items));
-  /* 測定表は本体の大半を取る。3ペインのときは本体の約4/10だった。 */
-  rec('②の測定表が本体の半分より広い',m2.右.w>m2.本体.w*0.5,
+  /* 測定表は本体のいちばん広いカード。骨子（§9.137）で`2×3`＝**本体の半分**
+     と決めたので、しきい値も半分ちょうどで見る（以前は3列＝3/4だった）。
+     丈位置×条の1つの表（§9.136）は最大10列×40行なので2マス幅で足りる。 */
+  rec('②の測定表が本体の半分を占める',m2.右.w>=Math.floor(m2.本体.w*0.5)-1,
       `測定=${m2.右.w} / 本体=${m2.本体.w}`);
 
   /* ---- 4b) 測定表は「使う条数ぶんだけ」描く（§9.124） ----
@@ -396,16 +398,23 @@ let b=null,page=null;
    const w=box?.querySelector('[data-f="workTime"]');
    if(!w)return null;
    const r=w.getBoundingClientRect(),b=box.getBoundingClientRect();
-   return {中にある:true,右寄り:Math.round(r.left-b.left)>Math.round(b.width/2),
+   return {中にある:true,最後:Math.round(r.bottom)>=Math.round(b.bottom)-2,
+     全幅:Math.round(r.width)>=Math.round(b.width)-2,
      開始:!!document.getElementById('workStartAt'),終了:!!document.getElementById('workEndAt')};
   });
   rec('開始/終了時刻が準備の入力面にある',!!prepWt&&prepWt.開始&&prepWt.終了,JSON.stringify(prepWt));
-  rec('開始/終了時刻は一番右のエリアにある',!!prepWt&&prepWt.右寄り,JSON.stringify(prepWt));
+  /* **置き場所は「いちばん右」から「いちばん下・全幅」へ**（§9.137）。準備の
+     入力は骨子で`1×2`＝1マス幅になり、カテゴリを縦に積む形になった。
+     作業時間は入力欄に`min-width:190px`があるので1列（204px）には入らず、
+     2列ぶんを使って最後に置く。 */
+  rec('開始/終了時刻は準備の最後に全幅で置く',!!prepWt&&prepWt.最後&&prepWt.全幅,JSON.stringify(prepWt));
 
   /* ---- 6) ③確認 ---- */
   await go('3');
   const m3=await seen();
-  rec('③では作業時間・分析の面だけになる',m3.左.見&&!m3.中.見&&!m3.右.見,
+  /* ③は記録の壁**4枚**（§9.137）。作業時間は準備の入力の器を作業時間だけの
+     表示にして4枚目に置くので、`.center-pane`も出る（測定パネルだけが降りる）。 */
+  rec('③は記録の壁で、測定パネルだけが降りる',m3.左.見&&m3.中.見&&!m3.右.見,
       JSON.stringify({左:m3.左.見,中:m3.中.見,右:m3.右.見}));
   /* 「残っているか」は段の見出しにも本文にも出る。**どちらか片方だけを
      見ないこと**——`||`で拾うと先に空でないほうしか見ず、主張が変わる。 */
@@ -801,10 +810,14 @@ let b=null,page=null;
   for(const k of Object.keys(groups))
    rec(`①「${k}」の欄の幅がそろう`,groups[k].length===1,JSON.stringify(groups[k]));
   /* **タブで隠していたものを同時に出す**（余白があるのに畳んでいた）。 */
+  /* **数える場所は本文グリッド全体**（§9.137）。情報の壁は`.left-pane`という
+     1つの器に入れていたが、骨子は「カード1枚＝マス群」なので、基本情報・
+     品質規格・測定データ分析はそれぞれ本文グリッドの直下にある。器の中を
+     数えると、外へ出した瞬間に**0枚**と出て意図と食い違う。 */
   const wall=st=>page.evaluate(()=>({
-   タブ:[...document.querySelectorAll('.left-pane .tabs,.left-pane .subtabs')]
+   タブ:[...document.querySelectorAll('.measure-body .tabs,.measure-body .subtabs')]
      .filter(x=>x.getBoundingClientRect().height>0).length,
-   面:[...document.querySelectorAll('.left-pane [data-infopanel],.left-pane [data-leftpanel]')]
+   面:[...document.querySelectorAll('.measure-body [data-infopanel],.measure-body [data-leftpanel]')]
      .filter(x=>x.getBoundingClientRect().height>0)
      .map(x=>x.dataset.infopanel||x.dataset.leftpanel),
   }));
@@ -827,7 +840,7 @@ let b=null,page=null;
      290pxの下限を持っており、1行の文字に290pxの空箱が残っていた。 */
   const emptyBox=()=>page.evaluate(()=>{
    const out=[];
-   document.querySelectorAll('.left-pane [data-infopanel],.left-pane [data-leftpanel]')
+   document.querySelectorAll('.measure-body [data-infopanel],.measure-body [data-leftpanel]')
     .forEach(p=>{
      const pr=p.getBoundingClientRect();
      if(pr.height<1)return;

@@ -114,14 +114,35 @@ let b=null;
  const afterStamp=await page.evaluate(()=>{const lp=document.querySelector('.left-pane');return lp.scrollHeight-lp.clientHeight});
  rec('打刻後もスクロールバーが出ない',afterStamp<=0,`はみ出し${afterStamp}px`);
 
- // 表示サイズを変えても収まる(既定〜特大)
+ /* 表示サイズを変えても収まる（§9.137）。**測るのは畳んだ状態**——基本情報は
+    骨子で`1×2`（実測651px）のカードに固定したので、13項目の詳細を開けば
+    いちばん大きい表示サイズでは入り切らないことがある（実測lg +10px）。
+    詳細は求められたときだけ開く付け足しなので、**入り切らないこと自体は
+    不具合ではない**。不具合になるのは「開いたのに読めない」ことなので、
+    そちらは下で別に見る（器がスクロールできること＝切り落としていない）。 */
+ await page.click('#basicMore');
+ await page.waitForFunction(()=>document.querySelector('#basicDetail').hidden,null,{timeout:5000});
  const sizes={};
  for(const s of ['sm','md','lg']){
   await page.evaluate(v=>{document.documentElement.dataset.uiSize=v},s);
   await page.waitForTimeout(300);
   sizes[s]=await page.evaluate(()=>{const lp=document.querySelector('.left-pane');return lp.scrollHeight-lp.clientHeight});
  }
- rec('表示サイズを特大にしても収まる',Object.values(sizes).every(v=>v<=0),JSON.stringify(sizes));
+ rec('どの表示サイズでも基本情報が収まる',Object.values(sizes).every(v=>v<=0),JSON.stringify(sizes));
+ /* **詳細を開いたときに切り落とさない。** 器より高くなったら、器の側が
+    スクロールできること（`overflow`が`visible`のままだと、はみ出した項目へ
+    到達する手立てが無くなる）。 */
+ await page.evaluate(()=>{document.documentElement.dataset.uiSize='lg'});
+ await page.click('#basicMore');
+ await page.waitForFunction(()=>!document.querySelector('#basicDetail').hidden,null,{timeout:5000});
+ await page.waitForTimeout(300);
+ const opened=await page.evaluate(()=>{
+  const lp=document.querySelector('.left-pane');
+  return {はみ出し:lp.scrollHeight-lp.clientHeight,overflowY:getComputedStyle(lp).overflowY};
+ });
+ rec('詳細を開いて器を超えても読める（切り落とさない）',
+     opened.はみ出し<=0||/auto|scroll/.test(opened.overflowY),JSON.stringify(opened));
+ await page.evaluate(()=>{document.documentElement.dataset.uiSize='md'});
 
  await b.close();
  const ng=R.filter(x=>!x.ok);
