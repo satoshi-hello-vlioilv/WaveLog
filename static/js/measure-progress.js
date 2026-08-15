@@ -176,21 +176,11 @@ function chipsHtml(p){
  }).join('');
 }
 
-/* ヘッダー固定のミニ進捗表示。操作レール(#railProgress)は左端の縦長パネル
-   内にあり、レールが長くなる・画面を狭くすると視界から外れ得る。ヘッダーは
-   常に画面最上部に固定されているため、タブや入力内容を切り替えていても
-   進捗(何項目済みか)が常に見える場所として、同じ集計をもう一箇所だけ
-   ごく小さく複製する。 */
-/* **数字はここに出さない**（§9.129）。同じ「N/M 項目」が段ナビにも③の
-   確認表にも出ており、3つ並んでいた。ここはバー＝割合という別の表現に
-   徹する（正確な数はtitleで読める）。 */
-function headProgressHtml(p){
- const pct=p.activeCount?Math.round(p.doneCount/p.activeCount*100):0;
- const cls=pct>=100?'done':pct>0?'part':'todo';
- return `<span class="measure-head-progress-label">進捗</span>`
-  +`<span class="measure-head-progress-bar measure-head-progress-bar--${cls}"><i style="width:${pct}%"></i></span>`;
-}
-
+/* ヘッダーのミニ進捗バーは**廃止した**（§9.147、利用者の指示「役に立って
+   いないので削除」）。割合しか言わないバーで、正確な数は段ナビ（`1/9 項目`）
+   と③の完了前の確認が持っている——**同じことを別の表現でもう一度言うだけ**
+   で、しかも粗い方が上に居た。`headProgressHtml()`も残さない（使われない
+   組み立てが残ると、次に読む人が「どこかで使っているはず」と探す）。 */
 function refreshMeasureProgress(){
  const m=S.measure;if(!m)return;
  const chipBox=$('#measureTypeChips'),select=$('#measureType');
@@ -209,8 +199,6 @@ function refreshMeasureProgress(){
     くらべができて、レール側が担っていたものはすべて別の場所にある。
     `railHtml()`は残さない——使われない組み立てが残ると、次に読む人が
     「どこかで使っているはず」と探すことになる。 */
- const head=$('#headProgress');
- if(head){head.innerHTML=headProgressHtml(p);head.title=`測定進捗 ${p.doneCount}/${p.activeCount} 項目`}
 }
 
 /* ---------- 対象外の切替 ---------- */

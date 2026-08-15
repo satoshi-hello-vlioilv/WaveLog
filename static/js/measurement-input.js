@@ -37,7 +37,12 @@ function updateNumberlinePending(raw){
  const view=WL.toleranceScaleView({range:card&&card.range,base:card&&card.base},values,count);
  if(!view){marker.hidden=true;return}
  const v=deviceParse(raw).value,ng=v<view.low||v>view.high;
- marker.hidden=false;marker.className='numberline-pending'+(ng?' ng':' ok');marker.style.top=view.clamp(v)+'%';
+ /* 図は**横＝測定値**になった（§9.150）。縦位置は「いま入れている条の行」で、
+    CSSが`--tc-cur`から決めるので、ここで動かすのは**左右だけ**。 */
+ const span=Math.max(view.viewHigh-view.viewLow,.000001);
+ const x=Math.max(0,Math.min(100,(v-view.viewLow)/span*100));
+ marker.hidden=false;marker.className='numberline-pending'+(ng?' ng':' ok');
+ marker.style.left=x+'%';marker.style.top='';
 }
 /* 次に入力する場所は**1箇所だけ**光らせる（§9.138）。以前は板厚と板幅が
    1つの項目に同居しており、測定器の種別でどちらへ入るかが決まるため次入力
@@ -322,11 +327,27 @@ function lengthSlotCount(){
 }
 /* 行の呼び名と枠の数は`WL.measureItem`が答える（§9.138）。板厚は条ではなく
    丈ごとに3点（エッジOS・中央CL・エッジDS）なので、行が3つになる。 */
+/* 表の大きさは**条数と丈数から2段で決める**（§9.146）。
+   「40条が全部入る小ささ」を8条のロットにも当てると、器の中に空きが残る
+   うえ、1行19pxの帯を狙って押すことになる（実機で「余白の問題と使いにくさ」
+   として報告された）。**25条までは通常の見やすい大きさ**、26条以上で
+   今までの詰まった見た目。
+   列も同じ。丈数は設計上9まであるが**実際は3、まれに4**——丈3以下は
+   `lengthSlotCount()`が4を返すので、**4列がきれいに収まる幅**を主に置き、
+   5列以上のときだけ詰める。 */
+const MX_ROOMY_ROWS=25,MX_WIDE_SLOTS=4;
 function measureMatrixHtml(key,count,type){
  const m=S.measure,lp=$('#lengthPos'),slots=lengthSlotCount(),cur=lengthIndex();
  const labels=WL.measureItem.slotLabels(key,count),head=WL.measureItem.slotHead(key);
  const label=li=>(lp&&lp.options[li]&&lp.options[li].value)||('丈'+(li+1));
  const rows=(m.measurements&&m.measurements[key])||[];
+ /* 子ロットの印は**専用の1列**にまとめる（§9.146）。ロット№は条で決まり、
+    **丈位置が変わっても同じ**なので、丈の数だけ同じバッジを並べる意味が
+    無い——入力欄の中に置いていたときは、そのぶん数値の場所が狭くなり、
+    丈を全部出すと画面も圧迫していた。板厚は行が条ではなく
+    エッジOS/中央CL/エッジDSの3点なので、この列は付けない。 */
+ const badges=key==='thickness'?[]:WL.split.lotColumn(count);
+ const hasLot=badges.some(Boolean);
  let thead='';
  for(let li=0;li<slots;li++)
   thead+=`<th scope="col" class="${li===cur?'is-current':''}">`
@@ -334,6 +355,10 @@ function measureMatrixHtml(key,count,type){
  let body='';
  for(let j=0;j<count;j++){
   body+=`<tr><th scope="row">${esc(labels[j]??String(j+1))}</th>`;
+  if(hasLot){
+   const b=badges[j];
+   body+=`<td class="mx-lot">`+(b?`<span class="strip-lot-badge" style="background-color:${esc(b.color)}" title="${esc(b.lot)}">${esc(b.suffix)}</span>`:'')+'</td>';
+  }
   for(let li=0;li<slots;li++){
    /* 判定の印（OK/NG）は**いま測っている列だけ**。全列に出すと最大400個
       並んで、印そのものが背景になる。公差外の色は`judgeInput`が全列の
@@ -344,11 +369,38 @@ function measureMatrixHtml(key,count,type){
   body+='</tr>';
  }
  /* 表の幅の上限は**列数から**決まる（CSSの`--mx-cols`）。丈位置の数は
-    ロットで変わるので、決め打ちにできない。 */
- return '<div class="mx-scroll"><table class="measure-matrix" style="--mx-cols:'+slots+'">'
-  +`<thead><tr><th scope="col" class="mx-corner">${esc(head)}</th>${thead}</tr></thead>`
+    ロットで変わるので、決め打ちにできない。ロット列のぶんは`mx-has-lot`。 */
+ const cls='measure-matrix '+(count<=MX_ROOMY_ROWS?'mx-roomy':'mx-dense')
+  +(slots<=MX_WIDE_SLOTS?' mx-wide':'')+(hasLot?' mx-has-lot':'');
+ return '<div class="mx-scroll"><table class="'+cls+'" style="--mx-cols:'+slots+'">'
+  +`<thead><tr><th scope="col" class="mx-corner">${esc(head)}</th>`
+  +(hasLot?'<th scope="col" class="mx-lot-head">ロット</th>':'')
+  +`${thead}</tr></thead>`
   +`<tbody>${body}</tbody></table></div>`;
 }
+/* 条が40に達したら公差の基準は畳む（§9.146、利用者の指示「40以上の時は
+   公差情報は折りたたみ」）。**畳んだままでも開けること**が条件なので、
+   ボタンごと消さずに見出しボタンへ変える。40未満では畳む必要が無いので
+   ボタンを出さない（押せるのに意味の無いものを置かない）。 */
+function applyToleranceFold(count){
+ const box=document.querySelector('.tol-block'),btn=$('#tolFold');
+ if(!box||!btn)return;
+ const foldable=count>=40;
+ if(box.classList.contains('tol-foldable')!==foldable){
+  box.classList.toggle('tol-foldable',foldable);
+  if(foldable)box.classList.remove('tol-open');
+ }
+ if(btn.hidden!==!foldable)btn.hidden=!foldable;
+ btn.setAttribute('aria-expanded',String(!foldable||box.classList.contains('tol-open')));
+}
+document.addEventListener('click',e=>{
+ const btn=e.target.closest&&e.target.closest('#tolFold');
+ if(!btn)return;
+ const box=btn.closest('.tol-block');if(!box)return;
+ const open=!box.classList.contains('tol-open');
+ box.classList.toggle('tol-open',open);
+ btn.setAttribute('aria-expanded',String(open));
+});
 /* 見出しを押したらその丈位置へ移る。**割り当ては1箇所**（丈位置を動かす
    道具は`#lengthPos`のchangeだけ。ここで直接描き直さない）。
    セルを押したときも同じ——**押した列がいま測る列になる**。押した先が
@@ -383,6 +435,8 @@ function renderMeasureGridVertical(){
  if(type==='フラットネス')h+=`<section class="measure-grid-block flatness-note-block"><div class="measure-grid-block-title"><span>備考</span></div><div class="flatness-entry"><label>対象条<select id="coilNo"></select></label><label>備考<textarea id="coilComment"></textarea></label></div></section>`;
  $('#measurementGrid').innerHTML=h;
  WL.measureTolerance.paintFacts(tol.facts);
+ applyToleranceFold(slots);
+ alignToleranceChart();
  bindMeasureInputs();applyInputProtection();focusCurrent();updateMeasurementHeading();/* 寸法系（板厚・板幅）は横長の公差バーを出さない。数直線の隣の公差カード
    （`.compact-tolerance-side`）が基準値・公差±・判定範囲を既に持っており、
    **同じ数字を画面に2つ出さない**（§9.129。項目を分ける前の板厚/板幅と
@@ -469,12 +523,72 @@ function toleranceScaleView(detail,values,count){
     直前値ラベルが重なる。 */
  return{low,high,base,viewLow,viewHigh,pct,clamp:v=>Math.max(6,Math.min(92,pct(v)))};
 }
+/* ---- 板幅測定値の視覚表示（§9.150。骨子§9.137「公差と測定値の縦グラフ」）----
+   **縦＝条（右の測定表の行と1対1）／横＝測定値**。
+   以前はスウォーム（蜂群図）で、縦＝値・横は重なり避けだけだった。横位置に
+   意味が無いので**どの点が何条かは`title`でしか分からず**（マウスを当てないと
+   読めない＝現場では読めない）、40条では点の雲になっていた。
+   縦を条に取ると、
+   - 右の表の行と**同じ高さで並ぶ**ので、外れている条が目を横に振るだけで分かる
+   - 条の並びは材料の幅方向（OS→DS）なので、**片側だけ太いといった傾きが
+     図として見える**——板幅測定で見たいのはまさにそれ
+   - 1条1行なので**重なり避けの小細工が要らない**（横位置が値そのもの）
+   **数字はここに出さない**——公差の値は測定カード上の帯（§9.146）、測定値は
+   右の表にある。図が答えるのは「公差のどのへんか」だけ（§9.129）。
+   行の高さは**実際の表を測って**合わせる（`alignToleranceChart`）。トークンから
+   計算すると罫線と表示サイズのぶんでずれる（§9.95の行高と同じ罠）。 */
 function compactToleranceScale(kind,values,count){
  const facts=compactToleranceFacts(kind),range=facts.range;
  if(!range)return facts.html;
- const valid=values.slice(0,count).map(v=>String(v).trim()).filter(Boolean).map(Number).filter(Number.isFinite),low=range[0],high=range[1],span=Math.max(high-low,.000001),viewLow=low-span*.3,viewHigh=high+span*.3;
- const marks=valid.slice(-20).map(v=>{const pos=Math.max(3,Math.min(97,(viewHigh-v)/(viewHigh-viewLow)*100)),ng=v<low||v>high;return `<i class="compact-value-mark ${ng?'ng':'ok'}" style="top:${pos}%" title="${esc(fixedToleranceValue(kind,v))}"></i>`}).join('');
- return `${facts.html}<div class="compact-tol-scale"><span class="compact-scale-label upper">上限 <b>${esc(fixedToleranceValue(kind,high))}</b></span><span class="compact-scale-safe">公差内</span>${marks}<span class="compact-scale-label lower">下限 <b>${esc(fixedToleranceValue(kind,low))}</b></span></div>`;
+ const card=typeof compactToleranceData==='function'?compactToleranceData(kind):null;
+ const view=WL.toleranceScaleView({range,base:card&&card.base},values,count);
+ if(!view)return facts.html;
+ const{low,high,base,viewLow,viewHigh}=view;
+ const span=Math.max(viewHigh-viewLow,.000001);
+ const x=v=>Math.max(0,Math.min(100,(Number(v)-viewLow)/span*100));
+ const cur=Number(kind==='thickness'?S.measure?.settings?.tStep:S.measure?.settings?.wStep)||0;
+ const labels=WL.measureItem.slotLabels(kind,count);
+ /* 基準の札を出すかは**画面の距離で決める**（§9.150）。公差幅に対する割合で
+    見ていたころは、片側公差でなくても（基準1000／下限999／上限1003のように
+    基準が下限寄りだと）札が13pxしか離れず「下限基準」と重なって読めなかった。
+    札の幅は2文字ぶんなので、**器の12%（≒25px）**離れていなければ出さない。 */
+ const gap=Math.min(Math.abs(x(base)-x(low)),Math.abs(x(base)-x(high)));
+ const baseAlone=gap>=12;
+ let rows='';
+ for(let j=0;j<count;j++){
+  const raw=String(values[j]??'').trim(),n=Number(raw);
+  const has=raw!==''&&Number.isFinite(n),ng=has&&(n<low||n>high);
+  rows+=`<div class="tc-row${j===cur?' is-current':''}" data-tc-row="${j}">`
+   +(has?`<i class="tc-dot ${ng?'ng':'ok'}" style="left:${x(n)}%"`
+        +` title="${esc(labels[j]??String(j+1))}: ${esc(raw)}"></i>`:'')
+   +'</div>';
+ }
+ return facts.html
+  +`<div class="accurate-numberline" style="--nl-low:${x(low)}%;--nl-high:${x(high)}%;--nl-base:${x(base)}%;--tc-cur:${cur}">`
+  +`<div class="tc-head"><b class="tc-tick tc-low">下限</b>`
+  +(baseAlone?'<b class="tc-tick tc-base">基準</b>':'')
+  +`<b class="tc-tick tc-high">上限</b></div>`
+  /* **基準の線は常に引く**（細いので重ならない）。畳むのは札だけ——
+     製造公差は`+3/-1`のように非対称が普通で、基準が下限寄りにあるのは
+     むしろ既定。線まで消すと「狙う値がどこか」が図から失われる。 */
+  +`<div class="tc-body"><i class="tc-band"></i>`
+  +`<i class="tc-line tc-line-low"></i><i class="tc-line tc-line-base"></i>`
+  +`<i class="tc-line tc-line-high"></i>`
+  +rows
+  +`<div class="numberline-pending" id="numberlinePending" hidden></div>`
+  +`</div></div>`;
+}
+/* 図の行を**実際の表に合わせる**。測るのは見出し1行と本文1行だけ（40行を
+   測らない）——どの行も同じ高さなので、頭の高さと1行の高さが分かれば足りる。 */
+function alignToleranceChart(){
+ const chart=document.querySelector('.accurate-numberline');
+ const tbl=document.querySelector('#measurementGrid .measure-matrix');
+ if(!chart||!tbl)return;
+ const head=tbl.querySelector('thead tr'),row=tbl.querySelector('tbody tr');
+ if(!head||!row)return;
+ const hh=head.getBoundingClientRect().height,rh=row.getBoundingClientRect().height;
+ if(hh>0)chart.style.setProperty('--tc-head',(Math.round(hh*100)/100)+'px');
+ if(rh>0)chart.style.setProperty('--tc-row',(Math.round(rh*100)/100)+'px');
 }
 /* 公差の「図」と「値」は**別の問いに答えるので、別の場所へ置く**（§9.140、
    骨子§9.137）。図＝いま公差のどのへんか（測定カードの左・選択中の丈位置
@@ -520,6 +634,7 @@ WL.measureTolerance={
   if(side)side.innerHTML=parts.graph;
   if(body)body.classList.toggle('no-graph',!parts.graph);
   this.paintFacts(parts.facts);
+  alignToleranceChart();
   return parts;
  },
 };

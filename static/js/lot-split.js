@@ -3,7 +3,7 @@
    ------------------------------------------------------------
    このファイルが持つもの:
    - 分割データ(親子管理_子カード・コンマ5本分割_切断巾)の検出と子ロット再検索
-   - 条割変更モーダル(#splitModal)の描画・操作・確定(renderSplit/openSplit/applySplit)
+   - 条の設計カード(#splitCard)の描画・操作・確定(renderSplit/openSplit/applySplit)
    - 幅分割情報パネル(#splitGrid)と幅分割タブバッジの表示
    - 条ごとの公差判定への配線(toleranceDetailの分割対応ラップ)
    - 子ロット行を直接開いた場合の親ロット読替(データエラー回避)
@@ -645,6 +645,7 @@
       if(Array.isArray(saved)&&saved.length){
         splitSourcesCache=saved;splitSourcesCacheKey=key;
         refreshSplitStatusPanel();
+        applySplitLive();
         return splitSourcesCache;
       }
     }
@@ -666,6 +667,10 @@
       }finally{
         splitSourcesLoading=null;
         refreshSplitStatusPanel();
+        /* **材料がそろった時点で当てる**（§9.149）。ここが唯一の「開いた直後」の
+           入口——`openSplit()`はモーダル廃止で呼び出し元が無くなっている。
+           当てないと「表は1条なのに図は2条」を抱えたまま測ることになる。 */
+        applySplitLive();
       }
       return splitSourcesCache;
     })();
@@ -959,6 +964,9 @@
         moveRange(seq,confirmed,dragBlock.start,dragBlock.end,dropStart);
         renderSplit();
         if(typeof markDirty==='function')markDirty();
+        /* 離した時点で当てる（§9.149）。移動の途中では当てない——1条動かす
+           たびに測定表を作り直すと、掴んでいる手の下で表が跳ねる。 */
+        applySplitLive();
       }
       dragging=false;dragBlock=null;
     }
@@ -1034,30 +1042,77 @@
     renderSplitResult(seq,sources,colorMap);
     $('#splitTotal').textContent=total;
     $('#splitLotCount').textContent=new Set(sources.map(x=>x.lot)).size;
-    $('#applySplit').disabled=total===0||seq.some(x=>x==null);
+    /* 「条割を実行」ボタンは廃止（§9.145／§9.149、リアルタイム反映へ）。 */
     const undoBtn=$('#undoSplit');if(undoBtn)undoBtn.disabled=splitUndoStack.length===0;
     refreshSplitStatusPanel();
   }
   window.renderSplit=renderSplit;
 
+  /* 条の設計は**カードの中に常時ある**（§9.144、利用者の指示）。専用モーダルは
+     廃止したので、ここでするのは「子ロット候補を取りに行って描く」だけ。
+     開く／閉じるという状態が無くなったぶん、押してから見るまでの間も無い。 */
   async function openSplit(){
     if(!S.measure)return;
-    $('#splitModal').hidden=false;
-    requestAnimationFrame(()=>$('#closeSplit')?.focus());
     activeLot=null;splitUndoStack=[];
     if(!splitSourcesCache||splitSourcesCacheKey!==currentSplitCacheKey()){
       const box=$('#splitSources');if(box)box.innerHTML='<div class="split-row-loading">子ロット情報を取得しています…</div>';
     }
     await ensureSplitCandidatesLoaded();
     renderSplit();
+    /* 開いた時点の既定の並びも**そのまま当てる**（§9.149）。当てないと
+       「表は1条なのに図は2条」という食い違いを抱えたまま測ることになる。
+       既に確定済みなら同じ内容で当て直すだけなので副作用は無い。 */
+    applySplitLive();
   }
   window.openSplit=openSplit;
 
+  /* ---- 条割は「触ったその場で効く」（§9.149、利用者の指示） ----
+     「条割を実行」ボタンは廃止した。押す前と後で画面が変わらないので、
+     **実行し忘れたまま測り始める**という事故が起きない。
+     ただし**当てられないときに黙って諦めない**——理由を状態行に出す。
+     以前はalertで止めていたが、**ドラッグのたびにダイアログ**では使えない。 */
+  let splitLiveReason='';
+  /* 条数を減らすと、その先に入っている測定値が表から見えなくなる（値そのものは
+     40条ぶんの配列に残るが、画面から消えるのは同じこと）。**消えるものが
+     あるときは当てずに言う。** */
+  function measuredBeyond(count){
+    const m=S.measure&&S.measure.measurements;if(!m)return false;
+    return ['width','lateral','burr','telescope','offset','flatness'].some(k=>
+      (m[k]||[]).some(row=>(row||[]).slice(count).some(v=>String(v??'').trim()!=='')));
+  }
+  /* 当てられない理由。空文字なら当てられる。 */
+  function splitLiveBlockReason(){
+    const sources=splitSourceRows();
+    if(!sources.length)return 'このロットには条割の対象となる子ロットが見つかりません。';
+    const total=sources.reduce((a,x)=>a+x.count,0),seq=ensureSequenceLength(total);
+    if(!total||seq.some(x=>x==null))return '全条ぶんの並びが決まっていないため、まだ反映していません。';
+    const lotCount=new Set(seq.filter(Boolean)).size;
+    const maxStrips=maxStripsForEquipment();
+    if(total>maxStrips)return `この設備で割れるのは最大${maxStrips}条までです（現在 ${total}条）。設備ごとの上限はマスタ管理 > 設備の「最大条数」で変更できます。`;
+    if(lotCount>MAX_CHILD_LOTS)return `1つの親ロットを分ける子ロットは最大${MAX_CHILD_LOTS}ロットまでです（現在 ${lotCount}ロット）。`;
+    if(measuredBeyond(total))return `条数を ${total} にすると、その先に入っている測定値が表から見えなくなるため反映していません。先に不要な測定値を消してください。`;
+    return '';
+  }
+  /* 触ったあとの入口。**当てられたらtrue**。
+     `applySplit()`は`refreshSplitStatusPanel()`を呼び、そこから`renderSplit()`へ
+     戻る経路があるので、**1周に限る旗**を持つ（§9.144の`inSplitRefresh`と同じ罠）。 */
+  let inSplitLive=false;
+  function applySplitLive(){
+    if(inSplitLive)return false;
+    inSplitLive=true;
+    try{
+      const why=splitLiveBlockReason();
+      if(why!==splitLiveReason){splitLiveReason=why;refreshSplitStatusPanel()}
+      if(why)return false;
+      applySplit();
+      return true;
+    }finally{inSplitLive=false}
+  }
   function applySplit(){
     const sources=splitSourceRows();
-    if(!sources.length){alert('このロットには条割の対象となる子ロットが見つかりません。');return}
+    if(!sources.length)return;
     const total=sources.reduce((a,x)=>a+x.count,0),seq=ensureSequenceLength(total);
-    if(seq.some(x=>x==null)){alert('全条分を登録してください。');return}
+    if(seq.some(x=>x==null))return;
     const map=Object.fromEntries(sources.map(x=>[x.lot,x])),groups=[];
     seq.forEach(lot=>{const last=groups.at(-1);if(last&&last.lot===lot)last.count++;else groups.push({lot,count:1,source:map[lot]})});
     /* 上限は**条数とロット数を別々に**見る。以前は区間(連続したかたまり)の数を
@@ -1065,16 +1120,24 @@
        9区間になっただけで拒否されていた(ロットは2つ・条も9で、どちらの上限にも
        掛かっていない)。 */
     const lotCount=new Set(groups.map(g=>g.lot).filter(Boolean)).size;
-    const maxStrips=maxStripsForEquipment();
-    if(total>maxStrips){alert(`この設備で割れるのは最大${maxStrips}条までです（現在 ${total}条）。設備ごとの上限はマスタ管理 > 設備の「最大条数」で変更できます。`);return}
-    if(lotCount>MAX_CHILD_LOTS){alert(`1つの親ロットを分ける子ロットは最大${MAX_CHILD_LOTS}ロットまでです（現在 ${lotCount}ロット）。`);return}
+    if(total>maxStripsForEquipment()||lotCount>MAX_CHILD_LOTS)return;
     const splitGroups=groups.map(g=>({lot:g.lot,count:g.count,base:g.source?.base||null,tol:g.source?.tolData||null,missing:!!g.source?.missing}));
     const positionGroup=[];splitGroups.forEach((g,gi)=>{for(let k=0;k<g.count;k++)positionGroup.push(gi)});
+    /* **同じ内容なら何もしない**（§9.149）。リアルタイム反映は開いた時点でも
+       走るので、素通しにすると**測定画面を開いただけで「未保存」になり**、
+       状態行にも「条割を変更しました」が出続ける。 */
+    const sig=x=>JSON.stringify((x||[]).map(g=>[g.lot,g.count]));
+    const changed=sig(S.measure.settings.splitGroups)!==sig(splitGroups)
+      ||String($('#horizontalCount').value)!==String(total);
     S.measure.settings.splitGroups=splitGroups;
     S.measure.settings.splitPositionGroup=positionGroup;
     $('#horizontalCount').value=total;
     if(typeof updateCoilOptions==='function')updateCoilOptions(total);
-    $('#splitModal').hidden=true;
+    if(!changed){
+      if(typeof renderMeasureGrid==='function')renderMeasureGrid();
+      refreshSplitStatusPanel();
+      return;
+    }
     if(typeof markDirty==='function')markDirty();
     if(typeof setState==='function')setState('条割を変更しました');
     if(typeof renderMeasureGrid==='function')renderMeasureGrid();
@@ -1092,16 +1155,17 @@
     if(statusEl){statusEl.classList.remove('just-applied');void statusEl.offsetWidth;statusEl.classList.add('just-applied')}
   }
   window.applySplit=applySplit;
-  // 条割変更モーダルの全ボタン結線(このファイルがモーダルの所有者)。
-  const applyBtn=$('#applySplit');if(applyBtn)applyBtn.onclick=applySplit;
-  const openBtn=$('#openSplit');if(openBtn)openBtn.onclick=openSplit;
-  const closeBtn=$('#closeSplit');if(closeBtn)closeBtn.onclick=()=>$('#splitModal').hidden=true;
-  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('#splitModal')?.hidden){$('#splitModal').hidden=true}},true);
+  /* 新しい公開は名前空間へ（素の`window.*`は増やさない。`test_globallint`）。 */
+  window.WL.split=Object.assign(window.WL.split||{},{applyLive:applySplitLive});
+  /* 条の設計カードのボタン結線(このファイルがカードの所有者。§9.144)。
+     **並びを変える操作はすべて`applySplitLive()`で締める**——1つでも
+     漏らすと、その操作だけ「効いていない」ように見える。 */
   const undoBtn=$('#undoSplit');if(undoBtn)undoBtn.onclick=()=>{
     const snap=splitUndoStack.pop();if(!snap)return;
     S.measure.settings.splitSequence=snap.seq;
     S.measure.settings.splitConfirmed=snap.confirmed;
     renderSplit();
+    applySplitLive();
   };
   const resetBtn=$('#resetSplit');if(resetBtn)resetBtn.onclick=()=>{
     const sources=splitSourceRows(),total=sources.reduce((a,x)=>a+x.count,0);
@@ -1110,6 +1174,7 @@
     S.measure.settings.splitConfirmed=Array(total).fill(false);
     activeLot=null;
     renderSplit();
+    applySplitLive();
   };
 
   /* 元幅（実績、BOX実績_板幅）から条幅合計を差し引くと、スリット時に両耳から
@@ -1492,7 +1557,10 @@
         ${open?diffTableHtml(r.diffs,'現在','この時点'):''}</li>`);
     });
     if(items.length===1&&!st.splitSourcesSavedAt)return '';
-    return `<div class="disclosure split-history${st.splitSourcesPending?'':' open'}">
+    /* **既定は畳む**（§9.144）。条の設計カードは編集面が主役で、履歴は
+       「更新が来たか」を確かめたいときだけ開くもの。開いたまま置くと
+       実測110pxを取り、編集面がカードから溢れる。 */
+    return `<div class="disclosure split-history">
       <button type="button" class="disclosure-head"><span class="disclosure-num">履</span><span class="disclosure-title">子ロットデータの履歴</span><span class="disclosure-sum">${items.length}件</span><span class="disclosure-chev"></span></button>
       <div class="disclosure-body">
        <ul>${items.join('')}</ul>
@@ -1537,31 +1605,31 @@
     else if(state==='pending'){badge.hidden=false;badge.textContent='未設定';badge.className='split-tab-badge split-tab-badge-pending'}
     else{badge.hidden=true}
   }
+  /* 「条割変更を開く」ボタンは廃止（§9.144。編集面はカードの中に常時ある）。
+     残るのは子ロットデータの更新・履歴の配線だけ。 */
   function wireSplitPanelButtons(el){
-    const btn=el.querySelector('#splitPanelOpenBtn');
-    if(btn)btn.onclick=()=>openSplit();
     wireSplitDataSections(el);
-  }
-  function candidateRowsHtml(sources){
-    return sources.map(s=>`<tr class="${s.missing?'split-legend-missing':''}"><td>${esc(s.lot)}</td><td>${s.count}条</td><td>${s.width!==''&&s.width!==undefined?esc(String(s.width)):'—'}</td><td>${esc(s.missing?'取得失敗':(s.tol||'—'))}</td></tr>`).join('');
   }
   // 未設定(候補のみ判明している)状態: 条割変更が実際に読み出すのと同じ子ロット
   // 候補データをここでも先読みして表示し、この画面から直接「条割変更」へ
   // 遷移できるボタンを置く(操作導線)。
+  /* 条の設計カードは**編集面を常時持つ**（§9.144）ので、この帯は「いまどう
+     なっているか」の**1行**だけにする。子ロットの一覧・幅・公差は編集面の
+     「子ロット候補」が持っており、同じ表を上にもう1枚置くと**同じ情報が
+     2箇所**に出る（§9.129）。開くボタンも要らない（もう開いている）。 */
   function renderPendingCandidatesPanel(el,sources,info){
     if(!sources.length){
       el.innerHTML=`<div class="split-panel-status split-panel-status-pending">⚠ このロットには分割データがあります（推定 ${info.lotCount}ロット / ${info.stripCount}条・${esc(widthPatternLabel(info.widthPattern))}）が、子ロットの詳細を取得できませんでした。</div>
-        <button type="button" class="split-panel-open-btn" id="splitPanelOpenBtn">条割変更を開く →</button>`;
+        ${splitDataSectionsHtml()}`;
       wireSplitPanelButtons(el);
       return;
     }
     const totalCount=sources.reduce((a,x)=>a+x.count,0),horiz=Math.max(1,+($('#horizontalCount')?.value)||1);
     const mismatch=totalCount!==horiz;
     el.innerHTML=`
-      <table class="split-panel-table"><thead><tr><th>子ロット№</th><th>条数</th><th>幅</th><th>公差</th></tr></thead><tbody>${candidateRowsHtml(sources)}</tbody></table>
-      ${mismatch?`<div class="split-mismatch-badge">子ロット条数合計(${totalCount})が横割数(${horiz})と一致しません。「条割変更」で内容を確認してください。</div>`:''}
+      <div class="split-panel-status split-panel-status-pending">未設定 — 子ロット ${new Set(sources.map(x=>x.lot)).size} / 全 ${totalCount}条。下で条をつかんで並べ替えると、そのまま測定表に反映されます。</div>
+      ${mismatch?`<div class="split-mismatch-badge">子ロット条数合計(${totalCount})が横割数(${horiz})と一致しません。</div>`:''}
       ${scrapWidthLineHtml()}
-      <button type="button" class="split-panel-open-btn" id="splitPanelOpenBtn">この内容で条割変更を開く →</button>
       ${splitDataSectionsHtml()}`;
     wireSplitPanelButtons(el);
   }
@@ -1596,15 +1664,14 @@
     const{map:lotColors,lots}=appliedLotColorMap(groups);
     const dot=lot=>lots.length>1&&lotColors[lot]
       ? `<i class="split-lot-dot" style="background-color:${esc(lotColors[lot])}"></i>`:'';
-    const rows=groups.map((g,i)=>`<tr class="${g.missing?'split-legend-missing':''}"><td>${i+1}</td><td>${dot(g.lot)}${esc(g.lot)}</td><td>${g.count}条</td><td>${Number.isFinite(g.base?.width)?esc(String(g.base.width)):'—'}</td><td>${g.missing?'取得失敗':'OK'}</td></tr>`).join('');
     const needsReconfigure=S.measure?.settings?.splitNeedsReconfigure;
+    /* 設定済みの姿は**帯1本と1行**で足りる（§9.144）。ロット№・条数・幅の
+       表は編集面の「子ロット候補」「条割プレビュー」が持っている。 */
     el.innerHTML=`
       <div class="split-panel-status split-panel-status-applied">✓ ${esc(summary)}</div>
       ${splitBandHtml(groups)}
-      <table class="split-panel-table"><thead><tr><th>#</th><th>ロット№</th><th>条数</th><th>幅</th><th>状態</th></tr></thead><tbody>${rows}</tbody></table>
-      ${needsReconfigure?'<div class="split-mismatch-badge">子ロットデータの更新で条数の構成が変わりました。「条割変更」で再設定してください。</div>':''}
+      ${needsReconfigure?'<div class="split-mismatch-badge">子ロットデータの更新で条数の構成が変わりました。下で並びを決め直してください。</div>':''}
       ${scrapWidthLineHtml()}
-      <button type="button" class="split-panel-open-btn" id="splitPanelOpenBtn">条割変更を開く（再設定）→</button>
       ${splitDataSectionsHtml()}`;
     wireSplitPanelButtons(el);
   }
@@ -1643,32 +1710,62 @@
     el.hidden=false;
   }
 
+  /* 条の設計カードの中の編集面（§9.144）。**分割の材料が無いロットでは
+     出さない**——並べ替える条が無いのに図と空の一覧を置くと、その器ぶん
+     「まだ何かある」と読ませてしまう。 */
+  function showSplitEditor(on){
+    const el=document.querySelector('#splitCard .split-layout');
+    if(el&&el.hidden!==!on)el.hidden=!on;
+  }
+  /* `renderSplit()`は最後にこの関数を呼ぶので、ここから`renderSplit()`を
+     呼ぶと往復する。**旗で1周に限る。** */
+  let inSplitRefresh=false;
+  /* リアルタイム反映が止まっている理由を、状態行の隣へ**文字で**出す
+     （§9.149）。色や無反応で伝えない——「並べ替えても表が変わらない」は
+     壊れて見える。 */
+  function paintLiveReason(el){
+    if(!el||!splitLiveReason)return;
+    el.insertAdjacentHTML('beforeend',
+      `<div class="split-mismatch-badge split-live-reason">${esc(splitLiveReason)}</div>`);
+  }
   function refreshSplitStatusPanel(){
     refreshBasicSplitRow();
     const el=$('#splitGrid');if(!el)return;
-    const groups=S.measure?.settings?.splitGroups;
-    if(Array.isArray(groups)&&groups.length){
-      renderAppliedGroupsPanel(el,groups);
-      updateSplitTabBadge('applied');
+    const rendering=inSplitRefresh;
+    inSplitRefresh=true;
+    try{
+      const groups=S.measure?.settings?.splitGroups;
+      if(Array.isArray(groups)&&groups.length){
+        renderAppliedGroupsPanel(el,groups);
+        paintLiveReason(el);
+        updateSplitTabBadge('applied');
+        showSplitEditor(true);
+        if(!rendering)renderSplit();
+        updateScrapWidthDisplay();
+        return;
+      }
+      const info=analyzeRowSplit(S.measure?.source);
+      if(!info.hasSplit){
+        el.innerHTML='<div class="split-panel-status split-panel-status-none">分割無し</div>';
+        updateSplitTabBadge('none');
+        showSplitEditor(false);
+        updateScrapWidthDisplay();
+        return;
+      }
+      updateSplitTabBadge('pending');
+      const key=currentSplitCacheKey();
+      if(splitSourcesCache&&splitSourcesCacheKey===key){
+        renderPendingCandidatesPanel(el,splitSourcesCache,info);
+        paintLiveReason(el);
+        showSplitEditor(true);
+        if(!rendering)renderSplit();
+      }else{
+        el.innerHTML=`<div class="split-panel-status split-panel-status-pending">⚠ このロットには分割データがあります（推定 ${info.lotCount}ロット / ${info.stripCount}条・${esc(widthPatternLabel(info.widthPattern))}）。子ロット情報を取得しています…</div>`;
+        showSplitEditor(false);
+        ensureSplitCandidatesLoaded();
+      }
       updateScrapWidthDisplay();
-      return;
-    }
-    const info=analyzeRowSplit(S.measure?.source);
-    if(!info.hasSplit){
-      el.innerHTML='<div class="split-panel-status split-panel-status-none">分割無し</div>';
-      updateSplitTabBadge('none');
-      updateScrapWidthDisplay();
-      return;
-    }
-    updateSplitTabBadge('pending');
-    const key=currentSplitCacheKey();
-    if(splitSourcesCache&&splitSourcesCacheKey===key){
-      renderPendingCandidatesPanel(el,splitSourcesCache,info);
-    }else{
-      el.innerHTML=`<div class="split-panel-status split-panel-status-pending">⚠ このロットには分割データがあります（推定 ${info.lotCount}ロット / ${info.stripCount}条・${esc(widthPatternLabel(info.widthPattern))}）。子ロット情報を取得しています…</div>`;
-      ensureSplitCandidatesLoaded();
-    }
-    updateScrapWidthDisplay();
+    }finally{inSplitRefresh=rendering}
   }
   window.refreshSplitStatusPanel=refreshSplitStatusPanel;
   if(typeof renderMeasurement==='function'){
@@ -1704,18 +1801,21 @@
     if(!lot)return null;
     return{lot,color:map[lot]};
   }
-  if(typeof makeMeasureInputV29==='function'){
-    const baseMakeMeasureInputV29=makeMeasureInputV29;
-    makeMeasureInputV29=function(key,i,j,value,active=true){
-      const html=baseMakeMeasureInputV29(key,i,j,value,active);
-      const badge=active?stripLotBadgeFor(j):null;
-      if(!badge)return html;
-      // .strip-input-wrap の中へ差し込む(入力欄と同じ枠内に置くため)。
-      return html.replace('<div class="strip-input-wrap">',
-        `<div class="strip-input-wrap has-lot-badge">`
-        +`<span class="strip-lot-badge" style="background-color:${esc(badge.color)}" title="${esc(badge.lot)}">${esc(lotSuffix3(badge.lot))}</span>`);
-    };
-  }
+  /* 子ロットの印は**測定表の専用列**が出す（§9.146）。以前は入力欄の中へ
+     差し込んでおり、丈位置の数だけ同じバッジが並んで数値の場所を削っていた
+     ——**ロット№は条で決まり、丈では変わらない**ので1列で足りる。
+     表を組むのは`measureMatrixHtml`（measurement-input.js）なので、条→印の
+     対応だけをここから渡す。 */
+  window.WL.split=Object.assign(window.WL.split||{},{
+    lotColumn(count){
+      const out=[];
+      for(let j=0;j<count;j++){
+        const b=stripLotBadgeFor(j);
+        out.push(b?{lot:b.lot,color:b.color,suffix:lotSuffix3(b.lot)}:null);
+      }
+      return out;
+    },
+  });
 
   // ---- 判定への配線 ----
   function groupForIndex(index){

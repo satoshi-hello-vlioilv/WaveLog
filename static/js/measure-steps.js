@@ -171,11 +171,11 @@
   if(!rows){box.innerHTML='';fixMap={};return}
   fixMap={};rows.forEach(r=>{if(r.fix)fixMap[r.key]=r.fix});
   const rest=rows.filter(r=>r.state==='todo'||r.state==='bad').length;
-  box.innerHTML=`<div class="fc-head"><h3>完了前の確認</h3>`
+  box.innerHTML=`<div class="fc-head"><h3 class="card-title">完了前の確認</h3>`
    +`<span class="fc-verdict fc-verdict--${rest?'rest':'ready'}">`
    +esc(rest?`あと ${rest}件`:'このまま完了できます')+`</span></div>`
    +`<ul class="fc-list">`+rows.map(r=>
-     `<li class="fc-row fc-row--${r.state}">`
+     `<li class="fc-row fc-row--${r.state}" data-fc="${esc(r.key)}">`
      +`<span class="fc-name">${esc(r.name)}</span>`
      +`<span class="fc-value">${esc(r.value)}</span>`
      +(r.fix?`<button type="button" class="fc-fix" data-fc-fix="${esc(r.key)}">${esc(r.fix.label)}</button>`:'<span></span>')
@@ -230,7 +230,9 @@
     `display:none`をCSSが与えているから。 */
  function openRecordWall(){
   if(current!=='3')return;
-  document.querySelectorAll('.measure-shell [data-leftpanel="grade"],.measure-shell [data-leftpanel="analysis"]')
+  /* 品質規格・品質情報は基本情報カードへ移した（§9.145）ので、③で開けるのは
+     測定データ分析だけ。**gradeという面はもう無い。** */
+  document.querySelectorAll('.measure-shell [data-leftpanel="analysis"]')
    .forEach(p=>setHidden(p,false));
  }
 
@@ -451,7 +453,7 @@
     **値は`.value`への代入で入るので変化を検知できない**（DOMは変わらない）。
     段の描き直しと、**出る瞬間（作業タブの切り替え）**の両方で測り直す。
     器の幅も署名に入れる——カードの幅が変われば折り返す行数が変わる。 */
- const READ_TEXT=[['motherQualityInfo',16],['qualityInfo',20]];
+ const READ_TEXT=[['qualityInfo',20]];
  function fitTextBox(id,maxRows){
   const el=sel(id);
   if(!el||el.tagName!=='TEXTAREA')return;
@@ -476,12 +478,27 @@
  /* ---------- 段の切り替え ----------
     **CSSのクラスだけで見せ分ける。** ペインを別の器へ移し替えない
     （移すと受信欄の親が変わり、フォーカスが落ちる）。 */
+ /* 判定公差は**いま判定している場所の隣**に置く（§9.146）。②は測定カードの
+    中（表の上）、③は測定データ分析カードの中。①には出さない（通常は製造公差
+    のままで触らないので、準備の主要導線に置くほどのものではない）。
+    ②と③は同時に出ないので器を2つ用意し、**中身の1つを行き来させる**
+    ——同じidを2つ置けないため。**動かしてよいのはこの塊だけ**で、受信欄
+    (`#deviceInput`)は絶対に動かさない（§9.122）。 */
+ function placeToleranceBlock(step){
+  const box=document.querySelector('.tol-block');
+  const host=document.getElementById(step==='3'?'tolSlot3':'tolSlot2');
+  if(box&&host&&box.parentElement!==host)host.appendChild(box);
+ }
  function go(step){
   step=String(step);
   if(STEP_KEYS.indexOf(step)<0)return;
   const el=shell();if(!el)return;
   current=step;
   STEP_KEYS.forEach(k=>el.classList.toggle('mstep-'+k,k===step));
+  placeToleranceBlock(step);
+  /* ③の「記録した値」は**入るたびに作り直す**——①で設定を直してから戻って
+     くることがあるので、開いた時点の値でなければ確認の意味が無い。 */
+  if(step==='3'&&measuring())renderRecordedValues();
   paint();
   /* ②へ入ったら、転送を受けられる状態へ戻す。**受信欄は作り直していない**
      ので、フォーカスを戻すだけでよい（§9.122）。手動入力モードは
@@ -647,7 +664,9 @@
     ぜんぶ拾う。1つでも漏らすと、古い値を見せたまま平然と並ぶ——
     空欄より悪い（利用者は正しいものとして読む）。 */
 
- /* ① 進捗が動いたとき。**ヘッダーの進捗表示が書き換わったのを見る**。
+ /* ① 進捗が動いたとき。**項目の一覧が書き換わったのを見る**（§9.147で
+    ヘッダーの進捗バーを廃止したので、見る先を`#measureTypeChips`へ移した。
+    どちらも`refreshMeasureProgress()`が書き換える同じ出力）。
     `window.refreshMeasureProgress` をラップする手もあるが、そちらは
     グローバル関数の差し替えを1件増やす（§9.96の見張りが数えている）。
     出力そのものを見れば、呼び出し口を知らなくても取りこぼさない。
@@ -656,8 +675,8 @@
     ワイルドカード付きの例示がコメントを途中で閉じ、ファイル全体が
     構文エラーになった（CSSで既知の罠と同じものをJSでやった）。 */
  function watchProgress(){
-  const head=document.getElementById('headProgress');
-  if(!head)return;
+  const head=document.getElementById('measureTypeChips');
+  if(!head){console.error('measure-steps: #measureTypeChips が無い（進捗の追随が止まる）');return}
   new MutationObserver(()=>{try{paint()}catch(e){}})
    .observe(head,{childList:true,subtree:true,characterData:true});
  }

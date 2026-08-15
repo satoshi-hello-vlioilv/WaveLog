@@ -94,7 +94,7 @@ RULES = [
     ('static/js/filters.js', g('test_filter', 'test_listcache', 'test_allrows', 'test_nav')),
     ('static/js/schedule-view.js', g('スケジュール', 'test_listmodal')),
     ('static/js/schedule-print.js', g('test_scprint')),
-    ('static/js/lot-split.js', g('test_scsplit', 'test_orphan', 'test_sub')),
+    ('static/js/lot-split.js', g('test_scsplit', 'test_orphan', 'test_sub', 'test_splitlive')),
     ('static/js/master-maint.js', g('マスタ', 'test_headbar', 'test_datasource')),
     ('static/js/calendar-view.js', g('test_calscale', 'test_histdel', 'test_headbar')),
     ('static/js/report-dashboard.js', g('test_screport', 'test_hdr', 'test_calscale')),

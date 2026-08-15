@@ -8,15 +8,28 @@
    レイヤの宣言とトークンは 00-base.css が持つ。
    ============================================================ */
 @layer component {
-.split-dialog{width:min(1360px,97vw);height:min(860px,94vh);background:#eef2f4;border-radius:var(--radius-lg);overflow:hidden;box-shadow:0 24px 80px #0007}
-.split-dialog>header{height:64px;display:flex;justify-content:space-between;align-items:center;padding:var(--pad-dialog);background:var(--nav);color:#fff}
-.split-dialog h2{margin:2px 0;font-size:var(--fs-title)}
-.split-dialog small{color:#7fd8d0;letter-spacing:.06em}
-.split-dialog header button{width:38px;height:38px;font-size:var(--fs-lg);line-height:1;color:#fff;background:transparent;border:0;border-radius:var(--radius-sm);cursor:pointer}
-.split-dialog header button:hover{background:#ffffff26}
-.split-layout{height:calc(100% - 64px);display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:min-content 1fr;gap:var(--gap-section);padding:var(--space-4)}
+/* ---------- 条の設計は**常時出す**（§9.144、利用者の指示） ----------
+   「常時表示かつ、条の並び替え、公差の判定位置との連動など、今まで実装して
+   いた機能をそのまま専用モーダルから移植する形で。機能をすべて移植し、
+   専用モーダルは廃止する。」
+   モーダル（1360×860）から骨子の`4×1`のカード（実測1727×307px）へ移す。
+   **縦が1/3になるので、横へ3列に開く**——図はいちばん広い列、子ロット候補と
+   プレビューはそれぞれ規格幅（`--w-2xl`＝32em）で、中で縦スクロールする。
+   図が主役なのは、条の並べ替えは図を掴んで行うため（面積は頻度×重要度）。 */
+.split-layout{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(0,var(--w-2xl)) minmax(0,var(--w-2xl));
+  align-items:stretch;gap:var(--gap-section);
+  min-height:0;margin-top:var(--space-2);
+}
 .split-layout section{min-width:0;min-height:0;display:flex;flex-direction:column}
-.split-layout h3{margin:0 0 10px;font-size:var(--fs-title);font-weight:800;color:#264349;display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-2)}
+/* 見出しは**カードの中の群の見出し**なので、①準備の`.prep-head`と同じ格に
+   そろえる（カードの題と同じ大きさにすると、どちらが器か分からなくなる）。 */
+.split-layout h3{
+  margin:0 0 var(--space-1);
+  color:var(--ink-3);font-size:var(--fs-micro);font-weight:800;letter-spacing:.04em;
+  display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-2);
+}
 .split-candidates-stats{font-size:var(--fs-sm);font-weight:600;color:#60747b}
 .split-candidates-stats b{color:var(--teal);font-size:var(--fs-base-sm)}
 .split-hint-text{margin:8px 0 0;color:#79898d}
@@ -52,7 +65,9 @@
    連続していても1条=1マスの個別セルとして描画し、最大40条規模でも見やすく
    する。帯自体が操作面(ドラッグでその場から即座に追従して並べ替え。
    ドロップ予定位置には同じ色・同じ幅のゴーストを差し込んで表示する)。 */
-.split-visual{grid-column:1/-1;background:#fff;border:1px solid #dbe4e6;border-radius:var(--radius-md);padding:16px 18px;box-shadow:0 1px 3px #0000000f}
+/* 図は1列目。**枠は付けない**——カードが枠を持っており、中に枠を作ると
+   枠の中の枠になる（§9.129）。区切りは列の間の余白で足りる。 */
+.split-visual{display:flex;flex-direction:column;min-width:0;min-height:0;background:transparent;border:0;border-radius:0;padding:0;box-shadow:none}
 .split-visual-head{display:flex;align-items:baseline;gap:var(--space-3);margin-bottom:10px;flex-wrap:wrap}
 .split-visual-head b{color:#1b3438}
 .split-visual-count{font-size:var(--fs-sm);font-weight:800;color:var(--teal-dark);background:#e3f5f3;border-radius:var(--radius-pill);padding:2px 10px}
@@ -136,8 +151,22 @@
 .split-panel-table tr.split-legend-missing td{color:var(--danger);background:var(--danger-bg)}
 /* ロット№の頭の色丸。入力欄のバッジ・条割の視覚図と同じ色。 */
 .split-lot-dot{display:inline-block;width:9px;height:9px;margin-right:6px;border-radius:var(--radius-round);vertical-align:baseline;box-shadow:0 0 0 1px #ffffffcc}
-.split-panel-open-btn{display:block;width:100%;margin-top:2px;background:var(--teal);color:#fff;border:1px solid var(--teal);font-weight:700;cursor:pointer}
-.split-panel-open-btn:hover{filter:brightness(1.08)}
+/* 状態の帯は**1行**（§9.144）。カードの主役は下の編集面なので、
+   上に積む案内は行数で場所を取らない。 */
+/* 状態・不一致・履歴は**横に1行**へ並べる。縦に積むと3行（実測84px）取り、
+   そのぶん編集面がカードから溢れる。どれも「いまどうなっているか」の
+   メタ情報なので、同じ高さで横に並ぶのが読み方とも合う。 */
+#splitCard>#splitGrid{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-tight)}
+#splitCard>#splitGrid>*{flex:0 1 auto;min-width:0}
+#splitCard .split-panel-status,#splitCard .split-mismatch-badge{
+  margin:0;padding:var(--pad-row);font-size:var(--fs-sm);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+/* 反映が止まっている理由は**省略しない**（§9.149）。状態行と違って
+   「読めば直せる」文なので、1行に収まらなければ折り返す。 */
+#splitCard .split-live-reason{white-space:normal;overflow:visible;text-overflow:clip;flex:1 1 100%}
+#splitCard .split-history{margin:0;flex:1 1 auto}
+#splitCard .split-recheck-btn{width:auto;min-width:max-content}
 .split-mismatch-badge{margin-bottom:var(--space-2);padding:var(--pad-row);background:var(--danger-bg);border:1px solid var(--danger-border);color:var(--danger);border-radius:var(--radius-card);font-size:var(--fs-base-sm);font-weight:700}
 .split-scrap-line{margin-bottom:var(--space-2);padding:6px 7px;background:var(--surface-2);border:1px solid var(--line-mid);border-radius:var(--radius-card);font-size:var(--fs-base-sm);font-variant-numeric:tabular-nums}
 .split-scrap-line b{font-size:var(--fs)}

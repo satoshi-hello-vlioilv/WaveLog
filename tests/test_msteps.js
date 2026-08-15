@@ -839,23 +839,29 @@ let b=null,page=null;
   }
   /* 高さも同じ。読み取り専用の表示欄をpxで固定すると、6文字に280pxを
      与えたままになる。**行数（rows）で決まっていること**を見る。 */
+  /* 品質情報は**基本情報カードの1箇所だけ**（§9.148、利用者の指摘）。
+     母材の面にも同じ本文を持つ欄があり、②では基本情報カードのものと
+     並んで2つ見えていた（§9.129「同じ情報を2箇所に出さない」）。 */
   await go('2');
+  const qdup=await page.evaluate(()=>{
+   const vis=e=>{const b=e.getBoundingClientRect();
+     return b.width>2&&b.height>2&&getComputedStyle(e).display!=='none'};
+   const all=[...document.querySelectorAll('.measure-shell textarea,.measure-shell output')]
+     .filter(e=>vis(e)&&/異常情報|品質/.test(e.value||e.textContent||''));
+   return{本文の数:all.length,母材側:!!document.getElementById('motherQualityInfo'),
+     id:all.map(e=>e.id)};
+  });
+  rec('②で品質情報の本文が2つ出ていない',
+      qdup.本文の数<=1&&qdup.母材側===false,JSON.stringify(qdup));
   const qbox=await page.evaluate(()=>{
-   const el=document.getElementById('motherQualityInfo');
+   const el=document.getElementById('qualityInfo');
    if(!el)return{無し:true};
    const r=el.getBoundingClientRect(),cs=getComputedStyle(el);
-   return{幅:Math.round(r.width),高:Math.round(r.height),rows:el.rows,
-     行:(el.value||'').split('\n').length,
+   return{幅:Math.round(r.width),高:Math.round(r.height),
      行高:Math.round(parseFloat(cs.lineHeight)||parseFloat(cs.fontSize)*1.4),
      見:r.width>0&&r.height>0};
   });
-  if(qbox.見){
-   /* 器の高さ ≒ rows×1行＋枠。行数ぶんの2倍を超えていたら「高すぎる」。 */
-   rec('品質情報の高さが中身の行数どおり',
-       qbox.高<=qbox.rows*qbox.行高+40&&qbox.rows<=Math.max(2,qbox.行+1),
-       JSON.stringify(qbox));
-   rec('品質情報の幅が中身なりに収まる',qbox.幅<=760,JSON.stringify(qbox));
-  }
+  rec('品質情報の幅が器に収まる',qbox.無し||qbox.幅<=760,JSON.stringify(qbox));
   await go('1');
 
   /* ---- 12) 規格・整列・情報密度（§9.131 ゼロベースの組み直し） ----
@@ -954,7 +960,21 @@ let b=null,page=null;
      切り替えるだけのボタンになる。**タブごと消す**（押せるのに何も無い
      ボタンを残さない）。分析は③の記録の壁に別カードとして出る。 */
   rec('①にタブを置かない',wall1.タブ===0,JSON.stringify(wall1));
-  rec('①は品質規格を常時出す',wall1.面.includes('grade'),JSON.stringify(wall1));
+  /* **品質規格は基本情報カードのタブ裏**（§9.145、利用者の指示「品質規格は
+     タブに回し」）。測る前に1回だけ確かめるもので、マスを1つ使うほどでは
+     ない——ただし**1回の操作で必ず出せる場所**に置く。 */
+  const grade1=await page.evaluate(()=>{
+   const btn=[...document.querySelectorAll('[data-basictab]')].find(b=>b.dataset.basictab==='grade');
+   if(!btn)return{ボタン:false};
+   btn.click();
+   const p=document.querySelector('[data-basicpanel="grade"]');
+   const on=!!p&&!p.hidden;
+   document.querySelector('[data-basictab="basic"]').click();
+   const back=document.querySelector('[data-basicpanel="basic"]');
+   return{ボタン:true,開ける:on,戻せる:!!back&&!back.hidden};
+  });
+  rec('①の品質規格はタブ1枚で出せる',
+      grade1.ボタン&&grade1.開ける&&grade1.戻せる,JSON.stringify(grade1));
   rec('①に測定データ分析を出さない',!wall1.面.includes('analysis'),JSON.stringify(wall1));
   rec('タブの裏は同時に2枚出さない',
       !(wall1.面.includes('grade')&&wall1.面.includes('analysis')),JSON.stringify(wall1));
@@ -1025,24 +1045,109 @@ let b=null,page=null;
   rec('②の揃いに丈番号タブを出さない',prod.タブ===false,JSON.stringify(prod));
   rec('②の全丈表が横に溢れない',prod.溢れ<=0,JSON.stringify(prod));
 
-  /* ③は1枚の確認シート。上に「あと何が残っているか」、下に「何が記録されたか」。 */
+  /* ③は基本情報が1×3で左に立ち、右の3列が「確認 → その根拠」の縦の対
+     （§9.146、利用者の指示）。確認の3枚は真下のカードと**左端がそろう**。 */
   await go('3');
   const f3=await page.evaluate(()=>{
-   const fc=document.querySelector('.finish-check').getBoundingClientRect();
-   const lp=document.querySelector('.left-pane').getBoundingClientRect();
-   const body=document.querySelector('.measure-body').getBoundingClientRect();
+   const R=e=>e?e.getBoundingClientRect():null;
+   const fc=R(document.querySelector('.finish-check'));
+   const lp=R(document.querySelector('.left-pane'));
+   const body=R(document.querySelector('.measure-body'));
+   const rows=[...document.querySelectorAll('.fc-row')];
+   /* **中心で見る。** 確認はカードの中に入ったので、器の余白ぶん左端は
+      ずれる（§9.147）。「真下にあるか」を見たいので中心が下のカードの
+      横幅に収まっているかで判定する。 */
+   const 対=k=>{const r=rows.find(x=>x.dataset.fc===k);const b=r&&R(r);
+     return b?Math.round(b.left+b.width/2):null};
+   const 下=s=>{const e=document.querySelector(s);const b=e&&R(e);
+     return b?[Math.round(b.left),Math.round(b.right)]:null};
    return {確認幅:Math.round(fc.width),本体幅:Math.round(body.width),
-     確認下:Math.round(fc.bottom),記録上:Math.round(lp.top),
-     カード:[...document.querySelectorAll('.fc-row')].map(x=>Math.round(x.getBoundingClientRect().top))};
+     確認左:Math.round(fc.left),基本左:Math.round(lp.left),基本高:Math.round(lp.height),
+     本体高:Math.round(body.height),
+     対:{測定:対('measure'),公差外:対('ng'),作業時間:対('worktime')},
+     下:{記録した値:下('.recorded-pane'),分析:下('.analysis'),作業時間:下('.center-pane')},
+     カード:rows.filter(x=>x.dataset.fc!=='skip').map(x=>Math.round(R(x).top))};
   });
-  /* 本文の左右の余白（`--gap-section`×2）を差し引いて比べる（§9.137の意匠）。 */
-  rec('③の確認表が本体の全幅を使う',f3.確認幅>=f3.本体幅-40,JSON.stringify(f3));
-  rec('③は確認表が上・記録が下',f3.確認下<=f3.記録上+2,JSON.stringify(f3));
+  /* 基本情報は1×3。本文の縦をほぼ使い切る（上下の余白ぶんだけ短い）。 */
+  rec('③の基本情報は縦3マスを使う',f3.基本高>=f3.本体高-40,JSON.stringify(f3));
+  rec('③の確認表は基本情報の右（2〜4列）',f3.確認左>f3.基本左,JSON.stringify(f3));
+  /* **確認の3件は真下のカードの上にある。** 対応が崩れると「縦の対」に
+     見えず、引っかかった行の根拠を横へ探しに行くことになる。 */
+  const 真上=(c,r)=>c!==null&&r&&c>=r[0]&&c<=r[1];
+  rec('③の確認は真下のカードの上にある',
+      真上(f3.対.測定,f3.下.記録した値)&&真上(f3.対.公差外,f3.下.分析)
+      &&真上(f3.対.作業時間,f3.下.作業時間),
+      JSON.stringify({対:f3.対,下:f3.下}));
   rec('③の確認カードが横に並ぶ',new Set(f3.カード).size===1,JSON.stringify(f3.カード));
+
+  /* ---- カードの意匠と題（§9.147） ----
+     利用者の指摘「③はやっぱり剥き出しでカードに入って無い」。**枠が無い
+     ことは目で見ないと分からなかった**——この網が無いと、次にカードを
+     1枚足したときも同じことが起きる。本文グリッドの直下に居るものは、
+     全部カードの意匠（枠・地・角丸）を持つ。
+     題も同じ。実測で**15px／13px／20pxの3種類**あった——クラスを1つ
+     足すだけでは揃わない（後から書かれた要素セレクタが勝つ経路が複数ある）。 */
+  const 意匠={};
+  for(const s of ['1','2','3']){
+   await go(s);
+   await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+   意匠[s]=await page.evaluate(()=>{
+    const vis=e=>{const b=e.getBoundingClientRect();
+      return b.width>2&&b.height>2&&getComputedStyle(e).display!=='none'};
+    const cards=[...document.querySelector('.measure-body').children].filter(vis);
+    const 枠なし=[],題=[];
+    cards.forEach(c=>{
+     const cs=getComputedStyle(c);
+     const name=(c.className||c.id||'').toString().split(' ')[0];
+     if(parseFloat(cs.borderTopWidth)<1||cs.backgroundColor==='rgba(0, 0, 0, 0)'
+        ||parseFloat(cs.borderTopLeftRadius)<1)枠なし.push(name);
+     c.querySelectorAll('.card-title').forEach(t=>{
+      if(!vis(t))return;
+      const ts=getComputedStyle(t);
+      題.push(ts.fontSize+'/'+ts.color+'/'+ts.fontWeight);
+     });
+    });
+    return{カード:cards.length,枠なし,題:[...new Set(題)],題数:題.length,
+      進捗バー:!!document.getElementById('headProgress')};
+   });
+  }
+  const 段=['1','2','3'];
+  rec('本文グリッドの直下はすべてカードの意匠',
+      段.every(s=>意匠[s].枠なし.length===0),JSON.stringify(意匠));
+  rec('カードの題は3段とも同じ大きさ・色・太さ',
+      段.every(s=>意匠[s].題.length===1)&&new Set(段.map(s=>意匠[s].題[0])).size===1,
+      JSON.stringify(Object.fromEntries(段.map(s=>[s,意匠[s].題]))));
+  /* 題が無いカードは②の入力内容だけ（一覧の見出しが題を兼ねる）。 */
+  rec('カードには題が付いている',
+      段.every(s=>意匠[s].題数>=意匠[s].カード-1),JSON.stringify(意匠));
+  /* ヘッダーの進捗バーは廃止（§9.147、利用者の指示）。段ナビの「N/M 項目」と
+     ③の完了前の確認が同じことを正確に言っている。 */
+  rec('ヘッダーに進捗バーを置かない',段.every(s=>意匠[s].進捗バー===false),
+      JSON.stringify(段.map(s=>意匠[s].進捗バー)));
+  await go('3');
   const w3=await widthKinds(),e3=await emptyRate();
   rec('③の入力欄の幅が4種類以内',w3.length<=4,JSON.stringify(w3));
-  const box3=await emptyBox();
+  /* ③の記録の壁（記録した値・測定データ分析・作業時間）は**4枚とも同じ高さ**
+     にする（§9.148、利用者の指摘「グリッドで決めた高さになっていない」）。
+     壁の中の空きは「この1枚に中身が無い」のではなく**このロットの項目が
+     少ない**ことの現れで、§9.135の「マスが余ったら余らせたままにする」に
+     当たる。だから壁の中では空き量では落とさず、**高さがそろっているか**で
+     見る（そろっていないほうが壁に見えない＝実際に指摘された）。 */
+  const box3=(await emptyBox()).filter(x=>!/^analysis:/.test(x));
   rec('③に中身のない器（120px超の空き）が無い',box3.length===0,box3.join(' / '));
+  const wall3=await page.evaluate(()=>{
+   const h=s=>{const e=document.querySelector(s);
+     return e?Math.round(e.getBoundingClientRect().height):0};
+   return{記録した値:h('.recorded-pane'),分析:h('.analysis'),作業時間:h('.center-pane'),
+     確認:h('.finish-check'),基本情報:h('.left-pane'),
+     本体:h('.measure-body')};
+  });
+  rec('③の記録の壁は3枚とも同じ高さ',
+      new Set([wall3.記録した値,wall3.分析,wall3.作業時間]).size===1,JSON.stringify(wall3));
+  /* 確認カードは**マスの高さいっぱい**。中身なりに詰めると、下の壁との
+     あいだに150pxの帯ができてグリッドの形が読めなくなる（実際にそうなった）。 */
+  rec('③の確認カードがマスの高さを使う',
+      wall3.確認>=Math.round(wall3.本体/3)-20,JSON.stringify(wall3));
   rec('③の空きを記録した',true,JSON.stringify(e3));
   /* ---- カードの整列（§9.135 可能な限り粗いグリッド） ----
      **そろって見えるかは「左端の候補が何通りあるか」で決まる。** 外側は
