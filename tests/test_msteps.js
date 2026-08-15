@@ -836,7 +836,13 @@ let b=null,page=null;
   });
   const box1=await emptyBox();
   rec('①に中身のない器（120px超の空き）が無い',box1.length===0,box1.join(' / '));
-  rec('①の空きが本体の25%以下',e1.率<=25,JSON.stringify(e1));
+  /* **空き率は記録するだけ**(§9.135)。粗いグリッド(横4×縦3)では、中身の
+     少ないロットでマスが余る。合意した対処は「タブの裏を出す→カードを
+     1段小さくする→**余らせたままにする**」で、埋めるために意味の薄い
+     ものを置くのは禁止。だから閾値では縛らない——数字は出す(見比べる
+     ために要る)が、これで落とさない。**そろって見えるか**は下の
+     「左端が4通り以内・上端が3通り以内」で見る。 */
+  rec('①の空きを記録した',true,JSON.stringify(e1));
 
   /* ②は「項目｜入力｜根拠」の3列。根拠（基本情報・幅分割情報）は測っている
      最中に見る値なので、空いた3列目へ出す。**測定表の列はいちばん広いまま**
@@ -855,7 +861,7 @@ let b=null,page=null;
       ref2.面.includes('basic')&&ref2.面.includes('split'),JSON.stringify(ref2));
   rec('②の測定の列がいちばん広い',ref2.右>ref2.左&&ref2.右>ref2.中,JSON.stringify(ref2));
   const e2=await emptyRate();
-  rec('②（板厚/板幅）の空きが本体の20%以下',e2.率<=20,JSON.stringify(e2));
+  rec('②（板厚/板幅）の空きを記録した',true,JSON.stringify(e2));
 
   /* 揃い/肉厚/長さは**全丈を1つの表**で出す（丈番号タブを廃止）。
      タブは「横スクロールを避ける」ためだったが、②の作業面は実測1059×920pxで、
@@ -892,7 +898,26 @@ let b=null,page=null;
   rec('③の入力欄の幅が4種類以内',w3.length<=4,JSON.stringify(w3));
   const box3=await emptyBox();
   rec('③に中身のない器（120px超の空き）が無い',box3.length===0,box3.join(' / '));
-  rec('③の空きが本体の25%以下',e3.率<=25,JSON.stringify(e3));
+  rec('③の空きを記録した',true,JSON.stringify(e3));
+  /* ---- カードの整列（§9.135 可能な限り粗いグリッド） ----
+     **そろって見えるかは「左端の候補が何通りあるか」で決まる。** 外側は
+     横4×縦3なので、カードの左端は4通り・上端は3通りに収まるはず。増えて
+     いたら、グリッドの外で場所を決めたカードがある。 */
+  for(const st of ['1','2','3']){
+   await go(st);
+   const g=await page.evaluate(()=>{
+    const body=document.querySelector('.measure-body');
+    const br=body.getBoundingClientRect();
+    const cells=[...body.children].filter(e=>e.offsetParent!==null&&e.getBoundingClientRect().width>1);
+    const R=n=>Math.round(n);
+    return {左端:[...new Set(cells.map(e=>R(e.getBoundingClientRect().left-br.left)))].sort((a,b)=>a-b),
+            上端:[...new Set(cells.map(e=>R(e.getBoundingClientRect().top-br.top)))].sort((a,b)=>a-b),
+            枚数:cells.length};
+   });
+   const m=st==='1'?'①':st==='2'?'②':'③';
+   rec(`${m}カードの左端が4通り以内`,g.左端.length<=4,JSON.stringify(g));
+   rec(`${m}カードの上端が3通り以内`,g.上端.length<=3,JSON.stringify(g));
+  }
   await go('1');
 
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
