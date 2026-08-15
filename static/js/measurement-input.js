@@ -25,22 +25,19 @@ function updateNumberlinePending(raw){
  if(!S.measure||S.measure.settings?.inputMode==='manual'||!raw){marker.hidden=true;return}
  const kind=numberlinePendingKind(raw);
  if(!kind){marker.hidden=true;return}
- /* 数直線本体とまったく同じ写像(WL.toleranceScaleView)で位置を決める。
-    表示範囲は実測値の広がりで変わるため、描画に使ったのと同じ値の並びを
-    渡さないとリングだけ別の高さに出る。 */
- const li=typeof lengthIndex==='function'?lengthIndex():0;
- const values=S.measure.measurements?.[kind]?.[li]||[];
- const count=Math.max(1,Math.min(40,+($('#horizontalCount')?.value)||1));
- // 公差はcompactToleranceDataから取る(compactToleranceFactsはカードのHTMLまで
- // 組み立てるので、測定器から1文字届くたびに呼ぶには重い)。
- const card=typeof compactToleranceData==='function'?compactToleranceData(kind):null;
- const view=WL.toleranceScaleView({range:card&&card.range,base:card&&card.base},values,count);
- if(!view){marker.hidden=true;return}
- const v=deviceParse(raw).value,ng=v<view.low||v>view.high;
- /* 図は**横＝測定値**になった（§9.150）。縦位置は「いま入れている条の行」で、
+ /* 図と**同じ写像**で置く（§9.151）。表示範囲は描画時に決まっており、
+    測定器から1文字届くたびに40条ぶんの公差を引き直すのは重いので、
+    **窓は図が持っている値を読む**（`data-viewlo`/`data-viewhi`）。
+    引くのは**いま入れている条の公差1件だけ**。 */
+ const chart=document.querySelector('.accurate-numberline');
+ const lo=Number(chart&&chart.dataset.viewlo),hi=Number(chart&&chart.dataset.viewhi);
+ const j=Number(kind==='thickness'?S.measure.settings?.tStep:S.measure.settings?.wStep)||0;
+ const t=normalizeTolerance(typeof toleranceDetail==='function'?toleranceDetail(kind,j):null);
+ if(!t||!Number.isFinite(lo)||!Number.isFinite(hi)||hi<=lo){marker.hidden=true;return}
+ const v=deviceParse(raw).value,ng=v<t.lo||v>t.hi;
+ /* 図は**横＝その条自身の公差に対する位置**。縦位置は「いま入れている条の行」で、
     CSSが`--tc-cur`から決めるので、ここで動かすのは**左右だけ**。 */
- const span=Math.max(view.viewHigh-view.viewLow,.000001);
- const x=Math.max(0,Math.min(100,(v-view.viewLow)/span*100));
+ const x=Math.max(0,Math.min(100,(t.rel(v)-lo)/(hi-lo)*100));
  marker.hidden=false;marker.className='numberline-pending'+(ng?' ng':' ok');
  marker.style.left=x+'%';marker.style.top='';
 }
@@ -483,45 +480,63 @@ function compactToleranceFacts(kind){
  if(!data)return{html:'<div class="compact-tol-three-row no-data"><b>公差情報なし</b><span>判定条件を取得できません</span></div>',range:null};
  return{range:data.range,html:`<div class="compact-tol-three-row"><div class="tol-line tol-line-base"><span class="compact-tol-source">${esc(data.source)}</span><span class="tol-value-pair"><small>基準</small><b>${esc(data.base)}</b></span></div><div class="tol-line tol-line-plusminus"><span class="tol-value-pair"><small>公差＋</small><b>+${esc(data.plus)}</b></span><span class="tol-value-pair"><small>公差－</small><b>-${esc(data.minus)}</b></span></div><div class="tol-line tol-line-range"><small>判定範囲</small><b>${esc(data.low)} ～ ${esc(data.high)}</b></div></div>`};
 }
-/* 公差数直線の「値→縦位置(%)」の写像。数直線の本体(filters.js)と、確定前の
-   先読みリング(updateNumberlinePending)の両方がこれを使う。以前は両者が
-   それぞれ式を持っており、表示範囲の余白は同じでも端の丸め方が違ったため
-   (3%/97%と5%/95%)、リングの高さと確定後の点の高さがずれていた。
+/* ---- 値→横位置の写像は1本だけ（§9.151） ----------------------------------
+   図と、確定前の先読みリングが**別の式を持たない**ようにする（以前は両者が
+   それぞれ計算しており、リングと確定後の点が別の位置に出た）。
 
-   表示範囲は既定で公差幅の上下±25%。公差外の測定値はここへ収まらず端で
-   潰れる——1つ外れも大きく外れも同じ高さに見えてしまう——ので、実測値が
-   入るところまで窓を広げる。ただし桁違いの誤入力1件で公差帯が線に
-   潰れてしまわないよう、広げるのは公差幅の1.5倍まで。それより外れた値は
-   端へ寄せる(位置は頭打ちだが、NGであることは色で分かる)。
+   **単位はその条自身の公差**——0＝基準／−1＝下限／＋1＝上限。
+   異幅分割では条ごとに幅も公差も違うので、絶対値の軸では**他の子ロットの点が
+   端に張り付いて赤くなる**（§9.150で実測。幅300±1の条と幅500+3/-1の条を
+   同じ軸に置くと、選んでいない側の4点が全部端で赤になった。表のセルは
+   条ごとの公差で正しく合格判定していたので、**図だけが嘘をついていた**）。
+   自分の公差で割れば、どの条も同じ物差しで「余裕がどれだけあるか」を
+   比べられる。**幅そのものは軸から消える**——利用者の判断で、幅狭の条が
+   潰れるくらいなら見えなくてよい（幅は測定表とロット列が持っている）。
 
-   基準値(detail.base)は範囲の中点ではない。公差が非対称(例 +3/-1)なら
-   中点1001に対し基準値は1000で、図示すべきなのは基準値のほう。 */
-function toleranceScaleView(detail,values,count){
- const range=detail&&detail.range;
- if(!range)return null;
- const low=Number(range[0]),high=Number(range[1]);
- if(!Number.isFinite(low)||!Number.isFinite(high))return null;
- const span=Math.max(high-low,.000001);
- /* base は「無ければ null」で渡ってくることがある。Number(null) は 0 なので
-    そのまま数値化すると基準値0として通ってしまう。空扱いを先に落とす。 */
+   条ごとの公差は**セルのNG判定と同じ`toleranceDetail(kind,j)`から取る**。
+   ここだけ別の出どころにすると、図と表で判定が食い違う。 */
+function normalizeTolerance(d){
+ if(!d||!d.range)return null;
+ const lo=Number(d.range[0]),hi=Number(d.range[1]);
+ if(!Number.isFinite(lo)||!Number.isFinite(hi)||hi<=lo)return null;
+ /* base は「無ければ null」で来ることがある。Number(null) は 0 なので
+    空扱いを先に落とす（基準0として通ってしまう）。 */
  const num=v=>(v===null||v===undefined||v==='')?NaN:Number(v);
- const declared=num(detail.base);
+ const declared=num(d.base),minus=num(d.minus);
  const base=Number.isFinite(declared)?declared
-  :(Number.isFinite(num(detail.minus))?low+num(detail.minus):(low+high)/2);
- const n=count==null?(values||[]).length:count;
- const nums=(values||[]).slice(0,n).map(v=>String(v??'').trim()).filter(v=>v!=='')
-  .map(Number).filter(Number.isFinite);
- // 一番外れた値の外側にも公差幅の1/4を残す。余白を詰めると、外れ値の点が
- // 枠の縁に接して「どれだけ外れたか」が読めなくなる。
- const pad=over=>Math.min(span*1.5,Math.max(span*.25,over+span*.25));
- const padHigh=pad(Math.max(0,...nums.map(v=>v-high),base-high));
- const padLow=pad(Math.max(0,...nums.map(v=>low-v),low-base));
- const viewHigh=high+padHigh,viewLow=low-padLow,width=Math.max(viewHigh-viewLow,.000001);
- const pct=v=>(viewHigh-Number(v))/width*100;
- /* 端の丸めは軸(.numberline-track)の上端(6%)と、下端は現在値キャプション
-    (.numberline-current-note)の手前(92%)。94%まで許すとキャプションと
-    直前値ラベルが重なる。 */
- return{low,high,base,viewLow,viewHigh,pct,clamp:v=>Math.max(6,Math.min(92,pct(v)))};
+  :(Number.isFinite(minus)?lo+minus:(lo+hi)/2);
+ if(!Number.isFinite(base))return null;
+ /* 片側公差（プラスかマイナスが0）では片方の単位が0になる。反対側の単位で
+    代用して写像を連続させる（0で割らない）。 */
+ const up=(hi-base)||(base-lo)||1,dn=(base-lo)||(hi-base)||1;
+ return{lo,hi,base,up,dn,
+   rel:v=>{const x=Number(v);return x>=base?(x-base)/up:-(base-x)/dn}};
+}
+function toleranceRelView(kind,values,count){
+ const n=Math.max(1,Number(count)||1),per=[];
+ for(let j=0;j<n;j++)per.push(normalizeTolerance(
+   (typeof toleranceDetail==='function')?toleranceDetail(kind,j):null));
+ const any=per.find(Boolean);
+ if(!any)return null;
+ const at=j=>per[j]||any;
+ const rel=(v,j)=>at(j).rel(v);
+ const marks=[];
+ for(let j=0;j<n;j++){
+  const raw=String((values||[])[j]??'').trim(),v=Number(raw);
+  if(raw!==''&&Number.isFinite(v))marks.push(rel(v,j));
+ }
+ /* 余白は公差幅（＝2単位）の1/4＝0.5を最低とし、外れ値の外側にも0.5残す。
+    余白を詰めると外れ値が縁に接して「どれだけ外れたか」が読めなくなる。
+    ただし桁違いの1件で公差帯が線に潰れないよう、広げるのは3単位まで。 */
+ const over=a=>Math.max(0,...a,0);
+ const pad=o=>Math.min(3,Math.max(.5,o+.5));
+ const viewLo=-1-pad(over(marks.map(r=>-1-r))),viewHi=1+pad(over(marks.map(r=>r-1)));
+ const width=Math.max(viewHi-viewLo,.000001);
+ const x=r=>Math.max(0,Math.min(100,(Number(r)-viewLo)/width*100));
+ /* 条ごとの帯の縁。両側公差なら必ず−1／＋1なので全行そろい、1本の帯に
+    見える。片側公差の条だけ縁が寄る（その条は基準が限界と同じ、が図に出る）。 */
+ const band=j=>{const t=at(j);return{low:x(t.rel(t.lo)),high:x(t.rel(t.hi))}};
+ return{per,at,rel,x,viewLo,viewHi,band,lines:{low:x(-1),base:x(0),high:x(1)}};
 }
 /* ---- 板幅測定値の視覚表示（§9.150。骨子§9.137「公差と測定値の縦グラフ」）----
    **縦＝条（右の測定表の行と1対1）／横＝測定値**。
@@ -538,40 +553,45 @@ function toleranceScaleView(detail,values,count){
    行の高さは**実際の表を測って**合わせる（`alignToleranceChart`）。トークンから
    計算すると罫線と表示サイズのぶんでずれる（§9.95の行高と同じ罠）。 */
 function compactToleranceScale(kind,values,count){
- const facts=compactToleranceFacts(kind),range=facts.range;
- if(!range)return facts.html;
- const card=typeof compactToleranceData==='function'?compactToleranceData(kind):null;
- const view=WL.toleranceScaleView({range,base:card&&card.base},values,count);
+ const facts=compactToleranceFacts(kind);
+ if(!facts.range)return facts.html;
+ const view=toleranceRelView(kind,values,count);
  if(!view)return facts.html;
- const{low,high,base,viewLow,viewHigh}=view;
- const span=Math.max(viewHigh-viewLow,.000001);
- const x=v=>Math.max(0,Math.min(100,(Number(v)-viewLow)/span*100));
  const cur=Number(kind==='thickness'?S.measure?.settings?.tStep:S.measure?.settings?.wStep)||0;
  const labels=WL.measureItem.slotLabels(kind,count);
- /* 基準の札を出すかは**画面の距離で決める**（§9.150）。公差幅に対する割合で
-    見ていたころは、片側公差でなくても（基準1000／下限999／上限1003のように
-    基準が下限寄りだと）札が13pxしか離れず「下限基準」と重なって読めなかった。
-    札の幅は2文字ぶんなので、**器の12%（≒25px）**離れていなければ出さない。 */
- const gap=Math.min(Math.abs(x(base)-x(low)),Math.abs(x(base)-x(high)));
+ /* 子ロットの色帯（§9.151、利用者の指示）。どの条がどの子ロットかを図だけで
+    追えるようにする。色は測定表のロット列・条割の帯と同じ配色。板厚は行が
+    条ではなくエッジOS/中央CL/エッジDSの3点なので付けない。 */
+ const lots=kind==='thickness'?[]:WL.split.lotColumn(count);
+ /* 基準の札は**画面の距離で決める**（§9.150）。器の12%（≒25px）離れて
+    いなければ「下限基準」と重なって読めない。線は常に引く。 */
+ const gap=Math.min(Math.abs(view.lines.base-view.lines.low),
+                    Math.abs(view.lines.base-view.lines.high));
  const baseAlone=gap>=12;
  let rows='';
  for(let j=0;j<count;j++){
-  const raw=String(values[j]??'').trim(),n=Number(raw);
-  const has=raw!==''&&Number.isFinite(n),ng=has&&(n<low||n>high);
-  rows+=`<div class="tc-row${j===cur?' is-current':''}" data-tc-row="${j}">`
-   +(has?`<i class="tc-dot ${ng?'ng':'ok'}" style="left:${x(n)}%"`
-        +` title="${esc(labels[j]??String(j+1))}: ${esc(raw)}"></i>`:'')
+  const t=view.at(j),b=view.band(j),lot=lots[j];
+  const raw=String((values||[])[j]??'').trim(),n=Number(raw);
+  const has=raw!==''&&Number.isFinite(n),ng=has&&(n<t.lo||n>t.hi);
+  const name=labels[j]??String(j+1);
+  rows+=`<div class="tc-row${j===cur?' is-current':''}" data-tc-row="${j}"`
+   +` style="--r-low:${b.low}%;--r-high:${b.high}%">`
+   +(lot?`<i class="tc-lot" style="background-color:${esc(lot.color)}" title="${esc(lot.lot)}"></i>`:'')
+   +(has?`<i class="tc-dot ${ng?'ng':'ok'}" style="left:${view.x(view.rel(n,j))}%"`
+        +` title="${esc(name)}: ${esc(raw)}${lot?' / '+esc(lot.lot):''}"></i>`:'')
    +'</div>';
  }
  return facts.html
-  +`<div class="accurate-numberline" style="--nl-low:${x(low)}%;--nl-high:${x(high)}%;--nl-base:${x(base)}%;--tc-cur:${cur}">`
+  +`<div class="accurate-numberline" data-viewlo="${view.viewLo}" data-viewhi="${view.viewHi}"`
+  +` style="--nl-low:${view.lines.low}%;--nl-high:${view.lines.high}%;`
+  +`--nl-base:${view.lines.base}%;--tc-cur:${cur}">`
   +`<div class="tc-head"><b class="tc-tick tc-low">下限</b>`
   +(baseAlone?'<b class="tc-tick tc-base">基準</b>':'')
   +`<b class="tc-tick tc-high">上限</b></div>`
   /* **基準の線は常に引く**（細いので重ならない）。畳むのは札だけ——
      製造公差は`+3/-1`のように非対称が普通で、基準が下限寄りにあるのは
      むしろ既定。線まで消すと「狙う値がどこか」が図から失われる。 */
-  +`<div class="tc-body"><i class="tc-band"></i>`
+  +`<div class="tc-body">`
   +`<i class="tc-line tc-line-low"></i><i class="tc-line tc-line-base"></i>`
   +`<i class="tc-line tc-line-high"></i>`
   +rows
@@ -639,4 +659,4 @@ WL.measureTolerance={
  },
 };
 function renderMeasureGrid(){renderMeasureGridVertical();requestAnimationFrame(updateValidationVisuals)}
-Object.assign(window.WL,{toleranceScaleView});
+Object.assign(window.WL,{toleranceRelView});

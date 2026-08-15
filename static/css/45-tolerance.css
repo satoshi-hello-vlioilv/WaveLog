@@ -33,22 +33,32 @@
 .tc-high{left:var(--nl-high)}
 .tc-base{left:var(--nl-base);color:var(--teal-dark)}
 .tc-body{position:relative;flex:1 1 auto;min-height:0}
-/* 公差帯は**面**（内＝淡い緑、外＝淡い赤）。境は1本の線で示す。 */
-.tc-band{
-  position:absolute;inset:0;z-index:0;
-  background:linear-gradient(90deg,
-    var(--danger-bg) 0 var(--nl-low),
-    var(--success-bg) var(--nl-low) var(--nl-high),
-    var(--danger-bg) var(--nl-high) 100%);
-}
-.tc-line{position:absolute;top:0;bottom:0;width:1px;z-index:1;background:var(--line-strong)}
+/* 目盛りの線。横は**その条自身の公差に対する位置**なので、−1＝下限／0＝基準
+   ／＋1＝上限は全条で共通（§9.151）。 */
+.tc-line{position:absolute;top:0;bottom:0;width:1px;z-index:2;background:var(--line-strong)}
 .tc-line-low{left:var(--nl-low)}
 .tc-line-high{left:var(--nl-high)}
 .tc-line-base{left:var(--nl-base);background:var(--teal);width:2px;transform:translateX(-.5px)}
 /* 1条＝1行。**右の表の行と同じ高さ**なので、外れている条が目を横に振るだけで
-   読める。行そのものは背景を持たない（帯が見えるように）。 */
-.tc-row{position:relative;z-index:2;height:var(--tc-row);min-height:0}
-.tc-row.is-current{background:#f39a1826;box-shadow:inset 0 0 0 1px #f39a1866}
+   読める。**公差帯は行ごとに描く**——両側公差なら全行の縁がそろって1本の帯に
+   見え、片側公差の条だけ縁が寄る（その条は基準が限界と同じ、が図に出る）。 */
+.tc-row{
+  --tc-band-img:linear-gradient(90deg,
+    var(--danger-bg) 0 var(--r-low),
+    var(--success-bg) var(--r-low) var(--r-high),
+    var(--danger-bg) var(--r-high) 100%);
+  position:relative;z-index:1;height:var(--tc-row);min-height:0;
+  background-image:var(--tc-band-img);
+}
+.tc-row.is-current{
+  background-image:linear-gradient(#f39a1826,#f39a1826),var(--tc-band-img);
+  box-shadow:inset 0 0 0 1px #f39a1866;
+}
+/* 子ロットの色帯（§9.151）。どの条がどの子ロットかを図だけで追える。色は
+   測定表のロット列・条割の帯と同じ配色をJSがインラインで指定する。
+   **枠線ではなく重ねる**——`border-left`にすると内容の箱が縮み、点の
+   `left:%`が最大3pxずれる。 */
+.tc-lot{position:absolute;left:0;top:0;bottom:0;width:3px;z-index:3}
 .tc-dot{
   position:absolute;top:50%;width:9px;height:9px;border-radius:var(--radius-round);
   transform:translate(-50%,-50%);box-shadow:0 0 0 1.5px #fff;
