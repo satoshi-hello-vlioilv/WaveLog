@@ -1048,8 +1048,13 @@ let b=null,page=null;
    const lp=R(document.querySelector('.left-pane'));
    const body=R(document.querySelector('.measure-body'));
    const rows=[...document.querySelectorAll('.fc-row')];
-   const 対=k=>{const r=rows.find(x=>x.dataset.fc===k);return r?Math.round(R(r).left):null};
-   const 下=s=>{const e=document.querySelector(s);return e?Math.round(R(e).left):null};
+   /* **中心で見る。** 確認はカードの中に入ったので、器の余白ぶん左端は
+      ずれる（§9.147）。「真下にあるか」を見たいので中心が下のカードの
+      横幅に収まっているかで判定する。 */
+   const 対=k=>{const r=rows.find(x=>x.dataset.fc===k);const b=r&&R(r);
+     return b?Math.round(b.left+b.width/2):null};
+   const 下=s=>{const e=document.querySelector(s);const b=e&&R(e);
+     return b?[Math.round(b.left),Math.round(b.right)]:null};
    return {確認幅:Math.round(fc.width),本体幅:Math.round(body.width),
      確認左:Math.round(fc.left),基本左:Math.round(lp.left),基本高:Math.round(lp.height),
      本体高:Math.round(body.height),
@@ -1060,11 +1065,60 @@ let b=null,page=null;
   /* 基本情報は1×3。本文の縦をほぼ使い切る（上下の余白ぶんだけ短い）。 */
   rec('③の基本情報は縦3マスを使う',f3.基本高>=f3.本体高-40,JSON.stringify(f3));
   rec('③の確認表は基本情報の右（2〜4列）',f3.確認左>f3.基本左,JSON.stringify(f3));
-  /* **確認の3枚は真下のカードと左端がそろう。** ずれると「縦の対」に見えない。 */
-  rec('③の確認は真下のカードと縦にそろう',
-      f3.対.測定===f3.下.記録した値&&f3.対.公差外===f3.下.分析&&f3.対.作業時間===f3.下.作業時間,
+  /* **確認の3件は真下のカードの上にある。** 対応が崩れると「縦の対」に
+     見えず、引っかかった行の根拠を横へ探しに行くことになる。 */
+  const 真上=(c,r)=>c!==null&&r&&c>=r[0]&&c<=r[1];
+  rec('③の確認は真下のカードの上にある',
+      真上(f3.対.測定,f3.下.記録した値)&&真上(f3.対.公差外,f3.下.分析)
+      &&真上(f3.対.作業時間,f3.下.作業時間),
       JSON.stringify({対:f3.対,下:f3.下}));
   rec('③の確認カードが横に並ぶ',new Set(f3.カード).size===1,JSON.stringify(f3.カード));
+
+  /* ---- カードの意匠と題（§9.147） ----
+     利用者の指摘「③はやっぱり剥き出しでカードに入って無い」。**枠が無い
+     ことは目で見ないと分からなかった**——この網が無いと、次にカードを
+     1枚足したときも同じことが起きる。本文グリッドの直下に居るものは、
+     全部カードの意匠（枠・地・角丸）を持つ。
+     題も同じ。実測で**15px／13px／20pxの3種類**あった——クラスを1つ
+     足すだけでは揃わない（後から書かれた要素セレクタが勝つ経路が複数ある）。 */
+  const 意匠={};
+  for(const s of ['1','2','3']){
+   await go(s);
+   await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+   意匠[s]=await page.evaluate(()=>{
+    const vis=e=>{const b=e.getBoundingClientRect();
+      return b.width>2&&b.height>2&&getComputedStyle(e).display!=='none'};
+    const cards=[...document.querySelector('.measure-body').children].filter(vis);
+    const 枠なし=[],題=[];
+    cards.forEach(c=>{
+     const cs=getComputedStyle(c);
+     const name=(c.className||c.id||'').toString().split(' ')[0];
+     if(parseFloat(cs.borderTopWidth)<1||cs.backgroundColor==='rgba(0, 0, 0, 0)'
+        ||parseFloat(cs.borderTopLeftRadius)<1)枠なし.push(name);
+     c.querySelectorAll('.card-title').forEach(t=>{
+      if(!vis(t))return;
+      const ts=getComputedStyle(t);
+      題.push(ts.fontSize+'/'+ts.color+'/'+ts.fontWeight);
+     });
+    });
+    return{カード:cards.length,枠なし,題:[...new Set(題)],題数:題.length,
+      進捗バー:!!document.getElementById('headProgress')};
+   });
+  }
+  const 段=['1','2','3'];
+  rec('本文グリッドの直下はすべてカードの意匠',
+      段.every(s=>意匠[s].枠なし.length===0),JSON.stringify(意匠));
+  rec('カードの題は3段とも同じ大きさ・色・太さ',
+      段.every(s=>意匠[s].題.length===1)&&new Set(段.map(s=>意匠[s].題[0])).size===1,
+      JSON.stringify(Object.fromEntries(段.map(s=>[s,意匠[s].題]))));
+  /* 題が無いカードは②の入力内容だけ（一覧の見出しが題を兼ねる）。 */
+  rec('カードには題が付いている',
+      段.every(s=>意匠[s].題数>=意匠[s].カード-1),JSON.stringify(意匠));
+  /* ヘッダーの進捗バーは廃止（§9.147、利用者の指示）。段ナビの「N/M 項目」と
+     ③の完了前の確認が同じことを正確に言っている。 */
+  rec('ヘッダーに進捗バーを置かない',段.every(s=>意匠[s].進捗バー===false),
+      JSON.stringify(段.map(s=>意匠[s].進捗バー)));
+  await go('3');
   const w3=await widthKinds(),e3=await emptyRate();
   rec('③の入力欄の幅が4種類以内',w3.length<=4,JSON.stringify(w3));
   const box3=await emptyBox();

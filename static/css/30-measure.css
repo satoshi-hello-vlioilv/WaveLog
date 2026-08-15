@@ -154,14 +154,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    から複製表示)。左端の操作レールは縦に長くなると視界から外れ得るが、
    ヘッダーは常に見えているため、タブ・入力内容を切り替えていても進捗が
    常時見える場所として設ける。 */
-.measure-head-progress{display:flex;align-items:center;gap:var(--gap-inline);flex:0 0 auto;padding:0 var(--space-3);border-right:1px solid var(--line);align-self:center}
-.measure-head-progress-label{font-size:var(--fs-micro);font-weight:800;color:#60747b;letter-spacing:.04em;white-space:nowrap}
-.measure-head-progress-bar{width:70px;height:7px;border-radius:var(--radius-xs);background:var(--bg);border:1px solid var(--muted-border);overflow:hidden}
-.measure-head-progress-bar i{display:block;height:100%;background:var(--teal);transition:width .2s}
-.measure-head-progress-bar--done i{background:var(--success)}
 
-@media(prefers-reduced-motion:reduce){.measure-head-progress-bar i{transition:none}}
-@media(max-width:1180px){.measure-head-progress-label{display:none}.measure-head-progress{padding:0 var(--ctl-pad-x-sm);gap:var(--gap-inline)}.measure-head-progress-bar{width:44px}}
 .save-state{display:flex;align-items:center;gap:var(--space-2);justify-content:flex-end;flex:0 0 auto;padding:0 var(--space-2)}
 .save-state #localState{padding:4px 9px;border-radius:var(--radius-md);background:var(--warn-bg);color:var(--warn-fg);max-width:210px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .save-state button{height:var(--ctl-h);border:0;font-size:var(--fs-lg);box-shadow:none;background:transparent}
@@ -600,7 +593,6 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    カードの題を消し、パネルの見出しをカードの題として組む。 */
 .measure-shell.mstep-3 .center-pane>.panel-title{display:none}
 .measure-shell.mstep-3 .work-time-title{margin-bottom:var(--space-2)}
-.measure-shell.mstep-3 .work-time-title b{color:var(--teal);font-size:var(--fs-base-sm);font-weight:800;letter-spacing:.02em}
 /* ---------- ③の作業時間（§9.143、ゼロベース） ----------
    周りの群（誰が測るか／使う機材）と**同じ見え方**にする: 見出しは
    `.prep-head`、行はラベル＋欄、枠は付けない（カードが枠を持っている）。
@@ -699,13 +691,14 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    `測定＋対象外→記録した値` / `公差外→測定データ分析` / `作業時間→作業時間`。
    確認で引っかかった行の根拠が真下にあるので、目を横へ振らずに追える。
    そのため器は**2〜4列**（基本情報の上には乗らない）。 */
+/* **これも1枚のカード**（§9.147、利用者の指摘「剥き出しでカードに入って
+   ない」）。意匠は`.measure-body>…`の共通規則が与えるので、ここは位置だけ。
+   カードの中に入った以上、**中の3件は自分の枠を持たない**（枠の中に枠を
+   作らない。§9.129）——状態は左の印1本だけで示す。 */
 .measure-shell.mstep-3 .finish-check{
   display:block;min-width:0;max-width:100%;grid-column:2/-1;grid-row:1;
-  padding:0;overflow:visible;
-  background:transparent;border:0;border-radius:0;
 }
 .fc-head{display:flex;align-items:baseline;gap:var(--space-3);margin:0 0 var(--space-2)}
-.fc-head h3{margin:0;font-size:var(--fs-lg);font-weight:800}
 .fc-head .fc-verdict{font-size:var(--fs-sm);font-weight:800}
 .fc-verdict--ready{color:var(--success)}
 .fc-verdict--rest{color:var(--warn-fg)}
@@ -725,9 +718,9 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .fc-row{
   display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;
   gap:var(--space-2) var(--space-3);
-  padding:var(--space-2) var(--space-3);
-  border:1px solid var(--line);border-left:3px solid var(--line-mid);
-  border-radius:var(--radius-md);background:var(--surface);
+  padding:0 0 0 var(--space-3);
+  border:0;border-left:3px solid var(--line-mid);
+  background:transparent;
 }
 .fc-row--done{border-left-color:var(--success)}
 .fc-row--todo{border-left-color:var(--warn-border)}
@@ -795,10 +788,38 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 }
 .center-pane{container-type:inline-size;overflow-x:hidden}
 .right-pane{overflow:hidden}
-/* カードの見出し。骨子と同じ「ティール・太字・小さめ」。 */
+/* ---------- カードの題は1つの見た目（§9.147） ----------
+   利用者の指示「カードのタイトルの文字のサイズや色も全て統一」。実測すると
+   **3種類あった**——`h2.card-title`は15px（`40-records.css`の
+   `.measure-shell h2`が`.card-title`に勝っていた）、「準備の入力」は13px
+   （`.center-pane>.panel-title.card-title>span`が更に勝つ）、「完了前の確認」は
+   20px（`.fc-head h3`）。**クラスを1つ足すだけでは揃わない**——後から書かれた
+   要素セレクタが勝つ経路が複数あるため、ここで**クラス2つぶんの詳細度**を
+   持たせて一本化する。
+   題を名乗るものは**この一覧に載せる**（`h3`でも`b`でも`class="card-title"`を
+   付ける。`.editor-head h3`／`.work-time-title b`／`.fc-head h3`はそうした）。
+   大きさは`--fs-title`＝本文(14px)より1段上。カードの名前が本文に埋もれない。 */
+.measure-shell .measure-body .card-title,
+.measure-shell .center-pane>.panel-title.card-title>span:first-child{
+  margin:0 0 var(--space-1);
+  color:var(--teal);font-size:var(--fs-title);font-weight:800;letter-spacing:.02em;
+}
+/* 作業タブの面（母材・製品）の題は**帯ではなくカードの題**にする。
+   器がカードになった今、中でもう一度「色の付いた帯」を作るのは枠の中に枠
+   （§9.129）で、しかも**入力内容を切り替えるたびに題の見た目が変わる**。 */
+.measure-shell .work-panel>.panel-title.card-title,
+.measure-shell .product-head>b.card-title{
+  padding:0;text-align:left;background:transparent;border:0;border-radius:0;
+}
+/* 器が1行の帯（見出しと状態が横に並ぶ）ものは下の余白を持たない。 */
+.measure-shell .editor-head h3.card-title,
+.measure-shell .work-time-title b.card-title,
+.measure-shell .product-head>b.card-title,
+.measure-shell .fc-head h3.card-title{margin:0}
+/* 測定画面の外にも`.card-title`を使う画面が出たときの素の定義。 */
 .card-title{
   margin:0 0 var(--space-1);
-  color:var(--teal);font-size:var(--fs-base-sm);font-weight:800;letter-spacing:.02em;
+  color:var(--teal);font-size:var(--fs-title);font-weight:800;letter-spacing:.02em;
 }
 /* 品質情報の本文は品質カードの中（骨子§9.137の①「品質情報の本文（②から
    移設）＋品質規格の表」）。②の作業タブに置いてあったため、①で品質を
@@ -976,7 +997,6 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    同じ高さを取り、下に空きが残る。 */
 .work-time-panel{margin:0;padding:var(--pad-card);border:1px solid var(--line);border-radius:var(--radius-md);background:#fff}
 .work-time-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-2)}
-.work-time-title b{font-size:var(--fs-title)}
 .work-time-title span{font-variant-numeric:tabular-nums;font-weight:800;color:var(--teal)}
 .work-time-grid{display:grid;grid-template-columns:1fr;gap:var(--space-2)}
 .work-time-item{display:grid;grid-template-columns:1fr 140px;gap:var(--gap-tight);padding:7px;border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff}
@@ -1149,7 +1169,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .measurement-editor{height:100%;display:flex;flex-direction:column;min-height:0;overflow:hidden}
 .editor-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--gap-inline);align-items:center;flex:0 0 auto;min-height:25px}
 .editor-head>div:first-child{display:flex;align-items:center;gap:var(--space-3)}
-.editor-head h3{margin:0;font-size:var(--fs-title);white-space:nowrap}
+.editor-head h3{white-space:nowrap}
 .editor-head #stepStatus,.editor-head #quota{grid-column:auto;color:#60747b;font-size:var(--fs-micro);white-space:nowrap}
 .legend{font-size:var(--fs-micro);color:#5d7077}
 .legend i{display:inline-block;width:9px;height:9px;margin:0 3px 0 7px;border:1px solid #aebdc2}

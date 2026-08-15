@@ -171,7 +171,7 @@
   if(!rows){box.innerHTML='';fixMap={};return}
   fixMap={};rows.forEach(r=>{if(r.fix)fixMap[r.key]=r.fix});
   const rest=rows.filter(r=>r.state==='todo'||r.state==='bad').length;
-  box.innerHTML=`<div class="fc-head"><h3>完了前の確認</h3>`
+  box.innerHTML=`<div class="fc-head"><h3 class="card-title">完了前の確認</h3>`
    +`<span class="fc-verdict fc-verdict--${rest?'rest':'ready'}">`
    +esc(rest?`あと ${rest}件`:'このまま完了できます')+`</span></div>`
    +`<ul class="fc-list">`+rows.map(r=>
@@ -664,7 +664,9 @@
     ぜんぶ拾う。1つでも漏らすと、古い値を見せたまま平然と並ぶ——
     空欄より悪い（利用者は正しいものとして読む）。 */
 
- /* ① 進捗が動いたとき。**ヘッダーの進捗表示が書き換わったのを見る**。
+ /* ① 進捗が動いたとき。**項目の一覧が書き換わったのを見る**（§9.147で
+    ヘッダーの進捗バーを廃止したので、見る先を`#measureTypeChips`へ移した。
+    どちらも`refreshMeasureProgress()`が書き換える同じ出力）。
     `window.refreshMeasureProgress` をラップする手もあるが、そちらは
     グローバル関数の差し替えを1件増やす（§9.96の見張りが数えている）。
     出力そのものを見れば、呼び出し口を知らなくても取りこぼさない。
@@ -673,8 +675,8 @@
     ワイルドカード付きの例示がコメントを途中で閉じ、ファイル全体が
     構文エラーになった（CSSで既知の罠と同じものをJSでやった）。 */
  function watchProgress(){
-  const head=document.getElementById('headProgress');
-  if(!head)return;
+  const head=document.getElementById('measureTypeChips');
+  if(!head){console.error('measure-steps: #measureTypeChips が無い（進捗の追随が止まる）');return}
   new MutationObserver(()=>{try{paint()}catch(e){}})
    .observe(head,{childList:true,subtree:true,characterData:true});
  }
