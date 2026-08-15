@@ -420,12 +420,18 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    並べ替えは`order`だけで行い、**DOMは動かさない**（受信欄の制約と、
    ②の`.selectors>*`の規則を壊さないため。§9.122）。 */
 .prep-head{display:none}
+/* カテゴリの見出しは骨子の`.g u`と同じ——**破線で上を区切り、小さく淡い文字**。
+   下線で区切ると「その見出しの下」ではなく「上」に付いて見える（骨子は
+   まとまりの**始まり**に線を引いている）。 */
 .measure-shell.mstep-1 .selectors>.prep-head{
-  display:flex;align-items:baseline;gap:var(--space-2);grid-column:2/-1;
-  height:auto;margin:var(--space-3) 0 0;padding:0 0 var(--space-1);
-  border:0;border-bottom:1px solid var(--line-soft);border-radius:0;
+  display:flex;align-items:baseline;gap:var(--space-2);grid-column:1/-1;
+  height:auto;margin:var(--space-2) 0 0;padding:var(--space-2) 0 0;
+  border:0;border-top:1px dashed var(--line-soft);border-radius:0;
   background:transparent;box-shadow:none;
-  color:var(--ink-2);font-size:var(--fs-sm);font-weight:800;text-align:left;
+  color:var(--ink-soft);font-size:var(--fs-micro);font-weight:700;text-align:left;
+}
+.measure-shell.mstep-1 .selectors>.prep-head[data-prep="who"]{
+  margin-top:0;padding-top:0;border-top:0;
 }
 .measure-shell.mstep-1 .selectors>.prep-head[data-prep="who"]{margin-top:0}
 /* 「入力内容」「丈位置」は**②で使う道具**なので①には出さない。1回決める
@@ -438,10 +444,12 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    **列は2つ**（§9.137）。骨子で準備の入力は`1×2`＝1マス幅（実測437px）に
    なったので、以前の5列（1列162px）は入らない——作業時間の欄だけで
    最低325px要り、実測で横に100px溢れていた（`test_fit`が検出）。
-   2列なら1列204pxで規格幅`--w-md`(154px)を満たし、**カテゴリは縦に積む**。
+   **列は3つ**——利用者の指示「オペレータ・検査員・作業人数を横に並べて
+   横方向の情報密度を上げ、その3列構成のまま縦にカテゴリごとに積む」。
+   2列だと同じ群が2行に割れ、縦がそのぶん伸びる。
    縦は器（651px）を超えたらペインがスクロールする（横は溢れさせない）。 */
 .measure-shell.mstep-1 .selectors{
-  grid-template-columns:repeat(2,minmax(0,1fr));
+  grid-template-columns:repeat(3,minmax(0,1fr));
   grid-auto-rows:min-content;align-content:start;
   gap:var(--gap-inline) var(--gap-section);
 }
@@ -456,24 +464,24 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .measure-shell.mstep-1 .selectors>.prep-head[data-prep="who"]{grid-row:1}
 .measure-shell.mstep-1 .selectors>[data-f="operator"]{grid-column:1;grid-row:2}
 .measure-shell.mstep-1 .selectors>[data-f="inspector"]{grid-column:2;grid-row:2}
-.measure-shell.mstep-1 .selectors>[data-f="crewSize"]{grid-column:1;grid-row:3}
-.measure-shell.mstep-1 .selectors>.prep-head[data-prep="shape"]{grid-row:4}
-.measure-shell.mstep-1 .selectors>[data-f="verticalCount"]{grid-column:1;grid-row:5}
-.measure-shell.mstep-1 .selectors>[data-f="horizontalCount"]{grid-column:2;grid-row:5}
-.measure-shell.mstep-1 .selectors>.prep-head[data-prep="gear"]{grid-row:6}
-.measure-shell.mstep-1 .selectors>[data-f="innerDiameter"]{grid-column:1;grid-row:7}
-.measure-shell.mstep-1 .selectors>[data-f="spool"]{grid-column:2;grid-row:7}
-.measure-shell.mstep-1 .selectors>[data-f="thicknessGauge"]{grid-column:1;grid-row:8}
-.measure-shell.mstep-1 .selectors>[data-f="widthGauge"]{grid-column:2;grid-row:8}
-.measure-shell.mstep-1 .selectors>.prep-head[data-prep="usual"]{grid-row:9}
-.measure-shell.mstep-1 .selectors>[data-f="unwind"]{grid-column:1;grid-row:10}
-.measure-shell.mstep-1 .selectors>[data-f="widthOrder"]{grid-column:2;grid-row:10}
-.measure-shell.mstep-1 .selectors>[data-f="widthDirection"]{grid-column:1;grid-row:11}
-.measure-shell.mstep-1 .selectors>[data-f="burr"]{grid-column:2;grid-row:11}
-.measure-shell.mstep-1 .selectors>[data-f="coilStop"]{grid-column:1;grid-row:12}
+.measure-shell.mstep-1 .selectors>[data-f="crewSize"]{grid-column:3;grid-row:2}
+.measure-shell.mstep-1 .selectors>.prep-head[data-prep="shape"]{grid-row:3}
+.measure-shell.mstep-1 .selectors>[data-f="verticalCount"]{grid-column:1;grid-row:4}
+.measure-shell.mstep-1 .selectors>[data-f="horizontalCount"]{grid-column:2;grid-row:4}
+.measure-shell.mstep-1 .selectors>.prep-head[data-prep="gear"]{grid-row:5}
+.measure-shell.mstep-1 .selectors>[data-f="innerDiameter"]{grid-column:1;grid-row:6}
+.measure-shell.mstep-1 .selectors>[data-f="spool"]{grid-column:2;grid-row:6}
+.measure-shell.mstep-1 .selectors>[data-f="thicknessGauge"]{grid-column:3;grid-row:6}
+.measure-shell.mstep-1 .selectors>[data-f="widthGauge"]{grid-column:1;grid-row:7}
+.measure-shell.mstep-1 .selectors>.prep-head[data-prep="usual"]{grid-row:8}
+.measure-shell.mstep-1 .selectors>[data-f="unwind"]{grid-column:1;grid-row:9}
+.measure-shell.mstep-1 .selectors>[data-f="widthOrder"]{grid-column:2;grid-row:9}
+.measure-shell.mstep-1 .selectors>[data-f="widthDirection"]{grid-column:3;grid-row:9}
+.measure-shell.mstep-1 .selectors>[data-f="burr"]{grid-column:1;grid-row:10}
+.measure-shell.mstep-1 .selectors>[data-f="coilStop"]{grid-column:2;grid-row:10}
 /* 作業時間は**2列ぶんを使う**。中の`.work-time-row`は入力欄に`min-width:190px`
    （`50-master.css`が持つ）があり、1列（204px）では必ず溢れる。 */
-.measure-shell.mstep-1 .selectors>[data-f="workTime"]{grid-column:1/-1;grid-row:13}
+.measure-shell.mstep-1 .selectors>[data-f="workTime"]{grid-column:1/-1;grid-row:11}
 /* ①のリストは`size`（行数）に任せる（§9.126）。②で使う「入力内容」だけが
    ここに残る（①では非表示）。 */
 .measure-shell.mstep-1 .selectors .major-list{grid-template-rows:20px auto}
@@ -626,14 +634,40 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
   display:grid;
   grid-template-columns:repeat(4,minmax(0,1fr));
   grid-template-rows:repeat(3,minmax(0,1fr));
+  gap:var(--gap-section);padding:var(--gap-section);background:var(--bg);
   min-height:0;width:100%;max-width:100%;overflow:hidden;
   border-bottom:1px solid var(--line);
 }
-.left-pane,.center-pane,.right-pane{
-  min-width:0;max-width:100%;padding:var(--space-2);overflow:auto;border-right:1px solid var(--line);
+/* ---------- カードの意匠は1つ（§9.137の骨子） ----------
+   骨子は「灰色の地に、白・角丸・枠線のカードを間隔をあけて置く」。以前は
+   ペインを罫線で仕切るだけで、カードによって枠のある/なし・余白・見出しの
+   有無がばらばらだった（利用者の指摘「見栄えが1枚の画面の中でそろっていない」）。
+   **本文グリッドの直下にあるものが「カード」**で、意匠はここ1箇所で与える。
+   中のパネルは枠を持たない——枠の中に枠を作らない（§9.129）。 */
+.measure-body>.left-pane,
+.measure-body>.center-pane,
+.measure-body>.right-pane,
+.measure-body>.quality-pane,
+.measure-body>.split-pane,
+.measure-body>.analysis,
+.measure-body>.finish-check{
+  min-width:0;max-width:100%;min-height:0;
+  padding:var(--pad-card);overflow:auto;
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-card);
+}
+.measure-body>.left-pane>.basic-card,
+.measure-body>.quality-pane>.quality-grade-panel,
+.measure-body>.center-pane>.work-time-panel,
+.measure-shell.mstep-1 .selectors>[data-f="workTime"]>.work-time-panel{
+  padding:0;border:0;border-radius:0;background:transparent;
 }
 .center-pane{container-type:inline-size;overflow-x:hidden}
-.right-pane{border-right:0;overflow:hidden}
+.right-pane{overflow:hidden}
+/* カードの見出し。骨子と同じ「ティール・太字・小さめ」。 */
+.card-title{
+  margin:0 0 var(--space-1);
+  color:var(--teal);font-size:var(--fs-base-sm);font-weight:800;letter-spacing:.02em;
+}
 /* ---------- 5. 左ペイン ---------- */
 .tabs{display:flex}
 .tabs button{border-radius:var(--radius-tab) var(--radius-tab) 0 0;display:flex;align-items:center;justify-content:center;white-space:nowrap;border:1px solid transparent;background:transparent;color:#4a6169;box-shadow:none}
@@ -1301,5 +1335,22 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .measure-shell.mstep-1 #splitCard{grid-column:1/span 4;grid-row:3}
 .measure-shell.mstep-2 #splitCard{grid-column:1/span 2;grid-row:3}
 .measure-shell.mstep-3 #splitCard{display:none}
-.card-title{font-size:var(--fs-base-sm);font-weight:800;color:var(--teal);margin-bottom:var(--space-1)}
+
+
+/* 準備カードの見出しは、他のカードと**同じ意匠**にする（骨子）。ここだけ
+   ツールバー然としていたので、色と大きさをカード見出しへ寄せ、操作
+   （条割変更・マスタ再読込・判定公差）は右へ寄せる。 */
+.measure-shell .center-pane>.panel-title.card-title{
+  display:flex;align-items:center;gap:var(--gap-inline);
+  min-height:var(--ctl-h-sm);margin:0 0 var(--space-1);padding:0;
+  border:0;background:transparent;
+}
+.measure-shell .center-pane>.panel-title.card-title>span:first-child{
+  color:var(--teal);font-size:var(--fs-base-sm);font-weight:800;letter-spacing:.02em;
+}
+.measure-shell .center-pane>.panel-title.card-title .title-actions{margin-left:auto}
+/* 作業時間は骨子で「枠を持たず、上の設定群と同じ意匠で並べる」。 */
+.measure-shell.mstep-1 .selectors>[data-f="workTime"]{
+  border-top:1px dashed var(--line-soft);padding-top:var(--space-2);margin-top:var(--space-2);
+}
 }

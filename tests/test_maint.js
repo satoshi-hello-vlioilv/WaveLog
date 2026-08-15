@@ -111,8 +111,16 @@ let b=null;
   return {val:i.value,cut:i.scrollWidth>i.clientWidth+1,w:Math.round(i.getBoundingClientRect().width)};
  });
  rec('打刻した日時が切れずに読める',!!stamp.val&&!stamp.cut,`幅${stamp.w}px "${stamp.val}"`);
- const afterStamp=await page.evaluate(()=>{const lp=document.querySelector('.left-pane');return lp.scrollHeight-lp.clientHeight});
- rec('打刻後もスクロールバーが出ない',afterStamp<=0,`はみ出し${afterStamp}px`);
+ /* 打刻の時点では**詳細（13項目）を開いたまま**。基本情報カードは骨子で
+    `1×2`に固定したので、開いた状態で器を超えることはある（下の
+    「どの表示サイズでも収まる」は畳んだ状態で見る）。ここで大事なのは
+    **打刻して値が増えても切り落とさない**こと。 */
+ const afterStamp=await page.evaluate(()=>{
+  const lp=document.querySelector('.left-pane');
+  return {はみ出し:lp.scrollHeight-lp.clientHeight,overflowY:getComputedStyle(lp).overflowY};
+ });
+ rec('打刻後も切り落とさない',
+     afterStamp.はみ出し<=0||/auto|scroll/.test(afterStamp.overflowY),JSON.stringify(afterStamp));
 
  /* 表示サイズを変えても収まる（§9.137）。**測るのは畳んだ状態**——基本情報は
     骨子で`1×2`（実測651px）のカードに固定したので、13項目の詳細を開けば

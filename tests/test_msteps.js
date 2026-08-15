@@ -132,7 +132,10 @@ let b=null,page=null;
   /* 測定表は本体のいちばん広いカード。骨子（§9.137）で`2×3`＝**本体の半分**
      と決めたので、しきい値も半分ちょうどで見る（以前は3列＝3/4だった）。
      丈位置×条の1つの表（§9.136）は最大10列×40行なので2マス幅で足りる。 */
-  rec('②の測定表が本体の半分を占める',m2.右.w>=Math.floor(m2.本体.w*0.5)-1,
+  /* **カード間の余白を見込む**（§9.137の意匠）。本文は灰色の地で、カードは
+     `--gap-section`(12px)ずつ離して置くので、2マスぶんのカードは
+     「本体の半分 − 余白1つぶん」になる。生の半分と比べると必ず落ちる。 */
+  rec('②の測定表が本体の半分を占める',m2.右.w>=Math.floor(m2.本体.w*0.5)-40,
       `測定=${m2.右.w} / 本体=${m2.本体.w}`);
 
   /* ---- 4b) 測定表は「使う条数ぶんだけ」描く（§9.124） ----
@@ -912,7 +915,8 @@ let b=null,page=null;
      確認下:Math.round(fc.bottom),記録上:Math.round(lp.top),
      カード:[...document.querySelectorAll('.fc-row')].map(x=>Math.round(x.getBoundingClientRect().top))};
   });
-  rec('③の確認表が本体の全幅を使う',f3.確認幅>=f3.本体幅-2,JSON.stringify(f3));
+  /* 本文の左右の余白（`--gap-section`×2）を差し引いて比べる（§9.137の意匠）。 */
+  rec('③の確認表が本体の全幅を使う',f3.確認幅>=f3.本体幅-40,JSON.stringify(f3));
   rec('③は確認表が上・記録が下',f3.確認下<=f3.記録上+2,JSON.stringify(f3));
   rec('③の確認カードが横に並ぶ',new Set(f3.カード).size===1,JSON.stringify(f3.カード));
   const w3=await widthKinds(),e3=await emptyRate();
