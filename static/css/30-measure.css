@@ -325,7 +325,6 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .measure-shell.mstep-1 .subtabs{grid-column:2;grid-row:1}
 .measure-shell.mstep-1 #qualityGradePanel,
 .measure-shell.mstep-1 .analysis{grid-column:2;grid-row:2;align-self:start}
-.measure-shell.mstep-1 .split-pane{grid-column:1/-1;grid-row:3}
 /* 測定データ分析は**測ってからでないと中身が無い**ので①には出さない。 */
 .measure-shell.mstep-1 .analysis,.measure-shell.mstep-1 .debug-pane{display:none}
 /* ② 1列目は**根拠**だけ。1列（狭い）なので縦に積む。 */
@@ -349,7 +348,6 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .measure-shell.mstep-3 .subtabs{grid-column:2;grid-row:1}
 .measure-shell.mstep-3 #qualityGradePanel,
 .measure-shell.mstep-3 .analysis{grid-column:2;grid-row:2;align-self:start}
-.measure-shell.mstep-3 .split-pane{grid-column:1/-1;grid-row:3}
 .measure-shell.mstep-3 .debug-pane{display:none}
 /* ②測定は「いま入れる場所」「あと何が残っているか」「根拠」の3つ。
    入力内容(8項目)は状態付きの一覧として左へ細く残し、**設定は出さない**
@@ -1279,3 +1277,14 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 #grid td.grid-col-spacer{border:0;padding:0;background:transparent}
 #grid tr.grid-virtual-spacer:hover{background:transparent;cursor:default}
 }
+
+/* ---------- 条の設計（幅の割り付け）＝本文グリッドの1枚のカード（§9.137） ----------
+   以前は情報の壁(.left-pane)の**中**にあったため、①では全幅、②では下段左、
+   という骨子の割り付けができなかった。**同じ部品を3段で使い回す**ので、
+   本文グリッドの直下へ出して段ごとに置き場所だけ変える。
+   受信欄(#deviceInput)とは無関係の場所なので、DOMを動かしても転送は止まらない
+   （§9.122が守っているのは受信欄だけ）。 */
+.measure-shell.mstep-1 #splitCard{grid-column:1/span 4;grid-row:3}
+.measure-shell.mstep-2 #splitCard{grid-column:1/span 2;grid-row:3}
+.measure-shell.mstep-3 #splitCard{display:none}
+.card-title{font-size:var(--fs-base-sm);font-weight:800;color:var(--teal);margin-bottom:var(--space-1)}

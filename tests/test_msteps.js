@@ -111,9 +111,14 @@ let b=null,page=null;
     '.left-pane [data-infopanel],.left-pane [data-leftpanel]')]
     .filter(x=>x.getBoundingClientRect().height>0)
     .map(x=>x.dataset.infopanel||x.dataset.leftpanel));
+  /* **条の設計は本文グリッドの1枚のカードへ出した**(§9.137)。情報の壁の
+     中にあると、①=全幅・②=下段左という骨子の割り付けができない。
+     見えていること自体は変わらないので、`#splitCard`で数える。 */
+  const split2=await page.evaluate(()=>{const e=document.querySelector('#splitCard');
+    return !!e&&e.getBoundingClientRect().height>0});
   rec('②に出すのは根拠（基本情報・幅分割情報）だけ',
-      ref2a.length===2&&ref2a.includes('basic')&&ref2a.includes('split'),
-      JSON.stringify(ref2a));
+      ref2a.length===1&&ref2a.includes('basic')&&split2,
+      JSON.stringify(ref2a)+' split='+split2);
   rec('②に入力内容の一覧（8項目）が出る',items.一覧===8,JSON.stringify(items));
   rec('②では1回決めるだけの設定を出さない',items.ほかの設定===0,JSON.stringify(items));
   /* **丈位置は②に出す（§9.125）。** `PageUp/PageDown`で動かせるのに、
@@ -809,8 +814,10 @@ let b=null,page=null;
      常時出すのは基本情報と幅分割で、残る2枚はタブ1枚に畳む。
      **2枚を同時に開かないこと**も見る——`openInfoWall`が全部開けてしまい、
      ③で品質規格と分析が同じ場所に重なっていた(実測 y=398)。 */
+  const split1=await page.evaluate(()=>{const e=document.querySelector('#splitCard');
+    return !!e&&e.getBoundingClientRect().height>0});
   rec('①の常時表示は基本情報と幅分割',
-      ['basic','split'].every(k=>wall1.面.includes(k)),JSON.stringify(wall1));
+      wall1.面.includes('basic')&&split1,JSON.stringify(wall1)+' split='+split1);
   rec('①のタブは1枚だけ（品質規格・分析）',wall1.タブ===1,JSON.stringify(wall1));
   rec('タブの裏は同時に2枚出さない',
       !(wall1.面.includes('grade')&&wall1.面.includes('analysis')),JSON.stringify(wall1));
@@ -858,7 +865,7 @@ let b=null,page=null;
        .filter(x=>x.getBoundingClientRect().height>0).map(x=>x.dataset.infopanel)};
   });
   rec('②に根拠（基本情報・幅分割情報）が出る',
-      ref2.面.includes('basic')&&ref2.面.includes('split'),JSON.stringify(ref2));
+      ref2.面.includes('basic')&&split2,JSON.stringify(ref2)+' split='+split2);
   rec('②の測定の列がいちばん広い',ref2.右>ref2.左&&ref2.右>ref2.中,JSON.stringify(ref2));
   const e2=await emptyRate();
   rec('②（板厚/板幅）の空きを記録した',true,JSON.stringify(e2));
