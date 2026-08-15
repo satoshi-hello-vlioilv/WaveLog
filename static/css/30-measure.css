@@ -182,19 +182,24 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    切り詰められない値にする。以前は136px(ボタン実幅109px)で、主要導線の
    「保存して一覧へ」までが「保存して一...」と省略されていた。 */
 /* タイトルのすぐ下から最下段まで。**進捗バーより上位の階層**なので、
-   バーに縦を分断させない(§9.133)。 */
+   バーに縦を分断させない(§9.133)。
+   **配色はアプリの左メニュー(`aside`)と同じ濃色**(§9.134)。測定画面だけ
+   淡い水色(#d7e5ee)で、同じ「左メニュー」という役割なのに別のアプリの
+   ように見えていた。役割が同じものは同じ色にする。 */
 .action-rail{
   grid-row:2/-1;grid-column:1;width:160px;display:flex;flex-direction:column;gap:var(--gap-section);
-  padding:9px 8px;background:#d7e5ee;border-right:1px solid #9fb2bf;overflow-y:auto;
+  padding:9px 8px;background:var(--nav);border-right:1px solid #2c4750;overflow-y:auto;
 }
 .rail-group{display:grid;gap:var(--gap-inline)}
-.rail-label{height:20px;display:flex;align-items:center;padding:0 var(--space-1);color:#36515c;font-size:var(--fs-micro);font-weight:800;letter-spacing:.06em;white-space:nowrap}
+.rail-label{height:20px;display:flex;align-items:center;padding:0 var(--space-1);color:#8fb3ba;font-size:var(--fs-micro);font-weight:800;letter-spacing:.06em;white-space:nowrap}
 .rail-bottom{margin-top:auto}
+/* ボタンも`aside`の`.nav-item`と同じ見え方にする(§9.134)。 */
 .action-rail button{
   width:100%;height:var(--ctl-h-lg);min-height:var(--ctl-h-lg);padding:0 7px;
-  border:1px solid #9eb2bc;border-radius:var(--radius-sm);background:#fff;color:#243a42;
+  border:1px solid #2c4750;border-radius:var(--radius-sm);background:transparent;color:#cfe6ea;
   font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center;
 }
+.action-rail button:hover{background:#22434d;border-color:#3b5b66;color:#fff}
 .action-rail .rail-primary{background:var(--teal);color:#fff;border-color:var(--teal)}
 .action-rail .rail-success{background:var(--success);color:#fff;border-color:var(--success)}
 .action-rail .rail-danger{background:var(--danger-bg);color:var(--danger);border-color:var(--danger-border)}
@@ -679,6 +684,17 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    1列ぶん（実測343px）へ入ったときに1つが110pxになり、折り返さない
    見出し（「生地外観」等）が溢れた（表示サイズを上げるほど広がり、
    特大で32px。`test_fit`が捕まえた）。 */
+/* 「詳細を見る」は**基本情報カードの中の補助ボタン**(§9.133)。高さは
+   トークンから取る——中身なりにすると35pxという規格外の高さになる
+   (`test_scale`が捕まえた)。 */
+.info-more{
+  grid-column:1/-1;height:var(--ctl-h-sm);min-height:var(--ctl-h-sm);
+  border:1px solid var(--line);border-radius:var(--radius-sm);
+  background:var(--surface);color:var(--ink-2);font-size:var(--fs-sm);font-weight:700;
+}
+.info-more:hover{background:var(--surface-2);color:var(--ink)}
+.info-detail{grid-column:1/-1;display:contents}
+.info-detail[hidden]{display:none}
 .quality-grade-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:var(--fs-sm)}
 .quality-grade-table th,.quality-grade-table td{
   padding:var(--pad-row);border:1px solid var(--line-soft);
