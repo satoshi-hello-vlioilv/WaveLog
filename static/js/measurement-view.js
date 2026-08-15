@@ -201,14 +201,31 @@ function renderMeasurement(){
     4かたまりへ束ね、参照用の項目はラベルと値を1行に収める。以前は全項目が
     ラベル上・値下の同じ見た目で、短い値(コース等)まで全幅を1行使っていたため
     縦に収まらず常時スクロールしていた。 */
- const idFields=[['検査No.','inspectionNo'],['鋳造No.','castingNo'],['オーダーNo.','orderNo'],['引当No.','allocationNo']];
- const productFields=[['用途名','purposeName'],['用途コード','purposeCode'],['取引先','customer'],['納入先','delivery']];
+ /* **常に見せるのは8項目だけ**(§9.133)。測定中に本当に要るのは
+    「どのロットか(ロット№・検査No.)」「何を作るか(用途名)」
+    「どんな材か(製造の材質・調質・板厚・板幅・板丈)」で、残りの
+    識別番号・取引先・オーダー寸法・コースは**普段は見ない**。
+    以前は13項目＋寸法表＋コースを常時出しており、段を切り替えるたびに
+    同じ情報が別の大きさ・別の場所に現れて散らかって見えていた。
+    **消すのではなく畳む**——「詳細」で今までどおり全部読める。 */
+ const idFields=[['鋳造No.','castingNo'],['オーダーNo.','orderNo'],['引当No.','allocationNo']];
+ const productFields=[['用途コード','purposeCode'],['取引先','customer'],['納入先','delivery']];
  const cell=([l,k])=>`<div class="field"><label>${l}</label><output title="${esc(b[k])}">${esc(b[k])||'—'}</output></div>`;
+ const val=(l,v)=>`<div class="field"><label>${l}</label><output title="${esc(v)}">${esc(v)||'—'}</output></div>`;
  let h='<div class="info-grid">'
   +`<div class="field full info-lot"><label>ロット№</label><button type="button" class="lot-dsp-link" title="クリックでLotDspをこのロット番号で開きます">${esc(b.lotNo)||'—'}</button></div>`
+  +cell(['検査No.','inspectionNo'])+cell(['用途名','purposeName'])
+  +val('材質',b.mfgMaterial)+val('調質',b.mfgTemper)
+  +val('板厚',fmtDim(b.mfgThickness,3))+val('板幅',fmtDim(b.mfgWidth,1))+val('板丈',fmtDim(b.mfgLength,1))
+  +'<button type="button" class="info-more" id="basicMore" aria-expanded="false" aria-controls="basicDetail">詳細を見る</button>'
+  +'<div class="info-detail" id="basicDetail" hidden>'
   +'<div class="info-group">識別番号</div>'+idFields.map(cell).join('')
   +'<div class="info-group">製品</div>'+productFields.map(cell).join('')
-  +'<div class="info-group info-group-course">コース</div>';h+=`<div class="dimension"><b></b><b>材質</b><b>調質</b><b>板厚</b><b>板幅</b><b>板丈</b><b>オーダー</b><span>${esc(b.orderMaterial)}</span><span>${esc(b.orderTemper)}</span><span>${esc(fmtDim(b.orderThickness,3))}</span><span>${esc(fmtDim(b.orderWidth,1))}</span><span>${esc(fmtDim(b.orderLength,1))}</span><b>製造</b><span>${esc(b.mfgMaterial)}</span><span>${esc(b.mfgTemper)}</span><span>${esc(fmtDim(b.mfgThickness,3))}</span><span>${esc(fmtDim(b.mfgWidth,1))}</span><span>${esc(fmtDim(b.mfgLength,1))}</span></div></div>`;$('#basicInfo').innerHTML=h;Object.entries(m.settings).forEach(([k,v])=>{const el=$('#'+k);if(el){if(el.type==='checkbox')el.checked=v;else el.value=v}});$('#qualityInfo').value=m.qualityInfo;document.querySelectorAll('[data-mother]').forEach(x=>x.value=m.mother[x.dataset.mother]||'');$('#motherOriginalWidth').textContent=fmtDim(b.originalWidth,1)||'－';renderMeasureGrid();renderStats();setState('IndexedDB読込済み')
+  +'<div class="info-group info-group-course">コース</div>';h+=`<div class="dimension"><b></b><b>材質</b><b>調質</b><b>板厚</b><b>板幅</b><b>板丈</b><b>オーダー</b><span>${esc(b.orderMaterial)}</span><span>${esc(b.orderTemper)}</span><span>${esc(fmtDim(b.orderThickness,3))}</span><span>${esc(fmtDim(b.orderWidth,1))}</span><span>${esc(fmtDim(b.orderLength,1))}</span><b>製造</b><span>${esc(b.mfgMaterial)}</span><span>${esc(b.mfgTemper)}</span><span>${esc(fmtDim(b.mfgThickness,3))}</span><span>${esc(fmtDim(b.mfgWidth,1))}</span><span>${esc(fmtDim(b.mfgLength,1))}</span></div></div></div>`;$('#basicInfo').innerHTML=h;
+ {const mb=$('#basicMore'),dt=$('#basicDetail');
+  if(mb&&dt)mb.onclick=()=>{const open=dt.hidden;dt.hidden=!open;
+   mb.setAttribute('aria-expanded',open?'true':'false');
+   mb.textContent=open?'詳細を閉じる':'詳細を見る';};}Object.entries(m.settings).forEach(([k,v])=>{const el=$('#'+k);if(el){if(el.type==='checkbox')el.checked=v;else el.value=v}});$('#qualityInfo').value=m.qualityInfo;document.querySelectorAll('[data-mother]').forEach(x=>x.value=m.mother[x.dataset.mother]||'');$('#motherOriginalWidth').textContent=fmtDim(b.originalWidth,1)||'－';renderMeasureGrid();renderStats();setState('IndexedDB読込済み')
  {const mode=S.measure.settings.inputMode||'auto';document.querySelectorAll('[data-mode]').forEach(x=>x.classList.toggle('active',x.dataset.mode===mode))}
  activateWorkspace($('#measureType').value==='母材'?'mother':'measure');
  applyInputProtection();
@@ -309,7 +326,30 @@ const QUALITY_GRADE_SOURCE={
  '直角度':['品質ｸﾞﾚｰﾄﾞ_直角度'],'方向性':['品質ｸﾞﾚｰﾄﾞ_方向性'],'強度':['品質ｸﾞﾚｰﾄﾞ_強度'],
  'アルマイト':['品質ｸﾞﾚｰﾄﾞ_ｱﾙﾏｲﾄ','品質ｸﾞﾚｰﾄﾞ_アルマイト'],'表面処理':['品質ｸﾞﾚｰﾄﾞ_表面処理']
 };
-function renderQualityGradePanel(){const panel=$('#qualityGradePanel');if(!panel)return;const m=S.measure;m.qualityGrades=m.qualityGrades||{};Object.entries(QUALITY_GRADE_SOURCE).forEach(([label,names])=>m.qualityGrades[label]=sourceValue(names));panel.innerHTML=`<div class="quality-grade-grid">${Object.keys(QUALITY_GRADE_SOURCE).map(label=>`<div class="quality-grade-item"><b>${esc(label)}</b><span title="${esc(m.qualityGrades[label]||'')}">${esc(m.qualityGrades[label]||'未設定')}</span></div>`).join('')}</div>`}
+/* 品質規格は**縦4×横3の表**(§9.133)。12項目あり、カードを敷き詰めると
+   器の幅で3列になったり4列になったりして、開くたびに違う形に見えていた。
+   行と列を決め打ちにすれば「いつもの表」として読める。
+   **重要度は低い**(測定中に見る値ではない)ので、主要導線から外してタブの
+   裏へ置く——場所を取らせない代わりに、1回の操作で必ず出せる。 */
+function renderQualityGradePanel(){
+ const panel=$('#qualityGradePanel');if(!panel)return;
+ const m=S.measure;m.qualityGrades=m.qualityGrades||{};
+ const labels=Object.keys(QUALITY_GRADE_SOURCE);
+ Object.entries(QUALITY_GRADE_SOURCE).forEach(([label,names])=>m.qualityGrades[label]=sourceValue(names));
+ const COLS=3,ROWS=Math.ceil(labels.length/COLS);
+ let rows='';
+ for(let r=0;r<ROWS;r++){
+  let tds='';
+  for(let c=0;c<COLS;c++){
+   const label=labels[r*COLS+c];
+   if(label===undefined){tds+='<th></th><td></td>';continue}
+   const v=m.qualityGrades[label]||'';
+   tds+=`<th>${esc(label)}</th><td title="${esc(v)}">${esc(v||'未設定')}</td>`;
+  }
+  rows+=`<tr>${tds}</tr>`;
+ }
+ panel.innerHTML=`<table class="quality-grade-table"><tbody>${rows}</tbody></table>`;
+}
 function renderDataManagementPanel(){
  const panel=$('#dataManagementPanel');if(!panel)return;hydrateBusinessFields();const b=S.measure.basic;
  const rows=[['取引先',b.customer],['納入先',b.delivery],['実績コース',b.course],['オーダー番号',b.orderNo],['オーダー材質',b.orderMaterial],['オーダー調質',b.orderTemper],['オーダー板厚',b.orderThickness],['オーダー板幅',b.orderWidth],['オーダー板丈',b.orderLength]];
@@ -338,7 +378,7 @@ function upgradeManualInputTypes(){
 }
 function renderResidualCourseEverywhere(){
  if(!S.measure)return;const residual=sourceField(['残仕掛設備ｺｰｽ','残仕掛設備コース']);S.measure.basic.residualCourse=residual;
- const basic=$('#basicInfo .info-grid');if(basic){basic.querySelectorAll('.residual-course-field').forEach(x=>x.remove());const course=[...basic.querySelectorAll('.field')].find(x=>x.querySelector('label')?.textContent==='実績');const item=document.createElement('div');item.className='field residual-course-field';item.innerHTML=`<label>残</label><output title="${esc(residual)}">${esc(residual||'未設定')}</output>`;if(course)course.after(item);else basic.append(item)}
+ const basic=$('#basicDetail')||$('#basicInfo .info-grid');if(basic){basic.querySelectorAll('.residual-course-field').forEach(x=>x.remove());const course=[...basic.querySelectorAll('.field')].find(x=>x.querySelector('label')?.textContent==='実績');const item=document.createElement('div');item.className='field residual-course-field';item.innerHTML=`<label>残</label><output title="${esc(residual)}">${esc(residual||'未設定')}</output>`;if(course)course.after(item);else basic.append(item)}
  const grid=$('#dataManagementPanel .data-management-grid');if(grid){[...grid.querySelectorAll('[data-residual-course]')].forEach(x=>x.remove());const children=[...grid.children],courseIndex=children.findIndex(x=>x.tagName==='B'&&x.textContent==='実績コース'),courseValue=courseIndex>=0?children[courseIndex+1]:null,label=document.createElement('b'),value=document.createElement('span');label.textContent='残コース';value.textContent=residual||'未設定';value.title=residual;label.dataset.residualCourse='1';value.dataset.residualCourse='1';if(courseValue)courseValue.after(label,value);else grid.append(label,value)}
 }
 /* 公差の内訳(基準値・±・計算式)を見出し領域へ表示する。 */
@@ -353,7 +393,7 @@ function updateMeasurementHeading(){
 // Design, actual and residual courses are rendered as one ordered information group.
 function renderCourseHierarchy(){
  if(!S.measure)return;const design=designCourseValue(),actual=actualCourseValue(),residual=residualCourseValue();S.measure.basic.designCourse=design;S.measure.basic.course=actual;S.measure.basic.residualCourse=residual;
- const basic=$('#basicInfo .info-grid');if(basic){[...basic.querySelectorAll('.course-stack-field,.residual-course-field')].forEach(x=>x.remove());const old=[...basic.querySelectorAll('.field')].find(x=>x.querySelector('label')?.textContent==='実績コース');if(old)old.remove();
+ const basic=$('#basicDetail')||$('#basicInfo .info-grid');if(basic){[...basic.querySelectorAll('.course-stack-field,.residual-course-field')].forEach(x=>x.remove());const old=[...basic.querySelectorAll('.field')].find(x=>x.querySelector('label')?.textContent==='実績コース');if(old)old.remove();
   /* コースは「設計→実績→残」の順に意味がつながる1かたまり(§9.55)。
      コース見出しの直後へこの順で並べる。**3項目とも縦に1行ずつ**で、
      横幅はエリアいっぱい(全幅・折り返し)——実機のコースは
@@ -386,7 +426,7 @@ function scheduleMinutesLabel(min){
  return `${Math.floor(v/60)}時間${v%60?(v%60)+'分':''}`;
 }
 function renderScheduleInfo(){
- const basic=$('#basicInfo .info-grid');if(!basic)return;
+ const basic=$('#basicDetail')||$('#basicInfo .info-grid');if(!basic)return;
  basic.querySelectorAll('.schedule-info-field').forEach(x=>x.remove());
  const lotNo=S.measure?.basic?.lotNo;
  if(!lotNo||!scheduleInfoCache||normalizedLot(scheduleInfoCache.lotNo)!==normalizedLot(lotNo))return;

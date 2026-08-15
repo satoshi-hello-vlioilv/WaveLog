@@ -355,57 +355,46 @@ let b=null,page=null;
   });
   const p1=await prep();
   rec('①は役割ごとの見出しを持つ',p1.見出し.length===4,JSON.stringify(p1.見出し));
-  /* オペレータ一覧の高さは`size`（行数）で決める（§9.126）。pxで詰めると
-     **最後の行が途中で切れる**し、表示サイズを変えるとずれる。 */
+  /* **オペレータはプルダウン**(§9.133)。リストボックスは器の中で5,394px
+     スクロールしており(実測)、1画面に収める方針にも反していた。
+     **選択肢は1人も減らさない**——171人ぜんぶ入っていることを見る。 */
   const opList=await page.evaluate(()=>{
    const el=document.getElementById('operator');
-   const r=el.getBoundingClientRect();
-   const opt=el.options[0]?el.options[0].getBoundingClientRect():null;
-   return {size:el.size,選択肢:el.options.length,高さ:Math.round(r.height),
-     行の高さ:opt?Math.round(opt.height):0,
+   return {size:el.size,選択肢:el.options.length,
      はみ出し:Math.round(el.scrollHeight-el.clientHeight)};
   });
-  /* **行数は減らさない。** 実データでオペレータは100人を超えるので、
-     見える行を減らすほど探すのが大変になる。直したのは「pxで半端に
-     詰めていた」ことのほうで、`size`の意図どおりの高さにする。 */
-  rec('①のオペレータ一覧の行数を減らさない',opList.size>=7,JSON.stringify(opList));
-  rec('オペレータ一覧が行の途中で切れない',
-      opList.行の高さ>0&&Math.abs(opList.高さ-opList.size*opList.行の高さ)<=4,
-      JSON.stringify(opList));
-  rec('見出しは「誰が→形→機材→その他」の順',
-      p1.見出し.join('/')==='誰が測るか/測定表の形/使う機材/その他の設定',
+  rec('オペレータはプルダウン(リストボックスにしない)',opList.size<=1,JSON.stringify(opList));
+  rec('オペレータの選択肢を減らしていない',opList.選択肢>=100,JSON.stringify(opList));
+  rec('オペレータ欄が器の中でスクロールしない',opList.はみ出し<=1,JSON.stringify(opList));
+  rec('見出しは「誰が→形→機材→いつもと同じ」の順',
+      p1.見出し.join('/')==='誰が測るか/測定表の形/使う機材/いつもと同じ設定',
       p1.見出し.join('/'));
   /* ②で使う道具（入力内容・丈位置）は①に出さない。**1回決めるものと、
      測りながら何度も切り替えるものを同じ場所に並べない。** */
   rec('①に入力内容・丈位置を出さない',
       !p1.出ている項目.includes('measureType')&&!p1.出ている項目.includes('lengthPos'),
       JSON.stringify(p1.出ている項目));
-  rec('①に出るのは毎回決める9項目',
+  /* **入力させる項目は折りたたまない**(§9.133)。畳むと現在値を要約でもう一度
+     書くことになり、同じ情報が2箇所に出る。場所は実測で足りている。 */
+  rec('①の入力項目は14個すべて出ている(折りたたまない)',
       ['operator','inspector','crewSize','verticalCount','horizontalCount',
-       'innerDiameter','spool','thicknessGauge','widthGauge']
-        .every(k=>p1.出ている項目.includes(k))&&p1.出ている項目.length===9,
+       'innerDiameter','spool','thicknessGauge','widthGauge',
+       'unwind','widthOrder','widthDirection','burr','coilStop']
+        .every(k=>p1.出ている項目.includes(k))&&p1.出ている項目.length===14,
       JSON.stringify(p1.出ている項目));
-  rec('その他の5項目は既定で畳んである',
-      p1.畳んでいる項目.length===5&&p1.開いている===false,JSON.stringify(p1.畳んでいる項目));
-  /* **畳んだままでも値が読めること。** ここが空だと、ただ隠しただけになる。 */
-  rec('畳んだままでも5項目の現在値が要約に出る',
-      ['巻出方向','条入力順','方向','バリ揃え','コイル止め'].every(k=>p1.要約.includes(k)),
-      p1.要約);
-  rec('触っていないことも書く',/既定/.test(p1.状態),p1.状態);
-  await page.click('#prepMore');await page.waitForTimeout(250);
-  const p2=await prep();
-  rec('押すと5項目が出る',p2.出ている項目.length===14&&p2.開いている===true,
-      JSON.stringify(p2.出ている項目.length));
-  /* 既定と違う値にしたら、畳んだままでもそれが分かる。 */
-  await page.evaluate(()=>{const s=document.getElementById('widthDirection');
-    s.value='降順';s.dispatchEvent(new Event('change',{bubbles:true}))});
-  await page.waitForTimeout(250);
-  const p3=await prep();
-  rec('既定と違う設定は件数で知らせる',/1件/.test(p3.状態),p3.状態);
-  await page.evaluate(()=>{const s=document.getElementById('widthDirection');
-    s.value='昇順';s.dispatchEvent(new Event('change',{bubbles:true}))});
-  await page.click('#prepMore');await page.waitForTimeout(250);
-  rec('もう一度押すと畳まる',(await prep()).開いている===false);
+  rec('畳んでいる項目が無い',p1.畳んでいる項目.length===0,JSON.stringify(p1.畳んでいる項目));
+  /* **開始/終了時刻は準備の面に置く**(§9.133、項目5)。以前は左の情報カードの
+     中にあり、準備の必須入力なのに導線から外れていた。 */
+  const prepWt=await page.evaluate(()=>{
+   const box=document.querySelector('.measure-shell .selectors');
+   const w=box?.querySelector('[data-f="workTime"]');
+   if(!w)return null;
+   const r=w.getBoundingClientRect(),b=box.getBoundingClientRect();
+   return {中にある:true,右寄り:Math.round(r.left-b.left)>Math.round(b.width/2),
+     開始:!!document.getElementById('workStartAt'),終了:!!document.getElementById('workEndAt')};
+  });
+  rec('開始/終了時刻が準備の入力面にある',!!prepWt&&prepWt.開始&&prepWt.終了,JSON.stringify(prepWt));
+  rec('開始/終了時刻は一番右のエリアにある',!!prepWt&&prepWt.右寄り,JSON.stringify(prepWt));
 
   /* ---- 6) ③確認 ---- */
   await go('3');
@@ -814,9 +803,17 @@ let b=null,page=null;
      .map(x=>x.dataset.infopanel||x.dataset.leftpanel),
   }));
   const wall1=await wall();
-  rec('①でタブを出さない（中身を全部見せる）',wall1.タブ===0,JSON.stringify(wall1));
-  rec('①に基本情報・品質等級・幅分割・作業時間が同時に出る',
-      ['basic','grade','split','worktime'].every(k=>wall1.面.includes(k)),JSON.stringify(wall1));
+  /* **測定中に見るものは常時、見ないものはタブの裏**(§9.133)。
+     §9.131では「タブを1枚も出さない」を固定していたが、品質規格と
+     測定データ分析は**測定中に見る値ではない**(利用者の指摘⑥)。
+     常時出すのは基本情報と幅分割で、残る2枚はタブ1枚に畳む。
+     **2枚を同時に開かないこと**も見る——`openInfoWall`が全部開けてしまい、
+     ③で品質規格と分析が同じ場所に重なっていた(実測 y=398)。 */
+  rec('①の常時表示は基本情報と幅分割',
+      ['basic','split'].every(k=>wall1.面.includes(k)),JSON.stringify(wall1));
+  rec('①のタブは1枚だけ（品質規格・分析）',wall1.タブ===1,JSON.stringify(wall1));
+  rec('タブの裏は同時に2枚出さない',
+      !(wall1.面.includes('grade')&&wall1.面.includes('analysis')),JSON.stringify(wall1));
   /* **空き率は粗い目安**（中身の少ないロットでは正しく空く）。効くのは
      こちら——**中身のない器を置かない**。`.split-pane`は分割の無いロットでも
      290pxの下限を持っており、1行の文字に290pxの空箱が残っていた。 */

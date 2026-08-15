@@ -72,9 +72,32 @@ let b=null;
    groups:[...g.querySelectorAll('.info-group')].map(x=>x.textContent),
    labels:[...g.querySelectorAll('.field label')].map(x=>x.textContent)};
  });
- rec('項目を減らしていない(13項目)',info.fields===13,info.fields+'項目');
+ /* **常時見せるのは8項目**(§9.133)。測定中に本当に要るのは「どのロットか」
+    「何を作るか」「どんな材か」だけで、残りは「詳細を見る」で読める。
+    **減らしたのではなく畳んだ**ので、詳細を開けば全項目が揃っていること
+    も見る(隠したまま消えていたら、それは減らしたのと同じ)。 */
+ const basicMain=await page.evaluate(()=>{
+  const g=document.querySelector('#basicInfo .info-grid');
+  const dt=document.querySelector('#basicDetail');
+  const vis=x=>x.getBoundingClientRect().height>0;
+  return {常時:[...g.querySelectorAll('.field')].filter(vis).length,
+          詳細が畳んである:!!dt&&dt.hidden};
+ });
+ rec('基本情報は常時8項目',basicMain.常時===8,JSON.stringify(basicMain));
+ rec('詳細は畳んである',basicMain.詳細が畳んである,JSON.stringify(basicMain));
+ await page.click('#basicMore');
+ await page.waitForFunction(()=>!document.querySelector('#basicDetail').hidden,null,{timeout:5000});
+ const basicAll=await page.evaluate(()=>{
+  const g=document.querySelector('#basicInfo .info-grid');
+  const vis=x=>x.getBoundingClientRect().height>0;
+  return {項目:[...g.querySelectorAll('.field')].filter(vis).length,
+    groups:[...g.querySelectorAll('.info-group')].filter(vis).map(x=>x.textContent),
+    labels:[...g.querySelectorAll('.field label')].filter(x=>vis(x.parentElement)).map(x=>x.textContent)};
+ });
+ rec('詳細を開けば全項目が読める',basicAll.項目>=13,basicAll.項目+'項目');
  rec('意味のかたまりで見出しが付いている',
-   info.groups.join('/')==='識別番号/製品/コース',info.groups.join('/'));
+   basicAll.groups.join('/')==='識別番号/製品/コース',basicAll.groups.join('/'));
+ info.labels=basicAll.labels;
  /* コースの3項目のラベルは「設計」「実績」「残」(§9.81)。すぐ上に
     「コース」という見出しが出ているので、行ごとに繰り返さない。 */
  const NEEDED=['ロット№','検査No.','鋳造No.','オーダーNo.','引当No.','用途名','用途コード','取引先','納入先','設計','実績','残'];

@@ -292,43 +292,53 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 /* タブは中身を全部出すので**ボタンごと消す**（押せるのに何も起きない
    ボタンを残さない）。 */
 .measure-shell.mstep-1 .tabs,.measure-shell.mstep-1 .subtabs,
-.measure-shell.mstep-2 .tabs,.measure-shell.mstep-2 .subtabs,
-.measure-shell.mstep-3 .tabs,.measure-shell.mstep-3 .subtabs{display:none}
+.measure-shell.mstep-2 .tabs,.measure-shell.mstep-2 .subtabs{display:none}
+/* **品質規格・測定データ分析はタブの裏**(§9.133)。どちらも測定中に見る値では
+   ないので主要導線から外す。ただし1回の操作で必ず出せる場所に置く
+   ——「重要度が低い」は「無くてよい」ではない。 */
+.measure-shell.mstep-1 .subtabs,.measure-shell.mstep-3 .subtabs{display:flex}
 /* ① 基本情報（背が高い）を1列目に置き、2列目へ品質等級・幅分割・作業時間。
    **最後に「余り行」(1fr)を置き、背の高いカードのぶんはそこへ吸わせる。**
    これが無いと、カードが跨いだ行が**等分に引き伸ばされ**、右列の3枚の
    あいだに同じだけの隙間が空く（実測: 幅分割の器が280pxの空箱になった）。 */
+/* ① 左＝基本情報（段をまたいで同じ位置）、右＝タブの裏（品質規格・分析）。
+   **幅分割は下段で2列ぶんを使う**(§9.133)——どの子ロットがどの幅かは
+   図で見るものなので、細い1列に押し込むと読めない。
+   最後の「余り行」(1fr)は残す：背の高いカードのぶんをそこへ吸わせないと、
+   跨いだ行が等分に伸びて隙間になる（実測280pxの空箱）。 */
 .measure-shell.mstep-1 .left-pane{
   grid-template-columns:repeat(2,minmax(0,1fr));
   grid-template-rows:min-content min-content min-content minmax(0,1fr);
 }
-.measure-shell.mstep-1 #basicInfo{grid-column:1;grid-row:1/-1;align-self:start}
-.measure-shell.mstep-1 #qualityGradePanel{grid-column:2;grid-row:1}
-.measure-shell.mstep-1 .split-pane{grid-column:2;grid-row:2}
-.measure-shell.mstep-1 .work-time-panel{grid-column:2;grid-row:3}
+.measure-shell.mstep-1 #basicInfo{grid-column:1;grid-row:1/span 2;align-self:start}
+.measure-shell.mstep-1 .subtabs{grid-column:2;grid-row:1}
+.measure-shell.mstep-1 #qualityGradePanel,
+.measure-shell.mstep-1 .analysis{grid-column:2;grid-row:2;align-self:start}
+.measure-shell.mstep-1 .split-pane{grid-column:1/-1;grid-row:3}
 /* 測定データ分析は**測ってからでないと中身が無い**ので①には出さない。 */
 .measure-shell.mstep-1 .analysis,.measure-shell.mstep-1 .debug-pane{display:none}
-/* ② 3列目は**根拠**だけ。1列（狭い）なので縦に積む。 */
+/* ② 1列目は**根拠**だけ。1列（狭い）なので縦に積む。 */
 .measure-shell.mstep-2 .left-pane{
   grid-template-columns:minmax(0,1fr);
   grid-template-rows:min-content min-content minmax(0,1fr);
-  grid-column:3;grid-row:1;
+  grid-column:1;grid-row:1;
 }
 .measure-shell.mstep-2 #qualityGradePanel,
 .measure-shell.mstep-2 .work-time-panel,
 .measure-shell.mstep-2 .analysis,
 .measure-shell.mstep-2 .debug-pane{display:none}
-/* ③ 確認シートの下段。基本情報／品質等級・幅分割／作業時間・分析の3列。 */
+/* ③ 確認シートの下段。**①と同じ並び**にする(§9.133)——左＝基本情報、
+   右＝タブの裏、下段＝幅分割。段を変えても同じものが同じ場所にある。 */
 .measure-shell.mstep-3 .left-pane{
-  grid-template-columns:repeat(3,minmax(0,1fr));
-  grid-template-rows:min-content min-content minmax(0,1fr);
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  grid-template-rows:min-content min-content min-content minmax(0,1fr);
   grid-column:1/-1;grid-row:2;
 }
-.measure-shell.mstep-3 #basicInfo{grid-column:1;grid-row:1/-1;align-self:start}
-.measure-shell.mstep-3 #qualityGradePanel{grid-column:2;grid-row:1}
-.measure-shell.mstep-3 .split-pane{grid-column:2;grid-row:2}
-.measure-shell.mstep-3 .work-time-panel{grid-column:3;grid-row:1}
-.measure-shell.mstep-3 .analysis{grid-column:3;grid-row:2}
+.measure-shell.mstep-3 #basicInfo{grid-column:1;grid-row:1/span 2;align-self:start}
+.measure-shell.mstep-3 .subtabs{grid-column:2;grid-row:1}
+.measure-shell.mstep-3 #qualityGradePanel,
+.measure-shell.mstep-3 .analysis{grid-column:2;grid-row:2;align-self:start}
+.measure-shell.mstep-3 .split-pane{grid-column:1/-1;grid-row:3}
 .measure-shell.mstep-3 .debug-pane{display:none}
 /* ②測定は「いま入れる場所」「あと何が残っているか」「根拠」の3つ。
    入力内容(8項目)は状態付きの一覧として左へ細く残し、**設定は出さない**
@@ -497,12 +507,17 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    どちらも測っている最中に見る値（板厚/板幅の指示値・子ロット幅）。
    **行も列も明示する**——自動配置に任せると、列を指定した1枚だけが別の行へ
    落ちて上下2段になった（実測: 左535px / 中右385px）。 */
+/* **基本情報は3段とも「メニューの右横のいちばん左」**(§9.133)。以前は
+   ①③が左、②だけ右端(x=1529)にあり、段を変えるたびに同じカードが画面の
+   反対側へ飛んでいた。同じものは同じ場所にある、が守れていないと、
+   目で探す手間が段の数だけ増える。 */
 .measure-shell.mstep-2 .measure-body{
-  grid-template-columns:minmax(0,var(--measure-items-w)) minmax(0,1fr) minmax(0,var(--measure-ref-w));
+  grid-template-columns:minmax(0,var(--measure-ref-w)) minmax(0,var(--measure-items-w)) minmax(0,1fr);
   grid-template-rows:minmax(0,1fr);
 }
-.measure-shell.mstep-2 .center-pane{grid-column:1;grid-row:1}
-.measure-shell.mstep-2 .right-pane{grid-column:2;grid-row:1}
+.measure-shell.mstep-2 .left-pane{grid-column:1;grid-row:1}
+.measure-shell.mstep-2 .center-pane{grid-column:2;grid-row:1}
+.measure-shell.mstep-2 .right-pane{grid-column:3;grid-row:1}
 /* ③は1枚の確認シート。上に「あと何が残っているか」、下に「何が記録されたか」。 */
 .measure-shell.mstep-3 .measure-body{
   grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);
@@ -664,14 +679,17 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    1列ぶん（実測343px）へ入ったときに1つが110pxになり、折り返さない
    見出し（「生地外観」等）が溢れた（表示サイズを上げるほど広がり、
    特大で32px。`test_fit`が捕まえた）。 */
-.quality-grade-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));gap:var(--space-2)}
+.quality-grade-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:var(--fs-sm)}
+.quality-grade-table th,.quality-grade-table td{
+  padding:var(--pad-row);border:1px solid var(--line-soft);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.quality-grade-table th{background:var(--surface-2);color:var(--ink-2);font-weight:700;text-align:left;width:11%}
+.quality-grade-table td{background:#fff;color:var(--ink);width:22.3%}
 /* 項目ごとに枠を付けない（§9.129「ブロックの中で枠を重ねない」）。
    パネルの枠の中に12個の枠が並ぶと、それだけで画面の枠が18個になる
    （§9.131で常時表示にしたら実測でそうなった）。**地色だけでまとまりは
    足りる。** */
-.quality-grade-item{min-width:0;border:0;border-radius:var(--radius-xs);background:var(--surface-2);overflow:hidden}
-.quality-grade-item b{display:block;padding:var(--pad-row);background:var(--header-bar-bg);color:var(--header-bar-fg);white-space:nowrap}
-.quality-grade-item span{display:block;min-height:var(--ctl-h);padding:var(--pad-row);background:transparent;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .data-management-grid{display:grid;grid-template-columns:130px minmax(0,1fr);border:1px solid #c4d0d4}
 .data-management-grid>*{min-height:var(--ctl-h);padding:var(--pad-row);border-bottom:1px solid #d6e0e3}
 .data-management-grid b{background:var(--header-bar-bg);color:var(--header-bar-fg);white-space:nowrap}

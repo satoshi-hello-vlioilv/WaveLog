@@ -218,9 +218,10 @@
  const setHidden=(el,v)=>{if(el.hidden!==v)el.hidden=v};
  function openInfoWall(){
   document.querySelectorAll('.measure-shell [data-infopanel]').forEach(p=>setHidden(p,false));
-  document.querySelectorAll('.measure-shell [data-leftpanel]').forEach(p=>{
-   setHidden(p,p.dataset.leftpanel==='debug');
-  });
+  /* **`[data-leftpanel]`は触らない**（§9.133）。品質規格と測定データ分析は
+     タブの裏へ戻したので、ここで全部開くと**2枚が同じ場所に重なる**
+     （③で実測: 品質規格 y=398-518 と 分析 y=398-638 が同時に出ていた）。
+     どちらを出すかはタブ（`bindTabs`）が決める。 */
  }
 
  function paint(){
