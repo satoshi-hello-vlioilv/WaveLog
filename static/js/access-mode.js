@@ -302,6 +302,12 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
   else if(!recordListState.statuses)recordListState.statuses={editing:true,done:false};
   recordListState.query='';recordListState.sort='updated-desc';
   recordListState.sourceNote=`共有された閲覧用データ（${modeName()}は読み取り専用）`;
+  /* 表示列の設定（§9.162）はこちらの経路でも効かせる。読めなくても
+     既定の15列で一覧は出す。 */
+  await Promise.all([
+   WL.columnLayout.load(WL.recordColumns.target).catch(()=>{}),
+   WL.displayRules.load().catch(()=>{}),
+  ]);
   updateRecordListTitle();syncStatusFilterButtons();$('#recordModal').hidden=false;
   const list=$('#recordList');if(list)list.innerHTML='<div class="record-empty">閲覧データを読み込んでいます…</div>';
   const counts=await localRecordCounts();
@@ -319,6 +325,7 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
   if(search){search.value='';search.oninput=()=>{recordListState.query=search.value;renderRecordListRows()}}
   if(sort){sort.value='updated-desc';sort.onchange=()=>{recordListState.sort=sort.value;renderRecordListRows()}}
   if(clear)clear.onclick=()=>{recordListState.query='';if(search)search.value='';renderRecordListRows()};
+  WL.recordColumns.bind();
   renderRecordListRows();
   requestAnimationFrame(()=>search?.focus());
  }

@@ -102,6 +102,13 @@
   return (s&&s!==k)?String(s):'';
  };
  const labelOf=k=>isVirtual(k)?panelSrc.virtual()[k].label:(draft.names[k]||srcLabel(k)||k);
+ /* 値の出どころ・作り方の一言(§9.162)。**同じ「コース」でも、どの列から
+    落として出しているかで当たる見込みが違う**ので、口が知っているなら
+    書く。答えない口では今までどおり出ない。 */
+ const srcNote=k=>{
+  if(typeof panelSrc.noteOf!=='function')return '';
+  return String(panelSrc.noteOf(k)||'');
+ };
 
  /* ---------- 出どころの分類(§9.105) ----------
     利用者が列を前にして最初に思うのは「この項目はどこから来たのか」
@@ -130,7 +137,18 @@
     見ると「作ったのに編集欄が出ない」ことになる(実際にそうなった)。 */
  const isFormulaCol=k=>!!draft&&!!draft.formulas
    &&Object.prototype.hasOwnProperty.call(draft.formulas,k);
- const originOf=k=>(isVirtual(k)||isFormulaCol(k))?'calc':(joined.has(k)?'join':'source');
+ /* **分類を口が答えてもよい**(§9.162)。仕掛一覧は「元データか結合か」で
+    足りるが、測定データの一覧のように**この画面が作っている列**(状態・
+    実作業時間)が混ざる対象では、値を持つ列でも「計算・操作」が正しい。
+    答えない口は今までどおり(番号・ボタン・式だけが計算・操作)。 */
+ function originOf(k){
+  if(isVirtual(k)||isFormulaCol(k))return 'calc';
+  if(typeof panelSrc.originOf==='function'){
+   const o=panelSrc.originOf(k);
+   if(o&&ORIGIN[o])return o;
+  }
+  return joined.has(k)?'join':'source';
+ }
  /* 結合元のデータソース名。分類の説明に添える(「どこから」まで言う)。 */
  function joinFrom(){return panelSrc.joinFrom()}
  /* 読み替えルールの編集を開く。閉じたら、作った(or 消した)結果を
@@ -705,6 +723,7 @@
      ${virt?`<div><dt>役割</dt><dd>${esc(panelSrc.virtual()[picked].note)}</dd></div>`
            :`<div><dt>値のある行</dt><dd>${st.filled} / ${st.total}<i class="lc-fact-sub">${st.blank?`空欄 ${st.blank}`:'空欄なし'}</i></dd></div>
              <div><dt>値の種類</dt><dd>${st.distinct}<i class="lc-fact-sub">${esc(st.kindGuess)}</i></dd></div>`}
+     ${srcNote(picked)?`<div class="lc-fact-note"><dt>この列について</dt><dd title="${esc(srcNote(picked))}">${esc(srcNote(picked))}</dd></div>`:''}
     </dl>
    </div>
    <div class="lc-step">
@@ -768,8 +787,13 @@
    if(mode==='auto'){delete draft.widths[picked];draft.locks.delete(picked)}
    else{
     if(draft.widths[picked]==null){
-     const th=document.querySelector(`#grid thead th[data-col="${CSS.escape(picked)}"]`);
-     const w=th?Math.round(th.getBoundingClientRect().width):0;
+     /* **いま出ている幅**を書き留める。以前は`#grid`の見出しだけを見ており、
+        仕掛一覧以外の対象では必ず120pxになった(§9.162)。どこを測るかは
+        口が答える(答えなければ仕掛一覧の見出し)。 */
+     const w=typeof panelSrc.currentWidthOf==='function'
+       ?Math.round(Number(panelSrc.currentWidthOf(picked))||0)
+       :(()=>{const th=document.querySelector(`#grid thead th[data-col="${CSS.escape(picked)}"]`);
+              return th?Math.round(th.getBoundingClientRect().width):0})();
      draft.widths[picked]=w>=40?Math.min(900,w):120;
     }
     if(mode==='locked')draft.locks.add(picked);else draft.locks.delete(picked);

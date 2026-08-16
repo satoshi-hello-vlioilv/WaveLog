@@ -18,6 +18,8 @@ from .. import paths
 from ..paths import APP_ROOT as BASE_DIR
 from ..config import (RNE_EXTRACT_INTERVAL_SEC_DEFAULT, SCHEDULE_LOCK_TTL_SEC_DEFAULT,
                       SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT)
+from .. import source_capability
+from ..logging_setup import app_logger
 from ..db_access import (
  DBS, connect, request_user_id,
  PATH_CONFIG_KEYS, path_config_rows, set_path_config, path_config_value,
@@ -68,24 +70,36 @@ def path_config_master_get():
   # active: このプロセスで実際に使われている値(保存値は次回起動から反映)。
   # 突き合わせて画面上で「保存済みだが未反映」を示せるようにする。
   from .. import rne_scheduler
-  from ..db_access import DATA_SOURCES
+  from ..db_access import data_source_rows, source_override_key, _source_path
   # データソースは利用者が増減できる(データソースマスタ)。**キーが必ず在る
   # 前提で書かない** —— 消された途端にパス設定画面ごと開けなくなる。
-  from ..db_access import WORK_DB_KEY,QUALITY_DB_KEY
-  now=DBS.get(WORK_DB_KEY or '') or {};dfn=DBS.get(QUALITY_DB_KEY or '') or {}
   # 画面はこの一覧から欄を組み立てる(§9.81)。以前は「仕掛(SIKALOTNOW)」
   # 「品質データ(SIKALOTDEF)」と決め打ちで書かれており、データソースを
   # 増やしても増えず、名前を変えても古いままだった。
-  sources=[{'key':x['key'],'label':x['label'],
-            'valueKey':f"{x['key'].lower()}_path",
-            'saved':saved.get(f"{x['key'].lower()}_path",''),
-            'active':str((DBS.get(x['key']) or {}).get('path','')),
-            'output':str(rne_scheduler._output_path(x)),
-            'share':x.get('share',''),'rne':x.get('rne','')} for x in DATA_SOURCES]
+  # **今マスタに登録されている行から作る**(§9.163)。以前はプロセス起動時の
+  # スナップショット(DATA_SOURCES)を見ていたため、データソースを足した直後は
+  # その読み込み先の欄が画面に無く、**再起動するまで設定すらできなかった**。
+  # 登録された行はすぐ欄を出し、この端末でまだ読んでいないものは
+  # loaded=False として「再起動後に反映」と書く。
+  try:
+   with connect(path,True) as c:ds_rows=data_source_rows(c)
+  except Exception:
+   ds_rows=[]
+  sources=[]
+  for x in ds_rows:
+   vk=source_override_key(x['key'])
+   live=DBS.get(x['key']) or {}
+   sources.append({'key':x['key'],'label':x['label'],'valueKey':vk,
+                   'saved':saved.get(vk,''),
+                   'loaded':bool(live),
+                   'active':str(live.get('path','')),
+                   # 再起動したらどこを読むか。**保存済みの設定で計算する**ので、
+                   # 再起動する前に打ち間違いに気づける。
+                   'planned':str(_source_path(x,saved)),
+                   'output':str(rne_scheduler._output_path(x)),
+                   'share':x.get('share',''),'rne':x.get('rne','')})
   active={
    'sikalot_source':SIKALOT_SOURCE,
-   'sikalotnow_path':str(now.get('path','')),'sikalotnow_engine':now.get('engine',''),
-   'sikalotdef_path':str(dfn.get('path','')),'sikalotdef_engine':dfn.get('engine',''),
    'rne_assets_dir':str(rne_scheduler.assets_dir()),
    'rne_conf_path':str(rne_scheduler.conf_path()),
    'records_backup_export_path':str(RECORDS_BACKUP_EXPORT_PATH) if RECORDS_BACKUP_EXPORT_PATH else '',
@@ -102,7 +116,14 @@ def path_config_master_get():
    'work_dir':str(paths.work_dir()),
    'work_dir_reason':paths.work_dir_reason(),
   }
-  for src in sources:values.setdefault(src['valueKey'],src['saved'])
+  for src in sources:
+   values.setdefault(src['valueKey'],src['saved'])
+   # **「いま効いている値」も登録されたデータソースぶんだけ作る**(§9.163)。
+   # 以前は仕掛/品質の2件ぶんしか入れておらず、3件目以降は現在値が空欄の
+   # ままだった——画面は「保存値≠現在値」を再起動待ちの印にするので、
+   # 増やしたデータソースは**再起動しても永久に「再起動待ち」**と出た
+   # （これが「固定のソースの参照先しか登録できない」の実体）。
+   active[src['valueKey']]=src['active']
   return jsonify(ok=True,values=values,defaults=_PATH_CONFIG_DEFAULTS,active=active,
                  sources=sources,master_path=str(path))
  except Exception as e:return jsonify(error=f'パス設定読込失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
@@ -128,10 +149,12 @@ def path_config_master_update():
   if rne_enabled and rne_enabled not in ('auto','on','off'):
    errors.append('RNE抽出の定期実行は「auto」「on」「off」のいずれかを指定してください。')
   if errors:return jsonify(error=' / '.join(errors)),400
+  # **データソースの読み込み先はここに固定で書かない**(§9.163)。以前は
+  # 'sikalotnow_path'/'sikalotdef_path'を必ず書いており、キーを変えた環境では
+  # 画面が送っていない古いキーへ毎回空文字を書き込んでいた（＝消していた）。
+  # 個別上書きは下の「登録済みデータソースぶん」だけが受け付ける。
   updates={
    'sikalot_source':sikalot_source,
-   'sikalotnow_path':str(x.get('sikalotnow_path') or '').strip(),
-   'sikalotdef_path':str(x.get('sikalotdef_path') or '').strip(),
    'records_backup_export_path':str(x.get('records_backup_export_path') or '').strip(),
    'schedule_share_path':str(x.get('schedule_share_path') or '').strip(),
    'rne_extract_enabled':rne_enabled,
@@ -142,11 +165,18 @@ def path_config_master_update():
   }
   # データソースごとの個別上書き(<キー小文字>_path)。マスタに登録された
   # ぶんだけ受け付ける(任意のキーを書けるようにはしない)。
-  from ..db_access import DATA_SOURCES
-  for src in DATA_SOURCES:
-   k=f"{src['key'].lower()}_path"
-   if k in x:updates[k]=str(x.get(k) or '').strip()
+  # **今マスタにある行を見る**(§9.163)。起動時のスナップショットで見ると、
+  # 足したばかりのデータソースの読み込み先が黙って捨てられる（画面には
+  # 欄が出ているのに保存されない、という一番分かりにくい壊れ方になる）。
+  from ..db_access import data_source_rows, source_override_key
   path=DBS['MASTER']['path']
+  try:
+   with connect(path,True) as c:ds_rows=data_source_rows(c)
+  except Exception:
+   ds_rows=[]
+  for src in ds_rows:
+   k=source_override_key(src['key'])
+   if k in x:updates[k]=str(x.get(k) or '').strip()
   with connect(path,False) as c:
    for key,value in updates.items():
     set_path_config(c,key,value,uid)
@@ -243,7 +273,17 @@ def data_source_master_list():
   for r in rows:
    rne=rne_scheduler.rne_path(r['rne']) if r.get('rne') else None
    out=rne_scheduler._output_path(r)
+   # **この設定で何ができるか／できない理由**(§9.163)。役割を選んだだけでは
+   # 決まらない（行にロット番号・設備名の列が無いと画面は黙って機能を出さない）
+   # ため、実際にファイルを開いて確かめた結果を添える。判定は
+   # backend/source_capability.py の1箇所が持つ。
+   try:cap=source_capability.describe(r)
+   except Exception as e:
+    app_logger().warning('データソース「%s」のできることを確かめられませんでした: %s',r['key'],e)
+    cap={'key':r['key'],'table':'','columnCount':0,
+         'error':f'確かめられませんでした: {e}','features':{}}
    items.append({**r,
+                 'capability':cap,
                  'activePath':active.get(r['key'],''),
                  'rnePath':str(rne) if rne else '',
                  'rneExists':bool(rne and rne.exists()),

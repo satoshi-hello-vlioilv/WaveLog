@@ -404,7 +404,8 @@ function bindV32Navigation(){
    開くと下の画面が透けて重なる(実績カレンダー表示中に開いて実際に起きた)。
    閉じ方をここで登録し、他画面へ移るときはenterView()が呼んでくれる。 */
 WL.registerView({key:'records',nav:'homeDrafts',bodyClass:'rec-mode',toolbar:'#recordSearchBar',
- exit:()=>{document.getElementById('recordModal')?.setAttribute('hidden','')}});
+ exit:()=>{closeRecordColumnPanel();
+           document.getElementById('recordModal')?.setAttribute('hidden','')}});
 /* 一覧を開く(読み込み中表示→エラー時は再試行ボタン)。 */
 async function openRecordsSafe(status='編集中'){
  WL.enterView('records');
@@ -555,12 +556,21 @@ async function openRecords(status){
  if(status==='編集中')recordListState.statuses={editing:true,done:false};
  else if(status==='履歴')recordListState.statuses={editing:false,done:true};
  else if(!recordListState.statuses)recordListState.statuses={editing:true,done:false};
+ /* 列の設定（§9.162）と読み替えルールを先に読む。**描いてから読むと、
+    一度既定の15列で出てから組み替わる**（ちらつくうえ、設定が効いて
+    いないように見える）。読めなくても既定の形で一覧は出す。 */
+ await Promise.all([
+  WL.columnLayout.load(RECORD_LIST_TARGET).catch(()=>{}),
+  WL.displayRules.load().catch(()=>{}),
+ ]);
  const allRecords=await mergedRecords();
  recordListState.items=allRecords;recordListState.query='';recordListState.sort='updated-desc';
  // 未同期件数の表示にも今読んだ配列を渡す(渡さないと全件読みがもう1回走る)
  updateRecordListTitle();syncStatusFilterButtons();$('#recordModal').hidden=false;refreshSyncStatusUI(allRecords);
  setHeaderContext('データ一覧','この端末と共有DBの測定データ');
- const search=$('#recordSearch'),sort=$('#recordSort'),clear=$('#clearRecordSearch');if(search){search.value='';search.oninput=()=>{recordListState.query=search.value;renderRecordListRows()}}if(sort){sort.value='updated-desc';sort.onchange=()=>{recordListState.sort=sort.value;renderRecordListRows()}}if(clear)clear.onclick=()=>{recordListState.query='';if(search)search.value='';renderRecordListRows()};renderRecordListRows();requestAnimationFrame(()=>search?.focus())
+ const search=$('#recordSearch'),sort=$('#recordSort'),clear=$('#clearRecordSearch');if(search){search.value='';search.oninput=()=>{recordListState.query=search.value;renderRecordListRows()}}if(sort){sort.value='updated-desc';sort.onchange=()=>{recordListState.sort=sort.value;renderRecordListRows()}}if(clear)clear.onclick=()=>{recordListState.query='';if(search)search.value='';renderRecordListRows()};
+ bindRecordColumnsBtn();
+ renderRecordListRows();requestAnimationFrame(()=>search?.focus())
 }
 document.querySelectorAll('.status-filter-btn').forEach(b=>b.onclick=()=>{
  const key=b.dataset.statusFilter;recordListState.statuses[key]=!recordListState.statuses[key];
@@ -628,42 +638,323 @@ function confirmDeleteRecord(x){
 /* 分割(条割変更)が実際に行われたかどうか: splitGroupsが2ロット以上に
    分かれている場合のみ「分割あり」とする(単一ロットのデフォルト値は分割なし扱い)。 */
 function recordSplitLabel(x){return Array.isArray(x.settings?.splitGroups)&&x.settings.splitGroups.length>1?'あり':'-'}
-function renderRecordListRows(){const list=$('#recordList'),items=sortedFilteredRecords(),currentLot=normalizedLot(S.current?pick(S.current,'lotNo'):'');if(!list)return;list.innerHTML=(recordListState.notice||'')+'<div class="record-list-head"><span>状態</span><span>ロット番号</span><span>検査番号</span><span>製造材質</span><span>製造板厚</span><span>用途名</span><span>コース</span><span>オペレータ</span><span>検査員</span><span>作業人数</span><span>分割</span><span>作業開始時刻</span><span>更新日時</span><span>実作業時間</span><span>操作</span></div>';if(!items.length){
- const q=recordListState.query;
- // 絞り込みの結果0件なのか、そもそも見せてもらえていないのか(§9.107)は
- // 別のこと。後者は開いた側が emptyHtml で理由を渡してくる。
- list.insertAdjacentHTML('beforeend',q?`<div class="record-empty"><b>「${esc(q)}」に一致するデータはありません。</b><button id="recordEmptyClearSearch" type="button">検索条件を解除</button></div>`:(recordListState.emptyHtml||'<div class="record-empty">表示できるデータがありません。</div>'));
- const clearBtn=$('#recordEmptyClearSearch');
- if(clearBtn)clearBtn.onclick=()=>{recordListState.query='';const search=$('#recordSearch');if(search)search.value='';renderRecordListRows()};
+
+/* ============================================================
+   データ一覧の列（§9.162）
+   ------------------------------------------------------------
+   **列の設定は仕掛一覧・タイムラインの内容欄と同じパネルで触る**
+   （§9.120の差し替え口）。設定画面を新しく作らない——覚えることが2倍に
+   なり、片方にしか無い機能ができる。並び・出す/出さない・幅・表示名・
+   書式・読み替え・計算式は、すべて**列レイアウトマスタ**（対象
+   `records:list`）に乗る。
+
+   列の鍵は**画面に出ている日本語の項目名**にする（仕掛一覧と同じ作法）。
+   英字のキーにすると、計算式が`[lotNo]`のようになって書いた本人以外に
+   読めない。**同じ名前を2つ作らないこと**（§9.113。列は名前で引く）。
+
+   既定で出す15列と並びは**今までと同じ**。残り28列は候補として並ぶだけ
+   なので、設定を保存していない端末の見え方は1つも変わらない。
+   ============================================================ */
+const RECORD_LIST_TARGET='records:list';
+const RECORD_COL_ACTIONS='__actions__';
+/* 日付時刻は**その端末の時計の値**を`yyyy-MM-dd HH:mm:ss`にしてから渡す。
+   保存値はISO（末尾Z＝協定世界時）なので、生のまま書式へ渡すと時差のぶん
+   ずれた時刻が出る。ここで地方時へ寄せておけば、書式・読み替えのどちらも
+   画面に出ている時刻そのものを見られる。 */
+function recordLocalStamp(v){
+ if(!v)return '';
+ const d=new Date(v);
+ if(Number.isNaN(d.getTime()))return String(v);
+ const p=n=>String(n).padStart(2,'0');
+ return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} `
+      +`${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
-items.forEach(x=>{ensureMeasureShape(x);const same=currentLot&&normalizedLot(x.basic?.lotNo)===currentLot,row=document.createElement('article'),resume=resumeRecordFromList(x),course=x.basic?.residualCourse||x.basic?.course||x.basic?.designCourse||'-',crew=x.settings?.crewSize&&x.settings.crewSize!=='-'?x.settings.crewSize+'名':'-',isDone=x.status==='完了',isNg=x.status==='測定値NG',badgeClass=statusClass(x.status),syncSt=x.syncState?.status||'pending',syncBadge=syncSt==='synced'?'':`<span class="record-sync-badge record-sync-${syncSt}" title="${syncSt==='failed'?'バックアップDBへの送信に失敗しました: '+esc(x.syncState?.lastError||''):'バックアップDBへまだ送信していません'}">未同期</span>`,
- /* 他のPCで保存されたもの(§9.91)。開くとこの端末へ取り込む。 */
- remoteBadge=x.remoteOnly?`<span class="record-remote-badge" title="別のPC(${esc(x.registeredEquipment||'設備不明')})で保存された内容です。開くとこの端末へ取り込みます。">別のPC</span>`
-   :x.remoteNewer?`<span class="record-remote-badge is-newer" title="別のPCでこの端末より新しく保存されています(${esc(x.remoteUpdatedAt||'')})。開くとそちらの内容を取り込みます。">新しい版あり</span>`:'';row.className='record-list-row'+(same?' is-same-lot':'');row.tabIndex=0;/* 列幅を決め打ちする以上、**入り切らない値には生の値のtitleを必ず付ける**
-    （§9.94の一覧と同じ約束）。付けないと、切れた値はどこからも読めない。 */
- const cell=(cls,text)=>{const v=String(text??'').trim()||'-';
-  return `<div class="record-list-cell${cls?' '+cls:''}" title="${esc(v)}">${esc(v)}</div>`};
- const timeCell=v=>`<div class="record-list-cell" title="${esc(v)}"><time>${esc(v)}</time></div>`;
- row.innerHTML=`<div class="record-list-cell"><span class="rp-status-badge${badgeClass?' '+badgeClass:''}" title="${isNg?'NG回数 '+(x.settings?.ngCount||0)+'回':esc(statusLabel(x.status))}">${statusShortLabel(x.status)}</span>${syncBadge}${remoteBadge}</div><div class="record-list-cell primary"><button type="button" class="lot-dsp-link grid-lot-link" title="${esc(x.basic?.lotNo||x.id)} ／ クリックでLotDspをこのロット番号で開きます">${esc(x.basic?.lotNo||x.id)}</button></div>`
-  +cell('',x.basic?.inspectionNo)+cell('',x.basic?.mfgMaterial)
-  +cell('secondary',fmtDim(x.basic?.mfgThickness,3))+cell('secondary',x.basic?.purposeName)
-  +cell('secondary',course)+cell('secondary',x.settings?.operator)
-  +cell('secondary',x.settings?.inspector)+cell('secondary',crew)
-  +cell('secondary',recordSplitLabel(x))
-  +timeCell(x.workTime?.startAt?formatWorkTime(x.workTime.startAt):'-')
-  +timeCell(x.updatedAt?new Date(x.updatedAt).toLocaleString('ja-JP'):'-')
-  +cell('record-duration',formatDuration(durationMs(x)))
-  +`<div class="record-list-actions"><button class="resume" type="button">${isDone?'内容を開く':'続きから再開'}</button><button class="report" type="button" title="このロットの帳票プレビューを開きます">帳票</button><button class="danger" type="button">削除</button></div>`;row.querySelector('.resume').onclick=e=>{e.stopPropagation();resume()};row.querySelector('.report').onclick=e=>{e.stopPropagation();if(typeof openReportForRecord==='function')openReportForRecord(x.id)};const recLotBtn=row.querySelector('.grid-lot-link');if(recLotBtn)recLotBtn.onclick=e=>{e.preventDefault();e.stopPropagation();openLotDsp(x.basic?.lotNo,x.basic?.castingNo,localStorage.getItem('LotDspLastTabV1')||'1')};
-// ダブルクリックは編集再開ではなく帳票プレビューへの遷移とする(編集は「続きから再開/内容を開く」ボタンから明示的に行う)。
-row.ondblclick=e=>{if(!e.target.closest('.danger')&&!e.target.closest('.resume')&&!e.target.closest('.report')&&!e.target.closest('.grid-lot-link')&&typeof openReportForRecord==='function')openReportForRecord(x.id)};
-row.setAttribute('role','button');row.setAttribute('aria-label',(isDone?'内容を開く':'続きから再開')+' '+(x.basic?.lotNo||x.id));
-row.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){if(e.key===' ')e.preventDefault();resume()}};
-row.querySelector('.danger').onclick=async e=>{e.stopPropagation();
- /* 他のPCにしか無いものは、この画面からは消さない(§9.91)。手元に中身が
-    無いまま消すと、まだ測っている端末の作業を巻き添えにする。 */
- if(x.remoteOnly){showToast('この端末には無いデータです','別のPCで保存された内容です。消す場合はそのPCから操作してください。',6000);return}
- const proceed=recordHasAnyInput(x)?await confirmDeleteRecord(x):true;if(proceed){await reliableDelete(x.id);await refreshDraftCount();await refreshRecordList()}};
-list.append(row)});const result=$('#recordSearchResult');if(result)result.textContent=`${items.length} / ${recordListState.items.length}件を表示`}
+const RECORD_DT_FORMAT={kind:'datetime',pattern:'yyyy/MM/dd HH:mm:ss'};
+/* 1行＝1列。
+     k     …列の名前（＝鍵）           def  …既定で出すか
+     track …自動のときの幅（CSSの1マス） get  …生の値（書式・読み替えはこれに当たる）
+     fmt   …既定の書式（利用者が指定したらそちらが勝つ）
+     cell  …生の値だけでは足りない列の描き方   note …出どころ・作り方の一言 */
+const RECORD_COLUMNS=[
+ {k:'状態',k2:'status',def:1,track:'minmax(168px,.5fr)',cell:'status',
+  get:x=>statusLabel(x.status),short:x=>statusShortLabel(x.status),
+  note:'未同期・別のPCの印もこの列に出ます（この列を消すと印も出ません）。'},
+ {k:'ロット番号',def:1,track:'minmax(104px,1fr)',cell:'lot',cls:'primary',
+  get:x=>x.basic?.lotNo||x.id,note:'押すとLotDspをこのロット番号で開きます。'},
+ {k:'検査番号',def:1,track:'minmax(78px,.7fr)',get:x=>x.basic?.inspectionNo},
+ {k:'製造材質',def:1,track:'minmax(72px,.7fr)',get:x=>x.basic?.mfgMaterial},
+ {k:'製造板厚',def:1,track:'minmax(68px,.6fr)',cls:'secondary',
+  get:x=>x.basic?.mfgThickness,fmt:{kind:'number',decimals:3}},
+ {k:'用途名',def:1,track:'minmax(84px,1fr)',cls:'secondary',get:x=>x.basic?.purposeName},
+ {k:'コース',def:1,track:'minmax(84px,.9fr)',cls:'secondary',origin:'calc',
+  get:x=>x.basic?.residualCourse||x.basic?.course||x.basic?.designCourse,
+  note:'残仕掛→実績→設計の順に、値のあるものを出します（3つとも別の列として選べます）。'},
+ {k:'オペレータ',def:1,track:'minmax(78px,.8fr)',cls:'secondary',get:x=>x.settings?.operator},
+ {k:'検査員',def:1,track:'minmax(70px,.7fr)',cls:'secondary',get:x=>x.settings?.inspector},
+ {k:'作業人数',def:1,track:'minmax(68px,.4fr)',cls:'secondary',
+  get:x=>{const v=x.settings?.crewSize;return v&&v!=='-'?v:''},fmt:{kind:'text',suffix:'名'}},
+ {k:'分割',def:1,track:'minmax(58px,.4fr)',cls:'secondary',origin:'calc',
+  get:x=>recordSplitLabel(x)==='あり'?'あり':'',note:'子ロットが2つ以上あるとき「あり」。'},
+ {k:'作業開始時刻',def:1,track:'minmax(160px,0)',tag:'time',
+  get:x=>recordLocalStamp(x.workTime?.startAt),fmt:RECORD_DT_FORMAT},
+ {k:'更新日時',def:1,track:'minmax(160px,0)',tag:'time',
+  get:x=>recordLocalStamp(x.updatedAt),fmt:RECORD_DT_FORMAT},
+ {k:'実作業時間',def:1,track:'minmax(84px,.5fr)',cls:'record-duration',origin:'calc',
+  get:x=>{const ms=durationMs(x);return ms==null?'':formatDuration(ms)},
+  note:'作業開始時刻と終了時刻の差。どちらかが未記録なら空欄です。'},
+ /* ---- ここから下は既定で出さない候補 ---- */
+ {k:'作業終了時刻',track:'minmax(160px,0)',tag:'time',
+  get:x=>recordLocalStamp(x.workTime?.endAt),fmt:RECORD_DT_FORMAT},
+ {k:'鋳造番号',get:x=>x.basic?.castingNo},
+ {k:'引当番号',get:x=>x.basic?.allocationNo},
+ {k:'オーダー番号',get:x=>x.basic?.orderNo},
+ {k:'オーダー材質',get:x=>x.basic?.orderMaterial},
+ {k:'オーダー調質',get:x=>x.basic?.orderTemper},
+ {k:'オーダー板厚',get:x=>x.basic?.orderThickness},
+ {k:'オーダー板幅',get:x=>x.basic?.orderWidth},
+ {k:'オーダー板丈',get:x=>x.basic?.orderLength},
+ {k:'製造調質',get:x=>x.basic?.mfgTemper},
+ {k:'製造板幅',get:x=>x.basic?.mfgWidth},
+ {k:'製造板丈',get:x=>x.basic?.mfgLength},
+ {k:'用途コード',get:x=>x.basic?.purposeCode},
+ {k:'取引先',track:'minmax(96px,1fr)',get:x=>x.basic?.customer},
+ {k:'納入先',track:'minmax(96px,1fr)',get:x=>x.basic?.delivery},
+ {k:'設計_設備ｺｰｽ',get:x=>x.basic?.designCourse},
+ {k:'実績_設備ｺｰｽ',get:x=>x.basic?.course},
+ {k:'残仕掛設備ｺｰｽ',get:x=>x.basic?.residualCourse},
+ {k:'BOX設計_設備名',get:x=>x.basic?.equipment},
+ {k:'BOX実績_板幅',get:x=>x.basic?.originalWidth},
+ {k:'BOX設計_横割数',get:x=>x.basic?.boxHorizontalCount},
+ {k:'BOX設計_縦割数',get:x=>x.basic?.boxVerticalCount},
+ {k:'使用設備',track:'minmax(96px,.8fr)',
+  get:x=>x.registeredEquipment||x.settings?.registeredEquipment||'',
+  note:'測定したPCに登録されている設備名です（仕掛データの設備ではありません）。'},
+ {k:'入力内容',track:'minmax(120px,.8fr)',get:x=>x.settings?.measureType},
+ {k:'条数（設定）',get:x=>x.settings?.horizontalCount,
+  note:'測定画面の①準備で決めた条数です。'},
+ {k:'NG回数',get:x=>{const n=Number(x.settings?.ngCount||0);return n>0?String(n):''},
+  fmt:{kind:'text',suffix:'回'}},
+ {k:'同期',origin:'calc',get:x=>(x.syncState?.status==='synced'?'送信済み':'未送信'),
+  note:'バックアップDB（db/records.sqlite3）へ送れているかです。'},
+ {k:'データID',track:'minmax(150px,0)',get:x=>x.id,
+  note:'この測定データの内部の識別子です。'},
+];
+const RECORD_COL_BY_KEY=new Map(RECORD_COLUMNS.map(c=>[c.k,c]));
+/* 値を持たない列。仕掛一覧の`#`・ボタン列と同じ扱い。 */
+const RECORD_VIRTUAL={
+ '#':{label:'#（行番号）',head:'#',note:'絞り込んだあとの並びで数えた番号です。'},
+ [RECORD_COL_ACTIONS]:{label:'操作',note:'開く・帳票・削除のボタン。消すと、この一覧からは削除できなくなります（開くのは行のダブルクリックでできます）。'},
+};
+const RECORD_VIRTUAL_TRACK={'#':'minmax(44px,0)',[RECORD_COL_ACTIONS]:'minmax(232px,0)'};
+/* 既定の並びと、既定で出す列。**今までの15列がそのまま既定**。 */
+const RECORD_DEFAULT_ORDER=['#',...RECORD_COLUMNS.map(c=>c.k),RECORD_COL_ACTIONS];
+const RECORD_DEFAULT_VISIBLE=new Set([...RECORD_COLUMNS.filter(c=>c.def).map(c=>c.k),
+                                      RECORD_COL_ACTIONS]);
+
+/* 候補の全列。**同じ名前を2つ並べない**（§9.113）ので、ここで1回だけ落とす。 */
+function recordAllColumnKeys(){
+ const l=WL.columnLayout.get(RECORD_LIST_TARGET),seen=new Set(),out=[];
+ const known=k=>RECORD_COL_BY_KEY.has(k)||!!RECORD_VIRTUAL[k]||!!(l.formulas||{})[k];
+ const push=k=>{if(k&&!seen.has(k)){seen.add(k);out.push(k)}};
+ (l.order||[]).forEach(k=>{if(known(k))push(k)});
+ RECORD_DEFAULT_ORDER.forEach(push);
+ Object.keys(l.formulas||{}).forEach(push);
+ return out;
+}
+/* いま出す列。**一度も保存していない端末は既定の15列**——列レイアウト
+   マスタのhiddenは空なので、そのまま使うと候補43列が全部並ぶ。 */
+function recordVisibleColumnKeys(){
+ const l=WL.columnLayout.get(RECORD_LIST_TARGET),keys=recordAllColumnKeys();
+ if(!(l.order||[]).length)return keys.filter(k=>RECORD_DEFAULT_VISIBLE.has(k));
+ const hide=new Set(l.hidden||[]);
+ return keys.filter(k=>!hide.has(k));
+}
+function recordColumnLabel(k){
+ const n=(WL.columnLayout.get(RECORD_LIST_TARGET).names||{})[k];
+ if(n)return n;
+ if(RECORD_VIRTUAL[k])return RECORD_VIRTUAL[k].head||RECORD_VIRTUAL[k].label;
+ return k;
+}
+function recordColumnTrack(k){
+ const w=WL.columnLayout.width(RECORD_LIST_TARGET,k);
+ if(w)return w+'px';
+ const c=RECORD_COL_BY_KEY.get(k);
+ return (c&&c.track)||RECORD_VIRTUAL_TRACK[k]||'minmax(96px,.7fr)';
+}
+/* 1件を「列名→生の値」の平らな形にする。計算式もこの形の上で動くので、
+   式は`[製造板厚] * 2`のように**画面に出ている項目名**で書ける。 */
+function recordRowView(x,index){
+ const v={};
+ RECORD_COLUMNS.forEach(c=>{v[c.k]=c.get(x)});
+ if(index!=null)v['#']=String(index+1);
+ return v;
+}
+/* 1セルの文字。**読み替え→書式→生の値**の順は一覧と同じ関数が持つ。
+   利用者が書式を指定していないときだけ、列が持つ既定の書式を使う。 */
+function recordCellText(k,raw,view){
+ const fmt=WL.columnLayout.format(RECORD_LIST_TARGET,k);
+ const rule=WL.columnLayout.rule(RECORD_LIST_TARGET,k);
+ const c=RECORD_COL_BY_KEY.get(k);
+ return WL.cellFormat.cell({raw,format:fmt||(c&&c.fmt)||null,rule,row:view,column:k});
+}
+
+function renderRecordListRows(){
+ const list=$('#recordList'),items=sortedFilteredRecords();
+ if(!list)return;
+ const currentLot=normalizedLot(S.current?pick(S.current,'lotNo'):'');
+ const keys=recordVisibleColumnKeys();
+ const layout=WL.columnLayout.get(RECORD_LIST_TARGET);
+ /* 幅は**JSがCSS変数へ入れる**。列の数と幅は設定で変わるので、
+    CSSに書いておける形ではない。 */
+ list.style.setProperty('--rec-cols',keys.map(recordColumnTrack).join(' '));
+ const head=`<div class="record-list-head">`
+  +keys.map(k=>{const t=recordColumnLabel(k);
+                return `<span data-col="${esc(k)}" title="${esc(t)}">${esc(t)}</span>`}).join('')
+  +`</div>`;
+ list.innerHTML=(recordListState.notice||'')+head;
+ if(!items.length){
+  const q=recordListState.query;
+  /* 0件の理由は「絞り込みに当たらない」「そもそも読めていない」で別物
+     （§9.107）。開いた側が渡した文言をそのまま出す。 */
+  list.insertAdjacentHTML('beforeend',q
+   ?`<div class="record-empty"><b>「${esc(q)}」に一致するデータはありません。</b><button id="recordEmptyClearSearch" type="button">検索条件を解除</button></div>`
+   :(recordListState.emptyHtml||'<div class="record-empty">表示できるデータがありません。</div>'));
+  const clearBtn=$('#recordEmptyClearSearch');
+  if(clearBtn)clearBtn.onclick=()=>{recordListState.query='';const search=$('#recordSearch');if(search)search.value='';renderRecordListRows()};
+  const empty=$('#recordSearchResult');if(empty)empty.textContent=`0 / ${recordListState.items.length}件を表示`;
+  return;
+ }
+ /* 計算式で作った列（§9.111 ⑦）。**式が通ったものだけ**当てる。 */
+ const calc=new Map();
+ keys.forEach(k=>{const src=(layout.formulas||{})[k];
+  if(src&&src.trim()&&WL.formula?.check(src).ok)calc.set(k,WL.formula.compile(src))});
+
+ items.forEach((x,index)=>{
+  ensureMeasureShape(x);
+  const same=currentLot&&normalizedLot(x.basic?.lotNo)===currentLot;
+  const row=document.createElement('article');
+  const resume=resumeRecordFromList(x),isDone=x.status==='完了',isNg=x.status==='測定値NG';
+  const view=recordRowView(x,index);
+  const syncSt=x.syncState?.status||'pending';
+  const syncBadge=syncSt==='synced'?'':`<span class="record-sync-badge record-sync-${syncSt}" title="${syncSt==='failed'?'バックアップDBへの送信に失敗しました: '+esc(x.syncState?.lastError||''):'バックアップDBへまだ送信していません'}">未同期</span>`;
+  /* 他のPCで保存されたもの(§9.91)。開くとこの端末へ取り込む。 */
+  const remoteBadge=x.remoteOnly?`<span class="record-remote-badge" title="別のPC(${esc(x.registeredEquipment||'設備不明')})で保存された内容です。開くとこの端末へ取り込みます。">別のPC</span>`
+    :x.remoteNewer?`<span class="record-remote-badge is-newer" title="別のPCでこの端末より新しく保存されています(${esc(x.remoteUpdatedAt||'')})。開くとそちらの内容を取り込みます。">新しい版あり</span>`:'';
+  row.className='record-list-row'+(same?' is-same-lot':'');
+  row.tabIndex=0;
+  /* 列幅を決め打ちする以上、**入り切らない値には生の値のtitleを必ず付ける**
+     （§9.94の一覧と同じ約束）。付けないと、切れた値はどこからも読めない。 */
+  row.innerHTML=keys.map(k=>{
+   if(k===RECORD_COL_ACTIONS)
+    return `<div class="record-list-actions"><button class="resume" type="button">${isDone?'内容を開く':'続きから再開'}</button><button class="report" type="button" title="このロットの帳票プレビューを開きます">帳票</button><button class="danger" type="button">削除</button></div>`;
+   const c=RECORD_COL_BY_KEY.get(k);
+   const fx=calc.get(k);
+   const raw=fx?fx.run(view):(k==='#'?view['#']:(c?c.get(x):''));
+   const out=recordCellText(k,raw,view);
+   const noSetting=!WL.columnLayout.format(RECORD_LIST_TARGET,k)&&!WL.columnLayout.rule(RECORD_LIST_TARGET,k);
+   const text=(noSetting&&c&&c.short)?c.short(x):out.text;
+   const shown=String(text??'').trim()||'-';
+   const cls=['record-list-cell',c&&c.cls,out.color?'cell-'+out.color:''].filter(Boolean).join(' ');
+   if(c&&c.cell==='status')
+    return `<div class="${cls}"><span class="rp-status-badge${statusClass(x.status)?' '+statusClass(x.status):''}" title="${isNg?'NG回数 '+(x.settings?.ngCount||0)+'回':esc(statusLabel(x.status))}">${esc(shown)}</span>${syncBadge}${remoteBadge}</div>`;
+   if(c&&c.cell==='lot')
+    return `<div class="${cls}"><button type="button" class="lot-dsp-link grid-lot-link" title="${esc(shown)} ／ クリックでLotDspをこのロット番号で開きます">${esc(shown)}</button></div>`;
+   const inner=(c&&c.tag==='time')?`<time>${esc(shown)}</time>`:esc(shown);
+   return `<div class="${cls}" data-col="${esc(k)}" title="${esc(shown)}">${inner}</div>`;
+  }).join('');
+  /* **操作の列は消せる**ので、ボタンが在るときだけ配線する（§9.105と同じ
+     約束で、消しても行のダブルクリック・Enterでは開ける）。 */
+  const resumeBtn=row.querySelector('.resume');
+  if(resumeBtn)resumeBtn.onclick=e=>{e.stopPropagation();resume()};
+  const reportBtn=row.querySelector('.report');
+  if(reportBtn)reportBtn.onclick=e=>{e.stopPropagation();if(typeof openReportForRecord==='function')openReportForRecord(x.id)};
+  const recLotBtn=row.querySelector('.grid-lot-link');
+  if(recLotBtn)recLotBtn.onclick=e=>{e.preventDefault();e.stopPropagation();openLotDsp(x.basic?.lotNo,x.basic?.castingNo,localStorage.getItem('LotDspLastTabV1')||'1')};
+  // ダブルクリックは編集再開ではなく帳票プレビューへの遷移とする(編集は「続きから再開/内容を開く」ボタンから明示的に行う)。
+  row.ondblclick=e=>{if(!e.target.closest('.danger')&&!e.target.closest('.resume')&&!e.target.closest('.report')&&!e.target.closest('.grid-lot-link')&&typeof openReportForRecord==='function')openReportForRecord(x.id)};
+  row.setAttribute('role','button');
+  row.setAttribute('aria-label',(isDone?'内容を開く':'続きから再開')+' '+(x.basic?.lotNo||x.id));
+  row.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){if(e.key===' ')e.preventDefault();resume()}};
+  const delBtn=row.querySelector('.danger');
+  if(delBtn)delBtn.onclick=async e=>{e.stopPropagation();
+   /* 他のPCにしか無いものは、この画面からは消さない(§9.91)。手元に中身が
+      無いまま消すと、まだ測っている端末の作業を巻き添えにする。 */
+   if(x.remoteOnly){showToast('この端末には無いデータです','別のPCで保存された内容です。消す場合はそのPCから操作してください。',6000);return}
+   const proceed=recordHasAnyInput(x)?await confirmDeleteRecord(x):true;
+   if(proceed){await reliableDelete(x.id);await refreshDraftCount();await refreshRecordList()}};
+  list.append(row);
+ });
+ const result=$('#recordSearchResult');
+ if(result)result.textContent=`${items.length} / ${recordListState.items.length}件を表示`;
+}
+
+/* ---------- 列の設定を開く（§9.162。仕掛一覧と同じパネル） ---------- */
+function recordColumnPanelSource(){
+ return {
+  key:'records',
+  eyebrow:'データ一覧',
+  title:()=>'表示列の設定（データ一覧）',
+  lead:'左で<b>出す列と並び</b>を決め、右で<b>選んだ1列の見え方</b>を整えます。'
+      +'触った結果はすぐ一覧に出ます（<b>保存するまでは元に戻せます</b>）。',
+  target:()=>RECORD_LIST_TARGET,
+  savedToast:'データ一覧の表示列を保存しました',
+  savedNote:'次に開いたときも同じ形で出ます',
+  keys:()=>recordAllColumnKeys(),
+  /* 番号・ボタンの列を本来の位置へ戻す仕掛け（§9.110）は要らない
+     ——この一覧の並びは最初から番号・ボタンを含めて1本で持っている。 */
+  healed:()=>null,
+  /* **一度も保存していないうちは既定の15列だけをチェック済みにする**。
+     列レイアウトマスタのhiddenは空なので、そのまま使うと候補43列が
+     全部チェック済みになり、保存した瞬間に見覚えの無い列が並ぶ。 */
+  initialHidden:(keys,l)=>(l.order||[]).length?(l.hidden||[])
+                          :keys.filter(k=>!RECORD_DEFAULT_VISIBLE.has(k)),
+  rows:()=>sortedFilteredRecords().slice(0,40).map((x,i)=>recordRowView(x,i)),
+  valueOf:(row,k)=>row?row[k]:undefined,
+  virtual:()=>RECORD_VIRTUAL,
+  joined:()=>new Set(),
+  joinFrom:()=>'',
+  /* 出どころは2つで足りる。この一覧の行は測定データそのものなので、
+     持っている値は全部「元データ」で、状態から作る分割・実作業時間
+     だけが「計算・操作」。**結合は無い**ので分類ごと出さない（§9.105）。 */
+  origins:()=>['source','calc'],
+  originOf:k=>(RECORD_COL_BY_KEY.get(k)||{}).origin||'source',
+  noteOf:k=>(RECORD_COL_BY_KEY.get(k)||{}).note||'',
+  currentWidthOf:k=>{
+   const el=document.querySelector(`#recordList .record-list-head [data-col="${CSS.escape(k)}"]`);
+   return el?el.getBoundingClientRect().width:0;
+  },
+  features:{formula:true,preset:true,width:true,format:true,rule:true},
+  afterApply:()=>{if(!$('#recordModal')?.hidden)renderRecordListRows()},
+  save:null,
+ };
+}
+/* **閲覧モードでは出さない**（§9.120「使えない機能はボタンごと消す」）。
+   列レイアウトマスタの保存は edit / schedule にしか開いていないので、
+   閲覧モードで開くと「保存」だけが403で弾かれる——押せるのに何も
+   起きないボタンは、無い機能より質が悪い。 */
+function bindRecordColumnsBtn(){
+ const btn=$('#recordColumnsBtn');if(!btn)return;
+ const mode=window.accessMode?.mode||'edit';
+ btn.hidden=(mode==='view');
+ btn.onclick=()=>openRecordColumnPanel();
+}
+function openRecordColumnPanel(){
+ if(typeof WL.listColumns?.open!=='function'){
+  console.error('データ一覧の表示列: WL.listColumns が見つかりません');return;
+ }
+ WL.listColumns.open(recordColumnPanelSource());
+}
+/* この一覧を閉じるときはパネルも閉じる。**開いていなければ触らない**
+   ——他の画面で同じパネルを開いている最中に閉じてしまわないため。 */
+function closeRecordColumnPanel(){
+ const p=document.getElementById('listColumnPanel');
+ if(p&&!p.hidden&&typeof WL.listColumns?.close==='function')WL.listColumns.close();
+}
+window.WL=window.WL||{};
+WL.recordColumns={open:openRecordColumnPanel,close:closeRecordColumnPanel,bind:bindRecordColumnsBtn,
+                  target:RECORD_LIST_TARGET,keys:recordAllColumnKeys,
+                  visible:recordVisibleColumnKeys};
+
 /* ---- 使用設備の登録・設備マスタ ---- */
 let pendingMeasurementRow=null;
 function updateRegisteredEquipmentBadge(){const badge=$('#registeredEquipmentBadge'),equipment=currentConfiguredEquipment();if(!badge)return;const label=badge.querySelector('.equip-badge-text')||badge;label.textContent=equipment?`使用設備: ${equipment}`:'使用設備: 未登録';badge.classList.toggle('unregistered',!equipment);badge.title=equipment?'クリックして使用設備を変更できます':'測定開始前に使用設備の登録が必要です';badge.onclick=openAppSettings}

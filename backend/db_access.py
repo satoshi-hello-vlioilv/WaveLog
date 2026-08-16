@@ -274,6 +274,12 @@ SCHEDULE_CACHE_PATH=WORK_DIR/'schedule_cache.sqlite3'
 PATH_CONFIG_TABLE='パス設定マスタ'
 # プロセス起動時に1回だけ解決し、以後は再起動まで固定する項目(DBの接続先
 # そのものを決めるため、実行中に切り替えると接続先が食い違う恐れがある)。
+# **データソースごとの読み込み先(<キー小文字>_path)はここに並べない**(§9.163)。
+# データソースは利用者が増減できるので、固定で書くと増やしたぶんが漏れる。
+# 名前は source_override_key() が作り、値は path_config_rows() が
+# キーで絞らずに読む（＝登録されたぶんだけ自然に効く）。
+# 下の2件は既定のデータソースぶんで、config/local.json からの一度きりの
+# 移行(_migrate_legacy_path_config)のために名前を残してある。
 PATH_CONFIG_STATIC_KEYS=('sikalot_source','sikalotnow_path','sikalotdef_path','records_backup_export_path','schedule_share_path')
 # 呼び出しのたびに読み直せる項目(間隔・タイムアウト値のみで、接続先には
 # 影響しないため、変更を再起動無しで反映できる)。
@@ -556,7 +562,13 @@ SIKALOTDEF_LOCAL_PATH=DB_DIR/"sikalotdef.sqlite3"
 # 複製したファイルを指す、等)はsikalot_sourceの切替より常に優先する
 # (従来からの開発/検証用の上書き挙動を変えないため)。上書き先の拡張子が
 # .sqlite3等であれば自動的にSQLiteとして接続する(_engine_for)。
-def _source_path(entry):
+def source_override_key(key):
+ """そのデータソースの読み込み先を個別に上書きする、パス設定マスタのキー
+ （§9.163）。**データソースを増やしても増える**——固定の2件を書き並べない
+ ため、名前はキーから機械的に作る。"""
+ return f"{str(key or '').lower()}_path"
+
+def _source_path(entry,cfg_map=None):
  """1件のデータソースが「今どこを読むか」を決める。優先順位は
     (1) パス設定マスタの個別上書き(sikalotnow_path 等。検証用に手元の複製へ
         向ける従来の仕掛けで、常に最優先)
@@ -565,7 +577,10 @@ def _source_path(entry):
     相対パスは、出力ファイルは db/、共有パスは仕掛の共有フォルダを基点にする
     (現場は「ファイル名だけ」を入れることが多く、絶対パスを強制すると
     設定の手間と打ち間違いが増えるため)。"""
- override=_static_path_cfg(f"{entry['key'].lower()}_path")
+ # cfg_map を渡すとその設定で計算する（マスタ管理が「再起動したらどこを
+ # 読むか」を先に見せるため。省略＝プロセス起動時に確定した設定）。
+ override=(cfg_map.get(source_override_key(entry['key'])) if cfg_map is not None
+           else _static_path_cfg(source_override_key(entry['key'])))
  if override:return Path(override)
  local=entry.get('output') or ''
  share=entry.get('share') or ''
