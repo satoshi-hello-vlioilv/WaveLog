@@ -120,32 +120,38 @@ let b=null;
   rec('図の行が測定表の行と同じ高さに並ぶ',
    g.行のずれ!==null&&g.行のずれ<=2,`最大ずれ ${g.行のずれ}px`);
 
-  /* --- 3) 位置の整合: 値→横位置の写像が線形で、上限/下限/基準の線と一致する。
-     非対称公差なので範囲の中点(1001)と基準値(1000)はずれる。図示すべきなのは
-     基準値のほう。 --- */
+  /* --- 3) 位置の整合: 既定は**実寸(mm)の軸**（§9.152）。基準は必ず中心で、
+     横1pxが表すmmはどの条でも同じ。非対称公差(+3/-1)なので、上限までの
+     距離と下限までの距離は**3:1になる**（等距離になったら、それは公差比の
+     軸＝mmの情報が消えている）。 --- */
   const lineX={};g.lines.forEach(l=>{
    if(/tc-line-low/.test(l.cls))lineX.low=l.x;
    if(/tc-line-high/.test(l.cls))lineX.high=l.x;
    if(/tc-line-base/.test(l.cls))lineX.base=l.x;});
-  /* 横は**その条自身の公差に対する位置**（§9.151）。0＝基準／−1＝下限／
-     ＋1＝上限で、非対称公差では基準を境に**折れる**（＋側は/plus、−側は
-     /minus で割る）。絶対値の線形補間ではないことに注意。 */
-  const unit=()=>lineX.high-lineX.base;
-  const expect=v=>lineX.base+(v>=BASE?(v-BASE)/PLUS:-(BASE-v)/MINUS)*unit();
+  /* 1mmあたりのpx。上限が基準の何px右かはプラス公差ぶん。 */
+  const perMm=()=>(lineX.high-lineX.base)/PLUS;
+  const expect=v=>lineX.base+(v-BASE)*perMm();
   const mid=(BASE-MINUS+BASE+PLUS)/2;
   rec('下限が上限より左にある',lineX.low<lineX.high,
    `下限x=${lineX.low} 上限x=${lineX.high}`);
   /* 基準の線は**札を畳んでも必ず引く**（狙う値がどこかが図から消えるため）。 */
   rec('基準の線がある',Number.isFinite(lineX.base),JSON.stringify(lineX));
-  /* 自分の公差で割るので、下限と上限は基準から**等距離**になる。 */
-  rec('下限と上限が基準から等距離にある(自分の公差が単位)',
-   Math.abs((lineX.base-lineX.low)-(lineX.high-lineX.base))<=2,
-   `下限-基準=${(lineX.base-lineX.low).toFixed(1)} 基準-上限=${(lineX.high-lineX.base).toFixed(1)}`);
+  /* **基準は図のちょうど真ん中**（§9.152。データで動かない）。 */
+  rec('基準が図の中央にある',Math.abs(lineX.base-g.boxW/2)<=2,
+   `基準x=${lineX.base} 図の中央=${(g.boxW/2).toFixed(1)}`);
+  /* 実寸の軸なので、公差＋3・公差−1は基準から**3:1の距離**に出る。 */
+  rec('上限と下限の距離が公差の比(3:1)になる',
+   Math.abs((lineX.high-lineX.base)/(lineX.base-lineX.low)-PLUS/MINUS)<=.15,
+   `基準-上限=${(lineX.high-lineX.base).toFixed(1)} 下限-基準=${(lineX.base-lineX.low).toFixed(1)}`);
   /* **基準は範囲の中点ではない。** 非対称公差(+3/-1)では中点1001が基準の
      右へずれることで、写像が基準に錨を下ろしていることが分かる。 */
   rec('範囲の中点は基準の線に乗らない',
    Math.abs(expect(mid)-lineX.base)>2,
    `中点の位置=${expect(mid).toFixed(1)} 基準x=${lineX.base}`);
+  /* 軸の端の札は**実寸を書く**（出どころ・単位を画面に出す。§9.129の6番）。 */
+  rec('軸の端に実寸(mm)の札が出る',
+   g.ticks.filter(t=>/^[+−]\d/.test(t.text)).length===2&&g.ticks.some(t=>t.text==='基準'),
+   g.ticks.map(t=>t.text).join(' / '));
 
   const dotErr=g.dots.map(d=>{
    const v=Number((d.title.match(/:\s*([\d.]+)/)||[])[1]);
@@ -175,68 +181,133 @@ let b=null;
    !!pend&&!pend.hidden&&Math.abs(pend.x-expect(1002.8))<=2,
    pend?`x=${pend.x} 期待=${expect(1002.8).toFixed(1)}`:'(リング無し)');
 
-  /* --- 6) 写像そのもの(WL.toleranceRelView を直接) --- */
+  /* --- 6) 写像そのもの(WL.toleranceAxisView を直接) --- */
   const u=await page.evaluate(()=>{
-   const v=WL.toleranceRelView('width',['1000','1003','999'],3);
-   if(!v)return{無し:true};
-   return{
-    基準:v.rel(1000,0),上限:v.rel(1003,0),下限:v.rel(999,0),中点:v.rel(1001,0),
-    帯:[+v.band(0).low.toFixed(2),+v.band(0).high.toFixed(2)],
-    線:[+v.lines.low.toFixed(2),+v.lines.base.toFixed(2),+v.lines.high.toFixed(2)],
-    窓:[v.viewLo,v.viewHi],
-    端:[v.x(-99),v.x(99)],
+   const one=m=>{
+    const v=WL.toleranceAxisView('width',['1000','1003','999'],3,{mode:m,span:2});
+    if(!v)return null;
+    return{
+     端:v.edge,一様:v.uniform,軸外:v.out,
+     位置:{基準:+v.x(1000,0).toFixed(3),上限:+v.x(1003,0).toFixed(3),
+           下限:+v.x(999,0).toFixed(3),中点:+v.x(1001,0).toFixed(3)},
+     帯:[+v.band(0).low.toFixed(3),+v.band(0).high.toFixed(3)],
+     線:Object.keys(v.lines).sort().join(','),
+     札:v.ticks.map(t=>t.label),
+     頭打ち:[v.x(-9999,0),v.x(9999,0)],
+    };
    };
+   return{abs:one('abs'),rel:one('rel')};
   });
-  rec('基準は0・上限は+1・下限は-1',
-   !u.無し&&u.基準===0&&Math.abs(u.上限-1)<1e-9&&Math.abs(u.下限+1)<1e-9,JSON.stringify(u));
-  rec('範囲の中点は0にならない(基準に錨を下ろしている)',
-   !u.無し&&Math.abs(u.中点-1/3)<1e-9,String(u.中点));
-  rec('帯の縁が下限・上限の線と一致する',
-   !u.無し&&Math.abs(u.帯[0]-u.線[0])<.01&&Math.abs(u.帯[1]-u.線[2])<.01,JSON.stringify(u));
-  rec('公差帯の外にも余白を残す(点が縁に接しない)',
-   !u.無し&&u.窓[0]<=-1.5&&u.窓[1]>=1.5,JSON.stringify(u.窓));
-  rec('桁違いの値でも窓は3単位までに留め、端で頭打ちにする',
-   !u.無し&&u.端[0]===0&&u.端[1]===100,JSON.stringify(u.端));
+  rec('実寸の軸: 基準は必ず中央(50%)',
+   !!u.abs&&u.abs.位置.基準===50,JSON.stringify(u.abs&&u.abs.位置));
+  rec('実寸の軸: 端は「一番広い片側公差×表示幅」',
+   !!u.abs&&u.abs.端===PLUS*2,String(u.abs&&u.abs.端));
+  rec('実寸の軸: 上限・下限は公差の実寸どおり(+3は+25% / -1は-8.33%)',
+   !!u.abs&&Math.abs(u.abs.位置.上限-75)<.01&&Math.abs(u.abs.位置.下限-(50-100/12))<.01,
+   JSON.stringify(u.abs&&u.abs.位置));
+  rec('実寸の軸: 端の札は実寸の数字(±6.00)',
+   !!u.abs&&u.abs.札.length===3&&/6\.00$/.test(u.abs.札[0])&&u.abs.札[1]==='基準',
+   JSON.stringify(u.abs&&u.abs.札));
+  rec('公差比の軸: 下限・上限が全条でそろう(±1が固定位置)',
+   !!u.rel&&Math.abs(u.rel.位置.下限-25)<.01&&Math.abs(u.rel.位置.上限-75)<.01,
+   JSON.stringify(u.rel&&u.rel.位置));
+  rec('公差比の軸: 札は下限・基準・上限',
+   !!u.rel&&u.rel.札.join(',')==='下限,基準,上限',JSON.stringify(u.rel&&u.rel.札));
+  rec('どちらの軸でも範囲の中点は基準に乗らない(基準に錨を下ろしている)',
+   !!u.abs&&!!u.rel&&u.abs.位置.中点!==50&&u.rel.位置.中点!==50,
+   `実寸${u.abs&&u.abs.位置.中点} / 公差比${u.rel&&u.rel.位置.中点}`);
+  rec('帯の縁が下限・上限の位置と一致する',
+   !!u.abs&&Math.abs(u.abs.帯[0]-u.abs.位置.下限)<.01&&Math.abs(u.abs.帯[1]-u.abs.位置.上限)<.01,
+   JSON.stringify(u.abs&&u.abs.帯));
+  rec('桁違いの値は端で頭打ちにする(軸は動かさない)',
+   !!u.abs&&u.abs.頭打ち[0]===0&&u.abs.頭打ち[1]===100,JSON.stringify(u.abs&&u.abs.頭打ち));
 
-  /* --- 6b) **異幅分割: 幅も公差も違う条を1本の軸で比べられる**（§9.151）---
-     ここがこの写像の目的。幅300±1の条と幅500+3/-1の条で「自分の公差の
-     半分だけ上振れ」した値は、**同じ横位置**に出なければならない。
-     絶対値の軸だったころは、選んでいない側の点が端に張り付いて赤くなった。 */
-  const mixed=await page.evaluate(async()=>{
+  /* --- 6b) **異幅分割: 公差の違いが「段差」として見える**（§9.152）---
+     利用者の指示。基準を重ねて実寸で見るので、幅300±1の条と幅500+3/-1の条は
+     **帯の右の縁だけがずれる**。絶対値（幅そのもの）の軸だったころは、
+     選んでいない側の点が端に張り付いて赤くなった（§9.150）。 */
+  const mixedSetup=async()=>page.evaluate(async()=>{
    S.measure.settings.splitGroups=[
     {lot:'AAA300',count:2,base:{width:300},tol:{width:{manufacturing:{plus:1,minus:1}}},missing:false},
     {lot:'BBB500',count:2,base:{width:500},tol:{width:{manufacturing:{plus:3,minus:1}}},missing:false}];
    S.measure.settings.splitPositionGroup=[0,0,1,1];
    document.querySelector('#horizontalCount').value='4';
    const w=S.measure.measurements.width[lengthIndex()];
-   /* どちらも「自分のプラス公差の半分」上振れ */
+   /* どちらも「自分のプラス公差の半分」上振れ（＝公差比では同じ位置、
+      実寸では300側が+0.5mm・500側が+1.5mmなので別の位置） */
    ['300.50','300.00','501.50','500.00'].forEach((v,i)=>w[i]=v);
    S.measure.settings.wStep=0;
    renderMeasureGrid();
    await new Promise(r=>setTimeout(r,300));
+  });
+  const mixedRead=async()=>page.evaluate(()=>{
    const box=document.querySelector('.accurate-numberline'),br=box.getBoundingClientRect();
    const at=e=>{const r=e.getBoundingClientRect();return +(r.left-br.left+r.width/2).toFixed(1)};
    const dots=[...box.querySelectorAll('.tc-row')].map(r=>{
     const d=r.querySelector('.tc-dot');return d?{x:at(d),ng:d.className.includes('ng'),t:d.title}:null});
    const 帯=[...box.querySelectorAll('.tc-row')].map(r=>
      getComputedStyle(r).getPropertyValue('--r-low').trim()+'..'+getComputedStyle(r).getPropertyValue('--r-high').trim());
-   return{dots,帯,
+   return{軸:box.dataset.mode,dots,帯,
      色:[...box.querySelectorAll('.tc-lot')].map(e=>getComputedStyle(e).backgroundColor),
      セルNG:[...document.querySelectorAll('.measure-matrix td.is-current input')].map(e=>e.classList.contains('ng'))};
   });
+  await mixedSetup();
+  const mixed=await mixedRead();
   rec('異幅分割でも全条が公差内と判定される',
    mixed.dots.every(d=>d&&!d.ng)&&mixed.セルNG.every(v=>!v),
    JSON.stringify(mixed.dots.map(d=>d&&d.t)));
-  rec('自分の公差で同じだけ上振れした条は同じ横位置に出る',
-   mixed.dots[0]&&mixed.dots[2]&&Math.abs(mixed.dots[0].x-mixed.dots[2].x)<=2,
-   `幅300の+0.5=${mixed.dots[0]&&mixed.dots[0].x} / 幅500の+1.5=${mixed.dots[2]&&mixed.dots[2].x}`);
-  rec('基準どおりの条は基準の線に乗る',
+  rec('実寸の軸: 基準どおりの条はどのロットでも中央に乗る',
    mixed.dots[1]&&mixed.dots[3]&&Math.abs(mixed.dots[1].x-mixed.dots[3].x)<=2,
    `${mixed.dots[1]&&mixed.dots[1].x} / ${mixed.dots[3]&&mixed.dots[3].x}`);
-  rec('両側公差なら帯の縁は全条そろう(1本の帯に見える)',
-   new Set(mixed.帯).size===1,mixed.帯.join(' / '));
+  /* **これが今回の目的**——公差の広い子ロットの帯は右へ伸びる（段差）。 */
+  rec('実寸の軸: 公差の違う子ロットで帯の縁がずれる(段差になる)',
+   new Set(mixed.帯).size===2&&mixed.帯[0]===mixed.帯[1]&&mixed.帯[2]===mixed.帯[3],
+   mixed.帯.join(' / '));
+  rec('実寸の軸: 帯の左の縁はそろう(下限は両方-1mm)',
+   mixed.帯[0].split('..')[0]===mixed.帯[2].split('..')[0],mixed.帯.join(' / '));
+  rec('実寸の軸: 上振れの実寸が違えば点の位置も違う(+0.5mm と +1.5mm)',
+   mixed.dots[0]&&mixed.dots[2]&&mixed.dots[2].x-mixed.dots[0].x>4,
+   `幅300の+0.5=${mixed.dots[0]&&mixed.dots[0].x} / 幅500の+1.5=${mixed.dots[2]&&mixed.dots[2].x}`);
   rec('子ロットの色帯が条ごとに付く(2ロットで2色)',
    mixed.色.length===4&&new Set(mixed.色).size===2,mixed.色.join(' / '));
+
+  /* --- 6c) **軸を切り替えられる**（§9.152、利用者の指示）--- */
+  await page.selectOption('#numberlineMode','rel');
+  await page.waitForTimeout(350);
+  const relMixed=await mixedRead();
+  rec('切り替えると図が描き直される(公差比の軸になる)',
+   relMixed.軸==='rel',String(relMixed.軸));
+  rec('公差比の軸: 公差が違っても帯の縁は全条そろう',
+   new Set(relMixed.帯).size===1,relMixed.帯.join(' / '));
+  rec('公差比の軸: 自分の公差で同じだけ上振れした条は同じ位置に出る',
+   relMixed.dots[0]&&relMixed.dots[2]&&Math.abs(relMixed.dots[0].x-relMixed.dots[2].x)<=2,
+   `${relMixed.dots[0]&&relMixed.dots[0].x} / ${relMixed.dots[2]&&relMixed.dots[2].x}`);
+  await page.selectOption('#numberlineMode','abs');
+  await page.waitForTimeout(350);
+
+  /* 軸の外は**件数を文字で言い、表示幅を広げれば入る**（黙って端で潰さない）。 */
+  const far=async()=>page.evaluate(()=>{
+   const box=document.querySelector('.accurate-numberline');
+   const n=document.getElementById('numberlineOutside');
+   return{端:Number(box.dataset.edge),軸外:Number(box.dataset.out),
+          文:n&&!n.hidden?n.textContent:'',
+          印:[...box.querySelectorAll('.tc-dot.out')].length};
+  });
+  await page.evaluate(async()=>{
+   S.measure.measurements.width[lengthIndex()][0]='315.00';   /* +15mm。軸(±2mm)の外 */
+   renderMeasureGrid();await new Promise(r=>setTimeout(r,300));
+  });
+  const out1=await far();
+  rec('軸をはみ出した点は件数を文字で出す',
+   out1.軸外===1&&/軸の外\s*1件/.test(out1.文)&&out1.印===1,JSON.stringify(out1));
+  await page.selectOption('#numberlineSpan','10');
+  await page.waitForTimeout(350);
+  const out2=await far();
+  rec('表示幅を広げると軸の端が広がり、はみ出しが収まる',
+   out2.端>out1.端&&out2.軸外===0&&out2.文==='',JSON.stringify({前:out1.端,後:out2.端,軸外:out2.軸外}));
+  await page.selectOption('#numberlineSpan','2');
+  await page.waitForTimeout(300);
+
   await page.evaluate(async()=>{
    S.measure.settings.splitGroups=null;S.measure.settings.splitPositionGroup=null;
    document.querySelector('#horizontalCount').value='6';

@@ -1062,6 +1062,32 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
   width:100%;max-width:var(--w-lg);min-width:0;height:var(--ctl-h);padding:4px 25px 4px 8px;justify-self:start;
 }
 .order-tolerance-unavailable{color:#8b969a}
+/* 図の横軸の切り替え（§9.152、利用者の指示）。判定公差と**同じ帯**に置く
+   ——どちらも「この図・この表が何を基準に判定しているか」を決めるもので、
+   読むときも一緒に読む。形は判定公差の欄をそのまま使う（同じ役割のものが
+   隣で違う形をしていると、別の種類の設定に見える）。 */
+.numberline-control{display:flex;align-items:center;gap:var(--gap-section);min-width:0}
+.numberline-control label{
+  display:grid;grid-template-columns:max-content minmax(0,1fr);align-items:center;gap:var(--gap-tight);
+  min-width:0;white-space:nowrap;
+}
+.numberline-control select{
+  width:100%;max-width:var(--w-lg);min-width:0;height:var(--ctl-h);padding:4px 25px 4px 8px;justify-self:start;
+}
+/* 図があるのは②だけ（③は「測定データ分析」の表で、数直線は出ない）。
+   **効かない設定を残さない**（§9.129の4番。押せるのに何も起きない）。 */
+.measure-shell.mstep-1 .numberline-control,
+.measure-shell.mstep-3 .numberline-control,
+.measure-shell.mstep-1 .nl-outside,
+.measure-shell.mstep-3 .nl-outside{display:none}
+/* 軸からはみ出した点があることは**文字で言う**（§9.129の3番）。直し方
+   （表示幅）と同じ行に置くので、読んだその場で広げられる。 */
+.nl-outside{
+  flex:0 0 auto;padding:var(--pad-chip);border-radius:var(--radius-md);
+  background:var(--warn-bg);border:1px solid var(--warn-border);
+  color:var(--warn-fg);font-size:var(--fs-sm);font-weight:700;white-space:nowrap;
+}
+.nl-outside[hidden]{display:none}
 .selectors{display:grid;gap:var(--gap-tight)}
 .dense-controls{grid-template-columns:repeat(6,minmax(0,1fr));gap:var(--gap-inline) var(--gap-inline);align-items:start}
 .dense-controls label{display:grid;grid-template-rows:20px var(--ctl-h);min-width:0;color:var(--muted);font-size:var(--fs-sm);white-space:nowrap}
@@ -1258,6 +1284,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .tol-fold::after{content:'　▾'}
 .tol-block.tol-open .tol-fold::after{content:'　▴'}
 .tol-block.tol-foldable:not(.tol-open) .tol-facts,
+.tol-block.tol-foldable:not(.tol-open) .numberline-control,
 .tol-block.tol-foldable:not(.tol-open) .tolerance-source-control{display:none}
 /* **`display`は明示する。** 器を移すたびに、どこかの既存規則で`grid`に
    なって中身が潰れる事故が起きている（実測。親が396pxあっても中が縮む）。 */
