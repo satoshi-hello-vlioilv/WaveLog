@@ -11,6 +11,7 @@ SQLiteには無いため、db_access.pyのconnect()がユーザー定義関数�
 import json, re, time, unicodedata
 from flask import Blueprint, request, jsonify
 
+from .. import source_capability
 from ..db_access import DBS, qi, connect, cols, tables, cfg, WORK_DB_KEY, QUALITY_DB_KEY
 from ..logging_setup import app_logger
 from ..errors import os_error_hint
@@ -39,21 +40,11 @@ _JOIN_KEY_ALIASES={
  'castingNo':['鋳造番号','ﾁｭｳｿﾞｳ番号','CYNO'],
  'mfgMaterial':['製造材質','ﾒｲｿﾞｳ材質','LTA'],
 }
-def _norm_name(s):
- # 全角/半角・大小文字のゆれを吸収して比較する(CLAUDE.md「フィールド名」)。
- return unicodedata.normalize('NFKC',str(s or '')).strip().lower()
-def _find_column(columns,aliases):
- """列名の別名解決。完全一致 → 正規化一致 → 部分一致の順に探す。
- 部分一致は誤爆(例: 別名'LTNO'が'PLTNO'に一致)しやすいので最後の手段。"""
- for a in aliases:
-  if a in columns:return a
- norm={_norm_name(c):c for c in columns}
- for a in aliases:
-  hit=norm.get(_norm_name(a))
-  if hit:return hit
- for c in columns:
-  if any(_norm_name(a) in _norm_name(c) for a in aliases):return c
- return None
+# 列名の別名解決は**backend/source_capability.pyが唯一の定義**(§9.163)。
+# マスタ管理の「この設定でできること」も同じ判定でないと、画面の言うことと
+# 実際の挙動が食い違う(結合できると書いてあるのに結合されない、等)。
+_norm_name=source_capability.norm_name
+_find_column=source_capability.find_column
 def _norm_value(v):
  # 突合キーの値も同様にゆれを吸収する(前後空白・全角半角)。
  return unicodedata.normalize('NFKC',str(v if v is not None else '')).strip()

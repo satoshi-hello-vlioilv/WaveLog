@@ -105,7 +105,11 @@
          {k:'rne',label:'RNE',grow:2,format:'rneState'},
          {k:'outputPath',label:'出力ファイル',grow:3,format:'fileState'},
          {k:'activePath',label:'今読んでいる場所',grow:3},
+         /* 役割を選んだだけでは決まらないので、**実際にできること**を出す
+            （§9.163）。理由はマウスを乗せると出るほか、行を開くと全文が出る。 */
+         {k:'capability',label:'できること',grow:3,format:'capability'},
          {k:'enabled',label:'状態',grow:1}],
+   extraHtml:editing=>capabilityPanelHtml(editing&&editing.capability),
    hint:'参照するデータは、すべて「RNEから抽出 → .sqlite3 を作る → それを一覧として読む」という同じ流れで増やせます。1行が1つのデータソースで、②で作る先と③で読む先が同じ行に並ぶので、「抽出しているのに読んでいない」というずれが起きません。キー・表示名・読み込み先の変更は、接続先を起動時に1回だけ決める設計のため、サーバーを再起動してから反映されます。RNEファイルと symnavim.conf の置き場は「パス設定」タブで指定します。'},
   {group:'system',key:'pathConfig',label:'パス設定',icon:'路',special:'path-config',endpoint:'/api/path-config-master'},
   // 旧「マスタ一覧」(サイドバーのMASTERナビ→汎用グリッド)をここへ統合した
@@ -299,6 +303,56 @@
     FIELD_REORDER_ALL と必ず同じにすること(判定はサーバー側と画面側の
     両方にあり、片方だけ変えると権限の見え方と実際が食い違う)。 */
  const EQUIPMENT_ALL='*';
+ /* ---------- データソースの「この設定でできること」(§9.163) ----------
+    データソースは1行足せば一覧には出るが、**測定・予定投入・品質結合は
+    行に要る列が無いと画面が黙って出さない**（必須列を決め打ちしない方針の
+    裏返し）。登録した本人からは「登録したのにボタンが出ない」としか
+    見えないので、**できること／できない理由**をここで言い切る。
+    判定はサーバー(backend/source_capability.py)の1箇所が持ち、画面は
+    受け取った結果を並べるだけ——判定を画面にも書くと、2つの答えが出る。 */
+ const CAPABILITY_ORDER=['list','measure','plan','quality'];
+ const CAPABILITY_LABEL={list:'一覧として見る',measure:'測定を開く',
+                         plan:'スケジュールへ投入',quality:'品質として結合'};
+ const CAPABILITY_SHORT={list:'一覧',measure:'測定',plan:'予定',quality:'結合'};
+ /* 一覧の1マス。**色だけで伝えない**ので、印の隣に必ず名前を出す。 */
+ function capabilityCellText(cap){
+  const f=(cap&&cap.features)||{};
+  if(!Object.keys(f).length)return cap&&cap.error?'確かめられません':'—';
+  return CAPABILITY_ORDER.filter(k=>f[k])
+   .map(k=>`${CAPABILITY_SHORT[k]} ${f[k].ok?'✓':'—'}`).join('／');
+ }
+ function capabilityCellTitle(cap){
+  const f=(cap&&cap.features)||{};
+  const lines=CAPABILITY_ORDER.filter(k=>f[k])
+   .map(k=>`${CAPABILITY_LABEL[k]}: ${f[k].ok?'できます':'できません'} — ${f[k].note||''}`);
+  if(cap&&cap.error)lines.unshift(cap.error);
+  return lines.join('\n');
+ }
+ /* 編集ウィンドウの最後に置く読み取り専用の1枚。**入力欄ではないので枠を
+    入力欄風にしない**（押せそうに見える。§9.129）。 */
+ function capabilityPanelHtml(cap){
+  if(!cap)return '';
+  const f=cap.features||{};
+  const rows=CAPABILITY_ORDER.filter(k=>f[k]).map(k=>{
+   const v=f[k];
+   return `<div class="mm-cap-row${v.ok?' is-ok':' is-ng'}">
+     <span class="mm-cap-mark">${v.ok?'できます':'できません'}</span>
+     <span class="mm-cap-name">${esc(CAPABILITY_LABEL[k])}</span>
+     <span class="mm-cap-note">${esc(v.note||'')}${v.detail?`<i>${esc(v.detail)}</i>`:''}</span>
+    </div>`;
+  }).join('');
+  const where=cap.table
+   ? `読んだのは表「${cap.table}」の${cap.columnCount}列です。`
+   : '';
+  return `<h4 class="mm-fieldgroup">④ この設定でできること</h4>
+   <div class="mm-cap">
+    ${cap.error?`<p class="mm-cap-error">${esc(cap.error)}</p>`:''}
+    ${rows||'<p class="mm-cap-error">まだ確かめられていません。</p>'}
+    <p class="mm-cap-foot">${esc(where)}登録内容と実際のファイルの両方を見て判定しています。
+     読み込み先はサーバー起動時に1回だけ決まるので、変えたあとは再起動すると判定も更新されます。</p>
+   </div>`;
+ }
+
  /* 一覧の表示用テキスト。保存値そのままだと '*' が生で見えて意味が伝わらない。 */
  function cellText(col,value){
   const v=String(value??'');
@@ -319,6 +373,7 @@
    if(!v.trim())return '';
    return v+(col.row&&col.row.outputExists===false?'  （未作成）':'');
   }
+  if(col.format==='capability')return capabilityCellText(col.row&&col.row.capability);
   if(col.format==='equipmentTarget'){
    if(!v.trim())return '';
    return v.trim()===EQUIPMENT_ALL?'すべての設備':v.replace(/、/g,',').split(',').map(s=>s.trim()).filter(Boolean).join(' / ');
@@ -447,7 +502,8 @@
   const chip=editing?`<span class="mm-mode-chip editing">編集中 <b>${esc(editing[def.cols[0].k]||'')}</b><small>ID:${esc(editing.id)}</small></span>`:`<span class="mm-mode-chip new">新規登録</span>`;
   form.innerHTML=`<div class="mm-form-head">${chip}${editing?'<button type="button" id="masterMaintNew" class="mm-btn-ghost sm">＋ 新規入力に切替</button>':''}</div>
    ${def.hint?`<p class="mm-def-hint">${esc(def.hint)}</p>`:''}
-   <div class="mm-form-fields">${controls}</div>
+   <div class="mm-form-fields">${controls}${
+    typeof def.extraHtml==='function'?def.extraHtml(editing):''}</div>
    <div class="mm-form-tail"><button type="submit" class="mm-btn-primary">${editing?'更新を保存':'追加登録'}</button><span class="mm-form-hint">${editing?'キー項目（名称・区分など）も変更できます。保存すると同じIDのまま更新（リネーム）されます。同名が既にある場合は更新できません。':'必須(*)を入力して追加登録します。'}</span></div>`;
   form.onsubmit=ev=>{ev.preventDefault();submitMaint()};
   const nb=$('#masterMaintNew');if(nb)nb.onclick=()=>{maintState.editing=null;renderMaintForm()};
@@ -499,7 +555,8 @@
   $('#maintEditorSave').textContent=editing?'更新を保存':'追加登録';
   const form=$('#maintEditorForm');
   form.innerHTML=`${def.hint?`<p class="mm-def-hint">${esc(def.hint)}</p>`:''}
-   <div class="mm-form-fields">${buildFieldControls(def,editing)}</div>`;
+   <div class="mm-form-fields">${buildFieldControls(def,editing)}${
+    typeof def.extraHtml==='function'?def.extraHtml(editing):''}</div>`;
   form.onsubmit=ev=>{ev.preventDefault();submitMaint('#maintEditorForm')};
   bindEquipmentPickers(form);bindInputHelpers(form);
   modal.hidden=false;
@@ -1458,7 +1515,11 @@
      <small class="mm-field-hint">network=共有フォルダを読む / local=この端末でRNEから抽出したものを読む。マスタ管理 &gt; データソース に登録したものすべてに効きます。</small></label>
     ${(pathConfigState.sources||[]).map(src=>pathField(src.valueKey,
        `${src.label}（${src.key}）の読み込み先 — 個別上書き`,'file',
-       `空欄なら取得元の設定にしたがって「${src.output||'—'}」（ローカル）か「${src.share||'—'}」（共有）を読みます。ここに入れた場合は取得元に関わらずそちらを優先します。`)).join('')
+       `空欄なら取得元の設定にしたがって「${src.output||'—'}」（ローカル）か「${src.share||'—'}」（共有）を読みます。ここに入れた場合は取得元に関わらずそちらを優先します。`
+       /* **まだこの端末が読んでいないデータソース**（登録したばかりで再起動
+          していない）は、そうと書く。欄だけ出して黙っていると「入れたのに
+          効かない」と読める（§9.163）。 */
+       +(src.loaded===false?` このデータソースはまだ読み込んでいません。再起動すると「${src.planned||'—'}」を読みます。`:''))).join('')
      ||'<p class="mm-field-hint">データソースが登録されていません。マスタ管理 &gt; データソース で登録してください。</p>'}`)}
    ${group('共有・複製','サーバー再起動後に反映','is-restart',`
     ${pathField('schedule_share_path','スケジュール機能の共有データ置き場（schedule.sqlite3）','file','共有フォルダ上のschedule.sqlite3を選びます。空欄ならスケジュール機能は無効です。')}
@@ -1561,8 +1622,17 @@
   };
   /* データソースぶんは登録内容から作る。「いま効いている値」は上書きの
      有無に関わらずサーバーが解決した実際の読み込み先を出す。 */
+  /* まだ読んでいないデータソースは**「解決できていません」ではなく
+     「再起動後に反映」**と書く（§9.163）。前者は不具合に読めるが、
+     実際は設計どおりの待ち状態で、打つ手が違う。 */
+  const pendingKeys=new Set();
   (pathConfigState.sources||[]).forEach(src=>{
-   activeText[src.valueKey]=src.active||'（解決できていません）';
+   if(src.loaded===false){
+    pendingKeys.add(src.valueKey);
+    activeText[src.valueKey]=`（未反映）再起動すると ${src.planned||'—'} を読みます`;
+   }else{
+    activeText[src.valueKey]=src.active||'（解決できていません）';
+   }
    savedText[src.valueKey]=v[src.valueKey]||'（既定値を使用）';
   });
   const tmpl='minmax(150px,1fr) minmax(200px,1.6fr) minmax(200px,1.6fr)';
@@ -1575,7 +1645,9 @@
       行まで再起動待ちに見えてしまう(実際にそう出た)。
       保存値が空＝既定を使う指定なので、待ちにはしない。 */
    const savedRaw=String(v[key]||'').trim(),activeRaw=String(a[key]||'').trim();
-   const pending=!!savedRaw&&savedRaw!==activeRaw;
+   /* 登録したばかりで読み込んでいないデータソースは、上書きを入れていなくても
+      再起動待ち（§9.163）。保存値との突き合わせだけでは拾えない。 */
+   const pending=pendingKeys.has(key)||(!!savedRaw&&savedRaw!==activeRaw);
    return `<div class="mm-row${pending?' is-pending-restart':''}" style="grid-template-columns:${tmpl}"><span>${esc(label)}</span><span title="${esc(activeText[key])}">${esc(activeText[key])}</span><span title="${esc(savedText[key])}">${esc(savedText[key])}${pending?'<b class="mm-restart-flag">再起動待ち</b>':''}</span></div>`;
   }).join('');
   list.innerHTML=head+rows+`<p class="mm-def-hint" style="margin-top:10px">RNE抽出間隔: 保存値 ${esc(v.rne_extract_interval_sec||pathConfigState.defaults.rne_extract_interval_sec||'')}秒 / スケジュールロック有効期限: ${esc(v.schedule_lock_ttl_sec||pathConfigState.defaults.schedule_lock_ttl_sec||'')}秒 / ロック確認待機: ${esc(v.schedule_lock_verify_delay_ms||pathConfigState.defaults.schedule_lock_verify_delay_ms||'')}ミリ秒（いずれも再起動不要で次回から反映）</p>`;

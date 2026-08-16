@@ -342,4 +342,21 @@
  font-size:var(--fs-base-sm);font-weight:700;color:var(--teal-dark);
 }
 .mm-fieldgroup:first-child{margin-top:0}
+
+/* ---------- データソースの「この設定でできること」(§9.163) ----------
+   読み取り専用の値なので、**入力欄風の枠を付けない**（押せそうに見える。
+   §9.129）。1行＝1つの機能で、左から「できる/できない」「機能名」「理由」
+   と読む順に置く。**色だけで伝えない**ので、印は必ず言葉にする。 */
+.mm-cap{grid-column:1/-1;display:flex;flex-direction:column;gap:var(--gap-hair)}
+.mm-cap-row{display:grid;grid-template-columns:var(--w-sm) var(--w-md) minmax(0,1fr);
+ gap:var(--gap-inline);align-items:baseline;
+ padding:var(--space-1) 0;border-bottom:1px solid var(--line-soft)}
+.mm-cap-mark{font-size:var(--fs-tiny);font-weight:800;white-space:nowrap}
+.mm-cap-row.is-ok .mm-cap-mark{color:var(--teal-dark)}
+.mm-cap-row.is-ng .mm-cap-mark{color:var(--muted)}
+.mm-cap-name{font-size:var(--fs-sm);font-weight:700;color:var(--ink)}
+.mm-cap-note{font-size:var(--fs-sm);color:var(--ink-2);line-height:1.6}
+.mm-cap-note i{display:block;font-style:normal;color:var(--ink-3);font-size:var(--fs-tiny)}
+.mm-cap-error{margin:0;font-size:var(--fs-sm);color:var(--warn-fg);line-height:1.6}
+.mm-cap-foot{margin:var(--space-1) 0 0;font-size:var(--fs-tiny);color:var(--muted);line-height:1.6}
 }

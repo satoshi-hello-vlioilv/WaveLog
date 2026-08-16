@@ -39,7 +39,7 @@ G['一覧'] = ['test_nav', 'test_navdyn', 'test_listcache', 'test_listperf', 'te
              'test_audit', 'test_sub', 'test_uisize', 'test_ttlcache']
 G['列'] = ['test_collayout', 'test_colformat', 'test_colrule', 'test_colsort', 'test_lcpanel',
            'test_colscache', 'test_colsripple', 'test_displayrule', 'test_colmenu',
-           'test_colpreset', 'test_formula']
+           'test_colpreset', 'test_formula', 'test_reccols']
 G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'test_sccat',
                      'test_scbalance', 'test_scbatch', 'test_screorder', 'test_scperm',
                      'test_scperf', 'test_wkfast', 'test_scsplit', 'test_scprint', 'test_scdrop', 'test_sccontent', 'test_workable',
@@ -54,7 +54,7 @@ G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'tes
                'test_gridhead']
 G['起動'] = ['test_boot', 'test_bootui', 'test_bootflash', 'test_assetcache', 'test_tabclose']
 G['接続'] = ['test_dbopen', 'test_dbmirror', 'test_datasource', 'test_tablequery',
-             'test_atomicio', 'test_localwork']
+             'test_atomicio', 'test_localwork', 'test_dscap']
 G['権限'] = ['test_modeguard', 'test_noaccess', 'test_scperm', 'test_recperm']
 G['ログ'] = ['test_logs', 'test_logview', 'test_error']
 
@@ -107,7 +107,9 @@ RULES = [
     ('static/js/measure-progress.js', g('test_waiting', 'test_mcore',
                                         'test_msteps')),
     ('static/js/measure-steps.js', g('測定', '見た目')),   # 段の枠は測定画面全体に効く
-    ('static/js/records-store.js', g('test_share', 'test_flows', 'test_p11', 'test_recperm')),
+    # データ一覧の表示列(§9.162)も持つので、列の網も回す。
+    ('static/js/records-store.js', g('test_share', 'test_flows', 'test_p11', 'test_recperm',
+                                     'test_reccols', 'test_lcpanel')),
     # 測定画面は test_scale(寸法の網)の巡回にも入っている(§9.127)ので見た目も回す。
     ('static/js/measurement-', g('測定', '見た目')),   # measurement-*.js
 
@@ -119,6 +121,8 @@ RULES = [
     ('static/css/95-boot.css', g('見た目', '起動')),
     ('static/css/70-schedule.css', g('見た目', 'test_sccols', 'test_split_layout',
                                       'test_scbalance', 'test_scprint')),
+    ('static/css/40-records.css', g('見た目', 'test_recperm', 'test_reccols')),
+    ('static/css/50-master.css', g('見た目', 'マスタ', 'test_dscap')),
     ('static/css/88-logs.css', g('見た目', 'test_logview')),
 
     # --- サーバー(ルート) --------------------------------------------
@@ -131,13 +135,17 @@ RULES = [
                                     'test_modeguard')),
     ('backend/routes/logs.py', g('ログ', 'test_modeguard')),
     ('backend/routes/path_config.py', g('test_setpage', 'test_datasource', 'test_dbopen',
-                                        'test_crudroutes', 'test_modeguard')),
+                                        'test_crudroutes', 'test_modeguard', 'test_dscap')),
     ('backend/routes/rne.py', g('test_datasource', 'test_setpage', 'test_modeguard')),
     ('backend/routes/core.py', g('起動', 'test_error', 'test_nav')),
 
     # --- サーバー(その他) --------------------------------------------
     ('backend/access_mode.py', g('権限', 'test_nav', 'test_crudroutes')),
     ('backend/db_access.py', g('接続', '一覧', 'test_setpage')),
+    # データソースの「できること」の判定(§9.163)。列名の別名解決も
+    # ここが持つので、品質結合(/api/table)の網も回す。
+    ('backend/source_capability.py', g('test_dscap', 'test_datasource', 'test_dsnav',
+                                       'test_tablequery', 'test_uiux')),
     ('backend/db_mirror.py', g('test_dbmirror', 'test_dbopen', 'test_listcache',
                                'test_atomicio')),
     # 置き換えの粘り(§9.108)は写し・共有JSON・RNE公開の全部が通る土台。

@@ -11,7 +11,7 @@
 .record-dialog{width:min(1480px,97vw);height:min(900px,94vh);background:#f7fafb;border-radius:var(--radius-lg);box-shadow:0 20px 60px #0005;display:flex;flex-direction:column;overflow:hidden}
 /* データ一覧の見出しバンドは廃止(画面名はヘッダーの#fileNameが持つ)。
    絞り込み(.record-searchbar)はヘッダーの#headerViewBarへ移る。 */
-.record-searchbar{display:grid;grid-template-columns:auto minmax(300px,1fr) 250px 110px auto;gap:var(--gap-section);align-items:end;padding:12px 16px;border-bottom:1px solid #d6e0e3;background:#fff}
+.record-searchbar{display:grid;grid-template-columns:auto minmax(300px,1fr) 250px 110px auto auto;gap:var(--gap-section);align-items:end;padding:12px 16px;border-bottom:1px solid #d6e0e3;background:#fff}
 .record-searchbar label{display:grid;gap:var(--space-1)}
 .record-searchbar label>span{font-size:var(--fs-micro);font-weight:800;color:#526970}
 .record-searchbar input,.record-searchbar select,.record-searchbar button{height:var(--ctl-h)}
@@ -43,13 +43,17 @@
   --row-h:calc(var(--fs) * var(--lh) + var(--row-pad-y) * 2 + 1px);
   --row-inner-h:calc(var(--row-h) - var(--row-pad-y) * 2 - 1px);
   --row-ctl-h:min(var(--ctl-h-xs),var(--row-inner-h))}
-/* 列幅は**中身の長さ**から決める（§9.130）。日時は`2026/08/16 09:12`が
-   入る幅（等幅数字で16文字ぶん）、状態は状態バッジ＋未同期バッジ、
-   操作は3つのボタンが並ぶ幅。`fr`で伸ばすのは名前・用途など長さの
-   読めない列だけにする——伸び代を全列へ配ると、1〜2桁の列まで太る。 */
+/* 列幅は**中身の長さ**から決める（§9.130）。日時は`2026/08/16 09:12:12`が
+   入る幅、状態は状態バッジ＋未同期バッジ、操作は3つのボタンが並ぶ幅。
+   `fr`で伸ばすのは名前・用途など長さの読めない列だけにする——伸び代を
+   全列へ配ると、1〜2桁の列まで太る。
+   **並びも幅もJSが`--rec-cols`へ入れる**（§9.162）。列は表示列の設定で
+   増減するので、CSSに書いておける形ではない。ここに書くのは**設定を
+   読む前の1瞬だけ使う既定**で、既定の15列と同じ幅にしてある（違う幅を
+   書くと、読み込んだ瞬間に列がずれて見える）。 */
 .record-list-head,.record-list-row{
   display:grid;
-  grid-template-columns:
+  grid-template-columns:var(--rec-cols,
     minmax(168px,.5fr)  /* 状態（状態バッジ＋「新しい版あり」まで入る幅） */
     minmax(104px,1fr)   /* ロット番号 */
     minmax(78px,.7fr)   /* 検査番号 */
@@ -64,7 +68,7 @@
     minmax(160px,0)     /* 作業開始時刻（2026/08/16 09:05:12） */
     minmax(160px,0)     /* 更新日時（同じ群なので同じ幅。§9.131） */
     minmax(84px,.5fr)   /* 実作業時間 */
-    minmax(232px,0);    /* 操作（3つのボタンが中身なりに並ぶ幅） */
+    minmax(232px,0));   /* 操作（3つのボタンが中身なりに並ぶ幅） */
   align-items:center;
 }
 .record-list-head{position:sticky;top:0;z-index:4;background:#dcecef;border-bottom:1px solid #9caeb4;color:#28464e;font-weight:700}
@@ -363,4 +367,8 @@
   white-space:nowrap;
   font-variant-numeric:tabular-nums;
 }
+/* 「表示列」は絞り込みと同じ帯に置く（一覧の見せ方を変える操作は、
+   一覧を絞る操作の隣にあるのが自然）。**危ない操作ではない**ので
+   目立たせすぎない——見出しが折り返さない幅だけ与える（§9.129）。 */
+.record-columns-btn{white-space:nowrap}
 }

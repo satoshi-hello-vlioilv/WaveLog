@@ -493,6 +493,11 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  .lc-facts dt{font-size:var(--fs-tiny);font-weight:700;color:var(--muted);letter-spacing:.04em}
  .lc-facts dd{margin:0;font-size:var(--fs-sm);font-weight:700;color:var(--ink);
   min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ /* 値の作り方の一言（§9.162）は**1行に収めず、横いっぱいに置いて折り返す**。
+    他の素性が「140pxの短い値」なのに対してこれは文なので、同じ器に入れると
+    先頭の数文字しか読めない（実際に「未同期・別のPCの印も…」で切れた）。 */
+ .lc-facts .lc-fact-note{grid-column:1/-1}
+ .lc-facts .lc-fact-note dd{white-space:normal;font-weight:400;line-height:1.6;color:var(--ink-2)}
  .lc-fact-sub{display:block;font-style:normal;font-size:var(--fs-tiny);font-weight:400;color:var(--ink-3)}
  .lc-mono{font-family:ui-monospace,Consolas,monospace}
  /* 手順。番号を振り、見出しに副題を添えて「ここで何が決まるか」を言う。 */
