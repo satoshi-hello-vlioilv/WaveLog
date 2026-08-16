@@ -106,6 +106,14 @@
     var baseUMH=updateMeasurementHeading;
     updateMeasurementHeading=function(){baseUMH();suppressSummaryForInstruction();};
   }
+  /* ③の公差一覧が指示型の項目も並べられるように口を出す（§9.157）。
+     **項目名の一覧もここが答える**——`INSTRUCTION_FIELDS`はこのファイルの
+     ものなので、呼ぶ側に写しを作らせない（2箇所になると片方だけ増える）。
+     **このIIFEの中に置くこと**——下の作業時間のIIFEへ書くと
+     `instructionInfo`が見えず、`ReferenceError`になる（実際になった）。 */
+  window.WL=window.WL||{};
+  window.WL.instruction={info:instructionInfo,
+    types:function(){return Object.keys(INSTRUCTION_FIELDS)}};
 })();
 
 /* ============================================================

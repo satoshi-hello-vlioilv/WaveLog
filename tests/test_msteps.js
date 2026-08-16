@@ -513,6 +513,62 @@ let b=null,page=null;
       &&/母材/.test(barFit[1].title||''),
       barFit[1].注意書き+' / title='+(barFit[1].title||'(無し)'));
 
+  /* ---- 5b) ③の公差一覧（§9.157、利用者の指摘） ----
+     「公差指示がラテラルボーしか出ていませんが、板厚、板幅、板丈の公差が
+     あります。設備マスタでコイルの場合は板丈はありませんが、板の設備の
+     場合は板丈があります。」
+     **検証用フィクスチャには公差が1件も入っていない**（CLAUDE.md）ので、
+     **材料ごと注ぎ込む**——入れずに「0件」を見ても、壊れていても同じ
+     結果になる。 */
+  /* **注ぎ込んだ材料は必ず戻す**（§9.121の「前の実行の置き土産」と同じ罠の
+     テスト内版）。戻さないと、この後の「公差が引けない項目は判定していないに
+     回す」が板幅の公差を拾って落ちる（実際に2件落ちた）。 */
+  const tolBackup=await page.evaluate(()=>({
+   基本:{t:S.measure.basic.mfgThickness,w:S.measure.basic.mfgWidth,l:S.measure.basic.mfgLength},
+   区分:S.measure.settings.equipmentKind}));
+  const tolList=async kind=>{
+   await page.evaluate(k=>{
+    Object.assign(S.measure.source,{
+     '板厚公差_製造_ﾌﾟﾗｽ':0.05,'板厚公差_製造_ﾏｲﾅｽ':0.05,
+     '板幅公差_製造_ﾌﾟﾗｽ':1.0,'板幅公差_製造_ﾏｲﾅｽ':1.0,
+     '板丈公差_製造_ﾌﾟﾗｽ':2.0,'板丈公差_製造_ﾏｲﾅｽ':0.0});
+    S.measure.basic.mfgThickness=3.0;S.measure.basic.mfgWidth=1250.4;S.measure.basic.mfgLength=2500.8;
+    S.measure.settings.equipmentKind=k;
+   },kind);
+   await go('3');
+   return page.evaluate(()=>{
+    const host=document.getElementById('toleranceList3');
+    return{項目:[...host.querySelectorAll('tbody tr>th')].map(e=>e.textContent.trim()),
+      範囲:[...host.querySelectorAll('tbody tr')].map(tr=>tr.lastElementChild.textContent.trim()),
+      注記:(host.querySelector('.tol-list-note')?.textContent||'').trim(),
+      /* 1項目ぶんの公差カードと同じ数字を2箇所に出さない（§9.129）。 */
+      単品カード:(()=>{const f=document.querySelector('.tol-facts');if(!f)return false;
+        const r=f.getBoundingClientRect();return r.width>0&&r.height>0})()};
+   });
+  };
+  const tl板=await tolList('板');
+  rec('③の公差一覧に板厚・板幅・板丈が出る（板の設備）',
+      ['板厚','板幅','板丈'].every(n=>tl板.項目.includes(n)),JSON.stringify(tl板.項目));
+  rec('③の公差一覧は判定範囲まで出す',
+      tl板.範囲.some(v=>/～/.test(v)),JSON.stringify(tl板.範囲.slice(0,3)));
+  const tlコイル=await tolList('コイル');
+  rec('コイルの設備には板丈を出さず、理由を文で言う',
+      !tlコイル.項目.includes('板丈')&&/コイル/.test(tlコイル.注記),
+      JSON.stringify({項目:tlコイル.項目,注記:tlコイル.注記}));
+  const tl未=await tolList('');
+  rec('区分が未設定なら板丈を出さず、直し方を書く',
+      !tl未.項目.includes('板丈')&&/マスタ管理/.test(tl未.注記),
+      JSON.stringify({項目:tl未.項目,注記:tl未.注記}));
+  rec('③に1項目ぶんの公差カードを重ねない',!tl板.単品カード,String(tl板.単品カード));
+  await page.evaluate(b=>{
+   ['板厚公差_製造_ﾌﾟﾗｽ','板厚公差_製造_ﾏｲﾅｽ','板幅公差_製造_ﾌﾟﾗｽ','板幅公差_製造_ﾏｲﾅｽ',
+    '板丈公差_製造_ﾌﾟﾗｽ','板丈公差_製造_ﾏｲﾅｽ'].forEach(k=>{delete S.measure.source[k]});
+   S.measure.basic.mfgThickness=b.基本.t;S.measure.basic.mfgWidth=b.基本.w;
+   S.measure.basic.mfgLength=b.基本.l;S.measure.settings.equipmentKind=b.区分;
+   if(typeof renderMeasureGrid==='function')renderMeasureGrid();
+  },tolBackup);
+  await go('3');
+
   /* ---- 6a) ③の作業時間（§9.143、利用者の指示でゼロベース） ----
      手で入れる開始・終了のほかに、**測定の操作そのものが知っている時刻**を
      3つだけ自動で残す（入力を始めた／転送を受け始めた／最後に入力した）。

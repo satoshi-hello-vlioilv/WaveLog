@@ -18,13 +18,23 @@
 /* 見出しは枠(作業時間)が文脈を与えているので「開始/終了」で足りる。
    短くしたぶんを日時の表示幅へ回す(打刻した時刻が読めることが最優先)。 */
 .work-time-item>span{grid-column:auto;min-width:2.6em;color:#526970;font-weight:800;white-space:nowrap}
-.work-time-row input{min-width:190px}
 .work-time-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--gap-inline);align-items:center}
-.work-time-row input{width:100%;min-width:0;height:36px;background:#fff;font-variant-numeric:tabular-nums}
-.work-time-actions{display:flex;gap:var(--gap-inline)}
+/* **高さはトークンから**（§9.157）。`36px`の直値だったため、隣のボタン
+   (39px)・参考値のボタン(33px)と3種類が1枚の中に並んでいた（利用者の指摘
+   「文字サイズがかなり違い…時刻設定関連がでかい感じ」）。 */
+.work-time-row input{width:100%;min-width:0;height:var(--ctl-h-sm);background:#fff;font-variant-numeric:tabular-nums}
+.work-time-actions{display:flex;gap:var(--gap-hair)}
 .work-time-actions button{white-space:nowrap;background:var(--teal);color:#fff;border-color:var(--teal);font-weight:700}
 .work-time-actions .ghost{background:#fff;color:#3a5a52;border-color:#9fb9b2}
 .work-time-actions .ghost:hover{background:#eef2f4;border-color:#6da6ad}
+/* 打刻・消去は**アイコンだけ**（§9.157、利用者の指示）。「現在」「クリア」の
+   文字が横に110px取っており、そのぶん日時の欄が狭く、**秒が切れて読めなかった**
+   （`step="1"`なので秒まで出る）。**意味は`title`と`aria-label`が持つ**
+   ——アイコンだけで意味を伝えない。 */
+.work-time-actions .wt-icon-btn{
+  display:grid;place-items:center;flex:0 0 auto;
+  width:var(--ctl-h-sm);height:var(--ctl-h-sm);padding:0;
+}
 #workTimeHint{display:block;margin-top:6px;color:var(--warn-fg)}
 /* ---------- 作業時間: 過去実績比較 ---------- */
 .worktime-benchmark{margin-top:10px;padding:var(--space-3);background:#eef2f4;border:1px solid #9fc9c2;border-radius:var(--radius-sm)}

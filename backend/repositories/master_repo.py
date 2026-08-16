@@ -109,6 +109,27 @@ def read_equipment_max_strips(c,equipment):
  except Exception:pass
  return DEFAULT_MAX_STRIPS
 
+def read_equipment_kind(c,equipment):
+ """設備名から区分(コイル／板)を引く。読み取り専用接続でも使う。
+
+    §9.157: 板丈(製造板丈)の公差は**板の設備でだけ意味を持つ**。コイルは
+    巻いたままなので丈が決まらない。判定できないときは`''`(未設定)を返し、
+    **画面側は未設定を「板」と決め付けない**——出どころの分からない公差を
+    出すより、出さないほうがよい。
+ """
+ name=normalize_equipment_name(equipment)
+ if not name or EQUIPMENT_MASTER_TABLE not in tables(c):return ''
+ try:
+  if EQUIPMENT_KIND_COLUMN not in set(cols(c,EQUIPMENT_MASTER_TABLE)):return ''
+  cur=c.cursor()
+  cur.execute(f'SELECT {qi("設備名")},{qi(EQUIPMENT_KIND_COLUMN)},{qi("有効")} '
+              f'FROM {qi(EQUIPMENT_MASTER_TABLE)}')
+  for r in cur.fetchall():
+   active=True if r[2] is None else bool(r[2])
+   if active and normalize_equipment_name(r[0])==name:return normalize_equipment_kind(r[1])
+ except Exception:pass
+ return ''
+
 def normalize_equipment_name(value):
  import unicodedata
  return unicodedata.normalize('NFKC',str(value or '')).strip().upper()

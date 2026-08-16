@@ -7,7 +7,7 @@ from flask import Blueprint, request, jsonify
 from ..db_access import DBS, MEAS_DB, RECORDS_BACKUP_EXPORT_PATH, qi, connect, cols, tables, ensure_backup_table, read_backup_rows, invalidate_backup_rows_cache, QUALITY_DB_KEY
 from ..repositories.master_repo import read_operator_names, read_spool_names, read_inner_names, read_device_names, ensure_operator_master, ensure_spool_master, ensure_inner_master, ensure_device_master, ensure_operator_equipment, OPERATOR_MASTER_TABLE, SPOOL_MASTER_TABLE, INNER_MASTER_TABLE, DEVICE_MASTER_TABLE
 from ..repositories.master_repo import read_burr_names, read_coil_stop_names, ensure_burr_master, ensure_coil_stop_master, BURR_MASTER_TABLE, COIL_STOP_MASTER_TABLE
-from ..repositories.master_repo import read_equipment_max_strips, STRIP_LIMIT, DEFAULT_MAX_STRIPS
+from ..repositories.master_repo import read_equipment_max_strips, read_equipment_kind, STRIP_LIMIT, DEFAULT_MAX_STRIPS
 from ..repositories.master_repo import choice_usage_for, choice_usage_bump
 from .. import records_export
 from ..logging_setup import app_logger
@@ -18,7 +18,7 @@ bp=Blueprint('measurement',__name__)
 def measurement_context():
  try:
   lot=request.args.get('lot','').strip();equipment=request.args.get('equipment','').strip()
-  result={'quality':[],'operators':[],'inspectors':[],'packers':[],'thickness_gauges':[],'width_gauges':[],'inner_diameters':[],'spools':[],'burr_types':[],'coil_stops':[],'max_strips':DEFAULT_MAX_STRIPS,'strip_limit':STRIP_LIMIT,'diagnostics':{'master_path':str(DBS['MASTER']['path']),'master_exists':DBS['MASTER']['path'].exists(),'tables':[],'matches':{}}}
+  result={'quality':[],'operators':[],'inspectors':[],'packers':[],'thickness_gauges':[],'width_gauges':[],'inner_diameters':[],'spools':[],'burr_types':[],'coil_stops':[],'max_strips':DEFAULT_MAX_STRIPS,'strip_limit':STRIP_LIMIT,'equipment_kind':'','diagnostics':{'master_path':str(DBS['MASTER']['path']),'master_exists':DBS['MASTER']['path'].exists(),'tables':[],'matches':{}}}
   def norm(v):return str(v or '').strip()
   def matching_table(ts,aliases):
    for a in aliases:
@@ -126,6 +126,10 @@ def measurement_context():
     # 横割数の入力上限に使う。
     result['max_strips']=read_equipment_max_strips(c,equipment)
     result['diagnostics']['matches']['設備マスタ_最大条数']={'equipment':equipment,'value':result['max_strips'],'limit':STRIP_LIMIT}
+    # 設備の区分(コイル／板)。板丈の公差は板の設備でだけ意味を持つため
+    # (§9.157)。未設定は''で返し、画面側は「板」と決め付けない。
+    result['equipment_kind']=read_equipment_kind(c,equipment)
+    result['diagnostics']['matches']['設備マスタ_区分']={'equipment':equipment,'value':result['equipment_kind']}
     # 設備ごとの使用回数(§9.133)。**ここへ相乗りさせる**——選択肢を並べる
     # ためだけに往復を増やさない(選択肢そのものと同時に要るデータなので、
     # 別のAPIにすると「選択肢は出たが並びは前のまま」という瞬間ができる)。

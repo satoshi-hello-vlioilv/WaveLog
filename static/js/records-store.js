@@ -111,6 +111,10 @@ function applyContextSnapshot(x){
   m.settings.maxStrips=Math.min(40,Math.round(Number(x.max_strips)));
   if(typeof applyMaxStripsToInputs==='function')applyMaxStripsToInputs();
  }
+ /* 設備の区分(コイル／板)。板丈の公差は板の設備でだけ意味を持つ(§9.157)。
+    **未設定('')はそのまま持つ**——「板」と決め付けると、コイルの設備で
+    出どころの分からない公差が並ぶ。 */
+ if(typeof x.equipment_kind==='string')m.settings.equipmentKind=x.equipment_kind;
  if(x.quality?.length){m.qualityInfo=qualityText(x.quality)}
  $('#qualityInfo').value=m.qualityInfo||'異常情報なし';paintQualityInfo();
  $('#masterDiagnostic').textContent=JSON.stringify(x.diagnostics||{},null,2);

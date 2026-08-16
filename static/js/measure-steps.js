@@ -372,8 +372,14 @@
   }
   const pad=parseFloat(cs.paddingLeft)+parseFloat(cs.paddingRight)
     +parseFloat(cs.borderLeftWidth)+parseFloat(cs.borderRightWidth);
-  /* プルダウンの矢印・一覧のスクロールバーのぶん。 */
-  const extra=el.tagName==='SELECT'?(el.size>1?20:26):2;
+  /* プルダウンの矢印・一覧のスクロールバーのぶん。
+     日時欄は**カレンダーの絵の幅も要る**（§9.157）——`2px`しか足して
+     いなかったため11emへ丸められ、実機で**秒が切れて読めなかった**
+     （`step="1"`なので秒まで出る。「作業時刻の表示が入りきれていません」）。
+     文字の幅は表示している書式によっても変わる（`2026/08/14 15:04:05`と
+     `08/14/2026, 15:04:05`）ので、絵のぶんは多めに見る。 */
+  const extra=el.tagName==='SELECT'?(el.size>1?20:26)
+    :(el.type==='datetime-local'?28:2);
   return w+pad+extra;
  }
  /* 群＝「縦に並べて読むひとかたまり」。①準備の見出し（誰が測るか／測定表の
@@ -517,6 +523,9 @@
   /* ③の「記録した値」は**入るたびに作り直す**——①で設定を直してから戻って
      くることがあるので、開いた時点の値でなければ確認の意味が無い。 */
   if(step==='3'&&measuring())renderRecordedValues();
+  /* ③は確認の面なので**効いている公差を全部並べる**（§9.157）。②は
+     いま測っている1項目だけでよい（判定しているのがそれだから）。 */
+  if(measuring()&&WL.toleranceList)WL.toleranceList.paint();
   paint();
   /* ②へ入ったら、転送を受けられる状態へ戻す。**受信欄は作り直していない**
      ので、フォーカスを戻すだけでよい（§9.122）。手動入力モードは
