@@ -223,6 +223,76 @@ const settle=async page=>{
      &&/オペレータ|駆動/.test(document.getElementById('splitVisualHint').textContent||'')),
    await page.evaluate(()=>(document.getElementById('splitVisualHint').textContent||'').trim()));
 
+  /* ---- 屑幅の割り付け（§9.160、利用者の指示「屑幅を片側に少し寄せたりする
+     ので、通常は均等だが片寄せする形で修正入力できるように」） ----
+     **検証用フィクスチャには寸法の列が無い**（`make_split_fixture.py`が、
+     列を足すと既存2000行がNULL＝0になって公差が壊れるため意図的に足していない）。
+     入れずに「出ない」を見ても壊れていても同じ結果になるので、**材料ごと
+     注ぎ込んで**確かめる。元幅1030 − 条幅合計(500+480)=980 → 屑幅50。 */
+  const feedScrap=()=>page.evaluate(()=>{
+   S.measure.basic.originalWidth='1030';
+   (S.measure.settings.splitGroups||[]).forEach((g,i)=>{
+     g.base={...(g.base||{}),width:i===0?500:480};g.missing=false});
+   (S.measure.settings.splitSourcesCache||[]).forEach((x,i)=>{
+     x.base={...(x.base||{}),width:i===0?500:480};x.missing=false;x.width=i===0?500:480});
+   refreshSplitStatusPanel();
+  });
+  const scrap=()=>page.evaluate(()=>{
+   const el=id=>document.getElementById(id);
+   const band=s=>{const e=document.querySelector(s);
+     return{隠れ:!!e.hidden,文:(e.textContent||'').replace(/\s+/g,''),
+            幅:Math.round(e.getBoundingClientRect().width)}};
+   return{行が出ている:!el('splitScrapAlloc').hidden,
+     状態:(el('scrapAllocState').textContent||'').trim(),
+     OS:el('scrapAllocOs').value,DS:(el('scrapAllocDs').textContent||'').trim(),
+     均等ボタン:!el('scrapAllocEven').disabled,
+     保存値:S.measure.settings.scrapOsWidth,
+     注意:(el('scrapAllocNote').textContent||'').trim(),
+     帯:{os:band('#splitVisualScrapOs'),ds:band('#splitVisualScrapDs')}};
+  });
+  const typeOs=async v=>{
+   await page.evaluate(x=>{const el=document.getElementById('scrapAllocOs');
+     el.value=x;el.dispatchEvent(new Event('input',{bubbles:true}))},v);
+   await settle(page);
+  };
+  await feedScrap();await settle(page);
+  const s0=await scrap();
+  rec('屑幅が求まると割り付けの行が出て、既定は均等',
+      s0.行が出ている&&s0.状態==='均等'&&s0.OS==='25.0'&&s0.DS==='25.0'
+      &&s0.均等ボタン===false,JSON.stringify(s0));
+  await typeOs('10');
+  const s1=await scrap();
+  /* 欄の値は**打ち終わっていれば整形して返す**（打っている最中は触らない
+     ——1文字ごとにカーソルが末尾へ飛ぶため）。ここは`input`を投げているだけで
+     フォーカスは載っていないので、整形後の「10.0」が入る。 */
+  rec('OS側を入れるとDS側が残りになり、片寄せと分かる文字が出る',
+      Number(s1.OS)===10&&s1.DS==='40.0'&&/片寄せ/.test(s1.状態)&&/DS/.test(s1.状態),
+      JSON.stringify(s1));
+  rec('片寄せは図の屑帯にもそのまま出る（OSが細くDSが太い）',
+      /屑10\.0/.test(s1.帯.os.文)&&/屑40\.0/.test(s1.帯.ds.文)
+      &&s1.帯.os.幅<s1.帯.ds.幅,JSON.stringify(s1.帯));
+  rec('片寄せの値はレコードに残る（保存の対象）',Number(s1.保存値)===10,String(s1.保存値));
+  /* **両耳合計を超える値は入れられない。** 黙って丸めず、丸めたことを言う。 */
+  await typeOs('999');
+  const s2=await scrap();
+  rec('両耳合計を超える値は丸めて、丸めたことを言う',
+      s2.DS==='0.0'&&s2.注意!=='',JSON.stringify({DS:s2.DS,注意:s2.注意}));
+  /* 異常位置判定は**同じ割り付けを使う**——ここで「左右均等」と決め打ちに
+     すると、片寄せしたロットで条の番号が寄せたぶんずれる。 */
+  await typeOs('10');
+  const defect=await page.evaluate(()=>{
+   const info=WL.split.scrapInfo();
+   return{os:info.os,ds:info.ds,片寄せ:info.biased};
+  });
+  rec('屑幅の割り付けは1箇所（WL.split.scrapInfo）が答える',
+      defect.os===10&&defect.ds===40&&defect.片寄せ===true,JSON.stringify(defect));
+  await page.evaluate(()=>document.getElementById('scrapAllocEven').click());
+  await settle(page);
+  const s3=await scrap();
+  rec('「均等に戻す」で均等へ戻り、設定も消える',
+      s3.状態==='均等'&&s3.OS==='25.0'&&s3.DS==='25.0'&&s3.保存値===''
+      &&s3.均等ボタン===false,JSON.stringify(s3));
+
   /* **ダイアログで止めない。** 以前はalertだったので、ドラッグのたびに
      手が止まった。理由は状態行の文字で伝える。 */
   rec('操作の途中でダイアログを出さない',dialogs.length===0,dialogs.join(' / '));

@@ -207,9 +207,9 @@ $('#deviceInput').onkeydown=e=>{
  }
  else if((e.key==='Delete'||e.key==='Backspace')&&!e.target.value){e.preventDefault();processDeviceInput('#DeleteMode#')}
  else if(e.key==='ArrowDown'||(e.key==='Enter'&&!e.target.value)){e.preventDefault();advanceSlot();focusCurrent()}
- /* 受信欄から手を離さずに項目・丈位置を巡回する(§9.124)。割り当ての定義は
-    `WL.measureNav.handleKey`の1箇所で、セル側からも同じものを呼ぶ。 */
- else if(WL.measureNav&&WL.measureNav.handleKey(e,!e.target.value)){/* 済 */}
+ /* 入力内容・丈位置を移るキー(`→ ←` / `PageUp/PageDown` / `F2`)は持たない
+    (§9.160)。転送を受けている最中に測定表が描き直されるとフォーカスが
+    受信欄から外れ、そのあいだの転送が行き場を失うため。**自動入力が優先。** */
  else if(e.key==='ArrowUp'){e.preventDefault();retreatSlot();focusCurrent()}
 };
 $('#lengthPos').onchange=()=>{renderMeasureGrid();$('#deviceInput').focus()};
@@ -228,7 +228,7 @@ function bindMeasureInputs(){
   // フォーカスが移動した場合も、強調表示(.current)をそのセルへ
   // 追従させる(自動モードは受信欄にフォーカスを固定するため対象外)。
   x.addEventListener('focus',()=>{if(S.measure.settings.inputMode!=='manual')return;syncStepFor(x);focusCurrent()});
-  x.oninput=()=>{m.measurements[x.dataset.mkey][+x.dataset.i][+x.dataset.j]=x.value;judgeInput(x,x.dataset.mkey,Number(x.value),+x.dataset.j);renderStats();WL.workStamp.note('manual');markDirty()};x.onkeydown=e=>{if(WL.measureNav&&WL.measureNav.handleKey(e,!x.value))return;if(S.measure.settings.inputMode!=='manual'){e.preventDefault();return}if(e.key==='Delete'){x.value='';x.oninput()}if(e.key==='Enter'){e.preventDefault();advanceSlot();focusCurrent()}}})
+  x.oninput=()=>{m.measurements[x.dataset.mkey][+x.dataset.i][+x.dataset.j]=x.value;judgeInput(x,x.dataset.mkey,Number(x.value),+x.dataset.j);renderStats();WL.workStamp.note('manual');markDirty()};x.onkeydown=e=>{if(S.measure.settings.inputMode!=='manual'){e.preventDefault();return}if(e.key==='Delete'){x.value='';x.oninput()}if(e.key==='Enter'){e.preventDefault();advanceSlot();focusCurrent()}}})
 
  document.querySelectorAll('[data-mkey="thickness"],[data-mkey="width"]').forEach(el=>{
   const previousBlur=el.onblur;
@@ -252,7 +252,7 @@ function makeMeasureInputV29(key,i,j,value,active=true){
 function applyInputProtection(){
  if(!S.measure)return;const manual=S.measure.settings.inputMode==='manual';document.querySelectorAll('[data-mkey]').forEach(el=>{el.readOnly=!manual;el.classList.toggle('auto-locked',!manual);el.tabIndex=manual?0:-1;el.title=manual?'手入力可能':'自動転送中。クリックは入力位置の選択のみです。'});document.querySelectorAll('[data-mother]').forEach(el=>{el.readOnly=!manual;el.tabIndex=manual?0:-1})
 
- const mother=$('#measureType')?.value==='母材';
+ const mother=WL.measureItem.isMaterial($('#measureType')?.value);
  if(mother)document.querySelectorAll('[data-mother]').forEach(el=>{el.readOnly=false;el.disabled=false;el.tabIndex=0;el.classList.remove('auto-locked');el.title='母材は手動入力できます'});
  /* フラットネスは測定器転送の対象外(〇/△/×または自由記述)のため、
     転送モードに関わらず常にセルへ直接入力できるようにする。 */
@@ -331,7 +331,7 @@ function compactMeasureStatus(done,total){return done===total?'測定完了':don
    横は足りる。条は**1列で40行まで**——2段に折らない。
    列見出しが丈位置の選択を兼ねる（`#lengthPos`の一覧は②から降ろした）。
    **`#lengthPos`自体は残す**——丈位置を持っているのはこの`select`で、
-   `PageUp/PageDown`・完了前の確認の「直す」・帳票まで全部がこれを見る。
+   完了前の確認の「直す」・帳票まで全部がこれを見る。
    見えている一覧を消すことと、状態の置き場を消すことは別（§9.124の
    `#measureType`とチップの関係と同じ）。 */
 /* 丈位置の数。`updateLengthOptions`と同じく「縦割数+1」（1(頭)…N(頭) と N(尾)）。 */

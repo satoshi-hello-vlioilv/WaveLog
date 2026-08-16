@@ -160,6 +160,45 @@
   display:flex;align-items:center;gap:var(--space-2);margin-top:var(--space-3);
   min-height:var(--ctl-h-sm);
 }
+/* ---------- 屑幅の割り付け（§9.160、利用者の指示） ----------
+   通常は両耳へ均等に付くが、**片側へ少し寄せることがある**（条の束を
+   片側へ寄せて通す）。均等を既定にしたまま、寄せたぶんだけ数値で直せる
+   1行にする。読み順は「もとの量（両耳合計）→ 入れる（OS側）→ 結果（DS側）」で、
+   左から右がそのまま作業の順（§CLAUDE.md 視覚導線と作業導線を一致させる）。
+   **屑幅が求まらないロットでは行ごと出さない**——押せるのに何も起きない
+   欄を残さない（同じ理由で図の屑帯も出ない）。 */
+.split-scrap-alloc{
+  display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2) var(--space-3);
+  margin-top:var(--space-3);padding-top:var(--space-3);
+  border-top:1px dashed var(--line-soft);
+  flex:0 0 auto;
+}
+.split-scrap-alloc[hidden]{display:none}
+.ssa-title{color:var(--ink-3);font-size:var(--fs-micro);font-weight:800;letter-spacing:.04em}
+.ssa-state{
+  padding:0 var(--space-2);border-radius:var(--radius-pill);
+  background:var(--surface-2);color:var(--ink-2);
+  font-size:var(--fs-micro);font-weight:800;white-space:nowrap;
+}
+.ssa-state.is-biased{background:var(--warn-bg);color:var(--warn-fg)}
+.ssa-field{
+  display:flex;align-items:center;gap:var(--space-1);
+  color:var(--ink-2);font-size:var(--fs-sm);font-weight:700;white-space:nowrap;
+}
+/* 読み取り専用の値に**入力欄風の枠を付けない**（§9.129）。地色と等幅数字で
+   「読むもの」だと分かるようにする。 */
+.ssa-given output{
+  min-width:var(--w-xs);text-align:right;color:var(--ink);
+  font-variant-numeric:tabular-nums;font-weight:800;
+}
+.ssa-unit{display:flex;align-items:center;gap:2px}
+.ssa-unit input{width:var(--w-sm);height:var(--ctl-h-sm);text-align:right;font-variant-numeric:tabular-nums}
+.ssa-unit i{color:var(--ink-3);font-size:var(--fs-micro);font-style:normal}
+.ssa-note{flex:1 1 100%;min-width:0;color:var(--warn-fg);font-size:var(--fs-micro);font-weight:700}
+.ssa-note:empty{display:none}
+/* 片寄せしている側の屑帯は**色で言わずに文字で言う**（帯の中に「OS 10.0」と
+   出るので、どちらへ寄っているかは数字で読める）。 */
+.split-visual-scrap.is-biased{outline:1.5px solid var(--warn-border);outline-offset:-1.5px}
 .split-ghost-btn{font-weight:700;color:#3a565d;background:#fff;border:1px solid #c4d0d4;cursor:pointer}
 .split-ghost-btn:hover:not(:disabled){background:#eef2f4;border-color:#9aabab}
 .split-ghost-btn:disabled{color:#b6c2c4;cursor:not-allowed}

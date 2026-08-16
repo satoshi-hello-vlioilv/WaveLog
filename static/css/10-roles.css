@@ -66,6 +66,7 @@
    ボタンだけが行より背高になって行を押し広げるのを防ぐ。 */
 .measurement-action-button,.plan-action-button,.plan-select-add,.plan-select-clear,
 .grid-lot-link,.lot-dsp-link,.sc-row-btn,.sc-board-window-btn,.sc-board-sort-btn,.sc-mode-toggle-btn,
+.record-list-actions button,
 .sc-session-banner button,.shift-seg button,.qa-v7 .qa-seg.qa-seg-sm button{
   height:var(--row-ctl-h);padding:0 var(--ctl-pad-x-xs);
   font-size:var(--tbl-fs);border-radius:var(--radius-sm);
@@ -114,8 +115,12 @@
 .qa-v7 .qa-tab-title b,.mm-head h2,.sc-panel-title{
   font-size:var(--fs-title);font-weight:800;color:var(--ink);
 }
+/* **データ一覧の見出し行はここに入れない**（§9.161）。表の見出しは
+   「カードの小見出し」ではなく**表の一部**で、大きさは器が宣言する
+   `--tbl-fs`（#grid th と同じ）。13pxのままだと、同じ表の中で見出し13・
+   値14という不揃いが残る。 */
 .qa-v7 .qa-acc-title,.split-candidate-head b,.disclosure-title,.wtb-title,
-.record-list-head,.split-tolerance-legend>b{
+.split-tolerance-legend>b{
   font-size:var(--fs-base-sm);font-weight:800;color:var(--ink);
 }
 .qa-v7 .qa-tab-title small,.qa-v7 .qa-acc-sum,.qa-v7 .qa-hint,

@@ -440,7 +440,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 /* **丈位置の一覧は②から降ろした**（§9.136）。測定表の列見出しが丈位置の
    選択を兼ねるので、同じものを選ぶ道具が2つある状態になる（§9.129）。
    `#lengthPos`そのものは残す——丈位置を持っているのはこの`select`で、
-   `PageUp/PageDown`・完了前の確認の「直す」・帳票まで全部がこれを見る。
+   完了前の確認の「直す」・帳票まで全部がこれを見る。
    見えている一覧を消すことと、状態の置き場を消すことは別
    （§9.124の`#measureType`とチップの関係と同じ）。 */
 .measure-shell.mstep-2 #lengthPosGroup{display:none}
@@ -452,7 +452,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    器そのものへ題の意匠を与える——中の部品は自分で色と大きさを宣言している
    ので巻き込まれない。 */
 .measure-shell.mstep-2 #measureTypeGroup{
-  display:grid;grid-template-rows:auto minmax(0,1fr) auto;height:100%;
+  display:grid;grid-template-rows:auto minmax(0,1fr);height:100%;
   gap:var(--space-1);
   color:var(--teal);font-size:var(--fs-title);font-weight:800;letter-spacing:.02em;
 }
@@ -482,21 +482,6 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 }
 .measure-shell.mstep-2 #measureTypeGroup .type-chip{
   flex:0 0 auto;min-height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
-}
-/* **キーは画面に書く。** 覚えさせない——3組しか空いていない以上、
-   その3組は迷わず使えないと意味がない。②測定でだけ出す(他の段では
-   このキーは効かない。効かない案内を置かない)。 */
-.mnav-hint{display:none}
-.measure-shell.mstep-2 #measureTypeGroup .mnav-hint{
-  display:flex;flex-wrap:wrap;gap:var(--space-1) var(--space-3);
-  margin:var(--space-2) 0 0;padding:var(--space-2) 0 0;
-  border-top:1px solid var(--line-soft);
-  color:var(--ink-soft);font-size:var(--fs-micro);
-}
-.mnav-hint span{display:inline-flex;align-items:center;gap:var(--space-1);white-space:nowrap}
-.mnav-hint kbd{
-  padding:1px var(--space-1);border:1px solid var(--line-mid);border-radius:var(--radius-xs);
-  background:var(--surface);color:var(--ink-2);font-family:inherit;font-size:var(--fs-micro);
 }
 /* ---------- ①準備の並び（§9.125） ----------
    選択項目は18個あったが、並びに意味が無く「1回決めるだけのもの」と
@@ -1285,51 +1270,109 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .work-tabs button{flex:1;border-radius:var(--radius-tab) var(--radius-tab) 0 0;padding:8px 5px;font-weight:700;border:1px solid transparent;background:transparent;color:#4a6169;box-shadow:none}
 .work-tabs button:hover{border-color:transparent;background:#eef2f4}
 .work-tabs button.active{background:var(--teal);color:#fff}
-.right-pane.layout-mother .work-tabs,
-.right-pane.layout-measure .work-tabs,
-.right-pane.layout-product .work-tabs{display:none}
-.right-pane.layout-mother .input-status,
-.right-pane.layout-product .input-status{display:none}
+.right-pane.layout-material .work-tabs,
+.right-pane.layout-measure .work-tabs{display:none}
+.right-pane.layout-material .input-status{display:none}
 .work-panel{padding-top:var(--space-2)}
 /* ---------- ②の作業パネルは中身なりに並べる（§9.131） ----------
    母材は入力12個・製品は9個しかないのに、器の1fr（実測1427px）へ横いっぱいに
    広げていたため、1つの欄が239〜420pxになり、下には483〜542pxの空きが
    残っていた。**横は中身なりに詰め、隣り合わせに置く**——母材の値と
    品質情報は一緒に読むもので、離すと視線が往復する。 */
-.measure-shell.mstep-2 .work-panel[data-workpanel="mother"]{
-  display:grid;grid-template-columns:max-content max-content;
-  grid-auto-rows:min-content;gap:0 var(--gap-section);
-  justify-content:start;align-content:start;
+/* 「母材」と「揃い/肉厚/長さ」は**1枚のパネル**（§9.160、利用者の指示
+   「選択1つにまとめ、入力欄はわかりやすく整理して」）。以前は入力内容の
+   選択肢を切り替えて別々のパネルを出しており、**同じ手入力の作業が2つに
+   割れていた**（どちらも測定器を使わず、どちらもロットを開いた最初に入れる）。
+   上下に積む——右の作業面は実測853pxで、丈の表(11列)と母材の4列を横に
+   並べると入らない。読み順（母材＝コイル全体 → 丈＝切り分けた製品）が
+   そのまま上から下になる。 */
+.measure-shell.mstep-2 .work-panel[data-workpanel="material"]{
+  display:grid;grid-template-columns:minmax(0,1fr);grid-auto-rows:min-content;
+  gap:var(--gap-section);align-content:start;
 }
-.measure-shell.mstep-2 .work-panel[data-workpanel="mother"]>.panel-title{grid-column:1;grid-row:1}
-.measure-shell.mstep-2 .work-panel[data-workpanel="mother"]>.material-grid{grid-column:1;grid-row:2}
-.measure-shell.mstep-2 .material-grid{grid-template-columns:repeat(4,max-content);justify-content:start}
-.measure-shell.mstep-2 .work-panel[data-workpanel="product"]{
-  display:grid;grid-auto-rows:min-content;align-content:start;
-}
+/* 母材は**中身なりの幅**（8欄しかない）。丈の表は**器いっぱい**——11列あり、
+   備考は長いほどよいので残りを全部渡す。 */
+.mat-mother{justify-self:start}
+.mat-product{justify-self:stretch;min-width:0}
 .measure-shell.mstep-2 .product-panel{align-content:start}
+/* まとまりの見出しは**帯1本**。器（`.material-grid`／`.product-rows-note`）は
+   `border-top:0`で帯の下へ続くので、**枠の中に枠は作らない**（§9.129）。 */
+.mat-block{display:grid;grid-auto-rows:min-content;justify-items:start}
+.mat-block>*{max-width:100%}
+.mat-block-title{
+  display:flex;align-items:baseline;gap:var(--space-2);width:100%;
+  padding:var(--space-2);
+  background:var(--header-bar-bg);color:var(--header-bar-fg);
+  border:1px solid var(--card-border);border-bottom:0;
+  border-radius:var(--radius-card) var(--radius-card) 0 0;
+}
+/* 題は**カードの題と同じ規格**（`.card-title`。3段そろっていることを
+   `test_msteps`が固定している）。帯の中に置くので下余白だけ落とす
+   ——`.product-head>b.card-title`と同じ扱い。 */
+.measure-shell .mat-block-title>b.card-title{margin:0}
+.mat-block-title small{font-size:var(--fs-micro);font-weight:700;color:var(--ink-3)}
+.mat-block-title>span{margin-left:auto;padding:var(--pad-chip);background:#fff;border:1px solid var(--line);font-size:var(--fs-sm);font-weight:700}
+.mat-block-title>button{height:var(--ctl-h-sm);white-space:nowrap}
+.mat-block-title>span+button{margin-left:0}
+/* 帯・注記・表を**1枚の面としてつなぐ**（間を空けると3つの箱に見える）。 */
+.mat-block .product-panel{gap:0;width:100%}
+/* 参考値の根拠は**値のすぐ下に1行**。出どころ・単位が分からない参考値は
+   読み手が信用の置きどころを決められない（§CLAUDE.md 出どころを出す）。 */
+.mother-calc-basis{
+  margin:var(--space-1) 0 0;padding:0 var(--space-1);
+  color:var(--ink-soft);font-size:var(--fs-micro);
+  font-variant-numeric:tabular-nums;
+}
+.mother-calc-basis[hidden]{display:none}
 /* 丈は**全部を1つの表で**出す（§9.131）。9丈 × 9項目は②の作業面
    （実測1059×920px）に横スクロールなしで収まるので、丈番号タブで
    1丈ずつ切り替える必要が無い。器は中身なりに詰める（`justify-self:start`）
    ——表を器いっぱいへ伸ばすと、1桁の欄まで100px超になる（§9.130）。 */
+/* 幅は**見出しの文字数ではなく中身**から配る（§9.130、利用者の指摘
+   「入力欄が狭い部分があるので見切れていたり見えなかったり」）。実測では
+   1文字しか入らない「1桁目 エッジ形状」が96px、6桁入る「長さ」が42px、
+   自由記述の「備考」が65pxだった——長い見出しが幅を決め、値が入る欄ほど
+   痩せていた。`table-layout:fixed`＋colgroupで列ごとに決め、見出しは
+   2段（群＋項目）にして1列ぶんの文字数を減らす。単位はem——表示サイズを
+   変えても割り付けが崩れない（§9.127）。 */
 .product-rows-table{
-  width:auto;justify-self:start;border-collapse:collapse;background:#fff;
+  width:100%;table-layout:fixed;border-collapse:collapse;background:#fff;
   border:1px solid var(--line);border-top:0;font-size:var(--fs-sm);
 }
+.prt-c-no{width:2.4em}     /* 丈(1桁) */
+.prt-c-num{width:7.6em}     /* 長さ・肉厚・ピッチ(2500.8＋スピナー=72px) — 同じ群は同じ幅 */
+.prt-c-code{width:6.8em}    /* 揃いコード(4桁)。見出しを折り返さない幅 */
+.prt-c-judge{width:3.8em}   /* OK / NG */
+.prt-c-sym{width:5.4em}     /* 内訳の記号(1文字)。幅を決めるのは見出しの側 */
+.prt-c-val{width:3.4em}     /* 4桁目 値(1文字) */
+/* 備考だけ残りを取る(自由記述は長いほどよい)。col に width を書かない。 */
 .product-rows-table th,.product-rows-table td{
   padding:var(--pad-row);border-right:1px solid var(--line-soft);
-  border-bottom:1px solid var(--line-soft);white-space:nowrap;text-align:left;
+  border-bottom:1px solid var(--line-soft);text-align:left;
+  overflow:hidden;
 }
+.product-rows-table td{white-space:nowrap}
 .product-rows-table thead th{
   background:var(--header-bar-bg);color:var(--header-bar-fg);
-  font-weight:800;text-align:center;
+  /* 見出しの左右余白は詰める——**余白を削ってから折り返す**（列の幅は
+     中身が決めるので、見出しのために列を太らせない）。 */
+  padding:var(--space-1);
+  font-weight:800;text-align:center;white-space:normal;line-height:1.2;
+}
+/* 桁の番号は**項目名の下に小さく**。見出しの幅を決めるのは項目名のほうで、
+   「1桁目 エッジ形状」と1行に押し込むと1文字の欄に96pxを与えることになる。 */
+.product-rows-table thead th small{
+  display:block;font-size:var(--fs-tiny);font-weight:700;opacity:.8;
+}
+.product-rows-table thead th.prt-group{
+  border-bottom:1px solid var(--line);font-size:var(--fs-micro);letter-spacing:.04em;
 }
 .product-rows-table tbody th{
-  width:3em;text-align:center;color:var(--ink-soft);font-weight:700;background:var(--surface-2);
+  text-align:center;color:var(--ink-soft);font-weight:700;background:var(--surface-2);
 }
-.product-rows-table input{width:100%;max-width:var(--w-sm);height:var(--ctl-h-sm);background:#fff}
-.product-rows-table td:last-child input{max-width:var(--w-xl)}
-.product-rows-table .product-judge{min-width:3em;text-align:center}
+/* 器は列。**列の中では目いっぱい**使う（列の幅そのものを中身から決めてある）。 */
+.product-rows-table input{width:100%;height:var(--ctl-h-sm);background:#fff}
+.product-rows-table .product-judge{display:block;text-align:center}
 /* ---------- 8. 測定エディタ ---------- */
 /* **高さは器から分ける**（§9.146）。以前は`height:calc(100% - 82px)`という
    直値で、上に居たはずのタブ（`.right-pane.layout-measure .work-tabs`で
@@ -1650,7 +1693,22 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    同居し、他パネルの見出しバーも黄・水色・灰とばらばらだった。
    「情報カードの下地(--card-bg)」「区分見出しバー(--header-bar-bg)」
    「自動計算値の強調(--computed-bg)」の3役割に色相を集約する。 */
-.material-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--space-2);padding:var(--space-2);background:var(--card-bg);border:1px solid var(--card-border);border-top:0;border-radius:0 0 var(--radius-card) var(--radius-card)}
+/* 母材は**役割で組む**（§9.160、利用者の指示「グルーピングや表示方法を工夫して」）。
+   8つの欄が意味なく4×2で並んでいたため、「手計算」と「MIN」が隣り合い、
+   実績とカード指示の区別が名前（"前オフ"と"前オフ指示"）だけに載っていた。
+   縦＝何の値か（全長／オフセット）、横＝どこから来た値か（実績／カード指示）
+   の2軸にすると、欄の名前は短くなり、見出しが違いを引き受ける。 */
+.material-grid{display:grid;grid-template-columns:max-content repeat(4,max-content);
+  gap:var(--space-2);padding:var(--space-2);background:var(--card-bg);
+  border:1px solid var(--card-border);border-top:0;border-radius:0 0 var(--radius-card) var(--radius-card);
+  justify-content:start}
+/* 見出しは2種類だけ。**枠を足さずに**、行の名前は左列・列の名前は上段へ置く。 */
+.material-grid>.mg-head{color:var(--ink-3);font-size:var(--fs-micro);font-weight:800;letter-spacing:.04em;align-self:end}
+.material-grid>.mg-head:nth-of-type(1){grid-column:2/4}
+.material-grid>.mg-head:nth-of-type(2){grid-column:4/6}
+.material-grid>.mg-row-head{grid-column:1;align-self:center;color:var(--ink-2);font-size:var(--fs-sm);font-weight:800;white-space:nowrap}
+/* 実績とカード指示の境目は**線1本**（面や枠で囲うと入力欄の枠と二重になる）。 */
+.material-grid>.mg-card-first{border-left:1px dashed var(--line-mid);padding-left:var(--space-3)}
 /* 項目名は折り返してよい。「屑幅（両耳合計）」のような長い名前を nowrap で
    1行に押し込んでいたため、既定サイズですら枠から3px溢れ(特大では28px)、
    しかもスクロールできる先祖が無いので**読めないまま切れていた**。
@@ -1663,6 +1721,11 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .material-grid input{width:100%;max-width:var(--w-sm);height:var(--ctl-h)}
 .material-grid output{display:flex;align-items:center;justify-content:center;width:100%;height:var(--ctl-h);border:1px solid var(--line);background:#fff;font-weight:700}
 .mother-entry-note{grid-column:1/-1;padding:var(--pad-row);border-radius:var(--radius-sm);border:1px solid var(--card-border);border-left:3px solid var(--teal);background:#fff;color:var(--header-bar-fg);font-weight:700}
+/* 自動で出る値は**1行にまとめる**（§9.160）。手で入れる欄と同じ行に混ざると、
+   どこまで埋めれば終わりなのかが読み取れない。幅は規格へそろえる（§9.131）
+   ——3枚とも同じ幅にすると右端がそろい、値の位置が列として読める。 */
+.mother-auto-row{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:var(--space-2)}
+.mother-auto-row>label{width:var(--w-md);max-width:100%}
 .mother-auto-field{background:var(--computed-bg);border:1px solid #9cd6ce;border-radius:var(--radius-sm);padding:2px 4px}
 .mother-auto-field output{background:#fff;color:var(--computed-fg)}
 .mother-auto-field output.scrap-width-warn{background:var(--invalid-bg);color:var(--invalid);font-weight:800}

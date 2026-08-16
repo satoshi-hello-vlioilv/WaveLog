@@ -23,30 +23,87 @@
 .status-filter-btn.active{border-color:var(--teal);background:var(--teal);color:#fff}
 .status-filter-btn[data-status-filter="done"].active{border-color:var(--success);background:var(--success)}
 .record-search-result{align-self:center;text-align:right;color:#526970;font-weight:700;white-space:nowrap}
-#recordList{padding:0;overflow:auto;background:#eef2f4}
+/* ---------- データ一覧は仕掛一覧(#grid)と同じ表の規格で組む（§9.161） ----------
+   利用者の指摘「文字サイズのバランスが悪く統一感がない。ボタンUIは大きい、
+   ボタン内の文字も大きい、データ内の文字は小さい。文字の見切れも目立つ。
+   カラムも文字列の折り返しがある。他の一覧と同じようにバランスの取れた
+   一覧表に」。実測すると**1枚の中に文字サイズが4種**（見出し13・値14・
+   補助12・バッジ10）あり、**行56pxの中でボタンだけ36px**、日時は124pxの
+   器に対し中身が130px超で**必ず末尾が切れて**いた。
+
+   §9.90で決めた表の規格をこの一覧にも当てる:
+     ・行の高さは`--row-h`（文字×行送り＋余白×2＋罫線）
+     ・**1つの表の中は同じ文字サイズ**（器が`--tbl-fs`／印だけ`--tbl-fs-mark`）
+     ・行内ボタンは`--row-ctl-h`で**行に合わせて縮む**
+     ・**見出しは折り返さない**（足りなければ余白を削り、次に省略記号）
+   カスタムプロパティは**定義した場所で解決される**ので、`#grid`と同じく
+   ここでも行の3つを定義し直す（`:root`のままでは器の余白が効かない）。 */
+#recordList{padding:0;overflow:auto;background:#eef2f4;
+  font-size:var(--tbl-fs);
+  --row-h:calc(var(--fs) * var(--lh) + var(--row-pad-y) * 2 + 1px);
+  --row-inner-h:calc(var(--row-h) - var(--row-pad-y) * 2 - 1px);
+  --row-ctl-h:min(var(--ctl-h-xs),var(--row-inner-h))}
+/* 列幅は**中身の長さ**から決める（§9.130）。日時は`2026/08/16 09:12`が
+   入る幅（等幅数字で16文字ぶん）、状態は状態バッジ＋未同期バッジ、
+   操作は3つのボタンが並ぶ幅。`fr`で伸ばすのは名前・用途など長さの
+   読めない列だけにする——伸び代を全列へ配ると、1〜2桁の列まで太る。 */
 .record-list-head,.record-list-row{
   display:grid;
-  grid-template-columns:minmax(78px,.6fr) minmax(90px,1.1fr) minmax(60px,.7fr) minmax(60px,.7fr) minmax(60px,.7fr) minmax(70px,.9fr) minmax(70px,.8fr) minmax(60px,.7fr) minmax(48px,.5fr) minmax(48px,.45fr) minmax(48px,.45fr) minmax(90px,.9fr) minmax(90px,.9fr) minmax(80px,.8fr) 236px;
+  grid-template-columns:
+    minmax(168px,.5fr)  /* 状態（状態バッジ＋「新しい版あり」まで入る幅） */
+    minmax(104px,1fr)   /* ロット番号 */
+    minmax(78px,.7fr)   /* 検査番号 */
+    minmax(72px,.7fr)   /* 製造材質 */
+    minmax(68px,.6fr)   /* 製造板厚 */
+    minmax(84px,1fr)    /* 用途名 */
+    minmax(84px,.9fr)   /* コース */
+    minmax(78px,.8fr)   /* オペレータ */
+    minmax(70px,.7fr)   /* 検査員 */
+    minmax(68px,.4fr)   /* 作業人数（見出しが4文字。折り返さない幅） */
+    minmax(58px,.4fr)   /* 分割 */
+    minmax(160px,0)     /* 作業開始時刻（2026/08/16 09:05:12） */
+    minmax(160px,0)     /* 更新日時（同じ群なので同じ幅。§9.131） */
+    minmax(84px,.5fr)   /* 実作業時間 */
+    minmax(232px,0);    /* 操作（3つのボタンが中身なりに並ぶ幅） */
   align-items:center;
 }
-.record-list-head{position:sticky;top:0;z-index:4;min-height:42px;background:#dcecef;border-bottom:1px solid #9caeb4;color:#28464e}
-.record-list-head>*{padding:var(--pad-card);border-right:1px solid #c4d0d4}
-.record-list-row{min-height:56px;background:#fff;border-bottom:1px solid #d6e0e3;cursor:pointer}
+.record-list-head{position:sticky;top:0;z-index:4;background:#dcecef;border-bottom:1px solid #9caeb4;color:#28464e;font-weight:700}
+/* 見出しの左右余白は値のセルより詰める（削る順は 余白 → 省略記号）。 */
+.record-list-head>*{height:var(--row-h);display:flex;align-items:center;
+  padding:var(--row-pad-y) var(--row-pad-x-head);border-right:1px solid #c4d0d4;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.record-list-row{background:#fff;border-bottom:1px solid #d6e0e3;cursor:pointer}
 .record-list-row:nth-child(even){background:#f7fafb}
 .record-list-row:hover{background:#edfafa}
 .record-list-row:focus{outline:3px solid #087c8950;outline-offset:-3px}
-.record-list-cell{min-width:0;padding:var(--pad-card);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.record-list-cell.primary{padding:var(--space-2)}
-.record-list-cell.primary .grid-lot-link{width:100%;height:100%;min-height:0}
+.record-list-cell{min-width:0;height:var(--row-h);display:flex;align-items:center;gap:var(--gap-hair);
+  padding:var(--row-pad-y) var(--row-pad-x);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-variant-numeric:tabular-nums}
+.record-list-cell>*{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.record-list-cell.primary{padding-inline:var(--space-1)}
+.record-list-cell.primary .grid-lot-link{width:100%;min-height:0}
 .record-list-cell.primary{font-weight:800;color:#173842}
-.record-list-cell.secondary{font-size:var(--fs-sm);color:#526970}
-.record-list-cell time{font-variant-numeric:tabular-nums}
+/* **補助の列は色だけで下げる。** 大きさを変えると、同じ距離で同時に読む
+   ものが違う大きさになり、表全体が「揃っていない」と感じられる（§9.90）。 */
+.record-list-cell.secondary{color:#526970}
 .record-duration{font-weight:800;color:#075e67}
 /* 続きから再開/帳票/削除の3ボタンは役割で色分けしつつ、サイズ・文字サイズ・
    角丸は完全に統一する(特定のボタンだけ大きくしない)。均等幅(flex:1)に
-   して列内でタップしやすい大きさを揃える。 */
-.record-list-actions{display:flex;align-items:stretch;gap:var(--gap-inline);padding:7px 8px}
-.record-list-actions button{flex:1;font-weight:700;white-space:nowrap}
+   して列内でタップしやすい大きさを揃える。
+   **高さは`--row-ctl-h`**（10-roles.cssの表内ボタンの規則）。行の高さを
+   押し広げない。 */
+.record-list-actions{display:flex;align-items:center;gap:var(--gap-inline);
+  height:var(--row-h);padding:var(--row-pad-y) var(--row-pad-x)}
+/* **均等幅(flex:1)にしない**（§9.161）。「続きから再開」と「帳票」を同じ幅に
+   すると、長いほうが器に入らず**「続き…」と切れる**（実測57px／要96px）。
+   幅は中身から決め、列はその合計で取る（§9.130）。 */
+.record-list-actions button{flex:0 1 auto;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 行の中の印は**表の印の大きさ**（§9.90の`--tbl-fs-mark`）。10px・9.5pxの
+   3種類が同じ行に並んでいたため、状態の文字が読み取りづらく、しかも
+   「編集中」が器から溢れて省略記号になっていた。 */
+.record-list-cell .rp-status-badge,
+.record-list-cell .record-sync-badge,
+.record-list-cell .record-remote-badge{font-size:var(--tbl-fs-mark);margin-left:0}
 .record-list-actions .resume{background:var(--teal);color:#fff;border-color:var(--teal)}
 .record-list-actions .resume:disabled{opacity:.45;cursor:not-allowed}
 .record-list-actions .report{color:#075e67;background:#eafafa;border:1px solid #8fc9c2}

@@ -19,12 +19,12 @@
 
 /* 入力内容の並びは #measureType の選択肢と同順にする(画面と対応を取るため)。
    scope はデータの持ち方の違い:
-     lot    = ロットに1つ (母材)
-     piece  = 縦割りした丈ごと (揃い/肉厚/長さ … m.product.rows)
-     length = 丈位置(頭/尾)ごと × 条ごと (m.measurements[key][丈位置][条]) */
+     material = 母材(ロットに1つ) ＋ 丈ごと(縦割りした丈 … m.product.rows)。
+                **1つの項目**にまとめてある(§9.160、利用者の指示)。どちらも
+                測定器を使わない手入力で、同じ1枚のパネルに並ぶ。
+     length   = 丈位置(頭/尾)ごと × 条ごと (m.measurements[key][丈位置][条]) */
 const ITEM_DEFS=[
- {name:'母材',          scope:'lot'},
- {name:'揃い/肉厚/長さ', scope:'piece'},
+ {name:WL.measureItem.MATERIAL, scope:'material'},
  /* 板厚と板幅は**枠の数がまるで違う**ので別々の項目にした(§9.138)。
     板厚は丈ごとに3点(エッジOS・中央CL・エッジDS)、板幅は条ごと。
     1つの項目のままだと進捗が「3+条数」の合算になり、板幅だけ終わって
@@ -49,6 +49,13 @@ function measureScopeOf(m){
  m.settings=m.settings||{};
  const s=m.settings.measureScope;
  if(!s||!Array.isArray(s.excluded))m.settings.measureScope={excluded:[],decidedAt:'',decidedBy:''};
+ /* 保存済みレコードの「対象外」は旧名(母材／揃い/肉厚/長さ)で入っている。
+    項目名で照合するので、**読んだ時点で今の名前へ寄せる**(§9.160)。
+    寄せないと、対象外にしたはずの項目が未測定として数え直される。 */
+ const list=m.settings.measureScope.excluded;
+ const healed=[...new Set(list.map(x=>WL.measureItem.normalize(x)))];
+ if(healed.length!==list.length||healed.some((x,i)=>x!==list[i]))
+  m.settings.measureScope.excluded=healed;
  return m.settings.measureScope;
 }
 function isExcluded(m,name){return measureScopeOf(m).excluded.includes(name)}
@@ -66,15 +73,15 @@ function countsOf(m){
 /* 1項目分の進捗。perLength は丈位置ごとの充足数(length scope のみ)。 */
 function itemProgress(m,def){
  const c=countsOf(m),out={name:def.name,filled:0,total:0,perLength:[]};
- if(def.scope==='lot'){
+ if(def.scope==='material'){
+  /* 母材8欄＋丈N本。**合算して1つの進捗にする**——同じ面に並ぶので、
+     片方だけ済みという状態を別々の数で出しても読む側の手数が増える。 */
   const mother=m.mother||{};
-  out.total=MOTHER_FIELDS.length;
-  out.filled=MOTHER_FIELDS.filter(k=>filled(mother[k])).length;
- }else if(def.scope==='piece'){
   const rows=(m.product&&Array.isArray(m.product.rows))?m.product.rows:[];
-  out.total=c.vertical;
-  out.filled=Array.from({length:c.vertical},(_,i)=>rows[i])
+  const pieces=Array.from({length:c.vertical},(_,i)=>rows[i])
    .filter(r=>PRODUCT_FIELDS.some(k=>filled(r&&r[k]))).length;
+  out.total=MOTHER_FIELDS.length+c.vertical;
+  out.filled=MOTHER_FIELDS.filter(k=>filled(mother[k])).length+pieces;
  }else{
   const ms=m.measurements||{};
   for(let li=0;li<c.lengthSlots;li++){

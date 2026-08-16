@@ -17,6 +17,8 @@ const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_m
 const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
+/* 入力内容の統合後の名前（§9.160）。画面の`WL.measureItem.MATERIAL`と同じ。 */
+const MATERIAL='母材・揃い/肉厚/長さ';
 const setMode=m=>fetch(API+'/api/access-mode',{method:'POST',
   headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})});
 
@@ -124,7 +126,8 @@ let b=null,page=null;
       ref2a.length===1&&ref2a.includes('basic')&&split2,
       JSON.stringify(ref2a)+' split='+split2);
   /* 板厚と板幅は枠の数がまるで違うので別々の項目にした（§9.138）＝9項目。 */
-  rec('②に入力内容の一覧（9項目）が出る',items.一覧===9,JSON.stringify(items));
+  /* 項目は8つ（§9.160で母材と揃いを1つにまとめた）。 */
+  rec('②に入力内容の一覧（8項目）が出る',items.一覧===8,JSON.stringify(items));
   rec('②では1回決めるだけの設定を出さない',items.ほかの設定===0,JSON.stringify(items));
   /* **丈位置は②に出す（§9.125）。** `PageUp/PageDown`で動かせるのに、
      以前はどの段にも出ておらず「いま何丈目か」は`#stepStatus`の文でしか
@@ -136,7 +139,7 @@ let b=null,page=null;
   /* **同じものを選ぶ道具を2つ置かない**（§9.129）。列見出しが選択を兼ねる
      ので、一覧（リストボックス）は②から降ろした。 */
   rec('丈位置の一覧は②に出さない',items.一覧を出していない===true,JSON.stringify(items));
-  rec('一覧の各項目に残り件数が文字で付く',items.件数の文字===9,JSON.stringify(items));
+  rec('一覧の各項目に残り件数が文字で付く',items.件数の文字===8,JSON.stringify(items));
   /* 測定表は本体のいちばん広いカード。骨子（§9.137）で`2×3`＝**本体の半分**
      と決めたので、しきい値も半分ちょうどで見る（以前は3列＝3/4だった）。
      丈位置×条の1つの表（§9.136）は最大10列×40行なので2マス幅で足りる。 */
@@ -317,64 +320,36 @@ let b=null,page=null;
   const m2b=await seen();
   rec('測定器を使う項目に変えたら理由は消える',(m2b.理由||'')==='',m2b.理由||'(空)');
 
-  /* ---- 5b) 受信欄から手を離さずに巡回できる（§9.124） ----
-     利用者はマウス＆キーボードで作業する。空いているキーは3組しかないので、
-     その3組が確実に効くこと、そして**フォーカスが常に「実際に入力する場所」へ
-     載る**ことを固定する（転送の項目＝受信欄、手動の項目＝セル）。 */
-  const where=()=>page.evaluate(()=>{
-   const a=document.activeElement;
-   return {項目:document.querySelector('#measureType').value,
-     丈:document.querySelector('#lengthPos')?.value||'',
-     居場所:!a?'なし':(a.id||(a.dataset&&a.dataset.mkey?'セル':a.tagName))};
-  });
-  await page.evaluate(()=>{const s=document.querySelector('#measureType');
-    s.value='板幅';s.dispatchEvent(new Event('change',{bubbles:true}))});
-  await page.waitForTimeout(500);
-  const k0=await where();
-  await page.keyboard.press('ArrowRight');await page.waitForTimeout(500);
-  const k1=await where();
-  rec('→ で次の項目へ移る',k1.項目!==k0.項目,`${k0.項目} → ${k1.項目}`);
-  rec('手動入力の項目ではセルへフォーカスが載る',k1.居場所==='セル',JSON.stringify(k1));
-  await page.keyboard.press('ArrowRight');await page.waitForTimeout(500);
-  const k2=await where();
-  rec('セルからでも → が効く（キーの割り当ては1箇所）',k2.項目!==k1.項目,
-      `${k1.項目} → ${k2.項目}`);
-  rec('転送で入れる項目では受信欄へフォーカスが載る',k2.居場所==='deviceInput',
-      JSON.stringify(k2));
-  await page.keyboard.press('ArrowLeft');await page.waitForTimeout(500);
-  rec('← で前の項目へ戻る',(await where()).項目===k1.項目,JSON.stringify(await where()));
-  const b4=await where();
-  await page.keyboard.press('PageDown');await page.waitForTimeout(500);
-  const af=await where();
-  rec('PageDown で丈位置が移る',af.丈!==b4.丈,`${b4.丈} → ${af.丈}`);
-  await page.keyboard.press('F2');await page.waitForTimeout(600);
-  const f2=await where();
-  rec('F2 で未測定の項目へ飛ぶ',f2.項目!==af.項目,`${af.項目} → ${f2.項目}`);
-
-  /* **打っている最中の ← → は奪わない。** 空でないときは文字の中を動く。 */
-  const typing=await page.evaluate(async()=>{
-   const el=document.getElementById('deviceInput');
-   if(!el||el.offsetParent===null)return{対象外:true};
-   el.focus();el.value='26.1';el.setSelectionRange(4,4);
-   const before=document.querySelector('#measureType').value;
-   el.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true,cancelable:true}));
-   await new Promise(r=>setTimeout(r,300));
-   const after=document.querySelector('#measureType').value;
-   el.value='';
-   return {項目が変わらない:before===after,前:before,後:after};
-  });
-  rec('数値を打っている最中は ← で項目を変えない',
-      typing.対象外===true||typing.項目が変わらない===true,JSON.stringify(typing));
-
-  /* キーは画面に書く（覚えさせない）。 */
-  const hint=await page.evaluate(()=>{
-   const h=document.querySelector('.mnav-hint');
-   if(!h)return null;const r=h.getBoundingClientRect();
-   return {文:h.textContent.replace(/\s+/g,' ').trim(),
-           見えている:r.width>0&&r.height>0&&getComputedStyle(h).display!=='none'};
-  });
-  rec('キーの案内が画面に出ている',
-      !!hint&&hint.見えている&&/F2/.test(hint.文)&&/項目/.test(hint.文),JSON.stringify(hint));
+  /* ---- 5b) 入力内容・丈位置のキーボード操作は**持たない**（§9.160） ----
+     利用者の指示「自動入力との競合かうまく効かない。自動入力が優先なので、
+     無理にキーボードショートカット操作させる必要もないのできれいに削除」。
+     消したのは案内（`.mnav-hint`）だけでなく**割り当てそのもの**——案内だけ
+     消して受け付けたままにすると、打っている最中に項目が飛ぶ事故が残る。 */
+  const noKeys=async()=>{
+   await page.evaluate(()=>{const s=document.querySelector('#measureType');
+     s.value='板幅';s.dispatchEvent(new Event('change',{bubbles:true}))});
+   await page.waitForTimeout(500);
+   const before=await page.evaluate(()=>({
+     項目:document.querySelector('#measureType').value,
+     丈:document.querySelector('#lengthPos').value}));
+   for(const k of ['ArrowRight','ArrowLeft','PageDown','PageUp','F2']){
+    await page.keyboard.press(k);await page.waitForTimeout(200);
+   }
+   const after=await page.evaluate(()=>({
+     項目:document.querySelector('#measureType').value,
+     丈:document.querySelector('#lengthPos').value}));
+   return{before,after};
+  };
+  const keys=await noKeys();
+  rec('→ ← PgUp PgDn F2 では入力内容・丈位置が動かない',
+      keys.before.項目===keys.after.項目&&keys.before.丈===keys.after.丈,
+      JSON.stringify(keys));
+  const navGone=await page.evaluate(()=>({
+   案内:!!document.querySelector('.mnav-hint'),
+   割り当て:typeof (window.WL&&WL.measureNav)!=='undefined',
+  }));
+  rec('キーの案内も割り当ても残っていない',
+      navGone.案内===false&&navGone.割り当て===false,JSON.stringify(navGone));
 
   /* ---- 5c) ①準備は役割ごとにまとまり、「その他」は畳む（§9.125） ----
      18個の選択項目が意味なく並んでいた。**毎回決めるもの**（誰が・形・機材）
@@ -916,7 +891,7 @@ let b=null,page=null;
      1つだけ見ると、そのとき選ばれていた項目しか網に掛からない
      （最初はそうなっており、板厚の3点入力と備考欄を取りこぼした）。 */
   await go('2');
-  for(const t of ['板幅','揃い/肉厚/長さ','母材']){
+  for(const t of ['板幅',MATERIAL]){
    await setType(t);
    const over=await wideBoxes(SLACK);
    rec(`②「${t}」に中身より${SLACK}px以上広い欄が無い`,over.length===0,over.join(' / '));
@@ -1121,23 +1096,83 @@ let b=null,page=null;
   const e2=await emptyRate();
   rec('②（板幅）の空きを記録した',true,JSON.stringify(e2));
 
-  /* 揃い/肉厚/長さは**全丈を1つの表**で出す（丈番号タブを廃止）。
-     タブは「横スクロールを避ける」ためだったが、②の作業面は実測1059×920pxで、
-     9丈 × 9項目は横スクロールなしで収まる。 */
-  await setType('揃い/肉厚/長さ');
+  /* 母材と丈は**1枚のパネル**（§9.160、利用者の指示「選択1つにまとめ、
+     入力欄はわかりやすく整理して」）。丈は全丈を1つの表で出す（丈番号タブは
+     §9.131で廃止）。 */
+  await setType(MATERIAL);
   const prod=await page.evaluate(()=>{
    const t=document.querySelector('.product-rows-table');
    const tabs=document.getElementById('productLengthTabs');
    const n=Math.max(1,Math.min(9,+document.getElementById('verticalCount').value||1));
-   return {表:!!t&&t.getBoundingClientRect().height>0,
+   const vis=e=>!!e&&e.getBoundingClientRect().height>0;
+   return {表:vis(t),
      行:document.querySelectorAll('#productRowsBody tr').length,丈:n,
-     タブ:!!tabs&&tabs.getBoundingClientRect().height>0,
+     タブ:vis(tabs),
+     母材:vis(document.querySelector('.material-grid')),
+     面の数:[...document.querySelectorAll('.work-panel')].filter(vis).length,
      溢れ:t?Math.round(t.getBoundingClientRect().right
        -document.querySelector('.right-pane').getBoundingClientRect().right):0};
   });
-  rec('②の揃いは全丈を1つの表で出す',prod.表&&prod.行===prod.丈,JSON.stringify(prod));
+  rec('②の母材・丈は1枚の面に母材と全丈表が両方出る',
+      prod.母材&&prod.表&&prod.行===prod.丈&&prod.面の数===1,JSON.stringify(prod));
   rec('②の揃いに丈番号タブを出さない',prod.タブ===false,JSON.stringify(prod));
   rec('②の全丈表が横に溢れない',prod.溢れ<=0,JSON.stringify(prod));
+  /* **入力欄が見切れない**（§9.160、利用者の指摘）。見出しの文字数で列幅が
+     決まっていたため、1文字しか入らない「1桁目 エッジ形状」が96pxで、6桁
+     入る「長さ」が42px・自由記述の「備考」が65pxだった。代表的な値を入れて
+     **実際に切れていないか**を見る（幅の数字だけでは足りない）。 */
+  const clipped=await page.evaluate(()=>{
+   const set=(k,v)=>{const el=document.querySelector(
+     `#productRowsBody tr[data-row="0"] [data-product-field="${k}"]`);
+     if(el){el.value=v;el.dispatchEvent(new Event('input',{bubbles:true}))}};
+   set('productLength','2500.8');set('wallThickness','0.500');
+   set('alignmentCode','1234');set('pitch','125.5');
+   const out=[];
+   document.querySelectorAll('#productRowsBody tr[data-row="0"] input').forEach(el=>{
+    if(!el.value)return;
+    if(el.scrollWidth>el.clientWidth+1)
+     out.push(`${el.dataset.productField}:${Math.round(el.clientWidth)}<${el.scrollWidth}`);
+   });
+   return out;
+  });
+  rec('②の丈の入力欄が値を切り落とさない',clipped.length===0,clipped.join(' / '));
+  await page.evaluate(()=>{
+   document.querySelectorAll('#productRowsBody tr[data-row="0"] input').forEach(el=>{
+    if(el.value){el.value='';el.dispatchEvent(new Event('input',{bubbles:true}))}});
+  });
+
+  /* ---- 母材の計算全長（参考）（§9.160、利用者の指示） ----
+     **元データがそろっているときだけ**出す。良品重量が0なら計算しない。
+     フィクスチャにはBOX実績の列が無いので、**材料ごと注ぎ込んで**確かめる
+     ——入れずに「出ない」を見ても、壊れていても同じ結果になる。
+     長さ(m)=1000×重量/(比重×板厚×板幅)：1000×3200/(2.7×0.5×1030)=2301.3 */
+  const calc=await page.evaluate(()=>{
+   const src=S.measure.source;
+   const keep={t:src['BOX実績_板厚'],w:src['BOX実績_板幅'],d:src['比重'],kg:src['BOX実績_良品重量']};
+   const read=()=>({欄:!document.getElementById('motherCalcLengthField').hidden,
+     値:(document.getElementById('motherCalcLength').textContent||'').trim(),
+     根拠:(document.getElementById('motherCalcBasis').textContent||'').trim()});
+   delete src['BOX実績_板厚'];delete src['比重'];delete src['BOX実績_良品重量'];
+   WL.motherCalc.refresh();const 無し=read();
+   src['BOX実績_板厚']=0.5;src['BOX実績_板幅']=1030;src['比重']=2.7;src['BOX実績_良品重量']=3200;
+   WL.motherCalc.refresh();const そろった=read();
+   src['BOX実績_良品重量']=0;
+   WL.motherCalc.refresh();const 重量0=read();
+   /* 後始末: 注ぎ込んだ材料を元へ戻す（無かったものは消す）。 */
+   [['BOX実績_板厚',keep.t],['BOX実績_板幅',keep.w],['比重',keep.d],['BOX実績_良品重量',keep.kg]]
+     .forEach(([k,v])=>{if(v===undefined)delete src[k];else src[k]=v});
+   WL.motherCalc.refresh();
+   return{無し,そろった,重量0};
+  });
+  rec('元データが欠けているときは計算全長を出さない',calc.無し.欄===false,JSON.stringify(calc.無し));
+  rec('元データがそろうと計算全長を参考表示する',
+      calc.そろった.欄===true&&/2301\.3/.test(calc.そろった.値)&&/m/.test(calc.そろった.値),
+      JSON.stringify(calc.そろった));
+  rec('計算全長は出どころ（板厚・板幅・比重・良品重量）を添える',
+      /板厚/.test(calc.そろった.根拠)&&/板幅/.test(calc.そろった.根拠)
+      &&/比重/.test(calc.そろった.根拠)&&/良品重量/.test(calc.そろった.根拠),
+      calc.そろった.根拠);
+  rec('良品重量が0のときは計算しない',calc.重量0.欄===false,JSON.stringify(calc.重量0));
 
   /* ③は基本情報が1×3で左に立ち、右の3列が「確認 → その根拠」の縦の対
      （§9.146、利用者の指示）。確認の3枚は真下のカードと**左端がそろう**。 */
