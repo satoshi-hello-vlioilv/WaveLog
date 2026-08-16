@@ -506,9 +506,28 @@
   const showWidthTable=['板厚','板幅','板厚/板幅','ラテラルボー','バリ','テレスコープ','巻ずれ','フラットネス'].includes(s.measureType)||hasWidthTableData;
   const hasProductData=(x.product?.rows||[]).some(r=>r&&['productLength','wallThickness','alignmentCode'].some(k=>String(r[k]||'').trim()!==''));
   const showProduct=WL.measureItem.isMaterial(s.measureType)||hasProductData;
+  /* 帳票の頭は**「どこで・いつ・どのロットか」**（§9.161、利用者の指示
+     「設備名と作業年月日をロット番号の前に追加して」）。紙は1枚ずつ配られ、
+     手元では並べ替えられるので、ロット番号だけでは束ねられない。
+     作業年月日は**作業開始時刻の日付**。未記録なら終了時刻→更新日時の順に
+     落とし、**どこから取ったかを添える**（同じ日付でも当たる見込みが違う。
+     紙にはtitleが出ないので画面と同じ文字で書く）。 */
+  const workDay=(()=>{
+   const pick=[[w.startAt,''],[w.endAt,'（終了時刻から）'],[x.updatedAt,'（更新日時から）']]
+     .find(([v])=>v&&!Number.isNaN(new Date(v).getTime()));
+   if(!pick)return{text:'未記録',note:''};
+   const d=new Date(pick[0]);
+   return{text:d.toLocaleDateString('ja-JP',{year:'numeric',month:'2-digit',day:'2-digit'}),note:pick[1]};
+  })();
+  /* 3つは**同じ大きさで左から横に並べる**（利用者の指示）。どれも「この紙が
+     どれか」を決める鍵で、大きさに差を付けると設備・日付が添え物に見える。 */
   return `
    <div class="rp-report-head">
-    <div><h2>${esc(b.lotNo||x.id)}</h2></div>
+    <div class="rp-report-head-id">
+     <span class="rp-head-fact"><small>設備名</small><b>${esc(equipment)}</b></span>
+     <span class="rp-head-fact"><small>作業年月日</small><b>${esc(workDay.text)}</b>${workDay.note?`<i>${esc(workDay.note)}</i>`:''}</span>
+     <h2 class="rp-head-fact"><small>ロット番号</small><b>${esc(b.lotNo||x.id)}</b></h2>
+    </div>
     <div class="rp-report-head-meta"><span class="rp-status-badge ${statusClass(x.status)}">${esc(statusLabel(x.status))}</span><span>帳票作成: ${esc(fmtDT(new Date().toISOString()))}</span></div>
    </div>
    <div class="rp-zone rp-zone-3">

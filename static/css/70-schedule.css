@@ -579,8 +579,11 @@
 .record-sync-bar svg{flex:none;color:#a06a00}
 .record-sync-bar b{font-variant-numeric:tabular-nums}
 .record-sync-bar span{flex:1}
+/* 帯の中は**1つの大きさ**（§9.161）。本文13px・ボタン12pxで組んでいたため、
+   同じ帯の中に2種類の文字が並んでいた。ボタンは器の大きさを受ける。 */
 .record-sync-bar button{flex:none;border:1px solid #d9a441;
-  background:#fff;color:#7a5200;font-weight:700;cursor:pointer}
+  background:#fff;color:#7a5200;font-weight:700;cursor:pointer;font-size:inherit;
+  height:var(--ctl-h-sm)}
 .record-sync-bar button:hover{background:#fff6e6}
 .record-sync-badge{
   display:inline-block;margin-left:5px;padding:var(--pad-chip);border-radius:var(--radius-sm);

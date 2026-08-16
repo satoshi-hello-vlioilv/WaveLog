@@ -113,6 +113,16 @@
 .rp-report-head{display:flex;align-items:flex-end;justify-content:space-between;gap:var(--space-3);padding-bottom:3px;margin-bottom:4px;border-bottom:2px solid #173842}
 .rp-report-head small{color:var(--teal);font-weight:800;letter-spacing:.1em}
 .rp-report-head h2{margin:2px 0 0;font-size:16px;color:#173842}
+/* 帳票の頭は「どこで・いつ・どのロットか」（§9.161、利用者の指示）。
+   **3つとも同じ大きさで左から横に並べる**——どれも1枚を特定する鍵で、
+   大きさに差を付けると設備・日付が添え物に見える。項目名は値の左に小さく
+   置く（値だけでは何の日付か読み手が決められない）。
+   用紙の割り付けはpx固定（`.rp-page`配下の例外。§CLAUDE.md）。 */
+.rp-report-head-id{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 16px;min-width:0}
+.rp-head-fact{display:inline-flex;align-items:baseline;gap:4px;margin:0;white-space:nowrap}
+.rp-head-fact small{color:#60747b;font-size:8px;font-weight:800;letter-spacing:.06em}
+.rp-head-fact b{color:#173842;font-size:16px;font-weight:800;line-height:1.15}
+.rp-head-fact i{color:#7a8b90;font-size:8px;font-style:normal}
 .rp-report-head-meta{display:flex;flex-direction:column;align-items:flex-end;gap:2px;color:#60747b;font-size:9px}
 /* ゾーン: 関連するセクションを横に並べ、認知的なまとまり（チャンク）ごとに
    視線移動を抑える。列数はゾーンごとに情報量に応じて変える。 */
