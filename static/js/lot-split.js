@@ -1718,10 +1718,18 @@
 
   /* 条の設計カードの中の編集面（§9.144）。**分割の材料が無いロットでは
      出さない**——並べ替える条が無いのに図と空の一覧を置くと、その器ぶん
-     「まだ何かある」と読ませてしまう。 */
+     「まだ何かある」と読ませてしまう。
+     **器は`#splitDetailCard`**（§9.154）。§9.145で条の設計を2枚へ割ったとき
+     `.split-layout`は内訳カードへ移ったが、ここは`#splitCard .split-layout`を
+     探したままだった。**常にnullなので、この関数は一度も効いていない**
+     （例外も出ないので、分割無しのロットで空の一覧が出続けることに誰も
+     気づけない）。あわせて**条の並びの図と操作**も同じ条件で畳む
+     ——並べ替える条が無いのに掴める帯を出しても何も起きない。 */
   function showSplitEditor(on){
-    const el=document.querySelector('#splitCard .split-layout');
-    if(el&&el.hidden!==!on)el.hidden=!on;
+    ['#splitDetailCard .split-layout','#splitCard .split-visual'].forEach(sel=>{
+      const el=document.querySelector(sel);
+      if(el&&el.hidden!==!on)el.hidden=!on;
+    });
   }
   /* `renderSplit()`は最後にこの関数を呼ぶので、ここから`renderSplit()`を
      呼ぶと往復する。**旗で1周に限る。** */

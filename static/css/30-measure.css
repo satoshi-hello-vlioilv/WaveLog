@@ -371,7 +371,6 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
   grid-template-columns:minmax(0,1fr);
   grid-template-rows:min-content min-content minmax(0,1fr);
 }
-.measure-shell.mstep-2 #qualityGradePanel,
 .measure-shell.mstep-2 .work-time-panel,
 .measure-shell.mstep-2 .analysis,
 .measure-shell.mstep-2 .debug-pane{display:none}
@@ -458,7 +457,10 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
   height:auto;margin:var(--space-1) 0 0;padding:var(--space-1) 0 0;
   border:0;border-top:1px dashed var(--line-soft);border-radius:0;
   background:transparent;box-shadow:none;
-  color:var(--ink-soft);font-size:var(--fs-micro);font-weight:700;text-align:left;
+  /* **文字は群の見出しの規格に任せる**（§9.154）。ここで色・大きさ・太さを
+     書くと、セレクタが4クラス（`.measure-shell.mstep-1 .selectors>.prep-head`）
+     で規格（3クラス）に勝ってしまい、①だけ11pxのまま残る（実測でそうなった）。 */
+  text-align:left;
 }
 .measure-shell.mstep-1 .selectors>.prep-head[data-prep="who"]{
   margin-top:0;padding-top:0;border-top:0;
@@ -786,7 +788,6 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
   background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-card);
 }
 .measure-body>.left-pane>.basic-card,
-.measure-body>.quality-pane>.quality-grade-panel,
 /* 作業時間は**カードの中の1つの群**で、他の群（誰が測るか／使う機材）と
    同じ見え方にする（§9.142）。以前は枠付きのパネルのままで、カードの中に
    もう1枚カードが乗っているように見えていた（§9.129「枠の中に枠を作らない」）。
@@ -814,6 +815,35 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .measure-shell .center-pane>.panel-title.card-title>span:first-child{
   margin:0 0 var(--space-1);
   color:var(--teal);font-size:var(--fs-title);font-weight:800;letter-spacing:.02em;
+}
+/* ---------- カードの中の「群の見出し」も1つの見た目（§9.154） ----------
+   利用者の指摘「カードのラベルの色とサイズがバラバラ」。実測すると
+   **①に3種類・②に4種類**あった——`.prep-head`が11px/#7b8e95/700、
+   `.info-group`が11px/#93a5ab/800、`.qp-head`と`.split-layout h3`が
+   11px/#4a6169/800、`.split-visual-head b`は指定漏れで 14px/#1b3438/800。
+   色は4種類で、うち2つはトークン外のリテラルだった。
+
+   §9.147で**カードの題**は1つに揃えたが、**その1段下には規格が無いまま**
+   だった。ここで1つにする。
+
+   **大きさは本文と同じ`--fs`**（利用者の指摘「ラベル的なところがコンテンツ内
+   より小さい」「③は文字が小さすぎる」）。段差は**色と太さ**で付ける
+   ——11pxまで落とすと、同じカードの中で3px違う文字が2種類並び、
+   「別の仕組みの文字」に見えていた。**箱は高くならない**（`.prep-head`は
+   `min-height:var(--ctl-h-xs)`＝26pxを持ち、14px×1.4=19.6pxはその中に収まる）。 */
+.measure-shell .measure-body .group-head,
+.measure-shell .measure-body .prep-head,
+.measure-shell .measure-body .info-group,
+.measure-shell .measure-body .qp-head,
+.measure-shell .measure-body .split-layout h3,
+.measure-shell .measure-body .split-visual-head b{
+  color:var(--ink-3);font-size:var(--fs);font-weight:800;letter-spacing:.04em;
+}
+/* カードの中の**帯の見出し**（測定表の上の「板幅」など）は題と同じ大きさで、
+   色だけ本文の濃さにする。カードの題（teal）と役割が違うことを色で示す
+   ——リテラルの`#173842`／`#1b3438`が別々に書かれていた。 */
+.measure-shell .measure-body .measure-grid-block-title{
+  color:var(--ink);font-size:var(--fs-title);font-weight:800;
 }
 /* 作業タブの面（母材・製品）の題は**帯ではなくカードの題**にする。
    器がカードになった今、中でもう一度「色の付いた帯」を作るのは枠の中に枠
@@ -865,7 +895,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .tabs button{border-radius:var(--radius-tab) var(--radius-tab) 0 0;display:flex;align-items:center;justify-content:center;white-space:nowrap;border:1px solid transparent;background:transparent;color:#4a6169;box-shadow:none}
 .tabs button:hover{border-color:transparent;background:#eef2f4}
 .tabs .active{background:var(--teal);color:#fff;font-weight:700}
-.basic-card,.quality-grade-panel,.data-management-panel,.split-pane{padding:var(--space-2);background:#fff;border:1px solid var(--line);border-radius:var(--radius-md)}
+.basic-card,.data-management-panel,.split-pane{padding:var(--space-2);background:#fff;border:1px solid var(--line);border-radius:var(--radius-md)}
 /* ---------- 基本情報(§9.55) ----------
    13項目を「主識別 → 識別番号 → 製品 → コース」の4かたまりへ束ね、
    参照用の項目は**ラベルと値を1行**に収める。以前は全項目がラベル上・値下の
@@ -961,6 +991,11 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .info-more:hover{background:var(--surface-2);color:var(--ink)}
 .info-detail{grid-column:1/-1;display:contents}
 .info-detail[hidden]{display:none}
+/* 詳細のラベル列は**いちばん長いラベルから決める**（§9.154）。6emでは
+   「ラテラルボー」「フラットネス」（6文字＝84px超）が切れていた（実測）。
+   **群ごとに変えないこと**——ラベル列の幅が2種類あると値の左端がずれ、
+   視線が列を追えなくなる（§9.129の9番）。 */
+.measure-shell .info-detail .field{grid-template-columns:7em minmax(0,1fr)}
 /* 幅分割の視覚図(§9.133 指摘⑨)。幅(mm)に比例した帯で、色は入力欄の
    バッジ・条割の視覚図と同じ。**狭い区間でも読めるように**帯の中の文字は
    はみ出さず省略し、`title`に生の値を残す。 */
@@ -976,13 +1011,11 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .split-band-seg b{font-size:var(--fs-sm);font-weight:800;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .split-band-seg small{font-size:var(--fs-micro);opacity:.85}
 .split-band-seg.is-missing{background-image:repeating-linear-gradient(45deg,#0003 0 6px,transparent 6px 12px)}
-.quality-grade-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:var(--fs-sm)}
-.quality-grade-table th,.quality-grade-table td{
-  padding:var(--pad-row);border:1px solid var(--line-soft);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-}
-.quality-grade-table th{background:var(--surface-2);color:var(--ink-2);font-weight:700;text-align:left;width:11%}
-.quality-grade-table td{background:#fff;color:var(--ink);width:22.3%}
+/* 品質規格の4×3表は廃止（§9.154）。見出し列を`width:11%`で決め打ちして
+   いたため「ラテラルボー」「アルマイト」「表面処理」が省略記号で切れていた
+   （実機で報告）。**詳細の中の他の項目と同じ`.field`の行**にしたので、
+   ラベルは中身なりの幅を取り、切れない。 */
+.quality-grade-fields{grid-column:1/-1;display:contents}
 /* 項目ごとに枠を付けない（§9.129「ブロックの中で枠を重ねない」）。
    パネルの枠の中に12個の枠が並ぶと、それだけで画面の枠が18個になる
    （§9.131で常時表示にしたら実測でそうなった）。**地色だけでまとまりは
@@ -1632,24 +1665,9 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 /* 詳細カードは**2列**（子ロット候補／条割プレビュー）。§9.145で「条の設計は
    2分割して配置」となったので、視覚化はこちらには入らない。 */
 #splitDetailCard>.split-layout{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
-/* ---------- 基本情報カードのタブ（§9.145） ----------
-   品質規格は「測る前に1回だけ確かめる」もの——マスを1つ使うほどではないが、
-   1回の操作で必ず出せる場所に置く（重要度が低い＝無くてよい、ではない）。
-   意匠は`.subtabs`と同じ格。**①でも出す**ので別のクラスにしてある
-   （`.subtabs`は①②で消す規則を持っている）。 */
-.basic-tabs{display:flex;margin-bottom:var(--space-1)}
-/* **高さはトークンから**（§9.127）。`padding`任せだと28pxという
-   どのトークンでもない高さになり、`test_scale`の巡回が落ちる。 */
-.basic-tabs button{
-  position:relative;height:var(--ctl-h-sm);
-  border-radius:var(--radius-tab) var(--radius-tab) 0 0;
-  padding:0 var(--ctl-pad-x-sm);border:1px solid transparent;border-bottom:0;
-  background:transparent;color:#4a6169;box-shadow:none;cursor:pointer;
-}
-.basic-tabs button:hover{background:#eef2f4}
-.basic-tabs button.active{background:var(--teal);color:#fff;font-weight:700}
-/* タブは①でだけ意味がある（②③は基本情報しか出さない）。 */
-.measure-shell.mstep-2 .basic-tabs,.measure-shell.mstep-3 .basic-tabs{display:none}
+/* 基本情報カードのタブ（基本情報／品質規格）は廃止（§9.154、利用者の指示）。
+   カードの題と同じ「基本情報」という札がタブにも並ぶのは冗長で、品質規格は
+   詳細の中の1つの群になった。 */
 
 
 /* 準備カードの見出しは、他のカードと**同じ意匠**にする（骨子）。ここだけ
