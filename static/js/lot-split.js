@@ -762,6 +762,18 @@
   // 先頭から敷き詰めた初期配置を生成する(既に操作中の内容があれば保持)。
   function seedSplitDefaults(sources,total){
     const m=S.measure.settings,seq=ensureSequenceLength(total);
+    /* **確定済みの割当が図と食い違ったら、割当のほうへ合わせる**（§9.156）。
+       候補が取れず`splitGroups`から材料を作った場合、並びの控え
+       (`splitSequence`)は前のロットのものが残っていることがあり、9条の器に
+       2条ぶんしか名前が入らず**7条が「未割当」**になっていた（実測）。
+       図が測定表と違うものを指すくらいなら、割当から引き直す。 */
+    const applied=appliedSequence(total);
+    if(applied&&(seq.length!==total||!seq.some(Boolean)
+        ||seq.filter(Boolean).length!==applied.filter(Boolean).length)){
+      m.splitSequence=applied;
+      m.splitConfirmed=Array(total).fill(true);
+      return{seq:m.splitSequence,confirmed:m.splitConfirmed};
+    }
     if(total>0&&!seq.some(Boolean)){
       m.splitSequence=defaultFillSequence(sources,total);
       m.splitConfirmed=Array(total).fill(false);
@@ -769,6 +781,18 @@
       ensureConfirmedLength(total);
     }
     return{seq:m.splitSequence,confirmed:m.splitConfirmed};
+  }
+  /* 確定済みの割当（`splitGroups`＋`splitPositionGroup`）を「条ごとのロット」
+     の並びへ開く。どちらかが欠けていれば null（推測で埋めない）。 */
+  function appliedSequence(total){
+    const st=S.measure?.settings,groups=st?.splitGroups,pos=st?.splitPositionGroup;
+    if(!Array.isArray(groups)||!groups.length||!Array.isArray(pos)||!pos.length)return null;
+    const out=[];
+    for(let i=0;i<total;i++){
+      const g=groups[pos[i]];
+      out.push(g?String(g.lot||''):'');
+    }
+    return out.some(Boolean)?out:null;
   }
   function pushUndoSnapshot(seq,confirmed){
     splitUndoStack.push({seq:seq.slice(),confirmed:confirmed.slice()});

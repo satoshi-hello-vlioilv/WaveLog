@@ -963,18 +963,28 @@ let b=null,page=null;
   /* **品質規格は基本情報カードのタブ裏**（§9.145、利用者の指示「品質規格は
      タブに回し」）。測る前に1回だけ確かめるもので、マスを1つ使うほどでは
      ない——ただし**1回の操作で必ず出せる場所**に置く。 */
-  const grade1=await page.evaluate(()=>{
-   const btn=[...document.querySelectorAll('[data-basictab]')].find(b=>b.dataset.basictab==='grade');
-   if(!btn)return{ボタン:false};
-   btn.click();
-   const p=document.querySelector('[data-basicpanel="grade"]');
-   const on=!!p&&!p.hidden;
-   document.querySelector('[data-basictab="basic"]').click();
-   const back=document.querySelector('[data-basicpanel="basic"]');
-   return{ボタン:true,開ける:on,戻せる:!!back&&!back.hidden};
+  const grade1=await page.evaluate(async()=>{
+   /* 品質規格は**基本情報の詳細の中の1つの群**（§9.154、利用者の指示）。
+      「基本情報」カードの中に「基本情報」タブがあるのは冗長だったのでタブは
+      廃止し、詳細の他の項目と同じ「ラベル＋値」の行にした。**ラベルが
+      切れないこと**が要件（4×3の表は見出し列を`width:11%`で決め打ちして
+      いたため「ラテラルボー」「アルマイト」「表面処理」が切れていた）。 */
+   const more=document.getElementById('basicMore');
+   if(!more)return{ボタン:false};
+   if(document.getElementById('basicDetail')?.hidden)more.click();
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   const labs=[...document.querySelectorAll('#qualityGradeFields label')];
+   const cut=labs.filter(e=>e.scrollWidth>e.clientWidth+1).map(e=>e.textContent);
+   const タブ=document.querySelectorAll('[data-basictab]').length;
+   more.click();
+   return{ボタン:true,行:labs.length,切れ:cut,タブ};
   });
-  rec('①の品質規格はタブ1枚で出せる',
-      grade1.ボタン&&grade1.開ける&&grade1.戻せる,JSON.stringify(grade1));
+  rec('①の品質規格は基本情報の詳細から1回の操作で出せる',
+   grade1.ボタン&&grade1.行===12,JSON.stringify(grade1));
+  rec('①の品質規格のラベルが切れない',
+   grade1.ボタン&&Array.isArray(grade1.切れ)&&grade1.切れ.length===0,JSON.stringify(grade1.切れ));
+  rec('①の基本情報カードにタブを残さない（題と同じ札は冗長）',
+   grade1.タブ===0,String(grade1.タブ));
   rec('①に測定データ分析を出さない',!wall1.面.includes('analysis'),JSON.stringify(wall1));
   rec('タブの裏は同時に2枚出さない',
       !(wall1.面.includes('grade')&&wall1.面.includes('analysis')),JSON.stringify(wall1));
