@@ -131,7 +131,11 @@ let b=null;
        ので、実際に当てた要素を測る。 */
     一段下:(()=>{const p=document.createElement('span');p.style.fontSize='var(--fs-sm)';
       document.body.appendChild(p);const v=parseFloat(getComputedStyle(p).fontSize);p.remove();return v})(),
-    帯:bg('.split-band-seg'),
+    /* **まとめ帯（`.split-band-seg`）は廃止**（§9.156、利用者の指示
+       「条のまとめ表示は不要、図は1つに統合して並べ替えができるものを」）。
+       色で結び付けるという値打ちは残るので、**残った1条ずつの帯**で見る。
+       色はJSが`--split-block-bg`で渡すので`background-color`に出る。 */
+    帯:bg('#splitVisualStrip .split-visual-block:not(.empty)'),
     バッジ:bg('.strip-lot-badge'),
    };
   });
@@ -143,9 +147,9 @@ let b=null;
   /* **帯グラフと測定表のロット列は同じ配色**（§9.146）。色で結び付けている
      のが値打ちなので、片方だけ配色を変えたら落ちること。 */
   rec('帯グラフのロット色が測定表のバッジと一致する',
-   splitPanel.帯.length===3&&new Set(splitPanel.バッジ).size===3
+   new Set(splitPanel.帯).size===3&&new Set(splitPanel.バッジ).size===3
    &&[...new Set(splitPanel.バッジ)].every(c=>splitPanel.帯.includes(c)),
-   JSON.stringify({帯:splitPanel.帯,バッジ:[...new Set(splitPanel.バッジ)]}));
+   JSON.stringify({帯:[...new Set(splitPanel.帯)],バッジ:[...new Set(splitPanel.バッジ)]}));
 
   /* ---- 4c) 分割ありのとき、専用のロット列へ下3桁バッジ（§9.146） ----
      **入力欄の中ではなく1列にまとめる。** ロット番号は条で決まり丈位置では

@@ -628,8 +628,35 @@
      ロットが変わったらキャッシュを破棄するため、取得時のロット№をキーとして保持する。 */
   let splitSourcesCache=null,splitSourcesCacheKey=null,splitSourcesLoading=null;
   function currentSplitCacheKey(){return S.measure?.basic?.lotNo||''}
+  /* 子ロット候補が取れないときは**確定済みの割当から作り直す**（§9.156、
+     利用者の指摘）。実機で「子ロットの取得: 取得OK→取得失敗」となったロットは
+     `splitGroups`に3ロット/9条が確定しているのに候補が空で、条の並びが
+     **「条割の対象となる子ロットがありません」のまま**＝1条ずつのD&Dが
+     まったくできなかった（まとめ帯だけが出ており、あれは掴めない）。
+     確定済みの割当はロット・条数・幅・公差を持っているので、**候補が無くても
+     並べ替えの材料としては足りる**。取り直せたら候補側が勝つ。 */
   function splitSourceRows(){
-    return splitSourcesCache&&splitSourcesCacheKey===currentSplitCacheKey()?splitSourcesCache:[];
+    if(splitSourcesCache&&splitSourcesCacheKey===currentSplitCacheKey())return splitSourcesCache;
+    return rowsFromAppliedGroups();
+  }
+  function rowsFromAppliedGroups(){
+    const groups=S.measure?.settings?.splitGroups;
+    if(!Array.isArray(groups)||!groups.length)return [];
+    return groups.map(g=>({
+      lot:String(g.lot||''),count:Math.max(1,Number(g.count)||1),
+      width:g.base&&g.base.width!==undefined&&g.base.width!==null?String(g.base.width):'',
+      tol:splitTolText(g),base:g.base||{},tolObj:g.tol||null,
+      missing:!!g.missing,fromApplied:true,
+    }));
+  }
+  /* 帯の`title`に出す公差の文。確定済みの割当が持つ公差から組む
+     （候補側の`tol`と同じ書式にする——同じ場所に出るので形が違うと別物に見える）。 */
+  function splitTolText(g){
+    const t=g&&g.tol&&g.tol.width&&(g.tol.width.manufacturing||g.tol.width.order);
+    if(!t)return '';
+    const p=t.plus,m=t.minus;
+    if(p===undefined&&m===undefined)return '';
+    return (p!==undefined?`+${p}`:'')+(m!==undefined?`/-${m}`:'');
   }
   window.splitSourceRows=splitSourceRows;
   /* 再編集などで測定を開き直すたびに、子ロットの詳細をAccessへ毎回
@@ -735,6 +762,18 @@
   // 先頭から敷き詰めた初期配置を生成する(既に操作中の内容があれば保持)。
   function seedSplitDefaults(sources,total){
     const m=S.measure.settings,seq=ensureSequenceLength(total);
+    /* **確定済みの割当が図と食い違ったら、割当のほうへ合わせる**（§9.156）。
+       候補が取れず`splitGroups`から材料を作った場合、並びの控え
+       (`splitSequence`)は前のロットのものが残っていることがあり、9条の器に
+       2条ぶんしか名前が入らず**7条が「未割当」**になっていた（実測）。
+       図が測定表と違うものを指すくらいなら、割当から引き直す。 */
+    const applied=appliedSequence(total);
+    if(applied&&(seq.length!==total||!seq.some(Boolean)
+        ||seq.filter(Boolean).length!==applied.filter(Boolean).length)){
+      m.splitSequence=applied;
+      m.splitConfirmed=Array(total).fill(true);
+      return{seq:m.splitSequence,confirmed:m.splitConfirmed};
+    }
     if(total>0&&!seq.some(Boolean)){
       m.splitSequence=defaultFillSequence(sources,total);
       m.splitConfirmed=Array(total).fill(false);
@@ -742,6 +781,18 @@
       ensureConfirmedLength(total);
     }
     return{seq:m.splitSequence,confirmed:m.splitConfirmed};
+  }
+  /* 確定済みの割当（`splitGroups`＋`splitPositionGroup`）を「条ごとのロット」
+     の並びへ開く。どちらかが欠けていれば null（推測で埋めない）。 */
+  function appliedSequence(total){
+    const st=S.measure?.settings,groups=st?.splitGroups,pos=st?.splitPositionGroup;
+    if(!Array.isArray(groups)||!groups.length||!Array.isArray(pos)||!pos.length)return null;
+    const out=[];
+    for(let i=0;i<total;i++){
+      const g=groups[pos[i]];
+      out.push(g?String(g.lot||''):'');
+    }
+    return out.some(Boolean)?out:null;
   }
   function pushUndoSnapshot(seq,confirmed){
     splitUndoStack.push({seq:seq.slice(),confirmed:confirmed.slice()});
@@ -813,14 +864,21 @@
      見やすい)、条ごとに独立してドラッグ操作できるようにする。ラベルは
      ロット番号下3桁と板幅のみとし、狭いマスでも読める簡潔さを優先する
      (ロット番号全体・公差は詳細行とツールチップで確認する)。 */
+  /* 掴んだ条の説明欄。**中身が無いときは畳む**（§9.157）——空のまま16px
+     場所を取っており、その下の操作ボタンが図から離れていた。 */
+  function setVisualDetail(text){
+    const el=$('#splitVisualDetail');if(!el)return;
+    const t=String(text||'');
+    if(el.textContent!==t)el.textContent=t;
+    if(el.hidden!==!t)el.hidden=!t;
+  }
   function renderSplitVisual(sources,seq,colorMap){
-    const strip=$('#splitVisualStrip'),count=$('#splitVisualCount'),detail=$('#splitVisualDetail');
+    const strip=$('#splitVisualStrip');
     const total=seq.length;
     if(!strip)return;
     if(!total){
       strip.innerHTML='<div class="split-visual-empty">条割の対象となる子ロットがありません。</div>';
-      if(count)count.textContent='';
-      if(detail)detail.textContent='';
+      setVisualDetail('');
       splitVisualLayout=null;
       renderScrapAndRuler(null);
       return;
@@ -843,8 +901,7 @@
     }
     html+='<div class="split-visual-ghost" id="splitVisualGhost" hidden></div></div>';
     strip.innerHTML=html;
-    if(count)count.textContent=`${total}条`;
-    if(detail)detail.textContent='';
+    setVisualDetail('');
     ensureSplitVisualWiring();
     renderScrapAndRuler(layout);
   }
@@ -925,11 +982,10 @@
       return{sources,total,seq:ensureSequenceLength(total),confirmed:ensureConfirmedLength(total)};
     }
     function updateDetailFor(idx){
-      const detail=$('#splitVisualDetail');if(!detail)return;
       const{seq,sources}=context(),lot=seq[idx];
-      if(!lot){detail.textContent='';return}
+      if(!lot){setVisualDetail('');return}
       const src=sources.find(s=>s.lot===lot);
-      detail.textContent=src?`${lot} ／ 幅${src.width===''||src.width===undefined?'—':src.width} ／ ${src.tol||'—'}`:lot;
+      setVisualDetail(src?`${lot} ／ 幅${src.width===''||src.width===undefined?'—':src.width} ／ ${src.tol||'—'}`:lot);
     }
     function beginDragging(){
       dragging=true;
@@ -1656,28 +1712,12 @@
       ${scrapWidthLineHtml()}`;
   }
   // 設定済み(applySplit確定済み)状態の表示。
-  /* ---- 幅分割の視覚図(§9.133 指摘⑨) ----
-     どの子ロットがどの幅で並んでいるかは**帯で見るもの**。表だけだと
-     「1〜2条 / 3〜5条」という範囲表記を頭の中で並べ直すことになる。
-     幅(mm)に比例した帯にし、色は入力欄のバッジ・条割の視覚図と同じ
-     `appliedLotColorMap`から取る——表・入力欄・帯が同じ色で結び付く。
-     **狭い区間でも文字が消えないように**、帯の下へ番号を出す。 */
-  function splitBandHtml(groups){
-    if(!Array.isArray(groups)||!groups.length)return '';
-    const{map:lotColors,lots}=appliedLotColorMap(groups);
-    const wOf=g=>{const w=Number(g.base?.width);return Number.isFinite(w)&&w>0?w:1};
-    const total=groups.reduce((a,g)=>a+wOf(g)*(Number(g.count)||1),0)||1;
-    const segs=groups.map((g,i)=>{
-      const span=wOf(g)*(Number(g.count)||1);
-      const pct=Math.max(2,Math.round(span/total*1000)/10);
-      const color=lots.length>1&&lotColors[g.lot]?lotColors[g.lot]:'var(--teal)';
-      const w=Number.isFinite(Number(g.base?.width))?String(g.base.width):'—';
-      return `<span class="split-band-seg${g.missing?' is-missing':''}" style="flex:${pct} 1 0;background-color:${esc(color)}"`
-        +` title="${esc(g.lot)} / ${g.count}条 / 幅${esc(w)}">`
-        +`<b>${esc(w)}</b><small>${g.count}条</small></span>`;
-    }).join('');
-    return `<div class="split-band" aria-label="幅分割の並び">${segs}</div>`;
-  }
+  /* ロット単位の「まとめ帯」(`splitBandHtml`)は**関数ごと廃止**（§9.156、
+     利用者の指示「条のまとめ表示は不要なので、図は1つに統合して、
+     並べ替えができるものをください」）。掴めない帯と掴める帯
+     （`.split-visual-block`）が同じ見た目で2つ並び、**動くほうと動かない
+     ほうの区別が付かなかった**。呼び出しだけ外して定義を残すと、次に読む人が
+     「まだ使っている」と読むので消す。 */
 
   function renderAppliedGroupsPanel(el,groups){
     const summary=summarizeAppliedGroups(groups);
@@ -1689,9 +1729,13 @@
     const needsReconfigure=S.measure?.settings?.splitNeedsReconfigure;
     /* 設定済みの姿は**帯1本と1行**で足りる（§9.144）。ロット№・条数・幅の
        表は編集面の「子ロット候補」「条割プレビュー」が持っている。 */
+    /* **まとめ帯（`splitBandHtml`）は廃止**（§9.156、利用者の指示「条のまとめ
+       表示は不要、図は1つに統合して並べ替えができるものを」）。ロット単位の
+       帯は掴めないので、掴める1条ずつの帯（`.split-visual`）とまったく同じ
+       見た目のものが2つ並び、**動くほうと動かないほうの区別が付かなかった**。
+       ロット・条数・幅は1条ずつの帯とその`title`が持っている。 */
     el.innerHTML=`
       <div class="split-panel-status split-panel-status-applied">✓ ${esc(summary)}</div>
-      ${splitBandHtml(groups)}
       ${needsReconfigure?'<div class="split-mismatch-badge">子ロットデータの更新で条数の構成が変わりました。下で並びを決め直してください。</div>':''}
       ${scrapWidthLineHtml()}`;
   }

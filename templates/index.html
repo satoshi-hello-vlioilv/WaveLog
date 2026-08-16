@@ -66,10 +66,9 @@ setTimeout(function(){var r=document.documentElement;r.classList.remove('app-boo
 <div class="rail-group rail-bottom"><span class="rail-label">異常・削除</span><button id="ngLot">NGとして記録</button><button class="rail-danger" id="discard">このデータを削除</button></div>
 </nav>
 <div class="measure-body"><div class="split-pane" id="splitCard"><h2 class="card-title">条の設計（幅の割り付け）</h2><div id="splitGrid">分割無し</div><div class="split-visual" id="splitVisual">
-<div class="split-visual-head"><b>条の並び（母材幅比率表示）</b><span class="split-visual-count" id="splitVisualCount">0条</span><span class="split-visual-hint">条をつかんでそのままドラッグで並べ替え</span></div>
 <div class="split-visual-row"><span class="split-visual-end os" title="OS（オペレーター側）">OS</span><div class="split-visual-measure" id="splitVisualMeasure"><div class="split-visual-scrap os" id="splitVisualScrapOs" hidden></div><div class="split-visual-strip" id="splitVisualStrip"></div><div class="split-visual-scrap ds" id="splitVisualScrapDs" hidden></div><div class="split-visual-ruler" id="splitVisualRuler"></div></div><span class="split-visual-end ds" title="DS（駆動側）">DS</span></div>
-<div class="split-visual-detail" id="splitVisualDetail"></div>
-<div class="split-visual-actions"><button type="button" id="undoSplit" class="split-ghost-btn" disabled>1つ戻す</button><button type="button" id="resetSplit" class="split-ghost-btn">初めから</button></div>
+<div class="split-visual-detail" id="splitVisualDetail" hidden></div>
+<div class="split-visual-actions"><span class="split-visual-hint">帯の幅は母材幅に対する比率。条をつかんでドラッグで並べ替えられます。</span><button type="button" id="undoSplit" class="split-ghost-btn" disabled>1つ戻す</button><button type="button" id="resetSplit" class="split-ghost-btn">初めから</button></div>
 </div></div><div class="split-pane" id="splitDetailCard"><h2 class="card-title">条の設計 — 子ロットの内訳</h2><div class="split-data" id="splitDataSections" hidden></div><div class="split-layout"><section class="split-candidates-section">
 <h3>子ロット候補<span class="split-candidates-stats">全<b id="splitTotal">0</b>条 ／ <b id="splitLotCount">0</b>ロット</span></h3>
 <div class="split-candidates" id="splitSources"></div>

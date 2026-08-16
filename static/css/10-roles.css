@@ -111,7 +111,7 @@
    | バッジ           | --fs-badge  10  | 800  | 件数・状態の最小表示           |
 
    下は**その役割にいる部品の一覧**。個別ルールには配色と並びだけを書く。 */
-.qa-v7 .qa-tab-title b,.mm-head h2,.sc-panel-title,.split-visual-head b{
+.qa-v7 .qa-tab-title b,.mm-head h2,.sc-panel-title{
   font-size:var(--fs-title);font-weight:800;color:var(--ink);
 }
 .qa-v7 .qa-acc-title,.split-candidate-head b,.disclosure-title,.wtb-title,
@@ -119,9 +119,14 @@
   font-size:var(--fs-base-sm);font-weight:800;color:var(--ink);
 }
 .qa-v7 .qa-tab-title small,.qa-v7 .qa-acc-sum,.qa-v7 .qa-hint,
-.split-visual-hint,.split-hint-text,.disclosure-sum,.mm-editor-head small{
+.disclosure-sum,.mm-editor-head small{
   font-size:var(--fs-micro);font-weight:700;
 }
+/* 操作の案内は**チップではなく1文**なので「ラベル」の大きさで読ませる
+   （§9.157）。11pxまで落とすと同じカードの中で3px違う文字が並び、
+   利用者から「文字サイズがバラバラ」「小さすぎる」と指摘された箇所の
+   1つだった。 */
+.split-visual-hint,.split-hint-text{font-size:var(--fs-sm);font-weight:700}
 .qa-v7 .qa-chip,.list-join-chip,.suggest-chip,.field-reorder-badge{
   font-size:var(--fs-micro);font-weight:800;
 }
