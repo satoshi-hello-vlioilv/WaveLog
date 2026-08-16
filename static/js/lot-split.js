@@ -1527,6 +1527,20 @@
   function splitPendingSectionHtml(){
     const pending=S.measure?.settings?.splitSourcesPending;
     if(!pending||!Array.isArray(pending.diffs)||!pending.diffs.length)return '';
+    /* **最新データから消えただけのときは差異表を出さない**（§9.155、利用者の
+       指示）。元データが無いので**適用しようが無く**、表と「更新を適用」を
+       出しても押せる先が無い（§9.129の4番）。伝えるべきは「最新のデータに
+       もう無い＝作業済みかもしれない」という1つの事実だけ。
+       **消せること**は残す——押しても何も起きない帯が消えずに残るほうが困る。 */
+    const gone=pending.diffs.every(d=>d.kind==='removed');
+    if(gone){
+      const lots=[...new Set(pending.diffs.map(d=>String(d.lot)))].join('・');
+      return `<div class="split-update-panel split-update-gone">
+        <div class="split-update-head">子ロット ${esc(lots)} が最新の子ロットデータにありません（${esc(fmtStamp(pending.at))} 確認）。作業済みの可能性があります。</div>
+        <div class="split-update-actions">
+          <button type="button" id="splitUpdateReject" class="split-update-secondary">確認した</button>
+        </div></div>`;
+    }
     const blockers=splitUpdateBlockers(pending.diffs);
     const blocked=blockers.length>0;
     return `<div class="split-update-panel">
