@@ -240,7 +240,13 @@ function renderMeasurement(){
     **消すのではなく畳む**——「詳細」で今までどおり全部読める。 */
  const idFields=[['鋳造No.','castingNo'],['オーダーNo.','orderNo'],['引当No.','allocationNo']];
  const productFields=[['用途コード','purposeCode'],['取引先','customer'],['納入先','delivery']];
- const cell=([l,k])=>`<div class="field"><label>${l}</label><output title="${esc(b[k])}">${esc(b[k])||'—'}</output></div>`;
+ /* 識別番号・製品は**1行に1項目**（§9.159、利用者の指摘「納入先・送り先などが
+    表示しきれていない」）。2列に割ると値へ渡せる幅が94pxしか無く、実データの
+    取引先・納入先（半角カナの会社名）はほぼ必ず省略記号で切れていた。
+    値が短い品質規格（「2C」「3」）は2列のままでよい——**列数は中身の長さで
+    決める**（§9.130）。1項目ぶん行が増えるが、詳細は畳んである面なので
+    高さより「読み切れること」を採る。 */
+ const cell=([l,k])=>`<div class="field full"><label>${l}</label><output title="${esc(b[k])}">${esc(b[k])||'—'}</output></div>`;
  const val=(l,v)=>`<div class="field"><label>${l}</label><output title="${esc(v)}">${esc(v)||'—'}</output></div>`;
  /* **欠けた値を区切り記号で埋めない**（§9.154）。`5052-`や`3.000××2500.8`は
     「そういう値」と見分けが付かない。欠けている側は**位置が分かる形で`?`**に
@@ -608,8 +614,16 @@ function configureToleranceSelector(){const el=$('#toleranceSource');if(!el||!S.
     触ることがなく、選択肢が1つしか無い状態で常設すると「選ぶもの」に
     見えてしまう（機能としては残す必要があるので、消すのではなく隠す）。
     出す段は②③だけ——そちらはCSSが持つ。 */
- {const box=el.closest('.tolerance-source-control');
-  if(box){const usable=isDimensional&&availability.available;if(box.hidden!==!usable)box.hidden=!usable}}el.onchange=()=>{if(el.value==='order'&&!availability.available)return;S.measure.settings.toleranceSource=el.value;renderMeasureGrid();updateMeasurementHeading();markDirty()}}
+ /* **選べるときも、開くまでは出さない**（§9.159、利用者の指示「測定公差
+    切り替えプルダウンは折りたたんで通常非表示に」）。既定は製造公差のままで
+    ほぼ触らないのに、測定中いちばん見る帯に選択欄が常設されていた。
+    いま効いている公差は**ヘッダーの文脈バー**が「判定公差 製造公差」と
+    常に言っているので、ここに要るのは「変えたいときの入口」だけ。
+    **消さずに畳む**——切り替え自体は業務で必要な操作なので、
+    1回押せば必ず出せる場所に残す。 */
+ {const box=el.closest('.tolerance-source-control'),pick=$('#toleranceSourcePick'),fold=$('#tolSourceFold');
+  if(box){const usable=isDimensional&&availability.available;if(box.hidden!==!usable)box.hidden=!usable;
+   if(!usable&&pick&&!pick.hidden){pick.hidden=true;fold?.setAttribute('aria-expanded','false')}}}el.onchange=()=>{if(el.value==='order'&&!availability.available)return;S.measure.settings.toleranceSource=el.value;renderMeasureGrid();updateMeasurementHeading();markDirty()}}
 /* 作業時間パネル。開始→終了の順序を強制するロック付き打刻。 */
 function formatWorkTime(value){if(!value)return '';const d=new Date(value);return Number.isNaN(d.getTime())?'':d.toLocaleString('ja-JP',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'})}
 function stampWorkTimeLocked(kind){if(!S.measure)return;S.measure.workTime=S.measure.workTime||{};const now=new Date();if(kind==='start'){if(S.measure.workTime.endAt){showToast('開始時刻は変更できません','終了時刻の記録後は開始時刻を変更できません。');return}S.measure.workTime.startAt=now.toISOString()}else{if(!S.measure.workTime.startAt){showToast('開始時刻が未記録です','先に開始時刻を記録してください。');return}if(now<new Date(S.measure.workTime.startAt)){showToast('終了時刻を記録できません','終了時刻は開始時刻より後である必要があります。');return}S.measure.workTime.endAt=now.toISOString()}updateWorkTimePanel();markDirty();updateValidationVisuals()}

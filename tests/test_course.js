@@ -104,7 +104,12 @@ let b=null;
              fullWidth:Math.round(r.width),
              left:Math.round(r.left),right:Math.round(r.right),
              top:Math.round(f.getBoundingClientRect().top),
-             gridWidth:Math.round(g.getBoundingClientRect().width)};
+             gridWidth:Math.round(g.getBoundingClientRect().width),
+             /* 「全幅」は**器の右端に届いているか**で見る（§9.159）。割合の
+                しきい値にすると、ラベル列の幅を変えただけで落ちる——実際に
+                98px→87pxと**値を広くした変更**で70%を割って落ちた
+                （210/316=66%、221/316=70.0%。どちらも全幅の行なのに）。 */
+             gridRight:Math.round(g.getBoundingClientRect().right)};
     });
    const lp=document.querySelector('.left-pane');
    /* 見出しは`#basicDetail`の中にあり、`.info-grid`の**孫**なので
@@ -133,9 +138,12 @@ let b=null;
    m.every(x=>x.cut<=1),m.map(x=>`${x.label}:超過${x.cut}px`).join(' / '));
   rec('折り返す設定になっている',
    m.every(x=>x.wrap!=='nowrap'),m.map(x=>`${x.label}:${x.wrap}`).join(' / '));
+  /* 2列に割った半分は`(器-列間)/2`からラベル列を引いた残り＝60px前後。
+     全幅の行は器の右端まで届く。**右端に届いているか**で見れば、ラベル列の
+     幅を変えても意味が変わらない（§9.159）。 */
   rec('コース欄は全幅を使う(2列の半分ではない)',
-   m.every(x=>x.fullWidth>x.gridWidth*0.7),
-   m.map(x=>`${x.label}:${x.fullWidth}/${x.gridWidth}px`).join(' / '));
+   m.every(x=>x.right>=x.gridRight-2&&x.fullWidth>x.gridWidth*0.5),
+   m.map(x=>`${x.label}:${x.fullWidth}/${x.gridWidth}px 右端${x.right}/${x.gridRight}`).join(' / '));
   // 縦並び: 3項目のtopが全部違う(横に2つ並んだ瞬間があってはいけない)
   rec('設計/実績/残が縦に1行ずつ並ぶ',
    new Set(m.map(x=>x.top)).size===m.length,m.map(x=>`${x.label}:${x.top}`).join(' / '));
@@ -166,7 +174,7 @@ let b=null;
   const {out:sh}=await probe();
   rec('短い値でも縦1行ずつ・全幅のまま(値の長さで形が変わらない)',
    sh.length>=3&&new Set(sh.map(x=>x.top)).size===sh.length
-   &&sh.every(x=>x.fullWidth>x.gridWidth*0.7),
+   &&sh.every(x=>x.right>=x.gridRight-2&&x.fullWidth>x.gridWidth*0.5),
    sh.map(x=>`${x.label}:${x.fullWidth}/${x.gridWidth}px@${x.top}`).join(' / '));
 
   /* 実機の最長ケース(100文字)でも、表示サイズを「大」にして左ペインが破綻しない。

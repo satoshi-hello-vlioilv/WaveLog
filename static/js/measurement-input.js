@@ -414,6 +414,19 @@ document.addEventListener('click',e=>{
  box.classList.toggle('tol-open',open);
  btn.setAttribute('aria-expanded',String(open));
 });
+/* 判定公差の切り替え欄は**押したときだけ出す**（§9.159）。既定で畳んで
+   おくのは、製造公差のまま測るのがほとんどで、常設すると測定中いちばん
+   見る帯に「選ぶもの」が居座るため。いま効いている公差はヘッダーの文脈
+   バーが常に出しているので、ここは入口だけでよい。 */
+document.addEventListener('click',e=>{
+ const btn=e.target.closest&&e.target.closest('#tolSourceFold');
+ if(!btn)return;
+ const pick=document.getElementById('toleranceSourcePick');if(!pick)return;
+ const open=pick.hidden;
+ pick.hidden=!open;
+ btn.setAttribute('aria-expanded',String(open));
+ if(open)document.getElementById('toleranceSource')?.focus();
+});
 /* 見出しを押したらその丈位置へ移る。**割り当ては1箇所**（丈位置を動かす
    道具は`#lengthPos`のchangeだけ。ここで直接描き直さない）。
    セルを押したときも同じ——**押した列がいま測る列になる**。押した先が

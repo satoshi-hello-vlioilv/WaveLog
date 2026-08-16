@@ -118,12 +118,15 @@
     面積の大きい方から拾ってしまう(前景/背景の対比が効かない)。
     色だけに意味を持たせないため、該当条は枠線と条番号の反転バッジ、
     図の上の▼マーカーでも示す。 */
- const PALETTE=['#5b8f88','#8b81bb','#b98d5f','#6d92b8','#ab7086','#7ba061','#9c8460','#6e828c'];
- const NEUTRAL='#8a9a97';
+ /* 配色そのものは`lot-split.js`が持つ（§9.159）。**同じロットは同じ色**で
+    ないと、条の設計で覚えた色をこの図で読み替えることになる。以前は同じ
+    並びの色相を各ファイルが**別々に書いていた**ため、条を並べ替えると
+    2つの図で違う色になっていた。無ければ困るものなので黙って既定へ
+    倒さない（`typeof`で「あれば使う」と書くと、公開漏れが静かに通る）。 */
+ if(!window.WL||!WL.lotColors)console.error('defect-locator: WL.lotColors が無い（条の設計と色が食い違う）');
+ const NEUTRAL=(window.WL&&WL.lotColors&&WL.lotColors.neutral)||'#8a9a97';
  function colorFor(list){
-  const map={},lots=[...new Set((list||[]).map(l=>l.lot).filter(Boolean))];
-  lots.forEach((lot,i)=>{map[lot]=PALETTE[i%PALETTE.length]});
-  return map;
+  return WL.lotColors.map((list||[]).map(l=>l.lot));
  }
  const lot3=lot=>{const s=String(lot||'');return s.length>3?s.slice(-3):s};
  /* 端に寄ったラベルは、中央揃えのままだと図の外へ出て見切れる。

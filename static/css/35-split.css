@@ -75,13 +75,30 @@
    「母材幅比率」という但し書きは**操作の案内と1つにまとめて図の下**へ置く
    ——読むのは図を見たあとなので、上に置くと図より先に目へ入る。 */
 .split-visual{display:flex;flex-direction:column;min-width:0;min-height:0;background:transparent;border:0;border-radius:0;padding:0;box-shadow:none}
-.split-visual-hint{margin-right:auto;align-self:center;color:var(--ink-soft)}
+.split-visual-hint{
+  flex:1 1 auto;min-width:0;margin-right:auto;align-self:center;color:var(--ink-soft);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
 /* 図は**カードの余りをすべて使う**（§9.157）。以前は帯の高さが88px固定で、
    カードの下に45pxの空きが残っていた。掴む的は大きいほどよい。 */
 /* `margin-top`は目盛りの数字（`.split-visual-tick-label`が`top:-15px`）の
    置き場。**詰めると1000/1250/1500の数字が図の上で切れる**ので残す。 */
 .split-visual-row{display:flex;align-items:stretch;gap:var(--space-2);margin-top:var(--space-4);flex:1 1 auto;min-height:64px}
-.split-visual-end{flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:30px;border-radius:var(--radius-sm);background:#e3ebee;color:#4a6169;font-size:var(--fs-micro);font-weight:800;letter-spacing:.03em}
+/* 図の両端の OS／DS は**軸の名前**であって帯ではない（§9.159、利用者の指摘
+   「OS,DSの表示ラベルも屑条みたいな見た目のバッジでわかりにくい」）。
+   面と角丸を与えていたため、隣の屑帯（同じ灰色の四角）と同じ種類のものに
+   見え、「動かせない条が4本ある」ように読めていた。**塗りを外して文字だけ**に
+   し、図に接する側へ細い縦線を1本引いて「ここが端」であることを示す。
+   読み方（オペレータ側／駆動側）は図の下の案内に文字で書く——30pxの器に
+   6文字は入らないので、色や記号ではなく文で伝える。 */
+.split-visual-end{
+  flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+  width:2.2em;padding:0 var(--space-1);
+  background:transparent;color:var(--ink-3);
+  font-size:var(--fs-sm);font-weight:800;letter-spacing:.06em;
+}
+.split-visual-end.os{border-right:2px solid var(--line-mid)}
+.split-visual-end.ds{border-left:2px solid var(--line-mid)}
 /* 屑幅(両耳合計)を左右均等に振り分け、動かせない帯として母材幅比率の
    両端に表示する(splitVisualScrapOs/Ds)。元幅(実績)が不明・マイナスの
    場合は非表示にし、条ストリップ(#splitVisualStrip)だけで全幅を占める
@@ -116,14 +133,33 @@
 .split-visual-block.flash{animation:splitVisualFlash .9s ease}
 @keyframes splitVisualFlash{0%,100%{box-shadow:none}30%{box-shadow:0 0 0 3px #fff,0 0 0 7px var(--teal)}}
 .split-visual-block.lifted{opacity:.35}
+/* 押した条の印は**内側に描く**（§9.159、利用者の指摘「クリックしてもどれを
+   クリックしたかわからない」）。`outline`や外向きの影にすると隣の条の上へ
+   はみ出し、絶対配置で並ぶ帯では**隣が上に来て印の片側だけが消える**。
+   内側の白＋濃色の二重線なら、どの色の条でも同じ強さで見える。 */
+.split-visual-block.is-selected{
+  box-shadow:inset 0 0 0 2px #fff,inset 0 0 0 4px var(--nav);
+}
+.split-visual-block.empty.is-selected{box-shadow:inset 0 0 0 2px var(--nav)}
 .split-visual-ghost{background:var(--split-block-bg,#8a9a97);position:absolute;top:-5px;bottom:-5px;display:flex;align-items:center;justify-content:center;border:2px dashed #fff;border-radius:var(--radius-sm);box-shadow:0 0 0 3px var(--nav),0 6px 14px #00000040;color:#fff;text-shadow:0 1px 1px #0006;overflow:hidden;pointer-events:none;z-index:3;transition:left .05s linear,width .05s linear}
 .split-visual-ghost[hidden]{display:none}
-/* 掴んだ条の説明。**空のときは畳む**——中身が無いまま16px場所を取り、
-   その下の操作ボタンが図から離れていた（§9.157）。 */
-.split-visual-detail{margin-top:var(--space-2);font-size:var(--fs-sm);font-weight:700;color:#3a565d}
-.split-visual-detail[hidden]{display:none}
+/* 選んだ条の説明は**案内と同じ1行を使う**（§9.159）。独立した行にして
+   `hidden`で畳んでいたため、条を押すたびに行が1本増えて**図が24px縮んで
+   いた**（実測201px→177px。「クリックしたら条の図形のサイズが変わる」）。
+   どちらも1行・同じ大きさなので、入れ替わっても行の高さは動かない。 */
+.split-visual-detail{
+  flex:1 1 auto;min-width:0;margin-right:auto;
+  font-size:var(--fs-sm);font-weight:700;color:var(--ink-2);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.split-visual-detail[hidden],.split-visual-hint[hidden]{display:none}
 .split-visual-empty{padding:var(--space-4);text-align:center;color:var(--muted);font-size:var(--fs-base-sm)}
-.split-visual-actions{display:flex;align-items:center;gap:var(--space-2);margin-top:var(--space-3)}
+/* 行の高さは**中のボタン**で決まる。案内と説明はどちらも1行なので、
+   入れ替わっても図の高さは動かない（`min-height`で念のため固定する）。 */
+.split-visual-actions{
+  display:flex;align-items:center;gap:var(--space-2);margin-top:var(--space-3);
+  min-height:var(--ctl-h-sm);
+}
 .split-ghost-btn{font-weight:700;color:#3a565d;background:#fff;border:1px solid #c4d0d4;cursor:pointer}
 .split-ghost-btn:hover:not(:disabled){background:#eef2f4;border-color:#9aabab}
 .split-ghost-btn:disabled{color:#b6c2c4;cursor:not-allowed}
