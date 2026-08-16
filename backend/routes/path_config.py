@@ -269,6 +269,13 @@ def data_source_master_list():
   # 「今このプロセスが実際に読んでいる場所」と、資材の有無を添える。
   # 設定と実態がずれていることに、その場で気づけるようにするため。
   active={s['key']:str((_DBS.get(s['key']) or {}).get('path','')) for s in DATA_SOURCES}
+  # 「再起動したらどこを読むか」は**保存済みの設定**で計算する(§9.163)ので、
+  # 打ち間違いに再起動する前に気づける。読み方(§9.168)も同じ関数で答える。
+  from ..db_access import source_read_mode,_source_path,source_override_key
+  saved={}
+  try:
+   with connect(path,True) as c:saved=path_config_rows(c)
+  except Exception:saved={}
   items=[]
   for r in rows:
    rne=rne_scheduler.rne_path(r['rne']) if r.get('rne') else None
@@ -284,6 +291,12 @@ def data_source_master_list():
          'error':f'確かめられませんでした: {e}','features':{}}
    items.append({**r,
                  'capability':cap,
+                 # 画面の言葉はサーバーが決める(§9.168)。'direct'は
+                 # パス設定の個別上書きが入っているときだけ名乗る。
+                 'readMode':source_read_mode(r,saved),
+                 'overridePath':str(saved.get(source_override_key(r['key']),'') or ''),
+                 'plannedPath':str(_source_path(r,saved)),
+                 'loaded':bool(_DBS.get(r['key'])),
                  'activePath':active.get(r['key'],''),
                  'rnePath':str(rne) if rne else '',
                  'rneExists':bool(rne and rne.exists()),
@@ -299,6 +312,23 @@ def data_source_master_list():
   return jsonify(error=f'データソース読込失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
 
 _KEY_RE=re.compile(r'^[A-Za-z0-9_]{1,40}$')
+
+def _read_mode_of(x):
+ """画面から来た読み方を正規化する(§9.168)。'share'/'rne' 以外は空欄
+    （＝全体設定に従う）。**'direct' は保存しない**——直接指定は
+    パス設定マスタの個別上書き(<キー>_path)の有無そのものなので、
+    2箇所に持つと必ず食い違う。"""
+ from ..db_access import _read_mode_value
+ return _read_mode_value(x.get('mode') or x.get('readMode') or '')
+
+def _save_source_override(key,value,uid):
+ """読み込み先の個別上書き。**データソースの行から直接触れる**ようにした
+    （§9.168。以前はパス設定タブにしか無く、同じ「どこを読むか」の設定が
+    2つの画面に散っていた）。保存先は今までどおりパス設定マスタなので、
+    検証用の差し替え(tests/run_all.sh)もそのまま効く。"""
+ from ..db_access import source_override_key
+ with connect(DBS['MASTER']['path'],False) as c:
+  set_path_config(c,source_override_key(key),str(value or '').strip(),uid)
 
 def _purpose_of(x):
  """画面から来た役割を正規化する(§9.87)。「作業」「品質」以外は「その他」。"""
@@ -345,19 +375,23 @@ def data_source_master_save():
          str(x.get('output') or '').strip(),str(x.get('share') or '').strip(),
          str(x.get('preferred') or '').strip(),
          int(x.get('order') or 0),
-         0 if str(x.get('enabled') or '').strip()=='無効' else -1,purpose,uid]
+         0 if str(x.get('enabled') or '').strip()=='無効' else -1,purpose,_read_mode_of(x),uid]
    if row:
     cur.execute('UPDATE [データソースマスタ] SET [表示名]=?,[RNEファイル]=?,[抽出テーブル]=?,'
-                '[出力ファイル]=?,[共有パス]=?,[既定テーブル]=?,[表示順]=?,[有効]=?,[役割]=?,'
+                '[出力ファイル]=?,[共有パス]=?,[既定テーブル]=?,[表示順]=?,[有効]=?,[役割]=?,[読み方]=?,'
                 '[更新者ID]=?,[更新日時]=Now() WHERE [ソースID]=?',vals+[row[0]])
     registered=False;sid=row[0]
    else:
     cur.execute('INSERT INTO [データソースマスタ] ([表示名],[RNEファイル],[抽出テーブル],'
-                '[出力ファイル],[共有パス],[既定テーブル],[表示順],[有効],[役割],[更新者ID],'
-                '[キー],[登録者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',
+                '[出力ファイル],[共有パス],[既定テーブル],[表示順],[有効],[役割],[読み方],[更新者ID],'
+                '[キー],[登録者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',
                 vals+[key,uid])
     registered=True;sid=cur.lastrowid
    c.commit()
+  # 直接指定(<キー>_path)は同じ保存操作でまとめて書く。**画面が送ったときだけ**
+  # 触る——送っていない画面の保存で既存の上書きを消さないため(§9.163で
+  # sikalotnow_path を無条件に書いて消していたのと同じ罠)。
+  if 'overridePath' in x:_save_source_override(key,x.get('overridePath'),uid)
   return jsonify(ok=True,id=sid,key=key,registered=registered,updated_by=uid,
                  message='保存しました。読み込み先の切り替えはサーバー再起動後に反映されます。')
  except Exception as e:
@@ -396,7 +430,7 @@ def data_source_master_update():
    err=_purpose_conflict(cur,purpose,exclude_id=sid)
    if err:return jsonify(error=err),400
    cur.execute('UPDATE [データソースマスタ] SET [キー]=?,[表示名]=?,[RNEファイル]=?,[抽出テーブル]=?,'
-               '[出力ファイル]=?,[共有パス]=?,[既定テーブル]=?,[表示順]=?,[有効]=?,[役割]=?,'
+               '[出力ファイル]=?,[共有パス]=?,[既定テーブル]=?,[表示順]=?,[有効]=?,[役割]=?,[読み方]=?,'
                '[更新者ID]=?,[更新日時]=Now() WHERE [ソースID]=?',
                [key,label,str(x.get('rne') or '').strip(),
                 str(x.get('table') or '').strip() or '仕掛',
@@ -404,12 +438,49 @@ def data_source_master_update():
                 str(x.get('preferred') or '').strip(),
                 int(x.get('order') or 0),
                 0 if str(x.get('enabled') or '').strip()=='無効' else -1,
-                purpose,uid,sid])
+                purpose,_read_mode_of(x),uid,sid])
    c.commit()
+  if 'overridePath' in x:_save_source_override(key,x.get('overridePath'),uid)
   return jsonify(ok=True,id=sid,key=key,registered=False,updated_by=uid,
                  message='保存しました。キー・表示名・読み込み先の変更はサーバー再起動後に反映されます。')
  except Exception as e:
   return jsonify(error=f'データソース更新失敗: {e}'),500
+
+@bp.post('/api/data-source-master/probe')
+def data_source_master_probe():
+ """**保存する前に確かめる**(§9.168)。編集中の下書き（読み方・パス・
+    テーブル名）そのままで実際にファイルを開き、
+      ・開けたか／開けないなら理由
+      ・中にある表と列数
+      ・この設定で何ができるか（一覧・測定・予定・結合）
+    を返す。接続先はサーバー起動時に1回だけ決まるので、**保存しても
+    再起動するまで一覧には出ない**——それまで打ち間違いに気づけないのが
+    今までの一番の不便だった。
+
+    **読むだけ**で、マスタには何も書かない。"""
+ try:
+  x=request.get_json(force=True) or {}
+  from ..db_access import source_read_mode,_source_path,source_override_key
+  key=str(x.get('key') or '').strip().upper() or 'PROBE'
+  entry={'key':key,'label':str(x.get('label') or '').strip() or key,
+         'rne':str(x.get('rne') or '').strip(),
+         'table':str(x.get('table') or '').strip() or '仕掛',
+         'output':str(x.get('output') or '').strip(),
+         'share':str(x.get('share') or '').strip(),
+         'preferred':str(x.get('preferred') or '').strip(),
+         'purpose':str(x.get('purpose') or '').strip(),
+         'mode':_read_mode_of(x)}
+  # 直接指定は画面の下書きを使う（保存済みの上書きは見ない。**いま欄に
+  # 入っている値**で確かめたいのがこのAPIの目的）。
+  override=str(x.get('overridePath') or '').strip()
+  cfg_map={source_override_key(key):override}
+  path=_source_path(entry,cfg_map)
+  cap=source_capability.describe({**entry,'_path':str(path)},path=path)
+  return jsonify(ok=True,key=key,readMode=source_read_mode(entry,cfg_map),
+                 path=str(path),capability=cap)
+ except Exception as e:
+  # **確かめる操作で画面を壊さない**。読めなかったことも結果のうち。
+  return jsonify(ok=True,error=f'確かめられませんでした: {e}',capability={'features':{}}),200
 
 @bp.post('/api/data-source-master/delete')
 def data_source_master_delete():

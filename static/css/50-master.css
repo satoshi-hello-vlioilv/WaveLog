@@ -359,4 +359,93 @@
 .mm-cap-note i{display:block;font-style:normal;color:var(--ink-3);font-size:var(--fs-tiny)}
 .mm-cap-error{margin:0;font-size:var(--fs-sm);color:var(--warn-fg);line-height:1.6}
 .mm-cap-foot{margin:var(--space-1) 0 0;font-size:var(--fs-tiny);color:var(--muted);line-height:1.6}
+
+/* ======================================================================
+   データ接続（§9.168）
+   1行＝1カード。**同じ距離で同時に読むものを1枚に集める**——名前・役割・
+   読み方・読み込み先・できることは「このデータソースは今どうなっているか」
+   という1つの問いの答えなので、表の列に散らさない。
+   枠は**カード1枚だけ**（§9.129。中に枠を作らない）。 */
+.ds-summary{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap}
+.ds-summary-facts{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;min-width:0}
+.ds-sum{font-size:var(--fs-sm);color:var(--ink-2);white-space:nowrap}
+.ds-sum b{font-size:var(--fs);color:var(--ink);font-variant-numeric:tabular-nums}
+/* 状態は**色だけで伝えない**。文字（件数と語）が必ず付いている。 */
+.ds-sum.is-warn,.ds-sum.is-warn b{color:var(--warn-fg)}
+.ds-sum.is-pending,.ds-sum.is-pending b{color:var(--nav);font-weight:700}
+.ds-summary-act{margin-left:auto;display:flex;gap:var(--gap-inline)}
+.ds-cards{display:flex;flex-direction:column;gap:var(--space-2);padding:var(--space-2)}
+.ds-card{
+  display:grid;gap:var(--gap-tight);
+  padding:var(--pad-card);border:1px solid var(--line);border-radius:var(--radius-md);
+  background:var(--surface)}
+.ds-card.is-off{opacity:.6}
+.ds-card.is-pending{border-color:var(--nav)}
+.ds-card-head{display:flex;align-items:center;gap:var(--space-2);min-width:0}
+.ds-role{
+  flex:none;padding:var(--pad-chip);border-radius:var(--radius-sm);
+  font-size:var(--fs-tiny);font-weight:800;
+  background:var(--surface-3);color:var(--ink-2);border:1px solid var(--line-soft)}
+.ds-role.is-work{background:var(--teal);border-color:var(--teal);color:#fff}
+.ds-role.is-quality{background:var(--computed-bg);border-color:var(--teal);color:var(--computed-fg)}
+.ds-name{font-size:var(--fs-lg);font-weight:800;color:var(--ink);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.ds-key{flex:none;font-size:var(--fs-sm);color:var(--muted);letter-spacing:.04em}
+.ds-flag{flex:none;padding:var(--pad-chip);border-radius:var(--radius-sm);
+  font-size:var(--fs-tiny);font-weight:800}
+.ds-flag.is-pending{background:var(--nav);color:#fff}
+.ds-flag.is-off{background:var(--surface-3);color:var(--ink-3)}
+.ds-card-act{margin-left:auto;display:flex;gap:var(--gap-inline);flex:none}
+/* ラベル列は**固定幅**（§9.129）。`auto`だと行ごとに値の左端がずれる。 */
+.ds-facts{margin:0;display:grid;gap:var(--gap-hair)}
+.ds-facts>div{display:grid;grid-template-columns:var(--w-sm) minmax(0,1fr);
+  align-items:baseline;gap:var(--space-2)}
+.ds-facts dt{margin:0;font-size:var(--fs-sm);color:var(--muted)}
+.ds-facts dd{margin:0;font-size:var(--fs-sm);color:var(--ink-2);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ds-facts .is-next dd{color:var(--nav);font-weight:700}
+.ds-caps{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:var(--gap-inline)}
+.ds-cap{font-size:var(--fs-tiny);color:var(--ink-3);white-space:nowrap;
+  display:inline-flex;align-items:center;gap:2px}
+.ds-cap i{font-style:normal;font-weight:800;color:var(--ink-soft)}
+.ds-cap.is-ok{color:var(--computed-fg)}
+.ds-cap.is-ok i{color:var(--teal-dark)}
+/* ---- 編集ウィンドウ ----
+   **スクロールさせない**（利用者の指示）。2列に割り、左＝決めること、
+   右＝その結果（できること・いまの状態）。 */
+.mm-editor-dialog.is-wide{width:min(1180px,96vw)}
+.mm-editor-dialog.is-wide .mm-editor-body{overflow:hidden}
+.ds-edit{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  gap:var(--space-3) var(--space-4);align-items:start}
+.ds-edit-zone{display:grid;gap:var(--space-2);min-width:0}
+.ds-edit-pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:var(--space-2)}
+.ds-edit .mm-fieldgroup{margin:0}
+.ds-modes{display:grid;gap:var(--gap-tight)}
+/* 選んでいない読み方は**畳むが消さない**——値は残っているので、切り替えて
+   戻せば元どおり。畳んだ側にも見出しは残るので、何が選べるかは分かる。 */
+.ds-mode{border:1px solid var(--line-soft);border-radius:var(--radius-sm);
+  padding:var(--pad-chip) var(--space-2)}
+.ds-mode.is-on{border-color:var(--teal);background:var(--computed-bg)}
+.ds-mode-pick{display:flex;align-items:flex-start;gap:var(--space-2);cursor:pointer}
+.ds-mode-pick input{margin-top:3px;accent-color:var(--teal);cursor:pointer}
+.ds-mode-pick b{display:block;font-size:var(--fs-sm);color:var(--ink)}
+.ds-mode-pick i{display:block;font-style:normal;font-size:var(--fs-tiny);color:var(--muted);line-height:1.5}
+.ds-mode-body{display:none;margin-top:var(--space-2);gap:var(--space-2)}
+.ds-mode.is-on .ds-mode-body{display:grid}
+.ds-warn{margin:0;font-size:var(--fs-tiny);color:var(--warn-fg);line-height:1.6}
+.ds-probe-state{margin-left:var(--space-2);font-size:var(--fs-tiny);font-weight:400;color:var(--muted)}
+.ds-probe{display:grid;gap:var(--gap-hair)}
+.ds-now{margin:0;display:grid;gap:var(--gap-hair)}
+.ds-now>div{display:grid;grid-template-columns:var(--w-sm) minmax(0,1fr);gap:var(--space-2);align-items:baseline}
+.ds-now dt{margin:0;font-size:var(--fs-sm);color:var(--muted)}
+.ds-now dd{margin:0;font-size:var(--fs-sm);color:var(--ink-2);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 共通設定に残す「いま何を読んでいるか」の並び。**ここでは変えられない**
+   （変えるのはデータ接続）ので、入力欄風の枠を付けない（§9.129）。 */
+.pc-source-list{display:grid;gap:var(--gap-hair)}
+.pc-source{display:flex;align-items:baseline;gap:var(--space-2);flex-wrap:wrap;
+  font-size:var(--fs-sm);color:var(--ink-2)}
+.pc-source b{color:var(--ink)}
+.pc-source code{font-size:var(--fs-tiny);color:var(--muted);letter-spacing:.04em}
+.pc-source-next{font-style:normal;font-size:var(--fs-tiny);color:var(--nav);font-weight:700}
 }

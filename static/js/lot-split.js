@@ -230,13 +230,12 @@
     return `${lots.length||groups.length}ロット / ${strips}条に分割（${pattern}）`;
   }
 
-  /* 仕掛一覧(SIKALOTNOW)の列表示マスタで「親子管理_子カード*」「コンマ5本
-     分割_切断巾*」等が非表示設定にされていると、通常の一覧取得(/api/table)
-     ではこれらの列がレスポンスから丸ごと除外され、分割の判定材料が
-     一切手に入らなくなる(表示設定はあくまで一覧の見た目の話であり、
-     内部計算がそれに引きずられるべきではない)。このため分割機能が使う
-     問い合わせは全て include_hidden=1 を付け、非表示設定に関係なく
-     生データを取得する。 */
+  /* 分割の判定材料(「親子管理_子カード*」「コンマ5本分割_切断巾*」)は
+     **画面に出ているかどうかと無関係に**要る。以前はサーバーが「表示マスタ」
+     で列を落としており、非表示にされた途端に分割が一切判定できなくなった
+     ため、内部の問い合わせだけ`include_hidden=1`で逃がしていた。
+     表示マスタは廃止し(§9.165)、**どの列を出すかは画面側だけが決める**
+     ようになったので、この逃げ道は要らない。 */
   /* ---------- 問い合わせのキャッシュ(docs/ARCHITECTURE.md「共有ファイルを
      読む処理は回数が効く」) ----------
      一覧を1ページ描くたびに、子カード判定された行の**1行ごと**に
@@ -281,7 +280,7 @@
     // 引数が変わり得る。キーはテーブル名にする。
     if(!sikaColumnsCache.has(table)){
       sikaColumnsCache.set(table,
-        api('/api/table?'+new URLSearchParams({db:workDb(),table,page:1,page_size:1,include_hidden:1}))
+        api('/api/table?'+new URLSearchParams({db:workDb(),table,page:1,page_size:1}))
           .then(d=>d.columns||[])
           .catch(e=>{sikaColumnsCache.delete(table);throw e}));
     }
@@ -299,7 +298,7 @@
     if(hit&&Date.now()-hit.at<SPLIT_QUERY_TTL_MS)return hit.promise;
     const filters=[{column:lotCol,op:'starts',value:prefix}];
     if(equipCol&&equipment)filters.push({column:equipCol,op:'contains',value:equipment});
-    const params=new URLSearchParams({db:workDb(),table,page:1,page_size:50,include_hidden:1,filters:JSON.stringify(filters)});
+    const params=new URLSearchParams({db:workDb(),table,page:1,page_size:50,filters:JSON.stringify(filters)});
     const promise=api('/api/table?'+params).then(d=>d.rows||[])
       .catch(e=>{prefixSearchCache.delete(key);throw e});
     prefixSearchCache.set(key,{at:Date.now(),promise});
@@ -347,7 +346,7 @@
       const filters=[{column:lotCol,op:'starts_any',value:chunk.join(',')}];
       if(eq)filters.push({column:equipCol,op:'contains',value:eq});
       const params=new URLSearchParams({db:workDb(),table,page:1,page_size:LIGHT_PAGE_SIZE,
-        include_hidden:1,columns:cols2.join(','),filters:JSON.stringify(filters)});
+        columns:cols2.join(','),filters:JSON.stringify(filters)});
       let rows=null;
       try{rows=(await api('/api/table?'+params)).rows||[]}catch(e){continue}
       // 上限に達していたら取りこぼしがあり得る。**この塊は覚えない**
@@ -375,8 +374,7 @@
     if(hit&&Date.now()-hit.at<SPLIT_QUERY_TTL_MS)return hit.promise;
     const filters=[{column:lotCol,op:'starts',value:prefix}];
     if(eq)filters.push({column:equipCol,op:'contains',value:eq});
-    const params=new URLSearchParams({db:workDb(),table,page:1,page_size:50,include_hidden:1,
-      columns:lightColumns(columns).join(','),filters:JSON.stringify(filters)});
+    const params=new URLSearchParams({db:workDb(),table,page:1,page_size:50,columns:lightColumns(columns).join(','),filters:JSON.stringify(filters)});
     const promise=api('/api/table?'+params).then(d=>d.rows||[])
       .catch(e=>{prefixLightCache.delete(key);throw e});
     prefixLightCache.set(key,{at:Date.now(),promise});
@@ -410,7 +408,7 @@
       const filters=[{column:lotCol,op:'eq',value:lotNo}];
       const equipCol=findColumn(columns,aliases.equipment),equipment=typeof currentConfiguredEquipment==='function'?currentConfiguredEquipment():'';
       if(equipCol&&equipment)filters.push({column:equipCol,op:'contains',value:equipment});
-      const params=new URLSearchParams({db:workDb(),table,page:1,page_size:5,include_hidden:1,filters:JSON.stringify(filters)});
+      const params=new URLSearchParams({db:workDb(),table,page:1,page_size:5,filters:JSON.stringify(filters)});
       const d=await api('/api/table?'+params);
       return d.rows?.[0]||null;
     }catch(e){console.warn('子ロット再検索に失敗しました: '+lotNo,e);return null}
@@ -974,7 +972,9 @@
       };
       side(scrapOs,info.os,'OS');
       side(scrapDs,info.ds,'DS');
+      placeScrapGrips(info);
     }else{
+      placeScrapGrips(null);
       scrapOs.hidden=true;scrapDs.hidden=true;scrapOs.innerHTML='';scrapDs.innerHTML='';
       scrapOs.style.flexGrow='';scrapDs.style.flexGrow='';strip.style.flexGrow='';
       scrapOs.classList.remove('is-biased');scrapDs.classList.remove('is-biased');
@@ -1368,7 +1368,7 @@
     if(!info){el.textContent='－';el.classList.remove('scrap-width-warn');return}
     el.textContent=fmtDim(info.scrap,1);
     el.title=info&&info.scrap>0
-      ? `OS側 ${fmtDim(info.os,1)} ／ DS側 ${fmtDim(info.ds,1)}（条の設計の「屑幅の割り付け」で直せます）`
+      ? `OS側 ${fmtDim(info.os,1)} ／ DS側 ${fmtDim(info.ds,1)}（図で条の束の縁をドラッグ、または「屑幅の割り付け」で直せます）`
       : '元幅（実績）から条幅合計を差し引いた両耳分の合計です';
     el.classList.toggle('scrap-width-warn',info.scrap<0);
   }
@@ -1410,8 +1410,92 @@
         : '両耳へ同じだけ付きます';
     }
     if(evenBtn)evenBtn.disabled=!info.manual;
+    /* **直し方は常に書く**（§9.167）。ドラッグできることは図を見ただけでは
+       分からないので、数値欄の隣で1度だけ言う。範囲外を丸めたときだけは
+       そちらを優先する（そのときは「なぜこの値なのか」の方が先に要る）。 */
+    /* **図が無いロットで「図でドラッグ」と書かない**——屑幅の行は分割の
+       無いロットでも出るが（§9.160。器は図の外）、条の帯は分割ありの
+       ロットでしか組み立てられない。無い物を指す案内は、探させるだけ。 */
     if(note)note.textContent=info.clamped
-      ? `OS側は0〜${fmtDim(info.scrap,1)}mm（両耳合計）の範囲です。${fmtDim(info.os,1)}mm として扱っています。`:'';
+      ? `OS側は0〜${fmtDim(info.scrap,1)}mm（両耳合計）の範囲です。${fmtDim(info.os,1)}mm として扱っています。`
+      : (splitVisualLayout?'上の図で条の束の縁をドラッグしても直せます（ダブルクリックで均等）。':'');
+  }
+  /* ---- 屑幅の片寄せを図の上で直す（§9.167、利用者の指示「マウス操作で
+     直接屑幅を調節して修正することもできるように」） ----------------------
+     数値欄（`#scrapAllocOs`）だけだと、**どちらへどれだけ寄るのか**を頭の中で
+     図へ翻訳しないと決められない。条束の左右の境目をそのまま掴めるようにする。
+
+     つまみは**作り直さない**——帯の中身は0.1mm動くたびに`innerHTML`ごと
+     組み直しているので、つまみをそこへ入れると掴んだ拍子に消える
+     （測定の受信欄と同じ罠。§9.122）。器の子として1度だけ置き、位置だけを
+     毎回書き換える。位置は**条束の実寸から取る**——屑の帯には`min-width`が
+     効いており、mmの比で置くと細い側で境目とずれる。 */
+  function placeScrapGrips(info){
+    const os=$('#splitScrapGripOs'),ds=$('#splitScrapGripDs'),
+          host=$('#splitVisualMeasure'),strip=$('#splitVisualStrip');
+    if(!os||!ds||!host||!strip)return;
+    const show=!!(info&&info.scrap>0);
+    if(os.hidden!==!show)os.hidden=!show;
+    if(ds.hidden!==!show)ds.hidden=!show;
+    if(!show)return;
+    ensureScrapGripWiring();
+    const hr=host.getBoundingClientRect(),sr=strip.getBoundingClientRect();
+    if(!(hr.width>0))return;                     /* 畳まれている間は測れない */
+    os.style.left=(sr.left-hr.left)+'px';
+    ds.style.left=(sr.right-hr.left)+'px';
+    const tip=info.biased
+      ? `いま ${info.os>info.even?'OS':'DS'}側へ +${fmtDim(Math.abs(info.os-info.even),1)}mm 寄せています。`
+      : 'いまは両耳へ均等です。';
+    const help=`${tip}ドラッグで条の束を左右へ動かせます（ダブルクリックで均等へ戻す）。`;
+    os.title=help;ds.title=help;
+  }
+  /* 1回だけ配線する。**動かしている間の追従は`document`で受ける**——
+     0.1mmごとに帯を描き直すので、つまみ自身に載せると要素の作り直しで
+     追従が切れる（列幅の取っ手と同じ作り）。 */
+  let scrapGripWired=false;
+  function ensureScrapGripWiring(){
+    if(scrapGripWired)return;
+    const host=$('#splitVisualMeasure');if(!host)return;
+    scrapGripWired=true;
+    host.addEventListener('pointerdown',e=>{
+      const grip=e.target.closest?.('[data-scrap-grip]');if(!grip)return;
+      const info=scrapWidthInfo();
+      if(!S.measure||!info||!(info.scrap>0))return;
+      e.preventDefault();e.stopPropagation();     /* 条の並べ替えへ渡さない */
+      const strip=$('#splitVisualStrip');
+      const sr=strip?strip.getBoundingClientRect():null;
+      /* mm/px は**条束の実寸**から取る（掴んでいるのは条束の縁なので、
+         指の動きと縁の動きが1対1になる）。条幅合計が0の異常時は諦める。 */
+      if(!sr||!(sr.width>0)||!(info.slit>0))return;
+      const mmPerPx=info.slit/sr.width,startX=e.clientX,startOs=info.os;
+      host.classList.add('is-scrap-dragging');
+      const move=ev=>{
+        const os=Math.min(Math.max(startOs+(ev.clientX-startX)*mmPerPx,0),info.scrap);
+        S.measure.settings.scrapOsWidth=Math.round(os*10)/10;
+        repaintScrap();
+      };
+      const up=()=>{
+        document.removeEventListener('pointermove',move);
+        document.removeEventListener('pointerup',up);
+        document.removeEventListener('pointercancel',up);
+        host.classList.remove('is-scrap-dragging');
+        if(typeof markDirty==='function')markDirty();
+      };
+      document.addEventListener('pointermove',move);
+      document.addEventListener('pointerup',up);
+      document.addEventListener('pointercancel',up);
+    });
+    /* ダブルクリックで均等へ戻す（「均等へ」ボタンと同じ結果を、掴んだ
+       場所のまま出せるようにする）。 */
+    host.addEventListener('dblclick',e=>{
+      if(!e.target.closest?.('[data-scrap-grip]'))return;
+      e.preventDefault();e.stopPropagation();
+      if(!S.measure)return;
+      S.measure.settings.scrapOsWidth='';
+      const el=$('#scrapAllocOs');if(el)el.value='';
+      if(typeof markDirty==='function')markDirty();
+      repaintScrap();
+    });
   }
   /* 値を書き換えたら、図・母材パネル・この行を**まとめて描き直す**。
      `renderSplit()`は条の帯ごと組み立て直すので呼ばない（打っている最中に

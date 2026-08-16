@@ -371,4 +371,19 @@
    一覧を絞る操作の隣にあるのが自然）。**危ない操作ではない**ので
    目立たせすぎない——見出しが折り返さない幅だけ与える（§9.129）。 */
 .record-columns-btn{white-space:nowrap}
+/* ---- 見出しの取っ手（§9.164。仕掛一覧の`#grid th`と同じ形） ----
+   絶対配置の基準は見出しセル自身。`.record-list-head`は`sticky`だが、
+   基準にしたいのは**セル**なので`position:relative`をセルへ与える。
+   見えるのは**マウスを乗せたときだけ**——常時出すと、15本の縦線が
+   罫線と重なって表が「格子だらけ」に見える（掴める場所は罫線の位置に
+   あるので、探し直すことにはならない）。 */
+.record-list-head>*{position:relative}
+.record-list-head .col-resize{
+  position:absolute;top:0;right:0;width:calc(var(--space-2) + 2px);height:100%;
+  cursor:col-resize;opacity:0;transition:opacity .12s ease}
+.record-list-head>*:hover .col-resize{opacity:1}
+/* 取っ手そのものは細い線1本。掴める幅は線より広く取る(掴めないと苛立つ)。 */
+.record-list-head .col-resize::after{
+  content:"";position:absolute;top:15%;bottom:15%;left:50%;width:2px;
+  background:var(--line-strong);border-radius:var(--radius-xs)}
 }

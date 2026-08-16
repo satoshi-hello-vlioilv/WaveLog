@@ -15,7 +15,6 @@ from .. import source_capability
 from ..db_access import DBS, qi, connect, cols, tables, cfg, WORK_DB_KEY, QUALITY_DB_KEY
 from ..logging_setup import app_logger
 from ..errors import os_error_hint
-from ..repositories.master_repo import hidden_columns_for_db
 
 # 品質データ結合のIN句を小分けにする単位(パラメータ数の上限対策)。
 _JOIN_IN_CHUNK=100
@@ -366,14 +365,14 @@ def api_table():
    cur.execute(f'SELECT * FROM {qi(t)}'+where+order+f' LIMIT {size} OFFSET {start}',params)
    rows=cur.fetchall()
    lap('fetch',t_fetch)
-  # 表示マスタで非表示指定された列は、検索/絞込/並替の対象(cs)には残しつつ、
-  # 返却するcolumns/rowsからのみ除外する(生の行タプルはcs全体の順序と対応するため、
-  # zip自体はcs全体で行い、その後に非表示列をdictから取り除く)。
-  # include_hidden=1が指定された場合は除外しない。一覧の表示設定はあくまで
-  # 画面上の見た目の好みであり、条割(分割)機能など内部計算が特定の列の
-  # 実データに依存する場面では、非表示設定によってデータ自体が欠落しては
-  # ならないため(一覧を出す通常のリクエストでは指定しない)。
-  hidden=set() if request.args.get('include_hidden')=='1' else hidden_columns_for_db(k)
+  # **どの列を出すかはサーバーが決めない**(§9.165)。以前はここで「表示マスタ」
+  # (DB単位・行の存在=非表示)を引いて列を落としていたが、同じことを列レイアウト
+  # マスタが対象(`list:<DB>:<表>`)ごとに、並び・幅・表示名・書式・読み替えまで
+  # 含めて持つようになったため、**劣化した重複**になっていた。サーバーが列を
+  # 落とすと画面側は落ちた列を選ぶことすらできない(候補に出てこない)ので、
+  # 落とす役はやめて画面へ一本化した。`include_hidden`は受け取っても何もしない
+  # (古い呼び出しを落とさないため。付いていても外れていても同じ結果)。
+  hidden=set()
   # 欲しい列だけを返す(§9.94)。**絞り込み・並べ替えの対象(cs)は絞らない**
   # ——効かせるのは戻す量だけ。仕掛の実データは200列を超えることがあり、
   # 「ロット番号があるかどうか」を知りたいだけの内部問い合わせでも1回

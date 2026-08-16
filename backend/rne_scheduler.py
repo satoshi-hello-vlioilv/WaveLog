@@ -68,9 +68,17 @@ def jobs():
  以前はここに2件を直接書いており、参照データを増やすたびに
  db_access.DBS とここの両方を直す必要があった(しかも別々に書けるため
  「抽出しているのに読まない」状態が作れた)。"""
+ from .db_access import _read_mode_value,READ_MODE_SHARE
  out=[]
  for s in DATA_SOURCES:
   if not s.get('rne'):continue         # RNEが未設定＝抽出対象ではない
+  # **「共有を読む」と明に決めたソースは抽出しない**(§9.168)。出力ファイルは
+  # 誰も読まないので、毎回作るのは時間と資材の無駄（RNEの無い端末では失敗
+  # ログだけが積み上がる）。**読み方が空欄のものは今までどおり対象**にする
+  # ——空欄＝「全体設定に従う」で、回すかどうかは`rne_extract_enabled`
+  # (auto/on/off)が決める。ここで全体設定まで見て絞ると、network運用の端末で
+  # 「今すぐ抽出」が1件も動かなくなる（実際にtest_datasourceが落ちた）。
+  if _read_mode_value(s.get('mode'),s.get('key',''))==READ_MODE_SHARE:continue
   out.append({'name':s['key'],'rne':s['rne'],'table':s.get('table') or '仕掛',
               'output':str(_output_path(s))})
  return out

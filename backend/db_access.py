@@ -391,6 +391,31 @@ _DEFAULT_DATA_SOURCES=(
   'purpose':PURPOSE_QUALITY},
 )
 
+# ---- 読み方(§9.168) ---------------------------------------------------
+# 「このデータソースをどこから読むか」を**行ごとに**持つ。
+#   ''      … 指定なし。全体設定(参照データの取得元)に従う（従来どおり）
+#   'share' … 共有フォルダの .sqlite3 をそのまま読む（RNEを使わない）
+#   'rne'   … この端末でRNEから抽出した出力ファイルを読む
+# **RNEが無い端末・現場がある**（利用者の指摘）ので、全体スイッチ1つで
+# 全ソースの読み方が決まる作りをやめた。空欄を残してあるのは、既に動いて
+# いる環境の挙動を1つも変えないため。
+READ_MODE_AUTO=''
+READ_MODE_SHARE='share'
+READ_MODE_RNE='rne'
+# パス設定マスタの個別上書き(<キー>_path)が入っているときだけ名乗る、
+# 画面向けの4つ目の呼び名。**保存値ではない**(上書きの有無で決まる)。
+READ_MODE_DIRECT='direct'
+DATA_SOURCE_READ_MODES=(READ_MODE_AUTO,READ_MODE_SHARE,READ_MODE_RNE)
+
+def _read_mode_value(raw,key=''):
+ v=str(raw or '').strip().lower()
+ if v in DATA_SOURCE_READ_MODES:return v
+ if v:
+  app_logger().warning('データソースマスタの読み方(%r, キー=%s)は%sのいずれでもないため'
+                       '「全体設定に従う」として扱います。',v,key,
+                       '/'.join(x or '空欄' for x in DATA_SOURCE_READ_MODES))
+ return READ_MODE_AUTO
+
 def ensure_data_source_table(c):
  names=tables(c);created=False
  if DATA_SOURCE_TABLE not in names:
@@ -398,7 +423,7 @@ def ensure_data_source_table(c):
    'CREATE TABLE [データソースマスタ] ('
    '[ソースID] INTEGER PRIMARY KEY AUTOINCREMENT, [キー] TEXT, [表示名] TEXT, '
    '[RNEファイル] TEXT, [抽出テーブル] TEXT, [出力ファイル] TEXT, [共有パス] TEXT, '
-   '[既定テーブル] TEXT, [表示順] INTEGER, [有効] INTEGER, [役割] TEXT, '
+   '[既定テーブル] TEXT, [表示順] INTEGER, [有効] INTEGER, [役割] TEXT, [読み方] TEXT, '
    '[登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
   c.commit();created=True
  elif '役割' not in {n for n in cols(c,DATA_SOURCE_TABLE)}:
@@ -423,6 +448,13 @@ def ensure_data_source_table(c):
                          '表示順が先頭の「%s」を役割「%s」としました。違う場合は'
                          'マスタ管理 > データソースで選び直してください。',first[1],PURPOSE_WORK)
   c.commit()
+ # 読み方(§9.168)。**行ごとに「どこから読むか」を持つ**——以前は
+ # `sikalot_source`(network/local)という**全体の1つのスイッチ**しか無く、
+ # 「このソースだけ共有、あのソースだけRNE」が表現できなかった。
+ # 空欄＝今までどおり全体設定に従う（既存環境の動きを変えない）。
+ if DATA_SOURCE_TABLE in tables(c) and '読み方' not in {n for n in cols(c,DATA_SOURCE_TABLE)}:
+  c.cursor().execute('ALTER TABLE [データソースマスタ] ADD COLUMN [読み方] TEXT')
+  c.commit()
  return created
 
 def data_source_rows(c,include_disabled=False):
@@ -433,11 +465,14 @@ def data_source_rows(c,include_disabled=False):
  片方に潰れ、画面には2つ並ぶ(=どちらを押しても同じものが出る)という
  分かりにくい状態になるため、読む時点で1つに決めて警告を残す。"""
  if DATA_SOURCE_TABLE not in tables(c):return []
- has_purpose='役割' in {n for n in cols(c,DATA_SOURCE_TABLE)}
+ have=({n for n in cols(c,DATA_SOURCE_TABLE)})
+ has_purpose='役割' in have
+ has_mode='読み方' in have
  cur=c.cursor()
  cur.execute('SELECT [ソースID],[キー],[表示名],[RNEファイル],[抽出テーブル],[出力ファイル],'
-             '[共有パス],[既定テーブル],[表示順],[有効]'
-             +(',[役割]' if has_purpose else '')+' FROM [データソースマスタ] '
+             '[共有パス],[既定テーブル],[表示順],[有効],'
+             +('[役割]' if has_purpose else "''")+','
+             +('[読み方]' if has_mode else "''")+' FROM [データソースマスタ] '
              'ORDER BY [表示順],[キー]')
  out=[];seen={}
  for r in cur.fetchall():
@@ -449,7 +484,7 @@ def data_source_rows(c,include_disabled=False):
                         'を使い、ソースID=%sは読み飛ばしました。',key,seen[key],r[0])
    continue
   seen[key]=r[0]
-  purpose=str((r[10] if has_purpose else '') or '').strip()
+  purpose=str(r[10] or '').strip()
   if purpose not in DATA_SOURCE_PURPOSES:
    # 想定外の値は「その他」として扱う(勝手に作業対象へ昇格させない)。
    if purpose:
@@ -461,7 +496,7 @@ def data_source_rows(c,include_disabled=False):
               'rne':str(r[3] or '').strip(),'table':str(r[4] or '').strip() or '仕掛',
               'output':str(r[5] or '').strip(),'share':str(r[6] or '').strip(),
               'preferred':str(r[7] or '').strip(),'order':int(r[8] or 0),'active':active,
-              'purpose':purpose})
+              'purpose':purpose,'mode':_read_mode_value(r[11],key)})
  return out
 
 _DATA_SOURCE_SEEDED_KEY='__data_sources_seeded__'
@@ -568,24 +603,43 @@ def source_override_key(key):
  ため、名前はキーから機械的に作る。"""
  return f"{str(key or '').lower()}_path"
 
+def _source_override(entry,cfg_map=None):
+ """パス設定マスタの個別上書き(<キー>_path)。**常に最優先**で、検証用に
+    手元の複製へ向ける従来の仕掛け(tests/run_all.sh もこれで差し替える)。"""
+ # cfg_map を渡すとその設定で計算する（マスタ管理が「再起動したらどこを
+ # 読むか」を先に見せるため。省略＝プロセス起動時に確定した設定）。
+ return str((cfg_map.get(source_override_key(entry['key'])) if cfg_map is not None
+             else _static_path_cfg(source_override_key(entry['key']))) or '').strip()
+
+def source_read_mode(entry,cfg_map=None):
+ """このデータソースを**どこから読むか**を1語で答える(§9.168)。
+    'direct'/'rne'/'share' のいずれかで、**画面もサーバーもこの1箇所を見る**
+    ——判定が散ると「画面には共有と出ているのに実際はRNEの出力を読む」と
+    いう食い違いが起きる(§9.87でキー文字列の直接比較が実際にそうなった)。
+    行に指定が無ければ全体設定(参照データの取得元)から決める。"""
+ if _source_override(entry,cfg_map):return READ_MODE_DIRECT
+ mode=_read_mode_value(entry.get('mode'),entry.get('key',''))
+ if mode:return mode
+ return READ_MODE_RNE if SIKALOT_SOURCE=='local' else READ_MODE_SHARE
+
 def _source_path(entry,cfg_map=None):
  """1件のデータソースが「今どこを読むか」を決める。優先順位は
-    (1) パス設定マスタの個別上書き(sikalotnow_path 等。検証用に手元の複製へ
-        向ける従来の仕掛けで、常に最優先)
-    (2) sikalot_source が local なら 出力ファイル(RNEで作った成果物)
-    (3) それ以外は 共有パス
+    (1) パス設定マスタの個別上書き(<キー>_path。常に最優先)
+    (2) 行の読み方が 'rne' なら 出力ファイル / 'share' なら 共有パス
+    (3) 指定が無ければ 全体設定(sikalot_source)から決める
+    (4) 指定した側が空欄なら、もう片方で読む(設定の途中でも一覧を出す)
     相対パスは、出力ファイルは db/、共有パスは仕掛の共有フォルダを基点にする
     (現場は「ファイル名だけ」を入れることが多く、絶対パスを強制すると
     設定の手間と打ち間違いが増えるため)。"""
- # cfg_map を渡すとその設定で計算する（マスタ管理が「再起動したらどこを
- # 読むか」を先に見せるため。省略＝プロセス起動時に確定した設定）。
- override=(cfg_map.get(source_override_key(entry['key'])) if cfg_map is not None
-           else _static_path_cfg(source_override_key(entry['key'])))
+ override=_source_override(entry,cfg_map)
  if override:return Path(override)
  local=entry.get('output') or ''
  share=entry.get('share') or ''
- if SIKALOT_SOURCE=='local' and local:
+ mode=source_read_mode(entry,cfg_map)
+ if mode==READ_MODE_RNE and local:
   p=Path(local);return p if p.is_absolute() else DB_DIR/p
+ if mode==READ_MODE_SHARE and share:
+  p=Path(share);return p if p.is_absolute() else SIKA_DIR/p
  if share:
   p=Path(share);return p if p.is_absolute() else SIKA_DIR/p
  if local:

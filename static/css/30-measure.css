@@ -1193,15 +1193,28 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .tol-list{margin:var(--space-2) 0}
 .tol-list[hidden]{display:none}
 .tol-list-head{color:var(--ink-3);font-size:var(--fs);font-weight:800;letter-spacing:.04em;margin-bottom:var(--space-1)}
-.tol-list-table{width:100%;border-collapse:collapse;font-size:var(--fs)}
-.tol-list-table th,.tol-list-table td{
-  padding:var(--pad-cell);border-bottom:1px solid var(--line-soft);text-align:left;
+/* 1項目1枚を縦に積む（§9.166）。**枠は作らない**——区切りは下の細線だけで、
+   カードの中にカードを作らない（§9.129「枠は"まとまり"だけに使う」）。
+   1行目は「項目名 …… 判定範囲」で、範囲は右端へ寄せて桁をそろえる。 */
+.tol-cards{list-style:none;margin:0;padding:0}
+.tol-card{
+  display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 var(--space-2);
+  padding:var(--pad-cell);border-bottom:1px solid var(--line-soft);
 }
-.tol-list-table thead th{color:var(--ink-3);font-size:var(--fs-sm);font-weight:800;white-space:nowrap}
-.tol-list-table tbody th{color:var(--ink);font-weight:800;white-space:nowrap}
-.tol-list-table .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tol-card-name{color:var(--ink);font-size:var(--fs);font-weight:800;white-space:nowrap}
+.tol-card-range{
+  text-align:right;font-size:var(--fs);font-weight:800;color:var(--ink);
+  font-variant-numeric:tabular-nums;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;
+}
+/* 根拠は**2行目いっぱい**を使う。小さく淡く——読みに来るのは範囲の側で、
+   ここは「なぜその範囲なのか」を確かめたいときだけ読む。 */
+.tol-card-basis{
+  grid-column:1/-1;color:var(--ink-soft);font-size:var(--fs-sm);
+  font-variant-numeric:tabular-nums;line-height:1.5;
+}
 /* **公差が無い行は「合格」に混ぜず、項目名で言う**（§9.125と同じ約束）。 */
-.tol-list-table tr.is-missing th,.tol-list-table tr.is-missing td{color:var(--ink-soft)}
+.tol-card.is-missing .tol-card-name,.tol-card.is-missing .tol-card-basis{color:var(--ink-soft)}
 .tol-list-missing{color:var(--warn-fg);font-weight:700}
 .tol-list-note{margin:var(--space-1) 0 0;color:var(--ink-soft);font-size:var(--fs-sm)}
 /* 軸からはみ出した点があることは**文字で言う**（§9.129の3番）。直し方

@@ -84,7 +84,7 @@ let b=null,orphan=null;
   let pages=0,perLot=0;
   window.fetch=async(u,o)=>{
    const s=String(u);
-   if(s.includes('/api/table?')&&s.includes('SIKALOTNOW')&&s.includes('include_hidden')){
+   if(s.includes('/api/table?')&&s.includes('SIKALOTNOW')){
     if(s.includes('filters='))perLot++;else pages++;
    }
    return realFetch(u,o);

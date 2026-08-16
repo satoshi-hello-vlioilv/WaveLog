@@ -18,6 +18,7 @@
 ------------------------------------------------------------------------
 """
 import unicodedata
+from pathlib import Path
 
 from .db_access import (DBS, cfg, connect, tables, cols,
                         WORK_DB_KEY, QUALITY_DB_KEY, PURPOSE_WORK, PURPOSE_QUALITY)
@@ -70,12 +71,20 @@ def _has_split_columns(columns):
  return any(any(c.startswith(norm_name(p)) for p in SPLIT_PREFIXES) for c in lowered)
 
 
-def _read_columns(key):
+def _entry_of(key, path=None, preferred=''):
+ """開く先。`path`を渡すと**登録されていない下書きのパス**でも確かめられる
+ （§9.168の「保存する前に確かめる」）。渡さなければ登録済みの接続設定。"""
+ if path is None:
+  return cfg(key)
+ return {'path': Path(path), 'role': 'readonly', 'preferred': preferred}
+
+
+def _read_columns(key, path=None, preferred=''):
  """そのデータソースを実際に開いて、既定テーブルの列名を読む。
  **開く前に存在確認をしない**（CLAUDE.md。共有越しではstatだけ失敗する
  ことがあり、確認のつもりの1行が唯一の失敗原因になる）。
  戻り値: (テーブル名, 列名リスト, 全テーブル名, エラー文字列)"""
- entry = cfg(key)
+ entry = _entry_of(key, path, preferred)
  with connect(entry['path'], entry.get('role') == 'readonly') as c:
   names = tables(c)
   if not names:
@@ -85,10 +94,10 @@ def _read_columns(key):
   return table, list(cols(c, table, source=entry['path'])), names, ''
 
 
-def _quality_key_table(key, all_tables, entry_preferred):
+def _quality_key_table(key, all_tables, entry_preferred, path=None):
  """品質データ側で「3つのキー列がすべて揃っているテーブル」を探す。
  /api/table の結合と**同じ選び方**（preferredを先頭に、無ければ全部試す）。"""
- entry = cfg(key)
+ entry = _entry_of(key, path, entry_preferred)
  missing_of_first = None
  with connect(entry['path'], entry.get('role') == 'readonly') as c:
   ordered = ([entry_preferred] if entry_preferred in all_tables else []) \
@@ -111,12 +120,18 @@ def _feature(ok, note, detail=''):
  return {'ok': bool(ok), 'note': note, 'detail': detail}
 
 
-def describe(source):
+def describe(source, path=None):
  """1件ぶんの「できること」。sourceはdata_source_rows()の1要素。
+
+ `path`を渡すと**まだ保存していない下書き**でも確かめる（§9.168）。
+ 接続先はサーバー起動時に1回だけ決まるので、これが無いと「保存して
+ 再起動するまで打ち間違いに気づけない」ことになる。そのときの役割は
+ 下書きの[役割]を信じる（登録済みの役割との重なりは保存側が弾く）。
 
  **できないことは、できないと書く**（CLAUDE.md）。ok=False のときは
  必ず理由(note)を入れる——「押しても何も起きない」を画面の外で説明
  させないため。"""
+ draft = path is not None
  key = source.get('key') or ''
  label = source.get('label') or key
  purpose = source.get('purpose') or ''
@@ -133,7 +148,7 @@ def describe(source):
   }
   return out
 
- if key not in DBS:
+ if key not in DBS and not draft:
   out['error'] = ('この端末ではまだ読み込み先が決まっていません。'
                   '読み込み先はサーバー起動時に1回だけ決まるため、'
                   '登録・変更のあとはサーバーを再起動してください。')
@@ -144,7 +159,7 @@ def describe(source):
 
  columns, all_tables = [], []
  try:
-  table, columns, all_tables, err = _read_columns(key)
+  table, columns, all_tables, err = _read_columns(key, path, source.get('preferred') or '')
   out['table'] = table
   out['columnCount'] = len(columns)
   out['error'] = err
@@ -159,8 +174,10 @@ def describe(source):
 
  col = lambda k: find_column(columns, FEATURE_ALIASES[k])
  lot, equip, residual = col('lotNo'), col('equipment'), col('residualCourse')
- is_work = bool(WORK_DB_KEY) and key == WORK_DB_KEY
- is_quality = bool(QUALITY_DB_KEY) and key == QUALITY_DB_KEY
+ # 下書きは**その行が名乗っている役割**で判定する（まだ登録されていないので
+ # WORK_DB_KEY と一致しようがない）。登録済みは実際に効いている役割で見る。
+ is_work = (purpose == PURPOSE_WORK) if draft else (bool(WORK_DB_KEY) and key == WORK_DB_KEY)
+ is_quality = (purpose == PURPOSE_QUALITY) if draft else (bool(QUALITY_DB_KEY) and key == QUALITY_DB_KEY)
 
  # ---- ① 一覧として見る（役割によらず、開ければ必ずできる） ----
  if out['error']:
@@ -203,7 +220,9 @@ def describe(source):
   quality_f = _feature(False, '役割が「品質」ではありません。結合できるのは役割「品質」の1件だけです。')
  else:
   try:
-   qt, missing = _quality_key_table(key, all_tables, cfg(key).get('preferred') or '')
+   qt, missing = _quality_key_table(key, all_tables,
+                                    (source.get('preferred') or '') if draft
+                                    else (cfg(key).get('preferred') or ''), path)
   except Exception as e:
    qt, missing = '', [f'確かめられませんでした（{e}）']
   if qt:

@@ -513,8 +513,11 @@ let b=null,page=null;
    await go('3');
    return page.evaluate(()=>{
     const host=document.getElementById('toleranceList3');
-    return{項目:[...host.querySelectorAll('tbody tr>th')].map(e=>e.textContent.trim()),
-      範囲:[...host.querySelectorAll('tbody tr')].map(tr=>tr.lastElementChild.textContent.trim()),
+    /* §9.166で6列の表から「1項目1枚」の積み重ねへ変えた。読むのは
+       項目名と判定範囲で、根拠（基準・公差・出どころ）は2行目。 */
+    return{項目:[...host.querySelectorAll('.tol-card-name')].map(e=>e.textContent.trim()),
+      範囲:[...host.querySelectorAll('[data-tol-range]')].map(e=>e.textContent.trim()),
+      根拠:[...host.querySelectorAll('.tol-card-basis')].map(e=>e.textContent.trim()),
       注記:(host.querySelector('.tol-list-note')?.textContent||'').trim(),
       /* 1項目ぶんの公差カードと同じ数字を2箇所に出さない（§9.129）。 */
       単品カード:(()=>{const f=document.querySelector('.tol-facts');if(!f)return false;
@@ -526,6 +529,12 @@ let b=null,page=null;
       ['板厚','板幅','板丈'].every(n=>tl板.項目.includes(n)),JSON.stringify(tl板.項目));
   rec('③の公差一覧は判定範囲まで出す',
       tl板.範囲.some(v=>/～/.test(v)),JSON.stringify(tl板.範囲.slice(0,3)));
+  /* §9.166: 左右対称の公差を`+0.500 -0.500`と2つ出さない（同じ数字を2度
+     読ませたうえで桁がそろわない）。根拠の行に出どころも必ず添える。 */
+  rec('左右対称の公差は「±」1つにまとめる',
+      tl板.根拠.some(v=>/±/.test(v)),JSON.stringify(tl板.根拠.slice(0,3)));
+  rec('公差の根拠に出どころを必ず添える',
+      tl板.根拠.filter(v=>/公差/.test(v)).length>=2,JSON.stringify(tl板.根拠.slice(0,3)));
   const tlコイル=await tolList('コイル');
   rec('コイルの設備には板丈を出さず、理由を文で言う',
       !tlコイル.項目.includes('板丈')&&/コイル/.test(tlコイル.注記),

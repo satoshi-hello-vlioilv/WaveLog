@@ -282,7 +282,7 @@ def calendar_sync(c_master,equipment,entries,uid):
  # §8のPOST /api/schedule/calendar(完全同期)。曜日×複数行(2交替等)の
  # 組み合わせは単純な列名の集合では一意化できないため、対象スコープ
  # (equipment、空文字は全設備既定)の既存行を全削除してentriesを丸ごと
- # 作り直す(表示マスタ等の「増分diff」方式ではなく、set_hidden_columnsより
+ # 作り直す(オペレータ設備マスタ等の「増分diff」方式ではなく、それより
  # 単純な全置換方式を採る)。
  ensure_calendar_table(c_master)
  equipment=str(equipment or '').strip()

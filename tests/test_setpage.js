@@ -18,8 +18,8 @@ let b=null;
  await page.reload({waitUntil:'domcontentloaded'});await page.waitForTimeout(1500);
  await page.click('#openMasterMaint');await page.waitForTimeout(1200);
 
- // ---------- パス設定 ----------
- await tab('パス設定');
+ // ---------- 共通設定（旧「パス設定」。§9.168でデータソースぶんを分離） ----------
+ await tab('共通設定');
  const p=await page.evaluate(()=>{
   const sc=document.querySelector('.mm-set-scroll');
   const panel=document.querySelector('#masterMaintPanel').getBoundingClientRect();
@@ -42,7 +42,9 @@ let b=null;
 /* 件数ではなく**キーの一覧**で見る。項目は増える(RNE資材の置き場・
     symnavim.confの場所を§9.79で追加した)ので、数を固定すると足すたびに
     落ちる。「あるべきものが全部出ているか」が見たいこと。 */
- const WANT=['sikalot_source','sikalotnow_path','sikalotdef_path',
+ /* **データソースごとの読み込み先はここに無い**（§9.168）。同じ「どこを読むか」を
+    2画面に置くと、どちらが効くのか分からなくなるため「データ接続」へ寄せた。 */
+ const WANT=['sikalot_source',
    'schedule_share_path','records_backup_export_path','rne_extract_enabled',
    'rne_extract_interval_sec','rne_assets_dir','rne_conf_path',
    'schedule_lock_ttl_sec','schedule_lock_verify_delay_ms'];
@@ -50,6 +52,10 @@ let b=null;
  rec('設定項目が漏れなく出ている',missing.length===0,
    missing.length?`不足: ${missing.join(',')}`:`${p.fields.length}件`);
  rec('入力欄が枠外へ切れていない',p.clipped===0,p.clipped+'件が見切れ');
+ /* データソースの読み込み先は**ここでは変えられない**（読み取り専用の
+    並びだけ出す）。入力欄が残っていたら2画面に同じ設定がある状態。 */
+ const dup=p.fields.filter(k=>/_path$/.test(k)&&!['schedule_share_path','records_backup_export_path','rne_conf_path'].includes(k));
+ rec('データソースごとの読み込み先の欄は共通設定に無い',dup.length===0,dup.join(','));
  rec('反映タイミングがまとまりごとに示されている',p.badges>=4,p.badges+'個');
  rec('保存ボタンが常にパネル内に見えている',p.saveInsidePanel);
  rec('設定ページでは下段の一覧枠を畳む',p.listWrap==='none',p.listWrap);

@@ -38,6 +38,10 @@
     の直接導線は廃止)。 */
  function exitReportView(){
   if(!document.body.classList.contains('rp-mode'))return;
+  /* **組み換え中に画面を離れたら、開いた時点へ戻す**（§9.169）。保存せずに
+     当てている状態のまま抜けると、他の画面が触ったつもりの無い設定で
+     描かれる（列レイアウトマスタは画面をまたいで共有のキャッシュ）。 */
+  closeArrange(false);
   document.body.classList.remove('rp-mode');
   const panel=$id('reportPanel');if(panel)panel.hidden=true;
  }
@@ -66,6 +70,7 @@
       <button type="button" data-val="100">100%</button>
      </div>
      <span class="rp-zoom-readout" id="rpZoomReadout" title="Ctrlを押しながらホイールで拡大・縮小できます">100%</span>
+     <button type="button" id="reportArrange" class="rp-icon-btn" title="帳票に出す塊・並び・幅をその場で組み換えます" aria-label="帳票の配置を変える">${icon('<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="4" rx="1"/><rect x="14" y="11" width="7" height="10" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>')}</button>
      <button type="button" id="reportNavToggle" class="rp-icon-btn" title="ロット一覧を隠して帳票を広く表示します" aria-label="ロット一覧の表示切替">${icon('<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/>')}</button>
      <button type="button" id="reportPrint" class="rp-icon-btn rp-icon-btn--primary" title="印刷する" aria-label="印刷する" disabled>${icon('<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>')}</button>
      <button type="button" id="reportPdf" class="rp-icon-btn" title="PDFで保存する（印刷ダイアログが開きます。出力先で「PDFに保存」を選んでください）" aria-label="PDFで保存する" disabled>${icon('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>')}</button>
@@ -93,6 +98,15 @@
      </div>
     </nav>
     <section class="rp-main">
+     <!-- 組み換え中だけ出る帯。**やめる/保存を紙の外に置く**——紙の中に
+          置くと印刷物に混ざる危険があるうえ、A4の割り付けを崩す。 -->
+     <div class="rp-arrange-bar" id="rpArrangeBar" hidden>
+      <b>配置を組み換え中</b>
+      <span class="rp-arrange-info"></span>
+      <button type="button" id="rpArrangeReset" class="rp-foot-btn">既定に戻す</button>
+      <button type="button" id="rpArrangeCancel" class="rp-foot-btn">やめる</button>
+      <button type="button" id="rpArrangeSave" class="rp-foot-btn rp-foot-btn--primary">この配置を保存</button>
+     </div>
      <div class="rp-scroll" id="rpScroll">
       <div class="rp-page-box" id="rpPageBox">
        <div class="rp-report rp-page" id="reportContent"><div class="rp-empty">左の一覧からロットを選ぶと、帳票プレビューがここに表示されます。</div></div>
@@ -101,6 +115,8 @@
     </section>
    </div>`;
   const grid=$id('grid');grid?.parentNode?.insertBefore(panel,grid);
+  /* 配置設定は**描く前に読む**（読めなくても既定の並びで紙は出る）。 */
+  WL.columnLayout.load(RP_LAYOUT_TARGET).catch(()=>{});
   const search=$id('reportSearch');if(search)search.oninput=()=>{rpState.query=search.value;renderLotList()};
   const sort=$id('reportSort');if(sort)sort.onchange=()=>{rpState.sort=sort.value;renderLotList()};
   $id('reportPrint').onclick=printReport;$id('reportPdf').onclick=printReport;
@@ -116,6 +132,10 @@
   panel.querySelectorAll('[data-seg="rpZoomSeg"] button').forEach(b=>b.onclick=()=>setZoom(b.dataset.val));
   panel.querySelectorAll('[data-seg="rpOrientSeg"] button').forEach(b=>b.onclick=()=>setOrientation(b.dataset.orient));
   $id('reportNavToggle').onclick=toggleNav;
+  $id('reportArrange').onclick=toggleArrange;
+  $id('rpArrangeSave').onclick=saveArrange;
+  $id('rpArrangeCancel').onclick=()=>closeArrange(false);
+  $id('rpArrangeReset').onclick=resetArrange;
   applyOrientation();applyNavVisibility();
   window.addEventListener('resize',()=>{if(rpZoom==='fit')fitPage();else if(rpZoom==='width')fitWidth()});
   // Ctrl(⌘)+ホイールで拡大縮小。通常のホイールは一覧のスクロールを妨げないよう素通しする。
@@ -482,36 +502,116 @@
  function hasMeasurementValues(x,keys){
   return keys.some(key=>(x.measurements?.[key]||[]).some(row=>(row||[]).some(v=>String(v??'').trim()!=='')));
  }
- /* 単一プレビューへの書き込み。 */
- function renderReport(x){$id('reportContent').innerHTML=reportHtml(x)}
- /* 帳票本体のHTML生成。帳票の一括印刷(複数ロットをまとめて別ページへ
-    流し込む)でも同じHTMLを使うため、単一プレビューへの書き込みとは
-    分離してある。
-    1ページ(A4)に収める配置: 情報量に応じてゾーンごとに列数と列幅比を変え、
-    再認しやすい単位（ラベル欄+基本情報、公差付き実測値など）でまとめる。
-    文字量が少ないブロック（品質等級・母材実績など）は幅を絞り、
-    文字量が多い/列数が可変なブロック（測定条件・丈別データ）に幅を回す
-    ことで、列の高さがそろい不要な余白が生まれないようにする。
-    品質情報は長文になりうるため、狭い列に押し込めず全幅の専用行として
-    常時確保する。大きな表（板幅ほかの40行）も同様に全幅を割り当てる。 */
- function reportHtml(x){
-  const b=x.basic||{},s=x.settings||{},w=x.workTime||{};
+ /* ======================================================================
+    帳票の中身は「塊（ブロック）の並び」（§9.169、利用者の指示
+    「データの塊ごとに(カードのように扱い)表示非表示を修正できるように／
+    リアルタイムでその表示状況を確認しながら帳票の配置(グリッド化)も
+    組み換えできるように／汎用的な構造に」）
+    ----------------------------------------------------------------------
+    以前は`reportHtml()`が「ゾーン(3列/2列…)」をHTMLへ直接書いており、
+    載せる・載せないも幅も**コードを直さないと変えられなかった**。
+    1塊＝1ブロックとして登録し、
+      ・並び      … 列レイアウトマスタの`order`
+      ・出す/出さない … 同じく`hidden`
+      ・幅        … 同じく`widths`（px幅ではなく**12分割の何マスぶんか**）
+    に載せる。**新しいマスタを作らない**——同じ「見せ方の設定」なので、
+    保存・全置換・staging（保存せずに当てる）の作りをそのまま使える。
+
+    紙は12マスの粗いグリッド（§9.135「可能な限り粗いグリッド」）。選べる幅は
+    5つだけ（1/4・1/3・1/2・2/3・全幅）で、細かくするほど左端の候補が増えて
+    そろって見えなくなる。 */
+ const RP_LAYOUT_TARGET='report:lot';
+ const RP_COLS=12;
+ const RP_SPANS=[3,4,6,8,12];
+ const RP_SPAN_LABEL={3:'1/4',4:'1/3',6:'1/2',8:'2/3',12:'全幅'};
+ /* 1行＝1ブロック。`html(x)`が''を返したら**このロットには中身が無い**。
+    紙には出さず、組み換え中だけ「中身なし」と分かる形で置く（黙って消えると
+    自分で隠したのかデータが無いのか分からない）。 */
+ const RP_BLOCKS=[
+  {k:'ラベル貼付スペース',span:3,
+   html:()=>`<div class="rp-label-area" aria-hidden="true"><span class="rp-label-caption">ラベル貼付スペース</span></div>`},
+  {k:'基本情報',span:6,html:x=>{const b=x.basic||{};
+   return reportSection('基本情報',[['ロット番号',b.lotNo],['検査番号',b.inspectionNo],['鋳造番号',b.castingNo],['オーダー番号',b.orderNo],['引当番号',b.allocationNo],['用途コード',b.purposeCode],['用途名',b.purposeName],['取引先',b.customer],['納入先',b.delivery]])}},
+  {k:'コース情報',span:3,html:x=>{const b=x.basic||{};
+   return reportSection('コース情報',[['設計コース',b.designCourse],['実績コース',b.course],['残コース',b.residualCourse]],1)}},
+  {k:'寸法（オーダー／製造）',span:4,html:x=>dimensionSection(x.basic||{})},
+  {k:'品質等級',span:4,html:x=>qualityGradeSection(x)},
+  {k:'品質情報（仕掛）',span:4,html:x=>qualityInfoSection(x)},
+  {k:'測定条件',span:8,html:x=>{const s=x.settings||{};
+   const equipment=s.registeredEquipment||x.registeredEquipment||x.snapshot?.registeredEquipment||'-';
+   return reportSection('測定条件',[['登録設備',equipment],['入力内容',s.measureType],['丈位置',s.lengthPos],['縦割数',s.verticalCount],['横割数',s.horizontalCount],['巻出方向',s.unwind],['内径',s.innerDiameter],['スプール',s.spool],['板厚測定器',s.thicknessGauge],['板幅測定器',s.widthGauge],['条入力順',s.widthOrder],['方向',s.widthDirection],['バリ揃え',s.burr],
+    /* コイル止めはマスタ化前まで「内巻両面テープ」チェックボックス(真偽値)
+       だった。過去の帳票が空欄にならないよう旧値も読む。 */
+    ['コイル止め',s.coilStop||(s.innerTape===undefined?'':(s.innerTape?'内巻両面テープ':'指定なし'))]],4)}},
+  {k:'作業班構成',span:4,html:x=>crewSection(x)},
+  {k:'母材実績／カード指示',span:6,html:x=>motherSection(x)},
+  {k:'丈別データ',span:6,html:x=>rpShowProduct(x)?productRowsSection(x):''},
+  {k:'板厚の測定データ',span:12,html:x=>rpIsDimensional(x)?thicknessMeasurementSection(x):''},
+  {k:'板幅ほかの測定データ',span:12,html:x=>rpShowWidthTable(x)?widthMeasurementSection(x):''},
+  {k:'異常位置判定',span:12,html:x=>defectSection(x)},
+  {k:'作業時間',span:6,html:x=>{const w=x.workTime||{};
+   const dur=w.startAt&&w.endAt?formatDuration(new Date(w.endAt)-new Date(w.startAt)):(w.startAt?'作業中':'未計測');
+   return reportSection('作業時間',[['開始時刻',formatWorkTime(w.startAt)],['終了時刻',formatWorkTime(w.endAt)],['実働時間',dur]])}},
+  {k:'登録状態',span:6,html:x=>reportSection('登録状態',[['状態',statusLabel(x.status)],['更新日時',fmtDT(x.updatedAt)],['NG回数',x.settings?.ngCount||0]])},
+ ];
+ const RP_BLOCK_BY_KEY=new Map(RP_BLOCKS.map(b=>[b.k,b]));
+ /* 「このロットに中身があるか」の判定は**元の場所から動かさない**。
+    保存済みレコードは旧名`板厚/板幅`を持つ（§9.138で分けた）ので**両方**を
+    見る——落とすと過去の帳票からその節が黙って消える。 */
+ function rpIsDimensional(x){
+  const t=x.settings?.measureType;
+  return t==='板厚'||t==='板幅'||t==='板厚/板幅'||hasMeasurementValues(x,['thickness']);
+ }
+ function rpShowWidthTable(x){
+  const t=x.settings?.measureType;
+  return ['板厚','板幅','板厚/板幅','ラテラルボー','バリ','テレスコープ','巻ずれ','フラットネス'].includes(t)
+    ||hasMeasurementValues(x,['width','lateral','burr','offset','telescope','flatness']);
+ }
+ function rpShowProduct(x){
+  const has=(x.product?.rows||[]).some(r=>r&&['productLength','wallThickness','alignmentCode'].some(k=>String(r[k]||'').trim()!==''));
+  return WL.measureItem.isMaterial(x.settings?.measureType)||has;
+ }
+ /* 並び。**知らない名前は捨て、登録済みで並びに無いものは末尾へ**（一覧の
+    `listColumnKeys`と同じ作法。項目が増えても設定が壊れない）。 */
+ function rpBlockKeys(){
+  const l=WL.columnLayout.get(RP_LAYOUT_TARGET),seen=new Set(),out=[];
+  (l.order||[]).forEach(k=>{if(RP_BLOCK_BY_KEY.has(k)&&!seen.has(k)){seen.add(k);out.push(k)}});
+  RP_BLOCKS.forEach(b=>{if(!seen.has(b.k)){seen.add(b.k);out.push(b.k)}});
+  return out;
+ }
+ function rpHiddenSet(){return new Set(WL.columnLayout.get(RP_LAYOUT_TARGET).hidden||[])}
+ /* 幅は列レイアウトマスタの`widths`へ入れるが、**あちらはpxの幅**として
+    40〜900へ丸められる（`normalize_column_width`）。マスの数(3〜12)をそのまま
+    入れると全部40になり、**保存した幅が黙って既定へ戻る**（実際にそうなった）。
+    帳票では`マス数×RP_SPAN_UNIT`で入れて読むときに割り戻す——一覧の幅の
+    決まりを緩めない（あちらは実際にpxとして使われている）ための約束。 */
+ const RP_SPAN_UNIT=60;                     /* 3→180 … 12→720。40〜900に収まる */
+ function rpSpanStore(v){return Math.round(v*RP_SPAN_UNIT)}
+ /* 幅は**規格の5つへ丸める**（§9.131）。壊れた値・古い値が入っていても、
+    近い規格へ寄せて必ず並ぶ形にする。 */
+ function rpSpan(k){
+  const raw=Math.round(Number(WL.columnLayout.width(RP_LAYOUT_TARGET,k))||0);
+  const v=Math.round(raw/RP_SPAN_UNIT);
+  if(RP_SPANS.includes(v))return v;
+  return (RP_BLOCK_BY_KEY.get(k)||{}).span||12;
+ }
+ /* 帳票本体のHTML生成。一括印刷（複数ロットをまとめて別ページへ流し込む）でも
+    同じHTMLを使うため、単一プレビューへの書き込みとは分離してある。
+    `arranging`が真のときだけ、ブロックごとの操作帯を差し込む——**紙には
+    絶対に出さない**ので、印刷経路（`arranging`を渡さない）では組み立て自体を
+    しない（CSSで隠すやり方だと、隠し忘れがそのまま紙に出る）。 */
+ function reportHtml(x,arranging){
+  const b=x.basic||{},s=x.settings||{};
   const equipment=s.registeredEquipment||x.registeredEquipment||x.snapshot?.registeredEquipment||'-';
-  const dur=w.startAt&&w.endAt?formatDuration(new Date(w.endAt)-new Date(w.startAt)):(w.startAt?'作業中':'未計測');
-  /* 保存済みレコードは旧名`板厚/板幅`を持つ（§9.138で板厚・板幅へ分けた）。
-     帳票は`ensureMeasureShape`を通さない生のレコードも読むので、**両方**を
-     見る——落とすと過去の帳票からその節が黙って消える。 */
-  const isDimensional=s.measureType==='板厚'||s.measureType==='板幅'||s.measureType==='板厚/板幅'||hasMeasurementValues(x,['thickness']);
-  const hasWidthTableData=hasMeasurementValues(x,['width','lateral','burr','offset','telescope','flatness']);
-  const showWidthTable=['板厚','板幅','板厚/板幅','ラテラルボー','バリ','テレスコープ','巻ずれ','フラットネス'].includes(s.measureType)||hasWidthTableData;
-  const hasProductData=(x.product?.rows||[]).some(r=>r&&['productLength','wallThickness','alignmentCode'].some(k=>String(r[k]||'').trim()!==''));
-  const showProduct=WL.measureItem.isMaterial(s.measureType)||hasProductData;
   /* 帳票の頭は**「どこで・いつ・どのロットか」**（§9.161、利用者の指示
      「設備名と作業年月日をロット番号の前に追加して」）。紙は1枚ずつ配られ、
      手元では並べ替えられるので、ロット番号だけでは束ねられない。
+     **この見出しはブロックにしない**——この紙がどれかを決める鍵なので、
+     隠せてしまうと配ったあとで区別が付かなくなる。
      作業年月日は**作業開始時刻の日付**。未記録なら終了時刻→更新日時の順に
      落とし、**どこから取ったかを添える**（同じ日付でも当たる見込みが違う。
      紙にはtitleが出ないので画面と同じ文字で書く）。 */
+  const w=x.workTime||{};
   const workDay=(()=>{
    const pick=[[w.startAt,''],[w.endAt,'（終了時刻から）'],[x.updatedAt,'（更新日時から）']]
      .find(([v])=>v&&!Number.isNaN(new Date(v).getTime()));
@@ -530,32 +630,166 @@
     </div>
     <div class="rp-report-head-meta"><span class="rp-status-badge ${statusClass(x.status)}">${esc(statusLabel(x.status))}</span><span>帳票作成: ${esc(fmtDT(new Date().toISOString()))}</span></div>
    </div>
-   <div class="rp-zone rp-zone-3">
-    <div class="rp-label-area" aria-hidden="true"><span class="rp-label-caption">ラベル貼付スペース</span></div>
-    ${reportSection('基本情報',[['ロット番号',b.lotNo],['検査番号',b.inspectionNo],['鋳造番号',b.castingNo],['オーダー番号',b.orderNo],['引当番号',b.allocationNo],['用途コード',b.purposeCode],['用途名',b.purposeName],['取引先',b.customer],['納入先',b.delivery]])}
-    <div class="rp-stack">${reportSection('コース情報',[['設計コース',b.designCourse],['実績コース',b.course],['残コース',b.residualCourse]],1)}${dimensionSection(b)}</div>
-   </div>
-   ${qualityInfoSection(x)}
-   <div class="rp-zone rp-zone-quality">
-    ${qualityGradeSection(x)}
-    ${reportSection('測定条件',[['登録設備',equipment],['入力内容',s.measureType],['丈位置',s.lengthPos],['縦割数',s.verticalCount],['横割数',s.horizontalCount],['巻出方向',s.unwind],['内径',s.innerDiameter],['スプール',s.spool],['板厚測定器',s.thicknessGauge],['板幅測定器',s.widthGauge],['条入力順',s.widthOrder],['方向',s.widthDirection],['バリ揃え',s.burr],
-     /* コイル止めはマスタ化前まで「内巻両面テープ」チェックボックス(真偽値)
-        だった。過去の帳票が空欄にならないよう旧値も読む。 */
-     ['コイル止め',s.coilStop||(s.innerTape===undefined?'':(s.innerTape?'内巻両面テープ':'指定なし'))]],4)}
-    ${crewSection(x)}
-   </div>
-   <div class="rp-zone rp-zone-length">
-    ${motherSection(x)}
-    ${showProduct?productRowsSection(x):'<div></div>'}
-    ${isDimensional?thicknessMeasurementSection(x):'<div></div>'}
-   </div>
-   ${showWidthTable?widthMeasurementSection(x):''}
-   ${defectSection(x)}
-   <div class="rp-zone rp-zone-2">
-    ${reportSection('作業時間',[['開始時刻',formatWorkTime(w.startAt)],['終了時刻',formatWorkTime(w.endAt)],['実働時間',dur]])}
-    ${reportSection('登録状態',[['状態',statusLabel(x.status)],['更新日時',fmtDT(x.updatedAt)],['NG回数',s.ngCount||0]])}
-   </div>
+   ${reportBlocksHtml(x,arranging)}
   `;
+ }
+ function reportBlocksHtml(x,arranging){
+  const hidden=rpHiddenSet();
+  const cells=rpBlockKeys().map(k=>{
+   const bl=RP_BLOCK_BY_KEY.get(k);if(!bl)return '';
+   const off=hidden.has(k);
+   if(off&&!arranging)return '';
+   let body='';
+   try{body=bl.html(x)||''}catch(e){body=''}   /* 1つ壊れても紙全体を落とさない */
+   if(!body&&!arranging)return '';
+   const span=rpSpan(k);
+   return `<div class="rp-block${off?' is-off':''}${body?'':' is-empty'}" data-rp-block="${esc(k)}"`
+    +` style="grid-column:span ${span}"${arranging?' draggable="true"':''}>`
+    +(arranging?rpBlockBarHtml(k,span,off,!body):'')
+    +(body||(arranging?'<p class="rp-block-empty">このロットにはこの内容がありません（紙には出ません）。</p>':''))
+    +'</div>';
+  }).join('');
+  return `<div class="rp-blocks${arranging?' is-arranging':''}">${cells}</div>`;
+ }
+ /* 組み換え中だけ出る操作帯。**押した結果がその場の紙に出る**のがこの機能の
+    値打ちなので、確認を挟まず即座に当てる（保存するまでは戻せる）。 */
+ function rpBlockBarHtml(k,span,off,empty){
+  return `<div class="rp-block-bar">
+    <span class="rp-block-grip" title="ドラッグで場所を入れ替えます" aria-hidden="true">⠿</span>
+    <b class="rp-block-name">${esc(k)}</b>
+    ${empty?'<i class="rp-block-tag">中身なし</i>':''}
+    ${off?'<i class="rp-block-tag is-off">出さない</i>':''}
+    <span class="rp-block-size">${RP_SPANS.map(v=>
+      `<button type="button" data-rp-span="${v}" class="${v===span?'is-on':''}" title="幅を${RP_SPAN_LABEL[v]}にします">${RP_SPAN_LABEL[v]}</button>`).join('')}</span>
+    <button type="button" class="rp-block-vis" data-rp-toggle title="${off?'紙に出すようにします':'紙に出さないようにします'}">${off?'出す':'隠す'}</button>
+   </div>`;
+ }
+
+ /* ---- 組み換えモード -------------------------------------------------
+    **保存せずに当てる**（列の設定パネルと同じ作り。§9.90）。触った結果が
+    そのまま紙に出るのが分かりやすく、「やめる」で開いた時点へ必ず戻せる。 */
+ let rpArranging=false,rpArrangeBackup=null,rpDragKey=null;
+ function rpCurrentLot(){return rpState.items.find(i=>i.id===rpState.selectedId)||null}
+ function rpRepaint(){
+  const x=rpCurrentLot();if(!x)return;
+  $id('reportContent').innerHTML=reportHtml(x,rpArranging);
+  if(rpArranging)bindArrangeHandlers();
+ }
+ function rpLayoutNow(){
+  const l=WL.columnLayout.get(RP_LAYOUT_TARGET);
+  return {order:[...(l.order||[])],widths:{...(l.widths||{})},hidden:[...(l.hidden||[])],
+          names:{...(l.names||{})},formats:{...(l.formats||{})},rules:{...(l.rules||{})},
+          formulas:{...(l.formulas||{})},locks:[...(l.locks||[])]};
+ }
+ /* **渡す設定を1つでも書き漏らさない**（§9.113。保存もstageも全置換）。 */
+ function rpStage(patch){
+  WL.columnLayout.stage(RP_LAYOUT_TARGET,{...rpLayoutNow(),...patch});
+  rpRepaint();
+ }
+ async function toggleArrange(){
+  if(rpArranging){closeArrange(false);return}
+  if(!rpState.selectedId){showToast&&showToast('先にロットを選んでください','左の一覧から選ぶと、その帳票を見ながら組み換えられます',4000);return}
+  try{await WL.columnLayout.load(RP_LAYOUT_TARGET)}catch(e){}
+  rpArrangeBackup=rpLayoutNow();
+  rpArranging=true;
+  document.body.classList.add('rp-arranging');
+  updateArrangeBar();rpRepaint();
+ }
+ /* 閉じるときは**開いた時点へ戻す**（保存したときだけ残す）。戻さないと、
+    何が保存済みで何が触っただけなのか分からなくなる。 */
+ function closeArrange(saved){
+  if(!rpArranging)return;
+  if(!saved&&rpArrangeBackup)WL.columnLayout.stage(RP_LAYOUT_TARGET,rpArrangeBackup);
+  rpArranging=false;rpArrangeBackup=null;
+  document.body.classList.remove('rp-arranging');
+  updateArrangeBar();rpRepaint();
+ }
+ async function saveArrange(){
+  try{
+   await WL.columnLayout.save(RP_LAYOUT_TARGET,rpLayoutNow());
+   showToast&&showToast('帳票の配置を保存しました','次に開いたときも同じ形で出ます',4000);
+   closeArrange(true);
+  }catch(e){showToast&&showToast('配置を保存できませんでした',e.message,6000)}
+ }
+ function resetArrange(){
+  /* 既定へ戻す＝設定を空にする（登録順・登録幅・全部出す）。 */
+  rpStage({order:[],widths:{},hidden:[]});
+ }
+ /* **閲覧モードでは配置ボタンごと出さない**（§9.169）。列レイアウトマスタの
+    保存はedit/scheduleにしか開いていないので、組み換えても保存で弾かれる
+    ——押せるのに何も起きないボタンは、無い機能より質が悪い（§9.120）。 */
+ function syncArrangeButton(){
+  const btn=$id('reportArrange');if(!btn)return;
+  const mode=(window.accessMode&&window.accessMode.mode)||'edit';
+  btn.hidden=(mode==='view');
+  if(btn.hidden&&rpArranging)closeArrange(false);
+ }
+ function updateArrangeBar(){
+  const bar=$id('rpArrangeBar'),btn=$id('reportArrange');
+  if(btn){
+   btn.classList.toggle('is-on',rpArranging);
+   btn.title=rpArranging?'組み換えをやめます':'帳票に出す塊・並び・幅をその場で組み換えます';
+  }
+  if(!bar)return;
+  bar.hidden=!rpArranging;
+  if(!rpArranging)return;
+  const hidden=rpHiddenSet().size;
+  const info=bar.querySelector('.rp-arrange-info');
+  if(info)info.textContent=`塊をドラッグで並べ替え、幅（1/4〜全幅）を選び、「隠す」で紙から外せます。いま外しているのは ${hidden} 件です。`;
+ }
+ function bindArrangeHandlers(){
+  const host=$id('reportContent');if(!host)return;
+  host.querySelectorAll('[data-rp-block]').forEach(el=>{
+   const k=el.dataset.rpBlock;
+   el.querySelectorAll('[data-rp-span]').forEach(b=>b.onclick=ev=>{
+    ev.preventDefault();ev.stopPropagation();
+    rpStage({widths:{...rpLayoutNow().widths,[k]:rpSpanStore(Number(b.dataset.rpSpan))}});
+   });
+   const vis=el.querySelector('[data-rp-toggle]');
+   if(vis)vis.onclick=ev=>{
+    ev.preventDefault();ev.stopPropagation();
+    const cur=rpLayoutNow(),set=new Set(cur.hidden);
+    if(set.has(k))set.delete(k);else set.add(k);
+    rpStage({hidden:[...set]});
+    updateArrangeBar();
+   };
+   /* 並べ替え。落とす位置を線で見せてから離せるようにする（一覧の見出しの
+      D&Dと同じ作法）。並びは**全ブロック**で保存する——見えているものだけ
+      にすると、隠した塊の位置が失われる。 */
+   el.addEventListener('dragstart',ev=>{
+    rpDragKey=k;el.classList.add('is-dragging');
+    try{ev.dataTransfer.setData('text/plain',k);ev.dataTransfer.effectAllowed='move'}catch(_){}
+   });
+   el.addEventListener('dragend',()=>{
+    rpDragKey=null;el.classList.remove('is-dragging');
+    host.querySelectorAll('[data-rp-block]').forEach(x=>x.classList.remove('rp-drop-before','rp-drop-after'));
+   });
+   el.addEventListener('dragover',ev=>{
+    if(!rpDragKey||k===rpDragKey)return;
+    ev.preventDefault();
+    const r=el.getBoundingClientRect(),after=(ev.clientX-r.left)>r.width/2;
+    el.classList.toggle('rp-drop-after',after);
+    el.classList.toggle('rp-drop-before',!after);
+   });
+   el.addEventListener('dragleave',()=>el.classList.remove('rp-drop-before','rp-drop-after'));
+   el.addEventListener('drop',ev=>{
+    if(!rpDragKey||k===rpDragKey)return;
+    ev.preventDefault();ev.stopPropagation();
+    const r=el.getBoundingClientRect(),after=(ev.clientX-r.left)>r.width/2;
+    const order=rpBlockKeys(),from=order.indexOf(rpDragKey);
+    if(from<0)return;
+    order.splice(from,1);
+    const at=order.indexOf(k);if(at<0)return;
+    order.splice(after?at+1:at,0,rpDragKey);
+    rpDragKey=null;
+    rpStage({order});
+   });
+  });
+ }
+ /* 単一プレビューへの書き込み。組み換え中はその状態のまま描き直す。 */
+ function renderReport(x){
+  $id('reportContent').innerHTML=reportHtml(x,rpArranging);
+  if(rpArranging)bindArrangeHandlers();
  }
 
  function selectLot(id){
@@ -631,6 +865,7 @@
   rpReturnTo=opt.returnTo==='measure'?'measure':'records';
   await openReportView();           // ここで初めてパネル(戻るボタン)が作られる
   updateBackButton();
+  syncArrangeButton();
   if(id&&!rpState.items.some(x=>String(x.id)===String(id))){
    const rec=await fetchRecordFromBackup(id);
    if(rec){rpState.items=[rec,...rpState.items];renderLotList()}

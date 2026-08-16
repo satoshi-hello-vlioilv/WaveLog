@@ -761,19 +761,59 @@ function recordAllColumnKeys(){
  Object.keys(l.formulas||{}).forEach(push);
  return out;
 }
-/* いま出す列。**一度も保存していない端末は既定の15列**——列レイアウト
-   マスタのhiddenは空なので、そのまま使うと候補43列が全部並ぶ。 */
+/* **一度も保存していない端末の「隠す列」**。列レイアウトマスタのhiddenは
+   空なので、そのまま使うと候補44列が全部出る。判定は
+   ①一覧（recordVisibleColumnKeys）②設定パネル（initialHidden）
+   ③見出しから初めて保存する瞬間（recordPersistColumns）の3箇所が見るので、
+   **1つの関数が答える**——別々に書くと、幅を1回引いただけで見覚えの無い
+   29列が並ぶ、という形でずれが出る。 */
+function recordInitialHidden(keys,l){
+ const v=l||WL.columnLayout.get(RECORD_LIST_TARGET);
+ return (v.order||[]).length?(v.hidden||[])
+        :(keys||recordAllColumnKeys()).filter(k=>!RECORD_DEFAULT_VISIBLE.has(k));
+}
+/* いま出す列。**一度も保存していない端末は既定の15列**。 */
 function recordVisibleColumnKeys(){
  const l=WL.columnLayout.get(RECORD_LIST_TARGET),keys=recordAllColumnKeys();
- if(!(l.order||[]).length)return keys.filter(k=>RECORD_DEFAULT_VISIBLE.has(k));
- const hide=new Set(l.hidden||[]);
+ const hide=new Set(recordInitialHidden(keys,l));
  return keys.filter(k=>!hide.has(k));
+}
+/* いま画面に出ている見出しの幅。設定パネル（幅を「手で決める/固定」へ
+   切り替えるときの初期値）と右クリックメニュー（いまの幅で固定する）の
+   両方が同じものを見る。 */
+function recordHeadCellWidth(k){
+ const el=document.querySelector(`#recordList .record-list-head [data-col="${CSS.escape(k)}"]`);
+ return el?el.getBoundingClientRect().width:0;
+}
+/* 見出しからの保存（列幅・右クリックメニュー）。
+   **保存は全置換なので、渡す設定を1つでも書き漏らさない**（§9.113）。
+   `hidden`は`recordInitialHidden()`を通す——並びを初めて保存する瞬間に
+   種まきしないと、次の描画から候補44列が全部並ぶ。 */
+async function recordPersistColumns(patch){
+ const cur=WL.columnLayout.get(RECORD_LIST_TARGET);
+ const keys=recordAllColumnKeys();
+ const known=(cur.order||[]).filter(k=>keys.includes(k));
+ await WL.columnLayout.save(RECORD_LIST_TARGET,{
+  order:[...known,...keys.filter(k=>!known.includes(k))],
+  widths:cur.widths,hidden:recordInitialHidden(keys,cur),names:cur.names,
+  formats:cur.formats,rules:cur.rules,formulas:cur.formulas,locks:cur.locks,...patch});
 }
 function recordColumnLabel(k){
  const n=(WL.columnLayout.get(RECORD_LIST_TARGET).names||{})[k];
  if(n)return n;
  if(RECORD_VIRTUAL[k])return RECORD_VIRTUAL[k].head||RECORD_VIRTUAL[k].label;
  return k;
+}
+/* CSSグリッドのトラック。引いている最中だけ、掴んだ列を実寸へ差し替える。 */
+function recordTracksCss(keys,liveKey,liveWidth){
+ return keys.map(k=>(k===liveKey?liveWidth+'px':recordColumnTrack(k))).join(' ');
+}
+/* 右クリックメニューに出す呼び名。見出しは狭いので`#`のような短い字を
+   使うが、メニューでは「#（行番号）」のように何の列かが分かる側を出す。 */
+function recordColumnFullLabel(k){
+ const n=(WL.columnLayout.get(RECORD_LIST_TARGET).names||{})[k];
+ if(n)return n;
+ return RECORD_VIRTUAL[k]?RECORD_VIRTUAL[k].label:k;
 }
 function recordColumnTrack(k){
  const w=WL.columnLayout.width(RECORD_LIST_TARGET,k);
@@ -806,12 +846,26 @@ function renderRecordListRows(){
  const layout=WL.columnLayout.get(RECORD_LIST_TARGET);
  /* 幅は**JSがCSS変数へ入れる**。列の数と幅は設定で変わるので、
     CSSに書いておける形ではない。 */
- list.style.setProperty('--rec-cols',keys.map(recordColumnTrack).join(' '));
+ list.style.setProperty('--rec-cols',recordTracksCss(keys));
+ /* 見出しは**掴める**（右端を引いて幅）・**右クリックできる**（列の出し入れ）。
+    仕掛一覧と同じ道具をそのまま使う（§9.164）。閲覧モードは列レイアウト
+    マスタへ保存できないので、取っ手ごと出さない——押せるのに何も起きない
+    ものを残さない（§9.120）。 */
+ const editable=recordColumnsEditable();
  const head=`<div class="record-list-head">`
-  +keys.map(k=>{const t=recordColumnLabel(k);
-                return `<span data-col="${esc(k)}" title="${esc(t)}">${esc(t)}</span>`}).join('')
+  +keys.map(k=>{
+    const t=recordColumnLabel(k);
+    const tip=editable
+     ?`${t}｜幅: ${WL.columnWidthModeLabel[WL.columnLayout.widthMode(RECORD_LIST_TARGET,k)]||''}`
+      +`（右端をドラッグで変更／ダブルクリックで自動へ）｜右クリックで列の出し入れ`
+     :t;
+    return `<span data-col="${esc(k)}" title="${esc(tip)}">${esc(t)}`
+      +(editable?'<i class="col-resize" title="ドラッグで列幅を調整（ダブルクリックで自動へ戻す）" aria-hidden="true"></i>':'')
+      +'</span>';
+   }).join('')
   +`</div>`;
  list.innerHTML=(recordListState.notice||'')+head;
+ bindRecordHeadTools(list,keys);
  if(!items.length){
   const q=recordListState.query;
   /* 0件の理由は「絞り込みに当たらない」「そもそも読めていない」で別物
@@ -888,6 +942,58 @@ function renderRecordListRows(){
  if(result)result.textContent=`${items.length} / ${recordListState.items.length}件を表示`;
 }
 
+/* 列の設定を触れるか。**判定は1箇所**——ボタン・取っ手・右クリックの
+   3つが別々に判定すると、どれかだけ残って「押せるのに保存できない」に
+   なる（§9.162で入れた約束をそのまま使う）。 */
+function recordColumnsEditable(){return (window.accessMode?.mode||'edit')!=='view'}
+/* ---------- 見出しの操作（列幅・右クリックメニュー。§9.164） ----------
+   仕掛一覧と**同じ関数**を呼ぶ（`WL.columnWidthGrip`／`WL.openColumnHeaderMenu`）。
+   この一覧に固有なのは「幅の当て方」だけ——表はcolgroupの`<col>`だが、
+   ここはCSSグリッドなので`--rec-cols`を組み直す。 */
+function recordHeadMenuSource(){
+ return {
+  keys:recordAllColumnKeys,
+  label:recordColumnFullLabel,
+  currentWidthOf:recordHeadCellWidth,
+  refresh:renderRecordListRows,
+  openPanel:openRecordColumnPanel,
+  /* 保存はこちらが持つ（初回の隠す列の種まきがあるため）。 */
+  persist:recordPersistColumns,
+ };
+}
+function bindRecordHeadTools(list,keys){
+ if(!recordColumnsEditable())return;
+ if(typeof WL.columnWidthGrip!=='function'||typeof WL.openColumnHeaderMenu!=='function'){
+  console.error('データ一覧の見出し操作: WL.columnWidthGrip / WL.openColumnHeaderMenu が見つかりません');return;
+ }
+ list.querySelectorAll('.record-list-head [data-col]').forEach(el=>{
+  const k=el.dataset.col;
+  WL.columnWidthGrip(el.querySelector('.col-resize'),{
+   locked:WL.columnLayout.locked(RECORD_LIST_TARGET,k),
+   startWidth:()=>el.getBoundingClientRect().width,
+   // 引いている最中は**保存せずに見せるだけ**（掴んだ列だけ実寸へ差し替える）
+   preview:w=>list.style.setProperty('--rec-cols',recordTracksCss(keys,k,w)),
+   commit:w=>{
+    const cur=WL.columnLayout.get(RECORD_LIST_TARGET);
+    recordPersistColumns({widths:{...(cur.widths||{}),[k]:w}});
+    renderRecordListRows();
+   },
+   reset:()=>{
+    const widths={...(WL.columnLayout.get(RECORD_LIST_TARGET).widths||{})};delete widths[k];
+    /* **固定も一緒に解く**（§9.119）。幅を持たない「固定」は動かしようが
+       無いので、残すと「固定と出ているのに何も効いていない」列になる。 */
+    const locks=(WL.columnLayout.get(RECORD_LIST_TARGET).locks||[]).filter(x=>x!==k);
+    recordPersistColumns({widths,locks});
+    renderRecordListRows();
+   },
+  });
+  el.addEventListener('contextmenu',e=>{
+   e.preventDefault();e.stopPropagation();
+   WL.openColumnHeaderMenu(e,k,RECORD_LIST_TARGET,null,recordHeadMenuSource());
+  });
+ });
+}
+
 /* ---------- 列の設定を開く（§9.162。仕掛一覧と同じパネル） ---------- */
 function recordColumnPanelSource(){
  return {
@@ -906,8 +1012,7 @@ function recordColumnPanelSource(){
   /* **一度も保存していないうちは既定の15列だけをチェック済みにする**。
      列レイアウトマスタのhiddenは空なので、そのまま使うと候補43列が
      全部チェック済みになり、保存した瞬間に見覚えの無い列が並ぶ。 */
-  initialHidden:(keys,l)=>(l.order||[]).length?(l.hidden||[])
-                          :keys.filter(k=>!RECORD_DEFAULT_VISIBLE.has(k)),
+  initialHidden:(keys,l)=>recordInitialHidden(keys,l),
   rows:()=>sortedFilteredRecords().slice(0,40).map((x,i)=>recordRowView(x,i)),
   valueOf:(row,k)=>row?row[k]:undefined,
   virtual:()=>RECORD_VIRTUAL,
@@ -919,10 +1024,7 @@ function recordColumnPanelSource(){
   origins:()=>['source','calc'],
   originOf:k=>(RECORD_COL_BY_KEY.get(k)||{}).origin||'source',
   noteOf:k=>(RECORD_COL_BY_KEY.get(k)||{}).note||'',
-  currentWidthOf:k=>{
-   const el=document.querySelector(`#recordList .record-list-head [data-col="${CSS.escape(k)}"]`);
-   return el?el.getBoundingClientRect().width:0;
-  },
+  currentWidthOf:recordHeadCellWidth,
   features:{formula:true,preset:true,width:true,format:true,rule:true},
   afterApply:()=>{if(!$('#recordModal')?.hidden)renderRecordListRows()},
   save:null,
@@ -934,8 +1036,7 @@ function recordColumnPanelSource(){
    起きないボタンは、無い機能より質が悪い。 */
 function bindRecordColumnsBtn(){
  const btn=$('#recordColumnsBtn');if(!btn)return;
- const mode=window.accessMode?.mode||'edit';
- btn.hidden=(mode==='view');
+ btn.hidden=!recordColumnsEditable();
  btn.onclick=()=>openRecordColumnPanel();
 }
 function openRecordColumnPanel(){
