@@ -32,9 +32,15 @@
 .tc-low{left:var(--nl-low)}
 .tc-high{left:var(--nl-high)}
 .tc-base{left:var(--nl-base);color:var(--teal-dark)}
+/* 実寸(mm)の軸では端の値そのものが札になる（§9.152）。器の縁に置くので
+   **中央寄せの変形を外す**——`translate(-50%)`のままだと半分が切れる。 */
+.tc-end{transform:translateY(-50%);color:var(--ink-soft)}
+.tc-end-low{left:2px}
+.tc-end-high{left:auto;right:2px}
 .tc-body{position:relative;flex:1 1 auto;min-height:0}
-/* 目盛りの線。横は**その条自身の公差に対する位置**なので、−1＝下限／0＝基準
-   ／＋1＝上限は全条で共通（§9.151）。 */
+/* 目盛りの線。公差比の軸では−1＝下限／0＝基準／＋1＝上限が全条で共通なので
+   3本引く。実寸の軸では**基準の1本だけ**——条ごとに公差が違えば下限・上限は
+   1本に決まらず、引けば嘘になる（そのときは帯の縁が限界を示す。§9.152）。 */
 .tc-line{position:absolute;top:0;bottom:0;width:1px;z-index:2;background:var(--line-strong)}
 .tc-line-low{left:var(--nl-low)}
 .tc-line-high{left:var(--nl-high)}
@@ -42,11 +48,22 @@
 /* 1条＝1行。**右の表の行と同じ高さ**なので、外れている条が目を横に振るだけで
    読める。**公差帯は行ごとに描く**——両側公差なら全行の縁がそろって1本の帯に
    見え、片側公差の条だけ縁が寄る（その条は基準が限界と同じ、が図に出る）。 */
+/* **合格の帯だけを塗り、外は無色にする**（§9.152）。以前は外側を`--danger-bg`
+   （淡い赤）で塗っていたが、軸の端を固定したことで**外側が画面の2/3を占める**
+   ようになり、図全体が赤く見えて「ほとんど外れている」という誤った第一印象に
+   なった（実測。span=2・±1と+3/−1の混在で合格帯は幅の1/3）。**赤は本当に
+   外れた点だけ**にすれば、赤い点は淡い赤の上ではなく無色の上に出るので、
+   一目で分かる。 */
+/* 帯の**両端に1pxの縁**を入れる。塗りだけ（淡い緑と淡い灰）だと差が小さく、
+   条ごとの段差が「読める」ところまで来ない（実測。混在ロットで縁が34px
+   ずれていても気づきにくい）。縁があると段が階段として見える。 */
 .tc-row{
   --tc-band-img:linear-gradient(90deg,
-    var(--danger-bg) 0 var(--r-low),
-    var(--success-bg) var(--r-low) var(--r-high),
-    var(--danger-bg) var(--r-high) 100%);
+    var(--surface-2) 0 calc(var(--r-low) - 1px),
+    var(--success-border) calc(var(--r-low) - 1px) var(--r-low),
+    var(--success-bg) var(--r-low) calc(var(--r-high) - 1px),
+    var(--success-border) calc(var(--r-high) - 1px) var(--r-high),
+    var(--surface-2) var(--r-high) 100%);
   position:relative;z-index:1;height:var(--tc-row);min-height:0;
   background-image:var(--tc-band-img);
 }
@@ -66,6 +83,16 @@
 .tc-dot.ok{background:var(--teal)}
 .tc-dot.ng{background:var(--danger)}
 .tc-row.is-current .tc-dot{width:13px;height:13px;box-shadow:0 0 0 2px #fff,0 0 0 3px #f39a18}
+/* 軸の端で止めた点（§9.152）。**形を変えて「まだ先がある」と示す**——丸のまま
+   だと端ちょうどの値と区別が付かない。件数は帯の文字が言う（形だけで
+   伝えない）。 */
+.tc-dot.out{border-radius:0;width:0;height:0;background:transparent;box-shadow:none}
+.tc-dot.out.ok{border-top:6px solid transparent;border-bottom:6px solid transparent}
+.tc-dot.out.ng{border-top:6px solid transparent;border-bottom:6px solid transparent}
+.tc-dot.out-low{border-right:8px solid var(--teal);margin-left:1px}
+.tc-dot.out-high{border-left:8px solid var(--teal);margin-left:-1px}
+.tc-dot.out-low.ng{border-right-color:var(--danger)}
+.tc-dot.out-high.ng{border-left-color:var(--danger)}
 /* 公差NGの先読み: 転送中(確定前)の値を、**いま入れている条の行**へリングで
    速報する。縦位置は`--tc-cur`（条の番号）から決まるので、JSが動かすのは
    左右だけ（§9.150）。 */

@@ -165,8 +165,27 @@
 /* 反映が止まっている理由は**省略しない**（§9.149）。状態行と違って
    「読めば直せる」文なので、1行に収まらなければ折り返す。 */
 #splitCard .split-live-reason{white-space:normal;overflow:visible;text-overflow:clip;flex:1 1 100%}
-#splitCard .split-history{margin:0;flex:1 1 auto}
-#splitCard .split-recheck-btn{width:auto;min-width:max-content}
+/* 子ロットデータの更新・履歴は内訳カードの見出し直下（§9.153）。更新される
+   のは子ロット候補と条割プレビューの**材料そのもの**なので、その2列の上に
+   置くのが読み順と合う。**空のときは器ごと消す**（JSが`hidden`を入れる）
+   ——空の器は「まだ何かある」と読ませる。 */
+#splitDataSections{margin-bottom:var(--space-2)}
+#splitDataSections[hidden]{display:none}
+#splitDataSections .split-update-panel{margin:0}
+/* ボタンは**中身の長さぶん**（§9.130）。`flex:1 1 0`のままだと器の幅
+   （実測829px）に合わせて2つで全幅に伸び、めったに押さない操作が画面で
+   いちばん大きな的になる（面積は頻度×重要度。§9.135）。 */
+#splitDataSections .split-update-actions button{flex:0 0 auto;min-width:var(--w-md)}
+#splitDataSections .split-history{margin-top:var(--space-2)}
+#splitDataSections .split-recheck-btn{width:auto;min-width:max-content}
+/* カードの高さはマスで決まっている（§9.148）ので、材料の2列が**縮む**側。
+   更新の帯は中身なりの高さを取り、差異が多いときだけ自分の中でスクロールする。 */
+#splitDetailCard{display:flex;flex-direction:column}
+#splitDetailCard>.split-layout{flex:1 1 auto;min-height:0}
+/* 差異が多いときは**表だけ**が中でスクロールする。表そのものへ
+   `display:block`を当てると行が器いっぱいに伸びなくなるので、器を1枚かぶせる。 */
+.split-diff-scroll{max-height:22vh;overflow:auto;margin-bottom:6px}
+.split-diff-scroll .split-diff-table{margin-bottom:0}
 .split-mismatch-badge{margin-bottom:var(--space-2);padding:var(--pad-row);background:var(--danger-bg);border:1px solid var(--danger-border);color:var(--danger);border-radius:var(--radius-card);font-size:var(--fs-base-sm);font-weight:700}
 .split-scrap-line{margin-bottom:var(--space-2);padding:6px 7px;background:var(--surface-2);border:1px solid var(--line-mid);border-radius:var(--radius-card);font-size:var(--fs-base-sm);font-variant-numeric:tabular-nums}
 .split-scrap-line b{font-size:var(--fs)}

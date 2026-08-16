@@ -242,6 +242,18 @@ function renderMeasurement(){
  const productFields=[['用途コード','purposeCode'],['取引先','customer'],['納入先','delivery']];
  const cell=([l,k])=>`<div class="field"><label>${l}</label><output title="${esc(b[k])}">${esc(b[k])||'—'}</output></div>`;
  const val=(l,v)=>`<div class="field"><label>${l}</label><output title="${esc(v)}">${esc(v)||'—'}</output></div>`;
+ /* **欠けた値を区切り記号で埋めない**（§9.154）。`5052-`や`3.000××2500.8`は
+    「そういう値」と見分けが付かない。欠けている側は**位置が分かる形で`?`**に
+    する（寸法は板厚×板幅×板丈と位置に意味があるため、詰めると別の寸法に
+    読める）。全部空なら組ごと`—`（`inline()`が空文字を`—`にする）。 */
+ const joinDash=parts=>{
+  const v=parts.map(x=>String(x??'').trim());
+  return v.some(Boolean)?v.map(x=>x||'?').join('-'):'';
+ };
+ const joinDim=specs=>{
+  const v=specs.map(([x,d])=>fmtDim(x,d));
+  return v.some(Boolean)?v.map(x=>x||'?').join('×'):'';
+ };
  /* 常時出す8項目も**カテゴリでまとめ、関係の近いものは横に並べる**
     （§9.137の骨子。利用者の指示「材質-調質、寸法は横並び」）。材質と調質は
     1つの材の呼び名、板厚・板幅・板丈は1つの寸法なので、**1行で1つの事実**
@@ -260,8 +272,12 @@ function renderMeasurement(){
   +`<button type="button" class="lot-dsp-link" title="クリックでLotDspをこのロット番号で開きます">${esc(b.lotNo)||'—'}</button></span>`
   +`<span class="ii"><label>検査No.</label><output title="${esc(b.inspectionNo)}">${esc(b.inspectionNo)||'—'}</output></span></div>`
   +inline([['用途名',b.purposeName]])
-  +inline([['材質',b.mfgMaterial],['調質',b.mfgTemper],
-    ['板厚',fmtDim(b.mfgThickness,3)],['板幅',fmtDim(b.mfgWidth,1)],['板丈',fmtDim(b.mfgLength,1)]])
+  /* 材と寸法は**現場の呼び方どおり1組ずつ**にまとめる（§9.154、利用者の指示）。
+     「5052-O」「3.000×1250.4×2500.8」は現場で口に出す形そのもので、
+     材質/調質/板厚/板幅/板丈と5つのラベルに割ると、読む側が頭の中で
+     つなぎ直すことになる。ラベルが5つ→2つになるぶん、1行に余裕も出る。 */
+  +inline([['材調質',joinDash([b.mfgMaterial,b.mfgTemper])],
+    ['製造寸法',joinDim([[b.mfgThickness,3],[b.mfgWidth,1],[b.mfgLength,1]])]])
   /* 骨子（§9.137）の①基本情報は「識別・製品・材・**分割ロット**・公差の値」。
      子ロットは`lot-split.js`が非同期で取りに行くので、器だけ先に置いて
      `refreshSplitStatusPanel()`が埋める。**分割が無いときは行ごと出さない**
@@ -277,7 +293,16 @@ function renderMeasurement(){
   +'<div class="info-detail" id="basicDetail" hidden>'
   +'<div class="info-group">識別番号</div>'+idFields.map(cell).join('')
   +'<div class="info-group">製品</div>'+productFields.map(cell).join('')
-  +'<div class="info-group info-group-course">コース</div>';h+=`<div class="dimension"><b></b><b>材質</b><b>調質</b><b>板厚</b><b>板幅</b><b>板丈</b><b>オーダー</b><span>${esc(b.orderMaterial)}</span><span>${esc(b.orderTemper)}</span><span>${esc(fmtDim(b.orderThickness,3))}</span><span>${esc(fmtDim(b.orderWidth,1))}</span><span>${esc(fmtDim(b.orderLength,1))}</span><b>製造</b><span>${esc(b.mfgMaterial)}</span><span>${esc(b.mfgTemper)}</span><span>${esc(fmtDim(b.mfgThickness,3))}</span><span>${esc(fmtDim(b.mfgWidth,1))}</span><span>${esc(fmtDim(b.mfgLength,1))}</span></div></div></div>`;$('#basicInfo').innerHTML=h;
+  +'<div class="info-group info-group-course">コース</div>';h+=`<div class="dimension"><b></b><b>材質</b><b>調質</b><b>板厚</b><b>板幅</b><b>板丈</b><b>オーダー</b><span>${esc(b.orderMaterial)}</span><span>${esc(b.orderTemper)}</span><span>${esc(fmtDim(b.orderThickness,3))}</span><span>${esc(fmtDim(b.orderWidth,1))}</span><span>${esc(fmtDim(b.orderLength,1))}</span><b>製造</b><span>${esc(b.mfgMaterial)}</span><span>${esc(b.mfgTemper)}</span><span>${esc(fmtDim(b.mfgThickness,3))}</span><span>${esc(fmtDim(b.mfgWidth,1))}</span><span>${esc(fmtDim(b.mfgLength,1))}</span></div>`
+  /* 品質規格は**詳細の中の1つの群**（§9.154、利用者の指示）。以前は基本情報
+     カードのタブの裏に4×3の表で置いていたが、①「基本情報」カードの中に
+     「基本情報」タブがあるのは冗長で、②見出し列を`width:11%`で決め打ちして
+     いたため「ラテラルボー」「アルマイト」「表面処理」が省略記号で切れていた。
+     **他の詳細項目と同じラベル＋値の並び**にすれば、ラベルは中身なりの幅を
+     取るので切れず、タブも要らない。 */
+  +'<div class="info-group">品質規格</div>'
+  +'<div class="quality-grade-fields" id="qualityGradeFields"></div>'
+  +'</div></div>';$('#basicInfo').innerHTML=h;
  {const mb=$('#basicMore'),dt=$('#basicDetail');
   if(mb&&dt)mb.onclick=()=>{const open=dt.hidden;dt.hidden=!open;
    mb.setAttribute('aria-expanded',open?'true':'false');
@@ -292,7 +317,6 @@ function renderMeasurement(){
  upgradeManualInputTypes();
  renderQualityGradePanel();
  bindInfoTabs();
- bindBasicTabs();
  renderDataManagementPanel();
  renderResidualCourseEverywhere();
  renderCourseHierarchy();
@@ -391,29 +415,25 @@ const QUALITY_GRADE_SOURCE={
  '直角度':['品質ｸﾞﾚｰﾄﾞ_直角度'],'方向性':['品質ｸﾞﾚｰﾄﾞ_方向性'],'強度':['品質ｸﾞﾚｰﾄﾞ_強度'],
  'アルマイト':['品質ｸﾞﾚｰﾄﾞ_ｱﾙﾏｲﾄ','品質ｸﾞﾚｰﾄﾞ_アルマイト'],'表面処理':['品質ｸﾞﾚｰﾄﾞ_表面処理']
 };
-/* 品質規格は**縦4×横3の表**(§9.133)。12項目あり、カードを敷き詰めると
-   器の幅で3列になったり4列になったりして、開くたびに違う形に見えていた。
-   行と列を決め打ちにすれば「いつもの表」として読める。
-   **重要度は低い**(測定中に見る値ではない)ので、主要導線から外してタブの
-   裏へ置く——場所を取らせない代わりに、1回の操作で必ず出せる。 */
+/* 品質規格は**基本情報の詳細の中の1つの群**（§9.154、利用者の指示）。
+   §9.133では4×3の表でタブの裏に置いていたが、
+   - 「基本情報」カードの中に「基本情報」タブがあるのが冗長
+   - 見出し列を`width:11%`で決め打ちしていたため「ラテラルボー」
+     「アルマイト」「表面処理」が省略記号で切れていた（実機で報告）
+   の2つがあった。**他の詳細項目と同じ「ラベル＋値」の行**にすれば、
+   ラベルは中身なりの幅を取るので切れず、タブも要らない。
+   **重要度は低い**（測定中に見る値ではない）ので詳細の中＝畳んだ側に置く
+   ——場所を取らせない代わりに、1回の操作で必ず出せる。 */
 function renderQualityGradePanel(){
- const panel=$('#qualityGradePanel');if(!panel)return;
+ const host=$('#qualityGradeFields');
  const m=S.measure;m.qualityGrades=m.qualityGrades||{};
- const labels=Object.keys(QUALITY_GRADE_SOURCE);
  Object.entries(QUALITY_GRADE_SOURCE).forEach(([label,names])=>m.qualityGrades[label]=sourceValue(names));
- const COLS=3,ROWS=Math.ceil(labels.length/COLS);
- let rows='';
- for(let r=0;r<ROWS;r++){
-  let tds='';
-  for(let c=0;c<COLS;c++){
-   const label=labels[r*COLS+c];
-   if(label===undefined){tds+='<th></th><td></td>';continue}
-   const v=m.qualityGrades[label]||'';
-   tds+=`<th>${esc(label)}</th><td title="${esc(v)}">${esc(v||'未設定')}</td>`;
-  }
-  rows+=`<tr>${tds}</tr>`;
- }
- panel.innerHTML=`<table class="quality-grade-table"><tbody>${rows}</tbody></table>`;
+ if(!host)return;
+ host.innerHTML=Object.keys(QUALITY_GRADE_SOURCE).map(label=>{
+  const v=m.qualityGrades[label]||'';
+  return `<div class="field"><label>${esc(label)}</label>`
+   +`<output title="${esc(v)}">${esc(v)||'—'}</output></div>`;
+ }).join('');
 }
 function renderDataManagementPanel(){
  const panel=$('#dataManagementPanel');if(!panel)return;hydrateBusinessFields();const b=S.measure.basic;
@@ -430,19 +450,10 @@ function renderDataManagementPanel(){
 /* 基本情報カードのタブ（§9.145）。品質規格は「測る前に1回だけ確かめる」もので、
    マスを1つ使うほどではないが1回の操作で必ず出せる場所に置く。
    **`onclick`を毎回張り直す**（`renderMeasurement`のたびに呼ばれる）。 */
-function bindBasicTabs(){
- const btns=[...document.querySelectorAll('[data-basictab]')];
- if(!btns.length)return;
- const show=key=>{
-  btns.forEach(b=>b.classList.toggle('active',b.dataset.basictab===key));
-  document.querySelectorAll('[data-basicpanel]').forEach(p=>{
-   const on=p.dataset.basicpanel===key;
-   if(p.hidden!==!on)p.hidden=!on;
-  });
- };
- btns.forEach(b=>{b.onclick=()=>show(b.dataset.basictab)});
- show(btns.find(b=>b.classList.contains('active'))?.dataset.basictab||'basic');
-}
+/* 基本情報カードのタブ（基本情報／品質規格）は廃止した（§9.154、利用者の
+   指示）。「基本情報」カードの中に「基本情報」タブがあるのは冗長で、
+   品質規格は詳細の中の1つの群になった。**空の`bindBasicTabs()`を残さない**
+   ——「まだタブがある」と読ませる。 */
 /* ③の「記録した値」（§9.146、骨子§9.137の記録の壁4枚のうちの1枚）。
    **数字の要約は測定データ分析が持っている**ので、ここが受け持つのは
    「数値以外に何を残すか」——誰が測ったか・測定表の形・使う機材・

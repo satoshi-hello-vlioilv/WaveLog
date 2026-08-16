@@ -25,19 +25,20 @@ function updateNumberlinePending(raw){
  if(!S.measure||S.measure.settings?.inputMode==='manual'||!raw){marker.hidden=true;return}
  const kind=numberlinePendingKind(raw);
  if(!kind){marker.hidden=true;return}
- /* 図と**同じ写像**で置く（§9.151）。表示範囲は描画時に決まっており、
+ /* 図と**同じ写像**で置く（§9.151／§9.152）。軸は描画時に決まっており、
     測定器から1文字届くたびに40条ぶんの公差を引き直すのは重いので、
-    **窓は図が持っている値を読む**（`data-viewlo`/`data-viewhi`）。
+    **軸は図が持っている値を読む**（`data-mode`/`data-edge`）。
     引くのは**いま入れている条の公差1件だけ**。 */
  const chart=document.querySelector('.accurate-numberline');
- const lo=Number(chart&&chart.dataset.viewlo),hi=Number(chart&&chart.dataset.viewhi);
+ const mode=chart&&chart.dataset.mode,edge=Number(chart&&chart.dataset.edge);
  const j=Number(kind==='thickness'?S.measure.settings?.tStep:S.measure.settings?.wStep)||0;
  const t=normalizeTolerance(typeof toleranceDetail==='function'?toleranceDetail(kind,j):null);
- if(!t||!Number.isFinite(lo)||!Number.isFinite(hi)||hi<=lo){marker.hidden=true;return}
+ if(!t||!Number.isFinite(edge)||edge<=0){marker.hidden=true;return}
  const v=deviceParse(raw).value,ng=v<t.lo||v>t.hi;
- /* 図は**横＝その条自身の公差に対する位置**。縦位置は「いま入れている条の行」で、
-    CSSが`--tc-cur`から決めるので、ここで動かすのは**左右だけ**。 */
- const x=Math.max(0,Math.min(100,(t.rel(v)-lo)/(hi-lo)*100));
+ /* 縦位置は「いま入れている条の行」で、CSSが`--tc-cur`から決めるので、
+    ここで動かすのは**左右だけ**。 */
+ const r=mode==='rel'?t.rel(v)/edge:(v-t.base)/edge;
+ const x=50+Math.max(-1,Math.min(1,r))*50;
  marker.hidden=false;marker.className='numberline-pending'+(ng?' ng':' ok');
  marker.style.left=x+'%';marker.style.top='';
 }
@@ -434,6 +435,7 @@ function renderMeasureGridVertical(){
  WL.measureTolerance.paintFacts(tol.facts);
  applyToleranceFold(slots);
  alignToleranceChart();
+ syncNumberlineControls();
  bindMeasureInputs();applyInputProtection();focusCurrent();updateMeasurementHeading();/* 寸法系（板厚・板幅）は横長の公差バーを出さない。数直線の隣の公差カード
    （`.compact-tolerance-side`）が基準値・公差±・判定範囲を既に持っており、
    **同じ数字を画面に2つ出さない**（§9.129。項目を分ける前の板厚/板幅と
@@ -480,21 +482,45 @@ function compactToleranceFacts(kind){
  if(!data)return{html:'<div class="compact-tol-three-row no-data"><b>公差情報なし</b><span>判定条件を取得できません</span></div>',range:null};
  return{range:data.range,html:`<div class="compact-tol-three-row"><div class="tol-line tol-line-base"><span class="compact-tol-source">${esc(data.source)}</span><span class="tol-value-pair"><small>基準</small><b>${esc(data.base)}</b></span></div><div class="tol-line tol-line-plusminus"><span class="tol-value-pair"><small>公差＋</small><b>+${esc(data.plus)}</b></span><span class="tol-value-pair"><small>公差－</small><b>-${esc(data.minus)}</b></span></div><div class="tol-line tol-line-range"><small>判定範囲</small><b>${esc(data.low)} ～ ${esc(data.high)}</b></div></div>`};
 }
-/* ---- 値→横位置の写像は1本だけ（§9.151） ----------------------------------
+/* ---- 値→横位置の写像は1本だけ（§9.151／軸の切り替えは§9.152） -------------
    図と、確定前の先読みリングが**別の式を持たない**ようにする（以前は両者が
    それぞれ計算しており、リングと確定後の点が別の位置に出た）。
 
-   **単位はその条自身の公差**——0＝基準／−1＝下限／＋1＝上限。
-   異幅分割では条ごとに幅も公差も違うので、絶対値の軸では**他の子ロットの点が
-   端に張り付いて赤くなる**（§9.150で実測。幅300±1の条と幅500+3/-1の条を
-   同じ軸に置くと、選んでいない側の4点が全部端で赤になった。表のセルは
-   条ごとの公差で正しく合格判定していたので、**図だけが嘘をついていた**）。
-   自分の公差で割れば、どの条も同じ物差しで「余裕がどれだけあるか」を
-   比べられる。**幅そのものは軸から消える**——利用者の判断で、幅狭の条が
-   潰れるくらいなら見えなくてよい（幅は測定表とロット列が持っている）。
+   **基準はどの条も重ねて中心へ置く**。異幅分割では条ごとに幅も公差も違うので、
+   幅そのものを横軸に取ると**他の子ロットの点が端に張り付いて赤くなる**
+   （§9.150で実測。幅300±1の条と幅500+3/-1の条を同じ軸に置くと、選んでいない
+   側の4点が全部端で赤になった。表のセルは条ごとの公差で正しく合格判定して
+   いたので、**図だけが嘘をついていた**）。**幅そのものは軸から消える**
+   ——利用者の判断で、幅狭の条が潰れるくらいなら見えなくてよい（幅は測定表と
+   ロット列が持っている）。
+
+   横の目盛りは**2通りあり、切り替えられる**（§9.152、利用者の指示）。
+   どちらも**基準は必ず中心**・**軸の端は固定**（データで動かない）。
+   - `abs`（既定）＝**基準からの差を実寸(mm)で見る**。条ごとに公差が違えば
+     **帯の縁がずれて段差になる**ので、「この子ロットは公差が広い／狭い」が
+     図そのものから読める。
+   - `rel`＝**その条自身の公差で割る**。−1＝下限／＋1＝上限が全条でそろうので、
+     余裕の**割合**だけを比べたいときはこちら。公差の広い狭いは消える。
+   軸の端は「**公差の何倍まで見せるか**」(`span`)で決める。mmを直に持たせない
+   のは、板厚(±0.02)と板幅(±1)で桁が3つ違うため——**項目ごとの設定が要らない
+   形**にしてある。端を越えた点は端で止め、**何件あるかを文字で言う**
+   （色や形だけで伝えない。§9.129の3番）。
 
    条ごとの公差は**セルのNG判定と同じ`toleranceDetail(kind,j)`から取る**。
    ここだけ別の出どころにすると、図と表で判定が食い違う。 */
+const NL_MODE_KEY='WaveLogNumberlineMode',NL_SPAN_KEY='WaveLogNumberlineSpan';
+const NL_MODES=[['abs','実寸(mm)'],['rel','公差比']];
+const NL_SPANS=[1.2,1.5,2,3,5,10],NL_SPAN_DEFAULT=2;
+function nlStore(k,v){
+ try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,String(v))}
+ catch(e){}
+ return null;
+}
+function numberlineMode(){return nlStore(NL_MODE_KEY)==='rel'?'rel':'abs'}
+function numberlineSpan(){
+ const v=Number(nlStore(NL_SPAN_KEY));
+ return NL_SPANS.includes(v)?v:NL_SPAN_DEFAULT;
+}
 function normalizeTolerance(d){
  if(!d||!d.range)return null;
  const lo=Number(d.range[0]),hi=Number(d.range[1]);
@@ -512,31 +538,62 @@ function normalizeTolerance(d){
  return{lo,hi,base,up,dn,
    rel:v=>{const x=Number(v);return x>=base?(x-base)/up:-(base-x)/dn}};
 }
-function toleranceRelView(kind,values,count){
+/* 軸の端の数字。板厚(±0.02)と板幅(±1)を同じ書式で出せるよう、桁は大きさから
+   決める。**「0」ではなく「基準」と書く**——0mmは「差が無い」の意味で、
+   測定値そのものと読み違えられる。 */
+function nlEdgeLabel(v){
+ const a=Math.abs(Number(v))||0,d=a<0.1?3:(a<10?2:1);
+ return(v<0?'−':'+')+a.toFixed(d);
+}
+function toleranceAxisView(kind,values,count,opt){
+ const o=opt||{};
+ const mode=o.mode==='rel'||o.mode==='abs'?o.mode:numberlineMode();
+ const span=NL_SPANS.includes(Number(o.span))?Number(o.span):numberlineSpan();
  const n=Math.max(1,Number(count)||1),per=[];
  for(let j=0;j<n;j++)per.push(normalizeTolerance(
    (typeof toleranceDetail==='function')?toleranceDetail(kind,j):null));
- const any=per.find(Boolean);
+ const got=per.filter(Boolean),any=got[0];
  if(!any)return null;
  const at=j=>per[j]||any;
- const rel=(v,j)=>at(j).rel(v);
- const marks=[];
+ /* 軸の端が表す量。**一番広い片側公差**から決めるので、条ごとに公差が違っても
+    軸は1本のまま動かない——選んだ条で軸が動くと、条どうしの位置を比べられない
+    （§9.150で実際にそうなっていた）。 */
+ const half=Math.max(...got.map(t=>Math.max(t.up,t.dn)));
+ const edge=mode==='abs'?half*span:span;
+ /* −1〜+1（±1が軸の端）。はみ出しはここでは切らない——数えるのに要る。 */
+ const norm=(v,j)=>{const t=at(j),x=Number(v);
+   return mode==='abs'?(x-t.base)/edge:t.rel(x)/edge};
+ const pos=r=>50+Math.max(-1,Math.min(1,Number(r)))*50;
+ const x=(v,j)=>pos(norm(v,j));
+ const band=j=>{const t=at(j);return{low:x(t.lo,j),high:x(t.hi,j)}};
+ /* 軸からはみ出した点の件数。**描けないことを黙らない**（§9.129）。 */
+ let out=0;
  for(let j=0;j<n;j++){
   const raw=String((values||[])[j]??'').trim(),v=Number(raw);
-  if(raw!==''&&Number.isFinite(v))marks.push(rel(v,j));
+  if(raw!==''&&Number.isFinite(v)&&Math.abs(norm(v,j))>1)out++;
  }
- /* 余白は公差幅（＝2単位）の1/4＝0.5を最低とし、外れ値の外側にも0.5残す。
-    余白を詰めると外れ値が縁に接して「どれだけ外れたか」が読めなくなる。
-    ただし桁違いの1件で公差帯が線に潰れないよう、広げるのは3単位まで。 */
- const over=a=>Math.max(0,...a,0);
- const pad=o=>Math.min(3,Math.max(.5,o+.5));
- const viewLo=-1-pad(over(marks.map(r=>-1-r))),viewHi=1+pad(over(marks.map(r=>r-1)));
- const width=Math.max(viewHi-viewLo,.000001);
- const x=r=>Math.max(0,Math.min(100,(Number(r)-viewLo)/width*100));
- /* 条ごとの帯の縁。両側公差なら必ず−1／＋1なので全行そろい、1本の帯に
-    見える。片側公差の条だけ縁が寄る（その条は基準が限界と同じ、が図に出る）。 */
- const band=j=>{const t=at(j);return{low:x(t.rel(t.lo)),high:x(t.rel(t.hi))}};
- return{per,at,rel,x,viewLo,viewHi,band,lines:{low:x(-1),base:x(0),high:x(1)}};
+ /* 下限・上限の線を1本で引けるのは、**全条の公差が同じとき**（`rel`は割った
+    後なので常に同じ）。違うのに1本引くと、その線はどの条の限界でもない嘘に
+    なる——そのときは**条ごとの帯の縁**が限界を示す（それが「段差」）。 */
+ const uniform=got.length===n&&got.every(t=>t.lo===any.lo&&t.hi===any.hi&&t.base===any.base);
+ const lines={base:50};
+ if(mode==='rel'||uniform){lines.low=x(any.lo,0);lines.high=x(any.hi,0)}
+ /* 目盛りの札は**軸が何を意味するか**だけを言う。`abs`は端の実寸（＝軸の
+    出どころと単位。§9.129の6番）、`rel`は下限・上限の位置。 */
+ const ticks=[];
+ if(mode==='abs'){
+  ticks.push({x:0,label:nlEdgeLabel(-edge),cls:'tc-end tc-end-low'});
+  ticks.push({x:50,label:'基準',cls:'tc-base'});
+  ticks.push({x:100,label:nlEdgeLabel(edge),cls:'tc-end tc-end-high'});
+ }else{
+  /* 基準の札は**画面の距離で決める**（§9.150）。器の12%（≒25px）離れて
+     いなければ「下限基準」と重なって読めない。線は常に引く。 */
+  const gap=Math.min(Math.abs(50-lines.low),Math.abs(lines.high-50));
+  ticks.push({x:lines.low,label:'下限',cls:'tc-low'});
+  if(gap>=12)ticks.push({x:50,label:'基準',cls:'tc-base'});
+  ticks.push({x:lines.high,label:'上限',cls:'tc-high'});
+ }
+ return{per,at,norm,x,band,lines,ticks,mode,span,edge,half,uniform,out};
 }
 /* ---- 板幅測定値の視覚表示（§9.150。骨子§9.137「公差と測定値の縦グラフ」）----
    **縦＝条（右の測定表の行と1対1）／横＝測定値**。
@@ -555,7 +612,7 @@ function toleranceRelView(kind,values,count){
 function compactToleranceScale(kind,values,count){
  const facts=compactToleranceFacts(kind);
  if(!facts.range)return facts.html;
- const view=toleranceRelView(kind,values,count);
+ const view=toleranceAxisView(kind,values,count);
  if(!view)return facts.html;
  const cur=Number(kind==='thickness'?S.measure?.settings?.tStep:S.measure?.settings?.wStep)||0;
  const labels=WL.measureItem.slotLabels(kind,count);
@@ -563,37 +620,38 @@ function compactToleranceScale(kind,values,count){
     追えるようにする。色は測定表のロット列・条割の帯と同じ配色。板厚は行が
     条ではなくエッジOS/中央CL/エッジDSの3点なので付けない。 */
  const lots=kind==='thickness'?[]:WL.split.lotColumn(count);
- /* 基準の札は**画面の距離で決める**（§9.150）。器の12%（≒25px）離れて
-    いなければ「下限基準」と重なって読めない。線は常に引く。 */
- const gap=Math.min(Math.abs(view.lines.base-view.lines.low),
-                    Math.abs(view.lines.base-view.lines.high));
- const baseAlone=gap>=12;
  let rows='';
  for(let j=0;j<count;j++){
   const t=view.at(j),b=view.band(j),lot=lots[j];
   const raw=String((values||[])[j]??'').trim(),n=Number(raw);
   const has=raw!==''&&Number.isFinite(n),ng=has&&(n<t.lo||n>t.hi);
+  const r=has?view.norm(n,j):0,out=has&&Math.abs(r)>1;
   const name=labels[j]??String(j+1);
   rows+=`<div class="tc-row${j===cur?' is-current':''}" data-tc-row="${j}"`
    +` style="--r-low:${b.low}%;--r-high:${b.high}%">`
    +(lot?`<i class="tc-lot" style="background-color:${esc(lot.color)}" title="${esc(lot.lot)}"></i>`:'')
-   +(has?`<i class="tc-dot ${ng?'ng':'ok'}" style="left:${view.x(view.rel(n,j))}%"`
-        +` title="${esc(name)}: ${esc(raw)}${lot?' / '+esc(lot.lot):''}"></i>`:'')
+   /* はみ出した点は端で止め、**形を変えて**「まだ先がある」と示す。件数は
+      `data-out`から帯の文字が言う（形だけ・色だけで伝えない）。 */
+   +(has?`<i class="tc-dot ${ng?'ng':'ok'}${out?(r<0?' out out-low':' out out-high'):''}"`
+        +` style="left:${view.x(n,j)}%"`
+        +` title="${esc(name)}: ${esc(raw)}${lot?' / '+esc(lot.lot):''}${out?' / 軸の外':''}"></i>`:'')
    +'</div>';
  }
+ const lineOf=(k,extra)=>view.lines[k]===undefined?''
+   :`<i class="tc-line tc-line-${k}"${extra||''}></i>`;
  return facts.html
-  +`<div class="accurate-numberline" data-viewlo="${view.viewLo}" data-viewhi="${view.viewHi}"`
-  +` style="--nl-low:${view.lines.low}%;--nl-high:${view.lines.high}%;`
+  +`<div class="accurate-numberline nl-${view.mode}" data-mode="${view.mode}"`
+  +` data-edge="${view.edge}" data-span="${view.span}" data-out="${view.out}"`
+  +` style="--nl-low:${view.lines.low??50}%;--nl-high:${view.lines.high??50}%;`
   +`--nl-base:${view.lines.base}%;--tc-cur:${cur}">`
-  +`<div class="tc-head"><b class="tc-tick tc-low">下限</b>`
-  +(baseAlone?'<b class="tc-tick tc-base">基準</b>':'')
-  +`<b class="tc-tick tc-high">上限</b></div>`
-  /* **基準の線は常に引く**（細いので重ならない）。畳むのは札だけ——
+  +`<div class="tc-head">`
+  +view.ticks.map(t=>`<b class="tc-tick ${t.cls}">${esc(t.label)}</b>`).join('')
+  +`</div>`
+  /* **基準の線は常に引く**（細いので重ならない）。札だけ畳むことはある——
      製造公差は`+3/-1`のように非対称が普通で、基準が下限寄りにあるのは
      むしろ既定。線まで消すと「狙う値がどこか」が図から失われる。 */
   +`<div class="tc-body">`
-  +`<i class="tc-line tc-line-low"></i><i class="tc-line tc-line-base"></i>`
-  +`<i class="tc-line tc-line-high"></i>`
+  +lineOf('low')+lineOf('base')+lineOf('high')
   +rows
   +`<div class="numberline-pending" id="numberlinePending" hidden></div>`
   +`</div></div>`;
@@ -655,8 +713,59 @@ WL.measureTolerance={
   if(body)body.classList.toggle('no-graph',!parts.graph);
   this.paintFacts(parts.facts);
   alignToleranceChart();
+  syncNumberlineControls();
   return parts;
  },
+ /* 軸を切り替えたときの描き直し口。**いま描かれている項目・条・値**を
+    自分で拾うので、呼ぶ側は何も知らなくてよい（同じ拾い方が`lot-split.js`
+    にもあったが、あちらは条ごとの公差追従用で入口が違う）。 */
+ refresh(){
+  /* **`window.S`で見ないこと**——`S`は`base.js`の`const`で、宣言だけの
+     グローバル束縛は`window`の属性にならない。`window.S`は常にundefinedで、
+     ここで黙って引き返していた（軸を切り替えても何も起きなかった）。 */
+  if(typeof S==='undefined'||!S?.measure||typeof WL.measureItem?.kindOf!=='function')return;
+  const type=document.getElementById('measureType')?.value;
+  if(!type)return;
+  const key=WL.measureItem.kindOf(type);
+  const li=typeof lengthIndex==='function'?lengthIndex():0;
+  const count=Math.max(1,Math.min(40,+(document.getElementById('horizontalCount')?.value)||1));
+  const values=S.measure?.measurements?.[key]?.[li]||[];
+  this.repaint(key,values,WL.measureItem.slotCount(key,count));
+ },
 };
+/* 軸の切り替え（§9.152）。**選んだ結果は端末に覚える**——見え方の好みなので
+   レコードへは書かない（他のPCで開いたときに勝手に変わらない）。
+   軸からはみ出した点は**件数を文字で言い、直し方（表示幅）を同じ行に置く**。 */
+function syncNumberlineControls(){
+ const mode=document.getElementById('numberlineMode'),span=document.getElementById('numberlineSpan');
+ if(span&&!span.options.length)
+  span.innerHTML=NL_SPANS.map(v=>`<option value="${v}">公差×${v}</option>`).join('');
+ if(mode&&!mode.options.length)
+  mode.innerHTML=NL_MODES.map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
+ if(mode)mode.value=numberlineMode();
+ if(span)span.value=String(numberlineSpan());
+ const note=document.getElementById('numberlineOutside');
+ if(note){
+  const chart=document.querySelector('.accurate-numberline');
+  const out=Number(chart&&chart.dataset.out)||0;
+  note.textContent=out?`軸の外 ${out}件（表示幅を広げると見えます）`:'';
+  if(note.hidden!==!out)note.hidden=!out;
+ }
+}
+WL.numberline={
+ MODES:NL_MODES,SPANS:NL_SPANS,
+ mode:numberlineMode,span:numberlineSpan,
+ set(k,v){
+  nlStore(k==='mode'?NL_MODE_KEY:NL_SPAN_KEY,v);
+  WL.measureTolerance.refresh();
+  syncNumberlineControls();
+ },
+};
+WL.onReady(()=>{
+ syncNumberlineControls();
+ const mode=document.getElementById('numberlineMode'),span=document.getElementById('numberlineSpan');
+ if(mode)mode.onchange=()=>WL.numberline.set('mode',mode.value);
+ if(span)span.onchange=()=>WL.numberline.set('span',span.value);
+});
 function renderMeasureGrid(){renderMeasureGridVertical();requestAnimationFrame(updateValidationVisuals)}
-Object.assign(window.WL,{toleranceRelView});
+Object.assign(window.WL,{toleranceAxisView});
