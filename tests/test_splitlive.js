@@ -92,6 +92,54 @@ const settle=async page=>{
       d.ロット列.join()===a.ロット列.join()&&d.ロット列.join()===d.帯.join(),
       JSON.stringify({戻り:d.ロット列,帯:d.帯}));
 
+  /* ---- 条の設計カードの姿（§9.157、利用者の指示「2枚目の条の設計も
+     表示を最適化して」「スクロールレス設計で」） ----
+     見るのは**実際の寸法**。DOMの数だけを見る網は、器が中身より大きくても
+     素通りする（§9.126で実際に素通りした）。 */
+  await page.evaluate(()=>WL.measureSteps.go('2'));
+  await settle(page);
+  const card=await page.evaluate(()=>{
+   const c=document.getElementById('splitCard');
+   const cs=getComputedStyle(c),r=c.getBoundingClientRect();
+   /* **器そのものを測らないこと**——`.split-visual`は`flex:1`で必ず器の底まで
+      伸びるので、直下の子の下端を見ると「余り0」と出て素通りする（この網を
+      書いたときに実際に素通りした）。**いちばん下に見えている中身**
+      （操作ボタンの行）で測る。 */
+    const last=Math.max(...[...c.querySelectorAll('*')]
+      .filter(e=>{const b=e.getBoundingClientRect();
+        return b.height>0&&b.width>0&&e.children.length===0})
+      .map(e=>e.getBoundingClientRect().bottom).concat([r.top]));
+   const heads=[...c.querySelectorAll('h2,h3,.split-visual-head,.card-title')]
+     .filter(e=>e.getBoundingClientRect().height>0);
+   const strip=document.getElementById('splitVisualStrip').getBoundingClientRect();
+   return{
+    ころがし:Math.max(0,c.scrollHeight-c.clientHeight),
+    余り:Math.round(r.bottom-parseFloat(cs.paddingBottom||0)-parseFloat(cs.borderBottomWidth||0)-last),
+    見出し:heads.map(e=>e.textContent.trim().slice(0,20)),
+    帯の高さ:Math.round(strip.height),
+    条数の表示:[...c.querySelectorAll('*')].filter(e=>e.children.length===0
+      &&/(^|[^0-9])9\s*条/.test(e.textContent||'')).map(e=>e.textContent.trim().slice(0,30)),
+    説明欄:(()=>{const d=document.getElementById('splitVisualDetail');
+      return{隠れ:!!d.hidden,高:Math.round(d.getBoundingClientRect().height)}})(),
+   };
+  });
+  rec('条の設計カードはスクロールしない',card.ころがし===0,JSON.stringify(card));
+  /* 余りは「置くべきものを別の場所へ隠している」ことの現れ（§9.131）。
+     ここには畳んでいるものが無いので、**図が使い切る**のが正しい。 */
+  rec('カードの下に余りを残さない',card.余り<=8,'余り='+card.余り+'px');
+  /* 図は1つしかないので**カードの題がそのまま図の題**。中に群の見出しを
+     置くと、同じことを2回言うことになる（§CLAUDE.md 同じ情報を2箇所に
+     出さない）。 */
+  rec('カードの中の見出しは題の1つだけ',card.見出し.length===1,JSON.stringify(card.見出し));
+  /* 条数は`#splitGrid`の状態行が言う。隣にもう1つ「9条」のチップを
+     置かないこと。 */
+  rec('条数を2箇所に書かない',card.条数の表示.length<=1,JSON.stringify(card.条数の表示));
+  /* 掴んだ条の説明は**中身が無いときは畳む**（空のまま場所を取っていた）。 */
+  rec('説明欄は掴む前は畳んでいる',card.説明欄.隠れ&&card.説明欄.高===0,JSON.stringify(card.説明欄));
+  /* 掴む的は大きいほどよい。以前は88px固定で、下に45pxの空きが残っていた。 */
+  rec('帯はカードの高さを使い切る（88px固定に戻っていない）',card.帯の高さ>100,
+      card.帯の高さ+'px');
+
   /* **ダイアログで止めない。** 以前はalertだったので、ドラッグのたびに
      手が止まった。理由は状態行の文字で伝える。 */
   rec('操作の途中でダイアログを出さない',dialogs.length===0,dialogs.join(' / '));

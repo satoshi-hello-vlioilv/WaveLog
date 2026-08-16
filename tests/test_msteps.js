@@ -485,6 +485,34 @@ let b=null,page=null;
   const rest3=(m3.理由||'')+' / '+(m3.段[2].状態||'');
   rec('③には残りの件数を数で書く',/\d+\s*項目/.test(rest3),rest3);
 
+  /* 帯は1本しかなく、注意書きと文脈（ロット・製品・測定表の形・判定公差）が
+     場所を分け合う。**注意書きへ項目名を並べると文脈が潰れて見切れる**
+     （実機で「未測定が 9項目あります（母材・…）。」が載ったときに報告）。
+     どの項目かは③の確認表が1行ずつ出しているので、帯は件数だけにして
+     名前は`title`へ回す。**3段すべてで見る**——表示サイズを上げると
+     文字だけが伸びるので、既定だけ見ても捕まらない。 */
+  const barFit=[];
+  for(const size of ['sm','md','lg']){
+   await page.evaluate(s=>document.documentElement.setAttribute('data-ui-size',s),size);
+   await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+   barFit.push(await page.evaluate(sz=>{
+    const cut=e=>!!e&&e.scrollWidth>e.clientWidth+1;
+    const note=document.getElementById('mstepNote');
+    return{段:sz,
+      注意書き:note.hidden?'':note.textContent.trim(),
+      title:note.getAttribute('title')||'',
+      注意書きの見切れ:!note.hidden&&cut(note),
+      文脈の見切れ:[...document.querySelectorAll('.mctx-item b')].filter(cut).length};
+   },size));
+  }
+  await page.evaluate(()=>document.documentElement.setAttribute('data-ui-size','md'));
+  rec('帯に注意書きが載っても文脈は見切れない（3段とも）',
+      barFit.every(x=>x.文脈の見切れ===0&&!x.注意書きの見切れ),JSON.stringify(barFit));
+  rec('注意書きに項目名を並べない（名前はtitleへ回す）',
+      barFit.every(x=>!/（|\(/.test(x.注意書き))
+      &&/母材/.test(barFit[1].title||''),
+      barFit[1].注意書き+' / title='+(barFit[1].title||'(無し)'));
+
   /* ---- 6a) ③の作業時間（§9.143、利用者の指示でゼロベース） ----
      手で入れる開始・終了のほかに、**測定の操作そのものが知っている時刻**を
      3つだけ自動で残す（入力を始めた／転送を受け始めた／最後に入力した）。

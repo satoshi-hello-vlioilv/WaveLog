@@ -74,19 +74,27 @@
   };
  }
 
- /* 進めない理由。**言えることがあるときだけ出す**（常設の注意書きは読まれない）。 */
+ /* 進めない理由。**言えることがあるときだけ出す**（常設の注意書きは読まれない）。
+    帯は1本しかなく、右の文脈（ロット・製品・測定表の形・判定公差）と場所を
+    分け合う。**ここへ項目名を並べると文脈のほうが潰れて見切れる**（実機で
+    「未測定が 9項目あります（母材・揃い/肉厚/長さ・板厚 ほか）。」が載った
+    ときに報告された）。**どの項目かは③の確認表が1行ずつ出している**ので、
+    ここは件数だけにして、名前は`title`へ回す（§CLAUDE.md 同じ情報を2箇所に
+    出さない）。 */
  function noteFor(step){
-  if(!measuring())return '';
+  if(!measuring())return null;
   if(step==='2'){
    const type=document.querySelector('#measureType')?.value||'';
-   if(type==='母材')return '母材は手動入力の項目です。測定器から受けるには入力内容を切り替えてください。';
+   if(type==='母材')return {text:'母材は手動入力です',
+     title:'母材は手動入力の項目です。測定器から受けるには入力内容を切り替えてください。'};
   }
   if(step==='3'){
    let prog=null;try{if(typeof measureProgress==='function')prog=measureProgress()}catch(e){}
    if(prog&&prog.unmeasured.length)
-    return `未測定が ${prog.unmeasured.length}項目あります（${prog.unmeasured.map(x=>x.name).slice(0,3).join('・')}${prog.unmeasured.length>3?' ほか':''}）。`;
+    return {text:`未測定 ${prog.unmeasured.length}項目`,
+            title:'未測定: '+prog.unmeasured.map(x=>x.name).join('・')};
   }
-  return '';
+  return null;
  }
 
  /* **選ばれた値の使用回数を数える**(§9.133)。オペレータは実データで171人
@@ -289,7 +297,12 @@
    if(st)st.textContent=states[k]||'';
   });
   const note=document.getElementById('mstepNote');
-  if(note){const t=noteFor(current);note.textContent=t;note.hidden=!t}
+  if(note){
+   const n=noteFor(current);
+   note.textContent=n?n.text:'';
+   if(n&&n.title)note.title=n.title;else note.removeAttribute('title');
+   note.hidden=!n;
+  }
   fillContext();
   try{fitLengthList()}catch(e){}
   try{fitControlWidths()}catch(e){}

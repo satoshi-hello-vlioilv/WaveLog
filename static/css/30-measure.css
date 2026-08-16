@@ -231,8 +231,17 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    何度も確かめるもので、測定値と同じ距離で読む。12px(--fs-sm)だと
    測定表の値(14px)より小さく、同じ画面の中で「格下」に見えていた。
    項目名(small)だけは添え物なので1段下げる。 */
+/* **縮む順番を決める。** 帯の場所が足りないときに先に縮むのは注意書きの
+   ほう——文脈はロット番号・製品名という**この画面が何を測っているか**
+   そのもので、見切れると別のロットと取り違える。以前は両方とも既定の
+   `flex-shrink:1`で等しく縮み、③で注意書きが載ると基本情報が潰れた
+   （実機で報告）。
+   **`flex:0 0 auto`で固定してはいけない**——狭い窓では帯そのものが溢れる
+   （1600px幅で横+52px、表示サイズ大で+142px。`test_fit`が検出）。
+   `flex-shrink`の比で優先順位を付ける: 注意書きは100倍縮みやすいので
+   実質そちらが先に消え、それでも足りないときだけ文脈が縮む。 */
 .measure-context{
-  display:flex;align-items:center;gap:var(--space-5);
+  display:flex;align-items:center;gap:var(--space-5);flex:0 1 auto;
   margin-left:auto;padding:0 16px;min-width:0;
   font-size:var(--fs);overflow:hidden;white-space:nowrap;
 }
@@ -267,7 +276,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .measure-steps .mstep.is-current .mstep-state{color:var(--teal-dark)}
 /* 進めない理由。言えることがあるときだけ出す（常設の注意書きは読まれない）。 */
 .mstep-note{
-  display:flex;align-items:center;padding:0 16px;min-width:0;flex:0 1 auto;
+  display:flex;align-items:center;padding:0 16px;min-width:0;flex:0 100 auto;
   color:var(--warn-fg);font-size:var(--fs-sm);font-weight:700;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
@@ -851,8 +860,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .measure-shell .measure-body .prep-head,
 .measure-shell .measure-body .info-group,
 .measure-shell .measure-body .qp-head,
-.measure-shell .measure-body .split-layout h3,
-.measure-shell .measure-body .split-visual-head b{
+.measure-shell .measure-body .split-layout h3{
   color:var(--ink-3);font-size:var(--fs);font-weight:800;letter-spacing:.04em;
 }
 /* カードの中の**帯の見出し**（測定表の上の「板幅」など）は題と同じ大きさで、
@@ -1012,21 +1020,11 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    **群ごとに変えないこと**——ラベル列の幅が2種類あると値の左端がずれ、
    視線が列を追えなくなる（§9.129の9番）。 */
 .measure-shell .info-detail .field{grid-template-columns:7em minmax(0,1fr)}
-/* 幅分割の視覚図(§9.133 指摘⑨)。幅(mm)に比例した帯で、色は入力欄の
-   バッジ・条割の視覚図と同じ。**狭い区間でも読めるように**帯の中の文字は
-   はみ出さず省略し、`title`に生の値を残す。 */
-.split-band{
-  display:flex;align-items:stretch;gap:2px;width:100%;
-  height:var(--ctl-h-lg);margin:var(--space-2) 0;
-  border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden;background:var(--surface);
-}
-.split-band-seg{
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  min-width:0;color:#fff;overflow:hidden;white-space:nowrap;
-}
-.split-band-seg b{font-size:var(--fs-sm);font-weight:800;overflow:hidden;text-overflow:ellipsis;max-width:100%}
-.split-band-seg small{font-size:var(--fs-micro);opacity:.85}
-.split-band-seg.is-missing{background-image:repeating-linear-gradient(45deg,#0003 0 6px,transparent 6px 12px)}
+/* ロット単位の「まとめ帯」(`.split-band`)は廃止（§9.156、利用者の指示
+   「条のまとめ表示は不要なので、図は1つに統合して、並べ替えができるものを」）。
+   掴めない帯と掴める帯（`.split-visual-block`）が同じ見た目で2つ並び、
+   **動くほうと動かないほうの区別が付かなかった**。ロット・条数・幅は
+   1条ずつの帯とその`title`が持っている。 */
 /* 品質規格の4×3表は廃止（§9.154）。見出し列を`width:11%`で決め打ちして
    いたため「ラテラルボー」「アルマイト」「表面処理」が省略記号で切れていた
    （実機で報告）。**詳細の中の他の項目と同じ`.field`の行**にしたので、

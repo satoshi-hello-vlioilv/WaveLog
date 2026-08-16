@@ -864,14 +864,21 @@
      見やすい)、条ごとに独立してドラッグ操作できるようにする。ラベルは
      ロット番号下3桁と板幅のみとし、狭いマスでも読める簡潔さを優先する
      (ロット番号全体・公差は詳細行とツールチップで確認する)。 */
+  /* 掴んだ条の説明欄。**中身が無いときは畳む**（§9.157）——空のまま16px
+     場所を取っており、その下の操作ボタンが図から離れていた。 */
+  function setVisualDetail(text){
+    const el=$('#splitVisualDetail');if(!el)return;
+    const t=String(text||'');
+    if(el.textContent!==t)el.textContent=t;
+    if(el.hidden!==!t)el.hidden=!t;
+  }
   function renderSplitVisual(sources,seq,colorMap){
-    const strip=$('#splitVisualStrip'),count=$('#splitVisualCount'),detail=$('#splitVisualDetail');
+    const strip=$('#splitVisualStrip');
     const total=seq.length;
     if(!strip)return;
     if(!total){
       strip.innerHTML='<div class="split-visual-empty">条割の対象となる子ロットがありません。</div>';
-      if(count)count.textContent='';
-      if(detail)detail.textContent='';
+      setVisualDetail('');
       splitVisualLayout=null;
       renderScrapAndRuler(null);
       return;
@@ -894,8 +901,7 @@
     }
     html+='<div class="split-visual-ghost" id="splitVisualGhost" hidden></div></div>';
     strip.innerHTML=html;
-    if(count)count.textContent=`${total}条`;
-    if(detail)detail.textContent='';
+    setVisualDetail('');
     ensureSplitVisualWiring();
     renderScrapAndRuler(layout);
   }
@@ -976,11 +982,10 @@
       return{sources,total,seq:ensureSequenceLength(total),confirmed:ensureConfirmedLength(total)};
     }
     function updateDetailFor(idx){
-      const detail=$('#splitVisualDetail');if(!detail)return;
       const{seq,sources}=context(),lot=seq[idx];
-      if(!lot){detail.textContent='';return}
+      if(!lot){setVisualDetail('');return}
       const src=sources.find(s=>s.lot===lot);
-      detail.textContent=src?`${lot} ／ 幅${src.width===''||src.width===undefined?'—':src.width} ／ ${src.tol||'—'}`:lot;
+      setVisualDetail(src?`${lot} ／ 幅${src.width===''||src.width===undefined?'—':src.width} ／ ${src.tol||'—'}`:lot);
     }
     function beginDragging(){
       dragging=true;
@@ -1707,28 +1712,12 @@
       ${scrapWidthLineHtml()}`;
   }
   // 設定済み(applySplit確定済み)状態の表示。
-  /* ---- 幅分割の視覚図(§9.133 指摘⑨) ----
-     どの子ロットがどの幅で並んでいるかは**帯で見るもの**。表だけだと
-     「1〜2条 / 3〜5条」という範囲表記を頭の中で並べ直すことになる。
-     幅(mm)に比例した帯にし、色は入力欄のバッジ・条割の視覚図と同じ
-     `appliedLotColorMap`から取る——表・入力欄・帯が同じ色で結び付く。
-     **狭い区間でも文字が消えないように**、帯の下へ番号を出す。 */
-  function splitBandHtml(groups){
-    if(!Array.isArray(groups)||!groups.length)return '';
-    const{map:lotColors,lots}=appliedLotColorMap(groups);
-    const wOf=g=>{const w=Number(g.base?.width);return Number.isFinite(w)&&w>0?w:1};
-    const total=groups.reduce((a,g)=>a+wOf(g)*(Number(g.count)||1),0)||1;
-    const segs=groups.map((g,i)=>{
-      const span=wOf(g)*(Number(g.count)||1);
-      const pct=Math.max(2,Math.round(span/total*1000)/10);
-      const color=lots.length>1&&lotColors[g.lot]?lotColors[g.lot]:'var(--teal)';
-      const w=Number.isFinite(Number(g.base?.width))?String(g.base.width):'—';
-      return `<span class="split-band-seg${g.missing?' is-missing':''}" style="flex:${pct} 1 0;background-color:${esc(color)}"`
-        +` title="${esc(g.lot)} / ${g.count}条 / 幅${esc(w)}">`
-        +`<b>${esc(w)}</b><small>${g.count}条</small></span>`;
-    }).join('');
-    return `<div class="split-band" aria-label="幅分割の並び">${segs}</div>`;
-  }
+  /* ロット単位の「まとめ帯」(`splitBandHtml`)は**関数ごと廃止**（§9.156、
+     利用者の指示「条のまとめ表示は不要なので、図は1つに統合して、
+     並べ替えができるものをください」）。掴めない帯と掴める帯
+     （`.split-visual-block`）が同じ見た目で2つ並び、**動くほうと動かない
+     ほうの区別が付かなかった**。呼び出しだけ外して定義を残すと、次に読む人が
+     「まだ使っている」と読むので消す。 */
 
   function renderAppliedGroupsPanel(el,groups){
     const summary=summarizeAppliedGroups(groups);
