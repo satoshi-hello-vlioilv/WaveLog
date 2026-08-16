@@ -127,17 +127,25 @@ let b=null;
    if(/tc-line-low/.test(l.cls))lineX.low=l.x;
    if(/tc-line-high/.test(l.cls))lineX.high=l.x;
    if(/tc-line-base/.test(l.cls))lineX.base=l.x;});
-  const expect=v=>{const hi=BASE+PLUS,lo=BASE-MINUS;
-   return lineX.low+(v-lo)/(hi-lo)*(lineX.high-lineX.low)};
+  /* 横は**その条自身の公差に対する位置**（§9.151）。0＝基準／−1＝下限／
+     ＋1＝上限で、非対称公差では基準を境に**折れる**（＋側は/plus、−側は
+     /minus で割る）。絶対値の線形補間ではないことに注意。 */
+  const unit=()=>lineX.high-lineX.base;
+  const expect=v=>lineX.base+(v>=BASE?(v-BASE)/PLUS:-(BASE-v)/MINUS)*unit();
   const mid=(BASE-MINUS+BASE+PLUS)/2;
   rec('下限が上限より左にある',lineX.low<lineX.high,
    `下限x=${lineX.low} 上限x=${lineX.high}`);
   /* 基準の線は**札を畳んでも必ず引く**（狙う値がどこかが図から消えるため）。 */
   rec('基準の線がある',Number.isFinite(lineX.base),JSON.stringify(lineX));
-  rec('基準の線が基準値そのものを指す(範囲の中点ではない)',
-   Number.isFinite(lineX.base)&&Math.abs(lineX.base-expect(BASE))<=2
-   &&Math.abs(lineX.base-expect(mid))>2,
-   `基準x=${lineX.base} 期待=${expect(BASE).toFixed(1)} (中点なら${expect(mid).toFixed(1)})`);
+  /* 自分の公差で割るので、下限と上限は基準から**等距離**になる。 */
+  rec('下限と上限が基準から等距離にある(自分の公差が単位)',
+   Math.abs((lineX.base-lineX.low)-(lineX.high-lineX.base))<=2,
+   `下限-基準=${(lineX.base-lineX.low).toFixed(1)} 基準-上限=${(lineX.high-lineX.base).toFixed(1)}`);
+  /* **基準は範囲の中点ではない。** 非対称公差(+3/-1)では中点1001が基準の
+     右へずれることで、写像が基準に錨を下ろしていることが分かる。 */
+  rec('範囲の中点は基準の線に乗らない',
+   Math.abs(expect(mid)-lineX.base)>2,
+   `中点の位置=${expect(mid).toFixed(1)} 基準x=${lineX.base}`);
 
   const dotErr=g.dots.map(d=>{
    const v=Number((d.title.match(/:\s*([\d.]+)/)||[])[1]);
@@ -167,27 +175,74 @@ let b=null;
    !!pend&&!pend.hidden&&Math.abs(pend.x-expect(1002.8))<=2,
    pend?`x=${pend.x} 期待=${expect(1002.8).toFixed(1)}`:'(リング無し)');
 
-  /* --- 6) 写像そのものの境界(WL.toleranceScaleView を直接) --- */
+  /* --- 6) 写像そのもの(WL.toleranceRelView を直接) --- */
   const u=await page.evaluate(()=>{
-   const f=WL.toleranceScaleView,R=[999,1003];
-   const cap=f({range:R,base:1000},['1200'],1);
-   return {
-    noRange:f({},[],0),
-    // 基準値が渡らなければ範囲の中点へ落とす(0扱いにしない)
-    noBase:f({range:R,base:null},[],0).base,
-    fromMinus:f({range:R,minus:1},[],0).base,
-    declared:f({range:R,base:1000},[],0).base,
-    // 桁違いの値が1件あっても窓は公差幅の1.5倍までしか広げない
-    capViewHigh:cap.viewHigh,capClamp:cap.clamp(1200),
+   const v=WL.toleranceRelView('width',['1000','1003','999'],3);
+   if(!v)return{無し:true};
+   return{
+    基準:v.rel(1000,0),上限:v.rel(1003,0),下限:v.rel(999,0),中点:v.rel(1001,0),
+    帯:[+v.band(0).low.toFixed(2),+v.band(0).high.toFixed(2)],
+    線:[+v.lines.low.toFixed(2),+v.lines.base.toFixed(2),+v.lines.high.toFixed(2)],
+    窓:[v.viewLo,v.viewHi],
+    端:[v.x(-99),v.x(99)],
    };
   });
-  rec('公差が無ければ写像を作らない',u.noRange===null,String(u.noRange));
-  rec('基準値が無ければ範囲の中点へ落とす(0にしない)',u.noBase===1001,String(u.noBase));
-  rec('基準値が無くても公差－から復元する',u.fromMinus===1000,String(u.fromMinus));
-  rec('渡された基準値をそのまま使う',u.declared===1000,String(u.declared));
-  rec('桁違いの値でも表示範囲は公差幅の1.5倍までに留める',
-   Math.abs(u.capViewHigh-(1003+ (1003-999)*1.5))<1e-6&&u.capClamp===6,
-   `viewHigh=${u.capViewHigh} clamp=${u.capClamp}`);
+  rec('基準は0・上限は+1・下限は-1',
+   !u.無し&&u.基準===0&&Math.abs(u.上限-1)<1e-9&&Math.abs(u.下限+1)<1e-9,JSON.stringify(u));
+  rec('範囲の中点は0にならない(基準に錨を下ろしている)',
+   !u.無し&&Math.abs(u.中点-1/3)<1e-9,String(u.中点));
+  rec('帯の縁が下限・上限の線と一致する',
+   !u.無し&&Math.abs(u.帯[0]-u.線[0])<.01&&Math.abs(u.帯[1]-u.線[2])<.01,JSON.stringify(u));
+  rec('公差帯の外にも余白を残す(点が縁に接しない)',
+   !u.無し&&u.窓[0]<=-1.5&&u.窓[1]>=1.5,JSON.stringify(u.窓));
+  rec('桁違いの値でも窓は3単位までに留め、端で頭打ちにする',
+   !u.無し&&u.端[0]===0&&u.端[1]===100,JSON.stringify(u.端));
+
+  /* --- 6b) **異幅分割: 幅も公差も違う条を1本の軸で比べられる**（§9.151）---
+     ここがこの写像の目的。幅300±1の条と幅500+3/-1の条で「自分の公差の
+     半分だけ上振れ」した値は、**同じ横位置**に出なければならない。
+     絶対値の軸だったころは、選んでいない側の点が端に張り付いて赤くなった。 */
+  const mixed=await page.evaluate(async()=>{
+   S.measure.settings.splitGroups=[
+    {lot:'AAA300',count:2,base:{width:300},tol:{width:{manufacturing:{plus:1,minus:1}}},missing:false},
+    {lot:'BBB500',count:2,base:{width:500},tol:{width:{manufacturing:{plus:3,minus:1}}},missing:false}];
+   S.measure.settings.splitPositionGroup=[0,0,1,1];
+   document.querySelector('#horizontalCount').value='4';
+   const w=S.measure.measurements.width[lengthIndex()];
+   /* どちらも「自分のプラス公差の半分」上振れ */
+   ['300.50','300.00','501.50','500.00'].forEach((v,i)=>w[i]=v);
+   S.measure.settings.wStep=0;
+   renderMeasureGrid();
+   await new Promise(r=>setTimeout(r,300));
+   const box=document.querySelector('.accurate-numberline'),br=box.getBoundingClientRect();
+   const at=e=>{const r=e.getBoundingClientRect();return +(r.left-br.left+r.width/2).toFixed(1)};
+   const dots=[...box.querySelectorAll('.tc-row')].map(r=>{
+    const d=r.querySelector('.tc-dot');return d?{x:at(d),ng:d.className.includes('ng'),t:d.title}:null});
+   const 帯=[...box.querySelectorAll('.tc-row')].map(r=>
+     getComputedStyle(r).getPropertyValue('--r-low').trim()+'..'+getComputedStyle(r).getPropertyValue('--r-high').trim());
+   return{dots,帯,
+     色:[...box.querySelectorAll('.tc-lot')].map(e=>getComputedStyle(e).backgroundColor),
+     セルNG:[...document.querySelectorAll('.measure-matrix td.is-current input')].map(e=>e.classList.contains('ng'))};
+  });
+  rec('異幅分割でも全条が公差内と判定される',
+   mixed.dots.every(d=>d&&!d.ng)&&mixed.セルNG.every(v=>!v),
+   JSON.stringify(mixed.dots.map(d=>d&&d.t)));
+  rec('自分の公差で同じだけ上振れした条は同じ横位置に出る',
+   mixed.dots[0]&&mixed.dots[2]&&Math.abs(mixed.dots[0].x-mixed.dots[2].x)<=2,
+   `幅300の+0.5=${mixed.dots[0]&&mixed.dots[0].x} / 幅500の+1.5=${mixed.dots[2]&&mixed.dots[2].x}`);
+  rec('基準どおりの条は基準の線に乗る',
+   mixed.dots[1]&&mixed.dots[3]&&Math.abs(mixed.dots[1].x-mixed.dots[3].x)<=2,
+   `${mixed.dots[1]&&mixed.dots[1].x} / ${mixed.dots[3]&&mixed.dots[3].x}`);
+  rec('両側公差なら帯の縁は全条そろう(1本の帯に見える)',
+   new Set(mixed.帯).size===1,mixed.帯.join(' / '));
+  rec('子ロットの色帯が条ごとに付く(2ロットで2色)',
+   mixed.色.length===4&&new Set(mixed.色).size===2,mixed.色.join(' / '));
+  await page.evaluate(async()=>{
+   S.measure.settings.splitGroups=null;S.measure.settings.splitPositionGroup=null;
+   document.querySelector('#horizontalCount').value='6';
+   renderMeasureGrid();
+   await new Promise(r=>setTimeout(r,200));
+  });
 
   /* --- 7) 基準値のすぐ近くを測ったときの見え方（§9.150）---
      スウォームのころは、公差4mmに対し0.1mm刻みだと点の高さの差が数pxしか
