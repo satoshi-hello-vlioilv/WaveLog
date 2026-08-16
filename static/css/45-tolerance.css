@@ -86,7 +86,7 @@
 /* 軸の端で止めた点（§9.152）。**形を変えて「まだ先がある」と示す**——丸のまま
    だと端ちょうどの値と区別が付かない。件数は帯の文字が言う（形だけで
    伝えない）。 */
-.tc-dot.out{border-radius:1px;width:0;height:0;background:transparent;box-shadow:none}
+.tc-dot.out{border-radius:0;width:0;height:0;background:transparent;box-shadow:none}
 .tc-dot.out.ok{border-top:6px solid transparent;border-bottom:6px solid transparent}
 .tc-dot.out.ng{border-top:6px solid transparent;border-bottom:6px solid transparent}
 .tc-dot.out-low{border-right:8px solid var(--teal);margin-left:1px}

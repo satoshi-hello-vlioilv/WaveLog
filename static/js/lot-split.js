@@ -1531,7 +1531,7 @@
     const blocked=blockers.length>0;
     return `<div class="split-update-panel">
       <div class="split-update-head">⚠ 子ロットデータに更新があります（${esc(fmtStamp(pending.at))} 確認・差異${pending.diffs.length}件）</div>
-      ${diffTableHtml(pending.diffs,'保存済み','最新')}
+      <div class="split-diff-scroll">${diffTableHtml(pending.diffs,'保存済み','最新')}</div>
       ${blocked?`<div class="split-update-blocked">差異のある項目に測定データが入力済みのため適用できません：${esc(blockers.map(b=>`${b.lot}（${b.reasons.join('・')}）`).join(' / '))}</div>`:''}
       <div class="split-update-actions">
         <button type="button" id="splitUpdateApply"${blocked?' disabled':''}>更新を適用</button>
@@ -1567,8 +1567,21 @@
        <button type="button" class="split-recheck-btn" id="splitRecheckBtn"${splitUpdateChecking?' disabled':''}>${splitUpdateChecking?'確認中…':'今すぐ更新を確認'}</button>
       </div></div>`;
   }
-  function splitDataSectionsHtml(){
-    return splitPendingSectionHtml()+splitHistorySectionHtml();
+  /* 子ロットデータの更新・履歴は**「条の設計 — 子ロットの内訳」カード**に出す
+     （§9.153、利用者の指示）。以前は条の設計（幅の割り付け）カードの`#splitGrid`に
+     混ぜていたが、あそこは`display:flex;flex-wrap:wrap`の**1行のメタ情報帯**
+     （状態・不一致・屑幅を横に並べる場所）で、差異表を持つブロックを入れると
+     帯が壊れる。更新されるのは子ロット候補と条割プレビューの**材料そのもの**
+     なので、その2列の上に置くのが読み順とも合う。 */
+  function refreshSplitDataSections(){
+    const el=$('#splitDataSections');if(!el)return;
+    const html=splitPendingSectionHtml()+splitHistorySectionHtml();
+    if(el.innerHTML!==html)el.innerHTML=html;
+    /* **同じ値なら触らない**（§9.131。`hidden`は値が同じでも変更記録が積まれ、
+       見張りと合わさると回り続ける）。 */
+    const empty=!html;
+    if(el.hidden!==empty)el.hidden=empty;
+    if(html)wireSplitDataSections(el);
   }
   function wireSplitDataSections(el){
     el.querySelector('#splitUpdateApply')?.addEventListener('click',()=>applySplitSourcesUpdate());
@@ -1605,11 +1618,10 @@
     else if(state==='pending'){badge.hidden=false;badge.textContent='未設定';badge.className='split-tab-badge split-tab-badge-pending'}
     else{badge.hidden=true}
   }
-  /* 「条割変更を開く」ボタンは廃止（§9.144。編集面はカードの中に常時ある）。
-     残るのは子ロットデータの更新・履歴の配線だけ。 */
-  function wireSplitPanelButtons(el){
-    wireSplitDataSections(el);
-  }
+  /* 「条割変更を開く」ボタンは廃止（§9.144。編集面はカードの中に常時ある）、
+     子ロットデータの更新・履歴は内訳カードへ移した（§9.153）ので、状態の帯
+     （`#splitGrid`）に配線するものはもう無い。**空の`wireSplitPanelButtons()`を
+     残さない**——「まだ何か繋がっている」と読ませる。 */
   // 未設定(候補のみ判明している)状態: 条割変更が実際に読み出すのと同じ子ロット
   // 候補データをここでも先読みして表示し、この画面から直接「条割変更」へ
   // 遷移できるボタンを置く(操作導線)。
@@ -1619,9 +1631,7 @@
      2箇所**に出る（§9.129）。開くボタンも要らない（もう開いている）。 */
   function renderPendingCandidatesPanel(el,sources,info){
     if(!sources.length){
-      el.innerHTML=`<div class="split-panel-status split-panel-status-pending">⚠ このロットには分割データがあります（推定 ${info.lotCount}ロット / ${info.stripCount}条・${esc(widthPatternLabel(info.widthPattern))}）が、子ロットの詳細を取得できませんでした。</div>
-        ${splitDataSectionsHtml()}`;
-      wireSplitPanelButtons(el);
+      el.innerHTML=`<div class="split-panel-status split-panel-status-pending">⚠ このロットには分割データがあります（推定 ${info.lotCount}ロット / ${info.stripCount}条・${esc(widthPatternLabel(info.widthPattern))}）が、子ロットの詳細を取得できませんでした。</div>`;
       return;
     }
     const totalCount=sources.reduce((a,x)=>a+x.count,0),horiz=Math.max(1,+($('#horizontalCount')?.value)||1);
@@ -1629,9 +1639,7 @@
     el.innerHTML=`
       <div class="split-panel-status split-panel-status-pending">未設定 — 子ロット ${new Set(sources.map(x=>x.lot)).size} / 全 ${totalCount}条。下で条をつかんで並べ替えると、そのまま測定表に反映されます。</div>
       ${mismatch?`<div class="split-mismatch-badge">子ロット条数合計(${totalCount})が横割数(${horiz})と一致しません。</div>`:''}
-      ${scrapWidthLineHtml()}
-      ${splitDataSectionsHtml()}`;
-    wireSplitPanelButtons(el);
+      ${scrapWidthLineHtml()}`;
   }
   // 設定済み(applySplit確定済み)状態の表示。
   /* ---- 幅分割の視覚図(§9.133 指摘⑨) ----
@@ -1671,9 +1679,7 @@
       <div class="split-panel-status split-panel-status-applied">✓ ${esc(summary)}</div>
       ${splitBandHtml(groups)}
       ${needsReconfigure?'<div class="split-mismatch-badge">子ロットデータの更新で条数の構成が変わりました。下で並びを決め直してください。</div>':''}
-      ${scrapWidthLineHtml()}
-      ${splitDataSectionsHtml()}`;
-    wireSplitPanelButtons(el);
+      ${scrapWidthLineHtml()}`;
   }
 
   /* 左パネル「幅分割情報」タブ(#splitGrid)は、テンプレート上は固定文字列
@@ -1730,6 +1736,9 @@
   }
   function refreshSplitStatusPanel(){
     refreshBasicSplitRow();
+    /* 更新・履歴は内訳カード側（§9.153）。**状態の帯より前に置く**——
+       `#splitGrid`が無い経路（読み込み中など）でも必ず描き直されるように。 */
+    refreshSplitDataSections();
     const el=$('#splitGrid');if(!el)return;
     const rendering=inSplitRefresh;
     inSplitRefresh=true;
