@@ -628,8 +628,35 @@
      ロットが変わったらキャッシュを破棄するため、取得時のロット№をキーとして保持する。 */
   let splitSourcesCache=null,splitSourcesCacheKey=null,splitSourcesLoading=null;
   function currentSplitCacheKey(){return S.measure?.basic?.lotNo||''}
+  /* 子ロット候補が取れないときは**確定済みの割当から作り直す**（§9.156、
+     利用者の指摘）。実機で「子ロットの取得: 取得OK→取得失敗」となったロットは
+     `splitGroups`に3ロット/9条が確定しているのに候補が空で、条の並びが
+     **「条割の対象となる子ロットがありません」のまま**＝1条ずつのD&Dが
+     まったくできなかった（まとめ帯だけが出ており、あれは掴めない）。
+     確定済みの割当はロット・条数・幅・公差を持っているので、**候補が無くても
+     並べ替えの材料としては足りる**。取り直せたら候補側が勝つ。 */
   function splitSourceRows(){
-    return splitSourcesCache&&splitSourcesCacheKey===currentSplitCacheKey()?splitSourcesCache:[];
+    if(splitSourcesCache&&splitSourcesCacheKey===currentSplitCacheKey())return splitSourcesCache;
+    return rowsFromAppliedGroups();
+  }
+  function rowsFromAppliedGroups(){
+    const groups=S.measure?.settings?.splitGroups;
+    if(!Array.isArray(groups)||!groups.length)return [];
+    return groups.map(g=>({
+      lot:String(g.lot||''),count:Math.max(1,Number(g.count)||1),
+      width:g.base&&g.base.width!==undefined&&g.base.width!==null?String(g.base.width):'',
+      tol:splitTolText(g),base:g.base||{},tolObj:g.tol||null,
+      missing:!!g.missing,fromApplied:true,
+    }));
+  }
+  /* 帯の`title`に出す公差の文。確定済みの割当が持つ公差から組む
+     （候補側の`tol`と同じ書式にする——同じ場所に出るので形が違うと別物に見える）。 */
+  function splitTolText(g){
+    const t=g&&g.tol&&g.tol.width&&(g.tol.width.manufacturing||g.tol.width.order);
+    if(!t)return '';
+    const p=t.plus,m=t.minus;
+    if(p===undefined&&m===undefined)return '';
+    return (p!==undefined?`+${p}`:'')+(m!==undefined?`/-${m}`:'');
   }
   window.splitSourceRows=splitSourceRows;
   /* 再編集などで測定を開き直すたびに、子ロットの詳細をAccessへ毎回
@@ -1689,9 +1716,13 @@
     const needsReconfigure=S.measure?.settings?.splitNeedsReconfigure;
     /* 設定済みの姿は**帯1本と1行**で足りる（§9.144）。ロット№・条数・幅の
        表は編集面の「子ロット候補」「条割プレビュー」が持っている。 */
+    /* **まとめ帯（`splitBandHtml`）は廃止**（§9.156、利用者の指示「条のまとめ
+       表示は不要、図は1つに統合して並べ替えができるものを」）。ロット単位の
+       帯は掴めないので、掴める1条ずつの帯（`.split-visual`）とまったく同じ
+       見た目のものが2つ並び、**動くほうと動かないほうの区別が付かなかった**。
+       ロット・条数・幅は1条ずつの帯とその`title`が持っている。 */
     el.innerHTML=`
       <div class="split-panel-status split-panel-status-applied">✓ ${esc(summary)}</div>
-      ${splitBandHtml(groups)}
       ${needsReconfigure?'<div class="split-mismatch-badge">子ロットデータの更新で条数の構成が変わりました。下で並びを決め直してください。</div>':''}
       ${scrapWidthLineHtml()}`;
   }
