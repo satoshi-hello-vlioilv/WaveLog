@@ -575,23 +575,45 @@ function toleranceListNote(){
  if(kind==='コイル')return '板丈はコイルの設備には無いため出していません。';
  return '板丈は設備の区分が未設定のため出していません（マスタ管理 > 設備の「区分」で コイル／板 を設定してください）。';
 }
+/* 公差の±。**同じ値なら1つにまとめる**（§9.166、利用者の指摘「効いている
+   公差の部分が余裕がなくきつい」）。実データは左右対称のことが多く、
+   `+0.130` `-0.130` と2つの欄に分けると**同じ数字を2度読ませたうえで
+   桁が縦にそろわない**。左右で違うときだけ2つ出す。 */
+function tolPlusMinusText(r){
+ if(!r.plus&&!r.minus)return '';
+ if(r.plus&&r.minus&&r.plus===r.minus)return `±${r.plus}`;
+ return `${r.plus?'+'+r.plus:'+—'} ${r.minus?'−'+r.minus:'−—'}`;
+}
+/* ③の公差は**1項目1枚**で縦に積む（§9.166）。以前は6列の表で、実測430pxの
+   カードに「項目・出どころ・基準・公差＋・公差−・判定範囲」を詰めていたため
+   `3.000 +0.130 -0.130 2.870 〜 3.130`が隙間なく並び、どこまでが1つの数字か
+   読み取れなかった。**縦は余っている**（表の下に空白があった）ので、
+   読む順に2行へ分ける:
+     1行目 … 項目名 と **判定範囲**（確認の面でいちばん読みに来る値）
+     2行目 … その根拠（基準・公差・出どころ）を小さく淡く
+   共通の文字は見出しごと落とす——表全体が「効いている公差」なので、
+   列見出しの「公差＋／公差−」も、出どころの「〜公差」も繰り返さない。 */
 function toleranceListHtml(){
  const rows=toleranceListRows(),note=toleranceListNote();
  if(!rows.length)return '';
- const cell=v=>esc(v||'—');
- const body=rows.map(r=>`<tr class="${r.missing?'is-missing':''}">`
-  +`<th scope="row">${esc(r.name)}</th>`
-  +`<td>${cell(r.source)}</td>`
-  +`<td class="num">${cell(r.base)}</td>`
-  +`<td class="num">${r.plus?'+'+esc(r.plus):'—'}</td>`
-  +`<td class="num">${r.minus?'-'+esc(r.minus):'—'}</td>`
-  +`<td class="num">${r.missing?'<span class="tol-list-missing">登録なし</span>':cell(r.range)}</td>`
-  +'</tr>').join('');
+ const body=rows.map(r=>{
+  const pm=tolPlusMinusText(r);
+  /* 根拠の行。**出どころが差し替わったことは書く**——設定した公差が
+     データに無くて製造公差へ落ちたときに黙っていると、別の公差で
+     判定していることに気づけない。 */
+  const basis=r.missing
+   ?'公差がマスタに登録されていません'
+   :[r.base?`基準 ${r.base}`:'',pm,
+     r.source+(r.fallback?'（指定の公差が無いため）':''),r.note||'']
+     .filter(Boolean).join(' ／ ');
+  return `<li class="tol-card${r.missing?' is-missing':''}" data-tol="${esc(r.key)}">`
+   +`<span class="tol-card-name">${esc(r.name)}</span>`
+   +`<span class="tol-card-range" data-tol-range>${
+      r.missing?'<span class="tol-list-missing">登録なし</span>':esc(r.range||'—')}</span>`
+   +`<span class="tol-card-basis">${esc(basis)}</span></li>`;
+ }).join('');
  return '<div class="tol-list-head">効いている公差</div>'
-  +'<table class="tol-list-table"><thead><tr><th>項目</th><th>出どころ</th>'
-  +'<th class="num">基準</th><th class="num">公差＋</th><th class="num">公差－</th>'
-  +'<th class="num">判定範囲</th></tr></thead>'
-  +`<tbody>${body}</tbody></table>`
+  +`<ul class="tol-cards">${body}</ul>`
   +(note?`<p class="tol-list-note">${esc(note)}</p>`:'');
 }
 window.WL=window.WL||{};

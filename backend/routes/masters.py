@@ -5,7 +5,7 @@ backend/masters.py から移設。ロジックは変更していない(移動の
 が持ち、ここではリクエストの受付とレスポンス整形のみを行う。
 
 設備マスタ/オペレータマスタ(+作業可能設備)/スプール種別/内径種別/機器マスタ/
-フィルタプリセット/列表示(表示マスタ)を提供する。すべてdb/master.sqlite3に保存し、
+フィルタプリセットを提供する。すべてdb/master.sqlite3に保存し、
 テーブルが無ければ初回アクセス時に自動作成する。
 URLはBlueprint分離前と同一(/api/equipment-master 等)。
 """
@@ -36,7 +36,6 @@ from ..repositories.master_repo import (
  COIL_STOP_MASTER_TABLE, ensure_coil_stop_master_table, normalize_coil_stop_name, coil_stop_master_rows,
  DEVICE_MASTER_TABLE, ensure_device_master_table, normalize_device_name, device_master_rows,
  FILTER_PRESET_TABLE, ensure_filter_preset_table, filter_preset_rows,
- COLUMN_DISPLAY_TABLE, ensure_column_display_table, hidden_columns_for, set_hidden_columns,
  SCHEDULE_COLUMN_TABLE, ensure_schedule_column_table, schedule_columns_for, set_schedule_columns,
  SCHEDULE_CONTENT_TABLE, ensure_schedule_content_table, schedule_content_items_for, set_schedule_content_items,
  COLUMN_LAYOUT_TABLE, ensure_column_layout_table, column_layout_for, set_column_layout,
@@ -518,39 +517,6 @@ def filter_preset_delete():
   return jsonify(ok=True,id=pid,updated_by=uid)
  except Exception as e:return jsonify(error=f'フィルタプリセット削除失敗: {e}'),500
 
-@bp.get('/api/column-display-master')
-def column_display_master_list():
- try:
-  dbkey=str(request.args.get('db') or '').strip()
-  if not dbkey:return jsonify(error='対象DBを指定してください。'),400
-  cf=cfg(dbkey)
-  with connect(cf['path'],cf['role']=='readonly') as c:
-   a=tables(c);table=cf['preferred'] if cf['preferred'] in a else (a[0] if a else None)
-   real_columns=cols(c,table) if table else []
-  master=DBS['MASTER']['path'];hidden=set()
-  if master.exists():
-   with connect(master,True) as mc:hidden=hidden_columns_for(mc,dbkey)
-  return jsonify(ok=True,db=dbkey,label=cf['label'],table=table,columns=real_columns,hidden=sorted(hidden & set(real_columns)))
- except Exception as e:return jsonify(error=f'表示マスタ読込失敗: {e}'),500
-
-@bp.post('/api/column-display-master')
-def column_display_master_update():
- try:
-  x=request.get_json(force=True) or {};dbkey=str(x.get('db') or '').strip();hidden=x.get('hidden');uid=request_user_id(x)
-  if not dbkey:return jsonify(error='対象DBを指定してください。'),400
-  if dbkey not in DBS:return jsonify(error='対象DBが不正です。'),400
-  if not isinstance(hidden,list):return jsonify(error='非表示列の指定が不正です。'),400
-  path=DBS['MASTER']['path']
-  with connect(path,False) as c:
-   set_hidden_columns(c,dbkey,hidden,uid)
-  return jsonify(ok=True,db=dbkey,hidden=hidden,updated_by=uid,message='表示設定を保存しました。')
- except Exception as e:return jsonify(error=f'表示マスタ更新失敗: {e}'),500
-
-# ========================================================================
-# スケジュール列表示マスタ(§9.18新設): 設備ごとにスケジュール画面(分割/
-# ポップアップ表示)の仕掛一覧へ出す列を選べるようにする。上の表示マスタ
-# (DB単位・常時・ブロックリスト)とは軸も適用範囲も異なる別マスタ。
-# ========================================================================
 @bp.get('/api/schedule-column-master')
 def schedule_column_master_get():
  try:

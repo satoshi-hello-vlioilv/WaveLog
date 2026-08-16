@@ -130,7 +130,12 @@ _ENDPOINT_EXTRA_MODES={
 # editモード以外で403になる)。
 # 共有DBの写し直し(§9.89)も同じ性質。一覧の「再読込」から呼ばれ、共有上の
 # .sqlite3 を手元のキャッシュへ写すだけで、業務データは1行も書き換えない。
-_READ_ONLY_POST_ENDPOINTS={'rne.rne_extract_run','tables.api_db_mirror_refresh'}
+# **読むだけのPOST**。データソースの下書き確認(§9.168)は、入力中の設定で
+# 実際にファイルを開いて「何ができるか」を返すだけでマスタには1件も書かない。
+# 除外せず表に載せるのは、あとで本物の書込を足したときに無防備にならない
+# ようにするため(CLAUDE.md「読み取り専用のPOSTしか持たないBlueprintも宣言する」)。
+_READ_ONLY_POST_ENDPOINTS={'rne.rne_extract_run','tables.api_db_mirror_refresh',
+                           'path_config.data_source_master_probe'}
 # editモードで許可する際、さらに「現場段取り可否」を要求するエンドポイント。
 # 作業予定を実際に動かす操作だけが対象で、設定系マスタの保存は含めない。
 _FIELD_REORDER_ENDPOINTS={'schedule.plan_reorder'}

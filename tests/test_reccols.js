@@ -143,6 +143,67 @@ async function openList(page){
   rec('セルに生の値のtitleが付いている',tips.n===0||tips.withTitle>0,
       tips.withTitle+' / '+tips.n);
 
+  /* ---- 7b) 見出しの操作（§9.164。仕掛一覧と同じ道具） ----
+     固定するのは「同じ道具が動いていること」と、**この一覧だけが持つ約束**
+     ——見出しから初めて保存する瞬間に隠す列を種まきしないと、幅を1回引いた
+     だけで候補44列が全部並ぶ（§9.162で入れた約束が崩れる）。 */
+  await cleanup();
+  await page.evaluate(()=>{WL.columnLayout.forget('records:list')});
+  await openList(page);
+  const grips=await page.evaluate(()=>{
+   const cells=[...document.querySelectorAll('.record-list-head [data-col]')];
+   return {cols:cells.length,grips:cells.filter(c=>c.querySelector('.col-resize')).length,
+           tip:(cells[1]||{}).title||''};
+  });
+  rec('見出しに列幅の取っ手がある',grips.grips===grips.cols&&grips.cols>0,
+      `${grips.grips}/${grips.cols}`);
+  /* **今の状態を文で言う**（押せるだけでは、今が自動なのか手動なのか分からない）。 */
+  rec('取っ手の使い方と今の幅の状態がtitleに出る',
+      /幅:/.test(grips.tip)&&/ドラッグ/.test(grips.tip)&&/右クリック/.test(grips.tip),grips.tip);
+  const gEl=await page.$('.record-list-head [data-col="ロット番号"] .col-resize');
+  const gb=await gEl.boundingBox();
+  const w0=await page.evaluate(()=>document.querySelector('.record-list-head [data-col="ロット番号"]').getBoundingClientRect().width);
+  await page.mouse.move(gb.x+gb.width/2,gb.y+gb.height/2);
+  await page.mouse.down();
+  await page.mouse.move(gb.x+gb.width/2+80,gb.y+gb.height/2,{steps:8});
+  await page.mouse.up();
+  await page.waitForTimeout(700);
+  const wres=await page.evaluate(()=>({
+   w:Math.round(document.querySelector('.record-list-head [data-col="ロット番号"]').getBoundingClientRect().width),
+   saved:WL.columnLayout.get('records:list').widths['ロット番号'],
+   cols:document.querySelectorAll('.record-list-head [data-col]').length,
+   visible:WL.recordColumns.visible().length}));
+  rec('取っ手を引くと幅が変わって保存される',wres.w>w0+40&&Number(wres.saved)>0,
+      JSON.stringify({前:Math.round(w0),後:wres.w,保存:wres.saved}));
+  rec('幅を引いても列が増えない（既定の15列のまま）',wres.cols===DEFAULT_HEAD.length,
+      `${wres.cols}列 / 見えている${wres.visible}`);
+  /* 右クリックのメニューは仕掛一覧と**同じもの**。 */
+  await page.click('.record-list-head [data-col="検査番号"]',{button:'right'});
+  await page.waitForSelector('.col-head-menu',{timeout:5000});
+  const menu=await page.evaluate(()=>{
+   const m=document.querySelector('.col-head-menu');
+   return {items:[...m.querySelectorAll('button')].map(x=>x.textContent),
+           labels:[...m.querySelectorAll('.chm-label')].map(x=>x.textContent)};
+  });
+  rec('見出しの右クリックで同じメニューが出る',
+      menu.items.includes('この列を隠す')&&menu.items.includes('幅を内容に合わせる（自動）')
+      &&menu.items.some(t=>/固定/.test(t))&&menu.items.includes('表示列の設定を開く…')
+      &&menu.labels.some(t=>/^幅:/.test(t)),JSON.stringify(menu.items.slice(0,4)));
+  await page.click('.col-head-menu .chm-hide');
+  await page.waitForTimeout(700);
+  const hid=await head(page);
+  rec('「この列を隠す」がその場で効く',
+      !hid.includes('検査番号')&&hid.length===DEFAULT_HEAD.length-1,hid.join('／'));
+  /* 自動へ戻す（幅の指定も固定も消える）。 */
+  await page.click('.record-list-head [data-col="ロット番号"]',{button:'right'});
+  await page.waitForSelector('.col-head-menu',{timeout:5000});
+  await page.click('.col-head-menu .chm-autofit');
+  await page.waitForTimeout(700);
+  const auto=await page.evaluate(()=>({
+   w:WL.columnLayout.get('records:list').widths['ロット番号'],
+   mode:WL.columnLayout.widthMode('records:list','ロット番号')}));
+  rec('「幅を内容に合わせる」で自動へ戻る',!auto.w&&auto.mode==='auto',JSON.stringify(auto));
+
   /* ---- 8) 閲覧モードでは「表示列」を出さない（保存が403になるため） ---- */
   await post('/api/access-mode',{mode:'view'});
   await page.reload({waitUntil:'domcontentloaded'});

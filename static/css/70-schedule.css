@@ -526,7 +526,12 @@
   box-shadow:none;text-align:left;overflow:hidden;cursor:pointer;
 }
 .type-chip-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-.type-chip-state{font-size:var(--fs-micro);font-weight:700;opacity:.85;flex:none;font-variant-numeric:tabular-nums}
+/* 件数（`3/12`）は**項目名と同じ大きさ**にする（§9.166、利用者の指摘
+   「進捗状況表示の数値は少し小さい」）。ここは進捗そのもの——チップの中で
+   いちばん**読みに来ている**値なのに、名前より1段小さかった。`inherit`に
+   すると器の大きさに追随するので、狭い画面（`--fs-micro`へ落とす規則）でも
+   名前と揃ったままになる。 */
+.type-chip-state{font-size:inherit;font-weight:700;opacity:.85;flex:none;font-variant-numeric:tabular-nums}
 .type-chip:hover{border-color:var(--teal);background:#fff7e8}
 .type-chip--done{background:var(--teal);border-color:var(--teal);color:#fff}
 .type-chip--done:hover{background:var(--teal-dark);border-color:var(--teal-dark)}

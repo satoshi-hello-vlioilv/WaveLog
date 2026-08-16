@@ -293,6 +293,40 @@ const settle=async page=>{
       s3.状態==='均等'&&s3.OS==='25.0'&&s3.DS==='25.0'&&s3.保存値===''
       &&s3.均等ボタン===false,JSON.stringify(s3));
 
+  /* ---- 図の上で直す（§9.167、利用者の指示「マウス操作で直接屑幅を調節して
+     修正することもできるように」） ----
+     数値欄だけだと「どちらへどれだけ寄るのか」を頭の中で図へ翻訳しないと
+     決められない。条の束の縁をそのまま掴めること・引いた結果が数値欄と
+     保存値へ入ること・ダブルクリックで均等へ戻ることを固定する。 */
+  await feedScrap();await settle(page);
+  const gripEl=await page.$('#splitScrapGripOs');
+  const gb=gripEl?await gripEl.boundingBox():null;
+  rec('条の束の縁につまみが出る',!!gb&&gb.width>0&&gb.height>0,JSON.stringify(gb));
+  if(gb){
+   /* **つまみは条の束の縁にある**（屑の帯と束の境目）。ずれていると、
+      掴んだつもりで別のものを掴む。 */
+   const sb=await (await page.$('#splitVisualStrip')).boundingBox();
+   rec('つまみの位置が条の束の左端に合っている',Math.abs((gb.x+gb.width/2)-sb.x)<=2,
+       JSON.stringify({grip:Math.round(gb.x+gb.width/2),strip:Math.round(sb.x)}));
+   const cx=gb.x+gb.width/2,cy=gb.y+gb.height/2;
+   await page.mouse.move(cx,cy);await page.mouse.down();
+   await page.mouse.move(cx+8,cy,{steps:6});await page.mouse.up();
+   await settle(page);
+   const d=await scrap();
+   rec('つまみを右へ引くとOS側が広がる',Number(d.保存値)>25,JSON.stringify({保存値:d.保存値,OS:d.OS}));
+   rec('引いた結果は数値欄にもそのまま出る',Number(d.OS)===Number(d.保存値),
+       JSON.stringify({OS:d.OS,保存値:d.保存値}));
+   rec('引いた結果は片寄せとして状態に出る',/片寄せ/.test(d.状態),d.状態);
+   /* ダブルクリックで均等へ。掴んだ場所のまま戻せること（「均等に戻す」
+      ボタンまで視線を動かさなくてよい）。 */
+   const g2=await (await page.$('#splitScrapGripOs')).boundingBox();
+   await page.mouse.dblclick(g2.x+g2.width/2,g2.y+g2.height/2);
+   await settle(page);
+   const d2=await scrap();
+   rec('つまみのダブルクリックで均等へ戻る',d2.状態==='均等'&&d2.保存値==='',
+       JSON.stringify({状態:d2.状態,保存値:d2.保存値}));
+  }
+
   /* **ダイアログで止めない。** 以前はalertだったので、ドラッグのたびに
      手が止まった。理由は状態行の文字で伝える。 */
   rec('操作の途中でダイアログを出さない',dialogs.length===0,dialogs.join(' / '));

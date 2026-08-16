@@ -39,7 +39,7 @@ G['一覧'] = ['test_nav', 'test_navdyn', 'test_listcache', 'test_listperf', 'te
              'test_audit', 'test_sub', 'test_uisize', 'test_ttlcache']
 G['列'] = ['test_collayout', 'test_colformat', 'test_colrule', 'test_colsort', 'test_lcpanel',
            'test_colscache', 'test_colsripple', 'test_displayrule', 'test_colmenu',
-           'test_colpreset', 'test_formula', 'test_reccols']
+           'test_colpreset', 'test_formula', 'test_reccols', 'test_rpblocks']
 G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'test_sccat',
                      'test_scbalance', 'test_scbatch', 'test_screorder', 'test_scperm',
                      'test_scperf', 'test_wkfast', 'test_scsplit', 'test_scprint', 'test_scdrop', 'test_sccontent', 'test_workable',
@@ -97,7 +97,9 @@ RULES = [
     ('static/js/lot-split.js', g('test_scsplit', 'test_orphan', 'test_sub', 'test_splitlive')),
     ('static/js/master-maint.js', g('マスタ', 'test_headbar', 'test_datasource')),
     ('static/js/calendar-view.js', g('test_calscale', 'test_histdel', 'test_headbar')),
-    ('static/js/report-dashboard.js', g('test_screport', 'test_hdr', 'test_calscale')),
+    # 帳票の塊の組み換え(§9.169)は列レイアウトマスタに載るので列の網も回す。
+    ('static/js/report-dashboard.js', g('test_screport', 'test_hdr', 'test_calscale',
+                                        'test_rpblocks', 'test_collayout')),
     ('static/js/quality-analysis.js', g('test_uiux', 'test_hdr', 'test_fit', 'test_theme')),
     ('static/js/defect-locator.js', g('test_defect')),
     ('static/js/log-view.js', g('ログ')),
@@ -121,8 +123,10 @@ RULES = [
     ('static/css/95-boot.css', g('見た目', '起動')),
     ('static/css/70-schedule.css', g('見た目', 'test_sccols', 'test_split_layout',
                                       'test_scbalance', 'test_scprint')),
+    ('static/css/35-split.css', g('見た目', 'test_splitlive', 'test_split_layout')),
     ('static/css/40-records.css', g('見た目', 'test_recperm', 'test_reccols')),
     ('static/css/50-master.css', g('見た目', 'マスタ', 'test_dscap')),
+    ('static/css/60-report.css', g('見た目', 'test_screport', 'test_rpblocks')),
     ('static/css/88-logs.css', g('見た目', 'test_logview')),
 
     # --- サーバー(ルート) --------------------------------------------

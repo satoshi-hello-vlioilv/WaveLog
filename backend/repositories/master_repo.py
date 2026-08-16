@@ -2,12 +2,12 @@
 
 backend/masters.py から移設。テーブル定義(ensure_*_table)・正規化
 (normalize_*_name)・読み取り(*_master_rows/read_*_names)・書き込み補助
-(set_operator_equipment/set_hidden_columns)など、リクエスト処理(Flask)に
+(set_operator_equipment等)など、リクエスト処理(Flask)に
 依存しないデータアクセスをここへ集める。CRUDのルート受付は
 backend/routes/masters.py が持つ。
 
 設備マスタ/オペレータマスタ(+作業可能設備)/スプール種別/内径種別/機器マスタ/
-フィルタプリセット/列表示(表示マスタ)を提供する。すべてdb/master.sqlite3に保存し、
+フィルタプリセットを提供する。すべてdb/master.sqlite3に保存し、
 テーブルが無ければ初回アクセス時に自動作成する。
 """
 import json
@@ -653,63 +653,14 @@ def field_reorder_terminal_count(c,equipment):
  return sum(1 for r in access_permission_master_rows(c) if bool(r[9]) and normalize_equipment_name(str(r[10] or '').strip())==target)
 
 # ========================================================================
-# 表示マスタ（列表示設定）
-#  - 対象DB（仕掛一覧=SIKALOTNOW、品質データ=SIKALOTDEF等、DBS参照）ごとに、
-#    どの列を一覧から非表示にするかを管理する。
-#  - 行の存在＝非表示。行が無い列は既定で表示（互換ポリシー、他マスタと同じ考え方）。
-#    オペレータ設備マスタと同じ「完全同期」方式で保存する。
-# ========================================================================
-COLUMN_DISPLAY_TABLE='表示マスタ'
-def ensure_column_display_table(c):
- names=tables(c);created=False
- if COLUMN_DISPLAY_TABLE not in names:
-  cur=c.cursor()
-  cur.execute('CREATE TABLE [表示マスタ] ([ID] INTEGER PRIMARY KEY AUTOINCREMENT, [対象] TEXT, [列名] TEXT, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
-  cur.execute('CREATE UNIQUE INDEX [UX_表示マスタ] ON [表示マスタ] ([対象],[列名])')
-  c.commit();created=True
- ensure_audit_columns(c,COLUMN_DISPLAY_TABLE)
- return created
-
-def hidden_columns_for(c,dbkey):
- # 対象=dbkey の非表示列名の集合を返す。テーブル未作成時は空集合。
- if COLUMN_DISPLAY_TABLE not in tables(c):return set()
- cur=c.cursor();cur.execute('SELECT [列名] FROM [表示マスタ] WHERE [対象]=?',[dbkey])
- return {str(r[0] or '').strip() for r in cur.fetchall() if str(r[0] or '').strip()}
-
-def hidden_columns_for_db(dbkey):
- # api_table() から使う簡易ヘルパー。db/master.sqlite3が未整備/未接続でも
- # 一覧表示自体は継続できるよう、失敗時は空集合（＝全列表示）を返す。
- try:
-  path=DBS['MASTER']['path']
-  if not path.exists():return set()
-  with connect(path,True) as c:
-   return hidden_columns_for(c,dbkey)
- except Exception:
-  return set()
-
-def set_hidden_columns(c,dbkey,names,uid):
- # 指定対象DBの非表示列を names の内容に完全同期する（増分の追加・削除）。
- ensure_column_display_table(c)
- cur=c.cursor()
- wanted={str(n).strip() for n in (names or []) if str(n or '').strip()}
- cur.execute('SELECT [ID],[列名] FROM [表示マスタ] WHERE [対象]=?',[dbkey])
- existing={str(r[1] or '').strip():r[0] for r in cur.fetchall()}
- for nm,rid in existing.items():
-  if nm not in wanted:cur.execute('DELETE FROM [表示マスタ] WHERE [ID]=?',[rid])
- for nm in wanted:
-  if nm not in existing:
-   cur.execute('INSERT INTO [表示マスタ] ([対象],[列名],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,Now(),Now())',[dbkey,nm,uid,uid])
- c.commit()
-
-# ========================================================================
 # スケジュール列表示マスタ（§9.18新設）
-#  - 上の表示マスタ(対象=DB単位、行の存在=非表示のブロックリスト)とは
-#    軸が異なる: 設備単位(対象=設備名)で、スケジュール画面の分割/ポップ
-#    アップ表示(list-view.js renderGrid)にだけ効くアローリスト。
-#    行が1件も無い設備=未設定=全列表示（表示マスタ・他マスタと同じ
-#    「行が無ければ既定」の互換ポリシー）。表示マスタ(DB全体・常時)と
-#    役割が違うため、既存テーブルへ列を足して意味を上書きするのではなく
-#    別テーブルにした。
+#  - 設備単位(対象=設備名)で、スケジュール画面の分割/ポップアップ表示
+#    (list-view.js renderGrid)にだけ効くアローリスト。行が1件も無い設備=
+#    未設定=全列表示（他マスタと同じ「行が無ければ既定」の互換ポリシー）。
+#  - **DB単位で列を落とす「表示マスタ」は廃止した**(§9.165)。同じことを
+#    列レイアウトマスタが対象ごとにもっと細かく持つようになり、しかも
+#    サーバーが落とすと画面側で選び直せない(候補に出ない)ためで、
+#    残っている物理テーブルは「テーブル生データ」から中身だけ見られる。
 # ========================================================================
 SCHEDULE_COLUMN_TABLE='スケジュール列表示マスタ'
 def ensure_schedule_column_table(c):
@@ -759,7 +710,7 @@ def set_schedule_columns(c,equipment,column_names,uid):
 # ------------------------------------------------------------------------
 # 作業スケジュールのタイムライン各行「内容」欄に、どの項目をどの順で並べるか。
 # 上のスケジュール列表示マスタ(仕掛一覧に出す"列"の絞り込み)とは目的が違う:
-#   列表示マスタ … 一覧の横方向に何を見せるか。選ぶ数は多い(10列でも普通)。
+#   スケジュール列表示マスタ … 一覧の横方向に何を見せるか。選ぶ数は多い。
 #   内容表示マスタ … 1行の要約文を何で組み立てるか。選ぶ数は少ない(2〜4項目)。
 # 以前は1つのマスタで両方を兼ねていたため、「一覧は10列見たいが内容欄は
 # ロット番号と材質だけにしたい」が表現できず、どちらも中途半端になっていた
@@ -810,7 +761,6 @@ def set_schedule_content_items(c,equipment,item_names,uid):
 # 列レイアウトマスタ（§9.88新設）
 #  - 一覧・タイムラインの「列の並び順」と「列幅」を覚える。
 #  - 既存の3つの列関連マスタとは**軸が違う**ので別テーブルにする:
-#      表示マスタ             … DB単位・どの列を隠すか(ブロックリスト)
 #      スケジュール列表示マスタ … 設備単位・どの列を出すか(アローリスト)
 #      スケジュール内容表示マスタ … 設備単位・「内容」に出す項目と順序
 #    こちらは**どの画面でも使える「並びと幅」**だけを持つ。列を出すか

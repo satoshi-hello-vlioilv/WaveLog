@@ -1013,9 +1013,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     取り直しの対象はどのみち「可になっていない行」だけなので、既に判定済みの
     値を残しておいても古い判定が居座ることはない。 */
  function invalidateWorkable(){scWorkable={...scWorkable,at:0}}
- /* 仕掛一覧から「ロット番号 -> 残仕掛設備ｺｰｽ」を作る。列表示マスタで
-    残仕掛設備ｺｰｽが非表示にされていても判定に要るので include_hidden=1
-    を付ける(CLAUDE.md「内部計算用の問い合わせには include_hidden=1」)。 */
+ /* 仕掛一覧から「ロット番号 -> 残仕掛設備ｺｰｽ」を作る。要る列は
+    `columns=`で名指しする(§9.94。実データは200列を超える)。 */
  /* 判定材料の集め方(§9.57)。
     以前は仕掛を`page_size=5000`で1回読んで索引にしていたが、サーバー側は
     `page_size`を**500件で頭打ち**にしている(backend/routes/tables.py)。
@@ -1109,7 +1108,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    if(table){
     for(let page=1;page<=WORKABLE_MAX_PAGES;page++){
      const q=new URLSearchParams({db:workDbKey(),table,page,page_size:WORKABLE_PAGE_SIZE,
-       search:'',include_hidden:'1'});
+       search:''});
      const d=await api('/api/table?'+q);
      pages=page;total=Number(d.count||0);
      if(!cols){
@@ -1161,7 +1160,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    while(idx<targets.length){
     const lot=targets[idx++];
     try{
-     const q=new URLSearchParams({db:workDbKey(),table,page:1,page_size:1,include_hidden:'1',
+     const q=new URLSearchParams({db:workDbKey(),table,page:1,page_size:1,
       filters:JSON.stringify([{column:cols.lotCol,op:'eq',value:lot}])});
      const d=await api('/api/table?'+q);
      const row=(d.rows||[])[0];

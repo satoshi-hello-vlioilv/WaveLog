@@ -199,6 +199,25 @@
 /* 片寄せしている側の屑帯は**色で言わずに文字で言う**（帯の中に「OS 10.0」と
    出るので、どちらへ寄っているかは数字で読める）。 */
 .split-visual-scrap.is-biased{outline:1.5px solid var(--warn-border);outline-offset:-1.5px}
+/* ---- 屑幅の片寄せを掴むつまみ（§9.167） ----
+   条束の左右の縁に置く。**器の子として置き、位置だけを書き換える**
+   （帯の中へ入れると0.1mm動くたびに作り直されて掴んだ手が離れる）。
+   ルーラー(z-index:2)より上、掴んでいる間だけ色を変えて追従が効いている
+   ことを見せる。 */
+.split-scrap-grip{
+  position:absolute;top:0;bottom:0;z-index:3;
+  width:calc(var(--space-2) + 2px);transform:translateX(-50%);
+  cursor:ew-resize;touch-action:none}
+.split-scrap-grip[hidden]{display:none}
+.split-scrap-grip::after{
+  content:"";position:absolute;top:8%;bottom:8%;left:50%;width:2px;
+  transform:translateX(-50%);border-radius:var(--radius-xs);
+  background:var(--line-strong);opacity:.55;transition:opacity .12s ease,background .12s ease}
+.split-visual-measure:hover .split-scrap-grip::after{opacity:1}
+.split-visual-measure.is-scrap-dragging .split-scrap-grip::after{background:var(--teal);opacity:1;width:3px}
+/* 動かしている間は文字を選ばせない（掴んだまま横へ振ると帯の文字が
+   青く反転して、動かしているものが分からなくなる）。 */
+.split-visual-measure.is-scrap-dragging{user-select:none;cursor:ew-resize}
 .split-ghost-btn{font-weight:700;color:#3a565d;background:#fff;border:1px solid #c4d0d4;cursor:pointer}
 .split-ghost-btn:hover:not(:disabled){background:#eef2f4;border-color:#9aabab}
 .split-ghost-btn:disabled{color:#b6c2c4;cursor:not-allowed}

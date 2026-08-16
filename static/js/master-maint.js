@@ -72,48 +72,19 @@
    cols:[{k:'equipment',label:'対象設備',grow:2,format:'equipmentTarget'},{k:'category',label:'分類',grow:1},{k:'name',label:'名称',grow:2},{k:'standardMinutes',label:'標準所要分',grow:1}],
    hint:'作業スケジュール(docs/SCHEDULE_MODE_DESIGN.md §5.3)の設備停止予定で選べる名称と、標準所要分(分)です。1件の停止内容を複数の設備へまとめて登録できます。「すべての設備」を選べば、設備が増えても登録し直す必要がありません。標準所要分が設備ごとに違う場合は、設備を分けて別々に登録してください(同じ名称で対象設備が重なる登録はできません。どちらの時間が効くのか決まらなくなるためです)。「突発停止」は現場からの連絡を受けた計画担当が投入する運用のため、名称に登録しておくだけで自動では動きません。'},
   {group:'schedule',key:'shiftMaster',label:'勤務形態',icon:'勤',special:'shift-pattern',endpoint:'/api/schedule/shift-pattern-master'},
-  {group:'system',key:'columnDisplay',label:'列表示',icon:'列',special:'column-display'},
   {group:'system',key:'importBackup',label:'データ引継ぎ',icon:'継',special:'import-backup'},
-  /* データソース(§9.79)。「RNEから抽出して .sqlite3 を作り、それを一覧として
-     読む」という1本の流れを1行で持つ。入力欄は**その流れの順**に3つへ束ねる:
-       ① どのデータか(名前) → ② どこから作るか(RNE) → ③ どこを読むか(ファイル)
-     ②と③を隣り合わせに置くのが要点で、以前は抽出先と読込先が別々のコードに
-     書かれていたため「抽出しているのに読まない」設定が作れた。 */
-  {group:'system',key:'dataSource',label:'データソース',icon:'源',endpoint:'/api/data-source-master',hasDelete:true,
-   fields:[{k:'key',label:'キー',required:true,key:true,fieldGroup:'① どのデータか',
-            hint:'一覧を指すための識別子です。半角英数と _ のみ（例: SIKALOTNOW）。自由に付けられますが、あとから変えると、この一覧向けの登録フィルタ・表示列の設定が結び付かなくなります。測定や予定投入に使うかどうかは、キーの名前ではなく下の「役割」で決まります。'},
-           {k:'label',label:'表示名',required:true,fieldGroup:'① どのデータか',
-            hint:'左メニュー「一覧を見る」に出る名前です。'},
-           {k:'purpose',label:'役割',type:'select',options:['その他','作業','品質'],fieldGroup:'① どのデータか',
-            hint:'この一覧をアプリがどう扱うかです。「作業」＝測定・作業スケジュールへの投入の対象（この役割が1つ無いと測定も予定投入もできません）。「品質」＝作業の一覧へ結合して表示する品質データ。「その他」＝一覧として見るだけ。各役割は1件だけです。'},
-           {k:'order',label:'表示順',type:'number',min:0,max:9999,fieldGroup:'① どのデータか',
-            hint:'小さいほど上に出ます。空欄は0扱いです。'},
-           {k:'enabled',label:'状態',type:'select',options:['有効','無効'],fieldGroup:'① どのデータか',
-            hint:'無効にすると一覧にも抽出対象にも出ません（記録は残ります）。'},
-           {k:'rne',label:'RNEファイル',fieldGroup:'② どこから作るか（RNE抽出）',
-            hint:'抽出定義のファイル名（例: SIKALOTNOW.RNE）。ファイル名だけなら「RNE資材の置き場」の rne/ 配下として探します。絶対パスも指定できます。空欄にすると抽出せず、③のファイルを読むだけになります。'},
-           {k:'table',label:'抽出テーブル',fieldGroup:'② どこから作るか（RNE抽出）',
-            hint:'RNEの中の表の名前。未入力なら「仕掛」です。'},
-           {k:'output',label:'出力ファイル',type:'path',fieldGroup:'③ どこを読むか',
-            hint:'②で作る .sqlite3 の置き場所。ファイル名だけなら db/ 配下です。パス設定の「参照データの取得元」がローカルのとき、一覧はこのファイルを読みます。'},
-           {k:'share',label:'共有パス',type:'path',fieldGroup:'③ どこを読むか',
-            hint:'ネットワーク共有側の .sqlite3。取得元がネットワークのときはこちらを読みます。ファイル名だけなら既定の共有フォルダ配下として探します（絶対パスを入れればその場所を読みます）。'},
-           {k:'preferred',label:'既定テーブル',fieldGroup:'③ どこを読むか',
-            hint:'この一覧を開いた直後に選ぶ表の名前。未入力なら②の抽出テーブルと同じです。'}],
-   cols:[{k:'key',label:'キー',grow:1},{k:'label',label:'表示名',grow:2},
-         {k:'purpose',label:'役割',grow:1},
-         {k:'rne',label:'RNE',grow:2,format:'rneState'},
-         {k:'outputPath',label:'出力ファイル',grow:3,format:'fileState'},
-         {k:'activePath',label:'今読んでいる場所',grow:3},
-         /* 役割を選んだだけでは決まらないので、**実際にできること**を出す
-            （§9.163）。理由はマウスを乗せると出るほか、行を開くと全文が出る。 */
-         {k:'capability',label:'できること',grow:3,format:'capability'},
-         {k:'enabled',label:'状態',grow:1}],
-   extraHtml:editing=>capabilityPanelHtml(editing&&editing.capability),
-   hint:'参照するデータは、すべて「RNEから抽出 → .sqlite3 を作る → それを一覧として読む」という同じ流れで増やせます。1行が1つのデータソースで、②で作る先と③で読む先が同じ行に並ぶので、「抽出しているのに読んでいない」というずれが起きません。キー・表示名・読み込み先の変更は、接続先を起動時に1回だけ決める設計のため、サーバーを再起動してから反映されます。RNEファイルと symnavim.conf の置き場は「パス設定」タブで指定します。'},
-  {group:'system',key:'pathConfig',label:'パス設定',icon:'路',special:'path-config',endpoint:'/api/path-config-master'},
+  /* データ接続(§9.168)。**1行＝1つのデータソース**で、「これは何か／どこから
+     読むか／この設定で何ができるか」を1枚のカードにまとめる。読み込み先の
+     個別上書きは以前パス設定タブにあったが、同じ「どこを読むか」の設定が
+     2画面に分かれていたため、**データソース側へ寄せた**（保存先は今までどおり
+     パス設定マスタなので、検証用の差し替えはそのまま効く）。 */
+  {group:'system',key:'dataSource',label:'データ接続',icon:'源',special:'data-source',
+   titleText:'データ接続 — このアプリが読むデータ',
+   endpoint:'/api/data-source-master',hasDelete:true},
+  {group:'system',key:'pathConfig',label:'共通設定',icon:'共',special:'path-config',
+   titleText:'共通設定 — この端末の共有パス・RNE・間隔',endpoint:'/api/path-config-master'},
   // 旧「マスタ一覧」(サイドバーのMASTERナビ→汎用グリッド)をここへ統合した
-  // (ARCHITECTURE.md「マスタ管理の画面形態」)。上のタブが扱わないテーブル(表示マスタ・スケジュール列表示マスタ
+  // (ARCHITECTURE.md「マスタ管理の画面形態」)。上のタブが扱わないテーブル(スケジュール列表示マスタ
   // 等)も含め、master.sqlite3の中身をそのまま確認するための読み取り専用タブ。
   {group:'system',key:'rawTable',label:'テーブル生データ',icon:'表',special:'raw-table',readOnly:true},
  ];
@@ -162,7 +133,7 @@
     という指摘のため、帳票(rp-mode)・実績カレンダー(cal-mode)・作業スケジュール
     (sc-mode)と同じメイン画面統合型(body.mm-mode + #masterMaintPanel)へ
     作り直した。内側の構造(.mm-dialog以下)とid(#masterMaintNav/
-    #masterMaintForm/#masterMaintList等)は一切変えていないため、列表示・
+    #masterMaintForm/#masterMaintList等)は一切変えていないため、
     データ引継ぎ・換算係数・パス設定といった特殊タブの描画コードは
     そのまま動く(.mm-panel .mm-dialogのCSSで寸法だけ上書きする)。 */
  function ensureMaintPanel(){
@@ -314,45 +285,6 @@
  const CAPABILITY_LABEL={list:'一覧として見る',measure:'測定を開く',
                          plan:'スケジュールへ投入',quality:'品質として結合'};
  const CAPABILITY_SHORT={list:'一覧',measure:'測定',plan:'予定',quality:'結合'};
- /* 一覧の1マス。**色だけで伝えない**ので、印の隣に必ず名前を出す。 */
- function capabilityCellText(cap){
-  const f=(cap&&cap.features)||{};
-  if(!Object.keys(f).length)return cap&&cap.error?'確かめられません':'—';
-  return CAPABILITY_ORDER.filter(k=>f[k])
-   .map(k=>`${CAPABILITY_SHORT[k]} ${f[k].ok?'✓':'—'}`).join('／');
- }
- function capabilityCellTitle(cap){
-  const f=(cap&&cap.features)||{};
-  const lines=CAPABILITY_ORDER.filter(k=>f[k])
-   .map(k=>`${CAPABILITY_LABEL[k]}: ${f[k].ok?'できます':'できません'} — ${f[k].note||''}`);
-  if(cap&&cap.error)lines.unshift(cap.error);
-  return lines.join('\n');
- }
- /* 編集ウィンドウの最後に置く読み取り専用の1枚。**入力欄ではないので枠を
-    入力欄風にしない**（押せそうに見える。§9.129）。 */
- function capabilityPanelHtml(cap){
-  if(!cap)return '';
-  const f=cap.features||{};
-  const rows=CAPABILITY_ORDER.filter(k=>f[k]).map(k=>{
-   const v=f[k];
-   return `<div class="mm-cap-row${v.ok?' is-ok':' is-ng'}">
-     <span class="mm-cap-mark">${v.ok?'できます':'できません'}</span>
-     <span class="mm-cap-name">${esc(CAPABILITY_LABEL[k])}</span>
-     <span class="mm-cap-note">${esc(v.note||'')}${v.detail?`<i>${esc(v.detail)}</i>`:''}</span>
-    </div>`;
-  }).join('');
-  const where=cap.table
-   ? `読んだのは表「${cap.table}」の${cap.columnCount}列です。`
-   : '';
-  return `<h4 class="mm-fieldgroup">④ この設定でできること</h4>
-   <div class="mm-cap">
-    ${cap.error?`<p class="mm-cap-error">${esc(cap.error)}</p>`:''}
-    ${rows||'<p class="mm-cap-error">まだ確かめられていません。</p>'}
-    <p class="mm-cap-foot">${esc(where)}登録内容と実際のファイルの両方を見て判定しています。
-     読み込み先はサーバー起動時に1回だけ決まるので、変えたあとは再起動すると判定も更新されます。</p>
-   </div>`;
- }
-
  /* 一覧の表示用テキスト。保存値そのままだと '*' が生で見えて意味が伝わらない。 */
  function cellText(col,value){
   const v=String(value??'');
@@ -373,7 +305,6 @@
    if(!v.trim())return '';
    return v+(col.row&&col.row.outputExists===false?'  （未作成）':'');
   }
-  if(col.format==='capability')return capabilityCellText(col.row&&col.row.capability);
   if(col.format==='equipmentTarget'){
    if(!v.trim())return '';
    return v.trim()===EQUIPMENT_ALL?'すべての設備':v.replace(/、/g,',').split(',').map(s=>s.trim()).filter(Boolean).join(' / ');
@@ -553,6 +484,8 @@
    ?'キー項目（名称・区分など）も変更できます。保存すると同じIDのまま更新されます。'
    :'必須(*)を入力して登録します。';
   $('#maintEditorSave').textContent=editing?'更新を保存':'追加登録';
+  modal.querySelector('.mm-editor-dialog')?.classList.remove('is-wide');
+  $('#maintEditorSave').onclick=()=>submitMaint('#maintEditorForm');
   const form=$('#maintEditorForm');
   form.innerHTML=`${def.hint?`<p class="mm-def-hint">${esc(def.hint)}</p>`:''}
    <div class="mm-form-fields">${buildFieldControls(def,editing)}${
@@ -564,7 +497,11 @@
  }
  function closeMaintEditor(){
   const modal=$('#maintEditorModal');if(!modal||modal.hidden)return;
-  modal.hidden=true;maintState.editing=null;renderMaintList();
+  modal.hidden=true;maintState.editing=null;
+  /* 描き直す先はタブごとに違う。**汎用の一覧を呼ぶと専用タブの中身が
+     消える**ので、いまのタブに合わせる。 */
+  if(currentDef().special==='data-source'){dsState.editing=null;renderDataSourceList();return}
+  renderMaintList();
  }
  /* 入力支援の配線(§9.49)。buildFieldControls()が出した各型を動かす。
     どの型も「data-field を持つ要素の value が最終的な値」という約束を守るので、
@@ -1049,14 +986,17 @@
    progress:'登録済みの内容を取得しています'},()=>loadMaintInner(force));
  }
  async function loadMaintInner(force){
-  const def=currentDef();const title=$('#masterMaintTitle');if(title)title.textContent=def.label+'マスタ';
+  const def=currentDef();const title=$('#masterMaintTitle');
+  /* 見出しは**その画面の呼び名**。「〜マスタ」を機械的に足すと
+     「データ接続マスタ」のような読みにくい名前ができる。 */
+  if(title)title.textContent=def.titleText||(def.label+'マスタ');
   // 設定ページ形式(パス設定・§9.68)はフォーム自体がスクロール領域になる。
   // タブを移ったら必ず外す(付いたままだと他のマスタで上部フォームが
   // 伸び縮みして一覧の高さが安定しない)。
   $('#masterMaintForm')?.classList.remove('mm-form-page');
-  if(def.special==='column-display'){setMaintSearchVisible(false);return loadColumnDisplayMaint(force)}
   if(def.special==='import-backup'){setMaintSearchVisible(false);return loadImportBackupMaint(force)}
   if(def.special==='load-factor'){setMaintSearchVisible(false);return loadLoadFactorMaint(force)}
+  if(def.special==='data-source'){setMaintSearchVisible(false);return loadDataSourceMaint(force)}
   if(def.special==='path-config'){setMaintSearchVisible(false);return loadPathConfigMaint(force)}
   if(def.special==='shift-pattern'){setMaintSearchVisible(false);return loadShiftPatternMaint(force)}
   if(def.special==='raw-table'){setMaintSearchVisible(false);return loadRawTableMaint(force)}
@@ -1080,77 +1020,9 @@
   }catch(e){if(list)list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
  }
 
- /* ---------- 列表示マスタ（仕掛一覧・品質データの列表示/非表示を管理） ---------- */
- let columnDisplayState={dbs:[],dbKey:'',columns:[],hidden:[],loading:false};
- async function ensureColumnDisplayDbs(){
-  if(columnDisplayState.dbs.length)return columnDisplayState.dbs;
-  try{
-   const r=await api('/api/catalog');
-   columnDisplayState.dbs=(r&&r.databases||[]).filter(d=>d.role==='readonly');
-  }catch(e){columnDisplayState.dbs=[]}
-  if(!columnDisplayState.dbKey&&columnDisplayState.dbs.length)columnDisplayState.dbKey=columnDisplayState.dbs[0].key;
-  return columnDisplayState.dbs;
- }
- async function loadColumnDisplayMaint(force){
-  const form=$('#masterMaintForm'),list=$('#masterMaintList');
-  if(!form||!list)return;
-  await ensureColumnDisplayDbs();
-  if(!columnDisplayState.dbKey){form.innerHTML='';list.innerHTML='<div class="mm-empty">対象となる一覧データベースがありません。</div>';return}
-  if(force||list.dataset.cdLoaded!==columnDisplayState.dbKey){
-   list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
-   renderColumnDisplayForm();
-   try{
-    const r=await api('/api/column-display-master?db='+encodeURIComponent(columnDisplayState.dbKey));
-    columnDisplayState.columns=(r&&r.columns)||[];columnDisplayState.hidden=(r&&r.hidden)||[];
-    list.dataset.cdLoaded=columnDisplayState.dbKey;
-    renderColumnDisplayList();
-   }catch(e){list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
-  }else{
-   renderColumnDisplayForm();renderColumnDisplayList();
-  }
- }
- function renderColumnDisplayForm(){
-  const form=$('#masterMaintForm');if(!form)return;
-  const tabs=columnDisplayState.dbs.map(d=>`<button type="button" class="mm-cd-tab${d.key===columnDisplayState.dbKey?' active':''}" data-cd-db="${esc(d.key)}">${esc(d.label)}</button>`).join('');
-  form.innerHTML=`<div class="mm-form-head"><span class="mm-mode-chip new">列表示設定</span></div>
-   <div class="mm-cd-toolbar">
-    <div class="mm-cd-dbtabs">${tabs}</div>
-    <div class="mm-cd-actions">
-     <button type="button" id="mmCdShowAll" class="mm-btn-ghost sm">すべて表示</button>
-     <button type="button" id="mmCdHideAll" class="mm-btn-ghost sm">すべて非表示</button>
-     <button type="button" id="mmCdSave" class="mm-btn-primary">この画面の表示設定を保存</button>
-    </div>
-   </div>
-   <p class="mm-form-hint">チェックを外した列は、対応する一覧画面（仕掛一覧・品質データ）から非表示になります。未設定の列は既定で表示されます。</p>`;
-  form.onsubmit=ev=>ev.preventDefault();
-  form.querySelectorAll('[data-cd-db]').forEach(b=>b.onclick=()=>{columnDisplayState.dbKey=b.dataset.cdDb;loadColumnDisplayMaint(true)});
-  const showAll=$('#mmCdShowAll'),hideAll=$('#mmCdHideAll'),save=$('#mmCdSave');
-  if(showAll)showAll.onclick=()=>document.querySelectorAll('#masterMaintList [data-cd-col]').forEach(b=>b.checked=true);
-  if(hideAll)hideAll.onclick=()=>document.querySelectorAll('#masterMaintList [data-cd-col]').forEach(b=>b.checked=false);
-  if(save)save.onclick=()=>saveColumnDisplayMaint();
- }
- function renderColumnDisplayList(){
-  const list=$('#masterMaintList');if(!list)return;
-  const hiddenSet=new Set(columnDisplayState.hidden);
-  const columns=columnDisplayState.columns;
-  if(!columns.length){list.innerHTML='<div class="mm-empty">対象テーブルの列が取得できませんでした。</div>';return}
-  const boxes=columns.map(col=>`<label class="mm-checkbox mm-cd-checkbox"><input type="checkbox" data-cd-col="${esc(col)}"${hiddenSet.has(col)?'':' checked'}><span>${esc(col)}</span></label>`).join('');
-  list.innerHTML=`<div class="mm-cd-grid">${boxes}</div>`;
- }
- async function saveColumnDisplayMaint(){
-  const uid=requireMaintUser();if(uid===null)return;
-  const hidden=[...document.querySelectorAll('#masterMaintList [data-cd-col]')].filter(b=>!b.checked).map(b=>b.dataset.cdCol);
-  try{
-   setMaintLoading(true,'表示設定を保存しています…');
-   await api('/api/column-display-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({db:columnDisplayState.dbKey,hidden,user_id:uid})});
-   columnDisplayState.hidden=hidden;
-   showToast&&showToast('表示設定を保存しました',`非表示 ${hidden.length}列`,3600);
-  }catch(e){showToast&&showToast('保存できませんでした',e.message,6500)}
-  finally{setMaintLoading(false)}
- }
  /* ---------- 換算係数モデル(docs/SCHEDULE_MODE_DESIGN.md §6・§9.8) ----------
     因子×水準の一覧(自動算出値・N数・上書き値)は「自動算出＋上書き」の2層
-    構造で汎用CRUDのフォームに載らないため、列表示マスタと同じ特別扱いにする。 */
+    構造で汎用CRUDのフォームに載らないため、専用の描画を持つ特別扱いにする。 */
  let loadFactorState={equipment:'',configured:true,model:null,accuracy:null};
  function loadFactorBasisLabel(b){return {equipment:'自設備の実績',pooled:'全設備プール(自設備は実績不足)',default:'算出不可(実績なし)'}[b]||b||'-'}
  function fmtLfMinutes(min){if(min===null||min===undefined)return '-';const v=Math.round(min);if(v<60)return `${v}分`;return `${Math.floor(v/60)}時間${v%60?(v%60)+'分':''}`}
@@ -1450,6 +1322,332 @@
   await refreshDraftCount();importBackupState.loaded=false;await loadImportBackupMaint(true);
   showToast&&showToast('インポートが完了しました',`成功 ${okCount}件 / 失敗 ${ngCount}件`+(errors.length?`\n${errors.slice(0,3).join('\n')}`:''),8000);
  }
+ /* ======================================================================
+    データ接続（§9.168。利用者の指示「データソースマスタとパス設定マスタの
+    統合／今のUIが使いにくくわかりにくいので再構築」）
+    ----------------------------------------------------------------------
+    直す前の問題は3つだった。
+      ① 同じ「どこを読むか」が2画面に分かれていた（データソースの共有パス・
+         出力ファイルと、パス設定の個別上書き）。どちらが効くのかは画面の
+         どこにも書いていなかった。
+      ② 読み方を決めるのが`sikalot_source`という**全体で1つのスイッチ**
+         だけで、「このソースは共有、あのソースはRNE」が表現できなかった。
+         RNEの無い端末では、使わない抽出が回り続けて失敗ログだけが残る。
+      ③ 保存しても接続先は再起動まで変わらないので、**打ち間違いに
+         気づけるのが再起動のあと**だった。
+    そこで、
+      ・1行＝1カードにして「何か／どこから／何ができるか」を同時に見せる
+      ・読み方は行ごとに選ぶ（共有 / RNEから作る / 直接指定）
+      ・編集ウィンドウは**スクロールさせない**代わりに大きく取り、
+        右半分で「この設定でできること」を**保存する前に**確かめる
+    という形にした。 */
+ let dsState={items:[],loaded:false,assets:{},editing:null,probe:null,probePath:'',probeSeq:0,probing:false};
+ /* 読み方の呼び名は**1箇所**。サーバー（backend/db_access.pyの
+    source_read_mode）が返す語をそのまま画面の言葉へ写す。 */
+ const DS_MODES=[
+  {v:'share',label:'共有フォルダのファイルを読む',
+   hint:'ネットワーク共有に置いてある .sqlite3 をそのまま読みます。RNEは要りません。'},
+  {v:'rne',label:'この端末でRNEから作って読む',
+   hint:'RNE（抽出定義）から .sqlite3 を作り、それを読みます。RNEの資材を置いた端末だけです。'},
+  {v:'direct',label:'このファイルを直接読む（検証・一時的な差し替え）',
+   hint:'上の2つに関わらず、ここに入れた場所を最優先で読みます。空にすると上の設定へ戻ります。'},
+ ];
+ const DS_MODE_SHORT={share:'共有フォルダ',rne:'RNEから作る',direct:'直接指定'};
+ const DS_ROLE_CLASS={'作業':'is-work','品質':'is-quality'};
+ async function loadDataSourceMaint(force){
+  const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
+  if(!force&&dsState.loaded){renderDataSourceForm();renderDataSourceList();return}
+  form.innerHTML='';list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
+  try{
+   const r=await api('/api/data-source-master');
+   dsState.items=r.items||[];
+   dsState.assets={assetsDir:r.assetsDir||'',confPath:r.confPath||'',confExists:!!r.confExists};
+   dsState.loaded=true;
+   renderDataSourceForm();renderDataSourceList();
+  }catch(e){list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
+ }
+ /* 上段は**要約と入口だけ**。面積は「頻度×重要度」で配る——ここで毎日見るのは
+    「何件あって、再起動待ちがあるか」で、1件ずつの中身は下のカードが持つ。 */
+ function renderDataSourceForm(){
+  const form=$('#masterMaintForm');if(!form)return;
+  const on=dsState.items.filter(x=>x.active);
+  const work=on.filter(x=>x.purpose==='作業').length,quality=on.filter(x=>x.purpose==='品質').length;
+  const pending=on.filter(dsPending).length;
+  const rne=on.filter(x=>x.readMode==='rne').length;
+  form.className='mm-form';
+  form.innerHTML=`
+   <div class="ds-summary">
+    <div class="ds-summary-facts">
+     <span class="ds-sum"><b>${on.length}</b> 件が有効</span>
+     <span class="ds-sum${work?'':' is-warn'}">作業 <b>${work}</b></span>
+     <span class="ds-sum">品質 <b>${quality}</b></span>
+     <span class="ds-sum">RNEで作る <b>${rne}</b></span>
+     ${pending?`<span class="ds-sum is-pending"><b>${pending}</b> 件が再起動待ち</span>`:''}
+    </div>
+    <div class="ds-summary-act">
+     <button type="button" class="mm-btn-ghost" id="dsCommonBtn" title="共有パス・RNE資材の置き場・間隔の設定へ移ります">共通設定…</button>
+     <button type="button" class="mm-btn-primary" id="dsAddBtn">＋ データソースを追加</button>
+    </div>
+   </div>
+   <p class="mm-def-hint">${work?'':'<b>役割「作業」のデータソースがありません。</b>測定・作業スケジュールへの投入はできません。 '
+     }読み込み先の変更はサーバー再起動後に反映されます（それまでは今までの場所を読み続けます）。</p>`;
+  form.onsubmit=ev=>ev.preventDefault();
+  const add=$('#dsAddBtn');if(add)add.onclick=()=>openDataSourceEditor(null);
+  /* 共通設定へは**そのタブを押したのと同じ道**で移る（入口を2本作らない）。 */
+  const common=$('#dsCommonBtn');
+  if(common)common.onclick=()=>document.querySelector('#masterMaintNav [data-master="pathConfig"]')?.click();
+ }
+ /* 保存値と、いま効いている場所が違う＝再起動待ち。**まだ読んでいない
+    データソース**（登録したばかり）も待ちに含める（§9.163）。 */
+ function dsPending(x){
+  if(!x.active)return false;
+  if(x.loaded===false)return true;
+  return String(x.plannedPath||'')!==String(x.activePath||'');
+ }
+ function renderDataSourceList(){
+  const list=$('#masterMaintList');if(!list)return;
+  if(!dsState.items.length){
+   list.innerHTML='<div class="mm-empty">データソースがまだありません。「＋ データソースを追加」から登録してください。</div>';
+   return;
+  }
+  list.innerHTML=`<div class="ds-cards">${dsState.items.map(dsCardHtml).join('')}</div>`;
+  list.querySelectorAll('[data-ds-edit]').forEach(b=>b.onclick=()=>{
+   const x=dsState.items.find(i=>String(i.id)===b.dataset.dsEdit);if(x)openDataSourceEditor(x);
+  });
+  list.querySelectorAll('[data-ds-del]').forEach(b=>b.onclick=()=>dsDelete(b.dataset.dsDel));
+ }
+ function dsCardHtml(x){
+  const cap=x.capability||{},f=cap.features||{};
+  const caps=CAPABILITY_ORDER.filter(k=>f[k]).map(k=>
+    `<li class="ds-cap${f[k].ok?' is-ok':''}" title="${esc(CAPABILITY_LABEL[k]+': '+(f[k].ok?'できます':'できません')+' — '+(f[k].note||''))}">`
+    +`<i aria-hidden="true">${f[k].ok?'✓':'—'}</i>${esc(CAPABILITY_SHORT[k])}</li>`).join('');
+  const pending=dsPending(x);
+  const role=x.purpose||'その他';
+  /* **同じ場所なら1行で言う**（§9.129 同じものを2箇所に出さない）。違うときだけ
+     「再起動後」を別に出す——そこが利用者の打つ手だから。 */
+  const same=String(x.plannedPath||'')===String(x.activePath||'');
+  return `<article class="ds-card${x.active?'':' is-off'}${pending?' is-pending':''}">
+   <header class="ds-card-head">
+    <span class="ds-role ${DS_ROLE_CLASS[role]||''}">${esc(role)}</span>
+    <b class="ds-name" title="${esc(x.label||'')}">${esc(x.label||x.key)}</b>
+    <code class="ds-key" title="一覧を指す識別子です">${esc(x.key)}</code>
+    ${x.active?'':'<span class="ds-flag is-off">無効</span>'}
+    ${pending?'<span class="ds-flag is-pending">再起動待ち</span>':''}
+    <span class="ds-card-act">
+     <button type="button" class="mm-btn-ghost sm" data-ds-edit="${esc(String(x.id))}">編集</button>
+     ${x.active?`<button type="button" class="mm-btn-ghost sm" data-ds-del="${esc(String(x.id))}">無効にする</button>`:''}
+    </span>
+   </header>
+   <dl class="ds-facts">
+    <div><dt>読み方</dt><dd>${esc(DS_MODE_SHORT[x.readMode]||'—')}</dd></div>
+    <div><dt>${same?'読み込み先':'いま読んでいる'}</dt><dd title="${esc(x.activePath||'')}">${
+      esc(x.activePath||'（この端末ではまだ読んでいません）')}</dd></div>
+    ${same?'':`<div class="is-next"><dt>再起動後</dt><dd title="${esc(x.plannedPath||'')}">${esc(x.plannedPath||'—')}</dd></div>`}
+   </dl>
+   <ul class="ds-caps">${caps||`<li class="ds-cap">${esc(cap.error||'確かめられません')}</li>`}</ul>
+  </article>`;
+ }
+ async function dsDelete(id){
+  const x=dsState.items.find(i=>String(i.id)===String(id));if(!x)return;
+  if(!confirm(`「${x.label||x.key}」を無効にします。\n一覧から消えるのはサーバー再起動後です。よろしいですか？`))return;
+  const uid=requireMaintUser();if(uid===null)return;
+  try{
+   setMaintLoading(true,'無効にしています…');
+   await api('/api/data-source-master/delete',{method:'POST',headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({id:x.id,user_id:uid})});
+   dsState.loaded=false;await loadDataSourceMaint(true);
+   showToast&&showToast('無効にしました','一覧から消えるのはサーバー再起動後です',5000);
+  }catch(e){showToast&&showToast('無効にできませんでした',e.message,6500)}
+  finally{setMaintLoading(false)}
+ }
+
+ /* ---- 編集ウィンドウ（スクロールさせない・大きく取る） --------------------
+    視覚導線と作業導線を合わせる（①これは何か → ②どこから読むか →
+    ③この設定でできること → ④いまの状態）。③は**保存する前に**実際に
+    ファイルを開いて確かめた結果で、欄を触るたびに取り直す。 */
+ function openDataSourceEditor(item){
+  const modal=ensureMaintEditor();
+  modal.querySelector('.mm-editor-dialog')?.classList.add('is-wide');
+  dsState.editing=item?Object.assign({},item):null;
+  dsState.probe=item?(item.capability||null):null;
+  dsState.probePath='';
+  const x=dsState.editing||{};
+  $('#maintEditorEyebrow').textContent='データ接続';
+  $('#maintEditorTitle').textContent=item?`${x.label||x.key} を編集`:'データソースを追加';
+  $('#maintEditorHint').textContent='読み込み先の変更はサーバー再起動後に反映されます。';
+  $('#maintEditorSave').textContent=item?'更新を保存':'追加登録';
+  const form=$('#maintEditorForm');
+  form.innerHTML=dsEditorHtml(x,!item);
+  form.onsubmit=ev=>{ev.preventDefault();saveDataSourceEditor()};
+  /* 保存ボタンはウィンドウ共通（1つしか無い）ので、**開くたびに持ち主を
+     決め直す**。汎用CRUDのsubmitMaintのままだと、この画面の入力を
+     読まずに空で保存してしまう。 */
+  $('#maintEditorSave').onclick=()=>saveDataSourceEditor();
+  bindInputHelpers(form);
+  form.querySelectorAll('[data-ds-mode]').forEach(r=>r.onchange=()=>{dsSyncMode();dsProbeSoon(0)});
+  form.querySelectorAll('[data-field]').forEach(el=>{
+   el.addEventListener('change',()=>dsProbeSoon());
+   el.addEventListener('input',()=>dsProbeSoon());
+  });
+  dsSyncMode();dsRenderProbe();
+  modal.hidden=false;
+  requestAnimationFrame(()=>{const first=form.querySelector('[data-field="label"]');if(first)first.focus()});
+  dsProbeSoon(0);
+ }
+ function dsEditorHtml(x,isNew){
+  const mode=x.readMode||(x.overridePath?'direct':(x.mode||'share'));
+  const f=(k,label,val,attrs,hint)=>`<label class="mm-field"><span>${esc(label)}</span>
+    <input data-field="${k}" type="text" value="${esc(val==null?'':String(val))}" ${attrs||''} autocomplete="off" spellcheck="false">
+    ${hint?`<small class="mm-field-hint">${esc(hint)}</small>`:''}</label>`;
+  const pf=(k,label,val,pmode,hint)=>`<div class="mm-field mm-field-path"><span>${esc(label)}</span>
+    <span class="mm-path" data-path-drop="${k}">
+     <input data-field="${k}" type="text" value="${esc(val==null?'':String(val))}" autocomplete="off" spellcheck="false">
+     <button type="button" class="mm-path-browse" data-path-browse="${k}" data-path-mode="${pmode||'file'}">参照…</button>
+    </span>${hint?`<small class="mm-field-hint">${esc(hint)}</small>`:''}</div>`;
+  const opt=(v,label,sel)=>`<option value="${esc(v)}"${v===sel?' selected':''}>${esc(label)}</option>`;
+  /* **RNEが無い端末では、無いと書く**（§9.168、利用者の指摘「RNEがない場合も
+     あるのでそのあたりの切り替えもできるように」）。選ばせないのではなく、
+     選んだ結果どうなるかを先に言う。 */
+  const rneNote=dsState.assets.confExists?''
+    :`この端末には接続情報 symnavim.conf がありません（${dsState.assets.assetsDir||''}）。置くまで抽出は動きません。`;
+  const modeBlock=m=>{
+   if(m.v==='share')return pf('share','共有パスの .sqlite3',x.share,'file',
+     'ファイル名だけなら既定の共有フォルダ配下を探します。UNC（\\\\サーバー\\共有\\…）も入れられます。');
+   if(m.v==='rne')return `${f('rne','RNE（抽出定義）ファイル',x.rne,'','ファイル名だけなら「RNE資材の置き場」の rne/ 配下です。')}
+     ${f('table','抽出テーブル',x.table,'','RNEの中の表の名前。未入力なら「仕掛」です。')}
+     ${pf('output','作った .sqlite3 の置き場',x.output,'file','ファイル名だけなら db/ 配下です。')}
+     ${rneNote?`<p class="ds-warn">${esc(rneNote)}</p>`:''}`;
+   return pf('overridePath','直接読むファイル',x.overridePath,'file',
+     '検証や一時的な差し替えに使います。値がある間は上の設定より優先されます。');
+  };
+  return `<div class="ds-edit">
+   <section class="ds-edit-zone">
+    <h4 class="mm-fieldgroup">① これは何か</h4>
+    ${f('label','表示名',x.label,'required','左メニュー「一覧を見る」に出る名前です。')}
+    ${f('key','キー',x.key,'required','半角英数と _。一覧を指す識別子で、変えると この一覧向けの登録フィルタ・表示列の設定が結び付かなくなります。')}
+    <label class="mm-field"><span>役割</span>
+     <select data-field="purpose">${['その他','作業','品質'].map(v=>opt(v,v,x.purpose||'その他')).join('')}</select>
+     <small class="mm-field-hint">「作業」＝測定・予定投入の対象／「品質」＝作業の一覧へ結合。各1件だけです。</small></label>
+    <div class="ds-edit-pair">
+     <label class="mm-field"><span>表示順</span>
+      <input data-field="order" type="number" min="0" max="9999" value="${esc(String(x.order==null?0:x.order))}">
+      <small class="mm-field-hint">小さいほど上に出ます。</small></label>
+     <label class="mm-field"><span>状態</span>
+      <select data-field="enabled">${['有効','無効'].map(v=>opt(v,v,x.enabled||'有効')).join('')}</select>
+      <small class="mm-field-hint">無効にすると一覧にも抽出対象にも出ません。</small></label>
+    </div>
+   </section>
+   <section class="ds-edit-zone">
+    <h4 class="mm-fieldgroup">② どこから読むか</h4>
+    <div class="ds-modes">${DS_MODES.map(m=>`
+     <div class="ds-mode" data-ds-mode-box="${m.v}">
+      <label class="ds-mode-pick"><input type="radio" name="dsMode" value="${m.v}" data-ds-mode${m.v===mode?' checked':''}>
+       <span><b>${esc(m.label)}</b><i>${esc(m.hint)}</i></span></label>
+      <div class="ds-mode-body">${modeBlock(m)}</div>
+     </div>`).join('')}</div>
+    ${f('preferred','既定テーブル',x.preferred,'','この一覧を開いた直後に選ぶ表の名前。未入力なら抽出テーブルと同じです。')}
+   </section>
+   <section class="ds-edit-zone ds-edit-result">
+    <h4 class="mm-fieldgroup">③ この設定でできること <span class="ds-probe-state" id="dsProbeState"></span></h4>
+    <div id="dsProbeBox" class="ds-probe"></div>
+   </section>
+   <section class="ds-edit-zone ds-edit-now">
+    <h4 class="mm-fieldgroup">④ いまの状態</h4>
+    <dl class="ds-now">
+     <div><dt>いま読んでいる</dt><dd title="${esc(x.activePath||'')}">${esc(x.activePath||(isNew?'（未登録）':'（この端末ではまだ読んでいません）'))}</dd></div>
+     <div><dt>保存すると</dt><dd id="dsPlannedPath">—</dd></div>
+    </dl>
+    <p class="mm-field-hint">読み込み先はサーバー起動時に1回だけ決まります。保存したあとアプリを再起動すると「保存すると」の場所を読みます。</p>
+   </section>
+  </div>`;
+ }
+ /* 選んだ読み方の欄だけを開く。**閉じた側も値は残す**ので、切り替えて戻せば
+    元の値が入っている。 */
+ function dsSyncMode(){
+  const form=$('#maintEditorForm');if(!form)return;
+  const picked=form.querySelector('[data-ds-mode]:checked');
+  const v=picked?picked.value:'share';
+  form.querySelectorAll('[data-ds-mode-box]').forEach(box=>{
+   box.classList.toggle('is-on',box.dataset.dsModeBox===v);
+  });
+ }
+ function dsDraft(){
+  const form=$('#maintEditorForm');if(!form)return null;
+  const val=k=>{const el=form.querySelector(`[data-field="${k}"]`);return el?el.value:''};
+  const picked=form.querySelector('[data-ds-mode]:checked');
+  const pick=picked?picked.value:'share';
+  const d={id:dsState.editing?dsState.editing.id:null,
+   key:String(val('key')||'').trim().toUpperCase(),label:val('label'),purpose:val('purpose'),
+   order:val('order'),enabled:val('enabled'),rne:val('rne'),table:val('table'),
+   output:val('output'),share:val('share'),preferred:val('preferred'),
+   overridePath:String(val('overridePath')||'').trim()};
+  /* 「直接読む」以外を選んでいるときは上書きを**空で送る＝解除する**。
+     直接指定は保存値を持たず、パス設定マスタの上書きの有無そのものなので、
+     選択と実体を必ず一致させる（2箇所に持つと必ず食い違う）。 */
+  if(pick!=='direct')d.overridePath='';
+  /* 「直接読む」を選んでいる間は、**下の設定（共有かRNEか）をそのまま残す**
+     ——直接指定を外したときに、覚えのない読み方へ切り替わらないようにする。 */
+  const stored=String((dsState.editing&&dsState.editing.mode)||'').trim();
+  d.mode=(pick==='rne')?'rne':(pick==='share'?'share':(stored||'share'));
+  return d;
+ }
+ let dsProbeTimer=null;
+ function dsProbeSoon(delay){
+  clearTimeout(dsProbeTimer);
+  dsProbeTimer=setTimeout(dsProbeRun,delay==null?450:delay);
+ }
+ async function dsProbeRun(){
+  const d=dsDraft();if(!d)return;
+  const seq=++dsState.probeSeq;
+  dsState.probing=true;dsRenderProbe();
+  let r=null;
+  try{r=await api('/api/data-source-master/probe',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(d)})}
+  catch(e){r={error:e.message,capability:{features:{}}}}
+  if(seq!==dsState.probeSeq)return;          /* 打っている最中の古い結果は捨てる */
+  dsState.probing=false;
+  dsState.probe=r.capability||{};dsState.probePath=r.path||'';
+  if(r.error&&dsState.probe&&!dsState.probe.error)dsState.probe.error=r.error;
+  dsRenderProbe();
+ }
+ function dsRenderProbe(){
+  const box=$('#dsProbeBox'),state=$('#dsProbeState'),planned=$('#dsPlannedPath');
+  if(!box)return;
+  if(state)state.textContent=dsState.probing?'確かめています…':'いまの入力で確認';
+  if(planned){
+   planned.textContent=dsState.probePath||'—';
+   planned.title=dsState.probePath||'';
+  }
+  const cap=dsState.probe||{},f=cap.features||{};
+  const rows=CAPABILITY_ORDER.filter(k=>f[k]).map(k=>{
+   const v=f[k];
+   return `<div class="mm-cap-row${v.ok?' is-ok':' is-ng'}">
+     <span class="mm-cap-mark">${v.ok?'できます':'できません'}</span>
+     <span class="mm-cap-name">${esc(CAPABILITY_LABEL[k])}</span>
+     <span class="mm-cap-note">${esc(v.note||'')}${v.detail?`<i>${esc(v.detail)}</i>`:''}</span>
+    </div>`;
+  }).join('');
+  box.innerHTML=`${cap.error?`<p class="mm-cap-error">${esc(cap.error)}</p>`:''}
+   ${rows||'<p class="mm-cap-error">まだ確かめていません。</p>'}
+   <p class="mm-cap-foot">${esc(cap.table?`読んだのは表「${cap.table}」の${cap.columnCount}列です。`:'')}
+    保存する前に、いま入力している場所を実際に開いて確かめています。</p>`;
+ }
+ async function saveDataSourceEditor(){
+  const d=dsDraft();if(!d)return;
+  const uid=requireMaintUser();if(uid===null)return;
+  if(!d.key){showToast&&showToast('キーを入れてください','一覧を指す識別子です（半角英数と _）',5000);return}
+  const url=d.id?'/api/data-source-master/update':'/api/data-source-master';
+  try{
+   setMaintLoading(true,'保存しています…');
+   const r=await api(url,{method:'POST',headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({...d,user_id:uid})});
+   closeMaintEditor();
+   dsState.loaded=false;await loadDataSourceMaint(true);
+   showToast&&showToast('保存しました',(r&&r.message)||'',5200);
+  }catch(e){showToast&&showToast('保存できませんでした',e.message,6500)}
+  finally{setMaintLoading(false)}
+ }
+
  /* ---------- パス設定（参照データの読み込み先・共有パス・各種間隔。旧config/local.json） ----------
     複数の値を持つ一覧ではなく1組の設定値のため、列表示マスタと同じ「特別扱い」
     にする。sikalot_source/sikalotnow_path/sikalotdef_path/records_backup_export_path/
@@ -1510,17 +1708,18 @@
   form.className='mm-form mm-form-page';
   form.innerHTML=`<div class="mm-set-scroll">
    <p class="mm-def-hint">参照データの読み込み先・共有パスなど、<b>この端末だけ</b>の設定です。空欄で保存すると既定値へ戻ります。反映のタイミングは項目のまとまりごとに示しています。</p>
-   ${group('データの取得元','サーバー再起動後に反映','is-restart',`
-    <label class="mm-field"><span>参照データの取得元</span><select data-pc-field="sikalot_source">${sourceOpts}</select>
-     <small class="mm-field-hint">network=共有フォルダを読む / local=この端末でRNEから抽出したものを読む。マスタ管理 &gt; データソース に登録したものすべてに効きます。</small></label>
-    ${(pathConfigState.sources||[]).map(src=>pathField(src.valueKey,
-       `${src.label}（${src.key}）の読み込み先 — 個別上書き`,'file',
-       `空欄なら取得元の設定にしたがって「${src.output||'—'}」（ローカル）か「${src.share||'—'}」（共有）を読みます。ここに入れた場合は取得元に関わらずそちらを優先します。`
-       /* **まだこの端末が読んでいないデータソース**（登録したばかりで再起動
-          していない）は、そうと書く。欄だけ出して黙っていると「入れたのに
-          効かない」と読める（§9.163）。 */
-       +(src.loaded===false?` このデータソースはまだ読み込んでいません。再起動すると「${src.planned||'—'}」を読みます。`:''))).join('')
-     ||'<p class="mm-field-hint">データソースが登録されていません。マスタ管理 &gt; データソース で登録してください。</p>'}`)}
+   ${group('データの取得元（既定）','サーバー再起動後に反映','is-restart',`
+    <label class="mm-field"><span>読み方を決めていないデータソースの既定</span><select data-pc-field="sikalot_source">${sourceOpts}</select>
+     <small class="mm-field-hint">network=共有フォルダを読む / local=この端末でRNEから抽出したものを読む。
+      <b>読み方を決めたデータソースには効きません</b>——1件ずつの読み込み先は「データ接続」で決めます。</small></label>
+    ${(pathConfigState.sources||[]).length?`<div class="pc-source-list">${
+      (pathConfigState.sources||[]).map(src=>`<div class="pc-source"><b>${esc(src.label)}</b><code>${esc(src.key)}</code>
+        <span title="${esc(src.active||'')}">${esc(src.active||'（この端末ではまだ読んでいません）')}</span>
+        ${src.loaded===false?`<i class="pc-source-next">再起動すると ${esc(src.planned||'—')} を読みます</i>`:''}</div>`).join('')
+      }</div>
+     <p class="mm-field-hint">読み込み先を変えるには「データ接続」のカードから <b>編集</b> を押してください
+      （同じ設定を2画面に置くと、どちらが効くのか分からなくなるためここでは変えられません）。</p>`
+     :'<p class="mm-field-hint">データソースが登録されていません。「データ接続」で登録してください。</p>'}`)}
    ${group('共有・複製','サーバー再起動後に反映','is-restart',`
     ${pathField('schedule_share_path','スケジュール機能の共有データ置き場（schedule.sqlite3）','file','共有フォルダ上のschedule.sqlite3を選びます。空欄ならスケジュール機能は無効です。')}
     ${pathField('records_backup_export_path','測定データバックアップの閲覧用複製先','dir','複製先の「フォルダ」を選びます。空欄なら複製しません。')}`)}
@@ -1912,7 +2111,7 @@
   if(!rawTableState.table){list.innerHTML='<div class="mm-empty">テーブルを選択してください。</div>';return}
   list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
   try{
-   const q=new URLSearchParams({db:'MASTER',table:rawTableState.table,page:1,page_size:200,include_hidden:1});
+   const q=new URLSearchParams({db:'MASTER',table:rawTableState.table,page:1,page_size:200});
    const d=await api('/api/table?'+q);
    rawTableState.columns=d.columns||[];rawTableState.rows=d.rows||[];
    renderRawTableList(d.count);

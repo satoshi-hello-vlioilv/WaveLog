@@ -274,6 +274,46 @@ WL.listSortBar={render:renderSortBar,presets:sortPresets};
    確認は出さない(すぐ元に戻せる操作なので、確認は邪魔になるだけ)。
    保存するのは「今見えている並び」ではなく**許可された全列の並び**。
    見えている分だけ保存すると、非表示にしていた列の位置が失われる。 */
+/* ---------- 列幅の取っ手（表でもグリッドでも使う。§9.164） ----------
+   掴む→追う→離す→保存 という手順はどの一覧でも同じで、違うのは
+   **引いている最中の見せ方**だけ（表はcolgroupの`<col>`、CSSグリッドは
+   トラックの組み直し）。同じ処理を一覧ごとに書き写すと、直したときに
+   片方だけ直った状態になる（`compactToleranceScale`が3ファイルにあって
+   真ん中が死んでいたのと同じ壊れ方）。
+     locked      … 固定した列（§9.119）。取っ手は残すが掴めない
+     startWidth()… 掴んだ時点の幅(px)
+     preview(w)  … 引いている最中の見せ方（保存しない）
+     commit(w)   … 離したときの保存
+     reset()     … ダブルクリック＝自動（内容なり）へ戻す */
+const GRIP_W_MIN=40,GRIP_W_MAX=900;
+function bindColumnWidthGrip(grip,o){
+ if(!grip||!o)return;
+ /* 幅を固定した列は掴めない(§9.119)。**印は残す**——取っ手ごと消すと、
+    固定しているのか壊れているのかが分からない。 */
+ if(o.locked){
+  grip.classList.add('is-locked');
+  grip.title='この列は幅を固定しています（列の設定で解けます）';
+  grip.addEventListener('mousedown',e=>{e.preventDefault();e.stopPropagation()});
+  grip.addEventListener('click',e=>{e.stopPropagation()});
+  return;
+ }
+ grip.addEventListener('mousedown',e=>{
+  e.preventDefault();e.stopPropagation();     // 並び替え・ドラッグへ渡さない
+  const startX=e.clientX,startW=o.startWidth();
+  let w=0;
+  const move=ev=>{w=Math.max(GRIP_W_MIN,Math.min(GRIP_W_MAX,Math.round(startW+(ev.clientX-startX))));o.preview(w)};
+  const up=()=>{
+   document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);
+   if(w)o.commit(w);
+  };
+  document.addEventListener('mousemove',move);document.addEventListener('mouseup',up);
+ });
+ // ダブルクリックで既定(内容なり)へ戻す
+ grip.addEventListener('dblclick',e=>{e.preventDefault();e.stopPropagation();o.reset()});
+ grip.addEventListener('click',e=>{e.stopPropagation()});   // 並び替えを誘発しない
+}
+WL.columnWidthGrip=bindColumnWidthGrip;
+
 function bindColumnHeaderTools(table,target,visibleColumns,allColumns){
  if(!target)return;
  const layout=WL.columnLayout.get(target);
@@ -350,50 +390,27 @@ function bindColumnHeaderTools(table,target,visibleColumns,allColumns){
   });
  });
 
- // ---- 列幅(右端の取っ手を引く) ----
+ // ---- 列幅(右端の取っ手を引く。手順はWL.columnWidthGripが持つ) ----
  heads.forEach(th=>{
   const grip=th.querySelector('.col-resize');if(!grip)return;
   const col=th.dataset.sortCol;
-  /* 幅を固定した列は掴めない(§9.119)。**取っ手ごと消す**——出しておいて
-     引いても動かない、では壊れているようにしか見えない。 */
-  if(WL.columnLayout.locked(target,col)){
-   grip.classList.add('is-locked');
-   grip.title='この列は幅を固定しています（列の設定で解けます）';
-   grip.addEventListener('mousedown',e=>{e.preventDefault();e.stopPropagation()});
-   grip.addEventListener('click',e=>{e.stopPropagation()});
-   return;
-  }
-  grip.addEventListener('mousedown',e=>{
-   e.preventDefault();e.stopPropagation();     // 並び替え・ドラッグへ渡さない
-   /* colgroupは**1本の並び(§9.106)と1対1**になったので、見出しの位置を
-      そのまま使える。以前は「先頭の何列ぶんか」を数え直しており、
-      番号・ボタンの出し入れで基準がずれる作りだった。 */
+  /* colgroupは**1本の並び(§9.106)と1対1**になったので、見出しの位置を
+     そのまま使える。以前は「先頭の何列ぶんか」を数え直しており、
+     番号・ボタンの出し入れで基準がずれる作りだった。 */
+  const colEl=()=>{
    const cg=table.querySelector('colgroup');
-   const heads2=[...table.querySelectorAll('thead th')];
-   const at=heads2.indexOf(th);
-   const target2=(cg&&at>=0)?cg.children[at]:null;
-   const startX=e.clientX,startW=th.getBoundingClientRect().width;
-   const move=ev=>{
-    const w=Math.max(40,Math.min(900,Math.round(startW+(ev.clientX-startX))));
-    if(target2)target2.style.width=w+'px';
-    th.dataset.resizing=String(w);
-   };
-   const up=()=>{
-    document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);
-    const w=Number(th.dataset.resizing||0);delete th.dataset.resizing;
-    if(!w)return;
-    const widths={...(layout.widths||{}),[col]:w};
-    layout.widths=widths;persist(fullOrder(),widths);
-   };
-   document.addEventListener('mousemove',move);document.addEventListener('mouseup',up);
+   const at=[...table.querySelectorAll('thead th')].indexOf(th);
+   return (cg&&at>=0)?cg.children[at]:null;
+  };
+  WL.columnWidthGrip(grip,{
+   locked:WL.columnLayout.locked(target,col),
+   startWidth:()=>th.getBoundingClientRect().width,
+   preview:w=>{const c=colEl();if(c)c.style.width=w+'px'},
+   commit:w=>{const widths={...(layout.widths||{}),[col]:w};
+              layout.widths=widths;persist(fullOrder(),widths)},
+   reset:()=>{const widths={...(layout.widths||{})};delete widths[col];
+              layout.widths=widths;persist(fullOrder(),widths);renderGrid()},
   });
-  // ダブルクリックで既定(内容なり)へ戻す
-  grip.addEventListener('dblclick',e=>{
-   e.preventDefault();e.stopPropagation();
-   const widths={...(layout.widths||{})};delete widths[col];
-   layout.widths=widths;persist(fullOrder(),widths);renderGrid();
-  });
-  grip.addEventListener('click',e=>{e.stopPropagation()});   // 並び替えを誘発しない
  });
 
  // ---- 右クリックで出す小さなメニュー(§9.110) ----
@@ -420,12 +437,39 @@ function onColumnMenuKey(e){if(e.key==='Escape'){e.stopPropagation();closeColumn
 /* 幅の状態の呼び名(§9.119)。**画面の言葉を1箇所に持つ**——メニューと
    設定パネルで違う言い方をすると、同じものだと分からなくなる。 */
 const WIDTH_MODE_LABEL={auto:'内容に合わせる（自動）',manual:'手で決めた幅',locked:'固定（動かさない）'};
-function openColumnHeaderMenu(ev,col,target,allColumns){
+/* 呼び名は**1箇所**。データ一覧の見出しも同じ言葉を出す（§9.164）。
+   別々に書くと、同じ状態が画面によって違う言い方になる。 */
+WL.columnWidthModeLabel=WIDTH_MODE_LABEL;
+/* 見出しの右クリックの**差し替え口**（§9.164。§9.120の列の設定パネルと
+   同じ考え方）。画面に固定されていたのは5点だけ——どの列があるか／名前／
+   いまの幅／描き直し方／設定パネルの開き方。答えない口は仕掛一覧の
+   ふるまいのままなので、**既定の口を渡さない呼び出しは今までどおり**。
+   `persist`だけは口が持てる——データ一覧は「一度も保存していないうちは
+   既定の15列」という約束があり（§9.162）、並びを初めて保存する瞬間に
+   隠す列を種まきしないと、候補44列が黙って全部並ぶ。 */
+function headMenuSource(target,allColumns,src){
+ const o=src||{};
+ return {
+  keys:()=>(o.keys?o.keys():WL.listColumnKeys(allColumns)),
+  label:k=>(o.label?o.label(k)
+            :(WL.isVirtualColumn(k)?WL.virtualColumnLabel(k):WL.columnLayout.label(target,k))),
+  currentWidthOf:k=>{
+   if(o.currentWidthOf)return Math.round(Number(o.currentWidthOf(k))||0);
+   const th=document.querySelector(`#grid thead th[data-col="${CSS.escape(k)}"]`);
+   return th?Math.round(th.getBoundingClientRect().width):0;
+  },
+  refresh:()=>{o.refresh?o.refresh():renderGrid()},
+  openPanel:()=>{o.openPanel?o.openPanel():document.getElementById('listColumnBtn')?.click()},
+  persist:o.persist||null,
+ };
+}
+function openColumnHeaderMenu(ev,col,target,allColumns,src){
  closeColumnHeaderMenu();
  if(!target||!col)return;
+ const S2=headMenuSource(target,allColumns,src);
  const layout=WL.columnLayout.get(target);
  const hidden=[...(layout.hidden||[])];
- const nameOf=k=>WL.isVirtualColumn(k)?WL.virtualColumnLabel(k):WL.columnLayout.label(target,k);
+ const nameOf=k=>S2.label(k);
  const menu=document.createElement('div');
  menu.className='col-head-menu';
  const item=(label,cls)=>`<button type="button" class="${cls||''}">${esc(label)}</button>`;
@@ -452,8 +496,9 @@ function openColumnHeaderMenu(ev,col,target,allColumns){
  menu.style.top=`${Math.max(6,Math.min(ev.clientY,innerHeight-h-6))}px`;
 
  const persist=async patch=>{
+  if(S2.persist){await S2.persist(patch);S2.refresh();return}
   const v=WL.columnLayout.get(target);
-  const all=WL.listColumnKeys(allColumns);
+  const all=S2.keys();
   const known=(v.order||[]).filter(c=>all.includes(c));
   /* **保存は全置換なので、渡す設定を1つでも書き漏らさない**(§9.113)。
      ここは`formulas`が抜けており、**右クリックで列を1つ隠しただけで
@@ -463,7 +508,7 @@ function openColumnHeaderMenu(ev,col,target,allColumns){
                                      widths:v.widths,hidden:v.hidden,names:v.names,
                                      formats:v.formats,rules:v.rules,
                                      formulas:v.formulas,locks:v.locks,...patch});
-  renderGrid();
+  S2.refresh();
  };
  menu.querySelector('.chm-hide').onclick=async()=>{
   closeColumnHeaderMenu();
@@ -471,7 +516,7 @@ function openColumnHeaderMenu(ev,col,target,allColumns){
   const next=[...new Set([...(v.hidden||[]),col])];
   /* **最後の1列まで隠せてしまうと、戻す取っ掛かりが画面から消える。**
      見出しが1つも無い表は右クリックする場所も無い。 */
-  const visible=WL.listColumnKeys(allColumns).filter(k=>!next.includes(k));
+  const visible=S2.keys().filter(k=>!next.includes(k));
   if(!visible.length){showToast&&showToast('最後の1列は隠せません','「表示列」から設定してください',4000);return}
   await persist({hidden:next});
   showToast&&showToast(`「${nameOf(col)}」を隠しました`,'見出しの右クリックから戻せます',3000);
@@ -496,8 +541,10 @@ function openColumnHeaderMenu(ev,col,target,allColumns){
   else{
    locks.add(col);
    if(widths[col]==null){
-    const th=document.querySelector(`#grid thead th[data-col="${CSS.escape(col)}"]`);
-    const w=th?Math.round(th.getBoundingClientRect().width):0;
+    /* **いま画面に出ている幅**は口が答える（§9.162で入れた口を使う）。
+       `#grid`の見出しからしか読まない実装だと、仕掛一覧以外では必ず
+       既定値になり「固定した幅が違う」ことになる。 */
+    const w=S2.currentWidthOf(col);
     if(w>0)widths[col]=w;
    }
   }
@@ -515,7 +562,7 @@ function openColumnHeaderMenu(ev,col,target,allColumns){
  });
  menu.querySelector('.chm-panel').onclick=()=>{
   closeColumnHeaderMenu();
-  document.getElementById('listColumnBtn')?.click();
+  S2.openPanel();
  };
  requestAnimationFrame(()=>{
   document.addEventListener('mousedown',onColumnMenuOutside,true);
