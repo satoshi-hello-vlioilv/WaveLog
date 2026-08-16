@@ -24,6 +24,13 @@ const snap=page=>page.evaluate(()=>({
  ロット列:[...document.querySelectorAll('.measure-matrix td.mx-lot .strip-lot-badge')].map(e=>e.textContent),
  帯:[...document.querySelectorAll('#splitVisualStrip .split-visual-block')].map(e=>e.textContent.trim().slice(0,3)),
  実行ボタン:!!document.getElementById('applySplit'),
+ /* 「どのロットが何色か」（§9.159）。**並びではなくロット番号で引く**
+    ——並び順で覚えると、並べ替えたときに何と比べているのか分からなくなる。 */
+ 色:Object.fromEntries([...document.querySelectorAll('#splitVisualStrip .split-visual-block')]
+   .filter(e=>e.dataset.lot).map(e=>[e.dataset.lot,getComputedStyle(e).backgroundColor])),
+ バッジ色:Object.fromEntries([...document.querySelectorAll('.measure-matrix td.mx-lot .strip-lot-badge')]
+   .map(e=>[e.title||e.textContent.trim(),getComputedStyle(e).backgroundColor])),
+ 図の高さ:Math.round(document.getElementById('splitVisualStrip').getBoundingClientRect().height),
 }));
 const settle=async page=>{
  await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
@@ -84,6 +91,27 @@ const settle=async page=>{
       c.ロット列.join()!==a.ロット列.join()&&c.ロット列.join()===c.帯.join(),
       JSON.stringify({前:a.ロット列,後:c.ロット列,帯:c.帯}));
   rec('並べ替えでも条数は変わらない',c.条数===a.条数&&c.行===a.行,JSON.stringify(c));
+  /* ---- 色はロット番号だけで決まる（§9.159、利用者の指摘「D&Dで入れ替えた
+     瞬間色味が変わる」） ----
+     以前は`sources`/`groups`の**添字**で配っていたため、1条動かすだけで
+     図・測定表のバッジ・幅分割の丸がいっせいに別の色になった。 */
+  rec('並べ替えても子ロットの色が変わらない',
+   Object.keys(a.色).length>=2&&Object.keys(a.色).every(l=>a.色[l]===c.色[l]),
+   JSON.stringify({前:a.色,後:c.色}));
+  rec('測定表のバッジの色も変わらない',
+   Object.keys(a.バッジ色).length>=2&&Object.keys(a.バッジ色).every(l=>a.バッジ色[l]===c.バッジ色[l]),
+   JSON.stringify({前:a.バッジ色,後:c.バッジ色}));
+  /* **配り方そのものも見る。** 検証用ロットは子ロットが2件しか無く、しかも
+     図の材料は候補の控え（元の順のまま）から来るので、**添字で配る実装へ
+     戻しても図の色は動かない**ことがある（実際に注入して確かめた——落ちたのは
+     バッジ側だけだった）。素通りしないよう、配る関数を直に呼んで順番に
+     依らないことを確かめる。 */
+  rec('色はロット番号だけで決まる（並べる順に依らない）',
+   await page.evaluate(()=>{
+    const x=WL.lotColors.map(['C52','C53','C51']),y=WL.lotColors.map(['C51','C53','C52','C53']);
+    return ['C51','C52','C53'].every(k=>x[k]&&x[k]===y[k])&&new Set(Object.values(x)).size===3;
+   }),
+   JSON.stringify(await page.evaluate(()=>WL.lotColors.map(['C52','C53','C51']))));
 
   await page.click('#resetSplit').catch(()=>{});
   await settle(page);
@@ -139,6 +167,61 @@ const settle=async page=>{
   /* 掴む的は大きいほどよい。以前は88px固定で、下に45pxの空きが残っていた。 */
   rec('帯はカードの高さを使い切る（88px固定に戻っていない）',card.帯の高さ>100,
       card.帯の高さ+'px');
+
+  /* ---- 押した結果を返す（§9.159、利用者の指摘「クリックしたら図形の
+     サイズが変わる」「どれをクリックしたか分からない」） ----
+     **実際にポインタで押す。** 関数を直に呼ぶと、閾値でタップとドラッグを
+     分けている作りそのものを確かめられない。 */
+  const before=await snap(page);
+  const tap=async i=>{
+   const bs=await page.$$('#splitVisualStrip .split-visual-block');
+   const r=await bs[i].boundingBox();
+   await page.mouse.move(r.x+r.width/2,r.y+r.height/2);
+   await page.mouse.down();await page.mouse.up();
+   await settle(page);
+  };
+  await tap(0);
+  const tapped=await page.evaluate(()=>{
+   const bs=[...document.querySelectorAll('#splitVisualStrip .split-visual-block')];
+   const d=document.getElementById('splitVisualDetail'),h=document.getElementById('splitVisualHint');
+   const sel=bs.filter(e=>e.classList.contains('is-selected'));
+   return{選ばれた数:sel.length,先頭が選ばれた:bs[0]?.classList.contains('is-selected')||false,
+     印:sel[0]?getComputedStyle(sel[0]).boxShadow.includes('inset'):false,
+     外枠:sel[0]?getComputedStyle(sel[0]).outlineWidth:'',
+     説明:(d.textContent||'').trim(),説明が出ている:!d.hidden,案内が引っ込んだ:!!h.hidden,
+     図の高さ:Math.round(document.getElementById('splitVisualStrip').getBoundingClientRect().height)};
+  });
+  rec('押しても図の高さが変わらない',tapped.図の高さ===before.図の高さ,
+   `${before.図の高さ}px → ${tapped.図の高さ}px`);
+  rec('押した条に印が付く（1つだけ）',tapped.選ばれた数===1&&tapped.先頭が選ばれた,
+   JSON.stringify(tapped));
+  /* 印は**内側**に描く。`outline`だと隣の帯（絶対配置）が上に来て片側が消える。 */
+  rec('印は内側に描く（外枠で隣にかぶせない）',tapped.印&&(tapped.外枠==='0px'||tapped.外枠===''),
+   JSON.stringify({印:tapped.印,外枠:tapped.外枠}));
+  rec('押した条の説明が案内と入れ替わって出る',
+   tapped.説明が出ている&&tapped.案内が引っ込んだ&&/条目/.test(tapped.説明),tapped.説明);
+  await tap(0);
+  const untapped=await page.evaluate(()=>({
+   選ばれた数:document.querySelectorAll('#splitVisualStrip .split-visual-block.is-selected').length,
+   案内が戻った:!document.getElementById('splitVisualHint').hidden,
+   図の高さ:Math.round(document.getElementById('splitVisualStrip').getBoundingClientRect().height)}));
+  rec('もう一度押すと選択が外れ、高さも戻らない（変わらない）',
+   untapped.選ばれた数===0&&untapped.案内が戻った&&untapped.図の高さ===before.図の高さ,
+   JSON.stringify(untapped));
+  /* ---- 図の両端は「軸の名前」（§9.159、利用者の指摘「OS,DSが屑条みたいな
+     バッジでわかりにくい」）。塗りを持つと隣の屑帯と同じ種類に見える。 ---- */
+  const ends=await page.evaluate(()=>[...document.querySelectorAll('.split-visual-end')].map(e=>{
+   const s=getComputedStyle(e);
+   return{t:e.textContent.trim(),bg:s.backgroundColor,radius:s.borderTopLeftRadius,title:e.title};
+  }));
+  rec('OS/DSは塗りのバッジではない（面と角丸を持たない）',
+   ends.length===2&&ends.every(e=>/rgba\(0, 0, 0, 0\)|transparent/.test(e.bg)&&parseFloat(e.radius)===0),
+   JSON.stringify(ends));
+  rec('OS/DSの読み方が図の案内に文字で書いてある',
+   await page.evaluate(()=>/OS/.test(document.getElementById('splitVisualHint').textContent||'')
+     &&/DS/.test(document.getElementById('splitVisualHint').textContent||'')
+     &&/オペレータ|駆動/.test(document.getElementById('splitVisualHint').textContent||'')),
+   await page.evaluate(()=>(document.getElementById('splitVisualHint').textContent||'').trim()));
 
   /* **ダイアログで止めない。** 以前はalertだったので、ドラッグのたびに
      手が止まった。理由は状態行の文字で伝える。 */

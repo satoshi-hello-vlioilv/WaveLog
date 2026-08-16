@@ -280,8 +280,22 @@ function instructedTolerance(kind,sign){
 }
 // Order tolerance can only be selected when all required order values exist.
 function orderToleranceAvailability(){const t=toleranceDataForSource('thickness','order'),w=toleranceDataForSource('width','order');return{available:!!(t||w),thickness:!!t,width:!!w}}
+/* 寸法3つの実カラム名。板厚=X／板幅=Y／板丈=Z は仕掛データ全体の約束
+   （`JUX/JUY/JUZ`・`LTX/LTY/LTZ` と同じ並び）。板丈は§9.157で足した。
+   **全角/半角のゆれがあるので候補を並べる**——`exactFieldNumber`が
+   実在するものを選ぶ（当たらなければ「公差なし」で、黙って0にはしない）。 */
+const TOL_DIMENSIONS={
+ thickness:{label:'板厚',jp:'板厚',ax:'X',digits:3,baseKey:'mfgThickness'},
+ width:    {label:'板幅',jp:'板幅',ax:'Y',digits:1,baseKey:'mfgWidth'},
+ length:   {label:'板丈',jp:'板丈',ax:'Z',digits:1,baseKey:'mfgLength'},
+};
 function toleranceDataForSource(kind,source){
- const isT=kind==='thickness',dimension=isT?'板厚':'板幅',fields={manufacturing:{plus:[`${dimension}公差_製造_ﾌﾟﾗｽ`,`${dimension}公差_製造_プラス`,isT?'KOSAXSMP':'KOSAYSMP'],minus:[`${dimension}公差_製造_ﾏｲﾅｽ`,`${dimension}公差_製造_マイナス`,isT?'KOSAXSMM':'KOSAYSMM']},order:{plus:[`${dimension}公差_ｵｰﾀﾞｰ_ﾌﾟﾗｽ`,`${dimension}公差_オーダー_プラス`,isT?'KOSAXSOP':'KOSAYSOP'],minus:[`${dimension}公差_ｵｰﾀﾞｰ_ﾏｲﾅｽ`,`${dimension}公差_オーダー_マイナス`,isT?'KOSAXSOM':'KOSAYSOM']}};
+ const d=TOL_DIMENSIONS[kind];if(!d)return null;
+ const dimension=d.jp,ax=d.ax,fields={
+  manufacturing:{plus:[`${dimension}公差_製造_ﾌﾟﾗｽ`,`${dimension}公差_製造_プラス`,`KOSA${ax}SMP`],
+                 minus:[`${dimension}公差_製造_ﾏｲﾅｽ`,`${dimension}公差_製造_マイナス`,`KOSA${ax}SMM`]},
+  order:{plus:[`${dimension}公差_ｵｰﾀﾞｰ_ﾌﾟﾗｽ`,`${dimension}公差_オーダー_プラス`,`KOSA${ax}SOP`],
+         minus:[`${dimension}公差_ｵｰﾀﾞｰ_ﾏｲﾅｽ`,`${dimension}公差_オーダー_マイナス`,`KOSA${ax}SOM`]}};
  const p=exactFieldNumber(fields[source].plus),m=exactFieldNumber(fields[source].minus);
  const data=p&&m?{plus:p.value,minus:m.value,plusKey:p.key,minusKey:m.key}:null;
  if(source==='order'&&data&&(Number(data.plus)===0||Number(data.minus)===0))return null;
@@ -292,7 +306,8 @@ function applyInstructionToleranceForOtherTargets(kind){const p=instructedTolera
    完了前の確認は**描かれていない項目の公差外まで数える**必要があり、画面の
    選択に引きずられると1項目ぶんしか見られない(§9.125)。省略時は今までどおり。 */
 function toleranceDetail(kind,index=0,typeName){
- const type=typeName||$('#measureType')?.value||S.measure?.settings?.measureType||'',isDimensional=WL.measureItem.isDimensional(type),b=S.measure.basic,base=Number(kind==='thickness'?b.mfgThickness:b.mfgWidth);
+ const type=typeName||$('#measureType')?.value||S.measure?.settings?.measureType||'',isDimensional=WL.measureItem.isDimensional(type),b=S.measure.basic,
+   base=Number(b[(TOL_DIMENSIONS[kind]||TOL_DIMENSIONS.width).baseKey]);
  let requested=configuredToleranceSource();if(!isDimensional)requested='instruction';let data=requested==='instruction'?applyInstructionToleranceForOtherTargets(kind):toleranceDataForSource(kind,requested),source=requested,fallback=false;
  if(!data&&requested!=='manufacturing'){source='manufacturing';fallback=true;data=toleranceDataForSource(kind,'manufacturing')}
  return data&&Number.isFinite(base)?{range:[base-data.minus,base+data.plus],source,fallback,...data}:null;
@@ -399,6 +414,19 @@ document.addEventListener('click',e=>{
  box.classList.toggle('tol-open',open);
  btn.setAttribute('aria-expanded',String(open));
 });
+/* 判定公差の切り替え欄は**押したときだけ出す**（§9.159）。既定で畳んで
+   おくのは、製造公差のまま測るのがほとんどで、常設すると測定中いちばん
+   見る帯に「選ぶもの」が居座るため。いま効いている公差はヘッダーの文脈
+   バーが常に出しているので、ここは入口だけでよい。 */
+document.addEventListener('click',e=>{
+ const btn=e.target.closest&&e.target.closest('#tolSourceFold');
+ if(!btn)return;
+ const pick=document.getElementById('toleranceSourcePick');if(!pick)return;
+ const open=pick.hidden;
+ pick.hidden=!open;
+ btn.setAttribute('aria-expanded',String(open));
+ if(open)document.getElementById('toleranceSource')?.focus();
+});
 /* 見出しを押したらその丈位置へ移る。**割り当ては1箇所**（丈位置を動かす
    道具は`#lengthPos`のchangeだけ。ここで直接描き直さない）。
    セルを押したときも同じ——**押した列がいま測る列になる**。押した先が
@@ -472,8 +500,11 @@ function bindFlatnessInputs(){
  });
 }
 /* Horizontal tolerance summary: preserve hierarchy while avoiding vertical clipping. */
+const TOL_SOURCE_LABELS={manufacturing:'製造公差',order:'オーダー公差',instruction:'指示公差'};
 function compactToleranceData(kind){
- const detail=toleranceDetail(kind),base=Number(kind==='thickness'?S.measure.basic.mfgThickness:S.measure.basic.mfgWidth),labels={manufacturing:'製造公差',order:'オーダー公差',instruction:'指示公差'};
+ const detail=toleranceDetail(kind),
+   base=Number(S.measure.basic[(TOL_DIMENSIONS[kind]||TOL_DIMENSIONS.width).baseKey]),
+   labels=TOL_SOURCE_LABELS;
  if(!detail)return null;
  return{source:labels[detail.source]||'公差',base:fixedToleranceValue(kind,base),plus:fixedToleranceValue(kind,detail.plus),minus:fixedToleranceValue(kind,detail.minus),low:fixedToleranceValue(kind,detail.range[0]),high:fixedToleranceValue(kind,detail.range[1]),range:detail.range};
 }
@@ -482,6 +513,97 @@ function compactToleranceFacts(kind){
  if(!data)return{html:'<div class="compact-tol-three-row no-data"><b>公差情報なし</b><span>判定条件を取得できません</span></div>',range:null};
  return{range:data.range,html:`<div class="compact-tol-three-row"><div class="tol-line tol-line-base"><span class="compact-tol-source">${esc(data.source)}</span><span class="tol-value-pair"><small>基準</small><b>${esc(data.base)}</b></span></div><div class="tol-line tol-line-plusminus"><span class="tol-value-pair"><small>公差＋</small><b>+${esc(data.plus)}</b></span><span class="tol-value-pair"><small>公差－</small><b>-${esc(data.minus)}</b></span></div><div class="tol-line tol-line-range"><small>判定範囲</small><b>${esc(data.low)} ～ ${esc(data.high)}</b></div></div>`};
 }
+/* ---------- ③の公差一覧（§9.157、利用者の指摘） ----------
+   「3枚目は、公差指示がラテラルボーしか出ていませんが、板厚、板幅、板丈の
+   公差があります。設備マスタでコイルの場合は板丈はありませんが、板の設備の
+   場合は板丈があります。」
+
+   ②は**いま測っている1項目**の公差でよい（判定しているのがそれだから）が、
+   ③は確認の面なので**効いている公差を全部並べる**。
+   - 寸法は板厚・板幅・板丈の3つ。**板丈は板の設備だけ**——コイルは巻いた
+     ままなので丈が決まらない。区分は設備マスタから来る
+     （`settings.equipmentKind`）。**未設定を「板」と決め付けない**。
+   - 指示型（ラテラルボー等）は`WL.instruction`が持つ項目を、**値がある
+     ものだけ**並べる。
+   - **公差が無い項目は「合格」に混ぜず、項目名で「登録なし」と書く**
+     （§9.125と同じ約束）。 */
+function toleranceListRows(){
+ if(typeof S==='undefined'||!S?.measure)return[];
+ const b=S.measure.basic||{},kind=String(S.measure.settings?.equipmentKind||'');
+ const rows=[];
+ const dims=['thickness','width'].concat(kind==='板'?['length']:[]);
+ dims.forEach(k=>{
+  const d=TOL_DIMENSIONS[k],base=Number(b[d.baseKey]);
+  /* **`toleranceDetail`は通さない。** あれは「いま測っている項目の判定」を
+     答える関数で、`measurement-tolerance.js`のラッパーが
+     `DIMENSIONAL={'板厚','板幅',…}`に無い項目名で**nullを返す**
+     ——板丈は測る項目ではないので、そこで必ず落ちる（実際に「登録なし」に
+     なった）。ここが欲しいのは**データに在る公差**なので、出どころから
+     直に引く。条ごとに公差が違う分割ロットの差は条の設計カードが持つ。 */
+  const detail=(()=>{
+   const want=configuredToleranceSource();
+   let data=toleranceDataForSource(k,want),src=want,fallback=false;
+   if(!data&&want!=='manufacturing'){src='manufacturing';fallback=true;data=toleranceDataForSource(k,'manufacturing')}
+   return data&&Number.isFinite(base)
+     ?{range:[base-data.minus,base+data.plus],source:src,fallback,...data}:null;
+  })();
+  rows.push({key:k,name:d.label,kind:'dimension',
+   source:detail?(TOL_SOURCE_LABELS[detail.source]||'公差'):'',
+   fallback:!!(detail&&detail.fallback),
+   base:Number.isFinite(base)?fixedToleranceValue(k,base):'',
+   plus:detail?fixedToleranceValue(k,detail.plus):'',
+   minus:detail?fixedToleranceValue(k,detail.minus):'',
+   range:detail?`${fixedToleranceValue(k,detail.range[0])} ～ ${fixedToleranceValue(k,detail.range[1])}`:'',
+   missing:!detail});
+ });
+ const types=(WL.instruction&&typeof WL.instruction.types==='function')?WL.instruction.types():[];
+ types.forEach(t=>{
+  const info=WL.instruction.info(t);
+  if(!info)return;                       /* 値の無い指示は行ごと出さない */
+  rows.push({key:'i:'+t,name:t,kind:'instruction',source:'指示公差',fallback:false,
+   base:'',plus:'',minus:'',
+   range:Number.isFinite(info.value)?`0 ～ ${info.value}`:String(info.raw||''),
+   note:info.unit?`${info.unit}単位`:'単位指定なし',missing:false});
+ });
+ return rows;
+}
+/* 板丈を出さない理由は**文で言う**（黙って行が無いと、公差が無いのか
+   出していないのかが分からない）。 */
+function toleranceListNote(){
+ const kind=String(S.measure?.settings?.equipmentKind||'');
+ if(kind==='板')return '';
+ if(kind==='コイル')return '板丈はコイルの設備には無いため出していません。';
+ return '板丈は設備の区分が未設定のため出していません（マスタ管理 > 設備の「区分」で コイル／板 を設定してください）。';
+}
+function toleranceListHtml(){
+ const rows=toleranceListRows(),note=toleranceListNote();
+ if(!rows.length)return '';
+ const cell=v=>esc(v||'—');
+ const body=rows.map(r=>`<tr class="${r.missing?'is-missing':''}">`
+  +`<th scope="row">${esc(r.name)}</th>`
+  +`<td>${cell(r.source)}</td>`
+  +`<td class="num">${cell(r.base)}</td>`
+  +`<td class="num">${r.plus?'+'+esc(r.plus):'—'}</td>`
+  +`<td class="num">${r.minus?'-'+esc(r.minus):'—'}</td>`
+  +`<td class="num">${r.missing?'<span class="tol-list-missing">登録なし</span>':cell(r.range)}</td>`
+  +'</tr>').join('');
+ return '<div class="tol-list-head">効いている公差</div>'
+  +'<table class="tol-list-table"><thead><tr><th>項目</th><th>出どころ</th>'
+  +'<th class="num">基準</th><th class="num">公差＋</th><th class="num">公差－</th>'
+  +'<th class="num">判定範囲</th></tr></thead>'
+  +`<tbody>${body}</tbody></table>`
+  +(note?`<p class="tol-list-note">${esc(note)}</p>`:'');
+}
+window.WL=window.WL||{};
+WL.toleranceList={rows:toleranceListRows,html:toleranceListHtml,note:toleranceListNote,
+ paint(){
+  const host=document.getElementById('toleranceList3');if(!host)return;
+  const html=toleranceListHtml();
+  if(host.innerHTML!==html)host.innerHTML=html;
+  const empty=!html;
+  if(host.hidden!==empty)host.hidden=empty;
+ }};
+
 /* ---- 値→横位置の写像は1本だけ（§9.151／軸の切り替えは§9.152） -------------
    図と、確定前の先読みリングが**別の式を持たない**ようにする（以前は両者が
    それぞれ計算しており、リングと確定後の点が別の位置に出た）。

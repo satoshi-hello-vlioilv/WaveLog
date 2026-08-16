@@ -513,6 +513,62 @@ let b=null,page=null;
       &&/母材/.test(barFit[1].title||''),
       barFit[1].注意書き+' / title='+(barFit[1].title||'(無し)'));
 
+  /* ---- 5b) ③の公差一覧（§9.157、利用者の指摘） ----
+     「公差指示がラテラルボーしか出ていませんが、板厚、板幅、板丈の公差が
+     あります。設備マスタでコイルの場合は板丈はありませんが、板の設備の
+     場合は板丈があります。」
+     **検証用フィクスチャには公差が1件も入っていない**（CLAUDE.md）ので、
+     **材料ごと注ぎ込む**——入れずに「0件」を見ても、壊れていても同じ
+     結果になる。 */
+  /* **注ぎ込んだ材料は必ず戻す**（§9.121の「前の実行の置き土産」と同じ罠の
+     テスト内版）。戻さないと、この後の「公差が引けない項目は判定していないに
+     回す」が板幅の公差を拾って落ちる（実際に2件落ちた）。 */
+  const tolBackup=await page.evaluate(()=>({
+   基本:{t:S.measure.basic.mfgThickness,w:S.measure.basic.mfgWidth,l:S.measure.basic.mfgLength},
+   区分:S.measure.settings.equipmentKind}));
+  const tolList=async kind=>{
+   await page.evaluate(k=>{
+    Object.assign(S.measure.source,{
+     '板厚公差_製造_ﾌﾟﾗｽ':0.05,'板厚公差_製造_ﾏｲﾅｽ':0.05,
+     '板幅公差_製造_ﾌﾟﾗｽ':1.0,'板幅公差_製造_ﾏｲﾅｽ':1.0,
+     '板丈公差_製造_ﾌﾟﾗｽ':2.0,'板丈公差_製造_ﾏｲﾅｽ':0.0});
+    S.measure.basic.mfgThickness=3.0;S.measure.basic.mfgWidth=1250.4;S.measure.basic.mfgLength=2500.8;
+    S.measure.settings.equipmentKind=k;
+   },kind);
+   await go('3');
+   return page.evaluate(()=>{
+    const host=document.getElementById('toleranceList3');
+    return{項目:[...host.querySelectorAll('tbody tr>th')].map(e=>e.textContent.trim()),
+      範囲:[...host.querySelectorAll('tbody tr')].map(tr=>tr.lastElementChild.textContent.trim()),
+      注記:(host.querySelector('.tol-list-note')?.textContent||'').trim(),
+      /* 1項目ぶんの公差カードと同じ数字を2箇所に出さない（§9.129）。 */
+      単品カード:(()=>{const f=document.querySelector('.tol-facts');if(!f)return false;
+        const r=f.getBoundingClientRect();return r.width>0&&r.height>0})()};
+   });
+  };
+  const tl板=await tolList('板');
+  rec('③の公差一覧に板厚・板幅・板丈が出る（板の設備）',
+      ['板厚','板幅','板丈'].every(n=>tl板.項目.includes(n)),JSON.stringify(tl板.項目));
+  rec('③の公差一覧は判定範囲まで出す',
+      tl板.範囲.some(v=>/～/.test(v)),JSON.stringify(tl板.範囲.slice(0,3)));
+  const tlコイル=await tolList('コイル');
+  rec('コイルの設備には板丈を出さず、理由を文で言う',
+      !tlコイル.項目.includes('板丈')&&/コイル/.test(tlコイル.注記),
+      JSON.stringify({項目:tlコイル.項目,注記:tlコイル.注記}));
+  const tl未=await tolList('');
+  rec('区分が未設定なら板丈を出さず、直し方を書く',
+      !tl未.項目.includes('板丈')&&/マスタ管理/.test(tl未.注記),
+      JSON.stringify({項目:tl未.項目,注記:tl未.注記}));
+  rec('③に1項目ぶんの公差カードを重ねない',!tl板.単品カード,String(tl板.単品カード));
+  await page.evaluate(b=>{
+   ['板厚公差_製造_ﾌﾟﾗｽ','板厚公差_製造_ﾏｲﾅｽ','板幅公差_製造_ﾌﾟﾗｽ','板幅公差_製造_ﾏｲﾅｽ',
+    '板丈公差_製造_ﾌﾟﾗｽ','板丈公差_製造_ﾏｲﾅｽ'].forEach(k=>{delete S.measure.source[k]});
+   S.measure.basic.mfgThickness=b.基本.t;S.measure.basic.mfgWidth=b.基本.w;
+   S.measure.basic.mfgLength=b.基本.l;S.measure.settings.equipmentKind=b.区分;
+   if(typeof renderMeasureGrid==='function')renderMeasureGrid();
+  },tolBackup);
+  await go('3');
+
   /* ---- 6a) ③の作業時間（§9.143、利用者の指示でゼロベース） ----
      手で入れる開始・終了のほかに、**測定の操作そのものが知っている時刻**を
      3つだけ自動で残す（入力を始めた／転送を受け始めた／最後に入力した）。
@@ -1206,6 +1262,174 @@ let b=null,page=null;
    rec(`${m}カードの左端が4通り以内`,g.左端.length<=4,JSON.stringify(g));
    rec(`${m}カードの上端が3通り以内`,g.上端.length<=3,JSON.stringify(g));
   }
+  /* ============================================================
+     §9.159 v2.56.0の確認結果（利用者の指摘）
+     ============================================================ */
+  /* ---- 基本情報「分割ロット」は重複を落として番号順（§9.159） ----
+     材料の`splitGroups`は「連続した区間」なので、条を並べ替えて同じロットが
+     離れると`A・B・A`と2度出ていた（実機で「N526C52・N526C53・N526C51・
+     N526C53」）。**重複を注ぎ込んで確かめること**——検証用データは重なって
+     いないので、注がずに見ると直す前でも通る。 */
+  await go('1');
+  const split行=await page.evaluate(()=>{
+   const bk=JSON.parse(JSON.stringify(S.measure.settings.splitGroups||[]));
+   const one=(S.measure.settings.splitGroups||[])[0]||{lot:'X1',count:1};
+   const two=(S.measure.settings.splitGroups||[])[1]||{lot:'X2',count:1};
+   /* B → A → B の順（重複あり・番号順でもない）を注ぎ込む */
+   S.measure.settings.splitGroups=[{...two},{...one},{...two}];
+   if(typeof refreshSplitStatusPanel==='function')refreshSplitStatusPanel();
+   const el=document.getElementById('basicSplit');
+   const out={文:(el.textContent||'').replace(/\s+/g,' ').trim(),隠:!!el.hidden,
+     並び:[...el.querySelectorAll('output')].map(o=>o.textContent.trim())};
+   S.measure.settings.splitGroups=bk;
+   if(typeof refreshSplitStatusPanel==='function')refreshSplitStatusPanel();
+   return out;
+  });
+  {
+   const list=(split行.並び[0]||'').split('・').filter(Boolean);
+   rec('分割ロットに同じ番号を2度出さない',
+    list.length>0&&new Set(list).size===list.length,JSON.stringify(split行));
+   rec('分割ロットはロット番号の順に並べる',
+    list.join('・')===[...list].sort().join('・'),JSON.stringify(split行.並び));
+   rec('子ロット数は重複を数えない',split行.並び[1]===String(new Set(list).size),
+    JSON.stringify(split行.並び));
+  }
+
+  /* ---- 基本情報の詳細: ラベル列は1種類・値が切れない（§9.159） ---- */
+  const 詳細=await page.evaluate(async()=>{
+   const btn=document.getElementById('basicMore'),dt=document.getElementById('basicDetail');
+   if(dt.hidden)btn.click();
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   const R=e=>e.getBoundingClientRect();
+   /* 見るのは**ラベルを列で持つ行**だけ。常時の3行（ロット№・用途名・
+      材調質/製造寸法）は`.info-inline`で「ラベル 値」を横に流す作りなので、
+      ラベル幅は中身なりでよい（列としてそろえる対象ではない）。 */
+   const rows=[...document.querySelectorAll('#basicInfo .field:not(.info-inline)')]
+     .filter(f=>R(f).height>0&&f.querySelector('label')&&f.querySelector('output'));
+   const out=rows.map(f=>{
+    const l=f.querySelector('label'),o=f.querySelector('output');
+    return{名:l.textContent.trim(),ラベル幅:Math.round(R(l).width),
+      ラベル切れ:l.scrollWidth-l.clientWidth,値切れ:o.scrollWidth-o.clientWidth,
+      値幅:Math.round(R(o).width),全幅:f.classList.contains('full')};
+   });
+   const res={列の種類:[...new Set(out.map(x=>x.ラベル幅))],
+     ラベルが切れた:out.filter(x=>x.ラベル切れ>1).map(x=>x.名),
+     識別と製品の値幅:out.filter(x=>['鋳造No.','オーダーNo.','取引先','納入先'].includes(x.名))
+       .map(x=>x.値幅)};
+   if(!dt.hidden)btn.click();
+   return res;
+  });
+  rec('基本情報のラベル列は1種類（詳細を開いても値の左端がずれない）',
+   詳細.列の種類.length===1,JSON.stringify(詳細.列の種類));
+  rec('ラベルが省略記号で切れない',詳細.ラベルが切れた.length===0,
+   詳細.ラベルが切れた.join('/'));
+  /* 2列に割ると値へ渡せるのは94px前後。全幅なら280px前後になる。 */
+  rec('識別番号・製品の値は全幅を使う（会社名が入る）',
+   詳細.識別と製品の値幅.length>0&&詳細.識別と製品の値幅.every(w=>w>200),
+   JSON.stringify(詳細.識別と製品の値幅));
+
+  /* ---- 詳細を開いても品質情報が読める（§9.159） ----
+     以前は`flex:1 1 auto`で**縮む側**だったため、詳細を開くと高さ9pxまで
+     潰れ、潰れたぶんペインのスクロール量も増えないので下まで送っても
+     出てこなかった。 */
+  const 品質=await page.evaluate(async()=>{
+   const ta=document.getElementById('qualityInfo'),bk=ta.value;
+   ta.value='異常あり\n'.repeat(6);
+   const btn=document.getElementById('basicMore'),dt=document.getElementById('basicDetail');
+   if(dt.hidden)btn.click();
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   const lp=document.querySelector('.left-pane'),qi=document.querySelector('.quality-info-block');
+   lp.scrollTop=lp.scrollHeight;
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   const R=e=>e.getBoundingClientRect(),r=R(qi),p=R(lp);
+   const res={高さ:Math.round(r.height),
+     下まで送れば全部見える:r.top>=p.top-1&&r.bottom<=p.bottom+1,
+     ころがし:Math.max(0,lp.scrollHeight-lp.clientHeight)};
+   if(!dt.hidden)btn.click();
+   ta.value=bk;lp.scrollTop=0;
+   return res;
+  });
+  rec('詳細を開いても品質情報が潰れない',品質.高さ>40,JSON.stringify(品質));
+  rec('詳細を開いたら品質情報までスクロールで届く',品質.下まで送れば全部見える,
+   JSON.stringify(品質));
+
+  /* ---- ②入力内容: 題の意匠・器の内側に収まる（§9.159） ---- */
+  await go('2');
+  const 入力内容=await page.evaluate(()=>{
+   const R=e=>e.getBoundingClientRect();
+   const g=document.getElementById('measureTypeGroup'),cp=document.querySelector('.center-pane');
+   const gs=getComputedStyle(g),cs=getComputedStyle(cp),rc=R(cp);
+   const 題=document.querySelector('.measure-body .card-title');
+   const ts=題?getComputedStyle(題):null;
+   const box=document.getElementById('measureTypeChips');
+   const chips=[...box.querySelectorAll('.type-chip')];
+   const 内側右=rc.right-parseFloat(cs.paddingRight);
+   const はみ出し=chips.length?Math.max(...chips.map(e=>{
+    const s=getComputedStyle(e),r=R(e);
+    const o=(s.outlineStyle&&s.outlineStyle!=='none')
+      ?parseFloat(s.outlineWidth||0)+parseFloat(s.outlineOffset||0):0;
+    return r.right+o-内側右;
+   })):0;
+   return{色:gs.color,大:gs.fontSize,太:gs.fontWeight,
+     題の色:ts?ts.color:'',題の大:ts?ts.fontSize:'',
+     はみ出し:Math.round(はみ出し),
+     幅:Math.round(R(box).width),器の幅:Math.round(rc.width),
+     現在の外枠:(()=>{const e=box.querySelector('.is-current');
+       if(!e)return '';const s=getComputedStyle(e);
+       return s.outlineStyle==='none'?'':s.outlineWidth})()};
+  });
+  rec('「入力内容」はカードの題と同じ意匠',
+   入力内容.色===入力内容.題の色&&入力内容.大===入力内容.題の大&&Number(入力内容.太)>=700,
+   JSON.stringify(入力内容));
+  rec('入力内容のボタンがカードからはみ出さない（選択中の枠も含めて）',
+   入力内容.はみ出し<=0,JSON.stringify(入力内容));
+  rec('選択中の印は外枠で描かない',入力内容.現在の外枠===''||parseFloat(入力内容.現在の外枠)===0,
+   JSON.stringify(入力内容.現在の外枠));
+  rec('入力内容のボタンは器いっぱいに伸びない',
+   入力内容.幅<入力内容.器の幅-40,`${入力内容.幅}px / 器${入力内容.器の幅}px`);
+
+  /* ---- ②判定公差の切り替えは畳んでおく（§9.159） ----
+     **選べる状態を作ってから見ること**——検証用データにはオーダー公差が
+     1件も無く、そのままだと欄ごと非表示なので「畳んでいる」を見ても
+     直す前でも通ってしまう。 */
+  const 公差切替=await page.evaluate(async()=>{
+   const src=S.measure.source,bk={};
+   ['板幅公差_製造_ﾌﾟﾗｽ','板幅公差_製造_ﾏｲﾅｽ','板幅公差_ｵｰﾀﾞｰ_ﾌﾟﾗｽ','板幅公差_ｵｰﾀﾞｰ_ﾏｲﾅｽ']
+     .forEach(k=>{bk[k]=src[k]});
+   Object.assign(src,{'板幅公差_製造_ﾌﾟﾗｽ':0.5,'板幅公差_製造_ﾏｲﾅｽ':0.5,
+     '板幅公差_ｵｰﾀﾞｰ_ﾌﾟﾗｽ':0.8,'板幅公差_ｵｰﾀﾞｰ_ﾏｲﾅｽ':0.8});
+   const mt=document.getElementById('measureType'),bkType=mt.value;
+   mt.value='板幅';mt.dispatchEvent(new Event('change',{bubbles:true}));
+   if(typeof configureToleranceSelector==='function')configureToleranceSelector();
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   const box=document.querySelector('.tolerance-source-control'),
+     fold=document.getElementById('tolSourceFold'),
+     pick=document.getElementById('toleranceSourcePick');
+   const R=e=>e.getBoundingClientRect();
+   /* **無ければ「畳めていない」と答える。** 例外で落とすと、畳む仕組みごと
+      消したときにこの一連が丸ごと動かず、何も確かめられない。 */
+   if(!box||!fold||!pick)return{選べる:!!box&&!box.hidden,入口が出ている:false,
+     既定で畳んでいる:false,押すと出る:false,もう一度押すと畳む:false,
+     欠け:[!box&&'欄',!fold&&'入口',!pick&&'選択欄'].filter(Boolean).join('/')};
+   const out={選べる:!box.hidden,入口が出ている:R(fold).height>0,
+     既定で畳んでいる:!!pick.hidden&&R(pick).height===0};
+   fold.click();
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   out.押すと出る=!pick.hidden&&R(pick).height>0;
+   fold.click();
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   out.もう一度押すと畳む=!!pick.hidden;
+   Object.keys(bk).forEach(k=>{if(bk[k]===undefined)delete src[k];else src[k]=bk[k]});
+   mt.value=bkType;mt.dispatchEvent(new Event('change',{bubbles:true}));
+   if(typeof configureToleranceSelector==='function')configureToleranceSelector();
+   return out;
+  });
+  rec('判定公差の切り替えは選べるときだけ出す',公差切替.選べる&&公差切替.入口が出ている,
+   JSON.stringify(公差切替));
+  rec('判定公差の選択欄は既定で畳んである',公差切替.既定で畳んでいる,JSON.stringify(公差切替));
+  rec('入口を押せば選択欄が出て、もう一度押すと畳む',
+   公差切替.押すと出る&&公差切替.もう一度押すと畳む,JSON.stringify(公差切替));
+
   await go('1');
 
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));

@@ -84,10 +84,22 @@ let b=null;
      板厚/板幅/板丈は1行に横並びにしたので、`.field`の箱は5つでも読める
      項目は8つある。箱で数えると、まとめただけで落ちる。 */
   return {常時:[...g.querySelectorAll('.field label')].filter(x=>vis(x)).length,
+          名前:[...g.querySelectorAll('.field label')].filter(x=>vis(x)).map(x=>x.textContent.trim()),
           枠:[...g.querySelectorAll('.field')].filter(vis).length,
           詳細が畳んである:!!dt&&dt.hidden};
  });
- rec('基本情報は常時8項目',basicMain.常時===8,JSON.stringify(basicMain));
+ /* **分割ロットの行は分割ありのときだけ**（§9.144）。このロットは分割が無いので
+    常時は5項目（ロット№・検査No.・用途名・材調質・製造寸法）、分割ありなら
+    ここへ3項目（分割ロット・子ロット数・条数）が足されて8になる。
+    **数だけを見て「8」に固定していたため、行を出さない決めごとを入れた時点で
+    落ちたままだった**（HEADでも落ちていた）。中身の一覧で見る。 */
+ const ALWAYS=['ロット№','検査No.','用途名','材調質','製造寸法'];
+ const SPLIT=['分割ロット','子ロット数','条数'];
+ rec('基本情報は常時「識別・用途・材と寸法」だけ（分割ロットは分割ありのときだけ）',
+  ALWAYS.every(l=>basicMain.名前.includes(l))
+  &&basicMain.名前.every(l=>ALWAYS.includes(l)||SPLIT.includes(l))
+  &&basicMain.詳細が畳んである,
+  JSON.stringify(basicMain));
  rec('詳細は畳んである',basicMain.詳細が畳んである,JSON.stringify(basicMain));
  await page.click('#basicMore');
  await page.waitForFunction(()=>!document.querySelector('#basicDetail').hidden,null,{timeout:5000});
@@ -99,8 +111,12 @@ let b=null;
     labels:[...g.querySelectorAll('.field label')].filter(x=>vis(x.parentElement)).map(x=>x.textContent)};
  });
  rec('詳細を開けば全項目が読める',basicAll.項目>=13,basicAll.項目+'項目');
+ /* 品質規格は**詳細の中の1つの群**（§9.154。以前は基本情報カードのタブの裏の
+    4×3表で、見出し列を`width:11%`で決め打ちしていたため項目名が切れていた）。
+    群を1つ足した時点でこの一覧も足す必要があったが忘れており、HEADでも
+    落ちていた。 */
  rec('意味のかたまりで見出しが付いている',
-   basicAll.groups.join('/')==='識別番号/製品/コース',basicAll.groups.join('/'));
+   basicAll.groups.join('/')==='識別番号/製品/コース/品質規格',basicAll.groups.join('/'));
  info.labels=basicAll.labels;
  /* コースの3項目のラベルは「設計」「実績」「残」(§9.81)。すぐ上に
     「コース」という見出しが出ているので、行ごとに繰り返さない。 */

@@ -812,12 +812,30 @@
     return insertAt;
   }
 
-  const SPLIT_VISUAL_COLORS=['#087c89','#f59e0b','#2563eb','#16a34a','#dc2626','#7c3aed','#0891b2','#ca8a04'];
-  function splitLotColorMap(sources){
-    const map={};
-    sources.forEach((s,i)=>{map[s.lot]=SPLIT_VISUAL_COLORS[i%SPLIT_VISUAL_COLORS.length]});
+  /* ---------- 子ロットの色（§9.159） ----------
+     **色はロット番号だけで決める**（並び順で決めない）。以前は
+     `sources`／`groups`の**添字**で配っていたため、条を1つ並べ替えただけで
+     ロットと色の対応が入れ替わり、**図・測定表のバッジ・幅分割の丸が
+     いっせいに別の色になった**（実機で報告。「入れ替えた瞬間色味が変わる」）。
+     色は「どのロットか」を指す印なので、並びで変わってはいけない。
+     ロット番号を**辞書順**に並べて配る——基本情報の「分割ロット」も同じ順で
+     並ぶので、色の並びと文字の並びが一致する。
+
+     配色は**彩度を一段落とした8色**。原色（#dc2626・#2563eb 等）を並べると
+     図そのものが騒がしくなり、**公差外の赤・ドラッグ中の印といった
+     「意味のある強い色」が埋もれる**（異常位置判定の図は先にこの配色へ
+     移してあった。§9.101）。2つの画面で同じロットが違う色になっていた
+     状態も、ここで1つに揃う。 */
+  const LOT_COLORS=['#5b8f88','#b98d5f','#6d92b8','#8b81bb','#7ba061','#ab7086','#6e828c','#9c8460'];
+  const LOT_COLOR_NEUTRAL='#8a9a97';
+  function lotColorMap(lots){
+    const uniq=[...new Set((lots||[]).map(x=>String(x||'')).filter(Boolean))].sort(),map={};
+    uniq.forEach((lot,i)=>{map[lot]=LOT_COLORS[i%LOT_COLORS.length]});
     return map;
   }
+  window.WL=window.WL||{};
+  window.WL.lotColors={palette:LOT_COLORS,neutral:LOT_COLOR_NEUTRAL,map:lotColorMap};
+  function splitLotColorMap(sources){return lotColorMap((sources||[]).map(s=>s.lot))}
   // 図中のラベルはロット番号全体だと長く読みにくいため下3桁のみを表示する
   // (詳細行・候補カード・ツールチップは引き続きロット番号全体を表示)。
   function lotSuffix3(lot){const s=String(lot||'');return s.length>3?s.slice(-3):s}
@@ -864,25 +882,38 @@
      見やすい)、条ごとに独立してドラッグ操作できるようにする。ラベルは
      ロット番号下3桁と板幅のみとし、狭いマスでも読める簡潔さを優先する
      (ロット番号全体・公差は詳細行とツールチップで確認する)。 */
-  /* 掴んだ条の説明欄。**中身が無いときは畳む**（§9.157）——空のまま16px
-     場所を取っており、その下の操作ボタンが図から離れていた。 */
+  /* 選んだ条の説明は**操作の案内と同じ1行を使う**（§9.159）。以前は図の下に
+     独立した行を持ち、`hidden`で畳んでいたため**条を押すたびに行が1本増え、
+     図の高さが24px縮んでいた**（実測 201px→177px。「クリックしたら条の図形の
+     サイズが変わる」）。器を1つにすれば、中身が入れ替わるだけで高さは動かない。
+     案内（何ができるか）は選ぶ前に読むもの、説明（何を選んだか）は選んだ後に
+     読むものなので、同じ場所で入れ替わるのは読み順とも合う。 */
   function setVisualDetail(text){
-    const el=$('#splitVisualDetail');if(!el)return;
+    const el=$('#splitVisualDetail'),hint=$('#splitVisualHint');
+    if(!el)return;
     const t=String(text||'');
     if(el.textContent!==t)el.textContent=t;
     if(el.hidden!==!t)el.hidden=!t;
+    if(hint&&hint.hidden!==!!t)hint.hidden=!!t;
   }
+  /* いま選んでいる条（0始まり、-1＝選んでいない）。**押しただけでは並びを
+     変えない**ので、押した結果を画面へ返すにはこれが要る（§9.159、利用者の
+     指摘「クリックしてもどれをクリックしたかわからない」）。並べ替えたら
+     動いた先へ付いていく（`moveRange`が入った位置を返す）。 */
+  let selectedStrip=-1;
+  function selectStrip(i){selectedStrip=Number.isInteger(i)?i:-1}
   function renderSplitVisual(sources,seq,colorMap){
     const strip=$('#splitVisualStrip');
     const total=seq.length;
     if(!strip)return;
     if(!total){
       strip.innerHTML='<div class="split-visual-empty">条割の対象となる子ロットがありません。</div>';
-      setVisualDetail('');
+      selectStrip(-1);setVisualDetail('');
       splitVisualLayout=null;
       renderScrapAndRuler(null);
       return;
     }
+    if(selectedStrip>=total||(selectedStrip>=0&&!seq[selectedStrip]))selectStrip(-1);
     const layout=computeVisualLayout(seq,sources);
     splitVisualLayout=layout;
     const widthMap=Object.fromEntries(sources.map(s=>[s.lot,s.width])),tolMap=Object.fromEntries(sources.map(s=>[s.lot,s.tol]));
@@ -890,20 +921,32 @@
     for(let i=0;i<total;i++){
       const lot=seq[i];
       const left=layout.cum[i]/layout.totalUnits*100,width=(layout.cum[i+1]-layout.cum[i])/layout.totalUnits*100;
-      const bg=lot?(colorMap[lot]||'#8a9a97'):'transparent';
+      const bg=lot?(colorMap[lot]||LOT_COLOR_NEUTRAL):'transparent';
       const fullLabel=lot?esc(lot):'未割当';
       const hasWidth=lot&&widthMap[lot]!==''&&widthMap[lot]!==undefined;
       const widthText=hasWidth?esc(String(widthMap[lot])):'';
       const tolText=lot?esc(tolMap[lot]||''):'';
       const wide=width>4;
       const cellLabel=lot?`<span class="split-visual-block-label"><b>${esc(lotSuffix3(lot))}</b>${hasWidth?`<small>${widthText}</small>`:''}</span>`:'';
-      html+=`<div class="split-visual-block${lot?'':' empty'}" data-start="${i}" data-end="${i}" data-lot="${lot?esc(lot):''}" style="left:${left}%;width:${width}%;--split-block-bg:${bg}" title="${fullLabel} ／ ${i+1}条目${hasWidth?` ／ 幅${widthText}`:''}${tolText?` ／ ${tolText}`:''}">${wide?cellLabel:''}</div>`;
+      html+=`<div class="split-visual-block${lot?'':' empty'}${i===selectedStrip?' is-selected':''}" data-start="${i}" data-end="${i}" data-lot="${lot?esc(lot):''}" style="left:${left}%;width:${width}%;--split-block-bg:${bg}" title="${fullLabel} ／ ${i+1}条目${hasWidth?` ／ 幅${widthText}`:''}${tolText?` ／ ${tolText}`:''}">${wide?cellLabel:''}</div>`;
     }
     html+='<div class="split-visual-ghost" id="splitVisualGhost" hidden></div></div>';
     strip.innerHTML=html;
-    setVisualDetail('');
+    /* 選んでいる条の説明は**描き直しても残す**（§9.159）。ここで空へ戻すと、
+       並べ替えの直後に選択の印だけが残って説明が消える（何を選んでいるのかが
+       印だけになる＝色でしか伝えていない状態）。 */
+    setVisualDetail(describeStrip(seq,sources,selectedStrip));
     ensureSplitVisualWiring();
     renderScrapAndRuler(layout);
+  }
+  /* 選んだ条の1行。ロット番号・幅・公差は帯の`title`と同じ材料だが、
+     **マウスを載せなくても読める場所**が要る（触った結果を画面に返す）。 */
+  function describeStrip(seq,sources,idx){
+    if(!Array.isArray(seq)||idx<0||idx>=seq.length)return '';
+    const lot=seq[idx];if(!lot)return '';
+    const src=(sources||[]).find(s=>s.lot===lot);
+    const w=src&&src.width!==''&&src.width!==undefined?src.width:'—';
+    return `${idx+1}条目 ／ ${lot} ／ 幅${w} ／ ${(src&&src.tol)||'公差情報なし'}`;
   }
   // 屑幅(両耳合計)を左右均等に振り分け、条ストリップの両端に「動かせない
   // 帯」として描画する(#splitVisualScrapOs/Ds、条とは違いドラッグ操作の
@@ -951,7 +994,7 @@
     ghost.hidden=false;
     ghost.style.left=(cum[dropIndex]/totalUnits*100)+'%';
     ghost.style.width=(widthUnits/totalUnits*100)+'%';
-    ghost.style.setProperty('--split-block-bg',dragBlock.color||'#8a9a97');
+    ghost.style.setProperty('--split-block-bg',dragBlock.color||LOT_COLOR_NEUTRAL);
     ghost.innerHTML=`<span class="split-visual-block-label"><b>${esc(lotSuffix3(dragBlock.lot||''))}</b></span>`;
   }
   function hideGhost(){const ghost=$('#splitVisualGhost');if(ghost)ghost.hidden=true}
@@ -982,10 +1025,8 @@
       return{sources,total,seq:ensureSequenceLength(total),confirmed:ensureConfirmedLength(total)};
     }
     function updateDetailFor(idx){
-      const{seq,sources}=context(),lot=seq[idx];
-      if(!lot){setVisualDetail('');return}
-      const src=sources.find(s=>s.lot===lot);
-      setVisualDetail(src?`${lot} ／ 幅${src.width===''||src.width===undefined?'—':src.width} ／ ${src.tol||'—'}`:lot);
+      const{seq,sources}=context();
+      setVisualDetail(describeStrip(seq,sources,idx));
     }
     function beginDragging(){
       dragging=true;
@@ -1010,14 +1051,27 @@
       strip.classList.remove('split-visual-dragging');
       hideGhost();
       if(!dragging){
-        // ほぼ動かさないタップは詳細表示(pointerdown時にupdateDetailForで
-        // 既に表示済み)のみとし、並び・状態は一切変更しない。
+        /* ほぼ動かさないタップは**選ぶだけ**——並びは一切変えない。
+           同じ条をもう一度押したら選択を外す（§9.159）。選んだ結果は
+           帯の印と説明の行に出す（`renderSplitVisual`が`is-selected`を付ける）。 */
+        selectStrip(selectedStrip===dragBlock.start?-1:dragBlock.start);
+        renderSplit();
       }else{
         const drop=dropTargetIndex(e.clientX);
         const{seq,confirmed,total}=context();
         const dropStart=drop<0?dragBlock.dropTarget:Math.max(0,Math.min(drop-dragBlock.grabOffset,total));
         pushUndoSnapshot(seq,confirmed);
-        moveRange(seq,confirmed,dragBlock.start,dragBlock.end,dropStart);
+        /* 選んでいた条は**動いた先へ付いていく**（§9.159）。掴んだ条そのもの
+           なら入った位置、別の条なら「1本抜けて1本入った」ぶんだけ番号がずれる。
+           選択を黙って外すと、押して確かめた直後に印だけ消えて壊れて見える。 */
+        const from=dragBlock.start;
+        const insertAt=moveRange(seq,confirmed,from,dragBlock.end,dropStart);
+        if(selectedStrip===from)selectStrip(insertAt);
+        else if(selectedStrip>=0){
+          let s=selectedStrip>from?selectedStrip-1:selectedStrip;
+          if(s>=insertAt)s+=1;
+          selectStrip(s);
+        }
         renderSplit();
         if(typeof markDirty==='function')markDirty();
         /* 離した時点で当てる（§9.149）。移動の途中では当てない——1条動かす
@@ -1051,7 +1105,7 @@
     box.innerHTML=sources.map(s=>{
       const n=countAssigned(seq,s.lot),active=activeLot===s.lot;
       return `<div class="split-candidate${active?' active':''}" data-lot="${esc(s.lot)}" role="button" tabindex="0">
-        <span class="split-candidate-swatch" style="background:${colorMap[s.lot]||'#8a9a97'}"></span>
+        <span class="split-candidate-swatch" style="background:${colorMap[s.lot]||LOT_COLOR_NEUTRAL}"></span>
         <span class="split-candidate-body">
           <span class="split-candidate-head"><b>${esc(s.lot)}</b><em>${n}条</em></span>
           <span class="split-candidate-meta">${s.width!==''&&s.width!==undefined?`幅${esc(String(s.width))} ／ `:''}${esc(s.missing?'子ロット情報取得失敗':(s.tol||'—'))}</span>
@@ -1082,7 +1136,7 @@
     const box=$('#splitResult');if(!box)return;
     const groups=splitGrouped(seq,sources);
     if(!groups.length){box.innerHTML='<div class="split-result-empty">視覚図で条を確認・並べ替えると、ここに結果が表示されます。</div>';return}
-    box.innerHTML=groups.map((g,gi)=>`<div class="split-result-row" style="border-left-color:${colorMap[g.lot]||'#8a9a97'}"><b class="split-result-index">${gi+1}</b><span class="split-result-lot">${esc(g.lot)}</span><span class="split-result-count">${g.count}条</span><span class="split-result-width">${esc(g.width||'—')}</span></div>`).join('');
+    box.innerHTML=groups.map((g,gi)=>`<div class="split-result-row" style="border-left-color:${colorMap[g.lot]||LOT_COLOR_NEUTRAL}"><b class="split-result-index">${gi+1}</b><span class="split-result-lot">${esc(g.lot)}</span><span class="split-result-count">${g.count}条</span><span class="split-result-width">${esc(g.width||'—')}</span></div>`).join('');
   }
 
   /* 条割変更モーダルの描画。母材幅比率の視覚図(上)・子ロット候補(左)・
@@ -1765,6 +1819,14 @@
       lots=rows.map(s=>String(s.lot||'')).filter(Boolean);
       strips=rows.reduce((a,s)=>a+(Number(s.count)||0),0);
     }
+    /* **重複を落とし、ロット番号の順に並べる**（§9.159、利用者の指摘）。
+       材料の`splitGroups`は「連続した区間」なので、条を並べ替えて同じロットが
+       離れて置かれると`A・B・A`のように**同じ番号が2度出ていた**
+       （実機で「N526C52・N526C53・N526C51・N526C53」）。ここが答えるのは
+       「このロットは何と何に分かれるか」であって並び順ではない——並び順は
+       条の設計の図が持つ。子ロットの色も同じ順で配る（`lotColorMap`）ので、
+       色の並びと文字の並びが一致する。 */
+    lots=[...new Set(lots)].sort();
     if(lots.length<2){el.hidden=true;el.innerHTML='';return;}
     const list=lots.join('・');
     el.innerHTML=`<span class="ii"><label>分割ロット</label>`
@@ -1858,12 +1920,13 @@
      **分割ありのときだけ**付ける(単一ロットで全行に同じバッジが並んでも
      情報が増えないため)。 */
   /* 確定済みの条割から「子ロット→色」を作る。groupsは連続した区間の配列なので
-     同じロットが複数回現れる(A B A)。色は**異なるロットの並び順**で決める。
+     同じロットが複数回現れる(A B A)。**色はロット番号だけで決める**（§9.159）
+     ——ここが「groupsに出てくる順」で配っていたため、並べ替えると測定表の
+     バッジと幅分割の丸の色が入れ替わっていた。
      幅分割情報パネルの表・入力欄のバッジ・条割の視覚図がすべてこれを使う。 */
   function appliedLotColorMap(groups){
-    const lots=[...new Set((groups||[]).map(g=>g.lot).filter(Boolean))],map={};
-    lots.forEach((lot,i)=>{map[lot]=SPLIT_VISUAL_COLORS[i%SPLIT_VISUAL_COLORS.length]});
-    return{map,lots};
+    const lots=[...new Set((groups||[]).map(g=>g.lot).filter(Boolean))];
+    return{map:lotColorMap(lots),lots};
   }
   function stripLotBadgeFor(index){
     const st=S.measure?.settings,groups=st?.splitGroups,posMap=st?.splitPositionGroup;

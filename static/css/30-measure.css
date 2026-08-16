@@ -353,10 +353,17 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .measure-shell.mstep-1 .left-pane>*,
 .measure-shell.mstep-2 .left-pane>*,
 .measure-shell.mstep-3 .left-pane>*{align-self:stretch;flex:0 0 auto;min-width:0}
+/* **余りは受け取るが、足りないときは縮まない**（§9.159、利用者の指摘
+   「詳細を見るにすると品質情報が押しやられ、スクロールも届かず見れない」）。
+   `flex:1 1 auto;min-height:0`だったため、基本情報の詳細を開いて中身が器を
+   超えると、**縮む側であるこのブロックが先に潰れて**高さ9pxになっていた
+   （実測。潰れた結果ペインのscrollHeightも増えないので、スクロールしても
+   出てこない＝「手元にあるのに消えた」ように見える）。縮まない側にすれば、
+   溢れたぶんはペインのスクロールになり、下まで送れば読める。 */
 .measure-shell.mstep-1 .left-pane>.quality-info-block,
 .measure-shell.mstep-2 .left-pane>.quality-info-block,
 .measure-shell.mstep-3 .left-pane>.quality-info-block{
-  display:flex;flex-direction:column;flex:1 1 auto;min-height:0;
+  display:flex;flex-direction:column;flex:1 0 auto;min-height:0;
 }
 .measure-shell.mstep-1 .left-pane>.quality-info-block>textarea,
 .measure-shell.mstep-2 .left-pane>.quality-info-block>textarea,
@@ -373,13 +380,22 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .recorded-pane{display:flex;flex-direction:column;min-height:0}
 .measure-shell:not(.mstep-3) .recorded-pane{display:none}
 .recorded-list{min-height:0}
-.rv-group+.rv-group{margin-top:var(--space-3)}
-.rv-group>b{display:block;margin-bottom:var(--space-1);color:var(--ink-3);font-size:var(--fs-micro);font-weight:800;letter-spacing:.04em}
+/* 「記録した値」は**2列**（§9.157、利用者の指示「2列にするなど可能な部分は
+   縦方向圧縮して文字サイズを①②と同じレベルに引き上げられないか」）。
+   5つの群を縦に積むと下に182pxの空きが残り、そのぶん文字を小さくして
+   いた（見出し11px・ラベル12px）。**横に2列**にすれば同じ高さで文字を
+   1段上げられる。群は途中で割らない（`break-inside`）。 */
+.recorded-list{columns:2;column-gap:var(--gap-section)}
+.rv-group{break-inside:avoid;margin-bottom:var(--space-3)}
+.rv-group+.rv-group{margin-top:0}
+/* 見出しは**カードの中の群の見出しの規格**（§9.154）。ここだけ11pxで、
+   同じ画面の①②より1段小さかった。 */
+.rv-group>b{display:block;margin-bottom:var(--space-1);color:var(--ink-3);font-size:var(--fs);font-weight:800;letter-spacing:.04em}
 .rv-group dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:var(--gap-hair) var(--gap-inline);margin:0}
 .rv-group dl>div{display:contents}
-.rv-group dt{color:var(--muted);font-size:var(--fs-sm)}
+.rv-group dt{color:var(--muted);font-size:var(--fs)}
 .rv-group dd{margin:0;min-width:0;font-weight:700;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rv-empty{margin:0;color:var(--muted);font-size:var(--fs-sm)}
+.rv-empty{margin:0;color:var(--muted);font-size:var(--fs)}
 /* ② 1列目は**根拠**だけ。1列（狭い）なので縦に積む。 */
 .measure-shell.mstep-2 .left-pane{
   grid-template-columns:minmax(0,1fr);
@@ -428,8 +444,17 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    見えている一覧を消すことと、状態の置き場を消すことは別
    （§9.124の`#measureType`とチップの関係と同じ）。 */
 .measure-shell.mstep-2 #lengthPosGroup{display:none}
+/* 「入力内容」は**このカードの題**（§9.159、利用者の指摘「入力内容ラベルが
+   カードのラベルの色になってません」）。②では`.center-pane`の題
+   （「準備の入力」）を出さず、この`<label>`の文字がそのまま題として読まれる
+   のに、色も大きさも本文のままだった（実測 #60747b/14px/400 に対し、
+   カードの題は teal/15px/800）。題名は`<label>`直下のテキストノードなので、
+   器そのものへ題の意匠を与える——中の部品は自分で色と大きさを宣言している
+   ので巻き込まれない。 */
 .measure-shell.mstep-2 #measureTypeGroup{
   display:grid;grid-template-rows:auto minmax(0,1fr) auto;height:100%;
+  gap:var(--space-1);
+  color:var(--teal);font-size:var(--fs-title);font-weight:800;letter-spacing:.02em;
 }
 .measure-shell.mstep-2 #measureTypeGroup .type-chips{
   height:100%;max-height:none;overflow:auto;justify-content:flex-start;
@@ -444,7 +469,17 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    大きさは「7割まで埋まる」から決めた（利用者の指示）。カード460pxに9項目
    なので、高さ --ctl-h-sm(30px) ＋ 間隔 --space-2(8px) で 9×30+8×8=334px＝73%。
    --ctl-h(36px)まで上げると405px＝88%になり、項目が増えたときに溢れる。 */
-.measure-shell.mstep-2 #measureTypeGroup .type-chips{gap:var(--space-2)}
+/* 幅は**中身から決めて規格へ丸める**（§9.130／§9.131、利用者の指摘「入力内容
+   項目のボタンが横幅大きすぎて、カードからはみ出ています」）。器いっぱいの
+   408pxまで伸びていたが、いちばん長い項目（「揃い/肉厚/長さ」92px）と件数
+   （「0/18」15px）に余白・枠を足しても133pxで足りる。直近上位の規格幅は
+   `--w-xl`(22em)——`--w-md`(11em＝154px)まで詰めると押す的として小さくなり
+   すぎるので、1段上を取って**器より明らかに内側**であることが分かる幅にする。
+   `em`は器の文字（②では題として--fs-title）で解かれるので、ここで
+   `--fs`へ戻してから使う（そうしないと規格の値と実際の幅がずれる）。 */
+.measure-shell.mstep-2 #measureTypeGroup .type-chips{
+  gap:var(--space-2);font-size:var(--fs);width:var(--w-xl);max-width:100%;
+}
 .measure-shell.mstep-2 #measureTypeGroup .type-chip{
   flex:0 0 auto;min-height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
 }
@@ -637,10 +672,13 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
   display:grid;grid-template-columns:max-content minmax(0,1fr);
   gap:var(--gap-hair) var(--gap-inline);align-items:baseline;
 }
-.wa-k{color:var(--ink-3);font-size:var(--fs-micro)}
+/* 参考値の3行は**ラベルの大きさ**まで上げる（§9.157、利用者の指摘「③は
+   全体的に文字も小さすぎる」）。11pxは同じカードの中で3px違う文字を作り、
+   「別の仕組みの文字」に見えていた。段差は色で付ける。 */
+.wa-k{color:var(--ink-3);font-size:var(--fs-sm)}
 .wa-v{font-size:var(--fs-sm);font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink)}
 #workFillFromAuto{margin-top:var(--space-2);height:var(--ctl-h-sm)}
-#workAutoHint{display:block;margin-top:var(--space-1);color:var(--ink-soft);font-size:var(--fs-micro)}
+#workAutoHint{display:block;margin-top:var(--space-1);color:var(--ink-soft);font-size:var(--fs-sm)}
 /* ---------- 段ごとの割り付け（§9.131 ゼロベースの組み直し） ----------
    実測（1920×1080）では、①で左ペインの下に253px、②で母材・揃いのとき
    右ペインの下に483〜542px、③で確認表の下に619pxの空きがあった。
@@ -932,12 +970,25 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .info-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--gap-hair) var(--gap-section);align-content:start}
 /* ラベル列は**固定幅**。`auto`だと項目ごとに文字数の差がそのまま列幅の
    差になり、**値の左端が縦にそろわない**（コース欄だけ過去に固定していた
-   のを全体へ広げた。§9.129）。ラベルは4文字までなので5emで足りる。 */
-.field{display:grid;grid-template-columns:6em minmax(0,1fr);align-items:center;gap:var(--gap-inline);min-width:0}
+   のを全体へ広げた。§9.129）。
+   **幅はラベル自身の文字サイズから決める**（§9.159、利用者の指摘「データの
+   表示開始位置が右寄りで、スペースが確保できず見切れる」）。`6em`／`7em`は
+   `.field`の文字（--fs=14px）で解かれるのに、ラベルは`--fs-micro`(11px)で
+   描かれるため、**いちばん長い6文字のラベルより30px広い列**を取っていた
+   （実測98px）。2列に割った基本情報では半分が186pxしかなく、そのうち98pxを
+   ラベルが占めて**値に86pxしか残らず**、取引先・納入先が省略記号で切れていた。
+   いちばん長いラベル（「ラテラルボー」「フラットネス」＝全角6文字）から
+   `--fs-micro × 6.2`で決める。値へ渡せる幅が30px（35%）増える。 */
+.field{display:grid;grid-template-columns:var(--w-info-label) minmax(0,1fr);align-items:center;gap:var(--gap-inline);min-width:0}
 .field.full{grid-column:1/-1}
 /* ラベルが列より長いと**値の側へはみ出して間の余白を食う**
    （「オーダーNo.」だけ値がくっついていた）。切り詰めて列を守る。 */
-.field label{color:#7b8e95;font-size:var(--fs-micro);white-space:nowrap;text-align:right;
+/* **文字サイズはここで宣言しない**（§9.159）。`--fs-micro`と書いてあったが、
+   後から読まれる`40-records.css`の`.field label{font-size:var(--fs)}`が同じ
+   詳細度で勝つため**一度も効いていなかった**。効かない指定を残すと、列幅を
+   `em`で決めるときに「ラベルは11px」という誤った前提で計算してしまう
+   （実際にそれで6文字のラベルが省略記号になった）。 */
+.field label{color:#7b8e95;white-space:nowrap;text-align:right;
  min-width:0;overflow:hidden;text-overflow:ellipsis}
 /* 値は**読み取り専用**。入力欄そっくりの枠と白地を与えると押せるように
    見えるうえ、カードの枠と二重になる（§9.129）。枠を外し、そろえた列と
@@ -962,7 +1013,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    コースの3行だけ値が39px左に出て、縦の線が1本ではなく2本に見えていた。
    全幅の行なので、ラベルを広げても値へ渡せる幅は他の項目の倍近くある。 */
 .info-grid .course-stack-field,.info-grid .residual-course-field{
- grid-column:1/-1;grid-template-columns:6em minmax(0,1fr)}
+ grid-column:1/-1;grid-template-columns:var(--w-info-label) minmax(0,1fr)}
 /* 3項目が縦に3行を占めるぶん、行の高さは他の項目より少しだけ詰める
    (上下パディングを1px・行送りを詰める)。特大表示でも左ペインへ収める
    ための余白で、tests/test_maint.js の「表示サイズを特大にしても収まる」が
@@ -1015,11 +1066,10 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .info-more:hover{background:var(--surface-2);color:var(--ink)}
 .info-detail{grid-column:1/-1;display:contents}
 .info-detail[hidden]{display:none}
-/* 詳細のラベル列は**いちばん長いラベルから決める**（§9.154）。6emでは
-   「ラテラルボー」「フラットネス」（6文字＝84px超）が切れていた（実測）。
-   **群ごとに変えないこと**——ラベル列の幅が2種類あると値の左端がずれ、
-   視線が列を追えなくなる（§9.129の9番）。 */
-.measure-shell .info-detail .field{grid-template-columns:7em minmax(0,1fr)}
+/* 詳細のラベル列も**カードの中で1種類**（§9.129の9番、§9.159）。以前は
+   常時の8項目が`6em`・詳細が`7em`と2種類あり、詳細を開くと値の左端が
+   14px右へずれていた。幅は`.field`の共通規則が`--w-info-label`で持つので、
+   ここで上書きしない。 */
 /* ロット単位の「まとめ帯」(`.split-band`)は廃止（§9.156、利用者の指示
    「条のまとめ表示は不要なので、図は1つに統合して、並べ替えができるものを」）。
    掴めない帯と掴める帯（`.split-visual-block`）が同じ見た目で2つ並び、
@@ -1056,7 +1106,9 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .work-time-panel{margin:0;padding:var(--pad-card);border:1px solid var(--line);border-radius:var(--radius-md);background:#fff}
 .work-time-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-2)}
 .work-time-title span{font-variant-numeric:tabular-nums;font-weight:800;color:var(--teal)}
-.work-time-grid{display:grid;grid-template-columns:1fr;gap:var(--space-2)}
+/* 開始と終了は**1組**なので隙間は最小（§9.157、利用者の指示「開始・終了間の
+   余白を少し詰める」）。詰めたぶんは周りとの釣り合いに回る。 */
+.work-time-grid{display:grid;grid-template-columns:1fr;gap:var(--gap-hair)}
 .work-time-item{display:grid;grid-template-columns:1fr 140px;gap:var(--gap-tight);padding:7px;border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff}
 .work-time-item span{grid-column:1/-1;color:#526970;font-weight:800}
 /* 日時は書式が決まっている（2026/08/14 15:04:05）。494pxも要らない。
@@ -1097,7 +1149,20 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    `#toleranceFacts`が①でも出す（§9.137で分けた「図」と「値」の「値」側）。
    選べるかどうかは`configureToleranceSelector()`が`hidden`で決める。 */
 .measure-shell.mstep-1 .tolerance-source-control{display:none}
-.tolerance-source-control{min-width:0;overflow:hidden}
+.tolerance-source-control{display:flex;align-items:center;gap:var(--gap-inline);min-width:0;overflow:hidden}
+/* 切り替えの入口（§9.159）。**押すまで選択欄は出さない**ので、常設されるのは
+   この小さなボタンだけ。いま効いている公差はヘッダーの文脈バーが出しており、
+   ここに値を再掲すると同じ数字が2箇所に出る（§9.129）。 */
+.tol-src-fold{
+  flex:0 0 auto;height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
+  border:1px solid var(--line);border-radius:var(--radius-sm);
+  background:var(--surface);color:var(--ink-2);font-size:var(--fs-sm);font-weight:700;
+  white-space:nowrap;cursor:pointer;
+}
+.tol-src-fold:hover{background:var(--surface-2);color:var(--ink)}
+.tol-src-fold::after{content:'　▾'}
+.tol-src-fold[aria-expanded="true"]::after{content:'　▴'}
+.tolerance-source-control label[hidden]{display:none}
 .tolerance-source-control label{
   display:grid;grid-template-columns:max-content minmax(0,1fr);align-items:center;gap:var(--gap-tight);
   min-width:0;white-space:nowrap;
@@ -1127,6 +1192,33 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .measure-shell.mstep-3 .numberline-control,
 .measure-shell.mstep-1 .nl-outside,
 .measure-shell.mstep-3 .nl-outside{display:none}
+/* ③では**1項目ぶんの公差カードを出さない**（§9.157）。すぐ下の一覧が
+   板厚・板幅・板丈・指示型を全部並べるので、同じ数字が2箇所に出る
+   （§CLAUDE.md 同じ情報を2箇所に出さない）。**残すのは判定公差の選択**
+   ——一覧の出どころを決めている設定そのもの。 */
+.measure-shell.mstep-3 #tolFold,
+.measure-shell.mstep-3 .tol-facts{display:none}
+/* ③では残るのが判定公差の選択だけになる。**枠は付けない**——オーダー公差が
+   無いロットではその選択も畳まれるので、枠だけの空の帯が残る（§9.129の
+   「枠は『まとまり』だけに使う」に反する。実際に空のピルが出た）。 */
+.measure-shell.mstep-3 .tol-block{
+  margin:0;padding:0;border:0;border-radius:0;background:transparent;
+}
+/* ---------- ③の公差一覧（§9.157） ---------- */
+.tol-list{margin:var(--space-2) 0}
+.tol-list[hidden]{display:none}
+.tol-list-head{color:var(--ink-3);font-size:var(--fs);font-weight:800;letter-spacing:.04em;margin-bottom:var(--space-1)}
+.tol-list-table{width:100%;border-collapse:collapse;font-size:var(--fs)}
+.tol-list-table th,.tol-list-table td{
+  padding:var(--pad-cell);border-bottom:1px solid var(--line-soft);text-align:left;
+}
+.tol-list-table thead th{color:var(--ink-3);font-size:var(--fs-sm);font-weight:800;white-space:nowrap}
+.tol-list-table tbody th{color:var(--ink);font-weight:800;white-space:nowrap}
+.tol-list-table .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+/* **公差が無い行は「合格」に混ぜず、項目名で言う**（§9.125と同じ約束）。 */
+.tol-list-table tr.is-missing th,.tol-list-table tr.is-missing td{color:var(--ink-soft)}
+.tol-list-missing{color:var(--warn-fg);font-weight:700}
+.tol-list-note{margin:var(--space-1) 0 0;color:var(--ink-soft);font-size:var(--fs-sm)}
 /* 軸からはみ出した点があることは**文字で言う**（§9.129の3番）。直し方
    （表示幅）と同じ行に置くので、読んだその場で広げられる。 */
 .nl-outside{
