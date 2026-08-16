@@ -21,16 +21,18 @@
      center-ds … センターからDSへ何mm
 
    ■ 基準幅の2通り（①②のエッジ基準で効いてくる）
-     original … 元幅(実績)。両耳の屑を含んだ幅。屑は左右均等に付くので、
-                条1のOS端は屑幅の半分だけ内側にある。
+     original … 元幅(実績)。両耳の屑を含んだ幅。条1のOS端は**OS側の屑幅**
+                だけ内側にある。
      product  … 製品幅合計(条幅の総和)。屑を含まない。条1のOS端が0。
-   どちらで測ったかで答えが屑幅の半分ぶんずれるため、必ず選んでもらう。
+   どちらで測ったかで答えがOS側の屑幅ぶんずれるため、必ず選んでもらう。
 
    ■ 座標系
    内部では「製品座標」= 条1のOS端を0とし、DS方向を正とする1本の軸へ
    すべて直してから条を当てる。センター基準(③④)も、基準幅の中央を
-   経由して同じ軸へ落とす。屑を左右均等に振る前提は条割の視覚図
-   (lot-split.js renderScrapAndRuler)と同じ。
+   経由して同じ軸へ落とす。**屑幅の割り付け(均等か片寄せか)は条の設計が
+   決めた値をそのまま使う**——`WL.split.scrapInfo()`が答える1箇所で、
+   図(lot-split.js renderScrapAndRuler)と同じ材料。ここで「左右均等」と
+   決め打ちにすると、片寄せしたロットで条の番号が寄せたぶんずれる(§9.160)。
 
    ■ 一時データと「保存」の違い（§9.70）
    入力は開いている間ずっと settings.defectLocation へ書き戻す(閉じて
@@ -84,13 +86,19 @@
                         errorKind:'lanes',lanes:L};
   const original=num(S.measure?.basic?.originalWidth);
   const scrap=Number.isFinite(original)?original-L.slit:NaN;
+  /* 屑の割り付けは条の設計が持つ(§9.160)。取れないときだけ均等へ倒す
+     ——**この画面で別の前提を作らない**。 */
+  const alloc=(typeof WL!=='undefined'&&WL.split&&WL.split.scrapInfo&&WL.split.scrapInfo())||null;
+  const scrapOs=alloc&&Number.isFinite(alloc.os)?alloc.os:(Number.isFinite(scrap)?scrap/2:NaN);
+  const scrapDs=Number.isFinite(scrap)&&Number.isFinite(scrapOs)?scrap-scrapOs:NaN;
+  const scrapBiased=!!(alloc&&alloc.biased);
   const d=num(input.distance);
-  if(!Number.isFinite(d))return{error:'基準位置からの距離を入力してください。',errorKind:'input',lanes:L,original,scrap};
+  if(!Number.isFinite(d))return{error:'基準位置からの距離を入力してください。',errorKind:'input',lanes:L,original,scrap,scrapOs,scrapDs,scrapBiased};
   let baseWidth,toProduct;
   if(input.widthBasis==='original'){
    if(!Number.isFinite(original))return{error:'元幅（実績）が取得できないため、屑幅を含む基準では計算できません。基準幅を「製品幅合計」にしてください。',
-                                        errorKind:'basis',lanes:L,original,scrap};
-   baseWidth=original;toProduct=scrap/2;      // 屑は左右均等
+                                        errorKind:'basis',lanes:L,original,scrap,scrapOs,scrapDs,scrapBiased};
+   baseWidth=original;toProduct=scrapOs;      // 条1のOS端はOS側の屑幅だけ内側
   }else{baseWidth=L.slit;toProduct=0}
   let posBase;
   if(input.basis==='os')posBase=d;
@@ -106,7 +114,7 @@
    .map(l=>({...l,fromLaneOs:Math.max(0,Math.min(l.width,pos-l.start))}));
   let outside='';
   if(hi<=0)outside='os';else if(lo>=L.slit)outside='ds';
-  return{lanes:L,original,scrap,baseWidth,toProduct,posBase,pos,lo,hi,defectWidth:w,hits,outside,
+  return{lanes:L,original,scrap,scrapOs,scrapDs,scrapBiased,baseWidth,toProduct,posBase,pos,lo,hi,defectWidth:w,hits,outside,
          distance:d,basis:input.basis,widthBasis:input.widthBasis,memo:input.memo||''};
  }
 
@@ -156,7 +164,10 @@
  function figureScale(r){
   const L=r.lanes,showScrap=Number.isFinite(r.scrap)&&r.scrap>0;
   const total=showScrap?r.original:(L?L.slit:NaN);
-  return {ok:total>0,total,off:showScrap?r.scrap/2:0,showScrap,pct:v=>v/total*100};
+  /* off＝条1のOS端が図の左端から何mm内側か。**片寄せなら左右で違う**。 */
+  const os=showScrap&&Number.isFinite(r.scrapOs)?r.scrapOs:(showScrap?r.scrap/2:0);
+  const ds=showScrap?r.scrap-os:0;
+  return {ok:total>0,total,off:os,osScrap:os,dsScrap:ds,showScrap,pct:v=>v/total*100};
  }
  function visualHtml(r,cls){
   const c=cls||'defect';
@@ -165,8 +176,8 @@
   const colors=colorFor(list),pct=sc.pct;
   let html='';
   if(sc.showScrap){
-   html+=`<div class="${c}-scrap" style="left:0;width:${pct(sc.off).toFixed(3)}%" title="屑幅(OS側) ${esc(fmt(sc.off))}"><span>屑</span></div>`;
-   html+=`<div class="${c}-scrap" style="left:${pct(sc.off+L.slit).toFixed(3)}%;width:${pct(sc.off).toFixed(3)}%" title="屑幅(DS側) ${esc(fmt(sc.off))}"><span>屑</span></div>`;
+   if(sc.osScrap>0)html+=`<div class="${c}-scrap" style="left:0;width:${pct(sc.osScrap).toFixed(3)}%" title="屑幅(OS側) ${esc(fmt(sc.osScrap))}"><span>屑</span></div>`;
+   if(sc.dsScrap>0)html+=`<div class="${c}-scrap" style="left:${pct(sc.off+L.slit).toFixed(3)}%;width:${pct(sc.dsScrap).toFixed(3)}%" title="屑幅(DS側) ${esc(fmt(sc.dsScrap))}"><span>屑</span></div>`;
   }
   list.forEach(l=>{
    const left=pct(sc.off+l.start),width=pct(l.width),hit=r.hits?.some(h=>h.index===l.index);
@@ -229,7 +240,9 @@
  }
  /* ---------- 内訳（伸び縮みしてよい唯一の場所） ---------- */
  function detailHtml(r){
-  const head=`<div class="defect-detail-head">計算の内訳<span>屑幅は左右均等に付く前提で計算しています</span></div>`;
+  const head=`<div class="defect-detail-head">計算の内訳<span>${r.scrapBiased
+   ?`屑幅は片寄せの設定（OS側 ${esc(fmt(r.scrapOs))}／DS側 ${esc(fmt(r.scrapDs))}）で計算しています`
+   :'屑幅は左右均等に付く前提で計算しています'}</span></div>`;
   if(r.error&&r.errorKind!=='basis')
    return head+`<div class="defect-detail-empty">${esc(r.error)}</div>`;
   const warn=Number.isFinite(r.scrap)&&r.scrap<0
@@ -242,7 +255,7 @@
    +`<span>${esc(BASIS_LABEL[r.basis]||'')}の位置 <b>${esc(fmt(r.posBase))}</b></span>`
    +`<span>製品座標（条1のOS端＝0） <b>${esc(fmt(r.pos))}</b></span>`
    +`<span>欠陥の幅 <b>${esc(fmt(r.defectWidth))}</b>（${esc(fmt(r.lo))}〜${esc(fmt(r.hi))}）</span>`
-   +(Number.isFinite(r.scrap)?`<span>屑幅（両耳合計） <b>${esc(fmt(r.scrap))}</b>／片側 ${esc(fmt(r.scrap/2))}</span>`:'')
+   +(Number.isFinite(r.scrap)?`<span>屑幅（両耳合計） <b>${esc(fmt(r.scrap))}</b>／OS側 ${esc(fmt(r.scrapOs))}・DS側 ${esc(fmt(r.scrapDs))}</span>`:'')
    +`</div>`
    +(rows?`<table class="defect-table"><thead><tr><th>条</th><th>ロット№</th><th>条幅</th><th>条のOS端から</th></tr></thead><tbody>${rows}</tbody></table>`
         :`<div class="defect-detail-empty">該当する条はありません。</div>`);
@@ -294,7 +307,8 @@
   return{savedAt:new Date().toISOString(),input:i,
    basis:r.basis,widthBasis:r.widthBasis,distance:r.distance,
    defectWidth:r.defectWidth,memo:i.memo,
-   baseWidth:r.baseWidth,original:r.original,scrap:r.scrap,slit:r.lanes.slit,
+   baseWidth:r.baseWidth,original:r.original,scrap:r.scrap,
+   scrapOs:r.scrapOs,scrapDs:r.scrapDs,scrapBiased:r.scrapBiased,slit:r.lanes.slit,
    pos:r.pos,lo:r.lo,hi:r.hi,
    lanes:r.lanes.list.map(l=>({index:l.index,lot:l.lot,width:l.width,start:l.start,end:l.end})),
    hits:r.hits.map(h=>({index:h.index,lot:h.lot,width:h.width,fromLaneOs:h.fromLaneOs}))};
@@ -362,12 +376,13 @@
    note.innerHTML=`<span>条数 <b>${L?L.list.length:0}</b></span>`
     +`<span>条幅合計 <b>${esc(fmt(L?L.slit:NaN))}</b></span>`
     +`<span>元幅（実績） <b>${esc(fmt(r.original))}</b></span>`
-    +`<span>屑幅（両耳合計） <b>${esc(fmt(r.scrap))}</b></span>`
+    +`<span>屑幅（両耳合計） <b>${esc(fmt(r.scrap))}</b>${Number.isFinite(r.scrapOs)?`（OS ${esc(fmt(r.scrapOs))}／DS ${esc(fmt(r.scrapDs))}）`:''}</span>`
     +(L&&!L.split?'<span class="defect-note-warn">条割が未確定のため、製造板幅で等分して計算しています。</span>':'');
   }
   const scaleNote=$id('defectScaleNote');
   if(scaleNote)scaleNote.textContent=Number.isFinite(r.scrap)&&r.scrap>0
-   ?'左OS・右DS／両端の斜線は屑幅（左右均等）':'左OS・右DS／屑幅は元幅（実績）が分かると表示されます';
+   ?`左OS・右DS／両端の斜線は屑幅（${r.scrapBiased?'片寄せ':'左右均等'}）`
+   :'左OS・右DS／屑幅は元幅（実績）が分かると表示されます';
   /* ボタンは消さない。押せない状態でも、なぜ押せないかをtitleで示す。 */
   const printBtn=$id('defectPrint');
   if(printBtn){
@@ -403,7 +418,8 @@
     ${field('基準位置',BASIS_LABEL[r.basis])}${field('基準位置からの距離',fmt(r.distance))}
     ${field('基準幅の取り方',WIDTH_BASIS_LABEL[r.widthBasis])}${field('基準幅',fmt(r.baseWidth))}
     ${field('欠陥の幅',fmt(r.defectWidth))}${field('欠陥の内容',r.memo)}
-    ${field('条幅合計',fmt(r.lanes.slit))}${field('屑幅（両耳合計）',fmt(r.scrap))}
+    ${field('条幅合計',fmt(r.lanes.slit))}${field('屑幅（両耳合計）',
+      Number.isFinite(r.scrapOs)?`${fmt(r.scrap)}（OS ${fmt(r.scrapOs)}／DS ${fmt(r.scrapDs)}）`:fmt(r.scrap))}
     ${field('製品座標での位置',fmt(r.pos))}
    </div></section>
    <section class="df-section"><h3>欠陥位置</h3>
@@ -413,7 +429,7 @@
     <p class="df-answer">${r.hits.length?`OSから <b>${rangeLabel(r.hits.map(h=>h.index+1))}</b> 条目（${r.hits.length}条）`:'製品に掛かる条はありません'}</p>
     ${rows?`<table class="df-table"><thead><tr><th>条</th><th>ロット№</th><th>条幅</th><th>条のOS端から</th></tr></thead><tbody>${rows}</tbody></table>`:''}
    </section>
-   <div class="df-foot">この判定は、条割で確定した子ロットの幅と、屑幅を左右均等とする前提で算出した参考値です（測定値ではありません）。</div>
+   <div class="df-foot">この判定は、条割で確定した子ロットの幅と、屑幅の割り付け（${r.scrapBiased?'片寄せ':'左右均等'}）にもとづく参考値です（測定値ではありません）。</div>
   </div>`;
   document.body.classList.add('df-print');
   const prevTitle=document.title;
@@ -432,7 +448,13 @@
  function reportSectionHtml(x){
   const sv=x?.settings?.defectLocation?.saved;
   if(!sv||!Array.isArray(sv.lanes)||!sv.lanes.length)return '';
+  /* 保存した時点の割り付けで描く（後から条割や割り付けを変えても、
+     帳票に載るのは「判定したときの姿」）。古いスナップショットは
+     `scrapOs`を持たないので、そのときの前提どおり均等へ倒す。 */
   const r={lanes:{list:sv.lanes,slit:sv.slit},original:sv.original,scrap:sv.scrap,
+           scrapOs:Number.isFinite(sv.scrapOs)?sv.scrapOs:(Number.isFinite(sv.scrap)?sv.scrap/2:NaN),
+           scrapDs:Number.isFinite(sv.scrapDs)?sv.scrapDs:(Number.isFinite(sv.scrap)?sv.scrap/2:NaN),
+           scrapBiased:!!sv.scrapBiased,
            pos:sv.pos,lo:sv.lo,hi:sv.hi,defectWidth:sv.defectWidth,hits:sv.hits||[]};
   const sc=figureScale(r);
   if(!sc.ok)return '';
@@ -462,7 +484,7 @@
      ${fact('内容',sv.memo)}
     </div>
    </div>
-   <div class="rp-defect-foot">オペレータが算出した参考値です（測定値ではありません）。屑幅は左右均等・条幅は判定時の条割にもとづきます。判定 ${esc(new Date(sv.savedAt).toLocaleString('ja-JP'))}</div>
+   <div class="rp-defect-foot">オペレータが算出した参考値です（測定値ではありません）。屑幅は${r.scrapBiased?`片寄せ（OS ${fmt(r.scrapOs)}／DS ${fmt(r.scrapDs)}）`:'左右均等'}・条幅は判定時の条割にもとづきます。判定 ${esc(new Date(sv.savedAt).toLocaleString('ja-JP'))}</div>
   </section>`;
  }
  const hasSavedDefect=x=>!!x?.settings?.defectLocation?.saved?.lanes?.length;

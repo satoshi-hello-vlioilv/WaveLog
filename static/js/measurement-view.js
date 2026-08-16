@@ -14,9 +14,23 @@ WL.measureItem={
     時点で今の名前へ寄せる。板幅が条ごと・板厚が丈ごとなので、旧名は
     「条ごと」側＝板幅として開く。 */
  LEGACY:'板厚/板幅',
- KEYS:{母材:'mother',板厚:'thickness',板幅:'width',ラテラルボー:'lateral',バリ:'burr',
+ /* 「母材」と「揃い/肉厚/長さ」は**1つの項目**（§9.160、利用者の指示）。
+    どちらも測定器を使わない手入力で、どちらもロットを開いた最初に入れる。
+    保存済みレコードは旧名を持つので、読み込む時点でこの名前へ寄せる
+    （選択肢に無い値を`select.value`へ入れると空文字＝どの項目でもない
+    状態で開く。`LEGACY`と同じ扱い）。 */
+ MATERIAL:'母材・揃い/肉厚/長さ',
+ LEGACY_MATERIAL:['母材','揃い/肉厚/長さ'],
+ /* 旧名（母材／板厚/板幅）も残す——保存済みレコードを開いた瞬間に
+    `activeMeasureKey()`の答えが変わらないようにするため。 */
+ KEYS:{'母材・揃い/肉厚/長さ':'mother',母材:'mother',板厚:'thickness',板幅:'width',
+  ラテラルボー:'lateral',バリ:'burr',
   テレスコープ:'telescope',巻ずれ:'offset',フラットネス:'flatness','板厚/板幅':'width'},
- normalize(type){const t=String(type??'');return t===this.LEGACY?'板幅':t},
+ normalize(type){const t=String(type??'');
+  if(t===this.LEGACY)return '板幅';
+  return this.LEGACY_MATERIAL.indexOf(t)>=0?this.MATERIAL:t;},
+ /* 手入力の面（母材＋丈）か。 */
+ isMaterial(type){return this.normalize(type??this.current())===this.MATERIAL},
  /* 板厚・板幅か（＝製造/オーダー公差を選べる寸法系か）。 */
  isDimensional(type){const t=String(type??'');return t==='板厚'||t==='板幅'||t===this.LEGACY},
  current(){return (typeof $==='function'&&$('#measureType')?.value)||S.measure?.settings?.measureType||''},
@@ -41,13 +55,13 @@ function defaultVerticalCount(row){
  const n=Number(pick(row,'boxVerticalCount'));
  return Number.isFinite(n)&&n>=1&&n<=9?Math.round(n):1;
 }
-function blankMeasure(row){return{id:crypto.randomUUID(),status:'編集中',updatedAt:new Date().toISOString(),source:row,basic:Object.fromEntries(Object.keys(aliases).map(k=>[k,pick(row,k)])),settings:{operator:'-',inspector:'-',lengthPos:'1(頭)',measureType:'母材',verticalCount:defaultVerticalCount(row),horizontalCount:defaultHorizontalCount(row),unwind:'上出し',innerDiameter:'-',spool:'-',thicknessGauge:'-',widthGauge:'-',widthOrder:'通常',widthDirection:'昇順',inputMode:'auto',tStep:0,wStep:0,burrFirst:null,ngCount:0,burr:'指定なし',coilStop:'指定なし',crewSize:'-'},mother:{},qualityInfo:'異常情報なし',measurements:{thickness:Array.from({length:LENGTH_SLOTS},()=>Array(3).fill('')),width:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),lateral:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),burr:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),telescope:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),offset:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),flatness:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),comments:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill(''))}}}
+function blankMeasure(row){return{id:crypto.randomUUID(),status:'編集中',updatedAt:new Date().toISOString(),source:row,basic:Object.fromEntries(Object.keys(aliases).map(k=>[k,pick(row,k)])),settings:{operator:'-',inspector:'-',lengthPos:'1(頭)',measureType:WL.measureItem.MATERIAL,verticalCount:defaultVerticalCount(row),horizontalCount:defaultHorizontalCount(row),unwind:'上出し',innerDiameter:'-',spool:'-',thicknessGauge:'-',widthGauge:'-',widthOrder:'通常',widthDirection:'昇順',inputMode:'auto',tStep:0,wStep:0,burrFirst:null,ngCount:0,burr:'指定なし',coilStop:'指定なし',crewSize:'-'},mother:{},qualityInfo:'異常情報なし',measurements:{thickness:Array.from({length:LENGTH_SLOTS},()=>Array(3).fill('')),width:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),lateral:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),burr:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),telescope:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),offset:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),flatness:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),comments:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill(''))}}}
 /* 保存データ/新規データを最新スキーマへ整形する。旧実装は多層ラップ
    (基本形状→製品丈→登録設備→作業時間)だったものを一本化した。 */
 function ensureMeasureShape(m){
  if(!m)return m;
  {
-m.basic=m.basic||{};m.settings={operator:'-',inspector:'-',lengthPos:'1(頭)',measureType:'母材',verticalCount:1,horizontalCount:1,unwind:'上出し',innerDiameter:'-',spool:'-',thicknessGauge:'-',widthGauge:'-',widthOrder:'通常',widthDirection:'昇順',inputMode:'auto',tStep:0,wStep:0,burrFirst:null,ngCount:0,burr:'指定なし',coilStop:'指定なし',...(m.settings||{})};
+m.basic=m.basic||{};m.settings={operator:'-',inspector:'-',lengthPos:'1(頭)',measureType:WL.measureItem.MATERIAL,verticalCount:1,horizontalCount:1,unwind:'上出し',innerDiameter:'-',spool:'-',thicknessGauge:'-',widthGauge:'-',widthOrder:'通常',widthDirection:'昇順',inputMode:'auto',tStep:0,wStep:0,burrFirst:null,ngCount:0,burr:'指定なし',coilStop:'指定なし',...(m.settings||{})};
 /* コイル止めは以前「内巻両面テープ」チェックボックス1個(真偽値innerTape)
    だった。マスタ化して選択欄になったので、過去のデータは真偽値から
    名称へ読み替える(旧レコードを開いたときに「指定なし」へ化けないように)。
@@ -101,6 +115,48 @@ function collect(){
  m.workTime=m.workTime||{};m.workTime.startAt=$('#workStartAt')?.dataset.iso||m.workTime.startAt||'';m.workTime.endAt=$('#workEndAt')?.dataset.iso||m.workTime.endAt||'';
  return m;
 }
+/* ---------- 母材の計算全長（参考）（§9.160、利用者の指示） ----------
+   元データがそろっているときだけ出す。**測定値ではない**ので、値と一緒に
+   出どころ（BOX実績の板厚・板幅・良品重量と比重）を必ず添える——同じ
+   「全長」でも、手計算・カード指示・この参考値は当たる見込みが違う。
+
+   良品重量(kg) ÷ 比重(g/cm³) が体積(cm³)、断面積は 板厚×板幅(mm²)＝t·w/100(cm²)。
+   長さ(cm)=100000·kg/(比重·t·w) なので **長さ(m)=1000·kg/(比重·t·w)**。
+   例) 0.5mm × 1250mm × 比重2.70 × 3,200kg → 1000×3200/(2.7×0.5×1250)=1896.3m
+
+   **良品重量が0のときは計算しない**（利用者の指示）。0除算になる板厚・板幅・
+   比重も同じ扱いで、そろっていなければ**欄ごと出さない**（§CLAUDE.md
+   「できないことは、できないと書く」の裏返しで、そもそも欄を置かない）。
+   値は`sourceField()`で生の行から引く——`basic`は`aliases`に載せた列しか
+   持たず、ここで要る4つはそのうち板幅しか無い。 */
+const MOTHER_CALC_FIELDS={thickness:['BOX実績_板厚'],width:['BOX実績_板幅'],
+ density:['比重'],weight:['BOX実績_良品重量']};
+function motherCalcLength(){
+ /* 空欄を0と読まない（`Number('')`は0。屑幅で同じ罠を踏んでいる）。 */
+ const num=names=>{const raw=String(sourceField(names)||'').trim();
+  if(raw==='')return NaN;const n=Number(raw);return Number.isFinite(n)?n:NaN};
+ const thickness=num(MOTHER_CALC_FIELDS.thickness),width=num(MOTHER_CALC_FIELDS.width);
+ const density=num(MOTHER_CALC_FIELDS.density),weight=num(MOTHER_CALC_FIELDS.weight);
+ if(![thickness,width,density,weight].every(Number.isFinite))return null;
+ if(!(weight>0))return null;
+ if(!(thickness>0&&width>0&&density>0))return null;
+ return{thickness,width,density,weight,meters:1000*weight/(density*thickness*width)};
+}
+function updateMotherCalcLength(){
+ const box=$('#motherCalcLengthField'),out=$('#motherCalcLength'),basis=$('#motherCalcBasis');
+ if(!box||!out||!basis)return;
+ const r=S.measure?motherCalcLength():null;
+ const hide=!r;
+ /* **同じ値なら触らない**（§9.131。`hidden`は同値の代入でも変更記録が積まれる）。 */
+ if(box.hidden!==hide)box.hidden=hide;
+ if(basis.hidden!==hide)basis.hidden=hide;
+ if(!r){out.textContent='－';basis.textContent='';return}
+ out.textContent=fmtDim(r.meters,1)+' m';
+ basis.textContent=`BOX実績 板厚 ${fmtDim(r.thickness,3)}mm × 板幅 ${fmtDim(r.width,1)}mm`
+  +` × 比重 ${fmtDim(r.density,2)} ／ 良品重量 ${r.weight.toLocaleString('ja-JP')}kg`;
+}
+/* 公開は名前空間へ（素の`window.*`を増やさない。`test_globallint`）。 */
+window.WL.motherCalc={length:motherCalcLength,refresh:updateMotherCalcLength};
 function activateWorkspace(name){document.querySelectorAll('[data-worktab]').forEach(b=>b.classList.toggle('active',b.dataset.worktab===name));document.querySelectorAll('[data-workpanel]').forEach(p=>p.hidden=p.dataset.workpanel!==name)}
 /* 丈位置・条数のセレクト内容とフラットネス備考の入出力。 */
 function updateLengthOptions(count){const el=$('#lengthPos');if(!el)return;const current=el.value||S.measure?.settings?.lengthPos||'1(頭)',n=Math.max(1,Math.min(9,+count||1)),values=[];for(let i=1;i<=n;i++)values.push(`${i}(頭)`);values.push(`${n}(尾)`);el.innerHTML=[...new Set(values)].map(v=>`<option>${v}</option>`).join('');el.value=[...el.options].some(o=>o.value===current)?current:values[0]}
@@ -126,17 +182,15 @@ function updateCoilOptions(count){const el=$('#coilNo');if(!el)return;const n=Ma
 function saveFlatComment(){if(!S.measure||!$('#coilNo'))return;const i=(+$('#coilNo').value||1)-1,j=lengthIndex();S.measure.measurements.comments[j][i]=String($('#coilComment').value||'').replace(/[;|]/g,'')}
 function loadFlatComment(){if(!S.measure||!$('#coilNo'))return;const i=(+$('#coilNo').value||1)-1,j=lengthIndex();$('#coilComment').value=S.measure.measurements.comments[j][i]||''}
 function rightLayoutFor(type){
- if(type==='母材')return 'mother';
- if(type==='揃い/肉厚/長さ')return 'product';
- return 'measure';
+ return WL.measureItem.isMaterial(type)?'material':'measure';
 }
 function applyRightLayout(){
  if(!S.measure)return;
  const type=$('#measureType').value, layout=rightLayoutFor(type), pane=$('.right-pane');
- pane.classList.remove('layout-mother','layout-measure','layout-product');
+ pane.classList.remove('layout-material','layout-measure');
  pane.classList.add('layout-'+layout); activateWorkspace(layout);
  if(layout==='measure'){renderMeasureGrid();updateMeasurementHeading()}
- if(layout==='product')renderProductPanel();
+ if(layout==='material'){renderProductPanel();updateMotherCalcLength()}
 }
 /* v33: 「揃い/肉厚/長さ」は縦割数で分割した丈(1〜N)ごとに複数行で保持する。
    丈は旧VBA帳票の「丈」テーブル（長さ/肉厚/揃い/外観/備考）と同じ、
@@ -196,7 +250,7 @@ if($('#productAllOk'))$('#productAllOk').onclick=()=>{
  for(let i=0;i<n;i++){const row=S.measure.product.rows[i]=S.measure.product.rows[i]||blankProductRow();Object.assign(row,{alignmentCode:'0000',edgeShape:'0',occurrencePosition:'0',regularity:'0',alignmentValue:'0'})}
  renderProductPanel();markDirty();
 };
-$('#verticalCount')?.addEventListener('change',()=>{if($('#measureType').value==='揃い/肉厚/長さ')renderProductPanel()});
+$('#verticalCount')?.addEventListener('change',()=>{if(WL.measureItem.isMaterial($('#measureType').value))renderProductPanel()});
 /* 測定種ごとに運用が固定されているため、入力モードの切替UI自体を出さない。
    - 板厚・板幅・バリ: 測定器からの自動転送のみ。
    - ラテラルボー・テレスコープ・巻ずれ・フラットネス: 実運用は手動入力のみ
@@ -312,9 +366,9 @@ function renderMeasurement(){
  {const mb=$('#basicMore'),dt=$('#basicDetail');
   if(mb&&dt)mb.onclick=()=>{const open=dt.hidden;dt.hidden=!open;
    mb.setAttribute('aria-expanded',open?'true':'false');
-   mb.textContent=open?'詳細を閉じる':'詳細を見る';};}Object.entries(m.settings).forEach(([k,v])=>{const el=$('#'+k);if(el){if(el.type==='checkbox')el.checked=v;else el.value=v}});$('#qualityInfo').value=m.qualityInfo;paintQualityInfo();document.querySelectorAll('[data-mother]').forEach(x=>x.value=m.mother[x.dataset.mother]||'');$('#motherOriginalWidth').textContent=fmtDim(b.originalWidth,1)||'－';renderMeasureGrid();renderStats();setState('IndexedDB読込済み')
+   mb.textContent=open?'詳細を閉じる':'詳細を見る';};}Object.entries(m.settings).forEach(([k,v])=>{const el=$('#'+k);if(el){if(el.type==='checkbox')el.checked=v;else el.value=v}});$('#qualityInfo').value=m.qualityInfo;paintQualityInfo();document.querySelectorAll('[data-mother]').forEach(x=>x.value=m.mother[x.dataset.mother]||'');$('#motherOriginalWidth').textContent=fmtDim(b.originalWidth,1)||'－';updateMotherCalcLength();renderMeasureGrid();renderStats();setState('IndexedDB読込済み')
  {const mode=S.measure.settings.inputMode||'auto';document.querySelectorAll('[data-mode]').forEach(x=>x.classList.toggle('active',x.dataset.mode===mode))}
- activateWorkspace($('#measureType').value==='母材'?'mother':'measure');
+ activateWorkspace(rightLayoutFor($('#measureType').value));
  applyInputProtection();
  updateReceiveState(document.activeElement===$('#deviceInput'));
  renderProductPanel();
@@ -352,9 +406,10 @@ function activeRequiredControls(){
  const controls=[];
  ['operator','inspector'].forEach(id=>controls.push({el:$('#'+id),label:id==='operator'?'オペレータ':'検査員'}));
  const type=$('#measureType')?.value;
- if(type==='母材'){
+ /* 母材と丈は**同じ面にある**ので、必須も一緒に見る（§9.160。以前は
+    項目が2つに割れており、片方を開かないともう片方の未入力に気づけなかった）。 */
+ if(WL.measureItem.isMaterial(type)){
   document.querySelectorAll('[data-mother]').forEach((el,i)=>controls.push({el,label:['手計算','全長','MINカード指示','MAXカード指示','前オフ実績','後オフ実績','前オフカード指示','後オフカード指示'][i]||'母材'}));
- }else if(type==='揃い/肉厚/長さ'){
   const fieldLabels={productLength:'長さ',wallThickness:'肉厚',alignmentCode:'揃い'};
   document.querySelectorAll('#productRowsBody tr').forEach((tr,i)=>{
    tr.querySelectorAll('[data-product-field]').forEach(el=>{const label=fieldLabels[el.dataset.productField];if(label)controls.push({el,label:`${label}(丈${i+1})`})});

@@ -22,6 +22,8 @@ const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_m
 const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
+/* 入力内容の統合後の名前（§9.160）。画面の`WL.measureItem.MATERIAL`と同じ。 */
+const MATERIAL='母材・揃い/肉厚/長さ';
 const setMode=m=>fetch(API+'/api/access-mode',{method:'POST',
   headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})});
 
@@ -78,9 +80,10 @@ let b=null,page=null;
   await page.waitForTimeout(500);
 
   /* ---- 受信の帯は「測定器を使う項目」でだけ出る ----
-     既定の選択は母材で、母材は手動入力の項目（画面にも「母材は手動入力です」
-     と書いてある）。このとき受信の帯は `display:none` で、受信欄は 0×0 になる。
-     **寸法ゼロの要素にはフォーカスが載らない**ので、母材のあいだは転送を
+     既定の選択は「母材・揃い/肉厚/長さ」で、これは手入力の項目（画面にも
+     「母材・丈は手入力です」と書いてある）。このとき受信の帯は `display:none`
+     で、受信欄は 0×0 になる。
+     **寸法ゼロの要素にはフォーカスが載らない**ので、そのあいだは転送を
      受け付けない——これは正しい振る舞いで、直す対象ではない。
      **見えているかどうかは寸法で見る**こと。DOMに文字があるかだけを見ると、
      `display:none` の中の「伝送入力停止中」を「画面が告げている」と読み違える
@@ -95,8 +98,8 @@ let b=null,page=null;
      受付:document.querySelector('#inputReady')?.textContent||''};
   });
   const mother=await seeReceive();
-  rec('母材（手動入力の項目）では受信の帯を出さない',
-      mother.入力内容==='母材'&&mother.帯が見えている===false,JSON.stringify(mother));
+  rec('母材・丈（手入力の項目）では受信の帯を出さない',
+      mother.入力内容===MATERIAL&&mother.帯が見えている===false,JSON.stringify(mother));
   rec('受信の帯が出ていないあいだは受信欄にフォーカスが載らない',
       mother.focus!=='deviceInput',JSON.stringify(mother));
 

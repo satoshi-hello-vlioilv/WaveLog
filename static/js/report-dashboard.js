@@ -505,7 +505,7 @@
   const hasWidthTableData=hasMeasurementValues(x,['width','lateral','burr','offset','telescope','flatness']);
   const showWidthTable=['板厚','板幅','板厚/板幅','ラテラルボー','バリ','テレスコープ','巻ずれ','フラットネス'].includes(s.measureType)||hasWidthTableData;
   const hasProductData=(x.product?.rows||[]).some(r=>r&&['productLength','wallThickness','alignmentCode'].some(k=>String(r[k]||'').trim()!==''));
-  const showProduct=s.measureType==='揃い/肉厚/長さ'||hasProductData;
+  const showProduct=WL.measureItem.isMaterial(s.measureType)||hasProductData;
   return `
    <div class="rp-report-head">
     <div><h2>${esc(b.lotNo||x.id)}</h2></div>

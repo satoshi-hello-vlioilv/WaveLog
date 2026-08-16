@@ -948,29 +948,38 @@
     const w=src&&src.width!==''&&src.width!==undefined?src.width:'—';
     return `${idx+1}条目 ／ ${lot} ／ 幅${w} ／ ${(src&&src.tol)||'公差情報なし'}`;
   }
-  // 屑幅(両耳合計)を左右均等に振り分け、条ストリップの両端に「動かせない
-  // 帯」として描画する(#splitVisualScrapOs/Ds、条とは違いドラッグ操作の
-  // 対象外)。屑を左右均等に振り分ける設計のため、条ストリップの中央は
-  // 数式上必ず母材全幅(元幅)の中央と一致する。センターライン(薄い点線)は
-  // 常にこの中央に描画し、元幅(実績)が判明していれば±1000/1250/1500mmの
-  // 目盛りも母材幅の範囲内に収まる分だけ重ねて表示する。
+  // 屑幅(両耳合計)を条ストリップの両端へ「動かせない帯」として描画する
+  // (#splitVisualScrapOs/Ds、条とは違いドラッグ操作の対象外)。
+  // **割り付けは均等とは限らない**(§9.160)——片側へ寄せたときは
+  // 図もそのとおりに出す。センターライン(薄い点線)は**母材全幅(元幅)の
+  // 中央**なので位置は変わらないが、片寄せすると条の束の中央とはずれる
+  // （ずれていることが見えるのがこの図の値打ち）。目盛りも元幅(実績)が
+  // 判明していれば±1000/1250/1500mmを母材幅の範囲で重ねて表示する。
   function renderScrapAndRuler(layout){
     const scrapOs=$('#splitVisualScrapOs'),scrapDs=$('#splitVisualScrapDs'),strip=$('#splitVisualStrip'),ruler=$('#splitVisualRuler');
     if(!scrapOs||!scrapDs||!strip||!ruler)return;
     const info=layout?scrapWidthInfo():null;
     const stripUnits=layout?layout.totalUnits:0;
     if(info&&Number.isFinite(info.scrap)&&info.scrap>0&&stripUnits>0){
-      const half=info.scrap/2,halfText=esc(fmtDim(half,1));
-      scrapOs.hidden=false;scrapDs.hidden=false;
-      scrapOs.style.flexGrow=half;scrapDs.style.flexGrow=half;strip.style.flexGrow=stripUnits;
-      scrapOs.innerHTML=`<span class="split-visual-scrap-label">屑<b>${halfText}</b></span>`;
-      scrapDs.innerHTML=`<span class="split-visual-scrap-label">屑<b>${halfText}</b></span>`;
-      scrapOs.title=`屑幅(OS側、両耳合計の半分) ${halfText} ／ 動かせません`;
-      scrapDs.title=`屑幅(DS側、両耳合計の半分) ${halfText} ／ 動かせません`;
+      strip.style.flexGrow=stripUnits;
+      // 幅が0の側は帯ごと出さない——`min-width`が効いて「26pxの屑」が
+      // 残り、寄せ切ったのに寄っていないように見える。
+      const side=(el,mm,name)=>{
+        const on=mm>0.0001,text=esc(fmtDim(mm,1));
+        if(el.hidden!==!on)el.hidden=!on;
+        el.style.flexGrow=on?mm:'';
+        el.innerHTML=on?`<span class="split-visual-scrap-label">屑<b>${text}</b></span>`:'';
+        el.title=on?`屑幅(${name}側) ${text} ／ 両耳合計 ${esc(fmtDim(info.scrap,1))}${info.biased?'（片寄せ）':'（均等）'}`:'';
+        el.classList.toggle('is-biased',on&&info.biased);
+      };
+      side(scrapOs,info.os,'OS');
+      side(scrapDs,info.ds,'DS');
     }else{
       scrapOs.hidden=true;scrapDs.hidden=true;scrapOs.innerHTML='';scrapDs.innerHTML='';
       scrapOs.style.flexGrow='';scrapDs.style.flexGrow='';strip.style.flexGrow='';
+      scrapOs.classList.remove('is-biased');scrapDs.classList.remove('is-biased');
     }
+    renderScrapAllocEditor();
     if(!layout){ruler.innerHTML='';return}
     let html='<div class="split-visual-centerline" title="センターライン"></div>';
     if(info&&info.scrap>=0&&Number.isFinite(info.original)&&info.original>0){
@@ -1321,6 +1330,18 @@
     const count=Math.max(1,+($('#horizontalCount')?.value)||+S.measure?.settings?.horizontalCount||1);
     return Number.isFinite(width)?width*count:null;
   }
+  /* 屑幅を片側へ寄せた設定(§9.160、利用者の指示「通常は均等だが片寄せする
+     形で修正入力できるように」)。持つのは**OS側の屑幅(mm)そのもの**で、
+     空欄なら均等。差分ではなく実寸で持つのは、画面に出る帯の数字と保存値が
+     同じものになるため(差分だと「10と入れたのに帯は25」になる)。
+     条割を変えると両耳合計が動くので、読むたびに0〜合計へ丸める。 */
+  const SCRAP_EVEN_EPS=0.05;   // これ未満の差は「均等」と読む(丸めの往復で片寄せ扱いにしない)
+  function scrapOsSetting(){
+    const raw=S.measure?.settings?.scrapOsWidth;
+    if(raw===undefined||raw===null||String(raw).trim()==='')return NaN;
+    const n=Number(raw);
+    return Number.isFinite(n)?n:NaN;
+  }
   function scrapWidthInfo(){
     // Number('')は0になってしまう(JSの仕様)ため、元幅（実績）が未取得/空欄の
     // 場合を「0扱い」にせず、計算不可として扱う(架空の巨大な屑幅を出さない)。
@@ -1329,14 +1350,93 @@
     const original=Number(rawOriginal);
     const slit=slitWidthTotal();
     if(!Number.isFinite(original)||!Number.isFinite(slit))return null;
-    return{original,slit,scrap:original-slit};
+    const scrap=original-slit,even=scrap/2,set=scrapOsSetting();
+    const manual=Number.isFinite(set)&&scrap>0;
+    const os=manual?Math.min(Math.max(set,0),scrap):even;
+    return{original,slit,scrap,even,os,ds:scrap-os,manual,
+           clamped:manual&&Math.abs(os-set)>0.0001,
+           biased:manual&&Math.abs(os-even)>=SCRAP_EVEN_EPS};
   }
+  /* 屑幅の割り付けを知っているのはこのファイルだけ。異常位置判定
+     (defect-locator.js)は**同じ答えを使う**——片寄せしているのに
+     「屑は左右均等」で計算すると、条の番号が半分ぶんずれる。 */
+  window.WL.split=Object.assign(window.WL.split||{},{scrapInfo:scrapWidthInfo});
   function updateScrapWidthDisplay(){
+    renderScrapAllocEditor();
     const el=$('#motherScrapWidth');if(!el)return;
     const info=scrapWidthInfo();
     if(!info){el.textContent='－';el.classList.remove('scrap-width-warn');return}
     el.textContent=fmtDim(info.scrap,1);
+    el.title=info&&info.scrap>0
+      ? `OS側 ${fmtDim(info.os,1)} ／ DS側 ${fmtDim(info.ds,1)}（条の設計の「屑幅の割り付け」で直せます）`
+      : '元幅（実績）から条幅合計を差し引いた両耳分の合計です';
     el.classList.toggle('scrap-width-warn',info.scrap<0);
+  }
+
+  /* ---- 屑幅の割り付け（§9.160、利用者の指示） -------------------------
+     通常は両耳へ均等だが、**片側へ少し寄せることがある**。均等を既定に
+     したまま、寄せたぶんを数値で直せるようにする。
+     **屑幅が求まらないロットでは行ごと出さない**——押せるのに何も起きない
+     欄を残さない（同じ理由で図の屑帯も出ない）。器は`#splitCard .split-visual`
+     の中なので、分割の無いロットでは親ごと畳まれる。 */
+  function renderScrapAllocEditor(){
+    const box=$('#splitScrapAlloc');if(!box)return;
+    const info=scrapWidthInfo();
+    const show=!!(info&&Number.isFinite(info.scrap)&&info.scrap>0);
+    if(box.hidden!==!show)box.hidden=!show;
+    if(!show)return;
+    const osIn=$('#scrapAllocOs'),ds=$('#scrapAllocDs'),
+          state=$('#scrapAllocState'),evenBtn=$('#scrapAllocEven'),note=$('#scrapAllocNote');
+    /* 両耳合計は状態帯（`scrapWidthLineHtml`）が出しているのでここには出さない
+       （§9.129 同じ数字を2箇所に出さない）。 */
+    if(ds)ds.textContent=fmtDim(info.ds,1);
+    /* **打っている最中の欄は書き換えない**——1文字入れるたびに値を入れ直すと
+       カーソルが末尾へ飛ぶ（§9.117で読み替えルールの入力欄が踏んだ罠）。 */
+    if(osIn){
+      osIn.max=String(Math.round(info.scrap*10)/10);
+      const v=fmtDim(info.os,1);
+      if(document.activeElement!==osIn&&osIn.value!==v)osIn.value=v;
+    }
+    if(state){
+      const gap=Math.abs(info.os-info.even);
+      /* 主語は**屑**（見出しが「屑幅の割り付け」）。多く残っている側を言う
+         ——条の束はその反対側へ寄る。 */
+      state.textContent=info.biased
+        ? `片寄せ ${info.os>info.even?'OS':'DS'}側へ +${fmtDim(gap,1)}mm`
+        : '均等';
+      state.classList.toggle('is-biased',info.biased);
+      state.title=info.biased
+        ? `均等なら両側 ${fmtDim(info.even,1)}mm ずつです`
+        : '両耳へ同じだけ付きます';
+    }
+    if(evenBtn)evenBtn.disabled=!info.manual;
+    if(note)note.textContent=info.clamped
+      ? `OS側は0〜${fmtDim(info.scrap,1)}mm（両耳合計）の範囲です。${fmtDim(info.os,1)}mm として扱っています。`:'';
+  }
+  /* 値を書き換えたら、図・母材パネル・この行を**まとめて描き直す**。
+     `renderSplit()`は条の帯ごと組み立て直すので呼ばない（打っている最中に
+     帯が作り直されると、掴んでいる条の参照が切れる）。 */
+  function repaintScrap(){
+    renderScrapAndRuler(splitVisualLayout);
+    updateScrapWidthDisplay();
+  }
+  {
+    const osIn=$('#scrapAllocOs'),evenBtn=$('#scrapAllocEven');
+    if(osIn)osIn.addEventListener('input',()=>{
+      if(!S.measure)return;
+      const raw=String(osIn.value||'').trim();
+      /* 空欄・数値でない入力は「均等」へ戻す（勝手な数字を作らない）。 */
+      S.measure.settings.scrapOsWidth=(raw===''||!Number.isFinite(Number(raw)))?'':Number(raw);
+      if(typeof markDirty==='function')markDirty();
+      repaintScrap();
+    });
+    if(evenBtn)evenBtn.addEventListener('click',()=>{
+      if(!S.measure)return;
+      S.measure.settings.scrapOsWidth='';
+      if(typeof markDirty==='function')markDirty();
+      const el=$('#scrapAllocOs');if(el)el.value='';
+      repaintScrap();
+    });
   }
   function scrapWidthLineHtml(){
     const info=scrapWidthInfo();
@@ -1883,7 +1983,8 @@
       }
       const info=analyzeRowSplit(S.measure?.source);
       if(!info.hasSplit){
-        el.innerHTML='<div class="split-panel-status split-panel-status-none">分割無し</div>';
+        el.innerHTML='<div class="split-panel-status split-panel-status-none">分割無し</div>'
+          +scrapWidthLineHtml();
         updateSplitTabBadge('none');
         showSplitEditor(false);
         updateScrapWidthDisplay();
