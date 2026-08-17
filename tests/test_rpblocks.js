@@ -158,6 +158,87 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
   });
   rec('読み直しても幅が残る（既定へ戻らない）',Number(reread)>40,String(reread));
 
+  /* ==========================================================
+     6) 測定データの「まとめ／分解」と紙のマス数（§9.173）
+     ----------------------------------------------------------
+     利用者の指示は「今までの縦方向に幅情報、横方向に検査した項目を並べる
+     方式も残す／通常は組み合わせた形／分解したときに個別内容になる／
+     グリッドサイズを標準で設定した上で各ブロックの使用マス数を変えられる／
+     入りきらないときは絞れる内容を提示する」。
+     ここで固定するのは**既定がまとめであること**と**往復できること**。
+     ========================================================== */
+  await cleanup();
+  await page.evaluate(()=>{WL.columnLayout.forget('report:lot')});
+  await page.click('.record-list-row .report').catch(()=>{});
+  await page.waitForSelector('#reportContent .rp-blocks',{timeout:20000});
+  await settle(page);
+  const baseKeys=await blocks(page);
+  /* **既定はまとめ。** 一度も保存していないうちは、分解した1枚ずつは紙に
+     出さない（出すと同じ測定値が2箇所に並ぶ）。中身の無い塊はそもそも紙に
+     出ないので、紙では「個別が1枚も無い」ことを見る。 */
+  rec('既定では分解した1枚ずつを紙に出さない',
+      !baseKeys.some(k=>k.startsWith('測定データ・')),
+      baseKeys.filter(k=>/測定/.test(k)).join('／')||'（測定の塊は紙に出ていない）');
+
+  await page.click('#reportArrange');
+  await page.waitForSelector('.rp-block-bar',{timeout:8000});
+  await settle(page);
+  /* 組み換え中は中身の無い塊も並ぶので、そこで「まとめが出ていて個別は
+     出さない」既定を確かめる。 */
+  const defaults=await page.evaluate(()=>({
+   combined:!document.querySelector('[data-rp-block="板幅ほかの測定データ"]').classList.contains('is-off'),
+   soloOff:[...document.querySelectorAll('[data-rp-block^="測定データ・"]')].every(e=>e.classList.contains('is-off')),
+   solos:document.querySelectorAll('[data-rp-block^="測定データ・"]').length}));
+  rec('既定は「まとめて1枚」（個別は出さない）',
+      defaults.combined&&defaults.soloOff&&defaults.solos>=6,JSON.stringify(defaults));
+  /* 紙のマス数は帯にあり、押すとグリッドが変わる。 */
+  const grid0=await page.evaluate(()=>({
+   picks:[...document.querySelectorAll('[data-rp-grid]')].map(b=>b.textContent),
+   cols:getComputedStyle(document.querySelector('.rp-blocks')).gridTemplateColumns.split(' ').length}));
+  rec('紙のマス数を標準として選べる',grid0.picks.join('/')==='12/8/6/4'&&grid0.cols===12,
+      `${grid0.picks.join('/')} / いま${grid0.cols}列`);
+  await page.click('[data-rp-grid="6"]');
+  await settle(page);
+  const grid1=await page.evaluate(()=>({
+   cols:getComputedStyle(document.querySelector('.rp-blocks')).gridTemplateColumns.split(' ').length,
+   labels:[...document.querySelectorAll('[data-rp-block="基本情報"] [data-rp-span]')].map(b=>b.textContent)}));
+  rec('マス数を変えると紙の割りも変わる',grid1.cols===6,`${grid1.cols}列`);
+  /* 幅の選択肢は**マス数から作る**。割り切れない刻みは近いマスへ寄せて
+     同じ幅が2つ並ばないようにまとめる。 */
+  rec('幅の選択肢はマス数から作る',grid1.labels.length>=3&&grid1.labels.includes('全幅'),
+      grid1.labels.join('・'));
+  await page.click('[data-rp-grid="12"]');
+  await settle(page);
+
+  /* ---- 分解 → 個別、まとめへ戻す ---- */
+  await page.click('[data-rp-block="板幅ほかの測定データ"] [data-rp-split]');
+  await settle(page);
+  const split=await page.evaluate(()=>({
+   solo:[...document.querySelectorAll('[data-rp-block]')].filter(e=>e.dataset.rpBlock.startsWith('測定データ・')&&!e.classList.contains('is-off')).map(e=>e.dataset.rpBlock),
+   combined:document.querySelector('[data-rp-block="板幅ほかの測定データ"]').classList.contains('is-off')}));
+  rec('「項目ごとに分ける」で個別の塊になる',
+      split.solo.length>=6&&split.combined===true,
+      `${split.solo.length}枚 / まとめ=${split.combined?'畳んだ':'出たまま'}`);
+  /* **同じ内容を2箇所に出さない。** 分解したらまとめは畳む。 */
+  rec('分解するとまとめは畳まれる',split.combined===true);
+  await page.click('[data-rp-block="測定データ・板幅"] [data-rp-split]');
+  await settle(page);
+  const rejoin=await page.evaluate(()=>({
+   solo:document.querySelector('[data-rp-block="測定データ・板幅"]').classList.contains('is-off'),
+   combined:!document.querySelector('[data-rp-block="板幅ほかの測定データ"]').classList.contains('is-off')}));
+  rec('「まとめへ戻す」で1枚へ戻る',rejoin.solo===true&&rejoin.combined===true,JSON.stringify(rejoin));
+
+  /* ---- 入りきらないときの案内は、組み換え中しか組み立てない ---- */
+  const guide=await page.evaluate(()=>({
+   inArrange:document.querySelectorAll('.rp-block-cols').length,
+   drops:document.querySelectorAll('[data-rp-drop]').length}));
+  rec('落とせる列の一覧を持っている（測定データの塊だけ）',
+      guide.inArrange>0&&guide.drops>0,JSON.stringify(guide));
+  await page.click('#rpArrangeCancel');
+  await settle(page);
+  rec('紙には絞り込みの案内を出さない',
+      await page.evaluate(()=>document.querySelectorAll('.rp-block-cols,[data-rp-drop]').length===0));
+
   rec('コンソールに例外を出さない',errs.length===0,errs.slice(0,2).join(' / '));
  }catch(e){rec('FATAL',false,e.message)}
  finally{

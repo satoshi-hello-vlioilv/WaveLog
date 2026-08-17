@@ -439,37 +439,101 @@
  /* コイル№は実際の横割数に関わらず常に最大40行を確保する。旧帳票（B5帳票）は
     条数に関わらず固定グリッドを印刷しており、余白も注記・手書き用の必要領域
     のため、実データがない行も空欄のまま枠だけ残す（"-"を書かず空欄にする）。 */
- function widthMeasurementSection(x){
-  const s=x.settings||{},actual=Math.max(1,Math.min(40,+s.horizontalCount||1)),{headIdx,tailIdx,headLabel,tailLabel}=lengthLabels(s),tol=toleranceRangeLocal(x,'width');
+ /* ---------- 測定データは「列の集まり」(§9.173) ----------
+    利用者の指示は「今までの縦方向に幅情報、横方向に検査した項目を並べて
+    表示する方式も残してほしい／特に測定項目は組み合わせて表示した方が
+    効率的に面積を利用できるので通常は今までどおり軸を共通にして組み合わせた
+    形／分解したときに個別内容になるように」。
+
+    **紙の1列＝1つの部品**にする。こうしておくと3つが同じ仕組みで書ける。
+      - まとめ  : 条番号を共通の軸にして、選ばれた列を横に並べる（既定＝今までの紙）
+      - 分解    : 項目ごとの小さい表になり、1枚ずつ場所と幅を決められる
+      - 絞り込み: 「入りきらない」ときに**落とせる単位**が列そのものになる
+    列を落とす／群を分解するの2つが同じ`hidden`で表せるので、新しい保存先を
+    作らずに済む（列レイアウトマスタの order/hidden/widths だけで足りる）。 */
+ const RP_MEAS_GROUPS=[
+  {g:'板幅',cols:[{c:'範囲下限',kind:'low'},{c:'頭',f:'width',li:'head'},{c:'尾',f:'width',li:'tail'},{c:'範囲上限',kind:'high'}]},
+  {g:'ラテラルボー',cols:[{c:'頭',f:'lateral',li:'head'},{c:'尾',f:'lateral',li:'tail'}]},
+  {g:'バリ',cols:[{c:'頭',f:'burr',li:'head'},{c:'尾',f:'burr',li:'tail'}]},
+  {g:'巻ずれ',cols:[{c:'尾',f:'offset',li:'tail'}]},
+  {g:'テレスコープ',cols:[{c:'尾',f:'telescope',li:'tail'}]},
+  {g:'フラットネス',cols:[{c:'頭',f:'flatness',li:'head'},{c:'尾',f:'flatness',li:'tail'}]},
+  {g:'備考',cols:[{c:'',f:'comments',li:'tail'}]},
+ ];
+ const RP_MEAS_COMBINED='板幅ほかの測定データ';          /* まとめの器（既存キーのまま） */
+ const rpMeasColKey=(g,c)=>`測定列:${g}:${c||'値'}`;      /* 1列ぶんの部品 */
+ const rpMeasSoloKey=g=>`測定データ・${g}`;               /* 分解したときの1枚 */
+ const RP_MEAS_GROUP_BY=new Map(RP_MEAS_GROUPS.map(x=>[x.g,x]));
+ /* この群が「単独で置かれている」か。まとめの中に出すか単独で出すかは
+    **単独ブロックが出ているかどうか**の1点で決まる（同じ内容を2箇所に
+    出さない、§9.129）。 */
+ function rpMeasSolo(g,hidden){return !(hidden||rpHiddenSet()).has(rpMeasSoloKey(g))}
+ function rpMeasVisibleCols(g,hidden){
+  const h=hidden||rpHiddenSet();
+  return (RP_MEAS_GROUP_BY.get(g)||{cols:[]}).cols.filter(c=>!h.has(rpMeasColKey(g,c.c)));
+ }
+ /* まとめに載る群＝単独で置いていない、かつ出す列が1つ以上ある群。 */
+ function rpMeasGroupsFor(mode,hidden){
+  const h=hidden||rpHiddenSet();
+  return RP_MEAS_GROUPS.filter(x=>rpMeasSolo(x.g,h)===(mode==='solo')&&rpMeasVisibleCols(x.g,h).length);
+ }
+ /* 条番号を軸にした表を1枚組み立てる。**まとめも分解も同じ関数**が書く
+    ——別々に持つと、片方だけ直した状態が作れる（実際に何度も踏んだ罠）。 */
+ function measTableHtml(x,groups,from,to){
+  const s=x.settings||{},actual=Math.max(1,Math.min(40,+s.horizontalCount||1));
+  const {headIdx,tailIdx,headLabel,tailLabel}=lengthLabels(s),tol=toleranceRangeLocal(x,'width');
+  const label=c=>c.kind?c.c:(c.c==='頭'?headLabel:c.c==='尾'?tailLabel:c.c);
+  const flat=[];groups.forEach(gr=>rpMeasVisibleCols(gr.g).forEach(c=>flat.push({gr,c})));
+  const head=`<thead><tr><th rowspan="2">条番号</th><th rowspan="2">ロット№</th>`
+   +groups.map(gr=>{const n=rpMeasVisibleCols(gr.g).length;
+     return n===1&&!rpMeasVisibleCols(gr.g)[0].c?`<th rowspan="2">${esc(gr.g)}</th>`
+       :`<th colspan="${n}">${esc(gr.g)}</th>`}).join('')
+   +`</tr><tr>`
+   +flat.filter(f=>f.c.c).map(f=>`<th>${esc(label(f.c))}</th>`).join('')
+   +`</tr></thead>`;
   const rowHtml=(col,prev)=>{
    const real=col<actual,cell=v=>real?esc(v||'-'):'';
-   let lotText='',lowText='',highText='',key=prev;
+   let lotText='',key=prev,range=null;
    if(real){
     const ctx=widthRowContext(x,col,tol);key=`${ctx.lot}|${ctx.range?ctx.range.join(','):''}`;
-    const show=rpRepeatLabels||key!==prev;
-    lotText=show?esc(ctx.lot):'';
-    lowText=ctx.range?fmtDimSafe(ctx.range[0],2):(tol?fmtDimSafe(tol[0],2):'');
-    highText=ctx.range?fmtDimSafe(ctx.range[1],2):(tol?fmtDimSafe(tol[1],2):'');
+    lotText=(rpRepeatLabels||key!==prev)?esc(ctx.lot):'';range=ctx.range;
    }
-   const html=`<tr><th class="rp-colno">${col+1}</th><td class="rp-collot">${lotText}</td><td>${lowText}</td><td>${cell(measAt(x,'width',headIdx,col))}</td><td>${cell(measAt(x,'width',tailIdx,col))}</td><td>${highText}</td><td>${cell(measAt(x,'lateral',headIdx,col))}</td><td>${cell(measAt(x,'lateral',tailIdx,col))}</td><td>${cell(measAt(x,'burr',headIdx,col))}</td><td>${cell(measAt(x,'burr',tailIdx,col))}</td><td>${cell(measAt(x,'offset',tailIdx,col))}</td><td>${cell(measAt(x,'telescope',tailIdx,col))}</td><td>${cell(measAt(x,'flatness',headIdx,col))}</td><td>${cell(measAt(x,'flatness',tailIdx,col))}</td><td>${cell(measAt(x,'comments',tailIdx,col))}</td></tr>`;
-   return{html,key};
+   const cells=flat.map(({c})=>{
+    if(c.kind==='low')return `<td>${real?(range?fmtDimSafe(range[0],2):(tol?fmtDimSafe(tol[0],2):'')):''}</td>`;
+    if(c.kind==='high')return `<td>${real?(range?fmtDimSafe(range[1],2):(tol?fmtDimSafe(tol[1],2):'')):''}</td>`;
+    return `<td>${cell(measAt(x,c.f,c.li==='head'?headIdx:tailIdx,col))}</td>`;
+   }).join('');
+   return {html:`<tr><th class="rp-colno">${col+1}</th><td class="rp-collot">${lotText}</td>${cells}</tr>`,key};
   };
-  const head=`<thead><tr><th rowspan="2">条番号</th><th rowspan="2">ロット№</th><th colspan="4">板幅</th><th colspan="2">ラテラルボー</th><th colspan="2">バリ</th><th>巻ずれ</th><th>テレスコープ</th><th colspan="2">フラットネス</th><th rowspan="2">備考</th></tr><tr><th>範囲下限</th><th>${esc(headLabel)}</th><th>${esc(tailLabel)}</th><th>範囲上限</th><th>${esc(headLabel)}</th><th>${esc(tailLabel)}</th><th>${esc(headLabel)}</th><th>${esc(tailLabel)}</th><th>${esc(tailLabel)}</th><th>${esc(tailLabel)}</th><th>${esc(headLabel)}</th><th>${esc(tailLabel)}</th></tr></thead>`;
-  const table=(from,to)=>{
-   /* ロット№・目標幅の「変化した行だけ表示」はブロックごとに見出しが付くため、
-      ブロック先頭では必ず表示されるよう基準を初期化する。 */
-   let prev=null,body='';
-   for(let col=from;col<to;col++){const r=rowHtml(col,prev);body+=r.html;prev=r.key}
-   return `<table class="rp-dim-table rp-wide-table">${head}<tbody>${body}</tbody></table>`;
-  };
-  /* A4横は幅に余裕がある一方で高さが210mmしかない。40行を1本で積むと
-     用紙からはみ出す(実測で59mmオーバー)ため、1〜20条と21〜40条の2ブロックへ
-     横に割って高さを半分にする。縦(297mm)は従来どおり1本で収まる。 */
+  let prev=null,body='';
+  for(let col=from;col<to;col++){const r=rowHtml(col,prev);body+=r.html;prev=r.key}
+  return `<table class="rp-dim-table rp-wide-table">${head}<tbody>${body}</tbody></table>`;
+ }
+ /* 表の本体。40条ぶんの枠は旧帳票と同じで、A4横のときだけ左右へ割る
+    （高さが210mmしかなく、1本で積むと実測59mmはみ出す）。 */
+ function measSectionHtml(x,title,note,groups){
+  if(!groups.length)return '';
   const landscape=rpOrientation==='landscape';
   const tables=landscape
-   ?`<div class="rp-wide-split">${table(0,20)}${table(20,40)}</div>`
-   :table(0,40);
-  return `<section class="rp-section"><h3>測定データ（板幅・ラテラルボー・バリ・巻ずれ・テレスコープ）</h3><p class="rp-note">巻ずれ・テレスコープは ${esc(tailLabel)} のデータのみ対象です。横割数（${actual}条）を超える行は控え欄として空欄にしています。幅ロット分割時は条ごとのロット№・目標幅(公差)を条番号の右に表示します。${landscape?'A4横のため1〜20条と21〜40条を左右に分けています。':''}</p><div class="rp-wide-wrap">${tables}</div></section>`;
+   ?`<div class="rp-wide-split">${measTableHtml(x,groups,0,20)}${measTableHtml(x,groups,20,40)}</div>`
+   :measTableHtml(x,groups,0,40);
+  return `<section class="rp-section"><h3>${esc(title)}</h3>`
+   +(note?`<p class="rp-note">${note}</p>`:'')
+   +`<div class="rp-wide-wrap">${tables}</div></section>`;
+ }
+ function widthMeasurementSection(x){
+  const groups=rpMeasGroupsFor('combined');
+  if(!groups.length)return '';
+  const s=x.settings||{},actual=Math.max(1,Math.min(40,+s.horizontalCount||1));
+  const {tailLabel}=lengthLabels(s);
+  const landscape=rpOrientation==='landscape';
+  const note=`巻ずれ・テレスコープは ${esc(tailLabel)} のデータのみ対象です。横割数（${actual}条）を超える行は控え欄として空欄にしています。幅ロット分割時は条ごとのロット№・目標幅(公差)を条番号の右に表示します。${landscape?'A4横のため1〜20条と21〜40条を左右に分けています。':''}`;
+  return measSectionHtml(x,`測定データ（${groups.map(g=>g.g).join('・')}）`,note,groups);
+ }
+ function measSoloSection(x,g){
+  const gr=RP_MEAS_GROUP_BY.get(g);
+  if(!gr||rpMeasSolo(g)!==true||!rpMeasVisibleCols(g).length)return '';
+  return measSectionHtml(x,`測定データ（${g}）`,'',[gr]);
  }
  /* 丈(1..N)別の長さ・肉厚・揃い判定。旧帳票の「丈」テーブル（長さ/肉厚/揃い/外観/備考）に対応。
     「外観」列は旧帳票でも実データが書き込まれない控え欄のため、空欄のまま残す。
@@ -522,8 +586,6 @@
     そろって見えなくなる。 */
  const RP_LAYOUT_TARGET='report:lot';
  const RP_COLS=12;
- const RP_SPANS=[3,4,6,8,12];
- const RP_SPAN_LABEL={3:'1/4',4:'1/3',6:'1/2',8:'2/3',12:'全幅'};
  /* 1行＝1ブロック。`html(x)`が''を返したら**このロットには中身が無い**。
     紙には出さず、組み換え中だけ「中身なし」と分かる形で置く（黙って消えると
     自分で隠したのかデータが無いのか分からない）。 */
@@ -547,7 +609,11 @@
   {k:'母材実績／カード指示',span:6,html:x=>motherSection(x)},
   {k:'丈別データ',span:6,html:x=>rpShowProduct(x)?productRowsSection(x):''},
   {k:'板厚の測定データ',span:12,html:x=>rpIsDimensional(x)?thicknessMeasurementSection(x):''},
-  {k:'板幅ほかの測定データ',span:12,html:x=>rpShowWidthTable(x)?widthMeasurementSection(x):''},
+  {k:RP_MEAS_COMBINED,span:12,html:x=>rpShowWidthTable(x)?widthMeasurementSection(x):''},
+  /* 分解したときの1枚ずつ。**既定は「出さない」**——通常はまとめの中に
+     入っている（利用者の指示「通常は今までどおり軸を共通にして組み合わせた形」）。 */
+  ...RP_MEAS_GROUPS.map(gr=>({k:rpMeasSoloKey(gr.g),span:gr.cols.length>=3?6:4,meas:gr.g,
+    html:x=>rpShowWidthTable(x)?measSoloSection(x,gr.g):''})),
   {k:'異常位置判定',span:12,html:x=>defectSection(x)},
   {k:'作業時間',span:6,html:x=>{const w=x.workTime||{};
    const dur=w.startAt&&w.endAt?formatDuration(new Date(w.endAt)-new Date(w.startAt)):(w.startAt?'作業中':'未計測');
@@ -579,7 +645,38 @@
   RP_BLOCKS.forEach(b=>{if(!seen.has(b.k)){seen.add(b.k);out.push(b.k)}});
   return out;
  }
- function rpHiddenSet(){return new Set(WL.columnLayout.get(RP_LAYOUT_TARGET).hidden||[])}
+ /* **一度も保存していないうちの既定**（§9.162と同じ約束）。列レイアウトマスタの
+    hiddenは空なので、そのまま使うと分解した1枚ずつが全部紙に出てしまい、
+    同じ測定値が2箇所に並ぶ。保存前は「まとめだけ」を既定にする。 */
+ function rpInitialHidden(){return RP_MEAS_GROUPS.map(gr=>rpMeasSoloKey(gr.g))}
+ function rpHiddenSet(){
+  const l=WL.columnLayout.get(RP_LAYOUT_TARGET);
+  return new Set((l.order||[]).length?(l.hidden||[]):rpInitialHidden());
+ }
+ /* ---------- 紙のマス数(§9.173) ----------
+    利用者の指示は「使用するグリッドサイズを標準で設定したうえで、各帳票
+    ブロックの使用グリッドサイズの変更＆組合せができるように」。**粗いほど
+    左端がそろう**（§9.135）ので、選べるのは4つだけにしてある。
+    保存先は列レイアウトマスタの`widths`で、幅と同じく`×RP_SPAN_UNIT`して
+    入れる（40〜900へ丸められるため。§9.169と同じ約束）。 */
+ const RP_GRID_KEY='__グリッド__';
+ const RP_GRIDS=[12,8,6,4];
+ function rpGrid(){
+  const raw=Math.round(Number(WL.columnLayout.width(RP_LAYOUT_TARGET,RP_GRID_KEY))||0);
+  const v=Math.round(raw/RP_SPAN_UNIT);
+  return RP_GRIDS.includes(v)?v:RP_COLS;
+ }
+ /* 幅の選択肢は**マス数から作る**（1/4・1/3・1/2・2/3・全幅）。割り切れない
+    ものは近いマスへ寄せ、同じ幅が2つ並ばないようまとめる。 */
+ function rpSpanChoices(){
+  const g=rpGrid();
+  const out=[];
+  [[1,4],[1,3],[1,2],[2,3],[1,1]].forEach(([a,b])=>{
+   const v=Math.max(1,Math.min(g,Math.round(g*a/b)));
+   if(!out.some(o=>o.v===v))out.push({v,label:b===1?'全幅':`${a}/${b}`});
+  });
+  return out;
+ }
  /* 幅は列レイアウトマスタの`widths`へ入れるが、**あちらはpxの幅**として
     40〜900へ丸められる（`normalize_column_width`）。マスの数(3〜12)をそのまま
     入れると全部40になり、**保存した幅が黙って既定へ戻る**（実際にそうなった）。
@@ -590,11 +687,16 @@
  /* 幅は**規格の5つへ丸める**（§9.131）。壊れた値・古い値が入っていても、
     近い規格へ寄せて必ず並ぶ形にする。 */
  function rpSpan(k){
+  const g=rpGrid();
   const raw=Math.round(Number(WL.columnLayout.width(RP_LAYOUT_TARGET,k))||0);
   const v=Math.round(raw/RP_SPAN_UNIT);
-  if(RP_SPANS.includes(v))return v;
-  return (RP_BLOCK_BY_KEY.get(k)||{}).span||12;
+  /* 保存値は**12マスのときの数**として持つ（マス数を変えても意味が変わらない
+     ように、読むときに今のマス数へ割り付け直す）。 */
+  const base=(v>0?v:((RP_BLOCK_BY_KEY.get(k)||{}).span||RP_COLS));
+  return Math.max(1,Math.min(g,Math.round(base*g/RP_COLS)));
  }
+ /* 保存する数は12マス基準へ戻す（上のコメント参照）。 */
+ function rpSpanFromGrid(v){return Math.max(1,Math.min(RP_COLS,Math.round(v*RP_COLS/rpGrid())))}
  /* 帳票本体のHTML生成。一括印刷（複数ロットをまとめて別ページへ流し込む）でも
     同じHTMLを使うため、単一プレビューへの書き込みとは分離してある。
     `arranging`が真のときだけ、ブロックごとの操作帯を差し込む——**紙には
@@ -649,20 +751,65 @@
     +(body||(arranging?'<p class="rp-block-empty">このロットにはこの内容がありません（紙には出ません）。</p>':''))
     +'</div>';
   }).join('');
-  return `<div class="rp-blocks${arranging?' is-arranging':''}">${cells}</div>`;
+  return `<div class="rp-blocks${arranging?' is-arranging':''}" style="--rp-grid:${rpGrid()}">${cells}</div>`;
  }
  /* 組み換え中だけ出る操作帯。**押した結果がその場の紙に出る**のがこの機能の
     値打ちなので、確認を挟まず即座に当てる（保存するまでは戻せる）。 */
+ /* この塊が測定データなら、どの群を持っているか。まとめは載っている群ぜんぶ、
+    分解した1枚はその群だけ。**落とせる単位＝列**を出すために使う（§9.173）。 */
+ function rpBlockMeasGroups(k){
+  if(k===RP_MEAS_COMBINED)return rpMeasGroupsFor('combined');
+  const bl=RP_BLOCK_BY_KEY.get(k);
+  return bl&&bl.meas?[RP_MEAS_GROUP_BY.get(bl.meas)].filter(Boolean):[];
+ }
  function rpBlockBarHtml(k,span,off,empty){
+  const grid=rpGrid(),choices=rpSpanChoices();
+  const groups=rpBlockMeasGroups(k);
+  const bl=RP_BLOCK_BY_KEY.get(k)||{};
+  /* 測定データだけの操作。**「まとめ↔分解」は1つのボタンで往復**させる
+     ——2つ並べると、今どちらなのかを読む手間が増える。 */
+  const split=k===RP_MEAS_COMBINED
+   ?`<button type="button" class="rp-block-split" data-rp-split="out" title="項目ごとの表に分けます（それぞれ場所と幅を決められます）">項目ごとに分ける</button>`
+   :(bl.meas?`<button type="button" class="rp-block-split" data-rp-split="in" title="測定データのまとめへ戻します（条番号の軸を共有して1枚になります）">まとめへ戻す</button>`:'');
   return `<div class="rp-block-bar">
     <span class="rp-block-grip" title="ドラッグで場所を入れ替えます" aria-hidden="true">⠿</span>
     <b class="rp-block-name">${esc(k)}</b>
     ${empty?'<i class="rp-block-tag">中身なし</i>':''}
     ${off?'<i class="rp-block-tag is-off">出さない</i>':''}
-    <span class="rp-block-size">${RP_SPANS.map(v=>
-      `<button type="button" data-rp-span="${v}" class="${v===span?'is-on':''}" title="幅を${RP_SPAN_LABEL[v]}にします">${RP_SPAN_LABEL[v]}</button>`).join('')}</span>
+    <span class="rp-block-size" title="${grid}マスのうち何マスを使うか">${choices.map(c=>
+      `<button type="button" data-rp-span="${c.v}" class="${c.v===span?'is-on':''}" title="幅を${esc(c.label)}（${c.v}/${grid}マス）にします">${esc(c.label)}</button>`).join('')}</span>
+    ${split}
     <button type="button" class="rp-block-vis" data-rp-toggle title="${off?'紙に出すようにします':'紙に出さないようにします'}">${off?'出す':'隠す'}</button>
-   </div>`;
+   </div>
+   ${groups.length?`<div class="rp-block-cols" hidden>
+     <span class="rp-block-cols-head"></span>
+     ${groups.map(gr=>rpMeasVisibleCols(gr.g).map(c=>
+       `<button type="button" class="rp-block-col-drop" data-rp-drop="${esc(gr.g)}|${esc(c.c||'値')}" title="この列を紙から落とします">${esc(gr.g)}${c.c?' '+esc(c.c):''} ×</button>`).join('')).join('')}
+     <button type="button" class="rp-block-col-restore" data-rp-restore title="落とした列を全部戻します">落とした列を戻す</button>
+    </div>`:''}`;
+ }
+ /* **入りきらないことは黙って隠さない**（§9.173、利用者の指示「グリッド変更時
+    データが入りきらない場合は選択できるがデータを絞るように絞れる内容を提示
+    する」）。幅は選べるままにして、**何を落とせるか**をその場に出す。
+    判定は描いたあとの実寸で行う——列の数や文字数から見積もると、表示サイズ・
+    紙の向き・ロットごとの列数で必ずずれる。 */
+ function rpMarkOverflow(host){
+  host.querySelectorAll('[data-rp-block]').forEach(el=>{
+   /* **表だけを見る。** 節そのものを測ると、枠線や余白の丸めで1〜2px
+      はみ出した扱いになり、入っている塊にまで案内が出る（実際に出た）。 */
+   const box=el.querySelector('.rp-wide-wrap');
+   const tbl=el.querySelector('table');
+   const over=!!box&&(box.scrollWidth>box.clientWidth+2
+     ||(!!tbl&&tbl.getBoundingClientRect().width>box.getBoundingClientRect().width+2));
+   el.classList.toggle('is-overflow',over);
+   const cols=el.querySelector('.rp-block-cols');
+   if(!cols)return;
+   cols.hidden=!over;
+   const head=cols.querySelector('.rp-block-cols-head');
+   if(head)head.textContent=over
+     ?`この幅には入りません（あと${Math.max(1,Math.round(box.scrollWidth-box.clientWidth))}px）。幅を広げるか、下の列を落として絞ってください:`
+     :'';
+  });
  }
 
  /* ---- 組み換えモード -------------------------------------------------
@@ -683,7 +830,16 @@
  }
  /* **渡す設定を1つでも書き漏らさない**（§9.113。保存もstageも全置換）。 */
  function rpStage(patch){
-  WL.columnLayout.stage(RP_LAYOUT_TARGET,{...rpLayoutNow(),...patch});
+  const base=rpLayoutNow();
+  /* **触った時点で既定を書き下ろす。** `rpHiddenSet()`は「まだ一度も並びを
+     保存していない＝既定」で判断するので、orderが空のままhiddenだけ書くと、
+     次に読むときまた既定へ戻り、**押しても何も起きない**（分解が効かない、で
+     実際に踏んだ）。 */
+  if(!(base.order||[]).length){
+   base.hidden=[...new Set([...(base.hidden||[]),...rpInitialHidden()])];
+   base.order=rpBlockKeys();
+  }
+  WL.columnLayout.stage(RP_LAYOUT_TARGET,{...base,...patch});
   rpRepaint();
  }
  async function toggleArrange(){
@@ -706,7 +862,12 @@
  }
  async function saveArrange(){
   try{
-   await WL.columnLayout.save(RP_LAYOUT_TARGET,rpLayoutNow());
+   /* **初めて保存する瞬間に既定を書き下ろす**（§9.162と同じ）。忘れると、
+      幅を1回変えただけで分解した1枚ずつが全部紙に出る。 */
+   const now=rpLayoutNow();
+   if(!(now.order||[]).length)now.hidden=[...new Set([...(now.hidden||[]),...rpInitialHidden()])];
+   if(!(now.order||[]).length)now.order=rpBlockKeys();
+   await WL.columnLayout.save(RP_LAYOUT_TARGET,now);
    showToast&&showToast('帳票の配置を保存しました','次に開いたときも同じ形で出ます',4000);
    closeArrange(true);
   }catch(e){showToast&&showToast('配置を保存できませんでした',e.message,6000)}
@@ -735,16 +896,57 @@
   if(!rpArranging)return;
   const hidden=rpHiddenSet().size;
   const info=bar.querySelector('.rp-arrange-info');
-  if(info)info.textContent=`塊をドラッグで並べ替え、幅（1/4〜全幅）を選び、「隠す」で紙から外せます。いま外しているのは ${hidden} 件です。`;
+  if(info){
+   const g=rpGrid();
+   info.innerHTML=`<span class="rp-grid-pick">紙のマス数 ${RP_GRIDS.map(v=>
+     `<button type="button" data-rp-grid="${v}" class="${v===g?'is-on':''}" title="紙を横${v}マスで割ります（粗いほど左端がそろいます）">${v}</button>`).join('')}</span>`
+    +`<span class="rp-arrange-note">塊をドラッグで並べ替え、幅（${rpSpanChoices().map(c=>c.label).join('・')}）を選び、「隠す」で紙から外せます。いま外しているのは ${hidden} 件です。</span>`;
+   info.querySelectorAll('[data-rp-grid]').forEach(b=>b.onclick=()=>{
+    rpStage({widths:{...rpLayoutNow().widths,[RP_GRID_KEY]:rpSpanStore(Number(b.dataset.rpGrid))}});
+    updateArrangeBar();
+   });
+  }
  }
  function bindArrangeHandlers(){
   const host=$id('reportContent');if(!host)return;
+  /* **描いてから測る**（§9.173）。レイアウトが決まる前に測ると必ず読み違える。 */
+  requestAnimationFrame(()=>requestAnimationFrame(()=>rpMarkOverflow(host)));
   host.querySelectorAll('[data-rp-block]').forEach(el=>{
    const k=el.dataset.rpBlock;
    el.querySelectorAll('[data-rp-span]').forEach(b=>b.onclick=ev=>{
     ev.preventDefault();ev.stopPropagation();
-    rpStage({widths:{...rpLayoutNow().widths,[k]:rpSpanStore(Number(b.dataset.rpSpan))}});
+    rpStage({widths:{...rpLayoutNow().widths,[k]:rpSpanStore(rpSpanFromGrid(Number(b.dataset.rpSpan)))}});
    });
+   /* 分解／まとめ。**hiddenを付け外しするだけ**——まとめに載るかどうかは
+      「単独ブロックが出ているか」の1点で決まる（同じ内容を2箇所に出さない）。 */
+   const sp=el.querySelector('[data-rp-split]');
+   if(sp)sp.onclick=ev=>{
+    ev.preventDefault();ev.stopPropagation();
+    const cur=rpLayoutNow(),set=new Set(rpHiddenSet());
+    if(sp.dataset.rpSplit==='out'){
+     /* まとめ→分解: 中身のある群だけを単独で出し、まとめは畳む。 */
+     rpMeasGroupsFor('combined').forEach(gr=>set.delete(rpMeasSoloKey(gr.g)));
+     set.add(RP_MEAS_COMBINED);
+    }else{
+     set.add(k);set.delete(RP_MEAS_COMBINED);
+    }
+    rpStage({hidden:[...set]});
+    updateArrangeBar();
+   };
+   /* 落とせる列。押した列だけを紙から外す（幅は選んだままにする）。 */
+   el.querySelectorAll('[data-rp-drop]').forEach(b=>b.onclick=ev=>{
+    ev.preventDefault();ev.stopPropagation();
+    const [g,c]=String(b.dataset.rpDrop).split('|');
+    const set=new Set(rpHiddenSet());set.add(rpMeasColKey(g,c==='値'?'':c));
+    rpStage({hidden:[...set]});
+   });
+   const rs=el.querySelector('[data-rp-restore]');
+   if(rs)rs.onclick=ev=>{
+    ev.preventDefault();ev.stopPropagation();
+    const set=new Set(rpHiddenSet());
+    RP_MEAS_GROUPS.forEach(gr=>gr.cols.forEach(c=>set.delete(rpMeasColKey(gr.g,c.c))));
+    rpStage({hidden:[...set]});
+   };
    const vis=el.querySelector('[data-rp-toggle]');
    if(vis)vis.onclick=ev=>{
     ev.preventDefault();ev.stopPropagation();
