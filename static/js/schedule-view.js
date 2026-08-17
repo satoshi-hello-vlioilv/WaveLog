@@ -2260,7 +2260,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(!row)return;
   row.classList.add('sc-row-has-children');
   // つまみは**最初の内容セル**へ入れる(段6で内容が複数列になった)。
-  const title=row.querySelector('.sc-row-title');
+  /* 内容の列を全部隠すこともできる(§9.176)。そのときは**最初のセル**へ
+     入れる——素の兄弟として足すと1列ぶんずれるので、必ずどれかのセルの
+     中に入れること。 */
+  const title=row.querySelector('.sc-row-title')||row.querySelector('[data-col]');
   if(!title)return;
   const btn=document.createElement('button');
   btn.type='button';
@@ -2494,13 +2497,18 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    }
    timeline.append(row);
 
-   if(detailHtml){
+   /* 詳細(固定開始・見積の内訳)を開く相手は**操作の列の中のボタン**。
+      §9.176で操作の列も隠せるようになったので、**隠していたら詳細ごと
+      置かない**——ボタンが無いのに詳細だけDOMへ積むと、開く手立てが無い
+      死んだ要素が行の数だけ増える(以前はここで`toggle.onclick`が
+      nullへの代入になって、行を1つ描くたびに例外が出ていた)。 */
+   const toggle=row.querySelector('.sc-row-detail-toggle');
+   if(detailHtml&&toggle){
     const detail=document.createElement('div');
     detail.className='sc-row-detail';
     detail.hidden=true;
     detail.innerHTML=detailHtml;
     timeline.append(detail);
-    const toggle=row.querySelector('.sc-row-detail-toggle');
     toggle.onclick=ev=>{
      ev.stopPropagation();
      detail.hidden=!detail.hidden;

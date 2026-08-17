@@ -1328,8 +1328,8 @@
       const memo=activeFilterMemoryCount();
       const note=document.createElement('span');
       note.className='fp-memo';
-      note.textContent=memo?`　適用中の条件は ${memo}件の一覧ぶん、この端末に覚えています`
-                           :'　適用中の条件は、この端末に覚えます（次に開いたときも当たります）';
+      note.textContent=memo?`　覚えた絞り込み ${memo}件`
+                           :'　絞り込みはこの端末に覚えます';
       summary.append(note);
       if(memo){
         const btn=document.createElement('button');

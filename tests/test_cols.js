@@ -64,9 +64,13 @@ let b=null;
  await page.waitForTimeout(600);
  const cand=await page.$$eval('#lcList .lc-item',ns=>ns.map(x=>x.dataset.key));
  rec('内容の項目候補に結合済みの品質列も出る',cand.includes('検査結果')&&cand.includes('公差判定'),cand.slice(0,12).join(','));
+ /* **触るのは内容欄の項目だけ**(§9.176)。同じ並びに区分・日付・操作などの
+    固定列(`__`で始まるキー)も乗ったので、区別せず外すと表そのものが2列に
+    なり、区分の列が消えて「予定の行」を数えられなくなる。 */
  const chosen=await page.evaluate(async()=>{
   const want=new Set(['検査結果','公差判定']);
-  const items=[...document.querySelectorAll('#lcList .lc-item')];
+  const items=[...document.querySelectorAll('#lcList .lc-item')]
+    .filter(x=>!/^__/.test(x.dataset.key));
   for(const it of items){
    const box=it.querySelector('.lc-vis input');
    if(!box)continue;
@@ -75,7 +79,8 @@ let b=null;
   }
   await new Promise(r=>setTimeout(r,400));
   return [...document.querySelectorAll('#lcList .lc-item')]
-    .filter(x=>x.querySelector('.lc-vis input')?.checked).map(x=>x.dataset.key);
+    .filter(x=>!/^__/.test(x.dataset.key)&&x.querySelector('.lc-vis input')?.checked)
+    .map(x=>x.dataset.key);
  });
  rec('選んだ項目だけがチェック済みになる',
   chosen.length===2&&chosen.includes('検査結果')&&chosen.includes('公差判定'),chosen.join(','));

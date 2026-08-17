@@ -200,7 +200,11 @@
 .filter-preset-dialog small{color:#8fd4d4}
 .filter-preset-dialog>header button{font-size:var(--fs-lg);color:#fff;background:transparent;border:0}
 .filter-preset-body{display:flex;flex-direction:column;min-height:0;flex:1}
-.filter-preset-toolbar{display:flex;align-items:center;justify-content:space-between;gap:var(--gap-section);padding:var(--pad-card);background:#eef8f9;border-bottom:1px solid var(--line)}
+.filter-preset-toolbar{display:flex;align-items:center;justify-content:space-between;gap:var(--gap-section);padding:var(--pad-card);background:#eef8f9;border-bottom:1px solid var(--line);
+ /* **縮ませない・回り込ませる。** 窓が低いとflexの取り分がここから削られ、
+    中のボタンが帯からはみ出していた(§9.175で説明文が伸びて顕在化。
+    tests/test_fit.jsが検出)。縮む役は下の一覧(overflow:auto)が持つ。 */
+ flex:0 0 auto;flex-wrap:wrap}
 .filter-preset-toolbar span{color:#40606a;font-size:var(--fs-sm)}
 .filter-preset-toolbar button{background:var(--teal);color:#fff;border-color:var(--teal)}
 .filter-preset-list{flex:1;min-height:0;overflow:auto;padding:var(--pad-card);display:grid;gap:var(--space-2);align-content:start;position:relative}

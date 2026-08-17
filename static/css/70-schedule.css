@@ -308,7 +308,7 @@
 .sc-row-head{padding:2px var(--space-2) 3px;position:sticky;top:0;z-index:1;background:#f7fafb;font-size:var(--fs-micro);font-weight:800;color:#8a9aa0;border-bottom:1px solid var(--line)}
 /* 列を選んでいるときだけ出す案内。**探させない**——Ctrl/Shiftを知らないと
    使えない操作は、無いのと同じ。 */
-.sc-col-pick-hint{position:sticky;top:0;z-index:2;display:block;padding:2px var(--space-2);
+.sc-col-pick-hint{display:block;padding:2px var(--space-2);
  background:var(--pale);color:var(--teal-dark);font-size:var(--fs-micro);font-weight:800;
  border-bottom:1px solid var(--teal)}
 /* **行の高さは内容で変わらない**(§9.88)。以前は min-height だったため、

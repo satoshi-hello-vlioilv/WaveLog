@@ -71,7 +71,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
    const t=document.querySelector('.filter-preset-toolbar');
    return {txt:t?t.textContent.replace(/\s+/g,' ').trim():'',btn:!!document.querySelector('.fp-memo-clear')};
   });
-  rec('覚えていることが文字で出る',memo.txt.includes('覚えて'),memo.txt.slice(0,140));
+  rec('覚えていることが文字で出る',/覚えた絞り込み\s*1件/.test(memo.txt),memo.txt.slice(0,140));
   rec('覚えを消す手立てが同じ場所にある',memo.btn,String(memo.btn));
 
   // ---- 全解除すると覚えも消える

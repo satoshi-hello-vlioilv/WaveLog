@@ -1099,7 +1099,7 @@
   renderIo();
   if(mode==='export')loadIoAll();
  }
- function closeIo(){const box=ioEl('lcIo');if(box){box.hidden=true;box.innerHTML===''}}
+ function closeIo(){const box=ioEl('lcIo');if(box)box.hidden=true}
  async function loadIoAll(){
   try{
    const r=await api('/api/column-layout-master?all=1');
