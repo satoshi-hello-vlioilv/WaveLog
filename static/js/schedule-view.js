@@ -362,6 +362,15 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  function saveScLayout(){
   try{localStorage.setItem(SC_LAYOUT_KEY,JSON.stringify(scLayout))}catch(e){/* 保存できなくても表示は続く */}
  }
+ /* 「分割で開く」/「スケジュールだけで開く」を今の画面へ当てる。畳んだ状態は
+    今までどおり端末に覚える(`last`で開いたときに戻せるように)。 */
+ function applyOpenMode(collapsed){
+  splitListCollapsed=!!collapsed;
+  try{localStorage.setItem('scSplitListCollapsedV1',splitListCollapsed?'1':'0')}catch(e){}
+  updateSplitCollapseUi();
+  updateInsertHintUi();
+  if(!splitListCollapsed)showSplitList().catch(()=>{});
+ }
  function applySplitSide(){
   if(!splitWrap)return;
   splitWrap.classList.toggle('sc-swap',!!scLayout.swap);
@@ -390,7 +399,15 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    </div>
    <p class="sc-layout-note">この設定はこの端末に覚えます（設備ごとではありません）。</p>`;
   pop.querySelectorAll('input[name=scOpenMode]').forEach(r=>{
-   r.onchange=()=>{scLayout.open=r.value;saveScLayout();renderLayoutPop()};
+   /* **選んだ瞬間にその形へする**(§9.179改訂。利用者の指摘「切り替えた直後に
+      スケジュール表だけになりません」)。「開いたときの表示」という名前でも、
+      押した結果が今の画面に出ないのでは、効いているのか確かめられない。
+      `last`(前回のまま)だけは今の形を変えない——何に変えるかが決まらない。 */
+   r.onchange=()=>{
+    scLayout.open=r.value;saveScLayout();
+    if(r.value==='split'||r.value==='schedule')applyOpenMode(r.value==='schedule');
+    renderLayoutPop();
+   };
   });
   pop.querySelectorAll('input[name=scSide]').forEach(r=>{
    r.onchange=()=>{
@@ -466,6 +483,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   splitListCollapsed=!splitListCollapsed;
   try{localStorage.setItem('scSplitListCollapsedV1',splitListCollapsed?'1':'0')}catch(e){/* 保存できなくても表示自体は継続する */}
   updateSplitCollapseUi();
+  /* 畳んでいるあいだは中身を読んでいない(§9.182)。開いた時点で読む
+     ——押してから「空の一覧」が出るのでは、壊れて見える。 */
+  if(!splitListCollapsed)showSplitList().catch(()=>{});
   /* 一覧を畳んだ／開いた時点で「行間クリックで入れられる」かどうかが
      変わる(§9.179)。案内を出し直さないと、押せるのに何も書いていない／
      書いてあるのに押せない状態になる。 */
@@ -504,6 +524,13 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(listModalOpen)closeListModal();
   ensureSplitWrap();
   document.body.classList.add('sc-split');
+  /* ---------- 畳んでいるなら中身を読まない(§9.182) ----------
+     「スケジュールだけ」で見ているとき、仕掛一覧は幅0で**画面に無い**。
+     それでも2000行×200列を組み立てており、メインスレッドを数百ms塞いで
+     いた(実測791ms)——見えないものを作るために、見えているものの操作が
+     止まっていた。開いた時点(toggleSplitListCollapsed)で読む。
+     **器(分割バー)は先に作る**——取っ手が無いと開く手立てが消える。 */
+  if(splitListCollapsed){updateSplitCollapseUi();return}
   const workKey=workDbKey();
   if(typeof S!=='undefined'&&typeof selectDb==='function'&&workKey){
    const navBtn=document.querySelector(`aside [data-db-key="${CSS.escape(workKey)}"]`);
@@ -618,6 +645,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  function closeListModal(){
   const modal=document.getElementById('scListModal');
   if(!modal||modal.hidden)return;
+  /* 差し込む位置の固定も外す(§9.179)。閉じたのに位置が残っていると、
+     次の追加が思い出しもしない場所へ入る。 */
+  clearInsertPin();
   modal.hidden=true;listModalOpen=false;
   document.body.classList.remove('sc-list-modal-open');
   returnGridHome();
@@ -644,8 +674,17 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    e.preventDefault();
    e.dataTransfer.dropEffect='copy';
    panel.classList.add('sc-drop-active');
+   /* **落とした位置へ差し込める**(§9.179改訂。利用者の指示「ドラッグアンド
+      ドロップの際も一番最後でなく、指定位置に差し込むこともできるように」)。
+      指の位置に隙間を出しておけば、どこへ入るかを落とす前に確かめられる。
+      設備停止のドラッグも同じ扱いにする(位置を選べない理由が無い)。 */
+   if(WL.scheduleInsert&&WL.scheduleInsert.allowed())WL.scheduleInsert.showAt(e.clientY);
   });
-  panel.addEventListener('dragleave',e=>{if(e.target===panel)panel.classList.remove('sc-drop-active')});
+  panel.addEventListener('dragleave',e=>{
+   if(e.target!==panel)return;
+   panel.classList.remove('sc-drop-active');
+   hideInsertGhost();      // 固定していれば残る(§9.179)
+  });
   panel.addEventListener('drop',e=>{
    // 設備停止ボタン(§9.13)からのドラッグ&ドロップ。位置に関わらず末尾へ追加する
    // (クリック追加と同じ挙動、タイムライン上の特定位置への挿入は行わない)。
@@ -653,14 +692,18 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     e.preventDefault();
     panel.classList.remove('sc-drop-active');
     const reason=window.__scDragStopReason;window.__scDragStopReason=null;
+    /* 落とした位置へ入れる(§9.179改訂)。位置が決まらなければ末尾。 */
+    if(WL.scheduleInsert)scState.insertBefore=WL.scheduleInsert.takeDropTarget();
     if(dropApplicable())addStopReasonToSchedule(reason.id,reason.name);
+    else clearInsertPin();
     return;
    }
    if(!window.__scDragRows)return;
    e.preventDefault();
    panel.classList.remove('sc-drop-active');
    const rows=window.__scDragRows;window.__scDragRows=null;
-   if(!rows||!rows.length||!scState.equipment)return;
+   if(WL.scheduleInsert)scState.insertBefore=WL.scheduleInsert.takeDropTarget();
+   if(!rows||!rows.length||!scState.equipment){clearInsertPin();return}
    if(rows.length===1)addRowToSchedule(rows[0],scState.equipment);
    else addRowsToSchedule(rows,scState.equipment);
   });
@@ -1091,6 +1134,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    btn.onclick=()=>{scState.overviewSort=btn.dataset.sort;renderOverviewBoard()};
   });
   board.querySelectorAll('.sc-board-row').forEach(row=>{
+   /* **触れた時点で、その設備の予定を取り始める**(§9.182)。押すまでの
+      200〜500msがそのまま準備に使える。取ったものはキャッシュへ入れるだけで
+      画面は触らない(見ている俯瞰ボードが勝手に変わらない)。 */
+   row.addEventListener('mouseenter',()=>warmPlan(row.dataset.equipment),{once:true});
    const go=()=>{scState.equipment=row.dataset.equipment;$('#scEquipmentSelect').value=scState.equipment;switchToSingle()};
    row.onclick=go;
    row.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go()}};
@@ -1390,36 +1437,82 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   total:scWorkable.total||0,        // 仕掛の総件数
  });
 
+ /* 先読み(§9.182)。**キャッシュへ入れるだけ**で画面は触らない。既に持って
+    いれば何もしない。失敗は黙って捨てる(開いたときに普通に取り直す)。 */
+ const warmingPlans=new Set();
+ function warmPlan(eq){
+  eq=String(eq||'').trim();
+  if(!eq||scPlanCache.has(eq)||warmingPlans.has(eq))return;
+  warmingPlans.add(eq);
+  const hours=scState.historyHours;
+  api('/api/schedule/plan?equipment='+encodeURIComponent(eq)+'&history_hours='+encodeURIComponent(hours))
+   .then(r=>{
+    if(r&&r.configured&&!scPlanCache.has(eq))
+     scPlanCache.set(eq,{entries:r.entries||[],anchor:r.anchor,warnings:r.warnings||[],
+       loadFactor:r.loadFactor,historyHours:hours,fetchedAt:Date.now()});
+   })
+   .catch(()=>{})
+   .finally(()=>warmingPlans.delete(eq));
+  /* 列の見せ方も一緒に(設備ごとに違う)。描画の直前に必要になるもの。 */
+  WL.columnLayout.load('timeline:'+eq).catch(()=>{});
+ }
  async function refreshAll(force){
-  // キャッシュから出せるならWAITING表示ごと省く(一瞬で出るのにスピナーが
-  // 瞬くと、かえって「また読み込んでいる」ように見えるため)。
+  /* ---------- 覆いは「予定が出るまで」だけ(§9.182) ----------
+     以前は仕掛一覧を組み終わるまで覆いを出しており、**予定はもう描けている
+     のに待たされている**ように見えていた(実測で予定まで1.1秒・一覧まで1.6秒。
+     しかも一覧の組み立てはメインスレッドを塞ぐので、そのあいだ予定が
+     1度も描かれない)。予定を描いて**1度描画させてから**一覧へ移る。
+     キャッシュから出せるならWAITING表示ごと省く(一瞬で出るのにスピナーが
+     瞬くと、かえって「また読み込んでいる」ように見えるため)。 */
   const cached=scPlanCache.get(scState.equipment);
-  if(!force&&cached&&cached.historyHours===scState.historyHours)return refreshAllInner(()=>{},false);
-  if(typeof withWaiting!=='function')return refreshAllInner(()=>{},force);
-  return withWaiting({title:'作業スケジュールを読み込んでいます',
+  const quick=!force&&cached&&cached.historyHours===scState.historyHours;
+  if(quick||typeof withWaiting!=='function')await refreshAllInner(()=>{},force);
+  else await withWaiting({title:'作業スケジュールを読み込んでいます',
    detail:scState.equipment?('設備: '+scState.equipment):'共有スケジュールDBを参照しています',
    progress:'表示設定と予定を取得しています',step:1},report=>refreshAllInner(report,force));
+  /* 仕掛一覧は**覆いを外してから**組む。ここは待つ(呼び出し側が「開き終えた」
+     と扱える必要がある)が、予定は既に画面へ出ている。 */
+  await showSplitList();
  }
+ /* 1度描かせる。**await するだけでは描かれない**——直後に重い処理が続くと
+    ブラウザは描画の隙を得られない(仕掛一覧の組み立てがそれ)。 */
+ const paintOnce=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
  async function refreshAllInner(report,force){
-  // 列表示マスタ(§9.18)はloadPlan()のrenderTimeline()が「内容」欄の組み立てに
-  // 使うため、先に取得しておく(後から取得すると初回描画が古い/未設定の
-  // プリファレンスのまま出て、直後に列が変わるちらつきが起きる)。
-  if(scState.fullControl){await loadScheduleColumnPrefs();await loadScheduleContentPrefs()}
-  /* 内容の列の見せ方(並び・幅・表示名・書式・読み替え)も先に取っておく
-     (§9.88 段6)。描画時に同期で参照するので、後から取ると初回だけ
-     既定の見た目で出て直後に組み替わる。読めなくても既定で出る(fail-open)。 */
-  try{await WL.columnLayout.load(timelineTarget())}catch(e){}
-  try{await WL.displayRules.load()}catch(e){}
-  await loadPlan(force);
+  /* ---------- 独立した取得は同時に始める(§9.182) ----------
+     以前は「列表示 → 内容表示 → 列レイアウト → 読み替え → 予定 →
+     停止理由 → 仕掛一覧」を**1本ずつ待って**いた。往復の短い手元でも
+     設備を選んでから表が出るまで1.1秒かかり、共有越しでは往復の数ぶん
+     そのまま伸びる（現場で「読み込みが遅い」と報告された）。
+     **順番の約束は守れる**——描画のときにマスタが揃っていればよいので、
+     予定の取得はマスタと同時に走らせ、描画の直前で待ち合わせる。
+     取得だけ先に始めるのが要点で、`planFetch()`が取得、`planApply()`が
+     描画を持つ（1つの関数で両方やると、この待ち合わせが書けない）。 */
+  const plan=planFetch(force);
+  const jobs=[];
+  // 列表示マスタ(§9.18)・内容表示マスタは renderTimeline() が「内容」欄の
+  // 組み立てに使うため、**描画より先に**揃える必要がある(後から取得すると
+  // 初回描画が未設定のまま出て、直後に列が変わるちらつきが起きる)。
+  if(scState.fullControl){jobs.push(loadScheduleColumnPrefs(),loadScheduleContentPrefs())}
+  /* 内容の列の見せ方(並び・幅・表示名・書式・読み替え)も同じ理由で先に。
+     読めなくても既定で出る(fail-open)。 */
+  jobs.push(WL.columnLayout.load(timelineTarget()));
+  jobs.push(WL.displayRules.load());
+  /* 停止理由・分類は**描画に要らない**ので待ち合わせに混ぜるだけ
+     (別パネルの中身なので、遅れてもタイムラインは出る)。 */
+  if(scState.fullControl)jobs.push(loadStopCategories(),loadStopReasons());
+  await Promise.all(jobs.map(x=>Promise.resolve(x).catch(()=>{})));
+  await planApply(plan);
   // 作業可否(§9.51)の判定材料は**待たない**。仕掛一覧の取得は共有越しだと
   // 時間がかかることがあり、待つとその間ずっと予定が出ない。先に予定を描き、
   // 可否は取れ次第そのセルだけ差し替える(操作は一切止めない)。
   // 利用者が押した「再計算」(force)では、可も含めて情報源を取り直す。
   // 画面を開いた・設備を切り替えただけのときは可でない行だけを追いかける。
   refreshWorkableInBackground(force,force);
-  if(scState.fullControl)await loadStopReasons();
   report({progress:'仕掛一覧を並べて表示しています',step:2});
-  await showSplitList();
+  /* **ここで一度描かせる**(§9.182)。この直後に仕掛一覧の組み立て(2000行×
+     200列)が入り、メインスレッドを数百ms塞ぐ。描かせずに進むと、予定が
+     出るのが一覧と同時になり「読み込みが遅い」ことになる。 */
+  await paintOnce();
  }
  function applyPlanResult(r,fetchedAt){
   scState.entries=r.entries||[];scState.anchor=r.anchor;scState.warnings=r.warnings||[];
@@ -1427,30 +1520,48 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   renderWarnings();renderTimeline();updateFreshnessUi(fetchedAt);
   scheduleWorkableWatch();   // 可でない行が残っていれば裏で追いかける(§9.51)
  }
- async function loadPlan(force){
-  if(!scState.equipment)return;
-  const cached=scPlanCache.get(scState.equipment);
+ /* ---------- 予定は「取得」と「描画」を分ける(§9.182) ----------
+    取得だけ先に始めておいて、表示設定が揃ったところで描く。1つの関数で
+    両方やると、他の取得と同時に走らせる書き方ができない。 */
+ function planFetch(force){
+  const eq=scState.equipment;
+  if(!eq)return null;
+  const cached=scPlanCache.get(eq);
   // 表示範囲が変わったときは取り直す(サーバー側の合成範囲も変わるため)
-  if(!force&&cached&&cached.historyHours===scState.historyHours){
-   applyPlanResult(cached,cached.fetchedAt);
-   return;
-  }
+  if(!force&&cached&&cached.historyHours===scState.historyHours)
+   return {eq,cached};
+  /* **既に行が出ているときは「読み込んでいます」で消さない**(§9.182)。
+     消してから入れ直すと、開き直すたびに表が空白へ落ちる(前の内容を
+     見ながら待てるほうが速く感じる)。 */
   const timeline=$('#scTimeline');
-  timeline.innerHTML='<div class="sc-empty-note">読み込んでいます…</div>';
+  if(timeline&&!timeline.querySelector('.sc-row-line'))
+   timeline.innerHTML='<div class="sc-empty-note">読み込んでいます…</div>';
+  return {eq,promise:api('/api/schedule/plan?equipment='+encodeURIComponent(eq)
+    +'&history_hours='+encodeURIComponent(scState.historyHours))};
+ }
+ async function planApply(req){
+  if(!req)return;
+  const timeline=$('#scTimeline');
+  if(req.cached){applyPlanResult(req.cached,req.cached.fetchedAt);return}
   try{
-   const r=await api('/api/schedule/plan?equipment='+encodeURIComponent(scState.equipment)
-    +'&history_hours='+encodeURIComponent(scState.historyHours));
+   const r=await req.promise;
+   // 応答が届く前に設備が変わっていたら捨てる(古い予定を新しい設備へ描かない)
+   if(scState.equipment!==req.eq)return;
    if(!r.configured){
-    timeline.innerHTML='<div class="sc-empty-note">スケジュール機能が設定されていません(config/local.jsonのschedule_share_path未設定)。</div>';
+    if(timeline)timeline.innerHTML='<div class="sc-empty-note">スケジュール機能が設定されていません(config/local.jsonのschedule_share_path未設定)。</div>';
     return;
    }
    const fetchedAt=Date.now();
-   scPlanCache.set(scState.equipment,{entries:r.entries||[],anchor:r.anchor,warnings:r.warnings||[],
+   scPlanCache.set(req.eq,{entries:r.entries||[],anchor:r.anchor,warnings:r.warnings||[],
     loadFactor:r.loadFactor,historyHours:scState.historyHours,fetchedAt});
    applyPlanResult(r,fetchedAt);
   }catch(e){
-   timeline.innerHTML=`<div class="sc-empty-note">予定を取得できませんでした: ${esc(e.message)}</div>`;
+   if(scState.equipment!==req.eq)return;
+   if(timeline)timeline.innerHTML=`<div class="sc-empty-note">予定を取得できませんでした: ${esc(e.message)}</div>`;
   }
+ }
+ async function loadPlan(force){
+  await planApply(planFetch(force));
  }
 
  function renderWarnings(){
@@ -2111,20 +2222,64 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     `position:'before:<予定ID>'`としてサーバーへ渡す(§9.179。画面で足して
     から並べ替えAPIを叩くと、2往復のあいだに別のPCの変更が挟まる)。 */
  let insertGhostEl=null;
+ /* 位置を決めて相手を選んでいる最中は**隙間を固定する**(§9.179改訂。利用者の
+    指示「ゴーストは消さずに差し込まれる位置を仕掛表が開いている間表示して
+    どこに差し込まれるかわかるように」)。固定していないと、モーダルへ手を
+    伸ばした時点でカーソルが表から外れ、どこへ入るのか分からなくなる。 */
+ let insertPinned=false;
+ let insertClickTimer=null;
  function ensureInsertGhost(){
   if(insertGhostEl)return insertGhostEl;
   const g=document.createElement('div');
   g.className='sc-insert-ghost';g.id='scInsertGhost';
-  g.innerHTML='<span class="sc-insert-mark">＋</span>'
-   +'<span class="sc-insert-text">ここへ予定を入れる'
-   +'<small>クリック: 仕掛から選ぶ／ダブルクリック: 設備停止</small></span>';
-  g.addEventListener('click',e=>{e.stopPropagation();openInsertPicker('lot')});
-  g.addEventListener('dblclick',e=>{e.stopPropagation();openInsertPicker('stop')});
+  /* **クリックとダブルクリックを分ける**(利用者の指摘「クリックでもダブル
+     クリックでも仕掛表が開きました」)。clickは2回目でも飛ぶので、少し待って
+     からdblclickが来ていなければ単クリックとして扱う。
+       クリック       … 設備停止（メンテナンスを差し込む）
+       ダブルクリック … 仕掛一覧（ロットを差し込む） */
+  g.addEventListener('click',e=>{
+   e.preventDefault();e.stopPropagation();
+   if(insertClickTimer)return;
+   insertClickTimer=setTimeout(()=>{insertClickTimer=null;openInsertPicker('stop')},260);
+  });
+  g.addEventListener('dblclick',e=>{
+   e.preventDefault();e.stopPropagation();
+   if(insertClickTimer){clearTimeout(insertClickTimer);insertClickTimer=null}
+   openInsertPicker('lot');
+  });
   insertGhostEl=g;
   return g;
  }
- function hideInsertGhost(){
+ /* 隙間の文字。**今できることを書き換える**——位置を決めたあとは「ここへ
+    入ります」と言い、次にする操作(一覧の行をダブルクリック／ドロップ)を指す。 */
+ function insertGhostLabel(){
+  renderStopWhere();      // 設備停止の帯にも同じ位置を出す(§9.181)
+  const g=insertGhostEl;if(!g)return;
+  const where=scState.insertBefore
+   ?`${pickedLotOf(pickableEntry(scState.insertBefore))||'この行'}の前`:'いちばん後ろ';
+  g.innerHTML=insertPinned
+   ?`<span class="sc-insert-mark">▼</span>`
+    +`<span class="sc-insert-text">ここへ入ります（${esc(where)}）`
+    +`<small>仕掛一覧の行を<b>ダブルクリック</b>、またはこの位置へ<b>ドロップ</b></small></span>`
+    +`<button type="button" class="sc-insert-cancel" title="この位置を解除します">やめる</button>`
+   :'<span class="sc-insert-mark">＋</span>'
+    +'<span class="sc-insert-text">ここへ予定を入れる'
+    +'<small>クリック: 設備停止／ダブルクリック: 仕掛から選ぶ</small></span>';
+  const cancel=g.querySelector('.sc-insert-cancel');
+  if(cancel)cancel.onclick=e=>{e.stopPropagation();clearInsertPin()};
+ }
+ function hideInsertGhost(force){
+  if(insertPinned&&!force)return;
   if(insertGhostEl&&insertGhostEl.parentNode)insertGhostEl.remove();
+ }
+ /* 位置の固定をやめる。**モーダルを閉じたら必ず通る**——固定したままにすると、
+    次に普通に追加したものが思い出しもしない位置へ入る。 */
+ function clearInsertPin(){
+  if(!insertPinned&&!scState.insertBefore)return;
+  insertPinned=false;scState.insertBefore='';
+  renderStopWhere();
+  if(insertGhostEl)insertGhostEl.classList.remove('is-pinned');
+  hideInsertGhost(true);
  }
  /* 入れる位置の目安。**動かせる予定(未着手)の行だけ**が相手——着手・完了の
     あいだに入れても並びは変わらないので、そこには隙間を出さない。
@@ -2144,27 +2299,52 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     行の流れの中へ挟むので、下の行はそのぶん押し下がる。 */
  function placeInsertGhost(slot){
   const g=ensureInsertGhost();
-  if(g.dataset.beforeId===slot.beforeId&&g.parentNode)return;
+  const same=g.dataset.beforeId===slot.beforeId&&g.parentNode;
   g.dataset.beforeId=slot.beforeId;
-  if(slot.after)slot.row.parentNode.insertBefore(g,slot.row.nextSibling);
-  else slot.row.parentNode.insertBefore(g,slot.row);
+  if(!same){
+   if(slot.after)slot.row.parentNode.insertBefore(g,slot.row.nextSibling);
+   else slot.row.parentNode.insertBefore(g,slot.row);
+  }
+  insertGhostLabel();
+ }
+ /* 描き直しで隙間ごと消えるので、固定しているときは同じ位置へ戻す。 */
+ function restoreInsertGhost(){
+  if(!insertPinned)return;
+  const tl=$('#scTimeline');if(!tl)return;
+  const id=scState.insertBefore;
+  const rows=[...tl.querySelectorAll('.sc-row-line')].filter(r=>reorderableEntry(r.dataset.id));
+  if(!rows.length){clearInsertPin();return}
+  const ref=id?rows.find(r=>String(r.dataset.id)===String(id)):null;
+  const g=ensureInsertGhost();
+  g.classList.add('is-pinned');
+  g.dataset.beforeId=ref?String(ref.dataset.id):'';
+  if(ref)ref.parentNode.insertBefore(g,ref);
+  else{const last=rows[rows.length-1];last.parentNode.insertBefore(g,last.nextSibling)}
+  insertGhostLabel();
  }
  function updateInsertHintUi(){
   const on=scheduleOnlyView();
   const tl=$('#scTimeline');
   if(tl)tl.classList.toggle('sc-insertable',on);
-  if(!on)hideInsertGhost();
+  if(!on&&!insertPinned)hideInsertGhost(true);
   const hint=$('#scSplitHint');
   if(hint)hint.innerHTML=on
    ?'<p class="sc-drop-hint">仕掛一覧を畳んでいます。<b>表の行と行のあいだにカーソルを置くと隙間が開き</b>、'
-    +'クリックで仕掛から選んで／ダブルクリックで設備停止を、その位置へ入れられます。'
+    +'<b>クリックで設備停止</b>／<b>ダブルクリックで仕掛から選んで</b>、その位置へ入れられます。'
     +'左端の帯を押すと仕掛一覧が戻り、今までどおりドラッグでも追加できます。</p>'
-   :'<p class="sc-drop-hint">左の仕掛一覧からロットをドラッグ、またはチェックボックスで複数選択してこのパネルへドロップすると、この設備の予定へ追加されます。</p>';
+   :'<p class="sc-drop-hint">左の仕掛一覧からロットをドラッグ、またはチェックボックスで複数選択してこのパネルへドロップすると、この設備の予定へ追加されます。'
+    +'<b>落とした位置へ差し込めます</b>（行と行のあいだに隙間が出ます）。</p>';
+ }
+ /* 差し込み位置を出してよい場面。**ドラッグ中は仕掛一覧を出していても出す**
+    ——「一番最後でなく指定位置に差し込みたい」(利用者の指示)ため。 */
+ function insertGhostAllowed(){
+  return !!scState.fullControl&&scState.boardMode==='single'&&!!scState.equipment&&!sessionBlocked();
  }
  function bindInsertGhost(timeline){
   if(timeline.dataset.insertWired)return;
   timeline.dataset.insertWired='1';
   timeline.addEventListener('mousemove',e=>{
+   if(insertPinned)return;      // 位置を決めたあとは動かさない
    if(!scheduleOnlyView()||sessionBlocked()||scState.dragId){hideInsertGhost();return}
    /* **隙間の上に来たら動かさない。** 隙間は行の流れの中にあるので、
       出し入れするたびに下の行が上下する——そのたびに位置を計算し直すと
@@ -2177,11 +2357,13 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   timeline.addEventListener('mouseleave',()=>hideInsertGhost());
  }
  /* 入れる相手を選ぶ。**位置を覚えてからモーダルを開く**——開いている
-    あいだにカーソルは動くので、押した時点の位置で固定する。 */
+    あいだにカーソルは動くので、押した時点の位置で固定する(§9.179)。 */
  function openInsertPicker(kind){
-  const g=document.getElementById('scInsertGhost');
+  const g=insertGhostEl;
   scState.insertBefore=(g&&g.dataset.beforeId)||'';
-  hideInsertGhost();
+  insertPinned=true;
+  if(g)g.classList.add('is-pinned');
+  insertGhostLabel();
   const where=scState.insertBefore
    ?`${pickedLotOf(pickableEntry(scState.insertBefore))||'選んだ行'}の前`:'いちばん後ろ';
   if(kind==='stop'){
@@ -2191,15 +2373,44 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   }
   openListModal();
   showToast&&showToast('入れるロットを選んでください',
-   `${where}へ入れます。行をドラッグ、または複数選択して「予定へ追加」を押してください`,5000);
+   `${where}へ入れます。行を<b>ダブルクリック</b>、ドラッグ、または複数選択して「予定へ追加」を押してください`,5000);
  }
- /* 入れる位置は**1回使ったら忘れる**——覚えたままにすると、次に普通に
-    追加したものが思い出しもしない位置へ入る。 */
+ /* 入れる位置。**固定している間は覚えたまま**にして、続けて何件でも同じ位置へ
+    入れられるようにする(先に入れたものから順に並ぶ)。固定していない場面
+    (ふつうの追加)では1回使ったら忘れる——覚えたままにすると、次の追加が
+    思い出しもしない位置へ入る。 */
  function takeInsertBefore(){
   const v=scState.insertBefore||'';
-  scState.insertBefore='';
+  if(!insertPinned)scState.insertBefore='';
   return v;
  }
+ /* 仕掛一覧の行から「この位置へ入れる」(§9.179改訂)。位置を決めて開いた
+    ときだけ効き、それ以外は今までどおり測定画面が開く——**文脈で意味が
+    変わる操作は、その文脈が画面に出ているときだけ**にする。 */
+ window.WL=window.WL||{};
+ WL.scheduleInsert={
+  pending:()=>!!insertPinned&&insertGhostAllowed(),
+  insertRow:row=>{
+   if(!insertPinned)return false;
+   addRowToSchedule(row,scState.equipment);
+   return true;
+  },
+  /* 落とした位置へ差し込む(ドラッグ中の受け皿から呼ぶ)。 */
+  allowed:()=>insertGhostAllowed(),
+  showAt:clientY=>{
+   if(!insertGhostAllowed())return;
+   const slot=insertSlotAt(clientY);
+   if(!slot)return;
+   insertPinned=false;                 // ドラッグ中は指に追従させる
+   placeInsertGhost(slot);
+  },
+  takeDropTarget:()=>{
+   const g=insertGhostEl;
+   const before=(g&&g.parentNode&&g.dataset.beforeId)||'';
+   if(!insertPinned)hideInsertGhost(true);
+   return before;
+  },
+ };
 
  function renderTimeline(){
   const timeline=$('#scTimeline');
@@ -2249,6 +2460,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    timeline.append(box);
   });
   renderPickBar(timeline);
+  restoreInsertGhost();
   refreshScheduledLotFilter();
  }
 
@@ -3152,7 +3364,26 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    }});
  }
 
- /* ---------- 追加パネル(scheduleモードのみ、§9.3) ---------- */
+ /* ---------- 設備停止を入れる(scheduleモードのみ、§9.3 / §9.181) ----------
+    利用者の指摘は「設備停止モーダルが使いにくい・見栄えも改善して」「スケジュール
+    作成時の設備停止入力の部分からも設備停止の登録ができるように（メンテナンス
+    しながら登録しやすい形）」。
+
+    直したのは次の点。
+     ① **どこへ入るのかを先に書く**。以前は設備名も入る位置も画面に無く、
+        押してから結果を見て確かめるしかなかった。
+     ② **分類は分類マスタの名前で出す**。以前は固定の5つ（保全/段取り/待ち/
+        突発/その他）しか知らず、マスタへ登録した分類は**黙って「その他」へ
+        落ちていた**（登録した名前が画面から消える）。
+     ③ **押せるのに何も起きないボタンを置かない**（§4）。突発停止は
+        「追加できないもの」として理由を**文字で**分けて出す（以前は無効な
+        ボタンとツールチップだけで、なぜ押せないのか読めなかった）。
+     ④ **絞り込みを付ける**。数が増えると目で探すことになる。
+        **入力中に一覧だけを描き直す**（入力欄を作り直すとカーソルが飛ぶ。§9.117）
+     ⑤ **その場で登録できる**。メンテナンス中に「この停止理由がまだ無い」と
+        気づく場面が本番なので、マスタ管理へ行き直させない。
+    置き場は`#scStopButtons`の1つで、モーダルと側パネルはこれを**移し替えて**
+    使う（描画とイベント配線を2つ持たない。§9.13の作法をそのまま踏む）。 */
  async function loadStopReasons(){
   try{
    const r=await api('/api/schedule/stop-reason-master?equipment='+encodeURIComponent(scState.equipment));
@@ -3160,47 +3391,208 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    renderStopButtons();
   }catch(e){/* 追加パネルは補助機能のためベストエフォート */}
  }
- // 分類ごとのアイコン・表示順(§5.3の分類マスタ選択肢 保全/段取り/待ち/突発/空欄と対応)。
- // 固定順で並べることで、設備停止マスタの登録順に依存せず毎回同じ位置に見える。
- const STOP_CATEGORY_ORDER=['保全','段取り','待ち','突発',''];
+ /* 分類の名前は**分類マスタが持つ**。読めなくても止めない（固定の並びで出す）。 */
+ let stopCategories=null;
+ async function loadStopCategories(){
+  if(stopCategories)return stopCategories;
+  try{
+   const r=await api('/api/schedule/stop-category-master');
+   stopCategories=(r.items||[]).map(x=>String(x.name||'').trim()).filter(Boolean);
+  }catch(e){stopCategories=[]}
+  return stopCategories;
+ }
+ // アイコンは分かっている分類だけ。知らない分類は既定の印で出す(名前は出す)。
  const STOP_CATEGORY_ICON={'保全':'🔧','段取り':'🔄','待ち':'⏳','突発':'⚡','':'📋'};
- const STOP_CATEGORY_LABEL={'保全':'保全','段取り':'段取り','待ち':'待ち','突発':'突発','':'その他'};
+ const STOP_ICON_DEFAULT='⛔';
+ const STOP_CATEGORY_BASE=['保全','段取り','待ち','突発'];
+ /* 追加できない停止理由。**判定は1箇所**にして、一覧とドラッグの両方が見る。 */
+ const STOP_LOCKED={'突発停止':'発生したら計画担当へ連絡してください（予定として入れるものではありません）'};
+ const stopLockedReason=name=>STOP_LOCKED[String(name||'').trim()]||'';
+ let stopFilter='';
+ /* 分類の並び: 分類マスタ → 昔からの固定分類 → 実データにあるだけの分類 →
+    分類なし。**どこにも属さない分類を消さない**のが目的。 */
+ function stopCategoryOrder(){
+  const seen=new Set(),out=[];
+  const push=c=>{const k=String(c||'').trim();if(k&&!seen.has(k)){seen.add(k);out.push(k)}};
+  (stopCategories||[]).forEach(push);
+  STOP_CATEGORY_BASE.forEach(push);
+  (scState.stopReasons||[]).forEach(s=>push(s.category));
+  out.push('');   // 分類なしは最後
+  return out;
+ }
+ /* 器は1度だけ作る。**絞り込みの入力欄を作り直さない**——1文字ごとに
+    カーソルが飛ぶ(§9.117で読み替えルールの編集が踏んだ罠と同じ)。 */
+ function ensureStopUi(box){
+  if(box.dataset.stopUi)return;
+  box.dataset.stopUi='1';
+  box.innerHTML=`
+   <div class="sc-stop-head">
+    <div class="sc-stop-where" id="scStopWhere"></div>
+    <input type="search" class="sc-stop-search" id="scStopSearch" autocomplete="off"
+     placeholder="名称・分類で絞り込み">
+   </div>
+   <div class="sc-stop-list" id="scStopList"></div>
+   <div class="sc-stop-new">
+    <button type="button" class="sc-stop-new-toggle" id="scStopNewToggle"
+     title="この設備の設備停止マスタへ、新しい停止理由を登録します">＋ 停止理由を登録</button>
+    <div class="sc-stop-new-form" id="scStopNewForm" hidden>
+     <label><span>名称</span><input type="text" id="scStopNewName" maxlength="60" placeholder="例: 定期メンテナンス"></label>
+     <label><span>分類</span><select id="scStopNewCat"></select></label>
+     <label><span>標準所要分</span><input type="number" id="scStopNewMin" min="0" step="5" placeholder="任意"></label>
+     <p class="sc-stop-new-note" id="scStopNewNote"></p>
+     <div class="sc-stop-new-actions">
+      <button type="button" class="sc-stop-new-cancel" id="scStopNewCancel">やめる</button>
+      <button type="button" class="sc-stop-new-save" id="scStopNewSave">登録して使う</button>
+     </div>
+    </div>
+   </div>`;
+  const search=box.querySelector('#scStopSearch');
+  search.addEventListener('input',()=>{stopFilter=search.value.trim();renderStopList()});
+  box.querySelector('#scStopNewToggle').onclick=()=>toggleStopNewForm();
+  box.querySelector('#scStopNewCancel').onclick=()=>toggleStopNewForm(false);
+  box.querySelector('#scStopNewSave').onclick=()=>saveNewStopReason();
+  box.querySelector('#scStopNewName').addEventListener('keydown',e=>{
+   if(e.key==='Enter'){e.preventDefault();saveNewStopReason()}
+  });
+ }
+ function toggleStopNewForm(force){
+  const form=document.getElementById('scStopNewForm');
+  const btn=document.getElementById('scStopNewToggle');
+  if(!form)return;
+  const open=force===undefined?form.hidden:!!force;
+  form.hidden=!open;
+  if(btn)btn.classList.toggle('active',open);
+  if(open){
+   renderStopNewCats();
+   const note=document.getElementById('scStopNewNote');
+   if(note)note.textContent=`登録先: ${scState.equipment||'(設備未選択)'} の設備停止マスタ`
+    +'／マスタ管理からも直せます';
+   document.getElementById('scStopNewName')?.focus();
+  }
+ }
+ function renderStopNewCats(){
+  const sel=document.getElementById('scStopNewCat');if(!sel)return;
+  const cur=sel.value;
+  const cats=stopCategoryOrder().filter(c=>c);
+  sel.innerHTML=cats.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('')
+   +'<option value="">（分類なし）</option>';
+  if([...sel.options].some(o=>o.value===cur))sel.value=cur;
+ }
+ async function saveNewStopReason(){
+  const name=(document.getElementById('scStopNewName')?.value||'').trim();
+  const cat=document.getElementById('scStopNewCat')?.value||'';
+  const minRaw=(document.getElementById('scStopNewMin')?.value||'').trim();
+  const note=document.getElementById('scStopNewNote');
+  if(!name){if(note)note.textContent='名称を入れてください（これが予定に出る言葉になります）';return}
+  if(!scState.equipment){if(note)note.textContent='設備を先に選んでください';return}
+  const btn=document.getElementById('scStopNewSave');
+  if(btn){btn.disabled=true;btn.textContent='登録中…'}
+  try{
+   await api('/api/schedule/stop-reason-master',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(withUserId({equipment:scState.equipment,category:cat,name,
+      standardMinutes:minRaw===''?null:Number(minRaw)}))});
+   await loadStopReasons();
+   toggleStopNewForm(false);
+   const hit=(scState.stopReasons||[]).find(x=>String(x.name||'').trim()===name);
+   showToast&&showToast('停止理由を登録しました',
+    `${scState.equipment} で使えます${hit?'（そのまま押すと予定へ入ります）':''}`,3600);
+   /* 登録した直後は**それが目に入る**ようにする。探し直させない。 */
+   if(hit){
+    stopFilter='';const search=document.getElementById('scStopSearch');
+    if(search)search.value='';
+    renderStopList();
+    const el=document.querySelector(`.sc-stop-button[data-id="${hit.id}"]`);
+    if(el){el.classList.add('is-new');el.scrollIntoView({block:'nearest'})}
+   }
+   const nm=document.getElementById('scStopNewName');if(nm)nm.value='';
+   const mn=document.getElementById('scStopNewMin');if(mn)mn.value='';
+  }catch(e){
+   if(note)note.textContent='登録できませんでした: '+e.message;
+  }finally{if(btn){btn.disabled=false;btn.textContent='登録して使う'}}
+ }
+ /* どこへ入るのかを**先に書く**(①)。差し込む位置を決めているときはその行も。 */
+ function renderStopWhere(){
+  const el=document.getElementById('scStopWhere');if(!el)return;
+  const eq=scState.equipment||'(設備未選択)';
+  const before=scState.insertBefore
+   ?(pickedLotOf(pickableEntry(scState.insertBefore))||'選んだ行'):'';
+  /* 1行で「どこへ」を言い切る。**折り返して3行になると読み飛ばされる**
+     （実測で「設備名／の予定へ／いちばん後ろへ」と3段に割れていた）。 */
+  el.innerHTML=`<span class="sc-stop-where-line"><b>${esc(eq)}</b> の予定 →`
+   +`<span class="sc-stop-where-at">${before?esc(before)+' の前':'いちばん後ろ'}</span>へ入れます</span>`
+   +'<small>押すとすぐ入ります。ドラッグすると入れる位置を選べます。</small>';
+ }
  function renderStopButtons(){
   const box=$('#scStopButtons');if(!box)return;
-  if(!scState.stopReasons.length){box.innerHTML='<div class="sc-empty-note">設備停止マスタが未登録です</div>';return}
+  ensureStopUi(box);
+  renderStopWhere();
+  renderStopList();
+  if(!document.getElementById('scStopNewForm')?.hidden)renderStopNewCats();
+ }
+ function stopMatches(s){
+  if(!stopFilter)return true;
+  const q=stopFilter.normalize('NFKC').toLowerCase();
+  return `${s.name||''} ${s.category||''}`.normalize('NFKC').toLowerCase().includes(q);
+ }
+ function renderStopList(){
+  const list=document.getElementById('scStopList');if(!list)return;
+  const all=scState.stopReasons||[];
+  if(!all.length){
+   list.innerHTML='<div class="sc-empty-note">この設備の設備停止マスタはまだ空です。'
+    +'下の「＋ 停止理由を登録」から作れます。</div>';
+   return;
+  }
+  const hits=all.filter(stopMatches);
+  if(!hits.length){
+   list.innerHTML=`<div class="sc-empty-note">「${esc(stopFilter)}」に当てはまる停止理由はありません（${all.length}件のうち0件）。</div>`;
+   return;
+  }
+  const usable=hits.filter(s=>!stopLockedReason(s.name));
+  const locked=hits.filter(s=>stopLockedReason(s.name));
   const groups=new Map();
-  scState.stopReasons.forEach(s=>{
-   const cat=STOP_CATEGORY_ORDER.includes(s.category)?s.category:'';
+  usable.forEach(s=>{
+   const cat=String(s.category||'').trim();
    if(!groups.has(cat))groups.set(cat,[]);
    groups.get(cat).push(s);
   });
-  box.innerHTML=STOP_CATEGORY_ORDER.filter(cat=>groups.has(cat)).map(cat=>{
-   const items=groups.get(cat).map(s=>{
-    const isSudden=s.name==='突発停止';
-    return `<button type="button" class="sc-stop-button${isSudden?' is-disabled':''}" data-id="${s.id}" ${isSudden?'title="発生時は計画担当へ連絡してください"':''}>${esc(s.name)}${s.standardMinutes?` (${fmtMinutes(s.standardMinutes)})`:''}</button>`;
-   }).join('');
+  const icon=c=>STOP_CATEGORY_ICON[c]||STOP_ICON_DEFAULT;
+  const label=c=>c||'分類なし';
+  list.innerHTML=stopCategoryOrder().filter(c=>groups.has(c)).map(cat=>{
+   const items=groups.get(cat).map(s=>
+    `<button type="button" class="sc-stop-button" data-id="${s.id}" draggable="true"
+      title="押すと予定へ入ります／ドラッグで入れる位置を選べます">`
+    +`<b>${esc(s.name)}</b>`
+    +`<small>${s.standardMinutes?esc(fmtMinutes(s.standardMinutes)):'見積は自動'}</small></button>`).join('');
    return `<div class="sc-stop-group">
-    <div class="sc-stop-group-title"><span class="sc-stop-group-icon">${STOP_CATEGORY_ICON[cat]}</span>${esc(STOP_CATEGORY_LABEL[cat])}</div>
+    <div class="sc-stop-group-title"><span class="sc-stop-group-icon">${icon(cat)}</span>${esc(label(cat))}
+     <span class="sc-stop-group-count">${groups.get(cat).length}件</span></div>
     <div class="sc-stop-buttons">${items}</div>
    </div>`;
-  }).join('');
-  box.querySelectorAll('.sc-stop-button').forEach(btn=>{
-   if(btn.classList.contains('is-disabled')){btn.disabled=true;return}
+  }).join('')
+  /* ③ 追加できないものは**別に出して理由を書く**。押せるのに何も起きない
+     ボタンを残さない（無効なボタンとツールチップでは理由が読めない）。 */
+  +(locked.length?`<div class="sc-stop-locked">
+    <div class="sc-stop-locked-title">予定には入れられません</div>
+    ${locked.map(s=>`<div class="sc-stop-locked-row"><b>${esc(s.name)}</b>`
+      +`<span>${esc(stopLockedReason(s.name))}</span></div>`).join('')}
+   </div>`:'')
+  +(hits.length<all.length?`<div class="sc-stop-more">絞り込み中: ${hits.length} / ${all.length}件</div>`:'');
+  list.querySelectorAll('.sc-stop-button').forEach(btn=>{
    const reasonId=+btn.dataset.id;
-   const reason=scState.stopReasons.find(s=>s.id===reasonId);
-   const label=(reason&&reason.name)||btn.textContent.trim();
+   const reason=(scState.stopReasons||[]).find(s=>s.id===reasonId);
+   const label2=(reason&&reason.name)||btn.textContent.trim();
    // ドラッグ&ドロップでの追加(§9.13): list-view.jsの仕掛行と同じ
    // window.__scDragRows方式のハンドオフを、設備停止ボタン専用にもう1系統
-   // 用意する(wireDropTarget側で判別)。
-   btn.draggable=true;
+   // 用意する(wireDropTarget側で判別)。落とした位置へ入る(§9.179)。
    btn.addEventListener('dragstart',e=>{
-    window.__scDragStopReason={id:reasonId,name:label};
+    window.__scDragStopReason={id:reasonId,name:label2};
     e.dataTransfer.effectAllowed='copy';
-    try{e.dataTransfer.setData('text/plain',label)}catch(err){/* 一部ブラウザでのsetData制限は無視する */}
+    try{e.dataTransfer.setData('text/plain',label2)}catch(err){/* 一部ブラウザでのsetData制限は無視する */}
     btn.classList.add('is-row-dragging');
    });
    btn.addEventListener('dragend',()=>{btn.classList.remove('is-row-dragging');window.__scDragStopReason=null});
-   btn.onclick=()=>addStopReasonToSchedule(reasonId,label);
+   btn.onclick=()=>addStopReasonToSchedule(reasonId,label2);
   });
  }
  function addStopReasonToSchedule(reasonId,label){
@@ -3246,7 +3638,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    <div class="sc-float-resize" title="ドラッグでサイズ変更"></div>`;
   document.body.appendChild(modal);
   modal.querySelector('#scStopModalClose').onclick=()=>closeStopModal();
-  WL.makeFloatingWindow(modal,{storageKey:'scStopModalRectV1',defaultWidth:360,defaultHeight:420,defaultTop:80,minWidth:260,minHeight:200});
+  /* 既定を変えたら**保存キーも変える**——古い値を覚えている端末に新しい
+     既定が届かない(§9.105と同じ約束)。絞り込みと登録の欄が増えたぶん広げる。 */
+  WL.makeFloatingWindow(modal,{storageKey:'scStopModalRectV2',defaultWidth:460,defaultHeight:560,defaultTop:80,minWidth:320,minHeight:320});
   return modal;
  }
  function openStopModal(){
@@ -3260,6 +3654,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  function closeStopModal(){
   const modal=document.getElementById('scStopModal');
   if(!modal||modal.hidden)return;
+  clearInsertPin();      // 差し込む位置の固定も外す(§9.179)
   const box=document.getElementById('scStopButtons');
   if(box&&stopAnchor)stopAnchor.parentNode.insertBefore(box,stopAnchor);
   modal.hidden=true;stopModalOpen=false;
@@ -3842,4 +4237,54 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     templates/index.htmlに静的に置いたボタンへ直接配線する。 */
  const navBtn=document.getElementById('openSchedule');
  if(navBtn)navBtn.onclick=()=>openScheduleView().catch(e=>console.error(e));
+
+ /* ---------- 開く前に用意しておく(§9.182) ----------
+    利用者の指示は「ローカルデータやバックグラウンド処理を有効に活かして、
+    ユーザーに読み込み待ちを意識させないようにデータの準備を行い、
+    間に合わない状況になった場合にのみWAITING表示を出すように」。
+
+    やることは2つ。
+     ① **手が空いてから**(requestIdleCallback)先に取っておく。起動直後は
+        一覧や測定画面の取得で忙しいので、そこへ割り込まない。
+     ② **ボタンに触れた時点**でも取り始める（hover/focus）。押すまでの
+        200〜500msがそのまま準備に使える。
+    取ったものは**既存のキャッシュへ入れるだけ**で画面は触らない——先読みが
+    画面を書き換えると、見ている画面が勝手に変わる。
+    重い`/api/schedule/overview`(設備ごとに予定を展開する)は**スケジュール
+    モードのときだけ**。測定端末では自分の設備の予定だけを取る(1件)。
+    失敗は黙って捨てる（先読みが失敗しても、開いたときに普通に取り直す）。 */
+ let prefetchStarted=false;
+ async function prefetchSchedule(){
+  if(prefetchStarted)return;
+  prefetchStarted=true;
+  const am=window.accessMode||{};
+  const jobs=[];
+  try{
+   if(am.mode==='schedule')jobs.push(api('/api/schedule/overview').then(r=>{
+    if(r&&r.configured&&!scOverviewCache)scOverviewCache={rows:r.equipment||[],fetchedAt:Date.now()};
+   }));
+   const eq=(am.mode==='edit'&&typeof currentConfiguredEquipment==='function')
+    ?currentConfiguredEquipment():'';
+   if(eq){
+    jobs.push(WL.columnLayout.load('timeline:'+eq));
+    jobs.push(api('/api/schedule/plan?equipment='+encodeURIComponent(eq)
+      +'&history_hours='+encodeURIComponent(scState.historyHours)).then(r=>{
+     if(r&&r.configured&&!scPlanCache.has(eq))
+      scPlanCache.set(eq,{entries:r.entries||[],anchor:r.anchor,warnings:r.warnings||[],
+        loadFactor:r.loadFactor,historyHours:scState.historyHours,fetchedAt:Date.now()});
+    }));
+   }
+   jobs.push(WL.displayRules.load());
+   await Promise.all(jobs.map(x=>Promise.resolve(x).catch(()=>{})));
+  }catch(e){/* 先読みは失敗しても構わない */}
+ }
+ if(navBtn){
+  const warm=()=>prefetchSchedule();
+  navBtn.addEventListener('mouseenter',warm,{once:true});
+  navBtn.addEventListener('focus',warm,{once:true});
+ }
+ WL.onReady(()=>{
+  const idle=window.requestIdleCallback||(f=>setTimeout(f,1800));
+  idle(()=>prefetchSchedule(),{timeout:5000});
+ });
 })();

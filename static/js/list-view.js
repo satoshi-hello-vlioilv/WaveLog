@@ -1409,7 +1409,19 @@ function renderGridInner(){
   });
   if(isWork){
    tr.classList.add('measurement-row');
-   const open=e=>{e.preventDefault();e.stopPropagation();openMeasurement(r).catch(err=>alert('測定画面を開けません: '+err.message))};
+   /* **差し込む位置を決めて開いているときは、その位置へ入れる**(§9.179)。
+      作業スケジュールで隙間をダブルクリックしてこの一覧を開いた場合だけで、
+      それ以外は今までどおり測定画面が開く——文脈で意味が変わる操作は、
+      その文脈が画面に出ているとき(隙間が見えているとき)だけにする。 */
+   const open=e=>{
+    if(window.WL&&WL.scheduleInsert&&WL.scheduleInsert.pending()){
+     e.preventDefault();e.stopPropagation();
+     WL.scheduleInsert.insertRow(r);
+     return;
+    }
+    e.preventDefault();e.stopPropagation();
+    openMeasurement(r).catch(err=>alert('測定画面を開けません: '+err.message));
+   };
    /* 行のダブルクリックは**ボタンを消しても残す**——測定を開く導線が
       1つも無くなると、列を隠しただけで機能ごと失われる。 */
    tr.addEventListener('dblclick',open);
