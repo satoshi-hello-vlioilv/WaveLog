@@ -59,7 +59,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   return 8;
  }
  let scState={equipment:'',entries:[],anchor:null,warnings:[],configured:true,
-              editable:false,pickerEnabled:false,stopReasons:[],dragId:null,
+              editable:false,pickerEnabled:false,stopReasons:[],dragId:null,insertBefore:'',
               /* まとめて外す(§9.170)。選んだ予定のid(文字列)と、掴んでいる
                  最中の「まとめて運んでいる一式」。単発の並べ替えと混ざらない
                  よう、複数を掴んでいる間は dragIds に入れて dragId と
@@ -178,7 +178,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      </label>
      <span class="sc-freshness" id="scFreshness" hidden></span>
      <span class="sc-field-reorder-note" id="scFieldReorderNote" hidden>現場段取り: 並べ替えのみ可能</span>
-     <button type="button" class="sc-split-toggle" id="scContentModalBtn" hidden title="タイムラインの「内容」欄に出す項目と順序を設備ごとに選びます">📝 内容の項目</button>
+     <button type="button" class="sc-split-toggle" id="scLayoutBtn" hidden title="この画面を開いたときの表示（分割／スケジュールだけ）と、仕掛一覧を左右どちらに置くかを決めます">⚙ 表示</button>
+     <button type="button" class="sc-split-toggle" id="scContentModalBtn" hidden title="このスケジュール表に出す列・並び・幅・書式をまとめて設定します（設備ごとに保存）">☰ 表示列</button>
      <button type="button" class="sc-split-toggle" id="scListModalBtn" hidden title="仕掛一覧をポップアップで表示してドラッグで追加します">⧉ ポップアップ</button>
      <button type="button" class="sc-split-toggle" id="scStopModalBtn" hidden title="設備停止をポップアップから追加します">⛔ 設備停止</button>
      <button type="button" class="sc-split-toggle" id="scPrintBtn" title="いま表示している予定を、現場へ配る形（A4）で印刷します">🖨 印刷</button>
@@ -202,6 +203,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      <span class="sc-drop-remove-text">ここへ落とすと<b>この予定を外します</b>
       <small>確認してから外します。仕掛一覧へ戻るので、また入れ直せます</small></span>
     </div>
+    <!-- 開いたときの表示の設定(§9.179)。**この画面の中に置く**——
+         スケジュールの見え方の話なので、アプリ全体の設定へ混ぜない。 -->
+    <div class="sc-layout-pop" id="scLayoutPop" hidden></div>
     <button type="button" class="sc-side-tab" id="scSideToggle" hidden title="設備停止・案内パネルの表示/非表示">◀</button>
     <div class="sc-side" id="scSide" hidden>
      <div class="sc-side-section" id="scSplitHint">
@@ -242,6 +246,15 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    if(typeof WL.schedulePrint?.open==='function')WL.schedulePrint.open();
    else console.error('作業スケジュールの印刷: WL.schedulePrint が見つかりません');
   };
+  $('#scLayoutBtn').onclick=e=>{e.stopPropagation();toggleLayoutPop()};
+  /* 外を押したら畳む。**設定の中を押しても閉じない**——ラジオを続けて
+     触れるようにするため。 */
+  document.addEventListener('mousedown',e=>{
+   const pop=$('#scLayoutPop');
+   if(!pop||pop.hidden)return;
+   if(e.target.closest('#scLayoutPop')||e.target.closest('#scLayoutBtn'))return;
+   closeLayoutPop();
+  },true);
   $('#scModeBoard').onclick=()=>switchToBoard();
   $('#scModeSingle').onclick=()=>switchToSingle();
   $('#scListModalBtn').onclick=()=>listModalOpen?closeListModal():openListModal();
@@ -328,6 +341,72 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  // この分割表示に入った直後の1回だけload()を強制し、以降(同じ分割表示を
  // 保ったままの再描画)は無駄な再取得をしない。
  let scSplitJoinApplied=false;
+ /* ---------- 開いたときの表示を決める(§9.179) ----------
+    要望は2つ。**仕掛一覧を左右どちらに置くか**と、**開いたときに分割で
+    出すか・スケジュールだけで出すか**。どちらも「毎回同じ操作をやり直して
+    いる」ことの裏返しなので、覚えさせる。
+    既定は`last`(前回のまま)——今までの挙動で、わざわざ選んでいない人の
+    見え方を変えないため。 */
+ const SC_LAYOUT_KEY='scLayoutPrefsV1';
+ const SC_OPEN_MODES=[
+  ['last','前回のまま','畳んだ／開いたを覚えて、そのまま開きます（既定）'],
+  ['split','分割で開く','仕掛一覧とスケジュールを並べて開きます'],
+  ['schedule','スケジュールだけで開く','仕掛一覧は畳んで開きます。表の行間をクリックすると、その位置へ予定を入れられます'],
+ ];
+ let scLayout=(()=>{
+  try{
+   const v=JSON.parse(localStorage.getItem(SC_LAYOUT_KEY)||'{}');
+   return {swap:!!(v&&v.swap),open:(v&&SC_OPEN_MODES.some(m=>m[0]===v.open))?v.open:'last'};
+  }catch(e){return {swap:false,open:'last'}}
+ })();
+ function saveScLayout(){
+  try{localStorage.setItem(SC_LAYOUT_KEY,JSON.stringify(scLayout))}catch(e){/* 保存できなくても表示は続く */}
+ }
+ function applySplitSide(){
+  if(splitWrap)splitWrap.classList.toggle('sc-swap',!!scLayout.swap);
+ }
+ /* 「スケジュールだけ」で見ている状態。**仕掛一覧が見えていないとき**は
+    ドラッグで入れる手立てが無いので、行間をクリックして入れられるように
+    する(下の insert ghost)。 */
+ function scheduleOnlyView(){
+  return !!scState.fullControl&&scState.boardMode==='single'&&!!scState.equipment
+         &&!listModalOpen&&(splitListCollapsed||!document.body.classList.contains('sc-split'));
+ }
+ function renderLayoutPop(){
+  const pop=$('#scLayoutPop');if(!pop)return;
+  pop.innerHTML=`
+   <div class="sc-layout-sec">
+    <b>開いたときの表示</b>
+    ${SC_OPEN_MODES.map(([v,label,note])=>`<label><input type="radio" name="scOpenMode" value="${v}"${scLayout.open===v?' checked':''}><span><b>${esc(label)}</b><small>${esc(note)}</small></span></label>`).join('')}
+   </div>
+   <div class="sc-layout-sec">
+    <b>仕掛一覧の位置</b>
+    <label><input type="radio" name="scSide" value="left"${scLayout.swap?'':' checked'}><span><b>左</b><small>スケジュールは右（既定）</small></span></label>
+    <label><input type="radio" name="scSide" value="right"${scLayout.swap?' checked':''}><span><b>右</b><small>スケジュールは左</small></span></label>
+   </div>
+   <p class="sc-layout-note">この設定はこの端末に覚えます（設備ごとではありません）。</p>`;
+  pop.querySelectorAll('input[name=scOpenMode]').forEach(r=>{
+   r.onchange=()=>{scLayout.open=r.value;saveScLayout();renderLayoutPop()};
+  });
+  pop.querySelectorAll('input[name=scSide]').forEach(r=>{
+   r.onchange=()=>{
+    scLayout.swap=(r.value==='right');saveScLayout();applySplitSide();renderLayoutPop();
+   };
+  });
+ }
+ function toggleLayoutPop(){
+  const pop=$('#scLayoutPop'),btn=$('#scLayoutBtn');
+  if(!pop)return;
+  const open=pop.hidden;
+  pop.hidden=!open;
+  if(btn)btn.classList.toggle('active',open);
+  if(open)renderLayoutPop();
+ }
+ function closeLayoutPop(){
+  const pop=$('#scLayoutPop');if(pop&&!pop.hidden)pop.hidden=true;
+  const btn=$('#scLayoutBtn');if(btn)btn.classList.remove('active');
+ }
+
  function ensureSplitDivider(){
   let divider=splitWrap.querySelector('.sc-split-divider');
   if(divider)return divider;
@@ -375,6 +454,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   splitListCollapsed=!splitListCollapsed;
   try{localStorage.setItem('scSplitListCollapsedV1',splitListCollapsed?'1':'0')}catch(e){/* 保存できなくても表示自体は継続する */}
   updateSplitCollapseUi();
+  /* 一覧を畳んだ／開いた時点で「行間クリックで入れられる」かどうかが
+     変わる(§9.179)。案内を出し直さないと、押せるのに何も書いていない／
+     書いてあるのに押せない状態になる。 */
+  updateInsertHintUi();
  }
  function ensureSplitWrap(){
   if(splitWrap)return splitWrap;
@@ -386,6 +469,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   splitWrap.appendChild(panel);
   ensureSplitDivider();
   applySplitListWidth();
+  applySplitSide();
   updateSplitCollapseUi();
   return splitWrap;
  }
@@ -431,8 +515,17 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const applicable=scState.fullControl&&scState.boardMode==='single';
   const modalBtn=$('#scListModalBtn');
   if(modalBtn){modalBtn.hidden=!applicable;modalBtn.classList.toggle('active',listModalOpen)}
+  /* **列の設定は編集モードでも開ける**(§9.176)。並び・幅・出す出さないは
+     列レイアウトマスタが持ち、モードに関係なく効く——ここを予定を動かせる
+     権限(fullControl)で塞いでいたため、測定する端末では列を1本も動かせ
+     なかった(見出しのD&Dだけは効いていたので、なお分かりにくい)。
+     **足せる項目だけがscheduleモード限定**で、その旨はパネルが文字で言う。 */
   const contentBtn=$('#scContentModalBtn');
-  if(contentBtn){contentBtn.hidden=!applicable;contentBtn.classList.toggle('active',contentPanelOpen())}
+  const colApplicable=scState.boardMode==='single'&&!!scState.equipment;
+  if(contentBtn){contentBtn.hidden=!colApplicable;contentBtn.classList.toggle('active',contentPanelOpen())}
+  /* 表示の設定(§9.179)は分割表示が意味を持つ場面だけ。 */
+  const layoutBtn=$('#scLayoutBtn');
+  if(layoutBtn){layoutBtn.hidden=!applicable;if(layoutBtn.hidden)closeLayoutPop()}
  }
 
  /* ---------- .sc-side(案内文+設備停止)の折りたたみ(§9.13改訂) ----------
@@ -642,6 +735,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   // いるか」を見せる俯瞰ボードを既定表示にする(§9.9)。editモードは自設備
   // 固定のため俯瞰ボードの意味が無く、常に個別タイムラインのみ。
   scState.boardMode=scState.pickerEnabled?'board':'single';
+  /* **開いたときの表示**をここで当てる(§9.179)。`last`(既定)は今までどおり
+     前回の折りたたみ状態のまま——わざわざ選んでいない人の見え方を変えない。 */
+  if(scLayout.open==='split')splitListCollapsed=false;
+  else if(scLayout.open==='schedule')splitListCollapsed=true;
   await renderEquipmentControl(am);
   applyBoardModeUi();
   if(scState.boardMode==='board')await loadOverviewBoard();
@@ -670,7 +767,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   // 全体俯瞰ボードや対象設備が無い状態では分割表示(§9.10)の意味が無いため
   // 畳む(仕掛一覧を隣に出したまま設備を切り替えても違和感が無いよう、
   // 個別タイムライン表示中はshowSplitList側で改めて出す)。
-  if(inBoard){hideSplitList();closeListModal();closeStopModal();closeColumnModal();closeContentPanel()}
+  if(inBoard){hideSplitList();closeListModal();closeStopModal();closeColumnModal();closeContentPanel();closeLayoutPop();hideInsertGhost()}
   syncSession();
  }
  async function switchToBoard(){
@@ -1498,15 +1595,74 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     スケジュール内容表示マスタが決める(責務を混ぜない)。 */
  const TIMELINE_DEFAULT_KEYS=['lotNo','purposeName','mfgMaterial','mfgTemper'];
  function timelineTarget(){return scState.equipment?`timeline:${scState.equipment}`:''}
- function timelineContentKeys(){
+ /* この設備で内容欄に出す項目(スケジュール内容表示マスタ)。**並び・表示は
+    ここでは決めない**——決めるのは列レイアウトマスタで、下の
+    timelineColumnKeys()が固定列と一緒に1本の並びとして解く。 */
+ function chosenContentKeys(){
   const items=(scContentPrefs.equipment===scState.equipment)?scContentPrefs.items:null;
-  const keys=(items&&items.length)?items.slice():TIMELINE_DEFAULT_KEYS.slice();
-  /* 並びと表示/非表示は列レイアウトマスタが上書きする(見出しのD&Dで
-     覚えた並び)。記録に無い項目は末尾へ回るので、内容の項目を足しても
-     設定は壊れない。 */
-  const t=timelineTarget();
-  return t?WL.columnLayout.apply(t,keys):keys;
+  return (items&&items.length)?items.slice():TIMELINE_DEFAULT_KEYS.slice();
  }
+
+ /* ---------- タイムラインの列も一覧とまったく同じ仕組みに乗せる(§9.176) ----------
+    以前は内容欄(項目ごとの列)だけが列レイアウトマスタに乗っており、
+    **区分・作業・日付・時刻・勤務・残り・見積・実績・備考・操作の10列は
+    CSSに直書きの固定列**だった。そのため
+      ・掴んでも動かない列がある（どれが動くのか画面から分からない）
+      ・右クリックのメニューがそもそも無い
+      ・「表示列」から消せない列がある
+    という状態で、「同じ仕組みを流用した」と言いながら**流用できていたのは
+    一部だけ**だった。ここで**全列を1本の並び**にする。
+
+    キーは`__cat__`のような二重アンダースコアで、内容欄の項目(`lotNo`等)と
+    ぶつからない。**取っ手(1列目)だけは並びに入れない**——掴む場所と
+    まとめて選ぶチェックの置き場で、値の列ではない(一覧の行番号と同じ扱い)。
+    並べ替えの手立てを画面から消さないためでもある。 */
+ const SC_COL_DEFS=[
+  {key:'__cat__',label:'区分',w:74,note:'完了／作業中／予定／取消／設備停止'},
+  {key:'__workable__',label:'作業',w:44,note:'この設備で今すぐ着手できるか（残仕掛設備ｺｰｽ）'},
+  {key:'__date__',label:'日付',w:50,note:'予定（実績のある行は実績）の日付'},
+  {key:'__time__',label:'時刻',w:112,note:'開始〜終了'},
+  {key:'__shift__',label:'勤務',w:58,note:'勤務形態マスタの名称'},
+  {key:'__rel__',label:'残り',w:88,note:'開始までの目安時間'},
+  {key:'__est__',label:'見積',w:62,note:'見積時間（~付きは実績以外が出どころ）'},
+  {key:'__actual__',label:'実績',w:88,note:'経過／実作業時間と予実差'},
+  {key:'__flags__',label:'備考',w:112,note:'計画外・固定・遅れなどの印'},
+  {key:'__actions__',label:'操作',w:148,note:'開始・固定・帳票・削除のボタン'},
+ ];
+ const SC_COL_MAP=new Map(SC_COL_DEFS.map(d=>[d.key,d]));
+ const SC_COL_BEFORE=['__cat__','__workable__','__date__','__time__','__shift__','__rel__'];
+ const SC_COL_AFTER=['__est__','__actual__','__flags__','__actions__'];
+ const scIsFixedCol=k=>SC_COL_MAP.has(k);
+ /* 見出しの言葉。**表示名 → 決まった名前 → 項目の日本語名 → キー**の順。
+    生のキー(mfgTemper)をそのまま出さない。 */
+ function scColLabel(k){
+  const t=timelineTarget();
+  const named=t?WL.columnLayout.label(t,k):k;
+  if(named&&named!==k)return named;
+  const d=SC_COL_MAP.get(k);
+  return d?d.label:contentItemLabel(k);
+ }
+ /* 選べる列すべて（隠しているものも含む）。設定パネル・右クリックメニューが
+    使う。既定は「予定そのもの → 内容 → 実績・操作」の作業順(§14)。 */
+ function timelineAllColumnKeys(){
+  return [...SC_COL_BEFORE,...chosenContentKeys(),...SC_COL_AFTER];
+ }
+ /* 覚えている並びを当てた全列（隠しているものも残す）。保存するのは
+    **この並び**——見えている分だけ保存すると、隠した列の位置が失われる。 */
+ function timelineOrderedKeys(){
+  const all=timelineAllColumnKeys();
+  const t=timelineTarget();
+  const order=t?(WL.columnLayout.get(t).order||[]):[];
+  const known=order.filter(k=>all.includes(k));
+  return [...known,...all.filter(k=>!known.includes(k))];
+ }
+ /* いま出す列。並びと表示/非表示は列レイアウトマスタが決める。 */
+ function timelineColumnKeys(){
+  const t=timelineTarget();
+  return t?WL.columnLayout.apply(t,timelineAllColumnKeys()):timelineAllColumnKeys();
+ }
+ /* 出している内容欄の項目だけ（セルの組み立てが使う）。 */
+ function timelineContentKeys(){return timelineColumnKeys().filter(k=>!scIsFixedCol(k))}
  /* 1行ぶんのセル。作業以外(設備停止)は最初の列へ名称を出し、残りは空にする
     ——列の数を行ごとに変えると桁が合わなくなる。 */
  function timelineContentCells(e){
@@ -1549,18 +1705,23 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     列レイアウトマスタが持つので、一覧と同じ言葉で出せる。 */
  function rowHeadHtml(){
   const t=timelineTarget();
-  const cells=timelineContentKeys().map(k=>{
-   /* 見出しの言葉。**まず列レイアウトマスタの表示名**、無ければ項目の
-      日本語名(contentItemLabel。alias表の先頭)。生のキー(mfgTemper等)を
-      そのまま出すと、選んだ本人以外には何の列か分からない。 */
-   const named=t?WL.columnLayout.label(t,k):k;
-   const label=(named&&named!==k)?named:contentItemLabel(k);
-   return `<span class="sc-row-title-head" data-content-col="${esc(k)}" draggable="true"`
-    +` title="${esc(k)}｜ドラッグで並べ替え／右端の取っ手で幅">${esc(label)}`
+  const cells=timelineColumnKeys().map(k=>{
+   const label=scColLabel(k);
+   const d=SC_COL_MAP.get(k);
+   /* 操作の列は右端に貼り付く(sticky)。**並びの中では普通の列**なので、
+      掴んで動かせるし隠せる——貼り付き方だけが違う。 */
+   const cls='sc-row-title-head'+(k==='__actions__'?' sc-actions-head':'');
+   const what=d?d.note:`内容欄の項目（${k}）`;
+   return `<span class="${cls}" data-col="${esc(k)}"`
+    +(scIsFixedCol(k)?'':` data-content-col="${esc(k)}"`)
+    +` draggable="true"`
+    +` title="${esc(label)}｜${esc(what)}\nドラッグで並べ替え／右端の取っ手で幅／右クリックで表示・幅のメニュー">${esc(label)}`
     +`<i class="col-resize" title="ドラッグで列幅を調整（ダブルクリックで既定へ）" aria-hidden="true"></i></span>`;
   }).join('');
+  /* 1列目は取っ手（掴む場所＋まとめて選ぶチェック）。**並びには入れない**
+     ——動かす手立てそのものなので、隠せると戻せなくなる。 */
   return `<div class="sc-row-head">
-  ${canPickEntries()?'<span class="sc-row-pick-head"><input type="checkbox" id="scPickAll" title="外せる予定（未着手）をすべて選ぶ／解除します"></span>':'<span></span>'}<span>区分</span><span>作業</span><span>日付</span><span>時刻</span><span>勤務</span><span>残り</span>${cells}<span>見積</span><span>実績</span><span>備考</span><span class="sc-actions-head">操作</span>
+  ${canPickEntries()?'<span class="sc-row-pick-head"><input type="checkbox" id="scPickAll" title="まとめて動かせる／外せる予定をすべて選ぶ・解除します"></span>':'<span></span>'}${cells}
  </div>`;
  }
 
@@ -1702,103 +1863,292 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    タイムラインが右端まで伸びない)。 */
  function applyTimelineContentColumns(timeline){
   const t=timelineTarget();
-  const keys=timelineContentKeys();
-  const cols=keys.map(k=>{
+  const keys=timelineColumnKeys();
+  const defW=k=>{const d=SC_COL_MAP.get(k);return d?d.w:110};
+  const track=k=>{
    const w=t?WL.columnLayout.width(t,k):null;
-   return w?`${w}px`:'minmax(calc(110px * var(--ui-scale)),1fr)';
-  }).join(' ')||'minmax(calc(150px * var(--ui-scale)),1fr)';
-  timeline.style.setProperty('--sc-content-cols',cols);
-  /* 1列目(ハンドル)は、まとめて外せる場面だけチェックを抱えるぶん広げる
-     (§9.170)。**列を1本足さない**——`grid-template-columns`を2通り書くと、
-     見出しと行で片方だけ直した状態が作れてしまう(この表は見出しとセルが
-     同じ定義を共有しているのが土台)。 */
+   if(w)return `${w}px`;
+   /* 幅の指定が無い列は既定の幅。内容欄だけは残りを分け合って伸びる
+      （1つも伸びる列が無いとタイムラインが右端まで届かない）。 */
+   return scIsFixedCol(k)?`calc(${defW(k)}px * var(--ui-scale))`
+                         :'minmax(calc(110px * var(--ui-scale)),1fr)';
+  };
+  const cols=keys.map(track);
+  /* 内容欄を1つも出していない／全部に幅を入れた場合でも、**伸びる列を
+     必ず1つ作る**。無いと表が右端で切れて、余白との境が読めなくなる。
+     伸ばすのは操作以外の最後の列（操作は右端に貼り付くので伸ばさない）。 */
+  if(cols.length&&!cols.some(c=>c.includes('1fr'))){
+   let i=keys.length-1;
+   while(i>=0&&keys[i]==='__actions__')i--;
+   if(i>=0)cols[i]=`minmax(${cols[i]},1fr)`;
+  }
+  timeline.style.setProperty('--sc-cols',cols.join(' ')||'1fr');
+  /* 1列目(ハンドル)は、まとめて動かせる／外せる場面だけチェックを抱える
+     ぶん広げる(§9.170)。**列を1本足さない**——`grid-template-columns`を
+     2通り書くと、見出しと行で片方だけ直した状態が作れてしまう(この表は
+     見出しとセルが同じ定義を共有しているのが土台)。 */
   const pickable=canPickEntries();
   timeline.classList.toggle('sc-pickable',pickable);
-  // 最小幅も列数で変える(11列ぶん + 内容の列)。足りないと桁がずれる。
-  timeline.style.setProperty('--sc-row-min',
-   `calc(${892+(pickable?20:0)+Math.max(1,keys.length)*110}px * var(--ui-scale))`);
+  /* 最小幅は**出している列の既定幅の合計**。固定10列と決め打ちにしていた
+     ため、列を隠しても表の最小幅が変わらず右に空きが残っていた。 */
+  const min=keys.reduce((a,k)=>a+defW(k)+4,0)+(pickable?38:18);
+  timeline.style.setProperty('--sc-row-min',`calc(${Math.max(360,min)}px * var(--ui-scale))`);
  }
 
- /* 見出しの操作(§9.88 段1と同じ作法)。掴んで並べ替え、右端の取っ手で幅。
-    保存先は`timeline:<設備名>`で、一覧とまったく同じ列レイアウトマスタ。
-    **保存は全置換**なので、触っていない設定(表示名・書式・読み替え)も
-    一緒に送ること。 */
+ /* ---------- 見出しの操作は一覧とまったく同じ道具を使う(§9.176) ----------
+    掴んで並べ替え／右端の取っ手で幅／右クリックでメニュー。**書き写さない**
+    こと(§9.164)——同じ処理を一覧ごとに持つと、直したときに片方だけ直った
+    状態になる。違うのは「引いている最中の見せ方」だけで、この表はCSS
+    グリッドなので`--sc-cols`を組み直す。
+    保存先は`timeline:<設備名>`で、仕掛一覧・データ一覧と同じ列レイアウト
+    マスタ。**保存は全置換**なので、触っていない設定(表示名・書式・読み替え)も
+    一緒に送ること(§9.113)。
+    **並べ替えの対象は「隠している列も含めた全列の並び」**——見えている
+    列だけで並びを作ると、隠した列の位置が保存のたびに失われる(§9.110で
+    仕掛一覧が踏んだのと同じ罠)。
+    **並び替えはできても並べ替え(ソート)は持たない**——スケジュールの行の
+    並びは時刻の一本道(§9.39)で、利用者が並べ替えると予定の意味が変わる。 */
+ /* ---------- 見出しの複数選択(§9.177) ----------
+    列を1本ずつ動かすのは、5本まとめて右へ寄せたいときに5回同じ操作を
+    することになる。**選んでからまとめて動かせる**ようにする(仕掛一覧の
+    まとめてD&D・§9.170と同じ考え方)。**選び方は文字で書く**——Ctrlや
+    Shiftを押しながら、と知っていないと使えない機能は無いのと同じなので、
+    見出しの帯に案内を出す。 */
+ const scColPicked=new Set();
+ let scColAnchor='';
+ function timelineDragKeys(key){
+  if(scColPicked.size>=2&&scColPicked.has(key))
+   return timelineOrderedKeys().filter(k=>scColPicked.has(k));
+  return [key];
+ }
+ function scColPickHint(){
+  const el=document.getElementById('scColPickHint');
+  if(!el)return;
+  const n=scColPicked.size;
+  el.hidden=!n;
+  if(n)el.textContent=`${n}列を選択中（そのままドラッグでまとめて移動／Escで解除）`;
+ }
+ function clearColPick(){
+  if(!scColPicked.size)return;
+  scColPicked.clear();scColAnchor='';
+  document.querySelectorAll('.sc-row-head [data-col].is-picked')
+          .forEach(x=>x.classList.remove('is-picked'));
+  scColPickHint();
+ }
+ function toggleColPick(key,ev){
+  const order=timelineColumnKeys();
+  if(ev.shiftKey&&scColAnchor&&order.includes(scColAnchor)){
+   const a=order.indexOf(scColAnchor),b=order.indexOf(key);
+   if(a>=0&&b>=0)order.slice(Math.min(a,b),Math.max(a,b)+1).forEach(k=>scColPicked.add(k));
+  }else if(scColPicked.has(key)){scColPicked.delete(key)}
+  else{scColPicked.add(key);scColAnchor=key}
+  document.querySelectorAll('.sc-row-head [data-col]').forEach(x=>{
+   x.classList.toggle('is-picked',scColPicked.has(x.dataset.col));
+  });
+  scColPickHint();
+ }
+ function timelineHeadMenuSource(timeline){
+  return {
+   keys:()=>timelineOrderedKeys(),
+   label:k=>scColLabel(k),
+   currentWidthOf:k=>{
+    const el=timeline&&timeline.querySelector(`.sc-row-head [data-col="${CSS.escape(k)}"]`);
+    return el?Math.round(el.getBoundingClientRect().width):0;
+   },
+   refresh:()=>renderTimeline(),
+   openPanel:()=>openContentPanel(),
+  };
+ }
+ async function persistTimelineColumns(target,patch){
+  try{
+   /* 控えは保存のたびに`get()`で取り直す——`save()`はキャッシュを新しい
+      オブジェクトへ差し替えるので、関数の頭で束縛した写しは1回保存した
+      時点で古くなる(§9.113)。 */
+   const cur=WL.columnLayout.get(target);
+   await WL.columnLayout.save(target,{order:timelineOrderedKeys(),widths:cur.widths,
+                                      hidden:cur.hidden,names:cur.names,formats:cur.formats,
+                                      rules:cur.rules,formulas:cur.formulas,locks:cur.locks,
+                                      ...patch});
+   showToast&&showToast('列の設定を保存しました','この設備のスケジュール表で次も同じ形で出ます',2400);
+  }catch(e){showToast&&showToast('列の設定を保存できませんでした',e.message,5000)}
+ }
  function bindTimelineHeadTools(timeline){
   const target=timelineTarget();
   if(!target)return;
-  const heads=[...timeline.querySelectorAll('.sc-row-head [data-content-col]')];
+  const heads=[...timeline.querySelectorAll('.sc-row-head [data-col]')];
   if(!heads.length)return;
+  /* **消えた列のキーを持ち続けないこと**——隠した列を選んだまま残すと、
+     件数だけが合わない(§9.170の行の選択と同じ約束)。 */
+  const alive=new Set(heads.map(h=>h.dataset.col));
+  [...scColPicked].forEach(k=>{if(!alive.has(k))scColPicked.delete(k)});
+  scColPickHint();
   const layout=WL.columnLayout.get(target);
-  const keys=timelineContentKeys();
-  const persist=async(order,widths)=>{
-   try{
-    /* **保存は全置換なので、渡す設定を1つも書き漏らさない**(§9.113)。
-       控えは保存のたびに取り直す(save()はキャッシュを差し替えるため)。 */
-    const cur=WL.columnLayout.get(target);
-    await WL.columnLayout.save(target,{order,widths:widths||cur.widths,hidden:cur.hidden,
-                                       names:cur.names,formats:cur.formats,rules:cur.rules,
-                                       formulas:cur.formulas,locks:cur.locks});
-    showToast&&showToast('内容の列を保存しました','この設備のタイムラインで次も同じ形で出ます',2400);
-   }catch(e){showToast&&showToast('列の設定を保存できませんでした',e.message,5000)}
-  };
-  let dragKey=null;
+  /* 掴んでいる列。**複数選んでいればまとめて動かす**(§9.177) */
+  let dragKeys=null;
+  const clearMarks=()=>heads.forEach(x=>x.classList.remove('col-drop-before','col-drop-after'));
   heads.forEach(h=>{
+   const key=h.dataset.col;
+   h.classList.toggle('is-picked',scColPicked.has(key));
    h.addEventListener('dragstart',e=>{
-    dragKey=h.dataset.contentCol;h.classList.add('col-dragging');
-    try{e.dataTransfer.setData('text/plain',dragKey);e.dataTransfer.effectAllowed='move'}catch(_){}
+    dragKeys=timelineDragKeys(key);
+    dragKeys.forEach(k=>{
+     const el=timeline.querySelector(`.sc-row-head [data-col="${CSS.escape(k)}"]`);
+     if(el)el.classList.add('col-dragging');
+    });
+    try{e.dataTransfer.setData('text/plain',dragKeys.join('\n'));e.dataTransfer.effectAllowed='move'}catch(_){}
    });
    h.addEventListener('dragend',()=>{
-    dragKey=null;h.classList.remove('col-dragging');
-    heads.forEach(x=>x.classList.remove('col-drop-before','col-drop-after'));
+    dragKeys=null;
+    heads.forEach(x=>x.classList.remove('col-dragging'));
+    clearMarks();
    });
    h.addEventListener('dragover',e=>{
-    if(!dragKey||h.dataset.contentCol===dragKey)return;
-    e.preventDefault();
+    if(!dragKeys||dragKeys.includes(key))return;
+    e.preventDefault();e.stopPropagation();
     const r=h.getBoundingClientRect(),after=(e.clientX-r.left)>r.width/2;
     h.classList.toggle('col-drop-after',after);
     h.classList.toggle('col-drop-before',!after);
    });
    h.addEventListener('dragleave',()=>h.classList.remove('col-drop-before','col-drop-after'));
    h.addEventListener('drop',e=>{
-    if(!dragKey||h.dataset.contentCol===dragKey)return;
+    if(!dragKeys||dragKeys.includes(key))return;
     e.preventDefault();e.stopPropagation();
-    const to=h.dataset.contentCol;
     const r=h.getBoundingClientRect(),after=(e.clientX-r.left)>r.width/2;
-    const order=keys.slice();
-    const from=order.indexOf(dragKey);if(from<0)return;
-    order.splice(from,1);
-    const at=order.indexOf(to);if(at<0)return;
-    order.splice(after?at+1:at,0,dragKey);
+    const moving=dragKeys.slice();
+    const order=timelineOrderedKeys().filter(k=>!moving.includes(k));
+    const at=order.indexOf(key);if(at<0)return;
+    order.splice(after?at+1:at,0,...moving);
     layout.order=order;
-    persist(order);
+    persistTimelineColumns(target,{order});
     renderTimeline();
+   });
+   /* 右クリックのメニュー(隠す・幅・隠した列を戻す・設定を開く)。
+      **一覧と同じ関数**を呼ぶ(§9.164)。 */
+   h.addEventListener('contextmenu',e=>{
+    e.preventDefault();
+    WL.openColumnHeaderMenu(e,key,target,null,timelineHeadMenuSource(timeline));
+   });
+   /* Ctrl/⌘・Shiftを押しながらで複数選択。**素のクリックは解除**——
+      選んだつもりのない選択が残り続けるほうが厄介。 */
+   h.addEventListener('click',e=>{
+    if(e.target.classList.contains('col-resize'))return;
+    if(e.ctrlKey||e.metaKey||e.shiftKey){e.preventDefault();toggleColPick(key,e)}
+    else clearColPick();
    });
    const grip=h.querySelector('.col-resize');
    if(!grip)return;
-   const key=h.dataset.contentCol;
-   grip.addEventListener('mousedown',e=>{
-    e.preventDefault();e.stopPropagation();
-    const startX=e.clientX,startW=h.getBoundingClientRect().width;
-    const move=ev=>{
-     const w=Math.max(40,Math.min(900,Math.round(startW+(ev.clientX-startX))));
-     h.dataset.resizing=String(w);
-     const widths={...(layout.widths||{}),[key]:w};
-     layout.widths=widths;applyTimelineContentColumns(timeline);
-    };
-    const up=()=>{
-     document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);
-     const w=Number(h.dataset.resizing||0);delete h.dataset.resizing;
-     if(!w)return;
-     persist(keys,layout.widths);
-    };
-    document.addEventListener('mousemove',move);document.addEventListener('mouseup',up);
-   });
-   grip.addEventListener('dblclick',e=>{
-    e.preventDefault();e.stopPropagation();
-    const widths={...(layout.widths||{})};delete widths[key];
-    layout.widths=widths;persist(keys,widths);applyTimelineContentColumns(timeline);
+   WL.columnWidthGrip(grip,{
+    locked:WL.columnLayout.locked(target,key),
+    startWidth:()=>h.getBoundingClientRect().width,
+    preview:w=>{layout.widths={...(layout.widths||{}),[key]:w};applyTimelineContentColumns(timeline)},
+    commit:w=>{const widths={...(layout.widths||{}),[key]:w};
+               layout.widths=widths;persistTimelineColumns(target,{widths})},
+    reset:()=>{const widths={...(layout.widths||{})};delete widths[key];
+               layout.widths=widths;applyTimelineContentColumns(timeline);
+               persistTimelineColumns(target,{widths,locks:(layout.locks||[]).filter(k=>k!==key)})},
    });
   });
+ }
+
+ /* ---------- カーソル位置へ予定を入れる(§9.179) ----------
+    仕掛一覧を畳んで「スケジュールだけ」で見ているときは、ドラッグで入れる
+    相手が画面に無い。**行と行のあいだにカーソルを置くと隙間が開き**、そこを
+    押せば入れる相手を選べる、という形にする。
+      クリック        … 仕掛一覧のモーダル（ロットを選ぶ）
+      ダブルクリック  … 設備停止のモーダル
+    **隙間には何ができるかを書く**——「押せるが何が起きるか分からない」
+    空白を作らない。入れる位置は`scState.insertBefore`が覚え、追加のときに
+    `position:'before:<予定ID>'`としてサーバーへ渡す(§9.179。画面で足して
+    から並べ替えAPIを叩くと、2往復のあいだに別のPCの変更が挟まる)。 */
+ let insertGhostEl=null;
+ function ensureInsertGhost(){
+  if(insertGhostEl)return insertGhostEl;
+  const g=document.createElement('div');
+  g.className='sc-insert-ghost';g.id='scInsertGhost';
+  g.innerHTML='<span class="sc-insert-mark">＋</span>'
+   +'<span class="sc-insert-text">ここへ予定を入れる'
+   +'<small>クリック: 仕掛から選ぶ／ダブルクリック: 設備停止</small></span>';
+  g.addEventListener('click',e=>{e.stopPropagation();openInsertPicker('lot')});
+  g.addEventListener('dblclick',e=>{e.stopPropagation();openInsertPicker('stop')});
+  insertGhostEl=g;
+  return g;
+ }
+ function hideInsertGhost(){
+  if(insertGhostEl&&insertGhostEl.parentNode)insertGhostEl.remove();
+ }
+ /* 入れる位置の目安。**動かせる予定(未着手)の行だけ**が相手——着手・完了の
+    あいだに入れても並びは変わらないので、そこには隙間を出さない。
+    ゴースト自身は数に入れない(入れると自分の位置で自分の位置が決まる)。 */
+ function insertSlotAt(clientY){
+  const tl=$('#scTimeline');if(!tl)return null;
+  const rows=[...tl.querySelectorAll('.sc-row-line')].filter(r=>reorderableEntry(r.dataset.id));
+  if(!rows.length)return null;
+  for(const r of rows){
+   const b=r.getBoundingClientRect();
+   if(clientY<b.top+b.height/2)return {beforeId:String(r.dataset.id),row:r};
+  }
+  return {beforeId:'',row:rows[rows.length-1],after:true};
+ }
+ /* **本当に隙間を開ける**(§9.179。要望の「ゴーストで間が空き」)。浮かせて
+    重ねると、下にあった行が1行ぶん隠れて読めなくなる(実際にそうなった)。
+    行の流れの中へ挟むので、下の行はそのぶん押し下がる。 */
+ function placeInsertGhost(slot){
+  const g=ensureInsertGhost();
+  if(g.dataset.beforeId===slot.beforeId&&g.parentNode)return;
+  g.dataset.beforeId=slot.beforeId;
+  if(slot.after)slot.row.parentNode.insertBefore(g,slot.row.nextSibling);
+  else slot.row.parentNode.insertBefore(g,slot.row);
+ }
+ function updateInsertHintUi(){
+  const on=scheduleOnlyView();
+  const tl=$('#scTimeline');
+  if(tl)tl.classList.toggle('sc-insertable',on);
+  if(!on)hideInsertGhost();
+  const hint=$('#scSplitHint');
+  if(hint)hint.innerHTML=on
+   ?'<p class="sc-drop-hint">仕掛一覧を畳んでいます。<b>表の行と行のあいだにカーソルを置くと隙間が開き</b>、'
+    +'クリックで仕掛から選んで／ダブルクリックで設備停止を、その位置へ入れられます。'
+    +'左端の帯を押すと仕掛一覧が戻り、今までどおりドラッグでも追加できます。</p>'
+   :'<p class="sc-drop-hint">左の仕掛一覧からロットをドラッグ、またはチェックボックスで複数選択してこのパネルへドロップすると、この設備の予定へ追加されます。</p>';
+ }
+ function bindInsertGhost(timeline){
+  if(timeline.dataset.insertWired)return;
+  timeline.dataset.insertWired='1';
+  timeline.addEventListener('mousemove',e=>{
+   if(!scheduleOnlyView()||sessionBlocked()||scState.dragId){hideInsertGhost();return}
+   /* **隙間の上に来たら動かさない。** 隙間は行の流れの中にあるので、
+      出し入れするたびに下の行が上下する——そのたびに位置を計算し直すと
+      隙間が行き来して掴めない(実際にちらついた)。 */
+   if(e.target.closest&&e.target.closest('#scInsertGhost'))return;
+   const slot=insertSlotAt(e.clientY);
+   if(!slot){hideInsertGhost();return}
+   placeInsertGhost(slot);
+  });
+  timeline.addEventListener('mouseleave',()=>hideInsertGhost());
+ }
+ /* 入れる相手を選ぶ。**位置を覚えてからモーダルを開く**——開いている
+    あいだにカーソルは動くので、押した時点の位置で固定する。 */
+ function openInsertPicker(kind){
+  const g=document.getElementById('scInsertGhost');
+  scState.insertBefore=(g&&g.dataset.beforeId)||'';
+  hideInsertGhost();
+  const where=scState.insertBefore
+   ?`${pickedLotOf(pickableEntry(scState.insertBefore))||'選んだ行'}の前`:'いちばん後ろ';
+  if(kind==='stop'){
+   openStopModal();
+   showToast&&showToast('設備停止を選んでください',`${where}へ入れます`,3600);
+   return;
+  }
+  openListModal();
+  showToast&&showToast('入れるロットを選んでください',
+   `${where}へ入れます。行をドラッグ、または複数選択して「予定へ追加」を押してください`,5000);
+ }
+ /* 入れる位置は**1回使ったら忘れる**——覚えたままにすると、次に普通に
+    追加したものが思い出しもしない位置へ入る。 */
+ function takeInsertBefore(){
+  const v=scState.insertBefore||'';
+  scState.insertBefore='';
+  return v;
  }
 
  function renderTimeline(){
@@ -1830,9 +2180,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      間隔がばらついて見えていた(行どうしは35px)。列の意味は1回説明すれば
      足りる(このファイル冒頭の高密度リストの説明どおり)。sticky なので
      スクロールしても上に残る。 */
-  timeline.insertAdjacentHTML('beforeend',rowHeadHtml());
+  timeline.insertAdjacentHTML('beforeend',
+   '<div class="sc-col-pick-hint" id="scColPickHint" hidden></div>'+rowHeadHtml());
   applyTimelineContentColumns(timeline);
   bindTimelineHeadTools(timeline);
+  bindInsertGhost(timeline);
+  updateInsertHintUi();
   const kids=childEntriesByParent();
   buckets.forEach(bucket=>{
    const box=document.createElement('div');
@@ -1907,7 +2260,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(!row)return;
   row.classList.add('sc-row-has-children');
   // つまみは**最初の内容セル**へ入れる(段6で内容が複数列になった)。
-  const title=row.querySelector('.sc-row-title');
+  /* 内容の列を全部隠すこともできる(§9.176)。そのときは**最初のセル**へ
+     入れる——素の兄弟として足すと1列ぶんずれるので、必ずどれかのセルの
+     中に入れること。 */
+  const title=row.querySelector('.sc-row-title')||row.querySelector('[data-col]');
   if(!title)return;
   const btn=document.createElement('button');
   btn.type='button';
@@ -1931,6 +2287,83 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   title.append(btn,text);
  }
 
+ /* ---------- 行のセルの値は1箇所で作る(§9.176) ----------
+    見出しの並び順でセルを組み立てるようになったので、**どのキーが何の値か**
+    を1つの関数が答える形にする。設定パネルの見本(「この列の見え方（実データ）」)
+    も同じ関数を通す——見本を別に作ると、画面には出ているのに設定画面では
+    「値のある行がありません」と出る(実際にそうなった)。 */
+ function entryCellInfo(e){
+  const cat=categoryOf(e);
+  const locked=!!e.fixedStart;
+  const workable=workableOf(e);
+  const wk=WORKABLE_LABEL[workable.state]||WORKABLE_LABEL.unknown;
+  const wkTitle=workable.course?`${wk.title}\n残仕掛設備ｺｰｽ: ${workable.course}`:wk.title;
+   // 完了・取消は予定時刻を持たない(展開対象外)ので、実績の開始/終了を出す。
+  // 以前は一律「-」で、実績セクションだけ時刻が全く読めなかった。
+  const useActual=(e.state==='完了')&&e.actual&&e.actual.startAt;
+  const showStart=useActual?e.actual.startAt:e.plannedStart;
+  const showEnd=useActual?e.actual.endAt:e.plannedEnd;
+  const dateText=showStart?fmtDateShort(showStart):'-';
+  const dateTitle=showStart?fmtDateTitle(showStart):'';
+  // 作業中(§9.37)はまだ終わっていない。予定終了は常に現在時刻なので、
+  // 終了時刻を数字で出すと「もう終わったように」見える。「継続中」と出す。
+  let timeText,timeTitle;
+  if(e.ongoing){
+   timeText=`${fmtHM(showStart)}〜継続中`;
+   timeTitle=`実績開始 ${fmtDateTime(showStart)} / 未完了のため予定終了は現在時刻`;
+  }else{
+   timeText=showStart?fmtTimeRange(showStart,showEnd):(e.state==='完了'||e.state==='取消'?'-':'未定');
+   timeTitle=showStart?`${useActual?'実績 ':''}${fmtDateTime(showStart)} 〜 ${fmtDateTime(showEnd)}`:'';
+  }
+  const shiftText=e.shift||'-';
+  const relText=e.ongoing
+   ?'作業中'
+   :(e.startsInMinutes!=null?(fmtRelative(e.startsInMinutes)||'今'):'-');
+  const estText=e.estimate?fmtCompact(e.estimate.minutes):'-';
+  /* 見積が実績由来かどうかを行の中で見分けられるようにする(§9.114)。
+     **「実績」「設備の標準時間」「暫定」の3つを言い分ける**——どれも
+     同じ数字に見えるが、当たるかどうかの見込みがまるで違う。 */
+  const estSrc=(e.estimate&&e.estimate.source)||'';
+  const estProvisional=estSrc==='equipment-standard'||estSrc==='default';
+  const estNote=estimateNoteOf(estSrc);
+  let actualText='-';
+  if(e.actual){
+   if(e.state==='着手')actualText=fmtCompact(e.actual.elapsedMinutes)+' 経過';
+   else if(e.state==='完了'){
+    const v=e.actual.varianceMinutes;
+    actualText=fmtCompact(e.actual.minutes)+(v!=null?`(${v>=0?'+':''}${Math.round(v)})`:'');
+   }
+  }
+  const flags=[
+   e.unplanned?'<span class="sc-flag sc-flag-unplanned" title="予定に無い実績です(仕掛一覧から直接開始した作業など)">計画外</span>':'',
+   locked?`<span class="sc-flag sc-flag-locked" title="固定開始 ${esc(fmtDateTime(e.fixedStart))}">🔒固定</span>`:'',
+   e.__pending?'<span class="sc-flag sc-flag-pending" title="サーバーへ反映中です">⏳追加中</span>':'',
+   e.overdueMinutes>0?`<span class="sc-flag sc-flag-overdue" title="${Math.round(e.overdueMinutes)}分押しています">⚠${Math.round(e.overdueMinutes)}分</span>`:'',
+   e.spansNonWorking?'<span class="sc-flag sc-flag-spans" title="夜間・休日を跨ぎます">🌙</span>':'',
+   e.fixedStart?`<span class="sc-flag sc-flag-fixed" title="固定開始 ${fmtDateTime(e.fixedStart)}">📌</span>`:'',
+  ].join('');
+  return {cat,locked,workable,wk,wkTitle,dateText,dateTitle,timeText,timeTitle,shiftText,
+          relText,estText,estSrc,estProvisional,estNote,actualText,flags};
+ }
+ /* キー → 見せる文字。**行の組み立てと設定パネルの見本が同じ表を見る**。 */
+ const SC_FIXED_TEXT={
+  '__cat__':i=>i.cat.label,
+  '__workable__':i=>i.wk.text,
+  '__date__':i=>i.dateText,
+  '__time__':i=>i.timeText,
+  '__shift__':i=>i.shiftText,
+  '__rel__':i=>i.relText,
+  '__est__':i=>(i.estProvisional?'~':'')+i.estText,
+  '__actual__':i=>i.actualText,
+  '__flags__':i=>String(i.flags||'').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim(),
+  '__actions__':()=>'（開始・固定・帳票などのボタン）',
+ };
+ function scFixedCellText(entry,k){
+  const f=SC_FIXED_TEXT[k];
+  if(!f||!entry)return '';
+  try{return f(entryCellInfo(entry))}catch(_){return ''}
+ }
+
  function renderEntryRow(timeline,e,showGaps,getLastEnd,setLastEnd){
   {
    const lastEnd=getLastEnd();
@@ -1946,8 +2379,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    }
    if(e.plannedEnd)setLastEnd(e.plannedEnd);
 
-   const cat=categoryOf(e);
-   const locked=!!e.fixedStart;
+   const info=entryCellInfo(e);
+   const {cat,locked,dateText,dateTitle,timeText,timeTitle,shiftText,relText,
+          estText,estSrc,estProvisional,estNote,actualText,flags,workable,wk,wkTitle}=info;
    const row=document.createElement('div');
    row.className='sc-row-line '+stateRowClass(e.state)
     +(e.__pending?' sc-row-pending':'')+(locked?' sc-row-locked':'')+(e.ongoing?' sc-row-ongoing':'');
@@ -1962,59 +2396,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
 
    const lotText=entryContentText(e);      // ツールチップ・帳票用の1行要約
    const contentCells=timelineContentCells(e);
-   // 完了・取消は予定時刻を持たない(展開対象外)ので、実績の開始/終了を出す。
-   // 以前は一律「-」で、実績セクションだけ時刻が全く読めなかった。
-   const useActual=(e.state==='完了')&&e.actual&&e.actual.startAt;
-   const showStart=useActual?e.actual.startAt:e.plannedStart;
-   const showEnd=useActual?e.actual.endAt:e.plannedEnd;
-   const dateText=showStart?fmtDateShort(showStart):'-';
-   const dateTitle=showStart?fmtDateTitle(showStart):'';
-   // 作業中(§9.37)はまだ終わっていない。予定終了は常に現在時刻なので、
-   // 終了時刻を数字で出すと「もう終わったように」見える。「継続中」と出す。
-   let timeText,timeTitle;
-   if(e.ongoing){
-    timeText=`${fmtHM(showStart)}〜継続中`;
-    timeTitle=`実績開始 ${fmtDateTime(showStart)} / 未完了のため予定終了は現在時刻`;
-   }else{
-    timeText=showStart?fmtTimeRange(showStart,showEnd):(e.state==='完了'||e.state==='取消'?'-':'未定');
-    timeTitle=showStart?`${useActual?'実績 ':''}${fmtDateTime(showStart)} 〜 ${fmtDateTime(showEnd)}`:'';
-   }
-   const shiftText=e.shift||'-';
-   const relText=e.ongoing
-    ?'作業中'
-    :(e.startsInMinutes!=null?(fmtRelative(e.startsInMinutes)||'今'):'-');
-   const estText=e.estimate?fmtCompact(e.estimate.minutes):'-';
-   /* 見積が実績由来かどうかを行の中で見分けられるようにする(§9.114)。
-      **「実績」「設備の標準時間」「暫定」の3つを言い分ける**——どれも
-      同じ数字に見えるが、当たるかどうかの見込みがまるで違う。 */
-   const estSrc=(e.estimate&&e.estimate.source)||'';
-   const estProvisional=estSrc==='equipment-standard'||estSrc==='default';
-   const estNote=estimateNoteOf(estSrc);
-   let actualText='-';
-   if(e.actual){
-    if(e.state==='着手')actualText=fmtCompact(e.actual.elapsedMinutes)+' 経過';
-    else if(e.state==='完了'){
-     const v=e.actual.varianceMinutes;
-     actualText=fmtCompact(e.actual.minutes)+(v!=null?`(${v>=0?'+':''}${Math.round(v)})`:'');
-    }
-   }
-   const flags=[
-    e.unplanned?'<span class="sc-flag sc-flag-unplanned" title="予定に無い実績です(仕掛一覧から直接開始した作業など)">計画外</span>':'',
-    locked?`<span class="sc-flag sc-flag-locked" title="固定開始 ${esc(fmtDateTime(e.fixedStart))}">🔒固定</span>`:'',
-    e.__pending?'<span class="sc-flag sc-flag-pending" title="サーバーへ反映中です">⏳追加中</span>':'',
-    e.overdueMinutes>0?`<span class="sc-flag sc-flag-overdue" title="${Math.round(e.overdueMinutes)}分押しています">⚠${Math.round(e.overdueMinutes)}分</span>`:'',
-    e.spansNonWorking?'<span class="sc-flag sc-flag-spans" title="夜間・休日を跨ぎます">🌙</span>':'',
-    e.fixedStart?`<span class="sc-flag sc-flag-fixed" title="固定開始 ${fmtDateTime(e.fixedStart)}">📌</span>`:'',
-   ].join('');
    const detailHtml=fixedStartHtml(e)+estimateBreakdownHtml(e);
    const canDelete=scState.fullControl&&e.state==='予定'&&!e.__pending&&!e.unplanned;
    // §9.35: 編集モード(=実際に測定する端末)なら、予定から直接測定画面を開ける。
    // 開始時刻を打刻すると実績突合(§7.4)でこの行が「実施中」へ移る。
    // §9.51: 作業可否フラグが立っている(残仕掛設備ｺｰｽがこの設備で始まる)
    // 予定だけ開始できる。まだこの設備に来ていないロットを開始させない。
-   const workable=workableOf(e);
-   const wk=WORKABLE_LABEL[workable.state]||WORKABLE_LABEL.unknown;
-   const wkTitle=workable.course?`${wk.title}\n残仕掛設備ｺｰｽ: ${workable.course}`:wk.title;
    const canStart=scState.canStartWork&&e.kind==='作業'&&e.state==='予定'&&!e.__pending&&!e.unplanned
                   &&workable.state==='ok';
    // §9.38: 日時で固定する(ロック)。予定を動かせるモードでのみ操作できる。
@@ -2032,19 +2419,22 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    // 予定の削除とは別のボタンにし、警告を必ず挟む。
    const canDeleteHistory=scState.canDeleteHistory&&!!recordId&&(e.state==='着手'||e.state==='完了');
 
-   row.innerHTML=`
-    <span class="sc-row-handle" title="${canDrag?'ドラッグまたはAlt+↑/↓で並べ替え':(locked?'日時を固定中(ロック)':'')}">${pickBoxHtml(e)}${canDrag?'⠿':(locked?'🔒':'')}</span>
-    <span class="sc-row-cat sc-cat-${cat.key}" title="${esc(e.kind)}・${esc(e.state)}"><i>${cat.icon}</i>${esc(cat.label)}</span>
-    <span class="sc-row-workable ${wk.cls}" title="${esc(wkTitle)}">${esc(wk.text)}</span>
-    <span class="sc-row-date" title="${esc(dateTitle)}">${esc(dateText)}</span>
-    <span class="sc-row-time" title="${esc(timeTitle)}">${esc(timeText)}</span>
-    <span class="sc-row-shift" title="勤務形態マスタで設定した名称です">${esc(shiftText)}</span>
-    <span class="sc-row-rel">${esc(relText)}</span>
-    ${contentCells.map(c=>`<span class="sc-row-title${c.color?' cell-'+c.color:''}" data-content-col="${esc(c.key)}" title="${esc(c.raw||c.text)}">${esc(c.text)}</span>`).join('')}
-    <span class="sc-row-est${estProvisional?' sc-est-default':''}${estSrc==='equipment-standard'?' sc-est-standard':''}" title="${esc(estNote)}">${estProvisional?'~':''}${esc(estText)}</span>
-    <span class="sc-row-actual">${esc(actualText)}</span>
-    <span class="sc-row-flags">${flags}</span>
-    <span class="sc-row-actions">
+   /* セルは**見出しと同じ並び**から組み立てる(§9.176)。以前はHTMLへ
+      直書きした固定の順番だったため、見出しだけを動かしても中身は動かず
+      「列が固定されている」状態だった。**キーで引く**——位置で数えると
+      隠した列があるだけでずれる(§9.104と同じ約束)。 */
+   const contentMap=new Map(contentCells.map(c=>[c.key,c]));
+   const cellOf={
+    '__cat__':`<span class="sc-row-cat sc-cat-${cat.key}" data-col="__cat__" title="${esc(e.kind)}・${esc(e.state)}"><i>${cat.icon}</i>${esc(cat.label)}</span>`,
+    '__workable__':`<span class="sc-row-workable ${wk.cls}" data-col="__workable__" title="${esc(wkTitle)}">${esc(wk.text)}</span>`,
+    '__date__':`<span class="sc-row-date" data-col="__date__" title="${esc(dateTitle)}">${esc(dateText)}</span>`,
+    '__time__':`<span class="sc-row-time" data-col="__time__" title="${esc(timeTitle)}">${esc(timeText)}</span>`,
+    '__shift__':`<span class="sc-row-shift" data-col="__shift__" title="勤務形態マスタで設定した名称です">${esc(shiftText)}</span>`,
+    '__rel__':`<span class="sc-row-rel" data-col="__rel__">${esc(relText)}</span>`,
+    '__est__':`<span class="sc-row-est${estProvisional?' sc-est-default':''}${estSrc==='equipment-standard'?' sc-est-standard':''}" data-col="__est__" title="${esc(estNote)}">${estProvisional?'~':''}${esc(estText)}</span>`,
+    '__actual__':`<span class="sc-row-actual" data-col="__actual__">${esc(actualText)}</span>`,
+    '__flags__':`<span class="sc-row-flags" data-col="__flags__">${flags}</span>`,
+    '__actions__':`<span class="sc-row-actions" data-col="__actions__">
      ${canStart?`<button type="button" class="sc-row-btn sc-row-start" title="この予定の測定画面を開いて作業を開始します">▶ 開始</button>`:''}
      ${canLock?`<button type="button" class="sc-row-btn sc-row-lock${locked?' active':''}" title="${locked?'固定を解除して通常の並びへ戻します':'今の予定日時でこの行を固定します(以降ずれません)'}">${locked?'🔒':'🔓'}</button>`:''}
      ${canResume?`<button type="button" class="sc-row-btn sc-row-resume" title="測定画面を開いて続きから再開します(行のダブルクリックでも開けます)">▶ 再開</button>`:''}
@@ -2052,7 +2442,17 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      ${detailHtml?`<button type="button" class="sc-row-btn sc-row-detail-toggle" title="詳細を表示">▾</button>`:''}
      ${canDelete?`<button type="button" class="sc-row-btn sc-row-delete" title="この予定を削除します">🗑</button>`:''}
      ${canDeleteHistory?`<button type="button" class="sc-row-btn sc-row-btn-danger sc-row-delete-history" title="このロットの測定データ（実績）を削除します。取り消せません">🗑 削除</button>`:''}
-    </span>`;
+    </span>`,
+   };
+   const cellHtml=k=>{
+    if(cellOf[k]!==undefined)return cellOf[k];
+    const c=contentMap.get(k);
+    return c?`<span class="sc-row-title${c.color?' cell-'+c.color:''}" data-col="${esc(k)}" data-content-col="${esc(k)}" title="${esc(c.raw||c.text)}">${esc(c.text)}</span>`
+            :`<span data-col="${esc(k)}"></span>`;
+   };
+   row.innerHTML=`
+    <span class="sc-row-handle" title="${canDrag?'ドラッグまたはAlt+↑/↓で並べ替え':(locked?'日時を固定中(ロック)':'')}">${pickBoxHtml(e)}${canDrag?'⠿':(locked?'🔒':'')}</span>`
+    +timelineColumnKeys().map(cellHtml).join('');
    row.classList.toggle('sc-row-not-workable',workable.state==='ng');
    if(canDrag)wireDrag(row);
    /* 選ばれている行は面でも分かるようにするが、**色だけで伝えない**
@@ -2097,13 +2497,18 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    }
    timeline.append(row);
 
-   if(detailHtml){
+   /* 詳細(固定開始・見積の内訳)を開く相手は**操作の列の中のボタン**。
+      §9.176で操作の列も隠せるようになったので、**隠していたら詳細ごと
+      置かない**——ボタンが無いのに詳細だけDOMへ積むと、開く手立てが無い
+      死んだ要素が行の数だけ増える(以前はここで`toggle.onclick`が
+      nullへの代入になって、行を1つ描くたびに例外が出ていた)。 */
+   const toggle=row.querySelector('.sc-row-detail-toggle');
+   if(detailHtml&&toggle){
     const detail=document.createElement('div');
     detail.className='sc-row-detail';
     detail.hidden=true;
     detail.innerHTML=detailHtml;
     timeline.append(detail);
-    const toggle=row.querySelector('.sc-row-detail-toggle');
     toggle.onclick=ev=>{
      ev.stopPropagation();
      detail.hidden=!detail.hidden;
@@ -2369,15 +2774,28 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     確認は**1回だけ**まとめて出す。1件ずつ確認を出すと、20件外すのに20回
     押すことになり、読まずに押す癖が付く(危ない操作ほど1回で言い切る)。 */
  function canPickEntries(){return !!scState.fullControl&&scState.boardMode==='single'}
+ /* 並べ替えられる行(§9.177)。行そのものが掴めるかどうかと同じ条件
+    ——日時を固定した行は動かしても時刻が変わらないので対象外(§9.38)。 */
+ function reorderableEntry(id){
+  const e=(scState.entries||[]).find(x=>String(x.id)===String(id));
+  if(!e)return null;
+  return (scState.editable&&e.reorderable&&!e.__pending&&!e.fixedStart&&!sessionBlocked())?e:null;
+ }
+ /* まとめて動かせる／外せる行。**どちらか一方でもできれば選べる**
+    ——「外せるが動かせない(固定した予定)」「動かせるが外せない」の
+    どちらも選択の対象にする。できないほうはボタン側が件数で断る。 */
+ function pickableEntry(id){return removableEntry(id)||reorderableEntry(id)}
  function pickBoxHtml(e){
-  if(!canPickEntries()||!removableEntry(e.id))return '';
+  if(!canPickEntries()||!pickableEntry(e.id))return '';
+  const can=[removableEntry(e.id)?'外す':'',reorderableEntry(e.id)?'並べ替える':'']
+            .filter(Boolean).join('・');
   return `<input type="checkbox" class="sc-pick-check"`
    +`${scState.picked.has(String(e.id))?' checked':''}`
-   +` title="この予定を選ぶ（選んだぶんをまとめて外せます）">`;
+   +` title="この予定を選ぶ（選んだぶんをまとめて${esc(can)}ことができます）">`;
  }
- /* 今この画面に出ている「外せる予定」。選択の対象も全選択の分母もこれ。 */
+ /* 今この画面に出ている「まとめて扱える予定」。選択の対象も全選択の分母もこれ。 */
  function pickableEntries(){
-  return canPickEntries()?visibleEntries().filter(e=>removableEntry(e.id)):[];
+  return canPickEntries()?visibleEntries().filter(e=>pickableEntry(e.id)):[];
  }
  function setPicked(id,on){
   const key=String(id);
@@ -2390,7 +2808,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  function multiDragIds(id){
   const key=String(id);
   if(!scState.picked.has(key)||scState.picked.size<2)return null;
-  const ids=[...scState.picked].filter(x=>removableEntry(x));
+  const ids=[...scState.picked].filter(x=>pickableEntry(x));
   return ids.length>1?ids:null;
  }
  /* 掴んでいるもののうち、実際に外せるものだけ。受け皿の出し分けに使う。 */
@@ -2418,7 +2836,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   }
   /* **消えた行のidを持ち続けない**——予定を外した後・設備を切り替えた後も
      残っていると、件数だけが合わない状態になる。描くたびに今ある行へ絞る。 */
-  scState.picked=new Set([...scState.picked].filter(id=>removableEntry(id)));
+  scState.picked=new Set([...scState.picked].filter(id=>pickableEntry(id)));
   const pool=pickableEntries();
   if(all){
    const n=pool.filter(e=>scState.picked.has(String(e.id))).length;
@@ -2426,8 +2844,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    all.indeterminate=n>0&&n<pool.length;
    all.disabled=!pool.length;
    all.title=pool.length
-    ?`外せる予定${pool.length}件をすべて選ぶ／解除します（実施中・完了・計画外は選べません）`
-    :'この画面に外せる予定（未着手）はありません';
+    ?`まとめて動かせる／外せる予定${pool.length}件をすべて選ぶ・解除します（実施中・完了・計画外は選べません）`
+    :'この画面にまとめて扱える予定（未着手）はありません';
    all.onclick=ev=>{
     const on=ev.target.checked;
     pool.forEach(e=>{on?scState.picked.add(String(e.id)):scState.picked.delete(String(e.id))});
@@ -2443,15 +2861,24 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(!bar)return;
   const ids=[...scState.picked];
   if(!ids.length){bar.hidden=true;bar.innerHTML='';return}
-  const lots=ids.map(id=>pickedLotOf(removableEntry(id))).filter(Boolean);
+  const lots=ids.map(id=>pickedLotOf(pickableEntry(id))).filter(Boolean);
   const head=lots.slice(0,4).join('・');
+  /* **できることは件数で言う**(§9.177)。選んだ中に「外せない(固定した予定)」
+     が混ざることがあるので、ボタンの数字は**実際に外せる件数**にする
+     ——押してから断るのでは選んだ手間が無駄になる(§9.116と同じ)。 */
+  const canRemove=ids.filter(id=>removableEntry(id));
+  const canMove=ids.filter(id=>reorderableEntry(id));
   bar.hidden=false;
   bar.innerHTML=`<span class="sc-pick-count">${ids.length}件を選択中</span>`
    +`<span class="sc-pick-lots" title="${esc(lots.join('・'))}">${esc(head)}${lots.length>4?`　ほか${lots.length-4}件`:''}</span>`
-   +`<button type="button" class="sc-pick-remove" id="scPickRemove">選んだ${ids.length}件を予定から外す</button>`
+   +(canRemove.length?`<button type="button" class="sc-pick-remove" id="scPickRemove">選んだ${canRemove.length}件を予定から外す</button>`:'')
    +`<button type="button" class="sc-pick-clear" id="scPickClear">選択解除</button>`
-   +`<span class="sc-pick-hint">選んだ行のどれかを掴んで下の受け皿へ落としても、まとめて外せます</span>`;
-  $('#scPickRemove').onclick=()=>removeEntries([...scState.picked]);
+   +`<span class="sc-pick-hint">`
+   +(canMove.length>1?`選んだ行のどれかを掴むと${canMove.length}件まとめて並べ替えられます。`:'')
+   +(canRemove.length?'下の受け皿へ落とすとまとめて外せます。':'')
+   +(canRemove.length<ids.length?`<b>${ids.length-canRemove.length}件は外せません</b>（日時を固定した予定）。`:'')
+   +`</span>`;
+  if($('#scPickRemove'))$('#scPickRemove').onclick=()=>removeEntries(canRemove);
   $('#scPickClear').onclick=()=>{scState.picked.clear();renderTimeline()};
  }
  /* 外す本体。1件なら今までどおり deleteEntry() を通す(確認の文言と
@@ -2555,18 +2982,32 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    scState.dragId=null;scState.dragIds=null;hideRemoveZone();
   });
   card.addEventListener('dragover',e=>{
-   /* まとめて掴んでいる間は並べ替えない(§9.170)。運んでいるのは複数なのに
-      動かせるのは掴んだ1行だけなので、**通り過ぎた位置に1行だけ置き去りに
-      なる**。まとめて掴む目的は外すことなので、並べ替えは1件のときだけ。 */
-   if(scState.dragIds)return;
+   /* **選んだぶんをまとめて並べ替える**(§9.177)。以前は複数掴んでいる間は
+      並べ替えを止めていた——動かせるのが掴んだ1行だけで、通り過ぎた位置に
+      1行だけ置き去りになるからだった。掴んでいる行を**まとめて**同じ位置へ
+      挿し込めば、置き去りは起きない。並べ替えられない行(固定した予定)は
+      運ばない(落としても位置が変わらないので、動いて見えるほうが嘘になる)。 */
    if(scState.dragId==null)return;
+   const ids=(scState.dragIds&&scState.dragIds.length>1?scState.dragIds:[scState.dragId])
+             .filter(id=>reorderableEntry(id)).map(String);
+   if(!ids.length||ids.includes(String(card.dataset.id)))return;
    e.preventDefault();
-   const target=card;if(target.dataset.id===scState.dragId)return;
-   const rect=target.getBoundingClientRect();
+   const rect=card.getBoundingClientRect();
    const before=(e.clientY-rect.top)<rect.height/2;
-   const dragEl=$('.sc-row-line[data-id="'+scState.dragId+'"]');
-   if(!dragEl)return;
-   target.parentNode.insertBefore(dragEl,before?target:target.nextSibling);
+   /* DOM順のまま運ぶ(選んだ順ではない)。並べ替えは見えている順が正。 */
+   const els=[...document.querySelectorAll('#scTimeline .sc-row-line')]
+             .filter(r=>ids.includes(String(r.dataset.id)));
+   if(!els.length)return;
+   const parent=card.parentNode;
+   const anchor=before?card:card.nextSibling;
+   /* 子ロットの箱は行のすぐ下にぶら下がっている。**一緒に運ばないと
+      親から離れる**(親子の対応が読めなくなる)。 */
+   els.forEach(el=>{
+    const kid=el.nextElementSibling&&el.nextElementSibling.classList.contains('sc-child-box')
+              ?el.nextElementSibling:null;
+    parent.insertBefore(el,anchor);
+    if(kid)parent.insertBefore(kid,el.nextSibling);
+   });
   });
   card.addEventListener('drop',e=>{e.preventDefault();commitDragOrder()});
   card.addEventListener('keydown',e=>{
@@ -2699,10 +3140,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    return;
   }
   const target=scState.equipment;
+  const before=takeInsertBefore();
   const entry=makeOptimisticEntry('設備停止',{title:label});
-  scState.entries.push(entry);
+  insertEntriesAt(before,[entry]);
   renderTimeline();
-  queuePlanOp({op:'add',equipment:target,kind:'設備停止',position:'end',stopReasonId:reasonId,
+  queuePlanOp({op:'add',equipment:target,kind:'設備停止',
+   position:before?`before:${before}`:'end',stopReasonId:reasonId,
    onSuccess:r=>resolveOptimisticEntry(entry,r),onFailure:()=>discardOptimisticEntry(entry)});
   showToast&&showToast('設備停止を追加しました',`${target}の予定に追加しました(${label})`,3200);
  }
@@ -2951,9 +3394,15 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   return {
    key:'timeline',
    eyebrow:'作業スケジュール',
-   title:()=>`内容欄の項目（${eq}）`,
-   lead:'左で<b>出す項目と並び</b>を決め、右で<b>選んだ1項目の見え方</b>を整えます。'
-       +'触った結果はすぐタイムラインに出ます（<b>保存するまでは元に戻せます</b>）。',
+   /* **どの表の設定かを名前に出す**(§9.176)。同じ見た目のパネルを仕掛一覧・
+      データ一覧・スケジュール表で使い回すので、設備名まで書かないと
+      「いま何を触っているか」が分からない。 */
+   title:()=>`表示列の設定（作業スケジュール表：${eq}）`,
+   lead:'左で<b>出す列と並び</b>を決め、右で<b>選んだ1列の見え方</b>を整えます。'
+       +'区分・日付・操作などの列もここで消せます（<b>1列目の取っ手</b>は掴む場所なので残ります）。'
+       +'触った結果はすぐスケジュール表に出ます（<b>保存するまでは元に戻せます</b>）。'
+       +(scState.fullControl?'':'<br><b>この端末では内容欄に新しい項目を足せません</b>'
+         +'（項目を選べるのはスケジュールモードだけ。並び・幅・出す出さないはここで変えられます）。'),
    target:()=>timelineTarget(),
    noTargetToast:'設備を先に選んでください',
    noTargetNote:'内容欄の設定は設備ごとに保存します',
@@ -2962,8 +3411,14 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    /* 候補は**今出している項目＋選べる項目すべて**。出していないものも
       並べる（消すと、足せることに気づけない）。 */
    keys:()=>{
-    const chosen=timelineContentKeys();
-    const all=contentCandidateKeys();
+    /* 固定列(区分〜操作)も**同じ並びの一部**(§9.176)。以前はここが内容欄の
+       項目しか返さなかったので、設定画面から固定列を消すことも動かすことも
+       できなかった。 */
+    const chosen=timelineOrderedKeys();
+    /* **足せる項目を並べるのはスケジュールモードだけ**——内容表示マスタを
+       読むのはそちらだけなので(§9.88)、他のモードで足しても効かない。
+       押せるのに何も起きない候補は並べない(§9.120)。 */
+    const all=scState.fullControl?contentCandidateKeys():[];
     const seen=new Set(),out=[];
     [...chosen,...all].forEach(k=>{if(k&&!seen.has(k)){seen.add(k);out.push(k)}});
     return out;
@@ -2975,30 +3430,41 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
       そのまま使うと（あちらは空なので）候補が全部チェック済みになり、
       保存した瞬間に**選んだ覚えの無い項目まで内容欄へ並ぶ**。 */
    initialHidden:keys=>{
-    const chosen=new Set(timelineContentKeys());
-    return keys.filter(k=>!chosen.has(k));
+    /* 固定列は既定で出す。内容欄の項目だけ「選んでいないもの＝出さない」。 */
+    const chosen=new Set(timelineColumnKeys());
+    return keys.filter(k=>!scIsFixedCol(k)&&!chosen.has(k));
    },
    /* 見本は**予定が持つ仕掛データのスナップショット**。1件では
       「たまたま」と区別が付かないので、中身のある予定を集める。 */
+   /* 見本の行は**予定そのもの**。以前は`e.detail`(仕掛データのスナップ
+      ショット)だけを渡していたので、区分・日付・操作のような予定側の列は
+      すべて「値のある行がありません」と出ていた(画面には出ているのに)。 */
    rows:()=>(scState.entries||[])
-     .filter(e=>e.kind==='作業'&&e.detail&&Object.keys(e.detail).length)
-     .map(e=>e.detail).slice(0,40),
+     .filter(e=>e.kind==='作業'&&e.detail&&Object.keys(e.detail).length).slice(0,40),
    /* **値の取り出しはcontentValueOf経由**(§9.69)。投入した時期によって
       alias名だけの予定と生カラム名を持つ予定が混ざるので、直接引くと
       古い予定で1件も出ない。 */
-   valueOf:(row,k)=>contentValueOf(row,k),
+   valueOf:(row,k)=>scIsFixedCol(k)?scFixedCellText(row,k):contentValueOf(row&&row.detail,k),
    /* **項目名は日本語で出す。** 内容欄のキーは`lotNo`/`purposeName`という
       alias名なので、そのまま並べると選んだ本人以外には何の項目か分からない
       （タイムラインの見出しが日本語なのに、設定画面だけ生のキーという
       ちぐはぐな状態になる）。表示名を付けていればそちらが勝つ。 */
-   labelOf:k=>contentItemLabel(k),
+   labelOf:k=>scColLabel(k),
+   /* 固定列は**予定そのものが持つ値**で、仕掛データの列ではない。
+      分類と一言の説明を添える(§9.105。出どころを言う)。 */
+   originOf:k=>scIsFixedCol(k)?'calc':'source',
+   noteOf:k=>{const d=SC_COL_MAP.get(k);return d?d.note:''},
+   currentWidthOf:k=>{
+    const el=document.querySelector(`.sc-row-head [data-col="${CSS.escape(k)}"]`);
+    return el?Math.round(el.getBoundingClientRect().width):0;
+   },
    virtual:()=>({}),
    joined:()=>new Set(),
    joinFrom:()=>'',
    /* 計算式は持たない（内容欄の値は予定のスナップショットで、一覧の行を
       前提にした式とは土俵が違う）。プリセットと入出力は使える。 */
    /* 内容欄の項目はすべて元データ由来なので、分類は1つで足りる。 */
-   origins:()=>['source'],
+   origins:()=>['source','calc'],
    features:{formula:false,preset:true,width:true,format:true,rule:true},
    afterApply:()=>{if(scState.entries&&scState.entries.length)renderTimeline()},
    save:async(target,body)=>{
@@ -3006,7 +3472,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
        既定と同じ並びなら「未設定」で保存する（既定側を後から変えたときに
        追随しなくなるため。従来の作法をそのまま引き継ぐ）。 */
     const hide=new Set(body.hidden||[]);
-    const items=(body.order||[]).filter(k=>!hide.has(k));
+    /* **内容表示マスタへ書くのは内容欄の項目だけ**(§9.176)。固定列の
+       キー(`__cat__`等)まで混ぜると、内容欄に「区分」が現れる。 */
+    const items=(body.order||[]).filter(k=>!hide.has(k)&&!scIsFixedCol(k));
     const toSave=sameItems(items,DEFAULT_CONTENT_ITEMS)?[]:[...items];
     await api('/api/schedule-content-master',{method:'POST',
      headers:{'Content-Type':'application/json'},
@@ -3125,11 +3593,21 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const h=scState.sessionHolder;
   return h?`${scState.equipment}は${h.loginId||'?'}@${h.pcName||'?'}が編集中です`:`${scState.equipment}は他端末が編集中です`;
  }
- function planAddPayload(target,row,children){
-  const p=withUserId({equipment:target,kind:'作業',position:'end',
+ function planAddPayload(target,row,children,before){
+  /* 位置は`before`が決める(§9.179)。**同じ書込サイクルで入れる**ので、
+     追加と並べ替えの2往復にならない。指定が無ければ今までどおり末尾。 */
+  const p=withUserId({equipment:target,kind:'作業',position:before?`before:${before}`:'end',
    lotNo:pick(row,'lotNo')||'',inspectionNo:pick(row,'inspectionNo')||'',castingNo:pick(row,'castingNo')||'',detail:buildScheduleDetail(row)});
   if(children&&children.length)p.children=children;
   return p;
+ }
+ /* 楽観描画の行を、入れる位置へ置く(§9.179)。**末尾へ足すと、サーバーから
+    返ってきた瞬間に行が飛ぶ**ように見える(入れたつもりの位置と違う)。 */
+ function insertEntriesAt(before,list){
+  if(!before){scState.entries.push(...list);return}
+  const at=scState.entries.findIndex(e=>String(e.id)===String(before));
+  if(at<0)scState.entries.push(...list);
+  else scState.entries.splice(at,0,...list);
  }
  /* ---------- 分割ありの親ロット(§9.83) ----------
     予定へ入れた「そのタイミングで」子ロットの仕掛データを引き、親に
@@ -3165,6 +3643,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const target=equipment||scState.equipment;
   if(!target){showToast&&showToast('設備を選択してください','',3200);return}
   const children=await childPayloadFor(row);
+  const before=(target===scState.equipment)?takeInsertBefore():'';
   if(target!==scState.equipment){
    // 今開いていない設備への追加(§9.5): 楽観描画の対象タイムラインが無い
    // ため従来どおり即時反映する。
@@ -3176,11 +3655,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   }
   if(sessionBlocked()){showToast&&showToast('追加できません',sessionHolderMessage(),4000);return}
   const entry=makeOptimisticEntry('作業',{lotNo:pick(row,'lotNo')||'',detail:buildScheduleDetail(row)});
-  scState.entries.push(entry);
   const kidEntries=makeOptimisticChildren(entry,children);
-  scState.entries.push(...kidEntries);
+  insertEntriesAt(before,[entry,...kidEntries]);
   renderTimeline();
-  queuePlanOp({op:'add',...planAddPayload(target,row,children),
+  queuePlanOp({op:'add',...planAddPayload(target,row,children,before),
    onSuccess:r=>{kidEntries.forEach(k=>{k.parentId=r.id});resolveOptimisticEntry(entry,r)},
    onFailure:()=>{kidEntries.forEach(discardOptimisticEntry);discardOptimisticEntry(entry)}});
   if(children.length)showToast&&showToast('予定へ追加しました',childAddedNote(target,children),3600);
@@ -3224,16 +3702,22 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    return;
   }
   if(sessionBlocked()){showToast&&showToast('追加できません',sessionHolderMessage(),4000);return}
+  /* まとめて入れるときも**選んだ順のまま**その位置へ並ぶ。同じ行の前へ
+     次々入れると逆順になるので、1件入れるごとに「次はその行の前」へ
+     ずらす……のではなく、**先頭の位置を固定したまま後ろへ足す**
+     (追加は書込キューで直列なので、順番はこの並びのまま保たれる)。 */
+  const before=takeInsertBefore();
+  const added=[];
   rows.forEach(row=>{
    const entry=makeOptimisticEntry('作業',{lotNo:pick(row,'lotNo')||'',detail:buildScheduleDetail(row)});
-   scState.entries.push(entry);
    const kids=childrenOf.get(row)||[];
    const kidEntries=makeOptimisticChildren(entry,kids);
-   scState.entries.push(...kidEntries);
-   queuePlanOp({op:'add',...planAddPayload(target,row,kids),
+   added.push(entry,...kidEntries);
+   queuePlanOp({op:'add',...planAddPayload(target,row,kids,before),
     onSuccess:r=>{kidEntries.forEach(k=>{k.parentId=r.id});resolveOptimisticEntry(entry,r)},
     onFailure:()=>{kidEntries.forEach(discardOptimisticEntry);discardOptimisticEntry(entry)}});
   });
+  insertEntriesAt(before,added);
   renderTimeline();
   showToast&&showToast(`${rows.length}件をキューへ追加しました`,withKids(`${target}の予定へ反映中です…`),3200);
   window.clearListSelection?.();

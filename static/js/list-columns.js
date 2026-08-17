@@ -49,7 +49,14 @@
     流用ではない。 */
  const LIST_SOURCE={
   key:'list',
-  title:()=>'表示列の設定',
+  /* **どの表の設定かを名前に出す**(§9.176)。同じパネルを仕掛一覧・データ
+     一覧・スケジュール表で使い回すので、「表示列の設定」だけでは開いた
+     本人にも分からない（実機で「今開いているモーダルがどの表のものか
+     分からない」と報告された）。 */
+  title:()=>{
+   const db=(typeof S!=='undefined'&&S.db)||'',tb=(typeof S!=='undefined'&&S.table)||'';
+   return (db||tb)?`表示列の設定（仕掛一覧：${db||'-'} / ${tb||'-'}）`:'表示列の設定（仕掛一覧）';
+  },
   target:()=>typeof listLayoutTarget==='function'?listLayoutTarget():'',
   /* 候補の全列。**並びの出どころは一覧側と同じ1本**(§9.106)——ここで
      別に組み立てると、設定画面で動かした並びが一覧に出ない。 */
@@ -82,6 +89,13 @@
     既に使っており、その関数の中では差し替え口が文字列に隠れて
     `panel.rows is not a function`になる(実際に踏んだ)。 */
  let panelSrc=LIST_SOURCE;
+ /* ---------- まとめて動かすための複数選択(§9.177) ----------
+    列を1本ずつ動かすのは、5本まとめて先頭へ寄せたいときに同じ操作を5回
+    することになる。**選んでからまとめてドラッグ**できるようにする
+    (仕掛一覧のまとめて投入・スケジュールのまとめて外すと同じ考え方)。
+    右ペインに出す1列(`picked`)とは別に持つ——見え方を整える相手は常に
+    1列で、まとめて動かす相手は複数、と役割が違う。 */
+ const marked=new Set();
  const isVirtual=k=>Object.prototype.hasOwnProperty.call(panelSrc.virtual(),k);
  /* 幅の3つの状態(§9.119)。**「自動か手動か」を暗黙にしない**——以前は
     数値欄が空かどうかで決まっており、画面のどこにも書いていなかったため、
@@ -202,7 +216,7 @@
      <div class="lc-list-head">
       <label class="lc-vis lc-vis-all" title="いま見えている列をまとめて出す/隠す">
        <input type="checkbox" id="lcAllVis"></label>
-      <span>列（上下にドラッグで並べ替え）</span>
+      <span title="行のどこを掴んでも並べ替えられます。Ctrl（⌘）クリックで1つずつ、Shiftクリックで範囲を選ぶと、選んだぶんをまとめて動かせます。">列（上下にドラッグで並べ替え・Ctrl/Shiftクリックでまとめて選ぶ）</span>
       <span>この列の見え方（実データ1件）</span></div>
      <div class="lc-list" id="lcList"></div>
     </div>
@@ -222,10 +236,24 @@
      title="選んでいる設定をマスタから削除します">削除</button>
     <span class="lc-preset-sep"></span>
     <button type="button" id="lcExport" class="lc-side-btn"
-     title="今の設定をファイル(JSON)に書き出します">書き出し</button>
+     title="列の設定をファイル(JSON)に書き出します。この一覧だけ／すべての一覧を選べます">書き出し…</button>
     <button type="button" id="lcImport" class="lc-side-btn"
-     title="書き出したファイル(JSON)を読み込みます">読み込み</button>
+     title="書き出したファイル(JSON)から列の設定を取り込みます">読み込み…</button>
     <input type="file" id="lcImportFile" accept="application/json,.json" hidden>
+   </div>
+   <!-- 列の設定の持ち出し・取り込み(§9.178)。**このパネルの中に置く**
+        ——モーダルを増やさず、実物の一覧を見たまま「何が出て行くのか」を
+        確かめられるのが値打ち(フィルタの入出力・§9.171と同じ作法)。 -->
+   <div class="lc-io" id="lcIo" hidden>
+    <div class="lc-io-head">
+     <b id="lcIoTitle">列の設定を書き出す</b>
+     <button type="button" id="lcIoClose" class="lc-side-btn" title="閉じる">×</button>
+    </div>
+    <div class="lc-io-body" id="lcIoBody"></div>
+    <div class="lc-io-foot">
+     <span class="lc-io-note" id="lcIoNote"></span>
+     <button type="button" id="lcIoRun" class="lc-btn-primary">実行</button>
+    </div>
    </div>
    <div class="sc-float-foot lc-foot">
     <span class="lc-count" id="lcCount"></span>
@@ -243,9 +271,11 @@
   el.querySelector('#lcPresetSel').onchange=e=>applyPreset(e.target.value);
   el.querySelector('#lcPresetSave').onclick=savePreset;
   el.querySelector('#lcPresetDel').onclick=deletePreset;
-  el.querySelector('#lcExport').onclick=exportPreset;
-  el.querySelector('#lcImport').onclick=()=>el.querySelector('#lcImportFile').click();
-  el.querySelector('#lcImportFile').onchange=importPreset;
+  el.querySelector('#lcExport').onclick=()=>openIo('export');
+  el.querySelector('#lcImport').onclick=()=>openIo('import');
+  el.querySelector('#lcImportFile').onchange=pickIoFile;
+  el.querySelector('#lcIoClose').onclick=closeIo;
+  el.querySelector('#lcIoRun').onclick=runIo;
   el.querySelector('#lcFilter').addEventListener('input',()=>{renderOrigins();renderList()});
   /* まとめて出す/隠すは**いま絞り込んで見えている列だけ**に効かせる。
      見えていない列まで動くと、何が起きたのか画面から分からない。 */
@@ -387,7 +417,7 @@
    const changed=s.raw&&s.raw!==s.text;
    const o=originOf(k);
    return `
-   <div class="lc-item${k===picked?' is-picked':''}${draft.hidden.has(k)?' is-off':''}" data-key="${esc(k)}" data-origin="${o}">
+   <div class="lc-item${k===picked?' is-picked':''}${marked.has(k)?' is-marked':''}${draft.hidden.has(k)?' is-off':''}" data-key="${esc(k)}" data-origin="${o}">
     <label class="lc-vis" title="一覧に出すかどうか">
      <input type="checkbox" ${draft.hidden.has(k)?'':'checked'}></label>
     <span class="lc-grip" title="上下にドラッグして並べ替え">⠿</span>
@@ -419,7 +449,18 @@
       素のクリック(キーボード操作・自動化・支援技術)で選べなくなる。 */
    el.addEventListener('click',e=>{
     if(e.target.closest('.lc-vis'))return;
-    picked=k;renderList();renderDetail();
+    /* Ctrl/⌘で1つずつ、Shiftで範囲。**素のクリックは選び直し**——選んだ
+       つもりのない選択が残り続けるほうが厄介(§9.177)。 */
+    if(e.ctrlKey||e.metaKey){
+     if(marked.has(k))marked.delete(k);else marked.add(k);
+     if(marked.size===1)marked.forEach(x=>{picked=x});else picked=k;
+    }else if(e.shiftKey&&picked){
+     const ks=shownKeys();
+     const a=ks.indexOf(picked),b=ks.indexOf(k);
+     if(a>=0&&b>=0)ks.slice(Math.min(a,b),Math.max(a,b)+1).forEach(x=>marked.add(x));
+     picked=k;
+    }else{marked.clear();marked.add(k);picked=k}
+    renderList();renderDetail();
    });
    /* **行のどこを掴んでも並べ替えられる**。つまみは目印で、そこしか
       掴めない作りにすると「掴めない＝並べ替えられない」と受け取られる。
@@ -448,6 +489,12 @@
  function startReorder(ev,el,key){
   ev.preventDefault();ev.stopPropagation();
   const box=el.parentElement;
+  /* 掴んだ列が選択に入っていれば**選択全体を運ぶ**(§9.177)。入っていなければ
+     今までどおり1列だけ(選択は残す——掴み損ねただけかもしれない)。
+     運ぶ順は**画面に出ている順**で、選んだ順ではない。 */
+  const moving=(marked.size>=2&&marked.has(key))?draft.order.filter(k=>marked.has(k)):[key];
+  const movingEls=moving.map(k=>box.querySelector(`.lc-item[data-key="${CSS.escape(k)}"]`)).filter(Boolean);
+  movingEls.forEach(x=>x.classList.add('lc-dragging'));
   el.classList.add('lc-dragging');
   const mark=document.createElement('div');mark.className='lc-drop-mark';
   /* **掴んだものが指に付いてくる(ゴースト)。** 入る位置の線だけだと
@@ -458,6 +505,13 @@
   const ghost=el.cloneNode(true);
   ghost.className='lc-item lc-ghost';
   ghost.style.width=el.getBoundingClientRect().width+'px';
+  /* まとめて運んでいるときは**写しにも件数を出す**——1行ぶんの写ししか
+     出ないと「1列しか運んでいない」と読める(§9.170で仕掛一覧が踏んだ罠)。 */
+  if(moving.length>1){
+   const badge=document.createElement('b');
+   badge.className='lc-ghost-count';badge.textContent=`${moving.length}列`;
+   ghost.appendChild(badge);
+  }
   document.body.appendChild(ghost);
   const moveGhost=(x,y)=>{ghost.style.left=x+'px';ghost.style.top=y+'px'};
   const place=y=>{
@@ -475,13 +529,16 @@
   const onMove=e=>{beforeKey=place(e.clientY);moveGhost(e.clientX+14,e.clientY-10)};
   const onUp=()=>{
    document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);
-   mark.remove();ghost.remove();el.classList.remove('lc-dragging');
-   const o=draft.order,i=o.indexOf(key);
-   if(i>=0){
-    o.splice(i,1);
-    const at=beforeKey?o.indexOf(beforeKey):o.length;
-    o.splice(at<0?o.length:at,0,key);
-   }
+   mark.remove();ghost.remove();
+   movingEls.forEach(x=>x.classList.remove('lc-dragging'));
+   el.classList.remove('lc-dragging');
+   /* **まとめて抜いてから、落とした位置へまとめて挿す。** 1本ずつ動かすと
+      2本目以降の行き先が1本目の移動でずれる。 */
+   const o=draft.order;
+   const rest=o.filter(k=>!moving.includes(k));
+   const at=beforeKey?rest.indexOf(beforeKey):rest.length;
+   rest.splice(at<0?rest.length:at,0,...moving);
+   draft.order=rest;
    renderList();applyLive();
   };
   document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
@@ -501,7 +558,11 @@
  function renderCount(){
   const el=document.getElementById('lcCount');if(!el)return;
   const shown=draft.order.filter(k=>!draft.hidden.has(k)).length;
-  el.textContent=`${shown} / ${draft.order.length} 列`;
+  /* **選択中は件数を文字で出す**(§9.177)。行の色だけでは、何列選んだのか
+     数え直すことになる。 */
+  el.textContent=`${shown} / ${draft.order.length} 列`
+   +(marked.size>=2?`　／　${marked.size}列を選択中（そのままドラッグでまとめて移動）`:'');
+  el.classList.toggle('has-mark',marked.size>=2);
  }
 
  /* 日付時刻のよく使う形。**書き方を覚えなくても選べる**ようにするのが目的で、
@@ -948,6 +1009,7 @@
    formulas,
    locks:new Set((body.locks||[]).filter(k=>keys.includes(k)||formulas[k])),
   };
+  marked.clear();
   if(!draft.order.includes(picked))picked=draft.order.find(k=>!isVirtual(k))||draft.order[0]||'';
   renderOrigins();renderList();renderDetail();applyLive();
   const lost=new Set([...lostOrder,...w.lost,...n.lost,...f.lost,...r.lost]
@@ -998,33 +1060,193 @@
    showToast&&showToast('削除しました',p.name,2600);
   }catch(e){showToast&&showToast('削除できませんでした',e.message,5000)}
  }
- /* ファイルへの書き出し・読み込み。**対象(target)も一緒に書く**——
-    別の一覧のファイルを読み込んだときに気づけるようにするため。 */
- function exportPreset(){
-  const payload={kind:'wavelog-column-preset',version:1,target,
-                 savedAt:new Date().toISOString(),body:draftBody()};
-  const blob=new Blob([JSON.stringify(payload,null,1)],{type:'application/json'});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download=`列の設定_${target.replace(/[^\w一-龠ぁ-んァ-ヶー]+/g,'_')}.json`;
-  document.body.appendChild(a);a.click();
-  requestAnimationFrame(()=>{URL.revokeObjectURL(a.href);a.remove()});
+/* ---------- 列の設定の持ち出し・取り込み(§9.178) ----------
+    フィルタと同じ要望(「全てまたは各一覧単位で」)が列の設定にも来た。
+    **運ぶのは列レイアウトマスタの中身だけ**——並び・幅・表示名・書式・
+    読み替えルール名・計算式・幅固定。「名前を付けて登録した設定」
+    (列プリセットマスタ)は別の入れ物なので運ばない、と**画面に書く**
+    (黙って落とすと、取り込んだ側は登録が消えたと受け取る)。
+
+    **対象(target)ごとに1件**として運ぶ。対象は`list:<DB>:<表>`のように
+    画面が組み立てる文字列で、取り込む先の端末にその一覧が無いこともある
+    ——そのときも**書き込みは通す**(先に一覧を開かなくても設定だけ先に
+    配れる。当たらなければ次に開いたときに知らない列として無視される)。
+
+    **読み替えルールの中身は運ばない**(表示ルールマスタは別の入出力)。
+    ルール名だけが残るので、無いルール名＝読み替えなしとして静かに素通り
+    する(§9.88の約束どおり)。これも画面に書く。 */
+ const IO_KIND='wavelog-column-layouts';
+ const IO_KIND_ONE='wavelog-column-preset';    // 旧・単一対象の形も読める
+ let ioMode='export',ioAll=null,ioFile=null,ioScope='one',ioImportScope='one';
+ const ioEl=id=>document.getElementById(id);
+ function ioTargetLabel(t){
+  const s2=String(t||'');
+  if(s2.startsWith('list:'))return `仕掛一覧 ${s2.slice(5).replace(':',' / ')}`;
+  if(s2.startsWith('timeline:'))return `作業スケジュール表 ${s2.slice(9)}`;
+  if(s2.startsWith('print:'))return `スケジュールの印刷 ${s2.slice(6)}`;
+  if(s2.startsWith('report:'))return `帳票 ${s2.slice(7)}`;
+  if(s2==='records:list')return 'データ一覧';
+  return s2;
  }
- async function importPreset(e){
+ const ioCount=b=>((b&&b.order)||[]).length;
+ const ioHidden=b=>((b&&b.hidden)||[]).length;
+ function openIo(mode){
+  ioMode=mode;ioFile=null;
+  const box=ioEl('lcIo');if(!box)return;
+  box.hidden=false;
+  ioEl('lcIoTitle').textContent=mode==='export'?'列の設定を書き出す':'列の設定を取り込む';
+  ioEl('lcIoRun').textContent=mode==='export'?'ファイルへ書き出す':'取り込む';
+  renderIo();
+  if(mode==='export')loadIoAll();
+ }
+ function closeIo(){const box=ioEl('lcIo');if(box)box.hidden=true}
+ async function loadIoAll(){
+  try{
+   const r=await api('/api/column-layout-master?all=1');
+   ioAll=(r.items||[]).map(x=>({target:x.target,body:{order:x.order||[],widths:x.widths||{},
+     hidden:x.hidden||[],names:x.names||{},formats:x.formats||{},rules:x.rules||{},
+     formulas:x.formulas||{},locks:x.locks||[]}}));
+  }catch(e){ioAll=null;console.warn('保存済みの列設定を読めませんでした',e)}
+  renderIo();
+ }
+ function renderIo(){
+  const body=ioEl('lcIoBody'),note=ioEl('lcIoNote'),run=ioEl('lcIoRun');
+  if(!body)return;
+  if(ioMode==='export'){
+   /* いま画面で触っている下書きも運べるようにする——保存していない形を
+      別のPCへ渡したい場面があるので、「この一覧だけ」は**下書き**を書く。 */
+   const list=ioAll===null
+    ?'<div class="lc-io-loading">保存済みの設定を読み込んでいます…</div>'
+    :(ioAll.length
+      ?`<ul class="lc-io-list">${ioAll.map(x=>`<li><b>${esc(ioTargetLabel(x.target))}</b>`
+        +`<span>${ioCount(x.body)}列${ioHidden(x.body)?`（うち${ioHidden(x.body)}列は非表示）`:''}</span>`
+        +`<code>${esc(x.target)}</code></li>`).join('')}</ul>`
+      :'<div class="lc-io-empty">マスタに保存済みの列設定はまだありません（「この一覧だけ」なら今の下書きを書き出せます）。</div>');
+   body.innerHTML=`
+    <div class="lc-io-scope" role="radiogroup" aria-label="書き出す範囲">
+     <label><input type="radio" name="lcIoScope" value="one"${ioScope==='one'?' checked':''}>
+      <b>この一覧だけ</b><span>${esc(ioTargetLabel(target))}（いま画面に当たっている形）</span></label>
+     <label><input type="radio" name="lcIoScope" value="all"${ioScope==='all'?' checked':''}>
+      <b>すべての一覧</b><span>${ioAll===null?'…':`${ioAll.length}件`}（マスタに保存済みの形）</span></label>
+    </div>
+    ${ioScope==='all'?list:''}
+    <p class="lc-io-what"><b>運ぶもの</b>: 列の並び・幅（自動/手で決める/固定）・表示名・書式・
+     読み替えルールの<b>名前</b>・計算式。<br>
+     <b>運ばないもの</b>: 「名前を付けて登録」した設定（列プリセット）と、読み替えルールの中身
+     （表示ルールマスタ）。ルール名だけが残るので、取り込んだ先に同じ名前のルールが無ければ
+     読み替えなしとして扱われます。</p>`;
+   body.querySelectorAll('input[name=lcIoScope]').forEach(r=>{
+    r.onchange=()=>{ioScope=r.value;renderIo()};
+   });
+   note.textContent=ioScope==='all'
+    ?(ioAll===null?'読み込み中…':`${ioAll.length}件の対象を1つのファイルへ書き出します`)
+    :'この一覧ぶん（1件）を書き出します';
+   run.disabled=ioScope==='all'&&(ioAll===null||!ioAll.length);
+   return;
+  }
+  // ---- 取り込み ----
+  const items=ioFile?ioFile.items:null;
+  const hit=items?items.find(x=>x.target===target):null;
+  body.innerHTML=`
+   <div class="lc-io-pick">
+    <button type="button" id="lcIoFile" class="lc-side-btn">ファイルを選ぶ…</button>
+    <span class="lc-io-fname">${ioFile?esc(ioFile.name):'まだ選んでいません'}</span>
+   </div>
+   ${items?`<ul class="lc-io-list">${items.map(x=>`<li${x.target===target?' class="is-here"':''}>`
+     +`<b>${esc(ioTargetLabel(x.target))}</b><span>${ioCount(x.body)}列</span>`
+     +`<code>${esc(x.target)}</code>${x.target===target?'<i>この一覧</i>':''}</li>`).join('')}</ul>`:''}
+   ${items?`<div class="lc-io-scope" role="radiogroup" aria-label="取り込む範囲">
+     <label><input type="radio" name="lcIoImp" value="one"${ioImportScope==='one'?' checked':''}
+       ${hit?'':'disabled'}>
+      <b>この一覧へ当てる</b><span>${hit?'保存せずに画面へ当てます（気に入らなければ閉じれば戻ります）'
+        :'ファイルにこの一覧ぶんが入っていません'}</span></label>
+     <label><input type="radio" name="lcIoImp" value="all"${ioImportScope==='all'?' checked':''}>
+      <b>ファイルにある全部をマスタへ書き込む</b>
+      <span>${items.length}件。<b>今の設定は対象ごとに置き換わります</b>（元へは戻せません）</span></label>
+    </div>`:''}
+   <p class="lc-io-what">取り込むのは列の設定だけです。<b>この端末に無い列の設定は飛ばします</b>
+    （項目名が変わっていることに気づけるよう、飛ばした件数を必ず出します）。</p>`;
+  const fb=ioEl('lcIoFile');
+  if(fb)fb.onclick=()=>ioEl('lcImportFile').click();
+  body.querySelectorAll('input[name=lcIoImp]').forEach(r=>{
+   r.onchange=()=>{ioImportScope=r.value;renderIo()};
+  });
+  if(items&&!hit)ioImportScope='all';
+  note.textContent=items?(ioImportScope==='all'
+    ?`${items.length}件をマスタへ書き込みます`
+    :'この一覧へ当てます（保存は別操作）')
+   :'書き出したファイル(JSON)を選んでください';
+  run.disabled=!items;
+ }
+ async function pickIoFile(e){
   const file=e.target.files&&e.target.files[0];
   e.target.value='';
   if(!file)return;
   try{
    const data=JSON.parse(await file.text());
-   if(!data||data.kind!=='wavelog-column-preset'||!data.body)
-    throw Error('この一覧の設定ファイルではありません。');
-   if(data.target&&data.target!==target
-      &&!(await confirmModal(`このファイルは別の一覧（${data.target}）のものです。\n列名が違うと当たらない設定は捨てられます。読み込みますか？`)))return;
-   useBody(data.body,`ファイル「${file.name}」を読み込みました（保存するまでは元に戻せます）`);
-  }catch(err){showToast&&showToast('読み込めませんでした',err.message,5000)}
+   let items=null;
+   if(data&&data.kind===IO_KIND&&Array.isArray(data.items))
+    items=data.items.filter(x=>x&&x.target&&x.body).map(x=>({target:String(x.target),body:x.body}));
+   else if(data&&data.kind===IO_KIND_ONE&&data.body)
+    items=[{target:String(data.target||target),body:data.body}];
+   if(!items||!items.length)throw Error('列の設定ファイルではありません（中身が空です）。');
+   ioFile={name:file.name,items};
+   ioImportScope=items.some(x=>x.target===target)?'one':'all';
+  }catch(err){ioFile=null;showToast&&showToast('読み込めませんでした',err.message,5000)}
+  renderIo();
+ }
+ function ioDownload(payload,name){
+  const blob=new Blob([JSON.stringify(payload,null,1)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);a.download=name;
+  document.body.appendChild(a);a.click();
+  requestAnimationFrame(()=>{URL.revokeObjectURL(a.href);a.remove()});
+ }
+ const ioSafe=t=>String(t||'').replace(/[^\w一-龠ぁ-んァ-ヶー]+/g,'_');
+ async function runIo(){
+  if(ioMode==='export'){
+   const items=ioScope==='all'?(ioAll||[]):[{target,body:draftBody()}];
+   if(!items.length){showToast&&showToast('書き出すものがありません','',3000);return}
+   ioDownload({kind:IO_KIND,version:1,savedAt:new Date().toISOString(),items},
+    ioScope==='all'?`列の設定_すべて_${items.length}件.json`:`列の設定_${ioSafe(target)}.json`);
+   showToast&&showToast('書き出しました',`${items.length}件の対象を1つのファイルへ入れました`,3200);
+   closeIo();
+   return;
+  }
+  const items=ioFile&&ioFile.items;
+  if(!items)return;
+  if(ioImportScope==='one'){
+   const hit=items.find(x=>x.target===target);
+   if(!hit)return;
+   useBody(hit.body,`ファイル「${ioFile.name}」から読み込みました（保存するまでは元に戻せます）`);
+   closeIo();
+   return;
+  }
+  if(!(await confirmModal(`ファイルにある ${items.length}件の列設定をマスタへ書き込みますか？\n`
+    +`対象ごとに今の設定を置き換えます（元へは戻せません）。\n\n`
+    +items.slice(0,8).map(x=>'・'+ioTargetLabel(x.target)).join('\n')
+    +(items.length>8?`\n…ほか${items.length-8}件`:''))))return;
+  let ok=0,ng=0;
+  for(const x of items){
+   try{
+    await WL.columnLayout.save(x.target,{order:x.body.order||[],widths:x.body.widths||{},
+      hidden:x.body.hidden||[],names:x.body.names||{},formats:x.body.formats||{},
+      rules:x.body.rules||{},formulas:x.body.formulas||{},locks:x.body.locks||[]});
+    ok++;
+   }catch(e){ng++;console.warn('列設定の書き込みに失敗',x.target,e)}
+  }
+  /* 書き込んだ先の写しは捨てる——次に開いたときにマスタから取り直させる
+     (当てた覚えの無い古い形で描かれるのを防ぐ)。 */
+  WL.columnLayout.forget();
+  closeIo();
+  showToast&&showToast(`${ok}件を取り込みました`,ng?`${ng}件は書き込めませんでした（ログ・診断を確認してください）`
+                                                 :'一覧を開き直すと反映されます',5000);
+  const hit=items.find(x=>x.target===target);
+  if(hit)useBody(hit.body,'ファイルから取り込みました');
  }
 
  async function reset(){
+  marked.clear();
   /* 式で作った列は**残す**——「既定に戻す」で消えると、作った本人が
      作り直すことになる(見せ方の初期化と、列そのものの削除は別の操作)。 */
   draft={order:allKeys(),hidden:new Set(),widths:{},names:{},formats:{},rules:{},
@@ -1046,6 +1268,8 @@
             rules:{...(cur.rules||{})},formulas:{...(cur.formulas||{})},
             locks:[...(cur.locks||[])]};
   saved=false;
+  marked.clear();
+  closeIo();
   /* **どの対象の設定かを見出しに出す。** 同じ見た目のパネルを別の対象へ
      使い回すので、名前が変わらないと「いま何を触っているか」が分からない。 */
   const eb=document.getElementById('lcEyebrow'),ti=document.getElementById('lcTitle'),
@@ -1075,6 +1299,7 @@
     そのまま残ると「保存」の意味が無くなる**(何が保存済みか分からなくなる)。 */
  function close(){
   const el=document.getElementById(PANEL_ID);if(el)el.hidden=true;
+  closeIo();
   if(!saved&&original&&target){
    WL.columnLayout.stage(target,original);
    panelSrc.afterApply();

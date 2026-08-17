@@ -40,7 +40,7 @@ from ..repositories.master_repo import (
  filter_personal_set, filter_personal_has_any,
  SCHEDULE_COLUMN_TABLE, ensure_schedule_column_table, schedule_columns_for, set_schedule_columns,
  SCHEDULE_CONTENT_TABLE, ensure_schedule_content_table, schedule_content_items_for, set_schedule_content_items,
- COLUMN_LAYOUT_TABLE, ensure_column_layout_table, column_layout_for, set_column_layout,
+ COLUMN_LAYOUT_TABLE, ensure_column_layout_table, column_layout_for, column_layout_targets, set_column_layout,
  COLUMN_PRESET_TABLE, ensure_column_preset_table, column_presets, save_column_preset,
  delete_column_preset, normalize_column_preset,
  FORMAT_KINDS, normalize_format,
@@ -763,6 +763,15 @@ def access_permission_master_delete():
 @bp.get('/api/column-layout-master')
 def column_layout_master_get():
  try:
+  # all=1 は「保存されている全対象をまとめて返す」(§9.178。持ち出し用)。
+  # **画面はここでしか全対象を知れない**——targetは画面が組み立てる文字列で、
+  # どんな対象が保存済みかを推測する手掛かりがどこにも無い。
+  if str(request.args.get('all') or '').strip() in ('1','true','yes'):
+   path=DBS['MASTER']['path']
+   if not path.exists():return jsonify(ok=True,items=[])
+   with connect(path,True) as c:
+    items=[dict(target=t,**column_layout_for(c,t)) for t in column_layout_targets(c)]
+   return jsonify(ok=True,items=items)
   target=str(request.args.get('target') or '').strip()
   if not target:return jsonify(error='対象(target)を指定してください。'),400
   path=DBS['MASTER']['path']

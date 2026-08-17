@@ -68,16 +68,21 @@ let b=null;
            画面内:r.left>=0&&r.top>=0&&r.right<=innerWidth+1&&r.bottom<=innerHeight+1};
   });
   rec('内容欄の設定が仕掛一覧と同じパネルで開く',p.項目数>4,JSON.stringify(p.項目数));
+  /* §9.176で言葉を他の一覧へ揃えた（ボタンも「☰ 表示列」）。**どの表かを
+     出す**という要件は変わらないので、設備名まで入っていることを見る。 */
   rec('どの対象の設定かが見出しに出る',
-      /内容欄の項目/.test(p.見出し)&&p.見出し.includes(EQ)&&p.分野==='作業スケジュール',
+      /表示列の設定/.test(p.見出し)&&/作業スケジュール表/.test(p.見出し)
+      &&p.見出し.includes(EQ)&&p.分野==='作業スケジュール',
       `${p.分野} / ${p.見出し}`);
   /* **要点**: いま出している項目だけがチェック済み。 */
   rec('いま出している項目だけがチェック済みで開く',
       p.チェック済み>0&&p.チェック済み<p.項目数,`${p.チェック済み} / ${p.項目数}`);
   rec('内容欄に計算式は無いのでボタンごと消える',p.式ボタン隠れる===true);
   rec('保存した設定（プリセット・入出力）は使える',p.プリセット出る===true);
-  /* 分類は1つしか無いので「すべて＋元データ」の2つ。 */
-  rec('分類は対象に合わせて減らす',p.分類の数===2,`${p.分類の数}個`);
+  /* §9.176で固定列（区分・日付・操作など）も同じ並びへ乗ったので、分類は
+     「すべて＋元データ＋計算・操作」の3つ。**結合は使わないので出さない**
+     ——使わない分類を並べても覚える手間が増えるだけ（§9.120）。 */
+  rec('分類は対象に合わせて減らす（結合は出さない）',p.分類の数===3,`${p.分類の数}個`);
   rec('パネルは画面の中に開く',p.画面内);
 
   /* ---- 2) 右ペインは1項目ぶんの見え方を出す ---- */
@@ -100,23 +105,30 @@ let b=null;
   rec('見本に実データが出る',detail.見本に実データ,picked);
 
   /* ---- 3) 保存が2つのマスタへ振り分けられる ---- */
+  /* **内容欄の項目だけを外す**(§9.176)。同じ並びに固定列（`__cat__`等）が
+     混ざるようになったので、区別せず外すと「内容表示マスタの件数」と
+     食い違う（固定列は列レイアウトマスタ側の話）。 */
   const saved=await page.evaluate(async a=>{
-   const boxes=[...document.querySelectorAll('#lcList .lc-vis input')];
-   const on=boxes.filter(x=>x.checked);
+   const items=[...document.querySelectorAll('#lcList .lc-item')]
+     .filter(x=>!/^__/.test(x.dataset.key));
+   const on=items.filter(x=>x.querySelector('.lc-vis input').checked);
    if(on.length<2)return {前提なし:true};
-   on[on.length-1].click();                     // 1つ外す
+   on[on.length-1].querySelector('.lc-vis input').click();   // 内容の項目を1つ外す
    await new Promise(r=>setTimeout(r,400));
-   const want=boxes.filter(x=>x.checked).length;
+   const want=[...document.querySelectorAll('#lcList .lc-item')]
+     .filter(x=>!/^__/.test(x.dataset.key)&&x.querySelector('.lc-vis input').checked)
+     .map(x=>x.dataset.key);
    document.getElementById('lcSave').click();
    await new Promise(r=>setTimeout(r,1600));
    const m=await (await fetch('/api/schedule-content-master?equipment='+encodeURIComponent(a.eq))).json();
    WL.columnLayout.forget(a.target);
    const l=await WL.columnLayout.load(a.target);
-   return {出す項目:(m.items||[]).length,残したかった数:want,
+   return {出す項目:(m.items||[]).length,残したかった数:want.length,
+           一致:JSON.stringify((m.items||[]))===JSON.stringify(want),
            並び:(l.order||[]).length,隠す:(l.hidden||[]).length};
   },{eq:EQ,target:TARGET});
   rec('外した項目が内容表示マスタから消える',
-      saved.前提なし||saved.出す項目===saved.残したかった数,JSON.stringify(saved));
+      saved.前提なし||saved.一致===true,JSON.stringify(saved));
   rec('並び・幅などは列レイアウトマスタへ行く',
       saved.前提なし||(saved.並び>0&&saved.隠す>0),JSON.stringify(saved));
   /* タイムラインへ反映されること(保存しなくても当たるのが方針。§9.90) */
@@ -166,6 +178,8 @@ let b=null;
 
   /* ---- 4) 読み込みは今ある項目だけに当て、飛ばした件数を言う ---- */
   /* ファイル入力へ直接流し込む(実機と同じ経路)。 */
+  /* §9.178で「読み込み…」は入出力の帯（この一覧へ当てる／全部書き込む）に
+     なった。**ファイルを選ぶ→当てる**の2手を実機と同じ順で通す。 */
   const skip=await page.evaluate(async a=>{
    const el=document.getElementById('lcList');
    const have=[...el.querySelectorAll('.lc-item')].map(x=>x.dataset.key);
@@ -173,11 +187,18 @@ let b=null;
      body:{order:[have[0],'消えた項目A','消えた項目B',have[1]],hidden:[],
            widths:{[have[0]]:88,'消えた項目A':120},
            names:{[have[0]]:'テスト名'},formats:{},rules:{},formulas:{},locks:[]}};
+   document.getElementById('lcImport').click();
+   await new Promise(r=>setTimeout(r,300));
    const file=new File([JSON.stringify(payload)],'test.json',{type:'application/json'});
    const dt=new DataTransfer();dt.items.add(file);
    const input=document.getElementById('lcImportFile');
    input.files=dt.files;
    input.dispatchEvent(new Event('change',{bubbles:true}));
+   await new Promise(r=>setTimeout(r,600));
+   const one=document.querySelector('#lcIo input[name=lcIoImp][value=one]');
+   if(one&&!one.disabled){one.checked=true;one.dispatchEvent(new Event('change',{bubbles:true}))}
+   await new Promise(r=>setTimeout(r,300));
+   document.getElementById('lcIoRun').click();
    await new Promise(r=>setTimeout(r,1200));
    const foot=document.getElementById('lcFootNote');
    return {案内:(foot?foot.textContent:'').trim(),
@@ -204,8 +225,12 @@ let b=null;
    分類の数:document.querySelectorAll('.lc-origin-chip').length,
    列数:document.querySelectorAll('#lcList .lc-item').length,
   }));
-  rec('仕掛一覧側は今までどおりの見出し',
-      list.見出し==='表示列の設定'&&list.分野==='一覧の見せ方',JSON.stringify(list));
+  /* §9.176で**どの表かを見出しに出す**ようにした（利用者の指摘。同じパネルを
+     3画面で使い回すため）。仕掛一覧側も「表示列の設定（仕掛一覧：DB / 表）」。
+     分野・機能・列数は今までどおり。 */
+  rec('仕掛一覧側の見出しもどの表かを言う',
+      /^表示列の設定（仕掛一覧/.test(list.見出し)&&list.分野==='一覧の見せ方',
+      JSON.stringify(list));
   rec('仕掛一覧側は計算式が使える',list.式ボタン出る===true);
   rec('仕掛一覧側の分類は「すべて＋3分類」のまま',list.分類の数===4,`${list.分類の数}個`);
   await page.evaluate(()=>WL.listColumns.close());

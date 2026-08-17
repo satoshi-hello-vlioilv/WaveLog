@@ -85,13 +85,46 @@
      必須条件は毎回applyDefaultFiltersForから新しく導出し直されるものなので、
      保存対象からは除く。 */
   let activeFilterContextKey=null;
-  const activeFilterStateCache={};
+  /* ---- 適用中の条件は**端末に覚える**(§9.175) ----
+     以前はこの控えがメモリ(オブジェクト)だけだったため、**アプリを開き直すと
+     適用していた条件が丸ごと外れていた**(実機で報告)。一覧を切り替えたときは
+     戻るのに再起動では戻らない、という食い違いは「効いているのかどうか」を
+     利用者に確かめさせることになる。
+     **利用者ごとの入れ物に分ける**——同じPCを別の人が使うと相手の絞り込みが
+     当たってしまう(§9.172でデフォルト・鍵の印を個人単位へ移したのと同じ理由)。
+     利用者IDは`/api/whoami`から**後から届く**ので、**読み書きのたびに引く**
+     こと(起動時に1回だけ束縛すると、空のIDのまま固定される)。
+     鍵付きの必須条件は`applyDefaultFiltersFor`が毎回導出し直すので覚えない。 */
+  const ACTIVE_STORE='MeasurementFilterActiveV1';
+  const ACTIVE_MAX_CONTEXTS=80;
+  let activeAll=(()=>{try{const m=JSON.parse(localStorage.getItem(ACTIVE_STORE)||'{}');
+                           return (m&&typeof m==='object')?m:{}}catch(_){return {}}})();
+  function activeBucket(){
+    const uid=filterUserId();
+    if(!activeAll[uid]||typeof activeAll[uid]!=='object')activeAll[uid]={};
+    return activeAll[uid];
+  }
+  function writeActiveAll(){try{localStorage.setItem(ACTIVE_STORE,JSON.stringify(activeAll))}catch(_){}}
   function saveActiveFilterState(){
     if(activeFilterContextKey==null)return;
-    activeFilterStateCache[activeFilterContextKey]=S.genericFilters.filter(f=>!isLockedFilter(f)).map(f=>({...f}));
+    const keep=S.genericFilters.filter(f=>!isLockedFilter(f)).map(f=>({...f}));
+    const bucket=activeBucket();
+    /* 0件は**行ごと消す**——空配列を残すと、覚えている一覧の数だけが増えていく。 */
+    if(keep.length)bucket[activeFilterContextKey]=keep;else delete bucket[activeFilterContextKey];
+    const keys=Object.keys(bucket);
+    if(keys.length>ACTIVE_MAX_CONTEXTS)keys.slice(0,keys.length-ACTIVE_MAX_CONTEXTS).forEach(k=>{
+      if(k!==activeFilterContextKey)delete bucket[k];
+    });
+    writeActiveAll();
   }
   function restoreActiveFilterState(key){
-    return (activeFilterStateCache[key]||[]).map(f=>({...f}));
+    return (activeBucket()[key]||[]).map(f=>({...f}));
+  }
+  /* いま覚えている一覧の数。登録一覧モーダルの見出しで「どこに何が残って
+     いるか」を文字で出すために使う(隠したまま効かせない)。 */
+  function activeFilterMemoryCount(){return Object.keys(activeBucket()).length}
+  function forgetActiveFilterMemory(){
+    activeAll[filterUserId()]={};writeActiveAll();
   }
 
   function readLocalPresets(){try{return JSON.parse(localStorage.getItem(FILTER_STORE)||'[]')}catch(_){return []}}
@@ -770,6 +803,10 @@
   }
   function renderGenericFilterBar(){
     ensureGenericFilterBar();updateFilterColumns();renderActiveTokens();renderQuickFilters();
+    /* 条件が変わる経路は多い(追加・削除・全解除・登録フィルタの適用・
+       設定画面からのやり直し)。**全部がここを通る**ので、覚えるのも1箇所で
+       済ませる——経路ごとに書くと必ずどれかを書き忘れる。 */
+    saveActiveFilterState();
   }
 
   /* ---- サジェスト（再認・チャンク化・頻度順） ---- */
@@ -1285,6 +1322,26 @@
         `　自分だけ ${mineCount}件 / みんな ${forThis.length-mineCount}件`
         +`（${S.db||'-'} / ${S.table||'-'}）`
         +`　保存先: ${S.filterPresetSource==='master'?'master.sqlite3':'この端末（マスタ未接続）'}`));
+      /* **適用中の条件を覚えていることを書く**(§9.175)。黙って復元すると
+         「勝手に絞り込まれている」と読まれる。忘れさせる手立ても同じ場所に
+         置く——復元が邪魔なときに、条件を1つずつ外して回らずに済む。 */
+      const memo=activeFilterMemoryCount();
+      const note=document.createElement('span');
+      note.className='fp-memo';
+      note.textContent=memo?`　覚えた絞り込み ${memo}件`
+                           :'　絞り込みはこの端末に覚えます';
+      summary.append(note);
+      if(memo){
+        const btn=document.createElement('button');
+        btn.type='button';btn.className='fp-memo-clear';btn.textContent='覚えを消す';
+        btn.title='この端末に覚えている「適用中の条件」をすべて忘れます（登録フィルタは消えません）';
+        btn.onclick=async()=>{
+          if(!(await confirmModal(`この端末に覚えている「適用中の条件」${memo}件ぶんを忘れますか？\n登録フィルタそのものは消えません。今開いている一覧の条件はそのままです。`)))return;
+          forgetActiveFilterMemory();renderFilterPresetList();
+          showToast&&showToast('覚えを消しました','次に一覧を開いたときは条件なしで始まります',3000);
+        };
+        summary.append(btn);
+      }
     }
     const ordered=forThis;
     const loading=list.querySelector(':scope > .panel-loading');

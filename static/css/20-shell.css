@@ -225,6 +225,38 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 .lc-presets select{max-width:280px;height:var(--ctl-h-sm);font-size:var(--fs-sm)}
 .lc-presets .lc-preset-sep{flex:1 1 auto}
 .lc-presets button[disabled]{opacity:.45;cursor:not-allowed}
+/* ---------- 列の設定の持ち出し・取り込み(§9.178) ----------
+   **パネルの中の帯**として開く(モーダルを増やさない)。何が出て行くのか・
+   何が運ばれないのかを必ず文字で出す。 */
+.lc-io{border-top:1px solid var(--line);background:var(--surface);
+ max-height:46vh;display:flex;flex-direction:column;min-height:0}
+.lc-io-head{display:flex;align-items:center;gap:var(--gap-inline);
+ padding:var(--space-2) var(--space-4);background:var(--pale);border-bottom:1px solid var(--line-soft)}
+.lc-io-head b{color:var(--teal-dark);font-size:var(--fs)}
+.lc-io-head button{margin-left:auto}
+.lc-io-body{padding:var(--space-2) var(--space-4);overflow:auto;flex:1 1 auto;min-height:0}
+.lc-io-scope{display:flex;flex-direction:column;gap:var(--gap-tight);margin-bottom:var(--space-2)}
+.lc-io-scope label{display:flex;align-items:baseline;gap:var(--gap-inline);
+ font-size:var(--fs-sm);color:var(--ink-2);cursor:pointer}
+.lc-io-scope label b{color:var(--ink);white-space:nowrap}
+.lc-io-scope input[disabled]+b{opacity:.5}
+.lc-io-list{margin:0 0 var(--space-2);padding:0;list-style:none;
+ border:1px solid var(--line-soft);border-radius:var(--radius-xs);background:var(--surface-2)}
+.lc-io-list li{display:flex;align-items:baseline;gap:var(--gap-inline);
+ padding:2px var(--space-2);font-size:var(--fs-sm);border-bottom:1px solid var(--line-soft)}
+.lc-io-list li:last-child{border-bottom:0}
+.lc-io-list li.is-here{background:var(--pale)}
+.lc-io-list li span{color:var(--muted);font-size:var(--fs-micro)}
+.lc-io-list li code{margin-left:auto;color:var(--ink-soft);font-size:var(--fs-micro)}
+.lc-io-list li i{color:var(--teal-dark);font-weight:800;font-style:normal;font-size:var(--fs-micro)}
+.lc-io-what{margin:0;color:var(--muted);font-size:var(--fs-micro);line-height:1.5}
+.lc-io-empty,.lc-io-loading{padding:var(--space-2);color:var(--muted);font-size:var(--fs-sm)}
+.lc-io-pick{display:flex;align-items:center;gap:var(--gap-inline);margin-bottom:var(--space-2)}
+.lc-io-fname{color:var(--ink-2);font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lc-io-foot{display:flex;align-items:center;gap:var(--gap-inline);
+ padding:var(--space-2) var(--space-4);border-top:1px solid var(--line-soft);background:var(--surface-2)}
+.lc-io-note{flex:1 1 auto;color:var(--ink-2);font-size:var(--fs-sm)}
+.lc-io-foot button[disabled]{opacity:.45;cursor:not-allowed}
 /* 式で作る列(§9.111 ⑦)。**書いたそばから確かめられる**ことが要点で、
    式は書き間違えても一覧では空欄になるだけなので、ここで言わないと
    原因に辿り着けない。 */
@@ -403,6 +435,10 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
   /* 掴んでいる手応え。少し傾けて浮かせると「持ち上げている」ことが
      形で分かる(スケジュールの移動と同じ見え方に揃える)。 */
   transform:rotate(-1.2deg) scale(1.02);transform-origin:left center}
+ /* まとめて運んでいるときの件数。写しが1行ぶんしか出ないと「1列しか
+    運んでいない」と読める(§9.177)。 */
+ .lc-ghost-count{margin-left:var(--space-2);padding:0 var(--space-2);border-radius:var(--radius-pill);
+  background:var(--teal);color:#fff;font-size:var(--fs-micro);font-weight:800}
  /* ---------- 出どころの分類(§9.105) ----------
     **色だけで意味を伝えない**——分類名と件数を必ず文字で書き、色は
     見分けを速くするための補助に留める(色覚の差でも読める)。 */
@@ -443,6 +479,10 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  .lc-item:hover{background:var(--surface-2)}
  /* 選択中は**左の帯**で示す。面を塗るより、隣の行との差が静かに出る。 */
  .lc-item.is-picked{background:var(--pale);border-color:var(--teal);border-left-color:var(--teal)}
+ /* まとめて動かすために選んだ行(§9.177)。**件数は文字**(#lcCount)が出す
+    ので、ここは「どれを選んだか」だけを静かに示す。 */
+ .lc-item.is-marked{background:var(--pale);border-left-color:var(--teal-dark)}
+ .lc-item.is-marked.is-picked{border-color:var(--teal-dark)}
  .lc-item.is-off{background:var(--surface-2)}
  .lc-item.is-off .lc-name,.lc-item.is-off .lc-eg{opacity:.45}
  /* 掴んだ元の行は、そこに「空き」があると分かる程度に薄くする
@@ -647,4 +687,5 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  /* 右ペインは中身が増えても縦に流れるだけにする(パネルごと伸ばさない)。 */
  .lc-detail{overflow:auto;min-height:0}
  .lc-count{font-size:var(--fs-sm);color:var(--muted);white-space:nowrap}
+ .lc-count.has-mark{color:var(--teal-dark);font-weight:800}
 }

@@ -945,6 +945,17 @@ def column_layout_for(c,target):
  return {'order':order,'widths':widths,'hidden':hidden,'names':names,
          'formats':formats,'rules':rules,'formulas':formulas,'locks':locks}
 
+def column_layout_targets(c):
+ """保存されている対象(target)の一覧。**持ち出し・取り込み用**(§9.178)。
+
+ 対象は画面が組み立てる文字列(list:<DB>:<表> / timeline:<設備> / print:<設備> /
+ report:<設備> / records:list)で、サーバーは中身を解釈しない。並びは
+ 名前順——保存順は「最後に触った順」で、人が探すときの手掛かりにならない。"""
+ if COLUMN_LAYOUT_TABLE not in tables(c):return []
+ cur=c.cursor()
+ cur.execute(f'SELECT DISTINCT [対象] FROM [{COLUMN_LAYOUT_TABLE}] ORDER BY [対象]')
+ return [str(r[0] or '').strip() for r in cur.fetchall() if str(r[0] or '').strip()]
+
 def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=None,rules=None,
                       formulas=None,locks=None):
  """全置換方式(他の列マスタと同じ)。渡された順序がそのまま表示順になる。

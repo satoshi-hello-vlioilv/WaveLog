@@ -200,7 +200,11 @@
 .filter-preset-dialog small{color:#8fd4d4}
 .filter-preset-dialog>header button{font-size:var(--fs-lg);color:#fff;background:transparent;border:0}
 .filter-preset-body{display:flex;flex-direction:column;min-height:0;flex:1}
-.filter-preset-toolbar{display:flex;align-items:center;justify-content:space-between;gap:var(--gap-section);padding:var(--pad-card);background:#eef8f9;border-bottom:1px solid var(--line)}
+.filter-preset-toolbar{display:flex;align-items:center;justify-content:space-between;gap:var(--gap-section);padding:var(--pad-card);background:#eef8f9;border-bottom:1px solid var(--line);
+ /* **縮ませない・回り込ませる。** 窓が低いとflexの取り分がここから削られ、
+    中のボタンが帯からはみ出していた(§9.175で説明文が伸びて顕在化。
+    tests/test_fit.jsが検出)。縮む役は下の一覧(overflow:auto)が持つ。 */
+ flex:0 0 auto;flex-wrap:wrap}
 .filter-preset-toolbar span{color:#40606a;font-size:var(--fs-sm)}
 .filter-preset-toolbar button{background:var(--teal);color:#fff;border-color:var(--teal)}
 .filter-preset-list{flex:1;min-height:0;overflow:auto;padding:var(--pad-card);display:grid;gap:var(--space-2);align-content:start;position:relative}
@@ -219,6 +223,13 @@
 .filter-preset-item .fp-own.is-mine{border-color:var(--teal);background:var(--pale);color:var(--nav)}
 .filter-preset-item .fp-own:hover{border-color:var(--teal-dark);color:var(--nav)}
 .filter-preset-toolbar .fp-who{color:var(--nav)}
+/* 適用中の条件を端末に覚えていること(§9.175)。**状態は文字で言う**——
+   復元されたことに気づけないと「勝手に絞り込まれた」と読まれる。 */
+.filter-preset-toolbar .fp-memo{color:var(--muted)}
+.filter-preset-toolbar .fp-memo-clear{margin-left:var(--space-2);height:var(--ctl-h-xs);
+ padding:0 var(--space-2);font-size:var(--fs-micro);border:1px solid var(--line);
+ border-radius:var(--radius-xs);background:var(--surface);color:var(--ink-2);cursor:pointer}
+.filter-preset-toolbar .fp-memo-clear:hover{background:var(--surface-2);color:var(--ink)}
 .filter-preset-item .fp-conds{display:flex;flex-wrap:wrap;gap:var(--space-1)}
 .filter-preset-item .fp-actions{display:flex;align-items:center;gap:var(--gap-inline)}
 .filter-preset-item .fp-actions .apply{background:var(--teal);color:#fff;border-color:var(--teal)}

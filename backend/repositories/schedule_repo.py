@@ -143,6 +143,25 @@ def plan_add(c_share,equipment,kind,uid,position='end',lot_no='',inspection_no='
   fixed_max=int(cur.fetchone()[0] or 0)
   cur.execute('UPDATE [作業予定] SET [表示順]=[表示順]+1 WHERE [設備名]=? AND ([有効] IS NULL OR [有効]<>0) AND ([状態] IS NULL OR [状態]=?)',[equipment,PLAN_REORDERABLE_STATE])
   order=fixed_max+1
+ elif position.startswith('before:'):
+  # §9.179: 「カーソルがあっている位置へ入れる」。画面で追加してから
+  # 並べ替えAPIを叩く形にすると、追加と並べ替えの2往復のあいだに別のPCの
+  # 変更が挟まり得る(共有DBは1件ずつ取得→適用→反映する)。**入れる位置は
+  # 追加と同じ書込サイクルで決める**。
+  # 指定の行が見つからない/動かせない状態(着手・完了・取消)なら**末尾へ**
+  # 落とす——例外にすると、画面を開いたまま他のPCが着手した瞬間に
+  # 「追加できません」になる(入れたい位置が消えただけで、追加そのものは
+  # したい操作)。
+  ref=position.split(':',1)[1].strip()
+  order=None
+  if ref:
+   cur.execute('SELECT [表示順],[状態] FROM [作業予定] WHERE [予定ID]=? AND [設備名]=? AND ([有効] IS NULL OR [有効]<>0)',[ref,equipment])
+   row_ref=cur.fetchone()
+   if row_ref and (str(row_ref[1] or '') == PLAN_REORDERABLE_STATE):
+    order=int(row_ref[0] or 0)
+    cur.execute('UPDATE [作業予定] SET [表示順]=[表示順]+1 WHERE [設備名]=? AND ([有効] IS NULL OR [有効]<>0) AND ([状態] IS NULL OR [状態]=?) AND [表示順]>=?',
+                [equipment,PLAN_REORDERABLE_STATE,order])
+  if order is None:order=_next_plan_order(c_share,equipment)
  else:
   order=_next_plan_order(c_share,equipment)
  cur.execute('INSERT INTO [作業予定] ([設備名],[表示順],[種別],[ロット番号],[検査番号],[鋳造番号],[予定名称],[明細JSON],[固定開始日時],[見積分],[状態],[備考],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,-1,?,?,Now(),Now())',

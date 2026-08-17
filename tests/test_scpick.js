@@ -167,17 +167,30 @@ let b=null;
       !zone.hidden&&/選んだ3件をまとめて外します/.test(zone.text),zone.text.slice(0,60));
   rec('運んでいる行を全部そう見せる',zone.dragging===3,String(zone.dragging));
 
-  /* ---- 5) まとめて掴んでいる間は並べ替えない ---- */
+  /* ---- 5) まとめて掴んだままでも並べ替えられる(§9.177で§9.170を改訂) ----
+     以前は「動かせるのは掴んだ1行だけで、通り過ぎた位置に1行だけ置き去りに
+     なる」ため止めていた。**掴んでいる行をまとめて同じ位置へ挿し込む**
+     ようにしたので置き去りは起きない。利用者の要望は「スケジュール内で
+     データを並び替えたい時も複数選択してまとめて動かしたい」。 */
   const reorder=await page.evaluate(ids=>{
    const before=[...document.querySelectorAll('.sc-row-line')].map(r=>r.dataset.id);
-   const other=[...document.querySelectorAll('.sc-row-line')].find(r=>!ids.includes(r.dataset.id));
+   /* **落とす先は掴める行から選ぶ。** 完了・作業中の行には並べ替えの
+      配線が無いので、そこへ落としても何も起きない——以前の「並べ替えない」
+      という網は、実はここで空振りしていた(壊れていても通る)。 */
+   const other=[...document.querySelectorAll('.sc-row-line')]
+     .find(r=>!ids.includes(r.dataset.id)&&r.draggable);
    const rect=other.getBoundingClientRect();
    other.dispatchEvent(new DragEvent('dragover',{bubbles:true,dataTransfer:new DataTransfer(),
-     clientX:rect.left+5,clientY:rect.top+rect.height-2}));
+     clientX:rect.left+5,clientY:rect.top+1}));
    const after=[...document.querySelectorAll('.sc-row-line')].map(r=>r.dataset.id);
-   return JSON.stringify(before)===JSON.stringify(after);
+   const at=ids.map(i=>after.indexOf(i)).sort((a,b)=>a-b);
+   return {moved:JSON.stringify(before)!==JSON.stringify(after),
+           together:at[at.length-1]-at[0]===at.length-1,
+           beforeOther:at[at.length-1]<after.indexOf(other.dataset.id)};
   },made);
-  rec('まとめて掴んでいる間は並べ替えない',reorder===true,String(reorder));
+  rec('まとめて掴んだままでも並べ替えられる',reorder.moved===true,JSON.stringify(reorder));
+  rec('掴んだ行は隣り合ったまま落ちる先へ入る',
+      reorder.together===true&&reorder.beforeOther===true,JSON.stringify(reorder));
 
   /* ---- 6) 落とすとまとめて外れる（サーバーからも消える） ---- */
   await page.evaluate(()=>{
