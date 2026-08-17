@@ -219,6 +219,13 @@
 .filter-preset-item .fp-own.is-mine{border-color:var(--teal);background:var(--pale);color:var(--nav)}
 .filter-preset-item .fp-own:hover{border-color:var(--teal-dark);color:var(--nav)}
 .filter-preset-toolbar .fp-who{color:var(--nav)}
+/* 適用中の条件を端末に覚えていること(§9.175)。**状態は文字で言う**——
+   復元されたことに気づけないと「勝手に絞り込まれた」と読まれる。 */
+.filter-preset-toolbar .fp-memo{color:var(--muted)}
+.filter-preset-toolbar .fp-memo-clear{margin-left:var(--space-2);height:var(--ctl-h-xs);
+ padding:0 var(--space-2);font-size:var(--fs-micro);border:1px solid var(--line);
+ border-radius:var(--radius-xs);background:var(--surface);color:var(--ink-2);cursor:pointer}
+.filter-preset-toolbar .fp-memo-clear:hover{background:var(--surface-2);color:var(--ink)}
 .filter-preset-item .fp-conds{display:flex;flex-wrap:wrap;gap:var(--space-1)}
 .filter-preset-item .fp-actions{display:flex;align-items:center;gap:var(--gap-inline)}
 .filter-preset-item .fp-actions .apply{background:var(--teal);color:#fff;border-color:var(--teal)}

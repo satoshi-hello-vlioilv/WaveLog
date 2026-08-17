@@ -12,7 +12,10 @@
 /* 予定から外す受け皿(§9.116)を下端へ重ねるため、ここが位置の基準になる。
    **overflow:hiddenのまま**——帯は器の中に出したいので、はみ出させない。 */
 .sc-body{flex:1;min-height:0;display:flex;gap:0;overflow:hidden;position:relative}
-.sc-timeline{flex:1;min-width:0;overflow-y:auto;overflow-x:auto;padding:var(--space-1) var(--space-2);display:flex;flex-direction:column;gap:0}
+.sc-timeline{flex:1;min-width:0;overflow-y:auto;overflow-x:auto;padding:var(--space-1) var(--space-2);display:flex;flex-direction:column;gap:0;
+ /* カーソル位置の隙間(§9.179)を、**この器の座標**で置けるようにする
+    （relativeでないと .sc-body が基準になり、スクロールぶんだけずれる）。 */
+ position:relative}
 .sc-side{width:300px;flex-shrink:0;border-left:1px solid var(--line);background:#fff;overflow-y:auto;padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-4)}
 /* .sc-body/.sc-mode-toggle/.sc-board-windowと同じ既知の落とし穴(§9.9参照):
    自身のクラスでdisplay:flexを指定しているため、hidden属性だけでは隠れない
@@ -141,6 +144,13 @@
    帯にして「ここを押せば戻る」と分かる大きさにする(10pxの線に小さなボタンが
    浮いているだけだと、掴む所が分かりにくい)。 */
 .sc-split-wrap.sc-list-collapsed{grid-template-columns:0 26px 1fr}
+/* ---------- 仕掛一覧を右に置く(§9.179) ----------
+   要望は「開いたタイミングのデフォルト表示位置入れ替え」。**列の定義と
+   グリッドの区画を両方入れ替える**——片方だけだと、幅は入れ替わったのに
+   中身が元の側に残る。 */
+.sc-split-wrap.sc-swap{grid-template-columns:1fr 10px var(--sc-list-w,380px);
+ grid-template-areas:"panel filter filter" "panel toolbar toolbar" "panel divider list"}
+.sc-split-wrap.sc-swap.sc-list-collapsed{grid-template-columns:1fr 26px 0}
 .sc-split-divider{position:relative;cursor:col-resize;background:transparent}
 .sc-split-divider::before{content:'';position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--line);transform:translateX(-50%)}
 .sc-split-divider:hover,.sc-split-divider.dragging{background:var(--pale)}
@@ -253,32 +263,41 @@
  --row-ctl-h:min(var(--ctl-h-xs),var(--row-inner-h));
  font-size:var(--tbl-fs);
  display:grid;
- /* ハンドル/区分/作業可否/日付/時刻/勤務/残り/内容(項目ごと)/見積/実績/備考/操作
-    内容だけは項目数がマスタ次第で変わるので、--sc-content-cols へ
-    JS(applyTimelineContentColumns)が列の定義を差し込む(§9.88 段6)。
-    ここへ直接書かないこと——項目を足すたびにCSSを直す羽目になる。
+ /* 取っ手＋**全列**。列の並び・幅・出す出さないは列レイアウトマスタが
+    決めるので、トラックの定義は JS(applyTimelineContentColumns) が
+    --sc-cols へまとめて差し込む(§9.176)。
+    **ここへ直接書かないこと**——以前は区分・作業・日付…の10列をここに
+    直書きし、内容欄だけを --sc-content-cols で差し替えていた。そのため
+    その10列だけ掴んでも動かず・幅も変えられず・隠せない、という
+    「一部だけ流用できている」状態になっていた。
     (この注記に「アスタリスク2つ+スラッシュ」を書かないこと。コメントが
      そこで閉じてしまい、以降がCSSとして解釈されてルールごと壊れる。
-     実際にこれで内容の列が1列に潰れた。) */
- /* 区分は 62→74px。文字を本文(14px)へ上げた分、「▶ 作業中」が入り切らず
-    末尾が省略されていた(実測で4〜7pxはみ出し)。 */
- /* 1列目は掴む取っ手。まとめて外せる場面(§9.170)だけチェックを抱えるので
-    幅を持ち替える。**列そのものは足さない**——見出しと行が同じ定義を
-    共有しているのがこの表の土台で、2通り書くと片方だけ直した状態が作れる。 */
- grid-template-columns:var(--sc-handle-col,calc(18px * var(--ui-scale))) calc(74px * var(--ui-scale)) calc(44px * var(--ui-scale))
-  calc(50px * var(--ui-scale))
-  calc(112px * var(--ui-scale)) calc(58px * var(--ui-scale)) calc(88px * var(--ui-scale))
-  var(--sc-content-cols,minmax(calc(150px * var(--ui-scale)),1fr))
-  calc(62px * var(--ui-scale)) calc(88px * var(--ui-scale))
-  calc(112px * var(--ui-scale)) calc(148px * var(--ui-scale));
+     実際にこれで内容の列が1列に潰れた。)
+    1列目は掴む取っ手。まとめて動かせる／外せる場面(§9.170)だけチェックを
+    抱えるので幅を持ち替える。**列そのものは足さない**——見出しと行が同じ
+    定義を共有しているのがこの表の土台で、2通り書くと片方だけ直した状態が
+    作れる。
+    fallback は JS が動く前の一瞬だけ使う既定(区分〜操作の10列ぶん)。 */
+ grid-template-columns:var(--sc-handle-col,calc(18px * var(--ui-scale)))
+  var(--sc-cols,
+   calc(74px * var(--ui-scale)) calc(44px * var(--ui-scale)) calc(50px * var(--ui-scale))
+   calc(112px * var(--ui-scale)) calc(58px * var(--ui-scale)) calc(88px * var(--ui-scale))
+   minmax(calc(150px * var(--ui-scale)),1fr)
+   calc(62px * var(--ui-scale)) calc(88px * var(--ui-scale))
+   calc(112px * var(--ui-scale)) calc(148px * var(--ui-scale)));
  /* 列の間は --gap-tight(4px)。以前は8pxで、11本ぶんで88px を余白に使って
     いた。区分列も92→62pxへ詰めてあり、同じ幅で列が2つぶん多く入る。 */
  align-items:center;column-gap:var(--gap-tight);
  min-width:var(--sc-row-min,calc(1042px * var(--ui-scale)));
 }
-/* 内容の見出し。掴んで並べ替え、右端の取っ手で幅(一覧の見出しと同じ作法)。 */
+/* 列の見出し。掴んで並べ替え、右端の取っ手で幅、右クリックでメニュー
+   (一覧の見出しとまったく同じ作法。§9.176)。 */
 .sc-row-title-head{position:relative;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
  cursor:grab;user-select:none}
+/* まとめて動かすために選んだ列(§9.177)。**色だけで伝えない**——件数は
+   見出しの帯(#scColPickHint)が文字で出す。 */
+.sc-row-title-head.is-picked{background:var(--pale);color:var(--teal-dark);
+ box-shadow:inset 0 0 0 1px var(--teal)}
 .sc-row-title-head .col-resize{position:absolute;top:0;right:0;width:6px;height:100%;
  cursor:col-resize}
 .sc-row-title-head.col-dragging{opacity:.45}
@@ -287,6 +306,11 @@
 .sc-row-title-head.col-drop-before::before{left:-1px}
 .sc-row-title-head.col-drop-after::before{right:-1px}
 .sc-row-head{padding:2px var(--space-2) 3px;position:sticky;top:0;z-index:1;background:#f7fafb;font-size:var(--fs-micro);font-weight:800;color:#8a9aa0;border-bottom:1px solid var(--line)}
+/* 列を選んでいるときだけ出す案内。**探させない**——Ctrl/Shiftを知らないと
+   使えない操作は、無いのと同じ。 */
+.sc-col-pick-hint{position:sticky;top:0;z-index:2;display:block;padding:2px var(--space-2);
+ background:var(--pale);color:var(--teal-dark);font-size:var(--fs-micro);font-weight:800;
+ border-bottom:1px solid var(--teal)}
 /* **行の高さは内容で変わらない**(§9.88)。以前は min-height だったため、
    セルの中身が1pxでも高ければその行だけ伸びていた。行ごとに出るものが
    違う(開始ボタン・遅延バッジ・子ロットの折りたたみ・停止の分類など)ので、
@@ -364,6 +388,33 @@
 /* 見出し側も同じ位置で止める。止めないと、横スクロールしたとき
    ボタンだけが右端に残って「操作」の見出しが流れていってしまう。 */
 .sc-actions-head{position:sticky;right:0;z-index:2;background:#f7fafb;text-align:right;padding-left:var(--space-1)}
+/* ---------- 開いたときの表示の設定(§9.179) ---------- */
+.sc-layout-pop{position:absolute;top:var(--space-2);right:var(--space-4);z-index:var(--z-popover);
+ width:calc(340px * var(--ui-scale));padding:var(--space-3);
+ border:1px solid var(--line-mid);border-radius:var(--radius-sm);background:#fff;
+ box-shadow:0 12px 28px rgba(23,56,66,.22)}
+.sc-layout-sec{margin-bottom:var(--space-3)}
+.sc-layout-sec>b{display:block;margin-bottom:var(--space-1);color:var(--teal-dark);font-size:var(--fs-sm)}
+.sc-layout-sec label{display:flex;align-items:flex-start;gap:var(--gap-inline);
+ padding:2px 0;cursor:pointer}
+.sc-layout-sec label span{display:flex;flex-direction:column;min-width:0}
+.sc-layout-sec label b{color:var(--ink);font-size:var(--fs-sm)}
+.sc-layout-sec label small{color:var(--muted);font-size:var(--fs-micro);line-height:1.4}
+.sc-layout-note{margin:0;color:var(--muted);font-size:var(--fs-micro)}
+/* ---------- カーソル位置へ入れる隙間(§9.179) ----------
+   **何ができるかを書く**——押せるだけの空白を作らない。行の高さぶんの
+   隙間を開けて「ここに入る」ことを形で見せる。 */
+.sc-timeline.sc-insertable .sc-row-line{cursor:default}
+.sc-insert-ghost{display:flex;align-items:center;gap:var(--space-2);
+ /* **行の流れの中に挟む**(§9.179)。浮かせて重ねると下の行が1行ぶん
+    隠れて読めなくなる(実際にそうなった)。 */
+ flex:0 0 auto;min-height:var(--row-h);margin:2px 0;padding:0 var(--space-2);
+ border:2px dashed var(--teal);border-radius:var(--radius-xs);
+ background:var(--pale);color:var(--teal-dark);cursor:pointer}
+.sc-insert-ghost:hover{background:#d7f0f1;border-color:var(--teal-dark)}
+.sc-insert-mark{font-size:var(--fs-lg);font-weight:800;line-height:1}
+.sc-insert-text{display:flex;flex-direction:column;font-size:var(--fs-sm);font-weight:800}
+.sc-insert-text small{font-weight:600;color:var(--ink-2);font-size:var(--fs-micro)}
 /* 記号だけのボタンは**正方形**にする。幅の下限を --ctl-h-xs(行の外の
    ボタンの高さ)に置くと、行に合わせて縮んだ高さ(--row-ctl-h)との差が
    そのまま横長の歪みになる(§9.112)。 */
