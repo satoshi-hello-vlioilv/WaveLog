@@ -20,7 +20,9 @@ const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/no
 const B='http://127.0.0.1:5029';
 const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const EQ='テスト設備A';
-const TARGET='report:lot';
+/* 帳票の見せ方は**設備ごと**に覚える（§9.174）。フィクスチャのロットは
+   テスト設備Aなので、その1件だけを触って後片付けする。 */
+const TARGET='report:'+EQ;
 let b=null;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 const cleanup=()=>post('/api/column-layout-master',{target:TARGET,order:[],widths:{},hidden:[],
@@ -149,11 +151,11 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
   rec('幅は丸められない値で保存し、マスの数へ戻せる',
       Number(srv.widths&&srv.widths['基本情報'])>40,JSON.stringify(srv.widths));
   const reread=await page.evaluate(()=>{
-   WL.columnLayout.forget('report:lot');
-   return WL.columnLayout.load('report:lot').then(()=>{
+   WL.columnLayout.forget('report:テスト設備A');
+   return WL.columnLayout.load('report:テスト設備A').then(()=>{
     const el=document.querySelector('[data-rp-block="基本情報"]');
     if(typeof renderReport==='function'){}
-    return WL.columnLayout.width('report:lot','基本情報');
+    return WL.columnLayout.width('report:テスト設備A','基本情報');
    });
   });
   rec('読み直しても幅が残る（既定へ戻らない）',Number(reread)>40,String(reread));
@@ -168,7 +170,7 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
      ここで固定するのは**既定がまとめであること**と**往復できること**。
      ========================================================== */
   await cleanup();
-  await page.evaluate(()=>{WL.columnLayout.forget('report:lot')});
+  await page.evaluate(()=>{WL.columnLayout.forget('report:テスト設備A')});
   await page.click('.record-list-row .report').catch(()=>{});
   await page.waitForSelector('#reportContent .rp-blocks',{timeout:20000});
   await settle(page);
