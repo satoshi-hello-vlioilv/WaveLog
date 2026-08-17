@@ -116,7 +116,7 @@
    </div>`;
   const grid=$id('grid');grid?.parentNode?.insertBefore(panel,grid);
   /* 配置設定は**描く前に読む**（読めなくても既定の並びで紙は出る）。 */
-  WL.columnLayout.load(RP_LAYOUT_TARGET).catch(()=>{});
+  WL.columnLayout.load(rpTarget()).catch(()=>{});
   const search=$id('reportSearch');if(search)search.oninput=()=>{rpState.query=search.value;renderLotList()};
   const sort=$id('reportSort');if(sort)sort.onchange=()=>{rpState.sort=sort.value;renderLotList()};
   $id('reportPrint').onclick=printReport;$id('reportPdf').onclick=printReport;
@@ -479,11 +479,18 @@
  }
  /* 条番号を軸にした表を1枚組み立てる。**まとめも分解も同じ関数**が書く
     ——別々に持つと、片方だけ直した状態が作れる（実際に何度も踏んだ罠）。 */
- function measTableHtml(x,groups,from,to){
+ function measTableHtml(x,groups,from,to,blockKey){
   const s=x.settings||{},actual=Math.max(1,Math.min(40,+s.horizontalCount||1));
   const {headIdx,tailIdx,headLabel,tailLabel}=lengthLabels(s),tol=toleranceRangeLocal(x,'width');
   const label=c=>c.kind?c.c:(c.c==='頭'?headLabel:c.c==='尾'?tailLabel:c.c);
   const flat=[];groups.forEach(gr=>rpMeasVisibleCols(gr.g).forEach(c=>flat.push({gr,c})));
+  /* 列幅は**指定があるものだけ**colgroupで固定し、残りは今までどおり中身なり
+     （§9.174。既定はオートフィットで、必要な列だけ手で決める）。 */
+  const colName=f=>`${f.gr.g}${f.c.c?':'+f.c.c:''}`;
+  const widths=['条番号','ロット№'].map(n=>rpColWidth(blockKey,n))
+    .concat(flat.map(f=>rpColWidth(blockKey,colName(f))));
+  const colgroup=widths.some(w=>w>0)
+   ?`<colgroup>${widths.map(w=>`<col${w?` style="width:${w}px"`:''}>`).join('')}</colgroup>` : '';
   const head=`<thead><tr><th rowspan="2">条番号</th><th rowspan="2">ロット№</th>`
    +groups.map(gr=>{const n=rpMeasVisibleCols(gr.g).length;
      return n===1&&!rpMeasVisibleCols(gr.g)[0].c?`<th rowspan="2">${esc(gr.g)}</th>`
@@ -507,16 +514,41 @@
   };
   let prev=null,body='';
   for(let col=from;col<to;col++){const r=rowHtml(col,prev);body+=r.html;prev=r.key}
-  return `<table class="rp-dim-table rp-wide-table">${head}<tbody>${body}</tbody></table>`;
+  /* **行列入れ替え**（§9.174、利用者の指示「縦横表の構成方法行列入れ替えなど、
+     パターン組み合わせもできるように」）。条数が少なく項目が多いロットでは、
+     こちらのほうが紙の面積を使い切れる。組み立ては同じ材料を使い、並べる
+     向きだけを変える——別の関数にすると、片方だけ直した状態が作れる。 */
+  if(rpTransposed(blockKey)){
+   const cols=[];for(let col=from;col<to;col++)cols.push(col);
+   const trHead=`<thead><tr><th>項目</th>${cols.map(c=>`<th>${c+1}</th>`).join('')}</tr></thead>`;
+   const s2=x.settings||{},act=Math.max(1,Math.min(40,+s2.horizontalCount||1));
+   const {headIdx:hi,tailIdx:ti}=lengthLabels(s2),tol2=toleranceRangeLocal(x,'width');
+   const trBody=flat.map(({gr,c})=>{
+    const name=`${gr.g}${c.c?' '+label(c):''}`;
+    const tds=cols.map(col=>{
+     if(col>=act)return '<td></td>';
+     if(c.kind){
+      const ctx=widthRowContext(x,col,tol2),r=ctx.range||tol2;
+      return `<td>${r?fmtDimSafe(r[c.kind==='low'?0:1],2):''}</td>`;
+     }
+     return `<td>${esc(measAt(x,c.f,c.li==='head'?hi:ti,col)||'-')}</td>`;
+    }).join('');
+    return `<tr><th class="rp-collot">${esc(name)}</th>${tds}</tr>`;
+   }).join('');
+   return `<table class="rp-dim-table rp-wide-table rp-transposed">${trHead}<tbody>${trBody}</tbody></table>`;
+  }
+  return `<table class="rp-dim-table rp-wide-table">${colgroup}${head}<tbody>${body}</tbody></table>`;
  }
  /* 表の本体。40条ぶんの枠は旧帳票と同じで、A4横のときだけ左右へ割る
     （高さが210mmしかなく、1本で積むと実測59mmはみ出す）。 */
- function measSectionHtml(x,title,note,groups){
+ function measSectionHtml(x,title,note,groups,blockKey){
   if(!groups.length)return '';
-  const landscape=rpOrientation==='landscape';
+  /* 行列を入れ替えたときは左右に割らない（横に40条ぶん並ぶので、割ると
+     かえって読みにくい）。 */
+  const landscape=rpOrientation==='landscape'&&!rpTransposed(blockKey);
   const tables=landscape
-   ?`<div class="rp-wide-split">${measTableHtml(x,groups,0,20)}${measTableHtml(x,groups,20,40)}</div>`
-   :measTableHtml(x,groups,0,40);
+   ?`<div class="rp-wide-split">${measTableHtml(x,groups,0,20,blockKey)}${measTableHtml(x,groups,20,40,blockKey)}</div>`
+   :measTableHtml(x,groups,0,40,blockKey);
   return `<section class="rp-section"><h3>${esc(title)}</h3>`
    +(note?`<p class="rp-note">${note}</p>`:'')
    +`<div class="rp-wide-wrap">${tables}</div></section>`;
@@ -528,12 +560,12 @@
   const {tailLabel}=lengthLabels(s);
   const landscape=rpOrientation==='landscape';
   const note=`巻ずれ・テレスコープは ${esc(tailLabel)} のデータのみ対象です。横割数（${actual}条）を超える行は控え欄として空欄にしています。幅ロット分割時は条ごとのロット№・目標幅(公差)を条番号の右に表示します。${landscape?'A4横のため1〜20条と21〜40条を左右に分けています。':''}`;
-  return measSectionHtml(x,`測定データ（${groups.map(g=>g.g).join('・')}）`,note,groups);
+  return measSectionHtml(x,`測定データ（${groups.map(g=>g.g).join('・')}）`,note,groups,RP_MEAS_COMBINED);
  }
  function measSoloSection(x,g){
   const gr=RP_MEAS_GROUP_BY.get(g);
   if(!gr||rpMeasSolo(g)!==true||!rpMeasVisibleCols(g).length)return '';
-  return measSectionHtml(x,`測定データ（${g}）`,'',[gr]);
+  return measSectionHtml(x,`測定データ（${g}）`,'',[gr],rpMeasSoloKey(g));
  }
  /* 丈(1..N)別の長さ・肉厚・揃い判定。旧帳票の「丈」テーブル（長さ/肉厚/揃い/外観/備考）に対応。
     「外観」列は旧帳票でも実データが書き込まれない控え欄のため、空欄のまま残す。
@@ -584,13 +616,31 @@
     紙は12マスの粗いグリッド（§9.135「可能な限り粗いグリッド」）。選べる幅は
     5つだけ（1/4・1/3・1/2・2/3・全幅）で、細かくするほど左端の候補が増えて
     そろって見えなくなる。 */
- const RP_LAYOUT_TARGET='report:lot';
+ /* ---------- 帳票の見せ方は設備ごとに覚える(§9.174、利用者の指示) ----------
+    設備が変われば紙に載せたいものが変わる（測る項目も条数も違う）。
+    `timeline:<設備>`・`print:<設備>`と同じ作法で**設備ごとの1件**にする。
+    設備が分からないレコードは`report:共通`へ落とす（保存先が無いと、
+    触っても次に開いたとき戻る）。
+    **描いている最中はその紙の設備で固定する**——一括印刷は複数ロットを
+    続けて流し込むので、「今選んでいるロット」を見に行くと途中から別の
+    設備の設定で描かれる。 */
+ const RP_LAYOUT_PREFIX='report:';
+ let rpActiveTarget=null;
+ function rpEquipmentOf(x){
+  return String((x&&(x.settings?.registeredEquipment||x.registeredEquipment
+    ||x.snapshot?.registeredEquipment))||'').trim();
+ }
+ function rpTargetOf(x){return RP_LAYOUT_PREFIX+(rpEquipmentOf(x)||'共通')}
+ function rpTarget(){return rpActiveTarget||rpTargetOf(rpCurrentLot())}
  const RP_COLS=12;
  /* 1行＝1ブロック。`html(x)`が''を返したら**このロットには中身が無い**。
     紙には出さず、組み換え中だけ「中身なし」と分かる形で置く（黙って消えると
     自分で隠したのかデータが無いのか分からない）。 */
  const RP_BLOCKS=[
-  {k:'ラベル貼付スペース',span:3,
+  /* **中身が無くても枠として意味がある塊は、既定の高さを持つ**（§9.174）。
+     ラベルを貼る場所は「何も書いていないこと」が中身なので、自動高さに
+     任せると1行ぶんに潰れて役に立たない（実機で指摘された）。 */
+  {k:'ラベル貼付スペース',span:3,h:112,
    html:()=>`<div class="rp-label-area" aria-hidden="true"><span class="rp-label-caption">ラベル貼付スペース</span></div>`},
   {k:'基本情報',span:6,html:x=>{const b=x.basic||{};
    return reportSection('基本情報',[['ロット番号',b.lotNo],['検査番号',b.inspectionNo],['鋳造番号',b.castingNo],['オーダー番号',b.orderNo],['引当番号',b.allocationNo],['用途コード',b.purposeCode],['用途名',b.purposeName],['取引先',b.customer],['納入先',b.delivery]])}},
@@ -640,7 +690,7 @@
  /* 並び。**知らない名前は捨て、登録済みで並びに無いものは末尾へ**（一覧の
     `listColumnKeys`と同じ作法。項目が増えても設定が壊れない）。 */
  function rpBlockKeys(){
-  const l=WL.columnLayout.get(RP_LAYOUT_TARGET),seen=new Set(),out=[];
+  const l=WL.columnLayout.get(rpTarget()),seen=new Set(),out=[];
   (l.order||[]).forEach(k=>{if(RP_BLOCK_BY_KEY.has(k)&&!seen.has(k)){seen.add(k);out.push(k)}});
   RP_BLOCKS.forEach(b=>{if(!seen.has(b.k)){seen.add(b.k);out.push(b.k)}});
   return out;
@@ -650,7 +700,7 @@
     同じ測定値が2箇所に並ぶ。保存前は「まとめだけ」を既定にする。 */
  function rpInitialHidden(){return RP_MEAS_GROUPS.map(gr=>rpMeasSoloKey(gr.g))}
  function rpHiddenSet(){
-  const l=WL.columnLayout.get(RP_LAYOUT_TARGET);
+  const l=WL.columnLayout.get(rpTarget());
   return new Set((l.order||[]).length?(l.hidden||[]):rpInitialHidden());
  }
  /* ---------- 紙のマス数(§9.173) ----------
@@ -662,7 +712,7 @@
  const RP_GRID_KEY='__グリッド__';
  const RP_GRIDS=[12,8,6,4];
  function rpGrid(){
-  const raw=Math.round(Number(WL.columnLayout.width(RP_LAYOUT_TARGET,RP_GRID_KEY))||0);
+  const raw=Math.round(Number(WL.columnLayout.width(rpTarget(),RP_GRID_KEY))||0);
   const v=Math.round(raw/RP_SPAN_UNIT);
   return RP_GRIDS.includes(v)?v:RP_COLS;
  }
@@ -688,7 +738,7 @@
     近い規格へ寄せて必ず並ぶ形にする。 */
  function rpSpan(k){
   const g=rpGrid();
-  const raw=Math.round(Number(WL.columnLayout.width(RP_LAYOUT_TARGET,k))||0);
+  const raw=Math.round(Number(WL.columnLayout.width(rpTarget(),k))||0);
   const v=Math.round(raw/RP_SPAN_UNIT);
   /* 保存値は**12マスのときの数**として持つ（マス数を変えても意味が変わらない
      ように、読むときに今のマス数へ割り付け直す）。 */
@@ -697,12 +747,38 @@
  }
  /* 保存する数は12マス基準へ戻す（上のコメント参照）。 */
  function rpSpanFromGrid(v){return Math.max(1,Math.min(RP_COLS,Math.round(v*RP_COLS/rpGrid())))}
+ /* ---------- 高さと列幅(§9.174) ----------
+    どちらも**列レイアウトマスタの`widths`**へ、接頭辞つきのキーで入れる
+    （`高さ:<塊>` / `列幅:<塊>:<列>`）。`widths`はpxとして40〜900へ丸められる
+    ので、pxで持つものはそのまま入る。**新しい保存先を作らない**——帳票の
+    見せ方は全部この1件に載っている（§9.169）。
+    ブロックのキーではないので`rpBlockKeys()`は拾わない（`__グリッド__`と同じ）。 */
+ const RP_H_MIN=40,RP_H_MAX=900;
+ const rpHeightKey=k=>`高さ:${k}`;
+ const rpColWKey=(k,c)=>`列幅:${k}:${c}`;
+ function rpDefaultHeight(k){return (RP_BLOCK_BY_KEY.get(k)||{}).h||0}
+ /* 0＝中身なり（オートフィット）。**既定を持つ塊はその高さから始める**。 */
+ function rpHeight(k){
+  const raw=Math.round(Number(WL.columnLayout.width(rpTarget(),rpHeightKey(k)))||0);
+  if(raw>=RP_H_MIN)return Math.min(RP_H_MAX,raw);
+  return rpDefaultHeight(k);
+ }
+ function rpColWidth(k,c){
+  const raw=Math.round(Number(WL.columnLayout.width(rpTarget(),rpColWKey(k,c)))||0);
+  return raw>=RP_H_MIN?Math.min(RP_H_MAX,raw):0;   /* 0＝オートフィット */
+ }
+ /* 表示パターン（そのまま／行列入れ替え）。`formats`は「値の整え方」の欄なので、
+    帳票では「この塊の組み立て方」を持たせる。**hidden/widthsへ混ぜない**
+    （あちらは出す出さないと寸法で、意味が違う）。 */
+ function rpPattern(k){return String((WL.columnLayout.get(rpTarget()).formats||{})[k]||'')}
+ function rpTransposed(k){return rpPattern(k)==='転置'}
  /* 帳票本体のHTML生成。一括印刷（複数ロットをまとめて別ページへ流し込む）でも
     同じHTMLを使うため、単一プレビューへの書き込みとは分離してある。
     `arranging`が真のときだけ、ブロックごとの操作帯を差し込む——**紙には
     絶対に出さない**ので、印刷経路（`arranging`を渡さない）では組み立て自体を
     しない（CSSで隠すやり方だと、隠し忘れがそのまま紙に出る）。 */
  function reportHtml(x,arranging){
+  rpActiveTarget=rpTargetOf(x);      /* この紙は最後までこの設備の設定で描く */
   const b=x.basic||{},s=x.settings||{};
   const equipment=s.registeredEquipment||x.registeredEquipment||x.snapshot?.registeredEquipment||'-';
   /* 帳票の頭は**「どこで・いつ・どのロットか」**（§9.161、利用者の指示
@@ -735,23 +811,29 @@
    ${reportBlocksHtml(x,arranging)}
   `;
  }
+ /* 組み換え中は「出さない塊」も並べる（何を外しているか分かるように）。
+    ただし**紙に収まるかを確かめるときは邪魔になる**ので、切り替えられる
+    ようにした（§9.174、利用者の指示「印刷レイアウト確認を編集中に行う上では、
+    非表示を隠す切り替えも必要」）。 */
+ let rpPaperView=false;
  function reportBlocksHtml(x,arranging){
   const hidden=rpHiddenSet();
+  const paper=arranging&&rpPaperView;      /* 組み換え中だが、紙のとおりに見る */
   const cells=rpBlockKeys().map(k=>{
    const bl=RP_BLOCK_BY_KEY.get(k);if(!bl)return '';
    const off=hidden.has(k);
-   if(off&&!arranging)return '';
+   if(off&&(!arranging||paper))return '';
    let body='';
    try{body=bl.html(x)||''}catch(e){body=''}   /* 1つ壊れても紙全体を落とさない */
-   if(!body&&!arranging)return '';
-   const span=rpSpan(k);
+   if(!body&&(!arranging||paper))return '';
+   const span=rpSpan(k),h=rpHeight(k);
    return `<div class="rp-block${off?' is-off':''}${body?'':' is-empty'}" data-rp-block="${esc(k)}"`
-    +` style="grid-column:span ${span}"${arranging?' draggable="true"':''}>`
-    +(arranging?rpBlockBarHtml(k,span,off,!body):'')
-    +(body||(arranging?'<p class="rp-block-empty">このロットにはこの内容がありません（紙には出ません）。</p>':''))
+    +` style="grid-column:span ${span}${h?`;min-height:${h}px`:''}"${(arranging&&!paper)?' draggable="true"':''}>`
+    +((arranging&&!paper)?rpBlockBarHtml(k,span,off,!body):'')
+    +(body||((arranging&&!paper)?'<p class="rp-block-empty">このロットにはこの内容がありません（紙には出ません）。</p>':''))
     +'</div>';
   }).join('');
-  return `<div class="rp-blocks${arranging?' is-arranging':''}" style="--rp-grid:${rpGrid()}">${cells}</div>`;
+  return `<div class="rp-blocks${(arranging&&!paper)?' is-arranging':''}" style="--rp-grid:${rpGrid()}">${cells}</div>`;
  }
  /* 組み換え中だけ出る操作帯。**押した結果がその場の紙に出る**のがこの機能の
     値打ちなので、確認を挟まず即座に当てる（保存するまでは戻せる）。 */
@@ -793,7 +875,37 @@
     する」）。幅は選べるままにして、**何を落とせるか**をその場に出す。
     判定は描いたあとの実寸で行う——列の数や文字数から見積もると、表示サイズ・
     紙の向き・ロットごとの列数で必ずずれる。 */
+ /* **紙に収まっているかを実寸で言う**（§9.174）。用紙はmm固定なので、
+    中身の高さと刷れる高さを比べれば何枚になるかまで言える。**見た目の
+    拡大率(--rp-scale)を打ち消してから測る**——倍率を掛けたまま比べると、
+    表示を縮めただけで「収まった」ことになる。 */
+ function rpUpdatePageFit(){
+  const el=$id('rpPageFit');if(!el)return;
+  const page=document.querySelector('.rp-page');
+  if(!page){el.textContent='';return}
+  /* **中身の下端で測る。** 用紙は`min-height:297mm`なので`scrollHeight`は
+     常に用紙いっぱいになり、「残り0mm」としか言えない（実際にそうなった）。 */
+  const scale=Number(getComputedStyle(page).getPropertyValue('--rp-scale'))||1;
+  const blocks=page.querySelector('.rp-blocks');
+  const pr=page.getBoundingClientRect();
+  const last=[...page.querySelectorAll('.rp-block')].reduce((m,b)=>Math.max(m,b.getBoundingClientRect().bottom),
+    blocks?blocks.getBoundingClientRect().top:pr.top);
+  const padPx=(pr.height/ (rpOrientation==='landscape'?210:297))*8;   /* padding 8mm */
+  const inner=(last-pr.top)/(scale||1)+padPx/(scale||1);
+  const avail=(pr.height/(scale||1));
+  if(!avail){el.textContent='';return}
+  const over=inner-avail;
+  const mm=v=>Math.round(v/(avail/(rpOrientation==='landscape'?210:297)));
+  if(over<=1){
+   el.className='rp-page-fit is-ok';
+   el.textContent=`A4${rpOrientation==='landscape'?'横':'縦'}1枚に収まっています（残り約${Math.max(0,mm(avail-inner))}mm）`;
+  }else{
+   el.className='rp-page-fit is-over';
+   el.textContent=`A4${rpOrientation==='landscape'?'横':'縦'}1枚に収まりません（約${mm(over)}mm超過・${Math.ceil(inner/avail)}枚になります）`;
+  }
+ }
  function rpMarkOverflow(host){
+  rpUpdatePageFit();
   host.querySelectorAll('[data-rp-block]').forEach(el=>{
    /* **表だけを見る。** 節そのものを測ると、枠線や余白の丸めで1〜2px
       はみ出した扱いになり、入っている塊にまで案内が出る（実際に出た）。 */
@@ -812,6 +924,115 @@
   });
  }
 
+ /* ---------- 塊を大きく開いて決める(§9.174) ----------
+    幅・高さ・行列・列幅を1枚で決める。**左に実物、右に決めること**——
+    触った結果がその場で見えないと、数字を入れても当たっているか分からない。 */
+ function rpBlockColumns(k){
+  const groups=rpBlockMeasGroups(k);
+  if(!groups.length)return [];
+  const out=[{n:'条番号'},{n:'ロット№'}];
+  groups.forEach(gr=>rpMeasVisibleCols(gr.g).forEach(c=>out.push({n:`${gr.g}${c.c?':'+c.c:''}`})));
+  return out;
+ }
+ function ensureBlockEditor(){
+  let m=$id('rpBlockModal');if(m)return m;
+  m=document.createElement('div');m.className='record-modal';m.id='rpBlockModal';m.hidden=true;
+  m.innerHTML=`<div class="settings-dialog rp-block-dialog" role="dialog" aria-modal="true">
+    <header><div><small>REPORT BLOCK</small><h2 id="rpBlockTitle">塊</h2></div>
+     <button id="rpBlockClose" type="button" aria-label="閉じる">×</button></header>
+    <div class="rp-block-edit">
+     <div class="rp-block-preview" id="rpBlockPreview"></div>
+     <div class="rp-block-form" id="rpBlockForm"></div>
+    </div></div>`;
+  document.body.append(m);
+  $id('rpBlockClose').onclick=()=>{m.hidden=true};
+  m.addEventListener('click',e=>{if(e.target===m)m.hidden=true});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!m.hidden)m.hidden=true},true);
+  return m;
+ }
+ let rpEditKey=null;
+ function openBlockEditor(k){
+  rpEditKey=k;ensureBlockEditor().hidden=false;renderBlockEditor();
+ }
+ function renderBlockEditor(){
+  const k=rpEditKey,m=$id('rpBlockModal');if(!k||!m||m.hidden)return;
+  const x=rpCurrentLot();if(!x)return;
+  const bl=RP_BLOCK_BY_KEY.get(k)||{};
+  $id('rpBlockTitle').textContent=k;
+  let body='';try{body=bl.html(x)||''}catch(e){body=''}
+  $id('rpBlockPreview').innerHTML=body
+   ||'<p class="rp-block-empty">このロットにはこの内容がありません。枠の大きさだけ決められます。</p>';
+  const grid=rpGrid(),span=rpSpan(k),h=rpHeight(k),def=rpDefaultHeight(k);
+  const cols=rpBlockColumns(k);
+  const canTurn=cols.length>0;
+  $id('rpBlockForm').innerHTML=`
+   <div class="rp-form-row"><span class="rp-form-label">幅</span>
+    <span class="rp-form-ctl">${rpSpanChoices().map(c=>
+      `<button type="button" data-e-span="${c.v}" class="${c.v===span?'is-on':''}">${esc(c.label)}</button>`).join('')}
+     <i class="rp-form-note">${span}/${grid}マス</i></span></div>
+   <div class="rp-form-row"><span class="rp-form-label">高さ</span>
+    <span class="rp-form-ctl">
+     <button type="button" data-e-h="-20">−</button>
+     <input type="number" id="rpEditH" value="${h||''}" placeholder="中身なり" min="${RP_H_MIN}" max="${RP_H_MAX}" step="4">
+     <button type="button" data-e-h="20">＋</button>
+     <button type="button" data-e-h="0">${def?`既定（${def}px）へ`:'中身なりに戻す'}</button>
+     <i class="rp-form-note">${def?'枠だけの塊なので、既定の高さを持っています。':'空にすると中身なりの高さになります。'}</i></span></div>
+   ${canTurn?`<div class="rp-form-row"><span class="rp-form-label">行と列</span>
+    <span class="rp-form-ctl">
+     <button type="button" data-e-turn="" class="${rpTransposed(k)?'':'is-on'}">縦＝条番号（今までの紙）</button>
+     <button type="button" data-e-turn="転置" class="${rpTransposed(k)?'is-on':''}">縦＝項目（入れ替える）</button>
+     <i class="rp-form-note">条が少なく項目が多いロットでは、入れ替えたほうが面積を使い切れます。</i></span></div>
+   <div class="rp-form-row rp-form-cols"><span class="rp-form-label">列幅</span>
+    <span class="rp-form-ctl">
+     ${cols.map(c=>`<label class="rp-col-w"><span>${esc(c.n)}</span>
+       <input type="number" data-e-col="${esc(c.n)}" value="${rpColWidth(k,c.n)||''}" placeholder="自動" min="${RP_H_MIN}" max="${RP_H_MAX}" step="4"></label>`).join('')}
+     <button type="button" data-e-colreset>全部オートフィットへ</button>
+     <i class="rp-form-note">空欄＝オートフィット（中身なり）。入れた列だけ固定します。</i></span></div>`:''}
+   <div class="rp-form-row"><span class="rp-form-label">紙に出す</span>
+    <span class="rp-form-ctl">
+     <button type="button" data-e-vis>${rpHiddenSet().has(k)?'出す':'出さない'}</button>
+     <i class="rp-form-note">${rpHiddenSet().has(k)?'いまは紙に出していません。':'いまは紙に出しています。'}</i></span></div>`;
+  const form=$id('rpBlockForm');
+  const w=()=>({...rpLayoutNow().widths});
+  form.querySelectorAll('[data-e-span]').forEach(b=>b.onclick=()=>{
+   rpStage({widths:{...w(),[k]:rpSpanStore(rpSpanFromGrid(Number(b.dataset.eSpan)))}});renderBlockEditor();
+  });
+  form.querySelectorAll('[data-e-h]').forEach(b=>b.onclick=()=>{
+   const d=Number(b.dataset.eH),cur=rpHeight(k),wid=w();
+   if(d===0)delete wid[rpHeightKey(k)];
+   else wid[rpHeightKey(k)]=Math.max(RP_H_MIN,Math.min(RP_H_MAX,(cur||RP_H_MIN)+d));
+   rpStage({widths:wid});renderBlockEditor();
+  });
+  const hi=$id('rpEditH');
+  if(hi)hi.onchange=()=>{
+   const v=Math.round(Number(hi.value)||0),wid=w();
+   if(v<RP_H_MIN)delete wid[rpHeightKey(k)];else wid[rpHeightKey(k)]=Math.min(RP_H_MAX,v);
+   rpStage({widths:wid});renderBlockEditor();
+  };
+  form.querySelectorAll('[data-e-turn]').forEach(b=>b.onclick=()=>{
+   const f={...rpLayoutNow().formats};
+   const v=b.dataset.eTurn;
+   if(v)f[k]=v;else delete f[k];
+   rpStage({formats:f});renderBlockEditor();
+  });
+  form.querySelectorAll('[data-e-col]').forEach(inp=>inp.onchange=()=>{
+   const v=Math.round(Number(inp.value)||0),wid=w(),key=rpColWKey(k,inp.dataset.eCol);
+   if(v<RP_H_MIN)delete wid[key];else wid[key]=Math.min(RP_H_MAX,v);
+   rpStage({widths:wid});renderBlockEditor();
+  });
+  const cr=form.querySelector('[data-e-colreset]');
+  if(cr)cr.onclick=()=>{
+   const wid=w();Object.keys(wid).forEach(key=>{if(key.startsWith(`列幅:${k}:`))delete wid[key]});
+   rpStage({widths:wid});renderBlockEditor();
+  };
+  const vis=form.querySelector('[data-e-vis]');
+  if(vis)vis.onclick=()=>{
+   const set=new Set(rpHiddenSet());
+   if(set.has(k))set.delete(k);else set.add(k);
+   rpStage({hidden:[...set]});updateArrangeBar();renderBlockEditor();
+  };
+ }
+
  /* ---- 組み換えモード -------------------------------------------------
     **保存せずに当てる**（列の設定パネルと同じ作り。§9.90）。触った結果が
     そのまま紙に出るのが分かりやすく、「やめる」で開いた時点へ必ず戻せる。 */
@@ -823,7 +1044,7 @@
   if(rpArranging)bindArrangeHandlers();
  }
  function rpLayoutNow(){
-  const l=WL.columnLayout.get(RP_LAYOUT_TARGET);
+  const l=WL.columnLayout.get(rpTarget());
   return {order:[...(l.order||[])],widths:{...(l.widths||{})},hidden:[...(l.hidden||[])],
           names:{...(l.names||{})},formats:{...(l.formats||{})},rules:{...(l.rules||{})},
           formulas:{...(l.formulas||{})},locks:[...(l.locks||[])]};
@@ -839,13 +1060,13 @@
    base.hidden=[...new Set([...(base.hidden||[]),...rpInitialHidden()])];
    base.order=rpBlockKeys();
   }
-  WL.columnLayout.stage(RP_LAYOUT_TARGET,{...base,...patch});
+  WL.columnLayout.stage(rpTarget(),{...base,...patch});
   rpRepaint();
  }
  async function toggleArrange(){
   if(rpArranging){closeArrange(false);return}
   if(!rpState.selectedId){showToast&&showToast('先にロットを選んでください','左の一覧から選ぶと、その帳票を見ながら組み換えられます',4000);return}
-  try{await WL.columnLayout.load(RP_LAYOUT_TARGET)}catch(e){}
+  try{await WL.columnLayout.load(rpTarget())}catch(e){}
   rpArrangeBackup=rpLayoutNow();
   rpArranging=true;
   document.body.classList.add('rp-arranging');
@@ -855,8 +1076,9 @@
     何が保存済みで何が触っただけなのか分からなくなる。 */
  function closeArrange(saved){
   if(!rpArranging)return;
-  if(!saved&&rpArrangeBackup)WL.columnLayout.stage(RP_LAYOUT_TARGET,rpArrangeBackup);
-  rpArranging=false;rpArrangeBackup=null;
+  if(!saved&&rpArrangeBackup)WL.columnLayout.stage(rpTarget(),rpArrangeBackup);
+  rpArranging=false;rpArrangeBackup=null;rpPaperView=false;
+  const bm=$id('rpBlockModal');if(bm)bm.hidden=true;
   document.body.classList.remove('rp-arranging');
   updateArrangeBar();rpRepaint();
  }
@@ -867,7 +1089,7 @@
    const now=rpLayoutNow();
    if(!(now.order||[]).length)now.hidden=[...new Set([...(now.hidden||[]),...rpInitialHidden()])];
    if(!(now.order||[]).length)now.order=rpBlockKeys();
-   await WL.columnLayout.save(RP_LAYOUT_TARGET,now);
+   await WL.columnLayout.save(rpTarget(),now);
    showToast&&showToast('帳票の配置を保存しました','次に開いたときも同じ形で出ます',4000);
    closeArrange(true);
   }catch(e){showToast&&showToast('配置を保存できませんでした',e.message,6000)}
@@ -900,11 +1122,17 @@
    const g=rpGrid();
    info.innerHTML=`<span class="rp-grid-pick">紙のマス数 ${RP_GRIDS.map(v=>
      `<button type="button" data-rp-grid="${v}" class="${v===g?'is-on':''}" title="紙を横${v}マスで割ります（粗いほど左端がそろいます）">${v}</button>`).join('')}</span>`
-    +`<span class="rp-arrange-note">塊をドラッグで並べ替え、幅（${rpSpanChoices().map(c=>c.label).join('・')}）を選び、「隠す」で紙から外せます。いま外しているのは ${hidden} 件です。</span>`;
+    /* **紙に収まるかは、外した塊を出したままでは確かめられない**（§9.174）。
+       切り替えたときだけ操作の帯も消し、刷ったとおりの姿にする。 */
+    +`<button type="button" class="rp-paper-toggle${rpPaperView?' is-on':''}" data-rp-paper title="${rpPaperView?'出さない塊も出して編集に戻ります':'出さない塊と操作の帯を隠して、刷ったとおりの姿で確かめます'}">${rpPaperView?'編集の表示に戻す':'紙のとおりに見る'}</button>`
+    +`<span class="rp-page-fit" id="rpPageFit"></span>`
+    +`<span class="rp-arrange-note">塊はドラッグで並べ替え、ダブルクリックで大きく開いて高さ・列幅・行列を決められます。いま外しているのは ${hidden} 件です。</span>`;
    info.querySelectorAll('[data-rp-grid]').forEach(b=>b.onclick=()=>{
     rpStage({widths:{...rpLayoutNow().widths,[RP_GRID_KEY]:rpSpanStore(Number(b.dataset.rpGrid))}});
     updateArrangeBar();
    });
+   const pv=info.querySelector('[data-rp-paper]');
+   if(pv)pv.onclick=()=>{rpPaperView=!rpPaperView;rpRepaint();updateArrangeBar()};
   }
  }
  function bindArrangeHandlers(){
@@ -958,6 +1186,13 @@
    /* 並べ替え。落とす位置を線で見せてから離せるようにする（一覧の見出しの
       D&Dと同じ作法）。並びは**全ブロック**で保存する——見えているものだけ
       にすると、隠した塊の位置が失われる。 */
+   /* **ダブルクリックで大きく開く**（§9.174、利用者の指示）。狭い操作帯で
+      高さ・列幅・行列まで触らせると、押し間違いと読み違いが増える。
+      よく使う「幅・隠す・分解」だけ帯に残し、残りは開いた先で決める。 */
+   el.addEventListener('dblclick',ev=>{
+    if(ev.target.closest('button'))return;
+    ev.preventDefault();openBlockEditor(k);
+   });
    el.addEventListener('dragstart',ev=>{
     rpDragKey=k;el.classList.add('is-dragging');
     try{ev.dataTransfer.setData('text/plain',k);ev.dataTransfer.effectAllowed='move'}catch(_){}
@@ -989,7 +1224,16 @@
   });
  }
  /* 単一プレビューへの書き込み。組み換え中はその状態のまま描き直す。 */
+ /* ロットを開いたら、その設備ぶんの設定を読んでから描き直す。**読まずに
+    描くと既定の形が一瞬出てから入れ替わる**（設備を切り替えるたびにちらつく）。 */
+ function rpLoadLayoutFor(x){
+  const t=rpTargetOf(x);
+  WL.columnLayout.load(t).then(()=>{
+   if(rpCurrentLot()&&rpTargetOf(rpCurrentLot())===t)rpRepaint();
+  }).catch(()=>{});
+ }
  function renderReport(x){
+  rpLoadLayoutFor(x);                /* その設備ぶんの設定を読む（届いたら描き直す） */
   $id('reportContent').innerHTML=reportHtml(x,rpArranging);
   if(rpArranging)bindArrangeHandlers();
  }
