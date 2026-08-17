@@ -128,7 +128,7 @@
    紙は**12マスの粗いグリッド**。1塊が何マスぶんかは列レイアウトマスタが
    持ち、JSが`grid-column:span N`で入れる（設定で変わるのでCSSに書けない）。
    用紙の割り付けはpx固定（`.rp-page`配下の例外）。 */
-.rp-blocks{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));
+.rp-blocks{display:grid;grid-template-columns:repeat(var(--rp-grid,12),minmax(0,1fr));
   gap:var(--space-1);align-items:start}
 .rp-block{min-width:0}
 /* 組み換え中だけの見せ方。**紙には1つも出ない**（操作帯はarranging時しか
@@ -150,6 +150,24 @@
 .rp-block-size button{font-size:8px;font-weight:800;line-height:1;padding:2px 3px;border:1px solid #9bb3ba;border-radius:3px;background:#fff;color:#41606a;cursor:pointer}
 .rp-block-size button.is-on{background:#087c89;border-color:#087c89;color:#fff}
 .rp-block-vis{font-size:8px;font-weight:800;line-height:1;padding:2px 5px;flex:none;border:1px solid #9bb3ba;border-radius:3px;background:#fff;color:#41606a;cursor:pointer}
+/* 分解／まとめ（§9.173）。測定データの塊にだけ出る。 */
+.rp-block-split{font-size:8px;font-weight:800;line-height:1;padding:2px 5px;flex:none;border:1px solid #087c89;border-radius:3px;background:#fff;color:#087c89;cursor:pointer}
+.rp-block-split:hover{background:#e6f3f4}
+/* 入りきらないときの案内と、落とせる列（§9.173）。**幅は選べるままにして**、
+   何を落とせるかをその場に出す。紙には出ない（組み換え中しか組み立てない）。 */
+.rp-blocks.is-arranging .rp-block.is-overflow{outline-color:#c07a1e;outline-style:solid}
+.rp-block-cols{display:flex;align-items:center;gap:3px;flex-wrap:wrap;padding:2px 3px;margin-bottom:2px;border:1px solid #e0c08a;border-radius:3px;background:#fdf6e8;color:#7a5a17}
+.rp-block-cols[hidden]{display:none}
+.rp-block-cols-head{font-size:8px;font-weight:800;flex:1 1 100%}
+.rp-block-col-drop,.rp-block-col-restore{font-size:8px;font-weight:700;line-height:1;padding:2px 4px;border:1px solid #d8b57a;border-radius:3px;background:#fff;color:#7a5a17;cursor:pointer}
+.rp-block-col-drop:hover{border-color:#a33;color:#a33}
+.rp-block-col-restore{margin-left:auto;border-color:#9bb3ba;color:#41606a}
+/* 紙のマス数（§9.173）。粗いほど左端がそろう。 */
+.rp-grid-pick{display:inline-flex;align-items:center;gap:3px;font-weight:700}
+.rp-grid-pick button{font-size:var(--fs-micro);font-weight:800;line-height:1;padding:3px 6px;
+ border:1px solid var(--line);border-radius:var(--radius-xs);background:var(--surface);color:var(--ink-2);cursor:pointer}
+.rp-grid-pick button.is-on{background:var(--teal);border-color:var(--teal);color:#fff}
+.rp-arrange-note{margin-left:var(--space-2);color:var(--ink-3)}
 .rp-block-empty{margin:0;padding:6px;font-size:9px;color:#8a6a2a;background:#fbf5ea;border-radius:3px}
 /* 組み換えの帯は**紙の外**（印刷物に混ざらない・A4の割り付けを崩さない）。 */
 .rp-arrange-bar{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;
