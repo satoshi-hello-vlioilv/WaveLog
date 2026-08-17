@@ -47,7 +47,8 @@ G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'te
                      'test_scperf', 'test_wkfast', 'test_scsplit', 'test_scprint', 'test_scdrop', 'test_scpick', 'test_sccontent', 'test_workable',
                      'test_wkbg', 'test_orphan', 'test_histdel', 'test_sclock',
                      'test_scwritespeed', 'test_split_layout', 'test_sccols',
-                     'test_sctimecols', 'test_scinsert']
+                     'test_sctimecols', 'test_scinsert', 'test_audittrail',
+                     'test_scstop', 'test_scwarm']
 G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 'test_eqkind',
                'test_shift', 'test_dbequip', 'test_crudroutes', 'test_setpage', 'test_eqstd']
 G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'test_flows',
@@ -114,7 +115,7 @@ RULES = [
     ('static/js/measure-steps.js', g('測定', '見た目')),   # 段の枠は測定画面全体に効く
     # データ一覧の表示列(§9.162)も持つので、列の網も回す。
     ('static/js/records-store.js', g('test_share', 'test_flows', 'test_p11', 'test_recperm',
-                                     'test_reccols', 'test_lcpanel')),
+                                     'test_reccols', 'test_lcpanel', 'test_audittrail')),
     # 測定画面は test_scale(寸法の網)の巡回にも入っている(§9.127)ので見た目も回す。
     ('static/js/measurement-', g('測定', '見た目')),   # measurement-*.js
 

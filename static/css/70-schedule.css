@@ -36,12 +36,66 @@
 .sc-side-section-toggle .sc-side-title{margin-bottom:0}
 .sc-collapse-chevron{font-size:var(--fs-micro);color:#8a9aa0;transition:transform .15s ease}
 .sc-side-section-toggle.open .sc-collapse-chevron{transform:rotate(180deg)}
-.sc-stop-groups{display:flex;flex-direction:column;gap:var(--gap-section)}
-.sc-stop-group-title{display:flex;align-items:center;gap:var(--gap-tight);font-size:var(--fs-sm);font-weight:800;color:#8a9aa0;margin-bottom:5px;text-transform:uppercase;letter-spacing:.02em}
+.sc-stop-groups{display:flex;flex-direction:column;gap:var(--space-2);min-height:0}
+/* ---------- 設備停止を入れる(§9.181) ----------
+   縦は「どこへ入るか → 絞り込み → 一覧 → 登録」の順（作業導線と視覚導線を
+   合わせる。§14）。一覧だけが伸び縮みし、頭と足は常に見える。 */
+.sc-stop-head{flex:0 0 auto;display:flex;flex-direction:column;gap:var(--gap-tight)}
+.sc-stop-where{display:flex;flex-direction:column;padding:var(--pad-row);
+ border:1px solid var(--teal);border-radius:var(--radius-xs);background:var(--pale);
+ font-size:var(--fs-sm);color:var(--teal-dark)}
+.sc-stop-where b{color:var(--nav)}
+.sc-stop-where-line{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--gap-hair)}
+.sc-stop-where-at{font-weight:800}
+.sc-stop-where small{color:var(--ink-2);font-size:var(--fs-micro);font-weight:600}
+.sc-stop-search{height:var(--ctl-h-sm);font-size:var(--fs-sm)}
+.sc-stop-list{flex:1 1 auto;min-height:0;overflow:auto;display:flex;flex-direction:column;
+ gap:var(--space-2)}
+.sc-stop-group-title{display:flex;align-items:center;gap:var(--gap-tight);font-size:var(--fs-micro);font-weight:800;color:var(--muted);margin-bottom:3px}
 .sc-stop-group-icon{font-size:var(--fs-sm)}
+.sc-stop-group-count{margin-left:auto;color:var(--ink-soft);font-weight:700}
 .sc-stop-buttons{display:flex;flex-wrap:wrap;gap:var(--gap-inline)}
-.sc-stop-button{border:1px solid var(--line);background:#fff;cursor:grab}
-.sc-stop-button:hover{border-color:var(--teal)}
+/* 1つの停止理由。**名前と見積を2段**にする——横に並べると名前が切れる
+   （実測で「定期メンテナンス (2時間)」が器を越えていた）。 */
+.sc-stop-button{display:flex;flex-direction:column;align-items:flex-start;gap:0;
+ min-height:var(--ctl-h-lg);padding:var(--space-1) var(--space-3);
+ border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);
+ cursor:grab;text-align:left}
+.sc-stop-button b{font-size:var(--fs-sm);font-weight:800;color:var(--ink)}
+.sc-stop-button small{font-size:var(--fs-micro);color:var(--muted)}
+.sc-stop-button:hover{border-color:var(--teal);background:var(--pale)}
+.sc-stop-button.is-new{border-color:var(--success);background:var(--success-bg)}
+/* 予定に入れられないもの。**理由を文字で書く**（§4。押せるのに何も起きない
+   ボタンを残さない）。 */
+.sc-stop-locked{padding:var(--pad-row);border:1px dashed var(--line-mid);
+ border-radius:var(--radius-xs);background:var(--surface-2)}
+.sc-stop-locked-title{font-size:var(--fs-micro);font-weight:800;color:var(--muted);margin-bottom:2px}
+.sc-stop-locked-row{display:flex;flex-wrap:wrap;gap:var(--gap-inline);align-items:baseline;
+ font-size:var(--fs-sm)}
+.sc-stop-locked-row b{color:var(--ink-2)}
+.sc-stop-locked-row span{color:var(--muted);font-size:var(--fs-micro)}
+.sc-stop-more{color:var(--muted);font-size:var(--fs-micro)}
+/* その場で登録する(§9.181)。メンテナンス中に気づく場面が本番なので、
+   マスタ管理へ行き直させない。 */
+.sc-stop-new{flex:0 0 auto;padding-top:var(--space-2);border-top:1px solid var(--line-soft)}
+.sc-stop-new-toggle{width:100%;height:var(--ctl-h-sm);font-size:var(--fs-sm);font-weight:800;
+ border:1px dashed var(--line-mid);border-radius:var(--radius-xs);
+ background:var(--surface);color:var(--teal-dark);cursor:pointer}
+.sc-stop-new-toggle:hover{border-color:var(--teal);background:var(--pale)}
+.sc-stop-new-toggle.active{border-style:solid;border-color:var(--teal);background:var(--pale)}
+.sc-stop-new-form{display:flex;flex-direction:column;gap:var(--gap-tight);
+ margin-top:var(--space-2)}
+.sc-stop-new-form label{display:grid;grid-template-columns:var(--w-sm) minmax(0,1fr);
+ align-items:center;gap:var(--gap-inline)}
+.sc-stop-new-form label span{font-size:var(--fs-micro);font-weight:800;color:var(--ink-3)}
+.sc-stop-new-form input,.sc-stop-new-form select{height:var(--ctl-h-sm);font-size:var(--fs-sm)}
+.sc-stop-new-note{margin:0;color:var(--muted);font-size:var(--fs-micro)}
+.sc-stop-new-actions{display:flex;justify-content:flex-end;gap:var(--gap-inline)}
+.sc-stop-new-cancel,.sc-stop-new-save{height:var(--ctl-h-sm);padding:0 var(--space-3);
+ border-radius:var(--radius-xs);font-size:var(--fs-sm);cursor:pointer}
+.sc-stop-new-cancel{border:1px solid var(--line);background:var(--surface);color:var(--ink-2)}
+.sc-stop-new-save{border:1px solid var(--teal);background:var(--teal);color:#fff;font-weight:800}
+.sc-stop-new-save:disabled{opacity:.55;cursor:default}
 @media(max-width:1000px){.sc-body{flex-direction:column}.sc-side{width:auto;border-left:0;border-top:1px solid var(--line)}}
 /* ---------------------------------------------------------------
    フローティングウィンドウ(§9.13・§9.14・§9.16新設): 仕掛一覧・設備停止を、
@@ -64,6 +118,11 @@
 .sc-float-body{flex:1;min-height:0;overflow:auto;padding:var(--pad-card)}
 .sc-float-body #genericFilterBar{margin:0 0 8px}
 .sc-float-body #grid{margin:0;min-height:0;border:0}
+/* 設備停止の器はモーダルの高さいっぱいに広げる(§9.181)。**一覧だけが
+   伸び縮みし、頭(どこへ入るか・絞り込み)と足(登録)は常に見える**——
+   スクロールの中に入ると、登録の入口が下に隠れて見つけられない。 */
+.sc-float-body>.sc-stop-groups{height:100%}
+#scStopModal .sc-float-body{overflow:hidden;display:flex;flex-direction:column}
 #scListModalBody{display:flex;flex-direction:column;overflow:hidden;padding-bottom:0}
 #scListModalBody #genericFilterBar,#scListModalBody #listToolbar{flex:0 0 auto}
 #scListModalBody #grid{flex:1 1 auto;min-height:0}
@@ -412,6 +471,15 @@
  border:2px dashed var(--teal);border-radius:var(--radius-xs);
  background:var(--pale);color:var(--teal-dark);cursor:pointer}
 .sc-insert-ghost:hover{background:#d7f0f1;border-color:var(--teal-dark)}
+/* 位置を決めたあと(§9.179改訂)。**塗りを変えて「決まっている」と示す**——
+   同じ見た目のままだと、まだ選べるのか決まったのかが分からない。 */
+.sc-insert-ghost.is-pinned{border-style:solid;background:var(--success-bg);
+ border-color:var(--success);color:var(--success);cursor:default}
+.sc-insert-ghost.is-pinned:hover{background:var(--success-bg)}
+.sc-insert-cancel{margin-left:auto;height:var(--ctl-h-xs);padding:0 var(--space-2);
+ border:1px solid var(--line);border-radius:var(--radius-xs);
+ background:var(--surface);color:var(--ink-2);font-size:var(--fs-micro);cursor:pointer}
+.sc-insert-cancel:hover{background:var(--surface-2);color:var(--ink)}
 .sc-insert-mark{font-size:var(--fs-lg);font-weight:800;line-height:1}
 .sc-insert-text{display:flex;flex-direction:column;font-size:var(--fs-sm);font-weight:800}
 .sc-insert-text small{font-weight:600;color:var(--ink-2);font-size:var(--fs-micro)}
@@ -433,6 +501,19 @@
 .sc-row-detail{margin:var(--space-1) var(--space-2);padding:var(--pad-card);background:#eef2f4;border:1px solid var(--line);border-radius:var(--radius-sm);display:flex;flex-direction:column;gap:var(--gap-inline);min-width:640px}
 .sc-detail-heading{font-size:var(--fs-sm);font-weight:800;color:#60747b}
 .sc-estimate-row{font-size:var(--fs-sm);color:#3a565d}
+/* ---------- 誰が・どの端末で(§9.180) ----------
+   **ラベル列は固定幅**にする（§9.129。autoだと値の左端がずれて列を追えない）。
+   端末名は長くなり得るので、はみ出しは省略記号で切って生の値はtitleへ。 */
+.sc-audit-row{display:grid;grid-template-columns:var(--w-sm) minmax(0,1fr) auto auto;
+ align-items:baseline;gap:var(--gap-inline);font-size:var(--fs-sm);color:var(--ink-2)}
+.sc-audit-label{color:var(--muted);font-size:var(--fs-micro);font-weight:800;white-space:nowrap}
+.sc-audit-row b{color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sc-audit-at{color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sc-audit-when{color:var(--muted);font-size:var(--fs-micro);white-space:nowrap}
+.sc-audit-note{color:var(--muted);font-size:var(--fs-micro)}
+/* 行の中の登録者・登録端末(§9.180)。**普段見るものではない**ので色を1段
+   落とす（大きさは変えない。1つの表の中は同じ文字サイズ。§9.161）。 */
+.sc-row-audit{color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* 実績由来でない見積の説明(§9.114)。**読み飛ばされない程度に**は目立たせ、
    かといって警告には見せない(異常ではなく、まだ実績が無いというだけ)。 */
 .sc-estimate-note{color:var(--muted);white-space:normal}

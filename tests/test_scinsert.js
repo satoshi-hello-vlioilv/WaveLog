@@ -82,6 +82,19 @@ const plan=()=>fetch(B+'/api/schedule/plan?equipment='+encodeURIComponent(EQ)).t
    insertable:!!document.querySelector('#scTimeline.sc-insertable'),
    hint:document.querySelector('#scSplitHint')?.textContent.replace(/\s+/g,' ').trim()||''}));
   rec('「スケジュールだけ」で開くと仕掛一覧が畳まれる',only.collapsed,String(only.collapsed));
+  /* **選んだ瞬間に効く**(§9.179改訂。利用者の指摘「切り替えた直後に
+     スケジュール表だけになりません」)。 */
+  await page.click('#scLayoutBtn');await page.waitForTimeout(400);
+  await page.click('#scLayoutPop input[name=scOpenMode][value=split]');
+  await page.waitForTimeout(900);
+  const nowSplit=await page.evaluate(()=>!document.querySelector('.sc-split-wrap.sc-list-collapsed'));
+  await page.click('#scLayoutPop input[name=scOpenMode][value=schedule]');
+  await page.waitForTimeout(900);
+  const nowOnly=await page.evaluate(()=>!!document.querySelector('.sc-split-wrap.sc-list-collapsed'));
+  await page.evaluate(()=>document.body.click());
+  await page.waitForTimeout(300);
+  rec('選んだ瞬間に表示が切り替わる',nowSplit===true&&nowOnly===true,
+      JSON.stringify({split:nowSplit,only:nowOnly}));
   rec('その状態では行間クリックで入れられると分かる',only.insertable&&only.hint.includes('隙間が開き'),
       only.hint.slice(0,80));
 
@@ -103,6 +116,18 @@ const plan=()=>fetch(B+'/api/schedule/plan?equipment='+encodeURIComponent(EQ)).t
   rec('隙間は行に重ならない（行を隠さない）',!!ghost&&ghost.over===0,String(ghost&&ghost.over));
   rec('隙間に何ができるか書いてある',!!ghost&&ghost.txt.includes('クリック')&&ghost.txt.includes('設備停止'),
       String(ghost&&ghost.txt).slice(0,70));
+  /* ---- クリックとダブルクリックを分ける(§9.179改訂) ----
+     利用者の指摘「クリックでもダブルクリックでも仕掛表が開きました」。
+     clickは2回目でも飛ぶので、少し待ってからdblclickが来ていなければ
+     単クリックとして扱う。 */
+  await page.click('#scInsertGhost');
+  await page.waitForTimeout(900);
+  const byClick=await page.evaluate(()=>({stop:document.querySelector('#scStopModal')?.hidden===false,
+    list:document.querySelector('#scListModal')?.hidden===false}));
+  rec('クリックでは設備停止が開く（仕掛表は開かない）',byClick.stop===true&&byClick.list===false,
+      JSON.stringify(byClick));
+  await page.evaluate(()=>{document.querySelector('#scStopModalClose')?.click()});
+  await page.waitForTimeout(600);
   const seen=[];
   for(let dy=-5;dy<=5;dy++){
    await page.mouse.move(t.x,t.y+dy);await page.waitForTimeout(50);
@@ -111,20 +136,27 @@ const plan=()=>fetch(B+'/api/schedule/plan?equipment='+encodeURIComponent(EQ)).t
   }
   rec('少し動かしても隙間がちらつかない',new Set(seen).size===1&&seen[0]!=='-',JSON.stringify([...new Set(seen)]));
 
-  // ---- 7-8. クリック → 仕掛モーダル → その位置へ入る
-  await page.click('#scInsertGhost');
-  await page.waitForTimeout(1500);
-  const modal=await page.evaluate(()=>document.querySelector('#scListModal')?.hidden===false);
-  rec('クリックで仕掛一覧のモーダルが開く',modal===true,String(modal));
+  /* ---- 7-8. ダブルクリック → 仕掛表 → その位置へ入る ---- */
+  await page.mouse.move(t.x,t.y+40);await page.waitForTimeout(120);
+  await page.mouse.move(t.x,t.y);await page.waitForTimeout(420);
+  await page.dblclick('#scInsertGhost');
+  await page.waitForTimeout(1600);
+  const modal=await page.evaluate(()=>({list:document.querySelector('#scListModal')?.hidden===false,
+    stop:document.querySelector('#scStopModal')?.hidden===false,
+    pinned:!!document.querySelector('#scInsertGhost.is-pinned'),
+    txt:document.querySelector('#scInsertGhost')?.textContent.replace(/\s+/g,' ').trim()||''}));
+  rec('ダブルクリックで仕掛一覧のモーダルが開く',modal.list===true&&modal.stop===false,
+      JSON.stringify({l:modal.list,s:modal.stop}));
+  /* **開いている間ゴーストを残す**(利用者の指示)。どこへ入るのか読めなくなる。 */
+  rec('仕掛表を開いている間も入る位置が見えている',
+      modal.pinned===true&&/ここへ入ります/.test(modal.txt),modal.txt.slice(0,60));
   await page.waitForSelector('#scListModal #grid tbody tr',{timeout:20000});
+  /* 行のダブルクリックでその位置へ入る(位置を決めて開いたときだけ効く)。 */
   const lot=await page.evaluate(()=>{
    const trs=[...document.querySelectorAll('#scListModal #grid tbody tr')];
-   for(const tr of trs){const cb=tr.querySelector('input[type=checkbox]');
-    if(cb&&!cb.disabled){cb.click();
-     const c=tr.querySelector('[data-col="ロット番号"]');return c?c.textContent.trim():'?'}}
+   for(const tr of trs){const c=tr.querySelector('[data-col="ロット番号"]');
+    if(c&&c.textContent.trim()){tr.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));return c.textContent.trim()}}
    return null});
-  await page.waitForTimeout(700);
-  await page.click('#planSelectAdd');
   await page.waitForTimeout(4500);
   const j=await plan();
   const ids=(j.entries||[]).map(e=>e.lotNo);
@@ -133,6 +165,14 @@ const plan=()=>fetch(B+'/api/schedule/plan?equipment='+encodeURIComponent(EQ)).t
   if(added)made.push(added.id);
   rec('選んだロットがその位置へ入る',at>=0&&ref>=0&&at===ref-1,
       JSON.stringify({lot,at,refLot:t.lot,ref,around:ids.slice(Math.max(0,at-1),at+2)}));
+  /* 続けて入れられるよう、入れた後も位置は残る(利用者の指示)。 */
+  const kept=await page.evaluate(()=>!!document.querySelector('#scInsertGhost.is-pinned'));
+  rec('入れた後も差し込み位置は残る',kept===true,String(kept));
+  /* 閉じたら忘れる——残ると次の追加が思い出しもしない位置へ入る。 */
+  await page.evaluate(()=>document.querySelector('#scListModalClose')?.click());
+  await page.waitForTimeout(800);
+  const cleared=await page.evaluate(()=>!!document.querySelector('#scInsertGhost'));
+  rec('仕掛表を閉じたら位置の固定も外れる',cleared===false,String(cleared));
 
   rec('JSエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){console.log('FATAL: '+e.message);R.push({n:'FATAL',ok:false,d:e.message})}

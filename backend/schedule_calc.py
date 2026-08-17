@@ -171,7 +171,15 @@ def build_actual_index(backup_rows=None):
               'equipment':str(settings.get('registeredEquipment') or payload.get('registeredEquipment')
                               or row.get('equipment') or '').strip(),
               'status':str(row.get('status') or payload.get('status') or '').strip(),
-              'basic':basic,'key':key}
+              'basic':basic,'key':key,
+              # 「誰が・どの端末で入力を始めたか」(§9.180)。**レコード自身が
+              # 持つ値を優先し、無ければバックアップの行**——別のPCで続きを
+              # 開いた場合でも、始めた端末が残っているのはレコード側。
+              'createdBy':str(payload.get('createdBy') or row.get('created_by') or '').strip(),
+              'createdPc':str(payload.get('createdPc') or row.get('created_pc') or '').strip(),
+              'updatedBy':str(row.get('updated_by') or '').strip(),
+              'updatedPc':str(row.get('updated_pc') or '').strip(),
+              'createdAt':str(payload.get('createdAt') or row.get('created_at') or '').strip()}
  return index
 
 def match_actual(index,lot_no,casting_no,mfg_material):
@@ -223,7 +231,13 @@ def unplanned_entries(actual_index,equipment,matched_keys,now,history_hours=None
          'lotNo':str(basic.get('lotNo') or ''),'inspectionNo':str(basic.get('inspectionNo') or ''),
          'castingNo':str(basic.get('castingNo') or ''),'title':'','detail':_unplanned_detail(basic),
          'fixedStart':None,'estimateMinutes':None,'storedState':None,
-         'actualRecordId':a.get('id'),'remark':'','unplanned':True,'actual':a}
+         'actualRecordId':a.get('id'),'remark':'','unplanned':True,'actual':a,
+         # 計画外実績は予定の行が無い(§9.33)ので、入れた人も端末も無い。
+         # **測定データ側の「入力を始めた人・端末」を持ってくる**(§9.180)——
+         # 空欄にすると「誰も触っていない実績」に見える。
+         'createdBy':str(a.get('createdBy') or ''),'createdPc':str(a.get('createdPc') or ''),
+         'updatedBy':str(a.get('updatedBy') or ''),'updatedPc':str(a.get('updatedPc') or ''),
+         'createdAt':a.get('createdAt') or '','updatedAt':a.get('updatedAt') or ''}
   # 終了時刻が無くても状態が完了なら「実施中」には出さない(§9.52)。
   # 終了時刻が無い完了は履歴の並び順に使う時刻が無いので、開始時刻で並べる。
   if record_finished(a):
@@ -310,6 +324,13 @@ def _parse_dt(value):
 
 DEFAULT_HISTORY_HOURS=8.0
 
+def _iso(v):
+ """DATETIME列をISO文字列へ。**読めない値で落ちないこと**——監査の表示のために
+ 一覧そのものが開けなくなるのは本末転倒(§9.180)。"""
+ if not v:return ''
+ try:return v.isoformat()
+ except Exception:return str(v)
+
 def expand_plan(c,equipment,now=None,history_hours=DEFAULT_HISTORY_HOURS,include_unplanned=True,actual_index=None):
  """GET /api/schedule/planの本体。生のplan_rows・稼働カレンダー・実績突合を
  合成し、§8.1のentries形状(id/order/kind/estimate/plannedStart/plannedEnd/
@@ -354,7 +375,13 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
          'storedState':r[11],'actualRecordId':r[12],'remark':r[13],
          # 分割ありの親ロットにぶら下がる子ロット(§9.83)。時間を持たない
          # 明細行なので、下の時刻展開ループでは飛ばす。
-         'parentId':r[18]}
+         'parentId':r[18],
+         # 「誰が・どの端末で予定へ入れたか」(§9.180)。登録側は入れた人と
+         # 端末で、更新側は最後に動かした人と端末。**混ぜないこと**——
+         # 並べ替えただけの人が「入れた人」に見えると責任の所在が変わる。
+         'createdBy':str(r[19] or ''),'createdPc':str(r[20] or ''),
+         'updatedBy':str(r[17] or ''),'updatedPc':str(r[21] or ''),
+         'createdAt':_iso(r[15]),'updatedAt':_iso(r[16])}
   actual=match_actual(actual_index,detail.get('lotNo') or r[4],detail.get('castingNo') or r[6],detail.get('mfgMaterial')) if entry['kind']=='作業' else None
   entry['state']=derive_state(entry['storedState'],actual)
   entry['actual']=actual

@@ -29,6 +29,20 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
 
  let accessMode={mode:'edit',canEdit:true,canSchedule:false,canFieldReorder:false,fieldReorderEquipment:'',loginId:'',pcName:''};
  window.accessMode=accessMode;
+ /* ---------- この端末の名札(§9.180) ----------
+    「どのPC・どのIDが編集したのか」を残すために、画面側でも端末名が要る
+    （測定データは作った時点で自分の名札を持って回るのが正しい——別のPCで
+    続きを開いても「始めた端末」が残る）。**新しく公開するものは名前空間へ**
+    （CLAUDE.md。素の`window.X`は増やさない）。
+    PC名は`/api/access-mode`が返す値で、**後から届く**ので呼ぶたびに読む。 */
+ window.WL=window.WL||{};
+ WL.terminal={
+  loginId:()=>accessMode.loginId||'',
+  pcName:()=>accessMode.pcName||'',
+  /* 記録に残す「利用者ID」。利用者IDが未設定の端末ではOSのログインIDへ落とす
+     ——空のまま残すと「誰が触ったか」が一切分からない行ができる。 */
+  userId:()=>(typeof currentUserId==='function'&&currentUserId())||accessMode.loginId||'',
+ };
 
  /* 現場段取り対象設備の書式(空/'*'/カンマ区切り)を解く。
     **backend/repositories/master_repo.py の field_reorder_equipment_* と

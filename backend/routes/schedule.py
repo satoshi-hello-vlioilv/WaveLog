@@ -26,7 +26,7 @@ from .. import schedule_calc
 from .. import load_factor
 from ..repositories import schedule_repo as sr
 from ..repositories.master_repo import normalize_equipment_name, equipment_master_rows, field_reorder_equipment_allows
-from ..db_access import connect, request_user_id, DBS
+from ..db_access import connect, request_user_id, request_pc_name, DBS
 from ..access_mode import current_login_id, current_pc_name, get_mode, current_permission_flags
 
 bp=Blueprint('schedule',__name__)
@@ -195,7 +195,7 @@ def plan_add():
  if not equipment:return jsonify(error='どの設備の予定か指定してください。'),400
  def fn(c):
   _check_session(equipment)
-  pid=sr.plan_add(c,equipment,kind,request_user_id(x),position=str(x.get('position') or 'end'),
+  pid=sr.plan_add(c,equipment,kind,request_user_id(x),pc=request_pc_name(x),position=str(x.get('position') or 'end'),
                    lot_no=str(x.get('lotNo') or ''),inspection_no=str(x.get('inspectionNo') or ''),
                    casting_no=str(x.get('castingNo') or ''),title=str(x.get('title') or ''),
                    detail=x.get('detail') or {},stop_reason_id=x.get('stopReasonId'),
@@ -228,7 +228,7 @@ def plan_update():
  def fn(c):
   row=sr.plan_row(c,plan_id)
   if row:_check_session(row[1])
-  n=sr.plan_update(c,plan_id,request_user_id(x),**fields)
+  n=sr.plan_update(c,plan_id,request_user_id(x),pc=request_pc_name(x),**fields)
   if n==0:raise ValueError('指定の予定が見つからないか、更新項目がありません。')
   return {'id':plan_id}
  return _write_response(fn)
@@ -241,7 +241,7 @@ def plan_delete():
  def fn(c):
   row=sr.plan_row(c,plan_id)
   if row:_check_session(row[1])
-  n=sr.plan_delete(c,plan_id,request_user_id(x))
+  n=sr.plan_delete(c,plan_id,request_user_id(x),pc=request_pc_name(x))
   if n==0:raise ValueError('指定の予定が見つかりません。')
   return {'id':plan_id}
  return _write_response(fn)
@@ -261,14 +261,18 @@ def plan_delete():
 #
 # 1件失敗しても残りは適用する(従来の1件1リクエストと同じ挙動)。結果は
 # 送った順で返し、呼び出し側が成功/失敗を1件ずつ処理できるようにする。
-def _apply_plan_op(c,op,uid):
- """1操作を適用して結果dictを返す。例外はそのまま呼び出し側へ。"""
+def _apply_plan_op(c,op,uid,pc=''):
+ """1操作を適用して結果dictを返す。例外はそのまま呼び出し側へ。
+
+ `pc`は操作した端末名(§9.180)。**まとめて適用するときも1件ずつと同じものを
+ 残す**——まとめたことで残る情報が減ると、あとから「誰がどの端末で入れたか」
+ を追えない行が混ざる。"""
  kind=str(op.get('op') or '').strip()
  if kind=='add':
   equipment=str(op.get('equipment') or '').strip()
   if not equipment:raise ValueError('どの設備の予定か指定してください。')
   _check_session(equipment)
-  pid=sr.plan_add(c,equipment,str(op.get('kind') or ''),uid,position=str(op.get('position') or 'end'),
+  pid=sr.plan_add(c,equipment,str(op.get('kind') or ''),uid,pc=pc,position=str(op.get('position') or 'end'),
                    lot_no=str(op.get('lotNo') or ''),inspection_no=str(op.get('inspectionNo') or ''),
                    casting_no=str(op.get('castingNo') or ''),title=str(op.get('title') or ''),
                    detail=op.get('detail') or {},stop_reason_id=op.get('stopReasonId'),
@@ -282,7 +286,7 @@ def _apply_plan_op(c,op,uid):
   row=sr.plan_row(c,plan_id)
   if row:_check_session(row[1])
   fields={k:op[k] for k in ('estimateMinutes','fixedStart','remark','state') if k in op}
-  n=sr.plan_update(c,plan_id,uid,**fields)
+  n=sr.plan_update(c,plan_id,uid,pc=pc,**fields)
   if n==0:raise ValueError('指定の予定が見つからないか、更新項目がありません。')
   return {'id':plan_id}
  if kind=='delete':
@@ -290,7 +294,7 @@ def _apply_plan_op(c,op,uid):
   if plan_id is None:raise ValueError('削除対象の予定IDがありません。')
   row=sr.plan_row(c,plan_id)
   if row:_check_session(row[1])
-  n=sr.plan_delete(c,plan_id,uid)
+  n=sr.plan_delete(c,plan_id,uid,pc=pc)
   if n==0:raise ValueError('指定の予定が見つかりません。')
   return {'id':plan_id}
  if kind=='reorder':
@@ -304,7 +308,7 @@ def _apply_plan_op(c,op,uid):
   _check_session(equipment)
   expanded=schedule_calc.expand_plan(c,equipment)
   reorderable_ids={e['id'] for e in expanded['entries'] if e.get('reorderable')}
-  n=sr.plan_reorder(c,equipment,op.get('orderedIds') or [],uid,reorderable_ids=reorderable_ids)
+  n=sr.plan_reorder(c,equipment,op.get('orderedIds') or [],uid,reorderable_ids=reorderable_ids,pc=pc)
   return {'reordered':n}
  raise ValueError(f'不明な操作です: {kind}')
 
@@ -321,12 +325,12 @@ def plan_batch():
   return jsonify(error='適用する操作がありません。'),400
  if len(ops)>200:
   return jsonify(error='一度にまとめられる操作は200件までです。'),400
- uid=request_user_id(x)
+ uid=request_user_id(x);pc=request_pc_name(x)
  def fn(c):
   results=[]
   for op in ops:
    try:
-    results.append({'ok':True,**(_apply_plan_op(c,op,uid) or {})})
+    results.append({'ok':True,**(_apply_plan_op(c,op,uid,pc) or {})})
    except (PermissionError,schedule_sync.SessionHeldError):
     # 権限不足・他端末が編集中は、1件でもあればサイクルごと止める
     # (個別エンドポイントと同じく「やる前に弾く」挙動)。
@@ -359,7 +363,7 @@ def plan_reorder():
   # 相当になっている予定を誤って動かせてしまう)。
   expanded=schedule_calc.expand_plan(c,equipment)
   reorderable_ids={e['id'] for e in expanded['entries'] if e.get('reorderable')}
-  n=sr.plan_reorder(c,equipment,ordered_ids,request_user_id(x),reorderable_ids=reorderable_ids)
+  n=sr.plan_reorder(c,equipment,ordered_ids,request_user_id(x),reorderable_ids=reorderable_ids,pc=request_pc_name(x))
   return {'equipment':equipment,'reordered':n}
  return _write_response(fn)
 

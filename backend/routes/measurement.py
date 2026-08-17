@@ -4,7 +4,7 @@ app.pyから移設。ロジックは変更していない(移動のみ)。
 """
 from flask import Blueprint, request, jsonify
 
-from ..db_access import DBS, MEAS_DB, RECORDS_BACKUP_EXPORT_PATH, qi, connect, cols, tables, ensure_backup_table, read_backup_rows, invalidate_backup_rows_cache, QUALITY_DB_KEY
+from ..db_access import DBS, MEAS_DB, RECORDS_BACKUP_EXPORT_PATH, qi, connect, cols, tables, ensure_backup_table, read_backup_rows, invalidate_backup_rows_cache, request_user_id, request_pc_name, QUALITY_DB_KEY
 from ..repositories.master_repo import read_operator_names, read_spool_names, read_inner_names, read_device_names, ensure_operator_master, ensure_spool_master, ensure_inner_master, ensure_device_master, ensure_operator_equipment, OPERATOR_MASTER_TABLE, SPOOL_MASTER_TABLE, INNER_MASTER_TABLE, DEVICE_MASTER_TABLE
 from ..repositories.master_repo import read_burr_names, read_coil_stop_names, ensure_burr_master, ensure_coil_stop_master, BURR_MASTER_TABLE, COIL_STOP_MASTER_TABLE
 from ..repositories.master_repo import read_equipment_max_strips, read_equipment_kind, STRIP_LIMIT, DEFAULT_MAX_STRIPS
@@ -175,7 +175,26 @@ def backup():
   x=request.get_json(force=True);required=['id','lotNo','payload'];missing=[k for k in required if not x.get(k)]
   if missing:return jsonify(error='必須項目不足: '+','.join(missing)),400
   with connect(MEAS_DB) as c:
-   ensure_backup_table(c);cur=c.cursor();cur.execute('DELETE FROM [Web測定バックアップ] WHERE [記録ID]=?',[x['id']]);cur.execute('INSERT INTO [Web測定バックアップ] ([記録ID],[設備],[ロット番号],[検査番号],[鋳造番号],[状態],[更新日時],[圧縮形式],[ペイロード]) VALUES (?,?,?,?,?,?,Now(),?,?)',[x['id'],x.get('equipment',''),x.get('lotNo',''),x.get('inspectionNo',''),x.get('castingNo',''),x.get('status','編集中'),x.get('codec','delimiter-v1'),x['payload']]);c.commit()
+   ensure_backup_table(c);cur=c.cursor()
+   # ---- 誰が・どの端末で入力を始めたか(§9.180) ----
+   # **入力を始めた人と端末は上書きしない。** 測定は別のPCで続きを開ける
+   # (§9.91)ので、保存のたびに書き換えると「誰が始めたか」が最後に保存した
+   # 端末で塗り潰される。1行を作り直す作りなので、**消す前に控えを取る**。
+   cur.execute('SELECT [登録者ID],[登録端末名],[登録日時] FROM [Web測定バックアップ] WHERE [記録ID]=?',[x['id']])
+   prev=cur.fetchone() or (None,None,None)
+   # 画面が送ってきた値(レコードが持つ「入力を始めた」情報)を最優先し、
+   # 次に既存行の値、最後にこの端末の値へ落とす。
+   created_by=str(x.get('created_by') or '').strip() or str(prev[0] or '').strip() or request_user_id(x)
+   created_pc=str(x.get('created_pc') or '').strip() or str(prev[1] or '').strip() or request_pc_name()
+   created_at=str(x.get('created_at') or '').strip() or (prev[2] if prev[2] else None)
+   cur.execute('DELETE FROM [Web測定バックアップ] WHERE [記録ID]=?',[x['id']])
+   cur.execute('INSERT INTO [Web測定バックアップ] ([記録ID],[設備],[ロット番号],[検査番号],[鋳造番号],[状態],[更新日時],[圧縮形式],[ペイロード],[登録者ID],[登録端末名],[更新者ID],[更新端末名],[登録日時]) VALUES (?,?,?,?,?,?,Now(),?,?,?,?,?,?,?)',
+               [x['id'],x.get('equipment',''),x.get('lotNo',''),x.get('inspectionNo',''),x.get('castingNo',''),
+                x.get('status','編集中'),x.get('codec','delimiter-v1'),x['payload'],
+                # 更新側は**この端末**の名前(引数を渡さない)。画面が送る
+                # `pc_name`は「作った端末」の意味で使うので、混ぜない。
+                created_by,created_pc,request_user_id(x),request_pc_name(),created_at])
+   c.commit()
   records_export.mark_dirty()
   # 実績バックアップのキャッシュ(§9.41)を捨てる。作業スケジュールの実績突合が
   # 保存直後の測定を必ず拾えるようにするため(署名でも変化は拾えるが、

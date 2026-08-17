@@ -156,7 +156,14 @@ async function backupRecord(m){
  // 登録されている実際の使用設備(registeredEquipment)を記録する。
  // どの設備設定で測定・登録されたデータかを後から区別できるようにするため。
  const equipment=m.registeredEquipment||m.settings?.registeredEquipment||currentConfiguredEquipment()||m.basic.equipment;
- const x={id:m.id,equipment,lotNo:m.basic.lotNo,inspectionNo:m.basic.inspectionNo,castingNo:m.basic.castingNo,status:m.status,codec:'json-full-v32',payload:encodePayload(m)};
+ /* 「誰が・どの端末で入力を始めたか」を**列としても**渡す(§9.180)。
+    ペイロードの中にも入っているが、一覧(backup/summary)はペイロードを
+    開かないので、列に無いと他のPCのデータで空欄になる。
+    **更新側は送らない**——保存したのはこの端末なので、サーバーが自分の
+    ホスト名で埋めるほうが確か(画面が嘘を送れないようにする)。 */
+ const x={id:m.id,equipment,lotNo:m.basic.lotNo,inspectionNo:m.basic.inspectionNo,castingNo:m.basic.castingNo,status:m.status,codec:'json-full-v32',payload:encodePayload(m),
+          created_by:m.createdBy||'',created_pc:m.createdPc||'',created_at:m.createdAt||'',
+          user_id:(typeof currentUserId==='function'&&currentUserId())||''};
  return api('/api/measurement/backup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(x)});
 }
 /* ---------- Access同期の未完了キューと再送 ----------
@@ -521,6 +528,13 @@ async function mergedRecords(){
     mine.remoteNewer=true;mine.remoteUpdatedAt=row.updated_at;
     mine.remoteEquipment=row.equipment||'';
    }
+   /* 「誰が・どの端末で」(§9.180)は**共有側の列から補う**。端末内のレコードが
+      古い版で作られていて`createdBy`を持たないことがあり、そのときは共有の
+      行が唯一の手掛かりになる。**上書きはしない**——レコード自身が持つ値の
+      ほうが「始めた端末」として確か。 */
+   mine.sharedCreatedBy=row.created_by||'';mine.sharedCreatedPc=row.created_pc||'';
+   mine.sharedUpdatedBy=row.updated_by||'';mine.sharedUpdatedPc=row.updated_pc||'';
+   mine.sharedCreatedAt=row.created_at||'';
    continue;
   }
   byId.set(row.id,ensureMeasureShape({
@@ -528,6 +542,13 @@ async function mergedRecords(){
    basic:{lotNo:row.lotNo||'',inspectionNo:row.inspectionNo||'',castingNo:row.castingNo||''},
    registeredEquipment:row.equipment||'',
    remoteOnly:true,remoteCodec:row.codec||'',
+   /* 他のPCのぶんは、見出しだけで「誰が・どの端末で」が読めるようにする
+      (§9.180)。中身(ペイロード)は開くときに1件だけ取る決まりなので、
+      ここでは列の値をそのまま持たせる。 */
+   createdBy:row.created_by||'',createdPc:row.created_pc||'',createdAt:row.created_at||'',
+   sharedCreatedBy:row.created_by||'',sharedCreatedPc:row.created_pc||'',
+   sharedUpdatedBy:row.updated_by||'',sharedUpdatedPc:row.updated_pc||'',
+   sharedCreatedAt:row.created_at||'',
    syncState:{status:'synced'},
   }));
  }
@@ -703,6 +724,26 @@ const RECORD_COLUMNS=[
   get:x=>{const ms=durationMs(x);return ms==null?'':formatDuration(ms)},
   note:'作業開始時刻と終了時刻の差。どちらかが未記録なら空欄です。'},
  /* ---- ここから下は既定で出さない候補 ---- */
+ /* 「どのPC・どのIDが編集したデータか」(§9.180)。**入力を始めた人・端末と、
+    最後に保存した人・端末を別の列にする**——測定は別のPCで続きを開ける
+    (§9.91)ので、1つにまとめると誰の作業か分からなくなる。
+    出どころは分類「計算・操作」（元データの項目ではなく、この画面が
+    記録している値）。 */
+ {k:'入力開始者',track:'minmax(84px,.8fr)',cls:'secondary',origin:'calc',
+  get:x=>x.createdBy||x.sharedCreatedBy||'',
+  note:'この測定データを最初に作った利用者ID。別のPCで続きを開いても変わりません。'},
+ {k:'入力開始端末',track:'minmax(96px,.9fr)',cls:'secondary',origin:'calc',
+  get:x=>x.createdPc||x.sharedCreatedPc||'',
+  note:'この測定データを最初に作った端末（PC）名。'},
+ {k:'入力開始日時',track:'minmax(160px,0)',tag:'time',origin:'calc',
+  get:x=>recordLocalStamp(x.createdAt||x.sharedCreatedAt),fmt:RECORD_DT_FORMAT,
+  note:'この測定データを最初に作った日時。'},
+ {k:'最終更新者',track:'minmax(84px,.8fr)',cls:'secondary',origin:'calc',
+  get:x=>x.sharedUpdatedBy||'',
+  note:'共有DBへ最後に保存した利用者ID（共有された記録から読みます）。'},
+ {k:'最終更新端末',track:'minmax(96px,.9fr)',cls:'secondary',origin:'calc',
+  get:x=>x.sharedUpdatedPc||'',
+  note:'共有DBへ最後に保存した端末（PC）名。'},
  {k:'作業終了時刻',track:'minmax(160px,0)',tag:'time',
   get:x=>recordLocalStamp(x.workTime?.endAt),fmt:RECORD_DT_FORMAT},
  {k:'鋳造番号',get:x=>x.basic?.castingNo},

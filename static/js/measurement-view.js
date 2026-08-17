@@ -55,7 +55,20 @@ function defaultVerticalCount(row){
  const n=Number(pick(row,'boxVerticalCount'));
  return Number.isFinite(n)&&n>=1&&n<=9?Math.round(n):1;
 }
-function blankMeasure(row){return{id:crypto.randomUUID(),status:'編集中',updatedAt:new Date().toISOString(),source:row,basic:Object.fromEntries(Object.keys(aliases).map(k=>[k,pick(row,k)])),settings:{operator:'-',inspector:'-',lengthPos:'1(頭)',measureType:WL.measureItem.MATERIAL,verticalCount:defaultVerticalCount(row),horizontalCount:defaultHorizontalCount(row),unwind:'上出し',innerDiameter:'-',spool:'-',thicknessGauge:'-',widthGauge:'-',widthOrder:'通常',widthDirection:'昇順',inputMode:'auto',tStep:0,wStep:0,burrFirst:null,ngCount:0,burr:'指定なし',coilStop:'指定なし',crewSize:'-'},mother:{},qualityInfo:'異常情報なし',measurements:{thickness:Array.from({length:LENGTH_SLOTS},()=>Array(3).fill('')),width:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),lateral:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),burr:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),telescope:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),offset:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),flatness:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),comments:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill(''))}}}
+/* 新しい測定データ。**作った時点で「誰が・どの端末で入力を始めたか」を
+   持たせる**(§9.180)。あとから足せない情報で、別のPCで続きを開いても
+   (§9.91)この3つは書き換えない——「始めた人」が最後に保存した端末で
+   塗り潰されると、責任の所在が変わってしまう。
+   端末名は`/api/access-mode`が返す値。**取れないこともある**ので、そのときは
+   空のまま保存し、サーバー側(`/api/measurement/backup`)が自分のホスト名で
+   埋める(分かる範囲で埋めるのが監査列の作法)。 */
+function measureStarter(){
+ const t=(window.WL&&WL.terminal)||null;
+ return {createdAt:new Date().toISOString(),
+         createdBy:t?t.userId():((typeof currentUserId==='function'&&currentUserId())||''),
+         createdPc:t?t.pcName():''};
+}
+function blankMeasure(row){return{id:crypto.randomUUID(),status:'編集中',updatedAt:new Date().toISOString(),...measureStarter(),source:row,basic:Object.fromEntries(Object.keys(aliases).map(k=>[k,pick(row,k)])),settings:{operator:'-',inspector:'-',lengthPos:'1(頭)',measureType:WL.measureItem.MATERIAL,verticalCount:defaultVerticalCount(row),horizontalCount:defaultHorizontalCount(row),unwind:'上出し',innerDiameter:'-',spool:'-',thicknessGauge:'-',widthGauge:'-',widthOrder:'通常',widthDirection:'昇順',inputMode:'auto',tStep:0,wStep:0,burrFirst:null,ngCount:0,burr:'指定なし',coilStop:'指定なし',crewSize:'-'},mother:{},qualityInfo:'異常情報なし',measurements:{thickness:Array.from({length:LENGTH_SLOTS},()=>Array(3).fill('')),width:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),lateral:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),burr:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),telescope:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),offset:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),flatness:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),comments:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill(''))}}}
 /* 保存データ/新規データを最新スキーマへ整形する。旧実装は多層ラップ
    (基本形状→製品丈→登録設備→作業時間)だったものを一本化した。 */
 function ensureMeasureShape(m){

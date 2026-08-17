@@ -83,9 +83,14 @@ let b=null;
  await page.waitForSelector('#openSchedule',{timeout:15000});
  await page.waitForTimeout(1200);
  await slow('**/api/schedule/overview*',900);
+ /* **先読み(§9.182)が済んでいると出ないのが正しい。** ここで確かめたいのは
+    「間に合わなかったときは出る」なので、押す直前に控えを捨てて
+    “取り直しになる”状態を作る（先読みそのものを壊すのではなく、
+    先読みが間に合わなかった状況を再現する）。 */
+ await page.evaluate(()=>window.invalidateSchedulePlanCache&&window.invalidateSchedulePlanCache());
  await watch(); await page.click('#openSchedule'); await shownThenClosed();
  s=await seen();
- rec('作業スケジュール(俯瞰): 読み込み中にWAITINGが出る',s.shown&&/空き状況/.test(s.title),JSON.stringify(s));
+ rec('作業スケジュール(俯瞰): 間に合わないときはWAITINGが出る',s.shown&&/空き状況/.test(s.title),JSON.stringify(s));
  rec('作業スケジュール(俯瞰): 読み込み後に閉じている',await closed());
 
  await slow('**/api/schedule/plan*',900);
