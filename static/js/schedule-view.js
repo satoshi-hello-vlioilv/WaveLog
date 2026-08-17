@@ -363,7 +363,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   try{localStorage.setItem(SC_LAYOUT_KEY,JSON.stringify(scLayout))}catch(e){/* 保存できなくても表示は続く */}
  }
  function applySplitSide(){
-  if(splitWrap)splitWrap.classList.toggle('sc-swap',!!scLayout.swap);
+  if(!splitWrap)return;
+  splitWrap.classList.toggle('sc-swap',!!scLayout.swap);
+  /* 取っ手の矢印も向きが変わる。**同じ場所で両方直す**——片方だけ直すと
+     「押した向きと動く向きが違う」状態が残る。 */
+  updateSplitCollapseUi();
  }
  /* 「スケジュールだけ」で見ている状態。**仕掛一覧が見えていないとき**は
     ドラッグで入れる手立てが無いので、行間をクリックして入れられるように
@@ -419,8 +423,13 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    e.preventDefault();
    const startX=e.clientX,startW=splitListWidth;
    divider.classList.add('dragging');
+   /* **左右を入れ替えたら、掴んだ向きも入れ替わる**(§9.179)。仕掛一覧が右に
+      あるとき、境界を右へ引けば一覧は**狭くなる**——`--sc-list-w`は「一覧の
+      幅」であって「左からの位置」ではないので、符号を反転させないと
+      手の動きと逆に伸び縮みする(実機で報告された)。 */
+   const dir=scLayout.swap?-1:1;
    function onMove(ev){
-    splitListWidth=Math.min(Math.max(240,startW+(ev.clientX-startX)),Math.round(window.innerWidth*0.7));
+    splitListWidth=Math.min(Math.max(240,startW+dir*(ev.clientX-startX)),Math.round(window.innerWidth*0.7));
     applySplitListWidth();
    }
    function onUp(){
@@ -442,9 +451,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(btn){
    // 畳んでいる間は縦書きラベルで「何が畳まれているか」を示す(§9.62)。
    // 矢印だけだと、戻したとき何が出てくるのか分からない。
+   /* **矢印は畳む向きを指す**。左右を入れ替えたら向きも入れ替わる(§9.179)
+      ——一覧が右にあるのに「◀」では、押した先が読めない。 */
+   const open=scLayout.swap?'◀':'▶',shut=scLayout.swap?'▶':'◀';
    btn.innerHTML=splitListCollapsed
-    ?'<span aria-hidden="true">▶</span><span class="sc-split-collapse-label">仕掛一覧</span>'
-    :'<span aria-hidden="true">◀</span>';
+    ?`<span aria-hidden="true">${open}</span><span class="sc-split-collapse-label">仕掛一覧</span>`
+    :`<span aria-hidden="true">${shut}</span>`;
    btn.title=splitListCollapsed?'仕掛一覧を開きます':'仕掛一覧を畳んで作業スケジュールを広げます';
    btn.setAttribute('aria-expanded',String(!splitListCollapsed));
    btn.setAttribute('aria-label',splitListCollapsed?'仕掛一覧を開く':'仕掛一覧を畳む');
@@ -1497,6 +1509,26 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  }
 
  /* ---------- 固定開始日時(§5.1・§7.3、フェーズ6) ---------- */
+ /* ---------- 誰が・どの端末で(§9.180) ----------
+    利用者の指示は「どのPC、どのIDから編集をされたデータなのか」。列としても
+    出せる（既定は非表示）が、**詳細には必ず出す**——普段は場所を取らせず、
+    追いたいときは1クリックで辿れる形にする。
+    **登録と更新を並べて書く**。入れた人と最後に動かした人は違うことがあり、
+    片方だけだと「誰の予定か」を読み違える。
+    古い予定は端末名を持たない（列を後から足した）ので、そのことも書く。 */
+ function auditHtml(e){
+  const dash=v=>{const t=String(v==null?'':v).trim();return t||'-'};
+  const when=v=>{const t=String(v||'').trim();return t?fmtDateTime(t):'-'};
+  const row=(label,id,pc,at)=>`<div class="sc-audit-row"><span class="sc-audit-label">${label}</span>`
+   +`<b>${esc(dash(id))}</b><span class="sc-audit-at">@ ${esc(dash(pc))}</span>`
+   +`<span class="sc-audit-when">${esc(when(at))}</span></div>`;
+  const noPc=!String(e.createdPc||'').trim()&&!String(e.updatedPc||'').trim();
+  return `<div class="sc-detail-block"><div class="sc-detail-heading">誰が・どの端末で</div>`
+   +row('予定へ入れた',e.createdBy,e.createdPc,e.createdAt)
+   +row('最後に動かした',e.updatedBy,e.updatedPc,e.updatedAt)
+   +(noPc?'<div class="sc-audit-note">端末名は記録されていません（この予定を入れたときのアプリは端末名を残していませんでした）。</div>':'')
+   +`</div>`;
+ }
  function fixedStartHtml(e){
   if(e.__pending)return ''; // サーバー未反映(§9.11の楽観的追加)の間はまだ予定IDが無く更新できない
   if(scState.fullControl&&e.state==='予定'){
@@ -1627,12 +1659,30 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   {key:'__est__',label:'見積',w:62,note:'見積時間（~付きは実績以外が出どころ）'},
   {key:'__actual__',label:'実績',w:88,note:'経過／実作業時間と予実差'},
   {key:'__flags__',label:'備考',w:112,note:'計画外・固定・遅れなどの印'},
+  /* 「誰が・どの端末で予定へ入れたか」(§9.180)。**既定では出さない**
+     ——毎回見るものではないので場所を取らせない(§14「面積は頻度×重要度」)。
+     行の詳細(▾)には常に出るので、隠していても辿れる。 */
+  {key:'__by__',label:'登録者',w:96,note:'この予定を入れた利用者ID',off:true},
+  {key:'__pc__',label:'登録端末',w:112,note:'この予定を入れた端末(PC)名',off:true},
+  {key:'__upby__',label:'更新者',w:96,note:'最後に動かした利用者ID',off:true},
+  {key:'__uppc__',label:'更新端末',w:112,note:'最後に動かした端末(PC)名',off:true},
   {key:'__actions__',label:'操作',w:148,note:'開始・固定・帳票・削除のボタン'},
  ];
  const SC_COL_MAP=new Map(SC_COL_DEFS.map(d=>[d.key,d]));
  const SC_COL_BEFORE=['__cat__','__workable__','__date__','__time__','__shift__','__rel__'];
- const SC_COL_AFTER=['__est__','__actual__','__flags__','__actions__'];
+ const SC_COL_AFTER=['__est__','__actual__','__flags__','__by__','__pc__','__upby__','__uppc__','__actions__'];
  const scIsFixedCol=k=>SC_COL_MAP.has(k);
+ /* **一度も保存していないうちは出さない列**(§9.180)。列レイアウトマスタの
+    hiddenは空なので、そのまま使うと足した列がいきなり全員の画面に並ぶ
+    ——データ一覧の`recordInitialHidden()`(§9.162)と同じ考え方で、
+    「保存済みの並びがあるか」で既定と保存値を分ける。 */
+ const SC_COL_OFF_BY_DEFAULT=SC_COL_DEFS.filter(d=>d.off).map(d=>d.key);
+ function timelineHiddenSet(){
+  const t=timelineTarget();
+  const cur=t?WL.columnLayout.get(t):null;
+  if(cur&&(cur.order||[]).length)return new Set(cur.hidden||[]);
+  return new Set([...(cur?cur.hidden||[]:[]),...SC_COL_OFF_BY_DEFAULT]);
+ }
  /* 見出しの言葉。**表示名 → 決まった名前 → 項目の日本語名 → キー**の順。
     生のキー(mfgTemper)をそのまま出さない。 */
  function scColLabel(k){
@@ -1658,8 +1708,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  }
  /* いま出す列。並びと表示/非表示は列レイアウトマスタが決める。 */
  function timelineColumnKeys(){
-  const t=timelineTarget();
-  return t?WL.columnLayout.apply(t,timelineAllColumnKeys()):timelineAllColumnKeys();
+  const hide=timelineHiddenSet();
+  return timelineOrderedKeys().filter(k=>!hide.has(k));
  }
  /* 出している内容欄の項目だけ（セルの組み立てが使う）。 */
  function timelineContentKeys(){return timelineColumnKeys().filter(k=>!scIsFixedCol(k))}
@@ -2342,8 +2392,16 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    e.spansNonWorking?'<span class="sc-flag sc-flag-spans" title="夜間・休日を跨ぎます">🌙</span>':'',
    e.fixedStart?`<span class="sc-flag sc-flag-fixed" title="固定開始 ${fmtDateTime(e.fixedStart)}">📌</span>`:'',
   ].join('');
+  /* 「誰が・どの端末で」(§9.180)。**空欄のときは`-`にする**——列に何も
+     出ないと「読めていない」のか「記録が無い」のか区別が付かない。
+     古い予定は端末名を持たない(列を後から足したため)ので、実際に空になる。 */
+  const dash=v=>{const t=String(v==null?'':v).trim();return t||'-'};
+  const createdBy=dash(e.createdBy),createdPc=dash(e.createdPc);
+  const updatedBy=dash(e.updatedBy),updatedPc=dash(e.updatedPc);
   return {cat,locked,workable,wk,wkTitle,dateText,dateTitle,timeText,timeTitle,shiftText,
-          relText,estText,estSrc,estProvisional,estNote,actualText,flags};
+          relText,estText,estSrc,estProvisional,estNote,actualText,flags,
+          createdBy,createdPc,updatedBy,updatedPc,
+          createdAt:e.createdAt||'',updatedAt:e.updatedAt||''};
  }
  /* キー → 見せる文字。**行の組み立てと設定パネルの見本が同じ表を見る**。 */
  const SC_FIXED_TEXT={
@@ -2356,6 +2414,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   '__est__':i=>(i.estProvisional?'~':'')+i.estText,
   '__actual__':i=>i.actualText,
   '__flags__':i=>String(i.flags||'').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim(),
+  '__by__':i=>i.createdBy,
+  '__pc__':i=>i.createdPc,
+  '__upby__':i=>i.updatedBy,
+  '__uppc__':i=>i.updatedPc,
   '__actions__':()=>'（開始・固定・帳票などのボタン）',
  };
  function scFixedCellText(entry,k){
@@ -2396,7 +2458,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
 
    const lotText=entryContentText(e);      // ツールチップ・帳票用の1行要約
    const contentCells=timelineContentCells(e);
-   const detailHtml=fixedStartHtml(e)+estimateBreakdownHtml(e);
+   /* **「誰が・どの端末で」は常に詳細へ入れる**(§9.180)。これにより
+      すべての行に詳細(▾)が付く——監査の情報は行を選ばず必要になる。 */
+   const detailHtml=fixedStartHtml(e)+estimateBreakdownHtml(e)+auditHtml(e);
    const canDelete=scState.fullControl&&e.state==='予定'&&!e.__pending&&!e.unplanned;
    // §9.35: 編集モード(=実際に測定する端末)なら、予定から直接測定画面を開ける。
    // 開始時刻を打刻すると実績突合(§7.4)でこの行が「実施中」へ移る。
@@ -2446,6 +2510,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    };
    const cellHtml=k=>{
     if(cellOf[k]!==undefined)return cellOf[k];
+    /* 文字だけの固定列(登録者・登録端末など。§9.180)は**同じ表から引く**
+       ——ここに書き写すと、設定パネルの見本と行の中身が食い違う。 */
+    if(SC_FIXED_TEXT[k]){
+     const v=SC_FIXED_TEXT[k](info);
+     return `<span class="sc-row-audit" data-col="${esc(k)}" title="${esc(v)}">${esc(v)}</span>`;
+    }
     const c=contentMap.get(k);
     return c?`<span class="sc-row-title${c.color?' cell-'+c.color:''}" data-col="${esc(k)}" data-content-col="${esc(k)}" title="${esc(c.raw||c.text)}">${esc(c.text)}</span>`
             :`<span data-col="${esc(k)}"></span>`;
@@ -3430,9 +3500,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
       そのまま使うと（あちらは空なので）候補が全部チェック済みになり、
       保存した瞬間に**選んだ覚えの無い項目まで内容欄へ並ぶ**。 */
    initialHidden:keys=>{
-    /* 固定列は既定で出す。内容欄の項目だけ「選んでいないもの＝出さない」。 */
+    /* 固定列は既定で出す（**監査の4列だけは既定で出さない**。§9.180）。
+       内容欄の項目は「選んでいないもの＝出さない」。 */
     const chosen=new Set(timelineColumnKeys());
-    return keys.filter(k=>!scIsFixedCol(k)&&!chosen.has(k));
+    return keys.filter(k=>!chosen.has(k)&&(!scIsFixedCol(k)||SC_COL_OFF_BY_DEFAULT.includes(k)));
    },
    /* 見本は**予定が持つ仕掛データのスナップショット**。1件では
       「たまたま」と区別が付かないので、中身のある予定を集める。 */

@@ -433,6 +433,19 @@
 .sc-row-detail{margin:var(--space-1) var(--space-2);padding:var(--pad-card);background:#eef2f4;border:1px solid var(--line);border-radius:var(--radius-sm);display:flex;flex-direction:column;gap:var(--gap-inline);min-width:640px}
 .sc-detail-heading{font-size:var(--fs-sm);font-weight:800;color:#60747b}
 .sc-estimate-row{font-size:var(--fs-sm);color:#3a565d}
+/* ---------- 誰が・どの端末で(§9.180) ----------
+   **ラベル列は固定幅**にする（§9.129。autoだと値の左端がずれて列を追えない）。
+   端末名は長くなり得るので、はみ出しは省略記号で切って生の値はtitleへ。 */
+.sc-audit-row{display:grid;grid-template-columns:var(--w-sm) minmax(0,1fr) auto auto;
+ align-items:baseline;gap:var(--gap-inline);font-size:var(--fs-sm);color:var(--ink-2)}
+.sc-audit-label{color:var(--muted);font-size:var(--fs-micro);font-weight:800;white-space:nowrap}
+.sc-audit-row b{color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sc-audit-at{color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sc-audit-when{color:var(--muted);font-size:var(--fs-micro);white-space:nowrap}
+.sc-audit-note{color:var(--muted);font-size:var(--fs-micro)}
+/* 行の中の登録者・登録端末(§9.180)。**普段見るものではない**ので色を1段
+   落とす（大きさは変えない。1つの表の中は同じ文字サイズ。§9.161）。 */
+.sc-row-audit{color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* 実績由来でない見積の説明(§9.114)。**読み飛ばされない程度に**は目立たせ、
    かといって警告には見せない(異常ではなく、まだ実績が無いというだけ)。 */
 .sc-estimate-note{color:var(--muted);white-space:normal}

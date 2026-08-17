@@ -692,11 +692,25 @@ RECORDS_BACKUP_EXPORT_PATH=Path(_records_backup_export_override) if _records_bac
 _schedule_share_override=_static_path_cfg('schedule_share_path')
 SCHEDULE_SHARE_PATH=Path(_schedule_share_override) if _schedule_share_override else None
 
+# 測定データのバックアップに残す「誰が・どの端末で」(§9.180)。
+# **共有DBは既に現場で動いているので作り直さない**——他のマスタと同じ
+# 「無ければ足す」で移行する(古い版のアプリが書いた行はNULLのまま読める)。
+BACKUP_AUDIT_COLUMNS=(('登録者ID','TEXT'),('登録端末名','TEXT'),
+                      ('更新者ID','TEXT'),('更新端末名','TEXT'),('登録日時','DATETIME'))
+
 def ensure_backup_table(c):
  names=tables(c)
  if 'Web測定バックアップ' not in names:
-  c.cursor().execute('CREATE TABLE [Web測定バックアップ] ([記録ID] TEXT, [設備] TEXT, [ロット番号] TEXT, [検査番号] TEXT, [鋳造番号] TEXT, [状態] TEXT, [更新日時] DATETIME, [圧縮形式] TEXT, [ペイロード] TEXT)')
+  c.cursor().execute('CREATE TABLE [Web測定バックアップ] ([記録ID] TEXT, [設備] TEXT, [ロット番号] TEXT, [検査番号] TEXT, [鋳造番号] TEXT, [状態] TEXT, [更新日時] DATETIME, [圧縮形式] TEXT, [ペイロード] TEXT, [登録者ID] TEXT, [登録端末名] TEXT, [更新者ID] TEXT, [更新端末名] TEXT, [登録日時] DATETIME)')
   c.commit()
+  return
+ have={x for x in cols(c,'Web測定バックアップ')}
+ added=False
+ for name,decl in BACKUP_AUDIT_COLUMNS:
+  if name in have:continue
+  c.cursor().execute(f'ALTER TABLE [Web測定バックアップ] ADD COLUMN [{name}] {decl}')
+  added=True
+ if added:c.commit()
 
 def request_user_id(x):
  x=x or {}
@@ -713,6 +727,27 @@ def request_user_id(x):
  except Exception:
   return ''
 
+def request_pc_name(x=None):
+ """この操作をした端末(PC)名。**request_user_id と対で使う**(§9.180)。
+
+ 「どのPC・どのIDが編集したのか」を残すのが目的で、IDだけでは同じ人が
+ 別のPCから触った場合を見分けられない(現場は端末ごとに役割が違う)。
+
+ **サーバーは各端末で動いている**(1台1プロセス、共有DBを読み書きする作り)
+ ので、`socket.gethostname()`はそのまま操作した端末の名前になる。
+ 画面が明示的に送ってきた値(`pc_name`)を優先するのは、**別のPCで作られた
+ データを引き継いで保存する場合**に「作った端末」を上書きしないため。
+ """
+ x=x or {}
+ for k in ('pc_name','pcName','端末名'):
+  v=str(x.get(k) or '').strip()
+  if v:return v[:80]
+ try:
+  from .access_mode import current_pc_name
+  return str(current_pc_name() or '')[:80]
+ except Exception:
+  return ''
+
 def read_backup_rows(path):
  # [Web測定バックアップ]テーブルを読み取り専用で読む共通処理。
  # backend/routes/measurement.py(PC引継ぎ用/閲覧モード一覧)と
@@ -726,10 +761,22 @@ def read_backup_rows(path):
  if path is None or path_exists_safe(path) is False:return None,path
  with connect(path,True) as c:
   if 'Web測定バックアップ' not in tables(c):return [],path
+  # **監査列が無い古いDBでもそのまま読む**(§9.180)。列の有無で分岐せず、
+  # 無い列は NULL を選ぶ(マスタ側の column_layout_for と同じ作法)。
+  have={x for x in cols(c,'Web測定バックアップ')}
+  col=lambda n:('['+n+']') if n in have else 'NULL'
   cur=c.cursor()
-  cur.execute('SELECT [記録ID],[設備],[ロット番号],[検査番号],[鋳造番号],[状態],[更新日時],[圧縮形式],[ペイロード] FROM [Web測定バックアップ] ORDER BY [更新日時] DESC')
+  cur.execute('SELECT [記録ID],[設備],[ロット番号],[検査番号],[鋳造番号],[状態],[更新日時],[圧縮形式],[ペイロード],'
+              +col('登録者ID')+','+col('登録端末名')+','+col('更新者ID')+','+col('更新端末名')+','
+              +col('登録日時')+' FROM [Web測定バックアップ] ORDER BY [更新日時] DESC')
   rows=cur.fetchall()
- return [{'id':str(r[0] or ''),'equipment':str(r[1] or ''),'lotNo':str(r[2] or ''),'inspectionNo':str(r[3] or ''),'castingNo':str(r[4] or ''),'status':str(r[5] or ''),'updated_at':r[6].isoformat() if r[6] else None,'codec':str(r[7] or ''),'payload':str(r[8] or '')} for r in rows],path
+ def at(v):
+  try:return v.isoformat() if v else None
+  except Exception:return str(v or '') or None
+ return [{'id':str(r[0] or ''),'equipment':str(r[1] or ''),'lotNo':str(r[2] or ''),'inspectionNo':str(r[3] or ''),'castingNo':str(r[4] or ''),'status':str(r[5] or ''),'updated_at':at(r[6]),'codec':str(r[7] or ''),'payload':str(r[8] or ''),
+          'created_by':str(r[9] or ''),'created_pc':str(r[10] or ''),
+          'updated_by':str(r[11] or ''),'updated_pc':str(r[12] or ''),
+          'created_at':at(r[13])} for r in rows],path
 
 # ---------- 実績バックアップ読込のキャッシュ(docs/SCHEDULE_MODE_DESIGN.md §9.41) ----------
 # RECORDS_BACKUP_EXPORT_PATHは閲覧用複製(Box等のネットワーク共有)を指すのが
