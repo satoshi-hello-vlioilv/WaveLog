@@ -97,7 +97,7 @@ tbody tr:hover{background:#e5f2f3;cursor:pointer}
 @keyframes split-missing-pulse{0%,100%{background:var(--danger-bg)}50%{background:#f8c9c9}}
 .plan-select-head,.plan-select-cell{width:26px;text-align:center;padding:4px 2px}
 .plan-select-checkbox,#planSelectAll{width:var(--ctl-box);height:var(--ctl-box);cursor:pointer;accent-color:var(--teal)}
-.plan-select-bar{display:flex;align-items:center;gap:var(--gap-section);margin:0 0 8px;padding:6px 12px;background:var(--computed-bg);border:1px solid #9cd6ce;border-radius:var(--radius-sm);font-size:var(--fs-sm);font-weight:700;color:var(--computed-fg)}
+.plan-select-bar{display:flex;align-items:center;gap:var(--gap-section);margin:0 0 8px;padding:6px 12px;background:var(--computed-bg);border:1px solid var(--teal-soft);border-radius:var(--radius-sm);font-size:var(--fs-sm);font-weight:700;color:var(--computed-fg)}
 .plan-select-add{border:0;background:var(--teal);color:#fff;font-weight:700;cursor:pointer;margin-left:auto}
 .plan-select-add:hover{background:var(--teal-dark)}
 .plan-select-clear{border:1px solid var(--teal);background:#fff;color:#0c5d67;font-weight:700;cursor:pointer}

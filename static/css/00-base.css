@@ -61,6 +61,8 @@
 :root{
   --nav:#173842;
   --teal:#087c89;
+  /* 選択件数バー（仕掛一覧・タイムライン）の枠。淡いほうのteal。 */
+  --teal-soft:#9cd6ce;
   --teal-dark:#096b75;
   --pale:#dcecef;
   --line:#b7c7cc;

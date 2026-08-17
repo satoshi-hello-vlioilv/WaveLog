@@ -262,7 +262,10 @@
      実際にこれで内容の列が1列に潰れた。) */
  /* 区分は 62→74px。文字を本文(14px)へ上げた分、「▶ 作業中」が入り切らず
     末尾が省略されていた(実測で4〜7pxはみ出し)。 */
- grid-template-columns:calc(18px * var(--ui-scale)) calc(74px * var(--ui-scale)) calc(44px * var(--ui-scale))
+ /* 1列目は掴む取っ手。まとめて外せる場面(§9.170)だけチェックを抱えるので
+    幅を持ち替える。**列そのものは足さない**——見出しと行が同じ定義を
+    共有しているのがこの表の土台で、2通り書くと片方だけ直した状態が作れる。 */
+ grid-template-columns:var(--sc-handle-col,calc(18px * var(--ui-scale))) calc(74px * var(--ui-scale)) calc(44px * var(--ui-scale))
   calc(50px * var(--ui-scale))
   calc(112px * var(--ui-scale)) calc(58px * var(--ui-scale)) calc(88px * var(--ui-scale))
   var(--sc-content-cols,minmax(calc(150px * var(--ui-scale)),1fr))
@@ -307,7 +310,8 @@
    間、行を薄く表示して「まだ確定していない」ことを伝える。 */
 .sc-row-line.sc-row-pending{opacity:.6;background:repeating-linear-gradient(135deg,#fff,#fff 8px,#f7f5ea 8px,#f7f5ea 16px)}
 .sc-flag-pending{color:#a4832a;font-weight:800}
-.sc-row-handle{color:#9caeb4;font-size:var(--tbl-fs);text-align:center}
+.sc-row-handle{color:#9caeb4;font-size:var(--tbl-fs);text-align:center;
+ display:flex;align-items:center;justify-content:center;gap:2px}
 /* 区分(§9.39): 完了済み/作業中/作業予定を行の中の列で持つ。以前は
    セクション見出しで分けていたが、日付・勤務でまとめ直したいときに
    見出しが二重になるため、列へ移した。 */
@@ -921,5 +925,32 @@
  font-size:var(--fs-sm);font-weight:700;pointer-events:none}
 .sc-drop-remove-text small{font-size:var(--fs-micro);font-weight:400;color:var(--muted)}
 .sc-drop-remove-icon{pointer-events:none}
+
+/* ---------- まとめて予定から外す(§9.170) ----------
+   仕掛一覧の「チェックで複数選ぶ→まとめて投入」の裏返し。選ぶ道具は
+   取っ手の列へ同居させ、**件数と対象は必ず文字で**選択バーへ出す
+   (行の面の色だけでは何件選んだか数えることになる)。 */
+#scTimeline.sc-pickable{--sc-handle-col:calc(38px * var(--ui-scale))}
+.sc-row-pick-head{display:flex;align-items:center;justify-content:center}
+.sc-pick-check,#scPickAll{width:13px;height:13px;margin:0;flex:none;cursor:pointer;accent-color:var(--teal)}
+#scPickAll:disabled{cursor:not-allowed;opacity:.45}
+.sc-row-line.is-picked{background:var(--pale)}
+.sc-row-line.is-picked:hover{background:var(--pale)}
+/* 選択バー。仕掛一覧の plan-select-bar と同じ見た目・同じ並び順にする。 */
+.sc-pick-bar{display:flex;align-items:center;gap:var(--gap-inline);flex-wrap:wrap;
+ margin:0 0 var(--space-2);padding:6px var(--space-3);
+ background:var(--computed-bg);border:1px solid var(--teal-soft);border-radius:var(--radius-sm);
+ font-size:var(--fs-sm);font-weight:700;color:var(--computed-fg)}
+.sc-pick-bar[hidden]{display:none}
+.sc-pick-count{white-space:nowrap}
+.sc-pick-lots{flex:1 1 12em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+ font-weight:400;color:var(--ink-2)}
+.sc-pick-remove,.sc-pick-clear{height:var(--ctl-h-sm);padding:0 var(--space-3);
+ border-radius:var(--radius-xs);font-size:var(--fs-sm);font-weight:700;cursor:pointer}
+.sc-pick-remove{border:1px solid var(--danger-border);background:var(--surface);color:var(--danger)}
+.sc-pick-remove:hover{background:var(--danger-bg)}
+.sc-pick-clear{border:1px solid var(--line);background:var(--surface);color:var(--ink-2)}
+.sc-pick-clear:hover{border-color:var(--teal);color:var(--nav)}
+.sc-pick-hint{flex:0 1 auto;font-size:var(--fs-micro);font-weight:400;color:var(--muted)}
 
 }

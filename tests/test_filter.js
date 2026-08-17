@@ -41,8 +41,11 @@ let b=null;
   await page.click('aside [data-db-key="SIKALOTNOW"]',{timeout:15000});
   await settle(2000);
  };
+ /* 登録フィルタは**人のもの**になった(§9.172)ので、画面と同じ利用者IDで問い合わせる
+    ——付けずに聞くと「みんなのもの」しか返らず、自分が登録したぶんが見えない。 */
  const presetNames=mode=>page.evaluate(async m=>{
-  const q=new URLSearchParams({db:'SIKALOTNOW',table:'仕掛',mode:m});
+  const q=new URLSearchParams({db:'SIKALOTNOW',table:'仕掛',mode:m,
+    user:localStorage.getItem('AccessMeasurementUserId')||''});
   const r=await fetch('/api/filter-presets?'+q);
   return ((await r.json()).items||[]).map(x=>x.name);
  },mode);
