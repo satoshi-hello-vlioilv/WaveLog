@@ -204,10 +204,21 @@
 .filter-preset-toolbar span{color:#40606a;font-size:var(--fs-sm)}
 .filter-preset-toolbar button{background:var(--teal);color:#fff;border-color:var(--teal)}
 .filter-preset-list{flex:1;min-height:0;overflow:auto;padding:var(--pad-card);display:grid;gap:var(--space-2);align-content:start;position:relative}
-.filter-preset-item{display:grid;grid-template-columns:minmax(130px,1.1fr) minmax(110px,.9fr) minmax(0,2.2fr) auto;gap:var(--gap-section);align-items:center;padding:9px 11px;background:#fff;border:1px solid #d6e0e3;border-radius:var(--radius-sm)}
+.filter-preset-item{display:grid;grid-template-columns:minmax(130px,1.1fr) auto minmax(110px,.9fr) minmax(0,2.2fr) auto;gap:var(--gap-section);align-items:center;padding:9px 11px;background:#fff;border:1px solid #d6e0e3;border-radius:var(--radius-sm)}
 .filter-preset-item .fp-name{font-weight:800;color:#173842;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .filter-preset-item .fp-name small{display:block;margin-top:2px;color:#7b8e95;font-weight:700;font-size:var(--fs-tiny)}
-.filter-preset-item .fp-target{color:#526970;font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.filter-preset-item .fp-target{color:#526970;font-size:var(--fs-sm);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 持ち主は**独立した列**にする(§9.172)。対象と同じマスへ入れると、
+   「SIKALOTNO…」のように出どころのほうが切れる（列は縦にそろえる）。 */
+.filter-preset-item .fp-own-cell{display:flex;align-items:center}
+/* 持ち主(§9.172)。**色だけで伝えない**ので言葉をそのまま出す。押すと入れ替わる
+   ことが分かるよう、ボタンの形にしてある(読み取り専用の印にしない)。 */
+.filter-preset-item .fp-own{flex:none;height:var(--ctl-h-xs);padding:0 var(--space-2);
+ border:1px solid var(--line);border-radius:var(--radius-pill);
+ background:var(--surface);color:var(--ink-3);font-size:var(--fs-micro);font-weight:700;cursor:pointer}
+.filter-preset-item .fp-own.is-mine{border-color:var(--teal);background:var(--pale);color:var(--nav)}
+.filter-preset-item .fp-own:hover{border-color:var(--teal-dark);color:var(--nav)}
+.filter-preset-toolbar .fp-who{color:var(--nav)}
 .filter-preset-item .fp-conds{display:flex;flex-wrap:wrap;gap:var(--space-1)}
 .filter-preset-item .fp-actions{display:flex;align-items:center;gap:var(--gap-inline)}
 .filter-preset-item .fp-actions .apply{background:var(--teal);color:#fff;border-color:var(--teal)}
@@ -219,7 +230,7 @@
 .fp-lock-btn.locked{background:#fff2cc;border-color:#e0b23d;color:#6b5200}
 .fp-cond{display:inline-flex;align-items:center;gap:var(--gap-tight);padding:var(--pad-chip);border-radius:var(--radius-md);border:1px solid #cddbde;background:#f7fafb;font-size:var(--fs-micro);white-space:nowrap}
 .fp-cond b{color:#075e67}
-@media(max-width:820px){.filter-preset-item{grid-template-columns:1fr auto;gap:var(--gap-inline)}.filter-preset-item .fp-conds{grid-column:1/-1}}
+@media(max-width:820px){.filter-preset-item{grid-template-columns:1fr auto auto;gap:var(--gap-inline)}.filter-preset-item .fp-conds{grid-column:1/-1}}
 /* ---------- 登録フィルタの持ち出し・取り込み(§9.171) ----------
    モーダルを増やさず、登録フィルタの一覧の**上へ差し込む**。何が出て行く
    のか・何が入ってくるのかを、実物の一覧を見たまま確かめられるようにする。 */

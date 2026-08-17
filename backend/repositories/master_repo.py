@@ -509,6 +509,15 @@ FILTER_PRESET_TABLE='フィルタプリセットマスタ'
 # スケジュールモードは品質データを結合して列構成が変わるため、使う条件も
 # 別になる。混ざると「その表に無い列の条件」が並ぶので、保存先を分ける(§9.80)。
 _FILTER_PRESET_MODE_COLUMN=('対象モード','TEXT')
+# 所有者ID(§9.172)。**空欄＝みんなの**——今まで登録された分は誰のものでもない
+# 共有として、そのまま全員に見え続ける(個人単位を後から入れたからといって、
+# 既にある登録が誰かの持ち物になったり見えなくなったりしてはいけない)。
+_FILTER_PRESET_OWNER_COLUMN=('所有者ID','TEXT')
+
+def _add_missing_column(c,table,name,decl):
+ if name not in {r[1] for r in c.cursor().execute(f'PRAGMA table_info([{table}])')}:
+  c.cursor().execute(f'ALTER TABLE [{table}] ADD COLUMN [{name}] {decl}')
+  c.commit()
 
 def ensure_filter_preset_table(c):
  names=tables(c);created=False
@@ -519,22 +528,83 @@ def ensure_filter_preset_table(c):
   c.commit();created=True
  ensure_audit_columns(c,FILTER_PRESET_TABLE)
  # 既存DBには無い列なので、他のマスタと同じ「無ければALTER TABLEで足す」方式。
- name,decl=_FILTER_PRESET_MODE_COLUMN
- if name not in {r[1] for r in c.cursor().execute(f'PRAGMA table_info([{FILTER_PRESET_TABLE}])')}:
-  c.cursor().execute(f'ALTER TABLE [{FILTER_PRESET_TABLE}] ADD COLUMN [{name}] {decl}')
-  c.commit()
+ for name,decl in (_FILTER_PRESET_MODE_COLUMN,_FILTER_PRESET_OWNER_COLUMN):
+  _add_missing_column(c,FILTER_PRESET_TABLE,name,decl)
  return created
 
 def filter_preset_rows(c):
  ensure_filter_preset_table(c)
  cur=c.cursor()
  # 全行取得後にPython側で有効判定する(使用回数の多い順で返す)。
- cur.execute('SELECT [プリセットID],[名称],[対象DB],[対象テーブル],[条件JSON],[使用回数],[最終使用日時],[有効],[更新日時],[更新者ID],[対象モード] FROM [フィルタプリセットマスタ] ORDER BY [使用回数] DESC,[表示順],[名称]')
+ cur.execute('SELECT [プリセットID],[名称],[対象DB],[対象テーブル],[条件JSON],[使用回数],[最終使用日時],[有効],[更新日時],[更新者ID],[対象モード],[所有者ID] FROM [フィルタプリセットマスタ] ORDER BY [使用回数] DESC,[表示順],[名称]')
  rows=[]
  for r in cur.fetchall():
   active=True if r[7] is None else bool(r[7])
   if active and str(r[1] or '').strip():rows.append(r)
  return rows
+
+# ========================================================================
+# フィルタ個人設定マスタ(§9.172)
+#  - 「この一覧を開いたら自動で当てる(デフォルト)」「外すときに確認を挟む(鍵)」は
+#    **人の好み**であって、登録フィルタそのものの性質ではない。以前は端末の
+#    localStorageに置いていたため、(1)同じPCを別の人が使うと相手の既定が当たり、
+#    (2)自分が別のPCへ移ると付けた覚えの印が消える、という形で出ていた。
+#  - 1行＝(利用者ID × プリセットID)。**行が無い＝印なし**(他マスタと同じ互換
+#    ポリシー)。両方の印が外れた行は消す——「無い」を2通りで表さない。
+# ========================================================================
+FILTER_PERSONAL_TABLE='フィルタ個人設定マスタ'
+def ensure_filter_personal_table(c):
+ names=tables(c);created=False
+ if FILTER_PERSONAL_TABLE not in names:
+  cur=c.cursor()
+  cur.execute('CREATE TABLE [フィルタ個人設定マスタ] ([設定ID] INTEGER PRIMARY KEY AUTOINCREMENT, [利用者ID] TEXT, [プリセットID] INTEGER, [既定] INTEGER, [鍵] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
+  cur.execute('CREATE UNIQUE INDEX [UX_フィルタ個人設定マスタ] ON [フィルタ個人設定マスタ] ([利用者ID],[プリセットID])')
+  c.commit();created=True
+ ensure_audit_columns(c,FILTER_PERSONAL_TABLE)
+ return created
+
+def filter_personal_marks(c,user_id):
+ """その人の印。{プリセットID: {'isDefault':bool,'isLocked':bool}}
+
+ **利用者IDが空でも引ける**(その端末の主が誰か分からない場合の受け皿)。
+ 空を「全員ぶん」と読み替えてはいけない——他人の好みが当たってしまう。"""
+ ensure_filter_personal_table(c)
+ uid=str(user_id or '').strip()
+ cur=c.cursor()
+ cur.execute('SELECT [プリセットID],[既定],[鍵] FROM [フィルタ個人設定マスタ] WHERE [利用者ID]=?',[uid])
+ out={}
+ for pid,dflt,lock in cur.fetchall():
+  if pid is None:continue
+  out[int(pid)]={'isDefault':bool(dflt),'isLocked':bool(lock)}
+ return out
+
+def filter_personal_set(c,user_id,preset_id,is_default,is_locked,updated_by=''):
+ """印を1件だけ書き換える。**両方外れたら行ごと消す**(上のコメント参照)。"""
+ ensure_filter_personal_table(c)
+ uid=str(user_id or '').strip();pid=int(preset_id)
+ cur=c.cursor()
+ if not is_default and not is_locked:
+  cur.execute('DELETE FROM [フィルタ個人設定マスタ] WHERE [利用者ID]=? AND [プリセットID]=?',[uid,pid])
+  c.commit();return False
+ cur.execute('SELECT [設定ID] FROM [フィルタ個人設定マスタ] WHERE [利用者ID]=? AND [プリセットID]=?',[uid,pid])
+ row=cur.fetchone()
+ if row:
+  cur.execute('UPDATE [フィルタ個人設定マスタ] SET [既定]=?,[鍵]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [設定ID]=?',
+              [-1 if is_default else 0,-1 if is_locked else 0,str(updated_by or uid)[:50],row[0]])
+ else:
+  cur.execute('INSERT INTO [フィルタ個人設定マスタ] ([利用者ID],[プリセットID],[既定],[鍵],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,-1,?,?,Now(),Now())',
+              [uid,pid,-1 if is_default else 0,-1 if is_locked else 0,str(updated_by or uid)[:50],str(updated_by or uid)[:50]])
+ c.commit();return True
+
+def filter_personal_has_any(c,user_id):
+ """その人の印が1件でもあるか。**一度きりの移行**(端末の控え→その人の印)を
+ やってよいかの判定に使う。件数ではなく有無で判定するのは、移行後に全部外した
+ 人へもう一度移行を仕掛けないため……にはならない(0件に戻る)ので、画面側は
+ 別に「移行済みの目印」を端末へ残す。ここはサーバー側の安全弁。"""
+ ensure_filter_personal_table(c)
+ cur=c.cursor()
+ cur.execute('SELECT COUNT(*) FROM [フィルタ個人設定マスタ] WHERE [利用者ID]=?',[str(user_id or '').strip()])
+ return int((cur.fetchone() or [0])[0] or 0)>0
 
 # ========================================================================
 # アクセス権限マスタ（ログインID×PC名の組み合わせで編集可否を管理）

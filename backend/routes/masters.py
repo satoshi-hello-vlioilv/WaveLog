@@ -36,6 +36,8 @@ from ..repositories.master_repo import (
  COIL_STOP_MASTER_TABLE, ensure_coil_stop_master_table, normalize_coil_stop_name, coil_stop_master_rows,
  DEVICE_MASTER_TABLE, ensure_device_master_table, normalize_device_name, device_master_rows,
  FILTER_PRESET_TABLE, ensure_filter_preset_table, filter_preset_rows,
+ FILTER_PERSONAL_TABLE, ensure_filter_personal_table, filter_personal_marks,
+ filter_personal_set, filter_personal_has_any,
  SCHEDULE_COLUMN_TABLE, ensure_schedule_column_table, schedule_columns_for, set_schedule_columns,
  SCHEDULE_CONTENT_TABLE, ensure_schedule_content_table, schedule_content_items_for, set_schedule_content_items,
  COLUMN_LAYOUT_TABLE, ensure_column_layout_table, column_layout_for, set_column_layout,
@@ -440,19 +442,43 @@ def _filter_preset_mode(raw):
  編集と閲覧で同じ一覧を同じ列構成で見るので、条件を分ける理由が無い。"""
  return 'schedule' if str(raw or '').strip()=='schedule' else ''
 
+def _filter_preset_user(source=None):
+ """「今この画面を使っている人」(§9.172)。空でも受ける——OSのログインIDが
+ 取れない端末があり、そこで登録を拒むと**フィルタ機能ごと使えなくなる**。
+ 空は「利用者が分からない端末」という1つの入れ物として扱い、画面側がその旨を
+ 書く(他人の設定と混ざる可能性を黙って隠さない)。"""
+ x=source if source is not None else request.args
+ for k in ('user','user_id','userId'):
+  v=str((x.get(k) if hasattr(x,'get') else '') or '').strip()
+  if v:return v[:50]
+ return ''
+
+def _preset_visible_to(owner,user_id):
+ """見えるのは「みんなのもの(所有者ID空欄)」と「自分のもの」だけ。
+ **他人の個人フィルタは出さない**——出すと個人単位にした意味が無い。"""
+ own=str(owner or '').strip()
+ return (not own) or own==str(user_id or '').strip()
+
 @bp.get('/api/filter-presets')
 def filter_preset_list():
  try:
   db_key=str(request.args.get('db') or '').strip();table=str(request.args.get('table') or '').strip()
+  uid=_filter_preset_user()
   path=DBS['MASTER']['path']
   with connect(path,False) as c:
    before=FILTER_PRESET_TABLE in tables(c);rows=filter_preset_rows(c)
+   marks=filter_personal_marks(c,uid)
    items=[]
    for r in rows:
     try:filters=json.loads(r[4] or '[]')
     except Exception:filters=[]
     if not isinstance(filters,list):filters=[]
-    items.append({'id':r[0],'name':str(r[1] or '').strip(),'db':str(r[2] or '').strip(),'table':str(r[3] or '').strip(),'filters':filters,'uses':int(r[5] or 0),'last_used':r[6].isoformat() if r[6] else None,'updated_at':r[8].isoformat() if r[8] else None,'updated_by':(str(r[9]).strip() if len(r)>9 and r[9] else ''),'mode':(str(r[10]).strip() if len(r)>10 and r[10] else '')})
+    owner=(str(r[11]).strip() if len(r)>11 and r[11] else '')
+    if not _preset_visible_to(owner,uid):continue
+    mk=marks.get(int(r[0]),{})
+    items.append({'id':r[0],'name':str(r[1] or '').strip(),'db':str(r[2] or '').strip(),'table':str(r[3] or '').strip(),'filters':filters,'uses':int(r[5] or 0),'last_used':r[6].isoformat() if r[6] else None,'updated_at':r[8].isoformat() if r[8] else None,'updated_by':(str(r[9]).strip() if len(r)>9 and r[9] else ''),'mode':(str(r[10]).strip() if len(r)>10 and r[10] else ''),
+                  'owner':owner,'mine':bool(owner) and owner==uid,'shared':not owner,
+                  'isDefault':bool(mk.get('isDefault')),'isLocked':bool(mk.get('isLocked'))})
   # ファイル(DB)＆テーブルごとに個別管理するため、対象DB/対象テーブルが
   # 空欄のプリセット(=以前の実装が汎用として扱っていたもの)であっても、
   # 厳密に一致しない限り対象外とする。
@@ -462,7 +488,14 @@ def filter_preset_list():
   # 条件の置き場も分ける。指定が無ければ共通('')のものだけを返す。
   mode=_filter_preset_mode(request.args.get('mode'))
   items=[x for x in items if x.get('mode','')==mode]
-  return jsonify(ok=True,items=items,mode=mode,table=FILTER_PRESET_TABLE,created=not before,master_path=str(path))
+  # **「この人の印が1件でもあるか」は一覧の絞り込みと別に数える**——今開いて
+  # いる一覧に印が無いだけで「まだ一度も付けていない人」と判定すると、
+  # 端末に残っていた古い印の移行(§9.172)が何度も走ってしまう。
+  with connect(path,True) as c2:
+   has_marks=filter_personal_has_any(c2,uid)
+  return jsonify(ok=True,items=items,mode=mode,user=uid,
+                 hasPersonalMarks=has_marks,
+                 table=FILTER_PRESET_TABLE,created=not before,master_path=str(path))
  except Exception as e:return jsonify(error=f'フィルタプリセット読込失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
 
 @bp.post('/api/filter-presets')
@@ -474,20 +507,26 @@ def filter_preset_register():
   if not isinstance(filters,list) or not filters:return jsonify(error='保存する条件がありません。'),400
   db_key=str(x.get('db') or '').strip();table=str(x.get('table') or '').strip();payload=json.dumps(filters,ensure_ascii=False)
   mode=_filter_preset_mode(x.get('mode'))
+  # 所有者(§9.172)。指定が無ければ**その人のもの**として登録する。共有したい
+  # ときだけ owner='' を明示する(shared=trueでも同じ)。**同名の照合にも
+  # 所有者を含める**——含めないと、同じ名前を付けた他人の登録を黙って
+  # 書き換えてしまう(個人単位にした意味が無くなるどころか、実害が出る)。
+  requester=_filter_preset_user(x) or uid
+  owner=('' if x.get('shared') else str(x.get('owner') if x.get('owner') is not None else requester or '').strip()[:50])
   path=DBS['MASTER']['path']
   with connect(path,False) as c:
    ensure_filter_preset_table(c);cur=c.cursor()
-   cur.execute('SELECT [プリセットID],[名称],[対象DB],[対象テーブル],[対象モード] FROM [フィルタプリセットマスタ]');rows=cur.fetchall()
+   cur.execute('SELECT [プリセットID],[名称],[対象DB],[対象テーブル],[対象モード],[所有者ID] FROM [フィルタプリセットマスタ]');rows=cur.fetchall()
    target=normalize_equipment_name(name)
-   existing=next((r for r in rows if normalize_equipment_name(r[1])==target and str(r[2] or '')==db_key and str(r[3] or '')==table and str(r[4] or '')==mode),None)
+   existing=next((r for r in rows if normalize_equipment_name(r[1])==target and str(r[2] or '')==db_key and str(r[3] or '')==table and str(r[4] or '')==mode and str(r[5] or '')==owner),None)
    if existing:
     cur.execute('UPDATE [フィルタプリセットマスタ] SET [条件JSON]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [プリセットID]=?',[payload,uid,existing[0]]);registered=False;preset_id=existing[0]
    else:
     cur.execute('SELECT Max([表示順]) FROM [フィルタプリセットマスタ]');maximum=cur.fetchone()[0];order=int(maximum or 0)+10
-    cur.execute('INSERT INTO [フィルタプリセットマスタ] ([名称],[対象DB],[対象テーブル],[対象モード],[条件JSON],[使用回数],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,0,?,-1,?,?,Now(),Now())',[name,db_key,table,mode,payload,order,uid,uid]);registered=True
+    cur.execute('INSERT INTO [フィルタプリセットマスタ] ([名称],[対象DB],[対象テーブル],[対象モード],[条件JSON],[使用回数],[表示順],[有効],[所有者ID],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,0,?,-1,?,?,?,Now(),Now())',[name,db_key,table,mode,payload,order,owner,uid,uid]);registered=True
     preset_id=cur.lastrowid
    c.commit()
-  return jsonify(ok=True,name=name,id=preset_id,registered=registered,updated_by=uid,message=('フィルタマスタへ新規登録しました。' if registered else '登録済みフィルタを更新しました。'))
+  return jsonify(ok=True,name=name,id=preset_id,registered=registered,owner=owner,mine=bool(owner),updated_by=uid,message=('フィルタマスタへ新規登録しました。' if registered else '登録済みフィルタを更新しました。'))
  except Exception as e:return jsonify(error=f'フィルタプリセット登録失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
 
 @bp.post('/api/filter-presets/use')
@@ -509,13 +548,71 @@ def filter_preset_delete():
  try:
   x=request.get_json(force=True) or {};pid=x.get('id');uid=request_user_id(x)
   if pid is None:return jsonify(error='削除対象IDがありません。'),400
+  requester=_filter_preset_user(x) or uid
   path=DBS['MASTER']['path']
   with connect(path,False) as c:
    ensure_filter_preset_table(c);cur=c.cursor()
+   # **他人の個人フィルタは消せない**(§9.172)。みんなのもの(所有者空欄)は
+   # 今までどおり誰でも消せる——共有のものを消せる人を絞ると、作った人が
+   # 辞めた後に誰も片付けられなくなる。
+   cur.execute('SELECT [所有者ID] FROM [フィルタプリセットマスタ] WHERE [プリセットID]=?',[pid])
+   row=cur.fetchone()
+   if row is not None and not _preset_visible_to(row[0],requester):
+    return jsonify(error='この登録フィルタは別の人のものです。持ち主だけが削除できます。'),403
    # 物理削除ではなく無効化し、履歴を残す。無効化した更新者も記録する。
    cur.execute('UPDATE [フィルタプリセットマスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [プリセットID]=?',[uid,pid]);c.commit()
   return jsonify(ok=True,id=pid,updated_by=uid)
  except Exception as e:return jsonify(error=f'フィルタプリセット削除失敗: {e}'),500
+
+@bp.post('/api/filter-presets/marks')
+def filter_preset_marks():
+ """「デフォルト」「鍵」の印を、**その人のもの**として残す(§9.172)。
+ 以前は端末のlocalStorageだったため、同じPCを別の人が使うと相手の既定が
+ 当たり、別のPCへ移ると付けた覚えの印が消えていた。"""
+ try:
+  x=request.get_json(force=True) or {};uid=request_user_id(x)
+  requester=_filter_preset_user(x) or uid
+  items=x.get('items')
+  if not isinstance(items,list):
+   if x.get('id') is None:return jsonify(error='対象のプリセットIDがありません。'),400
+   items=[{'id':x.get('id'),'isDefault':x.get('isDefault'),'isLocked':x.get('isLocked')}]
+  path=DBS['MASTER']['path']
+  saved=0
+  with connect(path,False) as c:
+   ensure_filter_personal_table(c)
+   for it in items:
+    if not isinstance(it,dict) or it.get('id') is None:continue
+    try:pid=int(it.get('id'))
+    except Exception:continue
+    filter_personal_set(c,requester,pid,bool(it.get('isDefault')),bool(it.get('isLocked')),uid)
+    saved+=1
+  return jsonify(ok=True,user=requester,saved=saved)
+ except Exception as e:return jsonify(error=f'フィルタ個人設定の保存に失敗: {e}'),500
+
+@bp.post('/api/filter-presets/owner')
+def filter_preset_owner():
+ """「自分だけ」と「みんな」を行き来する(§9.172)。**持ち主だけが変えられる**。
+ みんなのものを自分のものにするのは、他の人から見えなくなるので**取り上げ**に
+ なる——できるのは、まだ誰の物でもない(＝共有)ものを自分の物にする場合だけに
+ 限らず、画面側が確認を出す。"""
+ try:
+  x=request.get_json(force=True) or {};pid=x.get('id');uid=request_user_id(x)
+  if pid is None:return jsonify(error='対象のプリセットIDがありません。'),400
+  requester=_filter_preset_user(x) or uid
+  to_shared=bool(x.get('shared'))
+  path=DBS['MASTER']['path']
+  with connect(path,False) as c:
+   ensure_filter_preset_table(c);cur=c.cursor()
+   cur.execute('SELECT [所有者ID] FROM [フィルタプリセットマスタ] WHERE [プリセットID]=?',[pid])
+   row=cur.fetchone()
+   if row is None:return jsonify(error='その登録フィルタは見つかりません。'),404
+   if not _preset_visible_to(row[0],requester):
+    return jsonify(error='この登録フィルタは別の人のものです。持ち主だけが変えられます。'),403
+   owner='' if to_shared else str(requester or '')[:50]
+   cur.execute('UPDATE [フィルタプリセットマスタ] SET [所有者ID]=?,[更新者ID]=?,[更新日時]=Now() WHERE [プリセットID]=?',[owner,uid,pid])
+   c.commit()
+  return jsonify(ok=True,id=pid,owner=owner,mine=bool(owner))
+ except Exception as e:return jsonify(error=f'フィルタの持ち主変更に失敗: {e}'),500
 
 @bp.get('/api/schedule-column-master')
 def schedule_column_master_get():

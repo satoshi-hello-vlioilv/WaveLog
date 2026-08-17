@@ -24,12 +24,26 @@
      「DB名+テーブル名」ごとのバケットに分けて記録する。V1のデータは
      どのテーブルのものか復元しようが無いため引き継がない(利用回数の
      統計のみで、失われても数回の操作で貯まり直す性質のデータ)。 */
-  const USAGE_STORE='MeasurementFilterCondUsageV2';
+  /* 利用履歴は**人ごと**に分ける(§9.172)。V2は「DB+テーブル+モード」ごとの
+     バケットだけで、同じPCを2人で使うと相手が打った条件が自分の「よく使う」に
+     並んでいた。V3は一番外側へ利用者IDのバケットを足す。V2ぶんは**今の利用者の
+     ものとして引き継ぐ**——その端末を主に使っている人のものである可能性が高く、
+     捨てると貯まり直すまで提案が空になる。 */
+  const USAGE_STORE='MeasurementFilterCondUsageV3';
+  const USAGE_STORE_V2='MeasurementFilterCondUsageV2';
   const QUICK_OPEN_STORE='MeasurementFilterQuickOpenV1';
   const OPS=[
     ['contains','含む'],['not_contains','含まない'],['eq','＝ 一致'],['neq','≠ 不一致'],
     ['starts','前方一致'],['ends','後方一致'],['gt','> より大きい'],['gte','>= 以上'],['lt','< より小さい'],['lte','<= 以下'],['empty','空欄'],['not_empty','空欄以外']
   ];
+  /* ---------- 「誰の設定か」(§9.172) ----------
+     利用者IDはbase.jsが起動直後に/api/whoamiから取って端末へ覚える(入力は
+     求めない)。**取れないことがある**ので、そのときは空のまま扱い、画面に
+     「この端末の共通」と書く——他人の設定と混ざるかもしれないことを黙って
+     隠さない。IDは後から届くので、**呼ぶたびに読む**(起動時に1回だけ束縛
+     すると、空のまま固定される)。 */
+  function filterUserId(){return typeof currentUserId==='function'?currentUserId():''}
+  function filterUserLabel(){return filterUserId()||'（利用者IDが分かりません）'}
   S.genericFilters=Array.isArray(S.genericFilters)?S.genericFilters:[];
   S.filterPresets=readLocalPresets();
   S.filterPresetSource='local';
@@ -85,8 +99,29 @@
   // よく使う条件の開閉状態(既定=閉じる)。端末ごとに覚える。
   let quickOpen=(()=>{try{return localStorage.getItem(QUICK_OPEN_STORE)==='1'}catch(_){return false}})();
   function writeQuickOpen(){try{localStorage.setItem(QUICK_OPEN_STORE,quickOpen?'1':'0')}catch(_){}}
-  function readUsage(){try{return JSON.parse(localStorage.getItem(USAGE_STORE)||'{}')}catch(_){return {}}}
+  function readUsage(){
+    let all={};
+    try{all=JSON.parse(localStorage.getItem(USAGE_STORE)||'{}')}catch(_){all={}}
+    if(!all||typeof all!=='object')all={};
+    /* V2からの引き継ぎは**一度だけ**。既にV3にその人のバケットがあれば触らない
+       (引き継いだあとに自分で消した履歴が、次の起動で戻ってきてしまう)。 */
+    const uid=filterUserId();
+    if(!all[uid]){
+      try{
+        const old=JSON.parse(localStorage.getItem(USAGE_STORE_V2)||'{}');
+        if(old&&typeof old==='object'&&Object.keys(old).length)all[uid]=old;
+      }catch(_){}
+    }
+    return all;
+  }
   function writeUsage(){try{localStorage.setItem(USAGE_STORE,JSON.stringify(S.filterCondUsage||{}))}catch(_){}}
+  /* その人のバケット。**無ければ作る**(呼び出し側で毎回undefinedを気にしない)。 */
+  function userUsageBucket(){
+    const all=S.filterCondUsage||(S.filterCondUsage={});
+    const uid=filterUserId();
+    if(!all[uid]||typeof all[uid]!=='object')all[uid]={};
+    return all[uid];
+  }
   /* 利用履歴・アクティブ条件のスコープキー。プリセット(currentTablePresets)が
      以前からdb+tableの完全一致で管理されているのに合わせる。 */
   /* ---------- 登録フィルタの置き場をモードで分ける(§9.80) ----------
@@ -98,8 +133,7 @@
   function presetMode(){return (window.accessMode&&window.accessMode.mode)==='schedule'?'schedule':''}
   function usageScopeKey(){return `${S.db||''}\u001f${S.table||''}\u001f${presetMode()}`}
   function scopedUsage(){
-    const all=S.filterCondUsage||{};
-    const bucket=all[usageScopeKey()];
+    const bucket=userUsageBucket()[usageScopeKey()];
     return (bucket&&typeof bucket==='object')?bucket:{};
   }
   /* ---------- 条件値の変数(§9.74) ----------
@@ -155,9 +189,9 @@
     return `${f.column} ${opShort(f.op)} ${f.value}`;
   }
   function bumpCondUsage(f){
-    // どのDB/テーブルで使った条件かを必ず添えて記録する(V2、上記コメント参照)。
+    // どのDB/テーブルで使った条件かを必ず添えて記録する(V3、上記コメント参照)。
     const scope=usageScopeKey();if(!S.db||!S.table)return;
-    const all=S.filterCondUsage||(S.filterCondUsage={});
+    const all=userUsageBucket();
     const bucket=(all[scope]&&typeof all[scope]==='object')?all[scope]:(all[scope]={});
     const k=filterKey(f);const u=bucket[k]||{count:0};
     u.count=(u.count||0)+1;u.at=Date.now();u.f={column:f.column,op:f.op,value:f.value};
@@ -185,8 +219,16 @@
     try{
       const q=new URLSearchParams();if(S.db)q.set('db',S.db);if(S.table)q.set('table',S.table);
       q.set('mode',presetMode());
+      /* **誰が見ているか**をサーバーへ渡す(§9.172)。返るのは「みんなのもの」と
+         「自分のもの」だけで、印(デフォルト・鍵)もその人のぶんが載って来る。 */
+      q.set('user',filterUserId());
       const r=await api('/api/filter-presets?'+q);
-      const fromMaster=(r.items||[]).map(x=>({id:x.id,name:x.name,db:x.db,table:x.table,mode:x.mode||'',filters:Array.isArray(x.filters)?x.filters:[],uses:x.uses||0,lastUsed:x.last_used,updatedAt:x.updated_at,master:true}));
+      const fromMaster=(r.items||[]).map(x=>({id:x.id,name:x.name,db:x.db,table:x.table,mode:x.mode||'',filters:Array.isArray(x.filters)?x.filters:[],uses:x.uses||0,lastUsed:x.last_used,updatedAt:x.updated_at,master:true,
+        owner:x.owner||'',mine:!!x.mine,shared:!!x.shared,isDefault:!!x.isDefault,isLocked:!!x.isLocked}));
+      /* 端末ごとの古い印を、一度だけこの人の印へ移す。**移してから写す**
+         ——先に写すと、移行で付いた印がその場では反映されない。 */
+      await migrateLegacyMarks(fromMaster,!!r.hasPersonalMarks);
+      absorbServerMarks(fromMaster,S.db,S.table,presetMode());
       /* マスタへ書けなかったぶん(この端末だけの控え)は**捨てない**。
          以前はマスタの内容で丸ごと置き換えていたため、保存に失敗して
          ローカルへ退避した直後の再読込でそれごと消え、「登録したのに
@@ -222,7 +264,10 @@
       if(!silent)showToast?.('すでに登録済みです',presetName(f),3000);
       return 'dup';
     }
-    const payload={name:presetName(f),db:S.db,table:S.table,mode:presetMode(),filters:[f]};
+    /* 登録は**自分のもの**として作る(§9.172)。みんなで使いたいときは登録一覧で
+       「みんな」へ切り替える——保存の瞬間に共有かどうかを決めさせると、
+       条件を1つ足すたびに関係のない判断が挟まる。 */
+    const payload={name:presetName(f),db:S.db,table:S.table,mode:presetMode(),filters:[f],user:filterUserId()};
     try{
       await api('/api/filter-presets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(withUserId(payload))});
       await loadMasterPresets({inline:false});
@@ -234,7 +279,8 @@
       /* マスタへ書けないときはこの端末だけの控えとして残す。以前は残した
          直後の再読込で消えていた(loadMasterPresetsが丸ごと置き換えていた)。 */
       const preset={id:crypto.randomUUID(),name:payload.name,db:S.db,table:S.table,
-                    mode:presetMode(),filters:[f],updatedAt:new Date().toISOString(),master:false};
+                    mode:presetMode(),filters:[f],updatedAt:new Date().toISOString(),master:false,
+                    owner:filterUserId(),mine:true};
       S.filterPresets=[preset,...(S.filterPresets||[])].slice(0,120);writeLocalPresets();
       showToast?.('マスタへ登録できませんでした',`${e.message}（この端末にだけ控えました）`,7000);
       renderGenericFilterBar();renderFilterPresetList();
@@ -251,12 +297,12 @@
     for(const f of savable){
       const dup=(S.filterPresets||[]).some(p=>(p.filters||[]).length===1&&filterKey(p.filters[0])===filterKey(f)&&p.db===S.db&&p.table===S.table);
       if(dup){skipped++;continue}
-      const payload={name:presetName(f),db:S.db,table:S.table,mode:presetMode(),filters:[f]};
+      const payload={name:presetName(f),db:S.db,table:S.table,mode:presetMode(),filters:[f],user:filterUserId()};
       try{
         await api('/api/filter-presets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(withUserId(payload))});
         saved++;
       }catch(e){
-        const preset={id:crypto.randomUUID(),name:payload.name,db:S.db,table:S.table,mode:presetMode(),filters:[f],updatedAt:new Date().toISOString(),master:false};
+        const preset={id:crypto.randomUUID(),name:payload.name,db:S.db,table:S.table,mode:presetMode(),filters:[f],updatedAt:new Date().toISOString(),master:false,owner:filterUserId(),mine:true};
         S.filterPresets=[preset,...(S.filterPresets||[])].slice(0,120);writeLocalPresets();S.filterPresetSource='local';
         failed++;
       }
@@ -272,12 +318,49 @@
     const listEl=$('#filterPresetList');
     if(preset.master&&preset.id!=null){
       setPanelLoading(listEl,true,'マスタから削除しています...');
-      try{await api('/api/filter-presets/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(withUserId({id:preset.id}))});await loadMasterPresets({inline:false})}
+      try{await api('/api/filter-presets/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(withUserId({id:preset.id,user:filterUserId()}))});await loadMasterPresets({inline:false})}
       catch(e){showToast?.('マスタから削除できませんでした',e.message,6500)}
       finally{setPanelLoading(listEl,false)}
     }else{
       S.filterPresets=(S.filterPresets||[]).filter(x=>x!==preset);writeLocalPresets();
     }
+    renderGenericFilterBar();renderFilterPresetList();
+  }
+  /* 「自分だけ」と「みんな」を行き来する(§9.172)。**どちらへ動かすのかを
+     文で確かめる**——「みんな」へ出すのは他の人の画面に増えること、
+     「自分だけ」へ戻すのは他の人の画面から消えることで、どちらも自分以外に
+     影響が出る操作なので、押した先を書いてから実行する。 */
+  async function togglePresetOwner(preset){
+    if(!preset||preset.id==null)return;
+    if(!preset.master){
+      showToast?.('この端末だけの控えです','マスタへ届いてから共有できます（「再読込」で送り直せます）。',5200);
+      return;
+    }
+    const toShared=!!preset.owner;   // 今が自分のもの → みんなへ
+    const ok=await confirmModal(toShared
+      ?{eyebrow:'SHARE FILTER',title:`「${preset.name}」をみんなで使えるようにします`,
+        confirmLabel:'みんなで使う',
+        bodyHtml:`<p class="confirm-modal-message">この登録フィルタが<b>ほかの人の登録フィルタ一覧にも出る</b>ようになります。</p>
+         <ul class="confirm-modal-points">
+          <li>条件そのものが共有されます。「デフォルト」「鍵」の印は<b>人ごと</b>なので、ほかの人へは付きません。</li>
+          <li>みんなのものになったフィルタは、<b>ほかの人も消せます</b>。</li>
+         </ul>`}
+      :{eyebrow:'MAKE PRIVATE',title:`「${preset.name}」を自分だけのものにします`,
+        confirmLabel:'自分だけにする',
+        bodyHtml:`<p class="confirm-modal-message">この登録フィルタが<b>ほかの人の一覧から消えます</b>（${esc(filterUserLabel())} だけに見えます）。</p>
+         <ul class="confirm-modal-points">
+          <li>ほかの人がこれをデフォルトに使っていた場合、その人の一覧では当たらなくなります。</li>
+         </ul>`});
+    if(!ok)return;
+    const listEl=$('#filterPresetList');
+    setPanelLoading(listEl,true,'持ち主を変えています...');
+    try{
+      await api('/api/filter-presets/owner',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(withUserId({id:preset.id,user:filterUserId(),shared:toShared}))});
+      await loadMasterPresets({inline:false});
+      showToast?.(toShared?'みんなで使えるようにしました':'自分だけのものにしました',preset.name,3600);
+    }catch(e){showToast?.('持ち主を変えられませんでした',e.message,6500)}
+    finally{setPanelLoading(listEl,false)}
     renderGenericFilterBar();renderFilterPresetList();
   }
   function markPresetUsed(preset){
@@ -291,9 +374,48 @@
   /* ---- デフォルトフィルタ（テーブルごとに複数選択可） ----
      一覧を開くたび（selectTable時）に、登録済みプリセットのうち
      デフォルト指定されたものを自動適用する。 */
+  /* ---------- 印（デフォルト・鍵）の置き場(§9.172) ----------
+     以前はこの2つを端末のlocalStorageに置いていた。そのため
+       (1) 同じPCを別の人が使うと、**相手が付けた既定が自分の一覧に当たる**
+       (2) 自分が別のPCへ移ると、**付けた覚えの印が消えている**
+     という形で出ていた。印は「人の好み」なので**人に付ける**。
+
+     置き場はマスタ(フィルタ個人設定マスタ)だが、**画面の中の形は変えない**
+     ——`db::table::mode` → プリセットIDの配列、という今までの形のまま持ち、
+     読み書きの出どころだけ差し替える(判定・適用・解除の処理が全部この形に
+     乗っているので、形ごと変えると影響範囲がフィルタ全体になる)。
+     localStorageは**マスタへ届かないときの控え**として残す(利用者ごとの鍵で
+     分ける。共有DBが不調でも、その端末で続きが使える)。 */
   const DEFAULT_STORE='MeasurementDefaultFilterPresetsV1';
-  function readDefaultPresetMap(){try{return JSON.parse(localStorage.getItem(DEFAULT_STORE)||'{}')}catch(_){return {}}}
-  function writeDefaultPresetMap(map){try{localStorage.setItem(DEFAULT_STORE,JSON.stringify(map))}catch(_){}}
+  const MARK_MIRROR='MeasurementFilterMarksV2';       // 利用者ID -> {def:{},lock:{}}
+  const MARK_MIGRATED='MeasurementFilterMarksMigratedV1';
+  let markMaps=null;                                  // {def:{},lock:{}}
+  function readMarkMirror(){
+    try{const all=JSON.parse(localStorage.getItem(MARK_MIRROR)||'{}');
+        const mine=all[filterUserId()];
+        if(mine&&typeof mine==='object')return {def:mine.def||{},lock:mine.lock||{}};
+    }catch(_){}
+    return null;
+  }
+  function writeMarkMirror(){
+    try{
+      const all=JSON.parse(localStorage.getItem(MARK_MIRROR)||'{}');
+      all[filterUserId()]={def:markMaps.def,lock:markMaps.lock};
+      localStorage.setItem(MARK_MIRROR,JSON.stringify(all));
+    }catch(_){}
+  }
+  /* 端末に残っている**旧V1（端末ごとの印）**。移行の材料としてだけ読む。 */
+  function legacyMarkMaps(){
+    const read=k=>{try{const m=JSON.parse(localStorage.getItem(k)||'{}');return (m&&typeof m==='object')?m:{}}catch(_){return {}}};
+    return {def:read(DEFAULT_STORE),lock:read(LOCKED_DEFAULT_STORE)};
+  }
+  function ensureMarkMaps(){
+    if(markMaps)return markMaps;
+    markMaps=readMarkMirror()||legacyMarkMaps();
+    return markMaps;
+  }
+  function readDefaultPresetMap(){return ensureMarkMaps().def}
+  function writeDefaultPresetMap(map){ensureMarkMaps().def=map;writeMarkMirror()}
   // 既定・鍵の記憶もモードごと(上と同じ理由)。
   /* 置き場のキー。**モードを外から渡せる形にしておく**(§9.171)——書き出し・
      取り込みは「今開いているモード」以外の一覧の印も扱うので、presetMode()を
@@ -306,6 +428,8 @@
     const map=readDefaultPresetMap(),key=defaultMapKey(db,table),ids=new Set((map[key]||[]).map(String)),pid=String(preset.id);
     if(on)ids.add(pid);else ids.delete(pid);
     map[key]=[...ids];writeDefaultPresetMap(map);
+    preset.isDefault=on;
+    pushMark(preset.id,db,table,presetMode());
   }
   function toggleDefaultPreset(preset,db,table){setDefaultPreset(preset,db,table,!isDefaultPreset(preset,db,table))}
 
@@ -315,14 +439,79 @@
      設備フィルタと同じ挙動)。鍵はデフォルトが前提のため、鍵を付けると
      デフォルトも自動でONにし、デフォルトを外すと鍵も一緒に外れる。 */
   const LOCKED_DEFAULT_STORE='MeasurementLockedDefaultFilterPresetsV1';
-  function readLockedPresetMap(){try{return JSON.parse(localStorage.getItem(LOCKED_DEFAULT_STORE)||'{}')}catch(_){return {}}}
-  function writeLockedPresetMap(map){try{localStorage.setItem(LOCKED_DEFAULT_STORE,JSON.stringify(map))}catch(_){}}
+  function readLockedPresetMap(){return ensureMarkMaps().lock}
+  function writeLockedPresetMap(map){ensureMarkMaps().lock=map;writeMarkMirror()}
+  /* 1件ぶんの印をマスタへ残す。**画面は待たせない**——印は付けた瞬間に効いて
+     ほしいもので、共有DBの往復を待たせる性質のものではない。届かなければ
+     端末の控えだけが残る(次に届いたときに送り直される)。 */
+  function pushMark(presetId,db,table,mode){
+    if(presetId==null)return;
+    const key=mapKeyOf(db,table,mode);
+    const has=(m,k)=>((m[key]||[]).map(String)).includes(String(presetId));
+    api('/api/filter-presets/marks',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(withUserId({user:filterUserId(),id:presetId,
+        isDefault:has(readDefaultPresetMap()),isLocked:has(readLockedPresetMap())}))})
+      .catch(()=>{/* 届かなければ端末の控えのまま。次の操作で送り直す */});
+  }
+  /* サーバーが返した印を、画面が使う形（キー→ID配列）へ写す。**返ってきた
+     ぶんだけ触る**——他のテーブルの印を、今の問い合わせに載っていないという
+     理由で消してはいけない。 */
+  function absorbServerMarks(items,db,table,mode){
+    const maps=ensureMarkMaps(),key=mapKeyOf(db,table,mode);
+    const def=new Set((maps.def[key]||[]).map(String)),lock=new Set((maps.lock[key]||[]).map(String));
+    (items||[]).forEach(x=>{
+      const id=String(x.id);
+      x.isDefault?def.add(id):def.delete(id);
+      x.isLocked?lock.add(id):lock.delete(id);
+    });
+    maps.def[key]=[...def];maps.lock[key]=[...lock];
+    writeMarkMirror();
+  }
+  /* 端末ごとの印（V1）を、**一度だけ**その人の印としてマスタへ移す(§9.172)。
+     その人の印がマスタに1件も無いときだけ行う——既に自分で付け直した人の
+     設定を、端末に残っていた古い印で上書きしない。移行したことは端末に
+     覚えておく(0件へ戻したあと、もう一度移行が走らないように)。 */
+  async function migrateLegacyMarks(items,serverHasMarks){
+    let done={};
+    try{done=JSON.parse(localStorage.getItem(MARK_MIGRATED)||'{}')}catch(_){}
+    const uid=filterUserId();
+    if(done[uid]||serverHasMarks)return false;
+    /* **端末に残っている印を全部まとめて1回で移す。** 今開いている一覧ぶんだけを
+       見ると、起動直後(まだテーブルを選ぶ前)に空振りしたまま「移行済み」に
+       なってしまい、以降どの一覧の印も移らない（実際にそうなった）。
+       旧V1のマップは値がプリセットIDそのものなので、一覧の中身は要らない。 */
+    const legacy=legacyMarkMaps();
+    const ids=new Map();   // id -> {isDefault,isLocked}
+    const collect=(maps,field)=>Object.values(maps||{}).forEach(list=>(list||[]).forEach(id=>{
+      const k=String(id);const cur=ids.get(k)||{isDefault:false,isLocked:false};
+      cur[field]=true;ids.set(k,cur);
+    }));
+    collect(legacy.def,'isDefault');collect(legacy.lock,'isLocked');
+    if(ids.size){
+      try{
+        await api('/api/filter-presets/marks',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify(withUserId({user:uid,
+            items:[...ids].map(([id,m])=>({id,isDefault:m.isDefault,isLocked:m.isLocked}))}))});
+        /* 今回の応答にも当てておく——移行した直後の画面が「印なし」で
+           描かれると、付け直したのかと思わせる。 */
+        (items||[]).forEach(x=>{
+          const m=ids.get(String(x.id));
+          if(m){x.isDefault=m.isDefault;x.isLocked=m.isLocked}
+        });
+      }catch(_){return false}
+    }
+    done[uid]=new Date().toISOString();
+    try{localStorage.setItem(MARK_MIGRATED,JSON.stringify(done))}catch(_){}
+    return ids.size>0;
+  }
   function lockedPresetIdsFor(db,table){return (readLockedPresetMap()[defaultMapKey(db,table)]||[]).map(String)}
   function isLockedDefaultPreset(preset,db,table){return lockedPresetIdsFor(db,table).includes(String(preset.id))}
   function setLockedDefaultPreset(preset,db,table,on){
     const map=readLockedPresetMap(),key=defaultMapKey(db,table),ids=new Set((map[key]||[]).map(String)),pid=String(preset.id);
     if(on)ids.add(pid);else ids.delete(pid);
     map[key]=[...ids];writeLockedPresetMap(map);
+    preset.isLocked=on;
+    pushMark(preset.id,db,table,presetMode());
   }
   function applyDefaultFiltersFor(db,table){
     const ids=defaultPresetIdsFor(db,table);if(!ids.length)return;
@@ -731,10 +920,11 @@
   async function ioFetchAll(){
     const out=[];
     for(const mode of ['','schedule']){
-      const q=new URLSearchParams();q.set('mode',mode);
+      const q=new URLSearchParams();q.set('mode',mode);q.set('user',filterUserId());
       const r=await api('/api/filter-presets?'+q);
       (r.items||[]).forEach(x=>out.push({id:x.id,name:x.name,db:x.db||'',table:x.table||'',
-        mode:x.mode||'',filters:Array.isArray(x.filters)?x.filters:[],uses:x.uses||0,master:true}));
+        mode:x.mode||'',filters:Array.isArray(x.filters)?x.filters:[],uses:x.uses||0,master:true,
+        owner:x.owner||'',isDefault:!!x.isDefault,isLocked:!!x.isLocked}));
     }
     /* マスタへ書けずこの端末だけに控えたぶんも持ち出せるようにする——
        書けなかったからこそ、他のPCへ運ぶ手立てが要る。 */
@@ -754,13 +944,16 @@
   }
   /* この端末で付いている印(デフォルト・鍵)を、そのグループの中で名前へ直す。 */
   function ioMarksOf(g){
+    /* 印は**サーバーが返したその人のぶん**を先に見る(§9.172)。画面の中の
+       マップは今開いている一覧ぶんしか埋まっていないので、それだけを見ると
+       他の一覧の印が落ちる。 */
     const key=mapKeyOf(g.db,g.table,g.mode);
     const ds=new Set((readDefaultPresetMap()[key]||[]).map(String));
     const ls=new Set((readLockedPresetMap()[key]||[]).map(String));
     const def=new Set(),lock=new Set();
     g.presets.forEach(p=>{
-      if(ds.has(String(p.id)))def.add(p.name);
-      if(ls.has(String(p.id)))lock.add(p.name);
+      if(p.isDefault||ds.has(String(p.id)))def.add(p.name);
+      if(p.isLocked||ls.has(String(p.id)))lock.add(p.name);
     });
     return {def,lock};
   }
@@ -787,6 +980,7 @@
       presets:((g&&g.presets)||[])
         .filter(x=>x&&String(x.name||'').trim()&&Array.isArray(x.filters)&&x.filters.length)
         .map(x=>({name:String(x.name).trim(),filters:x.filters,
+                  shared:!!x.shared,
                   isDefault:!!x.isDefault,isLocked:!!x.isLocked}))
     })).filter(g=>g.presets.length);
     groups.forEach(g=>{g.key=ioGroupKey(g)});
@@ -857,8 +1051,8 @@
          <span class="fp-io-count">${esc(ioCountText(g))}</span>
         </li>`).join('')||'<li class="fp-io-none">登録フィルタがまだありません。</li>'}</ul>
       <p class="fp-io-hint">
-       <b>出るもの</b>: 条件・名前・対象の一覧／この端末で付けた「デフォルト」「鍵」の印（名前で運びます）。<br>
-       <b>出ないもの</b>: 使用回数・最終使用日時（端末ごとの記録なので、運んでも意味がありません）。</p>
+       <b>出るもの</b>: 条件・名前・対象の一覧／「自分だけ・みんな」の別／${esc(filterUserLabel())}が付けた「デフォルト」「鍵」の印（名前で運びます）。<br>
+       <b>出ないもの</b>: 使用回数・最終使用日時（端末ごとの記録なので、運んでも意味がありません）／持ち主のID（取り込んだ人のものになります）。</p>
       <p class="fp-io-file-note">ファイル名 <code>${esc(ioFileName())}</code>（ブラウザのダウンロード先へ保存されます）</p>`;
       st.canRun=chosenCount>0;
       st.runLabel=chosenCount?`${chosenCount}件を書き出す`:'書き出す';
@@ -902,7 +1096,7 @@
         </div>
         <div class="fp-io-opt">
          <label><input type="checkbox" id="fpIoMarks"${st.withMarks?' checked':''}> 「デフォルト」「鍵」の印も取り込む</label>
-         <small>印はこの端末の設定です。外すと条件だけが入ります。</small>
+         <small>印は${esc(filterUserLabel())}だけのものになります。外すと条件だけが入ります。</small>
         </div>
       </div>`:'<p class="fp-io-hint">別のPCで「書き出す」から作ったJSONを選んでください。条件・名前・対象と、「デフォルト」「鍵」の印が入っています。</p>'}`;
       const chosenCount=parsed?parsed.groups.filter(g=>st.chosen.has(g.key)).reduce((n,g)=>n+g.presets.length,0):0;
@@ -967,6 +1161,10 @@
         const m=ioMarksOf(g);
         return {db:g.db,table:g.table,mode:g.mode,
           presets:g.presets.map(p=>({name:p.name,filters:p.filters||[],
+            /* 「自分だけ／みんな」も運ぶ(§9.172)。**持ち主のIDは運ばない**
+               ——別のPCでは別の人が取り込むので、IDを持って行くと
+               「他人のもの」として誰にも見えない登録が増える。 */
+            shared:!p.owner,
             isDefault:m.def.has(p.name),isLocked:m.lock.has(p.name)}))};
       })};
     ioDownload(ioFileName(),JSON.stringify(payload,null,1));
@@ -988,7 +1186,8 @@
           if(dup&&!st.overwrite){skipped++;if(dup.id!=null)idOf.set(p.name,dup.id);continue}
           try{
             const r=await api('/api/filter-presets',{method:'POST',headers:{'Content-Type':'application/json'},
-              body:JSON.stringify(withUserId({name:p.name,db:g.db,table:g.table,mode:g.mode,filters:p.filters}))});
+              body:JSON.stringify(withUserId({name:p.name,db:g.db,table:g.table,mode:g.mode,filters:p.filters,
+                user:filterUserId(),shared:!!p.shared}))});
             if(r&&r.id!=null)idOf.set(p.name,r.id);
             if(r&&r.registered)added++;else updated++;
           }catch(e){failed++}
@@ -999,13 +1198,21 @@
           const key=mapKeyOf(g.db,g.table,g.mode);
           const dmap=readDefaultPresetMap(),lmap=readLockedPresetMap();
           const dset=new Set((dmap[key]||[]).map(String)),lset=new Set((lmap[key]||[]).map(String));
+          const marks=[];
           g.presets.forEach(p=>{
             const id=idOf.get(p.name);if(id==null)return;
             p.isDefault?dset.add(String(id)):dset.delete(String(id));
             p.isLocked?lset.add(String(id)):lset.delete(String(id));
+            marks.push({id,isDefault:!!p.isDefault,isLocked:!!p.isLocked});
           });
           dmap[key]=[...dset];lmap[key]=[...lset];
           writeDefaultPresetMap(dmap);writeLockedPresetMap(lmap);
+          /* 印は**この人のもの**としてマスタにも残す(§9.172)。端末の控えだけに
+             すると、取り込んだ人が別のPCへ移った瞬間に印だけ消える。 */
+          if(marks.length){
+            try{await api('/api/filter-presets/marks',{method:'POST',headers:{'Content-Type':'application/json'},
+              body:JSON.stringify(withUserId({user:filterUserId(),items:marks}))})}catch(_){}
+          }
         }
       }
     }finally{
@@ -1063,7 +1270,22 @@
     const list=$('#filterPresetList');if(!list)return;
     const forThis=currentTablePresets();
     const summary=$('#filterPresetSummary');
-    if(summary)summary.textContent=`保存先: ${S.filterPresetSource==='master'?'master.sqlite3':'この端末（マスタ未接続）'}　このテーブルの登録フィルタ ${forThis.length}件（${S.db||'-'} / ${S.table||'-'}）`;
+    /* **誰の設定を見ているのかを必ず出す**(§9.172)。個人単位にした以上、
+       「自分の登録が何件で、みんなのが何件か」が読めないと、消えたのか
+       他人のだったのかが分からなくなる。利用者IDが取れない端末では、
+       その旨をそのまま書く（他人と混ざり得ることを隠さない）。 */
+    const mineCount=forThis.filter(x=>x.owner).length;
+    if(summary){
+      summary.textContent='';
+      const uid=filterUserId();
+      const who=document.createElement('b');
+      who.className='fp-who';
+      who.textContent=uid?`${uid} さんの設定`:'この端末の共通の設定（利用者IDが分かりません）';
+      summary.append(who,document.createTextNode(
+        `　自分だけ ${mineCount}件 / みんな ${forThis.length-mineCount}件`
+        +`（${S.db||'-'} / ${S.table||'-'}）`
+        +`　保存先: ${S.filterPresetSource==='master'?'master.sqlite3':'この端末（マスタ未接続）'}`));
+    }
     const ordered=forThis;
     const loading=list.querySelector(':scope > .panel-loading');
     list.querySelectorAll(':scope > .filter-preset-item, :scope > .record-empty').forEach(x=>x.remove());
@@ -1073,10 +1295,17 @@
       const conds=(p.filters||[]).map(f=>`<span class="fp-cond">${esc(f.column)} <b>${esc(opShort(f.op))}</b>${noValueOp(f.op)?'':' '+esc(f.value)}</span>`).join('');
       const applicable=forThis.includes(p);
       const locked=isLockedDefaultPreset(p,S.db,S.table);
-      const defaultToggle=applicable?`<label class="fp-default" title="この一覧を開いたときに自動で適用します（複数選択可）"><input type="checkbox" class="fp-default-check"${isDefaultPreset(p,S.db,S.table)?' checked':''}> デフォルト</label>`:'';
+      /* **色だけで持ち主を伝えない**(§9.172)。「自分だけ」「みんな」という
+         言葉をそのまま出し、押せば入れ替わることをtitleで言う。 */
+      const ownLabel=p.owner?'自分だけ':'みんな';
+      const ownBtn=`<button type="button" class="fp-own${p.owner?' is-mine':''}" `
+        +`title="${p.owner?'あなただけに見えている登録です。押すと、みんなで使えるようになります。':'みんなに見えている登録です。押すと、自分だけのものになります（ほかの人の一覧から消えます）。'}">`
+        +`${ownLabel}</button>`;
+      const defaultToggle=applicable?`<label class="fp-default" title="この一覧を開いたときに自動で適用します（この印は${esc(filterUserLabel())}だけのもので、ほかの人には付きません）"><input type="checkbox" class="fp-default-check"${isDefaultPreset(p,S.db,S.table)?' checked':''}> デフォルト</label>`:'';
       const lockToggle=applicable?`<button type="button" class="fp-lock-btn${locked?' locked':''}" aria-pressed="${locked}" title="${locked?'鍵付き必須条件: 一覧を開くたびに自動適用され、外す際は確認が必要です。もう一度押すと鍵だけ外せます（デフォルト適用は維持）。':'鍵を付けると、デフォルト適用した上で外す際に確認が必要な必須条件になります。'}">${locked?'🔒':'🔓'}</button>`:'';
-      item.innerHTML=`<div class="fp-name" title="${esc(p.name)}">${esc(p.name)}${p.uses?`<small>使用 ${p.uses}回</small>`:''}</div><div class="fp-target">${esc((p.db||'全DB')+' / '+(p.table||'全テーブル'))}</div><div class="fp-conds">${conds||'<span class="fp-cond">条件なし</span>'}</div><div class="fp-actions">${defaultToggle}${lockToggle}<button class="apply" type="button">適用</button><button class="danger" type="button">削除</button></div>`;
+      item.innerHTML=`<div class="fp-name" title="${esc(p.name)}">${esc(p.name)}${p.uses?`<small>使用 ${p.uses}回</small>`:''}</div><div class="fp-own-cell">${ownBtn}</div><div class="fp-target">${esc((p.db||'全DB')+' / '+(p.table||'全テーブル'))}</div><div class="fp-conds">${conds||'<span class="fp-cond">条件なし</span>'}</div><div class="fp-actions">${defaultToggle}${lockToggle}<button class="apply" type="button">適用</button><button class="danger" type="button">削除</button></div>`;
       item.querySelector('.apply').onclick=()=>{applyPreset(p);$('#filterPresetModal').hidden=true};
+      item.querySelector('.fp-own').onclick=()=>togglePresetOwner(p);
       item.querySelector('.danger').onclick=()=>deletePreset(p);
       item.querySelector('.fp-default-check')?.addEventListener('change',async e=>{
         // 鍵付きのままデフォルトを外すと固定フィルタの意味が失われるため、

@@ -23,6 +23,9 @@ const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_m
 const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const API='http://127.0.0.1:5029';
 const TAG='io'+Date.now().toString(36);          // 実行ごとに一意
+/* 登録フィルタは**人のもの**になった(§9.172)ので、画面と同じ利用者IDで作る
+   ——サーバー側の user_id だけで作ると「別の人の登録」になり、画面には出ない。 */
+const USER='u-'+TAG;
 const DB='SIKALOTNOW',TBL='仕掛';
 const OTHER_DB='SIKALOTDEF',OTHER_TBL='品質';
 
@@ -39,10 +42,10 @@ let b=null;
   let j={};try{j=await r.json()}catch(e){}
   return {status:r.status,body:j};
  },{p,b:body||{}});
- const listPresets=mode=>page.evaluate(async m=>{
-  const r=await fetch('/api/filter-presets?mode='+encodeURIComponent(m));
+ const listPresets=mode=>page.evaluate(async a=>{
+  const r=await fetch('/api/filter-presets?mode='+encodeURIComponent(a.m)+'&user='+encodeURIComponent(a.u));
   return (await r.json()).items||[];
- },mode||'');
+ },{m:mode||'',u:USER});
  const settle=()=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
  const openIo=async kind=>{
   await page.click(kind==='export'?'#exportFilterPresets':'#importFilterPresets');
@@ -57,12 +60,13 @@ let b=null;
   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:25000});
   await post('/api/access-mode',{mode:'edit'});
+  await page.evaluate(u=>localStorage.setItem('AccessMeasurementUserId',u),USER);
   /* この一覧に2件、別の一覧に1件。**別の一覧のぶんも書き出せる**ことが要点。 */
-  await post('/api/filter-presets',{name:`${TAG}-A`,db:DB,table:TBL,mode:'',
+  await post('/api/filter-presets',{name:`${TAG}-A`,db:DB,table:TBL,mode:'',user:USER,
     filters:[{column:'ロットNo',op:'starts',value:'L00'}]});
-  await post('/api/filter-presets',{name:`${TAG}-B`,db:DB,table:TBL,mode:'',
+  await post('/api/filter-presets',{name:`${TAG}-B`,db:DB,table:TBL,mode:'',user:USER,
     filters:[{column:'BOX実績_板厚',op:'gte',value:'1.0'}]});
-  await post('/api/filter-presets',{name:`${TAG}-C`,db:OTHER_DB,table:OTHER_TBL,mode:'',
+  await post('/api/filter-presets',{name:`${TAG}-C`,db:OTHER_DB,table:OTHER_TBL,mode:'',user:USER,
     filters:[{column:'不良名',op:'not_empty',value:''}]});
 
   await page.reload({waitUntil:'domcontentloaded'});
@@ -70,16 +74,11 @@ let b=null;
   await page.click('aside [data-db-key="SIKALOTNOW"]',{timeout:20000});
   await page.waitForSelector('#grid tbody tr',{timeout:30000});
   await page.waitForTimeout(800);
-  /* この端末で「デフォルト」「鍵」を1件に付けておく（印が名前で運ばれるか
-     を見るため）。付け方は画面と同じ置き場へ直接書く。 */
+  /* 「デフォルト」「鍵」を1件に付けておく（印が名前で運ばれるかを見るため）。
+     印は**その人のもの**になったので、画面と同じAPIで付ける(§9.172)。 */
   const targetId=(await listPresets('')).find(x=>x.name===`${TAG}-A`)?.id;
-  await page.evaluate(([db,tbl,id])=>{
-   const put=(k,v)=>{const m=JSON.parse(localStorage.getItem(k)||'{}');
-     m[`${db}::${tbl}::`]=[...new Set([...(m[`${db}::${tbl}::`]||[]),String(v)])];
-     localStorage.setItem(k,JSON.stringify(m))};
-   put('MeasurementDefaultFilterPresetsV1',id);
-   put('MeasurementLockedDefaultFilterPresetsV1',id);
-  },[DB,TBL,targetId]);
+  await post('/api/filter-presets/marks',{user:USER,id:targetId,isDefault:true,isLocked:true});
+  await page.evaluate(()=>document.getElementById('reloadFilterPresets')?.click());
 
   await page.click('#openFilterPresets');
   await page.waitForSelector('#filterPresetModal:not([hidden])',{timeout:10000});
@@ -175,7 +174,7 @@ let b=null;
   rec('同名の扱いと印の扱いを選べる',im.dup===2&&im.marks);
 
   /* ---- 5) 「そのままにする」を選ぶと同名は上書きしない ---- */
-  await post('/api/filter-presets',{name:`${TAG}-A`,db:DB,table:TBL,mode:'',
+  await post('/api/filter-presets',{name:`${TAG}-A`,db:DB,table:TBL,mode:'',user:USER,
     filters:[{column:'書き換えた印',op:'eq',value:'KEEP'}]});
   await page.evaluate(()=>{
    const keep=[...document.querySelectorAll('#filterIoPanel [name="fpIoDup"]')]
@@ -189,17 +188,21 @@ let b=null;
   const a=after.find(x=>x.name===`${TAG}-A`);
   rec('「そのままにする」なら同名を上書きしない',
       !!a&&(a.filters||[])[0]?.column==='書き換えた印',JSON.stringify(a&&a.filters));
+  /* 取り込んだ登録は**取り込んだ人のもの**になる（持ち主のIDは運ばない）。 */
+  rec('取り込んだ登録は取り込んだ人のものになる',
+      after.filter(x=>x.name.startsWith(TAG)).every(x=>x.owner===USER),
+      after.filter(x=>x.name.startsWith(TAG)).map(x=>`${x.name}=${x.owner||'みんな'}`).join('、'));
   rec('無かったぶんは新しく入る',after.some(x=>x.name===`${TAG}-B`),
       after.filter(x=>x.name.startsWith(TAG)).map(x=>x.name).join('、'));
 
   /* ---- 6) 印も取り込まれる（この端末の置き場へ） ---- */
-  const marks=await page.evaluate(([db,tbl,name,id])=>{
-   const get=k=>(JSON.parse(localStorage.getItem(k)||'{}')[`${db}::${tbl}::`]||[]).map(String);
-   return {def:get('MeasurementDefaultFilterPresetsV1'),lock:get('MeasurementLockedDefaultFilterPresetsV1'),id:String(id)};
-  },[DB,TBL,`${TAG}-A`,a&&a.id]);
-  rec('「デフォルト」「鍵」の印も名前で当て直される',
-      marks.def.includes(marks.id)&&marks.lock.includes(marks.id),
-      JSON.stringify(marks));
+  /* 印は**マスタ側**にその人のものとして残っていること(§9.172)。端末の控えだけ
+     だと、取り込んだ人が別のPCへ移った瞬間に印だけ消える。 */
+  const reread=await listPresets('');
+  const ra=reread.find(x=>x.name===`${TAG}-A`);
+  rec('「デフォルト」「鍵」の印も名前で当て直される（マスタに残る）',
+      !!ra&&ra.isDefault===true&&ra.isLocked===true,
+      JSON.stringify(ra&&{d:ra.isDefault,l:ra.isLocked}));
 
   /* ---- 7) 壊れたファイルは断る ---- */
   fs.writeFileSync(bad,'{"format":"something-else","groups":[]}');
@@ -219,6 +222,7 @@ let b=null;
   try{
    for(const mode of ['','schedule']){
     const items=await listPresets(mode);
+    // 取り込みで作られたぶんも同じ印で拾える（名前の先頭がTAG）。
     for(const x of items)if(String(x.name||'').startsWith(TAG))
       await post('/api/filter-presets/delete',{id:x.id});
    }
