@@ -38,7 +38,12 @@ let b=null;
  await page.click('#openSchedule');
  await page.waitForSelector('.sc-board-row',{timeout:15000});
  const firstBoardMs=Date.now()-t;
- rec('初回は俯瞰ボードを取得する',api.overview===1,`overview=${api.overview} ${firstBoardMs}ms`);
+ /* §9.182で**押す前に先読みする**ようにしたので、押した時点の要求は0でよい
+    （0なら「もう持っている」＝速い、1なら「今取った」＝従来どおり。どちらも
+    正しい）。ここで見たいのは**同じものを2回取っていないこと**なので、
+    「1回まで」に固定する。 */
+ rec('俯瞰ボードは高々1回しか取らない（先読み済みなら0）',api.overview<=1,
+     `overview=${api.overview} ${firstBoardMs}ms`);
  await page.evaluate(()=>{const r=[...document.querySelectorAll('.sc-board-row')].find(x=>x.dataset.equipment==='テスト設備A');if(r)r.click()});
  await untilRows();
  rec('設備を開くと予定を1回取得する',api.plan===1,`plan=${api.plan}`);
