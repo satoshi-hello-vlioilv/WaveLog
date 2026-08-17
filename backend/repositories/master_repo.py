@@ -886,10 +886,15 @@ def ensure_column_layout_table(c):
  # 幅固定(§9.119): 幅を「自動(内容に合わせる)/手で決めた幅/固定」の3つで持つ。
  # 自動と手動は[幅]の有無で分かるが、**固定はもう1つの状態**なので列を足す
  # (幅を持ったまま「もう動かさない」と言えるようにするため)。
+ # 並べ替え(§9.187): 種類が混ざったときの塊の順・数字混じりの読み順・
+ # 生の値/変換後のどちらで並べるか。**1列ぶんをJSONで持つ**——中身は
+ # 3つで、増えるたびに列を足すと移行が要る（表示だけの設定なので、
+ # SQLで絞り込む相手にはならない）。
  for name,decl in (('表示','INTEGER'),('表示名','TEXT'),
                    ('書式種別','TEXT'),('書式パターン','TEXT'),('小数桁','INTEGER'),
                    ('桁区切り','INTEGER'),('単位前','TEXT'),('単位後','TEXT'),
-                   ('読み替えルール','TEXT'),('計算式','TEXT'),('幅固定','INTEGER')):
+                   ('読み替えルール','TEXT'),('計算式','TEXT'),('幅固定','INTEGER'),
+                   ('並べ替え','TEXT')):
   if name not in have:
    c.cursor().execute(f'ALTER TABLE [{COLUMN_LAYOUT_TABLE}] ADD COLUMN [{name}] {decl}')
    c.commit()
@@ -912,7 +917,7 @@ def column_layout_for(c,target):
  **hiddenは「この対象で隠す列」**。[表示]がNULLの行は表示(既定)として扱う
  ——列を足したときに既存の行が勝手に隠れないようにするため。"""
  empty={'order':[],'widths':{},'hidden':[],'names':{},'formats':{},'rules':{},'formulas':{},
-        'locks':[]}
+        'locks':[],'sorts':{}}
  if COLUMN_LAYOUT_TABLE not in tables(c):return dict(empty)
  target=str(target or '').strip()
  if not target:return dict(empty)
@@ -922,9 +927,10 @@ def column_layout_for(c,target):
  cur.execute('SELECT [列名],[表示順],[幅],'+col('表示')+','+col('表示名')+','
              +col('書式種別')+','+col('書式パターン')+','+col('小数桁')+','
              +col('桁区切り')+','+col('単位前')+','+col('単位後')+','
-             +col('読み替えルール')+','+col('計算式')+','+col('幅固定')+
+             +col('読み替えルール')+','+col('計算式')+','+col('幅固定')+','
+             +col('並べ替え')+
              ' FROM [列レイアウトマスタ] WHERE [対象]=? ORDER BY [表示順],[ID]',[target])
- order=[];widths={};hidden=[];names={};formats={};rules={};formulas={};locks=[]
+ order=[];widths={};hidden=[];names={};formats={};rules={};formulas={};locks=[];sorts={}
  for row in cur.fetchall():
   name=str(row[0] or '').strip()
   if not name:continue
@@ -942,8 +948,14 @@ def column_layout_for(c,target):
   if formula:formulas[name]=formula
   # 幅固定。**列が無い古いDBではNULL**なので、そのときは固定なしとして扱う。
   if len(row)>13 and row[13] is not None and bool(row[13]):locks.append(name)
+  # 並べ替え。**壊れた値は「指定なし」**（設定1つで一覧が開けなくならない）。
+  if len(row)>14:
+   from .. import sort_order
+   spec=sort_order.normalize_spec(row[14])
+   if spec:sorts[name]=spec
  return {'order':order,'widths':widths,'hidden':hidden,'names':names,
-         'formats':formats,'rules':rules,'formulas':formulas,'locks':locks}
+         'formats':formats,'rules':rules,'formulas':formulas,'locks':locks,
+         'sorts':sorts}
 
 def column_layout_targets(c):
  """保存されている対象(target)の一覧。**持ち出し・取り込み用**(§9.178)。
@@ -957,7 +969,7 @@ def column_layout_targets(c):
  return [str(r[0] or '').strip() for r in cur.fetchall() if str(r[0] or '').strip()]
 
 def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=None,rules=None,
-                      formulas=None,locks=None):
+                      formulas=None,locks=None,sorts=None):
  """全置換方式(他の列マスタと同じ)。渡された順序がそのまま表示順になる。
 
  **幅だけを変えたいときも並び全体を送る**こと。部分更新にすると、
@@ -972,6 +984,11 @@ def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=N
  rule=rules if isinstance(rules,dict) else {}
  formula=formulas if isinstance(formulas,dict) else {}
  lock={str(x or '').strip() for x in (locks or []) if str(x or '').strip()}
+ from .. import sort_order
+ sortspec={}
+ for k,v in (sorts if isinstance(sorts,dict) else {}).items():
+  txt=sort_order.spec_json(v)
+  if txt:sortspec[str(k or '').strip()]=txt
  cur=c.cursor()
  cur.execute('DELETE FROM [列レイアウトマスタ] WHERE [対象]=?',[target])
 
@@ -979,8 +996,9 @@ def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=N
   f=normalize_format(fmt.get(name)) or {}
   cur.execute('INSERT INTO [列レイアウトマスタ] ([対象],[列名],[表示名],[表示順],[幅],[表示],'
               '[書式種別],[書式パターン],[小数桁],[桁区切り],[単位前],[単位後],'
-              '[読み替えルール],[計算式],[幅固定],[登録者ID],[更新者ID],[登録日時],[更新日時]) '
-              'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',
+              '[読み替えルール],[計算式],[幅固定],[並べ替え],'
+              '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
+              'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',
               [target,name,str(label.get(name) or '').strip() or None,seq,
                normalize_column_width(widths.get(name)),
                0 if name in hide else -1,
@@ -989,7 +1007,8 @@ def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=N
                f.get('prefix') or None,f.get('suffix') or None,
                str(rule.get(name) or '').strip() or None,
                str(formula.get(name) or '').strip() or None,
-               -1 if name in lock else 0,uid,uid])
+               -1 if name in lock else 0,
+               sortspec.get(name) or None,uid,uid])
 
  seq=0;seen=set()
  for name in (order or []):
@@ -1002,7 +1021,7 @@ def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=N
  # **どれか1つでも拾い漏らすと、その設定だけが黙って消える**——並びを
  # 送らずに書式だけ保存した場合に実際に起きた。
  extra=[n for n in (list(widths)+list(label)+list(fmt)+list(rule)+list(formula)
-                    +sorted(hide)+sorted(lock))
+                    +list(sortspec)+sorted(hide)+sorted(lock))
         if str(n or '').strip() and str(n).strip() not in seen]
  for name in extra:
   name=str(name).strip()

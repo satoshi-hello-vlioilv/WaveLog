@@ -140,8 +140,12 @@ let b=null;
  rec('抽出が停止中の理由と有効化の手順を画面に出す',
    /network|local/.test(rneText)&&/再起動/.test(rneText),rneText.slice(0,160));
 
- // 参照ダイアログが開き、サーバー側の実際のパスを辿れる
- await page.click('[data-path-browse="sikalotnow_path"]');
+ /* 参照ダイアログが開き、サーバー側の実際のパスを辿れる。
+    **この画面に実在する欄で押すこと**——`sikalotnow_path`はデータ接続の
+    カード側へ移った(§9.168)ので、ここには無い。無い相手を押しに行くと
+    30秒待ってFATALになり、**この節の残り2件が一度も動かない**(実際に
+    そうなっていた)。 */
+ await page.click('[data-path-browse="schedule_share_path"]');
  await page.waitForSelector('#pathPickerModal:not([hidden])',{timeout:5000});
  await page.waitForTimeout(900);
  const picker=await page.evaluate(()=>({
@@ -157,7 +161,7 @@ let b=null;
  await page.waitForTimeout(800);
  await page.click('#pathPickerPick');
  await page.waitForTimeout(500);
- const filled=await page.$eval('[data-pc-field="sikalotnow_path"]',i=>i.value);
+ const filled=await page.$eval('[data-pc-field="schedule_share_path"]',i=>i.value);
  rec('選んだ場所が入力欄へ入る(手入力不要)',filled.startsWith('/'),filled);
 
  await b.close();

@@ -616,7 +616,35 @@ function renderDbNav(){
   if(prev)prev.after(b);else nav.prepend(b);
   prev=b;
  });
+ renderRestartPendingNote(nav,prev);
  return views.length;
+}
+/* 再起動待ちの変更を**一覧の側でも言う**(§9.183)。
+   マスタで名称や読み込み先を直しても、効くのはサーバー再起動後。
+   以前は読み込み先ぶんだけをマスタ管理画面が出しており、**名称の変更は
+   誰も何も言わなかった**ため、左のボタンが古い名前のまま残っているのを見て
+   「マスタで直したのに反映されない」と受け取られた。
+   **出すのは待ちがあるときだけ**（常設すると読み流される）、**次にする
+   ことを1つ指す**（押すとその設定を開く）。 */
+function renderRestartPendingNote(nav,after){
+ const items=WL.dataSource.restartPending();
+ let note=nav.querySelector('#navRestartPending');
+ if(!items.length){if(note)note.remove();return}
+ if(!note){
+  note=document.createElement('button');
+  note.type='button';note.id='navRestartPending';note.className='nav-restart-note';
+ }
+ const KIND={label:'名称',path:'読み込み先',new:'追加した一覧',gone:'無効にした一覧'};
+ const lines=items.map(x=>`${x.label||x.key}: ${KIND[x.kind]||'設定'}${
+   x.kind==='label'?`（いまは「${x.now}」）`:''}`);
+ note.innerHTML=`<b>${items.length}件が再起動待ち</b>`
+  +`<small>${esc(lines[0])}${items.length>1?` ほか${items.length-1}件`:''}</small>`
+  +`<small class="nav-restart-how">アプリを再起動すると反映されます（押すと設定を開きます）</small>`;
+ note.title=lines.join('\n');
+ note.onclick=()=>{
+  if(typeof openMasterMaint==='function')openMasterMaint('dataSource');
+ };
+ if(after)after.after(note);else nav.appendChild(note);
 }
 // 新しく公開するものは名前空間へ入れる(CLAUDE.md「window.*への新規公開」)。
 WL.renderDbNav=renderDbNav;
@@ -695,6 +723,10 @@ function applyTableData(d){
  if(!document.body.classList.contains('sc-mode'))setHeaderContext(databaseLabel(S.db),info.file_name||'');
  const tn=$('#tableName');if(tn)tn.textContent=S.table||'';
  S.selectedRows.clear();
+ /* **当てられなかった並べ替えは黙って捨てない**(§9.187)。設定したのに
+    別の並びで出ているのに何も言わないと、設定が効かないのか、そういう
+    並びなのかが区別できない。 */
+ if(d.sortNote)showToast&&showToast('並べ替えの設定を当てられませんでした',d.sortNote,7000);
 }
 window.applyTableData=applyTableData;
 /* 一覧データ取得の本体(キャッシュ判定→取得→鮮度更新)。**読み込みの経路は
@@ -870,8 +902,23 @@ function listQuery(){
  const q=new URLSearchParams({db:S.db,table:S.table,page:S.page,
                               page_size:String(effectivePageSize()),search:$('#search').value});
  if(isAllRows())q.set('all','1');
- // 並び順は複数キー(§9.88 段5)。1キーでも同じ形で送る。
- const sorts=WL.listSort.keys();
+ /* 並び順は複数キー(§9.88 段5)。1キーでも同じ形で送る。
+    **列ごとの並べ替えの決まり(§9.187)も一緒に送る**——サーバーが列レイアウト
+    マスタを読みに行く形にすると、対象(target)の組み立て方をサーバーが知る
+    ことになり、保存前の試し(stage)も効かなくなる。いま当たっている設定を
+    そのまま渡すのが一番素直。書式・読み替えは「変換後の文字で並べる」
+    ときだけ意味を持つ。 */
+ const target=listLayoutTarget();
+ const sorts=WL.listSort.keys().map(k=>{
+  const spec=target?WL.columnLayout.sort(target,k.column):null;
+  if(!spec)return k;
+  const out={...k,sort:spec};
+  if(spec.on==='display'){
+   out.fmt=WL.columnLayout.format(target,k.column)||null;
+   out.rule=WL.columnLayout.rule(target,k.column)||'';
+  }
+  return out;
+ });
  if(sorts.length)q.set('sorts',JSON.stringify(sorts));
  // スケジュールモードの作業対象一覧のみ、品質データを結合して表示する
  // (§9.21)。通常の閲覧では付けない(オプトインで単独表示に影響を与えない)。

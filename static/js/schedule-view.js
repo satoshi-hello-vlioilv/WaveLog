@@ -106,6 +106,83 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   el.hidden=!ts;
   if(ts){el.textContent=fmtFetchedAt(ts);el.title='この時点で読み込んだ内容です。「再計算」で最新を取り直します。'}
  }
+ /* ---------- 共有の見張り(§9.188) ----------
+    共有(Box等)のschedule.sqlite3は他の端末も書く。サーバーは改訂番号だけを
+    見て**変わったときだけ**手元へ写す(backend/schedule_watch.py)ので、
+    画面はその状態を出し、変わったことに気づいたら読み直す。
+
+    **勝手に読み直さない場面がある**——掴んで動かしている最中・選んでいる
+    最中・書込を待っている最中に行が入れ替わると、何をしていたか分からなく
+    なる。そのときは帯で知らせて、押されたら読み直す。 */
+ let scSyncTimer=null,scSyncSeen=null,scSyncState=null;
+ function syncChipText(st){
+  if(!st||!st.configured)return '';
+  if(!st.enabled)return '共有: 読むたびに取り込み';
+  const age=st.snapshotAgeSec;
+  const when=age==null?'まだ取り込んでいません'
+            :age<60?`${Math.round(age)}秒前に取り込み`
+            :`${Math.round(age/60)}分前に取り込み`;
+  return `共有: ${when}`;
+ }
+ function renderSyncChip(){
+  const el=$('#scSyncChip');if(!el)return;
+  const st=scSyncState;
+  const text=syncChipText(st);
+  el.hidden=!text;
+  if(!text)return;
+  el.textContent=text;
+  el.title=[`${st.intervalSec}秒ごとに共有の改訂番号を確かめ、変わっていたら取り込みます。`,
+            `取り込んだ直後は${st.pauseSec}秒休みます（更新が続いているときに共有を掴み続けないため）。`,
+            st.revision!=null?`いまの改訂番号: ${st.revision}`:'',
+            st.lastError?`最後のエラー: ${st.lastError}`:'',
+            '押すといま取り込みます。'].filter(Boolean).join('\n');
+  el.classList.toggle('is-error',!!st.lastError);
+  el.onclick=syncNow;
+ }
+ /* いま読み直してよいか。**途中の操作を壊さない**ことだけを見る。 */
+ function canAutoReload(){
+  return !scState.dragId&&!scState.dragIds&&!scWriteQueue.length&&!scQueueRunning
+         &&!(scState.picked&&scState.picked.size)
+         &&!document.querySelector('.sc-float-win:not([hidden])')
+         &&!listModalOpen;
+ }
+ function renderSyncBanner(changed){
+  const box=$('#scSyncBanner');if(!box)return;
+  if(!changed){box.hidden=true;box.innerHTML='';return}
+  box.hidden=false;
+  box.innerHTML=`<span><b>他のPCが予定を変えました。</b>いま出ているのは変更前の内容です。</span>
+   <button type="button" id="scSyncReload">読み直す</button>`;
+  const btn=$('#scSyncReload');
+  if(btn)btn.onclick=()=>{renderSyncBanner(false);refreshCurrentMode(true)};
+ }
+ async function refreshSyncBadge(){
+  try{
+   const st=await api('/api/schedule/sync-status');
+   scSyncState=st;renderSyncChip();
+   if(!st.configured||st.revision==null)return;
+   /* **基準は読み直すたびに置き直す**——自分の書込でも改訂番号は上がる
+      ので、直前の値と比べるだけでは自分の変更で読み直してしまう。 */
+   if(scSyncSeen===null){scSyncSeen=st.revision;return}
+   if(st.revision===scSyncSeen)return;
+   if(canAutoReload()){
+    scSyncSeen=null;renderSyncBanner(false);
+    await refreshCurrentMode(true);
+    showToast&&showToast('他のPCの変更を取り込みました','共有スケジュールが更新されていました',3000);
+   }else{
+    renderSyncBanner(true);
+   }
+  }catch(e){/* 見張りの表示はベストエフォート */}
+ }
+ async function syncNow(){
+  try{
+   const st=await api('/api/schedule/sync-now',{method:'POST',
+     headers:{'Content-Type':'application/json'},body:'{}'});
+   scSyncState=st;renderSyncChip();
+   if(st.result==='fetched'){scSyncSeen=null;renderSyncBanner(false);await refreshCurrentMode(true)}
+   else showToast&&showToast('共有に変更はありませんでした',
+     st.result==='paused'?'取り込んだ直後の休み中です':'いま出ているのが最新です',2600);
+  }catch(e){showToast&&showToast('取り込めませんでした',e.message,5000)}
+ }
  let scLockTimer=null;
  // ---------- 編集セッション(§9.11新設)・書込キュー ----------
  let scSessionTimer=null,scSessionHeldFor=null,scTempIdSeq=0;
@@ -177,6 +254,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
       <select id="scHistorySelect">${SC_HISTORY_CHOICES.map(h=>`<option value="${h}">直近${h}時間</option>`).join('')}</select>
      </label>
      <span class="sc-freshness" id="scFreshness" hidden></span>
+     <!-- 共有の見張り(§9.188)。いつ取り込んだか・見張っているかを常に出す。
+          押すとその場で取り込む。 -->
+     <button type="button" class="sc-sync-chip" id="scSyncChip" hidden></button>
      <span class="sc-field-reorder-note" id="scFieldReorderNote" hidden>現場段取り: 並べ替えのみ可能</span>
      <button type="button" class="sc-split-toggle" id="scLayoutBtn" hidden title="この画面を開いたときの表示（分割／スケジュールだけ）と、仕掛一覧を左右どちらに置くかを決めます">⚙ 表示</button>
      <button type="button" class="sc-split-toggle" id="scContentModalBtn" hidden title="このスケジュール表に出す列・並び・幅・書式をまとめて設定します（設備ごとに保存）">☰ 表示列</button>
@@ -187,7 +267,15 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     </div>
    </div>
    <div class="sc-session-banner" id="scSessionBanner" hidden></div>
+   <!-- 他のPCが共有を書き換えたときの案内(§9.188)。**触っている最中は
+        勝手に読み直さない**——並べ替えの途中で行が入れ替わると、掴んで
+        いたものが分からなくなる。 -->
+   <div class="sc-sync-banner" id="scSyncBanner" hidden></div>
    <div class="sc-warnings" id="scWarnings" hidden></div>
+   <!-- 時刻が決まっていない予定の案内(§9.185)。**残っているときだけ出す**。
+        「未定」という言葉は行の中にも出るが、行は下へ流れるので、
+        何件あるのか・次に何をすればよいのかは上でまとめて言う。 -->
+   <div class="sc-undecided" id="scUndecided" hidden></div>
    <!-- まとめて外す(§9.170)。仕掛一覧の選択件数バー(plan-select-bar)と
         同じ形・同じ言葉にしてある。**0件のときは出さない**——常時
         「0件選択中」と出ているのは読まれない飾りにしかならない。 -->
@@ -913,8 +1001,16 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   stopLockPolling();
   refreshLockBadge();
   scLockTimer=setInterval(refreshLockBadge,5000);
+  /* 共有の見張りの様子も見に行く(§9.188)。**ロックとは別の間隔**にして
+     ある——ロックは「いま誰かが書いている」の表示で数秒ごとに要るが、
+     こちらはサーバー側が間隔を持っているので、そこまで細かく見なくてよい。 */
+  refreshSyncBadge();
+  scSyncTimer=setInterval(refreshSyncBadge,10000);
  }
- function stopLockPolling(){if(scLockTimer){clearInterval(scLockTimer);scLockTimer=null}}
+ function stopLockPolling(){
+  if(scLockTimer){clearInterval(scLockTimer);scLockTimer=null}
+  if(scSyncTimer){clearInterval(scSyncTimer);scSyncTimer=null}
+ }
 
  /* ---------- 編集セッション(§9.11新設) ----------
     「設備単位で同時に1人しか編集作業に入れない」ための助言的ロック
@@ -1515,6 +1611,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   await paintOnce();
  }
  function applyPlanResult(r,fetchedAt){
+  /* 読み直したので、共有の見張りの基準を置き直す(§9.188)。 */
+  scSyncSeen=null;renderSyncBanner(false);
   scState.entries=r.entries||[];scState.anchor=r.anchor;scState.warnings=r.warnings||[];
   scState.planFetchedAt=fetchedAt;
   renderWarnings();renderTimeline();updateFreshnessUi(fetchedAt);
@@ -2420,6 +2518,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     ?`<div class="sc-empty-note">表示範囲(直近${scState.historyHours}時間)に該当する予定・実績がありません。表示範囲を広げてください。</div>`
     :'<div class="sc-empty-note">この設備の予定はまだありません。</div>';
    renderPickBar(timeline);
+   renderUndecided();
    refreshScheduledLotFilter();
    return;
   }
@@ -2461,7 +2560,47 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   });
   renderPickBar(timeline);
   restoreInsertGhost();
+  renderUndecided();
   refreshScheduledLotFilter();
+ }
+
+ /* ---------- 「時刻未定」が残っているときの案内(§9.185) ----------
+    時刻が決まらない理由は3つあり、**打つ手が違う**ので分けて言う。
+      ① サーバーへ反映中(__pending) …… 待てば決まる。何もしなくてよい。
+      ② 稼働カレンダーに置けない  …… カレンダー/勤務形態を直す必要がある
+         （サーバーが理由をwarningsで返しているので、そちらを読ませる）。
+      ③ 画面の計算が追いついていない …… 「再計算」で直る。
+    以前は行に「未定」と出るだけで、**何件あるのか・押す手立てがあるのか**が
+    どこにも書かれていなかった。行は下へ流れるので、上でまとめて言う。
+    ボタンはヘッダーの「再計算」と同じ処理を呼ぶ（同じことをする道を2つ
+    作らない）。 */
+ function undecidedEntries(){
+  return (scState.entries||[]).filter(e=>
+   e.parentId==null&&!e.unplanned&&e.state==='予定'&&!e.plannedStart);
+ }
+ function renderUndecided(){
+  const box=$('#scUndecided');if(!box)return;
+  const all=undecidedEntries();
+  if(!all.length){box.hidden=true;box.innerHTML='';return}
+  const pending=all.filter(e=>e.__pending);
+  const stuck=all.filter(e=>!e.__pending);
+  /* 反映を待っているだけのものは案内しない（待てば決まる）。 */
+  if(!stuck.length){box.hidden=true;box.innerHTML='';return}
+  const calendar=(scState.warnings||[]).some(w=>String(w).includes('稼働カレンダー'));
+  const names=stuck.map(e=>e.lotNo||contentValueOf(e.detail,'lotNo')||('予定'+e.id)).filter(Boolean);
+  const shown=names.slice(0,5).join('・')+(names.length>5?` ほか${names.length-5}件`:'');
+  const why=calendar
+   ?'稼働カレンダー上に置き場所が見つかりませんでした。稼働カレンダー・勤務形態マスタを確認してください（上の⚠に理由が出ています）。'
+   :'追加・並べ替えの直後は、画面側の時刻が計算されないことがあります。「再計算」で計算し直せます。';
+  box.hidden=false;
+  box.innerHTML=`<div class="sc-undecided-main">
+    <b>${stuck.length}件の予定が「時刻未定」です</b>
+    <span class="sc-undecided-who" title="${esc(names.join('・'))}">${esc(shown)}</span>
+    ${calendar?'':'<button type="button" class="sc-undecided-fix" id="scUndecidedFix">再計算する</button>'}
+   </div>
+   <small>${esc(why)}${pending.length?`（ほかに${pending.length}件がサーバーへ反映中です）`:''}</small>`;
+  const fix=$('#scUndecidedFix');
+  if(fix)fix.onclick=()=>refreshCurrentMode(true);
  }
 
  /* ---------- 子ロットのまとまり(§9.83) ----------
@@ -2865,10 +3004,14 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(scQueueFlushTimer||scQueueRunning)return;
   scQueueFlushTimer=setTimeout(()=>{scQueueFlushTimer=null;runWriteQueue()},150);
  }
+ /* 時刻が動く操作。**「追加」だけではない**——外す・並べ替える・固定を
+    切り替えるのも、その後ろの予定の時刻を動かす。 */
+ const SC_TIME_SHIFT_OPS=new Set(['add','delete','reorder','update']);
  async function runWriteQueue(){
   if(scQueueRunning)return;
   scQueueRunning=true;
   const failures=[];
+  let timeShifted=false;
   try{
    while(scWriteQueue.length){
     // 先頭から「まとめられる操作(op付き)」が続く限り束ねて1リクエストにする。
@@ -2891,6 +3034,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
          if(b.onFailure){try{b.onFailure(err)}catch(_e){/* ロールバック失敗は無視 */}}
         }
        });
+       if(batch.some(b=>b.op&&SC_TIME_SHIFT_OPS.has(b.op.op)))timeShifted=true;
        scWriteQueue.splice(0,batch.length);
        handled=true;
       }catch(e){
@@ -2914,6 +3058,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     const op=scWriteQueue[0];
     try{
      await op.run();
+     if(op.op&&SC_TIME_SHIFT_OPS.has(op.op.op))timeShifted=true;
      scWriteQueue.shift();
     }catch(e){
      op.attempts++;
@@ -2942,7 +3087,14 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     const msg=unreported.length===1?unreported[0].message:`${unreported.length}件の変更を反映できませんでした`;
     showToast&&showToast('一部の変更を反映できませんでした',msg,7000);
    }
-   if(scState.equipment&&!sessionApplicable())await loadPlan(); // 自分が編集中の設備以外(=他端末編集中の閲覧時)だけ最終状態で正規化する
+   /* ---------- 書込のあとは時刻を取り直す(§9.185) ----------
+      予定を1本足す・外す・並べ替えると、**その後ろの予定の時刻が全部
+      動く**。楽観的更新で作った行は`plannedStart`を持たないので、取り
+      直さないと足した行は「未定」のまま、後続は古い時刻のまま残る
+      （実機で「追加しても時間が計算されない」と報告された）。
+      覆いは出さない（既に行は出ているので、静かに差し替わるだけ）。
+      **他端末が編集中(閲覧)のときも同じ**なので条件を分けない。 */
+   if(scState.equipment&&(timeShifted||!sessionApplicable()))await loadPlan();
   }
  }
  // 楽観的追加(makeOptimisticEntry)で割り当てた仮ID(tmp-N)を、書込キューでの
@@ -3931,7 +4083,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
       前提にした式とは土俵が違う）。プリセットと入出力は使える。 */
    /* 内容欄の項目はすべて元データ由来なので、分類は1つで足りる。 */
    origins:()=>['source','calc'],
-   features:{formula:false,preset:true,width:true,format:true,rule:true},
+   /* 並べ替えは持たない(§9.176。行の並びは時刻の一本道)ので、
+      並べ替えの決まり(§9.187)の欄も出さない。 */
+   features:{formula:false,preset:true,width:true,format:true,rule:true,sort:false},
    afterApply:()=>{if(scState.entries&&scState.entries.length)renderTimeline()},
    save:async(target,body)=>{
     /* ① 出す項目＝チェックの入っている列を、**並びの順**で内容表示マスタへ。
@@ -4222,6 +4376,13 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    const names=items.map(x=>String(x.name||'').trim()).filter(Boolean);
    return names.length?names:(scState.equipment?[scState.equipment]:[]);
   },
+  /* 取り直す・描き直す。**渡すのは操作だけで、状態は渡さない**
+     ——scStateを外へ出すと、他のファイルから画面の状態を書き換えられて
+     しまう。「いまの内容で描き直す」「最新を取り直す」だけを開ける。 */
+  refresh:force=>refreshCurrentMode(!!force),
+  render:()=>{if(scState.equipment)renderTimeline()},
+  /* いま勝手に読み直してよいか(§9.188)。**触っている最中は読み直さない**。 */
+  canAutoReload,
   /* 他の設備ぶんは画面が持っていないので取りに行く。**表示範囲は画面と
      同じ値**を使う(紙だけ違う範囲で出すと突き合わせられない)。 */
   fetchEntries:async name=>{

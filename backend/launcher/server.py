@@ -32,6 +32,17 @@ def run():
              paths.work_dir(),paths.work_dir_reason())
  except Exception as e:
   log.warning('共有DBの写しを開始できませんでした: %s',e)
+ # 共有スケジュールの見張り(§9.188)。**読むたびに共有から写すのをやめ**、
+ # 改訂番号だけを見て変わったときだけ写す。写せなくても画面は前の写しで
+ # 動くので、ここでの失敗は起動を止めない。
+ try:
+  from backend import schedule_sync, schedule_watch
+  if schedule_sync.SCHEDULE_SHARE_PATH and schedule_sync.watch_enabled():
+   schedule_watch.start()
+   log.info('共有スケジュールの見張り: %d秒ごとに確かめ、取り込んだら%d秒休みます',
+            schedule_sync.watch_interval_sec(),schedule_sync.watch_pause_sec())
+ except Exception as e:
+  log.warning('共有スケジュールの見張りを開始できませんでした: %s',e)
  log.info('Webサーバー: 起動します (%s:%s)',HOST,PORT)
  try:
   # threaded=True: 既定(シングルスレッド)のままだと、仕掛/品質データや

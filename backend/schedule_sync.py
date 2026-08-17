@@ -31,6 +31,7 @@ with_write()サイクルとは独立しているため、1端末が何十件も�
 毎回ネットワーク越しの共有DBバックアップを取り直す必要が無い。
 """
 import sqlite3
+import threading
 import time
 import uuid
 from contextlib import contextmanager
@@ -40,7 +41,8 @@ from pathlib import Path
 import json
 
 from . import atomic_io
-from .config import SCHEDULE_LOCK_TTL_SEC_DEFAULT, SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT
+from .config import (SCHEDULE_LOCK_TTL_SEC_DEFAULT, SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT,
+                     SCHEDULE_WATCH_INTERVAL_SEC_DEFAULT, SCHEDULE_WATCH_PAUSE_SEC_DEFAULT)
 from .db_access import SCHEDULE_SHARE_PATH, SCHEDULE_CACHE_PATH, connect, path_config_value
 from .logging_setup import app_logger
 
@@ -363,7 +365,182 @@ def bump_revision(c,uid):
  return _read_revision_only(c)
 
 
-def fetch_snapshot():
+# ========================================================================
+# 共有の見張り(§9.188)
+# ========================================================================
+# 以前は**GETのたびにfetch_snapshot()**を呼んでおり、1画面を開くだけで共有
+# ファイル全体のbackup()が何度も走っていた。共有(Box等)越しでは1回が数百ms
+# かかり、しかもそのあいだ共有ファイルを掴むので、他の端末の書込とぶつかる。
+#
+# 直したのは「いつ写すか」だけで、**読む先は今までどおり手元の作業コピー**。
+#   ・改訂番号だけを見る(1行のSELECT。全体のbackup()より桁違いに軽い)
+#   ・変わっていなければ写さない。写しはそのまま使う
+#   ・変わっていたら写す。写したら**しばらく休む**(既定30秒)——更新が
+#     続いているときに毎回写すと、こちらが共有を掴み続けることになる
+#
+# 「最後に確かめた時刻」を持ち、間隔の内側なら読みは共有へ触らない。
+# **見張りが止まっていても読めること**が最優先なので、確かめてから
+# 間隔を過ぎていたらその場で写す(＝従来の挙動へ落ちる)。
+_watch={
+ 'verified_at':0.0,     # 最後に「写しは最新だ」と確かめられた時刻
+ 'signature':None,      # そのときの共有ファイルの見かけ(更新時刻・バイト数)
+ 'snapshot_at':0.0,     # 最後に写した時刻
+ 'revision':None,       # そのときの改訂番号
+ 'checks':0,'fetches':0,
+ 'last_error':'',
+ 'last_change_at':0.0,  # 共有側の変化を見つけた時刻
+ 'paused_until':0.0,    # 写した直後の休み
+ 'running':False,
+}
+_watch_lock=threading.Lock()
+
+
+def watch_enabled():
+ v=str(path_config_value('schedule_watch_enabled','auto') or 'auto').strip().lower()
+ return v!='off'
+
+
+def watch_interval_sec():
+ try:n=int(path_config_value('schedule_watch_interval_sec',SCHEDULE_WATCH_INTERVAL_SEC_DEFAULT))
+ except (TypeError,ValueError):n=SCHEDULE_WATCH_INTERVAL_SEC_DEFAULT
+ return max(5,n)
+
+
+def watch_pause_sec():
+ try:n=int(path_config_value('schedule_watch_pause_sec',SCHEDULE_WATCH_PAUSE_SEC_DEFAULT))
+ except (TypeError,ValueError):n=SCHEDULE_WATCH_PAUSE_SEC_DEFAULT
+ return max(0,n)
+
+
+def shared_revision():
+ """共有側の改訂番号。**開けなければNone**（無いのか読めないのかは
+    ここでは区別しない——呼び出し側は「確かめられなかった」として扱う）。
+    共有ファイルを開く前に`Path.exists()`を挟まない(CLAUDE.mdの約束)。"""
+ shared=SCHEDULE_SHARE_PATH
+ if not shared:return None
+ try:
+  c=connect(shared,True,'sqlite')
+  try:return _read_revision_only(c)
+  finally:c.close()
+ except Exception as e:
+  with _watch_lock:_watch['last_error']=str(e)
+  return None
+
+
+def local_revision():
+ if not SCHEDULE_CACHE_PATH.exists():return None
+ try:
+  c=connect(SCHEDULE_CACHE_PATH,True,'sqlite')
+  try:return _read_revision_only(c)
+  finally:c.close()
+ except Exception:
+  return None
+
+
+def _shared_signature():
+ """共有ファイルの見かけ(更新時刻・バイト数)。**確かめられなければNone**。
+
+ 共有越しでは「statだけ失敗してopenは成功する」ことがある(CLAUDE.md)。
+ ここは**確認のためだけ**に使うので、失敗は「分からない」として扱い、
+ それを理由に読みを止めない(分からないときは時間の窓で判断する)。"""
+ shared=SCHEDULE_SHARE_PATH
+ if not shared:return None
+ try:
+  st=shared.stat()
+  return (int(st.st_mtime_ns),int(st.st_size))
+ except Exception:
+  return None
+
+
+def _snapshot_is_fresh():
+ """手元の写しをそのまま使ってよいか。
+
+ **見かけが変わっていたら、間隔の内側でも写し直す**——アプリの外から
+ 共有ファイルを差し替えることがある(検証用の種入れ・別のツール)。
+ 見かけが確かめられないときだけ、時間の窓で判断する。"""
+ if not watch_enabled():return False
+ with _watch_lock:
+  verified=_watch['verified_at'];sig=_watch['signature']
+ if not verified:return False
+ now_sig=_shared_signature()
+ if now_sig is not None and sig is not None and now_sig!=sig:return False
+ if (time.time()-verified)>watch_interval_sec():return False
+ return SCHEDULE_CACHE_PATH.exists()
+
+
+def mark_verified(revision=None,fetched=False,signature=None):
+ """「写しは最新」と分かった時刻を記録する。書込のあと(＝手元が正)や、
+    改訂番号が一致したときに呼ぶ。
+
+ signatureは**確かめる前に**取った共有ファイルの見かけを渡すこと。
+ 取ったあとに取り直すと、写しているあいだに他の端末が書いた変更を
+ 「見た」ことにしてしまい、二度と写し直さなくなる。"""
+ now=time.time()
+ with _watch_lock:
+  _watch['verified_at']=now
+  _watch['signature']=signature if signature is not None else _shared_signature()
+  if revision is not None:_watch['revision']=revision
+  if fetched:
+   _watch['snapshot_at']=now;_watch['fetches']+=1
+   _watch['paused_until']=now+watch_pause_sec()
+
+
+def watch_check():
+ """1回ぶんの見張り。戻り値: 'fetched'（写した）/'same'（変化なし）/
+    'paused'（休み中）/'unknown'（確かめられなかった）/'off'（見張らない）。"""
+ if not watch_enabled():return 'off'
+ if not SCHEDULE_SHARE_PATH:return 'off'
+ with _watch_lock:
+  _watch['checks']+=1
+  paused=time.time()<_watch['paused_until']
+ if paused:return 'paused'
+ sig=_shared_signature()   # **読む前に**取る(§9.188)
+ rev=shared_revision()
+ if rev is None:
+  # 共有が読めない。**写しがあるなら黙って使い続ける**(fail-open)。
+  return 'unknown'
+ with _watch_lock:known=_watch['signature']
+ # **見かけが変わっていたら改訂番号を信じない**。改訂番号を上げずに中身が
+ # 差し替わることがある(検証用の種入れ・別のツール)。ここで「同じ」と
+ # 記録してしまうと、以後の読みが古い写しを最新だと思い込む。
+ changed=(sig is not None and known is not None and sig!=known)
+ mine=local_revision()
+ if not changed and mine is not None and mine==rev:
+  mark_verified(revision=rev,signature=sig)
+  return 'same'
+ try:
+  fetch_snapshot(force=True)
+ except Exception as e:
+  with _watch_lock:_watch['last_error']=str(e)
+  return 'unknown'
+ with _watch_lock:_watch['last_change_at']=time.time()
+ return 'fetched'
+
+
+def watch_status():
+ """画面へ出す状態(§9.188)。**覚えていることは画面に書く**——黙って
+    古い写しを見せると「他のPCの変更が来ない」と受け取られる。"""
+ with _watch_lock:
+  st=dict(_watch)
+ now=time.time()
+ age=lambda t:(None if not t else round(now-t,1))
+ return {
+  'enabled':watch_enabled(),
+  'running':st['running'],
+  'intervalSec':watch_interval_sec(),
+  'pauseSec':watch_pause_sec(),
+  'revision':st['revision'],
+  'snapshotAgeSec':age(st['snapshot_at']),
+  'verifiedAgeSec':age(st['verified_at']),
+  'lastChangeAgeSec':age(st['last_change_at']),
+  'pausedForSec':max(0,round(st['paused_until']-now,1)) or None,
+  'checks':st['checks'],'fetches':st['fetches'],
+  'lastError':st['last_error'],
+  'configured':bool(SCHEDULE_SHARE_PATH),
+ }
+
+
+def fetch_snapshot(force=False):
  """共有ファイルをローカルの作業コピーへ整合性のとれた状態で取得する
  (sqlite3.Connection.backup()。単純なファイルコピーは書込中に壊れたコピーを
  作りうるため使わない、§4.2手順2)。取得・検証に失敗した場合は直前に取得
@@ -371,6 +548,11 @@ def fetch_snapshot():
  キャッシュも無ければScheduleUnavailableError。
  戻り値: (ローカルパス, stale: bool)"""
  shared=_require_configured()
+ # **見張りが「最新」と言っているうちは共有へ触らない**(§9.188)。
+ # 書込(with_write)は必ずforce=Trueで来るので、排他の保証は変わらない。
+ if not force and _snapshot_is_fresh():
+  return SCHEDULE_CACHE_PATH,False
+ sig=_shared_signature()   # **写す前に**取る(写しているあいだの変更を見落とさない)
  SCHEDULE_CACHE_PATH.parent.mkdir(parents=True,exist_ok=True)
  # tmp名は呼び出しごとに一意にする(§4.2手順2はGET系(読み取り専用)からも
  # ロック無しで呼ばれるため、複数リクエストが同時に走ると固定名の一時
@@ -404,6 +586,7 @@ def fetch_snapshot():
     # 置き換え先(ローカルの作業コピー)は自分が読んでいる最中のことがある。
     # Windowsでは開かれていると置き換えられないので粘る(§9.108)。
     atomic_io.replace(tmp,SCHEDULE_CACHE_PATH,label='schedule.cache')
+    mark_verified(revision=local_revision(),fetched=True,signature=sig)
     return SCHEDULE_CACHE_PATH,False
    last_error='取得結果が壊れていました(整合性チェック失敗)'
    app_logger().warning('スケジュールデータの取得結果が壊れていたため破棄しました: %s',shared)
@@ -419,6 +602,7 @@ def fetch_snapshot():
    c=connect(SCHEDULE_CACHE_PATH,False,'sqlite')
    try:ensure_meta_table(c)
    finally:c.close()
+  mark_verified(revision=0,fetched=True)
   return SCHEDULE_CACHE_PATH,False
  if SCHEDULE_CACHE_PATH.exists() and _verify_integrity(SCHEDULE_CACHE_PATH):
   return SCHEDULE_CACHE_PATH,True
@@ -511,7 +695,9 @@ def with_write(login_id,pc_name,uid,apply_fn):
  # ので、排他の保証は従来と変わらない。
  token,verify_lock=acquire_lock_deferred(login_id,pc_name)
  try:
-  local_path,stale=fetch_snapshot()
+  # 書込は**必ず取り直す**(§9.188)。見張りの間隔を信用して書くと、
+  # 間隔の内側に他端末が書いた変更を踏み潰すことになる。
+  local_path,stale=fetch_snapshot(force=True)
   if stale:
    app_logger().warning('スケジュールデータの最新性を確認できないまま書込を行います: %s',shared)
   verify_lock()
@@ -538,6 +724,8 @@ def with_write(login_id,pc_name,uid,apply_fn):
   with _local_connection(local_path) as c:
    bump_revision(c,uid)
   _push(local_path,shared)
+  # 反映したので**手元の写しが正**。次の読みで写し直さない(§9.188)。
+  mark_verified(revision=local_revision())
   return result
  finally:
   release_lock(token)

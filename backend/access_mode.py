@@ -135,7 +135,10 @@ _ENDPOINT_EXTRA_MODES={
 # 除外せず表に載せるのは、あとで本物の書込を足したときに無防備にならない
 # ようにするため(CLAUDE.md「読み取り専用のPOSTしか持たないBlueprintも宣言する」)。
 _READ_ONLY_POST_ENDPOINTS={'rne.rne_extract_run','tables.api_db_mirror_refresh',
-                           'path_config.data_source_master_probe'}
+                           'path_config.data_source_master_probe',
+                           # 共有スケジュールを手元へ取り込むだけ(§9.188)。
+                           # 作業予定は書き換えないので全モードから通す。
+                           'schedule.sync_now'}
 # editモードで許可する際、さらに「現場段取り可否」を要求するエンドポイント。
 # 作業予定を実際に動かす操作だけが対象で、設定系マスタの保存は含めない。
 _FIELD_REORDER_ENDPOINTS={'schedule.plan_reorder'}

@@ -12,6 +12,7 @@ import json, re, time, unicodedata
 from flask import Blueprint, request, jsonify
 
 from .. import source_capability
+from .. import sort_order
 from ..db_access import DBS, qi, connect, cols, tables, cfg, WORK_DB_KEY, QUALITY_DB_KEY
 from ..logging_setup import app_logger
 from ..errors import os_error_hint
@@ -243,6 +244,71 @@ def api_db_mirror_refresh():
  db_mirror.wake()
  return jsonify(ok=True,queued=True)
 
+def _display_rule_rows(name,cache):
+ """読み替えルールの中身。**名前で引く**(§9.88 段4)ので、無い名前は
+    「読み替えなし」で済ませる。読めなければ空(並べ替えは生の値になる)。"""
+ name=str(name or '').strip()
+ if not name:return None
+ if name in cache:return cache[name]
+ rows=None
+ try:
+  from ..repositories import master_repo as mr
+  with connect(DBS['MASTER']['path'],True) as mc:
+   rows=(mr.display_rules(mc) or {}).get(name)
+ except Exception as e:
+  app_logger().warning('読み替えルール「%s」を読めませんでした: %s',name,e)
+ cache[name]=rows
+ return rows
+
+
+def _fetch_custom_sorted(c,t,cs,where,params,keys,size,start):
+ """列ごとの並べ替え(§9.187)を当てて、そのページの行だけを返す。
+
+ **2段で引く。** 1段目は並べ替えに要る列とROWIDだけ(214列を丸ごと運ぶと
+ 2万行で数十MBになる)。Pythonで並べてから、2段目でそのページのROWIDを
+ 本体から引き直す。戻す形は通常の`SELECT *`と同じ列順のタプル
+ ——呼び出し側は`dict(zip(cs,row))`で読むので、ここで形を変えないこと。
+
+ ROWIDを持たない表(WITHOUT ROWID)では1段目が失敗する。**その場合は
+ 例外を投げて呼び出し側のfail-openに任せる**（黙って別の並びで出さず、
+ 「当てられなかった」と画面に書く）。"""
+ rule_cache={}
+ need=set()
+ for k in keys:
+  if k['column'] in cs:need.add(k['column'])
+  if k.get('spec') and k['spec'].get('on')=='display':
+   k['ruleRows']=_display_rule_rows(k.get('rule'),rule_cache)
+   # 条件が他の列を見ていることがある(「区分が3のときだけ」)。その列も引く。
+   for r in (k.get('ruleRows') or []):
+    for cd in (r.get('conditions') or []):
+     for side in (cd.get('left'),cd.get('right'),cd.get('right2')):
+      if isinstance(side,dict) and side.get('kind')=='column':
+       nm=str(side.get('column') or '').strip()
+       if nm in cs:need.add(nm)
+ want=[x for x in cs if x in need]
+ if not want:raise ValueError('並べ替えに使える列がありません')
+ cur=c.cursor()
+ sel=','.join(qi(x) for x in want)
+ cur.execute(f'SELECT ROWID,{sel} FROM {qi(t)}'+where,params)
+ rows=[dict(zip(want,r[1:]),__rid=r[0]) for r in cur.fetchall()]
+ def value_of(row,k):
+  v=row.get(k['column'])
+  if (k.get('spec') or {}).get('on')=='display':
+   return sort_order.display_text(v,k.get('fmt'),k.get('ruleRows'),row,k['column'])
+  return v
+ ordered=sort_order.order_rows(rows,keys,value_of)
+ ids=[r['__rid'] for r in ordered[start:start+size]]
+ if not ids:return []
+ out={}
+ # パラメータ数の上限があるので小分けにする(1ページ最大500件だが念のため)。
+ for i in range(0,len(ids),200):
+  chunk=ids[i:i+200]
+  ph=','.join('?'*len(chunk))
+  cur.execute(f'SELECT ROWID,* FROM {qi(t)} WHERE ROWID IN ({ph})',chunk)
+  for r in cur.fetchall():out[r[0]]=tuple(r[1:])
+ return [out[i] for i in ids if i in out]
+
+
 @bp.get('/api/catalog')
 def catalog():
  # purpose(役割)まで返す。画面はキーの文字列ではなくこれで「作業対象の
@@ -255,7 +321,47 @@ def catalog():
  return jsonify(databases=[{"key":k,"label":v['label'],"file_name":v['path'].name,
                             "role":v['role'],"purpose":v.get('purpose') or ''}
                            for k,v in DBS.items()],
-                workKey=WORK_DB_KEY,qualityKey=QUALITY_DB_KEY)
+                workKey=WORK_DB_KEY,qualityKey=QUALITY_DB_KEY,
+                restartPending=_restart_pending())
+
+def _restart_pending():
+ """データソースマスタで保存済みだが、このプロセスにはまだ効いていない変更(§9.183)。
+
+ 接続先も**表示名も**起動時に1回だけ確定する(DBSはプロセス起動時の写し)。
+ 読み込み先については既にマスタ管理画面が「再起動待ち」を出していたが、
+ **名称の変更は誰も何も言わなかった**——左のボタンが古い名前のままなのを
+ 見て、利用者からは「マスタで直したのに反映されない」としか見えない。
+ 一覧側でも言えるように、ここで突き合わせて返す。
+
+ **読むだけ・失敗しても空で返す**(左メニューが出なくなるのが一番困る)。
+ 種別: 'label'=名称だけ / 'path'=読み込み先 / 'new'=まだ読んでいない /
+ 'gone'=無効にした(再起動で消える)。"""
+ try:
+  from ..db_access import data_source_rows,_source_path,path_config_rows
+  master=DBS['MASTER']['path']
+  with connect(master,True) as c:
+   rows=data_source_rows(c,include_disabled=True)
+   saved=path_config_rows(c)
+  out=[];live=set()
+  for r in rows:
+   key=r['key'];cur=DBS.get(key)
+   if not r['active']:
+    if cur:out.append({'key':key,'label':r['label'],'kind':'gone',
+                       'now':str(cur.get('label') or ''),'next':''})
+    continue
+   live.add(key)
+   if not cur:
+    out.append({'key':key,'label':r['label'],'kind':'new','now':'','next':r['label']});continue
+   if str(_source_path(r,saved))!=str(cur.get('path') or ''):
+    out.append({'key':key,'label':r['label'],'kind':'path',
+                'now':str(cur.get('path') or ''),'next':str(_source_path(r,saved))})
+   elif str(r['label'])!=str(cur.get('label') or ''):
+    out.append({'key':key,'label':r['label'],'kind':'label',
+                'now':str(cur.get('label') or ''),'next':r['label']})
+  return out
+ except Exception as e:
+  app_logger().warning('再起動待ちの変更を確かめられませんでした: %s',e)
+  return []
 @bp.get('/api/tables')
 def api_tables():
  k=request.args.get('db','')
@@ -337,7 +443,7 @@ def api_table():
    # のJSON。従来の sort / sort_dir (1列)も引き続き使える(見出しクリック)。
    # **実在する列だけを通す**(cs との照合)。qi()で括ってはいるが、そもそも
    # 列名を組み立てに使う箇所なので、素性の分かるものだけに絞る。
-   order_parts=[]
+   order_parts=[];order_keys=[]
    raw_sorts=request.args.get('sorts','').strip()
    if raw_sorts:
     try:items=json.loads(raw_sorts)
@@ -348,10 +454,20 @@ def api_table():
      col=str(it.get('column') or '').strip()
      if col not in cs or any(col==x[0] for x in order_parts):continue
      order_parts.append((col,'DESC' if str(it.get('dir') or '').lower()=='desc' else 'ASC'))
+     # 列ごとの並べ替えの決まり(§9.187)。**指定が無ければNone**＝今までどおり
+     # SQLのORDER BY。画面が送るのは「いま当たっている設定」なので、
+     # 保存前の試し(stage)もそのまま効く。
+     order_keys.append({'column':col,
+                        'dir':'desc' if str(it.get('dir') or '').lower()=='desc' else 'asc',
+                        'spec':sort_order.normalize_spec(it.get('sort')),
+                        'fmt':it.get('fmt') if isinstance(it.get('fmt'),dict) else None,
+                        'rule':str(it.get('rule') or '').strip()})
    if not order_parts:
     sort_col=request.args.get('sort','').strip()
     sort_dir='DESC' if request.args.get('sort_dir','').strip().lower()=='desc' else 'ASC'
-    if sort_col in cs:order_parts.append((sort_col,sort_dir))
+    if sort_col in cs:
+     order_parts.append((sort_col,sort_dir))
+     order_keys.append({'column':sort_col,'dir':sort_dir.lower(),'spec':None,'fmt':None,'rule':''})
    order=(' ORDER BY '+','.join(f'{qi(c2)} {d}' for c2,d in order_parts)) if order_parts else ''
    t_count=time.perf_counter()
    cur=c.cursor();cur.execute(f'SELECT COUNT(*) FROM {qi(t)}'+where,params);count=int(cur.fetchone()[0])
@@ -362,8 +478,22 @@ def api_table():
    # 使う、という形になっていた)。SQLiteはOFFSETを解するので素直に渡す。
    t_fetch=time.perf_counter()
    start=(page-1)*size
-   cur.execute(f'SELECT * FROM {qi(t)}'+where+order+f' LIMIT {size} OFFSET {start}',params)
-   rows=cur.fetchall()
+   sort_note=''
+   custom=[k for k in order_keys if k.get('spec')]
+   if custom:
+    # **並べ替えの決まりがある列だけこの経路**(§9.187)。SQLでは書けないので
+    # Pythonで並べてからページを切り出す。失敗しても一覧は出す(fail-open)
+    # ——並びの設定で表そのものが開けなくなるのが一番困る。
+    try:
+     rows=_fetch_custom_sorted(c,t,cs,where,params,order_keys,size,start)
+    except Exception as e:
+     app_logger().warning('列ごとの並べ替えを当てられませんでした(table=%s): %s',t,e)
+     sort_note=f'この列の並べ替えの設定を当てられなかったので、ふだんの並びで出しています（{e}）'
+     cur.execute(f'SELECT * FROM {qi(t)}'+where+order+f' LIMIT {size} OFFSET {start}',params)
+     rows=cur.fetchall()
+   else:
+    cur.execute(f'SELECT * FROM {qi(t)}'+where+order+f' LIMIT {size} OFFSET {start}',params)
+    rows=cur.fetchall()
    lap('fetch',t_fetch)
   # **どの列を出すかはサーバーが決めない**(§9.165)。以前はここで「表示マスタ」
   # (DB単位・行の存在=非表示)を引いて列を落としていたが、同じことを列レイアウト
@@ -401,7 +531,8 @@ def api_table():
   timing['source']='mirror' if cf.get('mirrored') else ('share' if cf.get('role')=='readonly' else 'local')
   timing['rows']=len(row_dicts);timing['columns']=len(visible_cs)
   resp=jsonify(columns=visible_cs,rows=row_dicts,count=count,
-               filters_applied=len(filters),joinQuality=join_info,timing=timing)
+               filters_applied=len(filters),joinQuality=join_info,timing=timing,
+               sortNote=sort_note)
   # 開発者ツールのネットワーク欄でも同じ内訳が読めるようにする。
   resp.headers['Server-Timing']=','.join(
    f'{n};dur={v}' for n,v in timing.items() if isinstance(v,int))

@@ -35,20 +35,21 @@ ALWAYS = ['test_patchlint', 'test_globallint', 'test_dskeylint', 'test_csslint',
 # 束ねた呼び名。右辺は実際のテスト名。
 G = {}
 G['一覧'] = ['test_nav', 'test_navdyn', 'test_listcache', 'test_listperf', 'test_allrows',
-             'test_filterio', 'test_filteruser', 'test_filteractive',
-             'test_cols', 'test_hdctx', 'test_dsnav', 'test_listmodal', 'test_filter',
+             'test_filterio', 'test_filteruser', 'test_filteractive', 'test_filterkeep',
+             'test_cols', 'test_hdctx', 'test_dsnav', 'test_dsrestart', 'test_listmodal', 'test_filter',
              'test_audit', 'test_sub', 'test_uisize', 'test_ttlcache']
 G['列'] = ['test_collayout', 'test_colformat', 'test_colrule', 'test_colsort', 'test_lcpanel',
            'test_colscache', 'test_colsripple', 'test_displayrule', 'test_colmenu',
            'test_colpreset', 'test_formula', 'test_reccols', 'test_rpblocks',
-           'test_colio', 'test_multidrag']
+           'test_colio', 'test_multidrag', 'test_sortcustom', 'test_sortpipe']
 G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'test_sccat',
                      'test_scbalance', 'test_scbatch', 'test_screorder', 'test_scperm',
                      'test_scperf', 'test_wkfast', 'test_scsplit', 'test_scprint', 'test_scdrop', 'test_scpick', 'test_sccontent', 'test_workable',
                      'test_wkbg', 'test_orphan', 'test_histdel', 'test_sclock',
                      'test_scwritespeed', 'test_split_layout', 'test_sccols',
                      'test_sctimecols', 'test_scinsert', 'test_audittrail',
-                     'test_scstop', 'test_scwarm']
+                     'test_scstop', 'test_scwarm', 'test_scundecided',
+                     'test_scwatchui', 'test_scwatch']
 G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 'test_eqkind',
                'test_shift', 'test_dbequip', 'test_crudroutes', 'test_setpage', 'test_eqstd']
 G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'test_flows',
@@ -162,6 +163,9 @@ RULES = [
     ('backend/repositories/master_repo.py', g('マスタ', '列', 'test_workable')),
     ('backend/repositories/schedule_repo.py', g('スケジュール', 'test_stopeq')),
     ('backend/schedule_calc.py', g('スケジュール', 'test_eqstd')),
+    ('backend/sort_order.py', g('列', 'test_tablequery')),
+    ('backend/schedule_watch.py', g('スケジュール')),
+    ('tests/fixtures/sort_cases.json', g('test_sortpipe', 'test_sortcustom')),
     ('backend/schedule_sync.py', g('test_sclock', 'test_scsync', 'test_scwritespeed',
                                    'test_screorder', 'test_atomicio')),
     ('backend/load_factor.py', g('test_scbalance', 'test_sccat', 'test_screport', 'test_eqstd')),

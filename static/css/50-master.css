@@ -395,6 +395,8 @@
   font-size:var(--fs-tiny);font-weight:800}
 .ds-flag.is-pending{background:var(--nav);color:#fff}
 .ds-flag.is-off{background:var(--surface-3);color:var(--ink-3)}
+/* 「再起動すると◯◯になります」。値の下に**出どころ**を添える扱い(§9.183)。 */
+.ds-next-note{display:block;font-style:normal;font-size:var(--fs-micro);color:var(--ink-3)}
 .ds-card-act{margin-left:auto;display:flex;gap:var(--gap-inline);flex:none}
 /* ラベル列は**固定幅**（§9.129）。`auto`だと行ごとに値の左端がずれる。 */
 .ds-facts{margin:0;display:grid;gap:var(--gap-hair)}

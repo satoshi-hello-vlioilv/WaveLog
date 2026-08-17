@@ -81,8 +81,18 @@
   /* 使う分類(§9.105)。内容欄のように1つしか無い対象では減らす
      ——「結合0 / 計算・操作0」が並んでも、覚える手間が増えるだけ。 */
   origins:()=>ORIGIN_ORDER,
-  features:{formula:true,preset:true,width:true,format:true,rule:true},
+  /* sort=並べ替えの決まり(§9.187)を出すか。**並べるのはサーバー**なので、
+     サーバーで並べていない一覧（タイムライン・データ一覧）では出さない
+     ——設定できるのに効かないのが一番悪い。 */
+  features:{formula:true,preset:true,width:true,format:true,rule:true,sort:true},
   afterApply:()=>{if(typeof renderGrid==='function')renderGrid()},
+  /* 並べ替えの決まりを変えたら、**その列で並べているときだけ**取り直す
+     (並びはサーバーが決めるので、描き直しでは変わらない)。 */
+  resort:col=>{
+   if(!WL.listSort||typeof load!=='function')return;
+   /* 問い合わせに決まりが入るので、素の`load()`で取り直せる(§9.187)。 */
+   if((WL.listSort.keys()||[]).some(k=>k.column===col))load();
+  },
   save:null,        // null=列レイアウトマスタへそのまま保存する
  };
  /* **`src`という名前は使わない**——式の編集が`const src=…`(式の文字列)を
@@ -335,6 +345,8 @@
    rules:{...(l.rules||{})},
    formulas:{...(l.formulas||{})},
    locks:new Set((l.locks||[]).filter(k=>keys.includes(k))),
+   /* 並べ替えの決まり(§9.187)。列ごとに1つ。 */
+   sorts:JSON.parse(JSON.stringify(l.sorts||{})),
   };
   if(!picked||!draft.order.includes(picked))picked=draft.order.find(k=>!isVirtual(k))||draft.order[0]||'';
  }
@@ -548,7 +560,7 @@
  function applyLive(){
   WL.columnLayout.stage(target,{locks:[...draft.locks],
                                 order:draft.order,widths:draft.widths,hidden:[...draft.hidden],
-                                formulas:draft.formulas,
+                                formulas:draft.formulas,sorts:draft.sorts,
                                 names:draft.names,formats:draft.formats,rules:draft.rules});
   panelSrc.afterApply();
   const note=document.getElementById('lcFootNote');
@@ -828,6 +840,7 @@
      </span></label>
     <p class="lc-hint">読み替えが当たった行はその言葉で確定し、当たらなければ書式で整形します。どちらもできない値は元のまま表示します。</p>
    </div>
+   ${panelSrc.features.sort===false?'':sortStepHtml()}
    <div class="lc-preview" id="lcSample">${previewHtml()}</div>`}`;
   box.querySelector('#lcName').addEventListener('input',e=>{
    const v=e.target.value.trim();
@@ -922,6 +935,85 @@
    renderDetail();renderList();renderPreview();
   });
   on('#lcRuleEdit','click',()=>editRule(draft.rules[picked]||''));
+  wireSortStep(box);
+ }
+
+ /* ---------- ④ 並べ替え(§9.187) ----------
+    見出しのクリックはこれまで「SQLの素の並び」だけだった。実データの
+    同じ項目には '' / '3' / '10' / '2026/08/01' / 'A2' が混ざるので、
+    **どの種類を先に置くか**を列ごとに決められるようにする。
+    あわせて「読み替え・書式で文字にしてから並べる」も選べる
+    ——画面に出ているのは言い換えた文字なのに、並ぶのは生の値だった。
+
+    **処理の順番を図で見せる**のが要点。「変換してから並べる」と言われても、
+    今どちらなのかが分からないと選べない。 */
+ const SORT_FLOW={
+  raw:['生の値','並べ替え','読み替え','書式','画面'],
+  display:['生の値','読み替え','書式','並べ替え','画面'],
+ };
+ function sortStepHtml(){
+  const spec=WL.sortSpec.normalize(draft.sorts[picked])||{buckets:[],on:'raw',natural:false};
+  const values=panelSrc.rows().map(r=>panelSrc.valueOf(r,picked));
+  const useBuckets=spec.buckets.length>0;
+  const chips=(useBuckets?spec.buckets:WL.sortSpec.defaultBuckets()).map((k,i,a)=>
+   `<span class="lc-bucket" data-bucket="${k}">
+     <b>${i+1}</b>${esc(WL.sortSpec.LABEL[k])}
+     <button type="button" class="lc-bucket-up" data-bup="${i}" title="1つ前へ"${i===0?' disabled':''}>◀</button>
+     <button type="button" class="lc-bucket-down" data-bdown="${i}" title="1つ後へ"${i===a.length-1?' disabled':''}>▶</button>
+    </span>`).join('<i class="lc-bucket-arrow" aria-hidden="true">→</i>');
+  const flow=SORT_FLOW[spec.on].map((t,i,a)=>
+   `<span class="lc-flow-step${t==='並べ替え'?' is-sort':''}">${esc(t)}</span>`
+   +(i<a.length-1?'<i class="lc-flow-arrow" aria-hidden="true">→</i>':'')).join('');
+  return `<div class="lc-step">
+    <h4 class="lc-step-head"><i class="lc-step-no">4</i>並べ替え<small>見出しを押したときの並び</small></h4>
+    <p class="lc-sort-census">この列の実データ: ${esc(WL.sortSpec.censusText(values))}</p>
+    <div class="lc-field lc-field-kind"><span>処理の順番</span>
+     <div class="lc-kinds" id="lcSortOn">${[
+       ['raw','生の値で並べる','今までどおり。並べたあとに読み替え・書式で見せます'],
+       ['display','変換後の文字で並べる','読み替え・書式を当てた文字で並べます（画面の通りの並びになります）'],
+      ].map(([v,t,note])=>`<label class="lc-kind" title="${esc(note)}">
+       <input type="radio" name="lcSortOn" value="${v}"${spec.on===v?' checked':''}><span>${esc(t)}</span></label>`).join('')}</div></div>
+    <div class="lc-flow">${flow}</div>
+    <div class="lc-field lc-field-kind"><span>種類の順</span>
+     <div class="lc-kinds" id="lcSortMix">${[
+       ['off','区別しない','今までどおりの並びです'],
+       ['on','順番を決める','空欄・数値・日付・文字列をどの順に置くか決めます'],
+      ].map(([v,t,note])=>`<label class="lc-kind" title="${esc(note)}">
+       <input type="radio" name="lcSortMix" value="${v}"${(useBuckets?'on':'off')===v?' checked':''}><span>${esc(t)}</span></label>`).join('')}</div></div>
+    ${useBuckets?`<div class="lc-buckets" id="lcBuckets">${chips}</div>
+     <p class="lc-hint">昇順・降順は<b>塊の中の値だけ</b>を反転します（空欄の行き先が向きで変わらないように、塊の順はここで決めたままです）。</p>`:''}
+    <label class="lc-check"><input type="checkbox" id="lcSortNatural"${spec.natural?' checked':''}>
+     <span>数字混じりの文字列を人の読む順にする<small>A2 → A10（切らないと A10 → A2 になります）</small></span></label>
+    <p class="lc-hint">いまの並べ替え: <b>${esc(WL.sortSpec.describe(draft.sorts[picked]))}</b>${
+      spec.on==='display'?'　※読み替え・書式を当てた文字で並べます':''}</p>
+   </div>`;
+ }
+ function setSortSpec(patch){
+  const cur=WL.sortSpec.normalize(draft.sorts[picked])||{buckets:[],on:'raw',natural:false};
+  const next=WL.sortSpec.normalize({...cur,...patch});
+  if(next)draft.sorts[picked]=next;else delete draft.sorts[picked];
+  /* 一覧は**並べ直して取り直す**必要がある(並べるのはサーバー)。
+     この列で並べていないときは取り直さない(見た目が変わらないため)。 */
+  renderDetail();renderList();applyLive();
+  if(typeof panelSrc.resort==='function')panelSrc.resort(picked);
+ }
+ function wireSortStep(box){
+  box.querySelectorAll('input[name="lcSortOn"]').forEach(el=>el.addEventListener('change',ev=>
+   setSortSpec({on:ev.target.value})));
+  box.querySelectorAll('input[name="lcSortMix"]').forEach(el=>el.addEventListener('change',ev=>
+   setSortSpec({buckets:ev.target.value==='on'?WL.sortSpec.defaultBuckets():[]})));
+  const nat=box.querySelector('#lcSortNatural');
+  if(nat)nat.addEventListener('change',ev=>setSortSpec({natural:ev.target.checked}));
+  const move=(i,d)=>{
+   const cur=WL.sortSpec.normalize(draft.sorts[picked]);
+   const list=(cur&&cur.buckets.length?cur.buckets:WL.sortSpec.defaultBuckets()).slice();
+   const to=i+d;
+   if(to<0||to>=list.length)return;
+   const [x]=list.splice(i,1);list.splice(to,0,x);
+   setSortSpec({buckets:list});
+  };
+  box.querySelectorAll('[data-bup]').forEach(b=>b.onclick=()=>move(Number(b.dataset.bup),-1));
+  box.querySelectorAll('[data-bdown]').forEach(b=>b.onclick=()=>move(Number(b.dataset.bdown),1));
  }
 
  /* 一覧そのものが見本なので、パネルの中に別の表は持たない(§9.90)。
@@ -938,13 +1030,14 @@
    const body={order:draft.order,widths:draft.widths,
                hidden:[...draft.hidden],names:draft.names,
                formats:draft.formats,rules:draft.rules,
-               formulas:draft.formulas,locks:[...draft.locks]};
+               formulas:draft.formulas,locks:[...draft.locks],sorts:draft.sorts};
    if(typeof panelSrc.save==='function')await panelSrc.save(target,body);
    else await WL.columnLayout.save(target,body);
    saved=true;
    original={order:[...draft.order],hidden:[...draft.hidden],widths:{...draft.widths},
              names:{...draft.names},formats:JSON.parse(JSON.stringify(draft.formats)),
-             rules:{...draft.rules},formulas:{...draft.formulas},locks:[...draft.locks]};
+             rules:{...draft.rules},formulas:{...draft.formulas},locks:[...draft.locks],
+             sorts:JSON.parse(JSON.stringify(draft.sorts||{}))};
    showToast&&showToast(panelSrc.savedToast||'列の設定を保存しました',
                         panelSrc.savedNote||'この一覧を次に開いたときも同じ形で出ます',2600);
    const note=document.getElementById('lcFootNote');
@@ -959,7 +1052,8 @@
  const draftBody=()=>({order:[...draft.order],widths:{...draft.widths},
                        hidden:[...draft.hidden],names:{...draft.names},
                        formats:JSON.parse(JSON.stringify(draft.formats)),rules:{...draft.rules},
-                       formulas:{...draft.formulas},locks:[...draft.locks]});
+                       formulas:{...draft.formulas},locks:[...draft.locks],
+                       sorts:JSON.parse(JSON.stringify(draft.sorts||{}))});
  function renderPresets(){
   const sel=document.getElementById('lcPresetSel');if(!sel)return;
   const cur=sel.value;
@@ -1008,6 +1102,7 @@
    formats:JSON.parse(JSON.stringify(f.out)),rules:r.out,
    formulas,
    locks:new Set((body.locks||[]).filter(k=>keys.includes(k)||formulas[k])),
+   sorts:pickKnown(body.sorts,keys).out,
   };
   marked.clear();
   if(!draft.order.includes(picked))picked=draft.order.find(k=>!isVirtual(k))||draft.order[0]||'';
@@ -1250,7 +1345,7 @@
   /* 式で作った列は**残す**——「既定に戻す」で消えると、作った本人が
      作り直すことになる(見せ方の初期化と、列そのものの削除は別の操作)。 */
   draft={order:allKeys(),hidden:new Set(),widths:{},names:{},formats:{},rules:{},
-         formulas:{...(draft&&draft.formulas||{})},locks:new Set()};
+         formulas:{...(draft&&draft.formulas||{})},locks:new Set(),sorts:{}};
   renderOrigins();renderList();renderDetail();applyLive();
  }
 
@@ -1266,7 +1361,7 @@
   original={order:[...(cur.order||[])],hidden:[...(cur.hidden||[])],widths:{...(cur.widths||{})},
             names:{...(cur.names||{})},formats:JSON.parse(JSON.stringify(cur.formats||{})),
             rules:{...(cur.rules||{})},formulas:{...(cur.formulas||{})},
-            locks:[...(cur.locks||[])]};
+            locks:[...(cur.locks||[])],sorts:JSON.parse(JSON.stringify(cur.sorts||{}))};
   saved=false;
   marked.clear();
   closeIo();

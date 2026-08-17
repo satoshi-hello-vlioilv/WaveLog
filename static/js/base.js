@@ -187,11 +187,15 @@ function nextPaint(){return new Promise(resolve=>requestAnimationFrame(()=>reque
    キーは利用者が自由に付けてよい**ただの識別子**に戻し、判定はここへ集約する。
    /api/catalog の結果で list-view.js の init() が満たす。 */
 const dataSource=(()=>{
- let list=[],workKey=null,qualityKey=null;
+ let list=[],workKey=null,qualityKey=null,pending=[];
  function setCatalog(d){
   list=(d&&d.databases)||[];
   // サーバーが決めた役割を正とする(1件だけに絞る判定もサーバー側にある)。
   workKey=(d&&d.workKey)||null;qualityKey=(d&&d.qualityKey)||null;
+  /* 保存済みだが再起動まで効かない変更(§9.183)。**名称も接続先と同じく
+     起動時に1回だけ決まる**ので、直したのに左のボタンが古い名前のままに
+     なる。サーバーが突き合わせた結果をそのまま持つ(画面で推測しない)。 */
+  pending=(d&&d.restartPending)||[];
  }
  const of=key=>list.find(x=>x.key===key)||null;
  return {
@@ -209,6 +213,8 @@ const dataSource=(()=>{
   /* ロット問い合わせ(LotDsp)が使えるのは、ロットを持つ業務データ全般。 */
   hasLot:key=>{const x=of(key);return !!x&&x.role!=='master'},
   label:key=>{const x=of(key);return (x&&x.label)||''},
+  /* 再起動待ちの変更。[{key,label,kind:'label'|'path'|'new'|'gone',now,next}] */
+  restartPending:()=>pending.slice(),
  };
 })();
 // 名前空間の宣言はこのファイルの下の方にあるが、ここで先に要るので用意する。
@@ -225,8 +231,9 @@ const columnLayout=(()=>{
  const cache=new Map();                 // target -> {order,widths,hidden,names,formats}
  /* locks=幅を固定した列(§9.119)。**幅の「自動/手動/固定」は3つの状態**で、
     自動と手動はwidthsの有無で分かるが、固定はもう1つの状態なので別に持つ。 */
+ /* sorts=列ごとの並べ替えの決まり(§9.187)。`{列名:{buckets,on,natural}}`。 */
  const empty=()=>({order:[],widths:{},hidden:[],names:{},formats:{},rules:{},formulas:{},
-                   locks:[]});
+                   locks:[],sorts:{}});
  async function load(target){
   if(!target)return empty();
   if(cache.has(target))return cache.get(target);
@@ -234,7 +241,8 @@ const columnLayout=(()=>{
   try{
    const r=await api('/api/column-layout-master?target='+encodeURIComponent(target));
    v={order:r.order||[],widths:r.widths||{},hidden:r.hidden||[],names:r.names||{},
-      formats:r.formats||{},rules:r.rules||{},formulas:r.formulas||{},locks:r.locks||[]};
+      formats:r.formats||{},rules:r.rules||{},formulas:r.formulas||{},locks:r.locks||[],
+      sorts:r.sorts||{}};
   }catch(e){/* 読めなくても既定の並びで一覧は出す(fail-open) */}
   cache.set(target,v);return v;
  }
@@ -245,7 +253,7 @@ const columnLayout=(()=>{
      save()を呼ぶ側が渡さなければ固定は解けてしまう。 */
   const v={order:layout.order||[],widths:layout.widths||{},hidden:layout.hidden||[],
            names:layout.names||{},formats:layout.formats||{},rules:layout.rules||{},
-           formulas:layout.formulas||{},locks:layout.locks||[]};
+           formulas:layout.formulas||{},locks:layout.locks||[],sorts:layout.sorts||{}};
   cache.set(target,v);
   await api('/api/column-layout-master',{method:'POST',headers:{'Content-Type':'application/json'},
    body:JSON.stringify(withUserId({target,...v}))});
@@ -259,7 +267,7 @@ const columnLayout=(()=>{
   if(!target)return;
   cache.set(target,{order:layout.order||[],widths:layout.widths||{},hidden:layout.hidden||[],
                     names:layout.names||{},formats:layout.formats||{},rules:layout.rules||{},
-                    formulas:layout.formulas||{},locks:layout.locks||[]});
+                    formulas:layout.formulas||{},locks:layout.locks||[],sorts:layout.sorts||{}});
  }
  /* 覚えている並びを、実際にある列へ当てはめる。 */
  function apply(target,columns){
@@ -292,9 +300,94 @@ const columnLayout=(()=>{
          rule:(target,col)=>get(target).rules[col]||'',
          /* 計算で作る列の式(§9.111 ⑦)。未設定なら''(=データ側の列)。 */
          formula:(target,col)=>get(target).formulas[col]||'',
-         formulas:target=>({...get(target).formulas})};
+         formulas:target=>({...get(target).formulas}),
+         /* この列の並べ替えの決まり(§9.187)。未設定ならnull(=今までどおり
+            SQLの素の並び)。 */
+         sort:(target,col)=>(get(target).sorts||{})[col]||null};
 })();
 window.WL.columnLayout=columnLayout;
+
+/* ---------- 列ごとの並べ替えの決まり(§9.187) ----------
+   実データの同じ項目には '' / '3' / '10' / '2026/08/01' / 'A2' が混ざる。
+   どの順で並べたいかは列によって違うので、**空欄・数値・日付・文字列を
+   塊として扱い、塊の順番を利用者が決められる**ようにした。
+
+   **並べるのはサーバー**(`backend/sort_order.py`)。ページを切り出すのは
+   SQL側なので、画面で並べ替えると1ページの中だけが並ぶことになる。
+   ここが持つのは「この列の実データはどの塊か」を数えて**設定パネルに
+   文字で出す**ためだけの判定と、設定の正規化。判定が2つあるのは役目が
+   違うからで、食い違わないように`tests/fixtures/sort_cases.json`の同じ例で
+   両方を突き合わせている(`tests/test_colsort.js`と`tests/test_sortpipe.py`)。 */
+const sortSpec=(()=>{
+ const KINDS=['empty','num','date','text'];
+ const LABEL={empty:'空欄',num:'数値',date:'日付',text:'文字列'};
+ const NUM=/^[-+]?(\d+\.?\d*|\.\d+)$/;
+ const DATE=/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/;
+ const PACKED=/^(\d{4})(\d{2})(\d{2})(?:[ T]?(\d{2})(\d{2})(\d{2})?)?$/;
+ const numOf=v=>{
+  if(typeof v==='number')return Number.isFinite(v)?v:null;
+  const t=String(v==null?'':v).trim().replace(/,/g,'');
+  if(!t||!NUM.test(t))return null;
+  const n=Number(t);return Number.isFinite(n)?n:null;
+ };
+ /* **8桁の数字は日付として読まない**——製造番号が日付に化けると、
+    数値の列が黙って日付の塊へ移る。時刻が続く形だけを日付として扱う。 */
+ const dateKey=v=>{
+  const t=String(v==null?'':v).trim();
+  if(!t)return null;
+  let m=DATE.exec(t);
+  if(!m){const p=PACKED.exec(t);if(!p||!p[4])return null;m=p}
+  const M=+m[2],d=+m[3],H=+(m[4]||0),mi=+(m[5]||0),s=+(m[6]||0);
+  if(!(M>=1&&M<=12&&d>=1&&d<=31)||H>23||mi>59||s>59)return null;
+  const p2=n=>String(n).padStart(2,'0');
+  return `${String(+m[1]).padStart(4,'0')}${p2(M)}${p2(d)}${p2(H)}${p2(mi)}${p2(s)}`;
+ };
+ const classify=v=>{
+  const t=String(v==null?'':v).trim();
+  if(!t)return 'empty';
+  if(numOf(t)!==null)return 'num';
+  if(dateKey(t)!==null)return 'date';
+  return 'text';
+ };
+ /* 保存する形へ正す。**何も指定が無ければnull**＝今までどおりの並び。 */
+ function normalize(x){
+  if(!x||typeof x!=='object')return null;
+  const buckets=[];
+  (x.buckets||[]).forEach(k=>{k=String(k||'');if(KINDS.includes(k)&&!buckets.includes(k))buckets.push(k)});
+  if(buckets.length)KINDS.forEach(k=>{if(!buckets.includes(k))buckets.push(k)});
+  const on=x.on==='display'?'display':'raw';
+  const natural=!!x.natural;
+  if(!buckets.length&&on==='raw'&&!natural)return null;
+  return {buckets,on,natural};
+ }
+ /* 実データの内訳。「この設定が効く列かどうか」を設定パネルで言うために使う
+    ——1種類しか無い列に塊の順を決めても意味が無い。 */
+ function census(values){
+  const out={empty:0,num:0,date:0,text:0};
+  (values||[]).forEach(v=>{out[classify(v)]++});
+  return out;
+ }
+ function censusText(values){
+  const c=census(values);
+  const parts=KINDS.filter(k=>c[k]).map(k=>`${LABEL[k]} ${c[k]}件`);
+  if(!parts.length)return 'この列の値がまだ読めていません';
+  const kinds=KINDS.filter(k=>c[k]&&k!=='empty').length;
+  return parts.join(' / ')+(kinds>1?'（種類が混ざっています）':'');
+ }
+ function describe(spec){
+  const v=normalize(spec);
+  if(!v)return '既定（種類で分けない）';
+  const out=[];
+  if(v.buckets.length)out.push(v.buckets.map(k=>LABEL[k]).join(' → '));
+  if(v.natural)out.push('数字混じりは人の読む順');
+  out.push(v.on==='display'?'変換後の文字で並べる':'生の値で並べる');
+  return out.join('／');
+ }
+ return {KINDS,LABEL,numOf,dateKey,classify,normalize,census,censusText,describe,
+         /* 既定の塊の順。パネルで「決める」を選んだときの出発点。 */
+         defaultBuckets:()=>KINDS.slice()};
+})();
+window.WL.sortSpec=sortSpec;
 
 /* ---------- 値の読み替え(§9.88 段4) ----------
    「00」を「なし」と見せる類の置き換え。ルール名でまとめて登録し、

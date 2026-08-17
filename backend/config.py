@@ -81,6 +81,13 @@ RNE_EXTRACT_INTERVAL_SEC_DEFAULT=900
 # で上書き可能にしてある(ここは未設定時の既定値)。
 SCHEDULE_LOCK_TTL_SEC_DEFAULT=30
 SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT=1500
+# 共有スケジュールの見張り(§9.188)。読むたびに共有から写し直すのをやめ、
+# 改訂番号だけを見て**変わったときだけ**写す。
+#   INTERVAL … 変化を見る間隔(秒)。写しはこの間隔のあいだ「新しい」とみなす。
+#   PAUSE    … 写した直後に休む時間(秒)。頻繁に更新が続くときに、
+#              こちらが写し続けて共有を掴み続けるのを防ぐ(利用者の指示で30秒)。
+SCHEDULE_WATCH_INTERVAL_SEC_DEFAULT=15
+SCHEDULE_WATCH_PAUSE_SEC_DEFAULT=30
 
 # 負荷率(換算係数)モデル(docs/SCHEDULE_MODE_DESIGN.md §6)。
 # LOAD_FACTOR_CACHE_TTL_SEC: 設備ごとの算出結果をプロセス内にキャッシュする
