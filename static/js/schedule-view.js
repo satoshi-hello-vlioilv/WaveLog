@@ -60,6 +60,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  }
  let scState={equipment:'',entries:[],anchor:null,warnings:[],configured:true,
               editable:false,pickerEnabled:false,stopReasons:[],dragId:null,
+              /* まとめて外す(§9.170)。選んだ予定のid(文字列)と、掴んでいる
+                 最中の「まとめて運んでいる一式」。単発の並べ替えと混ざらない
+                 よう、複数を掴んでいる間は dragIds に入れて dragId と
+                 見分ける(dragIdだけを見ている既存の経路を壊さない)。 */
+              picked:new Set(),dragIds:null,
               boardMode:'single',boardWindowHours:24,overview:[],overviewSort:'order',
               sessionHeld:false,sessionHolder:null,sessionError:null,
               canStartWork:false,historyHours:loadHistoryHours(),groupMode:'none'};
@@ -182,6 +187,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    </div>
    <div class="sc-session-banner" id="scSessionBanner" hidden></div>
    <div class="sc-warnings" id="scWarnings" hidden></div>
+   <!-- まとめて外す(§9.170)。仕掛一覧の選択件数バー(plan-select-bar)と
+        同じ形・同じ言葉にしてある。**0件のときは出さない**——常時
+        「0件選択中」と出ているのは読まれない飾りにしかならない。 -->
+   <div class="sc-pick-bar" id="scPickBar" hidden></div>
    <div class="sc-board" id="scBoard" hidden></div>
    <div class="sc-body" id="scSingleBody">
     <div class="sc-timeline" id="scTimeline"></div>
@@ -667,6 +676,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  async function switchToBoard(){
   if(!scState.pickerEnabled)return;
   scState.boardMode='board';
+  /* 俯瞰へ移るとタイムラインを描き直さないので、**選択バーを自分で畳む**
+     (§9.170)。残すと、行が1つも見えていないのに「N件を選択中」だけが
+     居座る。 */
+  renderPickBar(null);
   applyBoardModeUi();
   await loadOverviewBoard();
  }
@@ -1547,7 +1560,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     +`<i class="col-resize" title="ドラッグで列幅を調整（ダブルクリックで既定へ）" aria-hidden="true"></i></span>`;
   }).join('');
   return `<div class="sc-row-head">
-  <span></span><span>区分</span><span>作業</span><span>日付</span><span>時刻</span><span>勤務</span><span>残り</span>${cells}<span>見積</span><span>実績</span><span>備考</span><span class="sc-actions-head">操作</span>
+  ${canPickEntries()?'<span class="sc-row-pick-head"><input type="checkbox" id="scPickAll" title="外せる予定（未着手）をすべて選ぶ／解除します"></span>':'<span></span>'}<span>区分</span><span>作業</span><span>日付</span><span>時刻</span><span>勤務</span><span>残り</span>${cells}<span>見積</span><span>実績</span><span>備考</span><span class="sc-actions-head">操作</span>
  </div>`;
  }
 
@@ -1695,9 +1708,15 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    return w?`${w}px`:'minmax(calc(110px * var(--ui-scale)),1fr)';
   }).join(' ')||'minmax(calc(150px * var(--ui-scale)),1fr)';
   timeline.style.setProperty('--sc-content-cols',cols);
+  /* 1列目(ハンドル)は、まとめて外せる場面だけチェックを抱えるぶん広げる
+     (§9.170)。**列を1本足さない**——`grid-template-columns`を2通り書くと、
+     見出しと行で片方だけ直した状態が作れてしまう(この表は見出しとセルが
+     同じ定義を共有しているのが土台)。 */
+  const pickable=canPickEntries();
+  timeline.classList.toggle('sc-pickable',pickable);
   // 最小幅も列数で変える(11列ぶん + 内容の列)。足りないと桁がずれる。
   timeline.style.setProperty('--sc-row-min',
-   `calc(${892+Math.max(1,keys.length)*110}px * var(--ui-scale))`);
+   `calc(${892+(pickable?20:0)+Math.max(1,keys.length)*110}px * var(--ui-scale))`);
  }
 
  /* 見出しの操作(§9.88 段1と同じ作法)。掴んで並べ替え、右端の取っ手で幅。
@@ -1789,6 +1808,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    timeline.innerHTML=scState.entries.length
     ?`<div class="sc-empty-note">表示範囲(直近${scState.historyHours}時間)に該当する予定・実績がありません。表示範囲を広げてください。</div>`
     :'<div class="sc-empty-note">この設備の予定はまだありません。</div>';
+   renderPickBar(timeline);
    refreshScheduledLotFilter();
    return;
   }
@@ -1825,6 +1845,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    });
    timeline.append(box);
   });
+  renderPickBar(timeline);
   refreshScheduledLotFilter();
  }
 
@@ -2012,7 +2033,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    const canDeleteHistory=scState.canDeleteHistory&&!!recordId&&(e.state==='着手'||e.state==='完了');
 
    row.innerHTML=`
-    <span class="sc-row-handle" title="${canDrag?'ドラッグまたはAlt+↑/↓で並べ替え':(locked?'日時を固定中(ロック)':'')}">${canDrag?'⠿':(locked?'🔒':'')}</span>
+    <span class="sc-row-handle" title="${canDrag?'ドラッグまたはAlt+↑/↓で並べ替え':(locked?'日時を固定中(ロック)':'')}">${pickBoxHtml(e)}${canDrag?'⠿':(locked?'🔒':'')}</span>
     <span class="sc-row-cat sc-cat-${cat.key}" title="${esc(e.kind)}・${esc(e.state)}"><i>${cat.icon}</i>${esc(cat.label)}</span>
     <span class="sc-row-workable ${wk.cls}" title="${esc(wkTitle)}">${esc(wk.text)}</span>
     <span class="sc-row-date" title="${esc(dateTitle)}">${esc(dateText)}</span>
@@ -2034,6 +2055,18 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     </span>`;
    row.classList.toggle('sc-row-not-workable',workable.state==='ng');
    if(canDrag)wireDrag(row);
+   /* 選ばれている行は面でも分かるようにするが、**色だけで伝えない**
+      ——件数とロット番号は選択バーが文字で出す(§9.170)。 */
+   const pick=row.querySelector('.sc-pick-check');
+   if(pick){
+    row.classList.toggle('is-picked',scState.picked.has(String(e.id)));
+    /* **clickで受ける**——changeはclickの後に飛ぶため、行のクリックで
+       作り直す作りだと反映されない(列の設定パネルで踏んだ罠と同じ)。 */
+    pick.addEventListener('click',ev=>{
+     ev.stopPropagation();
+     setPicked(e.id,ev.target.checked);
+    });
+   }
    const del=row.querySelector('.sc-row-delete');
    if(del)del.onclick=ev=>{ev.stopPropagation();deleteEntry(e.id)};
    const start=row.querySelector('.sc-row-start');
@@ -2326,9 +2359,153 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(!e)return null;
   return (scState.fullControl&&e.state==='予定'&&!e.__pending&&!e.unplanned)?e:null;
  }
+ /* ---------- まとめて予定から外す(§9.170) ----------
+    仕掛一覧は「チェックで複数選ぶ → まとめて投入」ができる(§9.5)。
+    **戻す側にも同じ操作を置く**——入れるのは一度に何件でもできるのに、
+    外すのは1件ずつ、では釣り合わない。見た目・言葉・置き場所は仕掛一覧の
+    選択(plan-select-bar)へ揃える(同じ操作は同じ形で出す)。
+    **選べるのは removableEntry() が通す行だけ**——出しておいて落としたら
+    断る、では選んだ手間が無駄になる(§9.116と同じ理由)。
+    確認は**1回だけ**まとめて出す。1件ずつ確認を出すと、20件外すのに20回
+    押すことになり、読まずに押す癖が付く(危ない操作ほど1回で言い切る)。 */
+ function canPickEntries(){return !!scState.fullControl&&scState.boardMode==='single'}
+ function pickBoxHtml(e){
+  if(!canPickEntries()||!removableEntry(e.id))return '';
+  return `<input type="checkbox" class="sc-pick-check"`
+   +`${scState.picked.has(String(e.id))?' checked':''}`
+   +` title="この予定を選ぶ（選んだぶんをまとめて外せます）">`;
+ }
+ /* 今この画面に出ている「外せる予定」。選択の対象も全選択の分母もこれ。 */
+ function pickableEntries(){
+  return canPickEntries()?visibleEntries().filter(e=>removableEntry(e.id)):[];
+ }
+ function setPicked(id,on){
+  const key=String(id);
+  if(on)scState.picked.add(key);else scState.picked.delete(key);
+  const row=$(`.sc-row-line[data-id="${CSS.escape(key)}"]`);
+  if(row)row.classList.toggle('is-picked',on);
+  renderPickBar($('#scTimeline'));
+ }
+ /* 掴んでいる一式。掴んだ行が選ばれていて、他にも選ばれていれば選択全体。 */
+ function multiDragIds(id){
+  const key=String(id);
+  if(!scState.picked.has(key)||scState.picked.size<2)return null;
+  const ids=[...scState.picked].filter(x=>removableEntry(x));
+  return ids.length>1?ids:null;
+ }
+ /* 掴んでいるもののうち、実際に外せるものだけ。受け皿の出し分けに使う。 */
+ function draggingRemovableIds(id){
+  const many=multiDragIds(id);
+  if(many)return many;
+  return removableEntry(id)?[String(id)]:[];
+ }
+ function markDragging(ids,on){
+  ids.forEach(id=>{
+   const row=$(`.sc-row-line[data-id="${CSS.escape(String(id))}"]`);
+   if(row)row.classList.toggle('sc-dragging',on);
+  });
+ }
+ function pickedLotOf(e){
+  return e?(e.lotNo||contentValueOf(e.detail,'lotNo')||'(ロット番号なし)'):'';
+ }
+ function renderPickBar(timeline){
+  const bar=$('#scPickBar');
+  const all=$('#scPickAll');
+  if(!canPickEntries()){
+   scState.picked.clear();
+   if(bar){bar.hidden=true;bar.innerHTML=''}
+   return;
+  }
+  /* **消えた行のidを持ち続けない**——予定を外した後・設備を切り替えた後も
+     残っていると、件数だけが合わない状態になる。描くたびに今ある行へ絞る。 */
+  scState.picked=new Set([...scState.picked].filter(id=>removableEntry(id)));
+  const pool=pickableEntries();
+  if(all){
+   const n=pool.filter(e=>scState.picked.has(String(e.id))).length;
+   all.checked=pool.length>0&&n===pool.length;
+   all.indeterminate=n>0&&n<pool.length;
+   all.disabled=!pool.length;
+   all.title=pool.length
+    ?`外せる予定${pool.length}件をすべて選ぶ／解除します（実施中・完了・計画外は選べません）`
+    :'この画面に外せる予定（未着手）はありません';
+   all.onclick=ev=>{
+    const on=ev.target.checked;
+    pool.forEach(e=>{on?scState.picked.add(String(e.id)):scState.picked.delete(String(e.id))});
+    if(timeline)timeline.querySelectorAll('.sc-row-line').forEach(r=>{
+     const box=r.querySelector('.sc-pick-check');
+     if(!box)return;
+     box.checked=scState.picked.has(String(r.dataset.id));
+     r.classList.toggle('is-picked',box.checked);
+    });
+    renderPickBar(timeline);
+   };
+  }
+  if(!bar)return;
+  const ids=[...scState.picked];
+  if(!ids.length){bar.hidden=true;bar.innerHTML='';return}
+  const lots=ids.map(id=>pickedLotOf(removableEntry(id))).filter(Boolean);
+  const head=lots.slice(0,4).join('・');
+  bar.hidden=false;
+  bar.innerHTML=`<span class="sc-pick-count">${ids.length}件を選択中</span>`
+   +`<span class="sc-pick-lots" title="${esc(lots.join('・'))}">${esc(head)}${lots.length>4?`　ほか${lots.length-4}件`:''}</span>`
+   +`<button type="button" class="sc-pick-remove" id="scPickRemove">選んだ${ids.length}件を予定から外す</button>`
+   +`<button type="button" class="sc-pick-clear" id="scPickClear">選択解除</button>`
+   +`<span class="sc-pick-hint">選んだ行のどれかを掴んで下の受け皿へ落としても、まとめて外せます</span>`;
+  $('#scPickRemove').onclick=()=>removeEntries([...scState.picked]);
+  $('#scPickClear').onclick=()=>{scState.picked.clear();renderTimeline()};
+ }
+ /* 外す本体。1件なら今までどおり deleteEntry() を通す(確認の文言と
+    取り消しの作法を2つに増やさない)。複数のときだけ、まとめた確認を出す。 */
+ async function removeEntries(ids){
+  const targets=[...new Set((ids||[]).map(String))].map(id=>removableEntry(id)).filter(Boolean);
+  if(!targets.length)return;
+  if(targets.length===1){
+   scState.picked.delete(String(targets[0].id));
+   return deleteEntry(targets[0].id);
+  }
+  const lots=targets.map(pickedLotOf);
+  const shown=lots.slice(0,12),rest=lots.length-shown.length;
+  const ok=await confirmModal({
+   eyebrow:'REMOVE FROM SCHEDULE',
+   title:`${targets.length}件の予定をまとめて外します`,
+   danger:true,confirmLabel:`${targets.length}件を外す`,
+   bodyHtml:`<p class="confirm-modal-message">${esc(scState.equipment)} の予定から <b>${targets.length}件</b> を外します。</p>
+    <ul class="confirm-modal-points">
+     <li>${esc(shown.join('・'))}${rest>0?`　ほか${rest}件`:''}</li>
+     <li>外したロットは<b>仕掛一覧へ戻ります</b>。同じようにまた入れられます。</li>
+     <li>消えるのは<b>予定の行だけ</b>です。測定データはそのまま残ります。</li>
+    </ul>`});
+  if(!ok)return;
+  targets.forEach(e=>{
+   const idx=scState.entries.findIndex(x=>x.id===e.id);
+   if(idx===-1)return;
+   scState.entries.splice(idx,1);
+   scState.picked.delete(String(e.id));
+   /* 失敗の戻し方は deleteEntry() と同じ——**諦めたときだけ**戻す(§9.22)。
+      毎回戻すと、1回目失敗→戻す→2回目成功、でサーバーには無いのに画面に
+      居座る行ができる。 */
+   queuePlanOp({op:'delete',id:e.id,
+    onFailure:()=>{
+     if(scState.entries.every(x=>x.id!==e.id)){scState.entries.push(e);renderTimeline()}
+    }});
+  });
+  renderTimeline();
+  showToast&&showToast(`${targets.length}件を予定から外しました`,
+   `${scState.equipment}／仕掛一覧へ戻ります`,3800);
+ }
+
  function showRemoveZone(id){
   const z=$('#scDropRemove');if(!z)return;
-  if(!removableEntry(id)){z.hidden=true;return}
+  const ids=draggingRemovableIds(id);
+  if(!ids.length){z.hidden=true;return}
+  /* **何件外すのかを帯に書く**(§9.170)。まとめて掴んでいるときに
+     「この予定を外します」とだけ出ていると、1件だけ外れると読める。 */
+  const t=z.querySelector('.sc-drop-remove-text');
+  if(t)t.innerHTML=ids.length>1
+   ?`ここへ落とすと<b>選んだ${ids.length}件をまとめて外します</b>`
+    +`<small>確認してから外します。仕掛一覧へ戻るので、また入れ直せます</small>`
+   :`ここへ落とすと<b>この予定を外します</b>`
+    +`<small>確認してから外します。仕掛一覧へ戻るので、また入れ直せます</small>`;
   z.hidden=false;z.classList.remove('is-over');
  }
  function hideRemoveZone(){
@@ -2339,7 +2516,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const z=$('#scDropRemove');if(!z||z.dataset.wired)return;
   z.dataset.wired='1';
   z.addEventListener('dragover',e=>{
-   if(!scState.dragId||!removableEntry(scState.dragId))return;
+   if(!scState.dragId||!draggingRemovableIds(scState.dragId).length)return;
    e.preventDefault();e.dataTransfer.dropEffect='move';
    z.classList.add('is-over');
   });
@@ -2349,16 +2526,15 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
       deleteEntry() は `e.id===id` で探すので、文字列のまま渡すと
       見つからず**確認だけ出て何も消えない**（実際にそうなっていた）。
       引き当てた行の id をそのまま渡す。 */
-   const entry=removableEntry(scState.dragId);
-   if(!entry)return;
-   const id=entry.id;
+   const ids=draggingRemovableIds(scState.dragId);
+   if(!ids.length)return;
    e.preventDefault();e.stopPropagation();
    /* **並べ替えとして確定させない。** 帯へ来るまでに行のdragoverでDOMが
       動いているが、commitDragOrder()は呼ばない(外すのが目的なので、
       途中で通り過ぎた位置を保存する意味が無い)。deleteEntry()が
       renderTimeline()を呼ぶので、見た目は状態から作り直される。 */
    hideRemoveZone();
-   deleteEntry(id);
+   removeEntries(ids);
   });
  }
 
@@ -2367,10 +2543,22 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   // 数値化するとNaNになり、比較もMap引きも静かに壊れる。
   card.addEventListener('dragstart',e=>{
    scState.dragId=card.dataset.id;card.classList.add('sc-dragging');e.dataTransfer.effectAllowed='move';
+   /* 選んだ行を掴んだら**選択全体を運ぶ**(§9.170)。仕掛一覧の一括投入と
+      同じ作法。掴んだ行が選ばれていなければ今までどおり1件だけ。 */
+   scState.dragIds=multiDragIds(card.dataset.id);
+   if(scState.dragIds)markDragging(scState.dragIds,true);
    showRemoveZone(card.dataset.id);
   });
-  card.addEventListener('dragend',()=>{card.classList.remove('sc-dragging');scState.dragId=null;hideRemoveZone()});
+  card.addEventListener('dragend',()=>{
+   card.classList.remove('sc-dragging');
+   if(scState.dragIds)markDragging(scState.dragIds,false);
+   scState.dragId=null;scState.dragIds=null;hideRemoveZone();
+  });
   card.addEventListener('dragover',e=>{
+   /* まとめて掴んでいる間は並べ替えない(§9.170)。運んでいるのは複数なのに
+      動かせるのは掴んだ1行だけなので、**通り過ぎた位置に1行だけ置き去りに
+      なる**。まとめて掴む目的は外すことなので、並べ替えは1件のときだけ。 */
+   if(scState.dragIds)return;
    if(scState.dragId==null)return;
    e.preventDefault();
    const target=card;if(target.dataset.id===scState.dragId)return;

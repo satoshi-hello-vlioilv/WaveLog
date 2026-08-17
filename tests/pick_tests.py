@@ -35,6 +35,7 @@ ALWAYS = ['test_patchlint', 'test_globallint', 'test_dskeylint', 'test_csslint',
 # 束ねた呼び名。右辺は実際のテスト名。
 G = {}
 G['一覧'] = ['test_nav', 'test_navdyn', 'test_listcache', 'test_listperf', 'test_allrows',
+             'test_filterio',
              'test_cols', 'test_hdctx', 'test_dsnav', 'test_listmodal', 'test_filter',
              'test_audit', 'test_sub', 'test_uisize', 'test_ttlcache']
 G['列'] = ['test_collayout', 'test_colformat', 'test_colrule', 'test_colsort', 'test_lcpanel',
@@ -42,7 +43,7 @@ G['列'] = ['test_collayout', 'test_colformat', 'test_colrule', 'test_colsort', 
            'test_colpreset', 'test_formula', 'test_reccols', 'test_rpblocks']
 G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'test_sccat',
                      'test_scbalance', 'test_scbatch', 'test_screorder', 'test_scperm',
-                     'test_scperf', 'test_wkfast', 'test_scsplit', 'test_scprint', 'test_scdrop', 'test_sccontent', 'test_workable',
+                     'test_scperf', 'test_wkfast', 'test_scsplit', 'test_scprint', 'test_scdrop', 'test_scpick', 'test_sccontent', 'test_workable',
                      'test_wkbg', 'test_orphan', 'test_histdel', 'test_sclock',
                      'test_scwritespeed', 'test_split_layout', 'test_sccols']
 G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 'test_eqkind',
@@ -91,7 +92,7 @@ RULES = [
                                     'test_sccols', 'test_cols', 'test_lcpanel')),
     ('static/js/list-rules.js', g('列')),
     ('static/js/list-formula.js', g('test_formula', 'test_colpreset', 'test_lcpanel')),
-    ('static/js/filters.js', g('test_filter', 'test_listcache', 'test_allrows', 'test_nav')),
+    ('static/js/filters.js', g('test_filter', 'test_filterio', 'test_listcache', 'test_allrows', 'test_nav')),
     ('static/js/schedule-view.js', g('スケジュール', 'test_listmodal')),
     ('static/js/schedule-print.js', g('test_scprint')),
     ('static/js/lot-split.js', g('test_scsplit', 'test_orphan', 'test_sub', 'test_splitlive')),

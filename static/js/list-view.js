@@ -1398,6 +1398,7 @@ function renderGridInner(){
    cells+=`<td data-col="${esc(c)}"${cls?` class="${cls}"`:''}${tip}>${esc(out.text)}</td>`;
   }
   tr.innerHTML=cells+gap(skipped);
+  tr.__row=r;   // 行→元データの逆引き(ドラッグ中の印付けに使う。§9.170)
   if(r===S.selectedRow)tr.classList.add('is-selected');
   if(canPlan&&S.selectedRows.has(r))tr.classList.add('is-plan-selected');
   tr.addEventListener('click',()=>{
@@ -1438,9 +1439,18 @@ function renderGridInner(){
     window.__scDragRows=dragRows;
     e.dataTransfer.effectAllowed='copy';
     try{e.dataTransfer.setData('text/plain',dragRows.map(x=>pick(x,'lotNo')||'').join('、'))}catch(err){/* 一部ブラウザでのsetData制限は無視する */}
-    tr.classList.add('is-row-dragging');
+    /* **運んでいる行を全部そう見せる**(§9.170)。ブラウザが作るドラッグの
+       写しは掴んだ1行だけなので、印が1行にしか付いていないと「1件しか
+       運んでいない」と読める(まとめて投入したつもりが1件だった、という
+       取り違えが起きる)。選択件数は選択バーが文字で出している。 */
+    markRowsDragging(dragRows,true);
    });
-   tr.addEventListener('dragend',()=>{tr.classList.remove('is-row-dragging');window.__scDragRows=null});
+   tr.addEventListener('dragend',()=>{
+    const rows=window.__scDragRows;
+    tr.classList.remove('is-row-dragging');
+    if(rows)markRowsDragging(rows,false);
+    window.__scDragRows=null;
+   });
   }
   if(hasLotDsp){
    const lotBtn=tr.querySelector('.grid-lot-link');
@@ -1665,11 +1675,23 @@ function renderPlanSelectBar(canPlan){
  // 直接投入ボタンも出す(§9.10。ドラッグと同じ一括追加処理を呼ぶだけの
  // もう1つの入口)。分割表示で対象設備が決まっている時だけ有効にする。
  const target=window.scCurrentDropTarget?.();
- const addBtn=target?`<button type="button" class="plan-select-add" id="planSelectAdd">${esc(target)}へ追加</button>`:'';
+ /* **何件がどこへ行くのかをボタンに書く**(§9.170)。「LS4へ追加」だけでは、
+    選んだ全部なのか今の行だけなのかが読めない。 */
+ const addBtn=target?`<button type="button" class="plan-select-add" id="planSelectAdd" title="選んだ${n}件を${esc(target)}の予定へまとめて追加します">${esc(target)}へ${n}件追加</button>`:'';
  bar.innerHTML=`<span>${n}件選択中</span>${addBtn}<button type="button" class="plan-select-clear" id="planSelectClear">選択解除</button>`;
  $('#planSelectClear').onclick=clearListSelection;
  const add=$('#planSelectAdd');
  if(add)add.onclick=()=>window.scAddSelectedRows?.(Array.from(S.selectedRows));
+}
+/* 選択している行のうち、今DOMに出ているものへ印を付け外しする(§9.170)。
+   全件表示・仮想スクロールでは行が出ていないことがあるので、見つからない
+   ぶんは黙って飛ばす(印は見えている行のためのもの)。 */
+function markRowsDragging(rows,on){
+ const b=$('#grid tbody');if(!b)return;
+ const want=new Set(rows||[]);
+ b.querySelectorAll('tr').forEach(tr=>{
+  if(want.has(tr.__row))tr.classList.toggle('is-row-dragging',on);
+ });
 }
 function clearListSelection(){
  if(!S.selectedRows.size)return;

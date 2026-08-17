@@ -295,7 +295,11 @@
   function readDefaultPresetMap(){try{return JSON.parse(localStorage.getItem(DEFAULT_STORE)||'{}')}catch(_){return {}}}
   function writeDefaultPresetMap(map){try{localStorage.setItem(DEFAULT_STORE,JSON.stringify(map))}catch(_){}}
   // 既定・鍵の記憶もモードごと(上と同じ理由)。
-  function defaultMapKey(db,table){return `${db||''}::${table||''}::${presetMode()}`}
+  /* 置き場のキー。**モードを外から渡せる形にしておく**(§9.171)——書き出し・
+     取り込みは「今開いているモード」以外の一覧の印も扱うので、presetMode()を
+     固定で埋め込んでいると自分のモードぶんしか読めない。 */
+  function mapKeyOf(db,table,mode){return `${db||''}::${table||''}::${mode||''}`}
+  function defaultMapKey(db,table){return mapKeyOf(db,table,presetMode())}
   function defaultPresetIdsFor(db,table){return (readDefaultPresetMap()[defaultMapKey(db,table)]||[]).map(String)}
   function isDefaultPreset(preset,db,table){return defaultPresetIdsFor(db,table).includes(String(preset.id))}
   function setDefaultPreset(preset,db,table,on){
@@ -699,6 +703,326 @@
     const row=input.closest('.filter-search-row')||box;document.addEventListener('click',e=>{if(!row.contains(e.target)){box.classList.remove('focus-within');if(suggest)suggest.hidden=true}});
   }
 
+  /* ==========================================================
+     登録フィルタの持ち出し・取り込み(§9.171)
+     ----------------------------------------------------------
+     利用者の指示は「全てまたは各一覧単位でフィルタ機能の部分だけ、
+     エクスポートインポートできる機能」。**持ち出すのはフィルタだけ**で、
+     一覧の列・書式などは持ち出さない(列レイアウトマスタの領分)。
+
+     持ち出すもの / 持ち出さないものは**画面に書く**——同じ「フィルタ」でも、
+     条件そのもの(誰が見ても同じ)と、この端末で付けた「デフォルト」「鍵」の印
+     (端末ごとの設定)と、使用回数(統計)は性質が違う。前二つは運べば役に立ち、
+     統計は運んでも意味が無い。
+
+     印は**名前で運ぶ**。プリセットIDはマスタの連番なので、別のPCへ持って
+     行くと必ず食い違う(IDで運ぶと、まったく別の条件に鍵が付く)。
+     ========================================================== */
+  const IO_FORMAT='wavelog-filter-presets';
+  const IO_VERSION=1;
+  function ioGroupKey(g){return `${g.db||''}\u001f${g.table||''}\u001f${g.mode||''}`}
+  function ioGroupLabel(g){
+    return `${g.db||'(DB未指定)'} / ${g.table||'(テーブル未指定)'}`;
+  }
+  function ioModeLabel(mode){return mode==='schedule'?'スケジュールモード':'編集・閲覧モード'}
+  /* この端末にある登録フィルタを**全モードぶん**集める。一覧のモーダルが
+     読むのは今の一覧ぶんだけ(S.filterPresets)なので、そのまま使うと
+     「すべて」が今の一覧だけになる。 */
+  async function ioFetchAll(){
+    const out=[];
+    for(const mode of ['','schedule']){
+      const q=new URLSearchParams();q.set('mode',mode);
+      const r=await api('/api/filter-presets?'+q);
+      (r.items||[]).forEach(x=>out.push({id:x.id,name:x.name,db:x.db||'',table:x.table||'',
+        mode:x.mode||'',filters:Array.isArray(x.filters)?x.filters:[],uses:x.uses||0,master:true}));
+    }
+    /* マスタへ書けずこの端末だけに控えたぶんも持ち出せるようにする——
+       書けなかったからこそ、他のPCへ運ぶ手立てが要る。 */
+    (S.filterPresets||[]).filter(x=>!x.master).forEach(x=>out.push({...x,master:false}));
+    return out;
+  }
+  function ioGroupsOf(list){
+    const m=new Map();
+    (list||[]).forEach(p=>{
+      const g0={db:p.db||'',table:p.table||'',mode:p.mode||''};
+      const k=ioGroupKey(g0);
+      let g=m.get(k);
+      if(!g){g={...g0,key:k,presets:[]};m.set(k,g)}
+      g.presets.push(p);
+    });
+    return [...m.values()].sort((a,b)=>(a.db+a.table+a.mode).localeCompare(b.db+b.table+b.mode,'ja'));
+  }
+  /* この端末で付いている印(デフォルト・鍵)を、そのグループの中で名前へ直す。 */
+  function ioMarksOf(g){
+    const key=mapKeyOf(g.db,g.table,g.mode);
+    const ds=new Set((readDefaultPresetMap()[key]||[]).map(String));
+    const ls=new Set((readLockedPresetMap()[key]||[]).map(String));
+    const def=new Set(),lock=new Set();
+    g.presets.forEach(p=>{
+      if(ds.has(String(p.id)))def.add(p.name);
+      if(ls.has(String(p.id)))lock.add(p.name);
+    });
+    return {def,lock};
+  }
+  function ioFileName(){
+    const d=new Date(),pad=n=>String(n).padStart(2,'0');
+    return `wavelog-filters-${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}.json`;
+  }
+  function ioDownload(name,text){
+    const blob=new Blob([text],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download=name;
+    document.body.append(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),4000);
+  }
+  function ioParse(text){
+    let data;
+    try{data=JSON.parse(text)}
+    catch(e){throw new Error('JSONとして読めませんでした。書き出したファイルをそのまま選んでください。')}
+    if(!data||data.format!==IO_FORMAT)
+      throw new Error('WaveLogのフィルタ書き出しファイルではありません（別のファイルを選んでいませんか）。');
+    const groups=(data.groups||[]).map(g=>({
+      db:String(g&&g.db||''),table:String(g&&g.table||''),
+      mode:(g&&g.mode)==='schedule'?'schedule':'',
+      presets:((g&&g.presets)||[])
+        .filter(x=>x&&String(x.name||'').trim()&&Array.isArray(x.filters)&&x.filters.length)
+        .map(x=>({name:String(x.name).trim(),filters:x.filters,
+                  isDefault:!!x.isDefault,isLocked:!!x.isLocked}))
+    })).filter(g=>g.presets.length);
+    groups.forEach(g=>{g.key=ioGroupKey(g)});
+    if(!groups.length)throw new Error('取り込める条件が1件もありませんでした。');
+    return {exportedAt:String(data.exportedAt||''),groups};
+  }
+
+  /* ---- 持ち出し・取り込みのパネル ----
+     モーダルを増やさない。**同じ画面の中で開く**——登録フィルタの一覧が
+     見えたまま「どれが出て行くのか」を確かめられるのが大事なので、
+     一覧の上へ差し込む形にしてある。 */
+  let ioState=null;
+  function ioClose(){
+    ioState=null;
+    const panel=$('#filterIoPanel');
+    if(panel){panel.hidden=true;panel.innerHTML=''}
+  }
+  async function openIoPanel(kind){
+    const panel=$('#filterIoPanel');if(!panel)return;
+    panel.hidden=false;
+    panel.innerHTML='<div class="fp-io-loading"><span class="mini-spinner"></span>この端末の登録フィルタを数えています…</div>';
+    let all=[],dbKeys=null;
+    try{all=await ioFetchAll()}
+    catch(e){panel.innerHTML=`<div class="fp-io-error">登録フィルタを読めませんでした: ${esc(e.message)}</div>`;return}
+    /* 取り込み側だけ、**この端末に無いデータの一覧**を言えるようにする
+       (取り込んでも一生出てこない条件を黙って足さないため)。読めなければ
+       黙って判定をやめる——「無い」と言い切るより何も言わないほうがまし。 */
+    if(kind==='import'){
+      try{const c=await api('/api/catalog');dbKeys=new Set((c.databases||[]).map(x=>x.key))}
+      catch(_){dbKeys=null}
+    }
+    const here=ioGroupsOf(all);
+    const cur=ioGroupKey({db:S.db||'',table:S.table||'',mode:presetMode()});
+    ioState={kind,here,all,dbKeys,
+             chosen:new Set(kind==='export'?here.filter(g=>g.key===cur).map(g=>g.key):[]),
+             file:null,parsed:null,overwrite:true,withMarks:true,busy:false,status:''};
+    renderIoPanel();
+  }
+  function ioCountText(g){
+    const m=ioMarksOf(g);
+    const bits=[`${g.presets.length}件`];
+    if(m.def.size)bits.push(`デフォルト${m.def.size}`);
+    if(m.lock.size)bits.push(`鍵${m.lock.size}`);
+    return bits.join('・');
+  }
+  function renderIoPanel(){
+    const panel=$('#filterIoPanel');if(!panel||!ioState)return;
+    const st=ioState;
+    const isExport=st.kind==='export';
+    const cur=ioGroupKey({db:S.db||'',table:S.table||'',mode:presetMode()});
+    let body='';
+    if(isExport){
+      const total=st.here.reduce((n,g)=>n+g.presets.length,0);
+      const chosenCount=st.here.filter(g=>st.chosen.has(g.key)).reduce((n,g)=>n+g.presets.length,0);
+      body=`
+      <div class="fp-io-quick">
+        <span>どれを出しますか</span>
+        <button type="button" data-io-quick="current">いま開いている一覧だけ</button>
+        <button type="button" data-io-quick="all">すべての一覧（${st.here.length}つ・${total}件）</button>
+        <button type="button" data-io-quick="none">選択を全部外す</button>
+      </div>
+      <ul class="fp-io-groups">${st.here.map(g=>`
+        <li${g.key===cur?' class="is-current"':''}>
+         <label><input type="checkbox" data-io-group="${esc(g.key)}"${st.chosen.has(g.key)?' checked':''}>
+          <b>${esc(ioGroupLabel(g))}</b>
+          <small>${esc(ioModeLabel(g.mode))}</small>
+          ${g.key===cur?'<em class="fp-io-now">いま開いている一覧</em>':''}</label>
+         <span class="fp-io-count">${esc(ioCountText(g))}</span>
+        </li>`).join('')||'<li class="fp-io-none">登録フィルタがまだありません。</li>'}</ul>
+      <p class="fp-io-hint">
+       <b>出るもの</b>: 条件・名前・対象の一覧／この端末で付けた「デフォルト」「鍵」の印（名前で運びます）。<br>
+       <b>出ないもの</b>: 使用回数・最終使用日時（端末ごとの記録なので、運んでも意味がありません）。</p>
+      <p class="fp-io-file-note">ファイル名 <code>${esc(ioFileName())}</code>（ブラウザのダウンロード先へ保存されます）</p>`;
+      st.canRun=chosenCount>0;
+      st.runLabel=chosenCount?`${chosenCount}件を書き出す`:'書き出す';
+      st.note=chosenCount?`${st.chosen.size}つの一覧・${chosenCount}件を書き出します`:'書き出す一覧を選んでください';
+    }else{
+      const parsed=st.parsed;
+      let list='';
+      if(parsed){
+        list=`<ul class="fp-io-groups">${parsed.groups.map(g=>{
+          const here=st.all.filter(p=>p.db===g.db&&p.table===g.table&&(p.mode||'')===g.mode);
+          const names=new Set(here.map(p=>p.name));
+          const dup=g.presets.filter(p=>names.has(p.name)).length;
+          const fresh=g.presets.length-dup;
+          const unknown=st.dbKeys&&g.db&&!st.dbKeys.has(g.db);
+          return `<li${g.key===cur?' class="is-current"':''}>
+           <label><input type="checkbox" data-io-group="${esc(g.key)}"${st.chosen.has(g.key)?' checked':''}>
+            <b>${esc(ioGroupLabel(g))}</b>
+            <small>${esc(ioModeLabel(g.mode))}</small>
+            ${g.key===cur?'<em class="fp-io-now">いま開いている一覧</em>':''}
+            ${unknown?'<em class="fp-io-warn">この端末には無いデータです（取り込んでも一覧には出ません）</em>':''}</label>
+           <span class="fp-io-count">新しく入る${fresh}件${dup?`・同じ名前が${dup}件`:''}</span>
+          </li>`}).join('')}</ul>`;
+      }
+      body=`
+      <div class="fp-io-pick">
+        <label class="fp-io-filebtn">
+         <input type="file" id="filterIoFile" accept=".json,application/json">
+         <span>ファイルを選ぶ…</span>
+        </label>
+        <span class="fp-io-filename">${st.file?esc(st.file):'まだ選んでいません'}</span>
+      </div>
+      ${st.parseError?`<p class="fp-io-error">${esc(st.parseError)}</p>`:''}
+      ${parsed?`<p class="fp-io-read">読み込んだ内容: <b>${parsed.groups.reduce((n,g)=>n+g.presets.length,0)}件</b>／${parsed.groups.length}つの一覧${parsed.exportedAt?`（書き出し ${esc(parsed.exportedAt.slice(0,16).replace('T',' '))}）`:''}</p>`:''}
+      ${list}
+      ${parsed?`
+      <div class="fp-io-opts">
+        <div class="fp-io-opt">
+         <span class="fp-io-opt-label">同じ名前があったら</span>
+         <label><input type="radio" name="fpIoDup" value="overwrite"${st.overwrite?' checked':''}> 上書きする（条件を新しいほうへ）</label>
+         <label><input type="radio" name="fpIoDup" value="keep"${st.overwrite?'':' checked'}> そのままにする（既にある条件を残す）</label>
+        </div>
+        <div class="fp-io-opt">
+         <label><input type="checkbox" id="fpIoMarks"${st.withMarks?' checked':''}> 「デフォルト」「鍵」の印も取り込む</label>
+         <small>印はこの端末の設定です。外すと条件だけが入ります。</small>
+        </div>
+      </div>`:'<p class="fp-io-hint">別のPCで「書き出す」から作ったJSONを選んでください。条件・名前・対象と、「デフォルト」「鍵」の印が入っています。</p>'}`;
+      const chosenCount=parsed?parsed.groups.filter(g=>st.chosen.has(g.key)).reduce((n,g)=>n+g.presets.length,0):0;
+      st.canRun=chosenCount>0;
+      st.runLabel=chosenCount?`${chosenCount}件を取り込む`:'取り込む';
+      st.note=parsed?(chosenCount?`${st.chosen.size}つの一覧・${chosenCount}件を取り込みます`:'取り込む一覧を選んでください'):'ファイルを選ぶと中身を確かめられます';
+    }
+    panel.innerHTML=`
+     <div class="fp-io-head">
+      <b>${isExport?'フィルタを書き出す':'フィルタを取り込む'}</b>
+      <span class="fp-io-note">${esc(st.note||'')}</span>
+      <button type="button" id="filterIoClose" title="閉じる">×</button>
+     </div>
+     <div class="fp-io-body">${body}</div>
+     <div class="fp-io-foot">
+      <span class="fp-io-status">${esc(st.status||'')}</span>
+      <button type="button" id="filterIoCancel">キャンセル</button>
+      <button type="button" id="filterIoRun" class="fp-io-run"${st.canRun&&!st.busy?'':' disabled'}>${esc(st.runLabel)}</button>
+     </div>`;
+    $('#filterIoClose').onclick=ioClose;
+    $('#filterIoCancel').onclick=ioClose;
+    $('#filterIoRun').onclick=()=>{isExport?runExport():runImport()};
+    panel.querySelectorAll('[data-io-group]').forEach(box=>{
+      box.addEventListener('change',()=>{
+        const k=box.dataset.ioGroup;
+        if(box.checked)st.chosen.add(k);else st.chosen.delete(k);
+        renderIoPanel();
+      });
+    });
+    panel.querySelectorAll('[data-io-quick]').forEach(btn=>{
+      btn.onclick=()=>{
+        const w=btn.dataset.ioQuick;
+        st.chosen=new Set(w==='all'?st.here.map(g=>g.key):w==='current'?st.here.filter(g=>g.key===cur).map(g=>g.key):[]);
+        renderIoPanel();
+      };
+    });
+    const file=$('#filterIoFile');
+    if(file)file.onchange=async()=>{
+      const f=file.files&&file.files[0];if(!f)return;
+      st.file=f.name;st.parseError='';st.parsed=null;st.chosen=new Set();
+      try{
+        st.parsed=ioParse(await f.text());
+        /* **既定は全部入れる**——書き出したファイルを選んだ人は、その中身を
+           入れたいから選んでいる。要らないものだけ外せばよい。 */
+        st.chosen=new Set(st.parsed.groups.map(g=>g.key));
+      }catch(e){st.parseError=e.message}
+      renderIoPanel();
+    };
+    panel.querySelectorAll('[name="fpIoDup"]').forEach(r=>{
+      r.onchange=()=>{st.overwrite=$('[name="fpIoDup"]:checked')?.value==='overwrite'};
+    });
+    const marks=$('#fpIoMarks');
+    if(marks)marks.onchange=()=>{st.withMarks=marks.checked};
+  }
+  function runExport(){
+    const st=ioState;if(!st)return;
+    const groups=st.here.filter(g=>st.chosen.has(g.key));
+    if(!groups.length)return;
+    const payload={format:IO_FORMAT,version:IO_VERSION,app:'WaveLog',
+      exportedAt:new Date().toISOString(),
+      groups:groups.map(g=>{
+        const m=ioMarksOf(g);
+        return {db:g.db,table:g.table,mode:g.mode,
+          presets:g.presets.map(p=>({name:p.name,filters:p.filters||[],
+            isDefault:m.def.has(p.name),isLocked:m.lock.has(p.name)}))};
+      })};
+    ioDownload(ioFileName(),JSON.stringify(payload,null,1));
+    const n=groups.reduce((a,g)=>a+g.presets.length,0);
+    showToast?.('フィルタを書き出しました',`${groups.length}つの一覧・${n}件（${ioFileName()}）`,4200);
+    ioClose();
+  }
+  async function runImport(){
+    const st=ioState;if(!st||!st.parsed||st.busy)return;
+    st.busy=true;st.status='取り込んでいます…';renderIoPanel();
+    let added=0,updated=0,skipped=0,failed=0;
+    try{
+      for(const g of st.parsed.groups.filter(x=>st.chosen.has(x.key))){
+        const here=st.all.filter(p=>p.db===g.db&&p.table===g.table&&(p.mode||'')===g.mode);
+        const byName=new Map(here.map(p=>[p.name,p]));
+        const idOf=new Map();
+        for(const p of g.presets){
+          const dup=byName.get(p.name);
+          if(dup&&!st.overwrite){skipped++;if(dup.id!=null)idOf.set(p.name,dup.id);continue}
+          try{
+            const r=await api('/api/filter-presets',{method:'POST',headers:{'Content-Type':'application/json'},
+              body:JSON.stringify(withUserId({name:p.name,db:g.db,table:g.table,mode:g.mode,filters:p.filters}))});
+            if(r&&r.id!=null)idOf.set(p.name,r.id);
+            if(r&&r.registered)added++;else updated++;
+          }catch(e){failed++}
+        }
+        /* 印は**取り込んだ名前のぶんだけ**書き換える。触っていない登録の
+           デフォルト・鍵を巻き添えにしない。 */
+        if(st.withMarks&&idOf.size){
+          const key=mapKeyOf(g.db,g.table,g.mode);
+          const dmap=readDefaultPresetMap(),lmap=readLockedPresetMap();
+          const dset=new Set((dmap[key]||[]).map(String)),lset=new Set((lmap[key]||[]).map(String));
+          g.presets.forEach(p=>{
+            const id=idOf.get(p.name);if(id==null)return;
+            p.isDefault?dset.add(String(id)):dset.delete(String(id));
+            p.isLocked?lset.add(String(id)):lset.delete(String(id));
+          });
+          dmap[key]=[...dset];lmap[key]=[...lset];
+          writeDefaultPresetMap(dmap);writeLockedPresetMap(lmap);
+        }
+      }
+    }finally{
+      st.busy=false;
+    }
+    await loadMasterPresets({inline:false});
+    ioClose();
+    renderFilterPresetList();renderGenericFilterBar();
+    const parts=[];
+    if(added)parts.push(`新規${added}件`);
+    if(updated)parts.push(`上書き${updated}件`);
+    if(skipped)parts.push(`そのまま${skipped}件`);
+    if(failed)parts.push(`失敗${failed}件`);
+    showToast?.(failed?'一部を取り込めませんでした':'フィルタを取り込みました',
+      parts.join(' / ')||'変更はありません',failed?7000:4200);
+  }
+
   /* ---- 登録フィルタ一覧モーダル ---- */
   function ensureFilterPresetModal(){
     let modal=$('#filterPresetModal');if(modal)return modal;
@@ -707,19 +1031,30 @@
       <div class="filter-preset-dialog">
         <header><div><small>SAVED FILTERS (MASTER)</small><h2>登録フィルタ一覧</h2></div><button id="closeFilterPresets" type="button">×</button></header>
         <div class="filter-preset-body">
-          <div class="filter-preset-toolbar"><span id="filterPresetSummary"></span><button id="reloadFilterPresets" type="button">再読込</button></div>
+          <div class="filter-preset-toolbar"><span id="filterPresetSummary"></span>
+           <span class="filter-preset-tools">
+            <button id="exportFilterPresets" type="button" title="登録フィルタを、一覧ごとに選んでJSONファイルへ書き出します（別のPCへ運べます）">書き出す</button>
+            <button id="importFilterPresets" type="button" title="書き出したJSONファイルから登録フィルタを取り込みます">取り込む</button>
+            <button id="reloadFilterPresets" type="button">再読込</button>
+           </span></div>
+          <div class="fp-io" id="filterIoPanel" hidden></div>
           <div class="filter-preset-list" id="filterPresetList"></div>
         </div>
       </div>`;
     document.body.append(modal);
-    $('#closeFilterPresets').onclick=()=>{modal.hidden=true};
+    /* 閉じるときは持ち出し・取り込みのパネルも畳む。開いたままにすると、
+       次に開いたとき**前回数えた件数**がそのまま出る(古い数字を黙って
+       見せない)。 */
+    $('#closeFilterPresets').onclick=()=>{modal.hidden=true;ioClose()};
+    $('#exportFilterPresets').onclick=()=>openIoPanel('export');
+    $('#importFilterPresets').onclick=()=>openIoPanel('import');
     $('#reloadFilterPresets').onclick=async()=>{const list=$('#filterPresetList');setPanelLoading(list,true,'マスタから再読込しています...');await loadMasterPresets({inline:false});setPanelLoading(list,false);renderFilterPresetList();renderGenericFilterBar()};
-    modal.addEventListener('click',e=>{if(e.target===modal)modal.hidden=true});
-    document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!modal.hidden){modal.hidden=true}},true);
+    modal.addEventListener('click',e=>{if(e.target===modal){modal.hidden=true;ioClose()}});
+    document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!modal.hidden){modal.hidden=true;ioClose()}},true);
     return modal;
   }
   async function openFilterPresetModal(){
-    ensureFilterPresetModal();$('#filterPresetModal').hidden=false;
+    ensureFilterPresetModal();$('#filterPresetModal').hidden=false;ioClose();
     requestAnimationFrame(()=>$('#closeFilterPresets')?.focus());
     const list=$('#filterPresetList');list.innerHTML='';setPanelLoading(list,true,'登録フィルタを読み込んでいます...');
     await loadMasterPresets({inline:false});setPanelLoading(list,false);renderFilterPresetList();renderGenericFilterBar();
