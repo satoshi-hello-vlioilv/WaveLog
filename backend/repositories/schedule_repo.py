@@ -122,7 +122,10 @@ def plan_add(c_share,equipment,kind,uid,pc='',position='end',lot_no='',inspectio
  ensure_plan_table(c_share)
  equipment=str(equipment or '').strip()
  if not equipment:raise ValueError('設備名を指定してください。')
- if kind not in ('作業','設備停止'):raise ValueError('種別は作業または設備停止を指定してください。')
+ # 'コメント'(§9.189): 予定の列に挟む申し送り。**時間を持たない**ので
+ # 後続の時刻を動かさない(設備停止は時間を持つので別物)。
+ if kind not in ('作業','設備停止','コメント'):
+  raise ValueError('種別は作業・設備停止・コメントのいずれかを指定してください。')
  cur=c_share.cursor()
  title_snapshot=str(title or '').strip();detail_json='';est=estimate_minutes
  if kind=='設備停止':
@@ -147,6 +150,13 @@ def plan_add(c_share,equipment,kind,uid,pc='',position='end',lot_no='',inspectio
   # 標準所要分を後から編集したら、まだ見積を上書きしていない予定には反映
   # させたいため、解決はschedule_calc.py(フェーズ3)の展開時に(設備名,
   # 予定名称)で毎回引き直す
+  lot_no=inspection_no=casting_no=''
+ elif kind=='コメント':
+  # 中身は[予定名称]の文字だけ。**時間は必ず0**——「見積を入れれば場所を
+  # 取れる」形にすると、申し送りが後続の時刻を押すことになる。
+  if not title_snapshot:raise ValueError('コメントの中身を入力してください。')
+  title_snapshot=title_snapshot[:200]
+  est=0
   lot_no=inspection_no=casting_no=''
  else:
   detail_json=_json.dumps(detail or {},ensure_ascii=False)

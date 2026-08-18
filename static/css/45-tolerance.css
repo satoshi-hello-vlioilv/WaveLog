@@ -226,6 +226,16 @@
 /* 適用中の条件を端末に覚えていること(§9.175)。**状態は文字で言う**——
    復元されたことに気づけないと「勝手に絞り込まれた」と読まれる。 */
 .filter-preset-toolbar .fp-memo{color:var(--muted)}
+/* もう一方の場面にある登録の案内(§9.184)。**「消えた」と読まれないため**の
+   帯なので、件数・場面の名前・打つ手を1行にまとめる。 */
+.fp-other-scene{display:flex;align-items:center;gap:var(--gap-inline);flex-wrap:wrap;
+  padding:var(--pad-row);border:1px dashed var(--line-mid);border-radius:var(--radius-sm);
+  background:var(--surface-2);font-size:var(--fs-sm);color:var(--ink-2)}
+.fp-other-scene span{flex:1;min-width:0}
+.fp-other-scene b{color:var(--ink)}
+.fp-other-copy{flex:none;height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
+  border:1px solid var(--teal);border-radius:var(--radius-sm);background:var(--surface);
+  color:var(--teal-dark);font-size:var(--fs-sm);font-weight:700}
 .filter-preset-toolbar .fp-memo-clear{margin-left:var(--space-2);height:var(--ctl-h-xs);
  padding:0 var(--space-2);font-size:var(--fs-micro);border:1px solid var(--line);
  border-radius:var(--radius-xs);background:var(--surface);color:var(--ink-2);cursor:pointer}

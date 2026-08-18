@@ -973,6 +973,8 @@
 .sp-pv-facts{margin:0;font-size:var(--fs-sm);color:var(--ink-2)}
 .sp-pv-facts b{font-size:var(--fs-lg);color:var(--ink);font-variant-numeric:tabular-nums}
 .sp-pv-facts small{display:block;font-size:var(--fs-micro);color:var(--muted)}
+/* 効かない設定はチェックを出さず、理由を書く(§9.189)。 */
+.sp-opt-note{margin:0;font-size:var(--fs-micro);color:var(--muted)}
 /* 紙の並ぶ側。**縮めた紙の器はJSが寸法を入れる**(transformは場所を空けない)。*/
 .sp-pv-paper{overflow:auto;padding:var(--space-3);background:var(--surface-3);
   display:flex;flex-wrap:wrap;gap:var(--space-3);align-content:flex-start;justify-content:center}
@@ -1037,6 +1039,17 @@
 .sp-c-check{text-align:center}
 /* 設備停止の行は面で区別する（白黒なので色ではなく濃淡で分ける）。 */
 .sp-row-stop td{background:#f0f0f0}
+/* まとまりの見出し(§9.189)。画面の「まとめ」と同じ区切りを紙にも入れる。
+   **濃い帯にする**——白黒コピーでも行と見分けが付く必要がある。 */
+.sp-row-group td{background:#d8d8d8;font-weight:800;font-size:10px;text-align:left;padding:1mm}
+.sp-group-count{float:right;font-weight:400}
+/* 申し送り(コメント)の行。**横いっぱい**にして読める幅を確保する。 */
+.sp-row-comment td{background:#fff;font-size:11px;text-align:left;font-style:italic}
+/* 紙の下の申し送り欄。**罫線だけの空白**にする(手書きするための場所)。 */
+.sp-note{display:flex;align-items:stretch;gap:2mm;margin-top:2mm;border:0.3mm solid #000}
+.sp-note-label{flex:none;padding:1.5mm;border-right:0.3mm solid #000;background:#e8e8e8;font-size:9px;
+ font-weight:700;min-width:24mm}
+.sp-note-area{flex:1;min-height:18mm}
 .sp-empty{text-align:center;color:#555;height:14mm}
 /* 表を伸ばさなくなったので、下の余りは脚が引き受ける(`margin-top:auto`)。
    件数が少ない日でも脚は用紙の下端に来る。 */

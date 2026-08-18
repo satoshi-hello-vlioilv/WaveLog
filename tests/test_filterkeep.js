@@ -86,6 +86,26 @@ let b=null;
   });
   rec('場面の判定は画面の状態で決まる（アクセスモードではない）',true,JSON.stringify(scene));
 
+  /* ---- 2b) **利用者IDが後から届いても当たる**（今回の真因） ----
+     `/api/whoami`は起動のあとに返るので、初回の端末では一覧を開いた時点の
+     利用者IDが空になる。空のIDで登録フィルタを読むと**その人の印は1件も
+     載って来ない**ため、既定・鍵がそのまま空振りしていた。IDが届いたら
+     読み直して当て直すこと。 */
+  await page.evaluate(()=>localStorage.removeItem('AccessMeasurementUserId'));
+  await page.goto(API+'/',{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:25000});
+  await page.waitForSelector('#grid table',{timeout:30000});
+  await page.waitForTimeout(1200);
+  const empty=await page.evaluate(()=>({uid:currentUserId(),
+    n:(S.genericFilters||[]).length}));
+  rec('IDが分からないうちは、その人の印は当たらない',empty.uid===''&&empty.n===0,JSON.stringify(empty));
+  await page.evaluate(()=>localStorage.setItem('AccessMeasurementUserId','tester'));
+  await page.evaluate(()=>load());
+  await page.waitForFunction(()=>(S.genericFilters||[]).some(f=>f.locked),null,{timeout:20000})
+    .catch(()=>{});
+  const late=await page.evaluate(()=>(S.genericFilters||[]).map(f=>({c:f.column,locked:!!f.locked})));
+  rec('★IDが届いた時点で鍵付き条件が入る',late.some(f=>f.locked),JSON.stringify(late));
+
   /* ---- 3) 覚えは利用者ごと ---- */
   const per=await page.evaluate(()=>{
    const raw=localStorage.getItem('MeasurementFilterActiveV1')||'{}';

@@ -73,13 +73,21 @@
   /* **日付ごとに束ねる。** 並びは画面の順(=実際に流す順)のまま。
      時刻で並べ直さないこと——固定開始や停止の差し込みで、画面の順と
      時刻の順は必ずしも一致しない。現場が見るのは「流す順」。 */
+  /* **画面の「まとめ」をそのまま紙へ**(§9.189、利用者の指示)。まとまりの
+     判定は画面の1箇所(groupBucketOf)を通す——紙だけ別に組み立てると、
+     画面と紙でまとまりが食い違う。「まとめない」ときは見出しを出さない。 */
+  const view=WL.scheduleView;
+  const grouping=opt.useGroups!==false&&typeof view?.groupMode==='function'
+    &&view.groupMode()!=='none'&&typeof view.groupOf==='function';
   const groups=[];const index=new Map();
   rows.forEach(e=>{
    const useActual=(e.state==='完了'||e.state==='着手')&&e.actual&&e.actual.startAt;
    const start=useActual?e.actual.startAt:e.plannedStart;
    const key=opt.pageByDate?dayKey(start):'';
    if(!index.has(key)){const g={key,label:dayLabel(key),rows:[]};index.set(key,g);groups.push(g)}
-   index.get(key).rows.push({e,start,end:useActual?e.actual.endAt:e.plannedEnd});
+   let group=null;
+   if(grouping){try{group=view.groupOf(e)}catch(_){group=null}}
+   index.get(key).rows.push({e,start,end:useActual?e.actual.endAt:e.plannedEnd,group});
   });
   /* 紙の列は**1つの紙の中で変えない**ので、まとめて1回だけ決める。 */
   const cols=paperColumns(equipment,opt);
@@ -119,12 +127,21 @@
     const trs=[...area.querySelectorAll('tbody tr')];
     if(!pg||!foot||!trs.length){out.push({...p,startNo:1,part:1,parts:1});return}
     const cs=getComputedStyle(pg);
+    /* 表の下に置くもの（申し送りの欄。§9.189）も**高さを引く**——引き忘れると
+       行で紙を埋めたあとに欄が押し出し、A4から溢れる（実測1188px > 1123px）。 */
+    const note=area.querySelector('.sp-note');
+    const noteH=note?(note.getBoundingClientRect().height
+      +(parseFloat(getComputedStyle(note).marginTop)||0)):0;
     /* 用紙1枚の高さはmm指定なので、computedStyleがpxへ直したものを借りる
        （mm→pxの換算を自前で持つと、いつか96dpi決め打ちが混ざる）。 */
     const sheetH=parseFloat(cs.minHeight)||0;
     const padBottom=parseFloat(cs.paddingBottom)||0;
-    const limit=pg.getBoundingClientRect().top+sheetH-padBottom-foot.offsetHeight-SHEET_SLACK_PX;
+    const limit=pg.getBoundingClientRect().top+sheetH-padBottom-foot.offsetHeight-noteH-SHEET_SLACK_PX;
     const hs=trs.map(t=>t.getBoundingClientRect().height);
+    /* **まとまりの見出し行は「行」ではない**(§9.189)。高さは数えるが、
+       中身の行としては数えない——ここを取り違えると、見出しのぶんだけ
+       予定が抜け落ちる(配る紙から作業が消える)。 */
+    const rowAt=trs.map(t=>t.dataset.row==null?null:Number(t.dataset.row));
     const avail=limit-trs[0].getBoundingClientRect().top;
     const chunks=[];let cur=[],acc=0;
     hs.forEach((h,i)=>{
@@ -132,8 +149,13 @@
      cur.push(i);acc+=h;
     });
     if(cur.length)chunks.push(cur);
-    chunks.forEach((idx,i)=>out.push({...p,rows:idx.map(j=>p.rows[j]),
-      startNo:idx[0]+1,part:i+1,parts:chunks.length}));
+    /* 見出しだけで終わった塊は次の塊へ寄せる(見出しが1枚に取り残されない)。
+       見出しは次の枚でpageHtmlが出し直すので、ここでは捨ててよい。 */
+    const pages2=chunks.map(idx=>idx.map(i=>rowAt[i]).filter(v=>v!=null))
+                       .filter(list=>list.length);
+    if(!pages2.length){out.push({...p,startNo:1,part:1,parts:1});return}
+    pages2.forEach((idx,i)=>out.push({...p,rows:idx.map(j=>p.rows[j]),
+      startNo:idx[0]+1,part:i+1,parts:pages2.length}));
    });
   }finally{
    area.innerHTML='';
@@ -272,8 +294,33 @@
   /* **通し番号はその日の頭から数える。** 紙が2枚に分かれても#1へ戻さない
      （現場は番号で呼び合うので、同じ日に#1が2つあると指せなくなる）。 */
   const from=page.startNo||1;
-  const body=page.rows.map((item,i)=>
-   `<tr class="${item.e.kind!=='作業'?'sp-row-stop':''}">${cellsOf(item,from+i,cols)}</tr>`).join('')
+  /* まとまりの見出し(§9.189)。**紙を切り分けた続きの枚にも出す**
+     ——2枚目が見出し無しで始まると、どのまとまりの続きなのか読めない。
+     `data-row`が付いているのが実際の予定の行で、**枚数を測る側は
+     この印で数える**(splitToSheets)。 */
+  let lastGroup=null;
+  const body=page.rows.map((item,i)=>{
+   const g=item.group;
+   let head2='';
+   if(g&&g.key!==lastGroup){
+    lastGroup=g.key;
+    /* **同じことを2箇所に出さない**(§9.129)。日付ごとにページを分けていて
+       まとめも日付なら、見出しは紙の頭と同じ文字になる。 */
+    if(String(g.label)!==String(page.day||'')){
+     const n=page.rows.filter(x=>x.group&&x.group.key===g.key).length;
+     head2=`<tr class="sp-row-group"><td colspan="${head.length}">${esc(g.label)}`
+       +`<span class="sp-group-count">${n}件</span></td></tr>`;
+    }
+   }
+   /* 申し送り(コメント)は**横いっぱいの1行**にする——列に押し込むと
+      読めない幅になり、書いた意味が無くなる。 */
+   if(item.e.kind==='コメント'){
+    return head2+`<tr class="sp-row-comment" data-row="${i}">`
+      +`<td colspan="${head.length}">💬 ${esc((item.e.title||'').trim())}</td></tr>`;
+   }
+   return head2+`<tr class="${item.e.kind!=='作業'?'sp-row-stop':''}" data-row="${i}">`
+     +`${cellsOf(item,from+i,cols)}</tr>`;
+  }).join('')
    ||`<tr><td class="sp-empty" colspan="${head.length}">この日に出す予定はありません</td></tr>`;
   /* 総見積。紙を受け取った人が最初に見るのは「今日どれだけあるか」。
      **切り分けた紙でもその日の合計を出す**（この紙に載っている数ではない）。 */
@@ -295,6 +342,10 @@
     </div>
    </header>
    <table class="sp-table">${group}<thead><tr>${head.join('')}</tr></thead><tbody>${body}</tbody></table>
+   ${opt.commentBox===false?'':`<section class="sp-note">
+     <span class="sp-note-label">申し送り・気付き</span>
+     <span class="sp-note-area"></span>
+    </section>`}
    <footer class="sp-foot">
     <span>出力 ${esc(stamp())}</span>
     <span class="sp-foot-note">「~」の付いた見積は実績がまだ無いための暫定値です</span>
@@ -333,7 +384,10 @@
     既定は「現場へ配る」ときの形。**毎回選び直させない**ので、選んだ内容は
     この端末に覚える(紙の運用は現場ごとに決まっていて、毎回は変わらない)。 */
  const PREF_KEY='SchedulePrintPrefV1';
- const DEFAULTS={includeDone:false,actualColumns:true,pageByDate:true,allEquipment:false};
+ /* useGroups=画面の「まとめ」を紙にも入れる / commentBox=紙の下に
+    申し送りの欄を作る(§9.189、利用者の指示)。どちらも既定は入れる。 */
+ const DEFAULTS={includeDone:false,actualColumns:true,pageByDate:true,allEquipment:false,
+                 useGroups:true,commentBox:true};
  function loadPref(){
   try{return {...DEFAULTS,...(JSON.parse(localStorage.getItem(PREF_KEY)||'{}')||{})}}
   catch(_){return {...DEFAULTS}}
@@ -463,9 +517,17 @@
  function optionRows(pref,canAll){
   const cb=(k,label,note)=>`<label class="sp-opt"><input type="checkbox" data-opt="${k}"${pref[k]?' checked':''}>
    <span><b>${esc(label)}</b>${note?`<small>${esc(note)}</small>`:''}</span></label>`;
+  /* 「まとめ」は画面で選んでいるものをそのまま使う。**いま何でまとめて
+     いるかを書く**——「まとめない」ときに設定だけ出ていると、押しても
+     何も変わらないことになる。 */
+  const gm=(typeof WL.scheduleView?.groupModeLabel==='function')?WL.scheduleView.groupModeLabel():'';
+  const grouped=(typeof WL.scheduleView?.groupMode==='function')&&WL.scheduleView.groupMode()!=='none';
   return `${canAll?cb('allEquipment','すべての設備を続けて印刷する','設備ごとにページを分けます'):''}
    ${cb('actualColumns','実績を書き込む欄をつける','開始・終了・確認の記入欄を右側に作ります')}
    ${cb('pageByDate','日付ごとにページを分ける','日ごとに配る場合はこのまま')}
+   ${grouped?cb('useGroups',`画面のまとめ（${gm}）で見出しを入れる`,'画面と同じまとまりで区切ります')
+            :`<p class="sp-opt-note">画面は「まとめない」なので、紙にも見出しは入りません。</p>`}
+   ${cb('commentBox','申し送りの欄を紙の下につける','手書きで気付きを残す欄です')}
    ${cb('includeDone','完了・取消も載せる','ふだんは載せません（これから流すものだけ配るため）')}`;
  }
  function openPreview(equipment){

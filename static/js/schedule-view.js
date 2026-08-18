@@ -262,6 +262,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      <button type="button" class="sc-split-toggle" id="scContentModalBtn" hidden title="このスケジュール表に出す列・並び・幅・書式をまとめて設定します（設備ごとに保存）">☰ 表示列</button>
      <button type="button" class="sc-split-toggle" id="scListModalBtn" hidden title="仕掛一覧をポップアップで表示してドラッグで追加します">⧉ ポップアップ</button>
      <button type="button" class="sc-split-toggle" id="scStopModalBtn" hidden title="設備停止をポップアップから追加します">⛔ 設備停止</button>
+     <button type="button" class="sc-split-toggle" id="scCommentBtn" hidden title="申し送り（コメント）を予定の列へ挟みます。時間は取りません">💬 コメント</button>
      <button type="button" class="sc-split-toggle" id="scPrintBtn" title="いま表示している予定を、現場へ配る形（A4）で印刷します">🖨 印刷</button>
      <button type="button" class="sc-refresh" id="scRefresh">再計算</button>
     </div>
@@ -347,6 +348,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   $('#scModeSingle').onclick=()=>switchToSingle();
   $('#scListModalBtn').onclick=()=>listModalOpen?closeListModal():openListModal();
   $('#scStopModalBtn').onclick=()=>stopModalOpen?closeStopModal():openStopModal();
+  $('#scCommentBtn').onclick=()=>addComment();
   /* 内容欄の設定は**仕掛一覧と同じパネル**で開く(§9.120)。専用モーダルの
      実装は当面残す（他から呼ばれていないかを通しで確かめるまでの保険）。 */
   $('#scContentModalBtn').onclick=()=>openContentPanel();
@@ -905,6 +907,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(scState.pickerEnabled)$('#scEquipmentSelect').hidden=inBoard;
   updateSideUi();
   const stopBtn=$('#scStopModalBtn');if(stopBtn)stopBtn.hidden=!scState.fullControl||inBoard;
+  const cmtBtn=$('#scCommentBtn');if(cmtBtn)cmtBtn.hidden=!scState.fullControl||inBoard;
   document.querySelectorAll('.sc-board-window-btn').forEach(btn=>btn.classList.toggle('active',+btn.dataset.hours===scState.boardWindowHours));
   updateSplitToggleUi();
   // 全体俯瞰ボードや対象設備が無い状態では分割表示(§9.10)の意味が無いため
@@ -1928,7 +1931,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const keys=timelineContentKeys();
   const t=timelineTarget();
   if(e.kind!=='作業'){
-   const title=(e.title||'設備停止').trim();
+   const title=(e.title||(e.kind==='コメント'?'（コメント）':'設備停止')).trim();
    return keys.map((k,i)=>({key:k,text:i===0?title:'',raw:i===0?title:'',color:''}));
   }
   return keys.map(k=>{
@@ -1940,7 +1943,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   });
  }
  function entryContentText(e){
-  if(e.kind!=='作業')return (e.title||'設備停止').trim();
+  if(e.kind!=='作業')return (e.title||(e.kind==='コメント'?'（コメント）':'設備停止')).trim();
   const items=(scContentPrefs.equipment===scState.equipment)?scContentPrefs.items:null;
   if(items&&items.length){
    const parts=items.map(k=>contentValueOf(e.detail,k)).filter(v=>v!==undefined);
@@ -2022,9 +2025,13 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   planned:{key:'planned',label:'予定',icon:'○'},
   cancel:{key:'cancel',label:'取消',icon:'✕'},
   stop:{key:'stop',label:'設備停止',icon:'⛔'},
+  /* 申し送り(§9.189)。**時間を持たない**ので、設備停止とは別の区分にする
+     ——同じ「作業以外」でも、片方は時間を取り、片方は取らない。 */
+  comment:{key:'comment',label:'コメント',icon:'💬'},
  };
  function categoryOf(e){
   if(e.state==='取消')return SC_CATEGORIES.cancel;
+  if(e.kind==='コメント')return SC_CATEGORIES.comment;
   if(e.state==='完了')return SC_CATEGORIES.done;
   if(e.state==='着手')return SC_CATEGORIES.doing;
   if(e.kind==='設備停止')return SC_CATEGORIES.stop;
@@ -3764,6 +3771,45 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   showToast&&showToast('設備停止を追加しました',`${target}の予定に追加しました(${label})`,3200);
  }
 
+ /* ---------- 申し送り（コメント）を挟む(§9.189、利用者の指示) ----------
+    「コメントもできるものを設備停止のように追加できるように」。設備停止と
+    同じく予定の列へ挟むが、**時間は取らない**——申し送りを1行入れるたびに
+    後ろの予定が押されるのでは、書く気が失せる。
+    差し込む位置は設備停止と同じ決まり（カーソルの位置。§9.179）。 */
+ async function addComment(){
+  if(!scState.equipment)return;
+  if(sessionBlocked()){
+   showToast&&showToast('追加できません',sessionHolderMessage(),4000);return;
+  }
+  /* 入る場所は**画面が指している位置**(§9.179)。`insertPinned`は
+     「固定しているか」の真偽で、位置そのものは`scState.insertBefore`。 */
+  const before=scState.insertBefore||'';
+  const whereRow=before?(scState.entries||[]).find(e=>String(e.id)===String(before)):null;
+  const where=whereRow
+   ?`「${esc(whereRow.lotNo||whereRow.title||'この予定')}」の前へ入ります。`
+   :'いちばん後ろへ入ります（行の間をクリックして位置を決められます）。';
+  const ok=await confirmModal({
+   eyebrow:'COMMENT',title:'申し送りを入れる',
+   bodyHtml:`<p class="confirm-modal-message">予定の列にコメントを1行挟みます。<b>時間は取りません</b>（後ろの予定の時刻は動きません）。</p>
+    <label class="sc-comment-field"><span>内容</span>
+     <textarea id="scCommentText" rows="3" maxlength="200" placeholder="例）このロットから新しい刃に交換すること"></textarea></label>
+    <p class="confirm-modal-note">${esc(where)}</p>`,
+   confirmLabel:'入れる',cancelLabel:'やめる'});
+  const box=document.getElementById('scCommentText');
+  const text=String(box&&box.value||'').trim().slice(0,200);
+  if(!ok)return;
+  if(!text){showToast&&showToast('コメントが空です','内容を入れてから押してください',3000);return}
+  const target=scState.equipment;
+  const at=takeInsertBefore();
+  const entry=makeOptimisticEntry('コメント',{title:text});
+  insertEntriesAt(at,[entry]);
+  renderTimeline();
+  queuePlanOp({op:'add',equipment:target,kind:'コメント',title:text,
+   position:at?`before:${at}`:'end',
+   onSuccess:r=>resolveOptimisticEntry(entry,r),onFailure:()=>discardOptimisticEntry(entry)});
+  showToast&&showToast('申し送りを入れました',text.slice(0,40),3200);
+ }
+
  /* ---------- 設備停止のポップアップ表示(§9.13新設) ----------
     常時表示だと視野(タイムラインの縦幅)を圧迫するという指摘のため、
     .sc-side内は折りたたみ既定(上のensurePanelでhidden属性を付与済み)にし、
@@ -4376,6 +4422,13 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    const names=items.map(x=>String(x.name||'').trim()).filter(Boolean);
    return names.length?names:(scState.equipment?[scState.equipment]:[]);
   },
+  /* 画面の「まとめ」(§9.189)。紙にも同じまとまりで見出しを入れるため、
+     **判定は画面の1箇所(groupBucketOf)を通す**——紙だけ別に組み立てると、
+     画面と紙でまとまりが食い違う。 */
+  groupMode:()=>scState.groupMode||'none',
+  groupModeLabel:()=>(SC_GROUP_MODES.find(m=>m.key===(scState.groupMode||'none'))||{}).label||'',
+  groupOf:e=>{const b=groupBucketOf(e);return b?{key:String(b.key),label:b.label}:null},
+  categoryLabelOf:e=>categoryOf(e).label,
   /* 取り直す・描き直す。**渡すのは操作だけで、状態は渡さない**
      ——scStateを外へ出すと、他のファイルから画面の状態を書き換えられて
      しまう。「いまの内容で描き直す」「最新を取り直す」だけを開ける。 */

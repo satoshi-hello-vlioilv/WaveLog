@@ -349,6 +349,44 @@ let b=null;
   rec('刷るのは見えている紙そのもの',same.shown===same.kept,JSON.stringify(same));
   await page.click('#spPvOptions [data-opt="pageByDate"]');   // 元へ戻す
   await page.waitForTimeout(400);
+  /* ---- 13) 画面のまとめを紙にも入れる／申し送りの欄(§9.189) ---- */
+  const grouped=await page.evaluate(async()=>{
+   /* 画面のまとめを「区分ごと」にして、紙に見出しが入るかを見る。
+      **日付ごとにすると紙の頭と同じ文字**になるので出さない決まり
+      (§9.129 同じものを2箇所に出さない)——ここでは区分で確かめる。 */
+   const sel=document.getElementById('scGroupSelect');
+   sel.value='category';sel.dispatchEvent(new Event('change',{bubbles:true}));
+   return true;
+  });
+  await page.waitForTimeout(1200);
+  await page.evaluate(()=>WL.schedulePrint.openPreview('テスト設備A'));
+  await page.waitForFunction(()=>document.querySelectorAll('.sp-pv-sheet').length>0,null,{timeout:20000});
+  await page.waitForTimeout(500);
+  const gp=await page.evaluate(()=>({
+   見出し:[...document.querySelectorAll('.sp-row-group')].map(n=>n.innerText.replace(/\s+/g,' ')),
+   申し送り:document.querySelectorAll('.sp-note').length,
+   紙:document.querySelectorAll('.sp-pv-sheet .sp-page').length,
+   行:document.querySelectorAll('.sp-page tbody tr[data-row]').length,
+   件数:(WL.schedulePrint.previewSheets()||[]).reduce((n,p)=>n+(p.rows||[]).length,0),
+  }));
+  rec('画面のまとめが紙にも見出しとして入る',gp.見出し.length>0,gp.見出し.slice(0,2).join(' / '));
+  rec('見出しには件数も出る',gp.見出し.some(t=>/\d+件/.test(t)),gp.見出し[0]||'');
+  /* **見出し行を「行」として数えないこと**——数えると、見出しのぶんだけ
+     予定が紙から抜け落ちる。 */
+  rec('見出しを行として数えていない（予定が抜けない）',gp.行===gp.件数,`${gp.行} / ${gp.件数}`);
+  rec('申し送りの欄が紙ごとに付く',gp.申し送り===gp.紙,`${gp.申し送り} / ${gp.紙}枚`);
+  const off=await page.evaluate(async()=>{
+   document.querySelector('#spPvOptions [data-opt="commentBox"]').click();
+   return true;
+  });
+  await page.waitForTimeout(900);
+  rec('外すと申し送りの欄は消える',
+      (await page.evaluate(()=>document.querySelectorAll('.sp-note').length))===0);
+  await page.evaluate(()=>{document.querySelector('#spPvOptions [data-opt="commentBox"]').click()});
+  await page.waitForTimeout(700);
+  await page.evaluate(()=>{const s=document.getElementById('scGroupSelect');
+    s.value='none';s.dispatchEvent(new Event('change',{bubbles:true}))});
+  await page.waitForTimeout(900);
   await page.evaluate(()=>WL.schedulePrint.closePreview());
   rec('閉じても刷らない（プレビューだけ消える）',
       await page.evaluate(()=>document.getElementById('schedulePrintPreview').hidden

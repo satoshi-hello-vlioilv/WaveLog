@@ -149,9 +149,16 @@
       defaultsAppliedFor=null;
     }
     if(defaultsAppliedFor===key)return false;
-    /* まだ登録フィルタが届いていないなら**当てたことにしない**
-       (次の機会＝読み込み完了後に当て直す)。 */
-    if(!(S.filterPresets||[]).length)return false;
+    /* **届いていなければ取りに行く。** ここは同期なので待てないが、
+       取れた時点で当て直す(§9.184)。以前は「1件も無いなら諦める」だけで、
+       起動直後・利用者IDが後から届いた場合に二度と当たらなかった
+       ——実機で「再起動すると鍵付きのフィルタが外れている」となっていた
+       のがこれ。**利用者IDは鍵に入っている**ので、空のIDで読んだ結果を
+       その人のものだと思い込むこともない。 */
+    if(!presetsReady(S.db,S.table)){
+      ensurePresetsFor(S.db,S.table).then(()=>{reapplyDefaultFilters()});
+      return false;
+    }
     const added=applyDefaultFiltersFor(S.db,S.table);
     defaultsAppliedFor=key;
     return added>0;
@@ -165,13 +172,21 @@
      （実機で「再起動するとフィルタが外れる」と報告された形）。
      **印はマスタにその人のものとして入っている**(§9.172)ので、開く一覧が
      決まった時点で取りに行く。1度取ったら覚えて、同じ一覧では取り直さない。 */
-  let presetsLoadedFor=null;
+  let presetsLoadedFor=null,presetsLoading=null;
+  function presetsKeyFor(db,table){
+    return `${mapKeyOf(db,table,presetMode())}\u001f${filterUserId()}`;
+  }
+  function presetsReady(db,table){return presetsLoadedFor===presetsKeyFor(db,table)}
   async function ensurePresetsFor(db,table){
-    const key=`${mapKeyOf(db,table,presetMode())}\u001f${filterUserId()}`;
+    const key=presetsKeyFor(db,table);
     if(presetsLoadedFor===key)return;
-    presetsLoadedFor=key;
-    try{await loadMasterPresets({inline:false,db,table})}
-    catch(_){presetsLoadedFor=null}   // 読めなければ次の機会に取り直す
+    /* 同じ一覧を同時に2回取りに行かない(一覧を引くたびに呼ばれる)。 */
+    if(presetsLoading&&presetsLoading.key===key)return presetsLoading.p;
+    const p=loadMasterPresets({inline:false,db,table})
+      .catch(()=>{/* 読めなければ次の機会に取り直す */})
+      .finally(()=>{if(presetsLoading&&presetsLoading.key===key)presetsLoading=null});
+    presetsLoading={key,p};
+    return p;
   }
   /* 登録フィルタが届いた直後の当て直し。**変わったときだけ引き直す**。 */
   function reapplyDefaultFilters(){
@@ -341,6 +356,11 @@
          一覧に出ない」という見え方になっていた。 */
       const localOnly=(S.filterPresets||[]).filter(pz=>!pz.master);
       S.filterPresets=[...localOnly,...fromMaster];
+      /* **どの一覧の・誰のぶんを読んだか**を覚える(§9.184)。利用者IDは
+         後から届くので、IDが変わったら読み直す必要がある——ここを
+         「読んだかどうか」だけで覚えると、空のIDで読んだ結果を
+         その人のものだと思い込み、印(デフォルト・鍵)が永久に付かない。 */
+      presetsLoadedFor=`${mapKeyOf(db,table,presetMode())}\u001f${filterUserId()}`;
       S.filterPresetSource='master';writeLocalPresets();return true;
     }catch(e){
       S.filterPresets=readLocalPresets();S.filterPresetSource='local';console.warn('フィルタマスタ読込失敗、ローカルを使用',e);return false;
@@ -1375,11 +1395,59 @@
     document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!modal.hidden){modal.hidden=true;ioClose()}},true);
     return modal;
   }
+  /* ---------- もう一方の場面にある登録(§9.184) ----------
+     置き場を場面で分けた以上、**片方にしか無い登録は「消えた」ように見える**。
+     数えて文字で出し、こちらへも使えるようにする手立てを同じ場所に置く
+     （黙って両方へ出すと、列構成の違う条件が並ぶ。§9.80の理由は生きている）。 */
+  let otherScene={count:0,items:[]};
+  const otherMode=()=>presetMode()==='schedule'?'':'schedule';
+  const SCENE_OF={'':SCENE_LABEL[''],'schedule':SCENE_LABEL['schedule']};
+  async function countOtherScene(){
+    otherScene={count:0,items:[]};
+    if(!S.db||!S.table)return;
+    try{
+      const q=new URLSearchParams({db:S.db,table:S.table,mode:otherMode(),user:filterUserId()});
+      const r=await api('/api/filter-presets?'+q);
+      otherScene={count:(r.items||[]).length,items:r.items||[]};
+    }catch(_){/* 数えられなければ黙る(あるとも無いとも言わない) */}
+  }
+  /* こちらの場面へも同じ条件を登録する。**印(デフォルト・鍵)も一緒に運ぶ**
+     ——鍵を付けた意図がいちばん大事なので、条件だけ移して印が消えると
+     「移したのに効かない」ことになる。 */
+  async function copyOtherScene(){
+    const items=otherScene.items||[];
+    if(!items.length)return;
+    if(!(await confirmModal(`「${SCENE_OF[otherMode()]}」にある ${items.length}件を、`
+      +`この場面（${sceneLabel()}）でも使えるようにします。\n`
+      +`条件と「デフォルト」「鍵」の印を写します（元の登録はそのまま残ります）。`)))return;
+    let ok=0,ng=0;
+    for(const it of items){
+      try{
+        const r=await api('/api/filter-presets',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify(withUserId({name:it.name,db:S.db,table:S.table,mode:presetMode(),
+            filters:it.filters||[],owner:it.owner||'',shared:!it.owner,user:filterUserId()}))});
+        ok++;
+        if(r&&r.id!=null&&(it.isDefault||it.isLocked))
+          await api('/api/filter-presets/marks',{method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify(withUserId({user:filterUserId(),id:r.id,
+              isDefault:!!it.isDefault,isLocked:!!it.isLocked}))}).catch(()=>{});
+      }catch(_){ng++}
+    }
+    presetsLoadedFor=null;defaultsAppliedFor=null;
+    await loadMasterPresets({inline:false});
+    await countOtherScene();
+    renderFilterPresetList();
+    reapplyDefaultFilters();
+    showToast&&showToast('この場面でも使えるようにしました',
+      `${ok}件を写しました${ng?`（${ng}件は失敗）`:''}`,4000);
+  }
   async function openFilterPresetModal(){
     ensureFilterPresetModal();$('#filterPresetModal').hidden=false;ioClose();
     requestAnimationFrame(()=>$('#closeFilterPresets')?.focus());
     const list=$('#filterPresetList');list.innerHTML='';setPanelLoading(list,true,'登録フィルタを読み込んでいます...');
-    await loadMasterPresets({inline:false});setPanelLoading(list,false);renderFilterPresetList();renderGenericFilterBar();
+    await loadMasterPresets({inline:false});
+    await countOtherScene();
+    setPanelLoading(list,false);renderFilterPresetList();renderGenericFilterBar();
   }
   function renderFilterPresetList(){
     const list=$('#filterPresetList');if(!list)return;
@@ -1426,8 +1494,19 @@
     }
     const ordered=forThis;
     const loading=list.querySelector(':scope > .panel-loading');
-    list.querySelectorAll(':scope > .filter-preset-item, :scope > .record-empty').forEach(x=>x.remove());
-    if(!ordered.length){const e=document.createElement('div');e.className='record-empty';e.textContent='登録済みフィルタはありません。「マスタへ保存」で登録できます。';list.appendChild(e);return}
+    list.querySelectorAll(':scope > .filter-preset-item, :scope > .record-empty, :scope > .fp-other-scene').forEach(x=>x.remove());
+    if(otherScene.count){
+      /* **どちらの場面の話かを書く。** 「登録が消えた」と読まれないように、
+         件数・場面の名前・打つ手を1つの帯にまとめる。 */
+      const note=document.createElement('div');
+      note.className='fp-other-scene';
+      note.innerHTML=`<span><b>${SCENE_OF[otherMode()]}</b>には ${otherScene.count}件の登録があります。`
+        +`この場面（${esc(sceneLabel())}）とは別に保存しています。</span>`
+        +`<button type="button" class="fp-other-copy">こちらでも使えるようにする</button>`;
+      note.querySelector('.fp-other-copy').onclick=copyOtherScene;
+      list.appendChild(note);
+    }
+    if(!ordered.length){const e=document.createElement('div');e.className='record-empty';e.textContent='この場面の登録フィルタはありません。「マスタへ保存」で登録できます。';list.appendChild(e);return}
     ordered.forEach(p=>{
       const item=document.createElement('div');item.className='filter-preset-item';
       const conds=(p.filters||[]).map(f=>`<span class="fp-cond">${esc(f.column)} <b>${esc(opShort(f.op))}</b>${noValueOp(f.op)?'':' '+esc(f.value)}</span>`).join('');
@@ -1519,7 +1598,7 @@
          一覧を2回引くことになる)。 */
       await ensurePresetsFor(S.db,t);
       applyDefaultFiltersFor(S.db,t);
-      if((S.filterPresets||[]).length)defaultsAppliedFor=key;
+      if(presetsReady(S.db,t))defaultsAppliedFor=key;
       return selectTableDefaultFilterBase(t);
     };
   }

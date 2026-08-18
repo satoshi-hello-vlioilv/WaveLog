@@ -49,7 +49,7 @@ G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'te
                      'test_scwritespeed', 'test_split_layout', 'test_sccols',
                      'test_sctimecols', 'test_scinsert', 'test_audittrail',
                      'test_scstop', 'test_scwarm', 'test_scundecided',
-                     'test_scwatchui', 'test_scwatch']
+                     'test_scwatchui', 'test_scwatch', 'test_sccomment']
 G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 'test_eqkind',
                'test_shift', 'test_dbequip', 'test_crudroutes', 'test_setpage', 'test_eqstd']
 G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'test_flows',
