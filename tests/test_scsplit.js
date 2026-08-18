@@ -172,6 +172,25 @@ let b=null;
   // ここで確かめるのは「ロット番号と内訳が読める形で並ぶ」こと。
   rec('子ロットの番号と内訳が読める',/L9000[12]/.test(opened.text)&&/条/.test(opened.text),opened.text);
   rec('開いた子行に高さがある',opened.h>0,`${opened.h}px`);
+  /* **ロット番号は親の真下**(§9.197、利用者の指摘「展開してもロット番号の
+     表記位置がずれるのは気持ちが悪い」)。以前は子だけ3列の別グリッドで、
+     同じ「ロット番号」が親では中ほど・子では左端に出ていた。
+     **左端の座標を突き合わせること**——「同じ列定義を使っている」だけでは、
+     器(.sc-child-box)の余白でずれる形が作れる（実際にそうなっていた）。 */
+  const align=await page.evaluate(id=>{
+   const row=document.querySelector(`.sc-row-line[data-id="${id}"]`);
+   const box=document.querySelector(`.sc-child-box[data-parent="${id}"]`);
+   const line=box&&box.querySelector('.sc-child-line');
+   if(!row||!line)return {missing:true};
+   const g=el=>getComputedStyle(el).gridTemplateColumns;
+   const pl=row.querySelector('[data-col="lotNo"]'),cl=line.querySelector('.sc-child-lot');
+   const x=el=>el?Math.round(el.getBoundingClientRect().x*10)/10:null;
+   return {sameGrid:g(row)===g(line),parentX:x(pl),childX:x(cl),
+           parentGrid:g(row),childGrid:g(line)};
+  },parent.id);
+  rec('子ロットのロット番号が親の真下に来る',
+      !align.missing&&align.sameGrid&&align.parentX!=null&&align.childX!=null
+      &&Math.abs(align.parentX-align.childX)<=1,JSON.stringify(align));
   rec('開閉を覚えている',
       await page.evaluate(id=>{try{return JSON.parse(localStorage.getItem('scChildOpenV1')||'[]').includes(String(id))}catch(e){return false}},parent.id));
 

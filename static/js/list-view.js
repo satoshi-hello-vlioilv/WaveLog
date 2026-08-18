@@ -286,6 +286,22 @@ WL.listSortBar={render:renderSortBar,presets:sortPresets};
      commit(w)   … 離したときの保存
      reset()     … ダブルクリック＝自動（内容なり）へ戻す */
 const GRIP_W_MIN=40,GRIP_W_MAX=900;
+/* ---------- 引いている最中は邪魔をしない(§9.197、利用者の指摘) ----------
+   「列幅がうまく掴めない／自由に動かせない」の原因は2つあった。
+     ①掴める帯が細い（スケジュール表だけ6px。一覧・データ一覧は10px）
+     ②離した瞬間に保存し、そのあいだに別の見張り（共有スケジュールの
+       取り込み。10秒ごと）が表を組み直して**掴んでいた見出しごと
+       入れ替わっていた**——次に掴んだときの「掴んだ時点の幅」は
+       消えた要素から測るので0になり、幅が下限へ飛ぶ。
+   そこで**「触っている最中か」を1箇所が答える**ようにして
+   （`WL.columnResize.busy()`）、周りの自動処理はそれを見て待つ。
+   保存は**離してから0.3秒落ち着いてから**にまとめる——続けて微調整した
+   ときに1回で済み、引いている最中に通信が挟まらない。
+   0.3秒は「1アクションの終わり」の目安（利用者の指示）。 */
+const GRIP_SETTLE_MS=300;
+let gripHeld=0,gripSaving=0,gripCalmUntil=0;
+function gripBusy(){return gripHeld>0||gripSaving>0||Date.now()<gripCalmUntil}
+WL.columnResize={busy:gripBusy,settleMs:GRIP_SETTLE_MS};
 function bindColumnWidthGrip(grip,o){
  if(!grip||!o)return;
  /* 幅を固定した列は掴めない(§9.119)。**印は残す**——取っ手ごと消すと、
@@ -297,14 +313,37 @@ function bindColumnWidthGrip(grip,o){
   grip.addEventListener('click',e=>{e.stopPropagation()});
   return;
  }
+ let saveTimer=null;
  grip.addEventListener('mousedown',e=>{
   e.preventDefault();e.stopPropagation();     // 並び替え・ドラッグへ渡さない
-  const startX=e.clientX,startW=o.startWidth();
+  /* 続けて掴んだら、前の回の保存待ちはやめる（最後の幅だけを1回送る）。 */
+  clearTimeout(saveTimer);saveTimer=null;
+  const startX=e.clientX;
+  /* **掴んだ時点の幅は0になり得る**——表が組み直された直後は取っ手の持ち主が
+     入れ替わっている。0のまま使うと幅が下限へ飛ぶので、そのときは動かさない
+     （下の`w`が入らないので保存もしない）。 */
+  const startW=Math.max(0,Math.round(o.startWidth()||0));
   let w=0;
-  const move=ev=>{w=Math.max(GRIP_W_MIN,Math.min(GRIP_W_MAX,Math.round(startW+(ev.clientX-startX))));o.preview(w)};
+  gripHeld++;document.body.classList.add('col-resizing');
+  const move=ev=>{
+   if(!startW)return;
+   w=Math.max(GRIP_W_MIN,Math.min(GRIP_W_MAX,Math.round(startW+(ev.clientX-startX))));
+   o.preview(w);
+  };
   const up=()=>{
    document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);
-   if(w)o.commit(w);
+   gripHeld=Math.max(0,gripHeld-1);
+   if(!gripHeld)document.body.classList.remove('col-resizing');
+   /* 離してからも少しのあいだは「触っている」——ここで見張りが表を
+      組み直すと、続けて隣の列を掴もうとした手が空を切る。 */
+   gripCalmUntil=Date.now()+GRIP_SETTLE_MS;
+   if(!w)return;
+   const width=w;
+   saveTimer=setTimeout(()=>{
+    saveTimer=null;gripSaving++;
+    Promise.resolve().then(()=>o.commit(width)).catch(()=>{})
+     .then(()=>{gripSaving=Math.max(0,gripSaving-1);gripCalmUntil=Date.now()+GRIP_SETTLE_MS});
+   },GRIP_SETTLE_MS);
   };
   document.addEventListener('mousemove',move);document.addEventListener('mouseup',up);
  });
@@ -461,14 +500,19 @@ function headMenuSource(target,allColumns,src){
   refresh:()=>{o.refresh?o.refresh():renderGrid()},
   openPanel:()=>{o.openPanel?o.openPanel():document.getElementById('listColumnBtn')?.click()},
   persist:o.persist||null,
+  /* **いま隠している列も口が答えられる**(§9.197)。既定で出さない列がある
+     表（スケジュール表の監査4列・日付(太陽暦)）では、保存値の`hidden`に
+     その列が**入っていない**——既定として畳んでいるだけなので。保存値の
+     ままで「この列を隠す」を保存すると、畳んでいたはずの列がそこで
+     出てしまう（実際にそうなった）。 */
+  hiddenOf:()=>(o.hiddenOf?[...o.hiddenOf()]:[...(WL.columnLayout.get(target).hidden||[])]),
  };
 }
 function openColumnHeaderMenu(ev,col,target,allColumns,src){
  closeColumnHeaderMenu();
  if(!target||!col)return;
  const S2=headMenuSource(target,allColumns,src);
- const layout=WL.columnLayout.get(target);
- const hidden=[...(layout.hidden||[])];
+ const hidden=S2.hiddenOf();
  const nameOf=k=>S2.label(k);
  const menu=document.createElement('div');
  menu.className='col-head-menu';
@@ -504,16 +548,17 @@ function openColumnHeaderMenu(ev,col,target,allColumns,src){
      ここは`formulas`が抜けており、**右クリックで列を1つ隠しただけで
      計算式で作った列が全部消えていた**(bindColumnHeaderToolsのpersistで
      同じ不具合を直したときに、こちらを見落としていた)。 */
+  /* `hidden`は**口が答える「いま隠している列」**(§9.197)。保存値だけを
+     見ると、既定で畳んでいる列が幅を1回変えた拍子に出てしまう。 */
   await WL.columnLayout.save(target,{order:[...known,...all.filter(c=>!known.includes(c))],
-                                     widths:v.widths,hidden:v.hidden,names:v.names,
+                                     widths:v.widths,hidden:S2.hiddenOf(),names:v.names,
                                      formats:v.formats,rules:v.rules,
                                      formulas:v.formulas,locks:v.locks,...patch});
   S2.refresh();
  };
  menu.querySelector('.chm-hide').onclick=async()=>{
   closeColumnHeaderMenu();
-  const v=WL.columnLayout.get(target);
-  const next=[...new Set([...(v.hidden||[]),col])];
+  const next=[...new Set([...S2.hiddenOf(),col])];
   /* **最後の1列まで隠せてしまうと、戻す取っ掛かりが画面から消える。**
      見出しが1つも無い表は右クリックする場所も無い。 */
   const visible=S2.keys().filter(k=>!next.includes(k));
@@ -553,8 +598,9 @@ function openColumnHeaderMenu(ev,col,target,allColumns,src){
  menu.querySelectorAll('.chm-show').forEach(b=>{
   b.onclick=async()=>{
    closeColumnHeaderMenu();
-   const v=WL.columnLayout.get(target);
-   await persist({hidden:(v.hidden||[]).filter(k=>k!==b.dataset.key)});
+   /* 戻すときも**いま隠している列**から引く（保存値だけを見ると、既定で
+      畳んでいる列がここで一緒に出てしまう。§9.197）。 */
+   await persist({hidden:S2.hiddenOf().filter(k=>k!==b.dataset.key)});
   };
  });
  menu.querySelector('.chm-all')?.addEventListener('click',async()=>{

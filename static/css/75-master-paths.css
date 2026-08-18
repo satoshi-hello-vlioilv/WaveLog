@@ -67,18 +67,22 @@
 .rne-job b{min-width:9em}
 .rne-note{font-size:var(--fs-sm);color:var(--muted);margin:.5em 0 0;line-height:1.5}
 /* 勤務体系の適用設備(複数選択)。1つの体系を複数設備へ同時に割り当てられる。
-   **器はマス目**(70-schedule.cssの.shift-eq-picker)で、チップはマス1つぶんに
-   広がる——名前の長さなりに丸めると、行ごとに左端がずれて数えられない。 */
-.shift-eq-chip{
- display:flex;align-items:center;gap:var(--gap-inline);height:var(--ctl-h-sm);
- padding:0 var(--ctl-pad-x-sm);min-width:0;
- border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;color:var(--nav);
- font-size:var(--fs-sm);cursor:pointer;user-select:none;
+   **設備名そのものが押せるタグ**(§9.197、利用者の指示)。以前はマス目の中に
+   チェックボックスを置いていたが、`.mm-field input`の`min-width:200px`が
+   当たって**箱が器の幅を全部取り、設備名の文字が押し出されて見えなかった**
+   （実機で「設備名が消えている」）。名前が的なら、四角い枠と文字を目で
+   往復せずに押せる。**入は面の色で示し、件数と名前は上の要約が文字で言う**
+   （色だけで伝えない。§3）。 */
+.shift-eq-tag{
+ display:inline-flex;align-items:center;gap:var(--gap-inline);height:var(--ctl-h-sm);
+ padding:0 var(--ctl-pad-x-sm);max-width:var(--w-md);
+ border:1px solid var(--line);border-radius:var(--radius-pill);background:#fff;color:var(--ink-2);
+ font-size:var(--fs-sm);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+ cursor:pointer;user-select:none;
 }
-.shift-eq-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.shift-eq-chip:hover{border-color:var(--teal);background:var(--pale)}
-.shift-eq-chip.is-on{border-color:var(--teal);background:var(--pale);color:var(--ink);font-weight:700}
-.shift-eq-chip input{flex:none;width:var(--ctl-box);height:var(--ctl-box);accent-color:currentColor;margin:0}
+.shift-eq-tag>i{font-style:normal;font-size:var(--fs-tiny);color:var(--muted);flex:none}
+.shift-eq-tag:hover{border-color:var(--teal);background:var(--pale);color:var(--nav)}
+.shift-eq-tag:focus-visible{outline:2px solid var(--teal);outline-offset:1px}
 /* 作業可否フラグ(§9.51)。「残仕掛設備ｺｰｽ」がこの設備で始まっていれば作業可。
    まだ来ていないロットを一目で外せるようにする(色と濃度の両方で示す)。 */
 /* **行に入る高さで作る**(§9.112)。以前は `padding:1px` + `line-height:1.5`

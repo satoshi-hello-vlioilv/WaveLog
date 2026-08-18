@@ -490,7 +490,7 @@
    ?'キー項目（名称・区分など）も変更できます。保存すると同じIDのまま更新されます。'
    :'必須(*)を入力して登録します。';
   $('#maintEditorSave').textContent=editing?'更新を保存':'追加登録';
-  modal.querySelector('.mm-editor-dialog')?.classList.remove('is-wide');
+  modal.querySelector('.mm-editor-dialog')?.classList.remove('is-wide','is-tall');
   $('#maintEditorSave').onclick=()=>submitMaint('#maintEditorForm');
   const form=$('#maintEditorForm');
   form.innerHTML=`${def.hint?`<p class="mm-def-hint">${esc(def.hint)}</p>`:''}
@@ -1512,7 +1512,10 @@
     ================================================================== */
  let qjState={items:[],sources:[],builtin:null,builtinEnabled:true,kinds:[],kindDefault:'left',
               loaded:false,editing:null,
-              cols:{},probe:null,probeSeq:0,probing:false,probeSig:''};
+              cols:{},probe:null,probeSeq:0,probing:false,probeSig:'',
+              /* 突合キーを選んでいる最中の状態(§9.197)。`pick`＝1つ目に押した列、
+                 `search`＝列名の絞り込み（左右それぞれ）。 */
+              pick:null,search:{left:'',right:''}};
  /* 結合の仕方(§9.194)。**説明も動きも「一致した行／左だけ／右だけ」の3つの
     真偽値から作る**——サーバー(query_join.JOIN_KINDS)が答えるものをそのまま
     使い、画面で別の判定を書かない。見本の表も同じ3つから組み立てるので、
@@ -1752,17 +1755,26 @@
  }
  function openQueryJoinEditor(item,opts){
   const modal=ensureMaintEditor();
-  modal.querySelector('.mm-editor-dialog')?.classList.add('is-wide');
+  /* **中身が縦に長いのでスクロールさせる**(§9.197)。データ接続の編集窓は
+     「スクロールさせない代わりに大きく取る」(§9.168)ため
+     `.is-wide .mm-editor-body{overflow:hidden}`にしてあり、そのままだと
+     ここは**下の節（結果の下見）が丸ごと切れて見えなかった**（実機で
+     「モーダル内で表示が一部切れている」と指摘）。 */
+  const dlg=modal.querySelector('.mm-editor-dialog');
+  if(dlg){dlg.classList.add('is-wide');dlg.classList.add('is-tall')}
   const sources=qjState.sources||[];
   const copy=!!(opts&&opts.copy);
   qjState.editing=item?JSON.parse(JSON.stringify(item)):{
    id:null,name:'',left:(sources.find(s=>s.purpose==='仕掛')||sources[0]||{}).key||'',
    leftTable:'',right:(sources.find(s=>s.purpose==='品質')||sources[1]||sources[0]||{}).key||'',
-   rightTable:'',keys:[{left:'',right:''}],columns:[],prefix:'',multi:'first',
+   rightTable:'',keys:[],columns:[],prefix:'',multi:'first',
    kind:qjState.kindDefault||'left',
    order:(qjState.items.length+1)*10,active:true};
   if(!qjState.editing.kind)qjState.editing.kind=qjState.kindDefault||'left';
   qjState.probe=null;qjState.probeSig='';
+  /* **開くたびに選びかけ・絞り込みを白紙へ**——前に開いた結合の状態が
+     残っていると、押していないのに列が選ばれているように見える。 */
+  qjState.pick=null;qjState.search={left:'',right:''};
   $('#maintEditorEyebrow').textContent='クエリ結合';
   $('#maintEditorTitle').textContent=copy?'既定の結合を下敷きに作る'
     :(item&&item.id?`${item.name} を編集`:'結合を追加');
@@ -1793,14 +1805,31 @@
    value:s.key,
    label:(s.label||s.key)+(s.purpose?`（${s.purpose}）`:'')+(s.listed?'':'・一覧に出さない')})),sel,'選んでください');
  }
- /* 実データの見本。**キーが合うかどうかは形を見れば分かる**（L0001 と A-1 は
-    突き合わない）ので、選ぶ前に出す。無ければ何も出さない（「値がありません」
-    と書くと、読めていないのか空なのか区別が付かない）。 */
- function qjExampleHtml(side,col){
-  const v=((side.samples||{})[col]||[]).slice(0,3);
-  if(!col)return '<small class="qj-key-ex is-empty">列を選ぶと、実データの例が出ます</small>';
-  if(!v.length)return '<small class="qj-key-ex is-empty">この列は先頭20行が空でした</small>';
-  return `<small class="qj-key-ex">例: ${esc(v.join(' / '))}</small>`;
+ /* ---------- 突合キーは「両側の列を並べて結ぶ」(§9.197、利用者の指示) ----------
+    以前は`<select>`を左右に並べた行で、①どんな列があるのか探せない
+    ②いま何と何が結ばれているのかが読み取りにくい ③選ぶ相手のデータ・表が
+    ただのプルダウンで「どのファイルのどの表を見ているのか」が画面に出て
+    いない、という状態だった（実機で「対象ファイルを選ぶところの視覚表示が
+    少なくわかりづらい」と指摘）。
+    **EXCELのパワークエリのマージと同じ作法**にする——左右に表を1枚ずつ置き、
+    列を1つずつ押す（またはドラッグして重ねる）と、その2列が結ばれる。
+    結ばれた列には両側に同じ「鍵N」の印が付き、下に組の一覧が出る。 */
+ function qjSampleText(c,col){
+  const v=((c.samples||{})[col]||[]).slice(0,3);
+  return v.join(' / ');
+ }
+ function qjSide(x,side){
+  const db=side==='left'?x.left:x.right;
+  const table=side==='left'?x.leftTable:x.rightTable;
+  const key=db+'\t'+(table||'');
+  return {db,table,c:qjState.cols[key]||{},loaded:!!qjState.cols[key]};
+ }
+ /* この列が何番目の鍵か（0=鍵ではない）。**両側に同じ番号を出す**ので、
+    どの列とどの列が組んでいるのかが列の一覧だけで読める。 */
+ function qjKeyIndexOf(x,side,col){
+  const arr=x.keys||[];
+  for(let i=0;i<arr.length;i++)if((side==='left'?arr[i].left:arr[i].right)===col)return i+1;
+  return 0;
  }
  /* 同じ名前の列を候補として出す。**名前のゆれを吸収する規則は画面に
     書かない**——サーバーが返した正規化済みの名前(normalized)どうしを
@@ -1819,20 +1848,96 @@
   });
   return out;
  }
+ /* 列の一覧。**実データの例を必ず添える**——キーが合うかどうかは形を見れば
+    分かる（L0001 と A-1 は突き合わない）ので、選ぶ前に出す。 */
+ function qjFieldsHtml(side){
+  const x=qjEdit(),s=qjSide(x,side);
+  const cols=s.c.columns||[];
+  /* **「読めていない」と「選んでいない」を分ける**——同じ空欄にすると、
+     待てばよいのか操作が要るのかが分からない。 */
+  if(!cols.length)return `<p class="qj-fields-empty">${
+    s.c.error?esc(s.c.error)
+    :(!s.db?'データを選ぶと、列がここに並びます。'
+     :(s.loaded?'この表には列がありません。':'列を読み込んでいます…'))}</p>`;
+  const q=String((qjState.search||{})[side]||'').trim().toLowerCase();
+  const hit=cols.filter(c=>!q||String(c).toLowerCase().includes(q));
+  if(!hit.length)return `<p class="qj-fields-empty">「${esc(q)}」に当てはまる列がありません。</p>`;
+  const pick=qjState.pick;
+  const other=side==='left'?'相手':'この一覧';
+  return hit.map(c=>{
+   const n=qjKeyIndexOf(x,side,c);
+   const on=!!(pick&&pick.side===side&&pick.col===c);
+   const eg=qjSampleText(s.c,c);
+   return `<button type="button" class="qj-field${n?' is-key':''}${on?' is-pick':''}" draggable="true"`
+    +` data-qj-fld="${side}" data-col="${esc(c)}"`
+    +` title="${esc(c)}${eg?'\n例: '+eg:''}\n押してから${esc(other)}の列を押すと結び付きます（ドラッグして重ねても同じです）">`
+    +`<span class="qj-fld-name">${esc(c)}</span>`
+    +(eg?`<span class="qj-fld-eg">${esc(eg)}</span>`
+        :'<span class="qj-fld-eg is-empty">先頭20行が空</span>')
+    +(n?`<i class="qj-fld-key">鍵${n}</i>`:'')
+    +`</button>`;
+  }).join('');
+ }
+ /* **次にすることを1つだけ指す**(§2)。選んでいる列があるときは「次に反対側を
+    押す」、無いときは「1つずつ押す」。 */
+ function qjStatusHtml(){
+  const x=qjEdit(),p=qjState.pick;
+  const n=(x.keys||[]).length;
+  if(p){
+   const here=p.side==='left'?'この一覧':'相手';
+   const other=p.side==='left'?'相手':'この一覧';
+   return `<span class="qj-status-now">${esc(here)}の<b>${esc(p.col)}</b>を選んでいます。`
+    +`次に${esc(other)}の列を押すと結び付きます</span>`
+    +`<button type="button" class="qj-status-cancel" id="qjPickCancel">選ぶのをやめる</button>`;
+  }
+  return n
+   ?`<span class="qj-status-now">突合キーは<b>${n}</b>組。列をもう1組押せば足せます</span>`
+   :'<span class="qj-status-now"><b>突合キーがまだありません。</b>'
+    +'左右の列を1つずつ押すか、片方をもう片方へドラッグしてください</span>';
+ }
+ /* 結ばれた組。**外す手立てを組の隣に置く**——一覧の下に別の「外す」を
+    並べると、どの組を外すのか数え直すことになる。 */
+ function qjPairsHtml(x){
+  const keys=x.keys||[];
+  if(!keys.length)return '';
+  const L=qjSide(x,'left').c,R=qjSide(x,'right').c;
+  const gone=(col,side)=>{const cs=(side==='left'?L:R).columns;return !!(cs&&cs.length&&!cs.includes(col))};
+  return keys.map((k,i)=>{
+   const bad=gone(k.left,'left')||gone(k.right,'right');
+   return `<span class="qj-pair${bad?' is-missing':''}" data-qj-pair="${i}">`
+    +`<i class="qj-pair-no">鍵${i+1}</i>`
+    +`<b>${esc(k.left)}</b><i class="qj-pair-eq">＝</i><b>${esc(k.right)}</b>`
+    +(bad?'<i class="qj-pair-warn">いま選んでいる表にこの列がありません</i>':'')
+    +`<button type="button" class="qj-pair-del" data-qj-keydel="${i}" title="この組を外す">×</button>`
+    +`</span>`;
+  }).join('');
+ }
+ /* 片側の表。**どのデータのどの表を見ているのかを画面に出す**——列数と表名を
+    添えると、選び間違いがその場で分かる(以前はプルダウンだけだった)。 */
+ function qjPaneHtml(side){
+  const x=qjEdit(),s=qjSide(x,side);
+  const isL=side==='left';
+  const cnt=(s.c.columns||[]).length;
+  const meta=cnt
+   ?`表: <b>${esc(s.c.table||s.table||'—')}</b> ／ <b>${cnt}</b>列`
+   :(s.c.error?`<span class="is-warn">${esc(s.c.error)}</span>`:'列を読み込んでいます…');
+  return `<div class="qj-pane" data-qj-pane="${side}">
+   <div class="qj-pane-head">
+    <span class="qj-pane-tag${isL?'':' is-right'}">${isL?'この一覧（足す先）':'相手（持ってくる側）'}</span>
+    <select data-qj-field="${isL?'left':'right'}" data-qj-re aria-label="${isL?'足す先のデータ':'相手のデータ'}">${
+      qjSourceOptions(isL?x.left:x.right)}</select>
+    <select data-qj-field="${isL?'leftTable':'rightTable'}" data-qj-re aria-label="表">${
+      qjOptions(s.c.tables||[],(isL?x.leftTable:x.rightTable)||'',isL?'どの表でも':'既定の表')}</select>
+    <span class="qj-pane-meta">${meta}</span>
+   </div>
+   <input type="search" class="qj-search" data-qj-search="${side}" placeholder="列名で絞り込み"
+     value="${esc((qjState.search||{})[side]||'')}" autocomplete="off" spellcheck="false">
+   <div class="qj-fields" data-qj-list="${side}">${qjFieldsHtml(side)}</div>
+  </div>`;
+ }
  function qjEditorHtml(x){
-  const lc=qjState.cols[x.left+'\t'+(x.leftTable||'')]||{};
-  const rc=qjState.cols[x.right+'\t'+(x.rightTable||'')]||{};
+  const lc=qjSide(x,'left').c,rc=qjSide(x,'right').c;
   const kind=qjKind(x.kind)||{};
-  const keyRow=(k,i)=>`<div class="qj-key" data-qj-key="${i}">
-    <span class="qj-key-side">
-     <select data-qj-keyleft="${i}">${qjOptions(lc.columns||[],k.left,'この一覧の列')}</select>
-     ${qjExampleHtml(lc,k.left)}</span>
-    <span class="qj-eq" aria-hidden="true">＝</span>
-    <span class="qj-key-side">
-     <select data-qj-keyright="${i}">${qjOptions(rc.columns||[],k.right,'相手の列')}</select>
-     ${qjExampleHtml(rc,k.right)}</span>
-    <button type="button" class="mm-btn-ghost sm" data-qj-keydel="${i}"${(x.keys||[]).length<2?' disabled':''}>外す</button>
-   </div>`;
   const sugg=qjSuggestPairs(x,lc,rc);
   const suggHtml=sugg.length?`<div class="qj-sugg">
     <span class="qj-sugg-label">同じ名前の列:</span>
@@ -1848,41 +1953,36 @@
    </label>`).join('');
   const pickAll=!(x.columns||[]).length;
   const colList=(rc.columns||[]).filter(c=>!(x.keys||[]).some(k=>k.right===c));
-  return `<div class="ds-edit qj-edit">
-   <section class="ds-edit-zone">
+  return `<div class="qj-edit">
+   <section class="qj-sec qj-sec-name">
     <h4 class="mm-fieldgroup">① これは何か</h4>
-    <label class="mm-field"><span>結合名</span>
-     <input data-qj-field="name" type="text" value="${esc(x.name||'')}" required autocomplete="off" spellcheck="false">
-     <small class="mm-field-hint">一覧の帯と、列の設定パネルの「結合」欄に出ます。何を足す結合かが分かる名前にしてください。</small></label>
-    <div class="ds-edit-pair">
-     <label class="mm-field"><span>表示順</span>
+    <div class="qj-name-row">
+     <label class="mm-field qj-f-name"><span>結合名</span>
+      <input data-qj-field="name" type="text" value="${esc(x.name||'')}" required autocomplete="off" spellcheck="false">
+      <small class="mm-field-hint">一覧の帯と、列の設定パネルの「結合」欄に出ます。</small></label>
+     <label class="mm-field qj-f-order"><span>表示順</span>
       <input data-qj-field="order" type="number" min="0" max="9999" value="${esc(String(x.order==null?0:x.order))}">
-      <small class="mm-field-hint">小さいほど先に当たります。列名がぶつかったときは先に当たったほうが残ります。</small></label>
-     <label class="mm-field"><span>使う / 使わない</span>
+      <small class="mm-field-hint">小さいほど先に当たります。</small></label>
+     <label class="mm-field qj-f-enabled"><span>使う / 使わない</span>
       <select data-qj-field="enabled" data-qj-re>${qjOptions(['有効','無効'],x.active===false?'無効':'有効')}</select>
       <small class="mm-field-hint">「無効」にすると列を足しません（設定は残ります）。</small></label>
     </div>
    </section>
-   <section class="ds-edit-zone">
-    <h4 class="mm-fieldgroup">② どの一覧に足すか</h4>
-    <label class="mm-field"><span>足す先のデータ</span>
-     <select data-qj-field="left" data-qj-re>${qjSourceOptions(x.left)}</select>
-     <small class="mm-field-hint">データ接続に登録してあるものだけが選べます。</small></label>
-    <label class="mm-field"><span>表</span>
-     <select data-qj-field="leftTable" data-qj-re>${qjOptions(lc.tables||[],x.leftTable||'','どの表でも')}</select>
-     <small class="mm-field-hint">「どの表でも」にしておくと、そのデータのどの表を開いても効きます。</small></label>
+   <section class="qj-sec qj-sec-merge">
+    <h4 class="mm-fieldgroup">② つなぐ2つのデータと突合キー</h4>
+    <div class="qj-merge">
+     ${qjPaneHtml('left')}
+     <div class="qj-merge-mid" aria-hidden="true"><span class="qj-merge-eq">＝</span></div>
+     ${qjPaneHtml('right')}
+    </div>
+    <p class="qj-merge-status">${qjStatusHtml()}</p>
+    <div class="qj-pairs">${qjPairsHtml(x)}</div>
+    ${suggHtml}
+    <p class="mm-field-hint">すべてのキーが一致した行だけを結び付けます。全角/半角と前後の空白は無視します。
+     選べるのは<b>データ接続に登録してあるデータ</b>だけです（一覧に出していないデータも選べます）。</p>
    </section>
-   <section class="ds-edit-zone">
-    <h4 class="mm-fieldgroup">③ どこから持ってくるか</h4>
-    <label class="mm-field"><span>相手のデータ</span>
-     <select data-qj-field="right" data-qj-re>${qjSourceOptions(x.right)}</select>
-     <small class="mm-field-hint">一覧に出していないデータも選べます（読むこと自体は止まりません）。</small></label>
-    <label class="mm-field"><span>表</span>
-     <select data-qj-field="rightTable" data-qj-re>${qjOptions(rc.tables||[],x.rightTable||'','既定の表')}</select>
-     ${rc.error?`<small class="mm-field-hint is-warn">${esc(rc.error)}</small>`:''}</label>
-   </section>
-   <section class="ds-edit-zone qj-zone-kind">
-    <h4 class="mm-fieldgroup">④ 結合の仕方 — <span class="qj-kind-now">${esc(kind.label||'')}</span></h4>
+   <section class="qj-sec qj-sec-kind">
+    <h4 class="mm-fieldgroup">③ 結合の仕方 — <span class="qj-kind-now">${esc(kind.label||'')}</span></h4>
     ${kindCards?`<div class="qj-kinds">${kindCards}</div>
     <div class="qj-kind-detail">
      <p class="qj-kind-summary">${esc(kind.summary||'')}</p>
@@ -1891,20 +1991,11 @@
      ${kind.rightOnly?'<p class="mm-field-hint is-warn">「相手にしかない行」を出すため、<b>相手の表を全部読みます</b>。また、一致しているかどうかはこの一覧の全行と突き合わせます（表示中のページだけでは決めません）。</p>':''}
     </div>`:'<p class="mm-field-hint">結合の仕方の一覧を読めませんでした。左外部結合（この一覧は全部残す）として扱います。</p>'}
    </section>
-   <section class="ds-edit-zone">
-    <h4 class="mm-fieldgroup">⑤ どうつなぐか（突合キー）</h4>
-    <div class="qj-keys">${(x.keys||[]).map(keyRow).join('')}</div>
-    ${suggHtml}
-    <div class="qj-keys-act">
-     <button type="button" class="mm-btn-ghost sm" id="qjKeyAdd">＋ キーを足す</button>
-     <small class="mm-field-hint">すべてのキーが一致した行だけを結び付けます。全角/半角と前後の空白は無視します。</small>
-    </div>
-   </section>
-   <section class="ds-edit-zone">
-    <h4 class="mm-fieldgroup">⑥ 何を足すか</h4>
+   <section class="qj-sec qj-sec-add">
+    <h4 class="mm-fieldgroup">④ 何を足すか</h4>
     ${(kind.key&&!kind.matched&&!kind.rightOnly)?`<p class="mm-field-hint">
       <b>この結合は列を足しません。</b>「${esc(kind.label)}」は相手に当たらなかった行だけを残す使い方なので、
-      相手の値がありません（足しても全部空欄になります）。列を足したいときは、④で
+      相手の値がありません（足しても全部空欄になります）。列を足したいときは、③で
       「${esc((qjKind('left')||{}).label||'左外部結合')}」などを選んでください。</p>`:`
     <div class="qj-pick">
      <label class="qj-radio"><input type="radio" name="qjPick" value="all" data-qj-re${pickAll?' checked':''}>
@@ -1914,8 +2005,8 @@
     </div>
     ${pickAll?'':`<div class="qj-cols">${colList.length?colList.map(c=>
       `<label class="qj-col"><input type="checkbox" data-qj-col="${esc(c)}"${(x.columns||[]).includes(c)?' checked':''}><span>${esc(c)}</span></label>`
-     ).join(''):'<p class="mm-field-hint">相手の列がまだ分かりません。②③でデータと表を選んでください。</p>'}</div>`}
-    <div class="ds-edit-pair">
+     ).join(''):'<p class="mm-field-hint">相手の列がまだ分かりません。②でデータと表を選んでください。</p>'}</div>`}
+    <div class="qj-add-opts">
      <label class="mm-field"><span>足す列の名前に付ける文字</span>
       <input data-qj-field="prefix" type="text" value="${esc(x.prefix||'')}" maxlength="20" autocomplete="off" spellcheck="false" placeholder="例: 品質_">
       <small class="mm-field-hint">空のままだと、一覧に同じ名前の列があるものは<b>足しません</b>（元の一覧の値を残します）。付けると両方を並べられます。</small></label>
@@ -1925,8 +2016,8 @@
       <small class="mm-field-hint">当たった件数は下の「結果」に出ます。</small></label>
     </div>`}
    </section>
-   <section class="ds-edit-zone ds-edit-result">
-    <h4 class="mm-fieldgroup">⑦ 結果（保存する前の下見） <span class="ds-probe-state" id="qjProbeState"></span></h4>
+   <section class="qj-sec qj-sec-result">
+    <h4 class="mm-fieldgroup">⑤ 結果（保存する前の下見） <span class="ds-probe-state" id="qjProbeState"></span></h4>
     <div id="qjProbeBox" class="ds-probe"></div>
    </section>
   </div>`;
@@ -1941,7 +2032,15 @@
     else x[k]=el.value;
     if(k==='left')x.leftTable='';
     if(k==='right'){x.rightTable='';x.columns=[]}
-    if(k==='left'||k==='right'){(x.keys||[]).forEach(kk=>{if(k==='left')kk.left='';else kk.right=''})}
+    /* **データを取り替えたら組は外す**(§9.197)。以前は片側だけを空にして
+       組の行を残していたが、列の一覧そのものが入れ替わるので、残しても
+       当たらない組が並ぶだけだった。選び直しは列を押すだけで済む。
+       表(leftTable/rightTable)を変えただけのときは残す——同じ列名が
+       あることが多く、無ければ組の側に「この表にありません」と出る。 */
+    if(k==='left'||k==='right'){x.keys=[];qjState.pick=null}
+    /* 表を変えると列の一覧が入れ替わる。**選びかけは捨てる**——残すと
+       いま一覧に無い列を「選んでいます」と言い続ける。 */
+    if(k==='leftTable'||k==='rightTable')qjState.pick=null;
    };
    /* **値の入力中に組み直さないこと**(§9.117)。文字を打つたびに入力欄が
       作り替わるとカーソルが飛ぶ。組み直すのは選択肢(data-qj-re)だけ。 */
@@ -1965,19 +2064,29 @@
    qjSuggestPairs(x,lc,rc).forEach(pp=>qjAddKey(pp.left,pp.right,true));
    renderQueryJoinEditor();qjProbeSoon(0);
   };
-  form.querySelectorAll('[data-qj-keyleft]').forEach(el=>el.onchange=()=>{
-   qjEdit().keys[+el.dataset.qjKeyleft].left=el.value;qjProbeSoon(0);
-  });
-  form.querySelectorAll('[data-qj-keyright]').forEach(el=>el.onchange=()=>{
-   qjEdit().keys[+el.dataset.qjKeyright].right=el.value;qjProbeSoon(0);
-  });
+  /* 組を外す。**空の組は作らない**——押すたびに空行が増えると、そのぶん
+     「外す」を押させることになる(§9.197で行そのものを廃止した)。 */
   form.querySelectorAll('[data-qj-keydel]').forEach(el=>el.onclick=()=>{
    const x=qjEdit();x.keys.splice(+el.dataset.qjKeydel,1);
-   if(!x.keys.length)x.keys=[{left:'',right:''}];
+   qjState.pick=null;
    renderQueryJoinEditor();qjProbeSoon(0);
   });
-  const add=form.querySelector('#qjKeyAdd');
-  if(add)add.onclick=()=>{qjEdit().keys.push({left:'',right:''});renderQueryJoinEditor()};
+  /* 列名の絞り込み。**一覧だけを描き直す**(§9.117)——入力欄を作り替えると
+     1文字ごとにカーソルが飛ぶ。 */
+  form.querySelectorAll('[data-qj-search]').forEach(el=>{
+   el.oninput=()=>{
+    qjState.search=qjState.search||{};
+    qjState.search[el.dataset.qjSearch]=el.value;
+    qjRenderFieldList(el.dataset.qjSearch);
+   };
+   /* **Enterで保存させないこと。** この欄はフォームの中にあるので、
+      既定では Enter が送信＝「追加登録」になる（絞り込むつもりで打った
+      Enter で登録されてしまう）。 */
+   el.onkeydown=ev=>{if(ev.key==='Enter'){ev.preventDefault();ev.stopPropagation()}};
+  });
+  qjBindFields(form);
+  const cancel=form.querySelector('#qjPickCancel');
+  if(cancel)cancel.onclick=()=>{qjState.pick=null;qjRefreshMerge()};
   form.querySelectorAll('[name="qjPick"]').forEach(el=>el.onchange=()=>{
    const x=qjEdit();
    if(el.value==='all'&&el.checked)x.columns=[];
@@ -1997,17 +2106,76 @@
   });
   qjRenderProbe();
  }
- /* 候補から1組足す。**空の行があればそこへ入れる**——押すたびに空行が
-    増えると、そのぶん「外す」を押させることになる。 */
+ /* 1組足す。**同じ組は増やさない**——同じキーを2回押しても増えないので、
+    押し間違いを外す手間が要らない。 */
  function qjAddKey(left,right,quiet){
   if(!left||!right)return;
   const x=qjEdit();
-  x.keys=x.keys||[];
-  if(x.keys.some(k=>k.left===left&&k.right===right))return;
-  const slot=x.keys.find(k=>!k.left&&!k.right);
-  if(slot){slot.left=left;slot.right=right}
-  else x.keys.push({left:left,right:right});
+  x.keys=(x.keys||[]).filter(k=>k.left&&k.right);
+  if(!x.keys.some(k=>k.left===left&&k.right===right))x.keys.push({left:left,right:right});
   if(!quiet){renderQueryJoinEditor();qjProbeSoon(0)}
+ }
+ /* ---------- 列を押す／ドラッグして結ぶ(§9.197) ----------
+    **どちらの操作でも同じことが起きる**（片方だけ効くと、効かない側を
+    「壊れている」と読まれる）。押した1つ目は`qjState.pick`に覚え、
+    反対側を押した時点で組にする。同じ側をもう一度押したら選び直し。 */
+ function qjBindFields(root){
+  (root||document).querySelectorAll('[data-qj-fld]').forEach(el=>{
+   const side=el.dataset.qjFld,col=el.dataset.col;
+   el.onclick=ev=>{ev.preventDefault();qjPickField(side,col)};
+   el.ondragstart=ev=>{
+    qjState.pick={side,col};
+    try{ev.dataTransfer.setData('text/plain',side+'\t'+col);ev.dataTransfer.effectAllowed='link'}catch(_){}
+    el.classList.add('is-pick');
+   };
+   el.ondragend=()=>{el.classList.remove('is-pick');
+    (root||document).querySelectorAll('.qj-field.is-drop').forEach(x=>x.classList.remove('is-drop'))};
+   el.ondragover=ev=>{
+    const p=qjState.pick;
+    if(!p||p.side===side)return;        // 同じ側へ落としても組にならない
+    ev.preventDefault();el.classList.add('is-drop');
+   };
+   el.ondragleave=()=>el.classList.remove('is-drop');
+   el.ondrop=ev=>{
+    ev.preventDefault();el.classList.remove('is-drop');
+    let from=null;
+    try{const t=String(ev.dataTransfer.getData('text/plain')||'').split('\t');
+        if(t.length===2)from={side:t[0],col:t[1]}}catch(_){}
+    if(!from)from=qjState.pick;
+    if(!from||from.side===side)return;
+    qjState.pick=null;
+    qjAddKey(side==='left'?col:from.col,side==='left'?from.col:col);
+   };
+  });
+ }
+ function qjPickField(side,col){
+  const p=qjState.pick;
+  if(p&&p.side!==side){
+   qjState.pick=null;
+   qjAddKey(side==='left'?col:p.col,side==='left'?p.col:col);
+   return;
+  }
+  qjState.pick=(p&&p.side===side&&p.col===col)?null:{side,col};
+  qjRefreshMerge();
+ }
+ /* 列の一覧だけを差し替える（絞り込みの入力中に呼ぶので、**入力欄には
+    触らない**）。 */
+ function qjRenderFieldList(side){
+  const box=document.querySelector(`[data-qj-list="${side}"]`);
+  if(!box)return;
+  box.innerHTML=qjFieldsHtml(side);
+  qjBindFields(box);
+ }
+ /* 押した結果をその場に出す。**全部を組み直さない**——組み直すと絞り込みの
+    文字とスクロールが巻き戻る。 */
+ function qjRefreshMerge(){
+  qjRenderFieldList('left');qjRenderFieldList('right');
+  const st=document.querySelector('.qj-merge-status');
+  if(st){
+   st.innerHTML=qjStatusHtml();
+   const c=st.querySelector('#qjPickCancel');
+   if(c)c.onclick=()=>{qjState.pick=null;qjRefreshMerge()};
+  }
  }
  async function qjRefreshColumns(){
   const x=qjEdit();
@@ -2119,7 +2287,10 @@
     ファイルを開いて確かめた結果で、欄を触るたびに取り直す。 */
  function openDataSourceEditor(item){
   const modal=ensureMaintEditor();
-  modal.querySelector('.mm-editor-dialog')?.classList.add('is-wide');
+  /* **スクロールさせない**（§9.168）。クエリ結合の窓を先に開いていると
+     `is-tall`が残るので、ここで必ず外す。 */
+  const dlg=modal.querySelector('.mm-editor-dialog');
+  if(dlg){dlg.classList.add('is-wide');dlg.classList.remove('is-tall')}
   dsState.editing=item?Object.assign({},item):null;
   dsState.probe=item?(item.capability||null):null;
   dsState.probePath='';
@@ -2628,9 +2799,13 @@
     {name:'4直',start:'11:00',end:'19:10'},{name:'5直',start:'21:20',end:'05:45',dayOffset:-1}]},
  ];
  let shiftState={patterns:[],selectedId:null,draft:null,loading:false};
- /* 適用設備の複数選択(勤務体系マスタ)。チェック済みの設備名を配列で返す。 */
+ /* 適用設備の複数選択(勤務体系マスタ)。**入で選ばれている設備名**を配列で返す。
+    印はタグの入切(aria-pressed)で持つ——チェックボックスは`.mm-field input`の
+    `min-width:200px`に当たり、器の幅を全部取って**設備名の文字が押し出されて
+    見えなくなっていた**(実機で「設備名が消えている」と報告。§9.197)。 */
  function selectedShiftEquipment(){
-  return [...document.querySelectorAll('#shiftEquipment [data-shift-eq]:checked')].map(x=>x.value);
+  return [...document.querySelectorAll('#shiftEquipment [data-shift-eq][aria-pressed="true"]')]
+   .map(x=>x.dataset.shiftEq);
  }
  function shiftDraftFrom(p){
   // equipmentは設備名の配列(複数可)。空配列=全設備共通。サーバーが古い形式
@@ -2706,8 +2881,17 @@
   const d=shiftState.draft||shiftDraftFrom(null);
   const eqSelected=new Set((d.equipment||[]).map(String));
   const eqItems=(equipmentMasterState.items||[]);
+  /* 設備は**名前のタグの入切**で選ぶ(§9.197、利用者の指示「設備名のバッジを
+     出して、配色のONOFF」)。名前そのものが押せる的なので、四角い枠と
+     チェックの位置を目で往復しなくてよい。入は面の色で、**色だけで伝えない**
+     ため上の要約が件数と名前を文字で言う。 */
   const eqChips=eqItems.length
-   ? eqItems.map(x=>`<label class="shift-eq-chip${eqSelected.has(x.name)?' is-on':''}"><input type="checkbox" data-shift-eq value="${esc(x.name)}"${eqSelected.has(x.name)?' checked':''}><span>${esc(x.name)}</span></label>`).join('')
+   ? eqItems.map(x=>{
+      const on=eqSelected.has(x.name);
+      return `<button type="button" class="shift-eq-tag${on?' is-on':''}" data-shift-eq="${esc(x.name)}"`
+       +` aria-pressed="${on?'true':'false'}" title="${esc(x.name)}を${on?'外す':'この勤務体系の対象にする'}">`
+       +`<i aria-hidden="true">${on?'✓':'＋'}</i>${esc(x.name)}</button>`;
+     }).join('')
    : '<span class="mm-empty-inline">設備マスタが未登録です。先に「設備」タブで登録してください。</span>';
   const eqSummary=shiftEqSummaryHtml([...eqSelected],eqItems.length);
   form.innerHTML=`<div class="mm-form-head">
@@ -2807,10 +2991,16 @@
    });
   };
   $('#shiftName').oninput=()=>{shiftState.draft.name=$('#shiftName').value};
-  // 複数選択(チェック)。押した見た目もその場で切り替える。
-  $('#shiftEquipment')?.querySelectorAll('[data-shift-eq]').forEach(cb=>{
-   cb.onchange=()=>{
-    cb.closest('.shift-eq-chip')?.classList.toggle('is-on',cb.checked);
+  /* タグの入切。**押した瞬間にその場で切り替える**——画面を組み直すと器が
+     スクロールごと巻き戻り、続けて選べない(§9.117と同じ罠)。 */
+  $('#shiftEquipment')?.querySelectorAll('[data-shift-eq]').forEach(tag=>{
+   tag.onclick=ev=>{
+    ev.preventDefault();
+    const on=tag.getAttribute('aria-pressed')!=='true';
+    tag.setAttribute('aria-pressed',on?'true':'false');
+    tag.classList.toggle('is-on',on);
+    const mark=tag.querySelector('i');if(mark)mark.textContent=on?'✓':'＋';
+    tag.title=`${tag.dataset.shiftEq}を${on?'外す':'この勤務体系の対象にする'}`;
     shiftState.draft.equipment=selectedShiftEquipment();
     refreshShiftEqSummary();
    };

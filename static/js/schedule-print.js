@@ -37,6 +37,13 @@
   const d=new Date(iso);if(Number.isNaN(d.getTime()))return '';
   return `${d.getFullYear()}-${two(d.getMonth()+1)}-${two(d.getDate())}`;
  }
+ /* 紙の「日付」も**現場歴で数える**(§9.197)。画面のまとまりは現場歴
+    (勤務の日付補正を当てた現場の1日)なので、紙だけ暦で数えると
+    「画面では18日に12件なのに、紙は18日と19日に分かれる」という食い違いに
+    なる——日ごとに配る紙で件数が合わないのは、受け取った側が「足りない」と
+    判断できなくなるので致命的(§9.115と同じ理由)。
+    現場歴が分からない行(勤務が決まらない行)は暦で数える。 */
+ const workDayKey=(e,start)=>(e&&e.workDate)||dayKey(start);
  const WD=['日','月','火','水','木','金','土'];
  function dayLabel(key){
   if(!key)return '日付未定';
@@ -45,7 +52,7 @@
   return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（${WD[d.getDay()]}）`;
  }
  function rangeLabel(rows){
-  const keys=(rows||[]).map(r=>dayKey(r.start)).filter(Boolean).sort();
+  const keys=(rows||[]).map(r=>workDayKey(r.e,r.start)).filter(Boolean).sort();
   if(!keys.length)return '日付未定';
   const a=dayLabel(keys[0]),b=dayLabel(keys[keys.length-1]);
   return a===b?a:`${a} 〜 ${b}`;
@@ -83,7 +90,7 @@
   rows.forEach(e=>{
    const useActual=(e.state==='完了'||e.state==='着手')&&e.actual&&e.actual.startAt;
    const start=useActual?e.actual.startAt:e.plannedStart;
-   const key=opt.pageByDate?dayKey(start):'';
+   const key=opt.pageByDate?workDayKey(e,start):'';
    if(!index.has(key)){const g={key,label:dayLabel(key),rows:[]};index.set(key,g);groups.push(g)}
    let group=null;
    if(grouping){try{group=view.groupOf(e)}catch(_){group=null}}
@@ -296,7 +303,7 @@
    case 'no':return String(no);
    case 'state':return STATE_LABEL[e.state]||e.state||'';
    case 'date':{
-    const k=dayKey(item.start);
+    const k=workDayKey(item.e,item.start);
     if(!k)return '';
     const d=new Date(k+'T00:00:00');
     return `${d.getMonth()+1}/${d.getDate()}（${WD[d.getDay()]}）`;

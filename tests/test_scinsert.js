@@ -145,6 +145,54 @@ const plan=()=>fetch(B+'/api/schedule/plan?equipment='+encodeURIComponent(EQ)).t
    await page.mouse.move(t.x,t.y+40);await page.waitForTimeout(150);
    await page.mouse.move(t.x,t.y);await page.waitForTimeout(400);
   }
+  /* ---- 案内のON/OFF(§9.197、利用者の指示「慣れたら不要」) ----
+     切ると**吹き出しは出ないが線は残る**（どこへ入るか分からないのは、
+     案内が多いことよりずっと困る）。設定はこの端末に覚える。 */
+  /* **開いているかを確かめてから開く。** 設定ポップは前の段で開いたまま
+     残っている（閉じる仕掛けは`mousedown`で受けるので、`element.click()`の
+     ような合成クリックでは閉じない）。ここで素朴にボタンを押すと**閉じて**
+     しまい、次のクリックが「見えない」で落ちる（実際に落ちた）。 */
+  const popOpen=async on=>{
+   await page.evaluate(want=>{
+    const p=document.querySelector('#scLayoutPop');
+    if(!p)return;
+    /* 開けたい(want=true)のに畳んでいる／畳みたいのに開いている、のときだけ
+       押す。**条件を取り違えると押さないまま進み**、次のクリックが
+       「見えない」で落ちる（実際に落ちた）。 */
+    if(p.hidden===want)document.querySelector('#scLayoutBtn').click();
+   },on);
+   await page.waitForTimeout(300);
+  };
+  await popOpen(true);
+  const tipPref=await page.evaluate(()=>[...document.querySelectorAll('#scLayoutPop input[name=scInsertTip]')].map(r=>r.value));
+  rec('案内のON/OFFを選べる',tipPref.join(',')==='on,off',JSON.stringify(tipPref));
+  await page.click('#scLayoutPop input[name=scInsertTip][value=off]');
+  await page.waitForTimeout(300);
+  await popOpen(false);
+  await page.mouse.move(t.x,t.y+40);await page.waitForTimeout(150);
+  await page.mouse.move(t.x,t.y);await page.waitForTimeout(500);
+  const quiet=await page.evaluate(()=>{const g=document.querySelector('#scInsertGhost');
+   if(!g||!g.parentNode)return null;
+   const tip=g.querySelector('.sc-insert-tip'),line=g.querySelector('.sc-insert-line');
+   const tb=tip.getBoundingClientRect(),lb=line.getBoundingClientRect();
+   return {quiet:g.classList.contains('is-quiet'),tipShown:tb.width>0&&tb.height>0,
+           lineH:Math.round(lb.height),lineW:Math.round(lb.width),
+           saved:localStorage.getItem('scLayoutPrefsV1')||''}});
+  rec('案内を切ると吹き出しが出ない',!!quiet&&quiet.quiet&&!quiet.tipShown,JSON.stringify(quiet));
+  rec('切っても入る位置の線は残る',!!quiet&&quiet.lineH>=6&&quiet.lineW>100,JSON.stringify(quiet));
+  rec('切ったことを端末に覚える',!!quiet&&/"tip":false/.test(quiet.saved),String(quiet&&quiet.saved));
+  await popOpen(true);
+  await page.click('#scLayoutPop input[name=scInsertTip][value=on]');
+  await page.waitForTimeout(300);
+  await popOpen(false);
+  await page.mouse.move(t.x,t.y+40);await page.waitForTimeout(150);
+  await page.mouse.move(t.x,t.y);await page.waitForTimeout(500);
+  const backOn=await page.evaluate(()=>{const g=document.querySelector('#scInsertGhost');
+   if(!g||!g.parentNode)return null;
+   const tb=g.querySelector('.sc-insert-tip').getBoundingClientRect();
+   return {tipShown:tb.width>0&&tb.height>0}});
+  rec('戻すと吹き出しが出る',!!backOn&&backOn.tipShown,JSON.stringify(backOn));
+
   /* ---- クリックとダブルクリックを分ける(§9.179改訂) ----
      利用者の指摘「クリックでもダブルクリックでも仕掛表が開きました」。
      clickは2回目でも飛ぶので、少し待ってからdblclickが来ていなければ
