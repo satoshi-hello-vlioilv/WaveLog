@@ -515,7 +515,7 @@
   const DEFAULT_STORE='MeasurementDefaultFilterPresetsV1';
   const MARK_MIRROR='MeasurementFilterMarksV2';       // 利用者ID -> {def:{},lock:{}}
   const MARK_MIGRATED='MeasurementFilterMarksMigratedV1';
-  let markMaps=null;                                  // {def:{},lock:{}}
+  let markMaps=null,markMapsUid=null;                 // {def:{},lock:{}} と、その持ち主
   function readMarkMirror(){
     try{const all=JSON.parse(localStorage.getItem(MARK_MIRROR)||'{}');
         const mine=all[filterUserId()];
@@ -536,8 +536,15 @@
     return {def:read(DEFAULT_STORE),lock:read(LOCKED_DEFAULT_STORE)};
   }
   function ensureMarkMaps(){
-    if(markMaps)return markMaps;
+    const uid=filterUserId();
+    if(markMaps&&markMapsUid===uid)return markMaps;
+    /* **利用者IDが変わったら読み直す**(§9.190)。利用者IDは`/api/whoami`から
+       **後から届く**(§9.184)ので、空のうちに作った写しを持ち続けると
+       (a)その人の控えはそのセッション中**一度も読まれず**、
+       (b)`writeMarkMirror()`が空の写しを本人の置き場へ書き戻して**印を消す**。
+       他は全部「呼ぶたびにIDを引く」約束なのに、ここだけ1回で固定していた。 */
     markMaps=readMarkMirror()||legacyMarkMaps();
+    markMapsUid=uid;
     return markMaps;
   }
   function readDefaultPresetMap(){return ensureMarkMaps().def}
@@ -550,14 +557,15 @@
   function defaultMapKey(db,table){return mapKeyOf(db,table,presetMode())}
   function defaultPresetIdsFor(db,table){return (readDefaultPresetMap()[defaultMapKey(db,table)]||[]).map(String)}
   function isDefaultPreset(preset,db,table){return defaultPresetIdsFor(db,table).includes(String(preset.id))}
-  function setDefaultPreset(preset,db,table,on){
+  function setDefaultPreset(preset,db,table,on,opts={}){
     const map=readDefaultPresetMap(),key=defaultMapKey(db,table),ids=new Set((map[key]||[]).map(String)),pid=String(preset.id);
     if(on)ids.add(pid);else ids.delete(pid);
     map[key]=[...ids];writeDefaultPresetMap(map);
     preset.isDefault=on;
-    pushMark(preset.id,db,table,presetMode());
+    /* 印は2つそろえて1回で送る(§9.190)ので、既定では送らない。 */
+    if(opts.push!==false)return pushMark(preset.id,db,table,presetMode());
+    return Promise.resolve(true);
   }
-  function toggleDefaultPreset(preset,db,table){setDefaultPreset(preset,db,table,!isDefaultPreset(preset,db,table))}
 
   /* ---- 鍵付きデフォルトフィルタ（テーブルごとに複数選択可） ----
      デフォルトフィルタのうち、鍵を付けたものは「一覧を開くたびに必ず
@@ -571,13 +579,24 @@
      ほしいもので、共有DBの往復を待たせる性質のものではない。届かなければ
      端末の控えだけが残る(次に届いたときに送り直される)。 */
   function pushMark(presetId,db,table,mode){
-    if(presetId==null)return;
+    if(presetId==null)return Promise.resolve(true);
     const key=mapKeyOf(db,table,mode);
     const has=(m,k)=>((m[key]||[]).map(String)).includes(String(presetId));
-    api('/api/filter-presets/marks',{method:'POST',headers:{'Content-Type':'application/json'},
+    return api('/api/filter-presets/marks',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify(withUserId({user:filterUserId(),id:presetId,
         isDefault:has(readDefaultPresetMap()),isLocked:has(readLockedPresetMap())}))})
-      .catch(()=>{/* 届かなければ端末の控えのまま。次の操作で送り直す */});
+      .then(()=>true)
+      .catch(e=>{
+        /* **黙って画面だけ変えない**(§9.190)。以前はここで握り潰していたため、
+           scheduleモードでは書込ガードに弾かれて(403)いたことに誰も気づけず、
+           印は端末の控えにだけ残った。次に登録フィルタを読み直した時点で
+           サーバーの答え(印なし)で上書きされ、**「鍵をかけたのに画面を
+           切り替えると外れる」**という形で出ていた（実機で報告）。 */
+        console.warn('フィルタの印を保存できませんでした',e);
+        showToast&&showToast('「いつも適用」を保存できませんでした',
+          `${e.message||'マスタへ届きませんでした'}\nこの端末では効いていますが、開き直すと外れます。`,8000);
+        return false;
+      });
   }
   /* サーバーが返した印を、画面が使う形（キー→ID配列）へ写す。**返ってきた
      ぶんだけ触る**——他のテーブルの印を、今の問い合わせに載っていないという
@@ -637,19 +656,53 @@
     if(on)ids.add(pid);else ids.delete(pid);
     map[key]=[...ids];writeLockedPresetMap(map);
     preset.isLocked=on;
-    pushMark(preset.id,db,table,presetMode());
+  }
+
+  /* ---------- 「いつも適用（固定）」は1つの概念(§9.190) ----------
+     利用者の言葉:「フィルタの鍵は、他の一覧で使えないという意味ではなく、
+     **適用したフィルタから外せなくなる**という意味のフィルタロック。つまり
+     鍵マークはデフォルトにすると同義。混同するならデフォルトのチェック
+     だけでよい」。
+
+     **2つに分けていたこと自体が間違い**だった。「デフォルト（自動で入る）」と
+     「鍵（外せない）」を別の印にすると、片方だけ付いた状態が作れてしまい、
+     利用者は2つの言葉を覚えることになる。画面の操作は**チェック1つ**に統合し、
+     マスタ側は今までどおり2つの印へ**そろえて**書く（形を変えないので、
+     古い設定や他の端末とそのまま行き来できる）。
+
+     **どちらか一方でも付いていれば「いつも適用」**として読む——以前の
+     設定（デフォルトだけ付けた登録）が、更新した瞬間に効かなくなるのを
+     避けるため。 */
+  function alwaysOnIdsFor(db,table){
+    return [...new Set([...defaultPresetIdsFor(db,table),...lockedPresetIdsFor(db,table)])];
+  }
+  function isAlwaysOnPreset(preset,db,table){
+    return alwaysOnIdsFor(db,table).includes(String(preset.id));
+  }
+  /* 印を付け外しする唯一の入口。**保存できなければ元へ戻す**——押した通りに
+     なったように見せて、開き直すと外れているのが一番困る(§9.190)。 */
+  async function setAlwaysOnPreset(preset,db,table,on){
+    const was=isAlwaysOnPreset(preset,db,table);
+    setDefaultPreset(preset,db,table,on,{push:false});
+    setLockedDefaultPreset(preset,db,table,on);
+    const ok=await pushMark(preset.id,db,table,presetMode());
+    if(!ok&&was!==on){
+      setDefaultPreset(preset,db,table,was,{push:false});
+      setLockedDefaultPreset(preset,db,table,was);
+    }
+    return ok;
   }
   /* 戻り値は**足した条件の数**。0のときは知らせない(一覧を引くたびに
      「適用しました」と言われると読まれなくなる)。 */
   function applyDefaultFiltersFor(db,table){
-    const ids=defaultPresetIdsFor(db,table);if(!ids.length)return 0;
-    const idSet=new Set(ids),lockedIds=new Set(lockedPresetIdsFor(db,table));
+    const ids=alwaysOnIdsFor(db,table);if(!ids.length)return 0;
+    const idSet=new Set(ids);
     const matches=(S.filterPresets||[]).filter(p=>idSet.has(String(p.id)));
     if(!matches.length)return 0;
     let added=0;
-    // 鍵付きプリセットを先に処理し、複数プリセットに同一条件がまたがる
-    // 場合も鍵の状態が優先されるようにする。
-    const ordered=[...matches].sort((a,b)=>Number(lockedIds.has(String(b.id)))-Number(lockedIds.has(String(a.id))));
+    /* **「いつも適用」は必ず固定**(§9.190)。自動で入るのに手で外せると、
+       次に開いたときにまた入る——外れているのか効いているのかが分からない。 */
+    const ordered=matches;
     /* 呼び出し元(selectTable)がここより前にrestoreActiveFilterState()で
        復元済みの、このテーブル向けの非鍵付き(手動追加)条件へ重ね合わせる。
        以前はS.genericFiltersを丸ごと置き換えており、デフォルトフィルタが
@@ -657,7 +710,7 @@
        検索条件が無警告で消えていた。 */
     const seen=new Set(S.genericFilters.map(filterKey));
     ordered.forEach(p=>{
-      const locked=lockedIds.has(String(p.id));
+      const locked=true;
       (p.filters||[]).forEach(f=>{
         const k=filterKey(f);
         if(!seen.has(k)){
@@ -669,7 +722,7 @@
       });
     });
     S.page=1;
-    if(added)showToast?.('デフォルトフィルタを適用しました',
+    if(added)showToast?.('いつも適用する条件を入れました',
       matches.map(p=>p.name).join(' / ')+`（${sceneLabel()}）`,3200);
     return added;
   }
@@ -678,8 +731,8 @@
      (または鍵付き)プリセットから引き続き必要とされているか。デフォルト
      /鍵の解除時、他プリセットが同じ条件を必要としていれば残す。 */
   function presetFilterRequiredElsewhere(preset,key,{lockedOnly=false}={}){
-    const ids=(lockedOnly?lockedPresetIdsFor(S.db,S.table):defaultPresetIdsFor(S.db,S.table))
-      .filter(id=>String(id)!==String(preset.id));
+    /* 印は1つになった(§9.190)ので、lockedOnlyでも同じ集合を見る。 */
+    const ids=alwaysOnIdsFor(S.db,S.table).filter(id=>String(id)!==String(preset.id));
     if(!ids.length)return false;
     const idSet=new Set(ids);
     return (S.filterPresets||[]).some(p=>idSet.has(String(p.id))&&(p.filters||[]).some(f=>filterKey(f)===key));
@@ -691,8 +744,8 @@
      画面切替(selectTable)を待たずに反映することで、フィルタ設定画面から
      やり直した内容がその場のフィルタバーに即再適用されるようにする。 */
   function syncActiveFiltersForPreset(preset){
-    const isDefault=isDefaultPreset(preset,S.db,S.table);
-    const locked=isLockedDefaultPreset(preset,S.db,S.table);
+    const isDefault=isAlwaysOnPreset(preset,S.db,S.table);
+    const locked=isDefault;   // いつも適用＝固定(§9.190)
     (preset.filters||[]).forEach(f=>{
       const key=filterKey(f),idx=S.genericFilters.findIndex(x=>filterKey(x)===key);
       if(isDefault){
@@ -1420,17 +1473,23 @@
     if(!(await confirmModal(`「${SCENE_OF[otherMode()]}」にある ${items.length}件を、`
       +`この場面（${sceneLabel()}）でも使えるようにします。\n`
       +`条件と「デフォルト」「鍵」の印を写します（元の登録はそのまま残ります）。`)))return;
-    let ok=0,ng=0;
+    let ok=0,ng=0,markNg=0;
     for(const it of items){
       try{
         const r=await api('/api/filter-presets',{method:'POST',headers:{'Content-Type':'application/json'},
           body:JSON.stringify(withUserId({name:it.name,db:S.db,table:S.table,mode:presetMode(),
             filters:it.filters||[],owner:it.owner||'',shared:!it.owner,user:filterUserId()}))});
         ok++;
-        if(r&&r.id!=null&&(it.isDefault||it.isLocked))
-          await api('/api/filter-presets/marks',{method:'POST',headers:{'Content-Type':'application/json'},
-            body:JSON.stringify(withUserId({user:filterUserId(),id:r.id,
-              isDefault:!!it.isDefault,isLocked:!!it.isLocked}))}).catch(()=>{});
+        /* **印も一緒に運ぶ**(§9.190)。「いつも適用（固定）」は1つの印なので、
+           どちらかが付いていれば両方を立てて写す。**失敗を握り潰さない**
+           ——写したのに効かない状態が一番分かりにくい。 */
+        if(r&&r.id!=null&&(it.isDefault||it.isLocked)){
+          try{
+            await api('/api/filter-presets/marks',{method:'POST',headers:{'Content-Type':'application/json'},
+              body:JSON.stringify(withUserId({user:filterUserId(),id:r.id,
+                isDefault:true,isLocked:true}))});
+          }catch(_){markNg++}
+        }
       }catch(_){ng++}
     }
     presetsLoadedFor=null;defaultsAppliedFor=null;
@@ -1439,7 +1498,9 @@
     renderFilterPresetList();
     reapplyDefaultFilters();
     showToast&&showToast('この場面でも使えるようにしました',
-      `${ok}件を写しました${ng?`（${ng}件は失敗）`:''}`,4000);
+      `${ok}件を写しました${ng?`（${ng}件は失敗）`:''}`
+      +(markNg?`\n${markNg}件は「いつも適用」の印を保存できませんでした`:''),
+      markNg?8000:4000);
   }
   async function openFilterPresetModal(){
     ensureFilterPresetModal();$('#filterPresetModal').hidden=false;ioClose();
@@ -1511,34 +1572,31 @@
       const item=document.createElement('div');item.className='filter-preset-item';
       const conds=(p.filters||[]).map(f=>`<span class="fp-cond">${esc(f.column)} <b>${esc(opShort(f.op))}</b>${noValueOp(f.op)?'':' '+esc(f.value)}</span>`).join('');
       const applicable=forThis.includes(p);
-      const locked=isLockedDefaultPreset(p,S.db,S.table);
+      const always=isAlwaysOnPreset(p,S.db,S.table);
       /* **色だけで持ち主を伝えない**(§9.172)。「自分だけ」「みんな」という
          言葉をそのまま出し、押せば入れ替わることをtitleで言う。 */
       const ownLabel=p.owner?'自分だけ':'みんな';
       const ownBtn=`<button type="button" class="fp-own${p.owner?' is-mine':''}" `
         +`title="${p.owner?'あなただけに見えている登録です。押すと、みんなで使えるようになります。':'みんなに見えている登録です。押すと、自分だけのものになります（ほかの人の一覧から消えます）。'}">`
         +`${ownLabel}</button>`;
-      const defaultToggle=applicable?`<label class="fp-default" title="この一覧を開いたときに自動で適用します（この印は${esc(filterUserLabel())}だけのもので、ほかの人には付きません）"><input type="checkbox" class="fp-default-check"${isDefaultPreset(p,S.db,S.table)?' checked':''}> デフォルト</label>`:'';
-      const lockToggle=applicable?`<button type="button" class="fp-lock-btn${locked?' locked':''}" aria-pressed="${locked}" title="${locked?'鍵付き必須条件: 一覧を開くたびに自動適用され、外す際は確認が必要です。もう一度押すと鍵だけ外せます（デフォルト適用は維持）。':'鍵を付けると、デフォルト適用した上で外す際に確認が必要な必須条件になります。'}">${locked?'🔒':'🔓'}</button>`:'';
+      /* **印は1つ**(§9.190)。「デフォルト」と「鍵」を分けていたのをやめ、
+         「いつも適用（固定）」だけにした。言葉は利用者の言い方に合わせる。 */
+      const defaultToggle=applicable?`<label class="fp-always${always?' is-on':''}" title="この一覧を開くたびに必ず入ります。手で外そうとすると確認し、再読み込み・再起動のあとも入ったままになります。この印は${esc(filterUserLabel())}だけのもので、ほかの人には付きません。"><input type="checkbox" class="fp-default-check"${always?' checked':''}> いつも適用<b>（固定）</b></label>`:'';
+      const lockToggle='';
       item.innerHTML=`<div class="fp-name" title="${esc(p.name)}">${esc(p.name)}${p.uses?`<small>使用 ${p.uses}回</small>`:''}</div><div class="fp-own-cell">${ownBtn}</div><div class="fp-target">${esc((p.db||'全DB')+' / '+(p.table||'全テーブル'))}</div><div class="fp-conds">${conds||'<span class="fp-cond">条件なし</span>'}</div><div class="fp-actions">${defaultToggle}${lockToggle}<button class="apply" type="button">適用</button><button class="danger" type="button">削除</button></div>`;
       item.querySelector('.apply').onclick=()=>{applyPreset(p);$('#filterPresetModal').hidden=true};
       item.querySelector('.fp-own').onclick=()=>togglePresetOwner(p);
       item.querySelector('.danger').onclick=()=>deletePreset(p);
       item.querySelector('.fp-default-check')?.addEventListener('change',async e=>{
-        // 鍵付きのままデフォルトを外すと固定フィルタの意味が失われるため、
-        // 鍵が付いている場合は確認の上でデフォルトと鍵を同時に外す。
-        if(!e.target.checked&&isLockedDefaultPreset(p,S.db,S.table)){
-          if(!(await confirmModal(`このフィルタ「${p.name}」は鍵付きの必須条件です。デフォルトを外すと鍵も一緒に解除されます。\n本当によろしいですか？`))){e.target.checked=true;return}
-          setLockedDefaultPreset(p,S.db,S.table,false);
+        const on=!!e.target.checked;
+        /* 外すときは確認する——「いつも適用」は外れないことに値打ちがあるので、
+           うっかり外れないようにする（§9.190）。 */
+        if(!on&&!(await confirmModal(
+          `「${p.name}」の「いつも適用（固定）」を外します。\n`
+          +`この一覧を開いても自動では入らなくなります。よろしいですか？`))){
+          e.target.checked=true;return;
         }
-        toggleDefaultPreset(p,S.db,S.table);
-        syncActiveFiltersForPreset(p);
-        renderFilterPresetList();
-      });
-      item.querySelector('.fp-lock-btn')?.addEventListener('click',()=>{
-        const nowLocked=!isLockedDefaultPreset(p,S.db,S.table);
-        setLockedDefaultPreset(p,S.db,S.table,nowLocked);
-        if(nowLocked&&!isDefaultPreset(p,S.db,S.table))setDefaultPreset(p,S.db,S.table,true);
+        await setAlwaysOnPreset(p,S.db,S.table,on);
         syncActiveFiltersForPreset(p);
         renderFilterPresetList();
       });

@@ -115,6 +115,12 @@
 /* マスタ種別ごとの補足説明(MASTER_DEFS[].hint)。警告ではなく前提知識の
    案内のため、mm-import-warningより控えめな配色にする。 */
 .mm-def-hint{margin:0;padding:8px 12px;border:1px solid #d6e0e3;border-radius:var(--radius-sm);background:#f7fafb;color:#526970;font-size:var(--fs-sm);line-height:1.5}
+/* 気をつけてほしいこと(§9.192)。**注意は注意の見た目で**——同じ薄い枠に
+   混ぜると読み飛ばされる。色だけに頼らず、文で何が起きるかを書く。 */
+.mm-warn-note{margin:var(--space-2) 0 0;padding:var(--space-2) var(--space-3);
+  border:1px solid var(--warn-border);border-radius:var(--radius-sm);
+  background:var(--warn-bg);color:var(--warn-fg);font-size:var(--fs-sm);line-height:1.5}
+.mm-warn-note code{font-size:var(--fs-tiny)}
 .mm-form-fields{display:flex;flex-wrap:wrap;gap:var(--space-3);align-items:flex-start}
 .mm-field{display:flex;flex-direction:column;gap:var(--space-1);min-width:0}
 .mm-field>span{font-size:var(--fs-sm);color:#526970;font-weight:700;display:flex;align-items:center;gap:var(--gap-tight);white-space:nowrap}
@@ -450,4 +456,13 @@
 .pc-source b{color:var(--ink)}
 .pc-source code{font-size:var(--fs-tiny);color:var(--muted);letter-spacing:.04em}
 .pc-source-next{font-style:normal;font-size:var(--fs-tiny);color:var(--nav);font-weight:700}
+/* 共有スケジュールの書き込み役(§9.192)。読み取り専用の状態表示なので
+   入力欄風の枠を付けない（§9.129）。役が「このPC」かどうかは色だけで
+   なく文で言い、色は補助に留める。 */
+.pc-owner-status{display:grid;gap:var(--gap-hair);font-size:var(--fs-sm);color:var(--ink-2)}
+.pc-owner-who{color:var(--ink)}
+.pc-owner-who.is-me{color:var(--nav)}
+.pc-owner-off{color:var(--muted)}
+.pc-owner-lines{display:flex;flex-wrap:wrap;gap:var(--space-2);
+  font-size:var(--fs-tiny);color:var(--muted)}
 }

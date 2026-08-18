@@ -88,6 +88,12 @@ SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT=1500
 #              こちらが写し続けて共有を掴み続けるのを防ぐ(利用者の指示で30秒)。
 SCHEDULE_WATCH_INTERVAL_SEC_DEFAULT=15
 SCHEDULE_WATCH_PAUSE_SEC_DEFAULT=30
+# 共有スケジュールの「持ち主」(§9.192)。1台だけが共有ファイルへ書き、
+# 他の端末は書き込みをその1台へHTTPで頼む。
+#   PORT+1 を受け口にする（本体のFlaskは 127.0.0.1 のまま。受け口だけLANへ開く）。
+#   TTL … 目印(schedule.owner.json)の有効期限。切れたら別の端末が名乗り出る。
+SCHEDULE_OWNER_PORT_DEFAULT=PORT+1
+SCHEDULE_OWNER_TTL_SEC_DEFAULT=90
 
 # 負荷率(換算係数)モデル(docs/SCHEDULE_MODE_DESIGN.md §6)。
 # LOAD_FACTOR_CACHE_TTL_SEC: 設備ごとの算出結果をプロセス内にキャッシュする

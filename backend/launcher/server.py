@@ -43,6 +43,20 @@ def run():
             schedule_sync.watch_interval_sec(),schedule_sync.watch_pause_sec())
  except Exception as e:
   log.warning('共有スケジュールの見張りを開始できませんでした: %s',e)
+ # 共有スケジュールの持ち主(§9.192)。**既定は off**なので、入れると決めた
+ # 現場だけが動く。持ち主になれた端末だけが小さな受け口をLANへ開く。
+ # 見張りは**入れていなくても回す**（1分ごとに設定だけを見る。共有には触らない）。
+ # こうしておくと、マスタ管理で入れ切りしたときに再起動を待たなくてよい。
+ try:
+  from backend import schedule_owner
+  schedule_owner.start()
+  if schedule_owner.enabled():
+   log.info('共有スケジュールの持ち主機構: 有効（受け口 %s）',
+            ', '.join(schedule_owner.local_urls()))
+  else:
+   log.info('共有スケジュールの持ち主機構: 無効（各端末が自分で共有へ書きます）')
+ except Exception as e:
+  log.warning('持ち主機構を開始できませんでした: %s',e)
  log.info('Webサーバー: 起動します (%s:%s)',HOST,PORT)
  try:
   # threaded=True: 既定(シングルスレッド)のままだと、仕掛/品質データや

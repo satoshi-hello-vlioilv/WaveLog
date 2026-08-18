@@ -36,6 +36,7 @@ ALWAYS = ['test_patchlint', 'test_globallint', 'test_dskeylint', 'test_csslint',
 G = {}
 G['一覧'] = ['test_nav', 'test_navdyn', 'test_listcache', 'test_listperf', 'test_allrows',
              'test_filterio', 'test_filteruser', 'test_filteractive', 'test_filterkeep',
+             'test_filterlock',
              'test_cols', 'test_hdctx', 'test_dsnav', 'test_dsrestart', 'test_listmodal', 'test_filter',
              'test_audit', 'test_sub', 'test_uisize', 'test_ttlcache']
 G['列'] = ['test_collayout', 'test_colformat', 'test_colrule', 'test_colsort', 'test_lcpanel',
@@ -49,7 +50,8 @@ G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'te
                      'test_scwritespeed', 'test_split_layout', 'test_sccols',
                      'test_sctimecols', 'test_scinsert', 'test_audittrail',
                      'test_scstop', 'test_scwarm', 'test_scundecided',
-                     'test_scwatchui', 'test_scwatch', 'test_sccomment']
+                     'test_scwatchui', 'test_scwatch', 'test_sccomment',
+                     'test_scowner']
 G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 'test_eqkind',
                'test_shift', 'test_dbequip', 'test_crudroutes', 'test_setpage', 'test_eqstd']
 G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'test_flows',
@@ -165,6 +167,9 @@ RULES = [
     ('backend/schedule_calc.py', g('スケジュール', 'test_eqstd')),
     ('backend/sort_order.py', g('列', 'test_tablequery')),
     ('backend/schedule_watch.py', g('スケジュール')),
+    # 共有スケジュールの持ち主(§9.192)。書込の入口(routes/schedule.py)と
+    # 書込ガード(access_mode.py)の両方に手が入るので、権限の網も回す。
+    ('backend/schedule_owner.py', g('test_scowner', 'test_modeguard', 'スケジュール')),
     ('tests/fixtures/sort_cases.json', g('test_sortpipe', 'test_sortcustom')),
     ('backend/schedule_sync.py', g('test_sclock', 'test_scsync', 'test_scwritespeed',
                                    'test_screorder', 'test_atomicio')),

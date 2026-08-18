@@ -60,6 +60,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  }
  let scState={equipment:'',entries:[],anchor:null,warnings:[],configured:true,
               editable:false,pickerEnabled:false,stopReasons:[],dragId:null,insertBefore:'',
+              editingComment:null,   // 申し送りをその場で書いている行のID(§9.191)
+              focusComment:null,     // 落として入れた枠。描き終わりで開く
               /* まとめて外す(§9.170)。選んだ予定のid(文字列)と、掴んでいる
                  最中の「まとめて運んでいる一式」。単発の並べ替えと混ざらない
                  よう、複数を掴んでいる間は dragIds に入れて dragId と
@@ -114,7 +116,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     **勝手に読み直さない場面がある**——掴んで動かしている最中・選んでいる
     最中・書込を待っている最中に行が入れ替わると、何をしていたか分からなく
     なる。そのときは帯で知らせて、押されたら読み直す。 */
- let scSyncTimer=null,scSyncSeen=null,scSyncState=null;
+ let scSyncTimer=null,scSyncSeen=null,scSyncState=null,scOwnerState=null,scOwnerTick=0;
  function syncChipText(st){
   if(!st||!st.configured)return '';
   if(!st.enabled)return '共有: 読むたびに取り込み';
@@ -124,24 +126,47 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
             :`${Math.round(age/60)}分前に取り込み`;
   return `共有: ${when}`;
  }
+ /* 書き込み役(§9.192)。**入れている現場でだけ出す**——使っていない現場に
+    「持ち主」という覚える言葉を増やさない。色だけで伝えないので、
+    このPCなのか他のPCなのかを必ず文字で書く。 */
+ function ownerChipText(o){
+  if(!o||!o.enabled||!o.configured)return '';
+  if(o.isOwner)return '書込役: このPC';
+  if(o.ownerPc)return `書込役: ${o.ownerPc}`;
+  return '書込役: 探しています';
+ }
+ function ownerChipTitle(o){
+  if(!o||!o.enabled||!o.configured)return [];
+  const lines=['共有ファイルへ実際に書くのは1台だけです（他のPCはその1台へ書き込みを頼みます）。'];
+  if(o.isOwner)lines.push(`このPCが書込役です（受け口 ${(o.myUrls||[]).join(' / ')}）。`);
+  else if(o.ownerPc)lines.push(`書込役は ${o.ownerPc}${o.ownerLogin?`（${o.ownerLogin}）`:''} です`
+                               +`${o.ownerUrl?` / ${o.ownerUrl}`:''}。`);
+  else lines.push('書込役がまだ決まっていません（決まるまでは各PCが自分で書きます）。');
+  if(o.ownerAliveSec!=null)lines.push(`最後の生存確認: ${Math.round(o.ownerAliveSec)}秒前（期限 ${o.ttlSec}秒）`);
+  if(o.relays)lines.push(`頼んだ回数: ${o.relays}回${o.relayFail?` / 届かなかった: ${o.relayFail}回`:''}`);
+  if(o.lastError)lines.push(`最後のエラー: ${o.lastError}（届かないあいだは自分で書きます）`);
+  return lines;
+ }
  function renderSyncChip(){
   const el=$('#scSyncChip');if(!el)return;
   const st=scSyncState;
-  const text=syncChipText(st);
-  el.hidden=!text;
-  if(!text)return;
-  el.textContent=text;
-  el.title=[`${st.intervalSec}秒ごとに共有の改訂番号を確かめ、変わっていたら取り込みます。`,
-            `取り込んだ直後は${st.pauseSec}秒休みます（更新が続いているときに共有を掴み続けないため）。`,
-            st.revision!=null?`いまの改訂番号: ${st.revision}`:'',
-            st.lastError?`最後のエラー: ${st.lastError}`:'',
+  const text=syncChipText(st),own=ownerChipText(scOwnerState);
+  el.hidden=!text&&!own;
+  if(el.hidden)return;
+  el.textContent=[text,own].filter(Boolean).join(' ・ ');
+  el.title=[st&&st.configured?`${st.intervalSec}秒ごとに共有の改訂番号を確かめ、変わっていたら取り込みます。`:'',
+            st&&st.configured?`取り込んだ直後は${st.pauseSec}秒休みます（更新が続いているときに共有を掴み続けないため）。`:'',
+            st&&st.revision!=null?`いまの改訂番号: ${st.revision}`:'',
+            st&&st.lastError?`最後のエラー: ${st.lastError}`:'',
+            ...ownerChipTitle(scOwnerState),
             '押すといま取り込みます。'].filter(Boolean).join('\n');
-  el.classList.toggle('is-error',!!st.lastError);
+  el.classList.toggle('is-error',!!((st&&st.lastError)||(scOwnerState&&scOwnerState.lastError&&scOwnerState.relayFail)));
   el.onclick=syncNow;
  }
  /* いま読み直してよいか。**途中の操作を壊さない**ことだけを見る。 */
  function canAutoReload(){
   return !scState.dragId&&!scState.dragIds&&!scWriteQueue.length&&!scQueueRunning
+         &&!scState.editingComment
          &&!(scState.picked&&scState.picked.size)
          &&!document.querySelector('.sc-float-win:not([hidden])')
          &&!listModalOpen;
@@ -158,7 +183,16 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  async function refreshSyncBadge(){
   try{
    const st=await api('/api/schedule/sync-status');
-   scSyncState=st;renderSyncChip();
+   scSyncState=st;
+   /* 書き込み役は**別の問い合わせ**（取り込みの状態とは別の話なので混ぜない）。
+      **入れていない現場では聞き続けない**——10秒ごとに聞く必要があるのは
+      「持ち主が入れ替わったか」を追うときだけで、offのままの現場では
+      5分に1回で足りる（設定を入れたら次の回で気づく）。 */
+   if(!scOwnerState||scOwnerState.enabled||scOwnerTick<=0){
+    try{scOwnerState=await api('/api/schedule/owner-status')}catch(e){}
+    scOwnerTick=(scOwnerState&&scOwnerState.enabled)?0:30;
+   }else scOwnerTick--;
+   renderSyncChip();
    if(!st.configured||st.revision==null)return;
    /* **基準は読み直すたびに置き直す**——自分の書込でも改訂番号は上がる
       ので、直前の値と比べるだけでは自分の変更で読み直してしまう。 */
@@ -262,7 +296,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      <button type="button" class="sc-split-toggle" id="scContentModalBtn" hidden title="このスケジュール表に出す列・並び・幅・書式をまとめて設定します（設備ごとに保存）">☰ 表示列</button>
      <button type="button" class="sc-split-toggle" id="scListModalBtn" hidden title="仕掛一覧をポップアップで表示してドラッグで追加します">⧉ ポップアップ</button>
      <button type="button" class="sc-split-toggle" id="scStopModalBtn" hidden title="設備停止をポップアップから追加します">⛔ 設備停止</button>
-     <button type="button" class="sc-split-toggle" id="scCommentBtn" hidden title="申し送り（コメント）を予定の列へ挟みます。時間は取りません">💬 コメント</button>
+     <button type="button" class="sc-split-toggle" id="scCommentBtn" draggable="true" hidden title="申し送り（コメント）を予定の列へ挟みます。時間は取りません。&#10;・掴んで予定の間へ落とすと、空の枠だけが入ります（あとでダブルクリックして書けます）&#10;・押すとその場で書いて入れられます">💬 コメント</button>
      <button type="button" class="sc-split-toggle" id="scPrintBtn" title="いま表示している予定を、現場へ配る形（A4）で印刷します">🖨 印刷</button>
      <button type="button" class="sc-refresh" id="scRefresh">再計算</button>
     </div>
@@ -348,7 +382,21 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   $('#scModeSingle').onclick=()=>switchToSingle();
   $('#scListModalBtn').onclick=()=>listModalOpen?closeListModal():openListModal();
   $('#scStopModalBtn').onclick=()=>stopModalOpen?closeStopModal():openStopModal();
-  $('#scCommentBtn').onclick=()=>addComment();
+  /* コメントは**掴んで落とす**こともできる(§9.191、利用者の指示
+     「D&Dでコメント枠だけ追加」)。落とすと空の枠が入り、中身は行を
+     ダブルクリックして書く。押した場合は今までどおりその場で書いて入れる。 */
+  const cmt=$('#scCommentBtn');
+  cmt.onclick=()=>addComment();
+  cmt.addEventListener('dragstart',e=>{
+   /* 掴んでいる印は**このファイルの中だけ**で持つ（受け皿も同じファイル）。
+      素の`window.*`を増やさない——`__scDragRows`は list-view.js から渡す
+      ための既存の契約で、こちらは外へ出す必要が無い（CLAUDE.md）。 */
+   scState.dragComment=true;
+   e.dataTransfer.effectAllowed='copy';
+   try{e.dataTransfer.setData('text/plain','コメント')}catch(err){/* setData制限は無視 */}
+   cmt.classList.add('is-row-dragging');
+  });
+  cmt.addEventListener('dragend',()=>{cmt.classList.remove('is-row-dragging');scState.dragComment=false});
   /* 内容欄の設定は**仕掛一覧と同じパネル**で開く(§9.120)。専用モーダルの
      実装は当面残す（他から呼ばれていないかを通しで確かめるまでの保険）。 */
   $('#scContentModalBtn').onclick=()=>openContentPanel();
@@ -760,7 +808,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   panel.classList.add('sc-drop-target');
   const dropApplicable=()=>scState.fullControl&&scState.boardMode==='single'&&!!scState.equipment&&!sessionBlocked();
   panel.addEventListener('dragover',e=>{
-   if((!window.__scDragRows&&!window.__scDragStopReason)||!dropApplicable())return;
+   if((!window.__scDragRows&&!window.__scDragStopReason&&!scState.dragComment)||!dropApplicable())return;
    e.preventDefault();
    e.dataTransfer.dropEffect='copy';
    panel.classList.add('sc-drop-active');
@@ -785,6 +833,17 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     /* 落とした位置へ入れる(§9.179改訂)。位置が決まらなければ末尾。 */
     if(WL.scheduleInsert)scState.insertBefore=WL.scheduleInsert.takeDropTarget();
     if(dropApplicable())addStopReasonToSchedule(reason.id,reason.name);
+    else clearInsertPin();
+    return;
+   }
+   /* コメントの枠だけを落とす(§9.191)。**中身は空のまま入れる**——
+      落とした位置に枠が見えてから書けるほうが、先に文章を考えるより早い。 */
+   if(scState.dragComment){
+    e.preventDefault();
+    panel.classList.remove('sc-drop-active');
+    scState.dragComment=false;
+    if(WL.scheduleInsert)scState.insertBefore=WL.scheduleInsert.takeDropTarget();
+    if(dropApplicable())addCommentAt('',{focus:true});
     else clearInsertPin();
     return;
    }
@@ -1931,7 +1990,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const keys=timelineContentKeys();
   const t=timelineTarget();
   if(e.kind!=='作業'){
-   const title=(e.title||(e.kind==='コメント'?'（コメント）':'設備停止')).trim();
+   const title=(e.title||(e.kind==='コメント'?'（ダブルクリックで書けます）':'設備停止')).trim();
    return keys.map((k,i)=>({key:k,text:i===0?title:'',raw:i===0?title:'',color:''}));
   }
   return keys.map(k=>{
@@ -1944,6 +2003,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  }
  function entryContentText(e){
   if(e.kind!=='作業')return (e.title||(e.kind==='コメント'?'（コメント）':'設備停止')).trim();
+
   const items=(scContentPrefs.equipment===scState.equipment)?scContentPrefs.items:null;
   if(items&&items.length){
    const parts=items.map(k=>contentValueOf(e.detail,k)).filter(v=>v!==undefined);
@@ -2568,7 +2628,18 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   renderPickBar(timeline);
   restoreInsertGhost();
   renderUndecided();
+  openPendingCommentEdit();
   refreshScheduledLotFilter();
+ }
+ /* 落として入れた枠を、描き終わったところで開く(§9.191)。**1回で消す**
+    ——残すと、次に描き直すたびに勝手に編集へ入る。 */
+ function openPendingCommentEdit(){
+  const id=scState.focusComment;
+  if(!id)return;
+  const entry=(scState.entries||[]).find(x=>String(x.id)===String(id));
+  if(!entry)return;                       // まだ反映前。次の描画で開く
+  scState.focusComment=null;
+  requestAnimationFrame(()=>startCommentEdit(id));
  }
 
  /* ---------- 「時刻未定」が残っているときの案内(§9.185) ----------
@@ -2922,6 +2993,21 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      if(ev.target.closest('button'))return;
      ev.preventDefault();openEntryReport(e);
     };
+   }else if(commentEditable(e)){
+    /* 申し送りは**その場で書く**(§9.191、利用者の指示「配置された
+       コメント欄をダブルクリックなどで編集モードに移行し入力する」)。
+       作業・完了の行とはkind・stateで排他なので、ダブルクリックの
+       割り当てはぶつからない。 */
+    row.classList.add('sc-row-comment-edit');
+    row.title='ダブルクリックで書き直せます';
+    row.ondblclick=ev=>{
+     if(ev.target.closest('button'))return;
+     ev.preventDefault();startCommentEdit(e.id);
+    };
+   }else if(e.kind==='コメント'){
+    /* **できないことは、できないと書く**(CLAUDE.md §4)。 */
+    row.title=e.__pending?'サーバーへ反映中です。反映されたら書けます'
+      :(sessionBlocked()?sessionHolderMessage():'この行は書き直せません');
    }
    timeline.append(row);
 
@@ -3013,7 +3099,14 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  }
  /* 時刻が動く操作。**「追加」だけではない**——外す・並べ替える・固定を
     切り替えるのも、その後ろの予定の時刻を動かす。 */
+ /* 時刻が動く操作。**「追加」だけではない**——外す・並べ替える・固定を
+    切り替えるのも、その後ろの予定の時刻を動かす。
+    **申し送りの本文だけの更新は動かさない**(§9.191)ので数えない
+    ——数えると、1文字直すたびに全部を取り直して画面が作り直される。 */
  const SC_TIME_SHIFT_OPS=new Set(['add','delete','reorder','update']);
+ const opShiftsTime=op=>!!op&&SC_TIME_SHIFT_OPS.has(op.op)
+   &&!(op.op==='update'&&Object.prototype.hasOwnProperty.call(op,'title')
+       &&!('fixedStart' in op)&&!('estimateMinutes' in op)&&!('state' in op));
  async function runWriteQueue(){
   if(scQueueRunning)return;
   scQueueRunning=true;
@@ -3041,7 +3134,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
          if(b.onFailure){try{b.onFailure(err)}catch(_e){/* ロールバック失敗は無視 */}}
         }
        });
-       if(batch.some(b=>b.op&&SC_TIME_SHIFT_OPS.has(b.op.op)))timeShifted=true;
+       if(batch.some(b=>opShiftsTime(b.op)))timeShifted=true;
        scWriteQueue.splice(0,batch.length);
        handled=true;
       }catch(e){
@@ -3065,7 +3158,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     const op=scWriteQueue[0];
     try{
      await op.run();
-     if(op.op&&SC_TIME_SHIFT_OPS.has(op.op.op))timeShifted=true;
+     if(opShiftsTime(op.op))timeShifted=true;
      scWriteQueue.shift();
     }catch(e){
      op.attempts++;
@@ -3799,15 +3892,89 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const text=String(box&&box.value||'').trim().slice(0,200);
   if(!ok)return;
   if(!text){showToast&&showToast('コメントが空です','内容を入れてから押してください',3000);return}
+  addCommentAt(text);
+ }
+ /* ---------- 申し送りをその場で書く(§9.191) ----------
+    利用者の指示「配置されたコメント欄をダブルクリックなどで編集モードに
+    移行し入力する」。**行を作り直さない**のが要点で、この画面は
+    10秒ごとの見張り(§9.188)・書込キューの後始末・並べ替えのたびに
+    `renderTimeline()`で行ごと作り直す。入力欄をそこへ置くと、打っている
+    最中に消える（受信欄と同じ罠。§9.122）。
+      ・編集中は`scState.editingComment`を立て、勝手な読み直しを止める
+      ・確定したらセルの文字だけ差し替える（`applyWorkableFlags`と同じ手）
+      ・失敗したら元の文字へ戻す（楽観的更新は`updateFixedStart`が手本） */
+ function commentEditable(e){
+  return !!e&&e.kind==='コメント'&&e.state==='予定'&&!e.__pending
+    &&scState.fullControl&&!sessionBlocked();
+ }
+ function commentRowOf(id){
+  return [...document.querySelectorAll('.sc-row-line')]
+   .find(r=>String(r.dataset.id)===String(id))||null;
+ }
+ function startCommentEdit(id){
+  const entry=(scState.entries||[]).find(x=>String(x.id)===String(id));
+  const row=commentRowOf(id);
+  if(!entry||!row||!commentEditable(entry))return;
+  const cell=row.querySelector('.sc-row-title')||row.querySelector('[data-col]');
+  if(!cell||cell.querySelector('textarea'))return;
+  scState.editingComment=String(id);
+  const before=entry.title||'';
+  const box=document.createElement('textarea');
+  box.className='sc-comment-edit';box.rows=1;box.maxLength=200;box.value=before;
+  box.title='Enterで確定／Escでやめる';
+  cell.textContent='';cell.appendChild(box);
+  box.focus();box.setSelectionRange(box.value.length,box.value.length);
+  const finish=save=>{
+   if(scState.editingComment!==String(id))return;
+   scState.editingComment=null;
+   const next=String(box.value||'').trim().slice(0,200);
+   if(!save||next===before){paintCommentCell(entry,before);return}
+   entry.title=next;paintCommentCell(entry,next);
+   queuePlanOp({op:'update',id:entry.id,title:next,
+    onFailure:()=>{entry.title=before;paintCommentCell(entry,before);
+     showToast&&showToast('コメントを保存できませんでした','元の内容へ戻しました',6000)}});
+  };
+  box.addEventListener('keydown',ev=>{
+   /* 1行の申し送りなのでEnterで確定。改行を入れたいときはShift+Enter。 */
+   if(ev.key==='Enter'&&!ev.shiftKey){ev.preventDefault();finish(true)}
+   else if(ev.key==='Escape'){ev.preventDefault();finish(false)}
+  });
+  box.addEventListener('blur',()=>finish(true));
+ }
+ /* セルの文字だけ書き換える。**行を作り直さない**（作り直すと、選択・
+    掴んでいる状態・開いている詳細まで巻き添えになる）。 */
+ function paintCommentCell(entry,text){
+  const row=commentRowOf(entry.id);if(!row)return;
+  const cell=row.querySelector('.sc-row-title')||row.querySelector('[data-col]');
+  if(!cell)return;
+  const shown=String(text||'').trim()||'（ダブルクリックで書けます）';
+  cell.textContent=shown;
+  cell.title=String(text||'')||'まだ何も書かれていません';
+  cell.classList.toggle('is-empty',!String(text||'').trim());
+ }
+
+ /* 本文と位置を受けて入れる本体。**D&Dは空のまま入れる**(§9.191)ので、
+    ここは空文字も通す（サーバー側も空を受ける。書くのは後）。 */
+ function addCommentAt(text,opts={}){
+  if(!scState.equipment)return;
   const target=scState.equipment;
   const at=takeInsertBefore();
-  const entry=makeOptimisticEntry('コメント',{title:text});
+  const entry=makeOptimisticEntry('コメント',{title:String(text||'')});
   insertEntriesAt(at,[entry]);
   renderTimeline();
-  queuePlanOp({op:'add',equipment:target,kind:'コメント',title:text,
+  queuePlanOp({op:'add',equipment:target,kind:'コメント',title:String(text||''),
    position:at?`before:${at}`:'end',
-   onSuccess:r=>resolveOptimisticEntry(entry,r),onFailure:()=>discardOptimisticEntry(entry)});
-  showToast&&showToast('申し送りを入れました',text.slice(0,40),3200);
+   onSuccess:r=>{
+    resolveOptimisticEntry(entry,r);
+    /* 落として入れた空の枠は、**そのまま書ける状態にする**——枠だけ置いて
+       「次にどうするか」を探させない。**印を立てて描き終わりで開く**
+       ——追加のあとは時刻の取り直し(§9.185)で行が作り直されるので、
+       ここで直接開くと入力欄ごと消える。 */
+    if(opts.focus)scState.focusComment=String(entry.id);
+   },
+   onFailure:()=>discardOptimisticEntry(entry)});
+  showToast&&showToast(text?'申し送りを入れました':'コメントの枠を入れました',
+    text?String(text).slice(0,40):'枠をダブルクリックすると書けます',3200);
  }
 
  /* ---------- 設備停止のポップアップ表示(§9.13新設) ----------

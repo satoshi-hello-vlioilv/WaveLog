@@ -19,7 +19,7 @@ before_requestでは判定できない(設備名はリクエストボディの�
 import json
 from datetime import datetime, timedelta
 
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, g
 
 from .. import schedule_sync
 from .. import schedule_calc
@@ -28,6 +28,7 @@ from ..repositories import schedule_repo as sr
 from ..repositories.master_repo import normalize_equipment_name, equipment_master_rows, field_reorder_equipment_allows
 from ..db_access import connect, request_user_id, request_pc_name, DBS
 from ..access_mode import current_login_id, current_pc_name, get_mode, current_permission_flags
+from ..logging_setup import app_logger
 
 bp=Blueprint('schedule',__name__)
 
@@ -49,6 +50,15 @@ def lock_status():
 def sync_status():
  try:
   return jsonify(ok=True,**schedule_sync.watch_status())
+ except Exception as e:
+  return jsonify(error=str(e)),500
+
+@bp.get('/api/schedule/owner-status')
+def owner_status():
+ """持ち主の状態(§9.192)。**誰が持ち主で、どのURLで話しているか**を画面へ。"""
+ try:
+  from .. import schedule_owner
+  return jsonify(ok=True,**schedule_owner.status())
  except Exception as e:
   return jsonify(error=str(e)),500
 
@@ -156,12 +166,25 @@ def _cfg_write_response(apply_fn):
 
 def _write_response(apply_fn):
  """POST系共通。schedule_sync.with_write()の例外を§8.0のエラー応答形式へ
- 変換する。apply_fn(c)の戻り値(dict)をそのまま応答へマージする。"""
+ 変換する。apply_fn(c)の戻り値(dict)をそのまま応答へマージする。
+
+ **共有ファイルへ書くのはここ1本**(§4.2)なので、「持ち主が1台だけ書く」
+ (§9.192)を差し込むのもここ1箇所で足りる。持ち主でなければ、いま来ている
+ リクエストをそのまま持ち主へ頼み、返事をそのまま返す。**頼めなければ
+ 今までどおり自分で書く**——持ち主が落ちていても仕事が止まらないことの
+ ほうが大事で、ロックと改訂番号の砦はそのまま残っている。"""
  x=request.get_json(force=True) or {}
  uid=request_user_id(x)
+ relayed=_relay_write(x)
+ if relayed is not None:return relayed
  try:
   result=schedule_sync.with_write(current_login_id(),current_pc_name(),uid,apply_fn)
-  return jsonify(ok=True,**(result or {}))
+  out=dict(result or {})
+  # 持ち主へ頼めなかったときは**自分で書いたことを黙らない**(§9.192)。
+  # 画面はこれを見て「書込役へ届いていません」と言える。
+  note=getattr(g,'relay_fallback',None)
+  if note:out['relayFallback']=True;out['relayNote']=note
+  return jsonify(ok=True,**out)
  except schedule_sync.ScheduleNotConfigured as e:
   return jsonify(error=str(e)),400
  except schedule_sync.LockHeldError as e:
@@ -181,13 +204,63 @@ def _write_response(apply_fn):
  except Exception as e:
   return jsonify(error=str(e)),500
 
+def _relay_write(body):
+ """持ち主へ書き込みを頼む(§9.192)。頼まないときは None。
+
+ **頼んだ結果は「持ち主が答えたそのもの」**を返す（423の編集中・409の
+ 競合・403の権限も、そのままの語彙で画面へ届く）。頼めなかったときだけ
+ Noneを返して、呼び出し元が自分で書く道へ落ちる。"""
+ try:
+  from .. import schedule_owner, schedule_watch
+ except Exception:
+  return None
+ # **中継されてきたものを中継し返さない。** 共有(Box等)の結果整合性では
+ # 目印が二重に見えることがあり、互いを持ち主だと思い込むと同じ依頼を
+ # 往復させ続ける（画面はただ固まる）。中継の印はヘッダで分かる。
+ if schedule_owner.relayed_identity(request.headers) is not None:return None
+ # **受け口が通す道だけを頼む。** ここを見ずに頼むと、あとから
+ # `_write_response()`を使う書込を1本足したときに、持ち主が
+ # 「受け付けません」と答え、その403が**そのまま画面へ出る**
+ # （自分で書けば済む場面なのに、他のPCだけ機能が欠ける）。
+ if request.path not in schedule_owner.RELAY_PATHS:return None
+ if not schedule_owner.should_relay():return None
+ status,out=schedule_owner.relay(request.path,body,current_login_id(),current_pc_name(),get_mode())
+ if status is None:
+  app_logger().warning('持ち主へ頼めなかったので自分で書きます(%s): %s',request.path,out)
+  try:g.relay_fallback=str(out or '書込役へ届きません')
+  except Exception:pass
+  return None
+ # 書けたので**自分の写しも取り直す**——取り直さないと、書いた本人の画面
+ # だけが古いままになる（他の端末は見張りが気づく）。
+ if status<400:
+  try:
+   schedule_watch.schedule_watch_once();schedule_watch.wake()
+  except Exception:pass
+ payload=dict(out or {})
+ payload['relayedTo']=schedule_owner.status().get('ownerPc') or ''
+ return jsonify(**payload),status
+
+def _request_mode():
+ """このリクエストを出した端末のモード。**中継されてきたなら頼んだ端末の
+ モード**(§9.192)。
+
+ 持ち主はたいていeditモードなので、持ち主のモードで判定すると、
+ scheduleモードの端末どうしの設備排他(§9.11)が**持ち主を経由した書き込みで
+ だけ効かなくなる**（同じ設備を2人が同時に触れる）。"""
+ try:
+  from .. import schedule_owner
+  m=schedule_owner.relayed_mode(request.headers)
+  if m:return m
+ except Exception:pass
+ return get_mode()
+
 def _check_session(equipment):
  # scheduleモード(§9.11の編集セッション対象)のときだけ強制する。editモードの
  # 現場段取り(§3.1.1、plan_reorderのみ許可)は個別の並べ替え権限で既に
  # ガードされており、この端末はそもそもセッションを取得できない
  # (POST /api/schedule/session/*はscheduleモード限定のBlueprintのため)。
  # ここで一律に要求すると現場段取り自体が機能しなくなってしまうため対象外。
- if get_mode()=='schedule':
+ if _request_mode()=='schedule':
   schedule_sync.require_session(equipment,current_login_id(),current_pc_name())
 
 # ========================================================================
@@ -252,7 +325,8 @@ def plan_update():
  x=request.get_json(force=True) or {}
  plan_id=x.get('id')
  if plan_id is None:return jsonify(error='更新対象の予定IDがありません。'),400
- fields={k:x[k] for k in ('estimateMinutes','fixedStart','remark','state') if k in x}
+ # titleは申し送り(コメント)の本文(§9.191)。他の種別では repo が弾く。
+ fields={k:x[k] for k in ('estimateMinutes','fixedStart','remark','state','title') if k in x}
  def fn(c):
   row=sr.plan_row(c,plan_id)
   if row:_check_session(row[1])
@@ -313,7 +387,7 @@ def _apply_plan_op(c,op,uid,pc=''):
   if plan_id is None:raise ValueError('更新対象の予定IDがありません。')
   row=sr.plan_row(c,plan_id)
   if row:_check_session(row[1])
-  fields={k:op[k] for k in ('estimateMinutes','fixedStart','remark','state') if k in op}
+  fields={k:op[k] for k in ('estimateMinutes','fixedStart','remark','state','title') if k in op}
   n=sr.plan_update(c,plan_id,uid,pc=pc,**fields)
   if n==0:raise ValueError('指定の予定が見つからないか、更新項目がありません。')
   return {'id':plan_id}

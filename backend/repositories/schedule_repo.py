@@ -154,7 +154,8 @@ def plan_add(c_share,equipment,kind,uid,pc='',position='end',lot_no='',inspectio
  elif kind=='コメント':
   # 中身は[予定名称]の文字だけ。**時間は必ず0**——「見積を入れれば場所を
   # 取れる」形にすると、申し送りが後続の時刻を押すことになる。
-  if not title_snapshot:raise ValueError('コメントの中身を入力してください。')
+  # **空のまま入れられる**(§9.191)。掴んで落とした時点では枠だけで、
+  # 中身は落とした場所を見てから書く（先に文章を考えさせない）。
   title_snapshot=title_snapshot[:200]
   est=0
   lot_no=inspection_no=casting_no=''
@@ -222,13 +223,23 @@ def plan_add_child(c_share,parent_id,equipment,uid,lot_no='',inspection_no='',ca
              _json.dumps(detail or {},ensure_ascii=False),PLAN_REORDERABLE_STATE,parent_id,uid,uid,pc,pc])
  return cur.lastrowid
 
-_PLAN_UPDATE_FIELDS={'estimateMinutes':'見積分','fixedStart':'固定開始日時','remark':'備考','state':'状態'}
+# title=[予定名称]。**申し送り(kind='コメント')の本文だけ**書き換えられる
+# (§9.191)。作業の予定名称は空、設備停止の予定名称は設備停止マスタの
+# スナップショットで、schedule_calc が (設備名,予定名称) で標準所要分を
+# 引いている——書き換えさせると見積の出どころが黙って変わる。
+_PLAN_UPDATE_FIELDS={'estimateMinutes':'見積分','fixedStart':'固定開始日時','remark':'備考',
+                     'state':'状態','title':'予定名称'}
 
 def plan_update(c_share,plan_id,uid,pc='',**fields):
  ensure_plan_table(c_share)
  cur=c_share.cursor()
- cur.execute('SELECT [予定ID] FROM [作業予定] WHERE [予定ID]=?',[plan_id])
- if not cur.fetchone():raise ValueError('指定の予定が見つかりません。')
+ cur.execute('SELECT [予定ID],[種別] FROM [作業予定] WHERE [予定ID]=?',[plan_id])
+ row=cur.fetchone()
+ if not row:raise ValueError('指定の予定が見つかりません。')
+ if 'title' in fields:
+  if str(row[1] or '')!='コメント':
+   raise ValueError('本文を書き換えられるのはコメントだけです。')
+  fields['title']=str(fields['title'] or '')[:200]
  sets=[];params=[]
  for key,col in _PLAN_UPDATE_FIELDS.items():
   if key in fields:

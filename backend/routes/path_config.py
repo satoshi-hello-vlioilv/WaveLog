@@ -18,7 +18,8 @@ from .. import paths
 from ..paths import APP_ROOT as BASE_DIR
 from ..config import (RNE_EXTRACT_INTERVAL_SEC_DEFAULT, SCHEDULE_LOCK_TTL_SEC_DEFAULT,
                       SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT,
-                      SCHEDULE_WATCH_INTERVAL_SEC_DEFAULT, SCHEDULE_WATCH_PAUSE_SEC_DEFAULT)
+                      SCHEDULE_WATCH_INTERVAL_SEC_DEFAULT, SCHEDULE_WATCH_PAUSE_SEC_DEFAULT,
+                      SCHEDULE_OWNER_PORT_DEFAULT, SCHEDULE_OWNER_TTL_SEC_DEFAULT)
 from .. import source_capability
 from ..logging_setup import app_logger
 from ..db_access import (
@@ -56,6 +57,11 @@ _PATH_CONFIG_DEFAULTS={
  'schedule_watch_enabled':'auto',
  'schedule_watch_interval_sec':str(SCHEDULE_WATCH_INTERVAL_SEC_DEFAULT),
  'schedule_watch_pause_sec':str(SCHEDULE_WATCH_PAUSE_SEC_DEFAULT),
+ # 共有スケジュールの持ち主(§9.192)。**既定は off**——入れると決めた現場だけが
+ # 1つのスイッチで入れる（LANへ小さな受け口を開くため）。
+ 'schedule_owner_enabled':'off',
+ 'schedule_owner_port':str(SCHEDULE_OWNER_PORT_DEFAULT),
+ 'schedule_owner_ttl_sec':str(SCHEDULE_OWNER_TTL_SEC_DEFAULT),
 }
 _PATH_CONFIG_NUMERIC_FIELDS={
  'rne_extract_interval_sec':('RNE抽出間隔(秒)',60),
@@ -63,6 +69,8 @@ _PATH_CONFIG_NUMERIC_FIELDS={
  'schedule_lock_verify_delay_ms':('ロック確認までの待機時間(ミリ秒)',0),
  'schedule_watch_interval_sec':('共有スケジュールの変化を見る間隔(秒)',5),
  'schedule_watch_pause_sec':('取り込んだあと休む時間(秒)',0),
+ 'schedule_owner_port':('持ち主の受け口のポート',1025),
+ 'schedule_owner_ttl_sec':('持ち主の目印の有効期限(秒)',30),
 }
 
 @bp.get('/api/path-config-master')
@@ -122,6 +130,12 @@ def path_config_master_get():
    # 自動で手元へ移るので、どこになったかを確かめるためだけに出す。
    'work_dir':str(paths.work_dir()),
    'work_dir_reason':paths.work_dir_reason(),
+   # マスタDB・測定データDBは**手元のもの**(§9.109で移さないと決めた側)。
+   # BOX等の同期フォルダーの中に置いたまま複数のPCで同じファイル群を起動
+   # すると、**全員が同じmaster.sqlite3へ書く**ことになり、同期の衝突で
+   # 設定が失われうる。判定はサーバーが答える（画面で推測しない）。
+   'master_cloud':paths.cloud_sync_hint(paths.db_dir()),
+   'db_dir':str(paths.db_dir()),
   }
   for src in sources:
    values.setdefault(src['valueKey'],src['saved'])
@@ -145,6 +159,7 @@ def path_config_master_update():
    errors.append('参照データの取得元は「network」「local」のいずれかを指定してください。')
   numeric_values={}
   for key,(label,minimum) in _PATH_CONFIG_NUMERIC_FIELDS.items():
+   if key not in x:continue                      # 送られてこなかった項目は触らない(下記)
    raw=str(x.get(key) if x.get(key) is not None else '').strip()
    if not raw:
     numeric_values[key]='';continue
@@ -160,16 +175,21 @@ def path_config_master_update():
   # 'sikalotnow_path'/'sikalotdef_path'を必ず書いており、キーを変えた環境では
   # 画面が送っていない古いキーへ毎回空文字を書き込んでいた（＝消していた）。
   # 個別上書きは下の「登録済みデータソースぶん」だけが受け付ける。
-  updates={
-   'sikalot_source':sikalot_source,
-   'records_backup_export_path':str(x.get('records_backup_export_path') or '').strip(),
-   'schedule_share_path':str(x.get('schedule_share_path') or '').strip(),
-   'rne_extract_enabled':rne_enabled,
-   # RNE資材・接続情報の置き場(§9.79)。空欄なら既定へ戻る。
-   'rne_assets_dir':str(x.get('rne_assets_dir') or '').strip(),
-   'rne_conf_path':str(x.get('rne_conf_path') or '').strip(),
-   **numeric_values,
-  }
+  #
+  # **送られてこなかった項目は触らない**(§9.192で判明)。固定キーの側は
+  # 「x.get(k) or ''」で必ず書いていたため、**一部だけを送る呼び出しが
+  # 残りの設定を黙って消していた**（`{'user_id':...}`だけのPOSTで
+  # `schedule_share_path`の行が消え、以降その端末ではスケジュール機能が
+  # 「未設定」になる。検証の通しで実際に踏んだ）。画面は全項目を送るので
+  # 「空欄で保存＝既定へ戻す」は今までどおり効く（キーは送られてくる）。
+  updates={}
+  if 'sikalot_source' in x:updates['sikalot_source']=sikalot_source
+  for key in ('records_backup_export_path','schedule_share_path',
+              # RNE資材・接続情報の置き場(§9.79)。空欄なら既定へ戻る。
+              'rne_assets_dir','rne_conf_path'):
+   if key in x:updates[key]=str(x.get(key) or '').strip()
+  if 'rne_extract_enabled' in x:updates['rne_extract_enabled']=rne_enabled
+  updates.update(numeric_values)
   # データソースごとの個別上書き(<キー小文字>_path)。マスタに登録された
   # ぶんだけ受け付ける(任意のキーを書けるようにはしない)。
   # **今マスタにある行を見る**(§9.163)。起動時のスナップショットで見ると、

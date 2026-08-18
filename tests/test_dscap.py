@@ -144,13 +144,21 @@ try:
                                        for v in (cap.get('features') or {}).values()),
         cap.get('error', '')[:60])
 
-    # ---- 5) 保存が固定の2件を巻き添えにしない ----
+    # ---- 5) 保存が、送っていない設定を巻き添えにしない ----
+    # **固定キーの側も同じ**(§9.192)。以前は`schedule_share_path`等を
+    # 「送られてこなければ空文字」で必ず書いており、一部だけを送るこの
+    # 保存が**共有スケジュールの置き場を消していた**（以降その端末では
+    # スケジュール機能が「未設定」になる。検証の通しで実際に踏んだ）。
     keep = (saved.get('values') or {}).get('sikalotnow_path', '')
+    keep_share = (saved.get('values') or {}).get('schedule_share_path', '')
     client.post('/api/path-config-master', json={'user_id': 'test'})   # 何も送らない保存
     after2 = client.get('/api/path-config-master').get_json() or {}
     rec('データソースの読み込み先を送らない保存で、既存の設定が消えない',
         (after2.get('values') or {}).get('sikalotnow_path', '') == keep,
         f"{keep!r} → {(after2.get('values') or {}).get('sikalotnow_path','')!r}")
+    rec('共有スケジュールの置き場も、送らない保存で消えない',
+        (after2.get('values') or {}).get('schedule_share_path', '') == keep_share,
+        f"{keep_share!r} → {(after2.get('values') or {}).get('schedule_share_path','')!r}")
 finally:
     purge()
 

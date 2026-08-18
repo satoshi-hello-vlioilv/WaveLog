@@ -1760,12 +1760,52 @@
     ${numField('schedule_watch_pause_sec','取り込んだあと休む時間','秒',5,0)}
     <p class="mm-field-hint">休む時間は「更新が続いているときに写し続けない」ためのものです。
      0にすると変化を見つけるたびに写します。</p>`)}
+   ${group('共有スケジュールへ書く役（持ち主）','保存後すぐ反映（最大1分）','is-live',`
+    <p class="mm-field-hint">共有（Box等）のschedule.sqlite3へ<b>実際に書く役を1台に絞る</b>仕掛けです。
+     他のPCは書き込みだけをその1台へLAN内のHTTPで頼み、<b>読みは今までどおり手元の写しから</b>読みます
+     （画面のURLは全員 http://127.0.0.1:5029/ のままで、ブラウザの使い方は変わりません）。
+     <b>持ち主が落ちていても止まりません</b>——頼めなかったPCは今までどおり自分で共有へ書きます。</p>
+    <label class="mm-field"><span>書き込み役を1台に絞る</span><select data-pc-field="schedule_owner_enabled">${
+     [['','（既定）off: 各PCが自分で共有へ書く'],['off','off: 各PCが自分で共有へ書く'],
+      ['on','on: 最初に入った1台が書き込み役になる']]
+      .map(([val,label])=>`<option value="${esc(val)}"${(v.schedule_owner_enabled||'')===val?' selected':''}>${esc(label)}</option>`).join('')
+    }</select><small class="mm-field-hint">onにすると、書き込み役になったPCだけが下のポートを<b>LANへ開きます</b>
+      （合言葉つきの決められた書き込みしか受け付けません）。社内の決まりを確認してから入れてください。</small></label>
+    ${numField('schedule_owner_port','書き込み役の受け口ポート','',1,1025)}
+    ${numField('schedule_owner_ttl_sec','書き込み役の目印の有効期限','秒',10,30)}
+    <p class="mm-field-hint">目印（共有フォルダの schedule.owner.json）は期限の1/3ごとに更新されます。
+     書き込み役のPCを閉じると、期限が切れた時点で<b>別のPCが自動で引き継ぎます</b>。</p>
+    <div id="scheduleOwnerStatus" class="pc-owner-status">状態を読み込んでいます…</div>`)}
    ${group('いま効いている値','確認用','is-info',`<div id="pathConfigActive"></div>`)}
   </div>
   <div class="mm-form-tail mm-set-sticky"><button type="submit" class="mm-btn-primary">パス設定を保存</button><span class="mm-form-hint">更新者IDは画面右上の入力欄を使用します。</span></div>`;
   form.onsubmit=ev=>{ev.preventDefault();savePathConfigMaint()};
   bindInputHelpers(form);
   refreshRneStatus();
+  refreshOwnerStatus();
+ }
+
+ /* ---------- 書き込み役の状態(§9.192) ----------
+    「入れたのに効いているのか分からない」を作らない。誰が役をしていて、
+    このPCから見えているか（届いているか）までを文字で出す。 */
+ async function refreshOwnerStatus(){
+  const box=$('#scheduleOwnerStatus');if(!box)return;
+  let o;
+  try{o=await api('/api/schedule/owner-status')}
+  catch(e){box.innerHTML=`<span class="pc-owner-off">状態を取得できません: ${esc(e.message)}</span>`;return}
+  if(!o.configured){box.innerHTML='<span class="pc-owner-off">スケジュールの共有データ置き場が未設定のため、この設定は効きません。</span>';return}
+  if(!o.enabled){box.innerHTML='<span class="pc-owner-off">いまは <b>off</b>（各PCが自分で共有へ書いています）。</span>';return}
+  const who=o.isOwner?'<b>このPCが書き込み役です。</b>'
+           :(o.ownerPc?`書き込み役は <b>${esc(o.ownerPc)}</b>${o.ownerLogin?`（${esc(o.ownerLogin)}）`:''} です。`
+                      :'書き込み役はまだ決まっていません（決まるまでは各PCが自分で書きます）。');
+  const lines=[
+   o.isOwner?`受け口: ${esc((o.myUrls||[]).join(' / '))}`:(o.ownerUrl?`話しかけ先: ${esc(o.ownerUrl)}`:''),
+   o.ownerAliveSec!=null?`最後の生存確認: ${Math.round(o.ownerAliveSec)}秒前（期限 ${esc(String(o.ttlSec))}秒）`:'',
+   o.relays?`頼んだ回数: ${o.relays}回${o.relayFail?` / 届かなかった: ${o.relayFail}回`:''}`:'',
+   o.lastError?`最後のエラー: ${esc(o.lastError)}（届かないあいだは自分で書きます）`:''
+  ].filter(Boolean);
+  box.innerHTML=`<div class="pc-owner-who${o.isOwner?' is-me':''}">${who}</div>`+
+   (lines.length?`<div class="pc-owner-lines">${lines.map(t=>`<span>${t}</span>`).join('')}</div>`:'');
  }
 
  /* ---------- RNE抽出の状態表示と手動実行(§9.50) ----------
@@ -1873,7 +1913,17 @@
    const pending=pendingKeys.has(key)||(!!savedRaw&&savedRaw!==activeRaw);
    return `<div class="mm-row${pending?' is-pending-restart':''}" style="grid-template-columns:${tmpl}"><span>${esc(label)}</span><span title="${esc(activeText[key])}">${esc(activeText[key])}</span><span title="${esc(savedText[key])}">${esc(savedText[key])}${pending?'<b class="mm-restart-flag">再起動待ち</b>':''}</span></div>`;
   }).join('');
-  list.innerHTML=head+rows+`<p class="mm-def-hint" style="margin-top:10px">RNE抽出間隔: 保存値 ${esc(v.rne_extract_interval_sec||pathConfigState.defaults.rne_extract_interval_sec||'')}秒 / スケジュールロック有効期限: ${esc(v.schedule_lock_ttl_sec||pathConfigState.defaults.schedule_lock_ttl_sec||'')}秒 / ロック確認待機: ${esc(v.schedule_lock_verify_delay_ms||pathConfigState.defaults.schedule_lock_verify_delay_ms||'')}ミリ秒（いずれも再起動不要で次回から反映）</p>`;
+  /* **作り直せるファイルの置き場**(§9.109)と、**マスタDBが同期フォルダーの
+     中にあるとき**の注意(§9.192)。どちらも設定ではないが、共有(BOX等)に置いた
+     ファイル群を複数のPCから起動する現場では、**知らないと壊れ方が分からない**。 */
+  const wd=v.work_dir?`<p class="mm-def-hint">作り直せるファイル（写し・スケジュールの作業コピー）の置き場: ${esc(v.work_dir)}`
+    +`${v.work_dir_reason?`<b>（${esc(v.work_dir_reason)}）</b>`:''}</p>`:'';
+  const cloud=v.master_cloud?`<p class="mm-warn-note"><b>マスタDBが${esc(v.master_cloud)}の中にあります</b>（${esc(v.db_dir||'')}）。
+    このフォルダーを<b>複数のPCから同時に起動すると、全員が同じマスタへ書き込みます</b>——
+    同期の衝突で設定が失われることがあります。各PCの手元へ置く場合は
+    <code>config/local.json</code> の <code>db_dir</code> を、そのPCのローカルフォルダーへ向けてください
+    （共有したいのは作業予定だけです。上の「スケジュール機能の共有データ置き場」で共有します）。</p>`:'';
+  list.innerHTML=head+rows+wd+cloud+`<p class="mm-def-hint" style="margin-top:10px">RNE抽出間隔: 保存値 ${esc(v.rne_extract_interval_sec||pathConfigState.defaults.rne_extract_interval_sec||'')}秒 / スケジュールロック有効期限: ${esc(v.schedule_lock_ttl_sec||pathConfigState.defaults.schedule_lock_ttl_sec||'')}秒 / ロック確認待機: ${esc(v.schedule_lock_verify_delay_ms||pathConfigState.defaults.schedule_lock_verify_delay_ms||'')}ミリ秒（いずれも再起動不要で次回から反映）</p>`;
  }
  async function savePathConfigMaint(){
   const uid=requireMaintUser();if(uid===null)return;

@@ -244,11 +244,16 @@
 .filter-preset-item .fp-actions{display:flex;align-items:center;gap:var(--gap-inline)}
 .filter-preset-item .fp-actions .apply{background:var(--teal);color:#fff;border-color:var(--teal)}
 .filter-preset-item .fp-actions .danger{color:#9d2020;background:#fff7f7;border-color:#dab0b0}
-.fp-default{display:flex;align-items:center;gap:var(--space-1);padding:var(--pad-row);border:1px solid #cddbde;border-radius:var(--radius-sm);background:#f7fafb;font-size:var(--fs-micro);font-weight:700;color:#40606a;white-space:nowrap;cursor:pointer}
-.fp-default input{margin:0}
-.fp-lock-btn{width:var(--ctl-h-sm);height:var(--ctl-h-sm);line-height:1;border:1px solid #cddbde;background:#f7fafb;color:#40606a;cursor:pointer}
-.fp-lock-btn:hover{border-color:#9fc3c8}
-.fp-lock-btn.locked{background:#fff2cc;border-color:#e0b23d;color:#6b5200}
+/* 「いつも適用（固定）」は**印1つ**(§9.190)。以前は「デフォルト」の
+   チェックと鍵ボタンの2つに分かれており、片方だけ付いた状態が作れて
+   しまううえ、利用者は2つの言葉を覚えることになっていた。
+   **付いていることが一目で分かる**ように、付いたら面で示す（文字も
+   「固定」と書く——色だけで意味を伝えない）。 */
+.fp-always{display:flex;align-items:center;gap:var(--space-1);padding:var(--pad-row);border:1px solid #cddbde;border-radius:var(--radius-sm);background:#f7fafb;font-size:var(--fs-micro);font-weight:700;color:#40606a;white-space:nowrap;cursor:pointer}
+.fp-always input{margin:0}
+.fp-always b{font-weight:800}
+.fp-always.is-on{background:#fff2cc;border-color:#e0b23d;color:#6b5200}
+.fp-always:hover{border-color:#9fc3c8}
 .fp-cond{display:inline-flex;align-items:center;gap:var(--gap-tight);padding:var(--pad-chip);border-radius:var(--radius-md);border:1px solid #cddbde;background:#f7fafb;font-size:var(--fs-micro);white-space:nowrap}
 .fp-cond b{color:#075e67}
 @media(max-width:820px){.filter-preset-item{grid-template-columns:1fr auto auto;gap:var(--gap-inline)}.filter-preset-item .fp-conds{grid-column:1/-1}}

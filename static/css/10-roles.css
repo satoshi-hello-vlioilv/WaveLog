@@ -52,7 +52,7 @@
 .filter-preset-toolbar button,.mm-act button,.mm-btn-ghost.sm,.mm-btn-primary.sm,
 .sc-float-foot button,.record-sync-bar button,.rp-back-btn,
 .split-ghost-btn,.qa-v7 .qa-seg button,.sc-stop-button,.sc-column-actions button,
-.split-recheck-btn,.rp-foot-btn,.fp-lock-btn,main>footer #prev,main>footer #next{
+.split-recheck-btn,.rp-foot-btn,main>footer #prev,main>footer #next{
   height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
   font-size:var(--fs-sm);border-radius:var(--radius-sm);
 }
@@ -85,7 +85,6 @@
    アイコンだけのボタンと、狭い列に3つ並ぶ操作ボタン。横余白を上の表の
    ままにすると中身が入らないので、**幅の制約がある部品だけ**を明示して外す
    (「なんとなく狭くしたい」で外さない。外すたびに揃わなくなる)。 */
-.fp-lock-btn{padding:0}
 /* ロット№のセル内リンクは省略記号(…)を効かせるため display:block のまま。
    ボタンと違って中身が自動で中央に来ないので、行の高さで縦位置を作る。
    **上下の罫線1pxずつを引くこと**(§9.112)——`box-sizing:border-box`では
