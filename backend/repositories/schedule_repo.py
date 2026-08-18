@@ -712,6 +712,15 @@ def base_minutes_override(c_master,equipment):
 #    側で行う(稼働カレンダーマスタのworking_slots_for_dateと同じ構造)。
 #    終了時刻<=開始時刻は日跨ぎ勤務として扱う(例: 23:00〜07:00の3直)。
 # ========================================================================
+# 現場歴の日付補正(§9.195)。日を跨ぐ勤務区分の**跨いだ後の時間帯**に当てる
+# 日数。未設定は -1（＝跨いだ部分は前の日として数える。3直 23:00〜翌7:00 の
+# 翌2:00は「その日の3直」）。跨がない区分には効かない（当てる時間帯が無い）。
+# **日付の演算をここへ埋め込まないこと**(利用者の指示)——現場ごとに
+# 「どこで日が変わるか」は違うので、マスタの1列で直せる形にしてある。
+SHIFT_SEGMENT_DAYOFF_COLUMN=('日付補正','INTEGER')
+SHIFT_DAYOFF_DEFAULT=-1
+SHIFT_DAYOFF_LIMIT=7
+
 SHIFT_TABLE='勤務形態マスタ'          # 旧・フラット構造(移行元としてのみ参照)
 SHIFT_PATTERN_TABLE='勤務体系マスタ'   # 親: 日勤 / 交替勤務(1,2,3直) など
 SHIFT_SEGMENT_TABLE='勤務区分マスタ'   # 子: 1直 7:00-15:00 など
@@ -751,8 +760,35 @@ def ensure_shift_pattern_tables(c_master):
   cur.execute('CREATE TABLE [勤務体系設備マスタ] ([ID] INTEGER PRIMARY KEY AUTOINCREMENT, [勤務体系ID] INTEGER, [設備名] TEXT, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
   cur.execute('CREATE UNIQUE INDEX [UX_勤務体系設備マスタ] ON [勤務体系設備マスタ] ([勤務体系ID],[設備名])')
   c_master.commit();created=True
+ # 日付補正(§9.195)は後から足した列。現場で動いているDBを作り直さないため
+ # 「無ければALTER TABLEで足す」方式にする(他のマスタと同じ)。
+ if SHIFT_SEGMENT_DAYOFF_COLUMN[0] not in {r[1] for r in c_master.cursor().execute(f'PRAGMA table_info([{SHIFT_SEGMENT_TABLE}])')}:
+  c_master.cursor().execute(f'ALTER TABLE [{SHIFT_SEGMENT_TABLE}] ADD COLUMN [{SHIFT_SEGMENT_DAYOFF_COLUMN[0]}] {SHIFT_SEGMENT_DAYOFF_COLUMN[1]}')
+  c_master.commit()
  _migrate_shift_pattern_equipment(c_master)
  return created
+
+def crosses_midnight(start,end):
+ """日を跨ぐ勤務区分か（終了<=開始）。判定はここ1箇所。"""
+ def hm(v):
+  t=str(v or '').strip().split(':')
+  try:return int(t[0])*60+int(t[1])
+  except Exception:return None
+ a,b=hm(start),hm(end)
+ if a is None or b is None:return False
+ return b<=a
+
+def segment_day_offset(start,end,raw):
+ """この区分の「跨いだ後の時間帯」に当てる日付補正（現場歴。§9.195）。
+
+ **跨がない区分は必ず0**——当てる時間帯そのものが無いので、値を持たせても
+ 効かない（効かない設定を画面に出さないための判定もここを見る）。
+ 未設定は -1。0を明示すれば太陽暦どおりに戻せる。"""
+ if not crosses_midnight(start,end):return 0
+ if raw in (None,''):return SHIFT_DAYOFF_DEFAULT
+ try:n=int(raw)
+ except Exception:return SHIFT_DAYOFF_DEFAULT
+ return max(-SHIFT_DAYOFF_LIMIT,min(SHIFT_DAYOFF_LIMIT,n))
 
 # ------------------------------------------------------------------------
 # 勤務体系の適用設備(複数)
@@ -828,8 +864,11 @@ def shift_pattern_rows(c_master,equipment=None):
 def shift_segment_rows(c_master,pattern_id):
  ensure_shift_pattern_tables(c_master)
  cur=c_master.cursor()
- cur.execute('SELECT [勤務区分ID],[勤務体系ID],[名称],[開始時刻],[終了時刻],[表示順],[有効] FROM [勤務区分マスタ] WHERE [勤務体系ID]=? ORDER BY [表示順],[勤務区分ID]',[pattern_id])
- return [r for r in cur.fetchall() if (True if r[6] is None else bool(r[6]))]
+ cur.execute('SELECT [勤務区分ID],[勤務体系ID],[名称],[開始時刻],[終了時刻],[表示順],[有効],[日付補正] FROM [勤務区分マスタ] WHERE [勤務体系ID]=? ORDER BY [表示順],[勤務区分ID]',[pattern_id])
+ # 8番目に**効いている日付補正**を載せる。生の値ではなく解決済みにするのは、
+ # 読む側（画面・schedule_calc）が既定の決め方を持たなくて済むようにするため。
+ return [tuple(r[:7])+(segment_day_offset(r[3],r[4],r[7]),)
+         for r in cur.fetchall() if (True if r[6] is None else bool(r[6]))]
 
 def shift_rows(c_master,equipment=None):
  """勤務名称の解決に使う勤務区分の一覧。
@@ -845,7 +884,9 @@ def shift_rows(c_master,equipment=None):
  # (resolve_shift_label()は形しか見ないが、意味のある値を入れておく)。
  pid=patterns[0][0]
  eq=str(equipment or '')
- return [(r[0],eq,r[2],r[3],r[4],r[5],r[6]) for r in shift_segment_rows(c_master,pid)]
+ # 8番目の日付補正(§9.195)も渡す。resolve_shift_label は形しか見ないので
+ # 足しても壊れない（読むのは resolve_shift_info だけ）。
+ return [(r[0],eq,r[2],r[3],r[4],r[5],r[6],r[7]) for r in shift_segment_rows(c_master,pid)]
 
 def shift_pattern_upsert(c_master,pattern_id,equipment,name,uid):
  """equipmentは設備名のリスト(複数可)。空リスト=全設備既定。
@@ -888,6 +929,15 @@ def _valid_hm(v):
   import re as _re;_TIME_RE=_re.compile(r'^([01]?\d|2[0-3]):[0-5]\d$')
  return bool(_TIME_RE.match(str(v or '').strip()))
 
+def pad_hm(v):
+ """'8:15' -> '08:15'。**HH:MMへそろえて保存する**——HTMLの
+ `input[type=time]`は2桁の時しか読まないので、1桁で保存された区分は
+ 編集画面で**空欄になり、そのまま保存すると400で断られる**（旧フラット
+ マスタからの移行分が実際にそうなっていた）。"""
+ t=str(v or '').strip().split(':')
+ try:return '%02d:%02d'%(int(t[0]),int(t[1]))
+ except Exception:return str(v or '').strip()
+
 def shift_segment_sync(c_master,pattern_id,segments,uid):
  """勤務区分を渡された内容へ完全同期する(稼働カレンダーcalendar_syncと同じ
  全置換方式)。渡された順序がそのまま表示順になる。"""
@@ -902,12 +952,20 @@ def shift_segment_sync(c_master,pattern_id,segments,uid):
   if not _valid_hm(start) or not _valid_hm(end):
    raise ValueError(f'「{name}」の時刻はHH:MM(00:00〜23:59)で指定してください。')
   if start==end:raise ValueError(f'「{name}」の開始時刻と終了時刻が同じです。')
-  cleaned.append((name,start,end))
+  # 日付補正(§9.195)。**跨がない区分には持たせない**——効かない値が
+  # 保存されていると、後から見た人が「設定したのに変わらない」と読む。
+  raw=(seg or {}).get('dayOffset')
+  if raw in (None,'') or not crosses_midnight(start,end):off=None
+  else:
+   try:off=max(-SHIFT_DAYOFF_LIMIT,min(SHIFT_DAYOFF_LIMIT,int(raw)))
+   except Exception:
+    raise ValueError(f'「{name}」の日付補正は整数（日数）で指定してください。')
+  cleaned.append((name,pad_hm(start),pad_hm(end),off))
  cur=c_master.cursor()
  cur.execute('DELETE FROM [勤務区分マスタ] WHERE [勤務体系ID]=?',[pattern_id])
- for i,(name,start,end) in enumerate(cleaned,start=1):
-  cur.execute('INSERT INTO [勤務区分マスタ] ([勤務体系ID],[名称],[開始時刻],[終了時刻],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,-1,?,?,Now(),Now())',
-              [pattern_id,name,start,end,i*10,uid,uid])
+ for i,(name,start,end,off) in enumerate(cleaned,start=1):
+  cur.execute('INSERT INTO [勤務区分マスタ] ([勤務体系ID],[名称],[開始時刻],[終了時刻],[表示順],[有効],[日付補正],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,-1,?,?,?,Now(),Now())',
+              [pattern_id,name,start,end,i*10,off,uid,uid])
  return len(cleaned)
 
 _shift_migration_done=False

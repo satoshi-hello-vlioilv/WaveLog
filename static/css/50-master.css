@@ -474,20 +474,71 @@
     minmax(var(--w-md),1.4fr)/* 結合名 */
     minmax(0,1.2fr)          /* 足す先 */
     minmax(0,1.2fr)          /* 相手 */
-    minmax(0,1.4fr)          /* 突合キー */
+    minmax(0,1.2fr)          /* 突合キー */
+    var(--w-sm)              /* 結合の仕方 */
     var(--w-sm)              /* 足す列 */
-    var(--w-md)}             /* 操作（上と同じ理由で固定幅） */
+    var(--w-lg)}             /* 操作（上と同じ理由で固定幅） */
 .qj-row.is-builtin{background:var(--surface-2)}
 .qj-c-name{display:flex;align-items:baseline;gap:var(--gap-inline);min-width:0}
-.qj-c-left,.qj-c-right,.qj-c-keys,.qj-c-cols{
+.qj-c-left,.qj-c-right,.qj-c-keys,.qj-c-kind,.qj-c-cols{
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
 .qj-sub{display:block;font-style:normal;font-size:var(--fs-tiny);color:var(--muted)}
 .qj-c-act{display:flex;gap:var(--gap-inline);justify-content:flex-end}
-/* 突合キーは「左＝右」を1行に。**器は中身の長さから**決め、余りは空ける。 */
-.qj-keys{display:grid;gap:var(--gap-hair)}
+/* ---- 結合の仕方(§9.194) ----
+   6通りを**図・名前・一行説明・行の増減**の4点セットで並べる。図だけでは
+   「行が減る」ことが伝わらず、文字だけでは「どこが残るのか」が伝わらない。
+   カードは1マス＝1通りの粗いグリッド（§13）で、3列×2段に収める。 */
+.qj-kinds{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--gap-tight)}
+.qj-kind{
+  display:grid;grid-template-rows:auto auto auto auto;justify-items:center;
+  gap:var(--gap-hair);padding:var(--gap-tight) var(--space-2);
+  border:1px solid var(--line-soft);border-radius:var(--radius-sm);
+  background:var(--surface);cursor:pointer;text-align:center}
+.qj-kind:hover{border-color:var(--teal);background:var(--pale)}
+.qj-kind.is-on{border-color:var(--teal);background:var(--pale);box-shadow:inset 0 0 0 1px var(--teal)}
+.qj-kind input{position:absolute;opacity:0;width:0;height:0}
+.qj-kind b{font-size:var(--fs-sm);color:var(--ink)}
+.qj-kind-short{font-size:var(--fs-tiny);color:var(--ink-2)}
+.qj-kind-rows{font-size:var(--fs-tiny);color:var(--muted)}
+.qj-kind-now{font-weight:800;color:var(--teal)}
+.qj-venn{width:5em;height:2.6em}
+.qj-venn .ring{fill:none;stroke:var(--line-strong);stroke-width:1.2}
+.qj-venn .on{fill:var(--teal);opacity:.55}
+.qj-kind-detail{margin-top:var(--gap-tight);display:grid;gap:var(--gap-hair)}
+.qj-kind-summary{margin:0;font-size:var(--fs-sm);color:var(--ink)}
+/* 見本の表。**作り物の2行×2行**を、選んだ結合の仕方どおりに突き合わせて
+   見せる（実データだと「たまたま全部当たった」ときに違いが出ない）。 */
+.qj-sample{display:flex;align-items:flex-start;gap:var(--space-2);flex-wrap:wrap}
+.qj-sample-arrow{align-self:center;color:var(--muted);font-weight:800}
+.qj-sample-t{border-collapse:collapse;font-size:var(--fs-tiny)}
+.qj-sample-t caption{caption-side:top;text-align:left;color:var(--muted);
+  font-size:var(--fs-tiny);padding-bottom:2px}
+.qj-sample-t th,.qj-sample-t td{border:1px solid var(--line-soft);
+  padding:1px var(--gap-tight);text-align:left;white-space:nowrap}
+.qj-sample-t th{background:var(--surface-2);color:var(--muted);font-weight:700}
+.qj-sample-t.is-result{border-color:var(--teal)}
+.qj-sample-t.is-result caption{color:var(--teal);font-weight:800}
+.qj-sample-t td.is-blank{color:var(--muted)}
+/* 突合キーは「左＝右」を1行に。**器は中身の長さから**決め、余りは空ける。
+   選んだ列の実データの例を下に添える——形が違えば当たらないことは、値を
+   見れば分かる（推測させない）。 */
+.qj-keys{display:grid;gap:var(--gap-tight)}
 .qj-key{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) auto;
-  align-items:center;gap:var(--space-2)}
-.qj-eq{color:var(--muted);font-weight:800}
+  align-items:start;gap:var(--space-2)}
+.qj-key-side{display:grid;gap:1px;min-width:0}
+.qj-key-side select{width:100%}
+.qj-key-ex{font-size:var(--fs-tiny);color:var(--ink-2);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qj-key-ex.is-empty{color:var(--muted)}
+.qj-eq{color:var(--muted);font-weight:800;align-self:center}
+.qj-sugg{display:flex;align-items:center;gap:var(--gap-inline);flex-wrap:wrap;
+  margin-top:var(--gap-tight)}
+.qj-sugg-label{font-size:var(--fs-tiny);color:var(--muted)}
+.qj-sugg-btn{height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);
+  border:1px dashed var(--line-mid);border-radius:var(--radius-pill);
+  background:var(--surface);color:var(--ink-2);font-size:var(--fs-tiny);cursor:pointer}
+.qj-sugg-btn:hover{border-style:solid;border-color:var(--teal);background:var(--pale)}
+.qj-probe-rows{margin:0;font-size:var(--fs-sm);color:var(--ink)}
 .qj-keys-act{display:flex;align-items:baseline;gap:var(--space-2);flex-wrap:wrap}
 .qj-pick{display:flex;gap:var(--space-3);flex-wrap:wrap;margin-bottom:var(--gap-tight)}
 .qj-radio{display:inline-flex;align-items:center;gap:var(--gap-inline);

@@ -26,7 +26,8 @@
 """
 import unicodedata
 
-from .db_access import (DBS, QUALITY_DB_KEY, WORK_DB_KEY, cols, connect, qi, tables)
+from .db_access import (DBS, QUALITY_DB_KEY, WORK_DB_KEY, cols, connect, path_config_value,
+                        qi, tables)
 from .logging_setup import app_logger
 from . import source_capability
 
@@ -35,6 +36,57 @@ _IN_CHUNK = 100
 # 1回の結合で相手から読む行数の上限。**青天井にしない**——キーの打ち間違いで
 # 相手の表を丸ごと引くと、共有越しでは数十秒画面が止まる。
 _MAX_RIGHT_ROWS = 20000
+# 「相手にしかない行」を出す結合(右外部・完全外部・右のみ)で読む、左側の
+# 突合キーの上限。**表示中のページだけを見て決めないこと**——2ページ目に
+# 居る行を「相手にしかない」と数えてしまい、ページを繰るたびに結果が変わる。
+_MAX_LEFT_KEYS = 200000
+
+
+# ---- 結合の仕方(§9.194) ------------------------------------------------
+# SQLのJOINと同じ6通り。**3つの真偽値で表す**——「一致した行」「左にしか
+# ない行」「右にしかない行」のどれを残すか。この3つが決まれば結合は決まる
+# ので、画面のサンプル表も同じ3つから組み立てられる（説明と実際の動きが
+# 食い違わない。**画面に別の判定を書かないこと**）。
+JOIN_KINDS = [
+ {'key': 'left', 'label': '左外部結合', 'short': 'この一覧は全部残す',
+  'summary': 'この一覧の行はすべて残し、相手に当たった行だけ列に値が入ります。'
+             '当たらなかった行は空欄になります。',
+  'when': '相手のデータを「参考として添える」ときはこれ。行が減らないので、'
+          '一覧の件数も並び順も今までどおりです。',
+  'matched': True, 'leftOnly': True, 'rightOnly': False},
+ {'key': 'inner', 'label': '内部結合', 'short': '両方にある行だけ',
+  'summary': '相手に当たった行だけを残します。当たらなかった行は一覧から消えます。',
+  'when': '「相手にも登録があるものだけ見たい」ときに。行が減ります。',
+  'matched': True, 'leftOnly': False, 'rightOnly': False},
+ {'key': 'right', 'label': '右外部結合', 'short': '相手を全部残す',
+  'summary': '相手の行をすべて残します。この一覧に当たらなかった相手の行は、'
+             '突合キーだけが入った行として増えます。',
+  'when': '「相手を主役にして、こちらの値を添える」ときに。行が増えることがあります。',
+  'matched': True, 'leftOnly': False, 'rightOnly': True},
+ {'key': 'full', 'label': '完全外部結合', 'short': 'どちらかにあれば残す',
+  'summary': 'この一覧の行も相手の行も、すべて残します。片方にしかない行は'
+             'もう片方の列が空欄になります。',
+  'when': '「両方を突き合わせて、抜けを洗い出す」ときに。行が増えることがあります。',
+  'matched': True, 'leftOnly': True, 'rightOnly': True},
+ {'key': 'leftOnly', 'label': 'この一覧にしかない行', 'short': '相手に無いものだけ',
+  'summary': '相手に当たらなかった行だけを残します。**相手の列は足しません**'
+             '（当たっていないので値がありません）。',
+  'when': '「相手に登録し忘れているものを探す」ときに。行が減ります。',
+  'matched': False, 'leftOnly': True, 'rightOnly': False},
+ {'key': 'rightOnly', 'label': '相手にしかない行', 'short': 'この一覧に無いものだけ',
+  'summary': 'この一覧に当たらなかった相手の行だけを出します。'
+             'この一覧の列は突合キー以外すべて空欄になります。',
+  'when': '「相手にあるのにこちらに無いものを探す」ときに。'
+          'この一覧の行は1件も残りません。',
+  'matched': False, 'leftOnly': False, 'rightOnly': True},
+]
+JOIN_KIND_DEFAULT = 'left'
+_KIND_BY_KEY = {k['key']: k for k in JOIN_KINDS}
+
+
+def kind_of(d):
+ """定義から結合の仕方を引く。知らない値・未設定は既定（左外部）。"""
+ return _KIND_BY_KEY.get(str((d or {}).get('kind') or '')) or _KIND_BY_KEY[JOIN_KIND_DEFAULT]
 
 norm_name = source_capability.norm_name
 find_column = source_capability.find_column
@@ -50,12 +102,34 @@ def norm_value(v):
 # **同じ処理を2つ持たない**ため、保存されない1件の定義としてこのエンジンに
 # 乗せる（旧 `_join_quality_data` は廃止した）。
 BUILTIN_QUALITY_NAME = '品質データ'
+# 既定の結合を解除する印（パス設定マスタ。'off'＝使わない）。**既定は on**
+# ——今まで何も設定せずに品質列が出ていた現場の見え方を変えない。
+# 解除しても**エラーにはしない**（利用者の指示「該当する列データがないときには
+# 品質情報のデータが検索・表示されないというだけでエラーなく使えるように」）:
+# 列が足されなくなるだけで、その列を参照していた設定（列レイアウト・フィルタ）は
+# 「無い列」として静かに落ちる。
+BUILTIN_QUALITY_SWITCH_KEY = 'builtin_quality_join'
 _QUALITY_KEY_ALIASES = ('lotNo', 'castingNo', 'mfgMaterial')
 _QUALITY_KEY_LABEL = {'lotNo': 'ロット番号', 'castingNo': '鋳造番号', 'mfgMaterial': '製造材質'}
 
 
+def builtin_quality_enabled(flags=None):
+ """既定の品質データ結合を使うか。パス設定マスタの1行で切る。"""
+ if flags is None:
+  v = path_config_value(BUILTIN_QUALITY_SWITCH_KEY, '')
+ else:
+  v = flags.get(BUILTIN_QUALITY_SWITCH_KEY, '')
+ return str(v or '').strip().lower() != 'off'
+
+
 def builtin_quality_def():
- """役割「仕掛」と「品質」が両方あるときだけ名乗る、既定の結合。"""
+ """役割「仕掛」と「品質」が両方あるときだけ名乗る、既定の結合。
+
+ **解除されていても定義そのものは返す**——マスタ管理では「既定はどう
+ つないでいるのか」を見て真似できることが値打ちなので、解除＝見えなく
+ する、にはしない（利用者の指示「マージの参考となるため、他のデータと
+ 同じように品質の設定データも見られるように」）。当てるかどうかを決めるのは
+ definitions_for() の1箇所。"""
  if not (WORK_DB_KEY and QUALITY_DB_KEY):
   return None
  return {
@@ -63,7 +137,8 @@ def builtin_quality_def():
   'left': WORK_DB_KEY, 'leftTable': '', 'right': QUALITY_DB_KEY, 'rightTable': '',
   'keys': [{'left': _QUALITY_KEY_LABEL[a], 'right': _QUALITY_KEY_LABEL[a], 'alias': a}
            for a in _QUALITY_KEY_ALIASES],
-  'columns': [], 'prefix': '', 'multi': 'first', 'order': -1, 'active': True,
+  'columns': [], 'prefix': '', 'multi': 'first', 'kind': JOIN_KIND_DEFAULT,
+  'order': -1, 'active': True,
  }
 
 
@@ -95,7 +170,7 @@ def definitions_for(db_key, table, include_builtin=True):
   if lt and table and lt != table:
    continue
   out.append(d)
- if include_builtin:
+ if include_builtin and builtin_quality_enabled():
   b = builtin_quality_def()
   # **利用者が同じ相手への結合を作っていたら、既定は当てない。** 同じ列が
   # 2度足されることは `_unique_columns` が防ぐが、そのぶん相手を2回引く
@@ -107,9 +182,12 @@ def definitions_for(db_key, table, include_builtin=True):
 
 # ---- 当てる ------------------------------------------------------------
 def _info(d, applied=False, reason='', **kw):
+ k = kind_of(d)
  out = {'id': d.get('id'), 'name': d.get('name') or '', 'builtin': bool(d.get('builtin')),
         'right': d.get('right') or '', 'table': '', 'applied': applied, 'reason': reason,
-        'matched': 0, 'ambiguous': 0, 'addedColumns': 0, 'addedColumnNames': []}
+        'matched': 0, 'ambiguous': 0, 'addedColumns': 0, 'addedColumnNames': [],
+        'kind': k['key'], 'kindLabel': k['label'], 'rowsBefore': 0, 'rowsAfter': 0,
+        'droppedRows': 0, 'addedRows': 0, 'note': ''}
  out.update(kw)
  return out
 
@@ -188,6 +266,35 @@ def _added_names(d, right_cols, left_cols, key_right):
  return out
 
 
+def _left_key_set(base_key, base_table, key_names):
+ """この一覧が持つ突合キーを全部集める。戻り値は (集合 or None, 但し書き)。
+
+ **「相手にしかない行」を表示中のページだけで決めないこと**——2ページ目に
+ 居る行を「相手にしかない」と数えてしまい、ページを繰るたびに結果が変わる。
+ 読むのはキーの列だけ（1行200列の実データを丸ごと運ばない。§9.94）。"""
+ cfg = DBS.get(base_key or '')
+ if not cfg or not base_table:
+  return None, ''
+ try:
+  with connect(cfg['path'], cfg.get('role', 'readonly') == 'readonly') as c:
+   cur = c.cursor()
+   sel = ','.join(qi(n) for n in key_names)
+   cur.execute(f'SELECT {sel} FROM {qi(base_table)} LIMIT {_MAX_LEFT_KEYS + 1}')
+   out = set()
+   n = 0
+   for row in cur:
+    n += 1
+    if n > _MAX_LEFT_KEYS:
+     break
+    out.add(tuple(norm_value(v) for v in row))
+ except Exception as e:
+  app_logger().warning('クエリ結合: 対象のキーを読めませんでした: %s', e)
+  return None, f'この一覧のキーを読めませんでした（{e}）。'
+ if n > _MAX_LEFT_KEYS:
+  return out, f'この一覧が大きいため、先頭{_MAX_LEFT_KEYS}行と突き合わせました。'
+ return out, ''
+
+
 def apply_joins(base_key, base_table, columns, rows, defs):
  """行に結合を当てる。戻り値: (列名リスト, 行リスト, 結合ごとの診断)。
 
@@ -198,7 +305,7 @@ def apply_joins(base_key, base_table, columns, rows, defs):
  infos = []
  for d in (defs or []):
   try:
-   columns, rows, info = _apply_one(d, columns, rows)
+   columns, rows, info = _apply_one(d, base_key, base_table, columns, rows)
   except Exception as e:
    app_logger().warning('クエリ結合「%s」を当てられませんでした: %s', d.get('name'), e)
    info = _info(d, reason=f'結合できませんでした: {e}')
@@ -206,7 +313,49 @@ def apply_joins(base_key, base_table, columns, rows, defs):
  return columns, rows, infos
 
 
-def _apply_one(d, columns, rows):
+def _read_right(c, t, right_cols, rights, rows, lefts, need_all):
+ """相手の行を突合キーで索引する。戻り値: (索引, 重なったキー, 重なった件数)。
+
+ **「相手にしかない行」を出す結合のときだけ相手を丸ごと読む**（それ以外は
+ 表示中の行のキーで絞る。共有越しに全件を運ぶと画面が数十秒止まる）。"""
+ index = {}
+ dup_keys = set()
+ ambiguous = 0
+ read = 0
+ cur = c.cursor()
+
+ def take(row):
+  nonlocal ambiguous
+  dd = dict(zip(right_cols, row))
+  rk = tuple(norm_value(dd.get(x)) for x in rights)
+  if rk in index:
+   ambiguous += 1
+   dup_keys.add(rk)
+   return          # 表示順の最初の1件を残す
+  index[rk] = dd
+
+ if need_all:
+  cur.execute(f'SELECT * FROM {qi(t)} LIMIT {_MAX_RIGHT_ROWS}')
+  for row in cur.fetchall():
+   take(row)
+  return index, dup_keys, ambiguous
+ first_values = sorted({norm_value(r.get(lefts[0])) for r in rows if norm_value(r.get(lefts[0]))})
+ for i in range(0, len(first_values), _IN_CHUNK):
+  chunk = first_values[i:i + _IN_CHUNK]
+  ph = ','.join('?' for _ in chunk)
+  cur.execute(f'SELECT * FROM {qi(t)} WHERE CStr({qi(rights[0])}) IN ({ph})', chunk)
+  for row in cur.fetchall():
+   read += 1
+   if read > _MAX_RIGHT_ROWS:
+    break
+   take(row)
+  if read > _MAX_RIGHT_ROWS:
+   break
+ return index, dup_keys, ambiguous
+
+
+def _apply_one(d, base_key, base_table, columns, rows):
+ kind = kind_of(d)
  keys = d.get('keys') or []
  if not keys:
   return columns, rows, _info(d, reason='突合キーが登録されていません。')
@@ -220,13 +369,12 @@ def _apply_one(d, columns, rows):
   return columns, rows, _info(
    d, reason=f'相手のデータソース「{d.get("right")}」が登録されていません'
              '（無効にした・キーを変えた・再起動していない、のいずれかです）。')
- if not rows:
-  return columns, rows, _info(d, reason='表示中の行がありません。')
  lefts = [hit for _, hit in left_cols]
- first_values = sorted({norm_value(r.get(lefts[0])) for r in rows if norm_value(r.get(lefts[0]))})
- if not first_values:
-  return columns, rows, _info(
-   d, reason=f'表示中の行に「{lefts[0]}」の値がありません。')
+ # 相手にしかない行を出す結合は、表示中の行が無くても意味がある。
+ if not rows and not kind['rightOnly']:
+  return columns, rows, _info(d, reason='表示中の行がありません。')
+ if rows and not kind['rightOnly'] and not any(norm_value(r.get(lefts[0])) for r in rows):
+  return columns, rows, _info(d, reason=f'表示中の行に「{lefts[0]}」の値がありません。')
  try:
   with connect(right_cfg['path'], right_cfg.get('role', 'readonly') == 'readonly') as c:
    t, right_cols, err = _right_table(d, c, right_cfg)
@@ -237,56 +385,73 @@ def _apply_one(d, columns, rows):
    if lost:
     return columns, rows, _info(
      d, table=t, reason=f'相手の表「{t}」に突合キーの列がありません: ' + '・'.join(lost))
-   index = {}
-   dup_keys = set()
-   ambiguous = 0
-   cur = c.cursor()
-   read = 0
-   for i in range(0, len(first_values), _IN_CHUNK):
-    chunk = first_values[i:i + _IN_CHUNK]
-    ph = ','.join('?' for _ in chunk)
-    cur.execute(f'SELECT * FROM {qi(t)} WHERE CStr({qi(rights[0])}) IN ({ph})', chunk)
-    for row in cur.fetchall():
-     read += 1
-     if read > _MAX_RIGHT_ROWS:
-      break
-     dd = dict(zip(right_cols, row))
-     rk = tuple(norm_value(dd.get(x)) for x in rights)
-     if rk in index:
-      ambiguous += 1
-      dup_keys.add(rk)
-      continue      # 表示順の最初の1件を残す
-     index[rk] = dd
-    if read > _MAX_RIGHT_ROWS:
-     break
+   index, dup_keys, ambiguous = _read_right(
+    c, t, right_cols, rights, rows, lefts, kind['rightOnly'])
  except Exception as e:
   app_logger().warning('クエリ結合「%s」で相手を読めませんでした: %s', d.get('name'), e)
   return columns, rows, _info(d, reason=f'相手のデータへ接続できません: {e}')
- pairs = _added_names(d, right_cols, columns, set(rights))
- if not pairs:
+ # 「この一覧にしかない行」だけを残す結合は、相手の列を足さない（当たって
+ # いないので値が無い）。空の列を並べても読む人の手間が増えるだけ。
+ add_cols = kind['matched'] or kind['rightOnly']
+ pairs = _added_names(d, right_cols, columns, set(rights)) if add_cols else []
+ if add_cols and not pairs:
   return columns, rows, _info(
    d, table=t, matched=0,
    reason='足せる列がありません（取り込む列の指定が今の相手の列と合っていないか、'
           'すべて同じ名前の列が一覧側にあります。接頭辞を入れると足せます）。')
+ note = ''
+ left_all = None
+ if kind['rightOnly']:
+  left_all, note = _left_key_set(base_key, base_table, lefts)
+  if left_all is None:
+   left_all = {tuple(norm_value(r.get(x)) for x in lefts) for r in rows}
+   note = (note or '') + '表示中のページと突き合わせました（この一覧の全体を読めませんでした）。'
  # 相手が2件以上当たったキーの扱い（'first'＝最初の1件／'blank'＝出さない）。
  # **どのキーが重なったかは索引に残らない**ので、索引を作るときに覚えておく。
  blank = str(d.get('multi') or 'first') == 'blank'
  merged = []
  matched = 0
+ dropped = 0
  for r in rows:
   rk = tuple(norm_value(r.get(x)) for x in lefts)
   hit = index.get(rk)
-  add = {}
-  if hit is not None and not (blank and rk in dup_keys):
+  if hit is not None:
    matched += 1
+   if not kind['matched']:
+    dropped += 1
+    continue
+   add = {}
+   if not (blank and rk in dup_keys):
+    for src, name in pairs:
+     add[name] = hit.get(src)
+   add.update(r)          # 左（元の一覧）を必ず優先する
+   merged.append(add)
+  else:
+   if not kind['leftOnly']:
+    dropped += 1
+    continue
+   merged.append(dict(r))
+ # 相手にしかない行を足す（右外部・完全外部・右のみ）。突合キーの列だけは
+ # 相手の値で埋める——キーが空の行が並ぶと、どれが何の行か読めない。
+ added_rows = 0
+ if kind['rightOnly']:
+  for rk, hit in index.items():
+   if rk in left_all:
+    continue
+   row = {}
+   for lc, rc in zip(lefts, rights):
+    row[lc] = hit.get(rc)
    for src, name in pairs:
-    add[name] = hit.get(src)
-  add.update(r)          # 左（元の一覧）を必ず優先する
-  merged.append(add)
+    row[name] = hit.get(src)
+   merged.append(row)
+   added_rows += 1
  names = [n for _, n in pairs]
  info = _info(d, applied=True, table=t, matched=matched, ambiguous=ambiguous,
               addedColumns=len(names), addedColumnNames=names)
- if not matched:
+ info.update(kind=kind['key'], kindLabel=kind['label'],
+             rowsBefore=len(rows), rowsAfter=len(merged),
+             droppedRows=dropped, addedRows=added_rows, note=note)
+ if not matched and kind['matched']:
   info['reason'] = f'キーが一致する行が相手にありませんでした（照合先: {t}）。'
  return columns + names, merged, info
 
@@ -304,13 +469,19 @@ def unique_columns(names):
 
 
 def summarize(infos):
- """全部の結合をまとめた1件の診断（画面の帯・列の分類が読む）。"""
+ """全部の結合をまとめた1件の診断（画面の帯・列の分類が読む）。
+
+ **行が増減したことは必ず伝える**（§9.194）——列が足されるだけだった頃と
+ 違い、結合の仕方によっては一覧から行が消える。黙って消すと、利用者からは
+ 「絞り込んでいないのに件数が合わない」としか見えない。"""
  names = []
  for i in infos or []:
   names += list(i.get('addedColumnNames') or [])
  names = unique_columns(names)
  applied = [i for i in (infos or []) if i.get('applied')]
  failed = [i for i in (infos or []) if not i.get('applied')]
+ dropped = sum(int(i.get('droppedRows') or 0) for i in applied)
+ added = sum(int(i.get('addedRows') or 0) for i in applied)
  return {
   'applied': bool(applied),
   'count': len(infos or []),
@@ -320,6 +491,13 @@ def summarize(infos):
   'addedColumnNames': names,
   'table': (applied[0].get('table') if applied else ''),
   'names': [i.get('name') for i in applied],
+  'kinds': unique_columns([i.get('kindLabel') for i in applied
+                           if i.get('kind') and i.get('kind') != JOIN_KIND_DEFAULT]),
+  'droppedRows': dropped,
+  'addedRows': added,
+  'rowsChanged': bool(dropped or added),
+  'rowsAfter': (applied[-1].get('rowsAfter') if applied else 0),
+  'note': '／'.join(i.get('note') for i in applied if i.get('note')),
   'reason': '／'.join(f"{i.get('name')}: {i.get('reason')}" for i in failed if i.get('reason')),
  }
 
@@ -331,7 +509,9 @@ def probe(d, sample=200):
  **保存する前に確かめられること**が値打ち。読み込み先は起動時に1回だけ
  決まるので、これが無いと打ち間違いに気づけるのが再起動のあとになる。"""
  out = {'ok': False, 'reason': '', 'sampled': 0, 'matched': 0, 'ambiguous': 0,
-        'addedColumns': 0, 'addedColumnNames': [], 'table': '', 'examples': []}
+        'addedColumns': 0, 'addedColumnNames': [], 'table': '', 'examples': [],
+        'kind': kind_of(d)['key'], 'kindLabel': kind_of(d)['label'],
+        'rowsAfter': 0, 'droppedRows': 0, 'addedRows': 0, 'note': ''}
  left_cfg = DBS.get(d.get('left') or '')
  if not left_cfg:
   out['reason'] = '対象のデータソースが登録されていません。'
@@ -358,7 +538,10 @@ def probe(d, sample=200):
             matched=int(info.get('matched') or 0), ambiguous=int(info.get('ambiguous') or 0),
             addedColumns=int(info.get('addedColumns') or 0),
             addedColumnNames=list(info.get('addedColumnNames') or []),
-            table=info.get('table') or '')
+            table=info.get('table') or '',
+            rowsAfter=int(info.get('rowsAfter') or 0),
+            droppedRows=int(info.get('droppedRows') or 0),
+            addedRows=int(info.get('addedRows') or 0), note=info.get('note') or '')
  # 当たった行の実例を3件（1件では「たまたま」と区別が付かない。§9.105）。
  if out['addedColumnNames']:
   shown = out['addedColumnNames'][:4]

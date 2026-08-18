@@ -53,7 +53,8 @@ G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'te
                      'test_scwatchui', 'test_scwatch', 'test_sccomment',
                      'test_scowner']
 G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 'test_eqkind',
-               'test_shift', 'test_dbequip', 'test_crudroutes', 'test_setpage', 'test_eqstd']
+               'test_shift', 'test_dbequip', 'test_crudroutes', 'test_setpage', 'test_eqstd',
+               'test_workdate']
 G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'test_flows',
              'test_p11', 'test_p11c', 'test_waiting', 'test_mcore', 'test_msteps']
 G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'test_density',
@@ -166,8 +167,8 @@ RULES = [
     ('backend/atomic_io.py', g('test_atomicio', 'test_dbmirror', 'test_sclock',
                                'test_scsync', 'test_datasource')),
     ('backend/repositories/master_repo.py', g('マスタ', '列', 'test_workable')),
-    ('backend/repositories/schedule_repo.py', g('スケジュール', 'test_stopeq')),
-    ('backend/schedule_calc.py', g('スケジュール', 'test_eqstd')),
+    ('backend/repositories/schedule_repo.py', g('スケジュール', 'test_stopeq', 'test_workdate')),
+    ('backend/schedule_calc.py', g('スケジュール', 'test_eqstd', 'test_workdate')),
     ('backend/sort_order.py', g('列', 'test_tablequery')),
     ('backend/schedule_watch.py', g('スケジュール')),
     # 共有スケジュールの持ち主(§9.192)。書込の入口(routes/schedule.py)と

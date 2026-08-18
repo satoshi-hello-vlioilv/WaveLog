@@ -624,7 +624,13 @@ def _pattern_entry(mc,r,assigned=None):
  names=assigned.get(r[0],[])
  return {'id':r[0],'equipment':names,'equipmentText':'、'.join(names) or '全設備共通',
          'name':r[2],
-         'segments':[{'id':s[0],'name':s[2],'start':s[3],'end':s[4]} for s in sr.shift_segment_rows(mc,r[0])]}
+         # dayOffset は**効いている値**(§9.195)。跨がない区分は必ず0で、
+         # crossesMidnight が False のときは画面に欄ごと出さない(§4)。
+         # 時刻は HH:MM へそろえて返す（1桁の時が保存されていると編集画面の
+         # input[type=time] が空欄になる。schedule_repo.pad_hm 参照）。
+         'segments':[{'id':s[0],'name':s[2],'start':sr.pad_hm(s[3]),'end':sr.pad_hm(s[4]),
+                      'crossesMidnight':sr.crosses_midnight(s[3],s[4]),
+                      'dayOffset':s[7]} for s in sr.shift_segment_rows(mc,r[0])]}
 
 @bp.get('/api/schedule/shift-pattern-master')
 def shift_pattern_list():

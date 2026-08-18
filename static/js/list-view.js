@@ -1710,12 +1710,22 @@ function renderListToolbar(){
    const ok=info.applied&&info.matched>0;
    const names=(info.names||[]).filter(Boolean);
    chip.className='list-join-chip '+(ok?'is-ok':'is-warn');
+   /* **行が増減したことは帯で言う**(§9.194)。結合の仕方によっては一覧から
+      行が消える／相手の行が増えるので、黙って変えると「絞り込んでいないのに
+      件数が合わない」としか見えない。 */
+   const rowNote=info.rowsChanged
+    ?`／${info.droppedRows?`-${info.droppedRows}行`:''}${info.droppedRows&&info.addedRows?' ':''}${info.addedRows?`+${info.addedRows}行`:''}`
+    :'';
    chip.textContent=ok
-    ?`結合 ${names.length?names.join('・'):info.count+'件'} ／ ${info.matched}行 +${info.addedColumns}列`
+    ?`結合 ${names.length?names.join('・'):info.count+'件'} ／ ${info.matched}行 +${info.addedColumns}列${rowNote}`
     :`結合できません（${info.count}件）`;
    chip.title=ok
     ?`キーが一致した${info.matched}行に${info.addedColumns}列を足しました`
      +`${info.table?`（相手の表: ${info.table}）`:''}。同じ名前の列はこの一覧の値を残します。`
+     +((info.kinds||[]).length?`\n結合の仕方: ${info.kinds.join('・')}`:'')
+     +(info.droppedRows?`\n一致しない${info.droppedRows}行はこの一覧に出していません。`:'')
+     +(info.addedRows?`\n相手にしかない${info.addedRows}行を足しています。`:'')
+     +(info.note?`\n${info.note}`:'')
      +(info.ambiguous?`\n相手が2件以上あったキーが${info.ambiguous}件あります。`:'')
      +(info.reason?`\n当たらなかった結合: ${info.reason}`:'')
     :`結合できませんでした: ${info.reason||'原因不明'}\nマスタ管理 > クエリ結合 で設定を確かめてください。`;

@@ -1092,7 +1092,8 @@ def _join_payload(x):
  return {'name':x.get('name'),'left':x.get('left'),'leftTable':x.get('leftTable'),
          'right':x.get('right'),'rightTable':x.get('rightTable'),
          'keys':x.get('keys'),'columns':x.get('columns'),'prefix':x.get('prefix'),
-         'multi':x.get('multi'),'order':x.get('order'),'enabled':x.get('enabled')}
+         'multi':x.get('multi'),'kind':x.get('kind'),
+         'order':x.get('order'),'enabled':x.get('enabled')}
 
 @bp.get('/api/query-join-master')
 def query_join_master_list():
@@ -1110,9 +1111,18 @@ def query_join_master_list():
   sources=[{'key':k,'label':v.get('label') or k,'purpose':v.get('purpose') or '',
             'listed':bool(v.get('listed',True)),'preferred':v.get('preferred') or ''}
            for k,v in _DBS.items() if v.get('role')=='readonly']
+  # 既定の品質データ結合は**解除していても内容を返す**(§9.194)。
+  # 「どうつないでいるのか」を見て真似できることが値打ちなので、
+  # 解除＝見えなくする、にはしない（利用者の指示）。
   builtin=query_join.builtin_quality_def()
   return jsonify(ok=True,items=items,sources=sources,multiModes=list(QUERY_JOIN_MULTI),
+                 kinds=query_join.JOIN_KINDS,kindDefault=query_join.JOIN_KIND_DEFAULT,
+                 builtinEnabled=query_join.builtin_quality_enabled(),
                  builtin=({'name':builtin['name'],'left':builtin['left'],'right':builtin['right'],
+                           'leftTable':builtin.get('leftTable') or '',
+                           'rightTable':builtin.get('rightTable') or '',
+                           'kind':builtin.get('kind') or query_join.JOIN_KIND_DEFAULT,
+                           'multi':builtin.get('multi') or 'first',
                            'keys':builtin['keys']} if builtin else None))
  except Exception as e:return jsonify(error=f'クエリ結合マスタ読込失敗: {e}'),500
 
@@ -1150,6 +1160,26 @@ def query_join_master_delete():
                  message='結合を削除しました。' if n else '対象が見つかりませんでした。')
  except Exception as e:return jsonify(error=f'クエリ結合の削除に失敗しました: {e}'),500
 
+@bp.post('/api/query-join-master/builtin')
+def query_join_master_builtin():
+ """既定の品質データ結合を使う／使わない(§9.194、利用者の指示)。
+
+ **解除してもエラーにしない**——足していた列が出なくなるだけで、その列を
+ 参照していた設定（列レイアウト・フィルタ）は「無い列」として静かに落ちる。
+ 保存先はパス設定マスタの1行なので、**再起動は要らない**。"""
+ try:
+  from .. import query_join
+  from ..db_access import set_path_config
+  x=request.get_json(force=True) or {};uid=request_user_id(x)
+  on=x.get('enabled')
+  on=(str(on).strip().lower() not in ('0','false','off','no','無効')) if on is not None else True
+  with connect(DBS['MASTER']['path'],False) as c:
+   set_path_config(c,query_join.BUILTIN_QUALITY_SWITCH_KEY,'' if on else 'off',uid)
+  return jsonify(ok=True,enabled=on,updated_by=uid,
+                 message='既定の品質データ結合を使います。' if on
+                         else '既定の品質データ結合を解除しました。品質の列は一覧に出なくなります。')
+ except Exception as e:return jsonify(error=f'既定の結合を切り替えられませんでした: {e}'),500
+
 @bp.post('/api/query-join-master/probe')
 def query_join_master_probe():
  """保存する前に、いまのデータで実際に当ててみる。**読むだけ**。"""
@@ -1163,6 +1193,7 @@ def query_join_master_probe():
      'keys':normalize_join_keys(x.get('keys')),
      'columns':normalize_join_columns(x.get('columns')),
      'prefix':str(x.get('prefix') or ''),'multi':str(x.get('multi') or 'first'),
+     'kind':str(x.get('kind') or query_join.JOIN_KIND_DEFAULT),
      'active':True}
   if not d['keys']:
    return jsonify(ok=True,result={'ok':False,'reason':'突合キーを1組入れると、ここで結果を確かめられます。',

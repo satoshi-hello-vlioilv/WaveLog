@@ -105,16 +105,32 @@ let b=null;
  rec('設備を複数選べるチェック式になっている',picker.exists&&picker.chips>0,JSON.stringify(picker));
 
  // 2つ選んで保存し、一覧へ両方出るか
+ /* **新規として作ること。** 開いた時点では登録済みの体系が1件選ばれている
+    ので、そのまま名前を書き換えると既存（移行で作られた「既定の勤務」）を
+    改名してしまい、後始末で消すと他のテストの足元が崩れる。 */
+ await page.evaluate(()=>document.querySelector('#shiftNew')?.click());
+ await page.evaluate(()=>{const b=[...document.querySelectorAll('[data-shift-tmpl]')]
+   .find(x=>x.textContent.trim()==='日勤');if(b)b.click()});
+ await page.waitForSelector('#shiftEquipment [data-shift-eq]',{timeout:10000});
  const saved=await page.evaluate(async()=>{
   const cbs=[...document.querySelectorAll('#shiftEquipment [data-shift-eq]')];
   if(cbs.length<2)return {skipped:true,count:cbs.length};
+  /* 更新者IDはマスタ更新の必須項目（requireMaintUser）。入れずに保存すると
+     トーストが出るだけで**何も起きない**ので、先に入れておく。 */
+  const uid=document.querySelector('#masterUserId');
+  if(uid){uid.value='test-workable';uid.dispatchEvent(new Event('change',{bubbles:true}))}
   document.querySelector('#shiftName').value='複数設備テスト2';
   document.querySelector('#shiftName').dispatchEvent(new Event('input',{bubbles:true}));
   cbs.slice(0,2).forEach(cb=>{if(!cb.checked){cb.checked=true;cb.dispatchEvent(new Event('change',{bubbles:true}))}});
   return {picked:cbs.slice(0,2).map(c=>c.value)};
  });
- const draft=await page.evaluate(()=>JSON.stringify(window.__shiftDraftProbe||null));
  rec('選んだ設備が2件そろう',!saved.skipped&&saved.picked.length===2,JSON.stringify(saved));
+ /* **保存を押すこと。** 以前はここで押しておらず、APIに2設備の体系が
+    残っているかどうかを見ていた——つまり前の実行の置き土産があるときだけ
+    通る網だった（実際にずっと落ちていた。§9.121）。 */
+ await page.evaluate(()=>document.querySelector('#shiftSave')?.click());
+ await page.waitForFunction(()=>[...document.querySelectorAll('.shift-list-item b')]
+   .some(n=>n.textContent.trim()==='複数設備テスト2'),{timeout:15000}).catch(()=>{});
 
  const api=await page.evaluate(async()=>{
   const r=await fetch('/api/schedule/shift-pattern-master?scope=all').then(x=>x.json());
@@ -122,6 +138,13 @@ let b=null;
  });
  const multi=api.filter(i=>Array.isArray(i.eq)&&i.eq.length>=2);
  rec('複数設備を持つ勤務体系をAPIが返せる',multi.length>0,JSON.stringify(multi.slice(0,2)));
+ /* 後始末（マスタDBは実行をまたいで生き延びる。§9.121）。 */
+ await page.evaluate(async()=>{
+  const r=await fetch('/api/schedule/shift-pattern-master?scope=all').then(x=>x.json());
+  for(const x of (r.items||[]))if(x.name==='複数設備テスト2')
+   await fetch('/api/schedule/shift-pattern-master/delete',{method:'POST',
+     headers:{'Content-Type':'application/json'},body:JSON.stringify({id:x.id,user_id:'test-workable'})});
+ });
  rec('未選択は「全設備共通」として扱う',
    api.some(i=>Array.isArray(i.eq)&&i.eq.length===0&&i.text==='全設備共通'),
    JSON.stringify(api.filter(i=>i.eq.length===0).slice(0,1)));

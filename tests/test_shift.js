@@ -41,6 +41,38 @@ let b=null;
  const cov=await page.evaluate(()=>document.querySelector('#shiftCoverage')?.textContent);
  rec('カバレッジが可視化される',/24時間をすべてカバー/.test(cov||''),cov);
 
+ /* ---- 現場歴の日付補正(§9.195) ----
+    日を跨ぐ区分にだけ「日付の数え方」を出す。跨がない区分に置くと、
+    設定できるのに効かない欄になる(§4)。 */
+ const dayoff=await page.evaluate(()=>[...document.querySelectorAll('.shift-seg')].map(el=>({
+   n:el.querySelector('.shift-seg-name').value,
+   cross:(el.querySelector('.shift-seg-next')?.textContent||'').trim(),
+   sel:!!el.querySelector('select.shift-seg-dayoff'),
+   val:el.querySelector('select.shift-seg-dayoff')?.value||'',
+   na:(el.querySelector('.shift-seg-dayoff.is-na')?.textContent||'').trim()})));
+ rec('日を跨ぐ区分にだけ「日付の数え方」が出る',
+     dayoff.filter(x=>x.sel).length===1&&dayoff.find(x=>x.sel).n==='3直'
+     &&dayoff.filter(x=>!x.sel).every(x=>x.na==='—'),JSON.stringify(dayoff));
+ rec('既定は「前の日として数える（−1日）」',
+     (dayoff.find(x=>x.sel)||{}).val==='-1',(dayoff.find(x=>x.sel)||{}).val);
+
+ /* ---- 見出しと本文が同じグリッドを共有する(§9.176と同じ土台) ---- */
+ const grid=await page.evaluate(()=>{
+  const head=document.querySelector('.shift-seg-head');
+  const rows=[...document.querySelectorAll('.shift-seg')];
+  const cs=el=>getComputedStyle(el).gridTemplateColumns;
+  const name=document.querySelector('#shiftName');
+  return {same:!!head&&rows.every(r=>cs(r)===cs(head)),
+          all:[...new Set([cs(head),...rows.map(cs)])],
+          nameW:Math.round(name.getBoundingClientRect().width),
+          eqGrid:getComputedStyle(document.querySelector('#shiftEquipment')).display};
+ });
+ rec('区分の見出しと本文が同じ列定義を共有する（左端がそろう）',grid.same,grid.all.join(' | '));
+ /* **器は中身の長さから決める**(CLAUDE.md §11)。名称は長くても20字ほど
+    なのに、以前は枠いっぱい(600px超)まで伸びていた。 */
+ rec('勤務体系の名称欄が無意味に長くない',grid.nameW>0&&grid.nameW<=420,grid.nameW+'px');
+ rec('適用設備はそろったマス目に並ぶ（折り返しでずれない）',grid.eqGrid==='grid',grid.eqGrid);
+
  // 保存
  await page.click('#shiftSave'); await page.waitForTimeout(2200);
  const saved=await page.evaluate(async()=>await fetch('/api/schedule/shift-pattern-master?scope=all').then(r=>r.json()));
@@ -52,6 +84,17 @@ let b=null;
  const added=await page.evaluate(()=>{const els=[...document.querySelectorAll('.shift-seg')];const l=els[els.length-1];
    return {n:l.querySelector('.shift-seg-name').value,s:l.querySelector('.shift-seg-start').value,prevEnd:els[els.length-2].querySelector('.shift-seg-end').value}});
  rec('区分追加時に直前の終了時刻を開始の初期値にする',added.s===added.prevEnd,JSON.stringify(added));
+
+ /* **後始末。** 勤務体系はマスタDBに残り、実行をまたいで生き延びる(§9.121)。
+    片付けないと、同じ名前の体系が回すたびに1件ずつ増えていく(実際に18件
+    溜まっていた)。移行で作られる「既定の勤務」等には触らない。 */
+ try{
+  const all=await page.evaluate(async()=>await fetch('/api/schedule/shift-pattern-master?scope=all').then(r=>r.json()));
+  for(const x of (all.items||[]))if(x.name==='交替勤務(1,2,3直)')
+   await page.evaluate(async id=>await fetch('/api/schedule/shift-pattern-master/delete',
+     {method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id,user_id:'test-shift'})}),x.id);
+ }catch(_){}
 
  console.log('\n=== SUMMARY ===');
  const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);

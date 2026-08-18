@@ -30,8 +30,10 @@
 """
 import json
 import pathlib
+import shutil
 import sqlite3
 import sys
+import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -55,17 +57,28 @@ WORK = db_access.WORK_DB_KEY
 QUALITY = db_access.QUALITY_DB_KEY
 
 
+# 結合の仕方を確かめるための相手（この検証だけで作って消す）。
+KIND_DIR = tempfile.mkdtemp(prefix='qjkind-')
+KIND_DB = pathlib.Path(KIND_DIR) / 'qjkind.sqlite3'
+
+
 def purge():
     """検証で作った行を**物理的に**消す。マスタDBはフィクスチャ差し替えの
-    対象外で実行をまたいで生き延びるため（§9.121）、前後で必ず片付ける。"""
+    対象外で実行をまたいで生き延びるため（§9.121）、前後で必ず片付ける。
+    **既定の結合の印も戻す**——解除したまま終わると、次の実行では品質の列が
+    出ず、関係の無いテストが「列が消えた」で落ちる。"""
     try:
         conn = sqlite3.connect(db_access.DBS['MASTER']['path'])
         conn.execute("DELETE FROM [クエリ結合マスタ] WHERE [結合名] LIKE ?", (NAME_PREFIX + '%',))
         conn.execute("DELETE FROM [データソースマスタ] WHERE [キー] LIKE 'QJTEST%'")
+        conn.execute("DELETE FROM [パス設定マスタ] WHERE [設定キー]=?",
+                     (query_join.BUILTIN_QUALITY_SWITCH_KEY,))
         conn.commit()
         conn.close()
     except Exception:
         pass
+    db_access.DBS.pop('QJKIND', None)
+    shutil.rmtree(KIND_DIR, ignore_errors=True)
 
 
 def post(path, body):
@@ -235,7 +248,135 @@ try:
         st == 200 and len(c.get('columns') or []) > 0 and 'rows' not in c,
         f"{c.get('table')} {len(c.get('columns') or [])}列")
 
-    # ---- 10) 削除 ----
+    # ---- 10) 結合の仕方（6通り）----
+    # **行がどう増減するかを確かめる。** 相手として、①この一覧の表示中の行に
+    # 当たるもの ②この一覧には居るが表示中のページには居ないもの ③この一覧に
+    # 居ないもの、の3種類を用意する。②が要るのは、「相手にしかない行」を
+    # **表示中のページだけで決めていないか**を見るため（ページで決めていると
+    # ②が「相手にしかない行」として増えてしまう）。
+    st, t = get(f'/api/table?db={WORK}&table=仕掛&page_size=200')
+    all_rows = t.get('rows') or []
+    all_cols = t.get('columns') or []
+    lots = [r.get('ロット番号') for r in all_rows if r.get('ロット番号')]
+    page_rows = all_rows[:5]
+    page_lots = [r.get('ロット番号') for r in page_rows]
+    far_lot = next((x for x in lots if x not in page_lots), None)
+    pathlib.Path(KIND_DIR).mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(KIND_DB))
+    conn.execute('CREATE TABLE [相手] ([ロット番号] TEXT, [等級] TEXT)')
+    conn.executemany('INSERT INTO [相手] VALUES (?,?)',
+                     [(page_lots[0], 'A'), (page_lots[1], 'B'), (page_lots[2], 'C'),
+                      (far_lot, 'D'), ('QJZZZ1', 'E'), ('QJZZZ2', 'F')])
+    conn.commit()
+    conn.close()
+    db_access.DBS['QJKIND'] = {'path': KIND_DB, 'role': 'readonly', 'label': '結合の仕方の検証',
+                               'preferred': '相手', 'purpose': '', 'listed': False}
+
+    def kind_case(kind):
+        d = {'id': 0, 'name': NAME_PREFIX + 'K', 'left': WORK, 'leftTable': '仕掛',
+             'right': 'QJKIND', 'rightTable': '相手', 'kind': kind,
+             'keys': [{'left': 'ロット番号', 'right': 'ロット番号'}],
+             'columns': [], 'prefix': 'K_', 'multi': 'first', 'active': True}
+        cs, rows, infos = query_join.apply_joins(
+            WORK, '仕掛', list(all_cols), [dict(x) for x in page_rows], [d])
+        return cs, rows, (infos[0] if infos else {})
+
+    rec('結合の仕方は6通り',
+        [k['key'] for k in query_join.JOIN_KINDS]
+        == ['left', 'inner', 'right', 'full', 'leftOnly', 'rightOnly']
+        and query_join.JOIN_KIND_DEFAULT == 'left',
+        '/'.join(k['key'] for k in query_join.JOIN_KINDS))
+    rec('結合方法が未設定なら左外部（保存済みの行の見え方を変えない）',
+        query_join.kind_of({})['key'] == 'left'
+        and query_join.kind_of({'kind': 'しらない'})['key'] == 'left')
+
+    cs, rows, info = kind_case('left')
+    rec('左外部: この一覧の行はすべて残る',
+        len(rows) == 5 and info.get('matched') == 3 and 'K_等級' in cs,
+        f"{len(rows)}行 matched={info.get('matched')}")
+    cs, rows, info = kind_case('inner')
+    rec('内部: 当たった行だけになる',
+        len(rows) == 3 and info.get('droppedRows') == 2,
+        f"{len(rows)}行 dropped={info.get('droppedRows')}")
+    cs, rows, info = kind_case('leftOnly')
+    rec('この一覧にしかない行: 当たらなかった行だけ・相手の列は足さない',
+        len(rows) == 2 and 'K_等級' not in cs and info.get('addedColumns') == 0,
+        f"{len(rows)}行 列={[c for c in cs if c.startswith('K_')]}")
+    cs, rows, info = kind_case('rightOnly')
+    rec('相手にしかない行: この一覧の全体と突き合わせる（ページだけで決めない）',
+        len(rows) == 2 and info.get('addedRows') == 2
+        and sorted(r.get('ロット番号') for r in rows) == ['QJZZZ1', 'QJZZZ2'],
+        f"{len(rows)}行 {[r.get('ロット番号') for r in rows]}")
+    rec('相手にしかない行にも突合キーの値は入る（どの行か分かる）',
+        all(r.get('K_等級') for r in rows) and all(r.get('ロット番号') for r in rows),
+        json.dumps(rows[0] if rows else {}, ensure_ascii=False)[:100])
+    cs, rows, info = kind_case('right')
+    rec('右外部: 当たった行＋相手にしかない行',
+        len(rows) == 5 and info.get('droppedRows') == 2 and info.get('addedRows') == 2,
+        f"{len(rows)}行 dropped={info.get('droppedRows')} added={info.get('addedRows')}")
+    cs, rows, info = kind_case('full')
+    rec('完全外部: どちらかにあれば残る',
+        len(rows) == 7 and info.get('droppedRows') == 0 and info.get('addedRows') == 2,
+        f"{len(rows)}行")
+    _cs, _rows, info = kind_case('inner')
+    summary = query_join.summarize([info])
+    rec('行が増減したことをまとめが伝える',
+        summary.get('rowsChanged') is True and summary.get('droppedRows') == 2,
+        json.dumps({k: summary.get(k) for k in ('rowsChanged', 'droppedRows', 'addedRows')},
+                   ensure_ascii=False))
+
+    # 保存・読み出しでも結合方法が残ること（既定は左外部のまま）。
+    st, r = post('/api/query-join-master/update', {
+        'user_id': UID, 'id': jid, 'name': NAME_PREFIX + 'A', 'left': WORK, 'right': QUALITY,
+        'prefix': 'Q_', 'kind': 'inner',
+        'keys': [{'left': 'ロット番号', 'right': 'ロット番号'}]})
+    st, m = get('/api/query-join-master')
+    saved = {x['id']: x for x in (m.get('items') or [])}.get(jid) or {}
+    rec('結合方法が保存され、読み出せる', saved.get('kind') == 'inner', str(saved.get('kind')))
+    rec('結合の仕方の一覧をサーバーが答える（画面で持たない）',
+        len(m.get('kinds') or []) == 6 and m.get('kindDefault') == 'left',
+        str(len(m.get('kinds') or [])))
+    post('/api/query-join-master/update', {
+        'user_id': UID, 'id': jid, 'name': NAME_PREFIX + 'A', 'left': WORK, 'right': QUALITY,
+        'prefix': 'Q_', 'kind': 'left',
+        'keys': [{'left': 'ロット番号', 'right': 'ロット番号'}]})
+
+    # ---- 11) 既定の品質データ結合を解除できる ----
+    st, r = post('/api/query-join-master/builtin', {'user_id': UID, 'enabled': False})
+    rec('既定の結合を解除できる', st == 200 and r.get('enabled') is False, f"{st} {r.get('error','')}")
+    rec('解除は即座に効く（再起動を待たせない）',
+        query_join.builtin_quality_enabled() is False)
+    st, t = get(f'/api/table?db={WORK}&table=仕掛&page_size=50&join_quality=1')
+    rec('解除したら品質の列は出ない。**エラーにはしない**',
+        st == 200 and len(t.get('rows') or []) > 0 and t.get('joinQuality') is None,
+        f"{st} {len(t.get('rows') or [])}行 {t.get('joinQuality')}")
+    defs = query_join.definitions_for(WORK, '仕掛', include_builtin=True)
+    rec('解除中は既定を当てない', not any(d.get('builtin') for d in defs),
+        '/'.join(str(d.get('name')) for d in defs))
+    rec('解除しても既定の内容は見られる（真似できることが値打ち）',
+        bool(query_join.builtin_quality_def()),
+        json.dumps((query_join.builtin_quality_def() or {}).get('keys'), ensure_ascii=False))
+    st, m = get('/api/query-join-master')
+    rec('画面へも「解除中」と内容の両方を返す',
+        m.get('builtinEnabled') is False and bool(m.get('builtin')),
+        f"enabled={m.get('builtinEnabled')} builtin={bool(m.get('builtin'))}")
+    st, r = post('/api/query-join-master/builtin', {'user_id': UID, 'enabled': True})
+    rec('既定に戻せる',
+        st == 200 and r.get('enabled') is True and query_join.builtin_quality_enabled() is True)
+
+    # ---- 12) 突合キーを選ぶための見本 ----
+    st, c = get(f'/api/table-columns?db={QUALITY}&samples=1')
+    samples = c.get('samples') or {}
+    rec('列の見本を返す（形が合うかを見て選べる）',
+        st == 200 and len(samples) > 0
+        and any(len(v) > 0 for v in samples.values())
+        and all(len(v) <= 3 for v in samples.values()),
+        json.dumps({k2: v for k2, v in list(samples.items())[:2]}, ensure_ascii=False)[:100])
+    rec('名前のゆれを吸収した名前もサーバーが返す（規則を画面へ写さない）',
+        isinstance(c.get('normalized'), dict) and len(c.get('normalized') or {}) == len(c.get('columns') or []),
+        str(len(c.get('normalized') or {})))
+
+    # ---- 13) 削除 ----
     st, r = post('/api/query-join-master/delete', {'user_id': UID, 'id': jid})
     rec('削除できる', st == 200 and r.get('deleted') == 1, str(r.get('deleted')))
     st, t = get(f'/api/table?db={WORK}&table=仕掛&page_size=50&join=1')

@@ -378,6 +378,17 @@
    ないものはセル側で省略する(セルは既に nowrap + overflow:hidden)。
    --row-h は利用者が行間として調整できる(表示設定)。 */
 .sc-row-line{padding:var(--row-pad-y) 8px;height:var(--row-h);border-radius:var(--radius-xs);background:#fff;border-bottom:1px solid #eef2f4}
+/* ---------- 列の区切り(§9.196、利用者の指摘「列の区切りがわかりにくい」) ----------
+   横の罫線しか無かったため、15列が横一列の文字の並びに見えていた。
+   **レイアウトを1pxも動かさない**よう、borderではなく内側の影で引く
+   ——borderを足すとセルの箱が1px広がり、列レイアウトマスタで決めた幅と
+   食い違う（列幅の設定が効かない列ができる）。
+   引かないのは**取っ手の列と最初のデータ列の左**——そこへ引くと表の外枠に
+   なってしまい、「まとまり」ではなく飾りになる(§10)。 */
+.sc-row-line>*:not(:first-child):not(:nth-child(2)){box-shadow:inset 1px 0 0 var(--line-mid)}
+.sc-row-head>*:not(:first-child):not(:nth-child(2)){box-shadow:inset 1px 0 0 var(--line-strong)}
+/* 選んでいる列(§9.177)は自前の影を持つので、区切りより優先される。 */
+.sc-row-head>.sc-row-title-head.is-picked{box-shadow:inset 0 0 0 1px var(--teal)}
 /* 中身がはみ出しても行を押し広げない。grid の子は既定で min-height:auto に
    なるため、これが無いと内容の高いセルが行の高さを決めてしまう。 */
 .sc-row-line>*{min-height:0;max-height:100%;overflow:hidden}
@@ -419,6 +430,9 @@
 .sc-cat-cancel{background:var(--danger-bg);color:var(--danger);border-left-color:var(--danger)}
 .sc-cat-stop{background:var(--warn-bg);color:var(--warn-fg);border-left-color:var(--warn-border)}
 .sc-row-date{font-size:var(--tbl-fs);color:#60747b;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}
+/* 現場歴で暦とずれている日付(§9.195)。**色だけで伝えない**ので、下線は
+   「何か注記がある」ことの目印にとどめ、理由はツールチップの文で言う。 */
+.sc-row-date.is-shifted{text-decoration:underline dotted;text-underline-offset:2px}
 .sc-row-time{font-size:var(--tbl-fs);color:#3a565d;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}
 .sc-row-shift{font-size:var(--tbl-fs);color:#3a565d;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sc-row-rel{font-size:var(--tbl-fs);color:#8a9aa0;white-space:nowrap;overflow:hidden}
@@ -460,29 +474,49 @@
 .sc-layout-sec label b{color:var(--ink);font-size:var(--fs-sm)}
 .sc-layout-sec label small{color:var(--muted);font-size:var(--fs-micro);line-height:1.4}
 .sc-layout-note{margin:0;color:var(--muted);font-size:var(--fs-micro)}
-/* ---------- カーソル位置へ入れる隙間(§9.179) ----------
-   **何ができるかを書く**——押せるだけの空白を作らない。行の高さぶんの
-   隙間を開けて「ここに入る」ことを形で見せる。 */
+/* ---------- カーソル位置へ入れる境目(§9.179 → §9.196で作り直し) ----------
+   **表を1pxも動かさない。** 以前は隙間そのものを行として流れへ挟んでいた
+   ため、カーソルを動かすたびに下の行が1行ぶん上下し、鍵の印・詳細・削除の
+   ボタンが逃げて押せなかった（利用者の指摘）。今は器の座標へ浮かせて置き、
+   「どこへ入るか」は境目の帯、「何ができるか」は吹き出しで言う。 */
 .sc-timeline.sc-insertable .sc-row-line{cursor:default}
-.sc-insert-ghost{display:flex;align-items:center;gap:var(--space-2);
- /* **行の流れの中に挟む**(§9.179)。浮かせて重ねると下の行が1行ぶん
-    隠れて読めなくなる(実際にそうなった)。 */
- flex:0 0 auto;min-height:var(--row-h);margin:2px 0;padding:0 var(--space-2);
- border:2px dashed var(--teal);border-radius:var(--radius-xs);
- background:var(--pale);color:var(--teal-dark);cursor:pointer}
-.sc-insert-ghost:hover{background:#d7f0f1;border-color:var(--teal-dark)}
+.sc-insert-ghost{position:absolute;left:0;right:0;height:0;
+ /* 横に長い表では器より表のほうが広い。**行と同じ最小幅**を持たせないと、
+    右へスクロールした先で帯が途切れる（絶対配置の基準は器の内側なので、
+    表の幅までは自動で伸びない）。 */
+ min-width:var(--sc-row-min,calc(1042px * var(--ui-scale)));
+ /* 器そのものは当たり判定を持たない。**帯と吹き出しだけが押せる**
+    ——全面が受けると、下の行のボタンが押せなくなる。 */
+ pointer-events:none;z-index:var(--z-popover)}
+/* 境目の帯。見えるのは細い線だが、掴める幅はもう少し要る（±5px）。 */
+.sc-insert-line{position:absolute;left:0;right:0;top:-5px;height:10px;
+ pointer-events:auto;cursor:pointer}
+.sc-insert-line::before{content:'';position:absolute;left:0;right:0;top:3px;height:4px;
+ border-radius:var(--radius-xs);background:var(--teal);box-shadow:0 0 0 1px var(--pale)}
+.sc-insert-ghost:hover .sc-insert-line::before{background:var(--teal-dark);height:5px;top:2px}
+/* 説明の吹き出し。**操作の列にはかからない**ように幅の上限を置く
+   （--sc-tip-max はJSが操作列の左端から入れる）。 */
+.sc-insert-tip{position:absolute;top:8px;left:var(--space-2);
+ display:flex;align-items:center;gap:var(--space-2);
+ max-width:var(--sc-tip-max,32em);pointer-events:auto;cursor:pointer;
+ padding:var(--gap-hair) var(--space-2);
+ border:1px solid var(--teal);border-radius:var(--radius-xs);
+ background:var(--pale);color:var(--teal-dark);
+ box-shadow:0 2px 6px rgba(16,44,52,.18)}
+.sc-insert-tip:hover{background:#d7f0f1;border-color:var(--teal-dark)}
 /* 位置を決めたあと(§9.179改訂)。**塗りを変えて「決まっている」と示す**——
    同じ見た目のままだと、まだ選べるのか決まったのかが分からない。 */
-.sc-insert-ghost.is-pinned{border-style:solid;background:var(--success-bg);
+.sc-insert-ghost.is-pinned .sc-insert-line::before{background:var(--success)}
+.sc-insert-ghost.is-pinned .sc-insert-tip{background:var(--success-bg);
  border-color:var(--success);color:var(--success);cursor:default}
-.sc-insert-ghost.is-pinned:hover{background:var(--success-bg)}
 .sc-insert-cancel{margin-left:auto;height:var(--ctl-h-xs);padding:0 var(--space-2);
  border:1px solid var(--line);border-radius:var(--radius-xs);
  background:var(--surface);color:var(--ink-2);font-size:var(--fs-micro);cursor:pointer}
 .sc-insert-cancel:hover{background:var(--surface-2);color:var(--ink)}
 .sc-insert-mark{font-size:var(--fs-lg);font-weight:800;line-height:1}
-.sc-insert-text{display:flex;flex-direction:column;font-size:var(--fs-sm);font-weight:800}
+.sc-insert-text{display:flex;flex-direction:column;min-width:0;font-size:var(--fs-sm);font-weight:800}
 .sc-insert-text small{font-weight:600;color:var(--ink-2);font-size:var(--fs-micro)}
+.sc-insert-text>span,.sc-insert-text small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* 記号だけのボタンは**正方形**にする。幅の下限を --ctl-h-xs(行の外の
    ボタンの高さ)に置くと、行に合わせて縮んだ高さ(--row-ctl-h)との差が
    そのまま横長の歪みになる(§9.112)。 */
@@ -753,10 +787,28 @@
 .shift-list-item.active{background:var(--teal);border-color:var(--teal)}
 .shift-list-item.active b,.shift-list-item.active small{color:#fff}
 .shift-detail{min-width:0;display:flex;flex-direction:column;gap:var(--space-2)}
-.shift-fields{display:flex;flex-wrap:wrap;gap:var(--space-3)}
-.shift-fields .mm-field{flex:1 1 240px}
-.shift-fields input,.shift-fields select{width:100%}
+/* **器は中身の長さから決める**(CLAUDE.md §11)。以前は`flex:1 1 240px`＋
+   `width:100%`で、勤務体系の名称（長くても20字ほど）の入力欄が枠いっぱい
+   ——600px超——まで伸びていた。名称は`--w-xl`(22em)で頭打ちにし、余りは
+   適用設備へ渡す（関係の近いものへ渡す。§9.126）。 */
+.shift-fields{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--space-3);align-items:start}
+.shift-f-name input{width:100%;max-width:var(--w-xl)}
+.shift-f-eq{min-width:0}
+.shift-eq-bar{display:flex;align-items:baseline;gap:var(--space-2);flex-wrap:wrap;
+  margin-bottom:var(--gap-hair)}
+/* **何が選ばれているかを文字で言う**(§3)。チェックの見た目だけだと、設備が
+   多いときに「全設備共通なのか選び忘れなのか」が読めない。 */
+.shift-eq-sum{font-size:var(--fs-sm);color:var(--ink-2)}
+.shift-eq-sum b{color:var(--ink)}
+.shift-eq-act{margin-left:auto;display:flex;gap:var(--gap-inline)}
+/* 設備は**そろったマス目**に並べる。以前は`flex-wrap`で名前の長さなりに
+   ちぎれて折り返しており、行ごとに左端がずれて数えられなかった。 */
+.shift-eq-picker{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--w-md),1fr));
+  gap:var(--gap-hair);max-height:11em;overflow:auto;
+  border:1px solid var(--line-soft);border-radius:var(--radius-sm);
+  padding:var(--gap-tight);background:var(--surface-2)}
 /* 24時間バー: 左端0時・右端24時。区分ごとに色を変え、日跨ぎは両端に分けて描く。 */
+.shift-bar-wrap{display:grid;gap:2px}
 .shift-bar{position:relative;height:22px;border:1px solid var(--line);border-radius:var(--radius-sm);background:repeating-linear-gradient(90deg,#f7fafb 0,#f7fafb calc(100%/24 - 1px),#e3ebee calc(100%/24 - 1px),#e3ebee calc(100%/24));overflow:hidden}
 .shift-bar-piece{position:absolute;top:0;bottom:0;opacity:.9}
 .shift-bar-noon{position:absolute;top:0;bottom:0;left:50%;width:1px;background:#9caeb4}
@@ -767,13 +819,43 @@
 .shift-bar-piece[data-i="3"],.shift-seg-dot[data-i="3"]{background:#3f9d6b}
 .shift-bar-piece[data-i="4"],.shift-seg-dot[data-i="4"]{background:#b05a8e}
 .shift-bar-piece[data-i="5"],.shift-seg-dot[data-i="5"]{background:#7b8e95}
-.shift-segs{display:flex;flex-direction:column;gap:var(--gap-tight)}
-.shift-seg{display:flex;align-items:center;gap:var(--gap-inline);padding:var(--pad-row);border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;flex-wrap:wrap}
+/* 勤務区分は1行＝1区分。**見出しと本文で同じグリッド定義を共有する**
+   （別々に組むと左端がずれる。§9.176と同じ土台）。以前は`flex-wrap`で、
+   名称欄の長さが行ごとに変わり列として追えなかった。
+   **見出しも本文と同じ文字サイズにする**——列幅が`em`なので、見出しだけ
+   小さくすると同じ`--w-sm`が別の幅になる（§9.193で実際に踏んだ）。 */
+.shift-segs{display:grid;gap:var(--gap-hair)}
+.shift-seg,.shift-seg-head{display:grid;align-items:center;gap:var(--space-2);
+  /* **`auto`を使わないこと。** 見出しと本文は別々の要素なので、`auto`は
+     それぞれの中身で解決される——見出しの「時間帯」と本文の時刻2つでは
+     幅が違い、左端がそろわない（実測 178.6px と 227.2px）。測った幅を
+     `--w-*`の直近上位へ丸めてそろえる（CLAUDE.md §11）。 */
+  grid-template-columns:
+    10px                /* 色（24時間バーと対応） */
+    var(--w-md)         /* 区分の名称 */
+    var(--w-xl)         /* 時間帯（開始〜終了。実測18.9em→22em） */
+    var(--w-xs)         /* 日跨ぎの印 */
+    var(--w-xl)         /* 日付の数え方 */
+    var(--w-md);        /* 操作（3つのボタン。実測7.8em→11em） */
+  padding:var(--pad-row);border:1px solid var(--line);border-radius:var(--radius-sm);
+  background:#fff;font-size:var(--fs-sm)}
+.shift-seg-head{background:var(--surface-2);border:1px solid transparent;
+  color:var(--muted);font-weight:700;padding-top:2px;padding-bottom:2px}
+.shift-seg-h{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .shift-seg-dot{flex:none;width:10px;height:10px;border-radius:var(--radius-round)}
-.shift-seg-name{flex:1 1 110px;min-width:80px;height:var(--ctl-h-sm)}
-.shift-seg-start,.shift-seg-end{flex:0 0 auto;height:var(--ctl-h-sm);font-variant-numeric:tabular-nums}
+.shift-seg-name{width:100%;height:var(--ctl-h-sm)}
+.shift-seg-time{display:flex;align-items:center;gap:var(--gap-inline);min-width:0}
+.shift-seg-time input{flex:0 1 auto;min-width:0}
+.shift-seg-start,.shift-seg-end{height:var(--ctl-h-sm);font-variant-numeric:tabular-nums}
 .shift-seg-sep{color:#8a9aa0;font-size:var(--fs-sm)}
-.shift-seg-next{flex:none;min-width:34px;font-size:var(--fs-tiny);font-weight:800;color:var(--warn-fg);background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:var(--radius-sm);padding:1px 6px;text-align:center}
+.shift-seg-next{font-size:var(--fs-tiny);font-weight:800;color:var(--warn-fg);background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:var(--radius-sm);padding:1px 6px;text-align:center}
+.shift-seg-next.is-empty{background:transparent;border-color:transparent}
+/* 日付の数え方(§9.195)。**日を跨ぐ区分にだけ出す**——跨がない区分では
+   当てる時間帯が無いので、欄ごと置かず「—」にする(§4)。 */
+.shift-seg-dayoff{width:100%;height:var(--ctl-h-sm);font-size:var(--fs-sm)}
+.shift-seg-dayoff.is-na{display:block;color:var(--muted);text-align:center;
+  border:none;background:none;height:auto}
+.shift-seg-act{display:flex;gap:var(--gap-inline);justify-content:flex-end}
 .shift-seg button{flex:none;width:26px;border:1px solid var(--line);background:#fff;line-height:1;cursor:pointer;color:#60747b}
 .shift-seg button:disabled{opacity:.35;cursor:default}
 .shift-actions{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
