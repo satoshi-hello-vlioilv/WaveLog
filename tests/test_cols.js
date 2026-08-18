@@ -35,7 +35,11 @@ let b=null;
 
  // --- (5) 品質データ結合の可視化 ---
  const chip=await page.evaluate(()=>{const c=document.querySelector('#listJoinChip');return c?{hidden:c.hidden,txt:c.textContent,cls:c.className}:null});
- rec('品質データ結合の結果が一覧の脇に表示される',chip&&!chip.hidden&&/結合済み/.test(chip.txt),JSON.stringify(chip));
+ /* 帯は**結合の名前と件数を文字で**言う(§9.193)。結合は1件とは限らないので
+    「品質データ結合済み」という決め打ちの文言はやめた。 */
+ rec('品質データ結合の結果が一覧の脇に表示される',
+     chip&&!chip.hidden&&/^結合 /.test(chip.txt)&&/品質データ/.test(chip.txt)&&/行/.test(chip.txt),
+     JSON.stringify(chip));
  const joined=await page.evaluate(()=>({cols:(typeof S!=='undefined'&&S.columns)||[]}));
  rec('結合された品質列(検査結果・公差判定)が一覧の列に入っている',
    joined.cols.includes('検査結果')&&joined.cols.includes('公差判定'),joined.cols.join(','));

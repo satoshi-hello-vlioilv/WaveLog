@@ -333,8 +333,30 @@ def data_source_master_list():
                  'outputPath':str(out),
                  'outputExists':out.exists(),
                  'enabled':'有効' if r['active'] else '無効',
+                 'listed':bool(r.get('listed',True)),
+                 'listedText':'出す' if r.get('listed',True) else '出さない',
+                 # いま効いている値(§9.183と同じ扱い)。左メニューの元になる
+                 # カタログはDBSの写しから作るので、保存しても再起動までは
+                 # 変わらない——違うときだけ画面が「再起動待ち」と言う。
+                 'activeListed':(bool((_DBS.get(r['key']) or {}).get('listed',True))
+                                 if _DBS.get(r['key']) else None),
                  'purpose':r.get('purpose') or 'その他'})
+  # 選べる役割と、いまそれが付いている行(§9.193)。**画面が推測しない**——
+  # 「仕掛／品質／スケジュールは各1件」という決まりを持っているのはこちら
+  # なので、どれが埋まっているかもこちらが答える(選ぶ前に分かる)。
+  from ..db_access import DATA_SOURCE_PURPOSES,PURPOSE_OTHER
+  holder={}
+  try:
+   with connect(path,True) as c:
+    cur=c.cursor()
+    for pv in DATA_SOURCE_PURPOSES:
+     if pv==PURPOSE_OTHER:continue
+     holder[pv]=_purpose_holder(cur,pv)
+  except Exception as e:
+   app_logger().warning('役割の割り当てを確かめられませんでした: %s',e)
   return jsonify(ok=True,items=items,master_path=str(path),
+                 purposes=[pv for pv in DATA_SOURCE_PURPOSES if pv!=PURPOSE_OTHER],
+                 purposeHolders=holder,
                  assetsDir=str(rne_scheduler.assets_dir()),
                  confPath=str(rne_scheduler.conf_path()),
                  confExists=rne_scheduler.conf_path().exists())
@@ -361,26 +383,45 @@ def _save_source_override(key,value,uid):
   set_path_config(c,source_override_key(key),str(value or '').strip(),uid)
 
 def _purpose_of(x):
- """画面から来た役割を正規化する(§9.87)。「作業」「品質」以外は「その他」。"""
- from ..db_access import DATA_SOURCE_PURPOSES,PURPOSE_OTHER
+ """画面から来た役割を正規化する(§9.87・§9.193)。判定は db_access の1箇所。"""
+ from ..db_access import normalize_purpose,PURPOSE_OTHER
  v=str(x.get('purpose') or '').strip()
  if v in ('その他','—','-'):return PURPOSE_OTHER
- return v if v in DATA_SOURCE_PURPOSES else PURPOSE_OTHER
+ return normalize_purpose(v)
 
-def _purpose_conflict(cur,purpose,exclude_id=None):
- """同じ役割が2行に付くのを防ぐ。**どちらを使うか決められない**ため。
-    戻り値: 問題があればメッセージ、無ければ None。"""
+def _listed_of(x,purpose):
+ """一覧に出すかどうか(§9.193)。**役割「仕掛」だけは隠せない**——測定も
+    予定投入もあの一覧から始まるので、隠すと入口が消える。画面にもそう書く。"""
+ from ..db_access import PURPOSE_WORK
+ if purpose==PURPOSE_WORK:return -1
+ v=str(x.get('listed') if x.get('listed') is not None else '').strip()
+ if v in ('出さない','非表示','false','0','no'):return 0
+ if x.get('listed') is False:return 0
+ return -1
+
+def _purpose_holder(cur,purpose,exclude_id=None):
+ """その役割が今どのキーに付いているか。無ければ空文字。
+
+    **仕掛／品質／スケジュールは各1件だけ**(§9.193、利用者の指示)。判定を
+    ここ1箇所に置き、保存時の門番(_purpose_conflict)と画面へ出す「現在: ○○」
+    の両方がこれを見る——2つ持つと、画面が「空いている」と言っている役割で
+    保存が弾かれる、という食い違いになる。"""
  from ..db_access import PURPOSE_OTHER
- if not purpose or purpose==PURPOSE_OTHER:return None
+ if not purpose or purpose==PURPOSE_OTHER:return ''
  sql='SELECT [キー] FROM [データソースマスタ] WHERE [役割]=? AND [有効]<>0'
  args=[purpose]
  if exclude_id is not None:sql+=' AND [ソースID]<>?';args.append(exclude_id)
  cur.execute(sql,args)
  row=cur.fetchone()
- if row:
-  return (f'役割「{purpose}」は既に「{row[0]}」に付いています。'
-          '1つの役割は1件だけです。先にそちらを「その他」へ変えてください。')
- return None
+ return str(row[0]) if row else ''
+
+def _purpose_conflict(cur,purpose,exclude_id=None):
+ """同じ役割が2行に付くのを防ぐ。**どちらを使うか決められない**ため。
+    戻り値: 問題があればメッセージ、無ければ None。"""
+ holder=_purpose_holder(cur,purpose,exclude_id)
+ if not holder:return None
+ return (f'役割「{purpose}」は既に「{holder}」に付いています。'
+         '1つの役割は1件だけです。先にそちらを「その他」へ変えてください。')
 
 @bp.post('/api/data-source-master')
 def data_source_master_save():
@@ -405,16 +446,18 @@ def data_source_master_save():
          str(x.get('output') or '').strip(),str(x.get('share') or '').strip(),
          str(x.get('preferred') or '').strip(),
          int(x.get('order') or 0),
-         0 if str(x.get('enabled') or '').strip()=='無効' else -1,purpose,_read_mode_of(x),uid]
+         0 if str(x.get('enabled') or '').strip()=='無効' else -1,purpose,_read_mode_of(x),
+         _listed_of(x,purpose),uid]
    if row:
     cur.execute('UPDATE [データソースマスタ] SET [表示名]=?,[RNEファイル]=?,[抽出テーブル]=?,'
                 '[出力ファイル]=?,[共有パス]=?,[既定テーブル]=?,[表示順]=?,[有効]=?,[役割]=?,[読み方]=?,'
-                '[更新者ID]=?,[更新日時]=Now() WHERE [ソースID]=?',vals+[row[0]])
+                '[一覧表示]=?,[更新者ID]=?,[更新日時]=Now() WHERE [ソースID]=?',vals+[row[0]])
     registered=False;sid=row[0]
    else:
     cur.execute('INSERT INTO [データソースマスタ] ([表示名],[RNEファイル],[抽出テーブル],'
-                '[出力ファイル],[共有パス],[既定テーブル],[表示順],[有効],[役割],[読み方],[更新者ID],'
-                '[キー],[登録者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',
+                '[出力ファイル],[共有パス],[既定テーブル],[表示順],[有効],[役割],[読み方],[一覧表示],'
+                '[更新者ID],[キー],[登録者ID],[登録日時],[更新日時]) '
+                'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',
                 vals+[key,uid])
     registered=True;sid=cur.lastrowid
    c.commit()
@@ -461,14 +504,14 @@ def data_source_master_update():
    if err:return jsonify(error=err),400
    cur.execute('UPDATE [データソースマスタ] SET [キー]=?,[表示名]=?,[RNEファイル]=?,[抽出テーブル]=?,'
                '[出力ファイル]=?,[共有パス]=?,[既定テーブル]=?,[表示順]=?,[有効]=?,[役割]=?,[読み方]=?,'
-               '[更新者ID]=?,[更新日時]=Now() WHERE [ソースID]=?',
+               '[一覧表示]=?,[更新者ID]=?,[更新日時]=Now() WHERE [ソースID]=?',
                [key,label,str(x.get('rne') or '').strip(),
                 str(x.get('table') or '').strip() or '仕掛',
                 str(x.get('output') or '').strip(),str(x.get('share') or '').strip(),
                 str(x.get('preferred') or '').strip(),
                 int(x.get('order') or 0),
                 0 if str(x.get('enabled') or '').strip()=='無効' else -1,
-                purpose,_read_mode_of(x),uid,sid])
+                purpose,_read_mode_of(x),_listed_of(x,purpose),uid,sid])
    c.commit()
   if 'overridePath' in x:_save_source_override(key,x.get('overridePath'),uid)
   return jsonify(ok=True,id=sid,key=key,registered=False,updated_by=uid,

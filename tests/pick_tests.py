@@ -61,7 +61,8 @@ G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'tes
                'test_gridhead']
 G['起動'] = ['test_boot', 'test_bootui', 'test_bootflash', 'test_assetcache', 'test_tabclose']
 G['接続'] = ['test_dbopen', 'test_dbmirror', 'test_datasource', 'test_tablequery',
-             'test_atomicio', 'test_localwork', 'test_dscap']
+             'test_atomicio', 'test_localwork', 'test_dscap',
+             'test_qjoin', 'test_qjoinui']
 G['権限'] = ['test_modeguard', 'test_noaccess', 'test_scperm', 'test_recperm']
 G['ログ'] = ['test_logs', 'test_logview', 'test_error']
 
@@ -102,7 +103,8 @@ RULES = [
     ('static/js/schedule-view.js', g('スケジュール', 'test_listmodal')),
     ('static/js/schedule-print.js', g('test_scprint')),
     ('static/js/lot-split.js', g('test_scsplit', 'test_orphan', 'test_sub', 'test_splitlive')),
-    ('static/js/master-maint.js', g('マスタ', 'test_headbar', 'test_datasource')),
+    ('static/js/master-maint.js', g('マスタ', 'test_headbar', 'test_datasource',
+                                     'test_qjoinui', 'test_dscap')),
     ('static/js/calendar-view.js', g('test_calscale', 'test_histdel', 'test_headbar')),
     # 帳票の塊の組み換え(§9.169)は列レイアウトマスタに載るので列の網も回す。
     ('static/js/report-dashboard.js', g('test_screport', 'test_hdr', 'test_calscale',
@@ -132,7 +134,7 @@ RULES = [
                                       'test_scbalance', 'test_scprint')),
     ('static/css/35-split.css', g('見た目', 'test_splitlive', 'test_split_layout')),
     ('static/css/40-records.css', g('見た目', 'test_recperm', 'test_reccols')),
-    ('static/css/50-master.css', g('見た目', 'マスタ', 'test_dscap')),
+    ('static/css/50-master.css', g('見た目', 'マスタ', 'test_dscap', 'test_qjoinui')),
     ('static/css/60-report.css', g('見た目', 'test_screport', 'test_rpblocks')),
     ('static/css/88-logs.css', g('見た目', 'test_logview')),
 
@@ -155,6 +157,7 @@ RULES = [
     ('backend/db_access.py', g('接続', '一覧', 'test_setpage')),
     # データソースの「できること」の判定(§9.163)。列名の別名解決も
     # ここが持つので、品質結合(/api/table)の網も回す。
+    ('backend/query_join.py', g('接続', '列', 'test_dsnav', 'test_sccontent')),
     ('backend/source_capability.py', g('test_dscap', 'test_datasource', 'test_dsnav',
                                        'test_tablequery', 'test_uiux')),
     ('backend/db_mirror.py', g('test_dbmirror', 'test_dbopen', 'test_listcache',

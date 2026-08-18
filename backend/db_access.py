@@ -379,13 +379,31 @@ DATA_SOURCE_TABLE='データソースマスタ'
 #   ・測定/予定の列・品質データ結合・条割の再検索が黙って消える
 # という壊れ方をした(実機で発生)。役割で判定すれば、キーは利用者が自由に
 # 付けてよい**ただの識別子**に戻る。
-PURPOSE_WORK='作業'      # 作業対象の一覧(仕掛)。測定・予定投入の対象
-PURPOSE_QUALITY='品質'   # 品質データ。仕掛への結合元
-PURPOSE_OTHER=''         # その他(一覧として見るだけ)
-DATA_SOURCE_PURPOSES=(PURPOSE_WORK,PURPOSE_QUALITY,PURPOSE_OTHER)
+#
+# **役割は「読むかどうか」ではなく「何として使うか」**(§9.193、利用者の指示
+# 「今までのようにデータを読むだけで終わらず、使うかどうか、どのデータとして
+# 使うかを選択できることで幅を広げたい」)。読むだけの行は「その他」のまま
+# 一覧に出る——役割を付けた行だけが、測定・予定投入・スケジュール本体という
+# **決まった役目**に就く。
+PURPOSE_WORK='仕掛'          # 作業対象の一覧。測定・予定投入の対象
+PURPOSE_QUALITY='品質'       # 品質データ
+PURPOSE_SCHEDULE='スケジュール'  # 作業予定の本体(共有スケジュールDB)
+PURPOSE_OTHER=''             # その他(一覧として見るだけ)
+DATA_SOURCE_PURPOSES=(PURPOSE_WORK,PURPOSE_QUALITY,PURPOSE_SCHEDULE,PURPOSE_OTHER)
+# 旧い呼び名(§9.193)。保存済みの行をそのまま読めるようにする。**移行は
+# ensure_data_source_table が1回だけ書き換える**が、読む側にも別名を置く
+# ——書き換え前のDBを読み取り専用で開く経路があるため(片方だけだと、
+# そこでは役割が「その他」に落ちて測定も予定投入もできなくなる)。
+_PURPOSE_ALIASES={'作業':PURPOSE_WORK}
 # 役割が未設定の既存行を、初回だけこのキーで補う(移行)。ここに載っていない
 # キーは PURPOSE_OTHER のまま＝「一覧として見るだけ」。
 _LEGACY_PURPOSE_BY_KEY={'SIKALOTNOW':PURPOSE_WORK,'SIKALOTDEF':PURPOSE_QUALITY}
+
+def normalize_purpose(raw):
+ """保存値・画面からの入力を今の呼び名へ寄せる。知らない値は「その他」。"""
+ v=str(raw or '').strip()
+ v=_PURPOSE_ALIASES.get(v,v)
+ return v if v in DATA_SOURCE_PURPOSES else PURPOSE_OTHER
 
 # 既定の2件。マスタが空のときだけ入れる(初回起動・既存環境の互換)。
 # 出力先/共有パスは下で解決するため、ここではファイル名だけを持つ。
@@ -431,6 +449,7 @@ def ensure_data_source_table(c):
    '[ソースID] INTEGER PRIMARY KEY AUTOINCREMENT, [キー] TEXT, [表示名] TEXT, '
    '[RNEファイル] TEXT, [抽出テーブル] TEXT, [出力ファイル] TEXT, [共有パス] TEXT, '
    '[既定テーブル] TEXT, [表示順] INTEGER, [有効] INTEGER, [役割] TEXT, [読み方] TEXT, '
+   '[一覧表示] INTEGER, '
    '[登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
   c.commit();created=True
  elif '役割' not in {n for n in cols(c,DATA_SOURCE_TABLE)}:
@@ -462,6 +481,21 @@ def ensure_data_source_table(c):
  if DATA_SOURCE_TABLE in tables(c) and '読み方' not in {n for n in cols(c,DATA_SOURCE_TABLE)}:
   c.cursor().execute('ALTER TABLE [データソースマスタ] ADD COLUMN [読み方] TEXT')
   c.commit()
+ # 一覧に出すかどうか(§9.193)。**「使う/使わない」と「一覧に出す/出さない」は
+ # 別のこと**——結合の相手としてだけ読みたいデータ（品質・単価表など）は、
+ # 左メニューに並べても押す用が無い。空欄＝出す（既存の行の見え方を変えない）。
+ if DATA_SOURCE_TABLE in tables(c) and '一覧表示' not in {n for n in cols(c,DATA_SOURCE_TABLE)}:
+  c.cursor().execute('ALTER TABLE [データソースマスタ] ADD COLUMN [一覧表示] INTEGER')
+  c.commit()
+ # 役割の呼び名を今のものへ寄せる(§9.193)。**保存値を1つに保つ**——
+ # 読む側の別名(_PURPOSE_ALIASES)だけで済ませると、役割の重なりを見る
+ # SQL(`WHERE [役割]=?`)が旧い値の行を見落とし、「仕掛」が2件付いた状態を
+ # 作れてしまう(どちらを使うか決められない)。
+ if DATA_SOURCE_TABLE in tables(c) and '役割' in {n for n in cols(c,DATA_SOURCE_TABLE)}:
+  cur=c.cursor()
+  for old,new in _PURPOSE_ALIASES.items():
+   cur.execute('UPDATE [データソースマスタ] SET [役割]=? WHERE [役割]=?',[new,old])
+   if cur.rowcount:c.commit()
  return created
 
 def data_source_rows(c,include_disabled=False):
@@ -475,11 +509,13 @@ def data_source_rows(c,include_disabled=False):
  have=({n for n in cols(c,DATA_SOURCE_TABLE)})
  has_purpose='役割' in have
  has_mode='読み方' in have
+ has_listed='一覧表示' in have
  cur=c.cursor()
  cur.execute('SELECT [ソースID],[キー],[表示名],[RNEファイル],[抽出テーブル],[出力ファイル],'
              '[共有パス],[既定テーブル],[表示順],[有効],'
              +('[役割]' if has_purpose else "''")+','
-             +('[読み方]' if has_mode else "''")+' FROM [データソースマスタ] '
+             +('[読み方]' if has_mode else "''")+','
+             +('[一覧表示]' if has_listed else 'NULL')+' FROM [データソースマスタ] '
              'ORDER BY [表示順],[キー]')
  out=[];seen={}
  for r in cur.fetchall():
@@ -491,19 +527,19 @@ def data_source_rows(c,include_disabled=False):
                         'を使い、ソースID=%sは読み飛ばしました。',key,seen[key],r[0])
    continue
   seen[key]=r[0]
-  purpose=str(r[10] or '').strip()
-  if purpose not in DATA_SOURCE_PURPOSES:
+  purpose=normalize_purpose(r[10])
+  if purpose==PURPOSE_OTHER and str(r[10] or '').strip():
    # 想定外の値は「その他」として扱う(勝手に作業対象へ昇格させない)。
-   if purpose:
-    app_logger().warning('データソースマスタの役割(%r, キー=%s)は%sのいずれでもないため'
-                         '「その他」として扱います。',purpose,key,
-                         '/'.join(x or '空欄' for x in DATA_SOURCE_PURPOSES))
-   purpose=PURPOSE_OTHER
+   app_logger().warning('データソースマスタの役割(%r, キー=%s)は%sのいずれでもないため'
+                        '「その他」として扱います。',str(r[10]).strip(),key,
+                        '/'.join(x or '空欄' for x in DATA_SOURCE_PURPOSES))
   out.append({'id':r[0],'key':key,'label':str(r[2] or '').strip() or key,
               'rne':str(r[3] or '').strip(),'table':str(r[4] or '').strip() or '仕掛',
               'output':str(r[5] or '').strip(),'share':str(r[6] or '').strip(),
               'preferred':str(r[7] or '').strip(),'order':int(r[8] or 0),'active':active,
-              'purpose':purpose,'mode':_read_mode_value(r[11],key)})
+              'purpose':purpose,'mode':_read_mode_value(r[11],key),
+              # 空欄＝出す。役割「仕掛」だけは隠せない（隠すと主画面が消える）。
+              'listed':(True if r[12] is None else bool(r[12])) or purpose==PURPOSE_WORK})
  return out
 
 _DATA_SOURCE_SEEDED_KEY='__data_sources_seeded__'
@@ -657,16 +693,19 @@ DATA_SOURCES=_master_data_sources() or [
  # マスタを読めなかった場合の保険。既定の2件で従来どおり動かす。
  {'key':d['key'],'label':d['label'],'rne':d['rne'],'table':d['table'],
   'output':d['output'],'share':d['share'],'preferred':d['preferred'],
-  'order':d['order'],'active':True,'id':None,'purpose':d['purpose']}
+  'order':d['order'],'active':True,'id':None,'purpose':d['purpose'],'listed':True}
  for d in _DEFAULT_DATA_SOURCES]
 
 DBS={s['key']:{"path":_source_path(s),"label":s['label'],"role":"readonly",
                "preferred":s.get('preferred') or s.get('table') or '仕掛',
                "purpose":s.get('purpose') or PURPOSE_OTHER,
+               # 左メニューに並べるか(§9.193)。**読むこと自体は止めない**
+               # ——結合の相手として引くのはこのフラグと無関係。
+               "listed":bool(s.get('listed',True)),
                "engine":"sqlite","source":s}
      for s in DATA_SOURCES}
 DBS["MASTER"]={"path":_MASTER_PATH,"label":"マスタ一覧","role":"master",
-               "purpose":PURPOSE_OTHER,
+               "purpose":PURPOSE_OTHER,"listed":True,
                "preferred":"オペレータマスタ","engine":"sqlite"}
 
 def _purpose_key(purpose):
@@ -678,10 +717,11 @@ def _purpose_key(purpose):
                        '先頭の%sを使います。',purpose,len(hit),'/'.join(hit),hit[0])
  return hit[0] if hit else None
 
-# 「作業対象の一覧」「品質データ」がどのキーかは**ここだけが決める**。
-# 画面・APIはキーの文字列を直接比較せず、この2つを参照すること(§9.87)。
+# 「仕掛」「品質」「スケジュール」がどのキーかは**ここだけが決める**。
+# 画面・APIはキーの文字列を直接比較せず、この3つを参照すること(§9.87・§9.193)。
 WORK_DB_KEY=_purpose_key(PURPOSE_WORK)
 QUALITY_DB_KEY=_purpose_key(PURPOSE_QUALITY)
+SCHEDULE_DB_KEY=_purpose_key(PURPOSE_SCHEDULE)
 if not WORK_DB_KEY:
  app_logger().warning('データソースマスタに役割「%s」の行がありません。'
                       '測定・予定投入の対象一覧が決まらないため、一覧は閲覧のみになります。'
@@ -697,7 +737,19 @@ RECORDS_BACKUP_EXPORT_PATH=Path(_records_backup_export_override) if _records_bac
 # 送出し、機能自体が無効になる(仕掛/品質データのsikalotnow_path等と同じく、
 # 検証時はここをローカルの空ファイルへ一時的に切り替えて安全に試せる)。
 _schedule_share_override=_static_path_cfg('schedule_share_path')
-SCHEDULE_SHARE_PATH=Path(_schedule_share_override) if _schedule_share_override else None
+if _schedule_share_override:
+ SCHEDULE_SHARE_PATH=Path(_schedule_share_override)
+elif SCHEDULE_DB_KEY and DBS.get(SCHEDULE_DB_KEY):
+ # 役割「スケジュール」を付けたデータソースから決める(§9.193)。**共通設定の
+ # schedule_share_path が最優先**——既に現場で効いている設定を、役割を付けた
+ # 瞬間に別の場所へ向けないため。役割側は「まだ設定していない端末のための
+ # もう1本の道」で、どちらで決まったかはマスタ管理の画面に出す。
+ SCHEDULE_SHARE_PATH=Path(DBS[SCHEDULE_DB_KEY]['path'])
+else:
+ SCHEDULE_SHARE_PATH=None
+# どちらで決まったか(画面に出すためだけの目印。判定には使わない)。
+SCHEDULE_SHARE_FROM=('path-config' if _schedule_share_override
+                     else ('data-source' if SCHEDULE_SHARE_PATH else ''))
 
 # 測定データのバックアップに残す「誰が・どの端末で」(§9.180)。
 # **共有DBは既に現場で動いているので作り直さない**——他のマスタと同じ

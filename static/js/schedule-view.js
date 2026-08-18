@@ -69,7 +69,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
               picked:new Set(),dragIds:null,
               boardMode:'single',boardWindowHours:24,overview:[],overviewSort:'order',
               sessionHeld:false,sessionHolder:null,sessionError:null,
-              canStartWork:false,historyHours:loadHistoryHours(),groupMode:'none'};
+              canStartWork:false,historyHours:loadHistoryHours(),groupMode:'none',
+              /* クエリ結合(§9.193)で足された列の名前。予定がまだ無い設備でも
+                 内容欄の候補に出せるよう、行ではなくここに持つ。 */
+              joinColumns:[]};
  /* ---------- 読込結果のキャッシュ(§9.42) ----------
     共有スケジュールDBと実績バックアップはネットワーク共有上にあり、開くたびに
     読み直すと待たされる。**一度読んだら保持し、画面を開き直しただけでは
@@ -1679,6 +1682,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   scState.planFetchedAt=fetchedAt;
   renderWarnings();renderTimeline();updateFreshnessUi(fetchedAt);
   scheduleWorkableWatch();   // 可でない行が残っていれば裏で追いかける(§9.51)
+  /* 結合の値は**描き終えてから・手が空いてから**当てる(§9.94と同じ作法)。
+     予定が出るまでの時間に相手のDBの往復を挟まない。 */
+  (window.requestIdleCallback||(f=>setTimeout(f,300)))(()=>{scJoinRefresh()});
  }
  /* ---------- 予定は「取得」と「描画」を分ける(§9.182) ----------
     取得だけ先に始めておいて、表示設定が揃ったところで描く。1つの関数で
@@ -1993,11 +1999,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    const title=(e.title||(e.kind==='コメント'?'（ダブルクリックで書けます）':'設備停止')).trim();
    return keys.map((k,i)=>({key:k,text:i===0?title:'',raw:i===0?title:'',color:''}));
   }
+  const row=entryRow(e);
   return keys.map(k=>{
-   const raw=contentValueOf(e.detail,k);
+   const raw=entryValueOf(e,k);
    const out=WL.cellFormat.cell({raw,format:t?WL.columnLayout.format(t,k):null,
                                  rule:t?WL.columnLayout.rule(t,k):'',
-                                 row:e.detail||{},column:k});
+                                 row,column:k});
    return {key:k,text:out.text,raw:String(raw==null?'':raw),color:out.color};
   });
  }
@@ -2006,7 +2013,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
 
   const items=(scContentPrefs.equipment===scState.equipment)?scContentPrefs.items:null;
   if(items&&items.length){
-   const parts=items.map(k=>contentValueOf(e.detail,k)).filter(v=>v!==undefined);
+   const parts=items.map(k=>entryValueOf(e,k)).filter(v=>v!==undefined);
    if(parts.length)return parts.map(v=>String(v).trim()).join(' / ');
   }
   /* 既定の組み立て。**値の取り出しはcontentValueOf経由**にする(§9.69)。
@@ -4176,6 +4183,90 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   }
   return undefined;
  }
+ /* ---------- クエリ結合の値をスケジュール表でも使う(§9.193) ----------
+    予定の行が持っているのは**投入した時点の仕掛データ(detail)**で、品質の
+    ように後から確定する値は入っていない。同じ結合の定義(マスタ管理 >
+    クエリ結合)を予定の行にも当て、足された列を内容欄で選べるようにする。
+    **一覧と同じ定義・同じエンジン**を通すので、一覧に出る列とスケジュール表
+    に出る列が食い違わない。 */
+ function entryValueOf(e,key){
+  const j=e&&e.joined;
+  if(j){
+   const v=j[key];
+   if(v!==undefined&&v!==null&&String(v).trim()!=='')return v;
+  }
+  return contentValueOf(e&&e.detail,key);
+ }
+ /* 書式・読み替えが条件で見る「行」。**結合の値が上**——同じ名前の列が
+    detail にもある（結合が効いている状態で投入した予定）ときは、凍った
+    写しではなく今の値を使う。 */
+ function entryRow(e){
+  if(!e)return {};
+  return e.joined?Object.assign({},e.detail||{},e.joined):(e.detail||{});
+ }
+ let scJoinKeys=null,scJoinKeysAt=0,scJoinSig='',scJoinSeq=0;
+ const SC_JOIN_KEYS_TTL=60000;
+ /* 突合に要る列名は**サーバーが答える**。予定1行は200列のスナップショットを
+    持っているので、全部送ると50行で数MBの往復になる。 */
+ async function scJoinKeyColumns(){
+  const db=WL.dataSource.workKey();if(!db)return null;
+  if(scJoinKeys&&scJoinKeys.db===db&&Date.now()-scJoinKeysAt<SC_JOIN_KEYS_TTL)return scJoinKeys;
+  try{
+   /* **既定の品質データ結合はここでは当てない**(`builtin=0`)。あれは
+      仕掛一覧のための古い決め打ちで、スケジュール表まで自動で広げると
+      **誰も頼んでいないのに内容欄の候補が増え**、予定を読むたびに相手の
+      DBへの往復が1本増える。品質をスケジュール表に出したい人は、
+      マスタ管理 > クエリ結合に1件登録する（それがこの機能の趣旨）。 */
+   const r=await api('/api/query-join/keys?db='+encodeURIComponent(db)+'&builtin=0');
+   scJoinKeys={db,keys:r.keys||[],joins:r.joins||[]};
+  }catch(_){scJoinKeys={db,keys:[],joins:[]}}
+  scJoinKeysAt=Date.now();
+  return scJoinKeys;
+ }
+ /* 画面の外から中身を確かめる口(§9.51の`scheduleWorkableState`と同じ扱い)。
+    **読むだけ**——結合が当たっているか、どの列が足されたかを、DOMを掘らずに
+    見られるようにしておく（当たっていないときの切り分けに要る）。 */
+ WL.scheduleJoinState=()=>({
+  columns:[...(scState.joinColumns||[])],
+  joins:((scJoinKeys&&scJoinKeys.joins)||[]).map(j=>j.name),
+  resolved:(scState.entries||[]).filter(e=>e.joined&&Object.keys(e.joined).length).length,
+ });
+ async function scJoinRefresh(){
+  const meta=await scJoinKeyColumns();
+  if(!meta||!meta.keys.length){scState.joinColumns=[];return}
+  const targets=scState.entries.filter(e=>e.kind==='作業');
+  if(!targets.length){scState.joinColumns=[];return}
+  const eq=scState.equipment;
+  /* **行そのものではなくidで覚える。** 往復のあいだに予定を読み直すと
+     `scState.entries`が別のオブジェクトへ差し替わり、掴んでおいた参照へ
+     書き込んでも画面には出ない（描いているのは新しいほうなので、値が
+     入っているのに空欄のまま、という見え方になる）。 */
+  const ids=targets.map(e=>String(e.id));
+  const rows=targets.map(e=>{
+   const o={};
+   meta.keys.forEach(k=>{const v=contentValueOf(e.detail,k);if(v!==undefined&&v!==null&&String(v)!=='')o[k]=v});
+   return o;
+  });
+  /* **同じ鍵なら引き直さない。** 描き直しのたびに相手のDBを引くと、
+     並べ替え1回で往復が積み上がる。 */
+  const sig=meta.db+'|'+JSON.stringify(rows);
+  if(sig===scJoinSig)return;
+  scJoinSig=sig;
+  const seq=++scJoinSeq;
+  try{
+   const r=await api('/api/query-join/resolve',{method:'POST',
+     headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({db:meta.db,rows,builtin:false})});
+   if(seq!==scJoinSeq||scState.equipment!==eq)return;
+   scState.joinColumns=r.columns||[];
+   const byId=new Map((scState.entries||[]).map(e=>[String(e.id),e]));
+   (r.values||[]).forEach((v,i)=>{const e=byId.get(ids[i]);if(e)e.joined=v});
+   if(scState.joinColumns.length)renderTimeline();
+  }catch(_){
+   // 次の読み直しでやり直せるように、控えを捨てる（黙って諦めない）。
+   if(seq===scJoinSeq)scJoinSig='';
+  }
+ }
  /* 候補の正規化。「用途名」と「purposeName」のように同じ意味の項目が2つ並ぶと
     どちらを選ぶべきか分からず、しかも片方は古い予定で引けない。alias表に
     載っている項目はalias名へ寄せて1つにまとめる(表示は日本語名)。 */
@@ -4194,6 +4285,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   // (予定がまだ1件も無い設備でも既定を選べるように)。
   const raw=[...(typeof S!=='undefined'&&Array.isArray(S.columns)?S.columns:[])];
   scState.entries.forEach(e=>{if(e.detail)raw.push(...Object.keys(e.detail))});
+  /* 結合で足される列(§9.193)。**予定がまだ1件も無い設備でも選べる**ように
+     サーバーが返した名前をそのまま足す（行から拾うだけだと、当たっている
+     行が1つも無い設備では候補に出てこない）。 */
+  raw.push(...(scState.joinColumns||[]));
+  scState.entries.forEach(e=>{if(e.joined)raw.push(...Object.keys(e.joined))});
   raw.push(...DEFAULT_CONTENT_ITEMS);
   const seen=new Set(),out=[];
   raw.forEach(k=>{const c=canonicalContentKey(k);if(!seen.has(c)){seen.add(c);out.push(c)}});
@@ -4275,7 +4371,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    /* **値の取り出しはcontentValueOf経由**(§9.69)。投入した時期によって
       alias名だけの予定と生カラム名を持つ予定が混ざるので、直接引くと
       古い予定で1件も出ない。 */
-   valueOf:(row,k)=>scIsFixedCol(k)?scFixedCellText(row,k):contentValueOf(row&&row.detail,k),
+   valueOf:(row,k)=>scIsFixedCol(k)?scFixedCellText(row,k):entryValueOf(row,k),
    /* **項目名は日本語で出す。** 内容欄のキーは`lotNo`/`purposeName`という
       alias名なので、そのまま並べると選んだ本人以外には何の項目か分からない
       （タイムラインの見出しが日本語なのに、設定画面だけ生のキーという
@@ -4283,19 +4379,24 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    labelOf:k=>scColLabel(k),
    /* 固定列は**予定そのものが持つ値**で、仕掛データの列ではない。
       分類と一言の説明を添える(§9.105。出どころを言う)。 */
-   originOf:k=>scIsFixedCol(k)?'calc':'source',
+   originOf:k=>scIsFixedCol(k)?'calc':((scState.joinColumns||[]).includes(k)?'join':'source'),
    noteOf:k=>{const d=SC_COL_MAP.get(k);return d?d.note:''},
    currentWidthOf:k=>{
     const el=document.querySelector(`.sc-row-head [data-col="${CSS.escape(k)}"]`);
     return el?Math.round(el.getBoundingClientRect().width):0;
    },
    virtual:()=>({}),
-   joined:()=>new Set(),
-   joinFrom:()=>'',
+   /* 結合で足された列(§9.193)。**サーバーが返した名前をそのまま使う**
+      ——列名から見分ける手がかりは無い（§9.105と同じ約束）。 */
+   joined:()=>new Set(scState.joinColumns||[]),
+   joinFrom:()=>((scJoinKeys&&scJoinKeys.joins||[]).map(j=>j.name).filter(Boolean).join('・')
+                 ||'クエリ結合'),
    /* 計算式は持たない（内容欄の値は予定のスナップショットで、一覧の行を
       前提にした式とは土俵が違う）。プリセットと入出力は使える。 */
    /* 内容欄の項目はすべて元データ由来なので、分類は1つで足りる。 */
-   origins:()=>['source','calc'],
+   /* 分類は**使うものだけ**(§9.120)。結合が1件も無い設備では「結合0」を
+      並べても覚える手間が増えるだけなので出さない。 */
+   origins:()=>((scState.joinColumns||[]).length?['source','join','calc']:['source','calc']),
    /* 並べ替えは持たない(§9.176。行の並びは時刻の一本道)ので、
       並べ替えの決まり(§9.187)の欄も出さない。 */
    features:{formula:false,preset:true,width:true,format:true,rule:true,sort:false},

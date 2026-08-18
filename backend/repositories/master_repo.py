@@ -1467,3 +1467,149 @@ def choice_usage_bump(c,equipment,picks,uid):
   n+=1
  c.commit()
  return n
+
+
+# ========================================================================
+# クエリ結合マスタ(§9.193): データソース同士を突合キーでつなぐ
+# ------------------------------------------------------------------------
+# 以前、別のデータソースの列を一覧へ足せるのは**品質データだけ**で、しかも
+# 「ロット番号・鋳造番号・製造材質の3つで突き合わせる」と決め打ちだった。
+# 参照データを増やせるようにした(§9.94・§9.163)のに、増やしたデータは
+# 「一覧として見る」以外に使い道が無かった。
+#
+# 1行＝1つの結合。左(対象)はどの一覧に足すか、右(相手)はどこから持ってくるか。
+# **保存するのは定義だけ**で、実際の突合は backend/query_join.py が
+# 1箇所で行う(画面もサーバーも同じ答えになるようにするため)。
+# ========================================================================
+QUERY_JOIN_TABLE='クエリ結合マスタ'
+# 同じキーに相手が2件以上当たったときの扱い。
+#   'first' … 表示順の最初の1件を使う(既定。今までの品質データ結合と同じ)
+#   'blank' … 空にする(どれが正しいか決められないので出さない)
+QUERY_JOIN_MULTI=('first','blank')
+# 1つの結合で持てる突合キーと取り込む列の上限。**画面が壊れない範囲**で
+# 切る(キーが10も要る突合は、たいてい元データの持ち方が間違っている)。
+QUERY_JOIN_MAX_KEYS=6
+QUERY_JOIN_MAX_COLUMNS=400
+
+def ensure_query_join_table(c):
+ names=tables(c);created=False
+ if QUERY_JOIN_TABLE not in names:
+  cur=c.cursor()
+  cur.execute('CREATE TABLE [クエリ結合マスタ] ([結合ID] INTEGER PRIMARY KEY AUTOINCREMENT, '
+              '[結合名] TEXT, [対象データソース] TEXT, [対象テーブル] TEXT, '
+              '[相手データソース] TEXT, [相手テーブル] TEXT, [突合キーJSON] TEXT, '
+              '[取り込む列JSON] TEXT, [接頭辞] TEXT, [複数一致] TEXT, '
+              '[表示順] INTEGER, [有効] INTEGER, '
+              '[登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
+  cur.execute('CREATE INDEX [IX_クエリ結合マスタ_対象] ON [クエリ結合マスタ] '
+              '([対象データソース],[対象テーブル],[表示順])')
+  c.commit();created=True
+ ensure_audit_columns(c,QUERY_JOIN_TABLE)
+ return created
+
+def normalize_join_keys(raw):
+ """突合キーの配列へ整える。[{'left':列名,'right':列名}, ...]。
+
+ **片側だけの行は落とす**(どちらと突き合わせるのか決まらない)。落とすのは
+ その行だけで、定義ごと捨てない——1行の打ち間違いで結合の設定が丸ごと
+ 消えると、利用者からは「保存したのに戻っている」としか見えない。"""
+ out=[]
+ for item in (raw if isinstance(raw,list) else []):
+  if not isinstance(item,dict):continue
+  l=str(item.get('left') or '').strip()[:120]
+  r=str(item.get('right') or '').strip()[:120]
+  if not l or not r:continue
+  if any(x['left']==l and x['right']==r for x in out):continue
+  out.append({'left':l,'right':r})
+  if len(out)>=QUERY_JOIN_MAX_KEYS:break
+ return out
+
+def normalize_join_columns(raw):
+ """取り込む列。**空＝相手の列をすべて**(選び直さずに済むほうが普通)。"""
+ out=[]
+ for x in (raw if isinstance(raw,list) else []):
+  n=str(x or '').strip()[:120]
+  if n and n not in out:out.append(n)
+  if len(out)>=QUERY_JOIN_MAX_COLUMNS:break
+ return out
+
+def _join_row(r):
+ name=str(r[1] or '').strip()
+ try:keys=json.loads(r[6]) if r[6] else []
+ except Exception:keys=[]
+ try:columns=json.loads(r[7]) if r[7] else []
+ except Exception:columns=[]
+ multi=str(r[9] or '').strip()
+ return {'id':r[0],'name':name or f'結合{r[0]}',
+         'left':str(r[2] or '').strip(),'leftTable':str(r[3] or '').strip(),
+         'right':str(r[4] or '').strip(),'rightTable':str(r[5] or '').strip(),
+         'keys':normalize_join_keys(keys),'columns':normalize_join_columns(columns),
+         'prefix':str(r[8] or '').strip()[:40],
+         'multi':multi if multi in QUERY_JOIN_MULTI else 'first',
+         'order':int(r[10] or 0),'active':True if r[11] is None else bool(r[11])}
+
+def query_joins(c,include_disabled=False):
+ """登録されている結合。表が無ければ空(読み取り専用接続から呼べる)。"""
+ if QUERY_JOIN_TABLE not in tables(c):return []
+ cur=c.cursor()
+ cur.execute('SELECT [結合ID],[結合名],[対象データソース],[対象テーブル],[相手データソース],'
+             '[相手テーブル],[突合キーJSON],[取り込む列JSON],[接頭辞],[複数一致],[表示順],[有効] '
+             'FROM [クエリ結合マスタ] ORDER BY [表示順],[結合ID]')
+ out=[]
+ for r in cur.fetchall():
+  d=_join_row(r)
+  if d['active'] or include_disabled:out.append(d)
+ return out
+
+def query_join_save(c,data,uid,jid=None):
+ """1件を登録／更新する。戻り値は結合ID。
+
+ **同じ名前は1つだけ**——結合名は列名がぶつかったときの接頭辞にも
+ 見出しにも使うので、2つあるとどちらの列か分からなくなる。"""
+ ensure_query_join_table(c)
+ name=str((data or {}).get('name') or '').strip()[:60]
+ if not name:raise ValueError('結合名を入れてください。')
+ left=str((data or {}).get('left') or '').strip()
+ right=str((data or {}).get('right') or '').strip()
+ if not left:raise ValueError('どの一覧へ足すか（対象のデータソース）を選んでください。')
+ if not right:raise ValueError('どこから持ってくるか（相手のデータソース）を選んでください。')
+ keys=normalize_join_keys((data or {}).get('keys'))
+ if not keys:raise ValueError('突合キーを1組以上入れてください（左右どちらの列名も要ります）。')
+ columns=normalize_join_columns((data or {}).get('columns'))
+ multi=str((data or {}).get('multi') or 'first').strip()
+ if multi not in QUERY_JOIN_MULTI:multi='first'
+ cur=c.cursor()
+ sql='SELECT [結合ID] FROM [クエリ結合マスタ] WHERE [結合名]=?'
+ args=[name]
+ if jid is not None:sql+=' AND [結合ID]<>?';args.append(int(jid))
+ cur.execute(sql,args)
+ if cur.fetchone():raise ValueError(f'結合名「{name}」は既に登録されています。別の名前にしてください。')
+ vals=[name,left,str((data or {}).get('leftTable') or '').strip(),
+       right,str((data or {}).get('rightTable') or '').strip(),
+       json.dumps(keys,ensure_ascii=False),json.dumps(columns,ensure_ascii=False),
+       str((data or {}).get('prefix') or '').strip()[:40],multi,
+       int((data or {}).get('order') or 0),
+       0 if str((data or {}).get('enabled') or '').strip()=='無効' else -1,uid]
+ if jid is not None:
+  cur.execute('SELECT [結合ID] FROM [クエリ結合マスタ] WHERE [結合ID]=?',[int(jid)])
+  if not cur.fetchone():raise ValueError('指定の結合が見つかりません。')
+  cur.execute('UPDATE [クエリ結合マスタ] SET [結合名]=?,[対象データソース]=?,[対象テーブル]=?,'
+              '[相手データソース]=?,[相手テーブル]=?,[突合キーJSON]=?,[取り込む列JSON]=?,'
+              '[接頭辞]=?,[複数一致]=?,[表示順]=?,[有効]=?,[更新者ID]=?,[更新日時]=Now() '
+              'WHERE [結合ID]=?',vals+[int(jid)])
+  c.commit();return int(jid)
+ cur.execute('INSERT INTO [クエリ結合マスタ] ([結合名],[対象データソース],[対象テーブル],'
+             '[相手データソース],[相手テーブル],[突合キーJSON],[取り込む列JSON],[接頭辞],'
+             '[複数一致],[表示順],[有効],[更新者ID],[登録者ID],[登録日時],[更新日時]) '
+             'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',vals+[uid])
+ c.commit()
+ return int(cur.lastrowid)
+
+def query_join_delete(c,jid):
+ """1件消す。**本当に消す**——無効にするだけの行が溜まると、どの結合が
+ 効いているのかを毎回読んで確かめることになる(有効/無効は別に持つ)。"""
+ if QUERY_JOIN_TABLE not in tables(c):return 0
+ cur=c.cursor()
+ cur.execute('DELETE FROM [クエリ結合マスタ] WHERE [結合ID]=?',[int(jid)])
+ n=cur.rowcount;c.commit()
+ return n

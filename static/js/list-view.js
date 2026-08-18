@@ -924,6 +924,11 @@ function listQuery(){
  // (§9.21)。通常の閲覧では付けない(オプトインで単独表示に影響を与えない)。
  // どちらが作業対象/品質かはデータソースマスタの役割で決まる(§9.87)。
  if(WL.dataSource.isWork(S.db)&&window.accessMode?.mode==='schedule')q.set('join_quality','1');
+ /* 利用者が登録したクエリ結合(§9.193)は**どの一覧でも**当てる——わざわざ
+    登録したものが、モードによって効いたり効かなかったりするほうが分からない。
+    **本筋の問い合わせにだけ付ける**のが肝で、行ごとの追い判定のような内部の
+    軽い問い合わせ(§9.94)には付かない＝相手のDBを毎行引くことにはならない。 */
+ q.set('join','1');
  /* 絞り込み条件は`filters.js`がフックで足す(全置換をやめた経緯は上記)。 */
  runListHooks('query',q);
  return q;
@@ -1694,17 +1699,26 @@ function renderListToolbar(){
  renderSortBar();
  // 品質データ結合(join_quality)の結果を、成功・失敗どちらも一覧の脇に出す。
  // 以前はサーバー側で黙って素通ししていたため、結合されない理由が分からなかった。
+ /* 結合(§9.193)は1件とは限らない。**名前と件数を文字で出す**——色だけだと
+    「何がどこから足されたか」が読めない(§3)。失敗した結合の理由も同じ帯へ。 */
  const chip=bar.querySelector('#listJoinChip');
  const info=S.joinQuality;
  if(chip){
-  if(!info){chip.hidden=true;chip.textContent=''}
+  if(!info||!info.count){chip.hidden=true;chip.textContent=''}
   else{
    chip.hidden=false;
    const ok=info.applied&&info.matched>0;
+   const names=(info.names||[]).filter(Boolean);
    chip.className='list-join-chip '+(ok?'is-ok':'is-warn');
-   chip.textContent=ok?`品質データ結合済み ${info.matched}件 / +${info.addedColumns}列`:'品質データ未結合';
-   chip.title=ok?`ロット番号・鋳造番号・製造材質が一致した${info.matched}行に、品質データの${info.addedColumns}列を結合しました(照合先: ${info.table||'-'})。重複する列は仕掛情報を優先します。`
-                :`品質データを結合できませんでした: ${info.reason||'原因不明'}`;
+   chip.textContent=ok
+    ?`結合 ${names.length?names.join('・'):info.count+'件'} ／ ${info.matched}行 +${info.addedColumns}列`
+    :`結合できません（${info.count}件）`;
+   chip.title=ok
+    ?`キーが一致した${info.matched}行に${info.addedColumns}列を足しました`
+     +`${info.table?`（相手の表: ${info.table}）`:''}。同じ名前の列はこの一覧の値を残します。`
+     +(info.ambiguous?`\n相手が2件以上あったキーが${info.ambiguous}件あります。`:'')
+     +(info.reason?`\n当たらなかった結合: ${info.reason}`:'')
+    :`結合できませんでした: ${info.reason||'原因不明'}\nマスタ管理 > クエリ結合 で設定を確かめてください。`;
   }
  }
  bar.hidden=!(canPickColumns||(info&&!chip.hidden));

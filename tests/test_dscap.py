@@ -32,7 +32,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 import app as flask_app                                    # noqa: E402
-from backend import db_access, source_capability           # noqa: E402
+from backend import db_access, query_join, source_capability  # noqa: E402
 from backend.routes import tables as tables_route          # noqa: E402
 
 R = []
@@ -61,9 +61,14 @@ def purge():
 purge()
 try:
     # ---- 1) 別名解決の定義は1箇所 ----
-    rec('列名の別名解決は1箇所（/api/tableの品質結合も同じ関数を借りる）',
-        tables_route._find_column is source_capability.find_column
-        and tables_route._norm_name is source_capability.norm_name)
+    # 結合の実処理は backend/query_join.py へ移した（§9.193）。**別名解決の
+    # 定義が1箇所であること**は変わらない——2つ持つと「結合できると書いて
+    # あるのに結合されない」という食い違いになる。
+    rec('列名の別名解決は1箇所（クエリ結合も同じ関数を借りる）',
+        query_join.find_column is source_capability.find_column
+        and query_join.norm_name is source_capability.norm_name)
+    rec('一覧APIの列の一意化もクエリ結合の1箇所を借りる',
+        tables_route._unique_columns is query_join.unique_columns)
     rec('別名解決は全角/半角のゆれを吸収する',
         source_capability.find_column(['ﾛｯﾄ番号'], source_capability.FEATURE_ALIASES['lotNo']) == 'ﾛｯﾄ番号'
         and source_capability.find_column(['ロット番号'], source_capability.FEATURE_ALIASES['lotNo']) == 'ロット番号')

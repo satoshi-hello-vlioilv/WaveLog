@@ -124,7 +124,7 @@
 |---|---|
 | `app.py` | Flask本体の組み立て。Blueprint登録・キャッシュ無効化ヘッダ・ウォッチドッグ組み込みのみ |
 | `backend/routes/core.py` | トップページ・`/api/build`・`/api/ready.js`・`/api/whoami`・`/api/changelog` |
-| `backend/routes/tables.py` | 汎用DB一覧API(`/api/catalog`・`/api/tables`・`/api/table`) |
+| `backend/routes/tables.py` | 汎用DB一覧API(`/api/catalog`・`/api/tables`・`/api/table`・`/api/table-columns`・クエリ結合の引き当て`/api/query-join/keys`・`/api/query-join/resolve`) |
 | `backend/routes/measurement.py` | 測定コンテキスト・マスタ診断・バックアップAPI |
 | `backend/routes/quality.py` | 品質データ分析API(`/api/quality/analysis`) |
 | `backend/routes/masters.py` | 各種マスタCRUDのBlueprint（設備/オペレータ/スプール/内径/機器/フィルタプリセット/列表示/アクセス権限）。URLは分離前と同一。リクエスト受付とレスポンス整形のみを行い、データアクセスは`repositories/master_repo.py`へ委譲。**「名前だけ」の単純マスタ(スプール種別・内径種別・機器・バリ揃え・コイル止め)は宣言表`SIMPLE_MASTERS`から4本(一覧/登録/編集/削除)を生成する**（写経すると片方だけ直って食い違うため。オペレータ・設備・アクセス権限は個別の処理を持つので畳んでいない。docs/REFACTORING_PLAN.md フェーズC） |
@@ -134,6 +134,7 @@
 | `backend/repositories/master_repo.py` | 各種マスタのデータアクセス層。テーブル定義(`ensure_*_table`)・正規化(`normalize_*_name`)・読み取り(`*_master_rows`/`read_*_names`)・書き込み補助(`set_operator_equipment`/`set_hidden_columns`)。Flaskに依存しない |
 | `backend/changelog_data.py` | `APP_VERSION` と `CHANGELOG`（データのみ。リリースごとにここを更新） |
 | `backend/db_access.py` | `DBS`(接続先定義)・`APP_ROOT`/`DB_DIR`(パス基準)・`connect`/`cols`/`tables`/`qi`(SQLite専用。`.accdb`/`.mdb`は対処を添えて拒否)・監査列・バックアップテーブル整備・パス設定マスタ(`PATH_CONFIG_TABLE`、旧`config/local.json`。仕掛/品質データの読み込み先・共有パス・各種間隔設定を`db/master.sqlite3`側で管理し、`master_repo.py`と同じ形のCRUDヘルパを提供する) |
+| `backend/query_join.py` | データソース同士のクエリ結合(§9.193)。効く定義の絞り込み・行への適用・保存前の下見を1箇所で持つ。品質データ結合は**保存されない既定の1件の定義**としてここに乗る |
 | `backend/records_export.py` | 測定データバックアップ(`records.sqlite3`)の閲覧用複製(定期・差分あり時のみ) |
 | `backend/access_mode.py` | 編集可能モード/閲覧モードの判定・切替API・書込系APIのガード(`before_request`) |
 | `backend/navigator_api.py` | SymfoNavi Navigator API(`SymNaviA.dll`)のctypesラッパー(Windows専用、SymfoNavi-Data-Hubから移植) |

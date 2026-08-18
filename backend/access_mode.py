@@ -144,6 +144,11 @@ _ENDPOINT_EXTRA_MODES={
 # ようにするため(CLAUDE.md「読み取り専用のPOSTしか持たないBlueprintも宣言する」)。
 _READ_ONLY_POST_ENDPOINTS={'rne.rne_extract_run','tables.api_db_mirror_refresh',
                            'path_config.data_source_master_probe',
+                           # クエリ結合(§9.193)。**読むだけ**——渡された鍵の値に
+                           # 相手のデータを当てて返す。POSTなのはキーの組を
+                           # まとめて送るためで、URLに載せると長くなりすぎる。
+                           'tables.api_query_join_resolve',
+                           'masters.query_join_master_probe',
                            # 共有スケジュールを手元へ取り込むだけ(§9.188)。
                            # 作業予定は書き換えないので全モードから通す。
                            'schedule.sync_now'}

@@ -81,6 +81,11 @@
   {group:'system',key:'dataSource',label:'データ接続',icon:'源',special:'data-source',
    titleText:'データ接続 — このアプリが読むデータ',
    endpoint:'/api/data-source-master',hasDelete:true},
+  /* クエリ結合(§9.193)。**データ接続に登録済みのものだけを組み合わせる**
+     （利用者の指示）。データ接続のすぐ下に置くのは、「読む」→「つなぐ」が
+     そのまま作業の順番だから（視覚導線と作業導線を一致させる）。 */
+  {group:'system',key:'queryJoin',label:'クエリ結合',icon:'結',endpoint:'/api/query-join-master',hasDelete:true,
+   special:'query-join',titleText:'クエリ結合 — 読んだデータ同士をつなぐ'},
   {group:'system',key:'pathConfig',label:'共通設定',icon:'共',special:'path-config',
    titleText:'共通設定 — この端末の共有パス・RNE・間隔',endpoint:'/api/path-config-master'},
   // 旧「マスタ一覧」(サイドバーのMASTERナビ→汎用グリッド)をここへ統合した
@@ -281,10 +286,11 @@
     見えないので、**できること／できない理由**をここで言い切る。
     判定はサーバー(backend/source_capability.py)の1箇所が持ち、画面は
     受け取った結果を並べるだけ——判定を画面にも書くと、2つの答えが出る。 */
- const CAPABILITY_ORDER=['list','measure','plan','quality'];
+ const CAPABILITY_ORDER=['list','measure','plan','quality','schedule'];
  const CAPABILITY_LABEL={list:'一覧として見る',measure:'測定を開く',
-                         plan:'スケジュールへ投入',quality:'品質として結合'};
- const CAPABILITY_SHORT={list:'一覧',measure:'測定',plan:'予定',quality:'結合'};
+                         plan:'スケジュールへ投入',quality:'品質として結合',
+                         schedule:'予定の本体にする'};
+ const CAPABILITY_SHORT={list:'一覧',measure:'測定',plan:'予定',quality:'結合',schedule:'予定本体'};
  /* 一覧の表示用テキスト。保存値そのままだと '*' が生で見えて意味が伝わらない。 */
  function cellText(col,value){
   const v=String(value??'');
@@ -501,6 +507,7 @@
   /* 描き直す先はタブごとに違う。**汎用の一覧を呼ぶと専用タブの中身が
      消える**ので、いまのタブに合わせる。 */
   if(currentDef().special==='data-source'){dsState.editing=null;renderDataSourceList();return}
+  if(currentDef().special==='query-join'){qjState.editing=null;renderQueryJoinList();return}
   renderMaintList();
  }
  /* 入力支援の配線(§9.49)。buildFieldControls()が出した各型を動かす。
@@ -997,6 +1004,7 @@
   if(def.special==='import-backup'){setMaintSearchVisible(false);return loadImportBackupMaint(force)}
   if(def.special==='load-factor'){setMaintSearchVisible(false);return loadLoadFactorMaint(force)}
   if(def.special==='data-source'){setMaintSearchVisible(false);return loadDataSourceMaint(force)}
+  if(def.special==='query-join'){setMaintSearchVisible(false);return loadQueryJoinMaint(force)}
   if(def.special==='path-config'){setMaintSearchVisible(false);return loadPathConfigMaint(force)}
   if(def.special==='shift-pattern'){setMaintSearchVisible(false);return loadShiftPatternMaint(force)}
   if(def.special==='raw-table'){setMaintSearchVisible(false);return loadRawTableMaint(force)}
@@ -1353,7 +1361,7 @@
    hint:'上の2つに関わらず、ここに入れた場所を最優先で読みます。空にすると上の設定へ戻ります。'},
  ];
  const DS_MODE_SHORT={share:'共有フォルダ',rne:'RNEから作る',direct:'直接指定'};
- const DS_ROLE_CLASS={'作業':'is-work','品質':'is-quality'};
+ const DS_ROLE_CLASS={'仕掛':'is-work','品質':'is-quality','スケジュール':'is-schedule'};
  async function loadDataSourceMaint(force){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
   if(!force&&dsState.loaded){renderDataSourceForm();renderDataSourceList();return}
@@ -1362,6 +1370,11 @@
    const r=await api('/api/data-source-master');
    dsState.items=r.items||[];
    dsState.assets={assetsDir:r.assetsDir||'',confPath:r.confPath||'',confExists:!!r.confExists};
+   /* 選べる役割と、いま埋まっている行は**サーバーが答える**(§9.193)。
+      「各1件」という決まりを持っているのはあちらなので、画面で数え直さない
+      ——無効にした行まで数えて「埋まっている」と言ってしまう。 */
+   dsState.purposes=Array.isArray(r.purposes)&&r.purposes.length?r.purposes:['仕掛','品質','スケジュール'];
+   dsState.purposeHolders=r.purposeHolders||{};
    dsState.loaded=true;
    renderDataSourceForm();renderDataSourceList();
   }catch(e){list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
@@ -1371,7 +1384,8 @@
  function renderDataSourceForm(){
   const form=$('#masterMaintForm');if(!form)return;
   const on=dsState.items.filter(x=>x.active);
-  const work=on.filter(x=>x.purpose==='作業').length,quality=on.filter(x=>x.purpose==='品質').length;
+  const work=on.filter(x=>x.purpose==='仕掛').length,quality=on.filter(x=>x.purpose==='品質').length;
+  const sched=on.filter(x=>x.purpose==='スケジュール').length;
   const pending=on.filter(dsPending).length;
   const rne=on.filter(x=>x.readMode==='rne').length;
   form.className='mm-form';
@@ -1379,8 +1393,9 @@
    <div class="ds-summary">
     <div class="ds-summary-facts">
      <span class="ds-sum"><b>${on.length}</b> 件が有効</span>
-     <span class="ds-sum${work?'':' is-warn'}">作業 <b>${work}</b></span>
+     <span class="ds-sum${work?'':' is-warn'}">仕掛 <b>${work}</b></span>
      <span class="ds-sum">品質 <b>${quality}</b></span>
+     <span class="ds-sum">スケジュール <b>${sched}</b></span>
      <span class="ds-sum">RNEで作る <b>${rne}</b></span>
      ${pending?`<span class="ds-sum is-pending"><b>${pending}</b> 件が再起動待ち</span>`:''}
     </div>
@@ -1389,8 +1404,8 @@
      <button type="button" class="mm-btn-primary" id="dsAddBtn">＋ データソースを追加</button>
     </div>
    </div>
-   <p class="mm-def-hint">${work?'':'<b>役割「作業」のデータソースがありません。</b>測定・作業スケジュールへの投入はできません。 '
-     }<b>名称と読み込み先</b>の変更はサーバー再起動後に反映されます（それまでは今までの名前・場所のままです）。</p>`;
+   <p class="mm-def-hint">${work?'':'<b>役割「仕掛」のデータソースがありません。</b>測定・作業スケジュールへの投入はできません。 '
+     }役割は<b>「読むかどうか」ではなく「何として使うか」</b>です（仕掛・品質・スケジュールは各1件、それ以外は「その他」として一覧に出るだけ）。 <b>名称と読み込み先</b>の変更はサーバー再起動後に反映されます（それまでは今までの名前・場所のままです）。</p>`;
   form.onsubmit=ev=>ev.preventDefault();
   const add=$('#dsAddBtn');if(add)add.onclick=()=>openDataSourceEditor(null);
   /* 共通設定へは**そのタブを押したのと同じ道**で移る（入口を2本作らない）。 */
@@ -1409,54 +1424,473 @@
   const out=[];
   if(String(x.plannedPath||'')!==String(x.activePath||''))out.push('読み込み先');
   if(x.activeLabel!=null&&String(x.label||'')!==String(x.activeLabel||''))out.push('名称');
+  /* 一覧に出すかどうか(§9.193)も起動時に1回だけ決まる（左メニューの元に
+     なるカタログはDBSの写しから作る）。**黙っていると「設定したのに
+     消えない」**ので、名称と同じ扱いで再起動待ちに数える。 */
+  if(x.activeListed!=null&&(x.listed!==false)!==(x.activeListed!==false))out.push('一覧に出すかどうか');
   return out;
  }
+ /* 一覧は**行**で組む（§9.193、利用者の指摘「もう少し高密度で、必要な情報を
+    バランスよく」）。カード1枚1枚に見出しと定義リストを持たせていたため、
+    5件でも縦に長く、しかも**項目の左端がカードごとにずれていて**列として
+    追えなかった（CLAUDE.md §9「情報欄は縦にそろえる」）。1行＝1データソース、
+    列は固定幅でそろえ、**言うことがあるときだけ**2行目を出す。 */
+ const DS_LIST_COLS=[
+  {k:'role',label:'役割',hint:'このデータを何として使うか。仕掛・品質・スケジュールは各1件です。'},
+  {k:'name',label:'名称 / キー'},
+  {k:'listed',label:'一覧',hint:'左メニュー「一覧を見る」に出すかどうか。結合の相手としてだけ読むデータは「出さない」にできます。'},
+  {k:'mode',label:'読み方'},
+  {k:'path',label:'いま読んでいる'},
+  {k:'caps',label:'できること'},
+  {k:'act',label:''},
+ ];
  function renderDataSourceList(){
   const list=$('#masterMaintList');if(!list)return;
   if(!dsState.items.length){
    list.innerHTML='<div class="mm-empty">データソースがまだありません。「＋ データソースを追加」から登録してください。</div>';
    return;
   }
-  list.innerHTML=`<div class="ds-cards">${dsState.items.map(dsCardHtml).join('')}</div>`;
+  const head=DS_LIST_COLS.map(c=>`<span class="ds-h ds-c-${c.k}"${c.hint?` title="${esc(c.hint)}"`:''}>${esc(c.label)}</span>`).join('');
+  list.innerHTML=`<div class="ds-rows"><div class="ds-row ds-row-head">${head}</div>`
+    +dsState.items.map(dsRowHtml).join('')+`</div>`;
   list.querySelectorAll('[data-ds-edit]').forEach(b=>b.onclick=()=>{
    const x=dsState.items.find(i=>String(i.id)===b.dataset.dsEdit);if(x)openDataSourceEditor(x);
   });
   list.querySelectorAll('[data-ds-del]').forEach(b=>b.onclick=()=>dsDelete(b.dataset.dsDel));
  }
- function dsCardHtml(x){
+ function dsRowHtml(x){
   const cap=x.capability||{},f=cap.features||{};
-  const caps=CAPABILITY_ORDER.filter(k=>f[k]).map(k=>
-    `<li class="ds-cap${f[k].ok?' is-ok':''}" title="${esc(CAPABILITY_LABEL[k]+': '+(f[k].ok?'できます':'できません')+' — '+(f[k].note||''))}">`
-    +`<i aria-hidden="true">${f[k].ok?'✓':'—'}</i>${esc(CAPABILITY_SHORT[k])}</li>`).join('');
+  /* できることは**できるものだけ**を出す（§4「できないことは書く」は
+     編集画面の役目。一覧では×印が並ぶほうがノイズになる）。理由は title。 */
+  const caps=CAPABILITY_ORDER.filter(k=>f[k]&&f[k].ok).map(k=>
+    `<i class="ds-cap is-ok" title="${esc(CAPABILITY_LABEL[k]+': '+(f[k].note||''))}">${esc(CAPABILITY_SHORT[k])}</i>`).join('');
   const kinds=dsPendingKinds(x);
   const pending=kinds.length>0;
   const role=x.purpose||'その他';
-  // 名称も起動時に1回だけ決まる。違うときだけ「いまの名前」を添える。
   const sameLabel=x.activeLabel==null||String(x.label||'')===String(x.activeLabel||'');
-  /* **同じ場所なら1行で言う**（§9.129 同じものを2箇所に出さない）。違うときだけ
-     「再起動後」を別に出す——そこが利用者の打つ手だから。 */
   const same=String(x.plannedPath||'')===String(x.activePath||'');
-  return `<article class="ds-card${x.active?'':' is-off'}${pending?' is-pending':''}">
-   <header class="ds-card-head">
-    <span class="ds-role ${DS_ROLE_CLASS[role]||''}">${esc(role)}</span>
+  const listed=x.listed!==false;
+  /* 2行目は**打つ手があるときだけ**。同じ場所・同じ名前なら黙っている
+     （§9.129 同じものを2箇所に出さない）。 */
+  const notes=[];
+  if(!same)notes.push(`再起動後は <b>${esc(x.plannedPath||'—')}</b> を読みます`);
+  if(!sameLabel)notes.push(`再起動すると名称が「<b>${esc(x.label||'')}</b>」になります（いまは ${esc(x.activeLabel||'—')}）`);
+  if(cap.error)notes.push(esc(cap.error));
+  return `<div class="ds-row${x.active?'':' is-off'}${pending?' is-pending':''}">
+   <span class="ds-c-role"><span class="ds-role ${DS_ROLE_CLASS[role]||''}">${esc(role)}</span></span>
+   <span class="ds-c-name">
     <b class="ds-name" title="${esc(x.label||'')}">${esc(x.label||x.key)}</b>
     <code class="ds-key" title="一覧を指す識別子です">${esc(x.key)}</code>
     ${x.active?'':'<span class="ds-flag is-off">無効</span>'}
-    ${pending?`<span class="ds-flag is-pending" title="${esc(kinds.join('・'))}が再起動待ちです">再起動待ち（${esc(kinds.join('・'))}）</span>`:''}
-    <span class="ds-card-act">
-     <button type="button" class="mm-btn-ghost sm" data-ds-edit="${esc(String(x.id))}">編集</button>
-     ${x.active?`<button type="button" class="mm-btn-ghost sm" data-ds-del="${esc(String(x.id))}">無効にする</button>`:''}
-    </span>
-   </header>
-   <dl class="ds-facts">
-    <div><dt>読み方</dt><dd>${esc(DS_MODE_SHORT[x.readMode]||'—')}</dd></div>
-    <div><dt>${same?'読み込み先':'いま読んでいる'}</dt><dd title="${esc(x.activePath||'')}">${
-      esc(x.activePath||'（この端末ではまだ読んでいません）')}</dd></div>
-    ${same?'':`<div class="is-next"><dt>再起動後</dt><dd title="${esc(x.plannedPath||'')}">${esc(x.plannedPath||'—')}</dd></div>`}
-    ${sameLabel?'':`<div class="is-next"><dt>いまの名称</dt><dd>${esc(x.activeLabel||'—')}<i class="ds-next-note">再起動すると「${esc(x.label||'')}」になります</i></dd></div>`}
-   </dl>
-   <ul class="ds-caps">${caps||`<li class="ds-cap">${esc(cap.error||'確かめられません')}</li>`}</ul>
-  </article>`;
+    ${pending?`<span class="ds-flag is-pending" title="${esc(kinds.join('・'))}が再起動待ちです">再起動待ち</span>`:''}
+   </span>
+   <span class="ds-c-listed"><span class="ds-listed${listed?'':' is-off'}" title="${
+     listed?'左メニュー「一覧を見る」に出ます。':'左メニューには出しません（結合の相手としては読めます）。'
+   }">${listed?'出す':'出さない'}</span></span>
+   <span class="ds-c-mode">${esc(DS_MODE_SHORT[x.readMode]||'—')}</span>
+   <span class="ds-c-path" title="${esc(x.activePath||'')}">${
+     esc(x.activePath||'（この端末ではまだ読んでいません）')}</span>
+   <span class="ds-c-caps">${caps||'<i class="ds-cap">—</i>'}</span>
+   <span class="ds-c-act">
+    <button type="button" class="mm-btn-ghost sm" data-ds-edit="${esc(String(x.id))}">編集</button>
+    ${x.active?`<button type="button" class="mm-btn-ghost sm" data-ds-del="${esc(String(x.id))}">無効にする</button>`:''}
+   </span>
+   ${notes.length?`<span class="ds-c-note">${notes.join(' ／ ')}</span>`:''}
+  </div>`;
+ }
+ /* ==================================================================
+    クエリ結合(§9.193) — 読んだデータ同士を突合キーでつなぐ
+    ------------------------------------------------------------------
+    **組み合わせられるのはデータ接続に登録済みのものだけ**（利用者の指示）。
+    選択肢はサーバーが返す `sources` から作る——画面で別に一覧を組み立てると、
+    無効にしたデータソースが選択肢に残る。
+
+    並びは作業の順番そのもの:「①どの一覧に足すか → ②どこから → ③どうつなぐ
+    → ④何を足す → ⑤結果」。**保存する前に当ててみられる**(下見)のが値打ちで、
+    読み込み先は起動時に1回だけ決まるため、これが無いと打ち間違いに気づける
+    のが再起動のあとになる（§9.168と同じ作法）。
+    ================================================================== */
+ let qjState={items:[],sources:[],builtin:null,loaded:false,editing:null,
+              cols:{},probe:null,probeSeq:0,probing:false,probeSig:''};
+ const QJ_MULTI_LABEL={first:'最初の1件を使う',blank:'空にする（どれか決められないので出さない）'};
+ const QJ_LIST_COLS=[
+  {k:'state',label:'状態'},
+  {k:'name',label:'結合名'},
+  {k:'left',label:'足す先（この一覧に）'},
+  {k:'right',label:'相手（ここから持ってくる）'},
+  {k:'keys',label:'突合キー'},
+  {k:'cols',label:'足す列'},
+  {k:'act',label:''},
+ ];
+ function qjSourceLabel(key){
+  const x=(qjState.sources||[]).find(s=>s.key===key);
+  return x?(x.label||x.key):(key||'—');
+ }
+ async function loadQueryJoinMaint(force){
+  const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
+  if(!force&&qjState.loaded){renderQueryJoinForm();renderQueryJoinList();return}
+  form.innerHTML='';list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
+  try{
+   const r=await api('/api/query-join-master');
+   qjState.items=r.items||[];qjState.sources=r.sources||[];qjState.builtin=r.builtin||null;
+   qjState.loaded=true;
+   renderQueryJoinForm();renderQueryJoinList();
+  }catch(e){list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
+ }
+ function renderQueryJoinForm(){
+  const form=$('#masterMaintForm');if(!form)return;
+  const on=qjState.items.filter(x=>x.active).length;
+  const off=qjState.items.length-on;
+  const few=(qjState.sources||[]).length<2;
+  form.className='mm-form';
+  form.innerHTML=`
+   <div class="ds-summary">
+    <div class="ds-summary-facts">
+     <span class="ds-sum"><b>${on}</b> 件が有効</span>
+     ${off?`<span class="ds-sum">停止中 <b>${off}</b></span>`:''}
+     <span class="ds-sum">つなげるデータ <b>${(qjState.sources||[]).length}</b> 件</span>
+    </div>
+    <div class="ds-summary-act">
+     <button type="button" class="mm-btn-ghost" id="qjSourceBtn" title="データ接続の登録へ移ります">データ接続…</button>
+     <button type="button" class="mm-btn-primary" id="qjAddBtn"${few?' disabled':''}>＋ 結合を追加</button>
+    </div>
+   </div>
+   <p class="mm-def-hint">${few
+     ?'<b>つなげるデータが足りません。</b>結合には登録済みのデータ接続が2件以上要ります。'
+     :'一覧を開いたときに、<b>相手のデータから列を足して</b>表示します。足した列は並べ替え・絞り込みの対象にはなりませんが、'
+      +'列の設定（幅・表示名・書式・読み替え）はふつうの列と同じように効き、<b>スケジュール表の内容欄でも選べます</b>。'}</p>`;
+  form.onsubmit=ev=>ev.preventDefault();
+  const add=$('#qjAddBtn');if(add)add.onclick=()=>openQueryJoinEditor(null);
+  const src=$('#qjSourceBtn');
+  if(src)src.onclick=()=>document.querySelector('#masterMaintNav [data-master="dataSource"]')?.click();
+ }
+ function renderQueryJoinList(){
+  const list=$('#masterMaintList');if(!list)return;
+  const head=QJ_LIST_COLS.map(c=>`<span class="ds-h qj-c-${c.k}">${esc(c.label)}</span>`).join('');
+  const rows=qjState.items.map(qjRowHtml).join('');
+  /* 既定の品質データ結合は**保存されていない**が、効いているものは画面に
+     出す(§9.129「出どころを画面に出す」)。出さないと「登録していないのに
+     列が増える」ことになり、どこの設定か探すはめになる。 */
+  const b=qjState.builtin?`<div class="ds-row qj-row is-builtin">
+    <span class="qj-c-state"><span class="ds-listed">既定</span></span>
+    <span class="qj-c-name"><b class="ds-name">${esc(qjState.builtin.name)}</b></span>
+    <span class="qj-c-left">${esc(qjSourceLabel(qjState.builtin.left))}</span>
+    <span class="qj-c-right">${esc(qjSourceLabel(qjState.builtin.right))}</span>
+    <span class="qj-c-keys">${esc((qjState.builtin.keys||[]).map(k=>k.left).join('・'))}</span>
+    <span class="qj-c-cols">相手の全列</span>
+    <span class="qj-c-act"></span>
+    <span class="ds-c-note">役割「仕掛」と「品質」が揃っているので自動で効いています。同じ相手への結合を登録すると、そちらが優先されます。</span>
+   </div>`:'';
+  if(!rows&&!b){
+   list.innerHTML='<div class="mm-empty">結合はまだ登録されていません。「＋ 結合を追加」から登録してください。</div>';
+   return;
+  }
+  list.innerHTML=`<div class="ds-rows">
+    <div class="ds-row qj-row ds-row-head">${head}</div>${b}${rows}</div>`;
+  list.querySelectorAll('[data-qj-edit]').forEach(btn=>btn.onclick=()=>{
+   const x=qjState.items.find(i=>String(i.id)===btn.dataset.qjEdit);if(x)openQueryJoinEditor(x);
+  });
+  list.querySelectorAll('[data-qj-del]').forEach(btn=>btn.onclick=()=>qjDelete(btn.dataset.qjDel));
+ }
+ function qjRowHtml(x){
+  const keys=(x.keys||[]).map(k=>k.left===k.right?k.left:`${k.left}＝${k.right}`).join('・');
+  const cols=(x.columns||[]).length?`${x.columns.length}列を選択`:'相手の全列';
+  const missing=[];
+  if(!(qjState.sources||[]).some(s=>s.key===x.left))missing.push('足す先');
+  if(!(qjState.sources||[]).some(s=>s.key===x.right))missing.push('相手');
+  return `<div class="ds-row qj-row${x.active?'':' is-off'}${missing.length?' is-pending':''}">
+   <span class="qj-c-state"><span class="ds-listed${x.active?'':' is-off'}">${x.active?'有効':'停止中'}</span></span>
+   <span class="qj-c-name"><b class="ds-name" title="${esc(x.name)}">${esc(x.name)}</b>
+    ${x.prefix?`<code class="ds-key" title="足す列の名前に付ける文字">${esc(x.prefix)}…</code>`:''}</span>
+   <span class="qj-c-left" title="${esc(x.left+(x.leftTable?' / '+x.leftTable:''))}">${
+     esc(qjSourceLabel(x.left))}${x.leftTable?`<i class="qj-sub">${esc(x.leftTable)}</i>`:''}</span>
+   <span class="qj-c-right" title="${esc(x.right+(x.rightTable?' / '+x.rightTable:''))}">${
+     esc(qjSourceLabel(x.right))}${x.rightTable?`<i class="qj-sub">${esc(x.rightTable)}</i>`:''}</span>
+   <span class="qj-c-keys" title="${esc(keys)}">${esc(keys||'—')}</span>
+   <span class="qj-c-cols">${esc(cols)}</span>
+   <span class="qj-c-act">
+    <button type="button" class="mm-btn-ghost sm" data-qj-edit="${esc(String(x.id))}">編集</button>
+    <button type="button" class="mm-btn-ghost sm" data-qj-del="${esc(String(x.id))}">削除</button>
+   </span>
+   ${missing.length?`<span class="ds-c-note">${esc(missing.join('と'))}のデータ接続が見つかりません（無効にした・キーを変えた・再起動していない、のいずれかです）。この結合は当たりません。</span>`:''}
+  </div>`;
+ }
+ async function qjDelete(id){
+  const x=qjState.items.find(i=>String(i.id)===String(id));if(!x)return;
+  if(!confirm(`結合「${x.name}」を削除します。\nこの結合で足していた列は一覧から消えます。よろしいですか？`))return;
+  const uid=requireMaintUser();if(uid===null)return;
+  try{
+   setMaintLoading(true,'削除しています…');
+   await api('/api/query-join-master/delete',{method:'POST',headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({id:x.id,user_id:uid})});
+   qjState.loaded=false;await loadQueryJoinMaint(true);
+   window.invalidateTableCache&&window.invalidateTableCache();
+   showToast&&showToast('削除しました','一覧を開き直すと反映されます',4000);
+  }catch(e){showToast&&showToast('削除に失敗しました',e.message,5000)}
+  finally{setMaintLoading(false)}
+ }
+ /* 列の名前は**名前だけを引く**(/api/table-columns)。`/api/table`を叩くと
+    実データ200列ぶんの行まで運ぶことになる(§9.94)。1度引いたら覚える。 */
+ async function qjColumns(db,table){
+  const key=db+'\t'+(table||'');
+  if(qjState.cols[key])return qjState.cols[key];
+  if(!db)return {tables:[],columns:[]};
+  try{
+   const q=new URLSearchParams({db:db});if(table)q.set('table',table);
+   const r=await api('/api/table-columns?'+q.toString());
+   const v={tables:r.tables||[],columns:r.columns||[],table:r.table||''};
+   qjState.cols[key]=v;
+   if(!table&&v.table)qjState.cols[db+'\t'+v.table]=v;
+   return v;
+  }catch(e){
+   const v={tables:[],columns:[],error:e.message};qjState.cols[key]=v;return v;
+  }
+ }
+ function openQueryJoinEditor(item){
+  const modal=ensureMaintEditor();
+  modal.querySelector('.mm-editor-dialog')?.classList.add('is-wide');
+  const sources=qjState.sources||[];
+  qjState.editing=item?JSON.parse(JSON.stringify(item)):{
+   id:null,name:'',left:(sources.find(s=>s.purpose==='仕掛')||sources[0]||{}).key||'',
+   leftTable:'',right:(sources.find(s=>s.purpose==='品質')||sources[1]||sources[0]||{}).key||'',
+   rightTable:'',keys:[{left:'',right:''}],columns:[],prefix:'',multi:'first',
+   order:(qjState.items.length+1)*10,active:true};
+  qjState.probe=null;qjState.probeSig='';
+  $('#maintEditorEyebrow').textContent='クエリ結合';
+  $('#maintEditorTitle').textContent=item?`${item.name} を編集`:'結合を追加';
+  $('#maintEditorHint').textContent='足した列は一覧を開き直すと反映されます（サーバー再起動は要りません）。';
+  $('#maintEditorSave').textContent=item?'更新を保存':'追加登録';
+  $('#maintEditorSave').onclick=()=>saveQueryJoinEditor();
+  renderQueryJoinEditor();
+  modal.hidden=false;
+  qjRefreshColumns();
+ }
+ function qjEdit(){return qjState.editing||{}}
+ function renderQueryJoinEditor(){
+  const form=$('#maintEditorForm');if(!form)return;
+  form.innerHTML=qjEditorHtml(qjEdit());
+  form.onsubmit=ev=>{ev.preventDefault();saveQueryJoinEditor()};
+  qjBindEditor(form);
+ }
+ function qjOptions(list,sel,blank){
+  const head=blank?`<option value=""${sel?'':' selected'}>${esc(blank)}</option>`:'';
+  return head+list.map(v=>{
+   const value=typeof v==='string'?v:v.value;
+   const label=typeof v==='string'?v:v.label;
+   return `<option value="${esc(value)}"${value===sel?' selected':''}>${esc(label)}</option>`;
+  }).join('');
+ }
+ function qjSourceOptions(sel){
+  return qjOptions((qjState.sources||[]).map(s=>({
+   value:s.key,
+   label:(s.label||s.key)+(s.purpose?`（${s.purpose}）`:'')+(s.listed?'':'・一覧に出さない')})),sel,'選んでください');
+ }
+ function qjEditorHtml(x){
+  const lc=qjState.cols[x.left+'\t'+(x.leftTable||'')]||{};
+  const rc=qjState.cols[x.right+'\t'+(x.rightTable||'')]||{};
+  const keyRow=(k,i)=>`<div class="qj-key" data-qj-key="${i}">
+    <select data-qj-keyleft="${i}">${qjOptions(lc.columns||[],k.left,'この一覧の列')}</select>
+    <span class="qj-eq" aria-hidden="true">＝</span>
+    <select data-qj-keyright="${i}">${qjOptions(rc.columns||[],k.right,'相手の列')}</select>
+    <button type="button" class="mm-btn-ghost sm" data-qj-keydel="${i}"${(x.keys||[]).length<2?' disabled':''}>外す</button>
+   </div>`;
+  const pickAll=!(x.columns||[]).length;
+  const colList=(rc.columns||[]).filter(c=>!(x.keys||[]).some(k=>k.right===c));
+  return `<div class="ds-edit qj-edit">
+   <section class="ds-edit-zone">
+    <h4 class="mm-fieldgroup">① これは何か</h4>
+    <label class="mm-field"><span>結合名</span>
+     <input data-qj-field="name" type="text" value="${esc(x.name||'')}" required autocomplete="off" spellcheck="false">
+     <small class="mm-field-hint">一覧の帯と、列の設定パネルの「結合」欄に出ます。何を足す結合かが分かる名前にしてください。</small></label>
+    <div class="ds-edit-pair">
+     <label class="mm-field"><span>表示順</span>
+      <input data-qj-field="order" type="number" min="0" max="9999" value="${esc(String(x.order==null?0:x.order))}">
+      <small class="mm-field-hint">小さいほど先に当たります。列名がぶつかったときは先に当たったほうが残ります。</small></label>
+     <label class="mm-field"><span>使う / 使わない</span>
+      <select data-qj-field="enabled" data-qj-re>${qjOptions(['有効','無効'],x.active===false?'無効':'有効')}</select>
+      <small class="mm-field-hint">「無効」にすると列を足しません（設定は残ります）。</small></label>
+    </div>
+   </section>
+   <section class="ds-edit-zone">
+    <h4 class="mm-fieldgroup">② どの一覧に足すか</h4>
+    <label class="mm-field"><span>足す先のデータ</span>
+     <select data-qj-field="left" data-qj-re>${qjSourceOptions(x.left)}</select>
+     <small class="mm-field-hint">データ接続に登録してあるものだけが選べます。</small></label>
+    <label class="mm-field"><span>表</span>
+     <select data-qj-field="leftTable" data-qj-re>${qjOptions(lc.tables||[],x.leftTable||'','どの表でも')}</select>
+     <small class="mm-field-hint">「どの表でも」にしておくと、そのデータのどの表を開いても効きます。</small></label>
+   </section>
+   <section class="ds-edit-zone">
+    <h4 class="mm-fieldgroup">③ どこから持ってくるか</h4>
+    <label class="mm-field"><span>相手のデータ</span>
+     <select data-qj-field="right" data-qj-re>${qjSourceOptions(x.right)}</select>
+     <small class="mm-field-hint">一覧に出していないデータも選べます（読むこと自体は止まりません）。</small></label>
+    <label class="mm-field"><span>表</span>
+     <select data-qj-field="rightTable" data-qj-re>${qjOptions(rc.tables||[],x.rightTable||'','既定の表')}</select>
+     ${rc.error?`<small class="mm-field-hint is-warn">${esc(rc.error)}</small>`:''}</label>
+   </section>
+   <section class="ds-edit-zone">
+    <h4 class="mm-fieldgroup">④ どうつなぐか（突合キー）</h4>
+    <div class="qj-keys">${(x.keys||[]).map(keyRow).join('')}</div>
+    <div class="qj-keys-act">
+     <button type="button" class="mm-btn-ghost sm" id="qjKeyAdd">＋ キーを足す</button>
+     <small class="mm-field-hint">すべてのキーが一致した行だけを結び付けます。全角/半角と前後の空白は無視します。</small>
+    </div>
+   </section>
+   <section class="ds-edit-zone">
+    <h4 class="mm-fieldgroup">⑤ 何を足すか</h4>
+    <div class="qj-pick">
+     <label class="qj-radio"><input type="radio" name="qjPick" value="all" data-qj-re${pickAll?' checked':''}>
+      <span>相手の列をすべて</span></label>
+     <label class="qj-radio"><input type="radio" name="qjPick" value="some" data-qj-re${pickAll?'':' checked'}>
+      <span>選んだ列だけ<i>（${(x.columns||[]).length}列を選択中）</i></span></label>
+    </div>
+    ${pickAll?'':`<div class="qj-cols">${colList.length?colList.map(c=>
+      `<label class="qj-col"><input type="checkbox" data-qj-col="${esc(c)}"${(x.columns||[]).includes(c)?' checked':''}><span>${esc(c)}</span></label>`
+     ).join(''):'<p class="mm-field-hint">相手の列がまだ分かりません。②③でデータと表を選んでください。</p>'}</div>`}
+    <div class="ds-edit-pair">
+     <label class="mm-field"><span>足す列の名前に付ける文字</span>
+      <input data-qj-field="prefix" type="text" value="${esc(x.prefix||'')}" maxlength="20" autocomplete="off" spellcheck="false" placeholder="例: 品質_">
+      <small class="mm-field-hint">空のままだと、一覧に同じ名前の列があるものは<b>足しません</b>（元の一覧の値を残します）。付けると両方を並べられます。</small></label>
+     <label class="mm-field"><span>相手が2件以上あったら</span>
+      <select data-qj-field="multi" data-qj-re>${qjOptions(
+        Object.keys(QJ_MULTI_LABEL).map(v=>({value:v,label:QJ_MULTI_LABEL[v]})),x.multi||'first')}</select>
+      <small class="mm-field-hint">当たった件数は下の「結果」に出ます。</small></label>
+    </div>
+   </section>
+   <section class="ds-edit-zone ds-edit-result">
+    <h4 class="mm-fieldgroup">⑥ 結果（保存する前の下見） <span class="ds-probe-state" id="qjProbeState"></span></h4>
+    <div id="qjProbeBox" class="ds-probe"></div>
+   </section>
+  </div>`;
+ }
+ function qjBindEditor(form){
+  form.querySelectorAll('[data-qj-field]').forEach(el=>{
+   const k=el.dataset.qjField;
+   const commit=()=>{
+    const x=qjEdit();
+    if(k==='enabled')x.active=el.value!=='無効';
+    else if(k==='order')x.order=parseInt(el.value||'0',10)||0;
+    else x[k]=el.value;
+    if(k==='left')x.leftTable='';
+    if(k==='right'){x.rightTable='';x.columns=[]}
+    if(k==='left'||k==='right'){(x.keys||[]).forEach(kk=>{if(k==='left')kk.left='';else kk.right=''})}
+   };
+   /* **値の入力中に組み直さないこと**(§9.117)。文字を打つたびに入力欄が
+      作り替わるとカーソルが飛ぶ。組み直すのは選択肢(data-qj-re)だけ。 */
+   if(el.matches('[data-qj-re]'))el.onchange=()=>{commit();renderQueryJoinEditor();qjRefreshColumns()};
+   else{el.oninput=()=>{commit();qjProbeSoon()};el.onchange=()=>commit()}
+  });
+  form.querySelectorAll('[data-qj-keyleft]').forEach(el=>el.onchange=()=>{
+   qjEdit().keys[+el.dataset.qjKeyleft].left=el.value;qjProbeSoon(0);
+  });
+  form.querySelectorAll('[data-qj-keyright]').forEach(el=>el.onchange=()=>{
+   qjEdit().keys[+el.dataset.qjKeyright].right=el.value;qjProbeSoon(0);
+  });
+  form.querySelectorAll('[data-qj-keydel]').forEach(el=>el.onclick=()=>{
+   const x=qjEdit();x.keys.splice(+el.dataset.qjKeydel,1);
+   if(!x.keys.length)x.keys=[{left:'',right:''}];
+   renderQueryJoinEditor();qjProbeSoon(0);
+  });
+  const add=form.querySelector('#qjKeyAdd');
+  if(add)add.onclick=()=>{qjEdit().keys.push({left:'',right:''});renderQueryJoinEditor()};
+  form.querySelectorAll('[name="qjPick"]').forEach(el=>el.onchange=()=>{
+   const x=qjEdit();
+   if(el.value==='all'&&el.checked)x.columns=[];
+   else if(el.checked&&!x.columns.length){
+    const rc=qjState.cols[x.right+'\t'+(x.rightTable||'')]||{};
+    x.columns=(rc.columns||[]).filter(c=>!(x.keys||[]).some(k=>k.right===c)).slice(0,20);
+   }
+   renderQueryJoinEditor();qjProbeSoon(0);
+  });
+  form.querySelectorAll('[data-qj-col]').forEach(el=>el.onclick=()=>{
+   /* チェックは`click`で受ける(§9.90)。`change`は`click`の後に飛ぶため、
+      行のクリックで組み直す作りだと反映されない。 */
+   const x=qjEdit(),c=el.dataset.qjCol;
+   if(el.checked){if(!x.columns.includes(c))x.columns.push(c)}
+   else x.columns=x.columns.filter(v=>v!==c);
+   qjProbeSoon();
+  });
+  qjRenderProbe();
+ }
+ async function qjRefreshColumns(){
+  const x=qjEdit();
+  const before=JSON.stringify([x.left,x.leftTable,x.right,x.rightTable]);
+  await Promise.all([qjColumns(x.left,x.leftTable),qjColumns(x.right,x.rightTable)]);
+  // 途中で選び直されていたら、そのときの結果で描き直す側に任せる。
+  if(JSON.stringify([x.left,x.leftTable,x.right,x.rightTable])!==before)return;
+  renderQueryJoinEditor();
+  qjProbeSoon(0);
+ }
+ let qjProbeTimer=null;
+ function qjProbeSoon(delay){
+  clearTimeout(qjProbeTimer);
+  qjProbeTimer=setTimeout(qjProbe,delay==null?450:delay);
+ }
+ async function qjProbe(){
+  const x=qjEdit();
+  const body={left:x.left,leftTable:x.leftTable,right:x.right,rightTable:x.rightTable,
+              keys:(x.keys||[]).filter(k=>k.left&&k.right),columns:x.columns,
+              prefix:x.prefix,multi:x.multi,name:x.name||'(下見)'};
+  const sig=JSON.stringify(body);
+  if(sig===qjState.probeSig)return;
+  qjState.probeSig=sig;
+  const seq=++qjState.probeSeq;
+  qjState.probing=true;qjRenderProbe();
+  try{
+   const r=await api('/api/query-join-master/probe',{method:'POST',
+     headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+   if(seq!==qjState.probeSeq)return;
+   qjState.probe=r.result||null;
+  }catch(e){
+   if(seq!==qjState.probeSeq)return;
+   qjState.probe={ok:false,reason:e.message,sampled:0,matched:0,ambiguous:0,
+                  addedColumns:0,addedColumnNames:[],table:'',examples:[]};
+  }finally{
+   if(seq===qjState.probeSeq){qjState.probing=false;qjRenderProbe()}
+  }
+ }
+ function qjRenderProbe(){
+  const box=$('#qjProbeBox'),state=$('#qjProbeState');if(!box)return;
+  if(state)state.textContent=qjState.probing?'確かめています…':'';
+  const p=qjState.probe;
+  if(!p){box.innerHTML='<p class="mm-field-hint">突合キーを選ぶと、いまのデータで当ててみた結果がここに出ます。</p>';return}
+  /* **色だけで伝えない**(§3)。当たった件数・足す列数・実例を文字で出す。 */
+  const names=(p.addedColumnNames||[]);
+  const head=p.ok
+   ?`<p class="qj-probe-ok"><b>${p.matched}</b> / ${p.sampled} 行に当たりました。<b>${p.addedColumns}</b> 列を足します（相手の表: ${esc(p.table||'—')}）。</p>`
+   :`<p class="qj-probe-ng">当たりませんでした。${esc(p.reason||'')}</p>`;
+  const amb=p.ambiguous?`<p class="mm-field-hint">相手が2件以上あったキーが ${p.ambiguous} 件あります（いまの設定: ${esc(QJ_MULTI_LABEL[qjEdit().multi||'first'])}）。</p>`:'';
+  const cols=names.length?`<p class="mm-field-hint">足す列: ${esc(names.slice(0,12).join('・'))}${names.length>12?` ほか${names.length-12}列`:''}</p>`:'';
+  /* 実例は3件(§9.105)。1件では「たまたま」と区別が付かない。 */
+  const ex=(p.examples||[]).length?`<table class="qj-ex"><thead><tr>${
+    Object.keys(p.examples[0]).map(k=>`<th>${esc(k)}</th>`).join('')}</tr></thead><tbody>${
+    p.examples.map(r=>`<tr>${Object.values(r).map(v=>`<td>${esc(String(v))}</td>`).join('')}</tr>`).join('')
+   }</tbody></table>`:'';
+  box.innerHTML=head+amb+cols+ex;
+ }
+ async function saveQueryJoinEditor(){
+  const x=qjEdit();
+  const uid=requireMaintUser();if(uid===null)return;
+  const body={id:x.id,user_id:uid,name:x.name,left:x.left,leftTable:x.leftTable,
+              right:x.right,rightTable:x.rightTable,
+              keys:(x.keys||[]).filter(k=>k.left&&k.right),columns:x.columns,
+              prefix:x.prefix,multi:x.multi,order:x.order,
+              enabled:x.active===false?'無効':'有効'};
+  try{
+   setMaintLoading(true,'保存しています…');
+   const url=x.id?'/api/query-join-master/update':'/api/query-join-master';
+   const r=await api(url,{method:'POST',headers:{'Content-Type':'application/json'},
+     body:JSON.stringify(body)});
+   closeMaintEditor();
+   qjState.loaded=false;await loadQueryJoinMaint(true);
+   /* **一覧の控えを捨てる。** 捨てないと、開き直しても結合前の写しが出て
+      「保存したのに何も変わらない」に見える（一覧は問い合わせの結果を
+      TTLで覚えている）。 */
+   window.invalidateTableCache&&window.invalidateTableCache();
+   showToast&&showToast('保存しました',r.message||'一覧を開き直すと反映されます',4000);
+  }catch(e){showToast&&showToast('保存できません',e.message,6000)}
+  finally{setMaintLoading(false)}
  }
  async function dsDelete(id){
   const x=dsState.items.find(i=>String(i.id)===String(id));if(!x)return;
@@ -1505,8 +1939,27 @@
   requestAnimationFrame(()=>{const first=form.querySelector('[data-field="label"]');if(first)first.focus()});
   dsProbeSoon(0);
  }
+ /* 役割の選択肢。**埋まっている役割にはその行の名前を添える**(§9.193)
+    ——選んでから「既に付いています」と断られるのでは、開き直して確かめる
+    手間が増えるだけ(§4「できないことは、できないと書く」)。自分が今
+    持っている役割は素のまま出す(付け替えではないので断られない)。 */
+ function dsPurposeOptions(x){
+  const cur=x.purpose||'その他';
+  const opt=(v,label,sel)=>`<option value="${esc(v)}"${v===sel?' selected':''}>${esc(label)}</option>`;
+  const holders=dsState.purposeHolders||{};
+  const list=['その他',...(dsState.purposes||[])];
+  return list.map(v=>{
+   if(v==='その他')return opt(v,'その他（一覧として見るだけ）',cur);
+   const who=String(holders[v]||'');
+   const taken=who&&who!==x.key;
+   return opt(v,taken?`${v}（いまは ${who}）`:v,cur);
+  }).join('');
+ }
  function dsEditorHtml(x,isNew){
   const mode=x.readMode||(x.overridePath?'direct':(x.mode||'share'));
+  // 役割「仕掛」は一覧から隠せない（隠すと測定・予定投入の入口が消える）。
+  // **選ばせてから断らない**——選べない理由を欄のところに書く（§4）。
+  const lockListed=(x.purpose||'')==='仕掛';
   const f=(k,label,val,attrs,hint)=>`<label class="mm-field"><span>${esc(label)}</span>
     <input data-field="${k}" type="text" value="${esc(val==null?'':String(val))}" ${attrs||''} autocomplete="off" spellcheck="false">
     ${hint?`<small class="mm-field-hint">${esc(hint)}</small>`:''}</label>`;
@@ -1536,17 +1989,23 @@
     <h4 class="mm-fieldgroup">① これは何か</h4>
     ${f('label','表示名',x.label,'required','左メニュー「一覧を見る」に出る名前です。')}
     ${f('key','キー',x.key,'required','半角英数と _。一覧を指す識別子で、変えると この一覧向けの登録フィルタ・表示列の設定が結び付かなくなります。')}
-    <label class="mm-field"><span>役割</span>
-     <select data-field="purpose">${['その他','作業','品質'].map(v=>opt(v,v,x.purpose||'その他')).join('')}</select>
-     <small class="mm-field-hint">「作業」＝測定・予定投入の対象／「品質」＝作業の一覧へ結合。各1件だけです。</small></label>
+    <label class="mm-field"><span>どのデータとして使うか（役割）</span>
+     <select data-field="purpose">${dsPurposeOptions(x)}</select>
+     <small class="mm-field-hint">「仕掛」＝測定・予定投入の対象／「品質」＝仕掛の一覧へ結合／「スケジュール」＝作業予定の本体。<b>この3つは各1件だけ</b>で、「その他」は一覧として見るだけです。別のデータをつなげたいときは マスタ管理 &gt; クエリ結合 で結合を登録します（役割は要りません）。</small></label>
     <div class="ds-edit-pair">
      <label class="mm-field"><span>表示順</span>
       <input data-field="order" type="number" min="0" max="9999" value="${esc(String(x.order==null?0:x.order))}">
       <small class="mm-field-hint">小さいほど上に出ます。</small></label>
-     <label class="mm-field"><span>状態</span>
+     <label class="mm-field"><span>使う / 使わない</span>
       <select data-field="enabled">${['有効','無効'].map(v=>opt(v,v,x.enabled||'有効')).join('')}</select>
-      <small class="mm-field-hint">無効にすると一覧にも抽出対象にも出ません。</small></label>
+      <small class="mm-field-hint">「無効」にすると読み込みも抽出も止まります（結合の相手にもなりません）。</small></label>
     </div>
+    <label class="mm-field"><span>左メニューの一覧に出す</span>
+     <select data-field="listed"${lockListed?' disabled':''}>${
+       ['出す','出さない'].map(v=>opt(v,v,(x.listed===false&&!lockListed)?'出さない':'出す')).join('')}</select>
+     <small class="mm-field-hint">${lockListed
+       ?'役割「仕掛」は測定・予定投入の入口なので、一覧から隠せません。'
+       :'「出さない」にしても<b>データは読みます</b>。クエリ結合の相手としてだけ使いたいデータ（品質・単価表など）を、左メニューに並べずに済ませるための設定です。'}</small></label>
    </section>
    <section class="ds-edit-zone">
     <h4 class="mm-fieldgroup">② どこから読むか</h4>
@@ -1589,7 +2048,8 @@
   const pick=picked?picked.value:'share';
   const d={id:dsState.editing?dsState.editing.id:null,
    key:String(val('key')||'').trim().toUpperCase(),label:val('label'),purpose:val('purpose'),
-   order:val('order'),enabled:val('enabled'),rne:val('rne'),table:val('table'),
+   order:val('order'),enabled:val('enabled'),listed:val('listed')!=='出さない',
+   rne:val('rne'),table:val('table'),
    output:val('output'),share:val('share'),preferred:val('preferred'),
    overridePath:String(val('overridePath')||'').trim()};
   /* 「直接読む」以外を選んでいるときは上書きを**空で送る＝解除する**。
