@@ -294,7 +294,7 @@
    固定開始・見積の内訳は情報量が多く常時出すと行が伸びるため、1つの
    詳細トグル(.sc-row-detail-toggle)へ統合して折りたたむ(既定は閉)。
    --------------------------------------------------------------- */
-.sc-row-head,.sc-row-line{
+.sc-row-head,.sc-row-line,.sc-child-line{
  /* **この表のセルの文字サイズを1つ決める**(§9.90)。以前は日付12px・
     時刻13px・内容14px・作業可否10pxのように列ごとに違い、同じ行の中で
     大きさがちぐはぐだった(実測で内容だけ2段大きかった)。
@@ -357,8 +357,16 @@
    見出しの帯(#scColPickHint)が文字で出す。 */
 .sc-row-title-head.is-picked{background:var(--pale);color:var(--teal-dark);
  box-shadow:inset 0 0 0 1px var(--teal)}
-.sc-row-title-head .col-resize{position:absolute;top:0;right:0;width:6px;height:100%;
- cursor:col-resize}
+/* 列幅の取っ手。**掴める幅は一覧・データ一覧と同じ**にする(§9.197)——
+   ここだけ6pxで、実機で「うまく掴めない」と報告された。取っ手そのものは
+   細い線1本で、掴める帯は線より広く取る。 */
+.sc-row-title-head .col-resize{position:absolute;top:0;right:0;
+ width:calc(var(--space-2) + 2px);height:100%;
+ cursor:col-resize;opacity:0;transition:opacity .12s ease}
+.sc-row-title-head:hover .col-resize{opacity:1}
+.sc-row-title-head .col-resize::after{
+ content:"";position:absolute;top:15%;bottom:15%;left:50%;width:2px;
+ background:var(--line-strong);border-radius:var(--radius-xs)}
 .sc-row-title-head.col-dragging{opacity:.45}
 .sc-row-title-head.col-drop-before::before,.sc-row-title-head.col-drop-after::before{
  content:"";position:absolute;top:0;bottom:0;width:2px;background:var(--teal)}
@@ -378,15 +386,26 @@
    ないものはセル側で省略する(セルは既に nowrap + overflow:hidden)。
    --row-h は利用者が行間として調整できる(表示設定)。 */
 .sc-row-line{padding:var(--row-pad-y) 8px;height:var(--row-h);border-radius:var(--radius-xs);background:#fff;border-bottom:1px solid #eef2f4}
-/* ---------- 列の区切り(§9.196、利用者の指摘「列の区切りがわかりにくい」) ----------
+/* ---------- 列の区切り(§9.196／§9.197で作り直し) ----------
    横の罫線しか無かったため、15列が横一列の文字の並びに見えていた。
-   **レイアウトを1pxも動かさない**よう、borderではなく内側の影で引く
-   ——borderを足すとセルの箱が1px広がり、列レイアウトマスタで決めた幅と
-   食い違う（列幅の設定が効かない列ができる）。
+   最初は**セルの内側**へ影で引いたが、セルには左右の余白が無く、
+   線が1文字目に接して**文字と重なって見えた**（実機で「最悪」と指摘）。
+   今は
+     ①線を**列の隙間の中**へ置く（セルの外側なので、セルの
+       `overflow:hidden`にも列幅の設定にも触らない）
+     ②セルに左の余白を持たせ、線と文字のあいだを空ける
+   の2つで、線の左右に同じだけ余白がある形にする。
+   影は「箱を上下2px縮めて左へ3pxずらした写し」なので、**見えるのは隙間に
+   出た1pxだけ**——上下も2pxずつ短いので、罫線が主役にならない(§10)。
+   **borderで引かないこと**——`box-sizing:border-box`なら軌道の幅は変わらない
+   が、`justify-self:center`のセル(作業可否・区分)は中身なりの箱なので、
+   そこだけ1px広がって中心がずれる。
    引かないのは**取っ手の列と最初のデータ列の左**——そこへ引くと表の外枠に
    なってしまい、「まとまり」ではなく飾りになる(§10)。 */
-.sc-row-line>*:not(:first-child):not(:nth-child(2)){box-shadow:inset 1px 0 0 var(--line-mid)}
-.sc-row-head>*:not(:first-child):not(:nth-child(2)){box-shadow:inset 1px 0 0 var(--line-strong)}
+.sc-row-line>*:not(:first-child):not(:nth-child(2)),
+.sc-row-head>*:not(:first-child):not(:nth-child(2)){padding-left:var(--gap-tight)}
+.sc-row-line>*:not(:first-child):not(:nth-child(2)){box-shadow:-3px 0 0 -2px var(--line-soft)}
+.sc-row-head>*:not(:first-child):not(:nth-child(2)){box-shadow:-3px 0 0 -2px var(--line-mid)}
 /* 選んでいる列(§9.177)は自前の影を持つので、区切りより優先される。 */
 .sc-row-head>.sc-row-title-head.is-picked{box-shadow:inset 0 0 0 1px var(--teal)}
 /* 中身がはみ出しても行を押し広げない。grid の子は既定で min-height:auto に
@@ -494,6 +513,10 @@
 .sc-insert-line::before{content:'';position:absolute;left:0;right:0;top:3px;height:4px;
  border-radius:var(--radius-xs);background:var(--teal);box-shadow:0 0 0 1px var(--pale)}
 .sc-insert-ghost:hover .sc-insert-line::before{background:var(--teal-dark);height:5px;top:2px}
+/* 案内を切っているとき(§9.197、利用者の指示「慣れたら不要」)。吹き出しは
+   出さないが、**入る位置の線は残す**——どこへ入るか分からないのは、案内が
+   多いことよりずっと困る。線だけになるので、少し太くして見つけやすくする。 */
+.sc-insert-ghost.is-quiet .sc-insert-line::before{height:5px;top:2px}
 /* 説明の吹き出し。**操作の列にはかからない**ように幅の上限を置く
    （--sc-tip-max はJSが操作列の左端から入れる）。 */
 .sc-insert-tip{position:absolute;top:8px;left:var(--space-2);
@@ -801,10 +824,13 @@
 .shift-eq-sum{font-size:var(--fs-sm);color:var(--ink-2)}
 .shift-eq-sum b{color:var(--ink)}
 .shift-eq-act{margin-left:auto;display:flex;gap:var(--gap-inline)}
-/* 設備は**そろったマス目**に並べる。以前は`flex-wrap`で名前の長さなりに
-   ちぎれて折り返しており、行ごとに左端がずれて数えられなかった。 */
-.shift-eq-picker{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--w-md),1fr));
-  gap:var(--gap-hair);max-height:11em;overflow:auto;
+/* 設備名のタグを**詰めて並べる**(§9.197、利用者の指示「コンパクトかつ
+   モダン」)。以前はマス目に割っていたが、1マスに1つのチェックボックスだと
+   3行ぶんの高さを使って名前が数個しか出せず、器のほうが中身より大きかった
+   （§11・§12）。タグは名前の長さなりなので、同じ高さに倍以上入る。
+   多いときだけスクロールする。 */
+.shift-eq-picker{display:flex;flex-wrap:wrap;align-content:flex-start;
+  gap:var(--gap-tight);max-height:9em;overflow:auto;
   border:1px solid var(--line-soft);border-radius:var(--radius-sm);
   padding:var(--gap-tight);background:var(--surface-2)}
 /* 24時間バー: 左端0時・右端24時。区分ごとに色を変え、日跨ぎは両端に分けて描く。 */
@@ -982,18 +1008,24 @@
 .sc-child-box{
  background:var(--surface-2);
  border-bottom:1px solid var(--line-soft);
- padding:var(--space-1) 8px var(--space-1) 0;
+ padding:var(--space-1) 0;
 }
 .sc-child-box[hidden]{display:none}
+/* 子ロットの行は**親と同じ列定義を共有する**(§9.197)。トラックの定義は
+   `.sc-row-head,.sc-row-line,.sc-child-line`の1箇所だけが持つ——ここへ
+   書き写すと、親の列を動かしたときに子だけ元の桁に残る。
+   左右の余白も**行と同じ8px**にすること（器(.sc-child-box)側に余白を持たせると
+   グリッドの原点がずれ、ロット番号が親の真下に来ない。実際にそうなっていた）。 */
 .sc-child-line{
- display:grid;
- /* つなぎ / ロット番号 / 内訳 。親の桁には合わせない(別物として読ませる)。 */
- grid-template-columns:calc(24px * var(--ui-scale)) calc(120px * var(--ui-scale)) minmax(0,1fr);
- align-items:center;gap:var(--gap-inline);
- height:calc(var(--row-h) * .78);
+ padding:0 8px;
+ height:calc(var(--row-h) * .82);
  font-size:var(--fs-sm);color:var(--ink-2);
 }
 .sc-child-line>*{min-height:0;max-height:100%;overflow:hidden}
+/* セルの左の余白も親と同じにする（親は列の区切りと合わせて4px入れている）。
+   子には区切り線を引かない——内訳は1つのまとまりなので、そこへ縦線を
+   足すと「まとまり」ではなく飾りになる(§10)。 */
+.sc-child-line>*:not(:first-child):not(:nth-child(2)){padding-left:var(--gap-tight)}
 .sc-child-mark{color:var(--line-strong);text-align:center}
 .sc-child-lot{font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums;
               white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

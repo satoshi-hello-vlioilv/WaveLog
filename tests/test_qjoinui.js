@@ -84,25 +84,120 @@ const raf2=page=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requ
   rec('相手はデータ接続に登録済みのものだけから選ぶ',
       sources.length>0&&sources.every(k=>['SIKALOTNOW','SIKALOTDEF','QJTESTUI'].includes(k)||k===WORK||k===QUALITY),
       JSON.stringify(sources));
-  // 列の候補が両側とも入るまで待つ（/api/table-columns の往復）
+  /* ---- 2a) 突合キーは**両側の列を並べて結ぶ**（§9.197、利用者の指示） ----
+     列の一覧が両側とも入るまで待つ（/api/table-columns の往復）。 */
   await page.waitForFunction(()=>{
-   const l=document.querySelector('[data-qj-keyleft="0"]'),r=document.querySelector('[data-qj-keyright="0"]');
-   return l&&r&&l.options.length>1&&r.options.length>1;
+   const l=document.querySelectorAll('[data-qj-list="left"] .qj-field').length;
+   const r=document.querySelectorAll('[data-qj-list="right"] .qj-field').length;
+   return l>2&&r>2;
   },{timeout:20000});
-  const keyOpts=await page.evaluate(()=>({
-   left:[...document.querySelector('[data-qj-keyleft="0"]').options].map(o=>o.value).length,
-   right:[...document.querySelector('[data-qj-keyright="0"]').options].map(o=>o.value).length}));
-  rec('突合キーの候補は実際の列から作る',keyOpts.left>2&&keyOpts.right>2,JSON.stringify(keyOpts));
-  // 名前・キー・接頭辞を入れて下見が出ることを見る
+  const panes=await page.evaluate(()=>{
+   const one=side=>{
+    const p=document.querySelector(`[data-qj-pane="${side}"]`);
+    const f=[...document.querySelectorAll(`[data-qj-list="${side}"] .qj-field`)];
+    return {n:f.length,
+      tag:p?.querySelector('.qj-pane-tag')?.textContent.trim()||'',
+      meta:p?.querySelector('.qj-pane-meta')?.textContent.replace(/\s+/g,' ').trim()||'',
+      /* 実データの例が添えられているか（形が違えば当たらないと分かる）。 */
+      eg:f.filter(x=>/^[^\s]/.test(x.querySelector('.qj-fld-eg')?.textContent||'')).length,
+      search:!!p?.querySelector('[data-qj-search]'),
+      draggable:f.every(x=>x.draggable)};
+   };
+   return {left:one('left'),right:one('right')};
+  });
+  rec('突合キーの候補は実際の列を並べて選ぶ',
+      panes.left.n>2&&panes.right.n>2,JSON.stringify({左:panes.left.n,右:panes.right.n}));
+  rec('どのデータのどの表を見ているのかが画面に出る',
+      /列/.test(panes.left.meta)&&/表/.test(panes.left.meta)&&/列/.test(panes.right.meta),
+      JSON.stringify({左:panes.left.meta,右:panes.right.meta}));
+  rec('どちら側かが文字で書いてある',
+      panes.left.tag.includes('この一覧')&&panes.right.tag.includes('相手'),
+      JSON.stringify([panes.left.tag,panes.right.tag]));
+  rec('列は絞り込めて、ドラッグでも掴める',
+      panes.left.search&&panes.right.search&&panes.left.draggable&&panes.right.draggable,
+      JSON.stringify(panes));
+  rec('列に実データの例が添えられる',panes.left.eg>0&&panes.right.eg>0,
+      JSON.stringify({左:panes.left.eg,右:panes.right.eg}));
+  /* 列名で絞り込むと**一覧だけ**が変わる（入力欄が作り替わるとカーソルが
+     飛ぶので、そこは触らない。§9.117）。 */
+  await page.click('[data-qj-search="left"]');
+  await page.type('[data-qj-search="left"]','ロット');
+  await page.waitForTimeout(400);
+  const filtered=await page.evaluate(()=>({
+   n:document.querySelectorAll('[data-qj-list="left"] .qj-field').length,
+   names:[...document.querySelectorAll('[data-qj-list="left"] .qj-fld-name')].map(x=>x.textContent.trim()),
+   value:document.querySelector('[data-qj-search="left"]').value,
+   focused:document.activeElement===document.querySelector('[data-qj-search="left"]')}));
+  rec('列名で絞り込める（打っている最中に欄が作り替わらない）',
+      filtered.n>0&&filtered.n<panes.left.n&&filtered.value==='ロット'&&filtered.focused,
+      JSON.stringify(filtered).slice(0,160));
+  /* **押して結ぶ**：この一覧の列 → 相手の列。1つ目を押した時点で
+     「次に何を押すか」が帯に出る。 */
+  const clickField=(side,col)=>page.evaluate(([s,c])=>{
+   const el=[...document.querySelectorAll(`[data-qj-list="${s}"] .qj-field`)]
+     .find(x=>x.dataset.col===c);
+   if(el)el.click();
+   return !!el;
+  },[side,col]);
+  await clickField('left','ロット番号');
+  await page.waitForTimeout(300);
+  const midPick=await page.evaluate(()=>({
+   picked:[...document.querySelectorAll('.qj-field.is-pick')].map(x=>x.dataset.col),
+   status:document.querySelector('.qj-merge-status')?.textContent.replace(/\s+/g,' ').trim()||''}));
+  rec('1つ目を押すと、次にすることが1つだけ書かれる',
+      midPick.picked.length===1&&/次に相手の列を押す/.test(midPick.status),JSON.stringify(midPick));
+  await clickField('right','ロット番号');
+  await page.waitForTimeout(600);
+  const paired=await page.evaluate(()=>({
+   pairs:[...document.querySelectorAll('.qj-pair')].map(x=>x.textContent.replace(/\s+/g,' ').trim()),
+   keyMarks:[...document.querySelectorAll('.qj-fld-key')].map(x=>x.textContent.trim()),
+   picked:document.querySelectorAll('.qj-field.is-pick').length}));
+  rec('左右を1つずつ押すと組になる',paired.pairs.length===1&&/ロット番号/.test(paired.pairs[0]),
+      JSON.stringify(paired.pairs));
+  rec('結ばれた列は両側に同じ印が付く',
+      paired.keyMarks.filter(t=>t==='鍵1').length===2&&paired.picked===0,
+      JSON.stringify(paired.keyMarks));
+  /* **ドラッグでも同じことが起きる**（片方だけ効くと壊れて見える）。
+     **絞り込みを先に消すこと**——絞ったままだと相手の列が一覧に無く、
+     「見つからないので飛ばす」で**何も確かめないまま通る**（実際に通った）。 */
+  await page.evaluate(()=>{const el=document.querySelector('[data-qj-search="left"]');
+   el.value='';el.dispatchEvent(new Event('input',{bubbles:true}))});
+  await page.waitForTimeout(400);
+  const dragged=await page.evaluate(()=>{
+   const l=[...document.querySelectorAll('[data-qj-list="left"] .qj-field')]
+     .find(x=>x.dataset.col==='鋳造番号');
+   const r=[...document.querySelectorAll('[data-qj-list="right"] .qj-field')]
+     .find(x=>x.dataset.col==='鋳造番号');
+   if(!l||!r)return {skip:true,left:!!l,right:!!r};
+   const dt=new DataTransfer();
+   l.dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer:dt}));
+   r.dispatchEvent(new DragEvent('dragover',{bubbles:true,dataTransfer:dt}));
+   r.dispatchEvent(new DragEvent('drop',{bubbles:true,dataTransfer:dt}));
+   l.dispatchEvent(new DragEvent('dragend',{bubbles:true,dataTransfer:dt}));
+   return {skip:false};
+  });
+  await page.waitForTimeout(600);
+  const afterDrag=await page.evaluate(()=>[...document.querySelectorAll('.qj-pair')]
+    .map(x=>x.textContent.replace(/\s+/g,' ').trim()));
+  rec('ドラッグして重ねても組になる',
+      !dragged.skip&&afterDrag.length===2,JSON.stringify({dragged,afterDrag}));
+  /* 組は×で外せる（外す手立てが組の隣にある）。 */
+  await page.evaluate(()=>{const b=[...document.querySelectorAll('.qj-pair-del')].pop();if(b)b.click()});
+  await page.waitForTimeout(600);
+  const afterDel=await page.evaluate(()=>document.querySelectorAll('.qj-pair').length);
+  rec('組は×で外せる',afterDel===1,String(afterDel));
+  // 名前・接頭辞を入れて下見が出ることを見る
   await page.evaluate(n=>{
    const set=(sel,v)=>{const el=document.querySelector(sel);el.value=v;
      el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}))};
    set('[data-qj-field="name"]',n);
    set('[data-qj-field="prefix"]','UI_');
-   set('[data-qj-keyleft="0"]','ロット番号');
-   set('[data-qj-keyright="0"]','ロット番号');
   },NAME);
-  await page.waitForFunction(()=>document.querySelector('#qjProbeBox .qj-probe-ok'),{timeout:20000});
+  /* **下見が入れ替わるのを待つこと**。`.qj-probe-ok`があることだけを待つと、
+     キーを結んだ時点の（接頭辞を入れる前の）下見がもう出ているので、
+     待ちが即座に通って**古い文字を読む**（実際に読んだ）。 */
+  await page.waitForFunction(()=>/UI_/.test(document.querySelector('#qjProbeBox')?.textContent||''),
+    {timeout:20000});
   const probe=await page.$eval('#qjProbeBox',n=>n.textContent.replace(/\s+/g,' ').trim());
   rec('保存する前に「何件に当たるか」が文字で出る',/行に当たりました/.test(probe),probe.slice(0,90));
   rec('足す列の名前も出る（何が増えるか分かる）',/UI_/.test(probe),probe.slice(0,140));
@@ -153,9 +248,22 @@ const raf2=page=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requ
    if(el){el.checked=true;el.dispatchEvent(new Event('change',{bubbles:true}))}
   });
   await page.waitForFunction(()=>document.querySelector('#qjProbeBox .qj-probe-ok'),{timeout:20000});
-  /* 突合キーは実データの見本つきで選ぶ（形が合うかを見て決められる）。 */
-  const keyEx=await page.$$eval('.qj-key .qj-key-ex',ns=>ns.map(n=>n.textContent.trim()));
-  rec('突合キーに実データの例が添えられる',keyEx.some(t=>/^例: /.test(t)),JSON.stringify(keyEx));
+  /* **窓の中身が切れていないこと**(§9.197、利用者の指摘「モーダル内で表示が
+     一部切れている」)。以前は`.is-wide`の本体が`overflow:hidden`で、
+     ⑤結果の節が丸ごと画面の外だった。 */
+  const fit=await page.evaluate(()=>{
+   const body=document.querySelector('#maintEditorModal .mm-editor-body');
+   const last=document.querySelector('#maintEditorModal .qj-sec-result');
+   if(!body||!last)return {missing:true};
+   last.scrollIntoView({block:'end'});
+   const b=body.getBoundingClientRect(),l=last.getBoundingClientRect();
+   return {scrollable:body.scrollHeight>body.clientHeight+1,
+           overflowY:getComputedStyle(body).overflowY,
+           reachable:l.bottom<=b.bottom+2&&l.height>0,
+           probe:!!document.querySelector('#qjProbeBox')};
+  });
+  rec('窓の中身が切れない（下の節までたどり着ける）',
+      !fit.missing&&fit.reachable&&fit.probe&&fit.overflowY!=='hidden',JSON.stringify(fit));
   await page.click('#maintEditorSave');
   await page.waitForFunction(n=>[...document.querySelectorAll('#masterMaintList .qj-c-name')]
     .some(el=>el.textContent.includes(n)),NAME,{timeout:20000});

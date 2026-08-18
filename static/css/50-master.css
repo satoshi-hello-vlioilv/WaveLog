@@ -126,7 +126,11 @@
 .mm-field>span{font-size:var(--fs-sm);color:#526970;font-weight:700;display:flex;align-items:center;gap:var(--gap-tight);white-space:nowrap}
 .mm-field>span i{color:var(--invalid);font-style:normal}
 .mm-keytag{font-style:normal;font-size:var(--fs-badge);font-weight:800;color:#0a6570;background:#dcecef;border-radius:var(--radius-sm);padding:1px 6px}
-.mm-field input,.mm-field select{height:var(--ctl-h);min-width:200px;padding:6px 10px;border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff}
+/* **チェック・ラジオには当てない**(§9.197)。以前は`input`をまとめて
+   `min-width:200px`にしていたため、`.mm-field`の中に置いたチェックボックスが
+   器の幅を全部取り、**隣に置いた文字（設備名）が押し出されて消えた**。
+   幅・高さを決めたいのは値を打ち込む欄だけ。 */
+.mm-field input:not([type=checkbox]):not([type=radio]),.mm-field select{height:var(--ctl-h);min-width:200px;padding:6px 10px;border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff}
 .mm-field input:focus-visible,.mm-field select:focus-visible{outline:0;border-color:var(--teal);box-shadow:0 0 0 3px #087c8926}
 .mm-field-wide{flex-basis:100%}
 .mm-field-hint{color:#8a9aa0;font-size:var(--fs-micro)}
@@ -226,7 +230,7 @@
 .mm-editor-body{flex:1;min-height:0;overflow:auto;padding:var(--pad-dialog);display:flex;flex-direction:column;gap:var(--space-3);background:#ffffff}
 .mm-editor-body .mm-form-fields{flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:var(--space-3)}
 .mm-editor-body .mm-field{width:100%}
-.mm-editor-body .mm-field input,.mm-editor-body .mm-field select{width:100%;min-width:0}
+.mm-editor-body .mm-field input:not([type=checkbox]):not([type=radio]),.mm-editor-body .mm-field select{width:100%;min-width:0}
 .mm-editor-body .mm-tagfield{flex:0 0 auto;min-width:0}
 .mm-editor-foot{display:flex;align-items:center;gap:var(--space-3);padding:var(--pad-dialog);background:#fff;border-top:1px solid var(--line)}
 .mm-editor-actions{margin-left:auto;display:flex;gap:var(--space-2);flex:0 0 auto}
@@ -441,10 +445,14 @@
 .ds-cap.is-ok{color:var(--computed-fg)}
 .ds-cap.is-ok i{color:var(--teal-dark)}
 /* ---- 編集ウィンドウ ----
-   **スクロールさせない**（利用者の指示）。2列に割り、左＝決めること、
-   右＝その結果（できること・いまの状態）。 */
+   **スクロールさせない**（利用者の指示。データ接続の編集窓）。2列に割り、
+   左＝決めること、右＝その結果（できること・いまの状態）。
+   **`is-tall`だけは送る**(§9.197)——クエリ結合は「両側の列の一覧＋結合の
+   仕方の6枚＋下見」で縦に長く、スクロールさせないと**下の節が丸ごと切れて
+   見えなかった**（実機で「モーダル内で表示が一部切れている」と指摘）。 */
 .mm-editor-dialog.is-wide{width:min(1180px,96vw)}
 .mm-editor-dialog.is-wide .mm-editor-body{overflow:hidden}
+.mm-editor-dialog.is-wide.is-tall .mm-editor-body{overflow:auto}
 .ds-edit{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);
   gap:var(--space-3) var(--space-4);align-items:start}
 .ds-edit-zone{display:grid;gap:var(--space-2);min-width:0}
@@ -519,18 +527,95 @@
 .qj-sample-t.is-result{border-color:var(--teal)}
 .qj-sample-t.is-result caption{color:var(--teal);font-weight:800}
 .qj-sample-t td.is-blank{color:var(--muted)}
-/* 突合キーは「左＝右」を1行に。**器は中身の長さから**決め、余りは空ける。
-   選んだ列の実データの例を下に添える——形が違えば当たらないことは、値を
-   見れば分かる（推測させない）。 */
-.qj-keys{display:grid;gap:var(--gap-tight)}
-.qj-key{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) auto;
-  align-items:start;gap:var(--space-2)}
-.qj-key-side{display:grid;gap:1px;min-width:0}
-.qj-key-side select{width:100%}
-.qj-key-ex{font-size:var(--fs-tiny);color:var(--ink-2);
+/* ---------- 突合キーは両側の列を並べて結ぶ(§9.197) ----------
+   EXCELのパワークエリのマージと同じ作法。左右に表を1枚ずつ置き、列を
+   1つずつ押す（またはドラッグして重ねる）と組になる。以前は`<select>`を
+   左右に並べた行で、どんな列があるのかを探せず、いま何と何が結ばれて
+   いるのかも読み取りにくかった。
+   **縦は決め打ちで送る**（列は200本を超えることがあるので、器の高さを
+   中身に合わせると窓が画面に収まらない）。 */
+.qj-merge{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);
+  gap:var(--space-2);align-items:stretch}
+.qj-merge-mid{display:flex;align-items:center;justify-content:center}
+.qj-merge-eq{color:var(--teal);font-size:var(--fs-lg);font-weight:800}
+.qj-pane{display:grid;gap:var(--gap-tight);min-width:0;
+  border:1px solid var(--line);border-radius:var(--radius-sm);
+  padding:var(--gap-tight);background:var(--surface)}
+.qj-pane-head{display:grid;gap:var(--gap-hair);min-width:0}
+/* どちら側かを**面の色で**言い切る（左＝足す先／右＝持ってくる側）。 */
+.qj-pane-tag{justify-self:start;padding:var(--pad-chip);
+  border-radius:var(--radius-pill);background:var(--pale);color:var(--teal-dark);
+  font-size:var(--fs-tiny);font-weight:800}
+.qj-pane-tag.is-right{background:var(--surface-3);color:var(--ink-2)}
+.qj-pane-head select{width:100%;min-width:0}
+.qj-pane-meta{font-size:var(--fs-tiny);color:var(--muted);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.qj-key-ex.is-empty{color:var(--muted)}
-.qj-eq{color:var(--muted);font-weight:800;align-self:center}
+.qj-pane-meta b{color:var(--ink-2)}
+.qj-pane-meta .is-warn{color:var(--warn-fg)}
+.qj-search{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);min-width:0;
+  border:1px solid var(--line);border-radius:var(--radius-sm);
+  background:#fff;font-size:var(--fs-sm)}
+.qj-fields{display:grid;gap:1px;height:15em;overflow:auto;align-content:start;
+  border:1px solid var(--line-soft);border-radius:var(--radius-sm);
+  padding:2px;background:var(--surface-2)}
+.qj-fields-empty{margin:0;padding:var(--space-2);font-size:var(--fs-sm);color:var(--muted)}
+/* 1行＝1列。名前・実データの例・鍵の印を同じ行に並べる（§3。印は文字でも言う）。 */
+.qj-field{display:grid;grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;gap:var(--gap-inline);width:100%;
+  padding:1px var(--gap-tight);border:1px solid transparent;border-radius:var(--radius-xs);
+  background:#fff;color:var(--ink);font-size:var(--fs-sm);text-align:left;cursor:pointer}
+.qj-field:hover{border-color:var(--teal);background:var(--pale)}
+/* 1つ目に押した列／ドラッグして重ねた先。**選んでいることを面で示す**が、
+   鍵の印は文字（鍵N）でも出す(§3)。 */
+.qj-field.is-pick{border-color:var(--teal-dark);background:var(--teal);color:#fff}
+.qj-field.is-pick .qj-fld-eg{color:#cdeff0}
+.qj-field.is-drop{border-color:var(--teal-dark);background:var(--computed-bg);
+  box-shadow:inset 0 0 0 1px var(--teal-dark)}
+.qj-field.is-key{background:var(--pale)}
+.qj-fld-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qj-fld-eg{grid-column:1;font-size:var(--fs-tiny);color:var(--muted);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qj-fld-eg.is-empty{color:var(--line-strong)}
+.qj-fld-key{grid-row:1 / span 2;grid-column:2;font-style:normal;
+  padding:var(--pad-chip);border-radius:var(--radius-pill);
+  background:var(--teal);color:#fff;font-size:var(--fs-tiny);font-weight:800}
+/* 結ばれた組。**外す×を組の隣に置く**——別の場所に並べると、どの組を
+   外すのか数え直すことになる。 */
+.qj-pairs{display:flex;flex-wrap:wrap;gap:var(--gap-tight)}
+.qj-pair{display:inline-flex;align-items:center;gap:var(--gap-inline);
+  padding:var(--pad-chip);
+  border:1px solid var(--teal);border-radius:var(--radius-pill);
+  background:var(--pale);color:var(--ink);font-size:var(--fs-sm)}
+.qj-pair-no{font-style:normal;color:var(--teal-dark);font-size:var(--fs-tiny);font-weight:800}
+.qj-pair-eq{font-style:normal;color:var(--muted);font-weight:800}
+.qj-pair-warn{font-style:normal;color:var(--warn-fg);font-size:var(--fs-tiny)}
+.qj-pair-del{width:var(--ctl-h-xs);height:var(--ctl-h-xs);
+  border:0;border-radius:var(--radius-pill);background:transparent;
+  color:var(--ink-2);font-size:var(--fs-sm);cursor:pointer}
+.qj-pair-del:hover{background:#fff;color:var(--danger)}
+/* 次にすることを1つだけ書く帯(§2)。 */
+.qj-merge-status{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;
+  margin:0;font-size:var(--fs-sm);color:var(--ink-2)}
+.qj-status-now b{color:var(--ink)}
+.qj-status-cancel{height:var(--ctl-h-xs);padding:0 var(--space-2);
+  border:1px solid var(--line);border-radius:var(--radius-xs);
+  background:var(--surface);color:var(--ink-2);font-size:var(--fs-tiny);cursor:pointer}
+.qj-status-cancel:hover{background:var(--surface-2);color:var(--ink)}
+/* 節ごとに1つのまとまり。枠は重ねない(§10)ので、見出しと余白だけで区切る。 */
+.qj-edit{display:grid;gap:var(--space-3);min-width:0}
+.qj-sec{display:grid;gap:var(--space-2);min-width:0}
+.qj-sec .mm-fieldgroup{margin:0}
+/* **入れ物は中身の長さから決める**(§11)。説明の文は列いっぱいに置くが、
+   打ち込む欄は中身なりの幅で止める（4桁の数値に500pxを与えない）。 */
+.qj-name-row{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr);
+  gap:var(--space-3);align-items:start}
+.qj-f-name input{max-width:var(--w-xl)}
+.qj-f-order input{max-width:var(--w-sm);text-align:right}
+.qj-f-enabled select{max-width:var(--w-md)}
+.qj-add-opts{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  gap:var(--space-3);align-items:start}
+.qj-add-opts input{max-width:var(--w-md)}
+.qj-add-opts select{max-width:var(--w-lg)}
 .qj-sugg{display:flex;align-items:center;gap:var(--gap-inline);flex-wrap:wrap;
   margin-top:var(--gap-tight)}
 .qj-sugg-label{font-size:var(--fs-tiny);color:var(--muted)}
@@ -539,7 +624,6 @@
   background:var(--surface);color:var(--ink-2);font-size:var(--fs-tiny);cursor:pointer}
 .qj-sugg-btn:hover{border-style:solid;border-color:var(--teal);background:var(--pale)}
 .qj-probe-rows{margin:0;font-size:var(--fs-sm);color:var(--ink)}
-.qj-keys-act{display:flex;align-items:baseline;gap:var(--space-2);flex-wrap:wrap}
 .qj-pick{display:flex;gap:var(--space-3);flex-wrap:wrap;margin-bottom:var(--gap-tight)}
 .qj-radio{display:inline-flex;align-items:center;gap:var(--gap-inline);
   font-size:var(--fs-sm);color:var(--ink-2)}
@@ -554,7 +638,10 @@
 .qj-col span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .qj-probe-ok{margin:0;font-size:var(--fs-sm);color:var(--computed-fg)}
 .qj-probe-ng{margin:0;font-size:var(--fs-sm);color:var(--warn-fg)}
-.qj-ex{border-collapse:collapse;font-size:var(--fs-tiny);margin-top:var(--gap-hair)}
+/* 実例の表は**中身なりの幅**で置く(§11)。`.ds-probe`はグリッドなので、
+   そのままだと3列の表が窓いっぱいに伸びる（1列が400px近くになっていた）。 */
+.qj-ex{border-collapse:collapse;font-size:var(--fs-tiny);margin-top:var(--gap-hair);
+  justify-self:start;max-width:100%}
 .qj-ex th,.qj-ex td{border:1px solid var(--line-soft);padding:var(--gap-hair) var(--gap-tight);
   text-align:left;max-width:var(--w-lg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .qj-ex th{background:var(--surface-2);color:var(--muted);font-weight:700}

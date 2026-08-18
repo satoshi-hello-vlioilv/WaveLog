@@ -96,13 +96,28 @@ let b=null;
   if(t)t.click();
  });
  await page.waitForTimeout(1800);
- const picker=await page.evaluate(()=>({
-  exists:!!document.querySelector('#shiftEquipment'),
-  chips:document.querySelectorAll('#shiftEquipment [data-shift-eq]').length,
-  singleSelect:document.querySelector('select#shiftEquipment')!==null,
- }));
+ const picker=await page.evaluate(()=>{
+  const box=document.querySelector('#shiftEquipment');
+  const tags=[...document.querySelectorAll('#shiftEquipment [data-shift-eq]')];
+  /* **名前が読めることを見る**(§9.197)。以前はチェックボックスに
+     `.mm-field input{min-width:200px}`が当たって器の幅を全部取り、
+     **設備名の文字が押し出されて見えていなかった**（実機で報告）。
+     「タグが何個あるか」だけを見る網はそのときも通っていたので、
+     ここでは**器に収まっていること**と**文字が出ていること**を見る。 */
+  return {
+   exists:!!box,
+   chips:tags.length,
+   singleSelect:document.querySelector('select#shiftEquipment')!==null,
+   labelled:tags.every(t=>t.textContent.replace(/[＋✓\s]/g,'').length>0),
+   clipped:tags.filter(t=>t.scrollWidth>t.clientWidth+1).map(t=>t.dataset.shiftEq),
+   overflowing:box?tags.filter(t=>t.getBoundingClientRect().right
+                                  >box.getBoundingClientRect().right+1).length:0,
+  };
+ });
  rec('適用設備が単一selectではなくなっている',!picker.singleSelect,JSON.stringify(picker));
- rec('設備を複数選べるチェック式になっている',picker.exists&&picker.chips>0,JSON.stringify(picker));
+ rec('設備を複数選べるタグ式になっている',picker.exists&&picker.chips>0,JSON.stringify(picker));
+ rec('設備名の文字が出ていて、器から切れていない',
+     picker.labelled&&!picker.clipped.length&&picker.overflowing===0,JSON.stringify(picker));
 
  // 2つ選んで保存し、一覧へ両方出るか
  /* **新規として作ること。** 開いた時点では登録済みの体系が1件選ばれている
@@ -115,14 +130,15 @@ let b=null;
  const saved=await page.evaluate(async()=>{
   const cbs=[...document.querySelectorAll('#shiftEquipment [data-shift-eq]')];
   if(cbs.length<2)return {skipped:true,count:cbs.length};
+  const pressed=t=>t.getAttribute('aria-pressed')==='true';
   /* 更新者IDはマスタ更新の必須項目（requireMaintUser）。入れずに保存すると
      トーストが出るだけで**何も起きない**ので、先に入れておく。 */
   const uid=document.querySelector('#masterUserId');
   if(uid){uid.value='test-workable';uid.dispatchEvent(new Event('change',{bubbles:true}))}
   document.querySelector('#shiftName').value='複数設備テスト2';
   document.querySelector('#shiftName').dispatchEvent(new Event('input',{bubbles:true}));
-  cbs.slice(0,2).forEach(cb=>{if(!cb.checked){cb.checked=true;cb.dispatchEvent(new Event('change',{bubbles:true}))}});
-  return {picked:cbs.slice(0,2).map(c=>c.value)};
+  cbs.slice(0,2).forEach(t=>{if(!pressed(t))t.click()});
+  return {picked:cbs.slice(0,2).filter(pressed).map(t=>t.dataset.shiftEq)};
  });
  rec('選んだ設備が2件そろう',!saved.skipped&&saved.picked.length===2,JSON.stringify(saved));
  /* **保存を押すこと。** 以前はここで押しておらず、APIに2設備の体系が

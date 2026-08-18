@@ -9,6 +9,11 @@
    @layer state
    ============================================================ */
 @layer state {
+/* 列幅を引いている最中(§9.197)。**引いていることを画面に出す**——取っ手を
+   出したままにし、文字が選ばれるのを止める（選択の反転色が出ると「掴み
+   損ねた」ように見える）。 */
+body.col-resizing{cursor:col-resize;user-select:none}
+body.col-resizing .col-resize{opacity:1}
 .hd-chip-mode.is-view{border-color:var(--line);background:#eef2f4}
 .hd-chip-mode.is-view .hd-chip-val{color:#60747b}
 .hd-chip-mode.is-schedule{border-color:#9ec8dd;background:#eaf4fb}
@@ -92,7 +97,11 @@ tbody tr.is-plan-selected:hover{background:#d9f0ee}
 .rne-state.is-off{background:#fff;color:var(--muted)}
 .rne-state.is-running{background:var(--pale);border-color:var(--teal);color:var(--teal)}
 .rne-job.is-ng{color:var(--danger)}
-.shift-eq-chip.is-on{border-color:var(--teal);background:var(--teal);color:#fff;font-weight:700}
+/* 入のタグ(§9.197)。面を塗って**文字を白**にする——枠の色だけだと、
+   タグが並んだときにどれが入なのかを1つずつ見比べることになる。 */
+.shift-eq-tag.is-on{border-color:var(--teal-dark);background:var(--teal);color:#fff;font-weight:700}
+.shift-eq-tag.is-on>i{color:#fff}
+.shift-eq-tag.is-on:hover{border-color:var(--teal-dark);background:var(--teal-dark);color:#fff}
 .sc-row-workable.is-ok{background:var(--success-bg);border-color:var(--success-border);color:var(--success)}
 .sc-row-workable.is-ng{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger)}
 .sc-row-workable.is-unknown{background:var(--warn-bg);border-color:var(--warn-border);color:var(--warn-fg)}

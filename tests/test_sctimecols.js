@@ -103,10 +103,41 @@ async function cleanup(){
 
   // ---- 4. 取っ手で幅を変える
   const w0=await page.evaluate(()=>Math.round(document.querySelector('.sc-row-head [data-col="__time__"]').getBoundingClientRect().width));
-  const g=await page.evaluate(()=>{const r=document.querySelector('.sc-row-head [data-col="__time__"] .col-resize').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}});
+  const g=await page.evaluate(()=>{const r=document.querySelector('.sc-row-head [data-col="__time__"] .col-resize').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,w:r.width}});
+  /* **掴める幅**(§9.197)。ここだけ6pxで、実機で「うまく掴めない」と報告された。
+     一覧・データ一覧と同じ帯（--space-2 + 2px = 10px）にそろえる。 */
+  rec('取っ手の掴める幅が一覧と同じくらいある',g.w>=8,`${Math.round(g.w)}px`);
+  /* **引いている最中に通信しない・離してから0.3秒でまとめて1回**(§9.197、
+     利用者の指示)。以前は離した瞬間に保存し、そのあいだに共有の見張りが
+     表を組み直して掴んでいた見出しごと入れ替わっていた。 */
+  await page.evaluate(()=>{
+   window.__wfp=[];window.__rel=0;
+   document.addEventListener('mouseup',()=>{window.__rel=Date.now()},true);
+   const f=window.fetch;
+   window.fetch=function(u,o){
+    const url=String((u&&u.url)||u||'');
+    if(url.includes('/api/column-layout-master')&&o&&String(o.method||'').toUpperCase()==='POST')
+     window.__wfp.push(Date.now());
+    return f.apply(this,arguments);
+   };
+  });
   await page.mouse.move(g.x,g.y);await page.mouse.down();
-  await page.mouse.move(g.x+60,g.y,{steps:8});await page.mouse.up();
+  await page.mouse.move(g.x+60,g.y,{steps:8});
+  const during=await page.evaluate(()=>({posts:window.__wfp.length,
+   body:document.body.classList.contains('col-resizing'),
+   busy:!!(window.WL&&WL.columnResize&&WL.columnResize.busy())}));
+  await page.mouse.up();
   await page.waitForTimeout(1200);
+  const after=await page.evaluate(()=>({posts:window.__wfp.length,
+   lag:window.__wfp.length?window.__wfp[0]-window.__rel:null,
+   body:document.body.classList.contains('col-resizing'),
+   busy:!!(window.WL&&WL.columnResize&&WL.columnResize.busy())}));
+  rec('引いている最中は保存の通信をしない',during.posts===0,JSON.stringify(during));
+  rec('引いている最中はそうと分かる（自動の読み直しを止める）',
+      during.body&&during.busy,JSON.stringify(during));
+  rec('離してから0.3秒ほど落ち着いてから1回だけ保存する',
+      after.posts===1&&after.lag>=250,JSON.stringify(after));
+  rec('離したあとは元の状態へ戻る',!after.body&&!after.busy,JSON.stringify(after));
   const w1=await page.evaluate(()=>Math.round(document.querySelector('.sc-row-head [data-col="__time__"]').getBoundingClientRect().width));
   rec('固定列の幅を取っ手で変えられる',w1>=w0+40,`${w0} -> ${w1}`);
   const s2=await saved();
@@ -151,6 +182,51 @@ async function cleanup(){
      e.detail しか見ておらず、画面に出ているのに「値のある行がありません」
      と書かれていた。 */
   rec('固定列の見本に実データが出る',!!panel.sample&&!panel.sample.includes('値のある行がありません'),String(panel.sample));
+
+  /* ---- 8. 日付は「現場歴」と「太陽暦」の2列(§9.197、利用者の指示) ----
+     既定で出すのは現場歴の1列だけ（列を1本増やすと全員の画面が狭くなる）。
+     太陽暦は**選べば出る**。 */
+  const dateCands=await page.evaluate(()=>{
+   const rows=[...document.querySelectorAll('#lcList .lc-item')];
+   const pick=k=>{const r=rows.find(x=>x.dataset.key===k);
+    return r?{label:r.querySelector('.lc-name')?.textContent.trim()||'',
+              on:!!r.querySelector('input[type=checkbox]')?.checked}:null};
+   return {work:pick('__date__'),cal:pick('__caldate__')};
+  });
+  rec('日付が現場歴・太陽暦の2つの候補になっている',
+      !!dateCands.work&&!!dateCands.cal
+      &&dateCands.work.label.includes('現場歴')&&dateCands.cal.label.includes('太陽暦'),
+      JSON.stringify(dateCands));
+  rec('太陽暦は既定では出さない（現場歴だけ）',
+      !!dateCands.cal&&dateCands.cal.on===false&&dateCands.work.on===true,
+      JSON.stringify(dateCands));
+  /* パネルのチェックで出す。**保存まで通す**——当てただけでは、次に開いた
+     ときに戻るかどうかが分からない。 */
+  await page.evaluate(()=>{
+   const r=[...document.querySelectorAll('#lcList .lc-item')].find(x=>x.dataset.key==='__caldate__');
+   const cb=r&&r.querySelector('input[type=checkbox]');
+   if(cb&&!cb.checked)cb.click();
+  });
+  await page.waitForTimeout(400);
+  await page.click('#lcSave');
+  await page.waitForTimeout(1500);
+  const twoDates=await page.evaluate(()=>{
+   const head=[...document.querySelectorAll('.sc-row-head [data-col]')].map(h=>h.dataset.col);
+   const rows=[...document.querySelectorAll('.sc-row-line')].map(r=>({
+    work:r.querySelector('[data-col="__date__"]')?.textContent.trim()||'',
+    cal:r.querySelector('[data-col="__caldate__"]')?.textContent.trim()||'',
+    shift:r.querySelector('[data-col="__shift__"]')?.textContent.trim()||''}));
+   return {head,both:head.includes('__date__')&&head.includes('__caldate__'),
+           diff:rows.filter(x=>x.work&&x.cal&&x.work!==x.cal).slice(0,3),
+           same:rows.filter(x=>x.work&&x.cal&&x.work===x.cal).length};
+  });
+  rec('選ぶと日付が2列出る',twoDates.both,JSON.stringify(twoDates.head.slice(0,6)));
+  /* **中身が違うことを確かめる。** 「列が2つある」だけなら、同じ値を2箇所に
+     出しているのと区別が付かない（§8）。日を跨ぐ勤務(3直)の行では、
+     現場歴が前の日・太陽暦が翌日になる。 */
+  rec('日を跨ぐ勤務では2つの日付が違う値になる',twoDates.diff.length>0,
+      JSON.stringify(twoDates.diff));
+  rec('跨がない行では同じ日付になる',twoDates.same>0,`同じ ${twoDates.same}行`);
 
   rec('JSエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){console.log('FATAL: '+e.message);R.push({n:'FATAL',ok:false,d:e.message})}

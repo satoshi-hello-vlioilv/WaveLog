@@ -65,13 +65,29 @@ let b=null;
   return {same:!!head&&rows.every(r=>cs(r)===cs(head)),
           all:[...new Set([cs(head),...rows.map(cs)])],
           nameW:Math.round(name.getBoundingClientRect().width),
-          eqGrid:getComputedStyle(document.querySelector('#shiftEquipment')).display};
+          eqDisp:getComputedStyle(document.querySelector('#shiftEquipment')).display,
+          /* 設備名のタグ(§9.197)。**文字が読めること**と**高さがそろうこと**を
+             見る——「何個あるか」だけの網は、名前が押し出されて消えていた
+             ときも通っていた。 */
+          eqTags:[...document.querySelectorAll('#shiftEquipment [data-shift-eq]')].map(t=>({
+           name:t.dataset.shiftEq,
+           text:t.textContent.replace(/[＋✓\s]/g,''),
+           h:Math.round(t.getBoundingClientRect().height),
+           clipped:t.scrollWidth>t.clientWidth+1}))};
  });
  rec('区分の見出しと本文が同じ列定義を共有する（左端がそろう）',grid.same,grid.all.join(' | '));
  /* **器は中身の長さから決める**(CLAUDE.md §11)。名称は長くても20字ほど
     なのに、以前は枠いっぱい(600px超)まで伸びていた。 */
  rec('勤務体系の名称欄が無意味に長くない',grid.nameW>0&&grid.nameW<=420,grid.nameW+'px');
- rec('適用設備はそろったマス目に並ぶ（折り返しでずれない）',grid.eqGrid==='grid',grid.eqGrid);
+ /* **設備名そのものが押せるタグ**(§9.197、利用者の指示)。マス目に
+    チェックボックスを置く形は、名前が消える不具合の温床でもあった。 */
+ rec('適用設備は名前のタグで並ぶ',grid.eqDisp==='flex',grid.eqDisp);
+ rec('タグに設備名の文字が出て、切れていない',
+     grid.eqTags.length>0&&grid.eqTags.every(t=>t.text===t.name&&!t.clipped),
+     JSON.stringify(grid.eqTags));
+ rec('タグの高さがそろう',
+     grid.eqTags.length>0&&new Set(grid.eqTags.map(t=>t.h)).size===1,
+     JSON.stringify(grid.eqTags.map(t=>t.h)));
 
  // 保存
  await page.click('#shiftSave'); await page.waitForTimeout(2200);
