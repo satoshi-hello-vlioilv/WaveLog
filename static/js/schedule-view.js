@@ -1874,6 +1874,25 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const pad=n=>String(n).padStart(2,'0');
   return `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())}(${WEEKDAY_JA[d.getDay()]})`;
  }
+ /* 現場歴の日付(§9.195)。サーバーが `workDate`(YYYY-MM-DD)で答える。
+    日を跨ぐ勤務の「跨いだ後」は勤務形態マスタの日付補正だけ日付をずらして
+    あるので、3直のような勤務でも1回ぶんが同じ日付にまとまる。
+    **文字列のまま組み立てること**——`new Date('2026-08-18')`はUTCの0時として
+    読まれるため、地方時へ直すと日付が1日ずれる端末がある。 */
+ function workDateParts(ymd){
+  const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd||''));
+  return m?{y:+m[1],m:+m[2],d:+m[3]}:null;
+ }
+ function fmtWorkDateShort(ymd){
+  const p=workDateParts(ymd);if(!p)return '';
+  const pad=n=>String(n).padStart(2,'0');
+  return `${pad(p.m)}/${pad(p.d)}`;
+ }
+ function fmtWorkDateTitle(ymd){
+  const p=workDateParts(ymd);if(!p)return '';
+  const pad=n=>String(n).padStart(2,'0');
+  return `${p.y}/${pad(p.m)}/${pad(p.d)}(${WEEKDAY_JA[new Date(p.y,p.m-1,p.d).getDay()]})`;
+ }
  function fmtTimeRange(startIso,endIso){
   if(!startIso)return '-';
   const startText=fmtHM(startIso);
@@ -2134,7 +2153,27 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    return true;
   });
   // 時刻の無い行(展開しきれなかった予定など)は末尾へ寄せて順序を保つ
-  return list.map((e,i)=>({e,i,t:rowTimeOf(e)}))
+  const rows=list.map((e,i)=>({e,i,t:rowTimeOf(e)}));
+  /* **位置を指定して入れた行は、その位置のまま出す**(§9.196、利用者の指摘
+     「位置を指定しても一旦一番下に挿入データの処理中の表示が出てしまう」)。
+     楽観的追加の行はまだ予定時刻を持たないので、時刻順に並べると必ず末尾へ
+     落ちる——これが「一番下に出る」の理由。**入れる相手(before)の時刻を
+     借りて**その手前に置く（同着は配列の並びで解け、insertEntriesAtが
+     相手の直前へ入れてある）。
+     **借りるのは行き先を指定したときだけ。** 位置を指定していない追加は
+     今までどおり末尾（相手が無いので、隣の行から借りると配列の並びが
+     時刻順とは限らない場面——計画外実績が後ろに付く等——で見当違いの
+     位置へ飛ぶ。実際に test_wkfast がそれを捕まえた）。 */
+  const byId=new Map(rows.map(r=>[String(r.e.id),r]));
+  rows.forEach(r=>{
+   if(r.t!==null||!r.e.__pending||!r.e.__beforeId)return;
+   const ref=byId.get(String(r.e.__beforeId));
+   if(ref&&ref.t!==null)r.t=ref.t;
+  });
+  /* まとめ(日付・勤務)も同じ束へ入るように、借りた時刻を行にも残す。
+     残さないと、反映中の行だけ「日付未定」の箱が1つできる。 */
+  rows.forEach(r=>{if(r.e.__pending&&r.t!==null)r.e.__nearT=r.t;else if('__nearT' in r.e)delete r.e.__nearT});
+  return rows
    .sort((a,b)=>{
     if(a.t===null&&b.t===null)return a.i-b.i;
     if(a.t===null)return 1;
@@ -2161,8 +2200,16 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   return 'none';
  }
  function dateBucketLabel(e){
+  /* **現場歴の日付でまとめる**(§9.195)。暦の日付でまとめると、3直のように
+     日を跨ぐ勤務が「8/18 3直」と「8/19 3直」の2つに割れる（同じ1回の勤務
+     なのに）。行に出ている日付と同じものを使うので、見出しと行が食い違わない。 */
+  const w=fmtWorkDateTitle(e&&e.workDate);
+  if(w)return w;
+  /* 反映中の行は隣から借りた時刻でまとめる(§9.196)。借りないと「追加中」の
+     行だけ「日付未定」の箱が1つでき、入れた位置から離れて見える。 */
   const t=rowTimeOf(e);
-  return t===null?'日付未定':fmtDateTitle(new Date(t).toISOString());
+  const use=t===null?((e&&e.__nearT)||null):t;
+  return use===null?'日付未定':fmtDateTitle(new Date(use).toISOString());
  }
  function groupBucketOf(e){
   if(scState.groupMode==='date'){
@@ -2404,6 +2451,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(insertGhostEl)return insertGhostEl;
   const g=document.createElement('div');
   g.className='sc-insert-ghost';g.id='scInsertGhost';
+  /* **行の流れへ挟まない**(§9.196、利用者の指摘)。以前は隙間そのものを
+     行として差し込んでいたため、カーソルを動かすたびに下の行が1行ぶん
+     上下し、鍵の印・詳細・削除のボタンを押そうとすると逃げていった。
+     今は器の座標に**浮かせて**置き、下の行は動かさない——「どこへ入るか」
+     は境目の帯で示し、何ができるかは説明の吹き出しで言う。 */
+  g.innerHTML='<span class="sc-insert-line"></span><span class="sc-insert-tip"></span>';
   /* **クリックとダブルクリックを分ける**(利用者の指摘「クリックでもダブル
      クリックでも仕掛表が開きました」)。clickは2回目でも飛ぶので、少し待って
      からdblclickが来ていなければ単クリックとして扱う。
@@ -2427,17 +2480,21 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  function insertGhostLabel(){
   renderStopWhere();      // 設備停止の帯にも同じ位置を出す(§9.181)
   const g=insertGhostEl;if(!g)return;
-  const where=scState.insertBefore
-   ?`${pickedLotOf(pickableEntry(scState.insertBefore))||'この行'}の前`:'いちばん後ろ';
-  g.innerHTML=insertPinned
+  const tip=g.querySelector('.sc-insert-tip');if(!tip)return;
+  /* **どこへ入るのかを、固定する前から言う**——固定後しか出さないと、
+     押す前に確かめられない。固定前は帯の位置(dataset)が正。 */
+  const refId=insertPinned?scState.insertBefore:((g.dataset.beforeId)||'');
+  const where=refId
+   ?`${pickedLotOf(pickableEntry(refId))||'この行'}の前`:'いちばん後ろ';
+  tip.innerHTML=insertPinned
    ?`<span class="sc-insert-mark">▼</span>`
     +`<span class="sc-insert-text">ここへ入ります（${esc(where)}）`
     +`<small>仕掛一覧の行を<b>ダブルクリック</b>、またはこの位置へ<b>ドロップ</b></small></span>`
     +`<button type="button" class="sc-insert-cancel" title="この位置を解除します">やめる</button>`
-   :'<span class="sc-insert-mark">＋</span>'
-    +'<span class="sc-insert-text">ここへ予定を入れる'
-    +'<small>クリック: 設備停止／ダブルクリック: 仕掛から選ぶ</small></span>';
-  const cancel=g.querySelector('.sc-insert-cancel');
+   :`<span class="sc-insert-mark">＋</span>`
+    +`<span class="sc-insert-text">ここへ入れる（${esc(where)}）`
+    +'<small><b>クリック</b>: 設備停止／<b>ダブルクリック</b>: 仕掛から選ぶ</small></span>';
+  const cancel=tip.querySelector('.sc-insert-cancel');
   if(cancel)cancel.onclick=e=>{e.stopPropagation();clearInsertPin()};
  }
  function hideInsertGhost(force){
@@ -2466,17 +2523,36 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   }
   return {beforeId:'',row:rows[rows.length-1],after:true};
  }
- /* **本当に隙間を開ける**(§9.179。要望の「ゴーストで間が空き」)。浮かせて
-    重ねると、下にあった行が1行ぶん隠れて読めなくなる(実際にそうなった)。
-    行の流れの中へ挟むので、下の行はそのぶん押し下がる。 */
+ /* 境目の座標(器の中のy)。**器はスクロールするので scrollTop を足す**
+    ——足さないと、少しスクロールしただけで帯が別の行の境目に出る。 */
+ function insertTopFor(row,after){
+  const tl=$('#scTimeline');if(!tl)return 0;
+  const b=row.getBoundingClientRect(),t=tl.getBoundingClientRect();
+  return Math.max(0,(after?b.bottom:b.top)-t.top+tl.scrollTop);
+ }
+ /* 説明の吹き出しが**操作の列にかからない**ようにする(§9.196、利用者の指示)。
+    操作列の左端までを上限の幅にして、はみ出すぶんは畳む。列を隠している
+    ときは上限を置かない（かぶる相手が無い）。 */
+ function insertTipLimit(){
+  const tl=$('#scTimeline');if(!tl)return '';
+  const cell=tl.querySelector('.sc-row-line [data-col="__actions__"]')
+           ||tl.querySelector('.sc-row-head [data-col="__actions__"]');
+  if(!cell)return '';
+  const r=cell.getBoundingClientRect(),t=tl.getBoundingClientRect();
+  const w=Math.round(r.left-t.left+tl.scrollLeft-16);
+  return w>120?w+'px':'';
+ }
+ /* **浮かせて置く**(§9.196)。行の流れへ挟むと、カーソルを動かすたびに
+    下の行が上下してボタンが押せない（利用者の指摘）。境目に帯を出すだけに
+    して、表そのものは1pxも動かさない。 */
  function placeInsertGhost(slot){
+  const tl=$('#scTimeline');if(!tl)return;
   const g=ensureInsertGhost();
-  const same=g.dataset.beforeId===slot.beforeId&&g.parentNode;
   g.dataset.beforeId=slot.beforeId;
-  if(!same){
-   if(slot.after)slot.row.parentNode.insertBefore(g,slot.row.nextSibling);
-   else slot.row.parentNode.insertBefore(g,slot.row);
-  }
+  if(g.parentNode!==tl)tl.appendChild(g);
+  g.style.top=insertTopFor(slot.row,!!slot.after)+'px';
+  const lim=insertTipLimit();
+  if(lim)g.style.setProperty('--sc-tip-max',lim);else g.style.removeProperty('--sc-tip-max');
   insertGhostLabel();
  }
  /* 描き直しで隙間ごと消えるので、固定しているときは同じ位置へ戻す。 */
@@ -2489,10 +2565,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const ref=id?rows.find(r=>String(r.dataset.id)===String(id)):null;
   const g=ensureInsertGhost();
   g.classList.add('is-pinned');
-  g.dataset.beforeId=ref?String(ref.dataset.id):'';
-  if(ref)ref.parentNode.insertBefore(g,ref);
-  else{const last=rows[rows.length-1];last.parentNode.insertBefore(g,last.nextSibling)}
-  insertGhostLabel();
+  placeInsertGhost(ref?{beforeId:String(ref.dataset.id),row:ref}
+                      :{beforeId:'',row:rows[rows.length-1],after:true});
  }
  function updateInsertHintUi(){
   const on=scheduleOnlyView();
@@ -2518,10 +2592,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   timeline.addEventListener('mousemove',e=>{
    if(insertPinned)return;      // 位置を決めたあとは動かさない
    if(!scheduleOnlyView()||sessionBlocked()||scState.dragId){hideInsertGhost();return}
-   /* **隙間の上に来たら動かさない。** 隙間は行の流れの中にあるので、
-      出し入れするたびに下の行が上下する——そのたびに位置を計算し直すと
-      隙間が行き来して掴めない(実際にちらついた)。 */
+   /* 帯・吹き出しの上に来たら動かさない（別の境目へ飛ぶと掴めない）。 */
    if(e.target.closest&&e.target.closest('#scInsertGhost'))return;
+   /* **操作の列ではマウスオーバーに反応しない**(§9.196、利用者の指示)。
+      鍵の印・詳細・削除を押そうとしているときに帯や吹き出しが出ると、
+      押す先が隠れる。 */
+   if(e.target.closest&&e.target.closest('[data-col="__actions__"]')){hideInsertGhost();return}
    const slot=insertSlotAt(e.clientY);
    if(!slot){hideInsertGhost();return}
    placeInsertGhost(slot);
@@ -2789,8 +2865,15 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const useActual=(e.state==='完了')&&e.actual&&e.actual.startAt;
   const showStart=useActual?e.actual.startAt:e.plannedStart;
   const showEnd=useActual?e.actual.endAt:e.plannedEnd;
-  const dateText=showStart?fmtDateShort(showStart):'-';
-  const dateTitle=showStart?fmtDateTitle(showStart):'';
+  /* 日付は**現場歴**(§9.195)。日を跨ぐ勤務の「跨いだ後」は前の日として
+     数えるので、暦の日付とずれることがある。**ずれていることは必ず書く**
+     ——同じ数字でも出どころが違う（黙ってずらすと時計と食い違って見える）。 */
+  const workShort=fmtWorkDateShort(e.workDate);
+  const shifted=!!(workShort&&e.shiftDayOffset);
+  const dateText=workShort||(showStart?fmtDateShort(showStart):'-');
+  const dateTitle=(workShort?fmtWorkDateTitle(e.workDate):(showStart?fmtDateTitle(showStart):''))
+   +(shifted?`\n現場歴の日付です（勤務「${e.shift||''}」の日付補正 ${e.shiftDayOffset}日）。`
+             +`実際の時計は ${fmtDateTitle(showStart)} ${fmtHM(showStart)}。`:'');
   // 作業中(§9.37)はまだ終わっていない。予定終了は常に現在時刻なので、
   // 終了時刻を数字で出すと「もう終わったように」見える。「継続中」と出す。
   let timeText,timeTitle;
@@ -2834,7 +2917,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const dash=v=>{const t=String(v==null?'':v).trim();return t||'-'};
   const createdBy=dash(e.createdBy),createdPc=dash(e.createdPc);
   const updatedBy=dash(e.updatedBy),updatedPc=dash(e.updatedPc);
-  return {cat,locked,workable,wk,wkTitle,dateText,dateTitle,timeText,timeTitle,shiftText,
+  return {cat,locked,workable,wk,wkTitle,dateText,dateTitle,dateShifted:shifted,timeText,timeTitle,shiftText,
           relText,estText,estSrc,estProvisional,estNote,actualText,flags,
           createdBy,createdPc,updatedBy,updatedPc,
           createdAt:e.createdAt||'',updatedAt:e.updatedAt||''};
@@ -2878,7 +2961,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    if(e.plannedEnd)setLastEnd(e.plannedEnd);
 
    const info=entryCellInfo(e);
-   const {cat,locked,dateText,dateTitle,timeText,timeTitle,shiftText,relText,
+   const {cat,locked,dateText,dateTitle,dateShifted,timeText,timeTitle,shiftText,relText,
           estText,estSrc,estProvisional,estNote,actualText,flags,workable,wk,wkTitle}=info;
    const row=document.createElement('div');
    row.className='sc-row-line '+stateRowClass(e.state)
@@ -2927,7 +3010,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    const cellOf={
     '__cat__':`<span class="sc-row-cat sc-cat-${cat.key}" data-col="__cat__" title="${esc(e.kind)}・${esc(e.state)}"><i>${cat.icon}</i>${esc(cat.label)}</span>`,
     '__workable__':`<span class="sc-row-workable ${wk.cls}" data-col="__workable__" title="${esc(wkTitle)}">${esc(wk.text)}</span>`,
-    '__date__':`<span class="sc-row-date" data-col="__date__" title="${esc(dateTitle)}">${esc(dateText)}</span>`,
+    '__date__':`<span class="sc-row-date${dateShifted?' is-shifted':''}" data-col="__date__" title="${esc(dateTitle)}">${esc(dateText)}</span>`,
     '__time__':`<span class="sc-row-time" data-col="__time__" title="${esc(timeTitle)}">${esc(timeText)}</span>`,
     '__shift__':`<span class="sc-row-shift" data-col="__shift__" title="勤務形態マスタで設定した名称です">${esc(shiftText)}</span>`,
     '__rel__':`<span class="sc-row-rel" data-col="__rel__">${esc(relText)}</span>`,
@@ -3210,6 +3293,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  // (§9.22、上のrunWriteQueueコメント参照)。
  function resolveOptimisticEntry(entry,result){
   entry.id=result.id;entry.__pending=false;
+  delete entry.__beforeId;delete entry.__nearT;
   if(scState.equipment)renderTimeline();
  }
  // 追加が最終的に失敗した(リトライを使い切った)場合、楽観的に足しておいた
@@ -4540,8 +4624,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  function insertEntriesAt(before,list){
   if(!before){scState.entries.push(...list);return}
   const at=scState.entries.findIndex(e=>String(e.id)===String(before));
-  if(at<0)scState.entries.push(...list);
-  else scState.entries.splice(at,0,...list);
+  if(at<0){scState.entries.push(...list);return}
+  /* 行き先を覚えさせる(§9.196)。まだ予定時刻を持たないので、並べるときに
+     この相手の時刻を借りる——覚えないと「追加中」だけ末尾へ落ちる。 */
+  list.forEach(e=>{e.__beforeId=String(before)});
+  scState.entries.splice(at,0,...list);
  }
  /* ---------- 分割ありの親ロット(§9.83) ----------
     予定へ入れた「そのタイミングで」子ロットの仕掛データを引き、親に

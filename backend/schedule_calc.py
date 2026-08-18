@@ -70,25 +70,37 @@ def slots_for_date_abs(specific_rows,global_rows,d):
   out.append((start_dt,end_dt))
  return out
 
-def resolve_shift_label(specific_shift_rows,global_shift_rows,dt):
+def resolve_shift_info(specific_shift_rows,global_shift_rows,dt):
  """§5.5の勤務形態マスタ。dt(datetime)の時刻(時分のみ、日付は見ない)が
- 該当する勤務名称を返す(該当が無ければNone)。優先順位は稼働カレンダー
- マスタと同じ(設備別行があればそちらを優先、無ければ全設備既定)。
- 終了時刻<=開始時刻は日跨ぎ勤務として扱う(例: 23:00〜07:00の3直、
- t>=23:00またはt<07:00で該当)。"""
- if dt is None:return None
+ 該当する勤務の (名称, 日付補正) を返す(該当が無ければ (None,0))。
+ 優先順位は稼働カレンダーマスタと同じ(設備別行があればそちらを優先、
+ 無ければ全設備既定)。終了時刻<=開始時刻は日跨ぎ勤務として扱う
+ (例: 23:00〜07:00の3直、t>=23:00またはt<07:00で該当)。
+
+ **日付補正は「跨いだ後の時間帯」にだけ当てる**(§9.195の現場歴)。
+ 3直 23:00〜翌7:00 なら、23:00〜24:00は補正0・0:00〜7:00は補正-1
+ ——こうすると1回の3直が暦をまたいでも同じ日付になり、「日付＋勤務」で
+ まとめたときに1つの塊になる。**補正の値はマスタが決める**(既定は-1)ので、
+ ここに日付の演算を埋め込まないこと。"""
+ if dt is None:return (None,0)
  rows=specific_shift_rows if specific_shift_rows else global_shift_rows
- if not rows:return None
+ if not rows:return (None,0)
  t=dt.time()
  for r in rows:
-  # r: 勤務ID,設備名,名称,開始時刻,終了時刻,表示順,有効
+  # r: 勤務ID,設備名,名称,開始時刻,終了時刻,表示順,有効,日付補正
   sh,sm=_parse_hm(r[3]);eh,em=_parse_hm(r[4])
   start_t=time(sh%24,sm);end_t=time(eh%24,em)
+  off=int(r[7]) if len(r)>7 and r[7] is not None else sr.SHIFT_DAYOFF_DEFAULT
   if (eh*60+em)<=(sh*60+sm):
-   if t>=start_t or t<end_t:return r[2]
+   if t>=start_t:return (r[2],0)
+   if t<end_t:return (r[2],off)
   else:
-   if start_t<=t<end_t:return r[2]
- return None
+   if start_t<=t<end_t:return (r[2],0)
+ return (None,0)
+
+def resolve_shift_label(specific_shift_rows,global_shift_rows,dt):
+ """該当する勤務名称だけを返す（判定は resolve_shift_info の1箇所）。"""
+ return resolve_shift_info(specific_shift_rows,global_shift_rows,dt)[0]
 
 def build_slot_timeline(specific_rows,global_rows,from_date,horizon_days=MAX_HORIZON_DAYS):
  """from_dateの前日からfrom_date+horizon_days+1日までの稼働帯を集めて時系列
@@ -525,6 +537,22 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
   e['overdueMinutes']=round(overdue,1)
   e['shift']=resolve_shift_label(specific_shift,global_shift,planned_start)
 
+ # 現場歴の日付(§9.195)。**1箇所でまとめて決める**——予定・着手中・完了で
+ # 代表となる時刻が違うので、各所で計算すると「まとめた見出しと行の日付が
+ # 食い違う」形の食い違いが必ず起きる。行の代表時刻の決め方は画面の
+ # rowTimeOf() と同じ（完了・取消は実績、それ以外は予定開始）。
+ for e in entries:
+  ref=e.get('plannedStart')
+  if e['state'] in PLAN_TERMINAL_STATES:
+   a=e.get('actual') or {}
+   ref=a.get('startAt') or a.get('endAt') or None
+  dt=_parse_dt(ref) if ref else None
+  if dt is None:
+   e['shiftDayOffset']=0;e['workDate']=None;continue
+  _name,off=resolve_shift_info(specific_shift,global_shift,dt)
+  e['shiftDayOffset']=off
+  e['workDate']=(dt+timedelta(days=off)).date().isoformat()
+
  # 子ロットへ親の予定時刻を写す(§9.83)。画面は子を親の下に畳んで出すので、
  # 時刻そのものは親と同じで構わない。持たせておくと、日付・勤務でまとめる
  # 表示(§9.39)でも親と同じ束へ入る。
@@ -535,6 +563,7 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
    if p is None:continue
    e['plannedStart']=p.get('plannedStart');e['plannedEnd']=p.get('plannedEnd')
    e['startsInMinutes']=p.get('startsInMinutes');e['shift']=p.get('shift')
+   e['workDate']=p.get('workDate');e['shiftDayOffset']=p.get('shiftDayOffset') or 0
 
  for e in entries:
   actual=e.pop('actual')

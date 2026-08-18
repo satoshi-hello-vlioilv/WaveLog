@@ -1486,6 +1486,18 @@ QUERY_JOIN_TABLE='クエリ結合マスタ'
 #   'first' … 表示順の最初の1件を使う(既定。今までの品質データ結合と同じ)
 #   'blank' … 空にする(どれが正しいか決められないので出さない)
 QUERY_JOIN_MULTI=('first','blank')
+# 結合の仕方(§9.194)。SQLのJOINと同じ6通りで、**行がどう増減するか**が違う。
+#   'left'      … 左外部: この一覧は全部残す(既定。今までの品質データ結合と同じ)
+#   'inner'     … 内部  : 両方にある行だけ
+#   'right'     … 右外部: 相手は全部残す(相手にしかない行が増える)
+#   'full'      … 完全外部: どちらかにあれば残す
+#   'leftOnly'  … 左のみ: この一覧にしかない行だけ(相手の列は空)
+#   'rightOnly' … 右のみ: 相手にしかない行だけ
+# **既定を'left'から動かさないこと**——保存済みの行は結合方法を持たないので、
+# 既定が変わると設定を触っていない現場の一覧が黙って変わる。
+QUERY_JOIN_KINDS=('left','inner','right','full','leftOnly','rightOnly')
+QUERY_JOIN_KIND_DEFAULT='left'
+_QUERY_JOIN_KIND_COLUMN=('結合方法','TEXT')
 # 1つの結合で持てる突合キーと取り込む列の上限。**画面が壊れない範囲**で
 # 切る(キーが10も要る突合は、たいてい元データの持ち方が間違っている)。
 QUERY_JOIN_MAX_KEYS=6
@@ -1505,6 +1517,9 @@ def ensure_query_join_table(c):
               '([対象データソース],[対象テーブル],[表示順])')
   c.commit();created=True
  ensure_audit_columns(c,QUERY_JOIN_TABLE)
+ # 結合方法(§9.194)は後から足した列。共有せず現場で動いているDBを作り直さない
+ # ため、他のマスタと同じ「無ければALTER TABLEで足す」方式にする。
+ _add_missing_column(c,QUERY_JOIN_TABLE,*_QUERY_JOIN_KIND_COLUMN)
  return created
 
 def normalize_join_keys(raw):
@@ -1540,7 +1555,9 @@ def _join_row(r):
  try:columns=json.loads(r[7]) if r[7] else []
  except Exception:columns=[]
  multi=str(r[9] or '').strip()
+ kind=str((r[12] if len(r)>12 else '') or '').strip()
  return {'id':r[0],'name':name or f'結合{r[0]}',
+         'kind':kind if kind in QUERY_JOIN_KINDS else QUERY_JOIN_KIND_DEFAULT,
          'left':str(r[2] or '').strip(),'leftTable':str(r[3] or '').strip(),
          'right':str(r[4] or '').strip(),'rightTable':str(r[5] or '').strip(),
          'keys':normalize_join_keys(keys),'columns':normalize_join_columns(columns),
@@ -1549,12 +1566,21 @@ def _join_row(r):
          'order':int(r[10] or 0),'active':True if r[11] is None else bool(r[11])}
 
 def query_joins(c,include_disabled=False):
- """登録されている結合。表が無ければ空(読み取り専用接続から呼べる)。"""
+ """登録されている結合。表が無ければ空(読み取り専用接続から呼べる)。
+
+ **[結合方法]が無い古い表も読めること**——読み取り専用で開く経路があるので
+ ここではALTER TABLEできない。列が無ければ既定('left')として読む。"""
  if QUERY_JOIN_TABLE not in tables(c):return []
  cur=c.cursor()
+ has_kind=_QUERY_JOIN_KIND_COLUMN[0] in {r[1] for r in cur.execute(f'PRAGMA table_info([{QUERY_JOIN_TABLE}])')}
+ if not has_kind:
+  cur.execute('SELECT [結合ID],[結合名],[対象データソース],[対象テーブル],[相手データソース],'
+              '[相手テーブル],[突合キーJSON],[取り込む列JSON],[接頭辞],[複数一致],[表示順],[有効] '
+              'FROM [クエリ結合マスタ] ORDER BY [表示順],[結合ID]')
+  return [d for d in (_join_row(r) for r in cur.fetchall()) if d['active'] or include_disabled]
  cur.execute('SELECT [結合ID],[結合名],[対象データソース],[対象テーブル],[相手データソース],'
-             '[相手テーブル],[突合キーJSON],[取り込む列JSON],[接頭辞],[複数一致],[表示順],[有効] '
-             'FROM [クエリ結合マスタ] ORDER BY [表示順],[結合ID]')
+             '[相手テーブル],[突合キーJSON],[取り込む列JSON],[接頭辞],[複数一致],[表示順],[有効],'
+             '[結合方法] FROM [クエリ結合マスタ] ORDER BY [表示順],[結合ID]')
  out=[]
  for r in cur.fetchall():
   d=_join_row(r)
@@ -1578,6 +1604,8 @@ def query_join_save(c,data,uid,jid=None):
  columns=normalize_join_columns((data or {}).get('columns'))
  multi=str((data or {}).get('multi') or 'first').strip()
  if multi not in QUERY_JOIN_MULTI:multi='first'
+ kind=str((data or {}).get('kind') or '').strip()
+ if kind not in QUERY_JOIN_KINDS:kind=QUERY_JOIN_KIND_DEFAULT
  cur=c.cursor()
  sql='SELECT [結合ID] FROM [クエリ結合マスタ] WHERE [結合名]=?'
  args=[name]
@@ -1589,19 +1617,19 @@ def query_join_save(c,data,uid,jid=None):
        json.dumps(keys,ensure_ascii=False),json.dumps(columns,ensure_ascii=False),
        str((data or {}).get('prefix') or '').strip()[:40],multi,
        int((data or {}).get('order') or 0),
-       0 if str((data or {}).get('enabled') or '').strip()=='無効' else -1,uid]
+       0 if str((data or {}).get('enabled') or '').strip()=='無効' else -1,kind,uid]
  if jid is not None:
   cur.execute('SELECT [結合ID] FROM [クエリ結合マスタ] WHERE [結合ID]=?',[int(jid)])
   if not cur.fetchone():raise ValueError('指定の結合が見つかりません。')
   cur.execute('UPDATE [クエリ結合マスタ] SET [結合名]=?,[対象データソース]=?,[対象テーブル]=?,'
               '[相手データソース]=?,[相手テーブル]=?,[突合キーJSON]=?,[取り込む列JSON]=?,'
-              '[接頭辞]=?,[複数一致]=?,[表示順]=?,[有効]=?,[更新者ID]=?,[更新日時]=Now() '
+              '[接頭辞]=?,[複数一致]=?,[表示順]=?,[有効]=?,[結合方法]=?,[更新者ID]=?,[更新日時]=Now() '
               'WHERE [結合ID]=?',vals+[int(jid)])
   c.commit();return int(jid)
  cur.execute('INSERT INTO [クエリ結合マスタ] ([結合名],[対象データソース],[対象テーブル],'
              '[相手データソース],[相手テーブル],[突合キーJSON],[取り込む列JSON],[接頭辞],'
-             '[複数一致],[表示順],[有効],[更新者ID],[登録者ID],[登録日時],[更新日時]) '
-             'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',vals+[uid])
+             '[複数一致],[表示順],[有効],[結合方法],[更新者ID],[登録者ID],[登録日時],[更新日時]) '
+             'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',vals+[uid])
  c.commit()
  return int(cur.lastrowid)
 

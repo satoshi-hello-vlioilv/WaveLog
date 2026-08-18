@@ -270,6 +270,7 @@ def api_table_columns():
  ので、両側の列名が要る。`/api/table`を50件で叩けば列名は分かるが、実データは
  200列を超えるため1回450KBを運ぶことになる(§9.94)——名前だけなら数KBで済む。"""
  k=request.args.get('db','');t=request.args.get('table','')
+ want_samples=request.args.get('samples')=='1'
  try:
   cf=cfg(k)
   with connect(cf['path'],cf['role']=='readonly') as c:
@@ -278,7 +279,27 @@ def api_table_columns():
     t=cf['preferred'] if cf.get('preferred') in names else (names[0] if names else '')
    if not t or t not in names:
     return jsonify(error=f'表「{t or "(未指定)"}」がありません。',tables=names),400
-   return jsonify(ok=True,db=k,table=t,tables=names,columns=cols(c,t,source=cf['path']))
+   cs=cols(c,t,source=cf['path'])
+   # 突合キーを選ぶ側は「同じ名前らしい列」を知りたいが、**名前のゆれを
+   # 吸収する規則を画面に写さないこと**(§9.163)——判定はサーバーの
+   # norm_name が1箇所で持つので、その結果だけを渡して画面は等しいかを
+   # 見るだけにする。
+   normalized={c2:query_join.norm_name(c2) for c2 in cs}
+   samples={}
+   if want_samples:
+    # 実データの見本。**キーが合うかどうかは形を見れば分かる**（L0001 と
+    # A-1 は突き合わない）ので、選ぶ前に見せる。20行だけ読む。
+    cur=c.cursor();cur.execute(f'SELECT * FROM {qi(t)} LIMIT 20')
+    got=cur.fetchall()
+    for i,c2 in enumerate(cs):
+     vals=[]
+     for r in got:
+      v='' if i>=len(r) or r[i] is None else str(r[i]).strip()
+      if v and v not in vals:vals.append(v)
+      if len(vals)>=3:break
+     samples[c2]=vals
+   return jsonify(ok=True,db=k,table=t,tables=names,columns=cs,
+                  normalized=normalized,samples=samples)
  except Exception as e:
   app_logger().warning('/api/table-columns db=%s table=%s で失敗しました: %s',k,t,e)
   return jsonify(error=str(e),hint=_error_hint(e)),500
@@ -493,7 +514,10 @@ def api_table():
    t_join=time.perf_counter()
    defs=query_join.definitions_for(k,t,include_builtin=want_quality) if want_join else []
    if want_quality and not want_join:
-    b=query_join.builtin_quality_def()
+    # 既定の品質データ結合は解除できる(§9.194)。解除されていたら**何も
+    # 起きないだけ**——品質の列が足されないので、その列を見ていた設定は
+    # 「無い列」として静かに落ちる（エラーにしない。利用者の指示）。
+    b=query_join.builtin_quality_def() if query_join.builtin_quality_enabled() else None
     defs=[b] if b else []
    visible_cs,row_dicts,join_list=query_join.apply_joins(k,t,visible_cs,row_dicts,defs)
    visible_cs=_unique_columns(visible_cs)

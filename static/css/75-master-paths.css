@@ -66,15 +66,19 @@
 .rne-job{display:flex;gap:var(--gap-section);align-items:baseline}
 .rne-job b{min-width:9em}
 .rne-note{font-size:var(--fs-sm);color:var(--muted);margin:.5em 0 0;line-height:1.5}
-/* 勤務体系の適用設備(複数選択)。1つの体系を複数設備へ同時に割り当てられる。 */
-.shift-eq-picker{display:flex;flex-wrap:wrap;gap:var(--gap-inline);padding:6px 0}
+/* 勤務体系の適用設備(複数選択)。1つの体系を複数設備へ同時に割り当てられる。
+   **器はマス目**(70-schedule.cssの.shift-eq-picker)で、チップはマス1つぶんに
+   広がる——名前の長さなりに丸めると、行ごとに左端がずれて数えられない。 */
 .shift-eq-chip{
- display:inline-flex;align-items:center;gap:var(--gap-inline);height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x);
- border:1px solid var(--line);border-radius:var(--radius-pill);background:#fff;color:var(--nav);
+ display:flex;align-items:center;gap:var(--gap-inline);height:var(--ctl-h-sm);
+ padding:0 var(--ctl-pad-x-sm);min-width:0;
+ border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;color:var(--nav);
  font-size:var(--fs-sm);cursor:pointer;user-select:none;
 }
+.shift-eq-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .shift-eq-chip:hover{border-color:var(--teal);background:var(--pale)}
-.shift-eq-chip input{width:var(--ctl-box);height:var(--ctl-box);accent-color:currentColor;margin:0}
+.shift-eq-chip.is-on{border-color:var(--teal);background:var(--pale);color:var(--ink);font-weight:700}
+.shift-eq-chip input{flex:none;width:var(--ctl-box);height:var(--ctl-box);accent-color:currentColor;margin:0}
 /* 作業可否フラグ(§9.51)。「残仕掛設備ｺｰｽ」がこの設備で始まっていれば作業可。
    まだ来ていないロットを一目で外せるようにする(色と濃度の両方で示す)。 */
 /* **行に入る高さで作る**(§9.112)。以前は `padding:1px` + `line-height:1.5`

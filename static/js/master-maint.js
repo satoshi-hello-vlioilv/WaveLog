@@ -1510,8 +1510,69 @@
     読み込み先は起動時に1回だけ決まるため、これが無いと打ち間違いに気づける
     のが再起動のあとになる（§9.168と同じ作法）。
     ================================================================== */
- let qjState={items:[],sources:[],builtin:null,loaded:false,editing:null,
+ let qjState={items:[],sources:[],builtin:null,builtinEnabled:true,kinds:[],kindDefault:'left',
+              loaded:false,editing:null,
               cols:{},probe:null,probeSeq:0,probing:false,probeSig:''};
+ /* 結合の仕方(§9.194)。**説明も動きも「一致した行／左だけ／右だけ」の3つの
+    真偽値から作る**——サーバー(query_join.JOIN_KINDS)が答えるものをそのまま
+    使い、画面で別の判定を書かない。見本の表も同じ3つから組み立てるので、
+    「説明はこう書いてあるのに実際は違う」が原理的に起きない。 */
+ const QJ_SAMPLE={
+  left:{title:'この一覧',cols:['ロット番号','品名'],rows:[['L001','帯鋼'],['L002','条']]},
+  right:{title:'相手',cols:['ロット番号','等級'],rows:[['L001','A'],['L003','B']]}};
+ function qjKind(key){
+  const list=qjState.kinds||[];
+  return list.find(k=>k.key===key)||list.find(k=>k.key===(qjState.kindDefault||'left'))||null;
+ }
+ /* 2つの円で「どこを残すか」を塗る。**色だけで伝えない**(§3)ので、名前・
+    一行説明・見本の表を必ず添える。idは同じ図が2箇所に出ても衝突しないよう
+    場所ごとの接頭辞を付ける。 */
+ function qjVennHtml(k,scope){
+  if(!k)return '';
+  const id=x=>`qjv-${scope}-${k.key}-${x}`;
+  return `<svg class="qj-venn" viewBox="0 0 100 52" role="img" aria-label="${esc(k.label)}の図">
+   <defs>
+    <clipPath id="${id('c')}"><circle cx="38" cy="26" r="20"/></clipPath>
+    <mask id="${id('ml')}"><rect x="0" y="0" width="100" height="52" fill="#fff"/><circle cx="62" cy="26" r="20" fill="#000"/></mask>
+    <mask id="${id('mr')}"><rect x="0" y="0" width="100" height="52" fill="#fff"/><circle cx="38" cy="26" r="20" fill="#000"/></mask>
+   </defs>
+   ${k.leftOnly?`<circle class="on" cx="38" cy="26" r="20" mask="url(#${id('ml')})"/>`:''}
+   ${k.rightOnly?`<circle class="on" cx="62" cy="26" r="20" mask="url(#${id('mr')})"/>`:''}
+   ${k.matched?`<circle class="on" cx="62" cy="26" r="20" clip-path="url(#${id('c')})"/>`:''}
+   <circle class="ring" cx="38" cy="26" r="20"/><circle class="ring" cx="62" cy="26" r="20"/>
+  </svg>`;
+ }
+ /* 行がどう増減するかを**文字で**言う（図と色だけでは伝わらない）。 */
+ function qjRowEffect(k){
+  if(!k)return '';
+  if(k.matched&&k.leftOnly&&!k.rightOnly)return '行は減らない';
+  if(k.rightOnly&&k.leftOnly)return '行が増えることがある';
+  if(k.rightOnly&&k.matched)return '行が減り、増えることもある';
+  if(k.rightOnly)return 'この一覧の行は残らない';
+  return '行が減る';
+ }
+ /* 結合の見本。左2行・右2行の作り物を、上の3つの真偽値どおりに突き合わせる。 */
+ function qjSampleHtml(k){
+  if(!k)return '';
+  const addCols=k.matched||k.rightOnly;
+  const cols=['ロット番号','品名'].concat(addCols?['等級']:[]);
+  const rows=[];
+  if(k.matched)rows.push(['L001','帯鋼','A']);
+  if(k.leftOnly)rows.push(['L002','条','']);
+  if(k.rightOnly)rows.push(['L003','','B']);
+  const cell=v=>v===''?'<td class="is-blank">（空）</td>':`<td>${esc(v)}</td>`;
+  const src=(x)=>`<table class="qj-sample-t"><caption>${esc(x.title)}</caption><thead><tr>${
+    x.cols.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${
+    x.rows.map(r=>`<tr>${r.map(v=>`<td>${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  return `<div class="qj-sample">
+    ${src(QJ_SAMPLE.left)}${src(QJ_SAMPLE.right)}
+    <span class="qj-sample-arrow" aria-hidden="true">→</span>
+    <table class="qj-sample-t is-result"><caption>結合した結果</caption><thead><tr>${
+      cols.slice(0,addCols?3:2).map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${
+      rows.length?rows.map(r=>`<tr>${r.slice(0,addCols?3:2).map(cell).join('')}</tr>`).join('')
+        :'<tr><td class="is-blank" colspan="3">1行も残りません</td></tr>'}</tbody></table>
+   </div>`;
+ }
  const QJ_MULTI_LABEL={first:'最初の1件を使う',blank:'空にする（どれか決められないので出さない）'};
  const QJ_LIST_COLS=[
   {k:'state',label:'状態'},
@@ -1519,6 +1580,7 @@
   {k:'left',label:'足す先（この一覧に）'},
   {k:'right',label:'相手（ここから持ってくる）'},
   {k:'keys',label:'突合キー'},
+  {k:'kind',label:'結合の仕方'},
   {k:'cols',label:'足す列'},
   {k:'act',label:''},
  ];
@@ -1533,6 +1595,8 @@
   try{
    const r=await api('/api/query-join-master');
    qjState.items=r.items||[];qjState.sources=r.sources||[];qjState.builtin=r.builtin||null;
+   qjState.kinds=r.kinds||[];qjState.kindDefault=r.kindDefault||'left';
+   qjState.builtinEnabled=r.builtinEnabled!==false;
    qjState.loaded=true;
    renderQueryJoinForm();renderQueryJoinList();
   }catch(e){list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
@@ -1571,15 +1635,26 @@
   /* 既定の品質データ結合は**保存されていない**が、効いているものは画面に
      出す(§9.129「出どころを画面に出す」)。出さないと「登録していないのに
      列が増える」ことになり、どこの設定か探すはめになる。 */
-  const b=qjState.builtin?`<div class="ds-row qj-row is-builtin">
-    <span class="qj-c-state"><span class="ds-listed">既定</span></span>
+  /* 既定の品質データ結合は**解除できる**(§9.194、利用者の指示)。解除しても
+     内容は見えたままにする——「どうつないでいるのか」を見て真似できることが
+     値打ちなので、解除＝見えなくする、にはしない。 */
+  const bOn=qjState.builtinEnabled!==false;
+  const bKind=qjKind((qjState.builtin||{}).kind||qjState.kindDefault);
+  const b=qjState.builtin?`<div class="ds-row qj-row is-builtin${bOn?'':' is-off'}">
+    <span class="qj-c-state"><span class="ds-listed${bOn?'':' is-off'}">${bOn?'既定':'解除中'}</span></span>
     <span class="qj-c-name"><b class="ds-name">${esc(qjState.builtin.name)}</b></span>
     <span class="qj-c-left">${esc(qjSourceLabel(qjState.builtin.left))}</span>
     <span class="qj-c-right">${esc(qjSourceLabel(qjState.builtin.right))}</span>
     <span class="qj-c-keys">${esc((qjState.builtin.keys||[]).map(k=>k.left).join('・'))}</span>
+    <span class="qj-c-kind">${esc(bKind?bKind.label:'左外部結合')}</span>
     <span class="qj-c-cols">相手の全列</span>
-    <span class="qj-c-act"></span>
-    <span class="ds-c-note">役割「仕掛」と「品質」が揃っているので自動で効いています。同じ相手への結合を登録すると、そちらが優先されます。</span>
+    <span class="qj-c-act">
+     <button type="button" class="mm-btn-ghost sm" id="qjBuiltinCopy">複製して編集</button>
+     <button type="button" class="mm-btn-ghost sm" id="qjBuiltinToggle">${bOn?'解除する':'既定に戻す'}</button>
+    </span>
+    <span class="ds-c-note">${bOn
+      ?'役割「仕掛」と「品質」が揃っているので自動で効いています。同じ相手への結合を登録すると、そちらが優先されます。「複製して編集」で、この設定を下敷きにした結合を作れます。'
+      :'解除中です。品質データの列は一覧に出ません（<b>エラーにはなりません</b>——足していた列が無くなるだけで、その列を見ていた設定は静かに落ちます）。品質データは相手として選べるので、自分で結合を登録すれば出せます。'}</span>
    </div>`:'';
   if(!rows&&!b){
    list.innerHTML='<div class="mm-empty">結合はまだ登録されていません。「＋ 結合を追加」から登録してください。</div>';
@@ -1591,9 +1666,35 @@
    const x=qjState.items.find(i=>String(i.id)===btn.dataset.qjEdit);if(x)openQueryJoinEditor(x);
   });
   list.querySelectorAll('[data-qj-del]').forEach(btn=>btn.onclick=()=>qjDelete(btn.dataset.qjDel));
+  const tg=$('#qjBuiltinToggle');if(tg)tg.onclick=()=>qjToggleBuiltin(!bOn);
+  const cp=$('#qjBuiltinCopy');if(cp)cp.onclick=()=>openQueryJoinEditor(qjBuiltinDraft(),{copy:true});
+ }
+ /* 既定の結合を下敷きにした「新規の1件」。**IDを持たせない**——上書きでは
+    なく複製なので、保存すると普通の登録として1行増える。 */
+ function qjBuiltinDraft(){
+  const b=qjState.builtin||{};
+  return {id:null,name:`${b.name||'品質データ'}（複製）`,
+          left:b.left||'',leftTable:b.leftTable||'',right:b.right||'',rightTable:b.rightTable||'',
+          keys:(b.keys||[]).map(k=>({left:k.left,right:k.right})),
+          columns:[],prefix:'',multi:b.multi||'first',kind:b.kind||qjState.kindDefault,
+          order:(qjState.items.length+1)*10,active:true};
+ }
+ async function qjToggleBuiltin(on){
+  const uid=requireMaintUser();if(uid===null)return;
+  if(!on&&!confirm('既定の品質データ結合を解除します。\n品質データの列（鋳造番号・製造材質・検査結果など）は一覧に出なくなります。\nエラーにはならず、その列を見ていた設定は静かに落ちます。よろしいですか？'))return;
+  try{
+   setMaintLoading(true,on?'既定に戻しています…':'解除しています…');
+   const r=await api('/api/query-join-master/builtin',{method:'POST',
+     headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:on,user_id:uid})});
+   qjState.loaded=false;await loadQueryJoinMaint(true);
+   window.invalidateTableCache&&window.invalidateTableCache();
+   showToast&&showToast(on?'既定に戻しました':'既定を解除しました',(r&&r.message)||'一覧を開き直すと反映されます',4500);
+  }catch(e){showToast&&showToast('切り替えられませんでした',e.message,6000)}
+  finally{setMaintLoading(false)}
  }
  function qjRowHtml(x){
   const keys=(x.keys||[]).map(k=>k.left===k.right?k.left:`${k.left}＝${k.right}`).join('・');
+  const kind=qjKind(x.kind||qjState.kindDefault);
   const cols=(x.columns||[]).length?`${x.columns.length}列を選択`:'相手の全列';
   const missing=[];
   if(!(qjState.sources||[]).some(s=>s.key===x.left))missing.push('足す先');
@@ -1607,6 +1708,7 @@
    <span class="qj-c-right" title="${esc(x.right+(x.rightTable?' / '+x.rightTable:''))}">${
      esc(qjSourceLabel(x.right))}${x.rightTable?`<i class="qj-sub">${esc(x.rightTable)}</i>`:''}</span>
    <span class="qj-c-keys" title="${esc(keys)}">${esc(keys||'—')}</span>
+   <span class="qj-c-kind" title="${esc(kind?kind.summary:'')}">${esc(kind?kind.label:'左外部結合')}</span>
    <span class="qj-c-cols">${esc(cols)}</span>
    <span class="qj-c-act">
     <button type="button" class="mm-btn-ghost sm" data-qj-edit="${esc(String(x.id))}">編集</button>
@@ -1636,30 +1738,36 @@
   if(qjState.cols[key])return qjState.cols[key];
   if(!db)return {tables:[],columns:[]};
   try{
-   const q=new URLSearchParams({db:db});if(table)q.set('table',table);
+   const q=new URLSearchParams({db:db,samples:'1'});if(table)q.set('table',table);
    const r=await api('/api/table-columns?'+q.toString());
-   const v={tables:r.tables||[],columns:r.columns||[],table:r.table||''};
+   const v={tables:r.tables||[],columns:r.columns||[],table:r.table||'',
+            normalized:r.normalized||{},samples:r.samples||{}};
    qjState.cols[key]=v;
    if(!table&&v.table)qjState.cols[db+'\t'+v.table]=v;
    return v;
   }catch(e){
-   const v={tables:[],columns:[],error:e.message};qjState.cols[key]=v;return v;
+   const v={tables:[],columns:[],normalized:{},samples:{},error:e.message};
+   qjState.cols[key]=v;return v;
   }
  }
- function openQueryJoinEditor(item){
+ function openQueryJoinEditor(item,opts){
   const modal=ensureMaintEditor();
   modal.querySelector('.mm-editor-dialog')?.classList.add('is-wide');
   const sources=qjState.sources||[];
+  const copy=!!(opts&&opts.copy);
   qjState.editing=item?JSON.parse(JSON.stringify(item)):{
    id:null,name:'',left:(sources.find(s=>s.purpose==='仕掛')||sources[0]||{}).key||'',
    leftTable:'',right:(sources.find(s=>s.purpose==='品質')||sources[1]||sources[0]||{}).key||'',
    rightTable:'',keys:[{left:'',right:''}],columns:[],prefix:'',multi:'first',
+   kind:qjState.kindDefault||'left',
    order:(qjState.items.length+1)*10,active:true};
+  if(!qjState.editing.kind)qjState.editing.kind=qjState.kindDefault||'left';
   qjState.probe=null;qjState.probeSig='';
   $('#maintEditorEyebrow').textContent='クエリ結合';
-  $('#maintEditorTitle').textContent=item?`${item.name} を編集`:'結合を追加';
+  $('#maintEditorTitle').textContent=copy?'既定の結合を下敷きに作る'
+    :(item&&item.id?`${item.name} を編集`:'結合を追加');
   $('#maintEditorHint').textContent='足した列は一覧を開き直すと反映されます（サーバー再起動は要りません）。';
-  $('#maintEditorSave').textContent=item?'更新を保存':'追加登録';
+  $('#maintEditorSave').textContent=(item&&item.id)?'更新を保存':'追加登録';
   $('#maintEditorSave').onclick=()=>saveQueryJoinEditor();
   renderQueryJoinEditor();
   modal.hidden=false;
@@ -1685,15 +1793,59 @@
    value:s.key,
    label:(s.label||s.key)+(s.purpose?`（${s.purpose}）`:'')+(s.listed?'':'・一覧に出さない')})),sel,'選んでください');
  }
+ /* 実データの見本。**キーが合うかどうかは形を見れば分かる**（L0001 と A-1 は
+    突き合わない）ので、選ぶ前に出す。無ければ何も出さない（「値がありません」
+    と書くと、読めていないのか空なのか区別が付かない）。 */
+ function qjExampleHtml(side,col){
+  const v=((side.samples||{})[col]||[]).slice(0,3);
+  if(!col)return '<small class="qj-key-ex is-empty">列を選ぶと、実データの例が出ます</small>';
+  if(!v.length)return '<small class="qj-key-ex is-empty">この列は先頭20行が空でした</small>';
+  return `<small class="qj-key-ex">例: ${esc(v.join(' / '))}</small>`;
+ }
+ /* 同じ名前の列を候補として出す。**名前のゆれを吸収する規則は画面に
+    書かない**——サーバーが返した正規化済みの名前(normalized)どうしを
+    比べるだけにする(§9.163)。 */
+ function qjSuggestPairs(x,lc,rc){
+  const ln=lc.normalized||{},rn=rc.normalized||{};
+  if(!Object.keys(ln).length||!Object.keys(rn).length)return [];
+  const byNorm={};Object.keys(rn).forEach(c=>{if(!(rn[c] in byNorm))byNorm[rn[c]]=c});
+  const used=new Set((x.keys||[]).map(k=>k.left+'\t'+k.right));
+  const out=[];
+  Object.keys(ln).forEach(c=>{
+   const hit=byNorm[ln[c]];
+   if(!hit)return;
+   if(used.has(c+'\t'+hit))return;
+   out.push({left:c,right:hit});
+  });
+  return out;
+ }
  function qjEditorHtml(x){
   const lc=qjState.cols[x.left+'\t'+(x.leftTable||'')]||{};
   const rc=qjState.cols[x.right+'\t'+(x.rightTable||'')]||{};
+  const kind=qjKind(x.kind)||{};
   const keyRow=(k,i)=>`<div class="qj-key" data-qj-key="${i}">
-    <select data-qj-keyleft="${i}">${qjOptions(lc.columns||[],k.left,'この一覧の列')}</select>
+    <span class="qj-key-side">
+     <select data-qj-keyleft="${i}">${qjOptions(lc.columns||[],k.left,'この一覧の列')}</select>
+     ${qjExampleHtml(lc,k.left)}</span>
     <span class="qj-eq" aria-hidden="true">＝</span>
-    <select data-qj-keyright="${i}">${qjOptions(rc.columns||[],k.right,'相手の列')}</select>
+    <span class="qj-key-side">
+     <select data-qj-keyright="${i}">${qjOptions(rc.columns||[],k.right,'相手の列')}</select>
+     ${qjExampleHtml(rc,k.right)}</span>
     <button type="button" class="mm-btn-ghost sm" data-qj-keydel="${i}"${(x.keys||[]).length<2?' disabled':''}>外す</button>
    </div>`;
+  const sugg=qjSuggestPairs(x,lc,rc);
+  const suggHtml=sugg.length?`<div class="qj-sugg">
+    <span class="qj-sugg-label">同じ名前の列:</span>
+    ${sugg.slice(0,6).map(pp=>`<button type="button" class="qj-sugg-btn" data-qj-sugg="${esc(pp.left)}\t${esc(pp.right)}">${esc(pp.left)}${pp.left===pp.right?'':' ＝ '+esc(pp.right)}</button>`).join('')}
+    ${sugg.length>1?`<button type="button" class="mm-btn-ghost sm" id="qjKeyAuto">${sugg.length}組すべて足す</button>`:''}
+   </div>`:'';
+  const kindCards=(qjState.kinds||[]).map(k=>`<label class="qj-kind${k.key===kind.key?' is-on':''}">
+    <input type="radio" name="qjKind" value="${esc(k.key)}" data-qj-re${k.key===kind.key?' checked':''}>
+    ${qjVennHtml(k,'card')}
+    <b>${esc(k.label)}</b>
+    <span class="qj-kind-short">${esc(k.short)}</span>
+    <span class="qj-kind-rows">${esc(qjRowEffect(k))}</span>
+   </label>`).join('');
   const pickAll=!(x.columns||[]).length;
   const colList=(rc.columns||[]).filter(c=>!(x.keys||[]).some(k=>k.right===c));
   return `<div class="ds-edit qj-edit">
@@ -1729,16 +1881,31 @@
      <select data-qj-field="rightTable" data-qj-re>${qjOptions(rc.tables||[],x.rightTable||'','既定の表')}</select>
      ${rc.error?`<small class="mm-field-hint is-warn">${esc(rc.error)}</small>`:''}</label>
    </section>
+   <section class="ds-edit-zone qj-zone-kind">
+    <h4 class="mm-fieldgroup">④ 結合の仕方 — <span class="qj-kind-now">${esc(kind.label||'')}</span></h4>
+    ${kindCards?`<div class="qj-kinds">${kindCards}</div>
+    <div class="qj-kind-detail">
+     <p class="qj-kind-summary">${esc(kind.summary||'')}</p>
+     <p class="mm-field-hint">${esc(kind.when||'')}</p>
+     ${qjSampleHtml(kind)}
+     ${kind.rightOnly?'<p class="mm-field-hint is-warn">「相手にしかない行」を出すため、<b>相手の表を全部読みます</b>。また、一致しているかどうかはこの一覧の全行と突き合わせます（表示中のページだけでは決めません）。</p>':''}
+    </div>`:'<p class="mm-field-hint">結合の仕方の一覧を読めませんでした。左外部結合（この一覧は全部残す）として扱います。</p>'}
+   </section>
    <section class="ds-edit-zone">
-    <h4 class="mm-fieldgroup">④ どうつなぐか（突合キー）</h4>
+    <h4 class="mm-fieldgroup">⑤ どうつなぐか（突合キー）</h4>
     <div class="qj-keys">${(x.keys||[]).map(keyRow).join('')}</div>
+    ${suggHtml}
     <div class="qj-keys-act">
      <button type="button" class="mm-btn-ghost sm" id="qjKeyAdd">＋ キーを足す</button>
      <small class="mm-field-hint">すべてのキーが一致した行だけを結び付けます。全角/半角と前後の空白は無視します。</small>
     </div>
    </section>
    <section class="ds-edit-zone">
-    <h4 class="mm-fieldgroup">⑤ 何を足すか</h4>
+    <h4 class="mm-fieldgroup">⑥ 何を足すか</h4>
+    ${(kind.key&&!kind.matched&&!kind.rightOnly)?`<p class="mm-field-hint">
+      <b>この結合は列を足しません。</b>「${esc(kind.label)}」は相手に当たらなかった行だけを残す使い方なので、
+      相手の値がありません（足しても全部空欄になります）。列を足したいときは、④で
+      「${esc((qjKind('left')||{}).label||'左外部結合')}」などを選んでください。</p>`:`
     <div class="qj-pick">
      <label class="qj-radio"><input type="radio" name="qjPick" value="all" data-qj-re${pickAll?' checked':''}>
       <span>相手の列をすべて</span></label>
@@ -1756,10 +1923,10 @@
       <select data-qj-field="multi" data-qj-re>${qjOptions(
         Object.keys(QJ_MULTI_LABEL).map(v=>({value:v,label:QJ_MULTI_LABEL[v]})),x.multi||'first')}</select>
       <small class="mm-field-hint">当たった件数は下の「結果」に出ます。</small></label>
-    </div>
+    </div>`}
    </section>
    <section class="ds-edit-zone ds-edit-result">
-    <h4 class="mm-fieldgroup">⑥ 結果（保存する前の下見） <span class="ds-probe-state" id="qjProbeState"></span></h4>
+    <h4 class="mm-fieldgroup">⑦ 結果（保存する前の下見） <span class="ds-probe-state" id="qjProbeState"></span></h4>
     <div id="qjProbeBox" class="ds-probe"></div>
    </section>
   </div>`;
@@ -1781,6 +1948,23 @@
    if(el.matches('[data-qj-re]'))el.onchange=()=>{commit();renderQueryJoinEditor();qjRefreshColumns()};
    else{el.oninput=()=>{commit();qjProbeSoon()};el.onchange=()=>commit()}
   });
+  form.querySelectorAll('[name="qjKind"]').forEach(el=>el.onchange=()=>{
+   if(!el.checked)return;
+   qjEdit().kind=el.value;
+   renderQueryJoinEditor();qjProbeSoon(0);
+  });
+  form.querySelectorAll('[data-qj-sugg]').forEach(el=>el.onclick=()=>{
+   const [l,r]=String(el.dataset.qjSugg||'').split('\t');
+   qjAddKey(l,r);
+  });
+  const auto=form.querySelector('#qjKeyAuto');
+  if(auto)auto.onclick=()=>{
+   const x=qjEdit();
+   const lc=qjState.cols[x.left+'\t'+(x.leftTable||'')]||{};
+   const rc=qjState.cols[x.right+'\t'+(x.rightTable||'')]||{};
+   qjSuggestPairs(x,lc,rc).forEach(pp=>qjAddKey(pp.left,pp.right,true));
+   renderQueryJoinEditor();qjProbeSoon(0);
+  };
   form.querySelectorAll('[data-qj-keyleft]').forEach(el=>el.onchange=()=>{
    qjEdit().keys[+el.dataset.qjKeyleft].left=el.value;qjProbeSoon(0);
   });
@@ -1813,6 +1997,18 @@
   });
   qjRenderProbe();
  }
+ /* 候補から1組足す。**空の行があればそこへ入れる**——押すたびに空行が
+    増えると、そのぶん「外す」を押させることになる。 */
+ function qjAddKey(left,right,quiet){
+  if(!left||!right)return;
+  const x=qjEdit();
+  x.keys=x.keys||[];
+  if(x.keys.some(k=>k.left===left&&k.right===right))return;
+  const slot=x.keys.find(k=>!k.left&&!k.right);
+  if(slot){slot.left=left;slot.right=right}
+  else x.keys.push({left:left,right:right});
+  if(!quiet){renderQueryJoinEditor();qjProbeSoon(0)}
+ }
  async function qjRefreshColumns(){
   const x=qjEdit();
   const before=JSON.stringify([x.left,x.leftTable,x.right,x.rightTable]);
@@ -1831,7 +2027,8 @@
   const x=qjEdit();
   const body={left:x.left,leftTable:x.leftTable,right:x.right,rightTable:x.rightTable,
               keys:(x.keys||[]).filter(k=>k.left&&k.right),columns:x.columns,
-              prefix:x.prefix,multi:x.multi,name:x.name||'(下見)'};
+              prefix:x.prefix,multi:x.multi,kind:x.kind||qjState.kindDefault,
+              name:x.name||'(下見)'};
   const sig=JSON.stringify(body);
   if(sig===qjState.probeSig)return;
   qjState.probeSig=sig;
@@ -1857,17 +2054,27 @@
   if(!p){box.innerHTML='<p class="mm-field-hint">突合キーを選ぶと、いまのデータで当ててみた結果がここに出ます。</p>';return}
   /* **色だけで伝えない**(§3)。当たった件数・足す列数・実例を文字で出す。 */
   const names=(p.addedColumnNames||[]);
+  const cols=p.addedColumns?`<b>${p.addedColumns}</b> 列を足します`:'列は足しません';
   const head=p.ok
-   ?`<p class="qj-probe-ok"><b>${p.matched}</b> / ${p.sampled} 行に当たりました。<b>${p.addedColumns}</b> 列を足します（相手の表: ${esc(p.table||'—')}）。</p>`
+   ?`<p class="qj-probe-ok"><b>${p.matched}</b> / ${p.sampled} 行に当たりました。${cols}（相手の表: ${esc(p.table||'—')}）。</p>`
    :`<p class="qj-probe-ng">当たりませんでした。${esc(p.reason||'')}</p>`;
+  /* **行が増減することは必ず文字で言う**(§9.194)。結合の仕方によっては
+     一覧から行が消える／相手の行が増えるので、黙って変えると「絞り込んで
+     いないのに件数が合わない」としか見えない。 */
+  const rowLine=(p.ok&&(p.droppedRows||p.addedRows))
+   ?`<p class="qj-probe-rows">行数: ${p.sampled} → <b>${p.rowsAfter}</b>`
+     +(p.droppedRows?`／一致しない ${p.droppedRows} 行は出しません`:'')
+     +(p.addedRows?`／相手にしかない ${p.addedRows} 行が増えます`:'')+'</p>'
+   :'';
+  const noteLine=p.note?`<p class="mm-field-hint">${esc(p.note)}</p>`:'';
   const amb=p.ambiguous?`<p class="mm-field-hint">相手が2件以上あったキーが ${p.ambiguous} 件あります（いまの設定: ${esc(QJ_MULTI_LABEL[qjEdit().multi||'first'])}）。</p>`:'';
-  const cols=names.length?`<p class="mm-field-hint">足す列: ${esc(names.slice(0,12).join('・'))}${names.length>12?` ほか${names.length-12}列`:''}</p>`:'';
+  const colLine=names.length?`<p class="mm-field-hint">足す列: ${esc(names.slice(0,12).join('・'))}${names.length>12?` ほか${names.length-12}列`:''}</p>`:'';
   /* 実例は3件(§9.105)。1件では「たまたま」と区別が付かない。 */
   const ex=(p.examples||[]).length?`<table class="qj-ex"><thead><tr>${
     Object.keys(p.examples[0]).map(k=>`<th>${esc(k)}</th>`).join('')}</tr></thead><tbody>${
     p.examples.map(r=>`<tr>${Object.values(r).map(v=>`<td>${esc(String(v))}</td>`).join('')}</tr>`).join('')
    }</tbody></table>`:'';
-  box.innerHTML=head+amb+cols+ex;
+  box.innerHTML=head+rowLine+noteLine+amb+colLine+ex;
  }
  async function saveQueryJoinEditor(){
   const x=qjEdit();
@@ -1875,7 +2082,7 @@
   const body={id:x.id,user_id:uid,name:x.name,left:x.left,leftTable:x.leftTable,
               right:x.right,rightTable:x.rightTable,
               keys:(x.keys||[]).filter(k=>k.left&&k.right),columns:x.columns,
-              prefix:x.prefix,multi:x.multi,order:x.order,
+              prefix:x.prefix,multi:x.multi,kind:x.kind||qjState.kindDefault,order:x.order,
               enabled:x.active===false?'無効':'有効'};
   try{
    setMaintLoading(true,'保存しています…');
@@ -2415,9 +2622,10 @@
  const SHIFT_TEMPLATES=[
   {label:'日勤',segments:[{name:'日勤',start:'08:15',end:'17:05'}]},
   {label:'交替勤務(1,2,3直)',segments:[
-    {name:'1直',start:'07:00',end:'15:00'},{name:'2直',start:'15:00',end:'23:00'},{name:'3直',start:'23:00',end:'07:00'}]},
+    {name:'1直',start:'07:00',end:'15:00'},{name:'2直',start:'15:00',end:'23:00'},
+    {name:'3直',start:'23:00',end:'07:00',dayOffset:-1}]},
   {label:'交替勤務(4,5直)',segments:[
-    {name:'4直',start:'11:00',end:'19:10'},{name:'5直',start:'21:20',end:'05:45'}]},
+    {name:'4直',start:'11:00',end:'19:10'},{name:'5直',start:'21:20',end:'05:45',dayOffset:-1}]},
  ];
  let shiftState={patterns:[],selectedId:null,draft:null,loading:false};
  /* 適用設備の複数選択(勤務体系マスタ)。チェック済みの設備名を配列で返す。 */
@@ -2428,7 +2636,9 @@
   // equipmentは設備名の配列(複数可)。空配列=全設備共通。サーバーが古い形式
   // (単一文字列)を返しても配列へ寄せる。
   const eqList=v=>Array.isArray(v)?v.filter(Boolean).map(String):(String(v||'').trim()?[String(v).trim()]:[]);
-  return p?{id:p.id,equipment:eqList(p.equipment),name:p.name||'',segments:(p.segments||[]).map(x=>({name:x.name,start:x.start,end:x.end}))}
+  return p?{id:p.id,equipment:eqList(p.equipment),name:p.name||'',
+            segments:(p.segments||[]).map(x=>({name:x.name,start:x.start,end:x.end,
+              dayOffset:(x.dayOffset==null?null:Number(x.dayOffset))}))}
            :{id:null,equipment:[],name:'',segments:[]};
  }
  async function loadShiftPatternMaint(force){
@@ -2452,21 +2662,61 @@
   const pct=v=>(v/1440*100);
   return (e<=s)?[[pct(s),pct(1440)-pct(s)],[0,pct(e)]]:[[pct(s),pct(e)-pct(s)]];
  }
+ /* 日を跨ぐ区分だけが持つ「日付の数え方」(§9.195の現場歴)。**跨がない区分
+    には出さない**——効かない欄を置くと、設定したのに変わらないと読まれる。 */
+ const SHIFT_DAYOFF_OPTIONS=[
+  {v:-1,label:'前の日として数える（−1日）'},
+  {v:0,label:'暦どおり（0日）'},
+  {v:1,label:'翌日として数える（＋1日）'},
+ ];
+ /* **何が選ばれているかを文字で言う**(§3)。チェックの見た目だけだと、
+    設備が多いときに「全設備共通なのか選び忘れなのか」が読めない。 */
+ function shiftEqSummaryHtml(names,total){
+  if(!total)return '';
+  return names.length
+   ? `<b>${names.length}</b> 設備に適用（${esc(names.slice(0,3).join('、'))}${names.length>3?' ほか':''}）`
+   : '<b>全設備共通</b>（どれも選んでいないので既定として使われます）';
+ }
+ /* チェックのたびに**画面を組み直さないこと**——設備が多いと選ぶ器が
+    スクロールごと巻き戻り、続けて選べない（§9.117と同じ罠）。文字だけ
+    差し替える。 */
+ function refreshShiftEqSummary(){
+  const sum=$('#masterMaintList .shift-eq-sum');
+  const names=selectedShiftEquipment();
+  if(sum)sum.innerHTML=shiftEqSummaryHtml(names,(equipmentMasterState.items||[]).length);
+  const none=$('#shiftEqNone');if(none)none.disabled=!names.length;
+ }
+ function shiftCrossesMidnight(seg){
+  const t=v=>{const m=/^(\d{1,2}):(\d{2})$/.exec(String(v||''));return m?(+m[1])*60+(+m[2]):null};
+  const a=t(seg&&seg.start),b=t(seg&&seg.end);
+  return a!==null&&b!==null&&b<=a;
+ }
+ function shiftDayOffsetOf(seg){
+  if(!shiftCrossesMidnight(seg))return 0;
+  return (seg&&seg.dayOffset!=null&&seg.dayOffset!=='')?Number(seg.dayOffset):-1;
+ }
+ /* 勤務区分の1行。**見出しと同じグリッド定義を共有する**（別々に組むと
+    左端がずれる。§9.176と同じ土台）。 */
+ const SHIFT_SEG_COLS=[
+  {k:'dot',label:''},{k:'name',label:'区分の名称'},{k:'time',label:'時間帯'},
+  {k:'next',label:'日跨ぎ'},{k:'dayoff',label:'日付の数え方'},{k:'act',label:''},
+ ];
  function renderShiftPattern(){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
   const d=shiftState.draft||shiftDraftFrom(null);
   const eqSelected=new Set((d.equipment||[]).map(String));
   const eqItems=(equipmentMasterState.items||[]);
   const eqChips=eqItems.length
-   ? eqItems.map(x=>`<label class="shift-eq-chip${eqSelected.has(x.name)?' is-on':''}"><input type="checkbox" data-shift-eq value="${esc(x.name)}"${eqSelected.has(x.name)?' checked':''}>${esc(x.name)}</label>`).join('')
+   ? eqItems.map(x=>`<label class="shift-eq-chip${eqSelected.has(x.name)?' is-on':''}"><input type="checkbox" data-shift-eq value="${esc(x.name)}"${eqSelected.has(x.name)?' checked':''}><span>${esc(x.name)}</span></label>`).join('')
    : '<span class="mm-empty-inline">設備マスタが未登録です。先に「設備」タブで登録してください。</span>';
+  const eqSummary=shiftEqSummaryHtml([...eqSelected],eqItems.length);
   form.innerHTML=`<div class="mm-form-head">
     <span class="mm-mode-chip ${d.id?'editing':'new'}">${d.id?`編集中 <b>${esc(d.name||'')}</b>`:'新規の勤務体系'}</span>
     <button type="button" id="shiftNew" class="mm-btn-ghost sm">＋ 勤務体系を追加</button>
     <span class="mm-form-hint">テンプレート:</span>
     ${SHIFT_TEMPLATES.map((t,i)=>`<button type="button" class="mm-btn-ghost sm" data-shift-tmpl="${i}">${esc(t.label)}</button>`).join('')}
    </div>
-   <p class="mm-def-hint">勤務体系(日勤・交替勤務など)の中に、各直の時間帯を並べます。作業スケジュールの「勤務」列は、予定の時刻が入る区分の名称を表示します。終了が開始以下の区分は翌日にまたがる勤務として扱います。適用設備を空欄にすると全設備の既定になり、設備を指定した体系があればそちらが優先されます。</p>`;
+   <p class="mm-def-hint">勤務体系(日勤・交替勤務など)の中に、各直の時間帯を並べます。作業スケジュールの「勤務」列は、予定の時刻が入る区分の名称を表示します。終了が開始以下の区分は翌日にまたがる勤務として扱い、<b>跨いだ後の時間帯は「日付の数え方」で決めた日付で数えます</b>（3直 23:00〜翌7:00 を1つの日としてまとめるための設定です）。適用設備を空欄にすると全設備の既定になり、設備を指定した体系があればそちらが優先されます。</p>`;
   form.onsubmit=ev=>ev.preventDefault();
   $('#shiftNew').onclick=()=>{shiftState.selectedId=null;shiftState.draft=shiftDraftFrom(null);renderShiftPattern()};
   form.querySelectorAll('[data-shift-tmpl]').forEach(b=>b.onclick=()=>{
@@ -2477,6 +2727,29 @@
 
   const bars=d.segments.map((seg,i)=>shiftBarPieces(seg).map(([left,w])=>
     `<span class="shift-bar-piece" data-i="${i%6}" style="left:${left}%;width:${w}%" title="${esc(seg.name)} ${esc(seg.start)}〜${esc(seg.end)}"></span>`).join('')).join('');
+  const segHead=`<div class="shift-seg-head">${
+    SHIFT_SEG_COLS.map(c=>`<span class="shift-seg-h shift-seg-c-${c.k}">${esc(c.label)}</span>`).join('')}</div>`;
+  const segRow=(seg,i)=>{
+   const cross=shiftCrossesMidnight(seg);
+   const off=shiftDayOffsetOf(seg);
+   return `<div class="shift-seg" data-i="${i}">
+     <span class="shift-seg-dot" data-i="${i%6}"></span>
+     <input class="shift-seg-name" type="text" value="${esc(seg.name)}" placeholder="例: 1直" autocomplete="off">
+     <span class="shift-seg-time">
+      <input class="shift-seg-start" type="time" value="${esc(seg.start)}">
+      <span class="shift-seg-sep">〜</span>
+      <input class="shift-seg-end" type="time" value="${esc(seg.end)}"></span>
+     <span class="shift-seg-next${cross?'':' is-empty'}">${cross?'翌日':''}</span>
+     ${cross
+       ?`<select class="shift-seg-dayoff" title="日を跨いだ後の時間帯を、どの日として数えるか">${
+          SHIFT_DAYOFF_OPTIONS.map(o=>`<option value="${o.v}"${o.v===off?' selected':''}>${esc(o.label)}</option>`).join('')}</select>`
+       :'<span class="shift-seg-dayoff is-na" title="日を跨がない区分なので、日付の補正はありません">—</span>'}
+     <span class="shift-seg-act">
+      <button type="button" class="shift-seg-up" title="上へ"${i===0?' disabled':''}>▲</button>
+      <button type="button" class="shift-seg-down" title="下へ"${i===d.segments.length-1?' disabled':''}>▼</button>
+      <button type="button" class="shift-seg-del" title="この区分を削除">×</button></span>
+    </div>`;
+  };
   list.innerHTML=`<div class="shift-editor">
     <aside class="shift-list">
      <div class="shift-list-head">登録済みの勤務体系</div>
@@ -2486,26 +2759,24 @@
     </aside>
     <section class="shift-detail">
      <div class="shift-fields">
-      <label class="mm-field"><span>勤務体系の名称<i>*</i></span><input id="shiftName" type="text" value="${esc(d.name)}" placeholder="例: 交替勤務(1,2,3直)" autocomplete="off"></label>
-      <div class="mm-field mm-field-wide"><span>適用設備（複数選択可・未選択=全設備共通）</span>
-       <div class="shift-eq-picker" id="shiftEquipment">${eqChips}</div>
-       <small class="mm-field-hint">1つの勤務体系を複数の設備へ同時に適用できます。どれも選ばなければ全設備共通の既定になり、設備を選んだ体系があればその設備ではそちらが優先されます。</small></div>
+      <label class="mm-field shift-f-name"><span>勤務体系の名称<i>*</i></span>
+       <input id="shiftName" type="text" value="${esc(d.name)}" placeholder="例: 交替勤務(1,2,3直)" autocomplete="off"></label>
+      <div class="mm-field shift-f-eq"><span>適用設備</span>
+       <div class="shift-eq-bar">
+        <span class="shift-eq-sum">${eqSummary}</span>
+        ${eqItems.length?`<span class="shift-eq-act">
+          <button type="button" class="mm-btn-ghost sm" id="shiftEqAll">すべて選ぶ</button>
+          <button type="button" class="mm-btn-ghost sm" id="shiftEqNone"${eqSelected.size?'':' disabled'}>全設備共通に戻す</button>
+         </span>`:''}
+       </div>
+       <div class="shift-eq-picker" id="shiftEquipment">${eqChips}</div></div>
      </div>
-     <div class="shift-bar" title="24時間のうち、どの時間帯がどの区分か">${bars}<span class="shift-bar-noon"></span></div>
-     <div class="shift-bar-scale"><span>0時</span><span>6時</span><span>12時</span><span>18時</span><span>24時</span></div>
+     <div class="shift-bar-wrap">
+      <div class="shift-bar" title="24時間のうち、どの時間帯がどの区分か">${bars}<span class="shift-bar-noon"></span></div>
+      <div class="shift-bar-scale"><span>0時</span><span>6時</span><span>12時</span><span>18時</span><span>24時</span></div>
+     </div>
      <div class="shift-segs" id="shiftSegs">${
-       d.segments.length?d.segments.map((seg,i)=>`<div class="shift-seg" data-i="${i}">
-         <span class="shift-seg-dot" data-i="${i%6}"></span>
-         <input class="shift-seg-name" type="text" value="${esc(seg.name)}" placeholder="例: 1直" autocomplete="off">
-         <input class="shift-seg-start" type="time" value="${esc(seg.start)}">
-         <span class="shift-seg-sep">〜</span>
-         <input class="shift-seg-end" type="time" value="${esc(seg.end)}">
-         ${(() => {const t=v=>{const m=/^(\d{1,2}):(\d{2})$/.exec(String(v||''));return m?(+m[1])*60+(+m[2]):null};
-                   const a=t(seg.start),b2=t(seg.end);return (a!=null&&b2!=null&&b2<=a)?'<span class="shift-seg-next">翌日</span>':'<span class="shift-seg-next is-empty"></span>'})()}
-         <button type="button" class="shift-seg-up" title="上へ"${i===0?' disabled':''}>▲</button>
-         <button type="button" class="shift-seg-down" title="下へ"${i===d.segments.length-1?' disabled':''}>▼</button>
-         <button type="button" class="shift-seg-del" title="この区分を削除">×</button>
-        </div>`).join('')
+       d.segments.length?segHead+d.segments.map(segRow).join('')
        :'<div class="mm-empty-inline">区分がありません。「＋ 区分を追加」かテンプレートから追加してください。</div>'}
      </div>
      <div class="shift-actions">
@@ -2527,10 +2798,13 @@
   const sync=()=>{
    const dd=shiftState.draft;
    dd.name=$('#shiftName').value;dd.equipment=selectedShiftEquipment();
-   dd.segments=[...list.querySelectorAll('.shift-seg')].map(el=>({
-    name:el.querySelector('.shift-seg-name').value,
-    start:el.querySelector('.shift-seg-start').value,
-    end:el.querySelector('.shift-seg-end').value}));
+   dd.segments=[...list.querySelectorAll('.shift-seg')].map(el=>{
+    const off=el.querySelector('select.shift-seg-dayoff');
+    return {name:el.querySelector('.shift-seg-name').value,
+            start:el.querySelector('.shift-seg-start').value,
+            end:el.querySelector('.shift-seg-end').value,
+            dayOffset:off?Number(off.value):null};
+   });
   };
   $('#shiftName').oninput=()=>{shiftState.draft.name=$('#shiftName').value};
   // 複数選択(チェック)。押した見た目もその場で切り替える。
@@ -2538,12 +2812,20 @@
    cb.onchange=()=>{
     cb.closest('.shift-eq-chip')?.classList.toggle('is-on',cb.checked);
     shiftState.draft.equipment=selectedShiftEquipment();
+    refreshShiftEqSummary();
    };
   });
+  const eqAll=$('#shiftEqAll');
+  if(eqAll)eqAll.onclick=()=>{sync();
+   shiftState.draft.equipment=(equipmentMasterState.items||[]).map(x=>x.name);renderShiftPattern()};
+  const eqNone=$('#shiftEqNone');
+  if(eqNone)eqNone.onclick=()=>{sync();shiftState.draft.equipment=[];renderShiftPattern()};
   list.querySelectorAll('.shift-seg').forEach(el=>{
    const i=+el.dataset.i;
    // 時刻・名称の変更はその場でバーへ反映する(保存前に結果が見える)。
    el.querySelectorAll('input').forEach(inp=>inp.onchange=()=>{sync();renderShiftPattern()});
+   const off=el.querySelector('select.shift-seg-dayoff');
+   if(off)off.onchange=()=>{sync();renderShiftPattern()};
    el.querySelector('.shift-seg-del').onclick=()=>{sync();shiftState.draft.segments.splice(i,1);renderShiftPattern()};
    el.querySelector('.shift-seg-up').onclick=()=>{sync();if(i>0)shiftState.draft.segments.splice(i-1,0,shiftState.draft.segments.splice(i,1)[0]);renderShiftPattern()};
    el.querySelector('.shift-seg-down').onclick=()=>{sync();const a=shiftState.draft.segments;if(i<a.length-1)a.splice(i+1,0,a.splice(i,1)[0]);renderShiftPattern()};
@@ -2554,7 +2836,7 @@
    const last=segs[segs.length-1];
    // 直前の区分の終了時刻を次の開始時刻の初期値にする(連続する直の入力が
    // ほぼクリックだけで済む)。
-   segs.push({name:`${segs.length+1}直`,start:last?last.end:'08:00',end:last?last.end:'17:00'});
+   segs.push({name:`${segs.length+1}直`,start:last?last.end:'08:00',end:last?last.end:'17:00',dayOffset:null});
    renderShiftPattern();
   };
   const del=$('#shiftDelete');if(del)del.onclick=()=>deleteShiftPattern(d);

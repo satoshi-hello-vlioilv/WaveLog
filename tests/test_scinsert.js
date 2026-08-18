@@ -103,24 +103,53 @@ const plan=()=>fetch(B+'/api/schedule/plan?equipment='+encodeURIComponent(EQ)).t
     .filter(r=>r.draggable);const r=rows[3];const bb=r.getBoundingClientRect();
    return {x:Math.round(bb.x+300),y:Math.round(bb.top),id:r.dataset.id,
            lot:r.querySelector('[data-col="lotNo"]')?.textContent.trim()}});
+  /* **表が動かないこと**(§9.196、利用者の指摘)。以前は隙間を行として
+     流れへ挟んでいたため、カーソルを動かすたびに下の行が1行ぶん上下し、
+     鍵の印・詳細・削除のボタンが逃げて押せなかった。 */
+  const before=await page.evaluate(()=>[...document.querySelectorAll('.sc-row-line')]
+    .map(r=>Math.round(r.getBoundingClientRect().top)));
   await page.mouse.move(t.x,t.y+40);await page.waitForTimeout(150);
   await page.mouse.move(t.x,t.y);await page.waitForTimeout(500);
   const ghost=await page.evaluate(()=>{const g=document.querySelector('#scInsertGhost');
    if(!g||!g.parentNode)return null;
-   const gb=g.getBoundingClientRect();
-   const over=[...document.querySelectorAll('.sc-row-line')]
-     .filter(r=>{const rb=r.getBoundingClientRect();return rb.top<gb.bottom-2&&rb.bottom>gb.top+2}).length;
-   return {h:Math.round(gb.height),before:g.dataset.beforeId,over,
-           txt:g.textContent.replace(/\s+/g,' ').trim()}});
-  rec('カーソル位置に隙間が開く',!!ghost&&ghost.h>=20,JSON.stringify(ghost&&{h:ghost.h}));
-  rec('隙間は行に重ならない（行を隠さない）',!!ghost&&ghost.over===0,String(ghost&&ghost.over));
+   const line=g.querySelector('.sc-insert-line'),tip=g.querySelector('.sc-insert-tip');
+   const lb=line.getBoundingClientRect(),tb=tip.getBoundingClientRect();
+   const act=document.querySelector('.sc-row-line [data-col="__actions__"]')
+           ||document.querySelector('.sc-row-head [data-col="__actions__"]');
+   const ab=act?act.getBoundingClientRect():null;
+   return {gh:Math.round(g.getBoundingClientRect().height),
+           lineH:Math.round(lb.height),lineW:Math.round(lb.width),
+           tipW:Math.round(tb.width),
+           overAct:ab?Math.round(tb.right-ab.left):null,
+           rows:[...document.querySelectorAll('.sc-row-line')]
+             .map(r=>Math.round(r.getBoundingClientRect().top)),
+           before:g.dataset.beforeId,txt:g.textContent.replace(/\s+/g,' ').trim()}});
+  rec('境目に帯が出る（掴める太さがある）',
+      !!ghost&&ghost.lineH>=6&&ghost.lineW>100,JSON.stringify(ghost&&{h:ghost.lineH,w:ghost.lineW}));
+  rec('表は1pxも動かない（ボタンが逃げない）',
+      !!ghost&&JSON.stringify(ghost.rows)===JSON.stringify(before),
+      JSON.stringify({before:before.slice(0,4),after:(ghost&&ghost.rows||[]).slice(0,4)}));
+  rec('吹き出しが操作の列にかからない',
+      !!ghost&&(ghost.overAct===null||ghost.overAct<=0),String(ghost&&ghost.overAct));
   rec('隙間に何ができるか書いてある',!!ghost&&ghost.txt.includes('クリック')&&ghost.txt.includes('設備停止'),
       String(ghost&&ghost.txt).slice(0,70));
+  /* **操作の列ではマウスオーバーに反応しない**(利用者の指示)。 */
+  const actAt=await page.evaluate(()=>{
+   const cell=document.querySelector('.sc-row-line [data-col="__actions__"]');
+   if(!cell)return null;const b=cell.getBoundingClientRect();
+   return {x:Math.round(b.left+b.width/2),y:Math.round(b.top+1)}});
+  if(actAt){
+   await page.mouse.move(actAt.x,actAt.y);await page.waitForTimeout(300);
+   const gone=await page.evaluate(()=>!document.querySelector('#scInsertGhost')?.parentNode);
+   rec('操作の列では反応しない（ボタンが隠れない）',gone===true,String(gone));
+   await page.mouse.move(t.x,t.y+40);await page.waitForTimeout(150);
+   await page.mouse.move(t.x,t.y);await page.waitForTimeout(400);
+  }
   /* ---- クリックとダブルクリックを分ける(§9.179改訂) ----
      利用者の指摘「クリックでもダブルクリックでも仕掛表が開きました」。
      clickは2回目でも飛ぶので、少し待ってからdblclickが来ていなければ
      単クリックとして扱う。 */
-  await page.click('#scInsertGhost');
+  await page.click('#scInsertGhost .sc-insert-line');
   await page.waitForTimeout(900);
   const byClick=await page.evaluate(()=>({stop:document.querySelector('#scStopModal')?.hidden===false,
     list:document.querySelector('#scListModal')?.hidden===false}));
@@ -139,7 +168,7 @@ const plan=()=>fetch(B+'/api/schedule/plan?equipment='+encodeURIComponent(EQ)).t
   /* ---- 7-8. ダブルクリック → 仕掛表 → その位置へ入る ---- */
   await page.mouse.move(t.x,t.y+40);await page.waitForTimeout(120);
   await page.mouse.move(t.x,t.y);await page.waitForTimeout(420);
-  await page.dblclick('#scInsertGhost');
+  await page.dblclick('#scInsertGhost .sc-insert-line');
   await page.waitForTimeout(1600);
   const modal=await page.evaluate(()=>({list:document.querySelector('#scListModal')?.hidden===false,
     stop:document.querySelector('#scStopModal')?.hidden===false,
@@ -168,6 +197,38 @@ const plan=()=>fetch(B+'/api/schedule/plan?equipment='+encodeURIComponent(EQ)).t
   /* 続けて入れられるよう、入れた後も位置は残る(利用者の指示)。 */
   const kept=await page.evaluate(()=>!!document.querySelector('#scInsertGhost.is-pinned'));
   rec('入れた後も差し込み位置は残る',kept===true,String(kept));
+
+  /* ---- 追加中(サーバー反映待ち)の行も、指定した位置に出る(§9.196) ----
+     利用者の指摘「位置を指定しても一旦一番下に挿入データの処理中の表示が
+     出てしまう」。楽観的追加の行はまだ予定時刻を持たないので、時刻順に
+     並べると必ず末尾へ落ちていた。**サーバーの応答を遅らせて**、待って
+     いるあいだの並びを見る（応答が速いと反映後の並びしか見えない）。 */
+  await page.route('**/api/schedule/plan/add',async route=>{
+   await new Promise(r=>setTimeout(r,2600));await route.continue();
+  });
+  const lot2=await page.evaluate(()=>{
+   const trs=[...document.querySelectorAll('#scListModal #grid tbody tr')];
+   for(const tr of trs){const c=tr.querySelector('[data-col="ロット番号"]');
+    const v=c&&c.textContent.trim();
+    if(v){tr.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));return v}}
+   return null});
+  await page.waitForSelector('.sc-row-line.sc-row-pending',{timeout:8000}).catch(()=>{});
+  const pend=await page.evaluate(refLot=>{
+   const rows=[...document.querySelectorAll('.sc-row-line')];
+   const at=rows.findIndex(r=>r.classList.contains('sc-row-pending'));
+   const ref=rows.findIndex(r=>(r.querySelector('[data-col="lotNo"]')?.textContent||'').trim()===refLot);
+   return {at,ref,last:rows.length-1,
+           group:(rows[at]?.closest('.sc-group-box')?.querySelector('.sc-group-label')?.textContent||'').trim()};
+  },t.lot);
+  rec('「追加中」の行が一番下へ飛ばない',
+      pend.at>=0&&pend.at<pend.last,JSON.stringify(pend));
+  rec('「追加中」の行が指定した位置（この行の前）に出る',
+      pend.at>=0&&pend.ref>=0&&pend.at<pend.ref,JSON.stringify(pend));
+  await page.unroute('**/api/schedule/plan/add');
+  await page.waitForTimeout(3500);
+  const j2=await plan();
+  const added2=(j2.entries||[]).find(e=>e.lotNo===lot2);
+  if(added2)made.push(added2.id);
   /* 閉じたら忘れる——残ると次の追加が思い出しもしない位置へ入る。 */
   await page.evaluate(()=>document.querySelector('#scListModalClose')?.click());
   await page.waitForTimeout(800);

@@ -15,7 +15,7 @@ const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/no
 const B='http://127.0.0.1:5029';
 const NAME='テスト結合UI';
 const EQ='テスト設備A';
-let b=null,joinId=null,contentTouched=false;
+let b=null,joinId=null,contentTouched=false,builtinTouched=false;
 const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
 
 async function call(method,path,body){
@@ -106,6 +106,56 @@ const raf2=page=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requ
   const probe=await page.$eval('#qjProbeBox',n=>n.textContent.replace(/\s+/g,' ').trim());
   rec('保存する前に「何件に当たるか」が文字で出る',/行に当たりました/.test(probe),probe.slice(0,90));
   rec('足す列の名前も出る（何が増えるか分かる）',/UI_/.test(probe),probe.slice(0,140));
+
+  /* ---- 2b) 結合の仕方は図・説明・見本の表で選ぶ（§9.194） ---- */
+  const kinds=await page.evaluate(()=>{
+   const cards=[...document.querySelectorAll('.qj-kinds .qj-kind')];
+   return {n:cards.length,
+     venn:cards.filter(c=>c.querySelector('svg.qj-venn')).length,
+     /* **塗り分けが図ごとに違うこと。** 6枚が同じ絵だと、図があっても
+        何も伝えていない（塗る円の数と種類で見分ける）。 */
+     shapes:[...new Set(cards.map(c=>[...c.querySelectorAll('svg.qj-venn .on')]
+       .map(x=>((x.getAttribute('mask')||x.getAttribute('clip-path')||'').match(/-(ml|mr|c)\)?$/)||[,'?'])[1])
+       .sort().join('')))].length,
+     /* 色だけで伝えない: 名前・一行説明・行の増減が文字で出ていること。 */
+     labels:cards.map(c=>c.querySelector('b')?.textContent.trim()||''),
+     rows:cards.every(c=>(c.querySelector('.qj-kind-rows')?.textContent||'').trim()!==''),
+     sample:!!document.querySelector('.qj-kind-detail .qj-sample-t.is-result')};
+  });
+  rec('結合の仕方を6通りから選べる',kinds.n===6,JSON.stringify(kinds.labels));
+  rec('6通りとも図が出て、塗り分けが違う',kinds.venn===6&&kinds.shapes===6,
+      `図${kinds.venn}枚 塗り分け${kinds.shapes}種`);
+  rec('図だけで伝えず、行がどう増減するかを文字で書く',kinds.rows);
+  rec('見本の表で結果が分かる',kinds.sample);
+  // 「内部結合」を選ぶと、見本も下見も**行が減ること**を言う。
+  await page.evaluate(()=>{
+   const el=[...document.querySelectorAll('.qj-kinds input[name="qjKind"]')].find(x=>x.value==='inner');
+   if(el){el.checked=true;el.dispatchEvent(new Event('change',{bubbles:true}))}
+  });
+  await page.waitForFunction(()=>{
+   const n=document.querySelector('.qj-kind-now');return n&&n.textContent.includes('内部')},{timeout:20000});
+  const innerSample=await page.evaluate(()=>({
+   now:document.querySelector('.qj-kind-now')?.textContent.trim()||'',
+   rows:[...document.querySelectorAll('.qj-sample-t.is-result tbody tr')].length}));
+  rec('選び直すと見本もその場で変わる',innerSample.now.includes('内部')&&innerSample.rows===1,
+      JSON.stringify(innerSample));
+  // 「この一覧にしかない行」は列を足さないので、⑥の選択肢ごと出さない(§4)。
+  await page.evaluate(()=>{
+   const el=[...document.querySelectorAll('.qj-kinds input[name="qjKind"]')].find(x=>x.value==='leftOnly');
+   if(el){el.checked=true;el.dispatchEvent(new Event('change',{bubbles:true}))}
+  });
+  await page.waitForFunction(()=>!document.querySelector('[name="qjPick"]'),{timeout:20000});
+  rec('列を足さない結合では「何を足すか」を出さない（押せるのに効かない欄を残さない）',
+      await page.$('[name="qjPick"]')===null);
+  // 既定（左外部）へ戻してから保存する。
+  await page.evaluate(()=>{
+   const el=[...document.querySelectorAll('.qj-kinds input[name="qjKind"]')].find(x=>x.value==='left');
+   if(el){el.checked=true;el.dispatchEvent(new Event('change',{bubbles:true}))}
+  });
+  await page.waitForFunction(()=>document.querySelector('#qjProbeBox .qj-probe-ok'),{timeout:20000});
+  /* 突合キーは実データの見本つきで選ぶ（形が合うかを見て決められる）。 */
+  const keyEx=await page.$$eval('.qj-key .qj-key-ex',ns=>ns.map(n=>n.textContent.trim()));
+  rec('突合キーに実データの例が添えられる',keyEx.some(t=>/^例: /.test(t)),JSON.stringify(keyEx));
   await page.click('#maintEditorSave');
   await page.waitForFunction(n=>[...document.querySelectorAll('#masterMaintList .qj-c-name')]
     .some(el=>el.textContent.includes(n)),NAME,{timeout:20000});
@@ -206,6 +256,39 @@ const raf2=page=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requ
   });
   rec('見出しにも項目名が出る（生のキーのままにしない）',head.includes('UI_検査結果'),head);
 
+  /* ---- 5) 既定の品質データ結合を解除できる（§9.194、利用者の指示） ---- */
+  await page.evaluate(()=>window.exitMasterMaint&&window.exitMasterMaint());
+  await call('POST','/api/access-mode',{mode:'edit'});
+  await page.goto(B+'/',{waitUntil:'domcontentloaded'});
+  await page.waitForSelector('#openMasterMaint',{timeout:20000});
+  await page.click('#openMasterMaint');
+  await page.waitForSelector('#masterMaintNav [data-master="queryJoin"]',{timeout:20000});
+  await page.evaluate(()=>{const el=document.querySelector('#masterUserId');
+    if(el){el.value='test-qjoin';el.dispatchEvent(new Event('change',{bubbles:true}))}});
+  await page.click('#masterMaintNav [data-master="queryJoin"]');
+  await page.waitForSelector('#qjBuiltinToggle',{timeout:20000});
+  builtinTouched=true;
+  page.once('dialog',d=>d.accept());
+  await page.click('#qjBuiltinToggle');
+  await page.waitForFunction(()=>{const n=document.querySelector('.qj-row.is-builtin .ds-listed');
+    return n&&n.textContent.trim()==='解除中'},{timeout:20000});
+  const offState=(await call('GET','/api/query-join-master')).body;
+  rec('既定の品質データ結合を画面から解除できる',offState.builtinEnabled===false,
+      String(offState.builtinEnabled));
+  rec('解除しても既定の内容は見えたまま（真似できることが値打ち）',
+      !!offState.builtin&&(offState.builtin.keys||[]).length>0,
+      JSON.stringify((offState.builtin||{}).keys||[]));
+  const offTable=(await call('GET',`/api/table?db=${encodeURIComponent(WORK)}&table=%E4%BB%95%E6%8E%9B&page_size=5&join_quality=1`));
+  rec('解除中でも一覧はエラーなく開ける（列が出ないだけ）',
+      offTable.status===200&&(offTable.body.rows||[]).length>0&&offTable.body.joinQuality===null,
+      `${offTable.status} ${(offTable.body.rows||[]).length}行`);
+  await page.click('#qjBuiltinToggle');
+  await page.waitForFunction(()=>{const n=document.querySelector('.qj-row.is-builtin .ds-listed');
+    return n&&n.textContent.trim()==='既定'},{timeout:20000});
+  const onState=(await call('GET','/api/query-join-master')).body;
+  rec('既定に戻せる',onState.builtinEnabled===true,String(onState.builtinEnabled));
+  builtinTouched=false;
+
   rec('画面側の例外が出ていない',errs.length===0,errs.slice(0,2).join(' / '));
  }catch(e){
   rec('FATAL',false,e.message);
@@ -217,6 +300,10 @@ const raf2=page=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requ
   try{if(contentTouched)await call('POST','/api/schedule-content-master',
     {equipment:EQ,items:[],user_id:'test-qjoin'})}catch(_){}
   try{await call('POST','/api/access-mode',{mode:'edit'})}catch(_){}
+  /* **既定の結合の印はマスタDBに残る**（§9.121）。解除したまま終わると、
+     次の実行では品質の列が出ず、関係の無いテストが「列が消えた」で落ちる。 */
+  try{if(builtinTouched)await call('POST','/api/query-join-master/builtin',
+    {enabled:true,user_id:'test-qjoin'})}catch(_){}
   try{if(joinId)await call('POST','/api/query-join-master/delete',{id:joinId,user_id:'test-qjoin'})}catch(_){}
   try{const all=(await call('GET','/api/query-join-master')).body;
       for(const x of (all.items||[]))if(String(x.name||'').startsWith('テスト結合'))
