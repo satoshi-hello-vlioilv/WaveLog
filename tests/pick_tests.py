@@ -36,6 +36,7 @@ ALWAYS = ['test_patchlint', 'test_globallint', 'test_dskeylint', 'test_csslint',
 G = {}
 G['一覧'] = ['test_nav', 'test_navdyn', 'test_listcache', 'test_listperf', 'test_allrows',
              'test_filterio', 'test_filteruser', 'test_filteractive', 'test_filterkeep',
+             'test_filterlock',
              'test_cols', 'test_hdctx', 'test_dsnav', 'test_dsrestart', 'test_listmodal', 'test_filter',
              'test_audit', 'test_sub', 'test_uisize', 'test_ttlcache']
 G['列'] = ['test_collayout', 'test_colformat', 'test_colrule', 'test_colsort', 'test_lcpanel',
@@ -49,7 +50,8 @@ G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'te
                      'test_scwritespeed', 'test_split_layout', 'test_sccols',
                      'test_sctimecols', 'test_scinsert', 'test_audittrail',
                      'test_scstop', 'test_scwarm', 'test_scundecided',
-                     'test_scwatchui', 'test_scwatch', 'test_sccomment']
+                     'test_scwatchui', 'test_scwatch', 'test_sccomment',
+                     'test_scowner']
 G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 'test_eqkind',
                'test_shift', 'test_dbequip', 'test_crudroutes', 'test_setpage', 'test_eqstd']
 G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'test_flows',
@@ -59,7 +61,8 @@ G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'tes
                'test_gridhead']
 G['起動'] = ['test_boot', 'test_bootui', 'test_bootflash', 'test_assetcache', 'test_tabclose']
 G['接続'] = ['test_dbopen', 'test_dbmirror', 'test_datasource', 'test_tablequery',
-             'test_atomicio', 'test_localwork', 'test_dscap']
+             'test_atomicio', 'test_localwork', 'test_dscap',
+             'test_qjoin', 'test_qjoinui']
 G['権限'] = ['test_modeguard', 'test_noaccess', 'test_scperm', 'test_recperm']
 G['ログ'] = ['test_logs', 'test_logview', 'test_error']
 
@@ -100,7 +103,8 @@ RULES = [
     ('static/js/schedule-view.js', g('スケジュール', 'test_listmodal')),
     ('static/js/schedule-print.js', g('test_scprint')),
     ('static/js/lot-split.js', g('test_scsplit', 'test_orphan', 'test_sub', 'test_splitlive')),
-    ('static/js/master-maint.js', g('マスタ', 'test_headbar', 'test_datasource')),
+    ('static/js/master-maint.js', g('マスタ', 'test_headbar', 'test_datasource',
+                                     'test_qjoinui', 'test_dscap')),
     ('static/js/calendar-view.js', g('test_calscale', 'test_histdel', 'test_headbar')),
     # 帳票の塊の組み換え(§9.169)は列レイアウトマスタに載るので列の網も回す。
     ('static/js/report-dashboard.js', g('test_screport', 'test_hdr', 'test_calscale',
@@ -130,7 +134,7 @@ RULES = [
                                       'test_scbalance', 'test_scprint')),
     ('static/css/35-split.css', g('見た目', 'test_splitlive', 'test_split_layout')),
     ('static/css/40-records.css', g('見た目', 'test_recperm', 'test_reccols')),
-    ('static/css/50-master.css', g('見た目', 'マスタ', 'test_dscap')),
+    ('static/css/50-master.css', g('見た目', 'マスタ', 'test_dscap', 'test_qjoinui')),
     ('static/css/60-report.css', g('見た目', 'test_screport', 'test_rpblocks')),
     ('static/css/88-logs.css', g('見た目', 'test_logview')),
 
@@ -153,6 +157,7 @@ RULES = [
     ('backend/db_access.py', g('接続', '一覧', 'test_setpage')),
     # データソースの「できること」の判定(§9.163)。列名の別名解決も
     # ここが持つので、品質結合(/api/table)の網も回す。
+    ('backend/query_join.py', g('接続', '列', 'test_dsnav', 'test_sccontent')),
     ('backend/source_capability.py', g('test_dscap', 'test_datasource', 'test_dsnav',
                                        'test_tablequery', 'test_uiux')),
     ('backend/db_mirror.py', g('test_dbmirror', 'test_dbopen', 'test_listcache',
@@ -165,6 +170,9 @@ RULES = [
     ('backend/schedule_calc.py', g('スケジュール', 'test_eqstd')),
     ('backend/sort_order.py', g('列', 'test_tablequery')),
     ('backend/schedule_watch.py', g('スケジュール')),
+    # 共有スケジュールの持ち主(§9.192)。書込の入口(routes/schedule.py)と
+    # 書込ガード(access_mode.py)の両方に手が入るので、権限の網も回す。
+    ('backend/schedule_owner.py', g('test_scowner', 'test_modeguard', 'スケジュール')),
     ('tests/fixtures/sort_cases.json', g('test_sortpipe', 'test_sortcustom')),
     ('backend/schedule_sync.py', g('test_sclock', 'test_scsync', 'test_scwritespeed',
                                    'test_screorder', 'test_atomicio')),

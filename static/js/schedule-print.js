@@ -191,6 +191,46 @@
   {key:'write:check',label:'確認',    mm:10,cls:'sp-c-check',write:true},
   {key:'write:note', label:'備考',    mm:30,cls:'sp-c-write',write:true},
  ];
+ /* ---------- 記入欄のパターン(§9.191、利用者の指示) ----------
+    「開始・終了での入力欄ではなく、備考という形での枠設定や、他カスタム
+     できるパターンを追加して、メニューも分かりやすく」。
+
+    記入欄は**現場が紙に書き込む場所**なので、運用ごとに要るものが違う
+    （実績を戻してもらう／気付きだけ書ければよい／確認印だけ／見るだけ）。
+    以前は「実績を書き込む欄をつける」のチェック1つで、開始・終了・確認の
+    3列が一括で付くか付かないかしかなかった。**よく使う形に名前を付けて
+    選べる**ようにする——1列ずつ選ぶのは「紙の列を変える」でできるので、
+    ここは**選ぶだけで決まる**ことに徹する。 */
+ const WRITE_PATTERNS=[
+  /* 既定は**紙の列の設定のまま**(§9.118)。ここで形を決め打ちにすると、
+     「紙の列を変える」で外した記入欄が刷るたびに戻ってくる。設定していない
+     紙では、この選択は今までどおりの3欄になる（既定の並びに入っている）。 */
+  {key:'custom',     label:'紙の列で決めたまま',  keys:null,
+   note:'「紙の列を変える」で選んだ記入欄をそのまま使います（既定）'},
+  {key:'actual',     label:'実績を書いてもらう',  keys:['write:start','write:end','write:check'],
+   note:'開始・終了・確認の3欄。配って書いて戻してもらう形'},
+  {key:'actualNote', label:'実績＋備考',          keys:['write:start','write:end','write:check','write:note'],
+   note:'実績のほかに気付きも書ける'},
+  {key:'note',       label:'備考だけ',            keys:['write:note'],
+   note:'書くのは気付きだけでよいとき'},
+  {key:'check',      label:'確認だけ',            keys:['write:check'],
+   note:'流し終わりに印を付けるだけ'},
+  {key:'none',       label:'記入欄なし',          keys:[],
+   note:'見るための紙（書き込まない）'},
+ ];
+ const writePatternOf=(opt,hasSaved)=>{
+  const k=String(opt&&opt.writePattern||'');
+  if(WRITE_PATTERNS.some(p=>p.key===k))return k;
+  /* 古い設定(actualColumns)からの読み替え。**設定を触っていない現場の紙が
+     更新で変わらないように**、偽＝なしへ落とす。 */
+  if(opt&&opt.actualColumns===false)return 'none';
+  /* **選んでいないときは、紙の列の設定があればそれに従う**(§9.118)。
+     ここで既定のパターンを当ててしまうと、「紙の列を変える」で外した
+     記入欄が刷るたびに戻り、載せていない列が勝手に増える（紙は幅が
+     有限なので、増えた瞬間に配れない紙になる）。設定の無い紙だけ、
+     今までどおりの3欄を既定にする。 */
+  return hasSaved?'custom':'actual';
+ };
  /* 何も設定していないときの紙。**今までの紙と同じ並び**にしておく
     （設定を触っていない現場の紙が、更新で勝手に変わらないように）。 */
  const DEFAULT_ORDER=['no','state','time','shift','lotNo','content','estimate',
@@ -231,9 +271,17 @@
   const hidden=new Set((layout&&layout.hidden)||[]);
   let keys=saved.length?saved.filter(k=>!hidden.has(k))
                        :DEFAULT_ORDER.filter(k=>byKey.has(k));
-  /* 「実績を書き込む欄をつける」は**後から効く絞り込み**にしておく
-     ——レイアウトを作った人にも「今回は記入欄なしで」が効いてほしい。 */
-  if(!opt.actualColumns)keys=keys.filter(k=>!k.startsWith('write:'));
+  /* 記入欄は**後から効く差し替え**にしておく(§9.191)——レイアウトを作った
+     人にも「今回は備考だけで」が効いてほしい。`custom`のときだけ、紙の列で
+     選んだ記入欄をそのまま使う。 */
+  const pat=WRITE_PATTERNS.find(p=>p.key===writePatternOf(opt,saved.length>0));
+  if(pat&&pat.keys){
+   const want=pat.keys.filter(k=>byKey.has(k));
+   /* 並びは紙の列の順を尊重し、載っていないものは末尾へ足す
+      （「備考だけ」を選んだのに欄が出ない、を作らない）。 */
+   keys=keys.filter(k=>!k.startsWith('write:')||want.includes(k))
+            .concat(want.filter(k=>!keys.includes(k)));
+  }
   return keys.map(k=>{
    const c=byKey.get(k);
    const mm=layout&&layout.widths&&layout.widths[k]!=null?Number(layout.widths[k]):c.mm;
@@ -387,7 +435,7 @@
  /* useGroups=画面の「まとめ」を紙にも入れる / commentBox=紙の下に
     申し送りの欄を作る(§9.189、利用者の指示)。どちらも既定は入れる。 */
  const DEFAULTS={includeDone:false,actualColumns:true,pageByDate:true,allEquipment:false,
-                 useGroups:true,commentBox:true};
+                 useGroups:true,commentBox:true,writePattern:'custom'};
  function loadPref(){
   try{return {...DEFAULTS,...(JSON.parse(localStorage.getItem(PREF_KEY)||'{}')||{})}}
   catch(_){return {...DEFAULTS}}
@@ -522,13 +570,23 @@
      何も変わらないことになる。 */
   const gm=(typeof WL.scheduleView?.groupModeLabel==='function')?WL.scheduleView.groupModeLabel():'';
   const grouped=(typeof WL.scheduleView?.groupMode==='function')&&WL.scheduleView.groupMode()!=='none';
-  return `${canAll?cb('allEquipment','すべての設備を続けて印刷する','設備ごとにページを分けます'):''}
-   ${cb('actualColumns','実績を書き込む欄をつける','開始・終了・確認の記入欄を右側に作ります')}
-   ${cb('pageByDate','日付ごとにページを分ける','日ごとに配る場合はこのまま')}
+  /* **記入欄はパターンから選ぶ**(§9.191)。チェックの寄せ集めだと
+     「開始だけ欲しい」「備考だけ」を作るのに何回も試すことになる。 */
+  const cur=writePatternOf(pref);
+  const patRows=WRITE_PATTERNS.map(p=>`<label class="sp-pat${cur===p.key?' is-on':''}" title="${esc(p.note)}">
+     <input type="radio" name="spWritePattern" value="${p.key}"${cur===p.key?' checked':''}>
+     <span><b>${esc(p.label)}</b><small>${esc(p.note)}</small></span></label>`).join('');
+  return `<div class="sp-opt-group"><h4>載せるもの</h4>
+   ${canAll?cb('allEquipment','すべての設備を続けて印刷する','設備ごとにページを分けます'):''}
+   ${cb('includeDone','完了・取消も載せる','ふだんは載せません（これから流すものだけ配るため）')}
    ${grouped?cb('useGroups',`画面のまとめ（${gm}）で見出しを入れる`,'画面と同じまとまりで区切ります')
             :`<p class="sp-opt-note">画面は「まとめない」なので、紙にも見出しは入りません。</p>`}
-   ${cb('commentBox','申し送りの欄を紙の下につける','手書きで気付きを残す欄です')}
-   ${cb('includeDone','完了・取消も載せる','ふだんは載せません（これから流すものだけ配るため）')}`;
+   ${cb('pageByDate','日付ごとにページを分ける','日ごとに配る場合はこのまま')}
+  </div>
+  <div class="sp-opt-group"><h4>書き込む欄</h4>
+   <div class="sp-pats" id="spWritePatterns">${patRows}</div>
+   ${cb('commentBox','紙の下に「申し送り・気付き」の欄をつける','行ごとではなく、紙1枚に1つの欄です')}
+  </div>`;
  }
  function openPreview(equipment){
   const view=WL.scheduleView;
@@ -545,6 +603,16 @@
   /* **clickで受ける**（changeはclickの後に飛ぶ。§9.90と同じ理由）。 */
   box.querySelectorAll('[data-opt]').forEach(inp=>inp.onclick=()=>{
    pv.pref[inp.dataset.opt]=!!inp.checked;savePref(pv.pref);renderPreview();
+  });
+  /* 記入欄のパターン(§9.191)。**選んだらその場で刷り上がりが変わる**。 */
+  box.querySelectorAll('input[name="spWritePattern"]').forEach(inp=>inp.onclick=()=>{
+   pv.pref.writePattern=inp.value;
+   /* 古い設定とも辻褄を合わせる（他の画面が actualColumns を見ている）。 */
+   pv.pref.actualColumns=inp.value!=='none';
+   savePref(pv.pref);
+   box.querySelectorAll('.sp-pat').forEach(l=>l.classList.toggle('is-on',
+     l.querySelector('input').value===inp.value));
+   renderPreview();
   });
   el.hidden=false;
   renderPreview();
@@ -809,6 +877,9 @@
  window.WL=window.WL||{};
  WL.schedulePrint={open,buildPages,splitToSheets,pageHtml,
                    paperCatalog,paperColumns,openLayoutPanel,
+                   /* 書き込む欄のパターン(§9.191)。名前と並びは画面の文言と
+                      同じものを1箇所から出す（テストも同じ表を見る）。 */
+                   writePatterns:()=>WRITE_PATTERNS.map(p=>({...p})),
                    /* プレビューは**中身を見て確かめられる**ようにしておく
                       （テストが「何枚になったか」を画面から読むため）。 */
                    openPreview,closePreview,previewSheets:()=>pv.sheets.slice()};

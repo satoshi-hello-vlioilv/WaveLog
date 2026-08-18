@@ -10,7 +10,16 @@
     2. **後ろの予定の時刻が動かないこと**（これが設備停止との違い）
     3. 区分が「コメント」で、中身がそのまま出ること
     4. 紙には**横いっぱいの1行**で出ること（列に押し込むと読めない）
-    5. 空のまま入れられないこと */
+    5. 空のまま入れられないこと（モーダルから入れる場合）
+
+   §9.191（利用者の指示「D&Dでコメント枠だけ追加、コメントする場合は
+   スケジュールに配置されたコメント欄をダブルクリックなどで編集モードに
+   移行し入力したコメントを入力するように使う」）で足したぶん:
+    6. 入口を**掴んで落とせる**こと。落とすと**中身は空のまま**枠が入る
+       （先に枠を置いてから書く、というのがこの指示の中身）
+    7. 置いた枠は**ダブルクリックでその場で書ける**こと（Enterで確定）
+    8. **書いている最中は勝手に読み直さない**こと（10秒ごとの見張りに
+       入力欄を消されると、書いている途中の文字が消える） */
 const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
 const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const API='http://127.0.0.1:5029';
@@ -25,7 +34,7 @@ let b=null;
  page.on('pageerror',e=>console.log('[pageerror]',e.message));
  const setMode=m=>page.evaluate(async mm=>{await fetch('/api/access-mode',{method:'POST',
    headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:mm})})},m);
- let made=null;
+ let made=null;const extra=[];
  try{
   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:25000});
@@ -111,7 +120,89 @@ let b=null;
   rec('紙には横いっぱいの1行で出る',paper&&paper.span===paper.cols&&paper.span>1,JSON.stringify(paper));
   await page.evaluate(()=>WL.schedulePrint.closePreview());
 
-  /* ---- 4) 空のままは入れられない ---- */
+  /* ---- 5) 枠だけ落として、その場で書く（§9.191） ---- */
+  const drag=await page.evaluate(()=>{
+   const btn=document.getElementById('scCommentBtn');
+   btn.dispatchEvent(new DragEvent('dragstart',{dataTransfer:new DataTransfer(),
+     bubbles:true,cancelable:true}));
+   /* 掴んでいる印は画面の見え方で確かめる（内部の変数を覗かない）。 */
+   const flag=btn.classList.contains('is-row-dragging');
+   btn.dispatchEvent(new DragEvent('dragend',{dataTransfer:new DataTransfer(),bubbles:true}));
+   return {draggable:btn.draggable,flag};
+  });
+  rec('コメントの入口は掴める（枠だけ置ける）',drag.draggable&&drag.flag,JSON.stringify(drag));
+
+  const n2=await page.evaluate(()=>(WL.scheduleView.entries()||[]).filter(e=>e.kind==='コメント').length);
+  await page.evaluate(()=>{
+   const panel=document.querySelector('.sc-drop-target');
+   const rows=[...document.querySelectorAll('.sc-row-line')];
+   const box=rows[Math.min(1,rows.length-1)].getBoundingClientRect();
+   const at={clientX:box.left+10,clientY:box.top+2};
+   const btn=document.getElementById('scCommentBtn');
+   btn.dispatchEvent(new DragEvent('dragstart',{dataTransfer:new DataTransfer(),bubbles:true,cancelable:true}));
+   panel.dispatchEvent(new DragEvent('dragover',{dataTransfer:new DataTransfer(),bubbles:true,cancelable:true,...at}));
+   panel.dispatchEvent(new DragEvent('drop',{dataTransfer:new DataTransfer(),bubbles:true,cancelable:true,...at}));
+  });
+  await page.waitForFunction(n=>(WL.scheduleView.entries()||[])
+    .filter(e=>e.kind==='コメント'&&!e.__pending).length>n,n2,{timeout:20000});
+  const dropped=await page.evaluate(()=>{
+   const list=(WL.scheduleView.entries()||[]).filter(e=>e.kind==='コメント'&&!e.__pending);
+   const e=list.find(x=>!String(x.title||'').trim());
+   return e?{id:e.id,title:e.title||'',est:e.estimate&&e.estimate.minutes}:null;
+  });
+  if(dropped)extra.push(dropped.id);
+  rec('落とすと中身が空のまま枠が入る',!!dropped&&!String(dropped.title).trim(),JSON.stringify(dropped));
+
+  /* 落とした枠は**そのまま書ける状態**にする（枠だけ置いて「次にどうするか」を
+     探させない）。ここは行を作り直したあとで開くので、待ってから見る。 */
+  await page.waitForSelector('.sc-comment-edit',{timeout:15000});
+  rec('落とした枠はそのまま書ける状態で出る',
+      await page.evaluate(()=>document.activeElement&&
+        document.activeElement.classList.contains('sc-comment-edit')));
+
+  /* 空の枠は「ここに書ける」と分かる形で出す（空欄のままだと壊れて見える）。 */
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(()=>!document.querySelector('.sc-comment-edit'),null,{timeout:8000});
+  const hint=await page.evaluate(id=>{
+   const r=[...document.querySelectorAll('.sc-row-line')].find(x=>String(x.dataset.id)===String(id));
+   return r?r.innerText.replace(/\s+/g,' '):'';
+  },dropped&&dropped.id);
+  rec('空の枠は書き方を書いてある',/ダブルクリック/.test(hint),hint.slice(0,60));
+
+  /* ---- 6) ダブルクリックでその場で書く ---- */
+  const EDIT='現場で直接書いた_'+Date.now();
+  await page.evaluate(id=>{
+   const r=[...document.querySelectorAll('.sc-row-line')].find(x=>String(x.dataset.id)===String(id));
+   r.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));
+  },dropped&&dropped.id);
+  await page.waitForSelector('.sc-comment-edit',{timeout:8000});
+  const editing=await page.evaluate(()=>({
+   欄:!!document.querySelector('.sc-comment-edit'),
+   焦点:document.activeElement&&document.activeElement.classList.contains('sc-comment-edit'),
+   読み直さない:WL.scheduleView.canAutoReload()===false,
+  }));
+  rec('ダブルクリックでその場の入力欄が出る',editing.欄&&editing.焦点,JSON.stringify(editing));
+  rec('書いている最中は勝手に読み直さない',editing.読み直さない,JSON.stringify(editing));
+  await page.fill('.sc-comment-edit',EDIT);
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(({id,t})=>((WL.scheduleView.entries()||[])
+    .find(e=>String(e.id)===String(id))||{}).title===t,
+    {id:dropped&&dropped.id,t:EDIT},{timeout:20000});
+  const saved=await page.evaluate(id=>{
+   const e=(WL.scheduleView.entries()||[]).find(x=>String(x.id)===String(id))||{};
+   const r=[...document.querySelectorAll('.sc-row-line')].find(x=>String(x.dataset.id)===String(id));
+   return {title:e.title||'',画面:r?r.innerText.replace(/\s+/g,' '):'',
+           編集中:!!document.querySelector('.sc-comment-edit')};
+  },dropped&&dropped.id);
+  rec('Enterで確定し、書いた文字が行に出る',
+      saved.title===EDIT&&saved.画面.includes(EDIT.slice(0,10))&&!saved.編集中,
+      JSON.stringify(saved).slice(0,220));
+  /* 書き終われば読み直しは戻る（書込キューが空くまでは止まったまま）。 */
+  const back=await page.waitForFunction(()=>WL.scheduleView.canAutoReload()===true,
+    null,{timeout:15000}).then(()=>true).catch(()=>false);
+  rec('書き終われば読み直しは戻る',back);
+
+  /* ---- 4) 空のままは入れられない（モーダルから入れる場合） ---- */
   await page.click('#scCommentBtn');
   await page.waitForSelector('#scCommentText',{timeout:8000});
   const n0=await page.evaluate(()=>(WL.scheduleView.entries()||[]).filter(e=>e.kind==='コメント').length);
@@ -123,10 +214,10 @@ let b=null;
   console.error('FATAL',e);rec('例外なく終わる',false,e.message);
  }finally{
   /* **後始末**: 入れたコメントを消す(残すと後続のテストの件数が合わない)。 */
-  try{if(made)await page.evaluate(async id=>{
+  try{for(const id of [made,...extra].filter(x=>x!=null))await page.evaluate(async i=>{
    await fetch('/api/schedule/plan/delete',{method:'POST',headers:{'Content-Type':'application/json'},
-     body:JSON.stringify({id,user_id:'tester'})});
-  },made)}catch(_){}
+     body:JSON.stringify({id:i,user_id:'tester'})});
+  },id)}catch(_){}
   try{await setMode('edit')}catch(_){}
   if(b)await b.close().catch(()=>{});
  }

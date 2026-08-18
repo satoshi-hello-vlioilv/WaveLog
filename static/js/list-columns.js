@@ -76,8 +76,12 @@
      見分ける手がかりは無いので、画面側で推測しない。 */
   joined:()=>new Set(Array.isArray(S.joinQuality&&S.joinQuality.addedColumnNames)
                       ?S.joinQuality.addedColumnNames:[]),
-  joinFrom:()=>{const t=S.joinQuality&&S.joinQuality.table;
-                return t?`品質データ（${t}）`:'別のデータソース'},
+  /* 結合は1件とは限らない(§9.193)。**名前で言う**——「別のデータソース」
+     では、どの結合で来た列なのかが分からない。 */
+  joinFrom:()=>{const info=S.joinQuality||{};
+                const names=(info.names||[]).filter(Boolean);
+                if(names.length)return names.join('・');
+                return info.table?`別のデータソース（${info.table}）`:'別のデータソース'},
   /* 使う分類(§9.105)。内容欄のように1つしか無い対象では減らす
      ——「結合0 / 計算・操作0」が並んでも、覚える手間が増えるだけ。 */
   origins:()=>ORIGIN_ORDER,

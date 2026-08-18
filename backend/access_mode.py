@@ -110,6 +110,14 @@ _ENDPOINT_EXTRA_MODES={
  'masters.filter_preset_register':{'schedule'},
  'masters.filter_preset_delete':{'schedule'},
  'masters.filter_preset_use':{'schedule'},
+ # **印(いつも適用)と持ち主の切り替えも同じ**(§9.190)。ここを開け忘れていた
+ # ため、scheduleモードで「いつも適用」に印を付けても403で弾かれ、画面の
+ # 控えにだけ残っていた。次に登録フィルタを読み直した時点でサーバーの
+ # 答え(印なし)で上書きされ、**「鍵をかけたのに画面を切り替えると外れる」**
+ # という形で出ていた(実機で報告)。書込ガードは黙って弾くので、
+ # **1つ開け忘れると機能だけが静かに欠ける**。
+ 'masters.filter_preset_marks':{'schedule'},
+ 'masters.filter_preset_owner':{'schedule'},
  # 一覧の見せ方(§9.88)。列の並び・幅・表示名・書式・読み替え・行間・
  # いつも使う並び順は、**その画面の見え方**の設定で、測定データにも
  # 業務マスタにも触れない。登録フィルタ・列表示マスタと同じ理由で
@@ -136,6 +144,11 @@ _ENDPOINT_EXTRA_MODES={
 # ようにするため(CLAUDE.md「読み取り専用のPOSTしか持たないBlueprintも宣言する」)。
 _READ_ONLY_POST_ENDPOINTS={'rne.rne_extract_run','tables.api_db_mirror_refresh',
                            'path_config.data_source_master_probe',
+                           # クエリ結合(§9.193)。**読むだけ**——渡された鍵の値に
+                           # 相手のデータを当てて返す。POSTなのはキーの組を
+                           # まとめて送るためで、URLに載せると長くなりすぎる。
+                           'tables.api_query_join_resolve',
+                           'masters.query_join_master_probe',
                            # 共有スケジュールを手元へ取り込むだけ(§9.188)。
                            # 作業予定は書き換えないので全モードから通す。
                            'schedule.sync_now'}
@@ -143,12 +156,52 @@ _READ_ONLY_POST_ENDPOINTS={'rne.rne_extract_run','tables.api_db_mirror_refresh',
 # 作業予定を実際に動かす操作だけが対象で、設定系マスタの保存は含めない。
 _FIELD_REORDER_ENDPOINTS={'schedule.plan_reorder'}
 
+def _relayed_identity():
+ """持ち主へ中継されてきたリクエストか(§9.192)。そうなら、**頼んだ端末の**
+ ログインIDと端末名を返す。
+
+ **ここを通さないと、中継した瞬間に全員が持ち主の名前になる**——ロックの
+ 保持者も編集セッションも「持ち主PCの誰か」になり、設備単位の排他が
+ 全端末で自分扱いになって一切効かなくなる。ヘッダは誰でも付けられるので、
+ **合言葉を確かめてから**信じること(schedule_owner側で照合する)。"""
+ try:
+  from flask import request, has_request_context
+  if not has_request_context():return None
+  from . import schedule_owner
+  return schedule_owner.relayed_identity(request.headers)
+ except Exception:
+  return None
+
+def _relayed_write_ok():
+ """持ち主の受け口から**入れ直された**書き込みか(§9.192)。
+
+ 中継は「頼んだ端末のFlaskが自分のモードで判定を通したあと」に起きる
+ ので、持ち主側でもう一度自分のモードで判定すると**二重に弾く**ことに
+ なる（持ち主はたいていeditモードなので、scheduleモードの端末からの
+ 予定の書き込みが全部403になる）。判定済みの依頼だけを通す。
+
+ 通してよい根拠は3つ揃っていることで、どれか1つでも欠けたら通さない:
+   ①自分が持ち主である（受け口を開いているのは持ち主だけ）
+   ②合言葉が一致する（目印ファイルを読める端末しか知らない）
+   ③受け口が通したパスである（RELAY_PATHSのallowlist。受け口の側で判定済み）
+ """
+ try:
+  from . import schedule_owner
+  if not schedule_owner.is_owner():return False
+  return schedule_owner.relayed_identity(request.headers) is not None
+ except Exception:
+  return False
+
 def current_login_id():
+ who=_relayed_identity()
+ if who and who[0]:return who[0]
  try:username=os.getlogin()
  except Exception:username=os.environ.get('USERNAME') or os.environ.get('USER') or os.environ.get('LOGNAME') or ''
  return str(username or '').strip()
 
 def current_pc_name():
+ who=_relayed_identity()
+ if who and who[1]:return who[1]
  try:return str(socket.gethostname() or '').strip()
  except Exception:return ''
 
@@ -221,6 +274,7 @@ def install(app):
  def _guard_write():
   if request.method=='GET':return None
   if request.endpoint in _READ_ONLY_POST_ENDPOINTS:return None  # 読み直すだけのPOST(§9.50)
+  if _relayed_write_ok():return None   # 持ち主への中継(§9.192)。判定は依頼元で済んでいる
   bp=request.blueprint
   if bp is None:return None            # app直付け(モード切替API・shutdown等)は対象外
   allowed=_WRITE_ALLOWED_MODES.get(bp)

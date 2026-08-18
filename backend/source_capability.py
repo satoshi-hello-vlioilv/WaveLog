@@ -21,7 +21,8 @@ import unicodedata
 from pathlib import Path
 
 from .db_access import (DBS, cfg, connect, tables, cols,
-                        WORK_DB_KEY, QUALITY_DB_KEY, PURPOSE_WORK, PURPOSE_QUALITY)
+                        WORK_DB_KEY, QUALITY_DB_KEY, SCHEDULE_DB_KEY,
+                        PURPOSE_WORK, PURPOSE_QUALITY, PURPOSE_SCHEDULE)
 from .logging_setup import app_logger
 
 
@@ -154,7 +155,7 @@ def describe(source, path=None):
                   '登録・変更のあとはサーバーを再起動してください。')
   reason = '再起動するまで確かめられません。'
   out['features'] = {k: _feature(False, reason)
-                     for k in ('list', 'measure', 'plan', 'quality')}
+                     for k in ('list', 'measure', 'plan', 'quality', 'schedule')}
   return out
 
  columns, all_tables = [], []
@@ -178,6 +179,7 @@ def describe(source, path=None):
  # WORK_DB_KEY と一致しようがない）。登録済みは実際に効いている役割で見る。
  is_work = (purpose == PURPOSE_WORK) if draft else (bool(WORK_DB_KEY) and key == WORK_DB_KEY)
  is_quality = (purpose == PURPOSE_QUALITY) if draft else (bool(QUALITY_DB_KEY) and key == QUALITY_DB_KEY)
+ is_schedule = (purpose == PURPOSE_SCHEDULE) if draft else (bool(SCHEDULE_DB_KEY) and key == SCHEDULE_DB_KEY)
 
  # ---- ① 一覧として見る（役割によらず、開ければ必ずできる） ----
  if out['error']:
@@ -189,9 +191,9 @@ def describe(source, path=None):
  # ---- ② 測定を開く ----
  if not is_work:
   measure_f = _feature(False,
-   '役割が「作業」ではありません。測定を開けるのは役割「作業」の1件だけです。'
+   f'役割が「{PURPOSE_WORK}」ではありません。測定を開けるのは役割「{PURPOSE_WORK}」の1件だけです。'
    if purpose != PURPOSE_WORK else
-   '役割「作業」は別のデータソースに付いています（役割は1件だけです）。')
+   f'役割「{PURPOSE_WORK}」は別のデータソースに付いています（役割は1件だけです）。')
  elif not lot:
   measure_f = _feature(False,
    'ロット番号の列が見つかりません（探した名前: '
@@ -203,7 +205,7 @@ def describe(source, path=None):
 
  # ---- ③ 作業スケジュールへ投入する ----
  if not is_work:
-  plan_f = _feature(False, '役割「作業」のデータソースだけが予定へ投入できます。')
+  plan_f = _feature(False, f'役割「{PURPOSE_WORK}」のデータソースだけが予定へ投入できます。')
  elif not equip:
   plan_f = _feature(False,
    '設備名の列が見つかりません（探した名前: '
@@ -226,16 +228,38 @@ def describe(source, path=None):
   except Exception as e:
    qt, missing = '', [f'確かめられませんでした（{e}）']
   if qt:
-   quality_f = _feature(True, f'表「{qt}」を、ロット番号・鋳造番号・製造材質で作業の一覧へ結合します。',
-                        'スケジュールモードの作業一覧でだけ結合します。')
+   quality_f = _feature(True, f'表「{qt}」を、ロット番号・鋳造番号・製造材質で仕掛の一覧へ結合します。',
+                        'これは既定の結合です。別のキー・別の相手で結合したいときは'
+                        'マスタ管理 > クエリ結合で登録します（役割が無いデータソースも相手にできます）。')
   else:
    quality_f = _feature(False,
     '突合キーの列がすべて揃った表がありません（足りない列: ' + '・'.join(missing) + '）。')
 
- out['features'] = {'list': list_f, 'measure': measure_f, 'plan': plan_f, 'quality': quality_f}
+ # ---- ⑤ スケジュール(作業予定)の本体として使う ----
+ # 役割「スケジュール」(§9.193)。**予定を書く先**なので、表`作業予定`が
+ # 無いファイルを指していると、共有スケジュールとしては使えない。
+ if not is_schedule:
+  schedule_f = _feature(False,
+   f'役割が「{PURPOSE_SCHEDULE}」ではありません。予定の本体にできるのは1件だけです。')
+ elif out['error']:
+  schedule_f = _feature(False, out['error'])
+ elif SCHEDULE_PLAN_TABLE not in (all_tables or []):
+  schedule_f = _feature(False,
+   f'表「{SCHEDULE_PLAN_TABLE}」がありません（見つかった表: '
+   + ('・'.join(all_tables or []) or 'なし') + '）。'
+   '共有スケジュールDBを指しているか確かめてください。')
+ else:
+  schedule_f = _feature(True, f'このファイルを共有スケジュール（{SCHEDULE_PLAN_TABLE}）として読み書きします。',
+                        '共通設定の「共有スケジュールの置き場」を入れてある端末では、そちらが優先されます。')
+
+ out['features'] = {'list': list_f, 'measure': measure_f, 'plan': plan_f,
+                    'quality': quality_f, 'schedule': schedule_f}
  return out
 
 
-FEATURE_ORDER = ('list', 'measure', 'plan', 'quality')
+# 共有スケジュールDBの中身の目印(backend/repositories/schedule_repo.py の実体)。
+SCHEDULE_PLAN_TABLE = '作業予定'
+FEATURE_ORDER = ('list', 'measure', 'plan', 'quality', 'schedule')
 FEATURE_LABEL = {'list': '一覧として見る', 'measure': '測定を開く',
-                 'plan': 'スケジュールへ投入', 'quality': '品質として結合'}
+                 'plan': 'スケジュールへ投入', 'quality': '品質として結合',
+                 'schedule': '予定の本体にする'}

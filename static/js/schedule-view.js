@@ -60,6 +60,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  }
  let scState={equipment:'',entries:[],anchor:null,warnings:[],configured:true,
               editable:false,pickerEnabled:false,stopReasons:[],dragId:null,insertBefore:'',
+              editingComment:null,   // 申し送りをその場で書いている行のID(§9.191)
+              focusComment:null,     // 落として入れた枠。描き終わりで開く
               /* まとめて外す(§9.170)。選んだ予定のid(文字列)と、掴んでいる
                  最中の「まとめて運んでいる一式」。単発の並べ替えと混ざらない
                  よう、複数を掴んでいる間は dragIds に入れて dragId と
@@ -67,7 +69,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
               picked:new Set(),dragIds:null,
               boardMode:'single',boardWindowHours:24,overview:[],overviewSort:'order',
               sessionHeld:false,sessionHolder:null,sessionError:null,
-              canStartWork:false,historyHours:loadHistoryHours(),groupMode:'none'};
+              canStartWork:false,historyHours:loadHistoryHours(),groupMode:'none',
+              /* クエリ結合(§9.193)で足された列の名前。予定がまだ無い設備でも
+                 内容欄の候補に出せるよう、行ではなくここに持つ。 */
+              joinColumns:[]};
  /* ---------- 読込結果のキャッシュ(§9.42) ----------
     共有スケジュールDBと実績バックアップはネットワーク共有上にあり、開くたびに
     読み直すと待たされる。**一度読んだら保持し、画面を開き直しただけでは
@@ -114,7 +119,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     **勝手に読み直さない場面がある**——掴んで動かしている最中・選んでいる
     最中・書込を待っている最中に行が入れ替わると、何をしていたか分からなく
     なる。そのときは帯で知らせて、押されたら読み直す。 */
- let scSyncTimer=null,scSyncSeen=null,scSyncState=null;
+ let scSyncTimer=null,scSyncSeen=null,scSyncState=null,scOwnerState=null,scOwnerTick=0;
  function syncChipText(st){
   if(!st||!st.configured)return '';
   if(!st.enabled)return '共有: 読むたびに取り込み';
@@ -124,24 +129,47 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
             :`${Math.round(age/60)}分前に取り込み`;
   return `共有: ${when}`;
  }
+ /* 書き込み役(§9.192)。**入れている現場でだけ出す**——使っていない現場に
+    「持ち主」という覚える言葉を増やさない。色だけで伝えないので、
+    このPCなのか他のPCなのかを必ず文字で書く。 */
+ function ownerChipText(o){
+  if(!o||!o.enabled||!o.configured)return '';
+  if(o.isOwner)return '書込役: このPC';
+  if(o.ownerPc)return `書込役: ${o.ownerPc}`;
+  return '書込役: 探しています';
+ }
+ function ownerChipTitle(o){
+  if(!o||!o.enabled||!o.configured)return [];
+  const lines=['共有ファイルへ実際に書くのは1台だけです（他のPCはその1台へ書き込みを頼みます）。'];
+  if(o.isOwner)lines.push(`このPCが書込役です（受け口 ${(o.myUrls||[]).join(' / ')}）。`);
+  else if(o.ownerPc)lines.push(`書込役は ${o.ownerPc}${o.ownerLogin?`（${o.ownerLogin}）`:''} です`
+                               +`${o.ownerUrl?` / ${o.ownerUrl}`:''}。`);
+  else lines.push('書込役がまだ決まっていません（決まるまでは各PCが自分で書きます）。');
+  if(o.ownerAliveSec!=null)lines.push(`最後の生存確認: ${Math.round(o.ownerAliveSec)}秒前（期限 ${o.ttlSec}秒）`);
+  if(o.relays)lines.push(`頼んだ回数: ${o.relays}回${o.relayFail?` / 届かなかった: ${o.relayFail}回`:''}`);
+  if(o.lastError)lines.push(`最後のエラー: ${o.lastError}（届かないあいだは自分で書きます）`);
+  return lines;
+ }
  function renderSyncChip(){
   const el=$('#scSyncChip');if(!el)return;
   const st=scSyncState;
-  const text=syncChipText(st);
-  el.hidden=!text;
-  if(!text)return;
-  el.textContent=text;
-  el.title=[`${st.intervalSec}秒ごとに共有の改訂番号を確かめ、変わっていたら取り込みます。`,
-            `取り込んだ直後は${st.pauseSec}秒休みます（更新が続いているときに共有を掴み続けないため）。`,
-            st.revision!=null?`いまの改訂番号: ${st.revision}`:'',
-            st.lastError?`最後のエラー: ${st.lastError}`:'',
+  const text=syncChipText(st),own=ownerChipText(scOwnerState);
+  el.hidden=!text&&!own;
+  if(el.hidden)return;
+  el.textContent=[text,own].filter(Boolean).join(' ・ ');
+  el.title=[st&&st.configured?`${st.intervalSec}秒ごとに共有の改訂番号を確かめ、変わっていたら取り込みます。`:'',
+            st&&st.configured?`取り込んだ直後は${st.pauseSec}秒休みます（更新が続いているときに共有を掴み続けないため）。`:'',
+            st&&st.revision!=null?`いまの改訂番号: ${st.revision}`:'',
+            st&&st.lastError?`最後のエラー: ${st.lastError}`:'',
+            ...ownerChipTitle(scOwnerState),
             '押すといま取り込みます。'].filter(Boolean).join('\n');
-  el.classList.toggle('is-error',!!st.lastError);
+  el.classList.toggle('is-error',!!((st&&st.lastError)||(scOwnerState&&scOwnerState.lastError&&scOwnerState.relayFail)));
   el.onclick=syncNow;
  }
  /* いま読み直してよいか。**途中の操作を壊さない**ことだけを見る。 */
  function canAutoReload(){
   return !scState.dragId&&!scState.dragIds&&!scWriteQueue.length&&!scQueueRunning
+         &&!scState.editingComment
          &&!(scState.picked&&scState.picked.size)
          &&!document.querySelector('.sc-float-win:not([hidden])')
          &&!listModalOpen;
@@ -158,7 +186,16 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  async function refreshSyncBadge(){
   try{
    const st=await api('/api/schedule/sync-status');
-   scSyncState=st;renderSyncChip();
+   scSyncState=st;
+   /* 書き込み役は**別の問い合わせ**（取り込みの状態とは別の話なので混ぜない）。
+      **入れていない現場では聞き続けない**——10秒ごとに聞く必要があるのは
+      「持ち主が入れ替わったか」を追うときだけで、offのままの現場では
+      5分に1回で足りる（設定を入れたら次の回で気づく）。 */
+   if(!scOwnerState||scOwnerState.enabled||scOwnerTick<=0){
+    try{scOwnerState=await api('/api/schedule/owner-status')}catch(e){}
+    scOwnerTick=(scOwnerState&&scOwnerState.enabled)?0:30;
+   }else scOwnerTick--;
+   renderSyncChip();
    if(!st.configured||st.revision==null)return;
    /* **基準は読み直すたびに置き直す**——自分の書込でも改訂番号は上がる
       ので、直前の値と比べるだけでは自分の変更で読み直してしまう。 */
@@ -262,7 +299,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      <button type="button" class="sc-split-toggle" id="scContentModalBtn" hidden title="このスケジュール表に出す列・並び・幅・書式をまとめて設定します（設備ごとに保存）">☰ 表示列</button>
      <button type="button" class="sc-split-toggle" id="scListModalBtn" hidden title="仕掛一覧をポップアップで表示してドラッグで追加します">⧉ ポップアップ</button>
      <button type="button" class="sc-split-toggle" id="scStopModalBtn" hidden title="設備停止をポップアップから追加します">⛔ 設備停止</button>
-     <button type="button" class="sc-split-toggle" id="scCommentBtn" hidden title="申し送り（コメント）を予定の列へ挟みます。時間は取りません">💬 コメント</button>
+     <button type="button" class="sc-split-toggle" id="scCommentBtn" draggable="true" hidden title="申し送り（コメント）を予定の列へ挟みます。時間は取りません。&#10;・掴んで予定の間へ落とすと、空の枠だけが入ります（あとでダブルクリックして書けます）&#10;・押すとその場で書いて入れられます">💬 コメント</button>
      <button type="button" class="sc-split-toggle" id="scPrintBtn" title="いま表示している予定を、現場へ配る形（A4）で印刷します">🖨 印刷</button>
      <button type="button" class="sc-refresh" id="scRefresh">再計算</button>
     </div>
@@ -348,7 +385,21 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   $('#scModeSingle').onclick=()=>switchToSingle();
   $('#scListModalBtn').onclick=()=>listModalOpen?closeListModal():openListModal();
   $('#scStopModalBtn').onclick=()=>stopModalOpen?closeStopModal():openStopModal();
-  $('#scCommentBtn').onclick=()=>addComment();
+  /* コメントは**掴んで落とす**こともできる(§9.191、利用者の指示
+     「D&Dでコメント枠だけ追加」)。落とすと空の枠が入り、中身は行を
+     ダブルクリックして書く。押した場合は今までどおりその場で書いて入れる。 */
+  const cmt=$('#scCommentBtn');
+  cmt.onclick=()=>addComment();
+  cmt.addEventListener('dragstart',e=>{
+   /* 掴んでいる印は**このファイルの中だけ**で持つ（受け皿も同じファイル）。
+      素の`window.*`を増やさない——`__scDragRows`は list-view.js から渡す
+      ための既存の契約で、こちらは外へ出す必要が無い（CLAUDE.md）。 */
+   scState.dragComment=true;
+   e.dataTransfer.effectAllowed='copy';
+   try{e.dataTransfer.setData('text/plain','コメント')}catch(err){/* setData制限は無視 */}
+   cmt.classList.add('is-row-dragging');
+  });
+  cmt.addEventListener('dragend',()=>{cmt.classList.remove('is-row-dragging');scState.dragComment=false});
   /* 内容欄の設定は**仕掛一覧と同じパネル**で開く(§9.120)。専用モーダルの
      実装は当面残す（他から呼ばれていないかを通しで確かめるまでの保険）。 */
   $('#scContentModalBtn').onclick=()=>openContentPanel();
@@ -760,7 +811,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   panel.classList.add('sc-drop-target');
   const dropApplicable=()=>scState.fullControl&&scState.boardMode==='single'&&!!scState.equipment&&!sessionBlocked();
   panel.addEventListener('dragover',e=>{
-   if((!window.__scDragRows&&!window.__scDragStopReason)||!dropApplicable())return;
+   if((!window.__scDragRows&&!window.__scDragStopReason&&!scState.dragComment)||!dropApplicable())return;
    e.preventDefault();
    e.dataTransfer.dropEffect='copy';
    panel.classList.add('sc-drop-active');
@@ -785,6 +836,17 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     /* 落とした位置へ入れる(§9.179改訂)。位置が決まらなければ末尾。 */
     if(WL.scheduleInsert)scState.insertBefore=WL.scheduleInsert.takeDropTarget();
     if(dropApplicable())addStopReasonToSchedule(reason.id,reason.name);
+    else clearInsertPin();
+    return;
+   }
+   /* コメントの枠だけを落とす(§9.191)。**中身は空のまま入れる**——
+      落とした位置に枠が見えてから書けるほうが、先に文章を考えるより早い。 */
+   if(scState.dragComment){
+    e.preventDefault();
+    panel.classList.remove('sc-drop-active');
+    scState.dragComment=false;
+    if(WL.scheduleInsert)scState.insertBefore=WL.scheduleInsert.takeDropTarget();
+    if(dropApplicable())addCommentAt('',{focus:true});
     else clearInsertPin();
     return;
    }
@@ -1620,6 +1682,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   scState.planFetchedAt=fetchedAt;
   renderWarnings();renderTimeline();updateFreshnessUi(fetchedAt);
   scheduleWorkableWatch();   // 可でない行が残っていれば裏で追いかける(§9.51)
+  /* 結合の値は**描き終えてから・手が空いてから**当てる(§9.94と同じ作法)。
+     予定が出るまでの時間に相手のDBの往復を挟まない。 */
+  (window.requestIdleCallback||(f=>setTimeout(f,300)))(()=>{scJoinRefresh()});
  }
  /* ---------- 予定は「取得」と「描画」を分ける(§9.182) ----------
     取得だけ先に始めておいて、表示設定が揃ったところで描く。1つの関数で
@@ -1931,22 +1996,24 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const keys=timelineContentKeys();
   const t=timelineTarget();
   if(e.kind!=='作業'){
-   const title=(e.title||(e.kind==='コメント'?'（コメント）':'設備停止')).trim();
+   const title=(e.title||(e.kind==='コメント'?'（ダブルクリックで書けます）':'設備停止')).trim();
    return keys.map((k,i)=>({key:k,text:i===0?title:'',raw:i===0?title:'',color:''}));
   }
+  const row=entryRow(e);
   return keys.map(k=>{
-   const raw=contentValueOf(e.detail,k);
+   const raw=entryValueOf(e,k);
    const out=WL.cellFormat.cell({raw,format:t?WL.columnLayout.format(t,k):null,
                                  rule:t?WL.columnLayout.rule(t,k):'',
-                                 row:e.detail||{},column:k});
+                                 row,column:k});
    return {key:k,text:out.text,raw:String(raw==null?'':raw),color:out.color};
   });
  }
  function entryContentText(e){
   if(e.kind!=='作業')return (e.title||(e.kind==='コメント'?'（コメント）':'設備停止')).trim();
+
   const items=(scContentPrefs.equipment===scState.equipment)?scContentPrefs.items:null;
   if(items&&items.length){
-   const parts=items.map(k=>contentValueOf(e.detail,k)).filter(v=>v!==undefined);
+   const parts=items.map(k=>entryValueOf(e,k)).filter(v=>v!==undefined);
    if(parts.length)return parts.map(v=>String(v).trim()).join(' / ');
   }
   /* 既定の組み立て。**値の取り出しはcontentValueOf経由**にする(§9.69)。
@@ -2568,7 +2635,18 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   renderPickBar(timeline);
   restoreInsertGhost();
   renderUndecided();
+  openPendingCommentEdit();
   refreshScheduledLotFilter();
+ }
+ /* 落として入れた枠を、描き終わったところで開く(§9.191)。**1回で消す**
+    ——残すと、次に描き直すたびに勝手に編集へ入る。 */
+ function openPendingCommentEdit(){
+  const id=scState.focusComment;
+  if(!id)return;
+  const entry=(scState.entries||[]).find(x=>String(x.id)===String(id));
+  if(!entry)return;                       // まだ反映前。次の描画で開く
+  scState.focusComment=null;
+  requestAnimationFrame(()=>startCommentEdit(id));
  }
 
  /* ---------- 「時刻未定」が残っているときの案内(§9.185) ----------
@@ -2922,6 +3000,21 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      if(ev.target.closest('button'))return;
      ev.preventDefault();openEntryReport(e);
     };
+   }else if(commentEditable(e)){
+    /* 申し送りは**その場で書く**(§9.191、利用者の指示「配置された
+       コメント欄をダブルクリックなどで編集モードに移行し入力する」)。
+       作業・完了の行とはkind・stateで排他なので、ダブルクリックの
+       割り当てはぶつからない。 */
+    row.classList.add('sc-row-comment-edit');
+    row.title='ダブルクリックで書き直せます';
+    row.ondblclick=ev=>{
+     if(ev.target.closest('button'))return;
+     ev.preventDefault();startCommentEdit(e.id);
+    };
+   }else if(e.kind==='コメント'){
+    /* **できないことは、できないと書く**(CLAUDE.md §4)。 */
+    row.title=e.__pending?'サーバーへ反映中です。反映されたら書けます'
+      :(sessionBlocked()?sessionHolderMessage():'この行は書き直せません');
    }
    timeline.append(row);
 
@@ -3013,7 +3106,14 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  }
  /* 時刻が動く操作。**「追加」だけではない**——外す・並べ替える・固定を
     切り替えるのも、その後ろの予定の時刻を動かす。 */
+ /* 時刻が動く操作。**「追加」だけではない**——外す・並べ替える・固定を
+    切り替えるのも、その後ろの予定の時刻を動かす。
+    **申し送りの本文だけの更新は動かさない**(§9.191)ので数えない
+    ——数えると、1文字直すたびに全部を取り直して画面が作り直される。 */
  const SC_TIME_SHIFT_OPS=new Set(['add','delete','reorder','update']);
+ const opShiftsTime=op=>!!op&&SC_TIME_SHIFT_OPS.has(op.op)
+   &&!(op.op==='update'&&Object.prototype.hasOwnProperty.call(op,'title')
+       &&!('fixedStart' in op)&&!('estimateMinutes' in op)&&!('state' in op));
  async function runWriteQueue(){
   if(scQueueRunning)return;
   scQueueRunning=true;
@@ -3041,7 +3141,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
          if(b.onFailure){try{b.onFailure(err)}catch(_e){/* ロールバック失敗は無視 */}}
         }
        });
-       if(batch.some(b=>b.op&&SC_TIME_SHIFT_OPS.has(b.op.op)))timeShifted=true;
+       if(batch.some(b=>opShiftsTime(b.op)))timeShifted=true;
        scWriteQueue.splice(0,batch.length);
        handled=true;
       }catch(e){
@@ -3065,7 +3165,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     const op=scWriteQueue[0];
     try{
      await op.run();
-     if(op.op&&SC_TIME_SHIFT_OPS.has(op.op.op))timeShifted=true;
+     if(opShiftsTime(op.op))timeShifted=true;
      scWriteQueue.shift();
     }catch(e){
      op.attempts++;
@@ -3799,15 +3899,89 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const text=String(box&&box.value||'').trim().slice(0,200);
   if(!ok)return;
   if(!text){showToast&&showToast('コメントが空です','内容を入れてから押してください',3000);return}
+  addCommentAt(text);
+ }
+ /* ---------- 申し送りをその場で書く(§9.191) ----------
+    利用者の指示「配置されたコメント欄をダブルクリックなどで編集モードに
+    移行し入力する」。**行を作り直さない**のが要点で、この画面は
+    10秒ごとの見張り(§9.188)・書込キューの後始末・並べ替えのたびに
+    `renderTimeline()`で行ごと作り直す。入力欄をそこへ置くと、打っている
+    最中に消える（受信欄と同じ罠。§9.122）。
+      ・編集中は`scState.editingComment`を立て、勝手な読み直しを止める
+      ・確定したらセルの文字だけ差し替える（`applyWorkableFlags`と同じ手）
+      ・失敗したら元の文字へ戻す（楽観的更新は`updateFixedStart`が手本） */
+ function commentEditable(e){
+  return !!e&&e.kind==='コメント'&&e.state==='予定'&&!e.__pending
+    &&scState.fullControl&&!sessionBlocked();
+ }
+ function commentRowOf(id){
+  return [...document.querySelectorAll('.sc-row-line')]
+   .find(r=>String(r.dataset.id)===String(id))||null;
+ }
+ function startCommentEdit(id){
+  const entry=(scState.entries||[]).find(x=>String(x.id)===String(id));
+  const row=commentRowOf(id);
+  if(!entry||!row||!commentEditable(entry))return;
+  const cell=row.querySelector('.sc-row-title')||row.querySelector('[data-col]');
+  if(!cell||cell.querySelector('textarea'))return;
+  scState.editingComment=String(id);
+  const before=entry.title||'';
+  const box=document.createElement('textarea');
+  box.className='sc-comment-edit';box.rows=1;box.maxLength=200;box.value=before;
+  box.title='Enterで確定／Escでやめる';
+  cell.textContent='';cell.appendChild(box);
+  box.focus();box.setSelectionRange(box.value.length,box.value.length);
+  const finish=save=>{
+   if(scState.editingComment!==String(id))return;
+   scState.editingComment=null;
+   const next=String(box.value||'').trim().slice(0,200);
+   if(!save||next===before){paintCommentCell(entry,before);return}
+   entry.title=next;paintCommentCell(entry,next);
+   queuePlanOp({op:'update',id:entry.id,title:next,
+    onFailure:()=>{entry.title=before;paintCommentCell(entry,before);
+     showToast&&showToast('コメントを保存できませんでした','元の内容へ戻しました',6000)}});
+  };
+  box.addEventListener('keydown',ev=>{
+   /* 1行の申し送りなのでEnterで確定。改行を入れたいときはShift+Enter。 */
+   if(ev.key==='Enter'&&!ev.shiftKey){ev.preventDefault();finish(true)}
+   else if(ev.key==='Escape'){ev.preventDefault();finish(false)}
+  });
+  box.addEventListener('blur',()=>finish(true));
+ }
+ /* セルの文字だけ書き換える。**行を作り直さない**（作り直すと、選択・
+    掴んでいる状態・開いている詳細まで巻き添えになる）。 */
+ function paintCommentCell(entry,text){
+  const row=commentRowOf(entry.id);if(!row)return;
+  const cell=row.querySelector('.sc-row-title')||row.querySelector('[data-col]');
+  if(!cell)return;
+  const shown=String(text||'').trim()||'（ダブルクリックで書けます）';
+  cell.textContent=shown;
+  cell.title=String(text||'')||'まだ何も書かれていません';
+  cell.classList.toggle('is-empty',!String(text||'').trim());
+ }
+
+ /* 本文と位置を受けて入れる本体。**D&Dは空のまま入れる**(§9.191)ので、
+    ここは空文字も通す（サーバー側も空を受ける。書くのは後）。 */
+ function addCommentAt(text,opts={}){
+  if(!scState.equipment)return;
   const target=scState.equipment;
   const at=takeInsertBefore();
-  const entry=makeOptimisticEntry('コメント',{title:text});
+  const entry=makeOptimisticEntry('コメント',{title:String(text||'')});
   insertEntriesAt(at,[entry]);
   renderTimeline();
-  queuePlanOp({op:'add',equipment:target,kind:'コメント',title:text,
+  queuePlanOp({op:'add',equipment:target,kind:'コメント',title:String(text||''),
    position:at?`before:${at}`:'end',
-   onSuccess:r=>resolveOptimisticEntry(entry,r),onFailure:()=>discardOptimisticEntry(entry)});
-  showToast&&showToast('申し送りを入れました',text.slice(0,40),3200);
+   onSuccess:r=>{
+    resolveOptimisticEntry(entry,r);
+    /* 落として入れた空の枠は、**そのまま書ける状態にする**——枠だけ置いて
+       「次にどうするか」を探させない。**印を立てて描き終わりで開く**
+       ——追加のあとは時刻の取り直し(§9.185)で行が作り直されるので、
+       ここで直接開くと入力欄ごと消える。 */
+    if(opts.focus)scState.focusComment=String(entry.id);
+   },
+   onFailure:()=>discardOptimisticEntry(entry)});
+  showToast&&showToast(text?'申し送りを入れました':'コメントの枠を入れました',
+    text?String(text).slice(0,40):'枠をダブルクリックすると書けます',3200);
  }
 
  /* ---------- 設備停止のポップアップ表示(§9.13新設) ----------
@@ -4009,6 +4183,90 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   }
   return undefined;
  }
+ /* ---------- クエリ結合の値をスケジュール表でも使う(§9.193) ----------
+    予定の行が持っているのは**投入した時点の仕掛データ(detail)**で、品質の
+    ように後から確定する値は入っていない。同じ結合の定義(マスタ管理 >
+    クエリ結合)を予定の行にも当て、足された列を内容欄で選べるようにする。
+    **一覧と同じ定義・同じエンジン**を通すので、一覧に出る列とスケジュール表
+    に出る列が食い違わない。 */
+ function entryValueOf(e,key){
+  const j=e&&e.joined;
+  if(j){
+   const v=j[key];
+   if(v!==undefined&&v!==null&&String(v).trim()!=='')return v;
+  }
+  return contentValueOf(e&&e.detail,key);
+ }
+ /* 書式・読み替えが条件で見る「行」。**結合の値が上**——同じ名前の列が
+    detail にもある（結合が効いている状態で投入した予定）ときは、凍った
+    写しではなく今の値を使う。 */
+ function entryRow(e){
+  if(!e)return {};
+  return e.joined?Object.assign({},e.detail||{},e.joined):(e.detail||{});
+ }
+ let scJoinKeys=null,scJoinKeysAt=0,scJoinSig='',scJoinSeq=0;
+ const SC_JOIN_KEYS_TTL=60000;
+ /* 突合に要る列名は**サーバーが答える**。予定1行は200列のスナップショットを
+    持っているので、全部送ると50行で数MBの往復になる。 */
+ async function scJoinKeyColumns(){
+  const db=WL.dataSource.workKey();if(!db)return null;
+  if(scJoinKeys&&scJoinKeys.db===db&&Date.now()-scJoinKeysAt<SC_JOIN_KEYS_TTL)return scJoinKeys;
+  try{
+   /* **既定の品質データ結合はここでは当てない**(`builtin=0`)。あれは
+      仕掛一覧のための古い決め打ちで、スケジュール表まで自動で広げると
+      **誰も頼んでいないのに内容欄の候補が増え**、予定を読むたびに相手の
+      DBへの往復が1本増える。品質をスケジュール表に出したい人は、
+      マスタ管理 > クエリ結合に1件登録する（それがこの機能の趣旨）。 */
+   const r=await api('/api/query-join/keys?db='+encodeURIComponent(db)+'&builtin=0');
+   scJoinKeys={db,keys:r.keys||[],joins:r.joins||[]};
+  }catch(_){scJoinKeys={db,keys:[],joins:[]}}
+  scJoinKeysAt=Date.now();
+  return scJoinKeys;
+ }
+ /* 画面の外から中身を確かめる口(§9.51の`scheduleWorkableState`と同じ扱い)。
+    **読むだけ**——結合が当たっているか、どの列が足されたかを、DOMを掘らずに
+    見られるようにしておく（当たっていないときの切り分けに要る）。 */
+ WL.scheduleJoinState=()=>({
+  columns:[...(scState.joinColumns||[])],
+  joins:((scJoinKeys&&scJoinKeys.joins)||[]).map(j=>j.name),
+  resolved:(scState.entries||[]).filter(e=>e.joined&&Object.keys(e.joined).length).length,
+ });
+ async function scJoinRefresh(){
+  const meta=await scJoinKeyColumns();
+  if(!meta||!meta.keys.length){scState.joinColumns=[];return}
+  const targets=scState.entries.filter(e=>e.kind==='作業');
+  if(!targets.length){scState.joinColumns=[];return}
+  const eq=scState.equipment;
+  /* **行そのものではなくidで覚える。** 往復のあいだに予定を読み直すと
+     `scState.entries`が別のオブジェクトへ差し替わり、掴んでおいた参照へ
+     書き込んでも画面には出ない（描いているのは新しいほうなので、値が
+     入っているのに空欄のまま、という見え方になる）。 */
+  const ids=targets.map(e=>String(e.id));
+  const rows=targets.map(e=>{
+   const o={};
+   meta.keys.forEach(k=>{const v=contentValueOf(e.detail,k);if(v!==undefined&&v!==null&&String(v)!=='')o[k]=v});
+   return o;
+  });
+  /* **同じ鍵なら引き直さない。** 描き直しのたびに相手のDBを引くと、
+     並べ替え1回で往復が積み上がる。 */
+  const sig=meta.db+'|'+JSON.stringify(rows);
+  if(sig===scJoinSig)return;
+  scJoinSig=sig;
+  const seq=++scJoinSeq;
+  try{
+   const r=await api('/api/query-join/resolve',{method:'POST',
+     headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({db:meta.db,rows,builtin:false})});
+   if(seq!==scJoinSeq||scState.equipment!==eq)return;
+   scState.joinColumns=r.columns||[];
+   const byId=new Map((scState.entries||[]).map(e=>[String(e.id),e]));
+   (r.values||[]).forEach((v,i)=>{const e=byId.get(ids[i]);if(e)e.joined=v});
+   if(scState.joinColumns.length)renderTimeline();
+  }catch(_){
+   // 次の読み直しでやり直せるように、控えを捨てる（黙って諦めない）。
+   if(seq===scJoinSeq)scJoinSig='';
+  }
+ }
  /* 候補の正規化。「用途名」と「purposeName」のように同じ意味の項目が2つ並ぶと
     どちらを選ぶべきか分からず、しかも片方は古い予定で引けない。alias表に
     載っている項目はalias名へ寄せて1つにまとめる(表示は日本語名)。 */
@@ -4027,6 +4285,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   // (予定がまだ1件も無い設備でも既定を選べるように)。
   const raw=[...(typeof S!=='undefined'&&Array.isArray(S.columns)?S.columns:[])];
   scState.entries.forEach(e=>{if(e.detail)raw.push(...Object.keys(e.detail))});
+  /* 結合で足される列(§9.193)。**予定がまだ1件も無い設備でも選べる**ように
+     サーバーが返した名前をそのまま足す（行から拾うだけだと、当たっている
+     行が1つも無い設備では候補に出てこない）。 */
+  raw.push(...(scState.joinColumns||[]));
+  scState.entries.forEach(e=>{if(e.joined)raw.push(...Object.keys(e.joined))});
   raw.push(...DEFAULT_CONTENT_ITEMS);
   const seen=new Set(),out=[];
   raw.forEach(k=>{const c=canonicalContentKey(k);if(!seen.has(c)){seen.add(c);out.push(c)}});
@@ -4108,7 +4371,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    /* **値の取り出しはcontentValueOf経由**(§9.69)。投入した時期によって
       alias名だけの予定と生カラム名を持つ予定が混ざるので、直接引くと
       古い予定で1件も出ない。 */
-   valueOf:(row,k)=>scIsFixedCol(k)?scFixedCellText(row,k):contentValueOf(row&&row.detail,k),
+   valueOf:(row,k)=>scIsFixedCol(k)?scFixedCellText(row,k):entryValueOf(row,k),
    /* **項目名は日本語で出す。** 内容欄のキーは`lotNo`/`purposeName`という
       alias名なので、そのまま並べると選んだ本人以外には何の項目か分からない
       （タイムラインの見出しが日本語なのに、設定画面だけ生のキーという
@@ -4116,19 +4379,24 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    labelOf:k=>scColLabel(k),
    /* 固定列は**予定そのものが持つ値**で、仕掛データの列ではない。
       分類と一言の説明を添える(§9.105。出どころを言う)。 */
-   originOf:k=>scIsFixedCol(k)?'calc':'source',
+   originOf:k=>scIsFixedCol(k)?'calc':((scState.joinColumns||[]).includes(k)?'join':'source'),
    noteOf:k=>{const d=SC_COL_MAP.get(k);return d?d.note:''},
    currentWidthOf:k=>{
     const el=document.querySelector(`.sc-row-head [data-col="${CSS.escape(k)}"]`);
     return el?Math.round(el.getBoundingClientRect().width):0;
    },
    virtual:()=>({}),
-   joined:()=>new Set(),
-   joinFrom:()=>'',
+   /* 結合で足された列(§9.193)。**サーバーが返した名前をそのまま使う**
+      ——列名から見分ける手がかりは無い（§9.105と同じ約束）。 */
+   joined:()=>new Set(scState.joinColumns||[]),
+   joinFrom:()=>((scJoinKeys&&scJoinKeys.joins||[]).map(j=>j.name).filter(Boolean).join('・')
+                 ||'クエリ結合'),
    /* 計算式は持たない（内容欄の値は予定のスナップショットで、一覧の行を
       前提にした式とは土俵が違う）。プリセットと入出力は使える。 */
    /* 内容欄の項目はすべて元データ由来なので、分類は1つで足りる。 */
-   origins:()=>['source','calc'],
+   /* 分類は**使うものだけ**(§9.120)。結合が1件も無い設備では「結合0」を
+      並べても覚える手間が増えるだけなので出さない。 */
+   origins:()=>((scState.joinColumns||[]).length?['source','join','calc']:['source','calc']),
    /* 並べ替えは持たない(§9.176。行の並びは時刻の一本道)ので、
       並べ替えの決まり(§9.187)の欄も出さない。 */
    features:{formula:false,preset:true,width:true,format:true,rule:true,sort:false},

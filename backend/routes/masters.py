@@ -51,6 +51,8 @@ from ..repositories.master_repo import (
  ROW_GAP_DEFAULT,
  ACCESS_PERMISSION_TABLE, ensure_access_permission_table, normalize_identity_part, access_permission_master_rows,
  field_reorder_terminal_count,
+ QUERY_JOIN_TABLE, QUERY_JOIN_MULTI, ensure_query_join_table, query_joins,
+ query_join_save, query_join_delete,
 )
 from ..db_access import cols, tables, cfg
 from .. import schedule_calc
@@ -1077,3 +1079,94 @@ def list_view_master_save():
    gap=set_list_view_settings(c,target,x.get('rowGap'),uid)
   return jsonify(ok=True,target=target,rowGap=gap,updated_by=uid,message='行間を保存しました。')
  except Exception as e:return jsonify(error=f'一覧表示設定保存失敗: {e}'),500
+
+
+# ========================================================================
+# クエリ結合マスタ(§9.193): データソース同士を突合キーでつなぐ
+# ------------------------------------------------------------------------
+# 実際の突合は backend/query_join.py の1箇所。ここは受付と、**保存する前に
+# 確かめる**(probe)だけを持つ。読み込み先は起動時に1回だけ決まるので、
+# 下見が無いと打ち間違いに気づけるのが再起動のあとになる(§9.168と同じ作法)。
+# ========================================================================
+def _join_payload(x):
+ return {'name':x.get('name'),'left':x.get('left'),'leftTable':x.get('leftTable'),
+         'right':x.get('right'),'rightTable':x.get('rightTable'),
+         'keys':x.get('keys'),'columns':x.get('columns'),'prefix':x.get('prefix'),
+         'multi':x.get('multi'),'order':x.get('order'),'enabled':x.get('enabled')}
+
+@bp.get('/api/query-join-master')
+def query_join_master_list():
+ try:
+  from .. import query_join
+  from ..db_access import DBS as _DBS
+  path=DBS['MASTER']['path']
+  items=[]
+  if path.exists():
+   with connect(path,False) as c:
+    ensure_query_join_table(c)
+    items=query_joins(c,include_disabled=True)
+  # 選べる相手は**データ接続に登録済みのものだけ**(§9.193、利用者の指示)。
+  # 画面が別に一覧を作ると、消したデータソースが選択肢に残る。
+  sources=[{'key':k,'label':v.get('label') or k,'purpose':v.get('purpose') or '',
+            'listed':bool(v.get('listed',True)),'preferred':v.get('preferred') or ''}
+           for k,v in _DBS.items() if v.get('role')=='readonly']
+  builtin=query_join.builtin_quality_def()
+  return jsonify(ok=True,items=items,sources=sources,multiModes=list(QUERY_JOIN_MULTI),
+                 builtin=({'name':builtin['name'],'left':builtin['left'],'right':builtin['right'],
+                           'keys':builtin['keys']} if builtin else None))
+ except Exception as e:return jsonify(error=f'クエリ結合マスタ読込失敗: {e}'),500
+
+@bp.post('/api/query-join-master')
+def query_join_master_register():
+ try:
+  x=request.get_json(force=True) or {};uid=request_user_id(x)
+  with connect(DBS['MASTER']['path'],False) as c:
+   jid=query_join_save(c,_join_payload(x),uid)
+  return jsonify(ok=True,id=jid,updated_by=uid,message='結合を登録しました。')
+ except ValueError as e:return jsonify(error=str(e)),400
+ except Exception as e:return jsonify(error=f'クエリ結合の登録に失敗しました: {e}'),500
+
+@bp.post('/api/query-join-master/update')
+def query_join_master_update():
+ try:
+  x=request.get_json(force=True) or {};uid=request_user_id(x)
+  jid=x.get('id')
+  if jid is None or str(jid).strip()=='':return jsonify(error='更新対象IDがありません。'),400
+  with connect(DBS['MASTER']['path'],False) as c:
+   query_join_save(c,_join_payload(x),uid,jid=int(jid))
+  return jsonify(ok=True,id=int(jid),updated_by=uid,message='結合を保存しました。')
+ except ValueError as e:return jsonify(error=str(e)),400
+ except Exception as e:return jsonify(error=f'クエリ結合の保存に失敗しました: {e}'),500
+
+@bp.post('/api/query-join-master/delete')
+def query_join_master_delete():
+ try:
+  x=request.get_json(force=True) or {};uid=request_user_id(x)
+  jid=x.get('id')
+  if jid is None or str(jid).strip()=='':return jsonify(error='削除対象IDがありません。'),400
+  with connect(DBS['MASTER']['path'],False) as c:
+   n=query_join_delete(c,int(jid))
+  return jsonify(ok=True,deleted=n,updated_by=uid,
+                 message='結合を削除しました。' if n else '対象が見つかりませんでした。')
+ except Exception as e:return jsonify(error=f'クエリ結合の削除に失敗しました: {e}'),500
+
+@bp.post('/api/query-join-master/probe')
+def query_join_master_probe():
+ """保存する前に、いまのデータで実際に当ててみる。**読むだけ**。"""
+ try:
+  from .. import query_join
+  from ..repositories.master_repo import normalize_join_keys, normalize_join_columns
+  x=request.get_json(force=True) or {}
+  d={'id':x.get('id'),'name':str(x.get('name') or '(下見)'),
+     'left':str(x.get('left') or ''),'leftTable':str(x.get('leftTable') or ''),
+     'right':str(x.get('right') or ''),'rightTable':str(x.get('rightTable') or ''),
+     'keys':normalize_join_keys(x.get('keys')),
+     'columns':normalize_join_columns(x.get('columns')),
+     'prefix':str(x.get('prefix') or ''),'multi':str(x.get('multi') or 'first'),
+     'active':True}
+  if not d['keys']:
+   return jsonify(ok=True,result={'ok':False,'reason':'突合キーを1組入れると、ここで結果を確かめられます。',
+                                  'sampled':0,'matched':0,'ambiguous':0,'addedColumns':0,
+                                  'addedColumnNames':[],'table':'','examples':[]}),200
+  return jsonify(ok=True,result=query_join.probe(d))
+ except Exception as e:return jsonify(error=f'下見に失敗しました: {e}'),500

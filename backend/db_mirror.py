@@ -410,11 +410,17 @@ def targets():
  """写す対象。**読み取り専用のデータソースだけ**。
 
  マスタDB(自分が書く)と共有スケジュールDB(ロック手順付きで自分が書く)は
- 対象外。書くものを写すと、写しへ書いて共有へ反映されない事故になる。"""
- from .db_access import DBS
+ 対象外。書くものを写すと、写しへ書いて共有へ反映されない事故になる。
+
+ **役割「スケジュール」のデータソースも対象外**(§9.193)。あれは一覧として
+ 見られるように登録するものだが、中身は自分が書く共有スケジュールDBそのもの
+ ——写しを読ませると、他端末の予定が写しの間隔ぶん古いまま見え続ける。"""
+ from .db_access import DBS, PURPOSE_SCHEDULE
  out = []
  for key, cfg in DBS.items():
   if (cfg or {}).get('role') != 'readonly':
+   continue
+  if (cfg or {}).get('purpose') == PURPOSE_SCHEDULE:
    continue
   out.append((key, Path(cfg['path'])))
  return out

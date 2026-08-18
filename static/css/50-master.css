@@ -115,6 +115,12 @@
 /* マスタ種別ごとの補足説明(MASTER_DEFS[].hint)。警告ではなく前提知識の
    案内のため、mm-import-warningより控えめな配色にする。 */
 .mm-def-hint{margin:0;padding:8px 12px;border:1px solid #d6e0e3;border-radius:var(--radius-sm);background:#f7fafb;color:#526970;font-size:var(--fs-sm);line-height:1.5}
+/* 気をつけてほしいこと(§9.192)。**注意は注意の見た目で**——同じ薄い枠に
+   混ぜると読み飛ばされる。色だけに頼らず、文で何が起きるかを書く。 */
+.mm-warn-note{margin:var(--space-2) 0 0;padding:var(--space-2) var(--space-3);
+  border:1px solid var(--warn-border);border-radius:var(--radius-sm);
+  background:var(--warn-bg);color:var(--warn-fg);font-size:var(--fs-sm);line-height:1.5}
+.mm-warn-note code{font-size:var(--fs-tiny)}
 .mm-form-fields{display:flex;flex-wrap:wrap;gap:var(--space-3);align-items:flex-start}
 .mm-field{display:flex;flex-direction:column;gap:var(--space-1);min-width:0}
 .mm-field>span{font-size:var(--fs-sm);color:#526970;font-weight:700;display:flex;align-items:center;gap:var(--gap-tight);white-space:nowrap}
@@ -374,39 +380,61 @@
 .ds-sum.is-warn,.ds-sum.is-warn b{color:var(--warn-fg)}
 .ds-sum.is-pending,.ds-sum.is-pending b{color:var(--nav);font-weight:700}
 .ds-summary-act{margin-left:auto;display:flex;gap:var(--gap-inline)}
-.ds-cards{display:flex;flex-direction:column;gap:var(--space-2);padding:var(--space-2)}
-.ds-card{
-  display:grid;gap:var(--gap-tight);
-  padding:var(--pad-card);border:1px solid var(--line);border-radius:var(--radius-md);
-  background:var(--surface)}
-.ds-card.is-off{opacity:.6}
-.ds-card.is-pending{border-color:var(--nav)}
-.ds-card-head{display:flex;align-items:center;gap:var(--space-2);min-width:0}
+/* データ接続の一覧(§9.193)。**1行＝1データソース**で、列は見出しと同じ
+   グリッド定義を共有する（見出しとセルで別々に組むと左端がずれる。§9.176と
+   同じ土台）。カード形式をやめたのは、5件で画面が縦に埋まるうえ、項目の
+   左端がカードごとにずれて列として追えなかったため。 */
+.ds-rows{display:grid;gap:var(--gap-hair);padding:var(--space-2)}
+.ds-row{
+  display:grid;align-items:center;gap:var(--space-2);
+  grid-template-columns:
+    var(--w-sm)              /* 役割（「スケジュール」が入る幅） */
+    minmax(var(--w-md),1.6fr)/* 名称・キー */
+    var(--w-xs)              /* 一覧に出す */
+    var(--w-sm)              /* 読み方 */
+    minmax(0,2.4fr)          /* いま読んでいる */
+    var(--w-md)              /* できること */
+    var(--w-md);             /* 操作（**中身なりにしない**——行ごとに別の
+                                グリッドなので`auto`だと行ごとに幅が変わり、
+                                見出しと左端がそろわない） */
+  padding:var(--gap-tight) var(--space-2);
+  border:1px solid var(--line-soft);border-radius:var(--radius-sm);
+  background:var(--surface);font-size:var(--fs-sm)}
+.ds-row.is-off{opacity:.6}
+.ds-row.is-pending{border-color:var(--nav)}
+/* **見出しも本文と同じ文字サイズにする。** 列幅は`em`で書いてあり、`em`は
+   その要素の文字サイズで解決される——見出しだけ小さくすると、同じ
+   `var(--w-sm)`が見出しと本文で別の幅になり、**左端がそろわない**
+   （実測 66.5px と 84px。1.26倍ずれていた）。区別は面と太さで付ける。 */
+.ds-row-head{background:var(--surface-2);border-color:transparent;
+  color:var(--muted);font-weight:700}
+/* 見出しは折り返さない（足りなければ省略記号。CLAUDE.md「列の見出し」）。 */
+.ds-h{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ds-c-name{display:flex;align-items:baseline;gap:var(--gap-inline);min-width:0}
+.ds-c-mode,.ds-c-path{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--ink-2)}
+.ds-c-caps{display:flex;flex-wrap:wrap;gap:var(--gap-inline);min-width:0}
+.ds-c-act{display:flex;gap:var(--gap-inline);justify-content:flex-end}
+/* 2行目（打つ手があるときだけ）。行の全幅を使う。 */
+.ds-c-note{grid-column:2/-1;font-size:var(--fs-micro);color:var(--nav)}
+.ds-listed{font-size:var(--fs-tiny);font-weight:700;color:var(--ink-2)}
+.ds-listed.is-off{color:var(--muted);font-weight:400}
 .ds-role{
   flex:none;padding:var(--pad-chip);border-radius:var(--radius-sm);
   font-size:var(--fs-tiny);font-weight:800;
   background:var(--surface-3);color:var(--ink-2);border:1px solid var(--line-soft)}
 .ds-role.is-work{background:var(--teal);border-color:var(--teal);color:#fff}
 .ds-role.is-quality{background:var(--computed-bg);border-color:var(--teal);color:var(--computed-fg)}
-.ds-name{font-size:var(--fs-lg);font-weight:800;color:var(--ink);
+/* 役割「スケジュール」(§9.193)。**色だけで意味を伝えない**ので文字は役割名
+   そのまま。面はナビと同じ系統にして「予定の側」だと分かるようにする。 */
+.ds-role.is-schedule{background:var(--nav);border-color:var(--nav);color:#fff}
+.ds-name{font-size:var(--fs);font-weight:800;color:var(--ink);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-.ds-key{flex:none;font-size:var(--fs-sm);color:var(--muted);letter-spacing:.04em}
+.ds-key{flex:none;font-size:var(--fs-tiny);color:var(--muted);letter-spacing:.04em}
 .ds-flag{flex:none;padding:var(--pad-chip);border-radius:var(--radius-sm);
   font-size:var(--fs-tiny);font-weight:800}
 .ds-flag.is-pending{background:var(--nav);color:#fff}
 .ds-flag.is-off{background:var(--surface-3);color:var(--ink-3)}
-/* 「再起動すると◯◯になります」。値の下に**出どころ**を添える扱い(§9.183)。 */
-.ds-next-note{display:block;font-style:normal;font-size:var(--fs-micro);color:var(--ink-3)}
-.ds-card-act{margin-left:auto;display:flex;gap:var(--gap-inline);flex:none}
-/* ラベル列は**固定幅**（§9.129）。`auto`だと行ごとに値の左端がずれる。 */
-.ds-facts{margin:0;display:grid;gap:var(--gap-hair)}
-.ds-facts>div{display:grid;grid-template-columns:var(--w-sm) minmax(0,1fr);
-  align-items:baseline;gap:var(--space-2)}
-.ds-facts dt{margin:0;font-size:var(--fs-sm);color:var(--muted)}
-.ds-facts dd{margin:0;font-size:var(--fs-sm);color:var(--ink-2);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ds-facts .is-next dd{color:var(--nav);font-weight:700}
-.ds-caps{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:var(--gap-inline)}
 .ds-cap{font-size:var(--fs-tiny);color:var(--ink-3);white-space:nowrap;
   display:inline-flex;align-items:center;gap:2px}
 .ds-cap i{font-style:normal;font-weight:800;color:var(--ink-soft)}
@@ -437,6 +465,49 @@
 .ds-warn{margin:0;font-size:var(--fs-tiny);color:var(--warn-fg);line-height:1.6}
 .ds-probe-state{margin-left:var(--space-2);font-size:var(--fs-tiny);font-weight:400;color:var(--muted)}
 .ds-probe{display:grid;gap:var(--gap-hair)}
+/* ---- クエリ結合(§9.193) ----
+   一覧はデータ接続と**同じ器**(.ds-row)を使い、列だけ差し替える。器を2つ
+   持つと、密度も余白も片方だけ直した状態ができる。 */
+.qj-row{
+  grid-template-columns:
+    var(--w-xs)              /* 状態 */
+    minmax(var(--w-md),1.4fr)/* 結合名 */
+    minmax(0,1.2fr)          /* 足す先 */
+    minmax(0,1.2fr)          /* 相手 */
+    minmax(0,1.4fr)          /* 突合キー */
+    var(--w-sm)              /* 足す列 */
+    var(--w-md)}             /* 操作（上と同じ理由で固定幅） */
+.qj-row.is-builtin{background:var(--surface-2)}
+.qj-c-name{display:flex;align-items:baseline;gap:var(--gap-inline);min-width:0}
+.qj-c-left,.qj-c-right,.qj-c-keys,.qj-c-cols{
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
+.qj-sub{display:block;font-style:normal;font-size:var(--fs-tiny);color:var(--muted)}
+.qj-c-act{display:flex;gap:var(--gap-inline);justify-content:flex-end}
+/* 突合キーは「左＝右」を1行に。**器は中身の長さから**決め、余りは空ける。 */
+.qj-keys{display:grid;gap:var(--gap-hair)}
+.qj-key{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) auto;
+  align-items:center;gap:var(--space-2)}
+.qj-eq{color:var(--muted);font-weight:800}
+.qj-keys-act{display:flex;align-items:baseline;gap:var(--space-2);flex-wrap:wrap}
+.qj-pick{display:flex;gap:var(--space-3);flex-wrap:wrap;margin-bottom:var(--gap-tight)}
+.qj-radio{display:inline-flex;align-items:center;gap:var(--gap-inline);
+  font-size:var(--fs-sm);color:var(--ink-2)}
+.qj-radio i{font-style:normal;color:var(--muted);font-size:var(--fs-tiny)}
+/* 選ぶ列は多いので**器の中で送る**。高さは中身から決め、上限だけ持つ。 */
+.qj-cols{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--w-md),1fr));
+  gap:var(--gap-hair);max-height:14em;overflow:auto;
+  border:1px solid var(--line-soft);border-radius:var(--radius-sm);
+  padding:var(--gap-tight);background:var(--surface-2)}
+.qj-col{display:flex;align-items:center;gap:var(--gap-inline);
+  font-size:var(--fs-sm);color:var(--ink-2);min-width:0}
+.qj-col span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qj-probe-ok{margin:0;font-size:var(--fs-sm);color:var(--computed-fg)}
+.qj-probe-ng{margin:0;font-size:var(--fs-sm);color:var(--warn-fg)}
+.qj-ex{border-collapse:collapse;font-size:var(--fs-tiny);margin-top:var(--gap-hair)}
+.qj-ex th,.qj-ex td{border:1px solid var(--line-soft);padding:var(--gap-hair) var(--gap-tight);
+  text-align:left;max-width:var(--w-lg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qj-ex th{background:var(--surface-2);color:var(--muted);font-weight:700}
+.mm-field-hint.is-warn{color:var(--warn-fg)}
 .ds-now{margin:0;display:grid;gap:var(--gap-hair)}
 .ds-now>div{display:grid;grid-template-columns:var(--w-sm) minmax(0,1fr);gap:var(--space-2);align-items:baseline}
 .ds-now dt{margin:0;font-size:var(--fs-sm);color:var(--muted)}
@@ -450,4 +521,13 @@
 .pc-source b{color:var(--ink)}
 .pc-source code{font-size:var(--fs-tiny);color:var(--muted);letter-spacing:.04em}
 .pc-source-next{font-style:normal;font-size:var(--fs-tiny);color:var(--nav);font-weight:700}
+/* 共有スケジュールの書き込み役(§9.192)。読み取り専用の状態表示なので
+   入力欄風の枠を付けない（§9.129）。役が「このPC」かどうかは色だけで
+   なく文で言い、色は補助に留める。 */
+.pc-owner-status{display:grid;gap:var(--gap-hair);font-size:var(--fs-sm);color:var(--ink-2)}
+.pc-owner-who{color:var(--ink)}
+.pc-owner-who.is-me{color:var(--nav)}
+.pc-owner-off{color:var(--muted)}
+.pc-owner-lines{display:flex;flex-wrap:wrap;gap:var(--space-2);
+  font-size:var(--fs-tiny);color:var(--muted)}
 }

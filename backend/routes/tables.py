@@ -11,14 +11,13 @@ SQLiteには無いため、db_access.pyのconnect()がユーザー定義関数�
 import json, re, time, unicodedata
 from flask import Blueprint, request, jsonify
 
+from .. import query_join
 from .. import source_capability
 from .. import sort_order
-from ..db_access import DBS, qi, connect, cols, tables, cfg, WORK_DB_KEY, QUALITY_DB_KEY
+from ..db_access import (DBS, qi, connect, cols, tables, cfg,
+                         WORK_DB_KEY, QUALITY_DB_KEY, SCHEDULE_DB_KEY)
 from ..logging_setup import app_logger
 from ..errors import os_error_hint
-
-# 品質データ結合のIN句を小分けにする単位(パラメータ数の上限対策)。
-_JOIN_IN_CHUNK=100
 
 bp=Blueprint('tables',__name__)
 
@@ -28,131 +27,13 @@ def _numeric_value(value):
  return float(m.group(0)) if m else 0.0
 
 # ========================================================================
-# 品質データの結合表示(§9.21新設): スケジュールモードの仕掛一覧(分割/
-# ポップアップ表示)だけで、ロット番号+鋳造番号+製造材質をキーに品質データ
-# (SIKALOTDEF)を突合し、列をアプリ側でマージする。SIKALOTNOWとSIKALOTDEFは
-# 別々の接続先(CLAUDE.mdの接続先の節を参照)のため、単一
-# のSQL JOINでは書けず、ここでPython側で結合する。既定のSIKALOTNOW単独表示
-# には一切影響しないよう、明示的なjoin_quality=1指定時のみ動く(オプトイン)。
+# 結合(§9.193): 別のデータソースの列を、突合キーで一覧へ足す。
+# 判定と実処理は backend/query_join.py の1箇所が持つ——ここに書き写すと、
+# 「画面の言うことと実際の挙動が食い違う」形の壊れ方になる(§9.163)。
+# 以前ここにあった品質データ結合(`_join_quality_data`)は、保存されない
+# 既定の1件の定義として同じエンジンへ移した。
 # ========================================================================
-_JOIN_KEY_ALIASES={
- 'lotNo':['ロット番号','ﾛｯﾄ番号','ロット№','LTNO'],
- 'castingNo':['鋳造番号','ﾁｭｳｿﾞｳ番号','CYNO'],
- 'mfgMaterial':['製造材質','ﾒｲｿﾞｳ材質','LTA'],
-}
-# 列名の別名解決は**backend/source_capability.pyが唯一の定義**(§9.163)。
-# マスタ管理の「この設定でできること」も同じ判定でないと、画面の言うことと
-# 実際の挙動が食い違う(結合できると書いてあるのに結合されない、等)。
-_norm_name=source_capability.norm_name
-_find_column=source_capability.find_column
-def _norm_value(v):
- # 突合キーの値も同様にゆれを吸収する(前後空白・全角半角)。
- return unicodedata.normalize('NFKC',str(v if v is not None else '')).strip()
-
-def _quality_key_table(c,def_cfg):
- """品質データ側で「3つのキー列がすべて揃っているテーブル」を選ぶ。
- 以前はpreferred(既定'仕掛')が無ければ先頭テーブルを無条件に使っていたため、
- キー列を持たない別のテーブルを掴んで黙って結合を諦めることがあった。"""
- names=tables(c)
- if not names:return None,None,None
- ordered=([def_cfg['preferred']] if def_cfg.get('preferred') in names else [])+[n for n in names if n!=def_cfg.get('preferred')]
- for t in ordered:
-  try:cs=cols(c,t,source=def_cfg['path'])
-  except Exception:continue
-  k=[_find_column(cs,_JOIN_KEY_ALIASES[x]) for x in ('lotNo','castingNo','mfgMaterial')]
-  if all(k):return t,cs,k
- return None,None,None
-
-def _unique_columns(names):
- """列名を一意にする(順序は最初に出てきた位置を残す)。§9.113。
-
- **画面は列を名前で引く**(見出し・幅・書式・読み替え・並び順のすべてが
- 列名を鍵にしている)ので、同じ名前が2つ入った列リストを返すと、そのまま
- 見出しもセルも二重に描かれる(実機で「カラムが増殖した」と報告された形)。
- 名前が重なりうる出どころは実際にある——品質データ側がビューで、
- 元テーブルと同じ名前の列を2つ持っている場合や、`SELECT *`の結果に
- 同名の列が並ぶ場合。行はdictなので**どのみち1つしか持てない**(後勝ち)
- のに、列リストだけが2つあると数が食い違う。ここで1回だけ落とす。"""
- seen=set();out=[]
- for n in names or []:
-  if n in seen:continue
-  seen.add(n);out.append(n)
- return out
-
-def _join_quality_data(sikalotnow_cols,row_dicts):
- """戻り値: (結合後の列名リスト, 結合後の行dictリスト, 診断情報dict)。
- 重複する列名は仕掛(SIKALOTNOW)側の値を優先する(現在値としての信頼度が
- 高い運用のため)。品質データ側が未接続・キー列が見つからない・接続に失敗
- した場合は何もせず素通しする(fail-open、通常の仕掛一覧表示自体は壊さない)が、
- **なぜ結合できなかったのかを必ず診断情報として返す**。以前はすべての失敗を
- 黙って握り潰していたため、「結合されない」という報告に対して原因が
- 画面にもログにも一切出ず切り分けができなかった。"""
- info={'applied':False,'reason':'','matched':0,'addedColumns':0}
- lot_col=_find_column(sikalotnow_cols,_JOIN_KEY_ALIASES['lotNo'])
- cast_col=_find_column(sikalotnow_cols,_JOIN_KEY_ALIASES['castingNo'])
- mat_col=_find_column(sikalotnow_cols,_JOIN_KEY_ALIASES['mfgMaterial'])
- missing=[n for n,v in (('ロット番号',lot_col),('鋳造番号',cast_col),('製造材質',mat_col)) if not v]
- if missing:
-  info['reason']=f'仕掛一覧側に突合キーの列が見つかりません: {"・".join(missing)}'
-  return sikalotnow_cols,row_dicts,info
- def key_of(d):
-  return (_norm_value(d.get(lot_col)),_norm_value(d.get(cast_col)),_norm_value(d.get(mat_col)))
- keys=[key_of(d) for d in row_dicts]
- lot_values=sorted({k[0] for k in keys if k[0]})
- if not lot_values:
-  info['reason']='表示中の行にロット番号がありません'
-  return sikalotnow_cols,row_dicts,info
- # 品質データがどのデータソースかは役割で決まる(§9.87)。キーは利用者が
- # 自由に付けられるので、'SIKALOTDEF'という文字列で探さないこと。
- def_cfg=DBS.get(QUALITY_DB_KEY or '')
- if not def_cfg:
-  info['reason']=('役割が「品質」のデータソースが登録されていません。'
-                  'マスタ管理 > データソースで役割を選んでください。')
-  return sikalotnow_cols,row_dicts,info
- try:
-  if not def_cfg['path'].exists():
-   info['reason']=f'品質データのファイルが見つかりません: {def_cfg["path"]}'
-   app_logger().warning('品質データ結合: %s',info['reason'])
-   return sikalotnow_cols,row_dicts,info
-  with connect(def_cfg['path'],True) as c:
-   t,def_cols,(d_lot,d_cast,d_mat)=_quality_key_table(c,def_cfg)
-   if not t:
-    info['reason']='品質データ側に突合キー(ロット番号・鋳造番号・製造材質)が揃ったテーブルが見つかりません'
-    app_logger().warning('品質データ結合: %s (%s)',info['reason'],def_cfg['path'])
-    return sikalotnow_cols,row_dicts,info
-   # ロット番号だけでSQL側を軽く絞り、鋳造番号・製造材質の正確な一致は
-   # Python側で行う(複合IN条件はSQLで書きにくいため)。
-   # INのパラメータ数が多いと失敗するため小分けにする。
-   quality_index={};cur=c.cursor()
-   for i in range(0,len(lot_values),_JOIN_IN_CHUNK):
-    chunk=lot_values[i:i+_JOIN_IN_CHUNK]
-    placeholders=','.join('?' for _ in chunk)
-    cur.execute(f'SELECT * FROM {qi(t)} WHERE CStr({qi(d_lot)}) IN ({placeholders})',chunk)
-    for row in cur.fetchall():
-     dd=dict(zip(def_cols,row))
-     qkey=(_norm_value(dd.get(d_lot)),_norm_value(dd.get(d_cast)),_norm_value(dd.get(d_mat)))
-     if qkey in quality_index:continue  # 同一キーが複数行あれば最初の1件のみ使う
-     quality_index[qkey]=dd
- except Exception as e:
-  info['reason']=f'品質データへ接続できません: {e}'
-  app_logger().warning('品質データ結合に失敗しました: %s',e)
-  return sikalotnow_cols,row_dicts,info
- extra_cols=[c for c in def_cols if c not in sikalotnow_cols]
- merged_rows=[];matched=0
- for d,key in zip(row_dicts,keys):
-  qd=quality_index.get(key)
-  if qd:matched+=1
-  merged=dict(qd) if qd else {}
-  merged.update(d)  # 重複列は仕掛(SIKALOTNOW)側を優先
-  merged_rows.append(merged)
- # **足した列の名前も返す**(§9.105)。件数だけでは、列の設定画面で
- # 「どれが結合されてきた列か」を見分けられない(利用者が最初に知りたい
- # のは「この項目はどこから来たのか」で、何列増えたかではない)。
- info.update(applied=True,matched=matched,addedColumns=len(extra_cols),
-             addedColumnNames=list(extra_cols),table=t)
- if not matched:
-  info['reason']=f'キーが一致する品質データがありませんでした(照合先: {t})'
- return _unique_columns(sikalotnow_cols+extra_cols),merged_rows,info
+_unique_columns=query_join.unique_columns
 
 
 def _error_hint(e):
@@ -318,10 +199,15 @@ def catalog():
  # 限らない(品質データの既定が「仕掛」のまま、という実例がある)。
  # 実在しないテーブルを開きに行って読み直す羽目になったので、画面側は
  # 「前回**実際に確認した**テーブル一覧」を端末に覚える方式にした。
+ # **一覧に出さないデータソースはここに載せない**(§9.193)。結合の相手として
+ # だけ読むデータ(品質・単価表など)は左メニューに並べても押す用が無い——
+ # 出しておいて「見るところが無い」より、出さないほうが探す手間が減る。
+ # 読むこと自体は止めない（クエリ結合は DBS から直接引く）。
  return jsonify(databases=[{"key":k,"label":v['label'],"file_name":v['path'].name,
                             "role":v['role'],"purpose":v.get('purpose') or ''}
-                           for k,v in DBS.items()],
+                           for k,v in DBS.items() if v.get('listed',True)],
                 workKey=WORK_DB_KEY,qualityKey=QUALITY_DB_KEY,
+                scheduleKey=SCHEDULE_DB_KEY,
                 restartPending=_restart_pending())
 
 def _restart_pending():
@@ -376,6 +262,83 @@ def api_tables():
   # どの行から出たのか(存在確認なのか接続なのか)を現地で切り分けられなかった。
   app_logger().exception('/api/tables db=%s で失敗しました',k)
   return jsonify(error=str(e),db=k,hint=_error_hint(e)),500
+@bp.get('/api/table-columns')
+def api_table_columns():
+ """列の名前だけを返す(§9.193)。**行は運ばない。**
+
+ クエリ結合の設定画面は「左右どちらの表のどの列で突き合わせるか」を選ばせる
+ ので、両側の列名が要る。`/api/table`を50件で叩けば列名は分かるが、実データは
+ 200列を超えるため1回450KBを運ぶことになる(§9.94)——名前だけなら数KBで済む。"""
+ k=request.args.get('db','');t=request.args.get('table','')
+ try:
+  cf=cfg(k)
+  with connect(cf['path'],cf['role']=='readonly') as c:
+   names=tables(c)
+   if not t:
+    t=cf['preferred'] if cf.get('preferred') in names else (names[0] if names else '')
+   if not t or t not in names:
+    return jsonify(error=f'表「{t or "(未指定)"}」がありません。',tables=names),400
+   return jsonify(ok=True,db=k,table=t,tables=names,columns=cols(c,t,source=cf['path']))
+ except Exception as e:
+  app_logger().warning('/api/table-columns db=%s table=%s で失敗しました: %s',k,t,e)
+  return jsonify(error=str(e),hint=_error_hint(e)),500
+
+@bp.get('/api/query-join/keys')
+def api_query_join_keys():
+ """この一覧に効く結合が、**どの列の値を必要としているか**(§9.193)。
+
+ スケジュール表は行ごとに200列のスナップショットを持っているが、突合に
+ 要るのはそのうち数列。全部を送りつけると、50行で数MBを往復することに
+ なる。要る列名を先に聞いてから、その列だけ送る。"""
+ k=request.args.get('db','') or (WORK_DB_KEY or '')
+ t=request.args.get('table','')
+ if not k:return jsonify(ok=True,keys=[],joins=[])
+ try:
+  defs=query_join.definitions_for(k,t,include_builtin=request.args.get('builtin')!='0')
+  keys=query_join.unique_columns([kk['left'] for d in defs for kk in (d.get('keys') or [])])
+  return jsonify(ok=True,db=k,table=t,keys=keys,
+                 joins=[{'name':d.get('name'),'right':d.get('right'),
+                         'builtin':bool(d.get('builtin'))} for d in defs])
+ except Exception as e:
+  app_logger().warning('/api/query-join/keys db=%s で失敗しました: %s',k,e)
+  return jsonify(ok=True,keys=[],joins=[],error=str(e))
+
+@bp.post('/api/query-join/resolve')
+def api_query_join_resolve():
+ """渡した鍵の値に、登録済みの結合を当てて**足される列だけ**を返す(§9.193)。
+
+ スケジュール表がこれを使う。タイムラインの行が持っているのは投入した時点の
+ 仕掛データ(detail)なので、**結合の相手は今の値**で引き直したい——予定は
+ スナップショットでよいが、品質や在庫のように後から確定する値は、投入時点に
+ まだ無い。一覧と同じ定義・同じエンジンを通すので、**一覧に出る列と
+ スケジュール表に出る列が食い違わない**。
+
+ 読むだけ(_READ_ONLY_POST_ENDPOINTSで全モードから通す)。"""
+ x=request.get_json(silent=True) or {}
+ k=str(x.get('db') or '');t=str(x.get('table') or '')
+ rows=x.get('rows')
+ if not isinstance(rows,list):return jsonify(error='rowsは配列で送ってください。'),400
+ rows=[r if isinstance(r,dict) else {} for r in rows[:2000]]
+ if not k:
+  from ..db_access import WORK_DB_KEY as _wk
+  k=_wk or ''
+ if not k:return jsonify(error='役割「仕掛」のデータソースが決まっていません。'),400
+ try:
+  defs=query_join.definitions_for(k,t,include_builtin=x.get('builtin') is not False)
+  if not defs:
+   return jsonify(ok=True,db=k,table=t,joins=[],columns=[],values=[{} for _ in rows])
+  base=[str(c) for c in query_join.unique_columns([c for r in rows for c in r.keys()])]
+  _cols,merged,infos=query_join.apply_joins(k,t,base,rows,defs)
+  added=query_join.unique_columns([n for i in infos for n in (i.get('addedColumnNames') or [])])
+  # **足された列だけ**を返す(元の値は依頼元が持っている)。運ぶ量を減らすのと、
+  # 受け取った側が「これは結合で来た値」と見分けられるようにするため。
+  values=[{n:m.get(n) for n in added if m.get(n) not in (None,'')} for m in merged]
+  return jsonify(ok=True,db=k,table=t,joins=infos,columns=added,values=values,
+                 summary=query_join.summarize(infos))
+ except Exception as e:
+  app_logger().warning('/api/query-join/resolve db=%s で失敗しました: %s',k,e)
+  return jsonify(error=str(e)),500
+
 @bp.get('/api/table')
 def api_table():
  # 一覧が出るまでの内訳を測って返す(§9.90)。「遅い」という報告に対して、
@@ -519,11 +482,22 @@ def api_table():
   if hidden or keep is not None:
    drop=lambda col:(col in hidden) or (keep is not None and col not in keep)
    row_dicts=[{col:v for col,v in d.items() if not drop(col)} for d in row_dicts]
-  join_info=None
-  # 結合できるのは役割が「作業」の一覧だけ(§9.87)。
-  if WORK_DB_KEY and k==WORK_DB_KEY and request.args.get('join_quality')=='1':
+  join_info=None;join_list=[]
+  # 結合(§9.193)。**明示的に頼まれたときだけ**当てる——一覧を出す本筋の
+  # 問い合わせ(`join=1`)と、既定の品質データ結合(`join_quality=1`)の2つ。
+  # 内部の軽い問い合わせ(§9.94の`columns=`)には付かないので、行の追い判定の
+  # たびに相手のDBを引くことにはならない。
+  want_join=request.args.get('join')=='1'
+  want_quality=bool(WORK_DB_KEY) and k==WORK_DB_KEY and request.args.get('join_quality')=='1'
+  if want_join or want_quality:
    t_join=time.perf_counter()
-   visible_cs,row_dicts,join_info=_join_quality_data(visible_cs,row_dicts)
+   defs=query_join.definitions_for(k,t,include_builtin=want_quality) if want_join else []
+   if want_quality and not want_join:
+    b=query_join.builtin_quality_def()
+    defs=[b] if b else []
+   visible_cs,row_dicts,join_list=query_join.apply_joins(k,t,visible_cs,row_dicts,defs)
+   visible_cs=_unique_columns(visible_cs)
+   join_info=query_join.summarize(join_list) if join_list else None
    lap('join',t_join)
   timing['server']=round((time.perf_counter()-t0)*1000)
   # どこのファイルを読んだのかも一緒に返す。共有を直接読んでいるのか、
@@ -531,8 +505,8 @@ def api_table():
   timing['source']='mirror' if cf.get('mirrored') else ('share' if cf.get('role')=='readonly' else 'local')
   timing['rows']=len(row_dicts);timing['columns']=len(visible_cs)
   resp=jsonify(columns=visible_cs,rows=row_dicts,count=count,
-               filters_applied=len(filters),joinQuality=join_info,timing=timing,
-               sortNote=sort_note)
+               filters_applied=len(filters),joinQuality=join_info,joins=join_list,
+               timing=timing,sortNote=sort_note)
   # 開発者ツールのネットワーク欄でも同じ内訳が読めるようにする。
   resp.headers['Server-Timing']=','.join(
    f'{n};dur={v}' for n,v in timing.items() if isinstance(v,int))

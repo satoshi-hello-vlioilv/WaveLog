@@ -39,9 +39,12 @@ let b=null;
   /* ---- 1) 名称だけを変える（読み込み先は触らない） ---- */
   work=await page.evaluate(async()=>{
    const r=await (await fetch('/api/data-source-master')).json();
-   return (r.items||[]).find(x=>x.purpose==='作業')||null;
+   // 役割の呼び名は「仕掛」(§9.193)。旧い「作業」で保存された行も
+   // サーバーが読み替えて返すので、ここは新しい呼び名だけを見る。
+   return (r.items||[]).find(x=>x.purpose==='仕掛')||null;
   });
-  rec('役割「作業」のデータソースがある',!!work,work?work.key:'');
+  rec('役割「仕掛」のデータソースがある',!!work,work?work.key:'');
+  if(!work)throw new Error('役割「仕掛」のデータソースが見つかりません');
   saved=work&&work.label;
   const changed=await page.evaluate(async w=>{
    const r=await fetch('/api/data-source-master/update',{method:'POST',
@@ -78,14 +81,17 @@ let b=null;
   const opened=await page.evaluate(()=>{
    const on=document.querySelector('#masterMaintNav .is-active,#masterMaintNav [aria-current="true"]');
    return {mode:document.body.classList.contains('mm-mode'),
-           tab:on?on.textContent.trim():'',cards:document.querySelectorAll('.ds-card').length};
+           tab:on?on.textContent.trim():'',
+           // データ接続の一覧は**行**で組む(§9.193)。カード形式ではない。
+           cards:document.querySelectorAll('.ds-row:not(.ds-row-head)').length};
   });
   rec('押すとデータ接続の設定が開く',opened.mode&&opened.cards>0,JSON.stringify(opened));
   const card=await page.evaluate(()=>{
-   const c=[...document.querySelectorAll('.ds-card')].find(x=>x.classList.contains('is-pending'));
+   const c=[...document.querySelectorAll('.ds-row:not(.ds-row-head)')].find(x=>x.classList.contains('is-pending'));
    return c?c.innerText.replace(/\s+/g,' '):'';
   });
-  rec('カードにも「再起動待ち（名称）」と出る',/再起動待ち/.test(card)&&/名称/.test(card),card.slice(0,140));
+  rec('行にも「再起動待ち」と、何が待ちなのかが出る',
+      /再起動待ち/.test(card)&&/名称/.test(card),card.slice(0,140));
  }catch(e){
   console.error('FATAL',e);rec('例外なく終わる',false,e.message);
  }finally{

@@ -236,6 +236,36 @@ let b=null;
   rec('「記入欄をつけない」は保存後も効く',
       !custom.記入欄なし.some(k=>k.startsWith('write:')),custom.記入欄なし.join(','));
 
+  /* ---- 9b) 書き込む欄はパターンで選ぶ(§9.191、利用者の指示) ----
+     「開始・終了」固定をやめ、よく使う形に名前を付けて選べるようにした。
+     **既定は「紙の列で決めたまま」**——ここで形を決め打ちにすると、
+     「紙の列を変える」で外した記入欄が刷るたびに戻り、**紙が溢れる**。 */
+  const pats=await page.evaluate(()=>{
+   const base={includeDone:true,pageByDate:false};
+   const keys=o=>WL.schedulePrint.paperColumns('テスト設備A',o).map(c=>c.key);
+   return {
+    一覧:WL.schedulePrint.writePatterns().map(p=>p.key),
+    既定:keys(base),                                     // writePattern未指定
+    実績:keys({...base,writePattern:'actual'}),
+    備考だけ:keys({...base,writePattern:'note'}),
+    なし:keys({...base,writePattern:'none'}),
+    古い設定:keys({...base,actualColumns:false}),        // 旧`actualColumns`
+   };
+  });
+  rec('書き込む欄のパターンが選べる（既定＋5つ）',
+      pats.一覧.join(',')==='custom,actual,actualNote,note,check,none',pats.一覧.join(','));
+  rec('既定は紙の列の設定のまま（外した欄が刷るたびに戻らない）',
+      pats.既定.filter(k=>k.startsWith('write:')).join(',')==='write:check',pats.既定.join(','));
+  rec('「実績」を選ぶと3欄になる',
+      pats.実績.filter(k=>k.startsWith('write:')).join(',')==='write:check,write:start,write:end',
+      pats.実績.join(','));
+  rec('「備考だけ」を選ぶと備考1欄だけになる',
+      pats.備考だけ.filter(k=>k.startsWith('write:')).join(',')==='write:note',pats.備考だけ.join(','));
+  rec('「記入欄なし」を選ぶと1つも出ない',
+      !pats.なし.some(k=>k.startsWith('write:')),pats.なし.join(','));
+  rec('古い設定（記入欄をつけない）もそのまま効く',
+      !pats.古い設定.some(k=>k.startsWith('write:')),pats.古い設定.join(','));
+
   /* ---- 10) 組んだ紙もA4に収まる ---- */
   const drawn=await build({includeDone:true,actualColumns:true,pageByDate:false});
   rec('組んだレイアウトでもA4に収まる',drawn.over===0&&drawn.clipped===0&&drawn.wide===0,
