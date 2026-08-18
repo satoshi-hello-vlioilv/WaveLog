@@ -73,13 +73,21 @@
   /* **日付ごとに束ねる。** 並びは画面の順(=実際に流す順)のまま。
      時刻で並べ直さないこと——固定開始や停止の差し込みで、画面の順と
      時刻の順は必ずしも一致しない。現場が見るのは「流す順」。 */
+  /* **画面の「まとめ」をそのまま紙へ**(§9.189、利用者の指示)。まとまりの
+     判定は画面の1箇所(groupBucketOf)を通す——紙だけ別に組み立てると、
+     画面と紙でまとまりが食い違う。「まとめない」ときは見出しを出さない。 */
+  const view=WL.scheduleView;
+  const grouping=opt.useGroups!==false&&typeof view?.groupMode==='function'
+    &&view.groupMode()!=='none'&&typeof view.groupOf==='function';
   const groups=[];const index=new Map();
   rows.forEach(e=>{
    const useActual=(e.state==='完了'||e.state==='着手')&&e.actual&&e.actual.startAt;
    const start=useActual?e.actual.startAt:e.plannedStart;
    const key=opt.pageByDate?dayKey(start):'';
    if(!index.has(key)){const g={key,label:dayLabel(key),rows:[]};index.set(key,g);groups.push(g)}
-   index.get(key).rows.push({e,start,end:useActual?e.actual.endAt:e.plannedEnd});
+   let group=null;
+   if(grouping){try{group=view.groupOf(e)}catch(_){group=null}}
+   index.get(key).rows.push({e,start,end:useActual?e.actual.endAt:e.plannedEnd,group});
   });
   /* 紙の列は**1つの紙の中で変えない**ので、まとめて1回だけ決める。 */
   const cols=paperColumns(equipment,opt);
@@ -119,12 +127,21 @@
     const trs=[...area.querySelectorAll('tbody tr')];
     if(!pg||!foot||!trs.length){out.push({...p,startNo:1,part:1,parts:1});return}
     const cs=getComputedStyle(pg);
+    /* 表の下に置くもの（申し送りの欄。§9.189）も**高さを引く**——引き忘れると
+       行で紙を埋めたあとに欄が押し出し、A4から溢れる（実測1188px > 1123px）。 */
+    const note=area.querySelector('.sp-note');
+    const noteH=note?(note.getBoundingClientRect().height
+      +(parseFloat(getComputedStyle(note).marginTop)||0)):0;
     /* 用紙1枚の高さはmm指定なので、computedStyleがpxへ直したものを借りる
        （mm→pxの換算を自前で持つと、いつか96dpi決め打ちが混ざる）。 */
     const sheetH=parseFloat(cs.minHeight)||0;
     const padBottom=parseFloat(cs.paddingBottom)||0;
-    const limit=pg.getBoundingClientRect().top+sheetH-padBottom-foot.offsetHeight-SHEET_SLACK_PX;
+    const limit=pg.getBoundingClientRect().top+sheetH-padBottom-foot.offsetHeight-noteH-SHEET_SLACK_PX;
     const hs=trs.map(t=>t.getBoundingClientRect().height);
+    /* **まとまりの見出し行は「行」ではない**(§9.189)。高さは数えるが、
+       中身の行としては数えない——ここを取り違えると、見出しのぶんだけ
+       予定が抜け落ちる(配る紙から作業が消える)。 */
+    const rowAt=trs.map(t=>t.dataset.row==null?null:Number(t.dataset.row));
     const avail=limit-trs[0].getBoundingClientRect().top;
     const chunks=[];let cur=[],acc=0;
     hs.forEach((h,i)=>{
@@ -132,8 +149,13 @@
      cur.push(i);acc+=h;
     });
     if(cur.length)chunks.push(cur);
-    chunks.forEach((idx,i)=>out.push({...p,rows:idx.map(j=>p.rows[j]),
-      startNo:idx[0]+1,part:i+1,parts:chunks.length}));
+    /* 見出しだけで終わった塊は次の塊へ寄せる(見出しが1枚に取り残されない)。
+       見出しは次の枚でpageHtmlが出し直すので、ここでは捨ててよい。 */
+    const pages2=chunks.map(idx=>idx.map(i=>rowAt[i]).filter(v=>v!=null))
+                       .filter(list=>list.length);
+    if(!pages2.length){out.push({...p,startNo:1,part:1,parts:1});return}
+    pages2.forEach((idx,i)=>out.push({...p,rows:idx.map(j=>p.rows[j]),
+      startNo:idx[0]+1,part:i+1,parts:pages2.length}));
    });
   }finally{
    area.innerHTML='';
@@ -272,8 +294,33 @@
   /* **通し番号はその日の頭から数える。** 紙が2枚に分かれても#1へ戻さない
      （現場は番号で呼び合うので、同じ日に#1が2つあると指せなくなる）。 */
   const from=page.startNo||1;
-  const body=page.rows.map((item,i)=>
-   `<tr class="${item.e.kind!=='作業'?'sp-row-stop':''}">${cellsOf(item,from+i,cols)}</tr>`).join('')
+  /* まとまりの見出し(§9.189)。**紙を切り分けた続きの枚にも出す**
+     ——2枚目が見出し無しで始まると、どのまとまりの続きなのか読めない。
+     `data-row`が付いているのが実際の予定の行で、**枚数を測る側は
+     この印で数える**(splitToSheets)。 */
+  let lastGroup=null;
+  const body=page.rows.map((item,i)=>{
+   const g=item.group;
+   let head2='';
+   if(g&&g.key!==lastGroup){
+    lastGroup=g.key;
+    /* **同じことを2箇所に出さない**(§9.129)。日付ごとにページを分けていて
+       まとめも日付なら、見出しは紙の頭と同じ文字になる。 */
+    if(String(g.label)!==String(page.day||'')){
+     const n=page.rows.filter(x=>x.group&&x.group.key===g.key).length;
+     head2=`<tr class="sp-row-group"><td colspan="${head.length}">${esc(g.label)}`
+       +`<span class="sp-group-count">${n}件</span></td></tr>`;
+    }
+   }
+   /* 申し送り(コメント)は**横いっぱいの1行**にする——列に押し込むと
+      読めない幅になり、書いた意味が無くなる。 */
+   if(item.e.kind==='コメント'){
+    return head2+`<tr class="sp-row-comment" data-row="${i}">`
+      +`<td colspan="${head.length}">💬 ${esc((item.e.title||'').trim())}</td></tr>`;
+   }
+   return head2+`<tr class="${item.e.kind!=='作業'?'sp-row-stop':''}" data-row="${i}">`
+     +`${cellsOf(item,from+i,cols)}</tr>`;
+  }).join('')
    ||`<tr><td class="sp-empty" colspan="${head.length}">この日に出す予定はありません</td></tr>`;
   /* 総見積。紙を受け取った人が最初に見るのは「今日どれだけあるか」。
      **切り分けた紙でもその日の合計を出す**（この紙に載っている数ではない）。 */
@@ -295,6 +342,10 @@
     </div>
    </header>
    <table class="sp-table">${group}<thead><tr>${head.join('')}</tr></thead><tbody>${body}</tbody></table>
+   ${opt.commentBox===false?'':`<section class="sp-note">
+     <span class="sp-note-label">申し送り・気付き</span>
+     <span class="sp-note-area"></span>
+    </section>`}
    <footer class="sp-foot">
     <span>出力 ${esc(stamp())}</span>
     <span class="sp-foot-note">「~」の付いた見積は実績がまだ無いための暫定値です</span>
@@ -333,7 +384,10 @@
     既定は「現場へ配る」ときの形。**毎回選び直させない**ので、選んだ内容は
     この端末に覚える(紙の運用は現場ごとに決まっていて、毎回は変わらない)。 */
  const PREF_KEY='SchedulePrintPrefV1';
- const DEFAULTS={includeDone:false,actualColumns:true,pageByDate:true,allEquipment:false};
+ /* useGroups=画面の「まとめ」を紙にも入れる / commentBox=紙の下に
+    申し送りの欄を作る(§9.189、利用者の指示)。どちらも既定は入れる。 */
+ const DEFAULTS={includeDone:false,actualColumns:true,pageByDate:true,allEquipment:false,
+                 useGroups:true,commentBox:true};
  function loadPref(){
   try{return {...DEFAULTS,...(JSON.parse(localStorage.getItem(PREF_KEY)||'{}')||{})}}
   catch(_){return {...DEFAULTS}}
@@ -342,18 +396,6 @@
   try{localStorage.setItem(PREF_KEY,JSON.stringify(p))}catch(_){}
  }
 
- function optionsHtml(pref,canAll){
-  const cb=(k,label,note)=>`<label class="sp-opt"><input type="checkbox" data-opt="${k}"${pref[k]?' checked':''}>
-   <span><b>${esc(label)}</b>${note?`<small>${esc(note)}</small>`:''}</span></label>`;
-  return `<div class="sp-options">
-   ${canAll?cb('allEquipment','すべての設備を続けて印刷する','設備ごとにページを分けます。1台ぶんだけでよければ外してください'):''}
-   ${cb('actualColumns','実績を書き込む欄をつける','開始・終了・確認の記入欄を右側に作ります')}
-   ${cb('pageByDate','日付ごとにページを分ける','日ごとに配る場合はこのまま')}
-   ${cb('includeDone','完了・取消も載せる','ふだんは載せません（これから流すものだけ配るため）')}
-  </div>
-  <button type="button" class="sp-layout-open" id="spLayoutOpen">紙のレイアウトを変える…</button>
-  <p class="sp-layout-note" id="spLayoutNote"></p>`;
- }
  /* いまの紙が既定のままか、自分で組んだものか。**どちらなのかを言う**
     ——設定したのに効いていないのか、そもそも設定していないのかが
     分からないと、直しようがない。 */
@@ -364,6 +406,20 @@
           :'いまは 既定のレイアウト（区分・時刻・勤務・ロット番号・内容・見積）で刷ります。';
  }
 
+ /* ---------- 印刷はプレビューを先に出す(§9.186) ----------
+    以前は「印刷しますか？」＋チェック4つの確認から始まり、**紙を見る前に
+    決めさせていた**。日付ごとに分けるか・実績欄を付けるか・完了も載せるかは、
+    どれも「刷り上がりを見れば分かる」ことなので、聞く順番が逆だった
+    （利用者の指示: いったん今の条件でプレビューを出して、必要なら
+    設定を変える。変えた結果はその場で見せる）。
+
+    ・押したら**すぐ今の条件の紙**が出る（設定は覚えてある）
+    ・設定を触ると**その場で刷り上がりが変わる**（枚数もその場で出る）
+    ・「印刷する」はプレビューで見たものをそのまま出す（組み直さない）
+
+    紙の組み立ては`buildPages`/`splitToSheets`/`pageHtml`の既存の1本を
+    そのまま使う。**プレビュー用の別の組み立てを作らないこと**——
+    見たものと刷るものが食い違ったら、プレビューの意味が無い。 */
  async function open(){
   const view=WL.scheduleView;
   if(!view||typeof view.entries!=='function'){
@@ -372,68 +428,209 @@
   const equipment=view.equipment();
   /* 紙のレイアウトはマスタにあるので、開く前に読む(キャッシュ済みなら即返る)。 */
   try{await WL.columnLayout.load(printTarget(equipment))}catch(_){}
-  const canAll=typeof view.equipmentNames==='function'&&view.equipmentNames().length>1;
-  const pref=loadPref();
-  if(!canAll)pref.allEquipment=false;
-  /* **awaitの前に配線する。** confirmModalは呼んだ時点で本文を差し込んで
-     からPromiseを返すので、ここで中のボタンを掴める。awaitのあとでは
-     もう閉じている。 */
-  const asked=confirmModal({
-   eyebrow:'PRINT',title:'作業予定表を印刷',
-   bodyHtml:`<p class="confirm-modal-message">いま表示している条件（表示範囲・内容の項目）のまま、現場へ配る形で印刷します。</p>`
-            +optionsHtml(pref,canAll),
-   confirmLabel:'印刷する',cancelLabel:'やめる',
-  });
-  const note=document.getElementById('spLayoutNote');
-  if(note)note.textContent=layoutNoteText(equipment);
-  const layoutBtn=document.getElementById('spLayoutOpen');
-  if(layoutBtn)layoutBtn.onclick=()=>{
-   /* 確認を閉じてから開く（浮きウィンドウが確認の裏に出ないように）。 */
-   document.getElementById('appConfirmCancel')?.click();
-   openLayoutPanel(equipment);
-  };
-  const ok=await asked;
-  /* **チェックは閉じた後に読む。** confirmModalは閉じるとき`hidden`にする
-     だけで中身は消さない(次に開いたときに差し替わる)ので、awaitのあとでも
-     そのまま読める。押した瞬間の値を控える仕掛けを別に持つより短い。 */
-  const box=document.getElementById('appConfirmBody');
-  if(box)box.querySelectorAll('[data-opt]').forEach(el=>{pref[el.dataset.opt]=!!el.checked});
-  if(!canAll)pref.allEquipment=false;
-  savePref(pref);
-  if(!ok)return;
-  await run(pref);
+  openPreview(equipment);
  }
 
- async function run(pref){
+ /* 刷る中身を集める。**全設備のときだけ**他の設備を読む(読んだものは
+    プレビューを開いている間だけ覚える——チェックを入れ直すたびに
+    共有DBへ取りに行くと、そのあいだ画面が固まる)。 */
+ const otherEntries=new Map();
+ async function collectPages(pref,onProgress){
   const view=WL.scheduleView;
   const opt={...pref};
   let pages=[];
   if(opt.allEquipment&&typeof view.fetchEntries==='function'){
    const names=view.equipmentNames();
-   showToast&&showToast('印刷の準備をしています',`${names.length}台ぶんの予定を集めています…`,3000);
    for(const name of names){
-    let entries=[];
-    try{entries=await view.fetchEntries(name)}
-    catch(e){
-     showToast&&showToast('一部の設備を読めませんでした',`${name}: ${e.message}`,5000);
-     continue;
+    let entries=otherEntries.get(name);
+    if(!entries){
+     if(onProgress)onProgress(`${name} の予定を集めています…`);
+     try{entries=await view.fetchEntries(name)}
+     catch(e){
+      showToast&&showToast('一部の設備を読めませんでした',`${name}: ${e.message}`,5000);
+      continue;
+     }
+     otherEntries.set(name,entries);
     }
-    /* **紙のレイアウトは設備ごと**なので、設備ごとに読む(§9.118)。
-       1台ぶんで読んだものを使い回すと、他の設備の紙が別の設備の
-       レイアウトで刷られる。 */
+    /* **紙のレイアウトは設備ごと**なので、設備ごとに読む(§9.118)。 */
     try{await WL.columnLayout.load(printTarget(name))}catch(_){}
     pages=pages.concat(buildPages(name,entries,opt));
    }
   }else{
-   pages=buildPages(view.equipment(),view.entries(),opt);
+   pages=pages.concat(buildPages(view.equipment(),view.entries(),opt));
   }
-  if(!pages.length||pages.every(p=>!p.rows.length)){
-   showToast&&showToast('印刷するものがありません',
-    opt.includeDone?'この設備に予定がありません':'これから流す予定がありません（「完了・取消も載せる」で過去分も出せます）',5000);
-   return;
+  return pages;
+ }
+
+ /* ---------- プレビューの画面 ----------
+    左に決めること、右に刷り上がり。並びは実際にする順(何を載せる→紙の列→
+    枚数の確認→印刷)。 */
+ const PREVIEW_ID='schedulePrintPreview';
+ let pv={equipment:'',pref:null,sheets:[],busy:false,again:false};
+
+ function ensurePreview(){
+  let el=document.getElementById(PREVIEW_ID);
+  if(el)return el;
+  el=document.createElement('div');
+  el.className='sp-preview';el.id=PREVIEW_ID;el.hidden=true;
+  el.innerHTML=`
+   <div class="sp-pv-box" role="dialog" aria-modal="true" aria-labelledby="spPvTitle">
+    <header class="sp-pv-head">
+     <div><span class="sp-pv-eyebrow">PRINT PREVIEW</span>
+      <h2 id="spPvTitle">作業予定表</h2>
+      <small id="spPvSub"></small></div>
+     <button type="button" id="spPvClose" title="閉じる（刷りません）">×</button>
+    </header>
+    <div class="sp-pv-body">
+     <aside class="sp-pv-side">
+      <section class="sp-pv-sec">
+       <h3>① 何を載せるか</h3>
+       <div class="sp-options" id="spPvOptions"></div>
+      </section>
+      <section class="sp-pv-sec">
+       <h3>② 紙の列</h3>
+       <p class="sp-layout-note" id="spLayoutNote"></p>
+       <button type="button" class="sp-layout-open" id="spLayoutOpen">紙の列を変える…</button>
+      </section>
+      <section class="sp-pv-sec">
+       <h3>③ 刷り上がり</h3>
+       <p class="sp-pv-facts" id="spPvFacts"></p>
+      </section>
+     </aside>
+     <div class="sp-pv-paper" id="spPvPaper"></div>
+    </div>
+    <footer class="sp-pv-foot">
+     <span class="sp-pv-hint">設定を変えると、右のプレビューがその場で変わります。</span>
+     <button type="button" id="spPvCancel">閉じる</button>
+     <button type="button" class="sp-pv-print" id="spPvPrint">印刷する</button>
+    </footer>
+   </div>`;
+  document.body.appendChild(el);
+  el.querySelector('#spPvClose').onclick=closePreview;
+  el.querySelector('#spPvCancel').onclick=closePreview;
+  el.querySelector('#spPvPrint').onclick=doPrint;
+  el.querySelector('#spLayoutOpen').onclick=()=>openLayoutPanel(pv.equipment,{onSaved:()=>renderPreview()});
+  /* 覆いの外を押したら閉じる（刷らない）。中は素通りさせる。 */
+  el.addEventListener('mousedown',ev=>{if(ev.target===el)closePreview()});
+  return el;
+ }
+ function optionRows(pref,canAll){
+  const cb=(k,label,note)=>`<label class="sp-opt"><input type="checkbox" data-opt="${k}"${pref[k]?' checked':''}>
+   <span><b>${esc(label)}</b>${note?`<small>${esc(note)}</small>`:''}</span></label>`;
+  /* 「まとめ」は画面で選んでいるものをそのまま使う。**いま何でまとめて
+     いるかを書く**——「まとめない」ときに設定だけ出ていると、押しても
+     何も変わらないことになる。 */
+  const gm=(typeof WL.scheduleView?.groupModeLabel==='function')?WL.scheduleView.groupModeLabel():'';
+  const grouped=(typeof WL.scheduleView?.groupMode==='function')&&WL.scheduleView.groupMode()!=='none';
+  return `${canAll?cb('allEquipment','すべての設備を続けて印刷する','設備ごとにページを分けます'):''}
+   ${cb('actualColumns','実績を書き込む欄をつける','開始・終了・確認の記入欄を右側に作ります')}
+   ${cb('pageByDate','日付ごとにページを分ける','日ごとに配る場合はこのまま')}
+   ${grouped?cb('useGroups',`画面のまとめ（${gm}）で見出しを入れる`,'画面と同じまとまりで区切ります')
+            :`<p class="sp-opt-note">画面は「まとめない」なので、紙にも見出しは入りません。</p>`}
+   ${cb('commentBox','申し送りの欄を紙の下につける','手書きで気付きを残す欄です')}
+   ${cb('includeDone','完了・取消も載せる','ふだんは載せません（これから流すものだけ配るため）')}`;
+ }
+ function openPreview(equipment){
+  const view=WL.scheduleView;
+  const canAll=typeof view.equipmentNames==='function'&&view.equipmentNames().length>1;
+  const pref=loadPref();
+  if(!canAll)pref.allEquipment=false;
+  pv={equipment:String(equipment||''),pref,sheets:[],busy:false,again:false};
+  otherEntries.clear();
+  const el=ensurePreview();
+  el.querySelector('#spPvTitle').textContent=`作業予定表${pv.equipment?`（${pv.equipment}）`:''}`;
+  el.querySelector('#spPvSub').textContent='いま画面に出ている条件（表示範囲・内容の項目）のまま刷ります';
+  const box=el.querySelector('#spPvOptions');
+  box.innerHTML=optionRows(pref,canAll);
+  /* **clickで受ける**（changeはclickの後に飛ぶ。§9.90と同じ理由）。 */
+  box.querySelectorAll('[data-opt]').forEach(inp=>inp.onclick=()=>{
+   pv.pref[inp.dataset.opt]=!!inp.checked;savePref(pv.pref);renderPreview();
+  });
+  el.hidden=false;
+  renderPreview();
+  requestAnimationFrame(()=>el.querySelector('#spPvPrint')?.focus());
+ }
+ function closePreview(){
+  const el=document.getElementById(PREVIEW_ID);if(el)el.hidden=true;
+  closeLayoutPanel();
+ }
+ /* 実寸(210×297mm)を器へ収める倍率。**紙の寸法はmmのまま**にして
+    見た目だけ縮める(§9.115の「用紙はmm」を崩さない)。
+    **高さも見る**のが要点——幅だけで合わせると1枚が縦に切れ、
+    「配る紙が1枚に収まっているか」というプレビューの一番の用が果たせない
+    （下が見えないので、溢れているのかどうかが分からない）。 */
+ function fitZoom(box){
+  const probe=box.querySelector('.sp-page');
+  /* **`offsetWidth`で測る。** `getBoundingClientRect()`は`transform`を
+     掛けたあとの見かけの寸法を返すので、前回の倍率が掛かった値を基準に
+     してしまう（回を重ねるほど縮む）。 */
+  const w=probe?probe.offsetWidth:0,h=probe?probe.offsetHeight:0;
+  if(!w||!h)return 1;
+  const roomW=box.clientWidth-24,roomH=box.clientHeight-56;   // 余白と枚数の見出しぶん
+  if(roomW<=0||roomH<=0)return 1;
+  return Math.min(1,Math.max(.3,Math.min(roomW/w,roomH/h)));
+ }
+ async function renderPreview(){
+  const el=document.getElementById(PREVIEW_ID);if(!el||el.hidden)return;
+  /* 続けて押されたときは**最後の1回だけ**組む(チェックを続けて触ると
+     組み立てが重なる)。 */
+  if(pv.busy){pv.again=true;return}
+  pv.busy=true;
+  const paper=el.querySelector('#spPvPaper'),facts=el.querySelector('#spPvFacts');
+  const note=el.querySelector('#spLayoutNote');
+  if(note)note.textContent=layoutNoteText(pv.equipment);
+  try{
+   let pages=await collectPages(pv.pref,msg=>{
+    paper.innerHTML=`<p class="sp-pv-wait">${esc(msg)}</p>`;
+   });
+   if(!pages.length||pages.every(p=>!p.rows.length)){
+    pv.sheets=[];
+    paper.innerHTML=`<p class="sp-pv-empty">${esc(pv.pref.includeDone
+      ?'この設備に予定がありません。':'これから流す予定がありません。')}</p>`
+     +(pv.pref.includeDone?'':'<p class="sp-pv-empty-how">「完了・取消も載せる」を入れると過去分も出せます。</p>');
+    facts.innerHTML='<b>0枚</b>';
+    el.querySelector('#spPvPrint').disabled=true;
+    return;
+   }
+   const sheets=splitToSheets(pages,pv.pref);
+   pv.sheets=sheets;
+   el.querySelector('#spPvPrint').disabled=false;
+   paper.innerHTML=sheets.map((p,i)=>
+    `<figure class="sp-pv-sheet"><figcaption>${i+1} / ${sheets.length}${
+      p.equipment&&pv.pref.allEquipment?`　${esc(p.equipment)}`:''}</figcaption>
+     <div class="sp-pv-scale">${pageHtml(p,pv.pref,i+1,sheets.length)}</div></figure>`).join('');
+   /* 倍率は**描いてから測って**決める(mm指定の実寸はブラウザに聞くしかない)。 */
+   const zoom=fitZoom(paper);
+   paper.style.setProperty('--sp-zoom',String(Math.round(zoom*1000)/1000));
+   paper.querySelectorAll('.sp-pv-scale').forEach(box=>{
+    const pg=box.querySelector('.sp-page');
+    if(!pg)return;
+    /* 縮めた分だけ器も縮める(transformは場所を空けてくれない)。
+       **`offsetWidth`で測ること**——`getBoundingClientRect()`は倍率を
+       掛けたあとの寸法なので、そこへもう一度掛けると器が小さくなり、
+       紙の右側が切り落とされる(実際に切れた)。 */
+    box.style.width=Math.round(pg.offsetWidth*zoom)+'px';
+    box.style.height=Math.round(pg.offsetHeight*zoom)+'px';
+   });
+   const rows=sheets.reduce((n,p)=>n+((p.rows||[]).length),0);
+   const eqs=new Set(sheets.map(p=>p.equipment).filter(Boolean));
+   facts.innerHTML=`<b>${sheets.length}枚</b>・${rows}件`
+    +(eqs.size>1?`・${eqs.size}台ぶん`:'')
+    +`<small>実寸の ${Math.round(zoom*100)}% で表示しています</small>`;
+  }catch(e){
+   paper.innerHTML=`<p class="sp-pv-empty">プレビューを作れませんでした: ${esc(e.message)}</p>`;
+   pv.sheets=[];
+  }finally{
+   pv.busy=false;
+   if(pv.again){pv.again=false;renderPreview()}
   }
-  const sheets=splitToSheets(pages,opt);
-  printPages(sheets,opt,`作業予定表_${sheets[0].equipment||''}`);
+ }
+ /* 見たものをそのまま刷る。**組み直さない**——組み直すと、そのあいだに
+    画面が変わっていた場合にプレビューと違う紙が出る。 */
+ function doPrint(){
+  if(!pv.sheets.length){showToast&&showToast('刷るものがありません','',3000);return}
+  const el=document.getElementById(PREVIEW_ID);if(el)el.hidden=true;
+  printPages(pv.sheets,pv.pref,`作業予定表_${pv.sheets[0].equipment||''}`);
  }
 
  /* ---------- 紙のレイアウトを組む(§9.118) ----------
@@ -556,10 +753,12 @@
   lp.rows.splice(to,0,row);
   renderLayout();
  }
- function openLayoutPanel(equipment){
+ function openLayoutPanel(equipment,opts={}){
   const eq=String(equipment||'').trim();
   if(!eq){showToast&&showToast('設備を選んでから開いてください','',3200);return}
-  lp={equipment:eq,rows:layoutRowsOf(eq)};
+  /* 保存したらプレビューへ知らせる(§9.186)。**触った結果をその場で見せる**
+     のがプレビューの値打ちなので、列を変えたら刷り上がりも変わる。 */
+  lp={equipment:eq,rows:layoutRowsOf(eq),onSaved:typeof opts.onSaved==='function'?opts.onSaved:null};
   ensureLayoutPanel();
   document.getElementById('splTitle').textContent=`紙のレイアウト（${eq}）`;
   document.getElementById('splSub').textContent='作業予定表の印刷にだけ効きます';
@@ -601,11 +800,16 @@
     formats:cur.formats,rules:cur.rules,formulas:cur.formulas,locks:cur.locks,
    });
    showToast&&showToast('紙のレイアウトを保存しました',`${on.length}列（${lp.equipment}）`,2800);
+   const after=lp.onSaved;
    closeLayoutPanel();
+   if(after)after();
   }catch(e){showToast&&showToast('保存に失敗しました',e.message,5000)}
  }
 
  window.WL=window.WL||{};
  WL.schedulePrint={open,buildPages,splitToSheets,pageHtml,
-                   paperCatalog,paperColumns,openLayoutPanel};
+                   paperCatalog,paperColumns,openLayoutPanel,
+                   /* プレビューは**中身を見て確かめられる**ようにしておく
+                      （テストが「何枚になったか」を画面から読むため）。 */
+                   openPreview,closePreview,previewSheets:()=>pv.sheets.slice()};
 })();

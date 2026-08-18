@@ -292,8 +292,13 @@ PATH_CONFIG_STATIC_KEYS=('sikalot_source','sikalotnow_path','sikalotdef_path','r
 #   'auto'(既定)/'on' … 写して読む  /  'off' … 従来どおり共有を直接読む
 # 別PCの別アプリが更新している .sqlite3 を直接読むと、更新と重なったときに
 # 正しく読めない(SQLiteのロックは共有では当てにならない)。詳細はbackend/db_mirror.py。
+# 共有スケジュールの見張り(§9.188)。
+#   schedule_watch_enabled  … 'auto'(既定)/'on' … 見張る / 'off' … 読むたびに写す(従来)
+#   schedule_watch_interval_sec … 変化を見る間隔(秒)。写しはこの間だけ「新しい」
+#   schedule_watch_pause_sec    … 写した直後に休む時間(秒)
 PATH_CONFIG_LIVE_KEYS=('rne_extract_interval_sec','rne_extract_enabled','schedule_lock_ttl_sec','schedule_lock_verify_delay_ms',
-                       'rne_assets_dir','rne_conf_path','db_mirror_enabled','db_mirror_interval_sec')
+                       'rne_assets_dir','rne_conf_path','db_mirror_enabled','db_mirror_interval_sec',
+                       'schedule_watch_enabled','schedule_watch_interval_sec','schedule_watch_pause_sec')
 PATH_CONFIG_KEYS=PATH_CONFIG_STATIC_KEYS+PATH_CONFIG_LIVE_KEYS
 
 def ensure_path_config_table(c):

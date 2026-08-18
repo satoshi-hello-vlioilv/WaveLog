@@ -39,6 +39,34 @@ def lock_status():
   return jsonify(error=str(e)),500
 
 # ========================================================================
+# 共有の見張り(§9.188)
+# ========================================================================
+# 「いつ取り込んだのか」「他のPCの変更を掴んでいるのか」を画面へ出すため。
+# **覚えていることは画面に書く**——黙って写しを見せると、他の端末の変更が
+# 来ていないように見える(実際に来ていないのか、まだ確かめていないのかを
+# 利用者が区別できない)。
+@bp.get('/api/schedule/sync-status')
+def sync_status():
+ try:
+  return jsonify(ok=True,**schedule_sync.watch_status())
+ except Exception as e:
+  return jsonify(error=str(e)),500
+
+@bp.post('/api/schedule/sync-now')
+def sync_now():
+ # いま取り込む。**読むだけ**なので閲覧モードからも通す
+ # (access_mode._READ_ONLY_POST_ENDPOINTSへ登録済み)。
+ try:
+  from .. import schedule_watch
+  result=schedule_watch.schedule_watch_once()
+  schedule_watch.wake()
+  return jsonify(ok=True,result=result,**schedule_sync.watch_status())
+ except schedule_sync.ScheduleNotConfigured as e:
+  return jsonify(error=str(e)),400
+ except Exception as e:
+  return jsonify(error=str(e)),500
+
+# ========================================================================
 # 編集セッション(§9.11新設): 設備単位の排他(schedule_sync.pyのSession系関数)
 # ========================================================================
 @bp.get('/api/schedule/session-status')

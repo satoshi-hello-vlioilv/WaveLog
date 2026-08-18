@@ -792,6 +792,7 @@ def column_layout_master_save():
   order=x.get('order');widths=x.get('widths');hidden=x.get('hidden');names=x.get('names')
   formats=x.get('formats');rules=x.get('rules');formulas=x.get('formulas')
   locks=x.get('locks')          # 幅を固定する列(§9.119)
+  sorts=x.get('sorts')          # 列ごとの並べ替えの決まり(§9.187)
   if order is not None and not isinstance(order,list):
    return jsonify(error='並び(order)の指定が不正です。'),400
   if widths is not None and not isinstance(widths,dict):
@@ -807,7 +808,8 @@ def column_layout_master_save():
                        formats=formats if isinstance(formats,dict) else {},
                        rules=rules if isinstance(rules,dict) else {},
                        formulas=formulas if isinstance(formulas,dict) else {},
-                       locks=locks if isinstance(locks,list) else [])
+                       locks=locks if isinstance(locks,list) else [],
+                       sorts=sorts if isinstance(sorts,dict) else {})
   return jsonify(ok=True,target=target,columns=n,updated_by=uid,message='表示の並びを保存しました。')
  except Exception as e:return jsonify(error=f'列レイアウト保存失敗: {e}'),500
 

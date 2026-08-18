@@ -287,6 +287,9 @@ def resolve_estimate(c,equipment,plan_row_dict):
  相当のdict(minutes/source/low/high/sigmaLog/base/factors)。"""
  if plan_row_dict.get('estimateMinutes') is not None:
   return {'minutes':float(plan_row_dict['estimateMinutes']),'source':'override',**_EMPTY_ESTIMATE_EXTRAS}
+ # コメント(§9.189)は時間を持たない申し送り。見積は常に0分。
+ if plan_row_dict.get('kind')=='コメント':
+  return {'minutes':0.0,'source':'comment',**_EMPTY_ESTIMATE_EXTRAS}
  if plan_row_dict.get('kind')=='設備停止':
   minutes=sr.stop_reason_standard_minutes(c,equipment,plan_row_dict.get('title') or '')
   if minutes is not None:
@@ -442,6 +445,18 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
    continue
   est=resolve_estimate(mc,equipment,e)
   minutes=est['minutes']
+  if e['kind']=='コメント':
+   # 申し送り(§9.189)。**カーソルを進めない**——時間を持たせると、
+   # メモを1行挟むたびに後ろの予定が動くことになる。位置だけ持つ。
+   at=cursor
+   e['plannedStart']=at.isoformat() if at is not None else None
+   e['plannedEnd']=e['plannedStart']
+   e['startsInMinutes']=round(_minutes_between(now,at),1) if at is not None else None
+   e['estimate']=dict(est,minutes=0.0)
+   e['reorderable']=(e['state']==sr.PLAN_REORDERABLE_STATE)
+   e['spansNonWorking']=False;e['overdueMinutes']=0
+   e['shift']=resolve_shift_label(specific_shift,global_shift,at) if at is not None else None
+   continue
   if id(e) in ongoing_ids:
    # 実績の開始時刻から「現在時刻まで」。終わっていないので予定終了は
    # 常に現在時刻(継続中)。見積を超えている分はoverdueMinutesで示す。

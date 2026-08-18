@@ -293,6 +293,105 @@ let b=null;
       (await page.evaluate(()=>WL.schedulePrint.paperColumns('テスト設備A',
         {includeDone:true,actualColumns:true,pageByDate:false}).length))===5);
 
+  /* ---- 12) 印刷はプレビューを先に出す(§9.186) ----
+     以前は「印刷しますか？」＋チェック4つの確認から始まり、**紙を見る前に
+     決めさせていた**。日付ごとに分けるか・実績欄を付けるかは刷り上がりを
+     見れば分かることなので、聞く順番が逆だった。 */
+  await page.evaluate(()=>WL.schedulePrint.openPreview('テスト設備A'));
+  await page.waitForSelector('#schedulePrintPreview:not([hidden])',{timeout:10000});
+  await page.waitForFunction(()=>document.querySelectorAll('#spPvPaper .sp-pv-sheet').length>0
+    ||document.querySelector('.sp-pv-empty'),null,{timeout:20000});
+  const pv=await page.evaluate(()=>({
+   sheets:document.querySelectorAll('.sp-pv-sheet').length,
+   pages:document.querySelectorAll('.sp-pv-sheet .sp-page').length,
+   facts:(document.getElementById('spPvFacts')||{}).innerText||'',
+   caption:(document.querySelector('.sp-pv-sheet figcaption')||{}).textContent||'',
+   opts:document.querySelectorAll('#spPvOptions [data-opt]').length,
+   layoutBtn:!!document.getElementById('spLayoutOpen'),
+   printBtn:!!document.getElementById('spPvPrint'),
+   ask:!!document.querySelector('#appConfirm:not([hidden])'),
+  }));
+  rec('押すとすぐ紙のプレビューが出る（先に聞かない）',
+      pv.sheets>0&&pv.pages===pv.sheets&&!pv.ask,JSON.stringify(pv));
+  rec('枚数と件数を文字で出す',/枚/.test(pv.facts),pv.facts.replace(/\n/g,' / '));
+  /* **紙が切れていないこと。** 器の寸法を`getBoundingClientRect()`（倍率を
+     掛けたあとの値）から作ると、そこへもう一度倍率が掛かって右側が
+     切り落とされる（実際に切れた）。列の数で見る。 */
+  const cut=await page.evaluate(()=>{
+   const pg=document.querySelector('.sp-pv-sheet .sp-page');
+   const box=pg.closest('.sp-pv-scale');
+   const zoom=Number(getComputedStyle(document.getElementById('spPvPaper'))
+     .getPropertyValue('--sp-zoom'))||1;
+   return {cols:pg.querySelectorAll('thead th').length,
+           器:box.clientWidth,紙:Math.round(pg.offsetWidth*zoom),zoom};
+  });
+  rec('紙が器からはみ出して切れていない',Math.abs(cut.器-cut.紙)<=2,JSON.stringify(cut));
+  /* 列の数は**そのとき効いているレイアウトのとおり**（この時点では11節で
+     組んだ5列が保存されている）。プレビューと紙で数が食い違わないことを見る。*/
+  const want=await page.evaluate(()=>WL.schedulePrint.paperColumns('テスト設備A',
+    {includeDone:false,actualColumns:true,pageByDate:true}).length);
+  rec('プレビューの列は紙の列と同じ数',cut.cols===want,`${cut.cols}列 / 紙は${want}列`);
+  rec('何枚目かを紙ごとに出す',/\d+ \/ \d+/.test(pv.caption),pv.caption);
+  rec('設定も紙の列もプレビューの中から触れる',pv.opts>=3&&pv.layoutBtn&&pv.printBtn,
+      JSON.stringify(pv));
+  /* **要点**: 触った結果がその場で変わる。日付ごとを外せば枚数が減る。 */
+  const before=pv.sheets;
+  await page.click('#spPvOptions [data-opt="pageByDate"]');
+  await page.waitForFunction(n=>document.querySelectorAll('.sp-pv-sheet').length!==n,
+    before,{timeout:15000}).catch(()=>{});
+  const after=await page.evaluate(()=>document.querySelectorAll('.sp-pv-sheet').length);
+  rec('設定を触るとその場で刷り上がりが変わる',after!==before&&after>0,`${before}枚 → ${after}枚`);
+  /* 見たものをそのまま刷る(組み直さない)。 */
+  const same=await page.evaluate(()=>{
+   const shown=document.querySelectorAll('.sp-pv-sheet').length;
+   return {shown,kept:WL.schedulePrint.previewSheets().length};
+  });
+  rec('刷るのは見えている紙そのもの',same.shown===same.kept,JSON.stringify(same));
+  await page.click('#spPvOptions [data-opt="pageByDate"]');   // 元へ戻す
+  await page.waitForTimeout(400);
+  /* ---- 13) 画面のまとめを紙にも入れる／申し送りの欄(§9.189) ---- */
+  const grouped=await page.evaluate(async()=>{
+   /* 画面のまとめを「区分ごと」にして、紙に見出しが入るかを見る。
+      **日付ごとにすると紙の頭と同じ文字**になるので出さない決まり
+      (§9.129 同じものを2箇所に出さない)——ここでは区分で確かめる。 */
+   const sel=document.getElementById('scGroupSelect');
+   sel.value='category';sel.dispatchEvent(new Event('change',{bubbles:true}));
+   return true;
+  });
+  await page.waitForTimeout(1200);
+  await page.evaluate(()=>WL.schedulePrint.openPreview('テスト設備A'));
+  await page.waitForFunction(()=>document.querySelectorAll('.sp-pv-sheet').length>0,null,{timeout:20000});
+  await page.waitForTimeout(500);
+  const gp=await page.evaluate(()=>({
+   見出し:[...document.querySelectorAll('.sp-row-group')].map(n=>n.innerText.replace(/\s+/g,' ')),
+   申し送り:document.querySelectorAll('.sp-note').length,
+   紙:document.querySelectorAll('.sp-pv-sheet .sp-page').length,
+   行:document.querySelectorAll('.sp-page tbody tr[data-row]').length,
+   件数:(WL.schedulePrint.previewSheets()||[]).reduce((n,p)=>n+(p.rows||[]).length,0),
+  }));
+  rec('画面のまとめが紙にも見出しとして入る',gp.見出し.length>0,gp.見出し.slice(0,2).join(' / '));
+  rec('見出しには件数も出る',gp.見出し.some(t=>/\d+件/.test(t)),gp.見出し[0]||'');
+  /* **見出し行を「行」として数えないこと**——数えると、見出しのぶんだけ
+     予定が紙から抜け落ちる。 */
+  rec('見出しを行として数えていない（予定が抜けない）',gp.行===gp.件数,`${gp.行} / ${gp.件数}`);
+  rec('申し送りの欄が紙ごとに付く',gp.申し送り===gp.紙,`${gp.申し送り} / ${gp.紙}枚`);
+  const off=await page.evaluate(async()=>{
+   document.querySelector('#spPvOptions [data-opt="commentBox"]').click();
+   return true;
+  });
+  await page.waitForTimeout(900);
+  rec('外すと申し送りの欄は消える',
+      (await page.evaluate(()=>document.querySelectorAll('.sp-note').length))===0);
+  await page.evaluate(()=>{document.querySelector('#spPvOptions [data-opt="commentBox"]').click()});
+  await page.waitForTimeout(700);
+  await page.evaluate(()=>{const s=document.getElementById('scGroupSelect');
+    s.value='none';s.dispatchEvent(new Event('change',{bubbles:true}))});
+  await page.waitForTimeout(900);
+  await page.evaluate(()=>WL.schedulePrint.closePreview());
+  rec('閉じても刷らない（プレビューだけ消える）',
+      await page.evaluate(()=>document.getElementById('schedulePrintPreview').hidden
+        &&!document.body.classList.contains('sc-print')));
+
   console.log('\n=== SUMMARY ===');
   const ng=R.filter(x=>!x.ok);console.log(`${R.length-ng.length}/${R.length} passed`);
   ng.forEach(x=>console.log(' -',x.n,x.d||''));

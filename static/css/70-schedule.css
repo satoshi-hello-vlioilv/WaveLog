@@ -928,7 +928,69 @@
    （CLAUDE.mdの「例外はA4帳票だけ」と同じ理由。既存の .rp-page に揃える）。
 
    画面では常に隠れていて、@media print のときだけ出る（90-state.css）。 */
+/* ---------- 共有の見張り(§9.188) ----------
+   共有(Box等)のschedule.sqlite3は他の端末も書く。**いつ取り込んだかを常に
+   出す**——黙って手元の写しを見せると、他のPCの変更が来ていないのか、
+   まだ確かめていないのかを利用者が区別できない。 */
+.sc-sync-chip{flex:none;height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
+  border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface-2);
+  color:var(--ink-2);font-size:var(--fs-sm);white-space:nowrap;box-shadow:none}
+.sc-sync-chip:hover{border-color:var(--teal);color:var(--ink)}
+.sc-sync-chip.is-error{border-color:var(--warn-border);background:var(--warn-bg);color:var(--warn-fg)}
+/* 他のPCが書き換えたときの帯。**触っている最中は勝手に読み直さない**ので、
+   読み直す手立てを文字とボタンで置く。 */
+.sc-sync-banner{display:flex;align-items:center;gap:var(--gap-inline);padding:var(--pad-row);
+  background:var(--pale);border-bottom:1px solid var(--teal);font-size:var(--fs-sm);color:var(--ink)}
+.sc-sync-banner span{flex:1;min-width:0}
+.sc-sync-banner button{flex:none;height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
+  border:1px solid var(--teal);border-radius:var(--radius-sm);background:var(--teal);color:#fff;
+  font-size:var(--fs-sm);font-weight:700}
 .sp-print-area{display:none}
+/* ---------- 印刷プレビュー(§9.186) ----------
+   **聞く前に見せる。** 左に決めること、右に刷り上がり。並びは実際にする順
+   （何を載せる→紙の列→枚数→印刷）。紙は実寸(mm)のまま組み、`transform`で
+   縮めて見せる——プレビュー用に別の寸法で組むと、見たものと刷るものが
+   食い違う。 */
+.sp-preview{position:fixed;inset:0;z-index:var(--z-modal);display:grid;place-items:center;
+  padding:var(--space-3);background:#091a1f9e}
+.sp-preview[hidden]{display:none}
+.sp-pv-box{display:flex;flex-direction:column;width:min(1440px,96vw);height:min(920px,94vh);
+  border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--surface);
+  box-shadow:0 20px 60px #00000040;overflow:hidden}
+.sp-pv-head{display:flex;align-items:flex-start;gap:var(--gap-inline);padding:var(--pad-card);
+  border-bottom:1px solid var(--line-soft);background:var(--surface-2)}
+.sp-pv-head>div{flex:1;min-width:0}
+.sp-pv-eyebrow{display:block;font-size:var(--fs-badge);font-weight:800;letter-spacing:.1em;color:var(--muted)}
+.sp-pv-head h2{margin:0;font-size:var(--fs-lg)}
+.sp-pv-head small{font-size:var(--fs-sm);color:var(--muted)}
+.sp-pv-head button{flex:none;width:var(--ctl-h);height:var(--ctl-h);border:1px solid var(--line);
+  border-radius:var(--radius-sm);background:var(--surface);color:var(--ink-2);font-size:var(--fs-lg)}
+.sp-pv-body{flex:1;display:grid;grid-template-columns:var(--w-xl) 1fr;min-height:0}
+.sp-pv-side{display:flex;flex-direction:column;gap:var(--space-3);padding:var(--pad-card);
+  border-right:1px solid var(--line-soft);overflow:auto}
+.sp-pv-sec{display:grid;gap:var(--space-1)}
+.sp-pv-sec h3{margin:0;font-size:var(--fs-sm);font-weight:800;color:var(--ink-2)}
+.sp-pv-facts{margin:0;font-size:var(--fs-sm);color:var(--ink-2)}
+.sp-pv-facts b{font-size:var(--fs-lg);color:var(--ink);font-variant-numeric:tabular-nums}
+.sp-pv-facts small{display:block;font-size:var(--fs-micro);color:var(--muted)}
+/* 効かない設定はチェックを出さず、理由を書く(§9.189)。 */
+.sp-opt-note{margin:0;font-size:var(--fs-micro);color:var(--muted)}
+/* 紙の並ぶ側。**縮めた紙の器はJSが寸法を入れる**(transformは場所を空けない)。*/
+.sp-pv-paper{overflow:auto;padding:var(--space-3);background:var(--surface-3);
+  display:flex;flex-wrap:wrap;gap:var(--space-3);align-content:flex-start;justify-content:center}
+.sp-pv-sheet{margin:0;display:grid;gap:var(--space-1);justify-items:center}
+.sp-pv-sheet figcaption{font-size:var(--fs-sm);color:var(--ink-2);font-variant-numeric:tabular-nums}
+.sp-pv-scale{overflow:hidden;border:1px solid var(--line);background:#fff}
+.sp-pv-scale .sp-page{transform:scale(var(--sp-zoom,1));transform-origin:top left}
+.sp-pv-wait,.sp-pv-empty{margin:auto;font-size:var(--fs);color:var(--ink-2)}
+.sp-pv-empty-how{margin:0 auto;font-size:var(--fs-sm);color:var(--muted)}
+.sp-pv-foot{display:flex;align-items:center;gap:var(--gap-inline);padding:var(--pad-card);
+  border-top:1px solid var(--line-soft);background:var(--surface-2)}
+.sp-pv-hint{flex:1;min-width:0;font-size:var(--fs-sm);color:var(--muted)}
+.sp-pv-foot button{height:var(--ctl-h);padding:0 var(--ctl-pad-x);border:1px solid var(--line);
+  border-radius:var(--radius-sm);background:var(--surface);color:var(--ink);font-size:var(--fs);font-weight:700}
+.sp-pv-foot .sp-pv-print{border-color:var(--teal);background:var(--teal);color:#fff;font-weight:800}
+.sp-pv-foot .sp-pv-print:disabled{opacity:.5}
 /* **`font-size`は必ずセレクタと同じ行に書くこと。** リテラルpxの見張り
    (`tests/test_csslint.py`)は行単位で「その行に紙のセレクタがあるか」を見る
    ので、次の行へ送ると紙の例外だと分かってもらえず落ちる。 */
@@ -977,6 +1039,17 @@
 .sp-c-check{text-align:center}
 /* 設備停止の行は面で区別する（白黒なので色ではなく濃淡で分ける）。 */
 .sp-row-stop td{background:#f0f0f0}
+/* まとまりの見出し(§9.189)。画面の「まとめ」と同じ区切りを紙にも入れる。
+   **濃い帯にする**——白黒コピーでも行と見分けが付く必要がある。 */
+.sp-row-group td{background:#d8d8d8;font-weight:800;font-size:10px;text-align:left;padding:1mm}
+.sp-group-count{float:right;font-weight:400}
+/* 申し送り(コメント)の行。**横いっぱい**にして読める幅を確保する。 */
+.sp-row-comment td{background:#fff;font-size:11px;text-align:left;font-style:italic}
+/* 紙の下の申し送り欄。**罫線だけの空白**にする(手書きするための場所)。 */
+.sp-note{display:flex;align-items:stretch;gap:2mm;margin-top:2mm;border:0.3mm solid #000}
+.sp-note-label{flex:none;padding:1.5mm;border-right:0.3mm solid #000;background:#e8e8e8;font-size:9px;
+ font-weight:700;min-width:24mm}
+.sp-note-area{flex:1;min-height:18mm}
 .sp-empty{text-align:center;color:#555;height:14mm}
 /* 表を伸ばさなくなったので、下の余りは脚が引き受ける(`margin-top:auto`)。
    件数が少ない日でも脚は用紙の下端に来る。 */

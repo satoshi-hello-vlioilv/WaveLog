@@ -1390,7 +1390,7 @@
     </div>
    </div>
    <p class="mm-def-hint">${work?'':'<b>役割「作業」のデータソースがありません。</b>測定・作業スケジュールへの投入はできません。 '
-     }読み込み先の変更はサーバー再起動後に反映されます（それまでは今までの場所を読み続けます）。</p>`;
+     }<b>名称と読み込み先</b>の変更はサーバー再起動後に反映されます（それまでは今までの名前・場所のままです）。</p>`;
   form.onsubmit=ev=>ev.preventDefault();
   const add=$('#dsAddBtn');if(add)add.onclick=()=>openDataSourceEditor(null);
   /* 共通設定へは**そのタブを押したのと同じ道**で移る（入口を2本作らない）。 */
@@ -1399,10 +1399,17 @@
  }
  /* 保存値と、いま効いている場所が違う＝再起動待ち。**まだ読んでいない
     データソース**（登録したばかり）も待ちに含める（§9.163）。 */
- function dsPending(x){
-  if(!x.active)return false;
-  if(x.loaded===false)return true;
-  return String(x.plannedPath||'')!==String(x.activePath||'');
+ function dsPending(x){return dsPendingKinds(x).length>0}
+ /* 何が再起動待ちなのかを**文字で**返す(§9.183)。以前は読み込み先だけを
+    見ていたため、**名称を変えても何も言わなかった**（表示名も接続先と同じく
+    起動時に1回だけ決まる）。 */
+ function dsPendingKinds(x){
+  if(!x.active)return [];
+  if(x.loaded===false)return ['この端末ではまだ読んでいません'];
+  const out=[];
+  if(String(x.plannedPath||'')!==String(x.activePath||''))out.push('読み込み先');
+  if(x.activeLabel!=null&&String(x.label||'')!==String(x.activeLabel||''))out.push('名称');
+  return out;
  }
  function renderDataSourceList(){
   const list=$('#masterMaintList');if(!list)return;
@@ -1421,8 +1428,11 @@
   const caps=CAPABILITY_ORDER.filter(k=>f[k]).map(k=>
     `<li class="ds-cap${f[k].ok?' is-ok':''}" title="${esc(CAPABILITY_LABEL[k]+': '+(f[k].ok?'できます':'できません')+' — '+(f[k].note||''))}">`
     +`<i aria-hidden="true">${f[k].ok?'✓':'—'}</i>${esc(CAPABILITY_SHORT[k])}</li>`).join('');
-  const pending=dsPending(x);
+  const kinds=dsPendingKinds(x);
+  const pending=kinds.length>0;
   const role=x.purpose||'その他';
+  // 名称も起動時に1回だけ決まる。違うときだけ「いまの名前」を添える。
+  const sameLabel=x.activeLabel==null||String(x.label||'')===String(x.activeLabel||'');
   /* **同じ場所なら1行で言う**（§9.129 同じものを2箇所に出さない）。違うときだけ
      「再起動後」を別に出す——そこが利用者の打つ手だから。 */
   const same=String(x.plannedPath||'')===String(x.activePath||'');
@@ -1432,7 +1442,7 @@
     <b class="ds-name" title="${esc(x.label||'')}">${esc(x.label||x.key)}</b>
     <code class="ds-key" title="一覧を指す識別子です">${esc(x.key)}</code>
     ${x.active?'':'<span class="ds-flag is-off">無効</span>'}
-    ${pending?'<span class="ds-flag is-pending">再起動待ち</span>':''}
+    ${pending?`<span class="ds-flag is-pending" title="${esc(kinds.join('・'))}が再起動待ちです">再起動待ち（${esc(kinds.join('・'))}）</span>`:''}
     <span class="ds-card-act">
      <button type="button" class="mm-btn-ghost sm" data-ds-edit="${esc(String(x.id))}">編集</button>
      ${x.active?`<button type="button" class="mm-btn-ghost sm" data-ds-del="${esc(String(x.id))}">無効にする</button>`:''}
@@ -1443,6 +1453,7 @@
     <div><dt>${same?'読み込み先':'いま読んでいる'}</dt><dd title="${esc(x.activePath||'')}">${
       esc(x.activePath||'（この端末ではまだ読んでいません）')}</dd></div>
     ${same?'':`<div class="is-next"><dt>再起動後</dt><dd title="${esc(x.plannedPath||'')}">${esc(x.plannedPath||'—')}</dd></div>`}
+    ${sameLabel?'':`<div class="is-next"><dt>いまの名称</dt><dd>${esc(x.activeLabel||'—')}<i class="ds-next-note">再起動すると「${esc(x.label||'')}」になります</i></dd></div>`}
    </dl>
    <ul class="ds-caps">${caps||`<li class="ds-cap">${esc(cap.error||'確かめられません')}</li>`}</ul>
   </article>`;
@@ -1736,6 +1747,19 @@
    ${group('スケジュールの排他制御','保存後すぐ反映','is-live',`
     ${numField('schedule_lock_ttl_sec','スケジュール書込ロックの有効期限','秒',5,1)}
     ${numField('schedule_lock_verify_delay_ms','ロック確認までの待機時間','ミリ秒',100,0)}`)}
+   ${group('共有スケジュールの取り込み','保存後すぐ反映','is-live',`
+    <p class="mm-field-hint">共有（Box等）のschedule.sqlite3は<b>他の端末も書きます</b>。
+     読むときは手元へ写したものを読み、<b>改訂番号が変わったときだけ</b>写し直します
+     （読むたびに写すと共有を掴み続け、他の端末の書込とぶつかります）。</p>
+    <label class="mm-field"><span>共有の変化を見張る</span><select data-pc-field="schedule_watch_enabled">${
+     [['','（既定）auto: 見張る'],['auto','auto: 見張る'],['on','on: 見張る'],
+      ['off','off: 見張らない（読むたびに共有から写す）']]
+      .map(([val,label])=>`<option value="${esc(val)}"${(v.schedule_watch_enabled||'')===val?' selected':''}>${esc(label)}</option>`).join('')
+    }</select><small class="mm-field-hint">offにすると以前の動きに戻ります（共有が遅い環境では読み込みも遅くなります）。</small></label>
+    ${numField('schedule_watch_interval_sec','変化を見る間隔','秒',5,5)}
+    ${numField('schedule_watch_pause_sec','取り込んだあと休む時間','秒',5,0)}
+    <p class="mm-field-hint">休む時間は「更新が続いているときに写し続けない」ためのものです。
+     0にすると変化を見つけるたびに写します。</p>`)}
    ${group('いま効いている値','確認用','is-info',`<div id="pathConfigActive"></div>`)}
   </div>
   <div class="mm-form-tail mm-set-sticky"><button type="submit" class="mm-btn-primary">パス設定を保存</button><span class="mm-form-hint">更新者IDは画面右上の入力欄を使用します。</span></div>`;
@@ -2127,8 +2151,11 @@
    <div class="mm-raw-scroll"><table class="mm-raw-table"><thead><tr>${head}</tr></thead><tbody>${body||`<tr><td colspan="${cols.length}">データがありません。</td></tr>`}</tbody></table></div>`;
  }
 
- function openMasterMaint(){
+ function openMasterMaint(defKey){
   WL.enterView('master');
+  /* どのタブを開くか指定できる(§9.183)。左メニューの「再起動待ち」から
+     押したときに、データ接続のタブを開いた状態で出すため。 */
+  if(defKey&&MASTER_DEFS.some(d=>d.key===defKey))maintState.defKey=defKey;
   const panel=ensureMaintPanel();
   WL.syncViewToolbar('master');   // 更新者ID(#mmHead)はパネル生成後にヘッダーへ載せる
   renderMaintNav();

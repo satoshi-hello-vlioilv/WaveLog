@@ -99,16 +99,19 @@
   const ACTIVE_MAX_CONTEXTS=80;
   let activeAll=(()=>{try{const m=JSON.parse(localStorage.getItem(ACTIVE_STORE)||'{}');
                            return (m&&typeof m==='object')?m:{}}catch(_){return {}}})();
-  function activeBucket(){
-    const uid=filterUserId();
+  function activeBucket(who){
+    const uid=who==null?filterUserId():who;
     if(!activeAll[uid]||typeof activeAll[uid]!=='object')activeAll[uid]={};
     return activeAll[uid];
   }
   function writeActiveAll(){try{localStorage.setItem(ACTIVE_STORE,JSON.stringify(activeAll))}catch(_){}}
-  function saveActiveFilterState(){
+  /* whoは**書き込む先の利用者**。利用者IDは後から届くので(§9.172)、
+     起動直後に空のIDで覚えたぶんを、IDが届いた時点でその人の側へ
+     置き換える。そのとき「元の持ち主」へ書き戻すために引数で受ける。 */
+  function saveActiveFilterState(who){
     if(activeFilterContextKey==null)return;
     const keep=S.genericFilters.filter(f=>!isLockedFilter(f)).map(f=>({...f}));
-    const bucket=activeBucket();
+    const bucket=activeBucket(who);
     /* 0件は**行ごと消す**——空配列を残すと、覚えている一覧の数だけが増えていく。 */
     if(keep.length)bucket[activeFilterContextKey]=keep;else delete bucket[activeFilterContextKey];
     const keys=Object.keys(bucket);
@@ -119,6 +122,78 @@
   }
   function restoreActiveFilterState(key){
     return (activeBucket()[key]||[]).map(f=>({...f}));
+  }
+  /* ---------- 覚えの入れ替えと既定の当て直し(§9.184) ----------
+     以前この2つは`selectTable`の中だけで行っており、**次の3つで空振り**して
+     いた。どれも「一覧を開き直したのに鍵付きの条件が外れている」という
+     同じ見え方になる。
+      ① 起動直後——登録フィルタ(と印)がまだ届いておらず、当てる相手が
+         1件も無い。以前は空振りしたまま二度と当て直さなかった。
+      ② 利用者IDが後から届く——空のIDで覚えを読んでしまい、その人の
+         覚えが出てこない。
+      ③ スケジュール画面との行き来——テーブルは変わらないので`selectTable`が
+         呼ばれず、場面(§9.184)が変わったことに誰も気づかない。
+     **一覧を引く前には必ずここを通る**（listHooks.onQuery）ので、鍵の
+     付け替えも既定の当て直しもこの1箇所で済ませる。 */
+  let activeFilterUid=null;          // いまの覚えを読んだときの利用者ID
+  let defaultsAppliedFor=null;       // 既定を当て終えたコンテキストの鍵
+  function syncFilterContext(){
+    if(!S.db||!S.table)return false;
+    const key=defaultMapKey(S.db,S.table),uid=filterUserId();
+    if(key!==activeFilterContextKey||uid!==activeFilterUid){
+      /* 保存先は**入れ替える前の持ち主**。IDが空→本人へ切り替わる瞬間に
+         現在の持ち主で書くと、空のIDの覚えが消える。 */
+      if(activeFilterContextKey!=null)saveActiveFilterState(activeFilterUid);
+      S.genericFilters=restoreActiveFilterState(key);
+      activeFilterContextKey=key;activeFilterUid=uid;
+      defaultsAppliedFor=null;
+    }
+    if(defaultsAppliedFor===key)return false;
+    /* **届いていなければ取りに行く。** ここは同期なので待てないが、
+       取れた時点で当て直す(§9.184)。以前は「1件も無いなら諦める」だけで、
+       起動直後・利用者IDが後から届いた場合に二度と当たらなかった
+       ——実機で「再起動すると鍵付きのフィルタが外れている」となっていた
+       のがこれ。**利用者IDは鍵に入っている**ので、空のIDで読んだ結果を
+       その人のものだと思い込むこともない。 */
+    if(!presetsReady(S.db,S.table)){
+      ensurePresetsFor(S.db,S.table).then(()=>{reapplyDefaultFilters()});
+      return false;
+    }
+    const added=applyDefaultFiltersFor(S.db,S.table);
+    defaultsAppliedFor=key;
+    return added>0;
+  }
+  /* ---------- その一覧の登録フィルタを、当てる前に取る(§9.184) ----------
+     以前は起動時に1回だけ`loadMasterPresets()`を呼んでいたが、そのときには
+     まだDBもテーブルも決まっていないため、**その一覧の登録フィルタは
+     1件も入っていなかった**。それでも動いていたのは端末に残っていた控え
+     (localStorage)を読んでいたからで、控えが無い端末・別のPC・利用者IDが
+     後から届いた場合は、既定・鍵の自動適用が相手不在で空振りしていた
+     （実機で「再起動するとフィルタが外れる」と報告された形）。
+     **印はマスタにその人のものとして入っている**(§9.172)ので、開く一覧が
+     決まった時点で取りに行く。1度取ったら覚えて、同じ一覧では取り直さない。 */
+  let presetsLoadedFor=null,presetsLoading=null;
+  function presetsKeyFor(db,table){
+    return `${mapKeyOf(db,table,presetMode())}\u001f${filterUserId()}`;
+  }
+  function presetsReady(db,table){return presetsLoadedFor===presetsKeyFor(db,table)}
+  async function ensurePresetsFor(db,table){
+    const key=presetsKeyFor(db,table);
+    if(presetsLoadedFor===key)return;
+    /* 同じ一覧を同時に2回取りに行かない(一覧を引くたびに呼ばれる)。 */
+    if(presetsLoading&&presetsLoading.key===key)return presetsLoading.p;
+    const p=loadMasterPresets({inline:false,db,table})
+      .catch(()=>{/* 読めなければ次の機会に取り直す */})
+      .finally(()=>{if(presetsLoading&&presetsLoading.key===key)presetsLoading=null});
+    presetsLoading={key,p};
+    return p;
+  }
+  /* 登録フィルタが届いた直後の当て直し。**変わったときだけ引き直す**。 */
+  function reapplyDefaultFilters(){
+    if(!syncFilterContext())return false;
+    renderGenericFilterBar();
+    if(typeof load==='function')load();
+    return true;
   }
   /* いま覚えている一覧の数。登録一覧モーダルの見出しで「どこに何が残って
      いるか」を文字で出すために使う(隠したまま効かせない)。 */
@@ -163,7 +238,16 @@
      **スケジュールモードだけ別の置き場**にする(編集と閲覧は同じ列構成を
      同じように見るので分けない。3つに割ると、どこで作ったかを覚えて
      いなければ探せなくなる)。 */
-  function presetMode(){return (window.accessMode&&window.accessMode.mode)==='schedule'?'schedule':''}
+  /* **アクセスモードではなく「どこで開いた一覧か」で分ける**(§9.184)。
+     以前は`accessMode.mode==='schedule'`で決めていたため、スケジュール
+     モードの端末では「一覧を見る」から開いた仕掛一覧まで同じ置き場を使い、
+     ①スケジュール作成中の条件が普通の一覧にも当たり ②モードが変わると
+     どちらの置き場も入れ替わる、という2つの困りごとになっていた。
+     列構成が変わるのは**スケジュール画面の中の仕掛一覧**（品質データを
+     結合する）なので、判定もそこに合わせる。 */
+  function presetMode(){return document.body.classList.contains('sc-mode')?'schedule':''}
+  const SCENE_LABEL={'schedule':'スケジュール作成中の仕掛一覧','':'「一覧を見る」の一覧'};
+  function sceneLabel(){return SCENE_LABEL[presetMode()]||'この一覧'}
   function usageScopeKey(){return `${S.db||''}\u001f${S.table||''}\u001f${presetMode()}`}
   function scopedUsage(){
     const bucket=userUsageBucket()[usageScopeKey()];
@@ -247,10 +331,14 @@
   const canWait=()=>typeof showWaiting==='function'&&typeof hideSaveOverlay==='function';
 
   /* ---- マスタ連携（読込・保存・削除・使用回数） ---- */
+  /* opts.db/opts.table を渡せる(§9.184)。**テーブルが決まる前に呼ぶ経路がある**
+     ——一覧を開くときは、S.tableへ入る前に「その一覧の登録フィルタ」が要る
+     (印を当てる相手が無いと、既定・鍵の自動適用がそのまま空振りする)。 */
   async function loadMasterPresets(opts={}){
     if(opts.inline!==false)setInlineLoading(true,'マスタからフィルタを読込中');
     try{
-      const q=new URLSearchParams();if(S.db)q.set('db',S.db);if(S.table)q.set('table',S.table);
+      const db=opts.db!=null?opts.db:S.db,table=opts.table!=null?opts.table:S.table;
+      const q=new URLSearchParams();if(db)q.set('db',db);if(table)q.set('table',table);
       q.set('mode',presetMode());
       /* **誰が見ているか**をサーバーへ渡す(§9.172)。返るのは「みんなのもの」と
          「自分のもの」だけで、印(デフォルト・鍵)もその人のぶんが載って来る。 */
@@ -261,13 +349,18 @@
       /* 端末ごとの古い印を、一度だけこの人の印へ移す。**移してから写す**
          ——先に写すと、移行で付いた印がその場では反映されない。 */
       await migrateLegacyMarks(fromMaster,!!r.hasPersonalMarks);
-      absorbServerMarks(fromMaster,S.db,S.table,presetMode());
+      absorbServerMarks(fromMaster,db,table,presetMode());
       /* マスタへ書けなかったぶん(この端末だけの控え)は**捨てない**。
          以前はマスタの内容で丸ごと置き換えていたため、保存に失敗して
          ローカルへ退避した直後の再読込でそれごと消え、「登録したのに
          一覧に出ない」という見え方になっていた。 */
       const localOnly=(S.filterPresets||[]).filter(pz=>!pz.master);
       S.filterPresets=[...localOnly,...fromMaster];
+      /* **どの一覧の・誰のぶんを読んだか**を覚える(§9.184)。利用者IDは
+         後から届くので、IDが変わったら読み直す必要がある——ここを
+         「読んだかどうか」だけで覚えると、空のIDで読んだ結果を
+         その人のものだと思い込み、印(デフォルト・鍵)が永久に付かない。 */
+      presetsLoadedFor=`${mapKeyOf(db,table,presetMode())}\u001f${filterUserId()}`;
       S.filterPresetSource='master';writeLocalPresets();return true;
     }catch(e){
       S.filterPresets=readLocalPresets();S.filterPresetSource='local';console.warn('フィルタマスタ読込失敗、ローカルを使用',e);return false;
@@ -546,11 +639,14 @@
     preset.isLocked=on;
     pushMark(preset.id,db,table,presetMode());
   }
+  /* 戻り値は**足した条件の数**。0のときは知らせない(一覧を引くたびに
+     「適用しました」と言われると読まれなくなる)。 */
   function applyDefaultFiltersFor(db,table){
-    const ids=defaultPresetIdsFor(db,table);if(!ids.length)return;
+    const ids=defaultPresetIdsFor(db,table);if(!ids.length)return 0;
     const idSet=new Set(ids),lockedIds=new Set(lockedPresetIdsFor(db,table));
     const matches=(S.filterPresets||[]).filter(p=>idSet.has(String(p.id)));
-    if(!matches.length)return;
+    if(!matches.length)return 0;
+    let added=0;
     // 鍵付きプリセットを先に処理し、複数プリセットに同一条件がまたがる
     // 場合も鍵の状態が優先されるようにする。
     const ordered=[...matches].sort((a,b)=>Number(lockedIds.has(String(b.id)))-Number(lockedIds.has(String(a.id))));
@@ -565,7 +661,7 @@
       (p.filters||[]).forEach(f=>{
         const k=filterKey(f);
         if(!seen.has(k)){
-          seen.add(k);S.genericFilters.push(locked?{...f,locked:true}:{...f});
+          seen.add(k);S.genericFilters.push(locked?{...f,locked:true}:{...f});added++;
         }else if(locked){
           const idx=S.genericFilters.findIndex(x=>filterKey(x)===k);
           if(idx>=0&&!S.genericFilters[idx].locked)S.genericFilters[idx]={...S.genericFilters[idx],locked:true};
@@ -573,7 +669,9 @@
       });
     });
     S.page=1;
-    showToast?.('デフォルトフィルタを適用しました',matches.map(p=>p.name).join(' / '),3200);
+    if(added)showToast?.('デフォルトフィルタを適用しました',
+      matches.map(p=>p.name).join(' / ')+`（${sceneLabel()}）`,3200);
+    return added;
   }
 
   /* あるプリセットの条件が、対象のプリセット自身を除いても他のデフォルト
@@ -1297,11 +1395,59 @@
     document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!modal.hidden){modal.hidden=true;ioClose()}},true);
     return modal;
   }
+  /* ---------- もう一方の場面にある登録(§9.184) ----------
+     置き場を場面で分けた以上、**片方にしか無い登録は「消えた」ように見える**。
+     数えて文字で出し、こちらへも使えるようにする手立てを同じ場所に置く
+     （黙って両方へ出すと、列構成の違う条件が並ぶ。§9.80の理由は生きている）。 */
+  let otherScene={count:0,items:[]};
+  const otherMode=()=>presetMode()==='schedule'?'':'schedule';
+  const SCENE_OF={'':SCENE_LABEL[''],'schedule':SCENE_LABEL['schedule']};
+  async function countOtherScene(){
+    otherScene={count:0,items:[]};
+    if(!S.db||!S.table)return;
+    try{
+      const q=new URLSearchParams({db:S.db,table:S.table,mode:otherMode(),user:filterUserId()});
+      const r=await api('/api/filter-presets?'+q);
+      otherScene={count:(r.items||[]).length,items:r.items||[]};
+    }catch(_){/* 数えられなければ黙る(あるとも無いとも言わない) */}
+  }
+  /* こちらの場面へも同じ条件を登録する。**印(デフォルト・鍵)も一緒に運ぶ**
+     ——鍵を付けた意図がいちばん大事なので、条件だけ移して印が消えると
+     「移したのに効かない」ことになる。 */
+  async function copyOtherScene(){
+    const items=otherScene.items||[];
+    if(!items.length)return;
+    if(!(await confirmModal(`「${SCENE_OF[otherMode()]}」にある ${items.length}件を、`
+      +`この場面（${sceneLabel()}）でも使えるようにします。\n`
+      +`条件と「デフォルト」「鍵」の印を写します（元の登録はそのまま残ります）。`)))return;
+    let ok=0,ng=0;
+    for(const it of items){
+      try{
+        const r=await api('/api/filter-presets',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify(withUserId({name:it.name,db:S.db,table:S.table,mode:presetMode(),
+            filters:it.filters||[],owner:it.owner||'',shared:!it.owner,user:filterUserId()}))});
+        ok++;
+        if(r&&r.id!=null&&(it.isDefault||it.isLocked))
+          await api('/api/filter-presets/marks',{method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify(withUserId({user:filterUserId(),id:r.id,
+              isDefault:!!it.isDefault,isLocked:!!it.isLocked}))}).catch(()=>{});
+      }catch(_){ng++}
+    }
+    presetsLoadedFor=null;defaultsAppliedFor=null;
+    await loadMasterPresets({inline:false});
+    await countOtherScene();
+    renderFilterPresetList();
+    reapplyDefaultFilters();
+    showToast&&showToast('この場面でも使えるようにしました',
+      `${ok}件を写しました${ng?`（${ng}件は失敗）`:''}`,4000);
+  }
   async function openFilterPresetModal(){
     ensureFilterPresetModal();$('#filterPresetModal').hidden=false;ioClose();
     requestAnimationFrame(()=>$('#closeFilterPresets')?.focus());
     const list=$('#filterPresetList');list.innerHTML='';setPanelLoading(list,true,'登録フィルタを読み込んでいます...');
-    await loadMasterPresets({inline:false});setPanelLoading(list,false);renderFilterPresetList();renderGenericFilterBar();
+    await loadMasterPresets({inline:false});
+    await countOtherScene();
+    setPanelLoading(list,false);renderFilterPresetList();renderGenericFilterBar();
   }
   function renderFilterPresetList(){
     const list=$('#filterPresetList');if(!list)return;
@@ -1320,7 +1466,10 @@
       who.textContent=uid?`${uid} さんの設定`:'この端末の共通の設定（利用者IDが分かりません）';
       summary.append(who,document.createTextNode(
         `　自分だけ ${mineCount}件 / みんな ${forThis.length-mineCount}件`
-        +`（${S.db||'-'} / ${S.table||'-'}）`
+        /* **どの場面の設定かを書く**(§9.184)。同じ仕掛一覧でも、
+           スケジュール作成中と「一覧を見る」で置き場が別なので、
+           書かないと「登録したのに出てこない」と読まれる。 */
+        +`（${S.db||'-'} / ${S.table||'-'} ／ ${sceneLabel()}）`
         +`　保存先: ${S.filterPresetSource==='master'?'master.sqlite3':'この端末（マスタ未接続）'}`));
       /* **適用中の条件を覚えていることを書く**(§9.175)。黙って復元すると
          「勝手に絞り込まれている」と読まれる。忘れさせる手立ても同じ場所に
@@ -1345,8 +1494,19 @@
     }
     const ordered=forThis;
     const loading=list.querySelector(':scope > .panel-loading');
-    list.querySelectorAll(':scope > .filter-preset-item, :scope > .record-empty').forEach(x=>x.remove());
-    if(!ordered.length){const e=document.createElement('div');e.className='record-empty';e.textContent='登録済みフィルタはありません。「マスタへ保存」で登録できます。';list.appendChild(e);return}
+    list.querySelectorAll(':scope > .filter-preset-item, :scope > .record-empty, :scope > .fp-other-scene').forEach(x=>x.remove());
+    if(otherScene.count){
+      /* **どちらの場面の話かを書く。** 「登録が消えた」と読まれないように、
+         件数・場面の名前・打つ手を1つの帯にまとめる。 */
+      const note=document.createElement('div');
+      note.className='fp-other-scene';
+      note.innerHTML=`<span><b>${SCENE_OF[otherMode()]}</b>には ${otherScene.count}件の登録があります。`
+        +`この場面（${esc(sceneLabel())}）とは別に保存しています。</span>`
+        +`<button type="button" class="fp-other-copy">こちらでも使えるようにする</button>`;
+      note.querySelector('.fp-other-copy').onclick=copyOtherScene;
+      list.appendChild(note);
+    }
+    if(!ordered.length){const e=document.createElement('div');e.className='record-empty';e.textContent='この場面の登録フィルタはありません。「マスタへ保存」で登録できます。';list.appendChild(e);return}
     ordered.forEach(p=>{
       const item=document.createElement('div');item.className='filter-preset-item';
       const conds=(p.filters||[]).map(f=>`<span class="fp-cond">${esc(f.column)} <b>${esc(opShort(f.op))}</b>${noValueOp(f.op)?'':' '+esc(f.value)}</span>`).join('');
@@ -1394,6 +1554,9 @@
      **絞り込み条件と、絞り込みバーの描き直し**の2つだけなので、
      その2つをフックとして登録する。 */
   WL.listHooks.onQuery(q=>{
+    /* **引く前に場面と覚えを合わせる**(§9.184)。ここを通らない一覧の
+       取得は無いので、鍵の付け替え・既定の当て直しはこの1箇所で足りる。 */
+    syncFilterContext();
     // 変数(例: {使用設備})はここで今の値へ展開する。保存されている条件は
     // 変数のままなので、端末や設備が変わってもそのまま使い回せる。
     if(S.genericFilters?.length)q.set('filters',JSON.stringify(expandFilterList(S.genericFilters)));
@@ -1420,20 +1583,41 @@
   if(typeof selectTable==='function'){
     const selectTableDefaultFilterBase=selectTable;
     selectTable=async function(t){
-      // 切替先に応じてS.genericFiltersを個別コンテキストへ入れ替える。
-      // (1)直前のコンテキストの状態を保存 (2)切替先の保存済み状態を復元
-      // (3)デフォルト/鍵付き条件をそのコンテキスト向けに再適用。
-      saveActiveFilterState();
+      /* 切替先に応じてS.genericFiltersを個別コンテキストへ入れ替える。
+         (1)直前の状態を保存 (2)切替先の覚えを復元 (3)既定/鍵を当てる。
+         **中身はsyncFilterContext()の1箇所**(§9.184)——以前はここに同じ
+         処理が書かれていたため、起動直後・利用者ID到着・場面の変更では
+         誰も当て直さなかった。 */
+      if(activeFilterContextKey!=null)saveActiveFilterState(activeFilterUid);
       const key=defaultMapKey(S.db,t);
       S.genericFilters=restoreActiveFilterState(key);
+      activeFilterContextKey=key;activeFilterUid=filterUserId();
+      defaultsAppliedFor=null;
+      /* **当てる前に取る。** ここで待つのは1往復だけで、そのかわり
+         1回目の問い合わせから既定・鍵の条件が効く(取ってから当て直すと、
+         一覧を2回引くことになる)。 */
+      await ensurePresetsFor(S.db,t);
       applyDefaultFiltersFor(S.db,t);
-      activeFilterContextKey=key;
+      if(presetsReady(S.db,t))defaultsAppliedFor=key;
       return selectTableDefaultFilterBase(t);
     };
   }
 
   // 起動時: バー生成 → マスタからサジェスト材料を先読み（ローディング表示つき）。
-  queueMicrotask(async()=>{ensureGenericFilterBar();renderGenericFilterBar();try{await loadMasterPresets();renderGenericFilterBar()}catch(_){}});
+  queueMicrotask(async()=>{
+    ensureGenericFilterBar();renderGenericFilterBar();
+    try{
+      /* テーブルが決まっていればその一覧ぶんを、決まっていなければ
+         (起動直後)取らない——空のdb/tableで問い合わせても1件も返らない。
+         決まった時点で`selectTable`が`ensurePresetsFor`で取る。 */
+      if(S.db&&S.table)await ensurePresetsFor(S.db,S.table);
+      renderGenericFilterBar();
+      /* **届いてから当て直す**(§9.184)。起動直後は一覧の取得のほうが
+         先に走るため、この当て直しが無いと鍵付き・デフォルトの条件が
+         「再起動すると外れている」状態になる（実機で報告された）。 */
+      reapplyDefaultFilters();
+    }catch(_){}
+  });
 })();
 
 

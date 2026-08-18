@@ -100,6 +100,19 @@
 .sc-refresh{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x);border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;cursor:pointer}
 .sc-warnings{padding:6px 14px;background:var(--warn-bg);border-bottom:1px solid var(--warn-border)}
 .sc-warning{font-size:var(--fs-sm);color:var(--warn-fg)}
+/* 時刻未定の案内(§9.185)。**⚠(理由)とは別の帯**にしてある——⚠は
+   「なぜそうなったか」、こちらは「何件あって・次に何をするか」。
+   打つ手のあるときだけボタンを出す（押しても何も起きないボタンを残さない）。*/
+.sc-undecided{display:grid;gap:2px;padding:var(--pad-row);
+  background:var(--warn-bg);border-bottom:1px solid var(--warn-border)}
+.sc-undecided-main{display:flex;align-items:center;gap:var(--gap-inline);min-width:0}
+.sc-undecided-main b{font-size:var(--fs);color:var(--warn-fg)}
+.sc-undecided-who{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:var(--fs-sm);color:var(--ink-2);font-variant-numeric:tabular-nums}
+.sc-undecided small{font-size:var(--fs-sm);color:var(--ink-2)}
+.sc-undecided-fix{flex:none;height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
+  border:1px solid var(--warn-border);border-radius:var(--radius-sm);
+  background:var(--warn);color:var(--ink);font-size:var(--fs-sm);font-weight:700}
 /* 編集セッション(§9.11新設)。他端末が既にこの設備を編集中の間、追加・削除・
    並べ替えを止めていることをタイムライン閲覧の邪魔にならない帯で伝える。 */
 .sc-session-banner{display:flex;align-items:center;justify-content:space-between;gap:var(--gap-section);padding:7px 14px;font-size:var(--fs-sm);font-weight:700}

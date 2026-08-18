@@ -1,0 +1,73 @@
+{
+  "_note": "列ごとの並べ替え(§9.187)の突き合わせ用。サーバー(backend/sort_order.py)と画面(static/js/base.js の WL.sortSpec / WL.cellFormat)は同じ判定を別々に持っているので、同じ例で両方を確かめる。tests/test_sortpipe.py と tests/test_colsort.js が読む。**片方だけ直さないこと。**",
+  "classify": [
+    {"v": "",              "kind": "empty"},
+    {"v": "   ",           "kind": "empty"},
+    {"v": null,            "kind": "empty"},
+    {"v": "3",             "kind": "num"},
+    {"v": "10",            "kind": "num"},
+    {"v": "-2.5",          "kind": "num"},
+    {"v": "1,200",         "kind": "num"},
+    {"v": "20260801",      "kind": "num",  "why": "8桁の数字は日付として読まない(製造番号が日付に化けるため)"},
+    {"v": "2026/08/01",    "kind": "date"},
+    {"v": "2026-8-1 09:30","kind": "date"},
+    {"v": "20260801 0930", "kind": "date", "why": "時刻が続く形は日付として書かれたと分かる"},
+    {"v": "2026/13/01",    "kind": "text", "why": "13月は日付として読まない"},
+    {"v": "A2",            "kind": "text"},
+    {"v": "A10",           "kind": "text"},
+    {"v": "あ",            "kind": "text"}
+  ],
+  "order": [
+    {
+      "why": "利用者の言葉どおり null → 昇順(数値or日付) → 文字列",
+      "spec": {"buckets": ["empty", "num", "date", "text"], "natural": true},
+      "dir": "asc",
+      "values": ["10", "3", "", "2026/08/01", "A10", "A2", "20260801 0930"],
+      "expect": ["", "3", "10", "2026/08/01", "20260801 0930", "A2", "A10"]
+    },
+    {
+      "why": "向きは塊の中の値だけを反転する(空欄の行き先は変わらない)",
+      "spec": {"buckets": ["empty", "num", "date", "text"], "natural": true},
+      "dir": "desc",
+      "values": ["10", "3", "", "A10", "A2"],
+      "expect": ["", "10", "3", "A10", "A2"]
+    },
+    {
+      "why": "空欄を最後へ回す",
+      "spec": {"buckets": ["num", "date", "text", "empty"]},
+      "dir": "asc",
+      "values": ["", "5", "B", ""],
+      "expect": ["5", "B", "", ""]
+    },
+    {
+      "why": "数字混じりを切らないと辞書順(A10 が A2 より前)",
+      "spec": {"buckets": ["text"], "natural": false},
+      "dir": "asc",
+      "values": ["A2", "A10"],
+      "expect": ["A10", "A2"]
+    }
+  ],
+  "display": [
+    {"raw": "01",       "fmt": {"kind": "text", "prefix": "No."},                            "rule": null, "expect": "No.01"},
+    {"raw": "",         "fmt": {"kind": "text", "prefix": "No."},                            "rule": null, "expect": ""},
+    {"raw": "abc",      "fmt": {"kind": "number"},                                           "rule": null, "expect": "abc"},
+    {"raw": "1234.5",   "fmt": {"kind": "number", "decimals": 1, "thousands": true, "suffix": "mm"}, "rule": null, "expect": "1,234.5mm"},
+    {"raw": "2026/8/1", "fmt": {"kind": "datetime", "pattern": "yyyy-MM-dd"},                "rule": null, "expect": "2026-08-01"},
+    {"raw": "09:30",    "fmt": {"kind": "datetime", "pattern": "yyyy/MM/dd"},                "rule": null, "expect": "09:30",
+     "why": "時刻だけの値に年月日を求められたら整形せず生の値"},
+    {"raw": "1",
+     "fmt": null,
+     "rule": [{"conditions": [{"op": "eq", "left": {"kind": "self"}, "right": {"kind": "value", "value": "1"}}], "text": "一号機"}],
+     "expect": "一号機"},
+    {"raw": "2",
+     "fmt": {"kind": "text", "prefix": "No."},
+     "rule": [{"conditions": [{"op": "eq", "left": {"kind": "self"}, "right": {"kind": "value", "value": "1"}}], "text": "一号機"}],
+     "expect": "No.2",
+     "why": "読み替えが当たらなければ書式で整形する"},
+    {"raw": "3",
+     "fmt": null,
+     "rule": [{"conditions": [], "text": "その他"}],
+     "expect": "その他",
+     "why": "条件が空の行＝どれにも当てはまらなかったときの既定"}
+  ]
+}

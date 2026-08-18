@@ -17,7 +17,8 @@ from flask import Blueprint, request, jsonify
 from .. import paths
 from ..paths import APP_ROOT as BASE_DIR
 from ..config import (RNE_EXTRACT_INTERVAL_SEC_DEFAULT, SCHEDULE_LOCK_TTL_SEC_DEFAULT,
-                      SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT)
+                      SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT,
+                      SCHEDULE_WATCH_INTERVAL_SEC_DEFAULT, SCHEDULE_WATCH_PAUSE_SEC_DEFAULT)
 from .. import source_capability
 from ..logging_setup import app_logger
 from ..db_access import (
@@ -51,11 +52,17 @@ _PATH_CONFIG_DEFAULTS={
  'rne_extract_interval_sec':str(RNE_EXTRACT_INTERVAL_SEC_DEFAULT),
  'schedule_lock_ttl_sec':str(SCHEDULE_LOCK_TTL_SEC_DEFAULT),
  'schedule_lock_verify_delay_ms':str(SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT),
+ # 共有スケジュールの見張り(§9.188)。
+ 'schedule_watch_enabled':'auto',
+ 'schedule_watch_interval_sec':str(SCHEDULE_WATCH_INTERVAL_SEC_DEFAULT),
+ 'schedule_watch_pause_sec':str(SCHEDULE_WATCH_PAUSE_SEC_DEFAULT),
 }
 _PATH_CONFIG_NUMERIC_FIELDS={
  'rne_extract_interval_sec':('RNE抽出間隔(秒)',60),
  'schedule_lock_ttl_sec':('スケジュールロックの有効期限(秒)',1),
  'schedule_lock_verify_delay_ms':('ロック確認までの待機時間(ミリ秒)',0),
+ 'schedule_watch_interval_sec':('共有スケジュールの変化を見る間隔(秒)',5),
+ 'schedule_watch_pause_sec':('取り込んだあと休む時間(秒)',0),
 }
 
 @bp.get('/api/path-config-master')
@@ -298,6 +305,9 @@ def data_source_master_list():
                  'plannedPath':str(_source_path(r,saved)),
                  'loaded':bool(_DBS.get(r['key'])),
                  'activePath':active.get(r['key'],''),
+                 # **いま出ている名称**(§9.183)。表示名も接続先と同じく起動時に
+                 # 1回だけ決まるため、保存値と食い違うことがある。
+                 'activeLabel':str((_DBS.get(r['key']) or {}).get('label','') or ''),
                  'rnePath':str(rne) if rne else '',
                  'rneExists':bool(rne and rne.exists()),
                  'outputPath':str(out),

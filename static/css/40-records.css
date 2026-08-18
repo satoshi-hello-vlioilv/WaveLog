@@ -174,6 +174,13 @@
 .confirm-modal-points{margin:10px 0 0;padding:0 0 0 20px;color:#3a565d;
  font-size:var(--fs-sm);line-height:1.75}
 .confirm-modal-points li+li{margin-top:4px}
+/* 申し送り（コメント）の入力(§9.189)。**ここだけ入力欄を置く**ので、
+   確認ダイアログの本文と同じ余白でそろえる。 */
+.sc-comment-field{display:grid;gap:var(--gap-hair);margin:var(--space-2) 0 0}
+.sc-comment-field span{font-size:var(--fs-sm);font-weight:700;color:var(--ink-2)}
+.sc-comment-field textarea{width:100%;padding:var(--pad-row);border:1px solid var(--line);
+  border-radius:var(--radius-sm);font-size:var(--fs);line-height:var(--lh);resize:vertical}
+.confirm-modal-note{margin:var(--space-2) 0 0;font-size:var(--fs-sm);color:var(--muted)}
 .confirm-modal-points b{color:var(--danger)}
 /* 設備削除確認(docs/SCHEDULE_MODE_DESIGN.md §5.0.1)の関連スケジュールデータ内訳。 */
 .eq-ref-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:var(--fs-base-sm)}

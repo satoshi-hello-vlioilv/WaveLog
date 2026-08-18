@@ -1066,7 +1066,9 @@ function recordColumnPanelSource(){
   originOf:k=>(RECORD_COL_BY_KEY.get(k)||{}).origin||'source',
   noteOf:k=>(RECORD_COL_BY_KEY.get(k)||{}).note||'',
   currentWidthOf:recordHeadCellWidth,
-  features:{formula:true,preset:true,width:true,format:true,rule:true},
+  /* 並べ替えの決まり(§9.187)は出さない——データ一覧は見出しで並べ替えを
+     持たないので、設定できるのに効かない欄になる。 */
+  features:{formula:true,preset:true,width:true,format:true,rule:true,sort:false},
   afterApply:()=>{if(!$('#recordModal')?.hidden)renderRecordListRows()},
   save:null,
  };
