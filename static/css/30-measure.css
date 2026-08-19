@@ -60,7 +60,14 @@
    fixedなら1行目(＝colgroup)を見て決まるので、行数×列数に効かない。
    幅はrenderGridInner()のestimateColumnWidth()が見出しとデータの先頭数十行
    から見積もる(利用者が決めた幅があればそちら)。 */
-#grid table{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;table-layout:fixed}
+/* **`min-width:100%`を戻さないこと**（§9.209 ①、実機で報告）。
+   `table-layout:fixed`で表の幅が器より広く解かれると、余ったぶんが
+   **各列へ配り直される**ので、狭めたはずの列がその場で太る
+   ——「列幅の合計が表示エリアより狭いと、それ以上狭められない」。
+   幅は`renderGridInner()`が列幅の合計として入れる（§9.119）ので、
+   合計が器より狭ければ**右に何も無い余白ができる**のが正しい
+   （利用者の指示「余白ができる形で狭くすること自体が拒否されないように」）。 */
+#grid table{border-collapse:separate;border-spacing:0;width:max-content;table-layout:fixed}
 /* 幅を決め打ちする以上、入り切らない値は**溢れさせずに省略記号**にする
    (溢れると隣の列の上へ重なって読めなくなる)。生の値はtitleで読める。 */
 #grid td{overflow:hidden;text-overflow:ellipsis}
@@ -483,8 +490,12 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    すぎるので、1段上を取って**器より明らかに内側**であることが分かる幅にする。
    `em`は器の文字（②では題として--fs-title）で解かれるので、ここで
    `--fs`へ戻してから使う（そうしないと規格の値と実際の幅がずれる）。 */
+/* **左右の余白は同じにする**（§9.209 ⑥、利用者の指摘「少し左よりで左の余白が
+   狭いです。右側の余白が広いです」）。器（カード）より狭い幅を持つ器なので、
+   何もしないと左端に寄る——`justify-self:center`で真ん中へ置く。 */
 .measure-shell.mstep-2 #measureTypeGroup .type-chips{
   gap:var(--space-2);font-size:var(--fs);width:var(--w-xl);max-width:100%;
+  justify-self:center;
 }
 .measure-shell.mstep-2 #measureTypeGroup .type-chip{
   flex:0 0 auto;min-height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
@@ -1276,19 +1287,27 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    **状態の色は残す**（受信中・手動・受付不可で意味が違う）。
    `#deviceInput`はこの中にあり、寸法ゼロだとフォーカスを保持できない
    （§9.122）。**display/visibilityは触らない。** */
+/* **見出しの中のバッジ1つ**（§9.209 ③、利用者の指示「貴重な縦エリアを
+   消費するので…真下の測定と書いてある部分の左側にバッジで」）。以前は
+   表の上に幅いっぱいの帯を1本置いており、実測で30px＋余白を使っていた。
+   `#deviceInput`はこの中にあり、**寸法ゼロだとフォーカスを保持できない**
+   （§9.122）ので、`display`/`visibility`は触らない。 */
 .input-status{
-  display:flex;align-items:center;gap:var(--space-2);
-  min-height:var(--ctl-h-sm);padding:var(--space-1) var(--space-3);
-  border:0;border-left:3px solid #278b75;border-radius:var(--radius-xs);background:#e8f8f2;
+  display:inline-flex;align-items:center;gap:var(--gap-inline);flex:0 0 auto;
+  height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-sm);
+  border:1px solid #a8d9c8;border-radius:var(--radius-pill);background:#e8f8f2;
+  font-size:var(--fs-micro);white-space:nowrap;
 }
 .input-status[hidden]{display:none}
-.input-status.receiving{border-left-color:var(--teal);background:#e5f7fa}
-.input-status.manual-state{border-left-color:var(--warn-border);background:var(--warn-bg)}
-.input-status.not-ready-state{border-left-color:#b2bdc1;background:#eef2f4}
+.input-status.receiving{border-color:var(--teal);background:#e5f7fa}
+.input-status.manual-state{border-color:var(--warn-border);background:var(--warn-bg)}
+.input-status.not-ready-state{border-color:#b2bdc1;background:#eef2f4}
 .receive-state{display:flex;align-items:center;gap:var(--gap-inline);min-width:0}
 .receive-state>div{display:none}
 .auto-mode-label{font-weight:800;color:#0b5e68;letter-spacing:.02em}
-.state-lamp{width:12px;height:12px;border-radius:var(--radius-round);background:#16a273;box-shadow:0 0 0 4px #16a27322}
+.manual-state .auto-mode-label{color:var(--warn-fg)}
+.not-ready-state .auto-mode-label{color:#5d7077}
+.state-lamp{width:8px;height:8px;border-radius:var(--radius-round);background:#16a273}
 .not-ready-state .state-lamp{background:#7b8e95;box-shadow:none}
 .manual-state .state-lamp{background:#e49a20;box-shadow:0 0 0 4px #e49a2022}
 .receive-input-wrap{position:relative}
@@ -1486,23 +1505,55 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .right-pane>.work-panel{min-height:0}
 .work-panel[data-workpanel="measure"]{flex:1 1 auto;min-height:0;overflow:hidden}
 .measurement-editor{height:100%;display:flex;flex-direction:column;min-height:0;overflow:hidden}
-.editor-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--gap-inline);align-items:center;flex:0 0 auto;min-height:25px}
-.editor-head>div:first-child{display:flex;align-items:center;gap:var(--space-3)}
+/* ---------- 測定の見出しは1行（§9.209 ③④、利用者の指示） ----------
+   以前は「受信の帯」「測定＋入力位置」「公差の帯」「項目名＋測定待ち」の
+   **4本**が表の上に積まれ、実測で約130pxを使っていた。多条のロットでは
+   1本ぶんで条が3〜4本隠れる。**同じ行へバッジで寄せる**——受信の状態も
+   公差も項目名も、読むのは「いまどこで何を測っているか」の1つの文脈。
+   狭い窓では折り返してよい（切り落として読めなくするよりまし）。 */
+.editor-head{display:flex;align-items:center;flex-wrap:wrap;
+  gap:var(--gap-inline) var(--space-3);flex:0 0 auto;min-height:25px}
 .editor-head h3{white-space:nowrap}
-.editor-head #stepStatus,.editor-head #quota{grid-column:auto;color:#60747b;font-size:var(--fs-micro);white-space:nowrap}
+.editor-head #stepStatus,.editor-head #quota{color:#60747b;font-size:var(--fs-micro);white-space:nowrap}
+.editor-head #quota{margin-left:auto}
+.editor-head .legend{white-space:nowrap}
+/* 項目名と進捗。**色だけで伝えない**ので、どちらも文字で出す。 */
+.mhead-badges{display:flex;align-items:center;gap:var(--gap-inline);min-width:0}
+.mhead-item{
+  padding:var(--pad-chip);border-radius:var(--radius-sm);
+  background:var(--header-bar-bg);color:var(--header-bar-fg);
+  font-size:var(--fs-sm);font-weight:800;white-space:nowrap;
+}
+.mhead-status{color:var(--ink-3);font-size:var(--fs-micro);font-weight:700;white-space:nowrap}
 .legend{font-size:var(--fs-micro);color:#5d7077}
 .legend i{display:inline-block;width:9px;height:9px;margin:0 3px 0 7px;border:1px solid #aebdc2}
 .legend .wait{background:#fff}
 .legend .doing{background:#fff1a9}
 .legend .done{background:#8edbd1}
 .legend .bad{background:#ff6c6c}
-.mode-tabs{display:flex;height:var(--ctl-h);margin:2px 0 3px;flex:0 0 auto}
+/* 自動／手動は**見出しの中の小さな切り替え**（§9.209 ③）。以前はタブ1本を
+   丸ごと1行使っていた。 */
+.mode-tabs{display:flex;height:var(--ctl-h-xs);flex:0 0 auto;
+  border:1px solid var(--line);border-radius:var(--radius-pill);overflow:hidden;background:#fff}
 .mode-tabs[hidden]{display:none}
-.mode-tabs button{border-radius:var(--radius-tab) var(--radius-tab) 0 0;padding:4px 18px;border:1px solid transparent;background:transparent;color:#4a6169;box-shadow:none}
-.mode-tabs button:hover{border-color:transparent;background:#eef2f4}
+.mode-tabs button{border-radius:0;padding:0 var(--ctl-pad-x-sm);border:0;background:transparent;
+  color:var(--ink-3);font-size:var(--fs-micro);font-weight:800;box-shadow:none;white-space:nowrap}
+.mode-tabs button:hover{border-color:transparent;background:var(--pale)}
 .mode-tabs button.active{background:var(--teal);color:#fff}
-.tolerance-summary{flex:0 0 auto;min-height:34px;margin:3px 0;padding:var(--space-3);background:#f7fafb;border:1px solid #bdcdd1;border-radius:var(--radius-md)}
-.tolerance-summary[hidden]{display:none}
+/* 公差は**ピル1つ**（§9.209 ②）。枠付きの帯（実測40px）は`#toleranceFacts`と
+   同じ数字を2度書いていた（§9.129）。内訳は`title`で読める。 */
+.tolerance-summary{display:flex;align-items:center;gap:var(--gap-inline);flex:0 0 auto;min-width:0}
+.tolerance-summary[hidden],.tolerance-summary:empty{display:none}
+.tol-pill{
+  padding:var(--pad-chip);border-radius:var(--radius-pill);
+  background:var(--computed-bg);color:var(--computed-fg);
+  font-size:var(--fs-micro);font-weight:800;white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+}
+.tol-pill.is-order{background:#efe7fa;color:#563b83}
+.tol-pill.is-none{background:var(--surface-2);color:var(--muted)}
+.tol-pill.is-fallback{background:var(--warn-bg);color:var(--warn-fg)}
+.tol-pill.is-mark{background:var(--surface-2);color:var(--ink-2)}
 /* 公差サマリー内部 */
 .tol-source-row{display:flex;align-items:center;gap:var(--space-2);margin-bottom:8px}
 .tolerance-source-badge{display:inline-flex;align-items:center;padding:var(--pad-chip);border-radius:var(--radius-md);background:var(--teal);color:#fff;font-weight:800;font-size:var(--fs-micro)}
@@ -1551,11 +1602,15 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    判定する数字のすぐ上にあるので**1行の帯**にする——縦3段のカードは
    基本情報の細い列のための形で、幅のある測定カードでは同じ情報が縦に
    間延びするだけ。 */
-.tol-slot{min-width:0}
+/* 公差の帯は**見出しの1行の中**へ入った（§9.209 ②）。器としての枠・面・
+   上余白は落とす——1行の中に薄い箱がもう1つあると、枠の中の枠になる
+   （§9.129）。中身（公差なしのピル・公差を切り替える・図の見せ方）は
+   そのまま並ぶ。 */
+.tol-slot{min-width:0;display:flex;align-items:center;flex:0 1 auto}
+.tol-slot:empty{display:none}
 .tol-block{
-  display:flex;align-items:center;flex-wrap:wrap;gap:var(--gap-inline) var(--gap-section);
-  margin-top:var(--space-1);padding:var(--pad-row);
-  border:1px solid var(--line-soft);border-radius:var(--radius-md);background:var(--surface-2);
+  display:flex;align-items:center;flex-wrap:nowrap;gap:var(--gap-inline);
+  margin:0;padding:0;border:0;border-radius:0;background:transparent;
 }
 .measure-shell.mstep-1 .tol-block{display:none}
 /* 条が40に達したら畳む（利用者の指示）。**畳んでも開けること**が条件なので
@@ -1573,8 +1628,11 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .tol-block.tol-foldable:not(.tol-open) .numberline-control,
 .tol-block.tol-foldable:not(.tol-open) .tolerance-source-control{display:none}
 /* **`display`は明示する。** 器を移すたびに、どこかの既存規則で`grid`に
-   なって中身が潰れる事故が起きている（実測。親が396pxあっても中が縮む）。 */
-.tol-facts{display:block;flex:1 1 auto;min-width:0;margin:0}
+   なって中身が潰れる事故が起きている（実測。親が396pxあっても中が縮む）。
+   見出しの1行へ移した（§9.209 ②）ので、**伸びない**——伸ばすと右の
+   「図の見せ方」が押し出される。 */
+.tol-facts{display:flex;align-items:center;gap:var(--gap-inline);flex:0 0 auto;min-width:0;margin:0}
+.tol-facts[hidden],.tol-facts:empty{display:none}
 .tol-facts .compact-tol-three-row,
 .tol-facts .compact-tol-card,.tol-facts .compact-tol-inline,.tol-facts .compact-tol-two-row,
 .tol-facts .instruction-tol-card{min-height:0;padding:0;border:0;background:transparent}
@@ -1738,6 +1796,18 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    19pxのまま上下に白が空く（狙って押すのが大変なのは元のままになる）。 */
 .measure-matrix.mx-dense .strip-input-wrap{height:100%}
 .measure-matrix.mx-dense input{height:100%;min-height:var(--mx-rowh)}
+/* 器へ入るように縮めたときは、**下限も一緒に下げる**（§9.209 ③）。
+   `--mx-rowh`は下限としても使われているので、そこだけ据え置くと縮まない。 */
+.measure-matrix.mx-fitted{height:auto}
+.measure-matrix.mx-fitted.mx-dense tbody td,.measure-matrix.mx-fitted.mx-dense tbody th{height:var(--mx-rowh)}
+.measure-matrix.mx-fitted input{height:var(--mx-rowh);min-height:0}
+.measure-matrix.mx-fitted .strip-input-wrap{height:var(--mx-rowh)}
+/* **行送りも一緒に詰める。** セルは中身より低くならないので、行送り1.5の
+   ままだと`--mx-rowh`を下げても19.9pxで止まる（実測。40条が入らない）。
+   文字も行の高さを超えない大きさへ落とす——読める下限（`MX_MIN_ROWH`）で
+   打ち切るのは`fitMeasureMatrix()`側の仕事。 */
+.measure-matrix.mx-fitted th,.measure-matrix.mx-fitted td{line-height:1}
+.measure-matrix.mx-fitted{font-size:min(var(--tbl-fs),calc(var(--mx-rowh) - 3px))}
 .measure-matrix.mx-wide{--mx-colw:8em}
 .measure-matrix.mx-has-lot{--mx-lotw:4.6em}
 .measure-matrix th,.measure-matrix td{border:1px solid var(--line-mid);padding:0;text-align:center}

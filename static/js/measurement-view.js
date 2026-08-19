@@ -994,12 +994,23 @@ function renderResidualCourseEverywhere(){
 function updateMeasurementHeading(){
  /* カードの名前は骨子どおり「測定」。**項目名は表の見出しが言っている**ので
     ここでは繰り返さない（§9.129。以前は上が「板幅測定」下が「板幅」だった）。 */
+ /* ---------- 公差もバッジ1つで言う（§9.209 ②、利用者の指示） ----------
+    「公差情報なしも貴重な場所を使っているので、バッジ化してください」。
+    以前は枠付きの帯（実測40px）で、しかも中身は`#toleranceFacts`
+    （判定公差の基準）と**同じ数字**だった（§9.129 同じ情報を2箇所に
+    出さない）。1行のピルにして、内訳は`title`で読めるようにする。 */
  const type=$('#measureType').value;$('#measurePanelTitle').textContent='測定';
- if(type==='フラットネス'){$('#toleranceSummary').innerHTML='<div class="tol-status no-data"><b>判定基準</b><span>〇＝OK　△・×＝NG　条ごとに記号を入力してください。</span></div>';return}
+ const box=$('#toleranceSummary');if(!box)return;
+ const pill=(cls,text,tip)=>{box.innerHTML=`<span class="tol-pill ${cls}" title="${esc(tip||text)}">${esc(text)}</span>`};
+ if(type==='フラットネス')return pill('is-mark','〇=OK ／ △×=NG','条ごとに記号を入力してください。');
  const kind=WL.measureItem.kindOf(type),detail=toleranceDetail(kind),base=Number(kind==='thickness'?S.measure.basic.mfgThickness:S.measure.basic.mfgWidth);
- if(!detail){$('#toleranceSummary').innerHTML='<div class="tol-status no-data"><b>公差情報なし</b><span>選択した公差区分に使用可能なプラス・マイナス値がありません。</span></div>';return}
+ if(!detail)return pill('is-none','公差なし','選択した公差区分に使用可能なプラス・マイナス値がありません。判定は行いません。');
  const labels={manufacturing:'製造公差',order:'オーダー公差',instruction:'指示公差'},sourceLabel=labels[detail.source],requestedLabel=labels[configuredToleranceSource()],fallback=detail.fallback?`${requestedLabel}が不足しているため製造公差を使用`:'';
- $('#toleranceSummary').innerHTML=`<div class="tol-source-row"><span class="tolerance-source-badge ${detail.source==='order'?'order':''}">${sourceLabel}</span>${fallback?`<span class="tol-fallback">${esc(fallback)}</span>`:''}</div><div class="tol-facts"><div><small>基準値</small><b>${base}</b></div><div><small>公差 ＋</small><b>+${detail.plus}</b><em>${esc(detail.plusKey)}</em></div><div><small>公差 －</small><b>-${detail.minus}</b><em>${esc(detail.minusKey)}</em></div><div class="tol-result"><small>判定範囲</small><b>${detail.range[0]} ～ ${detail.range[1]}</b></div></div><div class="tol-formula">計算: ${base} - ${detail.minus} = ${detail.range[0]} ／ ${base} + ${detail.plus} = ${detail.range[1]}</div>`;
+ pill(detail.source==='order'?'is-order':'',
+      `${sourceLabel} ${detail.range[0]}〜${detail.range[1]}`,
+      `基準値 ${base} ／ 公差 +${detail.plus}（${detail.plusKey}） -${detail.minus}（${detail.minusKey}）`
+      +` ／ 判定範囲 ${detail.range[0]}〜${detail.range[1]}`+(fallback?` ／ ${fallback}`:''));
+ if(fallback)box.insertAdjacentHTML('beforeend',`<span class="tol-pill is-fallback" title="${esc(fallback)}">代替</span>`);
 }
 // Design, actual and residual courses are rendered as one ordered information group.
 function renderCourseHierarchy(){

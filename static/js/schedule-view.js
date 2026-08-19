@@ -3190,14 +3190,14 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
                          :'minmax(calc(110px * var(--ui-scale)),1fr)';
   };
   const cols=keys.map(track);
-  /* 内容欄を1つも出していない／全部に幅を入れた場合でも、**伸びる列を
-     必ず1つ作る**。無いと表が右端で切れて、余白との境が読めなくなる。
-     伸ばすのは操作以外の最後の列（操作は右端に貼り付くので伸ばさない）。 */
-  if(cols.length&&!cols.some(c=>c.includes('1fr'))){
-   let i=keys.length-1;
-   while(i>=0&&keys[i]==='__actions__')i--;
-   if(i>=0)cols[i]=`minmax(${cols[i]},1fr)`;
-  }
+  /* ---------- 余りは「空の1本」が受ける（§9.209 ①、利用者の指摘） ----------
+     以前は「伸びる列が1つも無いときは最後の列を`minmax(w,1fr)`にする」と
+     していた。表が右端で切れないようにするための細工だったが、**その列だけ
+     幅を狭められなくなる**——器の余りを引き受けてしまうので、掴んで細くしても
+     その場で戻る（「列幅の合計が表示エリアより狭いと、それ以上狭められない」）。
+     余りは**セルを持たない1本**に受けさせる。列そのものは増えないので、
+     見出しとセルが同じ定義を共有している土台は崩れない。 */
+  cols.push('1fr');
   timeline.style.setProperty('--sc-cols',cols.join(' ')||'1fr');
   /* 1列目(ハンドル)は、まとめて動かせる／外せる場面だけチェックを抱える
      ぶん広げる(§9.170)。**列を1本足さない**——`grid-template-columns`を
@@ -3205,9 +3205,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      見出しとセルが同じ定義を共有しているのが土台)。 */
   const pickable=canPickEntries();
   timeline.classList.toggle('sc-pickable',pickable);
-  /* 最小幅は**出している列の既定幅の合計**。固定10列と決め打ちにしていた
-     ため、列を隠しても表の最小幅が変わらず右に空きが残っていた。 */
-  const min=keys.reduce((a,k)=>a+defW(k)+4,0)+(pickable?38:18);
+  /* 最小幅は**いま効いている幅の合計**（§9.209 ①）。既定幅の合計で
+     決めていたため、列を細くしても行の下限が下がらず、**余ったぶんが
+     列へ配り直されて狭めた幅が戻っていた**。利用者が決めた幅があれば
+     そちらで数える。 */
+  const eff=k=>{const w=t?WL.columnLayout.width(t,k):null;return w||defW(k)};
+  const min=keys.reduce((a,k)=>a+eff(k)+4,0)+(pickable?38:18);
   timeline.style.setProperty('--sc-row-min',`calc(${Math.max(360,min)}px * var(--ui-scale))`);
  }
 

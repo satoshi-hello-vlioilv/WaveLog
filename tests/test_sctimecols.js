@@ -362,6 +362,59 @@ async function cleanup(){
   rec('計算式がサーバーに残る',
       /ロット番号/.test((s5.formulas||{})['計算テスト']||''),JSON.stringify(s5.formulas));
 
+  /* ---- 列幅の合計が器より狭くても、決めた幅がそのまま効く（§9.209 ①） ----
+     以前は「伸びる列が1つも無いときは最後の列を`minmax(w,1fr)`にする」と
+     していたため、**その列だけ幅を狭められなかった**（器の余りを引き受けて
+     しまう）。さらに行の下限（`--sc-row-min`）を**既定幅の合計**で決めて
+     いたので、細くしても下限が下がらず余りが列へ配り直されていた。
+     余りは**セルを持たない1本**が受ける。
+     **確かめるときは実際に狭める操作をすること**——保存値を見るだけでは、
+     配り直されて画面では戻っていることに気づけない。 */
+  const before=await page.evaluate(()=>{
+   const head=document.querySelector('.sc-row-head');
+   const cell=head.querySelector('[data-col="__time__"]');
+   const g=cell.querySelector('.col-resize').getBoundingClientRect();
+   return{列:Math.round(cell.getBoundingClientRect().width),
+     行:Math.round(head.getBoundingClientRect().width),
+     器:Math.round(head.parentElement.clientWidth),
+     x:g.x+g.width/2,y:g.y+g.height/2,
+     トラック:getComputedStyle(head).gridTemplateColumns.split(' ').length,
+     列数:head.querySelectorAll('[data-col]').length,
+     /* 最後の列の右端から行の右端まで＝余りを受ける1本の幅。 */
+     余り:Math.round(head.getBoundingClientRect().right
+       -[...head.querySelectorAll('[data-col]')].pop().getBoundingClientRect().right),
+     すべて:Object.fromEntries([...head.querySelectorAll('[data-col]')]
+       .map(x=>[x.dataset.col,Math.round(x.getBoundingClientRect().width)]))};
+  });
+  await page.mouse.move(before.x,before.y);await page.mouse.down();
+  await page.mouse.move(before.x-80,before.y,{steps:8});
+  await page.mouse.up();
+  await page.waitForTimeout(1200);
+  const narrow=await page.evaluate(()=>{
+   const head=document.querySelector('.sc-row-head');
+   return{列:Math.round(head.querySelector('[data-col="__time__"]').getBoundingClientRect().width),
+     行:Math.round(head.getBoundingClientRect().width),
+     器:Math.round(head.parentElement.clientWidth),
+     余り:Math.round(head.getBoundingClientRect().right
+       -[...head.querySelectorAll('[data-col]')].pop().getBoundingClientRect().right),
+     すべて:Object.fromEntries([...head.querySelectorAll('[data-col]')]
+       .map(x=>[x.dataset.col,Math.round(x.getBoundingClientRect().width)]))};
+  });
+  rec('掴んだ列がそのぶん細くなる（§9.209 ①）',
+      narrow.列<=before.列-70,`${before.列} -> ${narrow.列}`);
+  /* **余りは「セルを持たない1本」が受ける。** 他の列へ配り直すと、狭めた
+     ぶんが隣の列を太らせるだけで、掴んだ列だけが細くなったように見えない。 */
+  /* **狭めたぶんが隣の列へ回らないこと**が要点。回ると、掴んだ列だけが
+     細くなったようには見えず「狭められない」と読まれる。空きは右にできる。 */
+  const moved=Object.keys(before.すべて).filter(k=>k!=='__time__'
+    &&Math.abs((narrow.すべて[k]||0)-before.すべて[k])>2);
+  rec('狭めたぶんが他の列へ回らない（§9.209 ①）',moved.length===0,moved.join(','));
+  rec('空きは右（セルを持たない1本）にできる',narrow.余り>=before.余り+50,
+      JSON.stringify({前:before.余り,後:narrow.余り,列:`${before.列}->${narrow.列}`}));
+  rec('余りは「セルを持たない1本」が受ける（列は増えない）',
+      before.トラック===before.列数+2,
+      `トラック${before.トラック} / 列${before.列数}+取っ手+余り`);
+
   rec('JSエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){console.log('FATAL: '+e.message);R.push({n:'FATAL',ok:false,d:e.message})}
  finally{
