@@ -236,6 +236,132 @@ async function cleanup(){
       JSON.stringify(twoDates.diff));
   rec('跨がない行では同じ日付になる',twoDates.same>0,`同じ ${twoDates.same}行`);
 
+  /* ==========================================================
+     9〜13) §9.207（利用者の指示・報告）
+     ========================================================== */
+  /* ---- 9. 保存したらパネルが閉じる ---- */
+  const closedAfterSave=await page.evaluate(()=>document.getElementById('listColumnPanel').hidden);
+  rec('保存するとモーダルが閉じる（§9.207）',closedAfterSave===true,String(closedAfterSave));
+
+  /* ---- 10. 固定列の「非表示」が開き直しても外れたまま ----
+     **これが報告された不具合の真因の網**（`initialHidden`が固定列を
+     無条件に「出す」へ倒していたので、開き直すとチェックが戻り、
+     保存し直すと列が復活していた）。日付・時刻・残りなどが対象。 */
+  const hideFixed=async key=>{
+   await openView();
+   await page.click('#scContentModalBtn');
+   await page.waitForSelector('#listColumnPanel:not([hidden])',{timeout:8000});
+   await page.waitForTimeout(600);
+   await page.evaluate(k=>{
+    const r=[...document.querySelectorAll('#lcList .lc-item')].find(x=>x.dataset.key===k);
+    const cb=r&&r.querySelector('input[type=checkbox]');
+    if(cb&&cb.checked)cb.click();
+   },key);
+   await page.waitForTimeout(400);
+   await page.click('#lcSave');
+   await page.waitForTimeout(1500);
+  };
+  const reopenState=async key=>{
+   await openView();
+   await page.click('#scContentModalBtn');
+   await page.waitForSelector('#listColumnPanel:not([hidden])',{timeout:8000});
+   await page.waitForTimeout(600);
+   const v=await page.evaluate(k=>{
+    const r=[...document.querySelectorAll('#lcList .lc-item')].find(x=>x.dataset.key===k);
+    return r?!!r.querySelector('input[type=checkbox]')?.checked:null;
+   },key);
+   await page.evaluate(()=>WL.listColumns.close());
+   await page.waitForTimeout(300);
+   return v;
+  };
+  await hideFixed('__rel__');
+  const relGone=await page.evaluate(()=>({
+   head:!document.querySelector('.sc-row-head [data-col="__rel__"]'),
+   cell:!document.querySelector('.sc-row-line [data-col="__rel__"]')}));
+  rec('固定列（残り）を外すと表から消える',relGone.head&&relGone.cell,JSON.stringify(relGone));
+  const relChecked=await reopenState('__rel__');
+  rec('開き直してもチェックは外れたまま（§9.207の真因）',relChecked===false,String(relChecked));
+  const s4=await saved();
+  rec('外した固定列がサーバーに残る',(s4.hidden||[]).includes('__rel__'),JSON.stringify(s4.hidden));
+
+  /* ---- 11. 操作列は右端に貼り付かない ---- */
+  const actSticky=await page.evaluate(()=>{
+   const c=document.querySelector('.sc-row-line [data-col="__actions__"]');
+   const h=document.querySelector('.sc-row-head [data-col="__actions__"]');
+   return {cell:c?getComputedStyle(c).position:'',head:h?getComputedStyle(h).position:''};
+  });
+  rec('操作列は普通の列（右端に貼り付けない）',
+      actSticky.cell!=='sticky'&&actSticky.head!=='sticky',JSON.stringify(actSticky));
+
+  /* ---- 12. 行の右クリックで操作と同じことができる ----
+     **メニューが出るだけでは網にならない**（何が並ぶかが値打ち）ので、
+     項目の文字を見る。危ない操作が下にあることも見る（§5）。 */
+  await page.evaluate(()=>{
+   const row=document.querySelector('.sc-row-line');
+   const r=row.getBoundingClientRect();
+   row.dispatchEvent(new MouseEvent('contextmenu',
+     {bubbles:true,clientX:Math.round(r.left+30),clientY:Math.round(r.top+5)}));
+  });
+  await page.waitForSelector('.sc-row-menu',{timeout:5000});
+  const rowMenu=await page.evaluate(()=>{
+   const m=document.querySelector('.sc-row-menu');
+   const items=[...m.querySelectorAll('button')].map(b=>b.textContent.trim());
+   const danger=[...m.querySelectorAll('button')].map((b,i)=>b.classList.contains('chm-danger')?i:-1)
+     .filter(i=>i>=0);
+   return {head:m.querySelector('.chm-head')?.textContent.trim()||'',items,
+     dangerLast:danger.length?Math.min(...danger)>=items.length-danger.length:true};
+  });
+  rec('行の右クリックでメニューが出る',rowMenu.items.length>0,rowMenu.items.join(' / '));
+  rec('メニューにどの行かを出す',!!rowMenu.head,rowMenu.head);
+  rec('表示列の設定をメニューからも開ける',
+      rowMenu.items.some(t=>/表示列/.test(t)),rowMenu.items.join(' / '));
+  rec('危ない操作は下へ離す（§5）',rowMenu.dangerLast===true,rowMenu.items.join(' / '));
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(200);
+  rec('Escでメニューが閉じる',
+      await page.evaluate(()=>!document.querySelector('.sc-row-menu')));
+
+  /* ---- 13. 計算式の列（§9.207、利用者の指示） ----
+     **見出しの言葉で書けること**が値打ち（`__date__`のような内側のキーを
+     覚えさせない）。**確かめるときは実際に値が出ることまで見る**——
+     列が増えただけなら、式が当たっていなくても通る。 */
+  page.on('dialog',d=>d.accept('計算テスト'));
+  await openView();
+  await page.click('#scContentModalBtn');
+  await page.waitForSelector('#listColumnPanel:not([hidden])',{timeout:8000});
+  await page.waitForTimeout(600);
+  const addable=await page.evaluate(()=>!document.getElementById('lcAddCol').hidden);
+  rec('スケジュール表でも「列を作る」が使える',addable===true,String(addable));
+  await page.click('#lcAddCol');
+  await page.waitForTimeout(500);
+  await page.evaluate(()=>{
+   const ta=document.getElementById('lcFormula');
+   ta.value='concat("★",[ロット番号])';
+   ta.dispatchEvent(new Event('input',{bubbles:true}));
+   ta.dispatchEvent(new Event('change',{bubbles:true}));
+  });
+  await page.waitForTimeout(700);
+  const fxState=await page.evaluate(()=>({
+   ok:!!document.querySelector('.lc-fx-state.is-ok'),
+   msg:document.querySelector('.lc-fx-state')?.textContent.trim()||'',
+   sample:[...document.querySelectorAll('.lc-fx-samples code')].map(c=>c.textContent.trim())}));
+  rec('見出しの言葉（[ロット番号]）で式を書ける',fxState.ok===true,fxState.msg);
+  rec('設定画面の見本に式の結果が出る',
+      fxState.sample.some(t=>t.startsWith('★')&&t.length>1),JSON.stringify(fxState.sample));
+  await page.click('#lcSave');
+  await page.waitForTimeout(1600);
+  const fxCells=await page.evaluate(()=>({
+   head:!!document.querySelector('.sc-row-head [data-col="計算テスト"]'),
+   vals:[...document.querySelectorAll('.sc-row-line [data-col="計算テスト"]')]
+     .map(x=>x.textContent.trim()).filter(Boolean).slice(0,3)}));
+  rec('計算式の列がスケジュール表に出る',fxCells.head===true,String(fxCells.head));
+  rec('計算式の結果が行に並ぶ',
+      fxCells.vals.length>0&&fxCells.vals.every(t=>t.startsWith('★')),
+      JSON.stringify(fxCells.vals));
+  const s5=await saved();
+  rec('計算式がサーバーに残る',
+      /ロット番号/.test((s5.formulas||{})['計算テスト']||''),JSON.stringify(s5.formulas));
+
   rec('JSエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){console.log('FATAL: '+e.message);R.push({n:'FATAL',ok:false,d:e.message})}
  finally{

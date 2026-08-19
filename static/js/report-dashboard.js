@@ -574,16 +574,61 @@
     テキストが隣接セル(この帳票では板厚/板幅の実測値テーブル)の領域まで
     はみ出して表示されてしまう不具合があったため、丈ごとに行を積む
     シンプルな構成に戻した(丈は最大9のため縦方向の圧迫も小さい)。 */
+ /* ---------- 揃い欄の出し方(§9.205、利用者の指示「内訳と合否両方(デフォルト)と
+    内訳のみ、合否のみを切り替えほしい」) ----------
+    以前の紙は**合否(OK/NG)しか載っていなかった**ので、のこぎり状なのか
+    テレスコープ状なのか、どこに何mm出たのかが紙からは分からなかった。
+    保存先は**列レイアウトマスタの`formats`**（この塊の組み立て方。§9.169で
+    「転置」に使っているのと同じ欄で、丈別データは転置を持たないので競合
+    しない）。**新しいマスタも新しいキーも作らない。** */
+ const RP_PRODUCT_KEY='丈別データ';
+ const RP_PRODUCT_MODES=[
+  {v:'',    label:'内訳と合否',note:'形状・発生位置・方向などの内訳と、切断面等級で出した合否の両方を載せます。'},
+  {v:'内訳',label:'内訳だけ',  note:'記録した内訳だけを載せます。合否（OK/NG）は載せません。'},
+  {v:'合否',label:'合否だけ',  note:'合否（OK/NG）だけを載せます（今までの紙と同じ）。'},
+ ];
+ /* **知らない値は既定へ倒す**（設定を手で書き換えた・古い値が残っている
+    ときに、紙が空欄になるより既定で刷れるほうがよい）。 */
+ function rpProductMode(){
+  const v=rpPattern(RP_PRODUCT_KEY);
+  return v==='内訳'||v==='合否'?v:'';
+ }
  function productRowsSection(x){
   const rows=x.product?.rows||[],actual=Math.max(1,Math.min(9,+x.settings?.verticalCount||1));
+  const mode=rpProductMode(),showJudge=mode!=='内訳',showBreak=mode!=='合否';
+  /* **等級はこの紙のレコードから引く**（§9.205）。渡さないと`S.measure`＝
+     いま開いている測定の等級で判定してしまい、一括印刷では途中から全部
+     同じ基準になる。 */
+  const grades=x.qualityGrades||{};
   const body=Array.from({length:actual},(_,i)=>{
    /* 揃いの判定は`judgeProductRow`の1箇所が答える(§9.203)。
       4桁コードを廃止したので、`alignmentCode`だけを見ると新しい記録が
       すべて空欄になる（旧データはあちらが面倒を見る）。 */
-   const r=rows[i]||{},j=judgeProductRow(r);
-   return `<tr><th>${i+1}</th><td>${esc(r.productLength||'-')}</td><td>${esc(r.wallThickness||'-')}</td><td>${j?`<span class="product-judge${j==='OK'?' ok':' ng'}">${esc(j)}</span>`:''}</td><td></td><td>${esc(r.note||'-')}</td></tr>`;
+   const r=rows[i]||{},j=showJudge?judgeProductRow(r,grades):'';
+   const badge=j?`<span class="product-judge${j==='OK'?' ok':j==='NG'?' ng':' pend'}">${esc(j)}</span>`:'';
+   const br=showBreak?WL.product.breakdown(r):[];
+   const brHtml=br.length
+     ?`<span class="rp-product-break">${br.map(b=>
+        `<span class="rp-pb"><i>${esc(b.label)}</i>${esc(b.text)}</span>`).join('')}</span>`
+     :'';
+   return `<tr><th>${i+1}</th><td>${esc(r.productLength||'-')}</td><td>${esc(r.wallThickness||'-')}</td>`
+     +`<td class="${showBreak?'rp-product-cell':''}">${badge}${brHtml}</td>`
+     +`<td></td><td>${esc(r.note||'-')}</td></tr>`;
   }).join('');
-  return `<section class="rp-section"><h3>丈別データ（長さ・肉厚・揃い）</h3><table class="rp-dim-table rp-product-table"><thead><tr><th>丈</th><th>長さ</th><th>肉厚</th><th>揃い</th><th>外観</th><th>備考</th></tr></thead><tbody>${body}</tbody></table></section>`;
+  /* 内訳を出すときは**揃いの列へ幅を回す**——6等分のままだと1行に2〜3文字
+     しか入らず、内訳が縦に伸びて紙が溢れる（§11「入れ物は中身の長さから」）。
+     合否だけのときは**今までの紙のまま**にする（列幅を触らない）。 */
+  const cg=showBreak
+    ? `<colgroup><col style="width:6%"><col style="width:11%"><col style="width:11%"><col style="width:44%"><col style="width:10%"><col style="width:18%"></colgroup>`
+    : '';
+  /* **合否の根拠は紙にも書く**（§6）。紙には`title`が出ないので、画面の帯と
+     同じ材料から作った1行を節の下へ置く。**内訳だけのときは書かない**
+     ——合否を載せていないのに基準の話をしても読む相手が居ない。 */
+  const note=showJudge?`<p class="rp-note">${esc(WL.product.paperNote(grades))}</p>`:'';
+  return `<section class="rp-section"><h3>丈別データ（長さ・肉厚・揃い）</h3>`
+   +`<table class="rp-dim-table rp-product-table">${cg}`
+   +`<thead><tr><th>丈</th><th>長さ</th><th>肉厚</th><th>揃い</th><th>外観</th><th>備考</th></tr></thead>`
+   +`<tbody>${body}</tbody></table>${note}</section>`;
  }
  /* 作業班構成: オペレータ・検査員は既存データから、梱包員は現状データ未実装
     のため常に「-」表示。旧帳票の梱包員欄に相当する表示エリアだけ先に確保する。 */
@@ -770,10 +815,29 @@
   const raw=Math.round(Number(WL.columnLayout.width(rpTarget(),rpColWKey(k,c)))||0);
   return raw>=RP_H_MIN?Math.min(RP_H_MAX,raw):0;   /* 0＝オートフィット */
  }
- /* 表示パターン（そのまま／行列入れ替え）。`formats`は「値の整え方」の欄なので、
-    帳票では「この塊の組み立て方」を持たせる。**hidden/widthsへ混ぜない**
-    （あちらは出す出さないと寸法で、意味が違う）。 */
- function rpPattern(k){return String((WL.columnLayout.get(rpTarget()).formats||{})[k]||'')}
+ /* 表示パターン（そのまま／行列入れ替え／揃い欄の出し方）。`formats`は
+    「値の整え方」の欄なので、帳票では「この塊の組み立て方」を持たせる。
+    **hidden/widthsへ混ぜない**（あちらは出す出さないと寸法で、意味が違う）。
+
+    **文字列のまま入れないこと**（§9.205）。サーバーの`normalize_format()`は
+    **辞書以外をNoneへ落とす**ので、`formats[k]='転置'`と書くと画面では効くのに
+    保存だけが黙って消える——実際に「行と列の入れ替え」は一度も保存されて
+    いなかった（押した瞬間は変わるので、開き直すまで気づけない）。
+    書式の`pattern`（60字まで）へ入れて往復させる。 */
+ function rpPattern(k){
+  const v=(WL.columnLayout.get(rpTarget()).formats||{})[k];
+  if(!v)return '';
+  /* 触っただけでまだ保存していない値は文字列のこともある（stageは素通し）。 */
+  return String(typeof v==='string'?v:(v.pattern||''));
+ }
+ /* 表示パターンを差し替えた`formats`。**既定は行ごと消す**——空を保存すると
+    「空という設定」になり、既定を変えたときに追随しない。 */
+ function rpPatternPatch(k,v){
+  const f={...rpLayoutNow().formats};
+  if(v)f[k]={kind:'',pattern:String(v),decimals:null,thousands:false,prefix:'',suffix:''};
+  else delete f[k];
+  return f;
+ }
  function rpTransposed(k){return rpPattern(k)==='転置'}
  /* 帳票本体のHTML生成。一括印刷（複数ロットをまとめて別ページへ流し込む）でも
     同じHTMLを使うため、単一プレビューへの書き込みとは分離してある。
@@ -991,6 +1055,10 @@
        <input type="number" data-e-col="${esc(c.n)}" value="${rpColWidth(k,c.n)||''}" placeholder="自動" min="${RP_H_MIN}" max="${RP_H_MAX}" step="4"></label>`).join('')}
      <button type="button" data-e-colreset>全部オートフィットへ</button>
      <i class="rp-form-note">空欄＝オートフィット（中身なり）。入れた列だけ固定します。</i></span></div>`:''}
+   ${k===RP_PRODUCT_KEY?`<div class="rp-form-row"><span class="rp-form-label">揃いの欄</span>
+    <span class="rp-form-ctl">
+     ${RP_PRODUCT_MODES.map(m=>`<button type="button" data-e-pmode="${esc(m.v)}" class="${m.v===rpProductMode()?'is-on':''}">${esc(m.label)}${m.v===''?'（既定）':''}</button>`).join('')}
+     <i class="rp-form-note">${esc((RP_PRODUCT_MODES.find(m=>m.v===rpProductMode())||RP_PRODUCT_MODES[0]).note)}</i></span></div>`:''}
    <div class="rp-form-row"><span class="rp-form-label">紙に出す</span>
     <span class="rp-form-ctl">
      <button type="button" data-e-vis>${rpHiddenSet().has(k)?'出す':'出さない'}</button>
@@ -1012,11 +1080,13 @@
    if(v<RP_H_MIN)delete wid[rpHeightKey(k)];else wid[rpHeightKey(k)]=Math.min(RP_H_MAX,v);
    rpStage({widths:wid});renderBlockEditor();
   };
+  /* 揃いの出し方も`formats`。**既定は行ごと消す**——空文字を保存すると
+     「空という設定」になり、既定を変えたときに追随しない（§9.198）。 */
+  form.querySelectorAll('[data-e-pmode]').forEach(b=>b.onclick=()=>{
+   rpStage({formats:rpPatternPatch(RP_PRODUCT_KEY,b.dataset.ePmode)});renderBlockEditor();
+  });
   form.querySelectorAll('[data-e-turn]').forEach(b=>b.onclick=()=>{
-   const f={...rpLayoutNow().formats};
-   const v=b.dataset.eTurn;
-   if(v)f[k]=v;else delete f[k];
-   rpStage({formats:f});renderBlockEditor();
+   rpStage({formats:rpPatternPatch(k,b.dataset.eTurn)});renderBlockEditor();
   });
   form.querySelectorAll('[data-e-col]').forEach(inp=>inp.onchange=()=>{
    const v=Math.round(Number(inp.value)||0),wid=w(),key=rpColWKey(k,inp.dataset.eCol);

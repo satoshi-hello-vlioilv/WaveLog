@@ -241,6 +241,162 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
   rec('紙には絞り込みの案内を出さない',
       await page.evaluate(()=>document.querySelectorAll('.rp-block-cols,[data-rp-drop]').length===0));
 
+  /* ==========================================================
+     7) 丈別データの「揃い」欄（§9.205、利用者の指示「内訳と合否両方
+        (デフォルト)と内訳のみ、合否のみを切り替えほしい」）
+     ----------------------------------------------------------
+     以前の紙は**合否(OK/NG)しか載っていなかった**ので、形状も値も紙から
+     分からなかった。ここで固定するのは3点。
+       ・既定は内訳と合否の両方
+       ・3つの出し方を往復できる（保存すると列レイアウトマスタに残る）
+       ・**判定に使う切断面等級は「その紙のレコード」から引く**
+         （`S.measure`＝いま開いている測定を見ていると、一括印刷で
+           途中から全部同じ基準になる）
+     **確かめるときは材料ごと注ぎ込む**——検証用フィクスチャの測定データは
+     揃いも品質等級も持たないので、そのまま見ても内訳の行を一度も通らない
+     （§9.125・§9.160と同じ）。 */
+  await cleanup();
+  await page.evaluate(()=>{WL.columnLayout.forget('report:テスト設備A')});
+  /* 同じ内訳・同じ値(4.0mm)で**切断面等級だけ違う**2件。
+     3級はテレスコープ5.0mm以下なのでOK、4級は3.0mm以下なのでNGになる。
+     等級を見ていなければ**どちらも「基準なし」**になり、片方の等級しか
+     見ていなければ**2件が同じ判定**になる。 */
+  const mk=(id,grade)=>({id,grade});
+  const made=await page.evaluate(async pair=>{
+   const out=[];
+   for(const{id,grade} of pair){
+    const rec=ensureMeasureShape({
+     id,status:'編集中',updatedAt:new Date().toISOString(),
+     registeredEquipment:'テスト設備A',
+     basic:{lotNo:id},
+     qualityGrades:{'切断面':grade},
+     settings:{registeredEquipment:'テスト設備A',verticalCount:3,
+       measureType:WL.measureItem.MATERIAL},
+     product:{rows:[
+      {productLength:'1000',wallThickness:'0.50',edgeShape:'のこぎり状',
+       occurrencePosition:'1/3未満発生',regularity:'不規則',direction:'OS',
+       pitch:'12',alignmentValue:'1.5',note:''},
+      {productLength:'1000',wallThickness:'0.50',edgeShape:'テレスコープ状',
+       occurrencePosition:'2/3以上発生',regularity:'規則的',direction:'DS',
+       pitch:'',alignmentValue:'4.0',note:''},
+      {productLength:'1000',wallThickness:'0.50',edgeShape:'揃い綺麗',note:''},
+     ]},
+    });
+    await reliablePut(rec);out.push(rec.id);
+   }
+   return out;
+  },[mk('RPPROD-G3','3'),mk('RPPROD-G4','4')]);
+  rec('揃いの材料を注ぎ込めた',made.length===2,made.join('／'));
+
+  const readProduct=()=>page.evaluate(()=>{
+   const sec=[...document.querySelectorAll('[data-rp-block="丈別データ"] .rp-section, .rp-section')]
+     .find(s=>/丈別データ/.test(s.querySelector('h3')?.textContent||''));
+   if(!sec)return null;
+   const rows=[...sec.querySelectorAll('tbody tr')].map(tr=>{
+    const cell=tr.children[3];
+    return{
+     judge:cell.querySelector('.product-judge')?.textContent.trim()||'',
+     breaks:[...cell.querySelectorAll('.rp-pb')].map(b=>b.textContent.trim()),
+     fits:[...cell.querySelectorAll('.rp-pb')].every(b=>
+       b.getBoundingClientRect().right<=cell.getBoundingClientRect().right+1),
+    };
+   });
+   const tbl=sec.querySelector('table'),host=sec.closest('.rp-block')||sec.parentElement;
+   return{rows,note:sec.querySelector('.rp-note')?.textContent.trim()||'',
+     wide:tbl.getBoundingClientRect().width<=host.getBoundingClientRect().width+2};
+  });
+
+  await page.evaluate(id=>window.openReportForRecord(id),'RPPROD-G3');
+  await page.waitForSelector('#reportContent .rp-blocks',{timeout:20000});
+  await settle(page);
+  const both=await readProduct();
+  rec('丈別データが紙に出る',!!both&&both.rows.length===3,
+      both?`${both.rows.length}行`:'（節が無い）');
+  /* **既定は内訳と合否の両方。** */
+  rec('既定は内訳と合否の両方を出す',
+      !!both&&both.rows[0].judge==='OK'&&both.rows[0].breaks.length>=4,
+      both?`判定=${both.rows[0].judge} / 内訳${both.rows[0].breaks.length}件: ${both.rows[0].breaks.join('・')}`:'');
+  /* 内訳は**ラベルと単位つき**（同じ数字でも意味が違う）。 */
+  rec('内訳に形状・発生位置・方向・値(mm)が載る',
+      !!both&&['のこぎり状','1/3未満発生','OS','1.5mm'].every(t=>both.rows[0].breaks.join('／').includes(t)),
+      both?both.rows[0].breaks.join('／'):'');
+  /* 「揃い綺麗」の丈は**内訳を書かない**（異常が無いので書くことが無い）。 */
+  rec('「揃い綺麗」の丈は形状だけで内訳を並べない',
+      !!both&&both.rows[2].judge==='OK'&&both.rows[2].breaks.length===1
+        &&both.rows[2].breaks[0].includes('揃い綺麗'),
+      both?`${both.rows[2].judge} / ${both.rows[2].breaks.join('／')}`:'');
+  /* **内訳は切り詰めない・紙からはみ出さない。** 他の列はnowrap＋省略記号だが、
+     「のこぎり…」では形状が読めないので、この欄だけ折り返して幅を回す。 */
+  rec('内訳が欄からはみ出さない',
+      !!both&&both.wide&&both.rows.every(r=>r.fits),
+      both?`表が器に収まる=${both.wide} / 行ごと=${both.rows.map(r=>r.fits).join(',')}`:'');
+  /* **合否の根拠を紙に書く**（紙にtitleは出ない）。 */
+  rec('合否の根拠（切断面等級と基準）を紙に書く',
+      !!both&&/切断面 3級/.test(both.note)&&/客先の個別要求/.test(both.note),both?both.note:'');
+
+  /* ---- 等級はこの紙のレコードから引く ---- */
+  const g3=both&&both.rows[1].judge;
+  await page.evaluate(id=>window.openReportForRecord(id),'RPPROD-G4');
+  await page.waitForSelector('#reportContent .rp-blocks',{timeout:20000});
+  await settle(page);
+  const g4rows=await readProduct();
+  const g4=g4rows&&g4rows.rows[1].judge;
+  rec('切断面等級はその紙のレコードから引く（3級OK・4級NG）',
+      g3==='OK'&&g4==='NG',`3級=${g3} / 4級=${g4}`);
+
+  /* ---- 3つの出し方を切り替えて往復する ---- */
+  await page.evaluate(id=>window.openReportForRecord(id),'RPPROD-G3');
+  await page.waitForSelector('#reportContent .rp-blocks',{timeout:20000});
+  await page.click('#reportArrange');
+  await page.waitForSelector('.rp-block-bar',{timeout:8000});
+  /* 塊を大きく開くのは**ダブルクリック**（§9.174）。帯のボタンではない。 */
+  await page.dblclick('[data-rp-block="丈別データ"] .rp-block-name');
+  await page.waitForSelector('#rpBlockForm [data-e-pmode]',{timeout:8000});
+  const modes=await page.evaluate(()=>[...document.querySelectorAll('#rpBlockForm [data-e-pmode]')]
+    .map(b=>b.dataset.ePmode+'='+b.textContent.trim()));
+  rec('揃いの出し方を3つから選べる',modes.length===3&&/既定/.test(modes[0]),modes.join(' / '));
+
+  await page.click('#rpBlockForm [data-e-pmode="合否"]');
+  await settle(page);
+  const only=await readProduct();
+  rec('「合否だけ」にすると内訳が消える',
+      !!only&&only.rows[0].judge==='OK'&&only.rows.every(r=>r.breaks.length===0),
+      only?`判定=${only.rows[0].judge} / 内訳=${only.rows[0].breaks.length}件`:'');
+
+  await page.click('#rpBlockForm [data-e-pmode="内訳"]');
+  await settle(page);
+  const brk=await readProduct();
+  rec('「内訳だけ」にすると合否が消える',
+      !!brk&&brk.rows.every(r=>r.judge==='')&&brk.rows[0].breaks.length>=4,
+      brk?`判定=「${brk.rows[0].judge}」 / 内訳=${brk.rows[0].breaks.length}件`:'');
+  /* 合否を載せていないのに基準の話をしても読む相手が居ない（§「自明な文を消す」）。 */
+  rec('内訳だけのときは基準の一文を出さない',!!brk&&brk.note==='',brk?brk.note:'');
+
+  await page.click('#rpBlockClose');
+  await page.click('#rpArrangeSave');
+  await page.waitForTimeout(1200);
+  const srv2=await (await fetch(B+'/api/column-layout-master?target='+encodeURIComponent(TARGET))).json();
+  /* **文字列のまま保存しない**（§9.205）。サーバーの`normalize_format()`は
+     辞書以外をNoneへ落とすので、`formats[k]='内訳'`と書くと画面では効くのに
+     保存だけが黙って消える（「行と列の入れ替え」が実際にそうなっていた）。
+     書式の`pattern`へ入れて往復させる。 */
+  rec('揃いの出し方がサーバーに残る',
+      ((srv2.formats||{})['丈別データ']||{}).pattern==='内訳',
+      JSON.stringify(srv2.formats));
+  /* **既定は行ごと消す**（空文字を保存すると「空という設定」になる）。 */
+  await page.click('#reportArrange');
+  await page.waitForSelector('.rp-block-bar',{timeout:8000});
+  await page.dblclick('[data-rp-block="丈別データ"] .rp-block-name');
+  await page.waitForSelector('#rpBlockForm [data-e-pmode]',{timeout:8000});
+  await page.click('#rpBlockForm [data-e-pmode=""]');
+  await settle(page);
+  await page.click('#rpBlockClose');
+  await page.click('#rpArrangeSave');
+  await page.waitForTimeout(1200);
+  const srv3=await (await fetch(B+'/api/column-layout-master?target='+encodeURIComponent(TARGET))).json();
+  rec('既定へ戻すと設定の行ごと消える',!((srv3.formats||{})['丈別データ']),
+      JSON.stringify(srv3.formats));
+
   rec('コンソールに例外を出さない',errs.length===0,errs.slice(0,2).join(' / '));
  }catch(e){rec('FATAL',false,e.message)}
  finally{

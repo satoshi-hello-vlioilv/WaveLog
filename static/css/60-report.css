@@ -267,6 +267,18 @@
 .rp-product-table{min-width:0;width:100%;table-layout:fixed}
 .rp-product-table th,.rp-product-table td{padding:1px 2px;font-size:7.5px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rp-product-table tbody th{white-space:nowrap}
+/* 揃いの内訳(§9.205、利用者の指示「内訳と合否両方(デフォルト)と内訳のみ、
+   合否のみを切り替えほしい」)。**この欄だけ折り返す**——他の列はnowrap＋
+   省略記号で隣の測定データへはみ出さないようにしているが、内訳は切り詰めると
+   意味が消える（「のこぎり…」では形状が読めない）。列幅はcolgroupが回す
+   （6等分のままだと1行に2〜3文字しか入らない）。 */
+.rp-product-table td.rp-product-cell{white-space:normal;overflow:visible;text-overflow:clip}
+/* 内訳と並ぶときのバッジは小さくする（測定画面の32px幅のままだと、内訳の
+   1行目が丸ごと押し出される）。合否だけの紙は今までのまま。 */
+.rp-product-table td.rp-product-cell .product-judge{min-width:0;margin-right:3px;padding:0 2px;border-radius:2px;font-size:7px}
+.rp-pb{display:inline-block;margin-right:4px;white-space:nowrap}
+/* ラベルは**色で下げる。大きさは変えない**（同じ表の中は同じ文字サイズ）。 */
+.rp-pb>i{margin-right:2px;color:#60747b;font-style:normal;font-weight:700}
 /* ---------- 異常位置判定（参考） ----------
    モーダルで**保存された場合だけ**帳票へ載せる参考情報(オペレータの
    シミュレーション結果であり、測定値ではない)。板幅の実測表は条番号で

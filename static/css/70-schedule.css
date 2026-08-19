@@ -466,20 +466,23 @@
 .sc-row-flags{display:flex;gap:var(--gap-tight);font-size:var(--tbl-fs-mark);align-items:center;
  line-height:1.2;max-height:100%;white-space:nowrap;overflow:hidden}
 .sc-flag-overdue{color:var(--danger);font-weight:800}
-/* 操作(開始・固定・帳票・削除)は**一番右端の列**なので、ウィンドウを狭めたり
-   仕掛一覧との分割バーを動かすと真っ先に見えなくなり、横スクロールしないと
-   押せなかった。列の並びは変えずに、右端へ貼り付けて常に見えるようにする
-   (position:sticky)。背景は行から受け継ぎ、左に境目を1本入れて「浮いて
-   いる列」だと分かるようにする。ヘッダー側も同じ位置で止める。 */
+/* 操作(開始・固定・帳票・削除)は**普通の列**（§9.207、利用者の指示
+   「操作ボタンの列固定は不要です。…通常の列と同じ扱いにしてください」）。
+   以前は右端へ貼り付けていた(position:sticky)が、§9.176で操作の列も
+   移動・表示/非表示ができるようになったので、**真ん中へ動かした列を
+   右端に貼り付ける**という辻褄の合わない状態が作れてしまう。
+   横スクロールで見えなくなったときの逃げ道は**行の右クリック**が持つ
+   （操作と同じことが全部できる）。 */
 .sc-row-actions{
  display:flex;gap:var(--gap-hair);justify-content:flex-end;
- position:sticky;right:0;z-index:2;
  background:inherit;padding-left:var(--space-1);
- box-shadow:-6px 0 6px -6px rgba(23,56,66,.18);
 }
-/* 見出し側も同じ位置で止める。止めないと、横スクロールしたとき
-   ボタンだけが右端に残って「操作」の見出しが流れていってしまう。 */
-.sc-actions-head{position:sticky;right:0;z-index:2;background:#f7fafb;text-align:right;padding-left:var(--space-1)}
+.sc-actions-head{text-align:right;padding-left:var(--space-1)}
+/* 行の右クリック(§9.207)。見出しの右クリックと同じ器を使い回すので、
+   ここで足すのは**危ない操作の見え方**だけ（§5。「完了」の隣に「削除」を
+   置かない＝下へ離し、色でも分かるようにする）。 */
+.col-head-menu .chm-danger{color:var(--danger)}
+.col-head-menu .chm-danger:hover{background:var(--danger-bg)}
 /* ---------- 開いたときの表示の設定(§9.179) ---------- */
 .sc-layout-pop{position:absolute;top:var(--space-2);right:var(--space-4);z-index:var(--z-popover);
  width:calc(340px * var(--ui-scale));padding:var(--space-3);

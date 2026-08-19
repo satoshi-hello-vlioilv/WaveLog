@@ -391,9 +391,15 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 /* 見出しは**カードの中の群の見出しの規格**（§9.154）。ここだけ11pxで、
    同じ画面の①②より1段小さかった。 */
 .rv-group>b{display:block;margin-bottom:var(--space-1);color:var(--ink-3);font-size:var(--fs);font-weight:800;letter-spacing:.04em}
-.rv-group dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:var(--gap-hair) var(--gap-inline);margin:0}
+/* **値を切り詰めない**（§9.206、実機で「母材の項目が見切れています」）。
+   `max-content`のままだと、長いラベル（「屑幅（両耳合計）」）が2段組の
+   狭い列を食い尽くし、**数字のほうが「122…」と切られていた**。数字は
+   切れた時点で別の数字になるので、削ってよいのはラベルのほう。
+   ラベル列は縮められるようにし（`minmax(0,max-content)`）、値には
+   最低幅を約束する。 */
+.rv-group dl{display:grid;grid-template-columns:minmax(0,max-content) minmax(3.8em,1fr);gap:var(--gap-hair) var(--gap-inline);margin:0}
 .rv-group dl>div{display:contents}
-.rv-group dt{color:var(--muted);font-size:var(--fs)}
+.rv-group dt{color:var(--muted);font-size:var(--fs);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rv-group dd{margin:0;min-width:0;font-weight:700;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rv-empty{margin:0;color:var(--muted);font-size:var(--fs)}
 /* ② 1列目は**根拠**だけ。1列（狭い）なので縦に積む。 */
@@ -1360,7 +1366,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    中は群の最大へそろえる(§9.131)。方向はOS/DSの2文字なので別枠。 */
 /* エッジ形状(いちばん長い「のこぎり状」)。**内訳は行の下の段へ出す**ので、
    横に並ぶ選択欄はこの1つだけ(§9.203)。 */
-.prt-c-sel{width:10.4em}
+.prt-c-sel{width:12.6em}
 /* 備考だけ残りを取る(自由記述は長いほどよい)。col に width を書かない。 */
 .product-rows-table th,.product-rows-table td{
   padding:var(--pad-row);border-right:1px solid var(--line-soft);
@@ -1393,7 +1399,20 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 /* 器は列。**列の中では目いっぱい**使う（列の幅そのものを中身から決めてある）。 */
 .product-rows-table input,.product-rows-table select{width:100%;height:var(--ctl-h-sm);background:#fff}
 .product-rows-table select{border:1px solid var(--line);border-radius:var(--radius-xs);
-  font-size:var(--fs-sm);color:var(--ink-2);min-width:0}
+  color:var(--ink-2);min-width:0}
+/* **1つの表の中は同じ文字サイズ**（§9.90）。`40-records.css`の
+   「.measure-shell input/select … font-size:var(--fs)」が測定画面のコントロールへ
+   一律14pxを当てるので、器（この表は12px＝`--fs-sm`）と中身が食い違い、
+   `--ctl-h-sm`（12pxから作った30px）に14pxの文字が入らず**上下が切れて**
+   いた（実機で「文字が見切れています」と報告。§9.206）。**同じ詳細度では
+   後から読まれる側が勝つ**ので、表の側の宣言は詳細度を1つ上げて当てる。
+   上下の余白は**器の高さが持っている**ので0にする——`button,select,input`の
+   `padding:7px`のままだと、文字18.9px＋余白14px＋罫線2pxで器（30px）を
+   必ず超える。 */
+.measure-shell .product-rows-table input,
+.measure-shell .product-rows-table select{
+  font-size:var(--fs-sm);padding:0 var(--ctl-pad-x-xs);
+}
 /* 書かなくてよい欄は**押せなくして、そう見せる**(§4)。 */
 .product-rows-table input:disabled,.product-rows-table select:disabled{
   background:var(--surface-2);color:var(--muted);cursor:not-allowed}
@@ -1414,10 +1433,31 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 }
 .prt-detail-in{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2)}
 .prt-detail-lead{font-size:var(--fs-tiny);font-weight:800;color:var(--ink-3);white-space:nowrap}
+/* 手で畳む（§9.206）。見出しそのものを押せるようにする——枠は付けない
+   （まとまりの枠と混ざる。§9.129）。 */
+.prt-fold{
+  display:flex;align-items:center;gap:var(--gap-tight);flex:0 0 auto;
+  padding:0;border:0;background:transparent;cursor:pointer;
+}
+/* 回した四角は元の枠からはみ出すので、はみ出すぶんの余白を先に空ける
+   （`.prep-chev`と同じ理由）。 */
+.prt-chev{
+  flex:0 0 auto;width:7px;height:7px;margin:0 2px 2px 0;
+  border-right:2px solid var(--ink-3);border-bottom:2px solid var(--ink-3);
+  transform:rotate(45deg);
+}
+.prt-fold[aria-expanded="true"] .prt-chev{margin:2px 2px 0 0;transform:rotate(-135deg)}
+/* 畳んだ側の要約。**値は読めるままにする**（§9.125）。 */
+.prt-sum{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-inline);min-width:0;
+  font-size:var(--fs-tiny);color:var(--ink-2)}
+.prt-sum-item{white-space:nowrap}
+.prt-sum-item>i{margin-right:2px;color:var(--muted);font-style:normal}
+.prt-sum-none{color:var(--muted);font-style:normal}
 .prt-df{display:flex;align-items:center;gap:var(--gap-tight);min-width:0}
 .prt-df>span{font-size:var(--fs-tiny);color:var(--muted);white-space:nowrap}
-/* 器は中身から決める(§11)。いちばん長いのは「1/3〜2/3発生」。 */
-.prt-df select{width:9.4em}
+/* 器は中身から決める(§11)。いちばん長いのは「1/3〜2/3発生」。
+   **選択欄は右端に▼の場所が要る**ので、文字幅ぴったりでは切れる（§9.206）。 */
+.prt-df select{width:10.8em}
 .prt-df input{width:6.4em}
 /* ---------- 8. 測定エディタ ---------- */
 /* **高さは器から分ける**（§9.146）。以前は`height:calc(100% - 82px)`という
