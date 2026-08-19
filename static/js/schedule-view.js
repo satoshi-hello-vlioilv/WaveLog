@@ -83,7 +83,17 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     いつ時点の状態かはヘッダーに出す(古い情報を黙って見せないため)。 */
  const scPlanCache=new Map();   // 設備名 -> {entries,anchor,warnings,loadFactor,fetchedAt}
  let scOverviewCache=null;      // {rows,fetchedAt}
+ /* ---------- 取得中の応答は「いつの分か」で捨てる(§9.200) ----------
+    予定を変えるとキャッシュは捨てるが、**そのとき既に飛んでいるGETは
+    止められない**。返ってきたのは変更前の内容なので、素直にキャッシュへ
+    入れると「画面では動いたのに、画面を切り替えて戻ると元へ戻る」
+    （実機で報告）。世代を1つ持ち、**取りに行った時点と戻ってきた時点で
+    世代が違えば捨てる**。件数や設備名で見分けようとしないこと——
+    並べ替えは件数が変わらないので見分けられない。 */
+ let scPlanGen=0;
+ const planGen=()=>scPlanGen;
  function invalidatePlanCache(equipment){
+  scPlanGen++;
   if(equipment)scPlanCache.delete(equipment);else scPlanCache.clear();
   scOverviewCache=null;  // 俯瞰ボードの残作業量も変わる
   // 作業可否(§9.51)の判定材料も一緒に捨てる。予定を取り直すのに残コースが
@@ -160,7 +170,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     黙って5分ずれた時刻を出すと「時計と合っていない」と読まれる。 */
  function updateRefreshHint(){
   const btn=$('#scRefresh');if(!btn)return;
-  const lines=['いまの時刻を基準に、予定の開始・終了を計算し直します。'];
+  const lines=['いまの時刻を基準に、予定の開始・終了を計算し直します。',
+               '作業できるかどうかの判定材料（仕掛データ）も取り直します。'];
   const a=scState.anchorRounded;
   if(a&&a.to){
    lines.push(`基準時刻: ${fmtDateTime(a.to)}`
@@ -773,17 +784,47 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   });
   return out;
  }
+ /* その区分の「元のアイコン」。**1箇所で決める**——見本・入口のボタン・
+    選ぶ盤の3つが同じ絵を出さないと、「既定」が何を指すのか分からない。 */
+ function rowStyleBaseIcon(t){
+  const catKey=t.key.startsWith('cat:')?t.key.slice(4):'stop';
+  return t.key.startsWith('stopcat:')
+   ?(STOP_CATEGORY_ICON[t.key.slice(8)]||SC_CATEGORIES.stop.icon)
+   :((SC_CATEGORIES[catKey]||{}).icon||'');
+ }
  function rowStyleSampleHtml(t){
   const cur=(scRowStyles&&scRowStyles.get(t.key))||null;
   const catKey=t.key.startsWith('cat:')?t.key.slice(4):'stop';
-  const base=t.key.startsWith('stopcat:')
-   ?(STOP_CATEGORY_ICON[t.key.slice(8)]||SC_CATEGORIES.stop.icon)
-   :((SC_CATEGORIES[catKey]||{}).icon||'');
+  const base=rowStyleBaseIcon(t);
   const show=!cur||cur.showIcon!==false;
   const icon=!show?'none':((cur&&String(cur.icon||''))||base);
   const color=cur?String(cur.colorKey||''):'';
   return `<span class="sc-row-cat sc-cat-${esc(catKey)}${color?' sc-rs-'+esc(color):''}">`
    +`${rowIconHtml(icon)}${esc(t.label)}</span>`;
+ }
+ /* アイコンを選ぶ小さな盤(§9.200、利用者の指示「もう少しわかりやすく」)。
+    以前は名前だけの選択欄で、①選ぶ前にどんな絵か分からない ②名前に
+    「(絵文字)」が付いていて器から見切れる、の2つがあった。
+    **絵を見たまま選ぶ**形にして、種類は見出しで分ける。 */
+ /* 「既定」は**元の絵をそのまま出す**（何になるのかを見せる）。「なし」は
+    印を出さないことなので`—`。名前と同じ字を絵の場所へ置かない
+    ——「既定/既定」と2度読ませることになる。 */
+ function iconGlyphHtml(v,baseIcon){
+  if(v==='none')return '<span class="sc-icon-word">—</span>';
+  if(!v)return rowIconHtml(baseIcon)||'<span class="sc-icon-word">—</span>';
+  return rowIconHtml(v)||'<span class="sc-icon-word">—</span>';
+ }
+ function iconPickHtml(current,baseIcon){
+  return `<div class="sc-icon-pick" hidden>`+SC_ICON_GROUPS.map(([kind,title])=>{
+   const items=SC_ROW_ICONS.filter(i=>i.kind===kind);
+   if(!items.length)return '';
+   return `<div class="sc-icon-grp">${esc(title)}</div><div class="sc-icon-grid">`+items.map(i=>{
+    const note=i.v===''?'この区分の元の印に戻します':(i.v==='none'?'印を出しません':i.label);
+    return `<button type="button" class="sc-icon-cell${current===i.v?' is-on':''}" data-icon-pick="${esc(i.v)}"`
+     +` aria-pressed="${current===i.v?'true':'false'}" title="${esc(note)}">`
+     +`<span class="sc-icon-glyph">${iconGlyphHtml(i.v,baseIcon)}</span><small>${esc(i.label)}</small></button>`;
+   }).join('')+`</div>`;
+  }).join('')+`</div>`;
  }
  function renderRowStylePop(){
   const pop=$('#scRowStylePop');if(!pop)return;
@@ -793,38 +834,81 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    const color=cur?String(cur.colorKey||''):'';
    const show=!cur||cur.showIcon!==false;
    const icon=!show?'none':((cur&&String(cur.icon||''))||'');
+   const base=rowStyleBaseIcon(t);
+   const glyph=iconGlyphHtml(icon,base);
    return `<div class="sc-rs-row" data-rs="${esc(t.key)}">
     <div class="sc-rs-name"><b>${esc(t.label)}</b><small>${esc(t.hint)}</small></div>
-    <div class="sc-rs-colors">${SC_ROW_PALETTE.map(p=>
+    <div class="sc-rs-colors" role="group" aria-label="${esc(t.label)}の色">${SC_ROW_PALETTE.map(p=>
       `<button type="button" class="sc-rs-sw${p.key?' sc-rs-'+p.key:' is-default'}${color===p.key?' is-on':''}"`
       +` data-rs-color="${esc(p.key)}" title="${esc(p.label)}（${esc(p.note)}）"`
       +` aria-pressed="${color===p.key?'true':'false'}"><span>${esc(p.label)}</span></button>`).join('')}</div>
-    <label class="sc-rs-icon"><span>アイコン</span>
-     <select data-rs-icon>${SC_ROW_ICONS.map(i=>
-       `<option value="${esc(i.v)}"${icon===i.v?' selected':''}>${esc(i.label)}</option>`).join('')}</select></label>
+    <div class="sc-rs-icon">
+     <button type="button" class="sc-rs-iconbtn" data-rs-iconbtn aria-expanded="false"
+       title="アイコンを選びます（絵を見たまま選べます）">
+      <span class="sc-rs-iconview">${glyph}</span><span class="sc-rs-iconname">${esc(iconLabelOf(icon))}</span><em>▾</em>
+     </button>
+     ${iconPickHtml(icon,base)}
+    </div>
     <div class="sc-rs-sample">${rowStyleSampleHtml(t)}</div>
     <button type="button" class="sc-rs-reset" data-rs-reset${cur?'':' disabled'}
-      title="この区分を既定へ戻します">既定へ</button>
+      title="${cur?'この区分の設定を消して、元の色とアイコンへ戻します':'この区分はまだ設定していません（いまが元のままです）'}">⟲ 戻す</button>
    </div>`;
   };
   const cats=rows.filter(r=>!r.group).map(cell).join('');
   const stops=rows.filter(r=>r.group==='stop').map(cell).join('');
+  /* 色の意味は**1行だけ先に書く**(§9.200)。行ごとの`title`に隠すと、
+     8つの色が何を表すのかを覚えていないと選べない。 */
+  const legend=SC_ROW_PALETTE.filter(p=>p.key)
+    .map(p=>`<span class="sc-rs-leg sc-rs-${p.key}"><i></i>${esc(p.label)}=${esc(p.note)}</span>`).join('');
+  /* **段の見出しと同じ字を中でもう一度出さない**(§8)。ここに要るのは
+     「何が起きるか」だけ。 */
   pop.innerHTML=`
-   <div class="sc-rs-head"><b>行の見せ方</b>
-    <small>色とアイコンだけを変えます。区分の名前は必ず出るので、色が見分けにくい環境でも読めます。</small></div>
-   <div class="sc-rs-sec"><div class="sc-rs-sec-head">区分ごと</div>${cats}</div>
-   ${stops?`<div class="sc-rs-sec"><div class="sc-rs-sec-head">設備停止の分類ごと<small>区分の設定より優先します</small></div>${stops}</div>`
-          :'<p class="sc-layout-note">設備停止の分類はまだ登録されていません（マスタ管理 &gt; 設備停止分類）。</p>'}
-   <p class="sc-layout-note">この設定は<b>全設備・全員に共通</b>です（行表示マスタ）。色は意味を持たせるための8色から選びます。</p>`;
+   <div class="sc-rs-head">
+    <small>変えるのは<b>色と印だけ</b>です。区分の名前は必ず出るので、色が見分けにくい環境でも読めます。
+     選んだ瞬間に下の表へ当たり、そのまま保存されます。</small></div>
+   <div class="sc-rs-legend"><b>色の目安</b>${legend}</div>
+   <div class="sc-rs-sec"><div class="sc-rs-sec-head">区分ごと<small>すべての行に効きます</small></div>${cats}</div>
+   ${stops?`<div class="sc-rs-sec"><div class="sc-rs-sec-head">設備停止の分類ごと<small>同じ行に両方あるときは、こちらが勝ちます</small></div>${stops}</div>`
+          :'<p class="sc-layout-note">設備停止の分類はまだ登録されていません（マスタ管理 &gt; 設備停止分類）。登録するとここに並びます。</p>'}
+   <p class="sc-layout-note">この設定は<b>全設備・全員に共通</b>です（行表示マスタ）。「⟲ 戻す」で、その区分だけ元の見た目へ戻せます。</p>`;
   pop.querySelectorAll('[data-rs-color]').forEach(b=>{
    b.onclick=()=>saveRowStyle(b.closest('.sc-rs-row').dataset.rs,{colorKey:b.dataset.rsColor});
   });
-  pop.querySelectorAll('[data-rs-icon]').forEach(sel=>{
-   sel.onchange=()=>saveRowStyle(sel.closest('.sc-rs-row').dataset.rs,{icon:sel.value});
+  /* アイコンの盤は**1つだけ開く**。開いたまま別の行を開くと、どちらを
+     選んでいるのか分からなくなる。 */
+  pop.querySelectorAll('[data-rs-iconbtn]').forEach(btn=>{
+   btn.onclick=e=>{
+    e.stopPropagation();
+    const box=btn.parentNode.querySelector('.sc-icon-pick');
+    const willOpen=box.hidden;
+    closeIconPicks(pop);
+    box.hidden=!willOpen;
+    btn.setAttribute('aria-expanded',willOpen?'true':'false');
+   };
+  });
+  pop.querySelectorAll('[data-icon-pick]').forEach(b=>{
+   b.onclick=e=>{
+    e.stopPropagation();
+    saveRowStyle(b.closest('.sc-rs-row').dataset.rs,{icon:b.dataset.iconPick});
+   };
   });
   pop.querySelectorAll('[data-rs-reset]').forEach(b=>{
    b.onclick=()=>resetRowStyle(b.closest('.sc-rs-row').dataset.rs);
   });
+  /* 盤の外を押したら畳む。**器へ1度だけ付ける**——描き直すたびに足すと
+     同じ処理が積み上がる（中身は毎回作り直すが、器は残る）。 */
+  if(!pop.dataset.iconPickWired){
+   pop.dataset.iconPickWired='1';
+   pop.addEventListener('mousedown',e=>{
+    if(e.target.closest('.sc-rs-icon'))return;
+    closeIconPicks(pop);
+   });
+  }
+ }
+ function closeIconPicks(pop){
+  if(!pop)return;
+  pop.querySelectorAll('.sc-icon-pick').forEach(x=>{x.hidden=true});
+  pop.querySelectorAll('[data-rs-iconbtn]').forEach(x=>x.setAttribute('aria-expanded','false'));
  }
  /* 1件だけ書く。**失敗したら画面に出す**——黙って握り潰すと「効かない」に
     しか見えない（§9.190で実際にそうなった）。 */
@@ -1414,8 +1498,21 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  }
  // 「再計算」は必ず取り直す(利用者が明示的に最新を求めた操作なので、
  // ここでキャッシュを返すと押しても何も起きないように見える)。
- function refreshCurrentMode(force=true){
-  return scState.boardMode==='board'?loadOverviewBoard(force):refreshAll(force);
+ async function refreshCurrentMode(force=true){
+  /* **「再計算」は情報源ごと取り直す**(§9.200)。作業可否(§9.51)の判定材料は
+     「一度『可』になったら取り直さない」(§9.67)し、見張り
+     (`scheduleWorkableWatch`)も「まだ可でない行があるとき」しか動かないので、
+     全部が可になっていると**押しても材料は前のまま**だった。押した人が
+     期待しているのは「いま分かることを全部見直す」こと。
+     **待たせない**——予定は先に描き、材料の取り直しは裏で走らせる
+     （自動の見張りは今までどおり材料を捨てない。押していないのに毎回
+     仕掛を読み直すと重い）。 */
+  if(force&&typeof invalidateWorkable==='function')invalidateWorkable();
+  const r=await (scState.boardMode==='board'?loadOverviewBoard(force):refreshAll(force));
+  if(force&&scState.boardMode!=='board'&&scState.equipment
+     &&typeof refreshWorkableInBackground==='function')
+   refreshWorkableInBackground(true,true);
+  return r;
  }
 
  function renderUnconfigured(){
@@ -1992,9 +2089,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   eq=String(eq||'').trim();
   if(!eq||scPlanCache.has(eq)||warmingPlans.has(eq))return;
   warmingPlans.add(eq);
-  const hours=scState.historyHours;
+  const hours=scState.historyHours,gen=planGen();
   api('/api/schedule/plan?equipment='+encodeURIComponent(eq)+'&history_hours='+encodeURIComponent(hours))
    .then(r=>{
+    // 先読みのあいだに予定を変えていたら捨てる(§9.200)
+    if(gen!==planGen())return;
     if(r&&r.configured&&!scPlanCache.has(eq))
      scPlanCache.set(eq,{entries:r.entries||[],anchor:r.anchor,warnings:r.warnings||[],
        loadFactor:r.loadFactor,historyHours:hours,fetchedAt:Date.now(),timings:r.timings});
@@ -2099,7 +2198,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const timeline=$('#scTimeline');
   if(timeline&&!timeline.querySelector('.sc-row-line'))
    timeline.innerHTML='<div class="sc-empty-note">読み込んでいます…</div>';
-  return {eq,promise:api('/api/schedule/plan?equipment='+encodeURIComponent(eq)
+  return {eq,gen:planGen(),
+          promise:api('/api/schedule/plan?equipment='+encodeURIComponent(eq)
     +'&history_hours='+encodeURIComponent(scState.historyHours))};
  }
  async function planApply(req){
@@ -2110,6 +2210,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    const r=await req.promise;
    // 応答が届く前に設備が変わっていたら捨てる(古い予定を新しい設備へ描かない)
    if(scState.equipment!==req.eq)return;
+   /* 取りに行ったあとに予定を変えていたら捨てる(§9.200)。ここで入れると、
+      変更前の内容がキャッシュに残り、画面を切り替えて戻ったときに
+      **並べ替えが無かったことになる**（実機で報告）。書込のあとには
+      必ず取り直し(force)が走るので、捨てても取りこぼさない。 */
+   if(req.gen!==undefined&&req.gen!==planGen())return;
    if(!r.configured){
     if(timeline)timeline.innerHTML='<div class="sc-empty-note">スケジュール機能が設定されていません(config/local.jsonのschedule_share_path未設定)。</div>';
     return;
@@ -2589,21 +2694,35 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   person:'<circle cx="12" cy="8" r="3.2"/><path d="M5 20.5a7 7 0 0114 0"/>',
   cup:'<path d="M4 8h12v5.5a6 6 0 01-12 0zM16 9.2h2a2.6 2.6 0 010 5.2h-2M3.5 21h13"/>',
  };
- /* 選べるアイコン。**絵文字と線画を混ぜて1つの一覧にする**——利用者が
-    決めたいのは「どの絵か」であって、それが絵文字か線画かではない。 */
+ /* 選べるアイコン(§9.198 → §9.200で作り直し)。**名前に「(絵文字)」を
+    書かない**——選択欄の幅を食って文字が見切れていた（実機で
+    「工具(絵文…」と切れて出た）。どの種類かは選ぶ画面の見出しが言うので、
+    1つずつに書く必要が無い。`kind`は選ぶ画面の並べ分けだけに使う。 */
  const SC_ROW_ICONS=[
-  {v:'',      label:'既定'},
-  {v:'none',  label:'なし'},
-  {v:'⛔',label:'禁止(絵文字)'},{v:'🔧',label:'工具(絵文字)'},{v:'🔄',label:'段取り(絵文字)'},
-  {v:'⏳',label:'待ち(絵文字)'},{v:'⚡',label:'突発(絵文字)'},{v:'💬',label:'コメント(絵文字)'},
-  {v:'✓',label:'チェック'},{v:'▶',label:'再生'},{v:'○',label:'丸'},{v:'✕',label:'バツ'},
-  {v:'svg:ban',label:'禁止'},{v:'svg:pause',label:'一時停止'},{v:'svg:square',label:'停止'},
-  {v:'svg:warn',label:'注意'},{v:'svg:clock',label:'時計'},{v:'svg:bolt',label:'稲妻'},
-  {v:'svg:gear',label:'歯車'},{v:'svg:wrench',label:'工具'},{v:'svg:truck',label:'運搬'},
-  {v:'svg:box',label:'箱'},{v:'svg:brush',label:'清掃'},{v:'svg:flag',label:'旗'},
-  {v:'svg:pin',label:'ピン'},{v:'svg:check',label:'チェック(線画)'},{v:'svg:star',label:'星'},
-  {v:'svg:note',label:'メモ'},{v:'svg:person',label:'人'},{v:'svg:cup',label:'休憩'},
+  {v:'',      label:'既定', kind:'special'},
+  {v:'none',  label:'なし', kind:'special'},
+  {v:'⛔',label:'禁止',kind:'emoji'},{v:'🔧',label:'工具',kind:'emoji'},{v:'🔄',label:'段取り',kind:'emoji'},
+  {v:'⏳',label:'待ち',kind:'emoji'},{v:'⚡',label:'突発',kind:'emoji'},{v:'💬',label:'コメント',kind:'emoji'},
+  {v:'🚚',label:'運搬',kind:'emoji'},{v:'🧹',label:'清掃',kind:'emoji'},{v:'☕',label:'休憩',kind:'emoji'},
+  {v:'✓',label:'チェック',kind:'mark'},{v:'▶',label:'再生',kind:'mark'},
+  {v:'○',label:'丸',kind:'mark'},{v:'✕',label:'バツ',kind:'mark'},
+  {v:'svg:ban',label:'禁止',kind:'svg'},{v:'svg:pause',label:'一時停止',kind:'svg'},{v:'svg:square',label:'停止',kind:'svg'},
+  {v:'svg:warn',label:'注意',kind:'svg'},{v:'svg:clock',label:'時計',kind:'svg'},{v:'svg:bolt',label:'稲妻',kind:'svg'},
+  {v:'svg:gear',label:'歯車',kind:'svg'},{v:'svg:wrench',label:'工具',kind:'svg'},{v:'svg:truck',label:'運搬',kind:'svg'},
+  {v:'svg:box',label:'箱',kind:'svg'},{v:'svg:brush',label:'清掃',kind:'svg'},{v:'svg:flag',label:'旗',kind:'svg'},
+  {v:'svg:pin',label:'ピン',kind:'svg'},{v:'svg:check',label:'チェック',kind:'svg'},{v:'svg:star',label:'星',kind:'svg'},
+  {v:'svg:note',label:'メモ',kind:'svg'},{v:'svg:person',label:'人',kind:'svg'},{v:'svg:cup',label:'休憩',kind:'svg'},
  ];
+ const SC_ICON_GROUPS=[
+  ['special','決めない'],['emoji','絵文字（色つき）'],['mark','記号'],['svg','線画（同梱）'],
+ ];
+ /* いま選ばれているものの呼び名。**保存値が一覧に無くても諦めない**
+    ——古い設定や手で入れた文字が入っていることがあるので、その字を出す。 */
+ function iconLabelOf(v){
+  const hit=SC_ROW_ICONS.find(i=>i.v===String(v||''));
+  if(hit)return hit.label;
+  return String(v||'')||'既定';
+ }
  function rowIconHtml(spec){
   const v=String(spec||'');
   if(!v||v==='none')return '';
@@ -3954,7 +4073,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
       （実機で「追加しても時間が計算されない」と報告された）。
       覆いは出さない（既に行は出ているので、静かに差し替わるだけ）。
       **他端末が編集中(閲覧)のときも同じ**なので条件を分けない。 */
-   if(scState.equipment&&(timeShifted||!sessionApplicable()))await loadPlan();
+   /* **必ず取り直す**(§9.200)。以前は`loadPlan()`(キャッシュ可)だったため、
+      書込中に飛んでいた別のGETがキャッシュへ入っていると、変更前の内容を
+      そのまま画面へ戻していた。 */
+   if(scState.equipment&&(timeShifted||!sessionApplicable()))await loadPlan(true);
   }
  }
  // 楽観的追加(makeOptimisticEntry)で割り当てた仮ID(tmp-N)を、書込キューでの
@@ -4349,10 +4471,16 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const movableDom=domIds.map(id=>byId.get(id)).filter(e=>e&&e.reorderable&&!e.fixedStart);
   const movablePlan=planOrder.filter(e=>!e.fixedStart);
   if(movableDom.length!==movablePlan.length){
-   // 想定外(描画と状態がずれている)。順序を壊すより何もしない方が安全。
+   /* 想定外(描画と状態がずれている)。順序を壊すより何もしない方が安全。
+      **黙って戻さないこと**(§9.200)——以前はconsoleへ書くだけで、画面では
+      「動かしたのに元へ戻った」としか見えなかった。何が起きたのかと、
+      打つ手（読み直す）を文字で出す。 */
    console.warn('並べ替え対象の件数が画面と一致しないため、並べ替えを中止しました',
     movableDom.length,movablePlan.length);
    renderTimeline();
+   showToast&&showToast('並べ替えを中止しました',
+    `画面の行(${movableDom.length}件)と予定(${movablePlan.length}件)が食い違っています。`
+    +'「再計算」で読み直してからやり直してください。',7000);
    return;
   }
   let mi=0;
@@ -5524,8 +5652,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     ?currentConfiguredEquipment():'';
    if(eq){
     jobs.push(WL.columnLayout.load('timeline:'+eq));
+    const gen=planGen();
     jobs.push(api('/api/schedule/plan?equipment='+encodeURIComponent(eq)
       +'&history_hours='+encodeURIComponent(scState.historyHours)).then(r=>{
+     if(gen!==planGen())return;      // 先読み中に予定を変えていたら捨てる(§9.200)
      if(r&&r.configured&&!scPlanCache.has(eq))
       scPlanCache.set(eq,{entries:r.entries||[],anchor:r.anchor,warnings:r.warnings||[],
         loadFactor:r.loadFactor,historyHours:scState.historyHours,fetchedAt:Date.now()});

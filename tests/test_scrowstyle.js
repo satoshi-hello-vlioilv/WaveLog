@@ -161,7 +161,10 @@ let b=null;
 
   await page.click('.sc-rs-row[data-rs="cat:planned"] [data-rs-color="blue"]');
   await page.waitForTimeout(800);
-  await page.selectOption('.sc-rs-row[data-rs="cat:planned"] [data-rs-icon]','svg:clock');
+  /* アイコンは§9.200で「絵を見たまま選ぶ盤」になった（選択欄をやめた）。 */
+  await page.click('.sc-rs-row[data-rs="cat:planned"] [data-rs-iconbtn]');
+  await page.waitForTimeout(300);
+  await page.click('.sc-rs-row[data-rs="cat:planned"] [data-icon-pick="svg:clock"]');
   await page.waitForTimeout(900);
   const applied=await page.evaluate(()=>{
    const rows=[...document.querySelectorAll('.sc-row-line')];

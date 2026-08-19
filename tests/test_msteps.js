@@ -381,7 +381,18 @@ let b=null,page=null;
      はみ出し:Math.round(el.scrollHeight-el.clientHeight)};
   });
   rec('オペレータはプルダウン(リストボックスにしない)',opList.size<=1,JSON.stringify(opList));
-  rec('オペレータの選択肢を減らしていない',opList.選択肢>=100,JSON.stringify(opList));
+  /* **数はマスタと突き合わせる**（§9.200）。「100人以上」と決め打ちして
+     いたが、検証用フィクスチャのオペレータは29人なので**必ず落ちる**
+     ——実データ(171人)を前提にした数字が残っていた。マスタの件数と
+     選択肢の件数が合っていることを見れば、どちらの環境でも成り立つ
+     （先頭の「-」は「選んでいない」ぶんなので1つ多い）。 */
+  const opMaster=await page.evaluate(async()=>{
+   try{const r=await api('/api/operator-master');return (r.operators||r.items||[]).length}
+   catch(e){return -1}
+  });
+  rec('オペレータの選択肢を減らしていない（マスタの件数と合う）',
+      opMaster>0&&(opList.選択肢===opMaster||opList.選択肢===opMaster+1),
+      JSON.stringify({...opList,マスタ:opMaster}));
   rec('オペレータ欄が器の中でスクロールしない',opList.はみ出し<=1,JSON.stringify(opList));
   /* 見出しの文字は**名前だけ**を見る。「いつもと同じ設定」の見出しには
      畳んだ5項目の現在値が続くので、innerTextをそのまま比べると必ず落ちる。 */

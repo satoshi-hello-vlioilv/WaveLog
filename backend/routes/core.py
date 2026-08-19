@@ -3,7 +3,7 @@
 app.pyから移設。ロジックは変更していない(移動のみ)。
 """
 from flask import Blueprint, render_template, request, jsonify, Response
-import json, os, re, subprocess
+import json, os, re, subprocess, time
 
 from ..config import APP_ID, PORT
 from .. import boot_status
@@ -146,8 +146,49 @@ def home():
  # バージョンは起動オーバーレイが最初の描画で出すため、APIを待たずに埋め込む
  # (画面本体のバッジは従来どおり /api/build を読んで差し替える)。
  return render_template('index.html', build='current', asset_token=token, app_version=APP_VERSION)
+# ========================================================================
+# 「更新は届いたが、まだ再起動していない」の検出(§9.200)
+# ------------------------------------------------------------------------
+# **JS/CSSはリクエストのたびにディスクから配られるが、Pythonはプロセス起動
+# 時に読み込んだきり**。そのため更新後に再起動を忘れると、**新しい画面が
+# 古いサーバーへ話しかける**という食い違いが起きる。実機では、新設したAPIを
+# 新しいJSが呼び、古いサーバーが404を返し、画面には
+# 「<!doctype html> ... 404 Not Found」がそのまま出た(利用者から報告)。
+# 原因が「再起動していないこと」だと画面から分からないのが問題なので、
+# **サーバー自身に気づかせて画面に出す**。判定は「起動より後に更新された
+# .pyがあるか」の1点。**失敗しても黙って「分からない」にする**
+# ——stat()は共有越しで落ちうるので、これを理由に /api/build を失敗させない
+# (guard.probe()の生存確認にも使われている)。
+# ========================================================================
+_STARTED_AT=time.time()
+def _python_sources():
+ out=[]
+ try:out.extend(BASE.glob('*.py'))
+ except OSError:pass
+ try:out.extend((BASE/'backend').rglob('*.py'))
+ except OSError:pass
+ return [p for p in out if '__pycache__' not in p.parts]
+
+def _restart_needed():
+ """戻り値: True(要再起動) / False(不要) / None(確かめられなかった)。"""
+ newest=0.0;seen=False
+ for p in _python_sources():
+  try:
+   v=p.stat().st_mtime
+   seen=True
+   if v>newest:newest=v
+  except OSError:
+   continue
+ if not seen:return None
+ # 1秒の余裕。書き出しと起動が同じ秒に重なるだけで「要再起動」にしない。
+ return newest>(_STARTED_AT+1.0)
+
 @bp.get('/api/build')
-def build(): return jsonify(build='current', version=APP_VERSION, feature='measurement-workflow-current', port=PORT, app_id=APP_ID, **GIT_VERSION)
+def build():
+ try:restart=_restart_needed()
+ except Exception:restart=None
+ return jsonify(build='current', version=APP_VERSION, feature='measurement-workflow-current',
+                port=PORT, app_id=APP_ID, restartNeeded=restart, startedAt=_STARTED_AT, **GIT_VERSION)
 
 # ========================================================================
 # 起動完了の確認(待機画面 loading.html 用)
