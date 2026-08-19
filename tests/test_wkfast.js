@@ -15,11 +15,15 @@ let b=null;
  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
  const page=await b.newPage({viewport:{width:1700,height:1000}});
  page.on('pageerror',e=>console.log('[pageerror]',e.message.slice(0,140)));
- // 仕掛への問い合わせ回数を数える(作業可否の判定材料の取得)
+ /* 仕掛への問い合わせ回数を数える(作業可否の判定材料の取得)。
+    **`include_hidden=1`で見分けないこと**(§9.200)——§9.165で表示マスタごと
+    廃止したので、いまの画面はこの引数を付けない（付けるなと明記されている）。
+    数えているつもりで**1件も数えていなかった**ため、「再計算では情報源を
+    取り直す」が常に0回で落ちていた。仕掛(役割=仕掛のDB)への
+    問い合わせかどうかだけで数える。 */
  let tableCalls=0;
  await page.route('**/api/table?*',route=>{
-   const u=route.request().url();
-   if(u.includes('SIKALOTNOW')&&u.includes('include_hidden=1'))tableCalls++;
+   if(route.request().url().includes('SIKALOTNOW'))tableCalls++;
    route.continue();
  });
  const flags=()=>page.evaluate(()=>{

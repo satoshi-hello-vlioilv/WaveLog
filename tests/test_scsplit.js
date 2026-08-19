@@ -155,10 +155,13 @@ let b=null;
   },(await plan()).find(e=>e.lotNo===PARENT&&e.parentId==null).id);
   rec('親行の下に子ロットのまとまりができる',ui.box&&ui.lines===2,JSON.stringify(ui));
   rec('既定では折りたたまれている',ui.hidden===true,String(ui.hidden));
-  /* §9.198で「▸子ロット2」を**ロット番号のお尻の「親」バッジ**へ変えた
+  /* §9.198で「▸子ロット2」を**ロット番号のお尻のバッジ**へ変えた
      （番号の手前に修飾語があると、番号より先に修飾語を読まされる）。
-     件数はバッジの中に残す。 */
-  rec('件数つきの「親」バッジが出る',/親/.test(ui.btn)&&/2/.test(ui.btn)&&ui.btnVisible,ui.btn);
+     §9.199で**数字を出すなら名前は「子」**へ直した（利用者の指摘。
+     「親2」は「2件の親」と読める）。既定は件数つきの「子2」で、
+     数字なしの「親」は「表示」→「この端末の見え方」で選べる
+     （切り替えそのものは tests/test_scbar.js が固定している）。 */
+  rec('件数つきの「子」バッジが出る',/子/.test(ui.btn)&&/2/.test(ui.btn)&&ui.btnVisible,ui.btn);
   rec('子行は並べ替えの走査対象に混ざらない',ui.childIsRowLine===false);
 
   /* ---- 5) 開ける・開閉が残る ---- */

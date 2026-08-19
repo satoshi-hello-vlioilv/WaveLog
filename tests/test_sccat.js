@@ -7,6 +7,13 @@ let b=null;
 (async()=>{
  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
  const page=await b.newPage({viewport:{width:1700,height:1000}});
+ /* 見え方の設定（まとめ・さかのぼり・表示列・行の色・配置）は「表示」
+    パネル(§9.199)の中にある。開く→選ぶ→**閉じる**まで1つの手順にする
+    ——開いたままにすると、パネルが表の右上を覆って次のクリックが
+    「要素が隠れている」で落ちる（実際に落ちた）。 */
+ const openView=()=>page.evaluate(()=>window.WL&&WL.scheduleView&&WL.scheduleView.openViewPop&&WL.scheduleView.openViewPop());
+ const closeView=()=>page.evaluate(()=>window.WL&&WL.scheduleView&&WL.scheduleView.closeViewPop&&WL.scheduleView.closeViewPop());
+ const pickView=async(sel,val)=>{await openView();await page.selectOption(sel,val).catch(()=>{});await closeView()};
  const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
  page.on('pageerror',e=>console.log('[pageerror]',e.message));
  page.on('dialog',d=>{console.log('[dialog]',d.message());d.accept()});
@@ -84,13 +91,13 @@ let b=null;
  /* ---- (2) まとめ方の切り替え ---- */
  rec('まとめセレクタが出る',await page.evaluate(()=>{const w=document.querySelector('#scGroupRange');return !!w&&!w.hidden}));
  for(const [mode,label] of [['date','日付ごと'],['shift','勤務ごと'],['category','区分ごと']]){
-  await page.selectOption('#scGroupSelect',mode);
+  await pickView('#scGroupSelect',mode);
   await page.waitForTimeout(600);
   const heads=await page.$$eval('.sc-group-head .sc-group-label',n=>n.map(x=>x.textContent));
   rec(`「${label}」でまとめ見出しが出る`,heads.length>0,heads.slice(0,4).join(' / '));
   rec(`「${label}」でも区分列は残る`,await page.$$eval('.sc-row-cat',n=>n.length)>0);
  }
- await page.selectOption('#scGroupSelect','none');
+ await pickView('#scGroupSelect','none');
  await page.waitForTimeout(600);
  rec('「まとめない」へ戻すと見出しが消える',await page.$$eval('.sc-group-head',n=>n.length)===0);
  rec('まとめ方は保存される',await page.evaluate(()=>localStorage.getItem('ScheduleGroupModeV1')==='none'));

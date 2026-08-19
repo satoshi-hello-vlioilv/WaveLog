@@ -29,7 +29,12 @@ let b=null;
  await open();
 
  /* --- 一括追加が1リクエストにまとまり、全件保存される --- */
- const before=(await plan()).entries.filter(e=>e.state==='予定').length;
+ /* **数えるのは全件**（§9.200）。以前は`state==='予定'`だけを数えていたが、
+    追加したロットに既に実績があると、その行は突合で「完了」として返る
+    （§7の実績突合。落ちたのではなく、状態が違うだけ）。実データでも
+    測定済みのロットを予定へ入れることはあるので、これを「保存されて
+    いない」と読むのは誤り。実測で 12件投入 → 予定+10・完了+2 だった。 */
+ const before=(await plan()).entries.length;
  reset();
  const t=Date.now();
  const lots=await page.evaluate(()=>{
@@ -40,7 +45,7 @@ let b=null;
  await page.waitForFunction(()=>!document.querySelector('.sc-flag-pending'),{timeout:120000});
  const ms=Date.now()-t;
  rec('一括追加が共有DB書込1回にまとまる',n.batch===1&&n.add===0,`batch=${n.batch} add個別=${n.add} ${ms}ms`);
- const after=(await plan()).entries.filter(e=>e.state==='予定').length;
+ const after=(await plan()).entries.length;
  rec('まとめても全件がサーバーへ保存される',after===before+lots,`${before} → ${after} (投入${lots}件)`);
  rec('仮IDが実IDへ差し替わる(画面に未確定が残らない)',
   await page.evaluate(()=>![...document.querySelectorAll('.sc-row-line')].some(r=>String(r.dataset.id).startsWith('tmp-'))));

@@ -1,0 +1,246 @@
+/* test_scbar.js: 操作列を1行に・親/子バッジ・差し込みの当たり判定（§9.199）
+   ------------------------------------------------------------
+   利用者の指示は3つ。
+    1) 「親ロットにつけるバッジは『親』か『子*』として、親の場合には数字なし、
+       子の場合は数字を表示するようにして切り替えられるように」
+       ——§9.198の「親2」は**数字の意味と名前が食い違っていた**（2件の親、
+       と読める）。
+    2) 「メニューが伸びてきれいに収まっていません。（略）タイトルを除く、
+       上部メニューバーは1行で収まるように」
+       ——役割で束ねても総量は減らないので3行に折り返していた（実測114px）。
+    3) 「マウスオーバーで挿入箇所が出るのですが、判定が範囲が広く、通常の
+       スケジュール移動したい場合のロットの選択などにやや支障が出ます」
+       ——行のどこにいても帯と吹き出しが出て、吹き出し（押せる）が下の行の
+       ドラッグを食っていた。
+
+   ここで固定すること:
+    1. 操作列は**1行**（塊の上端が全部同じ・器からはみ出さない）
+    2. 「表示」の入口に**いまの設定が文字で出る**（開かずに読める）
+    3. 見え方の設定は**1枚のパネル**に集まり、**開く段は常に1つ**
+    4. 中身が無い場面（全体俯瞰）では**入口ごと消える**
+    5. 親ロットの印は「子N」（既定）と「親」から選べ、端末に残る
+    6. 差し込みの帯は**境目のそばだけ**で出る（行の中央では出ない）
+    7. 吹き出しは**取っ手の列を覆わない**／行は掴める（draggable）
+   ============================================================ */
+const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+const API='http://127.0.0.1:5029';
+const EQ='テスト設備A',PARENT='L9000';
+
+let b=null;
+(async()=>{
+ b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
+ const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
+ const page=await b.newPage({viewport:{width:1700,height:1000}});
+ page.on('pageerror',e=>console.log('[pageerror]',e.message));
+ page.on('dialog',d=>d.accept());
+ const setMode=m=>page.evaluate(async mm=>{await fetch('/api/access-mode',{method:'POST',
+   headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:mm})})},m);
+ const openView=()=>page.evaluate(()=>WL.scheduleView.openViewPop());
+ const closeView=()=>page.evaluate(()=>WL.scheduleView.closeViewPop());
+ const made=[];
+
+ try{
+  await page.goto(API+'/',{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:25000});
+  await page.evaluate(e=>{localStorage.setItem('AccessMeasurementConfiguredEquipment',e);
+    localStorage.setItem('AccessMeasurementUserId','tester');
+    localStorage.removeItem('scChildOpenV1');
+    localStorage.setItem('scLayoutPrefsV1',JSON.stringify({swap:false,open:'schedule'}))},EQ);
+  await setMode('schedule');
+  await page.reload({waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:25000});
+  await page.waitForSelector('#openSchedule',{timeout:25000});
+  await page.click('#openSchedule');
+  await page.waitForSelector('.sc-board-row',{timeout:25000});
+  await page.evaluate(e=>{const r=[...document.querySelectorAll('.sc-board-row')]
+    .find(x=>x.dataset.equipment===e);if(r)r.click()},EQ);
+  await page.waitForSelector('.sc-row-line',{timeout:30000});
+  await page.waitForTimeout(1500);
+
+  /* ---- 1) 操作列は1行 ----------------------------------------
+     **「折り返していないこと」を高さではなく上端で見る**——高さは中身の
+     大きさでも変わるので、1行かどうかの証拠にならない。 */
+  const bar=await page.evaluate(()=>{
+   const host=document.getElementById('headerViewBar');
+   const items=[...host.querySelectorAll('.sc-head-left>*,.sc-head-right>*')]
+     .filter(el=>!el.hidden&&el.getBoundingClientRect().width>0)
+     .map(el=>({id:el.id||el.className,top:Math.round(el.getBoundingClientRect().top),
+                w:Math.round(el.getBoundingClientRect().width)}));
+   const head=document.getElementById('scHead').getBoundingClientRect();
+   const right=document.querySelector('#scHead .sc-head-right').getBoundingClientRect();
+   return {tops:[...new Set(items.map(i=>i.top))],items,
+           headW:Math.round(head.width),headRight:Math.round(head.right),
+           overflow:Math.round(right.right-head.right)};
+  });
+  /* 上端のばらつきは、縦位置の揃え(baseline/center)で1〜2px出ることがある。 */
+  const spread=Math.max(...bar.tops)-Math.min(...bar.tops);
+  rec('操作列は1行に収まる（折り返していない）',spread<=4,
+      `上端=${bar.tops.join('/')} 幅=${bar.items.map(i=>i.id+':'+i.w).join(' ')}`);
+  rec('操作列が器からはみ出していない',bar.overflow<=1,`はみ出し=${bar.overflow}px 器=${bar.headW}px`);
+
+  /* ---- 2) 「表示」の入口にいまの設定が出る ---- */
+  const vm=await page.evaluate(()=>{
+   const btn=document.getElementById('scViewMenuBtn');
+   const st=document.getElementById('scViewState');
+   return {hidden:btn.hidden,txt:btn.textContent.replace(/\s+/g,''),
+           state:st.textContent,title:btn.title};
+  });
+  rec('「表示」の入口が出ている',!vm.hidden,JSON.stringify(vm.txt));
+  rec('畳んでいてもいまの設定が読める',/まとめ/.test(vm.state)&&/過去\d+時間/.test(vm.state),vm.state);
+  rec('何の設定かを説明に書く',/予定そのものは変わりません/.test(vm.title||''),vm.title);
+
+  /* ---- 3) 見え方の設定は1枚のパネルに集まる ---- */
+  await openView();
+  await page.waitForSelector('#scViewPop:not([hidden])',{timeout:8000});
+  const pop=await page.evaluate(()=>({
+   group:!!document.querySelector('#scViewPop #scGroupSelect'),
+   hist:!!document.querySelector('#scViewPop #scHistorySelect'),
+   cols:!!document.querySelector('#scViewPop #scContentModalBtn'),
+   rowstyle:!!document.querySelector('#scViewPop #scRowStyleBtn'),
+   layout:!!document.querySelector('#scViewPop #scLayoutBtn'),
+   who:document.getElementById('scViewPop').textContent.replace(/\s+/g,' '),
+  }));
+  rec('まとめ・さかのぼり・表示列・行の色・配置が1箇所にある',
+      pop.group&&pop.hist&&pop.cols&&pop.rowstyle&&pop.layout,JSON.stringify(pop));
+  rec('誰に効く設定かを段ごとに書く',
+      /全員に効きます/.test(pop.who)&&/設備ごと/.test(pop.who)&&/この端末だけ/.test(pop.who),
+      pop.who.slice(0,140));
+  /* **開くのは常に1つ**——2枚開くと、長い中身のどちらを見ているのか
+     分からなくなる。逆順でも効くことを見る（片方だけが相手を畳む実装だと
+     押す順で結果が変わる）。 */
+  await page.click('#scLayoutBtn');await page.waitForTimeout(250);
+  await page.click('#scRowStyleBtn');await page.waitForTimeout(600);
+  const acc1=await page.evaluate(()=>({lay:document.getElementById('scLayoutPop').hidden,
+                                       rs:document.getElementById('scRowStylePop').hidden}));
+  await page.click('#scLayoutBtn');await page.waitForTimeout(400);
+  const acc2=await page.evaluate(()=>({lay:document.getElementById('scLayoutPop').hidden,
+                                       rs:document.getElementById('scRowStylePop').hidden}));
+  rec('開く段は常に1つ（どちらの順でも）',
+      acc1.lay===true&&acc1.rs===false&&acc2.lay===false&&acc2.rs===true,
+      JSON.stringify({acc1,acc2}));
+
+  /* ---- 5) 親ロットの印を切り替えられる ---- */
+  const badgeOpts=await page.evaluate(()=>[...document.querySelectorAll('#scLayoutPop input[name=scChildBadge]')]
+    .map(r=>({v:r.value,on:r.checked})));
+  rec('親ロットの印は2通りから選べる',
+      badgeOpts.length===2&&badgeOpts.some(o=>o.v==='count')&&badgeOpts.some(o=>o.v==='parent'),
+      JSON.stringify(badgeOpts));
+  rec('既定は件数つき（子N）',(badgeOpts.find(o=>o.v==='count')||{}).on===true,JSON.stringify(badgeOpts));
+  await closeView();
+
+  // 分割ありの親を1件入れて、実際のバッジを見る
+  const added=await page.evaluate(async lot=>{
+   const r=await fetch('/api/table?'+new URLSearchParams({db:'SIKALOTNOW',table:'仕掛',page:1,page_size:5,
+     filters:JSON.stringify([{column:'ロット番号',op:'eq',value:lot}])}));
+   const row=((await r.json()).rows||[])[0];
+   if(!row)return false;
+   await window.scheduleAddFromRow(row);
+   return true;
+  },PARENT);
+  await page.waitForTimeout(4000);
+  const pid=await page.evaluate(async e=>{
+   const r=await fetch('/api/schedule/plan?equipment='+encodeURIComponent(e));
+   const es=((await r.json()).entries||[]).filter(x=>x.lotNo==='L9000'&&x.parentId==null);
+   return es.length?es[es.length-1].id:null;
+  },EQ);
+  if(pid)made.push(pid);
+  const badge=()=>page.evaluate(()=>{const el=document.querySelector('.sc-child-toggle');
+    if(!el)return null;const r=el.getBoundingClientRect();
+    return {t:el.textContent,w:Math.round(r.width),vis:r.width>0&&r.height>0,title:el.title};});
+  const bCount=await badge();
+  rec('分割ありの親を入れられる',added&&!!pid&&!!bCount,JSON.stringify({added,pid,bCount}));
+  rec('既定のバッジは「子」＋件数',
+      !!bCount&&/子/.test(bCount.t)&&/2/.test(bCount.t)&&bCount.vis,JSON.stringify(bCount));
+  await openView();
+  await page.click('#scLayoutBtn');await page.waitForTimeout(300);
+  await page.click('#scLayoutPop input[name=scChildBadge][value=parent]');
+  await page.waitForTimeout(700);
+  await closeView();
+  const bParent=await badge();
+  rec('「親」を選ぶと数字が消える',
+      !!bParent&&/親/.test(bParent.t)&&!/\d/.test(bParent.t)&&bParent.vis,JSON.stringify(bParent));
+  rec('数字なしのほうが狭い',!!bParent&&!!bCount&&bParent.w<bCount.w,
+      `親=${bParent&&bParent.w}px / 子N=${bCount&&bCount.w}px`);
+  rec('件数を出していないことを説明に書く',/件数を出していません/.test((bParent||{}).title||''),
+      (bParent||{}).title);
+  rec('選んだ印は端末に残る',
+      await page.evaluate(()=>{try{return JSON.parse(localStorage.getItem('scLayoutPrefsV1')||'{}').childBadge==='parent'}catch(e){return false}}));
+  // 既定へ戻す
+  await openView();
+  await page.click('#scLayoutBtn');await page.waitForTimeout(250);
+  await page.click('#scLayoutPop input[name=scChildBadge][value=count]');
+  await page.waitForTimeout(600);
+  await closeView();
+  rec('「子N」へ戻せる',/子/.test(((await badge())||{}).t||''),JSON.stringify(await badge()));
+
+  /* ---- 6) 差し込みの当たり判定は境目のそばだけ ---------------
+     **行の中央で出ないこと**を必ず見る——出るかどうかだけを見ると、
+     全面が判定だった頃の実装でも通ってしまう。 */
+  const geo=await page.evaluate(()=>{
+   const rows=[...document.querySelectorAll('#scTimeline .sc-row-line')].filter(r=>r.draggable);
+   if(rows.length<2)return null;
+   const t=rows[Math.min(2,rows.length-1)],b=t.getBoundingClientRect();
+   return {top:Math.round(b.top),h:Math.round(b.height),mid:Math.round(b.top+b.height/2),
+           x:Math.round(b.left+400),n:rows.length};
+  });
+  const ghostOn=()=>page.evaluate(()=>{const g=document.getElementById('scInsertGhost');
+    return !!(g&&g.parentNode&&g.getBoundingClientRect().width>0)});
+  await page.mouse.move(geo.x,geo.mid);await page.waitForTimeout(300);
+  const midGhost=await ghostOn();
+  await page.mouse.move(geo.x,geo.top);await page.waitForTimeout(300);
+  const edgeGhost=await ghostOn();
+  rec('行の中央では差し込みの帯が出ない（掴む場所として空ける）',midGhost===false,
+      `中央y=${geo.mid} 行高=${geo.h}`);
+  rec('境目では差し込みの帯が出る',edgeGhost===true,`境目y=${geo.top}`);
+
+  /* ---- 7) 吹き出しは取っ手を覆わない／行は掴める ---- */
+  const overlap=await page.evaluate(()=>{
+   const t=document.querySelector('.sc-insert-tip');
+   const line=document.querySelector('.sc-insert-line');
+   /* **作業中の行は除く**——あちらはダブルクリックで再開できるので
+      `pointer`のままが正しい（掴める合図とは別の話）。 */
+   const row=[...document.querySelectorAll('#scTimeline .sc-row-line')]
+     .filter(r=>r.draggable&&!r.classList.contains('sc-row-resumable'))[0];
+   const h=row&&row.querySelector('.sc-row-handle');
+   if(!t||!h||!line)return null;
+   const a=h.getBoundingClientRect(),c=t.getBoundingClientRect(),l=line.getBoundingClientRect();
+   return {handleRight:Math.round(a.right),tipLeft:Math.round(c.left),tipH:Math.round(c.height),
+           lineH:Math.round(l.height),rowH:Math.round(row.getBoundingClientRect().height),
+           cursor:getComputedStyle(row).cursor,draggable:row.draggable};
+  });
+  rec('吹き出しが取っ手の列を覆わない',!!overlap&&overlap.tipLeft>=overlap.handleRight,
+      JSON.stringify(overlap));
+  rec('吹き出しは1行の高さに収まる（行を丸ごと覆わない）',
+      !!overlap&&overlap.tipH<overlap.rowH,`吹き出し=${overlap&&overlap.tipH}px 行=${overlap&&overlap.rowH}px`);
+  rec('予定の行は掴めることが見た目で分かる',
+      !!overlap&&overlap.draggable===true&&overlap.cursor==='grab',
+      JSON.stringify({cursor:overlap&&overlap.cursor,draggable:overlap&&overlap.draggable}));
+
+  /* ---- 4) 中身が無い場面では入口ごと消える ---- */
+  await page.evaluate(()=>{const b=document.getElementById('scModeBoard');if(b)b.click()});
+  await page.waitForTimeout(1500);
+  const inBoard=await page.evaluate(()=>{
+   const btn=document.getElementById('scViewMenuBtn');
+   const grp=document.querySelector('#scHead .sc-tools[data-tools="view"]');
+   return {btn:btn.hidden,group:grp.hidden,pop:document.getElementById('scViewPop').hidden};
+  });
+  rec('全体俯瞰では「表示」の入口ごと消える',inBoard.btn&&inBoard.group&&inBoard.pop,
+      JSON.stringify(inBoard));
+
+ }catch(e){console.log('FATAL',e.message)}finally{
+  try{
+   for(const id of made)await page.evaluate(async i=>{
+    await fetch('/api/schedule/plan/delete',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id:i,user_id:'test-scbar'})});
+   },id);
+   await page.evaluate(()=>{try{const p=JSON.parse(localStorage.getItem('scLayoutPrefsV1')||'{}');
+     delete p.childBadge;localStorage.setItem('scLayoutPrefsV1',JSON.stringify(p))}catch(e){}});
+   await setMode('edit');
+  }catch(e){}
+  await b.close();
+  console.log('\n=== SUMMARY ===');
+  console.log(`${R.filter(r=>r.ok).length}/${R.length} PASS`);
+  R.filter(r=>!r.ok).forEach(r=>console.log('  FAIL '+r.n+(r.d?' -- '+r.d:'')));
+ }
+})();

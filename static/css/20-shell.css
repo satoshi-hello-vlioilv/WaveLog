@@ -31,6 +31,19 @@
 .changelog-entry li+li{margin-top:4px}
 .changelog-loading{color:#60747b}
 .measure-build-badge{font-size:var(--fs-sm);vertical-align:middle}
+/* 更新は届いたが再起動していない(§9.200)。**左メニューの版数のすぐ下**へ
+   出す——気づく場所と打つ手を同じ場所に置く(§9.183と同じ作法)。
+   色だけで伝えないので、理由と打つ手を必ず文字で書く。 */
+.restart-needed{
+ display:flex;flex-direction:column;gap:2px;
+ margin:var(--space-1) var(--space-2) 0;padding:var(--space-2);
+ border:1px solid var(--warn-border);border-radius:var(--radius-sm);
+ background:var(--warn-bg);color:var(--warn-fg);
+ font-size:var(--fs-micro);line-height:1.45;
+}
+.restart-needed[hidden]{display:none}
+.restart-needed b{font-size:var(--fs-sm)}
+.restart-needed small{color:var(--warn-fg);opacity:.9}
 /* ---------- 3a. サイドバー: ブランド ---------- */
 .layout>aside .brand{padding:0 6px 14px;margin-bottom:12px;border-bottom:1px solid #2c4750;display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
 .layout>aside .brand h2{margin:0;font-size:var(--fs-title);letter-spacing:.01em}

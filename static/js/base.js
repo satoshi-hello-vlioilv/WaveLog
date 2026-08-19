@@ -7,7 +7,26 @@ const LENGTH_SLOTS=12;const $=s=>document.querySelector(s),S={db:null,table:null
    そのまま乗せる(呼び出し側がe.messageだけでなくe.codeでも分岐できるように
    するため)。既存の呼び出し元はe.messageしか見ていないため、これを追加
    しても挙動は変わらない。 */
-const api=async(u,o)=>{let r;try{r=await fetch(u,{cache:'no-store',...(o||{})})}catch(error){throw Error('サーバーへ接続できません。Flaskアプリが起動中か、ポート5029で開いているか確認してください。詳細: '+(error?.message||String(error)))}const text=await r.text();let j={};try{j=text?JSON.parse(text):{}}catch(_){j={error:text}}if(!r.ok){const err=Error(j.error||('HTTP '+r.status));Object.assign(err,j);err.status=r.status;throw err}return j},esc=v=>{const d=document.createElement('div');d.textContent=v??'';return d.innerHTML};
+/* ---------- 応答がJSONでないときの言い直し(§9.200) ----------
+   サーバーが返すHTML(Flaskの404/500ページ)をそのまま`Error.message`へ
+   入れていたため、**トーストに`<!doctype html> ... 404 Not Found`が
+   丸ごと出ていた**（実機で報告）。読む側に要るのは「何が起きたか」と
+   「次に何をすればよいか」なので、状態コードから言い直す。
+   生の本文は`err.body`へ残す（診断に要るのは開発時だけ）。 */
+const HTTP_HINT={
+ 404:'サーバーにこの機能がありません。アプリを更新したあと再起動していない可能性があります（stop.bat で止めてから Start.vbs で開き直してください）。',
+ 405:'この操作をサーバーが受け付けませんでした（この画面のモードでは使えない操作かもしれません）。',
+ 401:'権限がありません。',403:'権限がありません（このモードでは変更できません）。',
+ 409:'ほかの端末が同時に変更しました。もう一度お試しください。',
+ 423:'ほかの端末が編集中です。しばらくしてからお試しください。',
+ 500:'サーバー側でエラーが起きました。ログ（ログビュワー）に理由が出ています。',
+ 502:'サーバーへ届きませんでした。',503:'サーバーが応答できませんでした。しばらくしてからお試しください。',
+};
+const apiErrorMessage=(status,text,url)=>{
+ const hint=HTTP_HINT[status]||`サーバーがエラーを返しました（HTTP ${status}）。`;
+ return `${hint}（${String(url||'').split('?')[0]}）`;
+};
+const api=async(u,o)=>{let r;try{r=await fetch(u,{cache:'no-store',...(o||{})})}catch(error){throw Error('サーバーへ接続できません。Flaskアプリが起動中か、ポート5029で開いているか確認してください。詳細: '+(error?.message||String(error)))}const text=await r.text();let j={},parsed=false;try{if(text){j=JSON.parse(text);parsed=true}}catch(_){j={}}if(!r.ok){const err=Error((parsed&&j.error)||apiErrorMessage(r.status,text,u));if(parsed)Object.assign(err,j);err.status=r.status;err.body=String(text||'').slice(0,500);throw err}return j},esc=v=>{const d=document.createElement('div');d.textContent=v??'';return d.innerHTML};
 const aliases={lotNo:['ロット番号','ﾛｯﾄ番号','LTNO'],inspectionNo:['検査番号','KNNO'],orderNo:['オーダー番号','JUON','JUNO'],castingNo:['鋳造番号','CYNO'],allocationNo:['引当番号','HKNO'],orderMaterial:['オーダー材質','JUA'],orderTemper:['オーダー調質','JUB'],orderThickness:['オーダー板厚','JUX'],orderWidth:['オーダー板幅','JUY'],orderLength:['オーダー板丈','JUZ'],mfgMaterial:['製造材質','LTA'],mfgTemper:['製造調質','LTB'],mfgThickness:['製造板厚','LTX'],mfgWidth:['製造板幅','LTY'],mfgLength:['製造板丈','LTZ'],purposeCode:['用途コード','用途ｺｰﾄﾞ','YOTOC'],purposeName:['用途名','YOTON'],customer:['取引先','TOKUNA'],delivery:['納入先','NONNA'],designCourse:['設計_設備ｺｰｽ','設計_設備コース'],course:['実績_設備ｺｰｽ','実績_設備コース','実績コース'],residualCourse:['残仕掛設備ｺｰｽ','残仕掛設備コース','ZANMC'],equipment:['BOX設計_設備名','設備'],originalWidth:['BOX実績_板幅'],boxHorizontalCount:['BOX設計_横割数'],boxVerticalCount:['BOX設計_縦割数']};
 function pick(row,key){for(const n of aliases[key]||[])if(row[n]!==undefined&&row[n]!==null)return String(row[n]);return ''}
 function lotKey(r){return [pick(r,'equipment'),pick(r,'lotNo'),pick(r,'inspectionNo'),pick(r,'castingNo')].join('|')}

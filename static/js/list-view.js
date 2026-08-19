@@ -12,6 +12,25 @@ async function init(){
  const catalogPromise=api('/api/catalog');
  const buildPromise=api('/api/build').catch(e=>{console.warn('版数の取得に失敗',e);return{}});
  const build=await buildPromise;document.title='測定伝送システム';
+ /* **更新は届いたが再起動していない**ことを画面に出す(§9.200)。
+    JS/CSSはリクエストのたびにディスクから配られるが、Pythonはプロセス
+    起動時に読み込んだきり。再起動を忘れると新しい画面が古いサーバーへ
+    話しかけ、新設したAPIが404で返る（実機で報告）。原因が画面から
+    分からないのがいちばんの問題なので、**気づく場所と打つ手を同じ場所に**
+    出す。判定できなかった(null)ときは何も出さない——「分からない」を
+    「要再起動」と同じに扱わない。 */
+ const restartBox=document.getElementById('restartNeeded');
+ if(restartBox){
+  const need=build.restartNeeded===true;
+  restartBox.hidden=!need;
+  if(need){
+   restartBox.innerHTML='<b>⚠ 更新が届いています</b>'
+    +'<small>アプリを再起動するまで、新しい機能はサーバー側に反映されません'
+    +'（保存できない・404と出る場合はこれが原因です）。</small>'
+    +'<small>stop.bat で止めてから Start.vbs で開き直してください。</small>';
+   restartBox.title='プログラムのファイルが、いま動いているアプリの起動より後に更新されています。';
+  }
+ }
  document.querySelectorAll('.build-badge').forEach(badge=>{
   badge.textContent=build.version?`VER${build.version}`:'バージョン不明';
   badge.title=(build.commit?`コミット: ${build.commit}${build.commit_at?' / '+new Date(build.commit_at).toLocaleString('ja-JP'):''}${build.dirty?'（未コミットの変更あり）':''} / `:'')+'クリックで更新履歴を表示';

@@ -498,7 +498,15 @@
    ため、カーソルを動かすたびに下の行が1行ぶん上下し、鍵の印・詳細・削除の
    ボタンが逃げて押せなかった（利用者の指摘）。今は器の座標へ浮かせて置き、
    「どこへ入るか」は境目の帯、「何ができるか」は吹き出しで言う。 */
-.sc-timeline.sc-insertable .sc-row-line{cursor:default}
+/* **行そのものは掴める**(§9.199、利用者の指摘「通常のロットもD&Dできる
+   ように」)。以前はスケジュールだけの表示中、全部の行を`default`にして
+   いたため、掴めるのに掴めなさそうに見えていた。差し込みの当たり判定を
+   境目のそばへ絞ったので、行の中央は掴む場所として空いている。 */
+.sc-timeline.sc-insertable .sc-row-line:not([draggable="true"]):not(.sc-row-resumable){cursor:default}
+/* **作業中の行はダブルクリックで再開できる**(§9.43)ので`pointer`のまま
+   ——`:not()`で外しておかないと、こちらの詳細度が勝って合図が消える。 */
+.sc-timeline .sc-row-line[draggable="true"]:not(.sc-row-resumable){cursor:grab}
+.sc-timeline .sc-row-line.sc-dragging{cursor:grabbing}
 .sc-insert-ghost{position:absolute;left:0;right:0;height:0;
  /* 横に長い表では器より表のほうが広い。**行と同じ最小幅**を持たせないと、
     右へスクロールした先で帯が途切れる（絶対配置の基準は器の内側なので、
@@ -507,8 +515,11 @@
  /* 器そのものは当たり判定を持たない。**帯と吹き出しだけが押せる**
     ——全面が受けると、下の行のボタンが押せなくなる。 */
  pointer-events:none;z-index:var(--z-popover)}
-/* 境目の帯。見えるのは細い線だが、掴める幅はもう少し要る（±5px）。 */
-.sc-insert-line{position:absolute;left:0;right:0;top:-5px;height:10px;
+/* 境目の帯。見えるのは細い線だが、押せる幅はもう少し要る。
+   **JS側の当たり判定(insertEdgeBand)と同じ±8pxにそろえる**(§9.199)
+   ——見えている帯と押せる帯と「出る帯」がずれていると、出たのに押せない・
+   押せるのに出ない、という食い違いが生まれる。 */
+.sc-insert-line{position:absolute;left:0;right:0;top:-8px;height:16px;
  pointer-events:auto;cursor:pointer}
 .sc-insert-line::before{content:'';position:absolute;left:0;right:0;top:3px;height:4px;
  border-radius:var(--radius-xs);background:var(--teal);box-shadow:0 0 0 1px var(--pale)}
@@ -518,11 +529,17 @@
    多いことよりずっと困る。線だけになるので、少し太くして見つけやすくする。 */
 .sc-insert-ghost.is-quiet .sc-insert-line::before{height:5px;top:2px}
 /* 説明の吹き出し。**操作の列にはかからない**ように幅の上限を置く
-   （--sc-tip-max はJSが操作列の左端から入れる）。 */
-.sc-insert-tip{position:absolute;top:8px;left:var(--space-2);
- display:flex;align-items:center;gap:var(--space-2);
- max-width:var(--sc-tip-max,32em);pointer-events:auto;cursor:pointer;
- padding:var(--gap-hair) var(--space-2);
+   （--sc-tip-max はJSが操作列の左端から入れる）。
+   **境目に跨がせて置く**(§9.199)——以前は境目の8px下＝下の行の上に丸ごと
+   乗っており、押せる箱が行のドラッグを食っていた（利用者の指摘）。
+   左は**取っ手の列を空ける**（掴む場所そのものを覆わない）。 */
+.sc-insert-tip{position:absolute;top:50%;transform:translateY(-50%);
+ left:calc(var(--sc-handle-col,calc(18px * var(--ui-scale))) + var(--space-2) * 2);
+ display:flex;align-items:baseline;gap:var(--space-2);
+ /* 上限が来ないとき(操作の列を隠しているとき)の逃げ幅。**1行にしたぶん
+    横に伸びる**ので、2段だった頃の32emだと最後の数文字が切れる。 */
+ max-width:var(--sc-tip-max,48em);pointer-events:auto;cursor:pointer;
+ padding:0 var(--space-2);
  border:1px solid var(--teal);border-radius:var(--radius-xs);
  background:var(--pale);color:var(--teal-dark);
  box-shadow:0 2px 6px rgba(16,44,52,.18)}
@@ -536,9 +553,11 @@
  border:1px solid var(--line);border-radius:var(--radius-xs);
  background:var(--surface);color:var(--ink-2);font-size:var(--fs-micro);cursor:pointer}
 .sc-insert-cancel:hover{background:var(--surface-2);color:var(--ink)}
-.sc-insert-mark{font-size:var(--fs-lg);font-weight:800;line-height:1}
-.sc-insert-text{display:flex;flex-direction:column;min-width:0;font-size:var(--fs-sm);font-weight:800}
-.sc-insert-text small{font-weight:600;color:var(--ink-2);font-size:var(--fs-micro)}
+.sc-insert-mark{font-size:var(--fs-sm);font-weight:800;line-height:1}
+/* **1行に収める**(§9.199)。2段だと箱の高さが行を1つ丸ごと覆う。 */
+.sc-insert-text{display:flex;flex-direction:row;align-items:baseline;gap:var(--space-2);
+ min-width:0;font-size:var(--fs-sm);font-weight:800;line-height:var(--lh)}
+.sc-insert-text small{font-weight:600;color:var(--ink-2);font-size:var(--fs-micro);white-space:nowrap}
 .sc-insert-text>span,.sc-insert-text small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* 記号だけのボタンは**正方形**にする。幅の下限を --ctl-h-xs(行の外の
    ボタンの高さ)に置くと、行に合わせて縮んだ高さ(--row-ctl-h)との差が
@@ -1357,7 +1376,10 @@
 /* 1行=1つの区分。**器は中身の長さから決める**(§11)——名前は11em、色は
    8個ぶん、アイコンの選択肢は名前が入る幅、見本は区分名+印が入る幅。 */
 .sc-rs-row{
- display:grid;grid-template-columns:var(--w-md) auto var(--w-md) var(--w-sm) auto;
+ /* 名前 / 色 / アイコン / 見本 / 戻す。**アイコンは中身から決めた幅**
+    (§11)——名前は最長6文字なので、絵＋名前＋▾で9emに収まる。
+    見本は残り(1fr)を取り、はみ出す前に省略記号で詰める。 */
+ display:grid;grid-template-columns:var(--w-md) auto 9.5em minmax(0,1fr) auto;
  align-items:center;gap:var(--space-2);padding:var(--space-1) 0;
  border-bottom:1px solid var(--line-soft);
 }
@@ -1372,16 +1394,64 @@
 }
 .sc-rs-sw.is-on{outline:2px solid var(--teal);outline-offset:1px}
 .sc-rs-sw.is-default{background:var(--surface);color:var(--muted)}
-.sc-rs-icon{display:inline-flex;align-items:center;gap:var(--space-1);font-size:var(--fs-badge);color:var(--muted);min-width:0}
-.sc-rs-icon>span{white-space:nowrap}
-.sc-rs-icon select{min-width:0;flex:1 1 auto;max-width:var(--w-sm)}
+/* ---------- アイコンは絵を見たまま選ぶ(§9.200) ----------
+   以前は名前だけの選択欄で、①選ぶ前にどんな絵か分からない
+   ②名前に「(絵文字)」が付いて器から見切れる（実機で「工具(絵文…」）。
+   いまはボタンに**いまの絵と呼び名**を出し、押すと絵の一覧が開く。 */
+.sc-rs-icon{position:relative;min-width:0}
+.sc-rs-iconbtn{
+ display:flex;align-items:center;gap:var(--gap-tight);width:100%;min-width:0;
+ height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-xs);cursor:pointer;
+ border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);
+ font-size:var(--fs-sm);color:var(--ink-2);
+}
+.sc-rs-iconbtn:hover{border-color:var(--teal);color:var(--nav)}
+.sc-rs-iconbtn[aria-expanded="true"]{border-color:var(--teal);background:var(--pale);color:var(--nav)}
+.sc-rs-iconview{flex:none;display:inline-flex;align-items:center;justify-content:center;
+ width:1.4em;line-height:1}
+/* **見切れさせない**——呼び名は最長6文字だが、器が狭い日は省略記号で
+   詰める（切り落として黙って消さない）。 */
+.sc-rs-iconname{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
+.sc-rs-iconbtn>em{flex:none;font-style:normal;font-size:var(--fs-badge);color:var(--muted)}
+.sc-icon-word{font-size:var(--fs-badge);color:var(--muted)}
+.sc-icon-pick{
+ position:absolute;top:calc(100% + 2px);left:0;z-index:var(--z-popover);
+ width:min(30em,80vw);max-height:16em;overflow:auto;padding:var(--space-2);
+ border:1px solid var(--line-mid);border-radius:var(--radius-sm);background:var(--surface);
+ box-shadow:0 10px 24px rgba(23,56,66,.22);
+}
+.sc-icon-pick[hidden]{display:none}
+.sc-icon-grp{margin:var(--space-1) 0 2px;font-size:var(--fs-badge);font-weight:800;color:var(--muted)}
+.sc-icon-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(4.6em,1fr));gap:var(--gap-tight)}
+.sc-icon-cell{
+ display:flex;flex-direction:column;align-items:center;gap:1px;
+ padding:var(--space-1) 2px;cursor:pointer;min-width:0;
+ border:1px solid var(--line-soft);border-radius:var(--radius-xs);background:var(--surface);
+ color:var(--ink-2);
+}
+.sc-icon-cell:hover{border-color:var(--teal);background:var(--pale);color:var(--nav)}
+.sc-icon-cell.is-on{border-color:var(--teal);background:var(--pale);color:var(--teal-dark);font-weight:800}
+.sc-icon-glyph{display:inline-flex;align-items:center;justify-content:center;height:1.5em;font-size:var(--fs-base-sm);line-height:1}
+.sc-icon-cell small{font-size:var(--fs-badge);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 色の目安は**1行だけ先に書く**。行ごとのtitleに隠すと、8色が何を表すのかを
+   覚えていないと選べない。 */
+.sc-rs-legend{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2);
+ margin-bottom:var(--space-2);padding-bottom:var(--space-1);
+ border-bottom:1px solid var(--line-soft);font-size:var(--fs-badge);color:var(--muted)}
+.sc-rs-legend>b{color:var(--ink-2)}
+.sc-rs-leg{display:inline-flex;align-items:center;gap:3px;white-space:nowrap}
+.sc-rs-leg>i{width:.8em;height:.8em;border-radius:var(--radius-xs);border:1px solid var(--rs-line,var(--line));
+ background:var(--rs-bg,var(--surface))}
 .sc-rs-sample{display:flex;justify-content:flex-start;min-width:0;overflow:hidden}
 .sc-rs-reset{
  height:var(--ctl-h-xs);padding:0 var(--space-2);cursor:pointer;white-space:nowrap;
  border:1px solid var(--line);border-radius:var(--radius-xs);background:var(--surface);
  font-size:var(--fs-badge);font-weight:700;color:var(--ink-3);
 }
+.sc-rs-reset:hover:not([disabled]){border-color:var(--teal);background:var(--pale);color:var(--nav)}
 .sc-rs-reset[disabled]{opacity:.4;cursor:default}
+/* 見本は残り幅。**切れる前に省略記号**（黙って切り落とさない）。 */
+.sc-rs-sample>*{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 /* ---- 操作の塊(§9.198) ---- */
 .sc-tools{display:inline-flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;min-width:0}
 .sc-tools[hidden]{display:none}
@@ -1392,4 +1462,108 @@
 /* 表示範囲の起点(§9.198)。数字だけでは「いつからか」が分からない。 */
 .sc-history-from{font-size:var(--fs-badge);color:var(--muted);white-space:nowrap}
 .sc-history-from[hidden]{display:none}
+
+/* ============================================================
+   操作列を1行に収める(§9.199、利用者の指示「上部メニューバーは1行で」)
+   ------------------------------------------------------------
+   **折り返させない。** 折り返すと、①同じものが毎回違う位置に出る
+   ②本文の高さが表示のたびに変わる（実測114px＝3行）。入りきらない
+   ぶんは「畳む」か「アイコンにする」で減らし、**器の幅に応じて
+   自分で決める**（@container）。器は`.sc-head`——ヘッダーへ相乗り
+   しているので、ビューポート幅ではなく相乗り先の幅で判断する。
+   ※ `.sc-head`は`position:fixed`の子孫を持たない（浮きパネルは
+     `.sc-panel`直下）。containを掛けても位置の基準は変わらない。
+   ============================================================ */
+.sc-head{container-type:inline-size;container-name:schead}
+/* **塊の中は折り返さない**——「追加」の3つが2行に割れるのがいちばん
+   読みにくい（役割で束ねた意味が消える）。**器そのものは折り返せるまま**に
+   しておく: ここまで削っても入らない極端に狭い窓では、切り落として
+   見えなくするより2行になったほうがよい（`.hd-viewbar`側の`wrap`が効く）。 */
+.sc-tools{flex-wrap:nowrap}
+.sc-head-right{gap:var(--space-3)}
+/* アイコン+文字のボタン。狭いときは文字だけ畳んでアイコンを残す。 */
+.sc-ico-btn{display:inline-flex;align-items:center;gap:var(--gap-tight);white-space:nowrap}
+.sc-ico-btn>i{font-style:normal;line-height:1}
+/* 「表示」の入口。**いまの設定を連れて出す**ので、名前と状態を分けて置く。 */
+.sc-view-menu-btn{display:inline-flex;align-items:center;gap:var(--gap-tight);min-width:0;white-space:nowrap}
+.sc-view-menu-btn>i{font-style:normal;line-height:1}
+.sc-vm-state{
+ font-weight:700;color:var(--muted);font-size:var(--fs-badge);
+ max-width:var(--w-lg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.sc-vm-state:empty,.sc-vm-state[hidden]{display:none}
+.sc-view-menu-btn.active .sc-vm-state{color:var(--nav)}
+/* **しきい値はemで置く**——`em`はコンテナ自身の文字サイズで解ける。
+   `.hd-viewbar`が`--fs-sm`(=12px×--ui-scale)を持つので、表示サイズを
+   上げると**しきい値も同じ比で上がる**。pxで書くと、中身だけが1.1倍に
+   なってしきい値は据え置きになり、大きい表示でだけ溢れる(§9.127)。
+   98em≒1176px / 87em≒1044px（表示サイズ「中」のとき）。 */
+@container schead (max-width: 98em){
+ /* まず**状態の要約**を落とす（パネルを開けば読める）。 */
+ .sc-vm-state{display:none}
+}
+@container schead (max-width: 87em){
+ /* 次に**塊の見出しと文字**を落としてアイコンだけにする。意味は`title`が
+    持っているので、押す前に読める手立ては残る。 */
+ .sc-tools-label{display:none}
+ .sc-ico-btn>span{display:none}
+ .sc-ico-btn{padding:0 var(--ctl-pad-x-xs)}
+}
+@container schead (max-width: 74em){
+ /* 最後に**隙間**を詰める。文字はもう落としてあるので、次に削れるのは
+    余白だけ——**状態の文字は残す**（いつ読んだ内容か・共有をいつ取り込んだ
+    かは、色では伝えられない・§3）。 */
+ .sc-head-right{gap:var(--space-2)}
+ .sc-tools{gap:var(--gap-tight)}
+}
+
+/* ---------- 「表示」パネル(§9.199) ----------
+   見え方の設定を1箇所へ集めた浮きパネル。位置と重なり順は他の浮きパネル
+   (.sc-layout-pop)と同じ約束で、`.sc-panel`の右上に出す。 */
+.sc-view-pop{
+ position:absolute;top:var(--space-2);right:var(--space-4);z-index:var(--z-popover);
+ width:min(760px,94vw);max-height:78vh;overflow:auto;
+ padding:var(--space-3);
+ border:1px solid var(--line-mid);border-radius:var(--radius-sm);background:var(--surface);
+ box-shadow:0 12px 28px rgba(23,56,66,.22);
+}
+.sc-view-pop[hidden]{display:none}
+.sc-view-pop-head{display:flex;flex-direction:column;gap:2px;margin-bottom:var(--space-2)}
+.sc-view-pop-head>b{color:var(--teal-dark);font-size:var(--fs-base-sm)}
+.sc-view-pop-head>small{color:var(--muted);font-size:var(--fs-sm)}
+/* 畳まない2つ（まとめ・さかのぼり）。ラベル列は固定幅でそろえる(§9)。 */
+.sc-view-row{
+ display:grid;grid-template-columns:1fr var(--w-lg);align-items:center;gap:var(--space-2);
+ padding:var(--space-2) 0;border-top:1px solid var(--line-soft);cursor:pointer;
+}
+.sc-view-row[hidden]{display:none}
+.sc-view-row-name{display:flex;flex-direction:column;min-width:0;font-size:var(--fs-sm);font-weight:700;color:var(--ink)}
+.sc-view-row-name small{font-weight:400;color:var(--muted);font-size:var(--fs-micro);line-height:1.4}
+.sc-view-row-ctl{display:flex;flex-direction:column;align-items:stretch;gap:2px;min-width:0}
+.sc-view-row select{
+ width:100%;height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-xs);
+ border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);
+ font-size:var(--fs-sm);color:var(--ink-2);
+}
+/* 畳む3つ。**開くのは常に1つ**（JSが相手を畳む）。 */
+.sc-view-acc{border-top:1px solid var(--line-soft)}
+.sc-view-acc[hidden]{display:none}
+.sc-view-sec{
+ display:flex;align-items:center;gap:var(--space-2);width:100%;
+ padding:var(--space-2) 0;border:0;background:transparent;cursor:pointer;text-align:left;
+}
+.sc-view-sec>i{font-style:normal;flex:none;font-size:var(--fs-base-sm);line-height:1}
+.sc-view-sec>span{display:flex;flex-direction:column;min-width:0;flex:1 1 auto;
+ font-size:var(--fs-sm);font-weight:700;color:var(--ink)}
+.sc-view-sec>span small{font-weight:400;color:var(--muted);font-size:var(--fs-micro);line-height:1.4}
+.sc-view-sec>em{flex:none;font-style:normal;color:var(--muted);font-size:var(--fs-badge)}
+.sc-view-sec:hover{color:var(--nav)}
+.sc-view-sec.active>span{color:var(--teal-dark)}
+.sc-view-sec.active .sc-view-chev{transform:rotate(180deg);display:inline-block}
+/* 段の中身は**枠を重ねない**(§10)。浮きパネルとして持っていた枠・影・
+   位置指定を、入れ子にしたぶんだけ外す。 */
+.sc-view-acc .sc-layout-pop{
+ position:static;width:auto;max-height:none;padding:0 0 var(--space-3) calc(var(--fs-base-sm) + var(--space-2));
+ border:0;border-radius:0;background:transparent;box-shadow:none;
+}
 }

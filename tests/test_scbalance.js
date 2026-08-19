@@ -5,6 +5,13 @@ let b=null;
 (async()=>{
  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
  const page=await b.newPage({viewport:{width:1700,height:1000}});
+ /* 見え方の設定（まとめ・さかのぼり・表示列・行の色・配置）は「表示」
+    パネル(§9.199)の中にある。開く→選ぶ→**閉じる**まで1つの手順にする
+    ——開いたままにすると、パネルが表の右上を覆って次のクリックが
+    「要素が隠れている」で落ちる（実際に落ちた）。 */
+ const openView=()=>page.evaluate(()=>window.WL&&WL.scheduleView&&WL.scheduleView.openViewPop&&WL.scheduleView.openViewPop());
+ const closeView=()=>page.evaluate(()=>window.WL&&WL.scheduleView&&WL.scheduleView.closeViewPop&&WL.scheduleView.closeViewPop());
+ const pickView=async(sel,val)=>{await openView();await page.selectOption(sel,val).catch(()=>{});await closeView()};
  const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
  page.on('pageerror',e=>console.log('[pageerror]',e.message));
  await setMode('edit');
@@ -90,7 +97,7 @@ let b=null;
  await page.waitForTimeout(1500);
  // まとめ方を変えても、列見出しは1枚・行の間隔は一定であること
  for(const mode of ['none','date','dateshift']){
-  await page.selectOption('#scGroupSelect',mode).catch(()=>{});
+  await pickView('#scGroupSelect',mode);
   await page.waitForTimeout(1200);
   const m=await page.evaluate(()=>{
    const rows=[...document.querySelectorAll('.sc-row-line')];
@@ -109,7 +116,7 @@ let b=null;
   rec(`まとめ「${mode}」で行の高さが揃っている`,m.rowH.length===1,m.rowH.join('/'));
   rec(`まとめ「${mode}」で連続する行の間隔が一定`,m.pitch.length<=1,m.pitch.join('/'));
  }
- await page.selectOption('#scGroupSelect','none').catch(()=>{});
+ await pickView('#scGroupSelect','none');
  await setMode('edit');
 
  console.log('\n=== SUMMARY ===');

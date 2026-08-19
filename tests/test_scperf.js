@@ -5,6 +5,13 @@ let b=null;
 (async()=>{
  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
  const page=await b.newPage({viewport:{width:1700,height:1000}});
+ /* 見え方の設定（まとめ・さかのぼり・表示列・行の色・配置）は「表示」
+    パネル(§9.199)の中にある。開く→選ぶ→**閉じる**まで1つの手順にする
+    ——開いたままにすると、パネルが表の右上を覆って次のクリックが
+    「要素が隠れている」で落ちる（実際に落ちた）。 */
+ const openView=()=>page.evaluate(()=>window.WL&&WL.scheduleView&&WL.scheduleView.openViewPop&&WL.scheduleView.openViewPop());
+ const closeView=()=>page.evaluate(()=>window.WL&&WL.scheduleView&&WL.scheduleView.closeViewPop&&WL.scheduleView.closeViewPop());
+ const pickView=async(sel,val)=>{await openView();await page.selectOption(sel,val).catch(()=>{});await closeView()};
  const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
  page.on('pageerror',e=>console.log('[pageerror]',e.message));
  page.on('dialog',d=>{console.log('[dialog]',d.message());d.accept()});
@@ -96,13 +103,13 @@ let b=null;
  await page.click(`.sc-row-line[data-id="${id}"] .sc-row-lock`); await untilRows();
 
  // --- 日付＋勤務のまとめ ---
- await page.selectOption('#scGroupSelect','dateshift');
+ await pickView('#scGroupSelect','dateshift');
  await until(()=>document.querySelectorAll('.sc-group-head').length>0);
  const heads=await page.$$eval('.sc-group-head .sc-group-label',n=>n.map(x=>x.textContent));
  rec('「日付＋勤務ごと」で日付と勤務を組にした見出しが出る',
   heads.length>0&&heads.every(h=>/\d{4}\/\d{2}\/\d{2}/.test(h))&&heads.some(h=>/直|勤務/.test(h)),
   heads.slice(0,4).join(' / '));
- await page.selectOption('#scGroupSelect','none');
+ await pickView('#scGroupSelect','none');
  await until(()=>document.querySelectorAll('.sc-group-head').length===0);
 
  console.log(`\n(参考) 初回の俯瞰ボード ${firstBoardMs}ms / 離れて戻る ${backMs}ms`);

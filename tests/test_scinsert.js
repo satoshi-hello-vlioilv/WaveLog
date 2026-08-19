@@ -25,6 +25,13 @@ const plan=()=>fetch(B+'/api/schedule/plan?equipment='+encodeURIComponent(EQ)).t
 (async()=>{
  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
  const page=await b.newPage({viewport:{width:1700,height:1000}});
+ /* 見え方の設定（まとめ・さかのぼり・表示列・行の色・配置）は「表示」
+    パネル(§9.199)の中にある。開く→選ぶ→**閉じる**まで1つの手順にする
+    ——開いたままにすると、パネルが表の右上を覆って次のクリックが
+    「要素が隠れている」で落ちる（実際に落ちた）。 */
+ const openView=()=>page.evaluate(()=>window.WL&&WL.scheduleView&&WL.scheduleView.openViewPop&&WL.scheduleView.openViewPop());
+ const closeView=()=>page.evaluate(()=>window.WL&&WL.scheduleView&&WL.scheduleView.closeViewPop&&WL.scheduleView.closeViewPop());
+ const pickView=async(sel,val)=>{await openView();await page.selectOption(sel,val).catch(()=>{});await closeView()};
  const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
  const errs=[];page.on('pageerror',e=>errs.push(e.message));
  try{
@@ -43,6 +50,7 @@ const plan=()=>fetch(B+'/api/schedule/plan?equipment='+encodeURIComponent(EQ)).t
   await page.waitForTimeout(1500);
 
   // ---- 1. 設定ポップ
+  await openView();
   await page.click('#scLayoutBtn');
   await page.waitForTimeout(500);
   const pop=await page.evaluate(()=>{const x=document.getElementById('scLayoutPop');
@@ -84,6 +92,7 @@ const plan=()=>fetch(B+'/api/schedule/plan?equipment='+encodeURIComponent(EQ)).t
   rec('「スケジュールだけ」で開くと仕掛一覧が畳まれる',only.collapsed,String(only.collapsed));
   /* **選んだ瞬間に効く**(§9.179改訂。利用者の指摘「切り替えた直後に
      スケジュール表だけになりません」)。 */
+  await openView();
   await page.click('#scLayoutBtn');await page.waitForTimeout(400);
   await page.click('#scLayoutPop input[name=scOpenMode][value=split]');
   await page.waitForTimeout(900);
@@ -95,8 +104,13 @@ const plan=()=>fetch(B+'/api/schedule/plan?equipment='+encodeURIComponent(EQ)).t
   await page.waitForTimeout(300);
   rec('選んだ瞬間に表示が切り替わる',nowSplit===true&&nowOnly===true,
       JSON.stringify({split:nowSplit,only:nowOnly}));
-  rec('その状態では行間クリックで入れられると分かる',only.insertable&&only.hint.includes('隙間が開き'),
-      only.hint.slice(0,80));
+  /* §9.199で当たり判定を境目のそばへ絞った（利用者の指摘）ので、案内も
+     「境目にカーソルを置くと帯が出る」「行の中央は掴む場所」に直した。
+     **どちらも書いてあること**を見る——片方だけだと、掴めることが伝わらない。 */
+  rec('その状態では行間クリックで入れられると分かる',
+      only.insertable&&only.hint.includes('境目にカーソルを置くと帯が出て')
+      &&only.hint.includes('行の中央は掴む場所'),
+      only.hint.slice(0,110));
 
   // ---- 4-6. 隙間
   const t=await page.evaluate(()=>{const rows=[...document.querySelectorAll('.sc-row-line')]
@@ -153,6 +167,10 @@ const plan=()=>fetch(B+'/api/schedule/plan?equipment='+encodeURIComponent(EQ)).t
      ような合成クリックでは閉じない）。ここで素朴にボタンを押すと**閉じて**
      しまい、次のクリックが「見えない」で落ちる（実際に落ちた）。 */
   const popOpen=async on=>{
+   /* 段そのものは「表示」パネル(§9.199)の中なので、まず親を開ける。
+      畳むときは親ごと畳む——開いたままだと右上のパネルが表の上に
+      かぶさり、このあと確かめる差し込みの帯と重なる。 */
+   if(on)await openView();
    await page.evaluate(want=>{
     const p=document.querySelector('#scLayoutPop');
     if(!p)return;
@@ -161,6 +179,7 @@ const plan=()=>fetch(B+'/api/schedule/plan?equipment='+encodeURIComponent(EQ)).t
        「見えない」で落ちる（実際に落ちた）。 */
     if(p.hidden===want)document.querySelector('#scLayoutBtn').click();
    },on);
+   if(!on)await page.evaluate(()=>WL.scheduleView.closeViewPop());
    await page.waitForTimeout(300);
   };
   await popOpen(true);
