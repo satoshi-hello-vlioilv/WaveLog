@@ -1126,7 +1126,8 @@ let b=null,page=null;
    const n=Math.max(1,Math.min(9,+document.getElementById('verticalCount').value||1));
    const vis=e=>!!e&&e.getBoundingClientRect().height>0;
    return {表:vis(t),
-     行:document.querySelectorAll('#productRowsBody tr').length,丈:n,
+     /* 内訳の段(.prt-detail)は丈の行ではない(§9.203)。 */
+     行:document.querySelectorAll('#productRowsBody tr:not(.prt-detail)').length,丈:n,
      タブ:vis(tabs),
      母材:vis(document.querySelector('.material-grid')),
      面の数:[...document.querySelectorAll('.work-panel')].filter(vis).length,
@@ -1144,21 +1145,137 @@ let b=null,page=null;
   const clipped=await page.evaluate(()=>{
    const set=(k,v)=>{const el=document.querySelector(
      `#productRowsBody tr[data-row="0"] [data-product-field="${k}"]`);
-     if(el){el.value=v;el.dispatchEvent(new Event('input',{bubbles:true}))}};
+     if(el){el.value=v;el.dispatchEvent(new Event(el.tagName==='SELECT'?'change':'input',{bubbles:true}))}};
+   /* §9.203で揃いコード(4桁)は廃止し、名前で選ぶ形にした。**いちばん長い
+      選択肢**を入れて確かめる（短い値だけを見ても切れは見つからない）。 */
+   set('edgeShape','のこぎり状');
    set('productLength','2500.8');set('wallThickness','0.500');
-   set('alignmentCode','1234');set('pitch','125.5');
+   set('occurrencePosition','1/3〜2/3発生');set('regularity','不規則');
+   set('direction','OS');set('pitch','125.5');set('alignmentValue','12.5');
    const out=[];
    document.querySelectorAll('#productRowsBody tr[data-row="0"] input').forEach(el=>{
     if(!el.value)return;
     if(el.scrollWidth>el.clientWidth+1)
      out.push(`${el.dataset.productField}:${Math.round(el.clientWidth)}<${el.scrollWidth}`);
    });
+   /* 選択欄は**選んだ文字が器に収まっているか**を見る（`scrollWidth`は
+      selectでは当てにならないので、文字幅を測って比べる）。 */
+   const cv=document.createElement('canvas').getContext('2d');
+   document.querySelectorAll('#productRowsBody tr[data-row="0"] select').forEach(el=>{
+    const txt=el.options[el.selectedIndex]?el.options[el.selectedIndex].text:'';
+    if(!txt)return;
+    const cs=getComputedStyle(el);
+    cv.font=`${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    const need=cv.measureText(txt).width+26;   // 矢印と左右の余白ぶん
+    if(need>el.clientWidth+1)
+     out.push(`${el.dataset.productField}:${Math.round(el.clientWidth)}<${Math.round(need)}`);
+   });
    return out;
   });
   rec('②の丈の入力欄が値を切り落とさない',clipped.length===0,clipped.join(' / '));
   await page.evaluate(()=>{
-   document.querySelectorAll('#productRowsBody tr[data-row="0"] input').forEach(el=>{
-    if(el.value){el.value='';el.dispatchEvent(new Event('input',{bubbles:true}))}});
+   document.querySelectorAll('#productRowsBody tr[data-row="0"] input,#productRowsBody tr[data-row="0"] select')
+    .forEach(el=>{if(el.value){el.value='';
+      el.dispatchEvent(new Event(el.tagName==='SELECT'?'change':'input',{bubbles:true}))}});
+  });
+
+  /* ---- 揃いは「選んで記録」（§9.203、利用者の指示） ----
+     4桁の揃いコードは**廃止**した。判定の起点はエッジ形状で、
+     「揃い綺麗」ならそこで終わり（内訳は書かせない）。 */
+  const align=await page.evaluate(()=>{
+   const q=k=>document.querySelector(`#productRowsBody tr[data-row="0"] [data-product-field="${k}"]`);
+   const opts=k=>[...(q(k)?q(k).options:[])].map(o=>o.value).filter(Boolean);
+   return {code:!!q('alignmentCode'),
+     edgeIsSelect:q('edgeShape')&&q('edgeShape').tagName==='SELECT',
+     edge:opts('edgeShape'),
+     /* **内訳はまだ出ていない**（エッジ形状を選ぶまで開かない）。 */
+     detailYet:!!document.querySelector('#productRowsBody tr.prt-detail'),
+     head:[...document.querySelectorAll('.product-rows-table thead th')].map(t=>t.textContent.trim())};
+  });
+  rec('揃いコードの入力欄は廃止',!align.code,String(align.code));
+  rec('エッジ形状は選択欄',!!align.edgeIsSelect,String(align.edgeIsSelect));
+  rec('エッジ形状の選択肢（揃い綺麗・のこぎり状・テレスコ状）',
+      align.edge.join('/')==='揃い綺麗/のこぎり状/テレスコ状',align.edge.join('/'));
+  rec('エッジ形状を選ぶまで内訳は出さない',!align.detailYet,String(align.detailYet));
+  rec('見出しに「揃いコード」を残さない',!align.head.some(t=>/揃いコード/.test(t)),align.head.join(','));
+
+  const pick=async(k,v)=>{await page.evaluate(([kk,vv])=>{
+    const el=document.querySelector(`#productRowsBody tr[data-row="0"] [data-product-field="${kk}"]`);
+    el.value=vv;el.dispatchEvent(new Event('change',{bubbles:true}));},[k,v]);
+   await page.waitForTimeout(200)};
+
+  /* 内訳の選択肢は**段が開いてから**確かめる。 */
+  await pick('edgeShape','のこぎり状');
+  const dopts=await page.evaluate(()=>{
+   const q=k=>document.querySelector(`#productRowsBody tr[data-row="0"] [data-product-field="${k}"]`);
+   const opts=k=>[...(q(k)?q(k).options:[])].map(o=>o.value).filter(Boolean);
+   return {pos:opts('occurrencePosition'),reg:opts('regularity'),dir:opts('direction')};
+  });
+  rec('発生位置の選択肢は3つ',dopts.pos.length===3&&/2\/3以上発生/.test(dopts.pos[0]),dopts.pos.join('/'));
+  rec('規則性は不規則・規則的',dopts.reg.join('/')==='不規則/規則的',dopts.reg.join('/'));
+  rec('方向はOS・DS',dopts.dir.join('/')==='OS/DS',dopts.dir.join('/'));
+
+  await pick('edgeShape','揃い綺麗');
+  const okState=await page.evaluate(()=>{
+   const tr=document.querySelector('#productRowsBody tr[data-row="0"]');
+   return {judge:tr.querySelector('[data-product-judge]').textContent.trim(),
+           allDisabled:!document.querySelector('#productRowsBody tr.prt-detail[data-row="0"]'),
+           saved:S.measure.product.rows[0].edgeShape};
+  });
+  rec('「揃い綺麗」でOK判定',okState.judge==='OK',JSON.stringify(okState));
+  rec('「揃い綺麗」なら内訳は書かせない',okState.allDisabled,JSON.stringify(okState));
+  rec('選んだ値がレコードへ入る',okState.saved==='揃い綺麗',String(okState.saved));
+
+  await pick('edgeShape','のこぎり状');
+  const ngState=await page.evaluate(()=>{
+   const tr=document.querySelector('#productRowsBody tr[data-row="0"]');
+   const d=document.querySelector('#productRowsBody tr.prt-detail[data-row="0"]');
+   return {judge:tr.querySelector('[data-product-judge]').textContent.trim(),
+           noneDisabled:!!d&&[...d.querySelectorAll('[data-product-field]')].every(x=>!x.disabled)};
+  });
+  rec('異常を選ぶとNG判定',ngState.judge==='NG',JSON.stringify(ngState));
+  rec('異常のときは内訳を書ける',ngState.noneDisabled,JSON.stringify(ngState));
+  const detail=await page.evaluate(()=>{
+   const d=document.querySelector('#productRowsBody tr.prt-detail[data-row="0"]');
+   const t=document.querySelector('.product-rows-table');
+   const pane=document.querySelector('.right-pane');
+   return {出る:!!d,
+     欄:d?[...d.querySelectorAll('[data-product-field]')].map(x=>x.dataset.productField):[],
+     溢れ:t&&pane?Math.round(t.getBoundingClientRect().right-pane.getBoundingClientRect().right):0};
+  });
+  rec('異常を選ぶと内訳の段が下に開く',detail.出る,JSON.stringify(detail).slice(0,140));
+  rec('内訳の段には5欄そろう',
+      ['occurrencePosition','regularity','direction','pitch','alignmentValue']
+        .every(k=>detail.欄.includes(k)),JSON.stringify(detail.欄));
+  rec('内訳を開いても表が横に溢れない',detail.溢れ<=0,String(detail.溢れ));
+
+  /* 旧データ(4桁コード)は**消さずに読める**こと。 */
+  /* **必ず在る行(0)で見る**——縦割数が1のときは行1が無く、
+     `querySelector`がnullになって網そのものが落ちる。 */
+  const legacy=await page.evaluate(()=>{
+   S.measure.product.rows[0]=Object.assign(S.measure.product.rows[0]||{},
+     {edgeShape:'',occurrencePosition:'',regularity:'',direction:'',alignmentCode:'1203'});
+   renderProductPanel();
+   const tr=document.querySelector('#productRowsBody tr[data-row="0"]');
+   return {judge:tr.querySelector('[data-product-judge]').textContent.trim(),
+           note:(tr.querySelector('.prt-old')||{}).textContent||''};
+  });
+  rec('旧コードのレコードも判定できる',legacy.judge==='NG',JSON.stringify(legacy));
+  rec('旧コードを画面に残す',/1203/.test(legacy.note),legacy.note);
+
+  /* 一括OKは全丈を「揃い綺麗」にする。 */
+  await page.click('#productAllOk');
+  await page.waitForTimeout(400);
+  const bulk=await page.evaluate(()=>{
+   const n=document.querySelectorAll('#productRowsBody tr:not(.prt-detail)').length;
+   const j=[...document.querySelectorAll('#productRowsBody [data-product-judge]')].map(x=>x.textContent.trim());
+   return {n,ok:j.filter(x=>x==='OK').length,old:document.querySelectorAll('.prt-old').length};
+  });
+  rec('全丈OK一括入力で全部OKになる',bulk.n>0&&bulk.ok===bulk.n,JSON.stringify(bulk));
+  rec('一括OKのあとに旧コードを残さない',bulk.old===0,String(bulk.old));
+  await page.evaluate(()=>{
+   S.measure.product.rows=S.measure.product.rows.map(()=>blankProductRow());
+   renderProductPanel();
   });
 
   /* ---- 母材の計算全長（参考）（§9.160、利用者の指示） ----

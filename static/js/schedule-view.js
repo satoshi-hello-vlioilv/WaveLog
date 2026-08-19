@@ -141,7 +141,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  function timingAdvice(t){
   if(!t||t.total==null)return '';
   const cand=[['snapshot','共有フォルダからの取り込みに時間がかかっています。マスタ管理 > 共通設定の「共有の見張り」の間隔を延ばすと、取り込む回数を減らせます。'],
-              ['actual','測定データが多く、実績の突合に時間がかかっています。上の「さかのぼり」を短くすると軽くなります。'],
+              ['actual','測定データが多く、実績の突合に時間がかかっています。「表示」→「さかのぼり」を短くすると軽くなります。'],
               ['join','クエリ結合の相手を引くのに時間がかかっています。マスタ管理 > クエリ結合で、要らない結合を無効にできます。'],
               ['expand','予定の件数が多く、時刻の展開に時間がかかっています。完了した予定を整理すると軽くなります。']];
   let worst=null;
@@ -161,8 +161,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const from=new Date(historyCutoff());
   el.hidden=false;
   el.textContent=`＝ ${fmtDateTime(from.toISOString())} 以降`;
-  el.title=`完了した予定と実績は、この日時より後のものだけを出しています`
-   +`（いまから過去${scState.historyHours}時間）。\nこれから流す予定は、この範囲に関わらずすべて出ます。`;
+  el.title=`済んだ行（完了・取消・計画外の実績）は、この日時より後のものだけを出しています`
+   +`（いまから過去${scState.historyHours}時間）。\nこれからの予定は、さかのぼりに関わらずすべて出ます。`;
  }
  /* ---------- 再計算の基準時刻(§9.198、利用者の指示) ----------
     「現在時刻を5分刻みに変換して、計算の開始時刻の見栄えを良くしてほしい」。
@@ -463,7 +463,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
       <select id="scGroupSelect">${SC_GROUP_MODES.map(m=>`<option value="${m.key}">${m.label}</option>`).join('')}</select>
      </label>
      <label class="sc-view-row" id="scHistoryRange" hidden>
-      <span class="sc-view-row-name">さかのぼり<small>完了した予定と実績をどこまで出すか。これから流す予定は範囲に関わらず全部出ます</small></span>
+      <span class="sc-view-row-name">さかのぼり<small>済んだ行（完了・取消）を何時間ぶん残すか。これからの予定は全部出ます</small></span>
       <span class="sc-view-row-ctl">
        <select id="scHistorySelect">${SC_HISTORY_CHOICES.map(h=>`<option value="${h}">いまから過去${h}時間</option>`).join('')}</select>
        <span class="sc-history-from" id="scHistoryFrom" hidden></span>
@@ -541,7 +541,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   document.addEventListener('mousedown',e=>{
    const pop=$('#scViewPop');
    if(!pop||pop.hidden)return;
-   if(e.target.closest('#scViewPop')||e.target.closest('#scViewMenuBtn'))return;
+   /* **アイコンを選ぶ盤は「中」として扱う**(§9.201)。盤は`overflow`に
+      切られないよう`body`直下へ出してあるが、利用者から見れば
+      パネルの続きなので、押した瞬間にパネルごと畳んではいけない
+      （実際にそうなり、アイコンが一度も選べなかった）。 */
+   if(e.target.closest('#scViewPop')||e.target.closest('#scViewMenuBtn')
+      ||e.target.closest('#scIconPick'))return;
    closeViewPop();
   },true);
   $('#scModeBoard').onclick=()=>switchToBoard();
@@ -784,47 +789,112 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   });
   return out;
  }
- /* その区分の「元のアイコン」。**1箇所で決める**——見本・入口のボタン・
-    選ぶ盤の3つが同じ絵を出さないと、「既定」が何を指すのか分からない。 */
- function rowStyleBaseIcon(t){
-  const catKey=t.key.startsWith('cat:')?t.key.slice(4):'stop';
-  return t.key.startsWith('stopcat:')
-   ?(STOP_CATEGORY_ICON[t.key.slice(8)]||SC_CATEGORIES.stop.icon)
-   :((SC_CATEGORIES[catKey]||{}).icon||'');
+ /* いま効いているアイコン。**既定は「なし」**(§9.201、利用者の指示)。
+    行が無い＝設定していない＝なし。`showIcon:false`もなし。空文字も
+    なし（古い保存値がここへ来る）。 */
+ function iconValueOf(cur){
+  if(!cur||cur.showIcon===false)return 'none';
+  return String(cur.icon||'')||'none';
+ }
+ function iconGlyphHtml(v){
+  return rowIconHtml(v)||'<span class="sc-icon-word">—</span>';
  }
  function rowStyleSampleHtml(t){
   const cur=(scRowStyles&&scRowStyles.get(t.key))||null;
   const catKey=t.key.startsWith('cat:')?t.key.slice(4):'stop';
-  const base=rowStyleBaseIcon(t);
-  const show=!cur||cur.showIcon!==false;
-  const icon=!show?'none':((cur&&String(cur.icon||''))||base);
   const color=cur?String(cur.colorKey||''):'';
   return `<span class="sc-row-cat sc-cat-${esc(catKey)}${color?' sc-rs-'+esc(color):''}">`
-   +`${rowIconHtml(icon)}${esc(t.label)}</span>`;
+   +`${rowIconHtml(iconValueOf(cur))}${esc(t.label)}</span>`;
  }
- /* アイコンを選ぶ小さな盤(§9.200、利用者の指示「もう少しわかりやすく」)。
-    以前は名前だけの選択欄で、①選ぶ前にどんな絵か分からない ②名前に
-    「(絵文字)」が付いていて器から見切れる、の2つがあった。
-    **絵を見たまま選ぶ**形にして、種類は見出しで分ける。 */
- /* 「既定」は**元の絵をそのまま出す**（何になるのかを見せる）。「なし」は
-    印を出さないことなので`—`。名前と同じ字を絵の場所へ置かない
-    ——「既定/既定」と2度読ませることになる。 */
- function iconGlyphHtml(v,baseIcon){
-  if(v==='none')return '<span class="sc-icon-word">—</span>';
-  if(!v)return rowIconHtml(baseIcon)||'<span class="sc-icon-word">—</span>';
-  return rowIconHtml(v)||'<span class="sc-icon-word">—</span>';
+ /* ---------- アイコンを選ぶ盤(§9.201、利用者の指示) ----------
+    以前は行の中に`position:absolute`で開いていたため、**浮きパネル
+    (`.sc-view-pop`)の`overflow:auto`に切られて下半分が見えなかった**
+    （実機で報告）。絶対配置は`overflow`を持つ先祖で必ず切られるので、
+    **器の外(`body`直下)へ`position:fixed`で置く**——これがこの作り直しの
+    肝で、行の中へ戻さないこと。
+    種類も増やした（同梱の線画47＋絵文字18＋文字記号8）ので、
+    **名前で絞り込める**ことと**種類ごとに見出しを立てる**ことをセットに
+    してある。数が増えるほど、並べただけの一覧は「探す」作業になる。
+    盤は**1つだけ**作って使い回す（行ごとに持つと、行の数だけDOMが増え、
+    どれが開いているのか分からなくなる）。 */
+ let scIconPickTarget=null;
+ function ensureIconPicker(){
+  let el=$('#scIconPick');
+  if(el)return el;
+  el=document.createElement('div');
+  el.id='scIconPick';el.className='sc-icon-modal';el.hidden=true;
+  el.innerHTML=`
+   <div class="sc-icon-win" role="dialog" aria-modal="true" aria-labelledby="scIconPickTitle">
+    <div class="sc-icon-win-head">
+     <b id="scIconPickTitle">アイコンを選ぶ</b>
+     <span class="sc-icon-win-for" id="scIconPickFor"></span>
+     <button type="button" class="sc-icon-win-close" id="scIconPickClose" title="閉じる（Esc）">✕</button>
+    </div>
+    <div class="sc-icon-win-tools">
+     <input type="search" id="scIconPickQ" placeholder="名前で探す（例: 停止・時計・工具・待ち）" autocomplete="off">
+     <small id="scIconPickCount"></small>
+    </div>
+    <div class="sc-icon-body" id="scIconPickBody"></div>
+    <p class="sc-icon-win-foot">選んだ瞬間に保存され、下の表にもすぐ当たります。色は行ごとのプルダウンで選びます。</p>
+   </div>`;
+  document.body.appendChild(el);
+  /* 外(暗い地)を押したら閉じる。窓の中は閉じない。 */
+  el.addEventListener('mousedown',e=>{if(e.target===el)closeIconPicker()});
+  el.querySelector('#scIconPickClose').onclick=()=>closeIconPicker();
+  /* **入力中に盤ごと作り直さない**(§9.117)——入力欄を作り替えると
+     1文字ごとにカーソルが飛ぶ。描き直すのは一覧だけ。 */
+  el.querySelector('#scIconPickQ').addEventListener('input',()=>renderIconPickBody());
+  el.addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();closeIconPicker()}});
+  return el;
  }
- function iconPickHtml(current,baseIcon){
-  return `<div class="sc-icon-pick" hidden>`+SC_ICON_GROUPS.map(([kind,title])=>{
-   const items=SC_ROW_ICONS.filter(i=>i.kind===kind);
+ function openIconPicker(t){
+  if(!t)return;
+  const el=ensureIconPicker();
+  const cur=(scRowStyles&&scRowStyles.get(t.key))||null;
+  scIconPickTarget={key:t.key,current:iconValueOf(cur)};
+  el.querySelector('#scIconPickFor').textContent=`${t.label}（${t.hint}）`;
+  const q=el.querySelector('#scIconPickQ');q.value='';
+  el.hidden=false;
+  renderIconPickBody();
+  q.focus();
+ }
+ function closeIconPicker(){
+  const el=$('#scIconPick');if(!el||el.hidden)return;
+  el.hidden=true;scIconPickTarget=null;
+ }
+ /* 一覧だけを描き直す。**当たった件数を必ず出す**——0件のときに
+    黙って空にすると、壊れているのか当たらないのかが分からない。 */
+ function renderIconPickBody(){
+  const el=$('#scIconPick');if(!el||!scIconPickTarget)return;
+  const q=String(el.querySelector('#scIconPickQ').value||'').trim().toLowerCase();
+  /* 種類の見出しでも当たる（「時間」で時間の群がまとめて出る）。 */
+  const title=k=>(SC_ICON_GROUPS.find(g=>g[0]===k)||['',''])[1];
+  const hit=i=>!q||(i.label+' '+(i.kw||'')+' '+i.v+' '+title(i.kind)).toLowerCase().includes(q);
+  const cur=scIconPickTarget.current;
+  let n=0;
+  const html=SC_ICON_GROUPS.map(([kind,title])=>{
+   const items=SC_ROW_ICONS.filter(i=>i.kind===kind&&hit(i));
    if(!items.length)return '';
-   return `<div class="sc-icon-grp">${esc(title)}</div><div class="sc-icon-grid">`+items.map(i=>{
-    const note=i.v===''?'この区分の元の印に戻します':(i.v==='none'?'印を出しません':i.label);
-    return `<button type="button" class="sc-icon-cell${current===i.v?' is-on':''}" data-icon-pick="${esc(i.v)}"`
-     +` aria-pressed="${current===i.v?'true':'false'}" title="${esc(note)}">`
-     +`<span class="sc-icon-glyph">${iconGlyphHtml(i.v,baseIcon)}</span><small>${esc(i.label)}</small></button>`;
-   }).join('')+`</div>`;
-  }).join('')+`</div>`;
+   n+=items.length;
+   return `<div class="sc-icon-grp">${esc(title)}<small>${items.length}</small></div>`
+    +`<div class="sc-icon-grid">`+items.map(i=>
+      `<button type="button" class="sc-icon-cell${cur===i.v?' is-on':''}" data-icon-pick="${esc(i.v)}"`
+      +` aria-pressed="${cur===i.v?'true':'false'}" title="${esc(i.label)}">`
+      +`<span class="sc-icon-glyph">${iconGlyphHtml(i.v)}</span><small>${esc(i.label)}</small></button>`).join('')
+    +`</div>`;
+  }).join('');
+  el.querySelector('#scIconPickBody').innerHTML=html
+   ||`<p class="sc-icon-empty">「${esc(q)}」に当たるアイコンがありません。<br>
+       停止・注意・時計・工具・人・矢印・運搬…といった言い方でも探せます。</p>`;
+  el.querySelector('#scIconPickCount').textContent=q?`${n}件`:`ぜんぶで${SC_ROW_ICONS.length}件`;
+  el.querySelectorAll('[data-icon-pick]').forEach(b=>{
+   b.onclick=()=>{
+    const key=scIconPickTarget&&scIconPickTarget.key;
+    if(!key)return;
+    closeIconPicker();
+    saveRowStyle(key,{icon:b.dataset.iconPick});
+   };
+  });
  }
  function renderRowStylePop(){
   const pop=$('#scRowStylePop');if(!pop)return;
@@ -832,26 +902,24 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const cell=t=>{
    const cur=(scRowStyles&&scRowStyles.get(t.key))||null;
    const color=cur?String(cur.colorKey||''):'';
-   const show=!cur||cur.showIcon!==false;
-   const icon=!show?'none':((cur&&String(cur.icon||''))||'');
-   const base=rowStyleBaseIcon(t);
-   const glyph=iconGlyphHtml(icon,base);
+   const icon=iconValueOf(cur);
+   /* **色はプルダウン**(§9.201、利用者の指示「8色くらいなら横並びに
+      しなくてプルダウンでよい」)。8個のボタンを横に並べると1行が
+      横長になり、右の見本と「戻す」が押し出されていた。閉じた状態の
+      選択欄そのものをその色で塗るので、開かなくても今の色が分かる。 */
    return `<div class="sc-rs-row" data-rs="${esc(t.key)}">
     <div class="sc-rs-name"><b>${esc(t.label)}</b><small>${esc(t.hint)}</small></div>
-    <div class="sc-rs-colors" role="group" aria-label="${esc(t.label)}の色">${SC_ROW_PALETTE.map(p=>
-      `<button type="button" class="sc-rs-sw${p.key?' sc-rs-'+p.key:' is-default'}${color===p.key?' is-on':''}"`
-      +` data-rs-color="${esc(p.key)}" title="${esc(p.label)}（${esc(p.note)}）"`
-      +` aria-pressed="${color===p.key?'true':'false'}"><span>${esc(p.label)}</span></button>`).join('')}</div>
-    <div class="sc-rs-icon">
-     <button type="button" class="sc-rs-iconbtn" data-rs-iconbtn aria-expanded="false"
-       title="アイコンを選びます（絵を見たまま選べます）">
-      <span class="sc-rs-iconview">${glyph}</span><span class="sc-rs-iconname">${esc(iconLabelOf(icon))}</span><em>▾</em>
-     </button>
-     ${iconPickHtml(icon,base)}
-    </div>
+    <select class="sc-rs-colorsel${color?' sc-rs-'+esc(color):''}" data-rs-color
+      aria-label="${esc(t.label)}の色" title="行の地と区分の面に付く色です">${SC_ROW_PALETTE.map(p=>
+      `<option value="${esc(p.key)}"${color===p.key?' selected':''}>${esc(p.label)}（${esc(p.note)}）</option>`).join('')}</select>
+    <button type="button" class="sc-rs-iconbtn" data-rs-iconbtn
+      title="アイコンを選びます（絵を見たまま探せます）">
+     <span class="sc-rs-iconview">${iconGlyphHtml(icon)}</span>
+     <span class="sc-rs-iconname">${esc(iconLabelOf(icon))}</span><em>▾</em>
+    </button>
     <div class="sc-rs-sample">${rowStyleSampleHtml(t)}</div>
     <button type="button" class="sc-rs-reset" data-rs-reset${cur?'':' disabled'}
-      title="${cur?'この区分の設定を消して、元の色とアイコンへ戻します':'この区分はまだ設定していません（いまが元のままです）'}">⟲ 戻す</button>
+      title="${cur?'この区分の設定を消して、元の色（アイコンなし）へ戻します':'この区分はまだ設定していません（いまが元のままです）'}">⟲ 戻す</button>
    </div>`;
   };
   const cats=rows.filter(r=>!r.group).map(cell).join('');
@@ -865,50 +933,26 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   pop.innerHTML=`
    <div class="sc-rs-head">
     <small>変えるのは<b>色と印だけ</b>です。区分の名前は必ず出るので、色が見分けにくい環境でも読めます。
-     選んだ瞬間に下の表へ当たり、そのまま保存されます。</small></div>
+     選んだ瞬間に下の表へ当たり、そのまま保存されます。<b>印は既定では付きません</b>——付けたい区分にだけ選んでください。</small></div>
    <div class="sc-rs-legend"><b>色の目安</b>${legend}</div>
+   <div class="sc-rs-cols"><span>区分</span><span>色</span><span>アイコン</span><span>この行の見え方</span><span></span></div>
    <div class="sc-rs-sec"><div class="sc-rs-sec-head">区分ごと<small>すべての行に効きます</small></div>${cats}</div>
    ${stops?`<div class="sc-rs-sec"><div class="sc-rs-sec-head">設備停止の分類ごと<small>同じ行に両方あるときは、こちらが勝ちます</small></div>${stops}</div>`
           :'<p class="sc-layout-note">設備停止の分類はまだ登録されていません（マスタ管理 &gt; 設備停止分類）。登録するとここに並びます。</p>'}
    <p class="sc-layout-note">この設定は<b>全設備・全員に共通</b>です（行表示マスタ）。「⟲ 戻す」で、その区分だけ元の見た目へ戻せます。</p>`;
-  pop.querySelectorAll('[data-rs-color]').forEach(b=>{
-   b.onclick=()=>saveRowStyle(b.closest('.sc-rs-row').dataset.rs,{colorKey:b.dataset.rsColor});
+  pop.querySelectorAll('[data-rs-color]').forEach(sel=>{
+   sel.onchange=()=>saveRowStyle(sel.closest('.sc-rs-row').dataset.rs,{colorKey:sel.value});
   });
-  /* アイコンの盤は**1つだけ開く**。開いたまま別の行を開くと、どちらを
-     選んでいるのか分からなくなる。 */
   pop.querySelectorAll('[data-rs-iconbtn]').forEach(btn=>{
    btn.onclick=e=>{
     e.stopPropagation();
-    const box=btn.parentNode.querySelector('.sc-icon-pick');
-    const willOpen=box.hidden;
-    closeIconPicks(pop);
-    box.hidden=!willOpen;
-    btn.setAttribute('aria-expanded',willOpen?'true':'false');
-   };
-  });
-  pop.querySelectorAll('[data-icon-pick]').forEach(b=>{
-   b.onclick=e=>{
-    e.stopPropagation();
-    saveRowStyle(b.closest('.sc-rs-row').dataset.rs,{icon:b.dataset.iconPick});
+    const key=btn.closest('.sc-rs-row').dataset.rs;
+    openIconPicker(rows.find(x=>x.key===key));
    };
   });
   pop.querySelectorAll('[data-rs-reset]').forEach(b=>{
    b.onclick=()=>resetRowStyle(b.closest('.sc-rs-row').dataset.rs);
   });
-  /* 盤の外を押したら畳む。**器へ1度だけ付ける**——描き直すたびに足すと
-     同じ処理が積み上がる（中身は毎回作り直すが、器は残る）。 */
-  if(!pop.dataset.iconPickWired){
-   pop.dataset.iconPickWired='1';
-   pop.addEventListener('mousedown',e=>{
-    if(e.target.closest('.sc-rs-icon'))return;
-    closeIconPicks(pop);
-   });
-  }
- }
- function closeIconPicks(pop){
-  if(!pop)return;
-  pop.querySelectorAll('.sc-icon-pick').forEach(x=>{x.hidden=true});
-  pop.querySelectorAll('[data-rs-iconbtn]').forEach(x=>x.setAttribute('aria-expanded','false'));
  }
  /* 1件だけ書く。**失敗したら画面に出す**——黙って握り潰すと「効かない」に
     しか見えない（§9.190で実際にそうなった）。 */
@@ -956,6 +1000,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   }
  }
  function closeRowStylePop(){
+  /* 盤は`body`直下に居るので、パネルを畳んでも自動では消えない
+     （§9.201。行の中に置かないのが肝なので、閉じる側で面倒を見る）。 */
+  closeIconPicker();
   const pop=$('#scRowStylePop');if(pop&&!pop.hidden)pop.hidden=true;
   const btn=$('#scRowStyleBtn');
   if(btn){btn.classList.remove('active');btn.setAttribute('aria-expanded','false')}
@@ -2627,15 +2674,17 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
       予定 : 予定開始時刻(未来)
     なので、単純に時刻順へ並べるだけで「完了 → 作業中 → 予定」になる。
     区分ごとに並びを組み立てる必要は無い。 */
+ /* **区分そのものは印を持たない**(§9.201、利用者の指示「既定はすべて
+    アイコンなし」)。印を付けたい区分は行表示マスタで選ぶ。 */
  const SC_CATEGORIES={
-  done:{key:'done',label:'完了',icon:'✓'},
-  doing:{key:'doing',label:'作業中',icon:'▶'},
-  planned:{key:'planned',label:'予定',icon:'○'},
-  cancel:{key:'cancel',label:'取消',icon:'✕'},
-  stop:{key:'stop',label:'設備停止',icon:'⛔'},
+  done:{key:'done',label:'完了'},
+  doing:{key:'doing',label:'作業中'},
+  planned:{key:'planned',label:'予定'},
+  cancel:{key:'cancel',label:'取消'},
+  stop:{key:'stop',label:'設備停止'},
   /* 申し送り(§9.189)。**時間を持たない**ので、設備停止とは別の区分にする
      ——同じ「作業以外」でも、片方は時間を取り、片方は取らない。 */
-  comment:{key:'comment',label:'コメント',icon:'💬'},
+  comment:{key:'comment',label:'コメント'},
  };
  function categoryOf(e){
   if(e.state==='取消')return SC_CATEGORIES.cancel;
@@ -2675,53 +2724,193 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  /* 同梱の線画アイコン(24×24、線幅2)。**外部から取りに行かない**——
     社内で閉じて動くアプリなので、CDNのアイコンフォントは読めない。 */
  const SC_ICON_SVG={
-  pause:'<path d="M9 5v14M15 5v14"/>',
-  square:'<rect x="6" y="6" width="12" height="12" rx="1.5"/>',
-  ban:'<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>',
-  warn:'<path d="M12 4 2.6 20h18.8L12 4z"/><path d="M12 10v4.5M12 17.4v.1"/>',
-  clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5.3l3.2 1.9"/>',
-  bolt:'<path d="M13.2 2 4.5 13.6h5.6L8.8 22l9-11.8h-5.6L13.2 2z"/>',
+  /* --- 作業・段取り --- */
   gear:'<circle cx="12" cy="12" r="3.2"/><path d="M12 2.4v2.6M12 19v2.6M2.4 12h2.6M19 12h2.6M5.2 5.2l1.9 1.9M16.9 16.9l1.9 1.9M18.8 5.2l-1.9 1.9M7.1 16.9l-1.9 1.9"/>',
   wrench:'<path d="M17.9 6.1a4.2 4.2 0 01-5.4 5.4L5 19l-2-2 7.5-7.5a4.2 4.2 0 015.4-5.4l-2.4 2.4 2 2 2.4-2.4z"/>',
+  hammer:'<path d="M12.6 7.4 4 16v4h4l8.6-8.6"/><path d="M13.2 2.8 21.2 10.8l-2.8 2.8-8-8z"/>',
+  sliders:'<path d="M4 7h9M18.5 7H20M4 17h5M14.5 17H20"/><circle cx="15.5" cy="7" r="2.5"/><circle cx="11.5" cy="17" r="2.5"/>',
+  swap:'<path d="M4 8.5h13l-3.4-3.4M20 15.5H7l3.4 3.4"/>',
+  redo:'<path d="M20.5 12a8.5 8.5 0 11-2.5-6M20.5 3.2V9h-5.8"/>',
+  play:'<path d="M8 5.2 19 12 8 18.8V5.2z"/>',
+  pause:'<path d="M9 5v14M15 5v14"/>',
+  square:'<rect x="6" y="6" width="12" height="12" rx="1.5"/>',
+  power:'<path d="M12 3v8"/><path d="M6.6 6.6a7.6 7.6 0 1010.8 0"/>',
+  /* --- 状態・注意 --- */
+  check:'<path d="M4.5 12.6l5 5L20 6.6"/>',
+  checks:'<path d="M2.5 12.6l4 4L14 9"/><path d="M10.5 15.4l1.5 1.6L21.5 7.6"/>',
+  checkc:'<circle cx="12" cy="12" r="9"/><path d="M8 12.3l2.8 2.8 5.4-5.4"/>',
+  xc:'<circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/>',
+  ban:'<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>',
+  warn:'<path d="M12 4 2.6 20h18.8L12 4z"/><path d="M12 10v4.5M12 17.4v.1"/>',
+  bolt:'<path d="M13.2 2 4.5 13.6h5.6L8.8 22l9-11.8h-5.6L13.2 2z"/>',
+  info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.6v.1"/>',
+  question:'<circle cx="12" cy="12" r="9"/><path d="M9.6 9.4a2.5 2.5 0 114.2 2.1c-.9.8-1.8 1.3-1.8 2.5M12 17.4v.1"/>',
+  bang:'<circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.4v.1"/>',
+  lock:'<rect x="5" y="10.4" width="14" height="9.6" rx="1.5"/><path d="M8.4 10.4V8a3.6 3.6 0 017.2 0v2.4"/>',
+  eye:'<path d="M2.6 12S6.1 6 12 6s9.4 6 9.4 6-3.5 6-9.4 6-9.4-6-9.4-6z"/><circle cx="12" cy="12" r="2.6"/>',
+  /* --- 時間 --- */
+  clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5.3l3.2 1.9"/>',
+  hourglass:'<path d="M7 3h10M7 21h10M8 3v3.4c0 2 4 3.9 4 5.6 0-1.7 4-3.6 4-5.6V3M8 21v-3.4c0-2 4-3.9 4-5.6 0 1.7 4 3.6 4 5.6V21"/>',
+  calendar:'<rect x="3.4" y="5" width="17.2" height="15" rx="1.6"/><path d="M3.4 9.6h17.2M8 3v4M16 3v4"/>',
+  timer:'<circle cx="12" cy="13.6" r="7.4"/><path d="M12 10v3.8l2.5 1.5M9.6 2.6h4.8"/>',
+  moon:'<path d="M20.2 14.6A8.6 8.6 0 019.4 3.8a8.6 8.6 0 1010.8 10.8z"/>',
+  sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.4 5.4l1.6 1.6M17 17l1.6 1.6M18.6 5.4L17 7M7 17l-1.6 1.6"/>',
+  /* --- 設備・もの --- */
   truck:'<path d="M3 7h11v9H3zM14 10.5h3.6L21 13.6V16h-7z"/><circle cx="7.2" cy="18" r="1.8"/><circle cx="17.2" cy="18" r="1.8"/>',
   box:'<path d="M3 8l9-4 9 4-9 4-9-4zM3 8v8l9 4 9-4V8"/>',
+  coil:'<ellipse cx="12" cy="6.4" rx="7.6" ry="3"/><path d="M4.4 6.4v11.2c0 1.7 3.4 3 7.6 3s7.6-1.3 7.6-3V6.4"/>',
+  scissors:'<circle cx="6.4" cy="17.8" r="2.4"/><circle cx="6.4" cy="6.2" r="2.4"/><path d="M8.6 7.4 20 18M8.6 16.6 20 6"/>',
+  ruler:'<rect x="2.6" y="8" width="18.8" height="8" rx="1.2"/><path d="M7 8v3M11 8v4M15 8v3M19 8v4"/>',
+  gauge:'<path d="M4 17.5a8 8 0 1116 0"/><path d="M12 17.5l4.2-4.8"/>',
   brush:'<path d="M9 15.2 5 19.2 6 22l3-1 4-4M12.4 12.4l5.8-5.8a2.9 2.9 0 014.1 4.1l-5.8 5.8z"/>',
-  flag:'<path d="M5.5 21V3.5M5.5 4.5h11l-2 3 2 3h-11"/>',
-  pin:'<path d="M12 21.2S19 14.7 19 10a7 7 0 10-14 0c0 4.7 7 11.2 7 11.2z"/><circle cx="12" cy="10" r="2.4"/>',
-  check:'<path d="M4.5 12.6l5 5L20 6.6"/>',
-  star:'<path d="M12 3.2l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17.2l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>',
-  note:'<path d="M6 3h9l4 4v14H6zM15 3v4h4M9 12h7M9 16h7"/>',
+  drop:'<path d="M12 3.4S5.4 11 5.4 14.8a6.6 6.6 0 1013.2 0C18.6 11 12 3.4 12 3.4z"/>',
+  plug:'<path d="M9 3v5M15 3v5M6.4 8h11.2v3a5.6 5.6 0 01-11.2 0V8zM12 16.6V21"/>',
+  thermo:'<path d="M14 14.2V5a2 2 0 10-4 0v9.2a4 4 0 104 0z"/>',
+  /* --- 人・連絡 --- */
   person:'<circle cx="12" cy="8" r="3.2"/><path d="M5 20.5a7 7 0 0114 0"/>',
+  users:'<circle cx="9.2" cy="8" r="3.2"/><path d="M2.8 20a6.4 6.4 0 0112.8 0"/><path d="M16.2 5.2a3.2 3.2 0 010 5.7M17.4 14.4A6.4 6.4 0 0121.2 20"/>',
+  chat:'<path d="M4 5h16v11H9.5L4.5 20V5z"/>',
+  note:'<path d="M6 3h9l4 4v14H6zM15 3v4h4M9 12h7M9 16h7"/>',
+  clipboard:'<rect x="5" y="4.6" width="14" height="16" rx="1.6"/><path d="M9 4.6V3.2h6v1.4M9 10.4h6M9 14.4h6"/>',
+  phone:'<path d="M6 3.6h4l1.5 4-2.2 1.6a12 12 0 005.5 5.5l1.6-2.2 4 1.5v4a2 2 0 01-2.2 2C10.6 19.3 4.7 13.4 4 5.8A2 2 0 016 3.6z"/>',
+  bell:'<path d="M6.4 17V11a5.6 5.6 0 1111.2 0v6M4.4 17h15.2M10 20.4h4"/>',
+  mail:'<rect x="3" y="5.4" width="18" height="13.2" rx="1.6"/><path d="M3.6 6.6 12 13l8.4-6.4"/>',
   cup:'<path d="M4 8h12v5.5a6 6 0 01-12 0zM16 9.2h2a2.6 2.6 0 010 5.2h-2M3.5 21h13"/>',
+  /* --- 目印・記号 --- */
+  star:'<path d="M12 3.2l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17.2l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>',
+  heart:'<path d="M12 20.2S4.4 15.3 4.4 10.4A4.4 4.4 0 0112 7.5a4.4 4.4 0 017.6 2.9c0 4.9-7.6 9.8-7.6 9.8z"/>',
+  pin:'<path d="M12 21.2S19 14.7 19 10a7 7 0 10-14 0c0 4.7 7 11.2 7 11.2z"/><circle cx="12" cy="10" r="2.4"/>',
+  tag:'<path d="M3.4 11.6V3.4H11.6l9 9-8.2 8.2-9-9z"/><circle cx="7.4" cy="7.4" r="1.4"/>',
+  bookmark:'<path d="M6.4 3.4h11.2v17.2L12 16.4l-5.6 4.2V3.4z"/>',
+  flag:'<path d="M5.5 21V3.5M5.5 4.5h11l-2 3 2 3h-11"/>',
+  dot:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',
+  triangle:'<path d="M12 4.4 21 19.6H3L12 4.4z"/>',
+  diamond:'<path d="M12 3l9 9-9 9-9-9 9-9z"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  minus:'<path d="M5 12h14"/>',
+  up:'<path d="M12 19.5V5M6 11l6-6 6 6"/>',
+  down:'<path d="M12 4.5V19M6 13l6 6 6-6"/>',
+  right:'<path d="M4.5 12h15M13 5.5l6.5 6.5-6.5 6.5"/>',
  };
- /* 選べるアイコン(§9.198 → §9.200で作り直し)。**名前に「(絵文字)」を
-    書かない**——選択欄の幅を食って文字が見切れていた（実機で
-    「工具(絵文…」と切れて出た）。どの種類かは選ぶ画面の見出しが言うので、
-    1つずつに書く必要が無い。`kind`は選ぶ画面の並べ分けだけに使う。 */
+ /* 選べるアイコン(§9.198 → §9.200 → §9.201で作り直し)。
+    利用者の指示は「アイコンや絵文字の閲覧性が悪い」「いろんな種類が欲しい」
+    「既定はすべてアイコンなしに」。
+     ・**既定は「なし」**——以前は区分ごとに元の絵(✓ ▶ ○ ✕ ⛔ 💬)を持って
+       いて、「既定」と「なし」という**同じ見え方になり得る2択**を選ばせて
+       いた。既定を無くしたので選択肢は1本になる。
+     ・**種類は多くてよいが、探せることが条件**。選ぶ盤に絞り込みを付けて
+       あるので、`label`のほかに読み・言い換え(`kw`)を持たせる。
+     ・`kind`は選ぶ盤の見出し分けに使う。**名前に「(絵文字)」と書かない**
+       ——器の幅を食って見切れる（実機で「工具(絵文…」と切れて出た）。 */
  const SC_ROW_ICONS=[
-  {v:'',      label:'既定', kind:'special'},
-  {v:'none',  label:'なし', kind:'special'},
-  {v:'⛔',label:'禁止',kind:'emoji'},{v:'🔧',label:'工具',kind:'emoji'},{v:'🔄',label:'段取り',kind:'emoji'},
-  {v:'⏳',label:'待ち',kind:'emoji'},{v:'⚡',label:'突発',kind:'emoji'},{v:'💬',label:'コメント',kind:'emoji'},
-  {v:'🚚',label:'運搬',kind:'emoji'},{v:'🧹',label:'清掃',kind:'emoji'},{v:'☕',label:'休憩',kind:'emoji'},
-  {v:'✓',label:'チェック',kind:'mark'},{v:'▶',label:'再生',kind:'mark'},
-  {v:'○',label:'丸',kind:'mark'},{v:'✕',label:'バツ',kind:'mark'},
-  {v:'svg:ban',label:'禁止',kind:'svg'},{v:'svg:pause',label:'一時停止',kind:'svg'},{v:'svg:square',label:'停止',kind:'svg'},
-  {v:'svg:warn',label:'注意',kind:'svg'},{v:'svg:clock',label:'時計',kind:'svg'},{v:'svg:bolt',label:'稲妻',kind:'svg'},
-  {v:'svg:gear',label:'歯車',kind:'svg'},{v:'svg:wrench',label:'工具',kind:'svg'},{v:'svg:truck',label:'運搬',kind:'svg'},
-  {v:'svg:box',label:'箱',kind:'svg'},{v:'svg:brush',label:'清掃',kind:'svg'},{v:'svg:flag',label:'旗',kind:'svg'},
-  {v:'svg:pin',label:'ピン',kind:'svg'},{v:'svg:check',label:'チェック',kind:'svg'},{v:'svg:star',label:'星',kind:'svg'},
-  {v:'svg:note',label:'メモ',kind:'svg'},{v:'svg:person',label:'人',kind:'svg'},{v:'svg:cup',label:'休憩',kind:'svg'},
+  {v:'none',label:'なし',kind:'none',kw:'無し ない 消す 既定'},
+  /* 作業・段取り */
+  {v:'svg:gear',label:'歯車',kind:'work',kw:'設定 整備 メンテ'},
+  {v:'svg:wrench',label:'工具',kind:'work',kw:'スパナ 保全 修理'},
+  {v:'svg:hammer',label:'ハンマー',kind:'work',kw:'修理 工事'},
+  {v:'svg:sliders',label:'調整',kind:'work',kw:'段取り 設定 つまみ'},
+  {v:'svg:swap',label:'入れ替え',kind:'work',kw:'段取り 交換 切替'},
+  {v:'svg:redo',label:'やり直し',kind:'work',kw:'再 リトライ 手直し'},
+  {v:'svg:play',label:'開始',kind:'work',kw:'再生 着手 スタート'},
+  {v:'svg:pause',label:'一時停止',kind:'work',kw:'中断 待ち'},
+  {v:'svg:square',label:'停止',kind:'work',kw:'終了 ストップ'},
+  {v:'svg:power',label:'電源',kind:'work',kw:'起動 停止'},
+  /* 状態・注意 */
+  {v:'svg:check',label:'チェック',kind:'state',kw:'完了 済 レ点'},
+  {v:'svg:checks',label:'二重チェック',kind:'state',kw:'完了 確認済'},
+  {v:'svg:checkc',label:'完了(丸)',kind:'state',kw:'済 OK 合格'},
+  {v:'svg:xc',label:'不可(丸)',kind:'state',kw:'中止 取消 NG'},
+  {v:'svg:ban',label:'禁止',kind:'state',kw:'停止 だめ'},
+  {v:'svg:warn',label:'注意',kind:'state',kw:'警告 三角 危険'},
+  {v:'svg:bolt',label:'突発',kind:'state',kw:'稲妻 緊急 トラブル'},
+  {v:'svg:info',label:'情報',kind:'state',kw:'案内 インフォ'},
+  {v:'svg:question',label:'疑問',kind:'state',kw:'確認 はてな 不明'},
+  {v:'svg:bang',label:'重要',kind:'state',kw:'注意 ビックリ 至急'},
+  {v:'svg:lock',label:'固定',kind:'state',kw:'鍵 ロック 動かさない'},
+  {v:'svg:eye',label:'見張り',kind:'state',kw:'監視 確認 目'},
+  /* 時間 */
+  {v:'svg:clock',label:'時計',kind:'time',kw:'時間 時刻'},
+  {v:'svg:hourglass',label:'砂時計',kind:'time',kw:'待ち 経過'},
+  {v:'svg:calendar',label:'予定表',kind:'time',kw:'カレンダー 日付'},
+  {v:'svg:timer',label:'タイマー',kind:'time',kw:'計測 所要'},
+  {v:'svg:moon',label:'夜',kind:'time',kw:'夜勤 三直 月'},
+  {v:'svg:sun',label:'昼',kind:'time',kw:'日勤 一直 太陽'},
+  /* 設備・もの */
+  {v:'svg:truck',label:'運搬',kind:'thing',kw:'搬入 搬出 トラック'},
+  {v:'svg:box',label:'箱',kind:'thing',kw:'材料 製品 梱包'},
+  {v:'svg:coil',label:'コイル',kind:'thing',kw:'巻 母材 ロール コイル'},
+  {v:'svg:scissors',label:'切断',kind:'thing',kw:'スリット はさみ 切る'},
+  {v:'svg:ruler',label:'寸法',kind:'thing',kw:'測定 定規 計測'},
+  {v:'svg:gauge',label:'計器',kind:'thing',kw:'負荷 メーター 速度'},
+  {v:'svg:brush',label:'清掃',kind:'thing',kw:'掃除 片付け'},
+  {v:'svg:drop',label:'油・水',kind:'thing',kw:'給油 クーラント しずく'},
+  {v:'svg:plug',label:'電源プラグ',kind:'thing',kw:'停電 電気'},
+  {v:'svg:thermo',label:'温度',kind:'thing',kw:'温度計 熱'},
+  /* 人・連絡 */
+  {v:'svg:person',label:'人',kind:'people',kw:'担当 作業者'},
+  {v:'svg:users',label:'応援',kind:'people',kw:'複数人 班 チーム'},
+  {v:'svg:chat',label:'申し送り',kind:'people',kw:'コメント 連絡 吹き出し'},
+  {v:'svg:note',label:'メモ',kind:'people',kw:'書類 記録'},
+  {v:'svg:clipboard',label:'指示書',kind:'people',kw:'カード 帳票 チェック表'},
+  {v:'svg:phone',label:'電話',kind:'people',kw:'連絡 問合せ'},
+  {v:'svg:bell',label:'呼び出し',kind:'people',kw:'通知 ベル 注意喚起'},
+  {v:'svg:mail',label:'メール',kind:'people',kw:'連絡 送信'},
+  {v:'svg:cup',label:'休憩',kind:'people',kw:'休み 昼休み コーヒー'},
+  /* 目印・記号 */
+  {v:'svg:star',label:'星',kind:'mark',kw:'重要 お気に入り'},
+  {v:'svg:heart',label:'ハート',kind:'mark',kw:'目印 好み'},
+  {v:'svg:pin',label:'ピン',kind:'mark',kw:'場所 目印'},
+  {v:'svg:tag',label:'タグ',kind:'mark',kw:'分類 ラベル'},
+  {v:'svg:bookmark',label:'しおり',kind:'mark',kw:'目印 ブックマーク'},
+  {v:'svg:flag',label:'旗',kind:'mark',kw:'目印 開始 節目'},
+  {v:'svg:dot',label:'二重丸',kind:'mark',kw:'印 丸 ターゲット'},
+  {v:'svg:triangle',label:'三角',kind:'mark',kw:'印 注意'},
+  {v:'svg:diamond',label:'ひし形',kind:'mark',kw:'印 節目'},
+  {v:'svg:plus',label:'追加',kind:'mark',kw:'足す プラス'},
+  {v:'svg:minus',label:'除外',kind:'mark',kw:'引く マイナス'},
+  {v:'svg:up',label:'上向き矢印',kind:'mark',kw:'優先 上げる'},
+  {v:'svg:down',label:'下向き矢印',kind:'mark',kw:'後回し 下げる'},
+  {v:'svg:right',label:'右向き矢印',kind:'mark',kw:'次へ 進む'},
+  {v:'✓',label:'レ点(文字)',kind:'mark',kw:'チェック 完了'},
+  {v:'▶',label:'三角(文字)',kind:'mark',kw:'再生 開始'},
+  {v:'○',label:'丸(文字)',kind:'mark',kw:'予定 まる'},
+  {v:'✕',label:'バツ(文字)',kind:'mark',kw:'取消 ばつ'},
+  {v:'★',label:'星(文字)',kind:'mark',kw:'重要 ほし'},
+  {v:'●',label:'黒丸(文字)',kind:'mark',kw:'印 まる'},
+  {v:'■',label:'黒四角(文字)',kind:'mark',kw:'印 しかく'},
+  {v:'‼',label:'二重ビックリ',kind:'mark',kw:'至急 重要'},
+  /* 絵文字（色つき） */
+  {v:'⛔',label:'禁止',kind:'emoji',kw:'停止 だめ'},
+  {v:'🔧',label:'工具',kind:'emoji',kw:'保全 修理 スパナ'},
+  {v:'🔄',label:'段取り',kind:'emoji',kw:'切替 交換'},
+  {v:'⏳',label:'待ち',kind:'emoji',kw:'砂時計 保留'},
+  {v:'⚡',label:'突発',kind:'emoji',kw:'緊急 トラブル'},
+  {v:'💬',label:'コメント',kind:'emoji',kw:'申し送り 連絡'},
+  {v:'🚚',label:'運搬',kind:'emoji',kw:'搬入 搬出'},
+  {v:'🧹',label:'清掃',kind:'emoji',kw:'掃除 片付け'},
+  {v:'☕',label:'休憩',kind:'emoji',kw:'休み コーヒー'},
+  {v:'🛠',label:'整備',kind:'emoji',kw:'保全 メンテ'},
+  {v:'📦',label:'材料',kind:'emoji',kw:'箱 製品'},
+  {v:'🚧',label:'工事',kind:'emoji',kw:'規制 立入禁止'},
+  {v:'🔥',label:'至急',kind:'emoji',kw:'緊急 火'},
+  {v:'📌',label:'目印',kind:'emoji',kw:'ピン 固定'},
+  {v:'✅',label:'済',kind:'emoji',kw:'完了 チェック'},
+  {v:'❗',label:'重要',kind:'emoji',kw:'注意 至急'},
+  {v:'🕒',label:'時間',kind:'emoji',kw:'時計 所要'},
+  {v:'⭐',label:'星',kind:'emoji',kw:'重要 印'},
  ];
  const SC_ICON_GROUPS=[
-  ['special','決めない'],['emoji','絵文字（色つき）'],['mark','記号'],['svg','線画（同梱）'],
+  ['none','印を出さない'],['work','作業・段取り'],['state','状態・注意'],
+  ['time','時間'],['thing','設備・もの'],['people','人・連絡'],
+  ['mark','目印・記号'],['emoji','絵文字（色つき）'],
  ];
  /* いま選ばれているものの呼び名。**保存値が一覧に無くても諦めない**
     ——古い設定や手で入れた文字が入っていることがあるので、その字を出す。 */
  function iconLabelOf(v){
-  const hit=SC_ROW_ICONS.find(i=>i.v===String(v||''));
+  const key=String(v||'')||'none';
+  const hit=SC_ROW_ICONS.find(i=>i.v===key);
   if(hit)return hit.label;
-  return String(v||'')||'既定';
+  return key;
  }
  function rowIconHtml(spec){
   const v=String(spec||'');
@@ -2760,11 +2949,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const m=scRowStyles;
   const sc=stopCategoryOfEntry(e);
   const hit=(m&&sc&&m.get('stopcat:'+sc))||(m&&m.get('cat:'+cat.key))||null;
-  const fallbackIcon=(sc&&STOP_CATEGORY_ICON[sc])||cat.icon;
-  if(!hit)return {colorKey:'',icon:fallbackIcon,html:rowIconHtml(fallbackIcon)};
-  const show=hit.showIcon!==false;
-  const icon=!show?'none':(String(hit.icon||'')||fallbackIcon);
-  return {colorKey:String(hit.colorKey||''),icon,html:rowIconHtml(icon)};
+  /* **既定はアイコンなし**(§9.201)。以前は区分・分類ごとに元の絵を
+     当てていたが、利用者の指示で「既定はすべてアイコンなし」にした
+     ——付けたい行にだけ付けるほうが、印としての意味が強くなる。 */
+  return {colorKey:hit?String(hit.colorKey||''):'',
+          icon:iconValueOf(hit),html:rowIconHtml(iconValueOf(hit))};
  }
  function rowStyleClass(e){
   const c=rowStyleOf(e).colorKey;
@@ -3400,7 +3589,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const list=visibleEntries();
   if(!list.length){
    timeline.innerHTML=scState.entries.length
-    ?`<div class="sc-empty-note">さかのぼり(いまから過去${scState.historyHours}時間)に該当する予定・実績がありません。上の「さかのぼり」を長くしてください。</div>`
+    ?`<div class="sc-empty-note">これからの予定はありません。済んだ行は「さかのぼり」で決めた過去${scState.historyHours}時間ぶんだけ出しています——もっと前まで見るには「表示」→「さかのぼり」を長くしてください。</div>`
     :'<div class="sc-empty-note">この設備の予定はまだありません。</div>';
    renderPickBar(timeline);
    renderUndecided();
@@ -4373,6 +4562,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    const ids=draggingRemovableIds(scState.dragId);
    if(!ids.length)return;
    e.preventDefault();e.stopPropagation();
+   /* このあと起きる`dragend`が並べ替えとして確定しないよう、先に
+      「始末が付いた」印を立てる(§9.201)。外すのが目的なので、途中で
+      通り過ぎた位置を保存する意味が無い。 */
+   scState.dragSettled=true;
    /* **並べ替えとして確定させない。** 帯へ来るまでに行のdragoverでDOMが
       動いているが、commitDragOrder()は呼ばない(外すのが目的なので、
       途中で通り過ぎた位置を保存する意味が無い)。deleteEntry()が
@@ -4387,6 +4580,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   // 数値化するとNaNになり、比較もMap引きも静かに壊れる。
   card.addEventListener('dragstart',e=>{
    scState.dragId=card.dataset.id;card.classList.add('sc-dragging');e.dataTransfer.effectAllowed='move';
+   /* **掴んだ時点の並びを控える**(§9.201)。確定は`dragend`で行うので、
+      「動いたのか」をここと比べて決める。 */
+   scState.dragOrder0=timelineRowIds();scState.dragSettled=false;
    /* 選んだ行を掴んだら**選択全体を運ぶ**(§9.170)。仕掛一覧の一括投入と
       同じ作法。掴んだ行が選ばれていなければ今までどおり1件だけ。 */
    scState.dragIds=multiDragIds(card.dataset.id);
@@ -4397,6 +4593,16 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    card.classList.remove('sc-dragging');
    if(scState.dragIds)markDragging(scState.dragIds,false);
    scState.dragId=null;scState.dragIds=null;hideRemoveZone();
+   /* **確定は`drop`ではなく`dragend`**(§9.201)。`drop`は「直前の`dragover`が
+      `preventDefault()`を呼んだ場所」でしか起きない。行のdragoverは
+      **掴んでいる行自身の上では何もしない**（自分の前後へ挿しても
+      位置は変わらないため）ので、DOMを動かした結果**掴んだ行がカーソルの
+      下へ来た状態で離す**と、dropが一度も起きない。すると並びは画面上
+      だけ変わってサーバーへは何も送られず、画面を切り替えて戻ると
+      元の順に戻る（実機で「並べ替えても保存されない」と報告された）。
+      子ロットの箱・行間の余白・タイムラインの地の上で離した場合も同じ。
+      `dragend`は掴んだ元の要素で**必ず**起きるので、ここを確定の場にする。 */
+   finishDragOrder();
   });
   card.addEventListener('dragover',e=>{
    /* **選んだぶんをまとめて並べ替える**(§9.177)。以前は複数掴んでいる間は
@@ -4426,7 +4632,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     if(kid)parent.insertBefore(kid,el.nextSibling);
    });
   });
-  card.addEventListener('drop',e=>{e.preventDefault();commitDragOrder()});
+  card.addEventListener('drop',e=>{e.preventDefault();finishDragOrder()});
   card.addEventListener('keydown',e=>{
    if(!e.altKey)return;
    if(e.key==='ArrowUp'){e.preventDefault();moveCard(card,-1)}
@@ -4448,6 +4654,26 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(dir<0)card.parentNode.insertBefore(card,sibling);
   else card.parentNode.insertBefore(sibling,card);
   card.focus();
+  commitDragOrder();
+ }
+ /* いまタイムラインに出ている行のid（DOM順）。掴む前と離した後を
+    突き合わせるためだけに使う。 */
+ function timelineRowIds(){
+  const tl=$('#scTimeline');if(!tl)return [];
+  return [...tl.querySelectorAll('.sc-row-line')].map(r=>String(r.dataset.id));
+ }
+ /* 掴んだ手を離したときの後始末(§9.201)。**確定は1回だけ**（`drop`が
+    起きた場合は`dragend`が続けて来る）。**動いていなければ何も送らない**
+    ——ただ掴んで離しただけで書込が飛ぶと、共有スケジュールへ意味の無い
+    改訂が積まれる。 */
+ function finishDragOrder(){
+  if(scState.dragSettled)return;
+  scState.dragSettled=true;
+  const before=scState.dragOrder0||[];
+  const now=timelineRowIds();
+  scState.dragOrder0=null;
+  if(!before.length)return;
+  if(before.length===now.length&&before.every((v,i)=>v===now[i]))return;
   commitDragOrder();
  }
  function commitDragOrder(){

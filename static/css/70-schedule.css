@@ -1373,31 +1373,32 @@
  padding-bottom:var(--space-1);border-bottom:1px solid var(--line-soft);margin-bottom:var(--space-1);
 }
 .sc-rs-sec-head small{font-weight:700;color:var(--muted)}
-/* 1行=1つの区分。**器は中身の長さから決める**(§11)——名前は11em、色は
-   8個ぶん、アイコンの選択肢は名前が入る幅、見本は区分名+印が入る幅。 */
+/* 1行=1つの区分。**器は中身の長さから決める**(§11)——名前・色の選択欄・
+   アイコンのボタン・見本・戻す、の5列。 */
 .sc-rs-row{
- /* 名前 / 色 / アイコン / 見本 / 戻す。**アイコンは中身から決めた幅**
-    (§11)——名前は最長6文字なので、絵＋名前＋▾で9emに収まる。
-    見本は残り(1fr)を取り、はみ出す前に省略記号で詰める。 */
- display:grid;grid-template-columns:var(--w-md) auto 9.5em minmax(0,1fr) auto;
+ /* 色は**プルダウン**(§9.201)。8個のボタンを横に並べていたときは1行が
+    横長になり、右の見本と「戻す」が押し出されていた。 */
+ display:grid;grid-template-columns:var(--w-md) var(--w-md) 9.5em minmax(0,1fr) auto;
  align-items:center;gap:var(--space-2);padding:var(--space-1) 0;
  border-bottom:1px solid var(--line-soft);
 }
+/* 列の見出し。**何の列かを字で言う**(§3)——色だけ・形だけでは伝わらない。 */
+.sc-rs-cols{
+ display:grid;grid-template-columns:var(--w-md) var(--w-md) 9.5em minmax(0,1fr) auto;
+ gap:var(--space-2);padding-bottom:var(--space-1);
+ font-size:var(--fs-badge);font-weight:700;color:var(--muted);
+}
 .sc-rs-name{display:flex;flex-direction:column;min-width:0}
 .sc-rs-name small{color:var(--muted);font-size:var(--fs-badge)}
-.sc-rs-colors{display:flex;gap:var(--gap-hair);flex-wrap:wrap}
-.sc-rs-sw{
- height:var(--ctl-h-xs);padding:0 var(--space-1);cursor:pointer;
- border:1px solid var(--line);border-radius:var(--radius-xs);
- background:var(--rs-bg,var(--surface));color:var(--rs-fg,var(--ink-3));
- font-size:var(--fs-badge);font-weight:700;line-height:1;white-space:nowrap;
+/* 閉じた状態の選択欄そのものを、その色で塗る（開かなくても今の色が分かる）。 */
+.sc-rs-colorsel{
+ width:100%;min-width:0;height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-xs);
+ border:1px solid var(--rs-line,var(--line));border-radius:var(--radius-sm);
+ background:var(--rs-bg,var(--surface));color:var(--rs-fg,var(--ink-2));
+ font-size:var(--fs-sm);font-weight:700;cursor:pointer;
 }
-.sc-rs-sw.is-on{outline:2px solid var(--teal);outline-offset:1px}
-.sc-rs-sw.is-default{background:var(--surface);color:var(--muted)}
-/* ---------- アイコンは絵を見たまま選ぶ(§9.200) ----------
-   以前は名前だけの選択欄で、①選ぶ前にどんな絵か分からない
-   ②名前に「(絵文字)」が付いて器から見切れる（実機で「工具(絵文…」）。
-   いまはボタンに**いまの絵と呼び名**を出し、押すと絵の一覧が開く。 */
+.sc-rs-colorsel:focus{outline:2px solid var(--teal);outline-offset:1px}
+/* ---------- アイコンは絵を見たまま選ぶ(§9.200 → §9.201) ---------- */
 .sc-rs-icon{position:relative;min-width:0}
 .sc-rs-iconbtn{
  display:flex;align-items:center;gap:var(--gap-tight);width:100%;min-width:0;
@@ -1406,32 +1407,80 @@
  font-size:var(--fs-sm);color:var(--ink-2);
 }
 .sc-rs-iconbtn:hover{border-color:var(--teal);color:var(--nav)}
-.sc-rs-iconbtn[aria-expanded="true"]{border-color:var(--teal);background:var(--pale);color:var(--nav)}
 .sc-rs-iconview{flex:none;display:inline-flex;align-items:center;justify-content:center;
  width:1.4em;line-height:1}
-/* **見切れさせない**——呼び名は最長6文字だが、器が狭い日は省略記号で
-   詰める（切り落として黙って消さない）。 */
+/* **見切れさせない**——呼び名が長い日は省略記号で詰める（黙って消さない）。 */
 .sc-rs-iconname{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
 .sc-rs-iconbtn>em{flex:none;font-style:normal;font-size:var(--fs-badge);color:var(--muted)}
 .sc-icon-word{font-size:var(--fs-badge);color:var(--muted)}
-.sc-icon-pick{
- position:absolute;top:calc(100% + 2px);left:0;z-index:var(--z-popover);
- width:min(30em,80vw);max-height:16em;overflow:auto;padding:var(--space-2);
- border:1px solid var(--line-mid);border-radius:var(--radius-sm);background:var(--surface);
- box-shadow:0 10px 24px rgba(23,56,66,.22);
+/* ---------- アイコンを選ぶ盤(§9.201) ----------
+   **器の外へ出す**のが肝。以前は`.sc-rs-icon`の中に`position:absolute`で
+   開いており、浮きパネル(`.sc-view-pop{overflow:auto}`)に切られて下半分が
+   見えなかった（実機で報告）。`position:fixed`＋`body`直下なら、どの器の
+   `overflow`にも切られない。 */
+.sc-icon-modal{
+ position:fixed;inset:0;z-index:var(--z-settings);
+ display:flex;align-items:center;justify-content:center;padding:var(--space-4);
+ background:rgba(23,56,66,.34);
 }
-.sc-icon-pick[hidden]{display:none}
-.sc-icon-grp{margin:var(--space-1) 0 2px;font-size:var(--fs-badge);font-weight:800;color:var(--muted)}
-.sc-icon-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(4.6em,1fr));gap:var(--gap-tight)}
+.sc-icon-modal[hidden]{display:none}
+.sc-icon-win{
+ display:flex;flex-direction:column;width:min(780px,94vw);max-height:84vh;
+ border:1px solid var(--line-mid);border-radius:var(--radius-lg);background:var(--surface);
+ box-shadow:0 18px 48px rgba(23,56,66,.28);overflow:hidden;
+}
+.sc-icon-win-head{
+ display:flex;align-items:baseline;gap:var(--space-2);
+ padding:var(--space-3) var(--space-3) var(--space-2);border-bottom:1px solid var(--line-soft);
+}
+.sc-icon-win-head>b{font-size:var(--fs-title);color:var(--teal-dark)}
+/* **どの行の設定かを書く**(§9.176)。同じ盤を区分ぶん使い回すので、
+   これが無いと「いま何を変えているか」が分からない。 */
+.sc-icon-win-for{flex:1 1 auto;min-width:0;font-size:var(--fs-sm);color:var(--muted);
+ overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sc-icon-win-close{
+ flex:none;width:var(--ctl-h-sm);height:var(--ctl-h-sm);cursor:pointer;
+ border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);
+ color:var(--ink-3);font-size:var(--fs-sm);line-height:1;
+}
+.sc-icon-win-close:hover{border-color:var(--danger-border);color:var(--danger)}
+.sc-icon-win-tools{
+ display:flex;align-items:center;gap:var(--space-2);
+ padding:var(--space-2) var(--space-3);border-bottom:1px solid var(--line-soft);
+}
+.sc-icon-win-tools input{
+ flex:1 1 auto;min-width:0;height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
+ border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);
+ font-size:var(--fs-sm);color:var(--ink);
+}
+.sc-icon-win-tools input:focus{outline:2px solid var(--teal);outline-offset:1px}
+.sc-icon-win-tools small{flex:none;font-size:var(--fs-badge);color:var(--muted)}
+.sc-icon-body{flex:1 1 auto;min-height:0;overflow:auto;padding:var(--space-2) var(--space-3)}
+.sc-icon-win-foot{
+ flex:none;margin:0;padding:var(--space-2) var(--space-3);
+ border-top:1px solid var(--line-soft);background:var(--surface-2);
+ font-size:var(--fs-badge);color:var(--muted);
+}
+.sc-icon-empty{margin:var(--space-3) 0;font-size:var(--fs-sm);color:var(--muted);line-height:1.6}
+.sc-icon-grp{
+ display:flex;align-items:baseline;gap:var(--gap-tight);
+ margin:var(--space-2) 0 var(--space-1);
+ font-size:var(--fs-badge);font-weight:800;color:var(--ink-3);
+}
+.sc-icon-grp small{font-weight:700;color:var(--muted)}
+.sc-icon-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(5.6em,1fr));gap:var(--gap-tight)}
 .sc-icon-cell{
- display:flex;flex-direction:column;align-items:center;gap:1px;
- padding:var(--space-1) 2px;cursor:pointer;min-width:0;
- border:1px solid var(--line-soft);border-radius:var(--radius-xs);background:var(--surface);
+ display:flex;flex-direction:column;align-items:center;gap:2px;
+ padding:var(--space-2) 2px var(--space-1);cursor:pointer;min-width:0;
+ border:1px solid var(--line-soft);border-radius:var(--radius-sm);background:var(--surface);
  color:var(--ink-2);
 }
 .sc-icon-cell:hover{border-color:var(--teal);background:var(--pale);color:var(--nav)}
-.sc-icon-cell.is-on{border-color:var(--teal);background:var(--pale);color:var(--teal-dark);font-weight:800}
-.sc-icon-glyph{display:inline-flex;align-items:center;justify-content:center;height:1.5em;font-size:var(--fs-base-sm);line-height:1}
+.sc-icon-cell.is-on{border-color:var(--teal);background:var(--pale);color:var(--teal-dark);font-weight:800;
+ outline:2px solid var(--teal);outline-offset:-2px}
+/* 絵は名前より大きく（探すときに見ているのは絵のほう）。 */
+.sc-icon-glyph{display:inline-flex;align-items:center;justify-content:center;
+ height:1.6em;font-size:var(--fs-title);line-height:1}
 .sc-icon-cell small{font-size:var(--fs-badge);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* 色の目安は**1行だけ先に書く**。行ごとのtitleに隠すと、8色が何を表すのかを
    覚えていないと選べない。 */

@@ -19,7 +19,8 @@ from ..paths import APP_ROOT as BASE_DIR
 from ..config import (RNE_EXTRACT_INTERVAL_SEC_DEFAULT, SCHEDULE_LOCK_TTL_SEC_DEFAULT,
                       SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT,
                       SCHEDULE_WATCH_INTERVAL_SEC_DEFAULT, SCHEDULE_WATCH_PAUSE_SEC_DEFAULT,
-                      SCHEDULE_OWNER_PORT_DEFAULT, SCHEDULE_OWNER_TTL_SEC_DEFAULT)
+                      SCHEDULE_OWNER_PORT_DEFAULT, SCHEDULE_OWNER_TTL_SEC_DEFAULT,
+                      RECORDS_BACKUP_EXPORT_INTERVAL_SEC)
 from .. import source_capability
 from ..logging_setup import app_logger
 from ..db_access import (
@@ -42,6 +43,10 @@ bp=Blueprint('path_config',__name__)
 _PATH_CONFIG_DEFAULTS={
  'sikalot_source':'network','sikalotnow_path':'','sikalotdef_path':'',
  'records_backup_export_path':'','schedule_share_path':'',
+ # 閲覧用の複製をどれくらいの間隔で見に行くか(§9.202)。**変化があった
+ # ときだけ複製する**ので、短くしても無駄な複製は増えない。こちらは
+ # 呼び出しのたびに読み直すので再起動は要らない(複製先のパスは要る)。
+ 'records_backup_export_interval_sec':str(RECORDS_BACKUP_EXPORT_INTERVAL_SEC),
  'rne_extract_enabled':'auto',
  # 共有DBを手元へ写してから読むか(§9.89)。既定は有効。
  'db_mirror_enabled':'auto','db_mirror_interval_sec':'60',
@@ -65,6 +70,7 @@ _PATH_CONFIG_DEFAULTS={
 }
 _PATH_CONFIG_NUMERIC_FIELDS={
  'rne_extract_interval_sec':('RNE抽出間隔(秒)',60),
+ 'records_backup_export_interval_sec':('測定データの複製を見に行く間隔(秒)',30),
  'schedule_lock_ttl_sec':('スケジュールロックの有効期限(秒)',1),
  'schedule_lock_verify_delay_ms':('ロック確認までの待機時間(ミリ秒)',0),
  'schedule_watch_interval_sec':('共有スケジュールの変化を見る間隔(秒)',5),
@@ -121,6 +127,7 @@ def path_config_master_get():
    'schedule_share_path':str(SCHEDULE_SHARE_PATH) if SCHEDULE_SHARE_PATH else '',
    'rne_extract_enabled':str(path_config_value('rne_extract_enabled','auto') or 'auto'),
    'rne_extract_interval_sec':str(path_config_value('rne_extract_interval_sec',RNE_EXTRACT_INTERVAL_SEC_DEFAULT)),
+   'records_backup_export_interval_sec':str(path_config_value('records_backup_export_interval_sec',RECORDS_BACKUP_EXPORT_INTERVAL_SEC)),
    'db_mirror_enabled':str(path_config_value('db_mirror_enabled','auto') or 'auto'),
    'db_mirror_interval_sec':str(path_config_value('db_mirror_interval_sec','60')),
    'schedule_lock_ttl_sec':str(path_config_value('schedule_lock_ttl_sec',SCHEDULE_LOCK_TTL_SEC_DEFAULT)),

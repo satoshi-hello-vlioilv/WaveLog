@@ -39,8 +39,13 @@ const ITEM_DEFS=[
 ];
 /* 母材パネルの入力欄(data-mother)。activeRequiredControls と同じ8項目。 */
 const MOTHER_FIELDS=['manual','fullLength','minCard','maxCard','front','rear','frontCard','rearCard'];
-/* 揃い/肉厚/長さ で1丈を「入力済み」とみなす項目(productRowFilled と同基準)。 */
-const PRODUCT_FIELDS=['productLength','wallThickness','alignmentCode'];
+/* 揃い/肉厚/長さ で1丈を「入力済み」とみなす項目。**定義は1箇所**
+   （`measurement-view.js`の`PRODUCT_FILLED_KEYS`）——2つ持つと、項目を
+   足したときに片方だけ直った状態が作れる。§9.203で4桁の揃いコードを
+   廃止したので、`alignmentCode`だけを見ると新しく入力した行が1件も
+   数えられない（旧データのために残してある）。
+   **読むのは呼ばれたとき**——読み込み順に依存しないようにする。 */
+const productFilledKeys=()=>PRODUCT_FILLED_KEYS;
 
 const filled=v=>String(v??'').trim()!=='';
 
@@ -79,7 +84,7 @@ function itemProgress(m,def){
   const mother=m.mother||{};
   const rows=(m.product&&Array.isArray(m.product.rows))?m.product.rows:[];
   const pieces=Array.from({length:c.vertical},(_,i)=>rows[i])
-   .filter(r=>PRODUCT_FIELDS.some(k=>filled(r&&r[k]))).length;
+   .filter(r=>productFilledKeys().some(k=>filled(r&&r[k]))).length;
   out.total=MOTHER_FIELDS.length+c.vertical;
   out.filled=MOTHER_FIELDS.filter(k=>filled(mother[k])).length+pieces;
  }else{

@@ -43,12 +43,18 @@ let b=null;
     symnavim.confの場所を§9.79で追加した)ので、数を固定すると足すたびに
     落ちる。「あるべきものが全部出ているか」が見たいこと。 */
  /* **データソースごとの読み込み先はここに無い**（§9.168）。同じ「どこを読むか」を
-    2画面に置くと、どちらが効くのか分からなくなるため「データ接続」へ寄せた。 */
+    2画面に置くと、どちらが効くのか分からなくなるため「データ接続」へ寄せた。
+    **測定データバックアップの複製先もここに無い**（§9.202）——置き場の図・
+    件数・「いま複製する」と同じ画面（測定データの保存）にあるほうが、
+    何が起きるか分かるため。 */
  const WANT=['sikalot_source',
-   'schedule_share_path','records_backup_export_path','rne_extract_enabled',
+   'schedule_share_path','rne_extract_enabled',
    'rne_extract_interval_sec','rne_assets_dir','rne_conf_path',
    'schedule_lock_ttl_sec','schedule_lock_verify_delay_ms'];
+ const MOVED=['records_backup_export_path'];
  const missing=WANT.filter(k=>!p.fields.includes(k));
+ rec('よそへ移した設定をここに残さない',MOVED.every(k=>!p.fields.includes(k)),
+     MOVED.filter(k=>p.fields.includes(k)).join(',')||'なし');
  rec('設定項目が漏れなく出ている',missing.length===0,
    missing.length?`不足: ${missing.join(',')}`:`${p.fields.length}件`);
  rec('入力欄が枠外へ切れていない',p.clipped===0,p.clipped+'件が見切れ');

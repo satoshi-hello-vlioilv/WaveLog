@@ -130,8 +130,11 @@ let b=null;
   rne:!!document.querySelector('#rnePanel'),
   runBtn:!!document.querySelector('#rneRunBtn'),
  }));
- rec('パス欄に「参照…」ボタンが付く',pc.browse>=4,JSON.stringify(pc));
- rec('パス欄がドラッグ&ドロップを受け付ける',pc.drop>=4,JSON.stringify(pc));
+ /* §9.202で「測定データバックアップの複製先」を共通設定から
+    「測定データの保存」タブへ移したので、ここのパス欄は3つ
+    （共有スケジュール・RNE資材・symnavim.conf）。 */
+ rec('パス欄に「参照…」ボタンが付く',pc.browse>=3,JSON.stringify(pc));
+ rec('パス欄がドラッグ&ドロップを受け付ける',pc.drop>=3,JSON.stringify(pc));
  rec('間隔などの数値欄も増減ボタン付きになる',pc.nums>=3,JSON.stringify(pc));
  rec('RNE抽出の状態表示パネルがある',pc.rne&&pc.runBtn,JSON.stringify(pc));
 

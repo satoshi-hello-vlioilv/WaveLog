@@ -152,19 +152,22 @@ let b=null;
   await page.waitForTimeout(700);
   const panel=await page.evaluate(()=>({
    rows:[...document.querySelectorAll('.sc-rs-row')].map(r=>r.dataset.rs),
-   colors:document.querySelectorAll('.sc-rs-row[data-rs="cat:planned"] [data-rs-color]').length,
+   colors:document.querySelectorAll('.sc-rs-row[data-rs="cat:planned"] [data-rs-color] option').length,
   }));
   rec('区分6つが並ぶ',['cat:planned','cat:doing','cat:done','cat:cancel','cat:stop','cat:comment']
       .every(k=>panel.rows.includes(k)),JSON.stringify(panel.rows));
-  rec('色は決められた8色から選ぶ',panel.colors===8,String(panel.colors));
+  /* §9.201で横並びのボタン8個から**プルダウン**へ（利用者の指示）。 */
+  rec('色は決められた8つから選ぶ（プルダウン）',panel.colors===8,String(panel.colors));
   rec('設備停止の分類ごとにも決められる',panel.rows.some(k=>k.startsWith('stopcat:')),JSON.stringify(panel.rows));
 
-  await page.click('.sc-rs-row[data-rs="cat:planned"] [data-rs-color="blue"]');
+  await page.selectOption('.sc-rs-row[data-rs="cat:planned"] [data-rs-color]','blue');
   await page.waitForTimeout(800);
-  /* アイコンは§9.200で「絵を見たまま選ぶ盤」になった（選択欄をやめた）。 */
+  /* アイコンは§9.200で「絵を見たまま選ぶ盤」になり、§9.201で**行の外**
+     （body直下の`#scIconPick`）へ出した——行の中だと浮きパネルの
+     `overflow`に切られて下半分が見えなかった。 */
   await page.click('.sc-rs-row[data-rs="cat:planned"] [data-rs-iconbtn]');
-  await page.waitForTimeout(300);
-  await page.click('.sc-rs-row[data-rs="cat:planned"] [data-icon-pick="svg:clock"]');
+  await page.waitForSelector('#scIconPick:not([hidden])',{timeout:8000});
+  await page.click('#scIconPick [data-icon-pick="svg:clock"]');
   await page.waitForTimeout(900);
   const applied=await page.evaluate(()=>{
    const rows=[...document.querySelectorAll('.sc-row-line')];
@@ -189,9 +192,9 @@ let b=null;
   const cats=await page.evaluate(()=>[...document.querySelectorAll('.sc-rs-row')]
     .map(r=>r.dataset.rs).filter(k=>k.startsWith('stopcat:')));
   if(cats.length){
-   await page.click('.sc-rs-row[data-rs="cat:stop"] [data-rs-color="amber"]');
+   await page.selectOption('.sc-rs-row[data-rs="cat:stop"] [data-rs-color]','amber');
    await page.waitForTimeout(700);
-   await page.click(`.sc-rs-row[data-rs="${cats[0].replace(/"/g,'\\"')}"] [data-rs-color="red"]`);
+   await page.selectOption(`.sc-rs-row[data-rs="${cats[0].replace(/"/g,'\\"')}"] [data-rs-color]`,'red');
    await page.waitForTimeout(800);
    const won=await page.evaluate(c=>{
     const name=c.slice('stopcat:'.length);

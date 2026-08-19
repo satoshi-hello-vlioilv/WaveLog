@@ -138,6 +138,72 @@ let b=null;
   rec('画面を切り替えて戻っても並べ替えが残る',back.join()===afterLate.join(),
       `${afterLate.slice(0,6).join(',')} / ${back.slice(0,6).join(',')}`);
 
+  /* ---- 1b) 掴んで離しただけ（dropが起きない）でも保存される -------------
+     実機の報告「並び替えるだけの時は通信していない」。HTML5のD&Dでは
+     **直前の`dragover`が`preventDefault()`を呼んだ場所でしか`drop`は
+     起きない**。行のdragoverは掴んでいる行自身の上では何もしない（自分の
+     前後へ挿しても位置が変わらないため）ので、DOMを動かした結果その行が
+     カーソルの下へ来た状態で離すと`drop`が一度も起きず、確定処理が
+     走らなかった。**ここでは`drop`をわざと起こさない。**
+     Alt+↑↓は`commitDragOrder()`を直接呼ぶ別経路なので、上の網では
+     素通りしていた。 */
+  let reorderPosts=0;
+  page.on('request',r=>{if(r.method()==='POST'&&/\/api\/schedule\/plan\/reorder/.test(r.url()))reorderPosts++});
+  const dragIds=await page.$$eval('#scTimeline .sc-row-line',
+    n=>n.filter(x=>x.draggable).map(x=>x.dataset.id));
+  /* まず「掴んで、動かさずに離した」——何も送らないこと（意味の無い
+     改訂を共有スケジュールへ積まない）。 */
+  if(dragIds.length>1){
+   await page.evaluate(a=>{
+    const dt=new DataTransfer();
+    const ra=document.querySelector(`.sc-row-line[data-id="${a}"]`);
+    ra.dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer:dt}));
+    ra.dispatchEvent(new DragEvent('dragend',{bubbles:true,dataTransfer:dt}));
+   },dragIds[0]);
+   await page.waitForTimeout(900);
+  }
+  rec('掴んで動かさずに離したら何も送らない',reorderPosts===0,`POST ${reorderPosts}回`);
+
+  const dragMoved=dragIds.length>1?await page.evaluate(([a,b])=>{
+   const dt=new DataTransfer();
+   const ra=document.querySelector(`.sc-row-line[data-id="${a}"]`);
+   const rb=document.querySelector(`.sc-row-line[data-id="${b}"]`);
+   const q=()=>[...document.querySelectorAll('#scTimeline .sc-row-line')].map(x=>x.dataset.id);
+   const order0=q();
+   ra.dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer:dt}));
+   const r=rb.getBoundingClientRect();
+   rb.dispatchEvent(new DragEvent('dragover',{bubbles:true,cancelable:true,dataTransfer:dt,
+     clientX:r.left+8,clientY:r.top+r.height*0.8}));
+   const moved=q();
+   /* **dropは起こさない**（実機で起きていないのがこの経路） */
+   ra.dispatchEvent(new DragEvent('dragend',{bubbles:true,dataTransfer:dt}));
+   return {order0,moved};
+  },[dragIds[0],dragIds[1]]):null;
+  rec('掴んで運ぶと画面の並びが変わる',
+      !!dragMoved&&dragMoved.order0.join()!==dragMoved.moved.join(),
+      dragMoved?`${dragMoved.order0.slice(0,5).join(',')} → ${dragMoved.moved.slice(0,5).join(',')}`:'行が足りない');
+  await page.waitForTimeout(2500);
+  rec('dropが起きなくても並べ替えがサーバーへ届く',reorderPosts>=1,`POST ${reorderPosts}回`);
+  const srvAfterDrag=await srvIds();
+  const domAfterDrag=await ids();
+  const planOnly=x=>/^\d+$/.test(x)&&srvAfterDrag.includes(x)&&domAfterDrag.includes(x);
+  rec('掴んで運んだ順がサーバーにも残っている',
+      srvAfterDrag.filter(planOnly).join()===domAfterDrag.filter(planOnly).join(),
+      `画面 ${domAfterDrag.filter(planOnly).slice(0,6).join(',')} / サーバ ${srvAfterDrag.filter(planOnly).slice(0,6).join(',')}`);
+  /* **画面を切り替えて戻す**——実機の症状はここで元へ戻ることだった。 */
+  await page.click('#openMasterMaint');
+  await page.waitForTimeout(2000);
+  await page.click('#openSchedule');
+  await page.waitForTimeout(1000);
+  await page.evaluate(e=>{const r=[...document.querySelectorAll('.sc-board-row')]
+    .find(x=>x.dataset.equipment===e);if(r)r.click()},EQ);
+  await page.waitForSelector('.sc-row-line',{timeout:30000});
+  await page.waitForTimeout(2500);
+  const backDrag=await ids();
+  rec('掴んで運んだ順が画面を切り替えても残る',
+      backDrag.filter(planOnly).join()===domAfterDrag.filter(planOnly).join(),
+      `${domAfterDrag.filter(planOnly).slice(0,6).join(',')} / ${backDrag.filter(planOnly).slice(0,6).join(',')}`);
+
   /* ---- 5) 行の色とアイコン ---- */
   await page.evaluate(()=>WL.scheduleView.openViewPop());
   await page.waitForTimeout(200);
@@ -153,33 +219,62 @@ let b=null;
   });
   rec('アイコンは「いまの絵＋呼び名」のボタンで選ぶ',panel.btn&&panel.glyph&&!!panel.name,
       JSON.stringify(panel).slice(0,140));
-  rec('既定の欄にも元の絵が出る（名前を2度読ませない）',panel.name==='既定'&&panel.glyph,
-      `${panel.name}`);
+  /* §9.201で**既定＝アイコンなし**（利用者の指示）。「既定」と「なし」で
+     同じ見え方になる2択を選ばせない。 */
+  rec('印は既定では付かない（「なし」と出る）',panel.name==='なし',`${panel.name}`);
   rec('色の目安を先に書く',/目立たせない/.test(panel.legend||'')&&/停止・異常/.test(panel.legend||''),
       String(panel.legend).slice(0,80));
   await page.click('.sc-rs-row[data-rs="cat:stop"] [data-rs-iconbtn]');
-  await page.waitForTimeout(300);
+  await page.waitForSelector('#scIconPick:not([hidden])',{timeout:8000});
   const pick=await page.evaluate(()=>{
-   const box=document.querySelector('.sc-rs-row[data-rs="cat:stop"] .sc-icon-pick');
+   const box=document.querySelector('#scIconPick');
+   const win=box.querySelector('.sc-icon-win').getBoundingClientRect();
    const cells=[...box.querySelectorAll('.sc-icon-cell')];
+   const body=box.querySelector('.sc-icon-body').getBoundingClientRect();
+   /* **切られていないこと**を実寸で見る（以前は行の中に絶対配置していて
+      浮きパネルの`overflow`に切られ、下半分が見えなかった）。 */
+   const last=cells[cells.length-1].getBoundingClientRect();
    return {open:!box.hidden,n:cells.length,
-     groups:[...box.querySelectorAll('.sc-icon-grp')].map(x=>x.textContent),
-     drawn:cells.filter(c=>c.querySelector('.sc-icon-glyph').innerHTML.trim()).length};
+     groups:[...box.querySelectorAll('.sc-icon-grp')].map(x=>x.textContent.replace(/\d+$/,'')),
+     drawn:cells.filter(c=>c.querySelector('.sc-icon-glyph').innerHTML.trim()).length,
+     内側:win.top>=-1&&win.bottom<=innerHeight+1&&win.left>=-1&&win.right<=innerWidth+1,
+     最後まで届く:last.bottom<=body.bottom+body.height+2,
+     親:box.parentElement.tagName,
+     絞り込み:!!box.querySelector('#scIconPickQ')};
   });
-  rec('絵を見たまま選べる（全部の枠に絵か印が出る）',pick.open&&pick.n>20&&pick.drawn===pick.n,
-      JSON.stringify(pick).slice(0,140));
-  rec('種類ごとに見出しで分ける',pick.groups.length>=3,JSON.stringify(pick.groups));
-  await page.click('.sc-rs-row[data-rs="cat:stop"] [data-icon-pick="svg:bolt"]');
+  rec('絵を見たまま選べる（全部の枠に絵か印が出る）',pick.open&&pick.n>60&&pick.drawn===pick.n,
+      JSON.stringify({n:pick.n,drawn:pick.drawn}));
+  rec('種類ごとに見出しで分ける',pick.groups.length>=6,JSON.stringify(pick.groups));
+  rec('盤は器の外(body直下)に出るので切られない',pick.親==='BODY'&&pick.内側,
+      JSON.stringify({親:pick.親,内側:pick.内側}));
+  rec('名前で絞り込める',pick.絞り込み,String(pick.絞り込み));
+  /* 絞り込みが本当に効くこと（件数が減り、当たったものだけ残る）。 */
+  await page.fill('#scIconPickQ','時計');
+  await page.waitForTimeout(250);
+  const filtered=await page.evaluate(()=>({
+   n:document.querySelectorAll('#scIconPick .sc-icon-cell').length,
+   labels:[...document.querySelectorAll('#scIconPick .sc-icon-cell small')].map(x=>x.textContent)}));
+  rec('絞り込むと当たったものだけになる',filtered.n>0&&filtered.n<pick.n&&filtered.labels.includes('時計'),
+      JSON.stringify(filtered).slice(0,120));
+  await page.fill('#scIconPickQ','');
+  await page.waitForTimeout(250);
+  await page.click('#scIconPick [data-icon-pick="svg:bolt"]');
   await page.waitForTimeout(1200);
   const saved=await page.evaluate(async()=>{
    const r=await fetch('/api/schedule/row-style-master');
    const hit=((await r.json()).items||[]).find(x=>x.key==='cat:stop');
    const nm=document.querySelector('.sc-rs-row[data-rs="cat:stop"] .sc-rs-iconname');
-   const svg=document.querySelector('#scTimeline .sc-row-cat.sc-cat-stop svg.sc-ic');
-   return {icon:hit&&hit.icon,name:nm&&nm.textContent.trim(),onRow:!!svg};
+   /* 見本は必ず在る（表に設備停止の行が無い日でも確かめられる）。
+      表の行は在るときだけ見る。 */
+   const sample=document.querySelector('.sc-rs-row[data-rs="cat:stop"] .sc-rs-sample svg.sc-ic');
+   const stopRow=document.querySelector('#scTimeline .sc-row-cat.sc-cat-stop');
+   return {icon:hit&&hit.icon,name:nm&&nm.textContent.trim(),
+           sample:!!sample,
+           onRow:stopRow?!!stopRow.querySelector('svg.sc-ic'):'表に設備停止の行なし'};
   });
   rec('選んだ瞬間に保存される',saved.icon==='svg:bolt',JSON.stringify(saved));
-  rec('その場で表の行にも当たる',saved.name==='稲妻',JSON.stringify(saved));
+  rec('その場で見本にも当たる',saved.name==='突発'&&saved.sample,JSON.stringify(saved));
+  rec('表に設備停止の行があれば、そこにも当たる',saved.onRow!==false,JSON.stringify(saved.onRow));
   /* **文字が見切れていないこと**を実寸で見る（幅の数字だけを見る網では
      捕まらない）。 */
   const clipped=await page.evaluate(()=>{

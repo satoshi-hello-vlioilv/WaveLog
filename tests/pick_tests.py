@@ -54,7 +54,7 @@ G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'te
                      'test_scowner', 'test_scrowstyle', 'test_scload', 'test_scbar', 'test_scsave']
 G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 'test_eqkind',
                'test_shift', 'test_dbequip', 'test_crudroutes', 'test_setpage', 'test_eqstd',
-               'test_workdate']
+               'test_workdate', 'test_measstore']
 G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'test_flows',
              'test_p11', 'test_p11c', 'test_waiting', 'test_mcore', 'test_msteps']
 G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'test_density',
@@ -144,7 +144,7 @@ RULES = [
                                    'test_modeguard')),
     ('backend/routes/masters.py', g('マスタ', '列', 'test_modeguard')),
     ('backend/routes/schedule.py', g('スケジュール', 'test_modeguard', 'test_crudroutes')),
-    ('backend/routes/measurement.py', g('測定', 'test_modeguard')),
+    ('backend/routes/measurement.py', g('測定', 'test_modeguard', 'test_measstore')),
     ('backend/routes/quality.py', g('test_uiux', 'test_hdr', 'test_tablequery',
                                     'test_modeguard')),
     ('backend/routes/logs.py', g('ログ', 'test_modeguard')),
@@ -178,7 +178,7 @@ RULES = [
     ('backend/schedule_sync.py', g('test_sclock', 'test_scsync', 'test_scwritespeed',
                                    'test_screorder', 'test_atomicio')),
     ('backend/load_factor.py', g('test_scbalance', 'test_sccat', 'test_screport', 'test_eqstd')),
-    ('backend/records_export.py', g('test_share', 'test_flows')),
+    ('backend/records_export.py', g('test_share', 'test_flows', 'test_measstore')),
     ('backend/logging_setup.py', g('ログ')),
     ('backend/boot_status.py', g('起動')),
     ('backend/watchdog.py', g('test_tabclose', 'test_boot')),

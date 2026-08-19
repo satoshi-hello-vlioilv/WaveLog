@@ -1354,10 +1354,13 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 }
 .prt-c-no{width:2.4em}     /* 丈(1桁) */
 .prt-c-num{width:7.6em}     /* 長さ・肉厚・ピッチ(2500.8＋スピナー=72px) — 同じ群は同じ幅 */
-.prt-c-code{width:6.8em}    /* 揃いコード(4桁)。見出しを折り返さない幅 */
-.prt-c-judge{width:3.8em}   /* OK / NG */
-.prt-c-sym{width:5.4em}     /* 内訳の記号(1文字)。幅を決めるのは見出しの側 */
-.prt-c-val{width:3.4em}     /* 4桁目 値(1文字) */
+.prt-c-judge{width:4.6em}   /* OK / NG ＋ 旧コードの控え */
+/* 選択欄は**選択肢の長さ**で決める(§9.203)。いちばん長いのは
+   「1/3〜2/3発生」(8文字)なので、そこへそろえる——同じ群(揃いの記録)の
+   中は群の最大へそろえる(§9.131)。方向はOS/DSの2文字なので別枠。 */
+/* エッジ形状(いちばん長い「のこぎり状」)。**内訳は行の下の段へ出す**ので、
+   横に並ぶ選択欄はこの1つだけ(§9.203)。 */
+.prt-c-sel{width:10.4em}
 /* 備考だけ残りを取る(自由記述は長いほどよい)。col に width を書かない。 */
 .product-rows-table th,.product-rows-table td{
   padding:var(--pad-row);border-right:1px solid var(--line-soft);
@@ -1384,8 +1387,34 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
   text-align:center;color:var(--ink-soft);font-weight:700;background:var(--surface-2);
 }
 /* 器は列。**列の中では目いっぱい**使う（列の幅そのものを中身から決めてある）。 */
-.product-rows-table input{width:100%;height:var(--ctl-h-sm);background:#fff}
+.product-rows-table input,.product-rows-table select{width:100%;height:var(--ctl-h-sm);background:#fff}
+.product-rows-table select{border:1px solid var(--line);border-radius:var(--radius-xs);
+  font-size:var(--fs-sm);color:var(--ink-2);min-width:0}
+/* 書かなくてよい欄は**押せなくして、そう見せる**(§4)。 */
+.product-rows-table input:disabled,.product-rows-table select:disabled{
+  background:var(--surface-2);color:var(--muted);cursor:not-allowed}
 .product-rows-table .product-judge{display:block;text-align:center}
+/* 4桁コードで記録された旧データの控え。**消さずに小さく残す**(§9.203)。 */
+.prt-old{display:block;text-align:center;font-size:var(--fs-tiny);color:var(--muted)}
+/* ---------- 揃いの内訳(§9.203) ----------
+   **異常のときだけ、行の下へ横いっぱいで出す。** 5欄を列として横に並べると
+   1列120px×5が要り、器(実測841px)に入らない——詰めると「1/3〜2/3発生」が
+   見切れる。異常の無い行では場所も取らないので、面積は「頻度×重要度」
+   どおりに配れる(§1)。 */
+/* **セルはtable-cellのまま**にする——`display:flex`にするとセルでは
+   なくなり、`colspan`で横いっぱいに伸びない（`table-layout:fixed`では
+   列の解決も崩れる）。並べるのは中の器の仕事。 */
+.product-rows-table tr.prt-detail>td{
+  padding:var(--space-1) var(--space-2);background:var(--surface-2);
+  white-space:normal;
+}
+.prt-detail-in{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2)}
+.prt-detail-lead{font-size:var(--fs-tiny);font-weight:800;color:var(--ink-3);white-space:nowrap}
+.prt-df{display:flex;align-items:center;gap:var(--gap-tight);min-width:0}
+.prt-df>span{font-size:var(--fs-tiny);color:var(--muted);white-space:nowrap}
+/* 器は中身から決める(§11)。いちばん長いのは「1/3〜2/3発生」。 */
+.prt-df select{width:9.4em}
+.prt-df input{width:6.4em}
 /* ---------- 8. 測定エディタ ---------- */
 /* **高さは器から分ける**（§9.146）。以前は`height:calc(100% - 82px)`という
    直値で、上に居たはずのタブ（`.right-pane.layout-measure .work-tabs`で

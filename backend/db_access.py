@@ -302,7 +302,11 @@ PATH_CONFIG_LIVE_KEYS=('rne_extract_interval_sec','rne_extract_enabled','schedul
                        # 共有スケジュールの持ち主(§9.192)。既定は off。
                        'schedule_owner_enabled','schedule_owner_port','schedule_owner_ttl_sec',
                        # 既定の品質データ結合(§9.194)。'off'で解除。既定は on。
-                       'builtin_quality_join')
+                       'builtin_quality_join',
+                       # 測定データの閲覧用複製を見に行く間隔(§9.202)。複製先の
+                       # パスは接続先と同じ扱い(再起動が要る)だが、間隔だけは
+                       # 呼び出しのたびに読み直すので再起動は要らない。
+                       'records_backup_export_interval_sec')
 PATH_CONFIG_KEYS=PATH_CONFIG_STATIC_KEYS+PATH_CONFIG_LIVE_KEYS
 
 def ensure_path_config_table(c):
