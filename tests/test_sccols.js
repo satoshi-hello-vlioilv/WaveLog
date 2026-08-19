@@ -78,7 +78,10 @@ async function cleanup(){
   /* **要点**: 見出しとセルの桁が合う。ずれると表として読めない。 */
   rec('見出しとセルの左端が揃う',v.headX.join()===v.cellX.join(),
    `head=${v.headX.join(',')} / cell=${v.cellX.join(',')}`);
-  rec('グリッドの列数が内容の数だけ増える',v.tracks===11+v.headKeys.length,
+  /* 固定10列＋取っ手＋内容の数＋**余りを受ける1本**（§9.209 ①）。
+     余りの1本はセルを持たない——列を増やしたのではなく、狭めたときに
+     できる空きを受けるための器。 */
+  rec('グリッドの列数が内容の数だけ増える',v.tracks===12+v.headKeys.length,
    `${v.tracks}列(内容${v.headKeys.length})`);
 
   /* ---- 2) 行の高さと列数は行によらず一定 ---- */

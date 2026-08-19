@@ -327,6 +327,61 @@ const settle=async page=>{
        JSON.stringify({状態:d2.状態,保存値:d2.保存値}));
   }
 
+  /* ==================================================================
+     §9.209 ② 分割の無いロットでも条の図を出す（利用者の指示）
+     ------------------------------------------------------------------
+     「分割なしでも、取得済みのロットのデータで図を表現してほしいです。
+      屑幅の片寄や条割数の視覚化、異常発生時の条番号特定など様々な機能を
+      使う必要があります。」
+     材料は親ロット自身（条数＝横割数）。**並べ替えはできない**ので、
+     掴める見た目・案内・「1つ戻す」は出さない（§4）。
+     ================================================================== */
+  const plain=await page.evaluate(async()=>{
+   const r=await fetch('/api/table?'+new URLSearchParams({db:'SIKALOTNOW',table:'仕掛',page:1,page_size:50}));
+   const rows=(await r.json()).rows||[];
+   /* 分割データを持たない行を選ぶ（`WL.split.hasSplit`が判定の1箇所）。 */
+   const row=rows.find(x=>!WL.split.hasSplit(x));
+   if(!row)return{無い:true};
+   await openMeasurement(row);
+   await new Promise(r2=>setTimeout(r2,1200));
+   const h=document.getElementById('horizontalCount');
+   h.value='6';h.dispatchEvent(new Event('change',{bubbles:true}));
+   await new Promise(r2=>setTimeout(r2,900));
+   const strip=document.getElementById('splitVisualStrip');
+   const box=document.querySelector('#splitCard .split-visual');
+   return{
+    図が出る:!!box&&!box.hidden&&box.getBoundingClientRect().height>0,
+    条の数:strip?strip.querySelectorAll('.split-visual-block').length:0,
+    印:!!strip&&strip.classList.contains('split-visual-self'),
+    状態:(document.querySelector('#splitGrid .split-panel-status')||{}).textContent||'',
+    案内:(document.getElementById('splitVisualHint')||{}).textContent||'',
+    戻すボタン:!document.getElementById('undoSplit')?.hidden,
+    子ロット面:!document.querySelector('#splitDetailCard .split-layout')?.hidden,
+   };
+  });
+  rec('分割なしでも条の図が出る（§9.209 ②）',
+      plain.無い?false:(plain.図が出る===true&&plain.条の数===6),JSON.stringify(plain));
+  rec('条数は横割数と一致する',plain.条の数===6,String(plain.条の数));
+  rec('分割なしであることと条数を文字でも言う',/分割無し/.test(plain.状態||'')&&/6/.test(plain.状態||''),
+      plain.状態);
+  rec('並べ替えられないので案内も「1つ戻す」も出さない（§4）',
+      plain.印===true&&plain.戻すボタン===false&&!/並べ替え/.test(plain.案内||''),
+      JSON.stringify({印:plain.印,戻す:plain.戻すボタン,案内:(plain.案内||'').slice(0,40)}));
+  rec('子ロットの編集面は出さない（並べ替える条が無い）',plain.子ロット面===false,
+      String(plain.子ロット面));
+  /* 条を押すと、どの条かが文字で出る（異常位置の特定に使う）。 */
+  const picked=await page.evaluate(async()=>{
+   const bs=[...document.querySelectorAll('#splitVisualStrip .split-visual-block')];
+   if(bs.length<3)return{少ない:true};
+   const r=bs[2].getBoundingClientRect();
+   bs[2].dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,clientX:r.left+r.width/2,clientY:r.top+r.height/2}));
+   await new Promise(x=>setTimeout(x,250));
+   return{選んだ:document.querySelectorAll('#splitVisualStrip .split-visual-block.is-selected').length,
+          説明:(document.getElementById('splitVisualDetail')||{}).textContent||''};
+  });
+  rec('条を押すとどの条かが文字で出る（異常位置の特定）',
+      picked.選んだ===1&&/3/.test(picked.説明||''),JSON.stringify(picked));
+
   /* **ダイアログで止めない。** 以前はalertだったので、ドラッグのたびに
      手が止まった。理由は状態行の文字で伝える。 */
   rec('操作の途中でダイアログを出さない',dialogs.length===0,dialogs.join(' / '));

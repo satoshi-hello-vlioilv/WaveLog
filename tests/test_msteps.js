@@ -1799,6 +1799,114 @@ let b=null,page=null;
     h.value='1';h.dispatchEvent(new Event('change',{bubbles:true}))});
   await go('3');
 
+
+  /* ==================================================================
+     §9.209 測定画面の縦を空けて多条を全部見せる（利用者の指示）
+     ------------------------------------------------------------------
+     以前は表の上に「受信の帯」「測定＋入力位置」「公差の帯」「項目名＋
+     測定待ち」の**4本**が積まれ、23条ほどしか一度に出せなかった。
+     ================================================================== */
+  await go('2');
+  await setType('板幅');
+  const bar=await page.evaluate(()=>{
+   const h=document.querySelector('.editor-head');
+   const r=h.getBoundingClientRect();
+   /* **段は「上端」ではなく「中心」で数える**——`align-items:center`なので、
+      背の違う部品の上端はそろわない（そろえると器の高さで判定したのと
+      同じになり、何も確かめていない）。 */
+   const rows=[...h.children].filter(e=>e.getBoundingClientRect().width>0)
+     .map(e=>{const b=e.getBoundingClientRect();return Math.round((b.top+b.bottom)/2)});
+   return{高さ:Math.round(r.height),
+     段:[...new Set(rows)].length,
+     帯:!!h.querySelector('#inputStatusBox'),
+     切替:!!h.querySelector('.mode-tabs'),
+     項目:(h.querySelector('.mhead-item')||{}).textContent||'',
+     状態:(h.querySelector('.mhead-status')||{}).textContent||'',
+     公差の器:!!h.querySelector('#tolSlot2'),
+     旧見出し:!!document.querySelector('#measurementGrid .measure-grid-block-title'),
+     モード:(h.querySelector('.auto-mode-label')||{}).textContent||''};
+  });
+  rec('見出しは1段にまとまっている（§9.209 ③④）',bar.段===1,JSON.stringify(bar));
+  rec('受信の状態・自動手動の切替が見出しの中にある',bar.帯&&bar.切替&&/自動|手動/.test(bar.モード),
+      JSON.stringify({帯:bar.帯,切替:bar.切替,モード:bar.モード}));
+  rec('項目名と進捗も見出しへ寄せた（表の上の帯を廃止）',
+      bar.項目==='板幅'&&!!bar.状態&&bar.旧見出し===false,JSON.stringify(bar));
+  rec('公差の器も同じ段にある',bar.公差の器===true,String(bar.公差の器));
+  rec('見出し4本ぶん（実測130px級）を1本へ詰めた',bar.高さ<=64,`${bar.高さ}px`);
+  /* 公差は**1箇所だけ**が言う（§9.129）。3つの置き場（数直線の隣・帯・
+     見出しのピル）が同時に「公差なし」と言わないこと。 */
+  const tolWhere=await page.evaluate(()=>{
+   const vis=el=>!!el&&el.getBoundingClientRect().height>0&&(el.textContent||'').trim()!=='';
+   return{facts:vis(document.getElementById('toleranceFacts')),
+          summary:vis(document.getElementById('toleranceSummary')),
+          side:vis(document.querySelector('.compact-tolerance-side'))};
+  });
+  rec('公差を言う場所は1つだけ（§9.129）',
+      [tolWhere.facts,tolWhere.summary,tolWhere.side].filter(Boolean).length<=1,
+      JSON.stringify(tolWhere));
+
+  /* ---- 条が入りきらないときだけ縮める（§9.209 ③） ----
+     **足りないときだけ**縮めること。入っているのに縮めると、8条のロットで
+     1行が19pxになって狙って押せなくなる（§9.146で一度そうなっている）。 */
+  const fitOff=await page.evaluate(()=>{
+   const t=document.querySelector('.measure-matrix');
+   return{fitted:t.classList.contains('mx-fitted'),
+          行:Math.round(t.tBodies[0].rows[0].getBoundingClientRect().height)};
+  });
+  rec('入りきっているときは縮めない',fitOff.fitted===false,JSON.stringify(fitOff));
+  const before=await page.viewportSize();
+  await page.setViewportSize({width:before.width,height:900});
+  await go('1');
+  await page.evaluate(()=>{const h=document.getElementById('horizontalCount');
+    h.value='40';h.dispatchEvent(new Event('change',{bubbles:true}))});
+  await go('2');
+  await page.evaluate(()=>new Promise(r=>setTimeout(r,900)));
+  const fitOn=await page.evaluate(()=>{
+   const body=document.querySelector('#measurementGrid .matrix-body');
+   const t=document.querySelector('.measure-matrix');
+   return{fitted:t.classList.contains('mx-fitted'),
+     行:Math.round(t.tBodies[0].rows[0].getBoundingClientRect().height),
+     行数:t.tBodies[0].rows.length,
+     縦スクロール:body.scrollHeight>body.clientHeight+1};
+  });
+  rec('40条でも縦スクロールを出さずに全部出す（§9.209 ③）',
+      fitOn.行数===40&&fitOn.fitted===true&&fitOn.縦スクロール===false,JSON.stringify(fitOn));
+  rec('縮めても読める大きさ（下限を割ったら諦めてスクロール）',
+      fitOn.行>=15,`${fitOn.行}px`);
+  /* ---- 丈は横へ詰めるが、**丈5以上は諦めてスクロール**（§9.209 ⑤） ----
+     利用者の指示。細かくしすぎると数字が読めなくなるので、そこで打ち切る。 */
+  await go('1');
+  await page.evaluate(()=>{const h=document.getElementById('horizontalCount');
+    h.value='2';h.dispatchEvent(new Event('change',{bubbles:true}));
+    const v=document.getElementById('verticalCount');
+    v.value='8';v.dispatchEvent(new Event('change',{bubbles:true}))});
+  await go('2');
+  await page.evaluate(()=>new Promise(r=>setTimeout(r,700)));
+  const manySlots=await page.evaluate(()=>{
+   const t=document.querySelector('.measure-matrix');
+   return{丈の列:Number(t.style.getPropertyValue('--mx-cols')),
+          列幅を詰めた:!!t.style.getPropertyValue('--mx-colw')};
+  });
+  rec('丈5以上は横に詰めない（諦めてスクロール・§9.209 ⑤）',
+      manySlots.丈の列>5&&manySlots.列幅を詰めた===false,JSON.stringify(manySlots));
+  await go('1');
+  await page.evaluate(()=>{const h=document.getElementById('horizontalCount');
+    h.value='1';h.dispatchEvent(new Event('change',{bubbles:true}));
+    const v=document.getElementById('verticalCount');
+    v.value='1';v.dispatchEvent(new Event('change',{bubbles:true}))});
+  await page.setViewportSize(before);
+  await go('2');
+
+  /* ---- 入力内容のボタン群は左右の余白を同じにする（§9.209 ⑥） ---- */
+  const chipBox=await page.evaluate(()=>{
+   const card=document.getElementById('measureTypeGroup');
+   const chips=card.querySelector('.type-chips');
+   const c=card.getBoundingClientRect(),k=chips.getBoundingClientRect();
+   return{左:Math.round(k.left-c.left),右:Math.round(c.right-k.right)};
+  });
+  rec('入力内容のボタン群の左右の余白が同じ（§9.209 ⑥）',
+      Math.abs(chipBox.左-chipBox.右)<=1,JSON.stringify(chipBox));
+  await go('3');
   rec('③の空きを記録した',true,JSON.stringify(e3));
   /* ---- カードの整列（§9.135 可能な限り粗いグリッド） ----
      **そろって見えるかは「左端の候補が何通りあるか」で決まる。** 外側は

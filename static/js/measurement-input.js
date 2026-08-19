@@ -159,7 +159,13 @@ function inputError(msg){setState(msg);const el=$('#deviceInput');el.classList.a
    発生した(クリックすると初めて動く=フォーカスが本当の原因)。表示は
    実際のフォーカス状態を正直に反映する元の仕様へ戻し、代わりに下の
    ウォッチドッグでフォーカス消失を安全に自動回復させる。 */
-function updateReceiveState(focused=document.activeElement===$('#deviceInput')){if(!S.measure)return;const manual=S.measure.settings.inputMode==='manual',box=$('#inputStatusBox'),inp=$('#deviceInput');box.classList.remove('receiving','manual-state','not-ready-state');inp.classList.remove('manual-receive','locked-receive');if(manual){box.classList.add('manual-state');inp.classList.add('manual-receive');$('#inputReady').textContent='手動入力モード';$('#inputModeHelp').textContent='直接入力・Enterで確定';$('#receiveLock').textContent='手入力許可';inp.placeholder='必要に応じて数値を入力'}else if(focused){box.classList.add('receiving');$('#inputReady').textContent='伝送入力受付中';$('#inputModeHelp').textContent='転送待ち・Tabで確定';$('#receiveLock').textContent='転送専用';inp.placeholder='測定器データ受信専用'}else{box.classList.add('not-ready-state');inp.classList.add('locked-receive');$('#inputReady').textContent='伝送入力停止中';$('#inputModeHelp').textContent='クリックで受付再開';$('#receiveLock').textContent='受付停止';inp.placeholder='クリックして伝送受付を再開'}}$('#deviceInput').onfocus=()=>updateReceiveState(true);$('#deviceInput').onblur=()=>updateReceiveState(false);
+function updateReceiveState(focused=document.activeElement===$('#deviceInput')){if(!S.measure)return;const manual=S.measure.settings.inputMode==='manual',box=$('#inputStatusBox'),inp=$('#deviceInput');box.classList.remove('receiving','manual-state','not-ready-state');inp.classList.remove('manual-receive','locked-receive');if(manual){box.classList.add('manual-state');inp.classList.add('manual-receive');$('#inputReady').textContent='手動入力モード';$('#inputModeHelp').textContent='直接入力・Enterで確定';$('#receiveLock').textContent='手入力許可';inp.placeholder='必要に応じて数値を入力'}else if(focused){box.classList.add('receiving');$('#inputReady').textContent='伝送入力受付中';$('#inputModeHelp').textContent='転送待ち・Tabで確定';$('#receiveLock').textContent='転送専用';inp.placeholder='測定器データ受信専用'}else{box.classList.add('not-ready-state');inp.classList.add('locked-receive');$('#inputReady').textContent='伝送入力停止中';$('#inputModeHelp').textContent='クリックで受付再開';$('#receiveLock').textContent='受付停止';inp.placeholder='クリックして伝送受付を再開'}
+ /* バッジは**2文字**（§9.209 ③）。詳しい状態（受付中／停止中）は同じ帯の
+    `title`で読める——見出しの1行に置くので、ここは「いまどちらのやり方で
+    入れているか」だけを言う。 */
+ const label=$('.auto-mode-label');
+ if(label)label.textContent=manual?'手動':'自動';
+ box.title=`${manual?'手動入力':'自動転送'}: ${$('#inputReady').textContent} ／ ${$('#inputModeHelp').textContent}`;}$('#deviceInput').onfocus=()=>updateReceiveState(true);$('#deviceInput').onblur=()=>updateReceiveState(false);
 /* フォーカス消失の自動回復ウォッチドッグ。手動入力欄の操作中(select/input/
    textarea/ボタン等、何らかのフォーム要素にフォーカスがある場合)は絶対に
    奪わない。document.activeElementが何もフォーカスしていない状態(body、
@@ -539,16 +545,30 @@ function renderMeasureGridVertical(){
  const values=m.measurements[actualKey][li],done=values.slice(0,slots).filter(v=>v!=='').length;
  const bulkBtn=type==='フラットネス'?'<span class="flat-pick-group"><span class="flat-pick-label">現在の条へ入力</span><button type="button" class="flat-pick" data-sym="〇">〇</button><button type="button" class="flat-pick" data-sym="△">△</button><button type="button" class="flat-pick" data-sym="×">×</button></span><button type="button" id="flatAllOk">全条 〇</button>':'';
  const tol=WL.measureTolerance.parts(actualKey,values,slots);
- let h=`<section class="measure-grid-block compact-other"><div class="measure-grid-block-title"><span>${esc(type)}</span><div class="measure-status-group"><span class="measure-status">${compactMeasureStatus(done,slots)}</span>${bulkBtn}</div></div><div class="matrix-body${tol.graph?'':' no-graph'}"><aside class="compact-tolerance-side">${tol.graph}</aside>`;
+ /* ---------- 見出しは「測定」の1行へ集約する（§9.209 ③④、利用者の指示） ----------
+    以前は表の上にもう1本、項目名と「測定待ち」だけの帯（26px）があった。
+    「測定」と書いてある行と**同じことを2箇所**に出していたうえ、多条の
+    ロットでは行が1本足りないだけで条が2つ隠れる。バッジにして1行へ寄せる。 */
+ const head=$('#measureHeadBadges');
+ if(head)head.innerHTML=`<b class="mhead-item">${esc(type)}</b>`
+   +`<span class="mhead-status">${esc(compactMeasureStatus(done,slots))}</span>`+bulkBtn;
+ let h=`<section class="measure-grid-block compact-other"><div class="matrix-body${tol.graph?'':' no-graph'}"><aside class="compact-tolerance-side">${tol.graph}</aside>`;
  h+=measureMatrixHtml(actualKey,slots,type);
  h+='</div></section>';
  if(type==='フラットネス')h+=`<section class="measure-grid-block flatness-note-block"><div class="measure-grid-block-title"><span>備考</span></div><div class="flatness-entry"><label>対象条<select id="coilNo"></select></label><label>備考<textarea id="coilComment"></textarea></label></div></section>`;
  $('#measurementGrid').innerHTML=h;
- WL.measureTolerance.paintFacts(tol.facts);
+ /* 公差を言う場所は**1つだけ**（§9.129／§9.209 ②）。
+      板厚・板幅（寸法系）… 図があるなら数直線の隣の公差カード、
+                            図が無いなら（＝公差が無い）ここのピル
+      それ以外            … `#toleranceSummary`のピル（`updateMeasurementHeading`）
+    3つとも「公差なし」を出せるので、**どれか1つに絞ってから描く**。 */
+ WL.measureTolerance.paintFacts((tol.graph||!WL.measureItem.isDimensional(type))?'':tol.facts);
  applyToleranceFold(slots);
  alignToleranceChart();
  syncNumberlineControls();
- bindMeasureInputs();applyInputProtection();focusCurrent();updateMeasurementHeading();/* 寸法系（板厚・板幅）は横長の公差バーを出さない。数直線の隣の公差カード
+ bindMeasureInputs();applyInputProtection();focusCurrent();updateMeasurementHeading();
+ /* 器に入るかは**描き終えてから**しか分からない（§9.209 ③⑤）。 */
+ requestAnimationFrame(()=>{try{fitMeasureMatrix()}catch(e){}});/* 寸法系（板厚・板幅）は横長の公差バーを出さない。数直線の隣の公差カード
    （`.compact-tolerance-side`）が基準値・公差±・判定範囲を既に持っており、
    **同じ数字を画面に2つ出さない**（§9.129。項目を分ける前の板厚/板幅と
    同じ扱いを、分けた後の両方へそのまま引き継ぐ）。 */
@@ -562,6 +582,59 @@ const summary=$('#toleranceSummary');if(summary)summary.hidden=WL.measureItem.is
   bindFlatnessInputs();
  }
 }
+/* ---------- 表は器に入るぶんだけ縮める（§9.209 ③⑤、利用者の指示） ----------
+   「25条程度から怪しいので、**高さが足りないでスクロールが出る場合に限り**、
+    出ないように縦方向のテキストボックスの高さを条数で割り戻して入りきるように」
+   「丈表示エリアが不足する場合も同様に横方向の表示範囲内にフィットさせる。
+    丈5以上の場合はあきらめて、スクロールを使用する」
+
+   **縮めるのは足りないときだけ。** 入っているのに縮めると、8条のロットで
+   1行が19pxになって狙って押せなくなる（§9.146で一度そうなっている）。
+   **下限を割ったら諦めてスクロールへ倒す**——読めない大きさまで縮めるのは
+   スクロールより悪い。
+   **測ってから決める。** 行の外寸は罫線・余白・表示サイズで変わるので、
+   「トークンから計算」ではなく**実際に描いた表を測って差分を引く**
+   （§9.95の行の高さと同じ作法）。1回で足りなければもう1回だけ詰める
+   ——回し続けると描き直しのたびに揺れる。 */
+const MX_MIN_ROWH=15,MX_MIN_COLW=44,MX_FIT_MAX_SLOTS=5,MX_FIT_PASSES=3;
+function fitMeasureMatrix(){
+ const table=document.querySelector('#measurementGrid .measure-matrix');
+ const body=document.querySelector('#measurementGrid .matrix-body');
+ if(!table||!body)return;
+ table.style.removeProperty('--mx-rowh');
+ table.style.removeProperty('--mx-colw');
+ table.classList.remove('mx-fitted');
+ const rows=(table.tBodies[0]&&table.tBodies[0].rows.length)||0;
+ const slots=Number(table.style.getPropertyValue('--mx-cols'))||0;
+ if(!rows)return;
+ /* ---- 縦: 条が入りきるように1行を縮める ---- */
+ const rowEl=table.tBodies[0].rows[0];
+ for(let pass=0;pass<MX_FIT_PASSES;pass++){
+  const over=Math.ceil(table.getBoundingClientRect().height-body.clientHeight);
+  if(over<=0)break;
+  const cur=rowEl.getBoundingClientRect().height;
+  const next=Math.floor(cur-over/rows)-1;
+  if(!(next>=MX_MIN_ROWH)||!(next<cur))break;
+  table.style.setProperty('--mx-rowh',next+'px');
+  table.classList.add('mx-fitted');
+ }
+ /* ---- 横: 丈が入りきるように1列を縮める（丈5以上は諦めてスクロール） ---- */
+ const room=table.parentElement?table.parentElement.clientWidth:0;
+ if(slots&&slots<=MX_FIT_MAX_SLOTS&&room>0){
+  for(let pass=0;pass<MX_FIT_PASSES;pass++){
+   const over=Math.ceil(table.getBoundingClientRect().width-room);
+   if(over<=0)break;
+   const head=table.tHead&&table.tHead.rows[0];
+   const cell=head&&head.cells[head.cells.length-1];
+   const cur=cell?cell.getBoundingClientRect().width:0;
+   const next=Math.floor(cur-over/slots)-1;
+   if(!(next>=MX_MIN_COLW)||!(next<cur))break;
+   table.style.setProperty('--mx-colw',next+'px');
+   table.classList.add('mx-fitted');
+  }
+ }
+}
+WL.measureFit={matrix:fitMeasureMatrix};
 function focusFlatnessCurrentCell(){const m=S.measure,el=document.querySelector(`input[data-mkey="flatness"][data-i="${lengthIndex()}"][data-j="${m.settings.wStep||0}"]`);if(el)el.focus()}
 function bindFlatnessInputs(){
  const m=S.measure;
@@ -594,7 +667,10 @@ function compactToleranceData(kind){
 }
 function compactToleranceFacts(kind){
  const data=compactToleranceData(kind);
- if(!data)return{html:'<div class="compact-tol-three-row no-data"><b>公差情報なし</b><span>判定条件を取得できません</span></div>',range:null};
+ /* **公差が無いことはバッジ1つで言う**（§9.209 ②、利用者の指示）。
+    3行のカード（実測34px＋余白）を1行の帯に置いていたので、そのぶん条が
+    2本隠れていた。理由は`title`で読める。 */
+ if(!data)return{html:'<span class="tol-pill is-none" title="選択した公差区分に使用可能なプラス・マイナス値がありません。判定は行いません。">公差なし</span>',range:null};
  return{range:data.range,html:`<div class="compact-tol-three-row"><div class="tol-line tol-line-base"><span class="compact-tol-source">${esc(data.source)}</span><span class="tol-value-pair"><small>基準</small><b>${esc(data.base)}</b></span></div><div class="tol-line tol-line-plusminus"><span class="tol-value-pair"><small>公差＋</small><b>+${esc(data.plus)}</b></span><span class="tol-value-pair"><small>公差－</small><b>-${esc(data.minus)}</b></span></div><div class="tol-line tol-line-range"><small>判定範囲</small><b>${esc(data.low)} ～ ${esc(data.high)}</b></div></div>`};
 }
 /* ---------- ③の公差一覧（§9.157、利用者の指摘） ----------

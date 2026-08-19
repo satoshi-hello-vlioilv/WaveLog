@@ -648,6 +648,42 @@
     if(splitSourcesCache&&splitSourcesCacheKey===currentSplitCacheKey())return splitSourcesCache;
     return rowsFromAppliedGroups();
   }
+  /* ---------- 分割の無いロットでも図を出す（§9.209 ②、利用者の指示） ----------
+     「分割なしでも、取得済みのロットのデータで図を表現してほしいです。
+      屑幅の片寄や条割数の視覚化、異常発生時の条番号特定など様々な機能を
+      使う必要があります。」
+
+     材料は**親ロット自身**——条数は横割数、幅は製造板幅。
+     **並べ替えはできない**（同じロットの条しか無いので、動かしても意味が
+     変わらない）。使えるのは「何条あるか」「どの条か」「屑がどちらへ
+     どれだけ寄っているか」で、それは分割の有無に関わらず要る。 */
+  function selfSplitRows(){
+    const m=S.measure;if(!m)return [];
+    const lot=String(m.basic?.lotNo||'').trim();
+    const count=Math.max(1,Math.min(40,+($('#horizontalCount')?.value)||1));
+    const w=m.basic?.mfgWidth;
+    const width=(w===undefined||w===null||w==='')?'':String(w);
+    return [{lot:lot||'（このロット）',count,width,tol:'',
+             base:{width:w},tolObj:null,missing:false,self:true}];
+  }
+  /* 図だけを出す（編集面は出さない）。**器は`renderSplit()`と同じ関数**を
+     通す——別の組み立てを作ると、分割ありと無しで図の形が変わる。 */
+  function renderSelfSplitVisual(){
+    const box=document.querySelector('#splitCard .split-visual');
+    /* **できないことは書かない**（§4）。並べ替えられないので、案内も
+       「1つ戻す／初めから」も出さない。 */
+    const hint=$('#splitVisualHint');
+    if(hint)hint.textContent='帯の幅は母材幅の比率。条を押すと番号と幅を確かめられます。両端の OS＝オペレータ側／DS＝駆動側。';
+    ['#undoSplit','#resetSplit'].forEach(sel=>{const el=$(sel);if(el&&el.hidden!==true)el.hidden=true});
+    const rows=selfSplitRows();
+    const total=rows.reduce((a,x)=>a+x.count,0);
+    if(!rows.length||!total){if(box)box.hidden=true;return}
+    if(box)box.hidden=false;
+    const strip=$('#splitVisualStrip');
+    if(strip)strip.classList.add('split-visual-self');
+    const seq=Array.from({length:total},()=>rows[0].lot);
+    renderSplitVisual(rows,seq,splitLotColorMap(rows));
+  }
   function rowsFromAppliedGroups(){
     const groups=S.measure?.settings?.splitGroups;
     if(!Array.isArray(groups)||!groups.length)return [];
@@ -1041,7 +1077,12 @@
     splitVisualWired=true;
     let downX=0,downY=0,dragging=false,dragBlock=null;
     function context(){
-      const sources=splitSourceRows(),total=sources.reduce((a,x)=>a+x.count,0);
+      /* 分割の無いロットは**親ロット自身**が材料（§9.209 ②）。ここで
+         落とすと、条を押しても説明が出ない（`splitSourceRows()`は空）。 */
+      const self=strip.classList.contains('split-visual-self');
+      const sources=self?selfSplitRows():splitSourceRows();
+      const total=sources.reduce((a,x)=>a+x.count,0);
+      if(self)return{sources,total,seq:Array.from({length:total},()=>sources[0].lot),confirmed:[]};
       return{sources,total,seq:ensureSequenceLength(total),confirmed:ensureConfirmedLength(total)};
     }
     function updateDetailFor(idx){
@@ -1102,6 +1143,16 @@
     }
     strip.addEventListener('pointerdown',e=>{
       const idx=indexAtClientX(e.clientX);if(idx<0)return;
+      /* 分割の無いロットの図は**選ぶだけ**（§9.209 ②）。同じロットの条しか
+         無いので、並べ替えても意味が変わらない——掴めるのに何も起きない
+         ものを残さない（§4）。屑幅のつまみは器の側なので効いたまま。 */
+      if(strip.classList.contains('split-visual-self')){
+        selectStrip(idx);
+        strip.querySelectorAll('.split-visual-block').forEach((el,i)=>
+          el.classList.toggle('is-selected',i===idx));
+        updateDetailFor(idx);
+        return;
+      }
       const{seq,sources}=context();
       if(seq[idx]==null)return;
       e.preventDefault();
@@ -1164,6 +1215,14 @@
      から構成する。初回描画時のみ、候補の並び順で先頭から敷き詰めた状態を
      初期値として自動生成する(seedSplitDefaults)。 */
   function renderSplit(){
+    /* 分割ありの図は掴んで並べ替えられる。**印を外す**——分割無しの図
+       （§9.209 ②）で付けた「並べ替えできない」の印が残ると、掴めるのに
+       掴めない見た目になる。 */
+    const strip0=$('#splitVisualStrip');
+    if(strip0)strip0.classList.remove('split-visual-self');
+    const hint0=$('#splitVisualHint');
+    if(hint0)hint0.textContent='帯の幅は母材幅の比率。条をつかんで並べ替えられます。両端の OS＝オペレータ側／DS＝駆動側。';
+    ['#undoSplit','#resetSplit'].forEach(sel=>{const el=$(sel);if(el&&el.hidden!==false)el.hidden=false});
     const sources=splitSourceRows(),total=sources.reduce((a,x)=>a+x.count,0);
     const{seq}=seedSplitDefaults(sources,total);
     const colorMap=splitLotColorMap(sources);
@@ -2078,10 +2137,16 @@
       }
       const info=analyzeRowSplit(S.measure?.source);
       if(!info.hasSplit){
-        el.innerHTML='<div class="split-panel-status split-panel-status-none">分割無し</div>'
+        /* **図は出す**（§9.209 ②）。編集面（子ロット候補・条割プレビュー）は
+           並べ替える条が無いので出さない。 */
+        const n=Math.max(1,Math.min(40,+($('#horizontalCount')?.value)||1));
+        el.innerHTML='<div class="split-panel-status split-panel-status-none">'
+          +`分割無し — このロットの条は ${n}本（横割数）です。図で条の番号と屑幅の寄りを確かめられます。</div>`
           +scrapWidthLineHtml();
         updateSplitTabBadge('none');
-        showSplitEditor(false);
+        document.querySelectorAll('#splitDetailCard .split-layout')
+          .forEach(x=>{if(x.hidden!==true)x.hidden=true});
+        renderSelfSplitVisual();
         updateScrapWidthDisplay();
         return;
       }

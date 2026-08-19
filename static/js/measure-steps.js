@@ -306,6 +306,8 @@
   fillContext();
   try{fitLengthList()}catch(e){}
   try{fitControlWidths()}catch(e){}
+  /* 測定表が器へ入るかは段の切り替えでも変わる（§9.209 ③⑤）。 */
+  requestAnimationFrame(()=>{try{WL.measureFit&&WL.measureFit.matrix()}catch(e){}});
   try{paintFinish()}catch(e){}
  }
 
@@ -552,7 +554,8 @@
     表示サイズは`html[data-ui-size]`で伝わる（`base.js`）。 */
  function watchUiSize(){
   new MutationObserver(()=>{
-   requestAnimationFrame(()=>{try{fitControlWidths()}catch(e){}});
+   requestAnimationFrame(()=>{try{fitControlWidths()}catch(e){}
+     try{WL.measureFit&&WL.measureFit.matrix()}catch(e){}});
   }).observe(document.documentElement,{attributes:true,attributeFilter:['data-ui-size']});
  }
 

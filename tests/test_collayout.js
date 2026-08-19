@@ -307,6 +307,34 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   },longCol);
   rec('自動へ戻すと内容に合わせた幅になる',back.状態==='auto'&&back.実測>60,JSON.stringify(back));
 
+  /* ---- 7) 列幅の合計が器より狭くても、決めた幅がそのまま効く（§9.209 ①） ----
+     `#grid table`に`min-width:100%`が残っていると、`table-layout:fixed`が
+     余りを**各列へ配り直す**ので、狭めたはずの列がその場で太る（実機で
+     「列幅の合計が表示エリアより狭いと、それ以上狭められない」と報告）。
+     余りは**右の何も無い場所**に出るのが正しい。
+     **確かめるときは実際に合計を器より狭くすること**——広いままだと、
+     直す前の実装でも通る。 */
+  const narrowFit=await page.evaluate(async()=>{
+   const t=listLayoutTarget(),all=WL.listColumnKeys(S.columns);
+   const keep=all.filter(k=>!/^(#|分割|測定|予定)$/.test(k)).slice(0,3);
+   await WL.columnLayout.save(t,{order:keep,widths:Object.fromEntries(keep.map(k=>[k,60])),
+     hidden:all.filter(k=>!keep.includes(k)),names:{},formats:{},rules:{},formulas:{},locks:[]});
+   renderGrid();
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   const grid=document.getElementById('grid'),table=grid.querySelector('table');
+   const th=[...table.querySelectorAll('thead th')].map(x=>Math.round(x.getBoundingClientRect().width));
+   return{列:keep.length,幅:th,
+     表:Math.round(table.getBoundingClientRect().width),
+     器:grid.clientWidth,
+     minWidth:getComputedStyle(table).minWidth};
+  });
+  rec('合計が器より狭いときも決めた幅のまま（§9.209 ①）',
+      narrowFit.幅.length>0&&narrowFit.幅.every(w=>Math.abs(w-60)<=1),JSON.stringify(narrowFit));
+  rec('余りは右の何も無い場所になる（表が器より狭くなる）',
+      narrowFit.表<narrowFit.器-20,`表${narrowFit.表} / 器${narrowFit.器}`);
+  rec('表に`min-width:100%`を戻していない',
+      !/%/.test(narrowFit.minWidth)&&narrowFit.minWidth!=='100%',narrowFit.minWidth);
+
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
 
   console.log('\n=== SUMMARY ===');

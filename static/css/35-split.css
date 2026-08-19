@@ -303,3 +303,10 @@
 /* ---------- 11. 保存データ一覧モーダル ---------- */
 .record-modal{position:fixed;inset:0;z-index:var(--z-modal);background:#071c2280;display:grid;place-items:center}
 }
+
+@layer component {
+/* 分割の無いロットの図（§9.209 ②）。**掴めない**ので、掴めそうな見た目に
+   しない——押すと選べる（異常位置の条番号を確かめる）ところまで。 */
+.split-visual-self .split-visual-block{cursor:pointer}
+.split-visual-self .split-visual-block:hover{filter:brightness(1.05)}
+}
