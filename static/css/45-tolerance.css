@@ -338,5 +338,55 @@
    なっていた。1枠を**1行**(見出し・入力・ボタンを横並び)にする。
    見出しと入力が同じ行にあっても、対応関係は近接で読み取れる(左から右への
    自然な走査で「作業開始時刻 = ○○」と読める)。 */
+/* ============================================================
+   図の見せ方の浮き窓（§9.210 ①、`#numberlinePanel`）
+   ------------------------------------------------------------
+   見出しの中で開く帯をやめ、器の外の浮き窓へ出した。**器の外に出す**のが
+   肝で（§9.201）、見出しの中の絶対配置に戻すと`overflow`を持つ先祖に
+   切られる。骨格（`.sc-float-win`/`.sc-float-header`/`.sc-float-body`）は
+   共通の浮き窓と同じものを使う——同じ役割のものが画面ごとに違う形を
+   していると、別の種類の窓に見える。
+   **中身は必ず`.nl-win`で絞ること。** `.sc-float-*`の共通指定は
+   70-schedule.css＝**この後**に読まれるので、同じ詳細度では負ける。
+   ============================================================ */
+.nl-win .nl-body{display:flex;flex-direction:column;gap:var(--space-3)}
+.nl-win .nl-sec{display:flex;flex-direction:column;gap:var(--space-2);min-width:0}
+.nl-win .nl-sec-head{color:var(--ink-3);font-size:var(--fs);font-weight:800;letter-spacing:.04em}
+/* 横軸は**選ぶ前に見える**（§9.200）。名前だけでは「実寸」と「公差比」の
+   違いが分からないので、小さな図と1行の説明を必ず添える。 */
+.nl-win .nl-choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(var(--w-md),1fr));gap:var(--gap-inline)}
+.nl-win .nl-choice{
+  display:grid;grid-template-rows:auto auto auto;gap:var(--gap-tight);
+  height:auto;padding:var(--pad-card);text-align:left;
+  border:1px solid var(--line);border-radius:var(--radius-md);
+  background:var(--surface);color:var(--ink-2);cursor:pointer;
+}
+.nl-win .nl-choice:hover{border-color:var(--teal);background:var(--pale)}
+.nl-win .nl-choice.is-on{border-color:var(--teal);background:var(--pale);box-shadow:inset 0 0 0 1px var(--teal)}
+.nl-win .nl-choice>b{color:var(--ink);font-size:var(--fs);font-weight:800}
+.nl-win .nl-choice.is-on>b{color:var(--teal-dark)}
+.nl-win .nl-choice>small{color:var(--ink-soft);font-size:var(--fs-sm);line-height:1.5;white-space:normal}
+.nl-win .nl-art{width:100%;height:var(--ctl-h-lg);border-radius:var(--radius-xs);background:var(--surface-2)}
+.nl-win .nl-art-band{fill:var(--teal);opacity:.55}
+.nl-win .nl-choice.is-on .nl-art-band{opacity:.9}
+.nl-win .nl-art-center{stroke:var(--line-strong);stroke-width:1;stroke-dasharray:2 2}
+/* 表示幅は候補が6つしかないので**全部出す**。プルダウンにすると、
+   いま何倍なのかを見るのに一度開く必要がある。 */
+.nl-win .nl-spans{display:flex;flex-wrap:wrap;gap:var(--gap-inline)}
+.nl-win .nl-span{
+  height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
+  border:1px solid var(--line);border-radius:var(--radius-pill);
+  background:var(--surface);color:var(--ink-2);font-size:var(--fs-sm);font-weight:700;
+  white-space:nowrap;cursor:pointer;font-variant-numeric:tabular-nums;
+}
+.nl-win .nl-span:hover{border-color:var(--teal);background:var(--pale)}
+.nl-win .nl-span.is-on{border-color:var(--teal);background:var(--teal);color:#fff}
+.nl-win .nl-note{margin:0;color:var(--ink-soft);font-size:var(--fs-sm);line-height:1.5}
+/* いまどうなっているかは**必ず文字で**（§3）。0件でも言い切る。 */
+.nl-win .nl-state{
+  margin:0;padding:var(--pad-row);border-radius:var(--radius-sm);
+  background:var(--surface-2);color:var(--ink-2);font-size:var(--fs-sm);line-height:1.5;
+}
+.nl-win .nl-state.is-warn{background:var(--warn-bg);color:var(--warn-fg);font-weight:700}
 .work-time-panel{height:auto;min-height:0}
 }

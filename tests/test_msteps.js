@@ -1808,31 +1808,91 @@ let b=null,page=null;
      ================================================================== */
   await go('2');
   await setType('板幅');
-  const bar=await page.evaluate(()=>{
+  const headRead=()=>page.evaluate(()=>{
    const h=document.querySelector('.editor-head');
    const r=h.getBoundingClientRect();
    /* **段は「上端」ではなく「中心」で数える**——`align-items:center`なので、
       背の違う部品の上端はそろわない（そろえると器の高さで判定したのと
-      同じになり、何も確かめていない）。 */
-   const rows=[...h.children].filter(e=>e.getBoundingClientRect().width>0)
+      同じになり、何も確かめていない）。塊(`.mhead-line`)の中は折り返さない
+      ので、数えるのは塊の中心でよい。 */
+   const rows=[...h.querySelectorAll(':scope > .mhead-line')]
+     .filter(e=>e.getBoundingClientRect().width>0)
      .map(e=>{const b=e.getBoundingClientRect();return Math.round((b.top+b.bottom)/2)});
+   /* 文字の大きさは**題以外は1種類**（§9.210 ①）。中身のある葉だけ数える。 */
+   const sizes={};
+   h.querySelectorAll('*').forEach(x=>{
+    const b=x.getBoundingClientRect();
+    if(b.width<1||b.height<1||x.children.length)return;
+    if(x.id==='measurePanelTitle')return;
+    if(!(x.textContent||'').trim())return;
+    const f=getComputedStyle(x).fontSize;sizes[f]=(sizes[f]||0)+1;
+   });
    return{高さ:Math.round(r.height),
      段:[...new Set(rows)].length,
      帯:!!h.querySelector('#inputStatusBox'),
+     帯が見える:!!h.querySelector('#inputStatusBox')
+       &&h.querySelector('#inputStatusBox').getBoundingClientRect().width>0,
+     帯の左:Math.round((h.querySelector('#inputStatusBox')||{getBoundingClientRect:()=>({left:0})})
+       .getBoundingClientRect().left),
      切替:!!h.querySelector('.mode-tabs'),
      項目:(h.querySelector('.mhead-item')||{}).textContent||'',
      状態:(h.querySelector('.mhead-status')||{}).textContent||'',
      公差の器:!!h.querySelector('#tolSlot2'),
      旧見出し:!!document.querySelector('#measurementGrid .measure-grid-block-title'),
+     凡例:!!h.querySelector('.legend'),
+     題の大きさ:getComputedStyle(document.getElementById('measurePanelTitle')).fontSize,
+     文字の種類:Object.keys(sizes),
      モード:(h.querySelector('.auto-mode-label')||{}).textContent||''};
   });
-  rec('見出しは1段にまとまっている（§9.209 ③④）',bar.段===1,JSON.stringify(bar));
+  const bar=await headRead();
+  rec('見出しは2段まで（§9.210 ①）',bar.段>=1&&bar.段<=2,JSON.stringify(bar));
   rec('受信の状態・自動手動の切替が見出しの中にある',bar.帯&&bar.切替&&/自動|手動/.test(bar.モード),
       JSON.stringify({帯:bar.帯,切替:bar.切替,モード:bar.モード}));
   rec('項目名と進捗も見出しへ寄せた（表の上の帯を廃止）',
       bar.項目==='板幅'&&!!bar.状態&&bar.旧見出し===false,JSON.stringify(bar));
   rec('公差の器も同じ段にある',bar.公差の器===true,String(bar.公差の器));
   rec('見出し4本ぶん（実測130px級）を1本へ詰めた',bar.高さ<=64,`${bar.高さ}px`);
+  /* ---- 凡例（待ち・入力中・完了・異常）は廃止（§9.210 ①、利用者の指示） ---- */
+  rec('表示案内（凡例）は出さない（§9.210 ①）',bar.凡例===false,String(bar.凡例));
+  /* ---- 文字の大きさは題以外1種類（§9.210 ①、利用者の指示） ----
+     以前は 11px・12px・14px の3種が1行に混ざっていた。 */
+  rec('見出しの文字は題以外すべて同じ大きさ（§9.210 ①）',
+      bar.文字の種類.length===1&&bar.文字の種類[0]!==bar.題の大きさ,
+      JSON.stringify({題:bar.題の大きさ,他:bar.文字の種類}));
+  /* ---- 題の位置は他のカードと同じ規格（§9.210 ③、利用者の指摘） ---- */
+  const titlePos=await page.evaluate(()=>{
+   const cardOf=el=>{let n=el.parentElement;
+    while(n&&n!==document.body){const cs=getComputedStyle(n);
+     if(cs.borderTopWidth!=='0px'||(cs.backgroundColor!=='rgba(0, 0, 0, 0)'
+       &&cs.backgroundColor!=='transparent'))return n;
+     n=n.parentElement}return null};
+   const off=el=>{const r=el.getBoundingClientRect(),c=cardOf(el);
+    if(!c)return null;const cr=c.getBoundingClientRect();
+    return{左:Math.round(r.left-cr.left),上:Math.round(r.top-cr.top)}};
+   const mine=off(document.getElementById('measurePanelTitle'));
+   const others=[...document.querySelectorAll('.card-title')]
+     .filter(x=>x.id!=='measurePanelTitle'&&x.getBoundingClientRect().width>0)
+     .map(off).filter(Boolean);
+   return{mine,others};
+  });
+  rec('測定カードの題も他のカードと同じ位置から始まる（§9.210 ③）',
+      !!titlePos.mine&&titlePos.others.length>0
+      &&titlePos.others.every(o=>o.左===titlePos.mine.左)
+      &&titlePos.others.every(o=>Math.abs(o.上-titlePos.mine.上)<=4),
+      JSON.stringify(titlePos));
+  /* ---- 手入力だけの項目でも同じ位置に「手動」バッジ（§9.210 ③、利用者の指示） ----
+     以前は帯ごと隠していたので、切り替えると右のバッジが左へ詰まっていた。
+     **同じ位置で文字だけが入れ替わること**を見る（`display`は触らない
+     ——受信欄はこの中にあり、寸法ゼロだとフォーカスを保持できない・§9.122）。 */
+  await setType('ラテラルボー');
+  const manualBar=await headRead();
+  await setType('板幅');
+  const autoBar=await headRead();
+  rec('手入力だけの項目でも同じ位置にバッジが出る（§9.210 ③）',
+      manualBar.帯が見える===true&&manualBar.モード==='手動'
+      &&autoBar.モード==='自動'&&manualBar.帯の左===autoBar.帯の左,
+      JSON.stringify({手動:manualBar.モード,自動:autoBar.モード,
+        左:[manualBar.帯の左,autoBar.帯の左]}));
   /* 公差は**1箇所だけ**が言う（§9.129）。3つの置き場（数直線の隣・帯・
      見出しのピル）が同時に「公差なし」と言わないこと。 */
   const tolWhere=await page.evaluate(()=>{
@@ -1873,6 +1933,38 @@ let b=null,page=null;
       fitOn.行数===40&&fitOn.fitted===true&&fitOn.縦スクロール===false,JSON.stringify(fitOn));
   rec('縮めても読める大きさ（下限を割ったら諦めてスクロール）',
       fitOn.行>=15,`${fitOn.行}px`);
+  /* ---- 26条以上は「空いた縦 ÷ 条数」を行の高さにする（§9.210 ②、利用者の指示） ----
+     以前は25条までの`mx-roomy`（30px固定）から26条で`mx-dense`（器いっぱいへ
+     引き伸ばす）へ切り替わり、**入力欄だけが自分の高さへ落ちて一気に小さく**
+     見えていた。25条と26条を並べて、**段差が無いこと**と**割り当てが
+     「空いた高さ÷条数」になっていること**を見る。 */
+  const rowsAt=async n=>{
+   await go('1');
+   await page.evaluate(v=>{const h=document.getElementById('horizontalCount');
+     h.value=String(v);h.dispatchEvent(new Event('change',{bubbles:true}))},n);
+   await go('2');
+   await page.evaluate(()=>new Promise(r=>setTimeout(r,700)));
+   return page.evaluate(()=>{
+    const body=document.querySelector('#measurementGrid .matrix-body');
+    const t=document.querySelector('.measure-matrix');
+    const head=t.tHead.rows[0].getBoundingClientRect().height;
+    const row=t.tBodies[0].rows[0];
+    const inp=row.querySelector('input');
+    return{行数:t.tBodies[0].rows.length,
+      行:Math.round(row.getBoundingClientRect().height),
+      欄:inp?Math.round(inp.getBoundingClientRect().height):0,
+      割り当て:Math.round((body.clientHeight-head)/t.tBodies[0].rows.length),
+      縦スクロール:body.scrollHeight>body.clientHeight+1};
+   });
+  };
+  const r25=await rowsAt(25),r26=await rowsAt(26);
+  rec('26条は空いた縦を条数で割った高さを使う（§9.210 ②）',
+      r26.行数===26&&Math.abs(r26.行-Math.min(36,r26.割り当て))<=2&&r26.縦スクロール===false,
+      JSON.stringify(r26));
+  rec('25条→26条で一気に小さくならない（§9.210 ②）',
+      Math.abs(r25.行-r26.行)<=6,JSON.stringify({'25条':r25.行,'26条':r26.行}));
+  rec('入力欄も行と同じ高さ（欄だけ縮まない）',
+      Math.abs(r26.欄-r26.行)<=4,JSON.stringify(r26));
   /* ---- 丈は横へ詰めるが、**丈5以上は諦めてスクロール**（§9.209 ⑤） ----
      利用者の指示。細かくしすぎると数字が読めなくなるので、そこで打ち切る。 */
   await go('1');

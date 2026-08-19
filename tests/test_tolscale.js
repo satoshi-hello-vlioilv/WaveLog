@@ -272,24 +272,46 @@ let b=null;
    mixed.色.length===4&&new Set(mixed.色).size===2,mixed.色.join(' / '));
 
   /* --- 6c) **軸を切り替えられる**（§9.152、利用者の指示）---
-     ふだんは畳んである（§9.208 ④、利用者の指示「通常は使わないので
-     折りたたんで見えないように」）。**畳まれていることも固定する**——
-     開いてから触る作りにしておかないと、既定で出しても素通りする。 */
+     入口は**アイコン1つ**で、中身は器の外の浮き窓（§9.210 ①）。
+     以前は同じ帯の中で開いており、開いた瞬間に見出しが1行増えて測定表が
+     縮んでいた。**閉じていること・窓が器の外に在ることも固定する**。 */
   const nlFolded=await page.evaluate(()=>{
-   const box=document.getElementById('numberlineControls'),btn=document.getElementById('numberlineFold');
-   return{畳んでいる:!!box&&box.hidden,入口:!!btn&&btn.getBoundingClientRect().width>0,
-          印:btn&&btn.getAttribute('aria-expanded')};
+   const btn=document.getElementById('numberlineFold'),win=document.getElementById('numberlinePanel');
+   return{窓なし:!win||win.hidden,入口:!!btn&&btn.getBoundingClientRect().width>0,
+          印:btn&&btn.getAttribute('aria-expanded'),
+          文字なし:!!btn&&!btn.textContent.trim(),
+          名乗る:!!btn&&!!btn.getAttribute('aria-label')};
   });
-  rec('図の見せ方は既定で畳んである（§9.208 ④）',
-   nlFolded.畳んでいる===true&&nlFolded.入口===true&&nlFolded.印==='false',
+  rec('図の見せ方はアイコン1つで、既定では開いていない（§9.210 ①）',
+   nlFolded.窓なし===true&&nlFolded.入口===true&&nlFolded.印==='false'
+   &&nlFolded.文字なし===true&&nlFolded.名乗る===true,
    JSON.stringify(nlFolded));
   await page.click('#numberlineFold');
-  await page.waitForSelector('#numberlineControls:not([hidden])',{timeout:8000});
-  const nlOpen=await page.evaluate(()=>({
-   出た:!document.getElementById('numberlineControls').hidden,
-   印:document.getElementById('numberlineFold').getAttribute('aria-expanded')}));
-  rec('押すと図の見せ方が開く',nlOpen.出た===true&&nlOpen.印==='true',JSON.stringify(nlOpen));
-  await page.selectOption('#numberlineMode','rel');
+  await page.waitForSelector('#numberlinePanel:not([hidden])',{timeout:8000});
+  const nlOpen=await page.evaluate(()=>{
+   const win=document.getElementById('numberlinePanel');
+   return{出た:!win.hidden,
+    印:document.getElementById('numberlineFold').getAttribute('aria-expanded'),
+    /* **器の外に在ること**（§9.201）。見出しの中へ戻すと`overflow`で切られる。 */
+    body直下:win.parentElement===document.body,
+    位置:getComputedStyle(win).position,
+    横軸の候補:win.querySelectorAll('[data-nl-mode]').length,
+    表示幅の候補:win.querySelectorAll('[data-nl-span]').length,
+    /* 選ぶ前に見える（§9.200）——2枚のカードは**別の絵**でなければ意味が無い。 */
+    絵:[...win.querySelectorAll('[data-nl-mode] .nl-art')]
+      .map(x=>[...x.querySelectorAll('.nl-art-band')].map(r=>r.getAttribute('width')).join(',')),
+    説明:[...win.querySelectorAll('[data-nl-mode] small')].filter(x=>x.textContent.trim()).length,
+    状態:(win.querySelector('#nlState')||{}).textContent||''};
+  });
+  rec('押すと図の見せ方が別窓で開く',nlOpen.出た===true&&nlOpen.印==='true'
+   &&nlOpen.body直下===true&&nlOpen.位置==='fixed',JSON.stringify(nlOpen));
+  rec('横軸2つ・表示幅6つを全部出す（選ぶ前に見える）',
+   nlOpen.横軸の候補===2&&nlOpen.表示幅の候補===6&&nlOpen.説明===2,
+   JSON.stringify({横:nlOpen.横軸の候補,幅:nlOpen.表示幅の候補,説明:nlOpen.説明}));
+  rec('2枚のカードの図が別の絵になっている',
+   nlOpen.絵.length===2&&nlOpen.絵[0]!==nlOpen.絵[1],nlOpen.絵.join(' / '));
+  rec('いま軸の外に何件あるかを文字で言う',/軸の外/.test(nlOpen.状態),nlOpen.状態);
+  await page.click('#numberlinePanel [data-nl-mode="rel"]');
   await page.waitForTimeout(350);
   const relMixed=await mixedRead();
   rec('切り替えると図が描き直される(公差比の軸になる)',
@@ -299,7 +321,9 @@ let b=null;
   rec('公差比の軸: 自分の公差で同じだけ上振れした条は同じ位置に出る',
    relMixed.dots[0]&&relMixed.dots[2]&&Math.abs(relMixed.dots[0].x-relMixed.dots[2].x)<=2,
    `${relMixed.dots[0]&&relMixed.dots[0].x} / ${relMixed.dots[2]&&relMixed.dots[2].x}`);
-  await page.selectOption('#numberlineMode','abs');
+  rec('選んだ候補に印が付く',
+   await page.evaluate(()=>document.querySelector('[data-nl-mode="rel"]').classList.contains('is-on')),'');
+  await page.click('#numberlinePanel [data-nl-mode="abs"]');
   await page.waitForTimeout(350);
 
   /* 軸の外は**件数を文字で言い、表示幅を広げれば入る**（黙って端で潰さない）。 */
@@ -317,13 +341,17 @@ let b=null;
   const out1=await far();
   rec('軸をはみ出した点は件数を文字で出す',
    out1.軸外===1&&/軸の外\s*1件/.test(out1.文)&&out1.印===1,JSON.stringify(out1));
-  await page.selectOption('#numberlineSpan','10');
+  await page.click('#numberlinePanel [data-nl-span="10"]');
   await page.waitForTimeout(350);
   const out2=await far();
   rec('表示幅を広げると軸の端が広がり、はみ出しが収まる',
    out2.端>out1.端&&out2.軸外===0&&out2.文==='',JSON.stringify({前:out1.端,後:out2.端,軸外:out2.軸外}));
-  await page.selectOption('#numberlineSpan','2');
+  await page.click('#numberlinePanel [data-nl-span="2"]');
   await page.waitForTimeout(300);
+  /* 開けたら閉じられること。閉じてから先へ進む（窓が測定表に重なる）。 */
+  await page.click('#nlPanelClose');
+  rec('閉じられる',await page.evaluate(()=>document.getElementById('numberlinePanel').hidden===true
+    &&document.getElementById('numberlineFold').getAttribute('aria-expanded')==='false'),'');
 
   await page.evaluate(async()=>{
    S.measure.settings.splitGroups=null;S.measure.settings.splitPositionGroup=null;

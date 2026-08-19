@@ -647,14 +647,27 @@ function syncInputModeLock(){
  const type=$('#measureType')?.value,tabs=$('.mode-tabs'),statusBox=$('#inputStatusBox');
  const forceAuto=!!AUTO_ONLY_MEASURE_TYPES[type],forceManual=!!MANUAL_ONLY_MEASURE_TYPES[type];
  if(tabs)tabs.hidden=forceAuto||forceManual;
- if(statusBox)statusBox.hidden=forceManual;
+ /* ---------- 帯は**どちらのやり方でも同じ場所に出す**（§9.210 ③、利用者の指示） --
+    以前は手入力だけの項目（ラテラルボー等）で帯ごと隠しており、項目を
+    切り替えると「自動」のバッジが**消えて右のバッジが左へ詰まって**いた。
+    同じカテゴリの情報は同じ位置に出す——動くだけで探し直しになる。
+    **`display`/`visibility`は触らない**（§9.122。`#deviceInput`はこの中に
+    あり、寸法ゼロだとフォーカスを保持できない）。手入力の項目では
+    `inputMode==='manual'`が立つので、フォーカスを奪う見張りは動かない。 */
+ if(statusBox){
+  if(statusBox.hidden)statusBox.hidden=false;
+  statusBox.dataset.forced=forceManual?'manual':forceAuto?'auto':'';
+ }
  const desiredMode=forceAuto?'auto':forceManual?'manual':null;
  if(desiredMode&&S.measure.settings.inputMode!==desiredMode){
   S.measure.settings.inputMode=desiredMode;
   document.querySelectorAll('[data-mode]').forEach(x=>x.classList.toggle('active',x.dataset.mode===desiredMode));
   applyInputProtection();
-  updateReceiveState(document.activeElement===$('#deviceInput'));
  }
+ /* **必ず描き直す。** 上の`if`は「モードが変わったとき」しか通らないので、
+    そこだけに任せると手入力の項目どうしを行き来したときに帯が前の項目の
+    ままになる（「自動」と出たまま手入力、が実際に作れる）。 */
+ updateReceiveState(document.activeElement===$('#deviceInput'));
 }
 $('#measureType').onchange=()=>{S.measure.settings.wStep=0;S.measure.settings.tStep=0;S.measure.settings.burrFirst=null;S.measure.settings.measureType=$('#measureType').value;applyRightLayout();syncInputModeLock();$('#deviceInput').focus();markDirty()};
 /* 測定画面全体の再描画。旧実装は9層のラップ(モード表示→製品丈→検証→
@@ -1156,6 +1169,18 @@ $('#horizontalCount').addEventListener('change',()=>{
  if(Number(el.value)>max){
   el.value=String(max);
   showToast?.('条数を上限に合わせました',`この設備で割れるのは最大${max}条です。`,4000);
+ }
+ /* ---------- 屑幅がマイナスになる条数は物理的に無理（§9.210 ⑤、利用者の指示） --
+    母材（元幅・実績）より条幅の合計が広くなる割り方は存在しない。**戻すだけ
+    にしない**——何がぶつかっているのか（元幅／製造板幅）と、増やしたければ
+    どこを直すのかまで書く（§6）。判断できないロットでは`null`が返るので
+    素通しする（§CLAUDE「読めなければ黙って判定をやめる」）。 */
+ const lim=WL.split?.stripCountLimit?.();
+ if(lim&&Number(el.value)>lim.max){
+  el.value=String(lim.max);
+  showToast?.('これ以上は条を割れません',
+    `元幅（実績）${lim.original}mm ÷ 製造板幅 ${lim.width}mm ＝ 最大 ${lim.max}条です。`
+    +'これ以上増やすと屑幅がマイナスになります。増やすなら母材（元幅）を直してください。',7000);
  }
  updateCoilOptions(el.value);renderMeasureGrid();
 });

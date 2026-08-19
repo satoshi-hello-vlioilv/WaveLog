@@ -971,9 +971,14 @@
       const hasWidth=lot&&widthMap[lot]!==''&&widthMap[lot]!==undefined;
       const widthText=hasWidth?esc(String(widthMap[lot])):'';
       const tolText=lot?esc(tolMap[lot]||''):'';
-      const wide=width>4;
+      /* ラベルは**必ず作って、あとで幅ごとにまとめて決める**
+         （§9.210 ④、`fitStripLabels`）。以前はここで「帯が全体の4%より
+         広いか」だけを見ていたため、**同じ幅の条でも%の丸めで出たり
+         出なかったり**した。判定に使う鍵は条幅そのもの——同じ幅なら
+         必ず同じ見せ方になる。 */
+      const wkey=hasWidth?'w'+String(widthMap[lot]):'u'+(layout.cum[i+1]-layout.cum[i]);
       const cellLabel=lot?`<span class="split-visual-block-label"><b>${esc(lotSuffix3(lot))}</b>${hasWidth?`<small>${widthText}</small>`:''}</span>`:'';
-      html+=`<div class="split-visual-block${lot?'':' empty'}${i===selectedStrip?' is-selected':''}" data-start="${i}" data-end="${i}" data-lot="${lot?esc(lot):''}" style="left:${left}%;width:${width}%;--split-block-bg:${bg}" title="${fullLabel} ／ ${i+1}条目${hasWidth?` ／ 幅${widthText}`:''}${tolText?` ／ ${tolText}`:''}">${wide?cellLabel:''}</div>`;
+      html+=`<div class="split-visual-block${lot?'':' empty'}${i===selectedStrip?' is-selected':''}" data-start="${i}" data-end="${i}" data-lot="${lot?esc(lot):''}"${lot?` data-wkey="${esc(wkey)}"`:''} style="left:${left}%;width:${width}%;--split-block-bg:${bg}" title="${fullLabel} ／ ${i+1}条目${hasWidth?` ／ 幅${widthText}`:''}${tolText?` ／ ${tolText}`:''}">${cellLabel}</div>`;
     }
     html+='<div class="split-visual-ghost" id="splitVisualGhost" hidden></div></div>';
     strip.innerHTML=html;
@@ -983,6 +988,54 @@
     setVisualDetail(describeStrip(seq,sources,selectedStrip));
     ensureSplitVisualWiring();
     renderScrapAndRuler(layout);
+    /* 屑の帯を置くと条の束の幅が変わる（`flexGrow`）ので、**最後に**測る。 */
+    requestAnimationFrame(()=>{try{fitStripLabels(strip)}catch(e){}});
+  }
+  /* ---------- 同じ幅の条は同じ見せ方（§9.210 ④、利用者の指示） ----------
+     「同じ幅にもかかわらず、表示があるものとないものが混在するときがある」。
+     %の丸めで1pxだけ違う帯が生まれるため、しきい値をまたぐ条だけラベルが
+     消えていた——**同じものが同じに見えないと、違いがあるのかと数え直す**。
+     鍵は**条幅そのもの**（`data-wkey`）で、同じ幅の条は必ず同じ段になる。
+     段は3つ: ロット番号＋幅／ロット番号だけ／出さない。異幅分割では幅ごとに
+     段が変わってよい（利用者の指示「異幅分割に限りロット単位で許可」）
+     ——入らない幅の条に押し込むと、どのみち見切れて読めない。
+     **群の中では「いちばん狭い条」で決める**（%の丸めで1px違うため。
+     広いほうで決めると、狭い1本だけが見切れる）。 */
+  function fitStripLabels(strip){
+    if(!strip)return;
+    /* まだ画面に出ていない（幅0）ときは触らない——0で測ると全部「出さない」
+       になり、開いた瞬間にラベルの無い図が出る。 */
+    if(strip.getBoundingClientRect().width<1)return;
+    const blocks=[...strip.querySelectorAll('.split-visual-block[data-wkey]')];
+    if(!blocks.length)return;
+    let pad=0;
+    const groups=new Map();
+    for(const el of blocks){
+      const label=el.querySelector('.split-visual-block-label');
+      if(!label)continue;
+      if(!pad){
+        const cs=getComputedStyle(label);
+        pad=(parseFloat(cs.paddingLeft)||0)+(parseFloat(cs.paddingRight)||0);
+      }
+      const b=label.querySelector('b'),small=label.querySelector('small');
+      const key=el.dataset.wkey;
+      const g=groups.get(key)||{els:[],room:Infinity,short:0,full:0};
+      g.els.push(el);
+      g.room=Math.min(g.room,el.getBoundingClientRect().width);
+      /* ラベルは縦積みなので、要る幅は**子のうち広いほう**。 */
+      const bw=b?b.getBoundingClientRect().width:0;
+      const sw=small?small.getBoundingClientRect().width:0;
+      g.short=Math.max(g.short,bw);
+      g.full=Math.max(g.full,Math.max(bw,sw));
+      groups.set(key,g);
+    }
+    for(const g of groups.values()){
+      const level=g.room>=g.full+pad?'full':g.room>=g.short+pad?'short':'none';
+      for(const el of g.els){
+        el.classList.toggle('label-short',level==='short');
+        el.classList.toggle('label-none',level==='none');
+      }
+    }
   }
   /* 選んだ条の1行。ロット番号・幅・公差は帯の`title`と同じ材料だが、
      **マウスを載せなくても読める場所**が要る（触った結果を画面に返す）。 */
@@ -1427,10 +1480,36 @@
            clamped:manual&&Math.abs(os-set)>0.0001,
            biased:manual&&Math.abs(os-even)>=SCRAP_EVEN_EPS};
   }
+  /* ---------- 屑幅がマイナスになる条数は受け付けない（§9.210 ⑤、利用者の指示） --
+     「横割り数を変更して条数を増やしていくことができますが、屑幅マイナスに
+     なる場合、物理的に不可能なので、母材幅が修正されない限り条数変更を
+     それ以上受け付けないようにしてください」。
+     答えるのは**1箇所**。返すのは`{original,width,max}`で、
+     **判断できないときは`null`**——元幅（実績）が取れない端末・ロットで
+     操作ごと塞ぐと、直す手立ても無いまま条数を触れなくなる（§CLAUDE
+     「読めなければ黙って判定をやめる」）。
+     子ロットで条幅が決まっているロットは**対象外**（条数を変えても条幅
+     合計が動かないので、止める理由が無い）。 */
+  const STRIP_LIMIT_EPS=0.0001;
+  function stripCountLimit(){
+    const rawOriginal=S.measure?.basic?.originalWidth;
+    if(rawOriginal===undefined||rawOriginal===null||String(rawOriginal).trim()==='')return null;
+    const original=Number(rawOriginal);
+    if(!Number.isFinite(original)||original<=0)return null;
+    const groups=S.measure?.settings?.splitGroups;
+    if(Array.isArray(groups)&&groups.length)return null;
+    if(splitSourcesCache&&splitSourcesCacheKey===currentSplitCacheKey()&&splitSourcesCache.length)return null;
+    const rawWidth=S.measure?.basic?.mfgWidth;
+    if(rawWidth===undefined||rawWidth===null||String(rawWidth).trim()==='')return null;
+    const width=Number(rawWidth);
+    if(!Number.isFinite(width)||width<=0)return null;
+    return{original,width,max:Math.max(1,Math.floor((original+STRIP_LIMIT_EPS)/width))};
+  }
   /* 屑幅の割り付けを知っているのはこのファイルだけ。異常位置判定
      (defect-locator.js)は**同じ答えを使う**——片寄せしているのに
      「屑は左右均等」で計算すると、条の番号が半分ぶんずれる。 */
-  window.WL.split=Object.assign(window.WL.split||{},{scrapInfo:scrapWidthInfo});
+  window.WL.split=Object.assign(window.WL.split||{},
+    {scrapInfo:scrapWidthInfo,stripCountLimit});
   function updateScrapWidthDisplay(){
     renderScrapAllocEditor();
     const el=$('#motherScrapWidth');if(!el)return;

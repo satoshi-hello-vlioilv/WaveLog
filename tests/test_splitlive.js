@@ -382,6 +382,111 @@ const settle=async page=>{
   rec('条を押すとどの条かが文字で出る（異常位置の特定）',
       picked.選んだ===1&&/3/.test(picked.説明||''),JSON.stringify(picked));
 
+  /* ==================================================================
+     §9.210 ⑤ 屑幅がマイナスになる条数は受け付けない（利用者の指示）
+     ------------------------------------------------------------------
+     「屑幅マイナスになる場合、物理的に不可能なので、母材幅が修正されない
+      限り条数変更をそれ以上受け付けないようにしてください。」
+     ================================================================== */
+  /* **材料ごと注ぎ込む。** 検証用フィクスチャの仕掛は元幅（実績）も
+     製造板幅も空で、そのままでは`stripCountLimit()`が`null`（＝判断できない
+     ので素通し）を返す。空のまま「0件」を見ても、壊れていても同じ結果に
+     なるので何も確かめていない（§9.125の公差と同じ罠）。 */
+  const lim=await page.evaluate(async()=>{
+   S.measure.basic.originalWidth='1250';
+   S.measure.basic.mfgWidth='100';
+   const h=document.getElementById('horizontalCount');
+   h.value='6';h.dispatchEvent(new Event('change',{bubbles:true}));
+   await new Promise(r=>setTimeout(r,350));
+   const l=WL.split.stripCountLimit&&WL.split.stripCountLimit();
+   return l?{max:l.max,元幅:l.original,板幅:l.width}:null;
+  });
+  rec('最大条数を答えるのは1箇所（WL.split.stripCountLimit）',
+      !!lim&&lim.max>=1&&lim.max*lim.板幅<=lim.元幅+0.001,JSON.stringify(lim));
+  if(lim){
+   const over=await page.evaluate(async m=>{
+    const h=document.getElementById('horizontalCount');
+    h.value=String(m+3);h.dispatchEvent(new Event('change',{bubbles:true}));
+    await new Promise(r=>setTimeout(r,400));
+    const info=WL.split.scrapInfo();
+    return{値:Number(h.value),屑:info?Math.round(info.scrap*100)/100:null,
+      案内:[...document.querySelectorAll('#toastArea .toast b')].map(x=>x.textContent).join(' / ')};
+   },lim.max);
+   rec('屑幅がマイナスになる条数は受け付けない（§9.210 ⑤）',
+       over.値===lim.max&&over.屑!==null&&over.屑>=-0.001,JSON.stringify(over));
+   rec('断った理由と打つ手を文字で出す',/条を割れません/.test(over.案内),over.案内);
+   const okv=await page.evaluate(async m=>{
+    const h=document.getElementById('horizontalCount');
+    h.value=String(Math.max(1,m-1));h.dispatchEvent(new Event('change',{bubbles:true}));
+    await new Promise(r=>setTimeout(r,350));
+    return Number(h.value);
+   },lim.max);
+   rec('入る条数まではそのまま通す',okv===Math.max(1,lim.max-1),String(okv));
+  }
+
+  /* ==================================================================
+     §9.210 ④ 同じ幅の条は同じ見せ方（利用者の指示）
+     ------------------------------------------------------------------
+     「多条割の場合、図の中に文字は入るかどうかきわどい時に、同じ幅にも
+      かかわらず、表示があるものとないものが混在するときがあります。」
+     以前は「帯が全体の4%より広いか」だけを見ていたため、%の丸めで
+     しきい値をまたぐ条だけラベルが消えていた。判定の鍵は**条幅**。
+     **等幅で条数を増やしながら見る**——1つの条数だけ見ても、たまたま
+     全部出る／全部消える状態しか通らず、直す前でも素通りする。
+     条数は§9.210 ⑤の上限まで（超えると受け付けないのが正しい振る舞い）。 */
+  /* **条数ごとに母材幅も合わせる。** 元幅を固定したまま条数を変えても、
+     1条の幅（mm）が変わらない以上**画面上の1条の幅も変わらない**
+     （実測でどの条数でも18px。屑の帯が伸び縮みするだけ）。それでは
+     境目を一度も通らない。実機で見たいのは「母材をほぼ使い切って条を
+     細かく割る」ときの見え方なので、元幅＝条幅×条数＋わずかな屑にする。 */
+  const SW=32;
+  const counts=[3,6,10,16,24,32,40];
+  rec('確かめられる条数が複数ある（1つだけでは何も見ていない）',counts.length>=3,
+      JSON.stringify({試す:counts}));
+  const seenLevels=new Set(),levelTrace=[];
+  for(const n of counts){
+   const lab=await page.evaluate(async([v,w])=>{
+    S.measure.basic.mfgWidth=String(w);
+    S.measure.basic.originalWidth=String(v*w+20);
+    const h=document.getElementById('horizontalCount');
+    h.value=String(v);h.dispatchEvent(new Event('change',{bubbles:true}));
+    await new Promise(r=>setTimeout(r,320));
+    const bs=[...document.querySelectorAll('#splitVisualStrip .split-visual-block[data-wkey]')];
+    const g={};
+    bs.forEach(b=>{
+     const lv=b.classList.contains('label-none')?'none'
+       :b.classList.contains('label-short')?'short':'full';
+     (g[b.dataset.wkey]=g[b.dataset.wkey]||new Set()).add(lv);
+    });
+    return{条:bs.length,幅の種類:Object.keys(g).length,
+      幅:bs[0]?Math.round(bs[0].getBoundingClientRect().width):0,
+      ばらつき:Object.entries(g).filter(([,v])=>v.size>1).map(([k,v])=>k+':'+[...v].join('/')),
+      段:Object.fromEntries(Object.entries(g).map(([k,v])=>[k,[...v][0]]))};
+   },[n,SW]);
+   Object.values(lab.段).forEach(v=>seenLevels.add(v));
+   levelTrace.push(n+'条:'+Object.values(lab.段).join(',')+'(幅'+lab.幅+'px)');
+   rec(`${n}条: 同じ幅の条はラベルの出し方も同じ（§9.210 ④）`,
+       lab.条===n&&lab.ばらつき.length===0,JSON.stringify(lab));
+  }
+  /* **境目をまたいでいること**を確かめる。全部「出す」のままなら、
+     ばらつきが無いのは当たり前で、何も見ていないのと同じ。 */
+  rec('条数を増やす途中でラベルの段が実際に変わる（境目を通っている）',
+      seenLevels.size>=2,levelTrace.join(' / '));
+  /* 実際に**見切れていないこと**まで見る（クラスの一致だけでは、全部
+     「出す」にしておいても通ってしまう）。 */
+  const clip=await page.evaluate(()=>{
+   const bad=[];
+   document.querySelectorAll('#splitVisualStrip .split-visual-block[data-wkey]').forEach(b=>{
+    const l=b.querySelector('.split-visual-block-label');
+    if(!l||getComputedStyle(l).display==='none')return;
+    if(l.getBoundingClientRect().width>b.getBoundingClientRect().width+1)
+     bad.push(b.dataset.wkey+':'+Math.round(l.getBoundingClientRect().width)
+       +'>'+Math.round(b.getBoundingClientRect().width));
+   });
+   return bad;
+  });
+  rec('出したラベルは条の幅に収まっている（見切れさせない）',clip.length===0,clip.join(' / '));
+
   /* **ダイアログで止めない。** 以前はalertだったので、ドラッグのたびに
      手が止まった。理由は状態行の文字で伝える。 */
   rec('操作の途中でダイアログを出さない',dialogs.length===0,dialogs.join(' / '));
