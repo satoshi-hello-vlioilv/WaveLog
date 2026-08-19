@@ -668,4 +668,49 @@
 .pc-owner-off{color:var(--muted)}
 .pc-owner-lines{display:flex;flex-wrap:wrap;gap:var(--space-2);
   font-size:var(--fs-tiny);color:var(--muted)}
+/* ---------- 測定データの保存(§9.202) ----------
+   **3つの置き場を左から右へ**並べる（流れの順＝視覚導線と作業導線を
+   一致させる。§14）。矢印には「いつ動くか」を字で書く——色や形だけでは
+   「自動なのか手動なのか」が伝わらない（§3）。 */
+.ms-lead{margin:0 0 var(--space-2);font-size:var(--fs-sm);color:var(--ink-2);line-height:1.7}
+.ms-next{display:flex;align-items:baseline;gap:var(--space-2);
+  margin-bottom:var(--space-3);padding:var(--space-2) var(--space-3);
+  border-left:3px solid var(--teal);border-radius:var(--radius-sm);
+  background:var(--pale);font-size:var(--fs-sm);color:var(--ink-2);line-height:1.7}
+.ms-next-label{flex:none;font-size:var(--fs-micro);font-weight:800;color:var(--teal-dark);letter-spacing:.04em}
+.ms-flow{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) auto minmax(0,1fr);
+  align-items:stretch;gap:var(--space-2);margin-bottom:var(--space-3)}
+.ms-stage{display:flex;flex-direction:column;gap:var(--gap-tight);min-width:0;
+  padding:var(--space-3);border:1px solid var(--line-soft);border-radius:var(--radius-md);
+  background:var(--surface)}
+.ms-stage.is-warn{border-color:var(--warn-border);background:var(--warn-bg)}
+.ms-stage.is-off{background:var(--surface-2)}
+.ms-stage-head{display:flex;align-items:baseline;gap:var(--gap-tight);flex-wrap:wrap}
+.ms-stage-head b{font-size:var(--fs-base-sm);color:var(--ink)}
+.ms-stage-head small{font-size:var(--fs-tiny);color:var(--muted)}
+.ms-no{flex:none;font-size:var(--fs-title);font-weight:800;color:var(--teal-dark);line-height:1}
+/* ラベル列は固定幅でそろえる（§9）。 */
+.ms-kv{display:grid;grid-template-columns:var(--w-sm) minmax(0,1fr);gap:2px var(--space-2);margin:0}
+.ms-kv dt{margin:0;font-size:var(--fs-tiny);color:var(--muted)}
+.ms-kv dd{margin:0;font-size:var(--fs-sm);color:var(--ink-2);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ms-kv dd.is-warn{color:var(--warn-fg);font-weight:800}
+.ms-note{margin:0;font-size:var(--fs-tiny);color:var(--muted);line-height:1.7}
+.ms-note code{font-size:var(--fs-tiny);color:var(--ink-3);word-break:break-all;white-space:normal}
+.ms-arrow{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  min-width:var(--w-sm);padding:0 var(--gap-tight)}
+.ms-arrow b{font-size:var(--fs-tiny);font-weight:800;color:var(--ink-3);text-align:center}
+.ms-arrow i{font-style:normal;font-size:var(--fs-lg);color:var(--teal);line-height:1}
+.ms-arrow small{font-size:var(--fs-tiny);color:var(--muted)}
+.ms-err{margin:0 0 var(--space-2);font-size:var(--fs-sm);color:var(--danger)}
+.ms-settings{margin-top:var(--space-3);padding:var(--space-3);
+  border:1px solid var(--line-soft);border-radius:var(--radius-md);background:var(--surface-2)}
+.ms-settings h4{margin:0 0 var(--space-2);font-size:var(--fs-base-sm);color:var(--ink)}
+/* 狭い窓では縦に積む（切り落として見えなくするより2段のほうがまし。§9.199）。 */
+@media (max-width:70em){
+ .ms-flow{grid-template-columns:minmax(0,1fr)}
+ .ms-arrow{flex-direction:row;min-width:0;padding:var(--gap-hair) 0}
+ .ms-arrow i{transform:rotate(90deg)}
+}
+
 }

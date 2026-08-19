@@ -577,7 +577,10 @@
  function productRowsSection(x){
   const rows=x.product?.rows||[],actual=Math.max(1,Math.min(9,+x.settings?.verticalCount||1));
   const body=Array.from({length:actual},(_,i)=>{
-   const r=rows[i]||{},j=judgeAlignmentCode(r.alignmentCode);
+   /* 揃いの判定は`judgeProductRow`の1箇所が答える(§9.203)。
+      4桁コードを廃止したので、`alignmentCode`だけを見ると新しい記録が
+      すべて空欄になる（旧データはあちらが面倒を見る）。 */
+   const r=rows[i]||{},j=judgeProductRow(r);
    return `<tr><th>${i+1}</th><td>${esc(r.productLength||'-')}</td><td>${esc(r.wallThickness||'-')}</td><td>${j?`<span class="product-judge${j==='OK'?' ok':' ng'}">${esc(j)}</span>`:''}</td><td></td><td>${esc(r.note||'-')}</td></tr>`;
   }).join('');
   return `<section class="rp-section"><h3>丈別データ（長さ・肉厚・揃い）</h3><table class="rp-dim-table rp-product-table"><thead><tr><th>丈</th><th>長さ</th><th>肉厚</th><th>揃い</th><th>外観</th><th>備考</th></tr></thead><tbody>${body}</tbody></table></section>`;
@@ -684,7 +687,7 @@
     ||hasMeasurementValues(x,['width','lateral','burr','offset','telescope','flatness']);
  }
  function rpShowProduct(x){
-  const has=(x.product?.rows||[]).some(r=>r&&['productLength','wallThickness','alignmentCode'].some(k=>String(r[k]||'').trim()!==''));
+  const has=(x.product?.rows||[]).some(r=>r&&PRODUCT_FILLED_KEYS.some(k=>String(r[k]||'').trim()!==''));
   return WL.measureItem.isMaterial(x.settings?.measureType)||has;
  }
  /* 並び。**知らない名前は捨て、登録済みで並びに無いものは末尾へ**（一覧の

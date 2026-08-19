@@ -72,6 +72,13 @@
    cols:[{k:'equipment',label:'対象設備',grow:2,format:'equipmentTarget'},{k:'category',label:'分類',grow:1},{k:'name',label:'名称',grow:2},{k:'standardMinutes',label:'標準所要分',grow:1}],
    hint:'作業スケジュール(docs/SCHEDULE_MODE_DESIGN.md §5.3)の設備停止予定で選べる名称と、標準所要分(分)です。1件の停止内容を複数の設備へまとめて登録できます。「すべての設備」を選べば、設備が増えても登録し直す必要がありません。標準所要分が設備ごとに違う場合は、設備を分けて別々に登録してください(同じ名称で対象設備が重なる登録はできません。どちらの時間が効くのか決まらなくなるためです)。「突発停止」は現場からの連絡を受けた計画担当が投入する運用のため、名称に登録しておくだけで自動では動きません。'},
   {group:'schedule',key:'shiftMaster',label:'勤務形態',icon:'勤',special:'shift-pattern',endpoint:'/api/schedule/shift-pattern-master'},
+  /* 測定データの置き場(§9.202、利用者の指示)。**3段あることを図で示す**
+     ——「入力したのに完了に出ない」「DBへ同期が何をするのか分からない」
+     「バックアップの設定画面が無い」は、どれも置き場の関係が画面に
+     書かれていないことが元だった。設定もここへ集める（共通設定から移動。
+     同じ設定を2画面に置かない＝§9.168と同じ作法）。 */
+  {group:'system',key:'measStorage',label:'測定データの保存',icon:'測',special:'meas-storage',
+   titleText:'測定データの保存 — どこに何が入るか'},
   {group:'system',key:'importBackup',label:'データ引継ぎ',icon:'継',special:'import-backup'},
   /* データ接続(§9.168)。**1行＝1つのデータソース**で、「これは何か／どこから
      読むか／この設定で何ができるか」を1枚のカードにまとめる。読み込み先の
@@ -1001,6 +1008,7 @@
   // タブを移ったら必ず外す(付いたままだと他のマスタで上部フォームが
   // 伸び縮みして一覧の高さが安定しない)。
   $('#masterMaintForm')?.classList.remove('mm-form-page');
+  if(def.special==='meas-storage'){setMaintSearchVisible(false);return loadMeasStorageMaint(force)}
   if(def.special==='import-backup'){setMaintSearchVisible(false);return loadImportBackupMaint(force)}
   if(def.special==='load-factor'){setMaintSearchVisible(false);return loadLoadFactorMaint(force)}
   if(def.special==='data-source'){setMaintSearchVisible(false);return loadDataSourceMaint(force)}
@@ -1139,6 +1147,164 @@
    showToast&&showToast(clear?'上書きを解除しました':'上書きを保存しました','',3200);
   }catch(e){showToast&&showToast('保存できませんでした',e.message,6500)}
   finally{setMaintLoading(false)}
+ }
+ /* ---------- 測定データの保存(§9.202、利用者の指示) ----------
+    「入力したのに完了へ反映されない」「測定バックアップの設定部分が無い」
+    「『DBに同期』の使い方が分からない」は、**3つの置き場の関係が
+    どこにも書かれていない**ことが元だった。ここで1枚にまとめる。
+
+     ① この端末のブラウザ (IndexedDB＋localStorageの控え)
+        …入力の実体。**「保存」を押すまで入らない**（打っている最中は
+          画面の中だけ）。この端末を替えると見えない。
+     ② この端末のDB       (db/records.sqlite3)
+        …①を保存するたびに自動で送る。**他のPCから続きを開けるのはここ**。
+     ③ 閲覧用の複製       (Box等・読むだけ)
+        …②が変わったら間隔ごとに丸ごと写す。閲覧モードはここを読む。
+
+    守っていること:
+     ・**流れの順に左から右**へ置く（視覚導線と作業導線を一致させる。§14）
+     ・**いま何件どこにあるか**を数字で出す。数えられなければ「—」にして
+       0件と言い切らない（§9.107と同じ約束）
+     ・**次にすることを1つだけ指す**（未送信があるときだけ「今すぐ送る」を
+       強調する。§2）
+     ・設定はこの画面だけが持つ（共通設定からは移動した。§9.168） */
+ let measStorageState={loaded:false,server:null,local:null,err:''};
+ async function loadMeasStorageMaint(force){
+  const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
+  if(!force&&measStorageState.loaded){renderMeasStorage();return}
+  form.innerHTML='';list.innerHTML='<div class="mm-empty">測定データの置き場を調べています…</div>';
+  try{
+   /* ①はブラウザの中なのでサーバーからは見えない。**画面側が数える**。
+      読めなくても画面は出す（数えられなかったことを書く）。 */
+   const [srv,cfg,localItems]=await Promise.all([
+    api('/api/measurement/storage'),
+    api('/api/path-config-master'),
+    (typeof reliableAll==='function'?reliableAll():Promise.resolve(null)).catch(()=>null),
+   ]);
+   measStorageState.server=srv;
+   measStorageState.cfg=cfg;
+   measStorageState.local=localItems;
+   measStorageState.loaded=true;measStorageState.err='';
+   renderMeasStorage();
+  }catch(e){list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
+ }
+ function msNum(n){return (n===null||n===undefined)?'—':String(n)}
+ function msWhen(v){
+  if(!v)return '—';
+  const t=typeof v==='number'?v*1000:Date.parse(String(v).replace(' ','T'));
+  if(!Number.isFinite(t))return String(v);
+  const min=Math.round((Date.now()-t)/60000);
+  const stamp=new Date(t).toLocaleString('ja-JP',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+  if(min<1)return `${stamp}（たった今）`;
+  if(min<60)return `${stamp}（${min}分前）`;
+  return `${stamp}（${Math.round(min/60)}時間前）`;
+ }
+ function msSize(n){return (n===null||n===undefined)?'—':(n/1048576).toFixed(1)+'MB'}
+ function renderMeasStorage(){
+  const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
+  const srv=measStorageState.server||{},exp=srv.export||{},loc=srv.local||{};
+  const items=measStorageState.local;
+  const draft=items?items.filter(x=>x.status!=='完了').length:null;
+  const done=items?items.filter(x=>x.status==='完了').length:null;
+  const unsent=items?items.filter(x=>(x.syncState&&x.syncState.status)!=='synced').length:null;
+  const v=(measStorageState.cfg&&measStorageState.cfg.values)||{};
+  const interval=Number(exp.intervalSec||600);
+  const mins=Math.max(1,Math.round(interval/60));
+  /* 次にすること。**1つだけ指す**(§2)。 */
+  const next=unsent
+   ?`この端末に<b>まだ②へ送っていないデータが${unsent}件</b>あります。「未送信を今すぐ送る」を押してください。`
+   :(!exp.configured
+     ?'②までは保存できています。他のPCから<b>閲覧だけ</b>させたい場合は、下の「閲覧用の複製先」を設定してください（設定しなくても測定・共有はできます）。'
+     :(exp.pending?'②に新しい変更があります。次の複製で③へ写ります（すぐ写したいときは「いま複製する」）。'
+                  :'すべて送信・複製できています。いまは何もする必要がありません。'));
+  const stage=(no,title,sub,rows,note,cls)=>`<div class="ms-stage ${cls||''}">
+    <div class="ms-stage-head"><span class="ms-no">${no}</span><b>${esc(title)}</b><small>${esc(sub)}</small></div>
+    <dl class="ms-kv">${rows.map(([k,val,warn])=>
+      `<dt>${esc(k)}</dt><dd${warn?' class="is-warn"':''}>${val}</dd>`).join('')}</dl>
+    <p class="ms-note">${note}</p></div>`;
+  const arrow=(a,b)=>`<div class="ms-arrow" aria-hidden="true"><b>${esc(a)}</b><i>→</i><small>${esc(b)}</small></div>`;
+  form.innerHTML=`
+   <div class="mm-form-head"><span class="mm-mode-chip editing">この端末の設定</span></div>
+   <p class="ms-lead">測定データは<b>3か所</b>に置かれます。左から右へ流れます。
+    <b>打っている最中はまだどこにも入っていません</b>——「保存して一覧へ」か「測定を完了」を押した時点で①と②へ入ります。</p>
+   <div class="ms-next"><span class="ms-next-label">次にすること</span><span>${next}</span></div>
+   <div class="ms-flow">
+    ${stage('①','この端末のブラウザ','IndexedDB＋控え',[
+      ['編集中',msNum(draft)+(draft===null?'':'件')],
+      ['完了',msNum(done)+(done===null?'':'件')],
+      ['②へ未送信',msNum(unsent)+(unsent===null?'':'件'),!!unsent],
+     ],'入力した値の実体です。<b>この端末でしか見えません</b>。ブラウザのデータを消すと失われます。',
+      unsent?'is-warn':'')}
+    ${arrow('保存のたび','自動')}
+    ${stage('②','この端末のDB','db/records.sqlite3',[
+      ['記録',msNum(loc.count)+(loc.count===null?'':'件')],
+      ['最終書込',msWhen(loc.lastWriteAt)],
+      ['大きさ',msSize(loc.size)],
+     ],`<b>他のPCから続きを開けるのはここ</b>です（データ一覧はここも読みます）。<br><code title="${esc(loc.path||'')}">${esc(loc.path||'—')}</code>`)}
+    ${arrow(`変わったら${mins}分ごと`,exp.configured?'自動':'未設定')}
+    ${stage('③','閲覧用の複製','Box等・読むだけ',[
+      ['状態',exp.configured?(exp.exists===false?'まだ作られていません':'複製しています'):'<b>未設定（複製しません）</b>',!exp.configured],
+      ['最終複製',exp.configured?msWhen(exp.lastOkAt):'—'],
+      ['未反映の変更',exp.configured?(exp.pending?'あり':'なし'):'—'],
+     ],exp.configured
+        ?`閲覧モードの端末はここを読みます。書き戻しはしません。<br><code title="${esc(exp.path||'')}">${esc(exp.path||'—')}</code>`
+        :'設定すると、②の中身をまるごとBox等へ写します。<b>測定・共有には必要ありません</b>——閲覧専用の端末に見せたいときだけ設定してください。',
+      exp.configured?'':'is-off')}
+   </div>
+   ${exp.lastError?`<p class="ms-err">前回の複製に失敗しました: ${esc(exp.lastError)}</p>`:''}
+   <div class="mm-cd-toolbar"><div class="mm-cd-actions">
+    <button type="button" id="msSyncNow" class="${unsent?'mm-btn-primary':'mm-btn-ghost sm'}"${unsent?'':' disabled'}
+      title="${unsent?'①のうち②へ送れていないものを、まとめて送ります':'未送信のデータはありません'}">未送信を今すぐ送る${unsent?`（${unsent}件）`:''}</button>
+    <button type="button" id="msExportNow" class="mm-btn-ghost sm"${exp.configured?'':' disabled'}
+      title="${exp.configured?'間隔を待たずに、いま②を③へ写します':'複製先が未設定です'}">いま複製する</button>
+    <button type="button" id="msReload" class="mm-btn-ghost sm">状態を読み直す</button>
+   </div></div>
+   <div class="ms-settings">
+    <h4>③ 閲覧用の複製の設定</h4>
+    <label class="mm-field"><span>複製先のフォルダ</span>
+     <input type="text" id="msExportPath" value="${esc(v.records_backup_export_path||'')}"
+       placeholder="例: C:\\Users\\…\\Box\\WaveLog閲覧用" autocomplete="off">
+     <small class="mm-field-hint">フォルダを指定します（この下に records.sqlite3 を作ります）。
+      空欄なら複製しません。<b>複製先を変えたときはアプリの再起動が必要です</b>（接続先は起動時に1回だけ決まります）。</small></label>
+    <label class="mm-field"><span>複製を見に行く間隔</span>
+     <span class="mm-field-num"><input type="number" id="msExportInterval" min="30" step="30"
+       value="${esc(String(v.records_backup_export_interval_sec||exp.intervalSec||600))}"><em>秒</em></span>
+     <small class="mm-field-hint"><b>変わったときだけ</b>複製するので、短くしても無駄な複製は増えません。
+      こちらは保存後すぐ反映されます（再起動は要りません）。</small></label>
+    <div class="mm-cd-actions"><button type="button" id="msSaveCfg" class="mm-btn-primary">この設定を保存</button></div>
+   </div>
+   <p class="mm-field-hint">測定画面の「DBへ同期」は、<b>いま開いている測定を①②へ即座に書く</b>ボタンです
+    （保存して閉じずに、そこまでの入力を確実に残したいときに使います）。他のPCへ渡したい・PCを入れ替えるときは
+    「データ引継ぎ」タブを使ってください。</p>`;
+  list.innerHTML='';
+  $('#msReload').onclick=()=>{measStorageState.loaded=false;loadMeasStorageMaint(true)};
+  $('#msSyncNow').onclick=async()=>{
+   if(typeof syncPendingRecords!=='function'){showToast&&showToast('この画面からは送れません','',4000);return}
+   await syncPendingRecords({silent:false});
+   measStorageState.loaded=false;loadMeasStorageMaint(true);
+  };
+  $('#msExportNow').onclick=async()=>{
+   try{
+    setMaintLoading(true,'複製しています…');
+    await api('/api/measurement/backup/export-now',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    showToast&&showToast('複製しました','',3200);
+   }catch(e){showToast&&showToast('複製できませんでした',e.message,7000)}
+   finally{setMaintLoading(false);measStorageState.loaded=false;loadMeasStorageMaint(true)}
+  };
+  $('#msSaveCfg').onclick=async()=>{
+   /* **送るのはこの2つだけ**。パス設定の保存は「送られてきた項目だけ」を
+      書くので、他の設定を巻き添えにしない(§9.192)。 */
+   const body={records_backup_export_path:String($('#msExportPath').value||'').trim(),
+               records_backup_export_interval_sec:String($('#msExportInterval').value||'').trim(),
+               user_id:String($('#masterUserId')?.value||'').trim()};
+   try{
+    setMaintLoading(true,'保存しています…');
+    await api('/api/path-config-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    pathConfigState.loaded=false;
+    showToast&&showToast('保存しました','複製先を変えた場合は、アプリを再起動すると反映されます',6000);
+   }catch(e){showToast&&showToast('保存できませんでした',e.message,7000)}
+   finally{setMaintLoading(false);measStorageState.loaded=false;loadMeasStorageMaint(true)}
+  };
  }
  /* ---------- データ引継ぎ（PC引継ぎ等でrecords.sqlite3からIndexedDBへ取り込む） ----------
     通常はIndexedDB→records.sqlite3の一方通行だが、PC更新等でIndexedDBが
@@ -2571,7 +2737,8 @@
      :'<p class="mm-field-hint">データソースが登録されていません。「データ接続」で登録してください。</p>'}`)}
    ${group('共有・複製','サーバー再起動後に反映','is-restart',`
     ${pathField('schedule_share_path','スケジュール機能の共有データ置き場（schedule.sqlite3）','file','共有フォルダ上のschedule.sqlite3を選びます。空欄ならスケジュール機能は無効です。')}
-    ${pathField('records_backup_export_path','測定データバックアップの閲覧用複製先','dir','複製先の「フォルダ」を選びます。空欄なら複製しません。')}`)}
+    <p class="mm-field-hint">測定データバックアップの<b>閲覧用複製先</b>は「測定データの保存」タブへ移しました
+     （置き場の図・件数・「いま複製する」と同じ画面にあるほうが、何が起きるか分かるためです）。</p>`)}
    ${group('RNE抽出','保存後すぐ反映','is-live',`
     <label class="mm-field"><span>RNE抽出の定期実行</span><select data-pc-field="rne_extract_enabled">${
      [['','（既定）auto: 取得元がlocalのときだけ'],['auto','auto: 取得元がlocalのときだけ'],

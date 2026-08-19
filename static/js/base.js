@@ -82,7 +82,10 @@ function setState(x){$('#localState').textContent=x}
    閉じようとした際、破棄してよいか確認するために使う。renderMeasurement()
    でデータを新規に読み込んだ時と、保存が成功した時にリセットする。 */
 let measureDirty=false;
-function markDirty(){measureDirty=true;setState('未保存')}
+/* **どこに在るのかまで書く**(§9.202、利用者の報告「入力しただけでは
+   完了に反映されない」)。「未保存」だけだと、打った値がもう端末に
+   入っていると読める。実際は保存を押すまで画面の中にしか無い。 */
+function markDirty(){measureDirty=true;setState('未保存（画面の中だけ）')}
 /* サイドバーの選択状態。トップレベルの行き先(データ一覧・仕掛・品質データ・
    マスタ一覧・ダッシュボード・実績カレンダー)は排他で、常にどれか1つだけが
    選択中になる。以前は行き先ごとに自分の.activeを付け外ししていたため、

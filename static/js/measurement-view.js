@@ -95,7 +95,7 @@ m.mother=m.mother||{};m.qualityInfo=m.qualityInfo||'異常情報なし';m.measur
   const legacy=m.product&&typeof m.product==='object'?m.product:null;
   m.product={rows:Array.from({length:LENGTH_SLOTS},blankProductRow)};
   if(legacy&&(legacy.productLength||legacy.wallThickness||legacy.alignmentCode)){
-   Object.assign(m.product.rows[0],{productLength:legacy.productLength||'',wallThickness:legacy.wallThickness||'',alignmentCode:legacy.alignmentCode||'',edgeShape:legacy.edgeShape||'',occurrencePosition:legacy.occurrencePosition||'',regularity:legacy.regularity||'',pitch:legacy.pitch||'',alignmentValue:legacy.alignmentValue||''});
+   Object.assign(m.product.rows[0],{productLength:legacy.productLength||'',wallThickness:legacy.wallThickness||'',alignmentCode:legacy.alignmentCode||'',edgeShape:legacy.edgeShape||'',occurrencePosition:legacy.occurrencePosition||'',regularity:legacy.regularity||'',direction:legacy.direction||'',pitch:legacy.pitch||'',alignmentValue:legacy.alignmentValue||''});
   }
  }else if(m.product.rows.length<LENGTH_SLOTS){
   while(m.product.rows.length<LENGTH_SLOTS)m.product.rows.push(blankProductRow());
@@ -212,12 +212,59 @@ function applyRightLayout(){
    戻した（②の作業面は実測1059×920pxあり、9丈×9項目は横スクロールなしで
    収まる）。読み書きするDOMは`#productRowsBody`の1本だけで、
    `collect()`・`activeRequiredControls()`も同じものを見る。 */
-function blankProductRow(){return{productLength:'',wallThickness:'',alignmentCode:'',edgeShape:'',occurrencePosition:'',regularity:'',pitch:'',alignmentValue:'',note:''}}
+function blankProductRow(){return{productLength:'',wallThickness:'',alignmentCode:'',edgeShape:'',occurrencePosition:'',regularity:'',direction:'',pitch:'',alignmentValue:'',note:''}}
+/* ---------- 揃いの記録(§9.203、利用者の指示) ----------
+   「揃いコードで打ち込むところを、選ばせて記録する形に変更したい」
+   「コードを作らず廃止、エッジ形状・発生位置・規則性・方向・ピッチ・値の
+     6種類で管理する形に」「方向は前側/後側ではなくOS/DS」
+   「エッジ形状に『揃い綺麗』という評価を追加」
+
+   **4桁のコードは廃止した。** 桁の意味を覚えていないと読めない値だったので、
+   名前をそのまま記録する（帳票にもDBにも意味のある文字が残る）。
+   **判定の起点はエッジ形状**——「揃い綺麗」ならそこで終わり、それ以外を
+   選んだときだけ内訳（発生位置・規則性・方向・ピッチ・値）を書く。
+   異常が無いのに5欄を埋めさせない（§4/§2）。
+
+   **旧データは消さない。** 4桁コードで保存されたレコードは`alignmentCode`を
+   持ったままで、判定はそちらから作り、画面にも「旧 1234」と出す
+   （コードを廃止したからといって、記録されたものが読めなくなってはいけない）。 */
+const PRODUCT_EDGE_OK='揃い綺麗';
+const PRODUCT_CHOICES=[
+ {k:'edgeShape',          label:'エッジ形状',opts:[PRODUCT_EDGE_OK,'のこぎり状','テレスコ状']},
+ {k:'occurrencePosition', label:'発生位置',  opts:['2/3以上発生','1/3〜2/3発生','1/3未満発生']},
+ {k:'regularity',         label:'規則性',    opts:['不規則','規則的']},
+ {k:'direction',          label:'方向',      opts:['OS','DS']},
+];
+/* エッジ形状が「揃い綺麗」のときは書かない欄。**空にして押せなくする**
+   （押せるのに意味が無い欄を残さない）。 */
+const PRODUCT_DETAIL_KEYS=['occurrencePosition','regularity','direction','pitch','alignmentValue'];
+function judgeProductRow(r){
+ if(!r)return '';
+ const edge=String(r.edgeShape||'').trim();
+ if(edge)return edge===PRODUCT_EDGE_OK?'OK':'NG';
+ /* 選び直していない旧データは、当時のコードで判定する。 */
+ return judgeAlignmentCode(r.alignmentCode);
+}
+/* 選択欄。**選択肢に無い値が入っていたら、その値を選択肢に足す**(§9.160)
+   ——`select.value`へ無い値を入れると空文字になり、保存済みの記録が
+   黙って消える。 */
+function productSelectHtml(def,value){
+ const v=String(value||'');
+ const known=def.opts.includes(v);
+ const opts=[`<option value=""></option>`]
+  .concat(def.opts.map(o=>`<option value="${esc(o)}"${v===o?' selected':''}>${esc(o)}</option>`))
+  .concat(!v||known?[]:[`<option value="${esc(v)}" selected>${esc(v)}（旧データ）</option>`]);
+ return `<select data-product-field="${def.k}" aria-label="${esc(def.label)}">${opts.join('')}</select>`;
+}
 function productRowCount(){return Math.max(1,Math.min(9,+$('#verticalCount')?.value||1))}
+/* 1丈を「入力済み」とみなす項目。**判定の起点(エッジ形状)を含める**
+   ——揃いコードを廃止したので、旧`alignmentCode`だけを見ると
+   新しく入力した行が1件も数えられない。 */
+const PRODUCT_FILLED_KEYS=['productLength','wallThickness','edgeShape','alignmentCode'];
 function judgeAlignmentCode(code){code=String(code||'').trim();if(!code)return '';return code==='0000'?'OK':'NG'}
 function updateProductStatus(){
  const m=S.measure;if(!m?.product?.rows)return;
- const n=productRowCount(),filled=m.product.rows.slice(0,n).filter(r=>['productLength','wallThickness','alignmentCode'].some(k=>String(r?.[k]||'').trim()!=='')).length;
+ const n=productRowCount(),filled=m.product.rows.slice(0,n).filter(r=>PRODUCT_FILLED_KEYS.some(k=>String(r?.[k]||'').trim()!=='')).length;
  if($('#productMeasureStatus'))$('#productMeasureStatus').textContent=filled?`入力済み ${filled}/${n}丈`:'入力待ち';
 }
 /* 丈は**全部を1つの表で**出す（§9.131）。以前は丈番号タブで1丈ずつ切り替え、
@@ -237,30 +284,66 @@ function renderProductPanel(){
  if(fields){fields.innerHTML='';fields.hidden=true}
  body.innerHTML=Array.from({length:n},(_,i)=>{
   const r=m.product.rows[i]||(m.product.rows[i]=blankProductRow());
-  const field=(key,type)=>`<input data-product-field="${key}" value="${esc(r[key]||'')}" type="${type||'text'}"${type==='number'?' inputmode="decimal" step="any"':''}>`;
-  const judge=judgeAlignmentCode(r.alignmentCode);
-  return `<tr data-row="${i}"><th>${i+1}</th><td>${field('productLength','number')}</td><td>${field('wallThickness','number')}</td><td>${field('alignmentCode')}</td>`
-   +`<td><span class="product-judge${judge==='OK'?' ok':judge==='NG'?' ng':''}" data-product-judge="${i}">${esc(judge)}</span></td>`
-   +`<td>${field('edgeShape')}</td><td>${field('occurrencePosition')}</td><td>${field('regularity')}</td><td>${field('pitch','number')}</td><td>${field('alignmentValue')}</td><td>${field('note')}</td></tr>`;
+  const ok=String(r.edgeShape||'')===PRODUCT_EDGE_OK;
+  const field=(key,type)=>`<input data-product-field="${key}" value="${esc(r[key]||'')}" type="${type||'text'}"`
+   +(type==='number'?' inputmode="decimal" step="any"':'')+'>';
+  const sel=k=>productSelectHtml(PRODUCT_CHOICES.find(d=>d.k===k),r[k]);
+  const judge=judgeProductRow(r);
+  const oldCode=String(r.alignmentCode||'').trim();
+  /* **内訳は異常のときだけ、行の下へ横いっぱいで出す**(§9.203)。
+     5欄を横に並べると1列120px×5が要り、器(実測841px)に入らない
+     ——詰めると「1/3〜2/3発生」が見切れる。異常が無い行では場所も取らない
+     ので、面積は「頻度×重要度」どおりに配れる(§1)。 */
+  const detail=ok||!String(r.edgeShape||'')
+   ?''
+   :`<tr class="prt-detail" data-row="${i}"><td colspan="6"><div class="prt-detail-in">`
+     +`<span class="prt-detail-lead">丈${i+1}の内訳</span>`
+     +PRODUCT_CHOICES.filter(d=>d.k!=='edgeShape')
+       .map(d=>`<label class="prt-df"><span>${esc(d.label)}</span>${sel(d.k)}</label>`).join('')
+     +`<label class="prt-df"><span>ピッチ</span>${field('pitch','number')}</label>`
+     +`<label class="prt-df"><span>値</span>${field('alignmentValue','number')}</label>`
+     +`</div></td></tr>`;
+  return `<tr data-row="${i}"><th>${i+1}</th><td>${field('productLength','number')}</td><td>${field('wallThickness','number')}</td>`
+   +`<td><span class="product-judge${judge==='OK'?' ok':judge==='NG'?' ng':''}" data-product-judge="${i}">${esc(judge)}</span>`
+   +(oldCode?`<small class="prt-old" title="4桁の揃いコードで記録された旧データです。エッジ形状を選び直すと、そちらが判定に使われます">旧 ${esc(oldCode)}</small>`:'')+`</td>`
+   +`<td>${sel('edgeShape')}</td><td>${field('note')}</td></tr>`+detail;
  }).join('');
  body.querySelectorAll('[data-product-field]').forEach(el=>{
-  el.oninput=()=>{
+  const apply=()=>{
    const tr=el.closest('tr'),i=+tr.dataset.row,key=el.dataset.productField;
    const row=m.product.rows[i]=m.product.rows[i]||blankProductRow();
+   const prevEdge=String(row.edgeShape||'');
    row[key]=el.value;
-   if(key==='alignmentCode'){
-    const j=judgeAlignmentCode(el.value),badge=tr.querySelector('[data-product-judge]');
-    if(badge){badge.textContent=j;badge.className='product-judge'+(j==='OK'?' ok':j==='NG'?' ng':'')}
+   if(key==='edgeShape'){
+    const isOk=el.value===PRODUCT_EDGE_OK;
+    /* 「揃い綺麗」を選んだら内訳は要らない。**残った値を消してから**
+       描き直す（残すと、画面には出ていない値が保存され続ける）。 */
+    if(isOk)PRODUCT_DETAIL_KEYS.forEach(k=>{row[k]=''});
+    /* 描き直すのは**内訳の段が出入りするときだけ**。のこぎり状⇄テレスコ状の
+       付け替えでは描き直さない——選んだ欄からフォーカスが外れる。 */
+    const had=!!prevEdge&&prevEdge!==PRODUCT_EDGE_OK;
+    const has=!!el.value&&!isOk;
+    if(had!==has){renderProductPanel();markDirty();return}
    }
+   const j=judgeProductRow(row),badge=tr.querySelector('[data-product-judge]');
+   if(badge){badge.textContent=j;badge.className='product-judge'+(j==='OK'?' ok':j==='NG'?' ng':'')}
    markDirty();updateProductStatus();
   };
+  /* selectは`input`も飛ぶが、**`change`も受ける**——古いブラウザ差を
+     気にせず1本にまとめる（同じ値なら2度目は何も変わらない）。 */
+  el.oninput=apply;
+  if(el.tagName==='SELECT')el.onchange=apply;
  });
  upgradeManualInputTypes();updateProductStatus();
  loadFlatComment(); applyInputProtection();
 }
 if($('#productAllOk'))$('#productAllOk').onclick=()=>{
  const n=productRowCount();
- for(let i=0;i<n;i++){const row=S.measure.product.rows[i]=S.measure.product.rows[i]||blankProductRow();Object.assign(row,{alignmentCode:'0000',edgeShape:'0',occurrencePosition:'0',regularity:'0',alignmentValue:'0'})}
+ /* 「異常なし」＝エッジ形状が「揃い綺麗」。内訳は空にする(§9.203)。
+    旧コードも消す——選び直したのに「旧 0000」が残ると、どちらが効いて
+    いるのか分からない。 */
+ for(let i=0;i<n;i++){const row=S.measure.product.rows[i]=S.measure.product.rows[i]||blankProductRow();
+  Object.assign(row,{alignmentCode:'',edgeShape:PRODUCT_EDGE_OK,occurrencePosition:'',regularity:'',direction:'',pitch:'',alignmentValue:''})}
  renderProductPanel();markDirty();
 };
 $('#verticalCount')?.addEventListener('change',()=>{if(WL.measureItem.isMaterial($('#measureType').value))renderProductPanel()});
@@ -423,9 +506,12 @@ function activeRequiredControls(){
     項目が2つに割れており、片方を開かないともう片方の未入力に気づけなかった）。 */
  if(WL.measureItem.isMaterial(type)){
   document.querySelectorAll('[data-mother]').forEach((el,i)=>controls.push({el,label:['手計算','全長','MINカード指示','MAXカード指示','前オフ実績','後オフ実績','前オフカード指示','後オフカード指示'][i]||'母材'}));
-  const fieldLabels={productLength:'長さ',wallThickness:'肉厚',alignmentCode:'揃い'};
-  document.querySelectorAll('#productRowsBody tr').forEach((tr,i)=>{
-   tr.querySelectorAll('[data-product-field]').forEach(el=>{const label=fieldLabels[el.dataset.productField];if(label)controls.push({el,label:`${label}(丈${i+1})`})});
+  const fieldLabels={productLength:'長さ',wallThickness:'肉厚',edgeShape:'揃い(エッジ形状)'};
+  /* **行番号で数えない**(§9.203)——内訳の段(`.prt-detail`)が挟まるので、
+     `forEach`の添字は丈の番号と一致しない。`data-row`で引く。 */
+  document.querySelectorAll('#productRowsBody tr').forEach(tr=>{
+   const no=(+tr.dataset.row||0)+1;
+   tr.querySelectorAll('[data-product-field]').forEach(el=>{const label=fieldLabels[el.dataset.productField];if(label)controls.push({el,label:`${label}(丈${no})`})});
   });
  }else{
   document.querySelectorAll('#measurementGrid input[data-mkey]').forEach(el=>{if(!el.closest('.inactive'))controls.push({el,label:`測定値 ${Number(el.dataset.j)+1}`})});

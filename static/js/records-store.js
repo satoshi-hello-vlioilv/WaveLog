@@ -322,7 +322,9 @@ async function saveLocal(status='編集中'){
  lockCounts();
  const m=collect();m.status=status;m.updatedAt=new Date().toISOString();
  await reliablePut(m);measureDirty=false;
- setState(status==='完了'?'完了・端末保存済み':'端末保存済み');
+ /* **①に入った／②はこれから**を分けて書く(§9.202)。以前は
+    「端末保存済み」だけで、DBへ送れているかは画面に出ていなかった。 */
+ setState(status==='完了'?'完了・端末に保存（DBへ送信中）':'端末に保存（DBへ送信中）');
  /* **途中経過も共有DBへ送る(§9.91)。** 以前はここが端末内だけで終わって
     おり、別のPCからは同じロットの続きがまったく見えなかった(子ロット
     データもレコードの中(settings.splitSourcesCache)なので同じ)。
@@ -347,7 +349,18 @@ function shareRecord(m){
    }while(sharing.get(m.id)==='again');
   }catch(e){/* syncStateへ記録済み。ここで画面を止めない */}
   finally{sharing.delete(m.id);
-   if(typeof refreshSyncStatusUI==='function')refreshSyncStatusUI();}
+   if(typeof refreshSyncStatusUI==='function')refreshSyncStatusUI();
+   /* 送信が終わったら、開いている測定の状態欄も言い直す(§9.202)。
+      **「送信中」のまま残さないこと**——終わったのか失敗したのかが
+      分からないと、利用者は保存できたのかを確かめる手立てを失う。 */
+   try{
+    const modal=$('#measureModal');
+    if(modal&&!modal.hidden&&S.measure&&S.measure.id===m.id&&!measureDirty){
+     const ok=(m.syncState&&m.syncState.status)==='synced';
+     const done=S.measure.status==='完了'?'完了・':'';
+     setState(ok?`${done}端末＋DBに保存`:`${done}端末に保存（DBへ未送信・あとで自動再送）`);
+    }
+   }catch(e){/* 状態欄の言い直しに失敗しても保存そのものは済んでいる */}}
  })();
 }
 window.shareRecord=shareRecord;

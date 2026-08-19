@@ -4,7 +4,7 @@ app.pyから移設。ロジックは変更していない(移動のみ)。
 """
 from flask import Blueprint, request, jsonify
 
-from ..db_access import DBS, MEAS_DB, RECORDS_BACKUP_EXPORT_PATH, qi, connect, cols, tables, ensure_backup_table, read_backup_rows, invalidate_backup_rows_cache, request_user_id, request_pc_name, QUALITY_DB_KEY
+from ..db_access import DBS, MEAS_DB, RECORDS_BACKUP_EXPORT_PATH, qi, connect, cols, tables, ensure_backup_table, read_backup_rows, invalidate_backup_rows_cache, request_user_id, request_pc_name, QUALITY_DB_KEY, path_exists_safe
 from ..repositories.master_repo import read_operator_names, read_spool_names, read_inner_names, read_device_names, ensure_operator_master, ensure_spool_master, ensure_inner_master, ensure_device_master, ensure_operator_equipment, OPERATOR_MASTER_TABLE, SPOOL_MASTER_TABLE, INNER_MASTER_TABLE, DEVICE_MASTER_TABLE
 from ..repositories.master_repo import read_burr_names, read_coil_stop_names, ensure_burr_master, ensure_coil_stop_master, BURR_MASTER_TABLE, COIL_STOP_MASTER_TABLE
 from ..repositories.master_repo import read_equipment_max_strips, read_equipment_kind, STRIP_LIMIT, DEFAULT_MAX_STRIPS
@@ -282,6 +282,65 @@ def backup_list():
   if items is None:return jsonify(ok=True,items=[],count=0,table_exists=False,meas_path=str(path))
   return jsonify(ok=True,items=items,count=len(items),table_exists=True,meas_path=str(path))
  except Exception as e:return jsonify(error=f'測定データ読込失敗: {e}',meas_path=str(MEAS_DB)),500
+
+@bp.get('/api/measurement/storage')
+def storage_status():
+ """測定データの置き場の状態(§9.202、利用者の指示「仕組みを整理して視覚的に」)。
+
+ 測定データは3段で持っている。**どれが何なのかを画面が図にできるよう、
+ サーバーが分かるぶん(②③)をここでまとめて答える**——以前は設定画面も
+ 状態表示も無く、「DBへ同期」が何をするボタンなのかも書かれていなかった。
+
+  ① この端末のブラウザ (IndexedDB + localStorageの控え)
+     …入力の実体。**サーバーからは見えない**ので、件数は画面側が足す。
+  ② この端末のDB       (db/records.sqlite3 ＝ MEAS_DB)
+     …保存のたびに送られる。他のPCから続きを開けるのはここ(§9.91)。
+  ③ 閲覧用の複製       (records_backup_export_path、Box等)
+     …②が変わったら間隔ごとに丸ごと複製。閲覧モードはここを読む。
+
+ 読み取り専用。**数えられなかったら null を返す**（0件と言い切らない）。
+ """
+ out={'ok':True}
+ local={'path':str(MEAS_DB),'exists':None,'count':None,'size':None,'lastWriteAt':None,'error':''}
+ try:
+  local['exists']=path_exists_safe(MEAS_DB)
+ except Exception:
+  local['exists']=None
+ try:
+  local['size']=MEAS_DB.stat().st_size
+ except OSError:
+  pass
+ try:
+  with connect(MEAS_DB,True) as c:
+   cur=c.cursor()
+   cur.execute('SELECT COUNT(*),MAX([更新日時]) FROM [Web測定バックアップ]')
+   row=cur.fetchone() or (None,None)
+   local['count']=row[0]
+   local['lastWriteAt']=row[1]
+ except Exception as e:
+  # 表がまだ無い端末（1件も測定していない）もここへ来る。**失敗にしない**
+  # ——設定画面ごと開けなくなるほうが困る。
+  local['error']=str(e)
+ out['local']=local
+ out['export']=records_export.status()
+ out['viewMode']={'reads':'export'}
+ return jsonify(out)
+
+@bp.post('/api/measurement/backup/export-now')
+def backup_export_now():
+ """「いま複製する」(§9.202)。間隔を待たずに③を作り直す。
+
+ **押した手応えを必ず返す**——複製先が未設定・失敗のときは理由を返す
+ （黙って成功と言わない）。
+ """
+ st=records_export.status()
+ if not st.get('configured'):
+  return jsonify(error='複製先が設定されていません。マスタ管理 > 共通設定の「測定データバックアップの閲覧用複製先」を設定して、アプリを再起動してください。'),400
+ ok=records_export.export_now()
+ st=records_export.status()
+ if not ok:
+  return jsonify(error=f'複製できませんでした: {st.get("lastError") or "理由は不明です"}',export=st),500
+ return jsonify(ok=True,export=st)
 
 @bp.get('/api/measurement/backup/list-view')
 def backup_list_view():
