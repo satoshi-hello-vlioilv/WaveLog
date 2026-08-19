@@ -165,7 +165,13 @@ function updateReceiveState(focused=document.activeElement===$('#deviceInput')){
     入れているか」だけを言う。 */
  const label=$('.auto-mode-label');
  if(label)label.textContent=manual?'手動':'自動';
- box.title=`${manual?'手動入力':'自動転送'}: ${$('#inputReady').textContent} ／ ${$('#inputModeHelp').textContent}`;}$('#deviceInput').onfocus=()=>updateReceiveState(true);$('#deviceInput').onblur=()=>updateReceiveState(false);
+ /* **なぜそのやり方なのか**まで`title`に入れる（§6）。項目によっては
+    こちらでは選べない（測定器が無い／転送しか使わない）ので、
+    「切り替えたいのに切り替えられない」の理由がここで読める。 */
+ const forced=box.dataset.forced||'';
+ const why=forced==='manual'?' ／ この項目は測定器から転送できないので手入力です'
+  :forced==='auto'?' ／ この項目は測定器からの転送だけで入れます':'';
+ box.title=`${manual?'手動入力':'自動転送'}: ${$('#inputReady').textContent} ／ ${$('#inputModeHelp').textContent}${why}`;}$('#deviceInput').onfocus=()=>updateReceiveState(true);$('#deviceInput').onblur=()=>updateReceiveState(false);
 /* フォーカス消失の自動回復ウォッチドッグ。手動入力欄の操作中(select/input/
    textarea/ボタン等、何らかのフォーム要素にフォーカスがある場合)は絶対に
    奪わない。document.activeElementが何もフォーカスしていない状態(body、
@@ -475,30 +481,104 @@ document.addEventListener('click',e=>{
  btn.setAttribute('aria-expanded',String(open));
  if(open)document.getElementById('toleranceSource')?.focus();
 });
-/* ---------- 図の見せ方は畳んでおく（§9.208 ④、利用者の指示） ----------
-   「図の横軸」「表示幅」は**ふだん使わない**（既定のまま測る）。常設すると、
-   測っている最中に必ず目に入る場所で「選ぶもの」に見えてしまう。判定公差の
-   切り替え（`#tolSourceFold`）と**同じ形**にして入口だけ残す——同じ役割の
-   ものが隣で違う形をしていると、別の種類の設定に見える。 */
+/* ---------- 図の見せ方は「アイコン1つ＋浮き窓」（§9.210 ①、利用者の指示） --
+   §9.208 ④で畳んだが、**畳んだ先が同じ帯の中**だったため、開くとその場で
+   2つのプルダウンが生えて行が1本増えていた（実機で見出しが3行）。設定を
+   確かめるたびに測定表が縮むのでは、畳んだ意味が半分しかない。
+   中身は**器の外の浮き窓**（`body`直下・`position:fixed`）へ出す
+   ——`overflow`を持つ先祖に切られない（§9.201）。開いているあいだも
+   測定表の面積を1pxも取らない。
+   窓の中は**選ぶ前に見える**形にする（§9.200）: 横軸は2枚のカードで
+   「どう変わるか」を小さな図と1行の説明つきで並べ、表示幅は候補を全部
+   出して押すだけにする。 */
+const NL_PANEL_ID='numberlinePanel';
+const NL_MODE_HELP={
+ abs:'各条の基準を中心に重ねて、基準からの差を mm で見ます。公差の広い条ほど帯が広く出ます。',
+ rel:'その条自身の公差で割ります。下限・上限が全条でそろうので、外れ方の大小をくらべやすくなります。',
+};
+/* カードの中の小さな図。**2枚が同じ絵にならないこと**が値打ちなので、
+   実寸＝帯の幅がばらばら／公差比＝帯の幅がそろう、を描き分ける。 */
+function nlModeArt(mode){
+ const bars=mode==='rel'?[[18,64],[18,64],[18,64]]:[[10,80],[26,48],[18,64]];
+ return '<svg class="nl-art" viewBox="0 0 100 40" aria-hidden="true">'
+  +'<line x1="50" y1="2" x2="50" y2="38" class="nl-art-center"/>'
+  +bars.map(([x,w],i)=>`<rect class="nl-art-band" x="${x}" y="${5+i*11}" width="${w}" height="7" rx="2"/>`).join('')
+  +'</svg>';
+}
+function ensureNumberlinePanel(){
+ let el=document.getElementById(NL_PANEL_ID);
+ if(el)return el;
+ el=document.createElement('div');
+ el.className='sc-float-win nl-win';el.id=NL_PANEL_ID;el.hidden=true;
+ el.innerHTML=`
+  <div class="sc-float-header"><div><h2>図の見せ方</h2>
+    <small>公差の図（数直線）の描き方。測定した値そのものは変わりません</small></div>
+   <button type="button" id="nlPanelClose" title="閉じる">×</button></div>
+  <div class="sc-float-body nl-body">
+   <section class="nl-sec">
+    <b class="nl-sec-head">横軸の取り方</b>
+    <div class="nl-choices" id="nlModeChoices"></div>
+   </section>
+   <section class="nl-sec">
+    <b class="nl-sec-head">表示幅（軸の端をどこまで広げるか）</b>
+    <div class="nl-spans" id="nlSpanChoices"></div>
+    <p class="nl-note">大きくするほど公差から外れた値まで図に入りますが、そのぶん公差帯は細くなります。</p>
+   </section>
+   <p class="nl-state" id="nlState"></p>
+  </div>
+  <div class="sc-float-resize" title="ドラッグで大きさを変えられます"></div>`;
+ document.body.appendChild(el);
+ el.querySelector('#nlPanelClose').onclick=()=>closeNumberlinePanel();
+ el.addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();closeNumberlinePanel()}});
+ /* **押した先は1つ**（`WL.numberline.set`）。覚えるのも描き直すのも
+    あちらが持っているので、ここは押されたことを伝えるだけ。 */
+ el.addEventListener('click',e=>{
+  const b=e.target.closest&&e.target.closest('[data-nl-mode],[data-nl-span]');
+  if(!b)return;
+  if(b.dataset.nlMode)WL.numberline.set('mode',b.dataset.nlMode);
+  else WL.numberline.set('span',b.dataset.nlSpan);
+ });
+ if(typeof WL.makeFloatingWindow==='function')
+  WL.makeFloatingWindow(el,{storageKey:'measureNumberlinePanelRectV1',
+    defaultWidth:430,defaultHeight:490,defaultTop:96,minWidth:320,minHeight:300});
+ else console.error('図の見せ方: WL.makeFloatingWindow が見つかりません');
+ return el;
+}
+function openNumberlinePanel(){
+ const el=ensureNumberlinePanel();
+ el.hidden=false;
+ document.getElementById('numberlineFold')?.setAttribute('aria-expanded','true');
+ syncNumberlineControls();
+}
+function closeNumberlinePanel(){
+ const el=document.getElementById(NL_PANEL_ID);
+ if(el)el.hidden=true;
+ document.getElementById('numberlineFold')?.setAttribute('aria-expanded','false');
+}
 document.addEventListener('click',e=>{
  const btn=e.target.closest&&e.target.closest('#numberlineFold');
  if(!btn)return;
- const box=document.getElementById('numberlineControls');if(!box)return;
- const open=box.hidden;
- box.hidden=!open;
- btn.setAttribute('aria-expanded',String(open));
- if(open)document.getElementById('numberlineMode')?.focus();
+ const el=document.getElementById(NL_PANEL_ID);
+ if(el&&!el.hidden)closeNumberlinePanel();else openNumberlinePanel();
 });
 /* 軸からはみ出した点の案内から、その場で開けるようにする（§2「次にする
    ことを1つだけ指す」）。畳んだ先に打つ手があることを文で言い、押せば開く。 */
 document.addEventListener('click',e=>{
  const note=e.target.closest&&e.target.closest('#numberlineOutside');
  if(!note)return;
- const box=document.getElementById('numberlineControls'),btn=document.getElementById('numberlineFold');
- if(!box||!btn||!box.hidden)return;
- box.hidden=false;btn.setAttribute('aria-expanded','true');
- document.getElementById('numberlineSpan')?.focus();
+ openNumberlinePanel();
 });
+/* 測定を閉じたら窓も閉じる——画面に残っても当てる先が無い。**閉じる経路は
+   4箇所ある**（×・地・保存して閉じる・破棄）ので、経路ごとに書き足さず
+   「閉じたことを見る」。読むだけなので、`hidden`を書いて回る形にはしない
+   （同じ値でも変更記録が積まれる。§9.131）。 */
+WL.onReady(()=>{
+ const modal=document.getElementById('measureModal');
+ if(!modal)return;
+ new MutationObserver(()=>{if(modal.hidden)closeNumberlinePanel()})
+   .observe(modal,{attributes:true,attributeFilter:['hidden']});
+});
+WL.numberlinePanel={open:openNumberlinePanel,close:closeNumberlinePanel};
 /* 見出しを押したらその丈位置へ移る。**割り当ては1箇所**（丈位置を動かす
    道具は`#lengthPos`のchangeだけ。ここで直接描き直さない）。
    セルを押したときも同じ——**押した列がいま測る列になる**。押した先が
@@ -588,8 +668,11 @@ const summary=$('#toleranceSummary');if(summary)summary.hidden=WL.measureItem.is
    「丈表示エリアが不足する場合も同様に横方向の表示範囲内にフィットさせる。
     丈5以上の場合はあきらめて、スクロールを使用する」
 
-   **縮めるのは足りないときだけ。** 入っているのに縮めると、8条のロットで
-   1行が19pxになって狙って押せなくなる（§9.146で一度そうなっている）。
+   **25条まで（`mx-roomy`）は足りないときだけ縮める。** 入っているのに
+   縮めると、8条のロットで1行が19pxになって狙って押せなくなる
+   （§9.146で一度そうなっている）。
+   **26条から（`mx-dense`）は余っていても割り当てる**（§9.210 ②、利用者の
+   指示「広がった領域に対して条数で割った高さ寸法をUIの高さ寸法に使用する」）。
    **下限を割ったら諦めてスクロールへ倒す**——読めない大きさまで縮めるのは
    スクロールより悪い。
    **測ってから決める。** 行の外寸は罫線・余白・表示サイズで変わるので、
@@ -597,6 +680,10 @@ const summary=$('#toleranceSummary');if(summary)summary.hidden=WL.measureItem.is
    （§9.95の行の高さと同じ作法）。1回で足りなければもう1回だけ詰める
    ——回し続けると描き直しのたびに揺れる。 */
 const MX_MIN_ROWH=15,MX_MIN_COLW=44,MX_FIT_MAX_SLOTS=5,MX_FIT_PASSES=3;
+/* 26条以上のときの1行の上限。**器いっぱいに配る**のが狙いだが、上限が
+   無いと丈1本のロットで行だけが間延びする（表は縦に条を並べるものなので、
+   1行が操作系の器（`--ctl-h`）より高くなる理由が無い）。 */
+const MX_MAX_ROWH=36;
 function fitMeasureMatrix(){
  const table=document.querySelector('#measurementGrid .measure-matrix');
  const body=document.querySelector('#measurementGrid .matrix-body');
@@ -607,16 +694,64 @@ function fitMeasureMatrix(){
  const rows=(table.tBodies[0]&&table.tBodies[0].rows.length)||0;
  const slots=Number(table.style.getPropertyValue('--mx-cols'))||0;
  if(!rows)return;
- /* ---- 縦: 条が入りきるように1行を縮める ---- */
- const rowEl=table.tBodies[0].rows[0];
- for(let pass=0;pass<MX_FIT_PASSES;pass++){
-  const over=Math.ceil(table.getBoundingClientRect().height-body.clientHeight);
-  if(over<=0)break;
-  const cur=rowEl.getBoundingClientRect().height;
-  const next=Math.floor(cur-over/rows)-1;
-  if(!(next>=MX_MIN_ROWH)||!(next<cur))break;
-  table.style.setProperty('--mx-rowh',next+'px');
+ /* ---- 縦: 空いている高さを条数で割る（§9.210 ②、利用者の指示） ----
+    以前は「溢れたぶん÷条数」を1pxずつ余分に引きながら最大3回まわして
+    いた。25条までは`mx-roomy`が30px固定で入るのに、**26条で`mx-dense`へ
+    切り替わった瞬間**に器いっぱいへ引き伸ばす作りへ変わり、入力欄だけが
+    自分の高さ（`--row-inner-h`）へ落ちて**一気に小さく**見えていた。
+    やることは1つ——**いま余っている（足りない）高さを条数で割って、
+    1行の外寸をその場で決める**。26条以上（`mx-dense`）は余っていても
+    割り当てる（縦を使い切る）。25条までは今までどおり**足りないときだけ**
+    縮める（入っているのに縮めると8条のロットで1行19pxになる。§9.146）。
+    **測ってから決める**——罫線・余白・表示サイズで外寸は変わるので、
+    トークンから計算しない（§9.95の行の高さと同じ作法）。 */
+ const dense=table.classList.contains('mx-dense');
+ /* 26条以上は**測る前に固定高さへ寄せる**。`mx-dense`の素の姿は
+    `height:100%`＝器いっぱいへ引き伸ばす作りで、そのままだと「溢れも
+    余りも0」と出てしまい1度も割り当てが走らない（そして入力欄だけが
+    自分の高さへ落ちる＝これが「一気に小さく」の正体）。上限から始めて
+    下へ寄せる。 */
+ if(dense){
   table.classList.add('mx-fitted');
+  table.style.setProperty('--mx-rowh',MX_MAX_ROWH+'px');
+ }
+ /* **合わせ込むのは「こちらが決める値」（`--mx-rowh`）で、測った行の外寸
+    ではない。** 行の外寸は罫線1pxぶん必ず`--mx-rowh`より大きいので、
+    測った外寸から引いて代入すると1px手前で足踏みして収束しない
+    （40条で10px溢れたまま止まっていた）。測るのは溢れ、直すのは変数。 */
+ const rowhNow=()=>{
+  const v=parseFloat(getComputedStyle(table).getPropertyValue('--mx-rowh'));
+  return Number.isFinite(v)&&v>0?v
+    :table.tBodies[0].rows[0].getBoundingClientRect().height;
+ };
+ /* **器の内側の余白まで数える。** `clientHeight`は余白を含む（＝中身に
+    使えるのはそれより余白ぶん少ない）ので、表の高さと直に引き比べると
+    **余白ぶんだけ足りないまま「入った」と読む**（実測4px。40条で
+    スクロールが残っていた）。表以外が溢れている場合もあるので、
+    実際の溢れ（`scrollHeight`）と大きいほうを採る。 */
+ const bcs=getComputedStyle(body);
+ const bodyPad=(parseFloat(bcs.paddingTop)||0)+(parseFloat(bcs.paddingBottom)||0);
+ const overNow=()=>{
+  const byTable=table.getBoundingClientRect().height+bodyPad-body.clientHeight;
+  const byBox=body.scrollHeight-body.clientHeight;
+  /* 足りない＝プラス、余り＝マイナス。`scrollHeight`は器より小さくならない
+     ので、**余っているかどうかは表の側でしか分からない**。 */
+  if(byTable>0)return Math.max(byTable,byBox);
+  return byBox>0?byBox:byTable;
+ };
+ let rowh=rowhNow();
+ for(let pass=0;pass<MX_FIT_PASSES;pass++){
+  const over=overNow();
+  if(over<=0&&!dense)break;                 /* 25条までは足りているなら触らない */
+  if(Math.abs(over)<1)break;                /* ぴったり */
+  const next=Math.max(MX_MIN_ROWH,Math.min(MX_MAX_ROWH,
+    Math.floor((rowh-over/rows)*100)/100));
+  if(Math.abs(next-rowh)<0.05)break;
+  rowh=next;
+  table.style.setProperty('--mx-rowh',rowh+'px');
+  table.classList.add('mx-fitted');
+  /* 下限・上限で止まったらそれ以上は動かない（諦めてスクロールへ倒す）。 */
+  if(rowh<=MX_MIN_ROWH||rowh>=MX_MAX_ROWH)break;
  }
  /* ---- 横: 丈が入りきるように1列を縮める（丈5以上は諦めてスクロール） ---- */
  const room=table.parentElement?table.parentElement.clientWidth:0;
@@ -1041,22 +1176,38 @@ WL.measureTolerance={
    レコードへは書かない（他のPCで開いたときに勝手に変わらない）。
    軸からはみ出した点は**件数を文字で言い、直し方（表示幅）を同じ行に置く**。 */
 function syncNumberlineControls(){
- const mode=document.getElementById('numberlineMode'),span=document.getElementById('numberlineSpan');
- if(span&&!span.options.length)
-  span.innerHTML=NL_SPANS.map(v=>`<option value="${v}">公差×${v}</option>`).join('');
- if(mode&&!mode.options.length)
-  mode.innerHTML=NL_MODES.map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
- if(mode)mode.value=numberlineMode();
- if(span)span.value=String(numberlineSpan());
+ const chart=document.querySelector('.accurate-numberline');
+ const out=Number(chart&&chart.dataset.out)||0;
  const note=document.getElementById('numberlineOutside');
  if(note){
-  const chart=document.querySelector('.accurate-numberline');
-  const out=Number(chart&&chart.dataset.out)||0;
   /* 畳んである先に打つ手がある（§9.208 ④）。**どこを触れば見えるのか**まで
      書く——「表示幅を広げる」とだけ書いても、その欄が画面に無い。 */
-  note.textContent=out?`軸の外 ${out}件（押して「図の見せ方」→表示幅を広げると見えます）`:'';
+  note.textContent=out?`軸の外 ${out}件（押すと「図の見せ方」が開きます）`:'';
   note.title=out?'押すと「図の見せ方」が開きます。表示幅を広げると軸の外の点も図に入ります。':'';
   if(note.hidden!==!out)note.hidden=!out;
+ }
+ /* 窓を開いていないうちは何も作らない（§9.182「見えないものは作らない」）。 */
+ const el=document.getElementById(NL_PANEL_ID);
+ if(!el||el.hidden)return;
+ const mode=numberlineMode(),span=numberlineSpan();
+ const modeBox=el.querySelector('#nlModeChoices');
+ if(modeBox)modeBox.innerHTML=NL_MODES.map(([v,l])=>
+  `<button type="button" class="nl-choice${v===mode?' is-on':''}" data-nl-mode="${v}"`
+  +` aria-pressed="${v===mode}">${nlModeArt(v)}<b>${esc(l)}</b>`
+  +`<small>${esc(NL_MODE_HELP[v]||'')}</small></button>`).join('');
+ const spanBox=el.querySelector('#nlSpanChoices');
+ if(spanBox)spanBox.innerHTML=NL_SPANS.map(v=>
+  `<button type="button" class="nl-span${v===span?' is-on':''}" data-nl-span="${v}"`
+  +` aria-pressed="${v===span}">公差×${v}</button>`).join('');
+ const state=el.querySelector('#nlState');
+ if(state){
+  /* **状態は必ず文字で**（§3）。0件のときも「無い」と言い切る——
+     空欄だと、数えられなかったのか本当に0なのかが分からない。 */
+  state.textContent=chart
+   ?(out?`いま軸の外に出ている点が ${out} 件あります。表示幅を広げると図に入ります。`
+        :'いま軸の外に出ている点はありません。')
+   :'この項目では公差の図を描いていないので、ここの設定は効きません。';
+  state.classList.toggle('is-warn',!!out);
  }
 }
 WL.numberline={
@@ -1068,11 +1219,6 @@ WL.numberline={
   syncNumberlineControls();
  },
 };
-WL.onReady(()=>{
- syncNumberlineControls();
- const mode=document.getElementById('numberlineMode'),span=document.getElementById('numberlineSpan');
- if(mode)mode.onchange=()=>WL.numberline.set('mode',mode.value);
- if(span)span.onchange=()=>WL.numberline.set('span',span.value);
-});
+WL.onReady(()=>{syncNumberlineControls()});
 function renderMeasureGrid(){renderMeasureGridVertical();requestAnimationFrame(updateValidationVisuals)}
 Object.assign(window.WL,{toleranceAxisView});
