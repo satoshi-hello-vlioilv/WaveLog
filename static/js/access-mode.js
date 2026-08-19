@@ -27,7 +27,7 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
  const MODE_LABELS={edit:'編集モード',view:'閲覧モード',schedule:'スケジュールモード'};
  const MODE_DESC={edit:'測定データ・マスタを書き込めます',view:'すべて読み取り専用です',schedule:'作業予定を書き込めます(測定データ・マスタは読み取り専用)'};
 
- let accessMode={mode:'edit',canEdit:true,canSchedule:false,canFieldReorder:false,fieldReorderEquipment:'',loginId:'',pcName:''};
+ let accessMode={mode:'edit',canEdit:true,canSchedule:false,canFieldReorder:false,fieldReorderEquipment:'',loginId:'',pcName:'',pcNameSource:''};
  window.accessMode=accessMode;
  /* ---------- この端末の名札(§9.180) ----------
     「どのPC・どのIDが編集したのか」を残すために、画面側でも端末名が要る
@@ -39,6 +39,9 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
  WL.terminal={
   loginId:()=>accessMode.loginId||'',
   pcName:()=>accessMode.pcName||'',
+  /* PC名を**どこから取ったか**（§9.208 ⑧）。取れない端末があったので
+     出どころが分かる形にした——共通設定の「この端末」で読める。 */
+  pcNameSource:()=>accessMode.pcNameSource||'',
   /* 記録に残す「利用者ID」。利用者IDが未設定の端末ではOSのログインIDへ落とす
      ——空のまま残すと「誰が触ったか」が一切分からない行ができる。 */
   userId:()=>(typeof currentUserId==='function'&&currentUserId())||accessMode.loginId||'',
@@ -77,6 +80,7 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
    accessMode.mode=r.mode||'edit';accessMode.canEdit=!!r.canEdit;accessMode.canSchedule=!!r.canSchedule;
    accessMode.canFieldReorder=!!r.canFieldReorder;accessMode.fieldReorderEquipment=r.fieldReorderEquipment||'';
    accessMode.loginId=r.loginId||'';accessMode.pcName=r.pcName||'';
+   accessMode.pcNameSource=r.pcNameSource||'';
   }catch(e){
    // 判定できない場合は既存動作(編集可能)を維持する(安全側・互換ポリシー)。
    accessMode.mode='edit';accessMode.canEdit=true;accessMode.canSchedule=false;accessMode.canFieldReorder=false;accessMode.fieldReorderEquipment='';

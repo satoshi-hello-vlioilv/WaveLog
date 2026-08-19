@@ -205,11 +205,97 @@ def current_login_id():
  except Exception:username=os.environ.get('USERNAME') or os.environ.get('USER') or os.environ.get('LOGNAME') or ''
  return str(username or '').strip()
 
+# ---------- この端末の呼び名（§9.208 ⑧、利用者の指示） ----------
+# 「PC名が取得できていないようなので工夫してください。起動時に取得して
+#  設定情報として保持する形で、確実に取得を」
+#
+# `socket.gethostname()`1本だけに頼っていたため、それが空・`localhost`・
+# 例外を返す端末では**PC名が丸ごと欠けた**。PC名はアクセス権限マスタとの
+# 照合・監査列（誰がどの端末で）・編集セッションの持ち主表示のすべてが
+# 見ている値なので、欠けると権限も来歴も分からなくなる。
+#
+#  ・**出どころを複数持ち、使えた最初のものを採る**
+#  ・**起動時に1回だけ決めて持ち続ける**（リクエストのたびに解決し直すと、
+#    共有不調のときにそれ自体が失敗の原因になる。§9.109と同じ作法）
+#  ・**設定で名乗り直せる**（共通設定の「この端末の名前」）。決め打ちの
+#    自動判定だけだと、直す手立てが現場に無い
+#  ・**健全な端末の答えを変えない**——`gethostname()`が使える値を返すなら
+#    今までどおりそれ（既に登録済みの権限マスタの行を無効にしない）
+_USELESS_PC_NAMES={'','localhost','localhost.localdomain','local','unknown',
+                   '(none)','none','127.0.0.1','::1','ip6-localhost'}
+_pc_name_cache={'name':'','source':'','tried':[]}
+_pc_name_lock=threading.Lock()
+
+def _usable_pc_name(v):
+ t=str(v or '').strip().strip('.')
+ if not t:return ''
+ if t.lower() in _USELESS_PC_NAMES:return ''
+ return t[:80]
+
+def _pc_name_override():
+ """共通設定の`pc_name`。**読めなくても落ちない**（マスタDBがまだ無い端末でも
+ 起動できること優先）。"""
+ try:
+  from .db_access import path_config_value
+  return _usable_pc_name(path_config_value('pc_name'))
+ except Exception:
+  return ''
+
+def _pc_name_candidates():
+ import platform
+ def env(k):
+  try:return os.environ.get(k) or ''
+  except Exception:return ''
+ def host():
+  try:return socket.gethostname()
+  except Exception:return ''
+ def node():
+  try:return platform.node()
+  except Exception:return ''
+ def fqdn():
+  try:return str(socket.getfqdn() or '').split('.')[0]
+  except Exception:return ''
+ def etc():
+  try:
+   with open('/etc/hostname','r',encoding='utf-8',errors='replace') as f:
+    return f.read().strip()
+  except Exception:
+   return ''
+ # 並びは「今までの答え → Windowsの正式な機械名 → 保険」の順。
+ return [('設定（共通設定のPC名）',_pc_name_override()),
+         ('socket.gethostname()',host()),
+         ('COMPUTERNAME',env('COMPUTERNAME')),
+         ('platform.node()',node()),
+         ('HOSTNAME',env('HOSTNAME')),
+         ('socket.getfqdn()',fqdn()),
+         ('/etc/hostname',etc())]
+
+def resolve_pc_name(force=False):
+ """この端末の呼び名を決めて覚える。戻り値は {'name','source','tried'}。"""
+ with _pc_name_lock:
+  if not force and _pc_name_cache['name']:return dict(_pc_name_cache)
+  tried=[]
+  name,source='',''
+  for label,raw in _pc_name_candidates():
+   ok=_usable_pc_name(raw)
+   tried.append({'source':label,'value':str(raw or '')[:80],'usable':bool(ok)})
+   if ok and not name:name,source=ok,label
+  _pc_name_cache.update({'name':name,'source':source,'tried':tried})
+  return dict(_pc_name_cache)
+
+def pc_name_info():
+ """画面へ出すための素性（名前・出どころ・試した順）。"""
+ info=resolve_pc_name()
+ # 設定で名乗り直したときはその場で効かせる（再起動を待たせない）。
+ override=_pc_name_override()
+ if override and info['name']!=override:info=resolve_pc_name(force=True)
+ elif not override and info['source']=='設定（共通設定のPC名）':info=resolve_pc_name(force=True)
+ return info
+
 def current_pc_name():
  who=_relayed_identity()
  if who and who[1]:return who[1]
- try:return str(socket.gethostname() or '').strip()
- except Exception:return ''
+ return pc_name_info()['name']
 
 def _permission_flags():
  # マスタ未整備/未接続でも既定(編集可・スケジュール不可・現場段取り不可)を
@@ -253,6 +339,17 @@ def get_mode():
 
 def install(app):
  global _mode
+ # **起動時に1回だけ決めて持ち続ける**(§9.208 ⑧、利用者の指示)。ここで
+ # 記録に残しておくと、現地で「PC名が取れていない」と言われたときに、
+ # どの出どころを試して何が返ったかがログだけで分かる。
+ try:
+  info=resolve_pc_name(force=True)
+  from .logging_setup import app_logger
+  app_logger().info('この端末の名前: %s (出どころ: %s / 試した順: %s)',
+                    info['name'] or '（取得できませんでした）',info['source'] or '-',
+                    ', '.join(f"{t['source']}={t['value'] or '空'}" for t in info['tried']))
+ except Exception:
+  pass
  with _lock:
   _mode=_initial_mode(_permission_flags())
 
@@ -261,7 +358,8 @@ def install(app):
   flags=_permission_flags()
   return jsonify(ok=True,mode=get_mode(),canEdit=flags['canEdit'],canSchedule=flags['canSchedule'],
                  canFieldReorder=flags['canFieldReorder'],fieldReorderEquipment=flags['fieldReorderEquipment'],
-                 loginId=current_login_id(),pcName=current_pc_name())
+                 loginId=current_login_id(),pcName=current_pc_name(),
+                 pcNameSource=pc_name_info()['source'])
 
  @app.post('/api/access-mode')
  def access_mode_set():

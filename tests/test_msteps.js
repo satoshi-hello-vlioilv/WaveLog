@@ -18,7 +18,7 @@ const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-l
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 /* 入力内容の統合後の名前（§9.160）。画面の`WL.measureItem.MATERIAL`と同じ。 */
-const MATERIAL='母材・揃い/肉厚/長さ';
+const MATERIAL='母材/丈毎';
 const setMode=m=>fetch(API+'/api/access-mode',{method:'POST',
   headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})});
 
@@ -1445,6 +1445,16 @@ let b=null,page=null;
    out.選択値=el.value;
    out.選択肢にある=[...el.options].some(o=>o.value==='508');
    out.出どころ=note.hidden?'':note.textContent.trim();
+   out.出どころの詳細=note.hidden?'':(note.title||'');
+   /* 器（①準備の1列）に収まっていること。溢れると`<label>`のフレックス行が
+      その幅で組まれ、**内径の選択欄だけ広がって隣へ重なる**（§9.208 ①）。 */
+   const lab=el.closest('label');
+   out.欄の幅=Math.round(el.getBoundingClientRect().width);
+   out.器の幅=Math.round(lab.getBoundingClientRect().width);
+   out.隣の幅=Math.round(document.getElementById('spool').getBoundingClientRect().width);
+   out.注記の幅=Math.round(note.getBoundingClientRect().width);
+   out.隣と重なる=el.getBoundingClientRect().right
+     >document.getElementById('spool').getBoundingClientRect().left+0.5;
    /* すでに選び直してあるときは上書きしない */
    S.measure.settings.innerDiameter='300';el.add(new Option('300','300'));el.value='300';
    WL.innerDiameter.apply(src);
@@ -1462,7 +1472,16 @@ let b=null,page=null;
       JSON.stringify({ゼロ:inner.ゼロ,空:inner.空,文字:inner.文字,無い:inner.無い}));
   rec('内径種別マスタに無くても選べる（候補へ足す）',
       inner.選択値==='508'&&inner.選択肢にある,JSON.stringify(inner).slice(0,120));
-  rec('どこから来た値かを画面に書く',/ｺｲﾙ_内径目標/.test(inner.出どころ||''),inner.出どころ);
+  /* 画面には**短く**書き、列の名前は`title`が持つ（§9.208 ①）。
+     長い文をそのまま出すと器より広くなり、隣の欄へ重なる。 */
+  rec('どこから来た値かを画面に書く',/仕掛/.test(inner.出どころ||''),inner.出どころ);
+  rec('出どころの列名はtitleで読める',/ｺｲﾙ_内径目標/.test(inner.出どころの詳細||''),
+      (inner.出どころの詳細||'').slice(0,50));
+  rec('出どころの注記が器からはみ出さない（§9.208 ①）',
+      inner.注記の幅<=inner.器の幅+1,`注記${inner.注記の幅} / 器${inner.器の幅}`);
+  rec('内径の欄が隣（スプール）と同じ幅で重ならない（§9.208 ①）',
+      inner.欄の幅===inner.隣の幅&&inner.隣と重なる===false,
+      `内径${inner.欄の幅} / スプール${inner.隣の幅} / 重なり${inner.隣と重なる}`);
   rec('選び直してあるときは上書きしない',inner.上書きしない==='300',String(inner.上書きしない));
   rec('選び直したら出どころの注記は消える',inner.選び直したら出どころは消える===true,
       String(inner.選び直したら出どころは消える));
@@ -1646,6 +1665,140 @@ let b=null,page=null;
   });
   rec('①で選んだ値が「記録した値」に出る',
       !!rvLive.選んだ&&rvLive.出た===rvLive.選んだ,JSON.stringify(rvLive));
+
+  /* ==================================================================
+     §9.208 測定画面の作り直し（利用者の指示）
+     ================================================================== */
+
+  /* ---- ② 入力数はその場で数え直す ----
+     母材8欄は`collect()`＝**保存のときだけ**回収する作りで、`m.mother`は
+     打っても空のままだった。入力数は`m.mother`から数えるので、**全部
+     埋めてもチップは 0/N のまま**（実機で報告）。
+     **確かめるときは保存せずに見ること**——保存してから数えると、
+     直す前の実装でも通ってしまう。 */
+  await go('2');
+  await setType(MATERIAL);
+  const cnt=await page.evaluate(async()=>{
+   const chip=()=>{
+    const c=[...document.querySelectorAll('.type-chip')]
+      .find(x=>x.dataset.typeChip===WL.measureItem.MATERIAL);
+    return c?c.querySelector('.type-chip-state').textContent.trim():'';
+   };
+   /* まっさらから始める（前の節が値を入れている） */
+   document.querySelectorAll('[data-mother]').forEach(el=>{el.value='';el.dispatchEvent(new Event('input',{bubbles:true}))});
+   S.measure.mother={};
+   (S.measure.product.rows||[]).forEach(r=>Object.keys(r).forEach(k=>r[k]=''));
+   renderProductPanel();refreshMeasureProgress();
+   await new Promise(r=>setTimeout(r,120));
+   const before=chip();
+   const el=document.querySelector('[data-mother]');
+   el.value='1234.5';el.dispatchEvent(new Event('input',{bubbles:true}));
+   await new Promise(r=>setTimeout(r,120));
+   const afterMother=chip(),motherKept=String(S.measure.mother[el.dataset.mother]||'');
+   const len=document.querySelector('#productRowsBody tr[data-row="0"] [data-product-field="productLength"]');
+   len.value='2500';len.dispatchEvent(new Event('input',{bubbles:true}));
+   await new Promise(r=>setTimeout(r,120));
+   return{before,afterMother,motherKept,afterPiece:chip(),
+          名前:WL.measureItem.MATERIAL,
+          チップ名:[...document.querySelectorAll('.type-chip .type-chip-name')].map(x=>x.textContent.trim())};
+  });
+  const num=t=>Number(String(t).split('/')[0]);
+  rec('母材を1つ打つと入力数がその場で増える（§9.208 ②）',
+      num(cnt.afterMother)===num(cnt.before)+1,`${cnt.before} → ${cnt.afterMother}`);
+  rec('母材の値は保存を待たずレコードへ入る',cnt.motherKept==='1234.5',cnt.motherKept);
+  rec('丈を1つ打つと入力数がさらに増える（§9.208 ②）',
+      num(cnt.afterPiece)===num(cnt.afterMother)+1,`${cnt.afterMother} → ${cnt.afterPiece}`);
+  rec('入力内容の呼び名は「母材/丈毎」（§9.208 ②）',
+      cnt.名前==='母材/丈毎'&&cnt.チップ名[0]==='母材/丈毎',JSON.stringify(cnt.チップ名));
+
+  /* ---- ② 角は1種類にそろえる（利用者の指示「四角の入力欄はすべて丸角に」） ---- */
+  const radii=await page.evaluate(()=>{
+   const box=document.querySelector('[data-workpanel="material"]');
+   return [...box.querySelectorAll('input,select,output')]
+     .filter(el=>el.getBoundingClientRect().width>0)
+     .map(el=>({t:el.tagName+(el.dataset.mother||el.dataset.productField||''),
+                r:parseFloat(getComputedStyle(el).borderTopLeftRadius)||0}))
+     .filter(x=>x.r<2);
+  });
+  rec('母材/丈毎の面に直角の入力欄が無い（§9.208 ②）',radii.length===0,
+      radii.slice(0,4).map(x=>x.t).join(' / '));
+
+  /* ---- ③ 手で打つ数値欄（マイナス禁止・「.5」の省略打ち） ----
+     `input[type=number]`の「妥当な浮動小数点数」には小数点の前の桁が要る
+     ので、`.5`と打つと`value`が**空文字**になり打った値が消える。 */
+  const typing=await page.evaluate(async()=>{
+   const el=document.querySelector('[data-mother]');
+   const put=v=>{el.value=v;el.dispatchEvent(new Event('input',{bubbles:true}))};
+   put('-12.5');const マイナス=el.value;
+   put('.5');const 途中=el.value;
+   el.dispatchEvent(new Event('blur'));
+   const 離れたあと=el.value;
+   put('１２.５');const 全角=el.value;
+   put('');
+   return{マイナス,途中,離れたあと,全角,型:el.type,印:el.classList.contains('numeric-input')};
+  });
+  rec('マイナスは打てない（§9.208 ③）',typing.マイナス==='12.5',typing.マイナス);
+  rec('「.5」は打っている間そのまま受ける',typing.途中==='.5',typing.途中);
+  rec('離れたら「.5」→「0.5」になる（§9.208 ③）',typing.離れたあと==='0.5',typing.離れたあと);
+  rec('全角で打っても数字として入る',typing.全角==='12.5',typing.全角);
+  rec('数値欄の印は残す（幅の見積りが日本語8文字へ倒れない）',
+      typing.印===true,`type=${typing.型} numeric=${typing.印}`);
+
+  /* ---- ③ 手動入力では印とカーソルが一致する ----
+     「クリックしてもフォーカスは移動せず、入力しても自動では移動しない」
+     （実機で報告）。**印(`.current`)だけが動いてカーソルが残る**と、打った
+     文字は前の枠へ入り続ける。 */
+  await go('1');
+  await page.evaluate(()=>{const h=document.getElementById('horizontalCount');
+    h.value='4';h.dispatchEvent(new Event('change',{bubbles:true}))});
+  await go('2');
+  await setType('ラテラルボー');
+  await page.evaluate(()=>document.querySelector('[data-mode="manual"]').click());
+  await page.waitForTimeout(400);
+  const nav=await page.evaluate(async()=>{
+   const wait=()=>new Promise(r=>setTimeout(r,250));
+   const at=()=>{const a=document.activeElement;
+     return a&&a.dataset&&a.dataset.mkey?`${a.dataset.i}:${a.dataset.j}`:(a&&a.id)||'?'};
+   const cur=()=>{const c=document.querySelector('[data-mkey].current');
+     return c?`${c.dataset.i}:${c.dataset.j}`:''};
+   const cell=(i,j)=>document.querySelector(`[data-mkey="lateral"][data-i="${i}"][data-j="${j}"]`);
+   cell(0,2).click();await wait();
+   const クリック後={印:cur(),カーソル:at()};
+   cell(0,2).dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
+   await wait();
+   const Enter後={印:cur(),カーソル:at()};
+   const th=document.querySelector('.measure-matrix thead th button[data-mx-len="1"]');
+   th.click();await wait();
+   const 丈を押した後={印:cur(),カーソル:at()};
+   return{クリック後,Enter後,丈を押した後};
+  });
+  rec('手動入力: クリックした枠に印もカーソルも移る（§9.208 ③）',
+      nav.クリック後.印==='0:2'&&nav.クリック後.カーソル==='0:2',JSON.stringify(nav.クリック後));
+  rec('手動入力: Enterで次の枠へ印もカーソルも進む（§9.208 ③）',
+      nav.Enter後.印==='0:3'&&nav.Enter後.カーソル==='0:3',JSON.stringify(nav.Enter後));
+  rec('手動入力: 丈の見出しを押すとその丈の先頭の枠へ移る（§9.208 ③）',
+      nav.丈を押した後.印==='1:0'&&nav.丈を押した後.カーソル==='1:0',
+      JSON.stringify(nav.丈を押した後));
+  /* **自動転送では絶対にフォーカスを動かさない**（§9.122）。受信欄から
+     外れた瞬間に転送を1件も受けなくなる。
+     見るのは**板幅**——ラテラルボーは`MANUAL_ONLY_MEASURE_TYPES`で手動固定
+     （受信の帯そのものを出さない）ので、あちらで自動転送は確かめられない。 */
+  await setType('板幅');
+  const autoFocus=await page.evaluate(async()=>{
+   const c=document.querySelector('[data-mkey="width"][data-i="0"][data-j="1"]');
+   c.click();await new Promise(r=>setTimeout(r,400));
+   const a=document.activeElement;
+   return{モード:S.measure.settings.inputMode,
+          帯:!document.getElementById('inputStatusBox').hidden,
+          欄:(a&&(a.id||a.tagName+':'+(a.dataset&&a.dataset.j)))||'(なし)'};
+  });
+  rec('自動転送ではセルを押しても受信欄からフォーカスを外さない（§9.122）',
+      autoFocus.モード==='auto'&&autoFocus.帯===true&&autoFocus.欄==='deviceInput',
+      JSON.stringify(autoFocus));
+  await page.evaluate(()=>{const h=document.getElementById('horizontalCount');
+    h.value='1';h.dispatchEvent(new Event('change',{bubbles:true}))});
+  await go('3');
+
   rec('③の空きを記録した',true,JSON.stringify(e3));
   /* ---- カードの整列（§9.135 可能な限り粗いグリッド） ----
      **そろって見えるかは「左端の候補が何通りあるか」で決まる。** 外側は

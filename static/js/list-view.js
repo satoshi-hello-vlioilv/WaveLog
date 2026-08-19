@@ -320,7 +320,56 @@ const GRIP_W_MIN=40,GRIP_W_MAX=900;
 const GRIP_SETTLE_MS=300;
 let gripHeld=0,gripSaving=0,gripCalmUntil=0;
 function gripBusy(){return gripHeld>0||gripSaving>0||Date.now()<gripCalmUntil}
-WL.columnResize={busy:gripBusy,settleMs:GRIP_SETTLE_MS};
+/* ---------- 掴んだ側が動く（§9.208 ⑦、利用者の指摘） ----------
+   「幅を狭めるとき、右端が見えていると**左側全体が近づいてくる**」。
+   原因は器のスクロール位置。右端まで送った状態で列を細くすると、表が
+   縮んだぶん`scrollLeft`の上限も下がり、**ブラウザが位置を切り詰める**
+   ので、掴んだ縁はその場に残り、左の列だけが右へ流れる。
+   直し方は2つで一組:
+     ① 引いている間、`scrollLeft`を**掴んだ時点の値に固定する**
+     ② そのために足りないぶんだけ、器の右へ**便宜上の余白**を置く
+        （利用者の許可済み。「右端の余白が必要であれば設けても構わない」）
+   余白は**必要な量だけ**にして、左へ戻れば自然に消える（`scroll`で
+   はみ出しが無くなった時点で外す）——常設すると、収まっている表にまで
+   意味の無い空白が付く。 */
+const SPARE_CLASS='col-resize-spare',SPARE_BOUND='__wlSpareBound';
+function gripScroller(el){
+ for(let p=el&&el.parentElement;p;p=p.parentElement){
+  const cs=getComputedStyle(p);
+  if(/(auto|scroll)/.test(cs.overflowX)&&p.scrollWidth>p.clientWidth)return p;
+ }
+ return null;
+}
+/* 余白は**器の子として1枚置く**。`padding-right`では作れない——器の内側の
+   幅が縮み、`fr`で組んだ行（データ一覧）は**列そのものが細くなる**ので、
+   狭めた量ぶん表が縮んでしまい位置が保てない（実測でそうなった）。 */
+function spareEl(sc){return sc?sc.querySelector(':scope > .'+SPARE_CLASS):null}
+function spareOf(sc){const el=spareEl(sc);return el?Number(el.dataset.spare)||0:0}
+function clearSpare(sc){const el=spareEl(sc);if(el)el.remove()}
+function setSpare(sc,base,px){
+ if(!sc)return;
+ const v=Math.max(0,Math.round(px));
+ if(!v){clearSpare(sc);return}
+ let el=spareEl(sc);
+ if(!el){
+  el=document.createElement('div');
+  el.className=SPARE_CLASS;el.setAttribute('aria-hidden','true');
+  sc.appendChild(el);
+ }
+ el.dataset.spare=String(v);el.dataset.base=String(Math.round(base));
+ el.style.width=Math.round(base+v)+'px';
+ if(!sc[SPARE_BOUND]){
+  sc[SPARE_BOUND]=true;
+  /* 左へ戻って余白が要らなくなったら外す。**掴んでいる最中は外さない**
+     （引いている途中で足元の余白が消えると、そこで位置が飛ぶ）。 */
+  sc.addEventListener('scroll',()=>{
+   if(gripHeld)return;
+   const cur=spareEl(sc);if(!cur)return;
+   if(sc.scrollLeft+sc.clientWidth<=(Number(cur.dataset.base)||0)+1)clearSpare(sc);
+  });
+ }
+}
+WL.columnResize={busy:gripBusy,settleMs:GRIP_SETTLE_MS,scroller:gripScroller,spare:spareOf};
 function bindColumnWidthGrip(grip,o){
  if(!grip||!o)return;
  /* 幅を固定した列は掴めない(§9.119)。**印は残す**——取っ手ごと消すと、
@@ -343,16 +392,36 @@ function bindColumnWidthGrip(grip,o){
      （下の`w`が入らないので保存もしない）。 */
   const startW=Math.max(0,Math.round(o.startWidth()||0));
   let w=0;
+  /* 掴んだ時点の横位置を覚え、細くできるぶんだけ右へ余白を確保しておく
+     （§9.208 ⑦）。**掴む前に置く**——引き始めてからでは、最初の1pxで
+     すでに位置が切り詰められている。 */
+  const sc=gripScroller(grip),keep=sc?sc.scrollLeft:0;
+  if(sc){
+   /* 素の中身の幅を測ってから、細くできるぶん（下限まで）を足す。 */
+   clearSpare(sc);
+   setSpare(sc,sc.scrollWidth,Math.max(0,startW-GRIP_W_MIN));
+   sc.scrollLeft=keep;
+  }
   gripHeld++;document.body.classList.add('col-resizing');
   const move=ev=>{
    if(!startW)return;
    w=Math.max(GRIP_W_MIN,Math.min(GRIP_W_MAX,Math.round(startW+(ev.clientX-startX))));
    o.preview(w);
+   /* 掴んだ側が動くように、器の横位置は**動かさない**。 */
+   if(sc&&sc.scrollLeft!==keep)sc.scrollLeft=keep;
   };
   const up=()=>{
    document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);
    gripHeld=Math.max(0,gripHeld-1);
    if(!gripHeld)document.body.classList.remove('col-resizing');
+   /* 余白は**まだ要るぶんだけ**残す。全部外すと、離した瞬間に位置が
+      切り詰められて左の列がまとめて動く（引いている間の見え方と食い違う）。 */
+   if(sc){
+    clearSpare(sc);
+    const content=sc.scrollWidth;
+    setSpare(sc,content,Math.max(0,keep+sc.clientWidth-content));
+    sc.scrollLeft=keep;
+   }
    /* 離してからも少しのあいだは「触っている」——ここで見張りが表を
       組み直すと、続けて隣の列を掴もうとした手が空を切る。 */
    gripCalmUntil=Date.now()+GRIP_SETTLE_MS;

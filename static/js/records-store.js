@@ -172,6 +172,11 @@ async function backupRecord(m){
     ホスト名で埋めるほうが確か(画面が嘘を送れないようにする)。 */
  const x={id:m.id,equipment,lotNo:m.basic.lotNo,inspectionNo:m.basic.inspectionNo,castingNo:m.basic.castingNo,status:m.status,codec:'json-full-v32',payload:encodePayload(m),
           created_by:m.createdBy||'',created_pc:m.createdPc||'',created_at:m.createdAt||'',
+          /* **レコード自身の更新時刻をそのまま渡す**(§9.208 ⑤)。共有側の
+             [更新日時]はサーバーが押す現地時刻なので、画面の`updatedAt`
+             (UTCのISO)とは物差しが違い、そのまま比べると「新しい版あり」が
+             嘘になる。同じ物差しの列を1本持たせて、そちらで比べる。 */
+          updated_at_iso:m.updatedAt||'',
           user_id:(typeof currentUserId==='function'&&currentUserId())||''};
  return api('/api/measurement/backup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(x)});
 }
@@ -531,6 +536,46 @@ function syncStatusFilterButtons(){
    同じIDが両方にあるときは**更新日時の新しいほうを採る**。共有側だけに
    あるものは`remoteOnly`の印を付け、一覧では「別のPC」として見せる。
    **共有側が読めなくても一覧は端末内のぶんで必ず出す**(fail-open)。 */
+/* ---------- 「新しい版あり」は同じ物差しで比べる（§9.208 ⑤） ----------
+   自分の端末で保存しただけのデータに印が付く、と報告された。原因は
+   **比べていた2つの時刻の物差しが違ったこと**。
+     ・画面(IndexedDB)の`updatedAt` … `toISOString()`＝**UTC**の
+       `2026-08-19T05:12:33.123Z`
+     ・共有(records.sqlite3)の[更新日時] … サーバーの`Now()`＝**現地時刻**の
+       `2026-08-19 14:12:33.123456`
+   これを文字列で比べると、10桁目が`' '`(0x20)と`'T'`(0x54)なので、ふつうは
+   常に「共有のほうが古い」＝**本物の別PC更新を見落とし**、現地の日付が
+   UTCの日付を追い越す時間帯（JSTなら0〜9時）は**常に「共有のほうが新しい」**
+   ＝身に覚えのない印、という**両方向に壊れた**状態だった。
+
+   直し方は**同じ物差しの列を1本足す**こと（[更新時刻ISO]＝レコード自身の
+   `updatedAt`）。古い行にはその列が無いので、そのときだけ現地時刻を
+   **日付として**読み、往復のぶん（`REMOTE_NEWER_SLACK_MS`）は同じ版として
+   扱う——サーバーが押す時刻は画面が`updatedAt`を決めてから数百ms後になる。 */
+const REMOTE_NEWER_SLACK_MS=5000;
+/* 共有側の現地時刻文字列（`2026-08-19 14:12:33.123456`）をミリ秒にする。
+   **サーバーはこの端末で動いている**ので、地方時として読んでよい。 */
+function localStampMs(v){
+ const t=String(v||'').trim();
+ if(!t)return NaN;
+ const m=t.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?/);
+ if(!m)return NaN;
+ const ms=Number(String(m[7]||'0').slice(0,3).padEnd(3,'0'));
+ return new Date(+m[1],+m[2]-1,+m[3],+m[4],+m[5],+(m[6]||0),ms).getTime();
+}
+function remoteIsNewer(row,mine){
+ const mineIso=String(mine&&mine.updatedAt||'');
+ const remoteIso=String(row&&row.record_updated_at||'');
+ /* 同じ物差しがそろっているときは、それだけで決める（文字列比較でよい
+    ——どちらもUTCのISOで桁がそろっている）。 */
+ if(remoteIso&&mineIso)return remoteIso>mineIso;
+ const remoteMs=localStampMs(row&&row.updated_at),mineMs=Date.parse(mineIso);
+ /* どちらかが読めなければ**印を付けない**——「分からない」を「新しい」と
+    同じに扱うと、また身に覚えのない印が出る。 */
+ if(!Number.isFinite(remoteMs)||!Number.isFinite(mineMs))return false;
+ return remoteMs>mineMs+REMOTE_NEWER_SLACK_MS;
+}
+WL.recordVersion={remoteIsNewer,localStampMs};
 async function mergedRecords(){
  const local=(await reliableAll()).map(ensureMeasureShape);
  let remote=[];
@@ -540,15 +585,15 @@ async function mergedRecords(){
  }catch(e){/* 共有が読めなくても端末内のぶんは出す */}
  if(!remote.length)return local;
  const byId=new Map(local.map(x=>[x.id,x]));
- const newer=(a,b)=>String(a||'')>String(b||'');
  for(const row of remote){
   const mine=byId.get(row.id);
   if(mine){
    // 共有側のほうが新しければ、一覧では共有側の更新日時と状態で見せる
    // (中身は開くときに取り込む)。
-   if(newer(row.updated_at,mine.updatedAt)){
-    mine.remoteNewer=true;mine.remoteUpdatedAt=row.updated_at;
+   if(remoteIsNewer(row,mine)){
+    mine.remoteNewer=true;mine.remoteUpdatedAt=row.record_updated_at||row.updated_at;
     mine.remoteEquipment=row.equipment||'';
+    mine.remoteUpdatedBy=row.updated_by||'';mine.remoteUpdatedPc=row.updated_pc||'';
    }
    /* 「誰が・どの端末で」(§9.180)は**共有側の列から補う**。端末内のレコードが
       古い版で作られていて`createdBy`を持たないことがあり、そのときは共有の
@@ -560,7 +605,10 @@ async function mergedRecords(){
    continue;
   }
   byId.set(row.id,ensureMeasureShape({
-   id:row.id,status:row.status||'編集中',updatedAt:row.updated_at||'',
+   /* 更新時刻は**レコード自身の物差し**を優先する（§9.208 ⑤）。無い古い行は
+      サーバーの現地時刻しか無いので、そのまま出す（`recordLocalStamp`は
+      どちらも読める）。 */
+   id:row.id,status:row.status||'編集中',updatedAt:row.record_updated_at||row.updated_at||'',
    basic:{lotNo:row.lotNo||'',inspectionNo:row.inspectionNo||'',castingNo:row.castingNo||''},
    registeredEquipment:row.equipment||'',
    remoteOnly:true,remoteCodec:row.codec||'',
@@ -955,8 +1003,13 @@ function renderRecordListRows(){
   const syncSt=x.syncState?.status||'pending';
   const syncBadge=syncSt==='synced'?'':`<span class="record-sync-badge record-sync-${syncSt}" title="${syncSt==='failed'?'バックアップDBへの送信に失敗しました: '+esc(x.syncState?.lastError||''):'バックアップDBへまだ送信していません'}">未同期</span>`;
   /* 他のPCで保存されたもの(§9.91)。開くとこの端末へ取り込む。 */
+  /* 「新しい版あり」は**誰がどこで保存したか**まで言う（§9.208 ⑤）。
+     「新しい版がある」とだけ書かれていたため、自分で保存しただけのときも
+     何が起きたのか読み取れなかった（判定そのものの不具合と合わせて、
+     「自分のデータなのに印が付く」という報告になった）。 */
+  const remoteWho=[x.remoteUpdatedBy,x.remoteUpdatedPc].filter(Boolean).join(' @ ');
   const remoteBadge=x.remoteOnly?`<span class="record-remote-badge" title="別のPC(${esc(x.registeredEquipment||'設備不明')})で保存された内容です。開くとこの端末へ取り込みます。">別のPC</span>`
-    :x.remoteNewer?`<span class="record-remote-badge is-newer" title="別のPCでこの端末より新しく保存されています(${esc(x.remoteUpdatedAt||'')})。開くとそちらの内容を取り込みます。">新しい版あり</span>`:'';
+    :x.remoteNewer?`<span class="record-remote-badge is-newer" title="共有DBに、この端末より新しい版があります${remoteWho?'（'+esc(remoteWho)+'）':''}。最終保存 ${esc(recordLocalStamp(x.remoteUpdatedAt)||x.remoteUpdatedAt||'')}。開くとそちらの内容を取り込みます。">新しい版あり</span>`:'';
   row.className='record-list-row'+(same?' is-same-lot':'');
   row.tabIndex=0;
   /* 列幅を決め打ちする以上、**入り切らない値には生の値のtitleを必ず付ける**

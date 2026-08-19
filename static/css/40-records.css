@@ -71,12 +71,22 @@
     minmax(232px,0));   /* 操作（3つのボタンが中身なりに並ぶ幅） */
   align-items:center;
 }
-.record-list-head{position:sticky;top:0;z-index:4;background:#dcecef;border-bottom:1px solid #9caeb4;color:#28464e;font-weight:700}
+/* ---------- 横スクロールしても地と罫線が続く（§9.208 ⑥、実機で報告） ----------
+   行は`display:grid`の**ブロック**なので、幅は器いっぱいまでしか無い。
+   列が器より広いと、はみ出した列の後ろには**器の地（灰）がそのまま出る**
+   ——右へ送ると配色が崩れて見えるのはこれ。**地と罫線はセルが持つ**ように
+   すれば、はみ出した先まで同じ色で続く（`background:inherit`は親の
+   `:hover`にも追随する）。行そのものへ`width:max-content`を与える手もあるが、
+   `fr`のトラックが最大幅で解けてしまい、**溢れていないときの列幅まで
+   変わる**ので採らない。 */
+.record-list-head{position:sticky;top:0;z-index:4;background:#dcecef;color:#28464e;font-weight:700}
 /* 見出しの左右余白は値のセルより詰める（削る順は 余白 → 省略記号）。 */
 .record-list-head>*{height:var(--row-h);display:flex;align-items:center;
   padding:var(--row-pad-y) var(--row-pad-x-head);border-right:1px solid #c4d0d4;
+  border-bottom:1px solid #9caeb4;background:inherit;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.record-list-row{background:#fff;border-bottom:1px solid #d6e0e3;cursor:pointer}
+.record-list-row{background:#fff;cursor:pointer}
+.record-list-row>*{background:inherit;border-bottom:1px solid #d6e0e3}
 .record-list-row:nth-child(even){background:#f7fafb}
 .record-list-row:hover{background:#edfafa}
 .record-list-row:focus{outline:3px solid #087c8950;outline-offset:-3px}

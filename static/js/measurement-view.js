@@ -19,11 +19,16 @@ WL.measureItem={
     保存済みレコードは旧名を持つので、読み込む時点でこの名前へ寄せる
     （選択肢に無い値を`select.value`へ入れると空文字＝どの項目でもない
     状態で開く。`LEGACY`と同じ扱い）。 */
- MATERIAL:'母材・揃い/肉厚/長さ',
- LEGACY_MATERIAL:['母材','揃い/肉厚/長さ'],
+ /* 呼び名は**画面のまとまりと同じ**（§9.208 ②、利用者の指示）。この項目の
+    面には「母材」と「丈ごと」の2枚が縦に並ぶので、名前もそのとおりに読む。
+    以前の`母材・揃い/肉厚/長さ`は器（チップ1枚）に対して長すぎ、
+    「未測定が9項目あります（母材・揃い/肉厚/長さ・板厚 ほか）」のように
+    **中黒がどこの区切りなのか読めない**文も作っていた。 */
+ MATERIAL:'母材/丈毎',
+ LEGACY_MATERIAL:['母材','揃い/肉厚/長さ','母材・揃い/肉厚/長さ'],
  /* 旧名（母材／板厚/板幅）も残す——保存済みレコードを開いた瞬間に
     `activeMeasureKey()`の答えが変わらないようにするため。 */
- KEYS:{'母材・揃い/肉厚/長さ':'mother',母材:'mother',板厚:'thickness',板幅:'width',
+ KEYS:{'母材/丈毎':'mother','母材・揃い/肉厚/長さ':'mother',母材:'mother',板厚:'thickness',板幅:'width',
   ラテラルボー:'lateral',バリ:'burr',
   テレスコープ:'telescope',巻ずれ:'offset',フラットネス:'flatness','板厚/板幅':'width'},
  normalize(type){const t=String(type??'');
@@ -106,7 +111,15 @@ function updateInnerDiameterHint(){
  const cur=String(el?.value||'').trim();
  const show=!!preset&&cur===preset;
  if(note.hidden!==!show)note.hidden=!show;
- note.textContent=show?`仕掛の「ｺｲﾙ_内径目標」${preset} から`:'';
+ /* **文は器（列1つぶん）に収まる長さにする**（§9.208 ①）。以前は
+    「仕掛の「ｺｲﾙ_内径目標」508 から」と書いており、①準備の1列（実測124px）に
+    対して143px——`<small>`が器より広くなると、`<label>`のフレックス行が
+    その幅で組まれ、**内径の選択欄だけ19px広くなって隣のスプールへ7px
+    重なっていた**（実機で「サイズがバラバラ・意図せず重なる」と報告）。
+    出どころそのものは落とさず`title`へ回す（§6は「出どころを画面に出す」で
+    あって、列の名前を全部書き写すことではない）。 */
+ note.textContent=show?`仕掛から ${preset}`:'';
+ note.title=show?`仕掛データの「ｺｲﾙ_内径目標」${preset} を初期値として選んであります（選び直せます）。`:'';
 }
 /* 目標値を選択欄へ当てる。**まだ選び直していないときだけ**（'-'のまま）で、
    **選択肢に無ければ足してから**選ぶ（内径種別マスタが空の現場がある）。
@@ -255,6 +268,32 @@ function updateCoilOptions(count){const el=$('#coilNo');if(!el)return;const n=Ma
    動的に生成されるため、両関数とも要素が無ければ何もしない）。 */
 function saveFlatComment(){if(!S.measure||!$('#coilNo'))return;const i=(+$('#coilNo').value||1)-1,j=lengthIndex();S.measure.measurements.comments[j][i]=String($('#coilComment').value||'').replace(/[;|]/g,'')}
 function loadFlatComment(){if(!S.measure||!$('#coilNo'))return;const i=(+$('#coilNo').value||1)-1,j=lengthIndex();$('#coilComment').value=S.measure.measurements.comments[j][i]||''}
+/* ---------- 母材の欄は打った時点でレコードへ入れる（§9.208 ②） ----------
+   母材8欄は`collect()`＝**保存のときだけ**回収する作りだった。入力内容の
+   「入力数」は`m.mother`から数える（`measure-progress.js`）ので、
+   **8欄を全部埋めてもチップは 0/9 のまま**になっていた（実機で報告）。
+   丈ごとの欄は打った時点で`m.product.rows`へ入るので、母材だけが
+   揃っていなかった。**書き込みのキーは`collect()`と同じ**（`dataset.mother`）
+   ——2通りの書き方を作ると、片方だけ直した状態ができる。 */
+function bindMotherInputs(){
+ if(typeof refreshMeasureProgress!=='function')
+  console.error('母材の進捗更新: refreshMeasureProgress が見つかりません（measure-progress.js の読み込み順）');
+ document.querySelectorAll('[data-mother]').forEach(el=>{
+  if(el.dataset.motherBound)return;
+  el.dataset.motherBound='1';
+  const apply=()=>{
+   if(!S.measure)return;
+   S.measure.mother=S.measure.mother||{};
+   S.measure.mother[el.dataset.mother]=el.value;
+   updateMotherCalcLength();
+   if(typeof refreshMeasureProgress==='function')refreshMeasureProgress();
+   markDirty();
+  };
+  el.addEventListener('input',apply);
+  el.addEventListener('change',apply);
+ });
+}
+window.WL.motherInputs={bind:bindMotherInputs};
 function rightLayoutFor(type){
  return WL.measureItem.isMaterial(type)?'material':'measure';
 }
@@ -264,7 +303,7 @@ function applyRightLayout(){
  pane.classList.remove('layout-material','layout-measure');
  pane.classList.add('layout-'+layout); activateWorkspace(layout);
  if(layout==='measure'){renderMeasureGrid();updateMeasurementHeading()}
- if(layout==='material'){renderProductPanel();updateMotherCalcLength()}
+ if(layout==='material'){renderProductPanel();updateMotherCalcLength();bindMotherInputs()}
 }
 /* v33: 「揃い/肉厚/長さ」は縦割数で分割した丈(1〜N)ごとに複数行で保持する。
    丈は旧VBA帳票の「丈」テーブル（長さ/肉厚/揃い/外観/備考）と同じ、
@@ -565,6 +604,9 @@ function renderProductPanel(){
     const box=el.closest('.prt-df');if(box)box.classList.toggle('is-over',over);
    }
    markDirty();updateProductStatus();
+   /* 入力内容の「入力数」もその場で言い直す（§9.208 ②）。ここを呼ばないと
+      丈を埋めてもチップの数字が動かない。 */
+   if(typeof refreshMeasureProgress==='function')refreshMeasureProgress();
   };
   /* selectは`input`も飛ぶが、**`change`も受ける**——古いブラウザ差を
      気にせず1本にまとめる（同じ値なら2度目は何も変わらない）。 */
@@ -714,6 +756,7 @@ function renderMeasurement(){
  applyRightLayout();
  requestAnimationFrame(updateValidationVisuals);
  upgradeManualInputTypes();
+ bindMotherInputs();
  renderQualityGradePanel();
  bindInfoTabs();
  renderDataManagementPanel();
@@ -930,10 +973,11 @@ function paintQualityInfo(){
 function bindInfoTabs(){document.querySelectorAll('[data-infotab]').forEach(btn=>btn.onclick=()=>{document.querySelectorAll('[data-infotab]').forEach(x=>x.classList.toggle('active',x===btn));document.querySelectorAll('[data-infopanel]').forEach(p=>p.hidden=p.dataset.infopanel!==btn.dataset.infotab)})}
 function upgradeManualInputTypes(){
  document.querySelectorAll('input[data-mother],input[data-product-field]').forEach(el=>{
-  if(el.type==='number'){
-   el.step='any';
-   el.inputMode='decimal';
-   el.classList.add('numeric-input');
+  /* 数値欄は`WL.numericInput`が引き受ける（§9.208 ③）——マイナス禁止・
+     「.5」の省略打ち・全角の3つを1箇所で。`type=number`から`text`へ
+     変わるので、判定は**属性ではなく印**（`numeric-input`）で行う。 */
+  if(el.type==='number'||el.classList.contains('numeric-input')){
+   WL.numericInput.attach(el);
    el.classList.remove('text-input');
   }else{
    el.classList.add('text-input');

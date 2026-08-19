@@ -423,3 +423,12 @@ button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-vis
 /* ============================================================
    @layer component
    ============================================================ */
+
+@layer component {
+/* 列幅を狭めている間だけ器の右へ置く「便宜上の余白」（§9.208 ⑦）。
+   スクロール位置を保つためだけの1枚で、**中身の幅には触らない**
+   （`padding-right`だと器の内側が縮み、`fr`で組んだ行の列そのものが
+   細くなってしまう）。`display:none`にはできない——場所を取ることが
+   仕事なので、見えなくするだけにする。 */
+.col-resize-spare{height:1px;flex:none;pointer-events:none;visibility:hidden}
+}

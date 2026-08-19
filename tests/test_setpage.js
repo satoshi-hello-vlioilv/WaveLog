@@ -39,6 +39,7 @@ let b=null;
     clipped,listWrap:getComputedStyle(document.querySelector('.mm-list-wrap')).display};
  });
  rec('パス設定が1本のスクロール領域になっている',p.scrollable,`${p.groups}グループ`);
+ rec('章の数だけまとまりがある',p.groups>=4,`${p.groups}グループ`);
 /* 件数ではなく**キーの一覧**で見る。項目は増える(RNE資材の置き場・
     symnavim.confの場所を§9.79で追加した)ので、数を固定すると足すたびに
     落ちる。「あるべきものが全部出ているか」が見たいこと。 */
@@ -77,15 +78,53 @@ let b=null;
  });
  rec('最後までスクロールしても保存ボタンが押せる',bottom.save);
  rec('最下部の内容まで表示できる',bottom.lastVisible);
- // 保存値と現在値の対比が同じページ内にある
- const cmp=await page.evaluate(()=>({rows:document.querySelectorAll('#pathConfigActive .mm-row').length,
-   head:(document.querySelector('#pathConfigActive .mm-row.head')||{}).innerText||''}));
- rec('保存値と現在有効な値を同じページで見比べられる',cmp.rows>1&&/いま効いている値/.test(cmp.head),
-   cmp.rows+'行');
+ /* ---- 状態は**その欄のすぐ下**（§9.208 ⑨、利用者の指示で作り直した） ----
+    以前は画面のいちばん下に「保存値／いま効いている値」の対比表があり、
+    直した欄がその表のどの行なのかを探すことになっていた。表は廃止し、
+    状態は欄が持つ（§8 同じ情報を2箇所に出さない）。 */
+ const cmp=await page.evaluate(()=>{
+  const st=[...document.querySelectorAll('.pc-state')];
+  const near=st.filter(el=>{
+   const f=el.closest('.mm-field');
+   return !!f&&!!f.querySelector('[data-pc-field]');
+  });
+  return{旧表:!!document.getElementById('pathConfigActive'),
+    状態欄:st.length,欄の下にある:near.length,
+    比べている:st.filter(el=>/いま/.test(el.textContent)&&/保存値/.test(el.textContent)).length,
+    章:[...document.querySelectorAll('[data-pc-section]')].map(x=>x.dataset.pcSection),
+    図:document.querySelectorAll('.pc-map .pc-node').length,
+    図の値:[...document.querySelectorAll('[data-pc-map]')].map(x=>x.textContent.trim()).filter(Boolean).length,
+    レール:document.querySelectorAll('.pc-rail [data-pc-jump]').length};
+ });
+ rec('下段の対比表は廃止した（状態は欄が持つ）',cmp.旧表===false,String(cmp.旧表));
+ rec('保存値と現在有効な値を欄のすぐ下で見比べられる',
+   cmp.比べている>=1&&cmp.欄の下にある>=1,JSON.stringify(cmp));
+ rec('この端末のつながりを図で出す',cmp.図>=3&&cmp.図の値>=3,JSON.stringify({図:cmp.図,値:cmp.図の値}));
+ rec('章立てとレールがある',cmp.レール===cmp.章.length&&cmp.章.length>=4,cmp.章.join('／'));
+ /* 押すとその章へ連れて行く（探させない）。 */
+ const jumped=await page.evaluate(async()=>{
+  const btn=document.querySelector('.pc-rail [data-pc-jump="rne"]');
+  if(!btn)return{無い:true};
+  btn.click();
+  await new Promise(r=>setTimeout(r,700));
+  const sec=document.getElementById('pcSec-rne'),sc=document.querySelector('.mm-set-scroll');
+  return{上端:Math.round(sec.getBoundingClientRect().top-sc.getBoundingClientRect().top)};
+ });
+ rec('章のレールを押すとその章へ移る',Math.abs(jumped.上端??999)<80,JSON.stringify(jumped));
  // 一致している項目に「再起動待ち」を出さない(表示文字列で誤検知しない)
- const pend=await page.evaluate(()=>[...document.querySelectorAll('#pathConfigActive .mm-row')]
-   .filter(r=>r.classList.contains('is-pending-restart')).map(r=>r.innerText.split('\n')[0]));
+ const pend=await page.evaluate(()=>[...document.querySelectorAll('.pc-state.is-pending-restart,.pc-source.is-pending-restart')]
+   .map(r=>r.innerText.split('\n')[0]));
  rec('値が同じ項目を「再起動待ち」と誤表示しない',pend.length===0,JSON.stringify(pend));
+ /* PC名は**この端末の章**に出る（§9.208 ⑧）。取れない端末があったので、
+    名前そのものと出どころ、名乗り直す欄までを1箇所に置く。 */
+ const who=await page.evaluate(()=>({
+  欄:document.querySelectorAll('#pcWho>div').length,
+  PC名:(document.querySelector('#pcWho b')||{}).textContent||'',
+  出どころ:(document.querySelector('#pcWho i')||{}).textContent||'',
+  名乗り直す:!!document.querySelector('[data-pc-field="pc_name"]')}));
+ rec('この端末のPC名・出どころ・名乗り直す欄がある（§9.208 ⑧）',
+   who.欄===3&&!!who.PC名&&who.PC名!=='（取得できていません）'&&!!who.出どころ&&who.名乗り直す,
+   JSON.stringify(who));
 
  // 他タブへ移ると設定ページ用の指定が残らない
  await tab('オペレータ');

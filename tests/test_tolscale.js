@@ -271,7 +271,24 @@ let b=null;
   rec('子ロットの色帯が条ごとに付く(2ロットで2色)',
    mixed.色.length===4&&new Set(mixed.色).size===2,mixed.色.join(' / '));
 
-  /* --- 6c) **軸を切り替えられる**（§9.152、利用者の指示）--- */
+  /* --- 6c) **軸を切り替えられる**（§9.152、利用者の指示）---
+     ふだんは畳んである（§9.208 ④、利用者の指示「通常は使わないので
+     折りたたんで見えないように」）。**畳まれていることも固定する**——
+     開いてから触る作りにしておかないと、既定で出しても素通りする。 */
+  const nlFolded=await page.evaluate(()=>{
+   const box=document.getElementById('numberlineControls'),btn=document.getElementById('numberlineFold');
+   return{畳んでいる:!!box&&box.hidden,入口:!!btn&&btn.getBoundingClientRect().width>0,
+          印:btn&&btn.getAttribute('aria-expanded')};
+  });
+  rec('図の見せ方は既定で畳んである（§9.208 ④）',
+   nlFolded.畳んでいる===true&&nlFolded.入口===true&&nlFolded.印==='false',
+   JSON.stringify(nlFolded));
+  await page.click('#numberlineFold');
+  await page.waitForSelector('#numberlineControls:not([hidden])',{timeout:8000});
+  const nlOpen=await page.evaluate(()=>({
+   出た:!document.getElementById('numberlineControls').hidden,
+   印:document.getElementById('numberlineFold').getAttribute('aria-expanded')}));
+  rec('押すと図の見せ方が開く',nlOpen.出た===true&&nlOpen.印==='true',JSON.stringify(nlOpen));
   await page.selectOption('#numberlineMode','rel');
   await page.waitForTimeout(350);
   const relMixed=await mixedRead();

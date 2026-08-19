@@ -125,6 +125,57 @@ async function cleanup(){
   rec('測定値が引き継がれる',imported.meas.join(',')==='1.23,1.24',imported.meas.join(','));
   rec('**子ロットデータも一緒に来る**',imported.children===2,JSON.stringify(imported.childLots));
 
+  /* ==================================================================
+     「新しい版あり」は同じ物差しで比べる（§9.208 ⑤、実機で報告）
+     ------------------------------------------------------------------
+     自分の端末で保存しただけのデータに印が付いていた。比べていた2つの
+     時刻の物差しが違ったため:
+       画面(IndexedDB) `updatedAt`  … UTCのISO  2026-08-19T05:12:33.123Z
+       共有   [更新日時]            … 現地時刻  2026-08-19 14:12:33.123456
+     文字列で比べると10桁目が' '(0x20)と'T'(0x54)なので、ふつうは常に
+     「共有が古い」＝**本物の別PC更新を見落とし**、現地の日付がUTCの日付を
+     追い越す時間帯（JSTなら0〜9時）は**常に「共有が新しい」**＝身に覚えの
+     ない印、という両方向に壊れた状態だった。
+     ================================================================== */
+  const ver=await p2.evaluate(()=>{
+   const f=WL.recordVersion.remoteIsNewer;
+   const mine={updatedAt:'2026-08-19T05:12:33.123Z'};
+   return{
+    /* 同じ物差し（レコード自身の更新時刻）がそろっていれば、それだけで決める */
+    同じ版:f({record_updated_at:'2026-08-19T05:12:33.123Z'},mine),
+    本当に新しい:f({record_updated_at:'2026-08-19T05:13:00.000Z'},mine),
+    本当に古い:f({record_updated_at:'2026-08-19T05:12:00.000Z'},mine),
+    /* 古い行（ISOの列を持たない）は現地時刻を**日付として**読む。
+       JSTなら現地は 14:12 で、素直に文字列で比べると日付が追い越す */
+    現地時刻の日跨ぎ:f({updated_at:'2026-08-20 01:00:00.000000'},
+                       {updatedAt:new Date(2026,7,20,1,0,0).toISOString()}),
+    /* 往復のぶん（数百ms）は同じ版として扱う */
+    往復のずれ:f({updated_at:(()=>{const d=new Date(2026,7,19,14,12,34);
+      const p=n=>String(n).padStart(2,'0');
+      return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`})()},
+      {updatedAt:new Date(2026,7,19,14,12,33).toISOString()}),
+    /* 読めない値は「分からない」＝印を付けない */
+    読めない:f({updated_at:'???'},mine),
+    片方だけ:f({},mine),
+   };
+  });
+  rec('自分で保存しただけのデータに「新しい版あり」を出さない（§9.208 ⑤）',
+      ver.同じ版===false&&ver.現地時刻の日跨ぎ===false&&ver.往復のずれ===false,
+      JSON.stringify(ver));
+  rec('本当に新しい版は見落とさない',ver.本当に新しい===true&&ver.本当に古い===false,
+      JSON.stringify({新:ver.本当に新しい,古:ver.本当に古い}));
+  rec('時刻が読めないときは印を付けない',ver.読めない===false&&ver.片方だけ===false,
+      JSON.stringify({読めない:ver.読めない,片方だけ:ver.片方だけ}));
+  /* レコード自身の更新時刻がサーバーへ渡り、一覧の見出しに戻ってくること
+     （これが無いと上の判定は古い行の経路しか通らない）。 */
+  const iso=await p2.evaluate(async id=>{
+   const r=await fetch('/api/measurement/backup/summary').then(x=>x.json());
+   const row=(r.items||[]).find(x=>x.id===id)||{};
+   return{ある:'record_updated_at' in row,値:row.record_updated_at||''};
+  },ID);
+  rec('共有DBがレコード自身の更新時刻を持ち帰る（§9.208 ⑤）',
+      iso.ある&&/^\d{4}-\d{2}-\d{2}T/.test(iso.値),JSON.stringify(iso));
+
   rec('コンソールに例外が出ない',errs2.length===0,errs2.slice(0,3).join(' / '));
 
   console.log('\n=== SUMMARY ===');
