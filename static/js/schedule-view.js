@@ -195,11 +195,13 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  let scSyncTimer=null,scSyncSeen=null,scSyncState=null,scOwnerState=null,scOwnerTick=0;
  function syncChipText(st){
   if(!st||!st.configured)return '';
-  if(!st.enabled)return '共有: 読むたびに取り込み';
+  if(!st.enabled)return '共有: 読むたび取込';
+  /* **短く言う**(§9.199)。「〜に取り込み」はチップの役目そのものなので
+     文字にしなくても読める。詳しい説明は`title`が持っている。 */
   const age=st.snapshotAgeSec;
-  const when=age==null?'まだ取り込んでいません'
-            :age<60?`${Math.round(age)}秒前に取り込み`
-            :`${Math.round(age/60)}分前に取り込み`;
+  const when=age==null?'まだ取込なし'
+            :age<60?`${Math.round(age)}秒前に取込`
+            :`${Math.round(age/60)}分前に取込`;
   return `共有: ${when}`;
  }
  /* 書き込み役(§9.192)。**入れている現場でだけ出す**——使っていない現場に
@@ -358,38 +360,25 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      <span class="sc-equipment-fixed" id="scEquipmentFixed" hidden></span>
      <span class="sc-lock-badge" id="scLockBadge" hidden></span>
     </div>
-    <!-- ---------- 操作の並び(§9.198、利用者の指示「メニューが増えたので
-         わかりやすく使いやすく」) ----------
-         11個のボタンが1列に並んでいたため、目的のものを探すのに毎回
-         全部を読む必要があった。**役割で束ねて4つの塊にする**
-         （かたまりで覚えられるので、11個から4個へ選ぶ問題になる）。
-         並びは作業の順そのもの: 見る → 足す → 出す → 更新。
-         **どれも隠さない**——畳んで奥へ入れると、押すまでに1手増える。 -->
+    <!-- ---------- 操作の並び(§9.199、利用者の指示「上部メニューバーは
+         1行で収まるように」) ----------
+         §9.198で11個のボタンを4つの塊に束ねたが、**塊にしても総量は
+         減らないので3行に折り返していた**（実測: 見出し行のほかに
+         834px+334px / 275px+127px の2行）。折り返した操作列は「同じ
+         位置に同じものがある」という前提を壊し、本文の高さも毎回変わる。
+         そこで**面積を頻度×重要度で配り直す**(§1):
+          - 見え方の設定7つ（まとめ・さかのぼり・表示列・行の見せ方・
+            配置）は**1回決めたら当分変えない**ので、入口を1つにして
+            浮きパネル(#scViewPop)へ畳む。**いまの設定はボタンに書く**
+            ので、開かなくても読める(§「思い出させない」)。
+          - 押す頻度の高い「足す」「刷る」「再計算」はバーに残す。
+            狭い画面では文字だけを畳んでアイコンにする(@container)。
+          - 状態(いつ読んだ・共有をいつ取り込んだ)は短く言い直す。
+         並びは作業の順そのもの: いま何時点か → 足す → 見え方 → 出す。 -->
     <div class="sc-head-right">
      <div class="sc-board-window" id="scBoardWindow" hidden>
       <button type="button" class="sc-board-window-btn" data-hours="24">24時間</button>
       <button type="button" class="sc-board-window-btn" data-hours="48">48時間</button>
-     </div>
-     <div class="sc-tools" data-tools="view" id="scToolsView">
-      <span class="sc-tools-label" title="表示のしかた（この画面の見え方だけを変えます。予定そのものは変わりません）">表示</span>
-      <label class="sc-history-range" id="scGroupRange" hidden title="タイムラインを日付・勤務・区分でまとめて表示します。日付は現場歴（勤務の日付補正を当てた現場の1日）と太陽暦から選べます">
-       <span>まとめ</span>
-       <select id="scGroupSelect">${SC_GROUP_MODES.map(m=>`<option value="${m.key}">${m.label}</option>`).join('')}</select>
-      </label>
-      <label class="sc-history-range" id="scHistoryRange" hidden title="完了した予定と実績を、いまから何時間前までさかのぼって出すかです（未来の予定は範囲に関わらず全部出ます）">
-       <span>さかのぼり</span>
-       <select id="scHistorySelect">${SC_HISTORY_CHOICES.map(h=>`<option value="${h}">いまから過去${h}時間</option>`).join('')}</select>
-      </label>
-      <span class="sc-history-from" id="scHistoryFrom" hidden></span>
-      <button type="button" class="sc-split-toggle" id="scContentModalBtn" hidden title="このスケジュール表に出す列・並び・幅・書式をまとめて設定します（設備ごとに保存）">☰ 表示列</button>
-      <button type="button" class="sc-split-toggle" id="scRowStyleBtn" hidden title="区分・設備停止の分類ごとに、行の配色とアイコンを決めます（全設備・全員に共通）">🎨 行の見せ方</button>
-      <button type="button" class="sc-split-toggle" id="scLayoutBtn" hidden title="この画面を開いたときの表示（分割／スケジュールだけ）と、仕掛一覧を左右どちらに置くかを決めます">⚙ 配置</button>
-     </div>
-     <div class="sc-tools" data-tools="add" id="scToolsAdd">
-      <span class="sc-tools-label" title="予定へ足す（共有スケジュールに書き込みます）">追加</span>
-      <button type="button" class="sc-split-toggle" id="scListModalBtn" hidden title="仕掛一覧をポップアップで表示してドラッグで追加します">⧉ ポップアップ</button>
-      <button type="button" class="sc-split-toggle" id="scStopModalBtn" hidden title="設備停止をポップアップから追加します">⛔ 設備停止</button>
-      <button type="button" class="sc-split-toggle" id="scCommentBtn" draggable="true" hidden title="申し送り（コメント）を予定の列へ挟みます。時間は取りません。&#10;・掴んで予定の間へ落とすと、空の枠だけが入ります（あとでダブルクリックして書けます）&#10;・押すとその場で書いて入れられます">💬 コメント</button>
      </div>
      <div class="sc-tools" data-tools="state" id="scToolsState">
       <span class="sc-freshness" id="scFreshness" hidden></span>
@@ -398,8 +387,22 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
       <button type="button" class="sc-sync-chip" id="scSyncChip" hidden></button>
       <span class="sc-field-reorder-note" id="scFieldReorderNote" hidden>現場段取り: 並べ替えのみ可能</span>
      </div>
+     <div class="sc-tools" data-tools="add" id="scToolsAdd">
+      <span class="sc-tools-label" title="予定へ足す（共有スケジュールに書き込みます）">追加</span>
+      <button type="button" class="sc-split-toggle sc-ico-btn" id="scListModalBtn" hidden title="仕掛一覧をポップアップで表示してドラッグで追加します"><i>⧉</i><span>仕掛一覧</span></button>
+      <button type="button" class="sc-split-toggle sc-ico-btn" id="scStopModalBtn" hidden title="設備停止をポップアップから追加します"><i>⛔</i><span>設備停止</span></button>
+      <button type="button" class="sc-split-toggle sc-ico-btn" id="scCommentBtn" draggable="true" hidden title="申し送り（コメント）を予定の列へ挟みます。時間は取りません。&#10;・掴んで予定の間へ落とすと、空の枠だけが入ります（あとでダブルクリックして書けます）&#10;・押すとその場で書いて入れられます"><i>💬</i><span>コメント</span></button>
+     </div>
+     <!-- 見え方の入口は1つ(§9.199)。**いまの設定を文字で連れて出す**
+          ——畳んだ先の値が読めないと、開くまで思い出せない。 -->
+     <div class="sc-tools" data-tools="view" id="scToolsView">
+      <button type="button" class="sc-split-toggle sc-view-menu-btn" id="scViewMenuBtn" hidden
+        aria-expanded="false" title="この画面の見え方（まとめ・さかのぼり・表示列・行の色・配置）をまとめて設定します。予定そのものは変わりません">
+       <i>⚙</i><span class="sc-vm-txt">表示</span><b class="sc-vm-state" id="scViewState"></b><span class="hd-caret">▾</span>
+      </button>
+     </div>
      <div class="sc-tools" data-tools="act" id="scToolsAct">
-      <button type="button" class="sc-split-toggle" id="scPrintBtn" title="いま表示している予定を、現場へ配る形（A4）で印刷します">🖨 印刷</button>
+      <button type="button" class="sc-split-toggle sc-ico-btn" id="scPrintBtn" title="いま表示している予定を、現場へ配る形（A4）で印刷します"><i>🖨</i><span>印刷</span></button>
       <button type="button" class="sc-refresh" id="scRefresh">再計算</button>
      </div>
     </div>
@@ -429,11 +432,50 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      <span class="sc-drop-remove-text">ここへ落とすと<b>この予定を外します</b>
       <small>確認してから外します。仕掛一覧へ戻るので、また入れ直せます</small></span>
     </div>
-    <!-- 開いたときの表示の設定(§9.179)。**この画面の中に置く**——
-         スケジュールの見え方の話なので、アプリ全体の設定へ混ぜない。 -->
-    <div class="sc-layout-pop" id="scLayoutPop" hidden></div>
-    <!-- 行の見せ方(§9.198)。配置の設定と同じ作法で、この画面の中に置く。 -->
-    <div class="sc-layout-pop sc-rowstyle-pop" id="scRowStylePop" hidden></div>
+    <!-- ---------- 「表示」パネル(§9.199) ----------
+         見え方の設定を**1箇所へ集める**。以前は「まとめ」「さかのぼり」が
+         バーの素の選択欄、「表示列」がモーダル、「行の見せ方」「配置」が
+         別々の浮きパネルで、同じ「この画面の見え方」の話が4通りの形で
+         散っていた（探す前に、どの形で出るのかを思い出す必要があった）。
+         上2つ（まとめ・さかのぼり）は畳まずに置く——押す頻度が高く、
+         行き先が1手で見えるほうが速い。下3つは**アコーディオン**で、
+         開くのは常に1つ（開いた中身が長いので、2つ開くと迷子になる）。
+         **誰に効くかを各段に書く**（全員／設備ごと／この端末だけ）。
+         **この画面の中に置く**——スケジュールの見え方の話なので、
+         アプリ全体の設定へ混ぜない(§9.179)。 -->
+    <div class="sc-view-pop" id="scViewPop" hidden>
+     <div class="sc-view-pop-head">
+      <b>表示</b><small>この画面の見え方だけを変えます。予定そのものは変わりません</small>
+     </div>
+     <label class="sc-view-row" id="scGroupRange" hidden>
+      <span class="sc-view-row-name">まとめ<small>日付は現場歴（勤務の日付補正を当てた現場の1日）と太陽暦から選べます</small></span>
+      <select id="scGroupSelect">${SC_GROUP_MODES.map(m=>`<option value="${m.key}">${m.label}</option>`).join('')}</select>
+     </label>
+     <label class="sc-view-row" id="scHistoryRange" hidden>
+      <span class="sc-view-row-name">さかのぼり<small>完了した予定と実績をどこまで出すか。これから流す予定は範囲に関わらず全部出ます</small></span>
+      <span class="sc-view-row-ctl">
+       <select id="scHistorySelect">${SC_HISTORY_CHOICES.map(h=>`<option value="${h}">いまから過去${h}時間</option>`).join('')}</select>
+       <span class="sc-history-from" id="scHistoryFrom" hidden></span>
+      </span>
+     </label>
+     <div class="sc-view-acc" id="scViewAccColumns" hidden>
+      <button type="button" class="sc-view-sec" id="scContentModalBtn">
+       <i>☰</i><span>表示列と並び<small>この表に出す列・並び・幅・書式（設備ごとに保存）</small></span><em>開く ▸</em>
+      </button>
+     </div>
+     <div class="sc-view-acc" id="scViewAccRowStyle" hidden>
+      <button type="button" class="sc-view-sec" id="scRowStyleBtn" aria-expanded="false">
+       <i>🎨</i><span>行の色とアイコン<small>区分・設備停止の分類ごと（全員に効きます）</small></span><em class="sc-view-chev">▾</em>
+      </button>
+      <div class="sc-layout-pop sc-rowstyle-pop" id="scRowStylePop" hidden></div>
+     </div>
+     <div class="sc-view-acc" id="scViewAccLayout" hidden>
+      <button type="button" class="sc-view-sec" id="scLayoutBtn" aria-expanded="false">
+       <i>🖥</i><span>この端末の見え方<small>開いたときの表示・仕掛一覧の位置・案内・親ロットの印（この端末だけ）</small></span><em class="sc-view-chev">▾</em>
+      </button>
+      <div class="sc-layout-pop" id="scLayoutPop" hidden></div>
+     </div>
+    </div>
     <button type="button" class="sc-side-tab" id="scSideToggle" hidden title="設備停止・案内パネルの表示/非表示">◀</button>
     <div class="sc-side" id="scSide" hidden>
      <div class="sc-side-section" id="scSplitHint">
@@ -456,6 +498,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   grp.onchange=()=>{
    scState.groupMode=grp.value;
    try{localStorage.setItem(SC_GROUP_KEY,scState.groupMode)}catch(err){/* 保存できなくても表示は変わる */}
+   updateViewMenuUi();          // 畳んでいる入口の文字も一緒に直す(§9.199)
    renderTimeline();
   };
   const hist=$('#scHistorySelect');
@@ -464,6 +507,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    scState.historyHours=Number(hist.value)||8;
    try{localStorage.setItem(SC_HISTORY_KEY,String(scState.historyHours))}catch(e){/* 保存できなくても表示は変わる */}
    updateHistoryFromUi();
+   updateViewMenuUi();
    if(scState.equipment)loadPlan(true);
   };
   $('#scEquipmentSelect').onchange=e=>{scState.equipment=e.target.value;switchToSingle()};
@@ -475,19 +519,19 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    if(typeof WL.schedulePrint?.open==='function')WL.schedulePrint.open();
    else console.error('作業スケジュールの印刷: WL.schedulePrint が見つかりません');
   };
+  $('#scViewMenuBtn').onclick=e=>{e.stopPropagation();toggleViewPop()};
   $('#scLayoutBtn').onclick=e=>{e.stopPropagation();toggleLayoutPop()};
   $('#scRowStyleBtn').onclick=e=>{e.stopPropagation();toggleRowStylePop()};
-  /* 外を押したら畳む。**設定の中を押しても閉じない**——ラジオを続けて
-     触れるようにするため。 */
-  /* **2つのポップオーバーを1つの判定でまとめて見る**——片方だけを見て
-     先に抜ける形にすると、もう片方が開きっぱなしになる。それぞれ
-     「自分の中／自分のボタン」を押されたときだけ残す。 */
+  /* 外を押したら畳む。**パネルの中を押しても閉じない**——ラジオを続けて
+     触れるようにするため。中の段(行の色・この端末の見え方)は「表示」
+     パネルの子なので、閉じ判定は**外側の1つだけ**でよい(§9.199)。
+     以前2つのポップオーバーを別々に見ていたのは兄弟だったからで、
+     入れ子にした今もそのまま残すと、中を押した瞬間に片方が畳まれる。 */
   document.addEventListener('mousedown',e=>{
-   const lay=$('#scLayoutPop'),rs=$('#scRowStylePop');
-   const layOpen=!!lay&&!lay.hidden,rsOpen=!!rs&&!rs.hidden;
-   if(!layOpen&&!rsOpen)return;          // どちらも閉じていれば何もしない
-   if(layOpen&&!e.target.closest('#scLayoutPop')&&!e.target.closest('#scLayoutBtn'))closeLayoutPop();
-   if(rsOpen&&!e.target.closest('#scRowStylePop')&&!e.target.closest('#scRowStyleBtn'))closeRowStylePop();
+   const pop=$('#scViewPop');
+   if(!pop||pop.hidden)return;
+   if(e.target.closest('#scViewPop')||e.target.closest('#scViewMenuBtn'))return;
+   closeViewPop();
   },true);
   $('#scModeBoard').onclick=()=>switchToBoard();
   $('#scModeSingle').onclick=()=>switchToSingle();
@@ -510,7 +554,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   cmt.addEventListener('dragend',()=>{cmt.classList.remove('is-row-dragging');scState.dragComment=false});
   /* 内容欄の設定は**仕掛一覧と同じパネル**で開く(§9.120)。専用モーダルの
      実装は当面残す（他から呼ばれていないかを通しで確かめるまでの保険）。 */
-  $('#scContentModalBtn').onclick=()=>openContentPanel();
+  /* 列の設定は別の窓(浮きウィンドウ)で開くので、**「表示」パネルは畳む**
+     (§9.199)。開いたまま残すと、窓の下に設定パネルが覗いたままになる。 */
+  $('#scContentModalBtn').onclick=()=>{closeViewPop();openContentPanel()};
   $('#scSideToggle').onclick=()=>toggleSideCollapsed();
   $('#scStopSectionToggle').onclick=()=>{
    const box=$('#scStopButtons');if(!box)return;
@@ -607,12 +653,25 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     ——初めて開いた人には「行間を押せば入れられる」ことが読めない。
     切っても**挿入位置の線は残す**（どこへ入るかが分からなくなるのは
     案内が多いことより悪い）。 */
+ /* 親ロットの行に付ける印(§9.199、利用者の指摘「数字がついているので、
+    この付け方だと『子』の方が意味的に適切です」)。**2通りから選べる**:
+     - `count`（既定）… 「子3」= 畳んである子ロットの件数。数字が何の数か
+       が名前と合う。件数は開かなくても分かるので、既定はこちら。
+     - `parent`      … 「親」だけ。数字を出さないぶん狭く、行の題名が長い
+       現場ではこちらが読みやすい。
+    §9.198で入れた「親3」は**数字の意味と名前が食い違っていた**（3件の親、
+    と読める）。どちらか一方へ寄せるのではなく、選べるようにしてある。 */
+ const SC_CHILD_BADGES=[
+  ['count','件数を出す（例: 子3）','畳んである子ロットが何件あるかが、開かなくても分かります（既定）'],
+  ['parent','「親」だけ（数字なし）','この行が親ロットであることだけを示します。そのぶん狭くて済みます'],
+ ];
  let scLayout=(()=>{
   try{
    const v=JSON.parse(localStorage.getItem(SC_LAYOUT_KEY)||'{}');
    return {swap:!!(v&&v.swap),open:(v&&SC_OPEN_MODES.some(m=>m[0]===v.open))?v.open:'last',
-           tip:!(v&&v.tip===false)};
-  }catch(e){return {swap:false,open:'last',tip:true}}
+           tip:!(v&&v.tip===false),
+           childBadge:(v&&SC_CHILD_BADGES.some(m=>m[0]===v.childBadge))?v.childBadge:'count'};
+  }catch(e){return {swap:false,open:'last',tip:true,childBadge:'count'}}
  })();
  function saveScLayout(){
   try{localStorage.setItem(SC_LAYOUT_KEY,JSON.stringify(scLayout))}catch(e){/* 保存できなくても表示は続く */}
@@ -657,6 +716,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     <label><input type="radio" name="scInsertTip" value="on"${scLayout.tip?' checked':''}><span><b>吹き出しで説明する</b><small>何ができるかを毎回書きます（既定）</small></span></label>
     <label><input type="radio" name="scInsertTip" value="off"${scLayout.tip?'':' checked'}><span><b>線だけにする</b><small>入る位置の線は出ます。慣れたらこちらが静かです</small></span></label>
    </div>
+   <div class="sc-layout-sec">
+    <b>親ロットの印（ロット番号のお尻）</b>
+    ${SC_CHILD_BADGES.map(([v,label,note])=>`<label><input type="radio" name="scChildBadge" value="${v}"${scLayout.childBadge===v?' checked':''}><span><b>${esc(label)}</b><small>${esc(note)}</small></span></label>`).join('')}
+   </div>
    <p class="sc-layout-note">この設定はこの端末に覚えます（設備ごとではありません）。</p>`;
   pop.querySelectorAll('input[name=scOpenMode]').forEach(r=>{
    /* **選んだ瞬間にその形へする**(§9.179改訂。利用者の指摘「切り替えた直後に
@@ -678,6 +741,16 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    r.onchange=()=>{
     scLayout.tip=(r.value==='on');saveScLayout();
     insertGhostLabel();          // いま出ている案内へその場で当てる
+    renderLayoutPop();
+   };
+  });
+  /* 親ロットの印(§9.199)。**選んだ瞬間に表へ当てる**——設定を触った結果が
+     その場で見えないと、効いているのか確かめられない(§9.179と同じ作法)。
+     バッジは行を組み立てたあとに差し込んでいるので、表ごと描き直す。 */
+  pop.querySelectorAll('input[name=scChildBadge]').forEach(r=>{
+   r.onchange=()=>{
+    scLayout.childBadge=r.value;saveScLayout();
+    renderTimeline();
     renderLayoutPop();
    };
   });
@@ -800,19 +873,65 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  }
  function closeRowStylePop(){
   const pop=$('#scRowStylePop');if(pop&&!pop.hidden)pop.hidden=true;
-  const btn=$('#scRowStyleBtn');if(btn)btn.classList.remove('active');
+  const btn=$('#scRowStyleBtn');
+  if(btn){btn.classList.remove('active');btn.setAttribute('aria-expanded','false')}
  }
  function toggleLayoutPop(){
   const pop=$('#scLayoutPop'),btn=$('#scLayoutBtn');
   if(!pop)return;
   const open=pop.hidden;
   pop.hidden=!open;
-  if(btn)btn.classList.toggle('active',open);
-  if(open)renderLayoutPop();
+  if(btn){btn.classList.toggle('active',open);btn.setAttribute('aria-expanded',open?'true':'false')}
+  /* **開くのは常に1つ**(§9.199)。以前は「行の見せ方」だけが相手を畳んで
+     おり、逆順に押すと2枚重なって出ていた（浮きパネル同士だったので
+     重なりが見えていなかっただけ）。 */
+  if(open){closeRowStylePop();renderLayoutPop()}
  }
  function closeLayoutPop(){
   const pop=$('#scLayoutPop');if(pop&&!pop.hidden)pop.hidden=true;
-  const btn=$('#scLayoutBtn');if(btn)btn.classList.remove('active');
+  const btn=$('#scLayoutBtn');
+  if(btn){btn.classList.remove('active');btn.setAttribute('aria-expanded','false')}
+ }
+ /* ---------- 「表示」パネル(§9.199) ----------
+    見え方の設定の入口。**中身が1つも無いときはボタンごと消す**(§4)
+    ——全体俯瞰では、まとめも列も配置も効かない。 */
+ function toggleViewPop(){
+  const pop=$('#scViewPop'),btn=$('#scViewMenuBtn');
+  if(!pop)return;
+  const open=pop.hidden;
+  pop.hidden=!open;
+  if(btn){btn.classList.toggle('active',open);btn.setAttribute('aria-expanded',open?'true':'false')}
+  if(open)updateViewMenuUi();
+ }
+ function closeViewPop(){
+  const pop=$('#scViewPop');if(pop&&!pop.hidden)pop.hidden=true;
+  const btn=$('#scViewMenuBtn');
+  if(btn){btn.classList.remove('active');btn.setAttribute('aria-expanded','false')}
+  /* 中の段も畳む——次に開いたとき、前に開いていた段がそのまま出ると
+     「どこを見ていたか」より「なぜこれが開いているのか」が先に来る。 */
+  closeRowStylePop();closeLayoutPop();
+ }
+ /* 入口のボタンに**いまの設定を書く**。畳んだ先の値が読めないと、
+    開くまで思い出せない（§「思い出させない」）。長い名前は要約して出し、
+    正確な名前はパネルの中と`title`に残す。 */
+ function updateViewMenuUi(){
+  const btn=$('#scViewMenuBtn');if(!btn)return;
+  const secs=[$('#scGroupRange'),$('#scHistoryRange'),
+              $('#scViewAccColumns'),$('#scViewAccRowStyle'),$('#scViewAccLayout')];
+  const any=secs.some(el=>el&&!el.hidden);
+  btn.hidden=!any;
+  if(!any){closeViewPop();updateToolGroups();return}
+  const bits=[];
+  const grpWrap=$('#scGroupRange');
+  if(grpWrap&&!grpWrap.hidden){
+   const m=SC_GROUP_MODES.find(x=>x.key===(scState.groupMode||'none'));
+   if(m)bits.push(m.short||m.label);
+  }
+  const histWrap=$('#scHistoryRange');
+  if(histWrap&&!histWrap.hidden)bits.push(`過去${scState.historyHours}時間`);
+  const state=$('#scViewState');
+  if(state){state.textContent=bits.join('・');state.hidden=!bits.length}
+  updateToolGroups();
  }
 
  function ensureSplitDivider(){
@@ -949,15 +1068,20 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const contentBtn=$('#scContentModalBtn');
   const colApplicable=scState.boardMode==='single'&&!!scState.equipment;
   if(contentBtn){contentBtn.hidden=!colApplicable;contentBtn.classList.toggle('active',contentPanelOpen())}
+  /* 段の器も一緒に隠す(§9.199)——ボタンだけ隠すと、見出しの無い空の枠が
+     「表示」パネルの中に残る。 */
+  const accCol=$('#scViewAccColumns');if(accCol)accCol.hidden=!colApplicable;
   /* 表示の設定(§9.179)は分割表示が意味を持つ場面だけ。 */
   const layoutBtn=$('#scLayoutBtn');
   if(layoutBtn){layoutBtn.hidden=!applicable;if(layoutBtn.hidden)closeLayoutPop()}
+  const accLay=$('#scViewAccLayout');if(accLay)accLay.hidden=!applicable;
   /* 行の見せ方(§9.198)は**列の設定と同じ場面**で出す（見え方の設定なので
      予定を動かせる権限は要らない。保存できるかはサーバーが判定し、
      できなければその場で理由を出す）。 */
   const rsBtn=$('#scRowStyleBtn');
   if(rsBtn){rsBtn.hidden=!colApplicable;if(rsBtn.hidden)closeRowStylePop()}
-  updateToolGroups();
+  const accRs=$('#scViewAccRowStyle');if(accRs)accRs.hidden=!colApplicable;
+  updateViewMenuUi();
  }
  /* 中身が1つも出ていない塊は、見出しごと消す(§9.198)。「表示」とだけ書かれた
     空の枠が残ると、何かが壊れているように見える。 */
@@ -1227,6 +1351,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const histWrap=$('#scHistoryRange');if(histWrap)histWrap.hidden=inBoard;
   updateHistoryFromUi();
   const grpWrap=$('#scGroupRange');if(grpWrap)grpWrap.hidden=inBoard;
+  updateViewMenuUi();
   if(scState.pickerEnabled)$('#scEquipmentSelect').hidden=inBoard;
   updateSideUi();
   const stopBtn=$('#scStopModalBtn');if(stopBtn)stopBtn.hidden=!scState.fullControl||inBoard;
@@ -1237,7 +1362,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   // 全体俯瞰ボードや対象設備が無い状態では分割表示(§9.10)の意味が無いため
   // 畳む(仕掛一覧を隣に出したまま設備を切り替えても違和感が無いよう、
   // 個別タイムライン表示中はshowSplitList側で改めて出す)。
-  if(inBoard){hideSplitList();closeListModal();closeStopModal();closeColumnModal();closeContentPanel();closeLayoutPop();hideInsertGhost()}
+  if(inBoard){hideSplitList();closeListModal();closeStopModal();closeColumnModal();closeContentPanel();closeViewPop();hideInsertGhost()}
   syncSession();
  }
  async function switchToBoard(){
@@ -2594,14 +2719,16 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     **どちらでまとめているのかを名前に書く**こと。以前は「日付ごと」としか
     書いておらず、出ている日付が現場歴なのか暦なのか画面から分からなかった
     （同じ「8/18」でも意味が違うので、推測させてはいけない）。 */
+ /* `short`は畳んだ入口(#scViewMenuBtn)へ出す要約(§9.199)。**基準(現場歴/
+    太陽暦)は落とさない**——そこが分からないのが§9.198で直した問題そのもの。 */
  const SC_GROUP_MODES=[
-  {key:'none',label:'まとめない'},
-  {key:'date',label:'日付ごと（現場歴）',basis:'work'},
-  {key:'caldate',label:'日付ごと（太陽暦）',basis:'cal'},
-  {key:'shift',label:'勤務ごと'},
-  {key:'dateshift',label:'日付＋勤務ごと（現場歴）',basis:'work'},
-  {key:'caldateshift',label:'日付＋勤務ごと（太陽暦）',basis:'cal'},
-  {key:'category',label:'区分ごと'},
+  {key:'none',label:'まとめない',short:'まとめなし'},
+  {key:'date',label:'日付ごと（現場歴）',short:'日付(現場歴)',basis:'work'},
+  {key:'caldate',label:'日付ごと（太陽暦）',short:'日付(太陽暦)',basis:'cal'},
+  {key:'shift',label:'勤務ごと',short:'勤務'},
+  {key:'dateshift',label:'日付＋勤務ごと（現場歴）',short:'日付+勤務(現場歴)',basis:'work'},
+  {key:'caldateshift',label:'日付＋勤務ごと（太陽暦）',short:'日付+勤務(太陽暦)',basis:'cal'},
+  {key:'category',label:'区分ごと',short:'区分'},
  ];
  const SC_BASIS_LABEL={work:'現場歴',cal:'太陽暦'};
  /* いまのまとめ方が日付のどちらを見ているか（'work'/'cal'/''）。 */
@@ -2969,10 +3096,35 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  /* 入れる位置の目安。**動かせる予定(未着手)の行だけ**が相手——着手・完了の
     あいだに入れても並びは変わらないので、そこには隙間を出さない。
     ゴースト自身は数に入れない(入れると自分の位置で自分の位置が決まる)。 */
- function insertSlotAt(clientY){
+ /* ---------- 当たり判定は「境目のそば」だけ(§9.199、利用者の指摘) ----------
+    以前は行のどこにカーソルがあっても**いちばん近い境目**の帯を出していた
+    ため、行の真ん中を指しても帯と吹き出しが出て、**行そのものを掴んで
+    並べ替えられなかった**（吹き出しは押せる＝下の行のドラッグを食う）。
+    帯を出すのは境目から上下`insertEdgeBand()`pxまでで、それ以外は行のもの
+    ——**行の中央は掴む場所**として空けておく。
+    幅は行の高さから作る（行間を詰めても、表示サイズを上げても比が保たれる。
+    直値のpxは表示サイズに追随しない・§9.127）。 */
+ function insertEdgeBand(h){
+  return Math.max(6,Math.min(10,Math.round((h||0)/4)));
+ }
+ function insertSlotAt(clientY,edgeOnly){
   const tl=$('#scTimeline');if(!tl)return null;
   const rows=[...tl.querySelectorAll('.sc-row-line')].filter(r=>reorderableEntry(r.dataset.id));
   if(!rows.length)return null;
+  if(edgeOnly){
+   /* 行の上端＝その行の前の境目。連続する行では下の行の上端が兼ねるので、
+      これで内側の境目は全部見られる。最後の1本だけ下端で見る。 */
+   for(const r of rows){
+    const b=r.getBoundingClientRect();
+    if(Math.abs(clientY-b.top)<=insertEdgeBand(b.height))return {beforeId:String(r.dataset.id),row:r};
+   }
+   const last=rows[rows.length-1],lb=last.getBoundingClientRect();
+   if(Math.abs(clientY-lb.bottom)<=insertEdgeBand(lb.height))
+    return {beforeId:'',row:last,after:true};
+   return null;
+  }
+  /* 掴んで運んでいる最中は**いちばん近い境目**へ寄せる(今までどおり)。
+     落とす先を探しているので、境目を狙わせるのは酷。 */
   for(const r of rows){
    const b=r.getBoundingClientRect();
    if(clientY<b.top+b.height/2)return {beforeId:String(r.dataset.id),row:r};
@@ -3031,8 +3183,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(!on&&!insertPinned)hideInsertGhost(true);
   const hint=$('#scSplitHint');
   if(hint)hint.innerHTML=on
-   ?'<p class="sc-drop-hint">仕掛一覧を畳んでいます。<b>表の行と行のあいだにカーソルを置くと隙間が開き</b>、'
+   ?'<p class="sc-drop-hint">仕掛一覧を畳んでいます。<b>行と行の境目にカーソルを置くと帯が出て</b>、'
     +'<b>クリックで設備停止</b>／<b>ダブルクリックで仕掛から選んで</b>、その位置へ入れられます。'
+    +'<b>行の中央は掴む場所</b>なので、予定はそのままドラッグで並べ替えられます。'
     +'左端の帯を押すと仕掛一覧が戻り、今までどおりドラッグでも追加できます。</p>'
    :'<p class="sc-drop-hint">左の仕掛一覧からロットをドラッグ、またはチェックボックスで複数選択してこのパネルへドロップすると、この設備の予定へ追加されます。'
     +'<b>落とした位置へ差し込めます</b>（行と行のあいだに隙間が出ます）。</p>';
@@ -3060,7 +3213,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
       列幅を引いている最中も同じ理由で出さない。 */
    if(e.target.closest&&e.target.closest('.sc-row-head')){hideInsertGhost();return}
    if(document.body.classList.contains('col-resizing')){hideInsertGhost();return}
-   const slot=insertSlotAt(e.clientY);
+   /* **境目のそばだけ**(§9.199)。行の中央は掴む場所として空ける。 */
+   const slot=insertSlotAt(e.clientY,true);
    if(!slot){hideInsertGhost();return}
    placeInsertGhost(slot);
   });
@@ -3315,17 +3469,24 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      ロット番号の**手前**に置いていたため、①番号より先に修飾語を読まされ
      ②その分だけ番号が右へずれ ③6文字ぶんの幅を毎行占めていた。
      読む順は「どのロットか → それは親か」なので、番号を先に出して
-     **お尻に「親」のバッジ**を付ける。件数はバッジの中の小さい数字で残す
-     （消すと「何件畳んであるか」を開くまで分からなくなる）。
+     **お尻にバッジ**を付ける。
+     **数字を出すなら名前は「子」**(§9.199、利用者の指摘)——「親3」は
+     「3件の親」と読める。件数は畳んである子ロットの数なので、数字を
+     添える形は`子3`、数字を出さない形は`親`。どちらにするかは
+     この端末の設定(`scLayout.childBadge`)で選ぶ。
      開閉は色だけで伝えない——`▾`/`▸`の向きと`aria-expanded`を必ず添える。 */
   const btn=document.createElement('button');
   btn.type='button';
   btn.className='sc-child-toggle'+(open?' is-open':'');
   const paint=o=>{
+   const count=scLayout.childBadge!=='parent';
    btn.classList.toggle('is-open',o);
+   btn.classList.toggle('is-count',count);
    btn.setAttribute('aria-expanded',o?'true':'false');
-   btn.title=`分割後の子ロット${children.length}件を${o?'隠す':'表示する'}`;
-   btn.innerHTML=`親<b>${children.length}</b><i>${o?'▾':'▸'}</i>`;
+   btn.title=`分割後の子ロット${children.length}件を${o?'隠す':'表示する'}`
+    +(count?'':`\n（この端末の設定で件数を出していません。「表示」→「この端末の見え方」で変えられます）`);
+   btn.innerHTML=count?`子<b>${children.length}</b><i>${o?'▾':'▸'}</i>`
+                      :`親<i>${o?'▾':'▸'}</i>`;
   };
   paint(open);
   btn.onclick=ev=>{
@@ -5303,6 +5464,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      ——DOMを掘って色を読むと、行が1件も無い区分を確かめられない。 */
   rowStyleOf:e=>rowStyleOf(e||{}),
   updateToolGroups:()=>updateToolGroups(),
+  /* 「表示」パネル(§9.199)。設定はここへ畳んだので、**外から開ける口**を
+     置く（畳んだ中の欄を触りたい側が、入口の名前を知らずに済む）。 */
+  openViewPop:()=>{const pop=$('#scViewPop');if(pop&&pop.hidden)toggleViewPop();return !!(pop&&!pop.hidden)},
+  closeViewPop:()=>closeViewPop(),
+  /* 親ロットの印('count'=子N / 'parent'=親)。 */
+  childBadgeMode:()=>scLayout.childBadge||'count',
   groupOf:e=>{const b=groupBucketOf(e);return b?{key:String(b.key),label:b.label}:null},
   categoryLabelOf:e=>categoryOf(e).label,
   /* 取り直す・描き直す。**渡すのは操作だけで、状態は渡さない**

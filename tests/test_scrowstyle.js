@@ -26,6 +26,8 @@ let b=null;
  b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
  const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
  const page=await b.newPage({viewport:{width:1700,height:1000}});
+ /* 見え方の設定は「表示」パネル(§9.199)の中にある。触る前に開く。 */
+ const openView=()=>page.evaluate(()=>window.WL&&WL.scheduleView&&WL.scheduleView.openViewPop&&WL.scheduleView.openViewPop());
  page.on('pageerror',e=>console.log('[pageerror]',e.message));
  const setMode=m=>page.evaluate(async mm=>{await fetch('/api/access-mode',{method:'POST',
    headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:mm})})},m);
@@ -88,6 +90,7 @@ let b=null;
       opts.some(o=>o.v==='date'&&/現場歴/.test(o.t))&&opts.some(o=>o.v==='caldate'&&/太陽暦/.test(o.t))
       &&opts.some(o=>o.v==='dateshift'&&/現場歴/.test(o.t))&&opts.some(o=>o.v==='caldateshift'&&/太陽暦/.test(o.t)),
       JSON.stringify(opts.map(o=>o.t)));
+  await openView();
   await page.selectOption('#scGroupSelect','caldate');
   await page.waitForTimeout(600);
   const head=await page.evaluate(()=>{
@@ -96,11 +99,13 @@ let b=null;
   });
   rec('まとめの見出しにどちらの日付かが出る',head.basis==='太陽暦',JSON.stringify(head));
   rec('紙も同じまとめ方を見る',head.paper==='cal',JSON.stringify(head));
+  await openView();
   await page.selectOption('#scGroupSelect','date');
   await page.waitForTimeout(500);
   const head2=await page.evaluate(()=>({basis:(document.querySelector('.sc-group-basis')||{}).textContent||'',
                                         paper:WL.scheduleView.groupBasis()}));
   rec('現場歴に戻すと見出しも紙も現場歴',head2.basis.trim()==='現場歴'&&head2.paper==='work',JSON.stringify(head2));
+  await openView();
   await page.selectOption('#scGroupSelect','none');
   await page.waitForTimeout(400);
 
@@ -141,6 +146,7 @@ let b=null;
       await page.evaluate(()=>{const t=WL.scheduleLoadTimings();return !!t&&t.total!=null}));
 
   /* ---- 1) 区分の色とアイコンを決めるとその場で行に当たる ---- */
+  await openView();
   await page.click('#scRowStyleBtn');
   await page.waitForSelector('#scRowStylePop:not([hidden])',{timeout:8000});
   await page.waitForTimeout(700);

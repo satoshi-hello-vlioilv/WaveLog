@@ -29,6 +29,13 @@ let b=null;
  b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
  const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
  const page=await b.newPage({viewport:{width:1700,height:1000}});
+ /* 見え方の設定（まとめ・さかのぼり・表示列・行の色・配置）は「表示」
+    パネル(§9.199)の中にある。開く→選ぶ→**閉じる**まで1つの手順にする
+    ——開いたままにすると、パネルが表の右上を覆って次のクリックが
+    「要素が隠れている」で落ちる（実際に落ちた）。 */
+ const openView=()=>page.evaluate(()=>window.WL&&WL.scheduleView&&WL.scheduleView.openViewPop&&WL.scheduleView.openViewPop());
+ const closeView=()=>page.evaluate(()=>window.WL&&WL.scheduleView&&WL.scheduleView.closeViewPop&&WL.scheduleView.closeViewPop());
+ const pickView=async(sel,val)=>{await openView();await page.selectOption(sel,val).catch(()=>{});await closeView()};
  const errs=[];
  page.on('pageerror',e=>errs.push(e.message));
  page.on('console',m=>{if(m.type()==='error')errs.push('console: '+m.text().slice(0,90))});
@@ -51,6 +58,7 @@ let b=null;
   await page.waitForFunction(()=>(WL.scheduleView?.entries?.()||[]).length>0,null,{timeout:30000});
 
   /* ---- 1) 内容欄の設定ボタンで、仕掛一覧と同じパネルが開く ---- */
+  await openView();
   await page.click('#scContentModalBtn');
   await page.waitForSelector('#listColumnPanel:not([hidden])',{timeout:10000});
   await page.waitForTimeout(600);

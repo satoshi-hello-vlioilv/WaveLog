@@ -5,6 +5,13 @@ let b=null;
 (async()=>{
  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
  const page=await b.newPage({viewport:{width:1700,height:1000}});
+ /* 見え方の設定（まとめ・さかのぼり・表示列・行の色・配置）は「表示」
+    パネル(§9.199)の中にある。開く→選ぶ→**閉じる**まで1つの手順にする
+    ——開いたままにすると、パネルが表の右上を覆って次のクリックが
+    「要素が隠れている」で落ちる（実際に落ちた）。 */
+ const openView=()=>page.evaluate(()=>window.WL&&WL.scheduleView&&WL.scheduleView.openViewPop&&WL.scheduleView.openViewPop());
+ const closeView=()=>page.evaluate(()=>window.WL&&WL.scheduleView&&WL.scheduleView.closeViewPop&&WL.scheduleView.closeViewPop());
+ const pickView=async(sel,val)=>{await openView();await page.selectOption(sel,val).catch(()=>{});await closeView()};
  const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
  page.on('pageerror',e=>console.log('[pageerror]',e.message));
  page.on('dialog',d=>{console.log('[dialog]',d.message());d.accept()});
@@ -75,13 +82,13 @@ let b=null;
  // 40時間前の実績は8時間表示では出ない → 72時間にすると出る
  rec('表示範囲外(40時間前)の実績は既定では出ない',
   await page.evaluate(()=>!/L0057/.test(document.querySelector('#scTimeline').textContent)));
- await page.selectOption('#scHistorySelect','72');
+ await pickView('#scHistorySelect','72');
  await page.waitForTimeout(2500);
  rec('表示範囲を直近72時間へ広げると40時間前の実績も出る',
   await page.evaluate(()=>/L0057/.test(document.querySelector('#scTimeline').textContent)));
  rec('表示範囲は保存され次回も引き継ぐ',
   await page.evaluate(()=>localStorage.getItem('ScheduleHistoryHoursV1')==='72'));
- await page.selectOption('#scHistorySelect','8');
+ await pickView('#scHistorySelect','8');
  await page.waitForTimeout(2000);
 
  // --- (1) 編集モードから作業開始 ---
