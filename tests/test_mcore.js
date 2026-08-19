@@ -23,7 +23,7 @@ const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-l
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 /* 入力内容の統合後の名前（§9.160）。画面の`WL.measureItem.MATERIAL`と同じ。 */
-const MATERIAL='母材・揃い/肉厚/長さ';
+const MATERIAL='母材/丈毎';
 const setMode=m=>fetch(API+'/api/access-mode',{method:'POST',
   headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})});
 
@@ -80,7 +80,7 @@ let b=null,page=null;
   await page.waitForTimeout(500);
 
   /* ---- 受信の帯は「測定器を使う項目」でだけ出る ----
-     既定の選択は「母材・揃い/肉厚/長さ」で、これは手入力の項目（画面にも
+     既定の選択は「母材/丈毎」で、これは手入力の項目（画面にも
      「母材・丈は手入力です」と書いてある）。このとき受信の帯は `display:none`
      で、受信欄は 0×0 になる。
      **寸法ゼロの要素にはフォーカスが載らない**ので、そのあいだは転送を

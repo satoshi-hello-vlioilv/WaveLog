@@ -46,6 +46,20 @@ function updateNumberlinePending(raw){
    1つの項目に同居しており、測定器の種別でどちらへ入るかが決まるため次入力
    セルを2箇所同時に光らせていた。項目を分けたので、いま選んでいる項目の
    次の枠だけを指せばよい（「次にすることを常に1つだけ指す」）。 */
+/* カーソルの移動は**入れ子では行わない**（§9.208 ③）。`el.focus()`は
+   `focus`イベントを起こし、そのハンドラ（`bindMeasureInputs`の追従処理と、
+   `measurement-tolerance.js`が足す選択処理）が**また`focusCurrent()`を
+   呼ぶ**ので、素直に書くと行って来いで積み上がる（実測で
+   「Maximum call stack size exceeded」）。1回の移動の中では動かさない。 */
+let caretMoving=false;
+function moveCaretTo(el){
+ if(!el||caretMoving)return;
+ if(S.measure?.settings?.inputMode!=='manual')return;   /* 自動転送は§9.122で受信欄に固定 */
+ if(document.activeElement===el||el.disabled)return;
+ caretMoving=true;
+ try{el.focus({preventScroll:true})}catch(e){try{el.focus()}catch(_){}}
+ finally{caretMoving=false}
+}
 function focusCurrent(){
  document.querySelectorAll('[data-mkey]').forEach(x=>x.classList.remove('current'));
  const m=S.measure.settings,key=activeMeasureKey(),li=lengthIndex();
@@ -53,7 +67,16 @@ function focusCurrent(){
     条ごとの`wStep`ではなく`tStep`。 */
  const step=key==='thickness'?(m.tStep||0):(m.wStep||0);
  const el=document.querySelector(`[data-mkey="${key}"][data-i="${li}"][data-j="${step}"]`);
- if(el){el.classList.add('current');el.scrollIntoView({block:'nearest',inline:'nearest'})}
+ if(el){el.classList.add('current');el.scrollIntoView({block:'nearest',inline:'nearest'});
+  /* ---------- 印とカーソルを一致させる（§9.208 ③、利用者の指摘） ----------
+     手動入力では「クリックしても・入れても**フォーカスが動かない**」
+     ——印(`.current`)だけが進み、打った文字は前の枠に入り続けていた。
+     印を動かす道具はここ1本なので、**手動のときだけ**ここで
+     カーソルも連れて行く。
+     **自動転送のときは絶対に触らない**（§9.122）——受信欄から
+     フォーカスが外れた瞬間に転送を1件も受けなくなる。 */
+  moveCaretTo(el);
+ }
  const slot=key==='thickness'?(WL.measureItem.slotLabels('thickness')[step]||String(step+1)):`条 ${step+1}`;
  $('#stepStatus').textContent=`入力位置 丈 ${li+1} / ${slot}`;
 }
@@ -212,7 +235,11 @@ $('#deviceInput').onkeydown=e=>{
     受信欄から外れ、そのあいだの転送が行き場を失うため。**自動入力が優先。** */
  else if(e.key==='ArrowUp'){e.preventDefault();retreatSlot();focusCurrent()}
 };
-$('#lengthPos').onchange=()=>{renderMeasureGrid();$('#deviceInput').focus()};
+/* 丈位置を変えたら描き直す。**受信欄へ戻すのは自動転送のときだけ**
+   （§9.208 ③）——手動入力で戻すと、せっかく移した印の枠から
+   カーソルだけが受信欄へ飛ぶ。 */
+$('#lengthPos').onchange=()=>{renderMeasureGrid();
+ if(S.measure?.settings?.inputMode!=='manual')$('#deviceInput').focus()};
 $('#widthOrder').onchange=focusCurrent;$('#widthDirection').onchange=focusCurrent;
 document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-mode]').forEach(x=>x.classList.remove('active'));b.classList.add('active');S.measure.settings.inputMode=b.dataset.mode;$('#deviceInput').readOnly=false;applyInputProtection();$('#deviceInput').focus();updateReceiveState(true);setState(b.dataset.mode==='auto'?'自動転送: Tabで受信':'手動入力: Enterで確定')});
 /* 測定値セルの生成。板厚=3桁/板幅=1桁へ表示時に整形する。 */
@@ -223,7 +250,22 @@ function makeMeasureInput(key,i,j,value){value=fixedMeasurementValue(key,value);
 function bindMeasureInputs(){
  const m=S.measure;
  const syncStepFor=x=>{if(x.dataset.mkey==='thickness')m.settings.tStep=+x.dataset.j;else m.settings.wStep=+x.dataset.j};
- document.querySelectorAll('[data-mkey]').forEach(x=>{judgeInput(x,x.dataset.mkey,Number(x.value),+x.dataset.j);x.onclick=()=>{syncStepFor(x);focusCurrent();if(S.measure.settings.inputMode!=='manual')$('#deviceInput').focus()};
+ document.querySelectorAll('[data-mkey]').forEach(x=>{
+  /* マイナス禁止・「.5」の省略打ち・全角は`WL.numericInput`が引き受ける
+     （§9.208 ③）。**フラットネスだけは対象外**——〇/△/×と自由記述の欄で、
+     数字しか通さないと記号が消える。
+     **`oninput`を割り当てる前に付けること**——`input`は登録順に走るので、
+     後から付けると配列へ生の値（`-`つき）が入ってしまう。 */
+  if(x.dataset.mkey!=='flatness')WL.numericInput.attach(x);
+  judgeInput(x,x.dataset.mkey,Number(x.value),+x.dataset.j);x.onclick=()=>{
+   /* **押した枠がいま測る枠**（§9.208 ③）。丈も一緒に合わせてから印を移す
+      ——先に印だけ動かすと、直後の描き直しで一度別の丈へ跳ねて見える。
+      丈が変われば`#lengthPos`のchangeが描き直し、その中で`focusCurrent()`が
+      走るので、ここでは変わらなかったときだけ自分で印を移す。 */
+   syncStepFor(x);
+   if(!gotoLengthSlot(+x.dataset.i))focusCurrent();
+   if(S.measure.settings.inputMode!=='manual')$('#deviceInput').focus();
+  };
   // 手動モードでは、クリックだけでなくTabキー等の操作で実際に
   // フォーカスが移動した場合も、強調表示(.current)をそのセルへ
   // 追従させる(自動モードは受信欄にフォーカスを固定するため対象外)。
@@ -427,6 +469,30 @@ document.addEventListener('click',e=>{
  btn.setAttribute('aria-expanded',String(open));
  if(open)document.getElementById('toleranceSource')?.focus();
 });
+/* ---------- 図の見せ方は畳んでおく（§9.208 ④、利用者の指示） ----------
+   「図の横軸」「表示幅」は**ふだん使わない**（既定のまま測る）。常設すると、
+   測っている最中に必ず目に入る場所で「選ぶもの」に見えてしまう。判定公差の
+   切り替え（`#tolSourceFold`）と**同じ形**にして入口だけ残す——同じ役割の
+   ものが隣で違う形をしていると、別の種類の設定に見える。 */
+document.addEventListener('click',e=>{
+ const btn=e.target.closest&&e.target.closest('#numberlineFold');
+ if(!btn)return;
+ const box=document.getElementById('numberlineControls');if(!box)return;
+ const open=box.hidden;
+ box.hidden=!open;
+ btn.setAttribute('aria-expanded',String(open));
+ if(open)document.getElementById('numberlineMode')?.focus();
+});
+/* 軸からはみ出した点の案内から、その場で開けるようにする（§2「次にする
+   ことを1つだけ指す」）。畳んだ先に打つ手があることを文で言い、押せば開く。 */
+document.addEventListener('click',e=>{
+ const note=e.target.closest&&e.target.closest('#numberlineOutside');
+ if(!note)return;
+ const box=document.getElementById('numberlineControls'),btn=document.getElementById('numberlineFold');
+ if(!box||!btn||!box.hidden)return;
+ box.hidden=false;btn.setAttribute('aria-expanded','true');
+ document.getElementById('numberlineSpan')?.focus();
+});
 /* 見出しを押したらその丈位置へ移る。**割り当ては1箇所**（丈位置を動かす
    道具は`#lengthPos`のchangeだけ。ここで直接描き直さない）。
    セルを押したときも同じ——**押した列がいま測る列になる**。押した先が
@@ -437,11 +503,29 @@ function gotoLengthSlot(li){
  lp.selectedIndex=li;lp.dispatchEvent(new Event('change',{bubbles:true}));
  return true;
 }
+/* 丈の見出しを押したときは、その丈の**先頭の枠**から始める（§9.208 ③、
+   利用者の指示「丈クリックを行った場合、一番近い隣の条の入力にフォーカスを
+   移動させてください」）。並びは条入力順の設定に従う（奇数条優先なら
+   その並びの先頭）。**セルを押したときは動かさない**——押した枠そのものが
+   行き先なので、そこで先頭へ戻すと押した意味が消える。 */
+function startSlotOfLength(){
+ const st=S.measure&&S.measure.settings;if(!st)return;
+ if(activeMeasureKey()==='thickness'){st.tStep=0;return}
+ const seq=widthSequence(Math.max(1,+$('#horizontalCount').value||1),
+                         $('#widthOrder').value,$('#widthDirection').value);
+ st.wStep=seq[0]||0;
+}
 document.addEventListener('click',e=>{
  const btn=e.target.closest&&e.target.closest('[data-mx-len]');
- if(btn){e.preventDefault();gotoLengthSlot(Number(btn.dataset.mxLen));return}
- const cell=e.target.closest&&e.target.closest('#measurementGrid input[data-mkey]');
- if(cell)gotoLengthSlot(Number(cell.dataset.i));
+ if(btn){
+  e.preventDefault();
+  startSlotOfLength();
+  /* 同じ丈を押したときは描き直しが起きないので、自分で印とカーソルを移す。 */
+  if(!gotoLengthSlot(Number(btn.dataset.mxLen)))focusCurrent();
+  return;
+ }
+ /* セルを押したときの丈の移動は**持ち主（`bindMeasureInputs`のonclick）が
+    持つ**（§9.208 ③）。ここにも書くと、印を移す順番が2通りできる。 */
 });
 /* 測定表の組み立ては**1本だけ**（§9.138）。以前は「板厚/板幅」だけが専用の
    2枚組ワークスペースを持っており、同じ`stripColumnsHtml`/`lengthCompareHtml`を
@@ -892,7 +976,10 @@ function syncNumberlineControls(){
  if(note){
   const chart=document.querySelector('.accurate-numberline');
   const out=Number(chart&&chart.dataset.out)||0;
-  note.textContent=out?`軸の外 ${out}件（表示幅を広げると見えます）`:'';
+  /* 畳んである先に打つ手がある（§9.208 ④）。**どこを触れば見えるのか**まで
+     書く——「表示幅を広げる」とだけ書いても、その欄が画面に無い。 */
+  note.textContent=out?`軸の外 ${out}件（押して「図の見せ方」→表示幅を広げると見えます）`:'';
+  note.title=out?'押すと「図の見せ方」が開きます。表示幅を広げると軸の外の点も図に入ります。':'';
   if(note.hidden!==!out)note.hidden=!out;
  }
 }

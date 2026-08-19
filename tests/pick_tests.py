@@ -64,7 +64,7 @@ G['起動'] = ['test_boot', 'test_bootui', 'test_bootflash', 'test_assetcache', 
 G['接続'] = ['test_dbopen', 'test_dbmirror', 'test_datasource', 'test_tablequery',
              'test_atomicio', 'test_localwork', 'test_dscap',
              'test_qjoin', 'test_qjoinui']
-G['権限'] = ['test_modeguard', 'test_noaccess', 'test_scperm', 'test_recperm']
+G['権限'] = ['test_modeguard', 'test_noaccess', 'test_scperm', 'test_recperm', 'test_pcname']
 G['ログ'] = ['test_logs', 'test_logview', 'test_error']
 
 ALL = '*'  # 「全部回す」を表す印

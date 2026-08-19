@@ -204,6 +204,100 @@ async function openList(page){
    mode:WL.columnLayout.widthMode('records:list','ロット番号')}));
   rec('「幅を内容に合わせる」で自動へ戻る',!auto.w&&auto.mode==='auto',JSON.stringify(auto));
 
+  /* ==================================================================
+     §9.208 ⑥ 横スクロールしても地と罫線が続く（実機で報告）
+     ------------------------------------------------------------------
+     行は`display:grid`の**ブロック**なので幅は器いっぱいまでで、はみ出した
+     列の後ろには器の地（灰）がそのまま出ていた。**確かめるときは実際に
+     溢れさせること**——収まっている幅で見ても、直す前でも通る。
+     ================================================================== */
+  await post('/api/access-mode',{mode:'edit'});
+  await page.setViewportSize({width:900,height:900});
+  await page.evaluate(()=>renderRecordListRows());
+  await settle(page);
+  const edge=await page.evaluate(()=>{
+   const list=document.getElementById('recordList');
+   list.scrollLeft=list.scrollWidth;
+   const row=document.querySelector('.record-list-row');
+   const head=document.querySelector('.record-list-head');
+   if(!row)return{行なし:true};
+   const cs=el=>getComputedStyle(el).backgroundColor;
+   const cells=[...row.children];
+   const last=cells[cells.length-1];
+   const lr=last.getBoundingClientRect(),rr=row.getBoundingClientRect();
+   return{溢れている:list.scrollWidth>list.clientWidth+8,
+     器の地:cs(list),行の地:cs(row),
+     はみ出した先のセルの地:cs(last),
+     見出しの地:cs(head.children[head.children.length-1]),
+     行の外にある:lr.right>rr.right+1,
+     罫線:getComputedStyle(last).borderBottomWidth};
+  });
+  rec('データ一覧が横に溢れている（この節の前提）',edge.溢れている===true,JSON.stringify(edge));
+  rec('はみ出した列の後ろにも行の地が続く（§9.208 ⑥）',
+      edge.はみ出した先のセルの地===edge.行の地&&edge.はみ出した先のセルの地!==edge.器の地,
+      JSON.stringify({セル:edge.はみ出した先のセルの地,行:edge.行の地,器:edge.器の地}));
+  rec('はみ出した列にも行の罫線が続く',parseFloat(edge.罫線)>=1,String(edge.罫線));
+  rec('見出しの地も途切れない',edge.見出しの地!==edge.器の地,edge.見出しの地);
+
+  /* ==================================================================
+     §9.208 ⑦ 幅を変えると「掴んだ列」が伸び縮みする（利用者の指摘）
+     ------------------------------------------------------------------
+     右端まで送った状態で列を細くすると、表が縮んだぶん`scrollLeft`の上限も
+     下がってブラウザが位置を切り詰めるため、**掴んだ縁はその場に残り、
+     左の列だけが右へ流れて**いた。**右端まで送ってから確かめること**——
+     左端で試すと直す前でも通る。
+     ================================================================== */
+  const drag=await page.evaluate(async()=>{
+   const list=document.getElementById('recordList');
+   list.scrollLeft=list.scrollWidth;                       /* 右端まで送る */
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   const keep=list.scrollLeft;
+   const heads=[...document.querySelectorAll('.record-list-head [data-col]')];
+   /* 画面に見えている見出しのうち、右端に近いものを掴む */
+   const box=list.getBoundingClientRect();
+   const target=heads.filter(h=>{const r=h.getBoundingClientRect();
+     return r.left>=box.left&&r.right<=box.right+1&&r.width>90}).pop()||heads[heads.length-1];
+   const grip=target.querySelector('.col-resize');
+   if(!grip)return{取っ手なし:true};
+   const before={列:Math.round(target.getBoundingClientRect().width),
+                 左端:Math.round(heads[0].getBoundingClientRect().left),
+                 位置:keep};
+   const gr=grip.getBoundingClientRect();
+   const x=gr.left+gr.width/2,y=gr.top+gr.height/2;
+   grip.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,clientX:x,clientY:y}));
+   document.dispatchEvent(new MouseEvent('mousemove',{bubbles:true,clientX:x-60,clientY:y}));
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   const during={列:Math.round(target.getBoundingClientRect().width),
+                 左端:Math.round(heads[0].getBoundingClientRect().left),
+                 位置:list.scrollLeft};
+   document.dispatchEvent(new MouseEvent('mouseup',{bubbles:true,clientX:x-60,clientY:y}));
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   const after={左端:Math.round(document.querySelectorAll('.record-list-head [data-col]')[0].getBoundingClientRect().left),
+                位置:list.scrollLeft,余白:WL.columnResize.spare(list)};
+   return{列名:target.dataset.col,before,during,after};
+  });
+  rec('右端が見えていても掴んだ列そのものが細くなる（§9.208 ⑦）',
+      !drag.取っ手なし&&drag.during.列<=drag.before.列-40,
+      JSON.stringify({列:drag.列名,前:drag.before&&drag.before.列,中:drag.during&&drag.during.列}));
+  rec('引いている間、左側の列は動かない（§9.208 ⑦）',
+      !drag.取っ手なし&&Math.abs(drag.during.左端-drag.before.左端)<=1,
+      JSON.stringify({前:drag.before&&drag.before.左端,中:drag.during&&drag.during.左端}));
+  rec('離しても左側の列は動かない（便宜上の余白で位置を保つ）',
+      !drag.取っ手なし&&Math.abs(drag.after.左端-drag.before.左端)<=1&&drag.after.余白>0,
+      JSON.stringify(drag.after));
+  /* 余白は**必要な量だけ**。左へ戻れば消える（収まっている表に意味の無い
+     空白を残さない）。 */
+  const spare=await page.evaluate(async()=>{
+   const list=document.getElementById('recordList');
+   list.scrollLeft=0;
+   list.dispatchEvent(new Event('scroll'));
+   await new Promise(r=>setTimeout(r,80));
+   return{余白:WL.columnResize.spare(list),padding:getComputedStyle(list).paddingRight};
+  });
+  rec('左へ戻ると便宜上の余白は消える',spare.余白===0,JSON.stringify(spare));
+  await page.setViewportSize({width:1700,height:1000});
+  await settle(page);
+
   /* ---- 8) 閲覧モードでは「表示列」を出さない（保存が403になるため） ---- */
   await post('/api/access-mode',{mode:'view'});
   await page.reload({waitUntil:'domcontentloaded'});

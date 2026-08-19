@@ -77,7 +77,7 @@
  /* 進めない理由。**言えることがあるときだけ出す**（常設の注意書きは読まれない）。
     帯は1本しかなく、右の文脈（ロット・製品・測定表の形・判定公差）と場所を
     分け合う。**ここへ項目名を並べると文脈のほうが潰れて見切れる**（実機で
-    「未測定が 9項目あります（母材・揃い/肉厚/長さ・板厚 ほか）。」が載った
+    「未測定が 9項目あります（母材/丈毎・板厚 ほか）。」が載った
     ときに報告された）。**どの項目かは③の確認表が1行ずつ出している**ので、
     ここは件数だけにして、名前は`title`へ回す（§CLAUDE.md 同じ情報を2箇所に
     出さない）。 */
@@ -361,7 +361,10 @@
   let w=0;
   if(el.tagName==='SELECT'){
    for(const o of el.options)w=Math.max(w,textWidth(el,o.text));
-  }else if(el.type==='number'){
+  }else if(el.type==='number'||el.classList.contains('numeric-input')){
+   /* 数値欄は`type=text`で持つことがある（§9.208 ③。`.5`の省略打ちを
+      受けるため）。**印で見分ける**——`type`だけを見ると自由記述と同じ
+      「日本語8文字」で見積もり、1桁の欄まで太る。 */
    const digits=String(el.max||'').length||4;
    w=textWidth(el,'0'.repeat(Math.max(digits,3))+'.00');
   }else if(el.type==='datetime-local'){

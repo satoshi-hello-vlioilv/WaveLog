@@ -536,7 +536,12 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
   grid-auto-rows:min-content;align-content:start;
   gap:var(--gap-inline) var(--gap-section);
 }
-.measure-shell.mstep-1 .selectors>label{grid-column:auto}
+/* **器より広い中身で列を押し広げさせない**（§9.208 ①）。グリッドの子は
+   既定で`min-width:auto`＝中身の最小幅まで縮まないため、`<label>`の中に
+   1つでも長い文（内径の出どころの注記）があると、**その列だけ`<select>`が
+   広がって隣の列へ重なる**（実測143px対124px、重なり7px）。 */
+.measure-shell.mstep-1 .selectors>label{grid-column:auto;min-width:0}
+.measure-shell.mstep-1 .selectors>label>*{max-width:100%}
 /* **上から下が、実際にする順番と同じ**になるように置く(§9.133)。
    ①誰が測るか → ②測定表の形 → ③使う機材 → ④いつもと同じ設定 と降り、
    **作業時間は最後**——準備の必須入力なので同じ面に置き、探させない。
@@ -1169,6 +1174,10 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    ——どちらも「この図・この表が何を基準に判定しているか」を決めるもので、
    読むときも一緒に読む。形は判定公差の欄をそのまま使う（同じ役割のものが
    隣で違う形をしていると、別の種類の設定に見える）。 */
+/* **ふだんは畳む**（§9.208 ④、利用者の指示「通常は使わないので折りたたんで
+   見えないように」）。入口は判定公差の切り替えと同じ`.tol-src-fold`。 */
+.numberline-fold{display:flex;align-items:center;gap:var(--gap-inline);min-width:0}
+.numberline-control[hidden]{display:none}
 .numberline-control{display:flex;align-items:center;gap:var(--gap-section);min-width:0}
 .numberline-control label{
   display:grid;grid-template-columns:max-content minmax(0,1fr);align-items:center;gap:var(--gap-tight);
@@ -1179,6 +1188,8 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 }
 /* 図があるのは②だけ（③は「測定データ分析」の表で、数直線は出ない）。
    **効かない設定を残さない**（§9.129の4番。押せるのに何も起きない）。 */
+.measure-shell.mstep-1 .numberline-fold,
+.measure-shell.mstep-3 .numberline-fold,
 .measure-shell.mstep-1 .numberline-control,
 .measure-shell.mstep-3 .numberline-control,
 .measure-shell.mstep-1 .nl-outside,
@@ -1231,6 +1242,9 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
   color:var(--warn-fg);font-size:var(--fs-sm);font-weight:700;white-space:nowrap;
 }
 .nl-outside[hidden]{display:none}
+/* 押すと「図の見せ方」が開く（§9.208 ④）。押せることが分かる見た目にする。 */
+.nl-outside{cursor:pointer}
+.nl-outside:hover{text-decoration:underline}
 .selectors{display:grid;gap:var(--gap-tight)}
 .dense-controls{grid-template-columns:repeat(6,minmax(0,1fr));gap:var(--gap-inline) var(--gap-inline);align-items:start}
 .dense-controls label{display:grid;grid-template-rows:20px var(--ctl-h);min-width:0;color:var(--muted);font-size:var(--fs-sm);white-space:nowrap}
@@ -1394,11 +1408,14 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 }
 /* 値の出どころ(§6/§9.204)。**同じ数字でも、目標値と選んだ値は別物**なので、
    仕掛から入れた初期値のときだけ小さく添える（選び直したら消える）。 */
-.prep-from{display:block;font-size:var(--fs-tiny);color:var(--teal-dark);line-height:1.4}
+.prep-from{display:block;max-width:100%;font-size:var(--fs-tiny);color:var(--teal-dark);line-height:1.4;
+  white-space:normal;overflow-wrap:anywhere}
 .prep-from[hidden]{display:none}
 /* 器は列。**列の中では目いっぱい**使う（列の幅そのものを中身から決めてある）。 */
 .product-rows-table input,.product-rows-table select{width:100%;height:var(--ctl-h-sm);background:#fff}
-.product-rows-table select{border:1px solid var(--line);border-radius:var(--radius-xs);
+/* 角は入力欄と同じ`--radius-sm`（§9.208 ②）。同じ行に4pxの選択欄と8pxの
+   入力欄が並ぶと、同じ役割のものが違う形に見える。 */
+.product-rows-table select{border:1px solid var(--line);border-radius:var(--radius-sm);
   color:var(--ink-2);min-width:0}
 /* **1つの表の中は同じ文字サイズ**（§9.90）。`40-records.css`の
    「.measure-shell input/select … font-size:var(--fs)」が測定画面のコントロールへ
@@ -1552,6 +1569,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .tol-fold::after{content:'　▾'}
 .tol-block.tol-open .tol-fold::after{content:'　▴'}
 .tol-block.tol-foldable:not(.tol-open) .tol-facts,
+.tol-block.tol-foldable:not(.tol-open) .numberline-fold,
 .tol-block.tol-foldable:not(.tol-open) .numberline-control,
 .tol-block.tol-foldable:not(.tol-open) .tolerance-source-control{display:none}
 /* **`display`は明示する。** 器を移すたびに、どこかの既存規則で`grid`に
@@ -1805,7 +1823,10 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 /* 母材の数値欄は3桁ほど。器の1マス(346px)へ伸ばさない（§9.130）。
    幅は規格から選ぶ（§9.131）。 */
 .material-grid input{width:100%;max-width:var(--w-sm);height:var(--ctl-h)}
-.material-grid output{display:flex;align-items:center;justify-content:center;width:100%;height:var(--ctl-h);border:1px solid var(--line);background:#fff;font-weight:700}
+/* **角は1種類にそろえる**（§9.208 ②、利用者の指示「四角の入力欄はすべて
+   丸角の入力欄に統一」）。自動で出る値の枠だけが直角で、隣に並ぶ入力欄
+   （`--radius-sm`）と形が違って見えていた。 */
+.material-grid output{display:flex;align-items:center;justify-content:center;width:100%;height:var(--ctl-h);border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;font-weight:700}
 .mother-entry-note{grid-column:1/-1;padding:var(--pad-row);border-radius:var(--radius-sm);border:1px solid var(--card-border);border-left:3px solid var(--teal);background:#fff;color:var(--header-bar-fg);font-weight:700}
 /* 自動で出る値は**1行にまとめる**（§9.160）。手で入れる欄と同じ行に混ざると、
    どこまで埋めれば終わりなのかが読み取れない。幅は規格へそろえる（§9.131）
@@ -1907,7 +1928,10 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .quality textarea{width:100%;height:auto;white-space:pre-wrap;resize:none}
 /* 手入力欄の共通挙動 */
 input.numeric-input,input[type="number"]{text-align:right;font-variant-numeric:tabular-nums;padding-right:8px}
-input.text-input,input[type="text"],textarea{text-align:left}
+/* **数値欄は`type="text"`で持つことがある**（§9.208 ③。`.5`の省略打ちを
+   受けるため`type=number`から移した）。`:not(.numeric-input)`を外すと、
+   同じ詳細度で後から読まれるこちらが勝ち、**母材の数値が左寄せになる**。 */
+input.text-input,input[type="text"]:not(.numeric-input),textarea{text-align:left}
 input.numeric-input::-webkit-inner-spin-button,input.numeric-input::-webkit-outer-spin-button{opacity:.15;min-width:18px}
 input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::-webkit-inner-spin-button{opacity:1}
 /* ---------- 10. 条割変更モーダル ----------

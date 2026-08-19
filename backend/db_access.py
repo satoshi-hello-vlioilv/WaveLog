@@ -306,7 +306,12 @@ PATH_CONFIG_LIVE_KEYS=('rne_extract_interval_sec','rne_extract_enabled','schedul
                        # 測定データの閲覧用複製を見に行く間隔(§9.202)。複製先の
                        # パスは接続先と同じ扱い(再起動が要る)だが、間隔だけは
                        # 呼び出しのたびに読み直すので再起動は要らない。
-                       'records_backup_export_interval_sec')
+                       'records_backup_export_interval_sec',
+                       # この端末の呼び名(§9.208 ⑧)。空なら OS から解決する。
+                       # 権限マスタとの照合・監査列・編集セッションの持ち主表示が
+                       # すべてこの1つの答えを見るので、**現場で名乗り直せる**
+                       # 手立てを1つだけ用意しておく。
+                       'pc_name')
 PATH_CONFIG_KEYS=PATH_CONFIG_STATIC_KEYS+PATH_CONFIG_LIVE_KEYS
 
 def ensure_path_config_table(c):
@@ -760,8 +765,17 @@ SCHEDULE_SHARE_FROM=('path-config' if _schedule_share_override
 # 測定データのバックアップに残す「誰が・どの端末で」(§9.180)。
 # **共有DBは既に現場で動いているので作り直さない**——他のマスタと同じ
 # 「無ければ足す」で移行する(古い版のアプリが書いた行はNULLのまま読める)。
+# [更新時刻ISO]は**レコード自身の`updatedAt`をそのまま**入れる列(§9.208 ⑤)。
+# [更新日時]はサーバーが`Now()`で押す**その端末の現地時刻**で、画面が持つ
+# `updatedAt`(UTCのISO)とは物差しが違う。文字列で比べていたため、
+#   ・10桁目が' '(0x20)と'T'(0x54)なので、ふつうは常に「共有のほうが古い」
+#   ・現地時刻の日付がUTCの日付を追い越す時間帯(JSTなら0〜9時)は**常に
+#     「共有のほうが新しい」**
+# となり、**自分で保存しただけのデータに「新しい版あり」が付いていた**
+# (実機で報告)。同じ物差しの列を1本足して、そちらで比べる。
 BACKUP_AUDIT_COLUMNS=(('登録者ID','TEXT'),('登録端末名','TEXT'),
-                      ('更新者ID','TEXT'),('更新端末名','TEXT'),('登録日時','DATETIME'))
+                      ('更新者ID','TEXT'),('更新端末名','TEXT'),('登録日時','DATETIME'),
+                      ('更新時刻ISO','TEXT'))
 
 def ensure_backup_table(c):
  names=tables(c)
@@ -833,7 +847,7 @@ def read_backup_rows(path):
   cur=c.cursor()
   cur.execute('SELECT [記録ID],[設備],[ロット番号],[検査番号],[鋳造番号],[状態],[更新日時],[圧縮形式],[ペイロード],'
               +col('登録者ID')+','+col('登録端末名')+','+col('更新者ID')+','+col('更新端末名')+','
-              +col('登録日時')+' FROM [Web測定バックアップ] ORDER BY [更新日時] DESC')
+              +col('登録日時')+','+col('更新時刻ISO')+' FROM [Web測定バックアップ] ORDER BY [更新日時] DESC')
   rows=cur.fetchall()
  def at(v):
   try:return v.isoformat() if v else None
@@ -841,7 +855,10 @@ def read_backup_rows(path):
  return [{'id':str(r[0] or ''),'equipment':str(r[1] or ''),'lotNo':str(r[2] or ''),'inspectionNo':str(r[3] or ''),'castingNo':str(r[4] or ''),'status':str(r[5] or ''),'updated_at':at(r[6]),'codec':str(r[7] or ''),'payload':str(r[8] or ''),
           'created_by':str(r[9] or ''),'created_pc':str(r[10] or ''),
           'updated_by':str(r[11] or ''),'updated_pc':str(r[12] or ''),
-          'created_at':at(r[13])} for r in rows],path
+          'created_at':at(r[13]),
+          # レコード自身の更新時刻(画面が持つ`updatedAt`と同じ物差し)。
+          # 古い行には無いので空になる——**空を「同じ」と読まないこと**。
+          'record_updated_at':str(r[14] or '')} for r in rows],path
 
 # ---------- 実績バックアップ読込のキャッシュ(docs/SCHEDULE_MODE_DESIGN.md §9.41) ----------
 # RECORDS_BACKUP_EXPORT_PATHは閲覧用複製(Box等のネットワーク共有)を指すのが

@@ -2,7 +2,7 @@
 /* measurement-tolerance.js: 判定公差ソース・測定ロック/監査 */
 /* ============================================================
    測定種別の判定公差ソース（2026-07-20 追加）
-   - 板厚・板幅・母材・揃い/肉厚/長さ: 従来の判定公差ロジックを使用。
+   - 板厚・板幅・母材/丈毎: 従来の判定公差ロジックを使用。
    - ラテラルボー等（板厚でも板幅でもない項目）: 「指示_<項目>」の
      単一値を判定公差として取得。該当フィールドが無い測定種
      (テレスコープ・バリ・巻ずれ 等) は公差を表示しない。
@@ -24,7 +24,7 @@
   /* 母材・丈は§9.160で1項目(`WL.measureItem.MATERIAL`)へまとめた。旧名も
      残す——保存済みレコードを開いた瞬間に判定が変わるのを避ける。 */
   var DIMENSIONAL={'板厚':1,'板幅':1,'板厚/板幅':1,'母材':1,'揃い/肉厚/長さ':1,
-                   '母材・揃い/肉厚/長さ':1};
+                   '母材・揃い/肉厚/長さ':1,'母材/丈毎':1};
   function norm(s){return (typeof normalizedFieldName==='function')?normalizedFieldName(s):String(s||'').normalize('NFKC').replace(/[\s　]+/g,'').toLowerCase();}
   function currentType(){return ($('#measureType')&&$('#measureType').value)||(S.measure&&S.measure.settings&&S.measure.settings.measureType)||'';}
   function instructionSingle(type){
@@ -127,11 +127,28 @@
     bindMeasureInputs=function(){
       baseBindMeasureInputs();
       document.querySelectorAll('[data-mkey]').forEach(el=>{
-        el.addEventListener('focus',()=>{if(S.measure?.settings?.inputMode==='manual')el.select?.();});
+        /* **`select()`は`focus`を起こす。** Chromiumの`HTMLInputElement.select()`は
+           フォーカスが載っていないと自分で載せに行くため、`focus`ハンドラの中で
+           呼ぶと同じハンドラが呼び直され、**行って来いで積み上がる**（実測で
+           「Maximum call stack size exceeded」。§9.208 ③でカーソルを印に
+           追従させたことで、初めてこの経路を通るようになった）。
+           1回の中では選び直さない。 */
+        let selecting=false;
+        el.addEventListener('focus',()=>{
+          if(S.measure?.settings?.inputMode!=='manual'||selecting)return;
+          selecting=true;
+          try{el.select?.()}finally{selecting=false}
+        });
         el.addEventListener('click',event=>{
           if(S.measure?.settings?.inputMode==='manual'){
-            event.stopImmediatePropagation();
-            if(el.dataset.mkey==='thickness')S.measure.settings.tStep=+el.dataset.j;else S.measure.settings.wStep=+el.dataset.j;
+            /* **他のハンドラを止めない**（§9.208 ③）。以前は
+               `stopImmediatePropagation()`で持ち主側のクリック処理
+               （印を移す・押した丈へ移る）ごと止めており、手動入力では
+               **クリックしても印も丈も動かなかった**（実機で
+               「クリックしてもフォーカスは移動せず」と報告）。
+               入力位置（tStep/wStep）も持ち主の`syncStepFor`が持つので
+               ここでは触らない——同じ代入を2箇所に置かない。
+               ここが受け持つのは「読み取り専用を解いて選択状態にする」だけ。 */
             el.readOnly=false;el.tabIndex=0;el.focus();setTimeout(()=>el.select?.(),0);
           }
         },true);

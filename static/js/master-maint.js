@@ -2695,11 +2695,37 @@
    renderPathConfigForm();renderPathConfigList();
   }catch(e){list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
  }
+ /* ---------- 共通設定の作り（§9.208 ⑨、利用者の指示） ----------
+    「多機能がゆえにわかりにくい説明になっているので、視覚的に表現できる
+     ところやUIを工夫して直感的にわかるように」
+
+    直したのは4点。
+     ① **図を先に出す。** この端末が「どこから読み、どこへ書き、どこへ写すか」は
+        文で並べても頭の中で組み立て直すことになる。1枚の絵にして、節ごとの
+        いまの値をその中へ書く。図の枠は押せて、その設定の章まで連れて行く。
+     ② **状態は欄のすぐ下。** 以前は画面のいちばん下に「いま効いている値」の
+        対比表があり、再起動待ちかどうかを見るのに視線が上下していた
+        （§8 同じ情報を2箇所に出さない／§2 次にすることを1つだけ指す）。
+     ③ **章立てとレール。** 7つの節が1本の長いスクロールに並んでいて、いま
+        どこにいるのかが分からなかった。章の一覧を上に置き、**再起動待ちの
+        件数もそこに出す**（探させない）。
+     ④ **「この端末」を最初の章にする。** PC名・ログインID・モードはすべての
+        権限判定の入口なのに、どこにも書かれていなかった（§9.208 ⑧）。
+
+    保存の仕組み（`[data-pc-field]`を集めて`POST /api/path-config-master`）は
+    変えていない——**変えたのは並べ方と見せ方だけ**。 */
+ const PC_SECTIONS=[
+  {id:'terminal',name:'この端末',icon:'PC',when:'保存後すぐ反映',cls:'is-live'},
+  {id:'read',    name:'どこから読むか',when:'サーバー再起動後に反映',cls:'is-restart'},
+  {id:'schedule',name:'共有スケジュール',when:'一部は再起動後に反映',cls:'is-restart'},
+  {id:'rne',     name:'RNE抽出',when:'保存後すぐ反映',cls:'is-live'},
+ ];
+ /* 1項目＝「名前 / 入力 / 一行の説明 / いまどうなっているか」。
+    状態欄(`data-pc-state`)は`renderPathConfigList()`が後から埋める。 */
+ function pcStateHtml(key){return `<small class="pc-state" data-pc-state="${esc(key)}"></small>`}
  function renderPathConfigForm(){
   const form=$('#masterMaintForm');if(!form)return;
   const v=pathConfigState.values||{};
-  const sourceOpts=[['','（既定）network'],['network','network'],['local','local']]
-   .map(([val,label])=>`<option value="${esc(val)}"${(v.sikalot_source||'')===val?' selected':''}>${esc(label)}</option>`).join('');
   /* パス欄は「参照…」ダイアログとドラッグ&ドロップに対応させる(§9.49)。
      手打ちのUNCパスは打ち間違いに気づきにくいのが実際の問題だった。 */
   const pathField=(key,label,mode,hint)=>`<div class="mm-field mm-field-wide mm-field-path"><span>${esc(label)}</span>
@@ -2707,89 +2733,131 @@
      <input data-pc-field="${key}" data-field="${key}" type="text" value="${esc(v[key]||'')}" placeholder="未設定（既定値を使用）" autocomplete="off" spellcheck="false">
      <button type="button" class="mm-path-browse" data-path-browse="${key}" data-path-mode="${mode||'file'}">参照…</button>
     </span>
-    <small class="mm-field-hint">${esc(hint||'「参照…」で選ぶか、エクスプローラーからここへドラッグ&ドロップできます。空欄で保存すると既定値に戻ります。')}</small></div>`;
+    <small class="mm-field-hint">${esc(hint||'「参照…」で選ぶか、エクスプローラーからここへドラッグ&ドロップできます。空欄で保存すると既定値に戻ります。')}</small>
+    ${pcStateHtml(key)}</div>`;
   const numField=(key,label,unit,step,min)=>`<label class="mm-field mm-field-num"><span>${esc(label)}</span>${
    numFieldHtml({k:key,label,unit,step,min},v[key]||'',`data-pc-field="${key}"`)
   }<small class="mm-field-hint">未入力なら既定値 ${esc(pathConfigState.defaults[key]||'')}${esc(unit||'')} を使用します。</small></label>`;
-  /* 設定ページとして1本のスクロール領域にまとめる(§9.68)。
-     以前は説明・9項目・RNE状態・保存ボタンをすべて.mm-form(スクロールを
-     持たない)へ入れており、パネル(.mm-panel{overflow:hidden})に切られて
-     **下部が見切れたまま触れない**状態だった(保存ボタンごと画面外)。
-     項目は「何のための設定か」でまとめ、反映のタイミング(再起動が要るか)を
-     各グループの見出しに出す。保存ボタンは下端に貼り付けて常に押せる。 */
-  const group=(title,when,whenCls,body)=>`<section class="mm-set-group">
+  const pickField=(key,label,opts,hint)=>`<label class="mm-field"><span>${esc(label)}</span><select data-pc-field="${key}">${
+   opts.map(([val,text])=>`<option value="${esc(val)}"${(v[key]||'')===val?' selected':''}>${esc(text)}</option>`).join('')
+  }</select><small class="mm-field-hint">${hint||''}</small></label>`;
+  const group=(id,title,when,whenCls,body)=>`<section class="mm-set-group" id="pcSec-${id}" data-pc-section="${id}">
     <div class="mm-set-group-head"><h4>${esc(title)}</h4><span class="mm-apply-badge ${whenCls}">${esc(when)}</span></div>
     <div class="mm-set-group-body">${body}</div></section>`;
+  /* PC名は**サーバーが解決した結果**を出す（§9.208 ⑧）。画面が持つ
+     `WL.terminal`は`/api/access-mode`の答えで、保存した直後は古い。 */
+  const term=(window.WL&&WL.terminal)||null;
+  const act=pathConfigState.active||{};
+  const pcNow=act.pc_name||(term&&term.pcName())||'';
+  const pcFrom=act.pc_name_source||(term&&term.pcNameSource())||'';
   form.className='mm-form mm-form-page';
-  form.innerHTML=`<div class="mm-set-scroll">
-   <p class="mm-def-hint">参照データの読み込み先・共有パスなど、<b>この端末だけ</b>の設定です。空欄で保存すると既定値へ戻ります。反映のタイミングは項目のまとまりごとに示しています。</p>
-   ${group('データの取得元（既定）','サーバー再起動後に反映','is-restart',`
-    <label class="mm-field"><span>読み方を決めていないデータソースの既定</span><select data-pc-field="sikalot_source">${sourceOpts}</select>
-     <small class="mm-field-hint">network=共有フォルダを読む / local=この端末でRNEから抽出したものを読む。
-      <b>読み方を決めたデータソースには効きません</b>——1件ずつの読み込み先は「データ接続」で決めます。</small></label>
-    ${(pathConfigState.sources||[]).length?`<div class="pc-source-list">${
-      (pathConfigState.sources||[]).map(src=>`<div class="pc-source"><b>${esc(src.label)}</b><code>${esc(src.key)}</code>
-        <span title="${esc(src.active||'')}">${esc(src.active||'（この端末ではまだ読んでいません）')}</span>
-        ${src.loaded===false?`<i class="pc-source-next">再起動すると ${esc(src.planned||'—')} を読みます</i>`:''}</div>`).join('')
-      }</div>
-     <p class="mm-field-hint">読み込み先を変えるには「データ接続」のカードから <b>編集</b> を押してください
-      （同じ設定を2画面に置くと、どちらが効くのか分からなくなるためここでは変えられません）。</p>`
-     :'<p class="mm-field-hint">データソースが登録されていません。「データ接続」で登録してください。</p>'}`)}
-   ${group('共有・複製','サーバー再起動後に反映','is-restart',`
-    ${pathField('schedule_share_path','スケジュール機能の共有データ置き場（schedule.sqlite3）','file','共有フォルダ上のschedule.sqlite3を選びます。空欄ならスケジュール機能は無効です。')}
-    <p class="mm-field-hint">測定データバックアップの<b>閲覧用複製先</b>は「測定データの保存」タブへ移しました
-     （置き場の図・件数・「いま複製する」と同じ画面にあるほうが、何が起きるか分かるためです）。</p>`)}
-   ${group('RNE抽出','保存後すぐ反映','is-live',`
-    <label class="mm-field"><span>RNE抽出の定期実行</span><select data-pc-field="rne_extract_enabled">${
-     [['','（既定）auto: 取得元がlocalのときだけ'],['auto','auto: 取得元がlocalのときだけ'],
-      ['on','on: 取得元に関わらず定期実行する'],['off','off: 定期実行しない（手動のみ）']]
-      .map(([val,label])=>`<option value="${esc(val)}"${(v.rne_extract_enabled||'')===val?' selected':''}>${esc(label)}</option>`).join('')
-    }</select><small class="mm-field-hint">「今すぐ抽出」は、この設定に関わらず資材が配置されていれば実行できます。</small></label>
+  form.innerHTML=`<div class="mm-set-scroll pc-page">
+   <!-- ① 図：この端末が何とつながっているか -->
+   <div class="pc-map" id="pcMap" aria-label="この端末のつながり">
+    <button type="button" class="pc-node" data-pc-jump="read">
+     <b>参照データ</b><span class="pc-node-sub">仕掛・品質（読むだけ）</span>
+     <span class="pc-node-val" data-pc-map="read">—</span></button>
+    <span class="pc-arrow" aria-hidden="true"><i></i><em>読む</em></span>
+    <button type="button" class="pc-node is-self" data-pc-jump="terminal">
+     <b>この端末</b><span class="pc-node-sub">WaveLog</span>
+     <span class="pc-node-val" data-pc-map="terminal">—</span></button>
+    <span class="pc-arrow" aria-hidden="true"><i></i><em>書く</em></span>
+    <button type="button" class="pc-node" data-pc-jump="schedule">
+     <b>共有スケジュール</b><span class="pc-node-sub">作業予定（みんなで使う）</span>
+     <span class="pc-node-val" data-pc-map="schedule">—</span></button>
+   </div>
+   <p class="pc-map-note">測定データの置き場（この端末のDB → 閲覧用の複製）は
+    <button type="button" class="mm-btn-ghost pc-goto" id="pcGoRecords">測定データの保存</button>にあります。</p>
+
+   <!-- ② 章のレール -->
+   <nav class="pc-rail" id="pcRail" aria-label="共通設定の章">
+    ${PC_SECTIONS.map(x=>`<button type="button" data-pc-jump="${x.id}">${esc(x.name)}</button>`).join('')}
+    <span class="pc-rail-restart" id="pcRestartCount" hidden></span>
+   </nav>
+
+   ${group('terminal','この端末','保存後すぐ反映','is-live',`
+    <div class="pc-who" id="pcWho">
+     <div><small>PC名</small><b>${esc(pcNow||'（取得できていません）')}</b>
+      <i>${esc(pcFrom||'出どころ不明')}</i></div>
+     <div><small>ログインID</small><b>${esc((term&&term.loginId())||'（取得できていません）')}</b><i>OS</i></div>
+     <div><small>いまのモード</small><b>${esc((window.accessMode&&accessMode.mode)||'edit')}</b>
+      <i>アクセス権限マスタ</i></div>
+    </div>
+    <label class="mm-field mm-field-wide"><span>この端末の名前を決め打ちする</span>
+     <input data-pc-field="pc_name" type="text" value="${esc(v.pc_name||'')}" placeholder="空欄ならOSから自動で取得します" autocomplete="off" spellcheck="false">
+     <small class="mm-field-hint">アクセス権限マスタとの照合・記録の「更新端末名」・編集中の持ち主表示は、
+      <b>すべてこの名前</b>を見ます。自動で取れない端末だけここで名乗ってください。</small>
+     ${pcStateHtml('pc_name')}</label>
+    <div id="pcNotes"></div>`)}
+
+   ${group('read','どこから読むか','サーバー再起動後に反映','is-restart',`
+    <div class="pc-source-list" id="pcSourceList"></div>
+    <p class="mm-field-hint">読み込み先を変えるには「データ接続」のカードから <b>編集</b> を押してください
+     （同じ設定を2画面に置くと、どちらが効くのか分からなくなるためここでは変えられません）。</p>
+    ${pickField('sikalot_source','読み方を決めていないデータソースの既定',
+      [['','（既定）network'],['network','network'],['local','local']],
+      'network=共有フォルダを読む ／ local=この端末でRNEから抽出したものを読む。<b>読み方を決めたデータソースには効きません</b>。')}
+    ${pcStateHtml('sikalot_source')}`)}
+
+   ${group('schedule','共有スケジュール','一部は再起動後に反映','is-restart',`
+    ${pathField('schedule_share_path','作業予定の共有データ置き場（schedule.sqlite3）','file','共有フォルダ上のschedule.sqlite3を選びます。空欄ならスケジュール機能は無効です。')}
+    <div class="pc-sub">
+     <b class="pc-sub-head">共有の変化をどう取り込むか</b>
+     <p class="mm-field-hint">共有（Box等）のschedule.sqlite3は<b>他の端末も書きます</b>。読むときは手元へ写したものを読み、
+      <b>改訂番号が変わったときだけ</b>写し直します（読むたびに写すと共有を掴み続け、他の端末の書込とぶつかります）。</p>
+     ${pickField('schedule_watch_enabled','共有の変化を見張る',
+       [['','（既定）auto: 見張る'],['auto','auto: 見張る'],['on','on: 見張る'],['off','off: 見張らない（読むたびに共有から写す）']],
+       'offにすると以前の動きに戻ります（共有が遅い環境では読み込みも遅くなります）。')}
+     ${numField('schedule_watch_interval_sec','変化を見る間隔','秒',5,5)}
+     ${numField('schedule_watch_pause_sec','取り込んだあと休む時間','秒',5,0)}
+    </div>
+    <div class="pc-sub">
+     <b class="pc-sub-head">同時に書いたときの取り合い</b>
+     ${numField('schedule_lock_ttl_sec','書込ロックの有効期限','秒',5,1)}
+     ${numField('schedule_lock_verify_delay_ms','ロック確認までの待機時間','ミリ秒',100,0)}
+    </div>
+    <div class="pc-sub">
+     <b class="pc-sub-head">書く役を1台に絞る（既定はoff）</b>
+     <p class="mm-field-hint">共有へ<b>実際に書く役を1台に絞る</b>仕掛けです。他のPCは書き込みだけをその1台へLAN内のHTTPで頼み、
+      <b>読みは今までどおり手元の写しから</b>読みます（画面のURLは全員 http://127.0.0.1:5029/ のまま）。
+      <b>持ち主が落ちていても止まりません</b>——頼めなかったPCは自分で共有へ書きます。</p>
+     ${pickField('schedule_owner_enabled','書き込み役を1台に絞る',
+       [['','（既定）off: 各PCが自分で共有へ書く'],['off','off: 各PCが自分で共有へ書く'],['on','on: 最初に入った1台が書き込み役になる']],
+       'onにすると、書き込み役になったPCだけが下のポートを<b>LANへ開きます</b>（合言葉つきの決められた書き込みしか受け付けません）。')}
+     ${numField('schedule_owner_port','書き込み役の受け口ポート','',1,1025)}
+     ${numField('schedule_owner_ttl_sec','書き込み役の目印の有効期限','秒',10,30)}
+     <div id="scheduleOwnerStatus" class="pc-owner-status">状態を読み込んでいます…</div>
+    </div>`)}
+
+   ${group('rne','RNE抽出','保存後すぐ反映','is-live',`
+    <p class="mm-field-hint">RNE（Navigator問い合わせ定義）から <code>.sqlite3</code> を作り、それを一覧として読む仕組みです。
+     取得元が <b>local</b> のデータソースだけが、ここで作ったファイルを読みます。</p>
+    ${pickField('rne_extract_enabled','RNE抽出の定期実行',
+      [['','（既定）auto: 取得元がlocalのときだけ'],['auto','auto: 取得元がlocalのときだけ'],
+       ['on','on: 取得元に関わらず定期実行する'],['off','off: 定期実行しない（手動のみ）']],
+      '「今すぐ抽出」は、この設定に関わらず資材が配置されていれば実行できます。')}
     ${numField('rne_extract_interval_sec','RNE抽出間隔','秒',60,60)}
     ${pathField('rne_assets_dir','RNE資材の置き場（フォルダ）','dir','RNEファイルと symnavim.conf をまとめて置くフォルダです。RNEファイルはこの下の rne/ 配下に置きます。共有フォルダを指定すれば、端末ごとにコピーせず1式を共用できます。空欄ならアプリ内の config/rne_extract です。')}
     ${pathField('rne_conf_path','接続情報 symnavim.conf の場所','file','認証情報だけを別の場所に置きたい場合に指定します。空欄なら上の資材置き場の直下（symnavim.conf）です。')}
     ${rneStatusPanelHtml()}`)}
-   ${group('スケジュールの排他制御','保存後すぐ反映','is-live',`
-    ${numField('schedule_lock_ttl_sec','スケジュール書込ロックの有効期限','秒',5,1)}
-    ${numField('schedule_lock_verify_delay_ms','ロック確認までの待機時間','ミリ秒',100,0)}`)}
-   ${group('共有スケジュールの取り込み','保存後すぐ反映','is-live',`
-    <p class="mm-field-hint">共有（Box等）のschedule.sqlite3は<b>他の端末も書きます</b>。
-     読むときは手元へ写したものを読み、<b>改訂番号が変わったときだけ</b>写し直します
-     （読むたびに写すと共有を掴み続け、他の端末の書込とぶつかります）。</p>
-    <label class="mm-field"><span>共有の変化を見張る</span><select data-pc-field="schedule_watch_enabled">${
-     [['','（既定）auto: 見張る'],['auto','auto: 見張る'],['on','on: 見張る'],
-      ['off','off: 見張らない（読むたびに共有から写す）']]
-      .map(([val,label])=>`<option value="${esc(val)}"${(v.schedule_watch_enabled||'')===val?' selected':''}>${esc(label)}</option>`).join('')
-    }</select><small class="mm-field-hint">offにすると以前の動きに戻ります（共有が遅い環境では読み込みも遅くなります）。</small></label>
-    ${numField('schedule_watch_interval_sec','変化を見る間隔','秒',5,5)}
-    ${numField('schedule_watch_pause_sec','取り込んだあと休む時間','秒',5,0)}
-    <p class="mm-field-hint">休む時間は「更新が続いているときに写し続けない」ためのものです。
-     0にすると変化を見つけるたびに写します。</p>`)}
-   ${group('共有スケジュールへ書く役（持ち主）','保存後すぐ反映（最大1分）','is-live',`
-    <p class="mm-field-hint">共有（Box等）のschedule.sqlite3へ<b>実際に書く役を1台に絞る</b>仕掛けです。
-     他のPCは書き込みだけをその1台へLAN内のHTTPで頼み、<b>読みは今までどおり手元の写しから</b>読みます
-     （画面のURLは全員 http://127.0.0.1:5029/ のままで、ブラウザの使い方は変わりません）。
-     <b>持ち主が落ちていても止まりません</b>——頼めなかったPCは今までどおり自分で共有へ書きます。</p>
-    <label class="mm-field"><span>書き込み役を1台に絞る</span><select data-pc-field="schedule_owner_enabled">${
-     [['','（既定）off: 各PCが自分で共有へ書く'],['off','off: 各PCが自分で共有へ書く'],
-      ['on','on: 最初に入った1台が書き込み役になる']]
-      .map(([val,label])=>`<option value="${esc(val)}"${(v.schedule_owner_enabled||'')===val?' selected':''}>${esc(label)}</option>`).join('')
-    }</select><small class="mm-field-hint">onにすると、書き込み役になったPCだけが下のポートを<b>LANへ開きます</b>
-      （合言葉つきの決められた書き込みしか受け付けません）。社内の決まりを確認してから入れてください。</small></label>
-    ${numField('schedule_owner_port','書き込み役の受け口ポート','',1,1025)}
-    ${numField('schedule_owner_ttl_sec','書き込み役の目印の有効期限','秒',10,30)}
-    <p class="mm-field-hint">目印（共有フォルダの schedule.owner.json）は期限の1/3ごとに更新されます。
-     書き込み役のPCを閉じると、期限が切れた時点で<b>別のPCが自動で引き継ぎます</b>。</p>
-    <div id="scheduleOwnerStatus" class="pc-owner-status">状態を読み込んでいます…</div>`)}
-   ${group('いま効いている値','確認用','is-info',`<div id="pathConfigActive"></div>`)}
   </div>
-  <div class="mm-form-tail mm-set-sticky"><button type="submit" class="mm-btn-primary">パス設定を保存</button><span class="mm-form-hint">更新者IDは画面右上の入力欄を使用します。</span></div>`;
+  <div class="mm-form-tail mm-set-sticky"><button type="submit" class="mm-btn-primary">共通設定を保存</button><span class="mm-form-hint">更新者IDは画面右上の入力欄を使用します。</span></div>`;
   form.onsubmit=ev=>{ev.preventDefault();savePathConfigMaint()};
+  /* 図と章のレールは**同じ道**で章へ連れて行く（入口を2本作らない）。 */
+  form.querySelectorAll('[data-pc-jump]').forEach(btn=>btn.onclick=ev=>{
+   ev.preventDefault();
+   const sec=form.querySelector(`#pcSec-${btn.dataset.pcJump}`);
+   if(!sec)return;
+   sec.scrollIntoView({block:'start',behavior:'smooth'});
+   sec.classList.add('is-jumped');
+   setTimeout(()=>sec.classList.remove('is-jumped'),1200);
+  });
+  const rec=$('#pcGoRecords');
+  if(rec)rec.onclick=()=>document.querySelector('#masterMaintNav [data-master="measStorage"]')?.click();
   bindInputHelpers(form);
   refreshRneStatus();
   refreshOwnerStatus();
  }
-
  /* ---------- 書き込み役の状態(§9.192) ----------
     「入れたのに効いているのか分からない」を作らない。誰が役をしていて、
     このPCから見えているか（届いているか）までを文字で出す。 */
@@ -2872,24 +2940,25 @@
   // 実行中だけ短い間隔で追いかける(終わったら止める。無駄な問い合わせを残さない)
   if(s.running)rneTimer=setTimeout(refreshRneStatus,2000);
  }
+ /* ---------- 状態はその欄のすぐ下（§9.208 ⑨） ----------
+    以前は画面のいちばん下に「保存値 ／ いま効いている値」の対比表を置いて
+    いた。項目が10件を超えると、直した欄がその表のどの行なのかを探すことに
+    なり、**再起動待ちかどうかを見るのに視線が上下する**。状態は欄の持ち物
+    なので欄が持つ——表そのものは廃止した（§8 同じ情報を2箇所に出さない）。
+    ここが埋めるのは「各欄の状態」「図の中の値」「章のレールの件数」の3つ。 */
  function renderPathConfigList(){
-  // 保存値と「今このプロセスで効いている値」の対比。設定ページの一部として
-  // 同じスクロールの中に置く(別の枠に離すと、再起動待ちかどうかを見比べる
-  // ために視線が画面の上下を往復することになる)。§9.68
-  const list=$('#pathConfigActive');if(!list)return;
+  const form=$('#masterMaintForm');if(!form||!form.classList.contains('mm-form-page'))return;
   const v=pathConfigState.values||{},a=pathConfigState.active||{};
+  /* 「いま効いている値」の言い方。空欄は**何が起きるか**まで書く
+     （「未設定」だけでは、既定へ落ちるのか機能が止まるのかが分からない）。 */
   const activeText={
    sikalot_source:a.sikalot_source||'',
-   records_backup_export_path:a.records_backup_export_path||'（未設定・複製しない）',
-   schedule_share_path:a.schedule_share_path||'（未設定・機能無効）',
+   schedule_share_path:a.schedule_share_path||'（未設定・スケジュール機能は無効）',
   };
   const savedText={
    sikalot_source:v.sikalot_source||'（既定）network',
-   records_backup_export_path:v.records_backup_export_path||'（未設定・複製しない）',
-   schedule_share_path:v.schedule_share_path||'（未設定・機能無効）',
+   schedule_share_path:v.schedule_share_path||'（未設定・スケジュール機能は無効）',
   };
-  /* データソースぶんは登録内容から作る。「いま効いている値」は上書きの
-     有無に関わらずサーバーが解決した実際の読み込み先を出す。 */
   /* まだ読んでいないデータソースは**「解決できていません」ではなく
      「再起動後に反映」**と書く（§9.163）。前者は不具合に読めるが、
      実際は設計どおりの待ち状態で、打つ手が違う。 */
@@ -2903,32 +2972,93 @@
    }
    savedText[src.valueKey]=v[src.valueKey]||'（既定値を使用）';
   });
-  const tmpl='minmax(150px,1fr) minmax(200px,1.6fr) minmax(200px,1.6fr)';
-  const head=`<div class="mm-row head" style="grid-template-columns:${tmpl}"><span>設定項目</span><span>いま効いている値</span><span>保存値（次回起動から）</span></div>`;
-  // 保存値と実際に効いている値が食い違う=再起動待ち。目で追えるよう印を付ける。
-  const rows=pathConfigRestartFields().map(([key,label])=>{
-   /* 「再起動待ち」の判定は**表示文字列ではなく生の値**で行う。
-      表示側は現在値にエンジン種別「（sqlite）」を添えたり、未設定を
-      「（既定）network」と書き換えたりするので、文字列比較では中身が同じ
-      行まで再起動待ちに見えてしまう(実際にそう出た)。
-      保存値が空＝既定を使う指定なので、待ちにはしない。 */
+  /* 「再起動待ち」の判定は**表示文字列ではなく生の値**で行う。表示側は
+     現在値にエンジン種別を添えたり、未設定を「（既定）network」と書き換えたり
+     するので、文字列比較では中身が同じ行まで再起動待ちに見える（実際にそう出た）。
+     保存値が空＝既定を使う指定なので、待ちにはしない。 */
+  const isPending=key=>{
    const savedRaw=String(v[key]||'').trim(),activeRaw=String(a[key]||'').trim();
-   /* 登録したばかりで読み込んでいないデータソースは、上書きを入れていなくても
-      再起動待ち（§9.163）。保存値との突き合わせだけでは拾えない。 */
-   const pending=pendingKeys.has(key)||(!!savedRaw&&savedRaw!==activeRaw);
-   return `<div class="mm-row${pending?' is-pending-restart':''}" style="grid-template-columns:${tmpl}"><span>${esc(label)}</span><span title="${esc(activeText[key])}">${esc(activeText[key])}</span><span title="${esc(savedText[key])}">${esc(savedText[key])}${pending?'<b class="mm-restart-flag">再起動待ち</b>':''}</span></div>`;
-  }).join('');
+   return pendingKeys.has(key)||(!!savedRaw&&savedRaw!==activeRaw);
+  };
+  /* 各欄の状態。**再起動が要らない項目は「保存後すぐ反映」とだけ言う**
+     ——比べる相手（いま効いている値）が無いのに空欄の対比を並べない。 */
+  let pending=0;
+  form.querySelectorAll('[data-pc-state]').forEach(el=>{
+   const key=el.dataset.pcState;
+   const restartable=pathConfigRestartFields().some(([k])=>k===key);
+   if(!restartable){
+    if(key==='pc_name'){
+     const term=(window.WL&&WL.terminal)||null;
+     const now=a.pc_name||(term&&term.pcName())||'（取得できていません）';
+     const from=a.pc_name_source||(term&&term.pcNameSource())||'出どころ不明';
+     el.className='pc-state';
+     el.textContent=`いま名乗っている名前: ${now}（${from}）`;
+    }else{
+     el.className='pc-state';
+     el.textContent='保存するとすぐに反映されます。';
+    }
+    return;
+   }
+   const p=isPending(key);
+   if(p)pending++;
+   el.className='pc-state'+(p?' is-pending-restart':'');
+   el.innerHTML=`<span class="pc-state-now"><i>いま</i>${esc(activeText[key]||'—')}</span>`
+    +`<span class="pc-state-saved"><i>保存値</i>${esc(savedText[key]||'—')}</span>`
+    +(p?'<b class="mm-restart-flag">再起動待ち</b>':'');
+   el.title=`いま効いている値: ${activeText[key]||'—'}\n保存値（次回起動から）: ${savedText[key]||'—'}`;
+  });
+  /* データソースは入力欄を持たない（「データ接続」が持つ）ので、
+     読み取り専用の並びとして章の中へ出す。再起動待ちはここでも数える。 */
+  const list=$('#pcSourceList');
+  if(list){
+   const rows=(pathConfigState.sources||[]);
+   if(!rows.length){
+    list.innerHTML='<p class="mm-field-hint">データソースが登録されていません。「データ接続」で登録してください。</p>';
+   }else{
+    list.innerHTML=rows.map(src=>{
+     const p=isPending(src.valueKey);
+     if(p&&!form.querySelector(`[data-pc-state="${src.valueKey}"]`))pending++;
+     return `<div class="pc-source${p?' is-pending-restart':''}"><b>${esc(src.label)}</b><code>${esc(src.key)}</code>
+      <span title="${esc(src.active||'')}">${esc(src.active||'（この端末ではまだ読んでいません）')}</span>
+      ${src.loaded===false?`<i class="pc-source-next">再起動すると ${esc(src.planned||'—')} を読みます</i>`:''}
+      ${p?'<b class="mm-restart-flag">再起動待ち</b>':''}</div>`;
+    }).join('');
+   }
+  }
+  /* 図の中の値。**節ごとの「いま」を絵の中で読める**ようにする。 */
+  const term=(window.WL&&WL.terminal)||null;
+  const short=t=>{const s=String(t||'—');return s.length>44?'…'+s.slice(-43):s};
+  const mapText={
+   read:short((pathConfigState.sources||[]).map(x=>x.active).filter(Boolean)[0]
+     ||(activeText.sikalot_source?`取得元 ${activeText.sikalot_source}`:'（未設定）')),
+   terminal:short((term&&term.pcName())||'（PC名を取得できていません）'),
+   schedule:short(a.schedule_share_path||'（未設定・機能無効）'),
+  };
+  form.querySelectorAll('[data-pc-map]').forEach(el=>{
+   const t=mapText[el.dataset.pcMap]||'—';
+   el.textContent=t;el.title=t;
+  });
+  /* 章のレールに再起動待ちの件数を出す（探させない）。 */
+  const badge=$('#pcRestartCount');
+  if(badge){
+   badge.textContent=pending?`再起動待ち ${pending}件`:'';
+   badge.hidden=!pending;
+   badge.title=pending?'保存した値は、サーバーを再起動すると効きます（stop.bat → Start.vbs）。':'';
+  }
   /* **作り直せるファイルの置き場**(§9.109)と、**マスタDBが同期フォルダーの
      中にあるとき**の注意(§9.192)。どちらも設定ではないが、共有(BOX等)に置いた
      ファイル群を複数のPCから起動する現場では、**知らないと壊れ方が分からない**。 */
-  const wd=v.work_dir?`<p class="mm-def-hint">作り直せるファイル（写し・スケジュールの作業コピー）の置き場: ${esc(v.work_dir)}`
-    +`${v.work_dir_reason?`<b>（${esc(v.work_dir_reason)}）</b>`:''}</p>`:'';
-  const cloud=v.master_cloud?`<p class="mm-warn-note"><b>マスタDBが${esc(v.master_cloud)}の中にあります</b>（${esc(v.db_dir||'')}）。
-    このフォルダーを<b>複数のPCから同時に起動すると、全員が同じマスタへ書き込みます</b>——
-    同期の衝突で設定が失われることがあります。各PCの手元へ置く場合は
-    <code>config/local.json</code> の <code>db_dir</code> を、そのPCのローカルフォルダーへ向けてください
-    （共有したいのは作業予定だけです。上の「スケジュール機能の共有データ置き場」で共有します）。</p>`:'';
-  list.innerHTML=head+rows+wd+cloud+`<p class="mm-def-hint" style="margin-top:10px">RNE抽出間隔: 保存値 ${esc(v.rne_extract_interval_sec||pathConfigState.defaults.rne_extract_interval_sec||'')}秒 / スケジュールロック有効期限: ${esc(v.schedule_lock_ttl_sec||pathConfigState.defaults.schedule_lock_ttl_sec||'')}秒 / ロック確認待機: ${esc(v.schedule_lock_verify_delay_ms||pathConfigState.defaults.schedule_lock_verify_delay_ms||'')}ミリ秒（いずれも再起動不要で次回から反映）</p>`;
+  const notes=$('#pcNotes');
+  if(notes){
+   const wd=v.work_dir?`<p class="mm-def-hint">作り直せるファイル（写し・スケジュールの作業コピー）の置き場: ${esc(v.work_dir)}`
+     +`${v.work_dir_reason?`<b>（${esc(v.work_dir_reason)}）</b>`:''}</p>`:'';
+   const cloud=v.master_cloud?`<p class="mm-warn-note"><b>マスタDBが${esc(v.master_cloud)}の中にあります</b>（${esc(v.db_dir||'')}）。
+     このフォルダーを<b>複数のPCから同時に起動すると、全員が同じマスタへ書き込みます</b>——
+     同期の衝突で設定が失われることがあります。各PCの手元へ置く場合は
+     <code>config/local.json</code> の <code>db_dir</code> を、そのPCのローカルフォルダーへ向けてください
+     （共有したいのは作業予定だけです。上の「作業予定の共有データ置き場」で共有します）。</p>`:'';
+   notes.innerHTML=wd+cloud;
+  }
  }
  async function savePathConfigMaint(){
   const uid=requireMaintUser();if(uid===null)return;

@@ -188,12 +188,16 @@ def backup():
    created_pc=str(x.get('created_pc') or '').strip() or str(prev[1] or '').strip() or request_pc_name()
    created_at=str(x.get('created_at') or '').strip() or (prev[2] if prev[2] else None)
    cur.execute('DELETE FROM [Web測定バックアップ] WHERE [記録ID]=?',[x['id']])
-   cur.execute('INSERT INTO [Web測定バックアップ] ([記録ID],[設備],[ロット番号],[検査番号],[鋳造番号],[状態],[更新日時],[圧縮形式],[ペイロード],[登録者ID],[登録端末名],[更新者ID],[更新端末名],[登録日時]) VALUES (?,?,?,?,?,?,Now(),?,?,?,?,?,?,?)',
+   # [更新時刻ISO]は**レコード自身の`updatedAt`**(§9.208 ⑤)。[更新日時]は
+   # サーバーが押す現地時刻で、画面が持つUTCのISOとは物差しが違う——
+   # 画面側の「新しい版あり」はこちらの列だけで判定する。
+   record_updated_at=str(x.get('updated_at_iso') or '').strip()[:40]
+   cur.execute('INSERT INTO [Web測定バックアップ] ([記録ID],[設備],[ロット番号],[検査番号],[鋳造番号],[状態],[更新日時],[圧縮形式],[ペイロード],[登録者ID],[登録端末名],[更新者ID],[更新端末名],[登録日時],[更新時刻ISO]) VALUES (?,?,?,?,?,?,Now(),?,?,?,?,?,?,?,?)',
                [x['id'],x.get('equipment',''),x.get('lotNo',''),x.get('inspectionNo',''),x.get('castingNo',''),
                 x.get('status','編集中'),x.get('codec','delimiter-v1'),x['payload'],
                 # 更新側は**この端末**の名前(引数を渡さない)。画面が送る
                 # `pc_name`は「作った端末」の意味で使うので、混ぜない。
-                created_by,created_pc,request_user_id(x),request_pc_name(),created_at])
+                created_by,created_pc,request_user_id(x),request_pc_name(),created_at,record_updated_at])
    c.commit()
   records_export.mark_dirty()
   # 実績バックアップのキャッシュ(§9.41)を捨てる。作業スケジュールの実績突合が

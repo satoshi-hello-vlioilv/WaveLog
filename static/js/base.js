@@ -148,6 +148,62 @@ function lengthIndex(){const el=$('#lengthPos');if(!el)return 0;const opts=[...e
    全角スペースを半角へ強制変換する。自動転送(auto)時のみ適用し、
    手動入力(manual)時は自由に入力できるよう変換しない。 */
 function toHalfWidth(str){return String(str??'').replace(/[！-～]/g,ch=>String.fromCharCode(ch.charCodeAt(0)-0xFEE0)).replace(/　/g,' ')}
+/* ---------- 手で打つ数値欄（§9.208 ③、利用者の指示） ----------
+   測定の手入力で実機から挙がった3つを1箇所で引き受ける。
+
+   ① **マイナスは受け付けない。** 板厚・板幅・長さ・肉厚・ピッチ・オフセットは
+      どれも寸法（大きさ）で、負の値は現実に存在しない。打てるのに保存だけ
+      できないより、**打てないほうが早く分かる**（§4）。
+   ② **「.5」の省略打ちを「0.5」として受ける。** `input[type=number]`の
+      「妥当な浮動小数点数」には**小数点の前の桁が要る**ので、`.5`と打つと
+      `el.value`は**空文字になり、打った値が黙って消える**。しかも
+      `value='0.'`を代入しても同じ規則で空へ落ちるため、type=numberのままでは
+      途中の状態すら作れない。**`type="text"`＋`inputmode="decimal"`**にして
+      自前で見張るのが唯一の直し方（スピナーは失うが、測定値に上下ボタンは
+      要らない）。
+   ③ **全角で打っても通す。** 現場の端末はIMEが載っていることがある。
+
+   `type`を変えるので、幅の見積り（`measure-steps.js`の`needWidth`）が
+   「8文字ぶんの日本語」へ倒れないよう`numeric-input`を目印に残す。 */
+const NUMERIC_INPUT_ATTR='data-numeric-bound';
+function normalizeDecimalText(raw,{allowTrailingDot=true}={}){
+ let v=toHalfWidth(String(raw??'')).replace(/[^0-9.]/g,'');
+ const at=v.indexOf('.');
+ if(at>=0)v=v.slice(0,at+1)+v.slice(at+1).replace(/\./g,'');
+ if(!allowTrailingDot){
+  if(v==='.')return '';
+  if(v.startsWith('.'))v='0'+v;
+  if(v.endsWith('.'))v=v.slice(0,-1);
+ }
+ return v;
+}
+function attachNumericInput(el){
+ if(!el||el.getAttribute(NUMERIC_INPUT_ATTR))return;
+ el.setAttribute(NUMERIC_INPUT_ATTR,'1');
+ if(el.type==='number'){el.type='text';el.removeAttribute('step')}
+ el.inputMode='decimal';
+ el.autocomplete='off';
+ el.classList.add('numeric-input');
+ /* 打っている最中は末尾の小数点を残す（`0.`を消すと次の桁が打てない）。
+    整えるのは**離れたとき**——`.5`→`0.5`、`5.`→`5`。 */
+ el.addEventListener('input',()=>{
+  const v=normalizeDecimalText(el.value);
+  if(v!==el.value){
+   const back=el.value.length-el.selectionEnd;
+   el.value=v;
+   try{const at=Math.max(0,v.length-back);el.setSelectionRange(at,at)}catch(e){}
+  }
+ });
+ el.addEventListener('blur',()=>{
+  const v=normalizeDecimalText(el.value,{allowTrailingDot:false});
+  if(v===el.value)return;
+  el.value=v;
+  el.dispatchEvent(new Event('input',{bubbles:true}));
+  el.dispatchEvent(new Event('change',{bubbles:true}));
+ });
+}
+window.WL=window.WL||{};
+WL.numericInput={attach:attachNumericInput,normalize:normalizeDecimalText};
 function normalizedLot(value){return String(value||'').normalize('NFKC').replace(/[\s　_-]/g,'').toUpperCase()}
 /* 画面右下に一時通知(トースト)を表示する。 */
 function showToast(title, detail='', duration=3400){

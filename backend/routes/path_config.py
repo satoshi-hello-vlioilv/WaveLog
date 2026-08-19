@@ -79,6 +79,30 @@ _PATH_CONFIG_NUMERIC_FIELDS={
  'schedule_owner_ttl_sec':('持ち主の目印の有効期限(秒)',30),
 }
 
+def _pc_name_now():
+ """この端末の呼び名と、その出どころ。**読めなくても落ちない**。"""
+ try:
+  from ..access_mode import pc_name_info
+  info=pc_name_info()
+  return str(info.get('name') or ''),str(info.get('source') or '')
+ except Exception:
+  return '',''
+
+# 選択肢を持つ設定（キー -> (画面での呼び名, 受け付ける値)）。
+# **空文字は常に許す**——「既定へ戻す」の意味で、行そのものを消す。
+_PATH_CONFIG_CHOICE_FIELDS={
+ 'sikalot_source':('参照データの取得元',('network','local')),
+ 'rne_extract_enabled':('RNE抽出の定期実行',('auto','on','off')),
+ 'db_mirror_enabled':('共有DBの写し',('auto','on','off')),
+ 'schedule_watch_enabled':('共有スケジュールの見張り',('auto','on','off')),
+ 'schedule_owner_enabled':('共有スケジュールの書き込み役',('on','off')),
+ 'builtin_quality_join':('既定の品質データ結合',('on','off')),
+}
+# 自由に書ける文字列の設定（置き場と端末名）。空欄なら既定へ戻る。
+# `pc_name`はこの端末の呼び名(§9.208 ⑧)——OSから取れない端末が名乗り直すため。
+_PATH_CONFIG_TEXT_FIELDS=('records_backup_export_path','schedule_share_path',
+                          'rne_assets_dir','rne_conf_path','pc_name')
+
 @bp.get('/api/path-config-master')
 def path_config_master_get():
  try:
@@ -135,6 +159,9 @@ def path_config_master_get():
    # 作り直せるファイル(写し・スケジュールの作業コピー)の実際の置き場(§9.109)。
    # **設定項目ではない**——db_dirが共有/クラウド同期フォルダーの上のときだけ
    # 自動で手元へ移るので、どこになったかを確かめるためだけに出す。
+   # この端末の呼び名(§9.208 ⑧)。設定で名乗り直したときの「いま」と
+   # 突き合わせられるように、解決した結果と出どころを返す。
+   'pc_name':_pc_name_now()[0],'pc_name_source':_pc_name_now()[1],
    'work_dir':str(paths.work_dir()),
    'work_dir_reason':paths.work_dir_reason(),
    # マスタDB・測定データDBは**手元のもの**(§9.109で移さないと決めた側)。
@@ -161,9 +188,19 @@ def path_config_master_update():
  try:
   x=request.get_json(force=True) or {};uid=request_user_id(x)
   errors=[]
-  sikalot_source=str(x.get('sikalot_source') or '').strip()
-  if sikalot_source and sikalot_source not in ('network','local'):
-   errors.append('参照データの取得元は「network」「local」のいずれかを指定してください。')
+  # ---- 選択肢を持つ設定は1つの表で受ける(§9.208 ⑨) ----
+  # 以前は`sikalot_source`と`rne_extract_enabled`だけを名指しで受けており、
+  # **画面に欄があるのに保存側に無い設定**が3つあった
+  # (`schedule_watch_enabled`・`schedule_owner_enabled`・`db_mirror_enabled`)。
+  # 触っても何も起きず、開き直すと元に戻る——一番分かりにくい壊れ方なので、
+  # 受け取る側も1箇所にまとめる。
+  choice_values={}
+  for key,(label,allowed) in _PATH_CONFIG_CHOICE_FIELDS.items():
+   if key not in x:continue
+   raw=str(x.get(key) or '').strip()
+   if raw and raw not in allowed:
+    errors.append(f'{label}は「'+'」「'.join(allowed)+'」のいずれかを指定してください。');continue
+   choice_values[key]=raw
   numeric_values={}
   for key,(label,minimum) in _PATH_CONFIG_NUMERIC_FIELDS.items():
    if key not in x:continue                      # 送られてこなかった項目は触らない(下記)
@@ -174,9 +211,6 @@ def path_config_master_update():
    except ValueError:errors.append(f'{label}は整数で入力してください。');continue
    if n<minimum:errors.append(f'{label}は{minimum}以上で入力してください。');continue
    numeric_values[key]=str(n)
-  rne_enabled=str(x.get('rne_extract_enabled') or '').strip()
-  if rne_enabled and rne_enabled not in ('auto','on','off'):
-   errors.append('RNE抽出の定期実行は「auto」「on」「off」のいずれかを指定してください。')
   if errors:return jsonify(error=' / '.join(errors)),400
   # **データソースの読み込み先はここに固定で書かない**(§9.163)。以前は
   # 'sikalotnow_path'/'sikalotdef_path'を必ず書いており、キーを変えた環境では
@@ -189,13 +223,9 @@ def path_config_master_update():
   # `schedule_share_path`の行が消え、以降その端末ではスケジュール機能が
   # 「未設定」になる。検証の通しで実際に踏んだ）。画面は全項目を送るので
   # 「空欄で保存＝既定へ戻す」は今までどおり効く（キーは送られてくる）。
-  updates={}
-  if 'sikalot_source' in x:updates['sikalot_source']=sikalot_source
-  for key in ('records_backup_export_path','schedule_share_path',
-              # RNE資材・接続情報の置き場(§9.79)。空欄なら既定へ戻る。
-              'rne_assets_dir','rne_conf_path'):
+  updates=dict(choice_values)
+  for key in _PATH_CONFIG_TEXT_FIELDS:
    if key in x:updates[key]=str(x.get(key) or '').strip()
-  if 'rne_extract_enabled' in x:updates['rne_extract_enabled']=rne_enabled
   updates.update(numeric_values)
   # データソースごとの個別上書き(<キー小文字>_path)。マスタに登録された
   # ぶんだけ受け付ける(任意のキーを書けるようにはしない)。
