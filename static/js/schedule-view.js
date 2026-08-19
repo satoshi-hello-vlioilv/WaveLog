@@ -407,8 +407,14 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      <!-- 見え方の入口は1つ(§9.199)。**いまの設定を文字で連れて出す**
           ——畳んだ先の値が読めないと、開くまで思い出せない。 -->
      <div class="sc-tools" data-tools="view" id="scToolsView">
+      <!-- **よく使うものは畳まない**（§9.207、利用者の指示「よく使う表示列の
+           カスタム機能だけはメニュー部分に出してほしい」）。§9.199で見え方を
+           1枚のパネルへ集めたが、表示列だけは触る回数が桁違いに多く、
+           「開く→探す→押す」の3手が毎回かかっていた。 -->
+      <button type="button" class="sc-split-toggle sc-ico-btn" id="scContentModalBtn" hidden
+        title="この表に出す列・並び・幅・書式を設定します（設備ごとに保存）"><i>▦</i><span>表示列</span></button>
       <button type="button" class="sc-split-toggle sc-view-menu-btn" id="scViewMenuBtn" hidden
-        aria-expanded="false" title="この画面の見え方（まとめ・さかのぼり・表示列・行の色・配置）をまとめて設定します。予定そのものは変わりません">
+        aria-expanded="false" title="この画面の見え方（まとめ・さかのぼり・行の色・配置）をまとめて設定します。予定そのものは変わりません">
        <i>⚙</i><span class="sc-vm-txt">表示</span><b class="sc-vm-state" id="scViewState"></b><span class="hd-caret">▾</span>
       </button>
      </div>
@@ -469,11 +475,6 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
        <span class="sc-history-from" id="scHistoryFrom" hidden></span>
       </span>
      </label>
-     <div class="sc-view-acc" id="scViewAccColumns" hidden>
-      <button type="button" class="sc-view-sec" id="scContentModalBtn">
-       <i>☰</i><span>表示列と並び<small>この表に出す列・並び・幅・書式（設備ごとに保存）</small></span><em>開く ▸</em>
-      </button>
-     </div>
      <div class="sc-view-acc" id="scViewAccRowStyle" hidden>
       <button type="button" class="sc-view-sec" id="scRowStyleBtn" aria-expanded="false">
        <i>🎨</i><span>行の色とアイコン<small>区分・設備停止の分類ごと（全員に効きます）</small></span><em class="sc-view-chev">▾</em>
@@ -572,7 +573,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      実装は当面残す（他から呼ばれていないかを通しで確かめるまでの保険）。 */
   /* 列の設定は別の窓(浮きウィンドウ)で開くので、**「表示」パネルは畳む**
      (§9.199)。開いたまま残すと、窓の下に設定パネルが覗いたままになる。 */
-  $('#scContentModalBtn').onclick=()=>{closeViewPop();openContentPanel()};
+  $('#scContentModalBtn').onclick=()=>{closeViewPop();openContentPanel()};   /* バー直下(§9.207) */
   $('#scSideToggle').onclick=()=>toggleSideCollapsed();
   $('#scStopSectionToggle').onclick=()=>{
    const box=$('#scStopButtons');if(!box)return;
@@ -1048,7 +1049,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  function updateViewMenuUi(){
   const btn=$('#scViewMenuBtn');if(!btn)return;
   const secs=[$('#scGroupRange'),$('#scHistoryRange'),
-              $('#scViewAccColumns'),$('#scViewAccRowStyle'),$('#scViewAccLayout')];
+              $('#scViewAccRowStyle'),$('#scViewAccLayout')];
   const any=secs.some(el=>el&&!el.hidden);
   btn.hidden=!any;
   if(!any){closeViewPop();updateToolGroups();return}
@@ -1196,12 +1197,13 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      権限(fullControl)で塞いでいたため、測定する端末では列を1本も動かせ
      なかった(見出しのD&Dだけは効いていたので、なお分かりにくい)。
      **足せる項目だけがscheduleモード限定**で、その旨はパネルが文字で言う。 */
+  /* **表示列だけはメニューバーに出す**(§9.207、利用者の指示)。§9.199で
+     見え方を1枚のパネルへ集めたが、これは触る回数が桁違いに多く、
+     「開く→探す→押す」の3手が毎回かかっていた。**入口は1つのまま
+     場所だけ動かす**——idを変えずに置き場所を変える。 */
   const contentBtn=$('#scContentModalBtn');
   const colApplicable=scState.boardMode==='single'&&!!scState.equipment;
   if(contentBtn){contentBtn.hidden=!colApplicable;contentBtn.classList.toggle('active',contentPanelOpen())}
-  /* 段の器も一緒に隠す(§9.199)——ボタンだけ隠すと、見出しの無い空の枠が
-     「表示」パネルの中に残る。 */
-  const accCol=$('#scViewAccColumns');if(accCol)accCol.hidden=!colApplicable;
   /* 表示の設定(§9.179)は分割表示が意味を持つ場面だけ。 */
   const layoutBtn=$('#scLayoutBtn');
   if(layoutBtn){layoutBtn.hidden=!applicable;if(layoutBtn.hidden)closeLayoutPop()}
@@ -2560,7 +2562,70 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  /* 選べる列すべて（隠しているものも含む）。設定パネル・右クリックメニューが
     使う。既定は「予定そのもの → 内容 → 実績・操作」の作業順(§14)。 */
  function timelineAllColumnKeys(){
-  return [...SC_COL_BEFORE,...chosenContentKeys(),...SC_COL_AFTER];
+  const base=[...SC_COL_BEFORE,...chosenContentKeys(),...SC_COL_AFTER];
+  const seen=new Set(base);
+  /* 計算式で作った列も**同じ並びの一部**（§9.207）。末尾へ足す
+     ——並びを保存すれば好きな位置へ動かせる。 */
+  return [...base,...timelineFormulaKeys().filter(k=>!seen.has(k))];
+ }
+ /* ---------- 計算式で作る列（§9.207、利用者の指示「計算式などを組むために
+    空の列(名前は必須)を追加できるようにしたい。データは条件式などを組んで
+    引っ張ってくる使い方」） ----------
+    **一覧とまったく同じ仕組み**（`WL.formula`＝列レイアウトマスタの`[計算式]`）に
+    乗せる。式の書き方もヘルプも1つ（§9.111。`eval`は使わない）。
+    材料は**画面に出ている列と同じ**なので、`[ロット番号]`のように**見出しの
+    言葉で書ける**——`__date__`のような内側のキーを覚えさせない。
+    **表示だけの列**で、並べ替え・絞り込みの対象にはしない。 */
+ /* **式が空の列も数える**（一覧の`listColumnKeys()`と同じ作法）。作った
+    直後は式が空なので、ここで落とすと**足した列がその場で消える**。
+    空のまま保存すればサーバー側で行ごと消える（パネルがそう書いている）。 */
+ function timelineFormulaKeys(){
+  const t=timelineTarget();if(!t)return [];
+  return Object.keys(WL.columnLayout.get(t).formulas||{});
+ }
+ const timelineIsFormulaKey=k=>timelineFormulaKeys().includes(k);
+ /* 式を**列ごとに1回だけ解く**（行ごとに解き直すと行数×列数ぶん効く）。
+    行を描くのは`renderEntryRow`＝別の関数なので、**式が変わったときだけ
+    解き直す控え**として持つ（引数で配って回すと、渡し忘れた経路だけが
+    黙って空になる）。壊れた式はその列を落とさず空にする——直せる場所へ
+    辿れるように残す。 */
+ let scFormulaMemo={sig:'',fns:new Map()};
+ function timelineFormulaFns(){
+  const t=timelineTarget();
+  const f=t?(WL.columnLayout.get(t).formulas||{}):{};
+  const sig=t+'|'+JSON.stringify(f);
+  if(scFormulaMemo.sig===sig)return scFormulaMemo.fns;
+  const out=new Map();
+  Object.keys(f).forEach(k=>{
+   if(!String(f[k]||'').trim())return;
+   try{out.set(k,WL.formula.compile(f[k]))}
+   catch(e){out.set(k,{run:()=>'',columns:[]})}
+  });
+  scFormulaMemo={sig,fns:out};
+  return out;
+ }
+ /* 式の中の`[名前]`を解く。**見出しの言葉→表示名→キー**の順に当てる
+    （画面に出ている言葉で書けることが値打ち）。 */
+ function timelineKeyByName(name){
+  const want=String(name||'').trim();
+  if(!want)return '';
+  const all=timelineAllColumnKeys();
+  if(all.includes(want))return want;
+  return all.find(k=>scColLabel(k)===want)||'';
+ }
+ /* 式に渡す1行。**要る列だけ**作る（全列だと行数×列数の取り出しになる）。 */
+ function timelineFormulaRow(e,cols){
+  const row={};
+  (cols||[]).forEach(name=>{
+   const k=timelineKeyByName(name);
+   if(!k)return;
+   row[name]=scIsFixedCol(k)?scFixedCellText(e,k):entryValueOf(e,k);
+  });
+  return row;
+ }
+ function timelineFormulaText(e,fn){
+  const v=fn?fn.run(timelineFormulaRow(e,fn.columns)):null;
+  return v===null||v===undefined?'':String(v);
  }
  /* 覚えている並びを当てた全列（隠しているものも残す）。保存するのは
     **この並び**——見えている分だけ保存すると、隠した列の位置が失われる。 */
@@ -2577,7 +2642,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   return timelineOrderedKeys().filter(k=>!hide.has(k));
  }
  /* 出している内容欄の項目だけ（セルの組み立てが使う）。 */
- function timelineContentKeys(){return timelineColumnKeys().filter(k=>!scIsFixedCol(k))}
+ /* 内容欄の項目だけ。**計算で作る列は含めない**（§9.207）——内容欄は
+    スケジュール内容表示マスタが持つ項目で、式で作る列は別の出どころ。 */
+ function timelineContentKeys(){
+  const calc=new Set(timelineFormulaKeys());
+  return timelineColumnKeys().filter(k=>!scIsFixedCol(k)&&!calc.has(k));
+ }
  /* 1行ぶんのセル。作業以外(設備停止)は最初の列へ名称を出し、残りは空にする
     ——列の数を行ごとに変えると桁が合わなくなる。 */
  function timelineContentCells(e){
@@ -3192,6 +3262,50 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    x.classList.toggle('is-picked',scColPicked.has(x.dataset.col));
   });
   scColPickHint();
+ }
+ /* ---------- 行の右クリック（§9.207、利用者の指示「右クリックメニューに
+    操作と同等の機能を実装し…充実させてください」） ----------
+    操作の列は**普通の列**になった（右端へ貼り付けるのをやめた）ので、
+    その列を隠している人にも同じ道が要る。**並べるのは「いまできること」
+    だけ**（§4。押せるのに何も起きない項目を残さない）。**危ない操作は
+    下へ離す**（§5。「完了」の隣に「削除」を置かない）。
+    見た目は見出しの右クリックと同じ`.col-head-menu`を使い回す
+    ——2つの流儀を覚えさせない。 */
+ let scRowMenuEl=null;
+ function closeRowMenu(){if(scRowMenuEl){scRowMenuEl.remove();scRowMenuEl=null}}
+ function openRowMenu(ev,title,note,items){
+  closeRowMenu();
+  const list=items.filter(Boolean);
+  if(!list.length)return;
+  const m=document.createElement('div');
+  m.className='col-head-menu sc-row-menu';
+  scRowMenuEl=m;
+  m.innerHTML=`<div class="chm-head" title="${esc(title)}">${esc(title)}</div>`
+   +(note?`<div class="chm-label">${esc(note)}</div>`:'')
+   +list.map((it,i)=>it.sep?'<div class="chm-sep"></div>'
+     :`<button type="button" data-i="${i}"${it.danger?' class="chm-danger"':''}`
+      +`${it.note?` title="${esc(it.note)}"`:''}>${esc(it.label)}</button>`).join('');
+  document.body.append(m);
+  const w=m.offsetWidth,h=m.offsetHeight;
+  m.style.left=`${Math.max(6,Math.min(ev.clientX,innerWidth-w-6))}px`;
+  m.style.top=`${Math.max(6,Math.min(ev.clientY,innerHeight-h-6))}px`;
+  m.querySelectorAll('[data-i]').forEach(b=>b.onclick=()=>{
+   const it=list[Number(b.dataset.i)];closeRowMenu();
+   if(it&&it.run)it.run();
+  });
+ }
+ document.addEventListener('mousedown',ev=>{
+  if(scRowMenuEl&&!ev.target.closest('.sc-row-menu'))closeRowMenu();
+ },true);
+ document.addEventListener('keydown',ev=>{if(ev.key==='Escape')closeRowMenu()},true);
+ /* **どの行のメニューかを頭に出す**——右クリックは行の上で開くが、開いた
+    メニューは行を覆うので、押す時点で対象が見えなくなる。 */
+ function scRowMenuTitle(e){
+  if(e.kind==='作業')return String(e.lotNo||e.title||'予定').trim()||'予定';
+  return String(e.title||(e.kind==='コメント'?'申し送り':'設備停止')).trim();
+ }
+ function scRowMenuNote(e){
+  return [e.kind==='作業'?'':e.kind,e.state,e.unplanned?'計画外':''].filter(Boolean).join(' / ');
  }
  function timelineHeadMenuSource(timeline){
   return {
@@ -3952,6 +4066,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
 
    const lotText=entryContentText(e);      // ツールチップ・帳票用の1行要約
    const contentCells=timelineContentCells(e);
+   const formulaFns=timelineFormulaFns();      /* 計算で作る列(§9.207)。控えつき */
    /* **「誰が・どの端末で」は常に詳細へ入れる**(§9.180)。これにより
       すべての行に詳細(▾)が付く——監査の情報は行を選ばず必要になる。 */
    const detailHtml=fixedStartHtml(e)+estimateBreakdownHtml(e)+auditHtml(e);
@@ -4013,6 +4128,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      const v=SC_FIXED_TEXT[k](info);
      return `<span class="sc-row-audit" data-col="${esc(k)}" title="${esc(v)}">${esc(v)}</span>`;
     }
+    /* 計算で作る列（§9.207）。**設備停止・コメントの行でも同じ式を当てる**
+       ——行ごとに材料が無ければ式の中で空になるだけで、列がずれない。 */
+    if(formulaFns.has(k)){
+     const v=timelineFormulaText(e,formulaFns.get(k));   /* §9.207 */
+     return `<span class="sc-row-title sc-row-calc" data-col="${esc(k)}" title="${esc(v)}">${esc(v)}</span>`;
+    }
     const c=contentMap.get(k);
     return c?`<span class="sc-row-title${c.color?' cell-'+c.color:''}" data-col="${esc(k)}" data-content-col="${esc(k)}" title="${esc(c.raw||c.text)}">${esc(c.text)}</span>`
             :`<span data-col="${esc(k)}"></span>`;
@@ -4046,6 +4167,41 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    if(report)report.onclick=ev=>{ev.stopPropagation();openEntryReport(e)};
    const delHist=row.querySelector('.sc-row-delete-history');
    if(delHist)delHist.onclick=ev=>{ev.stopPropagation();deleteHistoryEntry(e)};
+   /* 詳細の器は**この時点ではまだ無い**（行を差し込んだあとに作る）ので、
+      メニューは押されたときに読み直す。 */
+   let detailEl=null;
+   /* 右クリック（§9.207）。**操作の列を隠していても同じことができる**。 */
+   row.addEventListener('contextmenu',ev=>{
+    if(ev.target.closest('.sc-row-head'))return;
+    ev.preventDefault();ev.stopPropagation();
+    const picked=scState.picked.has(String(e.id));
+    const canPick=!!removableEntry(e)||!!canDrag;
+    openRowMenu(ev,scRowMenuTitle(e),scRowMenuNote(e),[
+     canStart&&{label:'▶ 作業を開始する',note:'この予定の測定画面を開きます',
+                run:()=>startWorkFromEntry(e)},
+     canResume&&{label:'▶ 測定を再開する',note:'続きから開きます',
+                 run:()=>startWorkFromEntry(e)},
+     canReport&&{label:'📄 帳票を開く',run:()=>openEntryReport(e)},
+     canLock&&{label:locked?'🔓 日時の固定を解除する':'🔒 いまの日時で固定する',
+               note:locked?'通常の並びへ戻します':'以降ずれなくなります',
+               run:()=>toggleEntryLock(e)},
+     detailHtml&&{label:'▾ 詳細（固定開始・見積の内訳）',
+                  run:()=>{if(detailEl){detailEl.hidden=!detailEl.hidden;
+                    const t=row.querySelector('.sc-row-detail-toggle');
+                    if(t){t.textContent=detailEl.hidden?'▾':'▴';
+                          t.classList.toggle('active',!detailEl.hidden)}}}},
+     commentEditable(e)&&{label:'✎ 申し送りを書き直す',run:()=>startCommentEdit(e.id)},
+     canPick&&{label:picked?'☐ 選択を外す':'☑ この行を選ぶ',
+               note:'選んだ行はまとめて動かす・まとめて外せます',
+               run:()=>setPicked(e.id,!picked)},
+     {sep:true},
+     {label:'⚙ 表示列の設定を開く…',run:()=>openContentPanel()},
+     (canDelete||canDeleteHistory)&&{sep:true},
+     canDelete&&{label:'🗑 予定から外す',danger:true,run:()=>deleteEntry(e.id)},
+     canDeleteHistory&&{label:'🗑 実績（測定データ）を削除',danger:true,
+                        note:'取り消せません',run:()=>deleteHistoryEntry(e)},
+    ]);
+   });
    if(canResume){
     row.classList.add('sc-row-resumable');
     row.title='ダブルクリックで測定を再開します';
@@ -4084,22 +4240,26 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
       置かない**——ボタンが無いのに詳細だけDOMへ積むと、開く手立てが無い
       死んだ要素が行の数だけ増える(以前はここで`toggle.onclick`が
       nullへの代入になって、行を1つ描くたびに例外が出ていた)。 */
-   const toggle=row.querySelector('.sc-row-detail-toggle');
-   if(detailHtml&&toggle){
-    const detail=document.createElement('div');
-    detail.className='sc-row-detail';
-    detail.hidden=true;
-    detail.innerHTML=detailHtml;
-    timeline.append(detail);
-    toggle.onclick=ev=>{
+   /* 詳細（固定開始・見積の内訳）は**操作の列を隠していても開ける**
+      （§9.207）。以前はボタンが無ければ器ごと作らなかったので、列を隠すと
+      詳細へ辿り着く道が消えていた。いまは行の右クリックから開けるので、
+      **中身があるかぎり器は作る**。 */
+   if(detailHtml){
+    detailEl=document.createElement('div');
+    detailEl.className='sc-row-detail';
+    detailEl.hidden=true;
+    detailEl.innerHTML=detailHtml;
+    timeline.append(detailEl);
+    const toggle=row.querySelector('.sc-row-detail-toggle');
+    if(toggle)toggle.onclick=ev=>{
      ev.stopPropagation();
-     detail.hidden=!detail.hidden;
-     toggle.textContent=detail.hidden?'▾':'▴';
-     toggle.classList.toggle('active',!detail.hidden);
+     detailEl.hidden=!detailEl.hidden;
+     toggle.textContent=detailEl.hidden?'▾':'▴';
+     toggle.classList.toggle('active',!detailEl.hidden);
     };
-    const fsInput=detail.querySelector('.sc-fixed-start-input');
+    const fsInput=detailEl.querySelector('.sc-fixed-start-input');
     if(fsInput)fsInput.onchange=()=>updateFixedStart(e.id,fsInput.value);
-    const fsClear=detail.querySelector('.sc-fixed-start-clear');
+    const fsClear=detailEl.querySelector('.sc-fixed-start-clear');
     if(fsClear)fsClear.onclick=ev=>{ev.stopPropagation();updateFixedStart(e.id,'')};
    }
   }
@@ -5438,6 +5598,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    title:()=>`表示列の設定（作業スケジュール表：${eq}）`,
    lead:'左で<b>出す列と並び</b>を決め、右で<b>選んだ1列の見え方</b>を整えます。'
        +'区分・日付・操作などの列もここで消せます（<b>1列目の取っ手</b>は掴む場所なので残ります）。'
+       +'<b>計算式の列</b>を足せます（名前を付けて式を書くと、その式の結果が並びます）。'
        +'触った結果はすぐスケジュール表に出ます（<b>保存するまでは元に戻せます</b>）。'
        +(scState.fullControl?'':'<br><b>この端末では内容欄に新しい項目を足せません</b>'
          +'（項目を選べるのはスケジュールモードだけ。並び・幅・出す出さないはここで変えられます）。'),
@@ -5467,11 +5628,17 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
       いないものを「出さない」として開く。列レイアウトマスタのhiddenを
       そのまま使うと（あちらは空なので）候補が全部チェック済みになり、
       保存した瞬間に**選んだ覚えの無い項目まで内容欄へ並ぶ**。 */
+   /* **いま出していない列＝チェックを外して開く**、それだけ（§9.207）。
+      以前はここに「固定列は既定で出す（監査4列を除く）」という条件が
+      重ねてあり、**利用者が固定列を消しても次に開くとチェックが戻って
+      いた**（保存し直すと出てくる。実機で「非表示にしても表示に切り替わって
+      しまう列がいくつかある」と報告された。日付・時刻・残り…＝
+      `SC_COL_OFF_BY_DEFAULT`に載っていない固定列が全部これ）。
+      既定かどうかは`timelineColumnKeys()`（＝`timelineHiddenSet()`）が
+      既に見ている——**同じ判定を2箇所に置かない**（片方だけが古くなる）。 */
    initialHidden:keys=>{
-    /* 固定列は既定で出す（**監査の4列だけは既定で出さない**。§9.180）。
-       内容欄の項目は「選んでいないもの＝出さない」。 */
     const chosen=new Set(timelineColumnKeys());
-    return keys.filter(k=>!chosen.has(k)&&(!scIsFixedCol(k)||SC_COL_OFF_BY_DEFAULT.includes(k)));
+    return keys.filter(k=>!chosen.has(k));
    },
    /* 見本は**予定が持つ仕掛データのスナップショット**。1件では
       「たまたま」と区別が付かないので、中身のある予定を集める。 */
@@ -5483,7 +5650,17 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    /* **値の取り出しはcontentValueOf経由**(§9.69)。投入した時期によって
       alias名だけの予定と生カラム名を持つ予定が混ざるので、直接引くと
       古い予定で1件も出ない。 */
-   valueOf:(row,k)=>scIsFixedCol(k)?scFixedCellText(row,k):entryValueOf(row,k),
+   /* 式へ渡す1行（§9.207）。予定の行は`{列名:値}`ではないので、
+      **見出しの言葉で書けるように**ここで組み立て直す。 */
+   formulaRowOf:(row,cols)=>timelineFormulaRow(row,cols),
+   valueOf:(row,k)=>{
+    /* 計算で作る列は**式を当てた結果**を見せる（§9.207）。生の値は無いので、
+       ここを素通しにすると設定画面だけ「値のある行がありません」と出る
+       （§9.176で内容欄が踏んだのと同じ罠）。 */
+    const fx=timelineFormulaFns();
+    if(fx.has(k))return timelineFormulaText(row,fx.get(k));
+    return scIsFixedCol(k)?scFixedCellText(row,k):entryValueOf(row,k);
+   },
    /* **項目名は日本語で出す。** 内容欄のキーは`lotNo`/`purposeName`という
       alias名なので、そのまま並べると選んだ本人以外には何の項目か分からない
       （タイムラインの見出しが日本語なのに、設定画面だけ生のキーという
@@ -5491,8 +5668,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    labelOf:k=>scColLabel(k),
    /* 固定列は**予定そのものが持つ値**で、仕掛データの列ではない。
       分類と一言の説明を添える(§9.105。出どころを言う)。 */
-   originOf:k=>scIsFixedCol(k)?'calc':((scState.joinColumns||[]).includes(k)?'join':'source'),
-   noteOf:k=>{const d=SC_COL_MAP.get(k);return d?d.note:''},
+   originOf:k=>(scIsFixedCol(k)||timelineIsFormulaKey(k))?'calc'
+     :((scState.joinColumns||[]).includes(k)?'join':'source'),
+   noteOf:k=>{
+    if(timelineIsFormulaKey(k))return '式で作る列（表示だけ。並べ替え・絞り込みの対象にはなりません）';
+    const d=SC_COL_MAP.get(k);return d?d.note:'';
+   },
    currentWidthOf:k=>{
     const el=document.querySelector(`.sc-row-head [data-col="${CSS.escape(k)}"]`);
     return el?Math.round(el.getBoundingClientRect().width):0;
@@ -5511,7 +5692,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    origins:()=>((scState.joinColumns||[]).length?['source','join','calc']:['source','calc']),
    /* 並べ替えは持たない(§9.176。行の並びは時刻の一本道)ので、
       並べ替えの決まり(§9.187)の欄も出さない。 */
-   features:{formula:false,preset:true,width:true,format:true,rule:true,sort:false},
+   /* 計算式の列を足せる（§9.207、利用者の指示）。**並べ替えは持たない**
+      （§9.176。行の並びは時刻の一本道）。 */
+   features:{formula:true,preset:true,width:true,format:true,rule:true,sort:false},
    afterApply:()=>{if(scState.entries&&scState.entries.length)renderTimeline()},
    save:async(target,body)=>{
     /* ① 出す項目＝チェックの入っている列を、**並びの順**で内容表示マスタへ。
@@ -5520,7 +5703,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     const hide=new Set(body.hidden||[]);
     /* **内容表示マスタへ書くのは内容欄の項目だけ**(§9.176)。固定列の
        キー(`__cat__`等)まで混ぜると、内容欄に「区分」が現れる。 */
-    const items=(body.order||[]).filter(k=>!hide.has(k)&&!scIsFixedCol(k));
+    /* **計算で作った列を内容表示マスタへ混ぜない**（§9.207）。混ぜると
+       「内容欄の項目」として扱われ、式を消した瞬間に空の列が残る。 */
+    const isCalc=k=>Object.prototype.hasOwnProperty.call(body.formulas||{},k);
+    const items=(body.order||[]).filter(k=>!hide.has(k)&&!scIsFixedCol(k)&&!isCalc(k));
     const toSave=sameItems(items,DEFAULT_CONTENT_ITEMS)?[]:[...items];
     await api('/api/schedule-content-master',{method:'POST',
      headers:{'Content-Type':'application/json'},

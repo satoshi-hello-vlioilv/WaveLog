@@ -96,15 +96,23 @@ let b=null;
   const pop=await page.evaluate(()=>({
    group:!!document.querySelector('#scViewPop #scGroupSelect'),
    hist:!!document.querySelector('#scViewPop #scHistorySelect'),
-   cols:!!document.querySelector('#scViewPop #scContentModalBtn'),
+   /* **表示列だけはバーに出す**（§9.207、利用者の指示「よく使う表示列の
+      カスタム機能だけはメニュー部分に出してほしい」）。畳んだ先ではなく
+      1行のメニューに直接出ていること。 */
+   cols:!!document.querySelector('#scToolsView #scContentModalBtn'),
+   colsInPop:!!document.querySelector('#scViewPop #scContentModalBtn'),
    rowstyle:!!document.querySelector('#scViewPop #scRowStyleBtn'),
    layout:!!document.querySelector('#scViewPop #scLayoutBtn'),
    who:document.getElementById('scViewPop').textContent.replace(/\s+/g,' '),
   }));
-  rec('まとめ・さかのぼり・表示列・行の色・配置が1箇所にある',
-      pop.group&&pop.hist&&pop.cols&&pop.rowstyle&&pop.layout,JSON.stringify(pop));
+  rec('まとめ・さかのぼり・行の色・配置が1枚のパネルに集まる',
+      pop.group&&pop.hist&&pop.rowstyle&&pop.layout,JSON.stringify(pop));
+  /* **よく使うものは畳まない**（§9.207）。同じ入口を2箇所に置かない
+      （§8。どちらを押せばよいのか読む側が数え直すことになる）。 */
+  rec('表示列はメニューに直接出す（パネルの中には置かない）',
+      pop.cols&&!pop.colsInPop,JSON.stringify({bar:pop.cols,pop:pop.colsInPop}));
   rec('誰に効く設定かを段ごとに書く',
-      /全員に効きます/.test(pop.who)&&/設備ごと/.test(pop.who)&&/この端末だけ/.test(pop.who),
+      /全員に効きます/.test(pop.who)&&/この端末だけ/.test(pop.who),
       pop.who.slice(0,140));
   /* **開くのは常に1つ**——2枚開くと、長い中身のどちらを見ているのか
      分からなくなる。逆順でも効くことを見る（片方だけが相手を畳む実装だと

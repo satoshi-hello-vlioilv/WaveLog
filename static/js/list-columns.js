@@ -71,6 +71,10 @@
   healed:t=>typeof WL.healedColumnOrder==='function'?WL.healedColumnOrder(t):null,
   rows:()=>S.rows||[],
   valueOf:(row,k)=>row?row[k]:undefined,
+  /* 式へ渡す1行。**既定は行そのまま**（一覧の行は`{列名:値}`なので、
+     `[列名]`がそのまま当たる）。スケジュール表のように行が生の
+     `{列名:値}`でない画面だけ、口が組み立て直す（§9.207）。 */
+  formulaRowOf:null,
   virtual:()=>LIST_VIRTUAL,
   /* 結合されてきた列の名前は**サーバーが返す**(§9.105)。列名から
      見分ける手がかりは無いので、画面側で推測しない。 */
@@ -749,8 +753,12 @@
   let sampleHtml='';
   if(chk.ok&&rows.length){
    const c=WL.formula.compile(src);
+   /* 行の形は画面によって違う（§9.207）。口が答えるならそちらへ通す
+      ——通さないと、スケジュール表の見本だけ全部「（空）」になる。 */
+   const fxRow=r=>typeof panelSrc.formulaRowOf==='function'
+     ?panelSrc.formulaRowOf(r,c.columns):r;
    sampleHtml=rows.map(r=>{
-    const v=c.run(r);
+    const v=c.run(fxRow(r));
     return `<div class="lc-fx-row"><code>${esc(String(v==null?'':v))||'<i class="lc-eg-none">（空）</i>'}</code></div>`;
    }).join('');
   }
@@ -1047,6 +1055,11 @@
    const note=document.getElementById('lcFootNote');
    if(note)note.textContent='保存しました';
    panelSrc.afterApply();
+   /* **保存したら閉じる**（§9.207、利用者の指示「表示列の設定で保存ボタンを
+      押したら、モーダルを閉じてほしい」）。保存＝この作業は終わりなので、
+      開いたままだと「まだ何かするのか」と読ませる。**失敗したら閉じない**
+      ——直す場所が消えてしまう。 */
+   close();
   }catch(e){showToast&&showToast('保存に失敗しました',e.message,5000)}
  }
  /* ---------- 名前を付けて覚えさせる(§9.111) ----------

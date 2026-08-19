@@ -314,17 +314,23 @@ const CUT_FACE_LIMITS={
    出していたので、保存済みの値がここを通って基準に当たる。 */
 const PRODUCT_EDGE_ALIAS={'テレスコ状':'テレスコープ状'};
 function normalizeEdgeShape(v){const t=String(v||'').trim();return PRODUCT_EDGE_ALIAS[t]||t}
-function cutFaceGrade(){
- const raw=String((S.measure&&S.measure.qualityGrades&&S.measure.qualityGrades['切断面'])||'').trim();
+/* **等級は「その紙のレコード」から引く**（§9.205）。`S.measure`は**いま開いて
+   いる測定**なので、帳票から呼ぶと別のロットの等級で判定してしまう
+   （一括印刷は複数ロットを続けて流し込むので、途中から全部同じ等級になる。
+   §9.174の`rpActiveTarget`と同じ壊れ方）。既定は今までどおり`S.measure`で、
+   帳票は`x.qualityGrades`を渡す。 */
+function cutFaceGrade(grades){
+ const src=grades||(S.measure&&S.measure.qualityGrades)||null;
+ const raw=String((src&&src['切断面'])||'').trim();
  if(!raw)return '';
  const hit=raw.normalize('NFKC').match(/\d+/);
  return hit?hit[0]:'';
 }
-function cutFaceLimits(){return CUT_FACE_LIMITS[cutFaceGrade()]||null}
+function cutFaceLimits(grades){return CUT_FACE_LIMITS[cutFaceGrade(grades)]||null}
 /* この形状の上限(mm)。**引けなければ null**（0を返さないこと——0mm以下という
    通らない基準になる）。 */
-function edgeLimitOf(shape){
- const table=cutFaceLimits();if(!table)return null;
+function edgeLimitOf(shape,grades){
+ const table=cutFaceLimits(grades);if(!table)return null;
  const v=table[normalizeEdgeShape(shape)];
  return Number.isFinite(v)?v:null;
 }
@@ -343,12 +349,12 @@ const PRODUCT_DETAIL_KEYS=['occurrencePosition','regularity','direction','pitch'
     ・揃い綺麗          … OK（値は要らない）
     ・形状あり＋基準あり … **値(mm)を基準と比べる**。値が無ければ「値待ち」
     ・基準が引けない    … 「基準なし」。**OK/NGを推測で出さない** */
-function judgeProductRow(r){
+function judgeProductRow(r,grades){
  if(!r)return '';
  const edge=normalizeEdgeShape(r.edgeShape);
  if(!edge)return judgeAlignmentCode(r.alignmentCode);
  if(edge===PRODUCT_EDGE_OK)return 'OK';
- const limit=edgeLimitOf(edge);
+ const limit=edgeLimitOf(edge,grades);
  if(limit===null)return '基準なし';
  /* **空欄を0と読まない**（`Number('')`は0。屑幅・母材で同じ罠）。 */
  const raw=String(r.alignmentValue||'').trim();
@@ -360,10 +366,10 @@ function judgeProductRow(r){
 /* バッジの見た目。**色だけで伝えない**ので、文字はそのまま出す（§3）。 */
 /* 判定の理由。**「なぜそうなったか」を書く**——OK/NGの2文字だけでは、
    基準を覚えていない人には確かめようがない。 */
-function judgeReasonOf(r,j){
+function judgeReasonOf(r,j,grades){
  const edge=normalizeEdgeShape(r&&r.edgeShape);
  if(j==='OK'&&edge===PRODUCT_EDGE_OK)return '「揃い綺麗」＝異常なしのためOKです';
- const limit=edgeLimitOf(edge);
+ const limit=edgeLimitOf(edge,grades);
  const raw=String((r&&r.alignmentValue)||'').trim();
  if(j==='基準なし')return `切断面等級から${edge||'この形状'}の基準を出せません（3級・4級のみ対応）。合否は判定していません`;
  if(j==='値待ち')return `${edge}の基準は ${limit!==null?limit.toFixed(1)+'mm以下':'—'} です。値(mm)を入れると判定します`;
@@ -383,8 +389,8 @@ function productJudgeClass(j){
 }
 /* 基準の帯。**出どころ（切断面等級）と、見ていないもの（客先の個別要求）を
    必ず書く**（§6）。等級が読めないときは「出せない」と書いて判定もしない。 */
-function cutFaceNoteHtml(){
- const grade=cutFaceGrade(),table=cutFaceLimits();
+function cutFaceNoteHtml(grades){
+ const grade=cutFaceGrade(grades),table=cutFaceLimits(grades);
  if(!table){
   const shown=grade?`「${esc(grade)}」`:'空欄';
   return `<b>基準を出せません</b>：品質規格の<b>切断面</b>が${shown}で、3級・4級のどちらにも当てはまりません。`
@@ -401,6 +407,49 @@ function renderCutFaceNote(){
  el.innerHTML=cutFaceNoteHtml();
  el.classList.toggle('is-none',!cutFaceLimits());
 }
+/* ---------- 揃いの内訳(§9.205、利用者の指示「内訳と合否両方(デフォルト)と
+   内訳のみ、合否のみを切り替えほしい」) ----------
+   画面は形状を主役の列に、残りを下段の内訳行へ分けているが、**紙は1セル**
+   しか無いので「ラベル 値」の並びで組む。組み立ては**ここ1箇所**で、
+   画面のタイトル（`title`）と紙が同じ文言になるようにする。
+   **空欄は出さない**——選ばれていない欄まで「—」で並べると、異常が無い丈
+   ほど行が高くなる（紙は高さも有限）。**ピッチと値は単位を付ける**
+   （同じ数字でも意味が違う。§6）。 */
+const PRODUCT_BREAK_EXTRA={pitch:{label:'ピッチ',unit:'mm'},alignmentValue:{label:'値',unit:'mm'}};
+function productBreakdownOf(r){
+ if(!r)return [];
+ const out=[],edge=String(r.edgeShape||'').trim();
+ if(edge)out.push({k:'edgeShape',label:'エッジ形状',text:normalizeEdgeShape(edge)});
+ if(edge&&normalizeEdgeShape(edge)!==PRODUCT_EDGE_OK){
+  PRODUCT_DETAIL_KEYS.forEach(k=>{
+   const v=String(r[k]||'').trim();if(!v)return;
+   const ex=PRODUCT_BREAK_EXTRA[k]||{};
+   const label=ex.label||(PRODUCT_CHOICES.find(d=>d.k===k)||{}).label||k;
+   out.push({k,label,text:v+(ex.unit||'')});
+  });
+ }
+ /* **旧データも読めること**（§9.203）。4桁コードしか無い行はそのコードが
+    唯一の内訳なので、内訳を出すと決めた以上ここでも出す。 */
+ const code=String(r.alignmentCode||'').trim();
+ if(code&&!edge)out.push({k:'alignmentCode',label:'旧コード',text:code});
+ return out;
+}
+/* 紙に載せる基準の一文。**画面の帯（`cutFaceNoteHtml`）と同じ材料**から
+   作るが、紙は幅が有限なので1行に畳む。**出どころと、見ていないものを
+   落とさないこと**——紙は手元に残り、あとから根拠を確かめる相手が居る。 */
+function cutFacePaperNote(grades){
+ const grade=cutFaceGrade(grades),table=cutFaceLimits(grades);
+ if(!table)return grade
+   ? `品質規格の切断面が「${grade}」で、3級・4級のどちらにも当てはまらないため、合否は判定していません。`
+   : '品質規格の切断面が空欄のため、合否は判定していません。';
+ return `合否は切断面 ${grade}級の基準（`
+   +Object.entries(table).map(([k,v])=>`${k} ${v.toFixed(1)}mm以下`).join('・')
+   +`）で各丈の値(mm)を判定。客先の個別要求は反映していません。`;
+}
+/* 公開は名前空間経由（素の`window.X`を増やさない）。`judgeProductRow`等は
+   帳票が素の名前で呼んでいる既存の契約なのでそのまま残す。 */
+window.WL.product={breakdown:productBreakdownOf,paperNote:cutFacePaperNote,
+ judge:judgeProductRow,reason:judgeReasonOf,EDGE_OK:PRODUCT_EDGE_OK};
 /* 選択欄。**選択肢に無い値が入っていたら、その値を選択肢に足す**(§9.160)
    ——`select.value`へ無い値を入れると空文字になり、保存済みの記録が
    黙って消える。 */
@@ -430,9 +479,15 @@ function updateProductStatus(){
    隠さない——切り替えの手間も、2つのDOMを同期させる仕掛けも消える。
    `collect()`・`activeRequiredControls()`が読むのは元から`#productRowsBody`
    なので、**読み書きの経路は1本のまま**になる。 */
+/* 畳んだ丈（§9.206）。**レコードには持たせない**——見せ方の好みであって
+   測定した内容ではない（保存すると他のPCで開いたときに畳まれる）。 */
+const prtFolded=new Set();let prtFoldedFor='';
 function renderProductPanel(){
  const m=S.measure;const body=$('#productRowsBody'),tabs=$('#productLengthTabs'),fields=$('#productLengthFields');
  if(!body||!m)return;
+ /* 別のロットを開いたら畳みは持ち越さない（丈の番号は使い回されるので、
+    前のロットで畳んだ丈が新しいロットで畳まれて見える）。 */
+ if(prtFoldedFor!==(m.id||'')){prtFolded.clear();prtFoldedFor=m.id||''}
  if(!m.product||!Array.isArray(m.product.rows))m.product={rows:Array.from({length:LENGTH_SLOTS},blankProductRow)};
  const n=productRowCount();
  /* 1丈ずつの器は使わない。**残骸を残さない**（空のタブ列が細い帯として残る）。 */
@@ -453,16 +508,28 @@ function renderProductPanel(){
      5欄を横に並べると1列120px×5が要り、器(実測841px)に入らない
      ——詰めると「1/3〜2/3発生」が見切れる。異常が無い行では場所も取らない
      ので、面積は「頻度×重要度」どおりに配れる(§1)。 */
+  /* **手で畳める**（§9.206、利用者の指示「拡張入力欄も手動では折りたためる
+     ようにしてください」）。書き終えた丈まで5欄を開いたままだと、丈が多い
+     ロットで表が縦に伸びて全体を見渡せない。
+     **畳んでも値は読めること**（§9.125）——畳んだ側には要約を出す。隠した
+     ものが何かを書かずに隠すと、書いたこと自体を忘れる。 */
+  const folded=prtFolded.has(i);
+  const sum=productBreakdownOf(r).filter(b=>b.k!=='edgeShape')
+    .map(b=>`<span class="prt-sum-item"><i>${esc(b.label)}</i>${esc(b.text)}</span>`).join('');
   const detail=ok||!String(r.edgeShape||'')
    ?''
-   :`<tr class="prt-detail" data-row="${i}"><td colspan="6"><div class="prt-detail-in">`
-     +`<span class="prt-detail-lead">丈${i+1}の内訳</span>`
-     +PRODUCT_CHOICES.filter(d=>d.k!=='edgeShape')
-       .map(d=>`<label class="prt-df"><span>${esc(d.label)}</span>${sel(d.k)}</label>`).join('')
-     +`<label class="prt-df"><span>ピッチ(mm)</span>${field('pitch','number')}</label>`
-     +`<label class="prt-df prt-df-val${over?' is-over':''}"><span>値(mm)</span>${field('alignmentValue','number')}`
-     +(limit!==null?`<em class="prt-lim-inline">≤ ${limit.toFixed(1)}</em>`:'<em class="prt-lim-inline is-none">基準なし</em>')
-     +`</label>`
+   :`<tr class="prt-detail${folded?' is-folded':''}" data-row="${i}"><td colspan="6"><div class="prt-detail-in">`
+     +`<button type="button" class="prt-fold" data-prt-fold="${i}" aria-expanded="${folded?'false':'true'}"`
+     +` title="${folded?'内訳の入力欄を開きます':'内訳の入力欄を畳みます（記録は残ります）'}">`
+     +`<span class="prt-detail-lead">丈${i+1}の内訳</span><span class="prt-chev" aria-hidden="true"></span></button>`
+     +(folded
+       ?`<span class="prt-sum">${sum||'<i class="prt-sum-none">まだ書いていません</i>'}</span>`
+       :PRODUCT_CHOICES.filter(d=>d.k!=='edgeShape')
+         .map(d=>`<label class="prt-df"><span>${esc(d.label)}</span>${sel(d.k)}</label>`).join('')
+        +`<label class="prt-df"><span>ピッチ(mm)</span>${field('pitch','number')}</label>`
+        +`<label class="prt-df prt-df-val${over?' is-over':''}"><span>値(mm)</span>${field('alignmentValue','number')}`
+        +(limit!==null?`<em class="prt-lim-inline">≤ ${limit.toFixed(1)}</em>`:'<em class="prt-lim-inline is-none">基準なし</em>')
+        +`</label>`)
      +`</div></td></tr>`;
   return `<tr data-row="${i}"><th>${i+1}</th><td>${field('productLength','number')}</td><td>${field('wallThickness','number')}</td>`
    +`<td><span class="product-judge${productJudgeClass(judge)}" data-product-judge="${i}"`
@@ -503,6 +570,11 @@ function renderProductPanel(){
      気にせず1本にまとめる（同じ値なら2度目は何も変わらない）。 */
   el.oninput=apply;
   if(el.tagName==='SELECT')el.onchange=apply;
+ });
+ body.querySelectorAll('[data-prt-fold]').forEach(btn=>btn.onclick=()=>{
+  const i=+btn.dataset.prtFold;
+  if(prtFolded.has(i))prtFolded.delete(i);else prtFolded.add(i);
+  renderProductPanel();
  });
  renderCutFaceNote();
  upgradeManualInputTypes();updateProductStatus();
@@ -810,15 +882,32 @@ function motherRecordRows(){
  });
  return rows;
 }
+/* **画面にいま入っている値を出す**（§9.206、実機で報告「準備の入力など、
+   選択状態にしたら、記録した値に入ってほしいところ何も表示されません」）。
+   `settings`が書かれるのは`collect()`＝**保存のときだけ**なので、そこだけを
+   見ると①で選んだオペレータ・検査員・人数・内径・スプール・測定器が③では
+   「—」のまま出る。**既定から動かしていない項目（巻出方向・条入力順…）は
+   `blankMeasure`が既定値を入れているので出てしまう**ため、「一部の欄だけ
+   反映されない」という分かりにくい壊れ方になっていた。
+   鍵は`collect()`と同じで**設定キー＝入力欄のid**。**欄が無ければ`settings`**
+   ——保存済みの控えを開いた直後や、閲覧側から呼ばれたときに落とさないため。 */
+function recordedValueOf(k,st){
+ const el=$('#'+k);
+ const v=el?String(el.value??''):'';
+ return v!==''?v:st[k];
+}
 function renderRecordedValues(){
  const host=$('#recordedList');
  if(!host||!S.measure)return;
  const st=S.measure.settings||{};
  const shown=v=>{const s=String(v??'').trim();return s===''||s==='-'||s==='－'?'':s};
- const line=(l,v)=>`<div><dt>${esc(l)}</dt><dd>${esc(shown(v)||'—')}</dd></div>`;
+ /* ラベルは狭いと省略記号になる（値を守るため。§9.206）ので、**元の言葉を
+    `title`に残す**——省略した文字が読めなくなるのは切り詰めと同じ。 */
+ const line=(l,v)=>`<div><dt title="${esc(l)}">${esc(l)}</dt>`
+   +`<dd title="${esc(shown(v)||'')}">${esc(shown(v)||'—')}</dd></div>`;
  let h=RECORD_GROUPS.map(([title,items])=>
   `<div class="rv-group"><b>${esc(title)}</b><dl>`
-  +items.map(([k,label])=>line(label,st[k])).join('')+'</dl></div>').join('');
+  +items.map(([k,label])=>line(label,recordedValueOf(k,st))).join('')+'</dl></div>').join('');
  const mother=motherRecordRows().filter(([,v])=>shown(v));
  h+='<div class="rv-group"><b>母材</b>'
   +(mother.length?`<dl>${mother.map(([l,v])=>line(l,v)).join('')}</dl>`

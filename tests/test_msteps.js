@@ -1254,6 +1254,68 @@ let b=null,page=null;
         .every(k=>detail.欄.includes(k)),JSON.stringify(detail.欄));
   rec('内訳を開いても表が横に溢れない',detail.溢れ<=0,String(detail.溢れ));
 
+  /* **文字が切れないこと**（§9.206、実機で報告「新しく作ってもらった丈毎の
+     『揃い』入力ですが、文字が見切れています」）。欄の**数や有無**を見る網では
+     捕まらない——欄は在るのに、中の文字だけが上下または左右に切れている。
+     `<select>`は中身をDOMで測れない（`scrollWidth`は選択肢の幅を映さない）ので、
+     **高さは「文字×行送り＋余白＋罫線」と器を比べ、幅はcanvasで文字を測る**
+     （§9.130の`fitControlWidths()`と同じ測り方）。 */
+  const cutPrt=await page.evaluate(()=>{
+   const cv=document.createElement('canvas'),ctx=cv.getContext('2d');
+   const out=[];
+   document.querySelectorAll('#productRowsBody [data-product-field]').forEach(el=>{
+    const cs=getComputedStyle(el),box=el.getBoundingClientRect();
+    const fs=parseFloat(cs.fontSize)||12;
+    const pad=(k)=>parseFloat(cs[k])||0;
+    /* 高さ: 1行ぶんの文字（行送りは既定の1.35で見る。`normal`のときも
+       おおよそこの値）＋上下の余白＋上下の罫線。 */
+    const needH=fs*1.35+pad('paddingTop')+pad('paddingBottom')
+      +pad('borderTopWidth')+pad('borderBottomWidth');
+    if(box.height+0.5<needH)
+     out.push(`${el.dataset.productField} 縦 ${box.height.toFixed(1)}<${needH.toFixed(1)}`
+       +`[fs${cs.fontSize} pad${cs.paddingTop}/${cs.paddingBottom}]`);
+    if(el.tagName==='SELECT'){
+     ctx.font=`${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+     const longest=[...el.options].reduce((m,o)=>Math.max(m,ctx.measureText(o.text).width),0);
+     /* 選択欄は右端に▼の場所が要る（実測で約16px）。 */
+     const needW=longest+pad('paddingLeft')+pad('paddingRight')
+       +pad('borderLeftWidth')+pad('borderRightWidth')+16;
+     if(box.width+0.5<needW)
+      out.push(`${el.dataset.productField} 横 ${box.width.toFixed(1)}<${needW.toFixed(1)}`);
+    }
+   });
+   return out;
+  });
+  rec('揃いの入力欄で文字が切れない',cutPrt.length===0,cutPrt.slice(0,4).join(' / '));
+
+  /* ---- 内訳は手で畳める（§9.206、利用者の指示「拡張入力欄も手動では
+     折りたためるようにしてください」） ----
+     異常を選ぶと開くのは今までどおりだが、書き終えたら畳んで表を短くできる。
+     **畳んでも記録は消さない**（表示だけの話）。 */
+  const fold=await page.evaluate(()=>{
+   const q=k=>document.querySelector(`#productRowsBody tr[data-row="0"] [data-product-field="${k}"]`);
+   /* 畳んだときに読めることを確かめるため、先に1つ書いておく。 */
+   const pos=q('occurrencePosition');
+   pos.value='1/3未満発生';pos.dispatchEvent(new Event('change',{bubbles:true}));
+   const btn=document.querySelector('#productRowsBody .prt-fold');
+   if(!btn)return{ある:false};
+   btn.click();
+   const d=document.querySelector('#productRowsBody tr.prt-detail[data-row="0"]');
+   const after={
+    畳んだ:!!d&&d.classList.contains('is-folded')
+      &&d.querySelectorAll('[data-product-field]').length===0,
+    /* **畳んでも値は読める**（§9.125）。 */
+    要約:d?d.textContent.replace(/\s+/g,''):'',
+    値:S.measure.product.rows[0].occurrencePosition||''};
+   document.querySelector('#productRowsBody .prt-fold').click();
+   const back=document.querySelectorAll('#productRowsBody tr.prt-detail[data-row="0"] [data-product-field]').length;
+   return{ある:true,...after,戻る:back};
+  });
+  rec('内訳を手で畳める',fold.ある&&fold.畳んだ===true,JSON.stringify(fold).slice(0,140));
+  rec('畳んでも値は読める',fold.ある&&/1\/3未満発生/.test(fold.要約||''),String(fold.要約).slice(0,80));
+  rec('畳んでも記録は消さない・もう一度開ける',
+      fold.ある&&fold.値==='1/3未満発生'&&fold.戻る===5,JSON.stringify(fold).slice(0,140));
+
   /* 旧データ(4桁コード)は**消さずに読める**こと。 */
   /* **必ず在る行(0)で見る**——縦割数が1のときは行1が無く、
      `querySelector`がnullになって網そのものが落ちる。 */
@@ -1545,6 +1607,45 @@ let b=null,page=null;
      あいだに150pxの帯ができてグリッドの形が読めなくなる（実際にそうなった）。 */
   rec('③の確認カードがマスの高さを使う',
       wall3.確認>=Math.round(wall3.本体/3)-20,JSON.stringify(wall3));
+  /* ---- 「記録した値」は値を切り詰めない（§9.206、実機で報告
+     「その中の母材の項目が見切れています」） ----
+     `.rv-group dd`は`text-overflow:ellipsis`なので、**器が足りないと
+     「122…」と黙って切れる**。数字は切れた時点で別の数字になるので、
+     ここは省略記号で逃がしてよい欄ではない。 */
+  /* **長い値・長いラベルを注ぎ込んでから測る**（§9.206）。フィクスチャの
+     母材は空か短いので、そのまま見ても切り詰めの経路を一度も通らない
+     （§9.125・§9.160と同じ「材料ごと注ぎ込む」）。 */
+  await page.evaluate(()=>{
+   const w=document.getElementById('motherOriginalWidth');
+   if(w)w.textContent='1225.0';
+   const s=document.getElementById('motherScrapWidth');
+   if(s)s.textContent='34.8';
+   document.querySelectorAll('[data-mother]').forEach(el=>{if(!el.value)el.value='1234.5'});
+   renderRecordedValues();
+  });
+  await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+  const rvCut=await page.evaluate(()=>[...document.querySelectorAll('.rv-group dd')]
+    .map((d,i)=>({t:d.textContent.trim(),over:Math.round(d.scrollWidth-d.clientWidth)}))
+    .filter(x=>x.over>1).map(x=>`${x.t}(+${x.over}px)`));
+  rec('「記録した値」の値が切り詰められない',rvCut.length===0,rvCut.slice(0,4).join(' / '));
+  /* ①で選んだ値がそのまま出ること（§9.206、実機で報告「準備の入力など、
+     選択状態にしたら、記録した値に入ってほしいところ何も表示されません」）。
+     `settings`は`collect()`＝保存のときにしか書かれないので、そこだけを
+     見ていると**選んだ直後は「—」のまま**になる。 */
+  const rvLive=await page.evaluate(async()=>{
+   WL.measureSteps.go('1');
+   const op=document.getElementById('operator');
+   const val=[...op.options].map(o=>o.value).find(v=>v&&v!=='-')||'';
+   op.value=val;op.dispatchEvent(new Event('change',{bubbles:true}));
+   WL.measureSteps.go('3');
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   const dd=[...document.querySelectorAll('.rv-group')]
+     .find(g=>/誰が測ったか/.test(g.querySelector('b')?.textContent||''))
+     ?.querySelector('dd');
+   return{選んだ:val,出た:dd?dd.textContent.trim():''};
+  });
+  rec('①で選んだ値が「記録した値」に出る',
+      !!rvLive.選んだ&&rvLive.出た===rvLive.選んだ,JSON.stringify(rvLive));
   rec('③の空きを記録した',true,JSON.stringify(e3));
   /* ---- カードの整列（§9.135 可能な限り粗いグリッド） ----
      **そろって見えるかは「左端の候補が何通りあるか」で決まる。** 外側は

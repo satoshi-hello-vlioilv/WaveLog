@@ -119,23 +119,54 @@ let b=null;
   rec('区分バッジが押せる部品ほどの高さを取っていない',
       !!cat&&cat.h<cat.ctl,cat?`${cat.h}px < ${cat.ctl}px`:'-');
 
-  /* 本題。幅を狭めても操作ボタンへ手が届くこと。 */
-  for(const w of [1600,1200,980]){
-   await page.setViewportSize({width:w,height:1000});
-   await settle(800);
-   const hit=await page.evaluate(()=>{
-    const row=document.querySelector('.sc-row-line');if(!row)return null;
-    const act=row.querySelector('.sc-row-actions');const btn=act&&act.querySelector('button');
-    if(!btn)return {noButton:true};
+  /* 本題。幅を狭めても操作へ手が届くこと。
+     **届かせ方が変わった**（§9.207、利用者の指示「操作ボタンの列固定は不要
+     です。…代わりに右クリックメニューに操作と同等の機能を実装し…」）。
+     以前は操作の列を右端へ貼り付けて(position:sticky)常に見せていたが、
+     §9.176で操作の列も移動・表示/非表示ができるようになったため、
+     **真ん中へ動かした列を右端に貼り付ける**という辻褄の合わない状態が
+     作れてしまう。いまは**行の右クリック**が同じことを全部できる。
+     ここで見るのは「狭くても操作へ手が届くか」で、**その手立ては
+     右クリック**——広い幅ではボタンも直接押せることも併せて見る。 */
+  const reachOf=()=>page.evaluate(()=>{
+   const row=document.querySelector('.sc-row-line');if(!row)return null;
+   const act=row.querySelector('.sc-row-actions');const btn=act&&act.querySelector('button');
+   const wrap=row.closest('.sc-timeline');
+   const out={overflow:wrap?Math.round(wrap.scrollWidth-wrap.clientWidth):0,
+              sticky:act?getComputedStyle(act).position:'-',noButton:!btn};
+   if(btn){
     const r=btn.getBoundingClientRect();
     const top=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);
-    const wrap=row.closest('.sc-timeline');
-    return {reachable:!!(top&&(top===btn||btn.contains(top)||top.closest('.sc-row-actions'))),
-            overflow:wrap?Math.round(wrap.scrollWidth-wrap.clientWidth):0,
-            sticky:getComputedStyle(act).position};
-   });
-   rec(`幅${w}pxでも操作ボタンを押せる`,!!hit&&(hit.noButton||hit.reachable),
-       hit?`はみ出し${hit.overflow}px / ${hit.sticky}`:'行が無い');
+    out.reachable=!!(top&&(top===btn||btn.contains(top)||top.closest('.sc-row-actions')));
+   }
+   return out;
+  });
+  const menuItemsOf=()=>page.evaluate(()=>{
+   document.querySelector('.sc-row-menu')?.remove();
+   const row=document.querySelector('.sc-row-line');if(!row)return [];
+   const r=row.getBoundingClientRect();
+   row.dispatchEvent(new MouseEvent('contextmenu',
+     {bubbles:true,clientX:Math.round(r.left+30),clientY:Math.round(r.top+5)}));
+   const m=document.querySelector('.sc-row-menu');
+   const items=m?[...m.querySelectorAll('button')].map(b=>b.textContent.trim()):[];
+   if(m)m.remove();
+   return items;
+  });
+  await page.setViewportSize({width:1600,height:1000});
+  await settle(800);
+  const wide=await reachOf();
+  rec('広い幅では操作ボタンをそのまま押せる',!!wide&&(wide.noButton||wide.reachable),
+      wide?`はみ出し${wide.overflow}px / ${wide.sticky}`:'行が無い');
+  /* **操作の列は普通の列**（貼り付けない）。 */
+  rec('操作の列を右端へ貼り付けていない',!!wide&&wide.sticky!=='sticky',
+      wide?wide.sticky:'-');
+  for(const w of [1200,980]){
+   await page.setViewportSize({width:w,height:1000});
+   await settle(800);
+   const items=await menuItemsOf();
+   rec(`幅${w}pxでも右クリックから操作へ手が届く`,
+       items.length>0&&items.some(t=>/表示列/.test(t)),
+       `${items.length}件: ${items.slice(0,4).join(' / ')}`);
   }
   await page.setViewportSize({width:1600,height:1000});await settle(500);
 
