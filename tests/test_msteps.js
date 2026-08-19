@@ -1194,8 +1194,10 @@ let b=null,page=null;
   });
   rec('揃いコードの入力欄は廃止',!align.code,String(align.code));
   rec('エッジ形状は選択欄',!!align.edgeIsSelect,String(align.edgeIsSelect));
-  rec('エッジ形状の選択肢（揃い綺麗・のこぎり状・テレスコ状）',
-      align.edge.join('/')==='揃い綺麗/のこぎり状/テレスコ状',align.edge.join('/'));
+  /* §9.204で「テレスコ状」→「テレスコープ状」へ名前をそろえた
+     （基準の文言・測定項目名と1つにする）。 */
+  rec('エッジ形状の選択肢（揃い綺麗・のこぎり状・テレスコープ状）',
+      align.edge.join('/')==='揃い綺麗/のこぎり状/テレスコープ状',align.edge.join('/'));
   rec('エッジ形状を選ぶまで内訳は出さない',!align.detailYet,String(align.detailYet));
   rec('見出しに「揃いコード」を残さない',!align.head.some(t=>/揃いコード/.test(t)),align.head.join(','));
 
@@ -1233,7 +1235,10 @@ let b=null,page=null;
    return {judge:tr.querySelector('[data-product-judge]').textContent.trim(),
            noneDisabled:!!d&&[...d.querySelectorAll('[data-product-field]')].every(x=>!x.disabled)};
   });
-  rec('異常を選ぶとNG判定',ngState.judge==='NG',JSON.stringify(ngState));
+  /* §9.204: 形状を選んだだけでは判定しない（値(mm)と基準を比べる）。
+     フィクスチャに切断面等級が無いので、この時点では「基準なし」。 */
+  rec('形状を選んだだけでは合否を決めない',
+      ngState.judge==='値待ち'||ngState.judge==='基準なし',JSON.stringify(ngState));
   rec('異常のときは内訳を書ける',ngState.noneDisabled,JSON.stringify(ngState));
   const detail=await page.evaluate(()=>{
    const d=document.querySelector('#productRowsBody tr.prt-detail[data-row="0"]');
@@ -1273,6 +1278,132 @@ let b=null,page=null;
   });
   rec('全丈OK一括入力で全部OKになる',bulk.n>0&&bulk.ok===bulk.n,JSON.stringify(bulk));
   rec('一括OKのあとに旧コードを残さない',bulk.old===0,String(bulk.old));
+
+  /* ---- 切断面等級から出す揃いの基準（§9.204、利用者の指示） ----
+     4級: のこぎり状2mm以下／テレスコープ状3mm以下
+     3級: のこぎり状2mm以下／テレスコープ状5mm以下
+     **検証用フィクスチャには品質ｸﾞﾚｰﾄﾞ_切断面の列が無い**ので、
+     材料ごと注ぎ込んで確かめる——入れずに「出ない」を見ても、
+     壊れていても同じ結果になる（§9.125/§9.160と同じ罠）。 */
+  const cut=await page.evaluate(()=>{
+   const src=S.measure.source;
+   const keep=src['品質ｸﾞﾚｰﾄﾞ_切断面'];
+   const out={};
+   const rowState=()=>{
+    const tr=document.querySelector('#productRowsBody tr[data-row="0"]');
+    const b=tr.querySelector('[data-product-judge]');
+    return {判定:b.textContent.trim(),理由:b.title,
+      基準:(document.querySelector('#productRowsNote')||{}).textContent||''};
+   };
+   const setGrade=g=>{
+    if(g===null)delete src['品質ｸﾞﾚｰﾄﾞ_切断面'];else src['品質ｸﾞﾚｰﾄﾞ_切断面']=g;
+    renderQualityGradePanel();renderProductPanel();
+   };
+   const setRow=(edge,val)=>{
+    const r=S.measure.product.rows[0];
+    r.edgeShape=edge;r.alignmentValue=val;r.alignmentCode='';
+    renderProductPanel();
+   };
+   /* ① 等級が無いとき: 基準を出せないと書き、判定もしない */
+   setGrade(null);setRow('のこぎり状','1.0');
+   out.等級なし=rowState();
+   /* ② 3級 */
+   setGrade('3');
+   out.三級の帯=(document.querySelector('#productRowsNote').textContent||'').replace(/\s+/g,' ');
+   setRow('のこぎり状','');   out.三_のこぎり_値なし=rowState();
+   setRow('のこぎり状','1.5');out.三_のこぎり_15=rowState();
+   setRow('のこぎり状','2');  out.三_のこぎり_20=rowState();
+   setRow('のこぎり状','2.5');out.三_のこぎり_25=rowState();
+   setRow('テレスコープ状','4');out.三_テレ_40=rowState();
+   /* ③ 4級では同じ4mmがNGになる（等級で基準が変わることを見る） */
+   setGrade('4');
+   out.四級の帯=(document.querySelector('#productRowsNote').textContent||'').replace(/\s+/g,' ');
+   setRow('テレスコープ状','4');out.四_テレ_40=rowState();
+   setRow('テレスコープ状','3');out.四_テレ_30=rowState();
+   /* ④ 「3C」のような英字つき・「.」（未設定）の扱い */
+   setGrade('3C');setRow('テレスコープ状','4');out.英字つき=rowState();
+   setGrade('.');  setRow('テレスコープ状','4');out.ドット=rowState();
+   /* ⑤ 旧名「テレスコ状」で保存された値でも基準が当たる */
+   setGrade('3');  setRow('テレスコ状','4');   out.旧名=rowState();
+   /* ⑥ 値が基準を超えたら欄そのものにも印が付く */
+   setGrade('4');  setRow('テレスコープ状','9');
+   out.超過の印=!!document.querySelector('#productRowsBody .prt-df.is-over');
+   /* 後始末 */
+   if(keep===undefined)delete src['品質ｸﾞﾚｰﾄﾞ_切断面'];else src['品質ｸﾞﾚｰﾄﾞ_切断面']=keep;
+   S.measure.product.rows=S.measure.product.rows.map(()=>blankProductRow());
+   renderQualityGradePanel();renderProductPanel();
+   return out;
+  });
+  rec('等級が読めないときは基準を出せないと書く',
+      /基準を出せません/.test(cut.等級なし.基準),cut.等級なし.基準.slice(0,80));
+  rec('等級が読めないときは合否を決めない',cut.等級なし.判定==='基準なし',
+      JSON.stringify(cut.等級なし));
+  rec('3級の基準を出す（のこぎり2.0/テレスコープ5.0）',
+      /のこぎり状/.test(cut.三級の帯)&&/2\.0mm以下/.test(cut.三級の帯)
+      &&/テレスコープ状/.test(cut.三級の帯)&&/5\.0mm以下/.test(cut.三級の帯),cut.三級の帯.slice(0,120));
+  rec('4級の基準を出す（テレスコープ3.0）',
+      /3\.0mm以下/.test(cut.四級の帯)&&/2\.0mm以下/.test(cut.四級の帯),cut.四級の帯.slice(0,120));
+  rec('客先の個別要求は見ていないと書く',
+      /客先の個別要求は反映していません/.test(cut.三級の帯),cut.三級の帯.slice(-90));
+  rec('値がまだ無ければ「値待ち」',cut.三_のこぎり_値なし.判定==='値待ち',
+      JSON.stringify(cut.三_のこぎり_値なし));
+  rec('基準以内はOK（1.5mm ≦ 2.0mm）',cut.三_のこぎり_15.判定==='OK',JSON.stringify(cut.三_のこぎり_15));
+  rec('ちょうど基準もOK（2.0mm ≦ 2.0mm）',cut.三_のこぎり_20.判定==='OK',JSON.stringify(cut.三_のこぎり_20));
+  rec('基準超過はNG（2.5mm > 2.0mm）',cut.三_のこぎり_25.判定==='NG',JSON.stringify(cut.三_のこぎり_25));
+  rec('等級で基準が変わる（テレスコープ4mm: 3級OK / 4級NG）',
+      cut.三_テレ_40.判定==='OK'&&cut.四_テレ_40.判定==='NG',
+      `3級=${cut.三_テレ_40.判定} / 4級=${cut.四_テレ_40.判定}`);
+  rec('4級のテレスコープ3.0mmはOK',cut.四_テレ_30.判定==='OK',JSON.stringify(cut.四_テレ_30));
+  rec('「3C」のような英字つきの等級も3級として読む',cut.英字つき.判定==='OK',JSON.stringify(cut.英字つき));
+  rec('「.」（未設定）は等級として読まない',cut.ドット.判定==='基準なし',JSON.stringify(cut.ドット));
+  rec('旧名「テレスコ状」で保存された値にも基準が当たる',cut.旧名.判定==='OK',JSON.stringify(cut.旧名));
+  rec('超過した値の欄そのものにも印を付ける',cut.超過の印===true,String(cut.超過の印));
+  rec('判定の理由を書く（基準と実測が読める）',
+      /2\.0mm/.test(cut.三_のこぎり_25.理由)&&/2\.5/.test(cut.三_のこぎり_25.理由),cut.三_のこぎり_25.理由);
+
+  /* ---- 内径は仕掛の「ｺｲﾙ_内径目標」から（§9.204、利用者の指示） ----
+     0より大きい数値のときだけ。フィクスチャに列が無いので注ぎ込む。 */
+  const inner=await page.evaluate(()=>{
+   const src=S.measure.source,keep=src['ｺｲﾙ_内径目標'];
+   const el=document.getElementById('innerDiameter');
+   const note=document.getElementById('innerDiameterFrom');
+   const P=r=>WL.innerDiameter.preset(r);
+   const out={
+    値あり:P({'ｺｲﾙ_内径目標':'508'}),
+    全角別綴り:P({'コイル_内径目標':'508.0'}),
+    ゼロ:P({'ｺｲﾙ_内径目標':'0'}),
+    空:P({'ｺｲﾙ_内径目標':''}),
+    文字:P({'ｺｲﾙ_内径目標':'なし'}),
+    無い:P({}),
+   };
+   /* 当てる: 選択肢に無くても選べること・出どころが出ること */
+   S.measure.settings.innerDiameter='-';el.value='-';
+   src['ｺｲﾙ_内径目標']='508';
+   out.当てた=WL.innerDiameter.apply(src);
+   out.選択値=el.value;
+   out.選択肢にある=[...el.options].some(o=>o.value==='508');
+   out.出どころ=note.hidden?'':note.textContent.trim();
+   /* すでに選び直してあるときは上書きしない */
+   S.measure.settings.innerDiameter='300';el.add(new Option('300','300'));el.value='300';
+   WL.innerDiameter.apply(src);
+   out.上書きしない=el.value;
+   out.選び直したら出どころは消える=document.getElementById('innerDiameterFrom').hidden;
+   /* 後始末 */
+   if(keep===undefined)delete src['ｺｲﾙ_内径目標'];else src['ｺｲﾙ_内径目標']=keep;
+   S.measure.settings.innerDiameter='-';el.value='-';WL.innerDiameter.refresh();
+   return out;
+  });
+  rec('内径目標が0より大きければプリセットにする',inner.値あり==='508',String(inner.値あり));
+  rec('別綴り（コイル_内径目標）でも引く',inner.全角別綴り==='508',String(inner.全角別綴り));
+  rec('0・空欄・文字はプリセットにしない',
+      inner.ゼロ===''&&inner.空===''&&inner.文字===''&&inner.無い==='',
+      JSON.stringify({ゼロ:inner.ゼロ,空:inner.空,文字:inner.文字,無い:inner.無い}));
+  rec('内径種別マスタに無くても選べる（候補へ足す）',
+      inner.選択値==='508'&&inner.選択肢にある,JSON.stringify(inner).slice(0,120));
+  rec('どこから来た値かを画面に書く',/ｺｲﾙ_内径目標/.test(inner.出どころ||''),inner.出どころ);
+  rec('選び直してあるときは上書きしない',inner.上書きしない==='300',String(inner.上書きしない));
+  rec('選び直したら出どころの注記は消える',inner.選び直したら出どころは消える===true,
+      String(inner.選び直したら出どころは消える));
   await page.evaluate(()=>{
    S.measure.product.rows=S.measure.product.rows.map(()=>blankProductRow());
    renderProductPanel();

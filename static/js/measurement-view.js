@@ -68,7 +68,68 @@ function measureStarter(){
          createdBy:t?t.userId():((typeof currentUserId==='function'&&currentUserId())||''),
          createdPc:t?t.pcName():''};
 }
-function blankMeasure(row){return{id:crypto.randomUUID(),status:'編集中',updatedAt:new Date().toISOString(),...measureStarter(),source:row,basic:Object.fromEntries(Object.keys(aliases).map(k=>[k,pick(row,k)])),settings:{operator:'-',inspector:'-',lengthPos:'1(頭)',measureType:WL.measureItem.MATERIAL,verticalCount:defaultVerticalCount(row),horizontalCount:defaultHorizontalCount(row),unwind:'上出し',innerDiameter:'-',spool:'-',thicknessGauge:'-',widthGauge:'-',widthOrder:'通常',widthDirection:'昇順',inputMode:'auto',tStep:0,wStep:0,burrFirst:null,ngCount:0,burr:'指定なし',coilStop:'指定なし',crewSize:'-'},mother:{},qualityInfo:'異常情報なし',measurements:{thickness:Array.from({length:LENGTH_SLOTS},()=>Array(3).fill('')),width:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),lateral:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),burr:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),telescope:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),offset:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),flatness:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),comments:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill(''))}}}
+/* ---------- 内径の初期値は仕掛から(§9.204、利用者の指示) ----------
+   「準備」の内径に、仕掛データの「ｺｲﾙ_内径目標」を読み、**0より大きい
+   数値が入っていればプリセットとして読み込む**。
+    ・**空欄・0・数字でないものは使わない**（`Number('')`は0。屑幅・母材の
+      計算全長で同じ罠を踏んでいる）。
+    ・**新規に開いたときだけ**効かせる（`blankMeasure`）。保存済みレコードは
+      `settings`を持つので、開き直しても選び直した値が上書きされない。
+    ・**マスタに無くても選べるようにする**——内径種別マスタが空の現場が
+      あり、`optionFill`は候補に無い現在値を黙って捨てる。候補へ足すのは
+      `applyContextSnapshot`側（records-store.js）。 */
+const INNER_DIAMETER_SOURCE=['ｺｲﾙ_内径目標','コイル_内径目標'];
+/* 使える形かを見るのは1箇所。**空欄・0以下・数字でないものは使わない**。 */
+function innerDiameterOf(raw){
+ const t=String(raw||'').trim();
+ if(!t)return '';
+ const n=Number(t);
+ if(!Number.isFinite(n)||!(n>0))return '';
+ /* 選択肢は文字列で照合するので、末尾の0は落とす（'508.0'は'508'）。 */
+ return String(n);
+}
+/* 行を渡せばその行だけ、渡さなければ**開いている測定の文脈すべて**
+   （`S.current`・`source`・スナップショット）から探す。後者が要るのは、
+   仕掛の完全な行が後から`S.measure.source`へマージされるため
+   （`refreshSelfSourceFull`。一覧の行には列が無いことがある）。 */
+function innerDiameterPreset(row){
+ return innerDiameterOf(row&&typeof row==='object'
+   ?fieldFromRows([row],INNER_DIAMETER_SOURCE)
+   :sourceField(INNER_DIAMETER_SOURCE));
+}
+function defaultInnerDiameter(row){return innerDiameterPreset(row)||'-'}
+/* 出どころを画面に書く(§6)。**同じ数字でも、目標値と選んだ値は別物**。 */
+function updateInnerDiameterHint(){
+ const el=$('#innerDiameter'),note=$('#innerDiameterFrom');
+ if(!note)return;
+ const preset=innerDiameterPreset();
+ const cur=String(el?.value||'').trim();
+ const show=!!preset&&cur===preset;
+ if(note.hidden!==!show)note.hidden=!show;
+ note.textContent=show?`仕掛の「ｺｲﾙ_内径目標」${preset} から`:'';
+}
+/* 目標値を選択欄へ当てる。**まだ選び直していないときだけ**（'-'のまま）で、
+   **選択肢に無ければ足してから**選ぶ（内径種別マスタが空の現場がある）。
+   定義は1箇所——後追いで完全な仕掛行が届いたとき(lot-split.js)も、
+   ここを通す。 */
+function applyInnerDiameterPreset(row){
+ if(!S.measure)return '';
+ const preset=innerDiameterPreset(row||S.measure.source);
+ if(!preset){updateInnerDiameterHint();return ''}
+ if(String(S.measure.settings.innerDiameter||'-')!=='-'){updateInnerDiameterHint();return ''}
+ S.measure.settings.innerDiameter=preset;
+ const el=$('#innerDiameter');
+ if(el){
+  if(![...el.options].some(o=>o.value===preset))el.add(new Option(preset,preset));
+  el.value=preset;
+  /* 未選択の合図(SOFT_CHOICE)を消す。`el.value=`ではchangeが飛ばない。 */
+  if(typeof updateSoftChoiceVisuals==='function')updateSoftChoiceVisuals();
+ }
+ updateInnerDiameterHint();
+ return preset;
+}
+window.WL.innerDiameter={preset:innerDiameterPreset,apply:applyInnerDiameterPreset,refresh:updateInnerDiameterHint};
+function blankMeasure(row){return{id:crypto.randomUUID(),status:'編集中',updatedAt:new Date().toISOString(),...measureStarter(),source:row,basic:Object.fromEntries(Object.keys(aliases).map(k=>[k,pick(row,k)])),settings:{operator:'-',inspector:'-',lengthPos:'1(頭)',measureType:WL.measureItem.MATERIAL,verticalCount:defaultVerticalCount(row),horizontalCount:defaultHorizontalCount(row),unwind:'上出し',innerDiameter:defaultInnerDiameter(row),spool:'-',thicknessGauge:'-',widthGauge:'-',widthOrder:'通常',widthDirection:'昇順',inputMode:'auto',tStep:0,wStep:0,burrFirst:null,ngCount:0,burr:'指定なし',coilStop:'指定なし',crewSize:'-'},mother:{},qualityInfo:'異常情報なし',measurements:{thickness:Array.from({length:LENGTH_SLOTS},()=>Array(3).fill('')),width:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),lateral:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),burr:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),telescope:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),offset:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),flatness:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),comments:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill(''))}}}
 /* 保存データ/新規データを最新スキーマへ整形する。旧実装は多層ラップ
    (基本形状→製品丈→登録設備→作業時間)だったものを一本化した。 */
 function ensureMeasureShape(m){
@@ -229,21 +290,116 @@ function blankProductRow(){return{productLength:'',wallThickness:'',alignmentCod
    持ったままで、判定はそちらから作り、画面にも「旧 1234」と出す
    （コードを廃止したからといって、記録されたものが読めなくなってはいけない）。 */
 const PRODUCT_EDGE_OK='揃い綺麗';
+/* ---------- 切断面等級から出す基準(§9.204、利用者の指示) ----------
+   「品質規格の『切断面』の項目の数値を見て、基準を出してください。
+     丈毎に判定することになります。
+      4級のとき、のこぎり状＝2mm以下、テレスコープ状＝3mm以下
+      3級のとき、のこぎり状＝2mm以下、テレスコープ状＝5mm以下
+     ただし、客先の個別要求がない時。（将来的には…対応予定）
+     今は注意書きを付けてすべてにこの(切断面等級とエッジ形状のみ)条件で
+     基準を表示＆判定させる。」
+
+   **等級の実値は数字1桁の文字列**（実データ3件はいずれも `'3'`。生地外観の
+   ように `'3C'` と英字が付く項目もあるので、数字だけを取り出す）。
+   出どころは`S.measure.qualityGrades['切断面']`＝仕掛の`品質ｸﾞﾚｰﾄﾞ_切断面`
+   （`QUALITY_GRADE_SOURCE`。`qualityGradeFields`は読まれていない死んだ配列
+   なので当てにしないこと）。
+   **基準が引けないときは判定しない**——3級・4級以外や空欄で「OK」と言うのは
+   根拠が無く、「NG」と言い切るのも嘘になる（§「推測させない」）。 */
+const CUT_FACE_LIMITS={
+ '3':{'のこぎり状':2,'テレスコープ状':5},
+ '4':{'のこぎり状':2,'テレスコープ状':3},
+};
+/* 旧名を今の名前へ寄せる（§9.160と同じ作法）。§9.203では「テレスコ状」で
+   出していたので、保存済みの値がここを通って基準に当たる。 */
+const PRODUCT_EDGE_ALIAS={'テレスコ状':'テレスコープ状'};
+function normalizeEdgeShape(v){const t=String(v||'').trim();return PRODUCT_EDGE_ALIAS[t]||t}
+function cutFaceGrade(){
+ const raw=String((S.measure&&S.measure.qualityGrades&&S.measure.qualityGrades['切断面'])||'').trim();
+ if(!raw)return '';
+ const hit=raw.normalize('NFKC').match(/\d+/);
+ return hit?hit[0]:'';
+}
+function cutFaceLimits(){return CUT_FACE_LIMITS[cutFaceGrade()]||null}
+/* この形状の上限(mm)。**引けなければ null**（0を返さないこと——0mm以下という
+   通らない基準になる）。 */
+function edgeLimitOf(shape){
+ const table=cutFaceLimits();if(!table)return null;
+ const v=table[normalizeEdgeShape(shape)];
+ return Number.isFinite(v)?v:null;
+}
 const PRODUCT_CHOICES=[
- {k:'edgeShape',          label:'エッジ形状',opts:[PRODUCT_EDGE_OK,'のこぎり状','テレスコ状']},
+ {k:'edgeShape',          label:'エッジ形状',opts:[PRODUCT_EDGE_OK,'のこぎり状','テレスコープ状']},
  {k:'occurrencePosition', label:'発生位置',  opts:['2/3以上発生','1/3〜2/3発生','1/3未満発生']},
  {k:'regularity',         label:'規則性',    opts:['不規則','規則的']},
  {k:'direction',          label:'方向',      opts:['OS','DS']},
 ];
-/* エッジ形状が「揃い綺麗」のときは書かない欄。**空にして押せなくする**
-   （押せるのに意味が無い欄を残さない）。 */
+/* エッジ形状が「揃い綺麗」のときは書かない欄。**段ごと出さない**
+   （押せるのに意味が無い欄を残さない。§9.203で`disabled`にする案から
+   「そもそも出さない」へ変えたので、無効化のコードは残っていない）。 */
 const PRODUCT_DETAIL_KEYS=['occurrencePosition','regularity','direction','pitch','alignmentValue'];
+/* 丈1本の判定(§9.204)。戻り値は 'OK'/'NG'/'値待ち'/'基準なし'/''。
+    ・エッジ形状が未選択 … 旧4桁コードがあればそれで判定（§9.203）
+    ・揃い綺麗          … OK（値は要らない）
+    ・形状あり＋基準あり … **値(mm)を基準と比べる**。値が無ければ「値待ち」
+    ・基準が引けない    … 「基準なし」。**OK/NGを推測で出さない** */
 function judgeProductRow(r){
  if(!r)return '';
- const edge=String(r.edgeShape||'').trim();
- if(edge)return edge===PRODUCT_EDGE_OK?'OK':'NG';
- /* 選び直していない旧データは、当時のコードで判定する。 */
- return judgeAlignmentCode(r.alignmentCode);
+ const edge=normalizeEdgeShape(r.edgeShape);
+ if(!edge)return judgeAlignmentCode(r.alignmentCode);
+ if(edge===PRODUCT_EDGE_OK)return 'OK';
+ const limit=edgeLimitOf(edge);
+ if(limit===null)return '基準なし';
+ /* **空欄を0と読まない**（`Number('')`は0。屑幅・母材で同じ罠）。 */
+ const raw=String(r.alignmentValue||'').trim();
+ if(raw==='')return '値待ち';
+ const n=Number(raw);
+ if(!Number.isFinite(n))return '値待ち';
+ return n<=limit?'OK':'NG';
+}
+/* バッジの見た目。**色だけで伝えない**ので、文字はそのまま出す（§3）。 */
+/* 判定の理由。**「なぜそうなったか」を書く**——OK/NGの2文字だけでは、
+   基準を覚えていない人には確かめようがない。 */
+function judgeReasonOf(r,j){
+ const edge=normalizeEdgeShape(r&&r.edgeShape);
+ if(j==='OK'&&edge===PRODUCT_EDGE_OK)return '「揃い綺麗」＝異常なしのためOKです';
+ const limit=edgeLimitOf(edge);
+ const raw=String((r&&r.alignmentValue)||'').trim();
+ if(j==='基準なし')return `切断面等級から${edge||'この形状'}の基準を出せません（3級・4級のみ対応）。合否は判定していません`;
+ if(j==='値待ち')return `${edge}の基準は ${limit!==null?limit.toFixed(1)+'mm以下':'—'} です。値(mm)を入れると判定します`;
+ /* **旧4桁コードで判定した行**はエッジ形状も基準も持たない（§9.203）。
+    `limit`がnullのまま`toFixed`を呼ぶと落ちるので、必ず先に分ける。 */
+ if(limit===null){
+  const code=String((r&&r.alignmentCode)||'').trim();
+  return j?`4桁の揃いコード（${code||'—'}）で判定しています。エッジ形状を選び直すと、切断面等級の基準で判定します`
+          :'エッジ形状を選ぶと判定します';
+ }
+ if(j==='OK')return `${edge} ${raw}mm ≦ 基準 ${limit.toFixed(1)}mm のためOKです`;
+ if(j==='NG')return `${edge} ${raw}mm が基準 ${limit.toFixed(1)}mm を超えています`;
+ return 'エッジ形状を選ぶと判定します';
+}
+function productJudgeClass(j){
+ return j==='OK'?' ok':j==='NG'?' ng':(j==='値待ち'||j==='基準なし')?' pend':'';
+}
+/* 基準の帯。**出どころ（切断面等級）と、見ていないもの（客先の個別要求）を
+   必ず書く**（§6）。等級が読めないときは「出せない」と書いて判定もしない。 */
+function cutFaceNoteHtml(){
+ const grade=cutFaceGrade(),table=cutFaceLimits();
+ if(!table){
+  const shown=grade?`「${esc(grade)}」`:'空欄';
+  return `<b>基準を出せません</b>：品質規格の<b>切断面</b>が${shown}で、3級・4級のどちらにも当てはまりません。`
+   +`エッジ形状と内訳は今までどおり記録できますが、<b>合否は判定しません</b>。`;
+ }
+ const cells=Object.entries(table)
+   .map(([k,v])=>`<span class="prt-lim"><i>${esc(k)}</i><b>${v.toFixed(1)}mm以下</b></span>`).join('');
+ return `<span class="prt-lim-head">切断面 <b>${esc(grade)}級</b>の基準</span>${cells}`
+   +`<small>各丈の<b>値(mm)</b>をこの基準と比べて判定します。`
+   +`<b>客先の個別要求は反映していません</b>——切断面等級とエッジ形状だけで判定しています。</small>`;
+}
+function renderCutFaceNote(){
+ const el=$('#productRowsNote');if(!el)return;
+ el.innerHTML=cutFaceNoteHtml();
+ el.classList.toggle('is-none',!cutFaceLimits());
 }
 /* 選択欄。**選択肢に無い値が入っていたら、その値を選択肢に足す**(§9.160)
    ——`select.value`へ無い値を入れると空文字になり、保存済みの記録が
@@ -289,6 +445,9 @@ function renderProductPanel(){
    +(type==='number'?' inputmode="decimal" step="any"':'')+'>';
   const sel=k=>productSelectHtml(PRODUCT_CHOICES.find(d=>d.k===k),r[k]);
   const judge=judgeProductRow(r);
+  const limit=edgeLimitOf(r.edgeShape);
+  const over=limit!==null&&String(r.alignmentValue||'').trim()!==''
+    &&Number.isFinite(Number(r.alignmentValue))&&Number(r.alignmentValue)>limit;
   const oldCode=String(r.alignmentCode||'').trim();
   /* **内訳は異常のときだけ、行の下へ横いっぱいで出す**(§9.203)。
      5欄を横に並べると1列120px×5が要り、器(実測841px)に入らない
@@ -300,11 +459,14 @@ function renderProductPanel(){
      +`<span class="prt-detail-lead">丈${i+1}の内訳</span>`
      +PRODUCT_CHOICES.filter(d=>d.k!=='edgeShape')
        .map(d=>`<label class="prt-df"><span>${esc(d.label)}</span>${sel(d.k)}</label>`).join('')
-     +`<label class="prt-df"><span>ピッチ</span>${field('pitch','number')}</label>`
-     +`<label class="prt-df"><span>値</span>${field('alignmentValue','number')}</label>`
+     +`<label class="prt-df"><span>ピッチ(mm)</span>${field('pitch','number')}</label>`
+     +`<label class="prt-df prt-df-val${over?' is-over':''}"><span>値(mm)</span>${field('alignmentValue','number')}`
+     +(limit!==null?`<em class="prt-lim-inline">≤ ${limit.toFixed(1)}</em>`:'<em class="prt-lim-inline is-none">基準なし</em>')
+     +`</label>`
      +`</div></td></tr>`;
   return `<tr data-row="${i}"><th>${i+1}</th><td>${field('productLength','number')}</td><td>${field('wallThickness','number')}</td>`
-   +`<td><span class="product-judge${judge==='OK'?' ok':judge==='NG'?' ng':''}" data-product-judge="${i}">${esc(judge)}</span>`
+   +`<td><span class="product-judge${productJudgeClass(judge)}" data-product-judge="${i}"`
+   +` title="${esc(judgeReasonOf(r,judge))}">${esc(judge)}</span>`
    +(oldCode?`<small class="prt-old" title="4桁の揃いコードで記録された旧データです。エッジ形状を選び直すと、そちらが判定に使われます">旧 ${esc(oldCode)}</small>`:'')+`</td>`
    +`<td>${sel('edgeShape')}</td><td>${field('note')}</td></tr>`+detail;
  }).join('');
@@ -325,8 +487,16 @@ function renderProductPanel(){
     const has=!!el.value&&!isOk;
     if(had!==has){renderProductPanel();markDirty();return}
    }
-   const j=judgeProductRow(row),badge=tr.querySelector('[data-product-judge]');
-   if(badge){badge.textContent=j;badge.className='product-judge'+(j==='OK'?' ok':j==='NG'?' ng':'')}
+   /* 値(mm)は判定に効く(§9.204)。**同じ行の判定とその理由を必ず言い直す**。 */
+   const j=judgeProductRow(row);
+   const badge=document.querySelector(`#productRowsBody tr[data-row="${i}"] [data-product-judge]`);
+   if(badge){badge.textContent=j;badge.className='product-judge'+productJudgeClass(j);
+             badge.title=judgeReasonOf(row,j)}
+   if(key==='alignmentValue'){
+    const limit=edgeLimitOf(row.edgeShape),n=Number(String(el.value||'').trim());
+    const over=limit!==null&&String(el.value||'').trim()!==''&&Number.isFinite(n)&&n>limit;
+    const box=el.closest('.prt-df');if(box)box.classList.toggle('is-over',over);
+   }
    markDirty();updateProductStatus();
   };
   /* selectは`input`も飛ぶが、**`change`も受ける**——古いブラウザ差を
@@ -334,6 +504,7 @@ function renderProductPanel(){
   el.oninput=apply;
   if(el.tagName==='SELECT')el.onchange=apply;
  });
+ renderCutFaceNote();
  upgradeManualInputTypes();updateProductStatus();
  loadFlatComment(); applyInputProtection();
 }

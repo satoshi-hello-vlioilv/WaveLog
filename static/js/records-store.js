@@ -99,7 +99,16 @@ function applyContextSnapshot(x){
  WL.choiceUsage.set(x.choice_usage);
  optionFill('operator',x.operators,m.settings.operator);optionFill('inspector',x.inspectors||x.operators,m.settings.inspector);
  optionFill('thicknessGauge',x.thickness_gauges,m.settings.thicknessGauge);optionFill('widthGauge',x.width_gauges,m.settings.widthGauge);
- optionFill('innerDiameter',x.inner_diameters,m.settings.innerDiameter);optionFill('spool',x.spools,m.settings.spool);
+ /* 内径は**仕掛由来のプリセット**(§9.204)が入りうる。`optionFill`は
+    候補に無い現在値を黙って捨てるので、**候補へ足してから渡す**
+    ——内径種別マスタが空の現場では、足さないとプリセットが画面に
+    一度も出ない（値だけ`settings`に残り、選択欄は`-`のまま）。 */
+ {const inner=[...(x.inner_diameters||[])];
+  const cur=String(m.settings.innerDiameter||'').trim();
+  if(cur&&cur!=='-'&&!inner.includes(cur))inner.push(cur);
+  optionFill('innerDiameter',inner,m.settings.innerDiameter);}
+ optionFill('spool',x.spools,m.settings.spool);
+ if(WL.innerDiameter)WL.innerDiameter.refresh();
  /* バリ揃え・コイル止めはマスタ化前まで画面へ直接書かれていた選択肢なので、
     マスタが空(未作成・全件無効化)でも選べる値が消えないよう既定を持つ。
     先頭の'-'は付けない——「指定なし」が既にその意味の選択肢のため。 */

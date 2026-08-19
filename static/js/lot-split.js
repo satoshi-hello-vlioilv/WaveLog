@@ -457,6 +457,17 @@
             }
           }
         }
+        /* **後から届いた列で、等級とその基準を出し直す**(§9.204)。
+           一覧の行は列が欠けていることがあり、`品質ｸﾞﾚｰﾄﾞ_切断面`が
+           ここで初めて現れる場合がある。出し直さないと、基準の帯は
+           「基準を出せません」のまま残り、丈の判定も止まったままになる
+           （`renderQualityGradePanel`が`m.qualityGrades`の唯一の書き手）。
+           **内径のプリセット**も同じで、`ｺｲﾙ_内径目標`がここで現れうる。 */
+        if(typeof renderQualityGradePanel==='function')renderQualityGradePanel();
+        if(typeof renderProductPanel==='function'
+           &&WL.measureItem.isMaterial($('#measureType')?.value))renderProductPanel();
+        /* 当て方は1箇所（measurement-view.js）が持つ。ここは呼ぶだけ。 */
+        if(WL.innerDiameter)WL.innerDiameter.apply(S.measure.source);
       }
     }catch(e){console.warn('自ロットの完全データ取得に失敗しました',e)}
   }

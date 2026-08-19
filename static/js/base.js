@@ -193,10 +193,16 @@ function sourceValue(names){const r=S.measure?.source||S.measure?.snapshot?.sour
 function normalizedFieldName(name){return String(name||'').normalize('NFKC').replace(/\s+/g,'').toLowerCase()}
 /* 複数の候補ソース(S.current/S.measure.source/スナップショット等)を横断して
    フィールド値を探す。全角半角ゆれはnormalizedFieldNameで吸収する。 */
+/* 探す本体。**引く規則は1箇所**——`S.*`を見る`sourceField()`と、まだ
+   `S.measure`が無い時点で1行だけを見たい場合(§9.204の内径プリセット)の
+   両方がここを通る。空白だけの値は「無い」として次の候補へ落とす。 */
+function fieldFromRows(rows,names){
+ for(const wanted of names){const wn=normalizedFieldName(wanted);for(const source of rows){for(const [key,value] of Object.entries(source)){if(normalizedFieldName(key)===wn&&value!==undefined&&value!==null&&String(value).trim()!=='')return String(value)}}}
+ return '';
+}
 function sourceField(names){
  const sources=[S.current,S.measure?.source,S.measure?.snapshot?.source,S.measure?.snapshot?.basic,S.measure?.basic].filter(x=>x&&typeof x==='object');
- for(const wanted of names){const wn=normalizedFieldName(wanted);for(const source of sources){for(const [key,value] of Object.entries(source)){if(normalizedFieldName(key)===wn&&value!==undefined&&value!==null&&String(value).trim()!=='')return String(value)}}}
- return '';
+ return fieldFromRows(sources,names);
 }
 // Waiting feedback on the initial navigation. Yield one frame so acknowledgement appears immediately.
 function nextPaint(){return new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))}
