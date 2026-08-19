@@ -26,7 +26,7 @@
 """
 import unicodedata
 
-from .db_access import (DBS, QUALITY_DB_KEY, WORK_DB_KEY, cols, connect, path_config_value,
+from .db_access import (DBS, QUALITY_DB_KEY, WORK_DB_KEY, cfg, cols, connect, path_config_value,
                         qi, tables)
 from .logging_setup import app_logger
 from . import source_capability
@@ -192,6 +192,24 @@ def _info(d, applied=False, reason='', **kw):
  return out
 
 
+def source_cfg(key):
+ """データソースの設定を**読む場所（写し）で**返す。無ければNone。
+
+ **`DBS[...]` を直に見ないこと**（§9.198）。`DBS`が持っているのは設定に
+ 書いてある元のパス＝共有フォルダそのもので、読み取り専用のデータソースは
+ `db_mirror`が手元へ写している（`cfg()`がその写しを指す）。直に見ると
+ **結合のたびに共有越しで相手の表を走査する**ことになり、一覧を開くたび・
+ 予定を読むたびにネットワークの往復が乗る（しかも写しを作った理由である
+ 「書込中の共有を読むと壊れる」も一緒に戻ってくる）。実際に一覧と
+ スケジュールの読み込みが遅い原因の1つがこれだった。"""
+ if not key or key not in DBS:
+  return None
+ try:
+  return cfg(key)
+ except Exception:
+  return DBS.get(key)
+
+
 def _resolve_key_column(columns, name, alias=''):
  """列名を引く。完全一致 → ゆれ吸収 → （既定の結合だけ）別名表。"""
  if name in columns:
@@ -272,11 +290,11 @@ def _left_key_set(base_key, base_table, key_names):
  **「相手にしかない行」を表示中のページだけで決めないこと**——2ページ目に
  居る行を「相手にしかない」と数えてしまい、ページを繰るたびに結果が変わる。
  読むのはキーの列だけ（1行200列の実データを丸ごと運ばない。§9.94）。"""
- cfg = DBS.get(base_key or '')
- if not cfg or not base_table:
+ src = source_cfg(base_key or '')
+ if not src or not base_table:
   return None, ''
  try:
-  with connect(cfg['path'], cfg.get('role', 'readonly') == 'readonly') as c:
+  with connect(src['path'], src.get('role', 'readonly') == 'readonly') as c:
    cur = c.cursor()
    sel = ','.join(qi(n) for n in key_names)
    cur.execute(f'SELECT {sel} FROM {qi(base_table)} LIMIT {_MAX_LEFT_KEYS + 1}')
@@ -313,20 +331,28 @@ def apply_joins(base_key, base_table, columns, rows, defs):
  return columns, rows, infos
 
 
-def _read_right(c, t, right_cols, rights, rows, lefts, need_all):
+def _read_right(c, t, right_cols, rights, rows, lefts, need_all, want=None):
  """相手の行を突合キーで索引する。戻り値: (索引, 重なったキー, 重なった件数)。
 
  **「相手にしかない行」を出す結合のときだけ相手を丸ごと読む**（それ以外は
- 表示中の行のキーで絞る。共有越しに全件を運ぶと画面が数十秒止まる）。"""
+ 表示中の行のキーで絞る。共有越しに全件を運ぶと画面が数十秒止まる）。
+
+ **`SELECT *` にしないこと**（§9.198）。実データは1表200列を超えるのに、
+ 使うのは突合キーと足す列だけ——相手の行を丸ごと運ぶと、当たった行の数だけ
+ 200列を読んで捨てることになる（品質データで実測、1行あたり十数倍）。
+ `want`が要る列（キー＋足す列）で、渡されなければ今までどおり全列。"""
  index = {}
  dup_keys = set()
  ambiguous = 0
  read = 0
  cur = c.cursor()
+ have = set(right_cols)
+ take_cols = [x for x in (want or right_cols) if x in have] or list(right_cols)
+ sel = ','.join(qi(x) for x in take_cols)
 
  def take(row):
   nonlocal ambiguous
-  dd = dict(zip(right_cols, row))
+  dd = dict(zip(take_cols, row))
   rk = tuple(norm_value(dd.get(x)) for x in rights)
   if rk in index:
    ambiguous += 1
@@ -335,7 +361,7 @@ def _read_right(c, t, right_cols, rights, rows, lefts, need_all):
   index[rk] = dd
 
  if need_all:
-  cur.execute(f'SELECT * FROM {qi(t)} LIMIT {_MAX_RIGHT_ROWS}')
+  cur.execute(f'SELECT {sel} FROM {qi(t)} LIMIT {_MAX_RIGHT_ROWS}')
   for row in cur.fetchall():
    take(row)
   return index, dup_keys, ambiguous
@@ -343,7 +369,7 @@ def _read_right(c, t, right_cols, rights, rows, lefts, need_all):
  for i in range(0, len(first_values), _IN_CHUNK):
   chunk = first_values[i:i + _IN_CHUNK]
   ph = ','.join('?' for _ in chunk)
-  cur.execute(f'SELECT * FROM {qi(t)} WHERE CStr({qi(rights[0])}) IN ({ph})', chunk)
+  cur.execute(f'SELECT {sel} FROM {qi(t)} WHERE CStr({qi(rights[0])}) IN ({ph})', chunk)
   for row in cur.fetchall():
    read += 1
    if read > _MAX_RIGHT_ROWS:
@@ -364,7 +390,7 @@ def _apply_one(d, base_key, base_table, columns, rows):
  if missing:
   return columns, rows, _info(
    d, reason='この一覧に突合キーの列がありません: ' + '・'.join(missing))
- right_cfg = DBS.get(d.get('right') or '')
+ right_cfg = source_cfg(d.get('right') or '')
  if not right_cfg:
   return columns, rows, _info(
    d, reason=f'相手のデータソース「{d.get("right")}」が登録されていません'
@@ -385,15 +411,18 @@ def _apply_one(d, base_key, base_table, columns, rows):
    if lost:
     return columns, rows, _info(
      d, table=t, reason=f'相手の表「{t}」に突合キーの列がありません: ' + '・'.join(lost))
+   # 「この一覧にしかない行」だけを残す結合は、相手の列を足さない（当たって
+   # いないので値が無い）。空の列を並べても読む人の手間が増えるだけ。
+   add_cols = kind['matched'] or kind['rightOnly']
+   pairs = _added_names(d, right_cols, columns, set(rights)) if add_cols else []
+   # **読む前に「要る列」を決める**（§9.198）。ここで決めておかないと
+   # `SELECT *`しか書けず、使わない190列を運ぶことになる。
    index, dup_keys, ambiguous = _read_right(
-    c, t, right_cols, rights, rows, lefts, kind['rightOnly'])
+    c, t, right_cols, rights, rows, lefts, kind['rightOnly'],
+    want=list(dict.fromkeys(list(rights) + [src for src, _ in pairs])))
  except Exception as e:
   app_logger().warning('クエリ結合「%s」で相手を読めませんでした: %s', d.get('name'), e)
   return columns, rows, _info(d, reason=f'相手のデータへ接続できません: {e}')
- # 「この一覧にしかない行」だけを残す結合は、相手の列を足さない（当たって
- # いないので値が無い）。空の列を並べても読む人の手間が増えるだけ。
- add_cols = kind['matched'] or kind['rightOnly']
- pairs = _added_names(d, right_cols, columns, set(rights)) if add_cols else []
  if add_cols and not pairs:
   return columns, rows, _info(
    d, table=t, matched=0,
@@ -512,7 +541,7 @@ def probe(d, sample=200):
         'addedColumns': 0, 'addedColumnNames': [], 'table': '', 'examples': [],
         'kind': kind_of(d)['key'], 'kindLabel': kind_of(d)['label'],
         'rowsAfter': 0, 'droppedRows': 0, 'addedRows': 0, 'note': ''}
- left_cfg = DBS.get(d.get('left') or '')
+ left_cfg = source_cfg(d.get('left') or '')
  if not left_cfg:
   out['reason'] = '対象のデータソースが登録されていません。'
   return out

@@ -17,6 +17,7 @@ before_requestでは判定できない(設備名はリクエストボディの�
 ハンドラ内で追加チェックする。
 """
 import json
+import time
 from datetime import datetime, timedelta
 
 from flask import Blueprint, request, jsonify, g
@@ -118,16 +119,19 @@ def session_release():
   schedule_sync.release_session(equipment,current_login_id(),current_pc_name())
  return jsonify(ok=True)
 
-def _read(fn):
+def _read(fn,timings=None):
  """GET系共通。ロックを取らず、共有ファイルをローカルへ取得して読むだけ
  (§4.2の「取得」のみを行い、適用・反映はしない)。
- 戻り値: (fn(c)の結果 or None, stale:bool, エラー種別 or None)"""
+ 戻り値: (fn(c)の結果 or None, stale:bool, エラー種別 or None)
+ timings: 渡すと「共有の取り込みに何ms掛かったか」を入れる(§9.198)。"""
+ t0=time.perf_counter()
  try:
   local_path,stale=schedule_sync.fetch_snapshot()
  except schedule_sync.ScheduleNotConfigured:
   return None,False,'not_configured'
  except schedule_sync.ScheduleUnavailableError as e:
   return None,False,str(e)
+ if timings is not None:timings['snapshot']=round((time.perf_counter()-t0)*1000,1)
  c=connect(local_path,False,'sqlite')
  try:
   result=fn(c)
@@ -280,13 +284,23 @@ def plan_list():
  if raw is not None:
   try:history_hours=max(0.0,min(float(raw),24.0*90))
   except (TypeError,ValueError):pass
- result,stale,err=_read(lambda c:schedule_calc.expand_plan(c,equipment,history_hours=history_hours))
+ # 読み込みの内訳(§9.198)。**遅いときにどこが遅いのかを画面から見られる**
+ # ようにするための計測。「共有の取り込み」「予定の読み出し」「実績の突合」
+ # 「展開」で桁が違うので、どれか1つでも分かれば打つ手が決まる。
+ timings={}
+ t_all=time.perf_counter()
+ result,stale,err=_read(lambda c:schedule_calc.expand_plan(c,equipment,history_hours=history_hours),timings)
  if err=='not_configured':return jsonify(ok=True,configured=False,equipment=equipment,entries=[],anchor=None,warnings=[])
  if err:return jsonify(error=err),503
  warnings=list(result.get('warnings') or [])
  if stale:warnings.append('スケジュールデータの取得に失敗したため、直前のローカルキャッシュを表示しています。')
+ timings.update(result.get('timings') or {})
+ timings['total']=round((time.perf_counter()-t_all)*1000,1)
+ timings['rowCount']=len(result['entries'])
  return jsonify(ok=True,configured=True,equipment=equipment,entries=result['entries'],anchor=result.get('anchor'),
-                loadFactor=result.get('loadFactor'),historyHours=history_hours,warnings=warnings)
+                anchorRounded=result.get('anchorRounded'),
+                loadFactor=result.get('loadFactor'),historyHours=history_hours,warnings=warnings,
+                timings=timings)
 
 @bp.post('/api/schedule/plan/add')
 def plan_add():
@@ -549,6 +563,56 @@ def stop_category_delete():
   n=sr.stop_category_delete(mc,cid,request_user_id(x))
   if n==0:raise ValueError('指定の分類が見つかりません。')
   return {'id':cid,'name':name,'stopReasonRows':used}
+ return _cfg_write_response(fn)
+
+# ========================================================================
+# 行表示マスタ(§9.198) — タイムラインの行の見せ方(配色・アイコン)
+# ------------------------------------------------------------------------
+# **全設備共通**。区分の色は設備をまたいで意味を持つ言語なので、設備ごとに
+# 変えられるようにすると色が何も語らなくなる(設備停止分類マスタと同じ理由)。
+# ========================================================================
+def _row_style_entry(r):
+ # r: 行表示ID,区分キー,色キー,アイコン,アイコン表示,有効,更新日時,更新者ID
+ return {'id':r[0],'key':str(r[1] or ''),'colorKey':str(r[2] or ''),'icon':str(r[3] or ''),
+         'showIcon':(True if r[4] is None else bool(r[4])),
+         'updatedAt':r[6].isoformat() if r[6] else None,'updatedBy':str(r[7] or '')}
+
+@bp.get('/api/schedule/row-style-master')
+def row_style_list():
+ items=_cfg_read(lambda mc:[_row_style_entry(r) for r in sr.row_style_rows(mc)])
+ return jsonify(ok=True,configured=True,items=items,stale=False)
+
+def _row_style_save(x):
+ rid=x.get('id')
+ def fn(mc):
+  gid,created=sr.row_style_upsert(mc,x.get('key'),request_user_id(x),
+                                  color_key=str(x.get('colorKey') or ''),
+                                  icon=str(x.get('icon') or ''),
+                                  show_icon=x.get('showIcon') is not False,
+                                  row_style_id=int(rid) if rid not in (None,'') else None)
+  return {'id':gid,'created':created}
+ return _cfg_write_response(fn)
+
+@bp.post('/api/schedule/row-style-master')
+def row_style_register():
+ return _row_style_save(request.get_json(force=True) or {})
+
+@bp.post('/api/schedule/row-style-master/update')
+def row_style_update():
+ x=request.get_json(force=True) or {}
+ if x.get('id') in (None,''):return jsonify(error='更新対象IDがありません。'),400
+ return _row_style_save(x)
+
+@bp.post('/api/schedule/row-style-master/delete')
+def row_style_delete_route():
+ """既定へ戻す。**行ごと消す**のが「設定していない」状態。"""
+ x=request.get_json(force=True) or {}
+ rid=x.get('id')
+ if rid is None:return jsonify(error='削除対象IDがありません。'),400
+ def fn(mc):
+  if not sr.row_style_delete(mc,rid,request_user_id(x)):
+   raise ValueError('指定の設定が見つかりません。')
+  return {'deleted':1}
  return _cfg_write_response(fn)
 
 # ========================================================================

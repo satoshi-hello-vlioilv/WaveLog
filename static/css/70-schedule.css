@@ -920,6 +920,13 @@
 }
 .sc-group-label{font-size:var(--fs-title);font-weight:800;color:#173842}
 .sc-group-count{font-size:var(--fs-sm);font-weight:700;color:#8a9aa0;font-variant-numeric:tabular-nums}
+/* この見出しの日付が現場歴か太陽暦か(§9.198)。同じ「8/18」でも入る行が
+   違うので、見出しだけで判断できるようにする。 */
+.sc-group-basis{
+ font-size:var(--fs-badge);font-weight:700;color:var(--ink-3);
+ padding:var(--pad-chip);border:1px solid var(--line-soft);border-radius:var(--radius-pill);
+ background:var(--surface);white-space:nowrap;
+}
 .sc-group-note{font-size:var(--fs-sm);color:#8a9aa0}
 .sc-group[data-group="running"] .sc-group-head{border-left-color:var(--success);background:var(--success-bg)}
 .sc-group[data-group="running"] .sc-group-label{color:var(--success)}
@@ -960,6 +967,9 @@
  padding:0 var(--ctl-pad-x-xs);border-left:1px solid var(--line);
 }
 .sc-freshness[hidden]{display:none}
+/* 遅かったときだけ色を付ける(§9.198)。**色だけで伝えない**——文字でも
+   「読み込み◯秒」と出し、内訳と打つ手はtitleに入れてある。 */
+.sc-freshness.is-slow{color:var(--warn-fg);font-weight:700}
 /* 作業中の行はダブルクリックで再開できる(§9.43) */
 .sc-row-line.sc-row-resumable{cursor:pointer}
 .sc-row-resume{background:var(--success-bg);border-color:var(--success-border);color:var(--success);font-weight:800;white-space:nowrap}
@@ -992,8 +1002,10 @@
 .sc-row-title.has-children{display:flex;align-items:center;gap:var(--gap-inline);min-width:0}
 /* つまみは縮ませない。詰まったときに削るのは文字の方(省略記号で示す)。 */
 .sc-row-title-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+/* 「親」のバッジ(§9.198)。**ロット番号のお尻**に付く小さな押し所で、
+   幅は3文字ぶんに収める（以前は「▸子ロット3」で6文字ぶん占めていた）。 */
 .sc-child-toggle{
- display:inline-flex;align-items:center;gap:2px;flex:0 0 auto;
+ display:inline-flex;align-items:center;gap:1px;flex:0 0 auto;
  padding:0 var(--space-1);height:var(--ctl-h-xs);
  border:1px solid var(--line-mid);border-radius:var(--radius-pill);
  background:var(--surface-2);color:var(--ink-2);
@@ -1001,8 +1013,10 @@
  cursor:pointer;white-space:nowrap;
 }
 .sc-child-toggle:hover{border-color:var(--teal);background:var(--pale);color:var(--nav)}
-.sc-child-toggle.is-open{border-color:var(--teal);background:var(--pale);color:var(--nav)}
+.sc-child-toggle.is-open{border-color:var(--teal);background:var(--teal);color:#fff}
 .sc-child-toggle i{font-style:normal;font-size:var(--fs-tiny)}
+/* 件数は補助。**大きさは変えず色で下げる**(§9.161と同じ作法)。 */
+.sc-child-toggle b{font-weight:700;opacity:.75}
 .sc-row-line.sc-row-has-children{border-bottom-color:var(--line-mid)}
 
 .sc-child-box{
@@ -1303,4 +1317,79 @@
 .sc-pick-clear:hover{border-color:var(--teal);color:var(--nav)}
 .sc-pick-hint{flex:0 1 auto;font-size:var(--fs-micro);font-weight:400;color:var(--muted)}
 
+}
+
+/* ============================================================
+   行の見せ方(§9.198) — 区分・設備停止の分類ごとの配色とアイコン
+   ------------------------------------------------------------
+   **色は8色から選ぶ**（利用者に16進を選ばせない）。面は淡く、文字と
+   左の縁だけ濃くする——行の地に敷くので、面が濃いと文字が読めない。
+   色は補助で、区分名の文字は必ず出したまま(§3)。
+   ============================================================ */
+@layer component {
+.sc-rs-gray  {--rs-fg:var(--ink-3);   --rs-bg:var(--surface-2);      --rs-line:var(--line-mid)}
+.sc-rs-teal  {--rs-fg:var(--teal);    --rs-bg:var(--pale);           --rs-line:var(--teal)}
+.sc-rs-blue  {--rs-fg:var(--rs-blue); --rs-bg:var(--rs-blue-bg);     --rs-line:var(--rs-blue-border)}
+.sc-rs-green {--rs-fg:var(--success); --rs-bg:var(--success-bg);     --rs-line:var(--success-border)}
+.sc-rs-amber {--rs-fg:var(--warn-fg); --rs-bg:var(--warn-bg);        --rs-line:var(--warn-border)}
+.sc-rs-red   {--rs-fg:var(--danger);  --rs-bg:var(--danger-bg);      --rs-line:var(--danger-border)}
+.sc-rs-purple{--rs-fg:var(--rs-purple);--rs-bg:var(--rs-purple-bg);  --rs-line:var(--rs-purple-border)}
+/* 区分のセルは面まで塗る。行の地はごく淡く(色相だけが分かればよい)。 */
+.sc-row-cat[class*="sc-rs-"]{background:var(--rs-bg);color:var(--rs-fg);border-left-color:var(--rs-line)}
+.sc-row-line[class*="sc-rs-"]{background:color-mix(in srgb, var(--rs-bg) 55%, var(--surface))}
+.sc-row-line[class*="sc-rs-"]:hover{background:var(--rs-bg)}
+/* 同梱の線画アイコン。文字と同じ高さで並ぶよう、文字サイズを基準にする。 */
+.sc-ic{
+ width:1.05em;height:1.05em;flex:0 0 auto;vertical-align:-0.15em;
+ fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;
+}
+/* ---- 行の見せ方のパネル ---- */
+.sc-rowstyle-pop{width:min(720px,92vw);max-height:70vh;overflow:auto}
+.sc-rs-head{display:flex;flex-direction:column;gap:2px;margin-bottom:var(--space-2)}
+.sc-rs-head small{color:var(--muted);font-size:var(--fs-sm)}
+.sc-rs-sec{margin-bottom:var(--space-3)}
+.sc-rs-sec-head{
+ display:flex;align-items:baseline;gap:var(--space-2);
+ font-size:var(--fs-sm);font-weight:800;color:var(--ink-2);
+ padding-bottom:var(--space-1);border-bottom:1px solid var(--line-soft);margin-bottom:var(--space-1);
+}
+.sc-rs-sec-head small{font-weight:700;color:var(--muted)}
+/* 1行=1つの区分。**器は中身の長さから決める**(§11)——名前は11em、色は
+   8個ぶん、アイコンの選択肢は名前が入る幅、見本は区分名+印が入る幅。 */
+.sc-rs-row{
+ display:grid;grid-template-columns:var(--w-md) auto var(--w-md) var(--w-sm) auto;
+ align-items:center;gap:var(--space-2);padding:var(--space-1) 0;
+ border-bottom:1px solid var(--line-soft);
+}
+.sc-rs-name{display:flex;flex-direction:column;min-width:0}
+.sc-rs-name small{color:var(--muted);font-size:var(--fs-badge)}
+.sc-rs-colors{display:flex;gap:var(--gap-hair);flex-wrap:wrap}
+.sc-rs-sw{
+ height:var(--ctl-h-xs);padding:0 var(--space-1);cursor:pointer;
+ border:1px solid var(--line);border-radius:var(--radius-xs);
+ background:var(--rs-bg,var(--surface));color:var(--rs-fg,var(--ink-3));
+ font-size:var(--fs-badge);font-weight:700;line-height:1;white-space:nowrap;
+}
+.sc-rs-sw.is-on{outline:2px solid var(--teal);outline-offset:1px}
+.sc-rs-sw.is-default{background:var(--surface);color:var(--muted)}
+.sc-rs-icon{display:inline-flex;align-items:center;gap:var(--space-1);font-size:var(--fs-badge);color:var(--muted);min-width:0}
+.sc-rs-icon>span{white-space:nowrap}
+.sc-rs-icon select{min-width:0;flex:1 1 auto;max-width:var(--w-sm)}
+.sc-rs-sample{display:flex;justify-content:flex-start;min-width:0;overflow:hidden}
+.sc-rs-reset{
+ height:var(--ctl-h-xs);padding:0 var(--space-2);cursor:pointer;white-space:nowrap;
+ border:1px solid var(--line);border-radius:var(--radius-xs);background:var(--surface);
+ font-size:var(--fs-badge);font-weight:700;color:var(--ink-3);
+}
+.sc-rs-reset[disabled]{opacity:.4;cursor:default}
+/* ---- 操作の塊(§9.198) ---- */
+.sc-tools{display:inline-flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;min-width:0}
+.sc-tools[hidden]{display:none}
+.sc-tools-label{
+ font-size:var(--fs-badge);font-weight:800;color:var(--muted);white-space:nowrap;
+ padding-right:var(--space-1);border-right:1px solid var(--line-soft);
+}
+/* 表示範囲の起点(§9.198)。数字だけでは「いつからか」が分からない。 */
+.sc-history-from{font-size:var(--fs-badge);color:var(--muted);white-space:nowrap}
+.sc-history-from[hidden]{display:none}
 }

@@ -87,6 +87,12 @@ _ENDPOINT_EXTRA_MODES={
  'schedule.stop_category_register':{'edit'},
  'schedule.stop_category_update':{'edit'},
  'schedule.stop_category_delete':{'edit'},
+ # 行の見せ方(§9.198)。**配色とアイコンだけ**で、予定にも測定データにも
+ # 触れない。設備停止マスタと同じ「設定値」なので、マスタ管理を持つeditにも
+ # 開ける(scheduleはBlueprintの既定で元から書ける)。
+ 'schedule.row_style_register':{'edit'},
+ 'schedule.row_style_update':{'edit'},
+ 'schedule.row_style_delete_route':{'edit'},
  'schedule.shift_pattern_save':{'edit'},
  'schedule.shift_pattern_delete_route':{'edit'},
  'schedule.load_factor_override_save':{'edit'},

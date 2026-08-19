@@ -266,8 +266,13 @@ def status():
  with _lock:
   st=dict(_state)
  m=st.get('marker') or {}
+ on=enabled()
+ # **切っているときは名前解決へ行かない**(§9.198)。`myUrls`は書込役の受け口を
+ # 伝えるためのもので、機能が切ってあれば誰も見ない。ところがこの状態は
+ # 10秒ごとに聞かれるため、DNSの調子が悪い端末では**使っていない機能のために
+ # 定期的に待たされる**（既定はoffなので、ほとんどの現場が該当する）。
  return {
-  'enabled':enabled(),'configured':bool(SCHEDULE_SHARE_PATH),
+  'enabled':on,'configured':bool(SCHEDULE_SHARE_PATH),
   'running':st['running'],
   'isOwner':st['owner'],
   'ownerPc':m.get('pc') or '','ownerLogin':m.get('login') or '',
@@ -276,7 +281,7 @@ def status():
   'ttlSec':ttl_sec(),'port':relay_port(),
   'relays':st['relays'],'relayFail':st['relay_fail'],
   'lastError':st['last_error'],
-  'myUrls':local_urls(),
+  'myUrls':local_urls() if on else [],
  }
 
 

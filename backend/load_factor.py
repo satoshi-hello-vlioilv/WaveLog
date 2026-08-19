@@ -250,9 +250,15 @@ def resolve_overrides(c,equipment):
  merged=dict(global_);merged.update(specific)
  return merged
 
-def estimate_work(c,equipment,detail,crew_size=None):
+def estimate_work(c,equipment,detail,crew_size=None,memo=None):
  """§6.7の種別='作業'見積。detail: 明細JSON相当のdict(aliasesキー空間)。
- 戻り値は§6.8のentries[].estimate相当(minutes/low/high/sigmaLog/basis/base/factors)。"""
+ 戻り値は§6.8のentries[].estimate相当(minutes/low/high/sigmaLog/basis/base/factors)。
+
+ memo: **1回の展開の中で使い回す控え**(§9.198)。設備マスタの標準時間と
+ 換算係数上書きは**設備が同じなら同じ値**なのに、以前は予定1本ごとに
+ 引き直していた——1本あたり「表の一覧→列の一覧→設備マスタ全走査→
+ 上書きマスタ全走査」で、200本の設備では800回の問い合わせになる。
+ 渡さなければ今までどおり毎回引く(単発のプレビューはそれでよい)。"""
  model=get_model(equipment)
  # 設備マスタの「1ロットあたり標準時間」(§9.114)。**その設備の実績が
  # 足りないとき**の保険で、優先順位は次のとおり。
@@ -268,7 +274,13 @@ def estimate_work(c,equipment,detail,crew_size=None):
  # 当てるとこの設定の意味が無くなる。逆に**その設備自身の実績が溜まったら
  # ①が勝つ**(標準時間で実績を上書きしない。上書きすると実績が集まっても
  # 精度が上がらない)。
- std=read_equipment_standard_minutes(c,equipment) if c is not None else None
+ if memo is None:
+  std=read_equipment_standard_minutes(c,equipment) if c is not None else None
+ elif 'std' in memo:
+  std=memo['std']
+ else:
+  std=read_equipment_standard_minutes(c,equipment) if c is not None else None
+  memo['std']=std
  if model is None or (std is not None and model.get('basis')!='equipment'):
   if std is not None:
    return {'minutes':round(float(std),1),'low':None,'high':None,'sigmaLog':None,
@@ -276,7 +288,12 @@ def estimate_work(c,equipment,detail,crew_size=None):
   if model is None:
    return {'minutes':DEFAULT_ESTIMATE_MINUTES,'low':None,'high':None,'sigmaLog':None,
            'basis':'default','base':None,'factors':[]}
- overrides=resolve_overrides(c,equipment)
+ if memo is None:
+  overrides=resolve_overrides(c,equipment)
+ else:
+  overrides=memo.get('overrides')
+  if overrides is None:
+   overrides=resolve_overrides(c,equipment);memo['overrides']=overrides
  base_override=overrides.get(('BASE',''))
  t0=base_override if base_override is not None else model['T0']
  ln_total=0.0

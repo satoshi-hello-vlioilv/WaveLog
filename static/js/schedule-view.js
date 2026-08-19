@@ -58,7 +58,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   }catch(e){/* 保存値が壊れていても既定で続行する */}
   return 8;
  }
- let scState={equipment:'',entries:[],anchor:null,warnings:[],configured:true,
+ let scState={equipment:'',entries:[],anchor:null,anchorRounded:null,warnings:[],configured:true,
               editable:false,pickerEnabled:false,stopReasons:[],dragId:null,insertBefore:'',
               editingComment:null,   // 申し送りをその場で書いている行のID(§9.191)
               focusComment:null,     // 落として入れた枠。描き終わりで開く
@@ -106,11 +106,84 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const hm=new Date(ts).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'});
   return min<1?`${hm} 時点(たった今)`:`${hm} 時点(${min}分前)`;
  }
+ /* ---------- 読み込みの内訳(§9.198) ----------
+    「読み込みが遅い」は**どこが遅いのかで打つ手がまるで違う**（共有の
+    取り込みならネットワーク、実績の突合なら測定データの量、結合なら
+    クエリ結合マスタ）。サーバーが返した内訳をそのまま出し、**遅いときだけ
+    見えるところへ出す**——速いときに毎回ミリ秒を並べても読まれない。 */
+ let scLastTimings=null;
+ const SC_SLOW_MS=1200;            // これを超えたら文字で出す
+ const SC_TIMING_LABEL={snapshot:'共有の取り込み',rows:'予定の読み出し',
+   actual:'実績の突合',expand:'時刻の展開',join:'クエリ結合',total:'合計'};
+ function timingLines(t){
+  if(!t)return [];
+  const out=[];
+  ['snapshot','rows','actual','expand','join'].forEach(k=>{
+   if(t[k]==null)return;
+   out.push(`　${SC_TIMING_LABEL[k]}: ${Math.round(t[k])}ms`);
+  });
+  if(t.total!=null)out.unshift(`読み込み ${(t.total/1000).toFixed(1)}秒`
+    +(t.rowCount!=null?`（${t.rowCount}件）`:''));
+  return out;
+ }
+ /* 内訳から「次にすること」を1つだけ言う(§2)。数字だけ出しても打つ手が
+    分からないので、いちばん重い工程に応じて助言を変える。 */
+ function timingAdvice(t){
+  if(!t||t.total==null)return '';
+  const cand=[['snapshot','共有フォルダからの取り込みに時間がかかっています。マスタ管理 > 共通設定の「共有の見張り」の間隔を延ばすと、取り込む回数を減らせます。'],
+              ['actual','測定データが多く、実績の突合に時間がかかっています。上の「さかのぼり」を短くすると軽くなります。'],
+              ['join','クエリ結合の相手を引くのに時間がかかっています。マスタ管理 > クエリ結合で、要らない結合を無効にできます。'],
+              ['expand','予定の件数が多く、時刻の展開に時間がかかっています。完了した予定を整理すると軽くなります。']];
+  let worst=null;
+  cand.forEach(([k,msg])=>{const v=t[k];if(v!=null&&(!worst||v>worst[0]))worst=[v,msg]});
+  return worst&&worst[0]>=SC_SLOW_MS*0.4?worst[1]:'';
+ }
+ /* ---------- 表示範囲の起点(§9.198、利用者の指示) ----------
+    「過去の長さを指定できるが、現在か過去か書いていないので分かりにくい」。
+    選択肢を「いまから過去◯時間」と言い切り、**実際の起点の日時**を横に出す
+    ——時間数だけでは、いま何時なのかを頭の中で引き算しないと分からない。
+    **未来の予定は範囲に関わらず全部出る**ことも書く（範囲を短くすると
+    先の予定まで消えると誤解されるため）。 */
+ function updateHistoryFromUi(){
+  const el=$('#scHistoryFrom'),wrap=$('#scHistoryRange');
+  if(!el)return;
+  if(!wrap||wrap.hidden){el.hidden=true;return}
+  const from=new Date(historyCutoff());
+  el.hidden=false;
+  el.textContent=`＝ ${fmtDateTime(from.toISOString())} 以降`;
+  el.title=`完了した予定と実績は、この日時より後のものだけを出しています`
+   +`（いまから過去${scState.historyHours}時間）。\nこれから流す予定は、この範囲に関わらずすべて出ます。`;
+ }
+ /* ---------- 再計算の基準時刻(§9.198、利用者の指示) ----------
+    「現在時刻を5分刻みに変換して、計算の開始時刻の見栄えを良くしてほしい」。
+    丸めるのはサーバー(schedule_calc)で、こちらは**丸めたことを書く**役。
+    黙って5分ずれた時刻を出すと「時計と合っていない」と読まれる。 */
+ function updateRefreshHint(){
+  const btn=$('#scRefresh');if(!btn)return;
+  const lines=['いまの時刻を基準に、予定の開始・終了を計算し直します。'];
+  const a=scState.anchorRounded;
+  if(a&&a.to){
+   lines.push(`基準時刻: ${fmtDateTime(a.to)}`
+    +`（現在時刻 ${fmtDateTime(a.from)} を${a.unitMinutes}分刻みへ切り上げ）`);
+  }else if(scState.anchor){
+   lines.push(`基準時刻: ${fmtDateTime(scState.anchor)}`);
+  }
+  btn.title=lines.join('\n');
+ }
  function updateFreshnessUi(ts){
   const el=$('#scFreshness');if(!el)return;
   el.hidden=!ts;
-  if(ts){el.textContent=fmtFetchedAt(ts);el.title='この時点で読み込んだ内容です。「再計算」で最新を取り直します。'}
+  if(!ts)return;
+  const t=scLastTimings;
+  const slow=!!(t&&t.total!=null&&t.total>=SC_SLOW_MS);
+  el.textContent=fmtFetchedAt(ts)+(slow?` / 読み込み ${(t.total/1000).toFixed(1)}秒`:'');
+  el.classList.toggle('is-slow',slow);
+  const lines=['この時点で読み込んだ内容です。「再計算」で最新を取り直します。'];
+  if(t){lines.push('',...timingLines(t));const a=timingAdvice(t);if(a)lines.push('',a)}
+  el.title=lines.join('\n');
  }
+ /* 画面の外から内訳を見る口（DOMを掘らずに確かめられるようにしておく）。 */
+ WL.scheduleLoadTimings=()=>(scLastTimings?Object.assign({},scLastTimings):null);
  /* ---------- 共有の見張り(§9.188) ----------
     共有(Box等)のschedule.sqlite3は他の端末も書く。サーバーは改訂番号だけを
     見て**変わったときだけ**手元へ写す(backend/schedule_watch.py)ので、
@@ -200,6 +273,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     try{scOwnerState=await api('/api/schedule/owner-status')}catch(e){}
     scOwnerTick=(scOwnerState&&scOwnerState.enabled)?0:30;
    }else scOwnerTick--;
+   /* 「いまから過去◯時間」の起点は時計とともに動く(§9.198)。10秒ごとの
+      この巡回で書き直す——止まった時刻を出しておくと、そのうち嘘になる。 */
+   updateHistoryFromUi();
    renderSyncChip();
    if(!st.configured||st.revision==null)return;
    /* **基準は読み直すたびに置き直す**——自分の書込でも改訂番号は上がる
@@ -282,31 +358,50 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      <span class="sc-equipment-fixed" id="scEquipmentFixed" hidden></span>
      <span class="sc-lock-badge" id="scLockBadge" hidden></span>
     </div>
+    <!-- ---------- 操作の並び(§9.198、利用者の指示「メニューが増えたので
+         わかりやすく使いやすく」) ----------
+         11個のボタンが1列に並んでいたため、目的のものを探すのに毎回
+         全部を読む必要があった。**役割で束ねて4つの塊にする**
+         （かたまりで覚えられるので、11個から4個へ選ぶ問題になる）。
+         並びは作業の順そのもの: 見る → 足す → 出す → 更新。
+         **どれも隠さない**——畳んで奥へ入れると、押すまでに1手増える。 -->
     <div class="sc-head-right">
      <div class="sc-board-window" id="scBoardWindow" hidden>
       <button type="button" class="sc-board-window-btn" data-hours="24">24時間</button>
       <button type="button" class="sc-board-window-btn" data-hours="48">48時間</button>
      </div>
-     <label class="sc-history-range" id="scGroupRange" hidden title="タイムラインを日付・勤務・区分でまとめて表示します">
-      <span>まとめ</span>
-      <select id="scGroupSelect">${SC_GROUP_MODES.map(m=>`<option value="${m.key}">${m.label}</option>`).join('')}</select>
-     </label>
-     <label class="sc-history-range" id="scHistoryRange" hidden title="完了した予定と実績を、今から何時間前まで表示するかを選びます">
-      <span>表示範囲</span>
-      <select id="scHistorySelect">${SC_HISTORY_CHOICES.map(h=>`<option value="${h}">直近${h}時間</option>`).join('')}</select>
-     </label>
-     <span class="sc-freshness" id="scFreshness" hidden></span>
-     <!-- 共有の見張り(§9.188)。いつ取り込んだか・見張っているかを常に出す。
-          押すとその場で取り込む。 -->
-     <button type="button" class="sc-sync-chip" id="scSyncChip" hidden></button>
-     <span class="sc-field-reorder-note" id="scFieldReorderNote" hidden>現場段取り: 並べ替えのみ可能</span>
-     <button type="button" class="sc-split-toggle" id="scLayoutBtn" hidden title="この画面を開いたときの表示（分割／スケジュールだけ）と、仕掛一覧を左右どちらに置くかを決めます">⚙ 表示</button>
-     <button type="button" class="sc-split-toggle" id="scContentModalBtn" hidden title="このスケジュール表に出す列・並び・幅・書式をまとめて設定します（設備ごとに保存）">☰ 表示列</button>
-     <button type="button" class="sc-split-toggle" id="scListModalBtn" hidden title="仕掛一覧をポップアップで表示してドラッグで追加します">⧉ ポップアップ</button>
-     <button type="button" class="sc-split-toggle" id="scStopModalBtn" hidden title="設備停止をポップアップから追加します">⛔ 設備停止</button>
-     <button type="button" class="sc-split-toggle" id="scCommentBtn" draggable="true" hidden title="申し送り（コメント）を予定の列へ挟みます。時間は取りません。&#10;・掴んで予定の間へ落とすと、空の枠だけが入ります（あとでダブルクリックして書けます）&#10;・押すとその場で書いて入れられます">💬 コメント</button>
-     <button type="button" class="sc-split-toggle" id="scPrintBtn" title="いま表示している予定を、現場へ配る形（A4）で印刷します">🖨 印刷</button>
-     <button type="button" class="sc-refresh" id="scRefresh">再計算</button>
+     <div class="sc-tools" data-tools="view" id="scToolsView">
+      <span class="sc-tools-label" title="表示のしかた（この画面の見え方だけを変えます。予定そのものは変わりません）">表示</span>
+      <label class="sc-history-range" id="scGroupRange" hidden title="タイムラインを日付・勤務・区分でまとめて表示します。日付は現場歴（勤務の日付補正を当てた現場の1日）と太陽暦から選べます">
+       <span>まとめ</span>
+       <select id="scGroupSelect">${SC_GROUP_MODES.map(m=>`<option value="${m.key}">${m.label}</option>`).join('')}</select>
+      </label>
+      <label class="sc-history-range" id="scHistoryRange" hidden title="完了した予定と実績を、いまから何時間前までさかのぼって出すかです（未来の予定は範囲に関わらず全部出ます）">
+       <span>さかのぼり</span>
+       <select id="scHistorySelect">${SC_HISTORY_CHOICES.map(h=>`<option value="${h}">いまから過去${h}時間</option>`).join('')}</select>
+      </label>
+      <span class="sc-history-from" id="scHistoryFrom" hidden></span>
+      <button type="button" class="sc-split-toggle" id="scContentModalBtn" hidden title="このスケジュール表に出す列・並び・幅・書式をまとめて設定します（設備ごとに保存）">☰ 表示列</button>
+      <button type="button" class="sc-split-toggle" id="scRowStyleBtn" hidden title="区分・設備停止の分類ごとに、行の配色とアイコンを決めます（全設備・全員に共通）">🎨 行の見せ方</button>
+      <button type="button" class="sc-split-toggle" id="scLayoutBtn" hidden title="この画面を開いたときの表示（分割／スケジュールだけ）と、仕掛一覧を左右どちらに置くかを決めます">⚙ 配置</button>
+     </div>
+     <div class="sc-tools" data-tools="add" id="scToolsAdd">
+      <span class="sc-tools-label" title="予定へ足す（共有スケジュールに書き込みます）">追加</span>
+      <button type="button" class="sc-split-toggle" id="scListModalBtn" hidden title="仕掛一覧をポップアップで表示してドラッグで追加します">⧉ ポップアップ</button>
+      <button type="button" class="sc-split-toggle" id="scStopModalBtn" hidden title="設備停止をポップアップから追加します">⛔ 設備停止</button>
+      <button type="button" class="sc-split-toggle" id="scCommentBtn" draggable="true" hidden title="申し送り（コメント）を予定の列へ挟みます。時間は取りません。&#10;・掴んで予定の間へ落とすと、空の枠だけが入ります（あとでダブルクリックして書けます）&#10;・押すとその場で書いて入れられます">💬 コメント</button>
+     </div>
+     <div class="sc-tools" data-tools="state" id="scToolsState">
+      <span class="sc-freshness" id="scFreshness" hidden></span>
+      <!-- 共有の見張り(§9.188)。いつ取り込んだか・見張っているかを常に出す。
+           押すとその場で取り込む。 -->
+      <button type="button" class="sc-sync-chip" id="scSyncChip" hidden></button>
+      <span class="sc-field-reorder-note" id="scFieldReorderNote" hidden>現場段取り: 並べ替えのみ可能</span>
+     </div>
+     <div class="sc-tools" data-tools="act" id="scToolsAct">
+      <button type="button" class="sc-split-toggle" id="scPrintBtn" title="いま表示している予定を、現場へ配る形（A4）で印刷します">🖨 印刷</button>
+      <button type="button" class="sc-refresh" id="scRefresh">再計算</button>
+     </div>
     </div>
    </div>
    <div class="sc-session-banner" id="scSessionBanner" hidden></div>
@@ -337,6 +432,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     <!-- 開いたときの表示の設定(§9.179)。**この画面の中に置く**——
          スケジュールの見え方の話なので、アプリ全体の設定へ混ぜない。 -->
     <div class="sc-layout-pop" id="scLayoutPop" hidden></div>
+    <!-- 行の見せ方(§9.198)。配置の設定と同じ作法で、この画面の中に置く。 -->
+    <div class="sc-layout-pop sc-rowstyle-pop" id="scRowStylePop" hidden></div>
     <button type="button" class="sc-side-tab" id="scSideToggle" hidden title="設備停止・案内パネルの表示/非表示">◀</button>
     <div class="sc-side" id="scSide" hidden>
      <div class="sc-side-section" id="scSplitHint">
@@ -366,6 +463,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   hist.onchange=()=>{
    scState.historyHours=Number(hist.value)||8;
    try{localStorage.setItem(SC_HISTORY_KEY,String(scState.historyHours))}catch(e){/* 保存できなくても表示は変わる */}
+   updateHistoryFromUi();
    if(scState.equipment)loadPlan(true);
   };
   $('#scEquipmentSelect').onchange=e=>{scState.equipment=e.target.value;switchToSingle()};
@@ -378,13 +476,18 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    else console.error('作業スケジュールの印刷: WL.schedulePrint が見つかりません');
   };
   $('#scLayoutBtn').onclick=e=>{e.stopPropagation();toggleLayoutPop()};
+  $('#scRowStyleBtn').onclick=e=>{e.stopPropagation();toggleRowStylePop()};
   /* 外を押したら畳む。**設定の中を押しても閉じない**——ラジオを続けて
      触れるようにするため。 */
+  /* **2つのポップオーバーを1つの判定でまとめて見る**——片方だけを見て
+     先に抜ける形にすると、もう片方が開きっぱなしになる。それぞれ
+     「自分の中／自分のボタン」を押されたときだけ残す。 */
   document.addEventListener('mousedown',e=>{
-   const pop=$('#scLayoutPop');
-   if(!pop||pop.hidden)return;
-   if(e.target.closest('#scLayoutPop')||e.target.closest('#scLayoutBtn'))return;
-   closeLayoutPop();
+   const lay=$('#scLayoutPop'),rs=$('#scRowStylePop');
+   const layOpen=!!lay&&!lay.hidden,rsOpen=!!rs&&!rs.hidden;
+   if(!layOpen&&!rsOpen)return;          // どちらも閉じていれば何もしない
+   if(layOpen&&!e.target.closest('#scLayoutPop')&&!e.target.closest('#scLayoutBtn'))closeLayoutPop();
+   if(rsOpen&&!e.target.closest('#scRowStylePop')&&!e.target.closest('#scRowStyleBtn'))closeRowStylePop();
   },true);
   $('#scModeBoard').onclick=()=>switchToBoard();
   $('#scModeSingle').onclick=()=>switchToSingle();
@@ -579,6 +682,126 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    };
   });
  }
+ /* ---------- 行の見せ方のパネル(§9.198) ----------
+    **その場で当てて、その場で保存する**（#scLayoutPopと同じ作法）。
+    保存を別ボタンにすると「効いているのに保存されていない」状態が作れる。
+    設定は**全員に効く**ので、そのことをパネルに書く。 */
+ function rowStyleTargets(){
+  const out=[{key:'cat:planned',label:'予定',hint:'これから流す作業'},
+             {key:'cat:doing',label:'作業中',hint:'いま動いている作業'},
+             {key:'cat:done',label:'完了',hint:'終わった作業'},
+             {key:'cat:cancel',label:'取消',hint:'取り消した予定'},
+             {key:'cat:stop',label:'設備停止',hint:'作業以外で設備が塞がる行'},
+             {key:'cat:comment',label:'コメント',hint:'時間を取らない申し送り'}];
+  /* 分類ごとの上書き。**登録されている分類だけ**を出す（架空の分類を
+     並べない）。分類の指定は区分の指定より優先することを見出しに書く。 */
+  (stopCategories||[]).forEach(name=>{
+   out.push({key:'stopcat:'+name,label:name,hint:'設備停止の分類',group:'stop'});
+  });
+  return out;
+ }
+ function rowStyleSampleHtml(t){
+  const cur=(scRowStyles&&scRowStyles.get(t.key))||null;
+  const catKey=t.key.startsWith('cat:')?t.key.slice(4):'stop';
+  const base=t.key.startsWith('stopcat:')
+   ?(STOP_CATEGORY_ICON[t.key.slice(8)]||SC_CATEGORIES.stop.icon)
+   :((SC_CATEGORIES[catKey]||{}).icon||'');
+  const show=!cur||cur.showIcon!==false;
+  const icon=!show?'none':((cur&&String(cur.icon||''))||base);
+  const color=cur?String(cur.colorKey||''):'';
+  return `<span class="sc-row-cat sc-cat-${esc(catKey)}${color?' sc-rs-'+esc(color):''}">`
+   +`${rowIconHtml(icon)}${esc(t.label)}</span>`;
+ }
+ function renderRowStylePop(){
+  const pop=$('#scRowStylePop');if(!pop)return;
+  const rows=rowStyleTargets();
+  const cell=t=>{
+   const cur=(scRowStyles&&scRowStyles.get(t.key))||null;
+   const color=cur?String(cur.colorKey||''):'';
+   const show=!cur||cur.showIcon!==false;
+   const icon=!show?'none':((cur&&String(cur.icon||''))||'');
+   return `<div class="sc-rs-row" data-rs="${esc(t.key)}">
+    <div class="sc-rs-name"><b>${esc(t.label)}</b><small>${esc(t.hint)}</small></div>
+    <div class="sc-rs-colors">${SC_ROW_PALETTE.map(p=>
+      `<button type="button" class="sc-rs-sw${p.key?' sc-rs-'+p.key:' is-default'}${color===p.key?' is-on':''}"`
+      +` data-rs-color="${esc(p.key)}" title="${esc(p.label)}（${esc(p.note)}）"`
+      +` aria-pressed="${color===p.key?'true':'false'}"><span>${esc(p.label)}</span></button>`).join('')}</div>
+    <label class="sc-rs-icon"><span>アイコン</span>
+     <select data-rs-icon>${SC_ROW_ICONS.map(i=>
+       `<option value="${esc(i.v)}"${icon===i.v?' selected':''}>${esc(i.label)}</option>`).join('')}</select></label>
+    <div class="sc-rs-sample">${rowStyleSampleHtml(t)}</div>
+    <button type="button" class="sc-rs-reset" data-rs-reset${cur?'':' disabled'}
+      title="この区分を既定へ戻します">既定へ</button>
+   </div>`;
+  };
+  const cats=rows.filter(r=>!r.group).map(cell).join('');
+  const stops=rows.filter(r=>r.group==='stop').map(cell).join('');
+  pop.innerHTML=`
+   <div class="sc-rs-head"><b>行の見せ方</b>
+    <small>色とアイコンだけを変えます。区分の名前は必ず出るので、色が見分けにくい環境でも読めます。</small></div>
+   <div class="sc-rs-sec"><div class="sc-rs-sec-head">区分ごと</div>${cats}</div>
+   ${stops?`<div class="sc-rs-sec"><div class="sc-rs-sec-head">設備停止の分類ごと<small>区分の設定より優先します</small></div>${stops}</div>`
+          :'<p class="sc-layout-note">設備停止の分類はまだ登録されていません（マスタ管理 &gt; 設備停止分類）。</p>'}
+   <p class="sc-layout-note">この設定は<b>全設備・全員に共通</b>です（行表示マスタ）。色は意味を持たせるための8色から選びます。</p>`;
+  pop.querySelectorAll('[data-rs-color]').forEach(b=>{
+   b.onclick=()=>saveRowStyle(b.closest('.sc-rs-row').dataset.rs,{colorKey:b.dataset.rsColor});
+  });
+  pop.querySelectorAll('[data-rs-icon]').forEach(sel=>{
+   sel.onchange=()=>saveRowStyle(sel.closest('.sc-rs-row').dataset.rs,{icon:sel.value});
+  });
+  pop.querySelectorAll('[data-rs-reset]').forEach(b=>{
+   b.onclick=()=>resetRowStyle(b.closest('.sc-rs-row').dataset.rs);
+  });
+ }
+ /* 1件だけ書く。**失敗したら画面に出す**——黙って握り潰すと「効かない」に
+    しか見えない（§9.190で実際にそうなった）。 */
+ async function saveRowStyle(key,patch){
+  const cur=(scRowStyles&&scRowStyles.get(key))||{};
+  const next={key,
+   colorKey:patch.colorKey!==undefined?patch.colorKey:String(cur.colorKey||''),
+   icon:patch.icon!==undefined?patch.icon:String(cur.icon||''),
+  };
+  next.showIcon=next.icon!=='none';
+  /* 利用者IDは送らない——サーバーが端末のログインIDで埋める
+     (`request_user_id`)。画面が空文字を送るとそちらが優先されて
+     「誰が変えたか」が残らない。 */
+  const body={key:next.key,colorKey:next.colorKey,icon:next.icon==='none'?'':next.icon,
+              showIcon:next.showIcon};
+  if(cur.id)body.id=cur.id;
+  try{
+   await api('/api/schedule/row-style-master'+(cur.id?'/update':''),
+     {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+   await loadRowStyles(true);
+   renderRowStylePop();renderTimeline();
+  }catch(e){showToast&&showToast('行の見せ方を保存できませんでした',e.message,5000)}
+ }
+ async function resetRowStyle(key){
+  const cur=(scRowStyles&&scRowStyles.get(key))||null;
+  if(!cur||!cur.id)return;
+  try{
+   await api('/api/schedule/row-style-master/delete',{method:'POST',
+     headers:{'Content-Type':'application/json'},body:JSON.stringify({id:cur.id})});
+   await loadRowStyles(true);
+   renderRowStylePop();renderTimeline();
+  }catch(e){showToast&&showToast('既定へ戻せませんでした',e.message,5000)}
+ }
+ function toggleRowStylePop(){
+  const pop=$('#scRowStylePop'),btn=$('#scRowStyleBtn');
+  if(!pop)return;
+  const open=pop.hidden;
+  pop.hidden=!open;
+  if(btn)btn.classList.toggle('active',open);
+  if(open){
+   closeLayoutPop();
+   /* 分類の一覧が未読なら読む（押した時点で出す。押しても空、にしない）。 */
+   Promise.all([loadRowStyles(true),loadStopCategories()]).then(()=>renderRowStylePop());
+   renderRowStylePop();
+  }
+ }
+ function closeRowStylePop(){
+  const pop=$('#scRowStylePop');if(pop&&!pop.hidden)pop.hidden=true;
+  const btn=$('#scRowStyleBtn');if(btn)btn.classList.remove('active');
+ }
  function toggleLayoutPop(){
   const pop=$('#scLayoutPop'),btn=$('#scLayoutBtn');
   if(!pop)return;
@@ -729,6 +952,20 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   /* 表示の設定(§9.179)は分割表示が意味を持つ場面だけ。 */
   const layoutBtn=$('#scLayoutBtn');
   if(layoutBtn){layoutBtn.hidden=!applicable;if(layoutBtn.hidden)closeLayoutPop()}
+  /* 行の見せ方(§9.198)は**列の設定と同じ場面**で出す（見え方の設定なので
+     予定を動かせる権限は要らない。保存できるかはサーバーが判定し、
+     できなければその場で理由を出す）。 */
+  const rsBtn=$('#scRowStyleBtn');
+  if(rsBtn){rsBtn.hidden=!colApplicable;if(rsBtn.hidden)closeRowStylePop()}
+  updateToolGroups();
+ }
+ /* 中身が1つも出ていない塊は、見出しごと消す(§9.198)。「表示」とだけ書かれた
+    空の枠が残ると、何かが壊れているように見える。 */
+ function updateToolGroups(){
+  document.querySelectorAll('#scHead .sc-tools').forEach(g=>{
+   const any=[...g.children].some(el=>!el.classList.contains('sc-tools-label')&&!el.hidden);
+   g.hidden=!any;
+  });
  }
 
  /* ---------- .sc-side(案内文+設備停止)の折りたたみ(§9.13改訂) ----------
@@ -988,11 +1225,13 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   $('#scSingleBody').hidden=inBoard;
   $('#scBoardWindow').hidden=!inBoard;
   const histWrap=$('#scHistoryRange');if(histWrap)histWrap.hidden=inBoard;
+  updateHistoryFromUi();
   const grpWrap=$('#scGroupRange');if(grpWrap)grpWrap.hidden=inBoard;
   if(scState.pickerEnabled)$('#scEquipmentSelect').hidden=inBoard;
   updateSideUi();
   const stopBtn=$('#scStopModalBtn');if(stopBtn)stopBtn.hidden=!scState.fullControl||inBoard;
   const cmtBtn=$('#scCommentBtn');if(cmtBtn)cmtBtn.hidden=!scState.fullControl||inBoard;
+  if(inBoard)closeRowStylePop();
   document.querySelectorAll('.sc-board-window-btn').forEach(btn=>btn.classList.toggle('active',+btn.dataset.hours===scState.boardWindowHours));
   updateSplitToggleUi();
   // 全体俯瞰ボードや対象設備が無い状態では分割表示(§9.10)の意味が無いため
@@ -1633,7 +1872,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    .then(r=>{
     if(r&&r.configured&&!scPlanCache.has(eq))
      scPlanCache.set(eq,{entries:r.entries||[],anchor:r.anchor,warnings:r.warnings||[],
-       loadFactor:r.loadFactor,historyHours:hours,fetchedAt:Date.now()});
+       loadFactor:r.loadFactor,historyHours:hours,fetchedAt:Date.now(),timings:r.timings});
    })
    .catch(()=>{})
    .finally(()=>warmingPlans.delete(eq));
@@ -1683,7 +1922,13 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   jobs.push(WL.displayRules.load());
   /* 停止理由・分類は**描画に要らない**ので待ち合わせに混ぜるだけ
      (別パネルの中身なので、遅れてもタイムラインは出る)。 */
-  if(scState.fullControl)jobs.push(loadStopCategories(),loadStopReasons());
+  if(scState.fullControl)jobs.push(loadStopCategories());
+ /* 行の見せ方(§9.198)は**描画に要る**（区分のセルと行の地の色）ので、
+    ここで待ち合わせる。読めなくても既定で出る(fail-open)。
+    設備停止の一覧も**モードによらず読む**——分類ごとの色を当てるのに
+    「この停止はどの分類か」が要る。モードで読み分けると、同じ予定が
+    端末によって違う色になる（色が意味を失う）。 */
+ jobs.push(loadRowStyles(),loadStopReasons());
   await Promise.all(jobs.map(x=>Promise.resolve(x).catch(()=>{})));
   await planApply(plan);
   // 作業可否(§9.51)の判定材料は**待たない**。仕掛一覧の取得は共有越しだと
@@ -1701,9 +1946,13 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  function applyPlanResult(r,fetchedAt){
   /* 読み直したので、共有の見張りの基準を置き直す(§9.188)。 */
   scSyncSeen=null;renderSyncBanner(false);
+  /* 読み込みの内訳(§9.198)。サーバーが測った値をそのまま持つ。 */
+  scLastTimings=r.timings?Object.assign({},r.timings):null;
   scState.entries=r.entries||[];scState.anchor=r.anchor;scState.warnings=r.warnings||[];
+  scState.anchorRounded=r.anchorRounded||null;
   scState.planFetchedAt=fetchedAt;
   renderWarnings();renderTimeline();updateFreshnessUi(fetchedAt);
+  updateHistoryFromUi();updateRefreshHint();
   scheduleWorkableWatch();   // 可でない行が残っていれば裏で追いかける(§9.51)
   /* 結合の値は**描き終えてから・手が空いてから**当てる(§9.94と同じ作法)。
      予定が出るまでの時間に相手のDBの往復を挟まない。 */
@@ -1742,7 +1991,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    }
    const fetchedAt=Date.now();
    scPlanCache.set(req.eq,{entries:r.entries||[],anchor:r.anchor,warnings:r.warnings||[],
-    loadFactor:r.loadFactor,historyHours:scState.historyHours,fetchedAt});
+    loadFactor:r.loadFactor,historyHours:scState.historyHours,fetchedAt,timings:r.timings,
+    anchorRounded:r.anchorRounded});
    applyPlanResult(r,fetchedAt);
   }catch(e){
    if(scState.equipment!==req.eq)return;
@@ -2165,6 +2415,117 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(e.kind==='設備停止')return SC_CATEGORIES.stop;
   return SC_CATEGORIES.planned;
  }
+ /* ---------- 行の見せ方(§9.198、利用者の指示) ----------
+    「設備停止の行の配色変更やアイコン有り無し（絵文字だけでなく
+    FontAwesomeのような記号も）ができるように、行の表示のカスタム機能を」。
+
+    決めごと:
+     ・**全設備共通で持つ**（行表示マスタ）。区分の色は設備をまたいで意味を
+       持つ言語で、同じ「設備停止」が設備ごとに別の色だと色が何も語らなく
+       なる（設備停止分類マスタが全設備共通なのと同じ理由）。
+     ・**色は選ばせるが、色そのものは選ばせない**。自由な16進を許すと、
+       淡すぎて文字が読めない・画面ごとに違う赤が増える、が必ず起きる。
+       意味の付いた8色（トークン）から選ぶ。
+     ・**色だけで伝えない**（§3）。区分名の文字は必ず出したままで、色と
+       アイコンは補助。
+     ・**絵文字以外も選べる**。外部のアイコンフォントは取りに行けない
+       （このアプリは社内で閉じて動く）ので、同じ見え方の**線画アイコンを
+       同梱**する。1つ12〜14pxで読めるよう、線幅2の単純な形にしてある。
+     ・**効く順は「分類の指定 → 区分の指定 → 既定」**。判定はここ1箇所。 */
+ const SC_ROW_PALETTE=[
+  {key:'',      label:'既定', note:'区分ごとの元の色'},
+  {key:'gray',  label:'灰',   note:'目立たせない'},
+  {key:'teal',  label:'青緑', note:'基準・進行'},
+  {key:'blue',  label:'青',   note:'情報・待ち'},
+  {key:'green', label:'緑',   note:'完了・良'},
+  {key:'amber', label:'橙',   note:'注意・段取り'},
+  {key:'red',   label:'赤',   note:'停止・異常'},
+  {key:'purple',label:'紫',   note:'臨時・特別'},
+ ];
+ /* 同梱の線画アイコン(24×24、線幅2)。**外部から取りに行かない**——
+    社内で閉じて動くアプリなので、CDNのアイコンフォントは読めない。 */
+ const SC_ICON_SVG={
+  pause:'<path d="M9 5v14M15 5v14"/>',
+  square:'<rect x="6" y="6" width="12" height="12" rx="1.5"/>',
+  ban:'<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>',
+  warn:'<path d="M12 4 2.6 20h18.8L12 4z"/><path d="M12 10v4.5M12 17.4v.1"/>',
+  clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5.3l3.2 1.9"/>',
+  bolt:'<path d="M13.2 2 4.5 13.6h5.6L8.8 22l9-11.8h-5.6L13.2 2z"/>',
+  gear:'<circle cx="12" cy="12" r="3.2"/><path d="M12 2.4v2.6M12 19v2.6M2.4 12h2.6M19 12h2.6M5.2 5.2l1.9 1.9M16.9 16.9l1.9 1.9M18.8 5.2l-1.9 1.9M7.1 16.9l-1.9 1.9"/>',
+  wrench:'<path d="M17.9 6.1a4.2 4.2 0 01-5.4 5.4L5 19l-2-2 7.5-7.5a4.2 4.2 0 015.4-5.4l-2.4 2.4 2 2 2.4-2.4z"/>',
+  truck:'<path d="M3 7h11v9H3zM14 10.5h3.6L21 13.6V16h-7z"/><circle cx="7.2" cy="18" r="1.8"/><circle cx="17.2" cy="18" r="1.8"/>',
+  box:'<path d="M3 8l9-4 9 4-9 4-9-4zM3 8v8l9 4 9-4V8"/>',
+  brush:'<path d="M9 15.2 5 19.2 6 22l3-1 4-4M12.4 12.4l5.8-5.8a2.9 2.9 0 014.1 4.1l-5.8 5.8z"/>',
+  flag:'<path d="M5.5 21V3.5M5.5 4.5h11l-2 3 2 3h-11"/>',
+  pin:'<path d="M12 21.2S19 14.7 19 10a7 7 0 10-14 0c0 4.7 7 11.2 7 11.2z"/><circle cx="12" cy="10" r="2.4"/>',
+  check:'<path d="M4.5 12.6l5 5L20 6.6"/>',
+  star:'<path d="M12 3.2l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17.2l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>',
+  note:'<path d="M6 3h9l4 4v14H6zM15 3v4h4M9 12h7M9 16h7"/>',
+  person:'<circle cx="12" cy="8" r="3.2"/><path d="M5 20.5a7 7 0 0114 0"/>',
+  cup:'<path d="M4 8h12v5.5a6 6 0 01-12 0zM16 9.2h2a2.6 2.6 0 010 5.2h-2M3.5 21h13"/>',
+ };
+ /* 選べるアイコン。**絵文字と線画を混ぜて1つの一覧にする**——利用者が
+    決めたいのは「どの絵か」であって、それが絵文字か線画かではない。 */
+ const SC_ROW_ICONS=[
+  {v:'',      label:'既定'},
+  {v:'none',  label:'なし'},
+  {v:'⛔',label:'禁止(絵文字)'},{v:'🔧',label:'工具(絵文字)'},{v:'🔄',label:'段取り(絵文字)'},
+  {v:'⏳',label:'待ち(絵文字)'},{v:'⚡',label:'突発(絵文字)'},{v:'💬',label:'コメント(絵文字)'},
+  {v:'✓',label:'チェック'},{v:'▶',label:'再生'},{v:'○',label:'丸'},{v:'✕',label:'バツ'},
+  {v:'svg:ban',label:'禁止'},{v:'svg:pause',label:'一時停止'},{v:'svg:square',label:'停止'},
+  {v:'svg:warn',label:'注意'},{v:'svg:clock',label:'時計'},{v:'svg:bolt',label:'稲妻'},
+  {v:'svg:gear',label:'歯車'},{v:'svg:wrench',label:'工具'},{v:'svg:truck',label:'運搬'},
+  {v:'svg:box',label:'箱'},{v:'svg:brush',label:'清掃'},{v:'svg:flag',label:'旗'},
+  {v:'svg:pin',label:'ピン'},{v:'svg:check',label:'チェック(線画)'},{v:'svg:star',label:'星'},
+  {v:'svg:note',label:'メモ'},{v:'svg:person',label:'人'},{v:'svg:cup',label:'休憩'},
+ ];
+ function rowIconHtml(spec){
+  const v=String(spec||'');
+  if(!v||v==='none')return '';
+  if(v.startsWith('svg:')){
+   const d=SC_ICON_SVG[v.slice(4)];
+   if(!d)return '';
+   return `<svg class="sc-ic" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
+  }
+  return `<i>${esc(v)}</i>`;
+ }
+ /* 保存済みの設定。**行が無い＝既定**（空文字を保存すると「空という設定」に
+    なり、既定を変えても追随しなくなる。§9.99と同じ約束）。 */
+ let scRowStyles=null,scRowStylesAt=0;
+ async function loadRowStyles(force){
+  if(!force&&scRowStyles)return scRowStyles;
+  try{
+   const r=await api('/api/schedule/row-style-master');
+   const m=new Map();
+   (r.items||[]).forEach(x=>{if(x&&x.key)m.set(String(x.key),x)});
+   scRowStyles=m;scRowStylesAt=Date.now();
+  }catch(_){if(!scRowStyles)scRowStyles=new Map()}
+  return scRowStyles;
+ }
+ /* この行が属する設備停止の分類。**分からなければ空**（推測しない）。 */
+ function stopCategoryOfEntry(e){
+  if(!e||e.kind!=='設備停止')return '';
+  const name=String(e.title||'').trim();
+  if(!name)return '';
+  const hit=(scState.stopReasons||[]).find(r=>String(r.name||'').trim()===name);
+  return hit?String(hit.category||'').trim():'';
+ }
+ /* 効いている見せ方。**分類の指定 → 区分の指定 → 既定**の順。 */
+ function rowStyleOf(e){
+  const cat=categoryOf(e);
+  const m=scRowStyles;
+  const sc=stopCategoryOfEntry(e);
+  const hit=(m&&sc&&m.get('stopcat:'+sc))||(m&&m.get('cat:'+cat.key))||null;
+  const fallbackIcon=(sc&&STOP_CATEGORY_ICON[sc])||cat.icon;
+  if(!hit)return {colorKey:'',icon:fallbackIcon,html:rowIconHtml(fallbackIcon)};
+  const show=hit.showIcon!==false;
+  const icon=!show?'none':(String(hit.icon||'')||fallbackIcon);
+  return {colorKey:String(hit.colorKey||''),icon,html:rowIconHtml(icon)};
+ }
+ function rowStyleClass(e){
+  const c=rowStyleOf(e).colorKey;
+  return c?(' sc-rs-'+c):'';
+ }
  /* 行の代表時刻。並び替え・日付/勤務のまとめ・表示範囲の判定すべてが
     これを使う(判定ごとに別の時刻を見ると、まとめた見出しと行の日付が
     食い違う)。 */
@@ -2225,14 +2586,28 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    .map(x=>x.e);
  }
 
- /* ---------- まとめ方(§9.40) ---------- */
+ /* ---------- まとめ方(§9.40) ----------
+    **日付は「現場歴」と「太陽暦」の2通り**(§9.198、利用者の指示)。列と同じで
+    （§9.197の`__date__`/`__caldate__`）、既定は現場歴のまま——3直のように
+    日を跨ぐ勤務が2日に割れないのが現場歴の値打ちで、既定を変えると
+    わざわざ選んでいない人の見え方が変わる。
+    **どちらでまとめているのかを名前に書く**こと。以前は「日付ごと」としか
+    書いておらず、出ている日付が現場歴なのか暦なのか画面から分からなかった
+    （同じ「8/18」でも意味が違うので、推測させてはいけない）。 */
  const SC_GROUP_MODES=[
   {key:'none',label:'まとめない'},
-  {key:'date',label:'日付ごと'},
+  {key:'date',label:'日付ごと（現場歴）',basis:'work'},
+  {key:'caldate',label:'日付ごと（太陽暦）',basis:'cal'},
   {key:'shift',label:'勤務ごと'},
-  {key:'dateshift',label:'日付＋勤務ごと'},
+  {key:'dateshift',label:'日付＋勤務ごと（現場歴）',basis:'work'},
+  {key:'caldateshift',label:'日付＋勤務ごと（太陽暦）',basis:'cal'},
   {key:'category',label:'区分ごと'},
  ];
+ const SC_BASIS_LABEL={work:'現場歴',cal:'太陽暦'};
+ /* いまのまとめ方が日付のどちらを見ているか（'work'/'cal'/''）。 */
+ function groupBasis(){
+  return (SC_GROUP_MODES.find(m=>m.key===(scState.groupMode||'none'))||{}).basis||'';
+ }
  const SC_GROUP_KEY='ScheduleGroupModeV1';
  function loadGroupMode(){
   try{
@@ -2253,19 +2628,28 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const use=t===null?((e&&e.__nearT)||null):t;
   return use===null?'日付未定':fmtDateTitle(new Date(use).toISOString());
  }
+ /* 暦の日付でまとめる箱(§9.198)。現場歴と違い、**日を跨ぐ勤務は2日に割れる**
+    ——それがこちらを選ぶ理由（外へ出す資料は暦のままであってほしい）。 */
+ function calDateBucketLabel(e){
+  const t=rowTimeOf(e);
+  const use=t===null?((e&&e.__nearT)||null):t;
+  return use===null?'日付未定':fmtDateTitle(new Date(use).toISOString());
+ }
  function groupBucketOf(e){
-  if(scState.groupMode==='date'){
-   const v=dateBucketLabel(e);return {key:v,label:v};
+  if(scState.groupMode==='date'||scState.groupMode==='caldate'){
+   const v=scState.groupMode==='caldate'?calDateBucketLabel(e):dateBucketLabel(e);
+   return {key:v,label:v};
   }
   if(scState.groupMode==='shift'){
    const v=e.shift||'';
    return {key:v||'-',label:v||'勤務未設定'};
   }
-  if(scState.groupMode==='dateshift'){
+  if(scState.groupMode==='dateshift'||scState.groupMode==='caldateshift'){
    // 日付が変わっても勤務名が同じ(1直→1直)場合に同じまとまりへ吸われないよう、
    // キーは日付と勤務の組で作る。3直のような日跨ぎ勤務でも、行の代表時刻の
    // 日付でまとまるため見出しと行の日付が食い違わない。
-   const d=dateBucketLabel(e),v=e.shift||'勤務未設定';
+   const d=scState.groupMode==='caldateshift'?calDateBucketLabel(e):dateBucketLabel(e);
+   const v=e.shift||'勤務未設定';
    return {key:d+'\u0001'+v,label:`${d} ${v}`};
   }
   if(scState.groupMode==='category'){
@@ -2275,7 +2659,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   return null;
  }
  function groupHeadHtml(label,count){
+  /* **どちらの日付でまとめた見出しなのかを書く**(§9.198)。同じ「8/18」でも
+     現場歴と太陽暦では入る行が違うので、見出しだけを見て判断できるように
+     する（設定は画面の上にあるが、行を追っている目は下にある）。 */
+  const b=SC_BASIS_LABEL[groupBasis()]||'';
   return `<div class="sc-group-head"><span class="sc-group-label">${esc(label)}</span>`
+   +(b?`<span class="sc-group-basis" title="この日付は${esc(b)}で数えています（まとめ方で切り替えられます）">${esc(b)}</span>`:'')
    +`<span class="sc-group-count">${count}件</span></div>`;
  }
 
@@ -2738,7 +3127,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const list=visibleEntries();
   if(!list.length){
    timeline.innerHTML=scState.entries.length
-    ?`<div class="sc-empty-note">表示範囲(直近${scState.historyHours}時間)に該当する予定・実績がありません。表示範囲を広げてください。</div>`
+    ?`<div class="sc-empty-note">さかのぼり(いまから過去${scState.historyHours}時間)に該当する予定・実績がありません。上の「さかのぼり」を長くしてください。</div>`
     :'<div class="sc-empty-note">この設備の予定はまだありません。</div>';
    renderPickBar(timeline);
    renderUndecided();
@@ -2922,18 +3311,28 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      中に入れること。 */
   const title=row.querySelector('.sc-row-title')||row.querySelector('[data-col]');
   if(!title)return;
+  /* **印はロット番号のお尻**(§9.198、利用者の指示)。以前は「▸子ロット3」を
+     ロット番号の**手前**に置いていたため、①番号より先に修飾語を読まされ
+     ②その分だけ番号が右へずれ ③6文字ぶんの幅を毎行占めていた。
+     読む順は「どのロットか → それは親か」なので、番号を先に出して
+     **お尻に「親」のバッジ**を付ける。件数はバッジの中の小さい数字で残す
+     （消すと「何件畳んであるか」を開くまで分からなくなる）。
+     開閉は色だけで伝えない——`▾`/`▸`の向きと`aria-expanded`を必ず添える。 */
   const btn=document.createElement('button');
   btn.type='button';
   btn.className='sc-child-toggle'+(open?' is-open':'');
-  btn.title=`分割後の子ロット${children.length}件を${open?'隠す':'表示する'}`;
-  btn.innerHTML=`<i>${open?'▾':'▸'}</i>子ロット${children.length}`;
+  const paint=o=>{
+   btn.classList.toggle('is-open',o);
+   btn.setAttribute('aria-expanded',o?'true':'false');
+   btn.title=`分割後の子ロット${children.length}件を${o?'隠す':'表示する'}`;
+   btn.innerHTML=`親<b>${children.length}</b><i>${o?'▾':'▸'}</i>`;
+  };
+  paint(open);
   btn.onclick=ev=>{
    ev.stopPropagation();
    const nowOpen=wrap.hidden;
    wrap.hidden=!nowOpen;
-   btn.classList.toggle('is-open',nowOpen);
-   btn.querySelector('i').textContent=nowOpen?'▾':'▸';
-   btn.title=`分割後の子ロット${children.length}件を${nowOpen?'隠す':'表示する'}`;
+   paint(nowOpen);
    setChildOpen(parent.id,nowOpen);
   };
   const text=document.createElement('span');
@@ -2941,7 +3340,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   text.textContent=title.textContent;
   title.textContent='';
   title.classList.add('has-children');
-  title.append(btn,text);
+  title.append(text,btn);
  }
 
  /* ---------- 行のセルの値は1箇所で作る(§9.176) ----------
@@ -3069,7 +3468,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
           estText,estSrc,estProvisional,estNote,actualText,flags,workable,wk,wkTitle}=info;
    const row=document.createElement('div');
    row.className='sc-row-line '+stateRowClass(e.state)
-    +(e.__pending?' sc-row-pending':'')+(locked?' sc-row-locked':'')+(e.ongoing?' sc-row-ongoing':'');
+    +(e.__pending?' sc-row-pending':'')+(locked?' sc-row-locked':'')+(e.ongoing?' sc-row-ongoing':'')
+    /* 行の地の色(§9.198)。区分のセルだけでなく行全体に淡く敷く——設備停止の
+       ように「作業ではない行」を、行を追う目のまま見分けられるようにする。 */
+    +rowStyleClass(e);
    row.dataset.id=e.id;
    row.__scEntry=e;   // 作業可否だけ後から差し替えるときの参照(§9.51)
    // ロック(§9.38)された行はその日時に釘付けなので、並べ替えても時刻が
@@ -3112,7 +3514,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
       隠した列があるだけでずれる(§9.104と同じ約束)。 */
    const contentMap=new Map(contentCells.map(c=>[c.key,c]));
    const cellOf={
-    '__cat__':`<span class="sc-row-cat sc-cat-${cat.key}" data-col="__cat__" title="${esc(e.kind)}・${esc(e.state)}"><i>${cat.icon}</i>${esc(cat.label)}</span>`,
+    /* 区分のセル。**色とアイコンは行表示マスタが決める**(§9.198)が、
+       区分名の文字は必ず出す（色だけで伝えない）。 */
+    '__cat__':`<span class="sc-row-cat sc-cat-${cat.key}${rowStyleClass(e)}" data-col="__cat__" title="${esc(e.kind)}・${esc(e.state)}">${rowStyleOf(e).html}${esc(cat.label)}</span>`,
     '__workable__':`<span class="sc-row-workable ${wk.cls}" data-col="__workable__" title="${esc(wkTitle)}">${esc(wk.text)}</span>`,
     '__date__':`<span class="sc-row-date${dateShifted?' is-shifted':''}" data-col="__date__" title="${esc(dateTitle)}">${esc(dateText)}</span>`,
     '__caldate__':`<span class="sc-row-date" data-col="__caldate__" title="${esc(info.calDateTitle)}">${esc(info.calDateText)}</span>`,
@@ -4442,11 +4846,15 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(sig===scJoinSig)return;
   scJoinSig=sig;
   const seq=++scJoinSeq;
+  const joinStarted=Date.now();
   try{
    const r=await api('/api/query-join/resolve',{method:'POST',
      headers:{'Content-Type':'application/json'},
      body:JSON.stringify({db:meta.db,rows,builtin:false})});
    if(seq!==scJoinSeq||scState.equipment!==eq)return;
+   /* 結合は予定を描いたあとに走るので**合計には足さない**（読み込みの
+      体感には乗らない）。それでも遅ければ内訳で分かるようにしておく。 */
+   if(scLastTimings){scLastTimings.join=Date.now()-joinStarted;updateFreshnessUi(scState.planFetchedAt)}
    scState.joinColumns=r.columns||[];
    const byId=new Map((scState.entries||[]).map(e=>[String(e.id),e]));
    (r.values||[]).forEach((v,i)=>{const e=byId.get(ids[i]);if(e)e.joined=v});
@@ -4887,6 +5295,14 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      画面と紙でまとまりが食い違う。 */
   groupMode:()=>scState.groupMode||'none',
   groupModeLabel:()=>(SC_GROUP_MODES.find(m=>m.key===(scState.groupMode||'none'))||{}).label||'',
+  /* まとめている日付が現場歴か暦か('work'/'cal'/'')。**紙も同じものを見る**
+     (§9.198)——画面が暦でまとめているのに紙が現場歴で切ると、日ごとに配る
+     紙の件数が画面と合わなくなる(§9.115と同じ理由)。 */
+  groupBasis:()=>groupBasis(),
+  /* 行の見せ方(§9.198)。**判定の1箇所へ外から聞ける**ようにしておく
+     ——DOMを掘って色を読むと、行が1件も無い区分を確かめられない。 */
+  rowStyleOf:e=>rowStyleOf(e||{}),
+  updateToolGroups:()=>updateToolGroups(),
   groupOf:e=>{const b=groupBucketOf(e);return b?{key:String(b.key),label:b.label}:null},
   categoryLabelOf:e=>categoryOf(e).label,
   /* 取り直す・描き直す。**渡すのは操作だけで、状態は渡さない**

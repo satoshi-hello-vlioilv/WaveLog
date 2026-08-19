@@ -155,7 +155,10 @@ let b=null;
   },(await plan()).find(e=>e.lotNo===PARENT&&e.parentId==null).id);
   rec('親行の下に子ロットのまとまりができる',ui.box&&ui.lines===2,JSON.stringify(ui));
   rec('既定では折りたたまれている',ui.hidden===true,String(ui.hidden));
-  rec('件数つきのつまみが出る',/子ロット2/.test(ui.btn)&&ui.btnVisible,ui.btn);
+  /* §9.198で「▸子ロット2」を**ロット番号のお尻の「親」バッジ**へ変えた
+     （番号の手前に修飾語があると、番号より先に修飾語を読まされる）。
+     件数はバッジの中に残す。 */
+  rec('件数つきの「親」バッジが出る',/親/.test(ui.btn)&&/2/.test(ui.btn)&&ui.btnVisible,ui.btn);
   rec('子行は並べ替えの走査対象に混ざらない',ui.childIsRowLine===false);
 
   /* ---- 5) 開ける・開閉が残る ---- */
