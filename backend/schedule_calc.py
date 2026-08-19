@@ -15,6 +15,8 @@ Flask非依存。backend/repositories/schedule_repo.pyが持つ生データ(表�
     算出できない場合のみDEFAULT_ESTIMATE_MINUTES(source='default')
 """
 import json
+import threading
+from time import perf_counter as _perf   # `from datetime import time` と衝突するので別名
 from datetime import date, datetime, time, timedelta
 
 from . import load_factor
@@ -122,6 +124,20 @@ def build_slot_timeline(specific_rows,global_rows,from_date,horizon_days=MAX_HOR
    merged.append((s,e))
  return merged
 
+# 予定の起点を丸める単位(分)。§9.198。**0や負にしないこと**——`_round_up`が
+# そのまま返すだけになる(丸めない、と同じ)。
+ANCHOR_ROUND_MIN=5
+
+def _round_up(dt,minutes):
+ """dtを`minutes`分の刻みへ切り上げる。ちょうど刻みの上ならそのまま。"""
+ step=int(minutes or 0)
+ if step<=0:return dt
+ base=dt.replace(second=0,microsecond=0)
+ over=(dt-base).total_seconds()
+ rem=base.minute%step
+ if rem==0 and over<=0:return base
+ return base+timedelta(minutes=(step-rem)%step or step)
+
 def snap_to_working(cursor,slots):
  """cursorが稼働帯の中ならそのまま、非稼働ならその時点以降で最も早い稼働
  開始時刻へ繰り上げる。戻り値: (新cursor or None(打ち切り), 待ちが発生したか)。"""
@@ -156,11 +172,32 @@ def normalize_match_key(value):
  import unicodedata
  return unicodedata.normalize('NFKC',str(value or '')).strip().upper()
 
+_actual_index_cache={'rows':None,'index':None}
+_actual_index_lock=threading.Lock()
+
 def build_actual_index(backup_rows=None):
  """(ロット番号,鋳造番号,製造材質)の正規化キー -> 最新実績dict、の索引を作る。
- §7.4のとおり3項目のいずれかが欠けている行は突合対象にしない。"""
+ §7.4のとおり3項目のいずれかが欠けている行は突合対象にしない。
+
+ **同じ行なら作り直さない**（§9.198）。材料の`merged_backup_rows()`は
+ 中身が変わらないかぎり**同じリストを返す**（db_access側でキャッシュ済み）
+ ので、その同一性で判定できる。ここを毎回作り直すと、予定を1回読むたびに
+ **測定データ全件のJSONを解き直す**ことになり、実績が溜まるほど遅くなる
+ （記録が増えるほど遅くなる、という一番たちの悪い形で出る）。
+ **戻り値を書き換えないこと**——写しを配っているので、書き換えると次の
+ 呼び出しへ持ち越される。"""
+ rows=backup_rows if backup_rows is not None else merged_backup_rows()
+ with _actual_index_lock:
+  if _actual_index_cache['rows'] is rows and _actual_index_cache['index'] is not None:
+   return _actual_index_cache['index']
+ index=_build_actual_index(rows)
+ with _actual_index_lock:
+  _actual_index_cache['rows']=rows;_actual_index_cache['index']=index
+ return index
+
+def _build_actual_index(rows):
  index={}
- for row in (backup_rows if backup_rows is not None else merged_backup_rows()):
+ for row in rows:
   try:
    payload=json.loads(row.get('payload') or '{}')
   except Exception:
@@ -291,25 +328,34 @@ def derive_state(stored_state,actual):
 # ========================================================================
 _EMPTY_ESTIMATE_EXTRAS={'low':None,'high':None,'sigmaLog':None,'base':None,'factors':[]}
 
-def resolve_estimate(c,equipment,plan_row_dict):
+def resolve_estimate(c,equipment,plan_row_dict,memo=None):
  """c: 設定系マスタ(master.sqlite3)への接続。設備停止マスタの標準時間と
  換算係数上書きマスタしか読まないため、共有schedule.sqlite3ではなくこちらを渡す。
  plan_row_dict: {'kind','title','estimateMinutes','detail'}を持つdict
  (expand_plan()内のentry辞書と同じキー)。戻り値: §6.8のentries[].estimate
- 相当のdict(minutes/source/low/high/sigmaLog/base/factors)。"""
+ 相当のdict(minutes/source/low/high/sigmaLog/base/factors)。
+ memo: 1回の展開で使い回す控え(§9.198)。設備が同じあいだ変わらない値
+ (設備停止マスタ・設備の標準時間・換算係数の上書き)を引き直さないための
+ もので、渡さなければ今までどおり毎回引く。"""
  if plan_row_dict.get('estimateMinutes') is not None:
   return {'minutes':float(plan_row_dict['estimateMinutes']),'source':'override',**_EMPTY_ESTIMATE_EXTRAS}
  # コメント(§9.189)は時間を持たない申し送り。見積は常に0分。
  if plan_row_dict.get('kind')=='コメント':
   return {'minutes':0.0,'source':'comment',**_EMPTY_ESTIMATE_EXTRAS}
  if plan_row_dict.get('kind')=='設備停止':
-  minutes=sr.stop_reason_standard_minutes(c,equipment,plan_row_dict.get('title') or '')
+  title=plan_row_dict.get('title') or ''
+  stops=None if memo is None else memo.setdefault('stopMinutes',{})
+  if stops is not None and title in stops:
+   minutes=stops[title]
+  else:
+   minutes=sr.stop_reason_standard_minutes(c,equipment,title)
+   if stops is not None:stops[title]=minutes
   if minutes is not None:
    return {'minutes':float(minutes),'source':'stop-reason-master',**_EMPTY_ESTIMATE_EXTRAS}
   return {'minutes':DEFAULT_ESTIMATE_MINUTES,'source':'default',**_EMPTY_ESTIMATE_EXTRAS}
  # 種別='作業': 換算係数モデル(§6)による見積。basisがequipment/pooledなら
  # 実績由来のsource='model'、モデル自体が無ければsource='default'。
- result=load_factor.estimate_work(c,equipment,plan_row_dict.get('detail') or {})
+ result=load_factor.estimate_work(c,equipment,plan_row_dict.get('detail') or {},memo=memo)
  # 見積の出どころは画面へそのまま出す(§9.114)。「実績から出したのか、
  # 設備の標準時間なのか、何も無いので暫定なのか」で読み手の受け取り方が
  # 変わるため、`default`とひとまとめにしないこと。
@@ -359,23 +405,35 @@ def expand_plan(c,equipment,now=None,history_hours=DEFAULT_HISTORY_HOURS,include
  渡さないと設備数ぶん実績バックアップを読み直し、共有越しではそのまま
  待ち時間になる。"""
  now=now or datetime.now()
+ # 内訳(§9.198)。「読み込みが遅い」ときに**どこが遅いのか**を画面から
+ # 見えるようにするための計測。数字は応答に載せるだけで、判断は変えない。
+ timings={}
+ t0=_perf()
  raw_rows=sr.plan_rows(c,equipment)
+ timings['rows']=round((_perf()-t0)*1000,1)
  # 設定系マスタ(稼働カレンダー・勤務形態・換算係数上書き)はmaster.sqlite3側。
  # 接続を1回だけ開いて、この展開処理の間ずっと使い回す(見積計算のために
  # 1予定ごとに開き直すと、行数分の接続オープンが発生してしまう)。
  sr.migrate_config_masters_from_shared()
  mc=sr.config_master_conn()
  try:
-  return _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours,include_unplanned,actual_index)
+  out=_expand_plan_with(c,mc,equipment,now,raw_rows,history_hours,include_unplanned,actual_index,timings)
  finally:
   mc.close()
+ timings['expand']=round((_perf()-t0)*1000,1)
+ out['timings']=timings
+ return out
 
-def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_HOURS,include_unplanned=True,actual_index=None):
+def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_HOURS,include_unplanned=True,actual_index=None,timings=None):
+ if timings is None:timings={}
  specific_cal=sr.calendar_rows(mc,equipment)
  global_cal=sr.calendar_rows(mc,'')
  specific_shift=sr.shift_rows(mc,equipment)
  global_shift=sr.shift_rows(mc,'')
- if actual_index is None:actual_index=build_actual_index()
+ if actual_index is None:
+  t=_perf()
+  actual_index=build_actual_index()
+  timings['actual']=round((_perf()-t)*1000,1)
  warnings=[]
 
  entries=[]
@@ -412,6 +470,10 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
   unplanned_running,unplanned_done=unplanned_entries(actual_index,equipment,matched_keys,now,history_hours)
   entries=unplanned_running+entries+unplanned_done
 
+ # 見積を引くための控え(§9.198)。設備が同じあいだ変わらないもの
+ # (設備の標準時間・換算係数の上書き・設備停止の標準所要分)を、
+ # 予定1本ごとに引き直さないための入れ物。
+ est_memo={}
  # アンカー決定(§7.2): 展開対象(完了/取消を除く)の先頭を見る
  active=[e for e in entries if e['state'] not in PLAN_TERMINAL_STATES]
  timeline=build_slot_timeline(specific_cal,global_cal,now.date())
@@ -429,6 +491,7 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
    started=_parse_dt(e['actual']['startAt'])
    if started is not None:
     ongoing_ids.add(id(e));ongoing_starts.append(started)
+ anchor_note=None
  if ongoing_starts:
   anchor=min(ongoing_starts)
  else:
@@ -436,6 +499,20 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
   if anchor is None:
    anchor=now
    warnings.append('稼働カレンダー上、直近の稼働開始時刻を特定できませんでした。')
+  else:
+   # **起点は5分刻みへ切り上げる**(§9.198、利用者の指示)。現在時刻をそのまま
+   # 起点にすると「10:23開始・11:47終了」のような読みにくい時刻が延々と続く。
+   # **切り上げ**なのは、切り下げると既に過ぎた時刻から始まる予定になるため。
+   # 着手中の作業があるときは丸めない——そちらは実績の開始時刻＝記録された
+   # 事実で、見栄えのために動かしてよい値ではない。
+   snapped=_round_up(anchor,ANCHOR_ROUND_MIN)
+   if snapped!=anchor:
+    # 丸めた先が稼働帯から出てしまうなら丸めない(勤務終わり際に起点だけが
+    # 翌日へ飛ぶのを避ける)。
+    back,_w=snap_to_working(snapped,timeline)
+    if back==snapped:
+     anchor_note={'from':anchor.isoformat(),'to':snapped.isoformat(),'unitMinutes':ANCHOR_ROUND_MIN}
+     anchor=snapped
 
  cursor=anchor
  truncated=False
@@ -455,7 +532,7 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
    e['plannedStart']=None;e['plannedEnd']=None;e['startsInMinutes']=None
    e['estimate']=None;e['reorderable']=False;e['spansNonWorking']=False;e['overdueMinutes']=0;e['shift']=None
    continue
-  est=resolve_estimate(mc,equipment,e)
+  est=resolve_estimate(mc,equipment,e,memo=est_memo)
   minutes=est['minutes']
   if e['kind']=='コメント':
    # 申し送り(§9.189)。**カーソルを進めない**——時間を持たせると、
@@ -594,7 +671,7 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
                      'sigmaLog':round(lf_model.get('sigmaLog') or 0.0,3),
                      'calculatedAt':lf_model.get('calculatedAt')}
  return {'entries':entries,'warnings':warnings,'anchor':anchor.isoformat() if anchor else None,
-         'loadFactor':load_factor_info}
+         'anchorRounded':anchor_note,'loadFactor':load_factor_info}
 
 # ========================================================================
 # 設備削除時の参照件数(§5.0.1)

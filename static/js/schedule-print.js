@@ -43,7 +43,16 @@
     なる——日ごとに配る紙で件数が合わないのは、受け取った側が「足りない」と
     判断できなくなるので致命的(§9.115と同じ理由)。
     現場歴が分からない行(勤務が決まらない行)は暦で数える。 */
- const workDayKey=(e,start)=>(e&&e.workDate)||dayKey(start);
+ const workDayKey=(e,start)=>{
+  /* **画面のまとめ方に従う**(§9.198)。まとめを「日付ごと（太陽暦）」に
+     しているときに紙だけ現場歴で切ると、日ごとに配る紙の件数が画面と
+     合わなくなる。まとめが日付でないとき(区分・勤務・まとめない)は
+     今までどおり現場歴。 */
+  let basis='';
+  try{basis=(typeof WL.scheduleView?.groupBasis==='function')?WL.scheduleView.groupBasis():''}catch(_){basis=''}
+  if(basis==='cal')return dayKey(start);
+  return (e&&e.workDate)||dayKey(start);
+ };
  const WD=['日','月','火','水','木','金','土'];
  function dayLabel(key){
   if(!key)return '日付未定';

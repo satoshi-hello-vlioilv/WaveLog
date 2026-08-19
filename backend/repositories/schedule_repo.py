@@ -434,6 +434,70 @@ def stop_category_upsert(c_master,name,uid,color_key='',category_id=None):
              [name,color_key,order,uid,uid])
  return cur.lastrowid,True
 
+# ========================================================================
+# 行表示マスタ(§9.198) — タイムラインの行の見せ方(配色・アイコン)
+# ------------------------------------------------------------------------
+# **全設備共通で持つ**。設備停止分類マスタと同じ理由で、区分の色は設備を
+# またいで意味を持つ言語だから——同じ「設備停止」が設備によって赤だったり
+# 青だったりすると、色が何も語らなくなる。
+#
+# [区分キー]は1つの名前空間で持つ:
+#   'cat:<区分>'      … 完了/作業中/予定/取消/設備停止/コメントの6つ
+#   'stopcat:<分類名>' … 設備停止の分類(保全・段取り…)ごとの上書き
+# **2つの表に分けないこと**——「どちらが効くのか」を答える場所が2つになる。
+# 効く順は「分類の指定 → 区分の指定 → 既定」で、判定は画面の1箇所が持つ。
+# ========================================================================
+ROW_STYLE_TABLE='行表示マスタ'
+
+def ensure_row_style_table(c_master):
+ names=tables(c_master);created=False
+ if ROW_STYLE_TABLE not in names:
+  cur=c_master.cursor()
+  cur.execute('CREATE TABLE [行表示マスタ] ([行表示ID] INTEGER PRIMARY KEY AUTOINCREMENT, [区分キー] TEXT, [色キー] TEXT, [アイコン] TEXT, [アイコン表示] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
+  cur.execute('CREATE UNIQUE INDEX [UX_行表示マスタ_区分キー] ON [行表示マスタ] ([区分キー])')
+  c_master.commit();created=True
+ return created
+
+def row_style_rows(c_master):
+ ensure_row_style_table(c_master)
+ cur=c_master.cursor()
+ cur.execute('SELECT [行表示ID],[区分キー],[色キー],[アイコン],[アイコン表示],[有効],[更新日時],[更新者ID] FROM [行表示マスタ] ORDER BY [区分キー]')
+ return [r for r in cur.fetchall() if (True if r[5] is None else bool(r[5]))]
+
+def row_style_upsert(c_master,key,uid,color_key='',icon='',show_icon=True,row_style_id=None):
+ """1件の登録・更新。区分キーが自然キー。**既定へ戻すのは行を消すこと**
+ （空文字を保存すると「空という設定」になり、あとから既定を変えても
+ 追随しなくなる。§9.99の「行が無い＝既定」と同じ約束）。"""
+ ensure_row_style_table(c_master)
+ key=str(key or '').strip()
+ if not key:raise ValueError('どの区分の見せ方かを指定してください。')
+ flag=-1 if show_icon else 0
+ cur=c_master.cursor()
+ cur.execute('SELECT [行表示ID],[区分キー] FROM [行表示マスタ]')
+ rows=cur.fetchall()
+ same=next((r for r in rows if str(r[1] or '').strip()==key),None)
+ if row_style_id is not None:
+  if same and same[0]!=row_style_id:raise ValueError(f'区分「{key}」の設定は既にあります。')
+  cur.execute('UPDATE [行表示マスタ] SET [区分キー]=?,[色キー]=?,[アイコン]=?,[アイコン表示]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [行表示ID]=?',
+              [key,color_key,icon,flag,uid,row_style_id])
+  if cur.rowcount==0:raise ValueError('指定の設定が見つかりません。')
+  return row_style_id,False
+ if same:
+  cur.execute('UPDATE [行表示マスタ] SET [色キー]=?,[アイコン]=?,[アイコン表示]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [行表示ID]=?',
+              [color_key,icon,flag,uid,same[0]])
+  return same[0],False
+ cur.execute('INSERT INTO [行表示マスタ] ([区分キー],[色キー],[アイコン],[アイコン表示],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,-1,?,?,Now(),Now())',
+             [key,color_key,icon,flag,uid,uid])
+ return cur.lastrowid,True
+
+def row_style_delete(c_master,row_style_id,uid):
+ """既定へ戻す。**行ごと消す**（無効フラグで残すと、同じ区分をもう一度
+ 設定したときに一意制約とぶつかる）。"""
+ ensure_row_style_table(c_master)
+ cur=c_master.cursor()
+ cur.execute('DELETE FROM [行表示マスタ] WHERE [行表示ID]=?',[row_style_id])
+ return cur.rowcount>0
+
 def stop_category_delete(c_master,category_id,uid):
  ensure_stop_category_table(c_master)
  cur=c_master.cursor()
@@ -1014,10 +1078,15 @@ def ensure_config_master_tables(mc):
  ensure_stop_reason_table(mc)
  # 分類マスタは設備停止マスタの後に作る(初回作成時に既存の分類値を取り込むため)
  ensure_stop_category_table(mc)
+ ensure_row_style_table(mc)
  ensure_load_factor_override_table(mc)
  ensure_shift_table(mc)
  ensure_shift_pattern_tables(mc)
 
+# 共有schedule.sqlite3から移してきた設定系マスタ。**新しく作るマスタを
+# ここへ足さないこと**——この一覧は「昔は共有側にあったので引き継ぎが要る」
+# ものの一覧で、最初からmaster側にあるものは引き継ぐ元が無い
+# (行表示マスタ(§9.198)はこちらに該当しないので載せていない)。
 CONFIG_MASTER_TABLES=('稼働カレンダーマスタ','設備停止マスタ','設備停止分類マスタ','負荷率上書きマスタ','勤務形態マスタ','勤務体系マスタ','勤務区分マスタ','勤務体系設備マスタ')
 
 def config_master_conn():
