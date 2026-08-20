@@ -126,6 +126,22 @@
 /* 他端末が編集セッションを保持している間、この端末からの追加・削除・
    並べ替え・設備停止投入を止める(サーバー側require_session()の二重防御、
    §9.11)。ドロップ受入自体はJS側(wireDropTarget)のsessionBlocked()判定で
-   止めており、ここは主に一覧化された操作ボタンの見た目・誤操作防止。 */
-.sc-panel.sc-session-locked .sc-stop-button,.sc-panel.sc-session-locked .sc-row-line[draggable]{pointer-events:none;opacity:.45}
+   止めており、ここは主に一覧化された操作ボタンの見た目・誤操作防止。
+   **行を丸ごと殺さないこと**(§9.211 ②)。以前は
+   `.sc-row-line[draggable]{pointer-events:none;opacity:.45}` と書いており、
+   `draggable="false"` でも**属性は付く**ため**すべての行**に当たっていた
+   ——READONLYの間は帳票・詳細・右クリック・ダブルクリックといった
+   「読むための操作」まで一緒に死に、行全体が45%に沈んでいた。
+   読み取り専用は**読めることが値打ち**なので、止めるのは書く操作だけ。
+   止めた操作はJS側にも`sessionBlocked()`の判定を置いてある（CSSだけで
+   止めると、器の外にあるボタン＝選択バー等から素通りする）。 */
+.sc-panel.sc-session-locked .sc-stop-button,
+.sc-panel.sc-session-locked .sc-row-delete,
+.sc-panel.sc-session-locked .sc-row-lock,
+.sc-panel.sc-session-locked .sc-row-pick,
+.sc-panel.sc-session-locked .sc-pick-remove{pointer-events:none;opacity:.45}
+/* 掴んで並べ替えられないことは**掴めない見た目**で伝える（色だけに頼らない
+   ——理由は在席表示`#scWho`が文字で言う）。 */
+.sc-panel.sc-session-locked .sc-row-line{cursor:default}
+.sc-panel.sc-session-locked .sc-row-handle{opacity:.35;pointer-events:none}
 }

@@ -320,6 +320,31 @@ const GRIP_W_MIN=40,GRIP_W_MAX=900;
 const GRIP_SETTLE_MS=300;
 let gripHeld=0,gripSaving=0,gripCalmUntil=0;
 function gripBusy(){return gripHeld>0||gripSaving>0||Date.now()<gripCalmUntil}
+/* ---------- 掴んでいる最中の自動描き直しは待たせる（§9.211 ①、利用者の指示） --
+   「今動かしている列幅が正。読み込みが起こるのは初回と手動のときだけ」。
+   `busy()`を見ていたのは共有スケジュールの自動再読込**1箇所だけ**で、
+   表そのものを作り直す経路（全件読み終わり・結合の後追い・予定を描いた
+   ついでの仕掛一覧の描き直し・データ一覧の定期同期）は素通しだった。
+   表を作り直すと**取っ手が綴じ込んだ見出しごと入れ替わる**ので、
+   掴んだままの手は空を切る（`startWidth()`が0を返して動かなくなる）。
+
+   **止めるのではなく後で必ず1回走らせる**——止めると「予定へ入れたロットが
+   仕掛一覧から消える」等の機能がそのまま落ちる。同じ鍵で重ねて頼まれたら
+   最後の1つだけ残す（描き直しは何度やっても同じ結果なので）。 */
+const gripDeferred=new Map();
+let gripDeferTimer=null;
+function gripRunDeferred(){
+ if(gripBusy())return;
+ clearInterval(gripDeferTimer);gripDeferTimer=null;
+ const jobs=[...gripDeferred.values()];gripDeferred.clear();
+ jobs.forEach(fn=>{try{fn()}catch(e){console.warn('列幅の操作後の描き直しに失敗',e)}});
+}
+function deferWhileResizing(key,fn){
+ if(!gripBusy()){fn();return false}
+ gripDeferred.set(key,fn);
+ if(!gripDeferTimer)gripDeferTimer=setInterval(gripRunDeferred,80);
+ return true;
+}
 /* ---------- 掴んだ側が動く（§9.208 ⑦、利用者の指摘） ----------
    「幅を狭めるとき、右端が見えていると**左側全体が近づいてくる**」。
    原因は器のスクロール位置。右端まで送った状態で列を細くすると、表が
@@ -369,7 +394,8 @@ function setSpare(sc,base,px){
   });
  }
 }
-WL.columnResize={busy:gripBusy,settleMs:GRIP_SETTLE_MS,scroller:gripScroller,spare:spareOf};
+WL.columnResize={busy:gripBusy,settleMs:GRIP_SETTLE_MS,scroller:gripScroller,spare:spareOf,
+                 defer:deferWhileResizing};
 function bindColumnWidthGrip(grip,o){
  if(!grip||!o)return;
  /* 幅を固定した列は掴めない(§9.119)。**印は残す**——取っ手ごと消すと、
@@ -443,7 +469,14 @@ WL.columnWidthGrip=bindColumnWidthGrip;
 
 function bindColumnHeaderTools(table,target,visibleColumns,allColumns){
  if(!target)return;
- const layout=WL.columnLayout.get(target);
+ /* ---------- 控えは束縛しない（§9.211 ①、利用者の指摘） ----------
+    `save()`はキャッシュを**新しいオブジェクトへ差し替える**（§9.113）ので、
+    ここで`const layout=...`と束縛すると、**1回保存した時点で写しは
+    キャッシュから外れた孤児**になる。以降の並べ替え・列幅はその孤児を
+    土台に全置換保存するため、あいだに別の経路（右クリックメニュー・
+    設定パネル・プリセットの取り込み）で変えた設定が黙って戻る。
+    **毎回`live()`で取り直すこと。** 束縛を復活させない。 */
+ const live=()=>WL.columnLayout.get(target);
  const heads=[...table.querySelectorAll('th[data-sort-col]')];
 
  /* 覚えている並びを、許可された全列に対して作り直す。
@@ -456,7 +489,7 @@ function bindColumnHeaderTools(table,target,visibleColumns,allColumns){
     「列の移動が正しく反映されない」として報告された)。 */
  const fullOrder=()=>{
   const all=WL.listColumnKeys(allColumns);
-  const known=(layout.order||[]).filter(c=>all.includes(c));
+  const known=(live().order||[]).filter(c=>all.includes(c));
   return [...known,...all.filter(c=>!known.includes(c))];
  };
  /* 保存は全置換なので、**触っていない設定も一緒に送る**こと。
@@ -473,10 +506,17 @@ function bindColumnHeaderTools(table,target,visibleColumns,allColumns){
      オブジェクトへ差し替えるので、関数の頭で束縛すると1回保存した時点で
      古い写しになる。渡し漏れた設定は消えるので、キーは1つも欠かさない。 */
   const cur=WL.columnLayout.get(target);
+  const wrote={order,widths:widths||cur.widths,locks:locks||cur.locks};
   try{
-   await WL.columnLayout.save(target,{order,widths:widths||cur.widths,hidden:cur.hidden,
+   /* **`sorts`を書き漏らさない**（§9.211 ①）。保存は全置換なので、
+      渡さないと列ごとの並べ替えの決まり（§9.187）が**列幅を1回引いた
+      だけで全列ぶん消える**。`save()`のキーと1対1で対応させること。 */
+   await WL.columnLayout.save(target,{...wrote,hidden:cur.hidden,
                                       names:cur.names,formats:cur.formats,rules:cur.rules,
-                                      formulas:cur.formulas,locks:locks||cur.locks});
+                                      formulas:cur.formulas,sorts:cur.sorts});
+   /* 列の設定パネルを開いたままここを通ることがある。**保存したぶんは
+      巻き戻さない**ように控えへ伝える（§9.211 ①）。 */
+   WL.listColumns&&WL.listColumns.noteSaved&&WL.listColumns.noteSaved(target,wrote);
    showToast&&showToast('表示の並びを保存しました','この一覧を次に開いたときも同じ並びで出ます',2400);
   }catch(e){showToast&&showToast('並びを保存できませんでした',e.message,5000)}
  };
@@ -511,7 +551,7 @@ function bindColumnHeaderTools(table,target,visibleColumns,allColumns){
    order.splice(from,1);
    let at=order.indexOf(to);if(at<0)return;
    order.splice(after?at+1:at,0,dragCol);
-   layout.order=order;
+   WL.columnLayout.stage(target,{...live(),order});
    persist(order);
    renderGrid();
   });
@@ -524,19 +564,47 @@ function bindColumnHeaderTools(table,target,visibleColumns,allColumns){
   /* colgroupは**1本の並び(§9.106)と1対1**になったので、見出しの位置を
      そのまま使える。以前は「先頭の何列ぶんか」を数え直しており、
      番号・ボタンの出し入れで基準がずれる作りだった。 */
+  /* **今そこに在る表から引く**（§9.211 ①）。表は`replaceChildren`で丸ごと
+     作り直されるので、綴じ込んだ`table`/`th`は簡単に孤児になる——孤児を
+     測ると幅0になり、掴んでも動かない（スケジュール表の取っ手は既に
+     キーで引き直しており、そちらは再描画に耐えていた）。 */
+  const liveTable=()=>table.isConnected?table:(document.querySelector('#grid table')||table);
+  const liveTh=()=>liveTable().querySelector(`thead th[data-sort-col="${CSS.escape(col)}"]`)||th;
   const colEl=()=>{
-   const cg=table.querySelector('colgroup');
-   const at=[...table.querySelectorAll('thead th')].indexOf(th);
+   const t=liveTable();
+   const cg=t.querySelector('colgroup');
+   const at=[...t.querySelectorAll('thead th')].indexOf(liveTh());
    return (cg&&at>=0)?cg.children[at]:null;
   };
   WL.columnWidthGrip(grip,{
    locked:WL.columnLayout.locked(target,col),
-   startWidth:()=>th.getBoundingClientRect().width,
-   preview:w=>{const c=colEl();if(c)c.style.width=w+'px'},
-   commit:w=>{const widths={...(layout.widths||{}),[col]:w};
-              layout.widths=widths;persist(fullOrder(),widths)},
-   reset:()=>{const widths={...(layout.widths||{})};delete widths[col];
-              layout.widths=widths;persist(fullOrder(),widths);renderGrid()},
+   startWidth:()=>liveTh().getBoundingClientRect().width,
+   /* **引いている幅がそのまま「今の幅」**（利用者の指示）。見た目は
+      `<col>`へ即入れ、同じ値をキャッシュへも当てておく（`stage`＝保存
+      しない）——引いている最中に表が組み直されても幅が戻らない。
+      **表そのものの幅も一緒に動かすこと**（§9.211 ①）。
+      `renderGridInner()`は`t.style.width`へ**列幅の合計**を入れている
+      （§9.119。入れないとcolgroupより見出しの文字幅が勝つ）。合計を
+      据え置いたまま1列だけ細くすると、`table-layout:fixed`は
+      **余ったぶんを全列へ比例配分する**ので、掴んでいない列が一斉に太り、
+      次の描き直しで元へ戻る——「掴んだもの以外が詰まる／戻される」の
+      正体その2。合計は毎回`<col>`から数え直す（差分を積むとずれる）。 */
+   preview:w=>{
+    const c=colEl();if(c)c.style.width=w+'px';
+    const t=liveTable(),cg=t&&t.querySelector('colgroup');
+    if(cg){
+     let total=0;
+     [...cg.children].forEach(x=>{total+=parseFloat(x.style.width)||0});
+     if(total>0)t.style.width=total+'px';
+    }
+    const cur=live();
+    WL.columnLayout.stage(target,{...cur,widths:{...(cur.widths||{}),[col]:w}});
+   },
+   commit:w=>{const widths={...(live().widths||{}),[col]:w};
+              persist(fullOrder(),widths)},
+   reset:()=>{const widths={...(live().widths||{})};delete widths[col];
+              WL.columnLayout.stage(target,{...live(),widths});
+              persist(fullOrder(),widths);renderGrid()},
   });
  });
 
@@ -641,7 +709,8 @@ function openColumnHeaderMenu(ev,col,target,allColumns,src){
   await WL.columnLayout.save(target,{order:[...known,...all.filter(c=>!known.includes(c))],
                                      widths:v.widths,hidden:S2.hiddenOf(),names:v.names,
                                      formats:v.formats,rules:v.rules,
-                                     formulas:v.formulas,locks:v.locks,...patch});
+                                     formulas:v.formulas,locks:v.locks,sorts:v.sorts,...patch});
+  WL.listColumns&&WL.listColumns.noteSaved&&WL.listColumns.noteSaved(target,patch);
   S2.refresh();
  };
  menu.querySelector('.chm-hide').onclick=async()=>{
@@ -945,7 +1014,9 @@ async function continueAllRows(key){
  S.rows=rows;
  // 取り直したときに使い回せるよう、キャッシュも全件の形へ入れ替える。
  tableCacheSet(key,{columns:S.columns,rows,count:S.count,joinQuality:S.joinQuality});
- renderGrid();
+ /* 全件読み終わりは**利用者の操作と無関係に**（数秒〜数十秒後に）来る。
+    列幅を掴んでいる最中に表を作り直すと手が空を切るので待たせる（§9.211 ①）。 */
+ WL.columnResize.defer('grid:allRows',()=>renderGrid());
  allRowsProgress(rows.length,total);
 }
 /* ---------- 読み込みの内訳(§9.90) ----------

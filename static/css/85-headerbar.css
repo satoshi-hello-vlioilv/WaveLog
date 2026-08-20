@@ -50,6 +50,10 @@
 .hd-viewbar .db-viewtabs button,.hd-viewbar .sc-mode-toggle-btn{height:calc(var(--ctl-h-sm) - 4px);border-color:transparent;background:transparent}
 .hd-viewbar .sc-equipment-fixed{padding:3px 10px;border-radius:var(--radius-pill);background:var(--pale);border:1px solid var(--card-border);color:var(--nav);font-size:var(--fs-sm);font-weight:700;white-space:nowrap}
 .hd-viewbar .sc-lock-badge{padding:var(--pad-chip);border-radius:var(--radius-pill);font-size:var(--fs-micro)}
+/* 編集権の在席表示（§9.211 ②）。ヘッダーへ相乗りしたときも、
+   **文字は読める大きさのまま**にする（状態を色だけで伝えないため）。 */
+.hd-viewbar .sc-who{font-size:var(--fs-sm)}
+.hd-viewbar .sc-who .sc-who-holder{max-width:22em}
 .hd-viewbar .sc-history-range{display:inline-flex;align-items:center;gap:var(--space-1);white-space:nowrap}
 .hd-viewbar .sc-freshness,.hd-viewbar .sc-field-reorder-note,.hd-viewbar .record-search-result{
   font-size:var(--fs-micro);color:var(--muted);white-space:nowrap;

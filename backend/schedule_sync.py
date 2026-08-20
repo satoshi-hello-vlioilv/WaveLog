@@ -253,9 +253,83 @@ def session_status(equipment,login_id='',pc_name=''):
  entry=_prune_expired(_read_sessions_raw()).get(equipment) if equipment else None
  if not entry:
   return {'configured':True,'held':False}
- mine=_own_or_free(entry,login_id,pc_name) if (login_id or pc_name) else False
+ # **持ち主かどうかの比べ方は acquire_session と1つにそろえる**(§9.211 ②)。
+ # 以前は「login_id も pc_name も空なら必ず False」としていたため、素性を
+ # 名乗れない端末は**自分が取ったセッションで自分の書込を423にしていた**
+ # (acquire は通るのに require_session だけが弾く、という分かりにくい形)。
+ # PC名は§9.208 ⑧で必ず取れるようにしたので通常は起きないが、判定が
+ # 2通りある状態そのものを残さない。
+ mine=(entry.get('login')==login_id and entry.get('pc')==pc_name)
  return {'configured':True,'held':True,'holderLogin':entry.get('login',''),
          'holderPc':entry.get('pc',''),'expiresAt':entry.get('expires_at'),'mine':mine}
+
+
+def sessions_all(login_id='',pc_name=''):
+ """いま生きている編集セッションを**全部**返す(§9.211 ②)。
+
+ 画面の在席表示のため。`session_status()`は設備1つぶんしか答えられないので、
+ 「誰が入っているか」を帯へ出すにはこちらが要る。**読むだけ**(排他なし)。
+ 期限切れは`_prune_expired`で落ちるので、返るのは今この瞬間の持ち主だけ。
+ """
+ if SCHEDULE_SHARE_PATH is None:
+  return {'configured':False,'sessions':[],'me':{'loginId':login_id,'pcName':pc_name}}
+ live=_prune_expired(_read_sessions_raw())
+ out=[]
+ for eq in sorted(live):
+  entry=live[eq]
+  out.append({'equipment':eq,
+              'holderLogin':entry.get('login',''),'holderPc':entry.get('pc',''),
+              'expiresAt':entry.get('expires_at'),'acquiredAt':entry.get('acquired_at'),
+              'takenFrom':entry.get('taken_from') or None,
+              'mine':entry.get('login')==login_id and entry.get('pc')==pc_name})
+ return {'configured':True,'sessions':out,'ttlSec':SESSION_TTL_SEC_DEFAULT,
+         'me':{'loginId':login_id,'pcName':pc_name}}
+
+
+def take_over_session(equipment,login_id,pc_name,ttl_sec=None):
+ """**持ち主を強制的に入れ替える**(§9.211 ②、利用者の指示)。
+
+ セッションはTTL(既定90秒)で自然に消える。それでも奪う手立てが要るのは、
+ 「抜けているのに残っている」時間が現場では長すぎるため——
+   - 端末ごと落ちて解放(release)が届かなかった
+   - 共有への置き換えが失敗して解放だけが落ちた(§9.108)
+   - ブラウザが残ったままハートビートだけ打ち続けている
+ のいずれでも、待つしか手立てが無いと**その設備の予定を誰も直せない**。
+
+ 奪われた側は**次のハートビート(25秒以内)で423**になり、その場で
+ READONLYへ落ちる。気づかないまま書き続けることは無い
+ (書込APIも`require_session()`で二重に弾く)。
+
+ 誰から奪ったかは`taken_from`として残す——**黙って入れ替えない**。
+ """
+ equipment=str(equipment or '').strip()
+ if not equipment:raise ValueError('設備名を指定してください。')
+ _require_configured()
+ ttl=ttl_sec if ttl_sec is not None else SESSION_TTL_SEC_DEFAULT
+ sessions=_prune_expired(_read_sessions_raw())
+ current=sessions.get(equipment)
+ taken_from=None
+ if current and not _own_or_free(current,login_id,pc_name):
+  taken_from={'login':current.get('login',''),'pc':current.get('pc','')}
+ token=uuid.uuid4().hex
+ now=datetime.now()
+ sessions[equipment]={'login':login_id,'pc':pc_name,'token':token,
+                      'acquired_at':now.isoformat(),
+                      'expires_at':(now+timedelta(seconds=ttl)).isoformat(),
+                      'taken_from':taken_from,
+                      'taken_at':now.isoformat() if taken_from else None}
+ _write_sessions(sessions)
+ # **奪うときは必ず待って確かめる**(acquire_sessionの新規取得と同じ)。
+ # 2台が同時に奪おうとしたときに双方が「取れた」と誤認すると、
+ # どちらも書けてしまう(助言的ロックの前提が崩れる)。
+ if _SESSION_VERIFY_DELAY_SEC>0:
+  time.sleep(_SESSION_VERIFY_DELAY_SEC)
+ verify=_prune_expired(_read_sessions_raw()).get(equipment)
+ if not verify or verify.get('token')!=token:
+  raise SessionHeldError(equipment,(verify or {}).get('login',''),(verify or {}).get('pc',''))
+ app_logger().info('スケジュール編集権を引き継ぎました: %s <- %s (%s@%s)',
+                   equipment,taken_from,login_id,pc_name)
+ return {'expiresAt':verify['expires_at'],'takenFrom':taken_from}
 
 
 def acquire_session(equipment,login_id,pc_name,ttl_sec=None):
@@ -274,9 +348,15 @@ def acquire_session(equipment,login_id,pc_name,ttl_sec=None):
  renewing=bool(current)
  token=uuid.uuid4().hex
  now=datetime.now()
+ # **延長で監査の跡を消さない**(§9.211 ②)。奪って取ったセッションは
+ # `taken_from`/`taken_at`を持つが、25秒後の延長でそれを書かずに入れ直すと
+ # **誰から奪ったのかが黙って消える**(§9.180の「登録側は上書きしない」と
+ # 同じ理由)。延長は同じセッションの続きなので、登録時の情報は運ぶ。
  sessions[equipment]={'login':login_id,'pc':pc_name,'token':token,
                       'acquired_at':(current or {}).get('acquired_at') or now.isoformat(),
-                      'expires_at':(now+timedelta(seconds=ttl)).isoformat()}
+                      'expires_at':(now+timedelta(seconds=ttl)).isoformat(),
+                      'taken_from':(current or {}).get('taken_from'),
+                      'taken_at':(current or {}).get('taken_at')}
  _write_sessions(sessions)
  # schedule.lock.jsonのacquire_lock()と同じ考え方の簡易検証(§4.3参照)。
  # ほぼ同時に2端末が取得を試みた場合に双方が「取れた」と誤認する余地を

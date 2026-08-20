@@ -69,6 +69,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
               picked:new Set(),dragIds:null,
               boardMode:'single',boardWindowHours:24,overview:[],overviewSort:'order',
               sessionHeld:false,sessionHolder:null,sessionError:null,
+              /* 在席（誰が編集権を持っているか。§9.211 ②）。
+                 `sessions`は**配列＝読めた／`null`＝読めなかった**で、
+                 「読めなかった」を「誰も居ない」と同じに扱わないこと。 */
+              sessions:null,me:null,sessionsConfigured:true,
               canStartWork:false,historyHours:loadHistoryHours(),groupMode:'none',
               /* クエリ結合(§9.193)で足された列の名前。予定がまだ無い設備でも
                  内容欄の候補に出せるよう、行ではなくここに持つ。 */
@@ -107,8 +111,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     開いていなければ何もしない(次に開くときキャッシュ破棄済みなので取り直す)。 */
  WL.refreshScheduleIfOpen=function(){
   if(!document.body.classList.contains('sc-mode'))return;
-  if(scState.boardMode==='board')loadOverviewBoard();
-  else if(scState.equipment)refreshAll(true);
+  /* 測定を閉じた拍子の描き直し。列幅を掴んでいる最中なら待たせる
+     （§9.211 ①。掴んだまま別の窓を閉じることは実際に起きる）。 */
+  WL.columnResize.defer('schedule:refreshIfOpen',()=>{
+   if(scState.boardMode==='board')loadOverviewBoard();
+   else if(scState.equipment)refreshAll(true);
+  });
  };
  function fmtFetchedAt(ts){
   if(!ts)return '';
@@ -314,7 +322,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      st.result==='paused'?'取り込んだ直後の休み中です':'いま出ているのが最新です',2600);
   }catch(e){showToast&&showToast('取り込めませんでした',e.message,5000)}
  }
- let scLockTimer=null;
+ let scLockTimer=null,scWhoTimer=null;
  // ---------- 編集セッション(§9.11新設)・書込キュー ----------
  let scSessionTimer=null,scSessionHeldFor=null,scTempIdSeq=0;
  let scWriteQueue=[],scQueueRunning=false,scQueueFlushTimer=null;
@@ -370,6 +378,13 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      <select class="sc-equipment-select" id="scEquipmentSelect" hidden></select>
      <span class="sc-equipment-fixed" id="scEquipmentFixed" hidden></span>
      <span class="sc-lock-badge" id="scLockBadge" hidden></span>
+     <!-- 編集権の在席表示(§9.211 ②、利用者の指示「だれが入っているか表示
+          (作業スケジュールのタイトル帯の空白エリアを利用してください)」)。
+          **編集セッションの持ち主はここ1箇所だけが言う**——同じことを
+          バナーにも書くと、読む側は「別のことかもしれない」と読み直す
+          （§CLAUDE 8）。書込ロック(#scLockBadge)とは別のもので、
+          あちらは「いま1回の書込を掴んでいる」ほんの一瞬の話。 -->
+     <span class="sc-who" id="scWho" hidden></span>
     </div>
     <!-- ---------- 操作の並び(§9.199、利用者の指示「上部メニューバーは
          1行で収まるように」) ----------
@@ -1413,6 +1428,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   stopWorkableWatch();   // 画面を出たら可否の裏取りも止める(§9.51)
   if(scSessionHeldFor){releaseSessionFire(scSessionHeldFor);scSessionHeldFor=null}
   scState.sessionHeld=false;scState.sessionHolder=null;scState.sessionError=null;
+  /* 在席の控えも捨てる（§9.211 ②）。残すと、次に開いたとき古い顔ぶれが
+     一瞬出る（「読めなかった」と「誰も居ない」を区別する`null`へ戻す）。 */
+  scState.sessions=null;
+  scLastBlocked=false;   // 次に開いたときは「書ける」から数え直す
  }
  window.exitScheduleView=exitScheduleView;
 
@@ -1589,7 +1608,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    const r=await api('/api/schedule/lock-status');
    const badge=$('#scLockBadge');if(!badge)return;
    if(r.configured&&r.locked){
-    badge.hidden=false;badge.textContent=`編集中: ${r.holderLogin||'?'}@${r.holderPc||'?'}`;
+    /* **「編集中」とは言わない**（§9.211 ②）。これは1回の書込を掴んで
+       いるほんの一瞬のロックで、編集権（在席表示`#scWho`）とは別のもの。
+       同じ言葉だと、どちらの話なのか読む側が判別できない。 */
+    badge.hidden=false;badge.textContent=`書込中: ${r.holderLogin||'?'}@${r.holderPc||'?'}`;
+    badge.title='いま共有スケジュールへ書き込んでいる端末です（1回の書込ぶんの短いロック）。編集権とは別のものです。';
    }else{
     badge.hidden=true;
    }
@@ -1604,10 +1627,16 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      こちらはサーバー側が間隔を持っているので、そこまで細かく見なくてよい。 */
   refreshSyncBadge();
   scSyncTimer=setInterval(refreshSyncBadge,10000);
+  /* 在席（誰が編集権を持っているか）も同じ周期で取り直す（§9.211 ②）。
+     **TTLは90秒**なので10秒で十分間に合う。読むだけなので共有への負荷も
+     小さい（小さなJSONを1枚読む）。 */
+  refreshSessionsWho();
+  scWhoTimer=setInterval(refreshSessionsWho,10000);
  }
  function stopLockPolling(){
   if(scLockTimer){clearInterval(scLockTimer);scLockTimer=null}
   if(scSyncTimer){clearInterval(scSyncTimer);scSyncTimer=null}
+  if(scWhoTimer){clearInterval(scWhoTimer);scWhoTimer=null}
  }
 
  /* ---------- 編集セッション(§9.11新設) ----------
@@ -1618,7 +1647,14 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     バナーを出し、追加・削除・並べ替え・設備停止投入を止める(下記
     sessionBlocked()、実際の書込APIもrequire_session()で二重に弾く)。 */
  function sessionApplicable(){
-  return scState.fullControl&&scState.boardMode==='single'&&!!scState.equipment;
+  /* **編集権を持つのは「書ける端末」全部**（§9.211 ②、利用者の指示
+     「スケジュール編集者が1名になるまでは後から入った人は編集権を持たず、
+     READONLY」）。以前は`fullControl`＝scheduleモードだけで、現場段取り
+     （editモードで並べ替えだけできる端末）はセッションの外に居た
+     ——2台のedit端末が同じ設備を同時に並べ替えられ、在席にも出なかった。
+     `scState.editable`は「scheduleモード」または「現場段取りの対象設備が
+     一致するeditモード」のときだけ真なので、書けない端末は掴まない。 */
+  return !!scState.editable&&scState.boardMode==='single'&&!!scState.equipment;
  }
  // 「他端末がこの設備を編集中」と確定できた場合(423+sessionLockedBy)だけ
  // 操作を止める。ネットワーク不調・タイムアウト等、確定できないエラーでは
@@ -1653,6 +1689,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    }
   }
   renderSessionBanner();
+  /* 取得の結果はすぐ在席表示へ映す（§9.211 ②）。**奪われた側もここで
+     気づく**——ハートビートが423になった時点で読み取り専用へ落ちる。 */
+  refreshSessionsWho();
  }
  function startSessionHeartbeat(){
   stopSessionHeartbeat();
@@ -1685,15 +1724,46 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   }
   if(!sessionApplicable()){
    stopSessionHeartbeat();
+   /* **握ったままにしない**（§9.211 ②）。以前は「設備が変わったとき」しか
+      解放しておらず、全体俯瞰へ切り替えた／設備の選択を空へ戻したときは
+      **サーバーのセッションがTTL（90秒）ぶん残っていた**。在席表示を出す
+      と「居ないのに居ることになっている」がそのまま画面に出るので、
+      ここで必ず返す。 */
+   if(scSessionHeldFor){releaseSessionFire(scSessionHeldFor);scSessionHeldFor=null}
    if(scState.sessionHeld||scState.sessionHolder||scState.sessionError){
-    scState.sessionHeld=false;scState.sessionHolder=null;scState.sessionError=null;renderSessionBanner();
+    scState.sessionHeld=false;scState.sessionHolder=null;scState.sessionError=null;
    }
+   renderSessionBanner();
    return;
   }
   if(scSessionTimer)return; // 既にこの設備でハートビート中
   startSessionHeartbeat();
  }
+ /* 編集権が入れ替わったら**表そのものを描き直す**（§9.211 ②）。
+    READONLYの見せ方は帯とチップだけでは足りない——行の`draggable`・外す/固定の
+    ボタンは`renderTimeline()`が`sessionBlocked()`を見て決めているので、
+    描き直さないと**掴めるのに落とすと弾かれる行**が残る（§4「できないことは
+    できないと書く」の裏返しで、押せるのに何も起きないのと同じ）。
+    **変わった瞬間だけ**描き直す（毎回描くと10秒ごとに表がちらつく）。
+    列幅を掴んでいる最中は`WL.columnResize.defer`が離すまで待つ（§9.209 ①）。 */
+ /* 初期値は`false`（＝書ける）。`null`にすると、開いた直後の1回目で
+    「null→false」を変化とみなして無駄に1回描き直す。最初から他端末が
+    持っている場合は「false→true」で正しく拾える。 */
+ let scLastBlocked=false,scWhoRendering=false;
+ function syncBlockedView(){
+  const now=sessionApplicable()?sessionBlocked():false;
+  if(scLastBlocked===now)return;
+  scLastBlocked=now;
+  /* `sc-session-locked`の付け外しは`applyWriteControlsEnabled()`が持ち主
+     （このすぐ下で必ず通る）。ここで一緒に触ると判定が2箇所になる。 */
+  if(!scState.equipment||!(scState.entries||[]).length)return;
+  const redraw=()=>{try{renderTimeline()}catch(e){console.warn('編集権の切り替えで描き直せませんでした',e)}};
+  if(WL.columnResize&&WL.columnResize.defer)WL.columnResize.defer('schedule:sessionBlocked',redraw);
+  else redraw();
+ }
  function renderSessionBanner(){
+  if(!scWhoRendering){scWhoRendering=true;try{syncBlockedView()}finally{scWhoRendering=false}}
+  renderSessionWho();
   const box=$('#scSessionBanner');if(!box)return;
   if(!sessionApplicable()||scState.sessionHeld){
    box.hidden=true;box.innerHTML='';box.className='sc-session-banner';
@@ -1701,11 +1771,13 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    return;
   }
   if(scState.sessionHolder){
-   // 他端末が保持中と確定できた場合のみ操作を止める(sessionBlocked()と同じ判定)。
-   const h=scState.sessionHolder;
+   /* 他端末が保持中と確定できた場合だけ操作を止める(sessionBlocked()と同じ判定)。
+      **誰が編集中かはここには書かない**——タイトル帯の在席表示(`#scWho`)が
+      1箇所で言う（§CLAUDE 8「同じ情報を2箇所に出さない」）。ここに残すのは
+      「いま何ができないか」だけ。 */
    box.hidden=false;box.className='sc-session-banner sc-session-banner-blocked';
-   box.innerHTML=`<span>⚠ ${esc(scState.equipment)}は${esc(h.loginId||'?')}@${esc(h.pcName||'?')}が編集中です。追加・削除・並べ替えは今は操作できません(閲覧のみ)。</span><button type="button" id="scSessionRetry">再試行</button>`;
-   $('#scSessionRetry').onclick=()=>acquireSessionOnce();
+   box.innerHTML='<span>読み取り専用です。追加・削除・並べ替え・設備停止・申し送りは操作できません'
+     +'（表示・印刷・列の設定はできます）。編集権は上の帯で確かめられます。</span>';
    applyWriteControlsEnabled(false);
    return;
   }
@@ -1725,6 +1797,155 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  function applyWriteControlsEnabled(enabled){
   const panel=document.getElementById('schedulePanel');
   if(panel)panel.classList.toggle('sc-session-locked',!enabled);
+ }
+
+ /* ================================================================
+    編集権の在席表示（§9.211 ②、利用者の指示）
+    ----------------------------------------------------------------
+    「READONLYで読み取り、だれが入っているか表示（作業スケジュールの
+     タイトル帯の空白エリアを利用してください）、かつ強制的に編集権を
+     奪うように切り替える機能も実装してください」
+
+    - **編集権を持てるのは設備ごとに1人**（元からの仕組み。TTL90秒・
+      25秒ごとに延長）。後から入った人はREADONLYになる。
+    - **誰が入っているかは常に文字で出す**（§3 状態は色だけで伝えない）。
+      設備をまたいだ在席も`title`で読める——他の設備を触ろうとして
+      「なぜ入れないのか」を探させない。
+    - **抜けているのに残っている**ときのために奪える（§4「できないことは
+      できないと書く」の裏返し。待つしか手立てが無いと現場が止まる）。
+      危ない操作なので**確認を必ず出し**、相手の名前を確認文へ書く。
+    ================================================================ */
+ async function refreshSessionsWho(){
+  const eq=scState.equipment;
+  try{
+   const r=await api('/api/schedule/sessions');
+   if(scState.equipment!==eq)return; // 応答が届く前に設備が切り替わっていたら捨てる
+   scState.sessions=r.sessions||[];
+   scState.me=r.me||null;
+   scState.sessionsConfigured=r.configured!==false;
+  }catch(e){
+   if(scState.equipment!==eq)return;
+   /* 読めなかったことと「誰も居ない」は違う（§CLAUDE）。控えは触らず、
+      在席表示は「確かめられません」に落とす。 */
+   scState.sessions=null;
+  }
+  /* **在席一覧は「奪われた」ことに気づく一番早い手立て**（§9.211 ②）。
+     ハートビートは25秒ごとなので、それだけに任せると奪われてから最大
+     25秒は編集できるように見えたまま書きに行って弾かれる。10秒ごとの
+     この巡回で持ち主が自分でなくなっていたら、その場で読み取り専用へ
+     落とす（逆に自分に戻っていたら編集中へ戻す）。
+     **読めなかったとき（null）は何も変えない**——「確かめられなかった」
+     を「奪われた」と読み替えると、共有が一瞬不調なだけで編集が止まる
+     （fail-openの方針。sessionBlocked()の但し書きと同じ理由）。 */
+  if(Array.isArray(scState.sessions)&&sessionApplicable()&&eq){
+   const cur=scState.sessions.find(x=>x.equipment===eq)||null;
+   if(cur&&!cur.mine){
+    scState.sessionHeld=false;
+    scState.sessionHolder={loginId:cur.holderLogin||'',pcName:cur.holderPc||''};
+    scState.sessionError=null;
+   }else if(cur&&cur.mine){
+    scState.sessionHeld=true;scState.sessionHolder=null;scState.sessionError=null;
+   }
+   renderSessionBanner(); // 帯と在席チップの両方を描き直す
+   return;
+  }
+  renderSessionWho();
+ }
+ function whoLabel(x){
+  const id=(x&&(x.holderLogin||x.loginId))||'';
+  const pc=(x&&(x.holderPc||x.pcName))||'';
+  return `${id||'?'}@${pc||'?'}`;
+ }
+ function meLabel(){
+  const m=scState.me;
+  return m?`${m.loginId||'?'}@${m.pcName||'?'}`:'この端末';
+ }
+ /* いま自分がこの設備の編集権を持っているか。**在席一覧を正とする**
+    ——ハートビートの成否(`scState.sessionHeld`)は自分の見立てで、
+    奪われた直後は次のハートビートまで古いままになる。 */
+ function mySessionEntry(){
+  const list=scState.sessions;
+  if(!Array.isArray(list))return null;
+  return list.find(x=>x.equipment===scState.equipment)||null;
+ }
+ function renderSessionWho(){
+  const box=$('#scWho');if(!box)return;
+  const list=scState.sessions;
+  const others=Array.isArray(list)?list.filter(x=>x.equipment!==scState.equipment):[];
+  const otherText=others.length
+   ?others.map(x=>`${x.equipment}: ${whoLabel(x)}${x.mine?'（自分）':''}`).join(' ／ ')
+   :'';
+  if(!sessionApplicable()){
+   /* 全体俯瞰・編集モードでは自分の編集権は関係ないが、**誰が入って
+      いるかは知りたい**（入れない理由を探させない）。件数だけ出す。 */
+   if(!Array.isArray(list)||!list.length){box.hidden=true;box.innerHTML='';return}
+   box.hidden=false;box.className='sc-who sc-who-info';
+   box.innerHTML=`<b class="sc-who-state">編集中の設備 ${list.length}件</b>`;
+   box.title=list.map(x=>`${x.equipment}: ${whoLabel(x)}${x.mine?'（自分）':''}`).join('\n');
+   return;
+  }
+  box.hidden=false;
+  const blocked=sessionBlocked();
+  const mine=mySessionEntry();
+  const tip=t=>{box.title=t+(otherText?`\n他の設備: ${otherText}`:'')};
+  if(blocked){
+   const h=scState.sessionHolder||{};
+   box.className='sc-who sc-who-blocked';
+   box.innerHTML=`<b class="sc-who-state">読み取り専用</b>`
+    +`<span class="sc-who-holder">${esc(whoLabel(h))} が編集中</span>`
+    +`<button type="button" class="sc-who-take" id="scWhoTake"`
+    +` title="相手の編集権を取り上げて、この端末で編集できるようにします。相手は次の確認（25秒以内）で読み取り専用になります">編集権を奪う</button>`;
+   const btn=$('#scWhoTake');if(btn)btn.onclick=()=>takeOverSession();
+   tip(`${scState.equipment} は ${whoLabel(h)} が編集中です。この端末（${meLabel()}）は読み取り専用です。`);
+   return;
+  }
+  if(scState.sessionHeld||(mine&&mine.mine)){
+   box.className='sc-who sc-who-mine';
+   box.innerHTML=`<b class="sc-who-state">編集中</b><span class="sc-who-holder">自分（${esc(meLabel())}）</span>`;
+   tip(`${scState.equipment} はこの端末が編集しています。ほかの端末は読み取り専用になります。`);
+   return;
+  }
+  if(list===null){
+   /* **読めなかったことを「誰も居ない」と言わない**（§CLAUDE）。 */
+   box.className='sc-who sc-who-unknown';
+   box.innerHTML=`<b class="sc-who-state">編集権を確かめられません</b>`;
+   tip('共有フォルダの在席ファイルを読めませんでした。操作は続けられますが、同時編集の見張りは効いていない可能性があります。');
+   return;
+  }
+  box.className='sc-who sc-who-wait';
+  box.innerHTML=`<b class="sc-who-state">編集権を確認中</b>`;
+  tip(`${scState.equipment} の編集権を取りに行っています。`);
+ }
+ /* **奪うのは危ない操作**なので、相手の名前を出して1回だけ確認する（§5）。
+    奪われた側は次のハートビート（25秒以内）で読み取り専用へ落ち、書込APIも
+    `require_session()`で弾くので、気づかないまま書き続けることは無い。 */
+ async function takeOverSession(){
+  const eq=scState.equipment;if(!eq)return;
+  const h=scState.sessionHolder||{};
+  const ok=await confirmModal({
+   message:`${eq} の編集権を ${whoLabel(h)} から取り上げますか？\n\n`
+     +`・相手の画面は次の確認（25秒以内）で読み取り専用になります\n`
+     +`・相手が編集の途中なら、その作業は続けられなくなります\n`
+     +`・相手が本当に抜けているかを確かめてから実行してください`,
+   danger:true,title:'編集権を奪う',confirmLabel:'編集権を奪う'});
+  if(!ok)return;
+  try{
+   const r=await api('/api/schedule/session/take-over',{method:'POST',
+     headers:{'Content-Type':'application/json'},body:JSON.stringify({equipment:eq})});
+   if(scState.equipment!==eq)return;
+   scState.sessionHeld=true;scState.sessionHolder=null;scState.sessionError=null;
+   showToast&&showToast('編集権を引き継ぎました',
+     r.takenFrom?`${whoLabel({holderLogin:r.takenFrom.login,holderPc:r.takenFrom.pc})} から引き継ぎました`
+                :'この端末で編集できます',4000);
+   /* 奪ったらすぐ延長を始める（TTLは90秒）。在席表示も取り直す。 */
+   startSessionHeartbeat();
+   await refreshSessionsWho();
+  }catch(e){
+   /* 同じ瞬間にもう1台が奪っていた等。**黙って「取れた」ことにしない。** */
+   showToast&&showToast('編集権を奪えませんでした',e.message||String(e),6000);
+   await refreshSessionsWho();
+  }
+  renderSessionBanner();
  }
  // タブを閉じる時に保持中のセッションを解放する(base.jsのnotifyTabClosedと
  // 同じ二重登録方針。pagehideが本来カバーする範囲の方が広いが、ブラウザ
@@ -2371,6 +2592,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   return '';
  }
  function updateFixedStart(id,localValue){
+  /* **読み取り専用のときは書かない**（§9.211 ②）。CSSで押せなくしていた
+     だけだったので、詳細パネルの日時欄からは素通りしていた。 */
+  if(sessionBlocked()){showToast&&showToast('変更できません',sessionHolderMessage(),4000);return}
   // §9.22: 他の書込と同様、書込キュー経由の一方通行にする(直接await→
   // loadPlan()だと、この操作だけ編集中に表示が一瞬消える対象として残って
   // しまうため)。楽観的にローカルへ反映し、失敗した時だけ元へ戻す。
@@ -3340,7 +3564,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
                                       hidden:[...timelineHiddenSet()],
                                       names:cur.names,formats:cur.formats,
                                       rules:cur.rules,formulas:cur.formulas,locks:cur.locks,
-                                      ...patch});
+                                      sorts:cur.sorts,...patch});
+   /* 列の設定パネルを開いたまま見出しを触ることがある。**保存したぶんは
+      巻き戻さない**ように控えへ伝える（§9.211 ①）。 */
+   WL.listColumns&&WL.listColumns.noteSaved&&WL.listColumns.noteSaved(target,patch);
    showToast&&showToast('列の設定を保存しました','この設備のスケジュール表で次も同じ形で出ます',2400);
   }catch(e){showToast&&showToast('列の設定を保存できませんでした',e.message,5000)}
  }
@@ -3354,7 +3581,20 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const alive=new Set(heads.map(h=>h.dataset.col));
   [...scColPicked].forEach(k=>{if(!alive.has(k))scColPicked.delete(k)});
   scColPickHint();
-  const layout=WL.columnLayout.get(target);
+  /* ---------- 控えは束縛しない（§9.211 ①、利用者の指摘） ----------
+     以前はここで`const layout=WL.columnLayout.get(target)`と**束縛**し、
+     preview/commit/reset がその写しを綴じ込みで使っていた。`save()`は
+     キャッシュを**新しいオブジェクトへ差し替える**（§9.113）ので、
+     1回保存した時点でこの写しは**キャッシュから外れた孤児**になる。
+     すると2回目以降のドラッグは:
+       - preview が孤児の`widths`を書き換える → 描画側
+         （`applyTimelineContentColumns`）が読むのはキャッシュなので
+         **掴んだ列が動かない**
+       - そのうえ`applyTimelineContentColumns()`が保存済みの幅で
+         組み直すので、**掴んでいない列が「戻される」ように動く**
+     という、実機で報告されたとおりの壊れ方になる。
+     **毎回`live()`で取り直す。** 束縛を復活させないこと。 */
+  const live=()=>WL.columnLayout.get(target);
   /* 掴んでいる列。**複数選んでいればまとめて動かす**(§9.177) */
   let dragKeys=null;
   const clearMarks=()=>heads.forEach(x=>x.classList.remove('col-drop-before','col-drop-after'));
@@ -3390,11 +3630,14 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     const order=timelineOrderedKeys().filter(k=>!moving.includes(k));
     const at=order.indexOf(key);if(at<0)return;
     order.splice(after?at+1:at,0,...moving);
-    /* **畳んでいる列は書き換える前に控える**(§9.197)。`layout.order`を
-       先に書き換えてしまうと、そのあとでは「一度も保存していない端末」の
-       既定（監査4列・日付(太陽暦)を畳む）が分からなくなる。 */
+    /* **畳んでいる列は書き換える前に控える**(§9.197)。並びを先に書き換えて
+       しまうと、そのあとでは「一度も保存していない端末」の既定
+       （監査4列・日付(太陽暦)を畳む）が分からなくなる。 */
     const hidden=[...timelineHiddenSet()];
-    layout.order=order;
+    /* 保存を待たずに画面へ当てる（§9.90 stage）。**キャッシュそのものへ
+       当てること**——孤児の写しへ書くと、直後の`renderTimeline()`は
+       古い並びで描き、保存が届いてから飛ぶ。 */
+    WL.columnLayout.stage(target,{...live(),order});
     persistTimelineColumns(target,{order,hidden});
     renderTimeline();
    });
@@ -3421,12 +3664,19 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      const live=timeline.querySelector(`.sc-row-head [data-col="${CSS.escape(key)}"]`)||h;
      return live.getBoundingClientRect().width;
     },
-    preview:w=>{layout.widths={...(layout.widths||{}),[key]:w};applyTimelineContentColumns(timeline)},
-    commit:w=>{const widths={...(layout.widths||{}),[key]:w};
-               layout.widths=widths;persistTimelineColumns(target,{widths})},
-    reset:()=>{const widths={...(layout.widths||{})};delete widths[key];
-               layout.widths=widths;applyTimelineContentColumns(timeline);
-               persistTimelineColumns(target,{widths,locks:(layout.locks||[]).filter(k=>k!==key)})},
+    /* **引いている幅がそのまま「今の幅」**（利用者の指示「今動かしている
+       列幅が正」）。キャッシュへ当ててから描くので、引いている最中に
+       表が組み直されても幅は戻らない。保存はしない（`stage`）。 */
+    preview:w=>{const cur=live();
+                WL.columnLayout.stage(target,{...cur,widths:{...(cur.widths||{}),[key]:w}});
+                applyTimelineContentColumns(timeline)},
+    commit:w=>{const cur=live();
+               persistTimelineColumns(target,{widths:{...(cur.widths||{}),[key]:w}})},
+    reset:()=>{const cur=live();
+               const widths={...(cur.widths||{})};delete widths[key];
+               WL.columnLayout.stage(target,{...cur,widths});
+               applyTimelineContentColumns(timeline);
+               persistTimelineColumns(target,{widths,locks:(cur.locks||[]).filter(k=>k!==key)})},
    });
   });
  }
@@ -4271,7 +4521,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  // 一覧から消える(§9.15)よう#gridを再描画する。SIKALOTNOWを見ていない
  // 時は無駄なので、S.dbで確認してから呼ぶ。
  function refreshScheduledLotFilter(){
-  if(typeof renderGrid==='function'&&typeof S!=='undefined'&&WL.dataSource.isWork(S.db))renderGrid();
+  if(!(typeof renderGrid==='function'&&typeof S!=='undefined'&&WL.dataSource.isWork(S.db)))return;
+  /* 予定を描くたびに仕掛一覧まで作り直すので、**その一覧の列幅を掴んで
+     いる最中は待たせる**（§9.211 ①）。止めない——止めると§9.15の
+     「投入済みのロットが消える」が効かなくなる。 */
+  WL.columnResize.defer('grid:scheduledLot',()=>renderGrid());
  }
 
  /* ---------- 書込キュー(§9.11新設): 画面描画を先行させ、実際のAPI呼び出しは
@@ -4393,6 +4647,15 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      scWriteQueue.shift();
     }catch(e){
      op.attempts++;
+     /* **423は「編集権を失った」ことの知らせ**（§9.211 ②）。以前はここで
+        状態を更新しておらず、次のハートビート（最大25秒後）まで画面は
+        「自分が編集中」のままだった——奪われたことに気づかないまま操作を
+        続け、そのたびに黙って戻される。届いた時点で読み取り専用へ落とす。 */
+     if(e&&e.status===423&&e.sessionLockedBy
+        &&(e.sessionLockedBy.loginId||e.sessionLockedBy.pcName)&&sessionApplicable()){
+      scState.sessionHeld=false;scState.sessionHolder=e.sessionLockedBy;scState.sessionError=null;
+      renderSessionBanner();
+     }
      // 権限不足・入力不正(4xx)は何度やっても同じ結果になる。リトライすると
      // 同じ失敗メッセージが回数ぶん出てしまうため、即座に諦める。
      // 再試行に意味があるのは共有ファイルのロック待ち・一時的な通信不良
@@ -4456,6 +4719,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  }
 
  async function deleteEntry(id){
+  /* **読み取り専用のときは消さない**（§9.211 ②）。右クリックメニュー・
+     🗑ボタン・選択バーの3経路から来るので、入口ではなくここで1回だけ断る。 */
+  if(sessionBlocked()){showToast&&showToast('削除できません',sessionHolderMessage(),4000);return}
   if(typeof confirmModal==='function'){
    const ok=await confirmModal({message:'この予定を削除します。よろしいですか？'});
    if(!ok)return;
@@ -4531,6 +4797,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  function removableEntry(id){
   const e=(scState.entries||[]).find(x=>String(x.id)===String(id));
   if(!e)return null;
+  /* **読み取り専用のときは外せない**（§9.211 ②）。以前はここにセッションの
+     判定が無く、行の外にある選択バー（`#scPickBar`）から素通りしていた
+     ——押すと画面から一度消えてから423で戻る（しかも末尾へ）。 */
+  if(sessionBlocked())return null;
   return (scState.fullControl&&e.state==='予定'&&!e.__pending&&!e.unplanned)?e:null;
  }
  /* ---------- まとめて予定から外す(§9.170) ----------
@@ -5206,6 +5476,13 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    if(scState.editingComment!==String(id))return;
    scState.editingComment=null;
    const next=String(box.value||'').trim().slice(0,200);
+   /* **書き始めたあとに読み取り専用になることがある**（別の端末が編集権を
+      奪ったとき。§9.211 ②）。確定の直前にもう一度見て、書かずに戻す。 */
+   if(save&&sessionBlocked()){
+    paintCommentCell(entry,before);
+    showToast&&showToast('保存できません',sessionHolderMessage(),5000);
+    return;
+   }
    if(!save||next===before){paintCommentCell(entry,before);return}
    entry.title=next;paintCommentCell(entry,next);
    queuePlanOp({op:'update',id:entry.id,title:next,
@@ -5536,7 +5813,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    scState.joinColumns=r.columns||[];
    const byId=new Map((scState.entries||[]).map(e=>[String(e.id),e]));
    (r.values||[]).forEach((v,i)=>{const e=byId.get(ids[i]);if(e)e.joined=v});
-   if(scState.joinColumns.length)renderTimeline();
+   /* 結合は予定を描いたあと**数百ms〜数秒遅れて**着弾する。列幅を掴んで
+      いる最中に来ると表ごと入れ替わるので待たせる（§9.211 ①）。 */
+   if(scState.joinColumns.length)WL.columnResize.defer('timeline:join',()=>renderTimeline());
   }catch(_){
    // 次の読み直しでやり直せるように、控えを捨てる（黙って諦めない）。
    if(seq===scJoinSeq)scJoinSig='';
@@ -6020,6 +6299,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      しまう。「いまの内容で描き直す」「最新を取り直す」だけを開ける。 */
   refresh:force=>refreshCurrentMode(!!force),
   render:()=>{if(scState.equipment)renderTimeline()},
+  /* 編集権(§9.211 ②)。**在席を取り直す**操作と、**いま書けるか**の答え。
+     どちらも判定はこのファイルの1箇所(refreshSessionsWho/sessionBlocked)で、
+     外へ出すのは「聞く」だけ——scState.sessionHeldを直接触らせると、
+     画面の見せ方と実際の権利が食い違う。 */
+  refreshSession:()=>refreshSessionsWho(),
+  sessionBlocked:()=>sessionBlocked(),
   /* いま勝手に読み直してよいか(§9.188)。**触っている最中は読み直さない**。 */
   canAutoReload,
   /* 他の設備ぶんは画面が持っていないので取りに行く。**表示範囲は画面と

@@ -51,7 +51,8 @@ G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'te
                      'test_sctimecols', 'test_scinsert', 'test_audittrail',
                      'test_scstop', 'test_scwarm', 'test_scundecided',
                      'test_scwatchui', 'test_scwatch', 'test_sccomment',
-                     'test_scowner', 'test_scrowstyle', 'test_scload', 'test_scbar', 'test_scsave']
+                     'test_scowner', 'test_scrowstyle', 'test_scload', 'test_scbar', 'test_scsave',
+                     'test_scsession', 'test_scwho']
 G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 'test_eqkind',
                'test_shift', 'test_dbequip', 'test_crudroutes', 'test_setpage', 'test_eqstd',
                'test_workdate', 'test_measstore']
@@ -176,7 +177,8 @@ RULES = [
     ('backend/schedule_owner.py', g('test_scowner', 'test_modeguard', 'スケジュール')),
     ('tests/fixtures/sort_cases.json', g('test_sortpipe', 'test_sortcustom')),
     ('backend/schedule_sync.py', g('test_sclock', 'test_scsync', 'test_scwritespeed',
-                                   'test_screorder', 'test_atomicio')),
+                                   'test_screorder', 'test_atomicio', 'test_scsession',
+                                   'test_scwho')),
     ('backend/load_factor.py', g('test_scbalance', 'test_sccat', 'test_screport', 'test_eqstd')),
     ('backend/records_export.py', g('test_share', 'test_flows', 'test_measstore')),
     ('backend/logging_setup.py', g('ログ')),

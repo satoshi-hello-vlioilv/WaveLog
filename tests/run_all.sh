@@ -239,7 +239,7 @@ for t in test_stopcat test_workable test_wkbg test_mcore test_msteps test_orphan
 
 echo "--- スケジュール (テスト側でモードを切り替える) ---"
 for t in test_screport test_startwork test_scsync test_sccat test_scbalance test_scbatch \
-         test_screorder test_scperm test_scperf test_wkfast test_scsplit test_splitlive test_scprint test_scdrop test_scpick test_sccontent test_recperm test_sctimecols test_scinsert test_audittrail test_scstop test_scwarm test_scundecided test_scwatchui test_sccomment test_scrowstyle test_scbar test_scsave; do run $NODE $t.js; done
+         test_screorder test_scperm test_scperf test_wkfast test_scsplit test_splitlive test_scprint test_scdrop test_scpick test_sccontent test_recperm test_sctimecols test_scinsert test_audittrail test_scstop test_scwarm test_scundecided test_scwatchui test_sccomment test_scrowstyle test_scbar test_scsave test_scwho; do run $NODE $t.js; done
 
 echo "--- スケジュール (scheduleモード固定) ---"
 mode schedule
@@ -249,7 +249,7 @@ for t in test_cols test_listmodal test_split_layout test_sccols; do
 
 echo "--- サーバー側 ---"
 mode schedule
-for t in test_sclock test_scwritespeed test_colscache test_colsripple test_modeguard test_noaccess test_pcname \
+for t in test_sclock test_scsession test_scwritespeed test_colscache test_colsripple test_modeguard test_noaccess test_pcname \
          test_csslint test_dbopen test_error test_datasource test_dscap test_dskeylint test_dbmirror test_atomicio test_localwork test_displayrule test_eqstd test_crudroutes test_tablequery test_patchlint test_globallint test_assetcache test_tabclose test_logs test_docindex test_sortpipe test_scwatch test_scowner test_qjoin test_workdate test_scload test_pick; do run python3 $t.py; done
 
 echo

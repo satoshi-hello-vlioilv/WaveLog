@@ -107,6 +107,42 @@ def session_acquire():
  except Exception as e:
   return jsonify(error=str(e)),500
 
+@bp.get('/api/schedule/sessions')
+def sessions_list():
+ """いま誰が編集権を持っているか(§9.211 ②)。**読むだけ**。
+
+ 画面の在席表示が読む。`session-status`は設備1つぶんしか答えられないので、
+ 「誰が入っているか」を帯へ出すにはこちらが要る。
+ """
+ try:
+  return jsonify(ok=True,**schedule_sync.sessions_all(current_login_id(),current_pc_name()))
+ except Exception as e:
+  return jsonify(error=str(e)),500
+
+@bp.post('/api/schedule/session/take-over')
+def session_take_over():
+ """編集権を**強制的に引き継ぐ**(§9.211 ②、利用者の指示)。
+
+ TTL(90秒)を待てば自然に空くが、「抜けているのに残っている」あいだ
+ その設備の予定を誰も直せない。奪われた側は次のハートビートで423になり、
+ その場でREADONLYへ落ちる(書込APIもrequire_session()で二重に弾く)。
+ """
+ x=request.get_json(force=True) or {}
+ equipment=str(x.get('equipment') or '').strip()
+ if not equipment:return jsonify(error='どの設備か指定してください(equipment)。'),400
+ try:
+  r=schedule_sync.take_over_session(equipment,current_login_id(),current_pc_name())
+  return jsonify(ok=True,equipment=equipment,**r)
+ except schedule_sync.SessionHeldError as e:
+  # 同じ瞬間にもう1台が奪っていた。**黙って「取れた」ことにしない。**
+  return jsonify(error=str(e),sessionLockedBy={'loginId':e.holder_login,'pcName':e.holder_pc}),423
+ except schedule_sync.ScheduleNotConfigured as e:
+  return jsonify(error=str(e)),400
+ except ValueError as e:
+  return jsonify(error=str(e)),400
+ except Exception as e:
+  return jsonify(error=str(e)),500
+
 @bp.post('/api/schedule/session/heartbeat')
 def session_heartbeat():
  return session_acquire()
@@ -259,12 +295,18 @@ def _request_mode():
  return get_mode()
 
 def _check_session(equipment):
- # scheduleモード(§9.11の編集セッション対象)のときだけ強制する。editモードの
- # 現場段取り(§3.1.1、plan_reorderのみ許可)は個別の並べ替え権限で既に
- # ガードされており、この端末はそもそもセッションを取得できない
- # (POST /api/schedule/session/*はscheduleモード限定のBlueprintのため)。
- # ここで一律に要求すると現場段取り自体が機能しなくなってしまうため対象外。
- if _request_mode()=='schedule':
+ # 編集セッション(§9.11)を強制する。
+ # **editモード(現場段取り)も対象**(§9.211 ②、利用者の指示「スケジュール
+ # 編集者が1名になるまでは後から入った人は編集権を持たずREADONLY」)。
+ # 以前はscheduleモードだけを見ていた——理由は「edit端末はセッションを
+ # 取得できない(POST /api/schedule/session/*がscheduleモード限定のBlueprint
+ # だった)ので、一律に要求すると現場段取りが機能しなくなる」だった。
+ # その前提を先に外してある(access_mode._ENDPOINT_EXTRA_MODESでsession系の
+ # 4本をeditへ開けた)ので、ここも一律にできる。
+ # **順番を逆にしないこと**——取得口を開ける前にここを一律にすると、
+ # 現場段取りの並べ替えだけが静かに423で止まる。
+ # 閲覧モードはそもそも書込ガード(_guard_write)で弾かれるのでここへ来ない。
+ if _request_mode() in ('schedule','edit'):
   schedule_sync.require_session(equipment,current_login_id(),current_pc_name())
 
 # ========================================================================

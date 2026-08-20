@@ -234,7 +234,12 @@ async function syncPendingRecords({silent}={}){
   if(!silent)hideSaveOverlay();
   await refreshDraftCount();
   if(typeof refreshSyncStatusUI==='function')refreshSyncStatusUI();
-  if($('#recordModal')&&!$('#recordModal').hidden)await refreshRecordList();
+  /* 15分ごとの自動同期（1319行）からも来る。列幅を掴んでいる最中に一覧を
+     作り直すと取っ手ごと入れ替わるので待たせる（§9.211 ①）。 */
+  if($('#recordModal')&&!$('#recordModal').hidden){
+   if(silent)WL.columnResize.defer('records:sync',()=>{refreshRecordList().catch(()=>{})});
+   else await refreshRecordList();
+  }
   if(!silent)showToast(ok===targets.length?'すべて同期しました':'一部同期できませんでした',`${ok}/${targets.length}件`,6000);
   return{total:targets.length,ok};
  }finally{syncingPending=false}
@@ -907,7 +912,11 @@ async function recordPersistColumns(patch){
  await WL.columnLayout.save(RECORD_LIST_TARGET,{
   order:[...known,...keys.filter(k=>!known.includes(k))],
   widths:cur.widths,hidden:recordInitialHidden(keys,cur),names:cur.names,
-  formats:cur.formats,rules:cur.rules,formulas:cur.formulas,locks:cur.locks,...patch});
+  formats:cur.formats,rules:cur.rules,formulas:cur.formulas,locks:cur.locks,
+  sorts:cur.sorts,...patch});
+ /* 列の設定パネルを開いたまま見出しを触ることがある。**保存したぶんは
+    巻き戻さない**ように控えへ伝える（§9.211 ①）。 */
+ WL.listColumns&&WL.listColumns.noteSaved&&WL.listColumns.noteSaved(RECORD_LIST_TARGET,patch);
 }
 function recordColumnLabel(k){
  const n=(WL.columnLayout.get(RECORD_LIST_TARGET).names||{})[k];
@@ -1084,23 +1093,41 @@ function bindRecordHeadTools(list,keys){
  }
  list.querySelectorAll('.record-list-head [data-col]').forEach(el=>{
   const k=el.dataset.col;
+  /* **今そこに在る見出しから測る**（§9.211 ①）。一覧は`innerHTML`ごと
+     作り直されるので、綴じ込んだ`el`は簡単に孤児になる——孤児を測ると
+     幅0になり、掴んでも動かない。 */
+  const liveHead=()=>list.querySelector(`.record-list-head [data-col="${CSS.escape(k)}"]`)||el;
   WL.columnWidthGrip(el.querySelector('.col-resize'),{
    locked:WL.columnLayout.locked(RECORD_LIST_TARGET,k),
-   startWidth:()=>el.getBoundingClientRect().width,
-   // 引いている最中は**保存せずに見せるだけ**（掴んだ列だけ実寸へ差し替える）
-   preview:w=>list.style.setProperty('--rec-cols',recordTracksCss(keys,k,w)),
+   startWidth:()=>liveHead().getBoundingClientRect().width,
+   /* 引いている最中は**保存せずに見せるだけ**（掴んだ列だけ実寸へ差し替える）。
+      同じ値をキャッシュへも当てておく（`stage`＝保存しない。§9.211 ①）
+      ——引いている最中に一覧が組み直されると、当てていない側は保存済みの
+      幅で描くので**掴んだ幅がその場で戻る**。「今動かしている列幅が正」
+      （利用者の指示）にするには、見た目と控えの両方へ入れる。 */
+   preview:w=>{
+    list.style.setProperty('--rec-cols',recordTracksCss(keys,k,w));
+    const cur=WL.columnLayout.get(RECORD_LIST_TARGET);
+    WL.columnLayout.stage(RECORD_LIST_TARGET,{...cur,widths:{...(cur.widths||{}),[k]:w}});
+   },
+   /* **保存の約束は返すこと**（§9.211 ①）。返さないと取っ手側の
+      `.catch()`が空振りし、保存に失敗しても画面は成功したように見える
+      （しかも未処理のrejectionになる）。描き直しは待たない——`save()`は
+      キャッシュを先に差し替えるので、その場で新しい幅が出る。 */
    commit:w=>{
     const cur=WL.columnLayout.get(RECORD_LIST_TARGET);
-    recordPersistColumns({widths:{...(cur.widths||{}),[k]:w}});
+    const p=recordPersistColumns({widths:{...(cur.widths||{}),[k]:w}});
     renderRecordListRows();
+    return p.catch(e=>{showToast&&showToast('列幅を保存できませんでした',e.message||String(e),5000)});
    },
    reset:()=>{
     const widths={...(WL.columnLayout.get(RECORD_LIST_TARGET).widths||{})};delete widths[k];
     /* **固定も一緒に解く**（§9.119）。幅を持たない「固定」は動かしようが
        無いので、残すと「固定と出ているのに何も効いていない」列になる。 */
     const locks=(WL.columnLayout.get(RECORD_LIST_TARGET).locks||[]).filter(x=>x!==k);
-    recordPersistColumns({widths,locks});
+    const p=recordPersistColumns({widths,locks});
     renderRecordListRows();
+    return p.catch(e=>{showToast&&showToast('列幅を保存できませんでした',e.message||String(e),5000)});
    },
   });
   el.addEventListener('contextmenu',e=>{

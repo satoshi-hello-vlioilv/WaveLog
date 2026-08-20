@@ -1526,6 +1526,41 @@
    ※ `.sc-head`は`position:fixed`の子孫を持たない（浮きパネルは
      `.sc-panel`直下）。containを掛けても位置の基準は変わらない。
    ============================================================ */
+/* ---------- 編集権の在席表示（§9.211 ②、利用者の指示） ----------
+   タイトル帯の空きへ置く。**状態は色だけで伝えない**（§3）ので、
+   「読み取り専用」「編集中」の**文字を必ず出す**——色はその補助。
+   面積は「頻度×重要度」で配る（§1）: 常に見えるが押すのは稀なので、
+   1行のピル1つに収める。 */
+.sc-who{
+  display:inline-flex;align-items:center;gap:var(--gap-inline);min-width:0;
+  height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-sm);
+  border:1px solid var(--line);border-radius:var(--radius-pill);
+  background:var(--surface);color:var(--ink-2);
+  font-size:var(--fs-sm);white-space:nowrap;
+}
+.sc-who[hidden]{display:none}
+.sc-who .sc-who-state{font-weight:800;letter-spacing:.02em}
+.sc-who .sc-who-holder{min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--ink-3)}
+/* 自分が持っている（書ける）。基調色で「いま自分の番」と分かる。 */
+.sc-who-mine{border-color:var(--teal);background:var(--pale)}
+.sc-who-mine .sc-who-state{color:var(--teal-dark)}
+/* 他の端末が持っている＝読み取り専用。**注意色**にするが、
+   文字（読み取り専用）が主で色は補助。 */
+.sc-who-blocked{border-color:var(--warn-border);background:var(--warn-bg)}
+.sc-who-blocked .sc-who-state{color:var(--warn-fg)}
+.sc-who-blocked .sc-who-holder{color:var(--warn-fg)}
+/* 確かめられない／確認中は**淡いまま**——「異常」と読ませない。 */
+.sc-who-unknown .sc-who-state,.sc-who-wait .sc-who-state{color:var(--muted);font-weight:700}
+.sc-who-info .sc-who-state{color:var(--ink-3);font-weight:700}
+/* 奪う操作は**危ない**ので、隣に置きつつ見た目で区別する（§5）。
+   主要動線（追加・印刷）とは離れたタイトル帯に置いてある。 */
+.sc-who .sc-who-take{
+  height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);
+  border:1px solid var(--danger-border);border-radius:var(--radius-sm);
+  background:var(--surface);color:var(--danger);
+  font-size:var(--fs-sm);font-weight:700;white-space:nowrap;cursor:pointer;
+}
+.sc-who .sc-who-take:hover{background:var(--danger);color:#fff}
 .sc-head{container-type:inline-size;container-name:schead}
 /* **塊の中は折り返さない**——「追加」の3つが2行に割れるのがいちばん
    読みにくい（役割で束ねた意味が消える）。**器そのものは折り返せるまま**に
