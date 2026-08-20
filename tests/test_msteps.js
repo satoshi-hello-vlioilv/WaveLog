@@ -2187,6 +2187,106 @@ let b=null,page=null;
   rec('入口を押せば選択欄が出て、もう一度押すと畳む',
    公差切替.押すと出る&&公差切替.もう一度押すと畳む,JSON.stringify(公差切替));
 
+  /* ================= 操業データ（§9.215、利用者の指示） ================
+     「条の設計 — 子ロットの内訳の部分には、『操業データ』という項目にして、
+      『入力の準備』のエリアとカード統合(2×3にする)。名前は『操業データ』に
+      変更する。必要なデータを追加しすべて記録できるようにします。」
+     項目は**設備ごとのマスタ**が決めるので、画面側に項目名は書かれていない。
+     ここでは「マスタの定義どおりの入力欄が出て、打った値がレコードへ入る」
+     ことを見る。 */
+  await go('1');
+  await page.waitForFunction(()=>document.querySelectorAll('#opData .opf').length>0,
+                             null,{timeout:20000}).catch(()=>{});
+  const op=await page.evaluate(()=>{
+   const card=document.querySelector('.center-pane');
+   const host=document.getElementById('opData');
+   const fold=document.getElementById('splitDetailFold');
+   const body=fold&&fold.querySelector('.split-detail-body');
+   const rect=el=>el?el.getBoundingClientRect():null;
+   const r=rect(card);
+   return{
+    題:(card&&card.querySelector('[data-steptitle="1"]')||{}).textContent||'',
+    欄:[...host.querySelectorAll('.opf')].map(l=>l.dataset.opfield),
+    群:[...host.querySelectorAll('.op-group')].map(g=>g.dataset.opgroup),
+    /* 子ロットの内訳は**条の設計カードの中**へ移した。既定は畳む。 */
+    内訳が条の設計の中:!!(fold&&fold.closest('#splitCard')),
+    内訳は畳んである:!!(fold&&!fold.open&&body&&body.getBoundingClientRect().height===0),
+    /* 型ごとの入れ物。選択＝select、数値＝type=text（`.5`が消えないように）。 */
+    選択の型:(()=>{const el=host.querySelector('[data-op="運転方式"]');return el?el.tagName:null})(),
+    数値の型:(()=>{const el=host.querySelector('[data-op="スリット 刃径"]');
+      return el?el.tagName+'/'+el.type+'/'+el.inputMode:null})(),
+    選択肢:(()=>{const el=host.querySelector('[data-op="運転方式"]');
+      return el?[...el.options].map(o=>o.value):null})(),
+    カード幅:r?Math.round(r.width):0,
+    画面幅:Math.round(document.querySelector('.measure-body').getBoundingClientRect().width),
+   };
+  });
+  rec('カードの名前が「操業データ」になっている',op.題==='操業データ',op.題);
+  rec('子ロットの内訳は条の設計カードの中へ移した',op.内訳が条の設計の中===true,
+      String(op.内訳が条の設計の中));
+  rec('子ロットの内訳は既定で畳んである（主役は条の割り付け）',
+      op.内訳は畳んである===true,String(op.内訳は畳んである));
+  /* **カードは下段いっぱい（横3マス）**。器4列のうち3列ぶんの幅がある。 */
+  rec('操業データのカードは下段を横いっぱいに使う',
+      op.カード幅>op.画面幅*0.6,`${op.カード幅} / ${op.画面幅}`);
+  rec('マスタの項目が入力欄として出る',
+      op.欄.includes('ラフレベラー 入')&&op.欄.includes('スリット 実ラップ'),
+      `${op.欄.length}欄`);
+  rec('群ごとにまとまって出る',
+      op.群.includes('巻取り')&&op.群.includes('スリット'),JSON.stringify(op.群));
+  rec('選択の型は選択欄で出す',op.選択の型==='SELECT',String(op.選択の型));
+  rec('選択肢はマスタから当てる',
+      JSON.stringify(op.選択肢)===JSON.stringify(['','D','SD']),JSON.stringify(op.選択肢));
+  /* **`type=number`にしない**（§9.208 ③）——`.5`のような途中の形が黙って消える。 */
+  rec('数値は文字の欄で受ける（打った値が黙って消えない）',
+      op.数値の型==='INPUT/text/decimal',String(op.数値の型));
+
+  /* 打った値が**その場でレコードへ入る**（§9.208 ②。保存を待たない）。 */
+  const typed=await page.evaluate(async()=>{
+   const set=async(k,v)=>{
+    const el=document.querySelector(`#opData [data-op="${CSS.escape(k)}"]`);
+    if(!el)return null;
+    el.focus();el.value=v;
+    el.dispatchEvent(new Event('input',{bubbles:true}));
+    el.dispatchEvent(new Event('change',{bubbles:true}));
+    el.dispatchEvent(new Event('blur',{bubbles:true}));
+    await new Promise(r=>setTimeout(r,60));
+    return el.value;
+   };
+   const 刃径=await set('スリット 刃径','.5');
+   /* **直したことの案内はその欄を離れた直後に読む。** 次の欄へ移ると本物の
+      blurがもう一度走り、そのときは直すところが無いので案内は消える
+      （それが正しい振る舞い——古い注意書きを残さない）。 */
+   const note=document.querySelector('[data-opfield="スリット 刃径"] .opf-note');
+   const 直した=note&&!note.hidden?note.textContent.trim():'';
+   const 実ラップ=await set('スリット 実ラップ','-1.25');
+   const 速度=await set('その他 速度','-30');
+   const 運転=await set('運転方式','SD');
+   return{刃径,実ラップ,速度,運転,
+     控え:JSON.parse(JSON.stringify((S.measure.settings||{}).opData||{})),
+     直した};
+  });
+  rec('「.5」と打っても消えず小数桁へそろう',typed.刃径==='0.5',String(typed.刃径));
+  rec('マイナスが入る型（実ラップ）はマイナスのまま',typed.実ラップ==='-1.3'||typed.実ラップ==='-1.2'||typed.実ラップ==='-1.25',
+      String(typed.実ラップ));
+  rec('正の整数の型ではマイナスを受け付けない',typed.速度==='30',String(typed.速度));
+  rec('打った値は保存を待たずにレコードへ入る',
+      typed.控え['スリット 刃径']==='0.5'&&typed.控え['運転方式']==='SD',
+      JSON.stringify(typed.控え));
+  /* **直したことは文字で言う**（黙って値が変わると打ち間違いに気づけない）。 */
+  rec('桁をそろえたら、そう書く',/桁|そろえ/.test(typed.直した||''),typed.直した||'（何も出ていない）');
+
+  /* 選択肢に無い記録も残す（§9.203と同じ罠。`select.value`へ無い値を入れると空になる）。 */
+  const kept=await page.evaluate(async()=>{
+   S.measure.settings.opData['運転方式']='むかしの値';
+   WL.opData.apply();
+   await new Promise(r=>setTimeout(r,60));
+   const el=document.querySelector('#opData [data-op="運転方式"]');
+   return {値:el.value,選択肢:[...el.options].map(o=>o.value)};
+  });
+  rec('選択肢に無い記録も消さずに出す',kept.値==='むかしの値',JSON.stringify(kept));
+  await page.evaluate(()=>{delete S.measure.settings.opData['運転方式'];WL.opData.apply()});
+
   /* ================= ③測定データ分析（§9.214、利用者の指示） ============
      「今カード内に出ている表は解体。中身のデータは表示は必要なものに絞り、
       表示内容や削ったそのエリアも使って、ロット単位で、板厚のMIN,MAX、

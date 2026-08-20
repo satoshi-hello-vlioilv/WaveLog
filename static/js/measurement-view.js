@@ -200,6 +200,10 @@ function collect(){
  });
  {const equipment=currentConfiguredEquipment();m.settings=m.settings||{};m.settings.registeredEquipment=equipment;m.registeredEquipment=equipment;m.snapshot=m.snapshot||{};m.snapshot.registeredEquipment=equipment}
  m.workTime=m.workTime||{};m.workTime.startAt=$('#workStartAt')?.dataset.iso||m.workTime.startAt||'';m.workTime.endAt=$('#workEndAt')?.dataset.iso||m.workTime.endAt||'';
+ /* 操業データ（§9.215）。**項目は設備ごとのマスタが決める**ので、ここで
+    項目名を並べない。打った時点でも`settings.opData`へ入れているが、
+    取りこぼし防止にここでも回収する。 */
+ if(window.WL&&WL.opData)WL.opData.collect();
  return m;
 }
 /* ---------- 母材の計算全長（参考）（§9.160、利用者の指示） ----------
@@ -760,7 +764,11 @@ function renderMeasurement(){
  {const mb=$('#basicMore'),dt=$('#basicDetail');
   if(mb&&dt)mb.onclick=()=>{const open=dt.hidden;dt.hidden=!open;
    mb.setAttribute('aria-expanded',open?'true':'false');
-   mb.textContent=open?'詳細を閉じる':'詳細を見る';};}Object.entries(m.settings).forEach(([k,v])=>{const el=$('#'+k);if(el){if(el.type==='checkbox')el.checked=v;else el.value=v}});$('#qualityInfo').value=m.qualityInfo;paintQualityInfo();document.querySelectorAll('[data-mother]').forEach(x=>x.value=m.mother[x.dataset.mother]||'');$('#motherOriginalWidth').textContent=fmtDim(b.originalWidth,1)||'－';updateMotherCalcLength();renderMeasureGrid();renderStats();setState('IndexedDB読込済み')
+   mb.textContent=open?'詳細を閉じる':'詳細を見る';};}Object.entries(m.settings).forEach(([k,v])=>{const el=$('#'+k);if(el){if(el.type==='checkbox')el.checked=v;else el.value=v}});$('#qualityInfo').value=m.qualityInfo;paintQualityInfo();document.querySelectorAll('[data-mother]').forEach(x=>x.value=m.mother[x.dataset.mother]||'');$('#motherOriginalWidth').textContent=fmtDim(b.originalWidth,1)||'－';updateMotherCalcLength();renderMeasureGrid();renderStats();
+ /* 操業データの入力欄は**設備ごと**なので、開いた時点で用意して値を戻す
+    （§9.215）。読めなくても測定は開ける（fail-open）。 */
+ if(window.WL&&WL.opData)WL.opData.refresh().catch(()=>{});
+ setState('IndexedDB読込済み')
  {const mode=S.measure.settings.inputMode||'auto';document.querySelectorAll('[data-mode]').forEach(x=>x.classList.toggle('active',x.dataset.mode===mode))}
  activateWorkspace(rightLayoutFor($('#measureType').value));
  applyInputProtection();

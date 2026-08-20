@@ -409,7 +409,8 @@ const settle=async page=>{
     状態:(document.querySelector('#splitGrid .split-panel-status')||{}).textContent||'',
     案内:(document.getElementById('splitVisualHint')||{}).textContent||'',
     戻すボタン:!document.getElementById('undoSplit')?.hidden,
-    子ロット面:!document.querySelector('#splitDetailCard .split-layout')?.hidden,
+    /* 子ロットの内訳は**条の設計カードの中の折りたたみ**へ移した（§9.215）。 */
+    子ロット面:!document.querySelector('#splitCard .split-layout')?.hidden,
    };
   });
   rec('分割なしでも条の図が出る（§9.209 ②）',

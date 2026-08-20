@@ -711,7 +711,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    条の設計を2枚に割ったのは、**並べ替える帯**と**内訳の一覧**が別の問い
    だから——帯は横に長いほど掴みやすく、一覧は縦に読む。 */
 .measure-shell.mstep-1 .left-pane{grid-column:1;grid-row:1/span 3}
-.measure-shell.mstep-1 .center-pane{grid-column:2;grid-row:2/span 2}
+
 /* ②「どこを測るか」→「入れる」→「根拠」。3列目は基本情報と幅分割情報で、
    どちらも測っている最中に見る値（板厚・板幅の指示値・子ロット幅）。
    **行も列も明示する**——自動配置に任せると、列を指定した1枚だけが別の行へ
@@ -2095,15 +2095,73 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
    受信欄(#deviceInput)とは無関係の場所なので、DOMを動かしても転送は止まらない
    （§9.122が守っているのは受信欄だけ）。 */
 .measure-shell.mstep-1 #splitCard{grid-column:2/span 3;grid-row:1}
-.measure-shell.mstep-1 #splitDetailCard{grid-column:3/span 2;grid-row:2/span 2}
+/* ---------- 操業データ（§9.215、利用者の指示） ----------
+   カードは下段いっぱい（横3マス×縦2マス）。中は**左が測定の準備・右が
+   操業の記録**の2つに分ける——準備の3列組（§9.133の「上から下が、実際に
+   する順番と同じ」）はそのまま残し、空いた2列ぶんを新しい入力欄が使う。
+   **視覚導線と作業導線を一致させる**（§CLAUDE 14）: 誰が測るか→測定表の形
+   →使う機材、と降りたら、右で操業の値を記録する。 */
+.measure-shell.mstep-1 .center-pane{
+  /* **準備の側は今までと同じ幅のまま**にする（外側の1マスぶん）。広げると
+     §9.142の「同じ列は同じ幅」が働いて1〜2桁の数値まで列の最大へ伸び、
+     縦割数・横割数が145pxになった（要る幅は54px。`test_msteps`が検出）。
+     器が上限を兼ねている作りなので、器を戻すのがいちばん素直。 */
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);
+  grid-template-rows:min-content minmax(0,1fr);
+  column-gap:var(--gap-section);align-content:start;min-height:0;
+}
+.measure-shell.mstep-1 .center-pane>.panel-title{grid-column:1/-1;grid-row:1}
+.measure-shell.mstep-1 .center-pane>.selectors{grid-column:1;grid-row:2;min-height:0;overflow:auto}
+.measure-shell.mstep-1 .center-pane>.op-data{grid-column:2;grid-row:2;min-height:0;overflow:auto}
+/* ②③では操業データを出さない（§9.215、利用者の選択「①準備だけ」）
+   ——②は測定表に集中する段、③は「記録した値」が読み取り専用で出す。 */
+.measure-shell:not(.mstep-1) .op-data{display:none}
+.op-data{display:flex;flex-direction:column;gap:var(--space-2);font-size:var(--fs)}
+.op-empty{margin:0;padding:var(--pad-row);color:var(--muted);font-size:var(--fs-sm)}
+.op-group{display:flex;flex-direction:column;gap:var(--gap-tight)}
+/* 群の見出しは**準備の`.prep-head`と同じ役割**なので同じ見え方にそろえる
+   （1枚のカードの中で見出しが2種類あると、まとまりの単位が読めなくなる）。 */
+.op-group-head{
+ display:flex;align-items:baseline;gap:var(--space-1);
+ font-size:var(--fs-sm);font-weight:800;color:var(--nav);
+ border-bottom:1px solid var(--line-soft);padding-bottom:2px;
+}
+.op-group-count{font-size:var(--fs-badge);font-weight:600;color:var(--muted)}
+/* **入れ物の大きさは中身の長さから決める**（§9.130）。数値は桁が決まって
+   いるので`em`で頭打ちにし、余りは空白にする。3列は準備側と同じ密度。 */
+.op-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
+ gap:var(--gap-inline) var(--space-3)}
+.opf{display:flex;flex-direction:column;gap:2px;min-width:0}
+.opf-name{font-size:var(--fs-sm);color:var(--ink-2);font-weight:700;
+ overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.opf-ctl{display:flex;align-items:center;gap:var(--gap-tight);min-width:0}
+/* **幅は規格から選び、群の中でそろえる**（§9.131）。中身なりの幅をそのまま
+   使うと1画面に何種類もの幅が生まれ、隣どうしの右端がばらばらになる
+   （実測10種類で`test_msteps`が捕まえた）。数値は`--w-sm`、選択欄は
+   **右端に▼の場所が要る**ので`--w-md`（§9.206。文字幅ぴったりだと切れる）。 */
+.opf-ctl input{width:var(--w-sm);min-width:0;max-width:100%;height:var(--ctl-h-sm);
+ font-size:var(--fs-sm)}
+.opf-ctl select{width:var(--w-md);min-width:0;max-width:100%;height:var(--ctl-h-sm);
+ font-size:var(--fs-sm)}
+.opf-unit{font-style:normal;font-size:var(--fs-badge);color:var(--ink-3)}
+.opf-hint{font-size:var(--fs-badge);color:var(--muted)}
+/* 直した理由・足りない設定は**文字で言う**（§CLAUDE 3・4）。 */
+.opf-note{font-size:var(--fs-badge);color:var(--warn-fg);font-weight:700}
+.opf-note[hidden]{display:none}
+.opf-warn{font-size:var(--fs-badge);color:var(--danger);font-weight:700}
+
+/* 下段は**操業データ1枚**（§9.215、利用者の指示「『入力の準備』のエリアと
+   カード統合(2×3にする)」）。以前はここに「条の設計 — 子ロットの内訳」が
+   あり、準備の入力が1列に閉じ込められていた。内訳は条の設計カードの中へ
+   折りたたみ、空いた2列ぶんを操業データの入力欄が使う。 */
+.measure-shell.mstep-1 .center-pane{grid-column:2/span 3;grid-row:2/span 2}
 .measure-shell.mstep-2 #splitCard{grid-column:1/span 2;grid-row:3}
 .measure-shell.mstep-3 #splitCard{display:none}
 /* 内訳は①でだけ出す（②は測るための面、③は結果の面）。 */
-.measure-shell.mstep-2 #splitDetailCard,
-.measure-shell.mstep-3 #splitDetailCard{display:none}
+
 /* 詳細カードは**2列**（子ロット候補／条割プレビュー）。§9.145で「条の設計は
    2分割して配置」となったので、視覚化はこちらには入らない。 */
-#splitDetailCard>.split-layout{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+#splitCard .split-detail-body>.split-layout{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
 /* 基本情報カードのタブ（基本情報／品質規格）は廃止（§9.154、利用者の指示）。
    カードの題と同じ「基本情報」という札がタブにも並ぶのは冗長で、品質規格は
    詳細の中の1つの群になった。 */
