@@ -22,7 +22,16 @@ const snap=page=>page.evaluate(()=>({
  groups:(S.measure.settings.splitGroups||[]).map(g=>g.lot+'×'+g.count),
  行:document.querySelectorAll('.measure-matrix tbody tr').length,
  ロット列:[...document.querySelectorAll('.measure-matrix td.mx-lot .strip-lot-badge')].map(e=>e.textContent),
- 帯:[...document.querySelectorAll('#splitVisualStrip .split-visual-block')].map(e=>e.textContent.trim().slice(0,3)),
+ /* 帯に**いま出ている**ロットの文字（§9.213）。ラベルは「全部／末尾だけ」の
+    2通りをDOMへ置いて幅ごとに選ぶので、`textContent`をそのまま読むと
+    両方つながって出る。**見えているほうだけ**を読む。 */
+ 帯:[...document.querySelectorAll('#splitVisualStrip .split-visual-block')].map(e=>{
+   const l=e.querySelector('.split-visual-block-label');
+   if(!l)return '';
+   const vis=[...l.querySelectorAll('.svb-lot,.svb-lot-short')]
+     .find(x=>getComputedStyle(x).display!=='none');
+   return vis?vis.textContent.trim():'';
+ }),
  実行ボタン:!!document.getElementById('applySplit'),
  /* 「どのロットが何色か」（§9.159）。**並びではなくロット番号で引く**
     ——並び順で覚えると、並べ替えたときに何と比べているのか分からなくなる。 */
@@ -72,8 +81,13 @@ const settle=async page=>{
   rec('「条割を実行」ボタンは無い',a.実行ボタン===false,JSON.stringify(a));
   rec('開いた時点で条割が当たっている',
       a.groups.length===2&&a.条数==='2'&&a.行===2,JSON.stringify(a));
+  /* 帯は幅次第で「ロット番号全部」か「末尾だけ」になる（§9.213）ので、
+     **末尾で突き合わせる**——並びが同じかどうかを見たいのであって、
+     何桁出ているかを見たいわけではない。 */
+  const sameOrder=(lots,band)=>lots.length===band.length&&lots.length>0
+    &&lots.every((v,i)=>String(band[i]).endsWith(String(v)));
   rec('測定表のロット列が帯と同じ並び',
-      a.ロット列.length===2&&a.ロット列.join()===a.帯.join(),JSON.stringify(a));
+      a.ロット列.length===2&&sameOrder(a.ロット列,a.帯),JSON.stringify(a));
 
   /* 帯の1条目をつかんで右端へ運ぶ（実機と同じポインタ操作） */
   const boxes=await page.$$('#splitVisualStrip .split-visual-block');
@@ -88,7 +102,7 @@ const settle=async page=>{
   }
   const c=await snap(page);
   rec('並べ替えたら測定表がその場で入れ替わる',
-      c.ロット列.join()!==a.ロット列.join()&&c.ロット列.join()===c.帯.join(),
+      c.ロット列.join()!==a.ロット列.join()&&sameOrder(c.ロット列,c.帯),
       JSON.stringify({前:a.ロット列,後:c.ロット列,帯:c.帯}));
   rec('並べ替えでも条数は変わらない',c.条数===a.条数&&c.行===a.行,JSON.stringify(c));
   /* ---- 色はロット番号だけで決まる（§9.159、利用者の指摘「D&Dで入れ替えた
@@ -117,8 +131,9 @@ const settle=async page=>{
   await settle(page);
   const d=await snap(page);
   rec('「初めから」で既定の並びへ戻り、それも当たる',
-      d.ロット列.join()===a.ロット列.join()&&d.ロット列.join()===d.帯.join(),
+      d.ロット列.join()===a.ロット列.join()&&sameOrder(d.ロット列,d.帯),
       JSON.stringify({戻り:d.ロット列,帯:d.帯}));
+
 
   /* ---- 条の設計カードの姿（§9.157、利用者の指示「2枚目の条の設計も
      表示を最適化して」「スクロールレス設計で」） ----
@@ -336,6 +351,44 @@ const settle=async page=>{
      材料は親ロット自身（条数＝横割数）。**並べ替えはできない**ので、
      掴める見た目・案内・「1つ戻す」は出さない（§4）。
      ================================================================== */
+
+  /* ================= 帯のロット番号は幅で桁数が変わる（§9.213） =========
+     利用者の指示「条幅が広い場合は、ロット番号全てを表示、幅が狭いものは
+     下2桁表示。幅が狭いものかつ異幅切断の場合は下3桁表示」。
+     ここは**異幅切断**のロット（切断巾 500/480）で条は2本しかない＝広いので、
+     見えるのは**ロット番号全部**。**用意されている末尾は3桁**であることも
+     見る（異幅なら3桁・等幅なら2桁。狭くなったときにどちらが出るかは
+     用意した文字で決まる）。**狭いほうの見え方は分割なしのロットで見る**
+     ——ここは条数が子ロットで決まっており、横割数を触っても条は増えない
+     （実際に30を入れても2本のままだった）。 */
+  const labelState=()=>page.evaluate(()=>{
+   const blocks=[...document.querySelectorAll('#splitVisualStrip .split-visual-block[data-lot]')]
+     .filter(e=>e.dataset.lot);
+   /* 異幅かどうかは**画面が持っている条幅の鍵**（`data-wkey`）で数える
+      ——テストで決め打ちにすると、フィクスチャを直したとき嘘の期待値が残る。 */
+   const widths=new Set(blocks.map(e=>e.dataset.wkey||'').filter(Boolean));
+   return {mixed:widths.size>1,
+     items:blocks.map(e=>{
+      const l=e.querySelector('.split-visual-block-label');
+      const vis=l?[...l.querySelectorAll('.svb-lot,.svb-lot-short')]
+        .find(x=>getComputedStyle(x).display!=='none'):null;
+      const sh=l?l.querySelector('.svb-lot-short'):null;
+      return {lot:e.dataset.lot,w:Math.round(e.getBoundingClientRect().width),
+              text:vis?vis.textContent.trim():'',
+              short:sh?sh.textContent.trim():'',
+              none:!!(l&&getComputedStyle(l).display==='none')};
+     })};
+  });
+  const wideLbl=await labelState();
+  rec('異幅切断のロットで確かめている（3桁の道を通る）',wideLbl.mixed===true,
+      JSON.stringify(wideLbl.items.map(x=>x.w)));
+  rec('条幅が広いときはロット番号を全部出す',
+      wideLbl.items.length>0&&wideLbl.items.every(x=>x.text===x.lot),
+      JSON.stringify(wideLbl.items.map(x=>[x.w,x.text])));
+  rec('異幅切断では末尾を3桁で用意する',
+      wideLbl.items.length>0&&wideLbl.items.every(x=>x.short.length===3&&x.lot.endsWith(x.short)),
+      JSON.stringify(wideLbl.items.map(x=>[x.lot,x.short])));
+
   const plain=await page.evaluate(async()=>{
    const r=await fetch('/api/table?'+new URLSearchParams({db:'SIKALOTNOW',table:'仕掛',page:1,page_size:50}));
    const rows=(await r.json()).rows||[];
@@ -369,6 +422,39 @@ const settle=async page=>{
       JSON.stringify({印:plain.印,戻す:plain.戻すボタン,案内:(plain.案内||'').slice(0,40)}));
   rec('子ロットの編集面は出さない（並べ替える条が無い）',plain.子ロット面===false,
       String(plain.子ロット面));
+  /* ---- 狭い条は末尾だけ。等幅なので**2桁**（§9.213、利用者の指示） ----
+     分割なしのロットは条幅が1種類（＝等幅）なので、ここが2桁の道。
+     条数を増やして実際に狭くしてから見る。 */
+  const thin=await page.evaluate(async()=>{
+   const h=document.getElementById('horizontalCount');
+   if(!h)return{無い:true};
+   h.value='24';h.dispatchEvent(new Event('change',{bubbles:true}));
+   await new Promise(r=>setTimeout(r,1100));
+   const blocks=[...document.querySelectorAll('#splitVisualStrip .split-visual-block[data-lot]')]
+     .filter(e=>e.dataset.lot);
+   const widths=new Set(blocks.map(e=>e.dataset.wkey||'').filter(Boolean));
+   return {mixed:widths.size>1,条数:blocks.length,
+     items:blocks.map(e=>{
+      const l=e.querySelector('.split-visual-block-label');
+      const vis=l?[...l.querySelectorAll('.svb-lot,.svb-lot-short')]
+        .find(x=>getComputedStyle(x).display!=='none'):null;
+      const sh=l?l.querySelector('.svb-lot-short'):null;
+      return {lot:e.dataset.lot,w:Math.round(e.getBoundingClientRect().width),
+              text:vis?vis.textContent.trim():'',short:sh?sh.textContent.trim():''};
+     })};
+  });
+  rec('等幅の道で確かめている（2桁の道を通る）',thin.mixed===false&&thin.条数===24,
+      JSON.stringify({mixed:thin.mixed,条数:thin.条数}));
+  rec('等幅なら末尾は2桁で用意する',
+      !!thin.items&&thin.items.length>0
+      &&thin.items.every(x=>x.short.length===2&&x.lot.endsWith(x.short)),
+      JSON.stringify((thin.items||[]).slice(0,3).map(x=>[x.lot,x.short])));
+  /* **実際に狭くなっていること**まで見る（広いままだと「全部出す」で
+     通ってしまい、短縮の道を一度も通らない）。 */
+  const thinShown=(thin.items||[]).filter(x=>x.text);
+  rec('狭い条では末尾だけを出す',
+      thinShown.length>0&&thinShown.every(x=>x.text===x.short&&x.text!==x.lot),
+      JSON.stringify(thinShown.slice(0,3).map(x=>[x.w,x.text,x.lot])));
   /* 条を押すと、どの条かが文字で出る（異常位置の特定に使う）。 */
   const picked=await page.evaluate(async()=>{
    const bs=[...document.querySelectorAll('#splitVisualStrip .split-visual-block')];

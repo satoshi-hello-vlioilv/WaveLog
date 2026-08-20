@@ -2187,6 +2187,72 @@ let b=null,page=null;
   rec('入口を押せば選択欄が出て、もう一度押すと畳む',
    公差切替.押すと出る&&公差切替.もう一度押すと畳む,JSON.stringify(公差切替));
 
+  /* ================= ③測定データ分析（§9.214、利用者の指示） ============
+     「今カード内に出ている表は解体。中身のデータは表示は必要なものに絞り、
+      表示内容や削ったそのエリアも使って、ロット単位で、板厚のMIN,MAX、
+      板幅のMIN,MAXを表示できるようにしてください。」
+     **値を自分で注ぎ込んでから見る**——検証用データには測定値が入って
+     いないので、そのまま見ると「まだ測っていません」しか出ず、
+     MIN/MAXの道を一度も通らない。 */
+  await go('3');
+  const an=await page.evaluate(async()=>{
+   const m=S.measure;
+   /* **先に空にする**——ここまでのテストが打ち込んだ値が残っており、
+      そのまま足すとMIN/MAXがその値に引きずられる（実際に49.50が出た）。 */
+   ['thickness','width','burr','lateral','telescope','offset'].forEach(k=>{
+    (m.measurements[k]||[]).forEach(line=>{if(Array.isArray(line))line.fill('')});
+   });
+   /* 板厚は丈位置ごとに3点、板幅は丈位置ごとに条ごと。 */
+   m.measurements.thickness[0][0]='1.234';
+   m.measurements.thickness[0][1]='1.200';
+   m.measurements.thickness[0][2]='1.260';
+   m.measurements.width[0][0]='500.10';
+   m.measurements.width[0][1]='499.80';
+   m.measurements.width[1][0]='500.40';
+   /* そのほかは1項目だけ入れる（値のある項目だけ出ることを見る）。 */
+   m.measurements.burr[0][0]='0.030';
+   /* 子ロットごとの板幅（分割ありのときだけ出る）。 */
+   m.splitSequence=['L0001','L0002'];
+   renderStats();
+   await new Promise(r=>setTimeout(r,200));
+   const body=document.getElementById('stats');
+   const cards=[...body.querySelectorAll('.an-card')].map(c=>({
+     名:(c.querySelector('.an-card-head b')||{}).textContent||'',
+     数:(c.querySelector('.an-card-head small')||{}).textContent||'',
+     値:[...c.querySelectorAll('.an-slot')].map(x=>
+        ((x.querySelector('i')||{}).textContent||'')+':'+((x.querySelector('b')||{}).textContent||'')),
+   }));
+   return{
+    表がもう無い:!body.querySelector('table')&&!document.querySelector('.analysis table'),
+    平均や3シグマを出さない:!/AVE|3σ/.test(body.textContent||''),
+    カード:cards,
+    そのほか:[...body.querySelectorAll('.an-sub-list li')].map(li=>
+      ((li.querySelector('.an-name')||{}).textContent||'')),
+    子ロット:[...body.querySelectorAll('.an-lot-list li')].map(li=>({
+      名:(li.querySelector('.an-name')||{}).textContent||'',
+      値:(li.querySelector('.an-val')||{}).textContent||''})),
+    板厚は子ロット別に出せないと書く:/板厚は.*3点/.test(body.textContent||''),
+   };
+  });
+  rec('表は解体した（MIN/AVE/MAX/3σ/N数の30マスをやめる）',
+      an.表がもう無い===true&&an.平均や3シグマを出さない===true,
+      JSON.stringify({表:an.表がもう無い,平均:an.平均や3シグマを出さない}));
+  const th=an.カード.find(c=>c.名==='板厚'),wd=an.カード.find(c=>c.名==='板幅');
+  rec('板厚のMIN/MAXを出す',
+      !!th&&th.値.join('/')==='MIN:1.200/MAX:1.260',JSON.stringify(th));
+  rec('板幅のMIN/MAXを出す',
+      !!wd&&wd.値.join('/')==='MIN:499.80/MAX:500.40',JSON.stringify(wd));
+  rec('何点で出した数字かを添える（1点と80点では当たる見込みが違う）',
+      !!th&&/3点/.test(th.数)&&!!wd&&/3点/.test(wd.数),
+      JSON.stringify({板厚:th&&th.数,板幅:wd&&wd.数}));
+  rec('そのほかは値のある項目だけ出す',
+      an.そのほか.length===1&&an.そのほか[0]==='バリ',JSON.stringify(an.そのほか));
+  rec('子ロットごとの板幅を出す（条は子ロットに属する）',
+      an.子ロット.length===2&&/L0001/.test(an.子ロット[0].名)
+      &&/500\.10/.test(an.子ロット[0].値),JSON.stringify(an.子ロット));
+  rec('板厚を子ロット別に出せない理由を書く（黙って空欄にしない）',
+      an.板厚は子ロット別に出せないと書く===true,String(an.板厚は子ロット別に出せないと書く));
+
   await go('1');
 
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));

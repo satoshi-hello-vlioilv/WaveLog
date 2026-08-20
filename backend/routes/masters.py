@@ -795,6 +795,19 @@ def column_layout_master_save():
   formats=x.get('formats');rules=x.get('rules');formulas=x.get('formulas')
   locks=x.get('locks')          # 幅を固定する列(§9.119)
   sorts=x.get('sorts')          # 列ごとの並べ替えの決まり(§9.187)
+  # **送られてきた項目だけを書く**(§9.212 ②、利用者の指示「修正した内容が
+  # 戻されたりしないために」)。以前は常に全置換で、渡し忘れた設定が黙って
+  # 消えていた(計算式・並べ替え・幅固定で実際に3回起きた)。判断の材料は
+  # 「JSONにそのキーがあるか」の1点——**空の値と省略は別のこと**で、
+  # `hidden:[]`は「隠す列は無い」、`hidden`が無いのは「触っていない」。
+  fields={k for k in ('order','widths','hidden','names','formats','rules',
+                      'formulas','locks','sorts') if k in x}
+  # `clear:true`は**この対象の設定を全部消す**。差分更新にしたぶん、
+  # 「まっさらに戻す」は9個のキーを空で並べる必要が出てしまうので、
+  # **意図を1語で言える口**を用意する(書き漏らすと消し残る＝前の設定が
+  # 生き延びる。検証の後片付けで実際に問題になる)。
+  if str(x.get('clear') or '').lower() in ('1','true','yes') or x.get('clear') is True:
+   fields=None
   if order is not None and not isinstance(order,list):
    return jsonify(error='並び(order)の指定が不正です。'),400
   if widths is not None and not isinstance(widths,dict):
@@ -811,7 +824,8 @@ def column_layout_master_save():
                        rules=rules if isinstance(rules,dict) else {},
                        formulas=formulas if isinstance(formulas,dict) else {},
                        locks=locks if isinstance(locks,list) else [],
-                       sorts=sorts if isinstance(sorts,dict) else {})
+                       sorts=sorts if isinstance(sorts,dict) else {},
+                       fields=fields)
   return jsonify(ok=True,target=target,columns=n,updated_by=uid,message='表示の並びを保存しました。')
  except Exception as e:return jsonify(error=f'列レイアウト保存失敗: {e}'),500
 
@@ -1201,3 +1215,126 @@ def query_join_master_probe():
                                   'addedColumnNames':[],'table':'','examples':[]}),200
   return jsonify(ok=True,result=query_join.probe(d))
  except Exception as e:return jsonify(error=f'下見に失敗しました: {e}'),500
+
+
+# ========================================================================
+# 操業データ(§9.215): 設備ごとに「何を記録するか」を持つ2つのマスタ。
+#  - 操業データ項目マスタ   … 1行＝1つの入力欄
+#  - 操業データ選択肢マスタ … 1行＝1つの選択肢(名前でひとまとまり)
+# 値そのものは測定レコード(settings.opData)に入る。マスタへは入れない
+# ——1ロット1枚の記録なので、レコードと一緒に運ばれるのが正しい(§9.91)。
+# ========================================================================
+def _op_read(fn):
+ path=DBS['MASTER']['path']
+ with connect(path,False) as c:
+  return fn(c)
+
+@bp.get('/api/operation-item-master')
+def operation_item_list():
+ """`equipment`を付けると**その設備で使う項目だけ**返す（`*`＝全設備の行も
+    含む）。付けなければマスタ管理の一覧用に全部返す。"""
+ try:
+  from ..repositories import operation_repo as op
+  eq=str(request.args.get('equipment') or '').strip()
+  def fn(c):
+   items=op.items_for_equipment(c,eq) if eq else op.item_rows(c,True)
+   return {'items':items,'types':list(op.ITEM_TYPES),'choiceNames':op.choice_names(c)}
+  d=_op_read(fn)
+  return jsonify(ok=True,equipment=eq,**d)
+ except Exception as e:return jsonify(error=f'操業データ項目マスタの読込に失敗しました: {e}'),500
+
+def _operation_item_save(x):
+ from ..repositories import operation_repo as op
+ uid=request_user_id(x)
+ name=str(x.get('name') or '').strip()
+ if not name:return jsonify(error='項目名を入力してください。'),400
+ num=lambda v:(None if v in (None,'') else float(v))
+ iv=lambda v:(None if v in (None,'') else int(v))
+ try:
+  def fn(c):
+   return op.item_upsert(c,uid,equipment=x.get('equipment') or '*',
+                         group=x.get('group') or '',name=name,order=iv(x.get('order')),
+                         kind=x.get('type') or '文字',decimals=iv(x.get('decimals')),
+                         vmin=num(x.get('min')),vmax=num(x.get('max')),
+                         choice=x.get('choice') or '',unit=x.get('unit') or '',
+                         required=bool(x.get('required')),note=x.get('note') or '',
+                         enabled=(True if x.get('enabled') is None else bool(x.get('enabled'))),
+                         item_id=(int(x['id']) if x.get('id') not in (None,'') else None))
+  return jsonify(ok=True,id=_op_read(fn),message='操業データの項目を保存しました。')
+ except ValueError as e:return jsonify(error=str(e)),400
+ except Exception as e:return jsonify(error=f'操業データ項目マスタの保存に失敗しました: {e}'),500
+
+@bp.post('/api/operation-item-master')
+def operation_item_register():
+ return _operation_item_save(request.get_json(force=True) or {})
+
+@bp.post('/api/operation-item-master/update')
+def operation_item_update():
+ x=request.get_json(force=True) or {}
+ if x.get('id') in (None,''):return jsonify(error='更新対象IDがありません。'),400
+ return _operation_item_save(x)
+
+@bp.post('/api/operation-item-master/delete')
+def operation_item_delete():
+ from ..repositories import operation_repo as op
+ x=request.get_json(force=True) or {}
+ if x.get('id') in (None,''):return jsonify(error='削除対象IDがありません。'),400
+ try:
+  n=_op_read(lambda c:op.item_delete(c,x['id'],request_user_id(x)))
+  return jsonify(ok=True,deleted=n,message='操業データの項目を削除しました。')
+ except Exception as e:return jsonify(error=f'操業データ項目マスタの削除に失敗しました: {e}'),500
+
+@bp.get('/api/operation-choice-master')
+def operation_choice_list():
+ try:
+  from ..repositories import operation_repo as op
+  def fn(c):
+   return {'items':op.choice_rows(c,True),'names':op.choice_names(c)}
+  return jsonify(ok=True,**_op_read(fn))
+ except Exception as e:return jsonify(error=f'操業データ選択肢マスタの読込に失敗しました: {e}'),500
+
+def _operation_choice_save(x):
+ from ..repositories import operation_repo as op
+ uid=request_user_id(x)
+ iv=lambda v:(None if v in (None,'') else int(v))
+ try:
+  def fn(c):
+   return op.choice_upsert(c,x.get('name'),x.get('value'),uid,order=iv(x.get('order')),
+                           choice_id=(int(x['id']) if x.get('id') not in (None,'') else None),
+                           enabled=(True if x.get('enabled') is None else bool(x.get('enabled'))))
+  return jsonify(ok=True,id=_op_read(fn),message='操業データの選択肢を保存しました。')
+ except ValueError as e:return jsonify(error=str(e)),400
+ except Exception as e:return jsonify(error=f'操業データ選択肢マスタの保存に失敗しました: {e}'),500
+
+@bp.post('/api/operation-choice-master')
+def operation_choice_register():
+ return _operation_choice_save(request.get_json(force=True) or {})
+
+@bp.post('/api/operation-choice-master/update')
+def operation_choice_update():
+ x=request.get_json(force=True) or {}
+ if x.get('id') in (None,''):return jsonify(error='更新対象IDがありません。'),400
+ return _operation_choice_save(x)
+
+@bp.post('/api/operation-choice-master/delete')
+def operation_choice_delete():
+ from ..repositories import operation_repo as op
+ x=request.get_json(force=True) or {}
+ if x.get('id') in (None,''):return jsonify(error='削除対象IDがありません。'),400
+ try:
+  n=_op_read(lambda c:op.choice_delete(c,x['id'],request_user_id(x)))
+  return jsonify(ok=True,deleted=n,message='操業データの選択肢を削除しました。')
+ except Exception as e:return jsonify(error=f'操業データ選択肢マスタの削除に失敗しました: {e}'),500
+
+@bp.get('/api/operation-form')
+def operation_form():
+ """測定画面が開いた瞬間に要る「その設備の入力欄一式」。**選択肢まで解決して
+    返す**——2度目の問い合わせを画面にさせない。読めなくても測定は開けるよう、
+    失敗しても項目0件で返す(fail-open)。"""
+ try:
+  from ..repositories import operation_repo as op
+  eq=str(request.args.get('equipment') or '').strip()
+  return jsonify(ok=True,equipment=eq,items=_op_read(lambda c:op.form_for_equipment(c,eq)))
+ except Exception as e:
+  return jsonify(ok=True,equipment=str(request.args.get('equipment') or ''),items=[],
+                 error=f'操業データの項目を読めませんでした: {e}')

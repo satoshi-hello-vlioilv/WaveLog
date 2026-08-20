@@ -133,8 +133,20 @@
 /* ラベルの段は`fitStripLabels()`が**幅ごとにまとめて**決める（§9.210 ④）。
    同じ幅の条は必ず同じ段になる——出たり出なかったりが図の中で混ざると、
    何か違いがあるのかと読み手が数え直すことになる。 */
+/* ラベルの段（§9.213）。既定は**ロット番号を全部**＋幅。入らないぶんから
+   順に落とす: 幅 → 番号を末尾だけ（異幅3桁／等幅2桁）→ 出さない。
+   どの段かは`fitStripLabels()`が幅ごとにまとめて決める。 */
+.split-visual-block-label .svb-lot-short{display:none}
+.split-visual-block.label-long .split-visual-block-label small{display:none}
 .split-visual-block.label-short .split-visual-block-label small{display:none}
+.split-visual-block.label-short .split-visual-block-label .svb-lot{display:none}
+.split-visual-block.label-short .split-visual-block-label .svb-lot-short{display:block}
 .split-visual-block.label-none .split-visual-block-label{display:none}
+/* 測っているあいだだけ両方を出す（隠したまま測ると幅0になる）。
+   **重ならないよう縦に積む**——器の高さは測らないので影響しない。 */
+.split-visual-block-label.is-measuring .svb-lot,
+.split-visual-block-label.is-measuring .svb-lot-short,
+.split-visual-block-label.is-measuring small{display:block}
 .split-visual-block.flash{animation:splitVisualFlash .9s ease}
 @keyframes splitVisualFlash{0%,100%{box-shadow:none}30%{box-shadow:0 0 0 3px #fff,0 0 0 7px var(--teal)}}
 .split-visual-block.lifted{opacity:.35}

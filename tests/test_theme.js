@@ -122,7 +122,7 @@ let b=null;
    const bg=s=>[...document.querySelectorAll(s)].map(e=>getComputedStyle(e).backgroundColor);
    return {
     body:fs('.basic-card .field label'),          // 左ペインの本文基準
-    analysis:fs('.analysis table'),               // 同じペインの別の表
+    analysis:fs('.analysis .an-body'),            // 同じペインの別の面（§9.214で表を解体）
     status:fs('.split-panel-status-applied'),
     scrap:fs('.split-scrap-line'),
     /* 「1段」は**トークンで決まる**（`--fs`14px→`--fs-sm`12px）。px差の

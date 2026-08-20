@@ -2,7 +2,94 @@
 /* measurement-input.js: 測定値の入力系 — 測定器受信(deviceInput)・手入力・
    入力位置管理(focusCurrent)・測定グリッド描画・公差計算(toleranceDetail)。 */
 function nums(a){return a.flat().map(Number).filter(Number.isFinite).filter(x=>x!==0)}function stat(a){const n=nums(a);if(!n.length)return['','','','',0];const av=n.reduce((x,y)=>x+y,0)/n.length,sd=Math.sqrt(n.reduce((x,y)=>x+(y-av)**2,0)/n.length);return[Math.min(...n),av,Math.max(...n),sd*3,n.length]}
-function renderStats(){const types=[['板厚','thickness',3],['板幅','width',2],['バリ','burr',3],['ラテラルボー','lateral',1],['巻きずれ','offset',1],['テレスコープ','telescope',1]];$('#stats').innerHTML=types.map(([l,k,d])=>{const s=stat(S.measure.measurements[k]);return `<tr><th>${l}</th>${s.slice(0,4).map(v=>`<td>${v===''?'':Number(v).toFixed(d)}</td>`).join('')}<td>${s[4]}</td></tr>`}).join('')}
+/* ---------- ③測定データ分析（§9.214、利用者の指示） ----------
+   「今カード内に出ている表は解体。中身のデータは表示は必要なものに絞り、
+    表示内容や削ったそのエリアも使って、**ロット単位で、板厚のMIN,MAX、
+    板幅のMIN,MAX**を表示できるようにしてください。」
+
+   以前は6項目×MIN/AVE/MAX/3σ/N数の30マスの表だった。**このロットが
+   どの範囲に収まったか**を読むのに5つの数字は要らない——AVEと3σは
+   合否にも次の行動にも効かない（読む人は毎回MINとMAXだけを拾っていた）。
+   主役を板厚・板幅のMIN/MAXにし、残りは「値のある項目だけ」1行ずつ。
+
+   **公差の合否はここで言わない**（§CLAUDE 8「同じ情報を2箇所に出さない」）
+   ——公差外の件数は③の確認表が数えており、効いている公差はすぐ上の
+   `#toleranceList3`が出している。ここが言うのは**測った値の範囲**だけ。
+
+   **N数は必ず添える**（§CLAUDE 6「出どころ・単位・根拠を画面に出す」）
+   ——1点しか測っていないMIN/MAXと、80点のMIN/MAXでは当たる見込みが違う。 */
+const AN_MAIN=[['板厚','thickness',3],['板幅','width',2]];
+const AN_SUB=[['バリ','burr',3],['ラテラルボー','lateral',1],
+              ['巻きずれ','offset',1],['テレスコープ','telescope',1]];
+function anRange(a){
+ const n=nums(a);if(!n.length)return null;
+ return{min:Math.min(...n),max:Math.max(...n),n:n.length};
+}
+const anNum=(v,d)=>Number(v).toFixed(d);
+/* 子ロットごとの板幅（§9.214）。**条は子ロットに属する**ので、分割ありの
+   ロットでは「どの子ロットがどの範囲だったか」が出せる。
+   **板厚は出せない**——測るのは丈位置ごとに3点で、条には紐づかない。
+   出せないものを黙って空欄にせず、そう書く（§CLAUDE 4）。 */
+function anLotWidths(){
+ const m=S.measure;if(!m)return[];
+ const seq=Array.isArray(m.splitSequence)?m.splitSequence:[];
+ if(!seq.filter(Boolean).length)return[];
+ const rows=m.measurements&&m.measurements.width;
+ if(!Array.isArray(rows))return[];
+ const bag=new Map();
+ for(const line of rows){
+  if(!Array.isArray(line))continue;
+  line.forEach((v,j)=>{
+   const lot=seq[j];if(!lot)return;
+   const num=Number(v);
+   if(!Number.isFinite(num)||num===0)return;
+   const g=bag.get(lot)||[];g.push(num);bag.set(lot,g);
+  });
+ }
+ /* 並びは**条の順**（図と同じ順で読める）。 */
+ const seen=[];
+ seq.forEach(l=>{if(l&&bag.has(l)&&!seen.includes(l))seen.push(l)});
+ return seen.map(lot=>{
+  const n=bag.get(lot);
+  return{lot,min:Math.min(...n),max:Math.max(...n),n:n.length};
+ });
+}
+function renderStats(){
+ const host=$('#stats');if(!host)return;
+ const main=AN_MAIN.map(([label,key,dec])=>{
+  const r=anRange(S.measure?.measurements?.[key]);
+  return `<div class="an-card${r?'':' is-empty'}">`
+   +`<div class="an-card-head"><b>${label}</b>`
+   +`<small>${r?`${r.n}点`:'まだ測っていません'}</small></div>`
+   +(r?`<div class="an-pair">`
+      +`<span class="an-slot"><i>MIN</i><b>${anNum(r.min,dec)}</b><em>mm</em></span>`
+      +`<span class="an-slot"><i>MAX</i><b>${anNum(r.max,dec)}</b><em>mm</em></span>`
+      +`</div>`
+      +`<div class="an-span">幅 ${anNum(r.max-r.min,dec)} mm</div>`
+     :`<div class="an-none">—</div>`)
+   +`</div>`;
+ }).join('');
+ const sub=AN_SUB.map(([label,key,dec])=>{
+  const r=anRange(S.measure?.measurements?.[key]);
+  if(!r)return '';
+  return `<li><span class="an-name">${label}</span>`
+   +`<span class="an-val">${anNum(r.min,dec)} 〜 ${anNum(r.max,dec)}</span>`
+   +`<span class="an-n">${r.n}点</span></li>`;
+ }).filter(Boolean).join('');
+ const lots=anLotWidths();
+ const lotHtml=lots.length>1
+  ? `<div class="an-lots"><div class="an-sub-head">子ロットごとの板幅`
+    +`<small>板厚は丈位置ごとに3点で測るため、子ロット別には出せません</small></div>`
+    +`<ul class="an-lot-list">${lots.map(x=>
+       `<li><span class="an-name">${esc(x.lot)}</span>`
+       +`<span class="an-val">${anNum(x.min,2)} 〜 ${anNum(x.max,2)}</span>`
+       +`<span class="an-n">${x.n}点</span></li>`).join('')}</ul></div>`
+  : '';
+ host.innerHTML=`<div class="an-main">${main}</div>`
+  +(sub?`<div class="an-sub"><div class="an-sub-head">そのほか（測った項目だけ）</div>`
+        +`<ul class="an-sub-list">${sub}</ul></div>`:'')
+  +lotHtml;
+}
 function deviceParse(raw){const manual=S.measure?.settings?.inputMode==='manual',v=(manual?String(raw||''):toHalfWidth(String(raw||''))).trim().toUpperCase();if(v==='#DELETEMODE#'||v==='DELETE')return{device:'delete',value:null};if(v.includes('+#L')){const num=Number(v.split('+#L')[1]);return{device:'tape',value:Number.isFinite(num)?num:null}}if(!v.includes('+'))return Number.isFinite(Number(v))?{device:'manual',value:Number(v)}:{device:'invalid',value:null};const [code,data]=v.split('+');let device='invalid';if(code.startsWith('DT1')){const kind=code.slice(-2,-1);device=kind==='0'?'micrometer':kind==='1'?'caliper':kind==='2'?'depth':'invalid'}const num=Number(String(data).replace(/M$/,''));return{device,value:Number.isFinite(num)?num:null}}
 function activeMeasureKey(){return WL.measureItem.KEYS[$('#measureType').value]||'width'}
 /* 公差NGの先読み警告: 受信欄(#deviceInput)へ転送中の生データを、確定(Tab/Enter)

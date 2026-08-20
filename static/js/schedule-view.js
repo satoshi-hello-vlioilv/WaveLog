@@ -380,13 +380,17 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      <select class="sc-equipment-select" id="scEquipmentSelect" hidden></select>
      <span class="sc-equipment-fixed" id="scEquipmentFixed" hidden></span>
      <span class="sc-lock-badge" id="scLockBadge" hidden></span>
-     <!-- 編集権の在席表示(§9.211 ②、利用者の指示「だれが入っているか表示
-          (作業スケジュールのタイトル帯の空白エリアを利用してください)」)。
-          **編集セッションの持ち主はここ1箇所だけが言う**——同じことを
-          バナーにも書くと、読む側は「別のことかもしれない」と読み直す
-          （§CLAUDE 8）。書込ロック(#scLockBadge)とは別のもので、
-          あちらは「いま1回の書込を掴んでいる」ほんの一瞬の話。 -->
-     <span class="sc-who" id="scWho" hidden></span>
+     <!-- 編集権の在席表示(#scWho)は**ここには置かない**(§9.211 ③)。
+          置き場はヘッダーのタイトル帯(.hd-context / templates/index.html)
+          ——利用者の指示は「作業スケジュールのタイトル帯の空白エリアを
+          利用してください」で、操作列(#scHead)は別の指示「上部メニューバーは
+          1行で収まるように」(§9.199)が掛かっている場所。実測で操作列の
+          余りは**92pxしか無く**、150pxのチップを置いたため
+          **書込中の印(#scLockBadge)が出た瞬間だけ2行へ折り返し**、
+          表全体が38px跳ねていた（掴もうとした行が逃げる）。
+          ※この文はテンプレートリテラルの中なので**バッククォートを
+            書かないこと**——そこで文字列が閉じ、以降がJSとして解釈されて
+            画面が組み上がらなくなる（実際にやった）。 -->
     </div>
     <!-- ---------- 操作の並び(§9.199、利用者の指示「上部メニューバーは
          1行で収まるように」) ----------
@@ -1434,6 +1438,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      一瞬出る（「読めなかった」と「誰も居ない」を区別する`null`へ戻す）。 */
   scState.sessions=null;
   scLastBlocked=false;   // 次に開いたときは「書ける」から数え直す
+  /* 在席チップはヘッダー(タイトル帯)に居るので、**画面を出たら自分で消す**
+     (§9.211 ③)。パネルの中に居た頃はパネルごと隠れていたが、今は残る
+     ——一覧を見ているのに「編集中 自分」が出ていたら、何の話か分からない。 */
+  const who=document.getElementById('scWho');
+  if(who){who.hidden=true;who.innerHTML='';who.className='sc-who';who.title=''}
  }
  window.exitScheduleView=exitScheduleView;
 
@@ -3570,25 +3579,16 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    hiddenOf:()=>timelineHiddenSet(),
   };
  }
+ /* **触った項目だけを送る**(§9.212 ②③)。渡さない設定はサーバー側で
+    そのまま残るので、幅を引いただけで計算式や並べ替えが消えることはない。
+    **触った時点で既定を書き下ろす**(§9.173と同じ約束)——保存する並びには
+    既定で出さない列も入るので、そのとき`hidden`を保存値のままにすると
+    「畳んでいたはずの列」が出てしまう（実際にそうなった）。いま画面に
+    出ていない列をそのまま`hidden`として書く。 */
  async function persistTimelineColumns(target,patch){
   try{
-   /* 控えは保存のたびに`get()`で取り直す——`save()`はキャッシュを新しい
-      オブジェクトへ差し替えるので、関数の頭で束縛した写しは1回保存した
-      時点で古くなる(§9.113)。 */
-   const cur=WL.columnLayout.get(target);
-   /* **触った時点で既定を書き下ろす**(§9.173と同じ約束)。保存する並びには
-      既定で出さない列も入るので、そのとき`hidden`を保存値のままにすると
-      「畳んでいたはずの列」が出てしまう（実際にそうなった）。いま画面に
-      出ていない列をそのまま`hidden`として書く。 */
-   await WL.columnLayout.save(target,{order:timelineOrderedKeys(),widths:cur.widths,
-                                      hidden:[...timelineHiddenSet()],
-                                      names:cur.names,formats:cur.formats,
-                                      rules:cur.rules,formulas:cur.formulas,locks:cur.locks,
-                                      sorts:cur.sorts,...patch});
-   /* 列の設定パネルを開いたまま見出しを触ることがある。**保存したぶんは
-      巻き戻さない**ように控えへ伝える（§9.211 ①）。 */
-   WL.listColumns&&WL.listColumns.noteSaved&&WL.listColumns.noteSaved(target,patch);
-   showToast&&showToast('列の設定を保存しました','この設備のスケジュール表で次も同じ形で出ます',2400);
+   await WL.columnLayout.patch(target,{order:timelineOrderedKeys(),
+                                       hidden:[...timelineHiddenSet()],...patch});
   }catch(e){showToast&&showToast('列の設定を保存できませんでした',e.message,5000)}
  }
  function bindTimelineHeadTools(timeline){
@@ -3657,8 +3657,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     /* 保存を待たずに画面へ当てる（§9.90 stage）。**キャッシュそのものへ
        当てること**——孤児の写しへ書くと、直後の`renderTimeline()`は
        古い並びで描き、保存が届いてから飛ぶ。 */
-    WL.columnLayout.stage(target,{...live(),order});
-    persistTimelineColumns(target,{order,hidden});
+    WL.columnLayout.hold(target,{order});
+    persistTimelineColumns(target,{order,hidden})
+     .finally(()=>WL.columnLayout.release(target));
     renderTimeline();
    });
    /* 右クリックのメニュー(隠す・幅・隠した列を戻す・設定を開く)。
@@ -3688,15 +3689,17 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
        列幅が正」）。キャッシュへ当ててから描くので、引いている最中に
        表が組み直されても幅は戻らない。保存はしない（`stage`）。 */
     preview:w=>{const cur=live();
-                WL.columnLayout.stage(target,{...cur,widths:{...(cur.widths||{}),[key]:w}});
+                WL.columnLayout.hold(target,{widths:{...(cur.widths||{}),[key]:w}});
                 applyTimelineContentColumns(timeline)},
     commit:w=>{const cur=live();
-               persistTimelineColumns(target,{widths:{...(cur.widths||{}),[key]:w}})},
+               persistTimelineColumns(target,{widths:{...(cur.widths||{}),[key]:w}})
+                .finally(()=>WL.columnLayout.release(target))},
     reset:()=>{const cur=live();
                const widths={...(cur.widths||{})};delete widths[key];
-               WL.columnLayout.stage(target,{...cur,widths});
+               WL.columnLayout.hold(target,{widths});
                applyTimelineContentColumns(timeline);
-               persistTimelineColumns(target,{widths,locks:(cur.locks||[]).filter(k=>k!==key)})},
+               persistTimelineColumns(target,{widths,locks:(cur.locks||[]).filter(k=>k!==key)})
+                .finally(()=>WL.columnLayout.release(target))},
    });
   });
  }

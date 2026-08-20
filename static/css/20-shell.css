@@ -162,6 +162,37 @@ main>header{gap:var(--space-4)}
 .hd-context-source{font-size:var(--fs-sm);color:#7b8e95;white-space:nowrap;
  overflow:hidden;text-overflow:ellipsis;max-width:26vw}
 .hd-freshness{font-size:var(--fs-sm);color:#8a9aa0;white-space:nowrap}
+/* 編集権の在席表示(§9.211 ③)。**タイトル帯の空きに置く**(利用者の指示)。
+   帯の1行目は状態チップ(.hd-status)と操作(.hd-actions)が36pxを持っている
+   ので、26pxのピルを足しても**行の高さは変わらない**——出たり消えたりしても
+   本文が跳ねない。`align-items:baseline`の器なので、ピルだけは中心で揃える。
+   素性(誰が)は長くなるので切り詰め、全文は`title`と`#scSessionBanner`が持つ。 */
+.hd-context .sc-who{align-self:center;font-size:var(--fs-sm)}
+.hd-context .sc-who .sc-who-holder{max-width:20em}
+/* 設定の保存の状態(§9.212 ④)。**文字が主で色は補助**(§3)。成功は2秒で
+   引っ込め、失敗だけは残して同じ場所に「再試行」を置く(§4)。 */
+.save-chip{
+ align-self:center;display:inline-flex;align-items:center;gap:var(--gap-inline);
+ height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-sm);
+ border:1px solid var(--line);border-radius:var(--radius-pill);
+ background:var(--surface);color:var(--ink-2);
+ font-size:var(--fs-sm);white-space:nowrap;
+}
+.save-chip[hidden]{display:none}
+.save-chip .save-chip-state{font-weight:700}
+.save-chip-busy{border-color:var(--line-mid);background:var(--surface-2)}
+.save-chip-busy .save-chip-state{color:var(--ink-3)}
+.save-chip-ok{border-color:var(--teal);background:var(--pale)}
+.save-chip-ok .save-chip-state{color:var(--teal-dark)}
+.save-chip-ng{border-color:var(--danger-border);background:var(--warn-bg)}
+.save-chip-ng .save-chip-state{color:var(--danger)}
+.save-chip .save-chip-retry{
+ height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);
+ border:1px solid var(--danger-border);border-radius:var(--radius-sm);
+ background:var(--surface);color:var(--danger);
+ font-size:var(--fs-sm);font-weight:700;white-space:nowrap;cursor:pointer;
+}
+.save-chip .save-chip-retry:hover{background:var(--danger);color:#fff}
 .hd-status,.hd-actions{display:flex;align-items:center;gap:var(--space-2)}
 .hd-status{margin-left:auto}
 /* 状態チップ: キー(小)+値(太)の2段組。押せるものだけ枠が反応する。 */

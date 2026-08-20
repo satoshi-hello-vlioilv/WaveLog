@@ -19,7 +19,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
 const layout=t=>fetch(B+'/api/column-layout-master?target='+encodeURIComponent(t)).then(r=>r.json());
 async function cleanup(){
  for(const t of [T1,T2]){
-  try{await post('/api/column-layout-master',{target:t,order:[],widths:{},hidden:[],names:{},formats:{},rules:{},formulas:{},locks:[],user_id:'test'})}catch(e){}
+  try{await post('/api/column-layout-master',{target:t,clear:true,order:[],widths:{},hidden:[],names:{},formats:{},rules:{},formulas:{},locks:[],user_id:'test'})}catch(e){}
  }
 }
 (async()=>{

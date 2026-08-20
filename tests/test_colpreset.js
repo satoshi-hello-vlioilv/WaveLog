@@ -23,7 +23,7 @@ const COL='検証計算列'+String(Date.now()).slice(-4);
 let b=null,target='';
 async function cleanup(){
  if(!target)return;
- try{await post('/api/column-layout-master',{target,order:[],widths:{},hidden:[],names:{},
+ try{await post('/api/column-layout-master',{target,clear:true,order:[],widths:{},hidden:[],names:{},
    formats:{},rules:{},formulas:{},user_id:'test'})}catch(e){}
  try{
   const r=await (await fetch(B+'/api/column-preset-master?target='+encodeURIComponent(target))).json();

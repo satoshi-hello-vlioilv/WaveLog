@@ -492,32 +492,21 @@ function bindColumnHeaderTools(table,target,visibleColumns,allColumns){
   const known=(live().order||[]).filter(c=>all.includes(c));
   return [...known,...all.filter(c=>!known.includes(c))];
  };
- /* 保存は全置換なので、**触っていない設定も一緒に送る**こと。
-    並びだけを送ると、表示名や書式が黙って消える(全置換で行ごと作り直すため)。
-    **1つでも書き漏らすとその設定だけが黙って消える**(§9.113)——`formulas`を
-    渡していなかったため、**見出しを1回ドラッグしただけで計算式で作った列が
-    全部消えていた**(式が消えると`listColumnKeys()`がその列を並べなくなる)。
-    渡す中身は`save()`のキーと1対1で対応させること。
-    **控えは呼ばれた時点で取り直す**——`save()`はキャッシュを新しい
-    オブジェクトへ差し替えるので、束縛した`layout`は1回保存した時点で
-    古い写しになる(2回目以降が古い設定で上書きしてしまう)。 */
+ /* **触った項目だけを送る**(§9.212 ②③)。以前は全置換だったので、
+    「触っていない設定も一緒に送る」必要があり、**1つでも書き漏らすと
+    その設定だけが黙って消えていた**（`formulas`を渡していなかったため、
+    見出しを1回ドラッグしただけで計算式の列が全部消えた・§9.113。
+    `sorts`でも同じことが起きた・§9.211 ①）。今は`patch()`が
+    「送ったキーだけ書く」ので、**渡さない＝そのまま残る**。
+    材料は**保存済み(`WL.columnLayout.saved`)**から取ること——`get()`は
+    列の設定パネルの未保存の下書きを含むので、そこから作ると
+    **パネルで触っただけの内容までマスタへ入る**（§9.212 ③）。
+    保存の成否は`WL.saveState`が画面へ出す（§9.212 ④）。 */
  const persist=async(order,widths,locks)=>{
-  /* **控えは保存のたびに取り直す**(§9.113)。save()はキャッシュを新しい
-     オブジェクトへ差し替えるので、関数の頭で束縛すると1回保存した時点で
-     古い写しになる。渡し漏れた設定は消えるので、キーは1つも欠かさない。 */
-  const cur=WL.columnLayout.get(target);
+  const cur=WL.columnLayout.saved(target);
   const wrote={order,widths:widths||cur.widths,locks:locks||cur.locks};
   try{
-   /* **`sorts`を書き漏らさない**（§9.211 ①）。保存は全置換なので、
-      渡さないと列ごとの並べ替えの決まり（§9.187）が**列幅を1回引いた
-      だけで全列ぶん消える**。`save()`のキーと1対1で対応させること。 */
-   await WL.columnLayout.save(target,{...wrote,hidden:cur.hidden,
-                                      names:cur.names,formats:cur.formats,rules:cur.rules,
-                                      formulas:cur.formulas,sorts:cur.sorts});
-   /* 列の設定パネルを開いたままここを通ることがある。**保存したぶんは
-      巻き戻さない**ように控えへ伝える（§9.211 ①）。 */
-   WL.listColumns&&WL.listColumns.noteSaved&&WL.listColumns.noteSaved(target,wrote);
-   showToast&&showToast('表示の並びを保存しました','この一覧を次に開いたときも同じ並びで出ます',2400);
+   await WL.columnLayout.patch(target,wrote);
   }catch(e){showToast&&showToast('並びを保存できませんでした',e.message,5000)}
  };
 
@@ -551,8 +540,10 @@ function bindColumnHeaderTools(table,target,visibleColumns,allColumns){
    order.splice(from,1);
    let at=order.indexOf(to);if(at<0)return;
    order.splice(after?at+1:at,0,dragCol);
-   WL.columnLayout.stage(target,{...live(),order});
-   persist(order);
+   /* 掴んでいる最中の見え方は`hold()`（§9.212 ③）。**保存には行かない**
+      ——保存は`persist()`が「触った項目だけ」を送る。 */
+   WL.columnLayout.hold(target,{order});
+   persist(order).finally(()=>WL.columnLayout.release(target));
    renderGrid();
   });
  });
@@ -598,13 +589,15 @@ function bindColumnHeaderTools(table,target,visibleColumns,allColumns){
      if(total>0)t.style.width=total+'px';
     }
     const cur=live();
-    WL.columnLayout.stage(target,{...cur,widths:{...(cur.widths||{}),[col]:w}});
+    /* 掴んでいる最中は`hold()`（§9.212 ③）。**保存済みにも下書きにも
+       触らない**ので、途中の値がマスタへ行くことはない。 */
+    WL.columnLayout.hold(target,{widths:{...(cur.widths||{}),[col]:w}});
    },
    commit:w=>{const widths={...(live().widths||{}),[col]:w};
-              persist(fullOrder(),widths)},
+              persist(fullOrder(),widths).finally(()=>WL.columnLayout.release(target))},
    reset:()=>{const widths={...(live().widths||{})};delete widths[col];
-              WL.columnLayout.stage(target,{...live(),widths});
-              persist(fullOrder(),widths);renderGrid()},
+              WL.columnLayout.hold(target,{widths});
+              persist(fullOrder(),widths).finally(()=>{WL.columnLayout.release(target);renderGrid()})},
   });
  });
 
@@ -695,22 +688,19 @@ function openColumnHeaderMenu(ev,col,target,allColumns,src){
  menu.style.left=`${Math.max(6,Math.min(ev.clientX,innerWidth-w-6))}px`;
  menu.style.top=`${Math.max(6,Math.min(ev.clientY,innerHeight-h-6))}px`;
 
+ /* **触った項目だけを送る**(§9.212 ②③)。材料は保存済みから取る
+    ——`get()`は列の設定パネルの未保存の下書きを含むので、そこから作ると
+    パネルで触っただけの内容までマスタへ入る。
+    `hidden`は**口が答える「いま隠している列」**(§9.197)。保存値だけを
+    見ると、既定で畳んでいる列が幅を1回変えた拍子に出てしまうので、
+    並び・非表示は毎回こちらで作り直して送る。 */
  const persist=async patch=>{
   if(S2.persist){await S2.persist(patch);S2.refresh();return}
-  const v=WL.columnLayout.get(target);
+  const v=WL.columnLayout.saved(target);
   const all=S2.keys();
   const known=(v.order||[]).filter(c=>all.includes(c));
-  /* **保存は全置換なので、渡す設定を1つでも書き漏らさない**(§9.113)。
-     ここは`formulas`が抜けており、**右クリックで列を1つ隠しただけで
-     計算式で作った列が全部消えていた**(bindColumnHeaderToolsのpersistで
-     同じ不具合を直したときに、こちらを見落としていた)。 */
-  /* `hidden`は**口が答える「いま隠している列」**(§9.197)。保存値だけを
-     見ると、既定で畳んでいる列が幅を1回変えた拍子に出てしまう。 */
-  await WL.columnLayout.save(target,{order:[...known,...all.filter(c=>!known.includes(c))],
-                                     widths:v.widths,hidden:S2.hiddenOf(),names:v.names,
-                                     formats:v.formats,rules:v.rules,
-                                     formulas:v.formulas,locks:v.locks,sorts:v.sorts,...patch});
-  WL.listColumns&&WL.listColumns.noteSaved&&WL.listColumns.noteSaved(target,patch);
+  await WL.columnLayout.patch(target,{order:[...known,...all.filter(c=>!known.includes(c))],
+                                      hidden:S2.hiddenOf(),...patch});
   S2.refresh();
  };
  menu.querySelector('.chm-hide').onclick=async()=>{

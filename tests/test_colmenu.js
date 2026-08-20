@@ -15,7 +15,7 @@ const B='http://127.0.0.1:5029';
 const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 let b=null,target='';
-const reset=()=>target?post('/api/column-layout-master',{target,order:[],widths:{},hidden:[],
+const reset=()=>target?post('/api/column-layout-master',{target,clear:true,order:[],widths:{},hidden:[],
   names:{},formats:{},rules:{},user_id:'test'}):Promise.resolve();
 (async()=>{
  b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});

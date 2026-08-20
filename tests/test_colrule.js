@@ -22,7 +22,7 @@ const RULE='テスト読替'+Date.now().toString(36);   // 実行ごとに一意
 let b=null,target='';
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 async function cleanup(){
- try{if(target)await post('/api/column-layout-master',{target,order:[],widths:{},hidden:[],names:{},formats:{},rules:{},user_id:'test'})}catch(e){}
+ try{if(target)await post('/api/column-layout-master',{target,clear:true,order:[],widths:{},hidden:[],names:{},formats:{},rules:{},user_id:'test'})}catch(e){}
  try{await post('/api/display-rule-master/delete',{name:RULE,user_id:'test'})}catch(e){}
 }
 (async()=>{

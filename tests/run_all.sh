@@ -57,10 +57,12 @@ mode(){ curl -s -X POST $API/api/access-mode -H 'Content-Type: application/json'
 resetcontent(){
   curl -s -X POST $API/api/schedule-content-master -H 'Content-Type: application/json' \
     -d '{"equipment":"テスト設備A","items":[],"user_id":"test"}' >/dev/null
-  # 列レイアウトマスタは全置換なので、空を送れば対象の行が消える(§9.113)。
+  # 列レイアウトマスタは「送った項目だけ書く」(§9.212 ②)ので、まっさらに
+  # 戻すときは**`clear:true`**を付ける。**付け忘れると送っていない設定だけが
+  # 生き延びる**——前の実行の置き土産が次の実行へ残る(§9.121)。
   for tg in 'timeline:テスト設備A' 'print:テスト設備A'; do
     curl -s -X POST $API/api/column-layout-master -H 'Content-Type: application/json' \
-      -d "{\"target\":\"$tg\",\"order\":[],\"hidden\":[],\"widths\":{},\"names\":{},\"formats\":{},\"rules\":{},\"formulas\":{},\"locks\":[],\"user_id\":\"test\"}" >/dev/null
+      -d "{\"target\":\"$tg\",\"clear\":true,\"order\":[],\"hidden\":[],\"widths\":{},\"names\":{},\"formats\":{},\"rules\":{},\"formulas\":{},\"locks\":[],\"sorts\":{},\"user_id\":\"test\"}" >/dev/null
   done
 }
 
@@ -249,7 +251,7 @@ for t in test_cols test_listmodal test_split_layout test_sccols; do
 
 echo "--- サーバー側 ---"
 mode schedule
-for t in test_sclock test_scsession test_scwritespeed test_colscache test_colsripple test_modeguard test_noaccess test_pcname \
+for t in test_sclock test_scsession test_scwritespeed test_colscache test_colsripple test_colsave test_opdata test_modeguard test_noaccess test_pcname \
          test_csslint test_dbopen test_error test_datasource test_dscap test_dskeylint test_dbmirror test_atomicio test_localwork test_displayrule test_eqstd test_crudroutes test_tablequery test_patchlint test_globallint test_assetcache test_tabclose test_logs test_docindex test_sortpipe test_scwatch test_scowner test_qjoin test_workdate test_scload test_pick; do run python3 $t.py; done
 
 echo
