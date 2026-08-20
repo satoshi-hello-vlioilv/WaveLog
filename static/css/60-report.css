@@ -148,16 +148,58 @@
 /* 落ちる場所を**実物大で**見せる（§9.217）。線1本では「どこへ何マスぶん
    入るのか」が読めない。グリッドの子として挿すので、置いたらどうなるかが
    そのまま見える。 */
-.rp-ghost{display:flex;align-items:center;justify-content:center;text-align:center;pointer-events:none}
+.rp-ghost{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;pointer-events:none;gap:1px}
 .rp-ghost{min-height:24px;border:2px dashed var(--teal);border-radius:3px}
 .rp-ghost{background:rgba(8,124,137,.09);color:#087c89;font-size:9px;font-weight:800}
+/* 大きさは**数字でも言う**（§9.218 ⑥）。枠だけでは「1マス多いのか少ない
+   のか」が読めない。 */
+.rp-ghost small{font-size:8px;font-weight:700;opacity:.85}
 .rp-blocks.is-dropping .rp-block{outline-color:var(--teal)}
 /* 組み換え中だけの見せ方。**紙には1つも出ない**（操作帯はarranging時しか
    組み立てない）ので、ここは画面のためだけの装飾。 */
-.rp-blocks.is-arranging .rp-block{outline:1px dashed #9bb3ba;outline-offset:1px;position:relative}
+/* ---------- 組み換え中はマスの線を引く（§9.218 ⑥、利用者の指摘） ----------
+   「配置のしにくさはグリッドとの関係性がわからないことにありそうです。
+     前まではという行というグリッドがあったので良かったのですが、今回は
+     横がそろっていてもグリッドがなくなってしまった」
+
+   **要素を作らない。** グリッドの子として線を入れると、位置の決まった子が
+   自動配置より先に置かれて塊のほうが押し出される。背景の繰り返しで引けば
+   並びにも印刷にも一切影響しない。1周期＝トラック幅＋隙間なので、器の幅と
+   隙間から`calc`で出せる。 */
+.rp-blocks.is-arranging{
+  position:relative;
+  background-image:
+    linear-gradient(to right,#c9d8dc 1px,transparent 1px),
+    linear-gradient(to bottom,#e2ebee 1px,transparent 1px);
+  background-size:
+    calc((100% + var(--space-1)) / var(--rp-grid,12)) 100%,
+    100% calc(var(--rp-row,24px) + var(--space-1));
+  background-position:0 0;
+}
+.rp-blocks.is-arranging .rp-block{outline:1px dashed #9bb3ba;outline-offset:1px;position:relative;
+  background:#fff}
 .rp-blocks.is-arranging .rp-block.is-off{opacity:.4}
 .rp-blocks.is-arranging .rp-block.is-empty{outline-color:#d0b48a}
 .rp-block.is-dragging{opacity:.45}
+/* 空いているマス（§9.218 ⑥）。**器の上へ重ねる層**で、グリッドの並びには
+   加わらない（位置の決まった子は自動配置より先に置かれるため）。 */
+.rp-free-layer{position:absolute;inset:0;pointer-events:none;z-index:0}
+/* 紙そのものではなく**組み換え中だけの目印**なので、角丸は画面の
+   トークンから選ぶ（紙のpx固定の例外に当てはまらない）。 */
+.rp-free{position:absolute;display:block;border:1px dashed #a9c6cc;border-radius:var(--radius-xs);background:rgba(8,124,137,.05)}
+.rp-free[data-rp-free]::after{content:attr(data-rp-free);position:absolute;left:3px;top:1px;color:#6d8f97;font-size:8px;font-weight:700;font-style:normal}
+/* 大きさを変える取っ手（§9.218 ⑥）。**縁そのものを掴ませる**——別の場所に
+   ボタンを置くと、どの塊のどの向きなのかを覚えることになる。 */
+.rp-size-grip{position:absolute;z-index:4;background:transparent}
+.rp-size-w{top:0;bottom:8px;right:-3px;width:7px;cursor:ew-resize}
+.rp-size-h{left:0;right:8px;bottom:-3px;height:7px;cursor:ns-resize}
+.rp-size-wh{right:-3px;bottom:-3px;width:11px;height:11px;cursor:nwse-resize}
+.rp-blocks.is-arranging .rp-size-grip{background:rgba(8,124,137,.14)}
+.rp-blocks.is-arranging .rp-size-grip:hover{background:var(--teal)}
+.rp-size-tip{position:fixed;z-index:var(--z-drag);pointer-events:none;padding:2px 6px;border-radius:var(--radius-xs);background:#0f2027;color:#fff;font-size:10px;font-weight:800}
+/* 「いまの大きさ」は操作帯にも出す（掴む前に読める）。 */
+.rp-block-dim{font-style:normal;font-size:9px;font-weight:700;color:#4a6169;padding:0 3px;border-radius:3px;background:#fff}
 .rp-block.rp-drop-before::before,.rp-block.rp-drop-after::before{
   content:"";position:absolute;top:0;bottom:0;width:2px;background:var(--teal);z-index:3}
 .rp-block.rp-drop-before::before{left:-2px}

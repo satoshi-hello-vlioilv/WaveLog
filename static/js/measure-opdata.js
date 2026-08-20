@@ -46,7 +46,7 @@
 
  /* 設備ごとの定義。**開いた設備が変わるまで使い回す**——測定を開くたびに
     引き直すと、ロットを開く速さがマスタの往復に引きずられる。 */
- let defs=[],builtinOff=[],gridCols=6,defsFor=null,loading=null;
+ let defs=[],builtinOff=[],gridCols=12,defsFor=null,loading=null;
  /* 畳んでいる群。**この端末の覚え**（読み方の好みなのでPCごとに違ってよい。
     §9.199の`childBadge`と同じ考え方）。 */
  const FOLD_KEY='MeasureOpFoldV2';
@@ -75,7 +75,7 @@
     const r=await api('/api/operation-form?equipment='+encodeURIComponent(eq));
     defs=Array.isArray(r.items)?r.items:[];
     builtinOff=Array.isArray(r.builtinOff)?r.builtinOff:[];
-    gridCols=Number(r.gridCols)>0?Number(r.gridCols):6;
+    gridCols=Number(r.gridCols)>0?Number(r.gridCols):12;
    }catch(e){
     /* **読めなくても測定は開ける**（fail-open）。入力欄が出ないことは
        画面に書く——黙って空にすると「項目が無い設備」と区別が付かない。
@@ -215,6 +215,184 @@
   return label;
  }
 
+ /* ---------- 選ばせ方（§9.218 ②、利用者の指示） ----------
+    「プルダウンだけでなく、ラジオボタンやタブっぽいボタン、フローティング
+     モーダルみたいに選択肢が多い時に説明付きで出ると選びやすいので、
+     そのような選ばせるUIを選ぶ機能も追加実装してください」
+
+    **値を持つのは今までどおり`<select>`**。ボタン側から`value`を書いて
+    `change`を飛ばすだけにする——こうすると
+      ・記録の読み書き（`values()`／`apply()`／`collect()`）
+      ・必須の判定（`activeRequiredControls()`は`controlOf()`が返す部品を見る）
+      ・仕掛由来のプリセット（内径・§9.204）や条数の上限（§9.210 ⑤）
+    が**1つも書き換わらない**。組み込みの欄（オペレータ・作業人数…）にも
+    同じ形で当てられるのはこのため。
+
+    **selectを`display:none`にしないこと。** `focus()`が効かなくなり、
+    未入力のときに「直す場所」へ連れて行けない（§9.122と同じ理由で、
+    寸法ゼロの要素はフォーカスを持てない）。1pxの見えない器として残し、
+    未入力・公差外の色は**兄弟セレクタ**（`select.validation-required~.opf-widget`）で
+    ボタン側へ移す——`:has()`に頼らないのは、当たらなかったときに
+    「色が付かない」ことに誰も気づけないから。 */
+ const WIDGET_SELECT='プルダウン';
+ function widgetOf(def){return String(def.widgetLive||def.widget||WIDGET_SELECT)}
+ /* 選択肢の説明（`一覧`で出す）。**説明のある値だけ**サーバーが返す。 */
+ const noteOf=(def,v)=>String((def.choiceNotes||{})[v]||'');
+ /* selectの選択肢を「値と表示」の組で読む。**先頭の空を落とさない**
+    ——「まだ選んでいない」へ戻せなくなる（§9.203と同じ罠）。 */
+ function optionsOf(sel){return [...sel.options].map(o=>({v:o.value,t:o.text}))}
+ function widgetHost(host){
+  let box=host.querySelector(':scope>.opf-widget');
+  if(!box){box=document.createElement('div');box.className='opf-widget';host.appendChild(box)}
+  return box;
+ }
+ /* 押した結果を`select`へ書いて`change`を飛ばす。**`input`も飛ばす**
+    ——`updateValidationVisuals()`は両方をcaptureで拾っており、片方だけだと
+    未入力の印が更新されない経路が残る。 */
+ function setValue(sel,v){
+  if(sel.value===v)return;
+  sel.value=v;
+  sel.dispatchEvent(new Event('input',{bubbles:true}));
+  sel.dispatchEvent(new Event('change',{bubbles:true}));
+ }
+ /* いま選ばれているものに印を付け直す。**作り直さない**——押すたびに
+    組み直すと、キーボードで辿っている途中でフォーカスが飛ぶ。 */
+ function syncWidget(host){
+  const sel=host.querySelector(':scope>select');
+  const box=host.querySelector(':scope>.opf-widget');
+  if(!sel||!box)return;
+  const v=String(sel.value==null?'':sel.value);
+  box.querySelectorAll('[data-opv]').forEach(b=>{
+   const on=b.dataset.opv===v;
+   b.classList.toggle('is-on',on);
+   b.setAttribute('aria-checked',on?'true':'false');
+   b.tabIndex=on?0:-1;
+  });
+  const cur=box.querySelector('.opf-pick-now');
+  if(cur){
+   const hit=[...sel.options].find(o=>o.value===v);
+   cur.textContent=(hit?hit.text:v)||'選ぶ';
+   cur.classList.toggle('is-empty',!v||v==='-');
+  }
+ }
+ /* 器を1回だけ作る。**選択肢が変わったら作り直す**（内径のプリセットは
+    仕掛データが届いてから入る・§9.204）ので、署名で見分ける。 */
+ function buildWidget(def,host,kind){
+  const sel=host.querySelector(':scope>select');
+  if(!sel)return false;
+  const opts=optionsOf(sel);
+  const sig=kind+'|'+opts.map(o=>o.v+''+o.t).join('');
+  const box=widgetHost(host);
+  if(box.dataset.sig===sig){syncWidget(host);return true}
+  box.dataset.sig=sig;
+  host.classList.add('opf-alt');
+  sel.classList.add('opf-native-off');
+  sel.setAttribute('tabindex','-1');
+  if(kind==='一覧'){
+   box.className='opf-widget opf-pick';
+   box.innerHTML='<button type="button" class="opf-pick-btn">'
+    +'<span class="opf-pick-now">選ぶ</span><span class="opf-pick-caret" aria-hidden="true">▾</span></button>';
+   box.querySelector('.opf-pick-btn').onclick=e=>{e.preventDefault();openPicker(def,host,sel)};
+  }else{
+   box.className='opf-widget opf-seg'+(kind==='ラジオ'?' opf-seg-radio':' opf-seg-tab');
+   box.setAttribute('role','radiogroup');
+   box.setAttribute('aria-label',def.name);
+   box.innerHTML=opts.map(o=>{
+    const label=(o.v===''||o.t==='-')?'—':o.t;
+    const tip=noteOf(def,o.v);
+    return '<button type="button" role="radio" aria-checked="false" tabindex="-1"'
+     +' class="opf-seg-btn" data-opv="'+esc(o.v)+'"'+(tip?' title="'+esc(tip)+'"':'')
+     +'>'+esc(label)+'</button>';
+   }).join('');
+   box.querySelectorAll('[data-opv]').forEach(b=>{
+    b.onclick=e=>{e.preventDefault();setValue(sel,b.dataset.opv);syncWidget(host)};
+   });
+   /* **左右キーで移れること**（ラジオグループの約束）。押せるのにキーボードで
+      辿れない部品を作らない。 */
+   box.onkeydown=e=>{
+    if(['ArrowRight','ArrowLeft','ArrowUp','ArrowDown'].indexOf(e.key)<0)return;
+    const btns=[...box.querySelectorAll('[data-opv]')];
+    if(!btns.length)return;
+    e.preventDefault();
+    const i=Math.max(0,btns.findIndex(b=>b.classList.contains('is-on')));
+    const d=(e.key==='ArrowRight'||e.key==='ArrowDown')?1:-1;
+    const nx=btns[(i+d+btns.length)%btns.length];
+    setValue(sel,nx.dataset.opv);syncWidget(host);nx.focus();
+   };
+  }
+  /* selectの側が変わっても印を合わせる（プリセット・記録の復元）。 */
+  if(!sel.dataset.opWidgetWired){
+   sel.dataset.opWidgetWired='1';
+   sel.addEventListener('change',()=>syncWidget(host));
+  }
+  syncWidget(host);
+  return true;
+ }
+ /* 器を外す（マスタで「プルダウン」へ戻したとき）。**付いたまま置かない**
+    ——外し忘れると、戻したはずの欄がボタンのまま残る（§9.210 ④と同じ罠）。 */
+ function stripWidget(host){
+  const box=host.querySelector(':scope>.opf-widget');
+  if(box)box.remove();
+  host.classList.remove('opf-alt');
+  const sel=host.querySelector(':scope>select');
+  if(sel){sel.classList.remove('opf-native-off');sel.removeAttribute('tabindex')}
+ }
+
+ /* ---------- 説明つきで選ぶ浮き窓 ----------
+    **器の外（body直下）へ`position:fixed`で出す**（§9.201）。`.selectors`は
+    `overflow`を持つ器の中にあるので、中に置くと下半分が切れる。 */
+ let pickerEl=null,pickerBack=null;
+ function ensurePicker(){
+  if(pickerEl)return pickerEl;
+  pickerEl=document.createElement('div');
+  pickerEl.className='opf-picker';pickerEl.id='opfPicker';pickerEl.hidden=true;
+  pickerEl.innerHTML='<div class="opf-picker-box" role="dialog" aria-modal="true">'
+   +'<header><b id="opfPickerName"></b>'
+   +'<button type="button" id="opfPickerClose" aria-label="閉じる">×</button></header>'
+   +'<input type="search" id="opfPickerFind" placeholder="絞り込む" autocomplete="off">'
+   +'<div class="opf-picker-list" id="opfPickerList"></div></div>';
+  document.body.appendChild(pickerEl);
+  pickerEl.addEventListener('click',e=>{if(e.target===pickerEl)closePicker()});
+  pickerEl.querySelector('#opfPickerClose').onclick=closePicker;
+  document.addEventListener('keydown',e=>{
+   if(e.key==='Escape'&&pickerEl&&!pickerEl.hidden){e.stopPropagation();closePicker()}
+  },true);
+  return pickerEl;
+ }
+ function closePicker(){
+  if(!pickerEl)return;
+  pickerEl.hidden=true;
+  const back=pickerBack;pickerBack=null;
+  if(back&&back.focus){try{back.focus()}catch(e){}}
+ }
+ function openPicker(def,host,sel){
+  const el=ensurePicker();
+  el.hidden=false;
+  pickerBack=host.querySelector('.opf-pick-btn');
+  el.querySelector('#opfPickerName').textContent=def.name;
+  const find=el.querySelector('#opfPickerFind');
+  const list=el.querySelector('#opfPickerList');
+  const opts=optionsOf(sel);
+  const draw=()=>{
+   const q=String(find.value||'').trim().toLowerCase();
+   const hit=opts.filter(o=>!q||(o.t+' '+noteOf(def,o.v)).toLowerCase().indexOf(q)>=0);
+   list.innerHTML=hit.length?hit.map(o=>{
+    const label=(o.v===''||o.t==='-')?'（選ばない）':o.t;
+    const note=noteOf(def,o.v);
+    return '<button type="button" class="opf-picker-item'+(o.v===sel.value?' is-on':'')+'"'
+     +' data-opv="'+esc(o.v)+'"><b>'+esc(label)+'</b>'
+     +(note?'<small>'+esc(note)+'</small>':'')+'</button>';
+   }).join(''):'<p class="opf-picker-empty">「'+esc(find.value)+'」に当たる選択肢はありません。</p>';
+   list.querySelectorAll('[data-opv]').forEach(b=>{
+    b.onclick=()=>{setValue(sel,b.dataset.opv);syncWidget(host);closePicker()};
+   });
+  };
+  /* **入力中に一覧だけを描き直す**（§9.117）——入力欄を作り替えるとカーソルが飛ぶ。 */
+  find.value='';find.oninput=draw;
+  draw();
+  try{find.focus()}catch(e){}
+ }
+
  /* ---------- 群にまとめる ---------- */
  function groupsFor(place){
   const out=[];
@@ -292,7 +470,7 @@
   box.querySelectorAll('[data-f]').forEach(el=>{
    el.classList.remove('op-off','op-folded','op-required');
    el.style.order='';el.style.gridColumn='';
-   delete el.dataset.opplace;delete el.dataset.opgroup;
+   delete el.dataset.opplace;delete el.dataset.opgroup;delete el.dataset.opfill;
   });
   box.style.setProperty('--op-cols',String(gridCols));
   /* **マスタが名指ししている組み込みの欄だけを差配する。** 作業時間・
@@ -336,10 +514,30 @@
      if(!el&&!d.builtin){el=fieldEl(d,seq);box.appendChild(el)}
      if(!el){missing.push(d.name);return}
      el.dataset.opplace=place;el.dataset.opgroup=g.name;
+     /* **器いっぱいに使う**（§9.218 ②、利用者の指摘「項目間の余白が広く、
+        かなり表示欄がもったいない」「2列分にしたときに1列と比べると余白が
+        出てスカスカな印象。余白は無いようにUI幅で稼いでほしい」）。
+        以前は§9.130で測った「中身なりの幅」をそのまま使っており、
+        6マス中2マス（413px）の器に154pxの選択欄が入って**259pxが空いて
+        いた**（実測）。**幅を決めるのはマスタが選んだマス数**という形に
+        揃えるので、狭くしたい欄はマス数を減らす——1つの事実で決まる。
+        `fitControlWidths()`はこの印の付いた欄を測らない（測ると
+        `max-width`が入って器より狭いまま残る）。 */
+     el.dataset.opfill='1';
+     /* **前に測った`max-width`を落とす。** `fitControlWidths()`は
+        `data-opfill`が付く前にも走る（測定を開いた直後の1回）ので、
+        インラインの`max-width`が残ったままだとCSSに勝ち、器の中で
+        154pxのまま余白が残る（実測。実際にそうなった）。 */
+     el.querySelectorAll('select,input,textarea').forEach(c=>{c.style.maxWidth=''});
      el.style.order=String(seq++);
-     el.style.gridColumn='span '+Math.max(1,Math.min(gridCols,Number(d.span)||2));
+     el.style.gridColumn='span '+Math.max(1,Math.min(gridCols,Number(d.span)||4));
      el.classList.toggle('op-folded',fold);
      el.classList.toggle('op-required',!!d.required);
+     /* 選ばせ方（§9.218 ②）。**組み込みの欄にも当たる**——値を持つのは
+        今までどおり`<select>`なので、当てても壊れるものが無い。 */
+     const kind=widgetOf(d);
+     if(kind!==WIDGET_SELECT&&el.querySelector(':scope>select'))buildWidget(d,el,kind);
+     else stripWidget(el);
     });
    });
   });
@@ -365,6 +563,7 @@
      `alignColumnWidths()`が同じ列の1〜2桁の欄まで引き上げる。
      **名前空間付きで呼ぶこと**——素の`fitControlWidths`は`measure-steps.js`の
      IIFEの中なので、外からは見えない。 */
+  syncWidgets();
   if(window.WL&&WL.measureSteps&&WL.measureSteps.fitWidths)WL.measureSteps.fitWidths();
  }
 
@@ -396,6 +595,14 @@
    }
    el.value=v;
   });
+  syncWidgets();
+ }
+ /* **`.value`への代入では`change`が飛ばない**（DOMも変わらない）ので、
+    記録の復元・仕掛由来のプリセット（§9.204の内径）のあとは、こちらから
+    印を合わせに行く。忘れると**値は入っているのにボタンがどれも選ばれて
+    いない**という、いちばん分かりにくい形で壊れる。 */
+ function syncWidgets(){
+  document.querySelectorAll('.selectors>.opf-alt').forEach(syncWidget);
  }
 
  /* 保存のときにまとめて回収する。**打った時点でも入れている**ので、
@@ -466,8 +673,14 @@
  }
 
  window.WL=window.WL||{};
+ /* マスタ管理の設定窓が**同じ部品**で見本を出すための口（§9.218 ①）。
+    見本を別に作ると、設定画面で見えた形と実際の形が食い違う
+    （§9.176の`entryCellInfo()`と同じ約束）。 */
+ function previewWidget(def,host,kind){
+  try{return buildWidget(def,host,kind)}catch(e){console.warn('見本を作れませんでした',e);return false}
+ }
  WL.opData={load,layout,render:layout,refresh,apply,collect,values,filled,requiredControls,
-            syncAutoOpen,
+            syncAutoOpen,syncWidgets,previewWidget,
             defs:()=>defs.slice(),
             /* 設備が変わったら次に開くとき読み直す（マスタ管理で足した直後）。 */
             forget:()=>{defs=[];builtinOff=[];defsFor=null;loading=null}};
