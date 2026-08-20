@@ -335,6 +335,138 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   rec('表に`min-width:100%`を戻していない',
       !/%/.test(narrowFit.minWidth)&&narrowFit.minWidth!=='100%',narrowFit.minWidth);
 
+  /* ---- 9) 2回目・3回目の列幅も「掴んだ列だけ」が動く(§9.211 ①) ----
+     **実機で報告された不具合。**「1回目はスムーズだが、2回目以降はすべて
+     詰まるような動きで、掴んだもの以外が何かを読み込んで修正されるように
+     動き、コントロールが効かない」。原因は3つあった。
+      ① `bindColumnHeaderTools`が関数の頭で`WL.columnLayout.get()`の**結果を
+         束縛**していた。`save()`/`stage()`はキャッシュを新しいオブジェクトへ
+         **差し替える**ので、1回保存した時点で束縛した写しは切り離され、
+         2回目以降は**1回目より前の幅**を土台に保存し直していた。
+      ② 引いている最中に`<col>`の幅だけを書き換え、**表の幅**
+         (`table.style.width`＝列幅の合計)を直していなかった。
+         `table-layout:fixed`は**余った幅を全列へ配り直す**ので、1本を
+         細くすると残り全部が広がる（＝「詰まる」動き）。
+      ③ 全置換の保存(§9.113)で`sorts`を渡しておらず、幅を1回引くだけで
+         列ごとの並べ替え設定が消えていた。
+     **1回だけ引く網ではこの3つとも素通りする**ので、必ず2回目・3回目まで
+     引き、**掴んでいない列が動かないこと**を見る。 */
+  await post('/api/column-layout-master',{target,order:[],widths:{},hidden:[],locks:[],user_id:'test'});
+  await page.evaluate(()=>{WL.columnLayout.forget();return load()});
+  await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});
+  await page.waitForTimeout(500);
+  const widthMap=()=>page.evaluate(()=>Object.fromEntries(
+    [...document.querySelectorAll('#grid thead th[data-sort-col]')]
+      .map(t=>[t.dataset.sortCol,Math.round(t.getBoundingClientRect().width)])));
+  const tableW=()=>page.evaluate(()=>{
+   const t=document.querySelector('#grid table');
+   return t?Math.round(t.getBoundingClientRect().width):0;});
+  /* 掴んで**狭める**こと。`table-layout:fixed`は「列幅の合計が表の幅より
+     **小さい**とき」に余りを全列へ配り直す規則なので、**広げる側では
+     再現しない**（合計が表の幅を超えると表そのものが広がるだけ）。
+     実際、広げる向きの網は不具合を注入しても41/41で通った。
+     狭める幅は最小幅(60px)に当たらない範囲にする。 */
+  /* **掴んでいる最中の幅も測ること。** 離したあとだけを見ると、保存→
+     描き直しで正しい幅に上書きされるため、引いている間に他の列が
+     配り直されていても**素通りする**（実際に、不具合を注入しても
+     離したあとの幅しか見ない網は38/38で通った）。利用者が見ているのは
+     まさに「引いている最中の動き」なので、そこを見る。 */
+  const dragBy=async(key,dx)=>{
+   const g=await page.$(`#grid thead th[data-sort-col="${key}"] .col-resize`);
+   if(!g)return null;
+   const bb=await g.boundingBox();if(!bb)return null;
+   await page.mouse.move(bb.x+bb.width/2,bb.y+bb.height/2);
+   await page.mouse.down();
+   await page.mouse.move(bb.x+bb.width/2+dx,bb.y+bb.height/2,{steps:8});
+   const during=await widthMap();      // ← 離す前
+   during.__table__=await page.evaluate(()=>{
+    const t=document.querySelector('#grid table');
+    return t?Math.round(t.getBoundingClientRect().width):0;});
+   await page.mouse.up();
+   /* 保存は離してから0.3秒落ち着いてまとめて1回(§9.197)。その保存が
+      戻ってきてから次を引く——**戻る前に引くと、直っていなくても通る**。 */
+   await page.waitForTimeout(1200);
+   return during;
+  };
+  const dragKeys=(await cols()).filter(k=>k&&!String(k).startsWith('__')&&k!=='#');
+  const K1=dragKeys[0],K2=dragKeys[1];
+  /* **引きしろを先に作る。** 既定の列幅は90px前後で、下限(40px)まで
+     50px引くと**1回で底に着く**——2回目が動かないのが不具合なのか
+     下限なのかを見分けられない（実際にそれで誤検知した）。
+     広い幅から始めて、3回引いても底に着かないようにする。
+     ここで一度保存するので、**保存でキャッシュが差し替わったあとの
+     2回目・3回目**という、報告された条件そのものになる。 */
+  await page.evaluate(async ks=>{
+   const t=listLayoutTarget(),cur=WL.columnLayout.get(t);
+   await WL.columnLayout.save(t,{...cur,widths:{...(cur.widths||{}),[ks[0]]:320,[ks[1]]:320}});
+   renderGrid();
+  },[K1,K2]);
+  await page.waitForTimeout(600);
+  const w0=await widthMap();
+  const d1=(K1&&K2)?await dragBy(K1,-50):null;
+  const moved=!!d1;
+  const w1=moved?await widthMap():{};
+  const tw1=moved?await tableW():0;
+  const d2=moved?await dragBy(K1,-50):null;
+  const moved2=!!d2;
+  const w2=moved2?await widthMap():{};
+  const d3=moved2?await dragBy(K2,-50):null;
+  const moved3=!!d3;
+  const w3=moved3?await widthMap():{};
+  const others=(a,bb,skip)=>Object.keys(a).filter(k=>k!=='__table__'&&k!==skip
+    &&bb[k]!==undefined&&Math.abs(a[k]-bb[k])>3);
+  rec('1回目: 掴んだ列が狭まる',
+      moved&&w0[K1]-w1[K1]>30,`${w0[K1]}→${w1[K1]}`);
+  rec('2回目も掴んだ列が同じだけ狭まる（1回目より前の幅へ戻らない）',
+      moved2&&w1[K1]-w2[K1]>30,`${w1[K1]}→${w2[K1]}`);
+  rec('2回目に掴んでいない列が動かない（table-layout:fixedの配り直しを起こさない）',
+      moved2&&others(w1,w2,K1).length===0,
+      others(w1,w2,K1).map(k=>`${k}:${w1[k]}→${w2[k]}`).slice(0,4).join(' / ')||'動いていない');
+  /* **引いている最中**に掴んでいない列が動かないこと（利用者が見ている状態）。 */
+  rec('引いている最中も掴んでいない列が動かない（1回目）',
+      moved&&others(w0,d1,K1).length===0,
+      others(w0,d1,K1).map(k=>`${k}:${w0[k]}→${d1[k]}`).slice(0,4).join(' / ')||'動いていない');
+  rec('引いている最中も掴んでいない列が動かない（2回目）',
+      moved2&&others(w1,d2,K1).length===0,
+      others(w1,d2,K1).map(k=>`${k}:${w1[k]}→${d2[k]}`).slice(0,4).join(' / ')||'動いていない');
+  rec('引いている最中に掴んだ列が実際に追従する（掴んだ幅が正）',
+      moved2&&w1[K1]-d2[K1]>30,`${w1[K1]}→${d2[K1]}`);
+  rec('3回目に別の列を掴んでも、その列だけが動く',
+      moved3&&w2[K2]-w3[K2]>30&&others(w2,w3,K2).length===0,
+      `${K2}:${w2[K2]}→${w3[K2]} 他:`
+      +(others(w2,w3,K2).map(k=>`${k}:${w2[k]}→${w3[k]}`).slice(0,4).join(' / ')||'動いていない'));
+  /* **表そのものの幅も掴んだぶんだけ動くこと**（§9.211 ①）。
+     `renderGridInner()`は`t.style.width`へ列幅の合計を入れている(§9.119)。
+     引いている最中に合計を据え置くと、`table-layout:fixed`は
+     **余ったぶんを全列へ配り直す**——列数が多いほど1列あたりの動きは
+     小さいので「他の列が何px動いたか」だけでは捕まらない。
+     **合計が追従しているか**を直接見る（これが配り直しの有無そのもの）。 */
+  rec('引いている最中は表の幅も掴んだぶんだけ動く（余りを全列へ配り直さない）',
+      moved2&&Math.abs((tw1-d2.__table__)-(w1[K1]-d2[K1]))<=3,
+      `表 ${tw1}→${d2.__table__} / 列 ${w1[K1]}→${d2[K1]}`);
+
+  /* 保存されている幅も、**最後に画面で見えている幅**と一致すること
+     （画面だけ動いて保存が1回前の値、という状態を作らない）。 */
+  const savedW=await (await fetch(B+'/api/column-layout-master?target='+encodeURIComponent(target))).json();
+  rec('保存された幅がいま見えている幅と一致する（保存は一方通行）',
+      moved3&&Math.abs(((savedW.widths||{})[K1]||0)-w3[K1])<=3
+      &&Math.abs(((savedW.widths||{})[K2]||0)-w3[K2])<=3,
+      JSON.stringify({保存:{[K1]:(savedW.widths||{})[K1],[K2]:(savedW.widths||{})[K2]},
+                      画面:{[K1]:w3[K1],[K2]:w3[K2]}}));
+
+  /* ---- 10) 幅を引いても列ごとの並べ替え設定(sorts)が消えない(§9.211 ①) ----
+     保存は**全置換**(§9.113)なので、渡し忘れたキーは黙って消える。 */
+  const sortKey=dragKeys[2]||K2;
+  await page.evaluate(async k=>{
+   const t=listLayoutTarget(),cur=WL.columnLayout.get(t);
+   await WL.columnLayout.save(t,{...cur,sorts:{[k]:{buckets:['empty','num','date','text']}}});
+  },sortKey);
+  await page.waitForTimeout(400);
+  await dragBy(K1,-40);
+  const afterSorts=await (await fetch(B+'/api/column-layout-master?target='+encodeURIComponent(target))).json();
+  rec('列幅を引いても並べ替えの設定が消えない',
+      !!((afterSorts.sorts||{})[sortKey]),JSON.stringify(afterSorts.sorts||{}));
+
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
 
   console.log('\n=== SUMMARY ===');

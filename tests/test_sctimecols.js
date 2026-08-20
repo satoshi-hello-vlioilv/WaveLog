@@ -150,6 +150,63 @@ async function cleanup(){
   const s2=await saved();
   rec('変えた幅が保存される',(s2.widths||{})['__time__']>=w0+40,JSON.stringify(s2.widths));
 
+  /* ---- 4b. 2回目・3回目の幅も掴んだ列だけが動く(§9.211 ①) ----
+     **実機で報告された不具合。**「1回目はスムーズだが2回目以降はコントロール
+     が効かない」。原因は`bindTimelineHeadTools`が関数の頭で
+     `WL.columnLayout.get()`の**結果を束縛**していたこと——`save()`/`stage()`は
+     キャッシュを新しいオブジェクトへ差し替えるので、1回保存した時点でその写しは
+     切り離され、2回目以降は**1回目より前の幅**を土台に保存し直していた。
+     **1回だけ引く網（上の4）はこれを素通りする。** */
+  const wOf=k=>page.evaluate(kk=>{const c=document.querySelector(`.sc-row-head [data-col="${kk}"]`);
+    return c?Math.round(c.getBoundingClientRect().width):0},k);
+  const dragOf=async(k,dx)=>{
+   /* **掴む前に表を組み直す**。現場ではこれが常に起きている——共有の見張り
+      (§9.188)が10秒ごとに、結合の解決(§9.193)が描画のあとに表を作り直すので、
+      2回目に掴む見出しは1回目とは**別の要素**になっている。組み直さずに
+      続けて引く網は、孤児から測る不具合(§9.197)も古い写しの束縛(§9.211 ①)も
+      素通りする（どちらも注入して54/54で通ることを確認済み）。 */
+   await page.evaluate(()=>WL.scheduleView.render());
+   await page.waitForTimeout(300);
+   const gg=await page.evaluate(kk=>{
+    const el=document.querySelector(`.sc-row-head [data-col="${kk}"] .col-resize`);
+    if(!el)return null;const r=el.getBoundingClientRect();
+    return{x:r.x+r.width/2,y:r.y+r.height/2}},k);
+   if(!gg)return false;
+   await page.mouse.move(gg.x,gg.y);await page.mouse.down();
+   await page.mouse.move(gg.x+dx,gg.y,{steps:8});
+   await page.mouse.up();
+   /* 保存が戻ってから次を引く——**戻る前に引くと、直っていなくても通る**。 */
+   await page.waitForTimeout(1200);
+   return true;
+  };
+  const t1=await wOf('__time__');
+  const ok2=await dragOf('__time__',50);
+  const t2=await wOf('__time__');
+  const ok3=ok2&&await dragOf('__time__',50);
+  const t3=await wOf('__time__');
+  rec('2回目の幅変更も掴んだぶんだけ動く（1回目より前の幅へ戻らない）',
+      ok2&&t2-t1>=35,`${t1}→${t2}`);
+  rec('3回目も続けて動く',ok3&&t3-t2>=35,`${t2}→${t3}`);
+  const sMulti=await saved();
+  rec('保存された幅が画面の幅と一致する（保存は一方通行）',
+      ok3&&Math.abs(((sMulti.widths||{})['__time__']||0)-t3)<=4,
+      JSON.stringify({保存:(sMulti.widths||{})['__time__'],画面:t3}));
+  /* 掴んでいない列は動かないこと（掴んだ列だけが伸縮する。§9.208 ⑦）。 */
+  const relW=await wOf('__rel__');
+  await dragOf('__time__',-40);
+  const relW2=await wOf('__rel__');
+  rec('掴んでいない列は動かない',Math.abs(relW-relW2)<=3,`${relW}→${relW2}`);
+  /* **触った幅は元へ戻してから次の節へ渡す**（§CLAUDE「前の実行の置き土産を
+     疑う」の同じ話がテストの中でも起きる。ここで広げたままにすると、
+     下の「空きは右」が別の幅で測ることになって落ちる）。 */
+  await page.evaluate(async w=>{
+   const tg=`timeline:${WL.scheduleView.equipment()}`;
+   const cur=WL.columnLayout.get(tg);
+   await WL.columnLayout.save(tg,{...cur,widths:{...(cur.widths||{}),__time__:w}});
+   WL.scheduleView.render();
+  },w1);
+  await page.waitForTimeout(600);
+
   // ---- 5-6. 右クリックのメニュー / 隠す
   await page.click('.sc-row-head [data-col="__shift__"]',{button:'right'});
   await page.waitForTimeout(400);

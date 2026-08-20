@@ -80,6 +80,19 @@ _WRITE_ALLOWED_MODES={
 # 共有スケジュールDBの排他制御(§4.2)には一切影響しない。
 _ENDPOINT_EXTRA_MODES={
  'schedule.plan_reorder':{'edit'},
+ # 編集セッション(§9.211 ②、利用者の指示「スケジュール編集者が1名になる
+ # まで、後から入った人は編集権を持たずREADONLY」)。現場段取り(edit)の
+ # 端末も**同じ設備を並べ替える**のに、セッションの取得口がscheduleモード
+ # 限定だったため、edit端末は編集権を取れず・在席にも出ず・2台で同時に
+ # 並べ替えられる状態だった(守るのは`with_write()`のロックだけ)。
+ # **取る・延ばす・返す・奪うの4つ**をeditへ開ける。取れるのは
+ # 「現場段取りの対象設備」に限られる(画面側`sessionApplicable()`が
+ # `scState.editable`を見る)ので、無関係な端末が掴むことはない。
+ # 一覧(GET /api/schedule/sessions)は読むだけなのでガードの対象外。
+ 'schedule.session_acquire':{'edit'},
+ 'schedule.session_heartbeat':{'edit'},
+ 'schedule.session_release':{'edit'},
+ 'schedule.session_take_over':{'edit'},
  'schedule.calendar_save':{'edit'},
  'schedule.stop_reason_register':{'edit'},
  'schedule.stop_reason_update':{'edit'},

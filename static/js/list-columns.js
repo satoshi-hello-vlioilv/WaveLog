@@ -1343,7 +1343,9 @@
    try{
     await WL.columnLayout.save(x.target,{order:x.body.order||[],widths:x.body.widths||{},
       hidden:x.body.hidden||[],names:x.body.names||{},formats:x.body.formats||{},
-      rules:x.body.rules||{},formulas:x.body.formulas||{},locks:x.body.locks||[]});
+      rules:x.body.rules||{},formulas:x.body.formulas||{},locks:x.body.locks||[],
+      /* **`sorts`を書き漏らさない**（§9.211 ①。全置換なので消える） */
+      sorts:x.body.sorts||{}});
     ok++;
    }catch(e){ng++;console.warn('列設定の書き込みに失敗',x.target,e)}
   }
@@ -1417,11 +1419,27 @@
    panelSrc.afterApply();
   }
  }
+ /* ---------- 外から保存されたぶんは巻き戻さない（§9.211 ①、利用者の指摘） --
+    このパネルは**モーダルではない浮きウィンドウ**なので、開いたまま
+    見出しの取っ手で列幅を引ける。引いた幅はその場でマスタへ保存されるのに、
+    パネルを「保存せずに閉じる」と`original`へ巻き戻り、**保存済みの幅だけが
+    画面から消える**（DBには入っているので、開き直すとまた出る）。利用者から
+    見れば「裏で読み込んで列幅を戻された」としか読めない。
+    保存が通った経路から**何を書いたか**を教えてもらい、控えにも反映する。
+    パネル自身の未保存の編集は控えに触らないので、§9.90の
+    「保存せずに閉じたら開いた時点へ戻す」はそのまま効く。 */
+ function noteSaved(t,patch){
+  if(!original||!target||t!==target||!patch||typeof patch!=='object')return;
+  Object.keys(patch).forEach(k=>{
+   if(!(k in original))return;
+   try{original[k]=JSON.parse(JSON.stringify(patch[k]))}catch(e){original[k]=patch[k]}
+  });
+ }
  function toggle(){
   const el=document.getElementById(PANEL_ID);
   if(el&&!el.hidden)close();else open();
  }
 
  window.WL=window.WL||{};
- WL.listColumns={open,close,toggle};
+ WL.listColumns={open,close,toggle,noteSaved};
 })();
