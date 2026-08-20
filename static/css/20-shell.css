@@ -162,6 +162,13 @@ main>header{gap:var(--space-4)}
 .hd-context-source{font-size:var(--fs-sm);color:#7b8e95;white-space:nowrap;
  overflow:hidden;text-overflow:ellipsis;max-width:26vw}
 .hd-freshness{font-size:var(--fs-sm);color:#8a9aa0;white-space:nowrap}
+/* 編集権の在席表示(§9.211 ③)。**タイトル帯の空きに置く**(利用者の指示)。
+   帯の1行目は状態チップ(.hd-status)と操作(.hd-actions)が36pxを持っている
+   ので、26pxのピルを足しても**行の高さは変わらない**——出たり消えたりしても
+   本文が跳ねない。`align-items:baseline`の器なので、ピルだけは中心で揃える。
+   素性(誰が)は長くなるので切り詰め、全文は`title`と`#scSessionBanner`が持つ。 */
+.hd-context .sc-who{align-self:center;font-size:var(--fs-sm)}
+.hd-context .sc-who .sc-who-holder{max-width:20em}
 .hd-status,.hd-actions{display:flex;align-items:center;gap:var(--space-2)}
 .hd-status{margin-left:auto}
 /* 状態チップ: キー(小)+値(太)の2段組。押せるものだけ枠が反応する。 */

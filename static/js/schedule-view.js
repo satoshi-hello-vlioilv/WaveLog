@@ -380,13 +380,17 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      <select class="sc-equipment-select" id="scEquipmentSelect" hidden></select>
      <span class="sc-equipment-fixed" id="scEquipmentFixed" hidden></span>
      <span class="sc-lock-badge" id="scLockBadge" hidden></span>
-     <!-- 編集権の在席表示(§9.211 ②、利用者の指示「だれが入っているか表示
-          (作業スケジュールのタイトル帯の空白エリアを利用してください)」)。
-          **編集セッションの持ち主はここ1箇所だけが言う**——同じことを
-          バナーにも書くと、読む側は「別のことかもしれない」と読み直す
-          （§CLAUDE 8）。書込ロック(#scLockBadge)とは別のもので、
-          あちらは「いま1回の書込を掴んでいる」ほんの一瞬の話。 -->
-     <span class="sc-who" id="scWho" hidden></span>
+     <!-- 編集権の在席表示(#scWho)は**ここには置かない**(§9.211 ③)。
+          置き場はヘッダーのタイトル帯(.hd-context / templates/index.html)
+          ——利用者の指示は「作業スケジュールのタイトル帯の空白エリアを
+          利用してください」で、操作列(#scHead)は別の指示「上部メニューバーは
+          1行で収まるように」(§9.199)が掛かっている場所。実測で操作列の
+          余りは**92pxしか無く**、150pxのチップを置いたため
+          **書込中の印(#scLockBadge)が出た瞬間だけ2行へ折り返し**、
+          表全体が38px跳ねていた（掴もうとした行が逃げる）。
+          ※この文はテンプレートリテラルの中なので**バッククォートを
+            書かないこと**——そこで文字列が閉じ、以降がJSとして解釈されて
+            画面が組み上がらなくなる（実際にやった）。 -->
     </div>
     <!-- ---------- 操作の並び(§9.199、利用者の指示「上部メニューバーは
          1行で収まるように」) ----------
@@ -1434,6 +1438,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      一瞬出る（「読めなかった」と「誰も居ない」を区別する`null`へ戻す）。 */
   scState.sessions=null;
   scLastBlocked=false;   // 次に開いたときは「書ける」から数え直す
+  /* 在席チップはヘッダー(タイトル帯)に居るので、**画面を出たら自分で消す**
+     (§9.211 ③)。パネルの中に居た頃はパネルごと隠れていたが、今は残る
+     ——一覧を見ているのに「編集中 自分」が出ていたら、何の話か分からない。 */
+  const who=document.getElementById('scWho');
+  if(who){who.hidden=true;who.innerHTML='';who.className='sc-who';who.title=''}
  }
  window.exitScheduleView=exitScheduleView;
 

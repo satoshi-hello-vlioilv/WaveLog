@@ -76,7 +76,11 @@ let b=null;
   return{見える:!el.hidden&&r.width>0,cls:el.className,
     文:(el.textContent||'').trim(),title:el.title||'',
     奪うボタン:!!el.querySelector('#scWhoTake'),
-    帯の中:!!document.getElementById('headerViewBar')?.contains(el),
+    帯の中:!!document.querySelector('.hd-context')?.contains(el),
+    操作列の中:!!document.getElementById('headerViewBar')?.contains(el),
+    操作列の行数:(()=>{const h=document.getElementById('scHead');if(!h)return null;
+      const r=h.getBoundingClientRect(),k=h.firstElementChild;
+      return k?Math.round(r.height/Math.max(1,k.getBoundingClientRect().height)):null})(),
     ロック:!!panel&&panel.classList.contains('sc-session-locked')};
  });
  const openSchedule=async()=>{
@@ -115,7 +119,40 @@ let b=null;
       mine.見える===true&&/編集中/.test(mine.文),JSON.stringify(mine));
   rec('「自分」と分かる書き方になっている（誰の権利かを推測させない）',
       /自分/.test(mine.文),mine.文);
-  rec('置き場はタイトル帯（ヘッダーの操作列）',mine.帯の中===true,String(mine.帯の中));
+  /* 置き場は**タイトル帯**（§9.211 ③、利用者の指示「作業スケジュールの
+     タイトル帯の空白エリアを利用してください」）。操作列(#scHead)には
+     別の指示「上部メニューバーは1行で収まるように」(§9.199)が掛かって
+     おり、実測で余りは92pxしか無い——150pxのチップを置いたため、
+     **書込中の印が出た瞬間だけ2行へ折り返して表全体が38px跳ねていた**。 */
+  rec('置き場はタイトル帯（画面名の隣の空き）',mine.帯の中===true,String(mine.帯の中));
+  rec('操作列には置かない（1行で収まらなくなる）',mine.操作列の中===false,String(mine.操作列の中));
+  /* **書込中の印と同時に出しても1行のまま**であること。ここが2行になると
+     表全体が1行ぶん跳ね、掴もうとした行が逃げる（実測38px）。
+     印の文字は**現場にありそうな長さ**で測る——この端末のログインIDは空で
+     「書込中: ?@vm」と短く、そのまま測ると入って当たり前になる。
+     **チップを操作列へ戻すと2行になること**まで見る（この網が効いている
+     ことの確認。片方だけだと、器が広い画面では何も確かめないまま通る）。 */
+  const oneLine=await page.evaluate(()=>{
+   const badge=document.getElementById('scLockBadge');
+   const head=document.getElementById('scHead');
+   const who=document.getElementById('scWho');
+   const left=document.querySelector('.sc-head-left');
+   if(!badge||!head||!who||!left)return null;
+   const hid=badge.hidden,html=badge.innerHTML;
+   badge.hidden=false;badge.textContent='書込中: yamada@SLIT-PC1';
+   const 帯へ置いたまま=Math.round(head.getBoundingClientRect().height);
+   /* 同じ条件で操作列へ戻してみる（すぐ戻す）。 */
+   const home=who.parentNode,next=who.nextSibling;
+   left.appendChild(who);
+   const 操作列へ戻すと=Math.round(head.getBoundingClientRect().height);
+   home.insertBefore(who,next);
+   badge.hidden=hid;badge.innerHTML=html;
+   return {帯へ置いたまま,操作列へ戻すと};
+  });
+  rec('書込中の印が出ても操作列は1行のまま（表が跳ねない）',
+      !!oneLine&&oneLine.帯へ置いたまま<=36,JSON.stringify(oneLine));
+  rec('この網は効いている（操作列へ戻すと2行になる）',
+      !!oneLine&&oneLine.操作列へ戻すと>oneLine.帯へ置いたまま,JSON.stringify(oneLine));
   rec('自分が持っているときは読み取り専用にしない',mine.ロック===false,String(mine.ロック));
   rec('自分が持っているときは奪うボタンを出さない（意味の無いボタンを置かない）',
       mine.奪うボタン===false,String(mine.奪うボタン));
