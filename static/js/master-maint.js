@@ -35,6 +35,42 @@
      かかるが、**どれも短い1行**なのでフォームは縦に伸びず、モーダルにする
      理由(一覧を圧迫する)が当てはまらない。設備の登録は他マスタの下ごしらえ
      として一番よく使うので、1画面で完結するほうが速い。 */
+  /* ---------- 操業データ（§9.215、利用者の指示） ----------
+     「項目自体をマスタ化し他の設備でも使えるように設備ごとに持たせ、変更
+      できるようにする、設定値も必要に応じてマスタ化して関連付け。各項目ごと、
+      入力方式や入力上限値、入力データの型を選べるようにする」。
+     項目と選択肢を**別のマスタ**にしてあるのは、同じ選択肢（リング色など）を
+     複数の項目が参照するため。結び付けは**名前**で行う（IDだと別PCで連番が
+     食い違う。§9.171）。 */
+  {group:'equip',key:'opItem',label:'操業データ項目',icon:'操',endpoint:'/api/operation-item-master',hasDelete:true,
+   fields:[{k:'equipment',label:'対象設備',type:'equipment-multi-text',required:true,key:true,
+            tagHint:'この項目をどの設備の測定画面へ出すかです。複数選べます。「すべての設備」を選ぶと、これから増える設備でも自動的に出ます。'},
+           {k:'group',label:'群',hint:'測定画面でひとまとまりに並べる見出しです（例: 巻取り／スリット）。空欄なら「その他」。'},
+           {k:'name',label:'項目名',required:true,key:true,
+            hint:'測定画面に出る名前で、記録の鍵にもなります。**変えると、それまでの記録は前の名前のまま残ります。**'},
+           {k:'type',label:'型',type:'select',options:['整数','正の整数','数値','正の数','選択','文字'],
+            hint:'整数=小数点なし／正の◯=マイナス不可／選択=下の「選択肢」から選ぶ／文字=自由記述。'},
+           {k:'decimals',label:'小数桁',type:'number',min:0,max:4,
+            hint:'小数点以下の桁数（型が「数値」「正の数」のときだけ効きます）。空欄なら1桁。'},
+           {k:'min',label:'最小値',type:'number',hint:'これより小さい値は入力時に戻します。空欄なら下限なし。'},
+           {k:'max',label:'最大値',type:'number',hint:'これより大きい値は入力時に戻します。空欄なら上限なし。'},
+           {k:'choice',label:'選択肢',type:'master-combo',source:{endpoint:'/api/operation-choice-master',valueKey:'name'},
+            hint:'型が「選択」のとき、操業データ選択肢マスタのどのまとまりから選ばせるかです。名前で結び付けます。'},
+           {k:'unit',label:'単位',hint:'欄の右へ小さく添えます（mm など）。'},
+           {k:'order',label:'表示順',type:'number',min:0,step:10,
+            hint:'小さいほど上に出ます。空欄で保存すると今の並びのままです。'}],
+   cols:[{k:'equipment',label:'対象設備',grow:2,format:'equipmentTarget'},{k:'group',label:'群',grow:1},
+         {k:'name',label:'項目名',grow:2},{k:'type',label:'型',grow:1},
+         {k:'choice',label:'選択肢',grow:1},{k:'order',label:'表示順',grow:1}],
+   hint:'測定画面①準備の「操業データ」に出る入力欄です。1行＝1つの欄で、設備ごとに変えられます（「すべての設備」を選べば設備が増えても登録し直す必要はありません）。**値そのものは測定データの中に入る**ので、このマスタには記録は残りません。項目名を変えると、それまでに記録した値は前の名前のまま残ります（消えはしませんが、新しい名前の欄は空で始まります）。'},
+  {group:'equip',key:'opChoice',label:'操業データ選択肢',icon:'択',endpoint:'/api/operation-choice-master',hasDelete:true,
+   fields:[{k:'name',label:'選択肢名',required:true,key:true,
+            hint:'まとまりの名前です。操業データ項目マスタの「選択肢」からこの名前で参照します（例: リング色）。'},
+           {k:'value',label:'値',required:true,key:true,hint:'実際に選ばせる1つの値です（例: 茶）。'},
+           {k:'order',label:'表示順',type:'number',min:0,step:10,
+            hint:'小さいほど先に出ます。空欄で保存すると今の並びのままです。'}],
+   cols:[{k:'name',label:'選択肢名',grow:2},{k:'value',label:'値',grow:2},{k:'order',label:'表示順',grow:1}],
+   hint:'操業データの「選択」型の項目で選ばせる値です。1行＝1つの値で、同じ選択肢名の行がまとまって1つの選択肢になります。**同じまとまりを複数の項目が参照できます**（大径リング色と小径リング色はどちらも「リング色」を見ています）。ここで値を足すと、参照しているすべての項目の選択肢に増えます。'},
   {group:'equip',key:'equipment',label:'設備',icon:'設',endpoint:'/api/equipment-master',hasDelete:true,
    editorModal:false,
    fields:[{k:'name',label:'設備名',required:true,key:true},
@@ -278,7 +314,9 @@
   if(comboCache.has(source.endpoint))return comboCache.get(source.endpoint);
   try{
    const r=await api(source.endpoint);
-   const list=(r.items||[]).map(x=>String(x[source.valueKey||'name']??'').trim()).filter(Boolean);
+   /* **同じ名前を2つ並べない。** 選択肢マスタのように1行＝1値のマスタでは
+      同じ名前が値の数だけ返るので、そのまま並べると候補が重複する。 */
+   const list=[...new Set((r.items||[]).map(x=>String(x[source.valueKey||'name']??'').trim()).filter(Boolean))];
    comboCache.set(source.endpoint,list);return list;
   }catch(e){comboCache.set(source.endpoint,[]);return []}
  }

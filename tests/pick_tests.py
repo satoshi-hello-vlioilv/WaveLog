@@ -40,7 +40,7 @@ G['一覧'] = ['test_nav', 'test_navdyn', 'test_listcache', 'test_listperf', 'te
              'test_cols', 'test_hdctx', 'test_dsnav', 'test_dsrestart', 'test_listmodal', 'test_filter',
              'test_audit', 'test_sub', 'test_uisize', 'test_ttlcache']
 # 操業データ(§9.215)は測定画面のカード。マスタ管理からも触るので「マスタ」群。
-G['操業データ'] = ['test_opdata']
+G['操業データ'] = ['test_opdata', 'test_maint', 'test_crudroutes']
 G['列'] = ['test_collayout', 'test_colformat', 'test_colrule', 'test_colsort', 'test_lcpanel',
            'test_colscache', 'test_colsripple', 'test_colsave', 'test_displayrule', 'test_colmenu',
            'test_colpreset', 'test_formula', 'test_reccols', 'test_rpblocks',
@@ -171,6 +171,8 @@ RULES = [
                                'test_scsync', 'test_datasource')),
     ('backend/repositories/master_repo.py', g('マスタ', '列', 'test_workable')),
     ('backend/repositories/operation_repo.py', g('操業データ', 'test_msteps', 'test_mcore')),
+    # 操業データの入力欄（§9.215）。測定画面①の中身なので測定一式へ。
+    ('static/js/measure-opdata.js', g('操業データ', '測定', '見た目')),
     ('backend/repositories/schedule_repo.py', g('スケジュール', 'test_stopeq', 'test_workdate')),
     ('backend/schedule_calc.py', g('スケジュール', 'test_eqstd', 'test_workdate')),
     ('backend/sort_order.py', g('列', 'test_tablequery')),

@@ -2217,14 +2217,14 @@
   /* 条の設計カードの中の編集面（§9.144）。**分割の材料が無いロットでは
      出さない**——並べ替える条が無いのに図と空の一覧を置くと、その器ぶん
      「まだ何かある」と読ませてしまう。
-     **器は`#splitDetailCard`**（§9.154）。§9.145で条の設計を2枚へ割ったとき
+     **器は`#splitCard`の中の折りたたみ**（§9.215で移設。元は§9.154の`#splitDetailCard`）。§9.145で条の設計を2枚へ割ったとき
      `.split-layout`は内訳カードへ移ったが、ここは`#splitCard .split-layout`を
      探したままだった。**常にnullなので、この関数は一度も効いていない**
      （例外も出ないので、分割無しのロットで空の一覧が出続けることに誰も
      気づけない）。あわせて**条の並びの図と操作**も同じ条件で畳む
      ——並べ替える条が無いのに掴める帯を出しても何も起きない。 */
   function showSplitEditor(on){
-    ['#splitDetailCard .split-layout','#splitCard .split-visual'].forEach(sel=>{
+    ['#splitCard .split-layout','#splitCard .split-visual'].forEach(sel=>{
       const el=document.querySelector(sel);
       if(el&&el.hidden!==!on)el.hidden=!on;
     });
@@ -2268,7 +2268,7 @@
           +`分割無し — このロットの条は ${n}本（横割数）です。図で条の番号と屑幅の寄りを確かめられます。</div>`
           +scrapWidthLineHtml();
         updateSplitTabBadge('none');
-        document.querySelectorAll('#splitDetailCard .split-layout')
+        document.querySelectorAll('#splitCard .split-layout')
           .forEach(x=>{if(x.hidden!==true)x.hidden=true});
         renderSelfSplitVisual();
         updateScrapWidthDisplay();
