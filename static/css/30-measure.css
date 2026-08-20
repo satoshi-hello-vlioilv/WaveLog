@@ -1126,10 +1126,41 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .analysis{background:#fff;border:1px solid var(--line);border-radius:var(--radius-md);overflow:hidden}
 .analysis h3{margin:0;padding:var(--pad-row);background:var(--header-bar-bg);color:var(--header-bar-fg);border-bottom:1px solid var(--line)}
 .quality h3{margin:0;padding:var(--pad-row);background:var(--header-bar-bg);color:var(--header-bar-fg);border:1px solid var(--line)}
-.analysis table{width:100%;border-collapse:collapse}
-.analysis th,.analysis td{padding:5px 3px;border-bottom:1px solid var(--line);text-align:right}
-.analysis th:first-child,.analysis td:first-child{text-align:left}
-.analysis tbody tr:last-child th,.analysis tbody tr:last-child td{border-bottom:0}
+/* ---------- ③測定データ分析（§9.214、利用者の指示） ----------
+   表を解体し、**このロットの板厚・板幅のMIN/MAX**を主役にする。
+   枠は「まとまり」だけに使い（§CLAUDE 10）、値そのものに入力欄風の枠を
+   付けない。数字は等幅（`tabular-nums`）——桁が揃わないと大小が読めない。 */
+.an-body{display:flex;flex-direction:column;gap:var(--space-2);padding:var(--pad-card);
+ font-size:var(--fs);min-height:0;overflow:auto}
+.an-main{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-2)}
+.an-card{display:flex;flex-direction:column;gap:var(--gap-tight);
+ padding:var(--pad-row);border:1px solid var(--line);border-radius:var(--radius-sm);
+ background:var(--surface-2)}
+.an-card.is-empty{background:var(--surface);color:var(--muted)}
+.an-card-head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-1)}
+.an-card-head b{font-size:var(--fs);font-weight:800;color:var(--ink)}
+.an-card-head small{font-size:var(--fs-badge);color:var(--muted);white-space:nowrap}
+.an-pair{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-1)}
+.an-slot{display:flex;flex-direction:column;align-items:flex-start;min-width:0}
+.an-slot i{font-style:normal;font-size:var(--fs-badge);font-weight:700;color:var(--muted);letter-spacing:.04em}
+.an-slot b{font-size:var(--fs-lg);font-weight:800;color:var(--ink);
+ font-variant-numeric:tabular-nums;line-height:1.15}
+.an-slot em{font-style:normal;font-size:var(--fs-badge);color:var(--ink-3)}
+.an-span{font-size:var(--fs-sm);color:var(--ink-3)}
+.an-none{font-size:var(--fs-sm);color:var(--muted)}
+.an-sub-head{display:flex;align-items:baseline;gap:var(--space-1);flex-wrap:wrap;
+ font-size:var(--fs-sm);font-weight:800;color:var(--ink-2)}
+.an-sub-head small{font-size:var(--fs-badge);font-weight:600;color:var(--muted)}
+.an-sub-list,.an-lot-list{list-style:none;margin:var(--gap-tight) 0 0;padding:0;
+ display:flex;flex-direction:column;gap:var(--gap-hair)}
+/* **ラベル列は固定幅**（§CLAUDE 9）。`auto`だと値の左端が行ごとにずれる。 */
+.an-sub-list li,.an-lot-list li{display:grid;grid-template-columns:var(--w-sm) 1fr max-content;
+ align-items:baseline;gap:var(--space-1);
+ padding:2px 0;border-bottom:1px solid var(--line-soft);font-size:var(--fs-sm)}
+.an-sub-list li:last-child,.an-lot-list li:last-child{border-bottom:0}
+.an-name{color:var(--ink-2);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.an-val{color:var(--ink);font-variant-numeric:tabular-nums}
+.an-n{color:var(--muted);font-size:var(--fs-badge);white-space:nowrap}
 .split-pane{overflow:auto}
 .debug-pane{height:250px;overflow:auto;padding:var(--pad-card);background:#fff;border:1px solid var(--line);border-radius:var(--radius-md)}
 .debug-pane pre{white-space:pre-wrap;font-size:var(--fs-micro)}
