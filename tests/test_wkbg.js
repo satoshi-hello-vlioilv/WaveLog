@@ -16,9 +16,18 @@ let b=null;
  // 仕掛の取得をわざと遅らせ、「可否の取得を待たずに予定が出るか」を見る。
  // 索引は仕掛を500件ずつ辿る(§9.57)ので、遅らせるのは**最初の1回だけ**に
  // する(全ページを遅らせると、確かめたい「後から埋まる」まで到達しない)。
+ //
+ // **見分けの手掛かりが今も存在するかを確かめること**(§9.200)。ここは
+ // 以前`include_hidden`が付いているかで見分けていたが、§9.165でその引数は
+ // 廃止され、**どの問い合わせにも付かなくなっていた**——つまり遅延が一度も
+ // 効いておらず、「材料が揃う前は?」は**たまたま間に合っていただけ**で、
+ // 通しの実行で実際に落ちた(is-ok 30件/is-ng 11件)。
+ // いまの手掛かりは可否索引のページ送り(page_size=500・search=空)。
+ const WORKABLE_PAGE_SIZE=500;   // schedule-view.js の同名の定数と合わせる
  let holdTable=true,held=0;
  await page.route('**/api/table?*',async r=>{
-  if(holdTable&&held===0&&r.request().url().includes('SIKALOTNOW')&&r.request().url().includes('include_hidden')){
+  const u=r.request().url();
+  if(holdTable&&held===0&&u.includes('SIKALOTNOW')&&u.includes('page_size='+WORKABLE_PAGE_SIZE)){
    held++;
    await new Promise(x=>setTimeout(x,6000));
   }
@@ -37,6 +46,11 @@ let b=null;
  await page.waitForSelector('.sc-row-line',{timeout:20000});
  const shownAt=Date.now()-t0;
  rec('可否の取得(6秒遅延)を待たずに予定が表示される',shownAt<5000,shownAt+'ms');
+ /* **遅らせる問い合わせを実際に捕まえたか**を先に見る（§9.200）。
+    捕まえていなければ以降の「材料が揃う前は?」は何も確かめていない
+    ——手掛かり(URL)が変わったときに黙って空振りしないための歯止め。 */
+ rec('遅らせる問い合わせを実際に捕まえた（この網が空振りしていないこと）',
+     held>0,`捕まえた${held}件`);
 
  // この時点では判定材料がまだ無いので「?」のはず
  const early=await page.$$eval('.sc-row-line .sc-row-workable',ns=>{
