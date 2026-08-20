@@ -1238,7 +1238,12 @@ def operation_item_list():
   eq=str(request.args.get('equipment') or '').strip()
   def fn(c):
    items=op.items_for_equipment(c,eq) if eq else op.item_rows(c,True)
-   return {'items':items,'types':list(op.ITEM_TYPES),'choiceNames':op.choice_names(c)}
+   return {'items':items,'types':list(op.ITEM_TYPES),'choiceNames':op.choice_names(c),
+           # 画面が「どこへ出すか」「何列ぶんか」を選ばせるための一覧(§9.216 ②)。
+           # **画面へ書き写さない**——増減したときに2箇所を直すことになる。
+           'places':list(op.PLACES),'spans':list(op.SPANS),'gridCols':op.GRID_COLS,
+           'builtinKeys':list(op.BUILTIN_KEYS),
+           'choiceUsage':op.choice_usage(c)}
   d=_op_read(fn)
   return jsonify(ok=True,equipment=eq,**d)
  except Exception as e:return jsonify(error=f'操業データ項目マスタの読込に失敗しました: {e}'),500
@@ -1259,7 +1264,9 @@ def _operation_item_save(x):
                          choice=x.get('choice') or '',unit=x.get('unit') or '',
                          required=bool(x.get('required')),note=x.get('note') or '',
                          enabled=(True if x.get('enabled') is None else bool(x.get('enabled'))),
-                         item_id=(int(x['id']) if x.get('id') not in (None,'') else None))
+                         item_id=(int(x['id']) if x.get('id') not in (None,'') else None),
+                         place=x.get('place'),span=x.get('span'),
+                         fold=bool(x.get('fold')),show_when=x.get('showWhen'))
   return jsonify(ok=True,id=_op_read(fn),message='操業データの項目を保存しました。')
  except ValueError as e:return jsonify(error=str(e)),400
  except Exception as e:return jsonify(error=f'操業データ項目マスタの保存に失敗しました: {e}'),500
@@ -1273,6 +1280,34 @@ def operation_item_update():
  x=request.get_json(force=True) or {}
  if x.get('id') in (None,''):return jsonify(error='更新対象IDがありません。'),400
  return _operation_item_save(x)
+
+@bp.post('/api/operation-item-master/layout')
+def operation_item_layout():
+ """並び・群・列幅・置き場・必須・出す/出さないを**まとめて1回で**書く
+    (§9.216 ②)。D&Dで組み替える画面なので、1行ずつ送ると往復が増え、
+    途中で切れると並びが半分だけ変わった状態が残る。"""
+ from ..repositories import operation_repo as op
+ x=request.get_json(force=True) or {}
+ rows=x.get('items')
+ if not isinstance(rows,list):return jsonify(error='items（並び）がありません。'),400
+ try:
+  n=_op_read(lambda c:op.item_layout_save(c,request_user_id(x),rows))
+  return jsonify(ok=True,saved=n,message='操業データの並びを保存しました。')
+ except Exception as e:return jsonify(error=f'操業データの並びの保存に失敗しました: {e}'),500
+
+@bp.post('/api/operation-item-master/group')
+def operation_item_group():
+ """群のふるまい（畳む・開く条件）だけをまとめて書く(§9.216 ④)。
+    `layout`で代用すると、直前に1件だけ更新した内容を古い写しで上書きする。"""
+ from ..repositories import operation_repo as op
+ x=request.get_json(force=True) or {}
+ g=str(x.get('group') or '').strip()
+ if not g:return jsonify(error='群がありません。'),400
+ try:
+  n=_op_read(lambda c:op.group_flags_save(c,request_user_id(x),x.get('place'),g,
+                                          bool(x.get('fold')),x.get('showWhen')))
+  return jsonify(ok=True,saved=n,message='群の設定を保存しました。')
+ except Exception as e:return jsonify(error=f'群の設定の保存に失敗しました: {e}'),500
 
 @bp.post('/api/operation-item-master/delete')
 def operation_item_delete():
@@ -1289,7 +1324,15 @@ def operation_choice_list():
  try:
   from ..repositories import operation_repo as op
   def fn(c):
-   return {'items':op.choice_rows(c,True),'names':op.choice_names(c)}
+   usage=op.choice_usage(c)
+   rows=op.choice_rows(c,True)
+   # **どの項目がこの選択肢を使っているか**(§9.216 ④)。使い道の見えない
+   # 選択肢は消してよいのか判断できず、消すと項目側が黙って空になる。
+   # 一覧の1列として出せるよう、行にも畳んで入れる（画面で組み立てると
+   # 「どこに出すか」を2箇所で決めることになる）。
+   for r in rows:
+    r['usedBy']='、'.join(usage.get(r['name'],[]))
+   return {'items':rows,'names':op.choice_names(c),'usage':usage}
   return jsonify(ok=True,**_op_read(fn))
  except Exception as e:return jsonify(error=f'操業データ選択肢マスタの読込に失敗しました: {e}'),500
 
@@ -1326,6 +1369,61 @@ def operation_choice_delete():
   return jsonify(ok=True,deleted=n,message='操業データの選択肢を削除しました。')
  except Exception as e:return jsonify(error=f'操業データ選択肢マスタの削除に失敗しました: {e}'),500
 
+# ========================================================================
+# 帳票ブロックマスタ(§9.217)。「ラベルと値の出どころを並べただけの塊」を
+# 現場が自分で足せるようにする。中身の作り方が仕事になっている塊
+# （測定表・条の図・異常位置判定）はコードの側のまま。
+# ========================================================================
+@bp.get('/api/report-block-master')
+def report_block_list():
+ try:
+  from ..repositories import report_block_repo as rb
+  eq=str(request.args.get('equipment') or '').strip()
+  def fn(c):
+   items=rb.blocks_for_equipment(c,eq) if eq else rb.block_rows(c,True)
+   return {'items':items,'spans':list(rb.SPANS),'rows':list(rb.ROWS),
+           # **出どころの見本**。ここに無い道も書けるので、選択肢で塞がない。
+           'fields':[{'label':a,'path':b} for a,b in rb.FIELD_CATALOG]}
+  return jsonify(ok=True,equipment=eq,**_op_read(fn))
+ except Exception as e:return jsonify(error=f'帳票ブロックマスタの読込に失敗しました: {e}'),500
+
+def _report_block_save(x):
+ from ..repositories import report_block_repo as rb
+ uid=request_user_id(x)
+ name=str(x.get('name') or '').strip()
+ if not name:return jsonify(error='ブロック名を入力してください。'),400
+ iv=lambda v:(None if v in (None,'') else int(v))
+ try:
+  def fn(c):
+   return rb.block_upsert(c,uid,equipment=x.get('equipment') or '*',name=name,
+                          order=iv(x.get('order')),span=x.get('span'),rows=x.get('rows'),
+                          content=x.get('content') or '',note=x.get('note') or '',
+                          enabled=(True if x.get('enabled') is None else bool(x.get('enabled'))),
+                          block_id=(int(x['id']) if x.get('id') not in (None,'') else None))
+  return jsonify(ok=True,id=_op_read(fn),message='帳票ブロックを保存しました。')
+ except ValueError as e:return jsonify(error=str(e)),400
+ except Exception as e:return jsonify(error=f'帳票ブロックマスタの保存に失敗しました: {e}'),500
+
+@bp.post('/api/report-block-master')
+def report_block_register():
+ return _report_block_save(request.get_json(force=True) or {})
+
+@bp.post('/api/report-block-master/update')
+def report_block_update():
+ x=request.get_json(force=True) or {}
+ if x.get('id') in (None,''):return jsonify(error='更新対象IDがありません。'),400
+ return _report_block_save(x)
+
+@bp.post('/api/report-block-master/delete')
+def report_block_delete():
+ from ..repositories import report_block_repo as rb
+ x=request.get_json(force=True) or {}
+ if x.get('id') in (None,''):return jsonify(error='削除対象IDがありません。'),400
+ try:
+  n=_op_read(lambda c:rb.block_delete(c,x['id'],request_user_id(x)))
+  return jsonify(ok=True,deleted=n,message='帳票ブロックを削除しました。')
+ except Exception as e:return jsonify(error=f'帳票ブロックマスタの削除に失敗しました: {e}'),500
+
 @bp.get('/api/operation-form')
 def operation_form():
  """測定画面が開いた瞬間に要る「その設備の入力欄一式」。**選択肢まで解決して
@@ -1334,7 +1432,8 @@ def operation_form():
  try:
   from ..repositories import operation_repo as op
   eq=str(request.args.get('equipment') or '').strip()
-  return jsonify(ok=True,equipment=eq,items=_op_read(lambda c:op.form_for_equipment(c,eq)))
+  return jsonify(ok=True,equipment=eq,**_op_read(lambda c:op.form_for_equipment(c,eq)))
  except Exception as e:
   return jsonify(ok=True,equipment=str(request.args.get('equipment') or ''),items=[],
+                 builtinOff=[],gridCols=op.GRID_COLS,
                  error=f'操業データの項目を読めませんでした: {e}')

@@ -244,48 +244,15 @@
    .forEach(p=>setHidden(p,false));
  }
 
- /* 「いつもと同じ設定」の畳み込み（§9.140、§9.125へ戻す）。骨子の①
-    「準備の入力」は`1×2`しかなく、5カテゴリ＋作業時間を全部開くと実測
-    113px溢れて**作業時間が切れる**。畳むかわりに、**畳んだままでも値は
-    読める**ようにする——見出しに現在値を並べる（隠したものが何かを書かずに
-    隠すと、設定の存在ごと忘れられる）。
-    **既定値との差を件数で言うことはしない**——コイル止めの既定はロット由来
-    （`innerTape`）で定数では持てず（§9.125）、思い込みの既定で「N件違う」と
-    出すほうが値そのものを並べるより不正確になる。 */
- const USUAL_IDS=['unwind','widthOrder','widthDirection','burr','coilStop'];
- function usualSummary(){
-  return USUAL_IDS.map(id=>{
-   const el=sel(id);if(!el)return '';
-   const v=(el.selectedOptions&&el.selectedOptions[0]?el.selectedOptions[0].text:el.value)||'';
-   return String(v).trim();
-  }).filter(v=>v&&v!=='-').join('・');
- }
- function refreshUsualFold(){
-  const btn=document.getElementById('usualFold'),sum=document.getElementById('usualSum');
-  const box=document.querySelector('.selectors');
-  if(!btn||!box)return;
-  const open=btn.getAttribute('aria-expanded')==='true';
-  /* **同じ値なら触らない**（§9.131。値が同じでも変更記録が積まれ、見張りと
-     合わさると回り続ける）。 */
-  if(box.classList.contains('usual-off')===open)box.classList.toggle('usual-off',!open);
-  if(sum){const t=usualSummary();if(sum.textContent!==t)sum.textContent=t;}
- }
- function bindUsualFold(){
-  const btn=document.getElementById('usualFold');
-  if(!btn||btn.dataset.bound)return;
-  btn.dataset.bound='1';
-  btn.addEventListener('click',()=>{
-   btn.setAttribute('aria-expanded',btn.getAttribute('aria-expanded')==='true'?'false':'true');
-   refreshUsualFold();
-   try{fitControlWidths()}catch(e){}
-  });
-  /* 値が変わったら要約も変える。**`.value`への代入ではDOMが変わらない**ので
-     （§9.130）、段の描き直し側でも呼ぶ。 */
-  USUAL_IDS.forEach(id=>{const el=sel(id);if(el)el.addEventListener('change',refreshUsualFold)});
- }
+ /* 「いつもと同じ設定」の畳み込みは**操業データが持つ**（§9.216 ②）。
+    以前はここに`USUAL_IDS=['unwind','widthOrder',...]`と**項目名を直に
+    並べて**おり、群も畳む対象も設備で変えられなかった。いまは
+    `操業データ項目マスタ`の`[群折りたたみ]`が決め、`measure-opdata.js`の
+    `layout()`が見出しごと作る（畳んだままでも値は読める＝要約に現在値、
+    という約束はそのまま持っている）。**同じ処理を2箇所に持たない。** */
  function paint(){
   const el=shell();if(!el)return;
-  try{openInfoWall();openRecordWall();bindUsualFold();refreshUsualFold()}catch(e){}
+  try{openInfoWall();openRecordWall()}catch(e){}
   const states=stepStates();
   STEP_KEYS.forEach(k=>{
    const btn=document.querySelector(`.mstep[data-mstep="${k}"]`);
@@ -393,7 +360,10 @@
   ['who',   ['inspector','crewSize']],
   ['shape', ['verticalCount','horizontalCount']],
   ['gear',  ['innerDiameter','spool','thicknessGauge','widthGauge']],
-  ['usual', ['unwind','widthOrder','widthDirection','burr','coilStop']],
+  /* 条入力順・方向は②の入力内容カードへ移した（§9.216 ③）ので、
+     「いつもと同じ設定」とは並ばない——別の群として測る。 */
+  ['usual', ['unwind','burr','coilStop']],
+  ['strip', ['widthOrder','widthDirection']],
   /* オペレータと丈位置は**別の群**。どちらも`size`付きの一覧だが、
      一緒に並ぶことが無い（オペレータは①、丈位置は②）ので、そろえる意味が
      無い。まとめると人名の長さ（実データで171人）が丈位置にも効いてしまい、
@@ -410,8 +380,8 @@
     署名は群ごとに持つ（1つでも変わったら群ごと測り直す）。 */
  const fitSig=new WeakMap();
  const groupSig={};
- function fitGroup(key,ids){
-  const els=ids.map(sel).filter(x=>x&&!x.disabled);
+ function fitEls(key,els){
+  els=(els||[]).filter(x=>x&&!x.disabled);
   if(!els.length)return;
   const sig=els.map(el=>(el.options?el.options.length+':'+(el.options[0]||{}).text
      +':'+(el.options[el.options.length-1]||{}).text:el.type+':'+el.max)
@@ -421,6 +391,23 @@
   let em=0;
   for(const el of els)em=Math.max(em,snapEm(needWidth(el),parseFloat(getComputedStyle(el).fontSize)));
   for(const el of els)el.style.maxWidth=em+'em';
+ }
+ function fitGroup(key,ids){fitEls(key,ids.map(sel))}
+ /* 操業データの自由項目は**マスタが決めるので名前を書けない**（§9.216 ②）。
+    群（`data-opgroup`）でまとめて、群の中は最大へそろえる（§9.131）。
+    **測らないと`alignColumnWidths()`が列の最大へ引き上げる**——CSSの
+    受け皿(`--w-md`=154px)しか持たない欄が同じ列に並ぶと、1〜2桁の数値まで
+    154pxになる（実測でそうなった）。 */
+ function fitOpFields(){
+  const map=new Map();
+  document.querySelectorAll('.selectors>label[data-opfield]').forEach(l=>{
+   const el=l.querySelector('select,input');
+   if(!el)return;
+   const k='op:'+(l.dataset.opplace||'')+':'+(l.dataset.opgroup||'');
+   if(!map.has(k))map.set(k,[]);
+   map.get(k).push(el);
+  });
+  map.forEach((els,k)=>fitEls(k,els));
  }
  /* ---------- 幅は「同じ列に並ぶもの」でそろえる（§9.142） ----------
     §9.131で群（誰が測るか／使う機材…）の中をそろえたが、**群は意味の
@@ -451,7 +438,15 @@
     const cs=getComputedStyle(el);
     const fs=parseFloat(cs.fontSize)||14;
     const em=cs.maxWidth==='none'?Infinity:parseFloat(cs.maxWidth)/fs;
-    const key=Math.round(b.left);
+    /* **そろえるのは「同じ群の同じ列」**（§9.216 ②で§9.142を絞った）。
+       以前はカードの中の列だけを見ていたが、操業データのカードが横3マスに
+       広がって1トラック200pxになると、**オペレータ（171人＝11em）と同じ列に
+       いるだけで1〜2桁の縦割数まで154pxになる**（実測。以前は器が124pxしか
+       無く、トラックが上限を兼ねて偶然収まっていた）。
+       群は意味のまとまりであると同時に、**マスタが決める並びでは行の
+       まとまりでもある**ので、群の中でそろえれば左端も右端もそろう。 */
+    const g=el.closest('[data-opgroup]');
+    const key=(g?g.dataset.opgroup:'')+'|'+Math.round(b.left);
     const col=cols.get(key)||{em:0,els:[]};
     col.em=Math.max(col.em,em);col.els.push(el);
     cols.set(key,col);
@@ -465,6 +460,7 @@
  }
  function fitControlWidths(){
   W_GROUPS.forEach(([k,ids])=>fitGroup(k,ids));
+  fitOpFields();
   READ_TEXT.forEach(([id,max])=>fitTextBox(id,max));
   alignColumnWidths();
  }
@@ -586,7 +582,14 @@
   go('1');
  }
 
- WL.measureSteps={go,current:()=>current,refresh:paint,reset};
+ /* 幅の測り直しは**外からも呼べるようにする**（§9.216 ②）。操業データの
+    割り付け（`WL.opData.layout()`）が入力欄を作り替えたあと、群を畳んだ
+    あとに測り直す必要がある——素の`fitControlWidths()`はこのIIFEの中の
+    関数なので、外から呼ぶと`ReferenceError`になって**黙って測られない**
+    （try/catchで握り潰されるので気づけない。§CLAUDE「公開漏れは黙って
+    素通しになる」）。 */
+ WL.measureSteps={go,current:()=>current,refresh:paint,reset,
+                  fitWidths:()=>{try{fitControlWidths()}catch(e){console.warn('幅の測り直しに失敗',e)}}};
 
  /* ---------- 入力内容・丈位置のキーボード操作は持たない（§9.160） ----------
     以前は `→ ←`（項目）・`PageUp/PageDown`（丈位置）・`F2`（次の未測定へ）を

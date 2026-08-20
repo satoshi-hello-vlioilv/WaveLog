@@ -464,7 +464,30 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    カードの題は teal/15px/800）。題名は`<label>`直下のテキストノードなので、
    器そのものへ題の意匠を与える——中の部品は自分で色と大きさを宣言している
    ので巻き込まれない。 */
+/* ②の入力内容カードは**2段**（§9.216 ③、利用者の指示「条入力順や方向に
+   ついては実は準備に無関係のものなので、測定の入力内容のカード内に移動し、
+   折りたたむ」）。上が項目の一覧、下がマスタで`置き場=入力内容`にした欄。
+   **DOMは動かさない**（§9.122／§9.125）——`.selectors`の直下のまま、
+   ②でだけ見せる。 */
+.measure-shell.mstep-2 .center-pane>.selectors{
+  grid-template-columns:repeat(var(--op-cols,6),minmax(0,1fr));
+  grid-template-rows:minmax(0,1fr) min-content;
+  gap:var(--gap-inline) var(--gap-section);
+}
+.measure-shell.mstep-2 .selectors>[data-opplace="入力内容"]{display:flex}
+.measure-shell.mstep-2 .selectors>.prep-head[data-opplace="入力内容"]{
+  display:flex;align-items:baseline;gap:var(--space-2);grid-column:1/-1;
+  min-height:var(--ctl-h-xs);height:auto;margin:var(--space-1) 0 0;
+  padding:var(--space-1) 0 0;border:0;border-top:1px dashed var(--line-soft);
+  border-radius:0;background:transparent;box-shadow:none;text-align:left;
+}
+.measure-shell.mstep-2 .selectors>label[data-opplace="入力内容"]{
+  flex-direction:column;gap:2px;min-width:0;
+}
+.measure-shell.mstep-2 .selectors>.op-off,
+.measure-shell.mstep-2 .selectors>.op-folded{display:none}
 .measure-shell.mstep-2 #measureTypeGroup{
+  grid-column:1/-1;grid-row:1;
   display:grid;grid-template-rows:auto minmax(0,1fr);height:100%;
   gap:var(--space-1);
   color:var(--teal);font-size:var(--fs-title);font-weight:800;letter-spacing:.02em;
@@ -524,26 +547,28 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
      で規格（3クラス）に勝ってしまい、①だけ11pxのまま残る（実測でそうなった）。 */
   text-align:left;
 }
-.measure-shell.mstep-1 .selectors>.prep-head[data-prep="who"]{
-  margin-top:0;padding-top:0;border-top:0;
-}
-.measure-shell.mstep-1 .selectors>.prep-head[data-prep="who"]{margin-top:0}
+/* 先頭の見出しの上には線を引かない（まとまりの**始まり**の線なので、
+   カードの上端に重ねると枠に見える）。**どれが先頭かはJSが印を付ける**
+   ——並びは`order`で決まるのでDOMの順ではないし、群はマスタが決めるので
+   `[data-prep="who"]`のように名指しできない（§9.216 ②）。 */
+.selectors>.prep-head[data-opfirst]{margin-top:0;padding-top:0;border-top:0}
 /* 「入力内容」「丈位置」は**②で使う道具**なので①には出さない。1回決める
    だけのものと、測りながら何度も切り替えるものを同じ場所に並べない。 */
 .measure-shell.mstep-1 .selectors>[data-prep="step2"]{display:none}
-/* ---------- ①の割り付けは**1つずつ明示する**（§9.131／§9.137） ----------
-   自動配置は**空いたところから詰める**ため、背の高い欄の隣に穴が空き、
-   群の境目と列の境目がずれる。ここは項目が固定の帳票なので、行と列を
-   明示するのがいちばん素直。
-   **列は2つ**（§9.137）。骨子で準備の入力は`1×2`＝1マス幅（実測437px）に
-   なったので、以前の5列（1列162px）は入らない——作業時間の欄だけで
-   最低325px要り、実測で横に100px溢れていた（`test_fit`が検出）。
-   **列は3つ**——利用者の指示「オペレータ・検査員・作業人数を横に並べて
-   横方向の情報密度を上げ、その3列構成のまま縦にカテゴリごとに積む」。
-   2列だと同じ群が2行に割れ、縦がそのぶん伸びる。
-   縦は器（651px）を超えたらペインがスクロールする（横は溢れさせない）。 */
+/* ---------- ①の割り付けは**マスタが決める**（§9.216 ②） ----------
+   以前はここに`[data-f="operator"]{grid-column:1;grid-row:2}`のような行が
+   14本並んでいた。**設備が変われば置きたいものが変わる**（利用者の指示）
+   ので、位置をCSSに書くと設備を1つ足すたびにここを直すことになる。
+   いまは`measure-opdata.js`が`操業データ項目マスタ`の並びから
+   `order`と`grid-column: span N`を当てる。CSSが持つのは**器の規格**だけ。
+
+   **列は6つ**（§9.135「細かくするのはカードの内側だけ」）。項目は
+   1/2/3/6列のどれかを占め、既定の2列＝1行に3つ＝以前の3列組と同じ密度。
+   見出し(`.prep-head`)は`1/-1`で1行を占めるので、**群の境目と行の境目は
+   自動配置でもずれない**（§9.131で「位置は明示で決める」とした理由は
+   「背の高い欄の隣に穴が空く」ことだったが、見出しが行を切るなら起きない）。 */
 .measure-shell.mstep-1 .selectors{
-  grid-template-columns:repeat(3,minmax(0,1fr));
+  grid-template-columns:repeat(var(--op-cols,6),minmax(0,1fr));
   grid-auto-rows:min-content;align-content:start;
   gap:var(--gap-inline) var(--gap-section);
 }
@@ -551,44 +576,23 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    既定で`min-width:auto`＝中身の最小幅まで縮まないため、`<label>`の中に
    1つでも長い文（内径の出どころの注記）があると、**その列だけ`<select>`が
    広がって隣の列へ重なる**（実測143px対124px、重なり7px）。 */
-.measure-shell.mstep-1 .selectors>label{grid-column:auto;min-width:0}
+.measure-shell.mstep-1 .selectors>label{grid-column:span 2;min-width:0}
 .measure-shell.mstep-1 .selectors>label>*{max-width:100%}
-/* **上から下が、実際にする順番と同じ**になるように置く(§9.133)。
-   ①誰が測るか → ②測定表の形 → ③使う機材 → ④いつもと同じ設定 と降り、
-   **作業時間は最後**——準備の必須入力なので同じ面に置き、探させない。
-   オペレータは**プルダウン**(リストボックスは器の中で5,394pxスクロール
-   していた)。**折りたたみは廃止**——入力させる項目は全部見せる。
-   **カテゴリの違うものを横に並べない**ので、余ったマスは空けたままにする。 */
-.measure-shell.mstep-1 .selectors>.prep-head{grid-column:1/-1}
-.measure-shell.mstep-1 .selectors>.prep-head[data-prep="who"]{grid-row:1}
-.measure-shell.mstep-1 .selectors>[data-f="operator"]{grid-column:1;grid-row:2}
-.measure-shell.mstep-1 .selectors>[data-f="inspector"]{grid-column:2;grid-row:2}
-.measure-shell.mstep-1 .selectors>[data-f="crewSize"]{grid-column:3;grid-row:2}
-.measure-shell.mstep-1 .selectors>.prep-head[data-prep="shape"]{grid-row:3}
-.measure-shell.mstep-1 .selectors>[data-f="verticalCount"]{grid-column:1;grid-row:4}
-.measure-shell.mstep-1 .selectors>[data-f="horizontalCount"]{grid-column:2;grid-row:4}
-.measure-shell.mstep-1 .selectors>.prep-head[data-prep="gear"]{grid-row:5}
-.measure-shell.mstep-1 .selectors>[data-f="innerDiameter"]{grid-column:1;grid-row:6}
-.measure-shell.mstep-1 .selectors>[data-f="spool"]{grid-column:2;grid-row:6}
-.measure-shell.mstep-1 .selectors>[data-f="thicknessGauge"]{grid-column:3;grid-row:6}
-.measure-shell.mstep-1 .selectors>[data-f="widthGauge"]{grid-column:1;grid-row:7}
-.measure-shell.mstep-1 .selectors>.prep-head[data-prep="usual"]{grid-row:8}
-.measure-shell.mstep-1 .selectors>[data-f="unwind"]{grid-column:1;grid-row:9}
-.measure-shell.mstep-1 .selectors>[data-f="widthOrder"]{grid-column:2;grid-row:9}
-.measure-shell.mstep-1 .selectors>[data-f="widthDirection"]{grid-column:3;grid-row:9}
-.measure-shell.mstep-1 .selectors>[data-f="burr"]{grid-column:1;grid-row:10}
-.measure-shell.mstep-1 .selectors>[data-f="coilStop"]{grid-column:2;grid-row:10}
-/* **「いつもと同じ設定」は畳む**（§9.125へ戻す）。骨子の①「準備の入力」は
-   `1×2`＝422×631pxで、5カテゴリ＋作業時間を全部開くと**実測113px溢れて
-   作業時間が切れていた**。§9.133で「入力させる項目は全部見せる」として
-   折りたたみを廃止したが、骨子の面積とは両立しない。**畳んだままでも値は
-   読める**こと（見出しに現在値を並べる）が条件で、それを満たせば
-   「見せる」の趣旨は守れる。 */
-.measure-shell.mstep-1 .selectors.usual-off>[data-f="unwind"],
-.measure-shell.mstep-1 .selectors.usual-off>[data-f="widthOrder"],
-.measure-shell.mstep-1 .selectors.usual-off>[data-f="widthDirection"],
-.measure-shell.mstep-1 .selectors.usual-off>[data-f="burr"],
-.measure-shell.mstep-1 .selectors.usual-off>[data-f="coilStop"]{display:none}
+/* **入れ物の大きさは中身の長さから決め、余りは空白にする**（§CLAUDE 11）。
+   カードが横3マスに広がったぶん1トラックは以前より広いので、上限が無いと
+   `alignColumnWidths()`（§9.142）が「列の最大」＝器いっぱいへそろえてしまう
+   ——1〜2桁の縦割数が430pxになる（§9.130で潰した形の再発）。
+   **実測して規格へ丸めるのは`fitControlWidths()`**（自由項目は
+   `fitOpFields()`が群ごとに測る）で、ここは**測る前の1瞬と、測れなかった
+   ものの受け皿**。器より広くしない意味で`--w-md`を上限に置く。 */
+.measure-shell.mstep-1 .selectors>label select,
+.measure-shell.mstep-1 .selectors>label input{max-width:var(--w-md)}
+/* マスタで「出さない」にした欄・畳んだ群の中の欄は消す。**押せるのに
+   何も起きない状態を残さない**（§CLAUDE 4）。 */
+.selectors>.op-off,.selectors>.op-folded{display:none}
+/* `置き場=入力内容`の欄は②のカードのもの。①には出さない（1回決めるだけの
+   ものと、測りながら切り替えるものを同じ場所に並べない・§9.125）。 */
+.measure-shell.mstep-1 .selectors>[data-opplace="入力内容"]{display:none}
 /* 見出しは押せるので、押せると分かる見た目にする（枠は付けない——
    まとまりの枠と混ざる。§9.129）。 */
 .prep-fold{
@@ -1148,8 +1152,21 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .an-slot em{font-style:normal;font-size:var(--fs-badge);color:var(--ink-3)}
 .an-span{font-size:var(--fs-sm);color:var(--ink-3)}
 .an-none{font-size:var(--fs-sm);color:var(--muted)}
+/* そのほかの測定項目は**畳んでおく**（§9.216 ⑥、利用者の指示「重要度は
+   低めなので折りたたみOK」）。押せる見出しなので、押せると分かる形にする。 */
 .an-sub-head{display:flex;align-items:baseline;gap:var(--space-1);flex-wrap:wrap;
- font-size:var(--fs-sm);font-weight:800;color:var(--ink-2)}
+ font-size:var(--fs-sm);font-weight:800;color:var(--ink-2);cursor:pointer}
+.an-sub-head::-webkit-details-marker{display:none}
+.an-sub-head::before{
+  content:'';flex:0 0 auto;align-self:center;width:0;height:0;
+  border-style:solid;border-width:4px 0 4px 6px;
+  border-color:transparent transparent transparent currentColor;
+  transition:transform .12s;
+}
+.an-sub[open]>.an-sub-head::before{transform:rotate(90deg)}
+/* 測っていない行は**消さずに淡くする**（§CLAUDE 4。「測っていない」のか
+   「項目が無い」のかを推測させない）。 */
+.an-sub-list li.is-empty .an-val,.an-sub-list li.is-empty .an-n{color:var(--muted)}
 .an-sub-head small{font-size:var(--fs-badge);font-weight:600;color:var(--muted)}
 .an-sub-list,.an-lot-list{list-style:none;margin:var(--gap-tight) 0 0;padding:0;
  display:flex;flex-direction:column;gap:var(--gap-hair)}
@@ -2095,57 +2112,35 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
    受信欄(#deviceInput)とは無関係の場所なので、DOMを動かしても転送は止まらない
    （§9.122が守っているのは受信欄だけ）。 */
 .measure-shell.mstep-1 #splitCard{grid-column:2/span 3;grid-row:1}
-/* ---------- 操業データ（§9.215、利用者の指示） ----------
-   カードは下段いっぱい（横3マス×縦2マス）。中は**左が測定の準備・右が
-   操業の記録**の2つに分ける——準備の3列組（§9.133の「上から下が、実際に
-   する順番と同じ」）はそのまま残し、空いた2列ぶんを新しい入力欄が使う。
-   **視覚導線と作業導線を一致させる**（§CLAUDE 14）: 誰が測るか→測定表の形
-   →使う機材、と降りたら、右で操業の値を記録する。 */
+/* ---------- 操業データ（§9.215／§9.216 ②、利用者の指示） ----------
+   カードは下段いっぱい（横3マス×縦2マス）＝**これが描画可能なエリア**。
+   中は`.selectors`1枚で、**6列のグリッド**（§9.135「細かくするのはカードの
+   内側だけ」）。どの項目をどの群に、何列ぶんで、どの順で置くかは
+   `操業データ項目マスタ`が決め、`measure-opdata.js`が`order`と
+   `grid-column: span N`で当てる——**CSSに項目名を書かない**（書くと設備を
+   1つ足すたびにここを直すことになる）。 */
 .measure-shell.mstep-1 .center-pane{
-  /* **準備の側は今までと同じ幅のまま**にする（外側の1マスぶん）。広げると
-     §9.142の「同じ列は同じ幅」が働いて1〜2桁の数値まで列の最大へ伸び、
-     縦割数・横割数が145pxになった（要る幅は54px。`test_msteps`が検出）。
-     器が上限を兼ねている作りなので、器を戻すのがいちばん素直。 */
-  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);
-  grid-template-rows:min-content minmax(0,1fr);
-  column-gap:var(--gap-section);align-content:start;min-height:0;
+  display:grid;grid-template-columns:minmax(0,1fr);
+  grid-template-rows:min-content minmax(0,1fr) min-content;
+  row-gap:var(--gap-inline);align-content:start;min-height:0;
 }
-.measure-shell.mstep-1 .center-pane>.panel-title{grid-column:1/-1;grid-row:1}
-.measure-shell.mstep-1 .center-pane>.selectors{grid-column:1;grid-row:2;min-height:0;overflow:auto}
-.measure-shell.mstep-1 .center-pane>.op-data{grid-column:2;grid-row:2;min-height:0;overflow:auto}
-/* ②③では操業データを出さない（§9.215、利用者の選択「①準備だけ」）
-   ——②は測定表に集中する段、③は「記録した値」が読み取り専用で出す。 */
-.measure-shell:not(.mstep-1) .op-data{display:none}
-.op-data{display:flex;flex-direction:column;gap:var(--space-2);font-size:var(--fs)}
-.op-empty{margin:0;padding:var(--pad-row);color:var(--muted);font-size:var(--fs-sm)}
-.op-group{display:flex;flex-direction:column;gap:var(--gap-tight)}
-/* 群の見出しは**準備の`.prep-head`と同じ役割**なので同じ見え方にそろえる
-   （1枚のカードの中で見出しが2種類あると、まとまりの単位が読めなくなる）。 */
-.op-group-head{
- display:flex;align-items:baseline;gap:var(--space-1);
- font-size:var(--fs-sm);font-weight:800;color:var(--nav);
- border-bottom:1px solid var(--line-soft);padding-bottom:2px;
+.measure-shell.mstep-1 .center-pane>.panel-title{grid-row:1}
+.measure-shell.mstep-1 .center-pane>.selectors{grid-row:2;min-height:0;overflow:auto}
+.measure-shell.mstep-1 .center-pane>.op-note{grid-row:3}
+/* 足りない設定・飛ばした項目は**文字で言う**（§CLAUDE 4）。 */
+.op-note{margin:0;padding:var(--pad-row) 0 0;color:var(--muted);font-size:var(--fs-sm)}
+.op-note[hidden]{display:none}
+/* 自由項目の器は**組み込みの入力欄と同じ`<label>`**（§9.216 ⑤）。文字の
+   大きさ・高さ・余白は①のCSSがそのまま当たるので、カードの中で書式が
+   割れない（以前は`.op-*`という別の器を別のカードへ置いており、名前・値・
+   注記がそれぞれ違う大きさになっていた）。ここで宣言するのは、組み込みには
+   無いもの——単位・必須の印・直した理由——だけ。 */
+.opf-unit{font-style:normal;font-size:var(--fs-badge);color:var(--ink-3);margin-left:var(--gap-tight)}
+.opf-req{
+  margin-left:var(--gap-tight);padding:0 4px;border-radius:var(--radius-xs);
+  background:var(--required-bg);color:var(--required);
+  font-size:var(--fs-micro);font-weight:800;
 }
-.op-group-count{font-size:var(--fs-badge);font-weight:600;color:var(--muted)}
-/* **入れ物の大きさは中身の長さから決める**（§9.130）。数値は桁が決まって
-   いるので`em`で頭打ちにし、余りは空白にする。3列は準備側と同じ密度。 */
-.op-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
- gap:var(--gap-inline) var(--space-3)}
-.opf{display:flex;flex-direction:column;gap:2px;min-width:0}
-.opf-name{font-size:var(--fs-sm);color:var(--ink-2);font-weight:700;
- overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.opf-ctl{display:flex;align-items:center;gap:var(--gap-tight);min-width:0}
-/* **幅は規格から選び、群の中でそろえる**（§9.131）。中身なりの幅をそのまま
-   使うと1画面に何種類もの幅が生まれ、隣どうしの右端がばらばらになる
-   （実測10種類で`test_msteps`が捕まえた）。数値は`--w-sm`、選択欄は
-   **右端に▼の場所が要る**ので`--w-md`（§9.206。文字幅ぴったりだと切れる）。 */
-.opf-ctl input{width:var(--w-sm);min-width:0;max-width:100%;height:var(--ctl-h-sm);
- font-size:var(--fs-sm)}
-.opf-ctl select{width:var(--w-md);min-width:0;max-width:100%;height:var(--ctl-h-sm);
- font-size:var(--fs-sm)}
-.opf-unit{font-style:normal;font-size:var(--fs-badge);color:var(--ink-3)}
-.opf-hint{font-size:var(--fs-badge);color:var(--muted)}
-/* 直した理由・足りない設定は**文字で言う**（§CLAUDE 3・4）。 */
 .opf-note{font-size:var(--fs-badge);color:var(--warn-fg);font-weight:700}
 .opf-note[hidden]{display:none}
 .opf-warn{font-size:var(--fs-badge);color:var(--danger);font-weight:700}

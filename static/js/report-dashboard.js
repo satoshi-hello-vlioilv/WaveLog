@@ -46,6 +46,10 @@
   const panel=$id('reportPanel');if(panel)panel.hidden=true;
  }
  WL.registerView({key:'report',bodyClass:'rp-mode',header:['測定帳票',''],exit:exitReportView});
+ /* 自作の塊の写しを捨てる口（§9.217）。マスタ管理で足した・直した直後に
+    呼ぶ——**「あれば使う」で呼ぶこと**（読み込み順に依存させない）。 */
+ window.WL=window.WL||{};
+ WL.reportBlocks={forget:()=>{rpUserBlocks=[];rpUserBlocksFor=null}};
 
  function ensurePanel(){
   let panel=$id('reportPanel');if(panel)return panel;
@@ -107,6 +111,10 @@
       <button type="button" id="rpArrangeCancel" class="rp-foot-btn">やめる</button>
       <button type="button" id="rpArrangeSave" class="rp-foot-btn rp-foot-btn--primary">この配置を保存</button>
      </div>
+     <!-- 出していない塊の置き場（§9.217）。**紙の外**に置く——紙の中へ
+          入れると刷り上がりに混ざる。掴んで紙へ落とすと出て、紙の塊を
+          ここへ落とすと外れる。 -->
+     <div class="rp-palette" id="rpPalette" hidden></div>
      <div class="rp-scroll" id="rpScroll">
       <div class="rp-page-box" id="rpPageBox">
        <div class="rp-report rp-page" id="reportContent"><div class="rp-empty">左の一覧からロットを選ぶと、帳票プレビューがここに表示されます。</div></div>
@@ -355,7 +363,9 @@
   };
   window.addEventListener('afterprint',cleanup);
   // 描画が反映されるのを待ってから印刷ダイアログを開く(同期的に呼ぶと白紙になる)。
-  requestAnimationFrame(()=>requestAnimationFrame(()=>window.print()));
+  // **行の割り付けもここで当てる**(§9.217)——測ってからでないと、跨ぎの
+  // 効いていない紙が刷られる。
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{rpFitAll();window.print()}));
  }
 
  function reportSection(title,rows,cols){
@@ -688,7 +698,7 @@
   /* **中身が無くても枠として意味がある塊は、既定の高さを持つ**（§9.174）。
      ラベルを貼る場所は「何も書いていないこと」が中身なので、自動高さに
      任せると1行ぶんに潰れて役に立たない（実機で指摘された）。 */
-  {k:'ラベル貼付スペース',span:3,h:112,
+  {k:'ラベル貼付スペース',span:3,h:112,rows:5,
    html:()=>`<div class="rp-label-area" aria-hidden="true"><span class="rp-label-caption">ラベル貼付スペース</span></div>`},
   {k:'基本情報',span:6,html:x=>{const b=x.basic||{};
    return reportSection('基本情報',[['ロット番号',b.lotNo],['検査番号',b.inspectionNo],['鋳造番号',b.castingNo],['オーダー番号',b.orderNo],['引当番号',b.allocationNo],['用途コード',b.purposeCode],['用途名',b.purposeName],['取引先',b.customer],['納入先',b.delivery]])}},
@@ -718,7 +728,45 @@
    return reportSection('作業時間',[['開始時刻',formatWorkTime(w.startAt)],['終了時刻',formatWorkTime(w.endAt)],['実働時間',dur]])}},
   {k:'登録状態',span:6,html:x=>reportSection('登録状態',[['状態',statusLabel(x.status)],['更新日時',fmtDT(x.updatedAt)],['NG回数',x.settings?.ngCount||0]])},
  ];
- const RP_BLOCK_BY_KEY=new Map(RP_BLOCKS.map(b=>[b.k,b]));
+ /* ---------- 塊はマスタでも足せる（§9.217、利用者の指示） ----------
+    「内部データについても各項目ごと設計できるようにする」。中身の作り方が
+    仕事になっている塊（測定表・条の図・異常位置判定）はコードの側のままで、
+    **「ラベルと値の出どころを並べただけの塊」はマスタで作れる**ようにした。
+    描く側は区別しない——`RP_BLOCKS`と同じ形へ包んでから混ぜる。 */
+ let rpUserBlocks=[],rpUserBlocksFor=null;
+ function rpAllBlocks(){return RP_BLOCKS.concat(rpUserBlocks)}
+ function rpBlockOf(k){return rpAllBlocks().find(b=>b.k===k)||null}
+ /* 測定レコードの中の道をたどる（`basic.lotNo` / `settings.opData.運転方式`）。
+    **見つからなければ空**——値の無い項目を「-」で埋めるのは`reportSection`の
+    仕事なので、ここでは無いことをそのまま返す。 */
+ function rpValueAt(x,path){
+  let v=x;
+  for(const part of String(path||'').split('.')){
+   if(v==null||typeof v!=='object')return '';
+   v=v[part];
+  }
+  if(v==null)return '';
+  if(typeof v==='object')return '';
+  const t=String(v);
+  /* ISOの日時はそのまま出すと読めない（末尾Z）。他は素のまま。 */
+  return /^\d{4}-\d{2}-\d{2}T/.test(t)?fmtDT(t):t;
+ }
+ function rpUserBlockDef(b){
+  const fields=b.fields||[];
+  return {k:b.k||b.name,span:b.span||6,rows:b.rows||0,user:true,
+   html:x=>fields.length?reportSection(b.name,fields.map(f=>[f.label,rpValueAt(x,f.path)])):''};
+ }
+ /* その設備の自作ブロックを読む。**読めなくても帳票は出す**（fail-open）。 */
+ async function rpLoadUserBlocks(equipment){
+  const eq=String(equipment||'').trim();
+  if(rpUserBlocksFor===eq)return rpUserBlocks;
+  try{
+   const r=await api('/api/report-block-master?equipment='+encodeURIComponent(eq));
+   rpUserBlocks=(r.items||[]).map(rpUserBlockDef);
+  }catch(e){rpUserBlocks=[]}
+  rpUserBlocksFor=eq;
+  return rpUserBlocks;
+ }
  /* 「このロットに中身があるか」の判定は**元の場所から動かさない**。
     保存済みレコードは旧名`板厚/板幅`を持つ（§9.138で分けた）ので**両方**を
     見る——落とすと過去の帳票からその節が黙って消える。 */
@@ -739,8 +787,8 @@
     `listColumnKeys`と同じ作法。項目が増えても設定が壊れない）。 */
  function rpBlockKeys(){
   const l=WL.columnLayout.get(rpTarget()),seen=new Set(),out=[];
-  (l.order||[]).forEach(k=>{if(RP_BLOCK_BY_KEY.has(k)&&!seen.has(k)){seen.add(k);out.push(k)}});
-  RP_BLOCKS.forEach(b=>{if(!seen.has(b.k)){seen.add(b.k);out.push(b.k)}});
+  (l.order||[]).forEach(k=>{if(rpBlockOf(k)&&!seen.has(k)){seen.add(k);out.push(k)}});
+  rpAllBlocks().forEach(b=>{if(!seen.has(b.k)){seen.add(b.k);out.push(b.k)}});
   return out;
  }
  /* **一度も保存していないうちの既定**（§9.162と同じ約束）。列レイアウトマスタの
@@ -749,7 +797,15 @@
  function rpInitialHidden(){return RP_MEAS_GROUPS.map(gr=>rpMeasSoloKey(gr.g))}
  function rpHiddenSet(){
   const l=WL.columnLayout.get(rpTarget());
-  return new Set((l.order||[]).length?(l.hidden||[]):rpInitialHidden());
+  const set=new Set((l.order||[]).length?(l.hidden||[]):rpInitialHidden());
+  /* **自作の塊は、並びに載るまで紙に出さない**（§9.217）——マスタへ足した
+     瞬間に全員の紙が1枚増えるのは行き過ぎ。組み換えの「出していない塊」から
+     落として初めて出る。判定は「保存済みの並びに載っているか」（§9.197の
+     監査列・日付(太陽暦)と同じ約束）——`hidden`に書くと、利用者が一度でも
+     出したあとに「隠した」のか「まだ出していない」のかが区別できなくなる。 */
+  const known=new Set(l.order||[]);
+  rpUserBlocks.forEach(b=>{if(!known.has(b.k))set.add(b.k)});
+  return set;
  }
  /* ---------- 紙のマス数(§9.173) ----------
     利用者の指示は「使用するグリッドサイズを標準で設定したうえで、各帳票
@@ -790,7 +846,7 @@
   const v=Math.round(raw/RP_SPAN_UNIT);
   /* 保存値は**12マスのときの数**として持つ（マス数を変えても意味が変わらない
      ように、読むときに今のマス数へ割り付け直す）。 */
-  const base=(v>0?v:((RP_BLOCK_BY_KEY.get(k)||{}).span||RP_COLS));
+  const base=(v>0?v:((rpBlockOf(k)||{}).span||RP_COLS));
   return Math.max(1,Math.min(g,Math.round(base*g/RP_COLS)));
  }
  /* 保存する数は12マス基準へ戻す（上のコメント参照）。 */
@@ -804,12 +860,44 @@
  const RP_H_MIN=40,RP_H_MAX=900;
  const rpHeightKey=k=>`高さ:${k}`;
  const rpColWKey=(k,c)=>`列幅:${k}:${c}`;
- function rpDefaultHeight(k){return (RP_BLOCK_BY_KEY.get(k)||{}).h||0}
+ function rpDefaultHeight(k){return (rpBlockOf(k)||{}).h||0}
  /* 0＝中身なり（オートフィット）。**既定を持つ塊はその高さから始める**。 */
  function rpHeight(k){
   const raw=Math.round(Number(WL.columnLayout.width(rpTarget(),rpHeightKey(k)))||0);
   if(raw>=RP_H_MIN)return Math.min(RP_H_MAX,raw);
   return rpDefaultHeight(k);
+ }
+ /* ---------- 高さは「行数」で持つ（§9.217、利用者の指示） ----------
+    「縦方向にはブロックが干渉回避のため行単位でのレイヤーが設けてありますが、
+     下方向に余白がある場合は以降のレイヤーにも跨いで表示できるようにしたい。
+     そのためにブロックごとに既定の高さを設定してその既定の高さでブロック
+     高さを計算して配置させる必要があります。」
+
+    以前は`align-items:start`の暗黙の行だったので、**1つ背の高い塊がいると
+    その行ぜんぶがその高さになり**、隣に空白が残っていた。行の高さを
+    `RP_ROW_PX`で固定し、塊は`grid-row: span R`で何行ぶんかを占める形にすると、
+    背の低い塊が背の高い塊の隣へ回り込める（`grid-auto-flow:dense`）。
+
+    **既定の行数は中身から測る**（`rpFitRows`）。決め打ちにすると、ロットに
+    よって中身の量が違う塊（測定表・丈別データ）が必ずどちらかで崩れる。
+    利用者が決めた行数があればそちらが勝つ。
+    保存先は列レイアウトマスタの`widths`で、幅と同じく`×RP_SPAN_UNIT`
+    （§9.169の約束。pxとして40〜900へ丸められるため）。 */
+ const RP_ROW_PX=24;
+ const RP_ROWS=[2,3,4,6,8,12];
+ const RP_ROWS_MAX=15;                      /* 15×60=900（丸めの上限） */
+ const rpRowsKey=k=>`行数:${k}`;
+ const rpRowsStore=v=>Math.round(v*RP_SPAN_UNIT);
+ function rpRows(k){
+  const raw=Math.round(Number(WL.columnLayout.width(rpTarget(),rpRowsKey(k)))||0);
+  const v=Math.round(raw/RP_SPAN_UNIT);
+  if(v>0)return Math.min(RP_ROWS_MAX,v);
+  /* **旧いpxの高さ（§9.174）は行数へ読み替える。** 設定した人の意図
+     （このくらいの高さ）はそのまま残す——読み替えないと、行の仕組みへ
+     変えた瞬間に現場の設定が全部「中身なり」へ戻る。 */
+  const px=rpHeight(k);
+  if(px>0)return Math.max(1,Math.min(RP_ROWS_MAX,Math.ceil(px/RP_ROW_PX)));
+  return Math.min(RP_ROWS_MAX,(rpBlockOf(k)||{}).rows||0);   /* 0＝中身なり */
  }
  function rpColWidth(k,c){
   const raw=Math.round(Number(WL.columnLayout.width(rpTarget(),rpColWKey(k,c)))||0);
@@ -887,20 +975,24 @@
   const hidden=rpHiddenSet();
   const paper=arranging&&rpPaperView;      /* 組み換え中だが、紙のとおりに見る */
   const cells=rpBlockKeys().map(k=>{
-   const bl=RP_BLOCK_BY_KEY.get(k);if(!bl)return '';
+   const bl=rpBlockOf(k);if(!bl)return '';
    const off=hidden.has(k);
    if(off&&(!arranging||paper))return '';
    let body='';
    try{body=bl.html(x)||''}catch(e){body=''}   /* 1つ壊れても紙全体を落とさない */
    if(!body&&(!arranging||paper))return '';
-   const span=rpSpan(k),h=rpHeight(k);
+   const span=rpSpan(k),rows=rpRows(k);
+   /* 行数が決まっているものはここで割り当てる。0（中身なり）は描いてから
+      `rpFitRows()`が測って入れる（§9.217）。 */
    return `<div class="rp-block${off?' is-off':''}${body?'':' is-empty'}" data-rp-block="${esc(k)}"`
-    +` style="grid-column:span ${span}${h?`;min-height:${h}px`:''}"${(arranging&&!paper)?' draggable="true"':''}>`
+    +` style="grid-column:span ${span}${rows?`;grid-row:span ${rows};min-height:${rows*RP_ROW_PX}px`:''}"`
+    +`${(arranging&&!paper)?' draggable="true"':''}>`
     +((arranging&&!paper)?rpBlockBarHtml(k,span,off,!body):'')
     +(body||((arranging&&!paper)?'<p class="rp-block-empty">このロットにはこの内容がありません（紙には出ません）。</p>':''))
     +'</div>';
   }).join('');
-  return `<div class="rp-blocks${(arranging&&!paper)?' is-arranging':''}" style="--rp-grid:${rpGrid()}">${cells}</div>`;
+  return `<div class="rp-blocks${(arranging&&!paper)?' is-arranging':''}"`
+   +` style="--rp-grid:${rpGrid()};--rp-row:${RP_ROW_PX}px">${cells}</div>`;
  }
  /* 組み換え中だけ出る操作帯。**押した結果がその場の紙に出る**のがこの機能の
     値打ちなので、確認を挟まず即座に当てる（保存するまでは戻せる）。 */
@@ -908,13 +1000,13 @@
     分解した1枚はその群だけ。**落とせる単位＝列**を出すために使う（§9.173）。 */
  function rpBlockMeasGroups(k){
   if(k===RP_MEAS_COMBINED)return rpMeasGroupsFor('combined');
-  const bl=RP_BLOCK_BY_KEY.get(k);
+  const bl=rpBlockOf(k);
   return bl&&bl.meas?[RP_MEAS_GROUP_BY.get(bl.meas)].filter(Boolean):[];
  }
  function rpBlockBarHtml(k,span,off,empty){
   const grid=rpGrid(),choices=rpSpanChoices();
   const groups=rpBlockMeasGroups(k);
-  const bl=RP_BLOCK_BY_KEY.get(k)||{};
+  const bl=rpBlockOf(k)||{};
   /* 測定データだけの操作。**「まとめ↔分解」は1つのボタンで往復**させる
      ——2つ並べると、今どちらなのかを読む手間が増える。 */
   const split=k===RP_MEAS_COMBINED
@@ -971,7 +1063,31 @@
    el.textContent=`A4${rpOrientation==='landscape'?'横':'縦'}1枚に収まりません（約${mm(over)}mm超過・${Math.ceil(inner/avail)}枚になります）`;
   }
  }
+ /* **既定の高さは中身から測る**（§9.217）。
+    **測る前に前回の割り当てを外すこと**——付いたまま測ると、一度低くなった
+    塊は二度と高くならない（§9.210 ④で条の図のラベルが踏んだのと同じ罠）。
+    外すのと測るのは**別のまわし**にする（1つずつ外して測ると、その都度
+    グリッド全体が組み直されて遅い）。 */
+ function rpFitRows(host){
+  const grid=host.querySelector('.rp-blocks');if(!grid)return;
+  const gap=parseFloat(getComputedStyle(grid).rowGap)||0;
+  const auto=[];
+  grid.querySelectorAll('[data-rp-block]').forEach(el=>{
+   const k=el.dataset.rpBlock,fixed=rpRows(k);
+   if(fixed>0)return;                       // 利用者が決めた行数が勝つ
+   el.style.gridRowEnd='';el.style.minHeight='';
+   auto.push(el);
+  });
+  if(!auto.length)return;
+  const need=auto.map(el=>el.getBoundingClientRect().height);
+  auto.forEach((el,i)=>{
+   const rows=Math.max(1,Math.min(RP_ROWS_MAX*2,
+     Math.ceil((need[i]+gap)/(RP_ROW_PX+gap))));
+   el.style.gridRowEnd='span '+rows;
+  });
+ }
  function rpMarkOverflow(host){
+  rpFitRows(host);
   rpUpdatePageFit();
   host.querySelectorAll('[data-rp-block]').forEach(el=>{
    /* **表だけを見る。** 節そのものを測ると、枠線や余白の丸めで1〜2px
@@ -1024,12 +1140,12 @@
  function renderBlockEditor(){
   const k=rpEditKey,m=$id('rpBlockModal');if(!k||!m||m.hidden)return;
   const x=rpCurrentLot();if(!x)return;
-  const bl=RP_BLOCK_BY_KEY.get(k)||{};
+  const bl=rpBlockOf(k)||{};
   $id('rpBlockTitle').textContent=k;
   let body='';try{body=bl.html(x)||''}catch(e){body=''}
   $id('rpBlockPreview').innerHTML=body
    ||'<p class="rp-block-empty">このロットにはこの内容がありません。枠の大きさだけ決められます。</p>';
-  const grid=rpGrid(),span=rpSpan(k),h=rpHeight(k),def=rpDefaultHeight(k);
+  const grid=rpGrid(),span=rpSpan(k),rows=rpRows(k),def=(rpBlockOf(k)||{}).rows||0;
   const cols=rpBlockColumns(k);
   const canTurn=cols.length>0;
   $id('rpBlockForm').innerHTML=`
@@ -1039,11 +1155,9 @@
      <i class="rp-form-note">${span}/${grid}マス</i></span></div>
    <div class="rp-form-row"><span class="rp-form-label">高さ</span>
     <span class="rp-form-ctl">
-     <button type="button" data-e-h="-20">−</button>
-     <input type="number" id="rpEditH" value="${h||''}" placeholder="中身なり" min="${RP_H_MIN}" max="${RP_H_MAX}" step="4">
-     <button type="button" data-e-h="20">＋</button>
-     <button type="button" data-e-h="0">${def?`既定（${def}px）へ`:'中身なりに戻す'}</button>
-     <i class="rp-form-note">${def?'枠だけの塊なので、既定の高さを持っています。':'空にすると中身なりの高さになります。'}</i></span></div>
+     <button type="button" data-e-rows="0" class="${rows?'':'is-on'}">中身なり（自動）</button>
+     ${RP_ROWS.map(v=>`<button type="button" data-e-rows="${v}" class="${rows===v?'is-on':''}">${v}行</button>`).join('')}
+     <i class="rp-form-note">1行＝${RP_ROW_PX}px。行数を決めると<b>下の段へ跨いで</b>置けます（空いた横へ低い塊が回り込みます）。${def?`この塊の既定は${def}行です。`:'「中身なり」は描いてから測って決めます。'}</i></span></div>
    ${canTurn?`<div class="rp-form-row"><span class="rp-form-label">行と列</span>
     <span class="rp-form-ctl">
      <button type="button" data-e-turn="" class="${rpTransposed(k)?'':'is-on'}">縦＝条番号（今までの紙）</button>
@@ -1068,18 +1182,14 @@
   form.querySelectorAll('[data-e-span]').forEach(b=>b.onclick=()=>{
    rpStage({widths:{...w(),[k]:rpSpanStore(rpSpanFromGrid(Number(b.dataset.eSpan)))}});renderBlockEditor();
   });
-  form.querySelectorAll('[data-e-h]').forEach(b=>b.onclick=()=>{
-   const d=Number(b.dataset.eH),cur=rpHeight(k),wid=w();
-   if(d===0)delete wid[rpHeightKey(k)];
-   else wid[rpHeightKey(k)]=Math.max(RP_H_MIN,Math.min(RP_H_MAX,(cur||RP_H_MIN)+d));
+  form.querySelectorAll('[data-e-rows]').forEach(b=>b.onclick=()=>{
+   const v=Number(b.dataset.eRows),wid=w();
+   /* 旧いpxの高さは**捨てる**（§9.217）。両方残すと「どちらが効いて
+      いるのか」が決まらない——行数を触った時点でそちらが正。 */
+   delete wid[rpHeightKey(k)];
+   if(v>0)wid[rpRowsKey(k)]=rpRowsStore(v);else delete wid[rpRowsKey(k)];
    rpStage({widths:wid});renderBlockEditor();
   });
-  const hi=$id('rpEditH');
-  if(hi)hi.onchange=()=>{
-   const v=Math.round(Number(hi.value)||0),wid=w();
-   if(v<RP_H_MIN)delete wid[rpHeightKey(k)];else wid[rpHeightKey(k)]=Math.min(RP_H_MAX,v);
-   rpStage({widths:wid});renderBlockEditor();
-  };
   /* 揃いの出し方も`formats`。**既定は行ごと消す**——空文字を保存すると
      「空という設定」になり、既定を変えたときに追随しない（§9.198）。 */
   form.querySelectorAll('[data-e-pmode]').forEach(b=>b.onclick=()=>{
@@ -1109,12 +1219,48 @@
  /* ---- 組み換えモード -------------------------------------------------
     **保存せずに当てる**（列の設定パネルと同じ作り。§9.90）。触った結果が
     そのまま紙に出るのが分かりやすく、「やめる」で開いた時点へ必ず戻せる。 */
- let rpArranging=false,rpDragKey=null;
+ let rpArranging=false,rpDragKey=null,rpDragFrom=null;
+ /* **落ちる場所を実物大で見せる**（§9.217、利用者の指示「ゴーストが出て
+    配置可能な部分がわかりやすいように」）。線1本だと「どこへ何マスぶん
+    入るのか」が読めないので、掴んでいる塊と同じ幅・高さの枠をその位置へ
+    実際に挿し込む——グリッドが自分で場所を空けるので、**そのまま置いたら
+    どうなるか**がそのまま見える。 */
+ function rpGhostEl(){
+  let g=document.getElementById('rpGhost');
+  if(!g){g=document.createElement('div');g.id='rpGhost';g.className='rp-ghost'}
+  return g;
+ }
+ function rpShowGhost(grid,ref,after){
+  if(!grid||!rpDragKey)return;
+  const g=rpGhostEl(),k=rpDragKey;
+  g.style.gridColumn='span '+rpSpan(k);
+  g.style.gridRow='span '+(rpRows(k)||2);
+  g.textContent=`ここに「${k}」`;
+  if(ref){if(after)ref.after(g);else ref.before(g)}else grid.appendChild(g);
+ }
+ function rpEndDrag(){
+  rpDragKey=null;rpDragFrom=null;
+  document.getElementById('rpGhost')?.remove();
+  document.querySelectorAll('.rp-block.is-dragging,.rp-palette-item.is-dragging')
+   .forEach(x=>x.classList.remove('is-dragging'));
+  document.querySelectorAll('.rp-blocks').forEach(x=>x.classList.remove('is-dropping'));
+  const pal=$id('rpPalette');if(pal)pal.classList.remove('is-target');
+ }
  function rpCurrentLot(){return rpState.items.find(i=>i.id===rpState.selectedId)||null}
  function rpRepaint(){
   const x=rpCurrentLot();if(!x)return;
   $id('reportContent').innerHTML=reportHtml(x,rpArranging);
   if(rpArranging)bindArrangeHandlers();
+  /* **描き直すたびに行を測り直す**（§9.217）。`innerHTML`で作り直すと前の
+     割り当ては消えるので、ここを忘れると「最初の1回だけ効く」——設定を
+     読み終えたあとの描き直し（`rpLoadLayoutFor`）が必ず通るので、忘れると
+     **実質いつも効かない**（実際にそうなった）。 */
+  rpAfterPaint();
+ }
+ /* 描いたあとに1回だけ測る。**2フレーム待つ**——1フレームでは`innerHTML`の
+    レイアウトが確定しておらず、高さを読み違える。 */
+ function rpAfterPaint(){
+  requestAnimationFrame(()=>requestAnimationFrame(rpFitAll));
  }
  function rpLayoutNow(){
   const l=WL.columnLayout.get(rpTarget());
@@ -1190,7 +1336,7 @@
   }
   if(!bar)return;
   bar.hidden=!rpArranging;
-  if(!rpArranging)return;
+  if(!rpArranging){renderPalette();return}
   const hidden=rpHiddenSet().size;
   const info=bar.querySelector('.rp-arrange-info');
   if(info){
@@ -1209,11 +1355,28 @@
    const pv=info.querySelector('[data-rp-paper]');
    if(pv)pv.onclick=()=>{rpPaperView=!rpPaperView;rpRepaint();updateArrangeBar()};
   }
+  renderPalette();
  }
  function bindArrangeHandlers(){
   const host=$id('reportContent');if(!host)return;
   /* **描いてから測る**（§9.173）。レイアウトが決まる前に測ると必ず読み違える。 */
   requestAnimationFrame(()=>requestAnimationFrame(()=>rpMarkOverflow(host)));
+  /* 塊と塊のあいだ・紙の余白へ落としたら**末尾へ**。落とせる場所を
+     「塊の上だけ」に絞ると、掴んだまま行き場を探すことになる。 */
+  const grid=host.querySelector('.rp-blocks');
+  if(grid&&!grid.dataset.wired){
+   grid.dataset.wired='1';
+   grid.addEventListener('dragover',ev=>{
+    if(!rpDragKey)return;
+    if(ev.target.closest('[data-rp-block]'))return;
+    ev.preventDefault();rpShowGhost(grid,null,false);
+   });
+   grid.addEventListener('drop',ev=>{
+    if(!rpDragKey)return;
+    if(ev.target.closest('[data-rp-block]'))return;
+    ev.preventDefault();rpDropAt(null,true);
+   });
+  }
   host.querySelectorAll('[data-rp-block]').forEach(el=>{
    const k=el.dataset.rpBlock;
    el.querySelectorAll('[data-rp-span]').forEach(b=>b.onclick=ev=>{
@@ -1269,48 +1432,129 @@
     ev.preventDefault();openBlockEditor(k);
    });
    el.addEventListener('dragstart',ev=>{
-    rpDragKey=k;el.classList.add('is-dragging');
+    rpDragKey=k;rpDragFrom='sheet';el.classList.add('is-dragging');
+    el.parentElement&&el.parentElement.classList.add('is-dropping');
     try{ev.dataTransfer.setData('text/plain',k);ev.dataTransfer.effectAllowed='move'}catch(_){}
    });
-   el.addEventListener('dragend',()=>{
-    rpDragKey=null;el.classList.remove('is-dragging');
-    host.querySelectorAll('[data-rp-block]').forEach(x=>x.classList.remove('rp-drop-before','rp-drop-after'));
-   });
+   el.addEventListener('dragend',rpEndDrag);
    el.addEventListener('dragover',ev=>{
     if(!rpDragKey||k===rpDragKey)return;
     ev.preventDefault();
     const r=el.getBoundingClientRect(),after=(ev.clientX-r.left)>r.width/2;
-    el.classList.toggle('rp-drop-after',after);
-    el.classList.toggle('rp-drop-before',!after);
+    rpShowGhost(el.parentElement,el,after);
    });
-   el.addEventListener('dragleave',()=>el.classList.remove('rp-drop-before','rp-drop-after'));
    el.addEventListener('drop',ev=>{
     if(!rpDragKey||k===rpDragKey)return;
     ev.preventDefault();ev.stopPropagation();
     const r=el.getBoundingClientRect(),after=(ev.clientX-r.left)>r.width/2;
-    const order=rpBlockKeys(),from=order.indexOf(rpDragKey);
-    if(from<0)return;
-    order.splice(from,1);
-    const at=order.indexOf(k);if(at<0)return;
-    order.splice(after?at+1:at,0,rpDragKey);
-    rpDragKey=null;
-    rpStage({order});
+    rpDropAt(k,after);
    });
+  });
+ }
+ /* 落とす。**並びと「出す/出さない」を1回で決める**（§9.217）——パレット
+    から落としたときに「並べ替え」と「出す」を別々に保存すると、途中で
+    切れた場合に片方だけ効いた状態が残る。 */
+ function rpDropAt(refKey,after){
+  const key=rpDragKey,from=rpDragFrom;
+  if(!key)return;
+  const order=rpBlockKeys(),i=order.indexOf(key);
+  if(i>=0)order.splice(i,1);
+  let at=refKey?order.indexOf(refKey):-1;
+  if(at<0)at=order.length-(after?0:0);
+  order.splice(refKey?(after?at+1:at):order.length,0,key);
+  const patch={order};
+  if(from==='palette'){
+   const set=new Set(rpHiddenSet());set.delete(key);patch.hidden=[...set];
+  }
+  rpEndDrag();
+  rpStage(patch);
+  updateArrangeBar();
+ }
+ /* ---------- 出していない塊の置き場（§9.217、利用者の指示） ----------
+    「これら帳票の項目は、規格化してブロック(カード)サイズとイメージと共に
+     一覧で管理し、帳票内に表示させるときに項目からD&Dで表示…D&Dで非表示
+     などできるようにしてください。」
+    **紙の外に置く**——紙の中へ入れると刷り上がりに混ざる。 */
+ function renderPalette(){
+  const el=$id('rpPalette');if(!el)return;
+  el.hidden=!rpArranging||rpPaperView;
+  if(el.hidden){el.innerHTML='';return}
+  const hidden=rpHiddenSet();
+  const items=rpBlockKeys().filter(k=>hidden.has(k));
+  el.innerHTML=`<b class="rp-palette-head">紙に出していない塊（${items.length}）</b>`
+   +`<span class="rp-palette-note">掴んで紙へ落とすと出ます（落ちる場所は枠で見えます）。`
+   +`紙の塊をここへ落とすと外れます。押すだけでも出せます。</span>`
+   +(items.length
+     ?`<div class="rp-palette-list">`+items.map(k=>{
+        const r=rpRows(k);
+        return `<button type="button" class="rp-palette-item" draggable="true" data-rp-pal="${esc(k)}"`
+         +` title="幅 ${rpSpan(k)}/${rpGrid()}マス・高さ ${r?r+'行':'中身なり'}">`
+         +`<span class="rp-palette-name">${esc(k)}</span>`
+         +`<span class="rp-palette-size">${rpSpan(k)}マス×${r?r+'行':'自動'}</span></button>`;
+       }).join('')+`</div>`
+     :`<div class="rp-palette-list is-empty">全部の塊を紙に出しています。</div>`);
+  bindPalette();
+ }
+ function bindPalette(){
+  const el=$id('rpPalette');if(!el)return;
+  el.querySelectorAll('[data-rp-pal]').forEach(b=>{
+   const k=b.dataset.rpPal;
+   b.addEventListener('dragstart',ev=>{
+    rpDragKey=k;rpDragFrom='palette';b.classList.add('is-dragging');
+    document.querySelectorAll('.rp-blocks').forEach(x=>x.classList.add('is-dropping'));
+    try{ev.dataTransfer.setData('text/plain',k);ev.dataTransfer.effectAllowed='move'}catch(_){}
+   });
+   b.addEventListener('dragend',rpEndDrag);
+   /* **押すだけでも出せる**（§4）。掴めない環境・タッチでも行き止まりに
+      しない。位置は末尾で、あとから掴んで動かせる。 */
+   b.onclick=()=>{
+    const set=new Set(rpHiddenSet());set.delete(k);
+    /* **並びにも載せる**（§9.217）。自作の塊は「並びに載っていない＝まだ
+       出していない」で判断するので、`hidden`から外すだけでは次に読んだ
+       ときにまた隠れる（押しても何も起きないように見える）。 */
+    rpStage({hidden:[...set],order:rpBlockKeys()});updateArrangeBar();
+   };
+  });
+  if(el.dataset.wired)return;
+  el.dataset.wired='1';
+  el.addEventListener('dragover',ev=>{
+   if(rpDragFrom!=='sheet')return;
+   ev.preventDefault();el.classList.add('is-target');
+  });
+  el.addEventListener('dragleave',()=>el.classList.remove('is-target'));
+  el.addEventListener('drop',ev=>{
+   if(rpDragFrom!=='sheet'||!rpDragKey)return;
+   ev.preventDefault();
+   const set=new Set(rpHiddenSet());set.add(rpDragKey);
+   rpEndDrag();
+   rpStage({hidden:[...set]});updateArrangeBar();
   });
  }
  /* 単一プレビューへの書き込み。組み換え中はその状態のまま描き直す。 */
  /* ロットを開いたら、その設備ぶんの設定を読んでから描き直す。**読まずに
     描くと既定の形が一瞬出てから入れ替わる**（設備を切り替えるたびにちらつく）。 */
+ /* 組み換え中でなくても行の割り付けは要る（紙がそれで組まれる）。
+    描いたあとに1回だけ測る。 */
+ function rpFitAll(){
+  document.querySelectorAll('#reportContent,#reportBulkPrintArea .rp-page').forEach(h=>{
+   try{rpFitRows(h)}catch(e){console.warn('帳票の行の割り付けに失敗',e)}
+  });
+ }
  function rpLoadLayoutFor(x){
-  const t=rpTargetOf(x);
-  WL.columnLayout.load(t).then(()=>{
-   if(rpCurrentLot()&&rpTargetOf(rpCurrentLot())===t)rpRepaint();
-  }).catch(()=>{});
+  const t=rpTargetOf(x),eq=rpEquipmentOf(x)||'';
+  /* 設定と**自作の塊**を両方読んでから描き直す（§9.217）。塊だけ先に
+     届くと、まだ並びを知らない状態で末尾へ並べてしまう。 */
+  Promise.all([WL.columnLayout.load(t).catch(()=>{}),rpLoadUserBlocks(eq)])
+   .then(()=>{if(rpCurrentLot()&&rpTargetOf(rpCurrentLot())===t)rpRepaint()})
+   .catch(()=>{});
  }
  function renderReport(x){
   rpLoadLayoutFor(x);                /* その設備ぶんの設定を読む（届いたら描き直す） */
   $id('reportContent').innerHTML=reportHtml(x,rpArranging);
   if(rpArranging)bindArrangeHandlers();
+  /* **行の割り付けは組み換え中でなくても要る**（紙がそれで組まれる）。
+     描いてから測る——中身の量はロットで変わるので決め打ちにできない。 */
+  rpAfterPaint();
  }
 
  function selectLot(id){
@@ -1336,6 +1580,10 @@
     戻る操作で開き直す)。 */
  async function openReportView(){
   WL.enterView('report');
+  /* **自作の塊は開くたびに読み直す**（§9.217）。マスタ管理で足した直後に
+     帳票を開くのがふつうの順番なので、設備ごとの写しを持ったままだと
+     「登録したのに候補に出ない」になる（実際にそうなった）。 */
+  rpUserBlocksFor=null;
   ensurePanel().hidden=false;
   setZoom(rpZoom);
   $id('reportSelectedTitle').textContent='ロットを選択してください';

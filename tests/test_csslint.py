@@ -138,7 +138,9 @@ for i,l in enumerate(CSS.split('\n')):
     # A4帳票(.rp-page/.df-page配下)だけは用紙の割り付けのためpx固定が正しい。
     # `block`＝帳票の塊（§9.169）。**紙の中**の部品なので他と同じくpx固定でよい
     # （紙の外に置いた組み換えの帯`.rp-arrange-*`はトークンを使う）。
-    if re.search(r'\.(rp|df)-(page|report|section|field|dim|grade|info|note|wide|product|label|defect|strip|table|head|answer|foot|print|block|blocks)',l): continue
+    # `ghost`＝落とし先の枠（§9.217）。**紙のグリッドの子**なので、他の
+    # 塊と同じ寸法の言語（px）で書くのが正しい。
+    if re.search(r'\.(rp|df)-(page|report|section|field|dim|grade|info|note|wide|product|label|defect|strip|table|head|answer|foot|print|block|blocks|ghost)',l): continue
     stray_rad.append(f'L{i+1} {l.strip()[:70]}')
 rec('角丸のリテラルpxは帳票だけ',not stray_rad,'; '.join(stray_rad[:5]))
 

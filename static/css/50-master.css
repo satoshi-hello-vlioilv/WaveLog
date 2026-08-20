@@ -131,6 +131,15 @@
    器の幅を全部取り、**隣に置いた文字（設備名）が押し出されて消えた**。
    幅・高さを決めたいのは値を打ち込む欄だけ。 */
 .mm-field input:not([type=checkbox]):not([type=radio]),.mm-field select{height:var(--ctl-h);min-width:200px;padding:6px 10px;border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff}
+/* 複数行の欄（§9.217）。**高さは行数（rows）に任せる**——pxで固定すると
+   行の途中で切れる（§9.126）。器いっぱいに広げるのは、1行1件を書かせる
+   設定なので折り返させたくないため。 */
+.mm-field-area{grid-column:1/-1}
+.mm-field textarea{
+  width:100%;min-width:200px;min-height:0;padding:6px 10px;
+  border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;
+  font-family:inherit;font-size:var(--fs-sm);line-height:var(--lh);resize:vertical;
+}
 .mm-field input:focus-visible,.mm-field select:focus-visible{outline:0;border-color:var(--teal);box-shadow:0 0 0 3px #087c8926}
 .mm-field-wide{flex-basis:100%}
 .mm-field-hint{color:#8a9aa0;font-size:var(--fs-micro)}
@@ -713,4 +722,87 @@
  .ms-arrow i{transform:rotate(90deg)}
 }
 
+/* ---------- 操業データの配置（§9.216 ④） ----------
+   行を1つずつ編集する一覧では、**並べたときにどう見えるか**が分からない。
+   測定画面のカードと同じ6列のグリッドを出し、掴んで動かす。 */
+.op-bar{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap}
+.op-bar-eq{display:flex;align-items:center;gap:var(--gap-inline);font-size:var(--fs-sm);font-weight:700}
+.op-bar-note{flex:1 1 260px;min-width:0;color:var(--ink-3);font-size:var(--fs-sm)}
+.op-bar-state{font-size:var(--fs-sm);font-weight:700;color:var(--ok-fg)}
+.op-bar-state.is-bad{color:var(--danger)}
+.op-edit{display:grid;grid-template-columns:minmax(0,1fr) var(--w-2xl);gap:var(--space-3);align-items:start}
+.op-boards{display:flex;flex-direction:column;gap:var(--space-3);min-width:0}
+.op-board{border:1px solid var(--line-soft);border-radius:var(--radius-md);background:var(--surface)}
+.op-board-head{
+  display:flex;align-items:baseline;gap:var(--space-2);flex-wrap:wrap;
+  padding:var(--pad-row);border-bottom:1px solid var(--line-soft);
+}
+.op-board-head b{font-size:var(--fs-sm);font-weight:800;color:var(--nav)}
+.op-board-head small{flex:1 1 200px;min-width:0;color:var(--ink-3);font-size:var(--fs-badge)}
+.op-board-count{font-size:var(--fs-badge);font-weight:700;color:var(--muted)}
+.op-board-grid{
+  display:grid;grid-template-columns:repeat(var(--op-cols,6),minmax(0,1fr));
+  gap:var(--gap-inline);padding:var(--pad-row);min-height:var(--ctl-h);
+}
+/* 帯より下がその群。**掴んで帯をまたげば群が変わる**（1回の操作で並びと
+   群の両方が決まる）。 */
+.op-band{
+  display:flex;align-items:center;gap:var(--space-2);
+  margin-top:var(--space-1);padding:var(--space-1) 0;
+  border-top:1px dashed var(--line-mid);
+}
+.op-band-name{font-size:var(--fs-sm);font-weight:800;color:var(--nav)}
+.op-band-note{flex:1 1 auto;min-width:0;color:var(--ink-3);font-size:var(--fs-badge);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.op-band-tools{display:flex;gap:var(--gap-tight);flex:0 0 auto}
+.op-band-tools button{min-height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-sm);font-size:var(--fs-badge)}
+.op-tile{
+  display:flex;flex-direction:column;gap:2px;min-width:0;cursor:grab;
+  padding:var(--space-1) var(--space-2);
+  border:1px solid var(--line-mid);border-radius:var(--radius-sm);
+  background:var(--surface-2);
+}
+.op-tile:focus-visible{outline:2px solid var(--nav);outline-offset:1px}
+.op-tile.is-picked{border-color:var(--nav);box-shadow:inset 3px 0 0 var(--nav)}
+.op-tile.is-off{opacity:.55;background:var(--surface-3)}
+.op-tile.is-dragging{opacity:.4}
+.op-tile-name{font-size:var(--fs-sm);font-weight:700;color:var(--ink);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.op-tile-meta{display:flex;align-items:center;gap:var(--gap-tight);flex-wrap:wrap;
+  font-size:var(--fs-micro);color:var(--ink-3)}
+.op-tile-span{margin-left:auto;font-weight:700}
+.op-chip{
+  padding:0 4px;border-radius:var(--radius-xs);background:var(--surface-3);
+  color:var(--ink-2);font-size:var(--fs-micro);font-weight:700;
+}
+.op-chip-builtin{background:var(--nav-soft,var(--surface-3));color:var(--nav)}
+.op-chip-req{background:var(--required-bg);color:var(--required)}
+.op-chip-off{background:var(--surface-3);color:var(--muted)}
+/* 落とす場所の印。**帯とタイルのあいだにも入る**（群の先頭へ置ける）。 */
+.op-drop-mark{grid-column:span 1;min-height:var(--ctl-h-sm);border-left:3px solid var(--nav);
+  border-radius:var(--radius-xs);background:color-mix(in srgb,var(--nav) 12%,transparent)}
+.op-detail{
+  border:1px solid var(--line-soft);border-radius:var(--radius-md);
+  background:var(--surface);padding:var(--pad-row);
+  display:flex;flex-direction:column;gap:var(--space-2);min-width:0;
+}
+.op-detail-empty{color:var(--muted);font-size:var(--fs-sm);line-height:1.7}
+.op-detail-head{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
+.op-detail-head b{font-size:var(--fs-title);font-weight:800;color:var(--nav)}
+.op-note-line{margin:0;color:var(--ink-3);font-size:var(--fs-badge);line-height:1.6}
+.op-num-row{display:flex;gap:var(--space-2);flex-wrap:wrap;align-items:flex-end}
+.op-num-row label{display:flex;flex-direction:column;gap:2px;font-size:var(--fs-sm)}
+.op-num-row input[type=number]{width:var(--w-xs)}
+/* 縦積みの`.op-num-row label`の中で、チェックだけは横並び。**!importantを
+   使わない**——詳細度を1つ上げて当てる（規格を壊す近道を残さない）。 */
+.op-num-row label.op-check{flex-direction:row;align-items:center;gap:var(--gap-tight)}
+.op-choice-box{margin-top:var(--gap-tight);display:flex;flex-direction:column;gap:var(--gap-tight)}
+.op-choice-vals{display:flex;gap:var(--gap-tight);flex-wrap:wrap}
+.op-choice-add{display:flex;gap:var(--gap-tight)}
+.op-choice-add input{flex:1 1 auto;min-width:0}
+.op-choice-use{color:var(--ink-3);font-size:var(--fs-badge)}
+.op-detail-actions{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;margin-top:auto}
+/* 選択肢の一覧に「どの項目が使っているか」を出す（§9.216 ④）。
+   **使い道の見えない選択肢は消してよいのか判断できない。** */
+.op-usage{color:var(--ink-3);font-size:var(--fs-badge)}
 }

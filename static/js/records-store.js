@@ -1080,6 +1080,16 @@ function recordHeadMenuSource(){
   openPanel:openRecordColumnPanel,
   /* 保存はこちらが持つ（初回の隠す列の種まきがあるため）。 */
   persist:recordPersistColumns,
+  /* **いま隠している列も口が答える**（§9.216 ①、§9.197と同じ罠）。
+     データ一覧は「一度も保存していないうちは既定の15列」（§9.162）なので、
+     保存値の`hidden`は**空**——既定として畳んでいるだけで、隠す指定は
+     持っていない。口が答えないと`headMenuSource()`は保存値をそのまま
+     使い、右クリックの「この列を隠す」を1回押しただけで
+     **既定で畳んでいた29列がまとめて出てしまう**（押した列は消えるのに
+     見覚えの無い列が並ぶ、という分かりにくい壊れ方になる）。
+     `persist`（`recordPersistColumns`）は種まきしてから`patch`を当てるが、
+     メニュー側が`hidden`を**上書きで渡す**ので種まきは効かない。 */
+  hiddenOf:()=>recordInitialHidden(recordAllColumnKeys()),
  };
 }
 function bindRecordHeadTools(list,keys){
