@@ -133,6 +133,16 @@ PROBES = {
     '列レイアウト(column-layout-master)': probe_column_layout,
     '表示ルール(display-rule-master)': probe_display_rule,
     'ログの整理(logs/delete-lines)': probe_logs,
+    # 編集権の解放(§9.211 ②の追補)。**どのモードからでも通ること**を固定する。
+    # モード切替は「先にサーバーのモードを変えてから画面を開き直す」ので、
+    # 解放は**切り替えた後のモード**で評価される。ここが塞がっていると、
+    # 編集権を持っていた端末が閲覧モードへ移った瞬間に解放が403で落ち、
+    # 他の端末からはTTL(90秒)のあいだ「その端末が編集中」と見え続ける。
+    # 叩いても安全: release_session()はlogin+pcの一致を見て**自分の分しか
+    # 消さない**ので、誰も持っていない設備名を渡せば何も起きない。
+    '編集権の解放(schedule/session/release)':
+        lambda: call('POST', '/api/schedule/session/release',
+                     {'equipment': '__モードガード検証用の設備__'}),
 }
 
 # 現在の許可表(実測で固定する)。True=ガードを通る / False=ガードが弾く
@@ -151,6 +161,9 @@ EXPECTED = {
     # §9.99: 読み出し(GET)は全モードから。**消す・区切るはeditだけ**。
     # ログは端末ごとのローカルファイルだが、消えると調査ができなくなる。
     'ログの整理(logs/delete-lines)':              {'edit': True,  'view': False, 'schedule': False},
+    # **返すのは全モードで通す**。塞いでも守るものが無く(自分の分しか消せない)、
+    # 塞ぐと「抜けているのに編集中のまま」の幽霊が残る(§9.211 ②の追補)。
+    '編集権の解放(schedule/session/release)':     {'edit': True,  'view': True,  'schedule': True},
 }
 
 

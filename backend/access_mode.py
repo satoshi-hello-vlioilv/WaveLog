@@ -91,7 +91,18 @@ _ENDPOINT_EXTRA_MODES={
  # 一覧(GET /api/schedule/sessions)は読むだけなのでガードの対象外。
  'schedule.session_acquire':{'edit'},
  'schedule.session_heartbeat':{'edit'},
- 'schedule.session_release':{'edit'},
+ # **返すのはどのモードからでも通す**(§9.211 ②の追補)。モードを切り替えると
+ # `switchAccessMode()`は**先にサーバーのモードを変えてから**画面を開き直す
+ # ので、`syncSession()`が投げる解放は**切り替えた後のモード**で評価される。
+ # editへしか開けていないと、編集モードで編集権を持っていた端末が閲覧モードへ
+ # 移った瞬間の解放が403で落ち、**本人は読み取り専用の画面に居るのに、
+ # 他の端末からはTTL(90秒)のあいだ「その端末が編集中」と見え続ける**
+ # ——利用者の言う「抜けているのに残っていて編集権が映らない」そのもので、
+ # 在席表示を出した今は全員の画面にその嘘が出る。
+ # 解放は**権利を手放すだけ**で、`release_session()`が
+ # `login`と`pc`の一致を見て**自分の分しか消さない**(schedule_sync.py:385)。
+ # 塞いでも守るものが無く、塞ぐと幽霊の持ち主が残る。
+ 'schedule.session_release':{'edit','view'},
  'schedule.session_take_over':{'edit'},
  'schedule.calendar_save':{'edit'},
  'schedule.stop_reason_register':{'edit'},

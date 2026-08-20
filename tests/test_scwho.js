@@ -181,6 +181,32 @@ let b=null;
   rec('書けない判定は1箇所（sessionBlocked）が答える',
       stopped.書けない===true,JSON.stringify(stopped));
 
+  /* ---- 3b) 読み取り専用でも「まだできること」の見た目は残す ----
+     着手中の行は読み取り専用でもダブルクリックで測定を再開できる
+     （`canResume`は`sessionBlocked()`を見ない＝測定は予定の編集ではない）。
+     `.sc-panel.sc-session-locked .sc-row-line{cursor:default}`と一律に書くと
+     **できるのにできなさそうに見える**ので、除外できているかを見る。 */
+  /* **検証用データに着手中の行があるとは限らない**ので、印を自分で付けて
+     確かめる（見たいのはCSSの詳細度＝`:not(.sc-row-resumable)`が効いているか
+     の1点で、行がどう生まれたかではない）。無ければ素通りする書き方だと、
+     除外を外しても通ってしまう＝網にならない。 */
+  const resumable=await page.evaluate(()=>{
+   const row=document.querySelector('.sc-row-line');
+   if(!row)return{無い:true};
+   const had=row.classList.contains('sc-row-resumable');
+   if(!had)row.classList.add('sc-row-resumable');
+   const cs=getComputedStyle(row);
+   const out={cursor:cs.cursor,pe:cs.pointerEvents,
+              ロック中:!!document.getElementById('schedulePanel')
+                         ?.classList.contains('sc-session-locked')};
+   if(!had)row.classList.remove('sc-row-resumable');
+   return out;
+  });
+  rec('読み取り専用でも再開できる行は押せる見た目のまま',
+      !resumable.無い&&resumable.ロック中===true
+      &&resumable.cursor==='pointer'&&resumable.pe!=='none',
+      JSON.stringify(resumable));
+
   /* ---- 5) 奪うときは確認を出す ---- */
   let asked=null;
   await page.click('#scWhoTake');
@@ -239,12 +265,40 @@ let b=null;
       !!(readSessions()[EQ]||{}).pc,JSON.stringify(readSessions()[EQ]||{}));
 
 
+  /* ---- 6) 閲覧モードへ移ったら編集権を本当に返す（幽霊の持ち主を残さない） ----
+     `switchAccessMode()`は**先にサーバーのモードを変えてから**画面を開き直す
+     ので、解放は**切り替えた後のモード**で評価される。解放がそのモードで
+     403になると、本人は読み取り専用の画面に居るのに、他の端末からは
+     TTL（90秒）のあいだ「その端末が編集中」と見え続ける
+     ——利用者の言う「抜けているのに残っていて編集権が映らない」そのもの。
+     ここまでで奪って自分が持ち主になっているので、その状態から移る。 */
+  const heldBefore=readSessions()[EQ]||null;
+  await setMode('view');
+  await page.evaluate(()=>{window.accessMode.mode='view';window.accessMode.canEdit=false;
+                           window.accessMode.canSchedule=false});
+  /* `refreshOpenViewsForMode()`が実際に呼ぶのと同じ入口を通す。 */
+  await page.evaluate(()=>window.openScheduleView&&window.openScheduleView());
+  /* 解放は応答を待たない（sendBeacon）ので、共有側から消えるまで待つ。 */
+  let gone=false;
+  for(let i=0;i<20;i++){
+   if(!readSessions()[EQ]){gone=true;break}
+   await page.waitForTimeout(250);
+  }
+  rec('編集権を持ったまま閲覧モードへ移ったら、その場で返す（TTLを待たせない）',
+      !!heldBefore&&gone,
+      `移る前=${JSON.stringify(heldBefore&&{login:heldBefore.login,pc:heldBefore.pc})} / `
+      +`移った後=${JSON.stringify(readSessions()[EQ]||null)}`);
+
  }catch(e){rec('FATAL',false,e.message)}
  finally{
   /* **掴んだまま終わらない**（§CLAUDE。残すと後続が全部「編集中です」で落ちる）。 */
   try{await page.evaluate(async e=>{await fetch('/api/schedule/session/release',{method:'POST',
     headers:{'Content-Type':'application/json'},body:JSON.stringify({equipment:e})})},EQ)}catch(e){}
   clearSession();
+  /* **モードを戻してから終わる**（この節のテストは自分でモードを決めるが、
+     戻さないと次のテストが閲覧モードで走り出す）。 */
+  try{await page.evaluate(async()=>{await fetch('/api/access-mode',{method:'POST',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'edit'})})})}catch(e){}
   if(b)await b.close();
  }
  const ng=R.filter(x=>!x.ok).length;
