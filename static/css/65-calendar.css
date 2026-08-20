@@ -141,7 +141,13 @@
 .sc-panel.sc-session-locked .sc-row-pick,
 .sc-panel.sc-session-locked .sc-pick-remove{pointer-events:none;opacity:.45}
 /* 掴んで並べ替えられないことは**掴めない見た目**で伝える（色だけに頼らない
-   ——理由は在席表示`#scWho`が文字で言う）。 */
-.sc-panel.sc-session-locked .sc-row-line{cursor:default}
+   ——理由は在席表示`#scWho`が文字で言う）。
+   **まだできる操作の見た目まで奪わないこと**——着手中の行は読み取り専用でも
+   ダブルクリックで測定を再開できる（`canResume`は`sessionBlocked()`を見ない。
+   測定は予定の編集ではないので正しい）。ここで一律に`default`にすると、
+   **できるのにできなさそうに見える**——§4「できないことは、できないと書く」の
+   裏返しで、同じくらい悪い。除外の書き方は`70-schedule.css`の
+   `:not(.sc-row-resumable)`と同じにそろえる。 */
+.sc-panel.sc-session-locked .sc-row-line:not(.sc-row-resumable){cursor:default}
 .sc-panel.sc-session-locked .sc-row-handle{opacity:.35;pointer-events:none}
 }
