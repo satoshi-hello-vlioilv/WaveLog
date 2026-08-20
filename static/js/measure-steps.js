@@ -380,8 +380,13 @@
     署名は群ごとに持つ（1つでも変わったら群ごと測り直す）。 */
  const fitSig=new WeakMap();
  const groupSig={};
+ /* **マスタが幅を決めている欄は測らない**（§9.218 ②）。器いっぱいに使うと
+    決めた欄へ`max-width`を入れると、器より狭いまま余白が残る——利用者の
+    指摘（「余白は無いようにUI幅で稼いでほしい」）と正面からぶつかる。
+    判定は`data-opfill`の1箇所で、`measure-opdata.js`が割り付けるときに付ける。 */
+ const opFilled=el=>!!(el&&el.closest&&el.closest('[data-opfill]'));
  function fitEls(key,els){
-  els=(els||[]).filter(x=>x&&!x.disabled);
+  els=(els||[]).filter(x=>x&&!x.disabled&&!opFilled(x));
   if(!els.length)return;
   const sig=els.map(el=>(el.options?el.options.length+':'+(el.options[0]||{}).text
      +':'+(el.options[el.options.length-1]||{}).text:el.type+':'+el.max)
@@ -433,6 +438,7 @@
     if(el.id==='deviceInput'||el.closest('table'))return;
     if(el.tagName==='INPUT'&&NO_WIDTH.test(el.type))return;
     if(el.offsetParent===null)return;
+    if(opFilled(el))return;              /* 器いっぱいに使う欄（§9.218 ②） */
     const b=el.getBoundingClientRect();
     if(b.width<8)return;
     const cs=getComputedStyle(el);

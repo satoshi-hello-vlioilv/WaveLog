@@ -1242,7 +1242,10 @@ def operation_item_list():
            # 画面が「どこへ出すか」「何列ぶんか」を選ばせるための一覧(§9.216 ②)。
            # **画面へ書き写さない**——増減したときに2箇所を直すことになる。
            'places':list(op.PLACES),'spans':list(op.SPANS),'gridCols':op.GRID_COLS,
+           'spanUnit':op.SPAN_UNIT,'widgets':list(op.WIDGETS),
+           'choiceTypes':list(op.CHOICE_TYPES),
            'builtinKeys':list(op.BUILTIN_KEYS),
+           'choiceNotes':op.choice_notes(c),
            'choiceUsage':op.choice_usage(c)}
   d=_op_read(fn)
   return jsonify(ok=True,equipment=eq,**d)
@@ -1266,7 +1269,8 @@ def _operation_item_save(x):
                          enabled=(True if x.get('enabled') is None else bool(x.get('enabled'))),
                          item_id=(int(x['id']) if x.get('id') not in (None,'') else None),
                          place=x.get('place'),span=x.get('span'),
-                         fold=bool(x.get('fold')),show_when=x.get('showWhen'))
+                         fold=bool(x.get('fold')),show_when=x.get('showWhen'),
+                         widget=x.get('widget'))
   return jsonify(ok=True,id=_op_read(fn),message='操業データの項目を保存しました。')
  except ValueError as e:return jsonify(error=str(e)),400
  except Exception as e:return jsonify(error=f'操業データ項目マスタの保存に失敗しました: {e}'),500
@@ -1344,7 +1348,8 @@ def _operation_choice_save(x):
   def fn(c):
    return op.choice_upsert(c,x.get('name'),x.get('value'),uid,order=iv(x.get('order')),
                            choice_id=(int(x['id']) if x.get('id') not in (None,'') else None),
-                           enabled=(True if x.get('enabled') is None else bool(x.get('enabled'))))
+                           enabled=(True if x.get('enabled') is None else bool(x.get('enabled'))),
+                           note=x.get('note'))
   return jsonify(ok=True,id=_op_read(fn),message='操業データの選択肢を保存しました。')
  except ValueError as e:return jsonify(error=str(e)),400
  except Exception as e:return jsonify(error=f'操業データ選択肢マスタの保存に失敗しました: {e}'),500

@@ -989,8 +989,17 @@
     +`${(arranging&&!paper)?' draggable="true"':''}>`
     +((arranging&&!paper)?rpBlockBarHtml(k,span,off,!body):'')
     +(body||((arranging&&!paper)?'<p class="rp-block-empty">このロットにはこの内容がありません（紙には出ません）。</p>':''))
+    /* **縁を引いて大きさを変えられる**（§9.218 ⑥、利用者の指示「選択した
+       ときに縦横のサイズ変更ができるように」）。右＝幅（マス）、下＝高さ
+       （行）、右下＝両方。掴んでいるあいだ何マス×何行になるかを出す。 */
+    +((arranging&&!paper)?'<span class="rp-size-grip rp-size-w" data-rp-grip="w" title="引くと幅（マス）が変わります"></span>'
+      +'<span class="rp-size-grip rp-size-h" data-rp-grip="h" title="引くと高さ（行）が変わります"></span>'
+      +'<span class="rp-size-grip rp-size-wh" data-rp-grip="wh" title="引くと幅と高さが変わります"></span>':'')
     +'</div>';
   }).join('');
+  /* **マスの目盛を器が持つ**（§9.218 ⑥、利用者の指摘「横がそろっていても
+     グリッドがなくなってしまった」）。列数と行の高さをCSSへ渡し、背景の
+     線として引く——要素を作らないので、塊の並びにも印刷にも一切影響しない。 */
   return `<div class="rp-blocks${(arranging&&!paper)?' is-arranging':''}"`
    +` style="--rp-grid:${rpGrid()};--rp-row:${RP_ROW_PX}px">${cells}</div>`;
  }
@@ -1012,9 +1021,11 @@
   const split=k===RP_MEAS_COMBINED
    ?`<button type="button" class="rp-block-split" data-rp-split="out" title="項目ごとの表に分けます（それぞれ場所と幅を決められます）">項目ごとに分ける</button>`
    :(bl.meas?`<button type="button" class="rp-block-split" data-rp-split="in" title="測定データのまとめへ戻します（条番号の軸を共有して1枚になります）">まとめへ戻す</button>`:'');
+  const rows=rpRows(k);
   return `<div class="rp-block-bar">
     <span class="rp-block-grip" title="ドラッグで場所を入れ替えます" aria-hidden="true">⠿</span>
     <b class="rp-block-name">${esc(k)}</b>
+    <i class="rp-block-dim" title="いまの大きさ。右の縁と下の縁を引いても変えられます">${span}/${grid}マス×${rows?rows+'行':'中身なり'}</i>
     ${empty?'<i class="rp-block-tag">中身なし</i>':''}
     ${off?'<i class="rp-block-tag is-off">出さない</i>':''}
     <span class="rp-block-size" title="${grid}マスのうち何マスを使うか">${choices.map(c=>
@@ -1086,8 +1097,67 @@
    el.style.gridRowEnd='span '+rows;
   });
  }
+ /* ---------- 空いているマスを見せる（§9.218 ⑥、利用者の指示） ----------
+    「配置のしにくさはグリッドとの関係性がわからないことにありそうです。
+      配置している周辺のブロックから空白部分のグリッドを計算できるので
+      配置しやすい、配置できるかどうかわかりやすくしてください」
+
+    **グリッドの中へ要素として入れないこと。** `grid-column`/`grid-row`を
+    数字で指定した子は、`span`しか持たない塊より**先に**置かれるので、
+    空きの印を入れた瞬間に塊のほうが押し出される（`dense`の自動配置は
+    位置が決まっているものを先に処理する）。器の上へ**絶対配置の層**として
+    重ね、px で置く——並びにも印刷にも一切影響しない。 */
+ function rpFreeCells(host){
+  const grid=host.querySelector('.rp-blocks');if(!grid)return 0;
+  let layer=grid.querySelector(':scope>.rp-free-layer');
+  if(!grid.classList.contains('is-arranging')){if(layer)layer.remove();return 0}
+  if(!layer){layer=document.createElement('div');layer.className='rp-free-layer';grid.appendChild(layer)}
+  layer.innerHTML='';
+  const cols=rpGrid();
+  const cs=getComputedStyle(grid);
+  const gapX=parseFloat(cs.columnGap)||0,gapY=parseFloat(cs.rowGap)||0;
+  const gr=grid.getBoundingClientRect();
+  const colW=(gr.width-gapX*(cols-1))/cols;
+  if(!(colW>0))return 0;
+  const rowH=RP_ROW_PX;
+  const used=new Set();
+  let maxRow=0;
+  grid.querySelectorAll('[data-rp-block]').forEach(el=>{
+   const r=el.getBoundingClientRect();
+   const c0=Math.max(0,Math.round((r.left-gr.left)/(colW+gapX)));
+   const r0=Math.max(0,Math.round((r.top-gr.top)/(rowH+gapY)));
+   const cn=Math.max(1,Math.round((r.width+gapX)/(colW+gapX)));
+   const rn=Math.max(1,Math.round((r.height+gapY)/(rowH+gapY)));
+   for(let i=0;i<rn;i++)for(let j=0;j<cn;j++)used.add((r0+i)+':'+(c0+j));
+   maxRow=Math.max(maxRow,r0+rn);
+  });
+  /* **横につないで1つの枠にする**（1マスずつ描くと、マスの数だけ点線が
+     並んで「置ける場所」ではなく方眼紙に見える）。 */
+  let n=0;
+  for(let r=0;r<maxRow;r++){
+   let c=0;
+   while(c<cols){
+    if(used.has(r+':'+c)){c++;continue}
+    let w=0;
+    while(c+w<cols&&!used.has(r+':'+(c+w)))w++;
+    const i=document.createElement('i');
+    i.className='rp-free';
+    i.style.left=(c*(colW+gapX))+'px';
+    i.style.top=(r*(rowH+gapY))+'px';
+    i.style.width=(w*colW+(w-1)*gapX)+'px';
+    i.style.height=rowH+'px';
+    /* **どのくらい空いているかを文字で言う**（§3。枠だけでは「何マス
+       ぶんか」を数えることになる）。1行ぶんの帯には入らないので、
+       2行以上つながっている先頭だけに出す。 */
+    if(w>=2&&!used.has((r+1)+':'+c)&&r+1<maxRow)i.dataset.rpFree=w+'マス空き';
+    layer.appendChild(i);n++;c+=w;
+   }
+  }
+  return n;
+ }
  function rpMarkOverflow(host){
   rpFitRows(host);
+  rpFreeCells(host);
   rpUpdatePageFit();
   host.querySelectorAll('[data-rp-block]').forEach(el=>{
    /* **表だけを見る。** 節そのものを測ると、枠線や余白の丸めで1〜2px
@@ -1233,10 +1303,27 @@
  function rpShowGhost(grid,ref,after){
   if(!grid||!rpDragKey)return;
   const g=rpGhostEl(),k=rpDragKey;
-  g.style.gridColumn='span '+rpSpan(k);
-  g.style.gridRow='span '+(rpRows(k)||2);
-  g.textContent=`ここに「${k}」`;
+  const span=rpSpan(k),rows=rpGhostRows(k);
+  g.style.gridColumn='span '+span;
+  g.style.gridRow='span '+rows;
+  /* **何マス×何行がここへ入るのかを数字でも言う**（§9.218 ⑥、利用者の
+     指摘「D&Dでつかんでもゴーストがサイズで出ないのでわかりにくい」）。
+     枠の大きさだけでは、隣とくらべて「1マス多いのか少ないのか」が読めない。 */
+  g.innerHTML=`<b>${esc(k)}</b><small>${span}/${rpGrid()}マス×${rows}行</small>`;
   if(ref){if(after)ref.after(g);else ref.before(g)}else grid.appendChild(g);
+ }
+ /* ゴーストの行数。**「中身なり」の塊は今そこに描かれている高さを借りる**
+    ——決め打ちの2行だと、測定表のような背の高い塊が実際の1/5で出て、
+    「入りそうに見えたのに入らない」ことになる。 */
+ function rpGhostRows(k){
+  const fixed=rpRows(k);
+  if(fixed>0)return fixed;
+  const el=document.querySelector(`[data-rp-block="${CSS.escape(k)}"]`);
+  if(el){
+   const m=/span\s+(\d+)/.exec(el.style.gridRowEnd||'');
+   if(m)return Math.max(1,Number(m[1]));
+  }
+  return 2;
  }
  function rpEndDrag(){
   rpDragKey=null;rpDragFrom=null;
@@ -1431,6 +1518,7 @@
     if(ev.target.closest('button'))return;
     ev.preventDefault();openBlockEditor(k);
    });
+   rpBindSizeGrips(el,k);
    el.addEventListener('dragstart',ev=>{
     rpDragKey=k;rpDragFrom='sheet';el.classList.add('is-dragging');
     el.parentElement&&el.parentElement.classList.add('is-dropping');
@@ -1448,6 +1536,64 @@
     ev.preventDefault();ev.stopPropagation();
     const r=el.getBoundingClientRect(),after=(ev.clientX-r.left)>r.width/2;
     rpDropAt(k,after);
+   });
+  });
+ }
+ /* ---------- 縁を引いて大きさを変える（§9.218 ⑥、利用者の指示） ----------
+    「選択したときに縦横のサイズ変更ができるように」。マスと行にきっちり
+    吸い付かせ、**引いている最中に何マス×何行になるかを出す**——離してから
+    数えるのでは、狙った大きさに一度で決められない。
+    **掴んだ縁は`draggable`を止めること**——止めないと塊ごとのD&D（並べ替え）
+    が同時に始まり、引いたつもりが場所の入れ替えになる。 */
+ function rpBindSizeGrips(el,k){
+  el.querySelectorAll('[data-rp-grip]').forEach(g=>{
+   g.addEventListener('pointerdown',ev=>{
+    ev.preventDefault();ev.stopPropagation();
+    const grid=el.parentElement;if(!grid)return;
+    const kind=g.dataset.rpGrip;
+    const cs=getComputedStyle(grid);
+    const cols=rpGrid();
+    const gapX=parseFloat(cs.columnGap)||0,gapY=parseFloat(cs.rowGap)||0;
+    const gr=grid.getBoundingClientRect();
+    const colW=(gr.width-gapX*(cols-1))/cols;
+    const br=el.getBoundingClientRect();
+    let span=rpSpan(k);
+    let rows=rpRows(k)||Math.max(1,Math.round((br.height+gapY)/(RP_ROW_PX+gapY)));
+    el.setAttribute('draggable','false');
+    const tip=document.createElement('div');
+    tip.className='rp-size-tip';document.body.appendChild(tip);
+    const show=(x,y)=>{
+     tip.textContent=`${span}/${cols}マス × ${rows}行`;
+     tip.style.left=(x+14)+'px';tip.style.top=(y+14)+'px';
+    };
+    const move=e=>{
+     if(kind!=='h')span=Math.max(1,Math.min(cols,
+       Math.round((e.clientX-br.left+gapX)/(colW+gapX))));
+     if(kind!=='w')rows=Math.max(1,Math.min(RP_ROWS_MAX,
+       Math.round((e.clientY-br.top+gapY)/(RP_ROW_PX+gapY))));
+     el.style.gridColumn='span '+span;
+     el.style.gridRowEnd='span '+rows;
+     el.style.minHeight=(rows*RP_ROW_PX)+'px';
+     show(e.clientX,e.clientY);
+    };
+    const up=()=>{
+     window.removeEventListener('pointermove',move);
+     window.removeEventListener('pointerup',up);
+     tip.remove();
+     el.removeAttribute('draggable');
+     const wid={...rpLayoutNow().widths};
+     if(kind!=='h')wid[k]=rpSpanStore(rpSpanFromGrid(span));
+     if(kind!=='w'){
+      /* 旧いpxの高さは**捨てる**（§9.217）——両方残すと「どちらが効いて
+         いるのか」が決まらない。行数を触った時点でそちらが正。 */
+      delete wid[rpHeightKey(k)];
+      wid[rpRowsKey(k)]=rpRowsStore(rows);
+     }
+     rpStage({widths:wid});
+    };
+    window.addEventListener('pointermove',move);
+    window.addEventListener('pointerup',up);
+    show(ev.clientX,ev.clientY);
    });
   });
  }
@@ -1538,6 +1684,9 @@
  function rpFitAll(){
   document.querySelectorAll('#reportContent,#reportBulkPrintArea .rp-page').forEach(h=>{
    try{rpFitRows(h)}catch(e){console.warn('帳票の行の割り付けに失敗',e)}
+   /* **行を測り直したら空きも引き直す**（§9.218 ⑥）——塊の高さが変われば
+      空いているマスも変わるので、忘れると前の形の空きが残る。 */
+   try{rpFreeCells(h)}catch(e){console.warn('帳票の空きマスの計算に失敗',e)}
   });
  }
  function rpLoadLayoutFor(x){

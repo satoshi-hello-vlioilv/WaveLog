@@ -247,6 +247,78 @@ let b=null,madeBlock=null;
   rec('紙へ出すと中身が出る',!!made&&/ロット番号/.test(made.本文)&&/入力内容/.test(made.本文),
       JSON.stringify(made&&{題:made.題}).slice(0,120));
 
+  /* ================================================================
+     §9.218 ⑥ 大きさとグリッドが見えること（利用者の指示）
+     「ブロックを選択してもサイズがわからないし、D&Dでつかんでもゴーストが
+      サイズで出ないのでわかりにくい、つかんだときにサイズがわかるように
+      してほしい。選択したときに縦横のサイズ変更ができるように。また配置の
+      しにくさはグリッドとの関係性がわからないことにありそうです」
+     ================================================================ */
+  /* 掴む前に読めること＝操作帯に「何マス×何行」が出ている。 */
+  const dim=await page.evaluate(t=>{
+   const el=document.querySelector(`[data-rp-block="${CSS.escape(t)}"]`);
+   const d=el&&el.querySelector('.rp-block-dim');
+   return d?d.textContent.trim():null;
+  },A);
+  rec('塊の大きさが操作帯に出る（掴む前に読める）',
+      !!dim&&/\d+\/\d+マス×/.test(dim),String(dim));
+  /* 縁を引くと大きさが変わる。**取っ手は3つ**（幅・高さ・両方）。 */
+  const grips=await page.evaluate(t=>{
+   const el=document.querySelector(`[data-rp-block="${CSS.escape(t)}"]`);
+   return el?[...el.querySelectorAll('[data-rp-grip]')].map(g=>g.dataset.rpGrip):null;
+  },A);
+  rec('縁に大きさを変える取っ手が付く',
+      !!grips&&grips.join('/')==='w/h/wh',JSON.stringify(grips));
+  /* **実際に引いて確かめる**——取っ手が在ることだけを見る網は、掴んでも
+     何も起きない実装でも通る（§9.213と同じ約束）。 */
+  const before=await page.evaluate(t=>{
+   const el=document.querySelector(`[data-rp-block="${CSS.escape(t)}"]`);
+   const r=el.getBoundingClientRect();
+   const g=el.querySelector('[data-rp-grip="w"]').getBoundingClientRect();
+   return {w:Math.round(r.width),gx:Math.round(g.left+g.width/2),gy:Math.round(g.top+g.height/2)};
+  },A);
+  await page.mouse.move(before.gx,before.gy);
+  await page.mouse.down();
+  await page.mouse.move(before.gx-180,before.gy,{steps:8});
+  const tip=await page.evaluate(()=>{
+   const t=document.querySelector('.rp-size-tip');return t?t.textContent.trim():null;
+  });
+  await page.mouse.up();
+  await page.waitForTimeout(700);
+  const after=await page.evaluate(t=>{
+   const el=document.querySelector(`[data-rp-block="${CSS.escape(t)}"]`);
+   return el?Math.round(el.getBoundingClientRect().width):0;
+  },A);
+  rec('引いている最中に何マス×何行かを出す',!!tip&&/マス ×/.test(tip),String(tip));
+  rec('縁を引くと幅が実際に狭くなる',after>0&&after<before.w-40,
+      JSON.stringify({前:before.w,後:after}));
+  /* 組み換え中はマスの線が引かれる（**要素ではなく背景**——グリッドの子に
+     すると位置の決まった子が先に置かれて塊が押し出される）。 */
+  const guide=await page.evaluate(()=>{
+   const g=document.querySelector('#reportContent .rp-blocks');
+   const cs=getComputedStyle(g);
+   return {線:cs.backgroundImage,列:cs.getPropertyValue('--rp-grid').trim(),
+           空き:g.querySelectorAll('.rp-free').length,
+           層:!!g.querySelector('.rp-free-layer')};
+  });
+  rec('組み換え中はマスの線が背景で引かれる',
+      /linear-gradient/.test(guide.線)&&guide.列==='12',JSON.stringify({列:guide.列}));
+  rec('空いているマスが枠で見える',guide.層===true&&guide.空き>0,
+      JSON.stringify({層:guide.層,空き:guide.空き}));
+  /* **空きの印がグリッドの並びを崩さないこと。** 位置を数字で指定した子を
+     グリッドへ入れると、`span`しか持たない塊より先に置かれて押し出される
+     ——実際にそうなる作りにしていたら、この網が捕まえる。 */
+  const layered=await page.evaluate(()=>{
+   const g=document.querySelector('#reportContent .rp-blocks');
+   const free=g.querySelector('.rp-free-layer');
+   return {子:free&&free.parentElement===g,
+           位置:free?getComputedStyle(free).position:'',
+           塊が先:[...g.children].findIndex(x=>x.dataset.rpBlock!==undefined)===0};
+  });
+  rec('空きの印は重ねる層で、並びに加わらない',
+      layered.子===true&&layered.位置==='absolute'&&layered.塊が先===true,
+      JSON.stringify(layered));
+
   rec('画面のエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){
   rec('FATAL',false,e.message);

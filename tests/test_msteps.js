@@ -890,6 +890,11 @@ let b=null,page=null;
     .forEach(el=>{
      const r=el.getBoundingClientRect();
      if(r.width<1||r.height<1)return;
+     /* **マスタが幅を決めた欄は対象外**（§9.218 ②、利用者の指示「余白は
+        無いようにUI幅で稼いでほしい」）。あちらは「器いっぱいに使う」のが
+        正しい姿なので、中身と比べると器を使い切るほど落ちる網になる。
+        器を使い切っていることは別に見る（下の「器いっぱい」）。 */
+     if(el.closest('[data-opfill]'))return;
      const cs=getComputedStyle(el);
      if(cs.visibility==='hidden')return;
      ctx.font=`${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
@@ -941,6 +946,28 @@ let b=null,page=null;
    rec(`${st==='1'?'①':st==='2'?'②':'③'}に中身より${SLACK}px以上広い欄が無い`,
        over.length===0,over.join(' / '));
   }
+  /* ---- 11b) マスタが幅を決めた欄は器いっぱいに使う（§9.218 ②） ----
+     利用者の指摘「項目間の余白が広く、かなり表示欄がもったいない」
+     「2列分にしたときに1列と比べると余白が出てスカスカな印象。余白は
+      無いようにUI幅で稼いでほしい」。実測で4マス（413px）の器に154pxの
+     選択欄が入り、**259pxが空いていた**。
+     **数や有無ではなく実寸で見ること**——`data-opfill`が付いているだけの
+     網は、`fitControlWidths()`のインライン`max-width`が残っていても通る
+     （実際に通った）。 */
+  await go('1');
+  const slim=await page.evaluate(()=>{
+   const out=[];
+   document.querySelectorAll('.selectors>[data-opfill]').forEach(host=>{
+    const ctl=host.querySelector('select,input[type=text],input[type=number],.opf-widget');
+    if(!ctl)return;
+    const hr=host.getBoundingClientRect(),cr=ctl.getBoundingClientRect();
+    if(hr.width<1||cr.width<1)return;
+    const gap=Math.round(hr.right-cr.right);
+    if(gap>4)out.push(`${host.dataset.f||host.dataset.opfield}:器${Math.round(hr.width)}/欄${Math.round(cr.width)}/余り${gap}`);
+   });
+   return out;
+  });
+  rec('①のマスタが幅を決めた欄は器いっぱいに使う',slim.length===0,slim.slice(0,6).join(' / '));
   /* **②は入力内容で中身がまるごと変わる**ので、代表的な3つで見る。
      1つだけ見ると、そのとき選ばれていた項目しか網に掛からない
      （最初はそうなっており、板厚の3点入力と備考欄を取りこぼした）。 */

@@ -724,13 +724,17 @@
 
 /* ---------- 操業データの配置（§9.216 ④） ----------
    行を1つずつ編集する一覧では、**並べたときにどう見えるか**が分からない。
-   測定画面のカードと同じ6列のグリッドを出し、掴んで動かす。 */
+   測定画面のカードと同じ12マスのグリッドを出し、掴んで動かす。 */
 .op-bar{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap}
 .op-bar-eq{display:flex;align-items:center;gap:var(--gap-inline);font-size:var(--fs-sm);font-weight:700}
 .op-bar-note{flex:1 1 260px;min-width:0;color:var(--ink-3);font-size:var(--fs-sm)}
 .op-bar-state{font-size:var(--fs-sm);font-weight:700;color:var(--ok-fg)}
 .op-bar-state.is-bad{color:var(--danger)}
-.op-edit{display:grid;grid-template-columns:minmax(0,1fr) var(--w-2xl);gap:var(--space-3);align-items:start}
+/* 設定はモーダルへ移した（§9.218 ①）ので、盤は**器いっぱい**。以前は
+   右に固定の柱（`var(--w-2xl)`）を置いており、盤が狭いのに設定は縦に長く、
+   どちらも読みにくかった（利用者の指摘「メニューが右側で固定され、設定
+   しにくい」）。 */
+.op-edit{display:block;min-width:0}
 .op-boards{display:flex;flex-direction:column;gap:var(--space-3);min-width:0}
 .op-board{border:1px solid var(--line-soft);border-radius:var(--radius-md);background:var(--surface)}
 .op-board-head{
@@ -741,7 +745,7 @@
 .op-board-head small{flex:1 1 200px;min-width:0;color:var(--ink-3);font-size:var(--fs-badge)}
 .op-board-count{font-size:var(--fs-badge);font-weight:700;color:var(--muted)}
 .op-board-grid{
-  display:grid;grid-template-columns:repeat(var(--op-cols,6),minmax(0,1fr));
+  display:grid;grid-template-columns:repeat(var(--op-cols,12),minmax(0,1fr));
   gap:var(--gap-inline);padding:var(--pad-row);min-height:var(--ctl-h);
 }
 /* 帯より下がその群。**掴んで帯をまたげば群が変わる**（1回の操作で並びと
@@ -778,30 +782,108 @@
 .op-chip-builtin{background:var(--nav-soft,var(--surface-3));color:var(--nav)}
 .op-chip-req{background:var(--required-bg);color:var(--required)}
 .op-chip-off{background:var(--surface-3);color:var(--muted)}
-/* 落とす場所の印。**帯とタイルのあいだにも入る**（群の先頭へ置ける）。 */
-.op-drop-mark{grid-column:span 1;min-height:var(--ctl-h-sm);border-left:3px solid var(--nav);
-  border-radius:var(--radius-xs);background:color-mix(in srgb,var(--nav) 12%,transparent)}
-.op-detail{
-  border:1px solid var(--line-soft);border-radius:var(--radius-md);
-  background:var(--surface);padding:var(--pad-row);
-  display:flex;flex-direction:column;gap:var(--space-2);min-width:0;
+/* 落とす場所の印。**盤の上へ浮かせる**（§9.218 ④／§9.196）——流れの中へ
+   挿すと印が入った瞬間に後ろのタイルがずれ、同じカーソル位置で違う境目が
+   いちばん近くなって印が往復する。器（`.op-board-grid`）が座標の基準。 */
+.op-board-grid{position:relative}
+.op-drop-mark{position:absolute;width:3px;border-radius:var(--radius-xs);
+  background:var(--nav);pointer-events:none;z-index:2}
+/* **マスの目盛**（§9.218 ②）。掴んで並べる盤なのに、いま何マス使って
+   いるのかが読めないと「あと1つ入るか」が分からない。 */
+.op-ruler{
+  display:grid;grid-template-columns:repeat(var(--op-cols,12),minmax(0,1fr));
+  gap:var(--gap-inline);padding:0 var(--pad-row);
 }
-.op-detail-empty{color:var(--muted);font-size:var(--fs-sm);line-height:1.7}
-.op-detail-head{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
-.op-detail-head b{font-size:var(--fs-title);font-weight:800;color:var(--nav)}
-.op-note-line{margin:0;color:var(--ink-3);font-size:var(--fs-badge);line-height:1.6}
-.op-num-row{display:flex;gap:var(--space-2);flex-wrap:wrap;align-items:flex-end}
-.op-num-row label{display:flex;flex-direction:column;gap:2px;font-size:var(--fs-sm)}
-.op-num-row input[type=number]{width:var(--w-xs)}
-/* 縦積みの`.op-num-row label`の中で、チェックだけは横並び。**!importantを
-   使わない**——詳細度を1つ上げて当てる（規格を壊す近道を残さない）。 */
-.op-num-row label.op-check{flex-direction:row;align-items:center;gap:var(--gap-tight)}
-.op-choice-box{margin-top:var(--gap-tight);display:flex;flex-direction:column;gap:var(--gap-tight)}
-.op-choice-vals{display:flex;gap:var(--gap-tight);flex-wrap:wrap}
-.op-choice-add{display:flex;gap:var(--gap-tight)}
-.op-choice-add input{flex:1 1 auto;min-width:0}
-.op-choice-use{color:var(--ink-3);font-size:var(--fs-badge)}
-.op-detail-actions{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;margin-top:auto}
+.op-ruler-cell{
+  font-style:normal;text-align:center;color:var(--muted);font-size:var(--fs-micro);
+  border-top:1px dashed var(--line-soft);
+}
+.op-tile-gear{margin-left:auto;color:var(--nav);font-size:var(--fs-micro);font-weight:700;opacity:0}
+.op-tile:hover .op-tile-gear,.op-tile:focus-visible .op-tile-gear{opacity:1}
+.op-chip-widget{background:var(--pale);color:var(--teal)}
+/* ---------- 1項目の設定はモーダル（§9.218 ①） ----------
+   左に実物、右に決めること。**触った結果がその場で見えないと、幅も
+   選ばせ方も当たっているか分からない**（列の設定パネルと同じ作法・§9.105）。 */
+.op-dialog{width:min(1180px,96vw);max-height:92vh;display:flex;flex-direction:column}
+.op-modal-body{
+  flex:1 1 auto;min-height:0;overflow:auto;
+  display:grid;grid-template-columns:minmax(280px,var(--w-2xl)) minmax(0,1fr);
+  gap:var(--space-3);padding:var(--space-3);
+}
+.op-modal-preview{display:flex;flex-direction:column;gap:var(--gap-inline);min-width:0}
+.op-prev-head{display:flex;flex-direction:column;gap:2px;font-size:var(--fs-sm);font-weight:800;color:var(--nav)}
+.op-prev-head small{font-weight:400;color:var(--ink-3);font-size:var(--fs-badge)}
+.op-prev-card{
+  display:grid;grid-template-columns:repeat(var(--op-cols,12),minmax(0,1fr));
+  gap:var(--gap-inline);padding:var(--pad-row);
+  border:1px solid var(--line-mid);border-radius:var(--radius-md);background:var(--surface);
+}
+.op-prev-band{grid-column:1/-1;font-size:var(--fs);font-weight:800;color:var(--ink-3);letter-spacing:.04em}
+.op-prev-field{min-width:0}
+.op-prev-field .opf{display:flex;flex-direction:column;gap:2px;min-width:0;font-size:var(--fs-sm)}
+.op-prev-field .opf select,.op-prev-field .opf input{width:100%;max-width:100%}
+.op-prev-note{margin:0;color:var(--ink-3);font-size:var(--fs-badge);line-height:1.6}
+.op-modal-form{display:flex;flex-direction:column;gap:var(--gap-inline);min-width:0}
+/* **ラベル列は固定幅**（§CLAUDE 9）——`auto`だと項目ごとに値の左端がずれる。 */
+.op-form-row{display:grid;grid-template-columns:var(--w-sm) minmax(0,1fr);gap:var(--space-2);align-items:start}
+.op-form-label{font-size:var(--fs-sm);font-weight:700;color:var(--ink-2);padding-top:4px}
+.op-form-ctl{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-tight);min-width:0}
+.op-form-ctl>input[type=text]{flex:1 1 var(--w-md);min-width:0}
+.op-form-note{flex:1 1 100%;min-width:0;font-style:normal;color:var(--ink-3);font-size:var(--fs-badge);line-height:1.6}
+.op-form-empty{margin:0;flex:1 1 100%;color:var(--muted);font-size:var(--fs-badge)}
+.op-seg{display:flex;gap:0}
+.op-seg button,.op-toggle,.op-when button{
+  min-height:var(--ctl-h-sm);padding:0 var(--space-2);
+  border:1px solid var(--line-mid);background:var(--surface);color:var(--ink-2);
+  font-size:var(--fs-sm);font-weight:700;cursor:pointer;
+}
+.op-seg button{border-radius:0;margin-left:-1px}
+.op-seg button:first-child{border-radius:var(--radius-xs) 0 0 var(--radius-xs);margin-left:0}
+.op-seg button:last-child{border-radius:0 var(--radius-xs) var(--radius-xs) 0}
+.op-seg button.is-on,.op-toggle.is-on,.op-when button.is-on{
+  background:var(--teal);border-color:var(--teal);color:#fff;
+}
+.op-toggle,.op-when button{border-radius:var(--radius-xs)}
+.op-when{display:flex;flex-wrap:wrap;gap:var(--gap-tight)}
+/* 幅は**帯で見せる**。数字だけでは「カードのどのくらいか」が読めない。 */
+.op-span-pick{display:flex;gap:1px;flex:1 1 var(--w-md);min-width:0}
+.op-span-pick button{
+  flex:1 1 0;min-width:0;height:var(--ctl-h-sm);padding:0;
+  border:1px solid var(--line-mid);border-radius:0;background:var(--surface);cursor:pointer;
+}
+.op-span-pick button:first-child{border-radius:var(--radius-xs) 0 0 var(--radius-xs)}
+.op-span-pick button:last-child{border-radius:0 var(--radius-xs) var(--radius-xs) 0}
+.op-span-pick button.is-on{background:var(--teal);border-color:var(--teal)}
+.op-form-nums{gap:var(--space-2)}
+.op-form-nums label{display:flex;flex-direction:column;gap:2px;font-size:var(--fs-sm)}
+.op-form-nums input{width:var(--w-xs)}
+.op-widget-tile{
+  display:flex;flex-direction:column;gap:2px;flex:1 1 var(--w-sm);min-width:0;
+  padding:var(--space-1) var(--space-2);text-align:left;
+  border:1px solid var(--line-mid);border-radius:var(--radius-sm);
+  background:var(--surface);color:var(--ink-2);cursor:pointer;
+}
+.op-widget-tile>b{font-size:var(--fs-title);line-height:1}
+.op-widget-tile>span{font-size:var(--fs-sm);font-weight:700}
+.op-widget-tile>small{color:var(--ink-3);font-size:var(--fs-micro);white-space:normal}
+.op-widget-tile.is-on{border-color:var(--teal);background:var(--pale);color:var(--teal)}
+.op-widget-tile[disabled]{opacity:.45;cursor:not-allowed}
+.op-choice-pick{display:flex;gap:var(--gap-tight);flex:1 1 100%;min-width:0}
+.op-choice-pick select,.op-choice-pick input{flex:1 1 0;min-width:0}
+.op-choice-rows{display:flex;flex-direction:column;gap:2px;flex:1 1 100%;min-width:0}
+.op-choice-row{display:grid;grid-template-columns:var(--w-sm) minmax(0,1fr) var(--ctl-h-sm);
+  gap:var(--gap-tight);align-items:center}
+.op-choice-row>b{font-size:var(--fs-sm);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.op-choice-row>button{min-height:var(--ctl-h-xs);padding:0}
+.op-choice-add{display:flex;gap:var(--gap-tight);flex:1 1 100%;min-width:0}
+.op-choice-add input{flex:1 1 0;min-width:0}
+.op-modal-foot{
+  display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;
+  padding:var(--pad-row) var(--space-3);border-top:1px solid var(--line-soft);
+}
+.op-modal-state{flex:1 1 auto;min-width:0;font-size:var(--fs-sm);font-weight:700;color:var(--ok-fg)}
+.op-modal-state.is-bad{color:var(--danger)}
+.op-modal-actions{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
 /* 選択肢の一覧に「どの項目が使っているか」を出す（§9.216 ④）。
    **使い道の見えない選択肢は消してよいのか判断できない。** */
 .op-usage{color:var(--ink-3);font-size:var(--fs-badge)}

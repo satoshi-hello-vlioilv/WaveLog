@@ -59,19 +59,48 @@ def normalize_place(v):
     return s if s in PLACES else PLACE_PREP
 
 
-# 1つの群を何列で組むか。**カードの中は6列**（§9.135「細かくするのは
-# カードの内側だけ」）で、項目は1/2/3/6列のどれかを占める。数を増やすと
-# 「どれを選べばよいか」が決められなくなるので4つに絞ってある。
-SPANS = (1, 2, 3, 6)
-GRID_COLS = 6
+# 1つの群を何マスで組むか。**カードの中は12マス**（§9.218 ②、利用者の指摘
+# 「マスタで表示できる列数指定もできるがバリエーションも少なく1列と2列の
+#  間もほしい」）。以前は6マス・選べるのは1/2/3/6の4通りで、いちばん狭い
+# 「1マス」と次の「2マス」のあいだに刻みが無く、4マス・5マスも選べなかった。
+#
+# **§9.135の「可能な限り粗いグリッド」に反しない。** あちらは画面の外側
+# （カードの並び）の話で、「細かくするのはカードの内側だけ」と明記してある
+# ——外から見えるのはカード1枚なので、中が12マスでも画面はがたつかない。
+#
+# 呼び名は**6マス時代の「列」**で通す（1列＝2マス）。現場は「2列ぶん」と
+# 言い慣れているので、マスの数だけを出すと全部が倍になったように読める。
+SPANS = tuple(range(1, 13))
+GRID_COLS = 12
+SPAN_UNIT = 2                      # 「1列」＝2マス（6マス時代との対応）
+DEFAULT_SPAN = 4                   # 既定は「2列」＝4マス（今までの既定と同じ幅）
 
 
 def normalize_span(v):
     try:
         n = int(v)
     except (TypeError, ValueError):
-        return 2
-    return n if n in SPANS else 2
+        return DEFAULT_SPAN
+    return n if n in SPANS else DEFAULT_SPAN
+
+
+# 選ばせ方(§9.218 ②、利用者の指示「プルダウンだけでなく、ラジオボタンや
+# タブっぽいボタン、フローティングモーダルみたいに選択肢が多い時に説明付きで
+# 出ると選びやすい」)。**選択肢を持つ項目にだけ効く**——数値や自由記述に
+# 「ラジオ」を選ばせても何も起きない（押せるのに効かない設定を作らない・§4）。
+#   プルダウン … 今までどおりの`<select>`（既定）
+#   ラジオ     … 縦（狭いときは折り返す）に並ぶラジオボタン。3〜5個向き
+#   タブ       … 横に連なるボタン（見た目はタブ）。2〜4個向き
+#   一覧       … 押すと浮き窓が開き、**説明つき**で選ぶ。選択肢が多いとき
+WIDGET_SELECT = 'プルダウン'
+WIDGETS = (WIDGET_SELECT, 'ラジオ', 'タブ', '一覧')
+# 選択肢を持たない型では「選ばせ方」は効かない。判定はここ1箇所。
+CHOICE_TYPES = ('選択',)
+
+
+def normalize_widget(v):
+    s = str(v or '').strip()
+    return s if s in WIDGETS else WIDGET_SELECT
 
 
 def normalize_item_type(v):
@@ -157,25 +186,25 @@ ITEM_SEEDS = (
 #
 # (組み込みキー, 群, 項目名, 列幅, 必須, 置き場, 群折りたたみ, 表示条件)
 BUILTIN_SEEDS = (
-    ('operator', '誰が測るか', 'オペレータ', 2, True, PLACE_PREP, False, ''),
-    ('inspector', '誰が測るか', '検査員', 2, False, PLACE_PREP, False, ''),
-    ('crewSize', '誰が測るか', '作業人数', 2, False, PLACE_PREP, False, ''),
-    ('verticalCount', '測定表の形', '縦割数', 2, False, PLACE_PREP, False, ''),
-    ('horizontalCount', '測定表の形', '横割数', 2, False, PLACE_PREP, False, ''),
-    ('innerDiameter', '使う機材', '内径', 2, False, PLACE_PREP, False, ''),
-    ('spool', '使う機材', 'スプール', 2, False, PLACE_PREP, False, ''),
-    ('thicknessGauge', '使う機材', '板厚測定器', 2, False, PLACE_PREP, False, ''),
-    ('widthGauge', '使う機材', '板幅測定器', 2, False, PLACE_PREP, False, ''),
-    ('unwind', 'いつもと同じ設定', '巻出方向', 2, False, PLACE_PREP, True, ''),
-    ('burr', 'いつもと同じ設定', 'バリ揃え', 2, False, PLACE_PREP, True, ''),
-    ('coilStop', 'いつもと同じ設定', 'コイル止め', 2, False, PLACE_PREP, True, ''),
+    ('operator', '誰が測るか', 'オペレータ', 4, True, PLACE_PREP, False, ''),
+    ('inspector', '誰が測るか', '検査員', 4, False, PLACE_PREP, False, ''),
+    ('crewSize', '誰が測るか', '作業人数', 4, False, PLACE_PREP, False, ''),
+    ('verticalCount', '測定表の形', '縦割数', 3, False, PLACE_PREP, False, ''),
+    ('horizontalCount', '測定表の形', '横割数', 3, False, PLACE_PREP, False, ''),
+    ('innerDiameter', '使う機材', '内径', 4, False, PLACE_PREP, False, ''),
+    ('spool', '使う機材', 'スプール', 4, False, PLACE_PREP, False, ''),
+    ('thicknessGauge', '使う機材', '板厚測定器', 4, False, PLACE_PREP, False, ''),
+    ('widthGauge', '使う機材', '板幅測定器', 4, False, PLACE_PREP, False, ''),
+    ('unwind', 'いつもと同じ設定', '巻出方向', 4, False, PLACE_PREP, True, ''),
+    ('burr', 'いつもと同じ設定', 'バリ揃え', 4, False, PLACE_PREP, True, ''),
+    ('coilStop', 'いつもと同じ設定', 'コイル止め', 4, False, PLACE_PREP, True, ''),
     # **条入力順と方向は準備に無関係**（§9.216 ③、利用者の指示）。条を打つ
     # ときの順番なので、置き場は②測定の「入力内容」カード。畳んでおき、
     # **条を入力する測定項目を選んだときだけ開く**。板厚は丈ごとに3点
     # （OS/CL/DS）で条に紐づかないので入っていない（§9.214）。
-    ('widthOrder', '条の入力', '条入力順', 3, False, PLACE_INPUT, True,
+    ('widthOrder', '条の入力', '条入力順', 6, False, PLACE_INPUT, True,
      '板幅,ラテラルボー,バリ,テレスコープ,巻ずれ,フラットネス'),
-    ('widthDirection', '条の入力', '方向', 3, False, PLACE_INPUT, True,
+    ('widthDirection', '条の入力', '方向', 6, False, PLACE_INPUT, True,
      '板幅,ラテラルボー,バリ,テレスコープ,巻ずれ,フラットネス'),
 )
 BUILTIN_KEYS = tuple(x[0] for x in BUILTIN_SEEDS)
@@ -184,17 +213,40 @@ BUILTIN_KEYS = tuple(x[0] for x in BUILTIN_SEEDS)
 # ---------------------------------------------------------------------------
 # 選択肢マスタ
 # ---------------------------------------------------------------------------
+# 後から足した列(§9.218 ②)。**作り直さない**——現場では既に動いている
+# （§9.180の「無ければ足す」で移行する作法）。
+_CHOICE_ADDED_COLUMNS = (
+    # 「選択肢が多い時に説明付きで出ると選びやすい」（利用者の指示）。
+    # 一覧から選ぶ形（浮き窓）でだけ出る。空欄なら値だけが出る。
+    ('説明', 'TEXT'),
+)
+
+
+def _ensure_choice_columns(c):
+    cur = c.cursor()
+    have = {r[1] for r in cur.execute(f'PRAGMA table_info([{CHOICE_TABLE}])')}
+    added = False
+    for name, kind in _CHOICE_ADDED_COLUMNS:
+        if name not in have:
+            cur.execute(f'ALTER TABLE [{CHOICE_TABLE}] ADD COLUMN [{name}] {kind}')
+            added = True
+    if added:
+        c.commit()
+    return added
+
+
 def ensure_choice_table(c):
     names = tables(c)
     if CHOICE_TABLE not in names:
         cur = c.cursor()
         cur.execute('CREATE TABLE [操業データ選択肢マスタ] ('
                     '[選択肢ID] INTEGER PRIMARY KEY AUTOINCREMENT, [選択肢名] TEXT, [値] TEXT, '
-                    '[表示順] INTEGER, [有効] INTEGER, '
+                    '[説明] TEXT, [表示順] INTEGER, [有効] INTEGER, '
                     '[登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
         c.commit()
         _seed_choices(c)
         return True
+    _ensure_choice_columns(c)
     return False
 
 
@@ -212,7 +264,7 @@ def _seed_choices(c):
 def choice_rows(c, include_disabled=False):
     ensure_choice_table(c)
     cur = c.cursor()
-    cur.execute('SELECT [選択肢ID],[選択肢名],[値],[表示順],[有効] '
+    cur.execute('SELECT [選択肢ID],[選択肢名],[値],[表示順],[有効],[説明] '
                 'FROM [操業データ選択肢マスタ] ORDER BY [選択肢名],[表示順],[選択肢ID]')
     out = []
     for r in cur.fetchall():
@@ -220,7 +272,18 @@ def choice_rows(c, include_disabled=False):
         if not on and not include_disabled:
             continue
         out.append({'id': r[0], 'name': str(r[1] or '').strip(),
-                    'value': str(r[2] or ''), 'order': r[3], 'enabled': on})
+                    'value': str(r[2] or ''), 'order': r[3], 'enabled': on,
+                    'note': str(r[5] or '')})
+    return out
+
+
+def choice_notes(c):
+    """{選択肢名: {値: 説明}}。**説明のあるものだけ**——空を並べると、画面が
+    「説明が無い」のか「まだ読めていない」のか区別できない。"""
+    out = {}
+    for r in choice_rows(c):
+        if r['name'] and r['note']:
+            out.setdefault(r['name'], {})[r['value']] = r['note']
     return out
 
 
@@ -256,7 +319,7 @@ def choice_usage(c):
     return out
 
 
-def choice_upsert(c, name, value, uid, order=None, choice_id=None, enabled=True):
+def choice_upsert(c, name, value, uid, order=None, choice_id=None, enabled=True, note=None):
     ensure_choice_table(c)
     name = str(name or '').strip()
     value = str(value if value is not None else '').strip()
@@ -273,19 +336,27 @@ def choice_upsert(c, name, value, uid, order=None, choice_id=None, enabled=True)
                         [int(choice_id)])
             hit = cur.fetchone()
             order = hit[0] if hit else None
-        cur.execute('UPDATE [操業データ選択肢マスタ] SET [選択肢名]=?,[値]=?,[表示順]=?,[有効]=?,'
-                    '[更新者ID]=?,[更新日時]=Now() WHERE [選択肢ID]=?',
-                    [name, value, order, -1 if enabled else 0, uid, int(choice_id)])
+        if note is None:
+            cur.execute('SELECT [説明] FROM [操業データ選択肢マスタ] WHERE [選択肢ID]=?',
+                        [int(choice_id)])
+            hit = cur.fetchone()
+            note = (hit or [''])[0] or ''
+        cur.execute('UPDATE [操業データ選択肢マスタ] SET [選択肢名]=?,[値]=?,[説明]=?,[表示順]=?,'
+                    '[有効]=?,[更新者ID]=?,[更新日時]=Now() WHERE [選択肢ID]=?',
+                    [name, value, str(note or ''), order, -1 if enabled else 0, uid,
+                     int(choice_id)])
         c.commit()
         return int(choice_id)
     # 自然キーは(選択肢名,値)。同じ値を2つ並べない——どちらを選んでも同じ。
-    cur.execute('SELECT [選択肢ID],[表示順] FROM [操業データ選択肢マスタ] '
+    cur.execute('SELECT [選択肢ID],[表示順],[説明] FROM [操業データ選択肢マスタ] '
                 'WHERE [選択肢名]=? AND [値]=?', [name, value])
     hit = cur.fetchone()
     if hit:
-        cur.execute('UPDATE [操業データ選択肢マスタ] SET [表示順]=?,[有効]=?,[更新者ID]=?,'
-                    '[更新日時]=Now() WHERE [選択肢ID]=?',
-                    [hit[1] if order is None else order, -1 if enabled else 0, uid, hit[0]])
+        cur.execute('UPDATE [操業データ選択肢マスタ] SET [表示順]=?,[説明]=?,[有効]=?,'
+                    '[更新者ID]=?,[更新日時]=Now() WHERE [選択肢ID]=?',
+                    [hit[1] if order is None else order,
+                     str((hit[2] if note is None else note) or ''),
+                     -1 if enabled else 0, uid, hit[0]])
         c.commit()
         return int(hit[0])
     if order is None:
@@ -293,9 +364,9 @@ def choice_upsert(c, name, value, uid, order=None, choice_id=None, enabled=True)
         top = cur.fetchone()[0] or 0
         order = int(top) + 10
     cur.execute('INSERT INTO [操業データ選択肢マスタ] '
-                '([選択肢名],[値],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) '
-                'VALUES (?,?,?,?,?,?,Now(),Now())',
-                [name, value, order, -1 if enabled else 0, uid, uid])
+                '([選択肢名],[値],[説明],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) '
+                'VALUES (?,?,?,?,?,?,?,Now(),Now())',
+                [name, value, str(note or ''), order, -1 if enabled else 0, uid, uid])
     c.commit()
     return int(cur.lastrowid)
 
@@ -317,9 +388,10 @@ def choice_delete(c, choice_id, uid):
 _ITEM_ADDED_COLUMNS = (
     ('組み込みキー', 'TEXT'),      # 画面が持っている入力欄の名前（自由項目は空）
     ('置き場', 'TEXT'),            # 準備 / 入力内容
-    ('列幅', 'INTEGER'),           # カードの中の6列グリッドで何列ぶんか
+    ('列幅', 'INTEGER'),           # カードの中の12マスグリッドで何マスぶんか
     ('群折りたたみ', 'INTEGER'),   # その群を畳んで出すか
     ('表示条件', 'TEXT'),          # 畳んだ群を自動で開く測定項目（カンマ区切り）
+    ('入力方法', 'TEXT'),          # プルダウン / ラジオ / タブ / 一覧（§9.218 ②）
 )
 
 
@@ -327,10 +399,19 @@ def _ensure_item_columns(c):
     cur = c.cursor()
     have = {r[1] for r in cur.execute(f'PRAGMA table_info([{ITEM_TABLE}])')}
     added = False
+    # **マスの数え方が変わったことの目印は「列そのもの」**（§9.218 ②）。
+    # 6マス→12マスにしたので、保存済みの`[列幅]`は倍にしないと**全部が
+    # 半分の幅になる**。専用の目印を別に持つと、それを消したときに二重に
+    # 掛かる——`[入力方法]`が無い＝12マスへ移る前の行、という1つの事実で
+    # 判断する（列を足す作業そのものが1度きりなので、目印として確実）。
+    grow = '入力方法' not in have and '列幅' in have
     for name, kind in _ITEM_ADDED_COLUMNS:
         if name not in have:
             cur.execute(f'ALTER TABLE [{ITEM_TABLE}] ADD COLUMN [{name}] {kind}')
             added = True
+    if grow:
+        cur.execute(f'UPDATE [{ITEM_TABLE}] SET [列幅]=[列幅]*{SPAN_UNIT} '
+                    'WHERE [列幅] IS NOT NULL AND [列幅]>0')
     if added:
         c.commit()
     return added
@@ -352,8 +433,8 @@ def _seed_builtins(c):
         cur.execute(f'INSERT INTO [{ITEM_TABLE}] '
                     '([設備名],[群],[項目名],[表示順],[型],[小数桁],[最小値],[最大値],'
                     '[選択肢名],[単位],[必須],[備考],[有効],[組み込みキー],[置き場],[列幅],'
-                    '[群折りたたみ],[表示条件],[登録者ID],[更新者ID],[登録日時],[更新日時]) '
-                    "VALUES (?,?,?,?,'',NULL,NULL,NULL,'','',?,'',-1,?,?,?,?,?,?,?,Now(),Now())",
+                    '[群折りたたみ],[表示条件],[入力方法],[登録者ID],[更新者ID],[登録日時],[更新日時]) '
+                    "VALUES (?,?,?,?,'',NULL,NULL,NULL,'','',?,'',-1,?,?,?,?,?,'',?,?,Now(),Now())",
                     ['*', group, name, (i + 1) * 10, -1 if req else 0,
                      key, place, span, -1 if fold else 0, when,
                      'migrate:seed', 'migrate:seed'])
@@ -371,7 +452,7 @@ def ensure_item_table(c):
                     '[最小値] REAL, [最大値] REAL, [選択肢名] TEXT, [単位] TEXT, '
                     '[必須] INTEGER, [備考] TEXT, [有効] INTEGER, '
                     '[組み込みキー] TEXT, [置き場] TEXT, [列幅] INTEGER, '
-                    '[群折りたたみ] INTEGER, [表示条件] TEXT, '
+                    '[群折りたたみ] INTEGER, [表示条件] TEXT, [入力方法] TEXT, '
                     '[登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
         c.commit()
         _seed_items(c)
@@ -410,12 +491,19 @@ def _row_to_item(r):
             'span': normalize_span(r[16]),
             'fold': bool(r[17]) if r[17] is not None else False,
             # 畳んだ群を自動で開く測定項目。空＝いつも畳んだまま。
-            'showWhen': [x for x in str(r[18] or '').replace('、', ',').split(',') if x.strip()]}
+            'showWhen': [x for x in str(r[18] or '').replace('、', ',').split(',') if x.strip()],
+            # 選ばせ方(§9.218 ②)。選択肢を持たない型では効かないので、
+            # **画面へ「効かない」と伝えるためにここで潰す**——設定は残す
+            # （型を「選択」へ戻したときに選び直させない）。
+            'widget': normalize_widget(r[19]),
+            'widgetLive': (normalize_widget(r[19])
+                           if normalize_item_type(r[5]) in CHOICE_TYPES or builtin
+                           else WIDGET_SELECT)}
 
 
 _ITEM_SELECT = ('SELECT [項目ID],[設備名],[群],[項目名],[表示順],[型],[小数桁],[最小値],[最大値],'
                 '[選択肢名],[単位],[必須],[備考],[有効],'
-                '[組み込みキー],[置き場],[列幅],[群折りたたみ],[表示条件] '
+                '[組み込みキー],[置き場],[列幅],[群折りたたみ],[表示条件],[入力方法] '
                 'FROM [操業データ項目マスタ] ORDER BY [表示順],[項目ID]')
 
 
@@ -451,7 +539,8 @@ def items_for_equipment(c, equipment):
 def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文字',
                 decimals=None, vmin=None, vmax=None, choice='', unit='',
                 required=False, note='', enabled=True, item_id=None,
-                place=None, span=None, fold=None, show_when=None, builtin=None):
+                place=None, span=None, fold=None, show_when=None, builtin=None,
+                widget=None):
     ensure_item_table(c)
     name = str(name or '').strip()
     if not name:
@@ -488,12 +577,13 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
             builtin, normalize_place(place), normalize_span(span),
             -1 if fold else 0,
             ','.join(x.strip() for x in (show_when or []) if str(x).strip())
-            if isinstance(show_when, (list, tuple)) else str(show_when or '')]
+            if isinstance(show_when, (list, tuple)) else str(show_when or ''),
+            normalize_widget(widget)]
     if item_id is not None:
         cur.execute('UPDATE [操業データ項目マスタ] SET [設備名]=?,[群]=?,[項目名]=?,[表示順]=?,'
                     '[型]=?,[小数桁]=?,[最小値]=?,[最大値]=?,[選択肢名]=?,[単位]=?,[必須]=?,'
                     '[備考]=?,[有効]=?,[組み込みキー]=?,[置き場]=?,[列幅]=?,[群折りたたみ]=?,'
-                    '[表示条件]=?,[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
+                    '[表示条件]=?,[入力方法]=?,[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
                     args + [uid, int(item_id)])
         c.commit()
         return int(item_id)
@@ -506,7 +596,7 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
         cur.execute('UPDATE [操業データ項目マスタ] SET [群]=?,[表示順]=?,[型]=?,[小数桁]=?,'
                     '[最小値]=?,[最大値]=?,[選択肢名]=?,[単位]=?,[必須]=?,[備考]=?,[有効]=?,'
                     '[組み込みキー]=?,[置き場]=?,[列幅]=?,[群折りたたみ]=?,[表示条件]=?,'
-                    '[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
+                    '[入力方法]=?,[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
                     args[1:2] + args[3:] + [uid, hit[0]])
         c.commit()
         return int(hit[0])
@@ -518,8 +608,8 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
     cur.execute('INSERT INTO [操業データ項目マスタ] '
                 '([設備名],[群],[項目名],[表示順],[型],[小数桁],[最小値],[最大値],[選択肢名],'
                 '[単位],[必須],[備考],[有効],[組み込みキー],[置き場],[列幅],[群折りたたみ],'
-                '[表示条件],[登録者ID],[更新者ID],[登録日時],[更新日時]) '
-                'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',
+                '[表示条件],[入力方法],[登録者ID],[更新者ID],[登録日時],[更新日時]) '
+                'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',
                 args + [uid, uid])
     c.commit()
     return int(cur.lastrowid)
@@ -597,10 +687,13 @@ def form_for_equipment(c, equipment):
     入力欄が丸ごと消えないように）。"""
     items = items_for_equipment(c, equipment)
     cmap = choice_map(c)
+    notes = choice_notes(c)
     out = []
     for it in items:
         row = dict(it)
         row['choices'] = list(cmap.get(it['choice'], [])) if it['choice'] else []
+        # 説明つきで選ばせるのに要る（§9.218 ②）。**説明のある値だけ**入れる。
+        row['choiceNotes'] = dict(notes.get(it['choice'], {})) if it['choice'] else {}
         row['choiceMissing'] = bool(it['choice']) and it['choice'] not in cmap
         out.append(row)
     # **出さない組み込みの欄は名指しで返す**(§9.216 ②)。画面はマスタに載って
@@ -610,4 +703,5 @@ def form_for_equipment(c, equipment):
     known = {x['builtin'] for x in item_rows(c, True) if x['builtin']}
     live = {x['builtin'] for x in items if x['builtin']}
     return {'items': out, 'builtinOff': sorted(known - live),
-            'gridCols': GRID_COLS, 'places': list(PLACES)}
+            'gridCols': GRID_COLS, 'spanUnit': SPAN_UNIT,
+            'widgets': list(WIDGETS), 'places': list(PLACES)}

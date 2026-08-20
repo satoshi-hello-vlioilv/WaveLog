@@ -63,23 +63,34 @@
            {k:'choice',label:'選択肢',type:'master-combo',source:{endpoint:'/api/operation-choice-master',valueKey:'name'},
             hint:'型が「選択」のとき、操業データ選択肢マスタのどのまとまりから選ばせるかです。名前で結び付けます。'},
            {k:'unit',label:'単位',hint:'欄の右へ小さく添えます（mm など）。'},
+           {k:'widget',label:'選ばせ方',type:'select',options:['プルダウン','ラジオ','タブ','一覧'],
+            hint:'型が「選択」のときの見せ方です。プルダウン=畳んで1行／ラジオ=全部見えたまま／タブ=横に連なる帯／一覧=押すと浮き窓で説明つき。'},
            {k:'order',label:'表示順',type:'number',min:0,step:10,
             hint:'小さいほど上に出ます。空欄で保存すると今の並びのままです。'}],
    cols:[{k:'equipment',label:'対象設備',grow:2,format:'equipmentTarget'},{k:'group',label:'群',grow:1},
          {k:'name',label:'項目名',grow:2},{k:'type',label:'型',grow:1},
          {k:'choice',label:'選択肢',grow:1},{k:'order',label:'表示順',grow:1}],
    hint:'測定画面①準備の「操業データ」に出る入力欄です。1行＝1つの欄で、設備ごとに変えられます（「すべての設備」を選べば設備が増えても登録し直す必要はありません）。**値そのものは測定データの中に入る**ので、このマスタには記録は残りません。項目名を変えると、それまでに記録した値は前の名前のまま残ります（消えはしませんが、新しい名前の欄は空で始まります）。'},
-  {group:'equip',key:'opChoice',label:'操業データ選択肢',icon:'択',endpoint:'/api/operation-choice-master',hasDelete:true,
-   fields:[{k:'name',label:'選択肢名',required:true,key:true,
+  /* **名前は1行に収まる長さにする**（§9.218 ③、利用者の指摘「『操業データ
+     選択肢』が文字数の関係でこれだけ折り返しが発生して見栄えが悪い」）。
+     左の一覧は幅が決まっているので、8文字だとここだけ2行になっていた。
+     何のマスタかは**アイコン（択）・すぐ上の「操業データ項目」・題と説明**が
+     言うので、名前は短くてよい。 */
+  {group:'equip',key:'opChoice',label:'選択肢の値',icon:'択',endpoint:'/api/operation-choice-master',hasDelete:true,
+   titleText:'操業データの選択肢 — 値と説明',
+   fields:[{k:'name',label:'まとまり名',required:true,key:true,
             hint:'まとまりの名前です。操業データ項目マスタの「選択肢」からこの名前で参照します（例: リング色）。'},
            {k:'value',label:'値',required:true,key:true,hint:'実際に選ばせる1つの値です（例: 茶）。'},
+           {k:'note',label:'説明',
+            hint:'選ばせ方を「一覧」にしたときに、値の下へ小さく出ます。**選択肢が多いときに何を選べばよいか**を書きます（例: 大径リング用）。空欄なら値だけが出ます。'},
            {k:'order',label:'表示順',type:'number',min:0,step:10,
             hint:'小さいほど先に出ます。空欄で保存すると今の並びのままです。'}],
-   cols:[{k:'name',label:'選択肢名',grow:2},{k:'value',label:'値',grow:2},{k:'order',label:'表示順',grow:1},
+   cols:[{k:'name',label:'まとまり名',grow:2},{k:'value',label:'値',grow:1},
+         {k:'note',label:'説明',grow:2},{k:'order',label:'表示順',grow:1},
          /* **どの項目が使っているか**(§9.216 ④)。使い道の見えない選択肢は
             消してよいのか判断できず、消すと項目側は黙って空の欄になる。 */
          {k:'usedBy',label:'使っている項目',grow:3}],
-   hint:'操業データの「選択」型の項目で選ばせる値です。1行＝1つの値で、同じ選択肢名の行がまとまって1つの選択肢になります。**同じまとまりを複数の項目が参照できます**（大径リング色と小径リング色はどちらも「リング色」を見ています）。ここで値を足すと、参照しているすべての項目の選択肢に増えます。'},
+   hint:'操業データの「選択」型の項目で選ばせる値です。1行＝1つの値で、同じまとまり名の行がまとまって1つの選択肢になります。**同じまとまりを複数の項目が参照できます**（大径リング色と小径リング色はどちらも「リング色」を見ています）。ここで値を足すと、参照しているすべての項目の選択肢に増えます。**値を足すだけなら「操業データ項目」の設定の窓からもできます**（項目を作る手を止めなくて済みます）。'},
   /* 帳票ブロックマスタ（§9.217、利用者の指示「内部データについても各項目
      ごと設計できるように、編集追加などできるように」）。中身の作り方が
      仕事になっている塊（測定表・条の図・異常位置判定）はコードの側のままで、
@@ -3546,18 +3557,43 @@
       視覚的に調整D&Dで並び替え編集ができる汎用設定機能」
 
     行を1つずつ編集する一覧では、**並べたときにどう見えるか**が分からない。
-    ここでは測定画面のカードと**同じ6列のグリッド**を出し、掴んで動かす。
+    ここでは測定画面のカードと**同じ12マスのグリッド**を出し、掴んで動かす。
     群は「直前の見出し帯」で決まるので、**1回の操作で並びと群の両方**が
     決まる（別々に選ばせない）。
 
-    右側は選んだ1項目の設定。**選択肢はその場で足せる**——項目を作る手を
-    止めて別のタブへ行かせない（利用者の言う「登録の負荷」の正体）。
+    **1項目の設定はモーダルで開く**（§9.218 ①、利用者の指摘「操業データ
+    項目を選んだときにメニューが右側で固定され、設定しにくい」）。以前は
+    右の細い柱に押し込んでいたため、盤は狭いのに設定は縦に長く、幅・型・
+    選択肢を触るたびに視線が往復していた。モーダルなら左に**実物**（測定
+    画面と同じ部品を選んだマス数の器に入れて出す）、右に**決めること**を
+    並べられる。**選択肢はその場で足せる**——項目を作る手を止めて別のタブへ
+    行かせない（利用者の言う「登録の負荷」の正体）。
     ================================================================ */
- const opState={equipment:'',items:[],types:[],places:['準備','入力内容'],spans:[1,2,3,6],
-                gridCols:6,choiceNames:[],choices:[],usage:{},picked:null,busy:false};
+ const opState={equipment:'',items:[],types:[],places:['準備','入力内容'],
+                spans:Array.from({length:12},(_,i)=>i+1),widgets:['プルダウン','ラジオ','タブ','一覧'],
+                choiceTypes:['選択'],spanUnit:2,
+                gridCols:12,choiceNames:[],choices:[],notes:{},usage:{},
+                picked:null,busy:false,drag:null};
  const OP_PLACE_NOTE={
   '準備':'①準備の「操業データ」カード（横3マス×縦2マス）',
   '入力内容':'②測定の「入力内容」カード（畳んでおき、下の「開く条件」に当たる項目を選ぶと開きます）',
+ };
+ /* 型の一言。**選ばせる前に何が起きるかを書く**（§CLAUDE 6）。 */
+ const OP_TYPE_NOTE={
+  '整数':'小数点なし。マイナスも入る',
+  '正の整数':'小数点なし・0以上',
+  '数値':'小数あり。マイナスも入る',
+  '正の数':'小数あり・0以上',
+  '選択':'下の選択肢から選ぶ',
+  '文字':'自由記述',
+ };
+ /* 選ばせ方の一言と向き不向き（§9.218 ②）。**数だけで決めない**が、
+    目安を書いておくと迷いが減る。 */
+ const OP_WIDGET_NOTE={
+  'プルダウン':{icon:'▾',note:'畳んで1行。数が多くても場所を取らない'},
+  'ラジオ':{icon:'◉',note:'全部見えたまま選ぶ。3〜5個向き'},
+  'タブ':{icon:'▭',note:'横に連なる帯。2〜4個向き'},
+  '一覧':{icon:'⌸',note:'押すと浮き窓。説明つきで選べる（数が多いとき）'},
  };
  function opItemById(id){return opState.items.find(x=>String(x.id)===String(id))||null}
  /* 置き場ごとの並び。**群は「直前の見出し」で決まる**ので、ここで帯と
@@ -3573,12 +3609,30 @@
   });
   return rows;
  }
- function opSpanOf(x){return Math.max(1,Math.min(opState.gridCols,Number(x.span)||2))}
+ function opSpanOf(x){return Math.max(1,Math.min(opState.gridCols,Number(x.span)||4))}
+ /* マスの数を**人の言葉**にする（§9.218 ②）。現場は6マス時代の「2列」で
+    言い慣れているので、マスだけを出すと全部が倍になったように読める。 */
+ function opSpanLabel(v){
+  const u=opState.spanUnit||2;
+  const col=v/u;
+  return (Number.isInteger(col)?`${col}列`:`${col}列`)+`（${v}/${opState.gridCols}マス）`;
+ }
+ function opWidgetOf(x){
+  const w=String(x.widget||'プルダウン');
+  return opState.widgets.includes(w)?w:'プルダウン';
+ }
+ /* 選ばせ方が効くのは選択肢を持つ項目だけ。**組み込みの欄も選択欄**なので
+    効く（値を持つのは今までどおりselect）。 */
+ function opWidgetUsable(x){
+  return !!x.builtin||opState.choiceTypes.includes(x.type);
+ }
  function opTileHtml(x){
   const span=opSpanOf(x);
   const off=x.enabled===false;
+  const w=opWidgetOf(x);
   const tip=[x.name,x.builtin?'画面がもともと持っている入力欄':x.type,
-             span+'列',x.required?'必須':'',off?'出さない':''].filter(Boolean).join('｜');
+             opSpanLabel(span),x.required?'必須':'',off?'出さない':'',
+             w!=='プルダウン'?w:''].filter(Boolean).join('｜');
   return `<div class="op-tile${String(opState.picked)===String(x.id)?' is-picked':''}`
    +`${off?' is-off':''}" draggable="true" data-op-id="${esc(x.id)}"`
    +` style="grid-column:span ${span}" title="${esc(tip)}" tabindex="0">`
@@ -3587,8 +3641,10 @@
    +(x.builtin?'<b class="op-chip op-chip-builtin">画面の欄</b>':'')
    +(x.required?'<b class="op-chip op-chip-req">必須</b>':'')
    +(off?'<b class="op-chip op-chip-off">出さない</b>':'')
+   +(w!=='プルダウン'?`<b class="op-chip op-chip-widget">${esc(OP_WIDGET_NOTE[w].icon)} ${esc(w)}</b>`:'')
    +`<span class="op-tile-type">${esc(x.builtin?'—':x.type||'')}</span>`
-   +`<span class="op-tile-span">${span}列</span></span></div>`;
+   +`<span class="op-tile-span">${span}/${opState.gridCols}</span></span>`
+   +`<span class="op-tile-gear" aria-hidden="true">設定</span></div>`;
  }
  function opBandHtml(r,count){
   const cond=(r.showWhen||[]).length?`／開く条件: ${esc((r.showWhen||[]).join('、'))}`:'';
@@ -3607,72 +3663,19 @@
   const counts={};
   rows.forEach(r=>{if(r.type==='item'){const g=r.x.group||'その他';counts[g]=(counts[g]||0)+1}});
   const body=rows.map(r=>r.type==='group'?opBandHtml(r,counts[r.name]||0):opTileHtml(r.x)).join('')
-   ||'<p class="mm-empty-inline" style="grid-column:1/-1">この置き場の項目はまだありません。右の一覧から掴んで持ってくるか、「項目を追加」で作ります。</p>';
+   ||'<p class="mm-empty-inline" style="grid-column:1/-1">この置き場の項目はまだありません。「項目を追加」で作るか、もう一方の置き場から掴んで持ってきます。</p>';
   const n=rows.filter(r=>r.type==='item').length;
+  /* **マスの目盛を出す**（§9.218 ②）。掴んで並べる画面なのに、いま何マス
+     使っているのかが読めないと「1つ増やせるか」が分からない。 */
+  const ruler=Array.from({length:opState.gridCols},(_,i)=>
+    `<i class="op-ruler-cell">${i+1}</i>`).join('');
   return `<section class="op-board" data-op-place="${esc(place)}">`
    +`<div class="op-board-head"><b>${esc(place)}</b>`
    +`<small>${esc(OP_PLACE_NOTE[place]||'')}</small>`
    +`<span class="op-board-count">${n}項目</span></div>`
+   +`<div class="op-ruler" style="--op-cols:${opState.gridCols}">${ruler}</div>`
    +`<div class="op-board-grid" data-op-place="${esc(place)}"`
    +` style="--op-cols:${opState.gridCols}">${body}</div></section>`;
- }
- /* 選んだ1項目の設定。**組み込みの欄は型・上下限・選択肢を持たない**
-    （画面が持っている入力欄なので、ここで決めても効かない）。
-    **できないことは書く**（§CLAUDE 4）——欄を出しておいて無視しない。 */
- function opDetailHtml(){
-  const x=opItemById(opState.picked);
-  if(!x)return `<div class="op-detail-empty">左のカードで項目を選ぶと、ここで設定できます。<br>`
-   +`掴んで動かすと<b>並びと群</b>が決まり、置き場（準備／入力内容）も帯をまたげば変わります。</div>`;
-  const opt=(v,cur)=>`<option value="${esc(v)}"${String(cur)===String(v)?' selected':''}>${esc(v)}</option>`;
-  const isChoice=x.type==='選択';
-  const vals=(opState.choices||[]).filter(c=>c.name===x.choice).map(c=>c.value);
-  const users=(opState.usage||{})[x.choice]||[];
-  return `<div class="op-detail-head"><b>${esc(x.name)}</b>`
-   +(x.builtin?`<span class="op-chip op-chip-builtin">画面の欄（${esc(x.builtin)}）</span>`:'')+`</div>`
-   +`<div class="mm-field"><label>対象設備<input id="opdEquipment" type="text" value="${esc(x.equipment||'*')}"`
-   +` title="'*'＝すべての設備。カンマ区切りで複数指定できます（設備停止マスタと同じ書式）"></label></div>`
-   +(x.builtin?`<p class="op-note-line">この欄は画面がもともと持っています（内径のプリセット・条数の上限など、それぞれの仕掛けを持っているため）。ここで決められるのは<b>並び・群・列幅・必須・出す/出さない・置き場</b>だけです。名前と型は変えられません。</p>`
-     :`<div class="mm-field"><label>項目名<input id="opdName" type="text" value="${esc(x.name)}"`
-      +` title="測定画面に出る名前で、記録の鍵にもなります。変えると、それまでの記録は前の名前のまま残ります"></label></div>`
-      +`<div class="mm-field"><label>型<select id="opdType">`
-      +opState.types.map(t=>opt(t,x.type)).join('')+`</select></label></div>`
-      +`<div class="mm-field op-num-row"><label>小数桁<input id="opdDecimals" type="number" min="0" max="4" value="${x.decimals==null?'':esc(x.decimals)}"></label>`
-      +`<label>最小値<input id="opdMin" type="number" step="any" value="${x.min==null?'':esc(x.min)}"></label>`
-      +`<label>最大値<input id="opdMax" type="number" step="any" value="${x.max==null?'':esc(x.max)}"></label>`
-      +`<label>単位<input id="opdUnit" type="text" value="${esc(x.unit||'')}"></label></div>`
-      /* **候補に無い現在値を捨てない**（§9.204と同じ罠）。値をまだ1つも
-         登録していない選択肢名は`choiceNames`に載らないので、そのまま
-         並べると`select.value`が空になり、**その場で値を足す口が使えない**
-         （実際に踏んだ）。参照している名前は必ず候補へ入れる。 */
-      +`<div class="mm-field"><label>選択肢<select id="opdChoice"${isChoice?'':' disabled'}>`
-      +['<option value=""></option>']
-        .concat(opState.choiceNames.map(n=>opt(n,x.choice)))
-        .concat(x.choice&&!opState.choiceNames.includes(x.choice)
-          ?[`<option value="${esc(x.choice)}" selected>${esc(x.choice)}（値が未登録）</option>`]:[])
-        .join('')
-      +`</select></label>`
-      +(isChoice?`<div class="op-choice-box">`
-        +`<div class="op-choice-vals">${vals.length?vals.map(v=>`<span class="op-chip">${esc(v)}</span>`).join('')
-          :'<em class="mm-empty-inline">この選択肢にはまだ値がありません</em>'}</div>`
-        +`<div class="op-choice-add"><input id="opdNewChoiceValue" type="text" placeholder="値を足す（例: 茶）">`
-        +`<button type="button" id="opdAddChoiceValue" class="ghost">値を足す</button></div>`
-        +`<small class="op-choice-use">${users.length?`この選択肢を使っている項目: ${esc(users.join('、'))}`
-          :'この選択肢を使っている項目はまだありません'}</small>`
-        +`</div>`:`<small class="mm-empty-inline">型が「選択」のときだけ使います</small>`)
-      +`</div>`)
-   +`<div class="mm-field op-num-row"><label>列幅<select id="opdSpan">`
-   +opState.spans.map(v=>`<option value="${v}"${opSpanOf(x)===v?' selected':''}>${v}列</option>`).join('')
-   +`</select></label>`
-   +`<label>置き場<select id="opdPlace">`+opState.places.map(p=>opt(p,x.place||'準備')).join('')+`</select></label>`
-   +`<label class="op-check"><input id="opdRequired" type="checkbox"${x.required?' checked':''}>必須</label>`
-   +`<label class="op-check"><input id="opdEnabled" type="checkbox"${x.enabled===false?'':' checked'}>出す</label></div>`
-   +`<div class="mm-field"><label>群<input id="opdGroup" type="text" value="${esc(x.group||'その他')}"></label></div>`
-   +`<div class="mm-field"><label>開く条件（畳んだ群を自動で開く測定項目。カンマ区切り）`
-   +`<input id="opdShowWhen" type="text" value="${esc((x.showWhen||[]).join(','))}"`
-   +` title="例: 板幅,ラテラルボー。空欄なら畳んだままです"></label></div>`
-   +`<div class="op-detail-actions"><button type="button" id="opdSave">この項目を保存</button>`
-   +(x.builtin?`<span class="mm-empty-inline">画面の欄は消せません（「出す」を外すと隠れます）</span>`
-     :`<button type="button" id="opdDelete" class="danger ghost">削除</button>`)+`</div>`;
  }
  function renderOpItem(){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
@@ -3683,14 +3686,14 @@
    +eqs.map(n=>`<option value="${esc(n)}"${opState.equipment===n?' selected':''}>${esc(n)}</option>`).join('')
    +`</select></label>`
    +`<span class="op-bar-note">掴んで動かすと<b>並び</b>が決まり、<b>帯より下</b>がその群になります。`
-   +`置き場をまたげば「準備」と「入力内容」も入れ替わります。</span>`
+   +`置き場をまたげば「準備」と「入力内容」も入れ替わります。押すと<b>設定の窓</b>が開きます。</span>`
    +`<button type="button" id="opAddItem" class="ghost">項目を追加</button>`
    +`<button type="button" id="opAddGroup" class="ghost">群を追加</button>`
    +`<span class="op-bar-state" id="opLayoutState"></span></div>`;
   list.innerHTML=`<div class="op-edit">`
-   +`<div class="op-boards">`+opState.places.map(opBoardHtml).join('')+`</div>`
-   +`<aside class="op-detail" id="opDetail">${opDetailHtml()}</aside></div>`;
+   +`<div class="op-boards">`+opState.places.map(opBoardHtml).join('')+`</div></div>`;
   bindOpItem();
+  if(opState.picked&&!$('#opItemModal'))renderOpModal();
  }
  function opSay(text,bad){
   const el=$('#opLayoutState');if(!el)return;
@@ -3704,6 +3707,7 @@
    const place=grid.dataset.opPlace||'準備';
    let group='その他',fold=false,showWhen=[];
    [...grid.children].forEach(el=>{
+    if(el.dataset.opMark!==undefined)return;      /* 落とす場所の印は行ではない */
     if(el.dataset.opBand!==undefined){
      group=el.dataset.opBand;
      const btn=el.querySelector('[data-op-fold]');
@@ -3745,7 +3749,14 @@
   const addG=$('#opAddGroup');
   if(addG)addG.onclick=()=>opCreateGroup();
   document.querySelectorAll('#masterMaintList .op-tile').forEach(t=>{
-   t.onclick=()=>{opState.picked=t.dataset.opId;renderOpItem()};
+   /* **押したら設定の窓が開く**（§9.218 ①、利用者の指摘「メニューが右側で
+      固定され、設定しにくい」）。以前は右の細い柱に押し込んでいたため、
+      幅・型・選択肢を触るたびに視線が盤と柱を往復していた。 */
+   t.onclick=()=>{opState.picked=t.dataset.opId;renderOpItem();openOpModal(t.dataset.opId)};
+   t.onkeydown=e=>{
+    if(e.key!=='Enter'&&e.key!==' ')return;
+    e.preventDefault();opState.picked=t.dataset.opId;renderOpItem();openOpModal(t.dataset.opId);
+   };
    t.ondragstart=e=>{
     opState.drag=t.dataset.opId;t.classList.add('is-dragging');
     try{e.dataTransfer.setData('text/plain',t.dataset.opId);e.dataTransfer.effectAllowed='move'}catch(_){}
@@ -3757,6 +3768,11 @@
     if(!opState.drag)return;
     e.preventDefault();
     opMark(grid,opDropAt(grid,e));
+   };
+   grid.ondragleave=e=>{
+    if(!opState.drag)return;
+    if(grid.contains(e.relatedTarget))return;
+    opClearMark();
    };
    grid.ondrop=e=>{
     if(!opState.drag)return;
@@ -3794,12 +3810,20 @@
     }catch(err){opSay('保存できませんでした: '+err.message,true)}
    };
   });
-  bindOpDetail();
  }
  /* 落とす場所は**掴んでいる列の中で、いちばん近い境目**。帯もそのまま
-    位置として扱う（帯より下がその群になるので、帯の前後で群が変わる）。 */
+    位置として扱う（帯より下がその群になるので、帯の前後で群が変わる）。
+
+    **落とす場所の印そのものを候補に入れないこと**（§9.218 ④、利用者の報告
+    「ドラッグアンドドロップで移動した後元の位置に戻らなくなりました」）。
+    `opMark()`は印を盤の子として挿し込むので、次の`dragover`では**その印が
+    カーソルのいちばん近く**にいる——印を基準に「右半分なら次へ」と決めると
+    印が1つずつ先へ歩き、狙った境目に止まらない。掴んでいるタイルも同じ
+    理由で外す（自分の前後は位置が変わらないので候補にならない）。 */
  function opDropAt(grid,e){
-  const kids=[...grid.children].filter(el=>el!==document.querySelector('.op-tile.is-dragging'));
+  const drag=document.querySelector('#masterMaintList .op-tile.is-dragging');
+  const kids=[...grid.children].filter(el=>
+    el!==drag&&el.dataset.opMark===undefined);
   let best=null,bestD=Infinity;
   kids.forEach(el=>{
    const r=el.getBoundingClientRect();
@@ -3810,13 +3834,39 @@
   const r=best.getBoundingClientRect();
   return (e.clientX>r.left+r.width/2)?best.nextElementSibling:best;
  }
+ /* **印で盤を動かさないこと**（§9.218 ④／§9.196と同じ教訓）。
+    以前は印をグリッドの子として**流れの中へ**挿していたため、印が入った
+    瞬間に後ろのタイルが1マスぶんずれ、**同じカーソル位置なのに次の
+    `dragover`では違う境目がいちばん近くなる**——印が2つの境目を往復し、
+    狙った位置に止まらなかった（利用者の報告「移動した後元の位置に戻らなく
+    なりました」の正体）。器の座標へ**浮かせて置く**と、盤は1pxも動かない。 */
  function opMark(grid,at){
-  opClearMark();
-  const m=document.createElement('div');
-  m.className='op-drop-mark';m.dataset.opMark='1';
-  at?grid.insertBefore(m,at):grid.appendChild(m);
+  const r=grid.getBoundingClientRect();
+  let x,y,h;
+  if(at){
+   const a=at.getBoundingClientRect();
+   x=a.left-r.left;y=a.top-r.top;h=a.height;
+  }else{
+   const kids=[...grid.children].filter(el=>el.dataset.opMark===undefined);
+   const last=kids[kids.length-1];
+   if(!last){opClearMark();return}
+   const a=last.getBoundingClientRect();
+   x=a.right-r.left;y=a.top-r.top;h=a.height;
+  }
+  let m=grid.querySelector(':scope>[data-op-mark]');
+  if(!m){
+   m=document.createElement('div');
+   m.className='op-drop-mark';m.dataset.opMark='1';
+   grid.appendChild(m);
+  }
+  m.style.left=(x-2)+'px';m.style.top=y+'px';m.style.height=h+'px';
  }
  function opClearMark(){document.querySelectorAll('[data-op-mark]').forEach(x=>x.remove())}
+ /* 落とす先の狙いは**この2つだけ**が決めている。ヘッドレスではHTML5の
+    D&Dの座標を作れないので、網はここを直に呼んで確かめる（§9.218 ④）。
+    **素の`window.*`を増やさない**（CLAUDE.md「新規公開は名前空間経由」）。 */
+ window.WL=window.WL||{};
+ WL.opBoard={dropAt:opDropAt,mark:opMark,clearMark:opClearMark};
  async function opRenameGroup(place,from,to){
   const uid=requireMaintUser();if(uid===null)return;
   const rows=opCollectLayout().map(r=>(r.place===place&&r.group===from)?{...r,group:to}:r);
@@ -3842,37 +3892,258 @@
    const r=await api('/api/operation-item-master',{method:'POST',
      headers:{'Content-Type':'application/json'},
      body:JSON.stringify({equipment:opState.equipment||'*',group:base.group||'その他',
-       name:nm,type:'文字',place:'準備',span:2,user_id:uid})});
+       name:nm,type:'文字',place:'準備',span:4,user_id:uid})});
    opState.picked=r.id;
    await loadOpItemMaint(true);
    opSay('項目を追加しました');
+   openOpModal(r.id);
    if(window.WL&&WL.opData)WL.opData.forget();
   }catch(e){opSay('追加できませんでした: '+e.message,true)}
  }
- function bindOpDetail(){
+
+ /* ================================================================
+    項目の設定はモーダルで開く（§9.218 ①、利用者の指示）
+    ----------------------------------------------------------------
+    「操業データ項目を選んだときにメニューが右側で固定され、設定しにくい。
+      モーダルで表示して設定させる形にしてください。UIももう少し使いやすく
+      直感的で視覚で表現する方法も検討してください」
+
+    左に**実物**（測定画面と同じ部品を、選んだマス数の器に入れて出す）、
+    右に**決めること**。触った結果がその場で見えないと、幅も選ばせ方も
+    「当たっているか」が分からない（列の設定パネルと同じ作法・§9.105）。
+    ================================================================ */
+ function ensureOpModal(){
+  let m=$('#opItemModal');if(m)return m;
+  m=document.createElement('div');m.className='record-modal';m.id='opItemModal';m.hidden=true;
+  m.innerHTML=`<div class="settings-dialog op-dialog" role="dialog" aria-modal="true">
+    <header><div><small>操業データ項目</small><h2 id="opModalTitle">項目</h2></div>
+     <button id="opModalClose" type="button" aria-label="閉じる">×</button></header>
+    <div class="op-modal-body">
+     <div class="op-modal-preview" id="opModalPreview"></div>
+     <div class="op-modal-form" id="opModalForm"></div>
+    </div>
+    <div class="op-modal-foot">
+     <span class="op-modal-state" id="opModalState"></span>
+     <span class="op-modal-actions" id="opModalActions"></span>
+    </div>
+   </div>`;
+  document.body.append(m);
+  $('#opModalClose').onclick=closeOpModal;
+  m.addEventListener('click',e=>{if(e.target===m)closeOpModal()});
+  document.addEventListener('keydown',e=>{
+   if(e.key==='Escape'&&!m.hidden){e.stopPropagation();closeOpModal()}
+  },true);
+  return m;
+ }
+ function closeOpModal(){
+  const m=$('#opItemModal');if(!m)return;
+  m.hidden=true;opState.picked=null;renderOpItem();
+ }
+ function openOpModal(id){
+  opState.picked=id;
+  const m=ensureOpModal();m.hidden=false;renderOpModal();
+ }
+ function opModalSay(text,bad){
+  const el=$('#opModalState');if(!el)return;
+  el.textContent=text||'';el.classList.toggle('is-bad',!!bad);
+ }
+ /* いま画面にある測定項目の一覧（開く条件で選ばせる）。**ここへ書き写さない**
+    ——`index.html`の`#measureType`が正で、増減したときに2箇所を直すことになる。 */
+ function opMeasureTypes(){
+  const el=document.getElementById('measureType');
+  if(!el)return [];
+  return [...el.options].map(o=>String(o.text||'').trim()).filter(Boolean);
+ }
+ /* 選んだマス数を**帯で見せる**。数字だけでは「カードのどのくらいか」が
+    読めない（§9.218 ②）。 */
+ function opSpanPickerHtml(span){
+  const n=opState.gridCols;
+  return `<span class="op-span-pick" role="group" aria-label="幅">`
+   +Array.from({length:n},(_,i)=>i+1).map(v=>
+     `<button type="button" data-op-span="${v}" class="${v<=span?'is-on':''}"`
+     +` title="${esc(opSpanLabel(v))}" aria-pressed="${v===span?'true':'false'}"></button>`).join('')
+   +`</span><i class="op-form-note">${esc(opSpanLabel(span))}</i>`;
+ }
+ function opChoiceValuesHtml(x){
+  const vals=(opState.choices||[]).filter(c=>c.name===x.choice);
+  if(!x.choice)return `<p class="op-form-empty">選択肢のまとまりを選ぶか、名前を打って新しく作ります。</p>`;
+  if(!vals.length)return `<p class="op-form-empty">「${esc(x.choice)}」にはまだ値がありません。下で足せます。</p>`;
+  return `<div class="op-choice-rows">`+vals.map(c=>
+    `<div class="op-choice-row" data-op-cid="${esc(c.id)}">`
+    +`<b>${esc(c.value)}</b>`
+    +`<input type="text" data-op-cnote="${esc(c.id)}" value="${esc(c.note||'')}"`
+    +` placeholder="説明（一覧から選ぶときに出ます）">`
+    +`<button type="button" class="ghost" data-op-cdel="${esc(c.id)}" title="この値を消します">×</button>`
+    +`</div>`).join('')+`</div>`;
+ }
+ function renderOpModal(){
+  const m=$('#opItemModal');if(!m||m.hidden)return;
+  const x=opItemById(opState.picked);
+  if(!x){m.hidden=true;return}
+  const isChoice=opState.choiceTypes.includes(x.type);
+  const usable=opWidgetUsable(x);
+  const widget=opWidgetOf(x);
+  const users=(opState.usage||{})[x.choice]||[];
+  const groups=[...new Set(opState.items.map(i=>i.group||'その他'))];
+  $('#opModalTitle').textContent=x.name;
+  /* ---- 左: 実物 ---- */
+  $('#opModalPreview').innerHTML=`<div class="op-prev-head">測定画面での見え方`
+   +`<small>${esc(x.place||'準備')}のカード・${esc(opSpanLabel(opSpanOf(x)))}</small></div>`
+   +`<div class="op-prev-card" style="--op-cols:${opState.gridCols}">`
+   +`<div class="op-prev-band">${esc(x.group||'その他')}</div>`
+   +`<div class="op-prev-field" id="opPrevField" style="grid-column:span ${opSpanOf(x)}"></div>`
+   +`</div>`
+   +`<p class="op-prev-note">${x.builtin
+      ?'この欄は画面がもともと持っています（内径のプリセット・条数の上限など、それぞれの仕掛けがあるため）。ここで決められるのは<b>並び・群・幅・必須・出す/出さない・置き場・選ばせ方</b>だけです。'
+      :'記録は<b>項目名を鍵</b>にして測定データへ入ります。名前を変えると、それまでの記録は前の名前のまま残ります。'}</p>`;
+  opRenderPreviewField(x,widget,usable);
+  /* ---- 右: 決めること ---- */
+  const seg=(name,list,cur,attr,noteOf)=>`<span class="op-seg" role="group" aria-label="${esc(name)}">`
+   +list.map(v=>`<button type="button" ${attr}="${esc(v)}" class="${String(cur)===String(v)?'is-on':''}"`
+     +(noteOf&&noteOf(v)?` title="${esc(noteOf(v))}"`:'')+`>${esc(v)}</button>`).join('')+`</span>`;
+  $('#opModalForm').innerHTML=`
+   <div class="op-form-row"><span class="op-form-label">置き場</span>
+    <span class="op-form-ctl">${seg('置き場',opState.places,x.place||'準備','data-op-place',
+      p=>OP_PLACE_NOTE[p]||'')}</span></div>
+   <div class="op-form-row"><span class="op-form-label">幅</span>
+    <span class="op-form-ctl">${opSpanPickerHtml(opSpanOf(x))}</span></div>
+   <div class="op-form-row"><span class="op-form-label">群</span>
+    <span class="op-form-ctl"><input type="text" id="opdGroup" list="opGroupList" value="${esc(x.group||'その他')}">
+     <datalist id="opGroupList">${groups.map(g=>`<option value="${esc(g)}">`).join('')}</datalist>
+     <i class="op-form-note">同じ名前を付けると1つの見出しにまとまります。</i></span></div>
+   <div class="op-form-row"><span class="op-form-label">出し方</span>
+    <span class="op-form-ctl">
+     <button type="button" id="opdRequired" class="op-toggle${x.required?' is-on':''}" aria-pressed="${x.required?'true':'false'}">必須にする</button>
+     <button type="button" id="opdEnabled" class="op-toggle${x.enabled===false?'':' is-on'}" aria-pressed="${x.enabled===false?'false':'true'}">測定画面に出す</button>
+    </span></div>
+   ${x.builtin?'':`
+   <div class="op-form-row"><span class="op-form-label">項目名</span>
+    <span class="op-form-ctl"><input type="text" id="opdName" value="${esc(x.name)}"></span></div>
+   <div class="op-form-row"><span class="op-form-label">型</span>
+    <span class="op-form-ctl">${seg('型',opState.types,x.type,'data-op-type',t=>OP_TYPE_NOTE[t]||'')}
+     <i class="op-form-note">${esc(OP_TYPE_NOTE[x.type]||'')}</i></span></div>
+   ${isChoice?'':`
+   <div class="op-form-row"><span class="op-form-label">数の決まり</span>
+    <span class="op-form-ctl op-form-nums">
+     <label>小数桁<input type="number" id="opdDecimals" min="0" max="4" value="${x.decimals==null?'':esc(x.decimals)}"></label>
+     <label>最小<input type="number" id="opdMin" step="any" value="${x.min==null?'':esc(x.min)}"></label>
+     <label>最大<input type="number" id="opdMax" step="any" value="${x.max==null?'':esc(x.max)}"></label>
+     <label>単位<input type="text" id="opdUnit" value="${esc(x.unit||'')}"></label>
+    </span></div>`}
+   ${isChoice?`
+   <div class="op-form-row"><span class="op-form-label">選択肢</span>
+    <span class="op-form-ctl">
+     <span class="op-choice-pick">
+      <select id="opdChoice">${['<option value="">（選んでいません）</option>']
+        .concat(opState.choiceNames.map(n=>`<option value="${esc(n)}"${n===x.choice?' selected':''}>${esc(n)}</option>`))
+        .concat(x.choice&&!opState.choiceNames.includes(x.choice)
+          ?[`<option value="${esc(x.choice)}" selected>${esc(x.choice)}（値が未登録）</option>`]:[])
+        .join('')}</select>
+      <input type="text" id="opdNewChoiceName" placeholder="新しいまとまりを作る（例: リング色）">
+     </span>
+     ${opChoiceValuesHtml(x)}
+     <span class="op-choice-add">
+      <input type="text" id="opdNewChoiceValue" placeholder="値を足す（例: 茶）">
+      <input type="text" id="opdNewChoiceNote" placeholder="説明（省略できます）">
+      <button type="button" id="opdAddChoiceValue" class="ghost">値を足す</button>
+     </span>
+     <i class="op-form-note">${users.length?`このまとまりを使っている項目: ${esc(users.join('、'))}`
+       :'このまとまりを使っている項目はまだありません'}</i>
+    </span></div>`:''}`}
+   <div class="op-form-row"><span class="op-form-label">選ばせ方</span>
+    <span class="op-form-ctl">
+     ${opState.widgets.map(w=>`<button type="button" data-op-widget="${esc(w)}"`
+       +` class="op-widget-tile${widget===w?' is-on':''}"${usable?'':' disabled'}>`
+       +`<b>${esc(OP_WIDGET_NOTE[w].icon)}</b><span>${esc(w)}</span>`
+       +`<small>${esc(OP_WIDGET_NOTE[w].note)}</small></button>`).join('')}
+     <i class="op-form-note">${usable?'選んだ形がそのまま測定画面に出ます（値の持ち方は変わりません）。'
+       :'この型は選択肢を持たないので、選ばせ方は効きません。型を「選択」にすると選べます。'}</i>
+    </span></div>
+   <div class="op-form-row"><span class="op-form-label">開く条件</span>
+    <span class="op-form-ctl">
+     <span class="op-when">${opMeasureTypes().map(t=>
+       `<button type="button" data-op-when="${esc(t)}" class="${(x.showWhen||[]).includes(t)?'is-on':''}">${esc(t)}</button>`).join('')
+       ||'<i class="op-form-note">測定画面を開いていないので項目の一覧が出せません。</i>'}</span>
+     <i class="op-form-note">選ぶと、この<b>群</b>は畳んで出て、その測定項目を選んだときだけ開きます（群ぜんぶに効きます）。</i>
+    </span></div>`;
+  $('#opModalActions').innerHTML=`<button type="button" id="opdSave" class="mm-btn-primary">保存</button>`
+   +(x.builtin?`<span class="op-form-note">画面の欄は消せません（「測定画面に出す」を外すと隠れます）</span>`
+     :`<button type="button" id="opdDelete" class="danger ghost">削除</button>`);
+  bindOpModal(x);
+ }
+ /* 実物の欄を組み立てる。**測定画面の部品をそのまま使う**（`measure-opdata.js`）
+    ——別に作ると、設定画面で見えた形と実際の形が食い違う（§9.176の
+    `entryCellInfo()`と同じ約束）。 */
+ function opRenderPreviewField(x,widget,usable){
+  const host=$('#opPrevField');if(!host)return;
+  const vals=(opState.choices||[]).filter(c=>c.name===x.choice).map(c=>c.value);
+  const isChoice=opState.choiceTypes.includes(x.type)||!!x.builtin;
+  host.innerHTML='';
+  const label=document.createElement('label');
+  label.className='opf';
+  label.dataset.opfill='1';
+  label.innerHTML=`<span class="opf-name">${esc(x.name)}`
+   +(x.required?'<b class="opf-req">必須</b>':'')+`</span>`;
+  let ctl;
+  if(isChoice){
+   ctl=document.createElement('select');
+   ctl.innerHTML=['<option value="">-</option>']
+     .concat((x.builtin&&!vals.length?['（画面が持っている選択肢）']:vals)
+       .map(v=>`<option value="${esc(v)}">${esc(v)}</option>`)).join('');
+  }else{
+   ctl=document.createElement('input');ctl.type='text';
+   ctl.placeholder=x.unit?`0 ${x.unit}`:'';
+  }
+  label.appendChild(ctl);
+  if(x.unit){const u=document.createElement('em');u.className='opf-unit';u.textContent=x.unit;label.appendChild(u)}
+  host.appendChild(label);
+  if(isChoice&&usable&&widget!=='プルダウン'&&window.WL&&WL.opData&&WL.opData.previewWidget){
+   WL.opData.previewWidget({name:x.name,choiceNotes:opState.notes[x.choice]||{}},label,widget);
+  }
+ }
+ function bindOpModal(x){
+  const form=$('#opModalForm');if(!form)return;
+  /* **触った結果はその場で当てる**（保存はまとめて1回）。押すたびに
+     サーバーへ書くと、途中で切れたときに半分だけ効いた行が残る。 */
+  const touch=patch=>{Object.assign(x,patch);renderOpModal()};
+  form.querySelectorAll('[data-op-place]').forEach(b=>b.onclick=()=>touch({place:b.dataset.opPlace}));
+  form.querySelectorAll('[data-op-span]').forEach(b=>b.onclick=()=>touch({span:Number(b.dataset.opSpan)}));
+  form.querySelectorAll('[data-op-type]').forEach(b=>b.onclick=()=>touch({type:b.dataset.opType}));
+  form.querySelectorAll('[data-op-widget]').forEach(b=>b.onclick=()=>{
+   if(b.disabled)return;touch({widget:b.dataset.opWidget});
+  });
+  form.querySelectorAll('[data-op-when]').forEach(b=>b.onclick=()=>{
+   const now=new Set(x.showWhen||[]);
+   if(now.has(b.dataset.opWhen))now.delete(b.dataset.opWhen);else now.add(b.dataset.opWhen);
+   touch({showWhen:[...now]});
+  });
+  const req=$('#opdRequired');
+  if(req)req.onclick=()=>touch({required:!x.required});
+  const en=$('#opdEnabled');
+  if(en)en.onclick=()=>touch({enabled:x.enabled===false});
+  const ch=$('#opdChoice');
+  if(ch)ch.onchange=()=>touch({choice:ch.value});
+  /* 値の説明はその場で書き換える（**入力中に描き直さない**・§9.117）。 */
+  form.querySelectorAll('[data-op-cnote]').forEach(inp=>inp.onchange=()=>
+    opSaveChoiceNote(inp.dataset.opCnote,inp.value));
+  form.querySelectorAll('[data-op-cdel]').forEach(b=>b.onclick=()=>opDeleteChoiceValue(b.dataset.opCdel));
+  const addV=$('#opdAddChoiceValue');
+  if(addV)addV.onclick=()=>opAddChoiceValue();
   const save=$('#opdSave');
   if(save)save.onclick=()=>opSaveItem();
   const del=$('#opdDelete');
   if(del)del.onclick=()=>opDeleteItem();
-  const type=$('#opdType');
-  if(type)type.onchange=()=>{
-   const x=opItemById(opState.picked);if(!x)return;
-   x.type=type.value;                       // 「選択」に切り替えた瞬間に選択肢の欄を出す
-   const box=$('#opDetail');if(box){box.innerHTML=opDetailHtml();bindOpDetail()}
-  };
-  const addV=$('#opdAddChoiceValue');
-  if(addV)addV.onclick=()=>opAddChoiceValue();
  }
  function opDetailValues(){
+  const x=opItemById(opState.picked)||{};
   const v=id=>{const el=$('#'+id);return el?el.value:undefined};
-  const c=id=>{const el=$('#'+id);return el?!!el.checked:undefined};
   const num=s=>(s===''||s===undefined||s===null)?null:Number(s);
-  return {equipment:v('opdEquipment'),name:v('opdName'),type:v('opdType'),
+  return {name:v('opdName'),type:x.type,
           decimals:num(v('opdDecimals')),min:num(v('opdMin')),max:num(v('opdMax')),
           unit:v('opdUnit'),choice:v('opdChoice'),group:v('opdGroup'),
-          span:num(v('opdSpan')),place:v('opdPlace'),
-          required:c('opdRequired'),enabled:c('opdEnabled'),
-          showWhen:String(v('opdShowWhen')||'').split(',').map(s=>s.trim()).filter(Boolean)};
+          span:x.span,place:x.place,widget:x.widget,
+          required:!!x.required,enabled:x.enabled!==false,
+          showWhen:x.showWhen||[]};
  }
  async function opSaveItem(){
   const x=opItemById(opState.picked);if(!x)return;
@@ -3881,24 +4152,26 @@
   /* 組み込みの欄は名前も型も画面のものなので送らない（送っても効かない
      欄を作らない・§CLAUDE 4）。 */
   const body={id:x.id,user_id:uid,
-    equipment:d.equipment||'*',group:d.group||'その他',
+    equipment:x.equipment||'*',group:d.group||'その他',
     name:x.builtin?x.name:(d.name||x.name),
     type:x.builtin?x.type:(d.type||'文字'),
     decimals:x.builtin?null:d.decimals,min:x.builtin?null:d.min,max:x.builtin?null:d.max,
     unit:x.builtin?'':(d.unit||''),choice:x.builtin?'':(d.choice||''),
-    span:d.span,place:d.place,required:d.required,enabled:d.enabled,
+    span:d.span,place:d.place,required:d.required,enabled:d.enabled,widget:d.widget,
     /* 「開く条件」と「畳む」は**群のもの**。1行だけに書くと、同じ群の中で
        食い違う（`form_for_equipment`は「1つでも畳むと言えば畳む」で読むので
        消したはずの条件が残る）。群ぜんぶへ同じ値を書く。 */
     showWhen:d.showWhen,fold:!!(d.showWhen||[]).length||!!x.fold};
   try{
+   opModalSay('保存しています…');
    await api('/api/operation-item-master/update',{method:'POST',
      headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
    await opSyncGroupFlags(d.place||x.place,d.group||x.group,d.showWhen,body.fold,uid);
    await loadOpItemMaint(true);
-   opSay('保存しました');
+   opSay('保存しました');opModalSay('保存しました');
    if(window.WL&&WL.opData)WL.opData.forget();
-  }catch(e){opSay('保存できませんでした: '+e.message,true)}
+   renderOpModal();
+  }catch(e){opModalSay('保存できませんでした: '+e.message,true)}
  }
  /* 群のふるまい（畳む・開く条件）は**群の全部の行へ同じ値**を書く。
     `form_for_equipment`は「1つでも畳むと言えば畳む」で読むので、1行だけ
@@ -3921,28 +4194,63 @@
    await api('/api/operation-item-master/delete',{method:'POST',
      headers:{'Content-Type':'application/json'},body:JSON.stringify({id:x.id,user_id:uid})});
    opState.picked=null;
+   const m=$('#opItemModal');if(m)m.hidden=true;
    await loadOpItemMaint(true);
    opSay('削除しました');
    if(window.WL&&WL.opData)WL.opData.forget();
-  }catch(e){opSay('削除できませんでした: '+e.message,true)}
+  }catch(e){opModalSay('削除できませんでした: '+e.message,true)}
  }
- /* 選択肢の値を**その場で足す**（§9.216 ④）。項目を作る手を止めて別の
-    タブへ行かせないのが、この画面のいちばんの値打ち。 */
+ /* 選択肢の値を**その場で足す**（§9.216 ④／§9.218 ③）。項目を作る手を
+    止めて別のタブへ行かせないのが、この画面のいちばんの値打ち。
+    まとまりの名前も打てるようにしてあるので、**選択肢マスタを開かずに
+    1つの項目を最後まで作れる**（利用者の言う「登録の負荷」の正体）。 */
  async function opAddChoiceValue(){
   const x=opItemById(opState.picked);if(!x)return;
-  const name=String(($('#opdChoice')||{}).value||'').trim();
+  const fresh=String(($('#opdNewChoiceName')||{}).value||'').trim();
+  const name=fresh||String(($('#opdChoice')||{}).value||'').trim();
   const val=String(($('#opdNewChoiceValue')||{}).value||'').trim();
-  if(!name){opSay('先に選択肢を選ぶか、名前を入力してください',true);return}
-  if(!val){opSay('足す値を入力してください',true);return}
+  const note=String(($('#opdNewChoiceNote')||{}).value||'').trim();
+  if(!name){opModalSay('先にまとまりを選ぶか、新しい名前を入力してください',true);return}
+  if(!val){opModalSay('足す値を入力してください',true);return}
   const uid=requireMaintUser();if(uid===null)return;
   try{
    await api('/api/operation-choice-master',{method:'POST',
      headers:{'Content-Type':'application/json'},
-     body:JSON.stringify({name,value:val,user_id:uid})});
+     body:JSON.stringify({name,value:val,note,user_id:uid})});
+   /* 新しいまとまりを作ったときは、その場でこの項目に結ぶ——結ばないと
+      「足したのに出てこない」と読まれる。 */
+   x.choice=name;
    await loadOpItemMaint(true);
-   opSay(`「${name}」に「${val}」を足しました`);
+   opModalSay(`「${name}」に「${val}」を足しました`);
    if(window.WL&&WL.opData)WL.opData.forget();
-  }catch(e){opSay('足せませんでした: '+e.message,true)}
+   renderOpModal();
+  }catch(e){opModalSay('足せませんでした: '+e.message,true)}
+ }
+ async function opSaveChoiceNote(id,note){
+  const row=(opState.choices||[]).find(c=>String(c.id)===String(id));if(!row)return;
+  const uid=requireMaintUser();if(uid===null)return;
+  try{
+   await api('/api/operation-choice-master/update',{method:'POST',
+     headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({id:row.id,name:row.name,value:row.value,note,user_id:uid})});
+   row.note=note;
+   opModalSay('説明を保存しました');
+   if(window.WL&&WL.opData)WL.opData.forget();
+  }catch(e){opModalSay('説明を保存できませんでした: '+e.message,true)}
+ }
+ async function opDeleteChoiceValue(id){
+  const row=(opState.choices||[]).find(c=>String(c.id)===String(id));if(!row)return;
+  const uid=requireMaintUser();if(uid===null)return;
+  if(!(await confirmModal(`「${row.name}」から「${row.value}」を消しますか？\nこのまとまりを使っている項目すべてから消えます。`)))return;
+  try{
+   await api('/api/operation-choice-master/delete',{method:'POST',
+     headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({id:row.id,user_id:uid})});
+   await loadOpItemMaint(true);
+   opModalSay('消しました');
+   if(window.WL&&WL.opData)WL.opData.forget();
+   renderOpModal();
+  }catch(e){opModalSay('消せませんでした: '+e.message,true)}
  }
  async function loadOpItemMaint(force){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
@@ -3959,14 +4267,21 @@
    opState.places=it.places||opState.places;
    opState.spans=it.spans||opState.spans;
    opState.gridCols=it.gridCols||opState.gridCols;
+   opState.spanUnit=it.spanUnit||opState.spanUnit;
+   opState.widgets=it.widgets||opState.widgets;
+   opState.choiceTypes=it.choiceTypes||opState.choiceTypes;
+   opState.notes=it.choiceNotes||{};
    opState.choiceNames=ch.names||[];
    opState.choices=ch.items||[];
    opState.usage=ch.usage||it.choiceUsage||{};
-   if(opState.picked&&!opItemById(opState.picked))opState.picked=null;
+   if(opState.picked&&!opItemById(opState.picked)){
+    opState.picked=null;
+    const m=$('#opItemModal');if(m)m.hidden=true;
+   }
    renderOpItem();
+   renderOpModal();
   }catch(e){list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
  }
-
  // capture段リスナーがstopImmediatePropagation()で先に処理を完結させるため
  // ボタン側のonclickは常に発火しない到達不能コードだった(削除済み)。
  document.addEventListener('click',e=>{const t=e.target.closest('#openMasterMaint');if(!t)return;e.preventDefault();e.stopImmediatePropagation();openMasterMaint()},true);
