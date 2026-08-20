@@ -212,6 +212,33 @@ let b=null;
   rec('誰から奪ったかが残る（黙って入れ替えない）',
       (file.taken_from||{}).login===OTHER.login,JSON.stringify(file.taken_from));
 
+  /* ---- 6) 相手が抜けたら、待たずに編集権へ戻る（§9.211 ②） ----
+     利用者の指示「抜けているのに残っていて編集権が映らないのも困る」。
+     在席の巡回（10秒）で「誰も持っていない」と分かった時点で、いま信じて
+     いる状態を捨てて取りに行く。**ハートビート（25秒）を待たない**
+     ——待つと、空いているのに最大25秒READONLYのままになる。 */
+  holdAsOther();
+  await page.evaluate(()=>WL.scheduleView.refreshSession());
+  await page.waitForFunction(()=>/読み取り専用/.test(
+    (document.getElementById('scWho')||{}).textContent||''),null,{timeout:20000}).catch(()=>{});
+  const beforeLeave=await who();
+  rec('（前提）もう一度、他端末が持っている状態にできる',
+      /読み取り専用/.test(beforeLeave.文),beforeLeave.文);
+  clearSession();                       // 相手が抜けた（解放／TTL切れ）
+  await page.evaluate(()=>WL.scheduleView.refreshSession());
+  await page.waitForFunction(()=>{
+   const t=(document.getElementById('scWho')||{}).textContent||'';
+   return /編集中/.test(t)&&!/読み取り専用/.test(t);
+  },null,{timeout:20000}).catch(()=>{});
+  const afterLeave=await who();
+  rec('相手が抜けたら読み取り専用のまま留まらない',
+      !/読み取り専用/.test(afterLeave.文),afterLeave.文);
+  rec('抜けたあとは自分が編集権を持ち直す',
+      /編集中/.test(afterLeave.文)&&afterLeave.ロック===false,JSON.stringify(afterLeave));
+  rec('持ち直した結果は共有の在席ファイルにも入る',
+      !!(readSessions()[EQ]||{}).pc,JSON.stringify(readSessions()[EQ]||{}));
+
+
  }catch(e){rec('FATAL',false,e.message)}
  finally{
   /* **掴んだまま終わらない**（§CLAUDE。残すと後続が全部「編集中です」で落ちる）。 */

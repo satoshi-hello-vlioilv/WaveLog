@@ -323,6 +323,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   }catch(e){showToast&&showToast('取り込めませんでした',e.message,5000)}
  }
  let scLockTimer=null,scWhoTimer=null;
+ /* 空いた設備を取り直している最中か（§9.211 ②）。二重に取りに行かせない。 */
+ let scReclaiming=false;
  // ---------- 編集セッション(§9.11新設)・書込キュー ----------
  let scSessionTimer=null,scSessionHeldFor=null,scTempIdSeq=0;
  let scWriteQueue=[],scQueueRunning=false,scQueueFlushTimer=null;
@@ -1845,6 +1847,24 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     scState.sessionError=null;
    }else if(cur&&cur.mine){
     scState.sessionHeld=true;scState.sessionHolder=null;scState.sessionError=null;
+   }else if(scState.sessionHolder||scState.sessionHeld){
+    /* **誰も持っていない設備を「読み取り専用」のままにしない**（§9.211 ②、
+       利用者の指示「抜けているのに残っていて編集権が映らないのも困る」）。
+       ここへ来るのは、相手が抜けた／TTLが切れた／自分の延長が落ちた場合。
+       どちらに転んでも**いま信じている状態は嘘**なので捨て、その場で
+       取りに行く——ハートビート（25秒）を待つと、空いているのに最大25秒
+       READONLYのままになる（まさに利用者が困ると言った状態）。
+       **取りに行くのは1本だけ**（scReclaimingで押さえる）。
+       `acquireSessionOnce()`は最後にここを呼ぶが、取れていれば
+       `cur.mine`が真になるので回り続けない。 */
+    scState.sessionHeld=false;scState.sessionHolder=null;scState.sessionError=null;
+    if(!scReclaiming){
+     scReclaiming=true;
+     Promise.resolve()
+      .then(()=>acquireSessionOnce())
+      .catch(()=>{})
+      .then(()=>{scReclaiming=false});
+    }
    }
    renderSessionBanner(); // 帯と在席チップの両方を描き直す
    return;
