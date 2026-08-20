@@ -80,6 +80,29 @@
             消してよいのか判断できず、消すと項目側は黙って空の欄になる。 */
          {k:'usedBy',label:'使っている項目',grow:3}],
    hint:'操業データの「選択」型の項目で選ばせる値です。1行＝1つの値で、同じ選択肢名の行がまとまって1つの選択肢になります。**同じまとまりを複数の項目が参照できます**（大径リング色と小径リング色はどちらも「リング色」を見ています）。ここで値を足すと、参照しているすべての項目の選択肢に増えます。'},
+  /* 帳票ブロックマスタ（§9.217、利用者の指示「内部データについても各項目
+     ごと設計できるように、編集追加などできるように」）。中身の作り方が
+     仕事になっている塊（測定表・条の図・異常位置判定）はコードの側のままで、
+     **「ラベルと値の出どころを並べただけの塊」だけ**を現場が足せる。 */
+  {group:'equip',key:'reportBlock',label:'帳票ブロック',icon:'票',
+   endpoint:'/api/report-block-master',hasDelete:true,
+   fields:[{k:'equipment',label:'対象設備',type:'equipment-multi-text',required:true,key:true,
+            tagHint:'この塊をどの設備の帳票へ出せるようにするかです。「すべての設備」を選ぶと、これから増える設備でも使えます。'},
+           {k:'name',label:'ブロック名',required:true,key:true,
+            hint:'帳票の見出しになり、並び・幅・高さの設定の鍵にもなります。**同じ設備に同じ名前を2つ置かないでください**（どちらの設定か決まりません）。'},
+           {k:'content',label:'内容',type:'textarea',rows:8,
+            placeholder:'ロット番号=basic.lotNo\n運転方式=settings.opData.運転方式',
+            hint:'1行に1項目、`ラベル=値の出どころ`で書きます。出どころは測定データの中の道で、`basic.…`（仕掛から取った値）`settings.…`（準備で決めた値）`settings.opData.<項目名>`（操業データ）`workTime.…`（作業時間）が使えます。`=`を省くとラベルと道が同じになります。'},
+           {k:'span',label:'幅（12マス中）',type:'select',options:['3','4','6','8','12'],
+            hint:'紙は12マスのグリッドです。3＝1/4、6＝1/2、12＝全幅。'},
+           {k:'rows',label:'高さ（行数）',type:'select',options:['','2','3','4','6','8','12'],
+            hint:'1行＝24px。空欄なら中身なり（描いてから測ります）。行数を決めると下の段へ跨いで置けます。'},
+           {k:'order',label:'表示順',type:'number',min:0,step:10,
+            hint:'小さいほど先に出ます。空欄で保存すると今の並びのままです。'}],
+   cols:[{k:'equipment',label:'対象設備',grow:2,format:'equipmentTarget'},
+         {k:'name',label:'ブロック名',grow:2},{k:'content',label:'内容',grow:4},
+         {k:'span',label:'幅',grow:1},{k:'rows',label:'高さ',grow:1},{k:'order',label:'表示順',grow:1}],
+   hint:'帳票へ**自分で作った塊**を足せます。1行＝1つの塊で、中身は「ラベルと値の出どころ」を並べたものです。測定表・条の図・異常位置判定のように組み立て方そのものが仕事になっている塊はアプリ側が持っており、ここでは作れません。作った塊は帳票画面の「配置を組み換え」で、ほかの塊と同じように掴んで並べたり幅・高さを決めたりできます（既定では紙に出していないので、組み換えの「出していない塊」から紙へ落としてください）。'},
   {group:'equip',key:'equipment',label:'設備',icon:'設',endpoint:'/api/equipment-master',hasDelete:true,
    editorModal:false,
    fields:[{k:'name',label:'設備名',required:true,key:true},
@@ -454,6 +477,14 @@
    }
    if(f.type==='number'){
     return `<label class="mm-field mm-field-num">${fieldLabelHtml(f)}${numFieldHtml(f,val)}${f.hint?`<small class="mm-field-hint">${esc(f.hint)}</small>`:''}</label>`;
+   }
+   /* 複数行の入力欄（§9.217）。1行1件を書かせる設定（帳票ブロックの内容）で
+      使う——1行の欄に押し込むと、何件書いたのかが読めない。 */
+   if(f.type==='textarea'){
+    return `<label class="mm-field mm-field-area">${fieldLabelHtml(f)}`
+     +`<textarea data-field="${f.k}" rows="${f.rows||6}" spellcheck="false"`
+     +` placeholder="${esc(f.placeholder||'')}">${esc(val)}</textarea>`
+     +`${f.hint?`<small class="mm-field-hint">${esc(f.hint)}</small>`:''}</label>`;
    }
    if(f.type==='date'){
     return `<label class="mm-field">${fieldLabelHtml(f)}<span class="mm-date"><input data-field="${f.k}" type="date" value="${esc(val)}"><button type="button" class="mm-date-today" data-date-today="${f.k}">今日</button></span>${f.hint?`<small class="mm-field-hint">${esc(f.hint)}</small>`:''}</label>`;
@@ -924,6 +955,12 @@
    // 連動登録(§5.3.1)で相手のマスタが増えている可能性があるため、
    // 選択肢のキャッシュは毎回捨てる(次に開いたとき新しい分類が出る)。
    invalidateComboCache();
+   /* 画面が覚えている写しも捨てる（§9.216／§9.217）——マスタで足した直後に
+      その画面を開くのがふつうの順番なので、写しを持ったままだと
+      「登録したのに出てこない」になる。**「あれば使う」で呼ぶこと**
+      （読み込み順に依存させない）。 */
+   if(def.key==='reportBlock'&&window.WL&&WL.reportBlocks)WL.reportBlocks.forget();
+   if((def.key==='opItem'||def.key==='opChoice')&&window.WL&&WL.opData)WL.opData.forget();
    maintState.editing=null;await loadMaint(true);
    showToast&&showToast(def.label+(editing?'を更新しました':'を登録しました'),(r&&r.message)||'',3600);
   }catch(e){showToast&&showToast(editing?'更新できませんでした':'登録できませんでした',e.message,6500)}

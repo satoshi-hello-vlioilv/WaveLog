@@ -1369,6 +1369,61 @@ def operation_choice_delete():
   return jsonify(ok=True,deleted=n,message='操業データの選択肢を削除しました。')
  except Exception as e:return jsonify(error=f'操業データ選択肢マスタの削除に失敗しました: {e}'),500
 
+# ========================================================================
+# 帳票ブロックマスタ(§9.217)。「ラベルと値の出どころを並べただけの塊」を
+# 現場が自分で足せるようにする。中身の作り方が仕事になっている塊
+# （測定表・条の図・異常位置判定）はコードの側のまま。
+# ========================================================================
+@bp.get('/api/report-block-master')
+def report_block_list():
+ try:
+  from ..repositories import report_block_repo as rb
+  eq=str(request.args.get('equipment') or '').strip()
+  def fn(c):
+   items=rb.blocks_for_equipment(c,eq) if eq else rb.block_rows(c,True)
+   return {'items':items,'spans':list(rb.SPANS),'rows':list(rb.ROWS),
+           # **出どころの見本**。ここに無い道も書けるので、選択肢で塞がない。
+           'fields':[{'label':a,'path':b} for a,b in rb.FIELD_CATALOG]}
+  return jsonify(ok=True,equipment=eq,**_op_read(fn))
+ except Exception as e:return jsonify(error=f'帳票ブロックマスタの読込に失敗しました: {e}'),500
+
+def _report_block_save(x):
+ from ..repositories import report_block_repo as rb
+ uid=request_user_id(x)
+ name=str(x.get('name') or '').strip()
+ if not name:return jsonify(error='ブロック名を入力してください。'),400
+ iv=lambda v:(None if v in (None,'') else int(v))
+ try:
+  def fn(c):
+   return rb.block_upsert(c,uid,equipment=x.get('equipment') or '*',name=name,
+                          order=iv(x.get('order')),span=x.get('span'),rows=x.get('rows'),
+                          content=x.get('content') or '',note=x.get('note') or '',
+                          enabled=(True if x.get('enabled') is None else bool(x.get('enabled'))),
+                          block_id=(int(x['id']) if x.get('id') not in (None,'') else None))
+  return jsonify(ok=True,id=_op_read(fn),message='帳票ブロックを保存しました。')
+ except ValueError as e:return jsonify(error=str(e)),400
+ except Exception as e:return jsonify(error=f'帳票ブロックマスタの保存に失敗しました: {e}'),500
+
+@bp.post('/api/report-block-master')
+def report_block_register():
+ return _report_block_save(request.get_json(force=True) or {})
+
+@bp.post('/api/report-block-master/update')
+def report_block_update():
+ x=request.get_json(force=True) or {}
+ if x.get('id') in (None,''):return jsonify(error='更新対象IDがありません。'),400
+ return _report_block_save(x)
+
+@bp.post('/api/report-block-master/delete')
+def report_block_delete():
+ from ..repositories import report_block_repo as rb
+ x=request.get_json(force=True) or {}
+ if x.get('id') in (None,''):return jsonify(error='削除対象IDがありません。'),400
+ try:
+  n=_op_read(lambda c:rb.block_delete(c,x['id'],request_user_id(x)))
+  return jsonify(ok=True,deleted=n,message='帳票ブロックを削除しました。')
+ except Exception as e:return jsonify(error=f'帳票ブロックマスタの削除に失敗しました: {e}'),500
+
 @bp.get('/api/operation-form')
 def operation_form():
  """測定画面が開いた瞬間に要る「その設備の入力欄一式」。**選択肢まで解決して

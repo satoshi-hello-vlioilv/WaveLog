@@ -131,6 +131,15 @@
    器の幅を全部取り、**隣に置いた文字（設備名）が押し出されて消えた**。
    幅・高さを決めたいのは値を打ち込む欄だけ。 */
 .mm-field input:not([type=checkbox]):not([type=radio]),.mm-field select{height:var(--ctl-h);min-width:200px;padding:6px 10px;border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff}
+/* 複数行の欄（§9.217）。**高さは行数（rows）に任せる**——pxで固定すると
+   行の途中で切れる（§9.126）。器いっぱいに広げるのは、1行1件を書かせる
+   設定なので折り返させたくないため。 */
+.mm-field-area{grid-column:1/-1}
+.mm-field textarea{
+  width:100%;min-width:200px;min-height:0;padding:6px 10px;
+  border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;
+  font-family:inherit;font-size:var(--fs-sm);line-height:var(--lh);resize:vertical;
+}
 .mm-field input:focus-visible,.mm-field select:focus-visible{outline:0;border-color:var(--teal);box-shadow:0 0 0 3px #087c8926}
 .mm-field-wide{flex-basis:100%}
 .mm-field-hint{color:#8a9aa0;font-size:var(--fs-micro)}

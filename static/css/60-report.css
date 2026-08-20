@@ -136,9 +136,22 @@
    紙は**12マスの粗いグリッド**。1塊が何マスぶんかは列レイアウトマスタが
    持ち、JSが`grid-column:span N`で入れる（設定で変わるのでCSSに書けない）。
    用紙の割り付けはpx固定（`.rp-page`配下の例外）。 */
+/* **行も粗いグリッド**（§9.217、利用者の指示）。以前は暗黙の行だったので、
+   1つ背の高い塊がいるとその段ぜんぶがその高さになり、隣に空白が残っていた。
+   行の高さを`--rp-row`で固定して塊が`grid-row: span R`を占める形にすると、
+   背の低い塊が**下の段へ跨いだ塊の横へ回り込める**（`dense`）。
+   何行ぶんかはJSが入れる（設定とロットの中身で変わるのでCSSに書けない）。 */
 .rp-blocks{display:grid;grid-template-columns:repeat(var(--rp-grid,12),minmax(0,1fr));
+  grid-auto-rows:var(--rp-row,24px);grid-auto-flow:row dense;
   gap:var(--space-1);align-items:start}
 .rp-block{min-width:0}
+/* 落ちる場所を**実物大で**見せる（§9.217）。線1本では「どこへ何マスぶん
+   入るのか」が読めない。グリッドの子として挿すので、置いたらどうなるかが
+   そのまま見える。 */
+.rp-ghost{display:flex;align-items:center;justify-content:center;text-align:center;pointer-events:none}
+.rp-ghost{min-height:24px;border:2px dashed var(--teal);border-radius:3px}
+.rp-ghost{background:rgba(8,124,137,.09);color:#087c89;font-size:9px;font-weight:800}
+.rp-blocks.is-dropping .rp-block{outline-color:var(--teal)}
 /* 組み換え中だけの見せ方。**紙には1つも出ない**（操作帯はarranging時しか
    組み立てない）ので、ここは画面のためだけの装飾。 */
 .rp-blocks.is-arranging .rp-block{outline:1px dashed #9bb3ba;outline-offset:1px;position:relative}
@@ -204,6 +217,25 @@
   padding:var(--pad-chip) var(--space-2);background:var(--computed-bg);
   border-bottom:1px solid var(--teal);color:var(--computed-fg)}
 .rp-arrange-bar[hidden]{display:none}
+/* 出していない塊の置き場（§9.217）。**紙の外**——紙の中へ入れると
+   刷り上がりに混ざる。 */
+.rp-palette{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;
+  padding:var(--pad-chip) var(--space-2);
+  background:var(--surface-2);border-bottom:1px solid var(--line-soft)}
+.rp-palette[hidden]{display:none}
+.rp-palette.is-target{background:rgba(8,124,137,.10);outline:2px dashed var(--teal);outline-offset:-2px}
+.rp-palette-head{font-size:var(--fs-sm);font-weight:800;color:var(--nav)}
+.rp-palette-note{flex:1 1 240px;min-width:0;color:var(--ink-3);font-size:var(--fs-tiny)}
+.rp-palette-list{display:flex;gap:var(--gap-tight);flex-wrap:wrap;flex:1 1 100%;min-width:0}
+.rp-palette-list.is-empty{color:var(--muted);font-size:var(--fs-tiny)}
+.rp-palette-item{display:flex;flex-direction:column;align-items:flex-start;gap:1px;
+  min-width:0;max-width:var(--w-md);cursor:grab;
+  padding:2px var(--ctl-pad-x-sm);border:1px solid var(--line-mid);
+  border-radius:var(--radius-xs);background:#fff;color:var(--ink-2)}
+.rp-palette-item.is-dragging{opacity:.45}
+.rp-palette-name{font-size:var(--fs-tiny);font-weight:800;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.rp-palette-size{font-size:var(--fs-micro);color:var(--muted);font-weight:700}
 .rp-arrange-bar b{font-size:var(--fs-sm)}
 .rp-arrange-info{font-size:var(--fs-tiny);color:var(--ink-2);min-width:0;flex:1 1 240px}
 #reportArrange.is-on{background:var(--teal);border-color:var(--teal);color:#fff}
