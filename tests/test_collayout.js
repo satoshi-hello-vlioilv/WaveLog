@@ -467,6 +467,36 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   rec('列幅を引いても並べ替えの設定が消えない',
       !!((afterSorts.sorts||{})[sortKey]),JSON.stringify(afterSorts.sorts||{}));
 
+  /* ---- 11) いま出せない列も並びから落とさない(§9.216 ②) ----
+     `listColumnKeys()`の顔ぶれは**場面で変わる**——`__select__`/`__plan__`は
+     スケジュールモードだけ、結合で足された列は結合が当たったときだけ。
+     以前の`fullOrder()`は「今ある列」に無い並びを黙って捨てていたので、
+     編集モードで列幅を1回引くだけで**スケジュールモードで決めた並びが
+     消え**、戻したときに選択・予定の列が右端へ飛んだ（§9.110の再発）。
+
+     **確かめるときは、今の画面に出ていない列を並びへ入れてから引くこと**
+     ——出ている列だけで見ても、直す前でも通る。 */
+  const GHOST='__plan__',GHOST2='__io_ghost_col__';
+  await page.evaluate(async g=>{
+   const t=listLayoutTarget(),cur=WL.columnLayout.saved(t);
+   await WL.columnLayout.patch(t,{order:[g[0],g[1],...(cur.order||[])
+     .filter(k=>k!==g[0]&&k!==g[1])]});
+  },[GHOST,GHOST2]);
+  await page.waitForTimeout(500);
+  const seeded=await (await fetch(B+'/api/column-layout-master?target='+encodeURIComponent(target))).json();
+  rec('前提: いま画面に出ていない列が並びに入っている',
+      (seeded.order||[]).includes(GHOST)&&(seeded.order||[]).includes(GHOST2)
+      &&!(await cols()).includes(GHOST),
+      JSON.stringify((seeded.order||[]).slice(0,4)));
+  await dragBy(K2,-40);
+  const kept=await (await fetch(B+'/api/column-layout-master?target='+encodeURIComponent(target))).json();
+  rec('列幅を引いても、いま出せない列が並びから消えない（§9.216 ②）',
+      (kept.order||[]).includes(GHOST)&&(kept.order||[]).includes(GHOST2),
+      JSON.stringify((kept.order||[]).slice(0,4)));
+  rec('いま出せない列の位置も動かない',
+      (kept.order||[]).indexOf(GHOST)===0&&(kept.order||[]).indexOf(GHOST2)===1,
+      `${(kept.order||[]).indexOf(GHOST)} / ${(kept.order||[]).indexOf(GHOST2)}`);
+
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
 
   console.log('\n=== SUMMARY ===');

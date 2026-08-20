@@ -1355,11 +1355,25 @@
   /* 書き込んだ先の写しは捨てる——次に開いたときにマスタから取り直させる
      (当てた覚えの無い古い形で描かれるのを防ぐ)。 */
   WL.columnLayout.forget();
+  /* **捨てるだけでは足りない**（§9.216 ③）。`get()`は畳んだ結果を覚える
+     （§9.212 ③のメモ化）ので、捨てた直後に誰かが引くと**まだ取り直して
+     いない空の形**がそのまま写しへ入り直す——`load()`は「写しがあれば
+     取りに行かない」ので、取り込んだ設定が画面から消えたまま戻らない
+     （実際には保存できているのに、一覧を開き直すまで消えたように見える）。
+     **いま開いている一覧ぶんだけは取り直してから続ける**（他の対象は
+     次に開いたときの`load()`が取りに行く）。 */
+  try{await WL.columnLayout.load(target)}catch(_){}
   closeIo();
   showToast&&showToast(`${ok}件を取り込みました`,ng?`${ng}件は書き込めませんでした（ログ・診断を確認してください）`
                                                  :'一覧を開き直すと反映されます',5000);
-  const hit=items.find(x=>x.target===target);
-  if(hit)useBody(hit.body,'ファイルから取り込みました');
+  /* 取り込んだ結果は**もう保存済み**なので、下書きは置かない——`useBody()`で
+     当てると「未保存の変更」に見え、保存せずに閉じた拍子に`discard()`で
+     捨てられる（＝取り込んだのに戻ったように見える）。保存済みから
+     パネルを組み直す。 */
+  loadDraft();renderOrigins();renderList();renderDetail();
+  panelSrc.afterApply();
+  const foot=document.getElementById('lcFootNote');
+  if(foot)foot.textContent=`ファイルから ${ok}件を取り込みました（マスタへ保存済みです）`;
  }
 
  async function reset(){

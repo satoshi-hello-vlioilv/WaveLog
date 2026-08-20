@@ -807,7 +807,18 @@ function setVisualState(el,state){
 }
 function activeRequiredControls(){
  const controls=[];
- ['operator','inspector'].forEach(id=>controls.push({el:$('#'+id),label:id==='operator'?'オペレータ':'検査員'}));
+ /* **必須はマスタが決める**（§9.216 ②、利用者の指示「一部の必須入力事項も
+    マスタで設定可能とし」）。以前はここに`['operator','inspector']`と直に
+    書いており、設備ごとに変えられなかった。
+    **答えが得られないときは元の2つへ倒す**——読めなかったことを「必須は
+    無い」と同じに扱うと、完了前の確認が黙って緩くなる（§9.190の
+    「印の保存が失敗したら画面に出す」と同じ考え方で、静かに緩めない）。 */
+ const fromMaster=(window.WL&&WL.opData&&WL.opData.requiredControls)?WL.opData.requiredControls():null;
+ if(fromMaster&&fromMaster.length!==undefined&&fromMaster!==null&&WL.opData.defs().length){
+  fromMaster.forEach(x=>controls.push(x));
+ }else{
+  ['operator','inspector'].forEach(id=>controls.push({el:$('#'+id),label:id==='operator'?'オペレータ':'検査員'}));
+ }
  const type=$('#measureType')?.value;
  /* 母材と丈は**同じ面にある**ので、必須も一緒に見る（§9.160。以前は
     項目が2つに割れており、片方を開かないともう片方の未入力に気づけなかった）。 */

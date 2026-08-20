@@ -364,14 +364,17 @@ let b=null,page=null;
     見出し:[...box.querySelectorAll('.prep-head')].filter(vis)
       .map(x=>(x.querySelector('.prep-fold-name')||x.querySelector('.prep-more-name')||x).textContent.trim()),
     出ている項目:[...box.querySelectorAll('label')].filter(vis).map(id),
-    畳んでいる項目:[...box.querySelectorAll('label[data-prep="usual"]')].filter(x=>!vis(x)).map(id),
+    /* 「準備」に置いた欄で見えていないもの。**置き場で引く**——群も
+       畳むかどうかもマスタが決めるので、`data-prep="usual"`のような
+       固定の名前では引けない（§9.216 ②）。 */
+    畳んでいる項目:[...box.querySelectorAll('label[data-opplace="準備"]')].filter(x=>!vis(x)).map(id),
     要約:document.querySelector('#prepMoreList')?.textContent.trim()||'',
     状態:document.querySelector('#prepMoreState')?.textContent.trim()||'',
     開いている:box.classList.contains('prep-open'),
    };
   });
   const p1=await prep();
-  rec('①は役割ごとの見出しを持つ',p1.見出し.length===4,JSON.stringify(p1.見出し));
+  rec('①は群ごとの見出しを持つ（マスタが決める）',p1.見出し.length>=4,JSON.stringify(p1.見出し));
   /* **オペレータはプルダウン**(§9.133)。リストボックスは器の中で5,394px
      スクロールしており(実測)、1画面に収める方針にも反していた。
      **選択肢は1人も減らさない**——171人ぜんぶ入っていることを見る。 */
@@ -396,50 +399,81 @@ let b=null,page=null;
   rec('オペレータ欄が器の中でスクロールしない',opList.はみ出し<=1,JSON.stringify(opList));
   /* 見出しの文字は**名前だけ**を見る。「いつもと同じ設定」の見出しには
      畳んだ5項目の現在値が続くので、innerTextをそのまま比べると必ず落ちる。 */
-  rec('見出しは「誰が→形→機材→いつもと同じ」の順',
-      p1.見出し.join('/')==='誰が測るか/測定表の形/使う機材/いつもと同じ設定',
+  rec('見出しの先頭は「誰が→形→機材→いつもと同じ」の順（マスタの並び）',
+      p1.見出し.slice(0,4).join('/')==='誰が測るか/測定表の形/使う機材/いつもと同じ設定',
       p1.見出し.join('/'));
+  /* 置き場が「入力内容」の群は①に出さない（§9.216 ③）。 */
+  rec('①に「条の入力」の群を出さない',!p1.見出し.includes('条の入力'),p1.見出し.join('/'));
   /* ②で使う道具（入力内容・丈位置）は①に出さない。**1回決めるものと、
      測りながら何度も切り替えるものを同じ場所に並べない。** */
   rec('①に入力内容・丈位置を出さない',
       !p1.出ている項目.includes('measureType')&&!p1.出ている項目.includes('lengthPos'),
       JSON.stringify(p1.出ている項目));
-  /* **①の入力項目14個は全部出ている**（§9.143）。§9.140では骨子の`1×2`に
-     収まらず「いつもと同じ設定」の5つを畳んでいたが、その溢れ（実測113px）の
-     原因だった作業時間が③へ移ったので、§9.133の「入力させる項目は折り
-     たたまない」へ戻せる。**畳む道具は残す**——畳んだときに現在値が読める
-     ことも合わせて見る。 */
-  const FOLDED=['unwind','widthOrder','widthDirection','burr','coilStop'];
+  /* **①の準備の入力欄12個は全部出ている**（§9.143／§9.216 ②）。
+     以前は14個で、そのうち「条入力順」「方向」は準備に無関係だったので
+     ②の入力内容カードへ移した（§9.216 ③、利用者の指示）。
+     **どの欄を出すかはマスタが決める**ようになったので、ここで見るのは
+     「既定の設定でいままでどおり出ること」。 */
+  const FOLDED=['unwind','burr','coilStop'];
   const ALWAYS=['operator','inspector','crewSize','verticalCount','horizontalCount',
                 'innerDiameter','spool','thicknessGauge','widthGauge'];
-  const ALL14=[...ALWAYS,...FOLDED];
-  rec('①の入力項目14個は全部出ている',
-      ALL14.every(k=>p1.出ている項目.includes(k))&&p1.出ている項目.length===ALL14.length,
-      JSON.stringify(p1.出ている項目));
+  const ALL12=[...ALWAYS,...FOLDED];
+  rec('①の準備の入力欄12個は全部出ている',
+      ALL12.every(k=>p1.出ている項目.includes(k)),
+      JSON.stringify(ALL12.filter(k=>!p1.出ている項目.includes(k))));
+  rec('条入力順・方向は①に出さない（②の入力内容カードへ移した）',
+      !p1.出ている項目.includes('widthOrder')&&!p1.出ている項目.includes('widthDirection'),
+      JSON.stringify(p1.出ている項目.filter(k=>/width(Order|Direction)/.test(k))));
+  /* 操業データの自由項目も**同じカード・同じ器**に並ぶ（§9.216 ⑤）。
+     器が同じなら文字の大きさもそろう——別の器を別のカードへ置いていた
+     ときは、名前・値・注記がそれぞれ違う大きさになっていた。 */
+  const opFree=await page.evaluate(()=>{
+   const box=document.querySelector('.measure-shell .selectors');
+   const gen=[...box.querySelectorAll('label[data-opfield]')];
+   const vis=gen.filter(x=>x.getBoundingClientRect().height>0);
+   const builtin=box.querySelector('label[data-f="operator"]');
+   const size=el=>el?getComputedStyle(el).fontSize:'';
+   return {自由項目:gen.length,見えている:vis.length,
+     器:vis[0]?vis[0].tagName:'',
+     名前の大きさ:size(vis[0]&&vis[0].querySelector('.opf-name')),
+     組み込みの名前の大きさ:size(builtin),
+     値の大きさ:size(vis[0]&&vis[0].querySelector('select,input')),
+     組み込みの値の大きさ:size(builtin&&builtin.querySelector('select,input'))};
+  });
+  rec('操業データの自由項目も準備と同じカードに並ぶ',
+      opFree.自由項目>0&&opFree.見えている>0&&opFree.器==='LABEL',
+      JSON.stringify(opFree));
+  rec('自由項目と組み込みの入力欄は同じ文字サイズ（§9.216 ⑤）',
+      opFree.値の大きさ===opFree.組み込みの値の大きさ,
+      JSON.stringify({自由:opFree.値の大きさ,組み込み:opFree.組み込みの値の大きさ}));
   rec('①に畳んだままの項目は無い',p1.畳んでいる項目.length===0,JSON.stringify(p1.畳んでいる項目));
   /* 畳む道具は残っている。**畳んだときは値が読めること**が条件（§9.125）
-     ——隠したものが何かを書かずに隠すと、設定の存在ごと忘れられる。 */
-  const usual=await page.evaluate(async()=>{
-   const btn=document.getElementById('usualFold');
+     ——隠したものが何かを書かずに隠すと、設定の存在ごと忘れられる。
+     **見出しはマスタの群から作られる**ので、idではなく群の名前で引く。 */
+  const usual=await page.evaluate(async(ids)=>{
+   const btn=document.querySelector('.selectors .prep-fold[data-opgroup="いつもと同じ設定"]');
+   if(!btn)return{見出しなし:true};
    btn.click();
    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-   const sum=document.getElementById('usualSum');
-   const vals=['unwind','widthOrder','widthDirection','burr','coilStop']
-     .map(id=>{const e=document.getElementById(id);
+   const now=document.querySelector('.selectors .prep-fold[data-opgroup="いつもと同じ設定"]');
+   const sum=now&&now.querySelector('.prep-sum');
+   const vals=ids.map(id=>{const e=document.getElementById(id);
        return e?((e.selectedOptions&&e.selectedOptions[0]?e.selectedOptions[0].text:e.value)||'').trim():''});
-   const 隠れた=['unwind','widthOrder','widthDirection','burr','coilStop']
-     .filter(id=>{const e=document.getElementById(id);
+   const 隠れた=ids.filter(id=>{const e=document.getElementById(id);
        return e&&e.closest('label')&&e.closest('label').offsetParent===null});
    return{要約:(sum&&sum.textContent||'').trim(),値:vals,隠れた,
-     畳んでいる:btn.getAttribute('aria-expanded')==='false'};
-  });
+     畳んでいる:now?now.getAttribute('aria-expanded')==='false':null};
+  },FOLDED);
   rec('開いた状態で始まり、押せば畳める',
       usual.畳んでいる===true&&usual.隠れた.length===FOLDED.length,JSON.stringify(usual));
-  rec('畳んだときは5項目の現在値が読める',
+  rec('畳んだときは現在値が読める',
       usual.値.filter(v=>v&&v!=='-').every(v=>usual.要約.includes(v)),
       JSON.stringify(usual));
-  await page.evaluate(()=>document.getElementById('usualFold').click());
-  await page.waitForTimeout(120);
+  await page.evaluate(()=>{
+   const b=document.querySelector('.selectors .prep-fold[data-opgroup="いつもと同じ設定"]');
+   if(b)b.click();
+  });
+  await page.waitForTimeout(160);
   /* **作業時間は①に置かない**（§9.143、利用者の指示）。「準備の入力」は
      測る前に1回決める設定の面で、時刻の記録はそこへ混ざると異物に見える。
      ③「確認して完了」へ移した（実作業時間は測り終えてから確定するもの）。 */
@@ -2195,19 +2229,22 @@ let b=null,page=null;
      ここでは「マスタの定義どおりの入力欄が出て、打った値がレコードへ入る」
      ことを見る。 */
   await go('1');
-  await page.waitForFunction(()=>document.querySelectorAll('#opData .opf').length>0,
+  /* 入力欄は**準備の`.selectors`と同じ器**に並ぶ（§9.216 ②⑤）。以前は
+     `#opData`という別のカードだったので、名前・値・注記がそれぞれ違う
+     大きさになっていた。 */
+  await page.waitForFunction(()=>document.querySelectorAll('.selectors label[data-opfield]').length>0,
                              null,{timeout:20000}).catch(()=>{});
   const op=await page.evaluate(()=>{
    const card=document.querySelector('.center-pane');
-   const host=document.getElementById('opData');
+   const host=document.querySelector('.selectors');
    const fold=document.getElementById('splitDetailFold');
    const body=fold&&fold.querySelector('.split-detail-body');
    const rect=el=>el?el.getBoundingClientRect():null;
    const r=rect(card);
    return{
     題:(card&&card.querySelector('[data-steptitle="1"]')||{}).textContent||'',
-    欄:[...host.querySelectorAll('.opf')].map(l=>l.dataset.opfield),
-    群:[...host.querySelectorAll('.op-group')].map(g=>g.dataset.opgroup),
+    欄:[...host.querySelectorAll('label[data-opfield]')].map(l=>l.dataset.opfield),
+    群:[...host.querySelectorAll('.prep-head[data-opgroup]')].map(g=>g.dataset.opgroup),
     /* 子ロットの内訳は**条の設計カードの中**へ移した。既定は畳む。 */
     内訳が条の設計の中:!!(fold&&fold.closest('#splitCard')),
     内訳は畳んである:!!(fold&&!fold.open&&body&&body.getBoundingClientRect().height===0),
@@ -2244,7 +2281,7 @@ let b=null,page=null;
   /* 打った値が**その場でレコードへ入る**（§9.208 ②。保存を待たない）。 */
   const typed=await page.evaluate(async()=>{
    const set=async(k,v)=>{
-    const el=document.querySelector(`#opData [data-op="${CSS.escape(k)}"]`);
+    const el=document.querySelector(`.selectors [data-op="${CSS.escape(k)}"]`);
     if(!el)return null;
     el.focus();el.value=v;
     el.dispatchEvent(new Event('input',{bubbles:true}));
@@ -2281,7 +2318,7 @@ let b=null,page=null;
    S.measure.settings.opData['運転方式']='むかしの値';
    WL.opData.apply();
    await new Promise(r=>setTimeout(r,60));
-   const el=document.querySelector('#opData [data-op="運転方式"]');
+   const el=document.querySelector('.selectors [data-op="運転方式"]');
    return {値:el.value,選択肢:[...el.options].map(o=>o.value)};
   });
   rec('選択肢に無い記録も消さずに出す',kept.値==='むかしの値',JSON.stringify(kept));
@@ -2309,7 +2346,7 @@ let b=null,page=null;
    m.measurements.width[0][0]='500.10';
    m.measurements.width[0][1]='499.80';
    m.measurements.width[1][0]='500.40';
-   /* そのほかは1項目だけ入れる（値のある項目だけ出ることを見る）。 */
+   /* そのほかは1項目だけ入れる（測った項目とまだの項目が並ぶことを見る）。 */
    m.measurements.burr[0][0]='0.030';
    /* 子ロットごとの板幅（分割ありのときだけ出る）。 */
    m.splitSequence=['L0001','L0002'];
@@ -2328,6 +2365,12 @@ let b=null,page=null;
     カード:cards,
     そのほか:[...body.querySelectorAll('.an-sub-list li')].map(li=>
       ((li.querySelector('.an-name')||{}).textContent||'')),
+    /* 重要度は低いので**畳んでおく**（§9.216 ⑥、利用者の指示）。
+       畳んだままでも要約で件数と名前が読める（§9.125）。 */
+    そのほかは畳んである:(()=>{const d=document.getElementById('anSubFold');return !!d&&!d.open})(),
+    そのほかの要約:(document.querySelector('#anSubFold .an-sub-head small')||{}).textContent||'',
+    測っていない行:[...body.querySelectorAll('.an-sub-list li.is-empty .an-name')]
+      .map(x=>x.textContent||''),
     子ロット:[...body.querySelectorAll('.an-lot-list li')].map(li=>({
       名:(li.querySelector('.an-name')||{}).textContent||'',
       値:(li.querySelector('.an-val')||{}).textContent||''})),
@@ -2345,8 +2388,20 @@ let b=null,page=null;
   rec('何点で出した数字かを添える（1点と80点では当たる見込みが違う）',
       !!th&&/3点/.test(th.数)&&!!wd&&/3点/.test(wd.数),
       JSON.stringify({板厚:th&&th.数,板幅:wd&&wd.数}));
-  rec('そのほかは値のある項目だけ出す',
-      an.そのほか.length===1&&an.そのほか[0]==='バリ',JSON.stringify(an.そのほか));
+  /* **他の測定項目もカードに収まる範囲で出す**（§9.216 ⑥、利用者の指示）。
+     測っていない項目も行として出す——出さないと「測っていない」のか
+     「そもそも項目が無い」のかが読めない。 */
+  rec('そのほかの測定項目を全部出す（測っていないものも行として）',
+      an.そのほか.length===5&&an.そのほか.includes('バリ')&&an.そのほか.includes('フラットネス'),
+      JSON.stringify(an.そのほか));
+  rec('測っていない項目はそう書く（黙って消さない）',
+      an.測っていない行.length===4&&!an.測っていない行.includes('バリ'),
+      JSON.stringify(an.測っていない行));
+  rec('そのほかは畳んである（重要度は低い）',an.そのほかは畳んである===true,
+      String(an.そのほかは畳んである));
+  rec('畳んだままでも件数と名前が読める',
+      /測った 1 \/ 5 項目/.test(an.そのほかの要約)&&/バリ/.test(an.そのほかの要約),
+      an.そのほかの要約);
   rec('子ロットごとの板幅を出す（条は子ロットに属する）',
       an.子ロット.length===2&&/L0001/.test(an.子ロット[0].名)
       &&/500\.10/.test(an.子ロット[0].値),JSON.stringify(an.子ロット));

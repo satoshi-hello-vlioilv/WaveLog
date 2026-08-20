@@ -489,8 +489,20 @@ function bindColumnHeaderTools(table,target,visibleColumns,allColumns){
     「列の移動が正しく反映されない」として報告された)。 */
  const fullOrder=()=>{
   const all=WL.listColumnKeys(allColumns);
-  const known=(live().order||[]).filter(c=>all.includes(c));
-  return [...known,...all.filter(c=>!known.includes(c))];
+  /* **いま出せない列も並びから落とさない**（§9.216 ②）。
+     `listColumnKeys()`が返す顔ぶれは**場面で変わる**——`__select__`/`__plan__`は
+     スケジュールモードだけ、`__split__`/`__measure__`は仕掛だけ、結合で
+     足された列は結合が当たったときだけ。以前はここで`all`に無い列を
+     **黙って捨てて**いたので、
+       ・編集モードで見出しを1回ドラッグ → 選択・予定の列が並びから消える
+         → スケジュールモードへ戻すと「知らない列」として右端へ飛ぶ（§9.110）
+       ・結合が1回失敗した状態で列幅を引く → 結合列の並びが全部消える
+     という形で、**触っていない設定が黙って戻る**。並べ替えに要るのは
+     「掴んだ列を動かす」ことだけなので、知らない列はその場に残しておけばよい
+     ——実際に描くときは`healedColumnOrder()`が今ある列へ当てはめ直す。 */
+  const stored=(live().order||[]);
+  const kept=stored.filter((c,i)=>stored.indexOf(c)===i);
+  return [...kept,...all.filter(c=>!kept.includes(c))];
  };
  /* **触った項目だけを送る**(§9.212 ②③)。以前は全置換だったので、
     「触っていない設定も一緒に送る」必要があり、**1つでも書き漏らすと
@@ -661,7 +673,14 @@ function openColumnHeaderMenu(ev,col,target,allColumns,src){
  closeColumnHeaderMenu();
  if(!target||!col)return;
  const S2=headMenuSource(target,allColumns,src);
- const hidden=S2.hiddenOf();
+ /* 戻せる列は**列の並び順**で出す（§9.216 ①）。`hiddenOf()`が返す順は
+    保存された配列の順（＝隠した順でも並び順でもない）なので、既定で
+    畳んでいる列が多い表（データ一覧は29列）では、**いま隠した列が
+    どこにあるか分からない**。並び順なら「元あった場所のあたり」を
+    探せばよく、上限で切っても先頭の列から順に並ぶ。 */
+ const hiddenAll=S2.hiddenOf(),hiddenSet=new Set(hiddenAll),ordered=S2.keys();
+ const hidden=[...ordered.filter(k=>hiddenSet.has(k)),
+               ...hiddenAll.filter(k=>!ordered.includes(k))];
  const nameOf=k=>S2.label(k);
  const menu=document.createElement('div');
  menu.className='col-head-menu';

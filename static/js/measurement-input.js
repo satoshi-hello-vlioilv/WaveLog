@@ -19,8 +19,15 @@ function nums(a){return a.flat().map(Number).filter(Number.isFinite).filter(x=>x
    **N数は必ず添える**（§CLAUDE 6「出どころ・単位・根拠を画面に出す」）
    ——1点しか測っていないMIN/MAXと、80点のMIN/MAXでは当たる見込みが違う。 */
 const AN_MAIN=[['板厚','thickness',3],['板幅','width',2]];
+/* そのほかの測定項目（§9.216 ⑥、利用者の指示「他の測定項目もカードに
+   収まる範囲で出してください。重要度は低めなので折りたたみOK」）。
+   **測っていない項目も行として出す**——出さないと「測っていない」のか
+   「そもそも項目が無い」のかが読めない（§CLAUDE 4）。
+   場所を食わないよう畳んでおき、**畳んだままでも中身が読めるように
+   要約へ件数と名前を出す**（§9.125と同じ約束）。 */
 const AN_SUB=[['バリ','burr',3],['ラテラルボー','lateral',1],
-              ['巻きずれ','offset',1],['テレスコープ','telescope',1]];
+              ['巻きずれ','offset',1],['テレスコープ','telescope',1],
+              ['フラットネス','flatness',1]];
 function anRange(a){
  const n=nums(a);if(!n.length)return null;
  return{min:Math.min(...n),max:Math.max(...n),n:n.length};
@@ -69,13 +76,12 @@ function renderStats(){
      :`<div class="an-none">—</div>`)
    +`</div>`;
  }).join('');
- const sub=AN_SUB.map(([label,key,dec])=>{
-  const r=anRange(S.measure?.measurements?.[key]);
-  if(!r)return '';
-  return `<li><span class="an-name">${label}</span>`
-   +`<span class="an-val">${anNum(r.min,dec)} 〜 ${anNum(r.max,dec)}</span>`
-   +`<span class="an-n">${r.n}点</span></li>`;
- }).filter(Boolean).join('');
+ const subRows=AN_SUB.map(([label,key,dec])=>({label,r:anRange(S.measure?.measurements?.[key]),dec}));
+ const measured=subRows.filter(x=>x.r);
+ const sub=subRows.map(({label,r,dec})=>
+   `<li${r?'':' class="is-empty"'}><span class="an-name">${label}</span>`
+   +`<span class="an-val">${r?`${anNum(r.min,dec)} 〜 ${anNum(r.max,dec)}`:'まだ測っていません'}</span>`
+   +`<span class="an-n">${r?`${r.n}点`:'—'}</span></li>`).join('');
  const lots=anLotWidths();
  const lotHtml=lots.length>1
   ? `<div class="an-lots"><div class="an-sub-head">子ロットごとの板幅`
@@ -85,9 +91,16 @@ function renderStats(){
        +`<span class="an-val">${anNum(x.min,2)} 〜 ${anNum(x.max,2)}</span>`
        +`<span class="an-n">${x.n}点</span></li>`).join('')}</ul></div>`
   : '';
+ /* **畳んでも中身が読める**（§9.125）。要約に「何項目測ったか」と名前を
+    並べるので、開かなくても当たりは付く。重要度は板厚・板幅より低いので
+    既定は畳んだまま（§9.216 ⑥、利用者の指示）。 */
+ const subSummary=measured.length
+   ? `測った ${measured.length} / ${subRows.length} 項目（${measured.map(x=>x.label).join('・')}）`
+   : `${subRows.length}項目ともまだ測っていません`;
  host.innerHTML=`<div class="an-main">${main}</div>`
-  +(sub?`<div class="an-sub"><div class="an-sub-head">そのほか（測った項目だけ）</div>`
-        +`<ul class="an-sub-list">${sub}</ul></div>`:'')
+  +`<details class="an-sub" id="anSubFold">`
+  +`<summary class="an-sub-head">そのほかの測定項目<small>${esc(subSummary)}</small></summary>`
+  +`<ul class="an-sub-list">${sub}</ul></details>`
   +lotHtml;
 }
 function deviceParse(raw){const manual=S.measure?.settings?.inputMode==='manual',v=(manual?String(raw||''):toHalfWidth(String(raw||''))).trim().toUpperCase();if(v==='#DELETEMODE#'||v==='DELETE')return{device:'delete',value:null};if(v.includes('+#L')){const num=Number(v.split('+#L')[1]);return{device:'tape',value:Number.isFinite(num)?num:null}}if(!v.includes('+'))return Number.isFinite(Number(v))?{device:'manual',value:Number(v)}:{device:'invalid',value:null};const [code,data]=v.split('+');let device='invalid';if(code.startsWith('DT1')){const kind=code.slice(-2,-1);device=kind==='0'?'micrometer':kind==='1'?'caliper':kind==='2'?'depth':'invalid'}const num=Number(String(data).replace(/M$/,''));return{device,value:Number.isFinite(num)?num:null}}

@@ -298,6 +298,83 @@ async function openList(page){
   await page.setViewportSize({width:1700,height:1000});
   await settle(page);
 
+  /* ==================================================================
+     §9.216 ① 右クリックの「この列を隠す」が**最初の保存**でも既定を守る
+     ------------------------------------------------------------------
+     データ一覧は「一度も保存していないうちは既定の15列」（§9.162）なので、
+     保存値の`hidden`は**空**——29列は既定として畳んでいるだけで、隠す指定は
+     持っていない。右クリックのメニューは`hidden`を**上書きで渡す**ので、
+     口が「いま隠している列」を答えないと、1回押しただけで**畳んでいた29列が
+     まとめて出る**（押した列は消えるのに見覚えの無い列が並ぶ）。
+
+     **確かめるときは「この列を隠す」を最初の操作にすること**——上の7bは
+     先に幅を引いており、そこで`hidden`が種まきされるので、この不具合を
+     素通りする（実際にそれで見逃していた）。
+     ================================================================== */
+  await cleanup();
+  /* **開き直してから確かめること。** ここまでの節が保存した設定は
+     `WL.columnLayout`の写しに残っており、`forget()`だけでは
+     「まだ一度も保存していない端末」にならない（実際にそれで
+     この網が空振りしていた）。 */
+  await page.reload({waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:30000});
+  await openList(page);
+  const h5=await head(page);
+  const seed=await page.evaluate(()=>({
+   saved:(WL.columnLayout.saved('records:list').hidden||[]).length,
+   order:(WL.columnLayout.saved('records:list').order||[]).length}));
+  rec('前提: まだ何も保存していない（既定の15列・保存値は空）',
+      h5.length===DEFAULT_HEAD.length&&seed.saved===0&&seed.order===0,
+      `${h5.length}列 / ${JSON.stringify(seed)}`);
+  await page.click('.record-list-head [data-col="検査番号"]',{button:'right'});
+  await page.waitForSelector('.col-head-menu',{timeout:5000});
+  /* 隠している列は**この場で戻せる**（§9.110）ので、既定で畳んでいる29列も
+     メニューの「隠している列」に並ぶ。ここが0件なら口が答えていない。 */
+  const menuHidden=await page.evaluate(()=>{
+   const m=document.querySelector('.col-head-menu');
+   const lab=[...m.querySelectorAll('.chm-label')].map(x=>x.textContent).join(' / ');
+   return {label:lab,rows:m.querySelectorAll('.chm-show').length};
+  });
+  rec('既定で畳んでいる列も「隠している列」として戻せる',
+      /隠している列（\d+）/.test(menuHidden.label)&&menuHidden.rows>0,
+      JSON.stringify(menuHidden));
+  await page.click('.col-head-menu .chm-hide');
+  await page.waitForTimeout(900);
+  const h6=await head(page);
+  rec('最初の操作が「この列を隠す」でも1列だけ減る（§9.216 ①）',
+      h6.length===DEFAULT_HEAD.length-1&&!h6.includes('検査番号'),
+      `${h6.length}列: `+h6.join('／'));
+  const savedHidden=await (await fetch(B+'/api/column-layout-master?target='+encodeURIComponent(TARGET))).json();
+  rec('マスタにも既定の非表示ごと書かれる',
+      (savedHidden.hidden||[]).includes('検査番号')&&(savedHidden.hidden||[]).length>1,
+      `${(savedHidden.hidden||[]).length}件`);
+  /* 戻す操作も同じ場所にある。戻したら**その1列だけ**が増える。
+     戻せる列は上限（10件）で切るので、**並び順で出すこと**——保存された
+     配列の順のままだと、既定で29列を畳んでいるこの一覧では
+     「いま隠した列」が上限の外へ押し出されて戻せない（実際にそうなった）。 */
+  await page.click('.record-list-head [data-col="ロット番号"]',{button:'right'});
+  await page.waitForSelector('.col-head-menu',{timeout:5000});
+  const restore=await page.evaluate(()=>{
+   const keys=WL.recordColumns.keys();
+   const list=[...document.querySelectorAll('.col-head-menu .chm-show')].map(x=>x.dataset.key);
+   const pos=list.map(k=>keys.indexOf(k));
+   return {list,並び順:pos.every((v,i)=>i===0||v>=pos[i-1])};
+  });
+  rec('戻せる列は列の並び順で出す（上限で切っても探せる）',
+      restore.並び順===true&&restore.list.includes('検査番号'),
+      restore.list.slice(0,6).join('／'));
+  await page.evaluate(()=>{
+   const b2=[...document.querySelectorAll('.col-head-menu .chm-show')]
+     .find(x=>x.dataset.key==='検査番号');
+   if(!b2)throw Error('戻すボタンが無い');
+   b2.click();
+  });
+  await page.waitForTimeout(900);
+  const h7=await head(page);
+  rec('同じメニューから戻すと1列だけ増える',
+      h7.length===DEFAULT_HEAD.length&&h7.includes('検査番号'),
+      `${h7.length}列`);
+
   /* ---- 8) 閲覧モードでは「表示列」を出さない（保存が403になるため） ---- */
   await post('/api/access-mode',{mode:'view'});
   await page.reload({waitUntil:'domcontentloaded'});

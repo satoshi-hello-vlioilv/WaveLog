@@ -14,11 +14,12 @@ const fs=require('fs');const os=require('os');const path=require('path');
 const B='http://127.0.0.1:5029';
 const T1='list:__io_test_a__:表A';
 const T2='list:__io_test_b__:表B';
-let b=null;
+let b=null,curTarget='';
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 const layout=t=>fetch(B+'/api/column-layout-master?target='+encodeURIComponent(t)).then(r=>r.json());
 async function cleanup(){
- for(const t of [T1,T2]){
+ for(const t of [T1,T2,curTarget]){
+  if(!t)continue;
   try{await post('/api/column-layout-master',{target:t,clear:true,order:[],widths:{},hidden:[],names:{},formats:{},rules:{},formulas:{},locks:[],user_id:'test'})}catch(e){}
  }
 }
@@ -48,6 +49,19 @@ async function cleanup(){
   await page.click('aside [data-db-key]');
   await page.waitForSelector('#grid tbody tr',{timeout:25000});
   await page.waitForTimeout(1500);
+  /* この一覧そのものにも設定を1つ持たせておく（§9.216 ③の下ごしらえ）。
+     取り込みは**写しを丸ごと捨てる**ので、捨てたあと取り直さないと、
+     取り込みと無関係なこの一覧の設定まで画面から消える。 */
+  curTarget=await page.evaluate(()=>listLayoutTarget());
+  const RENAMED=await page.evaluate(async()=>{
+   const t=listLayoutTarget();
+   const k=[...document.querySelectorAll('#grid th[data-sort-col]')]
+     .map(x=>x.dataset.sortCol).find(x=>x&&!x.startsWith('__')&&x!=='#');
+   await WL.columnLayout.patch(t,{names:{[k]:'取り込み前の名前'}});
+   renderGrid();
+   return k;
+  });
+  await page.waitForTimeout(600);
   await page.click('#listColumnBtn');
   await page.waitForSelector('#listColumnPanel:not([hidden])',{timeout:8000});
   await page.waitForTimeout(800);
@@ -110,6 +124,33 @@ async function cleanup(){
       JSON.stringify({order:got.order,widths:got.widths}));
   rec('非表示・表示名も一緒に入る',(got.hidden||[]).includes('Y')&&(got.names||{})['X']==='エックス',
       JSON.stringify({hidden:got.hidden,names:got.names}));
+
+  /* ---- 7) 取り込みのあと、この一覧の設定が消えない(§9.216 ③) ----
+     `forget()`は写しを丸ごと捨てるが、`load()`は「写しがあれば取りに
+     行かない」ので、捨てた直後に誰かが`get()`を呼ぶと**空の形**が写しへ
+     入り直す。パネルは`useBody()`で下書きを当てて隠していたが、
+     **保存せずに閉じた拍子に`discard()`で捨てられ**、一覧の設定が
+     まるごと消えたように見えた（マスタには残っている）。
+
+     **確かめるときは「保存せずに閉じる」まで通すこと**——パネルを
+     開いたままでは下書きが覆い隠すので、直す前でも通る。 */
+  const afterImport=await page.evaluate(k=>({
+   name:WL.columnLayout.get(listLayoutTarget()).names[k]||'',
+   head:[...document.querySelectorAll('#grid th[data-sort-col]')]
+     .map(x=>x.textContent.replace(/\s+/g,'')).join('／'),
+  }),RENAMED);
+  rec('取り込み直後もこの一覧の設定が生きている（§9.216 ③）',
+      afterImport.name==='取り込み前の名前',JSON.stringify(afterImport.name));
+  await page.evaluate(()=>WL.listColumns.close());
+  await page.waitForTimeout(800);
+  const afterClose=await page.evaluate(k=>({
+   name:WL.columnLayout.get(listLayoutTarget()).names[k]||'',
+   shown:[...document.querySelectorAll('#grid th[data-sort-col]')]
+     .some(x=>x.textContent.includes('取り込み前の名前')),
+  }),RENAMED);
+  rec('保存せずに閉じてもこの一覧の設定は戻らない（§9.216 ③）',
+      afterClose.name==='取り込み前の名前'&&afterClose.shown===true,
+      JSON.stringify(afterClose));
 
   rec('JSエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){console.log('FATAL: '+e.message);R.push({n:'FATAL',ok:false,d:e.message})}
