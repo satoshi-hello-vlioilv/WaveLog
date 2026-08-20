@@ -120,6 +120,18 @@ let b=null;
   rec('自分が持っているときは奪うボタンを出さない（意味の無いボタンを置かない）',
       mine.奪うボタン===false,String(mine.奪うボタン));
 
+  /* 読み取り専用にする**前**の行の見え方を控える（下の3で突き合わせる）。
+     **絶対値で見ないこと**——行の濃さは区分・状態（完了・着手中・反映待ち）
+     でも変わるので、その日のデータ次第で0.6にも1にもなる（通しで実行すると
+     前のテストが入れた実績が残っていて実際に落ちた）。見たいのは
+     「読み取り専用にしたことで死んだか」なので、**同じ行の前後**を比べる。 */
+  const rowBefore=await page.evaluate(()=>{
+   const row=document.querySelector('.sc-row-line');
+   if(!row)return{無い:true};
+   const cs=getComputedStyle(row);
+   return{pe:cs.pointerEvents,opacity:cs.opacity,cls:row.className};
+  });
+
   /* ---- 2) 他端末が持っている＝READONLY ----
      共有の在席ファイルへ**別人の行**を書き、ハートビートを1回叩いて
      423を受け取らせる（25秒待たない）。 */
@@ -146,11 +158,18 @@ let b=null;
    if(!row)return{無い:true};
    const cs=getComputedStyle(row);
    const btn=row.querySelector('.sc-row-report,.sc-row-detail,.sc-row-btn');
-   return{行のpe:cs.pointerEvents,行の濃さ:cs.opacity,
+   return{行のpe:cs.pointerEvents,行の濃さ:cs.opacity,cls:row.className,
      ボタンのpe:btn?getComputedStyle(btn).pointerEvents:'(無し)'};
   });
-  rec('読み取り専用でも行そのものは死んでいない（読むための操作は残る）',
-      rowAlive.行のpe!=='none'&&Number(rowAlive.行の濃さ||1)>0.8,JSON.stringify(rowAlive));
+  rec('読み取り専用でも行そのものは押せる（読むための操作は残る）',
+      rowAlive.行のpe!=='none'&&rowAlive.ボタンのpe!=='none',JSON.stringify(rowAlive));
+  /* **同じ行**の濃さが読み取り専用にしたことで変わっていないこと。
+     以前の`.sc-row-line[draggable]{opacity:.45}`はここで0.45へ落ちていた。 */
+  rec('読み取り専用にしても行の濃さが変わらない（行ごと沈めない）',
+      !rowBefore.無い&&!rowAlive.無い
+      &&Math.abs(Number(rowAlive.行の濃さ||1)-Number(rowBefore.opacity||1))<0.02
+      &&rowBefore.cls===rowAlive.cls,
+      `前 ${rowBefore.opacity} / 後 ${rowAlive.行の濃さ}`);
 
   /* 書く操作は止まっていること（判定は1箇所＝`sessionBlocked()`）。 */
   const stopped=await page.evaluate(()=>({
