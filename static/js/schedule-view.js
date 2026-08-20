@@ -3579,25 +3579,16 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    hiddenOf:()=>timelineHiddenSet(),
   };
  }
+ /* **触った項目だけを送る**(§9.212 ②③)。渡さない設定はサーバー側で
+    そのまま残るので、幅を引いただけで計算式や並べ替えが消えることはない。
+    **触った時点で既定を書き下ろす**(§9.173と同じ約束)——保存する並びには
+    既定で出さない列も入るので、そのとき`hidden`を保存値のままにすると
+    「畳んでいたはずの列」が出てしまう（実際にそうなった）。いま画面に
+    出ていない列をそのまま`hidden`として書く。 */
  async function persistTimelineColumns(target,patch){
   try{
-   /* 控えは保存のたびに`get()`で取り直す——`save()`はキャッシュを新しい
-      オブジェクトへ差し替えるので、関数の頭で束縛した写しは1回保存した
-      時点で古くなる(§9.113)。 */
-   const cur=WL.columnLayout.get(target);
-   /* **触った時点で既定を書き下ろす**(§9.173と同じ約束)。保存する並びには
-      既定で出さない列も入るので、そのとき`hidden`を保存値のままにすると
-      「畳んでいたはずの列」が出てしまう（実際にそうなった）。いま画面に
-      出ていない列をそのまま`hidden`として書く。 */
-   await WL.columnLayout.save(target,{order:timelineOrderedKeys(),widths:cur.widths,
-                                      hidden:[...timelineHiddenSet()],
-                                      names:cur.names,formats:cur.formats,
-                                      rules:cur.rules,formulas:cur.formulas,locks:cur.locks,
-                                      sorts:cur.sorts,...patch});
-   /* 列の設定パネルを開いたまま見出しを触ることがある。**保存したぶんは
-      巻き戻さない**ように控えへ伝える（§9.211 ①）。 */
-   WL.listColumns&&WL.listColumns.noteSaved&&WL.listColumns.noteSaved(target,patch);
-   showToast&&showToast('列の設定を保存しました','この設備のスケジュール表で次も同じ形で出ます',2400);
+   await WL.columnLayout.patch(target,{order:timelineOrderedKeys(),
+                                       hidden:[...timelineHiddenSet()],...patch});
   }catch(e){showToast&&showToast('列の設定を保存できませんでした',e.message,5000)}
  }
  function bindTimelineHeadTools(timeline){
@@ -3666,8 +3657,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     /* 保存を待たずに画面へ当てる（§9.90 stage）。**キャッシュそのものへ
        当てること**——孤児の写しへ書くと、直後の`renderTimeline()`は
        古い並びで描き、保存が届いてから飛ぶ。 */
-    WL.columnLayout.stage(target,{...live(),order});
-    persistTimelineColumns(target,{order,hidden});
+    WL.columnLayout.hold(target,{order});
+    persistTimelineColumns(target,{order,hidden})
+     .finally(()=>WL.columnLayout.release(target));
     renderTimeline();
    });
    /* 右クリックのメニュー(隠す・幅・隠した列を戻す・設定を開く)。
@@ -3697,15 +3689,17 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
        列幅が正」）。キャッシュへ当ててから描くので、引いている最中に
        表が組み直されても幅は戻らない。保存はしない（`stage`）。 */
     preview:w=>{const cur=live();
-                WL.columnLayout.stage(target,{...cur,widths:{...(cur.widths||{}),[key]:w}});
+                WL.columnLayout.hold(target,{widths:{...(cur.widths||{}),[key]:w}});
                 applyTimelineContentColumns(timeline)},
     commit:w=>{const cur=live();
-               persistTimelineColumns(target,{widths:{...(cur.widths||{}),[key]:w}})},
+               persistTimelineColumns(target,{widths:{...(cur.widths||{}),[key]:w}})
+                .finally(()=>WL.columnLayout.release(target))},
     reset:()=>{const cur=live();
                const widths={...(cur.widths||{})};delete widths[key];
-               WL.columnLayout.stage(target,{...cur,widths});
+               WL.columnLayout.hold(target,{widths});
                applyTimelineContentColumns(timeline);
-               persistTimelineColumns(target,{widths,locks:(cur.locks||[]).filter(k=>k!==key)})},
+               persistTimelineColumns(target,{widths,locks:(cur.locks||[]).filter(k=>k!==key)})
+                .finally(()=>WL.columnLayout.release(target))},
    });
   });
  }

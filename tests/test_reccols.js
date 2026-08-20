@@ -25,7 +25,7 @@ const DEFAULT_HEAD=['状態','ロット番号','検査番号','製造材質','�
 let b=null;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 async function cleanup(){
- try{await post('/api/column-layout-master',{target:TARGET,order:[],widths:{},hidden:[],
+ try{await post('/api/column-layout-master',{target:TARGET,clear:true,order:[],widths:{},hidden:[],
       names:{},formats:{},rules:{},formulas:{},locks:[],user_id:'test'})}catch(e){}
 }
 const settle=async page=>{await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))))};

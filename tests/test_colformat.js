@@ -18,7 +18,7 @@ const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/no
 const B='http://127.0.0.1:5029';
 let b=null,target='';
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-const clear=()=>target?post('/api/column-layout-master',{target,order:[],widths:{},hidden:[],names:{},formats:{},user_id:'test'}):null;
+const clear=()=>target?post('/api/column-layout-master',{target,clear:true,order:[],widths:{},hidden:[],names:{},formats:{},user_id:'test'}):null;
 (async()=>{
  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
  const page=await b.newPage({viewport:{width:1600,height:950}});

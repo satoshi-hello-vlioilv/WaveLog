@@ -103,7 +103,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
      データ列だけで作られており、`#`/`分割`/`測定`が並びから丸ごと
      消えていた。消えると次に開いたとき「知らない列」として末尾へ回る
      ので、**幅を少し引いただけで番号・ボタンが右端へ飛ぶ**。 */
-  await post('/api/column-layout-master',{target,order:[],widths:{},hidden:[],locks:[],user_id:'test'});
+  await post('/api/column-layout-master',{target,clear:true,order:[],widths:{},hidden:[],locks:[],user_id:'test'});
   await page.evaluate(()=>{WL.columnLayout.forget();return load()});
   await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});
   await page.waitForTimeout(400);
@@ -155,7 +155,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
      名前が重なりうる出どころは複数ある(結合してきた列・計算で作った列・
      ビュー越しの取得)ので、**入口の`listColumnKeys()`で1回だけ落とす**。
      ここは実データに重複が無くても確かめられるよう、**注ぎ込んで**見る。 */
-  await post('/api/column-layout-master',{target,order:[],widths:{},hidden:[],locks:[],user_id:'test'});
+  await post('/api/column-layout-master',{target,clear:true,order:[],widths:{},hidden:[],locks:[],user_id:'test'});
   await page.evaluate(()=>{WL.columnLayout.forget();return load()});
   await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});
   await page.waitForTimeout(400);
@@ -351,7 +351,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
          列ごとの並べ替え設定が消えていた。
      **1回だけ引く網ではこの3つとも素通りする**ので、必ず2回目・3回目まで
      引き、**掴んでいない列が動かないこと**を見る。 */
-  await post('/api/column-layout-master',{target,order:[],widths:{},hidden:[],locks:[],user_id:'test'});
+  await post('/api/column-layout-master',{target,clear:true,order:[],widths:{},hidden:[],locks:[],user_id:'test'});
   await page.evaluate(()=>{WL.columnLayout.forget();return load()});
   await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});
   await page.waitForTimeout(500);
@@ -474,12 +474,12 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   f.forEach(x=>console.log(' -',x.n,x.d||''));
   await b.close();b=null;
   // 検証で作った並びは消す(次のテストや実機の設定を汚さない)。
-  if(target)await post('/api/column-layout-master',{target,order:[],widths:{},hidden:[],locks:[],user_id:'test'});
+  if(target)await post('/api/column-layout-master',{target,clear:true,order:[],widths:{},hidden:[],locks:[],user_id:'test'});
   process.exit(f.length?1:0);
  }catch(e){
   console.error('FATAL',e);
   if(b)await b.close().catch(()=>{});
-  if(target)await post('/api/column-layout-master',{target,order:[],widths:{},hidden:[],locks:[],user_id:'test'}).catch(()=>{});
+  if(target)await post('/api/column-layout-master',{target,clear:true,order:[],widths:{},hidden:[],locks:[],user_id:'test'}).catch(()=>{});
   process.exit(2);
  }
 })();

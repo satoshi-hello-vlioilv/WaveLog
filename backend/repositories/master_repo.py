@@ -969,14 +969,37 @@ def column_layout_targets(c):
  return [str(r[0] or '').strip() for r in cur.fetchall() if str(r[0] or '').strip()]
 
 def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=None,rules=None,
-                      formulas=None,locks=None,sorts=None):
- """全置換方式(他の列マスタと同じ)。渡された順序がそのまま表示順になる。
+                      formulas=None,locks=None,sorts=None,fields=None):
+ """対象(target)の行をまとめて書き直す。渡された順序がそのまま表示順になる。
 
- **幅だけを変えたいときも並び全体を送る**こと。部分更新にすると、
- 並べ替えと幅変更が別々に走ったときにどちらが正か決まらなくなる。"""
+ **並び(order)は必ず全体を送ること。** 部分的な並べ替えは「どちらが正か」が
+ 決まらない(A→Bの移動とC→Dの移動が別々に走ると結果が定まらない)。
+
+ **それ以外は「送った項目だけ書く」**(§9.212 ②、利用者の指示
+ 「修正した内容が戻されたりしないために」)。`fields`に名前が入っている
+ 項目だけを引数の値で置き換え、**入っていない項目は今の値をそのまま残す**。
+ `fields=None`のときは今までどおり全部を引数の値にする(＝全置換)。
+
+ 以前は常に全置換で、**渡し忘れた設定が黙って消えていた**——実際に
+ 計算式で作った列が全部消える(§9.113)・列ごとの並べ替えが消える(§9.211 ①)・
+ 幅固定が解ける(§9.119)の3回起きている。呼ぶ側が十数箇所に散っている以上、
+ 「全部渡す」を各所で守らせるのは無理筋なので、**入口で安全側に倒す**。
+ パス設定マスタが§9.192で同じ理由で同じ形にしてある。"""
  ensure_column_layout_table(c)
  target=str(target or '').strip()
  if not target:raise ValueError('対象を指定してください。')
+ if fields is not None:
+  keep=column_layout_for(c,target)
+  own=set(fields)
+  if 'order'    not in own:order=keep['order']
+  if 'widths'   not in own:widths=keep['widths']
+  if 'hidden'   not in own:hidden=keep['hidden']
+  if 'names'    not in own:names=keep['names']
+  if 'formats'  not in own:formats=keep['formats']
+  if 'rules'    not in own:rules=keep['rules']
+  if 'formulas' not in own:formulas=keep['formulas']
+  if 'locks'    not in own:locks=keep['locks']
+  if 'sorts'    not in own:sorts=keep['sorts']
  widths=widths if isinstance(widths,dict) else {}
  hide={str(x or '').strip() for x in (hidden or []) if str(x or '').strip()}
  label=names if isinstance(names,dict) else {}

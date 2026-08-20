@@ -27,7 +27,10 @@
    ============================================================ */
 (function(){
  const PANEL_ID='listColumnPanel';
- let target='',draft=null,picked='',original=null,saved=false;
+ /* **開いた時点の写し(`original`)は持たない**(§9.212 ③)——戻すのは
+    `WL.columnLayout.discard()`の役目で、控えを2箇所に持つと必ず食い違う
+    （保存済みの幅まで巻き戻す／未保存の下書きまで保存する、を両方やった）。 */
+ let target='',draft=null,picked='';
 
  /* 値を持たない列(行番号・ボタン)。並びと幅と名前は変えられるが、
     書式や読み替えは持たない。 */
@@ -1045,11 +1048,11 @@
                formulas:draft.formulas,locks:[...draft.locks],sorts:draft.sorts};
    if(typeof panelSrc.save==='function')await panelSrc.save(target,body);
    else await WL.columnLayout.save(target,body);
-   saved=true;
-   original={order:[...draft.order],hidden:[...draft.hidden],widths:{...draft.widths},
-             names:{...draft.names},formats:JSON.parse(JSON.stringify(draft.formats)),
-             rules:{...draft.rules},formulas:{...draft.formulas},locks:[...draft.locks],
-             sorts:JSON.parse(JSON.stringify(draft.sorts||{}))};
+   /* 保存が通ったら**下書きは役目を終える**(§9.212 ③)。`save()`が
+      保存済みの重ねへ入れて下書きを捨てるので、ここで控えを作る必要はない
+      ——差し替え口が独自に保存する場合(`panelSrc.save`)だけは
+      こちらで捨てる。 */
+   WL.columnLayout.discard(target);
    showToast&&showToast(panelSrc.savedToast||'列の設定を保存しました',
                         panelSrc.savedNote||'この一覧を次に開いたときも同じ形で出ます',2600);
    const note=document.getElementById('lcFootNote');
@@ -1375,13 +1378,7 @@
   if(!target){showToast&&showToast(panelSrc.noTargetToast||'一覧を先に開いてください',
                                    panelSrc.noTargetNote||'列の設定はその一覧ごとに保存します',3200);return}
   ensurePanel();
-  /* 閉じたときに戻せるよう、開いた時点の値を控える。 */
-  const cur=WL.columnLayout.get(target);
-  original={order:[...(cur.order||[])],hidden:[...(cur.hidden||[])],widths:{...(cur.widths||{})},
-            names:{...(cur.names||{})},formats:JSON.parse(JSON.stringify(cur.formats||{})),
-            rules:{...(cur.rules||{})},formulas:{...(cur.formulas||{})},
-            locks:[...(cur.locks||[])],sorts:JSON.parse(JSON.stringify(cur.sorts||{}))};
-  saved=false;
+  /* 閉じたときは下書きを捨てるだけでよい(§9.212 ③)ので、控えは持たない。 */
   marked.clear();
   closeIo();
   /* **どの対象の設定かを見出しに出す。** 同じ見た目のパネルを別の対象へ
@@ -1410,30 +1407,23 @@
   loadPresets();
  }
  /* 保存せずに閉じたら、後ろの一覧を開いたときの形へ戻す。**触った結果が
-    そのまま残ると「保存」の意味が無くなる**(何が保存済みか分からなくなる)。 */
+    そのまま残ると「保存」の意味が無くなる**(何が保存済みか分からなくなる)。
+
+    **戻し方は「下書きを捨てる」だけ**(§9.212 ③)。以前は開いた時点の写し
+    (`original`)を`stage()`で当て直していたが、この写しは**保存済みと同じ
+    入れ物**を上書きするので:
+     - パネルを開いたまま見出しの取っ手で引いた幅（保存済み）まで巻き戻り、
+       **保存したはずの幅が画面から消える**（§9.211 ①でその場しのぎの
+       `noteSaved()`を足したが、控えを2重に持つのが元の無理）
+     - 逆に見出し側の保存が**パネルの未保存の下書きごと**マスタへ書いた
+    いまは下書きが別の重ねなので、捨てれば保存済みがそのまま出る。 */
  function close(){
   const el=document.getElementById(PANEL_ID);if(el)el.hidden=true;
   closeIo();
-  if(!saved&&original&&target){
-   WL.columnLayout.stage(target,original);
+  if(target){
+   WL.columnLayout.discard(target);
    panelSrc.afterApply();
   }
- }
- /* ---------- 外から保存されたぶんは巻き戻さない（§9.211 ①、利用者の指摘） --
-    このパネルは**モーダルではない浮きウィンドウ**なので、開いたまま
-    見出しの取っ手で列幅を引ける。引いた幅はその場でマスタへ保存されるのに、
-    パネルを「保存せずに閉じる」と`original`へ巻き戻り、**保存済みの幅だけが
-    画面から消える**（DBには入っているので、開き直すとまた出る）。利用者から
-    見れば「裏で読み込んで列幅を戻された」としか読めない。
-    保存が通った経路から**何を書いたか**を教えてもらい、控えにも反映する。
-    パネル自身の未保存の編集は控えに触らないので、§9.90の
-    「保存せずに閉じたら開いた時点へ戻す」はそのまま効く。 */
- function noteSaved(t,patch){
-  if(!original||!target||t!==target||!patch||typeof patch!=='object')return;
-  Object.keys(patch).forEach(k=>{
-   if(!(k in original))return;
-   try{original[k]=JSON.parse(JSON.stringify(patch[k]))}catch(e){original[k]=patch[k]}
-  });
  }
  function toggle(){
   const el=document.getElementById(PANEL_ID);
@@ -1441,5 +1431,5 @@
  }
 
  window.WL=window.WL||{};
- WL.listColumns={open,close,toggle,noteSaved};
+ WL.listColumns={open,close,toggle};
 })();

@@ -795,6 +795,19 @@ def column_layout_master_save():
   formats=x.get('formats');rules=x.get('rules');formulas=x.get('formulas')
   locks=x.get('locks')          # 幅を固定する列(§9.119)
   sorts=x.get('sorts')          # 列ごとの並べ替えの決まり(§9.187)
+  # **送られてきた項目だけを書く**(§9.212 ②、利用者の指示「修正した内容が
+  # 戻されたりしないために」)。以前は常に全置換で、渡し忘れた設定が黙って
+  # 消えていた(計算式・並べ替え・幅固定で実際に3回起きた)。判断の材料は
+  # 「JSONにそのキーがあるか」の1点——**空の値と省略は別のこと**で、
+  # `hidden:[]`は「隠す列は無い」、`hidden`が無いのは「触っていない」。
+  fields={k for k in ('order','widths','hidden','names','formats','rules',
+                      'formulas','locks','sorts') if k in x}
+  # `clear:true`は**この対象の設定を全部消す**。差分更新にしたぶん、
+  # 「まっさらに戻す」は9個のキーを空で並べる必要が出てしまうので、
+  # **意図を1語で言える口**を用意する(書き漏らすと消し残る＝前の設定が
+  # 生き延びる。検証の後片付けで実際に問題になる)。
+  if str(x.get('clear') or '').lower() in ('1','true','yes') or x.get('clear') is True:
+   fields=None
   if order is not None and not isinstance(order,list):
    return jsonify(error='並び(order)の指定が不正です。'),400
   if widths is not None and not isinstance(widths,dict):
@@ -811,7 +824,8 @@ def column_layout_master_save():
                        rules=rules if isinstance(rules,dict) else {},
                        formulas=formulas if isinstance(formulas,dict) else {},
                        locks=locks if isinstance(locks,list) else [],
-                       sorts=sorts if isinstance(sorts,dict) else {})
+                       sorts=sorts if isinstance(sorts,dict) else {},
+                       fields=fields)
   return jsonify(ok=True,target=target,columns=n,updated_by=uid,message='表示の並びを保存しました。')
  except Exception as e:return jsonify(error=f'列レイアウト保存失敗: {e}'),500
 

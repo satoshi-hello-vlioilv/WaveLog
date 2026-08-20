@@ -311,48 +311,164 @@ window.WL.dataSource=dataSource;
    **どの列が存在するかはデータ側が決める**ので、ここは覚えている並びを
    実際の列へ当てはめるだけ。記録に無い列は末尾へ回し、記録にあってデータ側
    に無い列は黙って捨てる(列が増減しても設定が壊れない)。 */
+/* ---------- 保存の状態を画面に出す(§9.212 ④、利用者の指示) ----------
+   利用者の言葉は「**修正した内容が戻されたりしない**ために、より良い方法が
+   あれば提案していただきたい」。設定の保存はこれまで**黙って投げていた**ので、
+   失敗しても画面には何も出ず、**次に読み直したときに元の値が出てくるだけ**
+   だった——本人からは「勝手に戻った」としか見えない。
+
+   置き場は**画面名の右（タイトル帯）の1箇所**。どの画面のどの設定を保存
+   していても同じ場所に出るので、探さなくてよい（§CLAUDE 2）。
+   **状態は色だけで伝えない**（§3）ので必ず文字を出し、
+   **失敗は消さずに残して「再試行」を同じ場所に置く**（§4。打つ手が無いまま
+   赤いだけ、にしない）。成功は2秒で引っ込める（読み終えたあとも残す情報
+   ではない）。 */
+const saveState=(()=>{
+ let busy=0,hideTimer=0,retry=null;
+ const box=()=>document.getElementById('saveState');
+ function paint(kind,text,tip){
+  const el=box();if(!el)return;
+  el.hidden=false;el.className='save-chip save-chip-'+kind;
+  el.innerHTML='<b class="save-chip-state"></b>'
+   +(kind==='ng'?'<button type="button" class="save-chip-retry" id="saveStateRetry">再試行</button>':'');
+  el.querySelector('.save-chip-state').textContent=text;
+  el.title=tip||'';
+  const r=el.querySelector('#saveStateRetry');
+  if(r)r.onclick=()=>{const f=retry;retry=null;if(f)run(f.target,f.fn)};
+ }
+ function clearLater(ms){
+  clearTimeout(hideTimer);
+  hideTimer=setTimeout(()=>{const el=box();if(el&&busy<=0&&!retry){el.hidden=true;el.innerHTML=''}},ms);
+ }
+ /* 保存を1つ包む。**失敗は投げ直す**——呼んだ側が知らないまま
+    「保存できた」ことにしない。 */
+ async function run(target,fn){
+  busy++;clearTimeout(hideTimer);retry=null;
+  paint('busy','保存中…','設定をこの端末のマスタへ書いています');
+  try{
+   const r=await fn();
+   busy--;
+   if(busy<=0){paint('ok','保存しました','次に開いたときも同じ形で出ます');clearLater(2000)}
+   return r;
+  }catch(e){
+   busy--;retry={target,fn};
+   paint('ng','保存できませんでした',
+     (e&&e.message?e.message+'\n':'')
+     +'この設定はまだ画面の中だけです。読み直すと元へ戻ります。');
+   throw e;
+  }
+ }
+ return {run,pending:()=>busy>0,failed:()=>!!retry};
+})();
+window.WL=window.WL||{};
+window.WL.saveState=saveState;
+
+/* ---------- 3枚の重ね(§9.212 ③、利用者の指示) ----------
+   **保存済み(saved) / 下書き(draft) / 操作中(live)** を別々に持つ。
+   画面に出るのは `live || draft || saved` で、**保存へ行くのは saved だけ**。
+
+   以前は1枚しか無く、`stage()`が保存済みと同じ入れ物を書き換えていた。
+   そのため列の設定パネルを開いたまま見出しの取っ手で幅を引くと、
+   **パネルの未保存の下書きごとマスタへ書き込まれた**（逆にパネルを保存
+   せずに閉じると画面だけ戻り、マスタは戻らない）。利用者の言う
+   「修正した内容が戻される」はここから起きる。
+
+   ・saved … サーバーにある形。読み込みと保存だけが書き換える。
+   ・draft … 列の設定パネルの未保存の編集。`stage()`で置き、
+             `discard()`で捨てる（＝保存せずに閉じたら開いた時点へ戻る）。
+   ・live  … 掴んでいる最中の見え方。`hold()`で置き、`release()`で捨てる。
+             **保存には行かない**——離した時点の値だけを`patch()`が送る。 */
 const columnLayout=(()=>{
- const cache=new Map();                 // target -> {order,widths,hidden,names,formats}
+ const saved=new Map();                 // target -> 保存済み
+ const draft=new Map();                 // target -> 設定パネルの下書き(無ければ持たない)
+ const live=new Map();                  // target -> 掴んでいる最中の見え方
  /* locks=幅を固定した列(§9.119)。**幅の「自動/手動/固定」は3つの状態**で、
     自動と手動はwidthsの有無で分かるが、固定はもう1つの状態なので別に持つ。 */
  /* sorts=列ごとの並べ替えの決まり(§9.187)。`{列名:{buckets,on,natural}}`。 */
  const empty=()=>({order:[],widths:{},hidden:[],names:{},formats:{},rules:{},formulas:{},
                    locks:[],sorts:{}});
+ const KEYS=['order','widths','hidden','names','formats','rules','formulas','locks','sorts'];
+ const norm=l=>({order:(l&&l.order)||[],widths:(l&&l.widths)||{},hidden:(l&&l.hidden)||[],
+                 names:(l&&l.names)||{},formats:(l&&l.formats)||{},rules:(l&&l.rules)||{},
+                 formulas:(l&&l.formulas)||{},locks:(l&&l.locks)||[],sorts:(l&&l.sorts)||{}});
+ /* 重ねを畳んだ結果。**毎回作り直すと重い**(1列ごとに引く場面がある)ので
+    覚え、どれかの重ねが変わったときだけ捨てる。 */
+ const eff=new Map();
+ const bump=t=>{if(t)eff.delete(t);else eff.clear()};
  async function load(target){
   if(!target)return empty();
-  if(cache.has(target))return cache.get(target);
+  if(saved.has(target))return get(target);
   let v=empty();
   try{
    const r=await api('/api/column-layout-master?target='+encodeURIComponent(target));
-   v={order:r.order||[],widths:r.widths||{},hidden:r.hidden||[],names:r.names||{},
-      formats:r.formats||{},rules:r.rules||{},formulas:r.formulas||{},locks:r.locks||[],
-      sorts:r.sorts||{}};
+   v=norm(r);
   }catch(e){/* 読めなくても既定の並びで一覧は出す(fail-open) */}
-  cache.set(target,v);return v;
+  saved.set(target,v);bump(target);return get(target);
  }
- function get(target){return cache.get(target)||empty()}
+ /* 画面に出す値。**上の重ねが勝つ。ただし持っている項目だけ。**
+    重ねを「まるごとの写し」にしないこと（§9.212 ③）——掴んでいる最中の
+    重ね(live)が`widths`しか触っていないのに`hidden`まで抱えてしまうと、
+    **その裏で保存された`hidden`が見えなくなる**。実際に、列を1つ動かした
+    直後の描き直しで「畳んでいたはずの5列」が出てしまい、見出しのセル数と
+    `--sc-cols`のトラック数が食い違って表が1列ずつずれた。 */
+ function get(target){
+  if(!target)return empty();
+  const hit=eff.get(target);
+  if(hit)return hit;
+  const v={...(saved.get(target)||empty()),
+           ...(draft.get(target)||{}),
+           ...(live.get(target)||{})};
+  eff.set(target,v);return v;
+ }
+ /* サーバーにある形だけを見る。**保存を組み立てるときは必ずこちら**
+    ——`get()`から作ると未保存の下書きまで保存してしまう。 */
+ function savedOf(target){return saved.get(target)||empty()}
  async function save(target,layout){
   if(!target)return;
-  /* **渡し漏れた設定は消える**(全置換。§9.113)。locksを足したときも同じで、
-     save()を呼ぶ側が渡さなければ固定は解けてしまう。 */
-  const v={order:layout.order||[],widths:layout.widths||{},hidden:layout.hidden||[],
-           names:layout.names||{},formats:layout.formats||{},rules:layout.rules||{},
-           formulas:layout.formulas||{},locks:layout.locks||[],sorts:layout.sorts||{}};
-  cache.set(target,v);
-  await api('/api/column-layout-master',{method:'POST',headers:{'Content-Type':'application/json'},
-   body:JSON.stringify(withUserId({target,...v}))});
+  /* 全部を送る＝全部が保存済みになる（設定パネルの「保存」）。 */
+  const v=norm(layout);
+  saved.set(target,v);draft.delete(target);live.delete(target);bump(target);
+  await saveState.run(target,()=>api('/api/column-layout-master',
+   {method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(withUserId({target,...v}))}));
  }
- function forget(target){if(target)cache.delete(target);else cache.clear()}
+ /* **触った項目だけ**を保存する(§9.212 ②)。サーバーは送られてきたキーだけを
+    書き換えるので、渡していない設定は消えない——列幅を引いただけで計算式や
+    並べ替えが消える事故(§9.113/§9.211 ①)が構造的に起きなくなる。
+    下書きが開いていればそちらへも当てる（画面と保存済みが食い違わない）。 */
+ async function patch(target,body){
+  if(!target||!body||typeof body!=='object')return;
+  const keys=Object.keys(body).filter(k=>KEYS.includes(k));
+  if(!keys.length)return;
+  const pick={};keys.forEach(k=>{pick[k]=body[k]});
+  saved.set(target,{...savedOf(target),...pick});
+  if(draft.has(target))draft.set(target,{...draft.get(target),...pick});
+  bump(target);
+  await saveState.run(target,()=>api('/api/column-layout-master',
+   {method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(withUserId({target,...pick}))}));
+ }
+ function forget(target){
+  if(target){saved.delete(target);draft.delete(target);live.delete(target)}
+  else{saved.clear();draft.clear();live.clear()}
+  bump(target);
+ }
  /* **保存せずに今の画面へ当てる**(§9.90)。列の設定パネルは、触った結果が
     そのまま一覧に出るのが分かりやすい——設定画面の中の小さな見本で
     想像させるより、本物の一覧が変わるほうが確実に伝わる。
-    保存は別操作なので、閉じるときは stage(target, 元の値) で戻す。 */
+    保存は別操作なので、閉じるときは discard(target) で捨てる。 */
  function stage(target,layout){
   if(!target)return;
-  cache.set(target,{order:layout.order||[],widths:layout.widths||{},hidden:layout.hidden||[],
-                    names:layout.names||{},formats:layout.formats||{},rules:layout.rules||{},
-                    formulas:layout.formulas||{},locks:layout.locks||[],sorts:layout.sorts||{}});
+  draft.set(target,norm(layout));bump(target);
  }
+ function discard(target){if(target){draft.delete(target);bump(target)}}
+ /* 掴んでいる最中の見え方(§9.212 ③)。**保存には行かない。**
+    **触っている項目だけ**を持つこと（`{...get()}`で丸ごと写さない）。 */
+ function hold(target,body){
+  if(!target||!body)return;
+  live.set(target,{...(live.get(target)||{}),...body});bump(target);
+ }
+ function release(target){if(target){live.delete(target);bump(target)}}
  /* 覚えている並びを、実際にある列へ当てはめる。 */
  function apply(target,columns){
   const {order,hidden}=get(target);
@@ -370,7 +486,8 @@ const columnLayout=(()=>{
  /* 幅を固定した列か(§9.119)。固定した列は取っ手を出さず、
     「幅を内容に合わせる」でも触らない。 */
  const locked=(target,col)=>(get(target).locks||[]).includes(col);
- return {load,get,save,forget,apply,stage,shows,locked,
+ return {load,get,save,patch,forget,apply,stage,discard,hold,release,
+         saved:savedOf,shows,locked,
          width:(target,col)=>get(target).widths[col]||null,
          /* 幅の状態を1語で。'auto'=内容に合わせる / 'manual'=手で決めた /
             'locked'=固定(手で決めた幅から動かさない)。 */

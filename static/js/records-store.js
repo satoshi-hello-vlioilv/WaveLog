@@ -901,22 +901,18 @@ function recordHeadCellWidth(k){
  const el=document.querySelector(`#recordList .record-list-head [data-col="${CSS.escape(k)}"]`);
  return el?el.getBoundingClientRect().width:0;
 }
-/* 見出しからの保存（列幅・右クリックメニュー）。
-   **保存は全置換なので、渡す設定を1つでも書き漏らさない**（§9.113）。
+/* 見出しからの保存（列幅・右クリックメニュー）。**触った項目だけを送る**
+   （§9.212 ②③）ので、渡していない設定は消えない。材料は**保存済み**から
+   取ること——`get()`は列の設定パネルの未保存の下書きを含む。
    `hidden`は`recordInitialHidden()`を通す——並びを初めて保存する瞬間に
    種まきしないと、次の描画から候補44列が全部並ぶ。 */
 async function recordPersistColumns(patch){
- const cur=WL.columnLayout.get(RECORD_LIST_TARGET);
+ const cur=WL.columnLayout.saved(RECORD_LIST_TARGET);
  const keys=recordAllColumnKeys();
  const known=(cur.order||[]).filter(k=>keys.includes(k));
- await WL.columnLayout.save(RECORD_LIST_TARGET,{
+ await WL.columnLayout.patch(RECORD_LIST_TARGET,{
   order:[...known,...keys.filter(k=>!known.includes(k))],
-  widths:cur.widths,hidden:recordInitialHidden(keys,cur),names:cur.names,
-  formats:cur.formats,rules:cur.rules,formulas:cur.formulas,locks:cur.locks,
-  sorts:cur.sorts,...patch});
- /* 列の設定パネルを開いたまま見出しを触ることがある。**保存したぶんは
-    巻き戻さない**ように控えへ伝える（§9.211 ①）。 */
- WL.listColumns&&WL.listColumns.noteSaved&&WL.listColumns.noteSaved(RECORD_LIST_TARGET,patch);
+  hidden:recordInitialHidden(keys,cur),...patch});
 }
 function recordColumnLabel(k){
  const n=(WL.columnLayout.get(RECORD_LIST_TARGET).names||{})[k];
@@ -1108,7 +1104,8 @@ function bindRecordHeadTools(list,keys){
    preview:w=>{
     list.style.setProperty('--rec-cols',recordTracksCss(keys,k,w));
     const cur=WL.columnLayout.get(RECORD_LIST_TARGET);
-    WL.columnLayout.stage(RECORD_LIST_TARGET,{...cur,widths:{...(cur.widths||{}),[k]:w}});
+    /* 掴んでいる最中は`hold()`（§9.212 ③）。保存済みにも下書きにも触らない。 */
+    WL.columnLayout.hold(RECORD_LIST_TARGET,{widths:{...(cur.widths||{}),[k]:w}});
    },
    /* **保存の約束は返すこと**（§9.211 ①）。返さないと取っ手側の
       `.catch()`が空振りし、保存に失敗しても画面は成功したように見える
@@ -1116,7 +1113,8 @@ function bindRecordHeadTools(list,keys){
       キャッシュを先に差し替えるので、その場で新しい幅が出る。 */
    commit:w=>{
     const cur=WL.columnLayout.get(RECORD_LIST_TARGET);
-    const p=recordPersistColumns({widths:{...(cur.widths||{}),[k]:w}});
+    const p=recordPersistColumns({widths:{...(cur.widths||{}),[k]:w}})
+     .finally(()=>WL.columnLayout.release(RECORD_LIST_TARGET));
     renderRecordListRows();
     return p.catch(e=>{showToast&&showToast('列幅を保存できませんでした',e.message||String(e),5000)});
    },
@@ -1125,7 +1123,8 @@ function bindRecordHeadTools(list,keys){
     /* **固定も一緒に解く**（§9.119）。幅を持たない「固定」は動かしようが
        無いので、残すと「固定と出ているのに何も効いていない」列になる。 */
     const locks=(WL.columnLayout.get(RECORD_LIST_TARGET).locks||[]).filter(x=>x!==k);
-    const p=recordPersistColumns({widths,locks});
+    const p=recordPersistColumns({widths,locks})
+     .finally(()=>WL.columnLayout.release(RECORD_LIST_TARGET));
     renderRecordListRows();
     return p.catch(e=>{showToast&&showToast('列幅を保存できませんでした',e.message||String(e),5000)});
    },

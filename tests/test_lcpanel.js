@@ -25,7 +25,7 @@ let b=null;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 async function cleanup(){
  for(const t of ['list:SIKALOTNOW:仕掛','list:SIKALOTNOW:'+encodeURIComponent('仕掛')]){
-  try{await post('/api/column-layout-master',{target:t,order:[],widths:{},hidden:[],names:{},formats:{},rules:{},user_id:'test'})}catch(e){}
+  try{await post('/api/column-layout-master',{target:t,clear:true,order:[],widths:{},hidden:[],names:{},formats:{},rules:{},user_id:'test'})}catch(e){}
  }
 }
 (async()=>{
@@ -459,6 +459,68 @@ async function cleanup(){
    rec('「#」を動かすと一覧の並びも同じ位置になる',idxPanel===idxGrid&&idxGrid>0,
      `モーダル${idxPanel} / 一覧${idxGrid}`);
   }
+
+  /* ---- 下書き(パネル)と保存済みは別の重ね(§9.212 ③、利用者の指示) ----
+     このパネルは**モーダルではない浮きウィンドウ**なので、開いたまま
+     見出しの取っ手で列幅を引ける。以前は下書きと保存済みが同じ入れ物
+     だったため、
+      ① 見出しからの保存が**パネルの未保存の編集ごと**マスタへ書き込み
+      ② パネルを保存せずに閉じると**保存済みの幅まで巻き戻る**
+     の両方が起きていた（利用者の言う「修正した内容が戻される」）。 */
+  await page.click('#lcClose').catch(()=>{});
+  await page.waitForTimeout(200);
+  await page.click('#listColumnBtn');
+  await page.waitForSelector('#listColumnPanel .lc-item',{timeout:10000});
+  await page.waitForTimeout(400);
+  const mix=await page.evaluate(async()=>{
+   const t=listLayoutTarget();
+   /* パネルの中で1列のチェックを外す（＝未保存の下書き）。 */
+   const box=document.querySelector('#listColumnPanel .lc-item input[type=checkbox]:checked');
+   const key=box?box.closest('.lc-item').dataset.key:'';
+   if(box)box.click();
+   await new Promise(r=>setTimeout(r,250));
+   const draftHidden=(WL.columnLayout.get(t).hidden||[]).includes(key);
+   const savedHidden=(WL.columnLayout.saved(t).hidden||[]).includes(key);
+   /* 見出し側と同じ経路で外から保存する（列幅だけ）。 */
+   const wkey=[...document.querySelectorAll('#grid th[data-sort-col]')]
+     .map(x=>x.dataset.sortCol).find(x=>x!==key)||key;
+   await WL.columnLayout.patch(t,{widths:{...(WL.columnLayout.saved(t).widths||{}),[wkey]:333}});
+   return {t,key,wkey,draftHidden,savedHidden};
+  });
+  rec('パネルの編集は画面に出る（保存せずに当たる）',mix.draftHidden===true,String(mix.draftHidden));
+  rec('パネルの編集は保存済みには入らない',mix.savedHidden===false,String(mix.savedHidden));
+  const srvMid=await (await fetch(B+'/api/column-layout-master?target='+encodeURIComponent(mix.t))).json();
+  rec('外からの保存にパネルの未保存の編集が混ざらない',
+      !((srvMid.hidden||[]).includes(mix.key)),JSON.stringify(srvMid.hidden||[]));
+  rec('外からの保存はちゃんと届く',(srvMid.widths||{})[mix.wkey]===333,
+      JSON.stringify(srvMid.widths||{}));
+  /* 保存せずに閉じる。**下書きだけが消え、外から保存した幅は残る。** */
+  await page.click('#lcClose');
+  await page.waitForTimeout(400);
+  const afterClose=await page.evaluate(a=>({
+   hidden:(WL.columnLayout.get(a.t).hidden||[]).includes(a.key),
+   width:(WL.columnLayout.get(a.t).widths||{})[a.wkey],
+  }),mix);
+  rec('保存せずに閉じると下書きは消える',afterClose.hidden===false,String(afterClose.hidden));
+  rec('保存せずに閉じても、外から保存した幅は残る',afterClose.width===333,String(afterClose.width));
+
+  /* ---- 保存の状態が画面に出る(§9.212 ④) ---- */
+  const chip=await page.evaluate(async()=>{
+   const el=document.getElementById('saveState');
+   if(!el)return null;
+   const t=listLayoutTarget();
+   const p=WL.columnLayout.patch(t,{widths:{...(WL.columnLayout.saved(t).widths||{})}});
+   const busy={hidden:el.hidden,text:(el.textContent||'').trim()};
+   await p;
+   await new Promise(r=>setTimeout(r,60));
+   const done={hidden:el.hidden,text:(el.textContent||'').trim()};
+   return {busy,done,inHead:!!document.querySelector('.hd-context #saveState')};
+  });
+  rec('保存の状態を出す場所がある（タイトル帯）',!!chip&&chip.inHead===true,JSON.stringify(chip));
+  rec('保存中は「保存中」と文字で出る',!!chip&&chip.busy.hidden===false&&/保存中/.test(chip.busy.text),
+      JSON.stringify(chip&&chip.busy));
+  rec('終わったら「保存しました」と文字で出る',!!chip&&/保存しました/.test(chip.done.text),
+      JSON.stringify(chip&&chip.done));
 
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
 

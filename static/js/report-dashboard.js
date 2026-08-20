@@ -1109,7 +1109,7 @@
  /* ---- 組み換えモード -------------------------------------------------
     **保存せずに当てる**（列の設定パネルと同じ作り。§9.90）。触った結果が
     そのまま紙に出るのが分かりやすく、「やめる」で開いた時点へ必ず戻せる。 */
- let rpArranging=false,rpArrangeBackup=null,rpDragKey=null;
+ let rpArranging=false,rpDragKey=null;
  function rpCurrentLot(){return rpState.items.find(i=>i.id===rpState.selectedId)||null}
  function rpRepaint(){
   const x=rpCurrentLot();if(!x)return;
@@ -1140,7 +1140,6 @@
   if(rpArranging){closeArrange(false);return}
   if(!rpState.selectedId){showToast&&showToast('先にロットを選んでください','左の一覧から選ぶと、その帳票を見ながら組み換えられます',4000);return}
   try{await WL.columnLayout.load(rpTarget())}catch(e){}
-  rpArrangeBackup=rpLayoutNow();
   rpArranging=true;
   document.body.classList.add('rp-arranging');
   updateArrangeBar();rpRepaint();
@@ -1149,8 +1148,11 @@
     何が保存済みで何が触っただけなのか分からなくなる。 */
  function closeArrange(saved){
   if(!rpArranging)return;
-  if(!saved&&rpArrangeBackup)WL.columnLayout.stage(rpTarget(),rpArrangeBackup);
-  rpArranging=false;rpArrangeBackup=null;rpPaperView=false;
+  /* **戻すのは下書きを捨てるだけ**(§9.212 ③)。組み換え中の変更は下書きの
+     重ねに載っているので、捨てれば保存済みがそのまま出る——控えを当て直すと
+     組み換え中に別経路で保存されたぶんまで巻き戻る。 */
+  if(!saved)WL.columnLayout.discard(rpTarget());
+  rpArranging=false;rpPaperView=false;
   const bm=$id('rpBlockModal');if(bm)bm.hidden=true;
   document.body.classList.remove('rp-arranging');
   updateArrangeBar();rpRepaint();

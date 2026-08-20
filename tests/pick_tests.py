@@ -40,7 +40,7 @@ G['一覧'] = ['test_nav', 'test_navdyn', 'test_listcache', 'test_listperf', 'te
              'test_cols', 'test_hdctx', 'test_dsnav', 'test_dsrestart', 'test_listmodal', 'test_filter',
              'test_audit', 'test_sub', 'test_uisize', 'test_ttlcache']
 G['列'] = ['test_collayout', 'test_colformat', 'test_colrule', 'test_colsort', 'test_lcpanel',
-           'test_colscache', 'test_colsripple', 'test_displayrule', 'test_colmenu',
+           'test_colscache', 'test_colsripple', 'test_colsave', 'test_displayrule', 'test_colmenu',
            'test_colpreset', 'test_formula', 'test_reccols', 'test_rpblocks',
            'test_colio', 'test_multidrag', 'test_sortcustom', 'test_sortpipe']
 G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'test_sccat',

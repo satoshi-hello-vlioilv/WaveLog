@@ -24,7 +24,7 @@ const planOf=async()=>((await getJson('/api/schedule/plan?equipment='+encodeURIC
 async function cleanup(){
  try{if(madeId)await post('/api/schedule/plan/delete',{id:madeId})}catch(e){}
  try{await post('/api/measurement/backup/delete',{id:REC})}catch(e){}
- try{await post('/api/column-layout-master',{target:TARGET,order:[],widths:{},hidden:[],names:{},formats:{},rules:{},formulas:{},locks:[],user_id:'test'})}catch(e){}
+ try{await post('/api/column-layout-master',{target:TARGET,clear:true,order:[],widths:{},hidden:[],names:{},formats:{},rules:{},formulas:{},locks:[],user_id:'test'})}catch(e){}
 }
 (async()=>{
  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
