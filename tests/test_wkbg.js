@@ -46,18 +46,30 @@ let b=null;
  await page.waitForSelector('.sc-row-line',{timeout:20000});
  const shownAt=Date.now()-t0;
  rec('可否の取得(6秒遅延)を待たずに予定が表示される',shownAt<5000,shownAt+'ms');
- /* **遅らせる問い合わせを実際に捕まえたか**を先に見る（§9.200）。
-    捕まえていなければ以降の「材料が揃う前は?」は何も確かめていない
-    ——手掛かり(URL)が変わったときに黙って空振りしないための歯止め。 */
- rec('遅らせる問い合わせを実際に捕まえた（この網が空振りしていないこと）',
-     held>0,`捕まえた${held}件`);
 
- // この時点では判定材料がまだ無いので「?」のはず
- const early=await page.$$eval('.sc-row-line .sc-row-workable',ns=>{
-  const c={};ns.forEach(n=>{const k=[...n.classList].find(x=>x.startsWith('is-'));c[k]=(c[k]||0)+1});return c;
+ /* この時点では**索引をまだ作っていない**。
+    **「?」の件数で見ないこと**——予定の行は作られた時点の残仕掛設備ｺｰｽを
+    detailに持っていることがあり（§9.67）、その行は索引を引く前から可否が
+    確定している。フィクスチャの中身で0件にも41件にもなるので、件数で見ると
+    **通しの実行で落ちる**（実際に is-ok 30 / is-ng 11 で落ちた）。
+    ここで確かめたい約束は2つで、どちらも中身に依らない:
+      ・材料(仕掛)を読み終える前に予定を描いている（索引が空のまま出ている）
+      ・**材料の無い行を勝手に「可」にしない** */
+ const early=await page.evaluate(()=>{
+  const st=window.scheduleWorkableState();
+  const c={};let 材料なし=0,材料なしで可=0;
+  [...document.querySelectorAll('.sc-row-line')].forEach(n=>{
+   const w=n.querySelector('.sc-row-workable');if(!w)return;
+   const k=[...w.classList].find(x=>x.startsWith('is-'));c[k]=(c[k]||0)+1;
+   const e=n.__scEntry;if(!e||e.kind!=='作業')return;
+   const known=!!(e.detail&&String(e.detail.residualCourse??'')!=='');
+   if(!known){材料なし++;if(k==='is-ok')材料なしで可++}
+  });
+  return {c,indexSize:st.indexSize,材料なし,材料なしで可};
  });
+ rec('材料(仕掛)を読み終える前に予定を描いている',early.indexSize===0,JSON.stringify(early));
  rec('判定材料が揃う前は「?」で出す(勝手に可にしない)',
-   (early['is-unknown']||0)>0,JSON.stringify(early));
+   early.材料なしで可===0,JSON.stringify(early));
 
  // 待機オーバーレイが出っぱなしになっていない = 操作できる
  const overlayHidden=await page.evaluate(()=>document.querySelector('#saveOverlay').hidden);
@@ -70,6 +82,12 @@ let b=null;
   const c={};ns.forEach(n=>{const k=[...n.classList].find(x=>x.startsWith('is-'));c[k]=(c[k]||0)+1});return c;
  });
  rec('取得できたら可否が後から埋まる',(later['is-ok']||0)>0&&(later['is-ng']||0)>0,JSON.stringify(later));
+ /* **遅らせる問い合わせを実際に捕まえたか**（§9.200）。捕まえていなければ
+    「6秒遅らせた」という前提そのものが成り立っておらず、上の2件は
+    何も確かめていない。**ここで見る**——索引の取得は最初の描画より後に
+    始まるので、描いた直後に数えると必ず0件になる（実際にそう落ちた）。 */
+ rec('遅らせる問い合わせを実際に捕まえた（この網が空振りしていないこと）',
+     held>0,`捕まえた${held}件`);
 
  // 差し替えは行を作り直さない(スクロール位置・展開状態を壊さない)
  const stable=await page.evaluate(async()=>{
