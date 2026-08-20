@@ -2206,6 +2206,41 @@ let b=null,page=null;
   rec('入力内容のボタンは器いっぱいに伸びない',
    入力内容.幅<入力内容.器の幅-40,`${入力内容.幅}px / 器${入力内容.器の幅}px`);
 
+  /* ---- ②のカードの左右の余白は同じ（§9.219 ①） ----
+     利用者の報告「条の入力…収まり切れておらず、はみ出している」。
+     `.measure-shell.mstep-2 .center-pane`が長く`padding-right:0`を持って
+     おり（②の中身が`.type-chips`だけで、器いっぱいに伸びるものが無かった
+     ころの名残り）、§9.218 ②で操業データの欄が`data-opfill`＝器いっぱいに
+     なった結果、**右端の欄だけがカードの枠に接していた**（実測 左13px／
+     右1px）。角の丸みとフォーカスの輪が右側だけ切られる。
+     **溢れ（scrollWidth-clientWidth）では捕まらない**——トラックは
+     `minmax(0,1fr)`なので本当の横溢れは原理的に起きない。カードの内寸と
+     欄の左右の位置を突き合わせること。 */
+  const 条の入力=await page.evaluate(()=>{
+   const h=[...document.querySelectorAll('.selectors>.prep-fold')]
+     .find(x=>x.getAttribute('aria-expanded')==='false');
+   if(h)h.click();
+   const pane=document.querySelector('.center-pane'),cs=getComputedStyle(pane);
+   const pr=pane.getBoundingClientRect();
+   const inL=pr.left+parseFloat(cs.borderLeftWidth)+parseFloat(cs.paddingLeft);
+   const inR=pr.right-parseFloat(cs.borderRightWidth)-parseFloat(cs.paddingRight);
+   const kids=[...document.querySelectorAll('.selectors>[data-opplace="入力内容"]')]
+     .filter(k=>getComputedStyle(k).display!=='none');
+   if(!kids.length)return {件数:0};
+   const L=Math.min(...kids.map(k=>k.getBoundingClientRect().left));
+   const R=Math.max(...kids.map(k=>k.getBoundingClientRect().right));
+   return {件数:kids.length,
+     padL:Math.round(parseFloat(cs.paddingLeft)),
+     padR:Math.round(parseFloat(cs.paddingRight)),
+     左:Math.round((L-inL)*10)/10,右:Math.round((inR-R)*10)/10};
+  });
+  rec('②の入力内容カードは左右の余白が同じ（片側だけ0にしない）',
+   条の入力.件数>0&&条の入力.padL===条の入力.padR&&条の入力.padL>0,
+   JSON.stringify(条の入力));
+  rec('②の操業データの欄がカードの内側に収まる',
+   条の入力.件数>0&&条の入力.左>=-1&&条の入力.右>=-1,
+   JSON.stringify(条の入力));
+
   /* ---- ②判定公差の切り替えは畳んでおく（§9.159） ----
      **選べる状態を作ってから見ること**——検証用データにはオーダー公差が
      1件も無く、そのままだと欄ごと非表示なので「畳んでいる」を見ても

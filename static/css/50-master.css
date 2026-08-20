@@ -788,6 +788,16 @@
 .op-board-grid{position:relative}
 .op-drop-mark{position:absolute;width:3px;border-radius:var(--radius-xs);
   background:var(--nav);pointer-events:none;z-index:2}
+/* **どの群に入るかを文字で出す**（§9.219 ③）。線だけだと帯のすぐ上と下の
+   どちらへ入るのかが読めない。**盤の流れの中へは置かない**——器の中へ
+   挿すとタイルがずれる（§9.218 ④）ので、印そのものを基準に浮かせる。 */
+.op-drop-tag{
+  position:absolute;left:6px;bottom:100%;
+  padding:0 var(--space-1);border-radius:var(--radius-xs);
+  background:var(--nav);color:var(--on-nav,#fff);
+  font-style:normal;font-size:var(--fs-micro);font-weight:700;line-height:1.6;
+  white-space:nowrap;
+}
 /* **マスの目盛**（§9.218 ②）。掴んで並べる盤なのに、いま何マス使って
    いるのかが読めないと「あと1つ入るか」が分からない。 */
 .op-ruler{
@@ -823,6 +833,35 @@
 .op-prev-field .opf{display:flex;flex-direction:column;gap:2px;min-width:0;font-size:var(--fs-sm)}
 .op-prev-field .opf select,.op-prev-field .opf input{width:100%;max-width:100%}
 .op-prev-note{margin:0;color:var(--ink-3);font-size:var(--fs-badge);line-height:1.6}
+/* **隣に並ぶものも一緒に見せる**（§9.219 ③）。幅は「12マスのうち何マス」
+   なので、1枚だけでは広いのか狭いのかが読めない。薄く置くだけで、押せない
+   （見本として本物なのは真ん中の1枚だけ）。 */
+.op-prev-ghost{
+  min-width:0;padding:var(--pad-row);border:1px dashed var(--line-soft);
+  border-radius:var(--radius-xs);background:var(--surface-2);
+  color:var(--muted);font-size:var(--fs-badge);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+/* 押した結果が何として記録されるか（§9.219 ③、利用者の指示「実際の挙動も
+   もう少しわかるように」）。見本は本物の部品なので、押せば実際に変わる。 */
+.op-prev-value{
+  margin:0;padding:var(--pad-row);border-radius:var(--radius-xs);
+  background:var(--pale);color:var(--ink-2);font-size:var(--fs-sm);
+}
+.op-prev-value>b{color:var(--teal);font-weight:800}
+.op-prev-facts{
+  display:grid;gap:var(--gap-hair);margin:0;padding:0;list-style:none;
+  color:var(--ink-3);font-size:var(--fs-badge);line-height:1.6;
+}
+.op-prev-facts>li{display:grid;grid-template-columns:var(--w-sm) minmax(0,1fr);gap:var(--gap-inline)}
+.op-prev-facts>li>b{color:var(--ink-2);font-weight:700}
+.op-prev-facts code{font-size:var(--fs-micro)}
+/* 同じ群がばらけて保存されていたことの案内（§9.219 ③）。 */
+.op-healed{
+  margin:0 0 var(--space-2);padding:var(--pad-row);
+  border-left:3px solid var(--warn,var(--nav));border-radius:var(--radius-xs);
+  background:var(--surface-2);color:var(--ink-2);font-size:var(--fs-sm);line-height:1.6;
+}
 .op-modal-form{display:flex;flex-direction:column;gap:var(--gap-inline);min-width:0}
 /* **ラベル列は固定幅**（§CLAUDE 9）——`auto`だと項目ごとに値の左端がずれる。 */
 .op-form-row{display:grid;grid-template-columns:var(--w-sm) minmax(0,1fr);gap:var(--space-2);align-items:start}
@@ -887,4 +926,23 @@
 /* 選択肢の一覧に「どの項目が使っているか」を出す（§9.216 ④）。
    **使い道の見えない選択肢は消してよいのか判断できない。** */
 .op-usage{color:var(--ink-3);font-size:var(--fs-badge)}
+
+/* 見せるが触らせない欄（§9.219 ②）。**隠さない**——隠すと「なぜ中身を
+   変えられないのか」が読めなくなる。触れないことを面と色で示す。 */
+.mm-field-ro>input{
+  background:var(--surface-2);color:var(--ink-3);
+  border-style:dashed;cursor:default;
+}
+
+/* 対象設備は**名前のタグの入切**（§9.219 ③／§9.197）。手で`A,B,C`と打たせると
+   設備名のゆれで黙って当たらなくなる。入は面の色で示し、件数と名前は
+   要約が文字で言う（§CLAUDE 3「状態を色だけで伝えない」）。 */
+.op-eq-tags{display:flex;flex-wrap:wrap;gap:var(--gap-tight);min-width:0}
+.op-eq-tag{
+  min-height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-sm);
+  border:1px solid var(--line-mid);border-radius:var(--radius-pill);
+  background:var(--surface);color:var(--ink-2);font-size:var(--fs-sm);cursor:pointer;
+}
+.op-eq-tag:hover{background:var(--surface-2)}
+.op-eq-tag.is-on{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:700}
 }

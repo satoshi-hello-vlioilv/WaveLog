@@ -93,9 +93,44 @@ def normalize_span(v):
 #   タブ       … 横に連なるボタン（見た目はタブ）。2〜4個向き
 #   一覧       … 押すと浮き窓が開き、**説明つき**で選ぶ。選択肢が多いとき
 WIDGET_SELECT = 'プルダウン'
-WIDGETS = (WIDGET_SELECT, 'ラジオ', 'タブ', '一覧')
-# 選択肢を持たない型では「選ばせ方」は効かない。判定はここ1箇所。
+# §9.219 ③（利用者の指示「UIの種類を増やしたり」）で**数値と自由記述にも**
+# 入力方法を持たせた。選択肢を持たない項目に「ラジオ」は効かないが、
+# 「ステッパー」「キーパッド」は効く——効く型が違うだけで、考え方は同じ
+# （値を持つのは今までどおり`<select>`／`<input>`で、その上に器を被せる）。
+#   ステッパー … −／＋の2つのボタンで増減する。1〜9程度の整数向き
+#   スライダー … 目盛を引いて決める。上下限のある数値向き
+#   キーパッド … 押すと浮き窓のテンキー。キーボードの無い端末向き
+#   メモ       … 複数行で書ける。自由記述向き
+WIDGETS = (WIDGET_SELECT, 'ラジオ', 'タブ', '一覧',
+           'ステッパー', 'スライダー', 'キーパッド', 'メモ')
+# 選択肢を持つ型。判定はここ1箇所。
 CHOICE_TYPES = ('選択',)
+NUMBER_TYPES = ('整数', '正の整数', '数値', '正の数')
+# 型ごとに選べる入力方法。**その型に効かないものは画面へ出さない**（§4
+# 「できないことは、できないと書く」——押せるのに何も起きない設定を作らない）。
+# `プルダウン`はどの型でも「標準の欄」の意味で使う。**保存値の既定を型ごとに
+# 変えないこと**——型を切り替えた瞬間に「知らない値」になって設定が消える。
+WIDGET_FAMILIES = {
+    'choice': (WIDGET_SELECT, 'ラジオ', 'タブ', '一覧'),
+    'number': (WIDGET_SELECT, 'ステッパー', 'スライダー', 'キーパッド'),
+    'text': (WIDGET_SELECT, 'メモ'),
+}
+# 組み込みの欄が選択肢を持つのか数値なのかは、**画面(index.html)が持っている
+# 入力欄の実体**で決まる。マスタの`[型]`は組み込み行では空なので、ここが答える。
+# 挙げていないキーは`<select>`＝choice。
+BUILTIN_FAMILIES = {'verticalCount': 'number', 'horizontalCount': 'number'}
+
+
+def widget_family(kind, builtin=''):
+    """その項目がどの入力方法の仲間か。**判定はここ1箇所**（画面にも同じ
+    判定を書かない——2つの答えが出る）。"""
+    if str(builtin or '').strip():
+        return BUILTIN_FAMILIES.get(str(builtin).strip(), 'choice')
+    if kind in CHOICE_TYPES:
+        return 'choice'
+    if kind in NUMBER_TYPES:
+        return 'number'
+    return 'text'
 
 
 def normalize_widget(v):
@@ -492,12 +527,15 @@ def _row_to_item(r):
             'fold': bool(r[17]) if r[17] is not None else False,
             # 畳んだ群を自動で開く測定項目。空＝いつも畳んだまま。
             'showWhen': [x for x in str(r[18] or '').replace('、', ',').split(',') if x.strip()],
-            # 選ばせ方(§9.218 ②)。選択肢を持たない型では効かないので、
-            # **画面へ「効かない」と伝えるためにここで潰す**——設定は残す
-            # （型を「選択」へ戻したときに選び直させない）。
+            # 選ばせ方(§9.218 ②／§9.219 ③)。**型ごとに効く物が違う**ので、
+            # 効かない設定は`widgetLive`で標準の欄へ潰す——保存値(`widget`)は
+            # 残す（型を戻したときに選び直させない）。仲間分けは
+            # `widget_family()`の1箇所が答える。
             'widget': normalize_widget(r[19]),
+            'widgetFamily': widget_family(normalize_item_type(r[5]), builtin),
             'widgetLive': (normalize_widget(r[19])
-                           if normalize_item_type(r[5]) in CHOICE_TYPES or builtin
+                           if normalize_widget(r[19]) in WIDGET_FAMILIES[
+                               widget_family(normalize_item_type(r[5]), builtin)]
                            else WIDGET_SELECT)}
 
 
@@ -520,13 +558,18 @@ def item_rows(c, include_disabled=False):
     return out
 
 
-def items_for_equipment(c, equipment):
+def items_for_equipment(c, equipment, include_disabled=False):
     """その設備で使う項目だけ。判定は設備停止マスタと**同じ関数**を通す
-    （`'*'`／カンマ区切り／名前の全角半角ゆれ。§CLAUDE）。"""
+    （`'*'`／カンマ区切り／名前の全角半角ゆれ。§CLAUDE）。
+
+    **マスタ管理の盤は`include_disabled=True`で読む**（§9.219 ③）——
+    「測定画面に出す」を外した項目まで落とすと、設備を選んだ状態では盤から
+    消えて**戻せなくなる**（消したのではなく隠しただけなのに、隠す操作が
+    取り消せない）。測定画面（`form_for_equipment`）は今までどおり落とす。"""
     from . import schedule_repo as sr
     eq = str(equipment or '').strip()
     out = []
-    for item in item_rows(c):
+    for item in item_rows(c, include_disabled):
         target = item['equipment']
         if not target or target == '*':
             out.append(item)
@@ -620,24 +663,44 @@ def item_layout_save(c, uid, rows):
     (§9.216 ②)。D&Dで並べ替える画面なので1行ずつのPOSTでは往復が増え、
     途中で切れると**並びが半分だけ変わった状態**が残る。
 
-    渡された順がそのまま`[表示順]`になる（10刻み。あとから1つ挟める）。
     **渡された行だけを書く**——一覧に出していない設備の行を巻き添えに
-    しない（§9.212 ②と同じ約束）。"""
+    しない（§9.212 ②と同じ約束）。
+
+    **順番は「席の入れ替え」で書く**（§9.219 ③）。以前は渡された順に
+    `(i+1)*10`を振っていたため、**一部の行だけを渡すと、その行が先頭へ
+    集まって他の群のあいだへ割り込んだ**——同じ群が3つの帯に割れ、
+    「その群へ項目を移動できない」という形で実機に出た。いま在る席
+    （表示順）を集めて昇順に均し、**新しい並びでその席へ座らせる**ので、
+    渡していない行との前後関係は1つも動かない。"""
     ensure_item_table(c)
     cur = c.cursor()
-    n = 0
-    for i, r in enumerate(rows or []):
+    todo = []
+    for r in (rows or []):
         try:
-            item_id = int(r.get('id'))
+            todo.append((int(r.get('id')), r))
         except (TypeError, ValueError):
             continue
+    if not todo:
+        return 0
+    slots = []
+    for item_id, _r in todo:
+        cur.execute(f'SELECT [表示順] FROM [{ITEM_TABLE}] WHERE [項目ID]=?', [item_id])
+        hit = cur.fetchone()
+        slots.append(int(hit[0]) if hit and hit[0] is not None else 0)
+    slots.sort()
+    # 同じ席が2つあると順番が決まらないので、**厳密に増える形へ均す**。
+    for i in range(1, len(slots)):
+        if slots[i] <= slots[i - 1]:
+            slots[i] = slots[i - 1] + 1
+    n = 0
+    for i, (item_id, r) in enumerate(todo):
         when = r.get('showWhen')
         if isinstance(when, (list, tuple)):
             when = ','.join(str(x).strip() for x in when if str(x).strip())
         cur.execute('UPDATE [操業データ項目マスタ] SET [群]=?,[表示順]=?,[列幅]=?,[置き場]=?,'
                     '[必須]=?,[有効]=?,[群折りたたみ]=?,[表示条件]=?,'
                     '[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
-                    [str(r.get('group') or '').strip(), (i + 1) * 10,
+                    [str(r.get('group') or '').strip(), slots[i],
                      normalize_span(r.get('span')), normalize_place(r.get('place')),
                      -1 if r.get('required') else 0,
                      0 if r.get('enabled') is False else -1,
@@ -704,4 +767,6 @@ def form_for_equipment(c, equipment):
     live = {x['builtin'] for x in items if x['builtin']}
     return {'items': out, 'builtinOff': sorted(known - live),
             'gridCols': GRID_COLS, 'spanUnit': SPAN_UNIT,
-            'widgets': list(WIDGETS), 'places': list(PLACES)}
+            'widgets': list(WIDGETS),
+            'widgetFamilies': {k: list(v) for k, v in WIDGET_FAMILIES.items()},
+            'places': list(PLACES)}

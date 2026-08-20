@@ -105,15 +105,29 @@
             placeholder:'ロット番号=basic.lotNo\n運転方式=settings.opData.運転方式',
             hint:'1行に1項目、`ラベル=値の出どころ`で書きます。出どころは測定データの中の道で、`basic.…`（仕掛から取った値）`settings.…`（準備で決めた値）`settings.opData.<項目名>`（操業データ）`workTime.…`（作業時間）が使えます。`=`を省くとラベルと道が同じになります。'},
            {k:'span',label:'幅（12マス中）',type:'select',options:['3','4','6','8','12'],
-            hint:'紙は12マスのグリッドです。3＝1/4、6＝1/2、12＝全幅。'},
-           {k:'rows',label:'高さ（行数）',type:'select',options:['','2','3','4','6','8','12'],
+            hint:'紙は12マスのグリッドです。3＝1/4、6＝1/2、12＝全幅。**ここは既定**で、設備ごとの紙で幅を変えるとそちらが優先されます（帳票画面の「配置を組み換え」で戻せます）。'},
+           {k:'rows',label:'高さ（行数）',type:'select',options:['','2','3','4','5','6','8','12'],
             hint:'1行＝24px。空欄なら中身なり（描いてから測ります）。行数を決めると下の段へ跨いで置けます。'},
+           {k:'cols',label:'内訳の列数',type:'select',options:['','1','2','3','4'],
+            hint:'節の中で「ラベル＝値」を何列に並べるかです。空欄なら中身の数から決まります（項目が多い塊は4列にすると紙が締まります）。'},
            {k:'order',label:'表示順',type:'number',min:0,step:10,
-            hint:'小さいほど先に出ます。空欄で保存すると今の並びのままです。'}],
+            hint:'小さいほど先に出ます。空欄で保存すると今の並びのままです。'},
+           /* **「有効」の欄が無いと行き止まりになる**（§9.219 ②）。既定の塊は
+              消せないので、紙へ出さない手立てはここだけ。欄が無いまま
+              「有効を外してください」と書くのは、§4より悪い「存在しない操作の
+              指示」になる。 */
+           {k:'enabledText',label:'有効',type:'select',options:['有効','無効'],
+            hint:'「無効」にすると、その塊は帳票に出なくなります（設定は残るので、いつでも戻せます）。**既定の塊を紙から外す手立てはこれだけです**（既定の塊は消せません）。'},
+           /* **組み込みの印は見せるが触らせない**（§9.219 ②）。どのコードの
+              塊を指しているかは付け替えられない——付け替えると「どの塊の設定
+              なのか」が決まらなくなる。 */
+           {k:'builtin',label:'既定の塊',readonly:true,
+            hint:'空欄＝自分で作った塊です。値が入っているものはアプリがもともと持っている塊で、**名前・幅・高さ・並び・出す/出さない・対象設備**を変えられます（中身は塊によります。下の説明を参照）。'}],
    cols:[{k:'equipment',label:'対象設備',grow:2,format:'equipmentTarget'},
-         {k:'name',label:'ブロック名',grow:2},{k:'content',label:'内容',grow:4},
+         {k:'name',label:'ブロック名',grow:2},{k:'builtin',label:'既定',grow:1},
+         {k:'enabledText',label:'有効',grow:1},{k:'content',label:'内容',grow:4},
          {k:'span',label:'幅',grow:1},{k:'rows',label:'高さ',grow:1},{k:'order',label:'表示順',grow:1}],
-   hint:'帳票へ**自分で作った塊**を足せます。1行＝1つの塊で、中身は「ラベルと値の出どころ」を並べたものです。測定表・条の図・異常位置判定のように組み立て方そのものが仕事になっている塊はアプリ側が持っており、ここでは作れません。作った塊は帳票画面の「配置を組み換え」で、ほかの塊と同じように掴んで並べたり幅・高さを決めたりできます（既定では紙に出していないので、組み換えの「出していない塊」から紙へ落としてください）。'},
+   hint:'帳票の塊の一覧です。**アプリがもともと持っている塊もここに載っています**（「既定」に値が入っている行）。既定の塊は**名前・幅・高さ・並び・出す/出さない・対象設備**を変えられ、`基本情報`／`コース情報`／`測定条件`／`作業班構成`／`作業時間`／`登録状態`の6つは**中身（ラベルと出どころの並び）も**変えられます。中身を空にすると画面がもともと持っている形へ戻ります。測定表・条の図・異常位置判定のように組み立て方そのものが仕事になっている塊は中身を変えられません（書いても効かないので、変えないでください）。既定の塊は**消せません**——紙へ出したくないときは「有効」を外します。自分で作った塊は1行＝1つの塊で、中身は「ラベルと値の出どころ」を並べたものです。出どころには`calc.workDuration`（実働時間）`calc.status`（状態）`calc.crewSize`（N名班）`calc.coilStop`（コイル止め・旧データ込み）といった**計算した値**も使えます。作った塊は既定では紙に出していないので、帳票画面の「配置を組み換え」の「出していない塊」から紙へ落としてください。'},
   {group:'equip',key:'equipment',label:'設備',icon:'設',endpoint:'/api/equipment-master',hasDelete:true,
    editorModal:false,
    fields:[{k:'name',label:'設備名',required:true,key:true},
@@ -510,6 +524,15 @@
        <button type="button" class="mm-path-browse" data-path-browse="${f.k}" data-path-mode="${esc(f.pathMode||'file')}">参照…</button>
       </span>
       <small class="mm-field-hint">${esc(f.hint||'「参照…」で選ぶか、エクスプローラーからここへドラッグ&ドロップできます。')}</small></div>`;
+   }
+   /* 見せるが触らせない欄（§9.219 ②）。付け替えられない値（帳票ブロックの
+      組み込みキー）は、隠すと「なぜ中身を変えられないのか」が読めなくなる
+      ——出しておいて、変えられないことを`readonly`で示す（`disabled`に
+      しないのは、そのまま保存へ戻すため）。 */
+   if(f.type==='readonly'||f.readonly){
+    return `<label class="mm-field mm-field-ro">${fieldLabelHtml(f)}`
+     +`<input data-field="${f.k}" type="text" value="${esc(val)}" readonly tabindex="-1">`
+     +`${f.hint?`<small class="mm-field-hint">${esc(f.hint)}</small>`:''}</label>`;
    }
    return `<label class="mm-field">${fieldLabelHtml(f)}<input data-field="${f.k}" type="text" value="${esc(val)}" autocomplete="off"></label>`;
   }));
@@ -3570,9 +3593,18 @@
     行かせない（利用者の言う「登録の負荷」の正体）。
     ================================================================ */
  const opState={equipment:'',items:[],types:[],places:['準備','入力内容'],
-                spans:Array.from({length:12},(_,i)=>i+1),widgets:['プルダウン','ラジオ','タブ','一覧'],
-                choiceTypes:['選択'],spanUnit:2,
+                spans:Array.from({length:12},(_,i)=>i+1),
+                widgets:['プルダウン','ラジオ','タブ','一覧'],
+                /* 型ごとに効く入力方法。**サーバーが答える**（§9.219 ③）
+                   ——ここは届くまでの受け皿で、判定を画面に持たない。 */
+                widgetFamilies:{choice:['プルダウン','ラジオ','タブ','一覧'],
+                                number:['プルダウン'],text:['プルダウン']},
+                choiceTypes:['選択'],numberTypes:['整数','正の整数','数値','正の数'],
+                spanUnit:2,
                 gridCols:12,choiceNames:[],choices:[],notes:{},usage:{},
+                /* 同じ群がばらけて保存されていた置き場（§9.219 ③）。
+                   まとめて描いたことを画面に書くために覚える。 */
+                healed:new Set(),
                 picked:null,busy:false,drag:null};
  const OP_PLACE_NOTE={
   '準備':'①準備の「操業データ」カード（横3マス×縦2マス）',
@@ -3594,18 +3626,71 @@
   'ラジオ':{icon:'◉',note:'全部見えたまま選ぶ。3〜5個向き'},
   'タブ':{icon:'▭',note:'横に連なる帯。2〜4個向き'},
   '一覧':{icon:'⌸',note:'押すと浮き窓。説明つきで選べる（数が多いとき）'},
+  /* §9.219 ③（利用者の指示「UIの種類を増やしたり」）。数値・自由記述にも
+     「押して決める道具」を置く。**素の欄は残る**ので、打つこともできる。 */
+  'ステッパー':{icon:'∓',note:'−／＋で1つずつ増減。1〜9くらいの整数向き'},
+  'スライダー':{icon:'⇹',note:'目盛を引いて決める。上下限のある数値向き'},
+  'キーパッド':{icon:'⌗',note:'押すと浮き窓のテンキー。キーボードの無い端末向き'},
+  'メモ':{icon:'☰',note:'複数行で書ける。自由記述向き'},
  };
+ /* **その項目にどの入力方法が効くか**（§9.219 ③）。規則を画面に書かない
+    ——`typeFamilies`／`builtinFamilies`／`widgetFamilies`はサーバーが答える
+    対応表で、ここは引くだけ（§9.163「判定を画面にも書かないこと」）。
+    型を切り替えた瞬間に効く物が変わるので、行が持つ`widgetFamily`では
+    足りない（あれは保存済みの型に対する答え）。 */
+ function opFamilyOf(x){
+  const bf=opState.builtinFamilies||{},tf=opState.typeFamilies||{};
+  if(x&&x.builtin)return bf[x.builtin]||'choice';
+  return tf[(x&&x.type)||'']||'text';
+ }
+ function opWidgetsFor(x){
+  const fam=opState.widgetFamilies||{};
+  return fam[opFamilyOf(x)]||['プルダウン'];
+ }
+ /* 「プルダウン」は保存値としてはどの型でも「標準の欄」の意味（§9.219 ③。
+    型ごとに既定値を変えると、型を切り替えた瞬間に設定が消える）。
+    **画面では型に合った呼び名で出す**——数値の欄に「プルダウン」と書いて
+    あったら、何が起きるのか読めない。 */
+ const OP_STD_LABEL={choice:'プルダウン',number:'そのまま打つ',text:'そのまま打つ'};
+ function opWidgetLabel(x,w){
+  return w==='プルダウン'?(OP_STD_LABEL[opFamilyOf(x)]||'プルダウン'):w;
+ }
  function opItemById(id){return opState.items.find(x=>String(x.id)===String(id))||null}
  /* 置き場ごとの並び。**群は「直前の見出し」で決まる**ので、ここで帯と
-    項目を1本の列に混ぜて作る（画面もこの列をそのまま描く）。 */
+    項目を1本の列に混ぜて作る（画面もこの列をそのまま描く）。
+
+    **同じ群がばらけていたら、まとめてから描く**（§9.219 ③）。以前は
+    「表示順の並びで群が変わったら帯を1本立てる」だけだったため、保存された
+    表示順が入り混じると**同じ群の帯が3本立ち、1本に1項目**という形になった
+    （実機の`db/master.sqlite3`が実際にそうなっていた。原因は
+    `item_layout_save`が渡された行だけを先頭へ振り直していたこと——そちらも
+    直した）。帯が割れると「その群へ入れる」場所が読めなくなり、利用者からは
+    **「誰が測るか／測定表の形へ移動できない」**として見える。
+    ここは`measure-opdata.js`の`groupsFor()`と同じく**名前でまとめる**
+    （測定画面は前から名前でまとめており、マスタの盤だけが割れていた）。
+    まとめ直したことは画面に出す——黙って直すと、保存されている形と
+    見えている形が食い違ったままになる。 */
  function opRows(place){
   const items=opState.items.filter(x=>(x.place||'準備')===place)
     .sort((a,b)=>(Number(a.order)||0)-(Number(b.order)||0));
-  const rows=[];let cur=null;
+  const order=[],bag=new Map();
+  let split=false,prev=null;
   items.forEach(x=>{
    const g=x.group||'その他';
-   if(g!==cur){rows.push({type:'group',name:g,place,fold:!!x.fold,showWhen:x.showWhen||[]});cur=g}
-   rows.push({type:'item',x});
+   if(prev!==null&&g!==prev&&bag.has(g))split=true;
+   prev=g;
+   if(!bag.has(g)){bag.set(g,[]);order.push(g)}
+   bag.get(g).push(x);
+  });
+  if(split)opState.healed.add(place);else opState.healed.delete(place);
+  const rows=[];
+  order.forEach(g=>{
+   const list=bag.get(g);
+   /* 群のふるまいは**1つでも「畳む」と言っていれば畳む**（`groupsFor()`と
+      同じ読み方。群の中で食い違ったときにどちらが正かを決めておく）。 */
+   const when=(list.find(x=>(x.showWhen||[]).length)||{}).showWhen||[];
+   rows.push({type:'group',name:g,place,fold:list.some(x=>!!x.fold),showWhen:when});
+   list.forEach(x=>rows.push({type:'item',x}));
   });
   return rows;
  }
@@ -3619,12 +3704,13 @@
  }
  function opWidgetOf(x){
   const w=String(x.widget||'プルダウン');
-  return opState.widgets.includes(w)?w:'プルダウン';
+  return opWidgetsFor(x).includes(w)?w:'プルダウン';
  }
- /* 選ばせ方が効くのは選択肢を持つ項目だけ。**組み込みの欄も選択欄**なので
-    効く（値を持つのは今までどおりselect）。 */
+ /* 選べる形が1つしかない型では、押しても何も変わらない（§4）。
+    §9.219 ③で数値・自由記述にも道具が付いたので、いまはどの型でも2つ以上
+    ある——それでも判定はここ1箇所に残す（型が増えたときに効く）。 */
  function opWidgetUsable(x){
-  return !!x.builtin||opState.choiceTypes.includes(x.type);
+  return opWidgetsFor(x).length>1;
  }
  function opTileHtml(x){
   const span=opSpanOf(x);
@@ -3632,7 +3718,7 @@
   const w=opWidgetOf(x);
   const tip=[x.name,x.builtin?'画面がもともと持っている入力欄':x.type,
              opSpanLabel(span),x.required?'必須':'',off?'出さない':'',
-             w!=='プルダウン'?w:''].filter(Boolean).join('｜');
+             w!=='プルダウン'?opWidgetLabel(x,w):''].filter(Boolean).join('｜');
   return `<div class="op-tile${String(opState.picked)===String(x.id)?' is-picked':''}`
    +`${off?' is-off':''}" draggable="true" data-op-id="${esc(x.id)}"`
    +` style="grid-column:span ${span}" title="${esc(tip)}" tabindex="0">`
@@ -3641,7 +3727,7 @@
    +(x.builtin?'<b class="op-chip op-chip-builtin">画面の欄</b>':'')
    +(x.required?'<b class="op-chip op-chip-req">必須</b>':'')
    +(off?'<b class="op-chip op-chip-off">出さない</b>':'')
-   +(w!=='プルダウン'?`<b class="op-chip op-chip-widget">${esc(OP_WIDGET_NOTE[w].icon)} ${esc(w)}</b>`:'')
+   +(w!=='プルダウン'?`<b class="op-chip op-chip-widget">${esc((OP_WIDGET_NOTE[w]||{}).icon||'')} ${esc(opWidgetLabel(x,w))}</b>`:'')
    +`<span class="op-tile-type">${esc(x.builtin?'—':x.type||'')}</span>`
    +`<span class="op-tile-span">${span}/${opState.gridCols}</span></span>`
    +`<span class="op-tile-gear" aria-hidden="true">設定</span></div>`;
@@ -3690,8 +3776,18 @@
    +`<button type="button" id="opAddItem" class="ghost">項目を追加</button>`
    +`<button type="button" id="opAddGroup" class="ghost">群を追加</button>`
    +`<span class="op-bar-state" id="opLayoutState"></span></div>`;
+  /* **まとめ直したことを画面に書く**（§9.219 ③）。保存されている並びでは
+     同じ群がばらけていたが、盤ではまとめて描いている——黙って直すと、
+     保存されている形と見えている形が食い違ったままになる。 */
+  /* **盤を先に組み立ててから案内を作る。** `opRows()`が`opState.healed`を
+     埋めるので、先に読むと初回だけ案内が出ない（実際にそうなった）。 */
+  const boards=opState.places.map(opBoardHtml).join('');
+  const healed=[...opState.healed];
   list.innerHTML=`<div class="op-edit">`
-   +`<div class="op-boards">`+opState.places.map(opBoardHtml).join('')+`</div></div>`;
+   +(healed.length?`<p class="op-healed">同じ群がばらばらの位置に保存されていたので、`
+     +`<b>${esc(healed.join('・'))}</b>の盤ではまとめて出しています`
+     +`（この盤で一度でも掴んで動かすと、その形で保存されます）。</p>`:'')
+   +`<div class="op-boards">`+boards+`</div></div>`;
   bindOpItem();
   if(opState.picked&&!$('#opItemModal'))renderOpModal();
  }
@@ -3811,28 +3907,73 @@
    };
   });
  }
- /* 落とす場所は**掴んでいる列の中で、いちばん近い境目**。帯もそのまま
-    位置として扱う（帯より下がその群になるので、帯の前後で群が変わる）。
+ /* 落とす場所は**まず段（行）を決め、その段の中でいちばん近い境目**
+    （§9.219 ③、利用者の報告「『誰が測るか』と『測定表の形』には項目を
+    移動できません」）。
 
-    **落とす場所の印そのものを候補に入れないこと**（§9.218 ④、利用者の報告
-    「ドラッグアンドドロップで移動した後元の位置に戻らなくなりました」）。
-    `opMark()`は印を盤の子として挿し込むので、次の`dragover`では**その印が
-    カーソルのいちばん近く**にいる——印を基準に「右半分なら次へ」と決めると
-    印が1つずつ先へ歩き、狙った境目に止まらない。掴んでいるタイルも同じ
-    理由で外す（自分の前後は位置が変わらないので候補にならない）。 */
+    以前は盤の全部の子から`hypot(x-左端, y-中心)`がいちばん小さいものを
+    選んでいた。**帯は`grid-column:1/-1`で横いっぱい**（実測1390px）なので、
+    帯の右のほうへ運ぶと「帯の左端まで1300px」より「別の段のタイルの左端まで
+    450px」のほうが近くなり、**まったく違う群へ飛んだ**（実測: 誰が測るかの
+    帯の右へ落とすと「いつもと同じ設定」の直前＝使う機材の末尾に入った）。
+    帯の左へ落とせば`insertBefore(帯)`＝**ひとつ上の群**、いちばん上の帯なら
+    「その他」が新しくできる。つまり**帯の上のどこへ落としても、その群には
+    入らなかった**——これが「移動できません」の正体。
+
+    直し方は2つ:
+      ① 段で絞る。同じ段の中だけで左右の境目を決めるので、横いっぱいの帯が
+         別の段の判定を食わない。
+      ② **帯へ落とす＝その群の先頭へ入れる**（帯の直後）。群の見出しを狙う
+         のは「この群へ入れたい」という意味なので、素直にそう扱う。
+         群の末尾へ入れたいときは、その群の最後のタイルの右へ落とす
+         （こちらは①の境目の判定でそのまま出る）。
+
+    **落とす場所の印そのものを候補に入れないこと**（§9.218 ④）。`opMark()`は
+    印を盤の子として置くので、入れると印が1つずつ先へ歩く。掴んでいるタイルも
+    同じ理由で外す（自分の前後は位置が変わらない）。 */
  function opDropAt(grid,e){
-  const drag=document.querySelector('#masterMaintList .op-tile.is-dragging');
+  const drag=grid.querySelector('.op-tile.is-dragging')
+    ||document.querySelector('#masterMaintList .op-tile.is-dragging');
   const kids=[...grid.children].filter(el=>
-    el!==drag&&el.dataset.opMark===undefined);
-  let best=null,bestD=Infinity;
+    el!==drag&&el.dataset.opMark===undefined&&el.getBoundingClientRect().height>0);
+  if(!kids.length)return null;
+  /* 段にまとめる。グリッドなので**同じ段のものは上端がそろう**。 */
+  const rows=[];
   kids.forEach(el=>{
    const r=el.getBoundingClientRect();
-   const d=Math.hypot(e.clientX-r.left,e.clientY-(r.top+r.height/2));
-   if(d<bestD){bestD=d;best=el}
+   const row=rows.find(x=>Math.abs(x.top-r.top)<=4);
+   if(row){row.els.push(el);row.bottom=Math.max(row.bottom,r.bottom)}
+   else rows.push({top:r.top,bottom:r.bottom,els:[el]});
   });
-  if(!best)return null;
-  const r=best.getBoundingClientRect();
-  return (e.clientX>r.left+r.width/2)?best.nextElementSibling:best;
+  rows.sort((a,b)=>a.top-b.top);
+  /* いちばん上より上なら先頭の段、いちばん下より下なら**末尾**。 */
+  const row=rows.find(x=>e.clientY<=x.bottom);
+  if(!row)return null;
+  const band=row.els.find(el=>el.dataset.opBand!==undefined);
+  if(band)return opAfterMark(band.nextElementSibling);
+  const line=row.els.slice()
+    .sort((a,b)=>a.getBoundingClientRect().left-b.getBoundingClientRect().left);
+  for(const el of line){
+   const r=el.getBoundingClientRect();
+   if(e.clientX<r.left+r.width/2)return el;
+  }
+  return opAfterMark(line[line.length-1].nextElementSibling);
+ }
+ /* 印は盤の**最後の子**として置いてあるので、`nextElementSibling`が印に
+    なることがある。そのまま返すと`insertBefore(印)`＝末尾なので結果は同じ
+    だが、印を消したあとに参照が宙に浮く。末尾は`null`で返す。 */
+ function opAfterMark(el){
+  return (el&&el.dataset&&el.dataset.opMark!==undefined)?null:(el||null);
+ }
+ /* この位置へ落としたら**どの群に入るか**。帯を後ろへ辿るだけ
+    （`opCollectLayout`の「帯より下がその群」と同じ読み方を1箇所で持つ）。 */
+ function opGroupAt(grid,at){
+  let el=at?at.previousElementSibling:grid.lastElementChild;
+  while(el){
+   if(el.dataset.opBand!==undefined)return el.dataset.opBand;
+   el=el.previousElementSibling;
+  }
+  return 'その他';
  }
  /* **印で盤を動かさないこと**（§9.218 ④／§9.196と同じ教訓）。
     以前は印をグリッドの子として**流れの中へ**挿していたため、印が入った
@@ -3857,16 +3998,25 @@
   if(!m){
    m=document.createElement('div');
    m.className='op-drop-mark';m.dataset.opMark='1';
+   m.innerHTML='<i class="op-drop-tag"></i>';
    grid.appendChild(m);
   }
   m.style.left=(x-2)+'px';m.style.top=y+'px';m.style.height=h+'px';
+  /* **どの群に入るかを文字で出す**（§9.219 ③／§CLAUDE 2「次にすることを
+     常に1つだけ指す」）。線だけだと、帯のすぐ上と下のどちらへ入るのかが
+     読めない——「移動できません」の報告はここが読めないことから始まった。 */
+  const tag=m.querySelector('.op-drop-tag');
+  if(tag){
+   const place=grid.dataset.opPlace||'準備';
+   tag.textContent=`${place}／${opGroupAt(grid,at)} へ`;
+  }
  }
  function opClearMark(){document.querySelectorAll('[data-op-mark]').forEach(x=>x.remove())}
  /* 落とす先の狙いは**この2つだけ**が決めている。ヘッドレスではHTML5の
     D&Dの座標を作れないので、網はここを直に呼んで確かめる（§9.218 ④）。
     **素の`window.*`を増やさない**（CLAUDE.md「新規公開は名前空間経由」）。 */
  window.WL=window.WL||{};
- WL.opBoard={dropAt:opDropAt,mark:opMark,clearMark:opClearMark};
+ WL.opBoard={dropAt:opDropAt,mark:opMark,clearMark:opClearMark,groupAt:opGroupAt};
  async function opRenameGroup(place,from,to){
   const uid=requireMaintUser();if(uid===null)return;
   const rows=opCollectLayout().map(r=>(r.place===place&&r.group===from)?{...r,group:to}:r);
@@ -3987,12 +4137,46 @@
   const groups=[...new Set(opState.items.map(i=>i.group||'その他'))];
   $('#opModalTitle').textContent=x.name;
   /* ---- 左: 実物 ---- */
+  /* **隣に並ぶものも一緒に描く**（§9.219 ③、利用者の指示「実際の挙動も
+     もう少しわかるように」）。幅は「12マスのうち何マス」なので、1枚だけを
+     見せても広いのか狭いのかが読めない——同じ群の前後を薄く置くと、
+     1行に何個並ぶかがそのまま見える。 */
+  const mates=opState.items.filter(i=>(i.place||'準備')===(x.place||'準備')
+    &&(i.group||'その他')===(x.group||'その他')&&String(i.id)!==String(x.id)
+    &&i.enabled!==false);
+  const ghost=i=>`<div class="op-prev-ghost" style="grid-column:span ${opSpanOf(i)}">`
+   +`<span>${esc(i.name)}</span></div>`;
+  const rule=[];
+  if(x.required)rule.push('必須');
+  if(opFamilyOf(x)==='number'){
+   /* **入る形は`measure-opdata.js`の1本が言う**（§9.219 ③）——見本用に
+      もう1つ書くと、設定画面で見えた形と実際の形が食い違う。 */
+   const t=(window.WL&&WL.opData&&WL.opData.ruleText)?WL.opData.ruleText(x):'';
+   if(t)rule.push(t);
+  }else if(opFamilyOf(x)==='choice'){
+   const n=(opState.choices||[]).filter(c=>c.name===x.choice).length;
+   rule.push(x.builtin?'画面が持っている選択肢':(x.choice?`${esc(x.choice)}（${n}件）`:'選択肢のまとまりが未設定'));
+  }else rule.push('自由記述');
+  if(x.unit)rule.push(`単位 ${x.unit}`);
+  const openWhen=(x.showWhen||[]).length
+    ?`畳んでおき、入力内容が「${esc((x.showWhen||[]).join('」「'))}」のときに開きます`
+    :((x.place||'準備')==='入力内容'
+      ?'②の入力内容カードに、いつも開いた状態で出ます'
+      :'①準備のカードに、いつも開いた状態で出ます');
   $('#opModalPreview').innerHTML=`<div class="op-prev-head">測定画面での見え方`
    +`<small>${esc(x.place||'準備')}のカード・${esc(opSpanLabel(opSpanOf(x)))}</small></div>`
    +`<div class="op-prev-card" style="--op-cols:${opState.gridCols}">`
    +`<div class="op-prev-band">${esc(x.group||'その他')}</div>`
    +`<div class="op-prev-field" id="opPrevField" style="grid-column:span ${opSpanOf(x)}"></div>`
+   +mates.slice(0,5).map(ghost).join('')
    +`</div>`
+   +`<p class="op-prev-value" id="opPrevValue"></p>`
+   +`<ul class="op-prev-facts">`
+   +`<li><b>入力の決まり</b>${esc(rule.join('／'))}</li>`
+   +`<li><b>出るとき</b>${openWhen}</li>`
+   +`<li><b>記録の鍵</b>${x.builtin?'画面がもともと持っている置き場（測定データの中）'
+       :`測定データの <code>settings.opData.${esc(x.name)}</code>`}</li>`
+   +`</ul>`
    +`<p class="op-prev-note">${x.builtin
       ?'この欄は画面がもともと持っています（内径のプリセット・条数の上限など、それぞれの仕掛けがあるため）。ここで決められるのは<b>並び・群・幅・必須・出す/出さない・置き場・選ばせ方</b>だけです。'
       :'記録は<b>項目名を鍵</b>にして測定データへ入ります。名前を変えると、それまでの記録は前の名前のまま残ります。'}</p>`;
@@ -4015,7 +4199,11 @@
     <span class="op-form-ctl">
      <button type="button" id="opdRequired" class="op-toggle${x.required?' is-on':''}" aria-pressed="${x.required?'true':'false'}">必須にする</button>
      <button type="button" id="opdEnabled" class="op-toggle${x.enabled===false?'':' is-on'}" aria-pressed="${x.enabled===false?'false':'true'}">測定画面に出す</button>
+     <button type="button" id="opdFold" class="op-toggle${x.fold?' is-on':''}" aria-pressed="${x.fold?'true':'false'}">この群を畳む</button>
+     <i class="op-form-note">「畳む」は<b>群ぜんぶ</b>に効きます。下の「開く条件」を選ぶと、条件のときだけ開きます（条件なしで畳むこともできます）。</i>
     </span></div>
+   <div class="op-form-row"><span class="op-form-label">対象設備</span>
+    <span class="op-form-ctl">${opEquipmentPickHtml(x)}</span></div>
    ${x.builtin?'':`
    <div class="op-form-row"><span class="op-form-label">項目名</span>
     <span class="op-form-ctl"><input type="text" id="opdName" value="${esc(x.name)}"></span></div>
@@ -4052,13 +4240,19 @@
     </span></div>`:''}`}
    <div class="op-form-row"><span class="op-form-label">選ばせ方</span>
     <span class="op-form-ctl">
-     ${opState.widgets.map(w=>`<button type="button" data-op-widget="${esc(w)}"`
+     ${opWidgetsFor(x).map(w=>`<button type="button" data-op-widget="${esc(w)}"`
        +` class="op-widget-tile${widget===w?' is-on':''}"${usable?'':' disabled'}>`
-       +`<b>${esc(OP_WIDGET_NOTE[w].icon)}</b><span>${esc(w)}</span>`
-       +`<small>${esc(OP_WIDGET_NOTE[w].note)}</small></button>`).join('')}
-     <i class="op-form-note">${usable?'選んだ形がそのまま測定画面に出ます（値の持ち方は変わりません）。'
-       :'この型は選択肢を持たないので、選ばせ方は効きません。型を「選択」にすると選べます。'}</i>
+       +`<b>${esc((OP_WIDGET_NOTE[w]||{}).icon||'')}</b><span>${esc(opWidgetLabel(x,w))}</span>`
+       +`<small>${esc((OP_WIDGET_NOTE[w]||{}).note||'')}</small></button>`).join('')}
+     <i class="op-form-note">${usable
+       ?'選んだ形がそのまま測定画面に出ます（<b>値の持ち方は変わりません</b>）。左の見本は本物の部品なので、押して確かめられます。'
+       :'この型で選べる形は1つだけです。'}${
+       opFamilyOf(x)==='number'?'　数値の欄は<b>打つこともできる</b>まま——道具は隣に足すだけです。':''}${
+       opFamilyOf(x)==='choice'&&!x.builtin&&!x.choice?'　<b>選択肢のまとまりを選ぶと</b>、見本に実際の値が並びます。':''}</i>
     </span></div>
+   <div class="op-form-row"><span class="op-form-label">覚え書き</span>
+    <span class="op-form-ctl"><input type="text" id="opdNote" value="${esc(x.note||'')}"
+      placeholder="この項目を作った理由・注意点など（画面には出ません）"></span></div>
    <div class="op-form-row"><span class="op-form-label">開く条件</span>
     <span class="op-form-ctl">
      <span class="op-when">${opMeasureTypes().map(t=>
@@ -4074,10 +4268,38 @@
  /* 実物の欄を組み立てる。**測定画面の部品をそのまま使う**（`measure-opdata.js`）
     ——別に作ると、設定画面で見えた形と実際の形が食い違う（§9.176の
     `entryCellInfo()`と同じ約束）。 */
+ /* 対象設備（§9.219 ③）。書式は設備停止マスタと同じ（`*`／カンマ区切り）。
+    **名前のタグの入切**で選ばせる（§9.197）——`'A,B,C'`を手で打たせると、
+    設備名の全角半角ゆれで黙って当たらなくなる。判定はサーバーの
+    `schedule_repo.stop_equipment_*`のままで、ここは書式を作るだけ。 */
+ function opEquipmentList(x){
+  const raw=String((x&&x.equipment)||'*').trim();
+  if(!raw||raw==='*')return [];
+  return raw.replace(/、/g,',').split(',').map(s=>s.trim()).filter(Boolean);
+ }
+ function opEquipmentPickHtml(x){
+  const all=(equipmentMasterState.items||[]).map(e=>e.name).filter(Boolean);
+  const on=opEquipmentList(x);
+  const every=on.length===0;
+  const known=new Set(all);
+  /* **マスタに無い設備名も残す**（消えた設備を黙って外さない）。 */
+  const extra=on.filter(n=>!known.has(n));
+  return `<button type="button" id="opdEqAll" class="op-toggle${every?' is-on':''}"`
+   +` aria-pressed="${every?'true':'false'}">すべての設備</button>`
+   +`<span class="op-eq-tags">`
+   +all.concat(extra).map(n=>`<button type="button" class="op-eq-tag${on.includes(n)?' is-on':''}"`
+     +` data-op-eq="${esc(n)}" aria-pressed="${on.includes(n)?'true':'false'}"`
+     +(known.has(n)?'':' title="設備マスタに無い名前です（消さずに残しています）"')
+     +`>${esc(n)}</button>`).join('')
+   +(all.length?'':'<i class="op-form-note">設備マスタに設備が登録されていません。</i>')
+   +`</span>`
+   +`<i class="op-form-note">${every?'すべての設備の測定画面に出ます（これから増える設備でも出ます）。'
+     :`選んだ ${on.length} 設備だけに出ます: ${esc(on.join('、'))}`}</i>`;
+ }
  function opRenderPreviewField(x,widget,usable){
   const host=$('#opPrevField');if(!host)return;
   const vals=(opState.choices||[]).filter(c=>c.name===x.choice).map(c=>c.value);
-  const isChoice=opState.choiceTypes.includes(x.type)||!!x.builtin;
+  const fam=opFamilyOf(x);
   host.innerHTML='';
   const label=document.createElement('label');
   label.className='opf';
@@ -4085,20 +4307,45 @@
   label.innerHTML=`<span class="opf-name">${esc(x.name)}`
    +(x.required?'<b class="opf-req">必須</b>':'')+`</span>`;
   let ctl;
-  if(isChoice){
+  if(fam==='choice'){
    ctl=document.createElement('select');
    ctl.innerHTML=['<option value="">-</option>']
      .concat((x.builtin&&!vals.length?['（画面が持っている選択肢）']:vals)
        .map(v=>`<option value="${esc(v)}">${esc(v)}</option>`)).join('');
   }else{
+   /* **数値の欄は`type=number`にしない**（§9.208 ③）。`.5`のような途中の
+      形が黙って消える。上下限は`min`/`max`で渡す——ステッパーの端の判定と
+      スライダーの目盛がここを見る（`syncWidget`）。 */
    ctl=document.createElement('input');ctl.type='text';
+   if(fam==='number'){
+    ctl.className='numeric-input';ctl.inputMode='decimal';
+    if(x.min!==null&&x.min!==undefined&&x.min!=='')ctl.min=x.min;
+    if(x.max!==null&&x.max!==undefined&&x.max!=='')ctl.max=x.max;
+   }
    ctl.placeholder=x.unit?`0 ${x.unit}`:'';
   }
   label.appendChild(ctl);
   if(x.unit){const u=document.createElement('em');u.className='opf-unit';u.textContent=x.unit;label.appendChild(u)}
   host.appendChild(label);
-  if(isChoice&&usable&&widget!=='プルダウン'&&window.WL&&WL.opData&&WL.opData.previewWidget){
-   WL.opData.previewWidget({name:x.name,choiceNotes:opState.notes[x.choice]||{}},label,widget);
+  /* **本物の部品をそのまま被せる**（§9.218 ①）。数値・自由記述の器も
+     `measure-opdata.js`が作るので、設定画面と測定画面で形が食い違わない。 */
+  if(usable&&widget!=='プルダウン'&&window.WL&&WL.opData&&WL.opData.previewWidget){
+   WL.opData.previewWidget({name:x.name,unit:x.unit,type:x.type,
+     decimals:x.decimals,min:x.min,max:x.max,
+     choiceNotes:opState.notes[x.choice]||{}},label,widget);
+  }
+  /* **押した結果が何として記録されるか**を出す（§9.219 ③、利用者の指示
+     「実際の挙動ももう少しわかるように」）。見本が本物なので、押せば
+     そのまま値が変わる——記録に入るのはこの文字列。 */
+  const out=document.getElementById('opPrevValue');
+  if(out){
+   const show=()=>{
+    const v=String(ctl.value==null?'':ctl.value);
+    out.innerHTML=`記録される値: <b>${v?esc(v):'（まだ入っていません）'}</b>`;
+   };
+   ctl.addEventListener('input',show);
+   ctl.addEventListener('change',show);
+   show();
   }
  }
  function bindOpModal(x){
@@ -4121,6 +4368,20 @@
   if(req)req.onclick=()=>touch({required:!x.required});
   const en=$('#opdEnabled');
   if(en)en.onclick=()=>touch({enabled:x.enabled===false});
+  const fold=$('#opdFold');
+  if(fold)fold.onclick=()=>touch({fold:!x.fold});
+  /* 対象設備（§9.219 ③）。**「すべての設備」と名指しは排他**——両方立つと
+     どちらが効くのか読めない。 */
+  const eqAll=$('#opdEqAll');
+  if(eqAll)eqAll.onclick=()=>touch({equipment:'*'});
+  form.querySelectorAll('[data-op-eq]').forEach(b=>b.onclick=()=>{
+   const now=new Set(opEquipmentList(x));
+   const n=b.dataset.opEq;
+   if(now.has(n))now.delete(n);else now.add(n);
+   touch({equipment:now.size?[...now].join(','):'*'});
+  });
+  /* **覚え書きは入力中に描き直さない**（§9.117。作り替えるとカーソルが飛ぶ）。
+     値は保存のときに`opDetailValues()`が読む。 */
   const ch=$('#opdChoice');
   if(ch)ch.onchange=()=>touch({choice:ch.value});
   /* 値の説明はその場で書き換える（**入力中に描き直さない**・§9.117）。 */
@@ -4141,8 +4402,14 @@
   return {name:v('opdName'),type:x.type,
           decimals:num(v('opdDecimals')),min:num(v('opdMin')),max:num(v('opdMax')),
           unit:v('opdUnit'),choice:v('opdChoice'),group:v('opdGroup'),
+          /* **備考を送り忘れないこと**（§9.219 ③）。`item_upsert`は全列を
+             書くので、送らないと保存のたびに`[備考]`が空で消える
+             （§9.113／§9.212 ②と同じ形の不具合が実際に起きていた）。 */
+          note:v('opdNote'),
+          equipment:x.equipment,
           span:x.span,place:x.place,widget:x.widget,
           required:!!x.required,enabled:x.enabled!==false,
+          fold:!!x.fold,
           showWhen:x.showWhen||[]};
  }
  async function opSaveItem(){
@@ -4151,8 +4418,8 @@
   const d=opDetailValues();
   /* 組み込みの欄は名前も型も画面のものなので送らない（送っても効かない
      欄を作らない・§CLAUDE 4）。 */
-  const body={id:x.id,user_id:uid,
-    equipment:x.equipment||'*',group:d.group||'その他',
+  const body={id:x.id,user_id:uid,note:d.note||'',
+    equipment:d.equipment||x.equipment||'*',group:d.group||'その他',
     name:x.builtin?x.name:(d.name||x.name),
     type:x.builtin?x.type:(d.type||'文字'),
     decimals:x.builtin?null:d.decimals,min:x.builtin?null:d.min,max:x.builtin?null:d.max,
@@ -4161,7 +4428,9 @@
     /* 「開く条件」と「畳む」は**群のもの**。1行だけに書くと、同じ群の中で
        食い違う（`form_for_equipment`は「1つでも畳むと言えば畳む」で読むので
        消したはずの条件が残る）。群ぜんぶへ同じ値を書く。 */
-    showWhen:d.showWhen,fold:!!(d.showWhen||[]).length||!!x.fold};
+    /* **条件が無くても畳めること**（§9.219 ③）。以前は「開く条件があるか」
+       から導いていたので、条件なしで畳む設定が作れなかった。 */
+    showWhen:d.showWhen,fold:!!d.fold||!!(d.showWhen||[]).length};
   try{
    opModalSay('保存しています…');
    await api('/api/operation-item-master/update',{method:'POST',
@@ -4270,6 +4539,10 @@
    opState.spanUnit=it.spanUnit||opState.spanUnit;
    opState.widgets=it.widgets||opState.widgets;
    opState.choiceTypes=it.choiceTypes||opState.choiceTypes;
+   opState.numberTypes=it.numberTypes||opState.numberTypes;
+   opState.widgetFamilies=it.widgetFamilies||opState.widgetFamilies;
+   opState.typeFamilies=it.typeFamilies||opState.typeFamilies;
+   opState.builtinFamilies=it.builtinFamilies||opState.builtinFamilies;
    opState.notes=it.choiceNotes||{};
    opState.choiceNames=ch.names||[];
    opState.choices=ch.items||[];

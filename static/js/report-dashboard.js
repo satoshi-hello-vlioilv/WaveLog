@@ -49,7 +49,11 @@
  /* 自作の塊の写しを捨てる口（§9.217）。マスタ管理で足した・直した直後に
     呼ぶ——**「あれば使う」で呼ぶこと**（読み込み順に依存させない）。 */
  window.WL=window.WL||{};
- WL.reportBlocks={forget:()=>{rpUserBlocks=[];rpUserBlocksFor=null}};
+ /* `keys()`はコードが持っている既定の塊の一覧（§9.219 ②）。マスタの種と
+    **食い違っていないこと**を網が突き合わせる——片方だけ増えると、マスタに
+    出ない塊／画面に無い塊が黙って生まれる。 */
+ WL.reportBlocks={forget:()=>{rpUserBlocks=[];rpMasterRows=[];rpBuiltinOff=new Set();rpUserBlocksFor=null},
+                  keys:()=>RP_BLOCKS.map(b=>b.k)};
 
  function ensurePanel(){
   let panel=$id('reportPanel');if(panel)return panel;
@@ -734,12 +738,90 @@
     **「ラベルと値の出どころを並べただけの塊」はマスタで作れる**ようにした。
     描く側は区別しない——`RP_BLOCKS`と同じ形へ包んでから混ぜる。 */
  let rpUserBlocks=[],rpUserBlocksFor=null;
- function rpAllBlocks(){return RP_BLOCKS.concat(rpUserBlocks)}
+ /* マスタの行（既定の塊への上書き＋自作の塊）と、**この設備では出さない**
+    既定の塊（§9.219 ②）。読めなかったときは空——コードの既定でそのまま出す
+    （fail-open。帳票が丸ごと出なくなるほうが困る）。 */
+ let rpMasterRows=[],rpBuiltinOff=new Set();
+ /* 既定の塊にマスタの行を重ねる（§9.219 ②、利用者の指示「既定の帳票ブロック
+    についても編集ができるように、マスタに登録されている状態に汎用化」）。
+    **中身の作り方はコードのまま**で、マスタが決めるのは名前・幅・行数・
+    出す/出さない・対象設備。ただし**「ラベルと値の出どころを並べただけ」の
+    塊は`[内容]`もマスタが持つ**——内容を空にすると画面が持っている中身へ
+    戻る（消したのか未設定なのかを分けずに済む）。 */
+ /* 塊の見出しを付け替える。**自分で組み立てたHTMLの最初の`<h3>`だけ**を
+    差し替える（節はどれも`<section class="rp-section"><h3>…</h3>`で始まる）。
+
+    **名前を1つにするための処理**（§9.219 ②／§CLAUDE 8）。マスタで改名した
+    とき、組み換えの帯・パレット・ゴーストだけが新しい名前になり、**紙の
+    見出しはコードが持つ題のまま**だと、同じ塊に2つの名前が出る。中身の
+    作り方がコードの塊（測定表・条の図・異常位置判定）でも、題は文字なので
+    ここで揃えられる。**組み立てには触らない。** */
+ function rpRetitle(html,name){
+  const s=String(html||'');
+  if(!s)return s;
+  return s.replace(/<h3([^>]*)>[\s\S]*?<\/h3>/,(m,attr)=>`<h3${attr}>${esc(name)}</h3>`);
+ }
+ function rpMergeBuiltin(b,r){
+  const name=r.name||b.k;
+  const fields=(r.contentEditable&&(r.fields||[]).length)?r.fields:null;
+  const renamed=name!==b.k;
+  return Object.assign({},b,{
+   k:b.k,name,master:true,
+   span:r.span||b.span,rows:r.rows||b.rows||0,
+   html:fields
+     ?(x=>reportSection(name,fields.map(f=>[f.label,rpValueAt(x,f.path)]),r.cols||0))
+     :(x=>{const h=b.html(x);return renamed?rpRetitle(h,name):h})});
+ }
+ function rpAllBlocks(){
+  const code=new Map(RP_BLOCKS.map(b=>[b.k,b]));
+  const out=[],used=new Set();
+  rpMasterRows.forEach(r=>{
+   if(r.builtin){
+    const b=code.get(r.builtin);
+    if(!b||used.has(r.builtin))return;
+    used.add(r.builtin);
+    out.push(rpMergeBuiltin(b,r));
+   }else out.push(rpUserBlockDef(r));
+  });
+  /* **マスタに無い既定の塊は今までどおり出す**（移行前・読めなかったとき）。
+     ただし「出さない」と名指しされたものは出さない——伝わっていないと、
+     外したつもりの塊が出たままになる（§9.216 ②の`builtinOff`と同じ）。 */
+  RP_BLOCKS.forEach(b=>{if(!used.has(b.k)&&!rpBuiltinOff.has(b.k))out.push(b)});
+  return out;
+ }
  function rpBlockOf(k){return rpAllBlocks().find(b=>b.k===k)||null}
+ /* 塊の見出し。**既定の塊はコードが持つ題をそのまま使う**（`k`が鍵で、
+    列レイアウトマスタの設定もこの名前に紐づく）ので、マスタで名前を変えても
+    変わるのは**組み換え中の呼び名と、内容をマスタが持つ塊の題**だけ。 */
+ function rpBlockLabel(k){const b=rpBlockOf(k);return (b&&b.name)||k}
  /* 測定レコードの中の道をたどる（`basic.lotNo` / `settings.opData.運転方式`）。
     **見つからなければ空**——値の無い項目を「-」で埋めるのは`reportSection`の
     仕事なので、ここでは無いことをそのまま返す。 */
+ /* **導出のある値も「道」で引けるようにする**（§9.219 ②）。実働時間・状態・
+    「N名班」・コイル止めの旧データは計算が要るので、素の道では引けない。
+    ここで`calc.◯◯`として1箇所にまとめる——マスタの`[内容]`から書けるように
+    なり、既定の塊（作業時間・登録状態・作業班構成・測定条件）を**中身ごと
+    マスタで組み替えられる**。 */
+ function rpCalc(x){
+  const s=x.settings||{},w=x.workTime||{};
+  const dur=(w.startAt&&w.endAt)?formatDuration(new Date(w.endAt)-new Date(w.startAt))
+    :(w.startAt?'作業中':'未計測');
+  return {
+   equipment:s.registeredEquipment||x.registeredEquipment||(x.snapshot||{}).registeredEquipment||'-',
+   /* コイル止めはマスタ化前まで「内巻両面テープ」チェックボックス(真偽値)
+      だった。過去の帳票が空欄にならないよう旧値も読む。 */
+   coilStop:s.coilStop||(s.innerTape===undefined?'':(s.innerTape?'内巻両面テープ':'指定なし')),
+   crewSize:(s.crewSize&&s.crewSize!=='-')?`${s.crewSize}名班`:'-',
+   workStart:formatWorkTime(w.startAt),workEnd:formatWorkTime(w.endAt),workDuration:dur,
+   status:statusLabel(x.status),updatedAt:fmtDT(x.updatedAt),
+  };
+ }
  function rpValueAt(x,path){
+  const p=String(path||'');
+  if(p.indexOf('calc.')===0){
+   const v=rpCalc(x)[p.slice(5)];
+   return v==null?'':String(v);
+  }
   let v=x;
   for(const part of String(path||'').split('.')){
    if(v==null||typeof v!=='object')return '';
@@ -753,8 +835,8 @@
  }
  function rpUserBlockDef(b){
   const fields=b.fields||[];
-  return {k:b.k||b.name,span:b.span||6,rows:b.rows||0,user:true,
-   html:x=>fields.length?reportSection(b.name,fields.map(f=>[f.label,rpValueAt(x,f.path)])):''};
+  return {k:b.k||b.name,name:b.name,span:b.span||6,rows:b.rows||0,user:true,
+   html:x=>fields.length?reportSection(b.name,fields.map(f=>[f.label,rpValueAt(x,f.path)]),b.cols||0):''};
  }
  /* その設備の自作ブロックを読む。**読めなくても帳票は出す**（fail-open）。 */
  async function rpLoadUserBlocks(equipment){
@@ -762,8 +844,10 @@
   if(rpUserBlocksFor===eq)return rpUserBlocks;
   try{
    const r=await api('/api/report-block-master?equipment='+encodeURIComponent(eq));
-   rpUserBlocks=(r.items||[]).map(rpUserBlockDef);
-  }catch(e){rpUserBlocks=[]}
+   rpMasterRows=r.items||[];
+   rpBuiltinOff=new Set(r.builtinOff||[]);
+   rpUserBlocks=rpMasterRows.filter(b=>!b.builtin).map(rpUserBlockDef);
+  }catch(e){rpMasterRows=[];rpBuiltinOff=new Set();rpUserBlocks=[]}
   rpUserBlocksFor=eq;
   return rpUserBlocks;
  }
@@ -884,7 +968,7 @@
     保存先は列レイアウトマスタの`widths`で、幅と同じく`×RP_SPAN_UNIT`
     （§9.169の約束。pxとして40〜900へ丸められるため）。 */
  const RP_ROW_PX=24;
- const RP_ROWS=[2,3,4,6,8,12];
+ const RP_ROWS=[2,3,4,5,6,8,12];   /* 5行は「ラベル貼付スペース」の既定（§9.219 ②） */
  const RP_ROWS_MAX=15;                      /* 15×60=900（丸めの上限） */
  const rpRowsKey=k=>`行数:${k}`;
  const rpRowsStore=v=>Math.round(v*RP_SPAN_UNIT);
@@ -1024,7 +1108,7 @@
   const rows=rpRows(k);
   return `<div class="rp-block-bar">
     <span class="rp-block-grip" title="ドラッグで場所を入れ替えます" aria-hidden="true">⠿</span>
-    <b class="rp-block-name">${esc(k)}</b>
+    <b class="rp-block-name">${esc(rpBlockLabel(k))}</b>
     <i class="rp-block-dim" title="いまの大きさ。右の縁と下の縁を引いても変えられます">${span}/${grid}マス×${rows?rows+'行':'中身なり'}</i>
     ${empty?'<i class="rp-block-tag">中身なし</i>':''}
     ${off?'<i class="rp-block-tag is-off">出さない</i>':''}
@@ -1309,7 +1393,7 @@
   /* **何マス×何行がここへ入るのかを数字でも言う**（§9.218 ⑥、利用者の
      指摘「D&Dでつかんでもゴーストがサイズで出ないのでわかりにくい」）。
      枠の大きさだけでは、隣とくらべて「1マス多いのか少ないのか」が読めない。 */
-  g.innerHTML=`<b>${esc(k)}</b><small>${span}/${rpGrid()}マス×${rows}行</small>`;
+  g.innerHTML=`<b>${esc(rpBlockLabel(k))}</b><small>${span}/${rpGrid()}マス×${rows}行</small>`;
   if(ref){if(after)ref.after(g);else ref.before(g)}else grid.appendChild(g);
  }
  /* ゴーストの行数。**「中身なり」の塊は今そこに描かれている高さを借りる**
@@ -1635,7 +1719,7 @@
         const r=rpRows(k);
         return `<button type="button" class="rp-palette-item" draggable="true" data-rp-pal="${esc(k)}"`
          +` title="幅 ${rpSpan(k)}/${rpGrid()}マス・高さ ${r?r+'行':'中身なり'}">`
-         +`<span class="rp-palette-name">${esc(k)}</span>`
+         +`<span class="rp-palette-name">${esc(rpBlockLabel(k))}</span>`
          +`<span class="rp-palette-size">${rpSpan(k)}マス×${r?r+'行':'自動'}</span></button>`;
        }).join('')+`</div>`
      :`<div class="rp-palette-list is-empty">全部の塊を紙に出しています。</div>`);

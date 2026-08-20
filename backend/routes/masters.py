@@ -1237,13 +1237,24 @@ def operation_item_list():
   from ..repositories import operation_repo as op
   eq=str(request.args.get('equipment') or '').strip()
   def fn(c):
-   items=op.items_for_equipment(c,eq) if eq else op.item_rows(c,True)
+   # **「出さない」にした項目も返す**（§9.219 ③）。落とすと盤から消えて
+   # 戻せなくなる——盤は`is-off`の見た目で置き、測定画面だけが落とす。
+   items=op.items_for_equipment(c,eq,True) if eq else op.item_rows(c,True)
    return {'items':items,'types':list(op.ITEM_TYPES),'choiceNames':op.choice_names(c),
            # 画面が「どこへ出すか」「何列ぶんか」を選ばせるための一覧(§9.216 ②)。
            # **画面へ書き写さない**——増減したときに2箇所を直すことになる。
            'places':list(op.PLACES),'spans':list(op.SPANS),'gridCols':op.GRID_COLS,
            'spanUnit':op.SPAN_UNIT,'widgets':list(op.WIDGETS),
+           # 型ごとに効く入力方法(§9.219 ③)。**判定はサーバーの1箇所**
+           # （画面へ写すと、効く物の一覧が2つになる）。
+           'widgetFamilies':{k:list(v) for k,v in op.WIDGET_FAMILIES.items()},
+           # 型・組み込みキーがどの仲間かの**対応表**。画面は引くだけで、
+           # 規則そのものは持たない（設定窓は型を切り替えた瞬間に効く物を
+           # 出し分けるので、行の`widgetFamily`だけでは足りない）。
+           'typeFamilies':{t:op.widget_family(t) for t in op.ITEM_TYPES},
+           'builtinFamilies':dict(op.BUILTIN_FAMILIES),
            'choiceTypes':list(op.CHOICE_TYPES),
+           'numberTypes':list(op.NUMBER_TYPES),
            'builtinKeys':list(op.BUILTIN_KEYS),
            'choiceNotes':op.choice_notes(c),
            'choiceUsage':op.choice_usage(c)}
@@ -1387,6 +1398,12 @@ def report_block_list():
   def fn(c):
    items=rb.blocks_for_equipment(c,eq) if eq else rb.block_rows(c,True)
    return {'items':items,'spans':list(rb.SPANS),'rows':list(rb.ROWS),
+           # **出さない既定の塊は名指しで返す**（§9.219 ②）。画面はコードの
+           # 側にも既定の塊を持っているので、伝えないと外したつもりの塊が
+           # 今までどおり出たままになる（`operation-form`の`builtinOff`と同じ）。
+           'builtinOff':rb.builtin_off(c,eq),
+           'builtinKeys':list(rb.BUILTIN_KEYS),
+           'contentEditable':sorted(rb.CONTENT_EDITABLE),
            # **出どころの見本**。ここに無い道も書けるので、選択肢で塞がない。
            'fields':[{'label':a,'path':b} for a,b in rb.FIELD_CATALOG]}
   return jsonify(ok=True,equipment=eq,**_op_read(fn))
@@ -1398,12 +1415,19 @@ def _report_block_save(x):
  name=str(x.get('name') or '').strip()
  if not name:return jsonify(error='ブロック名を入力してください。'),400
  iv=lambda v:(None if v in (None,'') else int(v))
+ # 「有効」は画面からは文字列（有効/無効）で来る。**文字列をそのまま
+ # `bool()`へ渡さないこと**——`'無効'`は真なので、外したつもりが効かない。
+ def _on(v):
+  if v is None:return True
+  if isinstance(v,str):return v.strip() not in ('無効','false','0','')
+  return bool(v)
+ alive=_on(x.get('enabledText') if x.get('enabledText') is not None else x.get('enabled'))
  try:
   def fn(c):
    return rb.block_upsert(c,uid,equipment=x.get('equipment') or '*',name=name,
                           order=iv(x.get('order')),span=x.get('span'),rows=x.get('rows'),
                           content=x.get('content') or '',note=x.get('note') or '',
-                          enabled=(True if x.get('enabled') is None else bool(x.get('enabled'))),
+                          enabled=alive,cols=x.get('cols'),
                           block_id=(int(x['id']) if x.get('id') not in (None,'') else None))
   return jsonify(ok=True,id=_op_read(fn),message='帳票ブロックを保存しました。')
  except ValueError as e:return jsonify(error=str(e)),400
@@ -1427,6 +1451,9 @@ def report_block_delete():
  try:
   n=_op_read(lambda c:rb.block_delete(c,x['id'],request_user_id(x)))
   return jsonify(ok=True,deleted=n,message='帳票ブロックを削除しました。')
+ # **サーバーが理由を書いているのに包み直さない**（§9.200）。既定の塊は
+ # 消せない、という断りは400で返す（500だと「失敗しました」に埋もれる）。
+ except ValueError as e:return jsonify(error=str(e)),400
  except Exception as e:return jsonify(error=f'帳票ブロックマスタの削除に失敗しました: {e}'),500
 
 @bp.get('/api/operation-form')

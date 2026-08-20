@@ -436,7 +436,13 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    そこで見る値がタブの裏にあった。項目の一覧は
    measure-progress.js が作る`#measureTypeChips`をそのまま使う——同じものを
    もう1つ作ると、状態の集計が2箇所になる。 */
-.measure-shell.mstep-2 .center-pane{display:block;padding-right:0}
+/* **左右の余白は同じにする**（§9.219 ①、利用者の指摘「条の入力…収まり切れて
+   おらず、はみ出している」）。ここは長く`padding-right:0`だった——②の中身が
+   `.type-chips`だけで、器いっぱいに伸びるものが無かったころの名残り。
+   §9.218 ②で操業データの欄が`data-opfill`＝器いっぱいになったため、
+   **右端の欄だけがカードの枠に接する**（実測 左13px／右1px）。カードの
+   余白は`--pad-card`の1つで、ここで片側だけ削らない。 */
+.measure-shell.mstep-2 .center-pane{display:block}
 .measure-shell.mstep-2 .center-pane>*{display:none}
 .measure-shell.mstep-2 .center-pane>.selectors{display:block}
 .measure-shell.mstep-2 .selectors>*{display:none}
@@ -2172,6 +2178,18 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
    「直す場所」へ連れて行けない（§9.122と同じ理由）。
    未入力・公差外の色は**兄弟セレクタ**でボタン側へ移す（`:has()`に頼ると、
    当たらなかったときに「色が付かない」ことに誰も気づけない）。 */
+/* ---------- 見本と実物の文字を同じにする（§9.219 ③） ----------
+   `.measure-shell button`（`40-records.css`の「文字サイズ統一」、詳細度
+   (0,1,1)）が`.opf-seg-btn`(0,1,0)に勝つため、**測定画面では14px・設定窓の
+   見本では12px**になっていた（見本は`.measure-shell`の外にある）。見本が
+   実物と違うと、設定窓で確かめた意味が無い（§9.218 ①）。
+   **器の側で詳細度を1つ上げて宣言する**（§9.206・§9.210 ①と同じ罠）。
+   高さは`min-height`なので、14px×1.2=16.8pxは`--ctl-h-sm`(30px)に収まる。 */
+.opf-widget .opf-seg-btn,
+.opf-widget .opf-pick-btn,
+.opf-widget .opf-step-btn,
+.opf-widget .opf-pad-btn,
+.opf-widget .opf-memo-in{font-size:var(--fs)}
 .opf-native-off{
   position:absolute;width:1px;height:1px;padding:0;margin:0;border:0;
   opacity:0;pointer-events:none;overflow:hidden;
@@ -2244,6 +2262,46 @@ select.validation-ng~.opf-widget .opf-pick-btn{border-color:var(--danger)}
 .opf-picker-item>b{font-size:var(--fs);font-weight:700}
 .opf-picker-item>small{color:var(--ink-3);font-size:var(--fs-sm);white-space:normal}
 .opf-picker-empty{margin:0;color:var(--muted);font-size:var(--fs-sm)}
+/* ---------- 数値・自由記述の器（§9.219 ③） ----------
+   利用者の指示「UIの種類を増やしたり」。選択肢を持たない項目にも
+   「押して決める道具」を置く。**素の欄は消さない**（打つ欄なので、打てる
+   場所が要る）ので、器は欄の**隣**に並ぶ——`.opf`は縦積みなので、
+   ここだけ横に並べる。 */
+.opf-step{display:flex;gap:var(--gap-tight)}
+.opf-step-btn{
+  flex:1 1 0;min-width:0;min-height:var(--ctl-h-sm);
+  border:1px solid var(--line);border-radius:var(--radius-xs);
+  background:var(--surface);color:var(--ink);font-size:var(--fs-title);font-weight:800;
+}
+.opf-step-btn:hover:not(:disabled){background:var(--surface-2)}
+.opf-step-btn:disabled{color:var(--muted);background:var(--surface-2);cursor:not-allowed}
+.opf-range{display:grid;gap:0}
+.opf-range-in{width:100%;min-width:0;height:var(--ctl-h-xs);padding:0}
+.opf-range-scale{display:flex;justify-content:space-between;color:var(--muted);font-size:var(--fs-micro)}
+.opf-range-scale>i{font-style:normal}
+.opf-pad{display:block}
+.opf-pad-btn{
+  width:100%;min-height:var(--ctl-h-sm);
+  border:1px solid var(--line);border-radius:var(--radius-xs);
+  background:var(--surface);color:var(--ink);font-size:var(--fs-sm);
+}
+.opf-pad-btn:hover{background:var(--surface-2)}
+.opf-memo{display:block}
+.opf-memo-in{width:100%;min-width:0;resize:vertical;font-size:var(--fs)}
+.opf-widget-note{color:var(--muted);font-size:var(--fs-micro)}
+/* テンキーは選ぶ浮き窓と同じ器（`.opf-picker`）を使い、中の盤だけ足す。 */
+.opf-keypad-view{
+  display:block;padding:var(--pad-row);border:1px solid var(--line);
+  border-radius:var(--radius-xs);background:var(--surface-2);
+  font-size:var(--fs-lg);font-weight:800;text-align:right;
+}
+.opf-keypad-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--gap-tight)}
+.opf-keypad-key{
+  min-height:var(--ctl-h-lg);border:1px solid var(--line);border-radius:var(--radius-xs);
+  background:var(--surface);color:var(--ink);font-size:var(--fs-title);font-weight:700;
+}
+.opf-keypad-key:hover{background:var(--surface-2)}
+.opf-keypad-del,.opf-keypad-clear{grid-column:span 3;font-size:var(--fs-sm);font-weight:600}
 
 /* 下段は**操業データ1枚**（§9.215、利用者の指示「『入力の準備』のエリアと
    カード統合(2×3にする)」）。以前はここに「条の設計 — 子ロットの内訳」が
