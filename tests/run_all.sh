@@ -60,7 +60,9 @@ resetcontent(){
   # 列レイアウトマスタは「送った項目だけ書く」(§9.212 ②)ので、まっさらに
   # 戻すときは**`clear:true`**を付ける。**付け忘れると送っていない設定だけが
   # 生き延びる**——前の実行の置き土産が次の実行へ残る(§9.121)。
-  for tg in 'timeline:テスト設備A' 'print:テスト設備A'; do
+  # `report:<設備>`も戻す（§9.219 ②）。既定の帳票ブロックがマスタに載った
+  # ので、幅・行数・出す/出さないを触ったテストの置き土産がここに残る。
+  for tg in 'timeline:テスト設備A' 'print:テスト設備A' 'report:テスト設備A' 'report:共通'; do
     curl -s -X POST $API/api/column-layout-master -H 'Content-Type: application/json' \
       -d "{\"target\":\"$tg\",\"clear\":true,\"order\":[],\"hidden\":[],\"widths\":{},\"names\":{},\"formats\":{},\"rules\":{},\"formulas\":{},\"locks\":[],\"sorts\":{},\"user_id\":\"test\"}" >/dev/null
   done
@@ -237,7 +239,7 @@ sleep 3
 echo "--- 一般UI (editモード) ---"
 mode edit
 for t in test_stopcat test_workable test_wkbg test_mcore test_msteps test_orphan test_audit test_sub test_maint test_setpage test_nav test_navdyn test_hdctx test_uiux test_histdel test_uisize test_p11 test_p11c test_master test_shift test_measstore test_waiting \
-         test_calscale test_hdr test_listcache test_ttlcache test_flows test_dbequip test_course test_tolscale test_defect test_theme test_scale test_fit test_bootui test_density test_filter test_stopeq test_eqkind test_bootflash test_dsnav test_opui test_collayout test_colformat test_colrule test_colsort test_typescale test_lcpanel test_colmenu test_colpreset test_formula test_share test_listperf test_allrows test_logview test_headbar test_gridhead test_reccols test_rpblocks test_rplayout test_filterio test_filteruser test_filteractive test_colio test_multidrag test_sortcustom test_filterkeep test_filterlock test_dsrestart test_qjoinui; do run $NODE $t.js; done
+         test_calscale test_hdr test_listcache test_ttlcache test_flows test_dbequip test_course test_tolscale test_defect test_theme test_scale test_fit test_bootui test_density test_filter test_stopeq test_eqkind test_bootflash test_dsnav test_opui test_collayout test_colformat test_colrule test_colsort test_typescale test_lcpanel test_colmenu test_colpreset test_formula test_share test_listperf test_allrows test_logview test_headbar test_gridhead test_reccols test_rpblocks test_rplayout test_rpmaster test_filterio test_filteruser test_filteractive test_colio test_multidrag test_sortcustom test_filterkeep test_filterlock test_dsrestart test_qjoinui; do run $NODE $t.js; done
 
 echo "--- スケジュール (テスト側でモードを切り替える) ---"
 for t in test_screport test_startwork test_scsync test_sccat test_scbalance test_scbatch \

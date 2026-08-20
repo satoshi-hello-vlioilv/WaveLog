@@ -177,6 +177,19 @@
     カードへ置いていたため、名前・値・注記がそれぞれ別の大きさになっていた。
     `<label data-f>`＝準備の入力欄と同じ器にすれば、文字も高さも余白も
     ①のCSSがそのまま当たる（規格を守らせる仕組みの中に入れる・§9.127）。 */
+ /* **入る形を1箇所で言う**（§CLAUDE 6「出どころ・単位・根拠を画面に出す」）
+    ——打ってから断られるより、打つ前に分かるほうが速い。
+    **マスタの設定窓も同じ関数を通す**（§9.219 ③）——見本用にもう1つ書くと、
+    設定画面で見えた形と実際の形が食い違う（§9.176・§9.218 ①と同じ約束）。 */
+ function ruleText(def){
+  if(def.type==='選択')return '';
+  if(!isNumeric(def.type))return '';
+  const range=[];
+  if(def.min!==null&&def.min!==undefined&&def.min!=='')range.push(`${def.min} 以上`);
+  if(def.max!==null&&def.max!==undefined&&def.max!=='')range.push(`${def.max} 以下`);
+  return (isInteger(def.type)?'整数':`小数${def.decimals==null?1:def.decimals}桁`)
+    +(isPositive(def.type)?'・0以上':'')+(range.length?`・${range.join('／')}`:'');
+ }
  function fieldEl(def,i){
   const label=document.createElement('label');
   label.className='opf';
@@ -184,14 +197,7 @@
   label.dataset.f='op:'+def.name;
   label.dataset.opfield=def.name;
   const unit=def.unit?`<em class="opf-unit">${esc(def.unit)}</em>`:'';
-  const range=[];
-  if(def.min!==null&&def.min!==undefined)range.push(`${def.min} 以上`);
-  if(def.max!==null&&def.max!==undefined)range.push(`${def.max} 以下`);
-  /* **入る形を先に書く**（§CLAUDE 6「出どころ・単位・根拠を画面に出す」）
-     ——打ってから断られるより、打つ前に分かるほうが速い。器が狭いので
-     `title`にも同じことを入れる。 */
-  const hint=def.type==='選択'?'':(isInteger(def.type)?'整数':`小数${def.decimals==null?1:def.decimals}桁`)
-    +(isPositive(def.type)?'・0以上':'')+(range.length?`・${range.join('／')}`:'');
+  const hint=ruleText(def);
   let control;
   const id='opf'+i;
   if(def.type==='選択'){
@@ -241,6 +247,20 @@
  /* selectの選択肢を「値と表示」の組で読む。**先頭の空を落とさない**
     ——「まだ選んでいない」へ戻せなくなる（§9.203と同じ罠）。 */
  function optionsOf(sel){return [...sel.options].map(o=>({v:o.value,t:o.text}))}
+ /* **値を持つのは`<select>`とはかぎらない**（§9.219 ③）。数値の欄
+    （縦割数・横割数や自由項目の数値）は`<input>`なので、器を被せる側は
+    どちらでも引ける口から取る。**ここを1箇所にしておくこと**——2箇所で
+    別々に引くと、片方だけ`<input>`に対応した状態が作れる。 */
+ function valueEl(host){
+  return host.querySelector(':scope>select')||host.querySelector(':scope>input:not([type=hidden])');
+ }
+ /* 数値の刻み。整数は1、小数は桁から作る（小数2桁なら0.01）。 */
+ function stepOf(def){
+  if(isInteger(def.type)||!isNumeric(def.type))return 1;
+  const d=Number.isFinite(Number(def.decimals))?Number(def.decimals):1;
+  return Math.pow(10,-Math.max(0,Math.min(4,d)));
+ }
+ const numOr=(v,alt)=>{const n=Number(v);return Number.isFinite(n)?n:alt};
  function widgetHost(host){
   let box=host.querySelector(':scope>.opf-widget');
   if(!box){box=document.createElement('div');box.className='opf-widget';host.appendChild(box)}
@@ -258,10 +278,26 @@
  /* いま選ばれているものに印を付け直す。**作り直さない**——押すたびに
     組み直すと、キーボードで辿っている途中でフォーカスが飛ぶ。 */
  function syncWidget(host){
-  const sel=host.querySelector(':scope>select');
+  const sel=valueEl(host);
   const box=host.querySelector(':scope>.opf-widget');
   if(!sel||!box)return;
   const v=String(sel.value==null?'':sel.value);
+  /* 数値・自由記述の器（§9.219 ③）。**作り直さずに値だけ合わせる**
+     ——打っている最中に部品が入れ替わると、カーソルが飛ぶ。 */
+  const rg=box.querySelector('.opf-range-in');
+  if(rg&&rg.value!==v)rg.value=v;
+  const ta=box.querySelector('.opf-memo-in');
+  if(ta&&ta.value!==v)ta.value=v;
+  const steps=box.querySelectorAll('[data-opstep]');
+  if(steps.length){
+   const lo=(sel.min===''||sel.min==null)?null:Number(sel.min);
+   const hi=(sel.max===''||sel.max==null)?null:Number(sel.max);
+   const n=Number(v);
+   steps.forEach(b=>{
+    const d=Number(b.dataset.opstep);
+    b.disabled=!!(Number.isFinite(n)&&((d<0&&lo!==null&&n<=lo)||(d>0&&hi!==null&&n>=hi)));
+   });
+  }
   box.querySelectorAll('[data-opv]').forEach(b=>{
    const on=b.dataset.opv===v;
    b.classList.toggle('is-on',on);
@@ -275,9 +311,88 @@
    cur.classList.toggle('is-empty',!v||v==='-');
   }
  }
+ /* 数値の器（§9.219 ③、利用者の指示「UIの種類を増やしたり」）。
+    **素の欄は消さない**——選択肢のように「候補から選ぶ」のではなく「打つ」
+    欄なので、打てる場所を残したまま押して決める道具を足すのが正しい
+    （`.opf-native-off`にすると打てなくなる）。 */
+ const NUM_WIDGETS=['ステッパー','スライダー','キーパッド'];
+ function buildNumberWidget(def,host,kind){
+  const el=valueEl(host);
+  if(!el||el.tagName==='SELECT')return false;
+  const step=stepOf(def),lo=numOr(def.min,null),hi=numOr(def.max,null);
+  const sig=[kind,step,lo,hi].join('/');
+  const box=widgetHost(host);
+  if(box.dataset.sig===sig){syncWidget(host);return true}
+  box.dataset.sig=sig;
+  host.classList.add('opf-alt');
+  const bump=d=>{
+   const cur=numOr(el.value,numOr(lo,0));
+   let v=cur+d*step;
+   if(lo!==null)v=Math.max(lo,v);
+   if(hi!==null)v=Math.min(hi,v);
+   /* 浮動小数の誤差を持ち込まない（0.1+0.2の類）。桁は刻みから決まる。 */
+   const dec=String(step).indexOf('.')>=0?String(step).split('.')[1].length:0;
+   setValue(el,dec?v.toFixed(dec):String(Math.round(v)));
+  };
+  if(kind==='ステッパー'){
+   box.className='opf-widget opf-step';
+   box.innerHTML='<button type="button" class="opf-step-btn" data-opstep="-1" aria-label="1つ減らす">−</button>'
+    +'<button type="button" class="opf-step-btn" data-opstep="1" aria-label="1つ増やす">＋</button>';
+   box.querySelectorAll('[data-opstep]').forEach(b=>{
+    b.onclick=e=>{e.preventDefault();bump(Number(b.dataset.opstep));syncWidget(host)};
+   });
+  }else if(kind==='スライダー'){
+   box.className='opf-widget opf-range';
+   /* **上下限が無ければ引けない**（どこからどこまでか決まらない）。
+      押せるのに何も起きない道具を置かないので、理由を書いて出さない（§4）。 */
+   if(lo===null||hi===null){
+    box.innerHTML='<small class="opf-widget-note">上下限を決めるとスライダーになります（いまは打ち込みだけ）</small>';
+   }else{
+    box.innerHTML='<input type="range" class="opf-range-in" min="'+lo+'" max="'+hi+'" step="'+step+'">'
+     +'<span class="opf-range-scale"><i>'+esc(String(lo))+'</i><i>'+esc(String(hi))+'</i></span>';
+    const rg=box.querySelector('.opf-range-in');
+    rg.oninput=()=>setValue(el,rg.value);
+   }
+  }else{
+   box.className='opf-widget opf-pad';
+   box.innerHTML='<button type="button" class="opf-pad-btn">キーで入れる</button>';
+   box.querySelector('.opf-pad-btn').onclick=e=>{e.preventDefault();openKeypad(def,host,el)};
+  }
+  if(!el.dataset.opWidgetWired){
+   el.dataset.opWidgetWired='1';
+   el.addEventListener('input',()=>syncWidget(host));
+   el.addEventListener('change',()=>syncWidget(host));
+  }
+  syncWidget(host);
+  return true;
+ }
+ /* 自由記述を複数行で書く（§9.219 ③）。**値を持つのは`<input>`のまま**で、
+    `<textarea>`は写し——記録の読み書き・必須の判定は1つも書き換わらない。 */
+ function buildMemoWidget(def,host){
+  const el=valueEl(host);
+  if(!el||el.tagName==='SELECT')return false;
+  const box=widgetHost(host);
+  if(box.dataset.sig==='memo'){syncWidget(host);return true}
+  box.dataset.sig='memo';
+  host.classList.add('opf-alt');
+  el.classList.add('opf-native-off');
+  el.setAttribute('tabindex','-1');
+  box.className='opf-widget opf-memo';
+  box.innerHTML='<textarea class="opf-memo-in" rows="3"></textarea>';
+  const ta=box.querySelector('.opf-memo-in');
+  ta.oninput=()=>setValue(el,ta.value);
+  if(!el.dataset.opWidgetWired){
+   el.dataset.opWidgetWired='1';
+   el.addEventListener('change',()=>syncWidget(host));
+  }
+  syncWidget(host);
+  return true;
+ }
  /* 器を1回だけ作る。**選択肢が変わったら作り直す**（内径のプリセットは
     仕掛データが届いてから入る・§9.204）ので、署名で見分ける。 */
  function buildWidget(def,host,kind){
+  if(kind==='メモ')return buildMemoWidget(def,host);
+  if(NUM_WIDGETS.indexOf(kind)>=0)return buildNumberWidget(def,host,kind);
   const sel=host.querySelector(':scope>select');
   if(!sel)return false;
   const opts=optionsOf(sel);
@@ -334,8 +449,66 @@
   const box=host.querySelector(':scope>.opf-widget');
   if(box)box.remove();
   host.classList.remove('opf-alt');
-  const sel=host.querySelector(':scope>select');
+  /* **`<input>`の欄も元へ戻す**（§9.219 ③）。`select`だけを見ていると、
+     「メモ」から戻したときに欄が1pxのまま残り**打てない欄**になる。 */
+  const sel=valueEl(host);
   if(sel){sel.classList.remove('opf-native-off');sel.removeAttribute('tabindex')}
+ }
+ /* ---------- テンキー（§9.219 ③、キーボードの無い端末向け） ----------
+    **浮き窓は器の外（body直下）へ`position:fixed`で出す**（§9.201）。
+    値を持つのは元の`<input>`のままで、ここは押した文字を書き込むだけ。 */
+ let padEl=null,padBack=null,padTarget=null;
+ function ensureKeypad(){
+  if(padEl)return padEl;
+  padEl=document.createElement('div');
+  padEl.className='opf-picker opf-keypad';padEl.id='opfKeypad';padEl.hidden=true;
+  const keys=['7','8','9','4','5','6','1','2','3','0','.','-'];
+  padEl.innerHTML='<div class="opf-picker-box" role="dialog" aria-modal="true">'
+   +'<header><b id="opfKeypadName"></b>'
+   +'<button type="button" id="opfKeypadClose" aria-label="閉じる">×</button></header>'
+   +'<output class="opf-keypad-view" id="opfKeypadView"></output>'
+   +'<div class="opf-keypad-grid">'
+   +keys.map(k=>'<button type="button" class="opf-keypad-key" data-opk="'+k+'">'+k+'</button>').join('')
+   +'<button type="button" class="opf-keypad-key opf-keypad-del" data-opk="del">1文字消す</button>'
+   +'<button type="button" class="opf-keypad-key opf-keypad-clear" data-opk="clear">全部消す</button>'
+   +'</div></div>';
+  document.body.appendChild(padEl);
+  padEl.addEventListener('click',e=>{if(e.target===padEl)closeKeypad()});
+  padEl.querySelector('#opfKeypadClose').onclick=closeKeypad;
+  padEl.querySelectorAll('[data-opk]').forEach(b=>{
+   b.onclick=e=>{
+    e.preventDefault();
+    if(!padTarget)return;
+    const k=b.dataset.opk;
+    let v=String(padTarget.value==null?'':padTarget.value);
+    if(k==='clear')v='';
+    else if(k==='del')v=v.slice(0,-1);
+    else if(k==='-')v=v.charAt(0)==='-'?v.slice(1):('-'+v);
+    else if(k==='.'){if(v.indexOf('.')<0)v=(v||'0')+'.'}
+    else v=v+k;
+    setValue(padTarget,v);
+    const view=padEl.querySelector('#opfKeypadView');
+    if(view)view.textContent=v||'—';
+   };
+  });
+  document.addEventListener('keydown',e=>{
+   if(e.key==='Escape'&&padEl&&!padEl.hidden){e.stopPropagation();closeKeypad()}
+  },true);
+  return padEl;
+ }
+ function closeKeypad(){
+  if(!padEl)return;
+  padEl.hidden=true;padTarget=null;
+  const back=padBack;padBack=null;
+  if(back&&back.focus){try{back.focus()}catch(e){}}
+ }
+ function openKeypad(def,host,el){
+  const p=ensureKeypad();
+  p.hidden=false;padTarget=el;
+  padBack=host.querySelector('.opf-pad-btn');
+  p.querySelector('#opfKeypadName').textContent=def.name+(def.unit?`（${def.unit}）`:'');
+  const view=p.querySelector('#opfKeypadView');
+  if(view)view.textContent=String(el.value||'')||'—';
  }
 
  /* ---------- 説明つきで選ぶ浮き窓 ----------
@@ -536,7 +709,9 @@
      /* 選ばせ方（§9.218 ②）。**組み込みの欄にも当たる**——値を持つのは
         今までどおり`<select>`なので、当てても壊れるものが無い。 */
      const kind=widgetOf(d);
-     if(kind!==WIDGET_SELECT&&el.querySelector(':scope>select'))buildWidget(d,el,kind);
+     /* **`<select>`だけの話ではない**（§9.219 ③）。数値・自由記述の欄は
+        `<input>`なので、値を持つ要素が在れば器を被せる。 */
+     if(kind!==WIDGET_SELECT&&valueEl(el))buildWidget(d,el,kind);
      else stripWidget(el);
     });
    });
@@ -680,7 +855,7 @@
   try{return buildWidget(def,host,kind)}catch(e){console.warn('見本を作れませんでした',e);return false}
  }
  WL.opData={load,layout,render:layout,refresh,apply,collect,values,filled,requiredControls,
-            syncAutoOpen,syncWidgets,previewWidget,
+            syncAutoOpen,syncWidgets,previewWidget,ruleText,
             defs:()=>defs.slice(),
             /* 設備が変わったら次に開くとき読み直す（マスタ管理で足した直後）。 */
             forget:()=>{defs=[];builtinOff=[];defsFor=null;loading=null}};

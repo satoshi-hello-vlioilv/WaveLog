@@ -218,16 +218,37 @@ let b=null;const made=[];const madeChoices=[];
   rec('選択肢の説明も測定画面の定義に付いてくる',
       !!f3&&(f3.choiceNotes||{})['金']==='いちばん明るい色',
       JSON.stringify(f3&&f3.choiceNotes));
-  /* **選択肢を持たない型では効かないと言う**（§4）。設定は残す。 */
+  /* **型ごとに効く形だけを出す**（§9.219 ③、利用者の指示「UIの種類を
+     増やしたり」）。以前は選択肢を持たない型では選ばせ方を全部押せなく
+     していたが、いまは数値・自由記述にもそれぞれの道具がある。
+     **効かない形は並べない**（押せるのに何も起きない設定を作らない・§4）。 */
   await page.click('[data-op-type="文字"]');
-  await page.waitForTimeout(200);
-  const noChoice=await page.evaluate(()=>({
-   使えない:[...document.querySelectorAll('[data-op-widget]')].every(b=>b.disabled),
-   理由:/効きません/.test(document.getElementById('opModalForm').textContent||''),
+  await page.waitForTimeout(250);
+  const textW=await page.evaluate(()=>
+    [...document.querySelectorAll('[data-op-widget]')].map(b=>b.dataset.opWidget));
+  rec('自由記述の型では「メモ」が選べ、選択肢向けの形は並ばない',
+      textW.includes('メモ')&&!textW.includes('ラジオ')&&!textW.includes('タブ'),
+      JSON.stringify(textW));
+  await page.click('[data-op-type="正の整数"]');
+  await page.waitForTimeout(250);
+  const numW=await page.evaluate(()=>
+    [...document.querySelectorAll('[data-op-widget]')].map(b=>b.dataset.opWidget));
+  rec('数値の型ではステッパー・スライダー・キーパッドが選べる',
+      ['ステッパー','スライダー','キーパッド'].every(w=>numW.includes(w))
+      &&!numW.includes('一覧'),JSON.stringify(numW));
+  /* **見本は本物の部品**（§9.218 ①）。数値の器も`measure-opdata.js`が作る
+     ので、設定画面と測定画面で形が食い違わない。 */
+  await page.click('[data-op-widget="ステッパー"]');
+  await page.waitForTimeout(300);
+  const prev=await page.evaluate(()=>({
+   ステッパー:document.querySelectorAll('#opPrevField .opf-step-btn').length,
+   値の行:!!document.getElementById('opPrevValue'),
   }));
-  rec('選択肢を持たない型では選ばせ方を押せなくし、理由を書く',
-      noChoice.使えない&&noChoice.理由,JSON.stringify(noChoice));
+  rec('見本に本物のステッパーが出て、記録される値も書く',
+      prev.ステッパー===2&&prev.値の行===true,JSON.stringify(prev));
   await page.click('[data-op-type="選択"]');
+  await page.waitForTimeout(200);
+  await page.click('[data-op-widget="タブ"]');
   await page.waitForTimeout(200);
 
   /* ---- 7) 掴んで動かした先が狙った境目になる（§9.218 ④） ----
@@ -286,6 +307,90 @@ let b=null;const made=[];const madeChoices=[];
   });
   rec('印を出しても盤が動かない（浮かせて置く）',
       still.同じ===true&&still.位置==='absolute',JSON.stringify(still));
+
+  /* ---- 8) 帯へ落とすと**その群**へ入る（§9.219 ③） ----
+     利用者の報告「D&Dで並び替えるとき、『誰が測るか』と『測定表の形』には
+     項目を移動できません」。原因は2つ:
+       ① 当たり判定が `hypot(x-左端, y-中心)` で、**帯は横いっぱい**（実測
+          1390px）なので、帯の右側へ運ぶと別の段のタイルのほうが近くなり
+          まったく違う群へ飛んだ
+       ② 帯の左側へ落とすと`insertBefore(帯)`＝**ひとつ上の群**（いちばん上の
+          帯なら「その他」が生まれる）
+     つまり**帯の上のどこへ落としてもその群には入らなかった**。
+     直したので、帯の左・中・右のどこでも「その帯の群」になる。 */
+  const bandDrop=await page.evaluate(()=>{
+   const grid=document.querySelector('#masterMaintList .op-board-grid[data-op-place="準備"]');
+   const tiles=[...grid.querySelectorAll('.op-tile')];
+   const grab=tiles[tiles.length-1];
+   grab.classList.add('is-dragging');
+   const out=[];
+   [...grid.querySelectorAll('.op-band')].forEach(bd=>{
+    const r=bd.getBoundingClientRect();
+    [r.left+6,r.left+r.width/2,r.right-6].forEach((x,i)=>{
+     const at=WL.opBoard.dropAt(grid,{clientX:x,clientY:r.top+r.height/2});
+     out.push({帯:bd.dataset.opBand,側:['左','中','右'][i],
+               群:WL.opBoard.groupAt(grid,at)});
+    });
+   });
+   grab.classList.remove('is-dragging');
+   WL.opBoard.clearMark();
+   return out;
+  });
+  const bandNG=bandDrop.filter(x=>x.帯!==x.群);
+  rec('帯のどこへ落としてもその群へ入る（左・中・右）',
+      bandDrop.length>=9&&bandNG.length===0,
+      bandNG.length?JSON.stringify(bandNG.slice(0,4)):`${bandDrop.length}箇所を確認`);
+  /* **狙った群が文字で出ること**（§CLAUDE 2）。線だけでは帯の上と下の
+     どちらへ入るのかが読めない——「移動できません」はここから始まった。 */
+  const tagged=await page.evaluate(()=>{
+   const grid=document.querySelector('#masterMaintList .op-board-grid[data-op-place="準備"]');
+   const bd=grid.querySelector('.op-band');
+   const r=bd.getBoundingClientRect();
+   const at=WL.opBoard.dropAt(grid,{clientX:r.left+r.width/2,clientY:r.top+r.height/2});
+   WL.opBoard.mark(grid,at);
+   const t=grid.querySelector('[data-op-mark] .op-drop-tag');
+   const text=t?t.textContent:'';
+   WL.opBoard.clearMark();
+   return {帯:bd.dataset.opBand,文言:text};
+  });
+  rec('落とす先の群を文字で出す',
+      tagged.文言.indexOf(tagged.帯)>=0,JSON.stringify(tagged));
+
+  /* **同じ群が2つの帯に割れない**（§9.219 ③）。保存された表示順が入り
+     混じっていても、盤は名前でまとめてから描く（`measure-opdata.js`の
+     `groupsFor()`と同じ読み方）。割れると「その群へ入れる場所」が読めない。 */
+  const split=await page.evaluate(()=>{
+   const out={};
+   document.querySelectorAll('#masterMaintList .op-board-grid').forEach(g=>{
+    const pl=g.dataset.opPlace;
+    const names=[...g.querySelectorAll('.op-band')].map(b=>b.dataset.opBand);
+    const dup=names.filter((n,i)=>names.indexOf(n)!==i);
+    if(dup.length)out[pl]=dup;
+   });
+   return out;
+  });
+  rec('同じ群が2つの帯に割れない',Object.keys(split).length===0,JSON.stringify(split));
+
+  /* **一部だけを保存しても並びが壊れない**（§9.219 ③、サーバー側）。
+     以前は渡された行に`(i+1)*10`を振り直していたため、1行だけ送ると
+     その行が先頭へ飛び、群のあいだへ割り込んだ（実機の並びが実際にそう
+     なっていた）。**席の入れ替え**で書くので、渡していない行との前後関係は
+     動かない。 */
+  const before8=await get('/api/operation-item-master');
+  const idsBefore=(before8.items||[]).map(x=>x.id);
+  const last=(before8.items||[])[(before8.items||[]).length-1];
+  if(last){
+   await post('/api/operation-item-master/layout',
+     {items:[{id:last.id,group:last.group,place:last.place,span:last.span,
+              required:last.required,enabled:true,fold:last.fold,showWhen:last.showWhen}],
+      user_id:TAG});
+   const after8=await get('/api/operation-item-master');
+   const idsAfter=(after8.items||[]).map(x=>x.id);
+   rec('1行だけ保存しても全体の並びが変わらない',
+       idsBefore.join()===idsAfter.join(),
+       idsBefore.join()===idsAfter.join()?`${idsAfter.length}件`
+         :JSON.stringify({前:idsBefore.slice(0,6),後:idsAfter.slice(0,6)}));
+  }else rec('1行だけ保存しても全体の並びが変わらない',false,'項目が無い');
 
   rec('画面のエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){

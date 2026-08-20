@@ -397,6 +397,28 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
   rec('既定へ戻すと設定の行ごと消える',!((srv3.formats||{})['丈別データ']),
       JSON.stringify(srv3.formats));
 
+  /* ---- **組み換えしていない紙に塊が出ていること**（§9.219 ②） ----
+     既定の塊をマスタへ載せたとき、画面が組み込み行を「自作の塊」として
+     読むと`rpHiddenSet()`の「並びに載るまで出さない」が全部に当たり、
+     **紙が丸ごと白紙になる**（実際にその窓があった）。
+     **既存の判定では捕まらない**——`bars===0`も`after>=before`も塊0件で
+     真になり、塊を名指しする判定は全部「組み換え中」で走る
+     （`if(off&&(!arranging||paper))return ''`のため隠した塊も描かれる）。
+     ここは**組み換えを閉じた紙**で、件数が0より大きいことを見る。 */
+  await page.evaluate(()=>{const b=document.getElementById('rpArrangeCancel');if(b)b.click()});
+  await settle(page);
+  const paper=await page.evaluate(()=>{
+   const on=document.querySelector('#reportContent .rp-blocks.is-arranging');
+   const list=[...document.querySelectorAll('#reportContent [data-rp-block]')]
+     .map(e=>e.dataset.rpBlock);
+   return {組み換え中:!!on,件数:list.length,基本情報:list.includes('基本情報'),
+           見出し:[...document.querySelectorAll('#reportContent .rp-section>h3')]
+             .map(e=>e.textContent).slice(0,4)};
+  });
+  rec('組み換えしていない紙に既定の塊が出ている（白紙にならない）',
+      paper.組み換え中===false&&paper.件数>0&&paper.基本情報===true,
+      JSON.stringify(paper));
+
   rec('コンソールに例外を出さない',errs.length===0,errs.slice(0,2).join(' / '));
  }catch(e){rec('FATAL',false,e.message)}
  finally{
