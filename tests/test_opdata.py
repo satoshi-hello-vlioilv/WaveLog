@@ -41,8 +41,16 @@ def post(path, body):
         except Exception:
             return e.code, {}
 
+def set_mode(m):
+    post('/api/access-mode', {'mode': m})
+
+
 made_items, made_choices = [], []
 try:
+    # マスタの書き込みは**編集モードだけ**(access_mode の `masters`)。
+    # サーバー側のテストはscheduleモードで走るので、ここで切り替えて
+    # **finallyで必ず戻す**——戻さないと後続のスケジュール系が全部落ちる。
+    set_mode('edit')
     # ---- 1) 初回から中身が入っている ----
     d = get('/api/operation-item-master')
     names = [x['name'] for x in d.get('items', [])]
@@ -164,6 +172,11 @@ finally:
             post('/api/operation-choice-master/delete', {'id': i, 'user_id': 'tests'})
         except Exception:
             pass
+    # **モードは必ず戻す**（このブロックはscheduleモードで走る約束）。
+    try:
+        set_mode('schedule')
+    except Exception:
+        pass
 
 print('\n== %d/%d PASS ==' % (sum(1 for x in R if x), len(R)))
 sys.exit(0 if all(R) else 1)
