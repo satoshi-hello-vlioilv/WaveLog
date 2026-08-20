@@ -881,9 +881,16 @@
   window.WL=window.WL||{};
   window.WL.lotColors={palette:LOT_COLORS,neutral:LOT_COLOR_NEUTRAL,map:lotColorMap};
   function splitLotColorMap(sources){return lotColorMap((sources||[]).map(s=>s.lot))}
-  // 図中のラベルはロット番号全体だと長く読みにくいため下3桁のみを表示する
-  // (詳細行・候補カード・ツールチップは引き続きロット番号全体を表示)。
+  /* 図中のラベル（§9.213、利用者の指示「条幅が広い場合は、ロット番号全てを
+     表示、幅が狭いものは下2桁表示としてください。幅が狭いものかつ異幅切断の
+     場合は下3桁表示」）。
+     **入るなら全部出す**のが原則で、入らないときだけ末尾へ落とす——
+     図の中だけ下3桁固定だったため、余裕のある広い条でも番号を突き合わせる
+     ことになっていた。桁数は**異幅切断なら3桁・等幅なら2桁**（異幅は
+     ロットの種類が増えるので2桁だとぶつかりやすい）。
+     詳細行・候補カード・ツールチップは今までどおりロット番号全体。 */
   function lotSuffix3(lot){const s=String(lot||'');return s.length>3?s.slice(-3):s}
+  function lotSuffixN(lot,n){const s=String(lot||'');return s.length>n?s.slice(-n):s}
 
   // ポインタ位置(clientX)→条番号(0始まり)。直近描画時の幅レイアウト
   // (splitVisualLayout)を使うため、同一ロットが連続する範囲を1つの帯に
@@ -962,6 +969,13 @@
     const layout=computeVisualLayout(seq,sources);
     splitVisualLayout=layout;
     const widthMap=Object.fromEntries(sources.map(s=>[s.lot,s.width])),tolMap=Object.fromEntries(sources.map(s=>[s.lot,s.tol]));
+    /* **異幅切断か**（§9.213）。狭い条で出す桁数を決める材料——異幅は
+       ロットの種類が増えるので、下2桁だと違うロットが同じに見える。
+       幅の分からない条は数に入れない（空欄を1種類として数えると、
+       等幅のロットまで異幅扱いになる）。 */
+    const mixedWidths=new Set(seq.filter(Boolean)
+      .map(l=>widthMap[l]).filter(w=>w!==''&&w!==undefined&&w!==null)
+      .map(w=>String(w))).size>1;
     let html='<div class="split-visual-track">';
     for(let i=0;i<total;i++){
       const lot=seq[i];
@@ -977,7 +991,13 @@
          出なかったり**した。判定に使う鍵は条幅そのもの——同じ幅なら
          必ず同じ見せ方になる。 */
       const wkey=hasWidth?'w'+String(widthMap[lot]):'u'+(layout.cum[i+1]-layout.cum[i]);
-      const cellLabel=lot?`<span class="split-visual-block-label"><b>${esc(lotSuffix3(lot))}</b>${hasWidth?`<small>${widthText}</small>`:''}</span>`:'';
+      /* **両方の書き方を置いて、あとで幅ごとにまとめて選ぶ**（§9.213）。
+         片方だけ描いて後から差し替えると、差し替えるたびに測り直しが要る
+         （`fitStripLabels`が1回で決められない）。 */
+      const cellLabel=lot?`<span class="split-visual-block-label">`
+        +`<b class="svb-lot">${esc(lot)}</b>`
+        +`<b class="svb-lot-short">${esc(lotSuffixN(lot,mixedWidths?3:2))}</b>`
+        +`${hasWidth?`<small>${widthText}</small>`:''}</span>`:'';
       html+=`<div class="split-visual-block${lot?'':' empty'}${i===selectedStrip?' is-selected':''}" data-start="${i}" data-end="${i}" data-lot="${lot?esc(lot):''}"${lot?` data-wkey="${esc(wkey)}"`:''} style="left:${left}%;width:${width}%;--split-block-bg:${bg}" title="${fullLabel} ／ ${i+1}条目${hasWidth?` ／ 幅${widthText}`:''}${tolText?` ／ ${tolText}`:''}">${cellLabel}</div>`;
     }
     html+='<div class="split-visual-ghost" id="splitVisualGhost" hidden></div></div>';
@@ -996,11 +1016,20 @@
      %の丸めで1pxだけ違う帯が生まれるため、しきい値をまたぐ条だけラベルが
      消えていた——**同じものが同じに見えないと、違いがあるのかと数え直す**。
      鍵は**条幅そのもの**（`data-wkey`）で、同じ幅の条は必ず同じ段になる。
-     段は3つ: ロット番号＋幅／ロット番号だけ／出さない。異幅分割では幅ごとに
-     段が変わってよい（利用者の指示「異幅分割に限りロット単位で許可」）
-     ——入らない幅の条に押し込むと、どのみち見切れて読めない。
-     **群の中では「いちばん狭い条」で決める**（%の丸めで1px違うため。
-     広いほうで決めると、狭い1本だけが見切れる）。 */
+     異幅分割では幅ごとに段が変わってよい（利用者の指示「異幅分割に限り
+     ロット単位で許可」）——入らない幅の条に押し込むと、どのみち見切れて
+     読めない。**群の中では「いちばん狭い条」で決める**（%の丸めで1px違う
+     ため。広いほうで決めると、狭い1本だけが見切れる）。
+
+     段は4つ（§9.213、利用者の指示「条幅が広い場合は、ロット番号全てを
+     表示、幅が狭いものは下2桁表示。幅が狭いものかつ異幅切断の場合は
+     下3桁表示」）:
+       full  … ロット番号（全部）＋幅
+       long  … ロット番号（全部）だけ
+       short … 末尾だけ（異幅切断=3桁／等幅=2桁。描くときに決めてある）
+       none  … 出さない
+     **入るなら全部出す**のが原則。以前は図の中だけ下3桁固定で、余裕の
+     ある広い条でも番号を突き合わせることになっていた。 */
   function fitStripLabels(strip){
     if(!strip)return;
     /* まだ画面に出ていない（幅0）ときは触らない——0で測ると全部「出さない」
@@ -1010,6 +1039,10 @@
     if(!blocks.length)return;
     let pad=0;
     const groups=new Map();
+    /* **測る前に前回の段を外す**（§9.213）。付いたまま測ると、前回
+       `label-short`だった条では`.svb-lot`が`display:none`のままで幅0になり、
+       **一度短くなった条は二度と長くならない**（広げても戻らない）。 */
+    for(const el of blocks)el.classList.remove('label-long','label-short','label-none');
     for(const el of blocks){
       const label=el.querySelector('.split-visual-block-label');
       if(!label)continue;
@@ -1017,21 +1050,33 @@
         const cs=getComputedStyle(label);
         pad=(parseFloat(cs.paddingLeft)||0)+(parseFloat(cs.paddingRight)||0);
       }
-      const b=label.querySelector('b'),small=label.querySelector('small');
+      /* **段を決める前に測るので、どちらの書き方も画面に出しておく**
+         （`is-measuring`。片方を`display:none`にしたまま測ると0になり、
+         いつまでも短いほうが選ばれない）。 */
+      label.classList.add('is-measuring');
+      const lotFull=label.querySelector('.svb-lot');
+      const lotShort=label.querySelector('.svb-lot-short');
+      const small=label.querySelector('small');
       const key=el.dataset.wkey;
-      const g=groups.get(key)||{els:[],room:Infinity,short:0,full:0};
+      const g=groups.get(key)||{els:[],room:Infinity,short:0,long:0,full:0};
       g.els.push(el);
       g.room=Math.min(g.room,el.getBoundingClientRect().width);
       /* ラベルは縦積みなので、要る幅は**子のうち広いほう**。 */
-      const bw=b?b.getBoundingClientRect().width:0;
+      const fw=lotFull?lotFull.getBoundingClientRect().width:0;
+      const sh=lotShort?lotShort.getBoundingClientRect().width:0;
       const sw=small?small.getBoundingClientRect().width:0;
-      g.short=Math.max(g.short,bw);
-      g.full=Math.max(g.full,Math.max(bw,sw));
+      g.short=Math.max(g.short,sh);
+      g.long=Math.max(g.long,fw);
+      g.full=Math.max(g.full,Math.max(fw,sw));
       groups.set(key,g);
+      label.classList.remove('is-measuring');
     }
     for(const g of groups.values()){
-      const level=g.room>=g.full+pad?'full':g.room>=g.short+pad?'short':'none';
+      const level=g.room>=g.full+pad?'full'
+                 :g.room>=g.long+pad?'long'
+                 :g.room>=g.short+pad?'short':'none';
       for(const el of g.els){
+        el.classList.toggle('label-long',level==='long');
         el.classList.toggle('label-short',level==='short');
         el.classList.toggle('label-none',level==='none');
       }
