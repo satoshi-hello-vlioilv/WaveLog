@@ -967,9 +967,66 @@
     利用者が決めた行数があればそちらが勝つ。
     保存先は列レイアウトマスタの`widths`で、幅と同じく`×RP_SPAN_UNIT`
     （§9.169の約束。pxとして40〜900へ丸められるため）。 */
- const RP_ROW_PX=24;
- const RP_ROWS=[2,3,4,5,6,8,12];   /* 5行は「ラベル貼付スペース」の既定（§9.219 ②） */
- const RP_ROWS_MAX=15;                      /* 15×60=900（丸めの上限） */
+ /* ---------- 紙は「縦12×横6」の粗いグリッド（§9.221 ⑨、利用者の指示） ----------
+    「内容毎にカード(ブロック)サイズを正しく管理できていないようで、重なりが
+     生じているのと、余白も含めて任意の場所に置けるようにしないと、意図しない
+     形で詰まっていくので狙い通りの配置にできません。…縦12横6くらいのグリッドを
+     作って、グリッドに収まる範囲でカード設計を行い設計したカードのサイズに
+     合わせてコンテンツ貼り付けが良いと思います」
+
+    以前との違いは3つ。
+     ① **行の高さを紙から作る。** 24px固定だったので、A4縦1枚が44行あり、
+        「1行」がカードの単位として意味を持たなかった。紙の刷れる高さを
+        行数で割る（既定12行）ので、1マスがそのまま**紙の1/12**になる。
+     ② **置き場所を利用者が決める。** 以前は`grid-auto-flow:dense`の自動配置
+        だったので、1つ大きさを変えると後ろが全部動いた（「意図しない形で
+        詰まっていく」の実体）。いまは塊ごとに「何列目・何行目」を持つ。
+     ③ **中身を器へ合わせる。** 行数より背の高い中身は器から溢れて下の塊に
+        重なっていた（「重なりが生じている」の実体）。器は`overflow:hidden`で
+        大きさを守り、中身は入るところまで縮める（`rpFitBlockBodies`）。 */
+ const RP_PAGE_ROWS_KEY='__行グリッド__';
+ const RP_PAGE_ROW_CHOICES=[8,12,16,24];
+ const RP_PAGE_ROWS_DEFAULT=12;
+ function rpPageRows(){
+  const raw=Math.round(Number(WL.columnLayout.width(rpTarget(),RP_PAGE_ROWS_KEY))||0);
+  const v=Math.round(raw/RP_SPAN_UNIT);
+  return RP_PAGE_ROW_CHOICES.includes(v)?v:RP_PAGE_ROWS_DEFAULT;
+ }
+ /* 1行のpx。**CSSが紙から計算した値を読む**（`grid-auto-rows`の使用値）
+    ——JSで紙のmmからpxを起こすと、表示倍率と紙の向きで必ずずれる。 */
+ function rpRowPx(grid){
+  const el=grid||document.querySelector('.rp-page .rp-blocks');
+  const v=el?parseFloat(getComputedStyle(el).gridAutoRows):0;
+  return v>0?v:24;
+ }
+ const RP_ROWS=[1,2,3,4,6,8,12];
+ const RP_ROWS_MAX=22;                      /* 22×40=880（位置の丸めの上限） */
+ /* 置き場所（何列目・何行目）。**`widths`へpxとして入る**ので、40〜900へ
+    丸められる（§9.169の約束）。1マス=40で入れて読むときに割り戻す。 */
+ const RP_POS_UNIT=40;
+ const rpColKey=k=>`列:${k}`;
+ const rpRowPosKey=k=>`行:${k}`;
+ const rpPosStore=v=>Math.round(Math.max(1,v)*RP_POS_UNIT);
+ function rpPosNum(k,key){
+  const raw=Math.round(Number(WL.columnLayout.width(rpTarget(),key(k)))||0);
+  const v=Math.round(raw/RP_POS_UNIT);
+  return v>0?v:0;
+ }
+ /* **保存は12マス・12段を基準にする**（§9.221 ⑨。幅が`rpSpan`で12マス基準
+    なのと同じ約束）——紙のマス数・段数を変えたときに、置き場所の意味が
+    変わらないようにするため。読むときに今の割りへ当て直す。 */
+ const rpProject=(v,base,to)=>Math.max(1,Math.min(to,Math.round((v-1)*to/base)+1));
+ const rpColTo12=c=>Math.max(1,Math.min(RP_COLS,Math.round((c-1)*RP_COLS/rpGrid())+1));
+ const rpRowTo12=r=>Math.max(1,Math.min(RP_ROWS_MAX,
+   Math.round((r-1)*RP_PAGE_ROWS_DEFAULT/rpPageRows())+1));
+ /* 置き場所が決まっているか。**0＝まだ決めていない**（初めて組み換えに
+    入った時点で今の見え方をそのまま書き下ろす・`rpSeedPositions`）。 */
+ function rpPos(k){
+  const c=rpPosNum(k,rpColKey),r=rpPosNum(k,rpRowPosKey);
+  if(!(c>0&&r>0))return null;
+  return {col:rpProject(c,RP_COLS,rpGrid()),
+          row:rpProject(r,RP_PAGE_ROWS_DEFAULT,rpPageRows())};
+ }
  const rpRowsKey=k=>`行数:${k}`;
  const rpRowsStore=v=>Math.round(v*RP_SPAN_UNIT);
  function rpRows(k){
@@ -980,7 +1037,9 @@
      （このくらいの高さ）はそのまま残す——読み替えないと、行の仕組みへ
      変えた瞬間に現場の設定が全部「中身なり」へ戻る。 */
   const px=rpHeight(k);
-  if(px>0)return Math.max(1,Math.min(RP_ROWS_MAX,Math.ceil(px/RP_ROW_PX)));
+  /* 旧いpxの高さ（§9.174）は**当時の1行=24px**で読み替える（§9.221 ⑨で
+     行の高さを紙から作るようにしたが、保存されている数の意味は当時のまま）。 */
+  if(px>0)return Math.max(1,Math.min(RP_ROWS_MAX,Math.ceil(px/24)));
   return Math.min(RP_ROWS_MAX,(rpBlockOf(k)||{}).rows||0);   /* 0＝中身なり */
  }
  function rpColWidth(k,c){
@@ -1058,6 +1117,9 @@
  function reportBlocksHtml(x,arranging){
   const hidden=rpHiddenSet();
   const paper=arranging&&rpPaperView;      /* 組み換え中だが、紙のとおりに見る */
+  /* **重ならないところまでを描く側が決める**（§9.221 ⑨）。保存されている
+     位置は「希望」で、マス数・段数を変えたときの丸めや古い設定で重なりうる。 */
+  const spots=rpResolvePlacement();
   const cells=rpBlockKeys().map(k=>{
    const bl=rpBlockOf(k);if(!bl)return '';
    const off=hidden.has(k);
@@ -1068,11 +1130,24 @@
    const span=rpSpan(k),rows=rpRows(k);
    /* 行数が決まっているものはここで割り当てる。0（中身なり）は描いてから
       `rpFitRows()`が測って入れる（§9.217）。 */
-   return `<div class="rp-block${off?' is-off':''}${body?'':' is-empty'}" data-rp-block="${esc(k)}"`
-    +` style="grid-column:span ${span}${rows?`;grid-row:span ${rows};min-height:${rows*RP_ROW_PX}px`:''}"`
+   /* **置き場所が決まっていればそのマスへ置く**（§9.221 ⑨）。決まって
+      いない塊だけが今までどおり自動で流れる——初めて組み換えに入った
+      時点で`rpSeedPositions()`が今の見え方を書き下ろすので、そこから先は
+      触った塊以外は1ミリも動かない。 */
+   const at=spots&&spots.get(k);
+   const place=at
+     ?`grid-column:${at.col}/span ${at.span};grid-row:${at.row}/span ${at.rows}`
+     :`grid-column:span ${span}${rows?`;grid-row:span ${rows}`:''}`;
+   return `<div class="rp-block${off?' is-off':''}${body?'':' is-empty'}${at?' is-placed':''}" data-rp-block="${esc(k)}"`
+    +` style="${place}"`
     +`${(arranging&&!paper)?' draggable="true"':''}>`
     +((arranging&&!paper)?rpBlockBarHtml(k,span,off,!body):'')
+    /* **中身は1枚の器に包む**（§9.221 ⑨）。器の大きさは利用者が決めた
+       ものなので、入らないときは中身のほうを縮める（`rpFitBlockBodies`）
+       ——包まないと、縮める対象が「操作帯ごと」になって帯まで小さくなる。 */
+    +`<div class="rp-block-fit">`
     +(body||((arranging&&!paper)?'<p class="rp-block-empty">このロットにはこの内容がありません（紙には出ません）。</p>':''))
+    +'</div>'
     /* **縁を引いて大きさを変えられる**（§9.218 ⑥、利用者の指示「選択した
        ときに縦横のサイズ変更ができるように」）。右＝幅（マス）、下＝高さ
        （行）、右下＝両方。掴んでいるあいだ何マス×何行になるかを出す。 */
@@ -1085,7 +1160,7 @@
      グリッドがなくなってしまった」）。列数と行の高さをCSSへ渡し、背景の
      線として引く——要素を作らないので、塊の並びにも印刷にも一切影響しない。 */
   return `<div class="rp-blocks${(arranging&&!paper)?' is-arranging':''}"`
-   +` style="--rp-grid:${rpGrid()};--rp-row:${RP_ROW_PX}px">${cells}</div>`;
+   +` style="--rp-grid:${rpGrid()};--rp-page-rows:${rpPageRows()}">${cells}</div>`;
  }
  /* 組み換え中だけ出る操作帯。**押した結果がその場の紙に出る**のがこの機能の
     値打ちなので、確認を挟まず即座に当てる（保存するまでは戻せる）。 */
@@ -1167,9 +1242,13 @@
   const grid=host.querySelector('.rp-blocks');if(!grid)return;
   const gap=parseFloat(getComputedStyle(grid).rowGap)||0;
   const auto=[];
+  const rowPx=rpRowPx(grid);
   grid.querySelectorAll('[data-rp-block]').forEach(el=>{
    const k=el.dataset.rpBlock,fixed=rpRows(k);
-   if(fixed>0)return;                       // 利用者が決めた行数が勝つ
+   /* **置き場所の決まった塊は測らない**（§9.221 ⑨）。器の大きさは利用者が
+      決めたものなので、中身に合わせて伸ばすと隣へ重なる（それが「重なりが
+      生じている」の実体だった）。中身のほうを`rpFitBlockBodies()`が縮める。 */
+   if(fixed>0||rpPos(k))return;
    el.style.gridRowEnd='';el.style.minHeight='';
    auto.push(el);
   });
@@ -1177,7 +1256,7 @@
   const need=auto.map(el=>el.getBoundingClientRect().height);
   auto.forEach((el,i)=>{
    const rows=Math.max(1,Math.min(RP_ROWS_MAX*2,
-     Math.ceil((need[i]+gap)/(RP_ROW_PX+gap))));
+     Math.ceil((need[i]+gap)/(rowPx+gap))));
    el.style.gridRowEnd='span '+rows;
   });
  }
@@ -1203,7 +1282,7 @@
   const gr=grid.getBoundingClientRect();
   const colW=(gr.width-gapX*(cols-1))/cols;
   if(!(colW>0))return 0;
-  const rowH=RP_ROW_PX;
+  const rowH=rpRowPx(grid);
   const used=new Set();
   let maxRow=0;
   grid.querySelectorAll('[data-rp-block]').forEach(el=>{
@@ -1241,8 +1320,14 @@
  }
  function rpMarkOverflow(host){
   rpFitRows(host);
+  /* **中身を器へ合わせる**（§9.221 ⑨）。行を測って器を伸ばす（`rpFitRows`）
+     のは置き場所の決まっていない塊だけで、決まっている塊はこちらが縮める。
+     刷るときも同じ関数を通る（`rpFitAll`）——別々に持つと、画面では入って
+     見えるのに紙で切れる、という形で食い違う。 */
+  const cramped=rpFitBlockBodies(host);
   rpFreeCells(host);
   rpUpdatePageFit();
+  if(cramped)rpSay(`${cramped}件は器に入りきりませんでした（縮めきれない大きさです）。行数を増やすか、中身を減らしてください。`,true);
   host.querySelectorAll('[data-rp-block]').forEach(el=>{
    /* **表だけを見る。** 節そのものを測ると、枠線や余白の丸めで1〜2px
       はみ出した扱いになり、入っている塊にまで案内が出る（実際に出た）。 */
@@ -1283,8 +1368,8 @@
     </div></div>`;
   document.body.append(m);
   $id('rpBlockClose').onclick=()=>{m.hidden=true};
-  m.addEventListener('click',e=>{if(e.target===m)m.hidden=true});
-  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!m.hidden)m.hidden=true},true);
+  WL.modal.keepOpen(m);
+  document.addEventListener('keydown',e=>{if(WL.modal.escCloses(e)&&!m.hidden)m.hidden=true},true);
   return m;
  }
  let rpEditKey=null;
@@ -1311,7 +1396,7 @@
     <span class="rp-form-ctl">
      <button type="button" data-e-rows="0" class="${rows?'':'is-on'}">中身なり（自動）</button>
      ${RP_ROWS.map(v=>`<button type="button" data-e-rows="${v}" class="${rows===v?'is-on':''}">${v}行</button>`).join('')}
-     <i class="rp-form-note">1行＝${RP_ROW_PX}px。行数を決めると<b>下の段へ跨いで</b>置けます（空いた横へ低い塊が回り込みます）。${def?`この塊の既定は${def}行です。`:'「中身なり」は描いてから測って決めます。'}</i></span></div>
+     <i class="rp-form-note">1行＝紙の縦の1/${rpPageRows()}です。器より背の高い中身は<b>入るところまで縮めて</b>収めます（縮めきれないときは帯で言います）。${def?`この塊の既定は${def}行です。`:'「中身なり」は描いてから測って決めます。'}</i></span></div>
    ${canTurn?`<div class="rp-form-row"><span class="rp-form-label">行と列</span>
     <span class="rp-form-ctl">
      <button type="button" data-e-turn="" class="${rpTransposed(k)?'':'is-on'}">縦＝条番号（今までの紙）</button>
@@ -1334,7 +1419,9 @@
   const form=$id('rpBlockForm');
   const w=()=>({...rpLayoutNow().widths});
   form.querySelectorAll('[data-e-span]').forEach(b=>b.onclick=()=>{
-   rpStage({widths:{...w(),[k]:rpSpanStore(rpSpanFromGrid(Number(b.dataset.eSpan)))}});renderBlockEditor();
+   /* **幅の当て方は1箇所**（§9.221 ⑨）——帯と設定窓で別々に書くと、
+      「入らないときに左へ寄せる」が片方だけ効いた状態が作れる。 */
+   rpApplySpan(k,Number(b.dataset.eSpan));renderBlockEditor();
   });
   form.querySelectorAll('[data-e-rows]').forEach(b=>b.onclick=()=>{
    const v=Number(b.dataset.eRows),wid=w();
@@ -1384,10 +1471,29 @@
   if(!g){g=document.createElement('div');g.id='rpGhost';g.className='rp-ghost'}
   return g;
  }
+ /* ---------- 落ちる先はマスで示す（§9.221 ⑨） ----------
+    置き場所を利用者が決める形にしたので、ゴーストも**そのマスへ実寸で**
+    出す。**置けないときは赤くして理由を書く**——置いてから断られるのでは
+    掴んだ手間が無駄になる（§4／§9.116と同じ約束）。 */
+ function rpShowGhostAt(grid,cell){
+  if(!grid||!rpDragKey||!cell)return;
+  const g=rpGhostEl(),k=rpDragKey,cols=rpGrid();
+  const span=Math.min(rpSpan(k),cols),rows=rpGhostRows(k);
+  const col=Math.max(1,Math.min(cols-span+1,cell.col));
+  const row=Math.max(1,cell.row);
+  const ok=rpFits(col,row,span,rows,rpOccupied(k));
+  g.style.gridColumn=col+'/span '+span;
+  g.style.gridRow=row+'/span '+rows;
+  g.classList.toggle('is-blocked',!ok);
+  g.innerHTML=`<b>${esc(rpBlockLabel(k))}</b><small>${col}列目・${row}行目／${span}×${rows}マス</small>`
+   +(ok?'':'<small class="rp-ghost-why">ここには別の塊が置かれています</small>');
+  if(g.parentElement!==grid)grid.appendChild(g);
+ }
  function rpShowGhost(grid,ref,after){
   if(!grid||!rpDragKey)return;
   const g=rpGhostEl(),k=rpDragKey;
   const span=rpSpan(k),rows=rpGhostRows(k);
+  g.classList.remove('is-blocked');
   g.style.gridColumn='span '+span;
   g.style.gridRow='span '+rows;
   /* **何マス×何行がここへ入るのかを数字でも言う**（§9.218 ⑥、利用者の
@@ -1408,6 +1514,197 @@
    if(m)return Math.max(1,Number(m[1]));
   }
   return 2;
+ }
+ /* ---------- 置き場所は「1度だけ書き下ろして、あとは動かさない」（§9.221 ⑨） ----------
+    自動配置のままだと、1つ大きさを変えるだけで後ろが全部動く（利用者の指摘
+    「意図しない形で詰まっていくので狙い通りの配置にできません」）。
+    **初めて組み換えに入った時点で、今そこに見えている位置をそのまま
+    マスタへ書く**——書き下ろさずに「触った塊だけ位置を持つ」形にすると、
+    位置のある塊と無い塊が混ざって、無いほうが毎回流れ直す（§9.173の
+    「触った時点で既定を書き下ろす」と同じ約束）。 */
+ /* **1回の組み換えで1度だけ**。書き下ろし→描き直し→また書き下ろし…と
+    回り続けると、画面は動いているのに操作を受け付けなくなる（§9.131で
+    起動オーバーレイが外れなくなったのと同じ壊れ方）。**必ず終わること**を
+    旗で担保する——「全部に位置が付いたか」だけを条件にすると、1つでも
+    付かない塊があった瞬間に無限に回る。 */
+ let rpSeeded=false;
+ function rpSeedPositions(host){
+  if(rpSeeded)return false;
+  const grid=host&&host.querySelector('.rp-blocks');if(!grid)return false;
+  const els=[...grid.querySelectorAll('[data-rp-block]')];
+  if(!els.length)return false;
+  if(els.every(el=>rpPos(el.dataset.rpBlock))){rpSeeded=true;return false}
+  rpSeeded=true;
+  const cols=rpGrid(),rowPx=rpRowPx(grid);
+  const cs=getComputedStyle(grid);
+  const gapX=parseFloat(cs.columnGap)||0,gapY=parseFloat(cs.rowGap)||0;
+  const gr=grid.getBoundingClientRect();
+  const colW=(gr.width-gapX*(cols-1))/cols;
+  if(!(colW>0)||!(rowPx>0))return false;
+  const wid={...rpLayoutNow().widths};
+  els.forEach(el=>{
+   const k=el.dataset.rpBlock,r=el.getBoundingClientRect();
+   const col=Math.max(1,Math.min(cols,Math.round((r.left-gr.left)/(colW+gapX))+1));
+   const row=Math.max(1,Math.min(RP_ROWS_MAX,Math.round((r.top-gr.top)/(rowPx+gapY))+1));
+   const span=Math.max(1,Math.min(cols-col+1,Math.round((r.width+gapX)/(colW+gapX))));
+   const rows=Math.max(1,Math.min(RP_ROWS_MAX,Math.round((r.height+gapY)/(rowPx+gapY))));
+   wid[rpColKey(k)]=rpPosStore(rpColTo12(col));
+   wid[rpRowPosKey(k)]=rpPosStore(rpRowTo12(row));
+   wid[k]=rpSpanStore(rpSpanFromGrid(span));
+   wid[rpRowsKey(k)]=rpRowsStore(rows);
+  });
+  rpStage({widths:wid});
+  return true;
+ }
+/* ---------- 置き場所を重ならないように解く（§9.221 ⑨） ----------
+    保存されている`列:`/`行:`は**希望**。マス数・段数を変えたときの丸めや、
+    古い設定、複数の塊が同じマスを指す形はいくらでも起こりうる。**描く前に
+    1回だけ解いて**、重なった塊は次に空いているマスへ送る——重なったまま
+    描くと、下の塊のボタンが押せなくなる（実測。組み換えの操作帯が別の塊に
+    覆われた）。
+    **1つも位置を持っていないうちは解かない**（`null`を返す）——初めて
+    組み換えに入るまでは今までどおり自動で流し、その姿を`rpSeedPositions()`が
+    書き下ろす。 */
+ function rpResolvePlacement(){
+  const cols=rpGrid();
+  const keys=rpBlockKeys().filter(k=>rpBlockOf(k));
+  if(!keys.some(k=>rpPos(k)))return null;
+  const used=new Set(),out=new Map();
+  const take=(col,row,span,rows)=>{
+   for(let r=0;r<rows;r++)for(let c=0;c<span;c++)used.add((row+r)+':'+(col+c));
+  };
+  /* **希望の位置を持つ塊を先に**置く（持たない塊に押しのけられないように）。 */
+  const order=keys.slice().sort((a,b)=>{
+   const pa=rpPos(a),pb=rpPos(b);
+   if(pa&&pb)return (pa.row-pb.row)||(pa.col-pb.col);
+   return pa?-1:(pb?1:0);
+  });
+  order.forEach(k=>{
+   const span=Math.max(1,Math.min(cols,rpSpan(k)));
+   const rows=Math.max(1,rpRows(k)||2);
+   const at=rpPos(k);
+   let col=at?Math.max(1,Math.min(cols-span+1,at.col)):1;
+   let row=at?Math.max(1,at.row):1;
+   if(!rpFits(col,row,span,rows,used)){
+    /* **必ず見つかるところまで探す**（下へは何段でも伸ばせる）。見つから
+       ないまま置くと重なってしまい、下の塊のボタンが押せなくなる。
+       `RP_ROWS_MAX`は**保存できる段の上限**であって、描ける段の上限では
+       ない——溢れたぶんは紙が2枚になることを`rpUpdatePageFit()`が言う。 */
+    let found=false;
+    for(let r=row;r<=row+RP_ROWS_MAX*2&&!found;r++)
+     for(let c=(r===row?col:1);c<=cols-span+1;c++)
+      if(rpFits(c,r,span,rows,used,row+RP_ROWS_MAX*3)){col=c;row=r;found=true;break}
+    if(!found){col=1}
+   }
+   take(col,row,span,rows);
+   out.set(k,{col,row,span,rows});
+  });
+  return out;
+ }
+ /* 幅を変える（§9.221 ⑨）。**入らないときは左へ寄せる**——置き場所を
+    持つようになったので、右端の塊に「全幅」を選ぶと紙からはみ出す。
+    寄せても入らないぶんは縮め、**縮めたことを文字で言う**（§4）。 */
+ function rpApplySpan(k,span){
+  const cols=rpGrid();
+  let want=Math.max(1,Math.min(cols,span));
+  const at=rpSpotOf(k);
+  const wid={...rpLayoutNow().widths};
+  if(at){
+   const used=rpOccupied(k);
+   const rows=Math.max(1,rpRows(k)||2);
+   /* 決め方は3段（§9.221 ⑨）。**隣を押しのけない**のが前提なので、
+      ①いまの段の中で左へ寄せて入るか →②入る段を下へ探すか →③縮めるか。
+      **どれになったかを文字で言う**（黙って別の段へ行くと、押した結果が
+      読めない）。 */
+   let col=0,row=at.row;
+   for(let c=Math.min(at.col,cols-want+1);c>=1;c--)if(rpFits(c,at.row,want,rows,used)){col=c;break}
+   if(!col)for(let r=1;r<=RP_ROWS_MAX-rows+1&&!col;r++)
+    for(let c=1;c<=cols-want+1;c++)if(rpFits(c,r,want,rows,used)){col=c;row=r;break}
+   if(!col){
+    col=Math.max(1,Math.min(at.col,cols-want+1));
+    while(want>1&&!rpFits(col,at.row,want,rows,used)){
+     want--;col=Math.max(1,Math.min(at.col,cols-want+1));
+    }
+    row=at.row;
+   }
+   wid[rpColKey(k)]=rpPosStore(rpColTo12(col));
+   wid[rpRowPosKey(k)]=rpPosStore(rpRowTo12(row));
+   if(want<span)rpSay(`${span}マスは入らないので${want}マスにしました（隣の塊か紙の端に当たっています）。`,true);
+   else if(row!==at.row||col!==at.col)rpSay(`${want}マスぶんが空いている ${col}列目・${row}行目へ移しました。`);
+  }
+  wid[k]=rpSpanStore(rpSpanFromGrid(want));
+  rpStage({widths:wid});
+ }
+ /* いま埋まっているマス。**自分（掴んでいる塊）は数えない**——数えると
+    その場に置き直すことすらできなくなる。 */
+ function rpOccupied(exceptKey){
+  /* **見えているとおりの埋まり方を見る**（§9.221 ⑨）。保存値（希望）を
+     直接見ると、重なりを解いたあとの実際の位置と食い違い、「空いて見える
+     マスへ落とせない」「埋まっているマスへ落とせる」の両方が起きる。 */
+  const spots=rpResolvePlacement();
+  const used=new Set();
+  if(!spots)return used;
+  spots.forEach((at,k)=>{
+   if(k===exceptKey)return;
+   for(let r=0;r<at.rows;r++)for(let c=0;c<at.span;c++)used.add((at.row+r)+':'+(at.col+c));
+  });
+  return used;
+ }
+ /* いまその塊が置かれているマス（解いたあと）。**保存値ではなくこちらを
+    見る**——縁を引く・幅を変えるの基準は「見えている位置」でなければ、
+    引いた瞬間に別の場所へ飛ぶ。 */
+ function rpSpotOf(k){
+  const spots=rpResolvePlacement();
+  return (spots&&spots.get(k))||rpPos(k);
+ }
+ /* `max`を渡すと段の上限を変えられる。**保存できる段の上限
+    （`RP_ROWS_MAX`）と、描ける段の上限は別**——重なりを解くときは下へ
+    何段でも伸ばせる（溢れたぶんは紙が2枚になることを帯が言う）。 */
+ function rpFits(col,row,span,rows,used,max){
+  const cols=rpGrid();
+  const top=max||RP_ROWS_MAX;
+  if(col<1||row<1||col+span-1>cols||row+rows-1>top)return false;
+  for(let r=0;r<rows;r++)for(let c=0;c<span;c++)if(used.has((row+r)+':'+(col+c)))return false;
+  return true;
+ }
+ /* カーソルの座標 → マスの番号。**塊の左上が来る場所**を返す（掴んだ
+    ところを中心にすると、大きい塊ほど狙いと結果がずれる）。 */
+ function rpCellAt(grid,clientX,clientY){
+  const cols=rpGrid(),rowPx=rpRowPx(grid);
+  const cs=getComputedStyle(grid);
+  const gapX=parseFloat(cs.columnGap)||0,gapY=parseFloat(cs.rowGap)||0;
+  const gr=grid.getBoundingClientRect();
+  const colW=(gr.width-gapX*(cols-1))/cols;
+  if(!(colW>0))return null;
+  return {col:Math.max(1,Math.min(cols,Math.floor((clientX-gr.left)/(colW+gapX))+1)),
+          row:Math.max(1,Math.min(RP_ROWS_MAX,Math.floor((clientY-gr.top)/(rowPx+gapY))+1))};
+ }
+ /* ---------- 器に合わせて中身を縮める（§9.221 ⑨） ----------
+    「設計したカードのサイズに合わせてコンテンツ貼り付け」。器の大きさは
+    利用者が決めたものなので、中身のほうを合わせる。**下限を割ったら
+    諦めて、入りきっていないことを文字で言う**（読めない大きさまで縮めるのは
+    切れているより悪い・§9.209 ③⑤と同じ約束）。
+    **測る前に前回の倍率を外すこと**——付いたまま測ると、一度縮んだ塊は
+    二度と元へ戻らない（§9.210 ④・§9.217で踏んだのと同じ罠）。 */
+ const RP_FIT_MIN=.55;
+ function rpFitBlockBodies(host){
+  const grid=host&&host.querySelector('.rp-blocks');if(!grid)return 0;
+  const boxes=[...grid.querySelectorAll('[data-rp-block].is-placed>.rp-block-fit')];
+  if(!boxes.length)return 0;
+  /* **倍率はカスタムプロパティで渡す**（`--rp-fit`）。インラインの
+     `style.transform`はどのレイヤより強く、CSSから打ち消せなくなる
+     （帳票の`--rp-scale`と同じ約束）。 */
+  boxes.forEach(b=>{b.style.removeProperty('--rp-fit');b.parentElement.classList.remove('is-cramped')});
+  let cramped=0;
+  boxes.forEach(b=>{
+   const room=b.parentElement.clientHeight;
+   const need=b.scrollHeight;
+   if(!room||need<=room+1)return;
+   const k=Math.max(RP_FIT_MIN,room/need);
+   b.style.setProperty('--rp-fit',k.toFixed(3));
+   if(need*k>room+1){b.parentElement.classList.add('is-cramped');cramped++}
+  });
+  return cramped;
  }
  function rpEndDrag(){
   rpDragKey=null;rpDragFrom=null;
@@ -1457,7 +1754,7 @@
   if(rpArranging){closeArrange(false);return}
   if(!rpState.selectedId){showToast&&showToast('先にロットを選んでください','左の一覧から選ぶと、その帳票を見ながら組み換えられます',4000);return}
   try{await WL.columnLayout.load(rpTarget())}catch(e){}
-  rpArranging=true;
+  rpArranging=true;rpSeeded=false;
   document.body.classList.add('rp-arranging');
   updateArrangeBar();rpRepaint();
  }
@@ -1499,6 +1796,40 @@
   btn.hidden=(mode==='view');
   if(btn.hidden&&rpArranging)closeArrange(false);
  }
+/* 組み換え中の一言（§9.221 ⑨）。**黙って何も起きないのがいちばん悪い**
+    ——置けなかった・縮めた・入りきらない、はその場で文字にする。 */
+ function rpSay(text,bad){
+  const el=$id('rpArrangeNote');if(!el)return;
+  el.innerHTML=esc(text||'');
+  el.classList.toggle('is-bad',!!bad);
+ }
+ /* 左上から詰め直す（§9.221 ⑨）。**「任意の場所へ置ける」の裏側**として
+    要る——1つずつ動かして整えるのは手間なので、いったん整列させてから
+    直したいところだけ動かせるようにする。並びの順に置く。 */
+ function rpRelayout(){
+  const cols=rpGrid();
+  const wid={...rpLayoutNow().widths};
+  const used=new Set();
+  const hidden=rpHiddenSet();
+  rpBlockKeys().forEach(k=>{
+   if(hidden.has(k))return;
+   const span=Math.max(1,Math.min(cols,rpSpan(k)));
+   const rows=Math.max(1,rpRows(k)||2);
+   let col=1,row=1;
+   while(row<=RP_ROWS_MAX){
+    if(rpFits(col,row,span,rows,used))break;
+    col++;
+    if(col+span-1>cols){col=1;row++}
+   }
+   if(row>RP_ROWS_MAX){row=RP_ROWS_MAX;col=1}
+   for(let r=0;r<rows;r++)for(let c=0;c<span;c++)used.add((row+r)+':'+(col+c));
+   wid[rpColKey(k)]=rpPosStore(rpColTo12(col));
+   wid[rpRowPosKey(k)]=rpPosStore(rpRowTo12(row));
+   wid[rpRowsKey(k)]=rpRowsStore(rows);
+  });
+  rpStage({widths:wid});
+  rpSay('左上から詰め直しました。');
+ }
  function updateArrangeBar(){
   const bar=$id('rpArrangeBar'),btn=$id('reportArrange');
   if(btn){
@@ -1517,12 +1848,24 @@
     /* **紙に収まるかは、外した塊を出したままでは確かめられない**（§9.174）。
        切り替えたときだけ操作の帯も消し、刷ったとおりの姿にする。 */
     +`<button type="button" class="rp-paper-toggle${rpPaperView?' is-on':''}" data-rp-paper title="${rpPaperView?'出さない塊も出して編集に戻ります':'出さない塊と操作の帯を隠して、刷ったとおりの姿で確かめます'}">${rpPaperView?'編集の表示に戻す':'紙のとおりに見る'}</button>`
+    /* 縦のマス数（§9.221 ⑨）。**紙の縦を何等分するか**なので、横と同じ
+       ように選ばせる——1マスが紙の1/N になるので、粗いほどカードが
+       そろって見える（§9.135）。 */
+    +`<span class="rp-grid-pick">紙の段数 ${RP_PAGE_ROW_CHOICES.map(v=>
+      `<button type="button" data-rp-prow="${v}" class="${v===rpPageRows()?'is-on':''}" title="紙の縦を${v}段で割ります（1マスが紙の1/${v}）">${v}</button>`).join('')}</span>`
+    +`<button type="button" class="rp-relayout" data-rp-relayout title="いま出ている塊を左上から詰め直します（重なりと隙間をいったん整えます）">並べ直す</button>`
     +`<span class="rp-page-fit" id="rpPageFit"></span>`
-    +`<span class="rp-arrange-note">塊はドラッグで並べ替え、ダブルクリックで大きく開いて高さ・列幅・行列を決められます。いま外しているのは ${hidden} 件です。</span>`;
+    +`<span class="rp-arrange-note" id="rpArrangeNote">塊はドラッグで<b>置きたいマスへ</b>置けます（空いているマスだけ）。縁を引くと大きさ、ダブルクリックで細かい設定。いま外しているのは ${hidden} 件です。</span>`;
    info.querySelectorAll('[data-rp-grid]').forEach(b=>b.onclick=()=>{
     rpStage({widths:{...rpLayoutNow().widths,[RP_GRID_KEY]:rpSpanStore(Number(b.dataset.rpGrid))}});
     updateArrangeBar();
    });
+   info.querySelectorAll('[data-rp-prow]').forEach(b=>b.onclick=()=>{
+    rpStage({widths:{...rpLayoutNow().widths,[RP_PAGE_ROWS_KEY]:rpSpanStore(Number(b.dataset.rpProw))}});
+    updateArrangeBar();
+   });
+   const rel=info.querySelector('[data-rp-relayout]');
+   if(rel)rel.onclick=()=>rpRelayout();
    const pv=info.querySelector('[data-rp-paper]');
    if(pv)pv.onclick=()=>{rpPaperView=!rpPaperView;rpRepaint();updateArrangeBar()};
   }
@@ -1531,28 +1874,37 @@
  function bindArrangeHandlers(){
   const host=$id('reportContent');if(!host)return;
   /* **描いてから測る**（§9.173）。レイアウトが決まる前に測ると必ず読み違える。 */
-  requestAnimationFrame(()=>requestAnimationFrame(()=>rpMarkOverflow(host)));
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+   /* **初めて組み換えに入った時点で、今の見え方を置き場所として書き下ろす**
+      （§9.221 ⑨）。書き下ろすと`rpStage`が描き直すので、そのときは測り直しを
+      そちらへ任せる（ここで続けると、消えた要素を測ることになる）。 */
+   if(rpSeedPositions(host))return;
+   rpMarkOverflow(host);
+  }));
   /* 塊と塊のあいだ・紙の余白へ落としたら**末尾へ**。落とせる場所を
      「塊の上だけ」に絞ると、掴んだまま行き場を探すことになる。 */
   const grid=host.querySelector('.rp-blocks');
   if(grid&&!grid.dataset.wired){
    grid.dataset.wired='1';
+   /* **落ちる先はカーソルのマス**（§9.221 ⑨）。塊の上でも紙の余白でも
+      同じ規則にする——「塊の上なら並べ替え／余白なら末尾」と分けると、
+      同じ操作の結果が場所で変わる。 */
    grid.addEventListener('dragover',ev=>{
     if(!rpDragKey)return;
-    if(ev.target.closest('[data-rp-block]'))return;
-    ev.preventDefault();rpShowGhost(grid,null,false);
+    ev.preventDefault();
+    rpShowGhostAt(grid,rpCellAt(grid,ev.clientX,ev.clientY));
    });
    grid.addEventListener('drop',ev=>{
     if(!rpDragKey)return;
-    if(ev.target.closest('[data-rp-block]'))return;
-    ev.preventDefault();rpDropAt(null,true);
+    ev.preventDefault();
+    rpDropCell(grid,rpCellAt(grid,ev.clientX,ev.clientY));
    });
   }
   host.querySelectorAll('[data-rp-block]').forEach(el=>{
    const k=el.dataset.rpBlock;
    el.querySelectorAll('[data-rp-span]').forEach(b=>b.onclick=ev=>{
     ev.preventDefault();ev.stopPropagation();
-    rpStage({widths:{...rpLayoutNow().widths,[k]:rpSpanStore(rpSpanFromGrid(Number(b.dataset.rpSpan)))}});
+    rpApplySpan(k,Number(b.dataset.rpSpan));
    });
    /* 分解／まとめ。**hiddenを付け外しするだけ**——まとめに載るかどうかは
       「単独ブロックが出ているか」の1点で決まる（同じ内容を2箇所に出さない）。 */
@@ -1609,18 +1961,9 @@
     try{ev.dataTransfer.setData('text/plain',k);ev.dataTransfer.effectAllowed='move'}catch(_){}
    });
    el.addEventListener('dragend',rpEndDrag);
-   el.addEventListener('dragover',ev=>{
-    if(!rpDragKey||k===rpDragKey)return;
-    ev.preventDefault();
-    const r=el.getBoundingClientRect(),after=(ev.clientX-r.left)>r.width/2;
-    rpShowGhost(el.parentElement,el,after);
-   });
-   el.addEventListener('drop',ev=>{
-    if(!rpDragKey||k===rpDragKey)return;
-    ev.preventDefault();ev.stopPropagation();
-    const r=el.getBoundingClientRect(),after=(ev.clientX-r.left)>r.width/2;
-    rpDropAt(k,after);
-   });
+   /* 塊の上でも**マスの規則は同じ**（§9.221 ⑨）。器の`dragover`／`drop`が
+      拾うので、ここでは何もしない——2通りの落とし方を持つと、同じ場所へ
+      落としても結果が変わる。 */
   });
  }
  /* ---------- 縁を引いて大きさを変える（§9.218 ⑥、利用者の指示） ----------
@@ -1642,7 +1985,8 @@
     const colW=(gr.width-gapX*(cols-1))/cols;
     const br=el.getBoundingClientRect();
     let span=rpSpan(k);
-    let rows=rpRows(k)||Math.max(1,Math.round((br.height+gapY)/(RP_ROW_PX+gapY)));
+    const rowPx=rpRowPx(grid);
+    let rows=rpRows(k)||Math.max(1,Math.round((br.height+gapY)/(rowPx+gapY)));
     el.setAttribute('draggable','false');
     const tip=document.createElement('div');
     tip.className='rp-size-tip';document.body.appendChild(tip);
@@ -1650,14 +1994,28 @@
      tip.textContent=`${span}/${cols}マス × ${rows}行`;
      tip.style.left=(x+14)+'px';tip.style.top=(y+14)+'px';
     };
+    /* **置き場所が決まっている塊は、その位置に留めたまま大きさだけ変える**
+       （§9.221 ⑨）。`span`だけを書き換えると自動配置へ戻ってしまい、
+       引いた瞬間に別の場所へ飛ぶ。 */
+    const at=rpSpotOf(k);
+    const used=rpOccupied(k);
     const move=e=>{
-     if(kind!=='h')span=Math.max(1,Math.min(cols,
+     if(kind!=='h')span=Math.max(1,Math.min(at?cols-at.col+1:cols,
        Math.round((e.clientX-br.left+gapX)/(colW+gapX))));
-     if(kind!=='w')rows=Math.max(1,Math.min(RP_ROWS_MAX,
-       Math.round((e.clientY-br.top+gapY)/(RP_ROW_PX+gapY))));
-     el.style.gridColumn='span '+span;
-     el.style.gridRowEnd='span '+rows;
-     el.style.minHeight=(rows*RP_ROW_PX)+'px';
+     if(kind!=='w')rows=Math.max(1,Math.min(at?RP_ROWS_MAX-at.row+1:RP_ROWS_MAX,
+       Math.round((e.clientY-br.top+gapY)/(rowPx+gapY))));
+     /* **他の塊の上へは広げない**（§9.221 ⑨）。広げてから断るのでは、
+        どこまで広げられるのかが分からない。 */
+     if(at){
+      while(span>1&&!rpFits(at.col,at.row,span,rows,used))span--;
+      while(rows>1&&!rpFits(at.col,at.row,span,rows,used))rows--;
+      el.style.gridColumn=at.col+'/span '+span;
+      el.style.gridRow=at.row+'/span '+rows;
+     }else{
+      el.style.gridColumn='span '+span;
+      el.style.gridRowEnd='span '+rows;
+     }
+     el.style.minHeight='';
      show(e.clientX,e.clientY);
     };
     const up=()=>{
@@ -1680,6 +2038,35 @@
     show(ev.clientX,ev.clientY);
    });
   });
+ }
+ /* ---------- マスへ落とす（§9.221 ⑨） ----------
+    **位置・大きさ・「出す/出さない」を1回で書く**——別々に保存すると、
+    途中で切れたときに片方だけ効いた状態が残る（§9.217と同じ約束）。
+    置けないマスへ落としたら**何もせず理由を言う**（黙って別の場所へ
+    置くと、狙った場所へ置けたのかが分からない）。 */
+ function rpDropCell(grid,cell){
+  const key=rpDragKey,from=rpDragFrom;
+  if(!key||!cell){rpEndDrag();return}
+  const cols=rpGrid();
+  const span=Math.min(rpSpan(key),cols),rows=rpGhostRows(key);
+  const col=Math.max(1,Math.min(cols-span+1,cell.col));
+  const row=Math.max(1,cell.row);
+  const ok=rpFits(col,row,span,rows,rpOccupied(key));
+  rpEndDrag();
+  if(!ok){rpSay('そのマスには別の塊が置かれています。空いているマスへ落としてください。',true);return}
+  const wid={...rpLayoutNow().widths};
+  wid[rpColKey(key)]=rpPosStore(rpColTo12(col));
+  wid[rpRowPosKey(key)]=rpPosStore(rpRowTo12(row));
+  if(!rpRows(key))wid[rpRowsKey(key)]=rpRowsStore(rows);
+  const patch={widths:wid};
+  if(from==='palette'){
+   const set=new Set(rpHiddenSet());set.delete(key);patch.hidden=[...set];
+   /* 並びにも載せる（並びは「紙に出る順」＝印刷の読み順として残る）。 */
+   const order=rpBlockKeys();
+   if(order.indexOf(key)<0)order.push(key);
+   patch.order=order;
+  }
+  rpStage(patch);
  }
  /* 落とす。**並びと「出す/出さない」を1回で決める**（§9.217）——パレット
     から落としたときに「並べ替え」と「出す」を別々に保存すると、途中で
@@ -1768,6 +2155,10 @@
  function rpFitAll(){
   document.querySelectorAll('#reportContent,#reportBulkPrintArea .rp-page').forEach(h=>{
    try{rpFitRows(h)}catch(e){console.warn('帳票の行の割り付けに失敗',e)}
+   /* **紙にも中身の合わせ込みが要る**（§9.221 ⑨）。器は`overflow:hidden`で
+      大きさを守るので、ここを組み換え中だけにすると**刷った紙で中身が
+      切れる**（画面では入って見えるのに、というのがいちばん悪い）。 */
+   try{rpFitBlockBodies(h)}catch(e){console.warn('帳票の中身の合わせ込みに失敗',e)}
    /* **行を測り直したら空きも引き直す**（§9.218 ⑥）——塊の高さが変われば
       空いているマスも変わるので、忘れると前の形の空きが残る。 */
    try{rpFreeCells(h)}catch(e){console.warn('帳票の空きマスの計算に失敗',e)}

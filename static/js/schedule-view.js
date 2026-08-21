@@ -860,13 +860,13 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     <p class="sc-icon-win-foot">選んだ瞬間に保存され、下の表にもすぐ当たります。色は行ごとのプルダウンで選びます。</p>
    </div>`;
   document.body.appendChild(el);
-  /* 外(暗い地)を押したら閉じる。窓の中は閉じない。 */
-  el.addEventListener('mousedown',e=>{if(e.target===el)closeIconPicker()});
+  /* 背景を押しても閉じない（§9.221 ①。閉じ方はどのモーダルでも×／Esc）。 */
+  WL.modal.keepOpen(el);
   el.querySelector('#scIconPickClose').onclick=()=>closeIconPicker();
   /* **入力中に盤ごと作り直さない**(§9.117)——入力欄を作り替えると
      1文字ごとにカーソルが飛ぶ。描き直すのは一覧だけ。 */
   el.querySelector('#scIconPickQ').addEventListener('input',()=>renderIconPickBody());
-  el.addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();closeIconPicker()}});
+  el.addEventListener('keydown',e=>{if(WL.modal.escCloses(e)){e.stopPropagation();closeIconPicker()}});
   return el;
  }
  function openIconPicker(t){

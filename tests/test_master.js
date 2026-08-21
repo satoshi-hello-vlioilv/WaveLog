@@ -38,8 +38,10 @@ let b=null;
  rec('画面全体にも横スクロールが出ない',ov.bodyScrollW<=ov.bodyClientW+1,`body ${ov.bodyScrollW}/${ov.bodyClientW}`);
  rec('列数が多いマスタでは更新者/更新日時を列から外す(6項目+操作=7)',ov.cols===7,'head spans='+ov.cols);
 
- // 列が少ないマスタでは監査列を出す
- await clickTab('スプール');
+ /* 列が少ないマスタでは監査列を出す。**スプール種別は操業データ選択肢
+    マスタへ統合した**（§9.221 ③）ので、列の少ない代表は設備停止分類で見る
+    （見ているのは「列が少なければ更新者・更新日時も出す」という規則そのもの）。 */
+ await clickTab('設備停止分類');
  await page.waitForTimeout(900);
  const sp=await page.evaluate(()=>({cols:document.querySelectorAll('.mm-row.head>span').length,
    labels:[...document.querySelectorAll('.mm-row.head>span')].map(s=>s.textContent)}));

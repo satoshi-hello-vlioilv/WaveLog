@@ -1444,8 +1444,8 @@
     $('#exportFilterPresets').onclick=()=>openIoPanel('export');
     $('#importFilterPresets').onclick=()=>openIoPanel('import');
     $('#reloadFilterPresets').onclick=async()=>{const list=$('#filterPresetList');setPanelLoading(list,true,'マスタから再読込しています...');await loadMasterPresets({inline:false});setPanelLoading(list,false);renderFilterPresetList();renderGenericFilterBar()};
-    modal.addEventListener('click',e=>{if(e.target===modal){modal.hidden=true;ioClose()}});
-    document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!modal.hidden){modal.hidden=true;ioClose()}},true);
+    WL.modal.keepOpen(modal);
+    document.addEventListener('keydown',event=>{if(WL.modal.escCloses(event)&&!modal.hidden){modal.hidden=true;ioClose()}},true);
     return modal;
   }
   /* ---------- もう一方の場面にある登録(§9.184) ----------

@@ -2159,6 +2159,60 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
    注記がそれぞれ違う大きさになっていた）。ここで宣言するのは、組み込みには
    無いもの——単位・必須の印・直した理由——だけ。 */
 .opf-unit{font-style:normal;font-size:var(--fs-badge);color:var(--ink-3);margin-left:var(--gap-tight)}
+/* ---------- 単位の置き場・値の寄せ（§9.221 ⑦、利用者の指示） ----------
+   「単位を出す位置(外上左、外上中央、外上右、内部、外下左、外中央、外下右)、
+    出し方、データの表示方法、桁数、左詰め、右詰め、中央寄せなど」
+
+   **既定（`外下左`）は今までの見え方そのもの**——欄の下に左詰めで小さく
+   出る。器の属性（`data-opunit`／`data-opalign`）だけを見て当て、値を持つ
+   `<select>`/`<input>`そのものには触らない（組み込みの欄にも同じ形で効く）。 */
+.opf-unit-line{display:flex;min-width:0;line-height:1.1}
+.opf-unit-line[data-at="左"]{justify-content:flex-start}
+.opf-unit-line[data-at="中央"]{justify-content:center}
+.opf-unit-line[data-at="右"]{justify-content:flex-end}
+.opf-unit-line>.opf-unit{margin:0}
+/* 単位を**欄の上**へ出すときは段を1つ増やす。`.dense-controls label`の
+   `grid-template-rows:20px var(--ctl-h)`のままだと、2段目（操作の高さ）を
+   単位の行が取ってしまい、欄が高さの決まっていない段へ落ちる。 */
+.dense-controls label[data-opunit^="外上"]{grid-template-rows:20px auto var(--ctl-h)}
+/* `内部`＝欄の中の右端に重ねる。**位置はグリッドの同じマスに置いて出す**
+   ——`position:absolute`＋座標にすると、器（測定画面／設定窓の見本）ごとに
+   段の高さが違うので必ずどちらかでずれる。マスの指定は**欄と単位の両方へ**
+   与えること——片方だけだと自動配置が空きマスを探して欄が下の段へ落ちる。 */
+[data-opunit="内部"]>.opf-unit-in{
+  grid-row:2;grid-column:1;justify-self:end;align-self:center;
+  margin:0 var(--space-2) 0 0;pointer-events:none;color:var(--muted);
+}
+[data-opunit="内部"]>select,
+[data-opunit="内部"]>input:not([type=checkbox]):not([type=radio]){grid-row:2;grid-column:1}
+/* **段だけでなく列も明示する。** 段だけを揃えても、自動配置は同じ段の
+   **次の列**へ回すので、欄と単位は隣どうしに並ぶだけで重ならない
+   （実測: 器の列が`111px 24px`の2本になり、単位が欄の右外へ出ていた）。
+   名前も同じ列へ固定する——これが無いと器（測定画面／設定窓の見本）で
+   子の並びが少し違うだけで名前が2段目へ回り込む。 */
+[data-opunit="内部"]>.opf-name{grid-row:1;grid-column:1}
+/* 重ねたぶんの逃げ場を欄の右に空ける。**器いっぱいに広げる**——右端が
+   器の右端と一致していないと、単位だけが欄の外に浮いて見える。
+   プルダウンは右端に▼の場所（実測16px）が要るので、そのぶん内側へ寄せる。 */
+.measure-shell .selectors>label[data-opunit="内部"]>input:not([type=checkbox]):not([type=radio]),
+.op-prev-field .opf[data-opunit="内部"]>input{
+  max-width:none;width:100%;padding-right:calc(var(--opf-unit-w,2ch) + var(--space-4));
+}
+.measure-shell .selectors>label[data-opunit="内部"]>select,
+.op-prev-field .opf[data-opunit="内部"]>select{
+  max-width:none;width:100%;padding-right:calc(var(--opf-unit-w,2ch) + var(--space-4) + 16px);
+}
+.measure-shell .selectors>label[data-opunit="内部"]>select~.opf-unit-in,
+.op-prev-field .opf[data-opunit="内部"]>select~.opf-unit-in{margin-right:calc(var(--space-2) + 16px)}
+/* 値の寄せ。**`自動`のときは何も宣言しない**（今までどおり）。
+   §9.208 ③で`input[type="text"]{text-align:left}`を`:not(.numeric-input)`で
+   避けているので、ここは詳細度を1つ上げて確実に勝たせる。 */
+.measure-shell [data-opalign="左"]>select,.measure-shell [data-opalign="左"]>input,
+.op-prev-field [data-opalign="左"]>select,.op-prev-field [data-opalign="左"]>input{text-align:left}
+.measure-shell [data-opalign="中央"]>select,.measure-shell [data-opalign="中央"]>input,
+.op-prev-field [data-opalign="中央"]>select,.op-prev-field [data-opalign="中央"]>input{text-align:center}
+.measure-shell [data-opalign="右"]>select,.measure-shell [data-opalign="右"]>input,
+.op-prev-field [data-opalign="右"]>select,.op-prev-field [data-opalign="右"]>input{text-align:right}
 .opf-req{
   margin-left:var(--gap-tight);padding:0 4px;border-radius:var(--radius-xs);
   background:var(--required-bg);color:var(--required);

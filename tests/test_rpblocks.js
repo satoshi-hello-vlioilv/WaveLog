@@ -93,29 +93,49 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
   await page.click('[data-rp-block="基本情報"] [data-rp-span="12"]');
   await settle(page);
   const w1=await page.evaluate(()=>document.querySelector('[data-rp-block="基本情報"]').style.gridColumn);
-  rec('幅を選ぶとその場で紙が変わる',w1==='span 12',w1);
+  /* 置き場所を持つようになった（§9.221 ⑨）ので、`gridColumn`は
+     `<列> / span <幅>`の形になる。**入らないときは左へ寄せる**ので、
+     全幅を選べば必ず12マスになる。 */
+  const span12=v=>/(^|\/\s*)span 12$/.test(String(v||''));
+  rec('幅を選ぶとその場で紙が変わる',span12(w1),w1);
   await page.click('[data-rp-block="品質等級"] [data-rp-toggle]');
   await settle(page);
   const off=await page.evaluate(()=>document.querySelector('[data-rp-block="品質等級"]').classList.contains('is-off'));
   rec('「隠す」を押すとその場で外れる',off===true,String(off));
 
-  /* 並べ替え。HTML5のD&Dは実際のイベントで確かめる（クリックでは通らない
-     経路なので、押しただけでは網にならない）。 */
-  const order1=await blocks(page);
-  await page.evaluate(([a,c])=>{
-   const s=document.querySelector(`[data-rp-block="${a}"]`),t=document.querySelector(`[data-rp-block="${c}"]`);
-   const dt=new DataTransfer(),r=t.getBoundingClientRect();
-   const at={bubbles:true,dataTransfer:dt,clientX:r.left+r.width*0.75,clientY:r.top+5};
+  /* ---- 塊は**置きたいマスへ**動く（§9.221 ⑨） ----
+     以前は「落とした塊の前後へ挿す」並べ替えだったが、置き場所を利用者が
+     決める形になったので、落とした先のマスへ移る。**空いているマスへ
+     落とすこと**——埋まっているマスへ落とすと（正しく）断られるので、
+     何も起きないのが不具合なのか仕様なのか分からなくなる。
+     HTML5のD&Dは実際のイベントで確かめる（クリックでは通らない経路）。 */
+  const moved=await page.evaluate(a=>{
+   const grid=document.querySelector('.rp-blocks');
+   const s=document.querySelector(`[data-rp-block="${a}"]`);
+   const gr=grid.getBoundingClientRect();
+   const cs=getComputedStyle(grid);
+   const cols=(cs.gridTemplateColumns||'').split(' ').filter(Boolean).length||12;
+   const rowPx=parseFloat(cs.gridAutoRows)||24;
+   /* 誰も置いていない行を探す（いちばん下の塊より下）。 */
+   const bottom=[...grid.querySelectorAll('[data-rp-block]')]
+     .reduce((m,e)=>Math.max(m,e.getBoundingClientRect().bottom),gr.top);
+   const y=bottom+rowPx*0.5,x=gr.left+2;
+   const dt=new DataTransfer();
+   const at={bubbles:true,dataTransfer:dt,clientX:Math.round(x),clientY:Math.round(y)};
    s.dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer:dt}));
-   t.dispatchEvent(new DragEvent('dragover',at));
-   t.dispatchEvent(new DragEvent('drop',at));
+   grid.dispatchEvent(new DragEvent('dragover',at));
+   grid.dispatchEvent(new DragEvent('drop',at));
    s.dispatchEvent(new DragEvent('dragend',{bubbles:true,dataTransfer:dt}));
-  },['ラベル貼付スペース','コース情報']);
+   return {cols,row:Math.floor((y-gr.top)/(rowPx+(parseFloat(cs.rowGap)||0)))+1};
+  },'ラベル貼付スペース');
   await settle(page);
-  const order2=await blocks(page);
-  rec('塊をドラッグで並べ替えられる',
-      order2.indexOf('ラベル貼付スペース')>order1.indexOf('ラベル貼付スペース'),
-      order2.slice(0,4).join('／'));
+  const placed=await page.evaluate(a=>{
+   const e=document.querySelector(`[data-rp-block="${a}"]`);
+   return e?{grid:e.style.gridRow,placed:e.classList.contains('is-placed')}:null;
+  },'ラベル貼付スペース');
+  rec('塊をドラッグで空いているマスへ動かせる',
+      !!placed&&placed.placed===true&&/^\d+\s*\/\s*span/.test(placed.grid||''),
+      JSON.stringify({...placed,...moved}));
 
   /* ---- 4) やめる＝開いた時点へ戻る ---- */
   await page.click('#rpArrangeCancel');
@@ -126,7 +146,7 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
    quality:!!document.querySelector('[data-rp-block="品質等級"]'),
    order:[...document.querySelectorAll('[data-rp-block]')].map(e=>e.dataset.rpBlock)}));
   rec('「やめる」で開いた時点の配置へ戻る',
-      back.bars===0&&back.span!=='span 12'&&back.quality===true,JSON.stringify({span:back.span,quality:back.quality}));
+      back.bars===0&&!span12(back.span)&&back.quality===true,JSON.stringify({span:back.span,quality:back.quality}));
   rec('「やめる」で並びも戻る',JSON.stringify(back.order)===JSON.stringify(before),
       back.order.slice(0,4).join('／'));
 
@@ -143,7 +163,7 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
    span:document.querySelector('[data-rp-block="基本情報"]').style.gridColumn,
    quality:!!document.querySelector('[data-rp-block="品質等級"]')}));
   rec('保存すると組み換えを抜けて、結果が紙に残る',
-      saved.bars===0&&saved.span==='span 12'&&saved.quality===false,JSON.stringify(saved));
+      saved.bars===0&&span12(saved.span)&&saved.quality===false,JSON.stringify(saved));
   const srv=await (await fetch(B+'/api/column-layout-master?target='+encodeURIComponent(TARGET))).json();
   rec('サーバーに「出さない塊」が残る',(srv.hidden||[]).includes('品質等級'),JSON.stringify(srv.hidden));
   /* **ここが要点**。`widths`はpxとして40〜900へ丸められるので、マスの数

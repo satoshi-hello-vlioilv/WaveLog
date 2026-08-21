@@ -574,6 +574,121 @@ const settle=async page=>{
   });
   rec('出したラベルは条の幅に収まっている（見切れさせない）',clip.length===0,clip.join(' / '));
 
+  /* ==========================================================
+     §9.221 ⑥ 条の設計カードの3件
+     ----------------------------------------------------------
+     利用者の指摘:
+      ①「子ロットデータがない時に『子ロットの内訳』の文字列の表示は不要」
+      ②「子ロットデータがあるとき、展開してもカード内の描画となり
+        レイヤーが下に隠れる」
+      ③「子ロットデータがあるとき、図が崩れる。左右OS,DS辺りにある
+        文字列が渋滞して重なり合い表示がきちんと読めない」
+     ========================================================== */
+  /* ① **子ロットが無いときは見出しごと出さない**。ここはまだ分割なしの
+     ロットを開いたままなので、そのまま見る（開き直すと前提が変わる）。 */
+  const foldOff=await page.evaluate(()=>{
+   const f=document.getElementById('splitDetailFold');
+   const layout=document.querySelector('#splitCard .split-layout');
+   return {ある:!!f,出ている:!!f&&f.hidden!==true,
+     編集面:!!layout&&layout.hidden!==true};
+  });
+  rec('子ロットが無いときは「子ロットの内訳」を出さない（§9.221 ⑥①）',
+      foldOff.ある===true&&foldOff.出ている===false,JSON.stringify(foldOff));
+
+  /* ③ 屑の帯・目盛りは**いま開いている分割なしのロット**で見る
+     （横割数6で耳が6pxまで痩せている＝いちばん厳しい形）。分割ありへ
+     開き直してから測ると、そのロットは耳が出ないので「前提が揃って
+     いない」で何も確かめられない。 */
+  /* ③ 屑の帯は**mmの比だけ**で幅が決まる（中の文字で太らない）。
+     **確かめるときは実際に屑を出すこと**——出ていなければ何も見ていない。 */
+  const scrapGeom=await page.evaluate(()=>{
+   const os=document.getElementById('splitVisualScrapOs');
+   const ds=document.getElementById('splitVisualScrapDs');
+   const strip=document.getElementById('splitVisualStrip');
+   if(!os||os.hidden||!strip)return {出ていない:true};
+   const cs=getComputedStyle(os);
+   const r=os.getBoundingClientRect(),s=strip.getBoundingClientRect();
+   const label=os.querySelector('.split-visual-scrap-label');
+   const end=document.querySelector('.split-visual-end.os');
+   const er=end&&end.getBoundingClientRect();
+   return {基:cs.flexBasis,伸び:cs.flexGrow,最小幅:cs.minWidth,
+     帯:Math.round(r.width),条の束:Math.round(s.width),
+     文字がはみ出していない:!label||label.getBoundingClientRect().right<=r.right+1,
+     OSと重なっていない:!er||er.right<=r.left+1};
+  });
+  if(scrapGeom.出ていない){
+   rec('屑の帯はmmの比だけで幅が決まる（中の文字で太らない）',false,
+       '前提が揃っていない（屑が出ていない）');
+  }else{
+   rec('屑の帯はmmの比だけで幅が決まる（中の文字で太らない）',
+       scrapGeom.基==='0px'&&Number(scrapGeom.伸び)>0&&scrapGeom.最小幅==='0px',JSON.stringify(scrapGeom));
+   rec('屑の文字がOS/DSの文字と重ならない',
+       scrapGeom.文字がはみ出していない&&scrapGeom.OSと重なっていない,JSON.stringify(scrapGeom));
+  }
+  /* 目盛りの数字が器から半分はみ出していない（OS/DSと重なる原因）。 */
+  const ticks=await page.evaluate(()=>{
+   const box=document.getElementById('splitVisualMeasure');
+   if(!box)return {none:true};
+   const br=box.getBoundingClientRect();
+   const bad=[];
+   document.querySelectorAll('#splitVisualRuler .split-visual-tick-label').forEach(l=>{
+    const r=l.getBoundingClientRect();
+    if(r.left<br.left-1||r.right>br.right+1)bad.push(l.textContent+':'+Math.round(r.left-br.left));
+   });
+   return {数:document.querySelectorAll('#splitVisualRuler .split-visual-tick-label').length,はみ出し:bad};
+  });
+  rec('目盛りの数字が図の外へはみ出さない',
+      !ticks.none&&ticks.はみ出し.length===0,JSON.stringify(ticks));
+
+  /* ② は**分割ありのロットで見る**。直前の §9.210 ④／§9.209 ② が
+     分割なしのロットへ切り替えているので、開き直してから測る
+     （開き直さないと「子ロットが無い」状態を見て落ちる）。 */
+  const reopened=await page.evaluate(async lot=>{
+   const r=await fetch('/api/table?'+new URLSearchParams({db:'SIKALOTNOW',table:'仕掛',page:1,page_size:5,
+     filters:JSON.stringify([{column:'ロット番号',op:'eq',value:lot}])}));
+   const row=((await r.json()).rows||[])[0];
+   if(!row)return 'ロットが見つからない';
+   await openMeasurement(row);return 'ok';
+  },LOT).catch(e=>'例外: '+e.message);
+  rec('分割ありロットを開き直せる',reopened==='ok',String(reopened));
+  await page.waitForFunction(
+    ()=>{const f=document.getElementById('splitDetailFold');return !!f&&f.hidden!==true},
+    null,{timeout:20000}).catch(()=>{});
+  await settle(page);
+
+  const fold=await page.evaluate(()=>{
+   const f=document.getElementById('splitDetailFold');
+   const layout=document.querySelector('#splitCard .split-layout');
+   return {ある:!!f,出ている:!!f&&f.hidden!==true,
+     編集面:!!layout&&layout.hidden!==true,
+     件数:(document.getElementById('splitDetailSummary')||{}).textContent||''};
+  });
+  rec('子ロットがあるときは内訳の見出しが出て、件数も畳んだまま読める',
+      fold.出ている===true&&/ロット/.test(fold.件数),JSON.stringify(fold));
+  /* **開いた内訳はカードの外へ出る**（`position:fixed`）。カードの中で開くと
+     `overflow`に切られて下に隠れる。 */
+  const foldOpened=await page.evaluate(async()=>{
+   const f=document.getElementById('splitDetailFold');
+   if(!f)return {none:true};
+   f.open=true;
+   f.dispatchEvent(new Event('toggle'));
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   const body=f.querySelector('.split-detail-body');
+   const card=document.getElementById('splitCard');
+   const cs=getComputedStyle(body);
+   const br=body.getBoundingClientRect(),cr=card.getBoundingClientRect();
+   return {position:cs.position,z:cs.zIndex,
+     /* カードの下端より下へはみ出していても切られない＝外に出ている。 */
+     幅:Math.round(br.width),カード幅:Math.round(cr.width),
+     見えている:br.height>10};
+  });
+  rec('開いた内訳はカードの外（fixed）へ出て切られない',
+      !foldOpened.none&&foldOpened.position==='fixed'&&foldOpened.見えている===true,JSON.stringify(foldOpened));
+  rec('内訳の重なり順はカードより上',
+      !foldOpened.none&&Number(foldOpened.z)>=1000,String(foldOpened.z));
+  await page.evaluate(()=>{const f=document.getElementById('splitDetailFold');
+    if(f){f.open=false;f.dispatchEvent(new Event('toggle'))}});
+
   /* **ダイアログで止めない。** 以前はalertだったので、ドラッグのたびに
      手が止まった。理由は状態行の文字で伝える。 */
   rec('操作の途中でダイアログを出さない',dialogs.length===0,dialogs.join(' / '));

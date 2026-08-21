@@ -106,11 +106,26 @@
    するだけでよい)。 */
 .split-visual-measure{position:relative;flex:1;min-width:0;display:flex;align-items:stretch}
 .split-visual-strip{position:relative;flex:1;min-width:0;border-radius:var(--radius-md);background:#eef2f4;touch-action:none;user-select:none}
-.split-visual-scrap{flex:0 0 auto;min-width:26px;display:flex;align-items:center;justify-content:center;border-radius:var(--radius-md);background:repeating-linear-gradient(135deg,#dde3e5 0 7px,#d1d8da 7px 14px);color:#5c6c70;cursor:default}
+/* **幅はmmの比だけで決まる**（§9.221 ⑥③）。`flex:0 0 auto`＋`min-width:26px`
+   だったため、中の「屑 12.5」の文字幅が帯の下限になり、比で割り付けたはずの
+   帯が実際より太く出ていた（そのぶん条の束が痩せて「図が崩れる」）。
+   基は0で、伸びる量だけをJSが`flex-grow`で渡す。入らない文字は
+   `fitScrapLabels()`が段階的に落とす（値は状態帯と`title`に残る）。 */
+.split-visual-scrap{flex:0 1 0;min-width:0;overflow:hidden;display:flex;align-items:center;justify-content:center;border-radius:var(--radius-md);background:repeating-linear-gradient(135deg,#dde3e5 0 7px,#d1d8da 7px 14px);color:#5c6c70;cursor:default}
 .split-visual-scrap[hidden]{display:none}
 .split-visual-scrap.os{margin-right:3px}
 .split-visual-scrap.ds{margin-left:3px}
 .split-visual-scrap-label{display:flex;flex-direction:column;align-items:center;line-height:1.25;font-size:var(--fs-badge);font-weight:800;white-space:nowrap;padding:0 3px}
+/* 段は「屑＋数字」→「数字だけ」→「出さない」。**消す段は`display:none`**
+   ——`visibility:hidden`だと箱は残るので、`overflow:hidden`で見えなくは
+   なっても**文字の矩形はOS/DSの文字へ被ったまま**（実測: 6pxの帯に40pxの
+   文字が居座る）。帯の幅は`flex:0 1 0`＋`min-width:0`でmmの比だけから
+   決まるので、中身を消しても幅は動かない＝次の測り直しで復活する心配は
+   無い（`fitScrapLabels()`は測る前に段を必ず外す）。 */
+.split-visual-scrap-label>i{font-style:normal}
+.split-visual-scrap-label.is-short{padding:0}
+.split-visual-scrap-label.is-short>i{display:none}
+.split-visual-scrap-label.is-gone{display:none}
 .split-visual-scrap-label b{font-size:var(--fs-micro);font-weight:800}
 /* センターライン・目盛り(ルーラー)。屑を左右均等に振り分ける設計のため、
    条ストリップの中央=母材全幅の中央が数式上必ず一致する。目盛りは
@@ -120,6 +135,10 @@
 .split-visual-centerline{position:absolute;top:-5px;bottom:-5px;left:50%;border-left:1.5px dashed #64797f;opacity:.75}
 .split-visual-tick{position:absolute;top:0;bottom:0;border-left:1px dashed #a9bcc1;opacity:.6}
 .split-visual-tick-label{position:absolute;top:-15px;left:0;transform:translateX(-50%);font-size:var(--fs-tiny);font-weight:700;color:#748a90;white-space:nowrap}
+/* 端に近い目盛りの数字は**内側へ寄せる**（§9.221 ⑥③）。真上に置くと器の外へ
+   半分はみ出し、そこにあるOS／DSの文字と重なってどちらも読めなくなる。 */
+.split-visual-tick.is-edge-left>.split-visual-tick-label{transform:translateX(0)}
+.split-visual-tick.is-edge-right>.split-visual-tick-label{left:auto;right:0;transform:translateX(0)}
 .split-visual-track{position:relative;width:100%;height:100%}
 /* 条の色はJSが --split-block-bg で渡す(background-colorを直接書かない。
    インラインはCSSのどのレイヤより強く、空欄条の淡色を打ち消せなくなるため)。 */
@@ -319,7 +338,19 @@
    `<details>`が閉じていてもUAの`display:none`に勝って**開きっぱなし**に
    なる（カードの中に見出しが3つ出て`test_splitlive`が捕まえた）。 */
 .split-detail-body{display:none;flex-direction:column;min-height:0}
-.split-detail-fold[open]>.split-detail-body{display:flex}
+/* ---------- 開いた内訳はカードの外へ(§9.221 ⑥②) ----------
+   カードは`overflow:auto`・本文グリッドは`overflow:hidden`なので、
+   **カードの中で開くかぎり必ず切り落とされる**（利用者の報告「展開しても
+   カード内の描画となりレイヤーが下に隠れる」）。器の外へ`position:fixed`で
+   出す——重なり順は`--z-popover`（隣のカードの下へ回らない）。
+   位置と幅と高さの上限はJS(`placeSplitDetailBody`)が入れる。 */
+.split-detail-fold[open]>.split-detail-body{
+ display:flex;position:fixed;z-index:var(--z-popover);
+ overflow:auto;padding:var(--pad-card);gap:var(--space-2);
+ background:var(--surface);border:1px solid var(--line);
+ border-radius:var(--radius-card);box-shadow:0 14px 34px #0b2b3330;
+}
+.split-detail-fold[hidden]{display:none}
 .split-detail-body>.split-layout{flex:1 1 auto;min-height:0}
 /* 図はカードの余りを使い切る（§9.157）。**カードを縦のflexにしないと
    `.split-visual`の`flex:1`は効かない**——器が中身なりの高さのままだと

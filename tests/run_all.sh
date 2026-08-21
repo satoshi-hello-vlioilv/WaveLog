@@ -218,6 +218,9 @@ run(){
   server_up || restart_server || echo "!! サーバーを起動できないまま $2 を実行します" >&2
   t0=$(date +%s)
   out=$($1 "$2" 2>&1)
+  # 1本ぶんの生ログを残したいときだけ（既定は残さない）。落ちた場所を
+  # 探すのに要る——要約だけでは「どのPASSまで進んだか」が分からない。
+  if [ -n "$WAVELOG_TEST_LOGDIR" ]; then printf '%s\n' "$out" > "$WAVELOG_TEST_LOGDIR/$2.log"; fi
   dt=$(( $(date +%s) - t0 ))
   p=$(echo "$out" | grep -c '^PASS'); f=$(echo "$out" | grep -c '^FAIL')
   fatal=$(echo "$out" | grep -c 'FATAL')
@@ -239,7 +242,7 @@ sleep 3
 echo "--- 一般UI (editモード) ---"
 mode edit
 for t in test_stopcat test_workable test_wkbg test_mcore test_msteps test_orphan test_audit test_sub test_maint test_setpage test_nav test_navdyn test_hdctx test_uiux test_histdel test_uisize test_p11 test_p11c test_master test_shift test_measstore test_waiting \
-         test_calscale test_hdr test_listcache test_ttlcache test_flows test_dbequip test_course test_tolscale test_defect test_theme test_scale test_fit test_bootui test_density test_filter test_stopeq test_eqkind test_bootflash test_dsnav test_opui test_collayout test_colformat test_colrule test_colsort test_typescale test_lcpanel test_colmenu test_colpreset test_formula test_share test_listperf test_allrows test_logview test_headbar test_gridhead test_reccols test_rpblocks test_rplayout test_rpmaster test_filterio test_filteruser test_filteractive test_colio test_multidrag test_sortcustom test_filterkeep test_filterlock test_dsrestart test_qjoinui; do run $NODE $t.js; done
+         test_calscale test_hdr test_listcache test_ttlcache test_flows test_dbequip test_course test_tolscale test_defect test_theme test_scale test_fit test_bootui test_density test_filter test_stopeq test_eqkind test_bootflash test_dsnav test_opui test_collayout test_colformat test_colrule test_colsort test_typescale test_lcpanel test_colmenu test_colpreset test_formula test_share test_listperf test_allrows test_logview test_headbar test_gridhead test_reccols test_rpblocks test_rplayout test_rpmaster test_filterio test_filteruser test_filteractive test_colio test_multidrag test_sortcustom test_filterkeep test_filterlock test_dsrestart test_qjoinui test_modalkeep test_opchoice test_recdel; do run $NODE $t.js; done
 
 echo "--- スケジュール (テスト側でモードを切り替える) ---"
 for t in test_screport test_startwork test_scsync test_sccat test_scbalance test_scbatch \

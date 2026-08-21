@@ -127,7 +127,8 @@ let b=null;
    JSON.stringify(who));
 
  // 他タブへ移ると設定ページ用の指定が残らない
- await tab('オペレータ');
+ // （オペレータマスタは §9.221 ③ で操業データ選択肢マスタへ統合して撤去した）
+ await tab('アクセス権限');
  const other=await page.evaluate(()=>({page:document.querySelector('#masterMaintForm').classList.contains('mm-form-page'),
    listWrap:getComputedStyle(document.querySelector('.mm-list-wrap')).display}));
  rec('他マスタへ移ると設定ページ指定が残らない',!other.page&&other.listWrap!=='none',JSON.stringify(other));

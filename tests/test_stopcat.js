@@ -56,6 +56,19 @@ let b=null;
  rec('単位が添えられる',!!num&&num.unit==='分',JSON.stringify(num));
 
  // 増減ボタンを押すと step(5) ずつ動く
+ /* **押せることを先に確かめる**（§9.221 ④）。器の幅の配り方を間違えると
+    ボタンが隣の欄の下へ潜り込み、`page.click`が30秒待って落ちる——
+    そのときログに残るのは「Timeout」だけで、何に覆われたのかが読めない。 */
+ const plusHit=await page.evaluate(()=>{
+  const b=document.querySelector('.mm-field-num [data-num-step="1"]');
+  if(!b)return{無い:true};
+  const r=b.getBoundingClientRect();
+  const top=document.elementFromPoint(Math.round(r.left+r.width/2),Math.round(r.top+r.height/2));
+  return{幅:Math.round(r.width),高さ:Math.round(r.height),
+    上に居るもの:top?(top.tagName+'.'+(top.className||'')).slice(0,60):'なし',
+    自分:top===b||!!(top&&b.contains(top))};
+ });
+ rec('＋ボタンが実際に押せる位置に出ている',plusHit.自分===true,JSON.stringify(plusHit));
  await page.click('.mm-field-num [data-num-step="1"]');
  await page.click('.mm-field-num [data-num-step="1"]');
  await page.click('.mm-field-num [data-num-step="1"]');

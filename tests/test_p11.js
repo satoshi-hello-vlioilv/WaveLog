@@ -42,7 +42,9 @@ let browser=null;
     if(b) b.click(); return !!b;
   }, label);
 
-  await clickTab('スプール');
+  /* 少項目マスタの代表は**設備停止分類**（1項目）。スプール種別マスタは
+     §9.221 ③で操業データ選択肢マスタへ統合して撤去した。 */
+  await clickTab('設備停止分類');
   // 固定待ちだと他テストと同時に走らせたときに描画が間に合わずFAILすることがある。
   // フォームが実際に描画されるまで待つ。
   await page.waitForFunction(
@@ -51,7 +53,7 @@ let browser=null;
     compact: document.querySelector('#masterMaintForm')?.classList.contains('mm-form-compact'),
     fieldCount: document.querySelectorAll('#masterMaintForm [data-field]').length,
   }));
-  rec('少項目マスタ(スプール2項目)は従来どおり上部インラインフォーム', spool.compact===false&&spool.fieldCount>0, JSON.stringify(spool));
+  rec('少項目マスタ(設備停止分類1項目)は従来どおり上部インラインフォーム', spool.compact===false&&spool.fieldCount>0, JSON.stringify(spool));
 
   // ===== (1c) 多項目マスタ = 編集モーダル =====
   await clickTab('設備停止');

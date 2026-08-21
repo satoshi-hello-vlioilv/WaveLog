@@ -24,20 +24,23 @@ let browser=null;
     if(b) b.click(); return !!b;
   }, label);
 
-  // ---- モーダル経由の新規登録 (オペレータ: equipment-multiを含むためモーダル) ----
-  await clickTab('オペレータ');
+  /* オペレータマスタは操業データ選択肢マスタへ統合した（§9.221 ③）ので、
+     モーダル方式の代表はアクセス権限マスタで見る。**見ているのは
+     「編集専用モーダルの一周」そのもの**で、どのマスタかは本質ではない。 */
+  // ---- モーダル経由の新規登録 (アクセス権限: equipment-multi-textを含むためモーダル) ----
+  await clickTab('アクセス権限');
   await page.waitForTimeout(1000);
   const isModalDef = await page.evaluate(()=>({
     compact: document.querySelector('#masterMaintForm')?.classList.contains('mm-form-compact'),
     addBtn: !!document.querySelector('#masterMaintAdd'),
   }));
-  rec('オペレータ(タグ入力を含む)はモーダル方式に分類される', isModalDef.compact&&isModalDef.addBtn, JSON.stringify(isModalDef));
+  rec('アクセス権限(タグ入力を含む)はモーダル方式に分類される', isModalDef.compact&&isModalDef.addBtn, JSON.stringify(isModalDef));
 
   await page.click('#masterMaintAdd');
   await page.waitForSelector('#maintEditorModal',{state:'visible',timeout:5000});
-  const name='テスト太郎'+Date.now().toString().slice(-5);
-  await page.fill('#maintEditorForm [data-field="name"]', name);
-  await page.fill('#maintEditorForm [data-field="yomi"]', 'テストタロウ');
+  const name='tester'+Date.now().toString().slice(-5);
+  await page.fill('#maintEditorForm [data-field="loginId"]', name);
+  await page.fill('#maintEditorForm [data-field="pcName"]', 'PC-BEFORE');
   await page.click('#maintEditorSave');
   await page.waitForTimeout(2500);
 
@@ -49,8 +52,8 @@ let browser=null;
 
   // サーバー側にも入っているか
   const onServer = await page.evaluate(async n => {
-    const r = await fetch('/api/operator-master',{cache:'no-store'}).then(x=>x.json());
-    return (r.items||[]).some(i=>i.name===n);
+    const r = await fetch('/api/access-permission-master',{cache:'no-store'}).then(x=>x.json());
+    return (r.items||[]).some(i=>i.loginId===n);
   }, name);
   rec('サーバー(master.sqlite3)にも保存されている', onServer);
 
@@ -63,30 +66,30 @@ let browser=null;
   await page.waitForSelector('#maintEditorModal',{state:'visible',timeout:5000});
   const editOpen = await page.evaluate(()=>({
     title: document.querySelector('#maintEditorTitle')?.textContent,
-    nameVal: document.querySelector('#maintEditorForm [data-field="name"]')?.value,
+    nameVal: document.querySelector('#maintEditorForm [data-field="loginId"]')?.value,
   }));
   rec('一覧の行クリックで編集モーダルが開き既存値が入る', editOpen.nameVal===name, JSON.stringify(editOpen));
 
   // 更新して保存
-  await page.fill('#maintEditorForm [data-field="yomi"]','コウシンズミ');
+  await page.fill('#maintEditorForm [data-field="pcName"]','PC-AFTER');
   await page.click('#maintEditorSave');
   await page.waitForTimeout(2500);
   const updated = await page.evaluate(async n => {
-    const r = await fetch('/api/operator-master',{cache:'no-store'}).then(x=>x.json());
-    const it=(r.items||[]).find(i=>i.name===n);
-    return it? it.yomi : null;
+    const r = await fetch('/api/access-permission-master',{cache:'no-store'}).then(x=>x.json());
+    const it=(r.items||[]).find(i=>i.loginId===n);
+    return it? it.pcName : null;
   }, name);
-  rec('編集モーダルからの更新がサーバーへ反映される', updated==='コウシンズミ', 'yomi='+updated);
+  rec('編集モーダルからの更新がサーバーへ反映される', updated==='PC-AFTER', 'pcName='+updated);
 
-  // ---- インライン方式のマスタ(スプール)も従来どおり登録できる ----
-  await clickTab('スプール');
+  // ---- インライン方式のマスタ(設備停止分類)も従来どおり登録できる ----
+  await clickTab('設備停止分類');
   await page.waitForTimeout(900);
-  const sname='スプ'+Date.now().toString().slice(-5);
+  const sname='分類'+Date.now().toString().slice(-5);
   await page.fill('#masterMaintForm [data-field="name"]', sname);
   await page.click('#masterMaintForm button[type="submit"]');
   await page.waitForTimeout(2200);
   const spoolOk = await page.evaluate(async n => {
-    const r = await fetch('/api/spool-master',{cache:'no-store'}).then(x=>x.json());
+    const r = await fetch('/api/schedule/stop-category-master',{cache:'no-store'}).then(x=>x.json());
     return (r.items||[]).some(i=>i.name===n);
   }, sname);
   rec('少項目マスタは従来どおりインラインフォームから登録できる', spoolOk);

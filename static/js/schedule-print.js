@@ -577,7 +577,7 @@
   el.querySelector('#spPvPrint').onclick=doPrint;
   el.querySelector('#spLayoutOpen').onclick=()=>openLayoutPanel(pv.equipment,{onSaved:()=>renderPreview()});
   /* 覆いの外を押したら閉じる（刷らない）。中は素通りさせる。 */
-  el.addEventListener('mousedown',ev=>{if(ev.target===el)closePreview()});
+  WL.modal.keepOpen(el);
   return el;
  }
  function optionRows(pref,canAll){

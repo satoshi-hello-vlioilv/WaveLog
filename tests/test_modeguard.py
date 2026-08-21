@@ -26,7 +26,7 @@ _WRITE_ALLOWED_MODES へ登録し忘れると、403になるのではなく
 このテストは実際にPOSTするので、値を壊さない叩き方だけを使う:
   - path-config-master : GETした現在値をそのまま書き戻す(冪等)
   - schedule-column-master : 同上
-  - operator-master : 空ボディ。ガードを通っても入力検証で400になり行は増えない
+  - operation-choice-master : 空ボディ。ガードを通っても入力検証で400になり行は増えない
   - rne-extract/run : サンドボックスにはRNE資材が無いので400で戻る(起動しない)
 """
 from __future__ import annotations
@@ -126,7 +126,7 @@ def probe_logs():
 
 
 PROBES = {
-    'マスタCRUD(operator-master)': lambda: call('POST', '/api/operator-master', {}),
+    'マスタCRUD(operation-choice-master)': lambda: call('POST', '/api/operation-choice-master', {}),
     'パス設定(path-config-master)': probe_path_config,
     'スケジュール列表示(schedule-column-master)': probe_schedule_column,
     'RNE手動実行(rne-extract/run)': lambda: call('POST', '/api/rne-extract/run', {}),
@@ -147,7 +147,7 @@ PROBES = {
 
 # 現在の許可表(実測で固定する)。True=ガードを通る / False=ガードが弾く
 EXPECTED = {
-    'マスタCRUD(operator-master)':                {'edit': True,  'view': False, 'schedule': False},
+    'マスタCRUD(operation-choice-master)':        {'edit': True,  'view': False, 'schedule': False},
     'パス設定(path-config-master)':               {'edit': True,  'view': False, 'schedule': False},
     # §9.18: scheduleモードの端末が分割表示中に表示列を選べるようにする例外
     'スケジュール列表示(schedule-column-master)': {'edit': True,  'view': False, 'schedule': True},

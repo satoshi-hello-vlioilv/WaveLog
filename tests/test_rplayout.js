@@ -79,7 +79,10 @@ let b=null,madeBlock=null;
         寸法を比べること**——縮めただけで「行数ぶんの高さが無い」ことになる。 */
      倍率:Number(getComputedStyle(document.querySelector('.rp-page')).getPropertyValue('--rp-scale'))||1};
   });
-  rec('行も粗いグリッド（1行ぶんの高さが決まっている）',/^\d+px$/.test(grid.行の高さ)&&parseFloat(grid.行の高さ)>0,
+  /* 1行の高さは**紙から作る**ようになった（§9.221 ⑨。紙の縦÷段数）ので、
+     24pxのような整数pxとはかぎらない（実測88.5px）。見たいのは「1行ぶんが
+     決まっていること」なので、単位と正の値だけを見る。 */
+  rec('行も粗いグリッド（1行ぶんの高さが決まっている）',/px$/.test(grid.行の高さ)&&parseFloat(grid.行の高さ)>0,
       grid.行の高さ);
   rec('空いた横へ回り込ませる（dense）',/dense/.test(grid.詰め方),grid.詰め方);
   rec('どの塊も「何行ぶんか」を持つ（中身なりは描いてから測る）',
@@ -207,8 +210,13 @@ let b=null,madeBlock=null;
   },C2);
   rec('掴むと落ちる場所にゴーストが出る',!!ghost.out&&ghost.out.グリッドの中===true,
       JSON.stringify(ghost.out));
+  /* 置き場所を利用者が決める形にした（§9.221 ⑨）ので、ゴーストは
+     `<列>/span <幅>`のようにマスも名指しする。**幅と高さがマス数で
+     出ていること**を見る（`span N`だけの形も、まだ置き場所の決まって
+     いない塊で出るので両方通す）。 */
+  const spanish=v=>/(^|\/\s*)span\s+\d+/.test(String(v||''));
   rec('ゴーストは掴んだ塊と同じ幅・高さ',
-      !!ghost.out&&/^span \d+$/.test(ghost.out.幅)&&/^span \d+$/.test(ghost.out.高さ),
+      !!ghost.out&&spanish(ghost.out.幅)&&spanish(ghost.out.高さ),
       JSON.stringify(ghost.out&&{幅:ghost.out.幅,高さ:ghost.out.高さ}));
   rec('どの塊が入るのかを文字で言う',!!ghost.out&&ghost.out.文.includes(C2),
       String(ghost.out&&ghost.out.文));
@@ -274,9 +282,25 @@ let b=null,madeBlock=null;
   const before=await page.evaluate(t=>{
    const el=document.querySelector(`[data-rp-block="${CSS.escape(t)}"]`);
    const r=el.getBoundingClientRect();
-   const g=el.querySelector('[data-rp-grip="w"]').getBoundingClientRect();
-   return {w:Math.round(r.width),gx:Math.round(g.left+g.width/2),gy:Math.round(g.top+g.height/2)};
+   const grip=el.querySelector('[data-rp-grip="w"]');
+   const g=grip.getBoundingClientRect();
+   /* **画面に出ている場所を狙う。** 紙は`--rp-scale`で縮めて縦に長いので、
+      背の高い塊は下端が画面の外へ出る——取っ手の「まん中」を計算すると
+      ビューポートの外を指し、`elementFromPoint`は器（MAIN）を返す
+      （実測: 取っ手6x612px・まん中y=999で画面の高さ1000）。
+      取っ手と画面の重なりの中から取る。 */
+   const gx=Math.round(g.left+g.width/2);
+   const lo=Math.max(g.top+6,6),hi=Math.min(g.bottom-6,window.innerHeight-6);
+   const gy=Math.round(hi>lo?(lo+hi)/2:lo);
+   /* **掴めることを先に確かめる。** 覆われていると`pointerdown`が別の
+      要素へ行き、ログには「幅が変わらない」としか残らない。 */
+   const top=document.elementFromPoint(gx,gy);
+   return {w:Math.round(r.width),gx,gy,
+     取っ手:[Math.round(g.width),Math.round(g.height)].join('x'),
+     上に居るもの:top?(top.tagName+'.'+(top.className||'')).slice(0,60):'なし',
+     掴める:top===grip};
   },A);
+  rec('幅の取っ手が実際に掴める位置に出ている',before.掴める===true,JSON.stringify(before));
   await page.mouse.move(before.gx,before.gy);
   await page.mouse.down();
   await page.mouse.move(before.gx-180,before.gy,{steps:8});
