@@ -35,22 +35,26 @@ let b=null;
   const api=async(u,opt)=>page.evaluate(async([u,opt])=>{
    const res=await fetch(u,opt||undefined);return {status:res.status,body:await res.json()};
   },[u,opt]);
-  const burr=await api('/api/burr-master');
-  rec('バリ揃えマスタのAPIが応答する',burr.status===200&&burr.body.ok,JSON.stringify(burr.body).slice(0,120));
+  /* バリ揃え・コイル止めは操業データ選択肢マスタの**まとまり**へ移した
+     （§9.221 ③、利用者の指示）。見ているのは「現場が値を増やせること」と
+     「既定の選択肢が消えていないこと」なので、移った先で同じことを見る。 */
+  const ch=await api('/api/operation-choice-master');
+  rec('操業データ選択肢マスタのAPIが応答する',ch.status===200&&ch.body.ok,JSON.stringify(ch.body).slice(0,120));
+  const valuesOf=n=>(ch.body.items||[]).filter(i=>i.name===n).map(i=>i.value);
   rec('バリ揃えの既定値が入っている',
-   ['上バリ揃え','下バリ揃え','指定なし'].every(n=>(burr.body.items||[]).some(i=>i.name===n)),
-   (burr.body.items||[]).map(i=>i.name).join(','));
-  const coil=await api('/api/coil-stop-master');
-  rec('コイル止めマスタのAPIが応答する',coil.status===200&&coil.body.ok,JSON.stringify(coil.body).slice(0,120));
+   ['上バリ揃え','下バリ揃え','指定なし'].every(n=>valuesOf('バリ揃え').includes(n)),
+   valuesOf('バリ揃え').join(','));
   rec('コイル止めの既定値が入っている',
-   ['内巻両面テープ','指定なし'].every(n=>(coil.body.items||[]).some(i=>i.name===n)),
-   (coil.body.items||[]).map(i=>i.name).join(','));
+   ['内巻両面テープ','指定なし'].every(n=>valuesOf('コイル止め').includes(n)),
+   valuesOf('コイル止め').join(','));
 
-  // マスタ管理画面に他のマスタと同じ形で並ぶ
+  // マスタ管理画面では「選択肢の値」1枚にまとまっている
   await page.click('#openMasterMaint');await page.waitForTimeout(1800);
   const menu=await page.$$eval('#masterMaintNav [data-master]',n=>n.map(x=>x.dataset.master));
-  rec('マスタ管理に「バリ揃え」「コイル止め」が並ぶ',
-   menu.includes('burr')&&menu.includes('coilStop'),menu.join(','));
+  rec('マスタ管理に専用タブを残していない',
+   !menu.includes('burr')&&!menu.includes('coilStop')&&!menu.includes('operator')
+   &&!menu.includes('spool')&&!menu.includes('inner')&&!menu.includes('device'),menu.join(','));
+  rec('「選択肢の値」1枚にまとまっている',menu.includes('opChoice'),menu.join(','));
 
   /* ---------- 2) 測定画面の選択欄が他項目と同じ形 ---------- */
   await page.click('#openSchedule');

@@ -133,7 +133,7 @@
 | `backend/routes/tables.py` | 汎用DB一覧API(`/api/catalog`・`/api/tables`・`/api/table`・`/api/table-columns`・クエリ結合の引き当て`/api/query-join/keys`・`/api/query-join/resolve`) |
 | `backend/routes/measurement.py` | 測定コンテキスト・マスタ診断・バックアップAPI |
 | `backend/routes/quality.py` | 品質データ分析API(`/api/quality/analysis`) |
-| `backend/routes/masters.py` | 各種マスタCRUDのBlueprint（設備/オペレータ/スプール/内径/機器/フィルタプリセット/列表示/アクセス権限）。URLは分離前と同一。リクエスト受付とレスポンス整形のみを行い、データアクセスは`repositories/master_repo.py`へ委譲。**「名前だけ」の単純マスタ(スプール種別・内径種別・機器・バリ揃え・コイル止め)は宣言表`SIMPLE_MASTERS`から4本(一覧/登録/編集/削除)を生成する**（写経すると片方だけ直って食い違うため。オペレータ・設備・アクセス権限は個別の処理を持つので畳んでいない。docs/REFACTORING_PLAN.md フェーズC） |
+| `backend/routes/masters.py` | 各種マスタCRUDのBlueprint（設備/操業データ項目/操業データ選択肢/フィルタプリセット/列レイアウト/アクセス権限ほか）。URLは分離前と同一。リクエスト受付とレスポンス整形のみを行い、データアクセスは`repositories/master_repo.py`・`repositories/operation_repo.py`へ委譲。**オペレータ・機器・スプール種別・内径種別・バリ揃え・コイル止めは`操業データ選択肢マスタ`のまとまりへ統合した**（§9.221 ③。6つとも「名前の一覧」で、違いはオペレータのヨミガナと作業可能設備だけだった——`[よみ]`／`[対象設備]`として選択肢の側へ持たせてある）。読み口は`operation_repo.choice_values()`の1本、CRUDは`/api/operation-choice-master`の1組。 |
 | `backend/routes/path_config.py` | パス設定マスタとパス参照ダイアログのBlueprint（`masters.py`から分離）。データアクセスは例外的に`db_access.py`（起動時に接続先を確定させる都合、`master_repo.py`はdb_accessに依存する側のため） |
 | `backend/routes/rne.py` | RNE抽出の状態表示と手動実行のBlueprint（`masters.py`から分離）。手動実行は「読み直すだけのPOST」として`access_mode._READ_ONLY_POST_ENDPOINTS`に`rne.rne_extract_run`で登録 |
 | `backend/routes/logs.py` | ログ・診断のBlueprint（`/api/logs*`）。診断の側（接続を1段ずつ試す `/api/db-diagnose`）は`tables.py`が持ち、画面は同じ「ログ・診断」に同居する（§9.101）。末尾読み・**日時で始まらない行を直前の件へ畳む解析**・2系統(`launcher.log`/`app.log`)の時間軸統合・件単位の削除・区切り(rotate)・保存。書き換えはロガーのハンドラを掴んでから行う（`_with_handlers`）。消す・区切るは`access_mode._WRITE_ALLOWED_MODES`に`'logs':{'edit'}`でeditへ限定 |
@@ -762,8 +762,8 @@ UI は「入力内容」セレクトをチップへ置換する（面積は増�
 | 編集専用モーダル（`#maintEditorModal`） | **入力項目が4つ以上**、または**専用コントロールを含む**（設備の複数選択タグ入力）、または `editorModal:true` を明示 | 上部インラインフォームのままだと縦幅を取って一覧の表示領域を圧迫する。編集中は一覧を操作させない方が安全でもある |
 
 - 現状の割り振り: モーダル＝オペレータ（タグ入力）・アクセス権限（6項目）・
-  設備停止（4項目）・勤務形態（4項目）／インライン＝機器・スプール種別・
-  内径種別・設備。
+  設備停止（4項目）・勤務形態（4項目）／インライン＝設備・設備停止分類。
+  （機器・スプール種別・内径種別は§9.221 ③で操業データの選択肢へ統合。）
 - モーダルは **どのマスタでも同じ枠**を使い、入力欄は `buildFieldControls()` が
   `MASTER_DEFS` の `fields` 定義から組み立てる。**マスタを増やしてもモーダル
   自体には手を入れなくてよい**。
@@ -783,7 +783,7 @@ UI は「入力内容」セレクトをチップへ置換する（面積は増�
 
 | グループ | 中身 |
 |---|---|
-| 設備・人 | 設備・オペレータ・機器・スプール種別・内径種別 |
+| 設備・人 | 設備・操業データ項目・選択肢の値（オペレータ／機器／スプール／内径／バリ揃え／コイル止めはここのまとまり） |
 | 作業スケジュール | 設備停止・勤務形態・換算係数 |
 | 表示・システム | アクセス権限・列表示・データ引継ぎ・パス設定・テーブル生データ |
 
@@ -1907,7 +1907,7 @@ A4縦は `fit` 倍率が**高さで決まる**（210×297mm を横長の画面�
   一括終了する `pkill` は、同じPCの他のPythonを巻き添えにするため使わない。
 - **回帰テスト**: `tests/` に常設（実行は `tests/run_all.sh` のみ）。
   接続先が全てSQLiteになったため、仕掛/品質データ(`/api/table` 等)もマスタ
-  (`/api/operator-master` 等)も**モック無しで実際にサーバー経由で検証できる**
+  (`/api/operation-choice-master` 等)も**モック無しで実際にサーバー経由で検証できる**
   （ランナーが `db/test_fixture/` の `.sqlite3` を指す）。以前は仕掛/品質が
   Access接続で、ドライバの無い環境では `page.route` でモックする必要があった。
 - **リリース**: 意味のある変更ごとに `backend/changelog_data.py` の

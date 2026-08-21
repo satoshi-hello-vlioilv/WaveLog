@@ -390,7 +390,10 @@ let b=null,page=null;
      選択肢の件数が合っていることを見れば、どちらの環境でも成り立つ
      （先頭の「-」は「選んでいない」ぶんなので1つ多い）。 */
   const opMaster=await page.evaluate(async()=>{
-   try{const r=await api('/api/operator-master');return (r.operators||r.items||[]).length}
+   /* オペレータは操業データ選択肢マスタの「オペレータ」まとまりへ移した
+      （§9.221 ③）。数える先も一緒に移す。 */
+   try{const r=await api('/api/operation-choice-master');
+       return (r.items||[]).filter(x=>x.name==='オペレータ'&&x.enabled!==false).length}
    catch(e){return -1}
   });
   rec('オペレータの選択肢を減らしていない（マスタの件数と合う）',
@@ -2469,6 +2472,63 @@ let b=null,page=null;
       &&/500\.10/.test(an.子ロット[0].値),JSON.stringify(an.子ロット));
   rec('板厚を子ロット別に出せない理由を書く（黙って空欄にしない）',
       an.板厚は子ロット別に出せないと書く===true,String(an.板厚は子ロット別に出せないと書く));
+
+  /* ==========================================================
+     §9.221 ⑧ フラットネスも丈を跨いで条を指定できる
+     ----------------------------------------------------------
+     利用者の指摘「入力内容のフラットネスについて丈を跨いでの直接条指定が
+     できません。他の項目は直接丈を跨いだ条指定ができるので同じように
+     修正してほしいです。強調表示も正しい挙動に合わせて確認してください」。
+     `bindFlatnessInputs()`が`onclick`を上書きして**条だけ**を合わせて
+     いたため、別の丈の枠を押しても印がそこへ来なかった。
+     **確かめるときは丈が2本以上あること**——1本しか無いと「跨ぐ」道を
+     一度も通らずに通ってしまう。
+     ========================================================== */
+  await go('2');
+  const flat=await page.evaluate(async()=>{
+   const sel=document.getElementById('measureType');
+   const lp=document.getElementById('lengthPos');
+   if(!sel||!lp||lp.options.length<2)return {丈が1本:true};
+   sel.value='フラットネス';sel.dispatchEvent(new Event('change',{bubbles:true}));
+   await new Promise(r=>setTimeout(r,400));
+   lp.selectedIndex=0;lp.dispatchEvent(new Event('change',{bubbles:true}));
+   await new Promise(r=>setTimeout(r,400));
+   const before=lp.selectedIndex;
+   /* **枠は探して押す**（決め打ちにしない）。条数はロット由来なので、
+      `[data-j="1"]`が必ず在るとは限らない——無ければ「枠が無い」で
+      落ちるだけで、跨ぐ道を一度も通らない。いま出ている丈と違う枠を
+      探し、条は在るものの中でいちばん右を選ぶ。 */
+   const cells=[...document.querySelectorAll('input[data-mkey="flatness"]')];
+   const other=cells.filter(c=>Number(c.dataset.i)!==before);
+   if(!other.length)return {枠が無い:true,前:before,枠の数:cells.length,
+     丈:[...new Set(cells.map(c=>c.dataset.i))].join('/')};
+   const wantI=Number(other[0].dataset.i);
+   const row=other.filter(c=>Number(c.dataset.i)===wantI);
+   const cell=row[row.length-1];
+   cell.click();
+   await new Promise(r=>setTimeout(r,500));
+   const cur=document.querySelector('input[data-mkey="flatness"].current');
+   return {前:before,後:document.getElementById('lengthPos').selectedIndex,
+     押した丈:cell.dataset.i,押した条:cell.dataset.j,
+     印の丈:cur&&cur.dataset.i,印の条:cur&&cur.dataset.j,
+     /* **`window.S`で引かないこと**——`S`は`base.js`のトップレベルの
+        `const`で`window`のプロパティにならない（§9.215と同じ罠）。
+        `window.S&&…`と書くと常に`undefined`になり、印の条を一度も
+        確かめないまま落ちる。 */
+     条:(typeof S!=='undefined'&&S.measure&&S.measure.settings)?S.measure.settings.wStep:null};
+  });
+  if(flat.丈が1本||flat.枠が無い){
+   rec('フラットネスで丈を跨いだ条指定ができる',false,
+       '前提が揃っていない（丈が2本以上あり、2本目の枠が要る）: '+JSON.stringify(flat));
+  }else{
+   rec('フラットネスで丈を跨いだ条指定ができる（押した丈へ移る）',
+       flat.前!==flat.後&&String(flat.後)===String(flat.押した丈),JSON.stringify(flat));
+   /* **強調表示も押した枠へ来る**（印だけ元の丈に残ると、打った文字が
+      別の丈へ入る）。 */
+   rec('強調表示も押した枠に来る',
+       flat.印の丈===flat.押した丈&&flat.印の条===flat.押した条
+       &&Number(flat.条)===Number(flat.押した条),JSON.stringify(flat));
+  }
 
   await go('1');
 

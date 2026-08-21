@@ -590,6 +590,21 @@ def stop_equipment_named(stored,equipment):
  target=normalize_equipment_name(equipment)
  return bool(target) and any(normalize_equipment_name(x)==target for x in items)
 
+def stop_equipment_rename(stored,old_name,new_name):
+ """カンマ区切りの対象設備の中の1つだけを改名する。**書式を知っているのは
+    ここだけ**なので、設備名を持つマスタが増えても読み方は1通りのまま
+    (§9.221 の追補)。'*'(すべての設備)は名前を持たないのでそのまま返し、
+    1つも当たらなければ元の文字列をそのまま返す(呼び出し側が「書き換えた
+    かどうか」を値の同一性で見分けられるようにするため)。"""
+ items=stop_equipment_list(stored)
+ if not items or items[0]==STOP_EQUIPMENT_ALL:return stored
+ old=normalize_equipment_name(old_name)
+ new=str(new_name or '').strip()
+ if not old or not new:return stored
+ out=[new if normalize_equipment_name(x)==old else x for x in items]
+ if out==items:return stored
+ return stop_equipment_text(out)
+
 def stop_equipment_label(stored):
  """人が読む形("すべての設備" / "設備A / 設備B")。エラー文言と画面で共用。"""
  items=stop_equipment_list(stored)

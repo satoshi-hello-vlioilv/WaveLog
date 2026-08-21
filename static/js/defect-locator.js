@@ -517,7 +517,7 @@
   const el=$id(id);if(!el)return;
   el.addEventListener('input',refresh);el.addEventListener('change',refresh);
  });
- document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$id('defectModal')?.hidden)close()},true);
+ document.addEventListener('keydown',e=>{if(WL.modal.escCloses(e)&&!$id('defectModal')?.hidden)close()},true);
 
  window.WL=window.WL||{};
  window.WL.defect={open,close,compute,lanes,refresh,save:doSave,unsave:doUnsave,

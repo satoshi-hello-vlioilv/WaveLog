@@ -731,6 +731,76 @@ function confirmDeleteRecord(x){
  const summary=`<div class="delete-confirm-summary"><div class="delete-confirm-row"><span>ロット番号</span><b>${esc(x.basic?.lotNo||x.id)}</b></div><div class="delete-confirm-row"><span>状態</span><b>${esc(x.status||'編集中')}</b></div><div class="delete-confirm-row"><span>検査番号</span><b>${esc(x.basic?.inspectionNo||'-')}</b></div><div class="delete-confirm-row"><span>更新日時</span><b>${esc(x.updatedAt?new Date(x.updatedAt).toLocaleString('ja-JP'):'-')}</b></div></div><p class="delete-confirm-warning">入力済みの測定データも含め、この端末内のデータを完全に削除します。この操作は取り消せません。</p>`;
  return confirmModal({eyebrow:'DELETE CONFIRMATION',title:'端末内データを削除しますか？',bodyHtml:summary,confirmLabel:'削除する',danger:true});
 }
+/* ---------- 「⋯」の中の削除(§9.221 ⑤、利用者の指示) ----------
+   「『帳票』と『削除』が近く、かなり危ないです。削除ボタンは完了品からは
+    消して、編集中のものは削除に行くまでにプルダウン的な2クリック必要な
+    安全設計されたボタンに変更してください」。
+
+   以前は`[続きから再開][帳票][削除]`が**隣り合って常時出ていた**。
+   帳票は日に何度も押すもの、削除は取り消せないものなので、
+   **危ない操作を主要動線に置かない**（§5）に反していた。
+
+   いまは操作列は`[開く][帳票][⋯]`で、削除は`⋯`の中の1段目——**2クリック
+   必要**になる。**押せるのに何も起きないボタンは残さない**（§4）ので、
+   消せない行では削除を`disabled`にし、**理由を文字で**添える
+   （スケジュールの行メニューと同じ作法・§9.207）。 */
+let recordRowMenuEl=null;
+function closeRecordRowMenu(){
+ if(!recordRowMenuEl)return;
+ const owner=recordRowMenuEl._owner;
+ if(owner)owner.setAttribute('aria-expanded','false');
+ recordRowMenuEl.remove();recordRowMenuEl=null;
+ document.removeEventListener('mousedown',onRecordRowMenuAway,true);
+ document.removeEventListener('keydown',onRecordRowMenuKey,true);
+}
+function onRecordRowMenuAway(e){
+ if(!recordRowMenuEl)return;
+ if(recordRowMenuEl.contains(e.target))return;
+ /* **持ち主の`⋯`の上では閉じない。** ここで閉じると、直後の`click`が
+    そのまま開き直すので`openRecordRowMenu()`の「同じボタンなら閉じる」
+    分岐へ一度も入らない——押した本人には「もう一度押しても閉じない」と
+    見える（閉じる手立てがEscと他所クリックだけになる）。 */
+ if(recordRowMenuEl._owner&&recordRowMenuEl._owner.contains(e.target))return;
+ closeRecordRowMenu();
+}
+function onRecordRowMenuKey(e){if(e.key==='Escape'&&!e.isComposing){e.stopPropagation();closeRecordRowMenu()}}
+/* 削除できない理由。**判定は1箇所**——ボタンの出し分けと、押したときの
+   断りが別々だと片方だけ直った状態が作れる。 */
+function recordDeleteBlockReason(x){
+ if((window.accessMode?.mode||'edit')!=='edit')return '閲覧モードでは端末内のデータを消せません。';
+ if(x.remoteOnly)return '別のPCで保存された内容です。この端末には実体が無いので、消す場合はそのPCから操作してください。';
+ if(x.status==='完了')return '完了したデータはこの一覧からは消せません。測り直すときは「内容を開く」から再開してください。';
+ return '';
+}
+function openRecordRowMenu(btn,x){
+ if(recordRowMenuEl&&recordRowMenuEl._owner===btn){closeRecordRowMenu();return}
+ closeRecordRowMenu();
+ const why=recordDeleteBlockReason(x);
+ const el=document.createElement('div');
+ el.className='rec-row-menu';el.setAttribute('role','menu');
+ el.innerHTML=`<div class="rrm-head">${esc(x.basic?.lotNo||x.id)}</div>
+  <button type="button" class="rrm-item is-danger" role="menuitem"${why?' disabled':''}>端末内のデータを削除
+   ${why?`<small class="rrm-why">${esc(why)}</small>`:'<small class="rrm-why">取り消せません。次の画面でもう一度確かめます。</small>'}</button>`;
+ document.body.append(el);
+ el._owner=btn;btn.setAttribute('aria-expanded','true');
+ const r=btn.getBoundingClientRect();
+ /* 画面の外へ出さない。**器の外(body直下)へ`fixed`で出す**（§9.201。
+    一覧は`overflow:auto`なので、中に置くと切り落とされる）。 */
+ const w=el.offsetWidth,h=el.offsetHeight;
+ el.style.left=Math.max(8,Math.min(window.innerWidth-w-8,r.right-w))+'px';
+ el.style.top=(r.bottom+h+8>window.innerHeight?Math.max(8,r.top-h-4):r.bottom+4)+'px';
+ const del=el.querySelector('.rrm-item');
+ if(!why)del.onclick=async ev=>{
+  ev.stopPropagation();closeRecordRowMenu();
+  const proceed=recordHasAnyInput(x)?await confirmDeleteRecord(x):true;
+  if(proceed){await reliableDelete(x.id);await refreshDraftCount();await refreshRecordList()}
+ };
+ setTimeout(()=>{
+  document.addEventListener('mousedown',onRecordRowMenuAway,true);
+  document.addEventListener('keydown',onRecordRowMenuKey,true);
+ },0);
+ (why?el:del).focus?.();
+}
 /* 分割(条割変更)が実際に行われたかどうか: splitGroupsが2ロット以上に
    分かれている場合のみ「分割あり」とする(単一ロットのデフォルト値は分割なし扱い)。 */
 function recordSplitLabel(x){return Array.isArray(x.settings?.splitGroups)&&x.settings.splitGroups.length>1?'あり':'-'}
@@ -859,7 +929,7 @@ const RECORD_COL_BY_KEY=new Map(RECORD_COLUMNS.map(c=>[c.k,c]));
 /* 値を持たない列。仕掛一覧の`#`・ボタン列と同じ扱い。 */
 const RECORD_VIRTUAL={
  '#':{label:'#（行番号）',head:'#',note:'絞り込んだあとの並びで数えた番号です。'},
- [RECORD_COL_ACTIONS]:{label:'操作',note:'開く・帳票・削除のボタン。消すと、この一覧からは削除できなくなります（開くのは行のダブルクリックでできます）。'},
+ [RECORD_COL_ACTIONS]:{label:'操作',note:'開く・帳票・「⋯」（削除はこの中）のボタン。消すと、この一覧からは削除できなくなります（開くのは行のダブルクリックでできます）。'},
 };
 const RECORD_VIRTUAL_TRACK={'#':'minmax(44px,0)',[RECORD_COL_ACTIONS]:'minmax(232px,0)'};
 /* 既定の並びと、既定で出す列。**今までの15列がそのまま既定**。 */
@@ -1021,7 +1091,7 @@ function renderRecordListRows(){
      （§9.94の一覧と同じ約束）。付けないと、切れた値はどこからも読めない。 */
   row.innerHTML=keys.map(k=>{
    if(k===RECORD_COL_ACTIONS)
-    return `<div class="record-list-actions"><button class="resume" type="button">${isDone?'内容を開く':'続きから再開'}</button><button class="report" type="button" title="このロットの帳票プレビューを開きます">帳票</button><button class="danger" type="button">削除</button></div>`;
+    return `<div class="record-list-actions"><button class="resume" type="button">${isDone?'内容を開く':'続きから再開'}</button><button class="report" type="button" title="このロットの帳票プレビューを開きます">帳票</button><button class="rec-more" type="button" aria-haspopup="menu" aria-expanded="false" title="その他の操作（削除はこの中）">⋯</button></div>`;
    const c=RECORD_COL_BY_KEY.get(k);
    const fx=calc.get(k);
    const raw=fx?fx.run(view):(k==='#'?view['#']:(c?c.get(x):''));
@@ -1046,17 +1116,12 @@ function renderRecordListRows(){
   const recLotBtn=row.querySelector('.grid-lot-link');
   if(recLotBtn)recLotBtn.onclick=e=>{e.preventDefault();e.stopPropagation();openLotDsp(x.basic?.lotNo,x.basic?.castingNo,localStorage.getItem('LotDspLastTabV1')||'1')};
   // ダブルクリックは編集再開ではなく帳票プレビューへの遷移とする(編集は「続きから再開/内容を開く」ボタンから明示的に行う)。
-  row.ondblclick=e=>{if(!e.target.closest('.danger')&&!e.target.closest('.resume')&&!e.target.closest('.report')&&!e.target.closest('.grid-lot-link')&&typeof openReportForRecord==='function')openReportForRecord(x.id)};
+  row.ondblclick=e=>{if(!e.target.closest('.rec-more')&&!e.target.closest('.resume')&&!e.target.closest('.report')&&!e.target.closest('.grid-lot-link')&&typeof openReportForRecord==='function')openReportForRecord(x.id)};
   row.setAttribute('role','button');
   row.setAttribute('aria-label',(isDone?'内容を開く':'続きから再開')+' '+(x.basic?.lotNo||x.id));
   row.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){if(e.key===' ')e.preventDefault();resume()}};
-  const delBtn=row.querySelector('.danger');
-  if(delBtn)delBtn.onclick=async e=>{e.stopPropagation();
-   /* 他のPCにしか無いものは、この画面からは消さない(§9.91)。手元に中身が
-      無いまま消すと、まだ測っている端末の作業を巻き添えにする。 */
-   if(x.remoteOnly){showToast('この端末には無いデータです','別のPCで保存された内容です。消す場合はそのPCから操作してください。',6000);return}
-   const proceed=recordHasAnyInput(x)?await confirmDeleteRecord(x):true;
-   if(proceed){await reliableDelete(x.id);await refreshDraftCount();await refreshRecordList()}};
+  const moreBtn=row.querySelector('.rec-more');
+  if(moreBtn)moreBtn.onclick=e=>{e.stopPropagation();openRecordRowMenu(moreBtn,x)};
   list.append(row);
  });
  const result=$('#recordSearchResult');
@@ -1306,8 +1371,8 @@ function updateCourseGuard(){
  const button=$('#changeEquipmentFromWarning');if(button)button.onclick=()=>openEquipmentSettingsFinal('suggestion',suggestion);
 }
 document.addEventListener('click',event=>{const trigger=event.target.closest('[data-open-equipment-settings],#registeredEquipmentBadge');if(!trigger)return;event.preventDefault();event.stopImmediatePropagation();openEquipmentSettingsFinal('manual')},true);
-document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('#appSettingsModal')?.hidden){$('#appSettingsModal').hidden=true}},true);
-document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('#changelogModal')?.hidden){$('#changelogModal').hidden=true}},true);
+document.addEventListener('keydown',event=>{if(WL.modal.escCloses(event)&&!$('#appSettingsModal')?.hidden){$('#appSettingsModal').hidden=true}},true);
+document.addEventListener('keydown',event=>{if(WL.modal.escCloses(event)&&!$('#changelogModal')?.hidden){$('#changelogModal').hidden=true}},true);
 queueMicrotask(()=>{ensureEquipmentSettingsModal();updateEquipmentEntryPoints()});
 // 前回サーバーへ届かなかったバックアップ削除を片付ける(§9.52)。残したままだと
 // 作業スケジュールに実体の無い「作業中」が出続ける。

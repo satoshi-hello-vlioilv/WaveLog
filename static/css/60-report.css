@@ -141,10 +141,35 @@
    行の高さを`--rp-row`で固定して塊が`grid-row: span R`を占める形にすると、
    背の低い塊が**下の段へ跨いだ塊の横へ回り込める**（`dense`）。
    何行ぶんかはJSが入れる（設定とロットの中身で変わるのでCSSに書けない）。 */
-.rp-blocks{display:grid;grid-template-columns:repeat(var(--rp-grid,12),minmax(0,1fr));
-  grid-auto-rows:var(--rp-row,24px);grid-auto-flow:row dense;
-  gap:var(--space-1);align-items:start}
-.rp-block{min-width:0}
+/* ---------- 1マスは紙の1/N（§9.221 ⑨、利用者の指示） ----------
+   「縦12横6くらいのグリッドを作って、グリッドに収まる範囲でカード設計を
+    行い設計したカードのサイズに合わせてコンテンツ貼り付けが良いと思います」
+
+   行の高さは**紙から作る**——24px固定だとA4縦1枚が44行あり、「1行」が
+   カードの単位として意味を持たなかった。刷れる高さ（用紙 − 上下8mm）を
+   段数で割るので、1マスがそのまま紙の1/N になる。用紙はmm固定（`.rp-page`
+   配下の例外）なので、`calc`で出せる。 */
+.rp-blocks{
+  --rp-row:calc((297mm - 16mm) / var(--rp-page-rows,12));
+  display:grid;grid-template-columns:repeat(var(--rp-grid,12),minmax(0,1fr));
+  grid-auto-rows:var(--rp-row);grid-auto-flow:row dense;
+  gap:var(--space-1);align-items:stretch}
+.rp-landscape .rp-blocks{--rp-row:calc((210mm - 16mm) / var(--rp-page-rows,12))}
+/* **器は大きさを守る**（§9.221 ⑨）。以前は中身が器より高いと下の塊へ
+   はみ出して重なっていた（利用者の報告「重なりが生じている」）。中身は
+   `rpFitBlockBodies()`が入るところまで縮める。 */
+.rp-block{min-width:0;min-height:0;overflow:hidden}
+/* 縮める倍率は**カスタムプロパティで渡す**（`--rp-fit`）。インラインの
+   `style.transform`はどのレイヤより強く、CSSから打ち消せなくなる
+   （帳票の`--rp-scale`と同じ約束）。 */
+.rp-block-fit{transform-origin:left top;min-width:0;
+  transform:scale(var(--rp-fit,1));width:calc(100% / var(--rp-fit,1))}
+/* 縮めきれなかった塊は**枠で言う**（§4。黙って切ると気づけない）。 */
+.rp-blocks.is-arranging .rp-block.is-cramped{outline:2px solid var(--danger);outline-offset:1px}
+.rp-blocks.is-arranging .rp-block.is-cramped::after{
+  content:'入りきりません';position:absolute;right:2px;bottom:1px;z-index:5;
+  padding:0 3px;border-radius:var(--radius-xs);background:var(--danger);color:#fff;
+  font-weight:800;pointer-events:none;font-size:var(--fs-micro)}
 /* 落ちる場所を**実物大で**見せる（§9.217）。線1本では「どこへ何マスぶん
    入るのか」が読めない。グリッドの子として挿すので、置いたらどうなるかが
    そのまま見える。 */
@@ -152,6 +177,10 @@
   text-align:center;pointer-events:none;gap:1px}
 .rp-ghost{min-height:24px;border:2px dashed var(--teal);border-radius:3px}
 .rp-ghost{background:rgba(8,124,137,.09);color:#087c89;font-size:9px;font-weight:800}
+/* **置けないマスは赤で断る**（§9.221 ⑨）。落としてから断られるのでは、
+   掴んだ手間が無駄になる（§4／§9.116と同じ約束）。 */
+.rp-ghost.is-blocked{border-color:var(--danger);background:rgba(176,42,42,.10);color:var(--danger)}
+.rp-ghost-why{font-size:8px;font-weight:700}
 /* 大きさは**数字でも言う**（§9.218 ⑥）。枠だけでは「1マス多いのか少ない
    のか」が読めない。 */
 .rp-ghost small{font-size:8px;font-weight:700;opacity:.85}
@@ -174,7 +203,7 @@
     linear-gradient(to bottom,#e2ebee 1px,transparent 1px);
   background-size:
     calc((100% + var(--space-1)) / var(--rp-grid,12)) 100%,
-    100% calc(var(--rp-row,24px) + var(--space-1));
+    100% calc(var(--rp-row) + var(--space-1));
   background-position:0 0;
 }
 .rp-blocks.is-arranging .rp-block{outline:1px dashed #9bb3ba;outline-offset:1px;position:relative;
@@ -191,10 +220,16 @@
 .rp-free[data-rp-free]::after{content:attr(data-rp-free);position:absolute;left:3px;top:1px;color:#6d8f97;font-size:8px;font-weight:700;font-style:normal}
 /* 大きさを変える取っ手（§9.218 ⑥）。**縁そのものを掴ませる**——別の場所に
    ボタンを置くと、どの塊のどの向きなのかを覚えることになる。 */
+/* **取っ手は塊の内側に収める。** 縁から外へ出すと、隣に塊が置かれた
+   とたんにその3pxが**隣の塊の領域**になり、真ん中を狙って押しても
+   pointerdownが隣へ吸われて**引けない**（隣は後から描かれるので上に来る。
+   実測: 幅272pxのまま動かず、`.rp-size-tip`も出なかった）。塊どうしは
+   `rpResolvePlacement()`が重ならないことを保証しているので、内側にある
+   かぎり誰にも覆われない。 */
 .rp-size-grip{position:absolute;z-index:4;background:transparent}
-.rp-size-w{top:0;bottom:8px;right:-3px;width:7px;cursor:ew-resize}
-.rp-size-h{left:0;right:8px;bottom:-3px;height:7px;cursor:ns-resize}
-.rp-size-wh{right:-3px;bottom:-3px;width:11px;height:11px;cursor:nwse-resize}
+.rp-size-w{top:0;bottom:10px;right:0;width:8px;cursor:ew-resize}
+.rp-size-h{left:0;right:10px;bottom:0;height:8px;cursor:ns-resize}
+.rp-size-wh{right:0;bottom:0;width:12px;height:12px;cursor:nwse-resize}
 .rp-blocks.is-arranging .rp-size-grip{background:rgba(8,124,137,.14)}
 .rp-blocks.is-arranging .rp-size-grip:hover{background:var(--teal)}
 .rp-size-tip{position:fixed;z-index:var(--z-drag);pointer-events:none;padding:2px 6px;border-radius:var(--radius-xs);background:#0f2027;color:#fff;font-size:10px;font-weight:800}
@@ -231,6 +266,9 @@
  border:1px solid var(--line);border-radius:var(--radius-xs);background:var(--surface);color:var(--ink-2);cursor:pointer}
 .rp-grid-pick button.is-on{background:var(--teal);border-color:var(--teal);color:#fff}
 .rp-arrange-note{margin-left:var(--space-2);color:var(--ink-3)}
+/* 直前の操作の一言。**常設の案内を消さずに継ぎ足す**（§9.221 ⑨の追補）。 */
+.rp-arrange-tip{margin-left:var(--space-2);color:var(--ink);font-weight:800}
+.rp-arrange-note.is-bad>.rp-arrange-tip{color:var(--danger)}
 /* 紙のとおりに見る／A4の収まり（§9.174）。**収まっているかは色だけで
    伝えない**——何mm超過して何枚になるかを文字で出す。 */
 .rp-paper-toggle{height:var(--ctl-h-sm);padding:0 var(--space-3);margin-left:var(--space-2);border:1px solid var(--teal);border-radius:var(--radius-xs);background:var(--surface);color:var(--nav);font-size:var(--fs-sm);font-weight:700;cursor:pointer}

@@ -5,8 +5,13 @@ app.pyから移設。ロジックは変更していない(移動のみ)。
 from flask import Blueprint, request, jsonify
 
 from ..db_access import DBS, MEAS_DB, RECORDS_BACKUP_EXPORT_PATH, qi, connect, cols, tables, ensure_backup_table, read_backup_rows, invalidate_backup_rows_cache, request_user_id, request_pc_name, QUALITY_DB_KEY, path_exists_safe
-from ..repositories.master_repo import read_operator_names, read_spool_names, read_inner_names, read_device_names, ensure_operator_master, ensure_spool_master, ensure_inner_master, ensure_device_master, ensure_operator_equipment, OPERATOR_MASTER_TABLE, SPOOL_MASTER_TABLE, INNER_MASTER_TABLE, DEVICE_MASTER_TABLE
-from ..repositories.master_repo import read_burr_names, read_coil_stop_names, ensure_burr_master, ensure_coil_stop_master, BURR_MASTER_TABLE, COIL_STOP_MASTER_TABLE
+# 選択肢の読み取りは §9.221 ③ で op.choice_values() の1本になった。
+# **読み取り関数と表名の定数は import ごと外す**——残すと grep で
+# read_operator_names が今もここに当たり、廃止した経路が現役だと誤読される
+# (§9.87 で「同じ判定が2箇所に散って実際に壊れた」のと同じ入口)。
+# ensure_* は /api/measurement/diagnose が今も表の作成を確かめるので残る。
+from ..repositories.master_repo import ensure_operator_master, ensure_spool_master, ensure_inner_master, ensure_device_master, ensure_operator_equipment
+from ..repositories.master_repo import ensure_burr_master, ensure_coil_stop_master
 from ..repositories.master_repo import read_equipment_max_strips, read_equipment_kind, STRIP_LIMIT, DEFAULT_MAX_STRIPS
 from ..repositories.master_repo import choice_usage_for, choice_usage_bump
 from .. import records_export
@@ -76,6 +81,15 @@ def measurement_context():
    try:
     cs_created=ensure_coil_stop_master(master);result['diagnostics']['coil_stop_master']={'created':cs_created}
    except Exception as _e:result['diagnostics']['coil_stop_master_error']=str(_e)
+   # ---------- 選択肢は操業データ選択肢マスタの1本から引く(§9.221 ③) ----------
+   # 利用者の指示「オペレータ、機器、スプール種別、内径種別、バリ揃え、
+   # コイル止めについても汎用化した操業データ項目マスタに移行させて」。
+   # **読むのは下の読み取り専用ブロック**なので、表と列をそろえ、6つの
+   # マスタを1度だけ写すのはここ（上の`ensure_*`と同じ置き方）。
+   try:
+    from ..repositories import operation_repo as op
+    result['diagnostics']['operation_choices']=op.ensure_operation_choices(master)
+   except Exception as _e:result['diagnostics']['operation_choices_error']=str(_e)
    with connect(master,True) as c:
     ts=tables(c);result['diagnostics']['tables']=ts
     def read_values(table_aliases,col_aliases,extra=None):
@@ -101,26 +115,37 @@ def measurement_context():
     # 読み取りはオペレータマスタ（有効・表示順）から行う。
     # オペレータ欄のみ、対象設備（equipment）で作業可能設備によるフィルタをかける。
     # 割当が1件もないオペレータは常に表示対象（互換ポリシー）。検査員・梱包員は従来通り全件。
-    people=read_operator_names(c)
-    people_for_equipment=read_operator_names(c,equipment=equipment) if equipment else people
-    result['diagnostics']['matches']['オペレータマスタ']={'table':OPERATOR_MASTER_TABLE,'column':'氏名','count':len(people),'filtered_by_equipment':equipment or '','filtered_count':len(people_for_equipment)}
-    result['operators']=people_for_equipment;result['inspectors']=people;result['packers']=people
-    # 読み取りは機器マスタ（測定区分・有効・表示順）から行う。
-    thickness_gauges=read_device_names(c,'板厚');width_gauges=read_device_names(c,'板幅')
-    result['diagnostics']['matches']['機器マスタ']={'table':DEVICE_MASTER_TABLE,'column':'機器名','板厚':len(thickness_gauges),'板幅':len(width_gauges)}
+    # ---------- 選択肢は「まとまり名」で引く(§9.221 ③) ----------
+    # 以前はオペレータ／機器／内径／スプール／バリ揃え／コイル止めの6つが
+    # それぞれ専用の表と専用の読み取り関数を持っていた（同じことを6箇所）。
+    # いまは`操業データ選択肢マスタ`の**まとまり名が違うだけ**で、読み口は
+    # `op.choice_values()`の1本。設備の絞り込み（オペレータの作業可能設備）は
+    # `[対象設備]`が空＝すべて、という約束でそのまま引き継いでいる。
+    from ..repositories import operation_repo as op
+    # **どのまとまりを見るかもマスタが決める**(§9.221 ③)。組み込みの欄の
+    # `[選択肢名]`が答えるので、現場が別のまとまりへ向け替えられる。
+    gname=lambda key:op.builtin_choice_name(c,key)
+    people=op.choice_values(c,gname('operator'))
+    people_for_equipment=(op.choice_values(c,gname('operator'),equipment=equipment)
+                          if equipment else people)
+    result['diagnostics']['matches']['操業データ選択肢マスタ']={
+      'table':op.CHOICE_TABLE,'オペレータ':len(people),
+      'filtered_by_equipment':equipment or '','filtered_count':len(people_for_equipment)}
+    result['operators']=people_for_equipment
+    # **検査員は設備で絞らない**（今までどおり全員）。
+    result['inspectors']=people;result['packers']=people
+    thickness_gauges=op.choice_values(c,gname('thicknessGauge'))
+    width_gauges=op.choice_values(c,gname('widthGauge'))
     result['thickness_gauges']=thickness_gauges;result['width_gauges']=width_gauges
-    # 読み取りは内径種別マスタ（有効・表示順）から行う。
-    inners=read_inner_names(c)
-    result['diagnostics']['matches']['内径種別マスタ']={'table':INNER_MASTER_TABLE,'column':'内径種別','count':len(inners)}
+    inners=op.choice_values(c,gname('innerDiameter'))
     result['inner_diameters']=inners
-    # 読み取りはスプール種別マスタ（有効・表示順）から行う。
-    spools=read_spool_names(c)
-    result['diagnostics']['matches']['スプール種別マスタ']={'table':SPOOL_MASTER_TABLE,'column':'種別名','count':len(spools)}
+    spools=op.choice_values(c,gname('spool'))
     result['spools']=spools
-    # バリ揃え・コイル止め（以前は画面に直接書かれていた固定の選択肢）。
-    burrs=read_burr_names(c);coil_stops=read_coil_stop_names(c)
-    result['diagnostics']['matches']['バリ揃えマスタ']={'table':BURR_MASTER_TABLE,'column':'バリ揃え','count':len(burrs)}
-    result['diagnostics']['matches']['コイル止めマスタ']={'table':COIL_STOP_MASTER_TABLE,'column':'コイル止め','count':len(coil_stops)}
+    burrs=op.choice_values(c,gname('burr'));coil_stops=op.choice_values(c,gname('coilStop'))
+    result['diagnostics']['matches']['操業データ選択肢マスタ'].update({
+      '板厚測定器':len(thickness_gauges),'板幅測定器':len(width_gauges),
+      '内径':len(inners),'スプール':len(spools),
+      'バリ揃え':len(burrs),'コイル止め':len(coil_stops)})
     result['burr_types']=burrs;result['coil_stops']=coil_stops
     # この設備で割れる最大条数(設備マスタ。未登録なら既定)。分割の上限確認と
     # 横割数の入力上限に使う。

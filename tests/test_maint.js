@@ -31,11 +31,14 @@ let b=null;
  rec('存在しないIDは従来どおり弾く',missing.status>=400,String(missing.status));
 
  // ---- (2) 更新者IDを省いても監査列が空にならない ----
- const made=await call('POST','/api/operator-master',{name:'回帰_更新者テスト'});
- const ops=await call('GET','/api/operator-master');
- const hit=(ops.body.items||[]).find(x=>x.name==='回帰_更新者テスト');
+ /* オペレータマスタは操業データ選択肢マスタへ統合した（§9.221 ③）。
+    見ているのは「更新者IDを省いても監査列が空にならない」ことなので、
+    移った先の同じCRUDで確かめる。 */
+ const made=await call('POST','/api/operation-choice-master',{name:'回帰_監査',value:'回帰_更新者テスト'});
+ const ops=await call('GET','/api/operation-choice-master');
+ const hit=(ops.body.items||[]).find(x=>x.value==='回帰_更新者テスト');
  rec('更新者ID未指定でも登録は通る',made.status===200);
- if(hit)await call('POST','/api/operator-master/delete',{id:hit.id,user_id:'cleanup'});
+ if(hit)await call('POST','/api/operation-choice-master/delete',{id:hit.id,user_id:'cleanup'});
 
  // ---- (3) マスタ管理: 保存→一覧反映→削除が1周する ----
  await page.goto(B+'/',{waitUntil:'domcontentloaded'});

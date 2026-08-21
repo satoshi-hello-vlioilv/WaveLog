@@ -100,7 +100,10 @@
  function values(){
   const out={};
   document.querySelectorAll('[data-op]').forEach(el=>{
-   const k=el.dataset.op;const v=String(el.value==null?'':el.value).trim();
+   /* **記録へ入るのは整える前の値**（§9.221 ⑦）。3桁区切り・ゼロ埋めは
+      見せ方であって値ではない——`1,234`のまま記録へ入れると、次に欄を
+      離れたときの`Number()`がNaNになって**打った値が黙って消える**。 */
+   const k=el.dataset.op;const v=rawText(el,el.value).trim();
    if(v!=='')out[k]=v;
   });
   return out;
@@ -140,14 +143,83 @@
   if(el.value!==v)el.value=v;
  }
 
+/* ---------- 値の見せ方（§9.221 ⑦、利用者の指示） ----------
+    「データの表示方法、桁数、左詰め、右詰め、中央寄せなど、さらに
+     カスタマイズできるように改良してください」
+
+    **打っている最中は当てない。** 1文字ごとに桁区切りを入れると、
+    カーソルが区切りの前後で飛ぶ（§9.117の「入力中に作り直さない」と
+    同じ罠）。当てるのは**欄を離れたとき**と**記録から読み直したとき**の
+    2つだけで、欄へ入った瞬間は整える前の値へ戻す。
+
+    設定は**要素が持つ**（`data-opfmt`／`data-opdigits`）——`apply()`は
+    定義ではなく`[data-op]`を順に見て回るので、定義を引き直す口を
+    増やさずに済む。 */
+ function fmtOf(el){return (el&&el.dataset&&el.dataset.opfmt)||''}
+ /* 見せ方を外した「素の値」。記録へ入るのはこちら。 */
+ function rawText(el,text){
+  const t=String(text==null?'':text);
+  const f=fmtOf(el);
+  if(f==='3桁区切り')return t.replace(/,/g,'');
+  if(f==='ゼロ埋め'){
+   const m=t.match(/^(-?)0+(\d.*)$/);
+   return m?m[1]+m[2]:t;
+  }
+  return t;
+ }
+ /* 画面に出す形。**読めない値はそのまま返す**（整形に失敗したら生の値を
+    出すのが原則。§9.88と同じ約束）。 */
+ function shownText(el,raw){
+  const t=String(raw==null?'':raw).trim();
+  if(t==='')return '';
+  const f=fmtOf(el);
+  if(f==='3桁区切り'){
+   const m=t.replace(/,/g,'').match(/^(-?)(\d+)(\.\d*)?$/);
+   if(!m)return t;
+   return m[1]+Number(m[2]).toLocaleString('en-US')+(m[3]||'');
+  }
+  if(f==='ゼロ埋め'){
+   const w=Number((el&&el.dataset&&el.dataset.opdigits)||0);
+   if(!(w>0))return t;
+   const m=t.match(/^(-?)(\d+)(\.\d*)?$/);
+   if(!m)return t;
+   return m[1]+m[2].padStart(w,'0')+(m[3]||'');
+  }
+  return t;
+ }
+ /* 欄へ値を入れる口。**`el.value=`を直に書かないこと**——見せ方を
+    通さない代入が1つでもあると、そこだけ整わない欄ができる。 */
+ function putValue(el,raw){
+  const next=shownText(el,raw);
+  if(el.value!==next)el.value=next;
+ }
+
+ /* 見せ方の配線は**この1本**（§9.221 ⑦）。設定窓の見本も測定画面も
+    ここを通す——見本だけ整形しないと、設定画面で見えた形と実際の形が
+    食い違う（§9.218 ①の約束が破れる）。`<select>`は値が選択肢そのもの
+    なので整形しない。 */
+ function attachFormat(el,onLeave){
+  if(!el||el.tagName==='SELECT'||el.dataset.opFmtWired)return el;
+  el.dataset.opFmtWired='1';
+  /* 欄へ入ったら**整える前の値**へ戻す。桁区切りの入った文字の上で
+     打たせると、`sanitize()`が区切りを消した瞬間にカーソルが飛ぶ。 */
+  el.addEventListener('focus',()=>{const r=rawText(el,el.value);if(el.value!==r)el.value=r});
+  el.addEventListener('blur',onLeave||(()=>putValue(el,rawText(el,el.value))));
+  return el;
+ }
+
  /* 欄から離れたときに桁と上下限へそろえる。**直したことを画面に書く**
     （§CLAUDE 6）——黙って値が変わると、打ち間違いに気づけない。 */
  function settle(el,def,note){
-  if(!isNumeric(def.type)){remember(def.name,el.value);return}
-  const raw=String(el.value||'').trim();
-  if(raw===''||raw==='-'||raw==='.'){el.value='';remember(def.name,'');say(note,'');return}
+  /* **見本では記録へ書かない**（§9.221 ⑦）。設定窓は測定を開いたまま
+     でも開けるので、素通しにすると見本へ打った値がそのロットの操業
+     データとして残る。整え方（桁・上下限・見せ方）は同じ道を通す。 */
+  const keep=v=>{if(!def.preview)remember(def.name,v)};
+  if(!isNumeric(def.type)){keep(rawText(el,el.value));return}
+  const raw=rawText(el,el.value).trim();
+  if(raw===''||raw==='-'||raw==='.'){el.value='';keep('');say(note,'');return}
   let n=Number(raw);
-  if(!Number.isFinite(n)){el.value='';remember(def.name,'');say(note,'数字として読めなかったので消しました');return}
+  if(!Number.isFinite(n)){el.value='';keep('');say(note,'数字として読めなかったので消しました');return}
   const msgs=[];
   if(isPositive(def.type)&&n<0){n=Math.abs(n);msgs.push('マイナスは入りません')}
   const dec=isInteger(def.type)?0:(Number.isFinite(Number(def.decimals))?Number(def.decimals):1);
@@ -161,8 +233,9 @@
   }
   const out=isInteger(def.type)?String(Math.round(n)):Number(n).toFixed(dec);
   if(out!==raw&&!msgs.length)msgs.push(`小数${dec}桁へそろえました`);
-  el.value=out;
-  remember(def.name,out);
+  /* **記録へ入るのは`out`（素の値）／画面に出るのは見せ方を当てた形**。 */
+  putValue(el,out);
+  keep(out);
   say(note,msgs.join(' ／ '));
  }
  function say(note,text){
@@ -196,7 +269,6 @@
   label.dataset.opgen='1';
   label.dataset.f='op:'+def.name;
   label.dataset.opfield=def.name;
-  const unit=def.unit?`<em class="opf-unit">${esc(def.unit)}</em>`:'';
   const hint=ruleText(def);
   let control;
   const id='opf'+i;
@@ -213,12 +285,80 @@
    control=`<input id="${id}" type="text" data-op="${esc(def.name)}" autocomplete="off">`;
   }
   label.title=[def.name,def.unit?`単位 ${def.unit}`:'',hint,def.note||''].filter(Boolean).join('｜');
+  const u=unitParts(def);
   label.innerHTML=`<span class="opf-name">${esc(def.name)}`
    +(def.required?'<b class="opf-req" title="入力が要ります">必須</b>':'')+'</span>'
-   +control+unit
+   +u.top+control+u.inside+u.bottom
    +(def.choiceMissing?`<small class="opf-warn">選択肢「${esc(def.choice)}」が未登録です</small>`:'')
    +'<small class="opf-note" hidden></small>';
+  applyPresentation(label,def);
   return label;
+ }
+ /* ---------- 単位の置き場（§9.221 ⑦、利用者の指示） ----------
+    「単位を出す位置(外上左、外上中央、外上右、内部、外下左、外中央、
+     外下右)、出し方…さらにカスタマイズできるように」
+
+    **既定は`外下左`**——これが今までの見え方そのもの（欄の下に左詰めで
+    小さく出ていた）。既定を変えると、設定を触っていない現場の画面が
+    黙って変わる。
+    `内部`は欄の中の右端へ重ねる。重ねられるのは箱が1つの欄だけなので、
+    ラジオ・セグメント等では**サーバーが`外下左`へ落として返す**
+    （判定は`operation_repo._row_to_item`の1箇所。画面に同じ判定を書かない）。 */
+ function unitParts(def){
+  const blank={top:'',inside:'',bottom:''};
+  const text=String(def.unit||'').trim();
+  const at=String(def.unitPlace||'外下左');
+  if(!text||at==='出さない')return blank;
+  const em=`<em class="opf-unit">${esc(text)}</em>`;
+  if(at==='内部')return {top:'',inside:`<em class="opf-unit opf-unit-in" aria-hidden="true">${esc(text)}</em>`,bottom:''};
+  const side=at.slice(-2)==='中央'?'中央':at.slice(-1);
+  const line=`<span class="opf-unit-line" data-at="${esc(side)}">${em}</span>`;
+  return at.indexOf('外上')===0?{top:line,inside:'',bottom:''}:{top:'',inside:'',bottom:line};
+ }
+ /* 寄せ・見せ方・単位の置き場は**器の属性**で持つ（§9.221 ⑦）。CSSは
+    属性を見るだけになり、値そのものを持つ`<select>`/`<input>`には触らない
+    ——組み込みの欄（オペレータ等）へも同じ関数で当てられる。 */
+ function applyPresentation(host,def){
+  if(!host)return;
+  const at=String(def.unitPlace||'外下左');
+  const align=String(def.align||'自動');
+  const fmt=String(def.valueFormat||'そのまま');
+  host.dataset.opunit=(def.unit||'')&&at!=='出さない'?at:'なし';
+  host.dataset.opalign=align;
+  /* 単位を重ねる幅は**文字数から**決める（`ch`は数字の幅なので、
+     `mm`のような英字でも近い値になる）。器へ渡し、欄の右余白がこれを見る。 */
+  host.style.setProperty('--opf-unit-w',String(Math.max(1,String(def.unit||'').length))+'ch');
+  const el=valueEl(host);
+  if(el){
+   /* **`<select>`には見せ方を当てない。** 値が選択肢そのものなので、
+      3桁区切りやゼロ埋めを掛けると`putValue()`が`1234`を`1,234`にし、
+      どの`<option>`にも当たらず**`select.value`が空になる**——画面から
+      記録が消え、そのまま保存すると空で上書きされる。`attachFormat()`は
+      同じ理由で`SELECT`を外しているので、**書く側もここで揃える**
+      （読む側`fmtOf()`に条件を足すと、当てない理由が2箇所に散る）。 */
+   const plain=el.tagName==='SELECT';
+   el.dataset.opfmt=(plain||fmt==='そのまま')?'':fmt;
+   if(!plain&&def.digits)el.dataset.opdigits=String(def.digits);
+   else delete el.dataset.opdigits;
+  }
+ }
+
+/* 組み込みの欄（オペレータ・内径…）は画面が持っている`<label>`なので、
+    単位の器はこちらから足す。**同じ値なら触らない**（§9.131。`innerHTML`を
+    毎回書き換えると、その中の入力欄が作り直されてフォーカスが落ちる）。 */
+ function syncBuiltinUnit(host,def){
+  if(!host||!def.builtin)return;
+  const u=unitParts(def);
+  const want=u.top+u.inside+u.bottom;
+  const now=[...host.querySelectorAll(':scope>.opf-unit-line,:scope>.opf-unit-in')];
+  const sig=now.map(x=>x.outerHTML).join('');
+  if(sig===want&&(want||!now.length))return;
+  now.forEach(x=>x.remove());
+  if(!want)return;
+  const ctl=valueEl(host);
+  if(u.top&&ctl)ctl.insertAdjacentHTML('beforebegin',u.top);
+  if(u.inside&&ctl)ctl.insertAdjacentHTML('afterend',u.inside);
+  if(u.bottom)host.insertAdjacentHTML('beforeend',u.bottom);
  }
 
  /* ---------- 選ばせ方（§9.218 ②、利用者の指示） ----------
@@ -579,7 +719,7 @@
    +'<button type="button" class="opf-keypad-key opf-keypad-clear" data-opk="clear">全部消す</button>'
    +'</div></div>';
   document.body.appendChild(padEl);
-  padEl.addEventListener('click',e=>{if(e.target===padEl)closeKeypad()});
+  WL.modal.keepOpen(padEl);
   padEl.querySelector('#opfKeypadClose').onclick=closeKeypad;
   padEl.querySelectorAll('[data-opk]').forEach(b=>{
    b.onclick=e=>{
@@ -598,7 +738,7 @@
    };
   });
   document.addEventListener('keydown',e=>{
-   if(e.key==='Escape'&&padEl&&!padEl.hidden){e.stopPropagation();closeKeypad()}
+   if(WL.modal.escCloses(e)&&padEl&&!padEl.hidden){e.stopPropagation();closeKeypad()}
   },true);
   return padEl;
  }
@@ -631,10 +771,10 @@
    +'<input type="search" id="opfPickerFind" placeholder="絞り込む" autocomplete="off">'
    +'<div class="opf-picker-list" id="opfPickerList"></div></div>';
   document.body.appendChild(pickerEl);
-  pickerEl.addEventListener('click',e=>{if(e.target===pickerEl)closePicker()});
+  WL.modal.keepOpen(pickerEl);
   pickerEl.querySelector('#opfPickerClose').onclick=closePicker;
   document.addEventListener('keydown',e=>{
-   if(e.key==='Escape'&&pickerEl&&!pickerEl.hidden){e.stopPropagation();closePicker()}
+   if(WL.modal.escCloses(e)&&pickerEl&&!pickerEl.hidden){e.stopPropagation();closePicker()}
   },true);
   return pickerEl;
  }
@@ -812,6 +952,10 @@
      el.style.gridColumn='span '+Math.max(1,Math.min(gridCols,Number(d.span)||4));
      el.classList.toggle('op-folded',fold);
      el.classList.toggle('op-required',!!d.required);
+     /* 見せ方（§9.221 ⑦）は**組み込みの欄にも当たる**——器の属性を書くだけで、
+        値を持つ`<select>`/`<input>`そのものには触らない。 */
+     applyPresentation(el,d);
+     syncBuiltinUnit(el,d);
      /* 選ばせ方（§9.218 ②）。**組み込みの欄にも当たる**——値を持つのは
         今までどおり`<select>`なので、当てても壊れるものが無い。 */
      const kind=widgetOf(d);
@@ -861,8 +1005,8 @@
    if(el.tagName==='SELECT'){
     el.addEventListener('change',()=>remember(def.name,el.value));
    }else{
-    el.addEventListener('input',()=>{sanitize(el,def);remember(def.name,el.value)});
-    el.addEventListener('blur',()=>settle(el,def,note));
+    attachFormat(el,()=>settle(el,def,note));
+    el.addEventListener('input',()=>{sanitize(el,def);remember(def.name,rawText(el,el.value))});
    }
   });
  }
@@ -877,7 +1021,7 @@
     const o=document.createElement('option');
     o.value=v;o.textContent=v+'（選択肢に無い記録）';el.appendChild(o);
    }
-   el.value=v;
+   putValue(el,v);
   });
   applyInitials();
   syncWidgets();
@@ -907,7 +1051,7 @@
    if(!el)return;
    if(String(el.value||'')!=='')return;
    if(el.tagName==='SELECT')addOption(el,init);
-   el.value=init;
+   putValue(el,init);
    /* **`remember()`は使わない**——あちらは`markDirty()`まで呼ぶので、
       記録を開いただけで「未保存の変更あり」になる。初期値は利用者が
       打ったものではないので、開いた瞬間に編集を名乗らせない。
@@ -999,6 +1143,14 @@
  }
  WL.opData={load,layout,render:layout,refresh,apply,collect,values,filled,requiredControls,
             syncAutoOpen,syncWidgets,previewWidget,ruleText,
+            /* 見せ方を当てる口（§9.221 ⑦）。**当てるのはこの1本**——設定窓の
+               見本も測定画面もここを通るので、形が食い違わない。 */
+            presentation:(host,def)=>{applyPresentation(host,def);syncBuiltinUnit(host,Object.assign({builtin:'preview'},def))},
+            /* 値の整形を見本の欄にも当てる口（§9.221 ⑦）。**整え方も
+               同じ`settle()`を通す**——見本だけ桁そろえが効かないと、
+               「3桁区切り」を選んでも設定画面では素の数字のままになる。 */
+            attachFormat,
+            settlePreview:(el,def)=>settle(el,Object.assign({},def,{preview:true}),null),
             defs:()=>defs.slice(),
             /* 設備が変わったら次に開くとき読み直す（マスタ管理で足した直後）。 */
             forget:()=>{defs=[];builtinOff=[];defsFor=null;loading=null}};

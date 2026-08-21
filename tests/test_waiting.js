@@ -53,7 +53,7 @@ let b=null;
  await page.waitForTimeout(1500);
  rec('withWaitingがグローバルに公開されている',await page.evaluate(()=>typeof window.withWaiting==='function'));
 
- await slow('**/api/operator-master*',900);
+ await slow('**/api/equipment-master*',900);
  await watch(); await page.click('#openMasterMaint'); await shownThenClosed();
  let s=await seen();
  rec('マスタ管理: 読み込み中にWAITINGが出る',s.shown&&/マスタを読み込んでいます/.test(s.title),JSON.stringify(s));
@@ -69,7 +69,7 @@ let b=null;
  rec('分析ダッシュボード: 読み込み後に閉じている',await closed(),JSON.stringify(s));
 
  // 速い処理ではちらつかせない
- await page.unroute('**/api/operator-master*');
+ await page.unroute('**/api/equipment-master*');
  await watch(); await page.click('#openMasterMaint');
  // 「出ないこと」は待てないので、**中身が描き終わったこと**を条件にしてから見る。
  // 器(#masterMaintForm)は先にあるので条件にならない——行が出るまで待つ。

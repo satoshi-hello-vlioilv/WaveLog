@@ -212,6 +212,61 @@ function showToast(title, detail='', duration=3400){
  item.innerHTML=`<b>${esc(title)}</b>${detail?`<small>${esc(detail)}</small>`:''}`;
  area.append(item); setTimeout(()=>{item.classList.add('out');setTimeout(()=>item.remove(),220)},duration);
 }
+/* ---------- モーダルの閉じ方は1つの規則(§9.221 ①) ----------
+   利用者の指示「選択肢の値マスタのモーダル外クリックした瞬間にモーダルが
+   閉じないようにしてください。編集中の内容が瞬時に消えてしまうことが
+   問題です。類似の事象がないかモーダル関係はすべてチェックしてください」。
+
+   **背景クリックではどのモーダルも閉じない。** 「入力欄を持つものだけ
+   閉じない」にすると、どれが閉じてどれが閉じないかを利用者が覚えることに
+   なる（探させず・思い出させず・推測させず、に反する）。閉じる場所は
+   ×／キャンセル／Esc の3つで、位置はどのモーダルでも同じ。
+
+   代わりに**押したことは必ず返す**——黙って何も起きないのは「固まった」と
+   区別が付かない。器を一度だけ弾ませ、×に「ここで閉じます」を出す。
+
+   **Escは「変換中」を除く**（`isComposing`）。日本語入力では変換を取り消す
+   のにEscを打つので、変換中のEscでモーダルごと閉じると、背景クリックと
+   まったく同じ壊れ方が**キーボードだけで**起きる。 */
+function modalDialogOf(modal){
+ return modal.querySelector('[role="dialog"]')||modal.firstElementChild;
+}
+function nudgeModal(modal){
+ const dlg=modalDialogOf(modal);if(!dlg)return;
+ dlg.classList.remove('wl-modal-nudge');
+ void dlg.offsetWidth;                       /* 連打でも毎回動かすため巻き戻す */
+ dlg.classList.add('wl-modal-nudge');
+ clearTimeout(dlg._wlNudgeTimer);
+ dlg._wlNudgeTimer=setTimeout(()=>dlg.classList.remove('wl-modal-nudge'),460);
+ /* **必ず文字で返す**（§CLAUDE 3。状態を色や動きだけで伝えない）。
+    閉じるボタンの目印は器ごとにまちまちなので、名前・題・見た目の順に
+    落として探す——1つも当たらないと**揺れるだけで何も書かれない**
+    モーダルができ、「押しても何も起きない」と区別が付かなくなる
+    （`#filterPresetModal`が実際にそうだった）。 */
+ const btn=dlg.querySelector('[aria-label="\u9589\u3058\u308b"],[title^="\u9589\u3058\u308b"]')
+   ||dlg.querySelector('.mm-close,.rec-modal-close,.wl-close,[data-close]')
+   ||[...dlg.querySelectorAll('button')].find(b=>/^[×✕✖x]$/i.test((b.textContent||'').trim()));
+ if(btn){
+  btn.classList.add('wl-close-hint');
+  clearTimeout(btn._wlHintTimer);
+  btn._wlHintTimer=setTimeout(()=>btn.classList.remove('wl-close-hint'),1900);
+ }
+}
+/* 背景を押しても閉じない。**mousedownでpreventDefaultして入力欄の
+   フォーカスを保つ**——外すと、打ちかけの欄からカーソルが抜けて
+   日本語入力の変換も途切れる（閉じないだけでは足りない）。
+   掴んで運ぶ部品には当てないこと（Chromeでは`mousedown`の
+   preventDefaultがHTML5のドラッグ開始を止める）。ここは覆いの地の上
+   だけなので当たらない。 */
+function keepModalOpen(modal){
+ if(!modal||modal._wlKeepOpen)return modal;
+ modal._wlKeepOpen=true;
+ modal.addEventListener('mousedown',e=>{if(e.target===modal)e.preventDefault()});
+ modal.addEventListener('click',e=>{if(e.target===modal)nudgeModal(modal)});
+ return modal;
+}
+function escClosesModal(e){return e.key==='Escape'&&!e.isComposing&&e.keyCode!==229}
+WL.modal={keepOpen:keepModalOpen,nudge:nudgeModal,escCloses:escClosesModal};
 /* 共通の確認モーダル。ブラウザ標準のconfirm()はアプリの見た目に合わせられず
    タブ全体をブロックするため、破棄確認・削除確認等はこちらへ統一する
    (以前はlot-split.js/filters.js/records-store.jsが個別にconfirm()を
@@ -239,11 +294,11 @@ function confirmModal(opts){
   modal.hidden=false;
   const finish=result=>{modal.hidden=true;resolve(result)};
   cancel.onclick=()=>finish(false);ok.onclick=()=>finish(true);close.onclick=()=>finish(false);
-  modal.onclick=e=>{if(e.target===modal)finish(false)};
+  WL.modal.keepOpen(modal);
   requestAnimationFrame(()=>cancel.focus());
  });
 }
-document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('#appConfirmModal')?.hidden){$('#appConfirmCancel')?.click()}},true);
+document.addEventListener('keydown',event=>{if(WL.modal.escCloses(event)&&!$('#appConfirmModal')?.hidden){$('#appConfirmCancel')?.click()}},true);
 function sourceValue(names){const r=S.measure?.source||S.measure?.snapshot?.source||{};for(const n of names){if(r[n]!==undefined&&r[n]!==null&&String(r[n]).trim()!=='')return String(r[n])}return ''}
 // Database field normalization supports half-width/full-width variants such as ﾌﾟﾗｽ / プラス.
 function normalizedFieldName(name){return String(name||'').normalize('NFKC').replace(/\s+/g,'').toLowerCase()}

@@ -123,6 +123,35 @@
 .record-list-actions .report{color:#075e67;background:#eafafa;border:1px solid #8fc9c2}
 .record-list-actions .report:hover{background:var(--teal);border-color:var(--teal);color:#fff}
 .record-list-actions .danger{color:#9d2020;background:#fff7f7;border-color:#dab0b0}
+/* ---------- 「⋯」とその中の削除(§9.221 ⑤) ----------
+   帳票の隣に取り消せない操作を置かない。`⋯`は**中身の分からない印**なので、
+   幅は文字1つぶんに絞り、何が入っているかは`title`と開いた先の文で言う。 */
+/* **`em`に`--ui-scale`を掛けないこと**——`em`は既に`--fs*`＝
+   `calc(14px * var(--ui-scale))`を経由してスケール済みなので、二重に
+   掛かって表示サイズを変えるたびに`⋯`だけ他の行内ボタンと違う比率で
+   伸縮する（実測: lgで2.42em相当、smで2.02em相当）。幅は`--w-*`の
+   いちばん狭い段（`--w-xs`）で揃える。 */
+.record-list-actions .rec-more{flex:0 0 auto;min-width:var(--w-xs);
+  color:var(--ink-2);background:var(--surface-2);border-color:var(--line);
+  letter-spacing:.08em}
+.record-list-actions .rec-more:hover{background:var(--surface-3);color:var(--ink)}
+.record-list-actions .rec-more[aria-expanded="true"]{background:var(--teal);color:#fff;border-color:var(--teal)}
+.rec-row-menu{position:fixed;z-index:var(--z-popover);min-width:calc(240px * var(--ui-scale));
+  max-width:calc(340px * var(--ui-scale));background:var(--surface);
+  border:1px solid var(--line);border-radius:var(--radius-md);
+  box-shadow:0 10px 28px #0b2b3320;padding:var(--space-1);display:flex;
+  flex-direction:column;gap:var(--space-1)}
+.rec-row-menu .rrm-head{font-size:var(--fs-micro);font-weight:800;color:var(--muted);
+  padding:var(--space-1) var(--space-2) 0}
+.rec-row-menu .rrm-item{display:flex;flex-direction:column;align-items:flex-start;
+  gap:2px;width:100%;text-align:left;height:auto;padding:var(--space-2);
+  font-size:var(--fs-sm);font-weight:700;background:transparent;border:0;
+  border-radius:var(--radius-sm);color:var(--ink)}
+.rec-row-menu .rrm-item.is-danger{color:var(--danger)}
+.rec-row-menu .rrm-item:hover:not(:disabled){background:var(--danger-bg)}
+.rec-row-menu .rrm-item:disabled{color:var(--muted);cursor:not-allowed;opacity:1}
+.rec-row-menu .rrm-why{font-size:var(--fs-micro);font-weight:500;color:var(--muted);
+  white-space:normal;line-height:1.45}
 .record-toolbar{display:flex;justify-content:space-between;align-items:center;padding:var(--pad-card);background:#eef8f9;border-bottom:1px solid var(--line)}
 .record-toolbar button{background:var(--teal);color:#fff}
 .record-empty,.record-loading{margin:var(--space-5);padding:30px;text-align:center;background:#fff;border:1px dashed var(--muted-border);border-radius:var(--radius-md);color:var(--muted)}

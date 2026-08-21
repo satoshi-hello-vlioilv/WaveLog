@@ -381,7 +381,18 @@ function bindMeasureInputs(){
   // 手動モードでは、クリックだけでなくTabキー等の操作で実際に
   // フォーカスが移動した場合も、強調表示(.current)をそのセルへ
   // 追従させる(自動モードは受信欄にフォーカスを固定するため対象外)。
-  x.addEventListener('focus',()=>{if(S.measure.settings.inputMode!=='manual')return;syncStepFor(x);focusCurrent()});
+  x.addEventListener('focus',()=>{
+   if(S.measure.settings.inputMode!=='manual')return;
+   /* **こちらが動かしたぶんは追いかけない**（§9.208 ③の再入防止と対）。
+      `focusCurrent()`→`moveCaretTo()`→`focus`とここへ戻ってくるため、
+      追いかけると同じ枠のために表を組み直すことになる。 */
+   if(caretMoving)return;
+   syncStepFor(x);
+   /* **丈も合わせる**（§9.221 ⑧）。以前は条(`wStep`)だけを合わせていたので、
+      隣の丈の枠へ入ると印は元の丈に残り、`moveCaretTo()`がカーソルを
+      そちらへ引き戻していた（打った文字が別の丈へ入る）。 */
+   if(!gotoLengthSlot(+x.dataset.i))focusCurrent();
+  });
   x.oninput=()=>{m.measurements[x.dataset.mkey][+x.dataset.i][+x.dataset.j]=x.value;judgeInput(x,x.dataset.mkey,Number(x.value),+x.dataset.j);renderStats();WL.workStamp.note('manual');markDirty()};x.onkeydown=e=>{if(S.measure.settings.inputMode!=='manual'){e.preventDefault();return}if(e.key==='Delete'){x.value='';x.oninput()}if(e.key==='Enter'){e.preventDefault();advanceSlot();focusCurrent()}}})
 
  document.querySelectorAll('[data-mkey="thickness"],[data-mkey="width"]').forEach(el=>{
@@ -629,7 +640,7 @@ function ensureNumberlinePanel(){
   <div class="sc-float-resize" title="ドラッグで大きさを変えられます"></div>`;
  document.body.appendChild(el);
  el.querySelector('#nlPanelClose').onclick=()=>closeNumberlinePanel();
- el.addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();closeNumberlinePanel()}});
+ el.addEventListener('keydown',e=>{if(WL.modal.escCloses(e)){e.stopPropagation();closeNumberlinePanel()}});
  /* **押した先は1つ**（`WL.numberline.set`）。覚えるのも描き直すのも
     あちらが持っているので、ここは押されたことを伝えるだけ。 */
  el.addEventListener('click',e=>{
@@ -877,7 +888,12 @@ function bindFlatnessInputs(){
     測定器転送(deviceInput)経由の数値受信とは切り離し、セルへ直接
     入力できるようにする。 */
  document.querySelectorAll('input[data-mkey="flatness"]').forEach(x=>{
-  x.onclick=()=>{m.settings.wStep=+x.dataset.j;focusCurrent()};
+  /* **押した枠へ移る処理は`bindMeasureInputs`が持つ**（§9.221 ⑧、利用者の
+     指摘「フラットネスについて丈を跨いでの直接条指定ができません。他の項目は
+     直接丈を跨いだ条指定ができるので同じように」）。以前はここで`onclick`を
+     上書きし、**条(`wStep`)だけ**を合わせて丈(`gotoLengthSlot`)を落として
+     いたため、別の丈の枠を押しても印はそこへ来なかった。
+     **同じことを2箇所に持たない**——上書きを外して1本へ戻す。 */
   x.onkeydown=e=>{
    if(e.key==='Delete'){x.value='';x.oninput();m.settings.wStep=+x.dataset.j;renderMeasureGrid();focusFlatnessCurrentCell();return}
    if(e.key==='Enter'){e.preventDefault();advanceWidth();renderMeasureGrid();focusFlatnessCurrentCell()}

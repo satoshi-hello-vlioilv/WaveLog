@@ -768,3 +768,37 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  .lc-count{font-size:var(--fs-sm);color:var(--muted);white-space:nowrap}
  .lc-count.has-mark{color:var(--teal-dark);font-weight:800}
 }
+
+@layer component {
+/* ---------- モーダルの「閉じません」の返し(§9.221 ①) ----------
+   背景クリックではどのモーダルも閉じない（閉じ方は×／キャンセル／Esc）。
+   **押したことは必ず返す**——黙って何も起きないと「固まった」と読まれる。
+   器を一度だけ弾ませ、×のそばに「ここで閉じます」を1.9秒だけ出す。
+   動きを嫌う設定(`prefers-reduced-motion`)では枠の色だけで返す。 */
+.wl-modal-nudge{animation:wl-modal-nudge .42s cubic-bezier(.36,.07,.19,.97)}
+@keyframes wl-modal-nudge{
+ 0%,100%{transform:translateX(0)}
+ 15%{transform:translateX(-5px)}
+ 32%{transform:translateX(4px)}
+ 50%{transform:translateX(-3px)}
+ 68%{transform:translateX(2px)}
+ 84%{transform:translateX(-1px)}
+}
+.wl-close-hint{position:relative;box-shadow:0 0 0 2px var(--teal)}
+.wl-close-hint::after{
+ content:'ここで閉じます';position:absolute;top:calc(100% + var(--space-1));right:0;
+ white-space:nowrap;font-size:var(--fs-micro);font-weight:700;
+ background:var(--teal);color:#fff;border-radius:var(--radius-xs);
+ /* **重なり順はトークンから**（§9.112。直値を新しく足さない）。この案内は
+    §9.221 ①で「押したことを返す」唯一の可視の合図なので、同じ器の中の
+    見出しや候補一覧（`--z-popover`）に隠れると「背景を押しても何も
+    起きない」へ逆戻りする。 */
+ padding:var(--space-1) var(--space-2);z-index:var(--z-popover);pointer-events:none;
+ /* `--shadow-sm`は`:root`に無い（参照しても効かず、実際に当たるのは
+    フォールバックのリテラル影。§9.127の`--ctl-h-md`と同じ罠）。
+    影のトークンは無いので、既にあるモーダルの影と同じ書き方に揃える。 */
+ box-shadow:0 6px 18px rgba(20,40,45,.22)}
+@media (prefers-reduced-motion:reduce){
+ .wl-modal-nudge{animation:none;box-shadow:0 0 0 3px var(--teal)}
+}
+}

@@ -40,12 +40,15 @@ G['一覧'] = ['test_nav', 'test_navdyn', 'test_listcache', 'test_listperf', 'te
              'test_cols', 'test_hdctx', 'test_dsnav', 'test_dsrestart', 'test_listmodal', 'test_filter',
              'test_audit', 'test_sub', 'test_uisize', 'test_ttlcache']
 # 操業データ(§9.215)は測定画面のカード。マスタ管理からも触るので「マスタ」群。
-G['操業データ'] = ['test_opdata', 'test_opui', 'test_msteps', 'test_maint', 'test_crudroutes']
+G['操業データ'] = ['test_opdata', 'test_opui', 'test_msteps', 'test_maint', 'test_crudroutes',
+                   'test_opchoice']
 G['列'] = ['test_collayout', 'test_colformat', 'test_colrule', 'test_colsort', 'test_lcpanel',
            'test_colscache', 'test_colsripple', 'test_colsave', 'test_displayrule', 'test_colmenu',
            'test_colpreset', 'test_formula', 'test_reccols', 'test_rpblocks', 'test_rplayout',
            'test_rpmaster',
            'test_colio', 'test_multidrag', 'test_sortcustom', 'test_sortpipe']
+# モーダルの閉じ方(§9.221 ①)はどの画面にも掛かる横断の約束。
+G['モーダル'] = ['test_modalkeep', 'test_maint', 'test_p11c', 'test_opui', 'test_opchoice']
 G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'test_sccat',
                      'test_scbalance', 'test_scbatch', 'test_screorder', 'test_scperm',
                      'test_scperf', 'test_wkfast', 'test_scsplit', 'test_scprint', 'test_scdrop', 'test_scpick', 'test_sccontent', 'test_workable',
@@ -104,19 +107,20 @@ RULES = [
                                     'test_sccols', 'test_cols', 'test_lcpanel')),
     ('static/js/list-rules.js', g('列')),
     ('static/js/list-formula.js', g('test_formula', 'test_colpreset', 'test_lcpanel')),
-    ('static/js/filters.js', g('test_filter', 'test_filterio', 'test_filteruser', 'test_listcache', 'test_allrows', 'test_nav')),
-    ('static/js/schedule-view.js', g('スケジュール', 'test_listmodal')),
-    ('static/js/schedule-print.js', g('test_scprint')),
+    ('static/js/filters.js', g('モーダル', 'test_filter', 'test_filterio', 'test_filteruser',
+                               'test_listcache', 'test_allrows', 'test_nav')),
+    ('static/js/schedule-view.js', g('スケジュール', 'モーダル', 'test_listmodal')),
+    ('static/js/schedule-print.js', g('モーダル', 'test_scprint')),
     ('static/js/lot-split.js', g('test_scsplit', 'test_orphan', 'test_sub', 'test_splitlive')),
-    ('static/js/master-maint.js', g('マスタ', 'test_headbar', 'test_datasource',
+    ('static/js/master-maint.js', g('マスタ', 'モーダル', 'test_headbar', 'test_datasource',
                                      'test_qjoinui', 'test_dscap')),
     ('static/js/calendar-view.js', g('test_calscale', 'test_histdel', 'test_headbar')),
     # 帳票の塊の組み換え(§9.169)は列レイアウトマスタに載るので列の網も回す。
-    ('static/js/report-dashboard.js', g('test_screport', 'test_hdr', 'test_calscale',
+    ('static/js/report-dashboard.js', g('モーダル', 'test_screport', 'test_hdr', 'test_calscale',
                                         'test_rpblocks', 'test_rplayout', 'test_rpmaster',
                                         'test_collayout')),
     ('static/js/quality-analysis.js', g('test_uiux', 'test_hdr', 'test_fit', 'test_theme')),
-    ('static/js/defect-locator.js', g('test_defect')),
+    ('static/js/defect-locator.js', g('モーダル', 'test_defect')),
     ('static/js/log-view.js', g('ログ')),
     ('static/js/access-mode.js', g('権限', 'test_nav')),
     ('static/js/wl-window.js', g('test_lcpanel', 'test_listmodal', 'test_split_layout',
@@ -125,21 +129,23 @@ RULES = [
                                         'test_msteps')),
     ('static/js/measure-steps.js', g('測定', '見た目')),   # 段の枠は測定画面全体に効く
     # データ一覧の表示列(§9.162)も持つので、列の網も回す。
-    ('static/js/records-store.js', g('test_share', 'test_flows', 'test_p11', 'test_recperm',
-                                     'test_reccols', 'test_lcpanel', 'test_audittrail')),
+    ('static/js/records-store.js', g('モーダル', 'test_share', 'test_flows', 'test_p11',
+                                     'test_recperm', 'test_reccols', 'test_lcpanel',
+                                     'test_audittrail', 'test_recdel')),
     # 測定画面は test_scale(寸法の網)の巡回にも入っている(§9.127)ので見た目も回す。
-    ('static/js/measurement-', g('測定', '見た目')),   # measurement-*.js
+    ('static/js/measurement-', g('測定', '見た目', 'モーダル')),   # measurement-*.js
 
     # --- 見た目(CSS) -------------------------------------------------
     # CSSは1枚に閉じない(トークンは:rootで共有し、@layerで順序が決まる)。
     # だから個別に割らず、寸法・溢れを見る網をまとめて回す。
-    ('static/css/20-shell.css', g('見た目', '一覧', 'test_gridhead', 'test_lcpanel')),
+    # モーダルの弾み・×の案内(§9.221 ①)はここが持つ。
+    ('static/css/20-shell.css', g('見た目', '一覧', 'モーダル', 'test_gridhead', 'test_lcpanel')),
     ('static/css/30-measure.css', g('見た目', '一覧', '測定', 'test_gridhead')),
     ('static/css/95-boot.css', g('見た目', '起動')),
     ('static/css/70-schedule.css', g('見た目', 'test_sccols', 'test_split_layout',
                                       'test_scbalance', 'test_scprint')),
     ('static/css/35-split.css', g('見た目', 'test_splitlive', 'test_split_layout')),
-    ('static/css/40-records.css', g('見た目', 'test_recperm', 'test_reccols')),
+    ('static/css/40-records.css', g('見た目', 'test_recperm', 'test_reccols', 'test_recdel')),
     ('static/css/50-master.css', g('見た目', 'マスタ', 'test_dscap', 'test_qjoinui')),
     ('static/css/60-report.css', g('見た目', 'test_screport', 'test_rpblocks', 'test_rplayout')),
     ('backend/repositories/report_block_repo.py', g('test_rpmaster', 'test_rpblocks',
@@ -176,7 +182,7 @@ RULES = [
     ('backend/repositories/master_repo.py', g('マスタ', '列', 'test_workable')),
     ('backend/repositories/operation_repo.py', g('操業データ', 'test_msteps', 'test_mcore')),
     # 操業データの入力欄（§9.215）。測定画面①の中身なので測定一式へ。
-    ('static/js/measure-opdata.js', g('操業データ', '測定', '見た目')),
+    ('static/js/measure-opdata.js', g('操業データ', '測定', '見た目', 'モーダル')),
     ('backend/repositories/schedule_repo.py', g('スケジュール', 'test_stopeq', 'test_workdate')),
     ('backend/schedule_calc.py', g('スケジュール', 'test_eqstd', 'test_workdate')),
     ('backend/sort_order.py', g('列', 'test_tablequery')),

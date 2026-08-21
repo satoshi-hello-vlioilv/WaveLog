@@ -543,6 +543,139 @@ let b=null;const made=[];const madeChoices=[];
       !!step&&step.値==='2.0'&&String(step.刻みの欄)==='0.5',JSON.stringify(step));
   await closeModal();
 
+  /* ==========================================================
+     §9.221 ⑦ 単位の位置・値の寄せ・値の見せ方
+     ----------------------------------------------------------
+     利用者の指示「単位を出す位置(外上左、外上中央、外上右、内部、外下左、
+     外中央、外下右)、出し方、データの表示方法、桁数、左詰め、右詰め、
+     中央寄せなど、さらにカスタマイズできるように」。
+     **見本は本物の部品**なので、盤を押した結果がそのまま出る。
+     ========================================================== */
+  const mku=await post('/api/operation-item-master',
+    {equipment:EQ,group:TAG,name:TAG+' 単位',type:'正の数',decimals:1,unit:'mm',user_id:TAG});
+  const mkuj=await mku.json();
+  if(mkuj.id)made.push(mkuj.id);
+  await page.click('#masterMaintNav [data-master="opItem"]');
+  await page.waitForSelector('#masterMaintList .op-board-grid',{timeout:20000});
+  await page.waitForTimeout(700);
+  await openTile(mkuj.id);
+  const pad=await page.evaluate(()=>{
+   const cells=[...document.querySelectorAll('#opItemModal [data-op-unitplace]')];
+   return {盤:cells.map(c=>c.dataset.opUnitplace),
+           選択中:cells.filter(c=>c.classList.contains('is-on')).map(c=>c.dataset.opUnitplace)};
+  });
+  rec('単位の置き場を9マスの盤で選べる',
+      ['外上左','外上中央','外上右','内部','外下左','外下中央','外下右','出さない']
+        .every(v=>pad.盤.includes(v)),pad.盤.join('/'));
+  rec('既定は「外下左」（今までの見え方）',pad.選択中.join('/')==='外下左',pad.選択中.join('/'));
+  /* **既定のとおり、単位は欄の下に左詰めで出ている**（クラスの有無だけを
+     見ると、器が無くても通る）。 */
+  const at0=await page.evaluate(()=>{
+   const l=document.querySelector('#opPrevField .opf');
+   const line=l&&l.querySelector('.opf-unit-line');
+   return {place:l&&l.dataset.opunit,at:line&&line.dataset.at,text:line&&line.textContent};
+  });
+  rec('見本にも単位が既定の場所で出る',
+      at0.place==='外下左'&&at0.at==='左'&&at0.text==='mm',JSON.stringify(at0));
+  await page.click('#opItemModal [data-op-unitplace="内部"]');
+  await page.waitForTimeout(400);
+  const inside=await page.evaluate(()=>{
+   const l=document.querySelector('#opPrevField .opf');
+   const em=l&&l.querySelector('.opf-unit-in');
+   const ctl=l&&l.querySelector('input,select');
+   if(!em||!ctl)return{none:true};
+   const a=em.getBoundingClientRect(),b=ctl.getBoundingClientRect();
+   const r=x=>[Math.round(x.left),Math.round(x.top),Math.round(x.right),Math.round(x.bottom)].join(',');
+   /* **欄の中に重なっていること**を実寸で見る（クラスだけでは下に並んでいても通る）。
+      落ちたときに「どちらの軸でずれたか」が読めるように、段と矩形も出す。 */
+   return {place:l.dataset.opunit,
+     重なっている:a.left>=b.left-1&&a.right<=b.right+1&&a.top>=b.top-2&&a.bottom<=b.bottom+2,
+     右寄り:(a.left-b.left)>(b.width/2),
+     単位の段:getComputedStyle(em).gridRow,欄の段:getComputedStyle(ctl).gridRow,
+     単位:r(a),欄:r(b),器:r(l.getBoundingClientRect()),
+     欄の幅指定:getComputedStyle(ctl).width,欄の最大:getComputedStyle(ctl).maxWidth,
+     器の列:getComputedStyle(l).gridTemplateColumns,
+     子:[...l.children].map(c=>c.className||c.tagName).join('/')};
+  });
+  rec('「内部」で単位が欄の中に重なる',
+      !inside.none&&inside.place==='内部'&&inside.重なっている&&inside.右寄り,JSON.stringify(inside));
+  await page.click('#opItemModal [data-op-unitplace="出さない"]');
+  await page.waitForTimeout(400);
+  const none=await page.evaluate(()=>{
+   const l=document.querySelector('#opPrevField .opf');
+   return {place:l&&l.dataset.opunit,
+           単位:!!(l&&l.querySelector('.opf-unit'))};
+  });
+  rec('「出さない」で単位が消える',none.place==='なし'&&none.単位===false,JSON.stringify(none));
+  await page.click('#opItemModal [data-op-unitplace="外上中央"]');
+  await page.waitForTimeout(300);
+  await page.click('#opItemModal [data-op-align="右"]');
+  await page.waitForTimeout(300);
+  await page.click('#opItemModal [data-op-vfmt="3桁区切り"]');
+  await page.waitForTimeout(400);
+  const look=await page.evaluate(()=>{
+   const l=document.querySelector('#opPrevField .opf');
+   const ctl=l&&l.querySelector('input');
+   if(!ctl)return{none:true};
+   ctl.value='1234';ctl.dispatchEvent(new Event('input',{bubbles:true}));
+   ctl.dispatchEvent(new Event('blur',{bubbles:true}));
+   return {align:l.dataset.opalign,寄せ:getComputedStyle(ctl).textAlign,
+     fmt:ctl.dataset.opfmt,値:ctl.value,
+     桁数の欄:!!document.getElementById('opdDigits')};
+  });
+  rec('値の寄せが効く（右詰め）',!look.none&&look.align==='右'&&look.寄せ==='right',JSON.stringify(look));
+  rec('3桁区切りは欄を離れたときに当たる',!look.none&&look.値==='1,234.0',JSON.stringify(look));
+  /* **保存して読み直しても残る**（§9.113の「送り漏らすと消える」の網）。 */
+  await page.click('#opdSave');
+  await page.waitForTimeout(1500);
+  const back=await (await fetch(B+'/api/operation-item-master')).json();
+  const savedItem=(back.items||[]).find(x=>x.id===mkuj.id)||{};
+  rec('単位の置き場・寄せ・見せ方が保存される',
+      savedItem.unitPlace==='外上中央'&&savedItem.align==='右'&&savedItem.valueFormat==='3桁区切り',
+      JSON.stringify({p:savedItem.unitPlace,a:savedItem.align,f:savedItem.valueFormat,u:savedItem.unit}));
+  rec('単位そのものも消えていない',savedItem.unit==='mm',String(savedItem.unit));
+  await closeModal();
+
+  /* ==========================================================
+     §9.221 ⑦の追補: **`<select>`には見せ方を当てない**
+     ----------------------------------------------------------
+     値が選択肢そのものなので、3桁区切りやゼロ埋めを掛けると
+     `putValue()`が`1234`を`1,234`にし、どの`<option>`にも当たらず
+     **`select.value`が空になる**——画面から記録が消え、そのまま保存すると
+     空で上書きされる。型を「選択」に変えても`[表示書式]`は保存値として
+     残る（widgetと同じ約束）ので、この組み合わせは普通に作れる。
+     **確かめるときは実際に値を入れて`select.value`を読むこと**
+     ——`data-opfmt`の有無だけを見ると、当てた先が`<input>`でも通る。
+     ========================================================== */
+  const mkc=await post('/api/operation-item-master',
+    {equipment:EQ,group:TAG,name:TAG+' 選択',type:'選択',choice:TAG+'g',
+     valueFormat:'3桁区切り',unit:'mm',user_id:TAG});
+  const mkcj=await mkc.json();
+  if(mkcj.id)made.push(mkcj.id);
+  const chSel=await post('/api/operation-choice-master',{name:TAG+'g',value:'1234',user_id:TAG});
+  const chSelJ=await chSel.json();if(chSelJ.id)madeChoices.push(chSelJ.id);
+  await page.click('#masterMaintNav [data-master="opItem"]');
+  await page.waitForSelector('#masterMaintList .op-board-grid',{timeout:20000});
+  await page.waitForTimeout(700);
+  await openTile(mkcj.id);
+  const sel=await page.evaluate(()=>{
+   const l=document.querySelector('#opPrevField .opf');
+   const s=l&&l.querySelector('select');
+   if(!s)return{none:true};
+   /* 選択肢そのものの値を入れて、整形で潰れないことを見る。 */
+   s.value='1234';s.dispatchEvent(new Event('change',{bubbles:true}));
+   s.dispatchEvent(new Event('blur',{bubbles:true}));
+   return{fmt:s.dataset.opfmt||'',値:s.value,
+     選択肢:[...s.options].map(o=>o.value).join('/')};
+  });
+  /* 見るのは**印が付いていないこと**の1点。見本の`<select>`は`apply()`を
+     通らないので「値が消えていない」を並べても壊れていても通ってしまう
+     （実際に、印を外す前でも値だけは`1234`のままだった）。印が付かなければ
+     `putValue()`は素通しになる——そこが1本の道。 */
+  rec('「選択」型の見本では<select>に見せ方が付かない',
+      !sel.none&&sel.fmt==='',JSON.stringify(sel));
+  await closeModal();
+
   rec('画面のエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){
   rec('FATAL',false,e.message);

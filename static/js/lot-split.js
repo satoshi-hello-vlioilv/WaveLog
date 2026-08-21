@@ -1111,17 +1111,27 @@
         const on=mm>0.0001,text=esc(fmtDim(mm,1));
         if(el.hidden!==!on)el.hidden=!on;
         el.style.flexGrow=on?mm:'';
-        el.innerHTML=on?`<span class="split-visual-scrap-label">屑<b>${text}</b></span>`:'';
+        /* **文字の幅で帯の幅が決まらないようにする**（§9.221 ⑥③）。
+           `flex-basis:auto`のままだと「屑 12.5」の文字幅が下限になり、
+           mmの比で割り付けたはずの帯が実際より太く出て、そのぶん条の束が
+           痩せる（利用者の報告「図が崩れる」の実体）。 */
+        el.style.flexBasis='0';
+        el.innerHTML=on?`<span class="split-visual-scrap-label"><i>屑</i><b>${text}</b></span>`:'';
         el.title=on?`屑幅(${name}側) ${text} ／ 両耳合計 ${esc(fmtDim(info.scrap,1))}${info.biased?'（片寄せ）':'（均等）'}`:'';
         el.classList.toggle('is-biased',on&&info.biased);
       };
       side(scrapOs,info.os,'OS');
       side(scrapDs,info.ds,'DS');
       placeScrapGrips(info);
+      /* **描いてから測る**（§9.173）。`flex-grow`を書き換えた直後の
+         `clientWidth`は**組み直す前の幅**なので、そのまま測ると前回の
+         幅で段を決めることになる（実測: 6pxの帯なのに文字が入ると判定）。 */
+      requestAnimationFrame(()=>fitScrapLabels());
     }else{
       placeScrapGrips(null);
       scrapOs.hidden=true;scrapDs.hidden=true;scrapOs.innerHTML='';scrapDs.innerHTML='';
       scrapOs.style.flexGrow='';scrapDs.style.flexGrow='';strip.style.flexGrow='';
+      scrapOs.style.flexBasis='';scrapDs.style.flexBasis='';
       scrapOs.classList.remove('is-biased');scrapDs.classList.remove('is-biased');
     }
     renderScrapAllocEditor();
@@ -1129,14 +1139,42 @@
     let html='<div class="split-visual-centerline" title="センターライン"></div>';
     if(info&&info.scrap>=0&&Number.isFinite(info.original)&&info.original>0){
       const half=info.original/2;
+      /* 目盛りの数字は`translateX(-50%)`で線の真上に置くので、**端に近い
+         目盛りは器の外へ半分はみ出す**——そこにはOS／DSの文字があり、
+         重なって両方読めなくなる（§9.221 ⑥③、利用者の報告「左右OS,DS辺りに
+         ある文字列が渋滞して重なり合い」）。器の縁から6%より内に入らない
+         目盛りは、数字を**内側へ寄せて**置く。 */
+      const EDGE_PCT=6;
       [1000,1250,1500].forEach(d=>{
         if(d>half)return;
         const pct=d/info.original*100;
-        html+=`<div class="split-visual-tick" style="left:${(50-pct).toFixed(3)}%"><span class="split-visual-tick-label">${d}</span></div>`;
-        html+=`<div class="split-visual-tick" style="left:${(50+pct).toFixed(3)}%"><span class="split-visual-tick-label">${d}</span></div>`;
+        [50-pct,50+pct].forEach(at=>{
+          const side=at<EDGE_PCT?' is-edge-left':(at>100-EDGE_PCT?' is-edge-right':'');
+          html+=`<div class="split-visual-tick${side}" style="left:${at.toFixed(3)}%"><span class="split-visual-tick-label">${d}</span></div>`;
+        });
       });
     }
     ruler.innerHTML=html;
+  }
+  /* ---------- 屑の帯の文字は入るぶんだけ(§9.221 ⑥③) ----------
+     帯の幅はmmの比で決まる（上）ので、狭い側では「屑 12.5」が入らない。
+     入らないまま`nowrap`で置くと**隣のOS／DSや条の帯の上へはみ出す**。
+     段は「屑＋数字」→「数字だけ」→「出さない」の3つで、**幅ごとに
+     まとめて決めない**（左右で屑幅が違うのが普通なので、片側だけ短くて
+     よい）。値は状態帯と`title`にあるので、消しても読む手立ては残る
+     ——`fitStripLabels()`（§9.210 ④）と同じ考え方。 */
+  function fitScrapLabels(){
+    ['#splitVisualScrapOs','#splitVisualScrapDs'].forEach(sel=>{
+      const el=$(sel);if(!el||el.hidden)return;
+      const label=el.querySelector('.split-visual-scrap-label');if(!label)return;
+      const room=el.clientWidth;
+      if(!room)return;                       /* 幅0のときは触らない（0で測ると全部消える） */
+      label.classList.remove('is-short','is-gone');
+      if(label.scrollWidth<=room)return;
+      label.classList.add('is-short');
+      if(label.scrollWidth<=room)return;
+      label.classList.add('is-gone');
+    });
   }
   // ドラッグ中、ドロップ予定位置に「入る予定の条」と同じ色・同じ幅の
   // ゴーストを差し込んで表示する(どこに入るかを視覚的に明示する)。
@@ -2084,6 +2122,7 @@
     const empty=!html;
     if(el.hidden!==empty)el.hidden=empty;
     if(html)wireSplitDataSections(el);
+    syncSplitDetailFold();
   }
   function wireSplitDataSections(el){
     el.querySelector('#splitUpdateApply')?.addEventListener('click',()=>applySplitSourcesUpdate());
@@ -2228,7 +2267,67 @@
       const el=document.querySelector(sel);
       if(el&&el.hidden!==!on)el.hidden=!on;
     });
+    syncSplitDetailFold();
   }
+  /* ---------- 「子ロットの内訳」は中身があるときだけ(§9.221 ⑥①) ----------
+     利用者の指示「子ロットデータがない時に『子ロットの内訳』の文字列の表示は
+     不要」。分割の無いロットでは畳んだ見出しだけが残り、開いても中は空だった
+     ——**開いても何も無い折りたたみは、探させるだけで何も答えない**。
+     出すかどうかは「編集面が出ているか」「更新・履歴があるか」の和で、
+     **判定は1箇所**（showSplitEditor・refreshSplitDataSectionsの両方から来る）。 */
+  function syncSplitDetailFold(){
+    const fold=$('#splitDetailFold');if(!fold)return;
+    const layout=document.querySelector('#splitCard .split-layout');
+    const data=$('#splitDataSections');
+    const has=!!((layout&&layout.hidden!==true)||(data&&data.hidden!==true&&data.innerHTML.trim()!==''));
+    if(fold.hidden!==!has)fold.hidden=!has;
+    if(!has){if(fold.open){fold.open=false;placeSplitDetailBody()}return}
+    /* **畳んだままでも中身の量は読める**（§9.125と同じ約束）。開かないと
+       何件あるのか分からない見出しは、開かせるためだけの一手になる。 */
+    const sum=$('#splitDetailSummary');
+    if(sum){
+      const rows=splitSourceRows();
+      const lots=new Set(rows.map(x=>x.lot)).size;
+      const strips=rows.reduce((a,x)=>a+x.count,0);
+      const text=rows.length?`${lots}ロット ／ ${strips}条`:'';
+      if(sum.textContent!==text)sum.textContent=text;
+    }
+  }
+  /* ---------- 開いた内訳はカードの外へ出す(§9.221 ⑥②) ----------
+     利用者の指摘「子ロットデータがあるとき、展開してもカード内の描画となり
+     レイヤーが下に隠れる」。カードは`overflow:auto`・本文グリッドは
+     `overflow:hidden`なので、**カードの中で開くかぎり必ず切り落とされる**
+     （カードの高さはマスで決まっている・§9.148）。器の外へ`position:fixed`で
+     出す——`--z-popover`なので隣のカードの下にも回らない。
+     **`.measure-body`の先祖にtransformが無い**ことが前提（あると`fixed`の
+     基準がその要素になり、また切られる）。 */
+  function placeSplitDetailBody(){
+    const fold=$('#splitDetailFold');if(!fold)return;
+    const body=fold.querySelector('.split-detail-body');if(!body)return;
+    if(!fold.open||fold.hidden){body.removeAttribute('style');return}
+    const card=$('#splitCard');const sum=fold.querySelector('.split-detail-summary');
+    const base=(sum||card||fold).getBoundingClientRect();
+    const cardBox=(card||fold).getBoundingClientRect();
+    const gap=6;
+    const left=Math.round(cardBox.left);
+    const width=Math.round(cardBox.width);
+    /* 下に入らなければ上へ出す。**画面の外へは出さない**。 */
+    const below=window.innerHeight-base.bottom-gap*2;
+    const above=base.top-gap*2;
+    const useAbove=below<220&&above>below;
+    const max=Math.max(160,Math.round((useAbove?above:below)));
+    body.style.left=left+'px';
+    body.style.width=width+'px';
+    body.style.maxHeight=max+'px';
+    if(useAbove){body.style.top='auto';body.style.bottom=Math.round(window.innerHeight-base.top+gap)+'px'}
+    else{body.style.bottom='auto';body.style.top=Math.round(base.bottom+gap)+'px'}
+  }
+  window.addEventListener('resize',()=>placeSplitDetailBody());
+  WL.onReady(()=>{
+    const fold=$('#splitDetailFold');
+    if(fold)fold.addEventListener('toggle',()=>placeSplitDetailBody());
+    syncSplitDetailFold();
+  });
   /* `renderSplit()`は最後にこの関数を呼ぶので、ここから`renderSplit()`を
      呼ぶと往復する。**旗で1周に限る。** */
   let inSplitRefresh=false;
@@ -2271,6 +2370,7 @@
         document.querySelectorAll('#splitCard .split-layout')
           .forEach(x=>{if(x.hidden!==true)x.hidden=true});
         renderSelfSplitVisual();
+        syncSplitDetailFold();
         updateScrapWidthDisplay();
         return;
       }

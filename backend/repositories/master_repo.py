@@ -246,9 +246,24 @@ def set_operator_equipment(c,oid,names,uid):
 #    (その時点で実際に使った設備という履歴的事実)は対象に含めない。
 #    改名時に過去の記録まで書き換えるのは事実の改ざんになるため。
 # ------------------------------------------------------------------------
-EQUIPMENT_NAME_REFERENCES=(
- (OPERATOR_EQUIPMENT_TABLE,'設備名'),
-)
+# 設備名を**文字列で**持っている内部マスタの一覧。**新しいマスタを足したら
+# ここへ1行**足すだけで改名連動が効く、というのがこの表の値打ち。
+# 第3要素は保存形:
+#   'exact' … 1セルに設備名1つ(オペレータ設備マスタ)
+#   'list'  … 設備停止マスタと同じカンマ区切り('*'＝すべての設備)。
+#             読み書きは schedule_repo.stop_equipment_* が答える1箇所を通す。
+# **表そのものを関数にしてあるのは循環importを避けるため**——
+# operation_repo は master_repo を読む側なので、モジュールの頭では引けない。
+def equipment_name_references():
+ from . import operation_repo as op
+ return (
+  (OPERATOR_EQUIPMENT_TABLE,'設備名','exact'),
+  # §9.221 ③でオペレータの作業可能設備の実体がここへ移った。**移した先を
+  # この表へ足し忘れると、改名しても追従せず「その設備を選べるはずの
+  # オペレータが選択肢に出てこなくなる」**——VER2.44.0で一度直した不具合
+  # (CHANGELOG参照)を、置き場所を変えたことで再発させることになる。
+  (op.CHOICE_TABLE,'対象設備','list'),
+ )
 
 def rename_equipment_references(c,old_name,new_name):
  # 設備マスタで改名された設備名を、これを参照する内部マスタ側にも反映する。
@@ -258,15 +273,24 @@ def rename_equipment_references(c,old_name,new_name):
  # 削除する(新名称側の既存行を優先し、古い方は用済みとして片付ける)。
  old_norm=normalize_equipment_name(old_name)
  if not old_norm or old_norm==normalize_equipment_name(new_name):return 0
+ from . import schedule_repo as sr
  total=0
- for table,col in EQUIPMENT_NAME_REFERENCES:
+ for table,col,mode in equipment_name_references():
   if table not in tables(c):continue
   cur=c.cursor()
   cur.execute(f'SELECT DISTINCT [{col}] FROM [{table}]')
   for (val,) in cur.fetchall():
-   if not val or normalize_equipment_name(val)!=old_norm or str(val)==new_name:continue
+   if not val:continue
+   if mode=='list':
+    # カンマ区切りは**中の1つだけ**を書き換える。丸ごと比較すると
+    # 「設備A,設備B」のような行が1件も当たらず、黙って旧名が残る。
+    nxt=sr.stop_equipment_rename(val,old_name,new_name)
+    if nxt==val:continue
+   else:
+    if normalize_equipment_name(val)!=old_norm or str(val)==new_name:continue
+    nxt=new_name
    try:
-    cur.execute(f'UPDATE [{table}] SET [{col}]=? WHERE [{col}]=?',[new_name,val]);total+=cur.rowcount
+    cur.execute(f'UPDATE [{table}] SET [{col}]=? WHERE [{col}]=?',[nxt,val]);total+=cur.rowcount
    except Exception:
     cur.execute(f'DELETE FROM [{table}] WHERE [{col}]=?',[val])
  return total

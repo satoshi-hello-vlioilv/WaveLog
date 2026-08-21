@@ -1,0 +1,105 @@
+/* test_recdel.js: データ一覧の削除は「⋯」の中の2クリック（§9.221 ⑤）
+   ============================================================
+   利用者の指摘は「『帳票』と『削除』が近く、かなり危ないです。削除ボタンは
+   完了品からは消して、編集中のものは削除に行くまでにプルダウン的な2クリック
+   必要な安全設計されたボタンに変更してください」。
+   ここで固定するのは次の点。
+    1. 操作列に**むき出しの削除ボタンが無い**（帳票の隣に取り消せない操作を
+       置かない）
+    2. `⋯`を押して初めて削除が出る（＝2クリック）
+    3. **完了したデータでは押せない**——ただし消してあるのではなく、
+       `disabled`＋理由の文（§4。押せるのに何も起きないボタンを残さない）
+    4. 閲覧モードでも押せない（理由は別の文）
+   ============================================================ */
+const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+const B='http://127.0.0.1:5029';
+let b=null;
+const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},
+  body:JSON.stringify(body)});
+(async()=>{
+ b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
+ const page=await b.newPage({viewport:{width:1700,height:1000}});
+ const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
+ const errs=[];page.on('pageerror',e=>errs.push(e.message));
+ try{
+  await post('/api/access-mode',{mode:'edit'});
+  await page.goto(B+'/',{waitUntil:'domcontentloaded'});
+  await page.waitForSelector('#openSchedule',{timeout:20000});
+  await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
+  await page.reload({waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:30000});
+
+  /* **行が無ければ自分で作る**——検証用データに編集中のレコードがあるとは
+     限らず、「無ければ素通り」の書き方だと直す前でも通る。 */
+  await page.evaluate(async()=>{
+   const now=new Date().toISOString();
+   const mk=(id,status)=>({id,status,updatedAt:now,
+     basic:{lotNo:id,inspectionNo:'X'},
+     settings:{registeredEquipment:'テスト設備A',verticalCount:1,horizontalCount:1},
+     workTime:{}});
+   await reliablePut(mk('回帰削除_編集中','編集中'));
+   await reliablePut(mk('回帰削除_完了','完了'));
+  });
+  await page.click('[data-open-records]').catch(()=>{});
+  await page.waitForSelector('#recordList',{timeout:20000});
+  await page.waitForTimeout(1500);
+
+  const shape=await page.evaluate(()=>{
+   const rows=[...document.querySelectorAll('.record-list-row')];
+   return {rows:rows.length,
+     danger:document.querySelectorAll('.record-list-actions .danger').length,
+     more:document.querySelectorAll('.record-list-actions .rec-more').length,
+     report:document.querySelectorAll('.record-list-actions .report').length};
+  });
+  rec('前提: データ一覧に行がある',shape.rows>0,JSON.stringify(shape));
+  rec('操作列にむき出しの削除ボタンが無い',shape.danger===0,JSON.stringify(shape));
+  rec('代わりに「⋯」が帳票の隣にある',shape.more===shape.report&&shape.more>0,JSON.stringify(shape));
+
+  /* ---- 2クリック目で初めて削除が出る ---- */
+  const before=await page.evaluate(()=>document.querySelectorAll('.rec-row-menu').length);
+  rec('押す前は削除のメニューが出ていない',before===0,String(before));
+  await page.click('.record-list-row .rec-more');
+  await page.waitForTimeout(300);
+  const menu=await page.evaluate(()=>{
+   const m=document.querySelector('.rec-row-menu');
+   if(!m)return null;
+   const it=m.querySelector('.rrm-item');
+   return {text:m.textContent,disabled:!!(it&&it.disabled),why:m.querySelector('.rrm-why')?.textContent||''};
+  });
+  rec('「⋯」を押すと削除がメニューの中に出る（2クリック）',
+      !!menu&&/削除/.test(menu.text),JSON.stringify(menu));
+
+  /* ---- 完了したデータでは押せない（理由つき） ---- */
+  /* **一覧は既定で「編集中」だけを出す**ので、完了の行を見るには
+     絞り込みを切り替える（無いまま探すと「見つからないので飛ばす」で
+     何も確かめないまま通る）。 */
+  await page.click('.status-filter-btn[data-status-filter="done"]').catch(()=>{});
+  await page.waitForTimeout(900);
+  const done=await page.evaluate(()=>{
+   const rows=[...document.querySelectorAll('.record-list-row')];
+   const hit=rows.find(r=>/完了/.test(r.textContent));
+   if(!hit)return {none:true,行:rows.length,
+     絞り込み:[...document.querySelectorAll('.status-filter-btn')].map(b=>b.dataset.statusFilter+':'+b.classList.contains('active'))};
+   document.querySelector('.rec-row-menu')?.remove();
+   hit.querySelector('.rec-more')?.click();
+   const m=document.querySelector('.rec-row-menu');
+   const it=m&&m.querySelector('.rrm-item');
+   return {disabled:!!(it&&it.disabled),why:m?.querySelector('.rrm-why')?.textContent||''};
+  });
+  rec('完了したデータでは削除が押せない',
+      done.none?false:done.disabled===true,JSON.stringify(done));
+  rec('押せない理由が文字で書いてある',
+      done.none?false:/完了/.test(done.why),String(done.why));
+
+  rec('JSエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
+ }catch(e){console.log('FATAL: '+e.message);R.push({n:'FATAL',ok:false,d:e.message})}
+ finally{
+  await page.evaluate(async()=>{
+   for(const id of ['回帰削除_編集中','回帰削除_完了'])await reliableDelete(id);
+  }).catch(()=>{});
+  await b.close();
+  const ok=R.filter(x=>x.ok).length;
+  console.log(`\n=== SUMMARY ===\n${ok}/${R.length} passed`);
+  process.exit(ok===R.length?0:1);
+ }
+})();

@@ -27,14 +27,10 @@ from ..repositories.master_repo import (
  MAX_STRIPS_COLUMN, STRIP_LIMIT, DEFAULT_MAX_STRIPS, clamp_max_strips,
  EQUIPMENT_KINDS, normalize_equipment_kind,
  STANDARD_MINUTES_MAX, normalize_standard_minutes,
- OPERATOR_MASTER_TABLE, ensure_operator_master_table, normalize_operator_name, operator_master_rows,
- OPERATOR_EQUIPMENT_TABLE, ensure_operator_equipment_table, operator_equipment_map, set_operator_equipment,
+ # オペレータ設備マスタは**設備を消したときの後片付け**にだけ使う
+ # （§9.221 ③で選択肢マスタへ移したので、読み書きの本線からは外れた）。
+ ensure_operator_equipment_table,
  rename_equipment_references,
- SPOOL_MASTER_TABLE, ensure_spool_master_table, normalize_spool_name, spool_master_rows,
- INNER_MASTER_TABLE, ensure_inner_master_table, normalize_inner_name, inner_master_rows,
- BURR_MASTER_TABLE, ensure_burr_master_table, normalize_burr_name, burr_master_rows,
- COIL_STOP_MASTER_TABLE, ensure_coil_stop_master_table, normalize_coil_stop_name, coil_stop_master_rows,
- DEVICE_MASTER_TABLE, ensure_device_master_table, normalize_device_name, device_master_rows,
  FILTER_PRESET_TABLE, ensure_filter_preset_table, filter_preset_rows,
  FILTER_PERSONAL_TABLE, ensure_filter_personal_table, filter_personal_marks,
  filter_personal_set, filter_personal_has_any,
@@ -156,7 +152,8 @@ def equipment_master_update():
    raw_max=str(x.get('maxStrips') or '').strip()
    max_strips=None if raw_max=='' else clamp_max_strips(raw_max)
    cur.execute('UPDATE [設備マスタ] SET [設備名]=?,[区分]=?,[最大条数]=?,[標準時間分]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [設備ID]=?',[name,normalize_equipment_kind(x.get('kind')),max_strips,normalize_standard_minutes(x.get('standardMinutes')),uid,eid])
-   # 設備名は他マスタ(オペレータ設備マスタ等、EQUIPMENT_NAME_REFERENCES参照)から
+   # 設備名は他マスタ(オペレータ設備マスタ・操業データ選択肢マスタ[対象設備]等、
+   # equipment_name_references()参照)から
    # 文字列で参照されているため、改名時はそちら側も追従させる(改名連動)。
    renamed=rename_equipment_references(c,old_name,name) if old_name else 0
    c.commit()
@@ -201,242 +198,27 @@ def equipment_master_delete():
   return jsonify(ok=True,id=eid,updated_by=uid,referencesCheckFailed=references_check_failed)
  except Exception as e:return jsonify(error=f'設備マスタ削除失敗: {e}'),500
 
-@bp.get('/api/operator-master')
-def operator_master_list():
- try:
-  path=DBS['MASTER']['path']
-  with connect(path,False) as c:
-   before=OPERATOR_MASTER_TABLE in tables(c);ensure_operator_master_table(c);rows=operator_master_rows(c);eqmap=operator_equipment_map(c)
-   # ﾖﾐｶﾞﾅ(yomi)は登録・更新時には保存していたのに、この一覧応答へ含めて
-   # いなかったため、マスタ管理の「ヨミガナ」列が常に空欄で、編集フォームにも
-   # 復元されなかった。そのまま保存すると空欄で上書きされて消える不具合に
-   # なっていたので応答へ加える。
-   items=[{'id':r[0],'name':str(r[1] or '').strip(),'yomi':(str(r[6]).strip() if len(r)>6 and r[6] else ''),'order':r[2] or 0,'active':True,'updated_at':r[4].isoformat() if r[4] else None,'updated_by':(str(r[5]).strip() if len(r)>5 and r[5] else ''),'equipment':eqmap.get(r[0],[])} for r in rows]
-  return jsonify(ok=True,items=items,table=OPERATOR_MASTER_TABLE,created=not before,empty=len(items)==0,master_path=str(path))
- except Exception as e:return jsonify(error=f'オペレータマスタ読込失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
+# ---------------------------------------------------------------------------
+# オペレータ／機器／スプール種別／内径種別／バリ揃え／コイル止めは
+# **操業データ選択肢マスタへ移した**(§9.221 ③、利用者の指示)。
+#   「オペレータ、機器、スプール種別、内径種別、バリ揃え、コイル止めに
+#    ついても汎用化した操業データ項目マスタに移行させてください」
+# 6つとも「名前の一覧」でしかなく、違いはオペレータが持っていた
+# ヨミガナと作業可能設備だけだった——その2つは`[よみ]`／`[対象設備]`として
+# 選択肢の側へ持たせたので、**まとまり名が違うだけの同じもの**になる。
+# CRUDは`/api/operation-choice-master`の1組、読み口は`op.choice_values()`の
+# 1本、画面は「選択肢の値」の1枚。元の表は`migrate_legacy_choice_masters()`が
+# 1度だけ写す材料として残してあるが、アプリはもう読まない。
+# ---------------------------------------------------------------------------
 
-@bp.post('/api/operator-master')
-def operator_master_register():
- try:
-  x=request.get_json(force=True) or {};name=str(x.get('name') or '').strip();yomi=str(x.get('yomi') or '').strip();equipment=x.get('equipment') or [];uid=request_user_id(x)
-  if not name:return jsonify(error='氏名を入力してください。'),400
-  path=DBS['MASTER']['path']
-  with connect(path,False) as c:
-   ensure_operator_master_table(c);cur=c.cursor();cur.execute('SELECT [オペレータID],[氏名] FROM [オペレータマスタ]');rows=cur.fetchall();target=normalize_operator_name(name);existing=next((r for r in rows if normalize_operator_name(r[1])==target),None)
-   if existing:
-    # 既存氏名は有効化のみ。ﾖﾐｶﾞﾅは指定があるときだけ更新する（値の有無で分岐する）。
-    if yomi:cur.execute('UPDATE [オペレータマスタ] SET [有効]=-1,[ﾖﾐｶﾞﾅ]=?,[更新者ID]=?,[更新日時]=Now() WHERE [オペレータID]=?',[yomi,uid,existing[0]])
-    else:cur.execute('UPDATE [オペレータマスタ] SET [有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [オペレータID]=?',[uid,existing[0]])
-    registered=False;stored_name=str(existing[1]).strip();oid=existing[0]
-   else:
-    cur.execute('SELECT Max([表示順]) FROM [オペレータマスタ]');maximum=cur.fetchone()[0];order=int(maximum or 0)+10
-    cur.execute('INSERT INTO [オペレータマスタ] ([氏名],[ﾖﾐｶﾞﾅ],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,-1,?,?,Now(),Now())',[name,yomi,order,uid,uid]);registered=True;stored_name=name
-    oid=cur.lastrowid
-   c.commit();set_operator_equipment(c,oid,equipment,uid)
-  return jsonify(ok=True,name=stored_name,registered=registered,updated_by=uid,message=('オペレータマスタへ新規登録しました。' if registered else 'オペレータマスタの登録済み氏名を有効化しました。'))
- except Exception as e:return jsonify(error=f'オペレータマスタ登録失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
-
-@bp.post('/api/operator-master/update')
-def operator_master_update():
- try:
-  x=request.get_json(force=True) or {};oid=x.get('id');name=str(x.get('name') or '').strip();yomi=str(x.get('yomi') or '').strip();equipment=x.get('equipment');uid=request_user_id(x)
-  if oid is None:return jsonify(error='更新対象IDがありません。'),400
-  if not name:return jsonify(error='氏名を入力してください。'),400
-  path=DBS['MASTER']['path']
-  with connect(path,False) as c:
-   ensure_operator_master_table(c);cur=c.cursor();cur.execute('SELECT [オペレータID],[氏名] FROM [オペレータマスタ]');rows=cur.fetchall();target=normalize_operator_name(name)
-   dup=next((r for r in rows if normalize_operator_name(r[1])==target and str(r[0])!=str(oid)),None)
-   if dup:return jsonify(error=f'同名の氏名が既に存在するため変更できません: {str(dup[1]).strip()}'),409
-   cur.execute('UPDATE [オペレータマスタ] SET [氏名]=?,[ﾖﾐｶﾞﾅ]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [オペレータID]=?',[name,yomi,uid,oid]);c.commit()
-   if equipment is not None:set_operator_equipment(c,oid,equipment,uid)
-  return jsonify(ok=True,id=oid,name=name,updated_by=uid,message='オペレータを更新しました。')
- except Exception as e:return jsonify(error=f'オペレータマスタ更新失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
-
-@bp.post('/api/operator-master/delete')
-def operator_master_delete():
- try:
-  x=request.get_json(force=True) or {};oid=x.get('id');uid=request_user_id(x)
-  if oid is None:return jsonify(error='削除対象IDがありません。'),400
-  path=DBS['MASTER']['path']
-  with connect(path,False) as c:
-   ensure_operator_master_table(c);cur=c.cursor()
-   # 物理削除ではなく無効化し、履歴を残す。無効化した更新者も記録する。
-   cur.execute('UPDATE [オペレータマスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [オペレータID]=?',[uid,oid]);c.commit()
-  return jsonify(ok=True,id=oid,updated_by=uid)
- except Exception as e:return jsonify(error=f'オペレータマスタ削除失敗: {e}'),500
-
-# ------------------------------------------------------------------------
-# 「名前だけ」の単純マスタのCRUD（スプール種別・内径種別・機器・バリ揃え・
-# コイル止め）。**1マスタ=1宣言**で4本(一覧/登録/編集/削除)を生成する。
-#
-# なぜ生成するか。画面(master-maint.jsのsubmitMaint)は
-# `GET <endpoint>` / `POST <endpoint>` / `POST <endpoint>/update` /
-# `POST <endpoint>/delete` を決め打ちで呼ぶので、**サーバー側の1本を
-# 書き忘れても押すまで気づけない**(404のHTMLがそのままトーストに出る。
-# 実際に設備停止・設備停止分類・データソースの3つで起きた)。個別に写経すると
-# 片方だけ直って食い違う事故も同じ根から出る。
-#
-# **畳んだのはこの5つだけ**で、オペレータ(作業可能設備の別表)・設備(参照件数の
-# 確認と最大条数・区分)・アクセス権限(6項目)は畳んでいない。フラグで吸収すると
-# 生成側が読めなくなり、重複より高くつくため(docs/REFACTORING_PLAN.md フェーズC)。
-#
-# Blueprintは 'masters' のままなので、書込ガード(_WRITE_ALLOWED_MODES)は
-# 他のマスタと同じ edit 限定がそのまま効く。
-# ------------------------------------------------------------------------
-# 文言はマスタごとに言い回しだけが違う。**既定を持ち、違う行だけ差し替える**
-# (畳む前の文面をそのまま残すため。ここを揃えると画面に出る文が変わる)。
-_MASTER_WORDS={
- 'required':'{label}を入力してください。',
- 'created' :'{label}マスタへ新規登録しました。',
- 'enabled' :'{label}マスタの登録済み項目を有効化しました。',
- 'dup'     :'同名が既に存在するため変更できません: {name}',
- 'updated' :'{label}を更新しました。',
-}
-
-def _simple_item(r):
- """[ID],[名前],[表示順],[有効],[更新日時],[更新者ID] の並びを画面の形へ。"""
- return {'id':r[0],'name':str(r[1] or '').strip(),'order':r[2] or 0,'active':True,
-         'updated_at':r[4].isoformat() if r[4] else None,
-         'updated_by':(str(r[5]).strip() if len(r)>5 and r[5] else '')}
-
-def _device_item(r):
- """機器マスタだけ[測定区分]が1列入るので、位置が1つずつ後ろへずれる。"""
- return {'id':r[0],'name':str(r[1] or '').strip(),'kind':str(r[2] or '').strip(),
-         'order':r[3] or 0,'active':True,
-         'updated_at':r[5].isoformat() if r[5] else None,
-         'updated_by':(str(r[6]).strip() if len(r)>6 and r[6] else '')}
-
-def _register_simple_master(spec):
- """宣言1つから4本のエンドポイントを生成する。
-
- spec のキー:
-   url/table/id/name/label/ensure/rows/normalize … 必須
-   item  … 1行を画面の形へ直す関数(既定 _simple_item)
-   extra … 名前のほかに1列持つマスタ用。{'col':列名,'key':受け渡し名}。
-           **同一判定にもこの列を含める**(機器は測定区分＋機器名で1件)。
-   words … 文言の差し替え(_MASTER_WORDS の一部)
- """
- url,table,id_col,name_col=spec['url'],spec['table'],spec['id'],spec['name']
- label,ensure_table,rows_fn=spec['label'],spec['ensure'],spec['rows']
- normalize=spec['normalize'];item_fn=spec.get('item') or _simple_item
- extra=spec.get('extra');ex_col=extra['col'] if extra else '';ex_key=extra['key'] if extra else ''
- words=dict(_MASTER_WORDS);words.update(spec.get('words') or {})
- def say(key,**kw):return words[key].format(label=label,**kw)
-
- def list_route():
-  try:
-   path=DBS['MASTER']['path']
-   with connect(path,False) as c:
-    before=table in tables(c);ensure_table(c);rows=rows_fn(c)
-    items=[item_fn(r) for r in rows]
-   return jsonify(ok=True,items=items,table=table,created=not before,empty=len(items)==0,master_path=str(path))
-  except Exception as e:return jsonify(error=f'{label}マスタ読込失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
-
- def register_route():
-  try:
-   x=request.get_json(force=True) or {};name=str(x.get('name') or '').strip()
-   ex=str(x.get(ex_key) or '').strip() if extra else ''
-   note=str(x.get('note') or '').strip();uid=request_user_id(x)
-   if not name:return jsonify(error=say('required')),400
-   with connect(DBS['MASTER']['path'],False) as c:
-    ensure_table(c);cur=c.cursor()
-    cur.execute(f'SELECT [{id_col}],[{name_col}]'+(f',[{ex_col}]' if extra else '')+f' FROM [{table}]')
-    rows=cur.fetchall();target=normalize(name);ex_target=normalize(ex) if extra else None
-    existing=next((r for r in rows if normalize(r[1])==target
-                   and (not extra or normalize(r[2])==ex_target)),None)
-    if existing:
-     # 既存は有効化のみ。備考は指定があるときだけ更新する（値の有無で分岐する）。
-     if note:cur.execute(f'UPDATE [{table}] SET [有効]=-1,[備考]=?,[更新者ID]=?,[更新日時]=Now() WHERE [{id_col}]=?',[note,uid,existing[0]])
-     else:cur.execute(f'UPDATE [{table}] SET [有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [{id_col}]=?',[uid,existing[0]])
-     registered=False;stored=str(existing[1]).strip()
-    else:
-     cur.execute(f'SELECT Max([表示順]) FROM [{table}]');maximum=cur.fetchone()[0];order=int(maximum or 0)+10
-     head=f'[{name_col}],'+(f'[{ex_col}],' if extra else '')+'[備考],[表示順]'
-     marks='?,'*(3 if extra else 2)+'?'
-     cur.execute(f'INSERT INTO [{table}] ({head},[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) '
-                 f'VALUES ({marks},-1,?,?,Now(),Now())',
-                 ([name,ex,note,order] if extra else [name,note,order])+[uid,uid])
-     registered=True;stored=name
-    c.commit()
-   out={'ok':True,'name':stored,'registered':registered,'updated_by':uid,
-        'message':(say('created') if registered else say('enabled'))}
-   if extra:out[ex_key]=ex
-   return jsonify(**out)
-  except Exception as e:return jsonify(error=f'{label}マスタ登録失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
-
- def update_route():
-  try:
-   x=request.get_json(force=True) or {};rid=x.get('id');name=str(x.get('name') or '').strip()
-   ex=str(x.get(ex_key) or '').strip() if extra else ''
-   note=str(x.get('note') or '').strip();uid=request_user_id(x)
-   if rid is None:return jsonify(error='更新対象IDがありません。'),400
-   if not name:return jsonify(error=say('required')),400
-   with connect(DBS['MASTER']['path'],False) as c:
-    ensure_table(c);cur=c.cursor()
-    cur.execute(f'SELECT [{id_col}],[{name_col}]'+(f',[{ex_col}]' if extra else '')+f' FROM [{table}]')
-    rows=cur.fetchall();target=normalize(name);ex_target=normalize(ex) if extra else None
-    dup=next((r for r in rows if normalize(r[1])==target
-              and (not extra or normalize(r[2])==ex_target) and str(r[0])!=str(rid)),None)
-    if dup:return jsonify(error=say('dup',name=str(dup[1]).strip())),409
-    sets=f'[{name_col}]=?,'+(f'[{ex_col}]=?,' if extra else '')+'[備考]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now()'
-    cur.execute(f'UPDATE [{table}] SET {sets} WHERE [{id_col}]=?',
-                ([name,ex,note,uid,rid] if extra else [name,note,uid,rid]))
-    c.commit()
-   out={'ok':True,'id':rid,'name':name,'updated_by':uid,'message':say('updated')}
-   if extra:out[ex_key]=ex
-   return jsonify(**out)
-  except Exception as e:return jsonify(error=f'{label}マスタ更新失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
-
- def delete_route():
-  try:
-   x=request.get_json(force=True) or {};rid=x.get('id');uid=request_user_id(x)
-   if rid is None:return jsonify(error='削除対象IDがありません。'),400
-   with connect(DBS['MASTER']['path'],False) as c:
-    ensure_table(c);cur=c.cursor()
-    # 物理削除ではなく無効化し、履歴を残す。無効化した更新者も記録する。
-    cur.execute(f'UPDATE [{table}] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [{id_col}]=?',[uid,rid]);c.commit()
-   return jsonify(ok=True,id=rid,updated_by=uid)
-  except Exception as e:return jsonify(error=f'{label}マスタ削除失敗: {e}'),500
-
- # Flaskはエンドポイント名を関数名から取るため、生成した関数は名前が衝突する。
- # endpoint= で明示し、アクセスモードの許可表(Blueprint名.関数名)からも
- # 一意に指せるようにする。**畳む前の関数名をそのまま使う**ので、
- # _WRITE_ALLOWED_MODES/_ENDPOINT_EXTRA_MODES の見え方は変わらない。
- key=spec.get('endpoint') or url.replace('-','_')
- bp.add_url_rule(f'/api/{url}',endpoint=f'{key}_list',view_func=list_route,methods=['GET'])
- bp.add_url_rule(f'/api/{url}',endpoint=f'{key}_register',view_func=register_route,methods=['POST'])
- bp.add_url_rule(f'/api/{url}/update',endpoint=f'{key}_update',view_func=update_route,methods=['POST'])
- bp.add_url_rule(f'/api/{url}/delete',endpoint=f'{key}_delete',view_func=delete_route,methods=['POST'])
-
-# **新しい単純マスタはここへ1行足すだけ**。4本が揃うので書き忘れが起きない。
-SIMPLE_MASTERS=[
- {'url':'spool-master','table':SPOOL_MASTER_TABLE,'id':'スプールID','name':'種別名',
-  'label':'スプール種別','endpoint':'spool_master',
-  'ensure':ensure_spool_master_table,'rows':spool_master_rows,'normalize':normalize_spool_name,
-  'words':{'required':'種別名を入力してください。',
-           'enabled':'スプール種別マスタの登録済み種別を有効化しました。',
-           'dup':'同名の種別が既に存在するため変更できません: {name}'}},
- {'url':'inner-master','table':INNER_MASTER_TABLE,'id':'内径ID','name':'内径種別',
-  'label':'内径種別','endpoint':'inner_master',
-  'ensure':ensure_inner_master_table,'rows':inner_master_rows,'normalize':normalize_inner_name,
-  'words':{'enabled':'内径種別マスタの登録済み種別を有効化しました。',
-           'dup':'同名の内径種別が既に存在するため変更できません: {name}'}},
- {'url':'device-master','table':DEVICE_MASTER_TABLE,'id':'機器ID','name':'機器名',
-  'label':'機器','endpoint':'device_master','item':_device_item,
-  'ensure':ensure_device_master_table,'rows':device_master_rows,'normalize':normalize_device_name,
-  # 機器は「測定区分＋機器名」で1件。同一判定にも保存にも区分が要る。
-  'extra':{'col':'測定区分','key':'kind'},
-  'words':{'required':'機器名を入力してください。',
-           'enabled':'機器マスタの登録済み機器を有効化しました。',
-           'dup':'同じ測定区分・機器名が既に存在するため変更できません: {name}'}},
- {'url':'burr-master','table':BURR_MASTER_TABLE,'id':'バリ揃えID','name':'バリ揃え',
-  'label':'バリ揃え',
-  'ensure':ensure_burr_master_table,'rows':burr_master_rows,'normalize':normalize_burr_name},
- {'url':'coil-stop-master','table':COIL_STOP_MASTER_TABLE,'id':'コイル止めID','name':'コイル止め',
-  'label':'コイル止め',
-  'ensure':ensure_coil_stop_master_table,'rows':coil_stop_master_rows,'normalize':normalize_coil_stop_name},
-]
-for _spec in SIMPLE_MASTERS:_register_simple_master(_spec)
+# ---------------------------------------------------------------------------
+# 「名前だけ」の単純マスタの生成器は**撤去した**(§9.221 ③)。スプール種別・
+# 内径種別・機器・バリ揃え・コイル止めの5つを1宣言から生成するための仕掛け
+# だったが、5つとも操業データ選択肢マスタの**まとまり**になったので使い手が
+# 居なくなった。使われていない生成器を残すと、次に触る人が「まだ現役だ」と
+# 読んで新しいマスタをそちらへ足し、選択肢マスタと2本立てになる。
+# 名前だけのマスタが要る場面は`/api/operation-choice-master`で足りる。
+# ---------------------------------------------------------------------------
 
 def _filter_preset_mode(raw):
  """登録フィルタの置き場(§9.80)。スケジュールモードだけを別に持ち、
@@ -1245,6 +1027,13 @@ def operation_item_list():
            # **画面へ書き写さない**——増減したときに2箇所を直すことになる。
            'places':list(op.PLACES),'spans':list(op.SPANS),'gridCols':op.GRID_COLS,
            'spanUnit':op.SPAN_UNIT,'widgets':list(op.WIDGETS),
+           # 見せ方の選択肢(§9.221 ⑦)。**画面へ書き写さない**——増減したときに
+           # 2箇所を直すことになり、片方だけ直った状態が作れる。
+           'unitPlaces':list(op.UNIT_PLACES),'aligns':list(op.ALIGNS),
+           'valueFormats':list(op.VALUE_FORMATS),
+           # 単位を重ねられない入力方法（箱が1つではない）。画面は理由を
+           # 文字で出すのに使う（§4）。
+           'unitInBlocked':list(op.UNIT_IN_BLOCKED_WIDGETS),
            # 型ごとに効く入力方法(§9.219 ③)。**判定はサーバーの1箇所**
            # （画面へ写すと、効く物の一覧が2つになる）。
            'widgetFamilies':{k:list(v) for k,v in op.WIDGET_FAMILIES.items()},
@@ -1257,7 +1046,10 @@ def operation_item_list():
            'numberTypes':list(op.NUMBER_TYPES),
            'builtinKeys':list(op.BUILTIN_KEYS),
            'choiceNotes':op.choice_notes(c),
-           'choiceUsage':op.choice_usage(c),
+           # **読めなかった(None)は空の辞書として渡す**——画面は「使っている
+           # 項目の一覧」を出すだけなので出せないものは出さないが、削除の
+           # 可否はサーバー(`choice_delete_group`)が改めて数え直す。
+           'choiceUsage':op.choice_usage(c) or {},
            # 選択肢のまとまり名のサジェスト(§9.220 ④)。**候補を選ぶ規則は
            # サーバーが持つ**——「同じ群が使っている」「名前が似ている」は
            # 判定であって表示ではないので、画面へ写すと答えが2つになる。
@@ -1288,7 +1080,10 @@ def _operation_item_save(x):
                          widget=x.get('widget'),
                          # §9.220 ②③⑤
                          initial=x.get('initial'),free_text=bool(x.get('freeText')),
-                         step=x.get('step'))
+                         step=x.get('step'),
+                         # §9.221 ⑦（単位の置き場・寄せ・見せ方・桁数）
+                         unit_place=x.get('unitPlace'),align=x.get('align'),
+                         value_format=x.get('valueFormat'),digits=x.get('digits'))
   return jsonify(ok=True,id=_op_read(fn),message='操業データの項目を保存しました。')
  except ValueError as e:return jsonify(error=str(e)),400
  except Exception as e:return jsonify(error=f'操業データ項目マスタの保存に失敗しました: {e}'),500
@@ -1346,7 +1141,12 @@ def operation_choice_list():
  try:
   from ..repositories import operation_repo as op
   def fn(c):
-   usage=op.choice_usage(c)
+   # **6つのマスタの移行はここでも1度だけ通す**(§9.221 ③)。測定画面を
+   # 開く前にマスタ管理を開いた端末では、まだ写していない状態で一覧が
+   # 出る——「移したはずのオペレータが1人も居ない」に見える。
+   try:op.migrate_legacy_choice_masters(c)
+   except Exception:pass
+   usage=op.choice_usage(c) or {}
    rows=op.choice_rows(c,True)
    # **どの項目がこの選択肢を使っているか**(§9.216 ④)。使い道の見えない
    # 選択肢は消してよいのか判断できず、消すと項目側が黙って空になる。
@@ -1354,7 +1154,22 @@ def operation_choice_list():
    # 「どこに出すか」を2箇所で決めることになる）。
    for r in rows:
     r['usedBy']='、'.join(usage.get(r['name'],[]))
-   return {'items':rows,'names':op.choice_names(c),'usage':usage}
+   # ---------- まとまりごとに畳んだ姿(§9.221 ②、利用者の指示) ----------
+   # 「まとまり名毎にまとめて管理したいです。まとまり名毎にさらに子マスタを
+   #  持つような感じにしてマスタに階層構造を持たせたい」
+   # **数えるのはサーバー**——件数・使い道・設備の有無は行を全部見ないと
+   # 分からないので、画面で数え直すと同じ数字の出どころが2つになる。
+   groups=[]
+   for nm in op.choice_names(c):
+    vals=[r for r in rows if r['name']==nm]
+    groups.append({'name':nm,'count':len(vals),
+                   'live':len([r for r in vals if r['enabled']]),
+                   'usedBy':usage.get(nm,[]),
+                   'hasEquipment':any(r['equipment'] for r in vals),
+                   'hasReading':any(r['reading'] for r in vals),
+                   'legacy':nm in [g for g,_ in op.LEGACY_CHOICE_GROUPS]})
+   return {'items':rows,'names':op.choice_names(c),'usage':usage,'groups':groups,
+           'legacyGroups':[g for g,_ in op.LEGACY_CHOICE_GROUPS]}
   return jsonify(ok=True,**_op_read(fn))
  except Exception as e:return jsonify(error=f'操業データ選択肢マスタの読込に失敗しました: {e}'),500
 
@@ -1367,7 +1182,10 @@ def _operation_choice_save(x):
    return op.choice_upsert(c,x.get('name'),x.get('value'),uid,order=iv(x.get('order')),
                            choice_id=(int(x['id']) if x.get('id') not in (None,'') else None),
                            enabled=(True if x.get('enabled') is None else bool(x.get('enabled'))),
-                           note=x.get('note'))
+                           note=x.get('note'),
+                           # §9.221 ③。よみ＝探すための読み、対象設備＝
+                           # その設備のときだけ出す（空＝すべて）。
+                           reading=x.get('reading'),equipment=x.get('equipment'))
   return jsonify(ok=True,id=_op_read(fn),message='操業データの選択肢を保存しました。')
  except ValueError as e:return jsonify(error=str(e)),400
  except Exception as e:return jsonify(error=f'操業データ選択肢マスタの保存に失敗しました: {e}'),500
@@ -1381,6 +1199,51 @@ def operation_choice_update():
  x=request.get_json(force=True) or {}
  if x.get('id') in (None,''):return jsonify(error='更新対象IDがありません。'),400
  return _operation_choice_save(x)
+
+@bp.post('/api/operation-choice-master/rename-group')
+def operation_choice_rename_group():
+ """まとまりの名前を変える(§9.221 ②)。**参照している項目の`[選択肢名]`も
+    一緒に書き換える**——名前で結んでいるので(§9.215)、片方だけ変えると
+    その項目の選択肢が黙って消える。"""
+ from ..repositories import operation_repo as op
+ x=request.get_json(force=True) or {}
+ src=str(x.get('from') or '').strip();dst=str(x.get('to') or '').strip()
+ if not src or not dst:return jsonify(error='まとまり名を入力してください。'),400
+ if src==dst:return jsonify(ok=True,moved=0,message='名前は変わっていません。')
+ try:
+  n=_op_read(lambda c:op.choice_rename_group(c,src,dst,request_user_id(x)))
+  return jsonify(ok=True,moved=n,message=f'「{src}」を「{dst}」へ変更しました（{n}件）。')
+ except ValueError as e:return jsonify(error=str(e)),400
+ except Exception as e:return jsonify(error=f'まとまり名の変更に失敗しました: {e}'),500
+
+@bp.post('/api/operation-choice-master/delete-group')
+def operation_choice_delete_group():
+ """まとまりごと消す(§9.221 ②)。**使っている項目があれば断る**——消すと
+    その項目は黙って空の欄になる（§9.216 ④で「使い道の見えない選択肢は
+    消してよいのか判断できない」と書いた、その裏返し）。"""
+ from ..repositories import operation_repo as op
+ x=request.get_json(force=True) or {}
+ nm=str(x.get('name') or '').strip()
+ if not nm:return jsonify(error='まとまり名がありません。'),400
+ try:
+  n=_op_read(lambda c:op.choice_delete_group(c,nm,request_user_id(x)))
+  return jsonify(ok=True,deleted=n,message=f'「{nm}」を{n}件まとめて削除しました。')
+ except ValueError as e:return jsonify(error=str(e)),409
+ except Exception as e:return jsonify(error=f'まとまりの削除に失敗しました: {e}'),500
+
+@bp.post('/api/operation-choice-master/reorder')
+def operation_choice_reorder():
+ """1つのまとまりの中の並びをまとめて書く(§9.221 ②)。D&Dで並べ替える
+    画面なので、1行ずつ送ると往復が増え、途中で切れると半分だけ動いた
+    並びが残る（項目マスタの`layout`と同じ作法）。"""
+ from ..repositories import operation_repo as op
+ x=request.get_json(force=True) or {}
+ ids=x.get('ids')
+ if not isinstance(ids,list):return jsonify(error='ids（並び）がありません。'),400
+ try:
+  n=_op_read(lambda c:op.choice_reorder(c,ids,request_user_id(x)))
+  return jsonify(ok=True,saved=n,message='選択肢の並びを保存しました。')
+ except Exception as e:return jsonify(error=f'選択肢の並びの保存に失敗しました: {e}'),500
 
 @bp.post('/api/operation-choice-master/delete')
 def operation_choice_delete():
