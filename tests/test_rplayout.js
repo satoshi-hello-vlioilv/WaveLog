@@ -185,16 +185,106 @@ let b=null,madeBlock=null;
    return {marked};
   },C2);
   await page.waitForTimeout(700);
-  /* **組み換え中は外した塊も並べる**（§9.174。何を外しているか分かるように）
-     ので、「消えたか」ではなく**外した印が付いたか／パレットに並んだか**で
-     見る——DOMから消えたかを見ると、直っていても落ちる。 */
+  /* **外した塊は配置面から消える**（§9.222 ③、利用者の指示）。以前は
+     薄く残していたが、外した塊がマスを押さえるので置き場所が無くなり、
+     ゴーストが重なって位置調整ができなかった。**消えるだけでは足りない**
+     ——行き先（置き場）に並んでいることまで見る。 */
   const afterDrop=await page.evaluate(k=>({
-   外した:!!document.querySelector(`[data-rp-block="${CSS.escape(k)}"]`)?.classList.contains('is-off'),
+   紙から消えた:!document.querySelector(`[data-rp-block="${CSS.escape(k)}"]`),
    パレットに居る:[...document.querySelectorAll('#rpPalette [data-rp-pal]')].some(x=>x.dataset.rpPal===k),
   }),C2);
   rec('落とせる場所だと分かる印が出る',removed.marked===true);
-  rec('紙の塊をパレットへ落とすと外れる',
-      afterDrop.外した===true&&afterDrop.パレットに居る===true,JSON.stringify(afterDrop));
+  rec('紙の塊をパレットへ落とすと外れて置き場へ移る',
+      afterDrop.紙から消えた===true&&afterDrop.パレットに居る===true,JSON.stringify(afterDrop));
+
+  /* ==========================================================
+     6) 掴んだところと落ちるところが一致する（§9.222 ②）
+     ----------------------------------------------------------
+     利用者の指摘「ドラッグ位置とゴーストの位置が合わない。**移動量が
+     多いほどずれを感じる**」。原因は、紙が`--rp-scale`で縮んでいるのに
+     `getBoundingClientRect()`（拡大後）と`gap`/`gridAutoRows`（拡大前）を
+     そのまま割り算していたこと——器の左上から離れるほど誤差が積み上がる。
+     **等倍では出ない**ので、まず倍率が1でないことを前提として見る
+     （等倍のまま測ると、直す前でも通る）。
+     見るのは実装の式ではなく**「カーソルがゴーストの中に居るか」**
+     ——式を写して比べると、同じ間違いをした式どうしで一致してしまう。
+     ========================================================== */
+  const drift=await page.evaluate(()=>{
+   const pal=document.querySelector('#rpPalette [data-rp-pal]');
+   const grid=document.querySelector('.rp-page .rp-blocks');
+   const paper=document.querySelector('.rp-page');
+   if(!pal||!grid)return {前提なし:true};
+   const sc=Number(getComputedStyle(paper).getPropertyValue('--rp-scale'))||1;
+   const gr=grid.getBoundingClientRect();
+   const out=[];
+   pal.dispatchEvent(new DragEvent('dragstart',{bubbles:true}));
+   /* 器の左上から遠いほどずれるので、**下のほう・右のほう**で見る。 */
+   for(const [fx,fy] of [[0.2,0.2],[0.5,0.6],[0.8,0.88]]){
+    const x=gr.left+gr.width*fx, y=gr.top+gr.height*fy;
+    grid.dispatchEvent(new DragEvent('dragover',{bubbles:true,clientX:x,clientY:y}));
+    const g=document.getElementById('rpGhost');
+    const r=g?g.getBoundingClientRect():null;
+    out.push({fx,fy,中に居る:!!r&&x>=r.left-1&&x<=r.right+1&&y>=r.top-1&&y<=r.bottom+1,
+      ずれ:r?{dx:Math.round(x-r.left),dy:Math.round(y-r.top),h:Math.round(r.height)}:null});
+   }
+   pal.dispatchEvent(new DragEvent('dragend',{bubbles:true}));
+   return {倍率:Number(sc.toFixed(3)),out};
+  });
+  rec('前提: 紙は縮めて出ている（等倍だと倍率の取り違えが出ない）',
+      !drift.前提なし&&drift.倍率<0.95,JSON.stringify({倍率:drift.倍率}));
+  rec('掴んだ先のゴーストの中にカーソルが居る（紙の下のほうでも）',
+      !drift.前提なし&&drift.out.every(o=>o.中に居る),JSON.stringify(drift.out));
+
+  /* 塊の**右下**を掴んで同じ場所へ持っていくと、ゴーストはその塊の位置の
+     まま——掴んだところのぶんを引かないと、掴んだぶんだけ塊が飛ぶ。 */
+  const grab=await page.evaluate(()=>{
+   const el=document.querySelector('.rp-block.is-placed[data-rp-block]');
+   if(!el)return {塊なし:true};
+   const r=el.getBoundingClientRect();
+   const x=r.right-6,y=r.bottom-6;
+   const grid=el.parentElement;
+   el.dispatchEvent(new DragEvent('dragstart',{bubbles:true,clientX:x,clientY:y}));
+   grid.dispatchEvent(new DragEvent('dragover',{bubbles:true,clientX:x,clientY:y}));
+   const g=document.getElementById('rpGhost');
+   const out={塊:el.style.gridColumn+' / '+el.style.gridRow,
+     ゴースト:g?g.style.gridColumn+' / '+g.style.gridRow:null,
+     大きさ:{w:Math.round(r.width),h:Math.round(r.height)}};
+   el.dispatchEvent(new DragEvent('dragend',{bubbles:true}));
+   return out;
+  });
+  rec('右下を掴んで動かさなければ、ゴーストは元の場所のまま',
+      !grab.塊なし&&grab.ゴースト===grab.塊,JSON.stringify(grab));
+
+  /* ==========================================================
+     7) 「中身なり」の高さは**中身**から決まる（§9.222 ②）
+     ----------------------------------------------------------
+     器は`grid-auto-rows`で1行ぶんに決まっていて`overflow:hidden`なので、
+     `getBoundingClientRect().height`は**いつも1行**を返す。それを1行で
+     割れば必ず1行になり、どの塊も伸びない——段数が12だった頃は1行が88px
+     あってたまたま入っていたが、48段（1行22px）にした瞬間に**全部の塊が
+     「入りきりません」**になった。**中身（`.rp-block-fit`の`scrollHeight`）を
+     測ること。**
+     ここで見るのは「1行しかない塊が並んでいないこと」と「入りきらない印が
+     出ていないこと」——数を数えるだけの網では、1行の塊が1つでもあれば
+     本物か偶然かを見分けられないので、**割合**で見る。
+     ========================================================== */
+  const fitRows=await page.evaluate(()=>{
+   const els=[...document.querySelectorAll('.rp-blocks [data-rp-block]')];
+   const rows=els.map(e=>{
+    const m=/span\s+(\d+)\s*$/.exec(e.style.gridRow||e.style.gridRowEnd||'');
+    return m?Number(m[1]):0;
+   });
+   return {塊:els.length,一行:rows.filter(r=>r===1).length,
+     最大:Math.max(0,...rows),
+     入りきらない:document.querySelectorAll('.rp-blocks .is-cramped').length,
+     段数:Number(getComputedStyle(document.querySelector('.rp-blocks'))
+       .getPropertyValue('--rp-page-rows'))||0};
+  });
+  rec('前提: 紙は48段以上で割られている',fitRows.段数>=48,String(fitRows.段数));
+  rec('中身なりの塊が1行に潰れていない',
+      fitRows.塊>0&&fitRows.一行<=1&&fitRows.最大>=3,JSON.stringify(fitRows));
+  rec('既定の並びで「入りきりません」が出ない',
+      fitRows.入りきらない===0,JSON.stringify(fitRows));
 
   /* ---- 5) ゴーストは実物大 ---- */
   const ghost=await page.evaluate(k=>{
@@ -330,7 +420,7 @@ let b=null,madeBlock=null;
            層:!!g.querySelector('.rp-free-layer')};
   });
   rec('組み換え中はマスの線が背景で引かれる',
-      /linear-gradient/.test(guide.線)&&guide.列==='12',JSON.stringify({列:guide.列}));
+      /linear-gradient/.test(guide.線)&&Number(guide.列)>=24,JSON.stringify({列:guide.列}));
   rec('空いているマスが枠で見える',guide.層===true&&guide.空き>0,
       JSON.stringify({層:guide.層,空き:guide.空き}));
   /* **空きの印がグリッドの並びを崩さないこと。** 位置を数字で指定した子を
@@ -346,6 +436,68 @@ let b=null,madeBlock=null;
   rec('空きの印は重ねる層で、並びに加わらない',
       layered.子===true&&layered.位置==='absolute'&&layered.塊が先===true,
       JSON.stringify(layered));
+  /* ==========================================================
+     空きマスの印は**塊の上に乗らない**（§9.222 ②）
+     ----------------------------------------------------------
+     `rpFreeCells()`は`getBoundingClientRect()`（拡大後）と`gap`/
+     `grid-auto-rows`（拡大前）を混ぜて割っていたため、器の左上から離れる
+     ほどマスの見立てがずれ、**塊の載っているマスを「空き」と描いていた**
+     （落とせる場所を示す印なので、これは嘘の案内になる）。
+     **枠の数だけを見る網では捕まらない**ので、実際に重なっていないかを
+     矩形どうしで見る。印は層の中で拡大前の座標で置かれるが、
+     `getBoundingClientRect()`はどちらも同じ拡大後なので直接比べられる。
+     ========================================================== */
+  const overlapFree=await page.evaluate(()=>{
+   const g=document.querySelector('#reportContent .rp-blocks');
+   if(!g)return {前提なし:true};
+   const bs=[...g.querySelectorAll('[data-rp-block]')].map(e=>({
+     k:e.dataset.rpBlock,r:e.getBoundingClientRect()}));
+   const fs=[...g.querySelectorAll('.rp-free')].map(e=>e.getBoundingClientRect());
+   const hit=[];
+   const M=3;                                  /* 罫線と丸めのぶん */
+   fs.forEach((f,i)=>bs.forEach(b=>{
+    const w=Math.min(f.right,b.r.right)-Math.max(f.left,b.r.left);
+    const h=Math.min(f.bottom,b.r.bottom)-Math.max(f.top,b.r.top);
+    if(w>M&&h>M)hit.push({印:i,塊:b.k,重なり:Math.round(w)+'x'+Math.round(h)});
+   }));
+   return {印:fs.length,塊:bs.length,重なり:hit.slice(0,4),件数:hit.length};
+  });
+  rec('空きマスの印が塊に重ならない（拡大前後の座標を混ぜていない）',
+      !overlapFree.前提なし&&overlapFree.印>0&&overlapFree.塊>0&&overlapFree.件数===0,
+      JSON.stringify(overlapFree));
+
+  /* ==========================================================
+     断りの一言は**見えるところに出る**（§9.222 ④）
+     ----------------------------------------------------------
+     常設の案内（`#rpArrangeNote`）は`?`で畳めるようにしたので、既定では
+     `hidden`。そこへ`rpSay()`が書き込むだけだと、「そのマスには別の塊が
+     置かれています」が**一度も読まれない**——押しても何も起きないのと
+     同じに見える。**文字があることだけを見ないこと**（hiddenの中でも
+     `textContent`は取れる）。実際に画面に出ているかを見る。
+     ========================================================== */
+  const refuse=await page.evaluate(()=>{
+   const note=document.getElementById('rpArrangeNote');
+   const el=document.querySelector('.rp-block.is-placed[data-rp-block]');
+   const other=[...document.querySelectorAll('.rp-block.is-placed[data-rp-block]')]
+     .find(x=>x!==el);
+   if(!note||!el||!other)return {前提なし:true};
+   const 畳んでいる=note.hidden===true;
+   const r=other.getBoundingClientRect();
+   const grid=el.parentElement;
+   const x=r.left+r.width/2,y=r.top+r.height/2;
+   el.dispatchEvent(new DragEvent('dragstart',{bubbles:true,clientX:el.getBoundingClientRect().left+4,
+     clientY:el.getBoundingClientRect().top+4}));
+   grid.dispatchEvent(new DragEvent('dragover',{bubbles:true,clientX:x,clientY:y}));
+   grid.dispatchEvent(new DragEvent('drop',{bubbles:true,clientX:x,clientY:y}));
+   el.dispatchEvent(new DragEvent('dragend',{bubbles:true}));
+   const n2=document.getElementById('rpArrangeNote');
+   return {畳んでいる,
+     文:(n2?n2.textContent:'').includes('別の塊'),
+     見えている:!!(n2&&!n2.hidden&&n2.offsetParent!==null&&n2.getBoundingClientRect().height>0)};
+  });
+  rec('埋まっているマスへ落とすと、断りが畳んだ案内の中に隠れず読める',
+      !refuse.前提なし&&refuse.畳んでいる===true&&refuse.文===true&&refuse.見えている===true,
+      JSON.stringify(refuse));
 
   rec('画面のエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){

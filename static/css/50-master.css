@@ -254,7 +254,7 @@
    全部配ると、ボタンが器からはみ出して隣の欄の下へ潜り込み、**押しても
    反応しない**（実測: 設備停止の「標準所要分」の＋が押せずテストが30秒
    待って落ちた）。 */
-.mm-editor-body .mm-field-num{flex-basis:auto}
+
 .mm-editor-body .mm-field-num .mm-num{width:auto;max-width:100%}
 .mm-editor-body .mm-w-xs.mm-field-num .mm-num-input{width:var(--w-xs)}
 .mm-editor-body .mm-w-sm.mm-field-num .mm-num-input{width:var(--w-sm)}
@@ -266,6 +266,13 @@
 .mm-editor-body .mm-w-lg{flex-basis:var(--w-lg)}
 .mm-editor-body .mm-w-xl{flex-basis:var(--w-xl)}
 .mm-editor-body .mm-w-full{flex:1 1 100%;width:100%}
+/* **段より後ろで`auto`へ戻す**（§9.222 ⑧）。数値の欄は「−／欄／＋／単位」で
+   1つなので、段(`--w-*`)が決めるのは**打ち込む欄の幅だけ**——器まで段の幅に
+   すると、器の中の説明が**1文字ずつ折り返す**（実測: 表示順の器が63pxになり
+   「小さいほど／先に出ま／す。」と6行になっていた）。
+   **`mm-w-*`より前に書くと負ける**（同じ詳細度なので後から読まれた側が勝つ）。 */
+.mm-editor-body .mm-field-num{flex-basis:auto;min-width:0}
+.mm-editor-body .mm-field-num>.mm-field-hint{max-width:var(--w-xl)}
 /* 見出し（`mm-fieldgroup`）は必ず行を切る。切らないと群の途中で欄が
    前の行の余りへ入り、群の境目と行の境目がずれる（§9.131）。 */
 .mm-editor-body .mm-fieldgroup{flex:1 1 100%;width:100%}
@@ -324,6 +331,14 @@
    生データタブだけは列数が読めないため、内側の.mm-raw-scrollが横スクロールを持つ。 */
 .mm-list-wrap{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:0 18px 18px}
 .mm-list{display:flex;flex-direction:column}
+/* ---------- 器の高さを中まで届ける（§9.222 ⑤） ----------
+   **`is-fill`が付いたタブだけ**、外側のスクロールをやめて中身へ高さを渡す。
+   既定の`.mm-list-wrap{overflow-y:auto}`は他の全マスタが使っているので
+   触らない（`.mm-form-page`と同じ作法）。**印を外し忘れると他のタブの
+   一覧がスクロールしない枠になって行が切れる**ので、外すのは
+   `loadMaintInner()`の1箇所。 */
+.mm-list-wrap.is-fill{overflow:hidden;display:flex;flex-direction:column;padding-bottom:var(--space-3)}
+.mm-list-wrap.is-fill>.mm-list{flex:1;min-height:0}
 .mm-row{display:grid;align-items:center;gap:var(--space-2);padding:0 var(--ctl-pad-x-sm);min-height:calc(var(--ctl-h) + 8px);border-bottom:1px solid #e3ebee}
 .mm-row.head{position:sticky;top:0;z-index:2;min-height:42px;background:#eef2f4;border-bottom:2px solid #cfdde0;color:#3a565d;font-weight:800}
 .mm-row:not(.head){background:#fff;cursor:pointer;transition:background .1s}
@@ -907,6 +922,19 @@
 }
 .op-modal-form{display:flex;flex-direction:column;gap:var(--gap-inline);min-width:0}
 /* **ラベル列は固定幅**（§CLAUDE 9）——`auto`だと項目ごとに値の左端がずれる。 */
+/* ---------- 決めることは4つの塊（§9.222 ⑦） ----------
+   14行を平らに並べると、どこから手を付ければよいのか分からない。塊の
+   見出し（番号＋1行の要約）で「何を決める場所か」を先に読ませる。
+   **枠は「まとまり」だけに使う**（§CLAUDE 10）ので、塊の境目は上の罫線
+   1本だけ——中の行に枠を足さない。 */
+.op-form-sec{display:flex;flex-direction:column;gap:var(--gap-inline);min-width:0}
+.op-form-sec+.op-form-sec{padding-top:var(--space-3);border-top:1px solid var(--line-soft)}
+.op-form-sec-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--gap-inline);
+  margin:0;font-size:var(--fs-base-sm);font-weight:800;color:var(--teal-dark)}
+.op-form-sec-head>small{font-size:var(--fs-micro);font-weight:600;color:var(--ink-3)}
+/* 組み込みの欄で「ここは決められない」ことを**文字で**言う（§CLAUDE 4）。 */
+.op-form-locked{margin:0;padding:var(--pad-card);border-radius:var(--radius-sm);
+  background:var(--surface-2);color:var(--ink-3);font-size:var(--fs-sm);line-height:1.6}
 .op-form-row{display:grid;grid-template-columns:var(--w-sm) minmax(0,1fr);gap:var(--space-2);align-items:start}
 .op-form-label{font-size:var(--fs-sm);font-weight:700;color:var(--ink-2);padding-top:4px}
 .op-form-ctl{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-tight);min-width:0}
@@ -1061,9 +1089,17 @@
    左＝まとまり／右＝その中の値。**左のペインは固定幅**（§CLAUDE 9。
    `auto`だとまとまりの名前の長さで右の左端が動く）。
    ============================================================ */
-.oc-edit{display:grid;grid-template-columns:var(--w-xl) minmax(0,1fr);
-  gap:var(--space-3);min-height:0;align-items:start}
-.oc-groups{display:flex;flex-direction:column;gap:var(--space-2);min-width:0;
+/* **画面の高さを使い切る**（§9.222 ⑤、利用者の指摘「画面レイアウトを使い
+   切れていない。使い切れていないのに縦スクロールバーが出る」）。以前は
+   `align-items:start`＋左の`max-height:560px`で、**縦を決めているのが器では
+   なく中身**だった——左は560pxで頭打ち・右は無限に伸びる、という2つの独立した
+   縦になり、外側（`.mm-list-wrap`）が1000px以上スクロールするのに
+   ペインの下には200px以上の空白が残っていた（実測）。
+   いまは器→ペイン→一覧の3段で`flex:1;min-height:0`を通し、**スクロールするのは
+   いちばん内側だけ**にする。 */
+.oc-edit{display:grid;grid-template-columns:minmax(var(--w-lg),var(--w-xl)) minmax(0,1fr);
+  gap:var(--space-3);flex:1;min-height:0;align-items:stretch}
+.oc-groups{display:flex;flex-direction:column;gap:var(--space-2);min-width:0;min-height:0;
   border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface);
   padding:var(--pad-card)}
 .oc-groups-head{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-inline)}
@@ -1072,11 +1108,17 @@
 .oc-groups-head input[type=search]{flex:1 1 100%;height:var(--ctl-h-sm);min-width:0;
   padding:0 var(--space-2);border:1px solid var(--line);border-radius:var(--radius-sm);
   font-size:var(--fs-sm)}
-.oc-group-list{display:flex;flex-direction:column;gap:2px;min-height:0;overflow:auto;
-  max-height:calc(560px * var(--ui-scale))}
-.oc-group{display:grid;gap:1px;width:100%;text-align:left;padding:var(--pad-row);
+/* **上限は器が決める**（§9.222 ⑤）。`max-height`のリテラルは画面と
+   無関係な高さで頭打ちにするので置かない（§CLAUDE 7）。 */
+.oc-groups-head{flex:none}
+.oc-group-list{display:flex;flex-direction:column;gap:2px;flex:1;min-height:0;overflow:auto}
+/* **1件は2行**（§9.222 ⑤）。3行だと1件60pxで、器いっぱいでも10件しか
+   見えない——探すのに毎回スクロールが要る。件数と使い道は同じ行へ。 */
+.oc-group{display:grid;gap:0;width:100%;text-align:left;padding:2px var(--space-2);
   border:1px solid transparent;border-radius:var(--radius-sm);background:transparent;
   cursor:pointer}
+.oc-group-sub{display:flex;flex-wrap:nowrap;gap:var(--space-2);min-width:0}
+.oc-group-sub>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .oc-group:hover{background:var(--surface-2)}
 .oc-group.is-on{background:var(--teal);border-color:var(--teal)}
 .oc-group>b{font-size:var(--fs-sm);font-weight:800;color:var(--ink)}
@@ -1085,24 +1127,55 @@
 /* **使い道は文字で言う**（§9.216 ④）。色だけだと「使われていない」ことに
    気づけず、消してよいかを判断できない。 */
 .oc-group-use{font-size:var(--fs-micro);color:var(--muted)}
-.oc-values{display:flex;flex-direction:column;gap:var(--space-2);min-width:0;
+.oc-values{display:flex;flex-direction:column;gap:var(--space-2);min-width:0;min-height:0;
   border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface);
   padding:var(--pad-card)}
-.oc-values-head{display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--gap-inline)}
+.oc-values-head{display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--gap-inline);flex:none}
 .oc-name{display:flex;flex-direction:column;gap:2px;font-size:var(--fs-sm);font-weight:700;
   color:var(--ink-2)}
 .oc-name input{width:var(--w-md);height:var(--ctl-h-sm);padding:0 var(--space-2);
   border:1px solid var(--line);border-radius:var(--radius-sm)}
 .oc-use,.oc-legacy{flex:1 1 100%;font-size:var(--fs-badge);color:var(--muted);line-height:1.6}
 .oc-legacy{color:var(--teal-dark);font-weight:700}
-/* 1行＝1値。**列は固定幅**で左端をそろえる（§CLAUDE 9）。 */
-.oc-table{display:flex;flex-direction:column;gap:2px;min-width:0}
+/* 1行＝1値。**列は規格の幅を上限に、狭い画面では譲る**（§CLAUDE 11／§9.222 ⑤）。
+   以前は固定幅の合計がペインを超え、`overflow-x:hidden`に削除ボタンが
+   切り落とされていた（実測 1366幅で 598>508）。 */
+/* **鎖を1段でも抜かない**（§9.222 ⑤）。`.oc-values`から`.oc-table-scroll`まで
+   `flex:1;min-height:0`を通さないと、途中の器が中身なりの高さになって
+   スクロールが内側に生まれない（実測: 器779pxに対して中身1208pxが
+   そのまま伸び、外側のスクロールに戻っていた）。 */
+.oc-table{display:flex;flex-direction:column;min-width:0;flex:1;min-height:0}
+/* 値の行だけがスクロールする器。見出しと「値を追加」は上下に貼り付ける
+   （§9.222 ⑤）——表ごとスクロールさせると見出しが一緒に流れる。 */
+.oc-table-scroll{flex:1;min-height:0;overflow:auto;min-width:0}
+/* **列は「下限＋割合」で書く。`minmax(0,1fr)`と`auto`を混ぜない**（§9.222 ⑥）。
+   `1fr`は基準が0なので余りの配り直し（Maximize Tracks）に参加できず、
+   隣の`minmax(--w-sm,--w-md)`が先に上限まで伸びる——狭い窓（1366px）では
+   説明の列が**0pxまで潰れて一文字も出ない**（実測）。また末尾を`auto`に
+   すると、見出し行（中身が空）と本文行（削除ボタン）で最後の列の幅が違い、
+   **行ごとに別のグリッド**なので手前の列の左端までそろわなくなる。
+   下限は`--w-*`の規格から選び、伸びしろだけを割合で配る。 */
 .oc-row{display:grid;align-items:center;gap:var(--gap-inline);
-  grid-template-columns:1.2em var(--w-md) minmax(0,1fr) var(--w-sm) var(--w-md) var(--w-sm) auto;
-  padding:2px 0}
-.oc-row.is-head{font-size:var(--fs-micro);font-weight:800;color:var(--muted);
+  grid-template-columns:1.4em minmax(var(--w-sm),1.1fr) minmax(var(--w-sm),1.6fr)
+    minmax(var(--w-xs),0.9fr) minmax(var(--w-sm),1.4fr) var(--w-sm) var(--w-xs);
+  padding:2px var(--space-1);border-radius:var(--radius-xs)}
+/* **見出しにも本文と同じ文字サイズを置く**（§9.193）。列幅を`em`で書いて
+   いるので、器の文字サイズを変えると**同じ`--w-md`が別の幅に解ける**
+   ——見出しと本文の左端がそろわなくなる（実測66.5pxと84px）。
+   小さくするのはセル（`>span`）だけ。 */
+.oc-row.is-head{position:sticky;top:0;z-index:1;background:var(--surface);
+  font-weight:800;color:var(--muted);
   border-bottom:1px solid var(--line-soft);padding-bottom:var(--space-1)}
+.oc-row.is-head>span{font-size:var(--fs-micro)}
 .oc-row.is-drag{opacity:.4}
+.oc-row[data-oc-id]{cursor:pointer}
+.oc-row[data-oc-id]:hover{background:var(--surface-2)}
+.oc-row[data-oc-id]:nth-of-type(even){background:var(--surface-2)}
+.oc-row[data-oc-id]:nth-of-type(even):hover{background:var(--surface-3)}
+.oc-cell{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:var(--fs-sm);color:var(--ink)}
+.oc-cell.is-sub{color:var(--ink-3)}
+.oc-cell.is-blank{color:var(--muted)}
 .oc-grip{color:var(--muted);cursor:grab;text-align:center;user-select:none}
 .oc-row input.oc-f{height:var(--ctl-h-sm);min-width:0;width:100%;padding:0 var(--space-2);
   border:1px solid var(--line);border-radius:var(--radius-sm);font-size:var(--fs-sm)}
@@ -1112,10 +1185,16 @@
   border-radius:var(--radius-xs);background:var(--surface);color:var(--danger);
   font-size:var(--fs-micro);font-weight:700;cursor:pointer}
 .oc-del:hover{background:var(--danger-bg)}
+/* 「値を追加」は**表と同じ編集窓を開くボタン1つ**（§9.222 ⑥）。以前は
+   値と説明の入力欄だけが2つ並んでおり、**表は7列なのに登録は3マス**という
+   食い違いになっていた（利用者の指摘「登録用のマス目の数や、登録してある
+   部分のマスの位置とラベルの位置がずれています」）。 */
 .oc-add{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-inline);
-  border-top:1px solid var(--line-soft);padding-top:var(--space-2)}
-.oc-add input{height:var(--ctl-h-sm);padding:0 var(--space-2);border:1px solid var(--line);
-  border-radius:var(--radius-sm);font-size:var(--fs-sm)}
-.oc-add #ocNewValue{width:var(--w-md)}
-.oc-add #ocNewNote{flex:1 1 var(--w-xl);min-width:0}
+  border-top:1px solid var(--line-soft);padding-top:var(--space-2);flex:none}
+.oc-add-note{font-size:var(--fs-micro);color:var(--ink-3)}
+.oc-eq-tags{display:flex;flex-wrap:nowrap;gap:2px;min-width:0;overflow:hidden}
+.oc-eq-tag{font-size:var(--fs-micro);font-weight:700;line-height:1;white-space:nowrap;
+  padding:2px var(--space-1);border:1px solid var(--line-mid);border-radius:var(--radius-xs);
+  background:var(--surface-2);color:var(--ink-2)}
+.oc-eq-tag.is-all{background:var(--pale);border-color:var(--teal);color:var(--teal-dark)}
 }

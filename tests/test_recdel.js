@@ -91,6 +91,62 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   rec('押せない理由が文字で書いてある',
       done.none?false:/完了/.test(done.why),String(done.why));
 
+  /* ==========================================================
+     開いたメニューは**必ず閉じられる**（§9.222 ①）
+     ----------------------------------------------------------
+     ここが**この網の穴だった**。上までは「開いたこと」しか見ておらず、
+     2件目を試す前に自分で`.rec-row-menu`を`remove()`していたため、
+     `openRecordRowMenu()`が控え（`recordRowMenuEl`）へ代入していなくても
+     全部PASSしていた。実機では**外クリックでもEscでも自ボタンでも
+     閉じられず、押すたびに積み上がっていた**。
+     **閉じる操作を実際に通すこと。** 3つの入口をそれぞれ見る。
+     ========================================================== */
+  await page.click('.status-filter-btn[data-status-filter="done"]').catch(()=>{});
+  await page.waitForTimeout(600);
+  await page.evaluate(()=>{document.querySelector('.rec-row-menu')?.remove()});
+  const closeWays={};
+  const openMenu=async()=>{
+   await page.click('.record-list-row .rec-more');
+   await page.waitForTimeout(250);
+   return page.evaluate(()=>document.querySelectorAll('.rec-row-menu').length);
+  };
+  closeWays.開いた=await openMenu();
+  await page.mouse.click(200,620);                    /* 何も無いところ */
+  await page.waitForTimeout(350);
+  closeWays.外クリックで閉じる=await page.evaluate(()=>document.querySelectorAll('.rec-row-menu').length);
+  await openMenu();
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(350);
+  closeWays.Escで閉じる=await page.evaluate(()=>document.querySelectorAll('.rec-row-menu').length);
+  await openMenu();
+  await page.click('.record-list-row .rec-more');     /* 同じボタンをもう一度 */
+  await page.waitForTimeout(350);
+  closeWays.自ボタンで閉じる=await page.evaluate(()=>document.querySelectorAll('.rec-row-menu').length);
+  closeWays.印が戻る=await page.evaluate(()=>
+    document.querySelector('.record-list-row .rec-more')?.getAttribute('aria-expanded'));
+  rec('⋯のメニューは外クリックで閉じる',
+      closeWays.開いた===1&&closeWays.外クリックで閉じる===0,JSON.stringify(closeWays));
+  rec('⋯のメニューはEscで閉じる',closeWays.Escで閉じる===0,JSON.stringify(closeWays));
+  rec('⋯をもう一度押すと閉じる（積み上がらない）',
+      closeWays.自ボタンで閉じる===0,JSON.stringify(closeWays));
+  rec('閉じたら⋯の印(aria-expanded)も戻る',closeWays.印が戻る==='false',String(closeWays.印が戻る));
+
+  /* ---- 操作ボタンが見切れない（§9.222 ①） ----
+     実機で「続きか…」「帳…」と3つとも省略記号になっていた。文字を短く
+     した（`再開`／`開く`／`帳票`）うえで、器に下限（`--rec-actions-min`）を
+     持たせてある。**3段の表示サイズすべてで見ること**——器がpx固定だと
+     特大でだけ切れる（それが実際の壊れ方だった）。 */
+  const cut=[];
+  for(const size of ['sm','md','lg']){
+   await page.evaluate(z=>{document.documentElement.dataset.uiSize=z},size);
+   await page.waitForTimeout(350);
+   const bad=await page.evaluate(()=>[...document.querySelectorAll('.record-list-actions button')]
+     .filter(b=>b.scrollWidth>b.clientWidth+1).map(b=>b.textContent.trim()+':'+b.clientWidth+'<'+b.scrollWidth));
+   if(bad.length)cut.push(size+' '+bad.join('/'));
+  }
+  await page.evaluate(()=>{document.documentElement.dataset.uiSize='md'});
+  rec('操作ボタンが3段の表示サイズで切れない',cut.length===0,cut.join(' / '));
+
   rec('JSエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){console.log('FATAL: '+e.message);R.push({n:'FATAL',ok:false,d:e.message})}
  finally{

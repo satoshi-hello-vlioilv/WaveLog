@@ -167,6 +167,20 @@ let b=null;
    await page.evaluate(()=>document.querySelectorAll('.qa-acc:not(.open) .qa-acc-head').forEach(x=>x.click()));
   });
   await page.click('[data-qa-tab="raw"]');await idle();
+  /* データ一覧（§9.222 ①）。**巡回の穴だった**——操作列の器が
+     `minmax(232px,0)`のリテラル固定で、中身（文字・余白）は`--ui-scale`で
+     伸びるため、表示サイズを上げるほど足りなくなり特大でボタンが
+     「続きか…」「帳…」と切れていた。ここに入っていれば出す前に分かった
+     （CLAUDE.md §9.127「規格へ寄せるのと巡回に加えるのは2つで一組」）。 */
+  await visit('データ一覧',async()=>{
+   await page.evaluate(()=>document.querySelector('[data-open-records]')?.click());
+   await page.waitForSelector('#recordList',{timeout:15000}).catch(()=>{});
+   await idle();
+  });
+  /* `#recordModal`は`<section class="rec-panel" hidden>`で、閉じるのは
+     `hidden`の付け外し（専用の×は無い）。 */
+  await page.evaluate(()=>{const m=document.getElementById('recordModal');if(m)m.hidden=true});
+  await paint();
   await visit('作業スケジュール',()=>page.click('#openSchedule'));
   await visit('ダッシュボード',()=>page.click('#openDashboard'));
   await visit('実績カレンダー',()=>page.click('#openCalendar'));
@@ -192,7 +206,7 @@ let b=null;
   real.forEach(f=>{const k=`${f.screen}/${f.size}: ${f.name} ${f.why}`;byKey[k]=(byKey[k]||0)+1});
   const keys=Object.keys(byKey);
   rec('スクロールできない器から中身が溢れていない',keys.length===0,
-   keys.length?keys.slice(0,8).join(' / '):`${SIZES.length}段階 × 8画面 で溢れ0`);
+   keys.length?keys.slice(0,8).join(' / '):`${SIZES.length}段階 × 9画面 で溢れ0`);
   rec('ページ全体に横スクロールが出ていない',pageX<=SLACK,`最大 +${pageX}px`);
 
   console.log('\n=== SUMMARY ===');

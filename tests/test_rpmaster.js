@@ -107,15 +107,26 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
      span:4,rows:6,content:basic.content,note:basic.note,enabled:true,cols:basic.cols,user_id:TAG});
   await page.evaluate(()=>WL.reportBlocks.forget());
   await openReport(page);
+  /* **数そのものではなく「紙に占める割合」で見る**（§9.222 ②）。マスタの
+     `span`/`rows`は12マス・12段で書かれた既定で、画面はいまの割り
+     （既定24マス×48段）へ割り付け直す。数を直に書くと、割りを変えた
+     瞬間に落ちる（＝直っていても落ちる網になる）。 */
   const after=await page.evaluate(()=>{
    const e=document.querySelector('[data-rp-block="基本情報"]');
+   const g=document.querySelector('.rp-page .rp-blocks');
+   const cs=g?getComputedStyle(g):null;
    return e?{span:e.style.gridColumn,row:e.style.gridRow,
-             h:Math.round(e.getBoundingClientRect().height)}:null;
+             h:Math.round(e.getBoundingClientRect().height),
+             cols:Number(cs&&cs.getPropertyValue('--rp-grid'))||0,
+             prows:Number(cs&&cs.getPropertyValue('--rp-page-rows'))||0}:null;
   });
+  const num=(v,re)=>Number((re.exec(String(v||''))||[])[1]||0);
   rec('マスタで変えた幅が紙の既定になる',
-      !!after&&/span 4/.test(after.span),JSON.stringify(after));
+      !!after&&num(after.span,/span (\d+)/)===Math.round(4*after.cols/12),
+      JSON.stringify(after)+` 期待=span ${after?Math.round(4*after.cols/12):'?'}`);
   rec('マスタで変えた行数が紙の既定になる',
-      !!after&&/span 6/.test(after.row||''),JSON.stringify(after));
+      !!after&&num(after.row,/span (\d+)/)===Math.round(6*after.prows/12),
+      JSON.stringify(after)+` 期待=span ${after?Math.round(6*after.prows/12):'?'}`);
 
   /* ---- 4) 「有効」を外すと紙から消える ---- */
   await post('/api/report-block-master/update',

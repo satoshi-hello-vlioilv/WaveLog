@@ -223,9 +223,11 @@
 /* **取っ手は塊の内側に収める。** 縁から外へ出すと、隣に塊が置かれた
    とたんにその3pxが**隣の塊の領域**になり、真ん中を狙って押しても
    pointerdownが隣へ吸われて**引けない**（隣は後から描かれるので上に来る。
-   実測: 幅272pxのまま動かず、`.rp-size-tip`も出なかった）。塊どうしは
-   `rpResolvePlacement()`が重ならないことを保証しているので、内側にある
-   かぎり誰にも覆われない。 */
+   実測: 幅272pxのまま動かず、`.rp-size-tip`も出なかった）。
+   **ただし重なりは起こりうる**（§9.222 ②で「大きさを変えても場所は
+   動かさない」にしたので、`rpResolvePlacement()`はもう重なりを解かず
+   数えるだけ）。内側にあっても**上に載った塊に覆われる**ので、下記の
+   `is-overlap`／hoverで手前へ出す。 */
 .rp-size-grip{position:absolute;z-index:4;background:transparent}
 .rp-size-w{top:0;bottom:10px;right:0;width:8px;cursor:ew-resize}
 .rp-size-h{left:0;right:10px;bottom:0;height:8px;cursor:ns-resize}
@@ -260,22 +262,58 @@
 .rp-block-col-drop,.rp-block-col-restore{font-size:8px;font-weight:700;line-height:1;padding:2px 4px;border:1px solid #d8b57a;border-radius:3px;background:#fff;color:#7a5a17;cursor:pointer}
 .rp-block-col-drop:hover{border-color:#a33;color:#a33}
 .rp-block-col-restore{margin-left:auto;border-color:#9bb3ba;color:#41606a}
-/* 紙のマス数（§9.173）。粗いほど左端がそろう。 */
-.rp-grid-pick{display:inline-flex;align-items:center;gap:3px;font-weight:700}
-.rp-grid-pick button{font-size:var(--fs-micro);font-weight:800;line-height:1;padding:3px 6px;
- border:1px solid var(--line);border-radius:var(--radius-xs);background:var(--surface);color:var(--ink-2);cursor:pointer}
-.rp-grid-pick button.is-on{background:var(--teal);border-color:var(--teal);color:#fff}
-.rp-arrange-note{margin-left:var(--space-2);color:var(--ink-3)}
+/* ---------- 組み換えの帯（§9.222 ④） ----------
+   「割り／整える・見る／状態」の3つの塊に分け、**塊の中だけを詰める**。
+   ボタンの高さは`--ctl-h-xs`の1種類だけ（以前は`--ctl-h-sm`の
+   「紙のとおりに見る」だけが一回り大きく、押し間違いの的になっていた）。
+   説明は「?」で開く——常設だと2行の文が帯の半分を占めていた。 */
+.rp-bar-group{display:inline-flex;align-items:center;gap:var(--gap-tight);min-width:0}
+.rp-bar-label{font-style:normal;font-size:var(--fs-micro);font-weight:800;
+  color:var(--ink-3);letter-spacing:.04em}
+.rp-seg{display:inline-flex;align-items:center;gap:2px;
+  padding:2px;border:1px solid var(--line);border-radius:var(--radius-sm);
+  background:var(--surface)}
+.rp-seg button{height:var(--ctl-h-xs);min-width:2.2em;padding:0 var(--space-1);
+  font-size:var(--fs-sm);font-weight:800;line-height:1;
+  border:0;border-radius:var(--radius-xs);background:transparent;color:var(--ink-2);cursor:pointer}
+.rp-seg button:hover{background:var(--surface-3)}
+.rp-seg button.is-on{background:var(--teal);color:#fff}
+.rp-seg-x{padding:0 2px;font-size:var(--fs-micro);color:var(--muted)}
+.rp-bar-btn{height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-sm);
+  border:1px solid var(--line-mid);border-radius:var(--radius-xs);
+  background:var(--surface);color:var(--ink-2);
+  font-size:var(--fs-sm);font-weight:700;cursor:pointer;white-space:nowrap}
+.rp-bar-btn:hover{border-color:var(--teal);color:var(--nav)}
+.rp-bar-btn.is-on{background:var(--teal);border-color:var(--teal);color:#fff}
+.rp-bar-help{min-width:var(--ctl-h-xs);padding:0;font-weight:800}
+/* 状態は**色だけで伝えない**（§3）。分類名と件数を必ず文字で出す。 */
+.rp-bar-state{display:inline-flex;align-items:center;gap:var(--gap-tight);
+  flex-wrap:wrap;min-width:0}
+.rp-chip{font-size:var(--fs-micro);font-weight:800;line-height:1;
+  padding:3px var(--space-2);border-radius:var(--radius-pill);
+  background:var(--surface-2);color:var(--ink-3);border:1px solid var(--line-soft)}
+.rp-chip.is-ok{color:var(--success);border-color:#bfe0cf;background:#f1fbf5}
+.rp-chip.is-bad{color:var(--danger);border-color:#e6bcbc;background:var(--danger-bg)}
+.rp-arrange-note{flex:1 1 100%;margin-top:2px;color:var(--ink-3)}
+.rp-arrange-note[hidden]{display:none}
 /* 直前の操作の一言。**常設の案内を消さずに継ぎ足す**（§9.221 ⑨の追補）。 */
 .rp-arrange-tip{margin-left:var(--space-2);color:var(--ink);font-weight:800}
 .rp-arrange-note.is-bad>.rp-arrange-tip{color:var(--danger)}
-/* 紙のとおりに見る／A4の収まり（§9.174）。**収まっているかは色だけで
-   伝えない**——何mm超過して何枚になるかを文字で出す。 */
-.rp-paper-toggle{height:var(--ctl-h-sm);padding:0 var(--space-3);margin-left:var(--space-2);border:1px solid var(--teal);border-radius:var(--radius-xs);background:var(--surface);color:var(--nav);font-size:var(--fs-sm);font-weight:700;cursor:pointer}
-.rp-paper-toggle.is-on{background:var(--teal);color:#fff}
-.rp-page-fit{margin-left:var(--space-2);font-size:var(--fs-sm);font-weight:700}
+/* A4の収まり（§9.174）。**収まっているかは色だけで伝えない**
+   ——何mm超過して何枚になるかを文字で出す。 */
+.rp-page-fit{font-size:var(--fs-sm);font-weight:700}
 .rp-page-fit.is-ok{color:var(--success)}
 .rp-page-fit.is-over{color:var(--danger)}
+/* 重なっている塊（§9.222 ②）。**縁と文字の両方**で言う。
+   **重なった塊は触れること。** 重なりを解かなくなった以上、下になった塊は
+   操作帯も取っ手も上の塊に覆われる——直せないまま「重なり」とだけ言われる
+   のは、できないことを書いていないのと同じ（§CLAUDE 4）。触れているあいだと
+   重なっている塊は手前へ出す（重なっている側を上にするので、**まず赤い枠の
+   ほうが掴める**）。 */
+.rp-blocks.is-arranging .rp-block.is-overlap{outline:2px solid var(--danger);outline-offset:-2px;z-index:2}
+.rp-blocks.is-arranging .rp-block:hover{z-index:3}
+.rp-blocks.is-arranging .rp-block:focus-within{z-index:4}
+.rp-block-tag.is-over{background:var(--danger-bg);color:var(--danger);border-color:#e6bcbc}
 /* 塊を大きく開いて決める（§9.174）。左に実物、右に決めること。 */
 .rp-block-dialog{width:min(1320px,96vw);height:min(860px,92vh);display:flex;flex-direction:column}
 .rp-block-edit{display:grid;grid-template-columns:minmax(0,1fr) minmax(340px,420px);gap:var(--gap-section);padding:var(--pad-dialog);overflow:hidden;flex:1 1 auto}
@@ -317,7 +355,9 @@
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .rp-palette-size{font-size:var(--fs-micro);color:var(--muted);font-weight:700}
 .rp-arrange-bar b{font-size:var(--fs-sm)}
-.rp-arrange-info{font-size:var(--fs-tiny);color:var(--ink-2);min-width:0;flex:1 1 240px}
+/* 帯の中身は**塊ごとに折り返す**（塊の中は折り返さない・§9.199）。 */
+.rp-arrange-info{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap;
+  font-size:var(--fs-tiny);color:var(--ink-2);min-width:0;flex:1 1 260px}
 #reportArrange.is-on{background:var(--teal);border-color:var(--teal);color:#fff}
 /* ゾーン: 関連するセクションを横に並べ、認知的なまとまり（チャンク）ごとに
    視線移動を抑える。列数はゾーンごとに情報量に応じて変える。

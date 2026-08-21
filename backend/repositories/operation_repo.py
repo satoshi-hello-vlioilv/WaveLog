@@ -701,8 +701,11 @@ def migrate_legacy_choice_masters(c):
     return True
 
 
-def choice_upsert(c, name, value, uid, order=None, choice_id=None, enabled=True, note=None,
+def choice_upsert(c, name, value, uid, order=None, choice_id=None, enabled=None, note=None,
                   reading=None, equipment=None):
+    """選択肢を1件書く。**`enabled=None`は「送っていない」で、今の値を残す**
+       （§9.212 ②）——`True`を既定にすると、説明だけを直す呼び出しが
+       「出さない」にしてあった行を毎回「出す」へ戻す。新規のときだけ`True`。"""
     ensure_choice_table(c)
     name = str(name or '').strip()
     value = str(value if value is not None else '').strip()
@@ -721,15 +724,17 @@ def choice_upsert(c, name, value, uid, order=None, choice_id=None, enabled=True,
             order = hit[0] if hit else None
         # **送っていない項目は今の値を残す**（§9.212 ②）。1つ書き漏らすと
         # その設定だけが保存のたびに消える。
-        cur.execute('SELECT [説明],[よみ],[対象設備] FROM [操業データ選択肢マスタ] '
+        cur.execute('SELECT [説明],[よみ],[対象設備],[有効] FROM [操業データ選択肢マスタ] '
                     'WHERE [選択肢ID]=?', [int(choice_id)])
-        hit = cur.fetchone() or ['', '', '']
+        hit = cur.fetchone() or ['', '', '', -1]
         if note is None:
             note = hit[0] or ''
         if reading is None:
             reading = hit[1] or ''
         if equipment is None:
             equipment = hit[2] or ''
+        if enabled is None:
+            enabled = bool(hit[3])
         cur.execute('UPDATE [操業データ選択肢マスタ] SET [選択肢名]=?,[値]=?,[説明]=?,[表示順]=?,'
                     '[有効]=?,[よみ]=?,[対象設備]=?,[更新者ID]=?,[更新日時]=Now() '
                     'WHERE [選択肢ID]=?',
@@ -738,7 +743,8 @@ def choice_upsert(c, name, value, uid, order=None, choice_id=None, enabled=True,
         c.commit()
         return int(choice_id)
     # 自然キーは(選択肢名,値)。同じ値を2つ並べない——どちらを選んでも同じ。
-    cur.execute('SELECT [選択肢ID],[表示順],[説明],[よみ],[対象設備] FROM [操業データ選択肢マスタ] '
+    cur.execute('SELECT [選択肢ID],[表示順],[説明],[よみ],[対象設備],[有効] '
+                'FROM [操業データ選択肢マスタ] '
                 'WHERE [選択肢名]=? AND [値]=?', [name, value])
     hit = cur.fetchone()
     if hit:
@@ -746,7 +752,7 @@ def choice_upsert(c, name, value, uid, order=None, choice_id=None, enabled=True,
                     '[よみ]=?,[対象設備]=?,[更新者ID]=?,[更新日時]=Now() WHERE [選択肢ID]=?',
                     [hit[1] if order is None else order,
                      str((hit[2] if note is None else note) or ''),
-                     -1 if enabled else 0,
+                     -1 if (bool(hit[5]) if enabled is None else enabled) else 0,
                      str((hit[3] if reading is None else reading) or ''),
                      _norm_equipment(hit[4] if equipment is None else equipment),
                      uid, hit[0]])
@@ -760,7 +766,8 @@ def choice_upsert(c, name, value, uid, order=None, choice_id=None, enabled=True,
                 '([選択肢名],[値],[説明],[表示順],[有効],[よみ],[対象設備],'
                 '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
                 'VALUES (?,?,?,?,?,?,?,?,?,Now(),Now())',
-                [name, value, str(note or ''), order, -1 if enabled else 0,
+                [name, value, str(note or ''), order,
+                 -1 if (True if enabled is None else enabled) else 0,
                  str(reading or ''), _norm_equipment(equipment), uid, uid])
     c.commit()
     return int(cur.lastrowid)

@@ -106,18 +106,38 @@
    して列内でタップしやすい大きさを揃える。
    **高さは`--row-ctl-h`**（10-roles.cssの表内ボタンの規則）。行の高さを
    押し広げない。 */
+/* **操作列の下限**（§9.222 ①）。3つのボタンが切れずに並ぶ幅を器が保証する
+   ——切れたセルは`title`から読めるが、**切れたボタンは押す前に何のボタんか
+   分からない**（実機で「続きか…」「帳…」と3つとも省略記号になっていた）。
+   `em`なので表示サイズの3段に追随する（pxだと特大でだけ切れる・§9.127）。
+   `#recordList`の文字は`--tbl-fs`。実測の自然幅は sm147 / md156 / lg168pxで、
+   下限は 161 / 175 / 193px——**少し余らせてある**のは、実機（Windows）の
+   日本語フォントがここより広いことがあるため。 */
+#recordList{--rec-actions-min:12.5em}
 .record-list-actions{display:flex;align-items:center;gap:var(--gap-inline);
   height:var(--row-h);padding:var(--row-pad-y) var(--row-pad-x)}
 /* **均等幅(flex:1)にしない**（§9.161）。「続きから再開」と「帳票」を同じ幅に
    すると、長いほうが器に入らず**「続き…」と切れる**（実測57px／要96px）。
    幅は中身から決め、列はその合計で取る（§9.130）。 */
-.record-list-actions button{flex:0 1 auto;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* **器と中身の文字サイズを食い違わせない**（§9.206／§9.222 ①）。高さは
+   `--row-ctl-h`＝「`--fs-sm`×`--lh`＋余白」で作った値なのに、中の文字が
+   `--fs`（14px）だと**必ず2px溢れる**（実測: 器17.4/18.9/20.8pxに対して
+   行の高さ17.4/18.9/20.8px＋罫線2px）。`test_fit.js`の巡回にデータ一覧を
+   入れて初めて見つかった（CLAUDE.md §9.127）。 */
+.record-list-actions button{flex:0 1 auto;font-size:var(--fs-sm);line-height:1;
+  font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* 行の中の印は**表の印の大きさ**（§9.90の`--tbl-fs-mark`）。10px・9.5pxの
    3種類が同じ行に並んでいたため、状態の文字が読み取りづらく、しかも
    「編集中」が器から溢れて省略記号になっていた。 */
+/* **行の中の印は行の内寸に収める**（§9.112）。素の`.record-remote-badge`は
+   `--pad-chip`＋罫線で22.2pxあり、行の内寸19.9pxから溢れていた（実測）。
+   高さは行内ボタンと同じ`--row-ctl-h`にそろえ、行の中に大きさの種類を
+   増やさない（§9.90）。 */
 .record-list-cell .rp-status-badge,
 .record-list-cell .record-sync-badge,
-.record-list-cell .record-remote-badge{font-size:var(--tbl-fs-mark);margin-left:0}
+.record-list-cell .record-remote-badge{font-size:var(--tbl-fs-mark);margin-left:0;
+  display:inline-flex;align-items:center;height:var(--row-ctl-h);
+  line-height:1;padding:0 var(--space-2)}
 .record-list-actions .resume{background:var(--teal);color:#fff;border-color:var(--teal)}
 .record-list-actions .resume:disabled{opacity:.45;cursor:not-allowed}
 .record-list-actions .report{color:#075e67;background:#eafafa;border:1px solid #8fc9c2}
