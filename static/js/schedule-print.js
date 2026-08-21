@@ -576,8 +576,13 @@
   el.querySelector('#spPvCancel').onclick=closePreview;
   el.querySelector('#spPvPrint').onclick=doPrint;
   el.querySelector('#spLayoutOpen').onclick=()=>openLayoutPanel(pv.equipment,{onSaved:()=>renderPreview()});
-  /* 覆いの外を押したら閉じる（刷らない）。中は素通りさせる。 */
+  /* **背景クリックでは閉じない**（§9.221 ①）。刷る前の設定を触っている
+     最中に外を押して消えると、選び直しからやり直しになる。閉じるのは
+     ×／キャンセル／Escの3つ。 */
   WL.modal.keepOpen(el);
+  document.addEventListener('keydown',e=>{
+   if(WL.modal.escCloses(e)&&!el.hidden){e.stopPropagation();closePreview()}
+  },true);
   return el;
  }
  function optionRows(pref,canAll){

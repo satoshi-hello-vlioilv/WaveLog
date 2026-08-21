@@ -636,6 +636,46 @@ let b=null;const made=[];const madeChoices=[];
   rec('単位そのものも消えていない',savedItem.unit==='mm',String(savedItem.unit));
   await closeModal();
 
+  /* ==========================================================
+     §9.221 ⑦の追補: **`<select>`には見せ方を当てない**
+     ----------------------------------------------------------
+     値が選択肢そのものなので、3桁区切りやゼロ埋めを掛けると
+     `putValue()`が`1234`を`1,234`にし、どの`<option>`にも当たらず
+     **`select.value`が空になる**——画面から記録が消え、そのまま保存すると
+     空で上書きされる。型を「選択」に変えても`[表示書式]`は保存値として
+     残る（widgetと同じ約束）ので、この組み合わせは普通に作れる。
+     **確かめるときは実際に値を入れて`select.value`を読むこと**
+     ——`data-opfmt`の有無だけを見ると、当てた先が`<input>`でも通る。
+     ========================================================== */
+  const mkc=await post('/api/operation-item-master',
+    {equipment:EQ,group:TAG,name:TAG+' 選択',type:'選択',choice:TAG+'g',
+     valueFormat:'3桁区切り',unit:'mm',user_id:TAG});
+  const mkcj=await mkc.json();
+  if(mkcj.id)made.push(mkcj.id);
+  const chSel=await post('/api/operation-choice-master',{name:TAG+'g',value:'1234',user_id:TAG});
+  const chSelJ=await chSel.json();if(chSelJ.id)madeChoices.push(chSelJ.id);
+  await page.click('#masterMaintNav [data-master="opItem"]');
+  await page.waitForSelector('#masterMaintList .op-board-grid',{timeout:20000});
+  await page.waitForTimeout(700);
+  await openTile(mkcj.id);
+  const sel=await page.evaluate(()=>{
+   const l=document.querySelector('#opPrevField .opf');
+   const s=l&&l.querySelector('select');
+   if(!s)return{none:true};
+   /* 選択肢そのものの値を入れて、整形で潰れないことを見る。 */
+   s.value='1234';s.dispatchEvent(new Event('change',{bubbles:true}));
+   s.dispatchEvent(new Event('blur',{bubbles:true}));
+   return{fmt:s.dataset.opfmt||'',値:s.value,
+     選択肢:[...s.options].map(o=>o.value).join('/')};
+  });
+  /* 見るのは**印が付いていないこと**の1点。見本の`<select>`は`apply()`を
+     通らないので「値が消えていない」を並べても壊れていても通ってしまう
+     （実際に、印を外す前でも値だけは`1234`のままだった）。印が付かなければ
+     `putValue()`は素通しになる——そこが1本の道。 */
+  rec('「選択」型の見本では<select>に見せ方が付かない',
+      !sel.none&&sel.fmt==='',JSON.stringify(sel));
+  await closeModal();
+
   rec('画面のエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){
   rec('FATAL',false,e.message);

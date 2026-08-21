@@ -445,21 +445,34 @@ def ensure_operation_choices(path):
     return {'created': created, 'migrated': moved}
 
 
-def choice_notes(c):
+def choice_notes(c, equipment=None):
     """{選択肢名: {値: 説明}}。**説明のあるものだけ**——空を並べると、画面が
-    「説明が無い」のか「まだ読めていない」のか区別できない。"""
+    「説明が無い」のか「まだ読めていない」のか区別できない。
+    設備を渡したときの絞り方は`choice_map`と同じ（出ない値の説明を
+    渡しても使いようがない）。"""
     out = {}
     for r in choice_rows(c):
-        if r['name'] and r['note']:
-            out.setdefault(r['name'], {})[r['value']] = r['note']
+        if not (r['name'] and r['note']):
+            continue
+        if equipment and not choice_matches_equipment(r['equipment'], equipment):
+            continue
+        out.setdefault(r['name'], {})[r['value']] = r['note']
     return out
 
 
-def choice_map(c):
-    """{選択肢名: [値,...]}。**表示順で並べる**（選ぶ順番は現場が決める）。"""
+def choice_map(c, equipment=None):
+    """{選択肢名: [値,...]}。**表示順で並べる**（選ぶ順番は現場が決める）。
+
+    **設備を渡したら`[対象設備]`で絞る**（§9.221 ③の追補）。絞らないと、
+    組み込みの欄（`choice_values`を通る）では出ないオペレータが、同じ
+    まとまりを参照する自由項目の欄には出る——同じ「オペレータ」という
+    選択肢が欄によって違う中身になる。判定は`choice_matches_equipment`の
+    1箇所を通す（空欄＝すべての設備）。"""
     out = {}
     for r in choice_rows(c):
         if not r['name']:
+            continue
+        if equipment and not choice_matches_equipment(r['equipment'], equipment):
             continue
         out.setdefault(r['name'], []).append(r['value'])
     return out
@@ -476,14 +489,18 @@ def choice_usage(c):
 
     **使い道の見えない選択肢は消してよいのか判断できない**——消すと項目側は
     `choiceMissing`になって黙って空の欄になる（§9.215で「項目は残す」と
-    決めてあるぶん、気づきにくい）。読むだけなので失敗させない。"""
+    決めてあるぶん、気づきにくい）。読むだけなので失敗させない。
+
+    **読めなかったときは None**（§9.117と同じ約束）——`{}`で返すと
+    「どの項目も使っていない」と区別が付かず、`choice_delete_group`が
+    使用中のまとまりを丸ごと消してしまう。"""
     out = {}
     try:
         for it in item_rows(c, True):
             if it['choice']:
                 out.setdefault(it['choice'], []).append(it['name'])
     except Exception:
-        return {}
+        return None
     return out
 
 
@@ -602,10 +619,13 @@ _LEGACY_MIGRATED_KEY = '__op_choice_legacy_migrated__'
 
 def _legacy_source_rows(c):
     """元の6マスタから (まとまり名, 値, よみ, 対象設備, 表示順) を集める。
-    **読めなかった表は飛ばす**——1つ無いだけで移行そのものが止まると、
-    残りの5つが永久に移らない。"""
+    戻りは (行, 読めなかった元表の名前) ——**読めなかった表は飛ばす**が、
+    飛ばしたことは呼び出し元へ伝える（1つ無いだけで移行そのものが止まると
+    残りの5つが永久に移らない。かといって黙って飛ばすと、その分は
+    「移行済み」の目印の裏で永久に取り残される）。"""
     from . import master_repo as mr
     rows = []
+    failed = []
 
     def add(group, values, reading=None, equipment=None):
         for i, v in enumerate(values):
@@ -631,19 +651,19 @@ def _legacy_source_rows(c):
             equip[nm] = _norm_equipment(eqmap.get(r[0]) or [])
         add(CHOICE_GROUP_OPERATOR, names, reading, equip)
     except Exception:
-        pass
+        failed.append(CHOICE_GROUP_OPERATOR)
     for group, kind in (('板厚測定器', '板厚'), ('板幅測定器', '板幅')):
         try:
             add(group, mr.read_device_names(c, kind))
         except Exception:
-            pass
+            failed.append(group)
     for group, fn in (('内径', 'read_inner_names'), ('スプール', 'read_spool_names'),
                       ('バリ揃え', 'read_burr_names'), ('コイル止め', 'read_coil_stop_names')):
         try:
             add(group, getattr(mr, fn)(c))
         except Exception:
-            pass
-    return rows
+            failed.append(group)
+    return rows, failed
 
 
 def migrate_legacy_choice_masters(c):
@@ -654,7 +674,8 @@ def migrate_legacy_choice_masters(c):
     ensure_choice_table(c)
     if path_config_rows(c).get(_LEGACY_MIGRATED_KEY):
         return False
-    for group, value, reading, equipment, order in _legacy_source_rows(c):
+    rows, failed = _legacy_source_rows(c)
+    for group, value, reading, equipment, order in rows:
         try:
             choice_upsert(c, group, value, 'migrate:legacy', order=order,
                           reading=reading, equipment=equipment)
@@ -669,6 +690,13 @@ def migrate_legacy_choice_masters(c):
                     "WHERE [組み込みキー]=? AND ([選択肢名] IS NULL OR [選択肢名]='')",
                     [group, key])
     c.commit()
+    # **1つでも読めなかったら目印を立てない。** 立ててしまうと、読めなかった
+    # まとまり（列名のゆれ・古い版に無い列・共有越しの一時的な失敗——まさに
+    # 上の except が吸収している事象）が0件のまま「移行済み」になり、次に
+    # 開いたときには二度と写されない。写せたぶんは既に入っているので、
+    # 次回はそこから続き（choice_upsert は同じ値を二重に作らない）。
+    if failed:
+        return False
     set_path_config(c, _LEGACY_MIGRATED_KEY, 'done', 'migrate:legacy')
     return True
 
@@ -776,7 +804,17 @@ def choice_delete_group(c, name, uid):
     name = str(name or '').strip()
     if not name:
         raise ValueError('まとまり名がありません。')
-    used = choice_usage(c).get(name) or []
+    # **読めなかったら消さない**（§9.117）。`choice_usage`が None を返すのは
+    # 「使っている項目を数えられなかった」であって「誰も使っていない」では
+    # ない。取り違えると、使用中のまとまりを丸ごと物理削除して、参照して
+    # いた項目が黙って空の欄になる。
+    usage = choice_usage(c)
+    if usage is None:
+        raise ValueError('「%s」を使っている項目を確かめられませんでした。'
+                         '消すと使っている項目の選択肢が黙って空になるため、'
+                         '中止します。マスタ管理を開き直してからもう一度お試し'
+                         'ください。' % name)
+    used = usage.get(name) or []
     if used:
         raise ValueError('「%s」は %d 件の項目が使っています（%s）。先に項目側の'
                          '選択肢を差し替えてください。' % (name, len(used), '、'.join(used[:4])))
@@ -1199,8 +1237,11 @@ def form_for_equipment(c, equipment):
     **名前が見つからない選択肢は空のまま返し、項目は残す**（設定の途中でも
     入力欄が丸ごと消えないように）。"""
     items = items_for_equipment(c, equipment)
-    cmap = choice_map(c)
-    notes = choice_notes(c)
+    # **選択肢もこの設備のものだけ**（§9.221 ③の追補）。組み込みの欄は
+    # `choice_values(c,name,equipment)`で絞られているので、ここで絞らないと
+    # 同じまとまりが欄によって違う中身になる。
+    cmap = choice_map(c, equipment)
+    notes = choice_notes(c, equipment)
     out = []
     for it in items:
         row = dict(it)

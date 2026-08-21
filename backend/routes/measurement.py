@@ -5,8 +5,13 @@ app.pyから移設。ロジックは変更していない(移動のみ)。
 from flask import Blueprint, request, jsonify
 
 from ..db_access import DBS, MEAS_DB, RECORDS_BACKUP_EXPORT_PATH, qi, connect, cols, tables, ensure_backup_table, read_backup_rows, invalidate_backup_rows_cache, request_user_id, request_pc_name, QUALITY_DB_KEY, path_exists_safe
-from ..repositories.master_repo import read_operator_names, read_spool_names, read_inner_names, read_device_names, ensure_operator_master, ensure_spool_master, ensure_inner_master, ensure_device_master, ensure_operator_equipment, OPERATOR_MASTER_TABLE, SPOOL_MASTER_TABLE, INNER_MASTER_TABLE, DEVICE_MASTER_TABLE
-from ..repositories.master_repo import read_burr_names, read_coil_stop_names, ensure_burr_master, ensure_coil_stop_master, BURR_MASTER_TABLE, COIL_STOP_MASTER_TABLE
+# 選択肢の読み取りは §9.221 ③ で op.choice_values() の1本になった。
+# **読み取り関数と表名の定数は import ごと外す**——残すと grep で
+# read_operator_names が今もここに当たり、廃止した経路が現役だと誤読される
+# (§9.87 で「同じ判定が2箇所に散って実際に壊れた」のと同じ入口)。
+# ensure_* は /api/measurement/diagnose が今も表の作成を確かめるので残る。
+from ..repositories.master_repo import ensure_operator_master, ensure_spool_master, ensure_inner_master, ensure_device_master, ensure_operator_equipment
+from ..repositories.master_repo import ensure_burr_master, ensure_coil_stop_master
 from ..repositories.master_repo import read_equipment_max_strips, read_equipment_kind, STRIP_LIMIT, DEFAULT_MAX_STRIPS
 from ..repositories.master_repo import choice_usage_for, choice_usage_bump
 from .. import records_export

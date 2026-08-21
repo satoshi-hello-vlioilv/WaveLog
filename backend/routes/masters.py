@@ -152,7 +152,8 @@ def equipment_master_update():
    raw_max=str(x.get('maxStrips') or '').strip()
    max_strips=None if raw_max=='' else clamp_max_strips(raw_max)
    cur.execute('UPDATE [設備マスタ] SET [設備名]=?,[区分]=?,[最大条数]=?,[標準時間分]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [設備ID]=?',[name,normalize_equipment_kind(x.get('kind')),max_strips,normalize_standard_minutes(x.get('standardMinutes')),uid,eid])
-   # 設備名は他マスタ(オペレータ設備マスタ等、EQUIPMENT_NAME_REFERENCES参照)から
+   # 設備名は他マスタ(オペレータ設備マスタ・操業データ選択肢マスタ[対象設備]等、
+   # equipment_name_references()参照)から
    # 文字列で参照されているため、改名時はそちら側も追従させる(改名連動)。
    renamed=rename_equipment_references(c,old_name,name) if old_name else 0
    c.commit()
@@ -1045,7 +1046,10 @@ def operation_item_list():
            'numberTypes':list(op.NUMBER_TYPES),
            'builtinKeys':list(op.BUILTIN_KEYS),
            'choiceNotes':op.choice_notes(c),
-           'choiceUsage':op.choice_usage(c),
+           # **読めなかった(None)は空の辞書として渡す**——画面は「使っている
+           # 項目の一覧」を出すだけなので出せないものは出さないが、削除の
+           # 可否はサーバー(`choice_delete_group`)が改めて数え直す。
+           'choiceUsage':op.choice_usage(c) or {},
            # 選択肢のまとまり名のサジェスト(§9.220 ④)。**候補を選ぶ規則は
            # サーバーが持つ**——「同じ群が使っている」「名前が似ている」は
            # 判定であって表示ではないので、画面へ写すと答えが2つになる。
@@ -1142,7 +1146,7 @@ def operation_choice_list():
    # 出る——「移したはずのオペレータが1人も居ない」に見える。
    try:op.migrate_legacy_choice_masters(c)
    except Exception:pass
-   usage=op.choice_usage(c)
+   usage=op.choice_usage(c) or {}
    rows=op.choice_rows(c,True)
    # **どの項目がこの選択肢を使っているか**(§9.216 ④)。使い道の見えない
    # 選択肢は消してよいのか判断できず、消すと項目側が黙って空になる。

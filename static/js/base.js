@@ -238,7 +238,14 @@ function nudgeModal(modal){
  dlg.classList.add('wl-modal-nudge');
  clearTimeout(dlg._wlNudgeTimer);
  dlg._wlNudgeTimer=setTimeout(()=>dlg.classList.remove('wl-modal-nudge'),460);
- const btn=dlg.querySelector('[aria-label="\u9589\u3058\u308b"],[title^="\u9589\u3058\u308b"]');
+ /* **必ず文字で返す**（§CLAUDE 3。状態を色や動きだけで伝えない）。
+    閉じるボタンの目印は器ごとにまちまちなので、名前・題・見た目の順に
+    落として探す——1つも当たらないと**揺れるだけで何も書かれない**
+    モーダルができ、「押しても何も起きない」と区別が付かなくなる
+    （`#filterPresetModal`が実際にそうだった）。 */
+ const btn=dlg.querySelector('[aria-label="\u9589\u3058\u308b"],[title^="\u9589\u3058\u308b"]')
+   ||dlg.querySelector('.mm-close,.rec-modal-close,.wl-close,[data-close]')
+   ||[...dlg.querySelectorAll('button')].find(b=>/^[×✕✖x]$/i.test((b.textContent||'').trim()));
  if(btn){
   btn.classList.add('wl-close-hint');
   clearTimeout(btn._wlHintTimer);

@@ -35,7 +35,11 @@ const cleanup=()=>post('/api/column-layout-master',{target:TARGET,clear:true,ord
 const settle=async page=>{await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))))};
 /* 中身が必ず出る3つ（このロットのデータに依存しない）。 */
 const A='基本情報',C1='コース情報',C2='登録状態';
-const UNIT=60;                                  /* RP_SPAN_UNIT（§9.169） */
+const UNIT=60;                                  /* RP_SPAN_UNIT（§9.169。幅） */
+/* 行数・段数は`RP_COUNT_UNIT`。**幅と同じ60にしないこと**——22行×60=1320は
+   `normalize_column_width`の上限900で頭打ちになり、読み戻すと15行へ
+   切り詰められる（§9.221 ⑨の追補）。 */
+const CUNIT=30;
 let b=null,madeBlock=null;
 
 (async()=>{
@@ -104,7 +108,7 @@ let b=null,madeBlock=null;
             /* **低い2枚は中身が確実に収まる行数にする**——2行(48px)だと
                中身のほうが高くなり、次の塊へはみ出して「跨ぎ」の判定が
                どちらとも取れなくなる（実測でそうなった）。 */
-            [`行数:${A}`]:12*UNIT,[`行数:${C1}`]:3*UNIT,[`行数:${C2}`]:3*UNIT}});
+            [`行数:${A}`]:12*CUNIT,[`行数:${C1}`]:3*CUNIT,[`行数:${C2}`]:3*CUNIT}});
   await page.evaluate(t=>WL.columnLayout.forget(t),TARGET);
   await page.evaluate(()=>window.exitReportView&&window.exitReportView());
   await openReport();
@@ -116,7 +120,7 @@ let b=null,madeBlock=null;
   await openReport();
   const saved=await getj('/api/column-layout-master?target='+encodeURIComponent(TARGET));
   rec('前提: 行数がマスタに入っている',
-      (saved.widths||{})[`行数:${A}`]===12*UNIT&&(saved.widths||{})[`行数:${C1}`]===3*UNIT,
+      (saved.widths||{})[`行数:${A}`]===12*CUNIT&&(saved.widths||{})[`行数:${C1}`]===3*CUNIT,
       JSON.stringify({[`行数:${A}`]:(saved.widths||{})[`行数:${A}`],
                       [`行数:${C1}`]:(saved.widths||{})[`行数:${C1}`]}));
   const geo=await page.evaluate(([a,c1,c2])=>{

@@ -1907,7 +1907,7 @@ A4縦は `fit` 倍率が**高さで決まる**（210×297mm を横長の画面�
   一括終了する `pkill` は、同じPCの他のPythonを巻き添えにするため使わない。
 - **回帰テスト**: `tests/` に常設（実行は `tests/run_all.sh` のみ）。
   接続先が全てSQLiteになったため、仕掛/品質データ(`/api/table` 等)もマスタ
-  (`/api/operator-master` 等)も**モック無しで実際にサーバー経由で検証できる**
+  (`/api/operation-choice-master` 等)も**モック無しで実際にサーバー経由で検証できる**
   （ランナーが `db/test_fixture/` の `.sqlite3` を指す）。以前は仕掛/品質が
   Access接続で、ドライバの無い環境では `page.route` でモックする必要があった。
 - **リリース**: 意味のある変更ごとに `backend/changelog_data.py` の

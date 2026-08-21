@@ -120,7 +120,7 @@ RULES = [
                                         'test_rpblocks', 'test_rplayout', 'test_rpmaster',
                                         'test_collayout')),
     ('static/js/quality-analysis.js', g('test_uiux', 'test_hdr', 'test_fit', 'test_theme')),
-    ('static/js/defect-locator.js', g('test_defect')),
+    ('static/js/defect-locator.js', g('モーダル', 'test_defect')),
     ('static/js/log-view.js', g('ログ')),
     ('static/js/access-mode.js', g('権限', 'test_nav')),
     ('static/js/wl-window.js', g('test_lcpanel', 'test_listmodal', 'test_split_layout',
@@ -129,11 +129,11 @@ RULES = [
                                         'test_msteps')),
     ('static/js/measure-steps.js', g('測定', '見た目')),   # 段の枠は測定画面全体に効く
     # データ一覧の表示列(§9.162)も持つので、列の網も回す。
-    ('static/js/records-store.js', g('test_share', 'test_flows', 'test_p11', 'test_recperm',
-                                     'test_reccols', 'test_lcpanel', 'test_audittrail',
-                                     'test_recdel')),
+    ('static/js/records-store.js', g('モーダル', 'test_share', 'test_flows', 'test_p11',
+                                     'test_recperm', 'test_reccols', 'test_lcpanel',
+                                     'test_audittrail', 'test_recdel')),
     # 測定画面は test_scale(寸法の網)の巡回にも入っている(§9.127)ので見た目も回す。
-    ('static/js/measurement-', g('測定', '見た目')),   # measurement-*.js
+    ('static/js/measurement-', g('測定', '見た目', 'モーダル')),   # measurement-*.js
 
     # --- 見た目(CSS) -------------------------------------------------
     # CSSは1枚に閉じない(トークンは:rootで共有し、@layerで順序が決まる)。

@@ -753,7 +753,16 @@ function closeRecordRowMenu(){
  document.removeEventListener('mousedown',onRecordRowMenuAway,true);
  document.removeEventListener('keydown',onRecordRowMenuKey,true);
 }
-function onRecordRowMenuAway(e){if(recordRowMenuEl&&!recordRowMenuEl.contains(e.target))closeRecordRowMenu()}
+function onRecordRowMenuAway(e){
+ if(!recordRowMenuEl)return;
+ if(recordRowMenuEl.contains(e.target))return;
+ /* **持ち主の`⋯`の上では閉じない。** ここで閉じると、直後の`click`が
+    そのまま開き直すので`openRecordRowMenu()`の「同じボタンなら閉じる」
+    分岐へ一度も入らない——押した本人には「もう一度押しても閉じない」と
+    見える（閉じる手立てがEscと他所クリックだけになる）。 */
+ if(recordRowMenuEl._owner&&recordRowMenuEl._owner.contains(e.target))return;
+ closeRecordRowMenu();
+}
 function onRecordRowMenuKey(e){if(e.key==='Escape'&&!e.isComposing){e.stopPropagation();closeRecordRowMenu()}}
 /* 削除できない理由。**判定は1箇所**——ボタンの出し分けと、押したときの
    断りが別々だと片方だけ直った状態が作れる。 */

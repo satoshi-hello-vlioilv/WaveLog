@@ -20,6 +20,7 @@ const B='http://127.0.0.1:5029';
 const G='回帰_選択肢'+Date.now().toString().slice(-5);
 const G2=G+'_改名';
 let b=null;
+let madeEquipment='';
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},
   body:JSON.stringify(body)}).then(async r=>({status:r.status,body:await r.json()}));
 const getj=p=>fetch(B+p).then(r=>r.json());
@@ -31,6 +32,12 @@ async function cleanup(){
    if(String(x.name||'').startsWith('回帰_選択肢項目'))
     await post('/api/operation-item-master/delete',{id:x.id,user_id:'cleanup'});
   for(const nm of [G,G2])await post('/api/operation-choice-master/delete-group',{name:nm,user_id:'cleanup'});
+  /* 検証で作った設備も片付ける。**落ちても通る**ように名前で引き直す。 */
+  if(madeEquipment){
+   const eq=await getj('/api/equipment-master');
+   const row=(eq.items||[]).find(x=>String(x.name)===madeEquipment);
+   if(row)await post('/api/equipment-master/delete',{id:row.id,force:true,user_id:'cleanup'});
+  }
  }catch(e){}
 }
 (async()=>{
@@ -130,6 +137,33 @@ async function cleanup(){
   const ch3=await getj('/api/operation-choice-master');
   const order=(ch3.items||[]).filter(x=>x.name===G2).map(x=>x.value);
   rec('まとまりの中で並べ替えられる',order[0]!=='あか',order.join('/'));
+
+  /* ================================================================
+     §9.221 ③の追補: **設備名を改名したら[対象設備]も追従する**
+     ----------------------------------------------------------------
+     作業可能設備の実体はオペレータ設備マスタから 操業データ選択肢マスタの
+     `[対象設備]` へ移った。改名連動の一覧（`equipment_name_references()`）へ
+     足し忘れると、VER2.44.0で一度直した「その設備を選べるはずのオペレータが
+     選択肢に出てこなくなる」がそのまま再発する。
+     **カンマ区切りの中の1つだけが変わること**まで見る——丸ごと比較する
+     実装だと「設備A,設備B」の行が1件も当たらず、黙って旧名が残る。
+     ================================================================ */
+  const EQOLD='回帰設備'+Date.now().toString().slice(-5);
+  const EQNEW=EQOLD+'改';
+  const mkEq=await post('/api/equipment-master',{name:EQOLD,user_id:'test'});
+  madeEquipment=mkEq.body&&mkEq.body.ok?EQOLD:'';
+  const eqList=await getj('/api/equipment-master');
+  const eqRow=(eqList.items||[]).find(x=>String(x.name)===EQOLD);
+  await post('/api/operation-choice-master',
+    {name:G2,value:'改名テスト',equipment:EQOLD+',テスト設備A',user_id:'test'});
+  await post('/api/equipment-master/update',{id:eqRow&&eqRow.id,name:EQNEW,user_id:'test'});
+  madeEquipment=EQNEW;
+  const afterRename=await getj('/api/operation-choice-master');
+  const moved=(afterRename.items||[]).find(x=>x.name===G2&&x.value==='改名テスト')||{};
+  rec('設備名を改名すると[対象設備]も追従する',
+      String(moved.equipment||'').includes(EQNEW),String(moved.equipment||'(無し)'));
+  rec('同じ欄の他の設備は巻き添えにしない',
+      String(moved.equipment||'').includes('テスト設備A'),String(moved.equipment||'(無し)'));
 
   rec('JSエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){console.log('FATAL: '+e.message);R.push({n:'FATAL',ok:false,d:e.message})}

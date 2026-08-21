@@ -232,6 +232,58 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
   await page.click('[data-rp-grid="12"]');
   await settle(page);
 
+  /* ================================================================
+     §9.221 ⑨の追補: 紙の段数は**保存して開き直しても残る**
+     ----------------------------------------------------------------
+     `widths`はpxとして40〜900へ丸められる（§9.169）ので、数を入れる
+     倍率が大きすぎると上限に当たって黙って別の数になる。16段(×60=960)と
+     24段(×60=1440)がどちらも900→読み戻すと15→選択肢に無いので既定12へ、
+     という形で**押しても保存されない設定**になっていた。
+     **確かめるときは上限を越える段数（16以上）で見ること**——12以下だけを
+     見ると倍率が何であっても通る。
+     ================================================================ */
+  const rowChoices=await page.evaluate(()=>
+    [...document.querySelectorAll('[data-rp-prow]')].map(b=>Number(b.dataset.rpProw)));
+  rec('紙の段数を選べる',rowChoices.join('/')==='8/12/16/24',rowChoices.join('/'));
+  for(const n of [16,24,8]){
+   await page.click(`[data-rp-prow="${n}"]`);
+   await settle(page);
+   /* **保存してから読み直す**（下書きのまま見ると、上限で潰れていても
+      画面は正しく見える——開き直した瞬間に12へ戻るのが実際の壊れ方）。 */
+   const raw=await page.evaluate(t=>{
+    const w=(WL.columnLayout.get(t)||{}).widths||{};return Number(w['__行グリッド__'])||0;
+   },TARGET);
+   const back=await page.evaluate(()=>{
+    /* 画面が読み戻した段数＝1行の高さから逆算できる（紙の縦÷段数）。 */
+    const g=document.querySelector('.rp-page .rp-blocks');
+    return Math.round(g.getBoundingClientRect().width>0
+      ?(parseFloat(getComputedStyle(g).getPropertyValue('--rp-page-rows'))||0):0);
+   });
+   rec(`段数${n}が上限で潰れずに保存される`,raw>0&&raw<=900&&back===n,
+       `保存値=${raw} / 読み戻し=${back}`);
+  }
+  /* **保存して読み直すところまで見る。** 上の3件は下書きの段階で
+     「保存値が上限を越えていない」ことを見ているが、それだけだと読む側の
+     倍率を間違えた回帰は捕まらない。24段のまま保存し、写しを捨てて
+     サーバーから読み直して、同じ24段で描かれることを確かめる。 */
+  await page.click('[data-rp-prow="24"]');
+  await settle(page);
+  await page.click('#rpArrangeSave');
+  await page.waitForTimeout(1200);
+  const roundTrip=await page.evaluate(async t=>{
+   WL.columnLayout.forget(t);
+   await WL.columnLayout.load(t);
+   const w=(WL.columnLayout.get(t)||{}).widths||{};
+   const raw=Number(w['__行グリッド__'])||0;
+   return {raw,rows:Math.round(raw/30)};
+  },TARGET);
+  rec('段数24は保存して読み直しても24のまま',
+      roundTrip.raw>0&&roundTrip.raw<=900&&roundTrip.rows===24,JSON.stringify(roundTrip));
+  await page.click('#reportArrange');
+  await page.waitForSelector('.rp-block-bar',{timeout:8000});
+  await page.click('[data-rp-prow="12"]');
+  await settle(page);
+
   /* ---- 分解 → 個別、まとめへ戻す ---- */
   await page.click('[data-rp-block="板幅ほかの測定データ"] [data-rp-split]');
   await settle(page);

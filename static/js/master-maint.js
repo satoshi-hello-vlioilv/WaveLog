@@ -191,7 +191,11 @@
   // 等)も含め、master.sqlite3の中身をそのまま確認するための読み取り専用タブ。
   {group:'system',key:'rawTable',label:'テーブル生データ',icon:'表',special:'raw-table',readOnly:true},
  ];
- let maintState={defKey:'operator',items:[],editing:null,query:''};
+ /* 既定のタブは**実在するキー**にすること（§9.221 ③でオペレータのタブを
+    撤去した）。`currentDef()`は見つからなければ先頭へ落とすので中身は出るが、
+    `syncNav()`は`defKey`と突き合わせるので**どのタブも選ばれていない**
+    見た目になる——「今どこにいるか」を画面が言わなくなる。 */
+ let maintState={defKey:MASTER_DEFS[0].key,items:[],editing:null,query:''};
  function currentDef(){return MASTER_DEFS.find(d=>d.key===maintState.defKey)||MASTER_DEFS[0]}
  // scheduleモードは作業予定(schedule Blueprint)以外のマスタへ書込できない
  // (backend/access_mode.pyの_WRITE_ALLOWED_MODES)。マスタ管理モーダル自体は
@@ -625,6 +629,13 @@
   $('#maintEditorCancel').onclick=()=>closeMaintEditor();
   $('#maintEditorSave').onclick=()=>submitMaint('#maintEditorForm');
   WL.modal.keepOpen(modal);
+  /* **閉じ方は×／キャンセル／Escの3つ**（§9.221 ①）。背景クリックを
+     止めたぶん、Escが無いモーダルは「どれが閉じてどれが閉じないか」を
+     覚えることになる——規則が禁じた状態を以前より強い形で作ってしまう。
+     変換中のEscは`escCloses()`が除く。 */
+  document.addEventListener('keydown',e=>{
+   if(WL.modal.escCloses(e)&&!modal.hidden){e.stopPropagation();closeMaintEditor()}
+  },true);
   return modal;
  }
  function openMaintEditor(item){
@@ -857,6 +868,10 @@
   $('#pathPickerCancel').onclick=()=>close(null);
   $('#pathPickerPick').onclick=()=>close(String($('#pathPickerPath').value||''));
   WL.modal.keepOpen(modal);
+  /* Escでも閉じる（§9.221 ①）。**選ばなかった**ことにするので`null`。 */
+  document.addEventListener('keydown',e=>{
+   if(WL.modal.escCloses(e)&&!modal.hidden){e.stopPropagation();close(null)}
+  },true);
   return modal;
  }
  async function openPathPicker(opts){

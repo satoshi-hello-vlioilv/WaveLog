@@ -987,11 +987,22 @@
  const RP_PAGE_ROWS_KEY='__行グリッド__';
  const RP_PAGE_ROW_CHOICES=[8,12,16,24];
  const RP_PAGE_ROWS_DEFAULT=12;
+ /* **「数」を`widths`へ入れるときの倍率は、いちばん大きい数から決める**
+    （§9.221 ⑨の追補）。`widths`はpxとして40〜900へ丸められる
+    （`normalize_column_width`）ので、`×RP_SPAN_UNIT(60)`のままだと
+    段数24は1440→900、16は960→900となり、**どちらも読み戻すと15**＝
+    選択肢に無いので既定12へ落ちる——押しても保存されない設定になっていた
+    （§9.169で幅について踏んだ罠と同じ形）。
+    30なら 24×30=720、22行×30=660 で上限に当たらず、いちばん小さい1も
+    30→下限40へ丸められて `round(40/30)=1` に戻る。**幅(`RP_SPAN_UNIT`)は
+    最大12マス＝720で上限に当たらないので触らない。** */
+ const RP_COUNT_UNIT=30;
  function rpPageRows(){
   const raw=Math.round(Number(WL.columnLayout.width(rpTarget(),RP_PAGE_ROWS_KEY))||0);
-  const v=Math.round(raw/RP_SPAN_UNIT);
+  const v=Math.round(raw/RP_COUNT_UNIT);
   return RP_PAGE_ROW_CHOICES.includes(v)?v:RP_PAGE_ROWS_DEFAULT;
  }
+ const rpPageRowsStore=v=>Math.round(v*RP_COUNT_UNIT);
  /* 1行のpx。**CSSが紙から計算した値を読む**（`grid-auto-rows`の使用値）
     ——JSで紙のmmからpxを起こすと、表示倍率と紙の向きで必ずずれる。 */
  function rpRowPx(grid){
@@ -1015,7 +1026,16 @@
  /* **保存は12マス・12段を基準にする**（§9.221 ⑨。幅が`rpSpan`で12マス基準
     なのと同じ約束）——紙のマス数・段数を変えたときに、置き場所の意味が
     変わらないようにするため。読むときに今の割りへ当て直す。 */
- const rpProject=(v,base,to)=>Math.max(1,Math.min(to,Math.round((v-1)*to/base)+1));
+ /* **読みの頭打ちを書きの上限とそろえる**（§9.221 ⑨の追補）。行の位置は
+    `rpRowTo12()`が12基準で`RP_ROWS_MAX`(22)段まで書けるのに、読む側が
+    紙の段数（既定12）で頭打ちにしていたため、**紙の下端より下へ置いた塊が
+    開き直すと必ず最終段へ吸い寄せられていた**（`RP_ROWS_MAX`は「保存できる
+    段の上限」であって「描ける段の上限」ではない、という同じファイルの
+    決めごとと食い違っていた）。`cap`を渡さないときは今までどおり`to`。 */
+ const rpProject=(v,base,to,cap)=>Math.max(1,Math.min(cap||to,Math.round((v-1)*to/base)+1));
+ /* 紙の段数を変えても「22段ぶんの紙」が同じ意味になるように伸ばす。 */
+ const rpRowCap=()=>Math.max(RP_PAGE_ROWS_DEFAULT,
+   Math.round(RP_ROWS_MAX*rpPageRows()/RP_PAGE_ROWS_DEFAULT));
  const rpColTo12=c=>Math.max(1,Math.min(RP_COLS,Math.round((c-1)*RP_COLS/rpGrid())+1));
  const rpRowTo12=r=>Math.max(1,Math.min(RP_ROWS_MAX,
    Math.round((r-1)*RP_PAGE_ROWS_DEFAULT/rpPageRows())+1));
@@ -1025,13 +1045,15 @@
   const c=rpPosNum(k,rpColKey),r=rpPosNum(k,rpRowPosKey);
   if(!(c>0&&r>0))return null;
   return {col:rpProject(c,RP_COLS,rpGrid()),
-          row:rpProject(r,RP_PAGE_ROWS_DEFAULT,rpPageRows())};
+          row:rpProject(r,RP_PAGE_ROWS_DEFAULT,rpPageRows(),rpRowCap())};
  }
  const rpRowsKey=k=>`行数:${k}`;
- const rpRowsStore=v=>Math.round(v*RP_SPAN_UNIT);
+ /* 行数も`RP_COUNT_UNIT`。×60のままだと16行以上（取っ手は22まで引ける）が
+    900で頭打ちになり、読み戻すと必ず15行に切り詰められていた。 */
+ const rpRowsStore=v=>Math.round(v*RP_COUNT_UNIT);
  function rpRows(k){
   const raw=Math.round(Number(WL.columnLayout.width(rpTarget(),rpRowsKey(k)))||0);
-  const v=Math.round(raw/RP_SPAN_UNIT);
+  const v=Math.round(raw/RP_COUNT_UNIT);
   if(v>0)return Math.min(RP_ROWS_MAX,v);
   /* **旧いpxの高さ（§9.174）は行数へ読み替える。** 設定した人の意図
      （このくらいの高さ）はそのまま残す——読み替えないと、行の仕組みへ
@@ -1327,7 +1349,9 @@
   const cramped=rpFitBlockBodies(host);
   rpFreeCells(host);
   rpUpdatePageFit();
-  if(cramped)rpSay(`${cramped}件は器に入りきりませんでした（縮めきれない大きさです）。行数を増やすか、中身を減らしてください。`,true);
+  /* **直ったら消す。** 「入りきらない」が0件になっても文字が残ると、
+     直前の操作が通ったのかどうかが読めない（§CLAUDE 2）。 */
+  rpSay(cramped?`${cramped}件は器に入りきりませんでした（縮めきれない大きさです）。行数を増やすか、中身を減らしてください。`:'',!!cramped);
   host.querySelectorAll('[data-rp-block]').forEach(el=>{
    /* **表だけを見る。** 節そのものを測ると、枠線や余白の丸めで1〜2px
       はみ出した扱いになり、入っている塊にまで案内が出る（実際に出た）。 */
@@ -1677,7 +1701,7 @@
   const colW=(gr.width-gapX*(cols-1))/cols;
   if(!(colW>0))return null;
   return {col:Math.max(1,Math.min(cols,Math.floor((clientX-gr.left)/(colW+gapX))+1)),
-          row:Math.max(1,Math.min(RP_ROWS_MAX,Math.floor((clientY-gr.top)/(rowPx+gapY))+1))};
+          row:Math.max(1,Math.min(rpRowCap(),Math.floor((clientY-gr.top)/(rowPx+gapY))+1))};
  }
  /* ---------- 器に合わせて中身を縮める（§9.221 ⑨） ----------
     「設計したカードのサイズに合わせてコンテンツ貼り付け」。器の大きさは
@@ -1798,9 +1822,17 @@
  }
 /* 組み換え中の一言（§9.221 ⑨）。**黙って何も起きないのがいちばん悪い**
     ——置けなかった・縮めた・入りきらない、はその場で文字にする。 */
+ /* 組み換え中の一言。**常設の案内を潰さない**（§CLAUDE 2/6）——以前は
+    `innerHTML`ごと差し替えていたので、①最初の1回で「置き方」と「いま
+    外しているのは N 件」という常設の説明が消え、②断りの赤文字は成功
+    しても消えなかった（直前の操作が通ったのか分からない）。常設の文は
+    そのまま残し、一言だけを継ぎ足す／空文字で引っ込める。 */
  function rpSay(text,bad){
   const el=$id('rpArrangeNote');if(!el)return;
-  el.innerHTML=esc(text||'');
+  let tip=el.querySelector('.rp-arrange-tip');
+  if(!text){if(tip)tip.remove();el.classList.remove('is-bad');return}
+  if(!tip){tip=document.createElement('b');tip.className='rp-arrange-tip';el.appendChild(tip)}
+  tip.textContent=text;
   el.classList.toggle('is-bad',!!bad);
  }
  /* 左上から詰め直す（§9.221 ⑨）。**「任意の場所へ置ける」の裏側**として
@@ -1861,7 +1893,7 @@
     updateArrangeBar();
    });
    info.querySelectorAll('[data-rp-prow]').forEach(b=>b.onclick=()=>{
-    rpStage({widths:{...rpLayoutNow().widths,[RP_PAGE_ROWS_KEY]:rpSpanStore(Number(b.dataset.rpProw))}});
+    rpStage({widths:{...rpLayoutNow().widths,[RP_PAGE_ROWS_KEY]:rpPageRowsStore(Number(b.dataset.rpProw))}});
     updateArrangeBar();
    });
    const rel=info.querySelector('[data-rp-relayout]');

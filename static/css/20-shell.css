@@ -789,8 +789,15 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  content:'ここで閉じます';position:absolute;top:calc(100% + var(--space-1));right:0;
  white-space:nowrap;font-size:var(--fs-micro);font-weight:700;
  background:var(--teal);color:#fff;border-radius:var(--radius-xs);
- padding:var(--space-1) var(--space-2);z-index:1;pointer-events:none;
- box-shadow:var(--shadow-sm,0 2px 6px #0003)}
+ /* **重なり順はトークンから**（§9.112。直値を新しく足さない）。この案内は
+    §9.221 ①で「押したことを返す」唯一の可視の合図なので、同じ器の中の
+    見出しや候補一覧（`--z-popover`）に隠れると「背景を押しても何も
+    起きない」へ逆戻りする。 */
+ padding:var(--space-1) var(--space-2);z-index:var(--z-popover);pointer-events:none;
+ /* `--shadow-sm`は`:root`に無い（参照しても効かず、実際に当たるのは
+    フォールバックのリテラル影。§9.127の`--ctl-h-md`と同じ罠）。
+    影のトークンは無いので、既にあるモーダルの影と同じ書き方に揃える。 */
+ box-shadow:0 6px 18px rgba(20,40,45,.22)}
 @media (prefers-reduced-motion:reduce){
  .wl-modal-nudge{animation:none;box-shadow:0 0 0 3px var(--teal)}
 }

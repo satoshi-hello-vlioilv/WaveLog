@@ -330,8 +330,16 @@
   host.style.setProperty('--opf-unit-w',String(Math.max(1,String(def.unit||'').length))+'ch');
   const el=valueEl(host);
   if(el){
-   el.dataset.opfmt=fmt==='そのまま'?'':fmt;
-   if(def.digits)el.dataset.opdigits=String(def.digits);else delete el.dataset.opdigits;
+   /* **`<select>`には見せ方を当てない。** 値が選択肢そのものなので、
+      3桁区切りやゼロ埋めを掛けると`putValue()`が`1234`を`1,234`にし、
+      どの`<option>`にも当たらず**`select.value`が空になる**——画面から
+      記録が消え、そのまま保存すると空で上書きされる。`attachFormat()`は
+      同じ理由で`SELECT`を外しているので、**書く側もここで揃える**
+      （読む側`fmtOf()`に条件を足すと、当てない理由が2箇所に散る）。 */
+   const plain=el.tagName==='SELECT';
+   el.dataset.opfmt=(plain||fmt==='そのまま')?'':fmt;
+   if(!plain&&def.digits)el.dataset.opdigits=String(def.digits);
+   else delete el.dataset.opdigits;
   }
  }
 

@@ -266,6 +266,9 @@
  border:1px solid var(--line);border-radius:var(--radius-xs);background:var(--surface);color:var(--ink-2);cursor:pointer}
 .rp-grid-pick button.is-on{background:var(--teal);border-color:var(--teal);color:#fff}
 .rp-arrange-note{margin-left:var(--space-2);color:var(--ink-3)}
+/* 直前の操作の一言。**常設の案内を消さずに継ぎ足す**（§9.221 ⑨の追補）。 */
+.rp-arrange-tip{margin-left:var(--space-2);color:var(--ink);font-weight:800}
+.rp-arrange-note.is-bad>.rp-arrange-tip{color:var(--danger)}
 /* 紙のとおりに見る／A4の収まり（§9.174）。**収まっているかは色だけで
    伝えない**——何mm超過して何枚になるかを文字で出す。 */
 .rp-paper-toggle{height:var(--ctl-h-sm);padding:0 var(--space-3);margin-left:var(--space-2);border:1px solid var(--teal);border-radius:var(--radius-xs);background:var(--surface);color:var(--nav);font-size:var(--fs-sm);font-weight:700;cursor:pointer}

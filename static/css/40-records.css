@@ -126,7 +126,12 @@
 /* ---------- 「⋯」とその中の削除(§9.221 ⑤) ----------
    帳票の隣に取り消せない操作を置かない。`⋯`は**中身の分からない印**なので、
    幅は文字1つぶんに絞り、何が入っているかは`title`と開いた先の文で言う。 */
-.record-list-actions .rec-more{flex:0 0 auto;min-width:calc(2.2em * var(--ui-scale));
+/* **`em`に`--ui-scale`を掛けないこと**——`em`は既に`--fs*`＝
+   `calc(14px * var(--ui-scale))`を経由してスケール済みなので、二重に
+   掛かって表示サイズを変えるたびに`⋯`だけ他の行内ボタンと違う比率で
+   伸縮する（実測: lgで2.42em相当、smで2.02em相当）。幅は`--w-*`の
+   いちばん狭い段（`--w-xs`）で揃える。 */
+.record-list-actions .rec-more{flex:0 0 auto;min-width:var(--w-xs);
   color:var(--ink-2);background:var(--surface-2);border-color:var(--line);
   letter-spacing:.08em}
 .record-list-actions .rec-more:hover{background:var(--surface-3);color:var(--ink)}
