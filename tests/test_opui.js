@@ -130,7 +130,10 @@ let b=null;const made=[];const madeChoices=[];
   rec('組み込みの欄では型を出さない（効かない欄を置かない）',built.型の欄===false);
   rec('組み込みでも幅・置き場・必須は決められる',
       built.幅の欄&&built.置き場の欄&&built.必須の欄,JSON.stringify(built));
-  rec('選ばせ方は4つから選ぶ',built.選ばせ方.join('/')==='プルダウン/ラジオ/タブ/一覧',
+  /* §9.220 ①（利用者の指摘「ラジオボタンやタブがほぼ同じデザインに
+     なっている」）。**形が違うものは別の名前で並ぶ**——4つから6つへ。 */
+  rec('選ばせ方は6つから選ぶ（セグメント・ボタン群を足した）',
+      built.選ばせ方.join('/')==='プルダウン/ラジオ/セグメント/タブ/ボタン群/一覧',
       JSON.stringify(built.選ばせ方));
   rec('できないことは文字で書く',built.消せない&&built.理由,JSON.stringify(built));
 
@@ -391,6 +394,154 @@ let b=null;const made=[];const madeChoices=[];
        idsBefore.join()===idsAfter.join()?`${idsAfter.length}件`
          :JSON.stringify({前:idsBefore.slice(0,6),後:idsAfter.slice(0,6)}));
   }else rec('1行だけ保存しても全体の並びが変わらない',false,'項目が無い');
+
+  /* ---- 9) §9.220 ①②③④⑤: 形・初期値・手打ち・サジェスト・刻み ---- */
+  /* ① **4つの形が見た目で違うこと**（利用者の指摘「ラジオボタンやタブが
+     ほぼ同じデザインになっている」）。器のクラスだけを見る網では、同じ
+     CSSを当ててしまっても通る——**実際に計算された見た目**（器の角丸・地・
+     選んだ札の地・丸ぽちの有無）を突き合わせ、4つとも違うことを見る。 */
+  await page.click('#masterMaintNav [data-master="opItem"]');
+  await page.waitForSelector('#masterMaintList .op-board-grid',{timeout:20000});
+  await page.waitForTimeout(600);
+  await openTile(mkj.id);
+  const shapes={};
+  for(const w of ['ラジオ','セグメント','タブ','ボタン群']){
+   await page.click(`[data-op-widget="${w}"]`);
+   await page.waitForTimeout(250);
+   shapes[w]=await page.evaluate(()=>{
+    const box=document.querySelector('#opPrevField .opf-widget');
+    if(!box)return null;
+    const sh=box.querySelector('.opf-shape');
+    const btn=box.querySelector('[data-opv]');
+    const cs=sh?getComputedStyle(sh):null,cb=btn?getComputedStyle(btn):null;
+    return {器:box.className.replace('opf-widget ',''),
+            丸:box.querySelectorAll('.opf-dot').length,
+            角:cs?cs.borderRadius:'',地:cs?cs.backgroundColor:'',
+            下線:cs?cs.borderBottomWidth:'',
+            札角:cb?cb.borderRadius:'',札枠:cb?cb.borderTopWidth:''};
+   });
+  }
+  /* **見た目だけで比べる**——器のクラス名を署名へ入れると、CSSを同じに
+     してしまっても（名前が違うだけで）通ってしまう。 */
+  const sigs=Object.keys(shapes).map(k=>{
+   const v=Object.assign({},shapes[k]);delete v.器;return JSON.stringify(v);
+  });
+  rec('4つの形は見た目が全部違う（同じ絵を2つ作らない）',
+      shapes['ラジオ']&&new Set(sigs).size===4,
+      JSON.stringify(shapes,null,0).slice(0,400));
+  rec('ラジオは丸ぽちで描く',(shapes['ラジオ']||{}).丸>0,
+      JSON.stringify(shapes['ラジオ']));
+  rec('セグメントは1本の帯（器に地と丸みがある）',
+      !!(shapes['セグメント']&&shapes['セグメント'].地!=='rgba(0, 0, 0, 0)'
+         &&shapes['セグメント'].角!=='0px'),JSON.stringify(shapes['セグメント']));
+  rec('タブは下線で示す（器に地を持たない）',
+      !!(shapes['タブ']&&shapes['タブ'].下線!=='0px'
+         &&shapes['タブ'].地==='rgba(0, 0, 0, 0)'),JSON.stringify(shapes['タブ']));
+
+  /* ③ 手打ち。**候補にない値も入る**——`<select>`へ`<option>`を足してから
+     入れる（足さずに代入すると黙って空になる。§9.203の罠）。 */
+  await page.click('#opdFreeText');
+  await page.waitForTimeout(300);
+  const freeBox=await page.evaluate(()=>{
+   const el=document.querySelector('#opPrevField .opf-free-in');
+   if(!el)return null;
+   el.value='むらさき';
+   el.dispatchEvent(new Event('input',{bubbles:true}));
+   const sel=document.querySelector('#opPrevField select');
+   return {打てる:true,選択値:sel?sel.value:'',
+           候補に足した:sel?[...sel.options].some(o=>o.value==='むらさき'):false};
+  });
+  rec('手打ちを入にすると打ち込む欄が出て、打った値がそのまま値になる',
+      !!freeBox&&freeBox.選択値==='むらさき'&&freeBox.候補に足した,
+      JSON.stringify(freeBox));
+  /* **1文字ごとに候補が増えないこと。** 打つたびに`<option>`を足すと
+     「む」「むら」「むらさ」…が溜まり、次に組み直したとき打ちかけの文字が
+     そのままボタンとして並ぶ。手打ちの席は1つだけ。 */
+  const grew=await page.evaluate(()=>{
+   const el=document.querySelector('#opPrevField .opf-free-in');
+   const sel=document.querySelector('#opPrevField select');
+   if(!el||!sel)return null;
+   const before=sel.options.length;
+   ['あ','あお','あおい','あおいろ'].forEach(v=>{
+    el.value=v;el.dispatchEvent(new Event('input',{bubbles:true}));
+   });
+   return {前:before,後:sel.options.length,
+           手打ちの席:sel.querySelectorAll('option[data-op-free="1"]').length,
+           値:sel.value};
+  });
+  rec('何文字打っても手打ちの席は1つ（候補が増えない）',
+      !!grew&&grew.手打ちの席===1&&grew.後===grew.前&&grew.値==='あおいろ',
+      JSON.stringify(grew));
+
+  /* ② 初期値。**入力の方法によらず効く**ので、見本にも入る。 */
+  await page.fill('#opdInitial','金');
+  /* **打ちかけの文字を捨てないこと。** ボタンを押すと窓は組み直されるので、
+     控えていないと打った初期値が消える（実際にそうなっていた）。 */
+  await page.click('[data-op-widget="ラジオ"]');
+  await page.waitForTimeout(300);
+  const kept=await page.evaluate(()=>(document.getElementById('opdInitial')||{}).value);
+  rec('打ちかけの初期値は、別のボタンを押しても消えない',kept==='金',String(kept));
+  await page.click('[data-op-widget="セグメント"]');
+  await page.waitForTimeout(250);
+  await page.click('#opdSave');
+  await page.waitForTimeout(1600);
+  const form9=await get('/api/operation-form?equipment='+encodeURIComponent(EQ));
+  const f9=(form9.items||[]).find(x=>String(x.id)===String(mkj.id));
+  rec('初期値と手打ちが測定画面の定義に出る',
+      !!f9&&f9.initial==='金'&&f9.freeText===true,
+      JSON.stringify(f9&&{initial:f9.initial,freeText:f9.freeText}));
+  const prefill=await page.evaluate(()=>{
+   const sel=document.querySelector('#opPrevField select');return sel?sel.value:'(無い)';
+  });
+  rec('見本にも初期値が入る（設定した値の見え方を確かめられる）',prefill==='金',prefill);
+
+  /* ④ 選択肢のまとまり名のサジェスト。**理由を必ず添える**。 */
+  const sug=await page.evaluate(()=>{
+   const btns=[...document.querySelectorAll('#opItemModal [data-op-suggest]')];
+   return {件数:btns.length,
+           名前:btns.map(b=>b.dataset.opSuggest),
+           理由:btns.map(b=>(b.querySelector('small')||{}).textContent||'')};
+  });
+  rec('選択肢のまとまり名を候補として出す',sug.件数>0,JSON.stringify(sug.名前));
+  rec('候補には勧める理由を添える',
+      sug.件数>0&&sug.理由.every(t=>t&&t.length>2),JSON.stringify(sug.理由));
+  if(sug.件数>0){
+   await page.click(`#opItemModal [data-op-suggest="${sug.名前[0]}"]`);
+   await page.waitForTimeout(300);
+   const picked=await page.evaluate(()=>{
+    const el=document.getElementById('opdChoice');return el?el.value:'';
+   });
+   rec('候補を押すとそのまとまりが当たる',picked===sug.名前[0],picked);
+   /* 元へ戻す（この項目は他の網でも使う）。 */
+   await page.evaluate(n=>{
+    const el=document.getElementById('opdChoice');
+    if(el){el.value=n;el.dispatchEvent(new Event('change',{bubbles:true}))}
+   },TAG_+'-色');
+   await page.waitForTimeout(300);
+  }
+
+  /* ⑤ 刻み。**押した1回ぶんがマスタの値になる**（既定は小数桁から作る）。 */
+  const mkn=await post('/api/operation-item-master',
+    {equipment:EQ,group:TAG,name:TAG+' 刻み',type:'正の数',decimals:1,
+     step:0.5,widget:'ステッパー',user_id:TAG});
+  const mknj=await mkn.json();
+  if(mknj.id)made.push(mknj.id);
+  await closeModal();
+  await page.click('#masterMaintNav [data-master="opItem"]');
+  await page.waitForSelector('#masterMaintList .op-board-grid',{timeout:20000});
+  await page.waitForTimeout(700);
+  await openTile(mknj.id);
+  const step=await page.evaluate(()=>{
+   const el=document.querySelector('#opPrevField input');
+   const up=document.querySelector('#opPrevField [data-opstep="1"]');
+   if(!el||!up)return null;
+   el.value='1';el.dispatchEvent(new Event('input',{bubbles:true}));
+   up.click();up.click();
+   return {値:el.value,刻みの欄:(document.getElementById('opdStep')||{}).value};
+  });
+  rec('マスタで決めた刻みで増える（小数桁からの既定ではない）',
+      !!step&&step.値==='2.0'&&String(step.刻みの欄)==='0.5',JSON.stringify(step));
+  await closeModal();
 
   rec('画面のエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){

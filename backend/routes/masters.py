@@ -1257,7 +1257,11 @@ def operation_item_list():
            'numberTypes':list(op.NUMBER_TYPES),
            'builtinKeys':list(op.BUILTIN_KEYS),
            'choiceNotes':op.choice_notes(c),
-           'choiceUsage':op.choice_usage(c)}
+           'choiceUsage':op.choice_usage(c),
+           # 選択肢のまとまり名のサジェスト(§9.220 ④)。**候補を選ぶ規則は
+           # サーバーが持つ**——「同じ群が使っている」「名前が似ている」は
+           # 判定であって表示ではないので、画面へ写すと答えが2つになる。
+           'choiceHints':op.choice_hints(c)}
   d=_op_read(fn)
   return jsonify(ok=True,equipment=eq,**d)
  except Exception as e:return jsonify(error=f'操業データ項目マスタの読込に失敗しました: {e}'),500
@@ -1281,7 +1285,10 @@ def _operation_item_save(x):
                          item_id=(int(x['id']) if x.get('id') not in (None,'') else None),
                          place=x.get('place'),span=x.get('span'),
                          fold=bool(x.get('fold')),show_when=x.get('showWhen'),
-                         widget=x.get('widget'))
+                         widget=x.get('widget'),
+                         # §9.220 ②③⑤
+                         initial=x.get('initial'),free_text=bool(x.get('freeText')),
+                         step=x.get('step'))
   return jsonify(ok=True,id=_op_read(fn),message='操業データの項目を保存しました。')
  except ValueError as e:return jsonify(error=str(e)),400
  except Exception as e:return jsonify(error=f'操業データ項目マスタの保存に失敗しました: {e}'),500

@@ -52,7 +52,6 @@
 .sc-stop-list{flex:1 1 auto;min-height:0;overflow:auto;display:flex;flex-direction:column;
  gap:var(--space-2)}
 .sc-stop-group-title{display:flex;align-items:center;gap:var(--gap-tight);font-size:var(--fs-micro);font-weight:800;color:var(--muted);margin-bottom:3px}
-.sc-stop-group-icon{font-size:var(--fs-sm)}
 .sc-stop-group-count{margin-left:auto;color:var(--ink-soft);font-weight:700}
 .sc-stop-buttons{display:flex;flex-wrap:wrap;gap:var(--gap-inline)}
 /* 1つの停止理由。**名前と見積を2段**にする——横に並べると名前が切れる
@@ -481,6 +480,10 @@
 /* 行の右クリック(§9.207)。見出しの右クリックと同じ器を使い回すので、
    ここで足すのは**危ない操作の見え方**だけ（§5。「完了」の隣に「削除」を
    置かない＝下へ離し、色でも分かるようにする）。 */
+/* できない項目（§9.220 2①）。**消さずに理由を添えて残す**（§4）。 */
+.col-head-menu button:disabled{color:var(--muted);cursor:not-allowed}
+.col-head-menu button:disabled:hover{background:none}
+.col-head-menu .chm-why{display:block;color:var(--ink-3);font-size:var(--fs-micro);line-height:1.5}
 .col-head-menu .chm-danger{color:var(--danger)}
 .col-head-menu .chm-danger:hover{background:var(--danger-bg)}
 /* ---------- 開いたときの表示の設定(§9.179) ---------- */
@@ -565,13 +568,17 @@
 /* 記号だけのボタンは**正方形**にする。幅の下限を --ctl-h-xs(行の外の
    ボタンの高さ)に置くと、行に合わせて縮んだ高さ(--row-ctl-h)との差が
    そのまま横長の歪みになる(§9.112)。 */
-.sc-row-btn{min-width:var(--row-ctl-h);border:1px solid var(--line);background:#fff;line-height:1;cursor:pointer;color:#60747b;flex-shrink:0}
+/* 文字のボタンは**左右を詰める**（§9.220 2③）。絵文字1字を2文字の言葉へ
+   直したので、素の`button{padding:7px}`のままだと操作の列が広がり、
+   1600pxの窓でも右端のボタンが画面の外へ出た（`test_density`が検出）。 */
+.sc-row-btn{min-width:var(--row-ctl-h);padding:0 var(--space-1);
+ border:1px solid var(--line);background:#fff;line-height:1;cursor:pointer;color:#60747b;flex-shrink:0}
 .sc-row-btn:hover{border-color:var(--teal);color:#0c5d67}
 .sc-row-btn.active{background:var(--computed-bg);border-color:var(--teal);color:#0c5d67}
 .sc-row-delete:hover{border-color:var(--danger-border);background:var(--danger-bg);color:var(--danger)}
 /* 実績(測定データ)の削除は取り消せないので、押す前から危険色で見えるようにする
    (§9.61)。予定の削除ボタンと隣り合うため、色と文字で区別を付ける。 */
-.sc-row-btn-danger{width:auto;padding:0 7px;border-color:var(--danger-border);
+.sc-row-btn-danger{width:auto;padding:0 var(--space-1);border-color:var(--danger-border);
  background:var(--danger-bg);color:var(--danger);font-weight:700}
 .sc-row-btn-danger:hover{background:var(--danger);border-color:var(--danger);color:#fff}
 /* 詳細(固定開始・見積の内訳)を1つの折りたたみへ統合。 */
@@ -630,7 +637,7 @@
 .sc-board-sort-btn{border:0;background:#fff;color:#8a9aa0;cursor:pointer}
 .sc-board-sort-btn.active{background:#eef2f4;color:#173842;font-weight:700}
 /* 印の欄は**中身の幅**で取る(§9.84)。以前は160px固定で、「● 稼働中」と
-   「⚠ 遅延 19時間55分」の2つが付く行だけ折り返して、その行だけ背が高く
+   「遅延 19時間55分」の2つが付く行だけ折り返して、その行だけ背が高く
    なっていた(61px 対 44px)。遅延の文字数は状況で変わるので固定幅では
    決められない。伸縮するのは帯(track)の方に任せ、行の高さは常に同じにする。 */
 .sc-board-axis,.sc-board-row{display:grid;grid-template-columns:calc(96px * var(--ui-scale)) calc(180px * var(--ui-scale)) minmax(0,1fr) auto calc(20px * var(--ui-scale));align-items:center;column-gap:10px}
@@ -962,7 +969,7 @@
  background:var(--warn-bg);color:var(--warn-fg);border:1px solid var(--warn-border);white-space:nowrap;
 }
 /* 予定から測定を開始する(§9.35)。行の中で最も目を引く操作なので、
-   他の行内ボタン(詳細▾・削除🗑)と違い塗りで出す。 */
+   他の行内ボタン(詳細・外す)と違い塗りで出す。 */
 .sc-row-start{
  min-width:auto;padding:0 var(--ctl-pad-x-xs);background:var(--teal);border-color:var(--teal);color:#fff;
  font-weight:800;white-space:nowrap;
@@ -1304,7 +1311,7 @@
  pointer-events:auto;
 }
 .sc-drop-remove.is-over{background:var(--danger-bg);border-style:solid}
-.sc-drop-remove-icon{font-size:var(--fs-title);line-height:1}
+.sc-drop-remove-icon{font-size:var(--fs-title);font-weight:800;line-height:1}
 /* 中の文字はポインタを飲まない。**帯の上に子要素があると dragleave が
    毎回飛んで**、点滅したり落とせなくなる(仕掛パネルのD&Dで既に踏んだ罠)。 */
 .sc-drop-remove-text{display:flex;flex-direction:column;gap:2px;

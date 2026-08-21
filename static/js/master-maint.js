@@ -3594,14 +3594,14 @@
     ================================================================ */
  const opState={equipment:'',items:[],types:[],places:['準備','入力内容'],
                 spans:Array.from({length:12},(_,i)=>i+1),
-                widgets:['プルダウン','ラジオ','タブ','一覧'],
+                widgets:['プルダウン','ラジオ','セグメント','タブ','ボタン群','一覧'],
                 /* 型ごとに効く入力方法。**サーバーが答える**（§9.219 ③）
                    ——ここは届くまでの受け皿で、判定を画面に持たない。 */
-                widgetFamilies:{choice:['プルダウン','ラジオ','タブ','一覧'],
+                widgetFamilies:{choice:['プルダウン','ラジオ','セグメント','タブ','ボタン群','一覧'],
                                 number:['プルダウン'],text:['プルダウン']},
                 choiceTypes:['選択'],numberTypes:['整数','正の整数','数値','正の数'],
                 spanUnit:2,
-                gridCols:12,choiceNames:[],choices:[],notes:{},usage:{},
+                gridCols:12,choiceNames:[],choices:[],notes:{},usage:{},choiceHints:{},
                 /* 同じ群がばらけて保存されていた置き場（§9.219 ③）。
                    まとめて描いたことを画面に書くために覚える。 */
                 healed:new Set(),
@@ -3623,8 +3623,13 @@
     目安を書いておくと迷いが減る。 */
  const OP_WIDGET_NOTE={
   'プルダウン':{icon:'▾',note:'畳んで1行。数が多くても場所を取らない'},
-  'ラジオ':{icon:'◉',note:'全部見えたまま選ぶ。3〜5個向き'},
-  'タブ':{icon:'▭',note:'横に連なる帯。2〜4個向き'},
+  /* §9.220 ①（利用者の指摘「ラジオボタンやタブがほぼ同じデザインに
+     なっている」）。**形が違うものを別の名前にした**——以前は`ラジオ`と
+     `タブ`が同じ角ばったボタンで、違いは連なっているかだけだった。 */
+  'ラジオ':{icon:'◉',note:'丸ぽち。全部見えたまま選ぶ。3〜5個向き'},
+  'セグメント':{icon:'▤',note:'1本の帯を仕切る。選んだ札が浮く。2〜4個向き'},
+  'タブ':{icon:'⊤',note:'下線で示す。下に続く欄と一体に読ませたいとき'},
+  'ボタン群':{icon:'⬭',note:'独立した札。数が多くても折り返して読める'},
   '一覧':{icon:'⌸',note:'押すと浮き窓。説明つきで選べる（数が多いとき）'},
   /* §9.219 ③（利用者の指示「UIの種類を増やしたり」）。数値・自由記述にも
      「押して決める道具」を置く。**素の欄は残る**ので、打つこともできる。 */
@@ -3633,6 +3638,83 @@
   'キーパッド':{icon:'⌗',note:'押すと浮き窓のテンキー。キーボードの無い端末向き'},
   'メモ':{icon:'☰',note:'複数行で書ける。自由記述向き'},
  };
+ /* ---------- 選択肢のまとまり名のサジェスト（§9.220 ④、利用者の指示） ----------
+    「操業データの選択肢のまとまり名については他の入力を見て、同じものを
+     設定することも多いです。入力の手間を省けるようにサジェスト機能を
+     実装してください」
+
+    材料はサーバーの`choiceHints`（{まとまり名:{items,groups,count}}）＝
+    **誰がどの群でどれを使っているかという事実**だけ。**並べる規則はここ**
+    ——勧める順は「いま編集している項目の名前・群」との近さで決まり、その
+    2つは**まだ保存されていない画面の状態**なので、サーバーからは見えない
+    （1文字打つたびに問い合わせるのは論外）。判定が2箇所に分かれるのでは
+    なく、事実と並べ方の担当が分かれている。
+
+    **理由を必ず添える**（§6「出どころ・根拠を画面に出す」）——「よく使われて
+    います」と「同じ群が使っています」では、当たる見込みがまるで違う。 */
+ function opLongestCommon(a,b){
+  a=String(a||'');b=String(b||'');
+  let best=0;
+  for(let i=0;i<a.length;i++){
+   for(let j=i+best+1;j<=a.length;j++){
+    const t=a.slice(i,j);
+    if(b.indexOf(t)>=0){if(t.length>best)best=t.length}else break;
+   }
+  }
+  return best;
+ }
+ function opChoiceSuggest(x){
+  const hints=opState.choiceHints||{};
+  const cur=String((x&&x.choice)||'');
+  const myGroup=String((x&&x.group)||'');
+  const myName=String((x&&x.name)||'');
+  const out=[];
+  Object.keys(hints).forEach(name=>{
+   if(!name||name===cur)return;
+   const h=hints[name]||{};
+   const items=h.items||[],groups=h.groups||[];
+   let score=0,why='';
+   if(myGroup&&groups.indexOf(myGroup)>=0){
+    score=300;
+    const mate=items.find(n=>n!==myName)||items[0]||'';
+    why=`同じ群「${myGroup}」の「${mate}」が使っています`;
+   }
+   if(myName){
+    /* 名前が似ている（「大径リング色」と「小径リング色」）。**2文字以上**を
+       似ているとみなす——1文字だと「板」だけで当たり、勧める意味が消える。 */
+    let bestN='',bestLen=0;
+    items.forEach(n=>{
+     if(n===myName)return;
+     const l=opLongestCommon(myName,n);
+     if(l>bestLen){bestLen=l;bestN=n}
+    });
+    if(bestLen>=2&&bestLen*100+150>score){
+     score=bestLen*100+150;
+     why=`「${bestN}」と名前が似ています`;
+    }
+   }
+   if(!score){score=Math.min(99,Number(h.count)||items.length);
+    why=`${items.length}件の項目が使っています`;}
+   out.push({name,score,why,count:items.length});
+  });
+  out.sort((a,b)=>b.score-a.score||a.name.localeCompare(b.name,'ja'));
+  return out.slice(0,4);
+ }
+ function opChoiceSuggestHtml(x){
+  const list=opChoiceSuggest(x);
+  if(!list.length)return '';
+  const values=n=>(opState.choices||[]).filter(c=>c.name===n).map(c=>c.value);
+  return `<span class="op-suggest"><b class="op-suggest-lead">よく使う組み合わせ</b>`
+   +list.map(s=>{
+     const vs=values(s.name);
+     const peek=vs.length?`${vs.slice(0,4).join('／')}${vs.length>4?'…':''}`:'値が未登録';
+     return `<button type="button" class="op-suggest-btn" data-op-suggest="${esc(s.name)}"`
+      +` title="${esc(s.why)}／${esc(peek)}"><b>${esc(s.name)}</b>`
+      +`<small>${esc(s.why)}</small><i>${esc(peek)}</i></button>`;
+   }).join('')
+   +`</span>`;
+ }
+
  /* **その項目にどの入力方法が効くか**（§9.219 ③）。規則を画面に書かない
     ——`typeFamilies`／`builtinFamilies`／`widgetFamilies`はサーバーが答える
     対応表で、ここは引くだけ（§9.163「判定を画面にも書かないこと」）。
@@ -3718,7 +3800,11 @@
   const w=opWidgetOf(x);
   const tip=[x.name,x.builtin?'画面がもともと持っている入力欄':x.type,
              opSpanLabel(span),x.required?'必須':'',off?'出さない':'',
-             w!=='プルダウン'?opWidgetLabel(x,w):''].filter(Boolean).join('｜');
+             w!=='プルダウン'?opWidgetLabel(x,w):'',
+             /* §9.220 ②③。**盤の上で分かること**を増やす（開かないと
+                分からない設定は、設定したこと自体を忘れる）。 */
+             x.initial?`初期値 ${x.initial}`:'',
+             x.freeText?'手打ち可':''].filter(Boolean).join('｜');
   return `<div class="op-tile${String(opState.picked)===String(x.id)?' is-picked':''}`
    +`${off?' is-off':''}" draggable="true" data-op-id="${esc(x.id)}"`
    +` style="grid-column:span ${span}" title="${esc(tip)}" tabindex="0">`
@@ -3728,6 +3814,8 @@
    +(x.required?'<b class="op-chip op-chip-req">必須</b>':'')
    +(off?'<b class="op-chip op-chip-off">出さない</b>':'')
    +(w!=='プルダウン'?`<b class="op-chip op-chip-widget">${esc((OP_WIDGET_NOTE[w]||{}).icon||'')} ${esc(opWidgetLabel(x,w))}</b>`:'')
+   +(x.initial?`<b class="op-chip op-chip-initial">初期 ${esc(x.initial)}</b>`:'')
+   +(x.freeText?'<b class="op-chip op-chip-free">手打ち可</b>':'')
    +`<span class="op-tile-type">${esc(x.builtin?'—':x.type||'')}</span>`
    +`<span class="op-tile-span">${span}/${opState.gridCols}</span></span>`
    +`<span class="op-tile-gear" aria-hidden="true">設定</span></div>`;
@@ -4114,6 +4202,30 @@
      +` title="${esc(opSpanLabel(v))}" aria-pressed="${v===span?'true':'false'}"></button>`).join('')
    +`</span><i class="op-form-note">${esc(opSpanLabel(span))}</i>`;
  }
+ /* そのまとまりの値。**1箇所で引く**（初期値の候補・サジェストの下見・
+    一覧の3つが同じものを見る）。 */
+ /* 初期値が「数の決まり」から外れていないか（§9.220 ②）。**外れていても
+    保存は通す**——上下限は後から変えるものなので、保存そのものを断ると
+    設定の順番を強いることになる。断らない代わりに**必ず書く**（§4）。 */
+ function opInitialRangeNote(x){
+  const raw=String(x.initial||'').trim();
+  if(!raw)return '';
+  const n=Number(raw);
+  if(!Number.isFinite(n))
+   return (opFamilyOf(x)==='number')?`「${raw}」は数として読めません`:'';
+  if(opFamilyOf(x)!=='number')return '';
+  const lo=(x.min===null||x.min===undefined||x.min==='')?null:Number(x.min);
+  const hi=(x.max===null||x.max===undefined||x.max==='')?null:Number(x.max);
+  if(lo!==null&&n<lo)return `最小 ${lo} を下回っています`;
+  if(hi!==null&&n>hi)return `最大 ${hi} を上回っています`;
+  if(['整数','正の整数'].includes(x.type)&&!Number.isInteger(n))
+   return '整数の項目なので小数は入りません';
+  if(['正の整数','正の数'].includes(x.type)&&n<0)return '0以上の項目です';
+  return '';
+ }
+ function opChoiceValues(name){
+  return (opState.choices||[]).filter(c=>c.name===name).map(c=>c.value);
+ }
  function opChoiceValuesHtml(x){
   const vals=(opState.choices||[]).filter(c=>c.name===x.choice);
   if(!x.choice)return `<p class="op-form-empty">選択肢のまとまりを選ぶか、名前を打って新しく作ります。</p>`;
@@ -4217,6 +4329,8 @@
      <label>最小<input type="number" id="opdMin" step="any" value="${x.min==null?'':esc(x.min)}"></label>
      <label>最大<input type="number" id="opdMax" step="any" value="${x.max==null?'':esc(x.max)}"></label>
      <label>単位<input type="text" id="opdUnit" value="${esc(x.unit||'')}"></label>
+     <label title="ステッパーの−／＋1回ぶん、スライダーの目盛の幅">刻み<input type="number" id="opdStep" min="0" step="any" value="${x.step==null?'':esc(x.step)}"></label>
+     <i class="op-form-note">刻みを空にすると小数桁から作ります（整数=1／小数2桁=0.01）。<b>0は「決めていない」</b>として扱います——0にすると押しても動かない道具になるためです。</i>
     </span></div>`}
    ${isChoice?`
    <div class="op-form-row"><span class="op-form-label">選択肢</span>
@@ -4229,6 +4343,7 @@
         .join('')}</select>
       <input type="text" id="opdNewChoiceName" placeholder="新しいまとまりを作る（例: リング色）">
      </span>
+     ${opChoiceSuggestHtml(x)}
      ${opChoiceValuesHtml(x)}
      <span class="op-choice-add">
       <input type="text" id="opdNewChoiceValue" placeholder="値を足す（例: 茶）">
@@ -4237,6 +4352,24 @@
      </span>
      <i class="op-form-note">${users.length?`このまとまりを使っている項目: ${esc(users.join('、'))}`
        :'このまとまりを使っている項目はまだありません'}</i>
+    </span></div>`:''}
+   <div class="op-form-row"><span class="op-form-label">初期値</span>
+    <span class="op-form-ctl">
+     <input type="text" id="opdInitial" list="opInitialList" value="${esc(x.initial||'')}"
+       placeholder="空欄＝初期値なし">
+     <datalist id="opInitialList">${(isChoice?opChoiceValues(x.choice):[])
+       .map(v=>`<option value="${esc(v)}">`).join('')}</datalist>
+     ${isChoice&&x.initial&&!opChoiceValues(x.choice).includes(x.initial)
+       ?`<b class="op-warn-chip">候補に「${esc(x.initial)}」がありません${x.freeText?'（手打ちの値として入ります）':'——このままだと選択肢に無い値として入ります'}</b>`:''}
+     ${!isChoice&&x.initial&&opInitialRangeNote(x)
+       ?`<b class="op-warn-chip">${esc(opInitialRangeNote(x))}</b>`:''}
+     <i class="op-form-note"><b>まだ何も記録されていない欄にだけ</b>入ります。入力の方法によらず効きます（プルダウンでもラジオでもステッパーでも同じ）。空にした欄を開き直しても初期値へは戻りません——消したのは作業者の判断なので、上書きしません。</i>
+    </span></div>
+   ${isChoice?`
+   <div class="op-form-row"><span class="op-form-label">手打ち</span>
+    <span class="op-form-ctl">
+     <button type="button" id="opdFreeText" class="op-toggle${x.freeText?' is-on':''}" aria-pressed="${x.freeText?'true':'false'}">候補にない値も打てる</button>
+     <i class="op-form-note">候補の下に打ち込む欄が出ます。打った値は<b>そのまま記録に入り</b>、選択肢マスタには足しません（現場のその場かぎりの値でマスタを増やさないため）。</i>
     </span></div>`:''}`}
    <div class="op-form-row"><span class="op-form-label">選ばせ方</span>
     <span class="op-form-ctl">
@@ -4329,10 +4462,25 @@
   host.appendChild(label);
   /* **本物の部品をそのまま被せる**（§9.218 ①）。数値・自由記述の器も
      `measure-opdata.js`が作るので、設定画面と測定画面で形が食い違わない。 */
-  if(usable&&widget!=='プルダウン'&&window.WL&&WL.opData&&WL.opData.previewWidget){
-   WL.opData.previewWidget({name:x.name,unit:x.unit,type:x.type,
-     decimals:x.decimals,min:x.min,max:x.max,
-     choiceNotes:opState.notes[x.choice]||{}},label,widget);
+  /* 初期値（§9.220 ②）は**見本にも入れる**——設定した値がどう見えるかを
+     確かめられないと、選択肢に無い値を打ったことに気づけない。 */
+  if(x.initial&&!x.builtin){
+   if(ctl.tagName==='SELECT'&&![...ctl.options].some(o=>o.value===x.initial)){
+    const o=document.createElement('option');
+    o.value=x.initial;o.textContent=x.initial;o.dataset.opFree='1';ctl.appendChild(o);
+   }
+   ctl.value=x.initial;
+  }
+  /* **手打ち（§9.220 ③）はプルダウンのままでも器が要る**ので、被せる
+     判断は測定画面と同じ2つの事実の和にする（片方だけだと、設定画面で
+     確かめられない設定ができる）。 */
+  const previewDef={name:x.name,unit:x.unit,type:x.type,
+    decimals:x.decimals,min:x.min,max:x.max,step:x.step,
+    freeText:!!x.freeText&&!x.builtin,
+    choiceNotes:opState.notes[x.choice]||{}};
+  const needsBox=widget!=='プルダウン'||(previewDef.freeText&&fam==='choice');
+  if(usable&&needsBox&&window.WL&&WL.opData&&WL.opData.previewWidget){
+   WL.opData.previewWidget(previewDef,label,widget);
   }
   /* **押した結果が何として記録されるか**を出す（§9.219 ③、利用者の指示
      「実際の挙動ももう少しわかるように」）。見本が本物なので、押せば
@@ -4352,7 +4500,11 @@
   const form=$('#opModalForm');if(!form)return;
   /* **触った結果はその場で当てる**（保存はまとめて1回）。押すたびに
      サーバーへ書くと、途中で切れたときに半分だけ効いた行が残る。 */
-  const touch=patch=>{Object.assign(x,patch);renderOpModal()};
+  /* **打ちかけの文字を捨てない**（§9.220）。ボタンを押すと窓は組み直される
+     ので、組み直す前に打ち込み欄を控える——控えないと、初期値・覚え書き・
+     単位を打ってから幅のボタンを押しただけで消える（値は保存のときに
+     `opDetailValues()`が読む作りなので、押した時点では拾われていなかった）。 */
+  const touch=patch=>{Object.assign(x,opFormEdits(),patch);renderOpModal()};
   form.querySelectorAll('[data-op-place]').forEach(b=>b.onclick=()=>touch({place:b.dataset.opPlace}));
   form.querySelectorAll('[data-op-span]').forEach(b=>b.onclick=()=>touch({span:Number(b.dataset.opSpan)}));
   form.querySelectorAll('[data-op-type]').forEach(b=>b.onclick=()=>touch({type:b.dataset.opType}));
@@ -4384,6 +4536,12 @@
      値は保存のときに`opDetailValues()`が読む。 */
   const ch=$('#opdChoice');
   if(ch)ch.onchange=()=>touch({choice:ch.value});
+  /* 選択肢のまとまり名のサジェスト（§9.220 ④）。押すだけで当たる。 */
+  form.querySelectorAll('[data-op-suggest]').forEach(b=>b.onclick=()=>
+    touch({choice:b.dataset.opSuggest}));
+  /* 手打ち（§9.220 ③）。 */
+  const ft=$('#opdFreeText');
+  if(ft)ft.onclick=()=>touch({freeText:!x.freeText});
   /* 値の説明はその場で書き換える（**入力中に描き直さない**・§9.117）。 */
   form.querySelectorAll('[data-op-cnote]').forEach(inp=>inp.onchange=()=>
     opSaveChoiceNote(inp.dataset.opCnote,inp.value));
@@ -4395,6 +4553,17 @@
   const del=$('#opdDelete');
   if(del)del.onclick=()=>opDeleteItem();
  }
+ /* いま窓に打ち込まれている値。**在る欄だけ**返す（組み込みの行では
+    名前・型の欄そのものが無い）。 */
+ function opFormEdits(){
+  const out={};
+  const t=(id,key)=>{const el=$('#'+id);if(el)out[key]=el.value};
+  const n=(id,key)=>{const el=$('#'+id);if(el)out[key]=(el.value===''?null:Number(el.value))};
+  t('opdName','name');t('opdUnit','unit');t('opdNote','note');
+  t('opdGroup','group');t('opdInitial','initial');
+  n('opdDecimals','decimals');n('opdMin','min');n('opdMax','max');n('opdStep','step');
+  return out;
+ }
  function opDetailValues(){
   const x=opItemById(opState.picked)||{};
   const v=id=>{const el=$('#'+id);return el?el.value:undefined};
@@ -4402,6 +4571,9 @@
   return {name:v('opdName'),type:x.type,
           decimals:num(v('opdDecimals')),min:num(v('opdMin')),max:num(v('opdMax')),
           unit:v('opdUnit'),choice:v('opdChoice'),group:v('opdGroup'),
+          /* §9.220 ②③⑤。**打ち込む欄の値はここで読む**——`touch()`で
+             書き戻すと1文字ごとに描き直してカーソルが飛ぶ（§9.117）。 */
+          initial:v('opdInitial'),step:num(v('opdStep')),freeText:!!x.freeText,
           /* **備考を送り忘れないこと**（§9.219 ③）。`item_upsert`は全列を
              書くので、送らないと保存のたびに`[備考]`が空で消える
              （§9.113／§9.212 ②と同じ形の不具合が実際に起きていた）。 */
@@ -4425,6 +4597,11 @@
     decimals:x.builtin?null:d.decimals,min:x.builtin?null:d.min,max:x.builtin?null:d.max,
     unit:x.builtin?'':(d.unit||''),choice:x.builtin?'':(d.choice||''),
     span:d.span,place:d.place,required:d.required,enabled:d.enabled,widget:d.widget,
+    /* 組み込みの欄は初期値も手打ちも持たない（型・上下限と同じ理由。
+       内径のプリセット§9.204・条数の上限§9.210 ⑤と衝突する）。 */
+    initial:x.builtin?'':(d.initial||''),
+    freeText:x.builtin?false:!!d.freeText,
+    step:x.builtin?null:d.step,
     /* 「開く条件」と「畳む」は**群のもの**。1行だけに書くと、同じ群の中で
        食い違う（`form_for_equipment`は「1つでも畳むと言えば畳む」で読むので
        消したはずの条件が残る）。群ぜんぶへ同じ値を書く。 */
@@ -4547,6 +4724,8 @@
    opState.choiceNames=ch.names||[];
    opState.choices=ch.items||[];
    opState.usage=ch.usage||it.choiceUsage||{};
+   /* 選択肢のまとまり名を勧めるための事実（§9.220 ④）。 */
+   opState.choiceHints=it.choiceHints||{};
    if(opState.picked&&!opItemById(opState.picked)){
     opState.picked=null;
     const m=$('#opItemModal');if(m)m.hidden=true;

@@ -190,6 +190,16 @@
 .sc-comment-field span{font-size:var(--fs-sm);font-weight:700;color:var(--ink-2)}
 .sc-comment-field textarea{width:100%;padding:var(--pad-row);border:1px solid var(--line);
   border-radius:var(--radius-sm);font-size:var(--fs);line-height:var(--lh);resize:vertical}
+/* 入れた設備停止を直す窓(§9.220 2①)。**ラベル列は固定幅**（§9のUI基準9
+   「情報欄は縦にそろえる」——`auto`だと欄ごとに値の左端がずれる）。 */
+.sc-stop-edit{display:grid;gap:var(--space-2);margin:var(--space-2) 0 0}
+.sc-stop-edit-row{display:grid;grid-template-columns:var(--w-xs) minmax(0,1fr);
+  gap:var(--gap-inline);align-items:center}
+.sc-stop-edit-row>span{font-size:var(--fs-sm);font-weight:700;color:var(--ink-2)}
+.sc-stop-edit-row>input{width:100%;min-width:0;padding:var(--pad-row);
+  border:1px solid var(--line);border-radius:var(--radius-sm);
+  font-size:var(--fs);line-height:var(--lh)}
+.sc-stop-edit .confirm-modal-note{grid-column:1/-1;margin:0}
 .confirm-modal-note{margin:var(--space-2) 0 0;font-size:var(--fs-sm);color:var(--muted)}
 .confirm-modal-points b{color:var(--danger)}
 /* 設備削除確認(docs/SCHEDULE_MODE_DESIGN.md §5.0.1)の関連スケジュールデータ内訳。 */

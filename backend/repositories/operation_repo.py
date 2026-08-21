@@ -101,7 +101,18 @@ WIDGET_SELECT = 'プルダウン'
 #   スライダー … 目盛を引いて決める。上下限のある数値向き
 #   キーパッド … 押すと浮き窓のテンキー。キーボードの無い端末向き
 #   メモ       … 複数行で書ける。自由記述向き
-WIDGETS = (WIDGET_SELECT, 'ラジオ', 'タブ', '一覧',
+#
+# §9.220 ①（利用者の指示「ラジオボタンやタブがほぼ同じデザインになっている。
+# ラジオボタンは丸ぽちみたいなのを想像してました…セグメンテッドコントロールや
+# ボタングループなど、もう少しスタイリッシュモダンなデザインで」）で
+# **形の違うものを別の名前にした**。以前は`ラジオ`と`タブ`が同じ角ばった
+# ボタンで、違いは「連なっているか」だけ——名前が2つあるのに見た目が
+# ほぼ同じでは、選ぶ意味が無い（選ばせる手間だけが残る）。
+#   ラジオ     … 丸ぽち＋文字。**縦に読む**もの。3〜5個向き
+#   セグメント … 1本の帯を仕切った形（つまみが動く）。2〜4個の排他向き
+#   タブ       … 下線で示す見出し。段を切り替える感覚のもの
+#   ボタン群   … 独立した丸みのある札。数が多くても折り返して読める
+WIDGETS = (WIDGET_SELECT, 'ラジオ', 'セグメント', 'タブ', 'ボタン群', '一覧',
            'ステッパー', 'スライダー', 'キーパッド', 'メモ')
 # 選択肢を持つ型。判定はここ1箇所。
 CHOICE_TYPES = ('選択',)
@@ -111,7 +122,7 @@ NUMBER_TYPES = ('整数', '正の整数', '数値', '正の数')
 # `プルダウン`はどの型でも「標準の欄」の意味で使う。**保存値の既定を型ごとに
 # 変えないこと**——型を切り替えた瞬間に「知らない値」になって設定が消える。
 WIDGET_FAMILIES = {
-    'choice': (WIDGET_SELECT, 'ラジオ', 'タブ', '一覧'),
+    'choice': (WIDGET_SELECT, 'ラジオ', 'セグメント', 'タブ', 'ボタン群', '一覧'),
     'number': (WIDGET_SELECT, 'ステッパー', 'スライダー', 'キーパッド'),
     'text': (WIDGET_SELECT, 'メモ'),
 }
@@ -136,6 +147,20 @@ def widget_family(kind, builtin=''):
 def normalize_widget(v):
     s = str(v or '').strip()
     return s if s in WIDGETS else WIDGET_SELECT
+
+
+def normalize_step(v):
+    """ステッパー・スライダーの1回ぶん(§9.220 ⑤)。**0と負は「未設定」**へ
+    倒す——0にすると押しても動かない道具になり、負だと＋で減る。未設定は
+    `None`で返し、読む側（`measure-opdata.js`の`stepOf`）が小数桁から作る
+    今までの動きへ落ちる。"""
+    if v is None or v == '':
+        return None
+    try:
+        n = float(v)
+    except (TypeError, ValueError):
+        return None
+    return n if n > 0 else None
 
 
 def normalize_item_type(v):
@@ -354,6 +379,35 @@ def choice_usage(c):
     return out
 
 
+def choice_hints(c):
+    """選択肢のまとまり名を勧めるための**事実**(§9.220 ④、利用者の指示
+    「選択肢のまとまり名については他の入力を見て、同じものを設定することも
+    多いです。入力の手間を省けるようにサジェスト機能を」)。
+
+    {選択肢名: {'items': [使っている項目名], 'groups': [その群], 'count': n}}
+
+    **並べる規則そのものは画面が持つ**——勧める順は「いま編集している項目の
+    名前・群」との近さで決まり、その2つは**まだ保存されていない画面の状態**
+    なので、サーバーからは見えない（1文字打つたびに問い合わせるのは論外）。
+    ここが答えるのは「誰がどの群でどれを使っているか」という事実だけで、
+    事実の出どころは1箇所のまま。"""
+    out = {}
+    try:
+        for it in item_rows(c, True):
+            nm = it['choice']
+            if not nm:
+                continue
+            slot = out.setdefault(nm, {'items': [], 'groups': [], 'count': 0})
+            slot['items'].append(it['name'])
+            g = it['group']
+            if g and g not in slot['groups']:
+                slot['groups'].append(g)
+            slot['count'] += 1
+    except Exception:
+        return {}
+    return out
+
+
 def choice_upsert(c, name, value, uid, order=None, choice_id=None, enabled=True, note=None):
     ensure_choice_table(c)
     name = str(name or '').strip()
@@ -427,6 +481,10 @@ _ITEM_ADDED_COLUMNS = (
     ('群折りたたみ', 'INTEGER'),   # その群を畳んで出すか
     ('表示条件', 'TEXT'),          # 畳んだ群を自動で開く測定項目（カンマ区切り）
     ('入力方法', 'TEXT'),          # プルダウン / ラジオ / タブ / 一覧（§9.218 ②）
+    # --- §9.220（利用者の指示）---
+    ('初期値', 'TEXT'),            # ②「入力の方法によらず、初期値登録機能」
+    ('手打ち可', 'INTEGER'),       # ③「候補選択のパターンでも手打ち入力が可能なモード」
+    ('ステップ量', 'REAL'),        # ⑤「ステップ入力に関して、ステップ量も決められるように」
 )
 
 
@@ -488,6 +546,7 @@ def ensure_item_table(c):
                     '[必須] INTEGER, [備考] TEXT, [有効] INTEGER, '
                     '[組み込みキー] TEXT, [置き場] TEXT, [列幅] INTEGER, '
                     '[群折りたたみ] INTEGER, [表示条件] TEXT, [入力方法] TEXT, '
+                    '[初期値] TEXT, [手打ち可] INTEGER, [ステップ量] REAL, '
                     '[登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
         c.commit()
         _seed_items(c)
@@ -536,12 +595,25 @@ def _row_to_item(r):
             'widgetLive': (normalize_widget(r[19])
                            if normalize_widget(r[19]) in WIDGET_FAMILIES[
                                widget_family(normalize_item_type(r[5]), builtin)]
-                           else WIDGET_SELECT)}
+                           else WIDGET_SELECT),
+            # --- §9.220 ---
+            # ② 初期値。**組み込みの欄は持たない**（内径の仕掛由来プリセット
+            #    §9.204・条数の上限§9.210 ⑤といった、その欄ごとの仕掛けと
+            #    どちらが勝つのか決められない。型・上下限を持たないのと同じ理由）。
+            'initial': '' if builtin else str(r[20] or ''),
+            # ③ 候補にない値も手で打てるか。**選択肢を持つ型だけ**に効く
+            #    ——自由記述はもともと手で打つので、印を出しても意味が無い（§4）。
+            'freeText': (bool(r[21]) if r[21] is not None else False)
+                        and widget_family(normalize_item_type(r[5]), builtin) == 'choice',
+            # ⑤ ステッパー・スライダーの1回ぶん。**未設定(None)は小数桁から作る**
+            #    （今までの挙動）——0を「設定した」と読むと増減できなくなる。
+            'step': (float(r[22]) if r[22] is not None and float(r[22]) > 0 else None)}
 
 
 _ITEM_SELECT = ('SELECT [項目ID],[設備名],[群],[項目名],[表示順],[型],[小数桁],[最小値],[最大値],'
                 '[選択肢名],[単位],[必須],[備考],[有効],'
-                '[組み込みキー],[置き場],[列幅],[群折りたたみ],[表示条件],[入力方法] '
+                '[組み込みキー],[置き場],[列幅],[群折りたたみ],[表示条件],[入力方法],'
+                '[初期値],[手打ち可],[ステップ量] '
                 'FROM [操業データ項目マスタ] ORDER BY [表示順],[項目ID]')
 
 
@@ -583,7 +655,7 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                 decimals=None, vmin=None, vmax=None, choice='', unit='',
                 required=False, note='', enabled=True, item_id=None,
                 place=None, span=None, fold=None, show_when=None, builtin=None,
-                widget=None):
+                widget=None, initial=None, free_text=None, step=None):
     ensure_item_table(c)
     name = str(name or '').strip()
     if not name:
@@ -621,12 +693,16 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
             -1 if fold else 0,
             ','.join(x.strip() for x in (show_when or []) if str(x).strip())
             if isinstance(show_when, (list, tuple)) else str(show_when or ''),
-            normalize_widget(widget)]
+            normalize_widget(widget),
+            # §9.220 ②③⑤。初期値は**そのまま文字で持つ**——選択肢の値も
+            # 数値も同じ1つの列に入るので、型ごとに解釈するのは読む側の仕事。
+            str(initial or ''), -1 if free_text else 0, normalize_step(step)]
     if item_id is not None:
         cur.execute('UPDATE [操業データ項目マスタ] SET [設備名]=?,[群]=?,[項目名]=?,[表示順]=?,'
                     '[型]=?,[小数桁]=?,[最小値]=?,[最大値]=?,[選択肢名]=?,[単位]=?,[必須]=?,'
                     '[備考]=?,[有効]=?,[組み込みキー]=?,[置き場]=?,[列幅]=?,[群折りたたみ]=?,'
-                    '[表示条件]=?,[入力方法]=?,[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
+                    '[表示条件]=?,[入力方法]=?,[初期値]=?,[手打ち可]=?,[ステップ量]=?,'
+                    '[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
                     args + [uid, int(item_id)])
         c.commit()
         return int(item_id)
@@ -639,7 +715,8 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
         cur.execute('UPDATE [操業データ項目マスタ] SET [群]=?,[表示順]=?,[型]=?,[小数桁]=?,'
                     '[最小値]=?,[最大値]=?,[選択肢名]=?,[単位]=?,[必須]=?,[備考]=?,[有効]=?,'
                     '[組み込みキー]=?,[置き場]=?,[列幅]=?,[群折りたたみ]=?,[表示条件]=?,'
-                    '[入力方法]=?,[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
+                    '[入力方法]=?,[初期値]=?,[手打ち可]=?,[ステップ量]=?,'
+                    '[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
                     args[1:2] + args[3:] + [uid, hit[0]])
         c.commit()
         return int(hit[0])
@@ -651,8 +728,9 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
     cur.execute('INSERT INTO [操業データ項目マスタ] '
                 '([設備名],[群],[項目名],[表示順],[型],[小数桁],[最小値],[最大値],[選択肢名],'
                 '[単位],[必須],[備考],[有効],[組み込みキー],[置き場],[列幅],[群折りたたみ],'
-                '[表示条件],[入力方法],[登録者ID],[更新者ID],[登録日時],[更新日時]) '
-                'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',
+                '[表示条件],[入力方法],[初期値],[手打ち可],[ステップ量],'
+                '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
+                'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',
                 args + [uid, uid])
     c.commit()
     return int(cur.lastrowid)
