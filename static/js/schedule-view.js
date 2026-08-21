@@ -466,7 +466,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
          「消す場所」が画面に居座り、押し間違いの的になる。掴んで初めて
          現れるので、外す意思があるときにしか目に入らない。 -->
     <div class="sc-drop-remove" id="scDropRemove" hidden aria-hidden="true">
-     <span class="sc-drop-remove-icon">🗑</span>
+     <span class="sc-drop-remove-icon">予定から外す</span>
      <span class="sc-drop-remove-text">ここへ落とすと<b>この予定を外します</b>
       <small>確認してから外します。仕掛一覧へ戻るので、また入れ直せます</small></span>
     </div>
@@ -2045,8 +2045,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const rows=overviewRows().map(row=>{
    const lv=loadLevelClass(row.pendingMinutes);
    const swatchText=row.pendingMinutes?`残 ${fmtMinutes(row.pendingMinutes)}・${row.pendingCount}件`:'空き';
-   const activeChip=row.active?'<span class="sc-board-active-chip">● 稼働中</span>':'';
-   const overdueChip=row.maxOverdueMinutes>0?`<span class="sc-board-overdue-chip">⚠ 遅延 ${fmtMinutes(row.maxOverdueMinutes)}</span>`:'';
+   const activeChip=row.active?'<span class="sc-board-active-chip">稼働中</span>':'';
+   const overdueChip=row.maxOverdueMinutes>0?`<span class="sc-board-overdue-chip">遅延 ${fmtMinutes(row.maxOverdueMinutes)}</span>`:'';
    const blocks=row.blocks.map(b=>{
     const start=new Date(b.plannedStart).getTime(),end=new Date(b.plannedEnd).getTime();
     const left=Math.max(0,(start-now)/windowMs*100);
@@ -2536,7 +2536,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const box=$('#scWarnings');
   if(!scState.warnings.length){box.hidden=true;box.innerHTML='';return}
   box.hidden=false;
-  box.innerHTML=scState.warnings.map(w=>`<div class="sc-warning">⚠ ${esc(w)}</div>`).join('');
+  box.innerHTML=scState.warnings.map(w=>`<div class="sc-warning"><b>注意</b> ${esc(w)}</div>`).join('');
  }
 
  function renderTimelineMessage(msg){
@@ -3538,15 +3538,23 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   scRowMenuEl=m;
   m.innerHTML=`<div class="chm-head" title="${esc(title)}">${esc(title)}</div>`
    +(note?`<div class="chm-label">${esc(note)}</div>`:'')
+   /* **できない項目も並べて理由を書く**（§4／§9.220 2①）。メニューから
+      消すと「そもそも無い機能」と読まれ、いま何が邪魔しているのかが
+      分からない。理由は`note`に入れ、`title`だけでなく本文にも出す
+      ——ツールチップは触らないと読めない。 */
    +list.map((it,i)=>it.sep?'<div class="chm-sep"></div>'
-     :`<button type="button" data-i="${i}"${it.danger?' class="chm-danger"':''}`
-      +`${it.note?` title="${esc(it.note)}"`:''}>${esc(it.label)}</button>`).join('');
+     :`<button type="button" data-i="${i}"${it.disabled?' disabled':''}`
+      +`${it.danger?' class="chm-danger"':''}`
+      +`${it.note?` title="${esc(it.note)}"`:''}>${esc(it.label)}`
+      +`${it.disabled&&it.note?`<small class="chm-why">${esc(it.note)}</small>`:''}</button>`).join('');
   document.body.append(m);
   const w=m.offsetWidth,h=m.offsetHeight;
   m.style.left=`${Math.max(6,Math.min(ev.clientX,innerWidth-w-6))}px`;
   m.style.top=`${Math.max(6,Math.min(ev.clientY,innerHeight-h-6))}px`;
   m.querySelectorAll('[data-i]').forEach(b=>b.onclick=()=>{
-   const it=list[Number(b.dataset.i)];closeRowMenu();
+   const it=list[Number(b.dataset.i)];
+   if(it&&it.disabled)return;
+   closeRowMenu();
    if(it&&it.run)it.run();
   });
  }
@@ -4065,7 +4073,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const names=stuck.map(e=>e.lotNo||contentValueOf(e.detail,'lotNo')||('予定'+e.id)).filter(Boolean);
   const shown=names.slice(0,5).join('・')+(names.length>5?` ほか${names.length-5}件`:'');
   const why=calendar
-   ?'稼働カレンダー上に置き場所が見つかりませんでした。稼働カレンダー・勤務形態マスタを確認してください（上の⚠に理由が出ています）。'
+   ?'稼働カレンダー上に置き場所が見つかりませんでした。稼働カレンダー・勤務形態マスタを確認してください（画面の上に出ている注意書きに理由が出ています）。'
    :'追加・並べ替えの直後は、画面側の時刻が計算されないことがあります。「再計算」で計算し直せます。';
   box.hidden=false;
   box.innerHTML=`<div class="sc-undecided-main">
@@ -4100,7 +4108,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(d.__childWidth!=null)bits.push(`幅${d.__childWidth}`);
   if(d.__childStrips)bits.push(`${d.__childStrips}条`);
   if(d.__childTol&&d.__childTol.plus!=null)bits.push(`+${d.__childTol.plus}/-${d.__childTol.minus}`);
-  if(d.__childMissing)bits.push('⚠仕掛に無し');
+  if(d.__childMissing)bits.push('仕掛に無し');
   return bits.join(' / ');
  }
  function renderChildRows(box,parent,children){
@@ -4265,11 +4273,14 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   }
   const flags=[
    e.unplanned?'<span class="sc-flag sc-flag-unplanned" title="予定に無い実績です(仕掛一覧から直接開始した作業など)">計画外</span>':'',
-   locked?`<span class="sc-flag sc-flag-locked" title="固定開始 ${esc(fmtDateTime(e.fixedStart))}">🔒固定</span>`:'',
-   e.__pending?'<span class="sc-flag sc-flag-pending" title="サーバーへ反映中です">⏳追加中</span>':'',
-   e.overdueMinutes>0?`<span class="sc-flag sc-flag-overdue" title="${Math.round(e.overdueMinutes)}分押しています">⚠${Math.round(e.overdueMinutes)}分</span>`:'',
-   e.spansNonWorking?'<span class="sc-flag sc-flag-spans" title="夜間・休日を跨ぎます">🌙</span>':'',
-   e.fixedStart?`<span class="sc-flag sc-flag-fixed" title="固定開始 ${fmtDateTime(e.fixedStart)}">📌</span>`:'',
+   locked?`<span class="sc-flag sc-flag-locked" title="固定開始 ${esc(fmtDateTime(e.fixedStart))}">固定</span>`:'',
+   e.__pending?'<span class="sc-flag sc-flag-pending" title="サーバーへ反映中です">追加中</span>':'',
+   e.overdueMinutes>0?`<span class="sc-flag sc-flag-overdue" title="${Math.round(e.overdueMinutes)}分押しています">+${Math.round(e.overdueMinutes)}分</span>`:'',
+   e.spansNonWorking?'<span class="sc-flag sc-flag-spans" title="夜間・休日を跨ぎます">夜間</span>':'',
+   /* **`固定`と同じことを2つ出さない**（§8／§9.220 2③）。`locked`は
+      `!!e.fixedStart`そのものなので、以前は🔒固定と📌が必ず並んで出て
+      いた。絵文字を文字へ直したら**同じ言葉が2つ**並び、112pxの列から
+      溢れた（`test_fit`が検出）。片方だけ残す。 */
   ].join('');
   /* 「誰が・どの端末で」(§9.180)。**空欄のときは`-`にする**——列に何も
      出ないと「読めていない」のか「記録が無い」のか区別が付かない。
@@ -4387,13 +4398,13 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     '__actual__':`<span class="sc-row-actual" data-col="__actual__">${esc(actualText)}</span>`,
     '__flags__':`<span class="sc-row-flags" data-col="__flags__">${flags}</span>`,
     '__actions__':`<span class="sc-row-actions" data-col="__actions__">
-     ${canStart?`<button type="button" class="sc-row-btn sc-row-start" title="この予定の測定画面を開いて作業を開始します">▶ 開始</button>`:''}
-     ${canLock?`<button type="button" class="sc-row-btn sc-row-lock${locked?' active':''}" title="${locked?'固定を解除して通常の並びへ戻します':'今の予定日時でこの行を固定します(以降ずれません)'}">${locked?'🔒':'🔓'}</button>`:''}
-     ${canResume?`<button type="button" class="sc-row-btn sc-row-resume" title="測定画面を開いて続きから再開します(行のダブルクリックでも開けます)">▶ 再開</button>`:''}
-     ${canReport?`<button type="button" class="sc-row-btn sc-row-report" title="このロットの帳票を表示します">📄</button>`:''}
+     ${canStart?`<button type="button" class="sc-row-btn sc-row-start" title="この予定の測定画面を開いて作業を開始します">開始</button>`:''}
+     ${canLock?`<button type="button" class="sc-row-btn sc-row-lock${locked?' active':''}" title="${locked?'固定を解除して通常の並びへ戻します':'今の予定日時でこの行を固定します(以降ずれません)'}">${locked?'解除':'固定'}</button>`:''}
+     ${canResume?`<button type="button" class="sc-row-btn sc-row-resume" title="測定画面を開いて続きから再開します(行のダブルクリックでも開けます)">再開</button>`:''}
+     ${canReport?`<button type="button" class="sc-row-btn sc-row-report" title="このロットの帳票を表示します">帳票</button>`:''}
      ${detailHtml?`<button type="button" class="sc-row-btn sc-row-detail-toggle" title="詳細を表示">▾</button>`:''}
-     ${canDelete?`<button type="button" class="sc-row-btn sc-row-delete" title="この予定を削除します">🗑</button>`:''}
-     ${canDeleteHistory?`<button type="button" class="sc-row-btn sc-row-btn-danger sc-row-delete-history" title="このロットの測定データ（実績）を削除します。取り消せません">🗑 削除</button>`:''}
+     ${canDelete?`<button type="button" class="sc-row-btn sc-row-delete" title="この予定を削除します">外す</button>`:''}
+     ${canDeleteHistory?`<button type="button" class="sc-row-btn sc-row-btn-danger sc-row-delete-history" title="このロットの測定データ（実績）を削除します。取り消せません">削除</button>`:''}
     </span>`,
    };
    const cellHtml=k=>{
@@ -4453,28 +4464,33 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     const picked=scState.picked.has(String(e.id));
     const canPick=!!removableEntry(e)||!!canDrag;
     openRowMenu(ev,scRowMenuTitle(e),scRowMenuNote(e),[
-     canStart&&{label:'▶ 作業を開始する',note:'この予定の測定画面を開きます',
+     canStart&&{label:'作業を開始する',note:'この予定の測定画面を開きます',
                 run:()=>startWorkFromEntry(e)},
-     canResume&&{label:'▶ 測定を再開する',note:'続きから開きます',
+     canResume&&{label:'測定を再開する',note:'続きから開きます',
                  run:()=>startWorkFromEntry(e)},
-     canReport&&{label:'📄 帳票を開く',run:()=>openEntryReport(e)},
-     canLock&&{label:locked?'🔓 日時の固定を解除する':'🔒 いまの日時で固定する',
+     canReport&&{label:'帳票を開く',run:()=>openEntryReport(e)},
+     canLock&&{label:locked?'日時の固定を解除する':'いまの日時で固定する',
                note:locked?'通常の並びへ戻します':'以降ずれなくなります',
                run:()=>toggleEntryLock(e)},
-     detailHtml&&{label:'▾ 詳細（固定開始・見積の内訳）',
+     detailHtml&&{label:'詳細（固定開始・見積の内訳）',
                   run:()=>{if(detailEl){detailEl.hidden=!detailEl.hidden;
                     const t=row.querySelector('.sc-row-detail-toggle');
                     if(t){t.textContent=detailEl.hidden?'▾':'▴';
                           t.classList.toggle('active',!detailEl.hidden)}}}},
-     commentEditable(e)&&{label:'✎ 申し送りを書き直す',run:()=>startCommentEdit(e.id)},
-     canPick&&{label:picked?'☐ 選択を外す':'☑ この行を選ぶ',
+     commentEditable(e)&&{label:'申し送りを書き直す',run:()=>startCommentEdit(e.id)},
+     /* §9.220 2①。**できないときも並べて理由を書く**（§4）——メニューから
+        消すと「直せる場所が無い」のか「この行は直せない」のかが読めない。 */
+     e.kind==='設備停止'&&e.state==='予定'&&{label:'停止の内容を変える',
+       note:stopEditable(e)?'名称・所要分・備考を直します':stopEditBlockReason(e),
+       disabled:!stopEditable(e),run:()=>editStopEntry(e.id)},
+     canPick&&{label:picked?'選択を外す':'この行を選ぶ',
                note:'選んだ行はまとめて動かす・まとめて外せます',
                run:()=>setPicked(e.id,!picked)},
      {sep:true},
-     {label:'⚙ 表示列の設定を開く…',run:()=>openContentPanel()},
+     {label:'表示列の設定を開く…',run:()=>openContentPanel()},
      (canDelete||canDeleteHistory)&&{sep:true},
-     canDelete&&{label:'🗑 予定から外す',danger:true,run:()=>deleteEntry(e.id)},
-     canDeleteHistory&&{label:'🗑 実績（測定データ）を削除',danger:true,
+     canDelete&&{label:'予定から外す',danger:true,run:()=>deleteEntry(e.id)},
+     canDeleteHistory&&{label:'実績（測定データ）を削除',danger:true,
                         note:'取り消せません',run:()=>deleteHistoryEntry(e)},
     ]);
    });
@@ -4492,6 +4508,17 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     row.ondblclick=ev=>{
      if(ev.target.closest('button'))return;
      ev.preventDefault();openEntryReport(e);
+    };
+   }else if(stopEditable(e)){
+    /* 設備停止は**ダブルクリックで直せる**（§9.220 2①、利用者の指示
+       「右クリックやダブルクリックで編集・変更できるようにしたい」）。
+       着手・完了の行はここへ来ない（`canResume`／`canReport`が先に取る）
+       ので、割り当てはぶつからない。 */
+    row.classList.add('sc-row-stop-edit');
+    row.title='ダブルクリックで名称・所要分を直せます';
+    row.ondblclick=ev=>{
+     if(ev.target.closest('button'))return;
+     ev.preventDefault();editStopEntry(e.id);
     };
    }else if(commentEditable(e)){
     /* 申し送りは**その場で書く**(§9.191、利用者の指示「配置された
@@ -4991,9 +5018,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      「この予定を外します」とだけ出ていると、1件だけ外れると読める。 */
   const t=z.querySelector('.sc-drop-remove-text');
   if(t)t.innerHTML=ids.length>1
-   ?`ここへ落とすと<b>選んだ${ids.length}件をまとめて外します</b>`
+   ?`ここへ落とすと<b>選んだ${ids.length}件がまとめて対象になります</b>`
     +`<small>確認してから外します。仕掛一覧へ戻るので、また入れ直せます</small>`
-   :`ここへ落とすと<b>この予定を外します</b>`
+   :`ここへ落とすと<b>この予定が対象になります</b>`
     +`<small>確認してから外します。仕掛一覧へ戻るので、また入れ直せます</small>`;
   z.hidden=false;z.classList.remove('is-over');
  }
@@ -5225,8 +5252,13 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   return stopCategories;
  }
  // アイコンは分かっている分類だけ。知らない分類は既定の印で出す(名前は出す)。
- const STOP_CATEGORY_ICON={'保全':'🔧','段取り':'🔄','待ち':'⏳','突発':'⚡','':'📋'};
- const STOP_ICON_DEFAULT='⛔';
+ /* 分類の見出しに絵文字を出さない（§9.220 2③、利用者の指示「停止項目など
+    スケジュールの表記はデフォルトは絵文字などのアイコン不使用にしてくだ
+    さい」）。以前は分類ごとに🔧🔄⏳⚡📋を固定で出していた。**分類名と件数は
+    もともと文字で出ている**ので、絵を消しても読めなくならない（§3の
+    「色だけで伝えない」を、絵にも当てはめる）。
+    行に印を出したい現場は**行表示マスタ**で選べる（§9.201。既定はなし）
+    ——入口を2つにしないため、ここへ設定を足し戻さないこと。 */
  const STOP_CATEGORY_BASE=['保全','段取り','待ち','突発'];
  /* 追加できない停止理由。**判定は1箇所**にして、一覧とドラッグの両方が見る。 */
  const STOP_LOCKED={'突発停止':'発生したら計画担当へ連絡してください（予定として入れるものではありません）'};
@@ -5261,7 +5293,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     <div class="sc-stop-new-form" id="scStopNewForm" hidden>
      <label><span>名称</span><input type="text" id="scStopNewName" maxlength="60" placeholder="例: 定期メンテナンス"></label>
      <label><span>分類</span><select id="scStopNewCat"></select></label>
-     <label><span>標準所要分</span><input type="number" id="scStopNewMin" min="0" step="5" placeholder="任意"></label>
+     <label><span>標準所要分</span><input type="text" id="scStopNewMin" inputmode="numeric" autocomplete="off" placeholder="任意"></label>
      <p class="sc-stop-new-note" id="scStopNewNote"></p>
      <div class="sc-stop-new-actions">
       <button type="button" class="sc-stop-new-cancel" id="scStopNewCancel">やめる</button>
@@ -5330,6 +5362,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    }
    const nm=document.getElementById('scStopNewName');if(nm)nm.value='';
    const mn=document.getElementById('scStopNewMin');if(mn)mn.value='';
+   /* 登録の窓を閉じるとフォーカスが行き場を失う（§9.220 2②）。 */
+   keepStopTyping();
   }catch(e){
    if(note)note.textContent='登録できませんでした: '+e.message;
   }finally{if(btn){btn.disabled=false;btn.textContent='登録して使う'}}
@@ -5360,15 +5394,21 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  }
  function renderStopList(){
   const list=document.getElementById('scStopList');if(!list)return;
+  /* 作り直すと、押したボタン（＝いまフォーカスがある要素）ごと消える。
+     消えたあとに`<body>`へ落ちるとIMEが切れるので、打つ場所へ返す
+     （§9.220 2②）。**外にフォーカスがあるときは触らない**。 */
+  const hadFocus=list.contains(document.activeElement);
   const all=scState.stopReasons||[];
   if(!all.length){
    list.innerHTML='<div class="sc-empty-note">この設備の設備停止マスタはまだ空です。'
     +'下の「＋ 停止理由を登録」から作れます。</div>';
+   if(hadFocus)keepStopTyping();
    return;
   }
   const hits=all.filter(stopMatches);
   if(!hits.length){
    list.innerHTML=`<div class="sc-empty-note">「${esc(stopFilter)}」に当てはまる停止理由はありません（${all.length}件のうち0件）。</div>`;
+   if(hadFocus)keepStopTyping();
    return;
   }
   const usable=hits.filter(s=>!stopLockedReason(s.name));
@@ -5379,7 +5419,6 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    if(!groups.has(cat))groups.set(cat,[]);
    groups.get(cat).push(s);
   });
-  const icon=c=>STOP_CATEGORY_ICON[c]||STOP_ICON_DEFAULT;
   const label=c=>c||'分類なし';
   list.innerHTML=stopCategoryOrder().filter(c=>groups.has(c)).map(cat=>{
    const items=groups.get(cat).map(s=>
@@ -5388,7 +5427,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     +`<b>${esc(s.name)}</b>`
     +`<small>${s.standardMinutes?esc(fmtMinutes(s.standardMinutes)):'見積は自動'}</small></button>`).join('');
    return `<div class="sc-stop-group">
-    <div class="sc-stop-group-title"><span class="sc-stop-group-icon">${icon(cat)}</span>${esc(label(cat))}
+    <div class="sc-stop-group-title">${esc(label(cat))}
      <span class="sc-stop-group-count">${groups.get(cat).length}件</span></div>
     <div class="sc-stop-buttons">${items}</div>
    </div>`;
@@ -5417,6 +5456,37 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    btn.addEventListener('dragend',()=>{btn.classList.remove('is-row-dragging');window.__scDragStopReason=null});
    btn.onclick=()=>addStopReasonToSchedule(reasonId,label2);
   });
+  if(hadFocus)keepStopTyping();
+ }
+ /* ---------- 日本語入力（IME）を落とさない（§9.220 2②、利用者の報告） ----------
+    「停止項目入れ次を入れようとすると文字変換がローマ字入力に変わって
+     しまう」
+
+    起きていること: 絞り込み欄で日本語を打つ → 候補のボタンを押す →
+    **フォーカスがボタンへ移る**（Chromeはボタンでもフォーカスを取る）→
+    文字を打つ場所が無くなるのでIMEが切られる。さらに`renderStopList()`が
+    一覧を作り直すので、押したボタンごと消えて`document.activeElement`は
+    `<body>`になる。この状態から欄をクリックし直しても、Windowsの既定
+    （ウィンドウごとに入力モードを持つ）では**かな入力へは戻らず半角英数の
+    まま**なので、次の1文字目からローマ字になる。
+
+    直し方は「文字を打つ場所を絶やさない」こと——押した操作の中で
+    絞り込み欄へフォーカスを返す。`mousedown`で`preventDefault()`して
+    フォーカスを移さない手もあるが、**この一覧はドラッグで入れる位置も
+    選べる**（§9.13）ので使えない: Chromeは`mousedown`の既定動作を止めると
+    HTML5のドラッグを開始しない。
+
+    **既に別の入力欄に居るときは奪わない**（打っている最中を邪魔しない）。
+    `type=number`の欄も置かない——Chromeはあの型でIMEを切るので、そこを
+    通っただけで同じことが起きる（`scStopNewMin`を文字の欄へ直してある。
+    §9.208 ③と同じ判断）。 */
+ function keepStopTyping(){
+  const s=document.getElementById('scStopSearch');
+  if(!s||!s.offsetParent)return;
+  const a=document.activeElement;
+  if(a===s)return;
+  if(a&&a!==document.body&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.isContentEditable))return;
+  try{s.focus({preventScroll:true})}catch(err){s.focus()}
  }
  function addStopReasonToSchedule(reasonId,label){
   if(!scState.equipment)return;
@@ -5433,6 +5503,107 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    position:before?`before:${before}`:'end',stopReasonId:reasonId,
    onSuccess:r=>resolveOptimisticEntry(entry,r),onFailure:()=>discardOptimisticEntry(entry)});
   showToast&&showToast('設備停止を追加しました',`${target}の予定に追加しました(${label})`,3200);
+  /* **打つ場所を絶やさない**（§9.220 2②）。ここを外すと、次の絞り込みが
+     半角英数から始まる。 */
+  keepStopTyping();
+ }
+
+ /* ---------- 入れた設備停止を直す（§9.220 2①、利用者の指示） ----------
+    「停止項目入れると変更できないので、右クリックやダブルクリックで
+     編集・変更できるようにしたい」
+
+    以前は**入れたら最後**で、名前を間違えても所要分がずれても、いったん
+    外して入れ直すしかなかった（外す→探す→入れる→位置を直す、の4手）。
+
+    決めごと:
+     ・直せるのは**名称・所要分・備考**の3つ。区分（設備停止であること）と
+       設備は動かさない——動かせるようにすると「別の行を作る」のと同じに
+       なり、どちらの操作なのか決められない。
+     ・**入口はコメントと同じ2つ**（ダブルクリック／右クリック）。同じ
+       「予定の列に挟んだ行」なので、直し方が2通りあるのはおかしい。
+     ・**いま効いている見積とその出どころを必ず出す**（§9.114）——同じ
+       「60分」でも、設備停止マスタの標準所要分と手で入れた値では
+       打つ手が違う。空欄は「未設定」であって0分ではない。
+     ・**名称を空にできない**（何の停止か分からない行が残る）。サーバー側
+       (`plan_update`)でも断る——画面だけで守ると、別の入口から空が入る。 */
+ function stopEditable(e){
+  return !!e&&e.kind==='設備停止'&&e.state==='予定'&&!e.__pending
+    &&scState.fullControl&&!sessionBlocked();
+ }
+ /* **直せない理由を1箇所で答える**（§4）。メニューの断り書きと、押した
+    ときのトーストが同じ言葉になるようにする——2箇所で書くと食い違う。 */
+ function stopEditBlockReason(e){
+  if(!e||e.kind!=='設備停止')return 'これは設備停止の行ではありません';
+  if(e.__pending)return 'サーバーへ反映中です。反映されたら直せます';
+  if(e.state!=='予定')return '着手・完了した行の内容は変えられません（実績と食い違うため）';
+  if(!scState.fullControl)return 'この画面では直せません（スケジュールモードで開くと直せます）';
+  if(sessionBlocked())return sessionHolderMessage();
+  return '';
+ }
+ function stopReasonNames(){
+  return [...new Set((scState.stopReasons||[])
+    .map(s=>String(s.name||'').trim()).filter(Boolean))];
+ }
+ async function editStopEntry(id){
+  const e=(scState.entries||[]).find(x=>String(x.id)===String(id));
+  if(!e)return;
+  if(!stopEditable(e)){
+   showToast&&showToast('この行は直せません',stopEditBlockReason(e),4500);
+   return;
+  }
+  const before={title:String(e.title||''),
+                minutes:(e.estimateMinutes==null||e.estimateMinutes===''
+                         ?'':String(e.estimateMinutes)),
+                remark:String(e.remark||'')};
+  const est=e.estimate||{};
+  const nowText=Number.isFinite(Number(est.minutes))
+    ?`${fmtMinutes(Number(est.minutes))}（${esc(estimateSourceLabel(est.source))}）`
+    :'決まっていません';
+  const ok=await confirmModal({
+   eyebrow:'STOP',title:'設備停止の内容を変える',
+   bodyHtml:`<div class="sc-stop-edit">
+     <label class="sc-stop-edit-row"><span>名称</span>
+      <input type="text" id="scStopEditName" maxlength="60" list="scStopEditNames"
+        value="${esc(before.title)}" autocomplete="off"></label>
+     <datalist id="scStopEditNames">${stopReasonNames()
+        .map(n=>`<option value="${esc(n)}">`).join('')}</datalist>
+     <label class="sc-stop-edit-row"><span>所要分</span>
+      <input type="text" id="scStopEditMin" inputmode="numeric" autocomplete="off"
+        value="${esc(before.minutes)}" placeholder="空欄＝自動で見積る"></label>
+     <p class="confirm-modal-note">いま効いている見積: <b>${nowText}</b>。
+      空欄にすると設備停止マスタの標準所要分から自動で見積ります
+      （<b>0分は「0分の停止」</b>として扱われます）。</p>
+     <label class="sc-stop-edit-row"><span>備考</span>
+      <input type="text" id="scStopEditRemark" maxlength="200"
+        value="${esc(before.remark)}" autocomplete="off"></label>
+     <p class="confirm-modal-note">直せるのはこの3つです。設備と区分は変えられません
+      ——別の設備・別の区分にしたいときは、いったん外して入れ直してください。</p>
+    </div>`,
+   confirmLabel:'変える',cancelLabel:'やめる'});
+  const name=String(($('#scStopEditName')||{}).value||'').trim().slice(0,60);
+  const minRaw=String(($('#scStopEditMin')||{}).value||'').trim();
+  const remark=String(($('#scStopEditRemark')||{}).value||'').trim().slice(0,200);
+  if(!ok)return;
+  if(!name){showToast&&showToast('名称が空です','何の停止かが分からない行になります',3600);return}
+  const minutes=minRaw===''?null:Number(minRaw);
+  if(minRaw!==''&&(!Number.isFinite(minutes)||minutes<0)){
+   showToast&&showToast('所要分が数字ではありません','空欄にすると自動で見積ります',3600);return;
+  }
+  if(name===before.title&&minRaw===before.minutes&&remark===before.remark)return;
+  /* **書き始めたあとに読み取り専用になることがある**（別の端末が編集権を
+     奪ったとき。§9.211 ②）。送る直前にもう一度見る。 */
+  if(sessionBlocked()){showToast&&showToast('保存できません',sessionHolderMessage(),5000);return}
+  const undo={title:e.title,estimateMinutes:e.estimateMinutes,remark:e.remark};
+  e.title=name;e.estimateMinutes=minutes;e.remark=remark;
+  renderTimeline();
+  queuePlanOp({op:'update',id:e.id,title:name,estimateMinutes:minutes,remark:remark,
+   /* **所要分を変えるとその後ろの時刻が全部動く**（§9.185）。取り直しは
+      書込キューが持っている——`opShiftsTime`は「titleだけの更新」以外を
+      時刻が動く操作と数えるので、`estimateMinutes`を載せたこの操作は
+      そのまま`loadPlan(true)`まで行く。**ここで自分でも呼ばないこと**
+      （同じ問い合わせが2本飛ぶ）。 */
+   onFailure:()=>{Object.assign(e,undo);renderTimeline();
+    showToast&&showToast('設備停止を変えられませんでした','元の内容へ戻しました',6000)}});
  }
 
  /* ---------- 申し送り（コメント）を挟む(§9.189、利用者の指示) ----------

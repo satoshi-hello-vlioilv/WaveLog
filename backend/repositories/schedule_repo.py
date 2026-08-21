@@ -237,9 +237,19 @@ def plan_update(c_share,plan_id,uid,pc='',**fields):
  row=cur.fetchone()
  if not row:raise ValueError('指定の予定が見つかりません。')
  if 'title' in fields:
-  if str(row[1] or '')!='コメント':
-   raise ValueError('本文を書き換えられるのはコメントだけです。')
+  # コメントの本文(§9.191)と、設備停止の名称(§9.220 2①、利用者の指示
+  # 「停止項目入れると変更できないので、右クリックやダブルクリックで
+  #  編集・変更できるようにしたい」)。**作業の行は書き換えられない**
+  # ——あちらの名称はロット番号から作られる表示で、書き換えると仕掛の
+  # どのロットかが辿れなくなる。
+  kind=str(row[1] or '')
+  if kind not in ('コメント','設備停止'):
+   raise ValueError('名称を書き換えられるのは申し送りと設備停止だけです。')
   fields['title']=str(fields['title'] or '')[:200]
+  # **設備停止の名称は空にできない**（何の停止か分からない行になる）。
+  # コメントは空を通す（§9.191。枠を置いてから書くため）。
+  if kind=='設備停止' and not fields['title'].strip():
+   raise ValueError('設備停止の名称を入力してください。')
  sets=[];params=[]
  for key,col in _PLAN_UPDATE_FIELDS.items():
   if key in fields:

@@ -164,7 +164,7 @@ let b=null;
            dragging:document.querySelectorAll('.sc-row-line.sc-dragging').length};
   },made[0]);
   rec('まとめて掴むと受け皿が件数を言う',
-      !zone.hidden&&/選んだ3件をまとめて外します/.test(zone.text),zone.text.slice(0,60));
+      !zone.hidden&&/選んだ3件がまとめて対象になります/.test(zone.text),zone.text.slice(0,60));
   rec('運んでいる行を全部そう見せる',zone.dragging===3,String(zone.dragging));
 
   /* ---- 5) まとめて掴んだままでも並べ替えられる(§9.177で§9.170を改訂) ----

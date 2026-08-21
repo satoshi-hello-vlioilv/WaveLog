@@ -246,7 +246,11 @@
  const noteOf=(def,v)=>String((def.choiceNotes||{})[v]||'');
  /* selectの選択肢を「値と表示」の組で読む。**先頭の空を落とさない**
     ——「まだ選んでいない」へ戻せなくなる（§9.203と同じ罠）。 */
- function optionsOf(sel){return [...sel.options].map(o=>({v:o.value,t:o.text}))}
+ /* **手打ちの席は候補に混ぜない**（§9.220 ③）。混ぜると、打った値が
+    次の組み直しで「選択肢の1つ」としてボタンに並ぶ。 */
+ function optionsOf(sel){
+  return [...sel.options].filter(o=>o.dataset.opFree!=='1').map(o=>({v:o.value,t:o.text}));
+ }
  /* **値を持つのは`<select>`とはかぎらない**（§9.219 ③）。数値の欄
     （縦割数・横割数や自由項目の数値）は`<input>`なので、器を被せる側は
     どちらでも引ける口から取る。**ここを1箇所にしておくこと**——2箇所で
@@ -254,13 +258,30 @@
  function valueEl(host){
   return host.querySelector(':scope>select')||host.querySelector(':scope>input:not([type=hidden])');
  }
- /* 数値の刻み。整数は1、小数は桁から作る（小数2桁なら0.01）。 */
+ /* 数値の刻み。**マスタで決めていればそれ**（§9.220 ⑤、利用者の指示
+    「ステップ入力に関して、ステップ量も決められるようにしてほしい」）。
+    決めていなければ今までどおり——整数は1、小数は桁から作る（小数2桁なら
+    0.01）。**0を「決めた」と読まないこと**（押しても動かない道具になる）
+    ので、サーバーの`normalize_step()`が0と負をnullへ倒している。 */
  function stepOf(def){
+  const fixed=Number(def&&def.step);
+  if(Number.isFinite(fixed)&&fixed>0)return fixed;
   if(isInteger(def.type)||!isNumeric(def.type))return 1;
   const d=Number.isFinite(Number(def.decimals))?Number(def.decimals):1;
   return Math.pow(10,-Math.max(0,Math.min(4,d)));
  }
- const numOr=(v,alt)=>{const n=Number(v);return Number.isFinite(n)?n:alt};
+ /* **`null`・空欄を0と読まないこと**（§9.220 ⑤で判明した既存の不具合）。
+    `Number(null)`も`Number('')`も**0で、しかも有限**なので、素の
+    `Number.isFinite`だけで見ると「上下限を決めていない」が「上下限は0」に
+    化ける。実害は2つ出ていた——①ステッパーが`Math.min(hi,v)`で必ず0へ
+    丸められ**＋を押しても増えない** ②`lo===null||hi===null`が成立せず、
+    上下限の無い項目でも**目盛0〜0のスライダー**が出る（「上下限を決めると
+    スライダーになります」の案内が一度も出なかった）。
+    §9.160の「空欄を0と読まないこと」と同じ罠。 */
+ const numOr=(v,alt)=>{
+  if(v===null||v===undefined||v==='')return alt;
+  const n=Number(v);return Number.isFinite(n)?n:alt;
+ };
  function widgetHost(host){
   let box=host.querySelector(':scope>.opf-widget');
   if(!box){box=document.createElement('div');box.className='opf-widget';host.appendChild(box)}
@@ -310,6 +331,15 @@
    cur.textContent=(hit?hit.text:v)||'選ぶ';
    cur.classList.toggle('is-empty',!v||v==='-');
   }
+  /* 手打ち欄（§9.220 ③）。**候補から選んだときは空にする**——選んだ値が
+     打ち込み欄にも出ていると、どちらが効いているのか分からなくなる
+     （同じ値を2箇所に出さない・§8）。打っている最中は触らない。 */
+  const fx=box.querySelector('.opf-free-in');
+  if(fx&&document.activeElement!==fx){
+   const own=isFreeValue(sel,v)?v:'';
+   if(fx.value!==own)fx.value=own;
+  }
+  if(fx)box.classList.toggle('is-free-on',isFreeValue(sel,v));
  }
  /* 数値の器（§9.219 ③、利用者の指示「UIの種類を増やしたり」）。
     **素の欄は消さない**——選択肢のように「候補から選ぶ」のではなく「打つ」
@@ -388,6 +418,64 @@
   syncWidget(host);
   return true;
  }
+ /* ---------- 手打ち（§9.220 ③、利用者の指示） ----------
+    「マスタによる候補選択のパターンでも手打ち入力が可能なモードを追加して
+     ほしいです」
+
+    **値を持つのは`<select>`のまま**（§9.218 ②の約束を崩さない）。候補に
+    無い値は`<option>`を**その場で足してから**入れる——足さずに代入すると
+    `select.value`は空文字になり、**打った値が黙って消える**（選択肢に無い
+    値を`select.value`へ入れる罠は§9.203・§9.204で2度踏んでいる）。 */
+ function addOption(sel,v){
+  const s=String(v==null?'':v);
+  if(!s)return;
+  if([...sel.options].some(o=>o.value===s))return;
+  /* **手打ちの置き場は1つだけ**。1文字打つたびに`<option>`を足すと
+     「む」「むら」「むらさ」…が溜まり、次に組み直したとき**打ちかけの
+     文字がそのままボタンとして並ぶ**。既にある手打ちの席を書き換える。 */
+  const slot=sel.querySelector('option[data-op-free="1"]');
+  const o=slot||document.createElement('option');
+  o.value=s;o.textContent=s;o.dataset.opFree='1';
+  if(!slot)sel.appendChild(o);
+ }
+ function setFree(sel,v){addOption(sel,v);setValue(sel,String(v==null?'':v))}
+ /* いまの値が「候補から選んだもの」か「打ったもの」か。**印は候補の側に
+    持たせる**——`<option>`は`apply()`でも足されるので、値だけを見ると
+    記録から戻した手打ちを候補と読み違える。 */
+ function isFreeValue(sel,v){
+  if(!v)return false;
+  const hit=[...sel.options].find(o=>o.value===v);
+  return !hit||hit.dataset.opFree==='1';
+ }
+ function freeBoxHtml(){
+  return '<div class="opf-free"><input type="text" class="opf-free-in" autocomplete="off"'
+   +' placeholder="候補にない値を打つ" aria-label="候補にない値を打つ">'
+   +'<button type="button" class="opf-free-clear" title="打った値を消して候補から選び直す">戻す</button></div>';
+ }
+ /* 打ち込み欄の配線。**`input`のたびに`select`へ書く**（§9.208 ②の
+    「打った時点でレコードへ入れる」と同じ考え方）。空にしたら候補へ戻す。 */
+ function wireFreeBox(box,sel,host){
+  const inp=box.querySelector('.opf-free-in');
+  if(!inp)return;
+  inp.addEventListener('input',()=>{
+   const v=inp.value.trim();
+   if(v)setFree(sel,v);else setValue(sel,'');
+   syncWidget(host);
+  });
+  const clr=box.querySelector('.opf-free-clear');
+  if(clr)clr.onclick=e=>{e.preventDefault();inp.value='';setValue(sel,'');syncWidget(host);inp.focus()};
+ }
+ /* 形ごとの器とボタンの名前。**形が違うものは別の名前で持つ**（§9.220 ①、
+    利用者の指摘「ラジオボタンやタブがほぼ同じデザインになっている」）
+    ——以前は`ラジオ`も`タブ`も同じ`.opf-seg-btn`で、違いは連なっているか
+    だけだった。名前が2つあって見た目が同じなら、選ばせる意味が無い。 */
+ const CHOICE_SHAPES={
+  'ラジオ':    {box:'opf-radio',btn:'opf-radio-btn',dot:true},
+  'セグメント':{box:'opf-seg',  btn:'opf-seg-btn'},
+  'タブ':      {box:'opf-tabs', btn:'opf-tab-btn'},
+  'ボタン群':  {box:'opf-chips',btn:'opf-chip-btn'},
+ };
+
  /* 器を1回だけ作る。**選択肢が変わったら作り直す**（内径のプリセットは
     仕掛データが届いてから入る・§9.204）ので、署名で見分ける。 */
  function buildWidget(def,host,kind){
@@ -395,37 +483,55 @@
   if(NUM_WIDGETS.indexOf(kind)>=0)return buildNumberWidget(def,host,kind);
   const sel=host.querySelector(':scope>select');
   if(!sel)return false;
+  const free=!!def.freeText;
   const opts=optionsOf(sel);
-  const sig=kind+'|'+opts.map(o=>o.v+''+o.t).join('');
+  const shape=CHOICE_SHAPES[kind];
+  const sig=kind+(free?'+free':'')+'|'+opts.map(o=>o.v+'\u0001'+o.t).join('\u0002');
   const box=widgetHost(host);
   if(box.dataset.sig===sig){syncWidget(host);return true}
   box.dataset.sig=sig;
   host.classList.add('opf-alt');
-  sel.classList.add('opf-native-off');
-  sel.setAttribute('tabindex','-1');
-  if(kind==='一覧'){
+  /* **プルダウン＋手打ちのときは素の`<select>`を隠さない**（§9.220 ③）
+     ——形はプルダウンのままで「打つ場所を横に足す」のが指示の内容なので、
+     選ぶ手段を取り上げてはいけない。 */
+  const hideNative=kind!==WIDGET_SELECT;
+  sel.classList.toggle('opf-native-off',hideNative);
+  if(hideNative)sel.setAttribute('tabindex','-1');else sel.removeAttribute('tabindex');
+  if(kind===WIDGET_SELECT){
+   /* プルダウンのまま「打つ場所」だけを足す形（§9.220 ③）。 */
+   box.className='opf-widget opf-combo';
+   box.innerHTML=freeBoxHtml();
+   wireFreeBox(box,sel,host);
+  }else if(kind==='一覧'){
    box.className='opf-widget opf-pick';
    box.innerHTML='<button type="button" class="opf-pick-btn">'
-    +'<span class="opf-pick-now">選ぶ</span><span class="opf-pick-caret" aria-hidden="true">▾</span></button>';
+    +'<span class="opf-pick-now">選ぶ</span><span class="opf-pick-caret" aria-hidden="true">▾</span></button>'
+    +(free?freeBoxHtml():'');
    box.querySelector('.opf-pick-btn').onclick=e=>{e.preventDefault();openPicker(def,host,sel)};
+   if(free)wireFreeBox(box,sel,host);
   }else{
-   box.className='opf-widget opf-seg'+(kind==='ラジオ'?' opf-seg-radio':' opf-seg-tab');
+   box.className='opf-widget '+(shape?shape.box:'opf-seg');
    box.setAttribute('role','radiogroup');
    box.setAttribute('aria-label',def.name);
-   box.innerHTML=opts.map(o=>{
+   const btnCls=shape?shape.btn:'opf-seg-btn';
+   const dot=shape&&shape.dot?'<i class="opf-dot" aria-hidden="true"></i>':'';
+   box.innerHTML='<div class="opf-shape">'+opts.map(o=>{
     const label=(o.v===''||o.t==='-')?'—':o.t;
     const tip=noteOf(def,o.v);
     return '<button type="button" role="radio" aria-checked="false" tabindex="-1"'
-     +' class="opf-seg-btn" data-opv="'+esc(o.v)+'"'+(tip?' title="'+esc(tip)+'"':'')
-     +'>'+esc(label)+'</button>';
-   }).join('');
+     +' class="'+btnCls+'" data-opv="'+esc(o.v)+'"'+(tip?' title="'+esc(tip)+'"':'')
+     +'>'+dot+'<span class="opf-btn-text">'+esc(label)+'</span></button>';
+   }).join('')+'</div>'+(free?freeBoxHtml():'');
    box.querySelectorAll('[data-opv]').forEach(b=>{
     b.onclick=e=>{e.preventDefault();setValue(sel,b.dataset.opv);syncWidget(host)};
    });
+   if(free)wireFreeBox(box,sel,host);
    /* **左右キーで移れること**（ラジオグループの約束）。押せるのにキーボードで
-      辿れない部品を作らない。 */
+      辿れない部品を作らない。**打ち込み欄の中では効かせない**——文字を
+      打っているときに矢印でカーソルを動かせないのは壊れて見える。 */
    box.onkeydown=e=>{
     if(['ArrowRight','ArrowLeft','ArrowUp','ArrowDown'].indexOf(e.key)<0)return;
+    if(e.target&&e.target.classList&&e.target.classList.contains('opf-free-in'))return;
     const btns=[...box.querySelectorAll('[data-opv]')];
     if(!btns.length)return;
     e.preventDefault();
@@ -711,7 +817,10 @@
      const kind=widgetOf(d);
      /* **`<select>`だけの話ではない**（§9.219 ③）。数値・自由記述の欄は
         `<input>`なので、値を持つ要素が在れば器を被せる。 */
-     if(kind!==WIDGET_SELECT&&valueEl(el))buildWidget(d,el,kind);
+     /* **プルダウンでも手打ちが要る**（§9.220 ③）——形はそのままで
+        「打つ場所」だけを足すので、器を被せる判断は2つの事実の和になる。 */
+     const needsBox=kind!==WIDGET_SELECT||(d.freeText&&el.querySelector(':scope>select'));
+     if(needsBox&&valueEl(el))buildWidget(d,el,kind);
      else stripWidget(el);
     });
    });
@@ -770,7 +879,41 @@
    }
    el.value=v;
   });
+  applyInitials();
   syncWidgets();
+ }
+ /* ---------- 初期値（§9.220 ②、利用者の指示） ----------
+    「入力の方法によらず、初期値登録機能の実装をお願いします」
+
+    決めごと:
+     ・**まだ記録が無い欄にだけ入れる**。`settings.opData`に鍵があれば
+       —— 空文字であっても —— 触らない。空にしたのは利用者の判断で、
+       開き直すたびに初期値へ戻るのでは「消せない欄」になる。
+     ・**入れたら記録にも書く**（§9.208 ②「打った時点でレコードへ入れる」）。
+       画面にだけ出して記録に入れないと、保存せずに閉じた人と保存した人で
+       中身が変わる。
+     ・**選択肢に無い初期値も入れる**（候補を後から消した場合。`addOption`
+       で足してから入れる——足さずに代入すると黙って空になる）。
+     ・**組み込みの欄は対象外**。内径の仕掛由来プリセット（§9.204）や
+       条数の上限（§9.210 ⑤）と、どちらが勝つのか決められない。だから
+       マスタも組み込み行には初期値を持たせない（サーバーが空で返す）。 */
+ function applyInitials(){
+  const bag=store();
+  defs.forEach(d=>{
+   const init=String(d.initial==null?'':d.initial);
+   if(!init||d.builtin)return;
+   if(bag&&Object.prototype.hasOwnProperty.call(bag,d.name))return;
+   const el=controlOf(d);
+   if(!el)return;
+   if(String(el.value||'')!=='')return;
+   if(el.tagName==='SELECT')addOption(el,init);
+   el.value=init;
+   /* **`remember()`は使わない**——あちらは`markDirty()`まで呼ぶので、
+      記録を開いただけで「未保存の変更あり」になる。初期値は利用者が
+      打ったものではないので、開いた瞬間に編集を名乗らせない。
+      保存のときは`collect()`が画面から拾い直すので取りこぼさない。 */
+   if(bag)bag[d.name]=init;
+  });
  }
  /* **`.value`への代入では`change`が飛ばない**（DOMも変わらない）ので、
     記録の復元・仕掛由来のプリセット（§9.204の内径）のあとは、こちらから

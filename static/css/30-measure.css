@@ -2186,50 +2186,133 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
    **器の側で詳細度を1つ上げて宣言する**（§9.206・§9.210 ①と同じ罠）。
    高さは`min-height`なので、14px×1.2=16.8pxは`--ctl-h-sm`(30px)に収まる。 */
 .opf-widget .opf-seg-btn,
+.opf-widget .opf-radio-btn,
+.opf-widget .opf-tab-btn,
+.opf-widget .opf-chip-btn,
 .opf-widget .opf-pick-btn,
 .opf-widget .opf-step-btn,
 .opf-widget .opf-pad-btn,
+.opf-widget .opf-free-in,
 .opf-widget .opf-memo-in{font-size:var(--fs)}
 .opf-native-off{
   position:absolute;width:1px;height:1px;padding:0;margin:0;border:0;
   opacity:0;pointer-events:none;overflow:hidden;
 }
 .opf-alt{position:relative}
-.opf-widget{display:flex;flex-wrap:wrap;gap:2px;min-width:0;width:100%}
-.opf-seg-btn{
-  flex:1 1 auto;min-width:0;min-height:var(--ctl-h-sm);padding:0 var(--space-2);
-  border:1px solid var(--line-mid);border-radius:var(--radius-xs);
-  background:var(--surface);color:var(--ink-2);
-  font-size:var(--fs-sm);font-weight:700;line-height:1.2;cursor:pointer;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+/* ---------- 形（§9.220 ①、利用者の指示） ----------
+   「ラジオボタンやタブがほぼ同じデザインになっている。ラジオボタンは
+    丸ぽちみたいなのを想像してました。古臭いカクカクデザインなので、
+    ラジオボタンをきちんと実装するだけでなく、セグメンテッドコントロールや
+    ボタングループなど、もう少しスタイリッシュモダンなデザインで調和させた
+    形で適用してほしいです。シンプルだけどきれいに見えるように」
+
+   4つの形は**役割で描き分ける**。名前が違うのに見た目が同じなら、選ばせる
+   手間だけが残る（以前の`ラジオ`と`タブ`がまさにそれで、違いは「連なって
+   いるか」だけだった）。
+     ラジオ     … 丸ぽち。**縦に読む**もの。線も面も持たない（一覧の一部）
+     セグメント … 1本の帯を仕切る。**選んだ札だけが浮く**（排他が一目で分かる）
+     タブ       … 下線で示す。**面を持たない**ので、下に続く欄と一体に読める
+     ボタン群   … 独立した札。数が多くても折り返して読める
+   **色は1色（teal）で通す**——ここは「選んだ／選んでいない」の2値しか
+   語らないので、色を増やすと意味の無い色が画面に増える（§3・色彩心理）。
+   面の濃さと文字の太さで段を作り、選択は必ず**文字の太さでも**示す
+   （色だけで伝えない）。 */
+.opf-widget{display:flex;flex-direction:column;gap:var(--gap-tight);min-width:0;width:100%}
+.opf-shape{display:flex;min-width:0;max-width:100%}
+/* --- 共通の押し味 --- */
+.opf-radio-btn,.opf-seg-btn,.opf-tab-btn,.opf-chip-btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:var(--gap-tight);
+  min-width:0;min-height:var(--ctl-h-sm);padding:0 var(--space-2);
+  background:none;border:0;box-shadow:none;
+  color:var(--ink-2);font-size:var(--fs-sm);font-weight:600;line-height:1.2;
+  cursor:pointer;white-space:nowrap;
 }
-.opf-seg-btn:hover{background:var(--surface-2)}
-.opf-seg-btn.is-on{background:var(--teal);border-color:var(--teal);color:#fff}
-/* タブっぽい形は**連なって1つの帯**に見せる（境目は内側の線1本）。 */
-.opf-seg-tab{gap:0}
-.opf-seg-tab .opf-seg-btn{border-radius:0;margin-left:-1px}
-.opf-seg-tab .opf-seg-btn:first-child{border-radius:var(--radius-xs) 0 0 var(--radius-xs);margin-left:0}
-.opf-seg-tab .opf-seg-btn:last-child{border-radius:0 var(--radius-xs) var(--radius-xs) 0}
-.opf-seg-tab .opf-seg-btn.is-on{position:relative;z-index:1}
-/* ラジオは**縦に読む**もの。器が狭いときだけ折り返す。 */
-.opf-seg-radio .opf-seg-btn{flex:0 1 auto}
+.opf-btn-text{min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* --- ラジオ: 丸ぽち。器も枠も持たない --- */
+.opf-radio .opf-shape{flex-wrap:wrap;gap:var(--space-1) var(--space-3)}
+.opf-radio-btn{justify-content:flex-start;padding:0 var(--space-1)}
+.opf-dot{
+  flex:0 0 auto;width:14px;height:14px;border-radius:var(--radius-round);
+  border:2px solid var(--line-strong);background:var(--surface);
+  transition:border-color .15s,box-shadow .15s;
+}
+.opf-radio-btn:hover .opf-dot{border-color:var(--teal)}
+.opf-radio-btn.is-on{color:var(--ink);font-weight:800}
+.opf-radio-btn.is-on .opf-dot{
+  border-color:var(--teal);
+  box-shadow:inset 0 0 0 3px var(--surface),inset 0 0 0 7px var(--teal);
+}
+/* --- セグメント: 1本の帯。選んだ札だけが浮く --- */
+.opf-seg .opf-shape{
+  gap:0;padding:2px;border-radius:var(--radius-pill);
+  background:var(--surface-2);border:1px solid var(--line-soft);
+}
+.opf-seg-btn{flex:1 1 0;border-radius:var(--radius-pill)}
+.opf-seg-btn:hover{color:var(--ink)}
+.opf-seg-btn.is-on{
+  background:var(--surface);color:var(--teal);font-weight:800;
+  box-shadow:0 1px 3px color-mix(in srgb, var(--ink) 18%, transparent);
+}
+/* --- タブ: 下線だけ。面を持たない --- */
+.opf-tabs .opf-shape{gap:var(--space-3);border-bottom:1px solid var(--line-soft)}
+.opf-tab-btn{padding:0 var(--space-1);border-bottom:2px solid transparent;margin-bottom:-1px}
+.opf-tab-btn:hover{color:var(--ink);border-bottom-color:var(--line-mid)}
+.opf-tab-btn.is-on{color:var(--teal);font-weight:800;border-bottom-color:var(--teal)}
+/* --- ボタン群: 独立した札。折り返す --- */
+.opf-chips .opf-shape{flex-wrap:wrap;gap:var(--gap-tight)}
+.opf-chip-btn{
+  border:1px solid var(--line-mid);border-radius:var(--radius-pill);background:var(--surface);
+}
+.opf-chip-btn:hover{background:var(--surface-2)}
+.opf-chip-btn.is-on{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:800}
 /* 一覧から選ぶ（説明つき）。押すと浮き窓が開く。 */
-.opf-pick{display:block}
+/* 手打ちの欄が付くことがあるので**縦に積む**（横に並べると、器いっぱいの
+   ボタンと打ち込み欄が押し合って両方とも読めなくなる）。 */
+.opf-pick{display:flex;flex-direction:column;gap:var(--gap-tight)}
 .opf-pick-btn{
   display:flex;align-items:center;gap:var(--gap-tight);width:100%;
   min-height:var(--ctl-h-sm);padding:0 var(--space-2);
-  border:1px solid var(--line-mid);border-radius:var(--radius-xs);
+  border:1px solid var(--line-mid);border-radius:var(--radius-sm);
   background:var(--surface);color:var(--ink);font-size:var(--fs-sm);cursor:pointer;
 }
 .opf-pick-now{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;
   white-space:nowrap;text-align:left;font-weight:700}
 .opf-pick-now.is-empty{color:var(--muted);font-weight:400}
 .opf-pick-caret{color:var(--ink-3)}
+/* ---------- 手打ち（§9.220 ③） ----------
+   候補にない値も打てる欄。**候補の下に置く**——上に置くと「まず打つ欄」に
+   見えてしまい、候補があることに気づかれない。打った値が効いている間は
+   帯を立てて、いまどちらが効いているのかを**文字と面の両方**で示す。 */
+.opf-free{display:flex;align-items:center;gap:var(--gap-tight);min-width:0}
+.opf-free-in{
+  flex:1 1 auto;min-width:0;height:var(--ctl-h-xs);padding:0 var(--space-2);
+  border:1px dashed var(--line-mid);border-radius:var(--radius-sm);
+  background:var(--surface);color:var(--ink);
+}
+.opf-free-in::placeholder{color:var(--muted)}
+.opf-free-clear{
+  flex:0 0 auto;height:var(--ctl-h-xs);padding:0 var(--space-2);
+  border:1px solid var(--line-soft);border-radius:var(--radius-sm);
+  background:var(--surface);color:var(--ink-3);font-size:var(--fs-micro);cursor:pointer;
+  visibility:hidden;
+}
+.opf-widget.is-free-on .opf-free-in{
+  border-style:solid;border-color:var(--teal);font-weight:700;
+}
+.opf-widget.is-free-on .opf-free-clear{visibility:visible}
+/* プルダウン＋手打ちのときは`<select>`が生きているので、器は横並びにする。 */
+.opf-combo{flex-direction:row;align-items:center}
 /* 未入力・公差外の印を**ボタン側へ移す**（selectは見えないので）。 */
-select.validation-required~.opf-widget .opf-seg-btn,
-select.validation-required~.opf-widget .opf-pick-btn{border-color:var(--required)}
-select.validation-ng~.opf-widget .opf-seg-btn,
-select.validation-ng~.opf-widget .opf-pick-btn{border-color:var(--danger)}
+select.validation-required~.opf-widget .opf-chip-btn,
+select.validation-required~.opf-widget .opf-pick-btn,
+select.validation-required~.opf-widget .opf-free-in,
+select.validation-required~.opf-widget .opf-seg .opf-shape{border-color:var(--required)}
+select.validation-required~.opf-widget .opf-dot{border-color:var(--required)}
+select.validation-ng~.opf-widget .opf-chip-btn,
+select.validation-ng~.opf-widget .opf-pick-btn,
+select.validation-ng~.opf-widget .opf-free-in,
+select.validation-ng~.opf-widget .opf-seg .opf-shape{border-color:var(--danger)}
+select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
 /* ---------- 説明つきで選ぶ浮き窓 ----------
    **器の外（body直下）へ`position:fixed`で出す**（§9.201）。 */
 .opf-picker{
@@ -2267,7 +2350,7 @@ select.validation-ng~.opf-widget .opf-pick-btn{border-color:var(--danger)}
    「押して決める道具」を置く。**素の欄は消さない**（打つ欄なので、打てる
    場所が要る）ので、器は欄の**隣**に並ぶ——`.opf`は縦積みなので、
    ここだけ横に並べる。 */
-.opf-step{display:flex;gap:var(--gap-tight)}
+.opf-step{display:flex;flex-direction:row;gap:var(--gap-tight)}
 .opf-step-btn{
   flex:1 1 0;min-width:0;min-height:var(--ctl-h-sm);
   border:1px solid var(--line);border-radius:var(--radius-xs);

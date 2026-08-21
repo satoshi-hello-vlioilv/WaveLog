@@ -811,6 +811,9 @@
 .op-tile-gear{margin-left:auto;color:var(--nav);font-size:var(--fs-micro);font-weight:700;opacity:0}
 .op-tile:hover .op-tile-gear,.op-tile:focus-visible .op-tile-gear{opacity:1}
 .op-chip-widget{background:var(--pale);color:var(--teal)}
+/* §9.220 ②③。盤の上で「初期値がある／手打ちできる」が分かるようにする。 */
+.op-chip-initial{background:var(--surface-3);color:var(--ink-2)}
+.op-chip-free{background:var(--warn-bg);color:var(--warn-fg)}
 /* ---------- 1項目の設定はモーダル（§9.218 ①） ----------
    左に実物、右に決めること。**触った結果がその場で見えないと、幅も
    選ばせ方も当たっているか分からない**（列の設定パネルと同じ作法・§9.105）。 */
@@ -916,6 +919,30 @@
 .op-choice-row>button{min-height:var(--ctl-h-xs);padding:0}
 .op-choice-add{display:flex;gap:var(--gap-tight);flex:1 1 100%;min-width:0}
 .op-choice-add input{flex:1 1 0;min-width:0}
+/* ---------- 選択肢のまとまり名のサジェスト（§9.220 ④） ----------
+   **理由と実際の値を必ず添える**（§6）。名前だけを並べると「なぜこれが
+   勧められているのか」が読めず、押す前に開いて確かめることになる。 */
+.op-suggest{display:flex;flex-wrap:wrap;gap:var(--gap-tight);flex:1 1 100%;min-width:0;
+  align-items:stretch}
+.op-suggest-lead{flex:1 1 100%;color:var(--ink-3);font-size:var(--fs-badge);font-weight:700}
+.op-suggest-btn{
+  display:flex;flex-direction:column;align-items:flex-start;gap:1px;
+  min-width:0;max-width:var(--w-lg);padding:var(--space-1) var(--space-2);
+  border:1px dashed var(--line-mid);border-radius:var(--radius-sm);
+  background:var(--surface);cursor:pointer;text-align:left;
+}
+.op-suggest-btn:hover{border-style:solid;border-color:var(--teal);background:var(--pale)}
+.op-suggest-btn>b{color:var(--ink);font-size:var(--fs-sm);font-weight:800}
+.op-suggest-btn>small{color:var(--ink-3);font-size:var(--fs-micro)}
+.op-suggest-btn>i{color:var(--muted);font-size:var(--fs-micro);font-style:normal;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+/* 初期値が候補に無いことの断り書き（§9.220 ②）。**色だけで伝えない**ので
+   文で理由まで書く（この帯は文が長いので折り返す）。 */
+.op-warn-chip{
+  flex:1 1 100%;min-width:0;padding:2px var(--space-2);
+  border-radius:var(--radius-xs);background:var(--warn-bg);color:var(--warn-fg);
+  font-size:var(--fs-badge);font-weight:700;
+}
 .op-modal-foot{
   display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;
   padding:var(--pad-row) var(--space-3);border-top:1px solid var(--line-soft);

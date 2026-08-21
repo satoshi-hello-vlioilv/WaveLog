@@ -380,7 +380,9 @@
       読めない幅になり、書いた意味が無くなる。 */
    if(item.e.kind==='コメント'){
     return head2+`<tr class="sp-row-comment" data-row="${i}">`
-      +`<td colspan="${head.length}">💬 ${esc((item.e.title||'').trim())}</td></tr>`;
+      /* 紙にも絵文字を出さない（§9.220 2③）。白黒コピーで潰れるうえ、
+      現場へ配る紙は文字だけのほうが読める。 */
+   +`<td colspan="${head.length}"><b>申し送り</b> ${esc((item.e.title||'').trim())}</td></tr>`;
    }
    return head2+`<tr class="${item.e.kind!=='作業'?'sp-row-stop':''}" data-row="${i}">`
      +`${cellsOf(item,from+i,cols)}</tr>`;
