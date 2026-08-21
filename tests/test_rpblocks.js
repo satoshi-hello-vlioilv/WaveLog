@@ -5,7 +5,7 @@
    (グリッド化)も組み換えできるように／汎用的な構造に」。
 
    ここで固定するのは5点。
-     1. 紙は12マスの粗いグリッドで、塊が`grid-column:span N`で載る
+     1. 紙は24マス×48段のグリッドで、塊が`grid-column:span N`で載る（§9.222 ②）
      2. 組み換え中だけ操作帯が出る（**紙には1つも出ない**）
      3. 触った結果がその場の紙に出る（幅・隠す・並べ替え）
      4. 「やめる」で開いた時点へ戻り、「保存」でサーバーに残る
@@ -52,13 +52,13 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
   await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
   await settle(page);
 
-  /* ---- 1) 紙は12マスの粗いグリッド ---- */
+  /* ---- 1) 紙は24マス×48段（§9.222 ②。利用者の指示で12→24・12→48へ） ---- */
   const base=await page.evaluate(()=>({
    cols:getComputedStyle(document.querySelector('.rp-blocks')).gridTemplateColumns.split(' ').length,
    spans:[...document.querySelectorAll('[data-rp-block]')].map(e=>e.style.gridColumn),
    bars:document.querySelectorAll('.rp-block-bar').length,
    head:!!document.querySelector('.rp-report-head-id')}));
-  rec('紙は12マスのグリッドで組む',base.cols===12,String(base.cols)+'列');
+  rec('紙は24マス以上のグリッドで組む',base.cols>=24,String(base.cols)+'列');
   rec('塊は「何マスぶんか」で載る',
       base.spans.length>0&&base.spans.every(v=>/^span \d+$/.test(v)),
       base.spans.slice(0,4).join('／'));
@@ -90,18 +90,40 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
       `紙${before.length}件 / 組み換え${after.length}件`);
 
   /* ---- 3) 触った結果がその場の紙に出る ---- */
-  await page.click('[data-rp-block="基本情報"] [data-rp-span="12"]');
+  /* **幅の数を直に書かない**（§9.222 ②でマス数が12→24になった）。選択肢は
+     マス数から作られるので、いちばん狭い→いちばん広いの順に押して
+     「押した結果が紙に出ること」を見る。**「全幅を選べば必ず全幅になる」は
+     もう成り立たない**——大きさを変えても場所は動かさない（利用者の指示）
+     ので、右寄りの塊は紙の端か隣に当たったところで止まる。 */
+  const spanOf=v=>Number((/span (\d+)$/.exec(String(v||''))||[])[1]||0);
+  const spanNow=()=>page.evaluate(()=>document.querySelector('[data-rp-block="基本情報"]').style.gridColumn);
+  const spanPicks=await page.evaluate(()=>[...document.querySelectorAll(
+    '[data-rp-block="基本情報"] [data-rp-span]')].map(b=>Number(b.dataset.rpSpan)||0)
+    .filter(Boolean).sort((a,b)=>a-b));
+  const narrow=spanPicks[0];
+  const w0=await spanNow();                      /* 触る前の幅 */
+  /* **広げる側では確かめない**（§9.222 ②）。大きさを変えても場所は動かさない
+     ので、右寄りの塊は紙の端か隣に当たったところで止まり、押した幅と
+     一致しない——しかも既定の幅とたまたま同じ数になることがあり、
+     「戻った」のか「変わっていない」のかを見分けられなくなる（実際に
+     ここで通らなくなった）。**狭める側は必ず通る**ので、そちらで見る。 */
+  await page.click(`[data-rp-block="基本情報"] [data-rp-span="${narrow}"]`);
   await settle(page);
-  const w1=await page.evaluate(()=>document.querySelector('[data-rp-block="基本情報"]').style.gridColumn);
-  /* 置き場所を持つようになった（§9.221 ⑨）ので、`gridColumn`は
-     `<列> / span <幅>`の形になる。**入らないときは左へ寄せる**ので、
-     全幅を選べば必ず12マスになる。 */
-  const span12=v=>/(^|\/\s*)span 12$/.test(String(v||''));
-  rec('幅を選ぶとその場で紙が変わる',span12(w1),w1);
+  const w1=await spanNow();
+  rec('幅を選ぶとその場で紙が変わる',spanOf(w1)===narrow&&spanOf(w1)<spanOf(w0),
+      `${spanOf(w0)}マス → ${narrow}マスを押した結果 ${w1}`);
   await page.click('[data-rp-block="品質等級"] [data-rp-toggle]');
   await settle(page);
-  const off=await page.evaluate(()=>document.querySelector('[data-rp-block="品質等級"]').classList.contains('is-off'));
-  rec('「隠す」を押すとその場で外れる',off===true,String(off));
+  /* **外した塊は配置面から消える**（§9.222 ③、利用者の指示）。以前は薄く
+     残していたが、マスを占有したままなので置き場所が無くなっていた。
+     行き先は置き場（`#rpPalette`）——「消えた」だけを見ると、行き場を
+     失っていても通る。 */
+  const off=await page.evaluate(()=>({
+   紙に無い:!document.querySelector('[data-rp-block="品質等級"]'),
+   置き場に居る:[...document.querySelectorAll('#rpPalette [data-rp-pal]')]
+     .some(x=>x.dataset.rpPal==='品質等級')}));
+  rec('「隠す」を押すと紙から消えて置き場へ移る',
+      off.紙に無い===true&&off.置き場に居る===true,JSON.stringify(off));
 
   /* ---- 塊は**置きたいマスへ**動く（§9.221 ⑨） ----
      以前は「落とした塊の前後へ挿す」並べ替えだったが、置き場所を利用者が
@@ -146,14 +168,15 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
    quality:!!document.querySelector('[data-rp-block="品質等級"]'),
    order:[...document.querySelectorAll('[data-rp-block]')].map(e=>e.dataset.rpBlock)}));
   rec('「やめる」で開いた時点の配置へ戻る',
-      back.bars===0&&!span12(back.span)&&back.quality===true,JSON.stringify({span:back.span,quality:back.quality}));
+      back.bars===0&&spanOf(back.span)===spanOf(w0)&&back.quality===true,
+      JSON.stringify({span:back.span,期待:w0,quality:back.quality}));
   rec('「やめる」で並びも戻る',JSON.stringify(back.order)===JSON.stringify(before),
       back.order.slice(0,4).join('／'));
 
   /* ---- 5) 保存＝サーバーに残り、マスの数として往復する ---- */
   await page.click('#reportArrange');
   await page.waitForSelector('.rp-block-bar',{timeout:8000});
-  await page.click('[data-rp-block="基本情報"] [data-rp-span="12"]');
+  await page.click(`[data-rp-block="基本情報"] [data-rp-span="${narrow}"]`);
   await page.click('[data-rp-block="品質等級"] [data-rp-toggle]');
   await settle(page);
   await page.click('#rpArrangeSave');
@@ -163,7 +186,8 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
    span:document.querySelector('[data-rp-block="基本情報"]').style.gridColumn,
    quality:!!document.querySelector('[data-rp-block="品質等級"]')}));
   rec('保存すると組み換えを抜けて、結果が紙に残る',
-      saved.bars===0&&span12(saved.span)&&saved.quality===false,JSON.stringify(saved));
+      saved.bars===0&&spanOf(saved.span)===narrow&&saved.quality===false,
+      JSON.stringify(saved)+` 期待=span ${narrow}`);
   const srv=await (await fetch(B+'/api/column-layout-master?target='+encodeURIComponent(TARGET))).json();
   rec('サーバーに「出さない塊」が残る',(srv.hidden||[]).includes('品質等級'),JSON.stringify(srv.hidden));
   /* **ここが要点**。`widths`はpxとして40〜900へ丸められるので、マスの数
@@ -207,45 +231,52 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
   await settle(page);
   /* 組み換え中は中身の無い塊も並ぶので、そこで「まとめが出ていて個別は
      出さない」既定を確かめる。 */
-  const defaults=await page.evaluate(()=>({
-   combined:!document.querySelector('[data-rp-block="板幅ほかの測定データ"]').classList.contains('is-off'),
-   soloOff:[...document.querySelectorAll('[data-rp-block^="測定データ・"]')].every(e=>e.classList.contains('is-off')),
-   solos:document.querySelectorAll('[data-rp-block^="測定データ・"]').length}));
+  /* **外した塊は紙に出ない**（§9.222 ③）ので、出す/出さないは
+     「紙に居るか／置き場に居るか」で見る（`is-off`はもう付かない）。 */
+  const defaults=await page.evaluate(()=>{
+   const pal=[...document.querySelectorAll('#rpPalette [data-rp-pal]')].map(x=>x.dataset.rpPal);
+   return {combined:!!document.querySelector('[data-rp-block="板幅ほかの測定データ"]'),
+     soloOff:!document.querySelector('[data-rp-block^="測定データ・"]'),
+     solos:pal.filter(k=>k.startsWith('測定データ・')).length};
+  });
   rec('既定は「まとめて1枚」（個別は出さない）',
       defaults.combined&&defaults.soloOff&&defaults.solos>=6,JSON.stringify(defaults));
   /* 紙のマス数は帯にあり、押すとグリッドが変わる。 */
   const grid0=await page.evaluate(()=>({
    picks:[...document.querySelectorAll('[data-rp-grid]')].map(b=>b.textContent),
    cols:getComputedStyle(document.querySelector('.rp-blocks')).gridTemplateColumns.split(' ').length}));
-  rec('紙のマス数を標準として選べる',grid0.picks.join('/')==='12/8/6/4'&&grid0.cols===12,
+  /* **最小が24マス**（§9.222 ②、利用者の指示「マス数24×段数48を最小値に
+     してそれ以上の数値も準備」）。粗い側（12以下）はもう出さない。 */
+  rec('紙のマス数を標準として選べる',grid0.picks.join('/')==='24/36/48'&&grid0.cols===24,
       `${grid0.picks.join('/')} / いま${grid0.cols}列`);
-  await page.click('[data-rp-grid="6"]');
+  await page.click('[data-rp-grid="48"]');
   await settle(page);
   const grid1=await page.evaluate(()=>({
    cols:getComputedStyle(document.querySelector('.rp-blocks')).gridTemplateColumns.split(' ').length,
    labels:[...document.querySelectorAll('[data-rp-block="基本情報"] [data-rp-span]')].map(b=>b.textContent)}));
-  rec('マス数を変えると紙の割りも変わる',grid1.cols===6,`${grid1.cols}列`);
+  rec('マス数を変えると紙の割りも変わる',grid1.cols===48,`${grid1.cols}列`);
   /* 幅の選択肢は**マス数から作る**。割り切れない刻みは近いマスへ寄せて
      同じ幅が2つ並ばないようにまとめる。 */
   rec('幅の選択肢はマス数から作る',grid1.labels.length>=3&&grid1.labels.includes('全幅'),
       grid1.labels.join('・'));
-  await page.click('[data-rp-grid="12"]');
+  await page.click('[data-rp-grid="24"]');
   await settle(page);
 
   /* ================================================================
      §9.221 ⑨の追補: 紙の段数は**保存して開き直しても残る**
      ----------------------------------------------------------------
      `widths`はpxとして40〜900へ丸められる（§9.169）ので、数を入れる
-     倍率が大きすぎると上限に当たって黙って別の数になる。16段(×60=960)と
+     倍率が大きすぎると上限に当たって黙って別の数になる。以前は16段(×60=960)と
      24段(×60=1440)がどちらも900→読み戻すと15→選択肢に無いので既定12へ、
      という形で**押しても保存されない設定**になっていた。
-     **確かめるときは上限を越える段数（16以上）で見ること**——12以下だけを
-     見ると倍率が何であっても通る。
+     §9.222 ②で**掛け算をやめて「40＋数」**にしたので、96段でも136。
+     **確かめるときはいちばん大きい段数で見ること**——小さい側だけを見ると
+     倍率が何であっても通る。
      ================================================================ */
   const rowChoices=await page.evaluate(()=>
     [...document.querySelectorAll('[data-rp-prow]')].map(b=>Number(b.dataset.rpProw)));
-  rec('紙の段数を選べる',rowChoices.join('/')==='8/12/16/24',rowChoices.join('/'));
-  for(const n of [16,24,8]){
+  rec('紙の段数を選べる',rowChoices.join('/')==='48/72/96',rowChoices.join('/'));
+  for(const n of [72,96,48]){
    await page.click(`[data-rp-prow="${n}"]`);
    await settle(page);
    /* **保存してから読み直す**（下書きのまま見ると、上限で潰れていても
@@ -266,7 +297,7 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
      「保存値が上限を越えていない」ことを見ているが、それだけだと読む側の
      倍率を間違えた回帰は捕まらない。24段のまま保存し、写しを捨てて
      サーバーから読み直して、同じ24段で描かれることを確かめる。 */
-  await page.click('[data-rp-prow="24"]');
+  await page.click('[data-rp-prow="96"]');
   await settle(page);
   await page.click('#rpArrangeSave');
   await page.waitForTimeout(1200);
@@ -275,21 +306,22 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
    await WL.columnLayout.load(t);
    const w=(WL.columnLayout.get(t)||{}).widths||{};
    const raw=Number(w['__行グリッド__'])||0;
-   return {raw,rows:Math.round(raw/30)};
+   return {raw,rows:raw-40};                 /* 40＋数（§9.222 ②） */
   },TARGET);
-  rec('段数24は保存して読み直しても24のまま',
-      roundTrip.raw>0&&roundTrip.raw<=900&&roundTrip.rows===24,JSON.stringify(roundTrip));
+  rec('段数96は保存して読み直しても96のまま',
+      roundTrip.raw>0&&roundTrip.raw<=900&&roundTrip.rows===96,JSON.stringify(roundTrip));
   await page.click('#reportArrange');
   await page.waitForSelector('.rp-block-bar',{timeout:8000});
-  await page.click('[data-rp-prow="12"]');
+  await page.click('[data-rp-prow="48"]');
   await settle(page);
 
   /* ---- 分解 → 個別、まとめへ戻す ---- */
   await page.click('[data-rp-block="板幅ほかの測定データ"] [data-rp-split]');
   await settle(page);
   const split=await page.evaluate(()=>({
-   solo:[...document.querySelectorAll('[data-rp-block]')].filter(e=>e.dataset.rpBlock.startsWith('測定データ・')&&!e.classList.contains('is-off')).map(e=>e.dataset.rpBlock),
-   combined:document.querySelector('[data-rp-block="板幅ほかの測定データ"]').classList.contains('is-off')}));
+   solo:[...document.querySelectorAll('[data-rp-block]')]
+     .filter(e=>e.dataset.rpBlock.startsWith('測定データ・')).map(e=>e.dataset.rpBlock),
+   combined:!document.querySelector('[data-rp-block="板幅ほかの測定データ"]')}));
   rec('「項目ごとに分ける」で個別の塊になる',
       split.solo.length>=6&&split.combined===true,
       `${split.solo.length}枚 / まとめ=${split.combined?'畳んだ':'出たまま'}`);
@@ -298,8 +330,8 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
   await page.click('[data-rp-block="測定データ・板幅"] [data-rp-split]');
   await settle(page);
   const rejoin=await page.evaluate(()=>({
-   solo:document.querySelector('[data-rp-block="測定データ・板幅"]').classList.contains('is-off'),
-   combined:!document.querySelector('[data-rp-block="板幅ほかの測定データ"]').classList.contains('is-off')}));
+   solo:!document.querySelector('[data-rp-block="測定データ・板幅"]'),
+   combined:!!document.querySelector('[data-rp-block="板幅ほかの測定データ"]')}));
   rec('「まとめへ戻す」で1枚へ戻る',rejoin.solo===true&&rejoin.combined===true,JSON.stringify(rejoin));
 
   /* ---- 入りきらないときの案内は、組み換え中しか組み立てない ---- */
@@ -490,6 +522,99 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
   rec('組み換えしていない紙に既定の塊が出ている（白紙にならない）',
       paper.組み換え中===false&&paper.件数>0&&paper.基本情報===true,
       JSON.stringify(paper));
+
+  /* ---- **古い保存値（`__配置版__`の無い形）が1回の書き込みで飛ばない**
+         （§9.222 ②） ----
+     `widths`は「40＋数」へ切り替えたので、それ以前の保存値（位置×40 /
+     幅×60 / 行数×30、しかも**当時のマス数・段数の中の位置**）は読み替えが
+     要る。読み替えを`rpStage()`の中で「下に敷く」形にしていたときは、
+     widthsを書く呼び出しが全て`{...rpLayoutNow().widths}`＝全件の写しを
+     渡すため**後勝ちで変換値が全部捨てられ**、直後に`__配置版__`だけが
+     刻まれて以降`値-40`として読まれていた（＝1回何か触っただけで配置が飛ぶ）。
+
+     **「1つの塊だけ古い形」では捕まらない。** 場所を持たない塊が1つでも
+     あると`rpSeedPositions()`が**全部の塊の位置を測って書き下ろす**ので、
+     そこで正しい新しい形へ直ってしまう（前の版で保存した設定は全部の塊が
+     位置を持っているので、実機ではこの道を通らない）。ここは
+     **いま保存されている形を古い形へ焼き直して**注ぎ込み、書き下ろしが
+     走らない状態を作ってから見る。 */
+  /* **組み換えを開いた状態で数える。** 中身の無い塊は組み換え中だけ出るので、
+     閉じた紙から作ると数が足りず、開いた瞬間に位置を持たない塊が残って
+     `rpSeedPositions()`が走ってしまう（＝古い形が新しい形へ直ってしまい、
+     変換の道を一度も通らない）。 */
+  await page.click('#reportArrange');
+  await page.waitForSelector('#reportContent .rp-blocks.is-arranging',{timeout:15000});
+  await settle(page);
+  /* **いま描かれている塊すべて**から作る（保存済みのキーからではなく）。
+     1つでも位置を持たない塊が残ると`rpSeedPositions()`が全部を測り直して
+     書き下ろし、そこで正しい新しい形へ直ってしまう＝変換の道を通らない。 */
+  const legacyPayload=await page.evaluate(t=>{
+   const out={'__グリッド__':6*60,'__行グリッド__':12*30};   /* 当時は6マス×12段 */
+   const num=(s,i)=>{const m=String(s||'').split('/');return Math.max(1,parseInt(m[i]||'1',10)||1)};
+   const span=s=>{const m=/span\s+(\d+)/.exec(String(s||''));return m?Math.max(1,Number(m[1])):1};
+   let 塊=0;
+   document.querySelectorAll('[data-rp-block]').forEach(e=>{
+    const k=e.dataset.rpBlock;
+    const c=num(e.style.gridColumn,0),r=num(e.style.gridRow,0);
+    out['列:'+k]=Math.max(1,Math.min(6,Math.round((c-1)*6/24)+1))*40;
+    out['行:'+k]=Math.max(1,Math.round((r-1)*12/48)+1)*40;
+    out[k]=Math.max(1,Math.min(6,Math.round(span(e.style.gridColumn)*6/24)))*60;
+    out['行数:'+k]=Math.max(1,Math.round(span(e.style.gridRow)*12/48))*30;
+    塊++;
+   });
+   /* **`hidden`もそのまま持ち越す。** 空にすると隠れていた塊まで出てきて、
+      その塊は位置を持たないので`rpSeedPositions()`が走ってしまう。 */
+   return {widths:out,order:[...(WL.columnLayout.get(t).order||[])],
+           hidden:[...(WL.columnLayout.get(t).hidden||[])],塊};
+  },TARGET);
+  const lgPost=await (await post('/api/column-layout-master',{target:TARGET,clear:true,user_id:'test',
+    order:legacyPayload.order,hidden:legacyPayload.hidden,widths:legacyPayload.widths})).json().catch(e=>({error:String(e)}));
+  const lgSrv=await (await fetch(B+'/api/column-layout-master?target='+encodeURIComponent(TARGET))).json();
+  const lgSrvInfo={POST:JSON.stringify(lgPost).slice(0,80),
+    サーバ版:(lgSrv.widths||{})['__配置版__']||0,
+    キー数:Object.keys(lgSrv.widths||{}).length,
+    列基本情報:(lgSrv.widths||{})['列:基本情報']||0};
+  await page.reload({waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:30000});
+  await page.evaluate(()=>openRecordsSafe('編集中'));
+  await page.waitForSelector('.record-list-row',{timeout:25000});
+  await page.click('.record-list-row .report');
+  await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
+  await page.click('#reportArrange');
+  await page.waitForSelector('#reportContent .rp-blocks.is-arranging',{timeout:15000});
+  await settle(page);
+  const spot=()=>page.evaluate(()=>{
+   const o={};
+   document.querySelectorAll('[data-rp-block]').forEach(e=>{
+    o[e.dataset.rpBlock]=e.style.gridColumn+' / '+e.style.gridRow;
+   });
+   return o;
+  });
+  const lgBefore=await spot();
+  const seeded=await page.evaluate(t=>{
+   const w=(WL.columnLayout.get(t).widths)||{};
+   const miss=[...document.querySelectorAll('[data-rp-block]')].map(e=>e.dataset.rpBlock)
+     .filter(k=>!(Number(w['列:'+k])>0&&Number(w['行:'+k])>0));
+   return {版:w['__配置版__']||0,位置なし:miss.slice(0,5),件数:miss.length};
+  },TARGET);
+  rec('前提: 古い形のまま（書き下ろしが走っていない）',
+      legacyPayload.塊>0&&!(seeded.版>40),
+      JSON.stringify({塊:legacyPayload.塊,...seeded,...lgSrvInfo}));
+  /* いまと同じマス数のボタンを押す＝**見た目は変わらないが widths を書く**。
+     変換が効いていなければ、この1回で全部の塊が置き直される。 */
+  const clicked=await page.evaluate(()=>{
+   const b=document.querySelector('#rpArrangeBar [data-rp-grid="24"]');
+   if(!b)return false;b.click();return true;
+  });
+  await settle(page);
+  const lgAfter=await spot();
+  const lgMoved=Object.keys(lgBefore).filter(k=>lgBefore[k]!==lgAfter[k]);
+  rec('前提: widthsを書く操作が実際に走った',
+      clicked===true&&(await page.evaluate(t=>((WL.columnLayout.get(t).widths)||{})['__配置版__']||0,TARGET))>40,
+      String(clicked));
+  rec('古い保存値でも1回書いたら配置が飛ばない',
+      Object.keys(lgBefore).length>0&&lgMoved.length===0,
+      '動いた塊:'+JSON.stringify(lgMoved.slice(0,3).map(k=>k+' '+lgBefore[k]+'→'+lgAfter[k])));
 
   rec('コンソールに例外を出さない',errs.length===0,errs.slice(0,2).join(' / '));
  }catch(e){rec('FATAL',false,e.message)}

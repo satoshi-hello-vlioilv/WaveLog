@@ -76,11 +76,23 @@
   {group:'equip',key:'opChoice',label:'選択肢の値',icon:'択',endpoint:'/api/operation-choice-master',hasDelete:true,
    special:'op-choice',
    titleText:'操業データの選択肢 — まとまりと値',
+   /* **編集は汎用モーダル1枚**（§9.222 ⑥、利用者の指示「オペレータマスタなど
+      移行したものも同じ汎用モーダルから登録したいので、選択肢欄など必要な
+      項目はすべて共通化」）。よみ・出る設備・出すの3つを足したことで、
+      オペレータマスタが持っていた項目がすべてここで揃う——**設備は
+      `equipment-multi-text`なので、汎用のタグ入力（設備マスタからサジェスト）が
+      そのまま効く**（§9.164。同じ道具を書き写さない）。 */
    fields:[{k:'name',label:'まとまり名',required:true,key:true,
             hint:'まとまりの名前です。操業データ項目マスタの「選択肢」からこの名前で参照します（例: リング色）。'},
            {k:'value',label:'値',required:true,key:true,hint:'実際に選ばせる1つの値です（例: 茶）。'},
            {k:'note',label:'説明',
             hint:'選ばせ方を「一覧」にしたときに、値の下へ小さく出ます。**選択肢が多いときに何を選べばよいか**を書きます（例: 大径リング用）。空欄なら値だけが出ます。'},
+           {k:'reading',label:'よみ',
+            hint:'探すための読みです（例: サトウ）。まとまりの絞り込みで使います。'},
+           {k:'equipment',label:'出る設備',type:'equipment-multi-text',
+            tagHint:'この値を出す設備です。**空欄＝すべての設備**（オペレータの「割当が無ければ制限なし」と同じ）。「すべての設備」を選ぶと、これから増える設備でも出ます。'},
+           {k:'enabledText',label:'出す',type:'select',options:['出す','出さない'],
+            hint:'「出さない」にすると選択肢に出なくなります。**記録は消えません**（過去のデータはそのまま読めます）。'},
            {k:'order',label:'表示順',type:'number',min:0,step:10,
             hint:'小さいほど先に出ます。空欄で保存すると今の並びのままです。'}],
    cols:[{k:'name',label:'まとまり名',grow:2},{k:'value',label:'値',grow:1},
@@ -360,6 +372,14 @@
     ${f.unit?`<span class="mm-num-unit">${esc(f.unit)}</span>`:''}
    </span>`;
  }
+ /* 説明文の`**強調**`（§9.222 ⑧）。マスタの`hint`は最初から`**…**`で
+    書いてあるのに、そのまま`esc()`して出していたので**画面に`**`が並んで
+    いた**（実機のスクリーンショットで「**空欄＝すべての設備**」と読める）。
+    **エスケープしてから印を`<b>`へ変える**——順番が逆だと、マスタへ入れた
+    文字列の中のHTMLがそのまま効く。 */
+ function hintHtml(t){
+  return esc(String(t||'')).replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');
+ }
  function fieldLabelHtml(f){
   return `<span>${esc(f.label)}${f.required?'<i>*</i>':''}${f.key?'<em class="mm-keytag">キー</em>':''}</span>`;
  }
@@ -500,7 +520,7 @@
       <div class="mm-tag-box" data-equipment-box="${f.k}" tabindex="-1">${strayBoxes}<input type="text" class="mm-tag-search" data-equipment-search="${f.k}" placeholder="設備名で検索・追加" autocomplete="off">${hiddenBoxes}</div>
       <div class="mm-tag-suggest" data-equipment-suggest="${f.k}" hidden></div>
      </div>
-     <small class="mm-field-hint">${esc(tagHint)}</small></div>`;
+     <small class="mm-field-hint">${hintHtml(tagHint)}</small></div>`;
    }
    if(f.type==='equipment-multi'){
     const selected=new Set((editing&&Array.isArray(editing[f.k])?editing[f.k]:[]).map(String));
@@ -519,7 +539,10 @@
    }
    if(f.type==='select'){
     const opts=(f.options||[]).map(o=>`<option value="${esc(o)}"${o===val?' selected':''}>${esc(o||'（指定なし）')}</option>`).join('');
-    return `<label class="mm-field">${fieldLabelHtml(f)}<select data-field="${f.k}">${opts}</select></label>`;
+    /* **説明を書いたら出す**（§9.222 ⑧）。ここだけ`f.hint`を捨てていたので、
+       マスタ定義に書いた注意書きが選択欄でだけ黙って消えていた。 */
+    return `<label class="mm-field">${fieldLabelHtml(f)}<select data-field="${f.k}">${opts}</select>`
+      +(f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:'')+`</label>`;
    }
    /* 別マスタ連動の選択欄(§5.3.1)。選ぶだけで済むのが基本で、無い値は
       「＋ 新しく追加」から入力する。保存時に相手のマスタへも登録される。 */
@@ -531,10 +554,10 @@
        <input data-field="${f.k}" type="hidden" value="${esc(val)}">
        <input class="mm-combo-new" data-combo-new="${f.k}" type="text" placeholder="新しい${esc(f.label)}を入力" autocomplete="off" hidden>
       </div>
-      <small class="mm-field-hint">${esc(f.hint||'一覧から選ぶだけで入力できます。無いものは「＋ 新しく追加」を選ぶとこの場で登録できます。')}</small></div>`;
+      <small class="mm-field-hint">${hintHtml(f.hint||'一覧から選ぶだけで入力できます。無いものは「＋ 新しく追加」を選ぶとこの場で登録できます。')}</small></div>`;
    }
    if(f.type==='number'){
-    return `<label class="mm-field mm-field-num">${fieldLabelHtml(f)}${numFieldHtml(f,val)}${f.hint?`<small class="mm-field-hint">${esc(f.hint)}</small>`:''}</label>`;
+    return `<label class="mm-field mm-field-num">${fieldLabelHtml(f)}${numFieldHtml(f,val)}${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</label>`;
    }
    /* 複数行の入力欄（§9.217）。1行1件を書かせる設定（帳票ブロックの内容）で
       使う——1行の欄に押し込むと、何件書いたのかが読めない。 */
@@ -542,13 +565,13 @@
     return `<label class="mm-field mm-field-area">${fieldLabelHtml(f)}`
      +`<textarea data-field="${f.k}" rows="${f.rows||6}" spellcheck="false"`
      +` placeholder="${esc(f.placeholder||'')}">${esc(val)}</textarea>`
-     +`${f.hint?`<small class="mm-field-hint">${esc(f.hint)}</small>`:''}</label>`;
+     +`${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</label>`;
    }
    if(f.type==='date'){
-    return `<label class="mm-field">${fieldLabelHtml(f)}<span class="mm-date"><input data-field="${f.k}" type="date" value="${esc(val)}"><button type="button" class="mm-date-today" data-date-today="${f.k}">今日</button></span>${f.hint?`<small class="mm-field-hint">${esc(f.hint)}</small>`:''}</label>`;
+    return `<label class="mm-field">${fieldLabelHtml(f)}<span class="mm-date"><input data-field="${f.k}" type="date" value="${esc(val)}"><button type="button" class="mm-date-today" data-date-today="${f.k}">今日</button></span>${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</label>`;
    }
    if(f.type==='time'){
-    return `<label class="mm-field">${fieldLabelHtml(f)}<input data-field="${f.k}" type="time" step="60" value="${esc(val)}">${f.hint?`<small class="mm-field-hint">${esc(f.hint)}</small>`:''}</label>`;
+    return `<label class="mm-field">${fieldLabelHtml(f)}<input data-field="${f.k}" type="time" step="60" value="${esc(val)}">${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</label>`;
    }
    if(f.type==='path'){
     return `<div class="mm-field mm-field-path">${fieldLabelHtml(f)}
@@ -556,7 +579,7 @@
        <input data-field="${f.k}" type="text" value="${esc(val)}" autocomplete="off" spellcheck="false" placeholder="${esc(f.placeholder||'')}">
        <button type="button" class="mm-path-browse" data-path-browse="${f.k}" data-path-mode="${esc(f.pathMode||'file')}">参照…</button>
       </span>
-      <small class="mm-field-hint">${esc(f.hint||'「参照…」で選ぶか、エクスプローラーからここへドラッグ&ドロップできます。')}</small></div>`;
+      <small class="mm-field-hint">${hintHtml(f.hint||'「参照…」で選ぶか、エクスプローラーからここへドラッグ&ドロップできます。')}</small></div>`;
    }
    /* 見せるが触らせない欄（§9.219 ②）。付け替えられない値（帳票ブロックの
       組み込みキー）は、隠すと「なぜ中身を変えられないのか」が読めなくなる
@@ -565,7 +588,7 @@
    if(f.type==='readonly'||f.readonly){
     return `<label class="mm-field mm-field-ro">${fieldLabelHtml(f)}`
      +`<input data-field="${f.k}" type="text" value="${esc(val)}" readonly tabindex="-1">`
-     +`${f.hint?`<small class="mm-field-hint">${esc(f.hint)}</small>`:''}</label>`;
+     +`${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</label>`;
    }
    return `<label class="mm-field">${fieldLabelHtml(f)}<input data-field="${f.k}" type="text" value="${esc(val)}" autocomplete="off"></label>`;
   })();
@@ -581,7 +604,7 @@
      <button type="button" id="masterMaintAdd" class="mm-btn-primary sm">＋ ${esc(def.label)}を追加</button>
      <span class="mm-form-hint">一覧の行をクリック（またはダブルクリック・「編集」ボタン）で編集ウィンドウを開きます。</span>
     </div>
-    ${def.hint?`<p class="mm-def-hint">${esc(def.hint)}</p>`:''}`;
+    ${def.hint?`<p class="mm-def-hint">${hintHtml(def.hint)}</p>`:''}`;
    form.onsubmit=ev=>ev.preventDefault();
    const ab=$('#masterMaintAdd');if(ab)ab.onclick=()=>openMaintEditor(null);
    return;
@@ -590,7 +613,7 @@
   const controls=buildFieldControls(def,editing);
   const chip=editing?`<span class="mm-mode-chip editing">編集中 <b>${esc(editing[def.cols[0].k]||'')}</b><small>ID:${esc(editing.id)}</small></span>`:`<span class="mm-mode-chip new">新規登録</span>`;
   form.innerHTML=`<div class="mm-form-head">${chip}${editing?'<button type="button" id="masterMaintNew" class="mm-btn-ghost sm">＋ 新規入力に切替</button>':''}</div>
-   ${def.hint?`<p class="mm-def-hint">${esc(def.hint)}</p>`:''}
+   ${def.hint?`<p class="mm-def-hint">${hintHtml(def.hint)}</p>`:''}
    <div class="mm-form-fields">${controls}${
     typeof def.extraHtml==='function'?def.extraHtml(editing):''}</div>
    <div class="mm-form-tail"><button type="submit" class="mm-btn-primary">${editing?'更新を保存':'追加登録'}</button><span class="mm-form-hint">${editing?'キー項目（名称・区分など）も変更できます。保存すると同じIDのまま更新（リネーム）されます。同名が既にある場合は更新できません。':'必須(*)を入力して追加登録します。'}</span></div>`;
@@ -652,7 +675,7 @@
   modal.querySelector('.mm-editor-dialog')?.classList.remove('is-wide','is-tall');
   $('#maintEditorSave').onclick=()=>submitMaint('#maintEditorForm');
   const form=$('#maintEditorForm');
-  form.innerHTML=`${def.hint?`<p class="mm-def-hint">${esc(def.hint)}</p>`:''}
+  form.innerHTML=`${def.hint?`<p class="mm-def-hint">${hintHtml(def.hint)}</p>`:''}
    <div class="mm-form-fields">${buildFieldControls(def,editing)}${
     typeof def.extraHtml==='function'?def.extraHtml(editing):''}</div>`;
   form.onsubmit=ev=>{ev.preventDefault();submitMaint('#maintEditorForm')};
@@ -680,9 +703,13 @@
      消える**ので、いまのタブに合わせる。 */
   if(currentDef().special==='data-source'){dsState.editing=null;renderDataSourceList();return}
   if(currentDef().special==='query-join'){qjState.editing=null;renderQueryJoinList();return}
-  /* 「新規」は項目を1つ足す（この画面には編集モーダルが無い）。 */
-  if(currentDef().special==='op-item'){opCreateItem();return}
-  if(currentDef().special==='op-choice'){ocCreateGroup();return}
+  /* **閉じたら描き直すだけ**（§9.222 ⑥）。以前ここには「op-item なら項目を
+     1つ足す／op-choice ならまとまりを作る」という分岐があった。専用画面には
+     編集モーダルが無かったので到達しない死んだ分岐だったが、選択肢の値を
+     汎用モーダルへ寄せた時点で**閉じるたびに新しいまとまりが増える**ように
+     なる。追加は追加のボタンからだけ始める。 */
+  if(currentDef().special==='op-item'){renderOpItem();return}
+  if(currentDef().special==='op-choice'){renderOpChoice();return}
   renderMaintList();
  }
  /* 入力支援の配線(§9.49)。buildFieldControls()が出した各型を動かす。
@@ -1186,6 +1213,10 @@
   // タブを移ったら必ず外す(付いたままだと他のマスタで上部フォームが
   // 伸び縮みして一覧の高さが安定しない)。
   $('#masterMaintForm')?.classList.remove('mm-form-page');
+  /* **器の高さを渡す印も必ず外す**（§9.222 ⑤。`mm-form-page`と同じ作法）。
+     外し忘れると、他のマスタの一覧がスクロールしない枠になって行が切れる。 */
+  const mList=$('#masterMaintList');
+  if(mList){mList.classList.remove('is-fill');mList.parentElement?.classList.remove('is-fill')}
   if(def.special==='meas-storage'){setMaintSearchVisible(false);return loadMeasStorageMaint(force)}
   if(def.special==='import-backup'){setMaintSearchVisible(false);return loadImportBackupMaint(force)}
   if(def.special==='load-factor'){setMaintSearchVisible(false);return loadLoadFactorMaint(force)}
@@ -4245,6 +4276,10 @@
  function openOpModal(id){
   opState.picked=id;
   const m=ensureOpModal();m.hidden=false;renderOpModal();
+  /* **前の窓の一言を持ち越さない**（§CLAUDE 2）。`#opModalState`は窓を作り
+     直さない作りなので、消さないと「保存できませんでした」が別の項目を
+     開いた瞬間の状態として読まれる。 */
+  opModalSay('');
  }
  function opModalSay(text,bad){
   const el=$('#opModalState');if(!el)return;
@@ -4424,7 +4459,18 @@
   const seg=(name,list,cur,attr,noteOf)=>`<span class="op-seg" role="group" aria-label="${esc(name)}">`
    +list.map(v=>`<button type="button" ${attr}="${esc(v)}" class="${String(cur)===String(v)?'is-on':''}"`
      +(noteOf&&noteOf(v)?` title="${esc(noteOf(v))}"`:'')+`>${esc(v)}</button>`).join('')+`</span>`;
-  $('#opModalForm').innerHTML=`
+  /* ---------- 決めることは4つの塊に分ける（§9.222 ⑦、利用者の指示） ----------
+     「操業データ項目のUIが使いにくいので修正して下さい」。並んでいる14行は
+     どれも同じ見た目・同じ重みで、行ごとに長い注釈が付いていた——**14個の
+     決めごとを平らに並べると、どこから手を付ければよいのか分からない**
+     （§CLAUDE 画面基準2「次にすることを常に1つだけ指す」）。
+     並びは**実際に決める順**（§14。①どこに出すか→②何を記録するか→
+     ③どう見せるか→④メモ）。塊の見出しに1行の要約を添えて、開く前に
+     何を決める場所かが読めるようにする。 */
+  const sec=(title,note,body)=>`<section class="op-form-sec">`
+   +`<h4 class="op-form-sec-head">${esc(title)}<small>${esc(note)}</small></h4>${body}</section>`;
+  $('#opModalForm').innerHTML=
+   sec('① どこに出すか','測定画面のどのカードへ、どのくらいの幅で出すか',`
    <div class="op-form-row"><span class="op-form-label">置き場</span>
     <span class="op-form-ctl">${seg('置き場',opState.places,x.place||'準備','data-op-place',
       p=>OP_PLACE_NOTE[p]||'')}</span></div>
@@ -4443,7 +4489,16 @@
     </span></div>
    <div class="op-form-row"><span class="op-form-label">対象設備</span>
     <span class="op-form-ctl">${opEquipmentPickHtml(x)}</span></div>
-   ${x.builtin?'':`
+   <div class="op-form-row"><span class="op-form-label">開く条件</span>
+    <span class="op-form-ctl">
+     <span class="op-when">${opMeasureTypes().map(t=>
+       `<button type="button" data-op-when="${esc(t)}" class="${(x.showWhen||[]).includes(t)?'is-on':''}">${esc(t)}</button>`).join('')
+       ||'<i class="op-form-note">測定画面を開いていないので項目の一覧が出せません。</i>'}</span>
+     <i class="op-form-note">選ぶと、この<b>群</b>は畳んで出て、その測定項目を選んだときだけ開きます（群ぜんぶに効きます）。</i>
+    </span></div>`)
+   +sec('② 何を記録するか',x.builtin?'この欄は画面がもともと持っているので、記録の形は変えられません'
+       :'値の型・入る範囲・選ばせる候補・最初から入れておく値',`
+   ${x.builtin?'<p class="op-form-locked">項目名・型・数の決まり・選択肢・初期値は<b>画面が持っています</b>（内径のプリセット・条数の上限など、それぞれの仕掛けがあるため）。ここで決められるのは①③のことだけです。</p>':`
    <div class="op-form-row"><span class="op-form-label">項目名</span>
     <span class="op-form-ctl"><input type="text" id="opdName" value="${esc(x.name)}"></span></div>
    <div class="op-form-row"><span class="op-form-label">型</span>
@@ -4496,7 +4551,8 @@
     <span class="op-form-ctl">
      <button type="button" id="opdFreeText" class="op-toggle${x.freeText?' is-on':''}" aria-pressed="${x.freeText?'true':'false'}">候補にない値も打てる</button>
      <i class="op-form-note">候補の下に打ち込む欄が出ます。打った値は<b>そのまま記録に入り</b>、選択肢マスタには足しません（現場のその場かぎりの値でマスタを増やさないため）。</i>
-    </span></div>`:''}`}
+    </span></div>`:''}`}`)
+   +sec('③ どう見せるか','単位の置き場・値の寄せ方・入力の道具（記録の中身は変わりません）',`
    ${opLookRowHtml(x,widget)}
    <div class="op-form-row"><span class="op-form-label">選ばせ方</span>
     <span class="op-form-ctl">
@@ -4509,17 +4565,11 @@
        :'この型で選べる形は1つだけです。'}${
        opFamilyOf(x)==='number'?'　数値の欄は<b>打つこともできる</b>まま——道具は隣に足すだけです。':''}${
        opFamilyOf(x)==='choice'&&!x.builtin&&!x.choice?'　<b>選択肢のまとまりを選ぶと</b>、見本に実際の値が並びます。':''}</i>
-    </span></div>
+    </span></div>`)
+   +sec('④ メモ','画面には出ません。あとから読む人のために',`
    <div class="op-form-row"><span class="op-form-label">覚え書き</span>
     <span class="op-form-ctl"><input type="text" id="opdNote" value="${esc(x.note||'')}"
-      placeholder="この項目を作った理由・注意点など（画面には出ません）"></span></div>
-   <div class="op-form-row"><span class="op-form-label">開く条件</span>
-    <span class="op-form-ctl">
-     <span class="op-when">${opMeasureTypes().map(t=>
-       `<button type="button" data-op-when="${esc(t)}" class="${(x.showWhen||[]).includes(t)?'is-on':''}">${esc(t)}</button>`).join('')
-       ||'<i class="op-form-note">測定画面を開いていないので項目の一覧が出せません。</i>'}</span>
-     <i class="op-form-note">選ぶと、この<b>群</b>は畳んで出て、その測定項目を選んだときだけ開きます（群ぜんぶに効きます）。</i>
-    </span></div>`;
+      placeholder="この項目を作った理由・注意点など（画面には出ません）"></span></div>`);
   $('#opModalActions').innerHTML=`<button type="button" id="opdSave" class="mm-btn-primary">保存</button>`
    +(x.builtin?`<span class="op-form-note">画面の欄は消せません（「測定画面に出す」を外すと隠れます）</span>`
      :`<button type="button" id="opdDelete" class="danger ghost">削除</button>`);
@@ -4775,9 +4825,14 @@
      headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
    await opSyncGroupFlags(d.place||x.place,d.group||x.group,d.showWhen,body.fold,uid);
    await loadOpItemMaint(true);
-   opSay('保存しました');opModalSay('保存しました');
    if(window.WL&&WL.opData)WL.opData.forget();
-   renderOpModal();
+   /* **保存したら閉じる**（§9.222 ⑦、利用者の指示「保存ボタンを押したら
+      モーダルは閉じてほしいです」）。列の設定と同じ作法（§9.207）で、
+      **失敗したときは閉じない**——直す場所が消えると打ち直せない。
+      閉じるので「保存しました」は**盤の側**（`#opLayoutState`）へ出す
+      ——モーダルの中へ出しても見えないまま消える。 */
+   closeOpModal();
+   opSay('保存しました');
   }catch(e){opModalSay('保存できませんでした: '+e.message,true)}
  }
  /* 群のふるまい（畳む・開く条件）は**群の全部の行へ同じ値**を書く。
@@ -4918,6 +4973,12 @@
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
   const picked=ocPickedName();
   ocState.picked=picked;
+  /* **器の高さを中まで届ける**（§9.222 ⑤）。この画面だけ外側のスクロールを
+     やめて、内側（まとまりの一覧・値の一覧）だけを流す。**印を外すのは
+     `loadMaintInner()`の1箇所**——外し忘れると他のタブの一覧が
+     スクロールしない枠になって行が切れる。 */
+  list.classList.add('is-fill');
+  list.parentElement&&list.parentElement.classList.add('is-fill');
   form.innerHTML=`<div class="op-bar">`
    +`<span class="op-bar-note">左が<b>まとまり</b>、右がその中の<b>値</b>です。`
    +`項目マスタの「選択肢」はこの<b>まとまり名</b>で結び付きます。</span>`
@@ -4939,10 +5000,13 @@
     </div>
     <div class="oc-group-list">${hit.map(g=>{
       const used=(g.usedBy||[]).length;
-      return `<button type="button" class="oc-group${g.name===picked?' is-on':''}" data-oc-group="${esc(g.name)}">
+      return `<button type="button" class="oc-group${g.name===picked?' is-on':''}" data-oc-group="${esc(g.name)}"
+        title="${esc(g.name)}／${g.count}値${g.live<g.count?`（使えるのは${g.live}）`:''}／${used?`${used}項目が使用`:'まだどの項目からも使われていません'}">
        <b>${esc(g.name)}</b>
-       <span class="oc-group-meta">${g.count}値${g.live<g.count?`（使えるのは${g.live}）`:''}</span>
-       <span class="oc-group-use">${used?`${used}項目が使用`:'まだどの項目からも使われていません'}</span>
+       <span class="oc-group-sub">
+        <span class="oc-group-meta">${g.count}値${g.live<g.count?`（使えるのは${g.live}）`:''}</span>
+        <span class="oc-group-use">${used?`${used}項目が使用`:'未使用'}</span>
+       </span>
       </button>`}).join('')
       ||`<p class="mm-empty">${q?'絞り込みに当たるまとまりがありません。':'まとまりがまだありません。'}</p>`}</div>
    </div>`;
@@ -4965,27 +5029,44 @@
     </div>
     <div class="oc-table" role="table">
      <div class="oc-row is-head" role="row">
-      <span></span><span>値</span><span>説明</span><span>よみ</span><span>出る設備</span><span>使う</span><span></span>
+      <span></span><span>値</span><span>説明</span><span>よみ</span><span>出る設備</span><span>出す</span><span></span>
      </div>
-     ${rows.map(r=>ocValueRowHtml(r)).join('')
-       ||'<p class="mm-empty">値がまだありません。下の「値を追加」から入れます。</p>'}
+     <div class="oc-table-scroll">
+      ${rows.map(r=>ocValueRowHtml(r)).join('')
+        ||'<p class="mm-empty">値がまだありません。下の「値を追加」から入れます。</p>'}
+     </div>
     </div>
     <div class="oc-add">
-     <input type="text" id="ocNewValue" placeholder="値（例: 茶）" autocomplete="off">
-     <input type="text" id="ocNewNote" placeholder="説明（任意。一覧で選ぶときに下へ小さく出ます）" autocomplete="off">
      <button type="button" id="ocAddValue" class="mm-btn-primary">値を追加</button>
+     <span class="oc-add-note">行を押すと<b>同じ窓</b>で直せます（値・説明・よみ・出る設備・出す・表示順）。</span>
     </div>
     <datalist id="ocEqList">${eqs.map(n=>`<option value="${esc(n)}"></option>`).join('')}</datalist>
    </div>`;
  }
+ /* 出る設備の見え方。**タグで出す**（§9.222 ⑥）——カンマ区切りの生の文字列は
+    どこまでが1つの設備名なのか読み取れない。空欄は「すべて」と**文字で**言う
+    （§3。空欄のままだと未設定なのか全部なのか推測させる）。 */
+ function ocEqTagsHtml(raw){
+  const v=String(raw||'').trim();
+  if(!v)return '<span class="oc-eq-tag is-all">すべての設備</span>';
+  if(v===EQUIPMENT_ALL)return '<span class="oc-eq-tag is-all">すべての設備</span>';
+  return v.replace(/、/g,',').split(',').map(x=>x.trim()).filter(Boolean)
+    .map(n=>`<span class="oc-eq-tag">${esc(n)}</span>`).join('');
+ }
+ /* 1行＝1値。**中身は読むだけ**（§9.222 ⑥）。以前は5つの入力欄を行の中へ
+    並べていたが、①見出しと本文で列幅の`em`が別の文字サイズで解け、左端が
+    ずれる（§9.193）②設備がカンマ区切りの手打ちでサジェストが効かない
+    ③登録用の行は3マスしか無く表の7列と対応していない、の3つが同時に出ていた
+    （利用者の指摘そのもの）。編集は**汎用モーダル1枚**に寄せてある。
+    行に残すのは「出す/出さない」（毎日触る）と削除と並べ替えの取っ手だけ。 */
  function ocValueRowHtml(r){
-  return `<div class="oc-row" role="row" draggable="true" data-oc-id="${r.id}">
+  return `<div class="oc-row" role="row" draggable="true" data-oc-id="${r.id}"
+     title="押すと編集の窓が開きます">
     <span class="oc-grip" title="ドラッグで並べ替えます" aria-hidden="true">⠿</span>
-    <input type="text" class="oc-f" data-oc-f="value" value="${esc(r.value)}" autocomplete="off">
-    <input type="text" class="oc-f" data-oc-f="note" value="${esc(r.note||'')}" autocomplete="off" placeholder="—">
-    <input type="text" class="oc-f" data-oc-f="reading" value="${esc(r.reading||'')}" autocomplete="off" placeholder="—">
-    <input type="text" class="oc-f oc-eq" data-oc-f="equipment" value="${esc(r.equipment||'')}" list="ocEqList"
-      autocomplete="off" placeholder="すべての設備" title="${esc(ocEqLabel(r.equipment))}／空欄はすべての設備。複数はカンマ区切り">
+    <span class="oc-cell" title="${esc(r.value)}">${esc(r.value)}</span>
+    <span class="oc-cell is-sub${r.note?'':' is-blank'}" title="${esc(r.note||'（説明なし）')}">${esc(r.note||'—')}</span>
+    <span class="oc-cell is-sub${r.reading?'':' is-blank'}" title="${esc(r.reading||'（よみなし）')}">${esc(r.reading||'—')}</span>
+    <span class="oc-eq-tags" title="${esc(ocEqLabel(r.equipment))}">${ocEqTagsHtml(r.equipment)}</span>
     <label class="oc-on" title="外すと選択肢に出なくなります（記録は消えません）">
      <input type="checkbox" data-oc-f="enabled"${r.enabled?' checked':''}><span>${r.enabled?'出す':'出さない'}</span></label>
     <button type="button" class="oc-del" title="この値を削除します">削除</button>
@@ -5032,20 +5113,47 @@
   const delg=$('#ocDeleteGroup');
   if(delg)delg.onclick=()=>ocDeleteGroup();
   const addv=$('#ocAddValue');
-  if(addv)addv.onclick=()=>ocAddValue();
-  const newv=$('#ocNewValue');
-  if(newv)newv.onkeydown=e=>{if(e.key==='Enter'&&!e.isComposing){e.preventDefault();ocAddValue()}};
+  if(addv)addv.onclick=()=>ocOpenEditor(null);
   list.querySelectorAll('.oc-row[data-oc-id]').forEach(row=>{
    const id=row.dataset.ocId;
-   row.querySelectorAll('input.oc-f').forEach(el=>{
-    el.onchange=()=>ocSaveRow(id,{[el.dataset.ocF]:el.value});
-   });
+   /* **押したら同じ窓で直す**（§9.222 ⑥）。行の中の入力欄をやめたので、
+      編集の入口は行そのもの——「出す/出さない」と削除だけは行で完結する
+      （毎日触るものと、取り消しの効くものを窓へ隠さない）。 */
+   row.onclick=e=>{
+    if(e.target.closest('.oc-on')||e.target.closest('.oc-del')||e.target.closest('.oc-grip'))return;
+    ocOpenEditor(id);
+   };
    const on=row.querySelector('input[data-oc-f="enabled"]');
    if(on)on.onchange=()=>ocSaveRow(id,{enabled:on.checked});
    const del=row.querySelector('.oc-del');
-   if(del)del.onclick=()=>ocDeleteValue(id);
+   if(del)del.onclick=e=>{e.stopPropagation();ocDeleteValue(id)};
   });
   ocBindReorder(list);
+ }
+ /* 汎用モーダルで1件を編集する（§9.222 ⑥）。**新しい編集画面を作らない**
+    ——`MASTER_DEFS`の`fields`がそのまま効くので、設備はタグ入力になり、
+    欄の幅は型から決まる規格幅になり、保存でモーダルが閉じる（§9.221 ④）。
+    新規のときは**いま選んでいるまとまり名を入れておく**（前の画面の文脈を
+    こちらが運ぶ・§CLAUDE 画面基準）。 */
+ function ocOpenEditor(id){
+  const name=ocPickedName();
+  if(!name){ocSay('先に左でまとまりを選んでください。',true);return}
+  const row=id?(ocState.items||[]).find(x=>String(x.id)===String(id)):null;
+  const item=row
+   ?{...row,enabledText:row.enabled===false?'出さない':'出す'}
+   :{name,value:'',note:'',reading:'',equipment:'',enabledText:'出す',order:''};
+  /* 新規は`id`を持たせない（`openMaintEditor`は`id`の有無で「編集/新規」を
+     決める）。既定値だけを積んだ器を渡す。 */
+  if(!row)delete item.id;
+  openMaintEditor(row?item:Object.assign({__new__:true},item));
+  /* 新規のときだけ「追加登録」に見せる。`openMaintEditor`は渡した器を
+     `編集`と見なすので、題と保存ボタンの文言だけ言い直す。 */
+  if(!row){
+   const t=$('#maintEditorTitle');if(t)t.textContent=`「${name}」に値を追加`;
+   const sv=$('#maintEditorSave');if(sv)sv.textContent='追加登録';
+   const h=$('#maintEditorHint');if(h)h.textContent='値は必ず入れてください。まとまり名は選んでいるものが入っています。';
+   maintState.editing=null;                 /* 保存はPOST（新規）で行く */
+  }
  }
  /* 並べ替えは**まとめて1回**で書く（§9.221 ②）。1行ずつ送ると往復が増え、
     途中で切れると半分だけ動いた並びが残る。 */
@@ -5095,21 +5203,9 @@
    ocSay('「'+name+'」を作りました。値を入れ替えてください。');
   }catch(e){ocSay('作れませんでした: '+(e.message||String(e)),true)}
  }
- async function ocAddValue(){
-  const name=ocPickedName();if(!name)return;
-  const v=$('#ocNewValue'),n=$('#ocNewNote');
-  const value=String(v&&v.value||'').trim();
-  if(!value){ocSay('値を入力してください。',true);if(v)v.focus();return}
-  const uid=requireMaintUser();if(uid===null)return;
-  try{
-   await api('/api/operation-choice-master',{method:'POST',
-     headers:{'Content-Type':'application/json'},
-     body:JSON.stringify({name,value,note:String(n&&n.value||''),user_id:uid})});
-   if(window.WL&&WL.opData)WL.opData.forget();
-   await loadOpChoiceMaint(true);
-   const again=$('#ocNewValue');if(again)again.focus();
-  }catch(e){ocSay('追加できませんでした: '+(e.message||String(e)),true)}
- }
+ /* 値の追加は`ocOpenEditor(null)`＝汎用モーダル1枚に寄せた（§9.222 ⑥）。
+    以前あった行内の2つの入力欄（値・説明）は**表の7列と対応していなかった**
+    ので消してある。 */
  async function ocRenameGroup(){
   const from=ocPickedName();
   const el=$('#ocGroupName');const to=String(el&&el.value||'').trim();

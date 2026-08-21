@@ -253,10 +253,13 @@ async function openList(page){
    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
    const keep=list.scrollLeft;
    const heads=[...document.querySelectorAll('.record-list-head [data-col]')];
-   /* 画面に見えている見出しのうち、右端に近いものを掴む */
+   /* 画面に見えている見出しのうち、右端に近いものを掴む。
+      **操作列は選ばない**（§9.222 ①）——ボタンが切れない下限を持たせて
+      あるので、細くならないのが正しい（下限そのものは別の網で見る）。 */
    const box=list.getBoundingClientRect();
-   const target=heads.filter(h=>{const r=h.getBoundingClientRect();
-     return r.left>=box.left&&r.right<=box.right+1&&r.width>90}).pop()||heads[heads.length-1];
+   const cand=heads.filter(h=>h.dataset.col!=='__actions__');
+   const target=cand.filter(h=>{const r=h.getBoundingClientRect();
+     return r.left>=box.left&&r.right<=box.right+1&&r.width>90}).pop()||cand[cand.length-1];
    const grip=target.querySelector('.col-resize');
    if(!grip)return{取っ手なし:true};
    const before={列:Math.round(target.getBoundingClientRect().width),
@@ -276,6 +279,8 @@ async function openList(page){
                 位置:list.scrollLeft,余白:WL.columnResize.spare(list)};
    return{列名:target.dataset.col,before,during,after};
   });
+  rec('掴んだのは操作列以外の列（操作列には下限がある）',
+      drag.列名&&drag.列名!=='__actions__',String(drag.列名));
   rec('右端が見えていても掴んだ列そのものが細くなる（§9.208 ⑦）',
       !drag.取っ手なし&&drag.during.列<=drag.before.列-40,
       JSON.stringify({列:drag.列名,前:drag.before&&drag.before.列,中:drag.during&&drag.during.列}));
@@ -295,6 +300,46 @@ async function openList(page){
    return{余白:WL.columnResize.spare(list),padding:getComputedStyle(list).paddingRight};
   });
   rec('左へ戻ると便宜上の余白は消える',spare.余白===0,JSON.stringify(spare));
+
+  /* ==================================================================
+     §9.222 ① 操作列は「ボタンが切れない幅」より下へは行かない
+     ------------------------------------------------------------------
+     セルは切れても`title`から読めるが、**切れたボタンは押す前に何のボタンか
+     分からない**（実機で「続きか…」「帳…」と3つとも省略記号になっていた）。
+     器に`em`の下限を持たせてあるので、手で狭めても3つのボタンは切れない。
+     **狭めたあとに実際に切れていないかを見ること**——幅の数字だけを見ると、
+     下限が効いていなくても「変わらなかった」で通る。
+     ================================================================== */
+  const floorTest=await page.evaluate(async()=>{
+   const head=document.querySelector('.record-list-head [data-col="__actions__"]');
+   if(!head)return{見出しなし:true};
+   const grip=head.querySelector('.col-resize');
+   if(!grip)return{取っ手なし:true};
+   const before=Math.round(head.getBoundingClientRect().width);
+   const gr=grip.getBoundingClientRect();
+   const x=gr.left+gr.width/2,y=gr.top+gr.height/2;
+   grip.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,clientX:x,clientY:y}));
+   document.dispatchEvent(new MouseEvent('mousemove',{bubbles:true,clientX:x-140,clientY:y}));
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   document.dispatchEvent(new MouseEvent('mouseup',{bubbles:true,clientX:x-140,clientY:y}));
+   await new Promise(r=>setTimeout(r,500));
+   /* **掴んだ見出しは保存後の描き直しで入れ替わる**ので、測るときは
+      **キーで引き直す**（掴んだときの参照は切り離されていて幅0を返す）。 */
+   const now=document.querySelector('.record-list-head [data-col="__actions__"]');
+   const cell=document.querySelector('.record-list-actions');
+   const btns=cell?[...cell.querySelectorAll('button')]:[];
+   return{before,after:now?Math.round(now.getBoundingClientRect().width):0,
+     ボタン幅の合計:Math.round(btns.reduce((a,b)=>a+b.getBoundingClientRect().width,0)),
+     切れたボタン:cell?btns.filter(b=>b.scrollWidth>b.clientWidth+1)
+       .map(b=>b.textContent.trim()):['セルなし']};
+  });
+  rec('操作列を狭めてもボタンが切れない（下限が効く）',
+      !floorTest.見出しなし&&!floorTest.取っ手なし
+      &&(floorTest.切れたボタン||[]).length===0
+      /* **「何も起きなかった」で通らないように**、ボタンが入る幅を
+         保っていることまで見る。 */
+      &&floorTest.after>=floorTest.ボタン幅の合計,JSON.stringify(floorTest));
+
   await page.setViewportSize({width:1700,height:1000});
   await settle(page);
 

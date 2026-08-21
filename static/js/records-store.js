@@ -778,10 +778,22 @@ function openRecordRowMenu(btn,x){
  const why=recordDeleteBlockReason(x);
  const el=document.createElement('div');
  el.className='rec-row-menu';el.setAttribute('role','menu');
+ /* 削除が押せないときは器そのものへ焦点を移す（理由を読ませたい）。
+    **`tabindex`が無いと`focus()`は何もしない**ので、器にも受け口を置く。 */
+ el.tabIndex=-1;
  el.innerHTML=`<div class="rrm-head">${esc(x.basic?.lotNo||x.id)}</div>
   <button type="button" class="rrm-item is-danger" role="menuitem"${why?' disabled':''}>端末内のデータを削除
    ${why?`<small class="rrm-why">${esc(why)}</small>`:'<small class="rrm-why">取り消せません。次の画面でもう一度確かめます。</small>'}</button>`;
  document.body.append(el);
+ /* **開いた器を必ず控える。** ここを書き忘れると`recordRowMenuEl`はnullの
+    ままなので、`closeRecordRowMenu()`は先頭の`if(!recordRowMenuEl)return`で
+    引き返し、外クリック・Esc・自ボタンの**どれでも閉じられない**——
+    しかも押すたびにDOMへ積み上がる（実機で「どうやっても消えない」と
+    報告された。実測: `⋯`を2回押すと`.rec-row-menu`が2枚）。
+    **`tests/test_recdel.js`は素通りしていた**——開いたことしか見ておらず、
+    2回目を開く前に自分で`remove()`していたため。開いた控えと画面の器が
+    同じものかは、**閉じる操作で確かめること**。 */
+ recordRowMenuEl=el;
  el._owner=btn;btn.setAttribute('aria-expanded','true');
  const r=btn.getBoundingClientRect();
  /* 画面の外へ出さない。**器の外(body直下)へ`fixed`で出す**（§9.201。
@@ -931,7 +943,18 @@ const RECORD_VIRTUAL={
  '#':{label:'#（行番号）',head:'#',note:'絞り込んだあとの並びで数えた番号です。'},
  [RECORD_COL_ACTIONS]:{label:'操作',note:'開く・帳票・「⋯」（削除はこの中）のボタン。消すと、この一覧からは削除できなくなります（開くのは行のダブルクリックでできます）。'},
 };
-const RECORD_VIRTUAL_TRACK={'#':'minmax(44px,0)',[RECORD_COL_ACTIONS]:'minmax(232px,0)'};
+/* **操作列だけは下限を持つ**（§9.222 ①）。データのセルは切れても`title`から
+   読めるが、**切れたボタンは押す前に何のボタンか分からない**——実機では
+   「続きか…」「帳…」と3つとも省略記号になっていた。文字を短く
+   （`再開`／`開く`／`帳票`／`⋯`）したうえで、幅を手で狭めてもここより下は
+   受け付けない（列幅が40〜900へ丸められるのと同じ考え方）。 */
+/* **pxで書かないこと**——表示サイズ(sm/md/lg)で文字だけが1.1倍になり、
+   特大でだけ切れる（§9.127）。`--rec-actions-min`は`#recordList`の文字
+   サイズを基準にした`em`（40-records.css）なので、3段とも同じ余り方をする。
+   実測の自然幅は sm147 / md156 / lg168px、下限は 161 / 175 / 193px。 */
+const RECORD_ACTIONS_MIN='var(--rec-actions-min)';
+const RECORD_VIRTUAL_TRACK={'#':'minmax(44px,0)',
+  [RECORD_COL_ACTIONS]:'minmax('+RECORD_ACTIONS_MIN+',0)'};
 /* 既定の並びと、既定で出す列。**今までの15列がそのまま既定**。 */
 const RECORD_DEFAULT_ORDER=['#',...RECORD_COLUMNS.map(c=>c.k),RECORD_COL_ACTIONS];
 const RECORD_DEFAULT_VISIBLE=new Set([...RECORD_COLUMNS.filter(c=>c.def).map(c=>c.k),
@@ -992,7 +1015,14 @@ function recordColumnLabel(k){
 }
 /* CSSグリッドのトラック。引いている最中だけ、掴んだ列を実寸へ差し替える。 */
 function recordTracksCss(keys,liveKey,liveWidth){
- return keys.map(k=>(k===liveKey?liveWidth+'px':recordColumnTrack(k))).join(' ');
+ return keys.map(k=>(k===liveKey?recordTrackFloor(k,liveWidth+'px'):recordColumnTrack(k))).join(' ');
+}
+/* 操作列は`minmax(下限, 指定)`にする。**素の`Npx`へ戻さないこと**——
+   保存済みの幅（利用者が見出しを引いた結果）はそのまま効くので、下限を
+   持たせないと切れたボタンが復活する。 */
+function recordTrackFloor(k,track){
+ if(k!==RECORD_COL_ACTIONS)return track;
+ return 'minmax('+RECORD_ACTIONS_MIN+','+track+')';
 }
 /* 右クリックメニューに出す呼び名。見出しは狭いので`#`のような短い字を
    使うが、メニューでは「#（行番号）」のように何の列かが分かる側を出す。 */
@@ -1003,7 +1033,7 @@ function recordColumnFullLabel(k){
 }
 function recordColumnTrack(k){
  const w=WL.columnLayout.width(RECORD_LIST_TARGET,k);
- if(w)return w+'px';
+ if(w)return recordTrackFloor(k,w+'px');
  const c=RECORD_COL_BY_KEY.get(k);
  return (c&&c.track)||RECORD_VIRTUAL_TRACK[k]||'minmax(96px,.7fr)';
 }
@@ -1027,6 +1057,12 @@ function recordCellText(k,raw,view){
 function renderRecordListRows(){
  const list=$('#recordList'),items=sortedFilteredRecords();
  if(!list)return;
+ /* **描き直す前に行メニューを閉じる**（§9.222 ①）。一覧は15分ごとの
+    自動同期でも作り直されるので、開いたままだと控えの`_owner`が
+    **切り離された古いボタン**を指す——外クリックとEscは効くが、
+    「同じボタンなら閉じる」分岐は当たらないので、押すと閉じて即開き直す
+    ちらつきになる。 */
+ closeRecordRowMenu();
  const currentLot=normalizedLot(S.current?pick(S.current,'lotNo'):'');
  const keys=recordVisibleColumnKeys();
  const layout=WL.columnLayout.get(RECORD_LIST_TARGET);
@@ -1091,7 +1127,7 @@ function renderRecordListRows(){
      （§9.94の一覧と同じ約束）。付けないと、切れた値はどこからも読めない。 */
   row.innerHTML=keys.map(k=>{
    if(k===RECORD_COL_ACTIONS)
-    return `<div class="record-list-actions"><button class="resume" type="button">${isDone?'内容を開く':'続きから再開'}</button><button class="report" type="button" title="このロットの帳票プレビューを開きます">帳票</button><button class="rec-more" type="button" aria-haspopup="menu" aria-expanded="false" title="その他の操作（削除はこの中）">⋯</button></div>`;
+    return `<div class="record-list-actions"><button class="resume" type="button" title="${isDone?'このロットの内容を測定画面で開きます':'測定画面を開いて続きから再開します'}（行のダブルクリックでも開けます）">${isDone?'開く':'再開'}</button><button class="report" type="button" title="このロットの帳票プレビューを開きます">帳票</button><button class="rec-more" type="button" aria-haspopup="menu" aria-expanded="false" title="その他の操作（削除はこの中）">⋯</button></div>`;
    const c=RECORD_COL_BY_KEY.get(k);
    const fx=calc.get(k);
    const raw=fx?fx.run(view):(k==='#'?view['#']:(c?c.get(x):''));
@@ -1118,7 +1154,7 @@ function renderRecordListRows(){
   // ダブルクリックは編集再開ではなく帳票プレビューへの遷移とする(編集は「続きから再開/内容を開く」ボタンから明示的に行う)。
   row.ondblclick=e=>{if(!e.target.closest('.rec-more')&&!e.target.closest('.resume')&&!e.target.closest('.report')&&!e.target.closest('.grid-lot-link')&&typeof openReportForRecord==='function')openReportForRecord(x.id)};
   row.setAttribute('role','button');
-  row.setAttribute('aria-label',(isDone?'内容を開く':'続きから再開')+' '+(x.basic?.lotNo||x.id));
+  row.setAttribute('aria-label',(isDone?'内容を開く':'続きから再開')+' '+(x.basic?.lotNo||x.id));  /* 読み上げは長い呼び名のまま（画面の文字数の制約が無い） */
   row.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){if(e.key===' ')e.preventDefault();resume()}};
   const moreBtn=row.querySelector('.rec-more');
   if(moreBtn)moreBtn.onclick=e=>{e.stopPropagation();openRecordRowMenu(moreBtn,x)};

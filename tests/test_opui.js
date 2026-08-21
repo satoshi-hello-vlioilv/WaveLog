@@ -221,6 +221,8 @@ let b=null;const made=[];const madeChoices=[];
   rec('選択肢の説明も測定画面の定義に付いてくる',
       !!f3&&(f3.choiceNotes||{})['金']==='いちばん明るい色',
       JSON.stringify(f3&&f3.choiceNotes));
+  /* **保存すると窓は閉じる**（§9.222 ⑦）。続きを触るには開き直す。 */
+  await openTile(mkj.id);
   /* **型ごとに効く形だけを出す**（§9.219 ③、利用者の指示「UIの種類を
      増やしたり」）。以前は選択肢を持たない型では選ばせ方を全部押せなく
      していたが、いまは数値・自由記述にもそれぞれの道具がある。
@@ -490,6 +492,9 @@ let b=null;const made=[];const madeChoices=[];
   rec('初期値と手打ちが測定画面の定義に出る',
       !!f9&&f9.initial==='金'&&f9.freeText===true,
       JSON.stringify(f9&&{initial:f9.initial,freeText:f9.freeText}));
+  /* **保存すると窓は閉じる**（§9.222 ⑦、利用者の指示）。見本は窓の中なので、
+     続きを見るには開き直す。 */
+  await openTile(mkj.id);
   const prefill=await page.evaluate(()=>{
    const sel=document.querySelector('#opPrevField select');return sel?sel.value:'(無い)';
   });
@@ -634,6 +639,11 @@ let b=null;const made=[];const madeChoices=[];
       savedItem.unitPlace==='外上中央'&&savedItem.align==='右'&&savedItem.valueFormat==='3桁区切り',
       JSON.stringify({p:savedItem.unitPlace,a:savedItem.align,f:savedItem.valueFormat,u:savedItem.unit}));
   rec('単位そのものも消えていない',savedItem.unit==='mm',String(savedItem.unit));
+  /* 保存で窓が閉じたことを見る（§9.222 ⑦）。**閉じるのは成功したときだけ**。 */
+  const closedAfterSave=await page.evaluate(()=>{
+   const m=document.getElementById('opItemModal');return !m||m.hidden;
+  });
+  rec('保存すると設定の窓が閉じる',closedAfterSave===true,String(closedAfterSave));
   await closeModal();
 
   /* ==========================================================

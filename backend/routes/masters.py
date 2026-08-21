@@ -1173,6 +1173,17 @@ def operation_choice_list():
   return jsonify(ok=True,**_op_read(fn))
  except Exception as e:return jsonify(error=f'操業データ選択肢マスタの読込に失敗しました: {e}'),500
 
+def _choice_on(v):
+ """「出す/出さない」の真偽（§9.222 ⑥）。**文字列をそのまま`bool()`しない**
+    ——汎用モーダルは`enabledText`に'出さない'を入れて送るので、`bool('出さない')`
+    はTrueになり**「出さない」が一度も保存できない**（帳票ブロックの`_on()`で
+    同じ罠を踏んでいる）。"""
+ # **`None`は「送っていない」**（§9.212 ②）。Trueへ倒すと、説明やよみだけを
+ # 直す呼び出しが「出さない」にしてあった行を毎回「出す」へ戻す。
+ if v is None:return None
+ if isinstance(v,str):return v.strip() not in ('出さない','無効','false','0','')
+ return bool(v)
+
 def _operation_choice_save(x):
  from ..repositories import operation_repo as op
  uid=request_user_id(x)
@@ -1181,7 +1192,8 @@ def _operation_choice_save(x):
   def fn(c):
    return op.choice_upsert(c,x.get('name'),x.get('value'),uid,order=iv(x.get('order')),
                            choice_id=(int(x['id']) if x.get('id') not in (None,'') else None),
-                           enabled=(True if x.get('enabled') is None else bool(x.get('enabled'))),
+                           enabled=_choice_on(x.get('enabledText') if x.get('enabledText') is not None
+                                              else x.get('enabled')),
                            note=x.get('note'),
                            # §9.221 ③。よみ＝探すための読み、対象設備＝
                            # その設備のときだけ出す（空＝すべて）。
