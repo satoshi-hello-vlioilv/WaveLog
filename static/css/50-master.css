@@ -1014,16 +1014,216 @@
   border-radius:var(--radius-xs);background:var(--warn-bg);color:var(--warn-fg);
   font-size:var(--fs-badge);font-weight:700;
 }
-.op-modal-foot{
-  display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;
-  padding:var(--pad-row) var(--space-3);border-top:1px solid var(--line-soft);
-}
-.op-modal-state{flex:1 1 auto;min-width:0;font-size:var(--fs-sm);font-weight:700;color:var(--ok-fg)}
-.op-modal-state.is-bad{color:var(--danger)}
-.op-modal-actions{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
+/* 窓の脚は廃止した（§9.223 ②）——保存は右上の端、状態はタブの下の1行。 */
 /* 選択肢の一覧に「どの項目が使っているか」を出す（§9.216 ④）。
    **使い道の見えない選択肢は消してよいのか判断できない。** */
 .op-usage{color:var(--ink-3);font-size:var(--fs-badge)}
+/* ================================================================
+   §9.223 ②: 窓を広く・タブでステップを見せる（利用者の指示）
+   ----------------------------------------------------------------
+   「見え方はもっと実施の見え方に近づけるために広い領域が必要、コンテンツは
+    縦に長いがそれぞれの項目が縦に並ぶので切れ目がわかりにくく、ステップと
+    しても認知負荷が上がる。タブの活用でステップを見せたり画面領域の確保を
+    行い、補助的データや説明はアコーディオンやフローティングで表示階層を
+    変えるなど工夫してください。保存ボタンの位置は右上の端に変更して
+    ください。」
+
+   ①**広く**（1180→1560px）。見本の側を先に太らせる——この窓の値打ちは
+     「実際の見え方」なので、そこが狭いと確かめられない。
+   ②**タブ**でステップを見せる。4つの塊を縦に積むと切れ目が読めず、
+     いまどこ・あと何段が分からない。
+   ③**保存は右上の端**。危ない操作（削除）は同じ場所へ置かない（§CLAUDE 5）。
+   ④説明は`<details>`へ落として**階層を分ける**。
+   ================================================================ */
+.op-dialog{width:min(1560px,97vw);height:min(940px,94vh);max-height:94vh;
+  display:flex;flex-direction:column}
+.op-modal-head{display:flex;align-items:center;gap:var(--space-3)}
+.op-modal-id{display:flex;align-items:baseline;gap:var(--space-2);min-width:0;flex:1 1 auto}
+.op-modal-id h2{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.op-modal-top{display:flex;align-items:center;gap:var(--space-2);flex:none}
+.op-role-chip{
+  flex:none;padding:1px var(--space-2);border-radius:var(--radius-pill);
+  background:var(--pale);color:var(--teal-dark);font-size:var(--fs-badge);font-weight:800;
+}
+/* 左（見本）を太らせ、右（決めること）は残りを使う。**器の高さを中まで
+   届ける鎖を1段でも抜かない**（§9.222 ⑤）——抜くと右のペインが中身なりに
+   なって、窓の外側がスクロールする。 */
+.op-modal-body{
+  flex:1 1 auto;min-height:0;overflow:hidden;
+  display:grid;grid-template-columns:minmax(360px,0.9fr) minmax(0,1.1fr);
+  gap:var(--space-3);padding:var(--space-3);
+}
+.op-modal-preview{overflow:auto}
+.op-modal-right{display:flex;flex-direction:column;min-width:0;min-height:0;gap:var(--gap-inline)}
+.op-modal-form{flex:1 1 auto;min-height:0;overflow:auto;display:flex;flex-direction:column;
+  gap:var(--gap-inline);min-width:0}
+/* --- タブ: 4段。**番号と要約を両方出す**（あと何段かを数えさせない） --- */
+.op-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:2px;flex:none;
+  padding:2px;background:var(--surface-2);border-radius:var(--radius-sm)}
+.op-tab{
+  display:flex;flex-direction:column;align-items:flex-start;gap:0;min-width:0;
+  padding:var(--space-1) var(--space-2);border:0;border-radius:var(--radius-xs);
+  background:none;color:var(--ink-3);cursor:pointer;text-align:left;
+}
+.op-tab>b{font-size:var(--fs-sm);font-weight:800;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;max-width:100%}
+.op-tab>span{font-size:var(--fs-micro);white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;max-width:100%}
+.op-tab:hover{background:var(--surface)}
+.op-tab.is-on{background:var(--surface);color:var(--nav);
+  box-shadow:inset 0 -2px 0 var(--teal),0 1px 2px rgba(15,32,39,.10)}
+/* --- 説明のアコーディオン: 決める文と、知っておくとよい文を分ける --- */
+.op-help{grid-column:1/-1;border:1px solid var(--line-soft);border-radius:var(--radius-xs);
+  background:var(--surface-2)}
+.op-help>summary{padding:2px var(--space-2);color:var(--ink-3);font-size:var(--fs-badge);
+  font-weight:700;cursor:pointer;list-style:revert}
+.op-help-body{padding:0 var(--space-2) var(--space-1);color:var(--ink-2);font-size:var(--fs-badge)}
+.op-help-body p{margin:0}
+/* 状態はタブの下の1行（閉じない窓なので窓の中に出す・§9.222 ⑦の裏返し）。 */
+.op-modal-state{flex:none;min-height:1.2em;font-size:var(--fs-sm);font-weight:700;color:var(--ok-fg)}
+.op-modal-state.is-bad{color:var(--danger)}
+/* メモは広く（§9.223 ④、利用者の指摘「メモ欄狭すぎる」）。 */
+.op-form-row.is-block{grid-template-columns:minmax(0,1fr)}
+.op-note-in{width:100%;min-width:0;min-height:8em;resize:vertical;
+  font-size:var(--fs);line-height:1.5}
+.op-form-row.is-danger{border-top:1px solid var(--line-soft);padding-top:var(--space-2)}
+.op-locked-chip{
+  padding:1px var(--space-2);border-radius:var(--radius-xs);
+  background:var(--surface-3);color:var(--ink-2);font-size:var(--fs-sm);font-weight:700;
+}
+
+/* ================================================================
+   §9.223 ③: 選ばせ方の見本と意匠（利用者の指示）
+   ----------------------------------------------------------------
+   「UIの見た目もわかりやすいようにサンプルを表示させ、データも入れて
+    選びやすいようにしてください。UIの種類と見た目(色や形、美観デザイン)
+    など組合せでカスタムできるようにしてほしいです。」
+   タイルの中の小さな絵は**実データ入りの見本**。名前だけで選ぶと、押して
+   みるまで形が分からない（§2「推測させない」）。
+   ================================================================ */
+.op-widget-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(11em,1fr));
+  gap:var(--gap-tight);flex:1 1 100%;min-width:0}
+.op-widget-tile{gap:3px}
+.op-widget-icon{font-size:var(--fs);line-height:1;color:var(--ink-3)}
+.op-widget-name{font-size:var(--fs-sm);font-weight:700}
+.op-widget-note{color:var(--ink-3);font-size:var(--fs-micro);white-space:normal;line-height:1.3}
+.op-widget-demo{display:block;min-height:1.6em;pointer-events:none}
+.op-widget-tile.is-on .op-widget-icon{color:var(--teal)}
+/* --- 小さな見本の絵。**本物ではなく絵**（12個ぶんの本物は重い）。
+       形の違いが分かる最小限にして、本物は左の見本1枚で確かめる。 --- */
+.opd{display:flex;align-items:center;gap:2px;font-size:var(--fs-micro);font-weight:700;
+  color:var(--ink-3);line-height:1;min-width:0;overflow:hidden}
+.opd>i{font-style:normal;padding:1px 3px;border-radius:var(--radius-xs);background:var(--surface-2);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.opd .opd-on{background:var(--teal);color:#fff}
+.opd-select,.opd-pick{justify-content:space-between;padding:1px 3px;border:1px solid var(--line);
+  border-radius:var(--radius-xs);background:var(--surface);color:var(--ink-2)}
+.opd-radio>i{background:none;padding:0}
+.opd-radio>i>b{display:inline-block;width:6px;height:6px;margin-right:2px;border-radius:var(--radius-round);
+  border:1px solid var(--line-strong);vertical-align:middle}
+.opd-radio .opd-on{color:var(--teal-dark);background:none}
+.opd-radio .opd-on>b{border-color:var(--teal);background:var(--teal)}
+.opd-seg{border:1px solid var(--line);border-radius:var(--radius-xs);padding:1px;gap:1px;background:var(--surface-2)}
+.opd-seg>i{background:none}
+.opd-seg .opd-on{background:var(--surface);color:var(--teal-dark);box-shadow:0 1px 1px rgba(0,0,0,.12)}
+.opd-tabs>i{background:none;border-bottom:2px solid transparent}
+.opd-tabs .opd-on{background:none;color:var(--teal-dark);border-bottom-color:var(--teal)}
+.opd-chips>i{border-radius:var(--radius-pill);border:1px solid var(--line)}
+.opd-chips .opd-on{border-color:var(--teal)}
+.opd-cards{gap:3px}
+.opd-cards>i{display:flex;flex-direction:column;gap:1px;padding:2px 3px;border:1px solid var(--line);
+  border-radius:var(--radius-xs);background:var(--surface)}
+.opd-cards>i>u{text-decoration:none;color:var(--muted);font-weight:400}
+.opd-cards .opd-on{border-color:var(--teal);background:var(--pale);color:var(--teal-dark)}
+.opd-cards .opd-on>u{color:var(--teal-dark)}
+.opd-toggle{border:1px solid var(--line);border-radius:var(--radius-pill);padding:1px;
+  background:var(--surface-2);gap:1px}
+.opd-toggle>i{border-radius:var(--radius-pill);background:none}
+.opd-toggle .opd-on{background:var(--teal);color:#fff}
+.opd-step>b,.opd-pad>b{display:inline-flex;align-items:center;justify-content:center;
+  min-width:1.2em;padding:1px 2px;border:1px solid var(--line);border-radius:var(--radius-xs);
+  background:var(--surface);font-weight:800}
+.opd-range{display:block;position:relative;width:100%;height:.9em}
+.opd-range>u{position:absolute;left:0;right:0;top:50%;height:3px;margin-top:-1px;
+  border-radius:var(--radius-xs);background:var(--surface-3);text-decoration:none}
+.opd-range>b{position:absolute;left:38%;top:50%;width:9px;height:9px;margin-top:-4px;
+  border-radius:var(--radius-round);background:var(--teal)}
+.opd-memo,.opd-oneline{display:flex;flex-direction:column;gap:2px;width:100%}
+.opd-memo>u,.opd-oneline>u{display:block;height:3px;border-radius:var(--radius-xs);background:var(--surface-3);
+  text-decoration:none}
+.opd-memo>u:last-child{width:60%}
+/* --- 意匠の選び方: 色は見本の丸、形と大きさは札 --- */
+.op-look-swatches{display:flex;flex-wrap:wrap;gap:var(--gap-tight);flex:1 1 100%;min-width:0}
+.op-look-swatch{
+  display:flex;flex-direction:column;align-items:center;gap:2px;
+  padding:2px var(--space-1);border:1px solid transparent;border-radius:var(--radius-xs);
+  background:none;cursor:pointer;color:var(--ink-3);font-size:var(--fs-micro);font-weight:700;
+}
+.op-look-swatch>i{display:block;width:18px;height:18px;border-radius:var(--radius-round);
+  border:2px solid var(--line-mid);background:var(--surface)}
+.op-look-swatch.is-on{border-color:var(--line-strong);background:var(--surface-2);color:var(--ink)}
+.op-look-既定>i{background:var(--teal)}
+.op-look-主色>i{background:var(--teal-dark)}
+.op-look-青>i{background:var(--look-blue)}
+.op-look-緑>i{background:var(--look-green)}
+.op-look-橙>i{background:var(--look-amber)}
+.op-look-赤>i{background:var(--look-red)}
+.op-look-紫>i{background:var(--look-violet)}
+.op-look-灰>i{background:var(--look-slate)}
+.op-look-row{display:flex;gap:var(--gap-tight);flex-wrap:wrap;min-width:0}
+.op-look-btn{
+  min-height:var(--ctl-h-xs);padding:0 var(--space-2);
+  border:1px solid var(--line-mid);border-radius:var(--radius-xs);
+  background:var(--surface);color:var(--ink-2);font-size:var(--fs-sm);font-weight:700;cursor:pointer;
+}
+.op-look-btn.is-on{background:var(--teal);border-color:var(--teal);color:#fff}
+
+/* ================================================================
+   §9.223 ①: 構成チェック（利用者の指示）
+   ----------------------------------------------------------------
+   必須をカードから外したぶん、**全体として満たされているかは全体の場所で
+   言う**。**足りない・二重のときだけ赤く**——いつも赤い帯は読まれなくなる。
+   ================================================================ */
+.op-role-strip{
+  display:flex;flex-direction:column;gap:var(--gap-tight);
+  padding:var(--pad-row) var(--space-2);margin-bottom:var(--gap-inline);
+  border:1px solid var(--line-soft);border-left:3px solid var(--ok-fg);
+  border-radius:var(--radius-sm);background:var(--surface-2);
+}
+.op-role-strip.is-bad{border-left-color:var(--danger);background:var(--danger-bg)}
+.op-role-head{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;
+  margin:0;font-size:var(--fs-sm);font-weight:800;color:var(--nav)}
+.op-role-stat{padding:1px var(--space-2);border-radius:var(--radius-pill);
+  font-size:var(--fs-badge);font-weight:800}
+.op-role-stat.is-ok{background:var(--ok-bg);color:var(--ok-fg)}
+.op-role-stat.is-bad{background:var(--danger);color:#fff}
+.op-role-more{margin-left:auto;min-height:var(--ctl-h-xs);font-size:var(--fs-badge)}
+.op-role-ok{color:var(--ink-2);font-size:var(--fs-badge)}
+.op-role-fix{display:flex;flex-direction:column;gap:2px}
+.op-role-line{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--gap-tight);
+  font-size:var(--fs-badge)}
+.op-role-line>b{color:var(--danger);font-weight:800}
+.op-role-line>i{font-style:normal;padding:0 var(--space-1);border-radius:var(--radius-xs);
+  background:var(--surface);color:var(--ink);font-weight:700}
+.op-role-line>small{flex:1 1 100%;color:var(--ink-2)}
+/* 譲って下がった欄の知らせは**不備ではない**（§9.223 ①）。赤で言うと
+   直すべきことに見えるので、見出しだけ落ち着いた色にする。 */
+.op-role-line.is-info>b{color:var(--ink-2)}
+.op-role-down{font-style:normal;color:var(--muted);font-weight:600}
+.op-role-down::before{content:'／'}
+.op-role-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(14em,1fr));
+  gap:var(--gap-tight);padding-top:var(--gap-tight);border-top:1px solid var(--line-soft)}
+.op-role-list[hidden]{display:none}
+.op-role-item{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--gap-tight);
+  padding:2px var(--space-1);border-radius:var(--radius-xs);background:var(--surface);
+  font-size:var(--fs-badge)}
+.op-role-item.is-none{background:var(--surface-3)}
+.op-role-item.is-dup{background:var(--danger-bg)}
+.op-role-item>b{font-weight:800;color:var(--ink)}
+.op-role-req{font-style:normal;color:var(--danger);font-weight:800}
+.op-role-who{color:var(--teal-dark);font-weight:700}
+.op-role-item>small{flex:1 1 100%;color:var(--muted);line-height:1.3}
+
 
 /* 見せるが触らせない欄（§9.219 ②）。**隠さない**——隠すと「なぜ中身を
    変えられないのか」が読めなくなる。触れないことを面と色で示す。 */

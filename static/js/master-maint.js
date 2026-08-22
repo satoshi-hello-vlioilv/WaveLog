@@ -3697,6 +3697,11 @@
                 aligns:['自動','左','中央','右'],
                 valueFormats:['そのまま','3桁区切り','ゼロ埋め'],
                 unitInBlocked:[],
+                /* §9.223 ①③。**サーバーが答える**（役割の一覧・構成の状態・
+                   意匠の軸）。ここは届くまでの受け皿で、規則を画面に持たない。 */
+                roles:[],roleReport:null,
+                lookColors:['既定'],lookShapes:['角丸'],lookSizes:['中'],
+                tab:'place',
                 gridCols:12,choiceNames:[],choices:[],notes:{},usage:{},choiceHints:{},
                 /* 同じ群がばらけて保存されていた置き場（§9.219 ③）。
                    まとめて描いたことを画面に書くために覚える。 */
@@ -3733,6 +3738,20 @@
   'スライダー':{icon:'⇹',note:'目盛を引いて決める。上下限のある数値向き'},
   'キーパッド':{icon:'⌗',note:'押すと浮き窓のテンキー。キーボードの無い端末向き'},
   'メモ':{icon:'☰',note:'複数行で書ける。自由記述向き'},
+  /* §9.223 ③（利用者の指示「6種類しかないので…バリエーションを増やして」）。
+     **足すのは「選ぶ状況が違うもの」だけ**——見た目の違いは意匠の軸が持つ
+     ので、色違いを種類として増やさない（選ぶ盤が同じ物の色違いで埋まる）。 */
+  'カード':{icon:'▢',note:'説明を添えた大きな札。選ぶのに説明が要るとき'},
+  'トグル':{icon:'⇆',note:'2択の入切。対になっているもの（有/無・OS/DS）'},
+  '早見ボタン':{icon:'⋯',note:'よく使う値を並べる。最小・最大・刻みから作る'},
+  '1行':{icon:'—',note:'素の1行入力。メモほどの高さが要らないとき'},
+ };
+ /* 意匠（§9.223 ③）。**軸は3つだけ**——色・形・大きさ。掛け算で種類を
+    増やさないための分け方なので、ここへ4つ目の軸を足さないこと。 */
+ const OP_LOOK_NOTE={
+  '既定':'いまの画面と同じ色（teal）','主色':'主色をはっきり出す',
+  '青':'情報・設定','緑':'良い・完了','橙':'注意・確認',
+  '赤':'危険・停止','紫':'特別な扱い','灰':'ひかえめ',
  };
  /* ---------- 選択肢のまとまり名のサジェスト（§9.220 ④、利用者の指示） ----------
     「操業データの選択肢のまとまり名については他の入力を見て、同じものを
@@ -3947,6 +3966,66 @@
    +`<div class="op-board-grid" data-op-place="${esc(place)}"`
    +` style="--op-cols:${opState.gridCols}">${body}</div></section>`;
  }
+ /* ---------- 構成チェック（§9.223 ①、利用者の指示） ----------
+    「データの設計上必須な部分は、全体の構成上の必須項目として押さえておき、
+     各カード単位では自由度を持っておきたいです。」
+
+    必須をカードから外したぶん、**全体として満たされているかは全体の場所で
+    言う**。ここが無いと「必須を外せる」だけになり、足りないことに測定画面を
+    開くまで気づけない（§2「探させない」）。
+    **判定はサーバー**（`role_report`）——画面で数え直すと2つの答えが出る。
+    **足りない・二重のときだけ赤く言い、満たされているときは静かに数える**
+    （いつも赤いと読まれなくなる）。 */
+ function opRoleStripHtml(){
+  const rep=opState.roleReport;
+  if(!rep)return '';
+  const roles=rep.roles||[];
+  const need=roles.filter(r=>r.required);
+  const okNeed=need.filter(r=>r.state==='ok').length;
+  const miss=roles.filter(r=>r.required&&r.state==='none');
+  const dup=roles.filter(r=>r.state==='dup');
+  const filled=roles.filter(r=>r.state==='ok').length;
+  const chip=(cls,txt,tip)=>`<b class="op-role-stat ${cls}"${tip?` title="${esc(tip)}"`:''}>${txt}</b>`;
+  /* **譲って下がった組み込みの欄は名指しで言う**（§9.223 ①）。窓には
+     「役割を別の項目へ移すと、この欄は自動で下がります」と書いてあるので、
+     下がったことを黙っていると「消えた」と読まれる。 */
+  const down=(rep.steppedDown||[]);
+  const downLine=down.length
+   ?`<span class="op-role-line is-info"><b>役割を譲って下がった欄</b>`
+     +down.map(h=>`<i>${esc(h.name||h.builtin||'')}</i>`).join('')
+     +`<small>同じ役割の項目を作ったので、画面がもともと持っているこの欄は`
+     +`測定画面に出しません（役割を外せば戻ります）。</small></span>`
+   :'';
+  const body=(miss.length||dup.length)
+   ?`<span class="op-role-fix">`+downLine
+     +(miss.length?`<span class="op-role-line"><b>足りない役割</b>`
+       +miss.map(r=>`<i>${esc(r.label)}</i>`).join('')
+       +`<small>この役割を担う項目がありません。どれか1つの項目の②タブで「役割」に選んでください。</small></span>`:'')
+     +(dup.length?`<span class="op-role-line"><b>二重の役割</b>`
+       +dup.map(r=>`<i>${esc(r.label)}（${r.holders.map(h=>esc(h.name)).join('・')}）</i>`).join('')
+       +`<small>どちらの値が使われるか決まりません。片方の役割を外してください。</small></span>`:'')
+     +`</span>`
+   :`<span class="op-role-fix"><span class="op-role-ok">`
+     +`必要な役割は${need.length}件すべて埋まっています`
+     +`（役割の付いた項目 ${filled}件）。カードの作りは全部同じなので、`
+     +`名前・型・選ばせ方は項目ごとに自由に決められます。</span>${downLine}</span>`;
+  return `<section class="op-role-strip${(miss.length||dup.length)?' is-bad':''}">`
+   +`<h4 class="op-role-head">構成チェック`
+   +chip(miss.length?'is-bad':'is-ok',`必須 ${okNeed}/${need.length}`,
+         '必須の役割が担われているか。担うのはどの項目でもかまいません')
+   +(dup.length?chip('is-bad',`二重 ${dup.length}`,'同じ役割を2つの項目が持っています'):'')
+   +`<button type="button" class="ghost op-role-more" id="opRoleMore" aria-expanded="false">役割の一覧</button>`
+   +`</h4>${body}`
+   +`<div class="op-role-list" id="opRoleList" hidden>`
+   +roles.map(r=>`<span class="op-role-item is-${esc(r.state)}">`
+     +`<b>${esc(r.label)}</b>${r.required?'<i class="op-role-req">必須</i>':''}`
+     +`<span class="op-role-who">${r.holders.length?r.holders.map(h=>esc(h.name)).join('・'):'—'}`
+     +((r.steppedDown||[]).length
+       ?`<i class="op-role-down">${esc((r.steppedDown||[]).map(h=>h.name||h.builtin).join('・'))}は下がりました</i>`
+       :'')+`</span>`
+     +`<small>${esc(r.note)}</small></span>`).join('')
+   +`</div></section>`;
+ }
  function renderOpItem(){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
   const eqs=(equipmentMasterState.items||[]).map(e=>e.name).filter(Boolean);
@@ -3968,11 +4047,19 @@
   const boards=opState.places.map(opBoardHtml).join('');
   const healed=[...opState.healed];
   list.innerHTML=`<div class="op-edit">`
+   +opRoleStripHtml()
    +(healed.length?`<p class="op-healed">同じ群がばらばらの位置に保存されていたので、`
      +`<b>${esc(healed.join('・'))}</b>の盤ではまとめて出しています`
      +`（この盤で一度でも掴んで動かすと、その形で保存されます）。</p>`:'')
    +`<div class="op-boards">`+boards+`</div></div>`;
   bindOpItem();
+  /* 役割の一覧は**畳んでおく**（§9.223 ②の作法）——14件を常に出すと盤が
+     押し下げられる。足りない・二重のときだけ、上の1行が理由を言う。 */
+  const more=$('#opRoleMore'),rlist=$('#opRoleList');
+  if(more&&rlist)more.onclick=()=>{
+   rlist.hidden=!rlist.hidden;
+   more.setAttribute('aria-expanded',rlist.hidden?'false':'true');
+  };
   if(opState.picked&&!$('#opItemModal'))renderOpModal();
  }
  function opSay(text,bad){
@@ -4249,16 +4336,35 @@
  function ensureOpModal(){
   let m=$('#opItemModal');if(m)return m;
   m=document.createElement('div');m.className='record-modal';m.id='opItemModal';m.hidden=true;
+  /* ---------- 窓の骨（§9.223 ②、利用者の指示） ----------
+     「見え方はもっと実施の見え方に近づけるために広い領域が必要、コンテンツは
+      縦に長いがそれぞれの項目が縦に並ぶので切れ目がわかりにくく、ステップと
+      しても認知負荷が上がる。タブの活用でステップを見せたり画面領域の確保を
+      行い、補助的データや説明はアコーディオンやフローティングで表示階層を
+      変えるなど工夫してください。保存ボタンの位置は右上の端に変更して
+      ください。」
+
+     直したのは4つ。
+       ①**保存は右上の端**（決め終えたら右上へ戻る、が1本道になる）
+       ②**タブでステップを見せる**（4つの塊を縦に積むと切れ目が読めない。
+         タブなら「いまどこ」「あと何段」が常に出ている）
+       ③**見本の領域を広く**（実際の見え方に近づけるのがこの窓の値打ち）
+       ④**説明はアコーディオン**（`<details>`）へ落として階層を分ける
+     状態（保存しました／できません）は**タブの上の1行**に出す——窓の外へ
+     出すと、閉じない窓では読まれない（§9.222 ⑦は「閉じるなら外」）。 */
   m.innerHTML=`<div class="settings-dialog op-dialog" role="dialog" aria-modal="true">
-    <header><div><small>操業データ項目</small><h2 id="opModalTitle">項目</h2></div>
+    <header class="op-modal-head">
+     <div class="op-modal-id"><small>操業データ項目</small><h2 id="opModalTitle">項目</h2>
+      <span class="op-modal-role" id="opModalRole"></span></div>
+     <div class="op-modal-top" id="opModalActions"></div>
      <button id="opModalClose" type="button" aria-label="閉じる">×</button></header>
     <div class="op-modal-body">
      <div class="op-modal-preview" id="opModalPreview"></div>
-     <div class="op-modal-form" id="opModalForm"></div>
-    </div>
-    <div class="op-modal-foot">
-     <span class="op-modal-state" id="opModalState"></span>
-     <span class="op-modal-actions" id="opModalActions"></span>
+     <div class="op-modal-right">
+      <div class="op-tabs" id="opModalTabs" role="tablist"></div>
+      <span class="op-modal-state" id="opModalState"></span>
+      <div class="op-modal-form" id="opModalForm"></div>
+     </div>
     </div>
    </div>`;
   document.body.append(m);
@@ -4274,6 +4380,11 @@
   m.hidden=true;opState.picked=null;renderOpItem();
  }
  function openOpModal(id){
+  /* **別の項目を開いたら①へ戻す**（§9.223 ②）。段は「実際に決める順」で
+     並んでいるので、初めて開く項目が③から始まると①を見落とす。
+     **同じ項目を開き直したときは戻さない**——保存すると窓は閉じる
+     （§9.222 ⑦）ので、続きを触るたびに①から辿り直させないため。 */
+  if(String(opState.picked||'')!==String(id||''))opState.tab='place';
   opState.picked=id;
   const m=ensureOpModal();m.hidden=false;renderOpModal();
   /* **前の窓の一言を持ち越さない**（§CLAUDE 2）。`#opModalState`は窓を作り
@@ -4400,6 +4511,128 @@
     +`<button type="button" class="ghost" data-op-cdel="${esc(c.id)}" title="この値を消します">×</button>`
     +`</div>`).join('')+`</div>`;
  }
+ /* ---------- タブ（§9.223 ②、利用者の指示） ----------
+    「コンテンツは縦に長いがそれぞれの項目が縦に並ぶので切れ目がわかり
+     にくく、ステップとしても認知負荷が上がる。タブの活用でステップを
+     見せたり画面領域の確保を行い」
+    **順番は実際に決める順**（§14）。番号を振るのは「あと何段あるか」を
+    数えさせないため——タブは常に4枚見えているので、いまどこかも分かる。 */
+ const OP_TABS=[{k:'place',n:'① どこに出すか',t:'カード・幅・群'},
+                {k:'data', n:'② 何を記録するか',t:'型・役割・選択肢'},
+                {k:'look', n:'③ どう見せるか',t:'選ばせ方・意匠'},
+                {k:'note', n:'④ メモ',t:'覚え書き'}];
+ function opModalTab(x){
+  const t=String(opState.tab||'place');
+  return OP_TABS.some(o=>o.k===t)?t:'place';
+ }
+ /* ---------- 役割（§9.223 ①、利用者の指示） ----------
+    「データの設計上必須な部分は、全体の構成上の必須項目として押さえておき、
+     各カード単位では自由度を持っておきたいです。」
+    **担っている役割は1箇所が答える**（サーバーの`role_of()`と同じ読み方）。
+    保存値が空でも、組み込みの欄は組み込みキーが役割になる。 */
+ function opRoleOf(x){
+  const r=String((x&&x.role)||'').trim();
+  if(r)return r;
+  const b=String((x&&x.builtin)||'').trim();
+  return (opState.roles||[]).some(o=>o.key===b)?b:'';
+ }
+ /* その役割をいま担っている他の項目（付け替えると入れ替わることを言う）。 */
+ function opRoleHolder(key,exceptId){
+  return (opState.items||[]).find(i=>String(i.id)!==String(exceptId)
+    &&i.enabled!==false&&opRoleOf(i)===key);
+ }
+ function opRolePickHtml(x){
+  const cur=opRoleOf(x);
+  const list=opState.roles||[];
+  if(!list.length)return '<i class="op-form-note">役割の一覧を読み込んでいます…</i>';
+  const other=cur?opRoleHolder(cur,x.id):null;
+  return `<select id="opdRole">`
+   +`<option value=""${cur?'':' selected'}>（役割なし・ただの記録項目）</option>`
+   +list.map(r=>{
+      const holder=opRoleHolder(r.key,x.id);
+      const tail=holder?`　※いまは「${holder.name}」が担当`:'';
+      return `<option value="${esc(r.key)}"${cur===r.key?' selected':''}>`
+       +`${esc(r.label)}${r.required?'（必須）':''}${esc(tail)}</option>`;
+     }).join('')
+   +`</select>`
+   +`<i class="op-form-note">${cur
+      ?`この欄の値は<b>${esc((list.find(r=>r.key===cur)||{}).label||cur)}</b>として読まれます。`
+        +esc((list.find(r=>r.key===cur)||{}).note||'')
+        +(other?`　<b>「${esc(other.name)}」も同じ役割</b>を持っています——どちらの値が使われるか決まらないので、片方を外してください。`:'')
+      :'役割を付けると、その値をアプリが決まった用途で読みます。'
+        +'<b>必須は項目ではなく構成に掛かる</b>ので、必要な役割さえ誰かが担っていれば、'
+        +'どのカードが担ってもかまいません。'}</i>`;
+ }
+ /* ---------- 意匠（§9.223 ③、利用者の指示） ----------
+    「UIの種類と見た目(色や形、美観デザイン)など組合せでカスタムできるように」
+    **軸は3つ**（色・形・大きさ）。掛け算で「種類」を増やさないための分け方
+    なので、ここへ4つ目を足さないこと。 */
+ function opLookOf(x){
+  const d=(x&&x.look)||{};
+  return {color:d.color||'既定',shape:d.shape||'角丸',size:d.size||'中'};
+ }
+ function opLookPickHtml(x){
+  const lk=opLookOf(x);
+  const swatch=c=>`<button type="button" data-op-look="color" data-op-val="${esc(c)}"`
+   +` class="op-look-swatch op-look-${esc(c)}${lk.color===c?' is-on':''}"`
+   +` title="${esc(OP_LOOK_NOTE[c]||c)}" aria-pressed="${lk.color===c?'true':'false'}">`
+   +`<i aria-hidden="true"></i><span>${esc(c)}</span></button>`;
+  const pick=(axis,list,cur)=>list.map(v=>
+    `<button type="button" data-op-look="${esc(axis)}" data-op-val="${esc(v)}"`
+    +` class="op-look-btn${cur===v?' is-on':''}" aria-pressed="${cur===v?'true':'false'}">${esc(v)}</button>`).join('');
+  return `<div class="op-form-row"><span class="op-form-label">色</span>
+    <span class="op-form-ctl"><span class="op-look-swatches">${(opState.lookColors||[]).map(swatch).join('')}</span>
+     <i class="op-form-note">${esc(OP_LOOK_NOTE[lk.color]||'')}
+      　色が語るのは「どの仲間か」だけです——<b>選んだかどうかは面と文字の太さでも</b>示すので、
+      色が見えない人にも伝わります。</i></span></div>
+   <div class="op-form-row"><span class="op-form-label">形</span>
+    <span class="op-form-ctl"><span class="op-look-row">${pick('shape',opState.lookShapes||[],lk.shape)}</span></span></div>
+   <div class="op-form-row"><span class="op-form-label">大きさ</span>
+    <span class="op-form-ctl"><span class="op-look-row">${pick('size',opState.lookSizes||[],lk.size)}</span>
+     <i class="op-form-note">文字の大きさから作るので、表示サイズを変えても崩れません。</i></span></div>`;
+ }
+ /* ---------- 選ばせ方の見本（§9.223 ③、利用者の指示） ----------
+    「UIの見た目もわかりやすいようにサンプルを表示させ、データも入れて
+     選びやすいようにしてください。」
+    タイルの中に**実際の値を入れた小さな絵**を描く。押す前にどうなるかが
+    見えないと、名前だけで選ぶことになる（§2「探させない」）。
+    **本物の部品ではなく絵**——12個ぶんの本物を作ると重いので、形の違いが
+    分かる最小の絵にして、本物は左の見本1枚で確かめてもらう。 */
+ function opDemoValues(x){
+  const fam=opFamilyOf(x);
+  if(fam==='choice'){
+   const vs=opChoiceValues(x.choice).filter(Boolean).slice(0,3);
+   return vs.length?vs:['甲','乙','丙'];
+  }
+  if(fam==='number'){
+   const lo=x.min==null?1:Number(x.min);
+   const st=Number(x.step)||1;
+   return [lo,lo+st,lo+st*2].map(v=>String(Number.isInteger(v)?v:v.toFixed(1)));
+  }
+  return ['記入'];
+ }
+ function opWidgetDemoHtml(x,w){
+  const vs=opDemoValues(x);
+  const on=v=>`<i class="opd-on">${esc(v)}</i>`,off=v=>`<i>${esc(v)}</i>`;
+  const row=cls=>`<span class="opd ${cls}">${on(vs[0])}${vs.slice(1).map(off).join('')}</span>`;
+  if(w==='プルダウン')return `<span class="opd opd-select">${esc(vs[0])}<b>▾</b></span>`;
+  if(w==='ラジオ')return `<span class="opd opd-radio"><i class="opd-on"><b></b>${esc(vs[0])}</i>`
+   +vs.slice(1,3).map(v=>`<i><b></b>${esc(v)}</i>`).join('')+`</span>`;
+  if(w==='セグメント')return row('opd-seg');
+  if(w==='タブ')return row('opd-tabs');
+  if(w==='ボタン群')return row('opd-chips');
+  if(w==='カード')return `<span class="opd opd-cards"><i class="opd-on">${esc(vs[0])}<u>説明</u></i>`
+   +`<i>${esc(vs[1]||'')}<u>説明</u></i></span>`;
+  if(w==='トグル')return `<span class="opd opd-toggle"><i class="opd-on">${esc(vs[0])}</i><i>${esc(vs[1]||'—')}</i></span>`;
+  if(w==='一覧')return `<span class="opd opd-pick">${esc(vs[0])}<b>⌸</b></span>`;
+  if(w==='ステッパー')return `<span class="opd opd-step"><b>−</b><i>${esc(vs[0])}</i><b>＋</b></span>`;
+  if(w==='スライダー')return `<span class="opd opd-range"><u></u><b></b></span>`;
+  if(w==='キーパッド')return `<span class="opd opd-pad"><b>7</b><b>8</b><b>9</b></span>`;
+  if(w==='早見ボタン')return row('opd-chips');
+  if(w==='メモ')return `<span class="opd opd-memo"><u></u><u></u><u></u></span>`;
+  if(w==='1行')return `<span class="opd opd-oneline"><u></u></span>`;
+  return '';
+ }
  function renderOpModal(){
   const m=$('#opItemModal');if(!m||m.hidden)return;
   const x=opItemById(opState.picked);
@@ -4469,8 +4702,15 @@
      何を決める場所かが読めるようにする。 */
   const sec=(title,note,body)=>`<section class="op-form-sec">`
    +`<h4 class="op-form-sec-head">${esc(title)}<small>${esc(note)}</small></h4>${body}</section>`;
-  $('#opModalForm').innerHTML=
-   sec('① どこに出すか','測定画面のどのカードへ、どのくらいの幅で出すか',`
+  /* 補助的な説明は**畳んで階層を変える**（§9.223 ②、利用者の指示
+     「補助的データや説明はアコーディオンやフローティングで表示階層を
+      変えるなど工夫してください」）。決めるための文と、知っておくと
+     よい文を同じ重さで並べると、どちらも読まれなくなる。 */
+  const help=(title,body)=>`<details class="op-help"><summary>${esc(title)}</summary>`
+   +`<div class="op-help-body">${body}</div></details>`;
+  const tab=opModalTab(x);
+  /* ---------- ① どこに出すか ---------- */
+  const paneWhere=sec('どこに出すか','測定画面のどのカードへ、どのくらいの幅で出すか',`
    <div class="op-form-row"><span class="op-form-label">置き場</span>
     <span class="op-form-ctl">${seg('置き場',opState.places,x.place||'準備','data-op-place',
       p=>OP_PLACE_NOTE[p]||'')}</span></div>
@@ -4485,7 +4725,6 @@
      <button type="button" id="opdRequired" class="op-toggle${x.required?' is-on':''}" aria-pressed="${x.required?'true':'false'}">必須にする</button>
      <button type="button" id="opdEnabled" class="op-toggle${x.enabled===false?'':' is-on'}" aria-pressed="${x.enabled===false?'false':'true'}">測定画面に出す</button>
      <button type="button" id="opdFold" class="op-toggle${x.fold?' is-on':''}" aria-pressed="${x.fold?'true':'false'}">この群を畳む</button>
-     <i class="op-form-note">「畳む」は<b>群ぜんぶ</b>に効きます。下の「開く条件」を選ぶと、条件のときだけ開きます（条件なしで畳むこともできます）。</i>
     </span></div>
    <div class="op-form-row"><span class="op-form-label">対象設備</span>
     <span class="op-form-ctl">${opEquipmentPickHtml(x)}</span></div>
@@ -4494,25 +4733,35 @@
      <span class="op-when">${opMeasureTypes().map(t=>
        `<button type="button" data-op-when="${esc(t)}" class="${(x.showWhen||[]).includes(t)?'is-on':''}">${esc(t)}</button>`).join('')
        ||'<i class="op-form-note">測定画面を開いていないので項目の一覧が出せません。</i>'}</span>
-     <i class="op-form-note">選ぶと、この<b>群</b>は畳んで出て、その測定項目を選んだときだけ開きます（群ぜんぶに効きます）。</i>
-    </span></div>`)
-   +sec('② 何を記録するか',x.builtin?'この欄は画面がもともと持っているので、記録の形は変えられません'
-       :'値の型・入る範囲・選ばせる候補・最初から入れておく値',`
-   ${x.builtin?'<p class="op-form-locked">項目名・型・数の決まり・選択肢・初期値は<b>画面が持っています</b>（内径のプリセット・条数の上限など、それぞれの仕掛けがあるため）。ここで決められるのは①③のことだけです。</p>':`
+    </span></div>
+   ${help('「畳む」と「開く条件」はどう効くか',
+     '<p>「畳む」は<b>群ぜんぶ</b>に効きます。開く条件を選ぶと、その測定項目を選んだときだけ開きます'
+     +'（条件なしで畳むこともできます）。</p>')}`);
+  /* ---------- ② 何を記録するか ---------- */
+  const paneWhat=sec('何を記録するか','値の型・入る範囲・選ばせる候補・最初から入れておく値',`
    <div class="op-form-row"><span class="op-form-label">項目名</span>
     <span class="op-form-ctl"><input type="text" id="opdName" value="${esc(x.name)}"></span></div>
+   <div class="op-form-row"><span class="op-form-label">役割</span>
+    <span class="op-form-ctl">${opRolePickHtml(x)}</span></div>
    <div class="op-form-row"><span class="op-form-label">型</span>
-    <span class="op-form-ctl">${seg('型',opState.types,x.type,'data-op-type',t=>OP_TYPE_NOTE[t]||'')}
-     <i class="op-form-note">${esc(OP_TYPE_NOTE[x.type]||'')}</i></span></div>
-   ${isChoice?'':`
+    <span class="op-form-ctl">${x.builtin
+      ?`<b class="op-locked-chip">${esc(x.type||'画面の部品で決まります')}</b>
+        <i class="op-form-note">この欄は<b>画面がもともと持っている部品</b>なので、型は変えられません。
+        別の型で記録したいときは、<b>新しい項目を作って同じ役割を持たせて</b>ください
+        ——役割が移ると、この欄は測定画面から自動で下がります。</i>`
+      :`${seg('型',opState.types,x.type,'data-op-type',t=>OP_TYPE_NOTE[t]||'')}
+        <i class="op-form-note">${esc(OP_TYPE_NOTE[x.type]||'')}</i>`}</span></div>
+   ${(isChoice||x.builtin)?'':`
    <div class="op-form-row"><span class="op-form-label">数の決まり</span>
     <span class="op-form-ctl op-form-nums">
      <label>小数桁<input type="number" id="opdDecimals" min="0" max="4" value="${x.decimals==null?'':esc(x.decimals)}"></label>
      <label>最小<input type="number" id="opdMin" step="any" value="${x.min==null?'':esc(x.min)}"></label>
      <label>最大<input type="number" id="opdMax" step="any" value="${x.max==null?'':esc(x.max)}"></label>
      <label title="ステッパーの−／＋1回ぶん、スライダーの目盛の幅">刻み<input type="number" id="opdStep" min="0" step="any" value="${x.step==null?'':esc(x.step)}"></label>
-     <i class="op-form-note">刻みを空にすると小数桁から作ります（整数=1／小数2桁=0.01）。<b>0は「決めていない」</b>として扱います——0にすると押しても動かない道具になるためです。</i>
-    </span></div>`}
+    </span></div>
+   ${help('刻みを空にするとどうなるか',
+     '<p>小数桁から作ります（整数=1／小数2桁=0.01）。<b>0は「決めていない」</b>として扱います'
+     +'——0にすると押しても動かない道具になるためです。</p>')}`}
    ${isChoice?`
    <div class="op-form-row"><span class="op-form-label">選択肢</span>
     <span class="op-form-ctl">
@@ -4534,6 +4783,7 @@
      <i class="op-form-note">${users.length?`このまとまりを使っている項目: ${esc(users.join('、'))}`
        :'このまとまりを使っている項目はまだありません'}</i>
     </span></div>`:''}
+   ${x.builtin?'':`
    <div class="op-form-row"><span class="op-form-label">初期値</span>
     <span class="op-form-ctl">
      <input type="text" id="opdInitial" list="opInitialList" value="${esc(x.initial||'')}"
@@ -4544,35 +4794,67 @@
        ?`<b class="op-warn-chip">候補に「${esc(x.initial)}」がありません${x.freeText?'（手打ちの値として入ります）':'——このままだと選択肢に無い値として入ります'}</b>`:''}
      ${!isChoice&&x.initial&&opInitialRangeNote(x)
        ?`<b class="op-warn-chip">${esc(opInitialRangeNote(x))}</b>`:''}
-     <i class="op-form-note"><b>まだ何も記録されていない欄にだけ</b>入ります。入力の方法によらず効きます（プルダウンでもラジオでもステッパーでも同じ）。空にした欄を開き直しても初期値へは戻りません——消したのは作業者の判断なので、上書きしません。</i>
     </span></div>
+   ${help('初期値はいつ入るか',
+     '<p><b>まだ何も記録されていない欄にだけ</b>入ります。入力の方法によらず効きます'
+     +'（プルダウンでもラジオでもステッパーでも同じ）。空にした欄を開き直しても初期値へは戻りません'
+     +'——消したのは作業者の判断なので、上書きしません。</p>')}`}
    ${isChoice?`
    <div class="op-form-row"><span class="op-form-label">手打ち</span>
     <span class="op-form-ctl">
      <button type="button" id="opdFreeText" class="op-toggle${x.freeText?' is-on':''}" aria-pressed="${x.freeText?'true':'false'}">候補にない値も打てる</button>
-     <i class="op-form-note">候補の下に打ち込む欄が出ます。打った値は<b>そのまま記録に入り</b>、選択肢マスタには足しません（現場のその場かぎりの値でマスタを増やさないため）。</i>
-    </span></div>`:''}`}`)
-   +sec('③ どう見せるか','単位の置き場・値の寄せ方・入力の道具（記録の中身は変わりません）',`
-   ${opLookRowHtml(x,widget)}
+     <i class="op-form-note">候補の下に打ち込む欄が出ます。打った値は<b>そのまま記録に入り</b>、選択肢マスタには足しません。</i>
+    </span></div>`:''}
+   <div class="op-form-row is-danger"><span class="op-form-label">この項目</span>
+    <span class="op-form-ctl">
+     ${x.builtin
+       ?`<b class="op-locked-chip">画面の欄は消せません</b>
+         <i class="op-form-note">①の「測定画面に出す」を外すと隠れます。
+          役割を別の項目へ移すと、この欄は自動で下がります。</i>`
+       :`<button type="button" id="opdDelete" class="danger ghost">この項目を削除</button>
+         <i class="op-form-note">取り消せません。<b>記録済みの値は残りますが、画面から入れられなくなります。</b></i>`}
+    </span></div>`);
+  /* ---------- ③ どう見せるか ---------- */
+  const paneLook=sec('どう見せるか','選ばせ方・意匠・単位の置き場（記録の中身は変わりません）',`
    <div class="op-form-row"><span class="op-form-label">選ばせ方</span>
     <span class="op-form-ctl">
-     ${opWidgetsFor(x).map(w=>`<button type="button" data-op-widget="${esc(w)}"`
+     <span class="op-widget-grid">${opWidgetsFor(x).map(w=>`<button type="button" data-op-widget="${esc(w)}"`
        +` class="op-widget-tile${widget===w?' is-on':''}"${usable?'':' disabled'}>`
-       +`<b>${esc((OP_WIDGET_NOTE[w]||{}).icon||'')}</b><span>${esc(opWidgetLabel(x,w))}</span>`
-       +`<small>${esc((OP_WIDGET_NOTE[w]||{}).note||'')}</small></button>`).join('')}
+       +`<b class="op-widget-icon">${esc((OP_WIDGET_NOTE[w]||{}).icon||'')}</b>`
+       +`<span class="op-widget-name">${esc(opWidgetLabel(x,w))}</span>`
+       +`<span class="op-widget-demo">${opWidgetDemoHtml(x,w)}</span>`
+       +`<small class="op-widget-note">${esc((OP_WIDGET_NOTE[w]||{}).note||'')}</small></button>`).join('')}</span>
      <i class="op-form-note">${usable
-       ?'選んだ形がそのまま測定画面に出ます（<b>値の持ち方は変わりません</b>）。左の見本は本物の部品なので、押して確かめられます。'
+       ?'見本は<b>本物の部品</b>なので、押して確かめられます。'
        :'この型で選べる形は1つだけです。'}${
        opFamilyOf(x)==='number'?'　数値の欄は<b>打つこともできる</b>まま——道具は隣に足すだけです。':''}${
-       opFamilyOf(x)==='choice'&&!x.builtin&&!x.choice?'　<b>選択肢のまとまりを選ぶと</b>、見本に実際の値が並びます。':''}</i>
-    </span></div>`)
-   +sec('④ メモ','画面には出ません。あとから読む人のために',`
-   <div class="op-form-row"><span class="op-form-label">覚え書き</span>
-    <span class="op-form-ctl"><input type="text" id="opdNote" value="${esc(x.note||'')}"
-      placeholder="この項目を作った理由・注意点など（画面には出ません）"></span></div>`);
-  $('#opModalActions').innerHTML=`<button type="button" id="opdSave" class="mm-btn-primary">保存</button>`
-   +(x.builtin?`<span class="op-form-note">画面の欄は消せません（「測定画面に出す」を外すと隠れます）</span>`
-     :`<button type="button" id="opdDelete" class="danger ghost">削除</button>`);
+       opFamilyOf(x)==='choice'&&!x.choice?'　<b>選択肢のまとまりを選ぶと</b>、見本に実際の値が並びます。':''}</i>
+    </span></div>
+   ${opLookPickHtml(x)}
+   ${opLookRowHtml(x,widget)}`);
+  /* ---------- ④ メモ ---------- */
+  const paneNote=sec('メモ','画面には出ません。あとから読む人のために',`
+   <div class="op-form-row is-block"><span class="op-form-label">覚え書き</span>
+    <span class="op-form-ctl">
+     <textarea id="opdNote" class="op-note-in" rows="8"
+      placeholder="この項目を作った理由・注意点・現場での呼び方など（画面には出ません）">${esc(x.note||'')}</textarea>
+     <i class="op-form-note">長く書けます。あとから触る人が「なぜこの設定なのか」を読めるようにしておくと、
+      同じ判断を2度しなくて済みます。</i></span></div>`);
+  const panes={place:paneWhere,data:paneWhat,look:paneLook,note:paneNote};
+  $('#opModalForm').innerHTML=panes[tab]||paneWhere;
+  $('#opModalTabs').innerHTML=OP_TABS.map(t=>
+    `<button type="button" role="tab" data-op-tab="${esc(t.k)}"`
+    +` class="op-tab${tab===t.k?' is-on':''}" aria-selected="${tab===t.k?'true':'false'}">`
+    +`<b>${esc(t.n)}</b><span>${esc(t.t)}</span></button>`).join('');
+  const role=opRoleOf(x);
+  const roleLabel=(opState.roles.find(r=>r.key===role)||{}).label||'';
+  $('#opModalRole').innerHTML=roleLabel
+    ?`<b class="op-role-chip" title="この項目が担っている役割です（構成の必須はここで満たされます）">役割 ${esc(roleLabel)}</b>`
+    :'';
+  /* **保存は右上の端**（§9.223 ②、利用者の指示）。危ない操作（削除）は
+     同じ場所へ置かない——「完了」の隣に「削除」を置かない（§CLAUDE 5）。
+     削除は②のタブの中の帯へ移してある。 */
+  $('#opModalActions').innerHTML=`<button type="button" id="opdSave" class="mm-btn-primary">保存</button>`;
   bindOpModal(x);
  }
  /* 実物の欄を組み立てる。**測定画面の部品をそのまま使う**（`measure-opdata.js`）
@@ -4659,6 +4941,10 @@
        選ばせ方のときは、サーバーと同じ規則でここでも外下左へ落とす。 */
     unitPlace:(opUnitPlaceOf(x)==='内部'&&opUnitInBlocked(widget))?'外下左':opUnitPlaceOf(x),
     align:x.align,valueFormat:x.valueFormat,digits:x.digits,
+    /* 意匠（§9.223 ③）も**見本へそのまま渡す**。渡さないと、色・形・
+       大きさのボタンだけが押しても何も起きない（見本は`previewDef`しか
+       見ていないので、`x`に載っているだけでは届かない）。 */
+    look:opLookOf(x),
     choiceNotes:opState.notes[x.choice]||{}};
   if(window.WL&&WL.opData&&WL.opData.presentation)WL.opData.presentation(label,previewDef);
   /* 値の整え方（§9.221 ⑦）も**見本へ配線する**——「3桁区切り」を選んでも
@@ -4744,6 +5030,20 @@
   form.querySelectorAll('[data-op-cdel]').forEach(b=>b.onclick=()=>opDeleteChoiceValue(b.dataset.opCdel));
   const addV=$('#opdAddChoiceValue');
   if(addV)addV.onclick=()=>opAddChoiceValue();
+  /* 役割（§9.223 ①）。**付け替えは即座に見本と要約へ出る**——「いまは誰が
+     担当か」は付け替える前に読めないと選べない。 */
+  const role=$('#opdRole');
+  if(role)role.onchange=()=>touch({role:role.value});
+  /* 意匠（§9.223 ③）。色・形・大きさの3軸。 */
+  form.querySelectorAll('[data-op-look]').forEach(b=>b.onclick=()=>{
+   const lk=opLookOf(x);lk[b.dataset.opLook]=b.dataset.opVal;
+   touch({look:lk});
+  });
+  /* タブ（§9.223 ②）。**打ちかけの文字を捨てない**ので`touch()`を通す。 */
+  const tabs=$('#opModalTabs');
+  if(tabs)tabs.querySelectorAll('[data-op-tab]').forEach(b=>b.onclick=()=>{
+   opState.tab=b.dataset.opTab;touch({});
+  });
   const save=$('#opdSave');
   if(save)save.onclick=()=>opSaveItem();
   const del=$('#opdDelete');
@@ -4763,23 +5063,41 @@
  }
  function opDetailValues(){
   const x=opItemById(opState.picked)||{};
-  const v=id=>{const el=$('#'+id);return el?el.value:undefined};
+  /* **画面に出ていない段の値は控えから読む**（§9.223 ②）。決めることを
+     タブで4段に分けたので、いま描かれているのは1段ぶんだけ——DOMだけを
+     見ると、②で名前を打って③へ移ってから保存した瞬間に**その段の設定が
+     まるごと空で上書きされる**（`item_upsert`は全列を書く。§9.113／
+     §9.212 ②と同じ形）。控え(`x`)はタブを押すたびに`touch()`が
+     `opFormEdits()`で更新しているので、欄が無いときはそちらが正。 */
+  const v=(id,key)=>{
+   const el=$('#'+id);
+   if(el)return el.value;
+   const kept=x[key===undefined?id:key];
+   return kept===undefined||kept===null?undefined:String(kept);
+  };
   const num=s=>(s===''||s===undefined||s===null)?null:Number(s);
-  return {name:v('opdName'),type:x.type,
-          decimals:num(v('opdDecimals')),min:num(v('opdMin')),max:num(v('opdMax')),
-          unit:v('opdUnit'),choice:v('opdChoice'),group:v('opdGroup'),
+  return {name:v('opdName','name'),type:x.type,
+          decimals:num(v('opdDecimals','decimals')),min:num(v('opdMin','min')),
+          max:num(v('opdMax','max')),
+          unit:v('opdUnit','unit'),choice:v('opdChoice','choice'),
+          group:v('opdGroup','group'),
+          /* §9.223 ①③。役割は`<select>`から、意匠は押した結果が`x`に
+             載っているのでそのまま持ち出す（保存の形はサーバーが作る）。 */
+          role:(v('opdRole','role')!==undefined?v('opdRole','role'):(x.role||'')),
+          look:opLookOf(x),
           /* §9.220 ②③⑤。**打ち込む欄の値はここで読む**——`touch()`で
              書き戻すと1文字ごとに描き直してカーソルが飛ぶ（§9.117）。 */
-          initial:v('opdInitial'),step:num(v('opdStep')),freeText:!!x.freeText,
+          initial:v('opdInitial','initial'),step:num(v('opdStep','step')),
+          freeText:!!x.freeText,
           /* §9.221 ⑦。**4つとも必ず送る**——`item_upsert`は全列を書くので、
              1つでも落とすとその設定だけが保存のたびに既定へ戻る
              （§9.113／§9.212 ②と同じ形の不具合）。 */
           unitPlace:x.unitPlace,align:x.align,valueFormat:x.valueFormat,
-          digits:num(v('opdDigits')),
+          digits:num(v('opdDigits','digits')),
           /* **備考を送り忘れないこと**（§9.219 ③）。`item_upsert`は全列を
              書くので、送らないと保存のたびに`[備考]`が空で消える
              （§9.113／§9.212 ②と同じ形の不具合が実際に起きていた）。 */
-          note:v('opdNote'),
+          note:v('opdNote','note'),
           equipment:x.equipment,
           span:x.span,place:x.place,widget:x.widget,
           required:!!x.required,enabled:x.enabled!==false,
@@ -4818,7 +5136,12 @@
        消したはずの条件が残る）。群ぜんぶへ同じ値を書く。 */
     /* **条件が無くても畳めること**（§9.219 ③）。以前は「開く条件があるか」
        から導いていたので、条件なしで畳む設定が作れなかった。 */
-    showWhen:d.showWhen,fold:!!d.fold||!!(d.showWhen||[]).length};
+    showWhen:d.showWhen,fold:!!d.fold||!!(d.showWhen||[]).length,
+    /* **役割と意匠は組み込みの欄にも効く**（§9.223 ①③）。役割は「この値を
+       何として読むか」で、意匠は見た目——どちらも値の持ち方を変えないので、
+       組み込みの欄でも押したとおりになる。**組み込みキーは送らない**ので、
+       役割を別の項目へ移してもこの欄の素性は変わらない。 */
+    role:d.role||'',look:d.look||null};
   try{
    opModalSay('保存しています…');
    await api('/api/operation-item-master/update',{method:'POST',
@@ -5302,6 +5625,14 @@
    opState.usage=ch.usage||it.choiceUsage||{};
    /* 選択肢のまとまり名を勧めるための事実（§9.220 ④）。 */
    opState.choiceHints=it.choiceHints||{};
+   /* 役割と構成の状態（§9.223 ①）。**判定はサーバー**——「足りない役割」は
+      全体を見て決まるので、画面で数え直すと2つの答えが出る。 */
+   opState.roles=it.roles||opState.roles;
+   opState.roleReport=it.roleReport||null;
+   /* 意匠の軸（§9.223 ③）。 */
+   opState.lookColors=it.lookColors||opState.lookColors;
+   opState.lookShapes=it.lookShapes||opState.lookShapes;
+   opState.lookSizes=it.lookSizes||opState.lookSizes;
    if(opState.picked&&!opItemById(opState.picked)){
     opState.picked=null;
     const m=$('#opItemModal');if(m)m.hidden=true;

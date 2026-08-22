@@ -28,6 +28,14 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
 const cleanup=()=>post('/api/column-layout-master',{target:TARGET,clear:true,order:[],widths:{},hidden:[],
   names:{},formats:{},rules:{},formulas:{},locks:[],user_id:'test'}).catch(()=>{});
 const settle=async page=>{await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))))};
+/* 操作帯と取っ手は**マウスオーバーのときだけ**出る層になった（§9.223 ①）。
+   実際の操作と同じ順（塊へ触れる→押す）で辿ること——`page.click()`は
+   押す前に「見えているか」を確かめるので、触れずに押すと必ず落ちる。 */
+const tap=async(page,sel,dbl)=>{
+ const m=/^(\[data-rp-block="[^"]+"\])/.exec(sel);
+ if(m)await page.hover(m[1]);
+ await (dbl?page.dblclick(sel):page.click(sel));
+};
 const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-block]')].map(e=>e.dataset.rpBlock));
 
 (async()=>{
@@ -75,7 +83,7 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
 
   /* ---- 2) 組み換えモード ---- */
   await page.click('#reportArrange');
-  await page.waitForSelector('.rp-block-bar',{timeout:8000});
+  await page.waitForSelector('.rp-block-bar',{state:'attached',timeout:8000});
   await settle(page);
   const arr=await page.evaluate(()=>({
    bar:!document.getElementById('rpArrangeBar').hidden,
@@ -107,12 +115,12 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
      一致しない——しかも既定の幅とたまたま同じ数になることがあり、
      「戻った」のか「変わっていない」のかを見分けられなくなる（実際に
      ここで通らなくなった）。**狭める側は必ず通る**ので、そちらで見る。 */
-  await page.click(`[data-rp-block="基本情報"] [data-rp-span="${narrow}"]`);
+  await tap(page,`[data-rp-block="基本情報"] [data-rp-span="${narrow}"]`);
   await settle(page);
   const w1=await spanNow();
   rec('幅を選ぶとその場で紙が変わる',spanOf(w1)===narrow&&spanOf(w1)<spanOf(w0),
       `${spanOf(w0)}マス → ${narrow}マスを押した結果 ${w1}`);
-  await page.click('[data-rp-block="品質等級"] [data-rp-toggle]');
+  await tap(page,'[data-rp-block="品質等級"] [data-rp-toggle]');
   await settle(page);
   /* **外した塊は配置面から消える**（§9.222 ③、利用者の指示）。以前は薄く
      残していたが、マスを占有したままなので置き場所が無くなっていた。
@@ -175,9 +183,9 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
 
   /* ---- 5) 保存＝サーバーに残り、マスの数として往復する ---- */
   await page.click('#reportArrange');
-  await page.waitForSelector('.rp-block-bar',{timeout:8000});
-  await page.click(`[data-rp-block="基本情報"] [data-rp-span="${narrow}"]`);
-  await page.click('[data-rp-block="品質等級"] [data-rp-toggle]');
+  await page.waitForSelector('.rp-block-bar',{state:'attached',timeout:8000});
+  await tap(page,`[data-rp-block="基本情報"] [data-rp-span="${narrow}"]`);
+  await tap(page,'[data-rp-block="品質等級"] [data-rp-toggle]');
   await settle(page);
   await page.click('#rpArrangeSave');
   await page.waitForTimeout(1200);
@@ -227,7 +235,7 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
       baseKeys.filter(k=>/測定/.test(k)).join('／')||'（測定の塊は紙に出ていない）');
 
   await page.click('#reportArrange');
-  await page.waitForSelector('.rp-block-bar',{timeout:8000});
+  await page.waitForSelector('.rp-block-bar',{state:'attached',timeout:8000});
   await settle(page);
   /* 組み換え中は中身の無い塊も並ぶので、そこで「まとめが出ていて個別は
      出さない」既定を確かめる。 */
@@ -311,12 +319,12 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
   rec('段数96は保存して読み直しても96のまま',
       roundTrip.raw>0&&roundTrip.raw<=900&&roundTrip.rows===96,JSON.stringify(roundTrip));
   await page.click('#reportArrange');
-  await page.waitForSelector('.rp-block-bar',{timeout:8000});
+  await page.waitForSelector('.rp-block-bar',{state:'attached',timeout:8000});
   await page.click('[data-rp-prow="48"]');
   await settle(page);
 
   /* ---- 分解 → 個別、まとめへ戻す ---- */
-  await page.click('[data-rp-block="板幅ほかの測定データ"] [data-rp-split]');
+  await tap(page,'[data-rp-block="板幅ほかの測定データ"] [data-rp-split]');
   await settle(page);
   const split=await page.evaluate(()=>({
    solo:[...document.querySelectorAll('[data-rp-block]')]
@@ -327,7 +335,7 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
       `${split.solo.length}枚 / まとめ=${split.combined?'畳んだ':'出たまま'}`);
   /* **同じ内容を2箇所に出さない。** 分解したらまとめは畳む。 */
   rec('分解するとまとめは畳まれる',split.combined===true);
-  await page.click('[data-rp-block="測定データ・板幅"] [data-rp-split]');
+  await tap(page,'[data-rp-block="測定データ・板幅"] [data-rp-split]');
   await settle(page);
   const rejoin=await page.evaluate(()=>({
    solo:!document.querySelector('[data-rp-block="測定データ・板幅"]'),
@@ -452,9 +460,9 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
   await page.evaluate(id=>window.openReportForRecord(id),'RPPROD-G3');
   await page.waitForSelector('#reportContent .rp-blocks',{timeout:20000});
   await page.click('#reportArrange');
-  await page.waitForSelector('.rp-block-bar',{timeout:8000});
+  await page.waitForSelector('.rp-block-bar',{state:'attached',timeout:8000});
   /* 塊を大きく開くのは**ダブルクリック**（§9.174）。帯のボタンではない。 */
-  await page.dblclick('[data-rp-block="丈別データ"] .rp-block-name');
+  await tap(page,'[data-rp-block="丈別データ"] .rp-block-name',true);
   await page.waitForSelector('#rpBlockForm [data-e-pmode]',{timeout:8000});
   const modes=await page.evaluate(()=>[...document.querySelectorAll('#rpBlockForm [data-e-pmode]')]
     .map(b=>b.dataset.ePmode+'='+b.textContent.trim()));
@@ -489,8 +497,8 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
       JSON.stringify(srv2.formats));
   /* **既定は行ごと消す**（空文字を保存すると「空という設定」になる）。 */
   await page.click('#reportArrange');
-  await page.waitForSelector('.rp-block-bar',{timeout:8000});
-  await page.dblclick('[data-rp-block="丈別データ"] .rp-block-name');
+  await page.waitForSelector('.rp-block-bar',{state:'attached',timeout:8000});
+  await tap(page,'[data-rp-block="丈別データ"] .rp-block-name',true);
   await page.waitForSelector('#rpBlockForm [data-e-pmode]',{timeout:8000});
   await page.click('#rpBlockForm [data-e-pmode=""]');
   await settle(page);

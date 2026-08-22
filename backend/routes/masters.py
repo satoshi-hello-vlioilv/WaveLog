@@ -1053,7 +1053,19 @@ def operation_item_list():
            # 選択肢のまとまり名のサジェスト(§9.220 ④)。**候補を選ぶ規則は
            # サーバーが持つ**——「同じ群が使っている」「名前が似ている」は
            # 判定であって表示ではないので、画面へ写すと答えが2つになる。
-           'choiceHints':op.choice_hints(c)}
+           'choiceHints':op.choice_hints(c),
+           # --- §9.223 ①（役割と構成チェック）---
+           # **必須はカードではなく構成が持つ**。役割の一覧と、いま誰が担って
+           # いるか・足りない役割・二重の役割をサーバーが答える（画面に同じ
+           # 判定を書かない——2つの答えが出る）。
+           'roles':[{'key':k,'label':lb,'note':nt,'required':rq,'choice':gr}
+                    for k,lb,nt,rq,gr in op.ROLE_SEEDS],
+           'roleReport':op.role_report(items),
+           # --- §9.223 ③（見た目の軸）---
+           'lookColors':list(op.LOOK_COLORS),'lookShapes':list(op.LOOK_SHAPES),
+           'lookSizes':list(op.LOOK_SIZES),
+           'lookSlugs':{'color':dict(op.LOOK_COLOR_SLUG),'shape':dict(op.LOOK_SHAPE_SLUG),
+                        'size':dict(op.LOOK_SIZE_SLUG)}}
   d=_op_read(fn)
   return jsonify(ok=True,equipment=eq,**d)
  except Exception as e:return jsonify(error=f'操業データ項目マスタの読込に失敗しました: {e}'),500
@@ -1083,7 +1095,9 @@ def _operation_item_save(x):
                          step=x.get('step'),
                          # §9.221 ⑦（単位の置き場・寄せ・見せ方・桁数）
                          unit_place=x.get('unitPlace'),align=x.get('align'),
-                         value_format=x.get('valueFormat'),digits=x.get('digits'))
+                         value_format=x.get('valueFormat'),digits=x.get('digits'),
+                         # §9.223 ①③（役割・見た目）
+                         role=x.get('role'),look=x.get('look'))
   return jsonify(ok=True,id=_op_read(fn),message='操業データの項目を保存しました。')
  except ValueError as e:return jsonify(error=str(e)),400
  except Exception as e:return jsonify(error=f'操業データ項目マスタの保存に失敗しました: {e}'),500

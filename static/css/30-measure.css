@@ -2246,6 +2246,9 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .opf-widget .opf-pick-btn,
 .opf-widget .opf-step-btn,
 .opf-widget .opf-pad-btn,
+.opf-widget .opf-card-btn,
+.opf-widget .opf-toggle-btn,
+.opf-widget .opf-quick-btn,
 .opf-widget .opf-free-in,
 .opf-widget .opf-memo-in{font-size:var(--fs)}
 .opf-native-off{
@@ -2426,6 +2429,107 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
 .opf-memo{display:block}
 .opf-memo-in{width:100%;min-width:0;resize:vertical;font-size:var(--fs)}
 .opf-widget-note{color:var(--muted);font-size:var(--fs-micro)}
+/* ---------- 足した形（§9.223 ③、利用者の指示） ----------
+   「6種類しかないので、既存のUIデザインも見直したうえでバリエーションを
+    増やしてください。UIの見た目もわかりやすいようにサンプルを表示させ、
+    データも入れて選びやすいようにしてください。」
+
+   **足すのは「選ぶ状況が違うもの」だけ。** 見た目の違い（色・形・大きさ）は
+   意匠の軸が持つので、色違いを種類として増やさない——増やすと選ぶ盤が
+   「同じものの色違い」で埋まり、探す作業になる。
+     カード     … 説明を添えた大きな札。**選ぶのに説明が要る**とき
+     トグル     … 2択の入切。対になっているもの（有/無・OS/DS）
+     早見ボタン … よく使う数値を並べる。上下限と刻みから作る
+     1行        … 素の1行入力（器を被せない。意匠だけが効く）
+*/
+.opf-cards .opf-shape{display:grid;grid-template-columns:repeat(auto-fill,minmax(9em,1fr));
+  gap:var(--gap-tight);width:100%}
+.opf-card-btn{
+  display:flex;flex-direction:column;align-items:flex-start;gap:2px;
+  min-height:var(--ctl-h);padding:var(--space-1) var(--space-2);
+  border:1px solid var(--line);border-radius:var(--radius-sm);
+  background:var(--surface);color:var(--ink-2);
+  font-size:var(--fs-sm);font-weight:600;line-height:1.25;text-align:left;cursor:pointer;
+  white-space:normal;
+}
+.opf-card-btn:hover{border-color:var(--teal);background:var(--pale)}
+.opf-card-btn.is-on{border-color:var(--teal);background:var(--pale);color:var(--ink);
+  font-weight:800;box-shadow:inset 0 0 0 1px var(--teal)}
+.opf-btn-note{display:block;color:var(--muted);font-size:var(--fs-micro);font-weight:600;
+  line-height:1.3;white-space:normal}
+.opf-card-btn.is-on .opf-btn-note{color:var(--ink-3)}
+/* --- トグル: 2つの札が1本の帯で背中合わせ。**選んだ側が面を持つ** --- */
+.opf-toggle .opf-shape{display:inline-flex;border:1px solid var(--line);
+  border-radius:var(--radius-round);background:var(--surface-2);padding:2px;gap:2px}
+.opf-toggle-btn{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-height:calc(var(--ctl-h-sm) - 6px);padding:0 var(--space-3);
+  border:0;border-radius:var(--radius-round);background:none;
+  color:var(--ink-3);font-size:var(--fs-sm);font-weight:700;cursor:pointer;white-space:nowrap;
+}
+.opf-toggle-btn.is-on{background:var(--teal);color:#fff;box-shadow:0 1px 2px rgba(15,32,39,.18)}
+/* --- 早見ボタン: 数値の札。**打つ欄は残す**（素の`<input>`の下に並べる） --- */
+.opf-quick .opf-shape{flex-wrap:wrap;gap:var(--gap-tight)}
+.opf-quick-btn{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:2.6em;min-height:var(--ctl-h-xs);padding:0 var(--space-2);
+  border:1px solid var(--line);border-radius:var(--radius-xs);
+  background:var(--surface);color:var(--ink-2);
+  font-size:var(--fs-sm);font-weight:700;cursor:pointer;
+}
+.opf-quick-btn:hover{border-color:var(--teal);color:var(--teal-dark)}
+.opf-quick-btn.is-on{background:var(--teal);border-color:var(--teal);color:#fff}
+.opf-oneline{display:none}   /* 器は要らない（素の欄がそのまま1行） */
+
+/* ---------- 意匠: 色・形・大きさ（§9.223 ③） ----------
+   **印を持つのは器（`<label>`）1箇所**で、ここから下って当てる。部品ごとに
+   付けると、形を足すたびに付け忘れが出る（§9.210 ④と同じ罠）。
+   **色は8つから選ばせ、16進を選ばせない**——自由に選べると淡すぎて読めない
+   色や、画面ごとに違う赤が増える（§9.198の行の色と同じ判断）。
+   色が語るのは「この欄はどの仲間か」だけなので、**選択の有無は面と文字の
+   太さでも示す**（色だけで伝えない・§3）。 */
+.opf-c-teal{--opf-hue:var(--teal);--opf-hue-dark:var(--teal-dark);--opf-hue-pale:var(--pale)}
+.opf-c-blue{--opf-hue:var(--look-blue);--opf-hue-dark:var(--look-blue-dark);--opf-hue-pale:var(--look-blue-pale)}
+.opf-c-green{--opf-hue:var(--look-green);--opf-hue-dark:var(--look-green-dark);--opf-hue-pale:var(--look-green-pale)}
+.opf-c-amber{--opf-hue:var(--look-amber);--opf-hue-dark:var(--look-amber-dark);--opf-hue-pale:var(--look-amber-pale)}
+.opf-c-red{--opf-hue:var(--look-red);--opf-hue-dark:var(--look-red-dark);--opf-hue-pale:var(--look-red-pale)}
+.opf-c-violet{--opf-hue:var(--look-violet);--opf-hue-dark:var(--look-violet-dark);--opf-hue-pale:var(--look-violet-pale)}
+.opf-c-slate{--opf-hue:var(--look-slate);--opf-hue-dark:var(--look-slate-dark);--opf-hue-pale:var(--look-slate-pale)}
+/* 色を選んだ器の中だけ、teal を使っていた箇所を差し替える。 */
+.opf-c-teal .opf-seg-btn.is-on,.opf-c-blue .opf-seg-btn.is-on,
+.opf-c-green .opf-seg-btn.is-on,.opf-c-amber .opf-seg-btn.is-on,
+.opf-c-red .opf-seg-btn.is-on,.opf-c-violet .opf-seg-btn.is-on,
+.opf-c-slate .opf-seg-btn.is-on,
+[class*="opf-c-"] .opf-toggle-btn.is-on,
+[class*="opf-c-"] .opf-quick-btn.is-on{background:var(--opf-hue);border-color:var(--opf-hue);color:#fff}
+[class*="opf-c-"] .opf-radio-btn.is-on .opf-dot{border-color:var(--opf-hue);
+  box-shadow:inset 0 0 0 3px var(--surface),inset 0 0 0 7px var(--opf-hue)}
+[class*="opf-c-"] .opf-tab-btn.is-on{color:var(--opf-hue-dark);box-shadow:inset 0 -2px 0 var(--opf-hue)}
+[class*="opf-c-"] .opf-chip-btn.is-on,
+[class*="opf-c-"] .opf-card-btn.is-on{border-color:var(--opf-hue);background:var(--opf-hue-pale);
+  box-shadow:inset 0 0 0 1px var(--opf-hue)}
+[class*="opf-c-"] .opf-pick-btn:focus-visible,
+[class*="opf-c-"] select:focus-visible,
+[class*="opf-c-"] input:focus-visible{outline-color:var(--opf-hue)}
+/* --- 形: 角丸(既定) / 角 / 丸 --- */
+.opf-r-sharp .opf-seg .opf-shape,.opf-r-sharp .opf-toggle .opf-shape,
+.opf-r-sharp .opf-chip-btn,.opf-r-sharp .opf-card-btn,.opf-r-sharp .opf-quick-btn,
+.opf-r-sharp .opf-seg-btn,.opf-r-sharp .opf-toggle-btn,
+.opf-r-sharp select,.opf-r-sharp input,.opf-r-sharp textarea{border-radius:0}
+.opf-r-pill .opf-seg .opf-shape,.opf-r-pill .opf-toggle .opf-shape,
+.opf-r-pill .opf-chip-btn,.opf-r-pill .opf-card-btn,.opf-r-pill .opf-quick-btn,
+.opf-r-pill .opf-seg-btn,.opf-r-pill .opf-toggle-btn,
+.opf-r-pill select,.opf-r-pill input{border-radius:var(--radius-round)}
+/* --- 大きさ: 小 / 中(既定) / 大。**文字から作る**（§9.90。pxの直値を置くと
+       表示サイズに追随しない） --- */
+.opf-z-sm{--opf-fs:var(--fs-sm);--opf-h:var(--ctl-h-xs)}
+.opf-z-lg{--opf-fs:var(--fs-lg);--opf-h:var(--ctl-h-lg)}
+.opf-z-sm .opf-widget button,.opf-z-lg .opf-widget button,
+.opf-z-sm .opf-widget .opf-free-in,.opf-z-lg .opf-widget .opf-free-in{
+  font-size:var(--opf-fs);min-height:var(--opf-h)}
+.opf-z-sm>select,.opf-z-sm>input,.opf-z-lg>select,.opf-z-lg>input{
+  font-size:var(--opf-fs);min-height:var(--opf-h)}
+
 /* テンキーは選ぶ浮き窓と同じ器（`.opf-picker`）を使い、中の盤だけ足す。 */
 .opf-keypad-view{
   display:block;padding:var(--pad-row);border:1px solid var(--line);

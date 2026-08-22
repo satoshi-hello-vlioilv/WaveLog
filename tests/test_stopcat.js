@@ -5,14 +5,48 @@ let b=null;
  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
  const page=await b.newPage({viewport:{width:1700,height:1000}});
  const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
+ const errs=[];
+ page.on('pageerror',e=>{errs.push(e.message);console.log('[pageerror]',e.message)});
+ page.on('console',m=>{if(m.type()==='error')errs.push('console: '+m.text())});
  page.on('dialog',d=>d.accept());
 
+ /* **待つのは時間ではなく条件**（§9.102）。1.2秒の固定待ちだと、
+    再起動直後の1本目（マスタDBの列を足す移行がその場で走る）で
+    間に合わず、**一覧が空のまま**「既定の分類が入っていない」と出る
+    ——実際に通しの1本目でだけ落ちた。一覧が組み上がるまで待つ。 */
  const openTab=async key=>{
   await page.click('#openMasterMaint');
   await page.waitForSelector('#masterMaintForm',{timeout:10000});
   await page.evaluate(k=>{const b=document.querySelector(`[data-master="${k}"]`);if(b)b.click()},key);
-  await page.waitForTimeout(1200);
+  try{
+   await page.waitForFunction(k=>{
+    const nav=document.querySelector(`#masterMaintNav [data-master="${k}"]`);
+    if(!nav||!nav.classList.contains('active'))return false;
+    const list=document.getElementById('masterMaintList');
+    if(!list)return false;
+    /* **見えている「読み込んでいます…」だけを待つ。** 1画面まるごとの
+       専用画面（共通設定＝`.mm-form-page`）は`.mm-list-wrap`をCSSで
+       畳むので、一覧の器には読み込み中の文字が**出たまま残る**
+       （見えていないので害は無い）。器の中身だけを見て待つと、その画面
+       では永久に待つことになる。 */
+    if(list.offsetParent===null)return true;
+    if(!list.children.length)return false;
+    return !/読み込んでいます/.test(list.textContent||'');
+   },key,{timeout:20000});
+  }catch(e){
+   /* **落ちたときに何が出ていたかを言う**——「待っても来なかった」だけでは
+      取りに行けていないのか描けていないのかが分からない。 */
+   const st=await page.evaluate(k=>{
+    const nav=document.querySelector(`#masterMaintNav [data-master="${k}"]`);
+    const list=document.getElementById('masterMaintList');
+    const form=document.getElementById('masterMaintForm');
+    return {nav:nav?nav.className:'(無い)',
+            子:list?list.children.length:-1,
+            文:list?(list.textContent||'').trim().slice(0,60):'(無い)',
+            器:form?form.className:'(無い)'};
+   },key).catch(()=>null);
+   throw Error(`${key}のタブが開かない: ${JSON.stringify(st)} / ${errs.slice(-2).join(' | ')}`);
+  }
  };
  await page.goto('http://127.0.0.1:5029/',{waitUntil:'domcontentloaded'});
  await page.waitForSelector('#openMasterMaint',{timeout:15000});

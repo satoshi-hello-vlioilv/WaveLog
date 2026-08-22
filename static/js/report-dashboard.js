@@ -1234,7 +1234,11 @@
    return `<div class="rp-block${body?'':' is-empty'}${at?' is-placed':''}${ov?' is-overlap':''}" data-rp-block="${esc(k)}"`
     +` style="${place}"`
     +`${(arranging&&!paper)?' draggable="true"':''}>`
-    +((arranging&&!paper)?rpBlockBarHtml(k,span,!body):'')
+    /* **操作の道具は層で重ねる**（§9.223 ①、利用者の指示「マウスオーバーの
+       時のみレイヤーで表示させ、編集中画面のカードの見た目は常に実際に
+       出力される見た目を再現してほしい」）。流れの中に置くと帯のぶん中身が
+       押し下げられ、**刷り上がりと違う姿を見ながら位置を詰める**ことになる。 */
+    +((arranging&&!paper)?`<div class="rp-block-tools">${rpBlockBarHtml(k,span,!body)}</div>`:'')
     /* **中身は1枚の器に包む**（§9.221 ⑨）。器の大きさは利用者が決めた
        ものなので、入らないときは中身のほうを縮める（`rpFitBlockBodies`）
        ——包まないと、縮める対象が「操作帯ごと」になって帯まで小さくなる。 */
@@ -1360,10 +1364,12 @@
      `scrollHeight`／`offsetHeight`は**拡大前のCSS px**なので、`rowPx`
      （こちらも拡大前）とそのまま比べられる（`getBoundingClientRect()`は
      拡大後なので混ぜないこと）。 */
+  /* **操作帯の高さは足さない**（§9.223 ①）。帯は`position:absolute`の層に
+     なったので流れの中に場所を取らない——足すと組み換え中だけ器が高くなり、
+     「刷ったとおりの見た目」が崩れる。 */
   const need=auto.map(el=>{
    const fit=el.querySelector(':scope>.rp-block-fit');
-   const bar=el.querySelector(':scope>.rp-block-bar');
-   return (fit?fit.scrollHeight:el.scrollHeight)+(bar?bar.offsetHeight:0);
+   return fit?fit.scrollHeight:el.scrollHeight;
   });
   auto.forEach((el,i)=>{
    const rows=Math.max(1,Math.min(rpRowCap()*2,
@@ -1407,6 +1413,32 @@
    for(let i=0;i<rn;i++)for(let j=0;j<cn;j++)used.add((r0+i)+':'+(c0+j));
    maxRow=Math.max(maxRow,r0+rn);
   });
+  /* **重なっているマスを赤い網で出す**（§9.223 ③）。`rpResolvePlacement()`が
+     集めたマスをそのまま描く——縁だけでは「どこが当たっているのか」が読めず、
+     直しようがない。**空きより先に置く**（同じ層なので後勝ち、重なりのほうを
+     上に出したい）。座標は`列:行`ではなく`行:列`（`rpOverlapCells`と同じ形）。 */
+  const put=(cls,c0,r0,w,label)=>{
+   const i=document.createElement('i');
+   i.className=cls;
+   i.style.left=(c0*(colW+gapX))+'px';
+   i.style.top=(r0*(rowH+gapY))+'px';
+   i.style.width=(w*colW+(w-1)*gapX)+'px';
+   i.style.height=rowH+'px';
+   if(label)i.dataset.rpFree=label;
+   layer.appendChild(i);
+   return i;
+  };
+  let over=0;
+  for(let r=0;r<maxRow;r++){
+   let c=0;
+   while(c<cols){
+    if(!rpOverlapCells.has((r+1)+':'+(c+1))){c++;continue}
+    let w=0;
+    while(c+w<cols&&rpOverlapCells.has((r+1)+':'+(c+w+1)))w++;
+    put('rp-overlap-cell',c,r,w,over?'':'重なっています');
+    over++;c+=w;
+   }
+  }
   /* **横につないで1つの枠にする**（1マスずつ描くと、マスの数だけ点線が
      並んで「置ける場所」ではなく方眼紙に見える）。 */
   let n=0;
@@ -1416,17 +1448,11 @@
     if(used.has(r+':'+c)){c++;continue}
     let w=0;
     while(c+w<cols&&!used.has(r+':'+(c+w)))w++;
-    const i=document.createElement('i');
-    i.className='rp-free';
-    i.style.left=(c*(colW+gapX))+'px';
-    i.style.top=(r*(rowH+gapY))+'px';
-    i.style.width=(w*colW+(w-1)*gapX)+'px';
-    i.style.height=rowH+'px';
     /* **どのくらい空いているかを文字で言う**（§3。枠だけでは「何マス
        ぶんか」を数えることになる）。1行ぶんの帯には入らないので、
        2行以上つながっている先頭だけに出す。 */
-    if(w>=2&&!used.has((r+1)+':'+c)&&r+1<maxRow)i.dataset.rpFree=w+'マス空き';
-    layer.appendChild(i);n++;c+=w;
+    put('rp-free',c,r,w,(w>=2&&!used.has((r+1)+':'+c)&&r+1<maxRow)?w+'マス空き':'');
+    n++;c+=w;
    }
   }
   return n;
@@ -1580,6 +1606,9 @@
     起こりうる**ので、起きたことを数で言い、直す手立て（並べ直す）を
     同じ場所に置く。色だけで伝えない（§3）。 */
  let rpOverlaps=[];
+ /* 重なっているマス（`行:列`）。`rpResolvePlacement()`が数えるついでに集め、
+    `rpFreeCells()`が赤い網として描く（§9.223 ③）。 */
+ let rpOverlapCells=new Set();
  /* 操作の説明は畳んでおく（§9.222 ④）。常設だと帯の半分を文が占める。 */
  let rpHelpOpen=false;
  /* **落ちる場所を実物大で見せる**（§9.217、利用者の指示「ゴーストが出て
@@ -1710,7 +1739,7 @@
   /* **数え直しは早く帰るときも**（§CLAUDE 2）。まだ誰も場所を決めていない
      ときにここで帰ると、前回の重なりの件数が残り、帯が「重なり N件」と
      言い続ける（外して重なりが消えたのに直らない、という形で出る）。 */
-  rpOverlaps=[];
+  rpOverlaps=[];rpOverlapCells=new Set();
   if(!keys.some(k=>rpPos(k)))return null;
   const used=new Set(),out=new Map();
   const take=(col,row,span,rows)=>{
@@ -1740,7 +1769,16 @@
       塊）は今までどおり空いているマスを探す——探さないと、既に置いてある
       塊の真上に重なって出るので、置いた覚えのない重なりが生まれる。 */
    if(at){
-    if(!rpFits(col,row,span,rows,used,rpRowCap()*3))rpOverlaps.push(k);
+    if(!rpFits(col,row,span,rows,used,rpRowCap()*3)){
+     rpOverlaps.push(k);
+     /* **重なったマスそのものを控える**（§9.223 ③、利用者の指示「重なった
+        部分を強調表示など視覚表示で修正をうながす」）。縁だけでは、どの塊の
+        どこが当たっているのかが読めない——直すには当たっている場所が要る。 */
+     for(let r=0;r<rows;r++)for(let c=0;c<span;c++){
+      const cell=(row+r)+':'+(col+c);
+      if(used.has(cell))rpOverlapCells.add(cell);
+     }
+    }
     take(col,row,span,rows);
     out.set(k,{col,row,span,rows});
     return;
@@ -1775,15 +1813,19 @@
   const wid={...rpLayoutNow().widths};
   if(at){
    const used=rpOccupied(k);
-   const rows=Math.max(1,rpRows(k)||2);
+   const rows=Math.max(1,rpEffRows(k));
    const room=cols-at.col+1;                 /* 紙の右端まで */
+   /* **紙の外へは広げられない**（物理的な限界なので詰める）。 */
    if(want>room){
-    rpSay(`${span}マスは紙の右端からはみ出すので${room}マスにしました（左へ動かすともっと広げられます）。`,true);
+    rpSay(`${span}マスは紙の右端からはみ出すので${room}マスにしました（左へ動かすともっと広げられます）。`,true,'overlap');
     want=room;
+   }else{
+    /* **隣に当たっても縮めない**（§9.223 ③、利用者の指示）。以前はここで
+       黙って幅を詰めており、「広げたのに広がらない」＝自動で直された、と
+       いう見え方になっていた。重なることは**言う**だけにする。 */
+    rpSay(rpFits(at.col,at.row,want,rows,used)?''
+      :`${want}マスにしたので隣の塊と重なりました（重なったマスを赤い網で出しています）。`,true,'overlap');
    }
-   while(want>1&&!rpFits(at.col,at.row,want,rows,used)){want--}
-   if(want<Math.min(span,room))
-    rpSay(`${span}マスは隣の塊に当たるので${want}マスにしました（隣を動かすか「並べ直す」で整えられます）。`,true);
   }
   wid[k]=rpSpanStore(rpSpanFromGrid(want));
   rpStage({widths:wid});
@@ -2368,11 +2410,14 @@
    });
   });
  }
- /* ---------- マスへ落とす（§9.221 ⑨） ----------
+ /* ---------- マスへ落とす（§9.221 ⑨・§9.223 ③） ----------
     **位置・大きさ・「出す/出さない」を1回で書く**——別々に保存すると、
     途中で切れたときに片方だけ効いた状態が残る（§9.217と同じ約束）。
-    置けないマスへ落としたら**何もせず理由を言う**（黙って別の場所へ
-    置くと、狙った場所へ置けたのかが分からない）。 */
+    **埋まっているマスでも置ける**（§9.223 ③、利用者の指示「重なっても
+    配置でき、重なった部分を強調表示など視覚表示で修正をうながす」）。
+    断ると、詰めたい場所へ一度も置けないまま「空くまで別の塊を先に動かす」
+    という手順を強いることになる——置かせてから、**重なっていることを
+    その場に出す**（縁・チップ・重なったマスの網掛け）。 */
  function rpDropCell(grid,cell){
   const key=rpDragKey,from=rpDragFrom;
   if(!key||!cell){rpEndDrag();return}
@@ -2380,9 +2425,9 @@
   const span=Math.min(rpSpan(key),cols),rows=rpGhostRows(key);
   const col=Math.max(1,Math.min(cols-span+1,cell.col));
   const row=Math.max(1,cell.row);
-  const ok=rpFits(col,row,span,rows,rpOccupied(key));
+  const over=!rpFits(col,row,span,rows,rpOccupied(key));
   rpEndDrag();
-  if(!ok){rpSay('そのマスには別の塊が置かれています。空いているマスへ落としてください。',true);return}
+  rpSay(over?'ほかの塊と重ねて置きました（重なったマスを赤い網で出しています）。そのままでも保存できますが、刷ると重なって出ます。':'',over,'overlap');
   const wid={...rpLayoutNow().widths};
   wid[rpColKey(key)]=rpColStore(rpColToBase(col));
   wid[rpRowPosKey(key)]=rpRowStore(rpRowToBase(row));
