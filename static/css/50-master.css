@@ -813,11 +813,16 @@
 .op-band-tools button{min-height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-sm);font-size:var(--fs-badge)}
 /* 群の幅（§9.226 ③）。**帯の中の1つの塊**として置く——「名前」「畳む」と
    同じ列に並べると、どれが幅の話なのか読めない。 */
-.op-band-span{display:inline-flex;gap:1px;padding:1px;border-radius:var(--radius-xs);
-  background:var(--surface-3)}
+.op-band-span{display:inline-flex;gap:1px;border-radius:var(--radius-xs);
+  background:var(--surface-3);overflow:hidden}
+/* **中のボタンは器いっぱいの`--ctl-h-xs`**（§9.90／§9.127）。以前は器に
+   `padding:1px`を持たせて中を`calc(--ctl-h-xs - 2px)`にしていたが、
+   これでは**トークンに無い24px**が生まれる（`tests/test_scale.js`が検出）。
+   仕切りは器の地が`gap:1px`から覗くことで作る——同じ帯に並ぶ他のボタンと
+   高さがそろい、押せる面も器いっぱいになる。 */
 .op-band-span>button{
-  min-height:calc(var(--ctl-h-xs) - 2px);padding:0 var(--space-1);
-  border:0;border-radius:var(--radius-xs);background:none;
+  min-height:var(--ctl-h-xs);padding:0 var(--space-1);
+  border:0;border-radius:0;background:none;
   color:var(--ink-3);font-size:var(--fs-micro);font-weight:700;cursor:pointer;
 }
 .op-band-span>button:hover{background:var(--surface)}
