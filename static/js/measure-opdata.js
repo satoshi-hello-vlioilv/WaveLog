@@ -485,7 +485,20 @@
     **素の欄は消さない**——選択肢のように「候補から選ぶ」のではなく「打つ」
     欄なので、打てる場所を残したまま押して決める道具を足すのが正しい
     （`.opf-native-off`にすると打てなくなる）。 */
- const NUM_WIDGETS=['ステッパー','スライダー','キーパッド'];
+ const NUM_WIDGETS=['ステッパー','スライダー','キーパッド','早見ボタン'];
+ /* よく使う値を並べる（§9.223 ③）。上下限と刻みから作り、**多すぎるときは
+    出さない**——20個も並ぶと「探す」作業になり、打ったほうが速い（§4）。 */
+ const QUICK_MAX=12;
+ function quickValues(def){
+  const step=stepOf(def),lo=numOr(def.min,null),hi=numOr(def.max,null);
+  if(lo===null||hi===null||!(step>0))return null;
+  const n=Math.round((hi-lo)/step)+1;
+  if(n<2||n>QUICK_MAX)return null;
+  const dec=String(step).indexOf('.')>=0?String(step).split('.')[1].length:0;
+  const out=[];
+  for(let i=0;i<n;i++){const v=lo+i*step;out.push(dec?v.toFixed(dec):String(Math.round(v)))}
+  return out;
+ }
  function buildNumberWidget(def,host,kind){
   const el=valueEl(host);
   if(!el||el.tagName==='SELECT')return false;
@@ -523,11 +536,28 @@
     const rg=box.querySelector('.opf-range-in');
     rg.oninput=()=>setValue(el,rg.value);
    }
+  }else if(kind==='早見ボタン'){
+   box.className='opf-widget opf-quick';
+   const vs=quickValues(def);
+   /* **作れないときは理由を書く**（§4）。上下限と刻みから並びを作るので、
+      決まっていなければ並べようがない——押せるのに何も起きない道具を残さない。 */
+   if(!vs){
+    box.innerHTML='<small class="opf-widget-note">最小・最大・刻みを決めると早見ボタンになります'
+     +'（いまは打ち込みだけ。'+QUICK_MAX+'個までのときに出ます）</small>';
+   }else{
+    box.innerHTML='<div class="opf-shape">'+vs.map(v=>
+      '<button type="button" class="opf-quick-btn" data-opv="'+esc(v)+'">'
+      +'<span class="opf-btn-text">'+esc(v)+'</span></button>').join('')+'</div>';
+    box.querySelectorAll('[data-opv]').forEach(b=>{
+     b.onclick=e=>{e.preventDefault();setValue(el,b.dataset.opv);syncWidget(host)};
+    });
+   }
   }else{
    box.className='opf-widget opf-pad';
    box.innerHTML='<button type="button" class="opf-pad-btn">キーで入れる</button>';
    box.querySelector('.opf-pad-btn').onclick=e=>{e.preventDefault();openKeypad(def,host,el)};
   }
+  applyLook(host,def);                       /* §9.223 ③ */
   if(!el.dataset.opWidgetWired){
    el.dataset.opWidgetWired='1';
    el.addEventListener('input',()=>syncWidget(host));
@@ -538,19 +568,32 @@
  }
  /* 自由記述を複数行で書く（§9.219 ③）。**値を持つのは`<input>`のまま**で、
     `<textarea>`は写し——記録の読み書き・必須の判定は1つも書き換わらない。 */
- function buildMemoWidget(def,host){
+ function buildMemoWidget(def,host,kind){
   const el=valueEl(host);
   if(!el||el.tagName==='SELECT')return false;
+  /* 「1行」は**器を被せない**（§9.223 ③）——素の`<input>`がそのまま1行の
+     入力欄なので、写しを作ると打つ場所が2つになる。意匠だけを当てる。 */
+  const one=kind==='1行';
   const box=widgetHost(host);
-  if(box.dataset.sig==='memo'){syncWidget(host);return true}
-  box.dataset.sig='memo';
+  const sig=one?'one':'memo';
+  if(box.dataset.sig===sig){syncWidget(host);return true}
+  box.dataset.sig=sig;
   host.classList.add('opf-alt');
+  if(one){
+   el.classList.remove('opf-native-off');el.removeAttribute('tabindex');
+   box.className='opf-widget opf-oneline';
+   box.innerHTML='';
+   applyLook(host,def);
+   syncWidget(host);
+   return true;
+  }
   el.classList.add('opf-native-off');
   el.setAttribute('tabindex','-1');
   box.className='opf-widget opf-memo';
   box.innerHTML='<textarea class="opf-memo-in" rows="3"></textarea>';
   const ta=box.querySelector('.opf-memo-in');
   ta.oninput=()=>setValue(el,ta.value);
+  applyLook(host,def);                       /* §9.223 ③ */
   if(!el.dataset.opWidgetWired){
    el.dataset.opWidgetWired='1';
    el.addEventListener('change',()=>syncWidget(host));
@@ -609,17 +652,51 @@
     利用者の指摘「ラジオボタンやタブがほぼ同じデザインになっている」）
     ——以前は`ラジオ`も`タブ`も同じ`.opf-seg-btn`で、違いは連なっているか
     だけだった。名前が2つあって見た目が同じなら、選ばせる意味が無い。 */
+ /* ---------- 見た目（§9.223 ③、利用者の指示） ----------
+    「UIの種類と見た目(色や形、美観デザイン)など組合せでカスタムできるように
+      してほしいです。」
+    **「何で選ばせるか」と「どう見えるか」を別の軸にする。** 一緒にすると
+    「青いタブ」「緑のタブ」…と種類が掛け算で増え、選ぶ盤が読めなくなる。
+    綴りはサーバー（`operation_repo.LOOK_*_SLUG`）が正で、ここは受け取った
+    印をクラスへ写すだけ。 */
+ const LOOK_COLOR={'既定':'','主色':'teal','青':'blue','緑':'green','橙':'amber',
+                   '赤':'red','紫':'violet','灰':'slate'};
+ const LOOK_SHAPE={'角丸':'','角':'sharp','丸':'pill'};
+ const LOOK_SIZE={'小':'sm','中':'','大':'lg'};
+ /* **印を持つのは器（`<label>`）1箇所**。CSSはそこから下って当てる——
+    部品ごとに付けると、形を足すたびに付け忘れが出る。 */
+ function applyLook(host,def){
+  if(!host)return;
+  const lk=(def&&def.look)||{};
+  [...host.classList].forEach(c=>{if(/^opf-(c|r|z)-/.test(c))host.classList.remove(c)});
+  const c=LOOK_COLOR[lk.color]||'',r=LOOK_SHAPE[lk.shape]||'',z=LOOK_SIZE[lk.size]||'';
+  if(c)host.classList.add('opf-c-'+c);
+  if(r)host.classList.add('opf-r-'+r);
+  if(z)host.classList.add('opf-z-'+z);
+ }
  const CHOICE_SHAPES={
   'ラジオ':    {box:'opf-radio',btn:'opf-radio-btn',dot:true},
   'セグメント':{box:'opf-seg',  btn:'opf-seg-btn'},
   'タブ':      {box:'opf-tabs', btn:'opf-tab-btn'},
   'ボタン群':  {box:'opf-chips',btn:'opf-chip-btn'},
+  /* §9.223 ③で足した2つ。**選ぶ状況が違うもの**だけを足す（見た目の違いは
+     意匠の軸が持つので、色違いを種類として増やさない）。
+     カード … 説明を添えた大きな札。選ぶのに説明が要るとき
+     トグル … 2択の入切。「有/無」のような対のとき（3つ以上では出さない） */
+  'カード':    {box:'opf-cards',btn:'opf-card-btn',note:true},
+  'トグル':    {box:'opf-toggle',btn:'opf-toggle-btn'},
  };
 
  /* 器を1回だけ作る。**選択肢が変わったら作り直す**（内径のプリセットは
     仕掛データが届いてから入る・§9.204）ので、署名で見分ける。 */
  function buildWidget(def,host,kind){
-  if(kind==='メモ')return buildMemoWidget(def,host);
+  /* **意匠は組み立ての前に当てる**（§9.223 ③）。色・形・大きさを変えても
+     部品の署名（種類＋選択肢）は同じなので、下の`box.dataset.sig===sig`で
+     早々に帰る道が通る——そこから当てていると、**意匠のボタンだけが
+     押しても何も起きない**（設定窓の見本で実際にそうなっていた）。
+     当て直しはクラスの付け替えだけなので、毎回通しても安い。 */
+  applyLook(host,def);
+  if(kind==='メモ'||kind==='1行')return buildMemoWidget(def,host,kind);
   if(NUM_WIDGETS.indexOf(kind)>=0)return buildNumberWidget(def,host,kind);
   const sel=host.querySelector(':scope>select');
   if(!sel)return false;
@@ -658,9 +735,12 @@
    box.innerHTML='<div class="opf-shape">'+opts.map(o=>{
     const label=(o.v===''||o.t==='-')?'—':o.t;
     const tip=noteOf(def,o.v);
+    /* **カードは説明を文字で出す**（§9.223 ③）。`title`に隠すと、選ぶのに
+       説明が要るから大きな札にした意味が無くなる（§3）。 */
+    const note=(shape&&shape.note&&tip)?'<small class="opf-btn-note">'+esc(tip)+'</small>':'';
     return '<button type="button" role="radio" aria-checked="false" tabindex="-1"'
-     +' class="'+btnCls+'" data-opv="'+esc(o.v)+'"'+(tip?' title="'+esc(tip)+'"':'')
-     +'>'+dot+'<span class="opf-btn-text">'+esc(label)+'</span></button>';
+     +' class="'+btnCls+'" data-opv="'+esc(o.v)+'"'+(tip&&!note?' title="'+esc(tip)+'"':'')
+     +'>'+dot+'<span class="opf-btn-text">'+esc(label)+'</span>'+note+'</button>';
    }).join('')+'</div>'+(free?freeBoxHtml():'');
    box.querySelectorAll('[data-opv]').forEach(b=>{
     b.onclick=e=>{e.preventDefault();setValue(sel,b.dataset.opv);syncWidget(host)};
@@ -681,6 +761,7 @@
     setValue(sel,nx.dataset.opv);syncWidget(host);nx.focus();
    };
   }
+  applyLook(host,def);                       /* §9.223 ③ 色・形・大きさ */
   /* selectの側が変わっても印を合わせる（プリセット・記録の復元）。 */
   if(!sel.dataset.opWidgetWired){
    sel.dataset.opWidgetWired='1';
@@ -966,6 +1047,10 @@
      const needsBox=kind!==WIDGET_SELECT||(d.freeText&&el.querySelector(':scope>select'));
      if(needsBox&&valueEl(el))buildWidget(d,el,kind);
      else stripWidget(el);
+     /* **意匠は器を被せない欄にも当たる**（§9.223 ③）。素のプルダウンでも
+        「主色・丸・大」を選べないと、選ばせ方を変えないと見た目を変えられない
+        ことになる（2つの軸にした意味が無い）。 */
+     applyLook(el,d);
     });
    });
   });
@@ -1145,7 +1230,11 @@
             syncAutoOpen,syncWidgets,previewWidget,ruleText,
             /* 見せ方を当てる口（§9.221 ⑦）。**当てるのはこの1本**——設定窓の
                見本も測定画面もここを通るので、形が食い違わない。 */
-            presentation:(host,def)=>{applyPresentation(host,def);syncBuiltinUnit(host,Object.assign({builtin:'preview'},def))},
+            /* 意匠（§9.223 ③）もこの口が当てる——**選ばせ方が「プルダウン」の
+               ままだと`previewWidget()`を通らない**ので、部品の側だけで
+               当てていると素の欄に色・形・大きさが効かない。 */
+            presentation:(host,def)=>{applyPresentation(host,def);applyLook(host,def);
+              syncBuiltinUnit(host,Object.assign({builtin:'preview'},def))},
             /* 値の整形を見本の欄にも当てる口（§9.221 ⑦）。**整え方も
                同じ`settle()`を通す**——見本だけ桁そろえが効かないと、
                「3桁区切り」を選んでも設定画面では素の数字のままになる。 */

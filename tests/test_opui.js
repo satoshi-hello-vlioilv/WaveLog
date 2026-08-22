@@ -27,6 +27,11 @@ const TAG='opui-'+process.pid;
 const post=(p,b)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
 const get=p=>fetch(B+p).then(r=>r.json());
 let b=null;const made=[];const madeChoices=[];
+/* 組み込みの行の並び・幅・出す出さないは**実行をまたいで生き延びる**
+   （§9.121。`db/master.sqlite3`に残る）。落ちた場所によらず戻せるよう、
+   触る前に元の姿をここへ積み、`finally`で戻す——途中に書いた戻しだけでは
+   FATALが挟まった実行が次の実行を汚す（実際に`test_msteps`が巻き込まれた）。 */
+const restore=[];
 (async()=>{
  b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
  const page=await b.newPage({viewport:{width:1800,height:1000}});
@@ -36,6 +41,18 @@ let b=null;const made=[];const madeChoices=[];
  page.on('dialog',d=>d.accept());
  /* タイルを押して設定の窓が開くのを待つ。**窓が開くまで待つこと**——
     開く前に中を読むと、直っていても落ちる網になる。 */
+ /* 決めることは**タブで4段**（§9.223 ②）。段を開いてから中を見る。 */
+ const tab=async k=>{
+  await page.evaluate(key=>{
+   const b=document.querySelector(`#opModalTabs [data-op-tab="${key}"]`);
+   if(!b)throw Error('タブが無い: '+key);
+   b.click();
+  },k);
+  await page.waitForFunction(key=>{
+   const b=document.querySelector(`#opModalTabs [data-op-tab="${key}"]`);
+   return !!b&&b.classList.contains('is-on');
+  },k,{timeout:8000});
+ };
  const openTile=async id=>{
   await page.evaluate(i=>{
    const t=document.querySelector(`#masterMaintList .op-tile[data-op-id="${i}"]`);
@@ -106,6 +123,10 @@ let b=null;const made=[];const madeChoices=[];
    return t.dataset.opId;
   });
   await openTile(builtinId);
+  /* 決めることは**タブで4段**に分かれた（§9.223 ②、利用者の指示）。
+     実際の操作と同じ順で辿ること——タブを開かずに中の欄を探すと、
+     「無い」のか「別の段にある」のかを見分けられない。 */
+  await tab('data');
   const built=await page.evaluate(()=>{
    const m=document.getElementById('opItemModal');
    const prev=document.getElementById('opPrevField');
@@ -120,28 +141,54 @@ let b=null;const made=[];const madeChoices=[];
     置き場の欄:!!document.querySelector('[data-op-place]'),
     必須の欄:!!document.getElementById('opdRequired'),
     選ばせ方:[...document.querySelectorAll('[data-op-widget]')].map(x=>x.dataset.opWidget),
-    消せない:/消せません/.test(m.textContent||''),
-    理由:/画面がもともと持って/.test(m.textContent||''),
+    役割の欄:!!document.getElementById('opdRole'),
+    理由:/画面がもともと持っている部品/.test(m.textContent||''),
+    逃げ道:/同じ役割を持たせて/.test(m.textContent||''),
    };
   });
   rec('タイルを押すと設定のモーダルが開く',built.開いた===true,built.題);
   rec('モーダルの左に実物の見本が出る',built.見本===true&&built.見本の幅>40,
       `幅${built.見本の幅}`);
-  rec('組み込みの欄では型を出さない（効かない欄を置かない）',built.型の欄===false);
+  rec('組み込みの欄では型を選ばせない（効かない欄を置かない）',built.型の欄===false);
+  /* **できないことは、逃げ道つきで書く**（§9.223 ①）。型は画面の部品で
+     決まるが、**同じ役割を別の項目へ移せば自由な型で記録できる**——
+     行き止まりのままにしない。 */
+  rec('型を変えられない理由と、その逃げ道を書く',
+      built.理由===true&&built.逃げ道===true,JSON.stringify(built));
+  rec('役割の欄がある（必須は構成が持つ）',built.役割の欄===true,JSON.stringify(built));
+  await tab('place');
+  const where=await page.evaluate(()=>({
+    幅の欄:!!document.querySelector('[data-op-span]'),
+    置き場の欄:!!document.querySelector('[data-op-place]'),
+    必須の欄:!!document.getElementById('opdRequired')}));
   rec('組み込みでも幅・置き場・必須は決められる',
-      built.幅の欄&&built.置き場の欄&&built.必須の欄,JSON.stringify(built));
-  /* §9.220 ①（利用者の指摘「ラジオボタンやタブがほぼ同じデザインに
-     なっている」）。**形が違うものは別の名前で並ぶ**——4つから6つへ。 */
-  rec('選ばせ方は6つから選ぶ（セグメント・ボタン群を足した）',
-      built.選ばせ方.join('/')==='プルダウン/ラジオ/セグメント/タブ/ボタン群/一覧',
-      JSON.stringify(built.選ばせ方));
-  rec('できないことは文字で書く',built.消せない&&built.理由,JSON.stringify(built));
+      where.幅の欄&&where.置き場の欄&&where.必須の欄,JSON.stringify(where));
+  /* §9.223 ③（利用者の指示「6種類しかないので…バリエーションを増やして」）。
+     選択肢の型では8つ。**見本つき**であることも見る——名前だけで選ばせない。 */
+  await tab('look');
+  const lookPane=await page.evaluate(()=>({
+    選ばせ方:[...document.querySelectorAll('[data-op-widget]')].map(x=>x.dataset.opWidget),
+    見本:document.querySelectorAll('.op-widget-demo .opd').length,
+    色:document.querySelectorAll('[data-op-look="color"]').length,
+    形:document.querySelectorAll('[data-op-look="shape"]').length,
+    大きさ:document.querySelectorAll('[data-op-look="size"]').length}));
+  rec('選ばせ方は8つから選ぶ（カード・トグルを足した）',
+      lookPane.選ばせ方.join('/')==='プルダウン/ラジオ/セグメント/タブ/ボタン群/一覧/カード/トグル',
+      JSON.stringify(lookPane.選ばせ方));
+  rec('選ばせ方の札には実データ入りの見本が付く',
+      lookPane.見本===lookPane.選ばせ方.length,JSON.stringify({見本:lookPane.見本,札:lookPane.選ばせ方.length}));
+  rec('意匠は色・形・大きさの3軸で選べる',
+      lookPane.色>=8&&lookPane.形>=3&&lookPane.大きさ>=3,JSON.stringify(lookPane));
 
   /* ---- 3) 幅を変えて保存するとマスタに入る ---- */
   const before=await get('/api/operation-item-master?equipment='+encodeURIComponent(EQ));
   const target=(before.items||[]).find(x=>x.builtin==='verticalCount');
   rec('前提: 組み込みの行がマスタにある',!!target,target?`span=${target.span}`:'なし');
+  if(target)restore.push({id:target.id,group:target.group,place:target.place,
+    span:target.span,required:target.required,enabled:true,fold:target.fold,
+    showWhen:target.showWhen});
   await openTile(target.id);
+  await tab('place');
   await page.click('[data-op-span="6"]');
   await page.waitForTimeout(200);
   await page.click('#opdSave');
@@ -162,6 +209,8 @@ let b=null;const made=[];const madeChoices=[];
 
   /* ---- 4) 「出さない」にすると画面へ出さないと伝える ---- */
   const off=(before.items||[]).find(x=>x.builtin==='spool');
+  if(off)restore.push({id:off.id,group:off.group,place:off.place,span:off.span,
+    required:off.required,enabled:true,fold:off.fold,showWhen:off.showWhen});
   await post('/api/operation-item-master/layout',
     {items:[{id:off.id,group:off.group,place:off.place,span:off.span,
              required:off.required,enabled:false,fold:off.fold,showWhen:off.showWhen}],
@@ -184,6 +233,7 @@ let b=null;const made=[];const madeChoices=[];
   await page.waitForSelector('#masterMaintList .op-board-grid',{timeout:20000});
   await page.waitForTimeout(800);
   await openTile(mkj.id);
+  await tab('data');
   const hasBox=await page.evaluate(()=>!!document.getElementById('opdNewChoiceValue'));
   rec('「選択」の項目では選択肢の値をその場で足せる',hasBox===true);
   await page.fill('#opdNewChoiceValue','金');
@@ -210,6 +260,7 @@ let b=null;const made=[];const madeChoices=[];
   rec('この選択肢を使っている項目を書く',/使っている項目/.test(shown.使い道),shown.使い道);
 
   /* ---- 6) 選ばせ方を変えると測定画面の定義に出る（§9.218 ②） ---- */
+  await tab('look');
   await page.click('[data-op-widget="タブ"]');
   await page.waitForTimeout(200);
   await page.click('#opdSave');
@@ -227,15 +278,19 @@ let b=null;const made=[];const madeChoices=[];
      増やしたり」）。以前は選択肢を持たない型では選ばせ方を全部押せなく
      していたが、いまは数値・自由記述にもそれぞれの道具がある。
      **効かない形は並べない**（押せるのに何も起きない設定を作らない・§4）。 */
+  await tab('data');
   await page.click('[data-op-type="文字"]');
   await page.waitForTimeout(250);
+  await tab('look');
   const textW=await page.evaluate(()=>
     [...document.querySelectorAll('[data-op-widget]')].map(b=>b.dataset.opWidget));
   rec('自由記述の型では「メモ」が選べ、選択肢向けの形は並ばない',
       textW.includes('メモ')&&!textW.includes('ラジオ')&&!textW.includes('タブ'),
       JSON.stringify(textW));
+  await tab('data');
   await page.click('[data-op-type="正の整数"]');
   await page.waitForTimeout(250);
+  await tab('look');
   const numW=await page.evaluate(()=>
     [...document.querySelectorAll('[data-op-widget]')].map(b=>b.dataset.opWidget));
   rec('数値の型ではステッパー・スライダー・キーパッドが選べる',
@@ -251,8 +306,10 @@ let b=null;const made=[];const madeChoices=[];
   }));
   rec('見本に本物のステッパーが出て、記録される値も書く',
       prev.ステッパー===2&&prev.値の行===true,JSON.stringify(prev));
+  await tab('data');
   await page.click('[data-op-type="選択"]');
   await page.waitForTimeout(200);
+  await tab('look');
   await page.click('[data-op-widget="タブ"]');
   await page.waitForTimeout(200);
 
@@ -406,6 +463,7 @@ let b=null;const made=[];const madeChoices=[];
   await page.waitForSelector('#masterMaintList .op-board-grid',{timeout:20000});
   await page.waitForTimeout(600);
   await openTile(mkj.id);
+  await tab('look');
   const shapes={};
   for(const w of ['ラジオ','セグメント','タブ','ボタン群']){
    await page.click(`[data-op-widget="${w}"]`);
@@ -442,6 +500,7 @@ let b=null;const made=[];const madeChoices=[];
 
   /* ③ 手打ち。**候補にない値も入る**——`<select>`へ`<option>`を足してから
      入れる（足さずに代入すると黙って空になる。§9.203の罠）。 */
+  await tab('data');
   await page.click('#opdFreeText');
   await page.waitForTimeout(300);
   const freeBox=await page.evaluate(()=>{
@@ -478,11 +537,19 @@ let b=null;const made=[];const madeChoices=[];
   /* ② 初期値。**入力の方法によらず効く**ので、見本にも入る。 */
   await page.fill('#opdInitial','金');
   /* **打ちかけの文字を捨てないこと。** ボタンを押すと窓は組み直されるので、
-     控えていないと打った初期値が消える（実際にそうなっていた）。 */
+     控えていないと打った初期値が消える（実際にそうなっていた）。
+     **段をまたいでも消えないこと**（§9.223 ②）——決めることは4段に分かれた
+     ので、②で打ってから③のボタンを押すのが普通の道筋になった。 */
+  await tab('look');
   await page.click('[data-op-widget="ラジオ"]');
   await page.waitForTimeout(300);
+  await tab('data');
   const kept=await page.evaluate(()=>(document.getElementById('opdInitial')||{}).value);
   rec('打ちかけの初期値は、別のボタンを押しても消えない',kept==='金',String(kept));
+  /* **打った段を離れたまま保存しても消えない**（§9.223 ②）。いま描かれて
+     いるのは1段ぶんだけなので、DOMだけを見て保存を組み立てると、②の設定が
+     まるごと空で上書きされる（`item_upsert`は全列を書く）。 */
+  await tab('look');
   await page.click('[data-op-widget="セグメント"]');
   await page.waitForTimeout(250);
   await page.click('#opdSave');
@@ -501,6 +568,7 @@ let b=null;const made=[];const madeChoices=[];
   rec('見本にも初期値が入る（設定した値の見え方を確かめられる）',prefill==='金',prefill);
 
   /* ④ 選択肢のまとまり名のサジェスト。**理由を必ず添える**。 */
+  await tab('data');
   const sug=await page.evaluate(()=>{
    const btns=[...document.querySelectorAll('#opItemModal [data-op-suggest]')];
    return {件数:btns.length,
@@ -564,6 +632,8 @@ let b=null;const made=[];const madeChoices=[];
   await page.waitForSelector('#masterMaintList .op-board-grid',{timeout:20000});
   await page.waitForTimeout(700);
   await openTile(mkuj.id);
+  /* 単位の置き場・寄せ・見せ方は③（どう見せるか）。 */
+  await tab('look');
   const pad=await page.evaluate(()=>{
    const cells=[...document.querySelectorAll('#opItemModal [data-op-unitplace]')];
    return {盤:cells.map(c=>c.dataset.opUnitplace),
@@ -686,10 +756,116 @@ let b=null;const made=[];const madeChoices=[];
       !sel.none&&sel.fmt==='',JSON.stringify(sel));
   await closeModal();
 
+  /* ==========================================================
+     §9.223 ①③④ 役割・意匠・メモ
+     ========================================================== */
+  /* ---- ① 役割を別の項目へ移すと、組み込みの欄が下がる ----
+     窓には「役割を別の項目へ移すと、この欄は自動で下がります」と書いて
+     ある。**書いたことが起きること**を見る（§4）——起きないと、同じ役割の
+     欄が2つ並び、どちらの値が使われるのか決められない。 */
+  const beforeRole=await get('/api/operation-form?equipment='+encodeURIComponent(EQ));
+  const hadSpool=(beforeRole.items||[]).some(x=>x.builtin==='spool');
+  rec('前提: 組み込みの「スプール」が測定画面の定義に居る',hadSpool===true,
+      String((beforeRole.items||[]).length)+'件');
+  const mkr=await post('/api/operation-item-master',
+    {equipment:EQ,group:TAG,name:TAG+' 巻取り',type:'選択',choice:TAG+'-色',
+     role:'spool',user_id:TAG});
+  const mkrj=await mkr.json();
+  if(mkrj.id)made.push(mkrj.id);
+  const afterRole=await get('/api/operation-form?equipment='+encodeURIComponent(EQ));
+  rec('役割を引き取ると組み込みの欄は測定画面から下がる',
+      !(afterRole.items||[]).some(x=>x.builtin==='spool')
+      &&(afterRole.builtinOff||[]).includes('spool'),
+      JSON.stringify({居る:(afterRole.items||[]).some(x=>x.builtin==='spool'),
+                      下がった:(afterRole.builtinOff||[]).includes('spool')}));
+  rec('引き取った項目のほうは残る',
+      (afterRole.items||[]).some(x=>String(x.id)===String(mkrj.id)),String(mkrj.id));
+  /* **下がったぶんを「二重」と数えないこと**——数えると、正しく付け替えた
+     構成が永久に赤いままになる（直しようのない指摘・§4）。 */
+  const repo=await get('/api/operation-item-master?equipment='+encodeURIComponent(EQ));
+  const rr=repo.roleReport||{};
+  rec('正しく付け替えた役割を「二重」と言わない',
+      Array.isArray(rr.duplicated)&&!rr.duplicated.includes('spool'),
+      JSON.stringify(rr.duplicated));
+  rec('下がった欄は名指しで返す（画面が理由を書けるように）',
+      (rr.steppedDown||[]).some(h=>h.builtin==='spool'),
+      JSON.stringify((rr.steppedDown||[]).map(h=>h.builtin)));
+  /* 画面にも出る（探させない・§2）。 */
+  await page.click('#masterMaintNav [data-master="opItem"]');
+  await page.waitForSelector('#masterMaintList .op-board-grid',{timeout:20000});
+  await page.waitForTimeout(700);
+  const stripTxt=await page.evaluate(()=>{
+   const el=document.querySelector('.op-role-strip');return el?el.textContent||'':'';
+  });
+  rec('構成チェックが「下がった欄」を文字で言う',/役割を譲って下がった欄/.test(stripTxt),
+      stripTxt.slice(0,160));
+  /* 役割を外すと戻る（行き止まりにしない）。 */
+  await post('/api/operation-item-master/update',
+    {id:mkrj.id,user_id:TAG,equipment:EQ,group:TAG,name:TAG+' 巻取り',type:'選択',
+     choice:TAG+'-色',role:'',note:''});
+  const backRole=await get('/api/operation-form?equipment='+encodeURIComponent(EQ));
+  rec('役割を外すと組み込みの欄が戻る',
+      (backRole.items||[]).some(x=>x.builtin==='spool'),
+      JSON.stringify((backRole.builtinOff||[])));
+
+  /* ---- ③ 意匠（色・形・大きさ）は保存され、測定画面の定義に出る ----
+     **押した結果が保存されること**を見る（§9.113の「送り漏らすと消える」）。 */
+  await page.click('#masterMaintNav [data-master="opItem"]');
+  await page.waitForSelector('#masterMaintList .op-board-grid',{timeout:20000});
+  await page.waitForTimeout(700);
+  await openTile(mkrj.id);
+  await tab('look');
+  await page.click('#opItemModal [data-op-look="color"][data-op-val="緑"]');
+  await page.waitForTimeout(250);
+  await page.click('#opItemModal [data-op-look="shape"][data-op-val="丸"]');
+  await page.waitForTimeout(250);
+  await page.click('#opItemModal [data-op-look="size"][data-op-val="大"]');
+  await page.waitForTimeout(300);
+  /* 見本にその場で当たる（保存する前に確かめられる・§9.218 ①）。 */
+  const lookNow=await page.evaluate(()=>{
+   const l=document.querySelector('#opPrevField .opf');
+   return l?[...l.classList].filter(c=>/^opf-(c|r|z)-/.test(c)).sort().join('/'):'(無い)';
+  });
+  rec('意匠は押した瞬間に見本へ当たる',lookNow==='opf-c-green/opf-r-pill/opf-z-lg',lookNow);
+  await page.click('#opdSave');
+  await page.waitForTimeout(1600);
+  const lookForm=await get('/api/operation-form?equipment='+encodeURIComponent(EQ));
+  const lf=(lookForm.items||[]).find(x=>String(x.id)===String(mkrj.id));
+  rec('意匠が保存され、測定画面の定義に出る',
+      !!lf&&lf.look&&lf.look.color==='緑'&&lf.look.shape==='丸'&&lf.look.size==='大',
+      JSON.stringify(lf&&lf.look));
+  /* **意匠を触っただけで他の設定が消えないこと**（§9.212 ②と同じ形の
+     不具合。決めることを段に分けたので、③だけを触って保存する道がある）。 */
+  rec('意匠を触っても名前・型・選択肢は消えない',
+      !!lf&&lf.name===TAG_+' 巻取り'&&lf.type==='選択'&&lf.choice===TAG_+'-色',
+      JSON.stringify(lf&&{name:lf.name,type:lf.type,choice:lf.choice}));
+
+  /* ---- ④ メモは広い（利用者の指示「メモ欄狭すぎる」） ----
+     **実寸で見る**——`rows`だけを見ると、CSSが高さを潰していても通る。 */
+  await openTile(mkrj.id);
+  await tab('note');
+  const memo=await page.evaluate(()=>{
+   const el=document.getElementById('opdNote');
+   if(!el)return null;
+   const r=el.getBoundingClientRect();
+   const cs=getComputedStyle(el);
+   const line=parseFloat(cs.lineHeight)||parseFloat(cs.fontSize)*1.5;
+   return {高さ:Math.round(r.height),幅:Math.round(r.width),
+           行数:Math.round(r.height/line),tag:el.tagName};
+  });
+  rec('メモは複数行の広い欄',
+      !!memo&&memo.tag==='TEXTAREA'&&memo.行数>=6&&memo.幅>=280,JSON.stringify(memo));
+  await closeModal();
+
   rec('画面のエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){
   rec('FATAL',false,e.message);
  }finally{
+  /* **触った組み込みの行を必ず元へ戻す**（§9.121）。消せない行なので、
+     戻さないと次の実行が「幅6のまま・spoolは出さない」から始まる。 */
+  for(const r of restore){
+   try{await post('/api/operation-item-master/layout',{items:[r],user_id:TAG})}catch(e){}
+  }
   for(const id of made){try{await post('/api/operation-item-master/delete',{id,user_id:TAG})}catch(e){}}
   for(const id of madeChoices){try{await post('/api/operation-choice-master/delete',{id,user_id:TAG})}catch(e){}}
   if(b)await b.close();

@@ -467,13 +467,15 @@ let b=null,madeBlock=null;
       JSON.stringify(overlapFree));
 
   /* ==========================================================
-     断りの一言は**見えるところに出る**（§9.222 ④）
+     **重なっても置ける。置いたことは見えるところで言う**（§9.223 ③）
      ----------------------------------------------------------
-     常設の案内（`#rpArrangeNote`）は`?`で畳めるようにしたので、既定では
-     `hidden`。そこへ`rpSay()`が書き込むだけだと、「そのマスには別の塊が
-     置かれています」が**一度も読まれない**——押しても何も起きないのと
-     同じに見える。**文字があることだけを見ないこと**（hiddenの中でも
-     `textContent`は取れる）。実際に画面に出ているかを見る。
+     利用者の指示「任意の場合のカード移動のみ、重なっても配置でき、重なった
+     部分を強調表示など視覚表示で修正をうながす」。以前は埋まっているマスへ
+     落とすと**断って何もしなかった**ので、詰めたい場所へ一度も置けなかった。
+     いまは置いたうえで①塊の赤い縁 ②重なったマスの赤い網 ③帯のチップ
+     ④一言、で直すよう促す。
+     一言は`?`で畳める案内の中にあるので、**畳んだままでも読めること**まで
+     見る（`hidden`の中でも`textContent`は取れるので、実寸で見る）。
      ========================================================== */
   const refuse=await page.evaluate(()=>{
    const note=document.getElementById('rpArrangeNote');
@@ -482,6 +484,8 @@ let b=null,madeBlock=null;
      .find(x=>x!==el);
    if(!note||!el||!other)return {前提なし:true};
    const 畳んでいる=note.hidden===true;
+   const k=el.dataset.rpBlock;
+   const was=el.style.gridRow+'/'+el.style.gridColumn;
    const r=other.getBoundingClientRect();
    const grid=el.parentElement;
    const x=r.left+r.width/2,y=r.top+r.height/2;
@@ -491,13 +495,117 @@ let b=null,madeBlock=null;
    grid.dispatchEvent(new DragEvent('drop',{bubbles:true,clientX:x,clientY:y}));
    el.dispatchEvent(new DragEvent('dragend',{bubbles:true}));
    const n2=document.getElementById('rpArrangeNote');
-   return {畳んでいる,
-     文:(n2?n2.textContent:'').includes('別の塊'),
+   const now=document.querySelector(`[data-rp-block="${CSS.escape(k)}"]`);
+   return {畳んでいる,塊:k,
+     動いた:!!now&&(now.style.gridRow+'/'+now.style.gridColumn)!==was,
+     文:(n2?n2.textContent:'').includes('重ね'),
      見えている:!!(n2&&!n2.hidden&&n2.offsetParent!==null&&n2.getBoundingClientRect().height>0)};
   });
-  rec('埋まっているマスへ落とすと、断りが畳んだ案内の中に隠れず読める',
+  rec('埋まっているマスへも落とせる（自動で別の場所へ逃がさない）',
+      !refuse.前提なし&&refuse.動いた===true,JSON.stringify(refuse));
+  rec('重ねたことは畳んだ案内の中に隠れず読める',
       !refuse.前提なし&&refuse.畳んでいる===true&&refuse.文===true&&refuse.見えている===true,
       JSON.stringify(refuse));
+  /* **重なったマスそのものが赤い網で出る**（縁だけでは、どこが当たっている
+     のかが読めない）。数だけを見る網では捕まらないので、実際に重なりの
+     矩形が塊と重なっていることまで見る。 */
+  await settle(page);
+  const hatch=await page.evaluate(()=>{
+   const g=document.querySelector('#reportContent .rp-blocks');
+   const cells=[...g.querySelectorAll('.rp-overlap-cell')];
+   const over=[...g.querySelectorAll('.rp-block.is-overlap')];
+   if(!cells.length||!over.length)return {網:cells.length,縁:over.length,乗っている:false};
+   const c=cells[0].getBoundingClientRect();
+   const hit=over.some(b=>{
+    const r=b.getBoundingClientRect();
+    return Math.min(c.right,r.right)-Math.max(c.left,r.left)>2
+        && Math.min(c.bottom,r.bottom)-Math.max(c.top,r.top)>2;
+   });
+   return {網:cells.length,縁:over.length,乗っている:hit};
+  });
+  rec('重なったマスが赤い網で出て、重なった塊の上に乗っている',
+      hatch.網>0&&hatch.縁>0&&hatch.乗っている===true,JSON.stringify(hatch));
+
+  /* ==========================================================
+     **編集中のカードは「刷ったとおり」**（§9.223 ①、利用者の指示）
+     ----------------------------------------------------------
+     「各カードのサイズ表示や幅調整ボタンは、マウスオーバーの時のみレイヤーで
+      表示させ、編集中画面のカードの見た目は常に実際に出力される見た目を
+      再現してほしい。詰めておきたいのに実際と違う見た目のままサイズや位置の
+      調整を行っているズレを解消したい。」
+     帯を流れの中に置くと、その高さのぶん中身が下へ押されるので、**中身の
+     上端が器の上端と一致するか**で見る（「帯があること」だけを見る網では
+     捕まらない——流れの中でも層でも、帯は在る）。
+     ========================================================== */
+  const asPrint=await page.evaluate(()=>{
+   /* **重なり・入りきらない塊は帯を出しっぱなし**にしてあるので、
+      「触れるまで見えない」はふつうの塊で見る（この網より前で重ねている）。 */
+   const el=document.querySelector(
+     '#reportContent .rp-block[data-rp-block]:not(.is-overlap):not(.is-overflow)');
+   if(!el)return {前提なし:true};
+   const fit=el.querySelector(':scope>.rp-block-fit');
+   const tools=el.querySelector(':scope>.rp-block-tools');
+   if(!fit||!tools)return {前提なし:true,fit:!!fit,tools:!!tools};
+   const er=el.getBoundingClientRect(),fr=fit.getBoundingClientRect();
+   const cs=getComputedStyle(tools);
+   return {ずれ:Math.round(fr.top-er.top),
+           層:cs.position,
+           触れる前は見えない:cs.visibility==='hidden'||Number(cs.opacity)===0};
+  });
+  rec('組み換え中でも中身は器の上端から始まる（帯が押し下げない）',
+      !asPrint.前提なし&&Math.abs(asPrint.ずれ)<=1,JSON.stringify(asPrint));
+  rec('操作帯は重ねる層で、触れるまで見えない',
+      !asPrint.前提なし&&asPrint.層==='absolute'&&asPrint.触れる前は見えない===true,
+      JSON.stringify(asPrint));
+  /* 触れたら出ること。**出ないなら操作できない**ので、見えないだけでは足りない。
+     CSSの`:hover`はイベントでは付かないので、同じ条件（`is-overlap`＝直して
+     ほしい塊は出しっぱなし）で確かめる。**淡く出るのに時間がかかる**ので、
+     固定待ちではなく「出るまで待つ」（`transition`は120ms・§9.102）。 */
+  const marked=await page.evaluate(()=>{
+   const el=document.querySelector(
+     '#reportContent .rp-block[data-rp-block]:not(.is-overlap):not(.is-overflow)');
+   if(!el)return false;
+   el.dataset.rpProbe='1';el.classList.add('is-overlap');return true;
+  });
+  let onHover={前提なし:!marked};
+  if(marked){
+   let shown=false;
+   try{
+    await page.waitForFunction(()=>{
+     const el=document.querySelector('[data-rp-probe="1"]');
+     const t=el&&el.querySelector(':scope>.rp-block-tools');
+     if(!t)return false;
+     const cs=getComputedStyle(t);
+     return cs.visibility!=='hidden'&&Number(cs.opacity)>0.5;
+    },null,{timeout:4000});
+    shown=true;
+   }catch(e){}
+   onHover=await page.evaluate(s=>{
+    const el=document.querySelector('[data-rp-probe="1"]');
+    const t=el&&el.querySelector(':scope>.rp-block-tools');
+    const cs=t?getComputedStyle(t):null;
+    if(el){el.classList.remove('is-overlap');delete el.dataset.rpProbe}
+    return {見える:s,可視性:cs?cs.visibility:'',濃さ:cs?cs.opacity:''};
+   },shown);
+  }
+  rec('直してほしい塊（重なり）では帯を出しっぱなしにする',
+      !onHover.前提なし&&onHover.見える===true,JSON.stringify(onHover));
+
+  /* **空きは紙の地と違う色**（§9.223 ②、利用者の指摘「他のエリアと色が同じで
+     空欄の場所が認識しにくい」）。塊は白なので、白との差が付いているかを
+     実際の計算値で見る（`rgba(...,.05)`では差が出ていなかった）。 */
+  const emptyColor=await page.evaluate(()=>{
+   const f=document.querySelector('#reportContent .rp-free');
+   const b=document.querySelector('#reportContent .rp-block[data-rp-block]');
+   if(!f||!b)return {前提なし:true};
+   const num=c=>(String(c).match(/[\d.]+/g)||[]).map(Number);
+   const fc=num(getComputedStyle(f).backgroundColor),bc=num(getComputedStyle(b).backgroundColor);
+   const d=Math.abs((fc[0]||0)-(bc[0]||0))+Math.abs((fc[1]||0)-(bc[1]||0))+Math.abs((fc[2]||0)-(bc[2]||0));
+   return {空き:getComputedStyle(f).backgroundColor,塊:getComputedStyle(b).backgroundColor,差:d,
+           網:/gradient/.test(getComputedStyle(f).backgroundImage)};
+  });
+  rec('空きマスの色が塊の地と見分けられる',
+      !emptyColor.前提なし&&emptyColor.差>=18&&emptyColor.網===true,JSON.stringify(emptyColor));
 
   rec('画面のエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){

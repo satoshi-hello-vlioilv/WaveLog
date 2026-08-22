@@ -112,8 +112,18 @@ WIDGET_SELECT = 'プルダウン'
 #   セグメント … 1本の帯を仕切った形（つまみが動く）。2〜4個の排他向き
 #   タブ       … 下線で示す見出し。段を切り替える感覚のもの
 #   ボタン群   … 独立した丸みのある札。数が多くても折り返して読める
+# §9.223 ③（利用者の指示「6種類しかないので、既存のUIデザインも見直した
+# うえでバリエーションを増やしてください」）で3つ足した。**足すのは
+# 「同じ形の色違い」ではなく、選ぶ状況が違うもの**だけ——見た目の違いは
+# `意匠`の軸（色・形・大きさ）が持つので、種類のほうを色で増やさない。
+#   カード     … 説明つきの大きな札。**選ぶのに説明が要る**3〜6個向き
+#   トグル     … 2択の入切スイッチ。「有/無」「OS/DS」のような対向き
+#   早見ボタン … よく使う値を並べたボタン（数値）。上下限と刻みから作る
+#   1行        … 素の1行入力（自由記述）。メモほどの高さが要らないとき
 WIDGETS = (WIDGET_SELECT, 'ラジオ', 'セグメント', 'タブ', 'ボタン群', '一覧',
-           'ステッパー', 'スライダー', 'キーパッド', 'メモ')
+           'カード', 'トグル',
+           'ステッパー', 'スライダー', 'キーパッド', '早見ボタン',
+           'メモ', '1行')
 # 選択肢を持つ型。判定はここ1箇所。
 CHOICE_TYPES = ('選択',)
 NUMBER_TYPES = ('整数', '正の整数', '数値', '正の数')
@@ -122,9 +132,10 @@ NUMBER_TYPES = ('整数', '正の整数', '数値', '正の数')
 # `プルダウン`はどの型でも「標準の欄」の意味で使う。**保存値の既定を型ごとに
 # 変えないこと**——型を切り替えた瞬間に「知らない値」になって設定が消える。
 WIDGET_FAMILIES = {
-    'choice': (WIDGET_SELECT, 'ラジオ', 'セグメント', 'タブ', 'ボタン群', '一覧'),
-    'number': (WIDGET_SELECT, 'ステッパー', 'スライダー', 'キーパッド'),
-    'text': (WIDGET_SELECT, 'メモ'),
+    'choice': (WIDGET_SELECT, 'ラジオ', 'セグメント', 'タブ', 'ボタン群', '一覧',
+               'カード', 'トグル'),
+    'number': (WIDGET_SELECT, 'ステッパー', 'スライダー', 'キーパッド', '早見ボタン'),
+    'text': (WIDGET_SELECT, 'メモ', '1行'),
 }
 # 組み込みの欄が選択肢を持つのか数値なのかは、**画面(index.html)が持っている
 # 入力欄の実体**で決まる。マスタの`[型]`は組み込み行では空なので、ここが答える。
@@ -183,7 +194,9 @@ UNIT_PLACES = ('外上左', '外上中央', '外上右', UNIT_PLACE_IN,
                '外下左', '外下中央', '外下右', UNIT_PLACE_HIDE)
 # 単位を重ねられない入力方法（箱が1つではない）。
 UNIT_IN_BLOCKED_WIDGETS = ('ラジオ', 'セグメント', 'タブ', 'ボタン群', '一覧',
-                           'ステッパー', 'スライダー', 'キーパッド', 'メモ')
+                           'カード', 'トグル',
+                           'ステッパー', 'スライダー', 'キーパッド', '早見ボタン',
+                           'メモ')
 
 
 def normalize_unit_place(v):
@@ -213,6 +226,60 @@ VALUE_FORMATS = (VALUE_FORMAT_PLAIN, '3桁区切り', 'ゼロ埋め')
 def normalize_value_format(v):
     s = str(v or '').strip()
     return s if s in VALUE_FORMATS else VALUE_FORMAT_PLAIN
+
+
+# ---------------------------------------------------------------------------
+# 見た目（§9.223 ③、利用者の指示）
+# ---------------------------------------------------------------------------
+# 「UIの種類と見た目(色や形、美観デザイン)など組合せでカスタムできるように
+#   してほしいです。」
+#
+# **「何で選ばせるか」と「どう見えるか」を別の軸にする。** 一緒にすると
+# 「青いタブ」「緑のタブ」…と種類が掛け算で増え、選ぶ盤が読めなくなる。
+# 軸は3つだけ——色・形・大きさ。**16進を選ばせない**（§9.198の行の色と
+# 同じ理由。自由に選べると淡すぎて読めない色が現場ごとに増える）。
+LOOK_COLORS = ('既定', '主色', '青', '緑', '橙', '赤', '紫', '灰')
+LOOK_SHAPES = ('角丸', '角', '丸')
+LOOK_SIZES = ('小', '中', '大')
+# 画面のクラス名（`opf-c-*` / `opf-r-*` / `opf-z-*`）。**綴りはここが正**で、
+# 画面へ書き写さない（2箇所に持つと片方だけ直した状態が作れる）。
+LOOK_COLOR_SLUG = {'既定': '', '主色': 'teal', '青': 'blue', '緑': 'green',
+                   '橙': 'amber', '赤': 'red', '紫': 'violet', '灰': 'slate'}
+LOOK_SHAPE_SLUG = {'角丸': '', '角': 'sharp', '丸': 'pill'}
+LOOK_SIZE_SLUG = {'小': 'sm', '中': '', '大': 'lg'}
+LOOK_DEFAULT = {'color': '既定', 'shape': '角丸', 'size': '中'}
+
+
+def normalize_look(v):
+    # 保存は`色:主色|形:丸|大きさ:大`の1文字列（列を3本増やさない）。
+    # **知らない値は既定へ倒す**——効かない見た目を保存して「押しても
+    # 変わらない」を作らない（§4）。
+    out = dict(LOOK_DEFAULT)
+    for part in str(v or '').replace('、', '|').split('|'):
+        if ':' not in part:
+            continue
+        k, _s, val = part.partition(':')
+        k = k.strip()
+        val = val.strip()
+        if k == '色' and val in LOOK_COLORS:
+            out['color'] = val
+        elif k == '形' and val in LOOK_SHAPES:
+            out['shape'] = val
+        elif k in ('大きさ', '大') and val in LOOK_SIZES:
+            out['size'] = val
+    return out
+
+
+def look_text(look):
+    # 保存する形へ戻す。**既定だけのときは空**にする（行に意味の無い文字列を
+    # 残さない＝既定を変えたときに追随する。§9.198の「既定へ戻す＝行を消す」）。
+    d = look if isinstance(look, dict) else normalize_look(look)
+    c = d.get('color') if d.get('color') in LOOK_COLORS else LOOK_DEFAULT['color']
+    sh = d.get('shape') if d.get('shape') in LOOK_SHAPES else LOOK_DEFAULT['shape']
+    sz = d.get('size') if d.get('size') in LOOK_SIZES else LOOK_DEFAULT['size']
+    if (c, sh, sz) == (LOOK_DEFAULT['color'], LOOK_DEFAULT['shape'], LOOK_DEFAULT['size']):
+        return ''
+    return f'色:{c}|形:{sh}|大きさ:{sz}'
 
 
 def normalize_digits(v):
@@ -337,6 +404,129 @@ BUILTIN_SEEDS = (
      '板幅,ラテラルボー,バリ,テレスコープ,巻ずれ,フラットネス'),
 )
 BUILTIN_KEYS = tuple(x[0] for x in BUILTIN_SEEDS)
+
+# ---------------------------------------------------------------------------
+# 役割（§9.223 ①、利用者の指示）
+# ---------------------------------------------------------------------------
+# 「データの設計上必須な部分は、全体の構成上の必須項目として押さえておき、
+#   各カード単位では自由度を持っておきたいです。つまり、例えばオペレータ
+#   マスタから選ばせるものは1つは必要という条件で、オペレータマスタを
+#   使っているものが1つあればよいという条件にして、カード単位の作りは
+#   すべて同じにしておくといった具合です。」
+#
+# **必須をカードから外し、構成へ移す。** 以前は「この行は組み込みだから
+# 消せない・名前も型も変えられない」という形でカードを縛っていた。縛りが
+# カードに付いていると、①その1枚だけ作りが違う（覚えることが増える）
+# ②現場が「別の名前で聞きたい」と思っても行き場が無い、の2つが起きる。
+#
+# いまは**役割**を持つ。役割は「この値を何として読むか」で、アプリが値を
+# 使う口（`WL.opData.roleValue()`）はこれを見る。**どのカードが持っても
+# よい**——必要なのは「その役割の欄が1つあること」だけ。
+#
+# (役割キー, 呼び名, 何に使うか, 必須か, 使うまとまりの既定)
+ROLE_SEEDS = (
+    ('operator', 'オペレータ', '記録と帳票に「誰が測ったか」として出ます。', True, 'オペレータ'),
+    ('inspector', '検査員', '記録と帳票に「誰が確かめたか」として出ます。', False, '検査員'),
+    ('crewSize', '作業人数', '作業時間の見積と実績に使います。', False, ''),
+    ('verticalCount', '縦割数', '測定表の丈の本数を決めます。', True, ''),
+    ('horizontalCount', '横割数', '測定表の条の本数を決めます（屑幅の上限もここから）。', True, ''),
+    ('innerDiameter', '内径', '仕掛データの内径目標をそのまま入れておきます。', False, '内径種別'),
+    ('spool', 'スプール', '使った巻取り具を記録します。', False, 'スプール種別'),
+    ('thicknessGauge', '板厚測定器', '板厚をどの測定器で測ったかを記録します。', False, '板厚測定器'),
+    ('widthGauge', '板幅測定器', '板幅をどの測定器で測ったかを記録します。', False, '板幅測定器'),
+    ('unwind', '巻出方向', '条の並びの向きを決めます。', False, ''),
+    ('burr', 'バリ揃え', 'バリの向きを記録します。', False, 'バリ揃え'),
+    ('coilStop', 'コイル止め', 'コイル止めの種類を記録します。', False, 'コイル止め'),
+    ('widthOrder', '条入力順', '条を打つ順番を決めます。', False, ''),
+    ('widthDirection', '方向', '条を打つ向きを決めます。', False, ''),
+)
+ROLE_KEYS = tuple(x[0] for x in ROLE_SEEDS)
+ROLE_LABELS = {k: lb for k, lb, _n, _r, _g in ROLE_SEEDS}
+REQUIRED_ROLES = tuple(k for k, _lb, _n, req, _g in ROLE_SEEDS if req)
+
+
+def normalize_role(v):
+    # 役割の綴り。**知らない値は「役割なし」へ倒す**——マスタを手で直した
+    # 端末で、当たらない役割が付いたまま「必須が埋まっていない」と言い続ける
+    # のを避ける（§4。直しようのない指摘を出さない）。
+    s = str(v or '').strip()
+    return s if s in ROLE_KEYS else ''
+
+
+def role_of(item):
+    # その項目が担っている役割。**`[役割]`が正、無ければ組み込みキー**
+    # （移行前の行はこれで今までどおり動く）。判定はここ1箇所——散らすと、
+    # 画面とサーバーで「誰が担っているか」が食い違う。
+    r = normalize_role(item.get('role') if isinstance(item, dict) else None)
+    if r:
+        return r
+    b = str((item.get('builtin') if isinstance(item, dict) else '') or '').strip()
+    return b if b in ROLE_KEYS else ''
+
+
+def role_holders(items):
+    """役割ごとの担い手と、**役割を譲って下がった組み込みの欄**（§9.223 ①）。
+
+    **明示の`[役割]`が組み込みキーに勝つ。** 組み込みの欄は「その役割を
+    暫定で担っている」だけなので、利用者が別のカードへ同じ役割を与えたら
+    そちらが本役で、組み込みの欄は下がる——モーダルに「役割を別の項目へ
+    移すと、この欄は自動で下がります」と書いてあるとおりに動かすための
+    1箇所。**ここを2つに分けないこと**（構成チェックと測定画面で
+    「誰が担っているか」が食い違うと、片方だけ二重に見える）。
+    """
+    holders = {k: [] for k in ROLE_KEYS}
+    for it in items:
+        if not it.get('enabled', True):
+            continue
+        r = role_of(it)
+        if r:
+            holders[r].append({
+                'id': it.get('id'), 'name': it.get('name'),
+                'builtin': it.get('builtin') or '',
+                # 明示＝`[役割]`が入っている。組み込みキーから読んだだけの
+                # ものは暫定なので、明示の担い手が居れば譲る。
+                'explicit': bool(normalize_role(it.get('role'))),
+            })
+    stepped = []
+    for key in ROLE_KEYS:
+        hs = holders[key]
+        if len(hs) < 2:
+            continue
+        if not any(h['explicit'] for h in hs):
+            continue
+        for h in hs:
+            if not h['explicit']:
+                stepped.append(dict(h, role=key))
+        holders[key] = [h for h in hs if h['explicit']]
+    return holders, stepped
+
+
+def stepped_down_builtins(items):
+    # 役割を譲って下がった**組み込みの欄のキー**（画面から消す側が使う）。
+    _holders, stepped = role_holders(items)
+    return sorted({h['builtin'] for h in stepped if h['builtin']})
+
+
+def role_report(items):
+    # 構成として満たされているか（§9.223 ①）。**カードではなく全体を見る**
+    # ——「オペレータの欄が1つある」ことが要件なので、どのカードが担って
+    # いるかは問わない。担い手が2つ以上のときも言う（どちらの値が使われるのか
+    # 決められないので、放置すると「直したのに変わらない」になる）。
+    # **組み込みの欄が譲ったぶんは二重に数えない**（`role_holders()`が
+    # 落としている。数えると、正しく付け替えた構成が永久に赤いままになる）。
+    holders, stepped = role_holders(items)
+    out = []
+    for key, label, note, req, group in ROLE_SEEDS:
+        hs = holders[key]
+        out.append({'key': key, 'label': label, 'note': note, 'required': req,
+                    'choice': group, 'holders': hs,
+                    'steppedDown': [h for h in stepped if h.get('role') == key],
+                    'state': ('none' if not hs else ('dup' if len(hs) > 1 else 'ok'))})
+    missing = [r['key'] for r in out if r['required'] and r['state'] == 'none']
+    dup = [r['key'] for r in out if r['state'] == 'dup']
+    return {'roles': out, 'missing': missing, 'duplicated': dup,
+            'steppedDown': stepped, 'ok': not missing and not dup}
+
 
 
 # ---------------------------------------------------------------------------
@@ -880,6 +1070,14 @@ _ITEM_ADDED_COLUMNS = (
     ('文字寄せ', 'TEXT'),          # 自動/左/中央/右
     ('表示書式', 'TEXT'),          # そのまま/3桁区切り/ゼロ埋め
     ('表示桁数', 'INTEGER'),       # ゼロ埋めの桁数
+    # --- §9.223 ①（利用者の指示「データの設計上必須な部分は、全体の構成上の
+    #     必須項目として押さえておき、各カード単位では自由度を持っておきたい」）---
+    # **役割**。「この値を何として読むか」で、組み込みキーの代わりになる。
+    # 必須は**構成レベル**（オペレータの役割を持つ欄が1つ）で押さえるので、
+    # カードそのものは全部同じ作りにできる。空＝ただの記録項目。
+    ('役割', 'TEXT'),
+    # 見た目（§9.223 ③）。`色:teal|形:pill|大きさ:lg`。空＝既定。
+    ('意匠', 'TEXT'),
 )
 
 
@@ -1015,14 +1213,23 @@ def _row_to_item(r):
             'unitPlaceSaved': normalize_unit_place(r[23]),
             'align': normalize_align(r[24]),
             'valueFormat': normalize_value_format(r[25]),
-            'digits': normalize_digits(r[26])}
+            'digits': normalize_digits(r[26]),
+            # --- §9.223 ① ---
+            # 役割。**保存値と、実際に担っている役割を分けて返す**——保存値が
+            # 空でも組み込みキーが役割になる行があるので、設定画面で「なぜ
+            # この欄が担っているのか」を言えるようにしておく。
+            'role': normalize_role(r[27]),
+            'roleLive': role_of({'role': normalize_role(r[27]), 'builtin': builtin}),
+            # --- §9.223 ③ ---
+            # 見た目。色・形・大きさの3つで、空＝既定（今までの見え方）。
+            'look': normalize_look(r[28])}
 
 
 _ITEM_SELECT = ('SELECT [項目ID],[設備名],[群],[項目名],[表示順],[型],[小数桁],[最小値],[最大値],'
                 '[選択肢名],[単位],[必須],[備考],[有効],'
                 '[組み込みキー],[置き場],[列幅],[群折りたたみ],[表示条件],[入力方法],'
                 '[初期値],[手打ち可],[ステップ量],'
-                '[単位位置],[文字寄せ],[表示書式],[表示桁数] '
+                '[単位位置],[文字寄せ],[表示書式],[表示桁数],[役割],[意匠] '
                 'FROM [操業データ項目マスタ] ORDER BY [表示順],[項目ID]')
 
 
@@ -1065,7 +1272,8 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                 required=False, note='', enabled=True, item_id=None,
                 place=None, span=None, fold=None, show_when=None, builtin=None,
                 widget=None, initial=None, free_text=None, step=None,
-                unit_place=None, align=None, value_format=None, digits=None):
+                unit_place=None, align=None, value_format=None, digits=None,
+                role=None, look=None):
     ensure_item_table(c)
     name = str(name or '').strip()
     if not name:
@@ -1110,13 +1318,17 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
             # §9.221 ⑦。見せ方は保存値をそのまま持つ（効くかどうかの判定は
             # 読む側の`_row_to_item`が1箇所で行う）。
             normalize_unit_place(unit_place), normalize_align(align),
-            normalize_value_format(value_format), normalize_digits(digits)]
+            normalize_value_format(value_format), normalize_digits(digits),
+            # §9.223 ①③。役割は**組み込みキーと同じ語**で持つ（移行前の行が
+            # 空でも`role_of()`が組み込みキーを役割として読むので、書き足す
+            # 必要が無い）。見た目は既定なら空文字（行に意味の無い値を残さない）。
+            normalize_role(role), look_text(look)]
     if item_id is not None:
         cur.execute('UPDATE [操業データ項目マスタ] SET [設備名]=?,[群]=?,[項目名]=?,[表示順]=?,'
                     '[型]=?,[小数桁]=?,[最小値]=?,[最大値]=?,[選択肢名]=?,[単位]=?,[必須]=?,'
                     '[備考]=?,[有効]=?,[組み込みキー]=?,[置き場]=?,[列幅]=?,[群折りたたみ]=?,'
                     '[表示条件]=?,[入力方法]=?,[初期値]=?,[手打ち可]=?,[ステップ量]=?,'
-                    '[単位位置]=?,[文字寄せ]=?,[表示書式]=?,[表示桁数]=?,'
+                    '[単位位置]=?,[文字寄せ]=?,[表示書式]=?,[表示桁数]=?,[役割]=?,[意匠]=?,'
                     '[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
                     args + [uid, int(item_id)])
         c.commit()
@@ -1131,7 +1343,7 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                     '[最小値]=?,[最大値]=?,[選択肢名]=?,[単位]=?,[必須]=?,[備考]=?,[有効]=?,'
                     '[組み込みキー]=?,[置き場]=?,[列幅]=?,[群折りたたみ]=?,[表示条件]=?,'
                     '[入力方法]=?,[初期値]=?,[手打ち可]=?,[ステップ量]=?,'
-                    '[単位位置]=?,[文字寄せ]=?,[表示書式]=?,[表示桁数]=?,'
+                    '[単位位置]=?,[文字寄せ]=?,[表示書式]=?,[表示桁数]=?,[役割]=?,[意匠]=?,'
                     '[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
                     args[1:2] + args[3:] + [uid, hit[0]])
         c.commit()
@@ -1145,9 +1357,9 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                 '([設備名],[群],[項目名],[表示順],[型],[小数桁],[最小値],[最大値],[選択肢名],'
                 '[単位],[必須],[備考],[有効],[組み込みキー],[置き場],[列幅],[群折りたたみ],'
                 '[表示条件],[入力方法],[初期値],[手打ち可],[ステップ量],'
-                '[単位位置],[文字寄せ],[表示書式],[表示桁数],'
+                '[単位位置],[文字寄せ],[表示書式],[表示桁数],[役割],[意匠],'
                 '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
-                'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',
+                'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',
                 args + [uid, uid])
     c.commit()
     return int(cur.lastrowid)
@@ -1263,7 +1475,14 @@ def form_for_equipment(c, equipment):
     # つもりの欄が消えない、という分かりにくい壊れ方）。
     known = {x['builtin'] for x in item_rows(c, True) if x['builtin']}
     live = {x['builtin'] for x in items if x['builtin']}
-    return {'items': out, 'builtinOff': sorted(known - live),
+    # **役割を譲った組み込みの欄も下ろす**（§9.223 ①）。設定画面には
+    # 「役割を別の項目へ移すと、この欄は自動で下がります」と書いてあるので、
+    # 下ろさないと**同じ役割の欄が2つ並ぶ**（どちらの値が使われるのか
+    # 決められない＝§4の「書いたのに起きない」）。
+    down = set(stepped_down_builtins(items))
+    if down:
+        out = [r for r in out if r.get('builtin') not in down]
+    return {'items': out, 'builtinOff': sorted((known - live) | down),
             'gridCols': GRID_COLS, 'spanUnit': SPAN_UNIT,
             'widgets': list(WIDGETS),
             'widgetFamilies': {k: list(v) for k, v in WIDGET_FAMILIES.items()},

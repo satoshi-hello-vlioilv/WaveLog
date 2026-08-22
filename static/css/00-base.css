@@ -65,6 +65,18 @@
   --teal-soft:#9cd6ce;
   --teal-dark:#096b75;
   --pale:#dcecef;
+  /* ---------- 操業データの意匠の8色（§9.223 ③、利用者の指示） ----------
+     「UIの種類と見た目(色や形、美観デザイン)など組合せでカスタムできるように」。
+     **16進を選ばせない**（§9.198の行の色と同じ判断——自由に選べると淡すぎて
+     読めない色や、画面ごとに違う赤が増える）。ここが唯一の定義で、
+     `.opf-c-*`はこのトークンを引くだけ。濃さは「面(pale)／主(hue)／
+     濃(dark)」の3段で、**主の上に白文字が載る**明度に揃えてある。 */
+  --look-blue:#2f6fd0;      --look-blue-dark:#1f4f9c;      --look-blue-pale:#eaf1fc;
+  --look-green:#2f8f5b;     --look-green-dark:#20683f;     --look-green-pale:#e9f6ee;
+  --look-amber:#b8791b;     --look-amber-dark:#8a5a12;     --look-amber-pale:#fdf3e2;
+  --look-red:#c1443f;       --look-red-dark:#95302c;       --look-red-pale:#fdeceb;
+  --look-violet:#7150c4;    --look-violet-dark:#523795;    --look-violet-pale:#f1ecfd;
+  --look-slate:#5a6b72;     --look-slate-dark:#3f4d52;     --look-slate-pale:#eef1f2;
   --line:#b7c7cc;
   --bg:#eef2f4;
   --warn:#f5a30a;
