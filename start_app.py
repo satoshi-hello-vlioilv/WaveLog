@@ -9,8 +9,16 @@ Start.vbs(通常起動)と start_app.bat(診断起動)は、どちらも最終�
   1. ログを初期化し、実行環境(Python・配置場所・PID)を記録する
   2. 起動待機画面をブラウザで開く  ← 早い段階で開く
   3. 既に同じアプリが起動していれば、新たに起動せず終了する
-  4. 不足パッケージの導入 / 旧配置のDBファイルの取り込み
+  4. **確認済みの刻印があれば飛ばす**(§9.225)。無い/合わないときだけ、
+     不足パッケージの導入・バイトコードの事前コンパイル・旧配置DBの
+     取り込みをその場で行う
   5. Webサーバーを起動する
+
+4の確認は`setup.bat`(→`setup_app.py`)が受け持ち、済むと端末ごとの刻印
+(`%LOCALAPPDATA%\\WaveLog\\runtime\\ready.json`)が残る。**刻印は速さの
+ための門であって正しさの門ではない**ので、食い違ったときは止めずに
+その場で同じ確認をやり直す(利用者の指示①)。実処理は
+`backend/launcher/setup_check.py`の1箇所で、setup.batと共有する。
 
 2を先に行うのは、以降のどの段階で失敗しても利用者の画面には必ず待機画面が
 表示され、規定時間後に「起動できません」と確認手順まで案内されるため。
@@ -19,39 +27,28 @@ Start.vbs(通常起動)と start_app.bat(診断起動)は、どちらも最終�
 """
 import _pycache_bootstrap  # 他のimportより前に。必ず1行目のimportにすること
 
-from pathlib import Path
-import importlib.util
-import subprocess
 import sys
 import threading
 import time
 import webbrowser
 
 from backend.launcher import guard as launch_guard
+from backend.launcher import ready, setup_check
 from backend import boot_status
-from backend.config import APP_NAME, PORT, REQUIRED_PACKAGES, app_url
+from backend.config import PORT, app_url
 from backend.logging_setup import launcher_logger, log_environment
 from backend.paths import APP_ROOT, configured_path, ensure_local_dirs, is_network_path
 
-# 旧配置(リポジトリ直下 / data フォルダ)に残っているDBファイルの取り込み先。
-# 取り込み先に同名ファイルが既にある場合は上書きしない(繰り返し起動しても安全)。
-_LEGACY_DB=(
- ('マスタ.sqlite3','db/master.sqlite3'),
- ('測定データ.sqlite3','db/records.sqlite3'),
- ('data/マスタ.sqlite3','db/master.sqlite3'),
- ('data/測定データ.sqlite3','db/records.sqlite3'),
-)
-
-
-def _no_window():
- """pythonw(コンソール非表示)から子プロセスを起動しても黒い画面を出さない。"""
- if sys.platform=='win32':
-  return {'creationflags':getattr(subprocess,'CREATE_NO_WINDOW',0)}
- return {}
-
 
 def open_waiting_screen(log):
- page=APP_ROOT/'loading.html'
+ """起動待機画面を開く。**手元の写しがあればそちらを開く**(§9.225)。
+    共有配置では、進捗ファイル(`boot_status.js`)を共有へ書くと全台が同じ
+    1つを取り合う——他の端末の進捗が自分の画面に出る。写しの隣へ書けば
+    端末ごとに分かれ、共有への書き込みも消える。写しが無ければ今までどおり
+    共有側を開く(**開けないより遅いほうがまし**)。"""
+ page=setup_check.waiting_page()
+ if not page.exists():
+  page=setup_check.copy_waiting_page() or APP_ROOT/'loading.html'
  if not page.exists():
   log.error('待機画面 %s が見つかりません。アプリURLを直接開きます',page)
   webbrowser.open(app_url()); return
@@ -66,36 +63,16 @@ def open_waiting_screen(log):
   log.error('待機画面を開けませんでした: %s',e)
 
 
-def ensure_packages(log):
- missing=[name for name in REQUIRED_PACKAGES if importlib.util.find_spec(name) is None]
- if not missing:
-  log.info('必須パッケージ: 揃っています (%s)',', '.join(REQUIRED_PACKAGES))
-  return True
- log.info('必須パッケージ: %s が不足しています。導入を試みます',', '.join(missing))
- try:
-  result=subprocess.run(
-   [sys.executable,'-m','pip','install','-r',str(APP_ROOT/'requirements.txt')],
-   capture_output=True,text=True,**_no_window())
- except Exception as e:
-  log.error('必須パッケージ: 導入を実行できませんでした: %s',e); return False
- if result.returncode!=0:
-  log.error('必須パッケージ: 導入に失敗しました\n%s',(result.stderr or '').strip()[:2000])
-  return False
- log.info('必須パッケージ: 導入しました')
- return True
-
-
-def adopt_legacy_databases(log):
- """旧バージョンの置き場所に残っているDBファイルを db/ へ取り込む。"""
- (APP_ROOT/'db').mkdir(exist_ok=True)
- for old_name,new_name in _LEGACY_DB:
-  old=APP_ROOT/old_name; new=APP_ROOT/new_name
-  if old.exists() and not new.exists():
-   try:
-    old.rename(new)
-    log.info('旧DBを取り込みました: %s -> %s',old_name,new_name)
-   except Exception as e:
-    log.error('旧DBを取り込めませんでした(%s): %s',old_name,e)
+def run_full_check(log,why):
+ """刻印が無い/合わないときの完全な確認(§9.225)。**setup.batと同じ処理を
+    同じ場所から呼ぶ**——2つ持つと「setup.batでは通るのに起動では失敗する」
+    が作れる。"""
+ log.info('起動前の確認: %s。この起動でまとめて確かめます（setup.batを実行しておくと次回から速くなります）',
+          ' / '.join(why) if why else '刻印がありません')
+ def say(message,bad=False):
+  (log.warning if bad else log.info)('起動前の確認: %s',message)
+ ok,_reason=setup_check.run(say)
+ return ok
 
 
 def warn_if_shared(log):
@@ -144,14 +121,21 @@ def main():
   log.info('--- 終了 --- (ポート使用中・応答無し)')
   return 1
 
- boot_status.report('packages','必要な部品が揃っているか確認しています')
- if not ensure_packages(log):
-  boot_status.report('packages','必要な部品を用意できませんでした',failed=True)
-  log.error('起動中止: 必須パッケージが揃いませんでした')
-  return 1
+ # 確認済みの刻印があれば、ここは飛ばす(§9.225)。**刻印は速さのための門で
+ # あって正しさの門ではない**——バイトコードが古いかどうかはPython自身が
+ # 判定するので、飛ばして困るのは「速くならない」ことだけ。
+ why=ready.mismatch()
+ if why:
+  boot_status.report('packages','必要な部品が揃っているか確認しています')
+  if not run_full_check(log,why):
+   boot_status.report('packages','必要な部品を用意できませんでした',failed=True)
+   log.error('起動中止: 必須パッケージが揃いませんでした')
+   return 1
+ else:
+  boot_status.report('packages','確認済みです（setup.batで確認しました）')
+  log.info('起動前の確認: 済んでいます。飛ばします')
 
  boot_status.report('data','データの置き場所を確認しています')
- adopt_legacy_databases(log)
  # 共有配置の確認はネットワーク越しのファイル存在確認を伴い、共有の応答が
  # 遅いと起動そのものが止まる。記録のための警告でしかないので、起動の
  # 直列路から外して裏で確認する(§9.47)。
@@ -161,7 +145,19 @@ def main():
 
  try:
   boot_status.report('app','アプリを読み込んでいます')
-  from backend.launcher import server
+  try:
+   from backend.launcher import server
+  except ImportError as e:
+   # 刻印はあるのに部品が消えている(誰かがアンインストールした・別の
+   # Pythonを指している)。**刻印を信じ切って落ちない**——その場で確認し直し、
+   # 1回だけやり直す(利用者の指示①の自己修復)。
+   log.warning('アプリを読み込めませんでした(%s)。確認をやり直します',e)
+   ready.clear()
+   if not run_full_check(log,['読み込みに失敗しました']):
+    boot_status.report('app','アプリを読み込めませんでした',failed=True)
+    log.error('起動中止: 確認をやり直しても読み込めませんでした')
+    return 1
+   from backend.launcher import server
   boot_status.report('server',f'ポート {PORT} で待ち受けを開始します')
   server.run()
  except Exception as e:

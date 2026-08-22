@@ -67,7 +67,8 @@ G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'tes
 G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'test_density',
                'test_uiux', 'test_hdr', 'test_headbar', 'test_calscale', 'test_bootui',
                'test_gridhead']
-G['起動'] = ['test_boot', 'test_bootui', 'test_bootflash', 'test_assetcache', 'test_tabclose']
+G['起動'] = ['test_boot', 'test_bootui', 'test_bootflash', 'test_assetcache', 'test_tabclose',
+             'test_faststart']
 G['接続'] = ['test_dbopen', 'test_dbmirror', 'test_datasource', 'test_tablequery',
              'test_atomicio', 'test_localwork', 'test_dscap',
              'test_qjoin', 'test_qjoinui']
@@ -209,6 +210,9 @@ RULES = [
 
     # --- 起動まわりの直接実行スクリプト --------------------------------
     ('start_app.py', g('起動')),
+    ('setup_app.py', g('起動')),
+    ('setup.bat', g('起動')),
+    ('loading.html', g('起動')),
     ('process_manager.py', g('起動')),
     ('_pycache_bootstrap.py', g('起動')),
 

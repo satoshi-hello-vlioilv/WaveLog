@@ -17,7 +17,7 @@ from pathlib import Path
 import json
 import time
 
-from .paths import APP_ROOT
+from .paths import APP_ROOT, runtime_dir
 from .changelog_data import APP_VERSION
 
 STATUS_FILENAME='boot_status.js'
@@ -46,8 +46,25 @@ _STEP_INDEX={key:i for i,(key,_label) in enumerate(STEPS)}
 _started=time.time()
 
 
+def status_path():
+ """進捗ファイルの置き場。**端末ごと**(§9.225)。
+
+    アプリ本体は共有フォルダーへ置く運用があるので、ここを共有側にすると
+    **全台が同じ1つを取り合う**——2台が同時に起動すると、相手の進捗が
+    自分の待機画面に出る。しかも起動のたびに共有へ6回書くことになる。
+    `loading.html`は`<script src="boot_status.js">`と**相対で**読むので、
+    待機画面の写しと同じ場所へ置けばそれだけで筋が通る
+    (`setup_check.waiting_page()`が写しの置き場)。
+
+    **書けなかったら共有側へ落とす**——進捗が出ないより、出たほうがよい。"""
+ try:
+  return runtime_dir()/STATUS_FILENAME
+ except Exception:
+  return APP_ROOT/STATUS_FILENAME
+
+
 def _path():
- return APP_ROOT/STATUS_FILENAME
+ return status_path()
 
 
 def report(step,detail='',failed=False):

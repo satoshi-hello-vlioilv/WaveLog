@@ -29,8 +29,8 @@
 
 ## ディレクトリ構成
 
-起動・停止に関わるファイル(`Start.vbs`/`start_app.bat`/`stop.bat`/
-`start_app.py`/`backend/launcher/guard.py`/`backend/launcher/server.py`/`process_manager.py`/
+起動・停止に関わるファイル(`setup.bat`/`Start.vbs`/`start_app.bat`/`stop.bat`/
+`setup_app.py`/`start_app.py`/`backend/launcher/guard.py`/`backend/launcher/server.py`/`process_manager.py`/
 `loading.html`)と `app.py` をルート直下に置く。それ以外のバックエンド
 ロジックは `backend/` パッケージへ、ローカルDBファイルは `db/` フォルダへ
 まとめている(全体の一覧は `README.md` を参照)。
@@ -43,15 +43,19 @@
 
 | ファイル | 役割 |
 |---|---|
+| `setup.bat` | 起動前の確認(§9.225)。導入時と更新後に1回。`setup_app.py`を実行する |
 | `Start.vbs` | 通常起動。コンソールを表示せず `start_app.py` を実行する |
 | `start_app.bat` | 診断起動。コンソールを表示したまま同じ `start_app.py` を実行する |
 | `stop.bat` | 明示停止。`process_manager.py stop` を呼ぶ |
-| `start_app.py` | Python側の起動開始点。ログ初期化→待機画面を開く→多重起動判定→パッケージ確認→サーバー起動 |
+| `setup_app.py` | `setup.bat`の中身。確認の実処理は`backend/launcher/setup_check.py`にあり、起動時のフォールバックと共有する |
+| `backend/launcher/setup_check.py` | 起動前の確認一式(部品の導入・バイトコードの事前コンパイル・旧DB取り込み・待機画面の写し)。**setup.batと起動時のフォールバックが同じここを通る** |
+| `backend/launcher/ready.py` | 「この端末では確認が済んでいる」刻印(`%LOCALAPPDATA%\WaveLog\runtime\ready.json`)。**速さのための門であって正しさの門ではない**ので、食い違ったら止めずに確認し直す |
+| `start_app.py` | Python側の起動開始点。ログ初期化→待機画面を開く→多重起動判定→**刻印が合えば確認を飛ばす**→サーバー起動 |
 | `backend/launcher/guard.py`(旧`launch_guard.py`) | ポートの使用状況と `app_id` の照合による多重起動判定(`OURS`/`FOREIGN`/`UNRESPONSIVE`/`FREE`)、起動中インスタンスの記録。`UNRESPONSIVE`(ポート使用中だがHTTP応答が無い)は自プロセスが重い処理でブロックされている可能性を含むため、即座に別アプリ(`FOREIGN`)と決め付けず`process_manager.py`側でinstance.jsonのapp_root照合による強制終了判断へ委ねる |
 | `backend/launcher/server.py`(旧`server.py`) | Webサーバーの起動のみ。起動監視とWeb処理の境界 |
 | `process_manager.py` | 対象アプリだけの安全な停止（正常終了要求→記録済みPID。プロセス名では判定しない） |
 | `loading.html` | 起動待機画面。サーバーより先に `file://` で開かれ、`/api/ready.js` の応答を待ってからアプリへ遷移する。段階表示は `boot_status.js` を読んで**実際の進捗**を出す。進捗バーはサーバー6段階＋ブラウザ4段階の10段階ぶんで、6/10(60%)まで進めてアプリ側の起動オーバーレイへ引き渡す |
-| `backend/boot_status.py` | 起動の段階をアプリ直下の `boot_status.js` へ書き出す。サーバー側6段階(`STEPS`)とブラウザ側4段階(`BROWSER_STEPS`)の定義、合計数(`TOTAL_STEPS`)、バージョン番号の供給元。待機画面はまだサーバーが無い状態なので、`<script src>` で読み取れるJSファイルを介す。書き込みに失敗しても起動は止めない。`/api/ready.js` で削除する(`.gitignore`済み) |
+| `backend/boot_status.py` | 起動の段階を**端末ごとの置き場**(`%LOCALAPPDATA%\WaveLog\runtime\boot_status.js`。§9.225)へ書き出す。待機画面も同じ場所へ写して開くので、共有配置でも端末どうしが混ざらない。サーバー側6段階(`STEPS`)とブラウザ側4段階(`BROWSER_STEPS`)の定義、合計数(`TOTAL_STEPS`)、バージョン番号の供給元。待機画面はまだサーバーが無い状態なので、`<script src>` で読み取れるJSファイルを介す。書き込みに失敗しても起動は止めない。`/api/ready.js` で削除する(`.gitignore`済み) |
 | `templates/index.html` の `#appBoot` / `static/css/95-boot.css` | アプリ内の起動オーバーレイ。待機画面から意匠と段階リストを引き継ぎ、**画面が組み上がるまで本体を見せない**(下記) |
 | `_pycache_bootstrap.py` | `.pyc` キャッシュをローカル領域へ逃がす。`sys.pycache_prefix` は最初のimportより前に設定する必要があるため、各エントリポイントの一番最初のimportにする |
 | `config/local.json` | マスタDB自体の置き場所を決める3項目(`db_dir`/`master_db_path`/`records_db_path`)専用のブートストラップ設定(値をマスタDBの中に保存すると読みに行く先が分からなくなるため、この3つだけは唯一この方式が残る)。未配置なら既定の`db/`のまま。それ以外(`sikalotnow_path`/`sikalotdef_path`等)はパス設定マスタ(下記)へ移行済み |
