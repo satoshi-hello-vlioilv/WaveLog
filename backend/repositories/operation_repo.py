@@ -120,10 +120,22 @@ WIDGET_SELECT = 'プルダウン'
 #   トグル     … 2択の入切スイッチ。「有/無」「OS/DS」のような対向き
 #   早見ボタン … よく使う値を並べたボタン（数値）。上下限と刻みから作る
 #   1行        … 素の1行入力（自由記述）。メモほどの高さが要らないとき
+# §9.226 ①（利用者の指示「UIの種類をもっと増やしてほしい」「同じUIでも
+# いくつかパターンがあるとよい」）で4つ足した。ここでも規則は同じ——
+# **足すのは「選ぶ状況が違うもの」だけ**。同じ形の色違い・並べ方違いは
+# 種類にしない（色・形・大きさは`意匠`、並びは`並べ方`の軸が持つ）。
+#   段階     … 順番のある選択肢を1本の帯にして、選んだところまで塗る
+#              （等級・良/可/否のように**大小が意味を持つ**とき）
+#   入切     … 1つのスイッチ。入＝先頭の選択肢、切＝空欄
+#              （「内巻両面テープ」のように**付ける/付けない**の1択）
+#   メーター … 打ち込む欄＋上下限の中でいまどこかを示す帯（数値）
+#              （正確に打ちたいが、規格の中かどうかも見たいとき）
+#   定型文   … 1行入力＋よく使う語句のボタン（自由記述）
+#              （まとまりを指しておくと、その値が語句として並ぶ）
 WIDGETS = (WIDGET_SELECT, 'ラジオ', 'セグメント', 'タブ', 'ボタン群', '一覧',
-           'カード', 'トグル',
-           'ステッパー', 'スライダー', 'キーパッド', '早見ボタン',
-           'メモ', '1行')
+           'カード', 'トグル', '段階', '入切',
+           'ステッパー', 'スライダー', 'キーパッド', '早見ボタン', 'メーター',
+           'メモ', '1行', '定型文')
 # 選択肢を持つ型。判定はここ1箇所。
 CHOICE_TYPES = ('選択',)
 NUMBER_TYPES = ('整数', '正の整数', '数値', '正の数')
@@ -133,10 +145,54 @@ NUMBER_TYPES = ('整数', '正の整数', '数値', '正の数')
 # 変えないこと**——型を切り替えた瞬間に「知らない値」になって設定が消える。
 WIDGET_FAMILIES = {
     'choice': (WIDGET_SELECT, 'ラジオ', 'セグメント', 'タブ', 'ボタン群', '一覧',
-               'カード', 'トグル'),
-    'number': (WIDGET_SELECT, 'ステッパー', 'スライダー', 'キーパッド', '早見ボタン'),
-    'text': (WIDGET_SELECT, 'メモ', '1行'),
+               'カード', 'トグル', '段階', '入切'),
+    'number': (WIDGET_SELECT, 'ステッパー', 'スライダー', 'キーパッド', '早見ボタン',
+               'メーター'),
+    'text': (WIDGET_SELECT, 'メモ', '1行', '定型文'),
 }
+
+# ---------------------------------------------------------------------------
+# 並べ方(§9.226 ①、利用者の指示「同じUIでもいくつかパターンがあるとよい」)
+# ---------------------------------------------------------------------------
+# **意匠（色・形・大きさ）に4つ目の軸を足したのではない。** あちらは「どう
+# 見えるか」で、こちらは「選択肢をどう並べるか」——器の幅（マス数）に対して
+# 何個ずつ置くかの話なので、`選ばせ方`の側に属する。混ぜると「青い2列の
+# ボタン群」のような掛け算の名前が要る（§9.223 ③で避けた形）。
+#
+# **並べる先が1つしかない入力方法には出さない**（§4）。プルダウン・一覧・
+# メモ・キーパッドなどは選択肢を並べないので、選ばせても何も起きない。
+LAYOUT_AUTO = '自動'
+LAYOUTS = (LAYOUT_AUTO, '横1行', '折り返し', '縦', '2列', '3列')
+# 並べ方が効く入力方法。ここに無いものは`自動`のまま（画面は欄ごと出さない）。
+LAYOUT_WIDGETS = ('ラジオ', 'セグメント', 'ボタン群', 'カード', '段階',
+                  '早見ボタン', '定型文')
+
+
+def normalize_group_span(v):
+    """群の幅（マス）。**0＝横いっぱい**（今までどおり）。§9.226 ③。
+
+    はみ出す値は丸めるだけで断らない——マスの数（`GRID_COLS`）は将来変わり
+    うるので、保存済みの値が「知らない値」になった瞬間に群が消えるのでは
+    困る。"""
+    try:
+        n = int(v)
+    except (TypeError, ValueError):
+        return 0
+    if n <= 0:
+        return 0
+    return min(GRID_COLS, n)
+
+
+def normalize_layout(v):
+    """並べ方の保存形。知らない値は`自動`へ倒す（§9.215の「知らない型は
+    文字へ倒す」と同じ——例外にすると入力が丸ごと開けなくなる）。"""
+    s = str(v or '').strip()
+    return s if s in LAYOUTS else LAYOUT_AUTO
+
+
+def layout_usable(widget):
+    """その入力方法で並べ方を選べるか。**判定はここ1箇所**（画面へ写さない）。"""
+    return str(widget or '') in LAYOUT_WIDGETS
 # 組み込みの欄が選択肢を持つのか数値なのかは、**画面(index.html)が持っている
 # 入力欄の実体**で決まる。マスタの`[型]`は組み込み行では空なので、ここが答える。
 # 挙げていないキーは`<select>`＝choice。
@@ -194,7 +250,7 @@ UNIT_PLACES = ('外上左', '外上中央', '外上右', UNIT_PLACE_IN,
                '外下左', '外下中央', '外下右', UNIT_PLACE_HIDE)
 # 単位を重ねられない入力方法（箱が1つではない）。
 UNIT_IN_BLOCKED_WIDGETS = ('ラジオ', 'セグメント', 'タブ', 'ボタン群', '一覧',
-                           'カード', 'トグル',
+                           'カード', 'トグル', '段階', '入切',
                            'ステッパー', 'スライダー', 'キーパッド', '早見ボタン',
                            'メモ')
 
@@ -1078,6 +1134,12 @@ _ITEM_ADDED_COLUMNS = (
     ('役割', 'TEXT'),
     # 見た目（§9.223 ③）。`色:teal|形:pill|大きさ:lg`。空＝既定。
     ('意匠', 'TEXT'),
+    # --- §9.226 ①③（利用者の指示）---
+    # 並べ方。選択肢を何列で並べるか（`自動`＝入力方法ごとの既定）。
+    ('並べ方', 'TEXT'),
+    # 群の幅（マス）。**0/空＝横いっぱい**＝今までどおり。1つでも横いっぱい
+    # でない群があるときだけ、割り付けが「列でも区切る」形に切り替わる。
+    ('群幅', 'INTEGER'),
 )
 
 
@@ -1222,14 +1284,25 @@ def _row_to_item(r):
             'roleLive': role_of({'role': normalize_role(r[27]), 'builtin': builtin}),
             # --- §9.223 ③ ---
             # 見た目。色・形・大きさの3つで、空＝既定（今までの見え方）。
-            'look': normalize_look(r[28])}
+            'look': normalize_look(r[28]),
+            # --- §9.226 ① ---
+            # 並べ方。**効かない入力方法では`自動`へ落とす**（判定はここ1箇所。
+            # 単位の`内部`と同じ作法で、保存値は残す＝入力方法を戻したら復活）。
+            'layout': (normalize_layout(r[29])
+                       if layout_usable(normalize_widget(r[19])) else LAYOUT_AUTO),
+            'layoutSaved': normalize_layout(r[29]),
+            # --- §9.226 ③ ---
+            # 群の幅（マス）。0＝横いっぱい。**群のものなので、群の中で
+            # 食い違ったときは「1つでも指定があればそれ」**（畳むと同じ読み方）。
+            'groupSpan': normalize_group_span(r[30])}
 
 
 _ITEM_SELECT = ('SELECT [項目ID],[設備名],[群],[項目名],[表示順],[型],[小数桁],[最小値],[最大値],'
                 '[選択肢名],[単位],[必須],[備考],[有効],'
                 '[組み込みキー],[置き場],[列幅],[群折りたたみ],[表示条件],[入力方法],'
                 '[初期値],[手打ち可],[ステップ量],'
-                '[単位位置],[文字寄せ],[表示書式],[表示桁数],[役割],[意匠] '
+                '[単位位置],[文字寄せ],[表示書式],[表示桁数],[役割],[意匠],'
+                '[並べ方],[群幅] '
                 'FROM [操業データ項目マスタ] ORDER BY [表示順],[項目ID]')
 
 
@@ -1267,13 +1340,58 @@ def items_for_equipment(c, equipment, include_disabled=False):
     return out
 
 
+def item_rename_references(c, old, new, uid):
+    """項目名を変えたとき、**その名前で結び付いている設定も一緒に付け替える**
+    (§9.226 ①、利用者の指摘「操業データ項目側のカードの名称変更も反映され
+    ない」)。
+
+    操業データの値は**項目名を鍵**にして測定データへ入る（§9.215）。同じ
+    名前を見ているのが帳票ブロックマスタの`[内容]`
+    （`settings.opData.<項目名>`）で、ここを付け替えないと**名前を変えた
+    とたんに帳票のその欄だけが黙って空になる**——選択肢のまとまり名を
+    変えたときに`[選択肢名]`を書き換えるのと同じ話（`choice_rename_group`）。
+
+    **記録済みの測定データは触らない。** あちらは「そのとき何と呼んでいたか」
+    の記録で、書き換えると過去の帳票が今の名前で刷り直されてしまう
+    （画面にも「それまでの記録は前の名前のまま残ります」と書いてある）。
+
+    戻りは付け替えた行数。**読めなかったら0を返して黙って続ける**——
+    帳票ブロックマスタがまだ無い端末でも、項目の保存そのものは通す。"""
+    old = str(old or '').strip()
+    new = str(new or '').strip()
+    if not old or not new or old == new:
+        return 0
+    try:
+        from . import report_block_repo as rb
+        rb.ensure_table(c)
+        cur = c.cursor()
+        cur.execute(f'SELECT [ブロックID],[内容] FROM [{rb.TABLE}]')
+        rows = cur.fetchall()
+        n = 0
+        for bid, content in rows:
+            text = str(content or '')
+            if not text:
+                continue
+            hit = text.replace('settings.opData.' + old, 'settings.opData.' + new)
+            if hit == text:
+                continue
+            cur.execute(f'UPDATE [{rb.TABLE}] SET [内容]=?,[更新者ID]=?,[更新日時]=Now() '
+                        'WHERE [ブロックID]=?', [hit, uid, bid])
+            n += 1
+        if n:
+            c.commit()
+        return n
+    except Exception:
+        return 0
+
+
 def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文字',
                 decimals=None, vmin=None, vmax=None, choice='', unit='',
                 required=False, note='', enabled=True, item_id=None,
                 place=None, span=None, fold=None, show_when=None, builtin=None,
                 widget=None, initial=None, free_text=None, step=None,
                 unit_place=None, align=None, value_format=None, digits=None,
-                role=None, look=None):
+                role=None, look=None, layout=None, group_span=None, report=None):
     ensure_item_table(c)
     name = str(name or '').strip()
     if not name:
@@ -1285,11 +1403,13 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
     # 持っている入力欄そのものを指すので、後から書き換えると「どの欄の設定
     # なのか」が決まらなくなる。既存行のキーはそのまま残す。
     cur_builtin = ''
+    prev_name = ''
     if item_id is not None:
-        cur.execute('SELECT [組み込みキー] FROM [操業データ項目マスタ] WHERE [項目ID]=?',
+        cur.execute('SELECT [組み込みキー],[項目名] FROM [操業データ項目マスタ] WHERE [項目ID]=?',
                     [int(item_id)])
         hit = cur.fetchone()
-        cur_builtin = str((hit or [''])[0] or '').strip()
+        cur_builtin = str((hit or ['', ''])[0] or '').strip()
+        prev_name = str((hit or ['', ''])[1] or '').strip() if hit else ''
     if builtin is None:
         builtin = cur_builtin
     builtin = str(builtin or '').strip()
@@ -1322,16 +1442,24 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
             # §9.223 ①③。役割は**組み込みキーと同じ語**で持つ（移行前の行が
             # 空でも`role_of()`が組み込みキーを役割として読むので、書き足す
             # 必要が無い）。見た目は既定なら空文字（行に意味の無い値を残さない）。
-            normalize_role(role), look_text(look)]
+            normalize_role(role), look_text(look),
+            # §9.226 ①③
+            normalize_layout(layout), normalize_group_span(group_span)]
     if item_id is not None:
         cur.execute('UPDATE [操業データ項目マスタ] SET [設備名]=?,[群]=?,[項目名]=?,[表示順]=?,'
                     '[型]=?,[小数桁]=?,[最小値]=?,[最大値]=?,[選択肢名]=?,[単位]=?,[必須]=?,'
                     '[備考]=?,[有効]=?,[組み込みキー]=?,[置き場]=?,[列幅]=?,[群折りたたみ]=?,'
                     '[表示条件]=?,[入力方法]=?,[初期値]=?,[手打ち可]=?,[ステップ量]=?,'
                     '[単位位置]=?,[文字寄せ]=?,[表示書式]=?,[表示桁数]=?,[役割]=?,[意匠]=?,'
+                    '[並べ方]=?,[群幅]=?,'
                     '[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
                     args + [uid, int(item_id)])
         c.commit()
+        # **名前で結び付いている設定も付け替える**（§9.226 ①）。
+        moved = item_rename_references(c, prev_name, name, uid)
+        if isinstance(report, dict):
+            report['oldName'] = prev_name
+            report['renamedRefs'] = moved
         return int(item_id)
     # 自然キーは(設備名,項目名)。同じ設備に同じ名前を2つ置かない
     # ——値はこの名前を鍵にレコードへ入るので、2つあるとどちらの値か決まらない。
@@ -1344,6 +1472,7 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                     '[組み込みキー]=?,[置き場]=?,[列幅]=?,[群折りたたみ]=?,[表示条件]=?,'
                     '[入力方法]=?,[初期値]=?,[手打ち可]=?,[ステップ量]=?,'
                     '[単位位置]=?,[文字寄せ]=?,[表示書式]=?,[表示桁数]=?,[役割]=?,[意匠]=?,'
+                    '[並べ方]=?,[群幅]=?,'
                     '[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
                     args[1:2] + args[3:] + [uid, hit[0]])
         c.commit()
@@ -1358,8 +1487,9 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                 '[単位],[必須],[備考],[有効],[組み込みキー],[置き場],[列幅],[群折りたたみ],'
                 '[表示条件],[入力方法],[初期値],[手打ち可],[ステップ量],'
                 '[単位位置],[文字寄せ],[表示書式],[表示桁数],[役割],[意匠],'
+                '[並べ方],[群幅],'
                 '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
-                'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',
+                'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',
                 args + [uid, uid])
     c.commit()
     return int(cur.lastrowid)
@@ -1418,23 +1548,30 @@ def item_layout_save(c, uid, rows):
     return n
 
 
-def group_flags_save(c, uid, place, group, fold, show_when):
-    """群のふるまい（畳む・開く条件）だけを、その群の全部の行へ書く
-    (§9.216 ④)。
+def group_flags_save(c, uid, place, group, fold, show_when, group_span=None):
+    """群のふるまい（畳む・開く条件・幅）だけを、その群の全部の行へ書く
+    (§9.216 ④／§9.226 ③)。
 
     **`item_layout_save`で代用しないこと。** あちらは行の中身をまるごと
     書くので、直前に1件だけ更新した内容（列幅など）を**古い写しで
     上書きしてしまう**（実際にそれで「列幅を変えても戻る」が起きた）。
-    ここで触るのは2列だけ。"""
+    ここで触るのは3列だけ。
+
+    **群幅は渡されたときだけ書く**（§9.212 ②の「送った項目だけ書く」）。
+    畳むボタンを押しただけで幅まで既定へ戻るのでは、設定が黙って消える。"""
     ensure_item_table(c)
     if isinstance(show_when, (list, tuple)):
         show_when = ','.join(str(x).strip() for x in show_when if str(x).strip())
     cur = c.cursor()
-    cur.execute(f'UPDATE [{ITEM_TABLE}] SET [群折りたたみ]=?,[表示条件]=?,'
+    sets = '[群折りたたみ]=?,[表示条件]=?'
+    args = [-1 if fold else 0, str(show_when or '')]
+    if group_span is not None:
+        sets += ',[群幅]=?'
+        args.append(normalize_group_span(group_span))
+    cur.execute(f'UPDATE [{ITEM_TABLE}] SET {sets},'
                 '[更新者ID]=?,[更新日時]=Now() '
                 'WHERE COALESCE([群],\'\')=? AND COALESCE(NULLIF([置き場],\'\'),?)=?',
-                [-1 if fold else 0, str(show_when or ''), uid,
-                 str(group or ''), PLACE_PREP, normalize_place(place)])
+                args + [uid, str(group or ''), PLACE_PREP, normalize_place(place)])
     c.commit()
     return cur.rowcount
 

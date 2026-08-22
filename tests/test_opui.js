@@ -171,10 +171,18 @@ const restore=[];
     見本:document.querySelectorAll('.op-widget-demo .opd').length,
     色:document.querySelectorAll('[data-op-look="color"]').length,
     形:document.querySelectorAll('[data-op-look="shape"]').length,
-    大きさ:document.querySelectorAll('[data-op-look="size"]').length}));
-  rec('選ばせ方は8つから選ぶ（カード・トグルを足した）',
-      lookPane.選ばせ方.join('/')==='プルダウン/ラジオ/セグメント/タブ/ボタン群/一覧/カード/トグル',
+    大きさ:document.querySelectorAll('[data-op-look="size"]').length,
+    並べ方:document.querySelectorAll('[data-op-layout]').length}));
+  /* §9.226 ①で`段階`と`入切`を足した（選択肢を持つ型では10）。
+     **数だけでなく綴りまで見る**——名前が変わるとマスタの保存値が
+     「知らない値」になってプルダウンへ倒れる（保存済みの設定が黙って消える）。 */
+  rec('選ばせ方は10から選ぶ（段階・入切を足した）',
+      lookPane.選ばせ方.join('/')==='プルダウン/ラジオ/セグメント/タブ/ボタン群/一覧/カード/トグル/段階/入切',
       JSON.stringify(lookPane.選ばせ方));
+  /* **並べ方は選ばせ方とは別の軸**（§9.226 ①）。効かない形では欄ごと
+     出さない（§4）ので、ここではプルダウンなので0件が正しい。 */
+  rec('並べ方はプルダウンでは選ばせない（並べる先が無い）',
+      lookPane.並べ方===0,JSON.stringify({並べ方:lookPane.並べ方}));
   rec('選ばせ方の札には実データ入りの見本が付く',
       lookPane.見本===lookPane.選ばせ方.length,JSON.stringify({見本:lookPane.見本,札:lookPane.選ばせ方.length}));
   rec('意匠は色・形・大きさの3軸で選べる',
@@ -503,23 +511,36 @@ const restore=[];
   await tab('data');
   await page.click('#opdFreeText');
   await page.waitForTimeout(300);
+  /* **形をプルダウンへ戻してから見る**——直前のループでボタン群になって
+     いる。手打ちの見せ方は形ごとに違う（プルダウン＝器そのものが打てる、
+     ボタン系＝末尾の「その他」）ので、どちらを見ているかを決めてから測る。 */
+  await tab('look');
+  await page.click('[data-op-widget="プルダウン"]');
+  await page.waitForTimeout(400);
+  /* **打つ場所は「選ぶ器そのもの」**（§9.226 ①、利用者の指示）。以前は
+     選ぶ器の下に打ち込み欄をもう1つ足していた（`.opf-free-in`）ので、
+     打つ場所と選ぶ場所が2つ並んでいた。いまはプルダウンなら器が
+     コンボボックス（`.opf-combo-in`）になり、**素の`<select>`は裏へ回る**。 */
   const freeBox=await page.evaluate(()=>{
-   const el=document.querySelector('#opPrevField .opf-free-in');
+   const el=document.querySelector('#opPrevField .opf-combo-in');
    if(!el)return null;
    el.value='むらさき';
    el.dispatchEvent(new Event('input',{bubbles:true}));
    const sel=document.querySelector('#opPrevField select');
    return {打てる:true,選択値:sel?sel.value:'',
+           別の欄を足していない:!document.querySelector('#opPrevField .opf-free-in'),
+           選ぶ器が兼ねている:!!document.querySelector('#opPrevField .opf-combo-open'),
            候補に足した:sel?[...sel.options].some(o=>o.value==='むらさき'):false};
   });
-  rec('手打ちを入にすると打ち込む欄が出て、打った値がそのまま値になる',
-      !!freeBox&&freeBox.選択値==='むらさき'&&freeBox.候補に足した,
+  rec('手打ちは「選ぶ器そのもの」で打てる（欄を2つ並べない）',
+      !!freeBox&&freeBox.選択値==='むらさき'&&freeBox.候補に足した
+      &&freeBox.別の欄を足していない&&freeBox.選ぶ器が兼ねている,
       JSON.stringify(freeBox));
   /* **1文字ごとに候補が増えないこと。** 打つたびに`<option>`を足すと
      「む」「むら」「むらさ」…が溜まり、次に組み直したとき打ちかけの文字が
      そのままボタンとして並ぶ。手打ちの席は1つだけ。 */
   const grew=await page.evaluate(()=>{
-   const el=document.querySelector('#opPrevField .opf-free-in');
+   const el=document.querySelector('#opPrevField .opf-combo-in');
    const sel=document.querySelector('#opPrevField select');
    if(!el||!sel)return null;
    const before=sel.options.length;
@@ -533,6 +554,30 @@ const restore=[];
   rec('何文字打っても手打ちの席は1つ（候補が増えない）',
       !!grew&&grew.手打ちの席===1&&grew.後===grew.前&&grew.値==='あおいろ',
       JSON.stringify(grew));
+  /* ボタン系は**末尾の「その他」がその場で入力欄に変わる**（§9.226 ①）。
+     欄を下へ足さないので、器の高さも並びも他の項目と同じまま。 */
+  await page.click('[data-op-widget="ボタン群"]');
+  await page.waitForTimeout(500);
+  const other=await page.evaluate(()=>{
+   const w=document.querySelector('#opPrevField .opf-widget');
+   const btn=w&&w.querySelector('.opf-other-btn');
+   const inp=w&&w.querySelector('.opf-other-in');
+   if(!btn||!inp)return null;
+   const 前=getComputedStyle(inp).display;
+   btn.click();
+   const 後=getComputedStyle(inp).display;
+   inp.value='特注';inp.dispatchEvent(new Event('input',{bubbles:true}));
+   const sel=document.querySelector('#opPrevField select');
+   return {前,後,値:sel.value,
+           /* 席は選択肢の並びの中（下へ別の欄を足していない）。 */
+           並びの中:!!(w.querySelector('.opf-shape .opf-other'))};
+  });
+  rec('ボタン系の手打ちは末尾の席がその場で入力欄に変わる',
+      !!other&&other.前==='none'&&other.後!=='none'&&other.値==='特注'
+      &&other.並びの中===true,JSON.stringify(other));
+  /* **②の段へ戻す**——このあとの網は`#opdInitial`（②の欄）を触る。
+     段を戻さないと「欄が無い」で落ちる（直っていても落ちる網になる）。 */
+  await tab('data');
 
   /* ② 初期値。**入力の方法によらず効く**ので、見本にも入る。 */
   await page.fill('#opdInitial','金');
@@ -856,6 +901,145 @@ const restore=[];
   rec('メモは複数行の広い欄',
       !!memo&&memo.tag==='TEXTAREA'&&memo.行数>=6&&memo.幅>=280,JSON.stringify(memo));
   await closeModal();
+
+  /* ================================================================
+     §9.226 ①③（利用者の指示「UIの種類をもっと増やしてほしい」
+     「同じUIでもいくつかパターンがあるとよい」「まとまりを作りやすく
+      できるように列にも区切りをつけられるようにしたい」）
+     ================================================================ */
+  /* ---- 見本は実物と同じ大きさ（利用者の指摘「再現する部分の表示エリアの
+     横幅が足りず、見切れています」）。**1マスの実寸で組む**ので、
+     文字が実物と同じ比率で入る（縮めると確かめられない絵になる）。 ---- */
+  /* **選択肢が2つ以上ある項目で見る**（段階は空の選択肢を並べないので、
+     1つしか無いと段が1本になり、塗りの網が何も確かめない）。
+     **前の網が値を消しているので、ここで注ぎ直す**——「無ければ素通り」に
+     すると、塗りが1段でも通ってしまう（§CLAUDE「材料ごと注ぎ込む」）。 */
+  for(const v of ['一','二','三']){
+   const r=await post('/api/operation-choice-master',
+     {name:TAG+'-段',value:v,user_id:TAG});
+   const j=await r.json();if(j.id)madeChoices.push(j.id);
+  }
+  const mkS=await post('/api/operation-item-master',
+    {equipment:EQ,group:TAG,name:TAG+' 段',type:'選択',choice:TAG+'-段',user_id:TAG});
+  const mkSj=await mkS.json();
+  if(mkSj.id)made.push(mkSj.id);
+  await page.click('#masterMaintNav [data-master="opItem"]');
+  await page.waitForSelector('#masterMaintList .op-board-grid',{timeout:20000});
+  await page.waitForTimeout(600);
+  await openTile(mkSj.id);
+  await tab('look');
+  const scale=await page.evaluate(()=>{
+   const card=document.querySelector('.op-prev-card');
+   if(!card)return null;
+   const cs=getComputedStyle(card).gridTemplateColumns.split(/\s+/).filter(Boolean);
+   return {列:cs.length,マス幅:Math.round(parseFloat(cs[0])||0),
+           /* 器に入らないときは横へ流す（縮めない）。 */
+           流す:!!document.querySelector('.op-prev-scroll')};
+  });
+  /* 実測の1マスは1920幅で94px。**60px未満なら縮んでいる**（以前は56px）。 */
+  rec('見本は実物と同じ大きさの1マスで組む（縮めない）',
+      !!scale&&scale.列===12&&scale.マス幅>=60&&scale.流す===true,JSON.stringify(scale));
+
+  /* ---- 並べ方は選ばせ方とは別の軸。**効く形でだけ選ばせる**（§4） ---- */
+  await page.evaluate(()=>{
+   const b=document.querySelector('[data-op-widget="ボタン群"]');if(b)b.click();
+  });
+  await page.waitForTimeout(500);
+  const lay=await page.evaluate(()=>({
+   選べる:[...document.querySelectorAll('[data-op-layout]')].map(x=>x.dataset.opLayout),
+   いま:(document.querySelector('[data-op-layout].is-on')||{}).dataset,
+  }));
+  rec('選択肢を並べる形では並べ方を選べる',
+      lay.選べる.length>=5&&lay.選べる.indexOf('2列')>=0,JSON.stringify(lay.選べる));
+  await page.evaluate(()=>{
+   const b=document.querySelector('[data-op-layout="2列"]');if(b)b.click();
+  });
+  await page.waitForTimeout(600);
+  const applied=await page.evaluate(()=>{
+   const w=document.querySelector('#opPrevField .opf-widget');
+   if(!w)return null;
+   const shape=w.querySelector('.opf-shape');
+   return {印:[...w.classList].filter(c=>/^opf-l-/.test(c)),
+           列:shape?getComputedStyle(shape).gridTemplateColumns.split(/\s+/).filter(Boolean).length:0};
+  });
+  rec('並べ方は見本にその場で効く（2列なら2列で並ぶ）',
+      !!applied&&applied.印.indexOf('opf-l-g2')>=0&&applied.列===2,JSON.stringify(applied));
+
+  /* ---- 段階は「選んだところまで塗る」。**数だけでなく塗りを見る**
+     ——1つだけ光る作りでも「印が付く」網は通ってしまう。 ---- */
+  await page.evaluate(()=>{
+   const b=document.querySelector('[data-op-widget="段階"]');if(b)b.click();
+  });
+  await page.waitForTimeout(600);
+  const stage=await page.evaluate(()=>{
+   const w=document.querySelector('#opPrevField .opf-stage');
+   if(!w)return null;
+   /* **段だけを数える**（手打ちの「その他」の席は`data-opv`を持たない）。 */
+   const btns=[...w.querySelectorAll('.opf-stage-btn[data-opv]')];
+   if(btns.length<2)return {段:btns.length};
+   btns[1].click();
+   return {段:btns.length,
+           塗り:btns.map(b=>b.classList.contains('is-fill')),
+           選んだ:btns.map(b=>b.classList.contains('is-on'))};
+  });
+  rec('段階は選んだところまで塗る',
+      !!stage&&stage.段>=2&&stage.塗り[0]===true&&stage.塗り[1]===true
+      &&stage.選んだ[1]===true&&stage.選んだ[0]===false,JSON.stringify(stage));
+
+  /* ---- 入切は1つのスイッチ。**状態を文字でも出す**（§3） ---- */
+  await page.evaluate(()=>{
+   const b=document.querySelector('[data-op-widget="入切"]');if(b)b.click();
+  });
+  await page.waitForTimeout(600);
+  const sw=await page.evaluate(()=>{
+   const w=document.querySelector('#opPrevField .opf-switch');
+   const b=w&&w.querySelector('.opf-switch-btn');
+   if(!b)return null;
+   const sel=document.querySelector('#opPrevField select');
+   const before={文字:b.querySelector('.opf-switch-text').textContent,値:sel.value};
+   b.click();
+   return {前:before,後:{文字:b.querySelector('.opf-switch-text').textContent,値:sel.value}};
+  });
+  rec('入切は1つのスイッチで、状態を文字でも出す',
+      !!sw&&sw.前.文字!==sw.後.文字&&sw.前.値!==sw.後.値,JSON.stringify(sw));
+  await closeModal();
+
+  /* ---- 群を列でも区切れる（§9.226 ③）。**盤と測定画面は同じ関数**で
+     割り付けるので、ここでは盤で見る（横に並ぶこと＝同じ段・違う左端）。 ---- */
+  const bands=await page.$$eval('#masterMaintList .op-band',es=>es.map(e=>e.dataset.opBand));
+  let side={前提なし:bands.length<2};
+  if(bands.length>=2){
+   for(const n of bands.slice(0,2)){
+    await page.evaluate(nm=>{
+     const b=document.querySelector(`.op-band[data-op-band="${nm}"] [data-op-gspan="6"]`);
+     if(b)b.click();
+    },n);
+    await page.waitForFunction(()=>!/保存しています/.test(
+      (document.querySelector('#opLayoutState')||{}).textContent||''),null,{timeout:8000})
+      .catch(()=>{});
+    await page.waitForTimeout(900);
+   }
+   side=await page.evaluate(bs=>{
+    const r=bs.slice(0,2).map(n=>{
+     const e=document.querySelector(`.op-band[data-op-band="${n}"]`);
+     if(!e)return null;
+     const b=e.getBoundingClientRect();
+     return {n,x:Math.round(b.x),y:Math.round(b.y),w:Math.round(b.width)};
+    });
+    return {a:r[0],b:r[1]};
+   },bands);
+   /* 戻す（§9.121。盤の設定は実行をまたいで生き延びる）。 */
+   for(const n of bands.slice(0,2)){
+    await page.evaluate(nm=>{
+     const b=document.querySelector(`.op-band[data-op-band="${nm}"] [data-op-gspan="0"]`);
+     if(b)b.click();
+    },n);
+    await page.waitForTimeout(900);
+   }
+  }
+  rec('群に幅を与えると横に並ぶ（列でも区切れる）',
+      !side.前提なし&&!!side.a&&!!side.b&&side.a.y===side.b.y&&side.b.x>side.a.x,
+      JSON.stringify(side));
 
   rec('画面のエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){

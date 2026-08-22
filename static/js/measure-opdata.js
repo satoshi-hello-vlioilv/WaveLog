@@ -471,21 +471,79 @@
    cur.textContent=(hit?hit.text:v)||'選ぶ';
    cur.classList.toggle('is-empty',!v||v==='-');
   }
-  /* 手打ち欄（§9.220 ③）。**候補から選んだときは空にする**——選んだ値が
-     打ち込み欄にも出ていると、どちらが効いているのか分からなくなる
-     （同じ値を2箇所に出さない・§8）。打っている最中は触らない。 */
-  const fx=box.querySelector('.opf-free-in');
-  if(fx&&document.activeElement!==fx){
-   const own=isFreeValue(sel,v)?v:'';
-   if(fx.value!==own)fx.value=own;
+  /* ---- 手打ち（§9.226 ①、利用者の指示） ----
+     「選択肢から選べるタイプの例外処理の候補にない値を入力するパターンは、
+      外観のデザインを損なった設計になっているので、スマートに選択肢を出す
+      ボックスをそのまま利用できるようにしてほしい」
+
+     以前は**選ぶ器の下に打ち込み欄をもう1つ**足していた（`.opf-free`）。
+     打つ場所と選ぶ場所が2つ並ぶので、どちらが効いているのか読めず、
+     欄の高さも1つだけ2段になって並びが崩れていた。いまは
+       ・プルダウン … **選ぶ器そのものが打てる**（`.opf-combo`。▾で候補）
+       ・一覧       … 浮き窓の**絞り込み欄がそのまま**手打ちになる
+       ・ボタン系   … 末尾の「その他」が**その場で入力欄に変わる**
+     で、**どの形でも打つ場所は1つ**。 */
+  const cb=box.querySelector('.opf-combo-in');
+  if(cb&&document.activeElement!==cb){
+   const hit=[...sel.options].find(o=>o.value===v&&o.dataset.opFree!=='1');
+   const shown=hit?hit.text:v;
+   if(cb.value!==shown)cb.value=(shown==='-'?'':shown);
   }
-  if(fx)box.classList.toggle('is-free-on',isFreeValue(sel,v));
+  const ox=box.querySelector('.opf-other-in');
+  if(ox){
+   const free=isFreeValue(sel,v);
+   if(document.activeElement!==ox&&ox.value!==(free?v:''))ox.value=free?v:'';
+   box.classList.toggle('is-other-on',free);
+   const ob=box.querySelector('.opf-other-btn');
+   if(ob){ob.classList.toggle('is-on',free);ob.setAttribute('aria-checked',free?'true':'false')}
+  }
+  /* 段階（§9.226 ①）。**選んだところまで塗る**——順番に意味がある選択肢
+     なので、1つだけ光らせると「何段目か」を数えることになる。 */
+  /* **「その他」の席を段として数えないこと**（§9.226 ①）。手打ちの席は
+     見た目をそろえるため同じクラスを持つが、段ではない（`data-opv`が無い）
+     ——数えると、手打ちを入にした瞬間に段が1つ増えて塗りがずれる。 */
+  const stage=[...box.querySelectorAll('.opf-stage-btn[data-opv]')];
+  if(stage.length){
+   const at=stage.findIndex(b=>b.dataset.opv===v);
+   stage.forEach((b,i)=>b.classList.toggle('is-fill',at>=0&&i<=at));
+   const now=box.querySelector('.opf-stage-now');
+   if(now)now.textContent=at>=0?`${at+1}/${stage.length}`:'—';
+  }
+  /* 入切（§9.226 ①）。**入＝先頭の値／切＝空**の1つのスイッチ。 */
+  const sw=box.querySelector('.opf-switch-btn');
+  if(sw){
+   const on=!!v&&v!=='-';
+   sw.classList.toggle('is-on',on);
+   sw.setAttribute('aria-checked',on?'true':'false');
+   const t=sw.querySelector('.opf-switch-text');
+   if(t)t.textContent=on?(sw.dataset.opOnLabel||'入'):(sw.dataset.opOffLabel||'切');
+  }
+  /* 定型文（§9.226 ①）。**いま文の中にある語句に印を付ける**——押した
+     ことが分からないと、2度押して同じ語句を並べてしまう。 */
+  const words=[...box.querySelectorAll('[data-opw]')];
+  if(words.length){
+   const t=String(v||'');
+   words.forEach(b=>b.classList.toggle('is-on',!!b.dataset.opw&&t.indexOf(b.dataset.opw)>=0));
+  }
+  /* メーター（§9.226 ①）。**打つ欄はそのまま**で、上下限のどこに居るかを
+     帯で言う。外れているときは色と文字の両方で言う（§3）。 */
+  const meter=box.querySelector('.opf-meter-fill');
+  if(meter){
+   const lo=Number(box.dataset.opLo),hi=Number(box.dataset.opHi),n=Number(v);
+   const ok=Number.isFinite(n)&&Number.isFinite(lo)&&Number.isFinite(hi)&&hi>lo;
+   const pct=ok?Math.max(0,Math.min(100,(n-lo)/(hi-lo)*100)):0;
+   meter.style.width=pct.toFixed(2)+'%';
+   const out=ok&&(n<lo||n>hi);
+   box.classList.toggle('is-out',!!out);
+   const note=box.querySelector('.opf-meter-note');
+   if(note)note.textContent=!Number.isFinite(n)?'':(out?'範囲の外です':`${lo}〜${hi} の中`);
+  }
  }
  /* 数値の器（§9.219 ③、利用者の指示「UIの種類を増やしたり」）。
     **素の欄は消さない**——選択肢のように「候補から選ぶ」のではなく「打つ」
     欄なので、打てる場所を残したまま押して決める道具を足すのが正しい
     （`.opf-native-off`にすると打てなくなる）。 */
- const NUM_WIDGETS=['ステッパー','スライダー','キーパッド','早見ボタン'];
+ const NUM_WIDGETS=['ステッパー','スライダー','キーパッド','早見ボタン','メーター'];
  /* よく使う値を並べる（§9.223 ③）。上下限と刻みから作り、**多すぎるときは
     出さない**——20個も並ぶと「探す」作業になり、打ったほうが速い（§4）。 */
  const QUICK_MAX=12;
@@ -552,11 +610,25 @@
      b.onclick=e=>{e.preventDefault();setValue(el,b.dataset.opv);syncWidget(host)};
     });
    }
+  }else if(kind==='メーター'){
+   /* メーター（§9.226 ①）。**打つ欄はそのまま**で、上下限のどこに居るかを
+      帯で言う——「正確に打ちたいが規格の中かも見たい」ときの形。
+      スライダーと違って**値は引いて決めない**（引くと桁が落ちる）。 */
+   box.className='opf-widget opf-meter';
+   if(lo===null||hi===null){
+    box.innerHTML='<small class="opf-widget-note">上下限を決めるとメーターになります（いまは打ち込みだけ）</small>';
+   }else{
+    box.dataset.opLo=String(lo);box.dataset.opHi=String(hi);
+    box.innerHTML='<span class="opf-meter-bar"><i class="opf-meter-fill"></i></span>'
+     +'<span class="opf-meter-scale"><i>'+esc(String(lo))+'</i>'
+     +'<b class="opf-meter-note"></b><i>'+esc(String(hi))+'</i></span>';
+   }
   }else{
    box.className='opf-widget opf-pad';
    box.innerHTML='<button type="button" class="opf-pad-btn">キーで入れる</button>';
    box.querySelector('.opf-pad-btn').onclick=e=>{e.preventDefault();openKeypad(def,host,el)};
   }
+  applyLayout(box,def);                      /* §9.226 ① 早見ボタンの並べ方 */
   applyLook(host,def);                       /* §9.223 ③ */
   if(!el.dataset.opWidgetWired){
    el.dataset.opWidgetWired='1';
@@ -574,8 +646,10 @@
   /* 「1行」は**器を被せない**（§9.223 ③）——素の`<input>`がそのまま1行の
      入力欄なので、写しを作ると打つ場所が2つになる。意匠だけを当てる。 */
   const one=kind==='1行';
+  const phrase=kind==='定型文';
+  const words=phrase?(def.choices||[]).filter(Boolean):[];
   const box=widgetHost(host);
-  const sig=one?'one':'memo';
+  const sig=one?'one':(phrase?'phrase|'+String(def.layout||'')+'|'+words.join('\u0002'):'memo');
   if(box.dataset.sig===sig){syncWidget(host);return true}
   box.dataset.sig=sig;
   host.classList.add('opf-alt');
@@ -584,6 +658,39 @@
    box.className='opf-widget opf-oneline';
    box.innerHTML='';
    applyLook(host,def);
+   syncWidget(host);
+   return true;
+  }
+  if(phrase){
+   /* 定型文（§9.226 ①）。**打つ欄はそのまま**で、よく使う語句を下に並べる。
+      語句は**選択肢のまとまり**から取る——文字の項目にもまとまりを結び
+      付けられるので、新しい置き場を作らない（§9.221 ②と同じ作法）。 */
+   el.classList.remove('opf-native-off');el.removeAttribute('tabindex');
+   box.className='opf-widget opf-phrase';
+   box.innerHTML=words.length
+     ?'<div class="opf-shape">'+words.map(w=>
+        '<button type="button" class="opf-phrase-btn" data-opw="'+esc(w)+'"'
+        +' title="この語句を入れます">'+esc(w)+'</button>').join('')+'</div>'
+     :'<small class="opf-widget-note">「選択肢のまとまり」を選ぶと、その値が定型文のボタンとして並びます</small>';
+   applyLayout(box,def);
+   box.querySelectorAll('[data-opw]').forEach(b=>{
+    b.onclick=e=>{
+     e.preventDefault();
+     /* **置き換えではなく足す**——複数の語句をつないで1文にすることが多い。
+        既に同じ語句が入っているときは足さない（2度押しの取り消し）。 */
+     const cur=String(el.value||'');
+     const w=b.dataset.opw;
+     setValue(el,cur.indexOf(w)>=0?cur.replace(w,'').replace(/\s{2,}/g,' ').trim()
+                                  :(cur?cur+' '+w:w));
+     syncWidget(host);
+    };
+   });
+   applyLook(host,def);
+   if(!el.dataset.opWidgetWired){
+    el.dataset.opWidgetWired='1';
+    el.addEventListener('input',()=>syncWidget(host));
+    el.addEventListener('change',()=>syncWidget(host));
+   }
    syncWidget(host);
    return true;
   }
@@ -621,7 +728,20 @@
   o.value=s;o.textContent=s;o.dataset.opFree='1';
   if(!slot)sel.appendChild(o);
  }
- function setFree(sel,v){addOption(sel,v);setValue(sel,String(v==null?'':v))}
+ /* **手打ちの値は必ず知らせる**（§9.226 ①）。`addOption()`は手打ちの席を
+    使い回すので、`特`→`特注`と打ち足したときに**`<option>`の値を書き換えた
+    時点で`select.value`も一緒に動く**——そのあと`setValue()`を呼んでも
+    「同じ値」と判断されて`change`が飛ばず、**最後の1文字ぶんが記録へ入らない**
+    （`bind()`の`change`が`remember()`を呼ぶ作りなので、画面には出ているのに
+    レコードは1つ前の文字列、という分かりにくい壊れ方になる）。
+    ここでは等値の判定をせずに必ず飛ばす。 */
+ function setFree(sel,v){
+  const s=String(v==null?'':v);
+  addOption(sel,s);
+  if(sel.value!==s)sel.value=s;
+  sel.dispatchEvent(new Event('input',{bubbles:true}));
+  sel.dispatchEvent(new Event('change',{bubbles:true}));
+ }
  /* いまの値が「候補から選んだもの」か「打ったもの」か。**印は候補の側に
     持たせる**——`<option>`は`apply()`でも足されるので、値だけを見ると
     記録から戻した手打ちを候補と読み違える。 */
@@ -630,23 +750,38 @@
   const hit=[...sel.options].find(o=>o.value===v);
   return !hit||hit.dataset.opFree==='1';
  }
- function freeBoxHtml(){
-  return '<div class="opf-free"><input type="text" class="opf-free-in" autocomplete="off"'
-   +' placeholder="候補にない値を打つ" aria-label="候補にない値を打つ">'
-   +'<button type="button" class="opf-free-clear" title="打った値を消して候補から選び直す">戻す</button></div>';
+ /* ---- ボタン系の「その他」（§9.226 ①） ----
+    末尾に1つだけ席を置き、**押すとその席が入力欄に変わる**。別の欄を下へ
+    足さないので、器の高さも並びも他の項目と同じまま——「打つ場所は1つ」を
+    どの形でも守るための形。 */
+ function otherChipHtml(cls){
+  return '<span class="opf-other" data-op-other="1">'
+   +'<button type="button" class="'+cls+' opf-other-btn" role="radio" aria-checked="false" tabindex="-1"'
+   +' title="候補にない値をここへ打てます"><span class="opf-btn-text">その他…</span></button>'
+   +'<input type="text" class="opf-other-in" autocomplete="off"'
+   +' placeholder="打ち込む" aria-label="候補にない値を打つ"></span>';
  }
- /* 打ち込み欄の配線。**`input`のたびに`select`へ書く**（§9.208 ②の
-    「打った時点でレコードへ入れる」と同じ考え方）。空にしたら候補へ戻す。 */
- function wireFreeBox(box,sel,host){
-  const inp=box.querySelector('.opf-free-in');
-  if(!inp)return;
-  inp.addEventListener('input',()=>{
-   const v=inp.value.trim();
-   if(v)setFree(sel,v);else setValue(sel,'');
-   syncWidget(host);
-  });
-  const clr=box.querySelector('.opf-free-clear');
-  if(clr)clr.onclick=e=>{e.preventDefault();inp.value='';setValue(sel,'');syncWidget(host);inp.focus()};
+ function wireOther(box,sel,host){
+  const wrap=box.querySelector('.opf-other');if(!wrap)return;
+  const inp=wrap.querySelector('.opf-other-in');
+  const btn=wrap.querySelector('.opf-other-btn');
+  if(btn)btn.onclick=e=>{
+   e.preventDefault();
+   box.classList.add('is-other-on');
+   /* **空のまま席を開ける**（値はまだ書かない）。打った時点で入る。 */
+   try{inp.focus()}catch(_){}
+  };
+  if(inp){
+   inp.addEventListener('input',()=>{
+    const v=inp.value.trim();
+    if(v)setFree(sel,v);else setValue(sel,'');
+    syncWidget(host);
+   });
+   /* 空のまま外れたら席を閉じる（開きっぱなしの空欄を残さない）。 */
+   inp.addEventListener('blur',()=>{
+    if(!inp.value.trim())box.classList.toggle('is-other-on',isFreeValue(sel,sel.value));
+   });
+  }
  }
  /* 形ごとの器とボタンの名前。**形が違うものは別の名前で持つ**（§9.220 ①、
     利用者の指摘「ラジオボタンやタブがほぼ同じデザインになっている」）
@@ -674,6 +809,23 @@
   if(r)host.classList.add('opf-r-'+r);
   if(z)host.classList.add('opf-z-'+z);
  }
+ /* ---------- 並べ方（§9.226 ①、利用者の指示「同じUIでもいくつかパターンが
+    あるとよい」） ----------
+    **意匠（色・形・大きさ）の4つ目の軸ではない。** あちらは「どう見えるか」、
+    こちらは「選択肢をどう並べるか」——器の幅（マス数）に対して何個ずつ置くか
+    なので、選ばせ方の側に属する。混ぜると「青い2列のボタン群」のような
+    掛け算の名前が要る（§9.223 ③で避けた形）。
+    綴りはサーバー（`operation_repo.LAYOUTS`）が正で、ここは印をクラスへ
+    写すだけ。**効かない入力方法ではサーバーが`自動`へ落として返す**ので、
+    ここで判定を持たない（§9.163「判定を画面にも書かない」）。 */
+ const LAYOUT_CLASS={'自動':'','横1行':'row','折り返し':'wrap','縦':'col',
+                     '2列':'g2','3列':'g3'};
+ function applyLayout(box,def){
+  if(!box)return;
+  [...box.classList].forEach(c=>{if(/^opf-l-/.test(c))box.classList.remove(c)});
+  const k=LAYOUT_CLASS[String((def&&def.layout)||'自動')]||'';
+  if(k)box.classList.add('opf-l-'+k);
+ }
  const CHOICE_SHAPES={
   'ラジオ':    {box:'opf-radio',btn:'opf-radio-btn',dot:true},
   'セグメント':{box:'opf-seg',  btn:'opf-seg-btn'},
@@ -696,62 +848,105 @@
      押しても何も起きない**（設定窓の見本で実際にそうなっていた）。
      当て直しはクラスの付け替えだけなので、毎回通しても安い。 */
   applyLook(host,def);
-  if(kind==='メモ'||kind==='1行')return buildMemoWidget(def,host,kind);
+  if(kind==='メモ'||kind==='1行'||kind==='定型文')return buildMemoWidget(def,host,kind);
   if(NUM_WIDGETS.indexOf(kind)>=0)return buildNumberWidget(def,host,kind);
   const sel=host.querySelector(':scope>select');
   if(!sel)return false;
   const free=!!def.freeText;
   const opts=optionsOf(sel);
   const shape=CHOICE_SHAPES[kind];
-  const sig=kind+(free?'+free':'')+'|'+opts.map(o=>o.v+'\u0001'+o.t).join('\u0002');
+  const sig=kind+(free?'+free':'')+'/'+String(def.layout||'')
+    +'|'+opts.map(o=>o.v+'\u0001'+o.t).join('\u0002');
   const box=widgetHost(host);
   if(box.dataset.sig===sig){syncWidget(host);return true}
   box.dataset.sig=sig;
   host.classList.add('opf-alt');
-  /* **プルダウン＋手打ちのときは素の`<select>`を隠さない**（§9.220 ③）
-     ——形はプルダウンのままで「打つ場所を横に足す」のが指示の内容なので、
-     選ぶ手段を取り上げてはいけない。 */
-  const hideNative=kind!==WIDGET_SELECT;
+  /* **選ぶ器そのものを打てるようにする**（§9.226 ①）。以前は
+     「プルダウンのときだけ`<select>`を残して、下に打ち込み欄を足す」形
+     だったが、打つ場所と選ぶ場所が2つ並んで読めなかった。手打ちのときは
+     `<select>`を器の裏へ回し、**見えるのは1つの箱（`.opf-combo`）だけ**に
+     する（値の持ち主は今までどおり`<select>`）。 */
+  const combo=(kind===WIDGET_SELECT&&free);
+  const hideNative=kind!==WIDGET_SELECT||combo;
   sel.classList.toggle('opf-native-off',hideNative);
   if(hideNative)sel.setAttribute('tabindex','-1');else sel.removeAttribute('tabindex');
-  if(kind===WIDGET_SELECT){
-   /* プルダウンのまま「打つ場所」だけを足す形（§9.220 ③）。 */
+  if(kind===WIDGET_SELECT&&!free){
+   /* 素のプルダウン。器は要らない（意匠だけ当てる）。 */
+   box.className='opf-widget opf-plain';
+   box.innerHTML='';
+  }else if(combo){
    box.className='opf-widget opf-combo';
-   box.innerHTML=freeBoxHtml();
-   wireFreeBox(box,sel,host);
+   box.innerHTML='<input type="text" class="opf-combo-in" autocomplete="off" role="combobox"'
+    +' aria-expanded="false" aria-label="'+esc(def.name)+'（候補から選ぶか、そのまま打てます）"'
+    +' placeholder="選ぶ／打つ">'
+    +'<button type="button" class="opf-combo-open" aria-label="候補から選ぶ" title="候補から選ぶ">▾</button>';
+   const inp=box.querySelector('.opf-combo-in');
+   inp.addEventListener('input',()=>{
+    const v=inp.value.trim();
+    if(!v){setValue(sel,'');return}
+    /* **候補と同じ文字を打ったら候補として扱う**——手打ちの席へ入れると、
+       同じ値が候補と手打ちの2箇所に並ぶ。 */
+    const hit=[...sel.options].find(o=>o.dataset.opFree!=='1'&&o.text===v);
+    if(hit)setValue(sel,hit.value);else setFree(sel,v);
+   });
+   box.querySelector('.opf-combo-open').onclick=e=>{e.preventDefault();openPicker(def,host,sel)};
   }else if(kind==='一覧'){
    box.className='opf-widget opf-pick';
    box.innerHTML='<button type="button" class="opf-pick-btn">'
-    +'<span class="opf-pick-now">選ぶ</span><span class="opf-pick-caret" aria-hidden="true">▾</span></button>'
-    +(free?freeBoxHtml():'');
+    +'<span class="opf-pick-now">選ぶ</span><span class="opf-pick-caret" aria-hidden="true">▾</span></button>';
    box.querySelector('.opf-pick-btn').onclick=e=>{e.preventDefault();openPicker(def,host,sel)};
-   if(free)wireFreeBox(box,sel,host);
+  }else if(kind==='入切'){
+   /* 入切（§9.226 ①）。**入＝先頭の空でない値／切＝空**。3つ以上あっても
+      使うのは先頭だけなので、そのことを文字で書く（§4）。 */
+   const on=opts.find(o=>o.v!=='')||{v:'',t:''};
+   const more=opts.filter(o=>o.v!=='').length;
+   box.className='opf-widget opf-switch';
+   box.innerHTML='<button type="button" class="opf-switch-btn" role="switch" aria-checked="false"'
+    +' data-op-on="'+esc(on.v)+'" data-op-on-label="'+esc(on.t||'入')+'" data-op-off-label="切">'
+    +'<i class="opf-switch-track" aria-hidden="true"><i class="opf-switch-knob"></i></i>'
+    +'<span class="opf-switch-text">切</span></button>'
+    +(more>1?'<small class="opf-widget-note">選択肢が'+more+'件あります。入切では先頭の「'
+      +esc(on.t||on.v)+'」だけを使います</small>':'');
+   const sw=box.querySelector('.opf-switch-btn');
+   sw.onclick=e=>{
+    e.preventDefault();
+    const nowOn=!!sel.value&&sel.value!=='-';
+    setValue(sel,nowOn?'':sw.dataset.opOn);
+    syncWidget(host);
+   };
   }else{
-   box.className='opf-widget '+(shape?shape.box:'opf-seg');
+   const stage=kind==='段階';
+   box.className='opf-widget '+(stage?'opf-stage':(shape?shape.box:'opf-seg'));
    box.setAttribute('role','radiogroup');
    box.setAttribute('aria-label',def.name);
-   const btnCls=shape?shape.btn:'opf-seg-btn';
-   const dot=shape&&shape.dot?'<i class="opf-dot" aria-hidden="true"></i>':'';
-   box.innerHTML='<div class="opf-shape">'+opts.map(o=>{
+   const btnCls=stage?'opf-stage-btn':(shape?shape.btn:'opf-seg-btn');
+   const dot=(!stage&&shape&&shape.dot)?'<i class="opf-dot" aria-hidden="true"></i>':'';
+   /* 段階は「選ばない」を並べない——順番の帯に空の段が混ざると、
+      1段目が「選ばない」なのか最低の段なのか読めない。 */
+   const list=stage?opts.filter(o=>o.v!==''):opts;
+   box.innerHTML='<div class="opf-shape">'+list.map((o,i)=>{
     const label=(o.v===''||o.t==='-')?'—':o.t;
     const tip=noteOf(def,o.v);
     /* **カードは説明を文字で出す**（§9.223 ③）。`title`に隠すと、選ぶのに
        説明が要るから大きな札にした意味が無くなる（§3）。 */
     const note=(shape&&shape.note&&tip)?'<small class="opf-btn-note">'+esc(tip)+'</small>':'';
+    const no=stage?'<i class="opf-stage-no" aria-hidden="true">'+(i+1)+'</i>':'';
     return '<button type="button" role="radio" aria-checked="false" tabindex="-1"'
      +' class="'+btnCls+'" data-opv="'+esc(o.v)+'"'+(tip&&!note?' title="'+esc(tip)+'"':'')
-     +'>'+dot+'<span class="opf-btn-text">'+esc(label)+'</span>'+note+'</button>';
-   }).join('')+'</div>'+(free?freeBoxHtml():'');
+     +'>'+dot+no+'<span class="opf-btn-text">'+esc(label)+'</span>'+note+'</button>';
+   }).join('')+(free?otherChipHtml(btnCls):'')+'</div>'
+    +(stage?'<small class="opf-stage-scale"><b class="opf-stage-now">—</b> 段目</small>':'');
+   applyLayout(box,def);
    box.querySelectorAll('[data-opv]').forEach(b=>{
     b.onclick=e=>{e.preventDefault();setValue(sel,b.dataset.opv);syncWidget(host)};
    });
-   if(free)wireFreeBox(box,sel,host);
+   if(free)wireOther(box,sel,host);
    /* **左右キーで移れること**（ラジオグループの約束）。押せるのにキーボードで
       辿れない部品を作らない。**打ち込み欄の中では効かせない**——文字を
       打っているときに矢印でカーソルを動かせないのは壊れて見える。 */
    box.onkeydown=e=>{
     if(['ArrowRight','ArrowLeft','ArrowUp','ArrowDown'].indexOf(e.key)<0)return;
-    if(e.target&&e.target.classList&&e.target.classList.contains('opf-free-in'))return;
+    if(e.target&&e.target.classList&&e.target.classList.contains('opf-other-in'))return;
     const btns=[...box.querySelectorAll('[data-opv]')];
     if(!btns.length)return;
     e.preventDefault();
@@ -870,22 +1065,39 @@
   el.hidden=false;
   pickerBack=host.querySelector('.opf-pick-btn');
   el.querySelector('#opfPickerName').textContent=def.name;
+  /* **できることを先に書く**（§CLAUDE 2）。手打ちできるかどうかは項目ごとに
+     違うので、絞り込み欄の案内も切り替える。 */
+  const fnd=el.querySelector('#opfPickerFind');
+  if(fnd)fnd.placeholder=def.freeText?'絞り込む／候補にない値を打つ':'絞り込む';
   const find=el.querySelector('#opfPickerFind');
   const list=el.querySelector('#opfPickerList');
   const opts=optionsOf(sel);
+  const free=!!def.freeText;
   const draw=()=>{
-   const q=String(find.value||'').trim().toLowerCase();
+   const raw=String(find.value||'').trim();
+   const q=raw.toLowerCase();
    const hit=opts.filter(o=>!q||(o.t+' '+noteOf(def,o.v)).toLowerCase().indexOf(q)>=0);
-   list.innerHTML=hit.length?hit.map(o=>{
+   /* **絞り込み欄がそのまま手打ちの欄**（§9.226 ①）。候補にない値のために
+      別の入力欄を足さない——打つ場所は1つ、が全部の形での約束。
+      **候補に同じ文字があるときは出さない**（同じ値を2箇所に並べない）。 */
+   const same=opts.some(o=>o.t===raw||o.v===raw);
+   const own=(free&&raw&&!same)
+     ?'<button type="button" class="opf-picker-item opf-picker-free" data-opfree="'+esc(raw)+'">'
+      +'<b>「'+esc(raw)+'」をこのまま使う</b><small>候補にない値として記録します</small></button>'
+     :'';
+   list.innerHTML=own+(hit.length?hit.map(o=>{
     const label=(o.v===''||o.t==='-')?'（選ばない）':o.t;
     const note=noteOf(def,o.v);
     return '<button type="button" class="opf-picker-item'+(o.v===sel.value?' is-on':'')+'"'
      +' data-opv="'+esc(o.v)+'"><b>'+esc(label)+'</b>'
      +(note?'<small>'+esc(note)+'</small>':'')+'</button>';
-   }).join(''):'<p class="opf-picker-empty">「'+esc(find.value)+'」に当たる選択肢はありません。</p>';
+   }).join(''):(own?'':'<p class="opf-picker-empty">「'+esc(find.value)+'」に当たる選択肢はありません。'
+     +(free?'':'この項目は候補からしか選べません。')+'</p>'));
    list.querySelectorAll('[data-opv]').forEach(b=>{
     b.onclick=()=>{setValue(sel,b.dataset.opv);syncWidget(host);closePicker()};
    });
+   const fb=list.querySelector('[data-opfree]');
+   if(fb)fb.onclick=()=>{setFree(sel,fb.dataset.opfree);syncWidget(host);closePicker()};
   };
   /* **入力中に一覧だけを描き直す**（§9.117）——入力欄を作り替えるとカーソルが飛ぶ。 */
   find.value='';find.oninput=draw;
@@ -903,14 +1115,57 @@
       **1つでも「畳む」と言っていれば畳む**——群の中で食い違ったときに
       「どちらが正か」を決められる形にしておく（マスタ管理の画面は群単位で
       書き換えるので、ふつうは食い違わない）。 */
-   if(!g){g={name,items:[],fold:false,showWhen:new Set()};out.push(g)}
+   if(!g){g={name,items:[],fold:false,span:0,showWhen:new Set()};out.push(g)}
    g.items.push(d);
    if(d.fold)g.fold=true;
+   /* 群の幅（§9.226 ③）。**1つでも指定があればそれ**——畳むと同じ読み方に
+      そろえる（群の中で食い違ったときにどちらが正かを決めておく）。 */
+   if(!g.span&&Number(d.groupSpan)>0)g.span=Math.min(gridCols,Number(d.groupSpan));
    (d.showWhen||[]).forEach(x=>g.showWhen.add(String(x).trim()));
   });
   return out;
  }
 
+ /* ---------- 群を「列でも区切る」（§9.226 ③、利用者の指示） ----------
+    「マスタでは現在1列複数行で、行の中で区切りを作っていますが、まとまりを
+     作りやすくできるように列にも区切りをつけられるようにしたい」
+
+    群に幅（マス）を持たせ、**横いっぱいでない群は横に並ぶ**ようにする。
+    自動配置（`order`＋`span`）では群の見出しが必ず1行を切ってしまうので、
+    幅を決めた群があるときだけ**マスを明示して置く**。
+
+    **計算はここ1箇所**——マスタの盤（`master-maint.js`）も同じ関数を通す。
+    2つ持つと「盤ではこう見えるのに測定画面では違う」が作れる（§9.176の
+    `entryCellInfo()`と同じ約束）。
+
+    引数は `[{name, span(0=横いっぱい), items:[{key, span}]}]`、
+    戻りは `{heads,items,rows,banded}`（col/row は1始まり）。 */
+ function packLayout(groups,cols){
+  const n=Math.max(1,Number(cols)||12);
+  const heads=[],items=[];
+  let row=1,col=1,bottom=1;
+  const newBand=()=>{row=bottom;col=1};
+  (groups||[]).forEach(g=>{
+   const gs=Math.max(1,Math.min(n,Number(g.span)>0?Number(g.span):n));
+   if(col>1&&col+gs-1>n)newBand();
+   heads.push({name:g.name,col,row,span:gs});
+   let r=row+1,c=col;
+   (g.items||[]).forEach(it=>{
+    const w=Math.max(1,Math.min(gs,Number(it.span)||1));
+    if(c>col&&c+w-1>col+gs-1){c=col;r++}
+    items.push({key:it.key,col:c,row:r,span:w});
+    c+=w;
+   });
+   bottom=Math.max(bottom,(g.items&&g.items.length)?r+1:row+1);
+   col+=gs;
+   if(col>n)newBand();
+  });
+  /* **横いっぱいの群しか無いときは今までどおり**（`order`で流す）。
+     マスを明示すると、マスタに載っていない`.selectors`の子（作業時間など）が
+     空いたマスへ自動で入り込みうる——健全な設定の見え方を変えない。 */
+  const banded=(groups||[]).some(g=>Number(g.span)>0&&Number(g.span)<n);
+  return {heads,items,rows:Math.max(1,bottom-1),banded};
+ }
  /* 畳んだ群を自動で開く条件（§9.216 ③、利用者の指示「条入力時に展開され
     共通項目になります」）。**空なら畳んだまま**（条件の無い群を勝手に
     開かない）。 */
@@ -969,7 +1224,7 @@
   box.querySelectorAll('[data-opgen]').forEach(el=>el.remove());
   box.querySelectorAll('[data-f]').forEach(el=>{
    el.classList.remove('op-off','op-folded','op-required');
-   el.style.order='';el.style.gridColumn='';
+   el.style.order='';el.style.gridColumn='';el.style.gridRow='';
    delete el.dataset.opplace;delete el.dataset.opgroup;delete el.dataset.opfill;
   });
   box.style.setProperty('--op-cols',String(gridCols));
@@ -983,13 +1238,22 @@
   });
   let seq=0,missing=[];
   [PLACE_PREP,PLACE_INPUT].forEach(place=>{
-   groupsFor(place).forEach(g=>{
+   const gs=groupsFor(place);
+   /* 群を「列でも区切る」（§9.226 ③）。**幅を決めた群があるときだけ**
+      マスを明示する（`banded`）——無いときは今までどおり`order`で流す。 */
+   const pack=packLayout(gs.map(g=>({name:g.name,span:g.span,
+     items:g.items.map(d=>({key:d.name,span:Number(d.span)||4}))})),gridCols);
+   const headAt=new Map(pack.heads.map(h=>[h.name,h]));
+   const cellAt=new Map(pack.items.map(x=>[x.key,x]));
+   gs.forEach(g=>{
     const fold=isFolded(g);
+    const spot=pack.banded?headAt.get(g.name):null;
     const head=document.createElement(g.fold?'button':'b');
     head.className='prep-head'+(g.fold?' prep-fold':'');
     head.dataset.opgen='1';head.dataset.opgroup=g.name;head.dataset.opplace=place;
     head.style.order=String(seq++);
-    head.style.gridColumn='1/-1';
+    if(spot){head.style.gridColumn=spot.col+'/span '+spot.span;head.style.gridRow=String(spot.row)}
+    else head.style.gridColumn='1/-1';
     /* **先頭の見出しには上の線を引かない。** 並びは`order`で決まるので
        `:first-of-type`では当たらない（DOMの順ではない）。ここで印を付ける。 */
     if(!box.querySelector(`[data-opgen][data-opplace="${place}"][data-opfirst]`))
@@ -1030,7 +1294,10 @@
         154pxのまま余白が残る（実測。実際にそうなった）。 */
      el.querySelectorAll('select,input,textarea').forEach(c=>{c.style.maxWidth=''});
      el.style.order=String(seq++);
-     el.style.gridColumn='span '+Math.max(1,Math.min(gridCols,Number(d.span)||4));
+     const at=pack.banded?cellAt.get(d.name):null;
+     if(at){el.style.gridColumn=at.col+'/span '+at.span;el.style.gridRow=String(at.row)}
+     else{el.style.gridColumn='span '+Math.max(1,Math.min(gridCols,Number(d.span)||4));
+          el.style.gridRow=''}
      el.classList.toggle('op-folded',fold);
      el.classList.toggle('op-required',!!d.required);
      /* 見せ方（§9.221 ⑦）は**組み込みの欄にも当たる**——器の属性を書くだけで、
@@ -1078,6 +1345,31 @@
      IIFEの中なので、外からは見えない。 */
   syncWidgets();
   if(window.WL&&WL.measureSteps&&WL.measureSteps.fitWidths)WL.measureSteps.fitWidths();
+  rememberCellPx(box);
+ }
+ /* ---------- 1マスの実寸を覚える（§9.226 ①） ----------
+    マスタの設定窓は「測定画面での見え方」を見せるが、**そこには測定画面が
+    無い**ので1マスが何pxなのかを知りようがない。定数で持つと、画面の作りを
+    変えたときに設定窓だけが古い縮尺で描き続ける（縮尺が違うと、文字の幅は
+    縮まないので**入るはずのものが見切れて見える**）。
+    ここで実測してこの端末に覚えさせ、設定窓はそれを使う。**取れなければ
+    書かない**——古い値のほうが「何も無い」より当たる。 */
+ const CELL_KEY='MeasureOpCellPxV1';
+ function rememberCellPx(box){
+  try{
+   const t=getComputedStyle(box).gridTemplateColumns.split(/\s+/).filter(Boolean);
+   if(t.length!==gridCols)return;
+   const w=parseFloat(t[0]);
+   if(!Number.isFinite(w)||w<8)return;
+   localStorage.setItem(CELL_KEY,String(Math.round(w*10)/10));
+  }catch(e){}
+ }
+ function cellPx(){
+  try{
+   const v=Number(localStorage.getItem(CELL_KEY));
+   if(Number.isFinite(v)&&v>=8&&v<=400)return v;
+  }catch(e){}
+  return 94;                                 /* 実測の既定（1920幅・12マス） */
  }
 
  function bind(){
@@ -1241,6 +1533,12 @@
             attachFormat,
             settlePreview:(el,def)=>settle(el,Object.assign({},def,{preview:true}),null),
             defs:()=>defs.slice(),
+            /* 群を列でも区切る割り付け（§9.226 ③）。**マスタの盤も同じ
+               関数を通す**——2つ持つと盤と測定画面で並びが食い違う。 */
+            packLayout,
+            /* 測定画面の1マスの実寸（§9.226 ①）。設定窓の見本が**実物と
+               同じ大きさ**で描くために使う。 */
+            cellPx,
             /* 設備が変わったら次に開くとき読み直す（マスタ管理で足した直後）。 */
             forget:()=>{defs=[];builtinOff=[];defsFor=null;loading=null}};
 })();

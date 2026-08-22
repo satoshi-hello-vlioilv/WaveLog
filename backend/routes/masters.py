@@ -1034,6 +1034,9 @@ def operation_item_list():
            # 単位を重ねられない入力方法（箱が1つではない）。画面は理由を
            # 文字で出すのに使う（§4）。
            'unitInBlocked':list(op.UNIT_IN_BLOCKED_WIDGETS),
+           # 並べ方(§9.226 ①)。**効く入力方法もサーバーが答える**——画面へ
+           # 写すと、並べても何も起きない設定を選ばせることになる（§4）。
+           'layouts':list(op.LAYOUTS),'layoutWidgets':list(op.LAYOUT_WIDGETS),
            # 型ごとに効く入力方法(§9.219 ③)。**判定はサーバーの1箇所**
            # （画面へ写すと、効く物の一覧が2つになる）。
            'widgetFamilies':{k:list(v) for k,v in op.WIDGET_FAMILIES.items()},
@@ -1077,6 +1080,7 @@ def _operation_item_save(x):
  if not name:return jsonify(error='項目名を入力してください。'),400
  num=lambda v:(None if v in (None,'') else float(v))
  iv=lambda v:(None if v in (None,'') else int(v))
+ ref={}
  try:
   def fn(c):
    return op.item_upsert(c,uid,equipment=x.get('equipment') or '*',
@@ -1097,8 +1101,17 @@ def _operation_item_save(x):
                          unit_place=x.get('unitPlace'),align=x.get('align'),
                          value_format=x.get('valueFormat'),digits=x.get('digits'),
                          # §9.223 ①③（役割・見た目）
-                         role=x.get('role'),look=x.get('look'))
-  return jsonify(ok=True,id=_op_read(fn),message='操業データの項目を保存しました。')
+                         role=x.get('role'),look=x.get('look'),
+                         # §9.226 ①③
+                         layout=x.get('layout'),group_span=x.get('groupSpan'),
+                         report=ref)
+  saved=_op_read(fn)
+  # **付け替えたことは黙って済ませない**（§9.226 ①）。名前を変えると
+  # 帳票の`settings.opData.<項目名>`も一緒に動くので、何件動いたかを言う。
+  msg='操業データの項目を保存しました。'
+  if ref.get('renamedRefs'):
+   msg+=f"「{ref.get('oldName')}」を参照していた帳票ブロック{ref['renamedRefs']}件も新しい名前へ付け替えました。"
+  return jsonify(ok=True,id=saved,message=msg,renamedRefs=ref.get('renamedRefs') or 0)
  except ValueError as e:return jsonify(error=str(e)),400
  except Exception as e:return jsonify(error=f'操業データ項目マスタの保存に失敗しました: {e}'),500
 
@@ -1136,7 +1149,9 @@ def operation_item_group():
  if not g:return jsonify(error='群がありません。'),400
  try:
   n=_op_read(lambda c:op.group_flags_save(c,request_user_id(x),x.get('place'),g,
-                                          bool(x.get('fold')),x.get('showWhen')))
+                                          bool(x.get('fold')),x.get('showWhen'),
+                                          # **送られてきたときだけ書く**（§9.226 ③）
+                                          x.get('groupSpan')))
   return jsonify(ok=True,saved=n,message='群の設定を保存しました。')
  except Exception as e:return jsonify(error=f'群の設定の保存に失敗しました: {e}'),500
 
@@ -1301,7 +1316,10 @@ def report_block_list():
            'builtinKeys':list(rb.BUILTIN_KEYS),
            'contentEditable':sorted(rb.CONTENT_EDITABLE),
            # **出どころの見本**。ここに無い道も書けるので、選択肢で塞がない。
-           'fields':[{'label':a,'path':b} for a,b in rb.FIELD_CATALOG]}
+           'fields':[{'label':a,'path':b} for a,b in rb.FIELD_CATALOG],
+           # **選んで組み立てるための候補**（§9.226 ④）。操業データの項目も
+           # 含むので、現場が項目を足せばそのまま候補に増える。
+           'catalog':rb.field_catalog(c,eq)}
   return jsonify(ok=True,equipment=eq,**_op_read(fn))
  except Exception as e:return jsonify(error=f'帳票ブロックマスタの読込に失敗しました: {e}'),500
 

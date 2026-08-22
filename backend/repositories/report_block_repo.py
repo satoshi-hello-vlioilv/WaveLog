@@ -84,6 +84,91 @@ FIELD_CATALOG = (
 )
 
 
+# 計算した値（`rpCalc`が作るもの）。**画面と同じ綴り**でここに並べる
+# ——組み立ては`report-dashboard.js`が持つが、「何が選べるか」はサーバーが
+# 答える（§9.163「判定を画面にも書かない」）。
+CALC_CATALOG = (
+    ('登録設備', 'calc.equipment'),
+    ('コイル止め（旧データ込み）', 'calc.coilStop'),
+    ('作業人数（N名班）', 'calc.crewSize'),
+    ('作業開始時刻', 'calc.workStart'),
+    ('作業終了時刻', 'calc.workEnd'),
+    ('実働時間', 'calc.workDuration'),
+    ('状態', 'calc.status'),
+    ('更新日時', 'calc.updatedAt'),
+)
+
+
+def field_catalog(c, equipment=''):
+    """塊に載せられる項目の一覧(§9.226 ④、利用者の指示)。
+
+    「帳票ブロックを新規登録が難しすぎて作成できない。入力データ(汎用入力
+     データも含む)の中から選んで組み合わせたり配置する方式で、直感的に
+     組み合わせてデータブロックを作ることができるようにしてほしい」
+
+    以前は`[内容]`に`ラベル=basic.lotNo`と**手で書かせて**いた。道の綴りを
+    知らないと1行も書けないので、実際には誰も作れない（§4の裏返しで、
+    「できると書いてあるのにできない」状態だった）。
+
+    ここが**選べるものの唯一の一覧**。**操業データの項目はマスタから引く**
+    ので、現場が項目を足せばそのまま候補に増える（コードへ項目名を書かない
+    ・§9.215）。出どころごとに分けて返し、画面はそれをそのまま並べる。
+
+    **読めなかった塊は飛ばす**（fail-open）——1つ読めないだけで候補が
+    丸ごと空になると、作る手立てが消える。"""
+    groups = [
+        {'group': '仕掛（ロットの情報）',
+         'note': '測定を始めたときに仕掛データから写した値です。',
+         'items': [{'label': l, 'path': p} for l, p in FIELD_CATALOG
+                   if p.startswith('basic.')]},
+    ]
+    prep, opdata = [], []
+    try:
+        from . import operation_repo as op
+        # **設備を指定していないときは全部の項目**（マスタ管理の一覧から
+        # 開いたときは設備が決まっていない。候補が空だと1つも選べない）。
+        rows = (op.items_for_equipment(c, equipment, True) if str(equipment or '').strip()
+                else op.item_rows(c, True))
+        seen = set()
+        for it in rows:
+            name = str(it.get('name') or '').strip()
+            if not name:
+                continue
+            if name in seen:
+                continue
+            seen.add(name)
+            builtin = str(it.get('builtin') or '').strip()
+            unit = str(it.get('unit') or '').strip()
+            row = {'label': name, 'unit': unit,
+                   'note': (it.get('group') or '') + (f'／{unit}' if unit else '')}
+            if builtin:
+                # 組み込みの欄は画面がもともと持っている置き場（`settings.<キー>`）。
+                row['path'] = 'settings.' + builtin
+                prep.append(row)
+            else:
+                # 自由項目は**項目名が鍵**（§9.215）。
+                row['path'] = 'settings.opData.' + name
+                opdata.append(row)
+    except Exception:
+        pass
+    if prep:
+        groups.append({'group': '準備で決めた値',
+                       'note': '測定画面がもともと持っている入力欄です。',
+                       'items': prep})
+    if opdata:
+        groups.append({'group': '操業データ（現場で足した項目）',
+                       'note': '操業データ項目マスタで足した入力欄です。項目を足すとここにも増えます。',
+                       'items': opdata})
+    groups.append({'group': '作業時間',
+                   'note': '測定の開始・終了の記録です。',
+                   'items': [{'label': l, 'path': p} for l, p in FIELD_CATALOG
+                             if p.startswith('workTime.') or p == 'updatedAt']})
+    groups.append({'group': '計算した値',
+                   'note': '実働時間・状態など、いくつかの値から作るものです。',
+                   'items': [{'label': l, 'path': p} for l, p in CALC_CATALOG]})
+    return [g for g in groups if g['items']]
+
+
 # ---------------------------------------------------------------------------
 # 既定の塊も**マスタに登録された状態**にする（§9.219 ②、利用者の指示
 # 「既定の帳票ブロックについても編集ができるように、マスタに登録されている

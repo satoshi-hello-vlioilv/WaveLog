@@ -45,7 +45,7 @@ def set_mode(m):
     post('/api/access-mode', {'mode': m})
 
 
-made_items, made_choices = [], []
+made_items, made_choices, made_blocks = [], [], []
 try:
     # マスタの書き込みは**編集モードだけ**(access_mode の `masters`)。
     # サーバー側のテストはscheduleモードで走るので、ここで切り替えて
@@ -153,7 +153,97 @@ try:
             if x['name'] == TAG + '-色']
     rec('消した選択肢は残らない', left == [], json.dumps(left, ensure_ascii=False))
 
-    # ---- 8) IDが無ければ断る（黙って新規を作らない） ----
+    # ---- 8) 並べ方と群幅（§9.226 ①③、利用者の指示） ----
+    # **選ばせ方の一覧と「効く形」はサーバーが答える**（画面へ写さない）。
+    cat = get('/api/operation-item-master')
+    widgets = cat.get('widgets') or []
+    rec('選ばせ方に段階・入切・メーター・定型文が入っている',
+        all(w in widgets for w in ('段階', '入切', 'メーター', '定型文')),
+        json.dumps(widgets, ensure_ascii=False))
+    fam = cat.get('widgetFamilies') or {}
+    rec('段階・入切は選択肢の型だけ／メーターは数値／定型文は文字',
+        '段階' in (fam.get('choice') or []) and '入切' in (fam.get('choice') or [])
+        and 'メーター' in (fam.get('number') or []) and '定型文' in (fam.get('text') or [])
+        and '段階' not in (fam.get('number') or []),
+        json.dumps(fam, ensure_ascii=False))
+    rec('並べ方の一覧と効く形をサーバーが答える',
+        '自動' in (cat.get('layouts') or []) and '2列' in (cat.get('layouts') or [])
+        and 'ボタン群' in (cat.get('layoutWidgets') or [])
+        and 'プルダウン' not in (cat.get('layoutWidgets') or []),
+        json.dumps({'layouts': cat.get('layouts'),
+                    'layoutWidgets': cat.get('layoutWidgets')}, ensure_ascii=False))
+
+    # 保存して読み直す。**知らない値は自動へ倒す**（入力が丸ごと開けなくなる
+    # のを避ける）。**効かない形では`layout`が`自動`で返り、保存値は残る**。
+    code, res = post('/api/operation-item-master', {
+        'name': TAG + '-並べ方', 'type': '選択', 'user_id': 'tests', 'equipment': '*',
+        'group': TAG, 'widget': 'ボタン群', 'layout': '2列', 'groupSpan': 6})
+    made_items.append(res.get('id'))
+    lst = get('/api/operation-item-master')
+    row = [x for x in lst['items'] if x['name'] == TAG + '-並べ方']
+    row = row[0] if row else {}
+    rec('並べ方と群幅が保存される',
+        row.get('layout') == '2列' and row.get('groupSpan') == 6,
+        json.dumps({'layout': row.get('layout'), 'groupSpan': row.get('groupSpan')},
+                   ensure_ascii=False))
+    # 効かない形へ変えると`layout`は自動、保存値（`layoutSaved`）は残る。
+    post('/api/operation-item-master/update', {
+        'id': row.get('id'), 'name': TAG + '-並べ方', 'type': '選択', 'user_id': 'tests',
+        'equipment': '*', 'group': TAG, 'widget': 'プルダウン', 'layout': '2列',
+        'groupSpan': 6})
+    lst = get('/api/operation-item-master')
+    row2 = [x for x in lst['items'] if x['name'] == TAG + '-並べ方'][0]
+    rec('並べる先が無い形では自動へ落とすが、保存値は残す',
+        row2.get('layout') == '自動' and row2.get('layoutSaved') == '2列',
+        json.dumps({'layout': row2.get('layout'),
+                    'layoutSaved': row2.get('layoutSaved')}, ensure_ascii=False))
+    # 群幅は**群の全部の行へ**（`/group`が書く）。渡さなければ触らない。
+    post('/api/operation-item-master/group', {
+        'place': '準備', 'group': TAG, 'fold': False, 'showWhen': [], 'user_id': 'tests'})
+    lst = get('/api/operation-item-master')
+    row3 = [x for x in lst['items'] if x['name'] == TAG + '-並べ方'][0]
+    rec('群幅を送らなければ触らない（畳むを押しただけで消えない）',
+        row3.get('groupSpan') == 6, json.dumps(row3.get('groupSpan')))
+    post('/api/operation-item-master/group', {
+        'place': '準備', 'group': TAG, 'fold': False, 'showWhen': [],
+        'groupSpan': 0, 'user_id': 'tests'})
+    lst = get('/api/operation-item-master')
+    row4 = [x for x in lst['items'] if x['name'] == TAG + '-並べ方'][0]
+    rec('群幅は群ごとまとめて戻せる', row4.get('groupSpan') == 0,
+        json.dumps(row4.get('groupSpan')))
+
+    # ---- 9) 帳票ブロックの候補（§9.226 ④） ----
+    # **操業データの項目がそのまま候補に出ること**——出ないと、現場が足した
+    # 項目を紙へ載せる手立てが無い（手で道を書かせない、が目的）。
+    rb = get('/api/report-block-master')
+    cats = rb.get('catalog') or []
+    names = [g.get('group') for g in cats]
+    rec('帳票ブロックの候補が出どころごとに分かれている',
+        '仕掛（ロットの情報）' in names and '計算した値' in names,
+        json.dumps(names, ensure_ascii=False))
+    paths = [it.get('path') for g in cats for it in (g.get('items') or [])]
+    rec('操業データの項目が候補に出る（項目を足せば増える）',
+        any(str(p).startswith('settings.opData.') for p in paths),
+        json.dumps([p for p in paths if str(p).startswith('settings.opData.')][:4],
+                   ensure_ascii=False))
+    rec('準備の組み込み欄は settings.<キー> の道で出る',
+        'settings.operator' in paths, json.dumps(paths[:6], ensure_ascii=False))
+
+    # ---- 10) 項目名を変えたら参照も付け替える（§9.226 ①） ----
+    code, res = post('/api/report-block-master', {
+        'name': TAG + '-塊', 'user_id': 'tests', 'equipment': '*',
+        'content': 'テスト=settings.opData.' + TAG + '-並べ方'})
+    made_blocks.append(res.get('id'))
+    post('/api/operation-item-master/update', {
+        'id': row.get('id'), 'name': TAG + '-改名', 'type': '選択', 'user_id': 'tests',
+        'equipment': '*', 'group': TAG, 'widget': 'プルダウン'})
+    rb2 = get('/api/report-block-master')
+    blk = [x for x in rb2['items'] if x['name'] == TAG + '-塊']
+    body = (blk[0].get('content') or '') if blk else ''
+    rec('項目名を変えると帳票ブロックの参照も付け替わる',
+        ('settings.opData.' + TAG + '-改名') in body, body)
+
+    # ---- 11) IDが無ければ断る（黙って新規を作らない） ----
     code, res = post('/api/operation-item-master/update', {'name': 'x', 'user_id': 'tests'})
     rec('更新にIDが無ければ断る', code == 400, '%s %s' % (code, res.get('error')))
     code, res = post('/api/operation-item-master/delete', {'user_id': 'tests'})
@@ -162,6 +252,11 @@ try:
     rec('名前が空なら断る', code == 400, '%s %s' % (code, res.get('error')))
 finally:
     # **後始末**。db/master.sqlite3は実行をまたいで生き延びる(§9.121)。
+    for i in made_blocks:
+        try:
+            post('/api/report-block-master/delete', {'id': i, 'user_id': 'tests'})
+        except Exception:
+            pass
     for i in made_items:
         try:
             post('/api/operation-item-master/delete', {'id': i, 'user_id': 'tests'})

@@ -258,46 +258,16 @@
   content:"";position:absolute;top:0;bottom:0;width:2px;background:var(--teal);z-index:3}
 .rp-block.rp-drop-before::before{left:-2px}
 .rp-block.rp-drop-after::before{right:-2px}
-/* ---------- 操作の道具は「層」（§9.223 ①、利用者の指示） ----------
-   「各カードのサイズ表示や幅調整ボタンは、マウスオーバーの時のみレイヤーで
-    表示させ、編集中画面のカードの見た目は常に実際に出力される見た目を
-    再現してほしい」。
-   帯を流れの中に置くと、その高さのぶん中身が押し下げられ、**刷り上がりと
-   違う姿を見ながら位置を詰める**ことになる（利用者の言う「ズレ」）。
-   `position:absolute`で塊の上へ重ね、触れているあいだだけ出す。
-   **`display:none`にしないこと**——中の`<button>`の寸法を測っている箇所は
-   無いが、出入りのたびに組み直すと押した瞬間に消えることがある。 */
-.rp-block-tools{position:absolute;left:0;right:0;top:0;z-index:6;
-  display:flex;flex-direction:column;gap:2px;padding:2px;
-  opacity:0;visibility:hidden;transition:opacity .12s ease}
-.rp-blocks.is-arranging .rp-block:hover>.rp-block-tools,
-.rp-blocks.is-arranging .rp-block:focus-within>.rp-block-tools,
-.rp-blocks.is-arranging .rp-block.is-overlap>.rp-block-tools,
-.rp-blocks.is-arranging .rp-block.is-overflow>.rp-block-tools{opacity:1;visibility:visible}
-/* **直してほしい塊は帯を出しっぱなし**にする（重なり・入りきらない）。
-   触れないと出ない作りにすると、直す必要のある塊を探すことになる（§2）。 */
-.rp-block-bar{display:flex;align-items:center;gap:4px;flex-wrap:wrap;padding:2px 3px;border-radius:3px;
-  background:rgba(230,238,240,.96);color:#28464e;box-shadow:0 1px 4px rgba(15,32,39,.18)}
-.rp-block-grip{cursor:grab;color:#7a8b90;font-size:11px}
-.rp-block-name{font-size:9px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-.rp-block-tag{font-style:normal;font-size:8px;font-weight:800;color:#8a6a2a;background:#f7ecd6;border-radius:3px;padding:0 3px}
-.rp-block-tag.is-off{color:#5c6c70;background:#dbe3e5}
-.rp-block-size{margin-left:auto;display:flex;gap:2px;flex:none}
-.rp-block-size button{font-size:8px;font-weight:800;line-height:1;padding:2px 3px;border:1px solid #9bb3ba;border-radius:3px;background:#fff;color:#41606a;cursor:pointer}
-.rp-block-size button.is-on{background:#087c89;border-color:#087c89;color:#fff}
-.rp-block-vis{font-size:8px;font-weight:800;line-height:1;padding:2px 5px;flex:none;border:1px solid #9bb3ba;border-radius:3px;background:#fff;color:#41606a;cursor:pointer}
-/* 分解／まとめ（§9.173）。測定データの塊にだけ出る。 */
-.rp-block-split{font-size:8px;font-weight:800;line-height:1;padding:2px 5px;flex:none;border:1px solid #087c89;border-radius:3px;background:#fff;color:#087c89;cursor:pointer}
-.rp-block-split:hover{background:#e6f3f4}
-/* 入りきらないときの案内と、落とせる列（§9.173）。**幅は選べるままにして**、
-   何を落とせるかをその場に出す。紙には出ない（組み換え中しか組み立てない）。 */
+/* ---------- 組み換え中も刷り上がりのまま（§9.226 ③、利用者の指示） ----------
+   「カードのサイズ変更をしやすいように、マウスオーバー時のフローティング
+    表示は不要なので削除してください」。
+   触れると出る帯（`.rp-block-tools`）は**大きさを変える縁の上に重なって
+   いた**ので、掴もうとした瞬間に的が消えていた。帯ごと廃止し、設定は
+   ダブルクリックで開く窓が持つ。塊の名前は刷り上がりの見出しがそのまま
+   名乗るので、帯が無くてもどれがどれかは読める。
+   **直してほしい塊（重なり・入りきらない）は縁で言う**——触れないと
+   分からない作りにはしない（§2）。 */
 .rp-blocks.is-arranging .rp-block.is-overflow{outline-color:#c07a1e;outline-style:solid}
-.rp-block-cols{display:flex;align-items:center;gap:3px;flex-wrap:wrap;padding:2px 3px;border:1px solid #e0c08a;border-radius:3px;background:rgba(253,246,232,.97);color:#7a5a17;box-shadow:0 1px 4px rgba(15,32,39,.18)}
-.rp-block-cols[hidden]{display:none}
-.rp-block-cols-head{font-size:8px;font-weight:800;flex:1 1 100%}
-.rp-block-col-drop,.rp-block-col-restore{font-size:8px;font-weight:700;line-height:1;padding:2px 4px;border:1px solid #d8b57a;border-radius:3px;background:#fff;color:#7a5a17;cursor:pointer}
-.rp-block-col-drop:hover{border-color:#a33;color:#a33}
-.rp-block-col-restore{margin-left:auto;border-color:#9bb3ba;color:#41606a}
 /* ---------- 組み換えの帯（§9.222 ④） ----------
    「割り／整える・見る／状態」の3つの塊に分け、**塊の中だけを詰める**。
    ボタンの高さは`--ctl-h-xs`の1種類だけ（以前は`--ctl-h-sm`の
@@ -418,6 +388,36 @@
 .rp-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 8px}
 .rp-grid-4{grid-template-columns:repeat(4,minmax(0,1fr))}
 .rp-grid-1{grid-template-columns:minmax(0,1fr)}
+/* ---------- カードの中のデータの並べ方（§9.226 ③、利用者の指示） ----------
+   「横にある程度並べて次の行に行く形…その並び方を縦を先に並べていく
+    パターンや幅方向長さが許す限り並べていくパターン、縦方向高さが許す限り
+    並べるパターンなど、よりフレキシブルなカードサイズに合わせたデータ配置が
+    連動するように」
+
+   4つとも**CSSだけで組む**。段組（multi-column）は「縦へ流して次の列へ」
+   そのものなので、行数をJSで数えなくてよい——数えると、中身が増えるたびに
+   測り直す仕掛けが要る（§9.174の「実寸で測る」を余計な場所へ持ち込まない）。
+     既定       … 今までどおりのグリッド（列数は`.rp-grid-N`）
+     `縦`       … 段組。列数は同じで、上から下へ埋める
+     `幅なり`   … 入るだけ横へ（列数はカードの幅で決まる）
+     `高さなり` … 段組＋`column-fill:auto`。**高さを決めた塊だけ**効く
+                  （高さが中身なりだと段が1本になる。設定窓に書いてある）
+   詳細度は`.rp-block.rp-flow-*`（0,2,1）で`.rp-grid-4`（0,1,0）に勝つ。 */
+.rp-block.rp-flow-col .rp-grid{display:block;column-count:2;column-gap:8px}
+.rp-block.rp-flow-col .rp-grid-1{column-count:1}
+.rp-block.rp-flow-col .rp-grid-4{column-count:4}
+.rp-block.rp-flow-col .rp-field,
+.rp-block.rp-flow-tall .rp-field{break-inside:avoid}
+.rp-block.rp-flow-fit .rp-grid{
+  grid-template-columns:repeat(auto-fill,minmax(var(--rp-field-min,120px),1fr));
+}
+/* 高さなりは**器の高さが要る**ので、鎖を1段も抜かない（§9.222 ⑤）。 */
+.rp-block.rp-flow-tall .rp-block-fit,
+.rp-block.rp-flow-tall .rp-section{display:flex;flex-direction:column;height:100%;min-height:0}
+.rp-block.rp-flow-tall .rp-grid{
+  display:block;flex:1 1 auto;min-height:0;
+  column-width:var(--rp-field-min,120px);column-gap:8px;column-fill:auto;
+}
 .rp-field{display:grid;grid-template-columns:min-content minmax(0,1fr);gap:var(--space-1);padding:1px 2px;border-bottom:1px solid #eef2f4;font-size:8.5px}
 .rp-field-label{color:#60747b;font-size:8px;font-weight:700;white-space:nowrap}
 /* 以前はwhite-space:nowrap+ellipsisで1行に切り詰めていたため、特に

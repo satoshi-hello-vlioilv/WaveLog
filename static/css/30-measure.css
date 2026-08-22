@@ -2249,8 +2249,27 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .opf-widget .opf-card-btn,
 .opf-widget .opf-toggle-btn,
 .opf-widget .opf-quick-btn,
-.opf-widget .opf-free-in,
-.opf-widget .opf-memo-in{font-size:var(--fs)}
+.opf-widget .opf-stage-btn,
+.opf-widget .opf-phrase-btn,
+.opf-widget .opf-switch-btn,
+.opf-widget .opf-combo-in,
+.opf-widget .opf-other-in,
+.opf-widget .opf-other-btn,
+.opf-widget .opf-memo-in{font-size:var(--opf-fs,var(--fs))}
+/* ---------- 統一の土台（§9.226 ①、利用者の指示） ----------
+   「設置したときにUIが複数種類混ざって配置することになっても統一感が
+    出るようにしたい」
+
+   混ざっても揃って見えるかどうかは、**同じ器の上に載っているか**で決まる。
+   そこで「操作できる面」の高さ・文字・角丸を**器（`.opf`）が1組の変数で
+   宣言**し、どの選ばせ方もそれを読むだけにする。個々の形で`--ctl-h-sm`や
+   `--radius-sm`を直に書くと、1つ足すたびに揃え直すことになり、揃わない
+   ものが必ず1つ残る（§9.90「寸法は文字サイズから作る」と同じ考え方）。
+   意匠の3つの軸（色・形・大きさ）は**この変数を書き換えるだけ**で全部の
+   形に効く。 */
+.opf{--opf-h:var(--ctl-h-sm);--opf-fs:var(--fs);--opf-radius:var(--radius-sm)}
+.measure-shell .selectors>label{--opf-h:var(--ctl-h-sm);--opf-fs:var(--fs);
+  --opf-radius:var(--radius-sm)}
 .opf-native-off{
   position:absolute;width:1px;height:1px;padding:0;margin:0;border:0;
   opacity:0;pointer-events:none;overflow:hidden;
@@ -2279,7 +2298,7 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 /* --- 共通の押し味 --- */
 .opf-radio-btn,.opf-seg-btn,.opf-tab-btn,.opf-chip-btn{
   display:inline-flex;align-items:center;justify-content:center;gap:var(--gap-tight);
-  min-width:0;min-height:var(--ctl-h-sm);padding:0 var(--space-2);
+  min-width:0;min-height:var(--opf-h,var(--ctl-h-sm));padding:0 var(--space-2);
   background:none;border:0;box-shadow:none;
   color:var(--ink-2);font-size:var(--fs-sm);font-weight:600;line-height:1.2;
   cursor:pointer;white-space:nowrap;
@@ -2328,46 +2347,68 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .opf-pick{display:flex;flex-direction:column;gap:var(--gap-tight)}
 .opf-pick-btn{
   display:flex;align-items:center;gap:var(--gap-tight);width:100%;
-  min-height:var(--ctl-h-sm);padding:0 var(--space-2);
-  border:1px solid var(--line-mid);border-radius:var(--radius-sm);
-  background:var(--surface);color:var(--ink);font-size:var(--fs-sm);cursor:pointer;
+  min-height:var(--opf-h,var(--ctl-h-sm));padding:0 var(--space-2);
+  border:1px solid var(--line-mid);border-radius:var(--opf-radius,var(--radius-sm));
+  background:var(--surface);color:var(--ink);font-size:var(--opf-fs,var(--fs-sm));cursor:pointer;
 }
 .opf-pick-now{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;
   white-space:nowrap;text-align:left;font-weight:700}
 .opf-pick-now.is-empty{color:var(--muted);font-weight:400}
 .opf-pick-caret{color:var(--ink-3)}
-/* ---------- 手打ち（§9.220 ③） ----------
-   候補にない値も打てる欄。**候補の下に置く**——上に置くと「まず打つ欄」に
-   見えてしまい、候補があることに気づかれない。打った値が効いている間は
-   帯を立てて、いまどちらが効いているのかを**文字と面の両方**で示す。 */
-.opf-free{display:flex;align-items:center;gap:var(--gap-tight);min-width:0}
-.opf-free-in{
-  flex:1 1 auto;min-width:0;height:var(--ctl-h-xs);padding:0 var(--space-2);
-  border:1px dashed var(--line-mid);border-radius:var(--radius-sm);
-  background:var(--surface);color:var(--ink);
+/* ---------- 手打ちは「選ぶ器そのもの」（§9.226 ①、利用者の指示） ----------
+   「選択肢から選べるタイプの例外処理の候補にない値を入力するパターンは、
+    外観のデザインを損なった設計になっているので、スマートに選択肢を出す
+    ボックスをそのまま利用できるようにしてほしい」
+
+   以前は**選ぶ器の下に打ち込み欄をもう1つ**足していた（`.opf-free`）ので、
+   打つ場所と選ぶ場所が2つ並び、その欄だけ高さが2段になって並びが崩れて
+   いた。いまは形ごとに**打つ場所を1つ**にする:
+     プルダウン … 器そのものが打てる（`.opf-combo`。▾で候補の浮き窓）
+     一覧       … 浮き窓の絞り込み欄がそのまま手打ちになる
+     ボタン系   … 末尾の「その他」の席がその場で入力欄に変わる
+   どれも**素の欄と同じ高さ・同じ角丸**なので、混ざっても並びが崩れない。 */
+.opf-combo{
+  /* **`flex-direction`まで書くこと**——`.opf-widget`が`column`を宣言して
+     いるので、書かないと打つ欄と▾が縦に積まれる（同じ詳細度なので
+     `display`だけ上書きしても向きは残る）。 */
+  display:flex;flex-direction:row;align-items:center;gap:0;min-width:0;width:100%;
+  border:1px solid var(--line-mid);border-radius:var(--opf-radius,var(--radius-sm));
+  background:var(--surface);overflow:hidden;
 }
-.opf-free-in::placeholder{color:var(--muted)}
-.opf-free-clear{
-  flex:0 0 auto;height:var(--ctl-h-xs);padding:0 var(--space-2);
-  border:1px solid var(--line-soft);border-radius:var(--radius-sm);
-  background:var(--surface);color:var(--ink-3);font-size:var(--fs-micro);cursor:pointer;
-  visibility:hidden;
+.opf-combo:focus-within{border-color:var(--opf-hue,var(--teal))}
+.opf-combo-in{
+  flex:1 1 auto;min-width:0;height:var(--opf-h,var(--ctl-h-sm));padding:0 var(--space-2);
+  border:0;background:none;color:var(--ink);font-size:var(--opf-fs,var(--fs));
 }
-.opf-widget.is-free-on .opf-free-in{
-  border-style:solid;border-color:var(--teal);font-weight:700;
+.opf-combo-in:focus{outline:none}
+.opf-combo-in::placeholder{color:var(--muted)}
+.opf-combo-open{
+  flex:0 0 auto;width:var(--opf-h,var(--ctl-h-sm));height:var(--opf-h,var(--ctl-h-sm));
+  border:0;border-left:1px solid var(--line-soft);background:var(--surface-2);
+  color:var(--ink-3);font-size:var(--fs-sm);cursor:pointer;
 }
-.opf-widget.is-free-on .opf-free-clear{visibility:visible}
-/* プルダウン＋手打ちのときは`<select>`が生きているので、器は横並びにする。 */
-.opf-combo{flex-direction:row;align-items:center}
+.opf-combo-open:hover{background:var(--surface-3);color:var(--opf-hue-dark,var(--teal-dark))}
+/* --- ボタン系の「その他」: 席は1つ。押すとその場で入力欄に変わる --- */
+.opf-other{display:inline-flex;min-width:0}
+.opf-other-in{
+  display:none;min-width:6em;max-width:14em;
+  height:var(--opf-h,var(--ctl-h-sm));padding:0 var(--space-2);
+  border:1px solid var(--opf-hue,var(--teal));border-radius:var(--opf-radius,var(--radius-sm));
+  background:var(--surface);color:var(--ink);font-size:var(--opf-fs,var(--fs));font-weight:700;
+}
+.opf-widget.is-other-on .opf-other-btn{display:none}
+.opf-widget.is-other-on .opf-other-in{display:inline-block}
 /* 未入力・公差外の印を**ボタン側へ移す**（selectは見えないので）。 */
 select.validation-required~.opf-widget .opf-chip-btn,
 select.validation-required~.opf-widget .opf-pick-btn,
-select.validation-required~.opf-widget .opf-free-in,
+select.validation-required~.opf-widget.opf-combo,
+select.validation-required~.opf-widget .opf-other-in,
 select.validation-required~.opf-widget .opf-seg .opf-shape{border-color:var(--required)}
 select.validation-required~.opf-widget .opf-dot{border-color:var(--required)}
 select.validation-ng~.opf-widget .opf-chip-btn,
 select.validation-ng~.opf-widget .opf-pick-btn,
-select.validation-ng~.opf-widget .opf-free-in,
+select.validation-ng~.opf-widget.opf-combo,
+select.validation-ng~.opf-widget .opf-other-in,
 select.validation-ng~.opf-widget .opf-seg .opf-shape{border-color:var(--danger)}
 select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
 /* ---------- 説明つきで選ぶ浮き窓 ----------
@@ -2446,8 +2487,8 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
   gap:var(--gap-tight);width:100%}
 .opf-card-btn{
   display:flex;flex-direction:column;align-items:flex-start;gap:2px;
-  min-height:var(--ctl-h);padding:var(--space-1) var(--space-2);
-  border:1px solid var(--line);border-radius:var(--radius-sm);
+  min-height:calc(var(--opf-h,var(--ctl-h-sm)) * 1.5);padding:var(--space-1) var(--space-2);
+  border:1px solid var(--line);border-radius:var(--opf-radius,var(--radius-sm));
   background:var(--surface);color:var(--ink-2);
   font-size:var(--fs-sm);font-weight:600;line-height:1.25;text-align:left;cursor:pointer;
   white-space:normal;
@@ -2463,7 +2504,7 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
   border-radius:var(--radius-round);background:var(--surface-2);padding:2px;gap:2px}
 .opf-toggle-btn{
   display:inline-flex;align-items:center;justify-content:center;
-  min-height:calc(var(--ctl-h-sm) - 6px);padding:0 var(--space-3);
+  min-height:calc(var(--opf-h,var(--ctl-h-sm)) - 6px);padding:0 var(--space-3);
   border:0;border-radius:var(--radius-round);background:none;
   color:var(--ink-3);font-size:var(--fs-sm);font-weight:700;cursor:pointer;white-space:nowrap;
 }
@@ -2472,14 +2513,121 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
 .opf-quick .opf-shape{flex-wrap:wrap;gap:var(--gap-tight)}
 .opf-quick-btn{
   display:inline-flex;align-items:center;justify-content:center;
-  min-width:2.6em;min-height:var(--ctl-h-xs);padding:0 var(--space-2);
-  border:1px solid var(--line);border-radius:var(--radius-xs);
+  min-width:2.6em;min-height:var(--opf-h,var(--ctl-h-sm));padding:0 var(--space-2);
+  border:1px solid var(--line);border-radius:var(--opf-radius,var(--radius-sm));
   background:var(--surface);color:var(--ink-2);
   font-size:var(--fs-sm);font-weight:700;cursor:pointer;
 }
 .opf-quick-btn:hover{border-color:var(--teal);color:var(--teal-dark)}
 .opf-quick-btn.is-on{background:var(--teal);border-color:var(--teal);color:#fff}
 .opf-oneline{display:none}   /* 器は要らない（素の欄がそのまま1行） */
+.opf-plain{display:none}     /* 素のプルダウン（意匠だけが効く） */
+
+/* ---------- 足した形（§9.226 ①、利用者の指示「UIの種類をもっと増やして」）
+   ----------
+   ここでも規則は同じ——**足すのは「選ぶ状況が違うもの」だけ**。
+     段階     … 順番のある選択肢。**選んだところまで塗る**ので、いま何段目
+                なのかを数えずに読める（等級・良/可/否）
+     入切     … 1つのスイッチ。入＝先頭の値／切＝空欄。**対の名前が要らない**
+                ものはトグルではなくこちら（「内巻両面テープ」）
+     メーター … 打つ欄はそのまま。上下限のどこに居るかを帯で言う
+     定型文   … 1行入力＋よく使う語句。選択肢のまとまりから並べる
+   どれも面・角丸・高さは器の変数（`--opf-*`）を読むので、混ざっても
+   ボタンの背の高さと角の丸みが揃う。 */
+/* --- 段階: 1本の帯。**選んだところまで塗る** --- */
+.opf-stage .opf-shape{display:flex;gap:2px;width:100%}
+.opf-stage-btn{
+  flex:1 1 0;display:inline-flex;align-items:center;justify-content:center;gap:var(--gap-hair);
+  min-width:0;min-height:var(--opf-h,var(--ctl-h-sm));padding:0 var(--space-1);
+  border:1px solid var(--line);border-radius:var(--opf-radius,var(--radius-sm));
+  background:var(--surface);color:var(--ink-3);
+  font-size:var(--opf-fs,var(--fs));font-weight:700;line-height:1.2;cursor:pointer;
+  white-space:nowrap;
+}
+.opf-stage-no{
+  flex:0 0 auto;min-width:1.4em;color:var(--muted);font-style:normal;
+  font-size:var(--fs-micro);font-weight:800;
+}
+.opf-stage-btn:hover{border-color:var(--opf-hue,var(--teal))}
+.opf-stage-btn.is-fill{
+  background:color-mix(in srgb,var(--opf-hue,var(--teal)) 16%,var(--surface));
+  border-color:var(--opf-hue,var(--teal));color:var(--ink);
+}
+.opf-stage-btn.is-fill .opf-stage-no{color:var(--opf-hue-dark,var(--teal-dark))}
+.opf-stage-btn.is-on{
+  background:var(--opf-hue,var(--teal));border-color:var(--opf-hue,var(--teal));
+  color:#fff;font-weight:800;
+}
+.opf-stage-btn.is-on .opf-stage-no{color:#fff}
+.opf-stage-scale{color:var(--ink-3);font-size:var(--fs-micro)}
+.opf-stage-scale>b{color:var(--opf-hue-dark,var(--teal-dark));font-weight:800}
+/* --- 入切: 1つのスイッチ。**状態は文字でも出す**（色だけで伝えない・§3） --- */
+.opf-switch{display:flex;flex-direction:column;gap:var(--gap-hair)}
+.opf-switch-btn{
+  display:inline-flex;align-items:center;gap:var(--space-2);align-self:flex-start;
+  min-height:var(--opf-h,var(--ctl-h-sm));padding:0 var(--space-2) 0 2px;
+  border:1px solid var(--line);border-radius:var(--radius-round);
+  background:var(--surface);color:var(--ink-2);
+  font-size:var(--opf-fs,var(--fs));font-weight:700;cursor:pointer;
+}
+.opf-switch-track{
+  flex:0 0 auto;position:relative;width:2.6em;height:1.4em;border-radius:var(--radius-round);
+  background:var(--surface-3);transition:background .15s;
+}
+.opf-switch-knob{
+  position:absolute;top:2px;left:2px;width:calc(1.4em - 4px);height:calc(1.4em - 4px);
+  border-radius:var(--radius-round);background:var(--surface);
+  box-shadow:0 1px 2px rgba(15,32,39,.28);transition:left .15s;
+}
+.opf-switch-btn.is-on{border-color:var(--opf-hue,var(--teal));color:var(--ink)}
+.opf-switch-btn.is-on .opf-switch-track{background:var(--opf-hue,var(--teal))}
+.opf-switch-btn.is-on .opf-switch-knob{left:calc(100% - 1.4em + 2px)}
+/* --- メーター: 打つ欄はそのまま。上下限の中のどこかを帯で言う --- */
+.opf-meter{display:flex;flex-direction:column;gap:2px}
+.opf-meter-bar{
+  position:relative;height:6px;border-radius:var(--radius-round);
+  background:var(--surface-3);overflow:hidden;
+}
+.opf-meter-fill{
+  display:block;height:100%;width:0;border-radius:var(--radius-round);
+  background:var(--opf-hue,var(--teal));transition:width .12s;
+}
+.opf-meter.is-out .opf-meter-fill{background:var(--danger)}
+.opf-meter-scale{display:flex;justify-content:space-between;gap:var(--gap-tight);
+  color:var(--muted);font-size:var(--fs-micro)}
+.opf-meter-scale>i{font-style:normal}
+.opf-meter-note{color:var(--ink-3);font-weight:700}
+.opf-meter.is-out .opf-meter-note{color:var(--danger)}
+/* --- 定型文: 打つ欄はそのまま。よく使う語句を下に並べる --- */
+.opf-phrase .opf-shape{flex-wrap:wrap;gap:var(--gap-tight)}
+.opf-phrase-btn{
+  display:inline-flex;align-items:center;min-height:var(--opf-h,var(--ctl-h-sm));
+  padding:0 var(--space-2);
+  border:1px dashed var(--line-mid);border-radius:var(--opf-radius,var(--radius-sm));
+  background:var(--surface);color:var(--ink-2);
+  font-size:var(--opf-fs,var(--fs));font-weight:600;cursor:pointer;white-space:nowrap;
+}
+.opf-phrase-btn:hover{border-color:var(--opf-hue,var(--teal));color:var(--opf-hue-dark,var(--teal-dark))}
+.opf-phrase-btn.is-on{
+  border-style:solid;border-color:var(--opf-hue,var(--teal));
+  background:var(--opf-hue-pale,var(--pale));color:var(--ink);font-weight:800;
+}
+
+/* ---------- 並べ方（§9.226 ①、利用者の指示「同じUIでもいくつかパターンが
+   あるとよい」） ----------
+   **意匠の4つ目の軸ではない。** 色・形・大きさは「どう見えるか」、こちらは
+   「選択肢をどう並べるか」——器の幅（マス数）に対して何個ずつ置くかの話。
+   `自動`は形ごとの既定（上の各`.opf-shape`）で、ここで書き換えるのは
+   選んだときだけ。**効かない形では設定窓が欄ごと出さない**（§4）。 */
+.opf-widget.opf-l-row>.opf-shape{flex-wrap:nowrap}
+.opf-widget.opf-l-row>.opf-shape>*{flex:1 1 0;min-width:0}
+.opf-widget.opf-l-wrap>.opf-shape{display:flex;flex-wrap:wrap;gap:var(--gap-tight)}
+.opf-widget.opf-l-col>.opf-shape{display:flex;flex-direction:column;align-items:stretch;
+  gap:var(--gap-tight)}
+.opf-widget.opf-l-g2>.opf-shape,
+.opf-widget.opf-l-g3>.opf-shape{display:grid;gap:var(--gap-tight)}
+.opf-widget.opf-l-g2>.opf-shape{grid-template-columns:repeat(2,minmax(0,1fr))}
+.opf-widget.opf-l-g3>.opf-shape{grid-template-columns:repeat(3,minmax(0,1fr))}
 
 /* ---------- 意匠: 色・形・大きさ（§9.223 ③） ----------
    **印を持つのは器（`<label>`）1箇所**で、ここから下って当てる。部品ごとに
@@ -2511,7 +2659,16 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
 [class*="opf-c-"] .opf-pick-btn:focus-visible,
 [class*="opf-c-"] select:focus-visible,
 [class*="opf-c-"] input:focus-visible{outline-color:var(--opf-hue)}
-/* --- 形: 角丸(既定) / 角 / 丸 --- */
+[class*="opf-c-"] .opf-stage-btn.is-on,
+[class*="opf-c-"] .opf-switch-btn.is-on .opf-switch-track{background:var(--opf-hue);
+  border-color:var(--opf-hue)}
+[class*="opf-c-"] .opf-phrase-btn.is-on{border-color:var(--opf-hue);
+  background:var(--opf-hue-pale)}
+/* --- 形: 角丸(既定) / 角 / 丸。**器の変数を書き換える**（§9.226 ①）——
+       形ごとにセレクタを並べると、選ばせ方を1つ足すたびに書き足すことになり、
+       抜けた1つだけ角が違う状態が必ず残る。 --- */
+.opf-r-sharp{--opf-radius:0}
+.opf-r-pill{--opf-radius:var(--radius-round)}
 .opf-r-sharp .opf-seg .opf-shape,.opf-r-sharp .opf-toggle .opf-shape,
 .opf-r-sharp .opf-chip-btn,.opf-r-sharp .opf-card-btn,.opf-r-sharp .opf-quick-btn,
 .opf-r-sharp .opf-seg-btn,.opf-r-sharp .opf-toggle-btn,
@@ -2525,7 +2682,7 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
 .opf-z-sm{--opf-fs:var(--fs-sm);--opf-h:var(--ctl-h-xs)}
 .opf-z-lg{--opf-fs:var(--fs-lg);--opf-h:var(--ctl-h-lg)}
 .opf-z-sm .opf-widget button,.opf-z-lg .opf-widget button,
-.opf-z-sm .opf-widget .opf-free-in,.opf-z-lg .opf-widget .opf-free-in{
+.opf-z-sm .opf-widget input,.opf-z-lg .opf-widget input{
   font-size:var(--opf-fs);min-height:var(--opf-h)}
 .opf-z-sm>select,.opf-z-sm>input,.opf-z-lg>select,.opf-z-lg>input{
   font-size:var(--opf-fs);min-height:var(--opf-h)}

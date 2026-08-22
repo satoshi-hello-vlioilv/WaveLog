@@ -127,7 +127,12 @@
 /* 位置ラベルの置き場。以前は帯(.defect-strip)の中へ負のtopで置いていたため
    overflow:hidden に切られて数字が読めなかった。帯の外へ出して見切れを無くす。 */
 .defect-flags{position:relative;height:22px;min-width:0}
-.defect-strip{position:relative;height:84px;min-width:0;border:1px solid var(--line-strong);border-radius:var(--radius-sm);background:var(--surface-3);overflow:hidden}
+.defect-strip{position:relative;height:84px;min-width:0;border:1px solid var(--line-strong);border-radius:var(--radius-sm);background:var(--surface-3);overflow:hidden;
+  /* 図をつかんで位置を決められる（§9.226 ②）。**掴めることを形でも言う**
+     ——`title`だけだと、載せるまで分からない。 */
+  cursor:ew-resize;touch-action:none}
+.defect-strip.is-dragging{cursor:grabbing}
+.defect-strip.is-dragging .defect-mark{filter:brightness(1.15)}
 .defect-ruler{position:relative;height:18px;min-width:0}
 /* 条の色はJSが --defect-lane-bg で渡す(インラインで background を直接
    書かない。どのレイヤより強く、状態クラスで上書きできなくなるため)。 */
