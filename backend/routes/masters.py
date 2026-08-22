@@ -1151,7 +1151,9 @@ def operation_item_group():
   n=_op_read(lambda c:op.group_flags_save(c,request_user_id(x),x.get('place'),g,
                                           bool(x.get('fold')),x.get('showWhen'),
                                           # **送られてきたときだけ書く**（§9.226 ③）
-                                          x.get('groupSpan')))
+                                          x.get('groupSpan'),
+                                          # §9.227 ③ ダミー（空き）の群
+                                          x.get('dummy')))
   return jsonify(ok=True,saved=n,message='群の設定を保存しました。')
  except Exception as e:return jsonify(error=f'群の設定の保存に失敗しました: {e}'),500
 

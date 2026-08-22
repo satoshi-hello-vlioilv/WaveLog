@@ -295,15 +295,31 @@ def normalize_value_format(v):
 # 軸は3つだけ——色・形・大きさ。**16進を選ばせない**（§9.198の行の色と
 # 同じ理由。自由に選べると淡すぎて読めない色が現場ごとに増える）。
 LOOK_COLORS = ('既定', '主色', '青', '緑', '橙', '赤', '紫', '灰')
-LOOK_SHAPES = ('角丸', '角', '丸')
+# 形は**角丸のバリエーション**（§9.227 ①、利用者の指示「角丸をベース
+# デザインにしてほしい…『角』と『丸』は使わない方向でよいです。形という
+# ところの変更は角丸をベースにしたバリエーションを希望しています」）。
+# 素の`<input>`・`<select>`が8pxの角丸なので、ここだけ角やピルにすると
+# 同じカードの中で角の丸みが3通りになる。変えるのは丸みの深さだけ。
+LOOK_SHAPES = ('控えめ', '標準', '大きめ')
 LOOK_SIZES = ('小', '中', '大')
 # 画面のクラス名（`opf-c-*` / `opf-r-*` / `opf-z-*`）。**綴りはここが正**で、
 # 画面へ書き写さない（2箇所に持つと片方だけ直した状態が作れる）。
 LOOK_COLOR_SLUG = {'既定': '', '主色': 'teal', '青': 'blue', '緑': 'green',
                    '橙': 'amber', '赤': 'red', '紫': 'violet', '灰': 'slate'}
-LOOK_SHAPE_SLUG = {'角丸': '', '角': 'sharp', '丸': 'pill'}
+LOOK_SHAPE_SLUG = {'標準': '', '控えめ': 'tight', '大きめ': 'wide'}
+# **廃止した形の保存値は近い段へ寄せる**（§9.132の`UI_SIZE_ALIASES`と同じ
+# 作法）。無効値として既定へ落とすと、わざわざ選んでいた人ほど設定が黙って
+# 戻る——`角`はいちばん角に近い`控えめ`、`丸`はいちばん丸い`大きめ`。
+LOOK_SHAPE_ALIASES = {'角丸': '標準', '角': '控えめ', '丸': '大きめ'}
 LOOK_SIZE_SLUG = {'小': 'sm', '中': '', '大': 'lg'}
-LOOK_DEFAULT = {'color': '既定', 'shape': '角丸', 'size': '中'}
+LOOK_DEFAULT = {'color': '既定', 'shape': '標準', 'size': '中'}
+
+
+def normalize_shape(v):
+    """形の保存値を今の呼び名へ寄せる。**判定はここ1箇所**（§9.227 ①）。"""
+    s = str(v or '').strip()
+    s = LOOK_SHAPE_ALIASES.get(s, s)
+    return s if s in LOOK_SHAPES else LOOK_DEFAULT['shape']
 
 
 def normalize_look(v):
@@ -319,8 +335,9 @@ def normalize_look(v):
         val = val.strip()
         if k == '色' and val in LOOK_COLORS:
             out['color'] = val
-        elif k == '形' and val in LOOK_SHAPES:
-            out['shape'] = val
+        elif k == '形' and val:
+            # 廃止した`角`/`丸`もここで寄せる（読める形が2つに分かれない）。
+            out['shape'] = normalize_shape(val)
         elif k in ('大きさ', '大') and val in LOOK_SIZES:
             out['size'] = val
     return out
@@ -331,7 +348,7 @@ def look_text(look):
     # 残さない＝既定を変えたときに追随する。§9.198の「既定へ戻す＝行を消す」）。
     d = look if isinstance(look, dict) else normalize_look(look)
     c = d.get('color') if d.get('color') in LOOK_COLORS else LOOK_DEFAULT['color']
-    sh = d.get('shape') if d.get('shape') in LOOK_SHAPES else LOOK_DEFAULT['shape']
+    sh = normalize_shape(d.get('shape'))
     sz = d.get('size') if d.get('size') in LOOK_SIZES else LOOK_DEFAULT['size']
     if (c, sh, sz) == (LOOK_DEFAULT['color'], LOOK_DEFAULT['shape'], LOOK_DEFAULT['size']):
         return ''
@@ -1140,6 +1157,12 @@ _ITEM_ADDED_COLUMNS = (
     # 群の幅（マス）。**0/空＝横いっぱい**＝今までどおり。1つでも横いっぱい
     # でない群があるときだけ、割り付けが「列でも区切る」形に切り替わる。
     ('群幅', 'INTEGER'),
+    # --- §9.227 ③（利用者の指示）---
+    # ダミー（空き）の群。**測定画面では見出しも枠も出さず、幅ぶんの空白
+    # だけを置く**——「区切りの良い並びに整列させるためのダミーカード」。
+    # 群は独立した行を持たない（項目行の`[群]`から導出する）ので、印は
+    # その群の全部の行が持つ＝`[群折りたたみ]`・`[群幅]`と同じ扱い。
+    ('ダミー', 'INTEGER'),
 )
 
 
@@ -1294,7 +1317,11 @@ def _row_to_item(r):
             # --- §9.226 ③ ---
             # 群の幅（マス）。0＝横いっぱい。**群のものなので、群の中で
             # 食い違ったときは「1つでも指定があればそれ」**（畳むと同じ読み方）。
-            'groupSpan': normalize_group_span(r[30])}
+            'groupSpan': normalize_group_span(r[30]),
+            # --- §9.227 ③ ---
+            # ダミー（空き）の群かどうか。**群のものなので、群の中で
+            # 食い違ったときは「1つでも印があればダミー」**（畳むと同じ読み方）。
+            'dummy': bool(r[31])}
 
 
 _ITEM_SELECT = ('SELECT [項目ID],[設備名],[群],[項目名],[表示順],[型],[小数桁],[最小値],[最大値],'
@@ -1302,7 +1329,7 @@ _ITEM_SELECT = ('SELECT [項目ID],[設備名],[群],[項目名],[表示順],[�
                 '[組み込みキー],[置き場],[列幅],[群折りたたみ],[表示条件],[入力方法],'
                 '[初期値],[手打ち可],[ステップ量],'
                 '[単位位置],[文字寄せ],[表示書式],[表示桁数],[役割],[意匠],'
-                '[並べ方],[群幅] '
+                '[並べ方],[群幅],[ダミー] '
                 'FROM [操業データ項目マスタ] ORDER BY [表示順],[項目ID]')
 
 
@@ -1548,7 +1575,8 @@ def item_layout_save(c, uid, rows):
     return n
 
 
-def group_flags_save(c, uid, place, group, fold, show_when, group_span=None):
+def group_flags_save(c, uid, place, group, fold, show_when, group_span=None,
+                     dummy=None):
     """群のふるまい（畳む・開く条件・幅）だけを、その群の全部の行へ書く
     (§9.216 ④／§9.226 ③)。
 
@@ -1568,6 +1596,10 @@ def group_flags_save(c, uid, place, group, fold, show_when, group_span=None):
     if group_span is not None:
         sets += ',[群幅]=?'
         args.append(normalize_group_span(group_span))
+    # ダミーも**渡されたときだけ**（§9.212 ②）。
+    if dummy is not None:
+        sets += ',[ダミー]=?'
+        args.append(-1 if dummy else 0)
     cur.execute(f'UPDATE [{ITEM_TABLE}] SET {sets},'
                 '[更新者ID]=?,[更新日時]=Now() '
                 'WHERE COALESCE([群],\'\')=? AND COALESCE(NULLIF([置き場],\'\'),?)=?',
