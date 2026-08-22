@@ -862,7 +862,8 @@ const restore=[];
   await tab('look');
   await page.click('#opItemModal [data-op-look="color"][data-op-val="緑"]');
   await page.waitForTimeout(250);
-  await page.click('#opItemModal [data-op-look="shape"][data-op-val="丸"]');
+  /* 形は**角丸のバリエーション**（§9.227 ①、利用者の指示で`角`/`丸`は廃止）。 */
+  await page.click('#opItemModal [data-op-look="shape"][data-op-val="大きめ"]');
   await page.waitForTimeout(250);
   await page.click('#opItemModal [data-op-look="size"][data-op-val="大"]');
   await page.waitForTimeout(300);
@@ -871,13 +872,13 @@ const restore=[];
    const l=document.querySelector('#opPrevField .opf');
    return l?[...l.classList].filter(c=>/^opf-(c|r|z)-/.test(c)).sort().join('/'):'(無い)';
   });
-  rec('意匠は押した瞬間に見本へ当たる',lookNow==='opf-c-green/opf-r-pill/opf-z-lg',lookNow);
+  rec('意匠は押した瞬間に見本へ当たる',lookNow==='opf-c-green/opf-r-wide/opf-z-lg',lookNow);
   await page.click('#opdSave');
   await page.waitForTimeout(1600);
   const lookForm=await get('/api/operation-form?equipment='+encodeURIComponent(EQ));
   const lf=(lookForm.items||[]).find(x=>String(x.id)===String(mkrj.id));
   rec('意匠が保存され、測定画面の定義に出る',
-      !!lf&&lf.look&&lf.look.color==='緑'&&lf.look.shape==='丸'&&lf.look.size==='大',
+      !!lf&&lf.look&&lf.look.color==='緑'&&lf.look.shape==='大きめ'&&lf.look.size==='大',
       JSON.stringify(lf&&lf.look));
   /* **意匠を触っただけで他の設定が消えないこと**（§9.212 ②と同じ形の
      不具合。決めることを段に分けたので、③だけを触って保存する道がある）。 */
@@ -932,13 +933,24 @@ const restore=[];
    const card=document.querySelector('.op-prev-card');
    if(!card)return null;
    const cs=getComputedStyle(card).gridTemplateColumns.split(/\s+/).filter(Boolean);
+   const pane=document.querySelector('.op-modal-preview');
+   const head=document.querySelector('.op-prev-head');
    return {列:cs.length,マス幅:Math.round(parseFloat(cs[0])||0),
-           /* 器に入らないときは横へ流す（縮めない）。 */
-           流す:!!document.querySelector('.op-prev-scroll')};
+           流す:!!document.querySelector('.op-prev-scroll'),
+           /* 器からはみ出していないこと（§9.227 ②。以前は455px切れていた）。 */
+           はみ出し:pane?Math.round(card.getBoundingClientRect().width-pane.clientWidth):0,
+           見出し:head?head.textContent.replace(/\s+/g,''):''};
   });
-  /* 実測の1マスは1920幅で94px。**60px未満なら縮んでいる**（以前は56px）。 */
+  /* 実測の1マスは1920幅で94px。**60px未満なら縮んでいる**（以前は56px）。
+     列は「器に入るところまで」なので12とは限らない（§9.227 ②）——ただし
+     **1マスの大きさは実物のまま**で、**見切れないこと**、そして
+     **何マスぶんを出しているかを文字で言うこと**。 */
   rec('見本は実物と同じ大きさの1マスで組む（縮めない）',
-      !!scale&&scale.列===12&&scale.マス幅>=60&&scale.流す===true,JSON.stringify(scale));
+      !!scale&&scale.マス幅>=60&&scale.列>=1&&scale.列<=12&&scale.流す===true,
+      JSON.stringify(scale));
+  rec('見本は器からはみ出さず、何マスぶんかを文字で言う',
+      !!scale&&scale.はみ出し<=0&&/マス/.test(scale.見出し),
+      JSON.stringify({はみ出し:scale&&scale.はみ出し,見出し:(scale&&scale.見出し||'').slice(0,60)}));
 
   /* ---- 並べ方は選ばせ方とは別の軸。**効く形でだけ選ばせる**（§4） ---- */
   await page.evaluate(()=>{

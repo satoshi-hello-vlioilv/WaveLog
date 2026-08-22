@@ -44,6 +44,8 @@ G['操業データ'] = ['test_opdata', 'test_opui', 'test_msteps', 'test_maint',
                    'test_opchoice']
 # 異常位置判定と条の設計の連携(§9.226 ④)。どちらを触っても両方を回す。
 G['異常位置'] = ['test_defect', 'test_defectlink', 'test_splitlive', 'test_scsplit']
+# 操業データの意匠・設定窓・空きの群（§9.227）
+G['操業意匠'] = ['test_oppad', 'test_opui', 'test_opdata', 'test_msteps']
 G['列'] = ['test_collayout', 'test_colformat', 'test_colrule', 'test_colsort', 'test_lcpanel',
            'test_colscache', 'test_colsripple', 'test_colsave', 'test_displayrule', 'test_colmenu',
            'test_colpreset', 'test_formula', 'test_reccols', 'test_rpblocks', 'test_rplayout',
@@ -115,7 +117,7 @@ RULES = [
     ('static/js/schedule-view.js', g('スケジュール', 'モーダル', 'test_listmodal')),
     ('static/js/schedule-print.js', g('モーダル', 'test_scprint')),
     ('static/js/lot-split.js', g('異常位置', 'test_orphan', 'test_sub')),
-    ('static/js/master-maint.js', g('マスタ', 'モーダル', 'test_headbar', 'test_datasource',
+    ('static/js/master-maint.js', g('マスタ', 'モーダル', '操業意匠', 'test_headbar', 'test_datasource',
                                      'test_qjoinui', 'test_dscap', 'test_blockbuild')),
     ('static/js/calendar-view.js', g('test_calscale', 'test_histdel', 'test_headbar')),
     # 帳票の塊の組み換え(§9.169)は列レイアウトマスタに載るので列の網も回す。
@@ -143,13 +145,13 @@ RULES = [
     # だから個別に割らず、寸法・溢れを見る網をまとめて回す。
     # モーダルの弾み・×の案内(§9.221 ①)はここが持つ。
     ('static/css/20-shell.css', g('見た目', '一覧', 'モーダル', 'test_gridhead', 'test_lcpanel')),
-    ('static/css/30-measure.css', g('見た目', '一覧', '測定', 'test_gridhead')),
+    ('static/css/30-measure.css', g('見た目', '一覧', '測定', '操業意匠', 'test_gridhead')),
     ('static/css/95-boot.css', g('見た目', '起動')),
     ('static/css/70-schedule.css', g('見た目', 'test_sccols', 'test_split_layout',
                                       'test_scbalance', 'test_scprint')),
     ('static/css/35-split.css', g('見た目', '異常位置', 'test_split_layout')),
     ('static/css/40-records.css', g('見た目', 'test_recperm', 'test_reccols', 'test_recdel')),
-    ('static/css/50-master.css', g('見た目', 'マスタ', 'test_dscap', 'test_qjoinui',
+    ('static/css/50-master.css', g('見た目', 'マスタ', '操業意匠', 'test_dscap', 'test_qjoinui',
                                     'test_blockbuild')),
     ('static/css/60-report.css', g('見た目', 'test_screport', 'test_rpblocks', 'test_rplayout')),
     ('backend/repositories/report_block_repo.py', g('test_rpmaster', 'test_rpblocks',
@@ -185,9 +187,9 @@ RULES = [
     ('backend/atomic_io.py', g('test_atomicio', 'test_dbmirror', 'test_sclock',
                                'test_scsync', 'test_datasource')),
     ('backend/repositories/master_repo.py', g('マスタ', '列', 'test_workable')),
-    ('backend/repositories/operation_repo.py', g('操業データ', 'test_msteps', 'test_mcore')),
+    ('backend/repositories/operation_repo.py', g('操業データ', '操業意匠', 'test_msteps', 'test_mcore')),
     # 操業データの入力欄（§9.215）。測定画面①の中身なので測定一式へ。
-    ('static/js/measure-opdata.js', g('操業データ', '測定', '見た目', 'モーダル')),
+    ('static/js/measure-opdata.js', g('操業データ', '測定', '見た目', 'モーダル', '操業意匠')),
     ('backend/repositories/schedule_repo.py', g('スケジュール', 'test_stopeq', 'test_workdate')),
     ('backend/schedule_calc.py', g('スケジュール', 'test_eqstd', 'test_workdate')),
     ('backend/sort_order.py', g('列', 'test_tablequery')),

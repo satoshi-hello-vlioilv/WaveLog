@@ -827,6 +827,18 @@
 }
 .op-band-span>button:hover{background:var(--surface)}
 .op-band-span>button.is-on{background:var(--nav);color:#fff}
+/* ---------- 空き（ダミー）の群（§9.227 ③、利用者の指示） ----------
+   測定画面では**見出しも枠も出さず、幅ぶんの空白**になる。盤では
+   「そこが空きである」ことが読めないと困るので、**斜線の地**で出す
+   （§9.222 ③の空きマスと同じ見せ方にそろえる）。 */
+.op-band.is-dummy{
+  border-style:dashed;color:var(--ink-3);
+  background:repeating-linear-gradient(135deg,
+    var(--surface-2) 0 6px,var(--surface-3) 6px 12px);
+}
+.op-band.is-dummy .op-band-name{color:var(--ink-3)}
+.op-tile.is-pad{opacity:.6;border-style:dashed}
+.op-chip-pad{background:var(--surface-3);color:var(--ink-3)}
 .op-tile{
   display:flex;flex-direction:column;gap:2px;min-width:0;cursor:grab;
   padding:var(--space-1) var(--space-2);
@@ -884,7 +896,11 @@
 /* ---------- 1項目の設定はモーダル（§9.218 ①） ----------
    左に実物、右に決めること。**触った結果がその場で見えないと、幅も
    選ばせ方も当たっているか分からない**（列の設定パネルと同じ作法・§9.105）。 */
-.op-dialog{width:min(1180px,96vw);max-height:92vh;display:flex;flex-direction:column}
+/* `.op-dialog`の寸法は**この下の§9.218 ①の節が1箇所で持つ**（§9.227 ②）。
+   以前はここにも`width:min(1180px,96vw);max-height:92vh`と書いてあったが、
+   後ろで同じセレクタが宣言し直されていて**一度も効いていなかった**
+   ——直したつもりで何も変わらない、をここで作らない（§CLAUDE「同じ
+   セレクタが2箇所にある」）。 */
 .op-modal-body{
   flex:1 1 auto;min-height:0;overflow:auto;
   display:grid;grid-template-columns:minmax(280px,var(--w-2xl)) minmax(0,1fr);
@@ -897,7 +913,13 @@
    `--op-cell`で渡す（`measure-opdata.js`が測定画面で実測した値）。
    器に入らないときは**横へ流す**——縮めると文字だけが実物と違う比率に
    なり、「入るかどうか」が確かめられなくなる（それが直したかった不具合）。 */
-.op-prev-scroll{overflow-x:auto;overflow-y:hidden;padding-bottom:2px}
+/* **高さを先に取っておく**（§9.227 ②）。選ばせ方によって見本のカードは
+   117〜136pxと動く（実測）ので、そのままだと下の「記録される値」以下が
+   上下し、左右の釣り合いも変わる。いちばん高い形に合わせて器が持つ。
+   中身は**上に寄せる**（真ん中に置くと、低い形のときに宙に浮いて見える）。 */
+.op-prev-scroll{overflow-x:auto;overflow-y:hidden;padding-bottom:2px;
+  min-height:var(--op-prev-h,9.8em);align-content:start}
+.op-prev-rest{margin:0;color:var(--ink-3);font-size:var(--fs-badge)}
 .op-prev-card{
   display:grid;grid-template-columns:repeat(var(--op-cols,12),var(--op-cell,94px));
   gap:var(--gap-inline);padding:var(--pad-row);width:max-content;
@@ -959,6 +981,10 @@
 .op-form-row{display:grid;grid-template-columns:var(--w-sm) minmax(0,1fr);gap:var(--space-2);align-items:start}
 .op-form-label{font-size:var(--fs-sm);font-weight:700;color:var(--ink-2);padding-top:4px}
 .op-form-ctl{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-tight);min-width:0}
+/* **選ばせ方で出入りする行は場所を空けておく**（§9.227 ②）。中身が
+   「ボタン＋2行の説明」と「説明1行」で入れ替わるので、高いほうに合わせて
+   器が持つ。emで置くので表示サイズにも追随する（§9.199の「しきい値はemで」）。 */
+.op-form-row.is-fixed-layout>.op-form-ctl{min-height:calc(var(--ctl-h-xs) + 3.4em);align-content:start}
 /* **伸ばさない**（§9.221 ④）。`flex:1 1`だと器（実測620px）いっぱいまで
    広がり、単位のような2〜3文字の欄にも同じ幅が付く。基は`--w-md`のまま、
    伸びる側だけを止める。 */
@@ -1076,10 +1102,14 @@
   display:grid;grid-template-columns:minmax(420px,1.05fr) minmax(380px,1fr);
   gap:var(--space-3);padding:var(--space-3);
 }
-.op-modal-preview{overflow:auto}
+/* **スクロールバーの場所を先に空けておく**（§9.227 ②）。`overflow:auto`は
+   中身が器を越えた瞬間にバーを出すので、そのぶん**器の内側が15px狭くなる**
+   ——選ばせ方を変えて見本の高さが1行ぶん変わっただけで、右のタイルの
+   折り返し位置が動く。`stable`なら出ても出なくても幅が同じ。 */
+.op-modal-preview{overflow:auto;scrollbar-gutter:stable}
 .op-modal-right{display:flex;flex-direction:column;min-width:0;min-height:0;gap:var(--gap-inline)}
-.op-modal-form{flex:1 1 auto;min-height:0;overflow:auto;display:flex;flex-direction:column;
-  gap:var(--gap-inline);min-width:0}
+.op-modal-form{flex:1 1 auto;min-height:0;overflow:auto;scrollbar-gutter:stable;
+  display:flex;flex-direction:column;gap:var(--gap-inline);min-width:0}
 /* --- タブ: 4段。**番号と要約を両方出す**（あと何段かを数えさせない） --- */
 .op-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:2px;flex:none;
   padding:2px;background:var(--surface-2);border-radius:var(--radius-sm)}
@@ -1124,8 +1154,17 @@
    タイルの中の小さな絵は**実データ入りの見本**。名前だけで選ぶと、押して
    みるまで形が分からない（§2「推測させない」）。
    ================================================================ */
-.op-widget-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(11em,1fr));
+/* **列数を固定する**（§9.227 ②、利用者の指摘「選ばせ方を選択すると表示
+   位置が変化する」）。`auto-fill`は器の幅で列数が変わるので、器が15px
+   狭くなっただけでタイルが1列減り、**18枚の並びが丸ごと組み替わる**。
+   数は決め打ちにして、狭い窓のときだけ段を落とす。 */
+.op-widget-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
   gap:var(--gap-tight);flex:1 1 100%;min-width:0}
+@media (max-width:1400px){.op-widget-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:1100px){.op-widget-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* **タイルの背丈もそろえる**——説明の行数が2行と3行で混ざると、
+   同じ段のタイルだけが伸びて下の段が動く。 */
+.op-widget-tile{min-height:calc(var(--ctl-h-sm) + 5.2em)}
 .op-widget-tile{gap:3px}
 .op-widget-icon{font-size:var(--fs);line-height:1;color:var(--ink-3)}
 .op-widget-name{font-size:var(--fs-sm);font-weight:700}
@@ -1151,7 +1190,9 @@
 .opd-seg .opd-on{background:var(--surface);color:var(--teal-dark);box-shadow:0 1px 1px rgba(0,0,0,.12)}
 .opd-tabs>i{background:none;border-bottom:2px solid transparent}
 .opd-tabs .opd-on{background:none;color:var(--teal-dark);border-bottom-color:var(--teal)}
-.opd-chips>i{border-radius:var(--radius-pill);border:1px solid var(--line)}
+/* **絵も本物と同じ角丸にする**（§9.227 ①）——ここがピルのままだと、
+   タイルの絵で選んだ形と、左の見本・測定画面の形が食い違う。 */
+.opd-chips>i{border-radius:var(--radius-xs);border:1px solid var(--line)}
 .opd-chips .opd-on{border-color:var(--teal)}
 .opd-cards{gap:3px}
 .opd-cards>i{display:flex;flex-direction:column;gap:1px;padding:2px 3px;border:1px solid var(--line);
@@ -1159,9 +1200,9 @@
 .opd-cards>i>u{text-decoration:none;color:var(--muted);font-weight:400}
 .opd-cards .opd-on{border-color:var(--teal);background:var(--pale);color:var(--teal-dark)}
 .opd-cards .opd-on>u{color:var(--teal-dark)}
-.opd-toggle{border:1px solid var(--line);border-radius:var(--radius-pill);padding:1px;
+.opd-toggle{border:1px solid var(--line);border-radius:var(--radius-xs);padding:1px;
   background:var(--surface-2);gap:1px}
-.opd-toggle>i{border-radius:var(--radius-pill);background:none}
+.opd-toggle>i{border-radius:var(--radius-xs);background:none}
 .opd-toggle .opd-on{background:var(--teal);color:#fff}
 .opd-step>b,.opd-pad>b{display:inline-flex;align-items:center;justify-content:center;
   min-width:1.2em;padding:1px 2px;border:1px solid var(--line);border-radius:var(--radius-xs);

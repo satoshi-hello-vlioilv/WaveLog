@@ -796,7 +796,12 @@
     印をクラスへ写すだけ。 */
  const LOOK_COLOR={'既定':'','主色':'teal','青':'blue','緑':'green','橙':'amber',
                    '赤':'red','紫':'violet','灰':'slate'};
- const LOOK_SHAPE={'角丸':'','角':'sharp','丸':'pill'};
+ /* 形は**角丸のバリエーション**（§9.227 ①、利用者の指示）。廃止した
+    `角`/`丸`はここでも寄せる——保存済みのレコードを開いたときに
+    「知らない値＝既定」へ黙って落とさない（§9.132の`UI_SIZE_ALIASES`と
+    同じ作法）。綴りはサーバー（`LOOK_SHAPE_SLUG`）が正。 */
+ const LOOK_SHAPE={'標準':'','控えめ':'tight','大きめ':'wide'};
+ const LOOK_SHAPE_ALIAS={'角丸':'標準','角':'控えめ','丸':'大きめ'};
  const LOOK_SIZE={'小':'sm','中':'','大':'lg'};
  /* **印を持つのは器（`<label>`）1箇所**。CSSはそこから下って当てる——
     部品ごとに付けると、形を足すたびに付け忘れが出る。 */
@@ -804,7 +809,8 @@
   if(!host)return;
   const lk=(def&&def.look)||{};
   [...host.classList].forEach(c=>{if(/^opf-(c|r|z)-/.test(c))host.classList.remove(c)});
-  const c=LOOK_COLOR[lk.color]||'',r=LOOK_SHAPE[lk.shape]||'',z=LOOK_SIZE[lk.size]||'';
+  const shape=LOOK_SHAPE_ALIAS[lk.shape]||lk.shape;
+  const c=LOOK_COLOR[lk.color]||'',r=LOOK_SHAPE[shape]||'',z=LOOK_SIZE[lk.size]||'';
   if(c)host.classList.add('opf-c-'+c);
   if(r)host.classList.add('opf-r-'+r);
   if(z)host.classList.add('opf-z-'+z);
@@ -1115,9 +1121,12 @@
       **1つでも「畳む」と言っていれば畳む**——群の中で食い違ったときに
       「どちらが正か」を決められる形にしておく（マスタ管理の画面は群単位で
       書き換えるので、ふつうは食い違わない）。 */
-   if(!g){g={name,items:[],fold:false,span:0,showWhen:new Set()};out.push(g)}
+   if(!g){g={name,items:[],fold:false,span:0,dummy:false,showWhen:new Set()};out.push(g)}
    g.items.push(d);
    if(d.fold)g.fold=true;
+   /* ダミー（空き）の群（§9.227 ③）。**1つでも印があればダミー**
+      ——畳む・群幅と同じ読み方にそろえる。 */
+   if(d.dummy)g.dummy=true;
    /* 群の幅（§9.226 ③）。**1つでも指定があればそれ**——畳むと同じ読み方に
       そろえる（群の中で食い違ったときにどちらが正かを決めておく）。 */
    if(!g.span&&Number(d.groupSpan)>0)g.span=Math.min(gridCols,Number(d.groupSpan));
@@ -1148,7 +1157,16 @@
   (groups||[]).forEach(g=>{
    const gs=Math.max(1,Math.min(n,Number(g.span)>0?Number(g.span):n));
    if(col>1&&col+gs-1>n)newBand();
-   heads.push({name:g.name,col,row,span:gs});
+   /* ダミー（空き）の群は**見出しの行を取らない**（§9.227 ③）。
+      見出しの位置に空白そのものを置くので、`heads`へは今までどおり
+      1件返すが、下に中身の行を作らない——1行ぶん余計に空くのを防ぐ。 */
+   heads.push({name:g.name,col,row,span:gs,dummy:!!g.dummy});
+   if(g.dummy){
+    bottom=Math.max(bottom,row+1);
+    col+=gs;
+    if(col>n)newBand();
+    return;
+   }
    let r=row+1,c=col;
    (g.items||[]).forEach(it=>{
     const w=Math.max(1,Math.min(gs,Number(it.span)||1));
@@ -1241,13 +1259,33 @@
    const gs=groupsFor(place);
    /* 群を「列でも区切る」（§9.226 ③）。**幅を決めた群があるときだけ**
       マスを明示する（`banded`）——無いときは今までどおり`order`で流す。 */
-   const pack=packLayout(gs.map(g=>({name:g.name,span:g.span,
-     items:g.items.map(d=>({key:d.name,span:Number(d.span)||4}))})),gridCols);
+   const pack=packLayout(gs.map(g=>({name:g.name,span:g.span,dummy:g.dummy,
+     items:g.dummy?[]:g.items.map(d=>({key:d.name,span:Number(d.span)||4}))})),gridCols);
    const headAt=new Map(pack.heads.map(h=>[h.name,h]));
    const cellAt=new Map(pack.items.map(x=>[x.key,x]));
    gs.forEach(g=>{
     const fold=isFolded(g);
     const spot=pack.banded?headAt.get(g.name):null;
+    /* ---------- ダミー（空き）の群（§9.227 ③、利用者の指示） ----------
+       「マスタでまとまりをダミーで作って何も枠もない空間をつくれるように
+        してください。(区切りの良い並びに整列させるためのダミーカード)」
+
+       **見出しも枠も出さず、幅ぶんのマスだけを押さえる。** 群は独立した
+       行を持たない（項目行の`[群]`から導出する）ので、印を持つ行は要るが、
+       その行の入力欄は**1つも描かない**——描くと空白ではなくなる。
+       記録にも入らない（`collect()`は画面に出ている欄しか見ない）。 */
+    if(g.dummy){
+     const pad=document.createElement('div');
+     pad.className='prep-pad';
+     pad.dataset.opgen='1';pad.dataset.opgroup=g.name;pad.dataset.opplace=place;
+     pad.dataset.oppad='1';
+     pad.setAttribute('aria-hidden','true');
+     pad.style.order=String(seq++);
+     if(spot){pad.style.gridColumn=spot.col+'/span '+spot.span;pad.style.gridRow=String(spot.row)}
+     else pad.style.gridColumn=g.span?('span '+g.span):'1/-1';
+     box.appendChild(pad);
+     return;
+    }
     const head=document.createElement(g.fold?'button':'b');
     head.className='prep-head'+(g.fold?' prep-fold':'');
     head.dataset.opgen='1';head.dataset.opgroup=g.name;head.dataset.opplace=place;
@@ -1457,7 +1495,11 @@
  /* 記録した件数（③確認の「記録した値」に出す）。自由項目だけを数える
     ——組み込みの欄はそれぞれ元からの置き場で数えられている（§8）。 */
  function filled(){
-  const free=defs.filter(d=>!d.builtin);
+  /* **空き（ダミー）の群の行は数えない**（§9.227 ③）。あの行は場所を
+     取るためだけに在り、入力欄を一度も描かない——数に入れると
+     「記録した値 3/9」の分母だけが増え、**どう頑張っても埋まらない1件**が
+     残る（画面には出ていないので探しようがない）。 */
+  const free=defs.filter(d=>!d.builtin&&!d.dummy);
   const v=values();
   return {filled:free.filter(d=>v[d.name]!=null&&v[d.name]!=='').length,total:free.length};
  }
@@ -1472,7 +1514,7 @@
   if(!defs.length)return null;
   const out=[];
   defs.forEach(d=>{
-   if(!d.required)return;
+   if(!d.required||d.dummy)return;      /* 空きの群の行は数えない（§9.227 ③） */
    /* 畳んでいる群の中の欄は数えない——押しても行けない場所を「未入力」と
       言われても直しようがない。自動で開く群（条の入力）は開いていれば数える。 */
    const host=hostOf(d);

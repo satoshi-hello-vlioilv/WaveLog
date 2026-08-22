@@ -3870,7 +3870,7 @@
                 /* §9.223 ①③。**サーバーが答える**（役割の一覧・構成の状態・
                    意匠の軸）。ここは届くまでの受け皿で、規則を画面に持たない。 */
                 roles:[],roleReport:null,
-                lookColors:['既定'],lookShapes:['角丸'],lookSizes:['中'],
+                lookColors:['既定'],lookShapes:['標準'],lookSizes:['中'],
                 tab:'place',
                 gridCols:12,choiceNames:[],choices:[],notes:{},usage:{},choiceHints:{},
                 /* 同じ群がばらけて保存されていた置き場（§9.219 ③）。
@@ -4075,8 +4075,10 @@
    const when=(list.find(x=>(x.showWhen||[]).length)||{}).showWhen||[];
    /* 群の幅（§9.226 ③）。**1つでも指定があればそれ**——畳むと同じ読み方。 */
    const gspan=Number((list.find(x=>Number(x.groupSpan)>0)||{}).groupSpan)||0;
+   /* ダミー（空き）の群（§9.227 ③）。**1つでも印があればダミー**。 */
+   const dummy=list.some(x=>!!x.dummy);
    rows.push({type:'group',name:g,place,fold:list.some(x=>!!x.fold),showWhen:when,
-              span:gspan,items:list});
+              span:gspan,dummy,items:list});
    list.forEach(x=>rows.push({type:'item',x}));
   });
   return rows;
@@ -4102,6 +4104,10 @@
  function opTileHtml(x,spot){
   const span=opSpanOf(x);
   const off=x.enabled===false;
+  /* ダミー（空き）の群の中身（§9.227 ③）。**隠さずに、出ないと書く**
+     ——盤から消すと「消えた」と読まれるし、ふつうの群へ戻したときに
+     何が入っていたのか分からなくなる（§4）。 */
+  const pad=!!x.dummy;
   const w=opWidgetOf(x);
   const tip=[x.name,x.builtin?'画面がもともと持っている入力欄':x.type,
              opSpanLabel(span),x.required?'必須':'',off?'出さない':'',
@@ -4111,7 +4117,7 @@
              x.initial?`初期値 ${x.initial}`:'',
              x.freeText?'手打ち可':''].filter(Boolean).join('｜');
   return `<div class="op-tile${String(opState.picked)===String(x.id)?' is-picked':''}`
-   +`${off?' is-off':''}" draggable="true" data-op-id="${esc(x.id)}"`
+   +`${off?' is-off':''}${pad?' is-pad':''}" draggable="true" data-op-id="${esc(x.id)}"`
    +` style="${spot?`grid-column:${spot.col}/span ${spot.span};grid-row:${spot.row}`
                  :`grid-column:span ${span}`}" title="${esc(tip)}" tabindex="0">`
    +`<span class="op-tile-name">${esc(x.name)}</span>`
@@ -4119,6 +4125,7 @@
    +(x.builtin?'<b class="op-chip op-chip-builtin">画面の欄</b>':'')
    +(x.required?'<b class="op-chip op-chip-req">必須</b>':'')
    +(off?'<b class="op-chip op-chip-off">出さない</b>':'')
+   +(pad?'<b class="op-chip op-chip-pad">空きの中（描きません）</b>':'')
    +(w!=='プルダウン'?`<b class="op-chip op-chip-widget">${esc((OP_WIDGET_NOTE[w]||{}).icon||'')} ${esc(opWidgetLabel(x,w))}</b>`:'')
    +(x.initial?`<b class="op-chip op-chip-initial">初期 ${esc(x.initial)}</b>`:'')
    +(x.freeText?'<b class="op-chip op-chip-free">手打ち可</b>':'')
@@ -4133,10 +4140,42 @@
   const hit=OP_GROUP_SPANS.find(x=>x.v===Number(v||0));
   return hit?hit.label:`${v}/${opState.gridCols}マス`;
  }
+ /* 群の幅のボタン（ダミーでも使うので切り出す）。 */
+ function opBandSpanHtml(r,cur){
+  return `<span class="op-band-span" role="group" aria-label="群の幅">`
+   +OP_GROUP_SPANS.map(o=>`<button type="button" data-op-gspan="${o.v}"`
+     +` data-op-band2="${esc(r.name)}" data-op-place="${esc(r.place)}"`
+     +` class="${cur===o.v?'is-on':''}" title="この群の幅を${esc(o.label)}にします`
+     +`${o.v?'（横いっぱいでない群は横に並びます）':'（今までどおり1段を丸ごと使います）'}">`
+     +`${esc(o.label)}</button>`).join('')
+   +`</span>`;
+ }
  function opBandHtml(r,count,spot){
   const cond=(r.showWhen||[]).length?`／開く条件: ${esc((r.showWhen||[]).join('、'))}`:'';
   const place=spot?`grid-column:${spot.col}/span ${spot.span};grid-row:${spot.row}`:'grid-column:1/-1';
   const cur=Number(r.span)||0;
+  /* ---------- ダミー（空き）の群（§9.227 ③、利用者の指示） ----------
+     「マスタでまとまりをダミーで作って何も枠もない空間をつくれるように
+      してください。(区切りの良い並びに整列させるためのダミーカード)」
+     盤では**斜線の空き枠**として出す（測定画面では何も描かないので、
+     盤でも同じに描くと「消えた」と読まれる——`§9.222 ③`の空きマスと
+     同じ見せ方にそろえてある）。**要らない道具は出さない**（§4）ので、
+     畳む・開く条件は持たない（中身が無いので効かない）。 */
+  if(r.dummy){
+   return `<div class="op-band is-dummy" data-op-band="${esc(r.name)}"`
+    +` data-op-place="${esc(r.place)}" style="${place}"`
+    +` title="測定画面では見出しも枠も出さず、この幅ぶんの空白になります">`
+    +`<b class="op-band-name">${esc(r.name)}</b>`
+    +`<small class="op-band-note">ダミー（空き）`
+    +`${cur?`／幅 ${esc(opGroupSpanLabel(cur))}`:'／幅 全幅'}`
+    +`／測定画面では<b>何も描きません</b></small>`
+    +`<span class="op-band-tools">`
+    +opBandSpanHtml(r,cur)
+    +`<button type="button" class="ghost" data-op-rename="${esc(r.name)}" data-op-place="${esc(r.place)}">名前</button>`
+    +`<button type="button" class="ghost" data-op-undummy="${esc(r.name)}" data-op-place="${esc(r.place)}"`
+    +` title="ふつうの群へ戻します（中の項目がまた出るようになります）">ふつうの群へ</button>`
+    +`</span></div>`;
+  }
   return `<div class="op-band" data-op-band="${esc(r.name)}" data-op-place="${esc(r.place)}"`
    +` style="${place}" title="この帯より下の項目が「${esc(r.name)}」になります">`
    +`<b class="op-band-name">${esc(r.name)}</b>`
@@ -4145,13 +4184,7 @@
    +`<span class="op-band-tools">`
    /* **列でも区切れる**（§9.226 ③、利用者の指示）。全幅でない群は横に
       並ぶので、「誰が測るか」と「使う機材」を左右に置ける。 */
-   +`<span class="op-band-span" role="group" aria-label="群の幅">`
-   +OP_GROUP_SPANS.map(o=>`<button type="button" data-op-gspan="${o.v}"`
-     +` data-op-band2="${esc(r.name)}" data-op-place="${esc(r.place)}"`
-     +` class="${cur===o.v?'is-on':''}" title="この群の幅を${esc(o.label)}にします`
-     +`${o.v?'（横いっぱいでない群は横に並びます）':'（今までどおり1段を丸ごと使います）'}">`
-     +`${esc(o.label)}</button>`).join('')
-   +`</span>`
+   +opBandSpanHtml(r,cur)
    +`<button type="button" class="ghost" data-op-rename="${esc(r.name)}" data-op-place="${esc(r.place)}">名前</button>`
    +`<button type="button" class="ghost" data-op-fold="${esc(r.name)}" data-op-place="${esc(r.place)}"`
    +` aria-pressed="${r.fold?'true':'false'}">${r.fold?'畳む':'開いたまま'}</button>`
@@ -4259,6 +4292,10 @@
    +`置き場をまたげば「準備」と「入力内容」も入れ替わります。押すと<b>設定の窓</b>が開きます。</span>`
    +`<button type="button" id="opAddItem" class="ghost">項目を追加</button>`
    +`<button type="button" id="opAddGroup" class="ghost">群を追加</button>`
+   /* **空き（ダミー）の群**（§9.227 ③、利用者の指示）。並びを区切りの
+      良いところで折り返すための、何も出さない場所。 */
+   +`<button type="button" id="opAddPad" class="ghost"`
+   +` title="測定画面で見出しも枠も出さない「空き」を作ります（区切りの良い並びに整列させるため）">空きを追加</button>`
    +`<span class="op-bar-state" id="opLayoutState"></span></div>`;
   /* **まとめ直したことを画面に書く**（§9.219 ③）。保存されている並びでは
      同じ群がばらけていたが、盤ではまとめて描いている——黙って直すと、
@@ -4336,6 +4373,8 @@
   if(add)add.onclick=()=>opCreateItem();
   const addG=$('#opAddGroup');
   if(addG)addG.onclick=()=>opCreateGroup();
+  const addP=$('#opAddPad');
+  if(addP)addP.onclick=()=>opCreatePad();
   document.querySelectorAll('#masterMaintList .op-tile').forEach(t=>{
    /* **押したら設定の窓が開く**（§9.218 ①、利用者の指摘「メニューが右側で
       固定され、設定しにくい」）。以前は右の細い柱に押し込んでいたため、
@@ -4386,6 +4425,17 @@
   /* 群の幅（§9.226 ③）。**群の全部の行へ同じ値**を書く（畳むと同じ作法）
      ——1行だけ直すと、`form_for_equipment`が「1つでもあればそれ」で読むので
      消したはずの幅が残る。 */
+  document.querySelectorAll('#masterMaintList [data-op-undummy]').forEach(b=>{
+   b.onclick=async e=>{
+    e.stopPropagation();
+    const uid=requireMaintUser();if(uid===null)return;
+    const place=b.dataset.opPlace,group=b.dataset.opUndummy;
+    try{
+     await opSetDummy(place,group,false,uid);
+     opSay(`「${group}」をふつうの群へ戻しました（中の項目がまた出ます）`);
+    }catch(err){opSay('戻せませんでした: '+err.message,true)}
+   };
+  });
   document.querySelectorAll('#masterMaintList [data-op-gspan]').forEach(b=>{
    b.onclick=async e=>{
     e.stopPropagation();
@@ -4550,6 +4600,44 @@
   if(name===null)return;
   const n=String(name).trim();if(!n)return;
   await opCreateItem({group:n,name:n+' 1'});
+ }
+ /* ---------- 空き（ダミー）の群（§9.227 ③、利用者の指示） ----------
+    「マスタでまとまりをダミーで作って何も枠もない空間をつくれるように
+     してください。(区切りの良い並びに整列させるためのダミーカード)」
+
+    **群は独立した行を持たない**（項目行の`[群]`列から導出する）ので、
+    印を持つ行が1つ要る。その行の入力欄は測定画面に**一度も描かれない**
+    ので、名前は盤の中だけの呼び名になる。 */
+ async function opCreatePad(){
+  const uid=requireMaintUser();if(uid===null)return;
+  const n=(opState.items||[]).filter(x=>x.dummy).length+1;
+  const name=prompt('空きの呼び名（盤の中だけで使います。測定画面には出ません）','空き'+n);
+  if(name===null)return;
+  const nm=String(name).trim();if(!nm)return;
+  if((opState.items||[]).some(x=>(x.group||'その他')===nm)){
+   opSay(`「${nm}」という群がすでにあります。別の名前にしてください。`,true);return;
+  }
+  try{
+   await api('/api/operation-item-master',{method:'POST',
+     headers:{'Content-Type':'application/json'},
+     /* **「出さない」にしないこと**——測定画面が読むのは
+        `items_for_equipment(c,eq)`＝有効な行だけなので、無効にすると
+        群そのものが導出されず、**空きが1マスも空かない**（実際に踏んだ）。
+        描かないのは`[ダミー]`の印の役目で、有効/無効の役目ではない。 */
+     body:JSON.stringify({equipment:opState.equipment||'*',group:nm,
+       name:nm,type:'文字',place:'準備',span:4,user_id:uid})});
+   await opSetDummy('準備',nm,true,uid);
+   opSay(`空き「${nm}」を作りました。幅を決めると、その幅ぶんが測定画面で空きます。`);
+  }catch(e){opSay('追加できませんでした: '+e.message,true)}
+ }
+ async function opSetDummy(place,group,on,uid){
+  const g=opState.items.find(x=>(x.place||'準備')===place&&(x.group||'その他')===group);
+  await api('/api/operation-item-master/group',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({place,group,fold:!!(g&&g.fold),
+      showWhen:g?(g.showWhen||[]):[],dummy:!!on,user_id:uid})});
+  await loadOpItemMaint(true);
+  if(window.WL&&WL.opData)WL.opData.forget();
  }
  async function opCreateItem(seed){
   const uid=requireMaintUser();if(uid===null)return;
@@ -4815,9 +4903,14 @@
     「UIの種類と見た目(色や形、美観デザイン)など組合せでカスタムできるように」
     **軸は3つ**（色・形・大きさ）。掛け算で「種類」を増やさないための分け方
     なので、ここへ4つ目を足さないこと。 */
+ /* 形の廃止値は今の呼び名へ寄せる（§9.227 ①）。サーバーも同じ寄せ方を
+    するが、**盤は保存前の値も描く**ので画面側にも要る（`角`のまま来た行を
+    「どれも選ばれていない」状態で出さない）。 */
+ const OP_SHAPE_ALIAS={'角丸':'標準','角':'控えめ','丸':'大きめ'};
  function opLookOf(x){
   const d=(x&&x.look)||{};
-  return {color:d.color||'既定',shape:d.shape||'角丸',size:d.size||'中'};
+  const sh=OP_SHAPE_ALIAS[d.shape]||d.shape||'標準';
+  return {color:d.color||'既定',shape:sh,size:d.size||'中'};
  }
  function opLookPickHtml(x){
   const lk=opLookOf(x);
@@ -4834,7 +4927,10 @@
       　色が語るのは「どの仲間か」だけです——<b>選んだかどうかは面と文字の太さでも</b>示すので、
       色が見えない人にも伝わります。</i></span></div>
    <div class="op-form-row"><span class="op-form-label">形</span>
-    <span class="op-form-ctl"><span class="op-look-row">${pick('shape',opState.lookShapes||[],lk.shape)}</span></span></div>
+    <span class="op-form-ctl"><span class="op-look-row">${pick('shape',opState.lookShapes||[],lk.shape)}</span>
+     <i class="op-form-note"><b>どれも角丸</b>です——変わるのは丸みの深さだけ。
+      素のテキストボックスやプルダウンと同じ形にそろえてあるので、
+      1枚のカードに何種類の選ばせ方を混ぜても角の丸みは1通りに見えます。</i></span></div>
    <div class="op-form-row"><span class="op-form-label">大きさ</span>
     <span class="op-form-ctl"><span class="op-look-row">${pick('size',opState.lookSizes||[],lk.size)}</span>
      <i class="op-form-note">文字の大きさから作るので、表示サイズを変えても崩れません。</i></span></div>`;
@@ -4853,19 +4949,24 @@
  function opLayoutRowHtml(x,widget){
   const on=opLayoutOf(x);
   const usable=opLayoutUsable(widget);
+  /* **行の高さを予約する**（§9.227 ②、利用者の指摘「選ばせ方を選択すると
+     表示位置が変化する」）。ボタンが出る形と出ない形で行の高さが32pxと
+     62pxに分かれ、下の「色・形・大きさ・見せ方」が**まるごと30px上下して
+     いた**（実測）。ボタンを消すのは§4のとおり（押しても何も起きない物を
+     残さない）なので、**消すのは中身だけで場所は空けておく**。 */
   if(!usable){
-   return `<div class="op-form-row"><span class="op-form-label">並べ方</span>
+   return `<div class="op-form-row is-fixed-layout"><span class="op-form-label">並べ方</span>
     <span class="op-form-ctl"><i class="op-form-note">「${esc(opWidgetLabel(x,widget))}」は選択肢を並べないので、
      並べ方はありません（<b>ラジオ・セグメント・ボタン群・カード・段階・早見ボタン・定型文</b>で選べます）。</i></span></div>`;
   }
-  return `<div class="op-form-row"><span class="op-form-label">並べ方</span>
+  return `<div class="op-form-row is-fixed-layout"><span class="op-form-label">並べ方</span>
     <span class="op-form-ctl">
      <span class="op-look-row">${(opState.layouts||[]).map(v=>
        `<button type="button" data-op-layout="${esc(v)}" class="op-mini${on===v?' is-on':''}"`
        +` title="${esc(OP_LAYOUT_NOTE[v]||'')}">${esc(v)}</button>`).join('')}</span>
      <i class="op-form-note">${esc(OP_LAYOUT_NOTE[on]||'')}。
       <b>意匠（色・形・大きさ）とは別の軸</b>です——見た目ではなく「選択肢を何個ずつ置くか」を決めます。
-      左の見本は<b>実物と同じ幅</b>なので、器に入るかどうかがそのまま分かります。</i>
+      左の見本は<b>1マスが実物と同じ大きさ</b>なので、選択肢が器に収まるかどうかがそのまま分かります。</i>
     </span></div>`;
  }
  /* ---------- 選ばせ方の見本（§9.223 ③、利用者の指示） ----------
@@ -4963,15 +5064,40 @@
      覚えており（`WL.opData.cellPx()`）、それをそのまま使う。入りきらない
      ときは横へ流す（縮めない——縮めたら同じ問題に戻る）。 */
   const cell=(window.WL&&WL.opData&&WL.opData.cellPx)?WL.opData.cellPx():94;
+  /* **見切れさせない**（§9.227 ②、利用者の指摘「見切れているし、その
+     サイズの変化に合わせて右側の選択パネルの並びや位置が変化する」）。
+     実測すると、12マス（1234px）を779pxの器へ入れていたので**455pxが
+     切れていた**。実物と同じ1マスは守りたい（§9.226 ①。縮めると文字は
+     縮まないので「入るかどうか」が確かめられない）ので、**入るマス数まで
+     しか描かない**——そして**何マスぶんを出しているかを文字で言う**
+     （黙って減らすと、12マスの器を見ているつもりで狭い器を見ることになる）。
+     この項目自身の幅より狭くはしない（主役が切れるのでは本末転倒）。 */
+  const paneW=(($('#opModalPreview')||{}).clientWidth)||0;
+  const span=opSpanOf(x);
+  const gap=6,pad=14;                       /* --gap-inline / --pad-row ぶん */
+  const fits=Math.max(1,Math.floor((paneW-pad+gap)/(cell+gap)));
+  const cols=Math.min(opState.gridCols,Math.max(span,fits));
+  /* 隣に並ぶものは**折り返して置く**（1行に詰め込まない）。器の幅で切ると、
+     この項目が4マス・器が7マスのときに1件も入らず、**広い空箱**になる
+     （実際にそうなった）。実物は12マスで折り返すので折り返し位置は違うが、
+     「何個ぶんの大きさか」を見るための絵なので、置けるだけ置くほうが役に立つ
+     ——**折り返しが実物と違うことは`<small>`が言っている**。 */
+  const room=mates.slice(0,5);
+  const restN=mates.length-room.length;
   $('#opModalPreview').innerHTML=`<div class="op-prev-head">測定画面での見え方`
-   +`<small>${esc(x.place||'準備')}のカード・${esc(opSpanLabel(opSpanOf(x)))}`
-   +`／1マス ${Math.round(cell)}px（実物と同じ大きさ）</small></div>`
+   +`<small>${esc(x.place||'準備')}のカード・${esc(opSpanLabel(span))}`
+   +`／1マス ${Math.round(cell)}px（実物と同じ大きさ）`
+   +(cols<opState.gridCols
+      ?`／<b>${opState.gridCols}マス中 ${cols}マスぶん</b>を表示（器に入るところまで）`
+      :`／${opState.gridCols}マス全部を表示`)+`</small></div>`
    +`<div class="op-prev-scroll"><div class="op-prev-card"`
-   +` style="--op-cols:${opState.gridCols};--op-cell:${cell}px">`
+   +` style="--op-cols:${cols};--op-cell:${cell}px">`
    +`<div class="op-prev-band">${esc(x.group||'その他')}</div>`
-   +`<div class="op-prev-field" id="opPrevField" style="grid-column:span ${opSpanOf(x)}"></div>`
-   +mates.slice(0,5).map(ghost).join('')
+   +`<div class="op-prev-field" id="opPrevField" style="grid-column:span ${span}"></div>`
+   +room.map(ghost).join('')
    +`</div></div>`
+   +(restN?`<p class="op-prev-rest">この群にはあと${restN}件あります`
+      +`（この幅に入らないので出していません）。</p>`:'')
    +`<p class="op-prev-value" id="opPrevValue"></p>`
    +`<ul class="op-prev-facts">`
    +`<li><b>入力の決まり</b>${esc(rule.join('／'))}</li>`
