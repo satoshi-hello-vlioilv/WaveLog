@@ -4,7 +4,13 @@ import json, os, re, subprocess, sys, time, urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent   # tests/ の1つ上がリポジトリルート
-STATUS = ROOT / 'boot_status.js'
+sys.path.insert(0, str(ROOT))
+import _pycache_bootstrap  # noqa: E402,F401  (置き場をアプリ外へ。他より先に)
+from backend import boot_status as _bs  # noqa: E402
+# 進捗ファイルは**端末ごとの置き場**へ移した(§9.225)。パスを書き写さず、
+# 製品側が答える1箇所(`status_path()`)を通す——書き写すと、置き場を変えた
+# ときに「消したつもりのファイルが残っている」を見て通ってしまう。
+STATUS = _bs.status_path()
 R = []
 
 
@@ -62,7 +68,7 @@ rec('起動処理が進捗ファイル(boot_status.js)を書き出す', len(seen
 # 埋まっていることは「start_app.pyが全キーをreportしているか」で確かめる
 # (実機では共有の応答待ちで各段階に実時間がかかり、そこが見えることに意味がある)。
 sys.path.insert(0, str(ROOT))
-from backend import boot_status  # noqa: E402
+boot_status = _bs
 
 src = (ROOT / 'start_app.py').read_text(encoding='utf-8')
 missing = [k for k, _ in boot_status.STEPS if ("boot_status.report('%s'" % k) not in src]

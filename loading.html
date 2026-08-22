@@ -197,7 +197,15 @@
 "use strict";
 (function(){
  var PORT=5029, APP_ID='wavelog';
- var POLL_INTERVAL_MS=500, TIMEOUT_MS=90000;
+ /* **最初の数秒だけ細かく聞く**(§9.225)。ずっと500ms間隔だと、サーバーが
+    起動し切っていても**最大0.5秒そのまま待たされる**——起動そのものが
+    1秒を切るようになると、この取りこぼしが体感の半分を占める。
+    立ち上がりは120ms、5秒を過ぎたら500msへ戻す(遅い端末で聞き続けても
+    早くはならないし、共有の応答待ちのときに問い合わせを増やしたくない)。 */
+ var POLL_FAST_MS=120, POLL_SLOW_MS=500, POLL_FAST_UNTIL_MS=5000, TIMEOUT_MS=90000;
+ function pollInterval(){
+  return (Date.now()-started<POLL_FAST_UNTIL_MS)?POLL_FAST_MS:POLL_SLOW_MS;
+ }
  /* 進捗バーの分母。サーバー6段階＋ブラウザ4段階(アプリ側の起動オーバーレイが
     続きを進める)。backend/boot_status.py の TOTAL_STEPS と同じ値。 */
  var TOTAL_STEPS=10, SERVER_STEPS=6;
@@ -298,7 +306,7 @@
   el.onload=function(){ el.remove() };
   document.head.appendChild(el);
   probeBoot();
-  if(polling) setTimeout(probe,POLL_INTERVAL_MS);
+  if(polling) setTimeout(probe,pollInterval());
  }
 
  function fail(){
