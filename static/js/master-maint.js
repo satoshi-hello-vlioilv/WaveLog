@@ -111,15 +111,15 @@
             tagHint:'この塊をどの設備の帳票へ出せるようにするかです。「すべての設備」を選ぶと、これから増える設備でも使えます。'},
            {k:'name',label:'ブロック名',required:true,key:true,
             hint:'帳票の見出しになり、並び・幅・高さの設定の鍵にもなります。**同じ設備に同じ名前を2つ置かないでください**（どちらの設定か決まりません）。'},
-           {k:'content',label:'内容',type:'textarea',rows:8,
-            placeholder:'ロット番号=basic.lotNo\n運転方式=settings.opData.運転方式',
-            hint:'1行に1項目、`ラベル=値の出どころ`で書きます。出どころは測定データの中の道で、`basic.…`（仕掛から取った値）`settings.…`（準備で決めた値）`settings.opData.<項目名>`（操業データ）`workTime.…`（作業時間）が使えます。`=`を省くとラベルと道が同じになります。'},
+           /* §9.226 ④。**選んで組み立てる**（手で道を書かせない）。 */
+           {k:'content',label:'内容（載せる項目）',type:'field-builder',
+            hint:'左の候補を押すと右へ増え、**上から順に紙へ並びます**。掴んで並べ替え、名前はその場で直せます。候補には**操業データ項目マスタで足した項目もそのまま出ます**（項目を足せばここにも増えます）。載せる項目が空のときは、画面がもともと持っている中身のまま出ます。'},
            {k:'span',label:'幅（12マス中）',type:'select',options:['3','4','6','8','12'],
             hint:'紙は12マスのグリッドです。3＝1/4、6＝1/2、12＝全幅。**ここは既定**で、設備ごとの紙で幅を変えるとそちらが優先されます（帳票画面の「配置を組み換え」で戻せます）。'},
            {k:'rows',label:'高さ（行数）',type:'select',options:['','2','3','4','5','6','8','12'],
             hint:'1行＝24px。空欄なら中身なり（描いてから測ります）。行数を決めると下の段へ跨いで置けます。'},
            {k:'cols',label:'内訳の列数',type:'select',options:['','1','2','3','4'],
-            hint:'節の中で「ラベル＝値」を何列に並べるかです。空欄なら中身の数から決まります（項目が多い塊は4列にすると紙が締まります）。'},
+            hint:'節の中で「ラベル＝値」を何列に並べるかです。空欄なら中身の数から決まります（項目が多い塊は4列にすると紙が締まります）。**並べ方が「幅なり」「高さなり」のときは列数を使いません**（カードの大きさで決まります）——並べ方は帳票画面の「配置を組み換え」でカードをダブルクリックすると選べます。'},
            {k:'order',label:'表示順',type:'number',min:0,step:10,
             hint:'小さいほど先に出ます。空欄で保存すると今の並びのままです。'},
            /* **「有効」の欄が無いと行き止まりになる**（§9.219 ②）。既定の塊は
@@ -559,6 +559,36 @@
    if(f.type==='number'){
     return `<label class="mm-field mm-field-num">${fieldLabelHtml(f)}${numFieldHtml(f,val)}${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</label>`;
    }
+   /* ---------- 選んで組み立てる（§9.226 ④、利用者の指示） ----------
+      「帳票ブロックを新規登録が難しすぎて作成できない。入力データ(汎用入力
+       データも含む)の中から選んで組み合わせたり配置する方式で、直感的に
+       組み合わせてデータブロックを作ることができるようにしてほしい」
+
+      保存の形は今までどおり`ラベル=出どころ`の並び（`[内容]`）で、
+      **書く手段を変えただけ**——保存の形まで変えると、既に登録してある
+      塊が読めなくなる（§9.171の「印は名前で運ぶ」と同じ考え方）。
+      左が候補（出どころごとにまとまっている）、右が載せる項目。押すと
+      移り、掴んで並べ替えられる。ラベルはその場で直せる。
+      **候補はサーバーが答える**（`catalog`）ので、操業データの項目を足せば
+      そのままここに増える（§9.163「判定を画面に書かない」）。 */
+   if(f.type==='field-builder'){
+    return `<div class="mm-field mm-field-area fb" data-fb="${f.k}">${fieldLabelHtml(f)}
+      <div class="fb-body">
+       <div class="fb-pick">
+        <div class="fb-pick-head"><b>選べる項目</b>
+         <input type="search" class="fb-search" placeholder="項目名で絞る" autocomplete="off"></div>
+        <div class="fb-cats" role="tablist"></div>
+        <div class="fb-list"></div>
+       </div>
+       <div class="fb-chosen">
+        <div class="fb-chosen-head"><b>載せる項目</b><span class="fb-count"></span>
+         <button type="button" class="fb-clear ghost">全部外す</button></div>
+        <div class="fb-rows"></div>
+       </div>
+      </div>
+      <input type="hidden" data-field="${f.k}" value="${esc(val)}">
+      <small class="mm-field-hint">${hintHtml(f.hint||'')}</small></div>`;
+   }
    /* 複数行の入力欄（§9.217）。1行1件を書かせる設定（帳票ブロックの内容）で
       使う——1行の欄に押し込むと、何件書いたのかが読めない。 */
    if(f.type==='textarea'){
@@ -664,6 +694,11 @@
  function openMaintEditor(item){
   const def=currentDef();if(!defUsesEditorModal(def))return;
   const modal=ensureMaintEditor();
+  /* 組み立ての盤を持つ窓は広く取る（§9.226 ④）。**印を付け外しすること**
+     ——付けっぱなしにすると、次に開いた別のマスタの窓まで広いまま
+     （`mm-form-page`と同じ作法・§9.222 ⑤）。 */
+  const dlg=modal.querySelector('.mm-editor-dialog');
+  if(dlg)dlg.classList.toggle('is-builder',def.fields.some(f=>f.type==='field-builder'));
   maintState.editing=item?Object.assign({},item):null;
   const editing=maintState.editing;
   $('#maintEditorEyebrow').textContent=def.label+'マスタ';
@@ -720,6 +755,138 @@
   bindDateFields(form);
   bindComboFields(form);
   bindPathFields(form);
+  bindFieldBuilders(form);
+ }
+ /* ---------- 選んで組み立てる（§9.226 ④、利用者の指示） ----------
+    保存の形は`ラベル=出どころ`の並びのままで、**書く手段だけ**を変える。
+    候補（`catalog`）はサーバーが答えたものをそのまま並べる——操業データの
+    項目もここに入るので、現場が項目を足せば候補に増える。
+
+    **右（載せる項目）が正**。押す・掴む・ラベルを直す、どの操作のあとも
+    `syncFieldBuilder()`が隠し欄（`data-field`）へ書き戻す——書き戻しを
+    1箇所にしておかないと、「並べ替えただけでは保存されない」のような
+    片方だけ効く状態が作れる（§9.201と同じ形）。 */
+ const fbCatalog={groups:[],loadedFor:null,loading:null};
+ async function fbLoadCatalog(){
+  const eq=String(maintState.equipment||'');
+  if(fbCatalog.loadedFor===eq)return fbCatalog.groups;
+  if(fbCatalog.loading)return fbCatalog.loading;
+  fbCatalog.loading=(async()=>{
+   try{
+    const r=await api('/api/report-block-master'+(eq?'?equipment='+encodeURIComponent(eq):''));
+    fbCatalog.groups=Array.isArray(r.catalog)?r.catalog:[];
+   }catch(e){fbCatalog.groups=[]}
+   fbCatalog.loadedFor=eq;fbCatalog.loading=null;
+   return fbCatalog.groups;
+  })();
+  return fbCatalog.loading;
+ }
+ /* `[内容]`の文字列 ⇄ 行の配列。**読み方はサーバー（`parse_content`）と
+    同じ約束**——`=`が無い行はラベルと道が同じ。 */
+ function fbParse(text){
+  return String(text||'').replace(/、/g,',').replace(/\r/g,'\n').replace(/,/g,'\n')
+   .split('\n').map(x=>x.trim()).filter(Boolean).map(line=>{
+    const i=line.indexOf('=');
+    const label=i>=0?line.slice(0,i).trim():line;
+    const path=i>=0?line.slice(i+1).trim():line;
+    return {label:label||path,path};
+   }).filter(r=>r.path);
+ }
+ function fbText(rows){
+  return rows.map(r=>`${r.label||r.path}=${r.path}`).join('\n');
+ }
+ function bindFieldBuilders(form){
+  form.querySelectorAll('[data-fb]').forEach(box=>{
+   if(box.dataset.fbWired)return;
+   box.dataset.fbWired='1';
+   const hidden=box.querySelector('input[data-field]');
+   const state={rows:fbParse(hidden?hidden.value:''),cat:'',q:''};
+   const sync=()=>{
+    if(hidden)hidden.value=fbText(state.rows);
+    drawChosen();drawList();
+   };
+   const drawChosen=()=>{
+    const wrap=box.querySelector('.fb-rows');if(!wrap)return;
+    const cnt=box.querySelector('.fb-count');
+    if(cnt)cnt.textContent=state.rows.length?`${state.rows.length}件`:'まだありません';
+    wrap.innerHTML=state.rows.length?state.rows.map((r,i)=>
+      `<div class="fb-row" draggable="true" data-fb-i="${i}">`
+      +`<span class="fb-grip" aria-hidden="true">⠿</span>`
+      +`<input type="text" class="fb-label" value="${esc(r.label)}" aria-label="紙に出す名前">`
+      +`<code class="fb-path" title="${esc(r.path)}">${esc(r.path)}</code>`
+      +`<button type="button" class="fb-del" title="この項目を外します">×</button></div>`).join('')
+      :`<p class="fb-empty">左の候補を押すと、ここへ増えます。<b>上から順に紙へ並びます。</b></p>`;
+    wrap.querySelectorAll('.fb-del').forEach(b=>b.onclick=()=>{
+     state.rows.splice(Number(b.closest('.fb-row').dataset.fbI),1);sync();
+    });
+    wrap.querySelectorAll('.fb-label').forEach(inp=>{
+     /* **打っている最中に作り直さない**（§9.117）——カーソルが飛ぶ。
+        値だけを控えておき、書き戻しは隠し欄へ直接行う。 */
+     inp.oninput=()=>{
+      state.rows[Number(inp.closest('.fb-row').dataset.fbI)].label=inp.value;
+      if(hidden)hidden.value=fbText(state.rows);
+     };
+    });
+    let from=-1;
+    wrap.querySelectorAll('.fb-row').forEach(row=>{
+     row.addEventListener('dragstart',e=>{
+      from=Number(row.dataset.fbI);row.classList.add('is-drag');
+      try{e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain','')}catch(_){}
+     });
+     row.addEventListener('dragend',()=>row.classList.remove('is-drag'));
+     row.addEventListener('dragover',e=>{e.preventDefault()});
+     row.addEventListener('drop',e=>{
+      e.preventDefault();
+      const to=Number(row.dataset.fbI);
+      if(from<0||from===to)return;
+      const m=state.rows.splice(from,1)[0];
+      state.rows.splice(to,0,m);from=-1;sync();
+     });
+    });
+   };
+   const drawList=()=>{
+    const cats=box.querySelector('.fb-cats'),list=box.querySelector('.fb-list');
+    if(!cats||!list)return;
+    const groups=fbCatalog.groups||[];
+    if(!groups.length){
+     cats.innerHTML='';
+     list.innerHTML='<p class="fb-empty">候補を読み込めませんでした。<b>出どころを直接書くこともできます</b>（例: <code>basic.lotNo</code>）。</p>';
+     return;
+    }
+    if(!state.cat||!groups.some(g=>g.group===state.cat))state.cat=groups[0].group;
+    cats.innerHTML=groups.map(g=>
+      `<button type="button" class="fb-cat${g.group===state.cat?' is-on':''}" data-fb-cat="${esc(g.group)}"`
+      +` title="${esc(g.note||'')}">${esc(g.group)}<i>${g.items.length}</i></button>`).join('');
+    cats.querySelectorAll('[data-fb-cat]').forEach(b=>b.onclick=()=>{state.cat=b.dataset.fbCat;drawList()});
+    const g=groups.find(x=>x.group===state.cat)||{items:[]};
+    const q=String(state.q||'').trim().toLowerCase();
+    const used=new Set(state.rows.map(r=>r.path));
+    const hit=g.items.filter(it=>!q||(it.label+' '+it.path).toLowerCase().indexOf(q)>=0);
+    list.innerHTML=(g.note?`<p class="fb-note">${esc(g.note)}</p>`:'')
+     +(hit.length?hit.map(it=>
+      `<button type="button" class="fb-item${used.has(it.path)?' is-used':''}"`
+      +` data-fb-add="${esc(it.path)}" data-fb-label="${esc(it.label)}"`
+      +` title="${esc(it.path)}">${esc(it.label)}`
+      +`${used.has(it.path)?'<i class="fb-used">載せています</i>':''}`
+      +`${it.note?`<small>${esc(it.note)}</small>`:''}</button>`).join('')
+      :`<p class="fb-empty">「${esc(state.q)}」に当たる項目はありません。</p>`);
+    list.querySelectorAll('[data-fb-add]').forEach(b=>b.onclick=()=>{
+     const path=b.dataset.fbAdd;
+     /* **同じ項目を2つ載せない**（同じ値が2箇所に並ぶ・§CLAUDE 8）。
+        既に載せているものを押したら、外す（押した結果が必ず変わる）。 */
+     const at=state.rows.findIndex(r=>r.path===path);
+     if(at>=0)state.rows.splice(at,1);
+     else state.rows.push({label:b.dataset.fbLabel||path,path});
+     sync();
+    });
+   };
+   const search=box.querySelector('.fb-search');
+   if(search)search.oninput=()=>{state.q=search.value;drawList()};
+   const clr=box.querySelector('.fb-clear');
+   if(clr)clr.onclick=()=>{state.rows=[];sync()};
+   drawChosen();drawList();
+   fbLoadCatalog().then(()=>drawList());
+  });
  }
  /* --- 数値: 上下ボタン・3桁区切り・右づめ --- */
  function bindNumberFields(form){
@@ -3697,6 +3864,9 @@
                 aligns:['自動','左','中央','右'],
                 valueFormats:['そのまま','3桁区切り','ゼロ埋め'],
                 unitInBlocked:[],
+                /* 並べ方の選択肢と、それが効く入力方法（§9.226 ①）。
+                   **サーバーが答える**——ここは届くまでの受け皿。 */
+                layouts:['自動'],layoutWidgets:[],
                 /* §9.223 ①③。**サーバーが答える**（役割の一覧・構成の状態・
                    意匠の軸）。ここは届くまでの受け皿で、規則を画面に持たない。 */
                 roles:[],roleReport:null,
@@ -3745,6 +3915,23 @@
   'トグル':{icon:'⇆',note:'2択の入切。対になっているもの（有/無・OS/DS）'},
   '早見ボタン':{icon:'⋯',note:'よく使う値を並べる。最小・最大・刻みから作る'},
   '1行':{icon:'—',note:'素の1行入力。メモほどの高さが要らないとき'},
+  /* §9.226 ①（利用者の指示「UIの種類をもっと増やしてほしい」）。ここでも
+     **足すのは「選ぶ状況が違うもの」だけ**——並べ方と意匠が別の軸にあるので、
+     色違い・並び違いを種類として増やさない。 */
+  '段階':{icon:'▰',note:'順番のある選択肢。選んだところまで塗る（等級・良/可/否）'},
+  '入切':{icon:'◐',note:'1つのスイッチ。入＝先頭の値／切＝空欄（付ける・付けない）'},
+  'メーター':{icon:'▬',note:'打つ欄はそのまま。上下限のどこに居るかを帯で示す'},
+  '定型文':{icon:'✎',note:'1行入力＋よく使う語句のボタン（まとまりの値から作る）'},
+ };
+ /* 並べ方の一言（§9.226 ①）。**「自動」が何になるかは形ごとに違う**ので、
+    そこは触らずに「決めたときだけ」変わることを書く。 */
+ const OP_LAYOUT_NOTE={
+  '自動':'この選ばせ方の既定のまま（形ごとに違います）',
+  '横1行':'折り返さず1行に押し込む（等分に縮みます）',
+  '折り返し':'入るだけ横へ、入らなくなったら次の行へ',
+  '縦':'1つずつ縦に積む（名前が長いとき）',
+  '2列':'2列のマス目に並べる',
+  '3列':'3列のマス目に並べる',
  };
  /* 意匠（§9.223 ③）。**軸は3つだけ**——色・形・大きさ。掛け算で種類を
     増やさないための分け方なので、ここへ4つ目の軸を足さないこと。 */
@@ -3886,7 +4073,10 @@
    /* 群のふるまいは**1つでも「畳む」と言っていれば畳む**（`groupsFor()`と
       同じ読み方。群の中で食い違ったときにどちらが正かを決めておく）。 */
    const when=(list.find(x=>(x.showWhen||[]).length)||{}).showWhen||[];
-   rows.push({type:'group',name:g,place,fold:list.some(x=>!!x.fold),showWhen:when});
+   /* 群の幅（§9.226 ③）。**1つでも指定があればそれ**——畳むと同じ読み方。 */
+   const gspan=Number((list.find(x=>Number(x.groupSpan)>0)||{}).groupSpan)||0;
+   rows.push({type:'group',name:g,place,fold:list.some(x=>!!x.fold),showWhen:when,
+              span:gspan,items:list});
    list.forEach(x=>rows.push({type:'item',x}));
   });
   return rows;
@@ -3909,7 +4099,7 @@
  function opWidgetUsable(x){
   return opWidgetsFor(x).length>1;
  }
- function opTileHtml(x){
+ function opTileHtml(x,spot){
   const span=opSpanOf(x);
   const off=x.enabled===false;
   const w=opWidgetOf(x);
@@ -3922,7 +4112,8 @@
              x.freeText?'手打ち可':''].filter(Boolean).join('｜');
   return `<div class="op-tile${String(opState.picked)===String(x.id)?' is-picked':''}`
    +`${off?' is-off':''}" draggable="true" data-op-id="${esc(x.id)}"`
-   +` style="grid-column:span ${span}" title="${esc(tip)}" tabindex="0">`
+   +` style="${spot?`grid-column:${spot.col}/span ${spot.span};grid-row:${spot.row}`
+                 :`grid-column:span ${span}`}" title="${esc(tip)}" tabindex="0">`
    +`<span class="op-tile-name">${esc(x.name)}</span>`
    +`<span class="op-tile-meta">`
    +(x.builtin?'<b class="op-chip op-chip-builtin">画面の欄</b>':'')
@@ -3935,13 +4126,32 @@
    +`<span class="op-tile-span">${span}/${opState.gridCols}</span></span>`
    +`<span class="op-tile-gear" aria-hidden="true">設定</span></div>`;
  }
- function opBandHtml(r,count){
+ /* 群の幅の選択肢（§9.226 ③）。**粗く4段だけ**——細かくすると左端の
+    候補が増えてそろって見えなくなる（§CLAUDE 13と同じ理由）。 */
+ const OP_GROUP_SPANS=[{v:0,label:'全幅'},{v:8,label:'2/3'},{v:6,label:'1/2'},{v:4,label:'1/3'}];
+ function opGroupSpanLabel(v){
+  const hit=OP_GROUP_SPANS.find(x=>x.v===Number(v||0));
+  return hit?hit.label:`${v}/${opState.gridCols}マス`;
+ }
+ function opBandHtml(r,count,spot){
   const cond=(r.showWhen||[]).length?`／開く条件: ${esc((r.showWhen||[]).join('、'))}`:'';
+  const place=spot?`grid-column:${spot.col}/span ${spot.span};grid-row:${spot.row}`:'grid-column:1/-1';
+  const cur=Number(r.span)||0;
   return `<div class="op-band" data-op-band="${esc(r.name)}" data-op-place="${esc(r.place)}"`
-   +` style="grid-column:1/-1" title="この帯より下の項目が「${esc(r.name)}」になります">`
+   +` style="${place}" title="この帯より下の項目が「${esc(r.name)}」になります">`
    +`<b class="op-band-name">${esc(r.name)}</b>`
-   +`<small class="op-band-note">${count}項目${r.fold?'／畳む':''}${cond}</small>`
+   +`<small class="op-band-note">${count}項目${r.fold?'／畳む':''}`
+   +`${cur?`／幅 ${esc(opGroupSpanLabel(cur))}`:''}${cond}</small>`
    +`<span class="op-band-tools">`
+   /* **列でも区切れる**（§9.226 ③、利用者の指示）。全幅でない群は横に
+      並ぶので、「誰が測るか」と「使う機材」を左右に置ける。 */
+   +`<span class="op-band-span" role="group" aria-label="群の幅">`
+   +OP_GROUP_SPANS.map(o=>`<button type="button" data-op-gspan="${o.v}"`
+     +` data-op-band2="${esc(r.name)}" data-op-place="${esc(r.place)}"`
+     +` class="${cur===o.v?'is-on':''}" title="この群の幅を${esc(o.label)}にします`
+     +`${o.v?'（横いっぱいでない群は横に並びます）':'（今までどおり1段を丸ごと使います）'}">`
+     +`${esc(o.label)}</button>`).join('')
+   +`</span>`
    +`<button type="button" class="ghost" data-op-rename="${esc(r.name)}" data-op-place="${esc(r.place)}">名前</button>`
    +`<button type="button" class="ghost" data-op-fold="${esc(r.name)}" data-op-place="${esc(r.place)}"`
    +` aria-pressed="${r.fold?'true':'false'}">${r.fold?'畳む':'開いたまま'}</button>`
@@ -3951,7 +4161,18 @@
   const rows=opRows(place);
   const counts={};
   rows.forEach(r=>{if(r.type==='item'){const g=r.x.group||'その他';counts[g]=(counts[g]||0)+1}});
-  const body=rows.map(r=>r.type==='group'?opBandHtml(r,counts[r.name]||0):opTileHtml(r.x)).join('')
+  /* **測定画面と同じ関数で割り付ける**（§9.226 ③）。盤だけ別に計算すると、
+     「盤ではこう見えるのに測定画面では違う」が作れる。 */
+  const groups=rows.filter(r=>r.type==='group');
+  const pack=(window.WL&&WL.opData&&WL.opData.packLayout)
+    ? WL.opData.packLayout(groups.map(g=>({name:g.name,span:g.span,
+        items:(g.items||[]).map(x=>({key:x.id,span:opSpanOf(x)}))})),opState.gridCols)
+    : {heads:[],items:[],banded:false};
+  const headAt=new Map(pack.heads.map(h=>[h.name,h]));
+  const cellAt=new Map(pack.items.map(x=>[String(x.key),x]));
+  const body=rows.map(r=>r.type==='group'
+    ?opBandHtml(r,counts[r.name]||0,pack.banded?headAt.get(r.name):null)
+    :opTileHtml(r.x,pack.banded?cellAt.get(String(r.x.id)):null)).join('')
    ||'<p class="mm-empty-inline" style="grid-column:1/-1">この置き場の項目はまだありません。「項目を追加」で作るか、もう一方の置き場から掴んで持ってきます。</p>';
   const n=rows.filter(r=>r.type==='item').length;
   /* **マスの目盛を出す**（§9.218 ②）。掴んで並べる画面なのに、いま何マス
@@ -4162,6 +4383,27 @@
     await opRenameGroup(place,now,name);
    };
   });
+  /* 群の幅（§9.226 ③）。**群の全部の行へ同じ値**を書く（畳むと同じ作法）
+     ——1行だけ直すと、`form_for_equipment`が「1つでもあればそれ」で読むので
+     消したはずの幅が残る。 */
+  document.querySelectorAll('#masterMaintList [data-op-gspan]').forEach(b=>{
+   b.onclick=async e=>{
+    e.stopPropagation();
+    const uid=requireMaintUser();if(uid===null)return;
+    const place=b.dataset.opPlace,group=b.dataset.opBand2;
+    const g=opState.items.find(x=>(x.place||'準備')===place&&(x.group||'その他')===group);
+    try{
+     await api('/api/operation-item-master/group',{method:'POST',
+       headers:{'Content-Type':'application/json'},
+       body:JSON.stringify({place,group,fold:!!(g&&g.fold),
+         showWhen:g?(g.showWhen||[]):[],groupSpan:Number(b.dataset.opGspan)||0,user_id:uid})});
+     await loadOpItemMaint(true);
+     if(window.WL&&WL.opData)WL.opData.forget();
+     opSay(Number(b.dataset.opGspan)?`「${group}」の幅を${opGroupSpanLabel(b.dataset.opGspan)}にしました（横に並びます）`
+       :`「${group}」を全幅に戻しました`);
+    }catch(err){opSay('保存できませんでした: '+err.message,true)}
+   };
+  });
   document.querySelectorAll('#masterMaintList [data-op-fold]').forEach(b=>{
    b.onclick=async e=>{
     e.stopPropagation();
@@ -4294,7 +4536,13 @@
   try{
    await api('/api/operation-item-master/layout',{method:'POST',
      headers:{'Content-Type':'application/json'},body:JSON.stringify({items:rows,user_id:uid})});
-   await loadOpItemMaint(true);opSay('群の名前を変えました');
+   await loadOpItemMaint(true);
+   /* **測定画面の写しを捨てる**（§9.226 ①）。ここだけ落ちていたため、
+      群の名前を変えても**測定画面の見出しは古い名前のまま**だった
+      （`measure-opdata.js`は設備ごとに定義を覚えており、`forget()`が
+      唯一の捨て口）。書き換えの経路は全部ここを通すこと。 */
+   if(window.WL&&WL.opData)WL.opData.forget();
+   opSay('群の名前を変えました');
   }catch(e){opSay('名前を変えられませんでした: '+e.message,true)}
  }
  async function opCreateGroup(){
@@ -4591,6 +4839,35 @@
     <span class="op-form-ctl"><span class="op-look-row">${pick('size',opState.lookSizes||[],lk.size)}</span>
      <i class="op-form-note">文字の大きさから作るので、表示サイズを変えても崩れません。</i></span></div>`;
  }
+ /* ---------- 並べ方（§9.226 ①、利用者の指示「同じUIでもいくつかパターンが
+    あるとよい」） ----------
+    **効く形でだけ出す**（§4）。並べる先が1つしかない形（プルダウン・一覧・
+    メモ・キーパッド…）では欄ごと出さず、なぜ出ないのかを1行で書く。
+    効く形の一覧は**サーバーが答える**（`layoutWidgets`）——画面に規則を
+    書き写すと、形を1つ足したときに片方だけ直った状態が作れる。 */
+ function opLayoutUsable(w){return (opState.layoutWidgets||[]).includes(w)}
+ function opLayoutOf(x){
+  const v=String(x.layout||'自動');
+  return (opState.layouts||['自動']).includes(v)?v:'自動';
+ }
+ function opLayoutRowHtml(x,widget){
+  const on=opLayoutOf(x);
+  const usable=opLayoutUsable(widget);
+  if(!usable){
+   return `<div class="op-form-row"><span class="op-form-label">並べ方</span>
+    <span class="op-form-ctl"><i class="op-form-note">「${esc(opWidgetLabel(x,widget))}」は選択肢を並べないので、
+     並べ方はありません（<b>ラジオ・セグメント・ボタン群・カード・段階・早見ボタン・定型文</b>で選べます）。</i></span></div>`;
+  }
+  return `<div class="op-form-row"><span class="op-form-label">並べ方</span>
+    <span class="op-form-ctl">
+     <span class="op-look-row">${(opState.layouts||[]).map(v=>
+       `<button type="button" data-op-layout="${esc(v)}" class="op-mini${on===v?' is-on':''}"`
+       +` title="${esc(OP_LAYOUT_NOTE[v]||'')}">${esc(v)}</button>`).join('')}</span>
+     <i class="op-form-note">${esc(OP_LAYOUT_NOTE[on]||'')}。
+      <b>意匠（色・形・大きさ）とは別の軸</b>です——見た目ではなく「選択肢を何個ずつ置くか」を決めます。
+      左の見本は<b>実物と同じ幅</b>なので、器に入るかどうかがそのまま分かります。</i>
+    </span></div>`;
+ }
  /* ---------- 選ばせ方の見本（§9.223 ③、利用者の指示） ----------
     「UIの見た目もわかりやすいようにサンプルを表示させ、データも入れて
      選びやすいようにしてください。」
@@ -4631,6 +4908,12 @@
   if(w==='早見ボタン')return row('opd-chips');
   if(w==='メモ')return `<span class="opd opd-memo"><u></u><u></u><u></u></span>`;
   if(w==='1行')return `<span class="opd opd-oneline"><u></u></span>`;
+  /* §9.226 ①で足した4つ。**絵でも違いが分かること**——名前だけで選ばせない。 */
+  if(w==='段階')return `<span class="opd opd-stage"><i class="opd-fill">${esc(vs[0])}</i>`
+   +`<i class="opd-on">${esc(vs[1]||'')}</i><i>${esc(vs[2]||'')}</i></span>`;
+  if(w==='入切')return `<span class="opd opd-switch"><b></b><i>${esc(vs[0])}</i></span>`;
+  if(w==='メーター')return `<span class="opd opd-meter"><u></u></span>`;
+  if(w==='定型文')return `<span class="opd opd-phrase"><u></u><i>${esc(vs[0])}</i><i>${esc(vs[1]||'')}</i></span>`;
   return '';
  }
  function renderOpModal(){
@@ -4670,13 +4953,25 @@
     :((x.place||'準備')==='入力内容'
       ?'②の入力内容カードに、いつも開いた状態で出ます'
       :'①準備のカードに、いつも開いた状態で出ます');
+  /* ---------- 見本は実物と同じ大きさで出す（§9.226 ①、利用者の指摘
+     「再現する部分の表示エリアの横幅が足りず、見切れています」） ----------
+     以前は器の幅を12で割っていたので、1マスが実物の6割ほどになっていた
+     （実測 実物94px / 見本56px）。**文字は縮まない**ので、実物では入る
+     選択肢が見本では折り返し、逆に見本で入るものが実物で見切れる——
+     確かめるための絵が、確かめられない絵になっていた。
+     いまは`measure-opdata.js`が**この端末の測定画面で実測した1マス**を
+     覚えており（`WL.opData.cellPx()`）、それをそのまま使う。入りきらない
+     ときは横へ流す（縮めない——縮めたら同じ問題に戻る）。 */
+  const cell=(window.WL&&WL.opData&&WL.opData.cellPx)?WL.opData.cellPx():94;
   $('#opModalPreview').innerHTML=`<div class="op-prev-head">測定画面での見え方`
-   +`<small>${esc(x.place||'準備')}のカード・${esc(opSpanLabel(opSpanOf(x)))}</small></div>`
-   +`<div class="op-prev-card" style="--op-cols:${opState.gridCols}">`
+   +`<small>${esc(x.place||'準備')}のカード・${esc(opSpanLabel(opSpanOf(x)))}`
+   +`／1マス ${Math.round(cell)}px（実物と同じ大きさ）</small></div>`
+   +`<div class="op-prev-scroll"><div class="op-prev-card"`
+   +` style="--op-cols:${opState.gridCols};--op-cell:${cell}px">`
    +`<div class="op-prev-band">${esc(x.group||'その他')}</div>`
    +`<div class="op-prev-field" id="opPrevField" style="grid-column:span ${opSpanOf(x)}"></div>`
    +mates.slice(0,5).map(ghost).join('')
-   +`</div>`
+   +`</div></div>`
    +`<p class="op-prev-value" id="opPrevValue"></p>`
    +`<ul class="op-prev-facts">`
    +`<li><b>入力の決まり</b>${esc(rule.join('／'))}</li>`
@@ -4830,6 +5125,7 @@
        opFamilyOf(x)==='number'?'　数値の欄は<b>打つこともできる</b>まま——道具は隣に足すだけです。':''}${
        opFamilyOf(x)==='choice'&&!x.choice?'　<b>選択肢のまとまりを選ぶと</b>、見本に実際の値が並びます。':''}</i>
     </span></div>
+   ${opLayoutRowHtml(x,widget)}
    ${opLookPickHtml(x)}
    ${opLookRowHtml(x,widget)}`);
   /* ---------- ④ メモ ---------- */
@@ -4945,6 +5241,12 @@
        大きさのボタンだけが押しても何も起きない（見本は`previewDef`しか
        見ていないので、`x`に載っているだけでは届かない）。 */
     look:opLookOf(x),
+    /* 並べ方（§9.226 ①）も**見本へそのまま渡す**。渡さないと、並べ方の
+       ボタンだけが押しても何も起きない（意匠のときと同じ罠・§9.223 ③）。 */
+    layout:opLayoutUsable(widget)?opLayoutOf(x):'自動',
+    /* 定型文（§9.226 ①）はまとまりの値を語句として並べるので、見本にも
+       同じ値を渡す——渡さないと見本だけ「まとまりを選ぶと…」のまま。 */
+    choices:opChoiceValues(x.choice),
     choiceNotes:opState.notes[x.choice]||{}};
   if(window.WL&&WL.opData&&WL.opData.presentation)WL.opData.presentation(label,previewDef);
   /* 値の整え方（§9.221 ⑦）も**見本へ配線する**——「3桁区切り」を選んでも
@@ -4991,6 +5293,7 @@
   form.querySelectorAll('[data-op-unitplace]').forEach(b=>b.onclick=()=>{
    if(b.disabled)return;touch({unitPlace:b.dataset.opUnitplace});
   });
+  form.querySelectorAll('[data-op-layout]').forEach(b=>b.onclick=()=>touch({layout:b.dataset.opLayout}));
   form.querySelectorAll('[data-op-align]').forEach(b=>b.onclick=()=>touch({align:b.dataset.opAlign}));
   form.querySelectorAll('[data-op-vfmt]').forEach(b=>b.onclick=()=>touch({valueFormat:b.dataset.opVfmt}));
   form.querySelectorAll('[data-op-when]').forEach(b=>b.onclick=()=>{
@@ -5100,6 +5403,9 @@
           note:v('opdNote','note'),
           equipment:x.equipment,
           span:x.span,place:x.place,widget:x.widget,
+          /* §9.226 ①③。**並べ方と群幅も必ず送る**——`item_upsert`は全列を
+             書くので、送らないと保存のたびに既定へ戻る（§9.212 ②と同じ形）。 */
+          layout:x.layout||'自動',groupSpan:Number(x.groupSpan)||0,
           required:!!x.required,enabled:x.enabled!==false,
           fold:!!x.fold,
           showWhen:x.showWhen||[]};
@@ -5141,7 +5447,9 @@
        何として読むか」で、意匠は見た目——どちらも値の持ち方を変えないので、
        組み込みの欄でも押したとおりになる。**組み込みキーは送らない**ので、
        役割を別の項目へ移してもこの欄の素性は変わらない。 */
-    role:d.role||'',look:d.look||null};
+    role:d.role||'',look:d.look||null,
+    /* §9.226 ①③ */
+    layout:d.layout||'自動',groupSpan:d.groupSpan||0};
   try{
    opModalSay('保存しています…');
    await api('/api/operation-item-master/update',{method:'POST',
@@ -5251,7 +5559,7 @@
     §9.221 ③でオペレータ・機器・スプール種別・内径種別・バリ揃え・
     コイル止めもここへ移したので、**現場が触る選択肢はすべてこの1枚**になる。
     ============================================================ */
- const ocState={groups:[],items:[],usage:{},legacy:[],picked:'',q:'',eqOpen:null};
+ const ocState={groups:[],items:[],usage:{},legacy:[],picked:'',q:'',eqOpen:null,scroll:0};
  function ocRows(name){
   return (ocState.items||[]).filter(r=>r.name===name);
  }
@@ -5308,6 +5616,24 @@
    +`<button type="button" id="ocAddGroup" class="ghost">まとまりを追加</button>`
    +`<span class="op-bar-state" id="ocState"></span></div>`;
   list.innerHTML=`<div class="oc-edit">${ocGroupPaneHtml(picked)}${ocValuePaneHtml(picked)}</div>`;
+  bindOpChoice();
+ }
+ /* まとまりを選ぶ（§9.226 ①、利用者の指摘「選択するたびスクロールが一番上に
+    戻るので位置がずれ使いづらい」）。**左の一覧のDOMは作り直さない**——
+    作り直すと`scrollTop`が0へ戻り、17件を上から数え直すことになる。
+    右の値の欄だけを差し替え、印（`is-on`）は付け替えるだけにする。
+    それでも作り直す経路（読み込み直し）が残るので、位置は`ocState.scroll`に
+    覚えて`bindOpChoice()`が戻す。 */
+ function ocSelectGroup(name){
+  const n=String(name||'');
+  if(!n||ocState.picked===n)return;
+  ocState.picked=n;
+  const list=$('#masterMaintList');
+  const pane=list&&list.querySelector('.oc-values');
+  if(!pane){renderOpChoice();return}
+  pane.outerHTML=ocValuePaneHtml(n);
+  list.querySelectorAll('[data-oc-group]').forEach(b=>
+    b.classList.toggle('is-on',b.dataset.ocGroup===n));
   bindOpChoice();
  }
  function ocGroupPaneHtml(picked){
@@ -5424,13 +5750,17 @@
    pane.outerHTML=ocGroupPaneHtml(ocPickedName());
    const again=$('#ocSearch');
    if(again){again.focus();try{again.setSelectionRange(at,at)}catch(e){}}
-   list.querySelectorAll('[data-oc-group]').forEach(b=>b.onclick=()=>{
-    ocState.picked=b.dataset.ocGroup;renderOpChoice();
-   });
+   list.querySelectorAll('[data-oc-group]').forEach(b=>b.onclick=()=>ocSelectGroup(b.dataset.ocGroup));
   };
-  list.querySelectorAll('[data-oc-group]').forEach(b=>b.onclick=()=>{
-   ocState.picked=b.dataset.ocGroup;renderOpChoice();
-  });
+  list.querySelectorAll('[data-oc-group]').forEach(b=>b.onclick=()=>ocSelectGroup(b.dataset.ocGroup));
+  /* **スクロールの位置を覚える**（下の`ocSelectGroup`の但し書きと同じ理由）。
+     読み込み直しのあと（`renderOpChoice`）は一覧ごと作り直すので、覚えて
+     いないと戻せない。 */
+  const gl=list.querySelector('.oc-group-list');
+  if(gl){
+   gl.scrollTop=Number(ocState.scroll)||0;
+   gl.addEventListener('scroll',()=>{ocState.scroll=gl.scrollTop},{passive:true});
+  }
   const rename=$('#ocRename');
   if(rename)rename.onclick=()=>ocRenameGroup();
   const delg=$('#ocDeleteGroup');
@@ -5617,6 +5947,8 @@
    opState.aligns=it.aligns||opState.aligns;
    opState.valueFormats=it.valueFormats||opState.valueFormats;
    opState.unitInBlocked=it.unitInBlocked||opState.unitInBlocked;
+   opState.layouts=it.layouts||opState.layouts;
+   opState.layoutWidgets=it.layoutWidgets||opState.layoutWidgets;
    opState.typeFamilies=it.typeFamilies||opState.typeFamilies;
    opState.builtinFamilies=it.builtinFamilies||opState.builtinFamilies;
    opState.notes=it.choiceNotes||{};

@@ -954,6 +954,59 @@
      動いた先へ付いていく（`moveRange`が入った位置を返す）。 */
   let selectedStrip=-1;
   function selectStrip(i){selectedStrip=Number.isInteger(i)?i:-1}
+  /* ---------- 異常位置判定との連携（§9.226 ②、利用者の指示） ----------
+     「条の設計（幅の割り付け）と異常位置判定をより連携させたい。欠陥判定
+      したら、条の設計にも表示したい(ONOFF可能)。判定した場合はバッジを
+      表示して、欠陥が入っていることを表示する。バッジのダブルクリックから
+      異常位置判定モーダルに移行できる。」
+
+     **どの条に掛かるかは`WL.defect.markers()`の1箇所が答える**（§9.160と
+     同じ約束）。ここで条を数え直すと、屑幅の片寄せ・基準幅の取り方という
+     前提が2つに分かれる。
+     出す/出さないは**この端末の覚え**（読み方の好みなのでPCごとに違って
+     よい。§9.199の`childBadge`と同じ考え方）。 */
+  const DEFECT_SHOW_KEY='SplitDefectShowV1';
+  function defectShown(){
+    try{return localStorage.getItem(DEFECT_SHOW_KEY)!=='0'}catch(e){return true}
+  }
+  function setDefectShown(on){
+    try{localStorage.setItem(DEFECT_SHOW_KEY,on?'1':'0')}catch(e){}
+  }
+  function defectInfo(){
+    if(!(window.WL&&WL.defect&&WL.defect.markers))return null;
+    try{return WL.defect.markers()}catch(e){return null}
+  }
+  /* 図に印を出すぶん（切のときは出さない）。**帯の文字は別**——切にしていても
+     「判定はある」ことは言う（黙って隠すと、設定したこと自体を忘れる・§9.125）。 */
+  function defectMarkers(){return defectShown()?defectInfo():null}
+  function renderDefectChip(dm){
+    const chip=$('#splitDefectChip'),tg=$('#splitDefectToggle');
+    const info=dm||defectInfo();
+    const has=!!(info&&info.lanes);
+    if(tg){
+      tg.hidden=!has;
+      const on=defectShown();
+      tg.setAttribute('aria-pressed',on?'true':'false');
+      tg.textContent=on?'異常の印: 出す':'異常の印: 出さない';
+      tg.title=on?'条の設計に異常位置判定の該当条を出しています。押すと隠します'
+                 :'いまは出していません。押すと該当条に印が出ます';
+    }
+    if(!chip)return;
+    chip.hidden=!has;
+    if(!has)return;
+    const n=info.lanes.length;
+    /* **同じ数字を2箇所に出さない**（§CLAUDE 8）ので、ここは「何条か」と
+       「帳票に載るか」だけ。距離や基準は判定の窓が持つ。 */
+    const state=info.saved?(info.stale?'保存後に変更あり':'保存済み'):'未保存';
+    chip.innerHTML=`<b>異常 ${n?`${n}条`:'該当なし'}</b><small>${esc(state)}</small>`;
+    chip.title=(n?`異常位置判定で${n}条に掛かっています`:'判定はありますが、製品の条には掛かっていません')
+      +`（${info.memo||'内容の記載なし'}）`
+      +`／${info.saved?(info.stale?'保存後に入力が変わっています。帳票には保存時の内容が出ます':'帳票にも出ます')
+                     :'未保存なので帳票には出ません'}`
+      +'／押すと異常位置判定を開きます';
+    chip.classList.toggle('is-hit',n>0);
+    chip.classList.toggle('is-stale',!!info.stale);
+  }
   function renderSplitVisual(sources,seq,colorMap){
     const strip=$('#splitVisualStrip');
     const total=seq.length;
@@ -973,6 +1026,8 @@
        ロットの種類が増えるので、下2桁だと違うロットが同じに見える。
        幅の分からない条は数に入れない（空欄を1種類として数えると、
        等幅のロットまで異幅扱いになる）。 */
+    const dm=defectMarkers();
+    const hit=new Set((dm&&dm.lanes)||[]);
     const mixedWidths=new Set(seq.filter(Boolean)
       .map(l=>widthMap[l]).filter(w=>w!==''&&w!==undefined&&w!==null)
       .map(w=>String(w))).size>1;
@@ -998,7 +1053,13 @@
         +`<b class="svb-lot">${esc(lot)}</b>`
         +`<b class="svb-lot-short">${esc(lotSuffixN(lot,mixedWidths?3:2))}</b>`
         +`${hasWidth?`<small>${widthText}</small>`:''}</span>`:'';
-      html+=`<div class="split-visual-block${lot?'':' empty'}${i===selectedStrip?' is-selected':''}" data-start="${i}" data-end="${i}" data-lot="${lot?esc(lot):''}"${lot?` data-wkey="${esc(wkey)}"`:''} style="left:${left}%;width:${width}%;--split-block-bg:${bg}" title="${fullLabel} ／ ${i+1}条目${hasWidth?` ／ 幅${widthText}`:''}${tolText?` ／ ${tolText}`:''}">${cellLabel}</div>`;
+      /* 欠陥の掛かる条（§9.226 ②）。**色だけで伝えない**ので、印の文字と
+         `title`の理由を必ず添える（§3）。ダブルクリックで判定の窓へ。 */
+      const bad=hit.has(i);
+      const flag=bad?`<b class="svb-defect" data-defect-flag="1"`
+        +` title="異常位置判定でこの条に掛かっています${dm.memo?`（${esc(dm.memo)}）`:''}`
+        +`／ダブルクリックで異常位置判定を開きます">異常</b>`:'';
+      html+=`<div class="split-visual-block${lot?'':' empty'}${i===selectedStrip?' is-selected':''}${bad?' is-defect':''}" data-start="${i}" data-end="${i}" data-lot="${lot?esc(lot):''}"${lot?` data-wkey="${esc(wkey)}"`:''} style="left:${left}%;width:${width}%;--split-block-bg:${bg}" title="${fullLabel} ／ ${i+1}条目${hasWidth?` ／ 幅${widthText}`:''}${tolText?` ／ ${tolText}`:''}${bad?' ／ 異常位置判定に該当':''}">${cellLabel}${flag}</div>`;
     }
     html+='<div class="split-visual-ghost" id="splitVisualGhost" hidden></div></div>';
     strip.innerHTML=html;
@@ -1006,6 +1067,8 @@
        並べ替えの直後に選択の印だけが残って説明が消える（何を選んでいるのかが
        印だけになる＝色でしか伝えていない状態）。 */
     setVisualDetail(describeStrip(seq,sources,selectedStrip));
+    renderDefectChip(dm);
+    ensureDefectChipWiring();
     ensureSplitVisualWiring();
     renderScrapAndRuler(layout);
     /* 屑の帯を置くと条の束の幅が変わる（`flexGrow`）ので、**最後に**測る。 */
@@ -1300,6 +1363,36 @@
       document.addEventListener('pointerup',handleUp);
       document.addEventListener('pointercancel',handleUp);
     });
+    /* 異常の印はダブルクリックで判定の窓へ（§9.226 ②、利用者の指示）。
+       **単クリックは今までどおり条を選ぶ**——印を押した拍子に選択が
+       変わらないよう、ダブルクリックだけを別の意味にする。 */
+    strip.addEventListener('dblclick',e=>{
+      if(!e.target.closest('[data-defect-flag]'))return;
+      e.preventDefault();e.stopPropagation();
+      if(window.WL&&WL.defect&&WL.defect.open)WL.defect.open();
+    });
+  }
+
+  /* 帯のチップとON/OFF（§9.226 ②）。**器は作り直されないので1度だけ配線する**。 */
+  let defectChipWired=false;
+  function ensureDefectChipWiring(){
+    if(defectChipWired)return;
+    const chip=$('#splitDefectChip'),tg=$('#splitDefectToggle');
+    if(!chip&&!tg)return;
+    defectChipWired=true;
+    if(chip)chip.onclick=()=>{if(window.WL&&WL.defect&&WL.defect.open)WL.defect.open()};
+    if(tg)tg.onclick=()=>{setDefectShown(!defectShown());redrawFigure()};
+  }
+  /* 図を描き直す（§9.226 ②）。**入口は2つ**（分割あり／分割なし）なので、
+     どちらかを選ぶ判断はここ1箇所に置く——呼ぶ側に持たせると、片方だけ
+     直った状態が作れる。 */
+  function redrawFigure(){
+    const self=$('#splitVisualStrip')&&$('#splitVisualStrip').classList.contains('split-visual-self');
+    try{
+      if(self)renderSelfSplitVisual();
+      else if(typeof renderSplit==='function')renderSplit();
+      else renderDefectChip(null);
+    }catch(e){renderDefectChip(null)}
   }
 
   /* 子ロット候補カード(#splitSources)。凡例として現在の割当条数・幅・
@@ -1481,7 +1574,11 @@
   }
   window.applySplit=applySplit;
   /* 新しい公開は名前空間へ（素の`window.*`は増やさない。`test_globallint`）。 */
-  window.WL.split=Object.assign(window.WL.split||{},{applyLive:applySplitLive});
+  window.WL.split=Object.assign(window.WL.split||{},{applyLive:applySplitLive,
+    /* 異常位置判定を保存・取り消したら図の印を描き直す（§9.226 ②）。
+       **描き直しの入口はこの1本**——判定の側から`renderSplit()`を直接
+       呼ぶと、分割なしのロットで別の組み立てを呼ぶことになる。 */
+    redrawFigure});
   /* 条の設計カードのボタン結線(このファイルがカードの所有者。§9.144)。
      **並びを変える操作はすべて`applySplitLive()`で締める**——1つでも
      漏らすと、その操作だけ「効いていない」ように見える。 */

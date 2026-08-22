@@ -356,14 +356,49 @@ let b=null,madeBlock=null;
       してほしい。選択したときに縦横のサイズ変更ができるように。また配置の
       しにくさはグリッドとの関係性がわからないことにありそうです」
      ================================================================ */
-  /* 掴む前に読めること＝操作帯に「何マス×何行」が出ている。 */
-  const dim=await page.evaluate(t=>{
+  /* 掴む前に読めること。**操作帯は廃止した**（§9.226 ⑤）ので、いまは
+     ダブルクリックで開く設定の窓が「何マス×何行」を出す。**入口が1つ
+     しかないなら、そこに必ず出ていること**を見る（出ていないと、開いても
+     いま何マスなのか分からないまま押すことになる）。 */
+  await page.dblclick(`[data-rp-block="${A.replace(/"/g,'\\"')}"] .rp-block-fit`);
+  await page.waitForFunction(()=>{
+   const m=document.getElementById('rpBlockModal');return !!m&&!m.hidden;
+  },null,{timeout:8000});
+  await page.waitForTimeout(300);
+  const dim=await page.evaluate(()=>{
+   const f=document.getElementById('rpBlockForm');
+   const n=f&&[...f.querySelectorAll('.rp-form-note')].map(x=>x.textContent).join(' ');
+   return {文:n||'',
+           /* 浮き帯から移した操作が窓に在ること（入口が消えていない）。 */
+           並べ方:f?f.querySelectorAll('[data-e-flow]').length:0,
+           幅:f?f.querySelectorAll('[data-e-span]').length:0,
+           出す:f?f.querySelectorAll('[data-e-vis]').length:0};
+  });
+  rec('塊の大きさは設定の窓に出る（掴む前に読める）',
+      /\d+\/\d+マス/.test(dim.文)&&dim.幅>=3&&dim.出す===1,JSON.stringify(dim).slice(0,180));
+  rec('中の並べ方は設定の窓で選べる',dim.並べ方>=4,String(dim.並べ方));
+  /* **押した結果が紙に出ること**（§9.226 ⑤）。クラスが付くだけでは足りない
+     ——CSSが当たっているかまで見る（段組なら`column-count`が効く）。 */
+  const flow=await page.evaluate(async t=>{
+   const b=document.querySelector('#rpBlockForm [data-e-flow="縦"]');
+   if(!b)return null;
+   b.click();
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
    const el=document.querySelector(`[data-rp-block="${CSS.escape(t)}"]`);
-   const d=el&&el.querySelector('.rp-block-dim');
-   return d?d.textContent.trim():null;
+   const g=el&&el.querySelector('.rp-grid');
+   return {印:!!(el&&el.classList.contains('rp-flow-col')),
+           段:g?getComputedStyle(g).columnCount:'',
+           表示:g?getComputedStyle(g).display:''};
   },A);
-  rec('塊の大きさが操作帯に出る（掴む前に読める）',
-      !!dim&&/\d+\/\d+マス×/.test(dim),String(dim));
+  rec('並べ方を「縦」にすると段組で流れる（押した結果が紙に出る）',
+      !!flow&&flow.印===true&&flow.表示==='block'&&Number(flow.段)>=2,
+      JSON.stringify(flow));
+  await page.evaluate(()=>{
+   const b=document.querySelector('#rpBlockForm [data-e-flow=""]');if(b)b.click();
+  });
+  await page.waitForTimeout(200);
+  await page.evaluate(()=>{const c=document.getElementById('rpBlockClose');if(c)c.click()});
+  await page.waitForTimeout(300);
   /* 縁を引くと大きさが変わる。**取っ手は3つ**（幅・高さ・両方）。 */
   const grips=await page.evaluate(t=>{
    const el=document.querySelector(`[data-rp-block="${CSS.escape(t)}"]`);
@@ -537,59 +572,32 @@ let b=null,madeBlock=null;
      上端が器の上端と一致するか**で見る（「帯があること」だけを見る網では
      捕まらない——流れの中でも層でも、帯は在る）。
      ========================================================== */
+  /* §9.226 ③（利用者の指示「カードのサイズ変更をしやすいように、
+     マウスオーバー時のフローティング表示は不要なので削除してください」）で
+     操作帯は**廃止した**。ここで固定するのは2つ:
+       ①中身が器の上端から始まること（刷り上がりそのまま）
+       ②塊の中に操作の道具が1つも無いこと（入口はダブルクリックの窓だけ）
+     **「帯が触れると出る」の網は消す**——消し忘れると、直したはずの
+     ものが赤いまま残り「落ちても気にしない」を教えてしまう（§9.200）。 */
   const asPrint=await page.evaluate(()=>{
-   /* **重なり・入りきらない塊は帯を出しっぱなし**にしてあるので、
-      「触れるまで見えない」はふつうの塊で見る（この網より前で重ねている）。 */
    const el=document.querySelector(
      '#reportContent .rp-block[data-rp-block]:not(.is-overlap):not(.is-overflow)');
    if(!el)return {前提なし:true};
    const fit=el.querySelector(':scope>.rp-block-fit');
-   const tools=el.querySelector(':scope>.rp-block-tools');
-   if(!fit||!tools)return {前提なし:true,fit:!!fit,tools:!!tools};
+   if(!fit)return {前提なし:true,fit:false};
    const er=el.getBoundingClientRect(),fr=fit.getBoundingClientRect();
-   const cs=getComputedStyle(tools);
    return {ずれ:Math.round(fr.top-er.top),
-           層:cs.position,
-           触れる前は見えない:cs.visibility==='hidden'||Number(cs.opacity)===0};
+           帯:!!el.querySelector(':scope>.rp-block-tools'),
+           /* 大きさを変える縁は残っていること（掴む的そのもの）。 */
+           縁:el.querySelectorAll(':scope>[data-rp-grip]').length,
+           道具:el.querySelectorAll('[data-rp-span],[data-rp-toggle],[data-rp-split]').length};
   });
   rec('組み換え中でも中身は器の上端から始まる（帯が押し下げない）',
       !asPrint.前提なし&&Math.abs(asPrint.ずれ)<=1,JSON.stringify(asPrint));
-  rec('操作帯は重ねる層で、触れるまで見えない',
-      !asPrint.前提なし&&asPrint.層==='absolute'&&asPrint.触れる前は見えない===true,
-      JSON.stringify(asPrint));
-  /* 触れたら出ること。**出ないなら操作できない**ので、見えないだけでは足りない。
-     CSSの`:hover`はイベントでは付かないので、同じ条件（`is-overlap`＝直して
-     ほしい塊は出しっぱなし）で確かめる。**淡く出るのに時間がかかる**ので、
-     固定待ちではなく「出るまで待つ」（`transition`は120ms・§9.102）。 */
-  const marked=await page.evaluate(()=>{
-   const el=document.querySelector(
-     '#reportContent .rp-block[data-rp-block]:not(.is-overlap):not(.is-overflow)');
-   if(!el)return false;
-   el.dataset.rpProbe='1';el.classList.add('is-overlap');return true;
-  });
-  let onHover={前提なし:!marked};
-  if(marked){
-   let shown=false;
-   try{
-    await page.waitForFunction(()=>{
-     const el=document.querySelector('[data-rp-probe="1"]');
-     const t=el&&el.querySelector(':scope>.rp-block-tools');
-     if(!t)return false;
-     const cs=getComputedStyle(t);
-     return cs.visibility!=='hidden'&&Number(cs.opacity)>0.5;
-    },null,{timeout:4000});
-    shown=true;
-   }catch(e){}
-   onHover=await page.evaluate(s=>{
-    const el=document.querySelector('[data-rp-probe="1"]');
-    const t=el&&el.querySelector(':scope>.rp-block-tools');
-    const cs=t?getComputedStyle(t):null;
-    if(el){el.classList.remove('is-overlap');delete el.dataset.rpProbe}
-    return {見える:s,可視性:cs?cs.visibility:'',濃さ:cs?cs.opacity:''};
-   },shown);
-  }
-  rec('直してほしい塊（重なり）では帯を出しっぱなしにする',
-      !onHover.前提なし&&onHover.見える===true,JSON.stringify(onHover));
+  rec('マウスオーバーの浮き帯は無い（縁を掴む的を覆わない）',
+      !asPrint.前提なし&&asPrint.帯===false&&asPrint.道具===0,JSON.stringify(asPrint));
+  rec('大きさを変える縁は3方向とも残っている',
+      !asPrint.前提なし&&asPrint.縁===3,JSON.stringify(asPrint));
 
   /* **空きは紙の地と違う色**（§9.223 ②、利用者の指摘「他のエリアと色が同じで
      空欄の場所が認識しにくい」）。塊は白なので、白との差が付いているかを

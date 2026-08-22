@@ -604,8 +604,8 @@
  /* **知らない値は既定へ倒す**（設定を手で書き換えた・古い値が残っている
     ときに、紙が空欄になるより既定で刷れるほうがよい）。 */
  function rpProductMode(){
-  const v=rpPattern(RP_PRODUCT_KEY);
-  return v==='内訳'||v==='合否'?v:'';
+  const t=rpTokens(RP_PRODUCT_KEY);
+  return t.indexOf('内訳')>=0?'内訳':(t.indexOf('合否')>=0?'合否':'');
  }
  function productRowsSection(x){
   const rows=x.product?.rows||[],actual=Math.max(1,Math.min(9,+x.settings?.verticalCount||1));
@@ -1153,7 +1153,47 @@
   else delete f[k];
   return f;
  }
- function rpTransposed(k){return rpPattern(k)==='転置'}
+ /* ---------- 見せ方の印は「|」で並べる（§9.226 ③） ----------
+    1つの塊が持つ見せ方は1つとは限らない（行と列の入れ替え・中のデータの
+    並べ方・丈別データの出し方）。**`formats`の置き場は1つ**（`pattern`、
+    60字）なので、印を`|`で並べて持つ。**古い保存値はそのまま読める**
+    ——`転置`だけ／`内訳`だけの文字列も、区切って読めば1つの印になる。 */
+ function rpTokens(k){return String(rpPattern(k)||'').split('|').filter(Boolean)}
+ function rpToken(k,prefix){
+  const t=rpTokens(k).find(x=>x.indexOf(prefix)===0);
+  return t?t.slice(prefix.length):'';
+ }
+ /* 印を1つだけ差し替えた`formats`（他の印は残す）。 */
+ function rpTokenPatch(k,prefix,val){
+  const t=rpTokens(k).filter(x=>x.indexOf(prefix)!==0);
+  if(val)t.push(prefix+val);
+  return rpPatternPatch(k,t.join('|'));
+ }
+ function rpFlagPatch(k,flag,on){
+  const t=rpTokens(k).filter(x=>x!==flag);
+  if(on)t.push(flag);
+  return rpPatternPatch(k,t.join('|'));
+ }
+ function rpTransposed(k){return rpTokens(k).indexOf('転置')>=0}
+ /* ---------- カードの中のデータの並べ方（§9.226 ③、利用者の指示） ----------
+    「データの並びは横にある程度並べて次の行に行く形で横長に配置が多い。
+     しかしその並び方を縦を先に並べていくパターンや幅方向長さが許す限り
+     並べていくパターン、縦方向高さが許す限り並べるパターンなど、より
+     フレキシブルなカードサイズに合わせたデータ配置が連動するように」
+
+    4つ。**カードの大きさに連動するのは後ろの2つ**——列数を決めず、
+    器に入るだけ並べる。 */
+ const RP_FLOWS=[
+  {v:'',    label:'横（列数を決める）',note:'左から右へ並べ、決めた列数で折り返します（今までの紙）。'},
+  {v:'縦',  label:'縦（列数を決める）',note:'上から下へ並べ、決めた列数ぶんの段で次の列へ移ります。'},
+  {v:'幅なり',label:'幅が許すかぎり横へ',note:'カードの幅に入るだけ横に並べます（列数はカードの大きさで決まります）。'},
+  {v:'高さなり',label:'高さが許すかぎり縦へ',note:'カードの高さに入るだけ縦に並べ、入らなくなったら次の列へ（<b>高さを決めた塊だけ</b>）。'},
+ ];
+ function rpFlow(k){
+  const v=rpToken(k,'流:');
+  return RP_FLOWS.some(f=>f.v===v)?v:'';
+ }
+ const RP_FLOW_CLASS={'':'','縦':'rp-flow-col','幅なり':'rp-flow-fit','高さなり':'rp-flow-tall'};
  /* 帳票本体のHTML生成。一括印刷（複数ロットをまとめて別ページへ流し込む）でも
     同じHTMLを使うため、単一プレビューへの書き込みとは分離してある。
     `arranging`が真のときだけ、ブロックごとの操作帯を差し込む——**紙には
@@ -1231,14 +1271,19 @@
      :`grid-column:span ${span}${rows?`;grid-row:span ${rows}`:''}`;
    /* 重なりは**縁と文字**で言う（§3）。数は帯のチップが持つ。 */
    const ov=(arranging&&!paper&&rpOverlaps.indexOf(k)>=0);
-   return `<div class="rp-block${body?'':' is-empty'}${at?' is-placed':''}${ov?' is-overlap':''}" data-rp-block="${esc(k)}"`
+   /* 中のデータの並べ方（§9.226 ③）。**紙でも同じ**なので、組み換え中か
+      どうかに関わらず当てる（刷り上がりと違う姿を見せない）。 */
+   const flow=RP_FLOW_CLASS[rpFlow(k)]||'';
+   return `<div class="rp-block${body?'':' is-empty'}${at?' is-placed':''}${ov?' is-overlap':''}`
+    +`${flow?' '+flow:''}" data-rp-block="${esc(k)}"`
     +` style="${place}"`
     +`${(arranging&&!paper)?' draggable="true"':''}>`
-    /* **操作の道具は層で重ねる**（§9.223 ①、利用者の指示「マウスオーバーの
-       時のみレイヤーで表示させ、編集中画面のカードの見た目は常に実際に
-       出力される見た目を再現してほしい」）。流れの中に置くと帯のぶん中身が
-       押し下げられ、**刷り上がりと違う姿を見ながら位置を詰める**ことになる。 */
-    +((arranging&&!paper)?`<div class="rp-block-tools">${rpBlockBarHtml(k,span,!body)}</div>`:'')
+    /* **マウスオーバーの浮き帯は置かない**（§9.226 ③、利用者の指示
+       「カードのサイズ変更をしやすいように、マウスオーバー時のフローティング
+        表示は不要なので削除してください」）。縁を掴んで大きさを変える操作の
+       上に、触れると出る帯が重なっていたため、掴む前に帯が現れて的が消えて
+       いた。塊の名前は**刷り上がりの見出し（`<h3>`）がそのまま名乗る**ので、
+       帯が無くてもどれがどれかは読める。設定はダブルクリックで開く窓が持つ。 */
     /* **中身は1枚の器に包む**（§9.221 ⑨）。器の大きさは利用者が決めた
        ものなので、入らないときは中身のほうを縮める（`rpFitBlockBodies`）
        ——包まないと、縮める対象が「操作帯ごと」になって帯まで小さくなる。 */
@@ -1268,34 +1313,11 @@
   const bl=rpBlockOf(k);
   return bl&&bl.meas?[RP_MEAS_GROUP_BY.get(bl.meas)].filter(Boolean):[];
  }
- function rpBlockBarHtml(k,span,empty){
-  const grid=rpGrid(),choices=rpSpanChoices();
-  const groups=rpBlockMeasGroups(k);
-  const bl=rpBlockOf(k)||{};
-  /* 測定データだけの操作。**「まとめ↔分解」は1つのボタンで往復**させる
-     ——2つ並べると、今どちらなのかを読む手間が増える。 */
-  const split=k===RP_MEAS_COMBINED
-   ?`<button type="button" class="rp-block-split" data-rp-split="out" title="項目ごとの表に分けます（それぞれ場所と幅を決められます）">項目ごとに分ける</button>`
-   :(bl.meas?`<button type="button" class="rp-block-split" data-rp-split="in" title="測定データのまとめへ戻します（条番号の軸を共有して1枚になります）">まとめへ戻す</button>`:'');
-  const rows=rpRows(k);
-  return `<div class="rp-block-bar">
-    <span class="rp-block-grip" title="ドラッグで場所を入れ替えます" aria-hidden="true">⠿</span>
-    <b class="rp-block-name">${esc(rpBlockLabel(k))}</b>
-    <i class="rp-block-dim" title="いまの大きさ。右の縁と下の縁を引いても変えられます">${span}/${grid}マス×${rows?rows+'行':'中身なり'}</i>
-    ${empty?'<i class="rp-block-tag">中身なし</i>':''}
-    ${rpOverlaps.indexOf(k)>=0?'<i class="rp-block-tag is-over" title="ほかの塊と場所が重なっています。動かすか「並べ直す」で整えられます">重なり</i>':''}
-    <span class="rp-block-size" title="${grid}マスのうち何マスを使うか">${choices.map(c=>
-      `<button type="button" data-rp-span="${c.v}" class="${c.v===span?'is-on':''}" title="幅を${esc(c.label)}（${c.v}/${grid}マス）にします">${esc(c.label)}</button>`).join('')}</span>
-    ${split}
-    <button type="button" class="rp-block-vis" data-rp-toggle title="紙に出さないようにします（下の置き場へ移ります）">隠す</button>
-   </div>
-   ${groups.length?`<div class="rp-block-cols" hidden>
-     <span class="rp-block-cols-head"></span>
-     ${groups.map(gr=>rpMeasVisibleCols(gr.g).map(c=>
-       `<button type="button" class="rp-block-col-drop" data-rp-drop="${esc(gr.g)}|${esc(c.c||'値')}" title="この列を紙から落とします">${esc(gr.g)}${c.c?' '+esc(c.c):''} ×</button>`).join('')).join('')}
-     <button type="button" class="rp-block-col-restore" data-rp-restore title="落とした列を全部戻します">落とした列を戻す</button>
-    </div>`:''}`;
- }
+ /* 旧・組み換え中の浮き帯（`rpBlockBarHtml`）は廃止した（§9.226 ③、
+    利用者の指示「マウスオーバー時のフローティング表示は不要なので削除して
+    ください」）。持っていた操作は**ダブルクリックで開く設定の窓**へ移した
+    ——幅・高さ・行と列・列幅・紙に出す/出さない・まとめ↔分解・落とせる列。
+    入口を2つ持つと、片方だけ直した状態が作れる（§CLAUDE 8）。 */
  /* **入りきらないことは黙って隠さない**（§9.173、利用者の指示「グリッド変更時
     データが入りきらない場合は選択できるがデータを絞るように絞れる内容を提示
     する」）。幅は選べるままにして、**何を落とせるか**をその場に出す。
@@ -1477,13 +1499,13 @@
    const over=!!box&&(box.scrollWidth>box.clientWidth+2
      ||(!!tbl&&tbl.getBoundingClientRect().width>box.getBoundingClientRect().width+2));
    el.classList.toggle('is-overflow',over);
-   const cols=el.querySelector('.rp-block-cols');
-   if(!cols)return;
-   cols.hidden=!over;
-   const head=cols.querySelector('.rp-block-cols-head');
-   if(head)head.textContent=over
-     ?`この幅には入りません（あと${Math.max(1,Math.round(box.scrollWidth-box.clientWidth))}px）。幅を広げるか、下の列を落として絞ってください:`
-     :'';
+   /* **絞り込みの案内は紙に置かない**（§9.226 ⑤）——落とせる列の一覧は
+      塊の設定の窓が持つ。ここで紙へ書き足すと刷り上がりが変わる。
+      **縁の色だけで終わらせない**（§3）ので、あと何px足りないかは
+      `title`で言う（紙に出る文字は1つも増えない）。 */
+   if(over)el.title=`この幅には入りません（あと${Math.max(1,Math.round(box.scrollWidth-box.clientWidth))}px）。`
+     +`幅を広げるか、ダブルクリックして開く窓で列を落として絞ってください。`;
+   else if(el.title)el.removeAttribute('title');
   });
  }
 
@@ -1508,12 +1530,37 @@
      <div class="rp-block-form" id="rpBlockForm"></div>
     </div></div>`;
   document.body.append(m);
-  $id('rpBlockClose').onclick=()=>{m.hidden=true};
+  $id('rpBlockClose').onclick=()=>closeBlockEditor();
   WL.modal.keepOpen(m);
-  document.addEventListener('keydown',e=>{if(WL.modal.escCloses(e)&&!m.hidden)m.hidden=true},true);
+  document.addEventListener('keydown',e=>{if(WL.modal.escCloses(e)&&!m.hidden)closeBlockEditor()},true);
   return m;
  }
  let rpEditKey=null;
+ /* **閉じたら中身も捨てる**（§9.226 ⑤）: 落とせる列のボタン(`[data-rp-drop]`)は
+    この窓の中にしか無い約束なので、隠すだけだと畳んだ塊のぶんがDOMに残り、
+    「紙に絞り込みの案内が出ていないか」を数える網に引っ掛かる。掴んだ鍵ごと
+    捨てて、次に開いたときに組み立て直す。 */
+ function closeBlockEditor(){
+  const m=$id('rpBlockModal');if(m)m.hidden=true;
+  const f=$id('rpBlockForm');if(f)f.innerHTML='';
+  const pv=$id('rpBlockPreview');if(pv)pv.innerHTML='';
+  rpEditKey=null;
+ }
+ /* 分解／まとめ（§9.226 ③で設定の窓へ移した）。**hiddenを付け外しするだけ**
+    ——まとめに載るかどうかは「単独ブロックが出ているか」の1点で決まる
+    （同じ内容を2箇所に出さない・§9.173）。 */
+ function rpApplySplit(k,dir){
+  const set=new Set(rpHiddenSet());
+  if(dir==='out'){
+   /* まとめ→分解: 中身のある群だけを単独で出し、まとめは畳む。 */
+   rpMeasGroupsFor('combined').forEach(gr=>set.delete(rpMeasSoloKey(gr.g)));
+   set.add(RP_MEAS_COMBINED);
+  }else{
+   set.add(k);set.delete(RP_MEAS_COMBINED);
+  }
+  rpStage({hidden:[...set]});
+  updateArrangeBar();
+ }
  function openBlockEditor(k){
   rpEditKey=k;ensureBlockEditor().hidden=false;renderBlockEditor();
  }
@@ -1528,6 +1575,16 @@
   const grid=rpGrid(),span=rpSpan(k),rows=rpRows(k),def=(rpBlockOf(k)||{}).rows||0;
   const cols=rpBlockColumns(k);
   const canTurn=cols.length>0;
+  /* 浮き帯から移してきた操作（§9.226 ③）。**組み立てはここ1箇所**。 */
+  const groups=rpBlockMeasGroups(k);
+  const split=k===RP_MEAS_COMBINED
+   ?`<button type="button" data-rp-split="out" title="項目ごとの表に分けます（それぞれ場所と幅を決められます）">項目ごとに分ける</button>`
+   :((rpBlockOf(k)||{}).meas?`<button type="button" data-rp-split="in" title="測定データのまとめへ戻します（条番号の軸を共有して1枚になります）">まとめへ戻す</button>`:'');
+  const dropCols=groups.length
+   ?groups.map(gr=>rpMeasVisibleCols(gr.g).map(c=>
+      `<button type="button" data-rp-drop="${esc(gr.g)}|${esc(c.c||'値')}" title="この列を紙から落とします">${esc(gr.g)}${c.c?' '+esc(c.c):''} ×</button>`).join('')).join('')
+    +`<button type="button" data-rp-restore title="落とした列を全部戻します">落とした列を戻す</button>`
+   :'';
   $id('rpBlockForm').innerHTML=`
    <div class="rp-form-row"><span class="rp-form-label">幅</span>
     <span class="rp-form-ctl">${rpSpanChoices().map(c=>
@@ -1549,6 +1606,19 @@
        <input type="number" data-e-col="${esc(c.n)}" value="${rpColWidth(k,c.n)||''}" placeholder="自動" min="${RP_H_MIN}" max="${RP_H_MAX}" step="4"></label>`).join('')}
      <button type="button" data-e-colreset>全部オートフィットへ</button>
      <i class="rp-form-note">空欄＝オートフィット（中身なり）。入れた列だけ固定します。</i></span></div>`:''}
+   <div class="rp-form-row"><span class="rp-form-label">中の並べ方</span>
+    <span class="rp-form-ctl">
+     ${RP_FLOWS.map(f=>`<button type="button" data-e-flow="${esc(f.v)}" class="${f.v===rpFlow(k)?'is-on':''}"`
+       +` title="${esc(String(f.note).replace(/<[^>]+>/g,''))}">${esc(f.label)}</button>`).join('')}
+     <i class="rp-form-note">${(RP_FLOWS.find(f=>f.v===rpFlow(k))||RP_FLOWS[0]).note}
+      ${rpFlow(k)==='高さなり'&&!rpRows(k)?'<b>いまは高さが「中身なり」なので1列のままです。</b>上の「高さ」で行数を決めてください。':''}</i>
+    </span></div>
+   ${split?`<div class="rp-form-row"><span class="rp-form-label">まとめ</span>
+    <span class="rp-form-ctl">${split}
+     <i class="rp-form-note">項目ごとに分けると、それぞれ場所と幅を決められます。まとめると条番号の軸を共有して1枚になります。</i></span></div>`:''}
+   ${dropCols?`<div class="rp-form-row"><span class="rp-form-label">落とす列</span>
+    <span class="rp-form-ctl">${dropCols}
+     <i class="rp-form-note">紙に入りきらないときは、要らない列を落として幅を空けられます。</i></span></div>`:''}
    ${k===RP_PRODUCT_KEY?`<div class="rp-form-row"><span class="rp-form-label">揃いの欄</span>
     <span class="rp-form-ctl">
      ${RP_PRODUCT_MODES.map(m=>`<button type="button" data-e-pmode="${esc(m.v)}" class="${m.v===rpProductMode()?'is-on':''}">${esc(m.label)}${m.v===''?'（既定）':''}</button>`).join('')}
@@ -1574,12 +1644,40 @@
   });
   /* 揃いの出し方も`formats`。**既定は行ごと消す**——空文字を保存すると
      「空という設定」になり、既定を変えたときに追随しない（§9.198）。 */
+  /* **印は1つずつ差し替える**（§9.226 ③）。`pattern`には行と列の入れ替え・
+     並べ方・丈別データの出し方が同居するので、まるごと書くと他が消える。 */
   form.querySelectorAll('[data-e-pmode]').forEach(b=>b.onclick=()=>{
-   rpStage({formats:rpPatternPatch(RP_PRODUCT_KEY,b.dataset.ePmode)});renderBlockEditor();
+   const t=rpTokens(RP_PRODUCT_KEY).filter(x=>x!=='内訳'&&x!=='合否');
+   if(b.dataset.ePmode)t.push(b.dataset.ePmode);
+   rpStage({formats:rpPatternPatch(RP_PRODUCT_KEY,t.join('|'))});renderBlockEditor();
   });
   form.querySelectorAll('[data-e-turn]').forEach(b=>b.onclick=()=>{
-   rpStage({formats:rpPatternPatch(k,b.dataset.eTurn)});renderBlockEditor();
+   rpStage({formats:rpFlagPatch(k,'転置',b.dataset.eTurn==='転置')});renderBlockEditor();
   });
+  form.querySelectorAll('[data-e-flow]').forEach(b=>b.onclick=()=>{
+   rpStage({formats:rpTokenPatch(k,'流:',b.dataset.eFlow)});renderBlockEditor();
+  });
+  /* 浮き帯から移してきた操作（§9.226 ③）。**当て方は元のまま**——判定が
+     2つに分かれないよう、同じ`rpStage`の書き方を使う。 */
+  form.querySelectorAll('[data-rp-split]').forEach(b=>b.onclick=()=>{
+   rpApplySplit(k,b.dataset.rpSplit);
+   /* **出さなくなった塊の設定窓は閉じる**——紙から消えたものの設定を
+      触り続けられると、どこを直しているのか分からなくなる。 */
+   if(rpHiddenSet().has(k)){closeBlockEditor();return}
+   renderBlockEditor();
+  });
+  form.querySelectorAll('[data-rp-drop]').forEach(b=>b.onclick=()=>{
+   const [g,c]=String(b.dataset.rpDrop).split('|');
+   const set=new Set(rpLayoutNow().hidden);
+   set.add(rpMeasColKey(g,c==='値'?'':c));
+   rpStage({hidden:[...set]});renderBlockEditor();
+  });
+  const rst=form.querySelector('[data-rp-restore]');
+  if(rst)rst.onclick=()=>{
+   const set=new Set(rpLayoutNow().hidden);
+   RP_MEAS_GROUPS.forEach(gr=>gr.cols.forEach(c=>set.delete(rpMeasColKey(gr.g,c.c))));
+   rpStage({hidden:[...set]});renderBlockEditor();
+  };
   form.querySelectorAll('[data-e-col]').forEach(inp=>inp.onchange=()=>{
    const v=Math.round(Number(inp.value)||0),wid=w(),key=rpColWKey(k,inp.dataset.eCol);
    if(v<RP_H_MIN)delete wid[key];else wid[key]=Math.min(RP_H_MAX,v);
@@ -2055,7 +2153,7 @@
      組み換え中に別経路で保存されたぶんまで巻き戻る。 */
   if(!saved)WL.columnLayout.discard(rpTarget());
   rpArranging=false;rpPaperView=false;
-  const bm=$id('rpBlockModal');if(bm)bm.hidden=true;
+  closeBlockEditor();
   document.body.classList.remove('rp-arranging');
   updateArrangeBar();rpRepaint();
  }
@@ -2209,7 +2307,8 @@
              :`<b class="rp-chip">全部出しています</b>`)
     +`</span>`
     +`<span class="rp-arrange-note" id="rpArrangeNote"${rpHelpOpen?'':' hidden'}>`
-      +`掴んで<b>置きたいマスへ</b>（空いているマスだけ）。縁を引くと大きさ。ダブルクリックで細かい設定。`
+      +`掴んで<b>置きたいマスへ</b>。<b>縁を引く</b>と大きさ（右＝幅・下＝高さ・右下＝両方）。`
+      +`<b>ダブルクリック</b>で設定（幅・高さ・中の並べ方・紙に出す/出さない）。`
       +`大きさを変えても<b>場所は動きません</b>。`
     +`</span>`;
    info.querySelectorAll('[data-rp-grid]').forEach(b=>b.onclick=()=>{
@@ -2266,48 +2365,9 @@
   }
   host.querySelectorAll('[data-rp-block]').forEach(el=>{
    const k=el.dataset.rpBlock;
-   el.querySelectorAll('[data-rp-span]').forEach(b=>b.onclick=ev=>{
-    ev.preventDefault();ev.stopPropagation();
-    rpApplySpan(k,Number(b.dataset.rpSpan));
-   });
-   /* 分解／まとめ。**hiddenを付け外しするだけ**——まとめに載るかどうかは
-      「単独ブロックが出ているか」の1点で決まる（同じ内容を2箇所に出さない）。 */
-   const sp=el.querySelector('[data-rp-split]');
-   if(sp)sp.onclick=ev=>{
-    ev.preventDefault();ev.stopPropagation();
-    const cur=rpLayoutNow(),set=new Set(rpHiddenSet());
-    if(sp.dataset.rpSplit==='out'){
-     /* まとめ→分解: 中身のある群だけを単独で出し、まとめは畳む。 */
-     rpMeasGroupsFor('combined').forEach(gr=>set.delete(rpMeasSoloKey(gr.g)));
-     set.add(RP_MEAS_COMBINED);
-    }else{
-     set.add(k);set.delete(RP_MEAS_COMBINED);
-    }
-    rpStage({hidden:[...set]});
-    updateArrangeBar();
-   };
-   /* 落とせる列。押した列だけを紙から外す（幅は選んだままにする）。 */
-   el.querySelectorAll('[data-rp-drop]').forEach(b=>b.onclick=ev=>{
-    ev.preventDefault();ev.stopPropagation();
-    const [g,c]=String(b.dataset.rpDrop).split('|');
-    const set=new Set(rpHiddenSet());set.add(rpMeasColKey(g,c==='値'?'':c));
-    rpStage({hidden:[...set]});
-   });
-   const rs=el.querySelector('[data-rp-restore]');
-   if(rs)rs.onclick=ev=>{
-    ev.preventDefault();ev.stopPropagation();
-    const set=new Set(rpHiddenSet());
-    RP_MEAS_GROUPS.forEach(gr=>gr.cols.forEach(c=>set.delete(rpMeasColKey(gr.g,c.c))));
-    rpStage({hidden:[...set]});
-   };
-   const vis=el.querySelector('[data-rp-toggle]');
-   if(vis)vis.onclick=ev=>{
-    ev.preventDefault();ev.stopPropagation();
-    const cur=rpLayoutNow(),set=new Set(cur.hidden);
-    if(set.has(k))set.delete(k);else set.add(k);
-    rpStage({hidden:[...set]});
-    updateArrangeBar();
-   };
+   /* **塊の中に操作の道具は無い**（§9.226 ③）。幅・分解・落とす列・
+      出す/出さないは、ダブルクリックで開く窓が持つ——ここに残すと入口が
+      2つになり、片方だけ直した状態が作れる。 */
    /* 並べ替え。落とす位置を線で見せてから離せるようにする（一覧の見出しの
       D&Dと同じ作法）。並びは**全ブロック**で保存する——見えているものだけ
       にすると、隠した塊の位置が失われる。 */

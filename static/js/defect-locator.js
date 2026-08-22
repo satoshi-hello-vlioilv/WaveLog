@@ -343,6 +343,7 @@
    updatedAt:new Date().toISOString(),saved:snapshot(r)};
   if(typeof markDirty==='function')markDirty();
   renderSaveState(r);
+  syncSplitMarks();
   showToast?.('異常位置判定を保存しました','測定帳票の「異常位置判定（参考）」に表示されます');
  }
  function doUnsave(){
@@ -351,7 +352,80 @@
   delete d.saved;
   if(typeof markDirty==='function')markDirty();
   renderSaveState(lastResult);
+  syncSplitMarks();
   showToast?.('保存を取り消しました','測定帳票には表示されなくなります');
+ }
+
+ /* ---------- 図をつかんで位置を決める（§9.226 ②、利用者の指示
+    「欠陥をつかんで位置調整をできるようにしたい」） ----------
+    数字を打ってから図で確かめる、の逆をできるようにする。**掴む対象は
+    図そのもの**——欠陥の帯は`refresh()`のたびに`innerHTML`ごと作り直されるので、
+    帯を掴む作りにすると動かした拍子に掴んでいた要素が消える（§9.167の
+    「つまみは作り直さない」と同じ罠）。器（`#defectStrip`）で受け、追従は
+    `document`で拾い、**毎回その場で器の矩形を測り直す**。
+
+    書き戻すのは`#defectDistance`——**いま選んでいる基準のままの距離**へ
+    逆算する（基準を勝手に変えない）。逆算は`compute()`の式をそのまま裏返す
+    ので、判定の規則が2つに分かれない。 */
+ function figureFromEvent(e){
+  const strip=$id('defectStrip');
+  const r=lastResult;
+  if(!strip||!r||!r.lanes)return null;
+  const sc=figureScale(r);
+  if(!sc.ok)return null;
+  const box=strip.getBoundingClientRect();
+  if(box.width<1)return null;
+  const f=Math.max(0,Math.min(1,(e.clientX-box.left)/box.width));
+  /* 図の左端は「母材の左端」。製品座標は条1のOS端が0なので屑幅を引く。 */
+  const pos=f*sc.total-sc.off;
+  /* 基準幅と`toProduct`は`compute()`が決めたものをそのまま使う（同じ式の裏返し）。 */
+  const baseWidth=Number.isFinite(r.baseWidth)?r.baseWidth:sc.total;
+  const toProduct=Number.isFinite(r.toProduct)?r.toProduct:0;
+  const posBase=pos+toProduct;
+  const basis=String(r.basis||'os');
+  let d;
+  if(basis==='os')d=posBase;
+  else if(basis==='ds')d=baseWidth-posBase;
+  else if(basis==='center-os')d=baseWidth/2-posBase;
+  else d=posBase-baseWidth/2;
+  /* **0.1mmで丸める**——現場の指示は0.1mm刻みで、それ以上の桁は読めない。 */
+  return Math.round(d*10)/10;
+ }
+ let dragging=false;
+ function beginDrag(e){
+  /* **掴んでいる最中は2本目を受けない**——右クリックや2本目の指で
+     `beginDrag`がもう一度走ると、`applyDrag`が離す前に別の座標を書く。 */
+  if(dragging)return;
+  const strip=$id('defectStrip');
+  if(!strip||!lastResult||lastResult.errorKind==='lanes')return;
+  const d=figureFromEvent(e);
+  if(d===null)return;
+  e.preventDefault();
+  dragging=true;
+  strip.classList.add('is-dragging');
+  applyDrag(e);
+  document.addEventListener('pointermove',applyDrag);
+  /* **`pointercancel`も拾うこと**——拾わないと、掴んだまま窓の外へ出て
+     取り消されたときに`dragging`が立ったままになり、二度と掴めなくなる
+     （`lot-split.js`の並べ替えが両方を拾っているのと同じ理由）。 */
+  document.addEventListener('pointerup',endDrag);
+  document.addEventListener('pointercancel',endDrag);
+ }
+ function applyDrag(e){
+  const d=figureFromEvent(e);
+  if(d===null)return;
+  const el=$id('defectDistance');
+  if(!el)return;
+  el.value=String(d);
+  refresh();
+ }
+ function endDrag(){
+  dragging=false;
+  document.removeEventListener('pointermove',applyDrag);
+  document.removeEventListener('pointerup',endDrag);
+  document.removeEventListener('pointercancel',endDrag);
+  const strip=$id('defectStrip');
+  if(strip)strip.classList.remove('is-dragging');
  }
 
  let lastResult=null;
@@ -380,9 +454,11 @@
     +(L&&!L.split?'<span class="defect-note-warn">条割が未確定のため、製造板幅で等分して計算しています。</span>':'');
   }
   const scaleNote=$id('defectScaleNote');
-  if(scaleNote)scaleNote.textContent=Number.isFinite(r.scrap)&&r.scrap>0
+  if(scaleNote)scaleNote.textContent=(Number.isFinite(r.scrap)&&r.scrap>0
    ?`左OS・右DS／両端の斜線は屑幅（${r.scrapBiased?'片寄せ':'左右均等'}）`
-   :'左OS・右DS／屑幅は元幅（実績）が分かると表示されます';
+   :'左OS・右DS／屑幅は元幅（実績）が分かると表示されます')
+   /* **できることを書く**（§CLAUDE 2）。掴めることは見ただけでは分からない。 */
+   +(r.errorKind==='lanes'?'':'／図をつかむ・押すと位置を決められます（0.1mm刻み）');
   /* ボタンは消さない。押せない状態でも、なぜ押せないかをtitleで示す。 */
   const printBtn=$id('defectPrint');
   if(printBtn){
@@ -489,6 +565,36 @@
  }
  const hasSavedDefect=x=>!!x?.settings?.defectLocation?.saved?.lanes?.length;
 
+ /* ---------- 条の設計へ渡す（§9.226 ②、利用者の指示） ----------
+    「条の設計（幅の割り付け）と異常位置判定をより連携させたい。欠陥判定
+     したら、条の設計にも表示したい(ONOFF可能)。判定した場合はバッジを
+     表示して、欠陥が入っていることを表示する。」
+
+    **判定はここ1箇所**（`compute()`）を通す——条の設計の側で条を数え直すと、
+    屑幅の片寄せ・基準幅の取り方といった前提が2つに分かれる（§9.160で
+    一度踏んだ形）。**このモーダルを開いていなくても答えられること**が要件
+    なので、`lastResult`ではなく保存されている入力から計算し直す。
+    戻りは`null`＝出すものが無い（判定できていない・入力が無い）。 */
+ function markers(){
+  const d=S.measure?.settings?.defectLocation;
+  if(!d)return null;
+  const input={basis:d.basis||'os',distance:d.distance,
+               widthBasis:d.widthBasis||'original',
+               defectWidth:d.defectWidth??DEFAULT_DEFECT_WIDTH,memo:d.memo||''};
+  if(String(input.distance??'').trim()==='')return null;
+  const r=compute(input);
+  if(r.error)return null;
+  const sv=d.saved;
+  const stale=!!sv&&!sameInput(sv.input||sv,readInput());
+  return {lanes:r.hits.map(h=>h.index),pos:r.pos,lo:r.lo,hi:r.hi,
+          defectWidth:r.defectWidth,memo:String(d.memo||''),
+          basis:r.basis,distance:r.distance,
+          /* **保存済みかどうかも渡す**（§6「出どころを画面に出す」）——
+             帳票に載るのは保存した判定だけなので、同じ印でも意味が違う。 */
+          saved:!!sv,stale:!!(sv&&stale),
+          outside:r.outside||''};
+ }
+
  /* ---------- 開閉と結線 ---------- */
  function open(){
   if(!S.measure){showToast?.('測定データがありません','ロットを開いてから実行してください');return}
@@ -500,8 +606,16 @@
   refresh();
   $id('defectDistance')?.focus();
  }
- function close(){const m=$id('defectModal');if(m)m.hidden=true}
+ /* 条の設計の印を描き直す（§9.226 ②）。**窓を閉じる・保存する・取り消す
+    ときだけ**——1文字打つたびに条の図を組み直すと、判定の窓の中で操作が
+    重くなる（あちらは開いていないので、閉じるときに1回で足りる）。 */
+ function syncSplitMarks(){
+  try{if(window.WL&&WL.split&&WL.split.redrawFigure)WL.split.redrawFigure()}catch(e){}
+ }
+ function close(){const m=$id('defectModal');if(m)m.hidden=true;syncSplitMarks()}
 
+ /* 図の上でのつかみ（§9.226 ②）。**器で受ける**——中身は描き直される。 */
+ $id('defectStrip')?.addEventListener('pointerdown',beginDrag);
  $id('openDefect')?.addEventListener('click',open);
  $id('closeDefect')?.addEventListener('click',close);
  $id('defectPrint')?.addEventListener('click',printReport);
@@ -521,5 +635,7 @@
 
  window.WL=window.WL||{};
  window.WL.defect={open,close,compute,lanes,refresh,save:doSave,unsave:doUnsave,
-                   reportSectionHtml,hasSaved:hasSavedDefect};
+                   reportSectionHtml,hasSaved:hasSavedDefect,
+                   /* 条の設計との連携（§9.226 ②）。 */
+                   markers};
 })();

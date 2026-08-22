@@ -42,6 +42,8 @@ G['一覧'] = ['test_nav', 'test_navdyn', 'test_listcache', 'test_listperf', 'te
 # 操業データ(§9.215)は測定画面のカード。マスタ管理からも触るので「マスタ」群。
 G['操業データ'] = ['test_opdata', 'test_opui', 'test_msteps', 'test_maint', 'test_crudroutes',
                    'test_opchoice']
+# 異常位置判定と条の設計の連携(§9.226 ④)。どちらを触っても両方を回す。
+G['異常位置'] = ['test_defect', 'test_defectlink', 'test_splitlive', 'test_scsplit']
 G['列'] = ['test_collayout', 'test_colformat', 'test_colrule', 'test_colsort', 'test_lcpanel',
            'test_colscache', 'test_colsripple', 'test_colsave', 'test_displayrule', 'test_colmenu',
            'test_colpreset', 'test_formula', 'test_reccols', 'test_rpblocks', 'test_rplayout',
@@ -112,16 +114,16 @@ RULES = [
                                'test_listcache', 'test_allrows', 'test_nav')),
     ('static/js/schedule-view.js', g('スケジュール', 'モーダル', 'test_listmodal')),
     ('static/js/schedule-print.js', g('モーダル', 'test_scprint')),
-    ('static/js/lot-split.js', g('test_scsplit', 'test_orphan', 'test_sub', 'test_splitlive')),
+    ('static/js/lot-split.js', g('異常位置', 'test_orphan', 'test_sub')),
     ('static/js/master-maint.js', g('マスタ', 'モーダル', 'test_headbar', 'test_datasource',
-                                     'test_qjoinui', 'test_dscap')),
+                                     'test_qjoinui', 'test_dscap', 'test_blockbuild')),
     ('static/js/calendar-view.js', g('test_calscale', 'test_histdel', 'test_headbar')),
     # 帳票の塊の組み換え(§9.169)は列レイアウトマスタに載るので列の網も回す。
     ('static/js/report-dashboard.js', g('モーダル', 'test_screport', 'test_hdr', 'test_calscale',
                                         'test_rpblocks', 'test_rplayout', 'test_rpmaster',
                                         'test_collayout')),
     ('static/js/quality-analysis.js', g('test_uiux', 'test_hdr', 'test_fit', 'test_theme')),
-    ('static/js/defect-locator.js', g('モーダル', 'test_defect')),
+    ('static/js/defect-locator.js', g('モーダル', '異常位置')),
     ('static/js/log-view.js', g('ログ')),
     ('static/js/access-mode.js', g('権限', 'test_nav')),
     ('static/js/wl-window.js', g('test_lcpanel', 'test_listmodal', 'test_split_layout',
@@ -145,12 +147,14 @@ RULES = [
     ('static/css/95-boot.css', g('見た目', '起動')),
     ('static/css/70-schedule.css', g('見た目', 'test_sccols', 'test_split_layout',
                                       'test_scbalance', 'test_scprint')),
-    ('static/css/35-split.css', g('見た目', 'test_splitlive', 'test_split_layout')),
+    ('static/css/35-split.css', g('見た目', '異常位置', 'test_split_layout')),
     ('static/css/40-records.css', g('見た目', 'test_recperm', 'test_reccols', 'test_recdel')),
-    ('static/css/50-master.css', g('見た目', 'マスタ', 'test_dscap', 'test_qjoinui')),
+    ('static/css/50-master.css', g('見た目', 'マスタ', 'test_dscap', 'test_qjoinui',
+                                    'test_blockbuild')),
     ('static/css/60-report.css', g('見た目', 'test_screport', 'test_rpblocks', 'test_rplayout')),
     ('backend/repositories/report_block_repo.py', g('test_rpmaster', 'test_rpblocks',
-                                                    'test_rplayout', 'test_crudroutes')),
+                                                    'test_rplayout', 'test_crudroutes',
+                                                    'test_blockbuild', 'test_opdata')),
     ('static/css/88-logs.css', g('見た目', 'test_logview')),
 
     # --- サーバー(ルート) --------------------------------------------
