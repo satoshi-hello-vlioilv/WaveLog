@@ -330,10 +330,17 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  let scWriteQueue=[],scQueueRunning=false,scQueueFlushTimer=null;
  const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
+ /* **書式は1回だけ作る**（§9.224 ①）。`toLocaleString(…,{…})`は呼ぶたびに
+    `Intl.DateTimeFormat`を組み立てるので、200行の表を描き直すたびに数百回
+    作り直すことになる（実測でここだけ2.6秒）。同じ書式を使い回す。 */
+ let scDateFmt=null;
  function fmtDateTime(iso){
   if(!iso)return '-';
   const d=new Date(iso);
-  return Number.isNaN(d.getTime())?'-':d.toLocaleString('ja-JP',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+  if(Number.isNaN(d.getTime()))return '-';
+  if(!scDateFmt)scDateFmt=new Intl.DateTimeFormat('ja-JP',
+    {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+  return scDateFmt.format(d);
  }
  function fmtRelative(minutes){
   if(minutes===null||minutes===undefined)return '';
@@ -4570,12 +4577,24 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  // scState.entriesが変わるたびに、既にスケジュール投入済みのロットが仕掛
  // 一覧から消える(§9.15)よう#gridを再描画する。SIKALOTNOWを見ていない
  // 時は無駄なので、S.dbで確認してから呼ぶ。
+ /* **1フレームに1回へまとめる**（§9.224 ①）。`renderTimeline()`の最後で
+    呼ぶので、まとめて投入すると**入れた件数ぶん**呼ばれる——仕掛一覧は
+    実データで158行×214列あり、1回の描き直しに約300msかかるため、158件を
+    投入すると102回×300ms＝**約31秒、画面が固まったまま**になっていた
+    （実測。押してから40秒なにも反応しない）。描き直しは何度やっても同じ
+    結果なので、**最後の1回だけ**で足りる。
+    **止めないこと**——止めると§9.15の「投入済みのロットが仕掛一覧から
+    消える」が効かなくなる。列幅を掴んでいる最中に待たせるのは今までどおり
+    （§9.211 ①）。 */
+ let lotFilterQueued=false;
  function refreshScheduledLotFilter(){
   if(!(typeof renderGrid==='function'&&typeof S!=='undefined'&&WL.dataSource.isWork(S.db)))return;
-  /* 予定を描くたびに仕掛一覧まで作り直すので、**その一覧の列幅を掴んで
-     いる最中は待たせる**（§9.211 ①）。止めない——止めると§9.15の
-     「投入済みのロットが消える」が効かなくなる。 */
-  WL.columnResize.defer('grid:scheduledLot',()=>renderGrid());
+  if(lotFilterQueued)return;
+  lotFilterQueued=true;
+  requestAnimationFrame(()=>{
+   lotFilterQueued=false;
+   WL.columnResize.defer('grid:scheduledLot',()=>renderGrid());
+  });
  }
 
  /* ---------- 書込キュー(§9.11新設): 画面描画を先行させ、実際のAPI呼び出しは
