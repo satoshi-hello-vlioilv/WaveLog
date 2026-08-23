@@ -92,22 +92,40 @@ async function reliableDelete(id){
  // 作業中の表示が残らないようにする)。
  if(typeof window.invalidateSchedulePlanCache==='function')window.invalidateSchedulePlanCache();
 }
-function applyContextSnapshot(x){
+/* ---------- 「選べる候補」だけを当てる（§9.229 ④、利用者の指示
+      「操業データの選択肢の部分のマスタを変えても、連動してくれていません」）
+   ----------
+   控え（`m.snapshot.context`）には**性質の違う2種類**が同居している:
+     ・その時の**ロットの事実**（公差・品質情報・取引先・コース）
+       …測ったときの値なので**凍らせるのが正しい**
+     ・**マスタの設定**（オペレータ・機器・内径・スプール・バリ揃え・
+       コイル止め・最大条数・設備区分）…**今のマスタが正しい**
+   以前は再開時に控えを丸ごと当てていたので、記録を1件作ったあとは
+   **選択肢マスタを何度直しても、その記録では永久に古い候補のまま**だった
+   （実機で「マスタは変わっているのに連動しない」と報告）。ここを分けて、
+   再開のときは候補だけ取り直す。**取れなければ控えのまま**——オフラインでも
+   開けることが最優先（控えを持っている理由そのもの）。 */
+function applyContextChoices(x){
  const m=S.measure;if(!m||!x)return;
  /* **選択肢を並べる前に使用回数を渡す**(§9.133)。順序が逆だと、最初の
     1回だけマスタ順のまま出て、次に開いたときから並びが変わる。 */
  WL.choiceUsage.set(x.choice_usage);
- optionFill('operator',x.operators,m.settings.operator);optionFill('inspector',x.inspectors||x.operators,m.settings.inspector);
- optionFill('thicknessGauge',x.thickness_gauges,m.settings.thicknessGauge);optionFill('widthGauge',x.width_gauges,m.settings.widthGauge);
- /* 内径は**仕掛由来のプリセット**(§9.204)が入りうる。`optionFill`は
-    候補に無い現在値を黙って捨てるので、**候補へ足してから渡す**
-    ——内径種別マスタが空の現場では、足さないとプリセットが画面に
-    一度も出ない（値だけ`settings`に残り、選択欄は`-`のまま）。 */
- {const inner=[...(x.inner_diameters||[])];
-  const cur=String(m.settings.innerDiameter||'').trim();
-  if(cur&&cur!=='-'&&!inner.includes(cur))inner.push(cur);
-  optionFill('innerDiameter',inner,m.settings.innerDiameter);}
- optionFill('spool',x.spools,m.settings.spool);
+ /* **記録済みの値は候補から落とさない**。`optionFill`は候補に無い現在値を
+    黙って捨てるので（§9.204）、取り直した候補にその人・その機器がもう
+    居ないと、**記録が空になる**。足してから渡す（内径と同じ扱い）。 */
+ const keep=(list,cur)=>{
+  const out=[...(list||[])];
+  const v=String(cur==null?'':cur).trim();
+  if(v&&v!=='-'&&!out.includes(v))out.push(v);
+  return out;
+ };
+ optionFill('operator',keep(x.operators,m.settings.operator),m.settings.operator);
+ optionFill('inspector',keep(x.inspectors||x.operators,m.settings.inspector),m.settings.inspector);
+ optionFill('thicknessGauge',keep(x.thickness_gauges,m.settings.thicknessGauge),m.settings.thicknessGauge);
+ optionFill('widthGauge',keep(x.width_gauges,m.settings.widthGauge),m.settings.widthGauge);
+ /* 内径は**仕掛由来のプリセット**(§9.204)が入りうる。 */
+ optionFill('innerDiameter',keep(x.inner_diameters,m.settings.innerDiameter),m.settings.innerDiameter);
+ optionFill('spool',keep(x.spools,m.settings.spool),m.settings.spool);
  if(WL.innerDiameter)WL.innerDiameter.refresh();
  /* バリ揃え・コイル止めはマスタ化前まで画面へ直接書かれていた選択肢なので、
     マスタが空(未作成・全件無効化)でも選べる値が消えないよう既定を持つ。
@@ -124,16 +142,49 @@ function applyContextSnapshot(x){
     **未設定('')はそのまま持つ**——「板」と決め付けると、コイルの設備で
     出どころの分からない公差が並ぶ。 */
  if(typeof x.equipment_kind==='string')m.settings.equipmentKind=x.equipment_kind;
+ /* **打った値を印へ届ける**——`.value`への代入では`change`が飛ばないので、
+    選ばせ方を被せている欄はボタンの選択状態が古いまま残る（§9.223 ③）。 */
+ if(window.WL&&WL.opData&&WL.opData.syncWidgets)WL.opData.syncWidgets();
+}
+/* 控えのうち**マスタの設定**にあたるもの。取り直したらここだけ差し替える。 */
+const CONTEXT_CHOICE_KEYS=['choice_usage','operators','inspectors','packers',
+  'thickness_gauges','width_gauges','inner_diameters','spools','burr_types',
+  'coil_stops','max_strips','equipment_kind'];
+function applyContextSnapshot(x){
+ const m=S.measure;if(!m||!x)return;
+ applyContextChoices(x);
  if(x.quality?.length){m.qualityInfo=qualityText(x.quality)}
  $('#qualityInfo').value=m.qualityInfo||'異常情報なし';paintQualityInfo();
  $('#masterDiagnostic').textContent=JSON.stringify(x.diagnostics||{},null,2);
+}
+/* 控えで開いたあと、**候補だけ**を今のマスタで取り直す（§9.229 ④）。
+   **失敗は黙って捨てる**（控えのままで開けている）。**開いている記録が
+   入れ替わっていたら当てない**——往復のあいだに別の記録へ移れる。 */
+async function refreshContextChoices(){
+ const m=S.measure;if(!m||!m.basic)return;
+ const id=m.id;
+ const u=new URLSearchParams({lot:m.basic.lotNo,
+   equipment:currentConfiguredEquipment()||m.basic.equipment});
+ try{
+  const x=await api('/api/measurement/context?'+u);
+  if(!S.measure||S.measure.id!==id)return;
+  S.measure.snapshot=S.measure.snapshot||{};
+  const snap=S.measure.snapshot.context;
+  if(snap)CONTEXT_CHOICE_KEYS.forEach(k=>{if(k in x)snap[k]=x[k]});
+  applyContextChoices(x);
+ }catch(e){}
 }
 /* 仕掛・品質・マスタの参照データを取得し、スナップショットとして保存データへ
    同梱する(再開時はスナップショットを優先し、オフラインでも復元できる)。 */
 async function loadMeasurementContext(force=false){
  updateWaiting('仕掛・品質・マスタを取得中','公差、品質等級、取引先、コース、マスタ候補を読み込んでいます');
  const m=S.measure;if(!m)return;
- if(m.snapshot?.context&&!force){applyContextSnapshot(m.snapshot.context);setState('保存済み参照データを復元');return m.snapshot.context}
+ if(m.snapshot?.context&&!force){
+  applyContextSnapshot(m.snapshot.context);setState('保存済み参照データを復元');
+  /* **候補だけは今のマスタで上書きする**（§9.229 ④）。画面は待たせない。 */
+  refreshContextChoices();
+  return m.snapshot.context;
+ }
  const u=new URLSearchParams({lot:m.basic.lotNo,equipment:currentConfiguredEquipment()||m.basic.equipment});
  try{
   setState('仕掛・品質・マスタ読込中');const x=await api('/api/measurement/context?'+u);

@@ -1043,6 +1043,9 @@
   background:var(--teal);border-color:var(--teal);color:#fff;
 }
 .op-toggle,.op-when button{border-radius:var(--radius-xs)}
+/* 連れて行った先を1度だけ光らせる（§9.229 ③）。**色だけで伝えない**ので、
+   ボタンの文言と説明が何を指しているかは文字で書いてある。 */
+.op-flash{outline:2px solid var(--teal);outline-offset:2px}
 .op-when{display:flex;flex-wrap:wrap;gap:var(--gap-tight)}
 /* 幅は**帯で見せる**。数字だけでは「カードのどのくらいか」が読めない。 */
 .op-span-pick{display:flex;gap:1px;flex:1 1 var(--w-md);min-width:0}
@@ -1227,8 +1230,12 @@
 .opd-seg{border:1px solid var(--line);border-radius:var(--radius-xs);padding:1px;gap:1px;background:var(--surface-2)}
 .opd-seg>i{background:none}
 .opd-seg .opd-on{background:var(--surface);color:var(--teal-dark);box-shadow:0 1px 1px rgba(0,0,0,.12)}
-.opd-tabs>i{background:none;border-bottom:2px solid transparent}
-.opd-tabs .opd-on{background:none;color:var(--teal-dark);border-bottom-color:var(--teal)}
+/* **絵と実物を必ず同じにする**（§9.229 ②）。タブは「淡い面＋濃い文字＋
+   下線」へ揃えた——ここが実物と食い違うと、タイルで選んだ形と測定画面に
+   出る形が別物になり、設定画面で確かめた意味が無くなる。 */
+.opd-tabs>i{background:none;border-bottom:2px solid transparent;
+  border-radius:var(--radius-xs) var(--radius-xs) 0 0}
+.opd-tabs .opd-on{background:var(--pale);color:var(--teal-dark);border-bottom-color:var(--teal)}
 /* **絵も本物と同じ角丸にする**（§9.227 ①）——ここがピルのままだと、
    タイルの絵で選んだ形と、左の見本・測定画面の形が食い違う。 */
 .opd-chips>i{border-radius:var(--radius-xs);border:1px solid var(--line)}

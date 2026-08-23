@@ -1482,14 +1482,30 @@
        中身が変わる。
      ・**選択肢に無い初期値も入れる**（候補を後から消した場合。`addOption`
        で足してから入れる——足さずに代入すると黙って空になる）。
-     ・**組み込みの欄は対象外**。内径の仕掛由来プリセット（§9.204）や
-       条数の上限（§9.210 ⑤）と、どちらが勝つのか決められない。だから
-       マスタも組み込み行には初期値を持たせない（サーバーが空で返す）。 */
+     ・**組み込みの欄にも入れる**（§9.229 ③、利用者の指示「汎用設計にして
+       いるつもりなので」）。ただし置き場が違う——組み込みの値は
+       `settings.opData`ではなく`settings.<キー>`なので、**画面へ入れるだけ**
+       にして控えへは書かない（保存は`measurement-view.js`の`collect()`が
+       `#<キー>`から拾う）。入れるのは**まだ何も選ばれていないとき**だけで、
+       選ばれていない印は選択欄が使う`''`と`'-'`の2つ（§4のとおり、既定の
+       選択肢が入っている欄には入らないことを設定画面に書く）。
+       内径の仕掛由来プリセット（§9.204）は`settings.innerDiameter`を見て
+       いて、こちらは控えを書かないので**仕掛の値が勝つ**——順番が決まって
+       いるので、どちらが勝つか決められないということは無い。 */
+ const BLANK_VALUES=['','-'];
  function applyInitials(){
   const bag=store();
   defs.forEach(d=>{
    const init=String(d.initial==null?'':d.initial);
-   if(!init||d.builtin)return;
+   if(!init||d.dummy)return;
+   if(d.builtin){
+    const el=controlOf(d);
+    if(!el)return;
+    if(BLANK_VALUES.indexOf(String(el.value||'').trim())<0)return;
+    if(el.tagName==='SELECT')addOption(el,init);
+    putValue(el,init);
+    return;
+   }
    if(bag&&Object.prototype.hasOwnProperty.call(bag,d.name))return;
    const el=controlOf(d);
    if(!el)return;

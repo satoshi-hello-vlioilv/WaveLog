@@ -5,6 +5,10 @@ rem WaveLog setup: run this once after install and after every update.
 rem It checks Python / packages, pre-compiles bytecode into this PC's
 rem local folder, and writes a readiness stamp so daily startup can skip
 rem those checks. Start.vbs still works without it (just slower).
+rem
+rem Save this file with CRLF line endings (and CP932). With LF-only
+rem endings cmd.exe resumes the batch at the wrong byte offset and runs
+rem fragments of these very lines as commands.
 cd /d "%~dp0"
 
 python setup_app.py
@@ -12,11 +16,21 @@ set RC=%ERRORLEVEL%
 
 echo.
 echo ----------------------------------------------------------
-if "%RC%"=="0" (
-  echo OK: 次回からの起動が速くなります。
-) else (
-  echo NG: 確認できませんでした。上の内容を確認してください。
-)
+if "%RC%"=="0" goto ok
+if "%RC%"=="9009" goto nopython
+echo NG: 確認できませんでした。上の内容を確認してください。
+goto tail
+
+:ok
+echo OK: 次回からの起動が速くなります。
+goto tail
+
+:nopython
+echo NG: Python が見つかりません（コマンド python が通っていません）。
+echo     Python を入れて「Add python.exe to PATH」を有効にしてから、
+echo     もう一度この setup.bat を実行してください。
+
+:tail
 echo ログ: %LOCALAPPDATA%\WaveLog\logs
 echo ----------------------------------------------------------
 pause
