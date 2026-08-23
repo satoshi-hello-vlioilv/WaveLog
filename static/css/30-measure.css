@@ -2277,6 +2277,21 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .opf{--opf-h:var(--ctl-h-sm);--opf-fs:var(--fs);--opf-radius:var(--radius-sm)}
 .measure-shell .selectors>label{--opf-h:var(--ctl-h-sm);--opf-fs:var(--fs);
   --opf-radius:var(--radius-sm)}
+/* ---------- 素の欄も器の高さを読む（§9.229 ⑥、利用者の指示） ----------
+   「汎用UIの高さは揃えたいです。見た目がそろわないです。」
+   選ばせ方の部品は`--opf-h`（30px）を読むが、**素の`<input>`と`<select>`は
+   `00-base.css`の`padding:7px`＋14pxの文字で約33px**だった。1枚のカードに
+   3px違うものが混ざると、1つずつは正しくても列がそろわない（§9.90）。
+   **器が宣言した高さを素の欄にも配る**ので、意匠の「大きさ」の軸も
+   そのまま効くようになる。チェックボックスとラジオは形が意味を持つ部品
+   なので触らない（§9.197の`.mm-field`と同じ理由）。 */
+.measure-shell .selectors>label>input:not([type=checkbox]):not([type=radio]),
+.measure-shell .selectors>label>select,
+.opf>input:not([type=checkbox]):not([type=radio]),
+.opf>select{
+  height:var(--opf-h,var(--ctl-h-sm));min-height:var(--opf-h,var(--ctl-h-sm));
+  padding:0 var(--space-2);
+}
 .opf-native-off{
   position:absolute;width:1px;height:1px;padding:0;margin:0;border:0;
   opacity:0;pointer-events:none;overflow:hidden;
@@ -2341,18 +2356,26 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
   gap:0;padding:2px;border-radius:var(--opf-radius,var(--radius-sm));
   background:var(--surface-2);border:1px solid var(--line-soft);
 }
-/* 中の札は器より1段小さい角丸にする（同じ値だと角で線が二重に見える）。 */
-.opf-seg-btn{flex:1 1 0;border-radius:calc(var(--opf-radius,var(--radius-sm)) - 2px)}
+/* 中の札は器より1段小さい角丸にする（同じ値だと角で線が二重に見える）。
+   **高さは器の内寸ぶんだけ引く**（§9.229 ⑥、利用者の指示「汎用UIの高さは
+   揃えたいです。見た目がそろわないです」）——器が`padding:2px`と`border:1px`を
+   持つので、札に`--opf-h`をそのまま与えると**セグメントだけ6px背が高くなる**。
+   トグルは最初からこの引き算をしていたので、そこと同じにする。 */
+.opf-seg-btn{
+  flex:1 1 0;min-height:calc(var(--opf-h,var(--ctl-h-sm)) - 6px);
+  border-radius:calc(var(--opf-radius,var(--radius-sm)) - 2px);
+}
 .opf-seg-btn:hover{color:var(--ink)}
- /* **白い札は「浮いて」いないと読めない**（§9.229 ②）。§9.227 ①で影を
-    全部落としたが、セグメントだけは面の色が地（`--surface-2`）とほぼ同じ
-    白なので、影が無いと「1マスだけ少し明るい」以上のことを語らない
-    ——利用者の言う「白背景に白配色」がここ。**影は3つ目の合図ではなく
-    「面の描き方」**（浮いた札1枚で1つ）で、見本の絵も最初からこう描いて
-    いる。太字は落とす（面＋文字色で2つ）。 */
+/* **選んだ札は設定色で塗る**（§9.229 ⑥、利用者の指示「セグメントは選んだ
+   部分が白なのでわかりにくく、設定色との連携もないので色も連携でき、
+   カスタム性を損なわないように」）。§9.229 ②では「白い札＋影」で浮かせたが、
+   **地（`--surface-2`）も白系なので差が弱く、色の軸も効かなかった**。
+   いまは塗り＋白文字で、色を選べばそのまま効く。
+   **トグルと同じ塗りになるが、形の違いは器が語る**——セグメントは
+   `flex:1 1 0`で**器いっぱいを等分**、トグルは中身なりの幅で並ぶ。
+   選ぶ状況（3〜4択の切り替え／2択の入切）も違う（§9.220 ①）。 */
 .opf-seg-btn.is-on{
-  background:var(--surface);color:var(--teal-dark);
-  box-shadow:0 1px 2px rgba(15,32,39,.16);
+  background:var(--opf-hue,var(--teal));color:#fff;
 }
 /* --- タブ: 下線だけ。面を持たない --- */
 /* **選んだ札は面を持つ**（§9.229 ②、利用者の指示「白背景に白配色で、淵だけ
@@ -2365,6 +2388,8 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
    数えない。当たりも広げる（以前は左右4pxで、下線が文字幅ぶんしか無かった）。 */
 .opf-tabs .opf-shape{gap:2px;border-bottom:1px solid var(--line-mid)}
 .opf-tab-btn{
+  /* 器が下罫線1pxを持つので、札はそのぶん引く（§9.229 ⑥）。 */
+  min-height:calc(var(--opf-h,var(--ctl-h-sm)) - 1px);
   padding:0 var(--space-3);border-bottom:2px solid transparent;margin-bottom:-1px;
   border-radius:var(--opf-radius,var(--radius-sm)) var(--opf-radius,var(--radius-sm)) 0 0;
 }
@@ -2699,8 +2724,9 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
    既定と主色で別物になる**という、気づきにくい食い違いだった。 */
 [class*="opf-c-"] .opf-toggle-btn.is-on,
 [class*="opf-c-"] .opf-quick-btn.is-on{background:var(--opf-hue);border-color:var(--opf-hue);color:#fff}
-/* セグメントは面が白く浮くことが「排他」の合図。色は文字だけに効かせる。 */
-[class*="opf-c-"] .opf-seg-btn.is-on{color:var(--opf-hue-dark)}
+/* セグメントも**塗りが色の軸に乗る**（§9.229 ⑥）。素の指定が
+   `background:var(--opf-hue,...)`なので、器で`--opf-hue`が決まれば
+   ここで書き足さなくても効く——**同じことを2箇所に書かない**。 */
 [class*="opf-c-"] .opf-radio-btn.is-on .opf-dot{border-color:var(--opf-hue);
   box-shadow:inset 0 0 0 4px var(--opf-hue)}
 /* **下線は`border-bottom-color`で塗り替える**。`box-shadow`で足すと、

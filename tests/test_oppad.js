@@ -184,14 +184,18 @@ let b=null;
       JSON.stringify(L));
   rec('タブの選んだ札は面を持つ（下線だけにしない）',
       !!L['タブ']&&L['タブ'].面の明るさ!=null,JSON.stringify(L['タブ']));
-  rec('セグメントの選んだ札は浮いて見える（白い面が地に沈まない）',
-      !!L['セグメント']&&L['セグメント'].影!=='none',
-      String(L['セグメント']&&L['セグメント'].影));
-  /* **選んでいない札のほうが濃いと、色を足しても差にならない**——これが
-     「変わっている感じがわかりません」の正体だった（未選択が`--ink-2`＝
-     本文とほぼ同じ濃さで、選んだ札のtealより暗かった）。 */
-  const dim=Object.entries(L).filter(([,v])=>!v||!(v.未選択の文字>v.文字+8));
-  rec('選んでいない札の文字は選んだ札より薄い（選んだほうが目立つ）',
+  /* **選んだ札は「面」か「濃い文字」のどちらかで先に立つ**（§9.229 ②⑥）。
+     面を持たない形（ラジオ・直す前のタブ）では、選んでいない札のほうが
+     濃いと色を足しても差にならない——これが「変わっている感じが
+     わかりません」の正体だった（未選択が`--ink-2`＝本文とほぼ同じ濃さで、
+     選んだ札のtealより暗かった）。面を持つ形（いまのタブ・セグメント）は
+     面が語るので、文字の濃淡は問わない。 */
+  const dim=Object.entries(L).filter(([,v])=>{
+   if(!v)return true;
+   if(v.面の明るさ!=null)return false;         // 面で示している
+   return !(v.未選択の文字>v.文字+8);           // 面が無いなら文字で示す
+  });
+  rec('選んだ札は面か濃い文字で先に立つ（選んでいない札に負けない）',
       dim.length===0,JSON.stringify(dim));
   /* **見本の絵と実物を食い違わせない**（設定画面で確かめる意味が無くなる）。 */
   const demo=await page.evaluate(()=>{
@@ -204,6 +208,81 @@ let b=null;
   });
   rec('見本の絵も実物と同じ（タブの絵にも面がある）',
       !!demo&&!/rgba\(0, 0, 0, 0\)|transparent/.test(demo.面),JSON.stringify(demo));
+
+  /* ---- 高さは器の変数がそろえる（§9.229 ⑥、利用者の指示
+         「汎用UIの高さは揃えたいです。見た目がそろわないです」） ----
+     素の`<select>`（プルダウン）を物差しにして、どの選ばせ方も同じ背丈で
+     あることを見る。**器の外寸で測る**——中の札だけ合っていても、器が
+     `padding`と`border`を持てばそのぶん背が高くなる（セグメントが6px、
+     タブが1px高かった）。カードは説明を載せる札なので**わざと1.5倍**、
+     メモ・スライダー・メーターは形が違うので対象から外す。 */
+  const HEIGHT_KINDS=['プルダウン','ラジオ','セグメント','タブ','ボタン群',
+                      '一覧','トグル','段階','入切'];
+  const hs={};
+  for(const k of kinds){
+   if(HEIGHT_KINDS.indexOf(k)<0)continue;
+   await page.click(`[data-op-widget="${k}"]`).catch(()=>{});
+   await page.waitForTimeout(300);
+   hs[k]=await page.evaluate(()=>{
+    const host=document.querySelector('.op-prev-field .opf');
+    if(!host)return null;
+    const el=host.querySelector('.opf-shape')||host.querySelector('.opf-pick-btn')
+      ||host.querySelector('.opf-switch-btn')||host.querySelector('select')
+      ||host.querySelector('input');
+    if(!el)return null;
+    const r=el.getBoundingClientRect();
+    return r.height>0?Math.round(r.height):null;
+   });
+  }
+  const hv=Object.values(hs).filter(v=>v);
+  rec('前提: 選ばせ方ごとに部品の高さを測れている',
+      hv.length>=6,JSON.stringify(hs));
+  rec('どの選ばせ方も同じ高さ（器の変数がそろえる）',
+      hv.length>0&&Math.max(...hv)-Math.min(...hv)<=2,JSON.stringify(hs));
+  /* **セグメントの選んだ札は設定色で塗る**（利用者の指示「選んだ部分が白なので
+     わかりにくく、設定色との連携もない」）。白のままだと地（`--surface-2`）と
+     ほとんど同じで差にならない。 */
+  await page.click('[data-op-widget="セグメント"]').catch(()=>{});
+  await page.waitForTimeout(300);
+  const segFill=async color=>{
+   await page.evaluate(c=>{
+    const b=document.querySelector(`[data-op-look="color"][data-op-val="${c}"]`);
+    if(b)b.click();
+   },color);
+   await page.waitForTimeout(320);
+   return page.evaluate(async()=>{
+    const bs=[...document.querySelectorAll('.op-prev-field [data-opv]')]
+      .filter(b=>b.dataset.opv!=='');
+    if(bs[0])bs[0].click();
+    /* **押した直後に色を読まないこと。** 面には`background-color .15s`の
+       遷移が掛かっているので、`getComputedStyle`は**遷移の途中の値**を返す
+       ——押した瞬間は「まだ透明」、前に選ばれていた札は「まだ塗られている」
+       と読め、塗りが効いていないように見える（実際にこれで空振りした）。 */
+    await new Promise(r=>setTimeout(r,300));
+    const on=document.querySelector('.op-prev-field .opf-seg-btn.is-on');
+    const shape=document.querySelector('.op-prev-field .opf-seg .opf-shape');
+    if(!on)return null;
+    return {面:getComputedStyle(on).backgroundColor,v:on.dataset.opv,
+            器の面:shape?getComputedStyle(shape).backgroundColor:''};
+   });
+  };
+  const colors=await page.$$eval('[data-op-look="color"]',es=>es.map(e=>e.dataset.opVal));
+  rec('前提: 色の軸が2つ以上ある（連携を比べられる）',colors.length>=2,JSON.stringify(colors));
+  /* **既定と「主色」を比べないこと**——主色は既定と同じtealなので、
+     連携していてもしていなくても同じ色になり、何も確かめないまま通る。
+     はっきり違う色（赤／青）と比べる。 */
+  const other=colors.find(c=>c==='赤')||colors.find(c=>c==='青')
+    ||colors[colors.length-1];
+  rec('前提: 既定とはっきり違う色を選べる',!!other&&other!==colors[0],String(other));
+  const segA=await segFill(colors[0]),segB=await segFill(other);
+  /* **選んだ札は設定色で塗る**（利用者の指示「選んだ部分が白なのでわかり
+     にくく、設定色との連携もない」）。**色を変えたら塗りも変わること**を
+     見る——固定色（白でもtealでも）なら必ず落ちる。 */
+  rec('セグメントの選んだ札の塗りが設定色に連動する',
+      !!segA&&!!segB&&segA.面!==segB.面,JSON.stringify([colors[0],segA,other,segB]));
+  rec('セグメントの選んだ札は器の地と同じ色にしない',
+      !!segA&&segA.面!==segA.器の面&&!/rgb\(255, 255, 255\)/.test(segA.面),
+      JSON.stringify(segA));
 
   await page.evaluate(()=>{const c=document.getElementById('opModalClose');if(c)c.click()});
   await page.waitForTimeout(300);
@@ -270,9 +349,41 @@ let b=null;
       .find(i=>i.builtin==='coilStop');
     rec('組み込みの欄の名前を窓から変えると保存される',
         !!saved&&saved.name===TAG+'-止め',JSON.stringify(saved&&saved.name));
+    /* ---- 役割の一覧にも「いまの名前」が出る（§9.229 ⑥、利用者の指摘
+           「文字の更新という部分ではプルダウンのリストに載っていないというか、
+            古いままの名称でリンクされています」） ----
+       **役割の名前は項目名とは別の語彙**（値を何として読むか）なので変えない。
+       代わりに、いま担っている欄の名前を必ず並べて出す——`opRoleHolder`は
+       自分を除いて探すので、**自分の役割の行だけ添え書きが付かず**、
+       役割の名前（`コイル止め`）だけが残っていた。 */
+    await page.evaluate(()=>{
+     const t=[...document.querySelectorAll('.op-tile')]
+       .find(e=>e.dataset.opId&&/-止め/.test(e.textContent));
+     if(t)t.click();
+    });
+    await page.waitForFunction(()=>{
+     const m=document.getElementById('opItemModal');return !!m&&!m.hidden;
+    },null,{timeout:10000}).catch(()=>{});
+    await page.evaluate(()=>{
+     const t=[...document.querySelectorAll('.op-tab')].find(x=>/記録/.test(x.textContent));
+     if(t)t.click();
+    });
+    await page.waitForTimeout(500);
+    const roleTxt=await page.evaluate(()=>{
+     const sel=document.getElementById('opdRole');
+     if(!sel)return null;
+     const o=sel.options[sel.selectedIndex];
+     return o?o.textContent.trim():null;
+    });
+    rec('役割の一覧に「いまの項目名が担当」と出る（古い名前で終わらせない）',
+        !!roleTxt&&roleTxt.indexOf(TAG+'-止め')>=0,JSON.stringify(roleTxt));
+    await page.evaluate(()=>{const c=document.getElementById('opModalClose');if(c)c.click()});
+    await page.waitForTimeout(300);
     await post('/api/operation-item-master/update',
       {...coilBefore,id:coilBefore.id,name:coilBefore.name,user_id:'tests'});
     renamedCoil=null;
+    await page.evaluate(()=>{if(window.loadOpItemMaint)loadOpItemMaint(true)}).catch(()=>{});
+    await page.waitForTimeout(700);
    }
    await page.evaluate(()=>{const c=document.getElementById('opModalClose');if(c)c.click()});
    await page.waitForTimeout(300);

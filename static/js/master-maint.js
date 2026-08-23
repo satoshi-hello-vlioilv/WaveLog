@@ -5008,15 +5008,26 @@
   const other=cur?opRoleHolder(cur,x.id):null;
   return `<select id="opdRole">`
    +`<option value=""${cur?'':' selected'}>（役割なし・ただの記録項目）</option>`
+   /* **いま自分が担っている役割にも「担当」と書く**（§9.229 ⑥、利用者の
+      指摘「古いままの名称でリンクされています」）。`opRoleHolder`は自分を
+      除いて探すので、自分の役割の行だけ**何も添え書きが付かず**、
+      役割の名前（`コイル止め`）だけが残っていた——項目名を変えた人からは
+      「変えたのに古い名前でつながっている」としか読めない。
+      **役割の名前は変えない**（値を何として読むかの語彙で、項目名とは別）
+      ので、代わりに**いまの項目名を必ず並べて出す**。 */
    +list.map(r=>{
       const holder=opRoleHolder(r.key,x.id);
-      const tail=holder?`　※いまは「${holder.name}」が担当`:'';
-      return `<option value="${esc(r.key)}"${cur===r.key?' selected':''}>`
+      const mine=(cur===r.key);
+      const tail=mine?`　※この欄（${x.name}）が担当`
+                : holder?`　※いまは「${holder.name}」が担当`:'';
+      return `<option value="${esc(r.key)}"${mine?' selected':''}>`
        +`${esc(r.label)}${r.required?'（必須）':''}${esc(tail)}</option>`;
      }).join('')
    +`</select>`
    +`<i class="op-form-note">${cur
-      ?`この欄の値は<b>${esc((list.find(r=>r.key===cur)||{}).label||cur)}</b>として読まれます。`
+      ?`この欄（<b>${esc(x.name)}</b>）の値は`
+        +`<b>${esc((list.find(r=>r.key===cur)||{}).label||cur)}</b>として読まれます`
+        +`——<b>役割の名前は項目名とは別</b>で、項目名を変えても役割の名前は変わりません。`
         +esc((list.find(r=>r.key===cur)||{}).note||'')
         +(other?`　<b>「${esc(other.name)}」も同じ役割</b>を持っています——どちらの値が使われるか決まらないので、片方を外してください。`:'')
       :'役割を付けると、その値をアプリが決まった用途で読みます。'

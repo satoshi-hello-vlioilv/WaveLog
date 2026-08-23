@@ -470,6 +470,93 @@ const settle=async page=>{
       picked.選んだ===1&&/3/.test(picked.説明||''),JSON.stringify(picked));
 
   /* ==================================================================
+     §9.229 ⑤ 異常のチップとボタンが見切れない（利用者の指摘）
+     ------------------------------------------------------------------
+     「条の設計の異常関係の表示に見切れがあります。」
+     案内の文が長いと、flexの既定（`flex-shrink:1`）でチップとボタンまで
+     一緒に縮み、`異常 1条／未保存`や`異常の印: 出す`が空白で折り返して
+     器から溢れていた。**縮む役は案内だけが持つ。**
+
+     **判定を注ぎ込んでから測ること**——チップは判定があるときだけ出るので、
+     入れずに測ると`hidden`のまま「見切れていない」で素通りする。
+     **窓を狭めてから測ること**——広い窓では縮む必要が無いので、直す前でも
+     通る（実機の器は940px、ここは1920px）。
+     ================================================================== */
+  const defectFit=await page.evaluate(async()=>{
+   /* **測るのは「縮んだときに折り返さないこと」**なので、出る条件
+      （判定があること・分割があること）はここでは作らない——実際に出ている
+      状態と同じ中身を入れて、**器を狭くしてから**測る。文字は
+      `renderDefectChip()`が出すものと同じ形（`異常 N条` ＋ 状態）。 */
+   const chip=document.getElementById('splitDefectChip');
+   const mark=document.getElementById('splitDefectToggle');
+   const undo=document.getElementById('undoSplit');
+   const reset=document.getElementById('resetSplit');
+   if(chip){chip.hidden=false;chip.innerHTML='<b>異常 1条</b><small>未保存</small>';
+            chip.classList.add('is-hit')}
+   if(mark){mark.hidden=false;mark.textContent='異常の印: 出す'}
+   if(undo)undo.hidden=false;
+   if(reset)reset.hidden=false;
+   /* **器を狭くする。** 広いままだと縮める必要が無いので、直す前でも通る
+      （実機の器は940px、ここは1920px）。窓ごと狭めると測定画面の割り付けが
+      変わって図が消えるので、この帯だけを狭める。 */
+   const row=document.querySelector('.split-visual-actions');
+   const pick=el=>{
+    /* **`offsetParent`で見えているかを判定しないこと**——測定画面は
+       `position:fixed`の器なので、中の要素は常に`null`になる。 */
+    if(!el)return null;
+    const r=el.getBoundingClientRect();
+    if(r.width<1)return null;
+    const cs=getComputedStyle(el);
+    const n=v=>parseFloat(v)||0;
+    /* **1行ぶんの高さは「文字＋上下の余白＋罫線」で作る**（§9.90）。
+       `line-height`だけと比べると、余白を持つボタンが全部2行扱いになる。 */
+    const one=Math.max(n(cs.minHeight),
+      n(cs.lineHeight)+n(cs.paddingTop)+n(cs.paddingBottom)
+      +n(cs.borderTopWidth)+n(cs.borderBottomWidth));
+    return {text:(el.textContent||'').trim().slice(0,24),
+            over:Math.round(el.scrollWidth-el.clientWidth),
+            w:Math.round(r.width),
+            h:Math.round(r.height),line:Math.round(one)};
+   };
+   /* **広いときの高さを先に測って物差しにする**（§9.229 ⑤）。トークンから
+      1行ぶんを組み立てると、余白の出どころ（器か中身か）で食い違って
+      「全部2行」と読み違える。**同じ要素の広いときと狭いときを比べる**のが
+      いちばん確か——折り返せば必ず背が伸びる。 */
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   const wide={chip:pick(chip),mark:pick(mark),undo:pick(undo),reset:pick(reset)};
+   /* **狭さは決め打ちにしない。** 4つが自然に必要とする幅を測って、
+      そこから確実に足りない幅まで詰める——「700px」のような決め打ちだと、
+      案内（`min-width:0`で0まで縮む）が縮み代を全部吸ってしまい、
+      **直す前でも縮まないので素通りする**（実際に素通りした）。 */
+   const need=['chip','mark','undo','reset']
+     .reduce((n,k)=>n+((wide[k]&&wide[k].w)||0),0);
+   if(row)row.style.maxWidth=Math.max(160,need-80)+'px';
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   const out={row:row?Math.round(row.getBoundingClientRect().width):0,need,wide,
+     chip:pick(chip),mark:pick(mark),undo:pick(undo),reset:pick(reset)};
+   if(row)row.style.maxWidth='';
+   if(chip){chip.hidden=true;chip.classList.remove('is-hit')}
+   if(mark)mark.hidden=true;
+   if(undo)undo.hidden=true;
+   if(reset)reset.hidden=true;
+   return out;
+  });
+  const KEYS=['chip','mark','undo','reset'];
+  rec('前提: 異常のチップとボタンを広いときと狭いときの両方で測れている',
+      defectFit.row>0&&defectFit.row<defectFit.need
+      &&KEYS.every(k=>defectFit[k]&&defectFit.wide[k]
+        &&defectFit[k].h>0&&defectFit.wide[k].h>0),JSON.stringify(defectFit));
+  const over=KEYS.filter(k=>defectFit[k]&&defectFit[k].over>1);
+  rec('異常のチップとボタンが器から溢れない（見切れない）',over.length===0,
+      JSON.stringify(over.map(k=>[k,defectFit[k]])));
+  /* **狭くしても背が伸びない**——溢れていなくても、折り返して2行になった
+     ぶんだけ器の高さを食い、押す前に何のボタンか読めなくなる。 */
+  const tall=KEYS.filter(k=>defectFit[k]&&defectFit.wide[k]
+    &&defectFit[k].h>defectFit.wide[k].h+2);
+  rec('狭くしても異常のチップとボタンが折り返さない',tall.length===0,
+      JSON.stringify(tall.map(k=>[k,defectFit.wide[k].h,defectFit[k].h])));
+
+  /* ==================================================================
      §9.210 ⑤ 屑幅がマイナスになる条数は受け付けない（利用者の指示）
      ------------------------------------------------------------------
      「屑幅マイナスになる場合、物理的に不可能なので、母材幅が修正されない
