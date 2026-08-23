@@ -4075,8 +4075,9 @@
    const when=(list.find(x=>(x.showWhen||[]).length)||{}).showWhen||[];
    /* 群の幅（§9.226 ③）。**1つでも指定があればそれ**——畳むと同じ読み方。 */
    const gspan=Number((list.find(x=>Number(x.groupSpan)>0)||{}).groupSpan)||0;
-   /* ダミー（空き）の群（§9.227 ③）。**1つでも印があればダミー**。 */
-   const dummy=list.some(x=>!!x.dummy);
+   /* 空き（ダミー）は**カード1枚の属性**（§9.228 ②）。帯を「空きだけ」と
+      して出すのは**全部が空きのとき**だけ——1枚でも中身があるなら見出しが要る。 */
+   const dummy=list.length>0&&list.every(x=>!!x.dummy);
    rows.push({type:'group',name:g,place,fold:list.some(x=>!!x.fold),showWhen:when,
               span:gspan,dummy,items:list});
    list.forEach(x=>rows.push({type:'item',x}));
@@ -4116,8 +4117,20 @@
                 分からない設定は、設定したこと自体を忘れる）。 */
              x.initial?`初期値 ${x.initial}`:'',
              x.freeText?'手打ち可':''].filter(Boolean).join('｜');
+  /* 空きのカード（§9.228 ②）は**盤でも中身を持たない**——名前も型も出さない。
+     測定画面では何も描かないので、盤で名前だけが目立つと「出るもの」に見える。
+     幅と、空きであることだけを言う。 */
+  if(pad){
+   return `<div class="op-tile is-pad${String(opState.picked)===String(x.id)?' is-picked':''}"`
+    +` draggable="true" data-op-id="${esc(x.id)}"`
+    +` style="${spot?`grid-column:${spot.col}/span ${spot.span};grid-row:${spot.row}`
+                  :`grid-column:span ${span}`}"`
+    +` title="空き（測定画面では何も描かず、この幅ぶんの余白になります）｜${esc(opSpanLabel(span))}"`
+    +` tabindex="0"><span class="op-tile-pad">空き</span>`
+    +`<span class="op-tile-span">${span}/${opState.gridCols}</span></div>`;
+  }
   return `<div class="op-tile${String(opState.picked)===String(x.id)?' is-picked':''}`
-   +`${off?' is-off':''}${pad?' is-pad':''}" draggable="true" data-op-id="${esc(x.id)}"`
+   +`${off?' is-off':''}" draggable="true" data-op-id="${esc(x.id)}"`
    +` style="${spot?`grid-column:${spot.col}/span ${spot.span};grid-row:${spot.row}`
                  :`grid-column:span ${span}`}" title="${esc(tip)}" tabindex="0">`
    +`<span class="op-tile-name">${esc(x.name)}</span>`
@@ -4125,7 +4138,6 @@
    +(x.builtin?'<b class="op-chip op-chip-builtin">画面の欄</b>':'')
    +(x.required?'<b class="op-chip op-chip-req">必須</b>':'')
    +(off?'<b class="op-chip op-chip-off">出さない</b>':'')
-   +(pad?'<b class="op-chip op-chip-pad">空きの中（描きません）</b>':'')
    +(w!=='プルダウン'?`<b class="op-chip op-chip-widget">${esc((OP_WIDGET_NOTE[w]||{}).icon||'')} ${esc(opWidgetLabel(x,w))}</b>`:'')
    +(x.initial?`<b class="op-chip op-chip-initial">初期 ${esc(x.initial)}</b>`:'')
    +(x.freeText?'<b class="op-chip op-chip-free">手打ち可</b>':'')
@@ -4166,14 +4178,12 @@
     +` data-op-place="${esc(r.place)}" style="${place}"`
     +` title="測定画面では見出しも枠も出さず、この幅ぶんの空白になります">`
     +`<b class="op-band-name">${esc(r.name)}</b>`
-    +`<small class="op-band-note">ダミー（空き）`
+    +`<small class="op-band-note">空きだけの群`
     +`${cur?`／幅 ${esc(opGroupSpanLabel(cur))}`:'／幅 全幅'}`
-    +`／測定画面では<b>何も描きません</b></small>`
+    +`／測定画面では<b>見出しも出しません</b></small>`
     +`<span class="op-band-tools">`
     +opBandSpanHtml(r,cur)
     +`<button type="button" class="ghost" data-op-rename="${esc(r.name)}" data-op-place="${esc(r.place)}">名前</button>`
-    +`<button type="button" class="ghost" data-op-undummy="${esc(r.name)}" data-op-place="${esc(r.place)}"`
-    +` title="ふつうの群へ戻します（中の項目がまた出るようになります）">ふつうの群へ</button>`
     +`</span></div>`;
   }
   return `<div class="op-band" data-op-band="${esc(r.name)}" data-op-place="${esc(r.place)}"`
@@ -4295,7 +4305,7 @@
    /* **空き（ダミー）の群**（§9.227 ③、利用者の指示）。並びを区切りの
       良いところで折り返すための、何も出さない場所。 */
    +`<button type="button" id="opAddPad" class="ghost"`
-   +` title="測定画面で見出しも枠も出さない「空き」を作ります（区切りの良い並びに整列させるため）">空きを追加</button>`
+   +` title="測定画面で何も描かない「空き」のカードを1枚足します（区切りの良い並びに整列させるため）">空きカードを追加</button>`
    +`<span class="op-bar-state" id="opLayoutState"></span></div>`;
   /* **まとめ直したことを画面に書く**（§9.219 ③）。保存されている並びでは
      同じ群がばらけていたが、盤ではまとめて描いている——黙って直すと、
@@ -4367,6 +4377,9 @@
   finally{opState.busy=false}
  }
  function bindOpItem(){
+  /* **描き直したら閉じる**（§9.222 ①）——控えの持ち主が切り離された古い
+     要素になると、押して閉じて即開き直すちらつきになる。 */
+  closeOpMenu();
   const pick=$('#opEqPick');
   if(pick)pick.onchange=()=>{opState.equipment=pick.value;loadOpItemMaint(true)};
   const add=$('#opAddItem');
@@ -4379,10 +4392,28 @@
    /* **押したら設定の窓が開く**（§9.218 ①、利用者の指摘「メニューが右側で
       固定され、設定しにくい」）。以前は右の細い柱に押し込んでいたため、
       幅・型・選択肢を触るたびに視線が盤と柱を往復していた。 */
-   t.onclick=()=>{opState.picked=t.dataset.opId;renderOpItem();openOpModal(t.dataset.opId)};
+   /* **右クリックでメニュー**（§9.228 ⑤）。掴んで並べ替える盤なので、
+      よく使う操作（幅・出す/出さない・空き・削除）はここから直接。 */
+   t.oncontextmenu=e=>{
+    const x=opItemById(t.dataset.opId);
+    if(!x)return;
+    opState.picked=x.id;renderOpItem();
+    opOpenTileMenu(e,x);
+   };
+   t.onclick=()=>{
+    opState.picked=t.dataset.opId;renderOpItem();
+    /* 空きのカードは設定窓を開かない（決めることが幅だけなので、
+       右クリックのメニューが持つ。押しても何も無い窓は開かない・§4）。 */
+    const x=opItemById(t.dataset.opId);
+    if(x&&x.dummy)return;
+    openOpModal(t.dataset.opId);
+   };
    t.onkeydown=e=>{
     if(e.key!=='Enter'&&e.key!==' ')return;
-    e.preventDefault();opState.picked=t.dataset.opId;renderOpItem();openOpModal(t.dataset.opId);
+    e.preventDefault();opState.picked=t.dataset.opId;renderOpItem();
+    const x=opItemById(t.dataset.opId);
+    if(x&&x.dummy){opOpenTileMenu(t.getBoundingClientRect(),x);return}
+    openOpModal(t.dataset.opId);
    };
    t.ondragstart=e=>{
     opState.drag=t.dataset.opId;t.classList.add('is-dragging');
@@ -4425,17 +4456,6 @@
   /* 群の幅（§9.226 ③）。**群の全部の行へ同じ値**を書く（畳むと同じ作法）
      ——1行だけ直すと、`form_for_equipment`が「1つでもあればそれ」で読むので
      消したはずの幅が残る。 */
-  document.querySelectorAll('#masterMaintList [data-op-undummy]').forEach(b=>{
-   b.onclick=async e=>{
-    e.stopPropagation();
-    const uid=requireMaintUser();if(uid===null)return;
-    const place=b.dataset.opPlace,group=b.dataset.opUndummy;
-    try{
-     await opSetDummy(place,group,false,uid);
-     opSay(`「${group}」をふつうの群へ戻しました（中の項目がまた出ます）`);
-    }catch(err){opSay('戻せませんでした: '+err.message,true)}
-   };
-  });
   document.querySelectorAll('#masterMaintList [data-op-gspan]').forEach(b=>{
    b.onclick=async e=>{
     e.stopPropagation();
@@ -4608,34 +4628,138 @@
     **群は独立した行を持たない**（項目行の`[群]`列から導出する）ので、
     印を持つ行が1つ要る。その行の入力欄は測定画面に**一度も描かれない**
     ので、名前は盤の中だけの呼び名になる。 */
+ /* 空きのカードを1枚足す（§9.228 ②、利用者の指示「ダミーのカードだけ
+    追加したいがダミー群ごとしか追加できないのも修正してほしい」）。
+    **群は作らない**——いま選んでいるカードと同じ群へ入れ、掴んで好きな
+    場所へ動かせる。名前も聞かない（測定画面に出ないので決めることが1つ減る）。 */
  async function opCreatePad(){
   const uid=requireMaintUser();if(uid===null)return;
-  const n=(opState.items||[]).filter(x=>x.dummy).length+1;
-  const name=prompt('空きの呼び名（盤の中だけで使います。測定画面には出ません）','空き'+n);
-  if(name===null)return;
-  const nm=String(name).trim();if(!nm)return;
-  if((opState.items||[]).some(x=>(x.group||'その他')===nm)){
-   opSay(`「${nm}」という群がすでにあります。別の名前にしてください。`,true);return;
-  }
+  const cur=opItemById(opState.picked);
+  const place=(cur&&cur.place)||'準備';
+  const group=(cur&&cur.group)
+    ||((opState.items||[]).find(x=>(x.place||'準備')===place)||{}).group||'その他';
+  /* 項目名は**鍵**（自然キーは設備×項目名）なので重ならない値を作る。 */
+  const used=new Set((opState.items||[]).map(x=>x.name));
+  let n=1,nm='空き';
+  while(used.has(nm))nm='空き'+(++n);
   try{
    await api('/api/operation-item-master',{method:'POST',
      headers:{'Content-Type':'application/json'},
      /* **「出さない」にしないこと**——測定画面が読むのは
         `items_for_equipment(c,eq)`＝有効な行だけなので、無効にすると
-        群そのものが導出されず、**空きが1マスも空かない**（実際に踏んだ）。
+        カードそのものが届かず、**空きが1マスも空かない**（実際に踏んだ）。
         描かないのは`[ダミー]`の印の役目で、有効/無効の役目ではない。 */
-     body:JSON.stringify({equipment:opState.equipment||'*',group:nm,
-       name:nm,type:'文字',place:'準備',span:4,user_id:uid})});
-   await opSetDummy('準備',nm,true,uid);
-   opSay(`空き「${nm}」を作りました。幅を決めると、その幅ぶんが測定画面で空きます。`);
+     body:JSON.stringify({equipment:opState.equipment||'*',group,
+       name:nm,type:'文字',place,span:4,dummy:true,user_id:uid})});
+   await loadOpItemMaint(true);
+   if(window.WL&&WL.opData)WL.opData.forget();
+   opSay(`空きのカードを「${group}」へ足しました。掴んで動かし、幅を決めると、そのぶんが測定画面で空きます。`);
   }catch(e){opSay('追加できませんでした: '+e.message,true)}
  }
- async function opSetDummy(place,group,on,uid){
-  const g=opState.items.find(x=>(x.place||'準備')===place&&(x.group||'その他')===group);
-  await api('/api/operation-item-master/group',{method:'POST',
+ /* ---------- 盤の右クリックメニュー（§9.228 ⑤、利用者の指示） ----------
+    「右クリックメニューを実装してください。削除やサイズ変更などよく使う
+     メニューに絞って実装してほしいです。」
+
+    **絞る**のが要件なので、置くのは「幅・出す/出さない・空き・削除」の4つ
+    だけ。細かい設定は今までどおりダブルクリックの設定窓が持つ（入口を2つに
+    しない・§9.207と同じ作法）。
+    **開いた器は必ず控える**（§9.222 ①）——控え忘れると、閉じる・外側
+    クリック・Escの3つが全部空振りして**押すたびにDOMへ積み上がる**。 */
+ let opMenuEl=null;
+ function closeOpMenu(){
+  if(!opMenuEl)return;
+  opMenuEl.remove();opMenuEl=null;
+  document.removeEventListener('mousedown',opMenuOutside,true);
+  document.removeEventListener('keydown',opMenuEsc,true);
+ }
+ function opMenuOutside(e){if(opMenuEl&&!opMenuEl.contains(e.target))closeOpMenu()}
+ function opMenuEsc(e){if(e.key==='Escape'){e.stopPropagation();closeOpMenu()}}
+ /* 幅は盤の帯と同じ刻み（1/3・1/2・2/3・全幅）を「カードの幅」として使う。 */
+ const OP_TILE_SPANS=[{v:2,label:'1/6'},{v:3,label:'1/4'},{v:4,label:'1/3'},
+                      {v:6,label:'1/2'},{v:8,label:'2/3'},{v:12,label:'全幅'}];
+ /* `ev`はマウスの出来事でも、キーボードから開くときの`{x,y}`でもよい
+    （`DOMRect`をそのまま渡せる）。 */
+ function opOpenTileMenu(ev,x){
+  closeOpMenu();
+  if(ev&&typeof ev.preventDefault==='function')ev.preventDefault();
+  const px=Number(ev&&(ev.clientX!=null?ev.clientX:ev.x))||8;
+  const py=Number(ev&&(ev.clientY!=null?ev.clientY:ev.y))||8;
+  const span=opSpanOf(x),pad=!!x.dummy,off=x.enabled===false;
+  const m=document.createElement('div');
+  m.className='op-menu';m.setAttribute('role','menu');
+  const b=(attr,label,cls)=>`<button type="button" ${attr}`
+    +`${cls?` class="${cls}"`:''}>${esc(label)}</button>`;
+  m.innerHTML=`<div class="op-menu-head">${esc(pad?'空き':x.name)}</div>`
+   +`<div class="op-menu-row"><b>幅</b>`
+   +OP_TILE_SPANS.map(o=>`<button type="button" data-opm-span="${o.v}"`
+     +` class="${span===o.v?'is-on':''}" title="${esc(o.label)}（${o.v}/${opState.gridCols}マス）">`
+     +`${esc(o.label)}</button>`).join('')+`</div>`
+   +`<div class="op-menu-sep"></div>`
+   +(pad?b('data-opm-pad="0"','ふつうの項目へ戻す')
+        :b('data-opm-off="'+(off?'0':'1')+'"',off?'測定画面に出す':'測定画面に出さない'))
+   +(pad?'':b('data-opm-pad="1"','空きにする（何も描かない）'))
+   +(pad?'':b('data-opm-open="1"','設定をひらく…'))
+   +`<div class="op-menu-sep"></div>`
+   +(x.builtin
+      ?`<button type="button" disabled title="画面がもともと持っている欄なので消せません（出さないことはできます）">削除できません</button>`
+      :b('data-opm-del="1"','この'+(pad?'空き':'項目')+'を削除','is-danger'));
+  document.body.appendChild(m);
+  opMenuEl=m;
+  /* 画面の外へ出さない（右下で開くと切れる）。 */
+  const r=m.getBoundingClientRect();
+  m.style.left=Math.max(4,Math.min(px,window.innerWidth-r.width-4))+'px';
+  m.style.top=Math.max(4,Math.min(py,window.innerHeight-r.height-4))+'px';
+  const act=async fn=>{
+   const uid=requireMaintUser();if(uid===null){closeOpMenu();return}
+   closeOpMenu();
+   try{await fn(uid)}catch(e){opSay('できませんでした: '+e.message,true)}
+  };
+  m.querySelectorAll('[data-opm-span]').forEach(btn=>btn.onclick=()=>act(async uid=>{
+   await api('/api/operation-item-master/update',{method:'POST',
+     headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({...x,id:x.id,span:Number(btn.dataset.opmSpan),user_id:uid})});
+   await loadOpItemMaint(true);
+   if(window.WL&&WL.opData)WL.opData.forget();
+   opSay(`幅を${opSpanLabel(Number(btn.dataset.opmSpan))}にしました`);
+  }));
+  const offBtn=m.querySelector('[data-opm-off]');
+  if(offBtn)offBtn.onclick=()=>act(async uid=>{
+   const on=offBtn.dataset.opmOff==='0';
+   await api('/api/operation-item-master/update',{method:'POST',
+     headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({...x,id:x.id,enabled:on,user_id:uid})});
+   await loadOpItemMaint(true);
+   if(window.WL&&WL.opData)WL.opData.forget();
+   opSay(on?`「${x.name}」を測定画面に出します`:`「${x.name}」を測定画面に出しません`);
+  });
+  m.querySelectorAll('[data-opm-pad]').forEach(btn=>btn.onclick=()=>act(async uid=>{
+   await opSetPad(x.id,btn.dataset.opmPad==='1',uid);
+   opSay(btn.dataset.opmPad==='1'
+     ?'空きにしました（測定画面では何も描きません）':'ふつうの項目へ戻しました');
+  }));
+  const openBtn=m.querySelector('[data-opm-open]');
+  if(openBtn)openBtn.onclick=()=>{closeOpMenu();opState.picked=x.id;renderOpItem();openOpModal(x.id)};
+  const del=m.querySelector('[data-opm-del]');
+  if(del)del.onclick=()=>act(async uid=>{
+   /* **取り消せないので確認する**（§5）。空きは中身が無いので聞かない。 */
+   if(!pad&&!confirm(`「${x.name}」を削除します。取り消せません。\n`
+     +'（記録済みの値は残りますが、これ以降は画面から入れられなくなります）'))return;
+   await api('/api/operation-item-master/delete',{method:'POST',
+     headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({id:x.id,user_id:uid})});
+   await loadOpItemMaint(true);
+   if(window.WL&&WL.opData)WL.opData.forget();
+   opSay(pad?'空きを削除しました':`「${x.name}」を削除しました`);
+  });
+  document.addEventListener('mousedown',opMenuOutside,true);
+  document.addEventListener('keydown',opMenuEsc,true);
+ }
+ /* カード1枚を空きにする／戻す（§9.228 ②）。 */
+ async function opSetPad(id,on,uid){
+  const x=opItemById(id);if(!x)return;
+  await api('/api/operation-item-master/update',{method:'POST',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({place,group,fold:!!(g&&g.fold),
-      showWhen:g?(g.showWhen||[]):[],dummy:!!on,user_id:uid})});
+    body:JSON.stringify({...x,id:x.id,dummy:!!on,user_id:uid})});
   await loadOpItemMaint(true);
   if(window.WL&&WL.opData)WL.opData.forget();
  }
@@ -4911,6 +5035,38 @@
   const d=(x&&x.look)||{};
   const sh=OP_SHAPE_ALIAS[d.shape]||d.shape||'標準';
   return {color:d.color||'既定',shape:sh,size:d.size||'中'};
+ }
+ /* ---------- 空欄（選ばない）の札（§9.228 ④、利用者の指示） ----------
+    「トグルやラジオボタンなどありますが、**非選択状態の表示が大きい**ので
+     それをなしにしたり初期値設定したりできるようにしたい」
+
+    選択肢を持つ形では「—」（選ばない）が**1枚ぶんの場所を取る**。出さない
+    ようにできれば、その幅がまるごと空く。**初期値と対で使う**ものなので、
+    ここから初期値も直せるようにしておく（②のタブまで探しに行かせない）。
+    選択肢を持たない型では**欄ごと出さない**が、§9.227 ②のとおり
+    **場所は空けておく**（消すと下の行が動く）。 */
+ function opBlankRowHtml(x,widget){
+  const choice=opState.choiceTypes.includes(x.type);
+  if(!choice){
+   return `<div class="op-form-row is-fixed-layout"><span class="op-form-label">空欄の札</span>
+    <span class="op-form-ctl"><i class="op-form-note">この型には「選ばない」の札がありません
+     （選択肢から選ぶ型のときに決められます）。</i></span></div>`;
+  }
+  const off=!!x.noBlank;
+  return `<div class="op-form-row is-fixed-layout"><span class="op-form-label">空欄の札</span>
+    <span class="op-form-ctl">
+     <span class="op-look-row">
+      <button type="button" data-op-blank="0" class="op-mini${off?'':' is-on'}">出す</button>
+      <button type="button" data-op-blank="1" class="op-mini${off?' is-on':''}">出さない</button>
+     </span>
+     <i class="op-form-note">${off
+       ?'「—」の札を出しません。'
+       :'「—」（選ばない）の札を1枚ぶん並べます。<b>出さない</b>にすると、そのぶんの場所が空きます。'}
+      　初期値は<b>${x.initial?`いま「${esc(x.initial)}」`:'まだ決めていません'}</b>
+      （<b>②何を記録するか</b>で決められます）。${off&&!x.initial
+        ?'<b>空欄の札を出さないときは初期値を決めておくこと</b>——決めていないと、'
+         +'記録は空のまま、画面ではどれも選ばれていない状態になります。':''}</i>
+    </span></div>`;
  }
  function opLookPickHtml(x){
   const lk=opLookOf(x);
@@ -5252,6 +5408,7 @@
        opFamilyOf(x)==='choice'&&!x.choice?'　<b>選択肢のまとまりを選ぶと</b>、見本に実際の値が並びます。':''}</i>
     </span></div>
    ${opLayoutRowHtml(x,widget)}
+   ${opBlankRowHtml(x,widget)}
    ${opLookPickHtml(x)}
    ${opLookRowHtml(x,widget)}`);
   /* ---------- ④ メモ ---------- */
@@ -5373,6 +5530,9 @@
     /* 定型文（§9.226 ①）はまとまりの値を語句として並べるので、見本にも
        同じ値を渡す——渡さないと見本だけ「まとまりを選ぶと…」のまま。 */
     choices:opChoiceValues(x.choice),
+    /* §9.228 ④。**見本にも効かせる**——設定窓で確かめた形と実物が
+       食い違わないようにする（§9.221 ⑦と同じ約束）。 */
+    noBlank:!!x.noBlank,
     choiceNotes:opState.notes[x.choice]||{}};
   if(window.WL&&WL.opData&&WL.opData.presentation)WL.opData.presentation(label,previewDef);
   /* 値の整え方（§9.221 ⑦）も**見本へ配線する**——「3桁区切り」を選んでも
@@ -5420,6 +5580,10 @@
    if(b.disabled)return;touch({unitPlace:b.dataset.opUnitplace});
   });
   form.querySelectorAll('[data-op-layout]').forEach(b=>b.onclick=()=>touch({layout:b.dataset.opLayout}));
+  /* §9.228 ④ 空欄（選ばない）の札と、その場で直せる初期値。 */
+  form.querySelectorAll('[data-op-blank]').forEach(b=>b.onclick=()=>
+    touch({noBlank:b.dataset.opBlank==='1'}));
+
   form.querySelectorAll('[data-op-align]').forEach(b=>b.onclick=()=>touch({align:b.dataset.opAlign}));
   form.querySelectorAll('[data-op-vfmt]').forEach(b=>b.onclick=()=>touch({valueFormat:b.dataset.opVfmt}));
   form.querySelectorAll('[data-op-when]').forEach(b=>b.onclick=()=>{
@@ -5532,6 +5696,8 @@
           /* §9.226 ①③。**並べ方と群幅も必ず送る**——`item_upsert`は全列を
              書くので、送らないと保存のたびに既定へ戻る（§9.212 ②と同じ形）。 */
           layout:x.layout||'自動',groupSpan:Number(x.groupSpan)||0,
+          /* §9.228 ②④。**空きと空欄の札も必ず送る**（同じ理由）。 */
+          dummy:!!x.dummy,noBlank:!!x.noBlank,
           required:!!x.required,enabled:x.enabled!==false,
           fold:!!x.fold,
           showWhen:x.showWhen||[]};
@@ -5558,6 +5724,9 @@
     unit:d.unit||'',choice:d.choice||'',
     unitPlace:d.unitPlace,align:d.align,valueFormat:d.valueFormat,digits:d.digits,
     span:d.span,place:d.place,required:d.required,enabled:d.enabled,widget:d.widget,
+    /* §9.228 ②④。**空きと空欄の札も必ず送る**——`item_upsert`は全列を
+       書くので、送らないと保存のたびに既定へ戻る（§9.212 ②と同じ形）。 */
+    dummy:!!d.dummy,noBlank:!!d.noBlank,
     /* 組み込みの欄は初期値も手打ちも持たない（型・上下限と同じ理由。
        内径のプリセット§9.204・条数の上限§9.210 ⑤と衝突する）。 */
     initial:x.builtin?'':(d.initial||''),

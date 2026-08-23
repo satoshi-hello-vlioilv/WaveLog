@@ -862,6 +862,7 @@
   const opts=optionsOf(sel);
   const shape=CHOICE_SHAPES[kind];
   const sig=kind+(free?'+free':'')+'/'+String(def.layout||'')
+    +(def.noBlank?'/nb':'')
     +'|'+opts.map(o=>o.v+'\u0001'+o.t).join('\u0002');
   const box=widgetHost(host);
   if(box.dataset.sig===sig){syncWidget(host);return true}
@@ -928,8 +929,12 @@
    const btnCls=stage?'opf-stage-btn':(shape?shape.btn:'opf-seg-btn');
    const dot=(!stage&&shape&&shape.dot)?'<i class="opf-dot" aria-hidden="true"></i>':'';
    /* 段階は「選ばない」を並べない——順番の帯に空の段が混ざると、
-      1段目が「選ばない」なのか最低の段なのか読めない。 */
-   const list=stage?opts.filter(o=>o.v!==''):opts;
+      1段目が「選ばない」なのか最低の段なのか読めない。
+      **`空欄なし`のときも並べない**（§9.228 ④、利用者の指示「非選択状態の
+      表示が大きいのでそれをなしにしたり初期値設定したりできるようにしたい」）
+      ——ラジオやトグルでは「—」の札が1枚ぶんの場所を取る。初期値と
+      組み合わせれば、最初から1つ選ばれた状態で出せる。 */
+   const list=(stage||def.noBlank)?opts.filter(o=>o.v!==''):opts;
    box.innerHTML='<div class="opf-shape">'+list.map((o,i)=>{
     const label=(o.v===''||o.t==='-')?'—':o.t;
     const tip=noteOf(def,o.v);
@@ -1121,17 +1126,21 @@
       **1つでも「畳む」と言っていれば畳む**——群の中で食い違ったときに
       「どちらが正か」を決められる形にしておく（マスタ管理の画面は群単位で
       書き換えるので、ふつうは食い違わない）。 */
-   if(!g){g={name,items:[],fold:false,span:0,dummy:false,showWhen:new Set()};out.push(g)}
+   if(!g){g={name,items:[],fold:false,span:0,pad:true,showWhen:new Set()};out.push(g)}
    g.items.push(d);
    if(d.fold)g.fold=true;
-   /* ダミー（空き）の群（§9.227 ③）。**1つでも印があればダミー**
-      ——畳む・群幅と同じ読み方にそろえる。 */
-   if(d.dummy)g.dummy=true;
+   /* ダミー（空き）は**カード1枚の属性**（§9.228 ②、利用者の指示
+      「ダミーのカードだけ追加したいがダミー群ごとしか追加できないのも
+      修正してほしい」）。**群の見出しを消すのは「全部が空き」のときだけ**
+      ——1枚でも中身があるなら、その群には見出しが要る。 */
+   g.pad=(g.pad!==false)&&!!d.dummy;
    /* 群の幅（§9.226 ③）。**1つでも指定があればそれ**——畳むと同じ読み方に
       そろえる（群の中で食い違ったときにどちらが正かを決めておく）。 */
    if(!g.span&&Number(d.groupSpan)>0)g.span=Math.min(gridCols,Number(d.groupSpan));
    (d.showWhen||[]).forEach(x=>g.showWhen.add(String(x).trim()));
   });
+  /* 中身が1枚も無い群は「全部が空き」ではない（初期値のtrueを落とす）。 */
+  out.forEach(g=>{if(!g.items.length)g.pad=false;g.dummy=g.pad});
   return out;
  }
 
@@ -1157,17 +1166,10 @@
   (groups||[]).forEach(g=>{
    const gs=Math.max(1,Math.min(n,Number(g.span)>0?Number(g.span):n));
    if(col>1&&col+gs-1>n)newBand();
-   /* ダミー（空き）の群は**見出しの行を取らない**（§9.227 ③）。
-      見出しの位置に空白そのものを置くので、`heads`へは今までどおり
-      1件返すが、下に中身の行を作らない——1行ぶん余計に空くのを防ぐ。 */
+   /* 全部が空きの群は**見出しの行を取らない**（§9.228 ②）——見出しを
+      描かないので、中身は見出しの位置から始める（1行ぶん余計に空かない）。 */
    heads.push({name:g.name,col,row,span:gs,dummy:!!g.dummy});
-   if(g.dummy){
-    bottom=Math.max(bottom,row+1);
-    col+=gs;
-    if(col>n)newBand();
-    return;
-   }
-   let r=row+1,c=col;
+   let r=g.dummy?row:row+1,c=col;
    (g.items||[]).forEach(it=>{
     const w=Math.max(1,Math.min(gs,Number(it.span)||1));
     if(c>col&&c+w-1>col+gs-1){c=col;r++}
@@ -1216,6 +1218,20 @@
   }).filter(v=>v&&v!=='-').join('・');
  }
 
+ /* 組み込みの欄の見出しをマスタの項目名に合わせる（§9.228 ①）。
+    **先頭のテキスト節点だけ**を書き換える（`<label>`の中の入力欄を消さない）。
+    テキスト節点が無い形（将来`<span>`で包んだ場合など）では何もしない
+    ——見出しが2つになるより、元の名前のままのほうがまし。 */
+ function renameBuiltinLabel(el,name){
+  const t=String(name||'').trim();
+  if(!t)return;
+  for(const n of el.childNodes){
+   if(n.nodeType===3&&n.nodeValue.trim()){
+    if(n.nodeValue!==t)n.nodeValue=t;
+    return;
+   }
+  }
+ }
  /* その定義に対応する入力欄。組み込みは画面が持っているものを引き当てる。 */
  function controlOf(def){
   if(def.builtin)return document.getElementById(def.builtin);
@@ -1260,32 +1276,18 @@
    /* 群を「列でも区切る」（§9.226 ③）。**幅を決めた群があるときだけ**
       マスを明示する（`banded`）——無いときは今までどおり`order`で流す。 */
    const pack=packLayout(gs.map(g=>({name:g.name,span:g.span,dummy:g.dummy,
-     items:g.dummy?[]:g.items.map(d=>({key:d.name,span:Number(d.span)||4}))})),gridCols);
+     items:g.items.map(d=>({key:d.name,span:Number(d.span)||4}))})),gridCols);
    const headAt=new Map(pack.heads.map(h=>[h.name,h]));
    const cellAt=new Map(pack.items.map(x=>[x.key,x]));
    gs.forEach(g=>{
     const fold=isFolded(g);
     const spot=pack.banded?headAt.get(g.name):null;
-    /* ---------- ダミー（空き）の群（§9.227 ③、利用者の指示） ----------
-       「マスタでまとまりをダミーで作って何も枠もない空間をつくれるように
-        してください。(区切りの良い並びに整列させるためのダミーカード)」
-
-       **見出しも枠も出さず、幅ぶんのマスだけを押さえる。** 群は独立した
-       行を持たない（項目行の`[群]`から導出する）ので、印を持つ行は要るが、
-       その行の入力欄は**1つも描かない**——描くと空白ではなくなる。
-       記録にも入らない（`collect()`は画面に出ている欄しか見ない）。 */
-    if(g.dummy){
-     const pad=document.createElement('div');
-     pad.className='prep-pad';
-     pad.dataset.opgen='1';pad.dataset.opgroup=g.name;pad.dataset.opplace=place;
-     pad.dataset.oppad='1';
-     pad.setAttribute('aria-hidden','true');
-     pad.style.order=String(seq++);
-     if(spot){pad.style.gridColumn=spot.col+'/span '+spot.span;pad.style.gridRow=String(spot.row)}
-     else pad.style.gridColumn=g.span?('span '+g.span):'1/-1';
-     box.appendChild(pad);
-     return;
-    }
+    /* ---------- 空き（ダミー）（§9.228 ②、利用者の指示） ----------
+       「ダミーのカードだけ追加したいがダミー群ごとしか追加できないのも
+        修正してほしい」——空きは**カード1枚**。群の見出しを消すのは
+       **その群が全部空きのとき**だけで、ふつうの群の中に空きを1枚だけ
+       混ぜることもできる。空きは**見出しも枠も地も文字も持たない**。 */
+    if(!g.pad){
     const head=document.createElement(g.fold?'button':'b');
     head.className='prep-head'+(g.fold?' prep-fold':'');
     head.dataset.opgen='1';head.dataset.opgroup=g.name;head.dataset.opplace=place;
@@ -1311,11 +1313,38 @@
      head.textContent=g.name;
     }
     box.appendChild(head);
+    }
     g.items.forEach(d=>{
+     /* 空きのカード（§9.228 ②）。**入力欄は1つも作らない**——作ると
+        空白ではなくなる。マスだけを押さえる。 */
+     if(d.dummy){
+      const pad=document.createElement('div');
+      pad.className='prep-pad';
+      pad.dataset.opgen='1';pad.dataset.opgroup=g.name;pad.dataset.opplace=place;
+      pad.dataset.oppad='1';
+      pad.setAttribute('aria-hidden','true');
+      pad.style.order=String(seq++);
+      const at0=pack.banded?cellAt.get(d.name):null;
+      if(at0){pad.style.gridColumn=at0.col+'/span '+at0.span;pad.style.gridRow=String(at0.row)}
+      else pad.style.gridColumn='span '+Math.max(1,Math.min(gridCols,Number(d.span)||4));
+      box.appendChild(pad);
+      return;
+     }
      let el=hostOf(d);
      if(!el&&!d.builtin){el=fieldEl(d,seq);box.appendChild(el)}
      if(!el){missing.push(d.name);return}
      el.dataset.opplace=place;el.dataset.opgroup=g.name;
+     /* **組み込みの欄も名前はマスタが決める**（§9.228 ①、利用者の指摘
+        「マスタで関連の項目を名前変更しても…どこかでハードコーディングが
+        残っていて名前変更が効かない」）。組み込みの欄は`index.html`が
+        持っている`<label data-f="coilStop">コイル止め<select…>`をそのまま
+        置いているだけで、**見出しの文字はHTMLに焼き付いたまま**だった
+        ——自由項目は`fieldEl()`が`d.name`から作るので効いていた、という
+        分かりにくい食い違い。コイル止めだけでなく**組み込みの欄すべて**。
+        **書き換えるのは先頭のテキスト節点だけ**——`<label>`の中には
+        `<select>`や`<small class="prep-from">`が入っているので、
+        `textContent`ごと差し替えると入力欄が消える。 */
+     if(d.builtin)renameBuiltinLabel(el,d.name);
      /* **器いっぱいに使う**（§9.218 ②、利用者の指摘「項目間の余白が広く、
         かなり表示欄がもったいない」「2列分にしたときに1列と比べると余白が
         出てスカスカな印象。余白は無いようにUI幅で稼いでほしい」）。

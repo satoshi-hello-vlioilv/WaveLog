@@ -2343,7 +2343,10 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .opf-tabs .opf-shape{gap:var(--space-3);border-bottom:1px solid var(--line-soft)}
 .opf-tab-btn{padding:0 var(--space-1);border-bottom:2px solid transparent;margin-bottom:-1px}
 .opf-tab-btn:hover{color:var(--ink);border-bottom-color:var(--line-mid)}
-.opf-tab-btn.is-on{color:var(--teal);font-weight:700;border-bottom-color:var(--teal)}
+/* 選択の合図は**色と下線の2つ**（§9.228 ③、利用者の指示「タブもデザインが
+   これもやりすぎのまま」）。太字を足すと3つになり、選んだ札だけ文字幅まで
+   変わって隣のタブがずれる——選択タイルの絵も色と下線の2つで描いている。 */
+.opf-tab-btn.is-on{color:var(--teal);border-bottom-color:var(--teal)}
 /* --- ボタン群: 独立した札。折り返す --- */
 .opf-chips .opf-shape{flex-wrap:wrap;gap:var(--gap-tight)}
 .opf-chip-btn{
