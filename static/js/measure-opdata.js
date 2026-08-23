@@ -296,13 +296,16 @@
    control=`<input id="${id}" type="text" data-op="${esc(def.name)}" autocomplete="off">`;
   }
   label.title=[def.name,def.unit?`単位 ${def.unit}`:'',hint,def.note||''].filter(Boolean).join('｜');
-  const u=unitParts(def);
+  /* **単位はここで組み立てない**（§9.233 ④）。器（`.opf-widget`）は
+     あとから末尾に足されるので、ここで置くと「外下」の単位が器の**上**へ
+     出る。置き場を決めるのは`placeUnit()`の1箇所。 */
   label.innerHTML=`<span class="opf-name">${esc(def.name)}`
    +(def.required?'<b class="opf-req" title="入力が要ります">必須</b>':'')+'</span>'
-   +u.top+control+u.inside+u.bottom
+   +control
    +(def.choiceMissing?`<small class="opf-warn">選択肢「${esc(def.choice)}」が未登録です</small>`:'')
    +'<small class="opf-note" hidden></small>';
   applyPresentation(label,def);
+  placeUnit(label,def);
   return label;
  }
  /* ---------- 単位の置き場（§9.221 ⑦、利用者の指示） ----------
@@ -339,7 +342,29 @@
   /* 単位を重ねる幅は**文字数から**決める（`ch`は数字の幅なので、
      `mm`のような英字でも近い値になる）。器へ渡し、欄の右余白がこれを見る。 */
   host.style.setProperty('--opf-unit-w',String(Math.max(1,String(def.unit||'').length))+'ch');
-  const el=valueEl(host);
+  /* ---------- 重ねたぶんの逃げ場（§9.233 ③④、利用者の指摘） ----------
+     「追加したばかりの『母材』のところだけ、単位を内部に入れ込んで設定した
+      ときにデータ入力を右寄せにすると単位と被ってしまいます」
+
+     幅は**ここで決めて器の変数へ渡す**。以前はCSSが
+     `.measure-shell .selectors>label[data-opunit="内部"]>input{padding-right:…}`
+     と**器ごとにセレクタを書き分けて**おり、①準備のカードと設定窓の見本に
+     しか当たらなかった——母材（`.material-grid`）は器の名前が違うので、
+     値が単位の上へ乗っていた。器を1つ足すたびにCSSを書き足す作りだと、
+     足し忘れた器だけが静かに壊れる。
+     プルダウンは右端に▼の場所（実測16px）が要るので、そのぶん内側へ寄せる
+     ——**見えている操作面**で見分けること（器を被せた欄では`<select>`は
+     1pxの裏方で、▼は出ていない）。 */
+  const shown=displayEl(host);
+  if((def.unit||'')&&at==='内部'){
+   const caret=(shown&&shown.tagName==='SELECT')?' + 16px':'';
+   host.style.setProperty('--opf-pad-r',`calc(var(--opf-unit-w,2ch) + var(--space-4)${caret})`);
+  }else host.style.removeProperty('--opf-pad-r');
+  /* **値を持つ欄が無くても、画面に出ている欄はある**（§9.233 ①②）。
+     母材の参考値3つ（元幅・屑幅・計算全長）は`<output>`で、`valueEl()`は
+     「書ける欄」を返す口なので当たらない——以前はここで黙って落ちており、
+     自動で入る値だけ見せ方の設定が一切効かなかった。 */
+  const el=valueEl(host)||outputEl(host);
   if(el){
    /* **`<select>`には見せ方を当てない。** 値が選択肢そのものなので、
       3桁区切りやゼロ埋めを掛けると`putValue()`が`1234`を`1,234`にし、
@@ -347,29 +372,51 @@
       記録が消え、そのまま保存すると空で上書きされる。`attachFormat()`は
       同じ理由で`SELECT`を外しているので、**書く側もここで揃える**
       （読む側`fmtOf()`に条件を足すと、当てない理由が2箇所に散る）。 */
-   const plain=el.tagName==='SELECT';
+   /* `<output>`も同じ扱い（`attachFormat()`は欄を離れたときに整えるが、
+      画面が値を入れる欄には「離れる」瞬間が無い。当てない理由を1箇所に
+      そろえる——設定窓は「自動で入る値には効きません」と書く）。 */
+   const plain=el.tagName==='SELECT'||el.tagName==='OUTPUT';
    el.dataset.opfmt=(plain||fmt==='そのまま')?'':fmt;
    if(!plain&&def.digits)el.dataset.opdigits=String(def.digits);
    else delete el.dataset.opdigits;
   }
  }
 
-/* 組み込みの欄（オペレータ・内径…）は画面が持っている`<label>`なので、
-    単位の器はこちらから足す。**同じ値なら触らない**（§9.131。`innerHTML`を
-    毎回書き換えると、その中の入力欄が作り直されてフォーカスが落ちる）。 */
- function syncBuiltinUnit(host,def){
-  if(!host||!def.builtin)return;
+/* ---------- 単位を置く（§9.233 ④、利用者の指摘） ----------
+    「単位を設定するときに位置を選べますが、選択したUIによっては、単位の
+     位置のずれや単位が出ないということがある」
+
+    以前は**2箇所で別々に組み立てて**いた——自由項目は`fieldEl()`が
+    `<label>`のinnerHTMLへ、組み込みの欄は`syncBuiltinUnit()`が末尾へ。
+    どちらも**器（`.opf-widget`）が後から末尾に足される**ことを知らないので、
+      ・「外下」… 単位が器の**上**に出る（欄と単位のあいだにボタンが挟まる）
+      ・「内部」… 1pxの裏方の`<select>`に重なり、**一度も見えない**
+    という形で出ていた。置くのは**ここ1箇所**で、基準は必ず
+    `displayEl()`＝いま見えている操作面。
+
+    **同じ形なら触らない**（§9.131）——`layout()`は畳み・条件で何度も走る
+    ので、毎回入れ替えると読んでいる最中に単位が瞬く。 */
+ function placeUnit(host,def){
+  if(!host)return;
   const u=unitParts(def);
   const want=u.top+u.inside+u.bottom;
-  const now=[...host.querySelectorAll(':scope>.opf-unit-line,:scope>.opf-unit-in')];
-  const sig=now.map(x=>x.outerHTML).join('');
-  if(sig===want&&(want||!now.length))return;
-  now.forEach(x=>x.remove());
+  const anchor=displayEl(host);
+  /* 印は「出す物」と「どこを基準にしたか」の組。器が出入りすると
+     基準の素性が変わるので、そのときだけ置き直す。 */
+  const sig=want+'@'+(anchor?anchor.tagName+'.'+(anchor.className||''):'-');
+  if(host.dataset.opunitSig===sig)return;
+  host.dataset.opunitSig=sig;
+  host.querySelectorAll(':scope>.opf-unit-line,:scope>.opf-unit-in').forEach(x=>x.remove());
   if(!want)return;
-  const ctl=valueEl(host);
-  if(u.top&&ctl)ctl.insertAdjacentHTML('beforebegin',u.top);
-  if(u.inside&&ctl)ctl.insertAdjacentHTML('afterend',u.inside);
-  if(u.bottom)host.insertAdjacentHTML('beforeend',u.bottom);
+  if(u.top){
+   if(anchor)anchor.insertAdjacentHTML('beforebegin',u.top);
+   else host.insertAdjacentHTML('beforeend',u.top);
+  }
+  if(u.inside&&anchor)anchor.insertAdjacentHTML('afterend',u.inside);
+  if(u.bottom){
+   if(anchor)anchor.insertAdjacentHTML('afterend',u.bottom);
+   else host.insertAdjacentHTML('beforeend',u.bottom);
+  }
  }
 
  /* ---------- 選ばせ方（§9.218 ②、利用者の指示） ----------
@@ -408,6 +455,23 @@
     別々に引くと、片方だけ`<input>`に対応した状態が作れる。 */
  function valueEl(host){
   return host.querySelector(':scope>select')||host.querySelector(':scope>input:not([type=hidden])');
+ }
+ /* **値は持たないが画面には出ている欄**（§9.233 ①②、利用者の指摘
+    「自動で入る値の場合、単位設定や外観変更などしても変更が効かないものが
+     多いです」）。母材の参考値3つ（元幅（実績）・屑幅（両耳合計）・
+    計算全長（参考））は`<output>`で、`valueEl()`は「**書ける**欄」を返す口
+    なので当たらない——単位も寄せも意匠もここで黙って落ちていた。
+    **`valueEl()`に混ぜないこと**——`setValue()`／`syncWidget()`が書き込む
+    先はあくまで値を持つ欄で、混ぜると読み取り専用の欄へ値を書きに行く。 */
+ function outputEl(host){return host.querySelector(':scope>output')}
+ /* いま**見えている**操作面。器を被せた欄では`<select>`は1pxの裏方
+    （`.opf-native-off`）なので、その隣へ単位を置いても誰にも見えない。
+    素のプルダウン（`.opf-plain`）は器が空で`<select>`が見えているため、
+    そちらを返す。**単位の置き場も逃げ場の幅もこの1箇所を基準にする**
+    ——別々に引くと「セグメントだけ単位が出ない」という穴が残る。 */
+ function displayEl(host){
+  return host.querySelector(':scope>.opf-widget:not(.opf-plain)')
+    ||valueEl(host)||outputEl(host);
  }
  /* 数値の刻み。**マスタで決めていればそれ**（§9.220 ⑤、利用者の指示
     「ステップ入力に関して、ステップ量も決められるようにしてほしい」）。
@@ -1236,12 +1300,25 @@
  function renameBuiltinLabel(el,name){
   const t=String(name||'').trim();
   if(!t)return;
-  for(const n of el.childNodes){
-   if(n.nodeType===3&&n.nodeValue.trim()){
-    if(n.nodeValue!==t)n.nodeValue=t;
-    return;
-   }
+  /* **名前は`<span class="opf-name">`が持つ**（§9.233 ⑤）。自由項目は
+     `fieldEl()`が最初からそう作っており、組み込みの欄だけが素のテキスト
+     節点だった——添え書き（`.prep-from`）を「名前の横」へ置く場所が無く、
+     単位を欄の中へ重ねるときの段の指定（`[data-opunit="内部"]>.opf-name`）も
+     当たらない。**包むのは1度だけ**（`innerHTML`ごと書き換えると中の
+     `<select>`が作り直されてフォーカスが落ちる・§9.122）。 */
+  let span=el.querySelector(':scope>.opf-name');
+  if(!span){
+   span=document.createElement('span');
+   span.className='opf-name';
+   const first=[...el.childNodes].find(n=>n.nodeType===3&&n.nodeValue.trim());
+   if(first)el.replaceChild(span,first);
+   else el.insertBefore(span,el.firstChild);
   }
+  /* 書き換えるのは**先頭のテキスト節点だけ**——中には添え書きが入りうる
+     ので、`textContent`ごと差し替えると消える。 */
+  const t0=[...span.childNodes].find(n=>n.nodeType===3);
+  if(t0){if(t0.nodeValue!==t)t0.nodeValue=t}
+  else span.insertBefore(document.createTextNode(t),span.firstChild);
  }
  /* その定義に対応する入力欄。組み込みは画面が持っているものを引き当てる。 */
  function controlOf(def){
@@ -1278,9 +1355,13 @@
   boxes.forEach(bx=>{
    bx.querySelectorAll('[data-opgen]').forEach(el=>el.remove());
    bx.querySelectorAll('[data-f]').forEach(el=>{
-    el.classList.remove('op-off','op-folded','op-required');
+    /* `opf-host`＝**マスタが差配している欄**の印（§9.233 ③）。器の名前
+       （`.selectors`／`.material-grid`／設定窓の見本）ごとにCSSを書き分けると、
+       器を1つ足すたびに書き足すことになり、足し忘れた器だけが静かに壊れる。 */
+    el.classList.remove('op-off','op-folded','op-required','opf-host');
     el.style.order='';el.style.gridColumn='';el.style.gridRow='';
     delete el.dataset.opplace;delete el.dataset.opgroup;delete el.dataset.opfill;
+    delete el.dataset.opout;
    });
    bx.style.setProperty('--op-cols',String(gridCols));
   });
@@ -1360,6 +1441,7 @@
      if(!el&&!d.builtin){el=fieldEl(d,seq);box.appendChild(el)}
      if(!el){missing.push(d.name);return}
      el.dataset.opplace=place;el.dataset.opgroup=g.name;
+     el.classList.add('opf-host');
      /* **組み込みの欄も名前はマスタが決める**（§9.228 ①、利用者の指摘
         「マスタで関連の項目を名前変更しても…どこかでハードコーディングが
         残っていて名前変更が効かない」）。組み込みの欄は`index.html`が
@@ -1396,7 +1478,6 @@
      /* 見せ方（§9.221 ⑦）は**組み込みの欄にも当たる**——器の属性を書くだけで、
         値を持つ`<select>`/`<input>`そのものには触らない。 */
      applyPresentation(el,d);
-     syncBuiltinUnit(el,d);
      /* 選ばせ方（§9.218 ②）。**組み込みの欄にも当たる**——値を持つのは
         今までどおり`<select>`なので、当てても壊れるものが無い。 */
      const kind=widgetOf(d);
@@ -1407,6 +1488,16 @@
      const needsBox=kind!==WIDGET_SELECT||(d.freeText&&el.querySelector(':scope>select'));
      if(needsBox&&valueEl(el))buildWidget(d,el,kind);
      else stripWidget(el);
+     /* ---------- 自動で入る値の見せ方（§9.233 ①、利用者の指示） ----------
+        「自動で入る値についても、選んで設定できるようにしてください」
+        値を入れるのは画面（前工程の実績・計算の結果）なので**器は被せない**
+        ——被せると押せる部品になり、押しても何も起きない（§4）。
+        選べるのは「どう見えるか」だけなので、印を器へ置いてCSSが読む。 */
+     if(outputEl(el)&&kind!==WIDGET_SELECT)el.dataset.opout=kind;
+     else delete el.dataset.opout;
+     /* **単位は器を被せたあとに置く**（§9.233 ④）——先に置くと、器が
+        後から末尾へ足されて「外下」の単位が器の上に出る。 */
+     placeUnit(el,d);
      /* **意匠は器を被せない欄にも当たる**（§9.223 ③）。素のプルダウンでも
         「主色・丸・大」を選べないと、選ばせ方を変えないと見た目を変えられない
         ことになる（2つの軸にした意味が無い）。 */
@@ -1416,6 +1507,12 @@
   });
   /* **無いものは無いと書く**（§4）。組み込みキーの綴りが変わった・画面から
      消えた欄をマスタが名指ししていると、黙って1つ欠けるだけになる。 */
+  /* ---------- 仕掛由来の添え書き（§9.233 ⑤） ----------
+     置き場（欄の下／名前の横／出さない）はマスタの1列なので、割り付けの
+     あとに当て直す——マスタを直しても画面が変わらないと「効いていない」
+     としか見えない。**当てるのは持ち主（`measurement-view.js`）**で、
+     ここは合図を送るだけ（出どころを知っているのはあちらだけ）。 */
+  if(window.WL&&WL.innerDiameter&&WL.innerDiameter.refresh)WL.innerDiameter.refresh();
   const note=document.getElementById('opDataNote');
   if(note){
    const msgs=[];
@@ -1639,6 +1736,14 @@
     これで数える——外した欄まで数えると「どう頑張っても埋まらない1件」が
     残る（§9.227 ③と同じ罠）。**読めないうちは`null`**を返し、呼ぶ側が
     今までどおりの8欄へ倒す（黙って0件にすると進捗が消える）。 */
+ /* 仕掛由来の添え書きの置き場（§9.233 ⑤、利用者の指示「こういった自動の
+    連携内容の補助的な説明文字のONOFFができるように、もっとコンパクトに
+    かつ位置も選べるようにしてほしい」）。**読めないうちは既定**を返す
+    ——空を返すと、マスタが届く前の1瞬だけ添え書きが消える。 */
+ function sourceNotePlace(builtinKey){
+  const d=defs.find(x=>x.builtin===builtinKey);
+  return (d&&d.sourceNote)||'欄の下';
+ }
  function motherKeys(){
   if(!defs.length)return null;
   const off=new Set(builtinOff||[]);
@@ -1657,6 +1762,11 @@
  }
  WL.opData={load,layout,render:layout,refresh,apply,collect,values,filled,requiredControls,
             motherKeys,
+            /* 自動で入る値の添え書きの置き場（§9.233 ⑤）。**答えるのは
+               マスタを読んでいるここ**——出どころを持っている側
+               （`measurement-view.js`）に置き場の判定まで書かせると、
+               項目が増えるたびに同じ判定が増える。 */
+            sourceNotePlace,
             syncAutoOpen,syncWidgets,previewWidget,ruleText,
             /* 見せ方を当てる口（§9.221 ⑦）。**当てるのはこの1本**——設定窓の
                見本も測定画面もここを通るので、形が食い違わない。 */
@@ -1664,7 +1774,7 @@
                ままだと`previewWidget()`を通らない**ので、部品の側だけで
                当てていると素の欄に色・形・大きさが効かない。 */
             presentation:(host,def)=>{applyPresentation(host,def);applyLook(host,def);
-              syncBuiltinUnit(host,Object.assign({builtin:'preview'},def))},
+              placeUnit(host,def)},
             /* 値の整形を見本の欄にも当てる口（§9.221 ⑦）。**整え方も
                同じ`settle()`を通す**——見本だけ桁そろえが効かないと、
                「3桁区切り」を選んでも設定画面では素の数字のままになる。 */

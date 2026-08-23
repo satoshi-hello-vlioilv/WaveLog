@@ -11,7 +11,8 @@
     - 名前を変えると測定画面の見出しが変わる（§9.228 ①と同じ道）
     - 「出さない」にすると測定画面から消える
     - **記録の鍵は変えない**（`m.mother.<key>`）——変えると過去の記録が読めない
-    - 参考値（画面が値を入れる欄）は**選ばせ方も初期値も出さない**（§4）
+    - 参考値（画面が値を入れる欄）は**初期値を出さない**（§4。見せ方の3つは
+      §9.233 ①で持たせた——`tests/test_opunit.js`が固定する）
     - マスタ管理の盤に「母材」の盤が出る
     - 器からはみ出さない
    ============================================================ */
@@ -90,7 +91,11 @@ let b=null;
   const boards=await page.$$eval('.op-board',es=>es.map(e=>e.dataset.opPlace||''));
   rec('盤に「母材」の置き場が出る（設定できる場所が画面にある）',
       boards.includes('母材'),boards.join('/'));
-  /* 参考値の欄は**選ばせ方も初期値も出さない**（§4）。 */
+  /* 参考値の欄は**見せ方だけ選べる**（§9.233 ①、利用者の指示「自動で入る値に
+     ついても、選んで設定できるようにしてください」）。§9.232では「選ばせ方も
+     初期値も出さない」としていたが、①で**見せ方の3つ**（枠つき／文字だけ／
+     強調）を持たせた。**初期値は今までどおり出さない**——打ち込む欄では
+     ないので、入れても誰も読まない（§4）。 */
   await page.evaluate(id=>{const t=document.querySelector(`.op-tile[data-op-id="${id}"]`);if(t)t.click()},
     String(auto.id));
   await page.waitForFunction(()=>{const m=document.getElementById('opItemModal');return !!m&&!m.hidden},
@@ -105,12 +110,12 @@ let b=null;
      答えることと、画面が枠ごと出さないこと。1つにまとめると、片方を
      壊しても もう片方が隠してしまい網が空振りする（実際にそうなった）。 */
   const famList=(await get('/api/operation-item-master')).widgetFamilies||{};
-  rec('サーバーが「画面が値を入れる欄に選ばせ方は無い」と答える',
-      Array.isArray(famList.output)&&famList.output.length===0,
+  rec('サーバーが「画面が値を入れる欄の見せ方」を答える（§9.233 ①）',
+      JSON.stringify(famList.output||[])==='["プルダウン","文字だけ","強調"]',
       JSON.stringify(famList.output));
-  rec('参考値の欄には選ばせ方を並べない',look.形の数===0,String(look.形の数));
-  rec('選ばせ方が無い理由を文字で書く（§4）',
-      /画面が値を入れます/.test(look.文)&&/決められるのは/.test(look.文),
+  rec('参考値の欄にも見せ方が並ぶ（§9.233 ①）',look.形の数===3,String(look.形の数));
+  rec('打ち込む部品が要らない理由を文字で書く（§4）',
+      /画面が値を入れます/.test(look.文)&&/見せ方/.test(look.文),
       look.文.slice(0,120));
   await page.evaluate(()=>{const t=[...document.querySelectorAll('.op-tab')]
     .find(x=>/記録/.test(x.textContent));if(t)t.click()});
@@ -150,8 +155,14 @@ let b=null;
    const box=document.querySelector('.material-grid');
    if(!box)return null;
    const vis=el=>{const r=el.getBoundingClientRect();return r.width>0&&r.height>0};
-   const lab=el=>[...el.childNodes].filter(n=>n.nodeType===3)
-     .map(n=>n.textContent.trim()).join('').trim();
+   /* 名前は`<span class="opf-name">`が持つ（§9.233 ⑤）。**製品と同じ
+      読み方を通すこと**——ここだけ素のテキスト節点を見ていると、
+      `motherFieldLabel()`が壊れても網が空振りする。 */
+   const lab=el=>{
+    const box=el.querySelector(':scope>.opf-name')||el;
+    return [...box.childNodes].filter(n=>n.nodeType===3)
+      .map(n=>n.textContent.trim()).join('').trim();
+   };
    const r=box.getBoundingClientRect();
    let over=0;
    box.querySelectorAll(':scope>label').forEach(el=>{

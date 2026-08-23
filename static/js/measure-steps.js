@@ -83,11 +83,12 @@
     出さない）。 */
  function noteFor(step){
   if(!measuring())return null;
-  if(step==='2'){
-   const type=document.querySelector('#measureType')?.value||'';
-   if(WL.measureItem.isMaterial(type))return {text:'母材・丈は手入力です',
-     title:'母材と丈（揃い/肉厚/長さ）は手入力の項目です。測定器から受けるには入力内容を切り替えてください。'};
-  }
+  /* **母材の手入力の案内は帯へ出さない**（§9.233 ③、利用者の報告「母材の
+     時だけ…ロット情報が見切れている」）。帯は段ナビ・案内・文脈（ロット・
+     製品・測定表の形・判定公差）が場所を分け合う1本しかなく、152pxの案内が
+     入るとロット情報が押されて全部が切れていた（実測: 1366pxで4項目とも
+     33〜70px切れ、しかも案内そのものも32pxまで潰れて読めない）。
+     **入れる場所のすぐ上へ出す**（`MATERIAL_NOTE`／`paintMaterialNote()`）。 */
   if(step==='3'){
    let prog=null;try{if(typeof measureProgress==='function')prog=measureProgress()}catch(e){}
    if(prog&&prog.unmeasured.length)
@@ -271,11 +272,27 @@
    note.hidden=!n;
   }
   fillContext();
+  paintMaterialNote();
   try{fitLengthList()}catch(e){}
   try{fitControlWidths()}catch(e){}
   /* 測定表が器へ入るかは段の切り替えでも変わる（§9.209 ③⑤）。 */
   requestAnimationFrame(()=>{try{WL.measureFit&&WL.measureFit.matrix()}catch(e){}});
   try{paintFinish()}catch(e){}
+ }
+
+ /* 母材の手入力の案内（§9.233 ③）。**文言はここ1箇所**——帯から母材の
+    カードへ移しただけで、同じことを2通りに書かない。 */
+ const MATERIAL_NOTE={text:'母材・丈は手入力です',
+   title:'母材と丈（揃い/肉厚/長さ）は手入力の項目です。測定器から受けるには入力内容を切り替えてください。'};
+ function paintMaterialNote(){
+  const el=document.getElementById('materialManualNote');
+  if(!el)return;
+  const type=document.querySelector('#measureType')?.value||'';
+  const on=!!(measuring()&&WL.measureItem.isMaterial(type));
+  el.hidden=!on;
+  if(!on)return;
+  el.textContent=MATERIAL_NOTE.text;
+  el.title=MATERIAL_NOTE.title;
  }
 
  /* リストボックスの高さは**`size`（行数）で決める**。CSSのpx指定では
@@ -595,6 +612,9 @@
     （try/catchで握り潰されるので気づけない。§CLAUDE「公開漏れは黙って
     素通しになる」）。 */
  WL.measureSteps={go,current:()=>current,refresh:paint,reset,
+                  /* 入力内容を切り替えたときも書き直す（§9.233 ③）
+                     ——段は変わらないので`paint()`は走らない。 */
+                  materialNote:paintMaterialNote,
                   fitWidths:()=>{try{fitControlWidths()}catch(e){console.warn('幅の測り直しに失敗',e)}}};
 
  /* ---------- 入力内容・丈位置のキーボード操作は持たない（§9.160） ----------

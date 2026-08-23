@@ -734,7 +734,26 @@ function renderMeasureGridVertical(){
  const actualKey=key==='mother'?'width':key;
  const slots=WL.measureItem.slotCount(actualKey,count);
  const values=m.measurements[actualKey][li],done=values.slice(0,slots).filter(v=>v!=='').length;
- const bulkBtn=type==='フラットネス'?'<span class="flat-pick-group"><span class="flat-pick-label">現在の条へ入力</span><button type="button" class="flat-pick" data-sym="〇">〇</button><button type="button" class="flat-pick" data-sym="△">△</button><button type="button" class="flat-pick" data-sym="×">×</button></span><button type="button" id="flatAllOk">全条 〇</button>':'';
+ /* ---------- フラットネスの一括入力（§9.233 ④、利用者の指示） ----------
+    「右側のフラットネス入力欄の上部の表示やボタン類が2行になってしまって
+      おり、1行に収まるようにボタンや表示のコンパクト化アイコン化を検討し、
+      他の入力項目と同じように1行で表示してください」
+    ——見出しの塊は`.mhead-line`が2つで、フラットネスだけ**約200px多い**ため
+    1680px以下（表示サイズ「大」では1920pxでも）で2行になっていた。
+    **文字で説明していた「現在の条へ入力」は`title`／`aria-label`へ移す**
+    ——記号3つは打ち込む値そのものなので、押す前に何が入るかは読める。
+    「全条 〇」は同じ群の中へ入れて`|`で区切る（器と隙間をひとつ減らす）。 */
+ const bulkBtn=type==='フラットネス'
+   ?'<span class="flat-pick-group" role="group" aria-label="現在の条へ記号を入力"'
+     +' title="押した記号を、いま選んでいる条へ入れます（〇=OK／△×=NG）">'
+     +'<button type="button" class="flat-pick" data-sym="〇" title="いまの条を〇（OK）にします">〇</button>'
+     +'<button type="button" class="flat-pick" data-sym="△" title="いまの条を△（NG）にします">△</button>'
+     +'<button type="button" class="flat-pick" data-sym="×" title="いまの条を×（NG）にします">×</button>'
+     +'<b class="flat-pick-sep" aria-hidden="true"></b>'
+     +'<button type="button" id="flatAllOk" class="flat-pick flat-pick-all"'
+     +' title="この丈のすべての条を〇（OK）にします">全〇</button>'
+     +'</span>'
+   :'';
  const tol=WL.measureTolerance.parts(actualKey,values,slots);
  /* ---------- 見出しは「測定」の1行へ集約する（§9.209 ③④、利用者の指示） ----------
     以前は表の上にもう1本、項目名と「測定待ち」だけの帯（26px）があった。

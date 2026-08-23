@@ -43,7 +43,12 @@ let b=null,page=null;
       状態:x.querySelector('.mstep-state')?.textContent||'',
       いま:x.classList.contains('is-current')})),
     文脈:[...document.querySelectorAll('.mctx-item b')].map(x=>x.textContent.trim()),
-    理由:document.querySelector('#mstepNote')?.hidden?'':(document.querySelector('#mstepNote')?.textContent||'')};
+    理由:document.querySelector('#mstepNote')?.hidden?'':(document.querySelector('#mstepNote')?.textContent||''),
+    /* 母材の手入力の案内は**入れる場所のすぐ上**（§9.233 ③）。上部帯へ
+       出していたためロット情報が見切れていた。読む場所が変わっただけで、
+       「理由を書く」という約束は同じ。 */
+    手入力の案内:document.getElementById('materialManualNote')?.hidden?''
+      :(document.getElementById('materialManualNote')?.textContent||'')};
  });
  const go=async s=>{await page.evaluate(v=>WL.measureSteps.go(v),s);await page.waitForTimeout(450)};
 
@@ -311,14 +316,20 @@ let b=null,page=null;
 
   /* ---- 5) 進めない理由を書く ----
      既定の入力内容は母材＝手動入力の項目なので、測定器からは受けられない。
-     **そのことを画面に書く**（押せるのに何も起きないのが最悪）。 */
+     **そのことを画面に書く**（押せるのに何も起きないのが最悪）。
+     出す場所は**母材のカードの題**（§9.233 ③）——上部帯へ出していたため、
+     母材のときだけロット情報が33〜70px切れていた（実測1366px）。 */
   rec('②で測定器を使えない項目のときは理由を書く',
-      /母材|手動/.test(m2.理由||''),m2.理由||'(空)');
+      /母材|手動|手入力/.test(m2.手入力の案内||''),m2.手入力の案内||'(空)');
+  rec('その理由は上部帯には出さない（ロット情報を押し出さない）（§9.233 ③）',
+      !/母材|手入力/.test(m2.理由||''),m2.理由||'(空)');
   await page.evaluate(()=>{const s=document.querySelector('#measureType');
     s.value='板幅';s.dispatchEvent(new Event('change',{bubbles:true}))});
   await page.waitForTimeout(600);
   const m2b=await seen();
-  rec('測定器を使う項目に変えたら理由は消える',(m2b.理由||'')==='',m2b.理由||'(空)');
+  rec('測定器を使う項目に変えたら理由は消える',
+      (m2b.理由||'')===''&&(m2b.手入力の案内||'')==='',
+      JSON.stringify({帯:m2b.理由||'(空)',案内:m2b.手入力の案内||'(空)'}));
 
   /* ---- 5b) 入力内容・丈位置のキーボード操作は**持たない**（§9.160） ----
      利用者の指示「自動入力との競合かうまく効かない。自動入力が優先なので、
@@ -2529,6 +2540,83 @@ let b=null,page=null;
        flat.印の丈===flat.押した丈&&flat.印の条===flat.押した条
        &&Number(flat.条)===Number(flat.押した条),JSON.stringify(flat));
   }
+
+  /* ==========================================================
+     フラットネスの見出しも1行（§9.233 ④、利用者の指示）
+     「入力内容のフラットネスを選んだときの右側のフラットネス入力欄の上部の
+      表示やボタン類が2行になってしまっており、1行に収まるようにボタンや
+      表示のコンパクト化アイコン化を検討し、他の入力項目と同じように1行で
+      表示してください（できるだけ広い条数分の入力表示範囲を確保する必要が
+      あるため）」
+     **「行数」ではなく実寸で見る**——`.editor-head`は塊が折り返しても
+     要素の数は変わらない。**他の項目（板幅）と突き合わせる**のが物差し。
+     ========================================================== */
+  const headOf=async t=>{
+   await page.evaluate(v=>{const el=document.getElementById('measureType');
+     if(el){el.value=v;el.dispatchEvent(new Event('change',{bubbles:true}))}},t);
+   await page.waitForTimeout(500);
+   return page.evaluate(()=>{
+    const h=document.querySelector('.editor-head');
+    if(!h)return null;
+    const r=h.getBoundingClientRect();
+    const kids=[...h.children].filter(e=>e.getBoundingClientRect().height>0);
+    const tops=[...new Set(kids.map(e=>Math.round(e.getBoundingClientRect().top)))];
+    return {高さ:Math.round(r.height),段:tops.length,
+      幅:Math.round(r.width),中身:h.scrollWidth,
+      塊:kids.map(e=>e.className).slice(0,8)};
+   });
+  };
+  const hFlat=await headOf('フラットネス');
+  const hWidth=await headOf('板幅');
+  rec('前提: 見出しの器がある（フラットネス・板幅とも）',
+      !!(hFlat&&hWidth),JSON.stringify({flat:hFlat,width:hWidth}));
+  rec('フラットネスの見出しが板幅と同じ高さに収まる（§9.233 ④）',
+      !!(hFlat&&hWidth&&hFlat.高さ<=hWidth.高さ+2),
+      JSON.stringify({フラットネス:hFlat&&hFlat.高さ,板幅:hWidth&&hWidth.高さ}));
+  rec('フラットネスの見出しが横に溢れない（§9.233 ④）',
+      !!(hFlat&&hFlat.中身<=hFlat.幅+1),
+      JSON.stringify(hFlat&&{幅:hFlat.幅,中身:hFlat.中身}));
+
+  /* ==========================================================
+     「母材・丈は手入力です」は入れる場所のすぐ上（§9.233 ③）
+     「母材の時だけ、『母材・丈は手入力です』という表示が出ることにより、
+      ロット情報が見切れているので、表示を出す位置を入力する部分に近い
+      ところに出すなどの修正をお願いします」
+     **ロット情報が切れていないこと**を実寸で見る（`scrollWidth`）。
+     ========================================================== */
+  await page.evaluate(()=>{const el=document.getElementById('measureType');
+    if(el){el.value=WL.measureItem.MATERIAL;el.dispatchEvent(new Event('change',{bubbles:true}))}});
+  await page.waitForTimeout(600);
+  const ctxBar=await page.evaluate(()=>{
+   const cut=id=>{const e=document.getElementById(id);
+     if(!e)return null;return Math.max(0,e.scrollWidth-e.clientWidth)};
+   const n=document.getElementById('materialManualNote');
+   const title=n&&n.closest('.mat-block-title');
+   const note=document.getElementById('mstepNote');
+   return {印:!!n,隠:n?n.hidden:null,文:(n&&n.textContent)||'',
+     題の中:!!title,
+     題からのはみ出し:(n&&title&&!n.hidden)?Math.round(Math.max(
+       n.getBoundingClientRect().right-title.getBoundingClientRect().right,
+       n.getBoundingClientRect().bottom-title.getBoundingClientRect().bottom)):null,
+     切れ:{ロット:cut('mctxLot'),製品:cut('mctxProduct'),
+           形:cut('mctxShape'),公差:cut('mctxTolerance')},
+     段の一言:(note&&note.textContent||'').slice(0,60)};
+  });
+  rec('母材のとき手入力の案内は母材の題の中に出る（§9.233 ③）',
+      !!(ctxBar.印&&ctxBar.隠===false&&ctxBar.題の中&&/手入力/.test(ctxBar.文)),
+      JSON.stringify(ctxBar));
+  rec('案内が母材の題からはみ出さない（§9.233 ③）',
+      ctxBar.題からのはみ出し!==null&&ctxBar.題からのはみ出し<=1,
+      String(ctxBar.題からのはみ出し));
+  rec('上部帯のロット情報が切れない（§9.233 ③）',
+      Object.values(ctxBar.切れ).every(v=>v!==null&&v<=1),
+      JSON.stringify(ctxBar.切れ));
+  await page.evaluate(()=>{const el=document.getElementById('measureType');
+    if(el){el.value='板幅';el.dispatchEvent(new Event('change',{bubbles:true}))}});
+  await page.waitForTimeout(500);
+  rec('測定器を使う項目では案内を出さない（§9.233 ③）',
+      await page.evaluate(()=>{const n=document.getElementById('materialManualNote');
+        return !!n&&n.hidden===true}));
 
   await go('1');
 

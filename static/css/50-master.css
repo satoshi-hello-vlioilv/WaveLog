@@ -1306,6 +1306,13 @@
 .opd-phrase>u{flex:1 1 100%;display:block;height:4px;border-radius:var(--radius-xs);
   background:var(--surface-3);text-decoration:none}
 .opd-phrase>i{border:1px dashed var(--line);border-radius:var(--radius-pill);background:none}
+/* 自動で入る値の2つ（§9.233 ①）。**絵でも違いが分かること**——「枠がある
+   か」「色が付くか」が読めないと、名前だけで選ばせることになる。 */
+.opd-bare,.opd-strong{display:flex;align-items:center;justify-content:center;
+  width:100%;padding:1px var(--space-1);border-radius:var(--radius-xs);
+  font-weight:700;font-variant-numeric:tabular-nums}
+.opd-bare{border:1px solid transparent;background:none;color:var(--ink-2)}
+.opd-strong{border:1px solid var(--teal);background:var(--pale);color:var(--teal-dark)}
 /* --- 意匠の選び方: 色は見本の丸、形と大きさは札 --- */
 .op-look-swatches{display:flex;flex-wrap:wrap;gap:var(--gap-tight);flex:1 1 100%;min-width:0}
 .op-look-swatch{

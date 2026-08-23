@@ -776,6 +776,61 @@ const settle=async page=>{
   await page.evaluate(()=>{const f=document.getElementById('splitDetailFold');
     if(f){f.open=false;f.dispatchEvent(new Event('toggle'))}});
 
+  /* ==========================================================
+     異常の印と図のラベルが重ならない（§9.233 ①、利用者の指摘）
+     「異常位置判定を行うと、異常位置の図の表示のラベルと、『異常の印・出す』
+      のバッジが別の表示と重なってしまいきれいに収まっていません」
+
+     原因は2つ。①`.split-visual-block.is-defect`が「印」を条の帯に**重ねて**
+     いた ②縦のflexで`.split-visual-actions`が既定の`flex-shrink:1`のまま
+     だったので、器が足りないと**箱だけが縮んで中身が下の行へ描かれた**
+     （`overflow`が無いので隣の上に乗る）。
+     **数や有無を見る網では捕まらない**——どちらも要素は在る。器と中身の
+     実寸（`scrollHeight`と`clientHeight`）と、印と条の番号の矩形で見る。
+     ========================================================== */
+  const cramped=await page.evaluate(()=>{
+   /* 器を実機より低くして、縮み代が無い状態を作る（広い窓では出ない）。 */
+   const card=document.getElementById('splitCard');
+   if(card){card.style.height='190px';card.style.maxHeight='190px'}
+   /* 異常の印を実際に付ける（印の付いていない条だけを見ると素通りする）。 */
+   const b0=document.querySelector('.split-visual-block');
+   if(b0){
+    b0.classList.add('is-defect');
+    if(!b0.querySelector('.svb-defect')){
+     const em=document.createElement('em');
+     em.className='svb-defect';em.textContent='異常';
+     b0.appendChild(em);
+    }
+   }
+   const c=document.getElementById('splitDefectChip'),t=document.getElementById('splitDefectToggle');
+   if(c){c.hidden=false;c.innerHTML='<b>異常 1条</b><small>保存済み</small>';c.classList.add('is-hit')}
+   if(t){t.hidden=false;t.textContent='異常の印: 出す'}
+   return true;
+  });
+  await page.waitForTimeout(400);
+  const fit=await page.evaluate(()=>{
+   const box=el=>el?{sh:el.scrollHeight,ch:el.clientHeight}:null;
+   const rr=el=>el?(x=>({l:Math.round(x.left),r:Math.round(x.right),
+     t:Math.round(x.top),b:Math.round(x.bottom)}))(el.getBoundingClientRect()):null;
+   const act=document.querySelector('.split-visual-actions');
+   const blk=document.querySelector('.split-visual-block.is-defect');
+   const mark=blk&&blk.querySelector('.svb-defect');
+   const lab=blk&&blk.querySelector('.svb-label,.svb-no,b,span');
+   const over=(a,c)=>(!a||!c)?null:
+     Math.round(Math.min(a.r,c.r)-Math.max(a.l,c.l))>0
+     &&Math.round(Math.min(a.b,c.b)-Math.max(a.t,c.t))>0;
+   return {操作:box(act),操作の矩形:rr(act),
+     印:rr(mark),ラベル:rr(lab),
+     印の高さ:mark?Math.round(mark.getBoundingClientRect().height):null,
+     重なり:over(rr(mark),rr(lab))};
+  });
+  rec('異常の印を出しても操作の行が縮まない（§9.233 ①）',
+      !!(fit.操作&&fit.操作.sh<=fit.操作.ch+1),JSON.stringify(fit.操作));
+  rec('前提: 異常の印が実寸を持って出ている',
+      !!(fit.印&&fit.印の高さ>0),JSON.stringify(fit.印));
+  rec('異常の印が条のラベルに重ならない（§9.233 ①）',
+      fit.重なり===false||fit.ラベル===null,JSON.stringify({印:fit.印,ラベル:fit.ラベル}));
+
   /* **ダイアログで止めない。** 以前はalertだったので、ドラッグのたびに
      手が止まった。理由は状態行の文字で伝える。 */
   rec('操作の途中でダイアログを出さない',dialogs.length===0,dialogs.join(' / '));

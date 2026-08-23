@@ -109,8 +109,30 @@ function updateInnerDiameterHint(){
  if(!note)return;
  const preset=innerDiameterPreset();
  const cur=String(el?.value||'').trim();
- const show=!!preset&&cur===preset;
+ /* ---------- 添え書きの置き場（§9.233 ⑤、利用者の指示） ----------
+    「こういった自動の連携内容の補助的な説明文字のONOFFができるように、
+     もっとコンパクトにかつ位置も選べるようにしてほしいです」
+    置き場は操業データ項目マスタの1列（欄の下／名前の横／出さない）。
+    **答えるのはマスタを読んでいる`WL.opData`**——ここに判定を書くと、
+    出どころのある項目が増えるたびに同じ判定が増える。
+    **読めないうちは既定（欄の下）**＝今までの見え方。 */
+ const at=(window.WL&&WL.opData&&WL.opData.sourceNotePlace)
+   ?WL.opData.sourceNotePlace('innerDiameter'):'欄の下';
+ const show=!!preset&&cur===preset&&at!=='出さない';
  if(note.hidden!==!show)note.hidden=!show;
+ note.dataset.at=at;
+ /* 器を置き直す。「名前の横」は`.opf-name`の中（`renameBuiltinLabel()`が
+    組み込みの欄にも作る）、「欄の下」は`<label>`の末尾＝**器を被せた欄
+    では器の下**（§9.233 ④と同じ基準）。 */
+ const host=el&&el.closest('label');
+ const nameBox=host&&host.querySelector(':scope>.opf-name');
+ if(host&&show){
+  const want=(at==='名前の横'&&nameBox)?nameBox:host;
+  if(note.parentElement!==want)want.appendChild(note);
+ }
+ /* **印は移した側が付ける**（`:has()`に頼らない）。名前の器を横並びに
+    するのは添え書きを入れたときだけ——素の名前は今までどおり折り返せる。 */
+ if(nameBox)nameBox.classList.toggle('is-with-note',!!(show&&at==='名前の横'));
  /* **文は器（列1つぶん）に収まる長さにする**（§9.208 ①）。以前は
     「仕掛の「ｺｲﾙ_内径目標」508 から」と書いており、①準備の1列（実測124px）に
     対して143px——`<small>`が器より広くなると、`<label>`のフレックス行が
@@ -118,7 +140,11 @@ function updateInnerDiameterHint(){
     重なっていた**（実機で「サイズがバラバラ・意図せず重なる」と報告）。
     出どころそのものは落とさず`title`へ回す（§6は「出どころを画面に出す」で
     あって、列の名前を全部書き写すことではない）。 */
- note.textContent=show?`仕掛から ${preset}`:'';
+ /* **コンパクトに**（§9.233 ⑤、利用者の指摘「不自然な改行なども入り込み
+    表示のバランスを崩します」）。以前は`仕掛から 508`で、折り返しを許して
+    いたため1列（実測124px）で2行になり、その行ぶん欄が下へずれていた。
+    折り返さず、入らなければ省略記号——出どころそのものは`title`が持つ。 */
+ note.textContent=show?`仕掛 ${preset}`:'';
  note.title=show?`仕掛データの「ｺｲﾙ_内径目標」${preset} を初期値として選んであります（選び直せます）。`:'';
 }
 /* 目標値を選択欄へ当てる。**まだ選び直していないときだけ**（'-'のまま）で、
@@ -308,6 +334,9 @@ function applyRightLayout(){
  pane.classList.add('layout-'+layout); activateWorkspace(layout);
  if(layout==='measure'){renderMeasureGrid();updateMeasurementHeading()}
  if(layout==='material'){renderProductPanel();updateMotherCalcLength();bindMotherInputs()}
+ /* 手入力の案内は**入れる場所のすぐ上**（§9.233 ③）。段は変わらないので
+    `WL.measureSteps.refresh()`は走らない——ここから書き直す。 */
+ if(window.WL&&WL.measureSteps&&WL.measureSteps.materialNote)WL.measureSteps.materialNote();
 }
 /* v33: 「揃い/肉厚/長さ」は縦割数で分割した丈(1〜N)ごとに複数行で保持する。
    丈は旧VBA帳票の「丈」テーブル（長さ/肉厚/揃い/外観/備考）と同じ、
@@ -954,8 +983,15 @@ const RECORD_GROUPS=[
    （§9.228 ①・§9.232）、ここを通せば改名にそのまま追随する。 */
 function motherFieldLabel(el){
  const lab=el&&el.closest('label');
- const name=lab?[...lab.childNodes].filter(n=>n.nodeType===3)
-   .map(n=>n.textContent.trim()).join('').trim():'';
+ if(!lab)return (el&&(el.dataset.mother||el.id))||'母材';
+ /* 名前を持つのは`<span class="opf-name">`（§9.233 ⑤で組み込みの欄も
+    包むようにした）。**割り付けを通る前の欄は素のテキスト節点のまま**
+    なので両方から読む——片方だけを見ると、開いた直後だけ英字の鍵
+    （`fullLength`等）が名前として出る。
+    印（必須）と添え書き（`.prep-from`）は要素なので数に入らない。 */
+ const box=lab.querySelector(':scope>.opf-name')||lab;
+ const name=[...box.childNodes].filter(n=>n.nodeType===3)
+   .map(n=>n.textContent.trim()).join('').trim();
  return name||(el&&(el.dataset.mother||el.id))||'母材';
 }
 function motherRecordRows(){
@@ -1050,7 +1086,9 @@ function updateMeasurementHeading(){
  const type=$('#measureType').value;$('#measurePanelTitle').textContent='測定';
  const box=$('#toleranceSummary');if(!box)return;
  const pill=(cls,text,tip)=>{box.innerHTML=`<span class="tol-pill ${cls}" title="${esc(tip||text)}">${esc(text)}</span>`};
- if(type==='フラットネス')return pill('is-mark','〇=OK ／ △×=NG','条ごとに記号を入力してください。');
+ /* **短く言う**（§9.233 ④）。見出しは1行に収める約束で、フラットネスだけ
+    一括入力のボタンが増えるぶん、ここは詰める（意味は変えない）。 */
+ if(type==='フラットネス')return pill('is-mark','〇=OK 他=NG','条ごとに記号を入力してください。〇がOK、△と×はどちらもNGです。');
  const kind=WL.measureItem.kindOf(type),detail=toleranceDetail(kind),base=Number(kind==='thickness'?S.measure.basic.mfgThickness:S.measure.basic.mfgWidth);
  if(!detail)return pill('is-none','公差なし','選択した公差区分に使用可能なプラス・マイナス値がありません。判定は行いません。');
  const labels={manufacturing:'製造公差',order:'オーダー公差',instruction:'指示公差'},sourceLabel=labels[detail.source],requestedLabel=labels[configuredToleranceSource()],fallback=detail.fallback?`${requestedLabel}が不足しているため製造公差を使用`:'';
