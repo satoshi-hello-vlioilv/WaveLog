@@ -1163,6 +1163,11 @@ _ITEM_ADDED_COLUMNS = (
     # 群は独立した行を持たない（項目行の`[群]`から導出する）ので、印は
     # その群の全部の行が持つ＝`[群折りたたみ]`・`[群幅]`と同じ扱い。
     ('ダミー', 'INTEGER'),
+    # --- §9.228 ④（利用者の指示）---
+    # 「空欄（選ばない）」の選択肢を出すかどうか。**既定は出す**（今までの
+    # 見え方を変えない）。出さないと、ラジオ・トグル・ボタン群などで
+    # **未選択の札が場所を取らなくなる**——初期値と組み合わせて使う。
+    ('空欄なし', 'INTEGER'),
 )
 
 
@@ -1321,7 +1326,11 @@ def _row_to_item(r):
             # --- §9.227 ③ ---
             # ダミー（空き）の群かどうか。**群のものなので、群の中で
             # 食い違ったときは「1つでも印があればダミー」**（畳むと同じ読み方）。
-            'dummy': bool(r[31])}
+            'dummy': bool(r[31]),
+            # --- §9.228 ④ ---
+            # 「空欄（選ばない）」を並べないか。**選択肢を持つ型だけの話**
+            # （自由記述や数値には空の札が無いので、読む側で倒しておく）。
+            'noBlank': bool(r[32]) and str(r[5] or '') in CHOICE_TYPES}
 
 
 _ITEM_SELECT = ('SELECT [項目ID],[設備名],[群],[項目名],[表示順],[型],[小数桁],[最小値],[最大値],'
@@ -1329,7 +1338,7 @@ _ITEM_SELECT = ('SELECT [項目ID],[設備名],[群],[項目名],[表示順],[�
                 '[組み込みキー],[置き場],[列幅],[群折りたたみ],[表示条件],[入力方法],'
                 '[初期値],[手打ち可],[ステップ量],'
                 '[単位位置],[文字寄せ],[表示書式],[表示桁数],[役割],[意匠],'
-                '[並べ方],[群幅],[ダミー] '
+                '[並べ方],[群幅],[ダミー],[空欄なし] '
                 'FROM [操業データ項目マスタ] ORDER BY [表示順],[項目ID]')
 
 
@@ -1418,7 +1427,8 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                 place=None, span=None, fold=None, show_when=None, builtin=None,
                 widget=None, initial=None, free_text=None, step=None,
                 unit_place=None, align=None, value_format=None, digits=None,
-                role=None, look=None, layout=None, group_span=None, report=None):
+                role=None, look=None, layout=None, group_span=None, report=None,
+                dummy=None, no_blank=None):
     ensure_item_table(c)
     name = str(name or '').strip()
     if not name:
@@ -1432,11 +1442,17 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
     cur_builtin = ''
     prev_name = ''
     if item_id is not None:
-        cur.execute('SELECT [組み込みキー],[項目名] FROM [操業データ項目マスタ] WHERE [項目ID]=?',
-                    [int(item_id)])
+        cur.execute('SELECT [組み込みキー],[項目名],[ダミー],[空欄なし] '
+                    'FROM [操業データ項目マスタ] WHERE [項目ID]=?', [int(item_id)])
         hit = cur.fetchone()
-        cur_builtin = str((hit or ['', ''])[0] or '').strip()
-        prev_name = str((hit or ['', ''])[1] or '').strip() if hit else ''
+        cur_builtin = str((hit or ['', '', 0, 0])[0] or '').strip()
+        prev_name = str((hit or ['', '', 0, 0])[1] or '').strip() if hit else ''
+        # **渡されなかったら今の値を保つ**（§9.212 ②「送った項目だけ書く」）
+        # ——設定窓は`dummy`を送らないので、触るたびに空きが解けては困る。
+        if dummy is None and hit is not None:
+            dummy = bool(hit[2])
+        if no_blank is None and hit is not None:
+            no_blank = bool(hit[3])
     if builtin is None:
         builtin = cur_builtin
     builtin = str(builtin or '').strip()
@@ -1471,14 +1487,18 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
             # 必要が無い）。見た目は既定なら空文字（行に意味の無い値を残さない）。
             normalize_role(role), look_text(look),
             # §9.226 ①③
-            normalize_layout(layout), normalize_group_span(group_span)]
+            normalize_layout(layout), normalize_group_span(group_span),
+            # §9.228 ② ダミー（空き）は**項目1枚の属性**。
+            -1 if dummy else 0,
+            # §9.228 ④ 空欄（選ばない）の札を並べないか。
+            -1 if no_blank else 0]
     if item_id is not None:
         cur.execute('UPDATE [操業データ項目マスタ] SET [設備名]=?,[群]=?,[項目名]=?,[表示順]=?,'
                     '[型]=?,[小数桁]=?,[最小値]=?,[最大値]=?,[選択肢名]=?,[単位]=?,[必須]=?,'
                     '[備考]=?,[有効]=?,[組み込みキー]=?,[置き場]=?,[列幅]=?,[群折りたたみ]=?,'
                     '[表示条件]=?,[入力方法]=?,[初期値]=?,[手打ち可]=?,[ステップ量]=?,'
                     '[単位位置]=?,[文字寄せ]=?,[表示書式]=?,[表示桁数]=?,[役割]=?,[意匠]=?,'
-                    '[並べ方]=?,[群幅]=?,'
+                    '[並べ方]=?,[群幅]=?,[ダミー]=?,[空欄なし]=?,'
                     '[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
                     args + [uid, int(item_id)])
         c.commit()
@@ -1499,7 +1519,7 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                     '[組み込みキー]=?,[置き場]=?,[列幅]=?,[群折りたたみ]=?,[表示条件]=?,'
                     '[入力方法]=?,[初期値]=?,[手打ち可]=?,[ステップ量]=?,'
                     '[単位位置]=?,[文字寄せ]=?,[表示書式]=?,[表示桁数]=?,[役割]=?,[意匠]=?,'
-                    '[並べ方]=?,[群幅]=?,'
+                    '[並べ方]=?,[群幅]=?,[ダミー]=?,[空欄なし]=?,'
                     '[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
                     args[1:2] + args[3:] + [uid, hit[0]])
         c.commit()
@@ -1514,9 +1534,9 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                 '[単位],[必須],[備考],[有効],[組み込みキー],[置き場],[列幅],[群折りたたみ],'
                 '[表示条件],[入力方法],[初期値],[手打ち可],[ステップ量],'
                 '[単位位置],[文字寄せ],[表示書式],[表示桁数],[役割],[意匠],'
-                '[並べ方],[群幅],'
+                '[並べ方],[群幅],[ダミー],[空欄なし],'
                 '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
-                'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',
+                'VALUES (' + ','.join(['?'] * 34) + ',Now(),Now())',
                 args + [uid, uid])
     c.commit()
     return int(cur.lastrowid)

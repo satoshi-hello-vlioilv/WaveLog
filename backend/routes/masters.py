@@ -1104,6 +1104,12 @@ def _operation_item_save(x):
                          role=x.get('role'),look=x.get('look'),
                          # §9.226 ①③
                          layout=x.get('layout'),group_span=x.get('groupSpan'),
+                         # §9.228 ② ダミー（空き）のカード。**送られてきた
+                         # ときだけ**書く（設定窓は送らないので、触るたびに
+                         # 空きが解けては困る）。
+                         dummy=x.get('dummy'),
+                         # §9.228 ④ 空欄（選ばない）の札を並べないか
+                         no_blank=x.get('noBlank'),
                          report=ref)
   saved=_op_read(fn)
   # **付け替えたことは黙って済ませない**（§9.226 ①）。名前を変えると

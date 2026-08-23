@@ -837,8 +837,47 @@
     var(--surface-2) 0 6px,var(--surface-3) 6px 12px);
 }
 .op-band.is-dummy .op-band-name{color:var(--ink-3)}
-.op-tile.is-pad{opacity:.6;border-style:dashed}
-.op-chip-pad{background:var(--surface-3);color:var(--ink-3)}
+/* 空きのカード（§9.228 ②）。**盤では斜線で「ここは空き」と分かるように**
+   出すが、名前も型も持たない——測定画面では何も描かないので、盤で名前が
+   目立つと「出るもの」に見える。 */
+.op-tile.is-pad{
+  border-style:dashed;border-color:var(--line-mid);color:var(--ink-3);
+  background:repeating-linear-gradient(135deg,
+    var(--surface-2) 0 6px,var(--surface-3) 6px 12px);
+  align-items:center;justify-content:center;
+}
+.op-tile-pad{font-size:var(--fs-sm);font-weight:700;color:var(--ink-3);letter-spacing:.08em}
+/* ---------- 盤の右クリックメニュー（§9.228 ⑤、利用者の指示） ----------
+   「右クリックメニューを実装してください。削除やサイズ変更などよく使う
+    メニューに絞って実装してほしいです。」
+   **器の外（body直下）へ`position:fixed`で出す**（§9.201。盤は
+   `overflow:auto`なので中に置くと切られる）。 */
+.op-menu{
+  position:fixed;z-index:var(--z-popover);min-width:var(--w-md);
+  padding:var(--space-1);border:1px solid var(--line-mid);
+  border-radius:var(--radius-sm);background:var(--surface);
+  box-shadow:0 8px 24px color-mix(in srgb,var(--ink) 22%,transparent);
+}
+.op-menu-head{
+  padding:var(--space-1) var(--space-2);color:var(--ink-3);
+  font-size:var(--fs-badge);font-weight:700;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:var(--w-xl);
+}
+.op-menu-sep{height:1px;margin:var(--space-1) 0;background:var(--line-soft)}
+.op-menu-row{display:flex;align-items:center;gap:2px;padding:0 var(--space-1)}
+.op-menu-row>b{flex:none;min-width:3.2em;color:var(--ink-3);font-size:var(--fs-badge);font-weight:700}
+.op-menu button{
+  display:block;width:100%;min-height:var(--ctl-h-xs);padding:0 var(--space-2);
+  border:0;border-radius:var(--radius-xs);background:none;color:var(--ink);
+  font-size:var(--fs-sm);text-align:left;cursor:pointer;
+}
+.op-menu-row button{width:auto;flex:1 1 0;text-align:center;font-weight:700}
+.op-menu button:hover{background:var(--surface-2)}
+.op-menu button.is-on{background:var(--nav);color:#fff}
+.op-menu button.is-danger{color:var(--danger)}
+.op-menu button.is-danger:hover{background:var(--danger-bg,var(--surface-2))}
+.op-menu button[disabled]{color:var(--muted);cursor:default}
+.op-menu button[disabled]:hover{background:none}
 .op-tile{
   display:flex;flex-direction:column;gap:2px;min-width:0;cursor:grab;
   padding:var(--space-1) var(--space-2);

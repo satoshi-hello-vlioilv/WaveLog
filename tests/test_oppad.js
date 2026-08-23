@@ -36,7 +36,7 @@ let b=null;
  const errs=[];
  page.on('pageerror',e=>errs.push(e.message.slice(0,140)));
  page.on('dialog',d=>d.accept());
- const madeGroups=[];
+ const madeIds=[];let renamed=null;
  try{
   await post('/api/access-mode',{mode:'edit'});
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
@@ -141,44 +141,67 @@ let b=null;
   await page.waitForTimeout(300);
 
   /* ==========================================================
-     2) 空き（ダミー）の群
+     2) 空き（ダミー）は**カード1枚**（§9.228 ②、利用者の指示
+        「ダミーのカードだけ追加したいがダミー群ごとしか追加できないのも
+         修正してほしい」「実際の画面にも『空き』という形でしっかり表示
+         されている…実装したかったダミーで余白を作りたかった意味と全く違う」）
      ========================================================== */
-  const padName=TAG+'空き';
-  await page.evaluate(n=>{window.prompt=()=>n},padName);
+  const before=await page.$$eval('.op-tile',es=>es.length);
   await page.click('#opAddPad');
-  await page.waitForFunction(n=>[...document.querySelectorAll('.op-band')]
-    .some(b=>b.dataset.opBand===n),padName,{timeout:15000});
-  madeGroups.push(padName);
+  await page.waitForFunction(n=>document.querySelectorAll('.op-tile').length>n,
+    before,{timeout:15000});
   await page.waitForTimeout(500);
-  const band=await page.evaluate(n=>{
-   const b=[...document.querySelectorAll('.op-band')].find(x=>x.dataset.opBand===n);
-   if(!b)return null;
-   return {ダミー:b.classList.contains('is-dummy'),
-           文字:b.textContent.replace(/\s+/g,''),
-           幅ボタン:b.querySelectorAll('[data-op-gspan]').length,
-           戻す:b.querySelectorAll('[data-op-undummy]').length,
-           畳む:b.querySelectorAll('[data-op-fold]').length};
-  },padName);
-  rec('空きの群が盤に出る（ダミーとして）',!!band&&band.ダミー===true,JSON.stringify(band));
-  /* **色だけで伝えない**（§3）。斜線の地に加えて文字でも言うこと。 */
-  rec('空きであることを文字でも言う',!!band&&/ダミー（空き）/.test(band.文字),
-      band&&band.文字.slice(0,60));
-  /* **要らない道具は出さない**（§4）。中身が無いので「畳む」は効かない。 */
-  rec('空きの帯は幅と「ふつうの群へ」を持ち、畳むは持たない',
-      !!band&&band.幅ボタン>0&&band.戻す===1&&band.畳む===0,JSON.stringify(band));
+  const tile=await page.evaluate(()=>{
+   const t=document.querySelector('.op-tile.is-pad');
+   if(!t)return null;
+   const band=t.closest('.op-board-grid')
+     ?[...document.querySelectorAll('.op-band')].map(b=>b.dataset.opBand):[];
+   return {文字:t.textContent.replace(/\s+/g,''),
+           群の帯:band.length,
+           掴める:t.getAttribute('draggable')==='true'};
+  });
+  rec('「空きカードを追加」でカードが1枚増える（群は作らない）',
+      !!tile,JSON.stringify(tile));
+  /* **群ごと作らないこと**——利用者の指示。既存の群の中へ入る。 */
+  rec('空きは既存の群の中に入る（新しい群を作らない）',
+      !!tile&&tile.群の帯>0,JSON.stringify(tile));
+  rec('空きのカードは掴んで動かせる',!!tile&&tile.掴める===true,JSON.stringify(tile));
 
-  /* サーバーに印が残っていること（次に開いても空きのまま）。 */
+  /* 名前を聞かない＝プロンプトを出さない（決めることを増やさない）。 */
   const srv=await get('/api/operation-item-master?equipment='+encodeURIComponent(EQ));
-  const padRows=(srv.items||[]).filter(i=>(i.group||'')===padName);
-  rec('空きの印がサーバーに残る',padRows.length>0&&padRows.every(i=>i.dummy===true),
-      JSON.stringify(padRows.map(i=>({n:i.name,d:i.dummy}))));
-  /* **「出さない」にしていないこと**——無効にすると測定画面が読まず、
-     空きが1マスも空かない（実際に踏んだ罠）。 */
+  const pads=(srv.items||[]).filter(i=>i.dummy);
+  rec('空きの印がサーバーに残る',pads.length>0,JSON.stringify(pads.map(i=>i.name)));
   rec('空きの行は有効なまま（無効にすると測定画面に届かない）',
-      padRows.every(i=>i.enabled!==false),
-      JSON.stringify(padRows.map(i=>i.enabled)));
+      pads.every(i=>i.enabled!==false),JSON.stringify(pads.map(i=>i.enabled)));
+  pads.forEach(i=>madeIds.push(i.id));
 
-  /* ---- 測定画面: 枠も見出しも無い空白になる ---- */
+  /* ---- 右クリックメニュー（§9.228 ⑤） ---- */
+  await page.click('.op-tile.is-pad',{button:'right'});
+  await page.waitForSelector('.op-menu',{timeout:8000});
+  const menu=await page.evaluate(()=>{
+   const m=document.querySelector('.op-menu');
+   return {幅:m.querySelectorAll('[data-opm-span]').length,
+           削除:m.querySelectorAll('[data-opm-del]').length,
+           項目へ:m.querySelectorAll('[data-opm-pad="0"]').length,
+           /* **絞る**のが要件（利用者の指示）。ボタンを増やしすぎない。 */
+           総数:m.querySelectorAll('button').length};
+  });
+  rec('右クリックで幅と削除のメニューが出る',
+      menu.幅>=4&&menu.削除===1&&menu.項目へ===1,JSON.stringify(menu));
+  rec('メニューは「よく使うものに絞る」（多すぎない）',menu.総数<=12,String(menu.総数));
+  /* **閉じられること**を見る（§9.222 ①。開いたことだけ見る網は素通りする）。 */
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+  rec('メニューはEscで閉じる',
+      await page.evaluate(()=>!document.querySelector('.op-menu')));
+  await page.click('.op-tile.is-pad',{button:'right'});
+  await page.waitForSelector('.op-menu',{timeout:8000});
+  await page.mouse.click(5,5);
+  await page.waitForTimeout(300);
+  rec('メニューは外側クリックで閉じる',
+      await page.evaluate(()=>!document.querySelector('.op-menu')));
+
+  /* ---- 測定画面: 「空き」の文字がどこにも出ない ---- */
   await page.evaluate(()=>{const m=document.getElementById('masterMaintModal');if(m)m.hidden=true});
   await page.evaluate(e=>localStorage.setItem('AccessMeasurementConfiguredEquipment',e),EQ);
   await page.reload({waitUntil:'domcontentloaded'});
@@ -194,50 +217,83 @@ let b=null;
   await page.waitForFunction(()=>!document.querySelector('#measureModal')?.hidden,null,{timeout:25000});
   await page.waitForFunction(()=>typeof S!=='undefined'&&!!S.measure,null,{timeout:25000});
   await page.waitForTimeout(1500);
-  const pad=await page.evaluate(n=>{
-   const el=document.querySelector(`.selectors>[data-oppad="1"][data-opgroup="${CSS.escape(n)}"]`);
-   if(!el)return {あり:false};
+  const pad=await page.evaluate(()=>{
+   const el=document.querySelector('.selectors>[data-oppad="1"]');
+   /* **「空き」という文字が測定画面に出ていないこと**（利用者の指摘）。 */
+   const hits=[...document.querySelectorAll('.selectors>*')]
+     .filter(e=>/空き/.test(e.textContent||''))
+     .map(e=>({cls:e.className,t:(e.textContent||'').trim().slice(0,20)}));
+   if(!el)return {あり:false,空きの文字:hits};
    const cs=getComputedStyle(el),r=el.getBoundingClientRect();
-   /* 見出しが出ていないこと（同じ群名の`.prep-head`が無い）。 */
-   const head=[...document.querySelectorAll('.selectors>.prep-head')]
-     .some(h=>h.dataset.opgroup===n);
-   return {あり:true,見出し:head,
-     文字:el.textContent.trim(),
+   return {あり:true,空きの文字:hits,文字:el.textContent.trim(),
      枠:cs.borderTopWidth,地:cs.backgroundColor,
-     幅:Math.round(r.width),高さ:Math.round(r.height),
-     列:el.style.gridColumn};
-  },padName);
-  rec('測定画面に空きのマスが置かれる',pad.あり===true,JSON.stringify(pad));
-  rec('空きは見出しを出さない',pad.あり&&pad.見出し===false,JSON.stringify(pad));
-  /* **枠も地も文字も持たない**——見えたら「空き」の用を成さない。 */
+     幅:Math.round(r.width),列:el.style.gridColumn};
+  });
+  rec('測定画面に空きのマスが置かれる',pad.あり===true,JSON.stringify(pad).slice(0,180));
+  rec('測定画面に「空き」の文字はどこにも出ない',
+      (pad.空きの文字||[]).length===0,JSON.stringify(pad.空きの文字));
   rec('空きは枠も文字も持たない',
-      pad.あり&&pad.文字===''&&(pad.枠==='0px'||pad.枠===''),JSON.stringify(pad));
+      pad.あり&&pad.文字===''&&(pad.枠==='0px'||pad.枠===''),JSON.stringify(pad).slice(0,140));
   rec('空きは地を塗らない（透明）',
       pad.あり&&/rgba\(0, 0, 0, 0\)|transparent/.test(String(pad.地)),String(pad.地));
-  /* **記録した値の分母に入らない**（数えると永久に埋まらない1件が残る）。 */
-  const cnt=await page.evaluate(n=>{
+  rec('空きは幅ぶんのマスを取る',pad.あり&&pad.幅>40,String(pad.幅));
+  const cnt=await page.evaluate(()=>{
    const f=(window.WL&&WL.opData&&WL.opData.filled)?WL.opData.filled():null;
    const defs=(window.WL&&WL.opData&&WL.opData.defs)?WL.opData.defs():[];
-   return {f,dummy:defs.filter(d=>d.dummy).length,
-           自由:defs.filter(d=>!d.builtin).length};
-  },padName);
+   return {f,dummy:defs.filter(d=>d.dummy).length,自由:defs.filter(d=>!d.builtin).length};
+  });
   rec('前提: 空きの行は測定画面まで届いている',cnt.dummy>0,JSON.stringify(cnt));
   rec('空きの行は「記録した値」の分母に入らない',
       !!cnt.f&&cnt.f.total===cnt.自由-cnt.dummy,JSON.stringify(cnt));
+
+  /* ==========================================================
+     3) 組み込みの欄も名前はマスタが決める（§9.228 ①）
+     ========================================================== */
+  const before2=await page.evaluate(()=>{
+   const l=document.querySelector('.selectors>[data-f="coilStop"]');
+   return l?l.textContent.trim().slice(0,20):'(無い)';
+  });
+  const coil=(srv.items||[]).find(x=>x.builtin==='coilStop');
+  rec('前提: コイル止めは組み込みの欄として居る',!!coil,JSON.stringify(coil&&coil.name));
+  if(coil){
+   await post('/api/operation-item-master/update',
+     {...coil,id:coil.id,name:TAG+'止め',user_id:'tests'});
+   renamed=coil;
+   /* 名前はマスタから読み直して**割り付けを通したとき**に効く（実際の
+      画面では測定を開き直したときに通る道）。 */
+   await page.evaluate(async()=>{
+    WL.opData.forget();
+    await WL.opData.load(true);
+    WL.opData.layout();
+   });
+   await page.waitForTimeout(900);
+   const after=await page.evaluate(()=>{
+    const l=document.querySelector('.selectors>[data-f="coilStop"]');
+    return l?{文字:l.textContent.trim(),欄:!!l.querySelector('select')}:null;
+   });
+   rec('組み込みの欄も名前を変えると測定画面に効く',
+       !!after&&after.文字.indexOf(TAG+'止め')===0,
+       JSON.stringify({前:before2,後:after&&after.文字.slice(0,24)}));
+   /* **入力欄を消さないこと**——`textContent`ごと差し替えると`<select>`が消える。 */
+   rec('名前を書き換えても入力欄は残る',!!after&&after.欄===true,JSON.stringify(after));
+  }
 
   rec('画面のエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){
   rec('FATAL',false,e.message);
  }finally{
-  /* **後始末**（§9.121）。db/master.sqlite3は実行をまたいで生き延びる。 */
-  for(const g of madeGroups){
-   try{
-    const r=await get('/api/operation-item-master?equipment='+encodeURIComponent(EQ));
-    for(const it of (r.items||[]).filter(i=>(i.group||'')===g)){
-     await post('/api/operation-item-master/delete',{id:it.id,user_id:'tests'});
-    }
-   }catch(e){}
-  }
+  /* **後始末**（§9.121）。db/master.sqlite3は実行をまたいで生き延びる。
+     **改名した組み込みの欄も必ず戻す**——戻さないと次の実行が引き継ぐ。 */
+  try{
+   if(renamed)await post('/api/operation-item-master/update',
+     {...renamed,id:renamed.id,name:renamed.name,user_id:'tests'});
+  }catch(e){}
+  try{
+   const r=await get('/api/operation-item-master?equipment='+encodeURIComponent(EQ));
+   for(const it of (r.items||[]).filter(i=>i.dummy||madeIds.indexOf(i.id)>=0)){
+    await post('/api/operation-item-master/delete',{id:it.id,user_id:'tests'});
+   }
+  }catch(e){}
   if(b)await b.close();
  }
  const ok=R.filter(x=>x.ok).length;
