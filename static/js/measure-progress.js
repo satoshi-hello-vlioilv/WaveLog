@@ -37,8 +37,13 @@ const ITEM_DEFS=[
  {name:'巻ずれ',        scope:'length',keys:['offset']},
  {name:'フラットネス',   scope:'length',keys:['flatness']},
 ];
-/* 母材パネルの入力欄(data-mother)。activeRequiredControls と同じ8項目。 */
-const MOTHER_FIELDS=['manual','fullLength','minCard','maxCard','front','rear','frontCard','rearCard'];
+/* 母材パネルの入力欄(data-mother)。**マスタで外した欄は数えない**（§9.232）
+   ——数えると「どう頑張っても埋まらない1件」が残る（§9.227 ③と同じ罠）。
+   ここに並べてあるのは**まだマスタが読めていないとき**の受け皿で、
+   §9.232より前の8欄と同じ（黙って0件にすると進捗が消える）。 */
+const MOTHER_FIELDS_FALLBACK=['manual','fullLength','minCard','maxCard','front','rear','frontCard','rearCard'];
+const motherFields=()=>((window.WL&&WL.opData&&WL.opData.motherKeys&&WL.opData.motherKeys())
+                        ||MOTHER_FIELDS_FALLBACK);
 /* 揃い/肉厚/長さ で1丈を「入力済み」とみなす項目。**定義は1箇所**
    （`measurement-view.js`の`PRODUCT_FILLED_KEYS`）——2つ持つと、項目を
    足したときに片方だけ直った状態が作れる。§9.203で4桁の揃いコードを
@@ -85,8 +90,9 @@ function itemProgress(m,def){
   const rows=(m.product&&Array.isArray(m.product.rows))?m.product.rows:[];
   const pieces=Array.from({length:c.vertical},(_,i)=>rows[i])
    .filter(r=>productFilledKeys().some(k=>filled(r&&r[k]))).length;
-  out.total=MOTHER_FIELDS.length+c.vertical;
-  out.filled=MOTHER_FIELDS.filter(k=>filled(mother[k])).length+pieces;
+  const fields=motherFields();
+  out.total=fields.length+c.vertical;
+  out.filled=fields.filter(k=>filled(mother[k])).length+pieces;
  }else{
   const ms=m.measurements||{};
   for(let li=0;li<c.lengthSlots;li++){

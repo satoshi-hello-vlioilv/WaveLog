@@ -146,10 +146,14 @@
            {k:'maxStrips',label:'最大条数',type:'number',min:1,max:40,
             hint:'この設備で幅方向に割れる条数の上限。空欄なら40（測定データの構造上の上限）。'},
            {k:'standardMinutes',label:'1ロットあたり標準時間（分）',type:'number',min:1,max:1440,step:1,
-            hint:'実績がまだ無いときに作業スケジュールの見積として使う分数です。空欄なら120分（全体の暫定既定値）。実績がたまると自動で実績由来の見積へ切り替わります。'}],
+            hint:'実績がまだ無いときに作業スケジュールの見積として使う分数です。空欄なら120分（全体の暫定既定値）。実績がたまると自動で実績由来の見積へ切り替わります。'},
+           /* §9.231 ①。**空欄＝未設定**（0は「上限0」になってしまうので受けない）。 */
+           {k:'maxLineSpeed',label:'最大ライン速度（m/min）',type:'number',min:1,max:100000,step:1,
+            hint:'このラインで出せる速度の上限です。操業データ項目の「数の決まり」から**この値を上限として参照**できます（マスタを直せば入力欄の上限も変わります）。空欄なら未設定で、参照している項目には上限が掛かりません。'}],
    cols:[{k:'name',label:'設備名',grow:2},{k:'kind',label:'区分',grow:1,format:'equipmentKind'},
          {k:'maxStrips',label:'最大条数',grow:1,format:'maxStrips'},
-         {k:'standardMinutes',label:'標準時間',grow:1,format:'standardMinutes'}],
+         {k:'standardMinutes',label:'標準時間',grow:1,format:'standardMinutes'},
+         {k:'maxLineSpeed',label:'最大速度',grow:1,format:'maxLineSpeed'}],
    hint:'「区分」はその設備が扱う材料の形（コイル／板）です。既に登録してある設備は未設定のままでも今までどおり動きます。「最大条数」は幅分割（条割）で割れる条数の上限です。設備によって割れる本数が違うため設備ごとに登録します。空欄のままなら40条（測定データの構造上の上限）として扱います。子ロットの数（最大9ロット）とは別の値です。「1ロットあたり標準時間」は、実績がまだ1件も無い設備の作業スケジュールで見積として使う分数です。実績がたまると実績から算出した見積（換算係数）が優先されるため、あくまで最初の保険として登録します。'},
   {group:'system',key:'accessPermission',label:'アクセス権限',icon:'権',endpoint:'/api/access-permission-master',hasDelete:true,
    fields:[{k:'loginId',label:'ログインID',key:true},{k:'pcName',label:'PC名',key:true},
@@ -422,6 +426,9 @@
   /* 1ロットあたり標準時間(§9.114)。**未設定を「0分」に見せない**——
      空欄は「登録していない＝全体の暫定既定値を使う」であって0分ではない。 */
   if(col.format==='standardMinutes')return v.trim()===''?'120分（既定）':`${v}分`;
+  /* §9.231 ①。**未設定は「未設定」と書く**——0や既定値を出すと、
+     参照している項目に上限が掛かっているように読める（§4）。 */
+  if(col.format==='maxLineSpeed')return v.trim()===''?'未設定':`${v} m/min`;
   // 区分(§9.85)。空欄は「まだ決めていない」であって「無い」ではないので、
   // 「—」ではなくそう書く(既存の設備は空のまま動く)。
   if(col.format==='equipmentKind')return v.trim()===''?'未設定':v;
@@ -3855,7 +3862,9 @@
                 /* 型ごとに効く入力方法。**サーバーが答える**（§9.219 ③）
                    ——ここは届くまでの受け皿で、判定を画面に持たない。 */
                 widgetFamilies:{choice:['プルダウン','ラジオ','セグメント','タブ','ボタン群','一覧'],
-                                number:['プルダウン'],text:['プルダウン']},
+                                number:['プルダウン'],text:['プルダウン'],
+                                /* 画面が値を入れる欄（§9.232）。選ばせ方は無い。 */
+                                output:[]},
                 choiceTypes:['選択'],numberTypes:['整数','正の整数','数値','正の数'],
                 spanUnit:2,
                 /* 見せ方の選択肢（§9.221 ⑦）。**サーバーが答える**——ここは
@@ -3873,13 +3882,21 @@
                 lookColors:['既定'],lookShapes:['標準'],lookSizes:['中'],
                 tab:'place',
                 gridCols:12,choiceNames:[],choices:[],notes:{},usage:{},choiceHints:{},
+                /* 上下限の出どころ（§9.231 ②）。**サーバーが答える**
+                   ——鍵・呼び名・単位・いまの値の4つ。ここは届くまでの
+                   受け皿で、引き方の規則を画面に持たない。 */
+                limitSources:[],
                 /* 同じ群がばらけて保存されていた置き場（§9.219 ③）。
                    まとめて描いたことを画面に書くために覚える。 */
                 healed:new Set(),
-                picked:null,busy:false,drag:null};
+                /* 掴んでいるもの。**カードと群は別の控え**（§9.230 ④）
+                   ——1つにまとめると「いま何を運んでいるか」が読めない。 */
+                picked:null,busy:false,drag:null,dragGroup:null};
  const OP_PLACE_NOTE={
   '準備':'①準備の「操業データ」カード（横3マス×縦2マス）',
   '入力内容':'②測定の「入力内容」カード（畳んでおき、下の「開く条件」に当たる項目を選ぶと開きます）',
+  /* §9.232。**畳みの対象ではない**——面ごと出し分けるので「開く条件」は効かない。 */
+  '母材':'②測定の「母材」カード（入力内容が「母材・揃い/肉厚/長さ」のときだけ出る面）',
  };
  /* 型の一言。**選ばせる前に何が起きるかを書く**（§CLAUDE 6）。 */
  const OP_TYPE_NOTE={
@@ -4027,6 +4044,10 @@
   if(x&&x.builtin)return bf[x.builtin]||'choice';
   return tf[(x&&x.type)||'']||'text';
  }
+ /* 画面が値を入れる欄（§9.232）。母材の参考値3つ——元幅（実績）・
+    屑幅（両耳合計）・計算全長（参考）——は`<output>`なので、選ばせ方も
+    初期値も持たない。**判定は1箇所**（族はサーバーが答える）。 */
+ function opIsOutput(x){return opFamilyOf(x)==='output'}
  function opWidgetsFor(x){
   const fam=opState.widgetFamilies||{};
   return fam[opFamilyOf(x)]||['プルダウン'];
@@ -4174,24 +4195,27 @@
      同じ見せ方にそろえてある）。**要らない道具は出さない**（§4）ので、
      畳む・開く条件は持たない（中身が無いので効かない）。 */
   if(r.dummy){
-   return `<div class="op-band is-dummy" data-op-band="${esc(r.name)}"`
+   return `<div class="op-band is-dummy" draggable="true" data-op-band="${esc(r.name)}"`
     +` data-op-place="${esc(r.place)}" style="${place}"`
     +` title="測定画面では見出しも枠も出さず、この幅ぶんの空白になります">`
     +`<b class="op-band-name">${esc(r.name)}</b>`
     +`<small class="op-band-note">空きだけの群`
     +`${cur?`／幅 ${esc(opGroupSpanLabel(cur))}`:'／幅 全幅'}`
     +`／測定画面では<b>見出しも出しません</b></small>`
-    +`<span class="op-band-tools">`
+    +`<span class="op-band-tools" draggable="false">`
     +opBandSpanHtml(r,cur)
     +`<button type="button" class="ghost" data-op-rename="${esc(r.name)}" data-op-place="${esc(r.place)}">名前</button>`
     +`</span></div>`;
   }
-  return `<div class="op-band" data-op-band="${esc(r.name)}" data-op-place="${esc(r.place)}"`
-   +` style="${place}" title="この帯より下の項目が「${esc(r.name)}」になります">`
+  /* **帯を掴むと群ごと動く**（§9.230 ④、利用者の指示「郡単位で移動できる
+     ようにしたいです」）。道具（幅・名前・畳む）からは掴ませない
+     ——押そうとしたら群が動く、では押せない。 */
+  return `<div class="op-band" draggable="true" data-op-band="${esc(r.name)}" data-op-place="${esc(r.place)}"`
+   +` style="${place}" title="この帯より下の項目が「${esc(r.name)}」になります（帯を掴むと群ごと動きます）">`
    +`<b class="op-band-name">${esc(r.name)}</b>`
    +`<small class="op-band-note">${count}項目${r.fold?'／畳む':''}`
    +`${cur?`／幅 ${esc(opGroupSpanLabel(cur))}`:''}${cond}</small>`
-   +`<span class="op-band-tools">`
+   +`<span class="op-band-tools" draggable="false">`
    /* **列でも区切れる**（§9.226 ③、利用者の指示）。全幅でない群は横に
       並ぶので、「誰が測るか」と「使う機材」を左右に置ける。 */
    +opBandSpanHtml(r,cur)
@@ -4402,17 +4426,17 @@
    };
    t.onclick=()=>{
     opState.picked=t.dataset.opId;renderOpItem();
-    /* 空きのカードは設定窓を開かない（決めることが幅だけなので、
-       右クリックのメニューが持つ。押しても何も無い窓は開かない・§4）。 */
-    const x=opItemById(t.dataset.opId);
-    if(x&&x.dummy)return;
+    /* **空きのカードも同じ窓を開く**（§9.230 ③、利用者の指摘「空きの
+       カードを追加しても、ダブルクリックで編集がでないので、右クリックの
+       メニューが最終手段となっており、通常の方法では幅変更や削除など
+       できない」）。決めることは少ないので**要る段だけ出す**
+       （`opTabsFor()`）——押しても何も無い窓を開かないための元の判断は、
+       段を絞ることで満たす。 */
     openOpModal(t.dataset.opId);
    };
    t.onkeydown=e=>{
     if(e.key!=='Enter'&&e.key!==' ')return;
     e.preventDefault();opState.picked=t.dataset.opId;renderOpItem();
-    const x=opItemById(t.dataset.opId);
-    if(x&&x.dummy){opOpenTileMenu(t.getBoundingClientRect(),x);return}
     openOpModal(t.dataset.opId);
    };
    t.ondragstart=e=>{
@@ -4421,20 +4445,48 @@
    };
    t.ondragend=()=>{opState.drag=null;t.classList.remove('is-dragging');opClearMark()};
   });
+  /* 帯（群）を掴む（§9.230 ④）。**カードの掴みとは別の控え**にする
+     ——1つにまとめると「いま何を運んでいるか」が読めなくなる。 */
+  document.querySelectorAll('#masterMaintList .op-band').forEach(bd=>{
+   bd.ondragstart=e=>{
+    opState.drag=null;
+    opState.dragGroup={place:bd.dataset.opPlace,name:bd.dataset.opBand};
+    bd.classList.add('is-dragging');
+    try{e.dataTransfer.setData('text/plain','group:'+bd.dataset.opBand);
+        e.dataTransfer.effectAllowed='move'}catch(_){}
+   };
+   bd.ondragend=()=>{opState.dragGroup=null;bd.classList.remove('is-dragging');opClearMark()};
+  });
   document.querySelectorAll('#masterMaintList .op-board-grid').forEach(grid=>{
    grid.ondragover=e=>{
-    if(!opState.drag)return;
+    if(!opState.drag&&!opState.dragGroup)return;
     e.preventDefault();
-    opMark(grid,opDropAt(grid,e));
+    opMark(grid,opState.dragGroup?opGroupDropAt(grid,e):opDropAt(grid,e));
    };
    grid.ondragleave=e=>{
-    if(!opState.drag)return;
+    if(!opState.drag&&!opState.dragGroup)return;
     if(grid.contains(e.relatedTarget))return;
     opClearMark();
    };
    grid.ondrop=e=>{
-    if(!opState.drag)return;
+    if(!opState.drag&&!opState.dragGroup)return;
     e.preventDefault();
+    if(opState.dragGroup){
+     /* 群ごと。**帯とその下の札をまとめて**挿す（順番は塊のまま）。 */
+     const src=[...document.querySelectorAll('#masterMaintList .op-band')]
+       .find(b=>b.dataset.opBand===opState.dragGroup.name
+              &&b.dataset.opPlace===opState.dragGroup.place);
+     const at=opGroupDropAt(grid,e);
+     if(src){
+      const block=opGroupBlock(src.parentElement,src);
+      /* 自分の塊の中へは落とさない（動かないのに保存だけ走る）。 */
+      if(block.indexOf(at)<0){
+       block.forEach(el=>{at?grid.insertBefore(el,at):grid.appendChild(el)});
+       opClearMark();opSaveLayout();return;
+      }
+     }
+     opClearMark();return;
+    }
     const at=opDropAt(grid,e);
     const el=document.querySelector(`#masterMaintList .op-tile[data-op-id="${CSS.escape(opState.drag)}"]`);
     if(el){at?grid.insertBefore(el,at):grid.appendChild(el)}
@@ -4520,6 +4572,20 @@
   const kids=[...grid.children].filter(el=>
     el!==drag&&el.dataset.opMark===undefined&&el.getBoundingClientRect().height>0);
   if(!kids.length)return null;
+  /* **まずカーソルの真下にある物で群を決める**（§9.230 ①、利用者の指示
+     「マウスオーバーの位置がまずどの群の上にいるか、対象となる群に挿入位置を
+      表示させてください」）。群は**横にも並べられる**（§9.226 ③）ので、
+     段だけで探すと同じ段に居る**隣の群の札**の境目が選ばれてしまい、
+     狙った群に入らない。真下に物があるときは、その物の群の中で決める。 */
+  const hit=kids.find(el=>{
+   const r=el.getBoundingClientRect();
+   return e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom;
+  });
+  if(hit){
+   if(hit.dataset.opBand!==undefined)return opAfterMark(hit.nextElementSibling);
+   const r=hit.getBoundingClientRect();
+   return (e.clientX<r.left+r.width/2)?hit:opAfterMark(hit.nextElementSibling);
+  }
   /* 段にまとめる。グリッドなので**同じ段のものは上端がそろう**。 */
   const rows=[];
   kids.forEach(el=>{
@@ -4558,6 +4624,45 @@
   }
   return 'その他';
  }
+ /* 帯とその下の札（＝1つの群の塊）。**「帯より下がその群」**という
+    `opCollectLayout`と同じ読み方を使う（§9.230 ④）。 */
+ function opGroupBlock(grid,band){
+  const out=[band];
+  let el=band.nextElementSibling;
+  while(el&&el.dataset.opBand===undefined){
+   if(el.dataset.opMark===undefined)out.push(el);
+   el=el.nextElementSibling;
+  }
+  return out;
+ }
+ /* 群ごと動かすときの落とし先（§9.230 ④、利用者の指示「郡単位で移動できる
+    ようにしたいです」）。**止まるのは帯の単位だけ**——群の中の1枚の前へ
+    群を挿すことはできないので、いま乗っている群の**塊の上半分なら前、
+    下半分なら次の群の前**（次が無ければ末尾＝`null`）。 */
+ function opGroupDropAt(grid,e){
+  const bands=[...grid.children].filter(el=>el.dataset.opBand!==undefined);
+  if(!bands.length)return null;
+  const name=opGroupAt(grid,opDropAt(grid,e));
+  const idx=bands.findIndex(b=>b.dataset.opBand===name);
+  if(idx<0)return null;
+  const block=opGroupBlock(grid,bands[idx]);
+  const top=bands[idx].getBoundingClientRect().top;
+  const bottom=(block[block.length-1]||bands[idx]).getBoundingClientRect().bottom;
+  return e.clientY<(top+bottom)/2?bands[idx]:(bands[idx+1]||null);
+ }
+ /* 落とす先の群を**塗って見せる**（§9.230 ①）。線だけだと、帯のすぐ上と
+    下のどちらへ入るのかが読めない——文字（`opMark`の吹き出し）と面の2つで
+    示す（§3「色だけで伝えない」）。 */
+ function opPaintGroup(grid,name){
+  document.querySelectorAll('.is-drop-group').forEach(el=>el.classList.remove('is-drop-group'));
+  if(!grid||!name)return;
+  let on=false;
+  [...grid.children].forEach(el=>{
+   if(el.dataset.opMark!==undefined)return;
+   if(el.dataset.opBand!==undefined)on=(el.dataset.opBand===name);
+   if(on)el.classList.add('is-drop-group');
+  });
+ }
  /* **印で盤を動かさないこと**（§9.218 ④／§9.196と同じ教訓）。
     以前は印をグリッドの子として**流れの中へ**挿していたため、印が入った
     瞬間に後ろのタイルが1マスぶんずれ、**同じカーソル位置なのに次の
@@ -4589,17 +4694,47 @@
      常に1つだけ指す」）。線だけだと、帯のすぐ上と下のどちらへ入るのかが
      読めない——「移動できません」の報告はここが読めないことから始まった。 */
   const tag=m.querySelector('.op-drop-tag');
-  if(tag){
-   const place=grid.dataset.opPlace||'準備';
-   tag.textContent=`${place}／${opGroupAt(grid,at)} へ`;
+  const place=grid.dataset.opPlace||'準備';
+  if(opState.dragGroup){
+   /* 群ごと運んでいるときは**群の名前で言う**（どの群の前に入るか）。
+      塊で動くので、群の中を塗っても意味が無い。 */
+   const before=at&&at.dataset.opBand!==undefined?at.dataset.opBand:'';
+   if(tag)tag.textContent=before?`${place}／「${before}」の前へ`:`${place}／いちばん下へ`;
+   opPaintGroup(null,'');
+   m.classList.add('is-group');
+   return;
   }
+  m.classList.remove('is-group');
+  const name=opGroupAt(grid,at);
+  if(tag)tag.textContent=`${place}／${name} へ`;
+  opPaintGroup(grid,name);
  }
- function opClearMark(){document.querySelectorAll('[data-op-mark]').forEach(x=>x.remove())}
+ function opClearMark(){
+  document.querySelectorAll('[data-op-mark]').forEach(x=>x.remove());
+  opPaintGroup(null,'');
+ }
  /* 落とす先の狙いは**この2つだけ**が決めている。ヘッドレスではHTML5の
     D&Dの座標を作れないので、網はここを直に呼んで確かめる（§9.218 ④）。
     **素の`window.*`を増やさない**（CLAUDE.md「新規公開は名前空間経由」）。 */
  window.WL=window.WL||{};
- WL.opBoard={dropAt:opDropAt,mark:opMark,clearMark:opClearMark,groupAt:opGroupAt};
+ /* 群ごとの移動もヘッドレスでは座標を作れないので、口から呼べるようにする
+    （§9.230 ④。§9.218 ④と同じ理由）。**素の`window.*`を増やさない**。 */
+ WL.opBoard={dropAt:opDropAt,mark:opMark,clearMark:opClearMark,groupAt:opGroupAt,
+             groupDropAt:opGroupDropAt,groupBlock:opGroupBlock,
+             /* 群を1つ動かして保存する（帯を掴んで落とすのと同じ道）。 */
+             moveGroup(place,name,beforeName){
+              const grid=[...document.querySelectorAll('#masterMaintList .op-board-grid')]
+                .find(g=>g.dataset.opPlace===place);
+              if(!grid)return false;
+              const bands=[...grid.children].filter(el=>el.dataset.opBand!==undefined);
+              const src=bands.find(b=>b.dataset.opBand===name);
+              const at=beforeName?bands.find(b=>b.dataset.opBand===beforeName):null;
+              if(!src)return false;
+              const block=opGroupBlock(grid,src);
+              if(block.indexOf(at)>=0)return false;
+              block.forEach(el=>{at?grid.insertBefore(el,at):grid.appendChild(el)});
+              opSaveLayout();return true;
+             }};
  async function opRenameGroup(place,from,to){
   const uid=requireMaintUser();if(uid===null)return;
   const rows=opCollectLayout().map(r=>(r.place===place&&r.group===from)?{...r,group:to}:r);
@@ -4674,9 +4809,13 @@
  }
  function opMenuOutside(e){if(opMenuEl&&!opMenuEl.contains(e.target))closeOpMenu()}
  function opMenuEsc(e){if(e.key==='Escape'){e.stopPropagation();closeOpMenu()}}
- /* 幅は盤の帯と同じ刻み（1/3・1/2・2/3・全幅）を「カードの幅」として使う。 */
- const OP_TILE_SPANS=[{v:2,label:'1/6'},{v:3,label:'1/4'},{v:4,label:'1/3'},
-                      {v:6,label:'1/2'},{v:8,label:'2/3'},{v:12,label:'全幅'}];
+ /* 幅は盤の帯と同じ刻みを「カードの幅」として使う。**1マス（1/12）も置く**
+    （§9.230 ②、利用者の指示「右クリックで幅変更のボタンが中途半端で、
+    1/12(1マス)がない。1/12も使いたいので追加してください」）——設定窓の
+    幅の帯は最初から1マスから選べたので、右クリックだけが刻みを削っていた。 */
+ const OP_TILE_SPANS=[{v:1,label:'1/12'},{v:2,label:'1/6'},{v:3,label:'1/4'},
+                      {v:4,label:'1/3'},{v:6,label:'1/2'},{v:8,label:'2/3'},
+                      {v:12,label:'全幅'}];
  /* `ev`はマウスの出来事でも、キーボードから開くときの`{x,y}`でもよい
     （`DOMRect`をそのまま渡せる）。 */
  function opOpenTileMenu(ev,x){
@@ -4878,6 +5017,68 @@
  /* 初期値が「数の決まり」から外れていないか（§9.220 ②）。**外れていても
     保存は通す**——上下限は後から変えるものなので、保存そのものを断ると
     設定の順番を強いることになる。断らない代わりに**必ず書く**（§4）。 */
+/* ---------- 上下限の出どころ（§9.231 ②、利用者の指示） ----------
+    「MIN-MAXなどの入力値を決めるところで、マスタからのデータともリンク
+     できるようにしてください。特に設備マスタの追加する最大ライン速度や
+     最大条数はリンクをさせたい部分です」
+
+    **語彙はサーバーが持つ**（`opState.limitSources`）。画面は選ばせて、
+    **いまの値・単位・出どころを文字で出す**だけ（§CLAUDE 6）——同じ
+    「最大 350」でも、この行に書いた数と設備マスタから引いた数では
+    直す場所が違う。引けなかったときは**0にしない**（§9.114）。 */
+ function opLimitSource(key){
+  return (opState.limitSources||[]).find(s=>s.key===String(key||''))||null;
+ }
+ /* いま効いている上下限。出どころが指定してあればそちらが勝つ
+    ——**判定は1箇所**（見本・初期値の警告・保存後の測定画面が
+    食い違わないように）。引けなければ`null`＝「上限なし」。 */
+ function opLimitOf(x,side){
+  const key=String((side==='min'?x.minFrom:x.maxFrom)||'');
+  if(key){
+   const src=opLimitSource(key);
+   const v=src?src.value:null;
+   return (v===null||v===undefined||v==='')?null:Number(v);
+  }
+  const raw=side==='min'?x.min:x.max;
+  return (raw===null||raw===undefined||raw==='')?null:Number(raw);
+ }
+ /* いま効いている上下限を載せた写し。**決まり書きも見本もこれを通す**
+    ——`x`をそのまま渡すと、マスタから引く設定にしても行に書いた数のままで
+    描かれる（設定画面で確かめた形と測定画面が食い違う。§9.221 ⑦）。 */
+ function opRuleDef(x){
+  return {...x,min:opLimitOf(x,'min'),max:opLimitOf(x,'max'),
+          minFromLabel:(opLimitSource(x.minFrom)||{}).label||'',
+          maxFromLabel:(opLimitSource(x.maxFrom)||{}).label||''};
+ }
+ /* 出どころを選ぶ欄。**選ぶ前に何が起きるかを書く**（§CLAUDE 6）
+    ——選んだ瞬間に手打ちの欄が使えなくなるので、いまの値と単位を添える。 */
+ function opLimitFromHtml(x,side){
+  const cur=String((side==='min'?x.minFrom:x.maxFrom)||'');
+  const name=side==='min'?'最小':'最大';
+  const list=opState.limitSources||[];
+  const hit=opLimitSource(cur);
+  const opts=['<option value="">自分で決める（上の数）</option>']
+   .concat(list.map(s=>`<option value="${esc(s.key)}"${s.key===cur?' selected':''}>${esc(s.label)}</option>`))
+   /* **知らない鍵を黙って捨てない**（§9.204の`optionFill()`と同じ罠）
+      ——候補に無い値を`select.value`へ入れると空になり、保存した瞬間に
+      設定が消える。候補へ足したうえで、引けないことを名前で言う。 */
+   .concat(cur&&!hit?[`<option value="${esc(cur)}" selected>${esc(cur)}（このアプリが知らない出どころ）</option>`]:[]);
+  return `<label class="op-from">${name}<select id="opd${side==='min'?'Min':'Max'}From" data-op-from="${side}">`
+   +`${opts.join('')}</select>`
+   +`<i class="op-form-note">${esc(opLimitFromNote(x,side))}</i></label>`;
+ }
+ function opLimitFromNote(x,side){
+  const cur=String((side==='min'?x.minFrom:x.maxFrom)||'');
+  if(!cur)return 'この行に書いた数をそのまま使います。';
+  const hit=opLimitSource(cur);
+  if(!hit)return `「${cur}」は今のこのアプリが知らない出どころです。選び直してください。`;
+  const eq=opState.equipment;
+  if(!eq)return `${hit.label}から引きます。上の「設備」を選ぶと、その設備でいくつになるかが出ます。`;
+  const v=hit.value;
+  if(v===null||v===undefined||v==='')
+   return `${hit.label}から引きます。${eq}には値が入っていないので、この設備では${side==='min'?'下限':'上限'}が掛かりません。`;
+  return `${hit.label}から引きます。${eq}のいまの値は ${v}${hit.unit?' '+hit.unit:''} です。`;
+ }
  function opInitialRangeNote(x){
   const raw=String(x.initial||'').trim();
   if(!raw)return '';
@@ -4885,10 +5086,13 @@
   if(!Number.isFinite(n))
    return (opFamilyOf(x)==='number')?`「${raw}」は数として読めません`:'';
   if(opFamilyOf(x)!=='number')return '';
-  const lo=(x.min===null||x.min===undefined||x.min==='')?null:Number(x.min);
-  const hi=(x.max===null||x.max===undefined||x.max==='')?null:Number(x.max);
-  if(lo!==null&&n<lo)return `最小 ${lo} を下回っています`;
-  if(hi!==null&&n>hi)return `最大 ${hi} を上回っています`;
+  /* **出どころを指定した側はそちらの値で見る**（§9.231 ②）。行に書いた
+     数で判定すると、マスタから引いた上限と食い違う警告が出る。 */
+  const lo=opLimitOf(x,'min'),hi=opLimitOf(x,'max');
+  const from=side=>{const src=opLimitSource(side==='min'?x.minFrom:x.maxFrom);
+                    return src?`（${src.label}）`:''};
+  if(lo!==null&&n<lo)return `最小 ${lo}${from('min')} を下回っています`;
+  if(hi!==null&&n>hi)return `最大 ${hi}${from('max')} を上回っています`;
   if(['整数','正の整数'].includes(x.type)&&!Number.isInteger(n))
    return '整数の項目なので小数は入りません';
   if(['正の整数','正の数'].includes(x.type)&&n<0)return '0以上の項目です';
@@ -4981,9 +5185,15 @@
                 {k:'data', n:'② 何を記録するか',t:'型・役割・選択肢'},
                 {k:'look', n:'③ どう見せるか',t:'選ばせ方・意匠'},
                 {k:'note', n:'④ メモ',t:'覚え書き'}];
+ /* **空きのカードは決めることが少ない**（§9.230 ③）。②何を記録するか・
+    ③どう見せるかは中身を持たない空きには効かないので、段ごと出さない
+    ——押しても何も無い段を並べない（§4）。 */
+ function opTabsFor(x){
+  return (x&&x.dummy)?OP_TABS.filter(o=>o.k==='place'||o.k==='note'):OP_TABS;
+ }
  function opModalTab(x){
   const t=String(opState.tab||'place');
-  return OP_TABS.some(o=>o.k===t)?t:'place';
+  return opTabsFor(x).some(o=>o.k===t)?t:'place';
  }
  /* ---------- 役割（§9.223 ①、利用者の指示） ----------
     「データの設計上必須な部分は、全体の構成上の必須項目として押さえておき、
@@ -5008,15 +5218,26 @@
   const other=cur?opRoleHolder(cur,x.id):null;
   return `<select id="opdRole">`
    +`<option value=""${cur?'':' selected'}>（役割なし・ただの記録項目）</option>`
+   /* **いま自分が担っている役割にも「担当」と書く**（§9.229 ⑥、利用者の
+      指摘「古いままの名称でリンクされています」）。`opRoleHolder`は自分を
+      除いて探すので、自分の役割の行だけ**何も添え書きが付かず**、
+      役割の名前（`コイル止め`）だけが残っていた——項目名を変えた人からは
+      「変えたのに古い名前でつながっている」としか読めない。
+      **役割の名前は変えない**（値を何として読むかの語彙で、項目名とは別）
+      ので、代わりに**いまの項目名を必ず並べて出す**。 */
    +list.map(r=>{
       const holder=opRoleHolder(r.key,x.id);
-      const tail=holder?`　※いまは「${holder.name}」が担当`:'';
-      return `<option value="${esc(r.key)}"${cur===r.key?' selected':''}>`
+      const mine=(cur===r.key);
+      const tail=mine?`　※この欄（${x.name}）が担当`
+                : holder?`　※いまは「${holder.name}」が担当`:'';
+      return `<option value="${esc(r.key)}"${mine?' selected':''}>`
        +`${esc(r.label)}${r.required?'（必須）':''}${esc(tail)}</option>`;
      }).join('')
    +`</select>`
    +`<i class="op-form-note">${cur
-      ?`この欄の値は<b>${esc((list.find(r=>r.key===cur)||{}).label||cur)}</b>として読まれます。`
+      ?`この欄（<b>${esc(x.name)}</b>）の値は`
+        +`<b>${esc((list.find(r=>r.key===cur)||{}).label||cur)}</b>として読まれます`
+        +`——<b>役割の名前は項目名とは別</b>で、項目名を変えても役割の名前は変わりません。`
         +esc((list.find(r=>r.key===cur)||{}).note||'')
         +(other?`　<b>「${esc(other.name)}」も同じ役割</b>を持っています——どちらの値が使われるか決まらないので、片方を外してください。`:'')
       :'役割を付けると、その値をアプリが決まった用途で読みます。'
@@ -5206,7 +5427,7 @@
   if(opFamilyOf(x)==='number'){
    /* **入る形は`measure-opdata.js`の1本が言う**（§9.219 ③）——見本用に
       もう1つ書くと、設定画面で見えた形と実際の形が食い違う。 */
-   const t=(window.WL&&WL.opData&&WL.opData.ruleText)?WL.opData.ruleText(x):'';
+   const t=(window.WL&&WL.opData&&WL.opData.ruleText)?WL.opData.ruleText(opRuleDef(x)):'';
    if(t)rule.push(t);
   }else if(opFamilyOf(x)==='choice'){
    const n=(opState.choices||[]).filter(c=>c.name===x.choice).length;
@@ -5309,18 +5530,28 @@
      <i class="op-form-note">同じ名前を付けると1つの見出しにまとまります。</i></span></div>
    <div class="op-form-row"><span class="op-form-label">出し方</span>
     <span class="op-form-ctl">
-     <button type="button" id="opdRequired" class="op-toggle${x.required?' is-on':''}" aria-pressed="${x.required?'true':'false'}">必須にする</button>
+     ${x.dummy?'':`<button type="button" id="opdRequired" class="op-toggle${x.required?' is-on':''}" aria-pressed="${x.required?'true':'false'}">必須にする</button>`}
      <button type="button" id="opdEnabled" class="op-toggle${x.enabled===false?'':' is-on'}" aria-pressed="${x.enabled===false?'false':'true'}">測定画面に出す</button>
      <button type="button" id="opdFold" class="op-toggle${x.fold?' is-on':''}" aria-pressed="${x.fold?'true':'false'}">この群を畳む</button>
     </span></div>
+   ${x.dummy?`
+   <div class="op-form-row is-danger"><span class="op-form-label">この空き</span>
+    <span class="op-form-ctl">
+     <button type="button" id="opdPadOff" class="ghost">ふつうの項目へ戻す</button>
+     <button type="button" id="opdDelete" class="danger ghost">この空きを削除</button>
+     <i class="op-form-note">空きは<b>幅ぶんの余白を取るだけ</b>のカードです
+      （測定画面では見出しも枠も文字も出しません）。名前・型・選ばせ方は持たないので、
+      その段は出していません。</i>
+    </span></div>`:''}
    <div class="op-form-row"><span class="op-form-label">対象設備</span>
     <span class="op-form-ctl">${opEquipmentPickHtml(x)}</span></div>
+   ${x.dummy?'':`
    <div class="op-form-row"><span class="op-form-label">開く条件</span>
     <span class="op-form-ctl">
      <span class="op-when">${opMeasureTypes().map(t=>
        `<button type="button" data-op-when="${esc(t)}" class="${(x.showWhen||[]).includes(t)?'is-on':''}">${esc(t)}</button>`).join('')
        ||'<i class="op-form-note">測定画面を開いていないので項目の一覧が出せません。</i>'}</span>
-    </span></div>
+    </span></div>`}
    ${help('「畳む」と「開く条件」はどう効くか',
      '<p>「畳む」は<b>群ぜんぶ</b>に効きます。開く条件を選ぶと、その測定項目を選んだときだけ開きます'
      +'（条件なしで畳むこともできます）。</p>')}`);
@@ -5342,13 +5573,25 @@
    <div class="op-form-row"><span class="op-form-label">数の決まり</span>
     <span class="op-form-ctl op-form-nums">
      <label>小数桁<input type="number" id="opdDecimals" min="0" max="4" value="${x.decimals==null?'':esc(x.decimals)}"></label>
-     <label>最小<input type="number" id="opdMin" step="any" value="${x.min==null?'':esc(x.min)}"></label>
-     <label>最大<input type="number" id="opdMax" step="any" value="${x.max==null?'':esc(x.max)}"></label>
+     <label>最小<input type="number" id="opdMin" step="any" value="${x.min==null?'':esc(x.min)}"${x.minFrom?' disabled':''}></label>
+     <label>最大<input type="number" id="opdMax" step="any" value="${x.max==null?'':esc(x.max)}"${x.maxFrom?' disabled':''}></label>
      <label title="ステッパーの−／＋1回ぶん、スライダーの目盛の幅">刻み<input type="number" id="opdStep" min="0" step="any" value="${x.step==null?'':esc(x.step)}"></label>
+    </span></div>
+   <div class="op-form-row"><span class="op-form-label">上下限の出どころ</span>
+    <span class="op-form-ctl op-form-froms">
+     ${opLimitFromHtml(x,'min')}
+     ${opLimitFromHtml(x,'max')}
     </span></div>
    ${help('刻みを空にするとどうなるか',
      '<p>小数桁から作ります（整数=1／小数2桁=0.01）。<b>0は「決めていない」</b>として扱います'
-     +'——0にすると押しても動かない道具になるためです。</p>')}`}
+     +'——0にすると押しても動かない道具になるためです。</p>')}
+   ${help('マスタから引くと何が変わるか',
+     '<p>「自分で決める」なら、この行に書いた数がそのまま上下限になります。'
+     +'<b>マスタを選ぶと、測定画面を開いた設備のマスタから毎回引き直します</b>'
+     +'——設備ごとに違う上限（最大ライン速度・最大条数）を、項目を設備の数だけ'
+     +'作らずに1行で持てます。マスタを直せば入力欄の上限もその場で変わります。</p>'
+     +'<p>選んだマスタに<b>値が入っていない設備では、その側の上限は掛かりません</b>'
+     +'——引けなかった値を0として扱うと、何を打っても弾かれる欄になるためです。</p>')}`}
    ${isChoice?`
    <div class="op-form-row"><span class="op-form-label">選択肢</span>
     <span class="op-form-ctl">
@@ -5370,6 +5613,9 @@
      <i class="op-form-note">${users.length?`このまとまりを使っている項目: ${esc(users.join('、'))}`
        :'このまとまりを使っている項目はまだありません'}</i>
     </span></div>`:''}
+   ${opIsOutput(x)?`
+   <div class="op-form-row"><span class="op-form-label">初期値</span>
+    <span class="op-form-ctl"><i class="op-form-note">この欄は<b>画面が値を入れます</b>ので、初期値はありません。</i></span></div>`:`
    <div class="op-form-row"><span class="op-form-label">初期値</span>
     <span class="op-form-ctl">
      <input type="text" id="opdInitial" list="opInitialList" value="${esc(x.initial||'')}"
@@ -5380,7 +5626,7 @@
        ?`<b class="op-warn-chip">候補に「${esc(x.initial)}」がありません${x.freeText?'（手打ちの値として入ります）':'——このままだと選択肢に無い値として入ります'}</b>`:''}
      ${!isChoice&&x.initial&&opInitialRangeNote(x)
        ?`<b class="op-warn-chip">${esc(opInitialRangeNote(x))}</b>`:''}
-    </span></div>
+    </span></div>`}
    ${help('初期値はいつ入るか',
      '<p><b>まだ何も記録されていない欄にだけ</b>入ります。入力の方法によらず効きます'
      +'（プルダウンでもラジオでもステッパーでも同じ）。空にした欄を開き直しても初期値へは戻りません'
@@ -5412,13 +5658,16 @@
   const paneLook=sec('どう見せるか','選ばせ方・意匠・単位の置き場（記録の中身は変わりません）',`
    <div class="op-form-row"><span class="op-form-label">選ばせ方</span>
     <span class="op-form-ctl">
+     ${opIsOutput(x)?'':`
      <span class="op-widget-grid">${opWidgetsFor(x).map(w=>`<button type="button" data-op-widget="${esc(w)}"`
        +` class="op-widget-tile${widget===w?' is-on':''}"${usable?'':' disabled'}>`
        +`<b class="op-widget-icon">${esc((OP_WIDGET_NOTE[w]||{}).icon||'')}</b>`
        +`<span class="op-widget-name">${esc(opWidgetLabel(x,w))}</span>`
        +`<span class="op-widget-demo">${opWidgetDemoHtml(x,w)}</span>`
-       +`<small class="op-widget-note">${esc((OP_WIDGET_NOTE[w]||{}).note||'')}</small></button>`).join('')}</span>
-     <i class="op-form-note">${usable
+       +`<small class="op-widget-note">${esc((OP_WIDGET_NOTE[w]||{}).note||'')}</small></button>`).join('')}</span>`}
+     <i class="op-form-note">${opIsOutput(x)
+       ?'この欄は<b>画面が値を入れます</b>（前工程の実績・計算の結果）。打ち込む欄ではないので、選ばせ方はありません。<b>決められるのは名前・出す/出さない・並び・幅・単位・意匠</b>です。'
+       :usable
        ?'見本は<b>本物の部品</b>なので、押して確かめられます。'
        :'この型で選べる形は1つだけです。'}${
        opFamilyOf(x)==='number'?'　数値の欄は<b>打つこともできる</b>まま——道具は隣に足すだけです。':''}${
@@ -5438,7 +5687,7 @@
       同じ判断を2度しなくて済みます。</i></span></div>`);
   const panes={place:paneWhere,data:paneWhat,look:paneLook,note:paneNote};
   $('#opModalForm').innerHTML=panes[tab]||paneWhere;
-  $('#opModalTabs').innerHTML=OP_TABS.map(t=>
+  $('#opModalTabs').innerHTML=opTabsFor(x).map(t=>
     `<button type="button" role="tab" data-op-tab="${esc(t.k)}"`
     +` class="op-tab${tab===t.k?' is-on':''}" aria-selected="${tab===t.k?'true':'false'}">`
     +`<b>${esc(t.n)}</b><span>${esc(t.t)}</span></button>`).join('');
@@ -5507,8 +5756,12 @@
    ctl=document.createElement('input');ctl.type='text';
    if(fam==='number'){
     ctl.className='numeric-input';ctl.inputMode='decimal';
-    if(x.min!==null&&x.min!==undefined&&x.min!=='')ctl.min=x.min;
-    if(x.max!==null&&x.max!==undefined&&x.max!=='')ctl.max=x.max;
+    /* **効いている上下限を渡す**（§9.231 ②）——ステッパーの端の判定と
+       スライダーの目盛がここを見るので、行に書いた数のままだと見本だけが
+       違う範囲で動く。 */
+    const eff=opRuleDef(x);
+    if(eff.min!==null&&eff.min!==undefined&&eff.min!=='')ctl.min=eff.min;
+    if(eff.max!==null&&eff.max!==undefined&&eff.max!=='')ctl.max=eff.max;
    }
    ctl.placeholder=x.unit?`0 ${x.unit}`:'';
   }
@@ -5531,7 +5784,14 @@
      判断は測定画面と同じ2つの事実の和にする（片方だけだと、設定画面で
      確かめられない設定ができる）。 */
   const previewDef={name:x.name,unit:x.unit,type:x.type,
-    decimals:x.decimals,min:x.min,max:x.max,step:x.step,
+    /* §9.231 ②。**見本にも「いま効いている」上下限を渡す**——行に書いた
+       数のまま渡すと、マスタから引く設定にした瞬間に見本だけが古い上限で
+       描かれ、設定画面で確かめた形と測定画面が食い違う（§9.221 ⑦）。 */
+    /* 出どころの呼び名も渡す——`ruleText()`は測定画面と同じ1本なので、
+       渡さないと見本だけ数字だけになる（設定画面で確かめた形と食い違う）。 */
+    decimals:x.decimals,step:x.step,
+    min:opRuleDef(x).min,max:opRuleDef(x).max,
+    minFromLabel:opRuleDef(x).minFromLabel,maxFromLabel:opRuleDef(x).maxFromLabel,
     /* **組み込みの欄でも手打ちは効く**（§9.229 ③）——値の持ち方を変えず、
        選ぶ器そのものが打てるようになるだけ。見本で確かめられること。 */
     freeText:!!x.freeText,
@@ -5648,6 +5908,12 @@
      担当か」は付け替える前に読めないと選べない。 */
   const role=$('#opdRole');
   if(role)role.onchange=()=>touch({role:role.value});
+  /* 上下限の出どころ（§9.231 ②）。**選んだら描き直す**——手打ちの欄が
+     使えなくなり、案内の文（いまの値・単位）も変わるので、押した結果が
+     その場で見えないと選べない。 */
+  form.querySelectorAll('[data-op-from]').forEach(sel=>sel.onchange=()=>{
+   touch(sel.dataset.opFrom==='min'?{minFrom:sel.value}:{maxFrom:sel.value});
+  });
   /* 意匠（§9.223 ③）。色・形・大きさの3軸。 */
   form.querySelectorAll('[data-op-look]').forEach(b=>b.onclick=()=>{
    const lk=opLookOf(x);lk[b.dataset.opLook]=b.dataset.opVal;
@@ -5666,6 +5932,17 @@
      ——出す/出さないを持っているのは①の1つだけなので、ここは
      **そこへ連れて行くだけ**。②で行き止まりにすると「外せない」と読まれる
      （実機で「一旦外すなどもできるようにしてほしい」と報告された）。 */
+  const padOff=$('#opdPadOff');
+  if(padOff)padOff.onclick=async()=>{
+   const uid=requireMaintUser();if(uid===null)return;
+   /* **切り替えは`opSetPad()`の1箇所**（右クリックのメニューと同じ道）。
+      ここで部分的なJSONを送ると、`item_upsert`は全列を書くので**送らなかった
+      設定が消える**（§9.113／§9.212 ②と同じ形）。 */
+   try{
+    await opSetPad(x.id,false,uid);
+    closeOpModal();opSay('ふつうの項目へ戻しました');
+   }catch(e){opModalSay('戻せませんでした: '+e.message,true)}
+  };
   const out=$('#opdStepOut');
   if(out)out.onclick=()=>{
    opState.tab='place';touch({});
@@ -5683,6 +5960,9 @@
   t('opdGroup','group');t('opdInitial','initial');
   n('opdDecimals','decimals');n('opdMin','min');n('opdMax','max');n('opdStep','step');
   n('opdDigits','digits');
+  /* §9.231 ②。**控えにも載せる**——タブを移った先で保存されるので、
+     ここで拾わないと出どころだけが空で上書きされる（§9.223 ②）。 */
+  t('opdMinFrom','minFrom');t('opdMaxFrom','maxFrom');
   return out;
  }
  function opDetailValues(){
@@ -5703,6 +5983,9 @@
   return {name:v('opdName','name'),type:x.type,
           decimals:num(v('opdDecimals','decimals')),min:num(v('opdMin','min')),
           max:num(v('opdMax','max')),
+          /* §9.231 ②。**必ず送る**——`item_upsert`は全列を書くので、
+             落とすと保存のたびに出どころが消える（§9.212 ②と同じ形）。 */
+          minFrom:(v('opdMinFrom','minFrom')||''),maxFrom:(v('opdMaxFrom','maxFrom')||''),
           unit:v('opdUnit','unit'),choice:v('opdChoice','choice'),
           group:v('opdGroup','group'),
           /* §9.223 ①③。役割は`<select>`から、意匠は押した結果が`x`に
@@ -5749,6 +6032,8 @@
     name:d.name||x.name,
     type:x.builtin?x.type:(d.type||'文字'),
     decimals:x.builtin?null:d.decimals,min:x.builtin?null:d.min,max:x.builtin?null:d.max,
+    /* §9.231 ②。組み込みの欄は「数の決まり」そのものを持たないので空。 */
+    minFrom:x.builtin?'':(d.minFrom||''),maxFrom:x.builtin?'':(d.maxFrom||''),
     /* **単位と見せ方は組み込みの欄にも効く**（§9.221 ⑦）。型・上下限と
        違って「ただの見せ方」なので、組み込みの欄でも押した通りになる
        ——以前は`単位`が「数の決まり」の中にあり、`選択`型と組み込みでは
@@ -6280,6 +6565,8 @@
    opState.aligns=it.aligns||opState.aligns;
    opState.valueFormats=it.valueFormats||opState.valueFormats;
    opState.unitInBlocked=it.unitInBlocked||opState.unitInBlocked;
+   /* §9.231 ②。**いまの値も一緒に来る**（選んだ設備で引き直した結果）。 */
+   opState.limitSources=it.limitSources||opState.limitSources;
    opState.layouts=it.layouts||opState.layouts;
    opState.layoutWidgets=it.layoutWidgets||opState.layoutWidgets;
    opState.typeFamilies=it.typeFamilies||opState.typeFamilies;

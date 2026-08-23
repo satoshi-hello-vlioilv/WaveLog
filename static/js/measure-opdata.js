@@ -58,7 +58,13 @@
   try{localStorage.setItem(FOLD_KEY,JSON.stringify(Object.fromEntries(foldPref)))}catch(e){}
  };
 
- const PLACE_PREP='準備',PLACE_INPUT='入力内容';
+ const PLACE_PREP='準備',PLACE_INPUT='入力内容',PLACE_MOTHER='母材';
+ /* 置き場ごとの器（§9.232）。**1箇所が答える**——`layout()`と`hostOf()`が
+    別々に器を探すと、片方だけ直した状態が作れる。 */
+ const PLACE_BOX={[PLACE_PREP]:'.selectors',[PLACE_INPUT]:'.selectors',
+                  [PLACE_MOTHER]:'.material-grid'};
+ const PLACE_ORDER=[PLACE_PREP,PLACE_INPUT,PLACE_MOTHER];
+ function boxFor(place){return document.querySelector(PLACE_BOX[place]||'.selectors')}
 
  function equipmentNow(){
   try{
@@ -258,8 +264,13 @@
   if(def.type==='選択')return '';
   if(!isNumeric(def.type))return '';
   const range=[];
-  if(def.min!==null&&def.min!==undefined&&def.min!=='')range.push(`${def.min} 以上`);
-  if(def.max!==null&&def.max!==undefined&&def.max!=='')range.push(`${def.max} 以下`);
+  /* **上下限の出どころを添える**（§9.231 ②、§CLAUDE 6）——同じ「350 以下」
+     でも、項目に書いた数と設備マスタから引いた数では直す場所が違う。
+     出どころが無ければ今までどおり数だけ（サーバーが`…FromLabel`を
+     付けたときだけ出る）。 */
+  const from=k=>{const l=def[k+'FromLabel'];return l?`（${l}）`:''};
+  if(def.min!==null&&def.min!==undefined&&def.min!=='')range.push(`${def.min} 以上${from('min')}`);
+  if(def.max!==null&&def.max!==undefined&&def.max!=='')range.push(`${def.max} 以下${from('max')}`);
   return (isInteger(def.type)?'整数':`小数${def.decimals==null?1:def.decimals}桁`)
     +(isPositive(def.type)?'・0以上':'')+(range.length?`・${range.join('／')}`:'');
  }
@@ -1237,12 +1248,19 @@
   if(def.builtin)return document.getElementById(def.builtin);
   return document.querySelector(`[data-op="${CSS.escape(def.name)}"]`);
  }
+ /* 器は置き場で変わる（§9.232。母材の欄は`.material-grid`に居る）。
+    **`.selectors`だけを見る形に戻さないこと**——見つからない欄は
+    `layout()`が「無い」として数え、黙って1つ欠ける。 */
  function hostOf(def){
-  if(def.builtin){
-   const el=document.querySelector(`.selectors>[data-f="${CSS.escape(def.builtin)}"]`);
-   return el||null;
+  const sel=def.builtin
+    ? `[data-f="${CSS.escape(def.builtin)}"]`
+    : `[data-opfield="${CSS.escape(def.name)}"]`;
+  for(const place of PLACE_ORDER){
+   const box=boxFor(place);
+   const el=box&&box.querySelector(':scope>'+sel);
+   if(el)return el;
   }
-  return document.querySelector(`.selectors>[data-opfield="${CSS.escape(def.name)}"]`);
+  return null;
  }
 
  /* ---------- 割り付け ----------
@@ -1251,27 +1269,35 @@
     しないのは、マスタで並べ替えるたびに行番号を計算し直すことになるため
     ——**見出しが行を切る**ので、自動配置でも群の境目と行の境目はずれない。 */
  function layout(){
-  const box=document.querySelector('.selectors');
-  if(!box)return;
+  /* 器は置き場ごと（§9.232）。`.selectors`が無い画面では何もしない
+     ——母材の器だけが在ることは無い（同じ測定画面の中）。 */
+  const boxes=[...new Set(PLACE_ORDER.map(boxFor).filter(Boolean))];
+  if(!boxes.length)return;
   /* 前回の割り付けを外してから始める（§9.210 ④と同じ約束——付いたまま
      測る・置くと、1回変えた形が二度と戻らない）。 */
-  box.querySelectorAll('[data-opgen]').forEach(el=>el.remove());
-  box.querySelectorAll('[data-f]').forEach(el=>{
-   el.classList.remove('op-off','op-folded','op-required');
-   el.style.order='';el.style.gridColumn='';el.style.gridRow='';
-   delete el.dataset.opplace;delete el.dataset.opgroup;delete el.dataset.opfill;
+  boxes.forEach(bx=>{
+   bx.querySelectorAll('[data-opgen]').forEach(el=>el.remove());
+   bx.querySelectorAll('[data-f]').forEach(el=>{
+    el.classList.remove('op-off','op-folded','op-required');
+    el.style.order='';el.style.gridColumn='';el.style.gridRow='';
+    delete el.dataset.opplace;delete el.dataset.opgroup;delete el.dataset.opfill;
+   });
+   bx.style.setProperty('--op-cols',String(gridCols));
   });
-  box.style.setProperty('--op-cols',String(gridCols));
   /* **マスタが名指ししている組み込みの欄だけを差配する。** 作業時間・
      丈位置・入力内容はマスタに載せていない（②で使う道具・③で記録する
      もの）ので、今までどおりCSSの見せ分けに任せる。 */
   const off=new Set(builtinOff||[]);
   off.forEach(key=>{
-   const el=document.querySelector(`.selectors>[data-f="${CSS.escape(key)}"]`);
+   /* **器をまたいで探す**（§9.232）——`.selectors`だけを見ると、外した
+      母材の欄が測定画面に出たままになる。 */
+   const el=hostOf({builtin:key});
    if(el)el.classList.add('op-off');
   });
   let seq=0,missing=[];
-  [PLACE_PREP,PLACE_INPUT].forEach(place=>{
+  PLACE_ORDER.forEach(place=>{
+   const box=boxFor(place);
+   if(!box)return;
    const gs=groupsFor(place);
    /* 群を「列でも区切る」（§9.226 ③）。**幅を決めた群があるときだけ**
       マスを明示する（`banded`）——無いときは今までどおり`order`で流す。 */
@@ -1412,7 +1438,10 @@
      IIFEの中なので、外からは見えない。 */
   syncWidgets();
   if(window.WL&&WL.measureSteps&&WL.measureSteps.fitWidths)WL.measureSteps.fitWidths();
-  rememberCellPx(box);
+  /* 1マスの実寸は**①準備のカード**で測る（§9.226 ①）。設定窓の見本は
+     あの器の中の見え方を写すので、母材の器（`.material-grid`）で測ると
+     縮尺が違う。 */
+  rememberCellPx(boxFor(PLACE_PREP));
  }
  /* ---------- 1マスの実寸を覚える（§9.226 ①） ----------
     マスタの設定窓は「測定画面での見え方」を見せるが、**そこには測定画面が
@@ -1423,6 +1452,7 @@
     書かない**——古い値のほうが「何も無い」より当たる。 */
  const CELL_KEY='MeasureOpCellPxV1';
  function rememberCellPx(box){
+  if(!box)return;
   try{
    const t=getComputedStyle(box).gridTemplateColumns.split(/\s+/).filter(Boolean);
    if(t.length!==gridCols)return;
@@ -1577,7 +1607,7 @@
     自由項目に打っている最中に消えるのは同じくらい困る）。 */
  let foldSig='';
  function currentFoldSig(){
-  return [PLACE_PREP,PLACE_INPUT]
+  return PLACE_ORDER
    .map(pl=>groupsFor(pl).map(g=>g.name+(isFolded(g)?':1':':0')).join(','))
    .join('|');
  }
@@ -1605,7 +1635,28 @@
  function previewWidget(def,host,kind){
   try{return buildWidget(def,host,kind)}catch(e){console.warn('見本を作れませんでした',e);return false}
  }
+ /* 母材の欄のうち**いま測定画面に出ているもの**（§9.232）。進捗の分母は
+    これで数える——外した欄まで数えると「どう頑張っても埋まらない1件」が
+    残る（§9.227 ③と同じ罠）。**読めないうちは`null`**を返し、呼ぶ側が
+    今までどおりの8欄へ倒す（黙って0件にすると進捗が消える）。 */
+ function motherKeys(){
+  if(!defs.length)return null;
+  const off=new Set(builtinOff||[]);
+  const out=[];
+  defs.forEach(d=>{
+   if((d.place||PLACE_PREP)!==PLACE_MOTHER||!d.builtin)return;
+   if(off.has(d.builtin)||d.enabled===false)return;
+   /* **記録の鍵は欄そのものが持つ**（`data-mother`）。参考値の欄は
+      `<output>`で鍵を持たないので、ここで自然に落ちる——族の名前で
+      振り分けると、判定が2箇所になる。 */
+   const el=document.getElementById(d.builtin);
+   const k=el&&el.dataset&&el.dataset.mother;
+   if(k)out.push(k);
+  });
+  return out.length?out:null;
+ }
  WL.opData={load,layout,render:layout,refresh,apply,collect,values,filled,requiredControls,
+            motherKeys,
             syncAutoOpen,syncWidgets,previewWidget,ruleText,
             /* 見せ方を当てる口（§9.221 ⑦）。**当てるのはこの1本**——設定窓の
                見本も測定画面もここを通るので、形が食い違わない。 */

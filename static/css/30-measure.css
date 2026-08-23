@@ -1982,22 +1982,28 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    同居し、他パネルの見出しバーも黄・水色・灰とばらばらだった。
    「情報カードの下地(--card-bg)」「区分見出しバー(--header-bar-bg)」
    「自動計算値の強調(--computed-bg)」の3役割に色相を集約する。 */
-/* 母材は**役割で組む**（§9.160、利用者の指示「グルーピングや表示方法を工夫して」）。
-   8つの欄が意味なく4×2で並んでいたため、「手計算」と「MIN」が隣り合い、
-   実績とカード指示の区別が名前（"前オフ"と"前オフ指示"）だけに載っていた。
-   縦＝何の値か（全長／オフセット）、横＝どこから来た値か（実績／カード指示）
-   の2軸にすると、欄の名前は短くなり、見出しが違いを引き受ける。 */
-.material-grid{display:grid;grid-template-columns:max-content repeat(4,max-content);
-  gap:var(--space-2);padding:var(--space-2);background:var(--card-bg);
+/* 母材は**操業データの項目**（§9.232、利用者の指示「測定画面の入力内容の
+   母材の部分も汎用設定で作った形にしたい」）。11欄は画面に焼き付いていた
+   ——名前も、出す/出さないも、並びも、幅も変えられなかった。
+   器は①準備のカード（`.selectors`）と**同じ12マスのグリッド**で、群
+   （全長／オフセット／自動で出る値）が見出しになる。
+   §9.160の2軸（縦＝何の値か・横＝どこから来た値か）は**群と名前が引き継ぐ**
+   ——「前オフ」が2箇所にあった曖昧さは、名前を分けて消してある（§9.113）。
+   **`grid-template-columns`をここへ直書きしないこと**——マス数はJSが
+   `--op-cols`で入れる（`.selectors`と同じ約束）。 */
+.material-grid{display:grid;grid-template-columns:repeat(var(--op-cols,12),minmax(0,1fr));
+  gap:var(--gap-inline);padding:var(--space-2);background:var(--card-bg);
   border:1px solid var(--card-border);border-top:0;border-radius:0 0 var(--radius-card) var(--radius-card);
-  justify-content:start}
-/* 見出しは2種類だけ。**枠を足さずに**、行の名前は左列・列の名前は上段へ置く。 */
-.material-grid>.mg-head{color:var(--ink-3);font-size:var(--fs-micro);font-weight:800;letter-spacing:.04em;align-self:end}
-.material-grid>.mg-head:nth-of-type(1){grid-column:2/4}
-.material-grid>.mg-head:nth-of-type(2){grid-column:4/6}
-.material-grid>.mg-row-head{grid-column:1;align-self:center;color:var(--ink-2);font-size:var(--fs-sm);font-weight:800;white-space:nowrap}
-/* 実績とカード指示の境目は**線1本**（面や枠で囲うと入力欄の枠と二重になる）。 */
-.material-grid>.mg-card-first{border-left:1px dashed var(--line-mid);padding-left:var(--space-3)}
+  align-items:start}
+/* 群の見出し（`layout()`が置く）。①準備の見出しと同じ形にそろえる
+   ——同じ仕組みで並ぶものが画面ごとに違う見え方だと、揃っていないと読まれる。 */
+.material-grid>.prep-head{display:flex;align-items:baseline;gap:var(--space-2);
+  grid-column:1/-1;min-height:var(--ctl-h-xs);margin:var(--space-1) 0 0;
+  padding:var(--space-1) 0 0;border:0;border-top:1px dashed var(--line-soft);
+  background:transparent;color:var(--ink-2);font-size:var(--fs-sm);font-weight:800;text-align:left}
+.material-grid>.prep-head[data-opfirst]{margin-top:0;padding-top:0;border-top:0}
+/* 外した欄・空きのカード（§9.228 ②）。`.selectors`と同じ扱い。 */
+.material-grid>.op-off{display:none}
 /* 項目名は折り返してよい。「屑幅（両耳合計）」のような長い名前を nowrap で
    1行に押し込んでいたため、既定サイズですら枠から3px溢れ(特大では28px)、
    しかもスクロールできる先祖が無いので**読めないまま切れていた**。
@@ -2007,7 +2013,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .material-grid label{display:grid;grid-template-rows:1fr var(--ctl-h);align-items:end;font-size:var(--fs-sm);line-height:1.25}
 /* 母材の数値欄は3桁ほど。器の1マス(346px)へ伸ばさない（§9.130）。
    幅は規格から選ぶ（§9.131）。 */
-.material-grid input{width:100%;max-width:var(--w-sm);height:var(--ctl-h)}
+.material-grid input{width:100%;height:var(--ctl-h)}
 /* **角は1種類にそろえる**（§9.208 ②、利用者の指示「四角の入力欄はすべて
    丸角の入力欄に統一」）。自動で出る値の枠だけが直角で、隣に並ぶ入力欄
    （`--radius-sm`）と形が違って見えていた。 */
@@ -2016,8 +2022,6 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 /* 自動で出る値は**1行にまとめる**（§9.160）。手で入れる欄と同じ行に混ざると、
    どこまで埋めれば終わりなのかが読み取れない。幅は規格へそろえる（§9.131）
    ——3枚とも同じ幅にすると右端がそろい、値の位置が列として読める。 */
-.mother-auto-row{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:var(--space-2)}
-.mother-auto-row>label{width:var(--w-md);max-width:100%}
 .mother-auto-field{background:var(--computed-bg);border:1px solid #9cd6ce;border-radius:var(--radius-sm);padding:2px 4px}
 .mother-auto-field output{background:#fff;color:var(--computed-fg)}
 .mother-auto-field output.scrap-width-warn{background:var(--invalid-bg);color:var(--invalid);font-weight:800}
@@ -2277,6 +2281,21 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .opf{--opf-h:var(--ctl-h-sm);--opf-fs:var(--fs);--opf-radius:var(--radius-sm)}
 .measure-shell .selectors>label{--opf-h:var(--ctl-h-sm);--opf-fs:var(--fs);
   --opf-radius:var(--radius-sm)}
+/* ---------- 素の欄も器の高さを読む（§9.229 ⑥、利用者の指示） ----------
+   「汎用UIの高さは揃えたいです。見た目がそろわないです。」
+   選ばせ方の部品は`--opf-h`（30px）を読むが、**素の`<input>`と`<select>`は
+   `00-base.css`の`padding:7px`＋14pxの文字で約33px**だった。1枚のカードに
+   3px違うものが混ざると、1つずつは正しくても列がそろわない（§9.90）。
+   **器が宣言した高さを素の欄にも配る**ので、意匠の「大きさ」の軸も
+   そのまま効くようになる。チェックボックスとラジオは形が意味を持つ部品
+   なので触らない（§9.197の`.mm-field`と同じ理由）。 */
+.measure-shell .selectors>label>input:not([type=checkbox]):not([type=radio]),
+.measure-shell .selectors>label>select,
+.opf>input:not([type=checkbox]):not([type=radio]),
+.opf>select{
+  height:var(--opf-h,var(--ctl-h-sm));min-height:var(--opf-h,var(--ctl-h-sm));
+  padding:0 var(--space-2);
+}
 .opf-native-off{
   position:absolute;width:1px;height:1px;padding:0;margin:0;border:0;
   opacity:0;pointer-events:none;overflow:hidden;
@@ -2341,18 +2360,26 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
   gap:0;padding:2px;border-radius:var(--opf-radius,var(--radius-sm));
   background:var(--surface-2);border:1px solid var(--line-soft);
 }
-/* 中の札は器より1段小さい角丸にする（同じ値だと角で線が二重に見える）。 */
-.opf-seg-btn{flex:1 1 0;border-radius:calc(var(--opf-radius,var(--radius-sm)) - 2px)}
+/* 中の札は器より1段小さい角丸にする（同じ値だと角で線が二重に見える）。
+   **高さは器の内寸ぶんだけ引く**（§9.229 ⑥、利用者の指示「汎用UIの高さは
+   揃えたいです。見た目がそろわないです」）——器が`padding:2px`と`border:1px`を
+   持つので、札に`--opf-h`をそのまま与えると**セグメントだけ6px背が高くなる**。
+   トグルは最初からこの引き算をしていたので、そこと同じにする。 */
+.opf-seg-btn{
+  flex:1 1 0;min-height:calc(var(--opf-h,var(--ctl-h-sm)) - 6px);
+  border-radius:calc(var(--opf-radius,var(--radius-sm)) - 2px);
+}
 .opf-seg-btn:hover{color:var(--ink)}
- /* **白い札は「浮いて」いないと読めない**（§9.229 ②）。§9.227 ①で影を
-    全部落としたが、セグメントだけは面の色が地（`--surface-2`）とほぼ同じ
-    白なので、影が無いと「1マスだけ少し明るい」以上のことを語らない
-    ——利用者の言う「白背景に白配色」がここ。**影は3つ目の合図ではなく
-    「面の描き方」**（浮いた札1枚で1つ）で、見本の絵も最初からこう描いて
-    いる。太字は落とす（面＋文字色で2つ）。 */
+/* **選んだ札は設定色で塗る**（§9.229 ⑥、利用者の指示「セグメントは選んだ
+   部分が白なのでわかりにくく、設定色との連携もないので色も連携でき、
+   カスタム性を損なわないように」）。§9.229 ②では「白い札＋影」で浮かせたが、
+   **地（`--surface-2`）も白系なので差が弱く、色の軸も効かなかった**。
+   いまは塗り＋白文字で、色を選べばそのまま効く。
+   **トグルと同じ塗りになるが、形の違いは器が語る**——セグメントは
+   `flex:1 1 0`で**器いっぱいを等分**、トグルは中身なりの幅で並ぶ。
+   選ぶ状況（3〜4択の切り替え／2択の入切）も違う（§9.220 ①）。 */
 .opf-seg-btn.is-on{
-  background:var(--surface);color:var(--teal-dark);
-  box-shadow:0 1px 2px rgba(15,32,39,.16);
+  background:var(--opf-hue,var(--teal));color:#fff;
 }
 /* --- タブ: 下線だけ。面を持たない --- */
 /* **選んだ札は面を持つ**（§9.229 ②、利用者の指示「白背景に白配色で、淵だけ
@@ -2365,6 +2392,8 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
    数えない。当たりも広げる（以前は左右4pxで、下線が文字幅ぶんしか無かった）。 */
 .opf-tabs .opf-shape{gap:2px;border-bottom:1px solid var(--line-mid)}
 .opf-tab-btn{
+  /* 器が下罫線1pxを持つので、札はそのぶん引く（§9.229 ⑥）。 */
+  min-height:calc(var(--opf-h,var(--ctl-h-sm)) - 1px);
   padding:0 var(--space-3);border-bottom:2px solid transparent;margin-bottom:-1px;
   border-radius:var(--opf-radius,var(--radius-sm)) var(--opf-radius,var(--radius-sm)) 0 0;
 }
@@ -2699,8 +2728,9 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
    既定と主色で別物になる**という、気づきにくい食い違いだった。 */
 [class*="opf-c-"] .opf-toggle-btn.is-on,
 [class*="opf-c-"] .opf-quick-btn.is-on{background:var(--opf-hue);border-color:var(--opf-hue);color:#fff}
-/* セグメントは面が白く浮くことが「排他」の合図。色は文字だけに効かせる。 */
-[class*="opf-c-"] .opf-seg-btn.is-on{color:var(--opf-hue-dark)}
+/* セグメントも**塗りが色の軸に乗る**（§9.229 ⑥）。素の指定が
+   `background:var(--opf-hue,...)`なので、器で`--opf-hue`が決まれば
+   ここで書き足さなくても効く——**同じことを2箇所に書かない**。 */
 [class*="opf-c-"] .opf-radio-btn.is-on .opf-dot{border-color:var(--opf-hue);
   box-shadow:inset 0 0 0 4px var(--opf-hue)}
 /* **下線は`border-bottom-color`で塗り替える**。`box-shadow`で足すと、

@@ -27,6 +27,7 @@ from ..repositories.master_repo import (
  MAX_STRIPS_COLUMN, STRIP_LIMIT, DEFAULT_MAX_STRIPS, clamp_max_strips,
  EQUIPMENT_KINDS, normalize_equipment_kind,
  STANDARD_MINUTES_MAX, normalize_standard_minutes,
+ MAX_LINE_SPEED_MAX, normalize_max_line_speed,
  # オペレータ設備マスタは**設備を消したときの後片付け**にだけ使う
  # （§9.221 ③で選択肢マスタへ移したので、読み書きの本線からは外れた）。
  ensure_operator_equipment_table,
@@ -70,10 +71,15 @@ def equipment_master_list():
             # 1ロットあたりの標準時間(分、§9.114)。未設定は空("")で返す
             # ——0を返すと「0分」という設定に見えるが、そんな作業は無い。
             'standardMinutes':('' if (len(r)<9 or normalize_standard_minutes(r[8]) is None)
-                               else normalize_standard_minutes(r[8]))} for r in rows]
+                               else normalize_standard_minutes(r[8])),
+            # 最大ライン速度(m/min、§9.231 ①)。未設定は空("")で返す
+            # ——0を返すと「上限0」という設定に見えるが、そんなラインは無い。
+            'maxLineSpeed':('' if (len(r)<10 or normalize_max_line_speed(r[9]) is None)
+                            else normalize_max_line_speed(r[9]))} for r in rows]
   return jsonify(ok=True,items=items,table=EQUIPMENT_MASTER_TABLE,created=not before,empty=len(items)==0,
                  stripLimit=STRIP_LIMIT,defaultMaxStrips=DEFAULT_MAX_STRIPS,
                  standardMinutesMax=STANDARD_MINUTES_MAX,
+                 maxLineSpeedMax=MAX_LINE_SPEED_MAX,
                  equipmentKinds=list(EQUIPMENT_KINDS),master_path=str(path))
  except Exception as e:return jsonify(error=f'設備マスタ読込失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
 
@@ -124,14 +130,14 @@ def equipment_master_register():
     cur.execute('UPDATE [設備マスタ] SET [設備名]=?,[更新者ID]=?,[更新日時]=Now() WHERE [設備ID]=?',[retired_name,uid,existing[0]])
     renamed=rename_equipment_references(c,name,retired_name)
     cur.execute('SELECT Max([表示順]) FROM [設備マスタ]');maximum=cur.fetchone()[0];order=int(maximum or 0)+10
-    cur.execute('INSERT INTO [設備マスタ] ([設備名],[区分],[最大条数],[標準時間分],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,-1,?,?,Now(),Now())',[name,normalize_equipment_kind(x.get('kind')),(None if str(x.get('maxStrips') or '').strip()=='' else clamp_max_strips(x.get('maxStrips'))),normalize_standard_minutes(x.get('standardMinutes')),order,uid,uid])
+    cur.execute('INSERT INTO [設備マスタ] ([設備名],[区分],[最大条数],[標準時間分],[最大ライン速度],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,-1,?,?,Now(),Now())',[name,normalize_equipment_kind(x.get('kind')),(None if str(x.get('maxStrips') or '').strip()=='' else clamp_max_strips(x.get('maxStrips'))),normalize_standard_minutes(x.get('standardMinutes')),normalize_max_line_speed(x.get('maxLineSpeed')),order,uid,uid])
     c.commit()
     return jsonify(ok=True,name=name,registered=True,reused=False,retiredAs=retired_name,retiredReferences=renamed,updated_by=uid,
                     message=f'「{name}」を新しい設備として登録しました。過去の設備は「{retired_name}」として履歴に残ります。')
 
    # 同名の既存行が無い場合: 通常の新規登録。
    cur.execute('SELECT Max([表示順]) FROM [設備マスタ]');maximum=cur.fetchone()[0];order=int(maximum or 0)+10
-   cur.execute('INSERT INTO [設備マスタ] ([設備名],[区分],[最大条数],[標準時間分],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,-1,?,?,Now(),Now())',[name,normalize_equipment_kind(x.get('kind')),(None if str(x.get('maxStrips') or '').strip()=='' else clamp_max_strips(x.get('maxStrips'))),normalize_standard_minutes(x.get('standardMinutes')),order,uid,uid]);c.commit()
+   cur.execute('INSERT INTO [設備マスタ] ([設備名],[区分],[最大条数],[標準時間分],[最大ライン速度],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,-1,?,?,Now(),Now())',[name,normalize_equipment_kind(x.get('kind')),(None if str(x.get('maxStrips') or '').strip()=='' else clamp_max_strips(x.get('maxStrips'))),normalize_standard_minutes(x.get('standardMinutes')),normalize_max_line_speed(x.get('maxLineSpeed')),order,uid,uid]);c.commit()
    return jsonify(ok=True,name=name,registered=True,reused=False,updated_by=uid,
                    message='設備マスタへ新規登録しました。次回から設備リストに表示されます。')
  except Exception as e:return jsonify(error=f'設備マスタ登録失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
@@ -151,7 +157,7 @@ def equipment_master_update():
    # 最大条数: 空欄は「未設定＝既定値」の意味なのでNULLへ戻す(0を入れない)。
    raw_max=str(x.get('maxStrips') or '').strip()
    max_strips=None if raw_max=='' else clamp_max_strips(raw_max)
-   cur.execute('UPDATE [設備マスタ] SET [設備名]=?,[区分]=?,[最大条数]=?,[標準時間分]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [設備ID]=?',[name,normalize_equipment_kind(x.get('kind')),max_strips,normalize_standard_minutes(x.get('standardMinutes')),uid,eid])
+   cur.execute('UPDATE [設備マスタ] SET [設備名]=?,[区分]=?,[最大条数]=?,[標準時間分]=?,[最大ライン速度]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [設備ID]=?',[name,normalize_equipment_kind(x.get('kind')),max_strips,normalize_standard_minutes(x.get('standardMinutes')),normalize_max_line_speed(x.get('maxLineSpeed')),uid,eid])
    # 設備名は他マスタ(オペレータ設備マスタ・操業データ選択肢マスタ[対象設備]等、
    # equipment_name_references()参照)から
    # 文字列で参照されているため、改名時はそちら側も追従させる(改名連動)。
@@ -1027,6 +1033,15 @@ def operation_item_list():
            # **画面へ書き写さない**——増減したときに2箇所を直すことになる。
            'places':list(op.PLACES),'spans':list(op.SPANS),'gridCols':op.GRID_COLS,
            'spanUnit':op.SPAN_UNIT,'widgets':list(op.WIDGETS),
+           # §9.231 ② 上下限の出どころの語彙。**サーバーが答える**
+           # ——画面へ書き写すと、増やしたときに2箇所直すことになる。
+           # **いまの値も一緒に返す**（§CLAUDE 6「出どころ・単位・根拠を
+           # 画面に出す」）——設定窓は「この設備だといくつになるか」を
+           # 出せないと、選んでも効いているのか分からない。設備を選んで
+           # いないときは`None`＝「まだ引けない」で、**0にしないこと**。
+           'limitSources':[{'key':k,'label':l,'unit':u,
+                            'value':(op.resolve_limit(c,k,eq) if eq and eq!='*' else None)}
+                           for k,l,u in op.LIMIT_SOURCES],
            # 見せ方の選択肢(§9.221 ⑦)。**画面へ書き写さない**——増減したときに
            # 2箇所を直すことになり、片方だけ直った状態が作れる。
            'unitPlaces':list(op.UNIT_PLACES),'aligns':list(op.ALIGNS),
@@ -1110,6 +1125,8 @@ def _operation_item_save(x):
                          dummy=x.get('dummy'),
                          # §9.228 ④ 空欄（選ばない）の札を並べないか
                          no_blank=x.get('noBlank'),
+                         # §9.231 ② 上下限の出どころ（空＝この行の数をそのまま）
+                         min_from=x.get('minFrom'),max_from=x.get('maxFrom'),
                          report=ref)
   saved=_op_read(fn)
   # **付け替えたことは黙って済ませない**（§9.226 ①）。名前を変えると

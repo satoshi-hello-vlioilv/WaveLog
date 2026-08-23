@@ -36,7 +36,7 @@ let b=null;
  const errs=[];
  page.on('pageerror',e=>errs.push(e.message.slice(0,140)));
  page.on('dialog',d=>d.accept());
- const madeIds=[],madeChoiceIds=[];let renamed=null,renamedCoil=null;
+ const madeIds=[],madeChoiceIds=[];let renamed=null,renamedCoil=null,layoutBackup=null;
  try{
   await post('/api/access-mode',{mode:'edit'});
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
@@ -184,14 +184,18 @@ let b=null;
       JSON.stringify(L));
   rec('タブの選んだ札は面を持つ（下線だけにしない）',
       !!L['タブ']&&L['タブ'].面の明るさ!=null,JSON.stringify(L['タブ']));
-  rec('セグメントの選んだ札は浮いて見える（白い面が地に沈まない）',
-      !!L['セグメント']&&L['セグメント'].影!=='none',
-      String(L['セグメント']&&L['セグメント'].影));
-  /* **選んでいない札のほうが濃いと、色を足しても差にならない**——これが
-     「変わっている感じがわかりません」の正体だった（未選択が`--ink-2`＝
-     本文とほぼ同じ濃さで、選んだ札のtealより暗かった）。 */
-  const dim=Object.entries(L).filter(([,v])=>!v||!(v.未選択の文字>v.文字+8));
-  rec('選んでいない札の文字は選んだ札より薄い（選んだほうが目立つ）',
+  /* **選んだ札は「面」か「濃い文字」のどちらかで先に立つ**（§9.229 ②⑥）。
+     面を持たない形（ラジオ・直す前のタブ）では、選んでいない札のほうが
+     濃いと色を足しても差にならない——これが「変わっている感じが
+     わかりません」の正体だった（未選択が`--ink-2`＝本文とほぼ同じ濃さで、
+     選んだ札のtealより暗かった）。面を持つ形（いまのタブ・セグメント）は
+     面が語るので、文字の濃淡は問わない。 */
+  const dim=Object.entries(L).filter(([,v])=>{
+   if(!v)return true;
+   if(v.面の明るさ!=null)return false;         // 面で示している
+   return !(v.未選択の文字>v.文字+8);           // 面が無いなら文字で示す
+  });
+  rec('選んだ札は面か濃い文字で先に立つ（選んでいない札に負けない）',
       dim.length===0,JSON.stringify(dim));
   /* **見本の絵と実物を食い違わせない**（設定画面で確かめる意味が無くなる）。 */
   const demo=await page.evaluate(()=>{
@@ -204,6 +208,81 @@ let b=null;
   });
   rec('見本の絵も実物と同じ（タブの絵にも面がある）',
       !!demo&&!/rgba\(0, 0, 0, 0\)|transparent/.test(demo.面),JSON.stringify(demo));
+
+  /* ---- 高さは器の変数がそろえる（§9.229 ⑥、利用者の指示
+         「汎用UIの高さは揃えたいです。見た目がそろわないです」） ----
+     素の`<select>`（プルダウン）を物差しにして、どの選ばせ方も同じ背丈で
+     あることを見る。**器の外寸で測る**——中の札だけ合っていても、器が
+     `padding`と`border`を持てばそのぶん背が高くなる（セグメントが6px、
+     タブが1px高かった）。カードは説明を載せる札なので**わざと1.5倍**、
+     メモ・スライダー・メーターは形が違うので対象から外す。 */
+  const HEIGHT_KINDS=['プルダウン','ラジオ','セグメント','タブ','ボタン群',
+                      '一覧','トグル','段階','入切'];
+  const hs={};
+  for(const k of kinds){
+   if(HEIGHT_KINDS.indexOf(k)<0)continue;
+   await page.click(`[data-op-widget="${k}"]`).catch(()=>{});
+   await page.waitForTimeout(300);
+   hs[k]=await page.evaluate(()=>{
+    const host=document.querySelector('.op-prev-field .opf');
+    if(!host)return null;
+    const el=host.querySelector('.opf-shape')||host.querySelector('.opf-pick-btn')
+      ||host.querySelector('.opf-switch-btn')||host.querySelector('select')
+      ||host.querySelector('input');
+    if(!el)return null;
+    const r=el.getBoundingClientRect();
+    return r.height>0?Math.round(r.height):null;
+   });
+  }
+  const hv=Object.values(hs).filter(v=>v);
+  rec('前提: 選ばせ方ごとに部品の高さを測れている',
+      hv.length>=6,JSON.stringify(hs));
+  rec('どの選ばせ方も同じ高さ（器の変数がそろえる）',
+      hv.length>0&&Math.max(...hv)-Math.min(...hv)<=2,JSON.stringify(hs));
+  /* **セグメントの選んだ札は設定色で塗る**（利用者の指示「選んだ部分が白なので
+     わかりにくく、設定色との連携もない」）。白のままだと地（`--surface-2`）と
+     ほとんど同じで差にならない。 */
+  await page.click('[data-op-widget="セグメント"]').catch(()=>{});
+  await page.waitForTimeout(300);
+  const segFill=async color=>{
+   await page.evaluate(c=>{
+    const b=document.querySelector(`[data-op-look="color"][data-op-val="${c}"]`);
+    if(b)b.click();
+   },color);
+   await page.waitForTimeout(320);
+   return page.evaluate(async()=>{
+    const bs=[...document.querySelectorAll('.op-prev-field [data-opv]')]
+      .filter(b=>b.dataset.opv!=='');
+    if(bs[0])bs[0].click();
+    /* **押した直後に色を読まないこと。** 面には`background-color .15s`の
+       遷移が掛かっているので、`getComputedStyle`は**遷移の途中の値**を返す
+       ——押した瞬間は「まだ透明」、前に選ばれていた札は「まだ塗られている」
+       と読め、塗りが効いていないように見える（実際にこれで空振りした）。 */
+    await new Promise(r=>setTimeout(r,300));
+    const on=document.querySelector('.op-prev-field .opf-seg-btn.is-on');
+    const shape=document.querySelector('.op-prev-field .opf-seg .opf-shape');
+    if(!on)return null;
+    return {面:getComputedStyle(on).backgroundColor,v:on.dataset.opv,
+            器の面:shape?getComputedStyle(shape).backgroundColor:''};
+   });
+  };
+  const colors=await page.$$eval('[data-op-look="color"]',es=>es.map(e=>e.dataset.opVal));
+  rec('前提: 色の軸が2つ以上ある（連携を比べられる）',colors.length>=2,JSON.stringify(colors));
+  /* **既定と「主色」を比べないこと**——主色は既定と同じtealなので、
+     連携していてもしていなくても同じ色になり、何も確かめないまま通る。
+     はっきり違う色（赤／青）と比べる。 */
+  const other=colors.find(c=>c==='赤')||colors.find(c=>c==='青')
+    ||colors[colors.length-1];
+  rec('前提: 既定とはっきり違う色を選べる',!!other&&other!==colors[0],String(other));
+  const segA=await segFill(colors[0]),segB=await segFill(other);
+  /* **選んだ札は設定色で塗る**（利用者の指示「選んだ部分が白なのでわかり
+     にくく、設定色との連携もない」）。**色を変えたら塗りも変わること**を
+     見る——固定色（白でもtealでも）なら必ず落ちる。 */
+  rec('セグメントの選んだ札の塗りが設定色に連動する',
+      !!segA&&!!segB&&segA.面!==segB.面,JSON.stringify([colors[0],segA,other,segB]));
+  rec('セグメントの選んだ札は器の地と同じ色にしない',
+      !!segA&&segA.面!==segA.器の面&&!/rgb\(255, 255, 255\)/.test(segA.面),
+      JSON.stringify(segA));
 
   await page.evaluate(()=>{const c=document.getElementById('opModalClose');if(c)c.click()});
   await page.waitForTimeout(300);
@@ -270,9 +349,41 @@ let b=null;
       .find(i=>i.builtin==='coilStop');
     rec('組み込みの欄の名前を窓から変えると保存される',
         !!saved&&saved.name===TAG+'-止め',JSON.stringify(saved&&saved.name));
+    /* ---- 役割の一覧にも「いまの名前」が出る（§9.229 ⑥、利用者の指摘
+           「文字の更新という部分ではプルダウンのリストに載っていないというか、
+            古いままの名称でリンクされています」） ----
+       **役割の名前は項目名とは別の語彙**（値を何として読むか）なので変えない。
+       代わりに、いま担っている欄の名前を必ず並べて出す——`opRoleHolder`は
+       自分を除いて探すので、**自分の役割の行だけ添え書きが付かず**、
+       役割の名前（`コイル止め`）だけが残っていた。 */
+    await page.evaluate(()=>{
+     const t=[...document.querySelectorAll('.op-tile')]
+       .find(e=>e.dataset.opId&&/-止め/.test(e.textContent));
+     if(t)t.click();
+    });
+    await page.waitForFunction(()=>{
+     const m=document.getElementById('opItemModal');return !!m&&!m.hidden;
+    },null,{timeout:10000}).catch(()=>{});
+    await page.evaluate(()=>{
+     const t=[...document.querySelectorAll('.op-tab')].find(x=>/記録/.test(x.textContent));
+     if(t)t.click();
+    });
+    await page.waitForTimeout(500);
+    const roleTxt=await page.evaluate(()=>{
+     const sel=document.getElementById('opdRole');
+     if(!sel)return null;
+     const o=sel.options[sel.selectedIndex];
+     return o?o.textContent.trim():null;
+    });
+    rec('役割の一覧に「いまの項目名が担当」と出る（古い名前で終わらせない）',
+        !!roleTxt&&roleTxt.indexOf(TAG+'-止め')>=0,JSON.stringify(roleTxt));
+    await page.evaluate(()=>{const c=document.getElementById('opModalClose');if(c)c.click()});
+    await page.waitForTimeout(300);
     await post('/api/operation-item-master/update',
       {...coilBefore,id:coilBefore.id,name:coilBefore.name,user_id:'tests'});
     renamedCoil=null;
+    await page.evaluate(()=>{if(window.loadOpItemMaint)loadOpItemMaint(true)}).catch(()=>{});
+    await page.waitForTimeout(700);
    }
    await page.evaluate(()=>{const c=document.getElementById('opModalClose');if(c)c.click()});
    await page.waitForTimeout(300);
@@ -338,6 +449,142 @@ let b=null;
   await page.waitForTimeout(300);
   rec('メニューは外側クリックで閉じる',
       await page.evaluate(()=>!document.querySelector('.op-menu')));
+
+  /* ==========================================================
+     2c) 盤の掴み方（§9.230、利用者の指示）
+       ①「マウスオーバーの位置がまずどの群の上にいるか、対象となる群に
+          挿入位置を表示させてください」
+       ②「右クリックで幅変更のボタンが…1/12(1マス)がない」
+       ③「空きのカードを追加しても、ダブルクリックで編集がでない」
+       ④「郡単位で移動できるようにしたいです」
+     ========================================================== */
+  /* ---- ② 1マス幅 ---- */
+  await page.click('.op-tile.is-pad',{button:'right'});
+  await page.waitForSelector('.op-menu',{timeout:8000});
+  const spans=await page.$$eval('.op-menu [data-opm-span]',es=>es.map(e=>e.dataset.opmSpan));
+  rec('右クリックの幅に1マス（1/12）がある',spans.includes('1'),JSON.stringify(spans));
+  rec('幅の刻みは増やしても多すぎない',
+      (await page.$$eval('.op-menu button',es=>es.length))<=14,'');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(250);
+
+  /* ---- ③ 空きのカードも設定窓が開く ---- */
+  await page.click('.op-tile.is-pad');
+  await page.waitForFunction(()=>{
+   const m=document.getElementById('opItemModal');return !!m&&!m.hidden;
+  },null,{timeout:8000}).catch(()=>{});
+  const padModal=await page.evaluate(()=>{
+   const m=document.getElementById('opItemModal');
+   if(!m||m.hidden)return null;
+   return {tabs:[...document.querySelectorAll('.op-tab')].map(t=>t.textContent.replace(/\s+/g,'')),
+           幅:!!document.querySelector('#opModalForm [data-op-span]'),
+           削除:!!document.getElementById('opdDelete'),
+           戻す:!!document.getElementById('opdPadOff')};
+  });
+  rec('空きのカードもクリックで設定窓が開く',!!padModal,JSON.stringify(padModal));
+  rec('空きの窓で幅・削除・ふつうの項目へ戻すができる',
+      !!padModal&&padModal.幅&&padModal.削除&&padModal.戻す,JSON.stringify(padModal));
+  /* **決めることが無い段は出さない**（§4）——空きは名前も型も選ばせ方も持たない。 */
+  rec('空きの窓に「何を記録するか」「どう見せるか」は出さない',
+      !!padModal&&!padModal.tabs.some(t=>/記録|見せ/.test(t)),
+      JSON.stringify(padModal&&padModal.tabs));
+  await page.evaluate(()=>{const c=document.getElementById('opModalClose');if(c)c.click()});
+  await page.waitForTimeout(300);
+
+  /* ---- ① 挿入位置は「カーソルの真下の物」で決める ----
+     群は横にも並べられる（§9.226 ③）ので、段だけで探すと同じ段に居る
+     **隣の群の札**の境目が選ばれてしまう。真下に物があるときはその物で
+     決める、が新しい規則。**ここで見るのは「真下の札の境目に付くこと」**
+     ——左半分なら手前、右半分なら次。 */
+  const dropInfo=await page.evaluate(()=>{
+   const grid=document.querySelector('#masterMaintList .op-board-grid');
+   if(!(window.WL&&WL.opBoard))return null;
+   const tiles=[...grid.children].filter(el=>el.classList.contains('op-tile'));
+   if(tiles.length<2)return null;
+   const out=[];
+   tiles.slice(0,4).forEach(t=>{
+    const r=t.getBoundingClientRect();
+    const left=WL.opBoard.dropAt(grid,{clientX:r.left+3,clientY:r.top+r.height/2});
+    const right=WL.opBoard.dropAt(grid,{clientX:r.right-3,clientY:r.top+r.height/2});
+    out.push({id:t.dataset.opId,
+              左:left===t,
+              右:(right===t.nextElementSibling)||(right===null&&!t.nextElementSibling),
+              群:WL.opBoard.groupAt(grid,left)});
+   });
+   return out;
+  });
+  rec('前提: 盤の札で挿入位置を測れている',
+      Array.isArray(dropInfo)&&dropInfo.length>=2,JSON.stringify(dropInfo));
+  /* **真下の札の境目に付く**（左半分＝その札の手前／右半分＝次の札の手前）。 */
+  rec('挿入位置はカーソルの真下の札の境目に付く',
+      Array.isArray(dropInfo)&&dropInfo.length>0&&dropInfo.every(x=>x.左&&x.右),
+      JSON.stringify(dropInfo));
+  /* **落とし先の群を塗る**（線だけだと帯の上下どちらか読めない）。 */
+  const painted=await page.evaluate(()=>{
+   const grid=document.querySelector('#masterMaintList .op-board-grid');
+   const bands=[...grid.children].filter(el=>el.dataset.opBand!==undefined);
+   const bd=bands[1]||bands[0];
+   let el=bd.nextElementSibling;
+   if(!el)return null;
+   const r=el.getBoundingClientRect();
+   WL.opBoard.mark(grid,WL.opBoard.dropAt(grid,{clientX:r.left+r.width/2,clientY:r.top+r.height/2}));
+   const on=[...document.querySelectorAll('.is-drop-group')];
+   const out={n:on.length,帯:on.some(e=>e.dataset.opBand===bd.dataset.opBand),
+              吹き出し:(document.querySelector('.op-drop-tag')||{}).textContent||''};
+   WL.opBoard.clearMark();
+   out.消えた=document.querySelectorAll('.is-drop-group').length===0;
+   return out;
+  });
+  rec('落とし先の群を塗って見せる（帯も含めて）',
+      !!painted&&painted.n>0&&painted.帯===true,JSON.stringify(painted));
+  rec('どの群へ入るかを文字でも出す',
+      !!painted&&/へ$/.test(String(painted.吹き出し).trim()),JSON.stringify(painted&&painted.吹き出し));
+  rec('掴むのをやめたら塗りも消える',!!painted&&painted.消えた===true,JSON.stringify(painted));
+
+  /* ---- ④ 群ごと移動 ----
+     **元の並びをAPIで控えてから動かす**（§9.121）。`opSaveLayout()`は
+     画面のDOM順をそのままマスタへ書くので、動かしたあと画面越しに戻すと
+     **保存の往復と描き直しが噛み合わずに中途半端な並びが残る**
+     ——実際に「誰が測るか」「測定表の形」が消えて`その他`になり、
+     関係の無い`test_msteps`・`test_opui`が落ちた。控えは行の並びごと持ち、
+     後片付けは必ずAPIで戻す。 */
+  {
+   const cur=await get('/api/operation-item-master?equipment='+encodeURIComponent(EQ));
+   layoutBackup=(cur.items||[]).map(i=>({id:i.id,group:i.group||'その他',
+     place:i.place||'準備',span:Number(i.span)||4,required:!!i.required,
+     enabled:i.enabled!==false,fold:!!i.fold,showWhen:i.showWhen||[]}));
+  }
+  const before4=await page.evaluate(()=>{
+   const grid=document.querySelector('#masterMaintList .op-board-grid');
+   return [...grid.children].filter(el=>el.dataset.opBand!==undefined)
+     .map(el=>el.dataset.opBand);
+  });
+  const moved=await page.evaluate(names=>{
+   const grid=document.querySelector('#masterMaintList .op-board-grid');
+   const place=grid.dataset.opPlace;
+   /* 2つ目の群を先頭へ動かす。 */
+   return WL.opBoard.moveGroup(place,names[1],names[0]);
+  },before4);
+  await page.waitForTimeout(1800);
+  const after4=await page.evaluate(()=>{
+   const grid=document.querySelector('#masterMaintList .op-board-grid');
+   return {帯:[...grid.children].filter(el=>el.dataset.opBand!==undefined)
+             .map(el=>el.dataset.opBand),
+           /* **塊で動くこと**——帯の直後はその群の札でなければならない。 */
+           塊:(()=>{
+            const kids=[...grid.children];
+            const i=kids.findIndex(el=>el.dataset.opBand!==undefined);
+            const next=kids[i+1];
+            return !!next&&next.dataset.opBand===undefined;
+           })()};
+  });
+  rec('前提: 群を2つ以上持つ盤で動かせた',before4.length>=2&&moved===true,
+      JSON.stringify({before4,moved}));
+  rec('帯を掴むと群ごと動く（並びが入れ替わる）',
+      after4.帯[0]===before4[1]&&after4.帯[1]===before4[0],
+      JSON.stringify({前:before4.slice(0,3),後:after4.帯.slice(0,3)}));
+  rec('群ごと動いても帯の下に札が付いてくる',after4.塊===true,JSON.stringify(after4));
+  /* 後始末は`finally`がAPIで戻す（画面越しに戻さない）。 */
 
   /* ---- 測定画面: 「空き」の文字がどこにも出ない ---- */
   await page.evaluate(()=>{const m=document.getElementById('masterMaintModal');if(m)m.hidden=true});
@@ -484,11 +731,24 @@ let b=null;
     await post('/api/operation-item-master/delete',{id:it.id,user_id:'tests'});
    }
   }catch(e){}
+  /* **並びと群を元へ戻す**（§9.121。`db/master.sqlite3`は実行をまたいで
+     生き延びるので、崩したまま終わると次の実行が引き継ぐ）。空きの行は
+     上で消しているので、いま在る行だけへ当てる。 */
+  try{
+   if(layoutBackup&&layoutBackup.length){
+    const now=await get('/api/operation-item-master?equipment='+encodeURIComponent(EQ));
+    const alive=new Set((now.items||[]).map(i=>String(i.id)));
+    const rows=layoutBackup.filter(r=>alive.has(String(r.id)));
+    if(rows.length)await post('/api/operation-item-master/layout',
+      {items:rows,user_id:'tests'});
+   }
+  }catch(e){}
   try{
    for(const id of madeChoiceIds){
     await post('/api/operation-choice-master/delete',{id,user_id:'tests'});
    }
   }catch(e){}
+
   if(b)await b.close();
  }
  const ok=R.filter(x=>x.ok).length;

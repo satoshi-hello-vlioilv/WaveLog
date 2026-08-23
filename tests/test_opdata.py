@@ -243,6 +243,53 @@ try:
     rec('項目名を変えると帳票ブロックの参照も付け替わる',
         ('settings.opData.' + TAG + '-改名') in body, body)
 
+    # ---- 12) 上下限の出どころ（§9.231 ②） ----
+    # **語彙はサーバーだけが持つ**（§9.163）。画面へ写すと、増やしたときに
+    # 2箇所直すことになり、片方だけ直った状態が作れる。
+    lst = get('/api/operation-item-master')
+    srcs = lst.get('limitSources') or []
+    rec('上下限の出どころの一覧をサーバーが返す',
+        [x.get('key') for x in srcs] == ['equipment.maxLineSpeed', 'equipment.maxStrips'],
+        json.dumps(srcs, ensure_ascii=False))
+    rec('出どころには呼び名と単位が付く（画面が推測しない）',
+        all(x.get('label') and x.get('unit') for x in srcs),
+        json.dumps([(x.get('label'), x.get('unit')) for x in srcs], ensure_ascii=False))
+    code, res = post('/api/operation-item-master', {
+        'name': TAG + '-上限', 'type': '正の数', 'user_id': 'tests', 'equipment': '*',
+        'group': TAG, 'max': 99, 'maxFrom': 'equipment.maxStrips'})
+    lim_id = res.get('id')
+    made_items.append(lim_id)
+
+    def lim_row():
+        for x in get('/api/operation-item-master').get('items') or []:
+            if str(x.get('id')) == str(lim_id):
+                return x
+        return {}
+
+    rec('出どころを付けて登録できる', lim_row().get('maxFrom') == 'equipment.maxStrips',
+        json.dumps(lim_row().get('maxFrom'), ensure_ascii=False))
+    # **送られてこなければ残す**。`item_upsert`は全列を書くので、部分的な
+    # JSONを送る呼び出し（盤の幅・空きの切り替えなど）が巻き添えで消す。
+    post('/api/operation-item-master/update', {
+        'id': lim_id, 'name': TAG + '-上限', 'type': '正の数', 'user_id': 'tests',
+        'equipment': '*', 'group': TAG, 'max': 99, 'note': 'メモ'})
+    rec('出どころを送らない更新では消えない（全列書き込みの巻き添えにしない）',
+        lim_row().get('maxFrom') == 'equipment.maxStrips',
+        json.dumps(lim_row().get('maxFrom'), ensure_ascii=False))
+    # **空文字は「自分で決める」**（送っていないのとは別のこと）。
+    post('/api/operation-item-master/update', {
+        'id': lim_id, 'name': TAG + '-上限', 'type': '正の数', 'user_id': 'tests',
+        'equipment': '*', 'group': TAG, 'max': 99, 'maxFrom': ''})
+    rec('空文字を送れば「自分で決める」へ戻る', lim_row().get('maxFrom') == '',
+        json.dumps(lim_row().get('maxFrom'), ensure_ascii=False))
+    # **知らない鍵は入れない**——保存できてしまうと、引けない出どころを
+    # 選んだまま「上限が掛かっているつもり」になる。
+    post('/api/operation-item-master/update', {
+        'id': lim_id, 'name': TAG + '-上限', 'type': '正の数', 'user_id': 'tests',
+        'equipment': '*', 'group': TAG, 'max': 99, 'maxFrom': 'なんでも.いい'})
+    rec('知らない鍵は保存しない', lim_row().get('maxFrom') == '',
+        json.dumps(lim_row().get('maxFrom'), ensure_ascii=False))
+
     # ---- 11) IDが無ければ断る（黙って新規を作らない） ----
     code, res = post('/api/operation-item-master/update', {'name': 'x', 'user_id': 'tests'})
     rec('更新にIDが無ければ断る', code == 400, '%s %s' % (code, res.get('error')))
