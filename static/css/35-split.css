@@ -153,13 +153,19 @@
    条を選ぶ（押した拍子に選択が変わらないように）。 */
 .split-visual-block.is-defect{
   box-shadow:inset 0 0 0 2px var(--danger);
+  /* **印は流れの中へ置く**（§9.233 ①）。以前は`position:absolute`で右上へ
+     浮かせていたため、条が細い・図が低いときに**中央のロット番号と重なって**
+     どちらも読めなくなっていた（25条だと1本29px、印は30px）。印を持つ条だけ
+     縦に積み、ラベルは残りの高さの中で中央に置く——器の幅はmmの比で
+     決まっているので、流れへ入れても図の割り付けは動かない。 */
+  flex-direction:column;gap:1px;justify-content:center;
 }
 .svb-defect{
-  position:absolute;top:2px;right:2px;z-index:2;
+  flex:0 0 auto;max-width:100%;
   padding:0 var(--space-1);border-radius:var(--radius-xs);
   background:var(--danger);color:#fff;
   font-size:var(--fs-micro);font-weight:800;line-height:1.4;
-  text-shadow:none;cursor:pointer;white-space:nowrap;
+  text-shadow:none;cursor:pointer;white-space:nowrap;overflow:hidden;
 }
 .svb-defect:hover{filter:brightness(1.1)}
 /* 帯のチップ。**判定があるときだけ**出す（無いときに空の枠を残さない）。 */
@@ -232,10 +238,16 @@
     読めなくなる。§9.222 ①と同じ話）。
    **縮む役は案内（と詳細）だけが持つ。** 器は折り返せるままにしておく
    ——極端に狭い窓では、切り落として見えなくするより2行がまし（§9.199）。 */
+/* **この行は縮ませない**（§9.233 ①、利用者の報告「『異常の印・出す』の
+   バッジが別の表示と重なる」）。`.split-visual`は縦のflexなので、既定の
+   `flex-shrink:1`のままだと**器が足りないときに行の高さだけが削られ**、
+   折り返した2行目が`overflow`を持たないまま**下の「屑幅の割り付け」へ
+   はみ出して重なる**（実測: 中身54pxに対して器30px、重なり42px）。
+   縮んでよいのは図（`.split-visual-row`は`flex:1 1 auto`）だけ。 */
 .split-visual-actions{
   display:flex;align-items:center;flex-wrap:wrap;
   gap:var(--space-2);margin-top:var(--space-3);
-  min-height:var(--ctl-h-sm);
+  min-height:var(--ctl-h-sm);flex:0 0 auto;
 }
 .split-visual-actions>:not(.split-visual-hint):not(.split-visual-detail){
   flex:0 0 auto;white-space:nowrap;
@@ -401,7 +413,16 @@
    `.split-visual`の`flex:1`は効かない**——器が中身なりの高さのままだと
    分けるべき余りがそもそも無い。 */
 #splitCard{display:flex;flex-direction:column}
-#splitCard>.split-visual{flex:1 1 auto;min-height:0}
+/* **余りは使うが、中身より小さくはならない**（§9.233 ①、利用者の報告
+   「『異常の印・出す』のバッジが別の表示と重なる」）。カードの高さは
+   `.measure-body`のグリッド行（`minmax(0,1fr)`）で頭打ちになるので、
+   `flex-shrink:1`のままだと**足りないぶんがこの塊から削られ**、中の操作行が
+   下の「屑幅の割り付け」へはみ出して重なっていた（実測: 中身156pxに対して
+   器68px、重なり76px）。`flex:1 0 auto`＝余りは取る／縮まない。入り切らない
+   ぶんはカード（`.split-pane{overflow:auto}`）がスクロールする。
+   **`flex`をここと`.split-visual`の2箇所で宣言しないこと**——効くのは
+   詳細度の高いこちらなので、あちらを直しても見た目は変わらない。 */
+#splitCard>.split-visual{flex:1 0 auto;min-height:0}
 /* 差異が多いときは**表だけ**が中でスクロールする。表そのものへ
    `display:block`を当てると行が器いっぱいに伸びなくなるので、器を1枚かぶせる。 */
 .split-diff-scroll{max-height:22vh;overflow:auto;margin-bottom:6px}

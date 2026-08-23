@@ -1049,6 +1049,16 @@ def operation_item_list():
            # 単位を重ねられない入力方法（箱が1つではない）。画面は理由を
            # 文字で出すのに使う（§4）。
            'unitInBlocked':list(op.UNIT_IN_BLOCKED_WIDGETS),
+           # 手打ちを許すと重ねられなくなる入力方法（§9.233 ④）。プルダウンは
+           # 手打ちにすると`<select>`が器の裏へ回って1pxになるので、その隣へ
+           # 重ねた単位は一度も見えない。**規則はサーバーの`unit_in_ok()`が
+           # 持ち、画面は一覧を引くだけ**（判定を2つ持たない）。
+           'unitInFreeTextBlocked':list(op.UNIT_IN_FREE_TEXT_BLOCKED),
+           # §9.233 ⑤ 自動で入る値の添え書きの置き場と、添え書きを持つ
+           # 項目の役割。**サーバーが答える**——「どの項目が添え書きを
+           # 出すのか」は仕掛からの読み込みを持っている側しか知らない。
+           'sourceNotePlaces':list(op.SOURCE_NOTE_PLACES),
+           'sourceNoteKeys':list(op.SOURCE_NOTE_KEYS),
            # 並べ方(§9.226 ①)。**効く入力方法もサーバーが答える**——画面へ
            # 写すと、並べても何も起きない設定を選ばせることになる（§4）。
            'layouts':list(op.LAYOUTS),'layoutWidgets':list(op.LAYOUT_WIDGETS),
@@ -1127,6 +1137,8 @@ def _operation_item_save(x):
                          no_blank=x.get('noBlank'),
                          # §9.231 ② 上下限の出どころ（空＝この行の数をそのまま）
                          min_from=x.get('minFrom'),max_from=x.get('maxFrom'),
+                         # §9.233 ⑤ 自動で入る値の添え書きの置き場
+                         source_note=x.get('sourceNote'),
                          report=ref)
   saved=_op_read(fn)
   # **付け替えたことは黙って済ませない**（§9.226 ①）。名前を変えると

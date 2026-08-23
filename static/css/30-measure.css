@@ -1511,9 +1511,24 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 }
 /* 値の出どころ(§6/§9.204)。**同じ数字でも、目標値と選んだ値は別物**なので、
    仕掛から入れた初期値のときだけ小さく添える（選び直したら消える）。 */
-.prep-from{display:block;max-width:100%;font-size:var(--fs-tiny);color:var(--teal-dark);line-height:1.4;
-  white-space:normal;overflow-wrap:anywhere}
+/* **折り返さない**（§9.233 ⑤、利用者の指摘「不自然な改行なども入り込み
+   表示のバランスを崩します」）。以前は`white-space:normal;overflow-wrap:anywhere`
+   だったため、①準備の1列（実測124px）で2行になり、そのぶん欄が下へずれて
+   隣と高さが揃わなかった。入らなければ省略記号——出どころそのものは
+   `title`が持つ（§6は「出どころを画面に出す」であって、列の名前を全部
+   書き写すことではない）。 */
+.prep-from{display:block;min-width:0;max-width:100%;font-size:var(--fs-tiny);
+  color:var(--teal-dark);line-height:1.4;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .prep-from[hidden]{display:none}
+/* 「名前の横」（§9.233 ⑤）。名前の器の中へ移すので、行を1つも増やさない。
+   縮んでよいのは**添え書きのほう**——名前は器の識別に要る（§9.229 ⑤）。
+   **印は移した側（JS）が付ける**——`:has()`で拾うと、当たらなかったときに
+   誰も気づけない（§9.218 ②と同じ約束）。素の`.opf-name`には当てないので、
+   母材の「屑幅（両耳合計）」のような長い名前は今までどおり折り返せる。 */
+.opf-name.is-with-note{display:inline-flex;align-items:baseline;
+  gap:var(--gap-tight);min-width:0;max-width:100%}
+.opf-name.is-with-note>.prep-from{display:inline-block;flex:0 1 auto;min-width:0}
 /* 器は列。**列の中では目いっぱい**使う（列の幅そのものを中身から決めてある）。 */
 .product-rows-table input,.product-rows-table select{width:100%;height:var(--ctl-h-sm);background:#fff}
 /* 角は入力欄と同じ`--radius-sm`（§9.208 ②）。同じ行に4pxの選択欄と8pxの
@@ -2010,14 +2025,18 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    名前の行は1frにして余った高さを使い、入力欄は各セルの下端で揃える
    (どれか1つが2行になっても、同じ段の入力欄の高さは揃う)。
    高さは表示サイズへ追随させる(36px固定だと特大で名前だけが大きくなる)。 */
-.material-grid label{display:grid;grid-template-rows:1fr var(--ctl-h);align-items:end;font-size:var(--fs-sm);line-height:1.25}
+.material-grid label{display:grid;grid-template-rows:1fr var(--opf-h,var(--ctl-h-sm));align-items:end;font-size:var(--fs-sm);line-height:1.25}
+/* 単位を**欄の上**へ出すときは段を1つ増やす（`.dense-controls label`と
+   同じ約束・§9.221 ⑦）。足さないと単位の行が入力欄の段を取り、欄が
+   高さの決まっていない段へ落ちる。 */
+.material-grid label[data-opunit^="外上"]{grid-template-rows:1fr auto var(--opf-h,var(--ctl-h-sm))}
 /* 母材の数値欄は3桁ほど。器の1マス(346px)へ伸ばさない（§9.130）。
    幅は規格から選ぶ（§9.131）。 */
-.material-grid input{width:100%;height:var(--ctl-h)}
+.material-grid input{width:100%;height:var(--opf-h,var(--ctl-h-sm))}
 /* **角は1種類にそろえる**（§9.208 ②、利用者の指示「四角の入力欄はすべて
    丸角の入力欄に統一」）。自動で出る値の枠だけが直角で、隣に並ぶ入力欄
    （`--radius-sm`）と形が違って見えていた。 */
-.material-grid output{display:flex;align-items:center;justify-content:center;width:100%;height:var(--ctl-h);border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;font-weight:700}
+.material-grid output{display:flex;align-items:center;justify-content:center;width:100%;height:var(--opf-h,var(--ctl-h-sm));border:1px solid var(--line);border-radius:var(--opf-radius,var(--radius-sm));background:#fff;font-weight:700}
 .mother-entry-note{grid-column:1/-1;padding:var(--pad-row);border-radius:var(--radius-sm);border:1px solid var(--card-border);border-left:3px solid var(--teal);background:#fff;color:var(--header-bar-fg);font-weight:700}
 /* 自動で出る値は**1行にまとめる**（§9.160）。手で入れる欄と同じ行に混ざると、
    どこまで埋めれば終わりなのかが読み取れない。幅は規格へそろえる（§9.131）
@@ -2108,10 +2127,19 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .flatness-entry textarea{height:60px;resize:vertical}
 .measure-status-group{display:flex;align-items:center;gap:var(--gap-inline)}
 .measure-status-group button{height:24px;padding:0 var(--ctl-pad-x-xs);white-space:nowrap;border:1px solid #b7c7cc;background:#fff;border-radius:var(--radius-xs);cursor:pointer;font-weight:700}
-.flat-pick-group{display:flex;align-items:center;gap:var(--space-1);padding:var(--pad-chip);border:1px solid #b7c7cc;border-radius:var(--radius-xs);background:#f7fafb}
-.flat-pick-label{font-size:var(--fs-micro);color:#60747b;white-space:nowrap}
-.flat-pick{height:22px;min-width:22px;padding:0 var(--ctl-pad-x-xs);border:1px solid #b7c7cc;background:#fff;border-radius:var(--radius-xs);cursor:pointer;font-weight:800}
+/* ---------- フラットネスの一括入力（§9.233 ④、利用者の指示） ----------
+   **見出しは1行**（§9.210 ①）。以前は「現在の条へ入力」の文字と器の枠・
+   余白で約200px使っており、フラットネスだけ見出しが2行になっていた
+   （実測: 1680pxで60px・表示サイズ「大」では1920pxでも65px、他の項目は26px）。
+   説明は`title`／`aria-label`へ移し、**記号のボタンだけ**を並べる
+   ——押すと入る値そのものが書いてあるので、押す前に何が起きるかは読める。
+   高さは行の中の部品なので`--row-ctl-h`ではなく見出しの1行に収まる22px。 */
+.flat-pick-group{display:flex;align-items:center;gap:2px;flex:0 0 auto}
+.flat-pick{height:22px;min-width:22px;padding:0 var(--ctl-pad-x-xs);border:1px solid #b7c7cc;background:#fff;border-radius:var(--radius-xs);cursor:pointer;font-weight:800;white-space:nowrap}
 .flat-pick:hover{background:var(--teal);color:#fff;border-color:var(--teal)}
+/* 「いまの条」と「全条」の境目は**線1本**（器を2つに分けると隙間と枠が増える）。 */
+.flat-pick-sep{width:1px;height:16px;margin:0 2px;background:var(--line-mid)}
+.flat-pick-all{padding:0 var(--space-1)}
 .quality{margin-top:8px}
 .quality h3{font-size:var(--fs-title)}
 .quality textarea{width:100%;height:auto;white-space:pre-wrap;resize:none}
@@ -2194,7 +2222,10 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
   grid-row:2;grid-column:1;justify-self:end;align-self:center;
   margin:0 var(--space-2) 0 0;pointer-events:none;color:var(--muted);
 }
+/* **`<output>`も同じマスへ**（§9.233 ②）。挙げ忘れると自動配置が次の段へ
+   回し、単位だけが1段上に浮く（母材の参考値で実際にそうなっていた）。 */
 [data-opunit="内部"]>select,
+[data-opunit="内部"]>output,
 [data-opunit="内部"]>input:not([type=checkbox]):not([type=radio]){grid-row:2;grid-column:1}
 /* **段だけでなく列も明示する。** 段だけを揃えても、自動配置は同じ段の
    **次の列**へ回すので、欄と単位は隣どうしに並ぶだけで重ならない
@@ -2202,18 +2233,28 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
    名前も同じ列へ固定する——これが無いと器（測定画面／設定窓の見本）で
    子の並びが少し違うだけで名前が2段目へ回り込む。 */
 [data-opunit="内部"]>.opf-name{grid-row:1;grid-column:1}
-/* 重ねたぶんの逃げ場を欄の右に空ける。**器いっぱいに広げる**——右端が
-   器の右端と一致していないと、単位だけが欄の外に浮いて見える。
-   プルダウンは右端に▼の場所（実測16px）が要るので、そのぶん内側へ寄せる。 */
+/* ---------- 逃げ場は「器の変数」で配る（§9.233 ③、利用者の指摘） ----------
+   「追加したばかりの『母材』のところだけ、単位を内部に入れ込んで設定した
+    ときにデータ入力を右寄せにすると単位と被ってしまいます」
+
+   以前はここが**器ごとにセレクタを書き分けて**いた（`.selectors`と
+   設定窓の見本の2つ）。母材は器の名前が違う（`.material-grid`）ので
+   1つも当たらず、**値が単位の上へ乗っていた**。器を1つ足すたびに書き足す
+   作りだと、足し忘れた器だけが静かに壊れる。
+   いまは`applyPresentation()`が`--opf-pad-r`を器へ渡し、下の「素の欄も器の
+   高さを読む」1本がそれを使う。▼の場所（実測16px）が要るかどうかは
+   **いま見えている操作面**でしか分からないので、幅の判断はJSが持つ。
+   ここで書くのは**器いっぱいに広げること**だけ——右端が器の右端と一致して
+   いないと、単位だけが欄の外に浮いて見える。 */
 .measure-shell .selectors>label[data-opunit="内部"]>input:not([type=checkbox]):not([type=radio]),
-.op-prev-field .opf[data-opunit="内部"]>input{
-  max-width:none;width:100%;padding-right:calc(var(--opf-unit-w,2ch) + var(--space-4));
-}
 .measure-shell .selectors>label[data-opunit="内部"]>select,
-.op-prev-field .opf[data-opunit="内部"]>select{
-  max-width:none;width:100%;padding-right:calc(var(--opf-unit-w,2ch) + var(--space-4) + 16px);
-}
+.opf-host[data-opunit="内部"]>input:not([type=checkbox]):not([type=radio]),
+.opf-host[data-opunit="内部"]>select,
+.opf-host[data-opunit="内部"]>output,
+.op-prev-field .opf[data-opunit="内部"]>input,
+.op-prev-field .opf[data-opunit="内部"]>select{max-width:none;width:100%}
 .measure-shell .selectors>label[data-opunit="内部"]>select~.opf-unit-in,
+.opf-host[data-opunit="内部"]>select~.opf-unit-in,
 .op-prev-field .opf[data-opunit="内部"]>select~.opf-unit-in{margin-right:calc(var(--space-2) + 16px)}
 /* 値の寄せ。**`自動`のときは何も宣言しない**（今までどおり）。
    §9.208 ③で`input[type="text"]{text-align:left}`を`:not(.numeric-input)`で
@@ -2224,6 +2265,12 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .op-prev-field [data-opalign="中央"]>select,.op-prev-field [data-opalign="中央"]>input{text-align:center}
 .measure-shell [data-opalign="右"]>select,.measure-shell [data-opalign="右"]>input,
 .op-prev-field [data-opalign="右"]>select,.op-prev-field [data-opalign="右"]>input{text-align:right}
+/* **自動で入る値（`<output>`）は`display:flex`**（§9.233 ②）。中身は
+   1つの文字列なので`text-align`では動かない——寄せは`justify-content`で
+   当てる。以前は寄せのボタンだけが押しても何も起きなかった。 */
+.opf-host[data-opalign="左"]>output{justify-content:flex-start}
+.opf-host[data-opalign="中央"]>output{justify-content:center}
+.opf-host[data-opalign="右"]>output{justify-content:flex-end}
 .opf-req{
   margin-left:var(--gap-tight);padding:0 4px;border-radius:var(--radius-xs);
   background:var(--required-bg);color:var(--required);
@@ -2281,6 +2328,12 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .opf{--opf-h:var(--ctl-h-sm);--opf-fs:var(--fs);--opf-radius:var(--radius-sm)}
 .measure-shell .selectors>label{--opf-h:var(--ctl-h-sm);--opf-fs:var(--fs);
   --opf-radius:var(--radius-sm)}
+/* `opf-host`＝**マスタが差配している欄**（§9.233 ③）。器の名前で書き分けると
+   器を1つ足すたびに書き足すことになり、足し忘れた器だけが静かに壊れる
+   （母材が実際にそうだった——意匠の「大きさ」も単位の逃げ場も効かなかった）。
+   意匠の軸（`.opf-z-*`）は**この後ろで**同じ変数を上書きするので、
+   詳細度が同じでも後勝ちで効く。 */
+.opf-host{--opf-h:var(--ctl-h-sm);--opf-fs:var(--fs);--opf-radius:var(--radius-sm)}
 /* ---------- 素の欄も器の高さを読む（§9.229 ⑥、利用者の指示） ----------
    「汎用UIの高さは揃えたいです。見た目がそろわないです。」
    選ばせ方の部品は`--opf-h`（30px）を読むが、**素の`<input>`と`<select>`は
@@ -2291,10 +2344,28 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
    なので触らない（§9.197の`.mm-field`と同じ理由）。 */
 .measure-shell .selectors>label>input:not([type=checkbox]):not([type=radio]),
 .measure-shell .selectors>label>select,
+.opf-host>input:not([type=checkbox]):not([type=radio]),
+.opf-host>select,
+.opf-host>output,
 .opf>input:not([type=checkbox]):not([type=radio]),
 .opf>select{
   height:var(--opf-h,var(--ctl-h-sm));min-height:var(--opf-h,var(--ctl-h-sm));
-  padding:0 var(--space-2);
+  /* 右の余白だけ変数（§9.233 ③）。単位を欄の中へ重ねたとき、値が単位に
+     乗らないだけの逃げ場を`applyPresentation()`が測って渡す。 */
+  padding:0 var(--opf-pad-r,var(--space-2)) 0 var(--space-2);
+}
+/* ---------- 自動で入る値の見せ方（§9.233 ①、利用者の指示） ----------
+   「自動で入る値についても、選んで設定できるようにしてください」
+   値を入れるのは画面（前工程の実績・計算の結果）なので**器は被せない**
+   ——押せる部品にすると、押しても何も起きない（§4）。選べるのは
+   「どう見えるか」だけ。 */
+.opf-host[data-opout="文字だけ"]>output{
+  border-color:transparent;background:transparent;padding-left:0;font-weight:700;
+}
+.opf-host[data-opout="強調"]>output{
+  font-size:var(--opf-fs,var(--fs));font-weight:800;
+  border-color:var(--opf-hue,var(--teal));color:var(--opf-hue-dark,var(--teal-dark));
+  background:color-mix(in srgb,var(--opf-hue,var(--teal)) 8%,#fff);
 }
 .opf-native-off{
   position:absolute;width:1px;height:1px;padding:0;margin:0;border:0;

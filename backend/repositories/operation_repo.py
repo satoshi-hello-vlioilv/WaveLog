@@ -139,10 +139,17 @@ WIDGET_SELECT = 'プルダウン'
 #              （正確に打ちたいが、規格の中かどうかも見たいとき）
 #   定型文   … 1行入力＋よく使う語句のボタン（自由記述）
 #              （まとまりを指しておくと、その値が語句として並ぶ）
+# §9.233 ②（利用者の指示「自動で入る値についても、選んで設定できるように
+# してください」「自動で入る値の場合、単位設定や外観変更などしても変更が
+# 効かないものが多いです」）。**画面が値を入れる欄にも見せ方を持たせる**
+# ——値を選ぶ道具は要らないが、「枠つき／文字だけ／目立たせる」の3つは選べる。
+#   文字だけ … 枠も地も持たない。参考値を控えめに置きたいとき
+#   強調     … 意匠の色で塗る。読み落としたくない値
 WIDGETS = (WIDGET_SELECT, 'ラジオ', 'セグメント', 'タブ', 'ボタン群', '一覧',
            'カード', 'トグル', '段階', '入切',
            'ステッパー', 'スライダー', 'キーパッド', '早見ボタン', 'メーター',
-           'メモ', '1行', '定型文')
+           'メモ', '1行', '定型文',
+           '文字だけ', '強調')
 # 選択肢を持つ型。判定はここ1箇所。
 CHOICE_TYPES = ('選択',)
 NUMBER_TYPES = ('整数', '正の整数', '数値', '正の数')
@@ -156,10 +163,11 @@ WIDGET_FAMILIES = {
     'number': (WIDGET_SELECT, 'ステッパー', 'スライダー', 'キーパッド', '早見ボタン',
                'メーター'),
     'text': (WIDGET_SELECT, 'メモ', '1行', '定型文'),
-    # 画面が値を入れる欄（§9.232）。**選ばせ方は1つも無い**——値を打つ道具を
-    # 出しても押せるだけで何も起きない（§4）。決められるのは名前・出す/出さない・
-    # 並び・幅・単位・意匠だけ。
-    'output': (),
+    # 画面が値を入れる欄（§9.232／§9.233 ②）。値を**選ぶ**道具は要らないが、
+    # **どう見せるか**は選べる（利用者の指示「自動で入る値についても、選んで
+    # 設定できるように」）。`プルダウン`はどの族でも「標準の欄」の意味なので、
+    # ここでは「枠つき」として振る舞う。
+    'output': (WIDGET_SELECT, '文字だけ', '強調'),
 }
 
 # ---------------------------------------------------------------------------
@@ -266,11 +274,60 @@ UNIT_PLACE_IN = '内部'
 UNIT_PLACE_DEFAULT = '外下左'
 UNIT_PLACES = ('外上左', '外上中央', '外上右', UNIT_PLACE_IN,
                '外下左', '外下中央', '外下右', UNIT_PLACE_HIDE)
-# 単位を重ねられない入力方法（箱が1つではない）。
-UNIT_IN_BLOCKED_WIDGETS = ('ラジオ', 'セグメント', 'タブ', 'ボタン群', '一覧',
-                           'カード', 'トグル', '段階', '入切',
-                           'ステッパー', 'スライダー', 'キーパッド', '早見ボタン',
-                           'メモ')
+# 単位を重ねられる入力方法＝**箱が1つのもの**だけ（§9.233 ④、利用者の報告
+# 「選択したUIによっては、単位の位置のずれや単位が出ないということがある」）。
+# 以前は「重ねられない側」を手で並べており、`メーター`・`1行`・`定型文`が
+# 抜けていた——器を被せる欄では欄そのものが1pxへ落ちるので、重ねた単位が
+# **見えない場所に置かれる**（「単位が出ない」の正体）。
+# **重ねられる側を挙げて、残りを導出する**——選ばせ方を足したときに
+# 片方だけ直した状態が作れない。
+UNIT_IN_OK_WIDGETS = (WIDGET_SELECT, '文字だけ', '強調')
+UNIT_IN_BLOCKED_WIDGETS = tuple(w for w in WIDGETS if w not in UNIT_IN_OK_WIDGETS)
+
+
+def unit_in_ok(widget, free_text=False):
+    """単位を欄の中へ重ねられるか。**判定はここ1箇所**（§9.233 ④）。
+
+    箱が1つでないもの（ラジオ・セグメント…）は重ねられない。**手打ちを
+    許したプルダウンも同じ**——`<select>`は器の裏へ回って1pxになり、
+    見えているのはコンボボックスの入力欄なので、`<select>`の隣へ重ねた
+    単位は**一度も見えない**（§9.233 ④で実機の「単位が出ない」の1つ）。
+    **画面へ同じ判定を書かないこと**——2つの答えが出る（§9.163）。"""
+    w = str(widget or '')
+    if w not in UNIT_IN_OK_WIDGETS:
+        return False
+    return not (w == WIDGET_SELECT and free_text)
+
+
+# 手打ちを許すと重ねられなくなる入力方法。**規則から導く**（§9.163）
+# ——一覧を手で持つと、規則を直したときに片方だけ直った状態が作れる。
+UNIT_IN_FREE_TEXT_BLOCKED = tuple(w for w in UNIT_IN_OK_WIDGETS
+                                  if not unit_in_ok(w, True))
+
+
+# ---------------------------------------------------------------------------
+# 仕掛データ由来の初期値につく「出どころ」の添え書き（§9.233 ⑤、利用者の指示）
+# ---------------------------------------------------------------------------
+# 「内径の入力項目は仕掛データから読んで、自動で選択してくれる機能があります
+#   が…不自然な改行なども入り込み表示のバランスを崩します。こういった自動の
+#   連携内容の補助的な説明文字のONOFFができるように、もっとコンパクトにかつ
+#   位置も選べるようにしてほしいです。」
+#
+# **どの欄が添え書きを持ちうるかはサーバーが答える**（`SOURCE_NOTE_KEYS`）
+# ——画面に書くと、対象を増やしたときに2箇所直すことになる（§9.163）。
+SOURCE_NOTE_BELOW = '欄の下'
+SOURCE_NOTE_BESIDE = '名前の横'
+SOURCE_NOTE_HIDE = '出さない'
+# **既定は今までの見え方**（欄の下）。既定を変えると、設定を触っていない
+# 現場の画面が黙って変わる。
+SOURCE_NOTE_PLACES = (SOURCE_NOTE_BELOW, SOURCE_NOTE_BESIDE, SOURCE_NOTE_HIDE)
+# 仕掛データから初期値が入る組み込みの欄（§9.204）。いまは内径だけ。
+SOURCE_NOTE_KEYS = ('innerDiameter',)
+
+
+def normalize_source_note(v):
+    s = str(v or '').strip()
+    return s if s in SOURCE_NOTE_PLACES else SOURCE_NOTE_BELOW
 
 
 def normalize_unit_place(v):
@@ -1212,6 +1269,10 @@ _ITEM_ADDED_COLUMNS = (
     # マスタから引き直す**——マスタを直せば入力欄の上限も変わる。
     ('最小の出どころ', 'TEXT'),
     ('最大の出どころ', 'TEXT'),
+    # --- §9.233 ⑤（利用者の指示「自動の連携内容の補助的な説明文字のONOFFが
+    #     できるように、もっとコンパクトにかつ位置も選べるように」）---
+    # 仕掛データから初期値が入ったときの添え書きをどこへ出すか。
+    ('出どころ表示', 'TEXT'),
 )
 
 # ---------------------------------------------------------------------------
@@ -1440,7 +1501,7 @@ def _row_to_item(r):
             # （判定はここ1箇所。画面へ同じ判定を書かない）。
             'unitPlace': (UNIT_PLACE_DEFAULT
                           if (normalize_unit_place(r[23]) == UNIT_PLACE_IN
-                              and normalize_widget(r[19]) in UNIT_IN_BLOCKED_WIDGETS)
+                              and not unit_in_ok(normalize_widget(r[19]), bool(r[21])))
                           else normalize_unit_place(r[23])),
             # 保存値そのもの（設定画面が「選んだが効いていない」を言うため）。
             'unitPlaceSaved': normalize_unit_place(r[23]),
@@ -1477,7 +1538,12 @@ def _row_to_item(r):
             # --- §9.231 ② ---
             # 上下限の出どころ。空＝この行の数をそのまま使う。
             'minFrom': normalize_limit_source(r[33]),
-            'maxFrom': normalize_limit_source(r[34])}
+            'maxFrom': normalize_limit_source(r[34]),
+            # --- §9.233 ⑤ ---
+            # 自動で入る値の添え書き（仕掛由来のプリセット等）をどこへ出すか。
+            # **添え書きを持たない項目では持っていても意味が無い**ので、
+            # 出どころのある項目（`SOURCE_NOTE_KEYS`）だけが読む。
+            'sourceNote': normalize_source_note(r[35])}
 
 
 _ITEM_SELECT = ('SELECT [項目ID],[設備名],[群],[項目名],[表示順],[型],[小数桁],[最小値],[最大値],'
@@ -1485,7 +1551,8 @@ _ITEM_SELECT = ('SELECT [項目ID],[設備名],[群],[項目名],[表示順],[�
                 '[組み込みキー],[置き場],[列幅],[群折りたたみ],[表示条件],[入力方法],'
                 '[初期値],[手打ち可],[ステップ量],'
                 '[単位位置],[文字寄せ],[表示書式],[表示桁数],[役割],[意匠],'
-                '[並べ方],[群幅],[ダミー],[空欄なし],[最小の出どころ],[最大の出どころ] '
+                '[並べ方],[群幅],[ダミー],[空欄なし],[最小の出どころ],[最大の出どころ],'
+                '[出どころ表示] '
                 'FROM [操業データ項目マスタ] ORDER BY [表示順],[項目ID]')
 
 
@@ -1575,7 +1642,8 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                 widget=None, initial=None, free_text=None, step=None,
                 unit_place=None, align=None, value_format=None, digits=None,
                 role=None, look=None, layout=None, group_span=None, report=None,
-                dummy=None, no_blank=None, min_from=None, max_from=None):
+                dummy=None, no_blank=None, min_from=None, max_from=None,
+                source_note=None):
     ensure_item_table(c)
     name = str(name or '').strip()
     if not name:
@@ -1590,11 +1658,11 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
     prev_name = ''
     if item_id is not None:
         cur.execute('SELECT [組み込みキー],[項目名],[ダミー],[空欄なし],'
-                    '[最小の出どころ],[最大の出どころ] '
+                    '[最小の出どころ],[最大の出どころ],[出どころ表示] '
                     'FROM [操業データ項目マスタ] WHERE [項目ID]=?', [int(item_id)])
         hit = cur.fetchone()
-        cur_builtin = str((hit or ['', '', 0, 0, '', ''])[0] or '').strip()
-        prev_name = str((hit or ['', '', 0, 0, '', ''])[1] or '').strip() if hit else ''
+        cur_builtin = str((hit or ['', '', 0, 0, '', '', ''])[0] or '').strip()
+        prev_name = str((hit or ['', '', 0, 0, '', '', ''])[1] or '').strip() if hit else ''
         # **渡されなかったら今の値を保つ**（§9.212 ②「送った項目だけ書く」）
         # ——設定窓は`dummy`を送らないので、触るたびに空きが解けては困る。
         if dummy is None and hit is not None:
@@ -1606,6 +1674,9 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
             min_from = hit[4]
         if max_from is None and hit is not None:
             max_from = hit[5]
+        # §9.233 ⑤。添え書きの置き場も同じ約束。
+        if source_note is None and hit is not None:
+            source_note = hit[6]
     if builtin is None:
         builtin = cur_builtin
     builtin = str(builtin or '').strip()
@@ -1646,7 +1717,9 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
             # §9.228 ④ 空欄（選ばない）の札を並べないか。
             -1 if no_blank else 0,
             # §9.231 ② 上下限の出どころ。空＝この行の数をそのまま使う。
-            normalize_limit_source(min_from), normalize_limit_source(max_from)]
+            normalize_limit_source(min_from), normalize_limit_source(max_from),
+            # §9.233 ⑤ 自動で入る値の添え書きの置き場。
+            normalize_source_note(source_note)]
     if item_id is not None:
         cur.execute('UPDATE [操業データ項目マスタ] SET [設備名]=?,[群]=?,[項目名]=?,[表示順]=?,'
                     '[型]=?,[小数桁]=?,[最小値]=?,[最大値]=?,[選択肢名]=?,[単位]=?,[必須]=?,'
@@ -1654,7 +1727,7 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                     '[表示条件]=?,[入力方法]=?,[初期値]=?,[手打ち可]=?,[ステップ量]=?,'
                     '[単位位置]=?,[文字寄せ]=?,[表示書式]=?,[表示桁数]=?,[役割]=?,[意匠]=?,'
                     '[並べ方]=?,[群幅]=?,[ダミー]=?,[空欄なし]=?,'
-                    '[最小の出どころ]=?,[最大の出どころ]=?,'
+                    '[最小の出どころ]=?,[最大の出どころ]=?,[出どころ表示]=?,'
                     '[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
                     args + [uid, int(item_id)])
         c.commit()
@@ -1676,7 +1749,7 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                     '[入力方法]=?,[初期値]=?,[手打ち可]=?,[ステップ量]=?,'
                     '[単位位置]=?,[文字寄せ]=?,[表示書式]=?,[表示桁数]=?,[役割]=?,[意匠]=?,'
                     '[並べ方]=?,[群幅]=?,[ダミー]=?,[空欄なし]=?,'
-                    '[最小の出どころ]=?,[最大の出どころ]=?,'
+                    '[最小の出どころ]=?,[最大の出どころ]=?,[出どころ表示]=?,'
                     '[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
                     args[1:2] + args[3:] + [uid, hit[0]])
         c.commit()
@@ -1692,8 +1765,9 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                 '[表示条件],[入力方法],[初期値],[手打ち可],[ステップ量],'
                 '[単位位置],[文字寄せ],[表示書式],[表示桁数],[役割],[意匠],'
                 '[並べ方],[群幅],[ダミー],[空欄なし],[最小の出どころ],[最大の出どころ],'
+                '[出どころ表示],'
                 '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
-                'VALUES (' + ','.join(['?'] * 36) + ',Now(),Now())',
+                'VALUES (' + ','.join(['?'] * 37) + ',Now(),Now())',
                 args + [uid, uid])
     c.commit()
     return int(cur.lastrowid)

@@ -3872,7 +3872,7 @@
                 unitPlaces:['外上左','外上中央','外上右','内部','外下左','外下中央','外下右','出さない'],
                 aligns:['自動','左','中央','右'],
                 valueFormats:['そのまま','3桁区切り','ゼロ埋め'],
-                unitInBlocked:[],
+                unitInBlocked:[],unitInFreeTextBlocked:[],
                 /* 並べ方の選択肢と、それが効く入力方法（§9.226 ①）。
                    **サーバーが答える**——ここは届くまでの受け皿。 */
                 layouts:['自動'],layoutWidgets:[],
@@ -3886,6 +3886,10 @@
                    ——鍵・呼び名・単位・いまの値の4つ。ここは届くまでの
                    受け皿で、引き方の規則を画面に持たない。 */
                 limitSources:[],
+                /* 自動で入る値の添え書きの置き場と、添え書きを持つ項目
+                   （§9.233 ⑤）。**サーバーが答える**——どの欄が仕掛から
+                   値を引くかは、引いている側しか知らない。 */
+                sourceNotePlaces:['欄の下','名前の横','出さない'],sourceNoteKeys:[],
                 /* 同じ群がばらけて保存されていた置き場（§9.219 ③）。
                    まとめて描いたことを画面に書くために覚える。 */
                 healed:new Set(),
@@ -3939,6 +3943,11 @@
   '入切':{icon:'◐',note:'1つのスイッチ。入＝先頭の値／切＝空欄（付ける・付けない）'},
   'メーター':{icon:'▬',note:'打つ欄はそのまま。上下限のどこに居るかを帯で示す'},
   '定型文':{icon:'✎',note:'1行入力＋よく使う語句のボタン（まとまりの値から作る）'},
+  /* §9.233 ①（利用者の指示「自動で入る値についても、選んで設定できるように
+     してください」）。値を入れるのは画面なので、選べるのは**見せ方だけ**
+     ——押せる部品にすると、押しても何も起きない（§4）。 */
+  '文字だけ':{icon:'⌁',note:'枠も地も持たず、値だけを置く（読むだけの値）'},
+  '強調':{icon:'❖',note:'色つきの枠で目立たせる（見落とせない参考値）'},
  };
  /* 並べ方の一言（§9.226 ①）。**「自動」が何になるかは形ごとに違う**ので、
     そこは触らずに「決めたときだけ」変わることを書く。 */
@@ -4056,7 +4065,11 @@
     型ごとに既定値を変えると、型を切り替えた瞬間に設定が消える）。
     **画面では型に合った呼び名で出す**——数値の欄に「プルダウン」と書いて
     あったら、何が起きるのか読めない。 */
- const OP_STD_LABEL={choice:'プルダウン',number:'そのまま打つ',text:'そのまま打つ'};
+ const OP_STD_LABEL={choice:'プルダウン',number:'そのまま打つ',text:'そのまま打つ',
+                     /* §9.233 ①。自動で入る値の「標準」は今までの見え方
+                        （白地に枠の1行）。既定を変えると、設定を触って
+                        いない現場の画面が黙って変わる。 */
+                     output:'枠つき（今までどおり）'};
  function opWidgetLabel(x,w){
   return w==='プルダウン'?(OP_STD_LABEL[opFamilyOf(x)]||'プルダウン'):w;
  }
@@ -5119,9 +5132,15 @@
  }
  /* 重ねられない入力方法かどうか。**判定の材料はサーバーが返した一覧**
     （`unitInBlocked`）で、規則そのものは画面に持たない。 */
- function opUnitInBlocked(widget){return (opState.unitInBlocked||[]).includes(widget)}
+ /* **手打ちを許したプルダウンも重ねられない**（§9.233 ④）——`<select>`が
+    器の裏へ回って1pxになるので、その隣へ置いた単位は一度も見えない。
+    **規則はサーバーの`unit_in_ok()`が持つ**（画面は一覧を引くだけ）。 */
+ function opUnitInBlocked(widget,freeText){
+  if((opState.unitInBlocked||[]).includes(widget))return true;
+  return !!freeText&&(opState.unitInFreeTextBlocked||[]).includes(widget);
+ }
  function opUnitPadHtml(x,widget){
-  const at=opUnitPlaceOf(x),blocked=opUnitInBlocked(widget);
+  const at=opUnitPlaceOf(x),blocked=opUnitInBlocked(widget,!!x.freeText);
   const cell=v=>{
    if(!v)return '<i class="op-upad-gap" aria-hidden="true"></i>';
    const off=v==='内部'&&blocked;
@@ -5138,7 +5157,7 @@
   const at=opUnitPlaceOf(x);
   const align=opState.aligns.includes(x.align)?x.align:'自動';
   const fmt=opState.valueFormats.includes(x.valueFormat)?x.valueFormat:'そのまま';
-  const blocked=at==='内部'&&opUnitInBlocked(widget);
+  const blocked=at==='内部'&&opUnitInBlocked(widget,!!x.freeText);
   const zero=fmt==='ゼロ埋め';
   return `<div class="op-form-row"><span class="op-form-label">見せ方</span>
     <span class="op-form-ctl op-look">
@@ -5147,17 +5166,47 @@
      <span class="op-look-pad">${opUnitPadHtml(x,widget)}</span>
      <span class="op-look-line"><b>値の寄せ</b>${opState.aligns.map(a=>
        `<button type="button" data-op-align="${esc(a)}" class="op-mini${align===a?' is-on':''}">${esc(a)}</button>`).join('')}</span>
-     <span class="op-look-line"><b>値の見せ方</b>${opState.valueFormats.map(f=>
+     ${opIsOutput(x)?`<span class="op-look-line"><b>値の見せ方</b>
+      <i class="op-form-note">この欄は<b>画面が値を入れます</b>。整えるのは「欄を離れたとき」なので、
+       離れる瞬間の無いこの欄には効きません——<b>単位・寄せ・意匠は効きます</b>。</i></span>`
+      :`<span class="op-look-line"><b>値の見せ方</b>${opState.valueFormats.map(f=>
        `<button type="button" data-op-vfmt="${esc(f)}" class="op-mini${fmt===f?' is-on':''}">${esc(f)}</button>`).join('')}
       <label class="op-look-digits${zero?'':' is-off'}">桁数<input type="number" id="opdDigits" min="1" max="12"
-        value="${x.digits==null?'':esc(x.digits)}"${zero?'':' disabled'}></label></span>
+        value="${x.digits==null?'':esc(x.digits)}"${zero?'':' disabled'}></label></span>`}
      <i class="op-form-note">${
        !x.unit?'単位が空のあいだは、どこにも出ません。'
-       :blocked?`<b>この選ばせ方では欄の中に重ねられません</b>——箱が1つではないためです。<b>外下左</b>として出します。`
+       :blocked?`<b>この選ばせ方では欄の中に重ねられません</b>——${
+          opUnitInBlocked(widget)?'箱が1つではないためです'
+          :'手打ちを許すと、選ぶ欄が打ち込む欄に入れ替わるためです'}。<b>外下左</b>として出します。`
        :`いま「${esc(at)}」に出ます。`}${
        zero?'　ゼロ埋めは<b>桁数まで左を0で埋めます</b>（4桁なら 12 → 0012）。':''}${
        fmt==='3桁区切り'?'　3桁区切りは<b>見せ方だけ</b>で、記録には区切りの無い値が入ります。':''}
       <br>整えるのは<b>欄を離れたとき</b>だけです（打っている最中は当てません——カーソルが飛ぶため）。</i>
+    </span></div>`;
+ }
+ /* ---------- 仕掛由来の添え書き（§9.233 ⑤、利用者の指示） ----------
+    「仕掛データから読んで、自動で選択してくれる機能がありますが…不自然な
+     改行なども入り込み表示のバランスを崩します。こういった自動の連携内容の
+     補助的な説明文字のONOFFができるように、もっとコンパクトにかつ位置も
+     選べるようにしてほしいです」
+
+    **添え書きを持つ項目にだけ出す**（`sourceNoteKeys`。サーバーが答える
+    ——どの欄が仕掛から値を引くかは、引いている側しか知らない）。
+    持たない項目に空の欄を並べると、押しても何も起きない設定が増える（§4）。 */
+ function opSourceNoteRowHtml(x){
+  const keys=opState.sourceNoteKeys||[];
+  if(!x.builtin||keys.indexOf(x.builtin)<0)return '';
+  const places=opState.sourceNotePlaces||['欄の下','名前の横','出さない'];
+  const at=places.includes(x.sourceNote)?x.sourceNote:places[0];
+  return `<div class="op-form-row"><span class="op-form-label">出どころの添え書き</span>
+    <span class="op-form-ctl">
+     <span class="op-look-line">${places.map(v=>
+       `<button type="button" data-op-srcnote="${esc(v)}" class="op-mini${at===v?' is-on':''}">${esc(v)}</button>`).join('')}</span>
+     <i class="op-form-note">この欄は<b>仕掛データから初期値を選びます</b>。
+      そのとき「<b>仕掛 508</b>」のような短い添え書きを出します（選び直すと消えます）。
+      いまは<b>${esc(at)}</b>に出ます。${at==='出さない'
+        ?'　出どころは入力欄の<b>ツールチップ</b>に残ります。'
+        :'　折り返さないので、入らないときは末尾を省略します——全文はツールチップで読めます。'}</i>
     </span></div>`;
  }
  function opChoiceValues(name){
@@ -5400,6 +5449,10 @@
   if(w==='入切')return `<span class="opd opd-switch"><b></b><i>${esc(vs[0])}</i></span>`;
   if(w==='メーター')return `<span class="opd opd-meter"><u></u></span>`;
   if(w==='定型文')return `<span class="opd opd-phrase"><u></u><i>${esc(vs[0])}</i><i>${esc(vs[1]||'')}</i></span>`;
+  /* §9.233 ①。自動で入る値の2つ。**絵でも違いが分かること**——「枠が
+     あるか」「色が付くか」が一目で読めないと、名前だけで選ばせることになる。 */
+  if(w==='文字だけ')return `<span class="opd opd-bare">123.4</span>`;
+  if(w==='強調')return `<span class="opd opd-strong">123.4</span>`;
   return '';
  }
  function renderOpModal(){
@@ -5658,15 +5711,14 @@
   const paneLook=sec('どう見せるか','選ばせ方・意匠・単位の置き場（記録の中身は変わりません）',`
    <div class="op-form-row"><span class="op-form-label">選ばせ方</span>
     <span class="op-form-ctl">
-     ${opIsOutput(x)?'':`
      <span class="op-widget-grid">${opWidgetsFor(x).map(w=>`<button type="button" data-op-widget="${esc(w)}"`
        +` class="op-widget-tile${widget===w?' is-on':''}"${usable?'':' disabled'}>`
        +`<b class="op-widget-icon">${esc((OP_WIDGET_NOTE[w]||{}).icon||'')}</b>`
        +`<span class="op-widget-name">${esc(opWidgetLabel(x,w))}</span>`
        +`<span class="op-widget-demo">${opWidgetDemoHtml(x,w)}</span>`
-       +`<small class="op-widget-note">${esc((OP_WIDGET_NOTE[w]||{}).note||'')}</small></button>`).join('')}</span>`}
+       +`<small class="op-widget-note">${esc((OP_WIDGET_NOTE[w]||{}).note||'')}</small></button>`).join('')}</span>
      <i class="op-form-note">${opIsOutput(x)
-       ?'この欄は<b>画面が値を入れます</b>（前工程の実績・計算の結果）。打ち込む欄ではないので、選ばせ方はありません。<b>決められるのは名前・出す/出さない・並び・幅・単位・意匠</b>です。'
+       ?'この欄は<b>画面が値を入れます</b>（前工程の実績・計算の結果）。打ち込む部品は要らないので、選べるのは<b>見せ方</b>だけです——単位・寄せ・意匠は他の欄と同じように効きます。'
        :usable
        ?'見本は<b>本物の部品</b>なので、押して確かめられます。'
        :'この型で選べる形は1つだけです。'}${
@@ -5676,7 +5728,8 @@
    ${opLayoutRowHtml(x,widget)}
    ${opBlankRowHtml(x,widget)}
    ${opLookPickHtml(x)}
-   ${opLookRowHtml(x,widget)}`);
+   ${opLookRowHtml(x,widget)}
+   ${opSourceNoteRowHtml(x)}`);
   /* ---------- ④ メモ ---------- */
   const paneNote=sec('メモ','画面には出ません。あとから読む人のために',`
    <div class="op-form-row is-block"><span class="op-form-label">覚え書き</span>
@@ -5739,12 +5792,21 @@
   const fam=opFamilyOf(x);
   host.innerHTML='';
   const label=document.createElement('label');
-  label.className='opf';
+  /* `opf-host`＝マスタが差配している欄の印（§9.233 ③）。測定画面の欄と
+     **同じ印**を付けるので、単位の逃げ場も高さも意匠も同じCSSが当たる
+     ——器の名前ごとに書き分けると、見本だけ効かない設定ができる。 */
+  label.className='opf opf-host';
   label.dataset.opfill='1';
   label.innerHTML=`<span class="opf-name">${esc(x.name)}`
    +(x.required?'<b class="opf-req">必須</b>':'')+`</span>`;
   let ctl;
-  if(fam==='choice'){
+  if(fam==='output'){
+   /* ---------- 自動で入る値（§9.233 ①） ----------
+      見本も**同じ`<output>`**で描く——`<input>`で描くと、枠・寄せ・
+      「文字だけ／強調」の見え方が実物と食い違う（見本の値打ちが消える）。 */
+   ctl=document.createElement('output');
+   ctl.textContent='123.4';
+  }else if(fam==='choice'){
    ctl=document.createElement('select');
    ctl.innerHTML=['<option value="">-</option>']
      .concat((x.builtin&&!vals.length?['（画面が持っている選択肢）']:vals)
@@ -5773,7 +5835,7 @@
      確かめられないと、選択肢に無い値を打ったことに気づけない。 */
   /* **組み込みの欄の初期値も見本に入れる**（§9.229 ③）——効く設定なのに
      見本にだけ出ないと、確かめられない。 */
-  if(x.initial){
+  if(x.initial&&ctl.tagName!=='OUTPUT'){
    if(ctl.tagName==='SELECT'&&![...ctl.options].some(o=>o.value===x.initial)){
     const o=document.createElement('option');
     o.value=x.initial;o.textContent=x.initial;o.dataset.opFree='1';ctl.appendChild(o);
@@ -5799,7 +5861,7 @@
        測定画面の形が食い違わないように、当てるのは`measure-opdata.js`の
        1本（`WL.opData.presentation`）だけにする。単位を重ねられない
        選ばせ方のときは、サーバーと同じ規則でここでも外下左へ落とす。 */
-    unitPlace:(opUnitPlaceOf(x)==='内部'&&opUnitInBlocked(widget))?'外下左':opUnitPlaceOf(x),
+    unitPlace:(opUnitPlaceOf(x)==='内部'&&opUnitInBlocked(widget,!!x.freeText))?'外下左':opUnitPlaceOf(x),
     align:x.align,valueFormat:x.valueFormat,digits:x.digits,
     /* 意匠（§9.223 ③）も**見本へそのまま渡す**。渡さないと、色・形・
        大きさのボタンだけが押しても何も起きない（見本は`previewDef`しか
@@ -5822,9 +5884,17 @@
   if(window.WL&&WL.opData&&WL.opData.attachFormat){
    WL.opData.attachFormat(ctl,()=>WL.opData.settlePreview(ctl,previewDef));
   }
-  const needsBox=widget!=='プルダウン'||(previewDef.freeText&&fam==='choice');
+  /* §9.233 ①。自動で入る値は器を被せない——印だけを器へ置いてCSSが読む
+     （測定画面の`layout()`と同じ判断）。 */
+  if(fam==='output'&&widget!=='プルダウン')label.dataset.opout=widget;
+  else delete label.dataset.opout;
+  const needsBox=fam!=='output'&&(widget!=='プルダウン'||(previewDef.freeText&&fam==='choice'));
   if(usable&&needsBox&&window.WL&&WL.opData&&WL.opData.previewWidget){
    WL.opData.previewWidget(previewDef,label,widget);
+   /* **器を被せたあとにもう一度当てる**（§9.233 ④）。単位の置き場は
+      「いま見えている操作面」を基準にするので、器が足される前に当てた
+      ままだと、見本だけ単位が器の上に出る（実物と食い違う）。 */
+   if(WL.opData.presentation)WL.opData.presentation(label,previewDef);
   }
   /* **押した結果が何として記録されるか**を出す（§9.219 ③、利用者の指示
      「実際の挙動ももう少しわかるように」）。見本が本物なので、押せば
@@ -5866,6 +5936,9 @@
     touch({noBlank:b.dataset.opBlank==='1'}));
 
   form.querySelectorAll('[data-op-align]').forEach(b=>b.onclick=()=>touch({align:b.dataset.opAlign}));
+  /* §9.233 ⑤ 仕掛由来の添え書きの置き場。 */
+  form.querySelectorAll('[data-op-srcnote]').forEach(b=>b.onclick=()=>
+    touch({sourceNote:b.dataset.opSrcnote}));
   form.querySelectorAll('[data-op-vfmt]').forEach(b=>b.onclick=()=>touch({valueFormat:b.dataset.opVfmt}));
   form.querySelectorAll('[data-op-when]').forEach(b=>b.onclick=()=>{
    const now=new Set(x.showWhen||[]);
@@ -6012,6 +6085,9 @@
           layout:x.layout||'自動',groupSpan:Number(x.groupSpan)||0,
           /* §9.228 ②④。**空きと空欄の札も必ず送る**（同じ理由）。 */
           dummy:!!x.dummy,noBlank:!!x.noBlank,
+          /* §9.233 ⑤。添え書きの置き場も同じ——落とすと保存のたびに
+             既定（欄の下）へ戻る（§9.212 ②と同じ形）。 */
+          sourceNote:x.sourceNote||'',
           required:!!x.required,enabled:x.enabled!==false,
           fold:!!x.fold,
           showWhen:x.showWhen||[]};
@@ -6048,6 +6124,8 @@
     /* §9.228 ②④。**空きと空欄の札も必ず送る**——`item_upsert`は全列を
        書くので、送らないと保存のたびに既定へ戻る（§9.212 ②と同じ形）。 */
     dummy:!!d.dummy,noBlank:!!d.noBlank,
+    /* §9.233 ⑤ */
+    sourceNote:d.sourceNote||'',
     /* **初期値と手打ちは組み込みの欄にも効く**（§9.229 ③）。値の持ち方を
        変えないので、型・上下限と違って画面の部品のままで成立する。
        仕掛データから値が来る欄（内径§9.204）は**仕掛の値が勝つ**
@@ -6565,8 +6643,12 @@
    opState.aligns=it.aligns||opState.aligns;
    opState.valueFormats=it.valueFormats||opState.valueFormats;
    opState.unitInBlocked=it.unitInBlocked||opState.unitInBlocked;
+   opState.unitInFreeTextBlocked=it.unitInFreeTextBlocked||opState.unitInFreeTextBlocked;
    /* §9.231 ②。**いまの値も一緒に来る**（選んだ設備で引き直した結果）。 */
    opState.limitSources=it.limitSources||opState.limitSources;
+   /* §9.233 ⑤ */
+   opState.sourceNotePlaces=it.sourceNotePlaces||opState.sourceNotePlaces;
+   opState.sourceNoteKeys=it.sourceNoteKeys||opState.sourceNoteKeys;
    opState.layouts=it.layouts||opState.layouts;
    opState.layoutWidgets=it.layoutWidgets||opState.layoutWidgets;
    opState.typeFamilies=it.typeFamilies||opState.typeFamilies;
