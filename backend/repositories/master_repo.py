@@ -49,6 +49,41 @@ STANDARD_MINUTES_COLUMN='標準時間分'
 # 入れるとタイムラインが何日も先まで伸びて読めなくなる(丸1日=1440分)。
 STANDARD_MINUTES_MAX=1440.0
 
+# ---------------------------------------------------------------------------
+# 最大ライン速度（§9.231 ①、利用者の指示「設備マスタに最大ライン速度を追加」）
+# ---------------------------------------------------------------------------
+# **単位はm/min**。空欄＝未設定で、未設定を「0」と読まないこと（§9.114の
+# 「空欄は未設定であって0ではない」と同じ）——0m/minのラインは無いので、
+# 0を受け入れると「速度の上限0」という押しても何も入らない設定が作れる。
+MAX_LINE_SPEED_COLUMN='最大ライン速度'
+MAX_LINE_SPEED_MAX=100000.0
+
+def normalize_max_line_speed(value):
+ """入力を保存値へ。空欄・数にならないもの・0以下はNone(=未設定)。"""
+ s=str(value if value is not None else '').strip()
+ if not s:return None
+ try:n=float(s)
+ except Exception:return None
+ if not (n>0):return None
+ return round(min(n,MAX_LINE_SPEED_MAX),1)
+
+def read_equipment_max_line_speed(c,equipment):
+ """設備名から最大ライン速度(m/min)を引く。未設定・不正ならNone。
+ 読み取り専用接続でも使う(テーブル・列が無ければNone)。"""
+ name=normalize_equipment_name(equipment)
+ if not name or EQUIPMENT_MASTER_TABLE not in tables(c):return None
+ try:
+  if MAX_LINE_SPEED_COLUMN not in set(cols(c,EQUIPMENT_MASTER_TABLE)):return None
+  cur=c.cursor()
+  cur.execute(f'SELECT {qi("設備名")},{qi(MAX_LINE_SPEED_COLUMN)},{qi("有効")} '
+              f'FROM {qi(EQUIPMENT_MASTER_TABLE)}')
+  for r in cur.fetchall():
+   active=True if r[2] is None else bool(r[2])
+   if active and normalize_equipment_name(r[0])==name:
+    return normalize_max_line_speed(r[1])
+ except Exception:pass
+ return None
+
 def normalize_standard_minutes(value):
  """入力を保存値へ。空欄・数にならないもの・0以下はNone(=未設定)。
  **0を「0分」として保存しない**——0分の作業は無いので、入力ミス
@@ -89,7 +124,7 @@ def ensure_equipment_master_table(c):
  try:
   have=set(cols(c,EQUIPMENT_MASTER_TABLE))
   for name,decl in ((MAX_STRIPS_COLUMN,'INTEGER'),(EQUIPMENT_KIND_COLUMN,'TEXT'),
-                    (STANDARD_MINUTES_COLUMN,'REAL')):
+                    (STANDARD_MINUTES_COLUMN,'REAL'),(MAX_LINE_SPEED_COLUMN,'REAL')):
    if name not in have:
     cur=c.cursor();cur.execute(f'ALTER TABLE {qi(EQUIPMENT_MASTER_TABLE)} ADD COLUMN {qi(name)} {decl}');c.commit()
  except Exception:pass
@@ -138,8 +173,8 @@ def equipment_master_rows(c):
  ensure_equipment_master_table(c)
  cur=c.cursor()
  # 全行取得後にPython側で有効判定する。
- cur.execute('SELECT [設備ID],[設備名],[表示順],[有効],[更新日時],[更新者ID],[最大条数],[区分],[標準時間分] '
-             'FROM [設備マスタ] ORDER BY [表示順],[設備名]')
+ cur.execute('SELECT [設備ID],[設備名],[表示順],[有効],[更新日時],[更新者ID],[最大条数],[区分],[標準時間分],'
+             '[最大ライン速度] FROM [設備マスタ] ORDER BY [表示順],[設備名]')
  rows=[]
  for r in cur.fetchall():
   active=True if r[3] is None else bool(r[3])

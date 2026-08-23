@@ -146,10 +146,14 @@
            {k:'maxStrips',label:'最大条数',type:'number',min:1,max:40,
             hint:'この設備で幅方向に割れる条数の上限。空欄なら40（測定データの構造上の上限）。'},
            {k:'standardMinutes',label:'1ロットあたり標準時間（分）',type:'number',min:1,max:1440,step:1,
-            hint:'実績がまだ無いときに作業スケジュールの見積として使う分数です。空欄なら120分（全体の暫定既定値）。実績がたまると自動で実績由来の見積へ切り替わります。'}],
+            hint:'実績がまだ無いときに作業スケジュールの見積として使う分数です。空欄なら120分（全体の暫定既定値）。実績がたまると自動で実績由来の見積へ切り替わります。'},
+           /* §9.231 ①。**空欄＝未設定**（0は「上限0」になってしまうので受けない）。 */
+           {k:'maxLineSpeed',label:'最大ライン速度（m/min）',type:'number',min:1,max:100000,step:1,
+            hint:'このラインで出せる速度の上限です。操業データ項目の「数の決まり」から**この値を上限として参照**できます（マスタを直せば入力欄の上限も変わります）。空欄なら未設定で、参照している項目には上限が掛かりません。'}],
    cols:[{k:'name',label:'設備名',grow:2},{k:'kind',label:'区分',grow:1,format:'equipmentKind'},
          {k:'maxStrips',label:'最大条数',grow:1,format:'maxStrips'},
-         {k:'standardMinutes',label:'標準時間',grow:1,format:'standardMinutes'}],
+         {k:'standardMinutes',label:'標準時間',grow:1,format:'standardMinutes'},
+         {k:'maxLineSpeed',label:'最大速度',grow:1,format:'maxLineSpeed'}],
    hint:'「区分」はその設備が扱う材料の形（コイル／板）です。既に登録してある設備は未設定のままでも今までどおり動きます。「最大条数」は幅分割（条割）で割れる条数の上限です。設備によって割れる本数が違うため設備ごとに登録します。空欄のままなら40条（測定データの構造上の上限）として扱います。子ロットの数（最大9ロット）とは別の値です。「1ロットあたり標準時間」は、実績がまだ1件も無い設備の作業スケジュールで見積として使う分数です。実績がたまると実績から算出した見積（換算係数）が優先されるため、あくまで最初の保険として登録します。'},
   {group:'system',key:'accessPermission',label:'アクセス権限',icon:'権',endpoint:'/api/access-permission-master',hasDelete:true,
    fields:[{k:'loginId',label:'ログインID',key:true},{k:'pcName',label:'PC名',key:true},
@@ -422,6 +426,9 @@
   /* 1ロットあたり標準時間(§9.114)。**未設定を「0分」に見せない**——
      空欄は「登録していない＝全体の暫定既定値を使う」であって0分ではない。 */
   if(col.format==='standardMinutes')return v.trim()===''?'120分（既定）':`${v}分`;
+  /* §9.231 ①。**未設定は「未設定」と書く**——0や既定値を出すと、
+     参照している項目に上限が掛かっているように読める（§4）。 */
+  if(col.format==='maxLineSpeed')return v.trim()===''?'未設定':`${v} m/min`;
   // 区分(§9.85)。空欄は「まだ決めていない」であって「無い」ではないので、
   // 「—」ではなくそう書く(既存の設備は空のまま動く)。
   if(col.format==='equipmentKind')return v.trim()===''?'未設定':v;
@@ -3873,6 +3880,10 @@
                 lookColors:['既定'],lookShapes:['標準'],lookSizes:['中'],
                 tab:'place',
                 gridCols:12,choiceNames:[],choices:[],notes:{},usage:{},choiceHints:{},
+                /* 上下限の出どころ（§9.231 ②）。**サーバーが答える**
+                   ——鍵・呼び名・単位・いまの値の4つ。ここは届くまでの
+                   受け皿で、引き方の規則を画面に持たない。 */
+                limitSources:[],
                 /* 同じ群がばらけて保存されていた置き場（§9.219 ③）。
                    まとめて描いたことを画面に書くために覚える。 */
                 healed:new Set(),
@@ -4998,6 +5009,68 @@
  /* 初期値が「数の決まり」から外れていないか（§9.220 ②）。**外れていても
     保存は通す**——上下限は後から変えるものなので、保存そのものを断ると
     設定の順番を強いることになる。断らない代わりに**必ず書く**（§4）。 */
+/* ---------- 上下限の出どころ（§9.231 ②、利用者の指示） ----------
+    「MIN-MAXなどの入力値を決めるところで、マスタからのデータともリンク
+     できるようにしてください。特に設備マスタの追加する最大ライン速度や
+     最大条数はリンクをさせたい部分です」
+
+    **語彙はサーバーが持つ**（`opState.limitSources`）。画面は選ばせて、
+    **いまの値・単位・出どころを文字で出す**だけ（§CLAUDE 6）——同じ
+    「最大 350」でも、この行に書いた数と設備マスタから引いた数では
+    直す場所が違う。引けなかったときは**0にしない**（§9.114）。 */
+ function opLimitSource(key){
+  return (opState.limitSources||[]).find(s=>s.key===String(key||''))||null;
+ }
+ /* いま効いている上下限。出どころが指定してあればそちらが勝つ
+    ——**判定は1箇所**（見本・初期値の警告・保存後の測定画面が
+    食い違わないように）。引けなければ`null`＝「上限なし」。 */
+ function opLimitOf(x,side){
+  const key=String((side==='min'?x.minFrom:x.maxFrom)||'');
+  if(key){
+   const src=opLimitSource(key);
+   const v=src?src.value:null;
+   return (v===null||v===undefined||v==='')?null:Number(v);
+  }
+  const raw=side==='min'?x.min:x.max;
+  return (raw===null||raw===undefined||raw==='')?null:Number(raw);
+ }
+ /* いま効いている上下限を載せた写し。**決まり書きも見本もこれを通す**
+    ——`x`をそのまま渡すと、マスタから引く設定にしても行に書いた数のままで
+    描かれる（設定画面で確かめた形と測定画面が食い違う。§9.221 ⑦）。 */
+ function opRuleDef(x){
+  return {...x,min:opLimitOf(x,'min'),max:opLimitOf(x,'max'),
+          minFromLabel:(opLimitSource(x.minFrom)||{}).label||'',
+          maxFromLabel:(opLimitSource(x.maxFrom)||{}).label||''};
+ }
+ /* 出どころを選ぶ欄。**選ぶ前に何が起きるかを書く**（§CLAUDE 6）
+    ——選んだ瞬間に手打ちの欄が使えなくなるので、いまの値と単位を添える。 */
+ function opLimitFromHtml(x,side){
+  const cur=String((side==='min'?x.minFrom:x.maxFrom)||'');
+  const name=side==='min'?'最小':'最大';
+  const list=opState.limitSources||[];
+  const hit=opLimitSource(cur);
+  const opts=['<option value="">自分で決める（上の数）</option>']
+   .concat(list.map(s=>`<option value="${esc(s.key)}"${s.key===cur?' selected':''}>${esc(s.label)}</option>`))
+   /* **知らない鍵を黙って捨てない**（§9.204の`optionFill()`と同じ罠）
+      ——候補に無い値を`select.value`へ入れると空になり、保存した瞬間に
+      設定が消える。候補へ足したうえで、引けないことを名前で言う。 */
+   .concat(cur&&!hit?[`<option value="${esc(cur)}" selected>${esc(cur)}（このアプリが知らない出どころ）</option>`]:[]);
+  return `<label class="op-from">${name}<select id="opd${side==='min'?'Min':'Max'}From" data-op-from="${side}">`
+   +`${opts.join('')}</select>`
+   +`<i class="op-form-note">${esc(opLimitFromNote(x,side))}</i></label>`;
+ }
+ function opLimitFromNote(x,side){
+  const cur=String((side==='min'?x.minFrom:x.maxFrom)||'');
+  if(!cur)return 'この行に書いた数をそのまま使います。';
+  const hit=opLimitSource(cur);
+  if(!hit)return `「${cur}」は今のこのアプリが知らない出どころです。選び直してください。`;
+  const eq=opState.equipment;
+  if(!eq)return `${hit.label}から引きます。上の「設備」を選ぶと、その設備でいくつになるかが出ます。`;
+  const v=hit.value;
+  if(v===null||v===undefined||v==='')
+   return `${hit.label}から引きます。${eq}には値が入っていないので、この設備では${side==='min'?'下限':'上限'}が掛かりません。`;
+  return `${hit.label}から引きます。${eq}のいまの値は ${v}${hit.unit?' '+hit.unit:''} です。`;
+ }
  function opInitialRangeNote(x){
   const raw=String(x.initial||'').trim();
   if(!raw)return '';
@@ -5005,10 +5078,13 @@
   if(!Number.isFinite(n))
    return (opFamilyOf(x)==='number')?`「${raw}」は数として読めません`:'';
   if(opFamilyOf(x)!=='number')return '';
-  const lo=(x.min===null||x.min===undefined||x.min==='')?null:Number(x.min);
-  const hi=(x.max===null||x.max===undefined||x.max==='')?null:Number(x.max);
-  if(lo!==null&&n<lo)return `最小 ${lo} を下回っています`;
-  if(hi!==null&&n>hi)return `最大 ${hi} を上回っています`;
+  /* **出どころを指定した側はそちらの値で見る**（§9.231 ②）。行に書いた
+     数で判定すると、マスタから引いた上限と食い違う警告が出る。 */
+  const lo=opLimitOf(x,'min'),hi=opLimitOf(x,'max');
+  const from=side=>{const src=opLimitSource(side==='min'?x.minFrom:x.maxFrom);
+                    return src?`（${src.label}）`:''};
+  if(lo!==null&&n<lo)return `最小 ${lo}${from('min')} を下回っています`;
+  if(hi!==null&&n>hi)return `最大 ${hi}${from('max')} を上回っています`;
   if(['整数','正の整数'].includes(x.type)&&!Number.isInteger(n))
    return '整数の項目なので小数は入りません';
   if(['正の整数','正の数'].includes(x.type)&&n<0)return '0以上の項目です';
@@ -5343,7 +5419,7 @@
   if(opFamilyOf(x)==='number'){
    /* **入る形は`measure-opdata.js`の1本が言う**（§9.219 ③）——見本用に
       もう1つ書くと、設定画面で見えた形と実際の形が食い違う。 */
-   const t=(window.WL&&WL.opData&&WL.opData.ruleText)?WL.opData.ruleText(x):'';
+   const t=(window.WL&&WL.opData&&WL.opData.ruleText)?WL.opData.ruleText(opRuleDef(x)):'';
    if(t)rule.push(t);
   }else if(opFamilyOf(x)==='choice'){
    const n=(opState.choices||[]).filter(c=>c.name===x.choice).length;
@@ -5489,13 +5565,25 @@
    <div class="op-form-row"><span class="op-form-label">数の決まり</span>
     <span class="op-form-ctl op-form-nums">
      <label>小数桁<input type="number" id="opdDecimals" min="0" max="4" value="${x.decimals==null?'':esc(x.decimals)}"></label>
-     <label>最小<input type="number" id="opdMin" step="any" value="${x.min==null?'':esc(x.min)}"></label>
-     <label>最大<input type="number" id="opdMax" step="any" value="${x.max==null?'':esc(x.max)}"></label>
+     <label>最小<input type="number" id="opdMin" step="any" value="${x.min==null?'':esc(x.min)}"${x.minFrom?' disabled':''}></label>
+     <label>最大<input type="number" id="opdMax" step="any" value="${x.max==null?'':esc(x.max)}"${x.maxFrom?' disabled':''}></label>
      <label title="ステッパーの−／＋1回ぶん、スライダーの目盛の幅">刻み<input type="number" id="opdStep" min="0" step="any" value="${x.step==null?'':esc(x.step)}"></label>
+    </span></div>
+   <div class="op-form-row"><span class="op-form-label">上下限の出どころ</span>
+    <span class="op-form-ctl op-form-froms">
+     ${opLimitFromHtml(x,'min')}
+     ${opLimitFromHtml(x,'max')}
     </span></div>
    ${help('刻みを空にするとどうなるか',
      '<p>小数桁から作ります（整数=1／小数2桁=0.01）。<b>0は「決めていない」</b>として扱います'
-     +'——0にすると押しても動かない道具になるためです。</p>')}`}
+     +'——0にすると押しても動かない道具になるためです。</p>')}
+   ${help('マスタから引くと何が変わるか',
+     '<p>「自分で決める」なら、この行に書いた数がそのまま上下限になります。'
+     +'<b>マスタを選ぶと、測定画面を開いた設備のマスタから毎回引き直します</b>'
+     +'——設備ごとに違う上限（最大ライン速度・最大条数）を、項目を設備の数だけ'
+     +'作らずに1行で持てます。マスタを直せば入力欄の上限もその場で変わります。</p>'
+     +'<p>選んだマスタに<b>値が入っていない設備では、その側の上限は掛かりません</b>'
+     +'——引けなかった値を0として扱うと、何を打っても弾かれる欄になるためです。</p>')}`}
    ${isChoice?`
    <div class="op-form-row"><span class="op-form-label">選択肢</span>
     <span class="op-form-ctl">
@@ -5654,8 +5742,12 @@
    ctl=document.createElement('input');ctl.type='text';
    if(fam==='number'){
     ctl.className='numeric-input';ctl.inputMode='decimal';
-    if(x.min!==null&&x.min!==undefined&&x.min!=='')ctl.min=x.min;
-    if(x.max!==null&&x.max!==undefined&&x.max!=='')ctl.max=x.max;
+    /* **効いている上下限を渡す**（§9.231 ②）——ステッパーの端の判定と
+       スライダーの目盛がここを見るので、行に書いた数のままだと見本だけが
+       違う範囲で動く。 */
+    const eff=opRuleDef(x);
+    if(eff.min!==null&&eff.min!==undefined&&eff.min!=='')ctl.min=eff.min;
+    if(eff.max!==null&&eff.max!==undefined&&eff.max!=='')ctl.max=eff.max;
    }
    ctl.placeholder=x.unit?`0 ${x.unit}`:'';
   }
@@ -5678,7 +5770,14 @@
      判断は測定画面と同じ2つの事実の和にする（片方だけだと、設定画面で
      確かめられない設定ができる）。 */
   const previewDef={name:x.name,unit:x.unit,type:x.type,
-    decimals:x.decimals,min:x.min,max:x.max,step:x.step,
+    /* §9.231 ②。**見本にも「いま効いている」上下限を渡す**——行に書いた
+       数のまま渡すと、マスタから引く設定にした瞬間に見本だけが古い上限で
+       描かれ、設定画面で確かめた形と測定画面が食い違う（§9.221 ⑦）。 */
+    /* 出どころの呼び名も渡す——`ruleText()`は測定画面と同じ1本なので、
+       渡さないと見本だけ数字だけになる（設定画面で確かめた形と食い違う）。 */
+    decimals:x.decimals,step:x.step,
+    min:opRuleDef(x).min,max:opRuleDef(x).max,
+    minFromLabel:opRuleDef(x).minFromLabel,maxFromLabel:opRuleDef(x).maxFromLabel,
     /* **組み込みの欄でも手打ちは効く**（§9.229 ③）——値の持ち方を変えず、
        選ぶ器そのものが打てるようになるだけ。見本で確かめられること。 */
     freeText:!!x.freeText,
@@ -5795,6 +5894,12 @@
      担当か」は付け替える前に読めないと選べない。 */
   const role=$('#opdRole');
   if(role)role.onchange=()=>touch({role:role.value});
+  /* 上下限の出どころ（§9.231 ②）。**選んだら描き直す**——手打ちの欄が
+     使えなくなり、案内の文（いまの値・単位）も変わるので、押した結果が
+     その場で見えないと選べない。 */
+  form.querySelectorAll('[data-op-from]').forEach(sel=>sel.onchange=()=>{
+   touch(sel.dataset.opFrom==='min'?{minFrom:sel.value}:{maxFrom:sel.value});
+  });
   /* 意匠（§9.223 ③）。色・形・大きさの3軸。 */
   form.querySelectorAll('[data-op-look]').forEach(b=>b.onclick=()=>{
    const lk=opLookOf(x);lk[b.dataset.opLook]=b.dataset.opVal;
@@ -5841,6 +5946,9 @@
   t('opdGroup','group');t('opdInitial','initial');
   n('opdDecimals','decimals');n('opdMin','min');n('opdMax','max');n('opdStep','step');
   n('opdDigits','digits');
+  /* §9.231 ②。**控えにも載せる**——タブを移った先で保存されるので、
+     ここで拾わないと出どころだけが空で上書きされる（§9.223 ②）。 */
+  t('opdMinFrom','minFrom');t('opdMaxFrom','maxFrom');
   return out;
  }
  function opDetailValues(){
@@ -5861,6 +5969,9 @@
   return {name:v('opdName','name'),type:x.type,
           decimals:num(v('opdDecimals','decimals')),min:num(v('opdMin','min')),
           max:num(v('opdMax','max')),
+          /* §9.231 ②。**必ず送る**——`item_upsert`は全列を書くので、
+             落とすと保存のたびに出どころが消える（§9.212 ②と同じ形）。 */
+          minFrom:(v('opdMinFrom','minFrom')||''),maxFrom:(v('opdMaxFrom','maxFrom')||''),
           unit:v('opdUnit','unit'),choice:v('opdChoice','choice'),
           group:v('opdGroup','group'),
           /* §9.223 ①③。役割は`<select>`から、意匠は押した結果が`x`に
@@ -5907,6 +6018,8 @@
     name:d.name||x.name,
     type:x.builtin?x.type:(d.type||'文字'),
     decimals:x.builtin?null:d.decimals,min:x.builtin?null:d.min,max:x.builtin?null:d.max,
+    /* §9.231 ②。組み込みの欄は「数の決まり」そのものを持たないので空。 */
+    minFrom:x.builtin?'':(d.minFrom||''),maxFrom:x.builtin?'':(d.maxFrom||''),
     /* **単位と見せ方は組み込みの欄にも効く**（§9.221 ⑦）。型・上下限と
        違って「ただの見せ方」なので、組み込みの欄でも押した通りになる
        ——以前は`単位`が「数の決まり」の中にあり、`選択`型と組み込みでは
@@ -6438,6 +6551,8 @@
    opState.aligns=it.aligns||opState.aligns;
    opState.valueFormats=it.valueFormats||opState.valueFormats;
    opState.unitInBlocked=it.unitInBlocked||opState.unitInBlocked;
+   /* §9.231 ②。**いまの値も一緒に来る**（選んだ設備で引き直した結果）。 */
+   opState.limitSources=it.limitSources||opState.limitSources;
    opState.layouts=it.layouts||opState.layouts;
    opState.layoutWidgets=it.layoutWidgets||opState.layoutWidgets;
    opState.typeFamilies=it.typeFamilies||opState.typeFamilies;

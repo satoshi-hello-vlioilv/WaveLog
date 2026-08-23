@@ -41,11 +41,11 @@ G['一覧'] = ['test_nav', 'test_navdyn', 'test_listcache', 'test_listperf', 'te
              'test_audit', 'test_sub', 'test_uisize', 'test_ttlcache']
 # 操業データ(§9.215)は測定画面のカード。マスタ管理からも触るので「マスタ」群。
 G['操業データ'] = ['test_opdata', 'test_opui', 'test_msteps', 'test_maint', 'test_crudroutes',
-                   'test_opchoice']
+                   'test_opchoice', 'test_oplimit']
 # 異常位置判定と条の設計の連携(§9.226 ④)。どちらを触っても両方を回す。
 G['異常位置'] = ['test_defect', 'test_defectlink', 'test_splitlive', 'test_scsplit']
 # 操業データの意匠・設定窓・空きの群（§9.227）
-G['操業意匠'] = ['test_oppad', 'test_opui', 'test_opdata', 'test_msteps']
+G['操業意匠'] = ['test_oppad', 'test_opui', 'test_opdata', 'test_msteps', 'test_oplimit']
 G['列'] = ['test_collayout', 'test_colformat', 'test_colrule', 'test_colsort', 'test_lcpanel',
            'test_colscache', 'test_colsripple', 'test_colsave', 'test_displayrule', 'test_colmenu',
            'test_colpreset', 'test_formula', 'test_reccols', 'test_rpblocks', 'test_rplayout',
@@ -186,7 +186,7 @@ RULES = [
     # 置き換えの粘り(§9.108)は写し・共有JSON・RNE公開の全部が通る土台。
     ('backend/atomic_io.py', g('test_atomicio', 'test_dbmirror', 'test_sclock',
                                'test_scsync', 'test_datasource')),
-    ('backend/repositories/master_repo.py', g('マスタ', '列', 'test_workable')),
+    ('backend/repositories/master_repo.py', g('マスタ', '列', 'test_workable', 'test_oplimit')),
     ('backend/repositories/operation_repo.py', g('操業データ', '操業意匠', 'test_msteps', 'test_mcore')),
     # 操業データの入力欄（§9.215）。測定画面①の中身なので測定一式へ。
     ('static/js/measure-opdata.js', g('操業データ', '測定', '見た目', 'モーダル', '操業意匠')),

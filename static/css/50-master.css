@@ -1074,6 +1074,17 @@
 .op-form-nums{gap:var(--space-2)}
 .op-form-nums label{display:flex;flex-direction:column;gap:2px;font-size:var(--fs-sm)}
 .op-form-nums input{width:var(--w-xs)}
+/* 上下限の出どころ（§9.231 ②）。**出どころと案内は縦に組む**——「設備
+   マスタ 最大ライン速度」と「テスト設備Aのいまの値は 350 m/min」は
+   1つのことなので、横に離すと目が往復する。器の幅は選択肢の長さから
+   `--w-lg`（15em＝長い選択肢の段）へ丸めてある（§9.131）。 */
+.op-form-froms{gap:var(--space-3);align-items:flex-start}
+.op-from{
+  display:flex;flex-direction:column;gap:2px;
+  flex:0 1 var(--w-lg);min-width:0;font-size:var(--fs-sm);
+}
+.op-from select{max-width:100%}
+.op-from .op-form-note{white-space:normal}
 .op-widget-tile{
   display:flex;flex-direction:column;gap:2px;flex:1 1 var(--w-sm);min-width:0;
   padding:var(--space-1) var(--space-2);text-align:left;

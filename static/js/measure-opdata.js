@@ -258,8 +258,13 @@
   if(def.type==='選択')return '';
   if(!isNumeric(def.type))return '';
   const range=[];
-  if(def.min!==null&&def.min!==undefined&&def.min!=='')range.push(`${def.min} 以上`);
-  if(def.max!==null&&def.max!==undefined&&def.max!=='')range.push(`${def.max} 以下`);
+  /* **上下限の出どころを添える**（§9.231 ②、§CLAUDE 6）——同じ「350 以下」
+     でも、項目に書いた数と設備マスタから引いた数では直す場所が違う。
+     出どころが無ければ今までどおり数だけ（サーバーが`…FromLabel`を
+     付けたときだけ出る）。 */
+  const from=k=>{const l=def[k+'FromLabel'];return l?`（${l}）`:''};
+  if(def.min!==null&&def.min!==undefined&&def.min!=='')range.push(`${def.min} 以上${from('min')}`);
+  if(def.max!==null&&def.max!==undefined&&def.max!=='')range.push(`${def.max} 以下${from('max')}`);
   return (isInteger(def.type)?'整数':`小数${def.decimals==null?1:def.decimals}桁`)
     +(isPositive(def.type)?'・0以上':'')+(range.length?`・${range.join('／')}`:'');
  }

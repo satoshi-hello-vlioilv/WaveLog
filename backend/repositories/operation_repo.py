@@ -1168,7 +1168,61 @@ _ITEM_ADDED_COLUMNS = (
     # 見え方を変えない）。出さないと、ラジオ・トグル・ボタン群などで
     # **未選択の札が場所を取らなくなる**——初期値と組み合わせて使う。
     ('空欄なし', 'INTEGER'),
+    # --- §9.231 ②（利用者の指示「MIN-MAXなどの入力値を決めるところで、
+    #     マスタからのデータともリンクできるようにしてください。特に設備
+    #     マスタの追加する最大ライン速度や最大条数はリンクをさせたい部分」）---
+    # 上下限の**出どころ**。空＝この行に書いた数をそのまま使う（今までどおり）。
+    # 値が入っているときは`LIMIT_SOURCES`の鍵で、**測定画面を開いた設備の
+    # マスタから引き直す**——マスタを直せば入力欄の上限も変わる。
+    ('最小の出どころ', 'TEXT'),
+    ('最大の出どころ', 'TEXT'),
 )
+
+# ---------------------------------------------------------------------------
+# 上下限の出どころ（§9.231 ②）
+# ---------------------------------------------------------------------------
+# **語彙はここだけが持つ**（§9.163「判定を画面にも書かない」）——画面は
+# `/api/operation-item-master`が返す一覧から選ぶだけ。増やすときはここへ
+# 1行足して`resolve_limit()`へ引き方を書く。
+LIMIT_SOURCES = (
+    ('equipment.maxLineSpeed', '設備マスタ 最大ライン速度', 'm/min'),
+    ('equipment.maxStrips', '設備マスタ 最大条数', '条'),
+)
+LIMIT_SOURCE_KEYS = tuple(x[0] for x in LIMIT_SOURCES)
+
+
+def normalize_limit_source(v):
+    k = str(v or '').strip()
+    return k if k in LIMIT_SOURCE_KEYS else ''
+
+
+def limit_source_label(key):
+    for k, label, _u in LIMIT_SOURCES:
+        if k == key:
+            return label
+    return ''
+
+
+def resolve_limit(c, key, equipment):
+    """出どころの鍵から**いまの値**を引く。引けなければ`None`。
+
+    **引けなかったことを0にしないこと**——0にすると「上限0」という、
+    何を打っても弾かれる欄になる（§9.114「空欄は未設定であって0ではない」）。
+    読むだけなので、失敗しても例外は投げない（§9.163）。
+    """
+    key = normalize_limit_source(key)
+    if not key:
+        return None
+    try:
+        from . import master_repo as mr
+        if key == 'equipment.maxLineSpeed':
+            return mr.read_equipment_max_line_speed(c, equipment)
+        if key == 'equipment.maxStrips':
+            n = mr.read_equipment_max_strips(c, equipment)
+            return float(n) if n else None
+    except Exception:
+        return None
+    return None
 
 
 def _ensure_item_columns(c):
@@ -1333,7 +1387,11 @@ def _row_to_item(r):
             # --- §9.228 ④ ---
             # 「空欄（選ばない）」を並べないか。**選択肢を持つ型だけの話**
             # （自由記述や数値には空の札が無いので、読む側で倒しておく）。
-            'noBlank': bool(r[32]) and str(r[5] or '') in CHOICE_TYPES}
+            'noBlank': bool(r[32]) and str(r[5] or '') in CHOICE_TYPES,
+            # --- §9.231 ② ---
+            # 上下限の出どころ。空＝この行の数をそのまま使う。
+            'minFrom': normalize_limit_source(r[33]),
+            'maxFrom': normalize_limit_source(r[34])}
 
 
 _ITEM_SELECT = ('SELECT [項目ID],[設備名],[群],[項目名],[表示順],[型],[小数桁],[最小値],[最大値],'
@@ -1341,7 +1399,7 @@ _ITEM_SELECT = ('SELECT [項目ID],[設備名],[群],[項目名],[表示順],[�
                 '[組み込みキー],[置き場],[列幅],[群折りたたみ],[表示条件],[入力方法],'
                 '[初期値],[手打ち可],[ステップ量],'
                 '[単位位置],[文字寄せ],[表示書式],[表示桁数],[役割],[意匠],'
-                '[並べ方],[群幅],[ダミー],[空欄なし] '
+                '[並べ方],[群幅],[ダミー],[空欄なし],[最小の出どころ],[最大の出どころ] '
                 'FROM [操業データ項目マスタ] ORDER BY [表示順],[項目ID]')
 
 
@@ -1431,7 +1489,7 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                 widget=None, initial=None, free_text=None, step=None,
                 unit_place=None, align=None, value_format=None, digits=None,
                 role=None, look=None, layout=None, group_span=None, report=None,
-                dummy=None, no_blank=None):
+                dummy=None, no_blank=None, min_from=None, max_from=None):
     ensure_item_table(c)
     name = str(name or '').strip()
     if not name:
@@ -1445,17 +1503,23 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
     cur_builtin = ''
     prev_name = ''
     if item_id is not None:
-        cur.execute('SELECT [組み込みキー],[項目名],[ダミー],[空欄なし] '
+        cur.execute('SELECT [組み込みキー],[項目名],[ダミー],[空欄なし],'
+                    '[最小の出どころ],[最大の出どころ] '
                     'FROM [操業データ項目マスタ] WHERE [項目ID]=?', [int(item_id)])
         hit = cur.fetchone()
-        cur_builtin = str((hit or ['', '', 0, 0])[0] or '').strip()
-        prev_name = str((hit or ['', '', 0, 0])[1] or '').strip() if hit else ''
+        cur_builtin = str((hit or ['', '', 0, 0, '', ''])[0] or '').strip()
+        prev_name = str((hit or ['', '', 0, 0, '', ''])[1] or '').strip() if hit else ''
         # **渡されなかったら今の値を保つ**（§9.212 ②「送った項目だけ書く」）
         # ——設定窓は`dummy`を送らないので、触るたびに空きが解けては困る。
         if dummy is None and hit is not None:
             dummy = bool(hit[2])
         if no_blank is None and hit is not None:
             no_blank = bool(hit[3])
+        # §9.231 ②。出どころも同じ約束（送らない呼び出しで消さない）。
+        if min_from is None and hit is not None:
+            min_from = hit[4]
+        if max_from is None and hit is not None:
+            max_from = hit[5]
     if builtin is None:
         builtin = cur_builtin
     builtin = str(builtin or '').strip()
@@ -1494,7 +1558,9 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
             # §9.228 ② ダミー（空き）は**項目1枚の属性**。
             -1 if dummy else 0,
             # §9.228 ④ 空欄（選ばない）の札を並べないか。
-            -1 if no_blank else 0]
+            -1 if no_blank else 0,
+            # §9.231 ② 上下限の出どころ。空＝この行の数をそのまま使う。
+            normalize_limit_source(min_from), normalize_limit_source(max_from)]
     if item_id is not None:
         cur.execute('UPDATE [操業データ項目マスタ] SET [設備名]=?,[群]=?,[項目名]=?,[表示順]=?,'
                     '[型]=?,[小数桁]=?,[最小値]=?,[最大値]=?,[選択肢名]=?,[単位]=?,[必須]=?,'
@@ -1502,6 +1568,7 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                     '[表示条件]=?,[入力方法]=?,[初期値]=?,[手打ち可]=?,[ステップ量]=?,'
                     '[単位位置]=?,[文字寄せ]=?,[表示書式]=?,[表示桁数]=?,[役割]=?,[意匠]=?,'
                     '[並べ方]=?,[群幅]=?,[ダミー]=?,[空欄なし]=?,'
+                    '[最小の出どころ]=?,[最大の出どころ]=?,'
                     '[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
                     args + [uid, int(item_id)])
         c.commit()
@@ -1523,6 +1590,7 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                     '[入力方法]=?,[初期値]=?,[手打ち可]=?,[ステップ量]=?,'
                     '[単位位置]=?,[文字寄せ]=?,[表示書式]=?,[表示桁数]=?,[役割]=?,[意匠]=?,'
                     '[並べ方]=?,[群幅]=?,[ダミー]=?,[空欄なし]=?,'
+                    '[最小の出どころ]=?,[最大の出どころ]=?,'
                     '[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
                     args[1:2] + args[3:] + [uid, hit[0]])
         c.commit()
@@ -1537,9 +1605,9 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                 '[単位],[必須],[備考],[有効],[組み込みキー],[置き場],[列幅],[群折りたたみ],'
                 '[表示条件],[入力方法],[初期値],[手打ち可],[ステップ量],'
                 '[単位位置],[文字寄せ],[表示書式],[表示桁数],[役割],[意匠],'
-                '[並べ方],[群幅],[ダミー],[空欄なし],'
+                '[並べ方],[群幅],[ダミー],[空欄なし],[最小の出どころ],[最大の出どころ],'
                 '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
-                'VALUES (' + ','.join(['?'] * 34) + ',Now(),Now())',
+                'VALUES (' + ','.join(['?'] * 36) + ',Now(),Now())',
                 args + [uid, uid])
     c.commit()
     return int(cur.lastrowid)
@@ -1660,6 +1728,20 @@ def form_for_equipment(c, equipment):
         # 説明つきで選ばせるのに要る（§9.218 ②）。**説明のある値だけ**入れる。
         row['choiceNotes'] = dict(notes.get(it['choice'], {})) if it['choice'] else {}
         row['choiceMissing'] = bool(it['choice']) and it['choice'] not in cmap
+        # --- §9.231 ② 上下限をマスタから引き直す ---
+        # **解決するのはここ1箇所**——測定画面は`min`/`max`をそのまま使うので、
+        # 画面側に「出どころを引く」処理を書かない（§9.163）。
+        # **引けなかったら上限を掛けない**（`None`のまま）。0にすると
+        # 「何を打っても弾かれる欄」になる。どこから来た値かは`*FromLabel`で
+        # 画面に出す（§6「出どころ・単位・根拠を画面に出す」）。
+        for side, col in (('min', 'minFrom'), ('max', 'maxFrom')):
+            key = row.get(col) or ''
+            if not key:
+                continue
+            v = resolve_limit(c, key, equipment)
+            row[side] = v
+            row[col + 'Label'] = limit_source_label(key)
+            row[col + 'Missing'] = v is None
         out.append(row)
     # **出さない組み込みの欄は名指しで返す**(§9.216 ②)。画面はマスタに載って
     # いる欄しか差配しないので、「無効にした」「この設備では使わない」を
@@ -1675,6 +1757,7 @@ def form_for_equipment(c, equipment):
     if down:
         out = [r for r in out if r.get('builtin') not in down]
     return {'items': out, 'builtinOff': sorted((known - live) | down),
+            'limitSources': [{'key': k, 'label': l, 'unit': u} for k, l, u in LIMIT_SOURCES],
             'gridCols': GRID_COLS, 'spanUnit': SPAN_UNIT,
             'widgets': list(WIDGETS),
             'widgetFamilies': {k: list(v) for k, v in WIDGET_FAMILIES.items()},
