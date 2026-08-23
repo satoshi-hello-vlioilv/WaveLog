@@ -14,6 +14,7 @@
 - **進捗ファイル(boot_status.js)と待機画面の写しも端末ごと**。共有へ書くと
   2台が同時に起動したとき相手の進捗が自分の画面に出る。
 - setup.bat は **CP932**（UTF-8の日本語だとcmd.exeが誤読する）。
+- 起動スクリプトは **CRLF改行**（LFだけだとcmd.exeが行の途中から実行する）。
 
 **確かめ方の注意**: 刻印を消した状態で「起動できること」まで見ること。
 「刻印が書かれる」だけを見る網は、フォールバックが壊れていても通る。
@@ -140,6 +141,22 @@ try:
             utf8 = False
         rec('setup.bat はCP932（UTF-8の日本語だとcmd.exeが誤読する）',
             not utf8 and b'setup_app.py' in raw)
+    # ---- 7b) 起動スクリプトはCRLF ----
+    # **LFだけだとcmd.exeがバッチを読み進める位置がずれる**（§9.229 ①）。
+    # 実機では`rem`の行やechoの日本語が**行の途中から**コマンドとして実行され、
+    # 「'after' は、内部コマンドまたは…」が並んだ。**2バイト文字の途中で
+    # 切れる**（'ｫませんでした。'）ので、記号や引用符の問題では説明が付かない。
+    # ここは**内容ではなく改行そのもの**を見る。
+    for name in ('setup.bat', 'start_app.bat', 'stop.bat', 'Start.vbs'):
+        f = ROOT / name
+        if not f.exists():
+            rec(f'{name} がある', False)
+            continue
+        raw = f.read_bytes()
+        lf = raw.count(b'\n')
+        crlf = raw.count(b'\r\n')
+        rec(f'{name} はCRLF改行（LFだけだとcmd.exeが行の途中から実行する）',
+            lf > 0 and lf == crlf, f'LF={lf} CRLF={crlf}')
     rec('setup_app.py はリポジトリ直下（直接実行されるもの）',
         (ROOT / 'setup_app.py').exists())
 

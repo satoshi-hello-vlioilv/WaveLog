@@ -2294,7 +2294,8 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
    いるか」だけだった）。
      ラジオ     … 丸ぽち。**縦に読む**もの。線も面も持たない（一覧の一部）
      セグメント … 1本の帯を仕切る。**選んだ札だけが浮く**（排他が一目で分かる）
-     タブ       … 下線で示す。**面を持たない**ので、下に続く欄と一体に読める
+     タブ       … 下線＋淡い面。下に続く欄と地続きに読める（§9.229 ②で
+                  面を足した。下線だけでは差が読めなかった）
      ボタン群   … 独立した札。数が多くても折り返して読める
    **色は1色（teal）で通す**——ここは「選んだ／選んでいない」の2値しか
    語らないので、色を増やすと意味の無い色が画面に増える（§3・色彩心理）。
@@ -2307,7 +2308,12 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
   display:inline-flex;align-items:center;justify-content:center;gap:var(--gap-tight);
   min-width:0;min-height:var(--opf-h,var(--ctl-h-sm));padding:0 var(--space-2);
   background:none;border:0;box-shadow:none;
-  color:var(--ink-2);font-size:var(--fs-sm);font-weight:600;line-height:1.2;
+  /* **未選択は薄く**（§9.229 ②、利用者の指示「変わっている感じがわかりません
+     …白背景に白配色で、淵だけ色付きではわかりにくい」）。以前は`--ink-2`
+     （#3a565d＝本文とほぼ同じ濃さ）だったので、**選んだ札より選んでいない札の
+     ほうが濃く見えた**——色を1つ足しても、隣がもっと濃ければ差は読めない。
+     見本の絵（`.opd`）は最初から`--ink-3`で描いており、そちらが正しい。 */
+  color:var(--muted);font-size:var(--fs-sm);font-weight:600;line-height:1.2;
   cursor:pointer;white-space:nowrap;
 }
 .opf-btn-text{min-width:0;overflow:hidden;text-overflow:ellipsis}
@@ -2323,7 +2329,9 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
   border:1px solid var(--line-strong);background:var(--surface);
 }
 .opf-radio-btn:hover .opf-dot{border-color:var(--teal)}
-.opf-radio-btn.is-on{color:var(--ink);font-weight:700}
+/* 見本の絵と同じ「丸ぽち＋濃い色の文字」（§9.229 ②）。太字は足さない
+   ——丸ぽちと色で2つ、そこへ太さを重ねると選んだ行だけ幅が変わる。 */
+.opf-radio-btn.is-on{color:var(--teal-dark)}
 .opf-radio-btn.is-on .opf-dot{
   border-color:var(--teal);
   box-shadow:inset 0 0 0 4px var(--teal);
@@ -2336,17 +2344,34 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 /* 中の札は器より1段小さい角丸にする（同じ値だと角で線が二重に見える）。 */
 .opf-seg-btn{flex:1 1 0;border-radius:calc(var(--opf-radius,var(--radius-sm)) - 2px)}
 .opf-seg-btn:hover{color:var(--ink)}
+ /* **白い札は「浮いて」いないと読めない**（§9.229 ②）。§9.227 ①で影を
+    全部落としたが、セグメントだけは面の色が地（`--surface-2`）とほぼ同じ
+    白なので、影が無いと「1マスだけ少し明るい」以上のことを語らない
+    ——利用者の言う「白背景に白配色」がここ。**影は3つ目の合図ではなく
+    「面の描き方」**（浮いた札1枚で1つ）で、見本の絵も最初からこう描いて
+    いる。太字は落とす（面＋文字色で2つ）。 */
 .opf-seg-btn.is-on{
-  background:var(--surface);color:var(--teal);font-weight:700;
+  background:var(--surface);color:var(--teal-dark);
+  box-shadow:0 1px 2px rgba(15,32,39,.16);
 }
 /* --- タブ: 下線だけ。面を持たない --- */
-.opf-tabs .opf-shape{gap:var(--space-3);border-bottom:1px solid var(--line-soft)}
-.opf-tab-btn{padding:0 var(--space-1);border-bottom:2px solid transparent;margin-bottom:-1px}
-.opf-tab-btn:hover{color:var(--ink);border-bottom-color:var(--line-mid)}
-/* 選択の合図は**色と下線の2つ**（§9.228 ③、利用者の指示「タブもデザインが
-   これもやりすぎのまま」）。太字を足すと3つになり、選んだ札だけ文字幅まで
-   変わって隣のタブがずれる——選択タイルの絵も色と下線の2つで描いている。 */
-.opf-tab-btn.is-on{color:var(--teal);border-bottom-color:var(--teal)}
+/* **選んだ札は面を持つ**（§9.229 ②、利用者の指示「白背景に白配色で、淵だけ
+   色付きではわかりにくいです。標準的な、選ばせ方のサンプルと同じデザインに
+   してください」）。§9.220 ①では「タブは面を持たない」と決めていたが、
+   **面を持たないと差が下線1本しか無く**、実機では「変わった感じがわからない」
+   状態だった（選んだ札の文字色を変えても、隣の未選択が本文と同じ濃さでは
+   差にならない）。いまは**淡い面＋濃い文字**で、下線は**タブという部品の形**
+   （下に続く欄との地続き）——丸ぽちや入切の帯と同じで、合図の数には
+   数えない。当たりも広げる（以前は左右4pxで、下線が文字幅ぶんしか無かった）。 */
+.opf-tabs .opf-shape{gap:2px;border-bottom:1px solid var(--line-mid)}
+.opf-tab-btn{
+  padding:0 var(--space-3);border-bottom:2px solid transparent;margin-bottom:-1px;
+  border-radius:var(--opf-radius,var(--radius-sm)) var(--opf-radius,var(--radius-sm)) 0 0;
+}
+.opf-tab-btn:hover{color:var(--ink);background:var(--surface-2)}
+.opf-tab-btn.is-on{
+  background:var(--pale);color:var(--teal-dark);border-bottom-color:var(--teal);
+}
 /* --- ボタン群: 独立した札。折り返す --- */
 .opf-chips .opf-shape{flex-wrap:wrap;gap:var(--gap-tight)}
 .opf-chip-btn{
@@ -2511,8 +2536,9 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
    「teal枠＋pale面」だったので、載せただけで選ばれたように見え、
    どれが選択中なのか分からなくなっていた。 */
 .opf-card-btn:hover{border-color:var(--line-mid);background:var(--surface-2)}
-.opf-card-btn.is-on{border-color:var(--teal);background:var(--pale);color:var(--ink);
-  font-weight:700}
+/* 見本の絵と同じ「teal枠＋淡い面＋濃い文字」（§9.229 ②）。太字は足さない
+   ——枠と面で1つ、文字色で1つ。 */
+.opf-card-btn.is-on{border-color:var(--teal);background:var(--pale);color:var(--teal-dark)}
 .opf-btn-note{display:block;color:var(--muted);font-size:var(--fs-micro);font-weight:600;
   line-height:1.3;white-space:normal}
 .opf-card-btn.is-on .opf-btn-note{color:var(--ink-3)}
@@ -2682,7 +2708,7 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
    **色を選んだ欄だけ下線が2本＝4pxになる**（既定色では2pxなので
    気づけない）。 */
 [class*="opf-c-"] .opf-tab-btn.is-on{color:var(--opf-hue-dark);
-  border-bottom-color:var(--opf-hue)}
+  background:var(--opf-hue-pale);border-bottom-color:var(--opf-hue)}
 /* **ボタン群は色を変えてもベタ塗りのまま**（§9.227 ①）。以前はここで
    `.opf-chip-btn.is-on`まで淡色の面へ落としていたが、素の指定が
    `color:#fff`なので**淡い面に白い文字が残って読めなかった**（既定色の
@@ -2690,7 +2716,8 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
    色によって変わってはいけない（§3）。 */
 [class*="opf-c-"] .opf-chip-btn.is-on{background:var(--opf-hue);
   border-color:var(--opf-hue);color:#fff}
-[class*="opf-c-"] .opf-card-btn.is-on{border-color:var(--opf-hue);background:var(--opf-hue-pale)}
+[class*="opf-c-"] .opf-card-btn.is-on{border-color:var(--opf-hue);
+  background:var(--opf-hue-pale);color:var(--opf-hue-dark)}
 [class*="opf-c-"] .opf-pick-btn:focus-visible,
 [class*="opf-c-"] select:focus-visible,
 [class*="opf-c-"] input:focus-visible{outline-color:var(--opf-hue)}

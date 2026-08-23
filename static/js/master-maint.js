@@ -3899,7 +3899,7 @@
      `タブ`が同じ角ばったボタンで、違いは連なっているかだけだった。 */
   'ラジオ':{icon:'◉',note:'丸ぽち。全部見えたまま選ぶ。3〜5個向き'},
   'セグメント':{icon:'▤',note:'1本の帯を仕切る。選んだ札が浮く。2〜4個向き'},
-  'タブ':{icon:'⊤',note:'下線で示す。下に続く欄と一体に読ませたいとき'},
+  'タブ':{icon:'⊤',note:'下線と淡い面で示す。下に続く欄と地続きに読ませたいとき'},
   'ボタン群':{icon:'⬭',note:'独立した札。数が多くても折り返して読める'},
   '一覧':{icon:'⌸',note:'押すと浮き窓。説明つきで選べる（数が多いとき）'},
   /* §9.219 ③（利用者の指示「UIの種類を増やしたり」）。数値・自由記述にも
@@ -5045,8 +5045,16 @@
     ここから初期値も直せるようにしておく（②のタブまで探しに行かせない）。
     選択肢を持たない型では**欄ごと出さない**が、§9.227 ②のとおり
     **場所は空けておく**（消すと下の行が動く）。 */
+ /* **「選択肢を持つか」は族（family）で見る**（§9.229 ③、利用者の指示
+    「コイル止めに関して、名前も設定項目も変えられません。汎用設計にして
+     いるつもりなので…」）。以前は`[型]`だけを見ていたので、**組み込みの
+    選択欄が全部すり抜けた**——コイル止めの`[型]`は`文字`で、まとまり
+    （`[選択肢名]`）はちゃんと結んであるのに、選択肢・初期値・空欄の札・
+    手打ちの欄が1つも出なかった。`opFamilyOf()`は組み込みキーから族を引く
+    ので、こちらが唯一の判定。 */
+ function opIsChoiceLike(x){return opFamilyOf(x)==='choice'}
  function opBlankRowHtml(x,widget){
-  const choice=opState.choiceTypes.includes(x.type);
+  const choice=opIsChoiceLike(x);
   if(!choice){
    return `<div class="op-form-row is-fixed-layout"><span class="op-form-label">空欄の札</span>
     <span class="op-form-ctl"><i class="op-form-note">この型には「選ばない」の札がありません
@@ -5177,7 +5185,7 @@
   const m=$('#opItemModal');if(!m||m.hidden)return;
   const x=opItemById(opState.picked);
   if(!x){m.hidden=true;return}
-  const isChoice=opState.choiceTypes.includes(x.type);
+  const isChoice=opIsChoiceLike(x);
   const usable=opWidgetUsable(x);
   const widget=opWidgetOf(x);
   const users=(opState.usage||{})[x.choice]||[];
@@ -5262,7 +5270,9 @@
        :`測定データの <code>settings.opData.${esc(x.name)}</code>`}</li>`
    +`</ul>`
    +`<p class="op-prev-note">${x.builtin
-      ?'この欄は画面がもともと持っています（内径のプリセット・条数の上限など、それぞれの仕掛けがあるため）。ここで決められるのは<b>並び・群・幅・必須・出す/出さない・置き場・選ばせ方</b>だけです。'
+      ?'この欄は画面がもともと持っています（内径のプリセット・条数の上限など、それぞれの仕掛けがあるため）。'
+       +'それ以外は<b>自由項目と同じように</b>決められます——名前・選択肢のまとまり・初期値・手打ち・単位・並び・群・幅・必須・出す/出さない・置き場・選ばせ方・意匠。'
+       +'<b>変えられないのは型だけ</b>で、行そのものも消せません（②の「この項目」に外し方があります）。'
       :'記録は<b>項目名を鍵</b>にして測定データへ入ります。名前を変えると、それまでの記録は前の名前のまま残ります。'}</p>`;
   opRenderPreviewField(x,widget,usable);
   /* ---- 右: 決めること ---- */
@@ -5360,7 +5370,6 @@
      <i class="op-form-note">${users.length?`このまとまりを使っている項目: ${esc(users.join('、'))}`
        :'このまとまりを使っている項目はまだありません'}</i>
     </span></div>`:''}
-   ${x.builtin?'':`
    <div class="op-form-row"><span class="op-form-label">初期値</span>
     <span class="op-form-ctl">
      <input type="text" id="opdInitial" list="opInitialList" value="${esc(x.initial||'')}"
@@ -5375,7 +5384,11 @@
    ${help('初期値はいつ入るか',
      '<p><b>まだ何も記録されていない欄にだけ</b>入ります。入力の方法によらず効きます'
      +'（プルダウンでもラジオでもステッパーでも同じ）。空にした欄を開き直しても初期値へは戻りません'
-     +'——消したのは作業者の判断なので、上書きしません。</p>')}`}
+     +'——消したのは作業者の判断なので、上書きしません。</p>'
+     +'<p><b>画面がもともと持っている欄（内径・スプール・測定器など）にも入ります。</b>'
+     +'ただし入るのは<b>まだ何も選ばれていないとき</b>——空欄か「-」のときだけで、'
+     +'「指定なし」のように<b>既定の選択肢が入っている欄には入りません</b>。'
+     +'仕掛データから値が来る欄（内径）では<b>仕掛の値が勝ちます</b>。</p>')}
    ${isChoice?`
    <div class="op-form-row"><span class="op-form-label">手打ち</span>
     <span class="op-form-ctl">
@@ -5385,9 +5398,13 @@
    <div class="op-form-row is-danger"><span class="op-form-label">この項目</span>
     <span class="op-form-ctl">
      ${x.builtin
-       ?`<b class="op-locked-chip">画面の欄は消せません</b>
-         <i class="op-form-note">①の「測定画面に出す」を外すと隠れます。
-          役割を別の項目へ移すと、この欄は自動で下がります。</i>`
+       ?`<button type="button" id="opdStepOut" class="ghost">①「測定画面に出す」へ</button>
+         <i class="op-form-note">この欄は<b>画面がもともと持っている部品</b>なので、
+          行ごと消すことはできません（消しても起動のたびに作り直されます）。
+          代わりに<b>外して隠せます</b>——いつでも戻せます。出す/出さないを持っている
+          のは①の1つだけなので、このボタンは<b>そこへ連れて行きます</b>。
+          いまは<b>${x.enabled===false?'外れています':'測定画面に出ています'}</b>。
+          役割を別の項目へ移した場合も、この欄は自動で下がります。</i>`
        :`<button type="button" id="opdDelete" class="danger ghost">この項目を削除</button>
          <i class="op-form-note">取り消せません。<b>記録済みの値は残りますが、画面から入れられなくなります。</b></i>`}
     </span></div>`);
@@ -5501,7 +5518,9 @@
      `measure-opdata.js`が作るので、設定画面と測定画面で形が食い違わない。 */
   /* 初期値（§9.220 ②）は**見本にも入れる**——設定した値がどう見えるかを
      確かめられないと、選択肢に無い値を打ったことに気づけない。 */
-  if(x.initial&&!x.builtin){
+  /* **組み込みの欄の初期値も見本に入れる**（§9.229 ③）——効く設定なのに
+     見本にだけ出ないと、確かめられない。 */
+  if(x.initial){
    if(ctl.tagName==='SELECT'&&![...ctl.options].some(o=>o.value===x.initial)){
     const o=document.createElement('option');
     o.value=x.initial;o.textContent=x.initial;o.dataset.opFree='1';ctl.appendChild(o);
@@ -5513,7 +5532,9 @@
      確かめられない設定ができる）。 */
   const previewDef={name:x.name,unit:x.unit,type:x.type,
     decimals:x.decimals,min:x.min,max:x.max,step:x.step,
-    freeText:!!x.freeText&&!x.builtin,
+    /* **組み込みの欄でも手打ちは効く**（§9.229 ③）——値の持ち方を変えず、
+       選ぶ器そのものが打てるようになるだけ。見本で確かめられること。 */
+    freeText:!!x.freeText,
     /* 見せ方（§9.221 ⑦）も**見本へそのまま渡す**——設定画面で見えた形と
        測定画面の形が食い違わないように、当てるのは`measure-opdata.js`の
        1本（`WL.opData.presentation`）だけにする。単位を重ねられない
@@ -5641,6 +5662,16 @@
   if(save)save.onclick=()=>opSaveItem();
   const del=$('#opdDelete');
   if(del)del.onclick=()=>opDeleteItem();
+  /* 組み込みの欄の「外す」（§9.229 ③）。**入口は増やさない**（§9.207）
+     ——出す/出さないを持っているのは①の1つだけなので、ここは
+     **そこへ連れて行くだけ**。②で行き止まりにすると「外せない」と読まれる
+     （実機で「一旦外すなどもできるようにしてほしい」と報告された）。 */
+  const out=$('#opdStepOut');
+  if(out)out.onclick=()=>{
+   opState.tab='place';touch({});
+   const t=$('#opdEnabled');
+   if(t){t.focus();t.classList.add('op-flash');setTimeout(()=>t.classList.remove('op-flash'),1200)}
+  };
  }
  /* いま窓に打ち込まれている値。**在る欄だけ**返す（組み込みの行では
     名前・型の欄そのものが無い）。 */
@@ -5710,7 +5741,12 @@
      欄を作らない・§CLAUDE 4）。 */
   const body={id:x.id,user_id:uid,note:d.note||'',
     equipment:d.equipment||x.equipment||'*',group:d.group||'その他',
-    name:x.builtin?x.name:(d.name||x.name),
+    /* **名前は組み込みの欄でも送る**（§9.229 ③、利用者の指示「名前も設定項目も
+       変えられません」）。以前はここで`x.name`へ戻していたので、②で打ち直して
+       保存しても**元の名前で上書き**されていた（欄は編集できるので、押した本人
+       からは「保存できているのに反映されない」としか見えない）。測定画面の
+       見出しは`renameBuiltinLabel()`が書き換える（§9.228 ①）ので、送れば効く。 */
+    name:d.name||x.name,
     type:x.builtin?x.type:(d.type||'文字'),
     decimals:x.builtin?null:d.decimals,min:x.builtin?null:d.min,max:x.builtin?null:d.max,
     /* **単位と見せ方は組み込みの欄にも効く**（§9.221 ⑦）。型・上下限と
@@ -5727,10 +5763,12 @@
     /* §9.228 ②④。**空きと空欄の札も必ず送る**——`item_upsert`は全列を
        書くので、送らないと保存のたびに既定へ戻る（§9.212 ②と同じ形）。 */
     dummy:!!d.dummy,noBlank:!!d.noBlank,
-    /* 組み込みの欄は初期値も手打ちも持たない（型・上下限と同じ理由。
-       内径のプリセット§9.204・条数の上限§9.210 ⑤と衝突する）。 */
-    initial:x.builtin?'':(d.initial||''),
-    freeText:x.builtin?false:!!d.freeText,
+    /* **初期値と手打ちは組み込みの欄にも効く**（§9.229 ③）。値の持ち方を
+       変えないので、型・上下限と違って画面の部品のままで成立する。
+       仕掛データから値が来る欄（内径§9.204）は**仕掛の値が勝つ**
+       ——`applyInitials()`が入れた値は「まだ選んでいない」として扱う。 */
+    initial:d.initial||'',
+    freeText:!!d.freeText,
     step:x.builtin?null:d.step,
     /* 「開く条件」と「畳む」は**群のもの**。1行だけに書くと、同じ群の中で
        食い違う（`form_for_equipment`は「1つでも畳むと言えば畳む」で読むので
