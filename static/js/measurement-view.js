@@ -823,7 +823,12 @@ function activeRequiredControls(){
  /* 母材と丈は**同じ面にある**ので、必須も一緒に見る（§9.160。以前は
     項目が2つに割れており、片方を開かないともう片方の未入力に気づけなかった）。 */
  if(WL.measureItem.isMaterial(type)){
-  document.querySelectorAll('[data-mother]').forEach((el,i)=>controls.push({el,label:['手計算','全長','MINカード指示','MAXカード指示','前オフ実績','後オフ実績','前オフカード指示','後オフカード指示'][i]||'母材'}));
+  /* **ラベルは画面から読む**（§9.232）。以前はDOMの順番で決め打ちの配列を
+     引いていたので、マスタで名前を変えても並べ替えても古い呼び名が出た
+     ——母材の欄は操業データの項目になり、**順番も名前も現場が決める**。
+     読み方は`motherRecordRows()`と同じ（同じ欄を2通りに呼ばない）。 */
+  document.querySelectorAll('[data-mother]').forEach(el=>
+   controls.push({el,label:motherFieldLabel(el)}));
   const fieldLabels={productLength:'長さ',wallThickness:'肉厚',edgeShape:'揃い(エッジ形状)'};
   /* **行番号で数えない**(§9.203)——内訳の段(`.prt-detail`)が挟まるので、
      `forEach`の添字は丈の番号と一致しない。`data-row`で引く。 */
@@ -944,16 +949,27 @@ const RECORD_GROUPS=[
  ['その他の設定',[['unwind','巻出方向'],['widthOrder','条入力順'],['widthDirection','方向'],['burr','バリ揃え'],['coilStop','コイル止め']]],
 ];
 /* 母材の項目名は**画面のラベルから取る**（マスタでも定数でもない）。
-   ここで別の名前を持つと、②で見た欄名と③の一覧で言葉が変わる。 */
+   ここで別の名前を持つと、②で見た欄名と③の一覧で言葉が変わる。
+   画面のラベルは`renameBuiltinLabel()`がマスタの項目名で書き換えるので
+   （§9.228 ①・§9.232）、ここを通せば改名にそのまま追随する。 */
+function motherFieldLabel(el){
+ const lab=el&&el.closest('label');
+ const name=lab?[...lab.childNodes].filter(n=>n.nodeType===3)
+   .map(n=>n.textContent.trim()).join('').trim():'';
+ return name||(el&&(el.dataset.mother||el.id))||'母材';
+}
 function motherRecordRows(){
  const rows=[];
- [['motherOriginalWidth','元幅（実績）'],['motherScrapWidth','屑幅（両耳合計）']].forEach(([id,label])=>{
-  const el=$('#'+id);if(el)rows.push([label,el.textContent]);
+ /* 参考値も**画面のラベルから**読む（§9.232）——マスタで名前を変えられる
+    ようになったので、ここで別の名前を持つと③だけ古い呼び名になる。 */
+ ['motherOriginalWidth','motherScrapWidth','motherCalcLength'].forEach(id=>{
+  const el=$('#'+id);if(!el)return;
+  const lab=el.closest('label');
+  if(lab&&lab.hidden)return;
+  rows.push([motherFieldLabel(el),el.textContent]);
  });
  document.querySelectorAll('[data-mother]').forEach(el=>{
-  const lab=el.closest('label');
-  const name=lab?[...lab.childNodes].filter(n=>n.nodeType===3).map(n=>n.textContent.trim()).join(''):'';
-  rows.push([name||el.dataset.mother,el.value]);
+  rows.push([motherFieldLabel(el),el.value]);
  });
  return rows;
 }

@@ -3862,7 +3862,9 @@
                 /* 型ごとに効く入力方法。**サーバーが答える**（§9.219 ③）
                    ——ここは届くまでの受け皿で、判定を画面に持たない。 */
                 widgetFamilies:{choice:['プルダウン','ラジオ','セグメント','タブ','ボタン群','一覧'],
-                                number:['プルダウン'],text:['プルダウン']},
+                                number:['プルダウン'],text:['プルダウン'],
+                                /* 画面が値を入れる欄（§9.232）。選ばせ方は無い。 */
+                                output:[]},
                 choiceTypes:['選択'],numberTypes:['整数','正の整数','数値','正の数'],
                 spanUnit:2,
                 /* 見せ方の選択肢（§9.221 ⑦）。**サーバーが答える**——ここは
@@ -3893,6 +3895,8 @@
  const OP_PLACE_NOTE={
   '準備':'①準備の「操業データ」カード（横3マス×縦2マス）',
   '入力内容':'②測定の「入力内容」カード（畳んでおき、下の「開く条件」に当たる項目を選ぶと開きます）',
+  /* §9.232。**畳みの対象ではない**——面ごと出し分けるので「開く条件」は効かない。 */
+  '母材':'②測定の「母材」カード（入力内容が「母材・揃い/肉厚/長さ」のときだけ出る面）',
  };
  /* 型の一言。**選ばせる前に何が起きるかを書く**（§CLAUDE 6）。 */
  const OP_TYPE_NOTE={
@@ -4040,6 +4044,10 @@
   if(x&&x.builtin)return bf[x.builtin]||'choice';
   return tf[(x&&x.type)||'']||'text';
  }
+ /* 画面が値を入れる欄（§9.232）。母材の参考値3つ——元幅（実績）・
+    屑幅（両耳合計）・計算全長（参考）——は`<output>`なので、選ばせ方も
+    初期値も持たない。**判定は1箇所**（族はサーバーが答える）。 */
+ function opIsOutput(x){return opFamilyOf(x)==='output'}
  function opWidgetsFor(x){
   const fam=opState.widgetFamilies||{};
   return fam[opFamilyOf(x)]||['プルダウン'];
@@ -5605,6 +5613,9 @@
      <i class="op-form-note">${users.length?`このまとまりを使っている項目: ${esc(users.join('、'))}`
        :'このまとまりを使っている項目はまだありません'}</i>
     </span></div>`:''}
+   ${opIsOutput(x)?`
+   <div class="op-form-row"><span class="op-form-label">初期値</span>
+    <span class="op-form-ctl"><i class="op-form-note">この欄は<b>画面が値を入れます</b>ので、初期値はありません。</i></span></div>`:`
    <div class="op-form-row"><span class="op-form-label">初期値</span>
     <span class="op-form-ctl">
      <input type="text" id="opdInitial" list="opInitialList" value="${esc(x.initial||'')}"
@@ -5615,7 +5626,7 @@
        ?`<b class="op-warn-chip">候補に「${esc(x.initial)}」がありません${x.freeText?'（手打ちの値として入ります）':'——このままだと選択肢に無い値として入ります'}</b>`:''}
      ${!isChoice&&x.initial&&opInitialRangeNote(x)
        ?`<b class="op-warn-chip">${esc(opInitialRangeNote(x))}</b>`:''}
-    </span></div>
+    </span></div>`}
    ${help('初期値はいつ入るか',
      '<p><b>まだ何も記録されていない欄にだけ</b>入ります。入力の方法によらず効きます'
      +'（プルダウンでもラジオでもステッパーでも同じ）。空にした欄を開き直しても初期値へは戻りません'
@@ -5647,13 +5658,16 @@
   const paneLook=sec('どう見せるか','選ばせ方・意匠・単位の置き場（記録の中身は変わりません）',`
    <div class="op-form-row"><span class="op-form-label">選ばせ方</span>
     <span class="op-form-ctl">
+     ${opIsOutput(x)?'':`
      <span class="op-widget-grid">${opWidgetsFor(x).map(w=>`<button type="button" data-op-widget="${esc(w)}"`
        +` class="op-widget-tile${widget===w?' is-on':''}"${usable?'':' disabled'}>`
        +`<b class="op-widget-icon">${esc((OP_WIDGET_NOTE[w]||{}).icon||'')}</b>`
        +`<span class="op-widget-name">${esc(opWidgetLabel(x,w))}</span>`
        +`<span class="op-widget-demo">${opWidgetDemoHtml(x,w)}</span>`
-       +`<small class="op-widget-note">${esc((OP_WIDGET_NOTE[w]||{}).note||'')}</small></button>`).join('')}</span>
-     <i class="op-form-note">${usable
+       +`<small class="op-widget-note">${esc((OP_WIDGET_NOTE[w]||{}).note||'')}</small></button>`).join('')}</span>`}
+     <i class="op-form-note">${opIsOutput(x)
+       ?'この欄は<b>画面が値を入れます</b>（前工程の実績・計算の結果）。打ち込む欄ではないので、選ばせ方はありません。<b>決められるのは名前・出す/出さない・並び・幅・単位・意匠</b>です。'
+       :usable
        ?'見本は<b>本物の部品</b>なので、押して確かめられます。'
        :'この型で選べる形は1つだけです。'}${
        opFamilyOf(x)==='number'?'　数値の欄は<b>打つこともできる</b>まま——道具は隣に足すだけです。':''}${

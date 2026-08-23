@@ -102,12 +102,17 @@ const restore=[];
     柱:!!document.querySelector('#masterMaintList .op-detail'),
    };
   });
-  rec('置き場ごとにボードが出る（準備・入力内容）',
-      board.枚数===2&&board.置き場.join('/')==='準備/入力内容',JSON.stringify(board.置き場));
+  /* §9.232 で母材の面が3枚目の置き場になった（利用者の指示「測定画面の
+     入力内容の母材の部分も汎用設定で作った形にしたい」）。**枚数は
+     サーバーの`PLACES`と同じ数**——増やしたのに盤が出ないと、行はあるのに
+     触れない置き場ができる。 */
+  rec('置き場ごとにボードが出る（準備・入力内容・母材）',
+      board.枚数===3&&board.置き場.join('/')==='準備/入力内容/母材',JSON.stringify(board.置き場));
   /* §9.218 ②: 6マス（選べるのは1/2/3/6の4通り）では「1列と2列の間」が
      作れなかった。12マスにして刻みを細かくする。 */
   rec('測定画面と同じ12マスのグリッド',board.列.every(n=>n===12),JSON.stringify(board.列));
-  rec('マスの目盛が出る（あと何マス入るかが読める）',board.目盛===24,String(board.目盛));
+  rec('マスの目盛が出る（あと何マス入るかが読める）',board.目盛===12*board.枚数,
+      `${board.目盛} / 盤${board.枚数}枚`);
   rec('群は帯で区切る（帯より下がその群）',
       board.帯.includes('誰が測るか')&&board.帯.includes('条の入力'),JSON.stringify(board.帯));
   rec('項目はタイルとして並び、掴める',board.タイル>10&&board.掴める===true,

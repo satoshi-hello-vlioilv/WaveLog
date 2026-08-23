@@ -48,10 +48,17 @@ INTEGER_TYPES = ('整数', '正の整数')
 #   準備     … ①準備の「操業データ」カード
 #   入力内容 … ②測定の「入力内容」カードの中（畳んでおき、関係のある
 #              測定項目を選んだときだけ開く）
+#   母材     … ②測定の「母材」カード（測定項目が「母材・揃い/肉厚/長さ」の
+#              ときだけ出る作業面。§9.160）
 # **置き場を増やさない**——増やすほど「どこに出るのか」を覚える手間が増える。
+# 母材を足したのは§9.232（利用者の指示「測定画面の入力内容の母材の部分も
+# 汎用設定で作った形にしたい」）。**別のカードなので既存の2つへは混ぜない**
+# ——`準備`へ入れると①のカードに出てしまい、`入力内容`へ入れると畳みの
+# 対象になる（母材の面は測定項目そのもので出し分ける）。
 PLACE_PREP = '準備'
 PLACE_INPUT = '入力内容'
-PLACES = (PLACE_PREP, PLACE_INPUT)
+PLACE_MOTHER = '母材'
+PLACES = (PLACE_PREP, PLACE_INPUT, PLACE_MOTHER)
 
 
 def normalize_place(v):
@@ -149,6 +156,10 @@ WIDGET_FAMILIES = {
     'number': (WIDGET_SELECT, 'ステッパー', 'スライダー', 'キーパッド', '早見ボタン',
                'メーター'),
     'text': (WIDGET_SELECT, 'メモ', '1行', '定型文'),
+    # 画面が値を入れる欄（§9.232）。**選ばせ方は1つも無い**——値を打つ道具を
+    # 出しても押せるだけで何も起きない（§4）。決められるのは名前・出す/出さない・
+    # 並び・幅・単位・意匠だけ。
+    'output': (),
 }
 
 # ---------------------------------------------------------------------------
@@ -197,6 +208,13 @@ def layout_usable(widget):
 # 入力欄の実体**で決まる。マスタの`[型]`は組み込み行では空なので、ここが答える。
 # 挙げていないキーは`<select>`＝choice。
 BUILTIN_FAMILIES = {'verticalCount': 'number', 'horizontalCount': 'number'}
+# 母材の8欄は手で打つ数値（§9.232）。3つの参考値は**画面が値を入れる**ので
+# `output`——選ばせ方も初期値も持たない（押せるのに効かない設定を出さない・§4）。
+BUILTIN_FAMILIES.update({k: 'number' for k in (
+    'motherManual', 'motherFullLength', 'motherMinCard', 'motherMaxCard',
+    'motherFront', 'motherRear', 'motherFrontCard', 'motherRearCard')})
+BUILTIN_FAMILIES.update({k: 'output' for k in (
+    'motherOriginalWidth', 'motherScrapWidth', 'motherCalcLength')})
 
 
 def widget_family(kind, builtin=''):
@@ -475,6 +493,24 @@ BUILTIN_SEEDS = (
      '板幅,ラテラルボー,バリ,テレスコープ,巻ずれ,フラットネス'),
     ('widthDirection', '条の入力', '方向', 6, False, PLACE_INPUT, True,
      '板幅,ラテラルボー,バリ,テレスコープ,巻ずれ,フラットネス'),
+    # --- §9.232（利用者の指示「測定画面の入力内容の母材の部分も汎用設定で
+    #     作った形にしたいので、今の項目データを抜き出し、今の汎用設定で
+    #     作りこみできるように必要な設定を追加してください」）---
+    # 画面に焼き付いていた11欄をそのまま行にしたもの。**名前は重ねない**
+    # （§9.113）——以前は「前オフ」が実績とカード指示の2箇所にあり、
+    # 見出し（横＝どこから来た値か）だけが違いを引き受けていた。見出しは
+    # 群になるので、区別は名前が持つ。
+    ('motherOriginalWidth', '自動で出る値', '元幅（実績）', 4, False, PLACE_MOTHER, False, ''),
+    ('motherScrapWidth', '自動で出る値', '屑幅（両耳合計）', 4, False, PLACE_MOTHER, False, ''),
+    ('motherCalcLength', '自動で出る値', '計算全長（参考）', 4, False, PLACE_MOTHER, False, ''),
+    ('motherManual', '全長', '手計算', 3, False, PLACE_MOTHER, False, ''),
+    ('motherFullLength', '全長', '全長', 3, False, PLACE_MOTHER, False, ''),
+    ('motherMinCard', '全長', 'MIN（カード指示）', 3, False, PLACE_MOTHER, False, ''),
+    ('motherMaxCard', '全長', 'MAX（カード指示）', 3, False, PLACE_MOTHER, False, ''),
+    ('motherFront', 'オフセット', '前オフ', 3, False, PLACE_MOTHER, False, ''),
+    ('motherRear', 'オフセット', '後オフ', 3, False, PLACE_MOTHER, False, ''),
+    ('motherFrontCard', 'オフセット', '前オフ（カード指示）', 3, False, PLACE_MOTHER, False, ''),
+    ('motherRearCard', 'オフセット', '後オフ（カード指示）', 3, False, PLACE_MOTHER, False, ''),
 )
 BUILTIN_KEYS = tuple(x[0] for x in BUILTIN_SEEDS)
 
@@ -1272,6 +1308,51 @@ def _seed_builtins(c):
     return True
 
 
+# 後から足した組み込みの欄の種まき（§9.232）。**目印はパス設定マスタ**
+# （`migrate_legacy_choice_masters`と同じ作法）——「行が無ければ足す」に
+# すると、利用者が消した瞬間に復活する**消せない欄**になる。
+_MOTHER_SEEDED_KEY = '__op_mother_seeded__'
+_MOTHER_KEYS = tuple(x[0] for x in BUILTIN_SEEDS if x[5] == PLACE_MOTHER)
+
+
+def seed_mother_builtins(c):
+    """母材の11欄をマスタの行として置く（既に組み込みの行がある端末向け）。
+
+    `_seed_builtins()`は「組み込みの行が1つも無い」ときだけ走るので、
+    先に立ち上がっている端末では**後から足した欄が一生入らない**。
+    ここは**1度だけ**・**まだ無い鍵だけ**足す。
+    """
+    from ..db_access import path_config_rows, set_path_config
+    if path_config_rows(c).get(_MOTHER_SEEDED_KEY):
+        return 0
+    cur = c.cursor()
+    cur.execute(f"SELECT [組み込みキー] FROM [{ITEM_TABLE}] "
+                "WHERE [組み込みキー] IS NOT NULL AND [組み込みキー]<>''")
+    have = {str(r[0]).strip() for r in cur.fetchall()}
+    if not have:
+        # まだ1つも無い＝`_seed_builtins()`が全部入れる。目印だけ立てて任せる。
+        set_path_config(c, _MOTHER_SEEDED_KEY, 'done', 'migrate:mother')
+        return 0
+    cur.execute(f'SELECT MAX([表示順]) FROM [{ITEM_TABLE}]')
+    base = int((cur.fetchone() or [0])[0] or 0)
+    made = 0
+    for i, (key, group, name, span, req, place, fold, when) in enumerate(BUILTIN_SEEDS):
+        if place != PLACE_MOTHER or key in have:
+            continue
+        cur.execute(f'INSERT INTO [{ITEM_TABLE}] '
+                    '([設備名],[群],[項目名],[表示順],[型],[小数桁],[最小値],[最大値],'
+                    '[選択肢名],[単位],[必須],[備考],[有効],[組み込みキー],[置き場],[列幅],'
+                    '[群折りたたみ],[表示条件],[入力方法],[登録者ID],[更新者ID],[登録日時],[更新日時]) '
+                    "VALUES (?,?,?,?,'',NULL,NULL,NULL,'','',?,'',-1,?,?,?,?,?,'',?,?,Now(),Now())",
+                    ['*', group, name, base + (i + 1) * 10, -1 if req else 0,
+                     key, place, span, -1 if fold else 0, when,
+                     'migrate:mother', 'migrate:mother'])
+        made += 1
+    c.commit()
+    set_path_config(c, _MOTHER_SEEDED_KEY, 'done', 'migrate:mother')
+    return made
+
+
 def ensure_item_table(c):
     names = tables(c)
     if ITEM_TABLE not in names:
@@ -1292,6 +1373,11 @@ def ensure_item_table(c):
         return True
     _ensure_item_columns(c)
     _seed_builtins(c)
+    # **後から足した組み込みの欄も入れる**（§9.232）。1度だけ・まだ無い鍵だけ。
+    try:
+        seed_mother_builtins(c)
+    except Exception:
+        pass
     return False
 
 
