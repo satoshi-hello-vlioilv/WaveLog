@@ -3876,7 +3876,9 @@
                 /* 同じ群がばらけて保存されていた置き場（§9.219 ③）。
                    まとめて描いたことを画面に書くために覚える。 */
                 healed:new Set(),
-                picked:null,busy:false,drag:null};
+                /* 掴んでいるもの。**カードと群は別の控え**（§9.230 ④）
+                   ——1つにまとめると「いま何を運んでいるか」が読めない。 */
+                picked:null,busy:false,drag:null,dragGroup:null};
  const OP_PLACE_NOTE={
   '準備':'①準備の「操業データ」カード（横3マス×縦2マス）',
   '入力内容':'②測定の「入力内容」カード（畳んでおき、下の「開く条件」に当たる項目を選ぶと開きます）',
@@ -4174,24 +4176,27 @@
      同じ見せ方にそろえてある）。**要らない道具は出さない**（§4）ので、
      畳む・開く条件は持たない（中身が無いので効かない）。 */
   if(r.dummy){
-   return `<div class="op-band is-dummy" data-op-band="${esc(r.name)}"`
+   return `<div class="op-band is-dummy" draggable="true" data-op-band="${esc(r.name)}"`
     +` data-op-place="${esc(r.place)}" style="${place}"`
     +` title="測定画面では見出しも枠も出さず、この幅ぶんの空白になります">`
     +`<b class="op-band-name">${esc(r.name)}</b>`
     +`<small class="op-band-note">空きだけの群`
     +`${cur?`／幅 ${esc(opGroupSpanLabel(cur))}`:'／幅 全幅'}`
     +`／測定画面では<b>見出しも出しません</b></small>`
-    +`<span class="op-band-tools">`
+    +`<span class="op-band-tools" draggable="false">`
     +opBandSpanHtml(r,cur)
     +`<button type="button" class="ghost" data-op-rename="${esc(r.name)}" data-op-place="${esc(r.place)}">名前</button>`
     +`</span></div>`;
   }
-  return `<div class="op-band" data-op-band="${esc(r.name)}" data-op-place="${esc(r.place)}"`
-   +` style="${place}" title="この帯より下の項目が「${esc(r.name)}」になります">`
+  /* **帯を掴むと群ごと動く**（§9.230 ④、利用者の指示「郡単位で移動できる
+     ようにしたいです」）。道具（幅・名前・畳む）からは掴ませない
+     ——押そうとしたら群が動く、では押せない。 */
+  return `<div class="op-band" draggable="true" data-op-band="${esc(r.name)}" data-op-place="${esc(r.place)}"`
+   +` style="${place}" title="この帯より下の項目が「${esc(r.name)}」になります（帯を掴むと群ごと動きます）">`
    +`<b class="op-band-name">${esc(r.name)}</b>`
    +`<small class="op-band-note">${count}項目${r.fold?'／畳む':''}`
    +`${cur?`／幅 ${esc(opGroupSpanLabel(cur))}`:''}${cond}</small>`
-   +`<span class="op-band-tools">`
+   +`<span class="op-band-tools" draggable="false">`
    /* **列でも区切れる**（§9.226 ③、利用者の指示）。全幅でない群は横に
       並ぶので、「誰が測るか」と「使う機材」を左右に置ける。 */
    +opBandSpanHtml(r,cur)
@@ -4402,17 +4407,17 @@
    };
    t.onclick=()=>{
     opState.picked=t.dataset.opId;renderOpItem();
-    /* 空きのカードは設定窓を開かない（決めることが幅だけなので、
-       右クリックのメニューが持つ。押しても何も無い窓は開かない・§4）。 */
-    const x=opItemById(t.dataset.opId);
-    if(x&&x.dummy)return;
+    /* **空きのカードも同じ窓を開く**（§9.230 ③、利用者の指摘「空きの
+       カードを追加しても、ダブルクリックで編集がでないので、右クリックの
+       メニューが最終手段となっており、通常の方法では幅変更や削除など
+       できない」）。決めることは少ないので**要る段だけ出す**
+       （`opTabsFor()`）——押しても何も無い窓を開かないための元の判断は、
+       段を絞ることで満たす。 */
     openOpModal(t.dataset.opId);
    };
    t.onkeydown=e=>{
     if(e.key!=='Enter'&&e.key!==' ')return;
     e.preventDefault();opState.picked=t.dataset.opId;renderOpItem();
-    const x=opItemById(t.dataset.opId);
-    if(x&&x.dummy){opOpenTileMenu(t.getBoundingClientRect(),x);return}
     openOpModal(t.dataset.opId);
    };
    t.ondragstart=e=>{
@@ -4421,20 +4426,48 @@
    };
    t.ondragend=()=>{opState.drag=null;t.classList.remove('is-dragging');opClearMark()};
   });
+  /* 帯（群）を掴む（§9.230 ④）。**カードの掴みとは別の控え**にする
+     ——1つにまとめると「いま何を運んでいるか」が読めなくなる。 */
+  document.querySelectorAll('#masterMaintList .op-band').forEach(bd=>{
+   bd.ondragstart=e=>{
+    opState.drag=null;
+    opState.dragGroup={place:bd.dataset.opPlace,name:bd.dataset.opBand};
+    bd.classList.add('is-dragging');
+    try{e.dataTransfer.setData('text/plain','group:'+bd.dataset.opBand);
+        e.dataTransfer.effectAllowed='move'}catch(_){}
+   };
+   bd.ondragend=()=>{opState.dragGroup=null;bd.classList.remove('is-dragging');opClearMark()};
+  });
   document.querySelectorAll('#masterMaintList .op-board-grid').forEach(grid=>{
    grid.ondragover=e=>{
-    if(!opState.drag)return;
+    if(!opState.drag&&!opState.dragGroup)return;
     e.preventDefault();
-    opMark(grid,opDropAt(grid,e));
+    opMark(grid,opState.dragGroup?opGroupDropAt(grid,e):opDropAt(grid,e));
    };
    grid.ondragleave=e=>{
-    if(!opState.drag)return;
+    if(!opState.drag&&!opState.dragGroup)return;
     if(grid.contains(e.relatedTarget))return;
     opClearMark();
    };
    grid.ondrop=e=>{
-    if(!opState.drag)return;
+    if(!opState.drag&&!opState.dragGroup)return;
     e.preventDefault();
+    if(opState.dragGroup){
+     /* 群ごと。**帯とその下の札をまとめて**挿す（順番は塊のまま）。 */
+     const src=[...document.querySelectorAll('#masterMaintList .op-band')]
+       .find(b=>b.dataset.opBand===opState.dragGroup.name
+              &&b.dataset.opPlace===opState.dragGroup.place);
+     const at=opGroupDropAt(grid,e);
+     if(src){
+      const block=opGroupBlock(src.parentElement,src);
+      /* 自分の塊の中へは落とさない（動かないのに保存だけ走る）。 */
+      if(block.indexOf(at)<0){
+       block.forEach(el=>{at?grid.insertBefore(el,at):grid.appendChild(el)});
+       opClearMark();opSaveLayout();return;
+      }
+     }
+     opClearMark();return;
+    }
     const at=opDropAt(grid,e);
     const el=document.querySelector(`#masterMaintList .op-tile[data-op-id="${CSS.escape(opState.drag)}"]`);
     if(el){at?grid.insertBefore(el,at):grid.appendChild(el)}
@@ -4520,6 +4553,20 @@
   const kids=[...grid.children].filter(el=>
     el!==drag&&el.dataset.opMark===undefined&&el.getBoundingClientRect().height>0);
   if(!kids.length)return null;
+  /* **まずカーソルの真下にある物で群を決める**（§9.230 ①、利用者の指示
+     「マウスオーバーの位置がまずどの群の上にいるか、対象となる群に挿入位置を
+      表示させてください」）。群は**横にも並べられる**（§9.226 ③）ので、
+     段だけで探すと同じ段に居る**隣の群の札**の境目が選ばれてしまい、
+     狙った群に入らない。真下に物があるときは、その物の群の中で決める。 */
+  const hit=kids.find(el=>{
+   const r=el.getBoundingClientRect();
+   return e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom;
+  });
+  if(hit){
+   if(hit.dataset.opBand!==undefined)return opAfterMark(hit.nextElementSibling);
+   const r=hit.getBoundingClientRect();
+   return (e.clientX<r.left+r.width/2)?hit:opAfterMark(hit.nextElementSibling);
+  }
   /* 段にまとめる。グリッドなので**同じ段のものは上端がそろう**。 */
   const rows=[];
   kids.forEach(el=>{
@@ -4558,6 +4605,45 @@
   }
   return 'その他';
  }
+ /* 帯とその下の札（＝1つの群の塊）。**「帯より下がその群」**という
+    `opCollectLayout`と同じ読み方を使う（§9.230 ④）。 */
+ function opGroupBlock(grid,band){
+  const out=[band];
+  let el=band.nextElementSibling;
+  while(el&&el.dataset.opBand===undefined){
+   if(el.dataset.opMark===undefined)out.push(el);
+   el=el.nextElementSibling;
+  }
+  return out;
+ }
+ /* 群ごと動かすときの落とし先（§9.230 ④、利用者の指示「郡単位で移動できる
+    ようにしたいです」）。**止まるのは帯の単位だけ**——群の中の1枚の前へ
+    群を挿すことはできないので、いま乗っている群の**塊の上半分なら前、
+    下半分なら次の群の前**（次が無ければ末尾＝`null`）。 */
+ function opGroupDropAt(grid,e){
+  const bands=[...grid.children].filter(el=>el.dataset.opBand!==undefined);
+  if(!bands.length)return null;
+  const name=opGroupAt(grid,opDropAt(grid,e));
+  const idx=bands.findIndex(b=>b.dataset.opBand===name);
+  if(idx<0)return null;
+  const block=opGroupBlock(grid,bands[idx]);
+  const top=bands[idx].getBoundingClientRect().top;
+  const bottom=(block[block.length-1]||bands[idx]).getBoundingClientRect().bottom;
+  return e.clientY<(top+bottom)/2?bands[idx]:(bands[idx+1]||null);
+ }
+ /* 落とす先の群を**塗って見せる**（§9.230 ①）。線だけだと、帯のすぐ上と
+    下のどちらへ入るのかが読めない——文字（`opMark`の吹き出し）と面の2つで
+    示す（§3「色だけで伝えない」）。 */
+ function opPaintGroup(grid,name){
+  document.querySelectorAll('.is-drop-group').forEach(el=>el.classList.remove('is-drop-group'));
+  if(!grid||!name)return;
+  let on=false;
+  [...grid.children].forEach(el=>{
+   if(el.dataset.opMark!==undefined)return;
+   if(el.dataset.opBand!==undefined)on=(el.dataset.opBand===name);
+   if(on)el.classList.add('is-drop-group');
+  });
+ }
  /* **印で盤を動かさないこと**（§9.218 ④／§9.196と同じ教訓）。
     以前は印をグリッドの子として**流れの中へ**挿していたため、印が入った
     瞬間に後ろのタイルが1マスぶんずれ、**同じカーソル位置なのに次の
@@ -4589,17 +4675,47 @@
      常に1つだけ指す」）。線だけだと、帯のすぐ上と下のどちらへ入るのかが
      読めない——「移動できません」の報告はここが読めないことから始まった。 */
   const tag=m.querySelector('.op-drop-tag');
-  if(tag){
-   const place=grid.dataset.opPlace||'準備';
-   tag.textContent=`${place}／${opGroupAt(grid,at)} へ`;
+  const place=grid.dataset.opPlace||'準備';
+  if(opState.dragGroup){
+   /* 群ごと運んでいるときは**群の名前で言う**（どの群の前に入るか）。
+      塊で動くので、群の中を塗っても意味が無い。 */
+   const before=at&&at.dataset.opBand!==undefined?at.dataset.opBand:'';
+   if(tag)tag.textContent=before?`${place}／「${before}」の前へ`:`${place}／いちばん下へ`;
+   opPaintGroup(null,'');
+   m.classList.add('is-group');
+   return;
   }
+  m.classList.remove('is-group');
+  const name=opGroupAt(grid,at);
+  if(tag)tag.textContent=`${place}／${name} へ`;
+  opPaintGroup(grid,name);
  }
- function opClearMark(){document.querySelectorAll('[data-op-mark]').forEach(x=>x.remove())}
+ function opClearMark(){
+  document.querySelectorAll('[data-op-mark]').forEach(x=>x.remove());
+  opPaintGroup(null,'');
+ }
  /* 落とす先の狙いは**この2つだけ**が決めている。ヘッドレスではHTML5の
     D&Dの座標を作れないので、網はここを直に呼んで確かめる（§9.218 ④）。
     **素の`window.*`を増やさない**（CLAUDE.md「新規公開は名前空間経由」）。 */
  window.WL=window.WL||{};
- WL.opBoard={dropAt:opDropAt,mark:opMark,clearMark:opClearMark,groupAt:opGroupAt};
+ /* 群ごとの移動もヘッドレスでは座標を作れないので、口から呼べるようにする
+    （§9.230 ④。§9.218 ④と同じ理由）。**素の`window.*`を増やさない**。 */
+ WL.opBoard={dropAt:opDropAt,mark:opMark,clearMark:opClearMark,groupAt:opGroupAt,
+             groupDropAt:opGroupDropAt,groupBlock:opGroupBlock,
+             /* 群を1つ動かして保存する（帯を掴んで落とすのと同じ道）。 */
+             moveGroup(place,name,beforeName){
+              const grid=[...document.querySelectorAll('#masterMaintList .op-board-grid')]
+                .find(g=>g.dataset.opPlace===place);
+              if(!grid)return false;
+              const bands=[...grid.children].filter(el=>el.dataset.opBand!==undefined);
+              const src=bands.find(b=>b.dataset.opBand===name);
+              const at=beforeName?bands.find(b=>b.dataset.opBand===beforeName):null;
+              if(!src)return false;
+              const block=opGroupBlock(grid,src);
+              if(block.indexOf(at)>=0)return false;
+              block.forEach(el=>{at?grid.insertBefore(el,at):grid.appendChild(el)});
+              opSaveLayout();return true;
+             }};
  async function opRenameGroup(place,from,to){
   const uid=requireMaintUser();if(uid===null)return;
   const rows=opCollectLayout().map(r=>(r.place===place&&r.group===from)?{...r,group:to}:r);
@@ -4674,9 +4790,13 @@
  }
  function opMenuOutside(e){if(opMenuEl&&!opMenuEl.contains(e.target))closeOpMenu()}
  function opMenuEsc(e){if(e.key==='Escape'){e.stopPropagation();closeOpMenu()}}
- /* 幅は盤の帯と同じ刻み（1/3・1/2・2/3・全幅）を「カードの幅」として使う。 */
- const OP_TILE_SPANS=[{v:2,label:'1/6'},{v:3,label:'1/4'},{v:4,label:'1/3'},
-                      {v:6,label:'1/2'},{v:8,label:'2/3'},{v:12,label:'全幅'}];
+ /* 幅は盤の帯と同じ刻みを「カードの幅」として使う。**1マス（1/12）も置く**
+    （§9.230 ②、利用者の指示「右クリックで幅変更のボタンが中途半端で、
+    1/12(1マス)がない。1/12も使いたいので追加してください」）——設定窓の
+    幅の帯は最初から1マスから選べたので、右クリックだけが刻みを削っていた。 */
+ const OP_TILE_SPANS=[{v:1,label:'1/12'},{v:2,label:'1/6'},{v:3,label:'1/4'},
+                      {v:4,label:'1/3'},{v:6,label:'1/2'},{v:8,label:'2/3'},
+                      {v:12,label:'全幅'}];
  /* `ev`はマウスの出来事でも、キーボードから開くときの`{x,y}`でもよい
     （`DOMRect`をそのまま渡せる）。 */
  function opOpenTileMenu(ev,x){
@@ -4981,9 +5101,15 @@
                 {k:'data', n:'② 何を記録するか',t:'型・役割・選択肢'},
                 {k:'look', n:'③ どう見せるか',t:'選ばせ方・意匠'},
                 {k:'note', n:'④ メモ',t:'覚え書き'}];
+ /* **空きのカードは決めることが少ない**（§9.230 ③）。②何を記録するか・
+    ③どう見せるかは中身を持たない空きには効かないので、段ごと出さない
+    ——押しても何も無い段を並べない（§4）。 */
+ function opTabsFor(x){
+  return (x&&x.dummy)?OP_TABS.filter(o=>o.k==='place'||o.k==='note'):OP_TABS;
+ }
  function opModalTab(x){
   const t=String(opState.tab||'place');
-  return OP_TABS.some(o=>o.k===t)?t:'place';
+  return opTabsFor(x).some(o=>o.k===t)?t:'place';
  }
  /* ---------- 役割（§9.223 ①、利用者の指示） ----------
     「データの設計上必須な部分は、全体の構成上の必須項目として押さえておき、
@@ -5320,18 +5446,28 @@
      <i class="op-form-note">同じ名前を付けると1つの見出しにまとまります。</i></span></div>
    <div class="op-form-row"><span class="op-form-label">出し方</span>
     <span class="op-form-ctl">
-     <button type="button" id="opdRequired" class="op-toggle${x.required?' is-on':''}" aria-pressed="${x.required?'true':'false'}">必須にする</button>
+     ${x.dummy?'':`<button type="button" id="opdRequired" class="op-toggle${x.required?' is-on':''}" aria-pressed="${x.required?'true':'false'}">必須にする</button>`}
      <button type="button" id="opdEnabled" class="op-toggle${x.enabled===false?'':' is-on'}" aria-pressed="${x.enabled===false?'false':'true'}">測定画面に出す</button>
      <button type="button" id="opdFold" class="op-toggle${x.fold?' is-on':''}" aria-pressed="${x.fold?'true':'false'}">この群を畳む</button>
     </span></div>
+   ${x.dummy?`
+   <div class="op-form-row is-danger"><span class="op-form-label">この空き</span>
+    <span class="op-form-ctl">
+     <button type="button" id="opdPadOff" class="ghost">ふつうの項目へ戻す</button>
+     <button type="button" id="opdDelete" class="danger ghost">この空きを削除</button>
+     <i class="op-form-note">空きは<b>幅ぶんの余白を取るだけ</b>のカードです
+      （測定画面では見出しも枠も文字も出しません）。名前・型・選ばせ方は持たないので、
+      その段は出していません。</i>
+    </span></div>`:''}
    <div class="op-form-row"><span class="op-form-label">対象設備</span>
     <span class="op-form-ctl">${opEquipmentPickHtml(x)}</span></div>
+   ${x.dummy?'':`
    <div class="op-form-row"><span class="op-form-label">開く条件</span>
     <span class="op-form-ctl">
      <span class="op-when">${opMeasureTypes().map(t=>
        `<button type="button" data-op-when="${esc(t)}" class="${(x.showWhen||[]).includes(t)?'is-on':''}">${esc(t)}</button>`).join('')
        ||'<i class="op-form-note">測定画面を開いていないので項目の一覧が出せません。</i>'}</span>
-    </span></div>
+    </span></div>`}
    ${help('「畳む」と「開く条件」はどう効くか',
      '<p>「畳む」は<b>群ぜんぶ</b>に効きます。開く条件を選ぶと、その測定項目を選んだときだけ開きます'
      +'（条件なしで畳むこともできます）。</p>')}`);
@@ -5449,7 +5585,7 @@
       同じ判断を2度しなくて済みます。</i></span></div>`);
   const panes={place:paneWhere,data:paneWhat,look:paneLook,note:paneNote};
   $('#opModalForm').innerHTML=panes[tab]||paneWhere;
-  $('#opModalTabs').innerHTML=OP_TABS.map(t=>
+  $('#opModalTabs').innerHTML=opTabsFor(x).map(t=>
     `<button type="button" role="tab" data-op-tab="${esc(t.k)}"`
     +` class="op-tab${tab===t.k?' is-on':''}" aria-selected="${tab===t.k?'true':'false'}">`
     +`<b>${esc(t.n)}</b><span>${esc(t.t)}</span></button>`).join('');
@@ -5677,6 +5813,17 @@
      ——出す/出さないを持っているのは①の1つだけなので、ここは
      **そこへ連れて行くだけ**。②で行き止まりにすると「外せない」と読まれる
      （実機で「一旦外すなどもできるようにしてほしい」と報告された）。 */
+  const padOff=$('#opdPadOff');
+  if(padOff)padOff.onclick=async()=>{
+   const uid=requireMaintUser();if(uid===null)return;
+   /* **切り替えは`opSetPad()`の1箇所**（右クリックのメニューと同じ道）。
+      ここで部分的なJSONを送ると、`item_upsert`は全列を書くので**送らなかった
+      設定が消える**（§9.113／§9.212 ②と同じ形）。 */
+   try{
+    await opSetPad(x.id,false,uid);
+    closeOpModal();opSay('ふつうの項目へ戻しました');
+   }catch(e){opModalSay('戻せませんでした: '+e.message,true)}
+  };
   const out=$('#opdStepOut');
   if(out)out.onclick=()=>{
    opState.tab='place';touch({});

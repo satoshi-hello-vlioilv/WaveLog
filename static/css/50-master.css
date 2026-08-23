@@ -1046,6 +1046,21 @@
 /* 連れて行った先を1度だけ光らせる（§9.229 ③）。**色だけで伝えない**ので、
    ボタンの文言と説明が何を指しているかは文字で書いてある。 */
 .op-flash{outline:2px solid var(--teal);outline-offset:2px}
+/* ---------- 落とす先の群を塗る（§9.230 ①、利用者の指示） ----------
+   「マウスオーバーの位置がまずどの群の上にいるか、対象となる群に挿入位置を
+    表示させてください。」
+   線（`.op-drop-mark`）だけだと、帯のすぐ上と下のどちらへ入るのかが読めない。
+   **面と文字の2つ**で示す（吹き出しに「置き場／群 へ」と出る・§3）。 */
+.op-board-grid .is-drop-group{
+  box-shadow:inset 0 0 0 1px var(--teal);
+  background:color-mix(in srgb,var(--teal) 6%,transparent);
+}
+.op-board-grid .op-band.is-drop-group{box-shadow:inset 0 0 0 1px var(--teal)}
+/* 群ごと運んでいるときは**帯の単位でしか止まらない**ので、印も太くする
+   （§9.230 ④）。 */
+.op-drop-mark.is-group{width:4px;background:var(--teal)}
+.op-band[draggable="true"]{cursor:grab}
+.op-band.is-dragging{opacity:.5}
 .op-when{display:flex;flex-wrap:wrap;gap:var(--gap-tight)}
 /* 幅は**帯で見せる**。数字だけでは「カードのどのくらいか」が読めない。 */
 .op-span-pick{display:flex;gap:1px;flex:1 1 var(--w-md);min-width:0}
