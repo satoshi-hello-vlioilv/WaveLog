@@ -78,6 +78,11 @@
      `[列名]`がそのまま当たる）。スケジュール表のように行が生の
      `{列名:値}`でない画面だけ、口が組み立て直す（§9.207）。 */
   formulaRowOf:null,
+  /* 読み替えが見る1行。**既定は行そのまま**（一覧の行は`{列名:値}`）。
+     スケジュール表のように行が生の`{列名:値}`でない画面だけ、口が
+     組み立て直す（§9.234 ⑥）。**見本と実際の表が同じ行を見る**ことが
+     要件——別の行で評価すると「設定画面では当たるのに表では空」になる。 */
+  ruleRowOf:null,
   virtual:()=>LIST_VIRTUAL,
   /* 結合されてきた列の名前は**サーバーが返す**(§9.105)。列名から
      見分ける手がかりは無いので、画面側で推測しない。 */
@@ -192,7 +197,9 @@
   if(typeof WL.listRules?.open!=='function'){
    console.error('列の設定パネル: WL.listRules が見つかりません');return;
   }
-  WL.listRules.open({name,column:picked,onDone:saved=>{
+  /* **いま設定している表の口を渡す**（§9.234 ⑥）——渡さないと「他の列」の
+     候補も「試してみる」も仕掛一覧のままで、書いた本人が確かめられない。 */
+  WL.listRules.open({name,column:picked,source:panelSrc,onDone:saved=>{
    if(saved)draft.rules[picked]=saved;else delete draft.rules[picked];
    renderDetail();renderList();renderPreview();
   }});
@@ -362,14 +369,21 @@
   if(!picked||!draft.order.includes(picked))picked=draft.order.find(k=>!isVirtual(k))||draft.order[0]||'';
  }
 
+ /* 読み替えが見る行は**口が答える**（§9.234 ⑥）。答えない口は行そのまま。 */
+ function ruleRow(row){return panelSrc.ruleRowOf?panelSrc.ruleRowOf(row):row}
  /* この列の実データ1件が、今の設定でどう見えるか。書式・読み替えを
     通した結果をそのまま出す(一覧のセルと同じ関数)。 */
  function sampleCell(k){
   if(isVirtual(k))return {text:'（ボタン）',color:'',raw:''};
   const raw=sampleValue(k);
-  if(raw==='')return {text:'',color:'',raw:''};
-  const row=panelSrc.rows().find(r=>String(panelSrc.valueOf(r,k)??'')===String(raw));
-  const out=WL.cellFormat.cell({raw,format:draft.formats[k]||null,rule:draft.rules[k]||'',row,column:k});
+  /* **値が空でも、読み替えが付いていれば通す**（§9.234 ⑥）——「他の列だけを
+     見るルール」は自分の列に値が無くても中身を作れるので、ここで早く
+     引き返すと**読み替えだけの列は設定画面で一度も結果が見えない**。 */
+  if(raw===''&&!draft.rules[k])return {text:'',color:'',raw:''};
+  const src=raw===''?panelSrc.rows()[0]
+    :panelSrc.rows().find(r=>String(panelSrc.valueOf(r,k)??'')===String(raw));
+  const out=WL.cellFormat.cell({raw,format:draft.formats[k]||null,rule:draft.rules[k]||'',
+                                row:ruleRow(src),column:k});
   return {text:out.text,color:out.color,raw:String(raw)};
  }
 
@@ -664,12 +678,17 @@
  }
  function previewHtml(){
   if(!picked||isVirtual(picked))return '';
-  const rows=previewSamples(picked,3);
+  const rule0=draft.rules[picked]||'';
+  let rows=previewSamples(picked,3);
+  /* **値を持たない列でも、読み替えが付いていれば結果を出す**（§9.234 ⑥）。
+     「他の列だけを見るルール」で中身を作る列は自分の値が空なので、
+     ここで引き返すと**書いた本人が確かめられない**（§9.117）。 */
+  if(!rows.length&&rule0)rows=panelSrc.rows().slice(0,3).map(r=>({raw:'',row:r}));
   if(!rows.length)return `<div class="lc-preview-head">結果</div>
     <p class="lc-preview-empty">この列に値のある行が、いま表示中の中にありません。</p>`;
-  const f=fmtOf(picked),rule=draft.rules[picked]||'';
+  const f=fmtOf(picked),rule=rule0;
   const body=rows.map(({raw,row})=>{
-   const out=WL.cellFormat.cell({raw,format:f,rule,row,column:picked});
+   const out=WL.cellFormat.cell({raw,format:f,rule,row:ruleRow(row),column:picked});
    const same=String(out.text)===raw;
    return `<tr class="${same?'is-same':''}"><td class="lc-pv-raw">${esc(raw)}</td>
      <td class="lc-pv-arrow" aria-hidden="true">→</td>
@@ -779,7 +798,10 @@
      <dl>${WL.formula.help.map(([a,b])=>`<div><dt><code>${esc(a)}</code></dt><dd>${esc(b)}</dd></div>`).join('')}</dl>
     </details>
     <p class="lc-fx-note"><b>この列は表示だけです。</b>並べ替え・絞り込みは元のデータに対して行うため、
-     この列は対象になりません。式が空のまま保存すると、この列は消えます。</p>
+     この列は対象になりません。<b>この列の「元の値」は式の結果です</b>——読み替え（③）が
+     当たればその言葉で確定し、当たらなければ式の結果がそのまま出ます。
+     <b>式が空でも読み替えを付けていればこの列は残ります</b>（読み替えだけで中身を作る列）。
+     式も読み替えも空のまま保存すると、この列は消えます。</p>
     <button type="button" id="lcFormulaDel" class="lc-btn-ghost lc-fx-del">この列を削除する</button>
    </div>`;
  }
@@ -791,7 +813,8 @@
   const f=fmtOf(picked);
   const sample=virt?'':sampleValue(picked);
   const shown=virt?'':WL.cellFormat.cell({raw:sample,format:f,rule:draft.rules[picked]||'',
-                                          row:panelSrc.rows().find(r=>String(panelSrc.valueOf(r,picked)??'')===String(sample)),
+                                          row:ruleRow(String(sample)===''?panelSrc.rows()[0]
+                                            :panelSrc.rows().find(r=>String(panelSrc.valueOf(r,picked)??'')===String(sample))),
                                           column:picked}).text;
   const o=originOf(picked);
   const st=columnStats(picked);

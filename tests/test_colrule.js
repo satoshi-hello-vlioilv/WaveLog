@@ -92,6 +92,32 @@ async function cleanup(){
   const other=[{conditions:[cond('eq','3',{kind:'column',column:'区分'})],text:'区分3',color:''}];
   rec('他の列を条件に使える',(await evalRule(other,{X:'zz',区分:'3'},'X'))?.text==='区分3');
   rec('他の列が違えば当たらない',(await evalRule(other,{X:'zz',区分:'1'},'X'))===null);
+  /* **要点**: 自分の列に値が無くても、他の列だけで中身を作れる（§9.234 ⑥）。
+     計算式の列で「読み替えだけの列」を作れることの土台。 */
+  rec('自分の列が空でも他の列だけで当たる（§9.234 ⑥）',
+      (await evalRule(other,{X:'',区分:'3'},'X'))?.text==='区分3');
+  rec('自分の列が空でも他の列が違えば当たらない',
+      (await evalRule(other,{X:'',区分:'1'},'X'))===null);
+  /* **要点**: そのルールが見ている「他の列」を答えられる（§9.234 ⑥）。
+     スケジュール表は行ごとに全列ぶんの値を作ると重いので、要る列だけを
+     組み立てるのにこれを使う。`self`は自分の列なので数えない。 */
+  const usedOf=rows=>page.evaluate(a=>{
+   WL.displayRules.put('__u__',a.rows);
+   const out=WL.displayRules.columnsUsed('__u__');
+   WL.displayRules.put('__u__',null);
+   return out;
+  },{rows});
+  rec('見ている他の列を答えられる',
+      JSON.stringify((await usedOf(other)).sort())===JSON.stringify(['区分']),
+      JSON.stringify(await usedOf(other)));
+  rec('自分の列だけの条件では何も返さない',
+      (await usedOf(flag)).length===0,JSON.stringify(await usedOf(flag)));
+  rec('betweenの2つ目の右辺まで拾う',
+      JSON.stringify((await usedOf([{conditions:[{left:{kind:'self'},op:'between',
+        right:{kind:'column',column:'下限'},right2:{kind:'column',column:'上限'}}],
+        text:'間',color:''}])).sort())===JSON.stringify(['上限','下限']),
+      JSON.stringify(await usedOf([{conditions:[{left:{kind:'self'},op:'between',
+        right:{kind:'column',column:'下限'},right2:{kind:'column',column:'上限'}}],text:'間',color:''}])));
 
   /* **要点**: 数値として読める両辺は数値で比べる('5'>'10'にしない) */
   const gt=[{conditions:[cond('gt','10')],text:'大',color:''}];

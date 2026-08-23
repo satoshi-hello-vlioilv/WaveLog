@@ -90,6 +90,27 @@ try:
     rec('空を送っても他は残る',c.get('widths',{}).get('A')==200 and c.get('locks')==['A'],
         json.dumps({'widths':c.get('widths'),'locks':c.get('locks')}))
 
+    # ---- 3b) 「式が空の計算列」と「計算列ではない」は別のこと（§9.234 ⑥） ----
+    # 以前は空の式をNULLで捨てていたため、式を空にして読み替えだけを付けた列が
+    # 保存の往復で formulas から消え、画面は「知らない列」として並びごと落として
+    # いた（利用者の報告「他の列のみで構成されたルールを適用しても何も出ない」）。
+    # **空の辞書（＝全部消す）と、キーはあるが値が空（＝式が空の計算列）は別。**
+    post({'target':TARGET,'user_id':'tests','order':['A','R'],
+          'formulas':{'R':''},'rules':{'R':'なにかのルール'}})
+    e=get()
+    rec('式が空でもキーは残る（読み替えだけの列）',
+        'R' in (e.get('formulas') or {}) and str((e.get('formulas') or {}).get('R'))=='',
+        json.dumps(e.get('formulas'),ensure_ascii=False))
+    rec('読み替えだけの列でも読み替えルール名は残る',
+        (e.get('rules') or {}).get('R')=='なにかのルール',
+        json.dumps(e.get('rules'),ensure_ascii=False))
+    # **空の辞書は今までどおり全部消す**（片方だけの網だと、空文字を捨てる
+    # 実装へ戻しても半分通る）。
+    post({'target':TARGET,'user_id':'tests','formulas':{}})
+    f=get()
+    rec('空の辞書を送れば式は全部消える（§9.212 ②のまま）',
+        not f.get('formulas'),json.dumps(f.get('formulas'),ensure_ascii=False))
+
     # ---- 4) 全部送れば今までどおり全部が入れ替わる（設定パネルの保存） ----
     post({'target':TARGET,'user_id':'tests','order':['A'],'widths':{'A':60},'hidden':[],
           'names':{},'formats':{},'rules':{},'formulas':{},'locks':[],'sorts':{}})

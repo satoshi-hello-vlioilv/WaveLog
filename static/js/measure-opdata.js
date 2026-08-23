@@ -274,6 +274,117 @@
   return (isInteger(def.type)?'整数':`小数${def.decimals==null?1:def.decimals}桁`)
     +(isPositive(def.type)?'・0以上':'')+(range.length?`・${range.join('／')}`:'');
  }
+ /* ---------- 自動で入る値・計算値（§9.234 ②、利用者の指示） ----------
+    「自動で入る値、計算値についても、現在使っているものは、そのリストから
+     選んで表示設定できるようにしてください」
+
+    測定画面には**人が打たない値**が既にいくつも出ていた（仕掛から写した
+    ロット番号・製造板厚、開いた設備、実働時間…）。画面に焼き付いていたので
+    置き場も名前も見せ方も現場が決められなかった。マスタの1行（`[自動値]`）に
+    して、他の項目と同じ土俵に載せる。
+
+    **語彙はサーバーが持つ**（`operation_repo.AUTO_VALUES`）——鍵の綴りを
+    ここへ書き写すと、増やしたときに2箇所直すことになる（§9.163）。
+    ここが持つのは**引き方だけ**（値の出どころは開いているレコードなので、
+    サーバーからは引けない）。**知らない鍵は黙って捨てない**（§9.204）
+    ——`null`を返し、画面は「この版では引けません」と書く。 */
+ function lotOf(key){
+  /* `basic`は`aliases`に載せた列しか持たないので、**生の行から**も探す
+     （§9.160）。どちらも空なら空文字。 */
+  try{
+   if(typeof sourceField==='function'&&typeof aliases==='object'&&aliases[key]){
+    const v=sourceField(aliases[key]);
+    if(String(v==null?'':v).trim()!=='')return String(v).trim();
+   }
+  }catch(_){}
+  const b=(state()&&S.measure&&S.measure.basic)||{};
+  return String(b[key]==null?'':b[key]).trim();
+ }
+ function settingOf(key){
+  const st=(state()&&S.measure&&S.measure.settings)||{};
+  return String(st[key]==null?'':st[key]).trim();
+ }
+ function timeOf(key){
+  const t=(state()&&S.measure&&S.measure.workTime)||{};
+  const v=String(t[key]==null?'':t[key]).trim();
+  if(!v)return '';
+  /* 保存値はISO（末尾Z）なので、**地方時へ直してから出す**（§9.162と同じ
+     約束）——生のまま出すと時差のぶんずれた時刻が紙にも出る。 */
+  const d=new Date(v);
+  if(isNaN(d.getTime()))return v;
+  const p=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} `
+    +`${p(d.getHours())}:${p(d.getMinutes())}`;
+ }
+ /* 条の並びは**`WL.defect.lanes()`の1箇所**が答える（§9.226 ④）——ここで
+    条を数え直すと、屑幅の片寄せ・基準幅の取り方という前提が2つに分かれる。 */
+ function lanesOf(){
+  try{
+   if(typeof WL!=='undefined'&&WL.defect&&WL.defect.lanes)return WL.defect.lanes();
+  }catch(_){}
+  return null;
+ }
+ const AUTO_GETTERS={
+  'lot.lotNo':()=>lotOf('lotNo'),
+  'lot.inspectionNo':()=>lotOf('inspectionNo'),
+  'lot.castingNo':()=>lotOf('castingNo'),
+  'lot.orderNo':()=>lotOf('orderNo'),
+  'lot.purposeName':()=>lotOf('purposeName'),
+  'lot.customer':()=>lotOf('customer'),
+  'lot.delivery':()=>lotOf('delivery'),
+  'lot.mfgMaterial':()=>lotOf('mfgMaterial'),
+  'lot.mfgTemper':()=>lotOf('mfgTemper'),
+  'lot.mfgThickness':()=>lotOf('mfgThickness'),
+  'lot.mfgWidth':()=>lotOf('mfgWidth'),
+  'lot.mfgLength':()=>lotOf('mfgLength'),
+  'lot.originalWidth':()=>lotOf('originalWidth'),
+  'lot.equipment':()=>lotOf('equipment'),
+  'meas.equipment':()=>settingOf('registeredEquipment')
+    ||String((state()&&S.measure&&S.measure.registeredEquipment)||'').trim(),
+  'meas.measureType':()=>settingOf('measureType'),
+  'meas.lengthPos':()=>settingOf('lengthPos'),
+  'meas.startAt':()=>timeOf('startAt'),
+  'meas.endAt':()=>timeOf('endAt'),
+  'calc.workDuration':()=>{
+   /* **終わっていなければ空欄**（§9.114「空欄は未設定であって0分ではない」）。 */
+   const ms=(typeof durationMs==='function')?durationMs(state()&&S.measure):null;
+   return (ms===null||ms===undefined)?'':String(Math.round(ms/60000));
+  },
+  'calc.stripCount':()=>{const L=lanesOf();return L&&L.list&&L.list.length?String(L.list.length):''},
+  'calc.slitWidth':()=>{
+   const L=lanesOf();
+   return L&&Number.isFinite(L.slit)&&L.slit>0?String(Math.round(L.slit*10)/10):'';
+  },
+ };
+ /* その鍵をこの版が引けるか。**引けないことは画面に書く**（§4）。 */
+ function autoKnown(key){return Object.prototype.hasOwnProperty.call(AUTO_GETTERS,String(key||''))}
+ function autoValueOf(key){
+  const fn=AUTO_GETTERS[String(key||'')];
+  if(!fn)return null;                       /* null＝引けない（空欄とは別） */
+  try{const v=fn();return String(v==null?'':v)}catch(_){return ''}
+ }
+ /* 画面の`<output>`へ入れ、**レコードにも書く**（§9.208 ②）——書かないと、
+    帳票や③「記録した値」から見えない。派生値なので`markDirty()`はしない
+    （読み直すたびに作れる値で「保存していない変更」を作らない）。 */
+ function paintAuto(){
+  const bag=store();
+  document.querySelectorAll('[data-opauto]').forEach(el=>{
+   const out=el.querySelector(':scope>output');if(!out)return;
+   const key=el.dataset.opauto,name=el.dataset.opfield||'';
+   const v=autoValueOf(key);
+   if(v===null){
+    out.value='';
+    out.title=`この版では引けない鍵です（${key}）。`;
+    const note=el.querySelector(':scope>.opf-note');
+    if(note){note.hidden=false;note.textContent=`「${key}」はこの版では引けません。`}
+    return;
+   }
+   putValue(out,v);
+   out.title=v;
+   if(bag&&name){if(v==='')delete bag[name];else bag[name]=v}
+  });
+ }
+
  function fieldEl(def,i){
   const label=document.createElement('label');
   label.className='opf';
@@ -283,7 +394,13 @@
   const hint=ruleText(def);
   let control;
   const id='opf'+i;
-  if(def.type==='選択'){
+  if(def.autoValue){
+   /* 自動で入る値（§9.234 ②）。**打てる欄を作らない**——押せるのに何も
+      起きない欄は壊れて見える（§4）。母材の参考値3つと同じ`<output>`で、
+      `values()`／`apply()`／`collect()`は`.value`をそのまま読める。 */
+   label.dataset.opauto=def.autoValue;
+   control=`<output id="${id}" data-op="${esc(def.name)}"></output>`;
+  }else if(def.type==='選択'){
    const opts=['<option value=""></option>']
      .concat((def.choices||[]).map(v=>`<option value="${esc(v)}">${esc(v)}</option>`)).join('');
    control=`<select id="${id}" data-op="${esc(def.name)}">${opts}</select>`;
@@ -295,7 +412,9 @@
   }else{
    control=`<input id="${id}" type="text" data-op="${esc(def.name)}" autocomplete="off">`;
   }
-  label.title=[def.name,def.unit?`単位 ${def.unit}`:'',hint,def.note||''].filter(Boolean).join('｜');
+  label.title=[def.name,def.unit?`単位 ${def.unit}`:'',
+               def.autoValue?`自動で入る値（${def.autoValueLabel||def.autoValue}）`:hint,
+               def.note||''].filter(Boolean).join('｜');
   /* **単位はここで組み立てない**（§9.233 ④）。器（`.opf-widget`）は
      あとから末尾に足されるので、ここで置くと「外下」の単位が器の**上**へ
      出る。置き場を決めるのは`placeUnit()`の1箇所。 */
@@ -1361,7 +1480,7 @@
     el.classList.remove('op-off','op-folded','op-required','opf-host');
     el.style.order='';el.style.gridColumn='';el.style.gridRow='';
     delete el.dataset.opplace;delete el.dataset.opgroup;delete el.dataset.opfill;
-    delete el.dataset.opout;
+    delete el.dataset.opout;delete el.dataset.opauto;
    });
    bx.style.setProperty('--op-cols',String(gridCols));
   });
@@ -1539,6 +1658,34 @@
      あの器の中の見え方を写すので、母材の器（`.material-grid`）で測ると
      縮尺が違う。 */
   rememberCellPx(boxFor(PLACE_PREP));
+  /* ---------- 進捗の分母はマスタが届いてから塗り直す（§9.234 ⑧） ----------
+     母材の進捗（`0/9`）の分母は`motherKeys()`＋丈の数で、**マスタが読めて
+     いないあいだは8欄の受け皿へ落ちる**（`measure-progress.js`の
+     `MOTHER_FIELDS_FALLBACK`）。ところが`#measureTypeChips`を書くのは
+     `refreshMeasureProgress()`ただ1つで、その入口は**すべて「入力があった
+     とき」**。測定を開く経路（`measurement-view.js`の
+     `WL.opData.refresh().catch(...)`）は**投げっぱなし**なので、届いたあとに
+     塗り直す人が居なかった——結果、マスタで母材の欄を外しても
+     **打ち始めるまで分母が古いまま**で、外した欄が「どう頑張っても埋まらない
+     1件」として見えていた（§9.227 ③と同じ罠を別の経路で作っていた）。
+
+     **`apply()`の尾ではなく`layout()`のいちばん最後**に置くこと。
+     `apply()`は`layout()`の途中（この上）で呼ばれるので、そこへ置くと
+     ①ここが投げた瞬間に`foldSig`／`syncWidgets()`／`fitWidths()`／
+     `rememberCellPx()`が丸ごと飛び、しかも`.catch(()=>{})`に飲まれて**黙る**
+     （`foldSig`が古いままなので、以降`syncAutoOpen()`が毎回組み直しては
+     また投げる——1回の失敗が居座る）②`refreshMeasureProgress()`は
+     `#measureType`へ`visually-hidden-control`を付けるので、**幅を測る前に
+     欄を1×1へ畳んでしまう**（`fitWidths()`／`rememberCellPx()`が別のDOMを
+     測る）。ここは`layout()`の最後で、後ろに守るものが無い。
+     **それでも`try`で包む**——`measure-progress.js`の`updateValidationVisuals`
+     が同じ理由で包んでいるのと同じ作法（投げても呼び出し側を道連れにしない）。
+     **`typeof`の「あれば使う」で黙らせないこと**（§CLAUDE「公開漏れは黙って
+     素通しになる」）——無ければ進捗が古いまま残るので、理由を出す。 */
+  if(typeof refreshMeasureProgress==='function'){
+   try{refreshMeasureProgress()}
+   catch(e){console.warn('measure-opdata: 進捗を塗り直せませんでした',e)}
+  }else console.error('measure-opdata: refreshMeasureProgress が無い（母材の進捗の分母が古いまま残る）');
  }
  /* ---------- 1マスの実寸を覚える（§9.226 ①） ----------
     マスタの設定窓は「測定画面での見え方」を見せるが、**そこには測定画面が
@@ -1569,6 +1716,9 @@
  function bind(){
   defs.forEach(def=>{
    if(def.builtin)return;                 // 組み込みの欄は元の配線のまま
+   /* 自動で入る値（§9.234 ②）は`<output>`＝打ち込めない欄。整形の配線を
+      足しても働く場面が無いので、印だけ増やさない。 */
+   if(def.autoValue)return;
    const el=document.querySelector(`[data-op="${CSS.escape(def.name)}"]`);
    if(!el||el.dataset.opWired)return;
    el.dataset.opWired='1';
@@ -1596,6 +1746,9 @@
   });
   applyInitials();
   syncWidgets();
+  /* 自動で入る値は**引き直す**（§9.234 ②）——記録にある値を戻すだけだと、
+     条数や実働時間のように作業のあいだに変わる値が古いまま残る。 */
+  paintAuto();
  }
  /* ---------- 初期値（§9.220 ②、利用者の指示） ----------
     「入力の方法によらず、初期値登録機能の実装をお願いします」
@@ -1624,7 +1777,9 @@
   const bag=store();
   defs.forEach(d=>{
    const init=String(d.initial==null?'':d.initial);
-   if(!init||d.dummy)return;
+   /* 自動で入る値には初期値を当てない（§9.234 ②）——値を入れるのは画面で、
+      直後の`paintAuto()`が必ず上書きする。当てると1瞬だけ別の値が出る。 */
+   if(!init||d.dummy||d.autoValue)return;
    if(d.builtin){
     const el=controlOf(d);
     if(!el)return;
@@ -1671,7 +1826,10 @@
      取るためだけに在り、入力欄を一度も描かない——数に入れると
      「記録した値 3/9」の分母だけが増え、**どう頑張っても埋まらない1件**が
      残る（画面には出ていないので探しようがない）。 */
-  const free=defs.filter(d=>!d.builtin&&!d.dummy);
+  /* **自動で入る値は数えない**（§9.234 ②）——人が入れる欄ではないので、
+     分母に入れると「記録した値」に**どう頑張っても埋まらない件**が増える
+     （§9.227 ③の空きと同じ罠）。 */
+  const free=defs.filter(d=>!d.builtin&&!d.dummy&&!d.autoValue);
   const v=values();
   return {filled:free.filter(d=>v[d.name]!=null&&v[d.name]!=='').length,total:free.length};
  }
@@ -1687,6 +1845,8 @@
   const out=[];
   defs.forEach(d=>{
    if(!d.required||d.dummy)return;      /* 空きの群の行は数えない（§9.227 ③） */
+   /* 自動で入る値は「未入力」と言われても直しようがない（§9.234 ②）。 */
+   if(d.autoValue)return;
    /* 畳んでいる群の中の欄は数えない——押しても行けない場所を「未入力」と
       言われても直しようがない。自動で開く群（条の入力）は開いていれば数える。 */
    const host=hostOf(d);
@@ -1762,6 +1922,11 @@
  }
  WL.opData={load,layout,render:layout,refresh,apply,collect,values,filled,requiredControls,
             motherKeys,
+            /* 自動で入る値を引き直す口（§9.234 ②）。**呼ぶのは値が変わる
+               ところ**——作業時間の打刻・条の設計の変更・入力内容の切り替え。
+               引き直さないと、条数や実働時間が古いまま紙に出る。
+               `autoKnown()`は設定画面が「この版で引けるか」を書くのに使う。 */
+            paintAuto,autoKnown,autoValueOf,
             /* 自動で入る値の添え書きの置き場（§9.233 ⑤）。**答えるのは
                マスタを読んでいるここ**——出どころを持っている側
                （`measurement-view.js`）に置き場の判定まで書かせると、

@@ -43,7 +43,13 @@ let b=null,page=null;
       状態:x.querySelector('.mstep-state')?.textContent||'',
       いま:x.classList.contains('is-current')})),
     文脈:[...document.querySelectorAll('.mctx-item b')].map(x=>x.textContent.trim()),
-    理由:document.querySelector('#mstepNote')?.hidden?'':(document.querySelector('#mstepNote')?.textContent||''),
+    /* **上部帯に出ている一言**。「未測定 N項目」の器（`#mstepNote`）は
+       §9.234 ④で廃止したので、ここは常に空になる（帯へ新しい常設の一言を
+       置いたら、この検査が気づく）。残件数は段3の状態が言い、**どの項目か**は
+       段3のボタンの`title`が持つ（幅を1pxも使わない）。 */
+    理由:document.querySelector('#mstepNote')?.hidden===false
+      ?(document.querySelector('#mstepNote')?.textContent||''):'',
+    段3のtitle:document.querySelector('.mstep[data-mstep="3"]')?.getAttribute('title')||'',
     /* 母材の手入力の案内は**入れる場所のすぐ上**（§9.233 ③）。上部帯へ
        出していたためロット情報が見切れていた。読む場所が変わっただけで、
        「理由を書く」という約束は同じ。 */
@@ -502,8 +508,7 @@ let b=null,page=null;
   const tol1=await page.evaluate(()=>{
    const box=document.querySelector('.tolerance-source-control');
    return {出ている:!!(box&&box.offsetParent!==null&&box.getBoundingClientRect().height>0),
-     欄はある:!!document.getElementById('toleranceSource'),
-     値は出ている:!!document.querySelector('#toleranceFacts')};
+     欄はある:!!document.getElementById('toleranceSource')};
   });
   rec('①に判定公差の切替を出さない',tol1.出ている===false&&tol1.欄はある,JSON.stringify(tol1));
 
@@ -519,33 +524,48 @@ let b=null,page=null;
   const rest3=(m3.理由||'')+' / '+(m3.段[2].状態||'');
   rec('③には残りの件数を数で書く',/\d+\s*項目/.test(rest3),rest3);
 
-  /* 帯は1本しかなく、注意書きと文脈（ロット・製品・測定表の形・判定公差）が
-     場所を分け合う。**注意書きへ項目名を並べると文脈が潰れて見切れる**
-     （実機で「未測定が 9項目あります（母材・…）。」が載ったときに報告）。
-     どの項目かは③の確認表が1行ずつ出しているので、帯は件数だけにして
-     名前は`title`へ回す。**3段すべてで見る**——表示サイズを上げると
-     文字だけが伸びるので、既定だけ見ても捕まらない。 */
+  /* ---- 上部帯: ロット情報が見切れない（§9.234 ④、利用者の指示） ----
+     帯は「段ナビ（縮まない）＋文脈＋保存の状態（縮まない）」で、足りないぶんは
+     全部文脈が払う。以前は③のときだけ「未測定 N項目」がここへ載っており、
+     **隣の段3の状態（残り N項目）と同じ数字**なのに、そのぶんロット情報が
+     押されて全部見切れていた（実測: 1366pxで4項目とも33〜70px切れ）。
+     **確かめるときは実際に窓を狭くすること**（§9.222 ⑥）——1920pxでは
+     全部入るので、直す前でも通ってしまう（実際に通していた）。
+     **幅0も見ること**——幅0の要素は溢れを報告しないので、`見切れ0`だけを
+     見ると1280pxで実際に起きていた「値が幅0px＝完全に不可視」を素通りする。 */
   const barFit=[];
-  for(const size of ['sm','md','lg']){
-   await page.evaluate(s=>document.documentElement.setAttribute('data-ui-size',s),size);
-   await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
-   barFit.push(await page.evaluate(sz=>{
-    const cut=e=>!!e&&e.scrollWidth>e.clientWidth+1;
-    const note=document.getElementById('mstepNote');
-    return{段:sz,
-      注意書き:note.hidden?'':note.textContent.trim(),
-      title:note.getAttribute('title')||'',
-      注意書きの見切れ:!note.hidden&&cut(note),
-      文脈の見切れ:[...document.querySelectorAll('.mctx-item b')].filter(cut).length};
-   },size));
+  for(const [vw,vh] of [[1280,768],[1366,768],[1600,900]]){
+   await page.setViewportSize({width:vw,height:vh});
+   for(const size of ['sm','md','lg']){
+    await page.evaluate(s=>document.documentElement.setAttribute('data-ui-size',s),size);
+    await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+    barFit.push(await page.evaluate(k=>{
+     const box=e=>e?{w:e.clientWidth,over:Math.max(0,e.scrollWidth-e.clientWidth)}:null;
+     const bar=document.querySelector('.measure-bar');
+     return{k,
+      note:!!document.getElementById('mstepNote'),
+      帯の溢れ:Math.max(0,bar.scrollWidth-bar.clientWidth),
+      ロット:box(document.getElementById('mctxLot')),
+      段3:document.getElementById('mstepState3')?.textContent||'',
+      段3のtitle:document.querySelector('.mstep[data-mstep="3"]')?.getAttribute('title')||''};
+    },`${vw}x${vh}/${size}`));
+   }
+   await page.evaluate(()=>document.documentElement.setAttribute('data-ui-size','md'));
   }
-  await page.evaluate(()=>document.documentElement.setAttribute('data-ui-size','md'));
-  rec('帯に注意書きが載っても文脈は見切れない（3段とも）',
-      barFit.every(x=>x.文脈の見切れ===0&&!x.注意書きの見切れ),JSON.stringify(barFit));
-  rec('注意書きに項目名を並べない（名前はtitleへ回す）',
-      barFit.every(x=>!/（|\(/.test(x.注意書き))
-      &&/母材/.test(barFit[1].title||''),
-      barFit[1].注意書き+' / title='+(barFit[1].title||'(無し)'));
+  await page.setViewportSize({width:1920,height:1080});
+  await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+  rec('帯の「未測定 N項目」は廃止した（段3の状態と同じ数字だった・§9.234 ④）',
+      barFit.every(x=>x.note===false),JSON.stringify(barFit[0]));
+  rec('ロット情報は見切れない（狭い窓×3段とも・§9.234 ④）',
+      barFit.every(x=>x.ロット&&x.ロット.over<=1&&x.ロット.w>0),
+      JSON.stringify(barFit.filter(x=>!(x.ロット&&x.ロット.over<=1&&x.ロット.w>0))||barFit[0]));
+  rec('帯そのものが溢れない（狭い窓×3段とも）',
+      barFit.every(x=>x.帯の溢れ<=1),JSON.stringify(barFit.map(x=>[x.k,x.帯の溢れ])));
+  rec('残りの件数は段3の状態が言う（§9.234 ④）',
+      barFit.every(x=>/\d+\s*項目|確認できます|終了 済/.test(x.段3)),
+      JSON.stringify(barFit.map(x=>[x.k,x.段3])));
+  rec('未測定の項目名は段3のtitleが持つ（幅を使わない）',
+      /母材/.test(barFit[1].段3のtitle||''),barFit[1].段3のtitle||'(無し)');
 
   /* ---- 5b) ③の公差一覧（§9.157、利用者の指摘） ----
      「公差指示がラテラルボーしか出ていませんが、板厚、板幅、板丈の公差が
@@ -1902,8 +1922,11 @@ let b=null,page=null;
     if(!(x.textContent||'').trim())return;
     const f=getComputedStyle(x).fontSize;sizes[f]=(sizes[f]||0)+1;
    });
+   const cut=e=>e?Math.max(0,e.scrollWidth-e.clientWidth):0;
    return{高さ:Math.round(r.height),
      段:[...new Set(rows)].length,
+     /* `nowrap`にした以上「段が1」だけでは切れているのを見逃す（§9.234 ③）。 */
+     はみ出し:cut(h),
      帯:!!h.querySelector('#inputStatusBox'),
      帯が見える:!!h.querySelector('#inputStatusBox')
        &&h.querySelector('#inputStatusBox').getBoundingClientRect().width>0,
@@ -1920,13 +1943,17 @@ let b=null,page=null;
      モード:(h.querySelector('.auto-mode-label')||{}).textContent||''};
   });
   const bar=await headRead();
-  rec('見出しは2段まで（§9.210 ①）',bar.段>=1&&bar.段<=2,JSON.stringify(bar));
+  /* **1行に収める**（§9.234 ③、利用者の指示「2行にわたって公差情報や
+     ボタンや説明などが入っていますが、1行に収めたいです」）。器は`nowrap`
+     なので、行数だけでなく**横に溢れていないこと**も見る。 */
+  rec('見出しは1行（§9.234 ③）',bar.段===1,JSON.stringify({段:bar.段,高さ:bar.高さ}));
+  rec('見出しが横に溢れない（§9.234 ③）',bar.はみ出し<=1,String(bar.はみ出し));
   rec('受信の状態・自動手動の切替が見出しの中にある',bar.帯&&bar.切替&&/自動|手動/.test(bar.モード),
       JSON.stringify({帯:bar.帯,切替:bar.切替,モード:bar.モード}));
   rec('項目名と進捗も見出しへ寄せた（表の上の帯を廃止）',
       bar.項目==='板幅'&&!!bar.状態&&bar.旧見出し===false,JSON.stringify(bar));
   rec('公差の器も同じ段にある',bar.公差の器===true,String(bar.公差の器));
-  rec('見出し4本ぶん（実測130px級）を1本へ詰めた',bar.高さ<=64,`${bar.高さ}px`);
+  rec('見出し4本ぶん（実測130px級）を1本へ詰めた',bar.高さ<=34,`${bar.高さ}px`);
   /* ---- 凡例（待ち・入力中・完了・異常）は廃止（§9.210 ①、利用者の指示） ---- */
   rec('表示案内（凡例）は出さない（§9.210 ①）',bar.凡例===false,String(bar.凡例));
   /* ---- 文字の大きさは題以外1種類（§9.210 ①、利用者の指示） ----
@@ -1968,16 +1995,21 @@ let b=null,page=null;
       &&autoBar.モード==='自動'&&manualBar.帯の左===autoBar.帯の左,
       JSON.stringify({手動:manualBar.モード,自動:autoBar.モード,
         左:[manualBar.帯の左,autoBar.帯の左]}));
-  /* 公差は**1箇所だけ**が言う（§9.129）。3つの置き場（数直線の隣・帯・
-     見出しのピル）が同時に「公差なし」と言わないこと。 */
+  /* 公差の**値**を言う場所は1つだけ（§9.129）。以前は「見出しのピル」と
+     「内訳の3行帯（`#toleranceFacts`）」の2つがあり、`repaint()`が帯を
+     無条件に描き戻すので見出しが2行になっていた（§9.234 ③）。帯は器ごと
+     廃止し、値はピル1つが言う。
+     **図（数直線の隣）は数に入れない**——あちらは「いま公差のどのへんか」で、
+     ピルの「範囲はいくつか」とは別の問いに答える（§9.140）。 */
   const tolWhere=await page.evaluate(()=>{
    const vis=el=>!!el&&el.getBoundingClientRect().height>0&&(el.textContent||'').trim()!=='';
-   return{facts:vis(document.getElementById('toleranceFacts')),
+   return{facts:!!document.getElementById('toleranceFacts'),
           summary:vis(document.getElementById('toleranceSummary')),
           side:vis(document.querySelector('.compact-tolerance-side'))};
   });
-  rec('公差を言う場所は1つだけ（§9.129）',
-      [tolWhere.facts,tolWhere.summary,tolWhere.side].filter(Boolean).length<=1,
+  rec('公差の内訳の3行帯は廃止した（§9.234 ③）',tolWhere.facts===false,JSON.stringify(tolWhere));
+  rec('公差の値を言う場所は1つだけ（§9.129）',
+      [tolWhere.facts,tolWhere.summary].filter(Boolean).length<=1,
       JSON.stringify(tolWhere));
 
   /* ---- 条が入りきらないときだけ縮める（§9.209 ③） ----
@@ -2592,7 +2624,6 @@ let b=null,page=null;
      if(!e)return null;return Math.max(0,e.scrollWidth-e.clientWidth)};
    const n=document.getElementById('materialManualNote');
    const title=n&&n.closest('.mat-block-title');
-   const note=document.getElementById('mstepNote');
    return {印:!!n,隠:n?n.hidden:null,文:(n&&n.textContent)||'',
      題の中:!!title,
      題からのはみ出し:(n&&title&&!n.hidden)?Math.round(Math.max(
@@ -2600,7 +2631,8 @@ let b=null,page=null;
        n.getBoundingClientRect().bottom-title.getBoundingClientRect().bottom)):null,
      切れ:{ロット:cut('mctxLot'),製品:cut('mctxProduct'),
            形:cut('mctxShape'),公差:cut('mctxTolerance')},
-     段の一言:(note&&note.textContent||'').slice(0,60)};
+     /* 帯の一言（`#mstepNote`）は§9.234 ④で廃止した。 */
+     段の一言:document.getElementById('mstepNote')?'(まだ在る)':''};
   });
   rec('母材のとき手入力の案内は母材の題の中に出る（§9.233 ③）',
       !!(ctxBar.印&&ctxBar.隠===false&&ctxBar.題の中&&/手入力/.test(ctxBar.文)),

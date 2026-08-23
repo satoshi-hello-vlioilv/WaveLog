@@ -111,9 +111,17 @@
             tagHint:'この塊をどの設備の帳票へ出せるようにするかです。「すべての設備」を選ぶと、これから増える設備でも使えます。'},
            {k:'name',label:'ブロック名',required:true,key:true,
             hint:'帳票の見出しになり、並び・幅・高さの設定の鍵にもなります。**同じ設備に同じ名前を2つ置かないでください**（どちらの設定か決まりません）。'},
+           /* 塊の種別（§9.234 ⑤、利用者の指示「ラベル貼り付けエリアと同じ
+              タイプのエリア確保だけのタイプで文字を配置できる感じのものを
+              追加してください」）。**決めることが変わる**ので、選んだ種別に
+              合う欄だけを出す（§4。押せるのに何も起きない欄を残さない）。 */
+           {k:'kindText',label:'種別',type:'select',options:['項目の並び','エリア（枠と文字）'],
+            hint:'「エリア（枠と文字）」は**値を出さず、場所を空けるだけの塊**です（ラベル貼付・手書き・確認印の欄）。置く文字は下の「エリアに置く文字」で決めます。空のままでも枠だけの塊として使えます。**高さは「中身なり」だと1行に潰れる**ので、行数を決めてください。'},
            /* §9.226 ④。**選んで組み立てる**（手で道を書かせない）。 */
-           {k:'content',label:'内容（載せる項目）',type:'field-builder',
+           {k:'content',label:'内容（載せる項目）',type:'field-builder',when:{kindText:'項目の並び'},
             hint:'左の候補を押すと右へ増え、**上から順に紙へ並びます**。掴んで並べ替え、名前はその場で直せます。候補には**操業データ項目マスタで足した項目もそのまま出ます**（項目を足せばここにも増えます）。載せる項目が空のときは、画面がもともと持っている中身のまま出ます。'},
+           {k:'text',label:'エリアに置く文字',type:'textarea',rows:3,when:{kindText:'エリア（枠と文字）'},
+            hint:'改行できます。**値は入りません**——測定データを出したいときは種別を「項目の並び」にしてください。空のままなら枠だけの塊になります。'},
            {k:'span',label:'幅（12マス中）',type:'select',options:['3','4','6','8','12'],
             hint:'紙は12マスのグリッドです。3＝1/4、6＝1/2、12＝全幅。**ここは既定**で、設備ごとの紙で幅を変えるとそちらが優先されます（帳票画面の「配置を組み換え」で戻せます）。'},
            {k:'rows',label:'高さ（行数）',type:'select',options:['','2','3','4','5','6','8','12'],
@@ -134,7 +142,8 @@
            {k:'builtin',label:'既定の塊',readonly:true,
             hint:'空欄＝自分で作った塊です。値が入っているものはアプリがもともと持っている塊で、**名前・幅・高さ・並び・出す/出さない・対象設備**を変えられます（中身は塊によります。下の説明を参照）。'}],
    cols:[{k:'equipment',label:'対象設備',grow:2,format:'equipmentTarget'},
-         {k:'name',label:'ブロック名',grow:2},{k:'builtin',label:'既定',grow:1},
+         {k:'name',label:'ブロック名',grow:2},{k:'kindText',label:'種別',grow:1},
+         {k:'builtin',label:'既定',grow:1},
          {k:'enabledText',label:'有効',grow:1},{k:'content',label:'内容',grow:4},
          {k:'span',label:'幅',grow:1},{k:'rows',label:'高さ',grow:1},{k:'order',label:'表示順',grow:1}],
    hint:'帳票の塊の一覧です。**アプリがもともと持っている塊もここに載っています**（「既定」に値が入っている行）。既定の塊は**名前・幅・高さ・並び・出す/出さない・対象設備**を変えられ、`基本情報`／`コース情報`／`測定条件`／`作業班構成`／`作業時間`／`登録状態`の6つは**中身（ラベルと出どころの並び）も**変えられます。中身を空にすると画面がもともと持っている形へ戻ります。測定表・条の図・異常位置判定のように組み立て方そのものが仕事になっている塊は中身を変えられません（書いても効かないので、変えないでください）。既定の塊は**消せません**——紙へ出したくないときは「有効」を外します。自分で作った塊は1行＝1つの塊で、中身は「ラベルと値の出どころ」を並べたものです。出どころには`calc.workDuration`（実働時間）`calc.status`（状態）`calc.crewSize`（N名班）`calc.coilStop`（コイル止め・旧データ込み）といった**計算した値**も使えます。作った塊は既定では紙に出していないので、帳票画面の「配置を組み換え」の「出していない塊」から紙へ落としてください。'},
@@ -492,7 +501,41 @@
   return String(html).replace('class="mm-field','class="mm-field mm-w-'+mmFieldSize(f)+' ');
  }
  function buildFieldControls(def,editing){
-  return groupFieldControls(def,def.fields.map(f=>mmSized(buildOneFieldControl(f,editing),f)));
+  return groupFieldControls(def,def.fields.map(f=>mmWhen(mmSized(buildOneFieldControl(f,editing),f),f)));
+ }
+ /* ---------- 「別の欄で選んだときだけ出す」（§9.234 ⑤） ----------
+    帳票ブロックの種別（項目の並び／エリア）のように、**選んだ種別で
+    決めることが変わる**設定がある。押せるのに何も起きない欄を残さない（§4）。
+    **作り直さないこと**——`hidden`の付け外しだけにする（値もフォーカスも
+    失わない。§9.117の「入力中に描き直さない」と同じ理由）。
+    印は器へ付ける（`data-when="鍵=値"`）。 */
+ function mmWhen(html,f){
+  if(!f||!f.when)return html;
+  const k=Object.keys(f.when)[0];
+  if(!k)return html;
+  const v=String(f.when[k]);
+  return String(html).replace(/^(\s*<(?:div|label)\b)/,
+    (m,head)=>`${head} data-when="${esc(k)}=${esc(v)}"`);
+ }
+ /* 指し先の欄の値で出し入れする。**値は消さない**（戻せば元の値が残る）。 */
+ function bindWhenFields(form){
+  const boxes=[...form.querySelectorAll('[data-when]')];
+  if(!boxes.length)return;
+  const apply=()=>boxes.forEach(box=>{
+   const raw=String(box.dataset.when||''),i=raw.indexOf('=');
+   if(i<0)return;
+   const key=raw.slice(0,i),want=raw.slice(i+1);
+   const src=form.querySelector(`[data-field="${CSS.escape(key)}"]`);
+   const on=!src||String(src.value||'')===want;
+   if(box.hidden!==!on)box.hidden=!on;
+  });
+  boxes.forEach(box=>{
+   const raw=String(box.dataset.when||''),i=raw.indexOf('=');
+   if(i<0)return;
+   const src=form.querySelector(`[data-field="${CSS.escape(raw.slice(0,i))}"]`);
+   if(src&&!src.dataset.whenWired){src.dataset.whenWired='1';src.addEventListener('change',apply)}
+  });
+  apply();
  }
  function buildOneFieldControl(f,editing){
   return (function(){
@@ -763,6 +806,7 @@
   bindComboFields(form);
   bindPathFields(form);
   bindFieldBuilders(form);
+  bindWhenFields(form);
  }
  /* ---------- 選んで組み立てる（§9.226 ④、利用者の指示） ----------
     保存の形は`ラベル=出どころ`の並びのままで、**書く手段だけ**を変える。
@@ -3889,7 +3933,10 @@
                 /* 自動で入る値の添え書きの置き場と、添え書きを持つ項目
                    （§9.233 ⑤）。**サーバーが答える**——どの欄が仕掛から
                    値を引くかは、引いている側しか知らない。 */
-                sourceNotePlaces:['欄の下','名前の横','出さない'],sourceNoteKeys:[],
+                sourceNotePlaces:['欄の下','名前の横','出さない'],sourceNoteKeys:[],autoFills:[],
+                /* 自動で入る値・計算値の一覧（§9.234 ②）。**サーバーが答える**
+                   ——ここは届くまでの受け皿で、鍵の綴りを画面に持たない。 */
+                autoValues:[],
                 /* 同じ群がばらけて保存されていた置き場（§9.219 ③）。
                    まとめて描いたことを画面に書くために覚える。 */
                 healed:new Set(),
@@ -4050,6 +4097,10 @@
     足りない（あれは保存済みの型に対する答え）。 */
  function opFamilyOf(x){
   const bf=opState.builtinFamilies||{},tf=opState.typeFamilies||{};
+  /* 自動で入る値（§9.234 ②）は**型より先**。値を入れるのは画面なので、
+     型を何にしても選ばせ方・初期値・手打ちは効かない
+     （サーバーの`widget_family()`と同じ順番。2つの答えを作らない）。 */
+  if(x&&x.autoValue)return 'output';
   if(x&&x.builtin)return bf[x.builtin]||'choice';
   return tf[(x&&x.type)||'']||'text';
  }
@@ -4057,6 +4108,16 @@
     屑幅（両耳合計）・計算全長（参考）——は`<output>`なので、選ばせ方も
     初期値も持たない。**判定は1箇所**（族はサーバーが答える）。 */
  function opIsOutput(x){return opFamilyOf(x)==='output'}
+ /* 値がこの画面の外から入る欄か（§9.234 ⑦、利用者の指示「操業データ項目の
+    項目カード自体に自動に入力されるものについては配色してほしいです」）。
+    **判定はサーバーの`auto_fill_of()`**——ここは引くだけ（§9.163）。
+    **`opIsOutput()`を消してこれに置き換えないこと**（§9.232。設定窓の
+    「選ばせ方／初期値を出さない」は族の側で別に守らせてあり、1つにまとめると
+    片方を壊しても もう片方が隠して網が空振りする）。 */
+ function opAutoOf(x){return String((x&&x.autoFill)||'')}
+ function opAutoFill(k){return (opState.autoFills||[]).find(a=>a.key===k)||null}
+ function opAutoLabel(k){const a=opAutoFill(k);return a?a.label:''}
+ function opAutoNote(k){const a=opAutoFill(k);return a?a.note:''}
  function opWidgetsFor(x){
   const fam=opState.widgetFamilies||{};
   return fam[opFamilyOf(x)]||['プルダウン'];
@@ -4144,7 +4205,16 @@
      何が入っていたのか分からなくなる（§4）。 */
   const pad=!!x.dummy;
   const w=opWidgetOf(x);
+  /* 値がこの画面の外から入る欄（§9.234 ⑦）。**面の色と文字の両方**で言う
+     （§CLAUDE 3 状態は色だけで伝えない）。 */
+  const auto=opAutoOf(x);
   const tip=[x.name,x.builtin?'画面がもともと持っている入力欄':x.type,
+             /* §9.234 ②。**出どころを画面に出す**（§CLAUDE 6）——同じ
+                「製造板厚」でも、仕掛から写した値と手で打った値では
+                当たる見込みも直す場所も違う。 */
+             x.autoValue?`自動で入る値: ${x.autoValueLabel||x.autoValue}`
+                        +(x.autoValueKnown===false?'（この版では引けません）':''):'',
+             auto?opAutoNote(auto):'',
              opSpanLabel(span),x.required?'必須':'',off?'出さない':'',
              w!=='プルダウン'?opWidgetLabel(x,w):'',
              /* §9.220 ②③。**盤の上で分かること**を増やす（開かないと
@@ -4165,17 +4235,30 @@
   }
   return `<div class="op-tile${String(opState.picked)===String(x.id)?' is-picked':''}`
    +`${off?' is-off':''}" draggable="true" data-op-id="${esc(x.id)}"`
+   /* **classを増やさず属性1つ**（§9.234 ⑦）——鍵はサーバーの綴り
+      （`computed`/`preset`）なので、CSSも網もこの1つの印を見れば足りる。 */
+   +(auto?` data-op-auto="${esc(auto)}"`:'')
    +` style="${spot?`grid-column:${spot.col}/span ${spot.span};grid-row:${spot.row}`
                  :`grid-column:span ${span}`}" title="${esc(tip)}" tabindex="0">`
    +`<span class="op-tile-name">${esc(x.name)}</span>`
    +`<span class="op-tile-meta">`
-   +(x.builtin?'<b class="op-chip op-chip-builtin">画面の欄</b>':'')
+   /* **出どころのチップは1つの枠のまま3値**（自動／仕掛から／画面の欄）。
+      自動の欄は必ず組み込みの欄なので、両方並べると同じことを2度言ううえ
+      （§CLAUDE 8）、`.op-tile-meta`は`flex-wrap:wrap`なので3マス幅のカードで
+      2行になり、盤の高さが動く（§9.234 ⑦）。 */
+   +(auto?`<b class="op-chip op-chip-auto">${esc(opAutoLabel(auto))}</b>`
+        :(x.builtin?'<b class="op-chip op-chip-builtin">画面の欄</b>':''))
    +(x.required?'<b class="op-chip op-chip-req">必須</b>':'')
    +(off?'<b class="op-chip op-chip-off">出さない</b>':'')
    +(w!=='プルダウン'?`<b class="op-chip op-chip-widget">${esc((OP_WIDGET_NOTE[w]||{}).icon||'')} ${esc(opWidgetLabel(x,w))}</b>`:'')
    +(x.initial?`<b class="op-chip op-chip-initial">初期 ${esc(x.initial)}</b>`:'')
    +(x.freeText?'<b class="op-chip op-chip-free">手打ち可</b>':'')
-   +`<span class="op-tile-type">${esc(x.builtin?'—':x.type||'')}</span>`
+   /* 自動で入る値は**どの値なのか**を出す（§9.234 ②）——型（`文字`）は
+      値を画面が入れる以上、読む側の打つ手を1つも変えない（§CLAUDE 6）。
+      **引けない鍵はそう書く**（§4）。 */
+   +`<span class="op-tile-type">${esc(x.autoValue
+        ?((x.autoValueLabel||x.autoValue)+(x.autoValueKnown===false?'（引けません）':''))
+        :(x.builtin?'—':x.type||''))}</span>`
    +`<span class="op-tile-span">${span}/${opState.gridCols}</span></span>`
    +`<span class="op-tile-gear" aria-hidden="true">設定</span></div>`;
  }
@@ -4277,6 +4360,19 @@
     **判定はサーバー**（`role_report`）——画面で数え直すと2つの答えが出る。
     **足りない・二重のときだけ赤く言い、満たされているときは静かに数える**
     （いつも赤いと読まれなくなる）。 */
+ /* 色の意味と件数を**文字で**言う（§CLAUDE 3／§9.105「色だけで意味を伝えない。
+    分類名と件数を必ず文字で出す」）。**1つも無い場面では行ごと消す**
+    （§4／§9.199）。件数を出すのは**ここだけ**——盤の頭にも出すと同じ数字が
+    2箇所になる（§CLAUDE 8）。 */
+ function opAutoLegendHtml(){
+  const kinds=(opState.autoFills||[]).map(a=>Object.assign({},a,
+    {n:(opState.items||[]).filter(x=>opAutoOf(x)===a.key).length})).filter(a=>a.n);
+  if(!kinds.length)return '';
+  return `<p class="op-auto-legend"><span>地に色の付いたカードは、値が<b>この画面の外から</b>入ります</span>`
+   +kinds.map(a=>`<b class="op-chip op-chip-auto" data-op-auto="${esc(a.key)}">${esc(a.label)} ${a.n}件</b>`
+     +`<small>${esc(a.note)}</small>`).join('')
+   +`<small>マスタで決めた<b>初期値</b>はここに数えません（カードの「初期 …」の印が持ちます）。</small></p>`;
+ }
  function opRoleStripHtml(){
   const rep=opState.roleReport;
   if(!rep)return '';
@@ -4343,6 +4439,10 @@
       良いところで折り返すための、何も出さない場所。 */
    +`<button type="button" id="opAddPad" class="ghost"`
    +` title="測定画面で何も描かない「空き」のカードを1枚足します（区切りの良い並びに整列させるため）">空きカードを追加</button>`
+   /* **自動で入る値・計算値**（§9.234 ②、利用者の指示）。人が打たない値も
+      1枚のカードとして置けるようにする。一覧はサーバーが答える。 */
+   +`<button type="button" id="opAddAuto" class="ghost"`
+   +` title="ロット番号・製造板厚・実働時間など、画面が自動で入れる値を1枚のカードとして足します">自動で入る値を足す</button>`
    +`<span class="op-bar-state" id="opLayoutState"></span></div>`;
   /* **まとめ直したことを画面に書く**（§9.219 ③）。保存されている並びでは
      同じ群がばらけていたが、盤ではまとめて描いている——黙って直すと、
@@ -4353,6 +4453,7 @@
   const healed=[...opState.healed];
   list.innerHTML=`<div class="op-edit">`
    +opRoleStripHtml()
+   +opAutoLegendHtml()
    +(healed.length?`<p class="op-healed">同じ群がばらばらの位置に保存されていたので、`
      +`<b>${esc(healed.join('・'))}</b>の盤ではまとめて出しています`
      +`（この盤で一度でも掴んで動かすと、その形で保存されます）。</p>`:'')
@@ -4425,6 +4526,8 @@
   if(addG)addG.onclick=()=>opCreateGroup();
   const addP=$('#opAddPad');
   if(addP)addP.onclick=()=>opCreatePad();
+  const addA=$('#opAddAuto');
+  if(addA)addA.onclick=e=>opOpenAutoMenu(e);
   document.querySelectorAll('#masterMaintList .op-tile').forEach(t=>{
    /* **押したら設定の窓が開く**（§9.218 ①、利用者の指摘「メニューが右側で
       固定され、設定しにくい」）。以前は右の細い柱に押し込んでいたため、
@@ -4914,6 +5017,103 @@
     body:JSON.stringify({...x,id:x.id,dummy:!!on,user_id:uid})});
   await loadOpItemMaint(true);
   if(window.WL&&WL.opData)WL.opData.forget();
+ }
+ /* ================================================================
+    自動で入る値・計算値を足す（§9.234 ②、利用者の指示）
+    ----------------------------------------------------------------
+    「自動で入る値、計算値についても、現在使っているものは、そのリストから
+     選んで表示設定できるようにしてください」
+
+    測定画面には**人が打たない値**が既にいくつも出ていた（仕掛から写した
+    ロット番号・製造板厚、開いた設備、実働時間…）。画面に焼き付いていたので
+    置き場も名前も見せ方も現場が決められなかった。ここから1枚のカードとして
+    足せば、あとは他の項目とまったく同じ——並べ替え・幅・単位・寄せ・意匠が
+    そのまま効く（作り直さず、割り付けだけを差配する・§9.216 ②）。
+
+    **一覧はサーバーが答える**（`/api/operation-item-master`の`autoValues`）
+    ——鍵の綴りを画面へ書き写すと、増やしたときに2箇所直すことになる。
+    **もう足してあるものは、そう書いて押せなくする**（§4）——同じ鍵の欄が
+    2つあると、同じ数字が2箇所に出る（§CLAUDE 8）。 */
+ function opAutoValueUsed(){
+  const m=new Map();
+  (opState.items||[]).forEach(x=>{if(x.autoValue)m.set(String(x.autoValue),x)});
+  return m;
+ }
+ function opOpenAutoMenu(ev){
+  closeOpMenu();
+  if(ev&&typeof ev.preventDefault==='function')ev.preventDefault();
+  const list=opState.autoValues||[];
+  const btn=ev&&ev.currentTarget&&ev.currentTarget.getBoundingClientRect
+    ?ev.currentTarget.getBoundingClientRect():null;
+  const px=btn?btn.left:(Number(ev&&ev.clientX)||8);
+  const py=btn?btn.bottom+4:(Number(ev&&ev.clientY)||8);
+  const used=opAutoValueUsed();
+  const m=document.createElement('div');
+  m.className='op-menu op-menu-auto';m.setAttribute('role','menu');
+  if(!list.length){
+   m.innerHTML='<div class="op-menu-head">自動で入る値</div>'
+     +'<button type="button" disabled>この版では一覧を読めませんでした</button>';
+  }else{
+   const groups=[];
+   list.forEach(a=>{
+    let g=groups.find(x=>x.name===a.group);
+    if(!g){g={name:a.group,items:[]};groups.push(g)}
+    g.items.push(a);
+   });
+   m.innerHTML='<div class="op-menu-head">自動で入る値・計算値を足す</div>'
+    +'<div class="op-menu-note">人が打たない値です。足すと1枚のカードになり、'
+    +'置き場・幅・単位・見せ方はふつうの項目と同じように決められます。</div>'
+    +groups.map(g=>`<div class="op-menu-group">${esc(g.name)}</div>`
+      +g.items.map(a=>{
+        const hit=used.get(a.key);
+        const note=[a.unit?`単位 ${a.unit}`:'',a.note].filter(Boolean).join('｜');
+        return hit
+         ?`<button type="button" disabled title="${esc(note)}">${esc(a.label)}`
+          +`<small>もう「${esc(hit.name)}」として置いています</small></button>`
+         :`<button type="button" data-opm-auto="${esc(a.key)}" title="${esc(note)}">`
+          +`${esc(a.label)}${a.unit?`<small>${esc(a.unit)}</small>`:''}</button>`;
+       }).join('')).join('');
+  }
+  document.body.appendChild(m);
+  opMenuEl=m;
+  const r=m.getBoundingClientRect();
+  m.style.left=Math.max(4,Math.min(px,window.innerWidth-r.width-4))+'px';
+  m.style.top=Math.max(4,Math.min(py,window.innerHeight-r.height-4))+'px';
+  m.querySelectorAll('[data-opm-auto]').forEach(b=>b.onclick=async()=>{
+   const key=b.dataset.opmAuto;
+   closeOpMenu();
+   await opCreateAuto(key);
+  });
+  document.addEventListener('mousedown',opMenuOutside,true);
+  document.addEventListener('keydown',opMenuEsc,true);
+ }
+ async function opCreateAuto(key){
+  const uid=requireMaintUser();if(uid===null)return;
+  const a=(opState.autoValues||[]).find(x=>x.key===key);
+  if(!a){opSay('その値は一覧にありません',true);return}
+  const cur=opItemById(opState.picked);
+  const place=(cur&&cur.place)||'準備';
+  const group=(cur&&cur.group)
+    ||((opState.items||[]).find(x=>(x.place||'準備')===place)||{}).group||'自動で入る値';
+  /* 項目名は**鍵**（自然キーは設備×項目名）なので重ならない値を作る。
+     呼び名をそのまま使い、埋まっていたら番号を足す（名前は後から直せる）。 */
+  const usedNames=new Set((opState.items||[]).map(x=>x.name));
+  let nm=a.label,n=1;
+  while(usedNames.has(nm))nm=a.label+'('+(++n)+')';
+  try{
+   const r=await api('/api/operation-item-master',{method:'POST',
+     headers:{'Content-Type':'application/json'},
+     /* **型は`文字`のまま**——値を入れるのは画面なので、型で入力を縛る
+        意味が無い（族はサーバーが`output`と答える）。単位は一覧の値を
+        そのまま入れる（§CLAUDE 6「単位を画面に出す」）。 */
+     body:JSON.stringify({equipment:opState.equipment||'*',group,name:nm,
+       type:'文字',place,span:4,unit:a.unit||'',autoValue:a.key,user_id:uid})});
+   opState.picked=r.id;
+   await loadOpItemMaint(true);
+   if(window.WL&&WL.opData)WL.opData.forget();
+   opSay(`「${nm}」を足しました。値は測定画面が入れます（${a.note}）`);
+   openOpModal(r.id);
+  }catch(e){opSay('追加できませんでした: '+e.message,true)}
  }
  async function opCreateItem(seed){
   const uid=requireMaintUser();if(uid===null)return;
@@ -5612,17 +5812,35 @@
   const paneWhat=sec('何を記録するか','値の型・入る範囲・選ばせる候補・最初から入れておく値',`
    <div class="op-form-row"><span class="op-form-label">項目名</span>
     <span class="op-form-ctl"><input type="text" id="opdName" value="${esc(x.name)}"></span></div>
+   ${x.autoValue?`
+   <div class="op-form-row"><span class="op-form-label">自動で入る値</span>
+    <span class="op-form-ctl">
+     <b class="op-locked-chip">${esc(x.autoValueLabel||x.autoValue)}</b>
+     ${x.autoValueGroup?`<b class="op-chip">${esc(x.autoValueGroup)}</b>`:''}
+     ${x.autoValueKnown===false
+       ?`<b class="op-warn-chip">この版では引けない鍵です（${esc(x.autoValue)}）——欄は空欄のままになります</b>`:''}
+     <i class="op-form-note">${esc(x.autoValueNote||'')}
+      値を入れるのは<b>測定画面</b>なので、型・数の決まり・選ばせ方・初期値・手打ちは持ちません。
+      <b>名前・置き場・幅・単位・見せ方はふつうの項目と同じように決められます。</b>
+      出どころを変えたいときは、この項目を消して足し直してください。</i>
+    </span></div>`:''}
    <div class="op-form-row"><span class="op-form-label">役割</span>
     <span class="op-form-ctl">${opRolePickHtml(x)}</span></div>
    <div class="op-form-row"><span class="op-form-label">型</span>
-    <span class="op-form-ctl">${x.builtin
+    <span class="op-form-ctl">${x.autoValue
+      ?`<b class="op-locked-chip">値の形は出どころが決めます</b>
+        <i class="op-form-note">自動で入る値なので、型で入力を縛る意味がありません（打つ欄がありません）。
+        単位・寄せ・意匠（色・形・大きさ）は<b>③どう見せるか</b>で決められます。
+        <b>3桁区切り・ゼロ埋めは効きません</b>——値を入れるのは画面なので、
+        欄を離れたときに整える瞬間がありません。</i>`
+      :x.builtin
       ?`<b class="op-locked-chip">${esc(x.type||'画面の部品で決まります')}</b>
         <i class="op-form-note">この欄は<b>画面がもともと持っている部品</b>なので、型は変えられません。
         別の型で記録したいときは、<b>新しい項目を作って同じ役割を持たせて</b>ください
         ——役割が移ると、この欄は測定画面から自動で下がります。</i>`
       :`${seg('型',opState.types,x.type,'data-op-type',t=>OP_TYPE_NOTE[t]||'')}
         <i class="op-form-note">${esc(OP_TYPE_NOTE[x.type]||'')}</i>`}</span></div>
-   ${(isChoice||x.builtin)?'':`
+   ${(isChoice||x.builtin||opIsOutput(x))?'':`
    <div class="op-form-row"><span class="op-form-label">数の決まり</span>
     <span class="op-form-ctl op-form-nums">
      <label>小数桁<input type="number" id="opdDecimals" min="0" max="4" value="${x.decimals==null?'':esc(x.decimals)}"></label>
@@ -5805,7 +6023,20 @@
       見本も**同じ`<output>`**で描く——`<input>`で描くと、枠・寄せ・
       「文字だけ／強調」の見え方が実物と食い違う（見本の値打ちが消える）。 */
    ctl=document.createElement('output');
-   ctl.textContent='123.4';
+   /* **いま引ける値があれば、それを見本にする**（§9.234 ②）——ロット番号に
+      `123.4`と出ていると、桁も文字種も確かめられない。測定を開いていない
+      ときだけ当たり障りのない数を置く。引けない鍵はそう書く（§4）。 */
+   let sample='123.4';
+   if(x.autoValue){
+    label.dataset.opauto=x.autoValue;
+    const known=!(window.WL&&WL.opData&&WL.opData.autoKnown)||WL.opData.autoKnown(x.autoValue);
+    if(!known)sample='（この版では引けません）';
+    else{
+     const v=(window.WL&&WL.opData&&WL.opData.autoValueOf)?WL.opData.autoValueOf(x.autoValue):null;
+     sample=(v===null||v==='')?'（測定を開くと入ります）':v;
+    }
+   }
+   ctl.textContent=sample;
   }else if(fam==='choice'){
    ctl=document.createElement('select');
    ctl.innerHTML=['<option value="">-</option>']
@@ -6649,6 +6880,8 @@
    /* §9.233 ⑤ */
    opState.sourceNotePlaces=it.sourceNotePlaces||opState.sourceNotePlaces;
    opState.sourceNoteKeys=it.sourceNoteKeys||opState.sourceNoteKeys;
+   opState.autoFills=it.autoFills||opState.autoFills;
+   opState.autoValues=it.autoValues||opState.autoValues;
    opState.layouts=it.layouts||opState.layouts;
    opState.layoutWidgets=it.layoutWidgets||opState.layoutWidgets;
    opState.typeFamilies=it.typeFamilies||opState.typeFamilies;

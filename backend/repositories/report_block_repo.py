@@ -188,47 +188,73 @@ def field_catalog(c, equipment=''):
 # 種は (組み込みキー, 幅, 行数, 内訳列数, 内容) 。**キーがそのまま塊の名前**
 # ——列レイアウトマスタ（対象`report:<設備>`）が名前を鍵に並び・幅・高さを
 # 持っているため、キーを変えると保存済みの設定が全部外れる（§9.113）。
+# ---------------------------------------------------------------------------
+# 塊の種別（§9.234 ⑤、利用者の指示「ラベル貼り付けエリアと同じタイプの
+# エリア確保だけのタイプで文字を配置できる感じのものを追加してください」）
+# ---------------------------------------------------------------------------
+# ''＝ラベルと値の並び（今までの塊）／'エリア'＝**値を出さず場所を空けるだけ**
+# の塊（ラベル貼付・手書き・確認印の欄）。置く文字は`[文字]`が持つ。
+# **`[内容]`へ混ぜないこと**——あちらの保存形（`ラベル=出どころ`）は§9.226 ⑥で
+# 「変えない」と決めてあり、混ぜると既に登録してある塊が読めなくなる。
+# **語彙はここだけが持つ**（§9.163。画面へ書き写さない）。
+AREA_KIND = 'エリア'
+KIND_LABELS = (('', '項目の並び'), (AREA_KIND, 'エリア（枠と文字）'))
+_KIND_BY_LABEL = {lb: v for v, lb in KIND_LABELS}
+_LABEL_BY_KIND = {v: lb for v, lb in KIND_LABELS}
+
+
+def normalize_kind(v):
+    """種別の保存形。**知らない値は「項目の並び」へ倒す**（§9.215と同じ作法。
+    例外にすると帳票ブロックマスタが丸ごと開けなくなる）。画面は文字列の
+    選択欄しか持たないので、**呼び名でも受ける**（`enabledText`と同じ）。"""
+    s = str(v or '').strip()
+    if s in _KIND_BY_LABEL:
+        s = _KIND_BY_LABEL[s]
+    return s if s == AREA_KIND else ''
+
+
+# 種は (組み込みキー, 幅, 行数, 内訳列数, 内容, 種別, 文字)
 BUILTIN_SEEDS = (
-    ('ラベル貼付スペース', 3, 5, 0, ''),
+    ('ラベル貼付スペース', 3, 5, 0, '', AREA_KIND, 'ラベル貼付スペース'),
     ('基本情報', 6, 0, 0,
      'ロット番号=basic.lotNo\n検査番号=basic.inspectionNo\n鋳造番号=basic.castingNo\n'
      'オーダー番号=basic.orderNo\n引当番号=basic.allocationNo\n用途コード=basic.purposeCode\n'
-     '用途名=basic.purposeName\n取引先=basic.customer\n納入先=basic.delivery'),
+     '用途名=basic.purposeName\n取引先=basic.customer\n納入先=basic.delivery', '', ''),
     ('コース情報', 3, 0, 1,
-     '設計コース=basic.designCourse\n実績コース=basic.course\n残コース=basic.residualCourse'),
-    ('寸法（オーダー／製造）', 4, 0, 0, ''),
-    ('品質等級', 4, 0, 0, ''),
-    ('品質情報（仕掛）', 4, 0, 0, ''),
+     '設計コース=basic.designCourse\n実績コース=basic.course\n残コース=basic.residualCourse', '', ''),
+    ('寸法（オーダー／製造）', 4, 0, 0, '', '', ''),
+    ('品質等級', 4, 0, 0, '', '', ''),
+    ('品質情報（仕掛）', 4, 0, 0, '', '', ''),
     ('測定条件', 8, 0, 4,
      '登録設備=calc.equipment\n入力内容=settings.measureType\n丈位置=settings.lengthPos\n'
      '縦割数=settings.verticalCount\n横割数=settings.horizontalCount\n巻出方向=settings.unwind\n'
      '内径=settings.innerDiameter\nスプール=settings.spool\n板厚測定器=settings.thicknessGauge\n'
      '板幅測定器=settings.widthGauge\n条入力順=settings.widthOrder\n方向=settings.widthDirection\n'
-     'バリ揃え=settings.burr\nコイル止め=calc.coilStop'),
+     'バリ揃え=settings.burr\nコイル止め=calc.coilStop', '', ''),
     ('作業班構成', 4, 0, 0,
      'オペレータ=settings.operator\n検査員=settings.inspector\n梱包員=settings.packer\n'
-     '作業人数=calc.crewSize'),
-    ('母材実績／カード指示', 6, 0, 0, ''),
-    ('丈別データ', 6, 0, 0, ''),
-    ('板厚の測定データ', 12, 0, 0, ''),
-    ('板幅ほかの測定データ', 12, 0, 0, ''),
-    ('測定データ・板幅', 6, 0, 0, ''),
-    ('測定データ・ラテラルボー', 4, 0, 0, ''),
-    ('測定データ・バリ', 4, 0, 0, ''),
-    ('測定データ・巻ずれ', 4, 0, 0, ''),
-    ('測定データ・テレスコープ', 4, 0, 0, ''),
-    ('測定データ・フラットネス', 4, 0, 0, ''),
-    ('測定データ・備考', 4, 0, 0, ''),
-    ('異常位置判定', 12, 0, 0, ''),
+     '作業人数=calc.crewSize', '', ''),
+    ('母材実績／カード指示', 6, 0, 0, '', '', ''),
+    ('丈別データ', 6, 0, 0, '', '', ''),
+    ('板厚の測定データ', 12, 0, 0, '', '', ''),
+    ('板幅ほかの測定データ', 12, 0, 0, '', '', ''),
+    ('測定データ・板幅', 6, 0, 0, '', '', ''),
+    ('測定データ・ラテラルボー', 4, 0, 0, '', '', ''),
+    ('測定データ・バリ', 4, 0, 0, '', '', ''),
+    ('測定データ・巻ずれ', 4, 0, 0, '', '', ''),
+    ('測定データ・テレスコープ', 4, 0, 0, '', '', ''),
+    ('測定データ・フラットネス', 4, 0, 0, '', '', ''),
+    ('測定データ・備考', 4, 0, 0, '', '', ''),
+    ('異常位置判定', 12, 0, 0, '', '', ''),
     ('作業時間', 6, 0, 0,
-     '開始時刻=calc.workStart\n終了時刻=calc.workEnd\n実働時間=calc.workDuration'),
+     '開始時刻=calc.workStart\n終了時刻=calc.workEnd\n実働時間=calc.workDuration', '', ''),
     ('登録状態', 6, 0, 0,
-     '状態=calc.status\n更新日時=calc.updatedAt\nNG回数=settings.ngCount'),
+     '状態=calc.status\n更新日時=calc.updatedAt\nNG回数=settings.ngCount', '', ''),
 )
 BUILTIN_KEYS = tuple(x[0] for x in BUILTIN_SEEDS)
 # **中身をマスタで書き換えてよい塊**（＝ラベルと出どころを並べただけのもの）。
 # ここに無い塊の`[内容]`は効かないので、画面は欄ごと出さずに理由を書く（§4）。
-CONTENT_EDITABLE = frozenset(k for k, _s, _r, _c, content in BUILTIN_SEEDS if content)
+CONTENT_EDITABLE = frozenset(k for k, _s, _r, _c, content, _kd, _tx in BUILTIN_SEEDS if content)
 
 
 def parse_content(text):
@@ -259,7 +285,12 @@ def _row(r):
     return {'id': r[0], 'equipment': str(r[1] or '').strip(),
             'name': str(r[2] or '').strip(), 'order': r[3],
             'span': normalize_span(r[4]), 'rows': normalize_rows(r[5]),
-            'content': str(r[6] or ''), 'fields': parse_content(r[6]),
+            'content': str(r[6] or ''),
+            # **エリアの塊では項目として読ませない**（§9.234 ⑤）——読ませると
+            # `rpMergeBuiltin`が節として描いてしまい、枠だけのはずの塊に
+            # ラベルと「-」が並ぶ。
+            'fields': ([] if normalize_kind(r[11] if len(r) > 11 else '') == AREA_KIND
+                       else parse_content(r[6])),
             'note': str(r[7] or ''), 'enabled': True if r[8] is None else bool(r[8]),
             # **画面から入切できる形でも返す**（§9.219 ②）。マスタ管理の
             # 汎用フォームは文字列の選択欄しか持たないので、真偽値のままだと
@@ -273,7 +304,15 @@ def _row(r):
             # **中身を書き換えてよいか。** 中身の作り方が仕事の塊
             # （測定表・条の図・異常位置判定）は書き換えても効かないので、
             # 画面は欄ごと出さずに理由を書く（§4）。
-            'contentEditable': (not builtin) or (builtin in CONTENT_EDITABLE)}
+            'contentEditable': (not builtin) or (builtin in CONTENT_EDITABLE),
+            # 塊の種別（§9.234 ⑤）。'エリア'＝値を出さず場所を空けるだけの塊。
+            # **画面から選べる形でも返す**（`enabledText`とまったく同じ作法）
+            # ——マスタ管理の汎用フォームは文字列の選択欄しか持たない。
+            'kind': normalize_kind(r[11] if len(r) > 11 else ''),
+            'kindText': _LABEL_BY_KIND.get(normalize_kind(r[11] if len(r) > 11 else ''),
+                                           _LABEL_BY_KIND['']),
+            # エリアに置く文字（改行できる）。**値は入らない。**
+            'text': str((r[12] if len(r) > 12 else '') or '')}
 
 
 # 後から足した列（§9.180「無ければ足す」で移行する。共有DBは現場で動いて
@@ -281,6 +320,8 @@ def _row(r):
 _ADDED_COLUMNS = (
     ('組み込みキー', 'TEXT'),      # 既定の塊はどのコードの塊か（自作は空）
     ('内訳列数', 'INTEGER'),       # 節の中を何列で並べるか（0＝既定）
+    ('種別', 'TEXT'),              # ''＝項目の並び／'エリア'＝場所を空けるだけ
+    ('文字', 'TEXT'),              # エリアに置く文字（改行できる）
 )
 
 
@@ -292,6 +333,15 @@ def _ensure_columns(c):
         if name not in have:
             cur.execute(f'ALTER TABLE [{TABLE}] ADD COLUMN [{name}] {kind}')
             added = True
+    # **`[種別]`を足したその場だけ**、既にあるラベル貼付スペースの行を
+    # エリアへ移す（§9.234 ⑤）。列は二度と追加されないので別の目印は要らない
+    # ——**どの列を足したかを`added`の1つのboolで見分けないこと**（`[文字]`
+    # だけが欠けている端末でも真になり、利用者が種別を変えた行を塗り潰す）。
+    if '種別' not in have:
+        cur.execute(f"UPDATE [{TABLE}] SET [種別]=?,"
+                    "[文字]=COALESCE(NULLIF([文字],''),[ブロック名]) "
+                    "WHERE [組み込みキー]='ラベル貼付スペース'", [AREA_KIND])
+        added = True
     if added:
         c.commit()
     return added
@@ -320,13 +370,14 @@ def _seed_builtins(c):
     else:
         cur.execute(f'SELECT MAX([表示順]) FROM [{TABLE}]')
         base = int((cur.fetchone() or [0])[0] or 0)
-    for i, (key, span, rows, cols, content) in enumerate(todo):
+    for i, (key, span, rows, cols, content, kind, text) in enumerate(todo):
         cur.execute(f'INSERT INTO [{TABLE}] '
                     '([設備名],[ブロック名],[表示順],[幅],[行数],[内容],[備考],[有効],'
-                    '[組み込みキー],[内訳列数],[登録者ID],[更新者ID],[登録日時],[更新日時]) '
-                    "VALUES (?,?,?,?,?,?,'',-1,?,?,?,?,Now(),Now())",
+                    '[組み込みキー],[内訳列数],[種別],[文字],'
+                    '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
+                    "VALUES (?,?,?,?,?,?,'',-1,?,?,?,?,?,?,Now(),Now())",
                     ['*', key, base + (i + 1) * 10, span, rows, content, key, cols,
-                     'migrate:seed', 'migrate:seed'])
+                     kind, text, 'migrate:seed', 'migrate:seed'])
     c.commit()
     return True
 
@@ -338,7 +389,7 @@ def ensure_table(c):
                     '[ブロックID] INTEGER PRIMARY KEY AUTOINCREMENT, [設備名] TEXT, '
                     '[ブロック名] TEXT, [表示順] INTEGER, [幅] INTEGER, [行数] INTEGER, '
                     '[内容] TEXT, [備考] TEXT, [有効] INTEGER, '
-                    '[組み込みキー] TEXT, [内訳列数] INTEGER, '
+                    '[組み込みキー] TEXT, [内訳列数] INTEGER, [種別] TEXT, [文字] TEXT, '
                     '[登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
         c.commit()
         _seed_builtins(c)
@@ -349,7 +400,7 @@ def ensure_table(c):
 
 
 _SELECT = ('SELECT [ブロックID],[設備名],[ブロック名],[表示順],[幅],[行数],[内容],[備考],[有効],'
-           '[組み込みキー],[内訳列数] '
+           '[組み込みキー],[内訳列数],[種別],[文字] '
            f'FROM [{TABLE}] ORDER BY [表示順],[ブロックID]')
 
 
@@ -395,7 +446,7 @@ def builtin_off(c, equipment):
 
 def block_upsert(c, uid, equipment='*', name='', order=None, span=6, rows=0,
                  content='', note='', enabled=True, block_id=None,
-                 builtin=None, cols=None):
+                 builtin=None, cols=None, kind=None, text=None):
     ensure_table(c)
     name = str(name or '').strip()
     if not name:
@@ -408,17 +459,25 @@ def block_upsert(c, uid, equipment='*', name='', order=None, span=6, rows=0,
     # 既存行の値を引き継ぐ。
     cur_builtin = ''
     cur_cols = 0
+    cur_kind = ''
+    cur_text = ''
     if block_id is not None:
-        cur.execute(f'SELECT [組み込みキー],[内訳列数] FROM [{TABLE}] WHERE [ブロックID]=?',
-                    [int(block_id)])
+        cur.execute(f'SELECT [組み込みキー],[内訳列数],[種別],[文字] FROM [{TABLE}] '
+                    'WHERE [ブロックID]=?', [int(block_id)])
         hit = cur.fetchone()
-        cur_builtin = str((hit or ['', 0])[0] or '').strip()
-        cur_cols = int((hit or ['', 0])[1] or 0)
+        cur_builtin = str((hit or ['', 0, '', ''])[0] or '').strip()
+        cur_cols = int((hit or ['', 0, '', ''])[1] or 0)
+        cur_kind = normalize_kind((hit or ['', 0, '', ''])[2])
+        cur_text = str((hit or ['', 0, '', ''])[3] or '')
     if builtin is None:
         builtin = cur_builtin
     builtin = str(builtin or '').strip()
     if cols is None:
         cols = cur_cols
+    # **渡していなければ今の値を引き継ぐ**（§9.212 ②。全置換なので、呼ぶ側が
+    # 1つ渡し忘れるとその設定だけが黙って消える）。
+    kind = cur_kind if kind is None else normalize_kind(kind)
+    text = cur_text if text is None else str(text or '')
     try:
         cols = max(0, min(6, int(cols or 0)))
     except (TypeError, ValueError):
@@ -433,11 +492,16 @@ def block_upsert(c, uid, equipment='*', name='', order=None, span=6, rows=0,
         hit = cur.fetchone()
         if hit:
             order = hit[0]
+    # **新しい列は必ず末尾へ足す**（§9.234 ⑤）——下のUPDATEの1本は
+    # `args[2:]`という**位置スライス**なので、途中へ入れると値が別の列へ入る。
+    # SET・VALUES・argsの**4箇所**（UPDATE2本＋INSERT1本＋この行）を同じ順に。
     args = [equipment, name, order, normalize_span(span), normalize_rows(rows),
-            str(content or ''), str(note or ''), -1 if enabled else 0, builtin, cols]
+            str(content or ''), str(note or ''), -1 if enabled else 0, builtin, cols,
+            kind, text]
     if block_id is not None:
         cur.execute('UPDATE [帳票ブロックマスタ] SET [設備名]=?,[ブロック名]=?,[表示順]=?,[幅]=?,'
                     '[行数]=?,[内容]=?,[備考]=?,[有効]=?,[組み込みキー]=?,[内訳列数]=?,'
+                    '[種別]=?,[文字]=?,'
                     '[更新者ID]=?,[更新日時]=Now() '
                     'WHERE [ブロックID]=?', args + [uid, int(block_id)])
         c.commit()
@@ -450,7 +514,8 @@ def block_upsert(c, uid, equipment='*', name='', order=None, span=6, rows=0,
     hit = cur.fetchone()
     if hit:
         cur.execute('UPDATE [帳票ブロックマスタ] SET [表示順]=?,[幅]=?,[行数]=?,[内容]=?,[備考]=?,'
-                    '[有効]=?,[組み込みキー]=?,[内訳列数]=?,[更新者ID]=?,[更新日時]=Now() '
+                    '[有効]=?,[組み込みキー]=?,[内訳列数]=?,[種別]=?,[文字]=?,'
+                    '[更新者ID]=?,[更新日時]=Now() '
                     'WHERE [ブロックID]=?', args[2:] + [uid, hit[0]])
         c.commit()
         return int(hit[0])
@@ -461,8 +526,9 @@ def block_upsert(c, uid, equipment='*', name='', order=None, span=6, rows=0,
         args[2] = order
     cur.execute('INSERT INTO [帳票ブロックマスタ] '
                 '([設備名],[ブロック名],[表示順],[幅],[行数],[内容],[備考],[有効],'
-                '[組み込みキー],[内訳列数],[登録者ID],[更新者ID],[登録日時],[更新日時]) '
-                'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())', args + [uid, uid])
+                '[組み込みキー],[内訳列数],[種別],[文字],'
+                '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
+                'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())', args + [uid, uid])
     c.commit()
     return int(cur.lastrowid)
 

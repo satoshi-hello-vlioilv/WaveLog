@@ -227,8 +227,13 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    左端(x=167)が**160pxずれていた**。画面の階層は
    「タイトル → メニュー(操作レール) → 進捗 → 測定」の順で、
    **メニューの方が上位**なのだから、進捗がその上に乗ってはいけない。 */
+/* **狭い窓では項目名を畳んで値へ場所を渡す**（§9.234 ④）。器は帯そのもの
+   ——ビューポート幅では判断できない（左の操作レールぶん狭い）。
+   **しきい値は`em`で置くこと**（§9.199。コンテナ自身の文字サイズで解けるので
+   表示サイズに追随する。pxだと中身だけが1.1倍になる特大でだけ溢れる）。 */
 .measure-bar{
   grid-column:2;display:flex;align-items:stretch;min-width:0;
+  container-type:inline-size;container-name:mbar;
   background:var(--surface);border-bottom:1px solid var(--line);
 }
 /* **1本の帯に収める。** 段と文脈で2段に分けると、その2行ぶん本体が縮み、
@@ -238,21 +243,31 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    何度も確かめるもので、測定値と同じ距離で読む。12px(--fs-sm)だと
    測定表の値(14px)より小さく、同じ画面の中で「格下」に見えていた。
    項目名(small)だけは添え物なので1段下げる。 */
-/* **縮む順番を決める。** 帯の場所が足りないときに先に縮むのは注意書きの
-   ほう——文脈はロット番号・製品名という**この画面が何を測っているか**
-   そのもので、見切れると別のロットと取り違える。以前は両方とも既定の
-   `flex-shrink:1`で等しく縮み、③で注意書きが載ると基本情報が潰れた
-   （実機で報告）。
-   **`flex:0 0 auto`で固定してはいけない**——狭い窓では帯そのものが溢れる
-   （1600px幅で横+52px、表示サイズ大で+142px。`test_fit`が検出）。
-   `flex-shrink`の比で優先順位を付ける: 注意書きは100倍縮みやすいので
-   実質そちらが先に消え、それでも足りないときだけ文脈が縮む。 */
+/* **縮む順番を決める。** 文脈はロット番号・製品名という**この画面が何を
+   測っているか**そのもので、見切れると別のロットと取り違える。
+   **`.measure-context`ごと`flex:0 0 auto`で固定してはいけない**——狭い窓では
+   帯そのものが溢れる（1600px幅で横+52px、表示サイズ大で+142px。`test_fit`が
+   検出）。**固定してよいのは自然幅40〜46pxのロット項目だけ**（§9.234 ④）。
+   以前は「注意書き（`.mstep-note`）が100倍縮みやすいので先に消える」という
+   配り方だったが、注意書きは自分の`padding`32pxで底を打ち、**足りないぶんは
+   全部この文脈が払っていた**（実測: 1366pxで4項目とも見切れ計221px、
+   1280pxではロットの値が**幅0px＝完全に不可視**）。注意書きは廃止した。
+   残り3項目は`flex-shrink`の比で**「製品 → 測定表の形 → 判定公差」の順に
+   縮ませる**（`flex-shrink`が大きいほど先に縮む）。製品名がいちばん長く、
+   切れても`.mctx-item`の`title`で全文が読めるので、そこから削る。 */
 .measure-context{
   display:flex;align-items:center;gap:var(--space-5);flex:0 1 auto;
   margin-left:auto;padding:0 16px;min-width:0;
   font-size:var(--fs);overflow:hidden;white-space:nowrap;
 }
 .mctx-item{display:flex;align-items:baseline;gap:var(--space-2);min-width:0}
+/* **ロットは切らせない**（§9.234 ④、利用者の指示「ロット情報は見切れない
+   ようにしてください」）。自然幅は40〜46pxしかないので、ここだけ固定しても
+   帯は溢れない。 */
+.mctx-item[data-k="lot"]{flex:0 0 auto}
+.mctx-item[data-k="product"]{flex:0 3 auto}
+.mctx-item[data-k="shape"]{flex:0 2 auto}
+.mctx-item[data-k="tolerance"]{flex:0 1 auto}
 .mctx-item small{flex:0 0 auto;color:var(--ink-soft);font-size:var(--fs-sm);font-weight:700;letter-spacing:.04em}
 .mctx-item b{min-width:0;color:var(--ink);font-weight:800;overflow:hidden;text-overflow:ellipsis}
 
@@ -281,13 +296,30 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 }
 .measure-steps .mstep.is-current .mstep-no{background:var(--teal);color:#fff}
 .measure-steps .mstep.is-current .mstep-state{color:var(--teal-dark)}
-/* 進めない理由。言えることがあるときだけ出す（常設の注意書きは読まれない）。 */
-.mstep-note{
-  display:flex;align-items:center;padding:0 16px;min-width:0;flex:0 100 auto;
-  color:var(--warn-fg);font-size:var(--fs-sm);font-weight:700;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+/* `.mstep-note`（進めない理由の器）は**廃止した**（§9.234 ④）。出していた
+   「未測定 N項目」は隣の段3の状態（`残り N項目`）と同じ数字で、しかも
+   `padding:0 16px`込みで1366px以下では32px＝1文字も出ていなかった。 */
+/* ---------- 狭い窓では畳む（§9.234 ④、§9.199と同じ作法） ----------
+   帯は「段ナビ（縮まない）＋文脈＋保存の状態（縮まない）」で、足りないぶんは
+   全部文脈が払う。**値を切るより、まず余白と項目名を畳む**——値は
+   ロット番号・製品名で、切れると別のロットと取り違える。
+   ①隙間と余白を詰める ②項目名（`small`）を畳む（名前は`.mctx-item`の
+   `title`が受ける）。**しきい値は`em`**（表示サイズに追随する）。 */
+/* 段の数字は**実測から決めてある**（1280〜1920px × sm/md/lgの18通りで
+   `mctxLot`が1pxも切れないこと・帯が溢れないことを確かめた）。
+   **em換算の必要幅は表示サイズで少しずれる**——文字は`--ui-scale`で伸びるが
+   `--space-*`とボタンの余白はpxの直値なので、小さい段ほど余白がem換算で
+   大きくなる（1440pxのとき md は 91.3em で足りるが sm は 99.2em 要る）。
+   だから**いちばん要る段（sm）に合わせて**畳み始める。 */
+@container mbar (max-width: 103em){
+  .measure-context{gap:var(--space-3);padding:0 var(--space-2)}
 }
-.mstep-note[hidden]{display:none}
+@container mbar (max-width: 100em){
+  .measure-context .mctx-item>small{display:none}
+}
+@container mbar (max-width: 82em){
+  .measure-steps .mstep{padding:0 var(--space-3)}
+}
 
 /* ---------- 段ごとの見せ分け ----------
    **表示/非表示だけで行い、DOMの親を変えない。** 受信欄を作り直すと
@@ -878,7 +910,10 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    ペインを罫線で仕切るだけで、カードによって枠のある/なし・余白・見出しの
    有無がばらばらだった（利用者の指摘「見栄えが1枚の画面の中でそろっていない」）。
    **本文グリッドの直下にあるものが「カード」**で、意匠はここ1箇所で与える。
-   中のパネルは枠を持たない——枠の中に枠を作らない（§9.129）。 */
+   中のパネルは枠を持たない——枠の中に枠を作らない（§9.129）。
+   **`.split-pane`の意匠と`overflow`はここが唯一**（§9.234 ①）。以前は
+   1001行と1211行にも宣言があり、どちらも詳細度で負けて一度も効いて
+   いなかった——「直したのに絵が変わらない」回を作るので増やさない。 */
 .measure-body>.left-pane,
 .measure-body>.center-pane,
 .measure-body>.right-pane,
@@ -998,7 +1033,10 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .tabs button{border-radius:var(--radius-tab) var(--radius-tab) 0 0;display:flex;align-items:center;justify-content:center;white-space:nowrap;border:1px solid transparent;background:transparent;color:#4a6169;box-shadow:none}
 .tabs button:hover{border-color:transparent;background:#eef2f4}
 .tabs .active{background:var(--teal);color:#fff;font-weight:700}
-.basic-card,.data-management-panel,.split-pane{padding:var(--space-2);background:#fff;border:1px solid var(--line);border-radius:var(--radius-md)}
+/* **`.split-pane`はここから外した**（§9.234 ①）——`.measure-body>.split-pane`
+   （詳細度0,2,0）が勝つので、この宣言は一度も効いていなかった。
+   `.basic-card`/`.data-management-panel`は測定画面の外でも使うので残す。 */
+.basic-card,.data-management-panel{padding:var(--space-2);background:#fff;border:1px solid var(--line);border-radius:var(--radius-md)}
 /* ---------- 基本情報(§9.55) ----------
    13項目を「主識別 → 識別番号 → 製品 → コース」の4かたまりへ束ね、
    参照用の項目は**ラベルと値を1行**に収める。以前は全項目がラベル上・値下の
@@ -1208,7 +1246,9 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .an-name{color:var(--ink-2);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .an-val{color:var(--ink);font-variant-numeric:tabular-nums}
 .an-n{color:var(--muted);font-size:var(--fs-badge);white-space:nowrap}
-.split-pane{overflow:auto}
+/* `.split-pane{overflow:auto}`はここに在ったが、`.measure-body>.split-pane`
+   （上のカードの意匠）と重複していたので消した（§9.234 ①）。同じセレクタが
+   複数箇所にあると「直したのに1pxも動かない」回が挟まる。 */
 .debug-pane{height:250px;overflow:auto;padding:var(--pad-card);background:#fff;border:1px solid var(--line);border-radius:var(--radius-md)}
 .debug-pane pre{white-space:pre-wrap;font-size:var(--fs-micro)}
 /* ---------- 6. 中央ペイン（選択項目） ---------- *//* 見出しバー(.panel-title/.row-title)は、直下のカードと角丸半径・枠線色を
@@ -1237,16 +1277,15 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .tolerance-source-control{display:flex;align-items:center;gap:var(--gap-inline);min-width:0;overflow:hidden}
 /* 切り替えの入口（§9.159）。**押すまで選択欄は出さない**ので、常設されるのは
    この小さなボタンだけ。いま効いている公差はヘッダーの文脈バーが出しており、
-   ここに値を再掲すると同じ数字が2箇所に出る（§9.129）。 */
+   ここに値を再掲すると同じ数字が2箇所に出る（§9.129）。
+   **入口はアイコン1つ**（§9.234 ③）——隣の「図の見せ方」（`.mhead-icon`）と
+   まったく同じ性質（§9.143「通常は製造公差のままで触ることがない」）なのに、
+   こちらだけ「公差を切り替える ▾」で137px使っていた。1行の中でいちばん
+   使わない設定に、いちばん広い場所を与えない。名乗りは`title`と`aria-label`。
+   **`::after`の`　▾`は消すこと**——消し忘れると全角スペース＋▾で24px残る。 */
 .tol-src-fold{
-  flex:0 0 auto;height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-sm);
-  border:1px solid var(--line);border-radius:var(--radius-sm);
-  background:var(--surface);color:var(--ink-2);font-weight:700;
-  white-space:nowrap;cursor:pointer;
+  flex:0 0 auto;cursor:pointer;
 }
-.tol-src-fold:hover{background:var(--surface-2);color:var(--ink)}
-.tol-src-fold::after{content:'　▾'}
-.tol-src-fold[aria-expanded="true"]::after{content:'　▴'}
 .tolerance-source-control label[hidden]{display:none}
 .tolerance-source-control label{
   display:grid;grid-template-columns:max-content minmax(0,1fr);align-items:center;gap:var(--gap-tight);
@@ -1273,20 +1312,23 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
   border:1px solid var(--line);border-radius:var(--radius-sm);
   background:var(--surface);color:var(--ink-3);cursor:pointer;
 }
+.mhead-icon[hidden]{display:none}
 .mhead-icon:hover{border-color:var(--teal);background:var(--pale);color:var(--teal-dark)}
 .mhead-icon[aria-expanded="true"]{border-color:var(--teal);background:var(--teal);color:#fff}
 /* 図があるのは②だけ（③は「測定データ分析」の表で、数直線は出ない）。
-   **効かない設定を残さない**（§9.129の4番。押せるのに何も起きない）。 */
-.measure-shell.mstep-1 .mhead-icon,
-.measure-shell.mstep-3 .mhead-icon,
+   **効かない設定を残さない**（§9.129の4番。押せるのに何も起きない）。
+   **`.mhead-icon`で名指ししないこと**（§9.234 ③）——公差の切替も同じ形へ
+   畳んだので、クラスで隠すと**③で判定公差を切り替えられなくなる**
+   （あちらは③でも効く設定＝一覧の出どころを決めている）。 */
+.measure-shell.mstep-1 #numberlineFold,
+.measure-shell.mstep-3 #numberlineFold,
 .measure-shell.mstep-1 .nl-outside,
 .measure-shell.mstep-3 .nl-outside{display:none}
-/* ③では**1項目ぶんの公差カードを出さない**（§9.157）。すぐ下の一覧が
+/* ③では**1項目ぶんの公差を出さない**（§9.157）。すぐ下の一覧が
    板厚・板幅・板丈・指示型を全部並べるので、同じ数字が2箇所に出る
    （§CLAUDE.md 同じ情報を2箇所に出さない）。**残すのは判定公差の選択**
    ——一覧の出どころを決めている設定そのもの。 */
-.measure-shell.mstep-3 #tolFold,
-.measure-shell.mstep-3 .tol-facts{display:none}
+.measure-shell.mstep-3 .tolerance-summary{display:none}
 /* ③では残るのが判定公差の選択だけになる。**枠は付けない**——オーダー公差が
    無いロットではその選択も畳まれるので、枠だけの空の帯が残る（§9.129の
    「枠は『まとまり』だけに使う」に反する。実際に空のピルが出た）。 */
@@ -1323,10 +1365,13 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .tol-list-note{margin:var(--space-1) 0 0;color:var(--ink-soft);font-size:var(--fs-sm)}
 /* 軸からはみ出した点があることは**文字で言う**（§9.129の3番）。直し方
    （表示幅）と同じ行に置くので、読んだその場で広げられる。 */
+/* **縮んでよいのは案内だけ**（§9.229 ⑤／§9.234 ③）。器を`nowrap`にした
+   ので、縮み代を持つのは`.mhead-at`・`.mhead-quota`とこの3つだけ。 */
 .nl-outside{
-  flex:0 0 auto;padding:var(--pad-chip);border-radius:var(--radius-md);
+  flex:0 1 auto;min-width:0;padding:var(--pad-chip);border-radius:var(--radius-md);
   background:var(--warn-bg);border:1px solid var(--warn-border);
   color:var(--warn-fg);font-weight:700;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;
 }
 .nl-outside[hidden]{display:none}
 /* 押すと「図の見せ方」が開く（§9.208 ④）。押せることが分かる見た目にする。 */
@@ -1620,15 +1665,26 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    凡例（待ち・入力中・完了・異常）は**廃止した**——色の意味は
    「入力中＝橙の枠」「異常＝赤」のように画面を見れば分かるうえ、
    実測214pxを常時使って3行目を作っていた。 */
-/* **上限が2行であって、いつも2行ではない。** 塊が2つあり、塊の中は
-   折り返さない（`nowrap`）ので、横に入れば1行・入らなければ2行にしか
-   ならない。器の幅で行数が3にも4にもならないことが要点。 */
+/* ---------- 見出しは**1行**（§9.234 ③、利用者の指示「2行にわたって公差情報や
+      ボタンや説明などが入っていますが、1行に収めたいです」） ----------
+   §9.210 ① の「2行まで」は「窓幅で3行にも4行にもならないこと」を担保する
+   仕掛けで、1行に収める指示と矛盾しない——**中身を減らしたうえで器を
+   `nowrap`にし、縮んでよい案内だけに縮み代を持たせれば、窓幅で行数が
+   変わらない1行になる**。減らしたのは冗長だった4つ:
+     ・`#numberlineOutside`の「（押すと「図の見せ方」が開きます）」＝`title`と二重
+     ・`#tolSourceFold`「公差を切り替える ▾」＝隣の「図の見せ方」と同じ性質なのに文字のまま
+     ・`#stepStatus`の「入力位置」＝値（丈・条）を読めば分かる
+     ・`#quota`の長文＝数字は`title`へ
+   **縮んでよいのは案内3つだけ**（`.mhead-at` / `.mhead-quota` / `.nl-outside`）。
+   バッジ・ボタンは`flex:0 0 auto`のまま——切れると何のボタンか分からない。 */
 .editor-head{
-  display:flex;align-items:center;flex-wrap:wrap;
-  gap:var(--gap-hair) var(--space-3);flex:0 0 auto;min-height:25px;
+  display:flex;align-items:center;flex-wrap:nowrap;
+  column-gap:var(--space-3);flex:0 0 auto;min-width:0;min-height:25px;
 }
 .mhead-line{display:flex;align-items:center;flex-wrap:nowrap;
   gap:var(--gap-inline) var(--space-2);min-width:0;flex:0 1 auto}
+/* 公差の入口とアイコンは**切れると何のボタンか分からない**ので縮ませない。 */
+.mhead-line-tol{flex:0 0 auto}
 /* **中身が無い行は出さない。** 公差の帯を畳んでいる段（①準備・③確認）は
    行ごと消す——空の行を残すと、そのぶん測定表が縮む。 */
 .measure-shell.mstep-1 .mhead-line-tol{display:none}
@@ -1661,7 +1717,14 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
   background:var(--header-bar-bg);color:var(--header-bar-fg);
   font-weight:800;white-space:nowrap;
 }
-.mhead-status{color:var(--ink-3);font-weight:700;white-space:nowrap}
+/* **チップ（`#measureTypeChips`）と同じ数字ではない**（§9.234 ③）。
+   ここは**いま選んでいる丈だけ**の進捗（`measurement-input.js`が
+   `m.measurements[key][li]`から数える）で、チップは**全丈の合算**
+   （`measure-progress.js`の`itemProgress`）。縦割数が2以上のロットでは
+   12/12 と 12/24 で別の数になるので、消すと丈ごとの進みが画面から失われる。
+   1行に収めるための縮み代だけを持たせる。 */
+.mhead-status{flex:0 1 auto;min-width:0;color:var(--ink-3);font-weight:700;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* 自動／手動は**見出しの中の小さな切り替え**（§9.209 ③）。以前はタブ1本を
    丸ごと1行使っていた。 */
 .mode-tabs{display:flex;height:var(--ctl-h-xs);flex:0 0 auto;
@@ -1690,15 +1753,7 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .tolerance-source-badge{display:inline-flex;align-items:center;padding:var(--pad-chip);border-radius:var(--radius-md);background:var(--teal);color:#fff;font-weight:800;font-size:var(--fs-micro)}
 .tolerance-source-badge.order{background:#7652a8}
 .tol-fallback{padding:var(--pad-chip);border-radius:var(--radius-md);background:var(--warn-bg);color:var(--warn-fg);font-weight:700;font-size:var(--fs-micro)}
-.tol-facts{display:grid;grid-template-columns:.7fr 1fr 1fr 1.25fr;gap:var(--gap-inline)}
-.tol-facts>div{min-width:0;padding:7px 8px;border:1px solid #cfdbde;border-radius:var(--radius-sm);background:#fff}
-.tol-facts small{display:block;color:#60747b;font-size:var(--fs-micro)}
-.tol-facts b{display:block;margin-top:2px;font-variant-numeric:tabular-nums}
-.tol-facts em{display:block;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#6a7d83;font-size:var(--fs-tiny);font-style:normal}
-.tol-facts .tol-result{border-color:#5eaeb5;background:#edfafa}
-.tol-facts .tol-result b{color:#075e67}
 .tol-formula{margin-top:7px;padding:var(--pad-row);border-radius:var(--radius-sm);background:#eef2f4;color:#445d65;font-size:var(--fs-micro);font-variant-numeric:tabular-nums}
-@media(max-width:1300px){.tol-facts{grid-template-columns:1fr 1fr}.tol-facts .tol-result{grid-column:1/-1}}
 #measurementGrid{flex:1 1 auto;min-height:0;overflow:hidden}
 /* --- 測定表のブロック ---
    板厚と板幅を別々の入力内容にしたので、専用の2枚組ワークスペース
@@ -1744,55 +1799,15 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
   margin:0;padding:0;border:0;border-radius:0;background:transparent;
 }
 .measure-shell.mstep-1 .tol-block{display:none}
-/* 条が40に達したら畳む（利用者の指示）。**畳んでも開けること**が条件なので
-   見出しボタンは残し、40未満ではボタンごと出さない。 */
-.tol-fold{
-  flex:0 0 auto;height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);
-  border:1px solid var(--line);border-radius:var(--radius-sm);
-  background:#fff;color:var(--ink-2);font-weight:700;
-}
-.tol-fold[hidden]{display:none}
-.tol-fold::after{content:'　▾'}
-.tol-block.tol-open .tol-fold::after{content:'　▴'}
-.tol-block.tol-foldable:not(.tol-open) .tol-facts,
-.tol-block.tol-foldable:not(.tol-open) .mhead-icon,
-.tol-block.tol-foldable:not(.tol-open) .tolerance-source-control{display:none}
+/* `.tol-fold`（公差の内訳を畳むボタン）と`.tol-foldable`／`.tol-open`は
+   **廃止した**（§9.234 ③）。畳む対象だった`#toleranceFacts`の3行帯ごと
+   無くなり、公差は`#toleranceSummary`のピル1つが言う。 */
 /* **`display`は明示する。** 器を移すたびに、どこかの既存規則で`grid`に
    なって中身が潰れる事故が起きている（実測。親が396pxあっても中が縮む）。
    見出しの1行へ移した（§9.209 ②）ので、**伸びない**——伸ばすと右の
    「図の見せ方」が押し出される。 */
-.tol-facts{display:flex;align-items:center;gap:var(--gap-inline);flex:0 0 auto;min-width:0;margin:0}
-.tol-facts[hidden],.tol-facts:empty{display:none}
-.tol-facts .compact-tol-three-row,
-.tol-facts .compact-tol-card,.tol-facts .compact-tol-inline,.tol-facts .compact-tol-two-row,
-.tol-facts .instruction-tol-card{min-height:0;padding:0;border:0;background:transparent}
-/* 帯なので**横に流す**。3段のままだと測定カードの上が3行ぶん占領される。 */
-.tol-facts .compact-tol-three-row{
-  display:flex;align-items:center;flex-wrap:wrap;
-  grid-template-rows:none;gap:var(--gap-inline) var(--gap-section);
-}
-.tol-facts .tol-line{min-height:0}
-.tol-facts .tol-line-base{justify-content:flex-start;gap:var(--gap-inline)}
-.tol-facts .tol-line-range{min-height:0;padding:0 var(--space-2)}
-/* 公差が取れないときの1行。**`max-content`の2列を持ち込まない**——
-   基本情報カードへ移したことで器が変わり、「公差情報なし」が1文字ずつ
-   縦に折り返して読めなくなっていた（実測）。左から素直に流す。 */
-.tol-facts .compact-tol-three-row.no-data{
-  display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--gap-inline);
-  min-height:0;padding:0;border:0;background:transparent;
-}
-.tol-facts .compact-tol-three-row.no-data b{color:var(--warn-fg)}
-.tol-facts .compact-tol-three-row.no-data span{margin-left:0;color:var(--ink-3);font-size:var(--fs-sm)}
-/* ±の行は**左から読む2組**にする。器いっぱいに引き離す（`space-between`＋
-   2等分）と、ラベルと値のあいだが100px以上空いて「公差＋」と「-1.0」が
-   どちらの組か読めなくなる（§9.129のラベル列と同じ話）。 */
-/* 区分名（製造公差／オーダー公差）は**すぐ上のプルダウンが言っている**ので
-   バッジは出さない（§9.129。同じ言葉を2つ並べない）。指示公差は自分の
-   カード（`.instruction-tol-card`）に見出しを持つので、そちらは残す。 */
-.tol-facts .compact-tol-three-row .compact-tol-source{display:none}
-.tol-facts .tol-line-plusminus{display:flex;gap:var(--gap-section);padding-top:0;border-top:0}
-.tol-facts .tol-value-pair{flex:0 0 auto;justify-content:flex-start;gap:var(--space-1)}
-.tol-facts .tol-line-plusminus .tol-value-pair+.tol-value-pair{padding-left:0;border-left:0}
+/* 見出し用の`.tol-facts`の上書き群は**廃止した**（§9.234 ③。器ごと無くなった）。
+   `.compact-tol-three-row`本体は`filters.js`のスウォーム数直線などが今も使うので残す。 */
 /* 公差 3 段表示（区分・基準 / ＋・－ / 判定範囲） */
 .compact-tol-three-row{
   display:grid;grid-template-rows:minmax(25px,auto) minmax(25px,auto) minmax(27px,auto);gap:var(--gap-tight);
@@ -2036,6 +2051,11 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 /* **角は1種類にそろえる**（§9.208 ②、利用者の指示「四角の入力欄はすべて
    丸角の入力欄に統一」）。自動で出る値の枠だけが直角で、隣に並ぶ入力欄
    （`--radius-sm`）と形が違って見えていた。 */
+/* 自動で入る値の欄（§9.234 ②）。**器の名前で書き分けない**（§9.233 ③）
+   ——母材の器(`.material-grid`)だけに書いていたので、準備・入力内容へ
+   置いた自動値の欄には枠も高さも当たらなかった。`.opf-host`＝マスタが
+   差配している欄の印なので、器が1つ増えても書き足す必要が無い。 */
+.opf-host>output,.opf>output,
 .material-grid output{display:flex;align-items:center;justify-content:center;width:100%;height:var(--opf-h,var(--ctl-h-sm));border:1px solid var(--line);border-radius:var(--opf-radius,var(--radius-sm));background:#fff;font-weight:700}
 .mother-entry-note{grid-column:1/-1;padding:var(--pad-row);border-radius:var(--radius-sm);border:1px solid var(--card-border);border-left:3px solid var(--teal);background:#fff;color:var(--header-bar-fg);font-weight:700}
 /* 自動で出る値は**1行にまとめる**（§9.160）。手で入れる欄と同じ行に混ざると、
@@ -2367,6 +2387,13 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
   border-color:var(--opf-hue,var(--teal));color:var(--opf-hue-dark,var(--teal-dark));
   background:color-mix(in srgb,var(--opf-hue,var(--teal)) 8%,#fff);
 }
+/* ---------- 自動で入る値・計算値（§9.234 ②、利用者の指示） ----------
+   「自動で入る値、計算値についても、現在使っているものは、そのリストから
+    選んで表示設定できるようにしてください」
+   **色だけで伝えない**（§3）——欄の`title`と設定窓が「自動で入る値（…）」と
+   文字でも言う。ここは補助の合図。 */
+.opf-host[data-opauto]>output{color:var(--computed-fg)}
+.opf-host[data-opauto]>output:empty::before{content:"—";color:var(--ink-soft);font-weight:400}
 .opf-native-off{
   position:absolute;width:1px;height:1px;padding:0;margin:0;border:0;
   opacity:0;pointer-events:none;overflow:hidden;
@@ -2927,10 +2954,12 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
 .info-inline .ii{display:flex;align-items:baseline;gap:var(--space-1);min-width:0}
 .info-grid label,.info-inline label{color:var(--ink-soft);font-size:var(--fs-micro);font-weight:700}
 .info-grid output,.info-inline output{color:var(--ink);font-size:var(--fs);font-weight:700}
-/* 条割を変える手立ては、条の設計カードの見出しに置く（常時見えている
-   ものと、それを変える操作を同じ場所に置く）。 */
-#splitCard>.card-title{display:flex;align-items:center;gap:var(--gap-inline)}
-#splitCard>.card-title>button{margin-left:auto;height:var(--ctl-h-xs)}
+/* 題は**状態の帯の中の1要素**（§9.234 ①）。カードの高さは`.measure-body`の
+   1/3で頭打ちなので、題だけで1行（20px＋余白4px）取るのは高い——`母材`
+   （`.mat-block-title`）・`作業時間`（`.work-time-title`）と同じ作法で、
+   題と状態を同じ行へ並べる。**`margin:0`にすること**（`.measure-body
+   .card-title`の`margin-bottom`が残ると帯が下へずれる）。 */
+#splitCard .split-state-bar>.card-title{margin:0;flex:0 0 auto;white-space:nowrap}
 /* マスタ差異のバッジ。**変わった欄にだけ**出る（§9.139）。 */
 .master-diff-badge{
   height:var(--ctl-h-xs);margin-top:var(--space-1);padding:var(--pad-chip);

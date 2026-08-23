@@ -225,9 +225,15 @@ BUILTIN_FAMILIES.update({k: 'output' for k in (
     'motherOriginalWidth', 'motherScrapWidth', 'motherCalcLength')})
 
 
-def widget_family(kind, builtin=''):
+def widget_family(kind, builtin='', auto=''):
     """その項目がどの入力方法の仲間か。**判定はここ1箇所**（画面にも同じ
-    判定を書かない——2つの答えが出る）。"""
+    判定を書かない——2つの答えが出る）。
+
+    `auto`（自動で入る値の鍵。§9.234 ②）が入っている行は、値を画面が
+    入れるので**族は`output`**——選ばせ方も初期値も持たない（押せるのに
+    効かない設定を出さない・§4）。組み込みキーより先に見る。"""
+    if str(auto or '').strip():
+        return 'output'
     if str(builtin or '').strip():
         return BUILTIN_FAMILIES.get(str(builtin).strip(), 'choice')
     if kind in CHOICE_TYPES:
@@ -323,6 +329,119 @@ SOURCE_NOTE_HIDE = '出さない'
 SOURCE_NOTE_PLACES = (SOURCE_NOTE_BELOW, SOURCE_NOTE_BESIDE, SOURCE_NOTE_HIDE)
 # 仕掛データから初期値が入る組み込みの欄（§9.204）。いまは内径だけ。
 SOURCE_NOTE_KEYS = ('innerDiameter',)
+
+# ---------------------------------------------------------------------------
+# 値が「この画面の外から」入る欄（§9.234 ⑦、利用者の指示「操業データ項目の
+# 項目カード自体に自動に入力されるものについては配色してほしいです」）
+# ---------------------------------------------------------------------------
+# **判定はここ1箇所**（§9.163）。画面は答えを引くだけで、規則を持たない。
+# 2つに分けるのは**打てるかどうかが違う**から——読む側の打つ手が違う（§6）。
+AUTO_COMPUTED = 'computed'   # 画面が値を入れる（打てない）。族=output。
+AUTO_PRESET = 'preset'       # 仕掛データから初期値が入る（選び直せる）。
+# 仕掛データから初期値が入る組み込みの欄。**当てる先は組み込みキーの要素**
+# （`$('#innerDiameter')`／`$('#verticalCount')`）なので、役割(role)ではなく
+# 組み込みキーで判定する——役割を別のカードへ譲ってもプリセットは移らない
+# （§9.223 ①。役割で判定すると、値が入らないカードに色が付く嘘の印になる）。
+# **`SOURCE_NOTE_KEYS`と1つにまとめないこと**——あちらは「添え書きを出せる欄」で、
+# 縦割数・横割数は値だけ入って添え書きを持たない（役目が違う）。
+LOT_PRESET_KEYS = ('innerDiameter', 'verticalCount', 'horizontalCount')
+# 分類の呼び名と説明。**画面へ書き写さない**（増やしたときに2箇所直すことになる）。
+AUTO_FILLS = (
+    (AUTO_COMPUTED, '自動', '画面が値を入れます（前工程の実績・計算の結果）。打てません。'),
+    (AUTO_PRESET, '仕掛から', '仕掛データから初期値が入ります（選び直せます）。'),
+)
+AUTO_FILL_LABELS = {k: lb for k, lb, _n in AUTO_FILLS}
+
+
+def auto_fill_of(kind, builtin='', auto=''):
+    """値がこの画面の外から入る欄か。''＝人が入れる欄。
+
+    **マスタで決めた`[初期値]`は数えない**——あれは設定であって連携ではない
+    （盤では「初 …」のチップが既に言っている。§CLAUDE 8 同じ情報を2箇所に
+    出さない）。全部を塗ると印が意味を失う。
+
+    `widget_family()`を通しているので**前向き互換**——将来、型や族で
+    `output`へ寄せた欄も、この関数を触らずに`computed`として色が付く。
+    """
+    b = str(builtin or '').strip()
+    if widget_family(kind, b, auto) == 'output':
+        return AUTO_COMPUTED
+    if b in LOT_PRESET_KEYS:
+        return AUTO_PRESET
+    return ''
+
+
+# ---------------------------------------------------------------------------
+# 自動で入る値・計算値（§9.234 ②、利用者の指示「自動で入る値、計算値に
+# ついても、現在使っているものは、そのリストから選んで表示設定できるように
+# してください」）
+# ---------------------------------------------------------------------------
+# 測定画面には**人が打たない値**が既にいくつも出ている（仕掛から写した
+# ロット番号・製造板厚、開いた設備、実働時間…）。それらは画面に焼き付いて
+# いたので、**置き場も名前も見せ方も現場が決められなかった**。
+#
+# **語彙はここだけが持つ**（§9.163。`LIMIT_SOURCES`と同じ作法）——画面は
+# `/api/operation-item-master`が返す一覧から選ぶだけで、鍵の綴りを書き写さ
+# ない。値の**引き方**は測定画面（`measure-opdata.js`の`AUTO_GETTERS`）が
+# 持つ——値の出どころは開いているレコードなので、サーバーからは引けない。
+# **知らない鍵は黙って捨てない**（§9.204／§9.231 ②）——保存値は残したまま
+# 「引けません」と画面に書く。
+#
+# ここに並べるのは**いま画面が持っている値だけ**。「選べるのに一生空欄」の
+# 項目を作らないため、引けないものは載せない（§4）。
+#
+# (鍵, 呼び名, 群, 単位, 説明)
+AUTO_VALUES = (
+    ('lot.lotNo', 'ロット番号', '仕掛（ロットの情報）', '',
+     '測定を始めたときに仕掛データから写したロット番号です。'),
+    ('lot.inspectionNo', '検査番号', '仕掛（ロットの情報）', '', '仕掛データの検査番号です。'),
+    ('lot.castingNo', '鋳造番号', '仕掛（ロットの情報）', '', '仕掛データの鋳造番号です。'),
+    ('lot.orderNo', 'オーダー番号', '仕掛（ロットの情報）', '', '仕掛データのオーダー番号です。'),
+    ('lot.purposeName', '用途名', '仕掛（ロットの情報）', '', '仕掛データの用途名です。'),
+    ('lot.customer', '取引先', '仕掛（ロットの情報）', '', '仕掛データの取引先です。'),
+    ('lot.delivery', '納入先', '仕掛（ロットの情報）', '', '仕掛データの納入先です。'),
+    ('lot.mfgMaterial', '製造材質', '仕掛（ロットの情報）', '', '仕掛データの製造材質です。'),
+    ('lot.mfgTemper', '製造調質', '仕掛（ロットの情報）', '', '仕掛データの製造調質です。'),
+    ('lot.mfgThickness', '製造板厚', '仕掛（ロットの情報）', 'mm', '仕掛データの製造板厚です。'),
+    ('lot.mfgWidth', '製造板幅', '仕掛（ロットの情報）', 'mm', '仕掛データの製造板幅です。'),
+    ('lot.mfgLength', '製造板丈', '仕掛（ロットの情報）', 'm', '仕掛データの製造板丈です。'),
+    ('lot.originalWidth', '元板幅（BOX実績）', '仕掛（ロットの情報）', 'mm',
+     'BOX実績の板幅です（母材の「元幅」と同じ値）。'),
+    ('lot.equipment', '設計設備', '仕掛（ロットの情報）', '', '仕掛データのBOX設計の設備名です。'),
+    ('meas.equipment', '登録設備', '測定の記録', '', '測定を開いたときの設備名です。'),
+    ('meas.measureType', '入力内容', '測定の記録', '', 'いま選んでいる測定項目です。'),
+    ('meas.lengthPos', '丈位置', '測定の記録', '', 'いま選んでいる丈位置です。'),
+    ('meas.startAt', '作業開始時刻', '測定の記録', '', '測定を始めた時刻です。'),
+    ('meas.endAt', '作業終了時刻', '測定の記録', '', '測定を終えた時刻です。'),
+    ('calc.workDuration', '実働時間', '計算した値', '分',
+     '開始から終了までの分です（終了していなければ空欄）。'),
+    ('calc.stripCount', '条数', '計算した値', '条',
+     '条の設計で決まっている条の本数です（分割ありなら子ロットの合計）。'),
+    ('calc.slitWidth', '製品幅合計', '計算した値', 'mm',
+     '条幅の合計です（屑幅は含みません）。'),
+)
+AUTO_VALUE_KEYS = tuple(x[0] for x in AUTO_VALUES)
+
+
+def normalize_auto_value(v):
+    """自動で入る値の鍵。**知らない鍵もそのまま残す**（§9.204）——語彙を
+    減らした版のアプリが1度読んだだけで、現場の設定が黙って消えるのを
+    避ける。引けるかどうかは`auto_value_known()`が別に答える。"""
+    return str(v or '').strip()
+
+
+def auto_value_known(key):
+    """その鍵をこの版が知っているか。**「知らない＝設定なし」にしないこと**
+    ——押しても何も起きない欄になるのではなく、画面が理由を書ける。"""
+    return normalize_auto_value(key) in AUTO_VALUE_KEYS
+
+
+def auto_value_def(key):
+    k = normalize_auto_value(key)
+    for row in AUTO_VALUES:
+        if row[0] == k:
+            return row
+    return None
 
 
 def normalize_source_note(v):
@@ -1273,6 +1392,11 @@ _ITEM_ADDED_COLUMNS = (
     #     できるように、もっとコンパクトにかつ位置も選べるように」）---
     # 仕掛データから初期値が入ったときの添え書きをどこへ出すか。
     ('出どころ表示', 'TEXT'),
+    # --- §9.234 ②（利用者の指示「自動で入る値、計算値についても、現在
+    #     使っているものは、そのリストから選んで表示設定できるように」）---
+    # 自動で入る値の**鍵**（`AUTO_VALUES`）。空＝人が打つ欄（今までどおり）。
+    # 入っている行は族が`output`になり、値は測定画面が入れる。
+    ('自動値', 'TEXT'),
 )
 
 # ---------------------------------------------------------------------------
@@ -1457,6 +1581,10 @@ def _seed_items(c):
 
 def _row_to_item(r):
     builtin = str(r[14] or '').strip()
+    # §9.234 ②。**族の判定より先に決める**——自動で入る値の行は`output`で、
+    # 選ばせ方・初期値・手打ちが効かない（判定は`widget_family()`の1箇所）。
+    auto = normalize_auto_value(r[36] if len(r) > 36 else '')
+    auto_def = auto_value_def(auto)
     return {'id': r[0], 'equipment': str(r[1] or '').strip(), 'group': str(r[2] or '').strip(),
             'name': str(r[3] or '').strip(), 'order': r[4],
             'type': normalize_item_type(r[5]), 'decimals': r[6],
@@ -1476,10 +1604,10 @@ def _row_to_item(r):
             # 残す（型を戻したときに選び直させない）。仲間分けは
             # `widget_family()`の1箇所が答える。
             'widget': normalize_widget(r[19]),
-            'widgetFamily': widget_family(normalize_item_type(r[5]), builtin),
+            'widgetFamily': widget_family(normalize_item_type(r[5]), builtin, auto),
             'widgetLive': (normalize_widget(r[19])
                            if normalize_widget(r[19]) in WIDGET_FAMILIES[
-                               widget_family(normalize_item_type(r[5]), builtin)]
+                               widget_family(normalize_item_type(r[5]), builtin, auto)]
                            else WIDGET_SELECT),
             # --- §9.220 ---
             # ② 初期値。**組み込みの欄も持てる**（§9.229 ③、利用者の指示
@@ -1492,7 +1620,7 @@ def _row_to_item(r):
             # ③ 候補にない値も手で打てるか。**選択肢を持つ型だけ**に効く
             #    ——自由記述はもともと手で打つので、印を出しても意味が無い（§4）。
             'freeText': (bool(r[21]) if r[21] is not None else False)
-                        and widget_family(normalize_item_type(r[5]), builtin) == 'choice',
+                        and widget_family(normalize_item_type(r[5]), builtin, auto) == 'choice',
             # ⑤ ステッパー・スライダーの1回ぶん。**未設定(None)は小数桁から作る**
             #    （今までの挙動）——0を「設定した」と読むと増減できなくなる。
             'step': (float(r[22]) if r[22] is not None and float(r[22]) > 0 else None),
@@ -1543,7 +1671,20 @@ def _row_to_item(r):
             # 自動で入る値の添え書き（仕掛由来のプリセット等）をどこへ出すか。
             # **添え書きを持たない項目では持っていても意味が無い**ので、
             # 出どころのある項目（`SOURCE_NOTE_KEYS`）だけが読む。
-            'sourceNote': normalize_source_note(r[35])}
+            'sourceNote': normalize_source_note(r[35]),
+            # 値がこの画面の外から入る欄か（''／computed／preset。§9.234 ⑦）。
+            # **派生値なので保存列は増やさない**——列を足すと、書き込み側の
+            # 明示ペイロードに1つ足し忘れた瞬間に黙って消える設定がまた増える
+            # （§9.113／§9.212 ②）。
+            'autoFill': auto_fill_of(normalize_item_type(r[5]), builtin, auto),
+            # --- §9.234 ② ---
+            # 自動で入る値。保存値・呼び名・群・説明・この版が引けるかを返す。
+            # **引けない鍵も返す**（画面が「引けません」と書けるように・§4）。
+            'autoValue': auto,
+            'autoValueKnown': auto_value_known(auto) if auto else True,
+            'autoValueLabel': (auto_def[1] if auto_def else auto),
+            'autoValueGroup': (auto_def[2] if auto_def else ''),
+            'autoValueNote': (auto_def[4] if auto_def else '')}
 
 
 _ITEM_SELECT = ('SELECT [項目ID],[設備名],[群],[項目名],[表示順],[型],[小数桁],[最小値],[最大値],'
@@ -1552,7 +1693,7 @@ _ITEM_SELECT = ('SELECT [項目ID],[設備名],[群],[項目名],[表示順],[�
                 '[初期値],[手打ち可],[ステップ量],'
                 '[単位位置],[文字寄せ],[表示書式],[表示桁数],[役割],[意匠],'
                 '[並べ方],[群幅],[ダミー],[空欄なし],[最小の出どころ],[最大の出どころ],'
-                '[出どころ表示] '
+                '[出どころ表示],[自動値] '
                 'FROM [操業データ項目マスタ] ORDER BY [表示順],[項目ID]')
 
 
@@ -1643,7 +1784,7 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                 unit_place=None, align=None, value_format=None, digits=None,
                 role=None, look=None, layout=None, group_span=None, report=None,
                 dummy=None, no_blank=None, min_from=None, max_from=None,
-                source_note=None):
+                source_note=None, auto_value=None):
     ensure_item_table(c)
     name = str(name or '').strip()
     if not name:
@@ -1658,11 +1799,11 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
     prev_name = ''
     if item_id is not None:
         cur.execute('SELECT [組み込みキー],[項目名],[ダミー],[空欄なし],'
-                    '[最小の出どころ],[最大の出どころ],[出どころ表示] '
+                    '[最小の出どころ],[最大の出どころ],[出どころ表示],[自動値] '
                     'FROM [操業データ項目マスタ] WHERE [項目ID]=?', [int(item_id)])
         hit = cur.fetchone()
-        cur_builtin = str((hit or ['', '', 0, 0, '', '', ''])[0] or '').strip()
-        prev_name = str((hit or ['', '', 0, 0, '', '', ''])[1] or '').strip() if hit else ''
+        cur_builtin = str((hit or ['', '', 0, 0, '', '', '', ''])[0] or '').strip()
+        prev_name = str((hit or ['', '', 0, 0, '', '', '', ''])[1] or '').strip() if hit else ''
         # **渡されなかったら今の値を保つ**（§9.212 ②「送った項目だけ書く」）
         # ——設定窓は`dummy`を送らないので、触るたびに空きが解けては困る。
         if dummy is None and hit is not None:
@@ -1677,6 +1818,10 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
         # §9.233 ⑤。添え書きの置き場も同じ約束。
         if source_note is None and hit is not None:
             source_note = hit[6]
+        # §9.234 ②。自動で入る値の鍵も同じ約束——設定窓は`auto_value`を
+        # 送らないので、触るたびに「自動で入る値」が人が打つ欄へ戻っては困る。
+        if auto_value is None and hit is not None:
+            auto_value = hit[7]
     if builtin is None:
         builtin = cur_builtin
     builtin = str(builtin or '').strip()
@@ -1719,7 +1864,10 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
             # §9.231 ② 上下限の出どころ。空＝この行の数をそのまま使う。
             normalize_limit_source(min_from), normalize_limit_source(max_from),
             # §9.233 ⑤ 自動で入る値の添え書きの置き場。
-            normalize_source_note(source_note)]
+            normalize_source_note(source_note),
+            # §9.234 ② 自動で入る値の鍵。空＝人が打つ欄。**列は末尾へ足す**
+            # ——2本目のUPDATEが`args[1:2]+args[3:]`で位置を数えている。
+            normalize_auto_value(auto_value)]
     if item_id is not None:
         cur.execute('UPDATE [操業データ項目マスタ] SET [設備名]=?,[群]=?,[項目名]=?,[表示順]=?,'
                     '[型]=?,[小数桁]=?,[最小値]=?,[最大値]=?,[選択肢名]=?,[単位]=?,[必須]=?,'
@@ -1727,7 +1875,7 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                     '[表示条件]=?,[入力方法]=?,[初期値]=?,[手打ち可]=?,[ステップ量]=?,'
                     '[単位位置]=?,[文字寄せ]=?,[表示書式]=?,[表示桁数]=?,[役割]=?,[意匠]=?,'
                     '[並べ方]=?,[群幅]=?,[ダミー]=?,[空欄なし]=?,'
-                    '[最小の出どころ]=?,[最大の出どころ]=?,[出どころ表示]=?,'
+                    '[最小の出どころ]=?,[最大の出どころ]=?,[出どころ表示]=?,[自動値]=?,'
                     '[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
                     args + [uid, int(item_id)])
         c.commit()
@@ -1749,7 +1897,7 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                     '[入力方法]=?,[初期値]=?,[手打ち可]=?,[ステップ量]=?,'
                     '[単位位置]=?,[文字寄せ]=?,[表示書式]=?,[表示桁数]=?,[役割]=?,[意匠]=?,'
                     '[並べ方]=?,[群幅]=?,[ダミー]=?,[空欄なし]=?,'
-                    '[最小の出どころ]=?,[最大の出どころ]=?,[出どころ表示]=?,'
+                    '[最小の出どころ]=?,[最大の出どころ]=?,[出どころ表示]=?,[自動値]=?,'
                     '[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
                     args[1:2] + args[3:] + [uid, hit[0]])
         c.commit()
@@ -1765,9 +1913,9 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                 '[表示条件],[入力方法],[初期値],[手打ち可],[ステップ量],'
                 '[単位位置],[文字寄せ],[表示書式],[表示桁数],[役割],[意匠],'
                 '[並べ方],[群幅],[ダミー],[空欄なし],[最小の出どころ],[最大の出どころ],'
-                '[出どころ表示],'
+                '[出どころ表示],[自動値],'
                 '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
-                'VALUES (' + ','.join(['?'] * 37) + ',Now(),Now())',
+                'VALUES (' + ','.join(['?'] * 38) + ',Now(),Now())',
                 args + [uid, uid])
     c.commit()
     return int(cur.lastrowid)

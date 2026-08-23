@@ -1059,6 +1059,18 @@ def operation_item_list():
            # 出すのか」は仕掛からの読み込みを持っている側しか知らない。
            'sourceNotePlaces':list(op.SOURCE_NOTE_PLACES),
            'sourceNoteKeys':list(op.SOURCE_NOTE_KEYS),
+           # 値がこの画面の外から入る欄の分類（§9.234 ⑦、利用者の指示
+           # 「自動に入力されるものについては配色してほしい」）。
+           # **呼び名と説明もサーバーが答える**——画面へ写すと、増やしたときに
+           # 2箇所直すことになる（§9.163）。
+           'autoFills':[{'key':k,'label':l,'note':n} for k,l,n in op.AUTO_FILLS],
+           # 自動で入る値・計算値の**語彙**（§9.234 ②、利用者の指示「自動で
+           # 入る値、計算値についても、現在使っているものは、そのリストから
+           # 選んで表示設定できるように」）。**サーバーが答える**——鍵の綴りを
+           # 画面へ写すと、増やしたときに2箇所直すことになる（§9.163）。
+           # 値の**引き方**は測定画面が持つ（出どころは開いているレコード）。
+           'autoValues':[{'key':k,'label':l,'group':g,'unit':u,'note':n}
+                         for k,l,g,u,n in op.AUTO_VALUES],
            # 並べ方(§9.226 ①)。**効く入力方法もサーバーが答える**——画面へ
            # 写すと、並べても何も起きない設定を選ばせることになる（§4）。
            'layouts':list(op.LAYOUTS),'layoutWidgets':list(op.LAYOUT_WIDGETS),
@@ -1139,6 +1151,10 @@ def _operation_item_save(x):
                          min_from=x.get('minFrom'),max_from=x.get('maxFrom'),
                          # §9.233 ⑤ 自動で入る値の添え書きの置き場
                          source_note=x.get('sourceNote'),
+                         # §9.234 ② 自動で入る値の鍵。**送られてきたときだけ**
+                         # 書く（設定窓は送らないので、触るたびに人が打つ欄へ
+                         # 戻っては困る。`dummy`と同じ約束）。
+                         auto_value=x.get('autoValue'),
                          report=ref)
   saved=_op_read(fn)
   # **付け替えたことは黙って済ませない**（§9.226 ①）。名前を変えると
@@ -1351,6 +1367,9 @@ def report_block_list():
            # 今までどおり出たままになる（`operation-form`の`builtinOff`と同じ）。
            'builtinOff':rb.builtin_off(c,eq),
            'builtinKeys':list(rb.BUILTIN_KEYS),
+           # 塊の種別の選択肢（§9.234 ⑤）。**呼び名もサーバーが答える**
+           # ——画面へ写すと、増やしたときに2箇所直すことになる（§9.163）。
+           'kinds':[{'v':v,'label':lb} for v,lb in rb.KIND_LABELS],
            'contentEditable':sorted(rb.CONTENT_EDITABLE),
            # **出どころの見本**。ここに無い道も書けるので、選択肢で塞がない。
            'fields':[{'label':a,'path':b} for a,b in rb.FIELD_CATALOG],
@@ -1379,6 +1398,12 @@ def _report_block_save(x):
                           order=iv(x.get('order')),span=x.get('span'),rows=x.get('rows'),
                           content=x.get('content') or '',note=x.get('note') or '',
                           enabled=alive,cols=x.get('cols'),
+                          # 種別（項目の並び／エリア）と、エリアに置く文字（§9.234 ⑤）。
+                          # **文字列→内部値の変換は`normalize_kind`に任せる**
+                          # ——ここで判定を書くと2つの答えが出る（§9.163）。
+                          kind=(x.get('kindText') if x.get('kindText') is not None
+                                else x.get('kind')),
+                          text=x.get('text'),
                           block_id=(int(x['id']) if x.get('id') not in (None,'') else None))
   return jsonify(ok=True,id=_op_read(fn),message='帳票ブロックを保存しました。')
  except ValueError as e:return jsonify(error=str(e)),400

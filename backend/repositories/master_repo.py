@@ -1003,8 +1003,12 @@ def column_layout_for(c,target):
   if f:formats[name]=f
   rule=str(row[11] or '').strip()
   if rule:rules[name]=rule
-  formula=str(row[12] or '').strip()
-  if formula:formulas[name]=formula
+  # **空の式と「計算列ではない」を区別する**（§9.234 ⑥）。以前は空文字を
+  # 落としていたため、式を空にして読み替えだけを付けた列が保存の往復で
+  # `formulas`から消え、画面は「知らない列」として並びごと落としていた
+  # （利用者の報告「他の列のみで構成されたルールを適用しても何も出ない」の
+  # 半分がこれ）。NULL＝計算列ではない／''＝式が空の計算列。
+  if row[12] is not None:formulas[name]=str(row[12]).strip()
   # 幅固定。**列が無い古いDBではNULL**なので、そのときは固定なしとして扱う。
   if len(row)>13 and row[13] is not None and bool(row[13]):locks.append(name)
   # 並べ替え。**壊れた値は「指定なし」**（設定1つで一覧が開けなくならない）。
@@ -1088,7 +1092,8 @@ def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=N
                f.get('decimals'),(-1 if f.get('thousands') else 0) if f else None,
                f.get('prefix') or None,f.get('suffix') or None,
                str(rule.get(name) or '').strip() or None,
-               str(formula.get(name) or '').strip() or None,
+               # 空文字はそのまま空文字で書く（NULLにすると計算列でなくなる）。
+               (str(formula.get(name) or '').strip() if name in formula else None),
                -1 if name in lock else 0,
                sortspec.get(name) or None,uid,uid])
 

@@ -723,12 +723,36 @@ const displayRules=(()=>{
    try{
     const r=await api('/api/display-rule-master');
     cache=r.rules||{};usageMap=r.usage||{};
+    usedMemo=null;rev++;   /* 中身が変わったので「どの列を見ているか」の控えを捨てる */
    }catch(e){cache=cache||{}}   // 読めなくても読み替えなしで一覧は出す
    inflight=null;return cache;
   })();
   return inflight;
  }
- return {load,match,test,
+ /* そのルールが**他のどの列を見ているか**（§9.234 ⑥）。
+    スケジュール表は行ごとに全列ぶんの値を作ると重い（§9.224で踏んだ罠）ので、
+    **要る列だけ**を作るために使う。`kind==='self'`はこの列自身なので数えない。
+    ルールの中身が変わるまで結果は同じなので覚える。 */
+ let usedMemo=null;
+ function columnsUsed(name){
+  if(!cache)return [];
+  usedMemo=usedMemo||new Map();
+  if(usedMemo.has(name))return usedMemo.get(name).slice();
+  const out=new Set();
+  for(const r of (cache[name]||[])){
+   for(const c of (r.conditions||[])){
+    for(const side of [c.left,c.right,c.right2]){
+     if(side&&side.kind==='column'&&side.column)out.add(String(side.column));
+    }
+   }
+  }
+  const arr=[...out];
+  usedMemo.set(name,arr);
+  return arr.slice();
+ }
+ /* ルールの版。**控えの署名に混ぜる**ためのもの（読み直すたびに増える）。 */
+ let rev=0;
+ return {load,match,test,columnsUsed,rev:()=>rev,
          all:()=>cache||{},
          names:()=>Object.keys(cache||{}).sort(),
          get:name=>(cache&&cache[name])||[],
@@ -737,8 +761,9 @@ const displayRules=(()=>{
             言い切ってしまう(読めなかっただけかもしれない)。 */
          usage:name=>usageMap?((usageMap[name]||[]).slice()):null,
          /* 編集画面が保存した直後に、一覧へすぐ反映させるための差し替え。 */
-         put:(name,rows)=>{cache=cache||{};if(rows&&rows.length)cache[name]=rows;else delete cache[name]},
-         forget:()=>{cache=null}};
+         put:(name,rows)=>{cache=cache||{};if(rows&&rows.length)cache[name]=rows;else delete cache[name];
+           usedMemo=null;rev++},
+         forget:()=>{cache=null;usedMemo=null;rev++}};
 })();
 window.WL.displayRules=displayRules;
 

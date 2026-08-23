@@ -80,6 +80,107 @@ try:
         bool(mode) and mode['choices'] == ['D', 'SD'],
         json.dumps(mode.get('choices') if mode else None, ensure_ascii=False))
 
+    # ---- 2b) 値が「この画面の外から」入る欄をサーバーが答える（§9.234 ⑦） ----
+    # 利用者の指示「操業データ項目の項目カード自体に自動に入力されるものに
+    # ついては配色してほしいです」。**判定はサーバーの1箇所**（§9.163）で、
+    # 画面は答えを引くだけ。分類の呼び名と説明もサーバーが返す。
+    fills = d.get('autoFills') or []
+    rec('自動で入る欄の分類をサーバーが返す',
+        [f.get('key') for f in fills] == ['computed', 'preset']
+        and all(f.get('label') and f.get('note') for f in fills),
+        json.dumps(fills, ensure_ascii=False))
+    by_builtin = {x.get('builtin'): x for x in d.get('items', []) if x.get('builtin')}
+    rec('画面が値を入れる欄は computed（母材の参考値3つ）',
+        all((by_builtin.get(k) or {}).get('autoFill') == 'computed'
+            for k in ('motherOriginalWidth', 'motherScrapWidth', 'motherCalcLength')),
+        json.dumps({k: (by_builtin.get(k) or {}).get('autoFill')
+                    for k in ('motherOriginalWidth', 'motherScrapWidth', 'motherCalcLength')},
+                   ensure_ascii=False))
+    rec('仕掛から初期値が入る欄は preset（内径・縦割数・横割数）',
+        all((by_builtin.get(k) or {}).get('autoFill') == 'preset'
+            for k in ('innerDiameter', 'verticalCount', 'horizontalCount')),
+        json.dumps({k: (by_builtin.get(k) or {}).get('autoFill')
+                    for k in ('innerDiameter', 'verticalCount', 'horizontalCount')},
+                   ensure_ascii=False))
+    rec('人が入れる欄は空のまま（全部を自動にしない）',
+        all((by_builtin.get(k) or {}).get('autoFill') == ''
+            for k in ('operator', 'spool', 'coilStop')),
+        json.dumps({k: (by_builtin.get(k) or {}).get('autoFill')
+                    for k in ('operator', 'spool', 'coilStop')}, ensure_ascii=False))
+    # **境目を必ず入れる**——マスタで決めた`[初期値]`は「設定」であって
+    # 「連携」ではない。ここを見ないと「全部塗る」実装が通ってしまう。
+    code, res = post('/api/operation-item-master',
+                     {'equipment': EQ, 'group': TAG, 'name': TAG + ' 初期値だけ',
+                      'type': '文字', 'initial': 'あ', 'user_id': 'tests'})
+    if res.get('id'):
+        made_items.append(res['id'])
+    init_rows = get('/api/operation-item-master?equipment=' + urllib.parse.quote(EQ))
+    init_row = next((x for x in init_rows.get('items', [])
+                     if x['name'] == TAG + ' 初期値だけ'), None)
+    rec('マスタで決めた初期値は「自動」に数えない（§9.234 ⑦）',
+        bool(init_row) and init_row.get('autoFill') == '' and init_row.get('initial') == 'あ',
+        json.dumps(init_row, ensure_ascii=False) if init_row else 'なし')
+
+    # ---- 2c) 自動で入る値・計算値の語彙（§9.234 ②） ----
+    # 利用者の指示「自動で入る値、計算値についても、現在使っているものは、
+    # そのリストから選んで表示設定できるようにしてください」。
+    # **語彙はサーバーだけが持つ**（§9.163）——画面は一覧を引くだけ。
+    autos = d.get('autoValues') or []
+    rec('自動で入る値の一覧をサーバーが返す',
+        len(autos) >= 10 and all(a.get('key') and a.get('label')
+                                 and a.get('group') and a.get('note') for a in autos),
+        json.dumps(autos[:2], ensure_ascii=False))
+    rec('出どころごとに分かれている（仕掛／測定の記録／計算した値）',
+        len({a.get('group') for a in autos}) >= 3,
+        json.dumps(sorted({a.get('group') for a in autos}), ensure_ascii=False))
+    code, res = post('/api/operation-item-master',
+                     {'equipment': EQ, 'group': TAG, 'name': TAG + ' 自動値',
+                      'type': '文字', 'autoValue': 'lot.mfgThickness', 'user_id': 'tests'})
+    if res.get('id'):
+        made_items.append(res['id'])
+    auto_id = res.get('id')
+
+    def auto_row():
+        rows = get('/api/operation-item-master?equipment=' + urllib.parse.quote(EQ))
+        return next((x for x in rows.get('items', []) if x.get('id') == auto_id), {}) or {}
+
+    ar = auto_row()
+    rec('自動で入る値の項目を足せる', code == 200 and res.get('ok'),
+        json.dumps(res, ensure_ascii=False))
+    # **族は`output`**＝打てる欄を作らない（§4）。型を何にしても変わらない。
+    rec('自動で入る値の族は output（型より先に決まる）',
+        ar.get('widgetFamily') == 'output' and ar.get('autoFill') == 'computed',
+        json.dumps({'fam': ar.get('widgetFamily'), 'fill': ar.get('autoFill')},
+                   ensure_ascii=False))
+    rec('呼び名・群・説明が行に載る',
+        ar.get('autoValueLabel') == '製造板厚' and bool(ar.get('autoValueGroup'))
+        and ar.get('autoValueKnown') is True,
+        json.dumps({k: ar.get(k) for k in
+                    ('autoValueLabel', 'autoValueGroup', 'autoValueKnown')},
+                   ensure_ascii=False))
+    # **送らない更新で消えない**（§9.212 ②「送った項目だけ書く」）。設定窓は
+    # `autoValue`を送らないので、触るたびに人が打つ欄へ戻っては困る。
+    post('/api/operation-item-master/update',
+         {'id': auto_id, 'name': TAG + ' 自動値', 'type': '文字',
+          'equipment': EQ, 'group': TAG, 'user_id': 'tests'})
+    rec('`autoValue`を送らない更新でも鍵が残る',
+        auto_row().get('autoValue') == 'lot.mfgThickness',
+        json.dumps(auto_row().get('autoValue'), ensure_ascii=False))
+    # **知らない鍵は捨てない**（§9.204）——語彙を減らした版が1度読んだだけで
+    # 現場の設定が消えるのを避ける。引けないことは行が言う（§4）。
+    code, res = post('/api/operation-item-master',
+                     {'equipment': EQ, 'group': TAG, 'name': TAG + ' 知らない鍵',
+                      'type': '文字', 'autoValue': 'lot.しらない', 'user_id': 'tests'})
+    if res.get('id'):
+        made_items.append(res['id'])
+    unk_rows = get('/api/operation-item-master?equipment=' + urllib.parse.quote(EQ))
+    unk = next((x for x in unk_rows.get('items', [])
+                if x['name'] == TAG + ' 知らない鍵'), None)
+    rec('知らない鍵は残したまま「引けません」と返す',
+        bool(unk) and unk.get('autoValue') == 'lot.しらない'
+        and unk.get('autoValueKnown') is False,
+        json.dumps(unk, ensure_ascii=False) if unk else 'なし')
+
     # ---- 3) 設備で絞れる（`*`の行も出る） ----
     code, res = post('/api/operation-item-master',
                      {'equipment': EQ, 'group': TAG, 'name': TAG + ' 専用',

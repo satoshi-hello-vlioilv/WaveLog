@@ -113,9 +113,29 @@
  /* 条件の片側。左辺は「この列 / 他の列」、右辺は「固定値 / 他の列」。
     左辺に固定値を置けても使い道が無いので選択肢に出さない(評価側は
     受け付けるので、将来必要になっても壊れない)。 */
+ /* ---------- どの一覧のルールを書いているか（§9.234 ⑥） ----------
+    「他の列」の候補・「試してみる」の行・当たり件数は、以前は**常に
+    仕掛一覧**（`S.columns`／`S.rows`）から作っていた。スケジュール表の
+    ルールを書くと、候補に出る名前はスケジュールの行に存在しないキーなので
+    **条件は永久に偽**になり、しかも件数は仕掛一覧で数えるので
+    「N件当たりました」と出ることがある——**画面では当たるのに実表示は空**。
+    §9.117「書いた本人が確かめられる」が成立していなかった。
+    口（`source`）は列の設定パネルが渡す。**答えない口は今までどおり
+    仕掛一覧**（§9.120／§9.162の作法）。 */
+ let panelSrc=null;
+ const srcColumns=()=>{
+  if(!panelSrc||typeof panelSrc.keys!=='function')return (S.columns||[]);
+  const virt=(panelSrc.virtual&&panelSrc.virtual())||{};
+  return panelSrc.keys().filter(k=>!virt[k]);
+ };
+ const srcRows=n=>{
+  const rows=(panelSrc&&typeof panelSrc.rows==='function')?panelSrc.rows():(S.rows||[]);
+  const out=rows.slice(0,n);
+  return (panelSrc&&panelSrc.ruleRowOf)?out.map(r=>panelSrc.ruleRowOf(r)):out;
+ };
  function operandHtml(side,which,ri,ci){
   const kind=side?.kind||(which==='left'?'self':'value');
-  const cols=(S.columns||[]);
+  const cols=srcColumns();
   const kinds=which==='left'?[['self','この列'],['column','他の列']]
                             :[['value','固定値'],['column','他の列']];
   return `<select class="lr-kind" data-row="${ri}" data-cond="${ci}" data-side="${which}">${
@@ -130,7 +150,15 @@
      :''}`;
  }
  const labelOf=c=>{
-  const t=typeof listLayoutTarget==='function'?listLayoutTarget():'';
+  /* **口が呼び名を持っていればそちらが先**（§9.234 ⑥）——スケジュール表の
+     内容欄のキーは`lotNo`のようなalias名で、そのまま並べると選んだ本人にも
+     何の項目か分からない（§9.120と同じ話）。 */
+  if(panelSrc&&typeof panelSrc.labelOf==='function'){
+   const lb=panelSrc.labelOf(c);
+   if(lb&&lb!==c)return `${lb}（${c}）`;
+  }
+  const t=(panelSrc&&typeof panelSrc.target==='function')?panelSrc.target()
+    :(typeof listLayoutTarget==='function'?listLayoutTarget():'');
   const n=t?WL.columnLayout.label(t,c):c;
   return n===c?c:`${n}（${c}）`;
  };
@@ -187,7 +215,7 @@
     「保存しないと試せない」では、直した結果を確かめずに保存することになる。 */
  let hits=[];                       // hits[ri] = その行が採用された件数
  function recount(){
-  const rows=(S.rows||[]).slice(0,TRY_ROWS);
+  const rows=srcRows(TRY_ROWS);
   hits=draft.map(()=>0);
   WL.displayRules.put('__draft__',draft);
   const picked=rows.map(r=>{
@@ -324,6 +352,13 @@
   el.textContent=`使っている列: ${names}${used.length>4?` ほか${used.length-4}件`:''}（直すと全部に効きます）`;
  }
 
+ /* 保存・削除のあと、**いま見ている表**を描き直す（§9.234 ⑥）。
+    `renderGrid()`は仕掛一覧専用なので、口が答えるならそちらも呼ぶ
+    ——呼ばないと、スケジュール表ではルールを直しても画面が変わらない。 */
+ function applyToView(){
+  if(panelSrc&&typeof panelSrc.afterApply==='function'){try{panelSrc.afterApply()}catch(e){}}
+  else if(typeof renderGrid==='function')renderGrid();
+ }
  async function save(){
   try{
    const r=await api('/api/display-rule-master',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -332,7 +367,7 @@
    showToast&&showToast(`表示ルール「${ruleName}」を保存しました`,`${r.rows||0}行`,2600);
    close();
    if(typeof onDone==='function')onDone(ruleName);
-   if(typeof renderGrid==='function')renderGrid();
+   applyToView();
   }catch(e){showToast&&showToast('保存に失敗しました',e.message,5000)}
  }
 
@@ -357,7 +392,7 @@
     n?`${n}件の列で使われていました（元の値のまま表示します）`:'',3600);
    close();
    if(typeof onDone==='function')onDone('');
-   if(typeof renderGrid==='function')renderGrid();
+   applyToView();
   }catch(e){showToast&&showToast('削除に失敗しました',e.message,5000)}
  }
 
@@ -380,7 +415,8 @@
  async function open(opt){
   const o=opt||{};
   ruleName=String(o.name||'').trim();
-  selfColumn=String(o.column||'')||(S.columns||[])[0]||'';
+  panelSrc=o.source||null;
+  selfColumn=String(o.column||'')||srcColumns()[0]||'';
   onDone=o.onDone||null;
   if(!ruleName){
    ruleName=(await askName()).slice(0,60);

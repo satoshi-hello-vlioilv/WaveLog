@@ -178,7 +178,12 @@ function focusCurrent(){
   moveCaretTo(el);
  }
  const slot=key==='thickness'?(WL.measureItem.slotLabels('thickness')[step]||String(step+1)):`条 ${step+1}`;
- $('#stepStatus').textContent=`入力位置 丈 ${li+1} / ${slot}`;
+ /* **短く言い、名前は`title`へ**（§9.234 ③。見出しは1行に収める）。
+    「入力位置」の4文字は、この欄が入力位置を指していることを毎回言い直して
+    いるだけで、値（丈と条）を読めば分かる。 */
+ const at=$('#stepStatus');
+ at.textContent=`丈${li+1}・${slot.replace(/\s+/g,'')}`;
+ at.title='いま入力する位置（丈・条）';
 }
 function advanceWidth(){const m=S.measure.settings,max=Math.max(1,+$('#horizontalCount').value||1),seq=widthSequence(max,$('#widthOrder').value,$('#widthDirection').value),pos=seq.indexOf(m.wStep||0);m.wStep=seq[(pos+1)%seq.length]}
 /* 「次の枠へ／前の枠へ」。条ごとの項目は条入力順(`widthSequence`)に従うが、
@@ -556,29 +561,11 @@ function measureMatrixHtml(key,count,type){
   +`${thead}</tr></thead>`
   +`<tbody>${body}</tbody></table></div>`;
 }
-/* 条が40に達したら公差の基準は畳む（§9.146、利用者の指示「40以上の時は
-   公差情報は折りたたみ」）。**畳んだままでも開けること**が条件なので、
-   ボタンごと消さずに見出しボタンへ変える。40未満では畳む必要が無いので
-   ボタンを出さない（押せるのに意味の無いものを置かない）。 */
-function applyToleranceFold(count){
- const box=document.querySelector('.tol-block'),btn=$('#tolFold');
- if(!box||!btn)return;
- const foldable=count>=40;
- if(box.classList.contains('tol-foldable')!==foldable){
-  box.classList.toggle('tol-foldable',foldable);
-  if(foldable)box.classList.remove('tol-open');
- }
- if(btn.hidden!==!foldable)btn.hidden=!foldable;
- btn.setAttribute('aria-expanded',String(!foldable||box.classList.contains('tol-open')));
-}
-document.addEventListener('click',e=>{
- const btn=e.target.closest&&e.target.closest('#tolFold');
- if(!btn)return;
- const box=btn.closest('.tol-block');if(!box)return;
- const open=!box.classList.contains('tol-open');
- box.classList.toggle('tol-open',open);
- btn.setAttribute('aria-expanded',String(open));
-});
+/* 公差の内訳（基準・公差±・判定範囲）の3行帯は**廃止した**（§9.234 ③）。
+   §9.146で「40条以上のときは畳む」ボタンを付けていたが、そもそも同じ内容を
+   `#toleranceSummary`のピル1つ（＋`title`）が言えるので、見出しに280pxの帯を
+   置く理由が無い——1行に収める指示（利用者）とも両立しない。
+   畳むボタン（`#tolFold`）と`.tol-foldable`／`.tol-open`もまとめて撤去した。 */
 /* 判定公差の切り替え欄は**押したときだけ出す**（§9.159）。既定で畳んで
    おくのは、製造公差のまま測るのがほとんどで、常設すると測定中いちばん
    見る帯に「選ぶもの」が居座るため。いま効いている公差はヘッダーの文脈
@@ -760,8 +747,11 @@ function renderMeasureGridVertical(){
     「測定」と書いてある行と**同じことを2箇所**に出していたうえ、多条の
     ロットでは行が1本足りないだけで条が2つ隠れる。バッジにして1行へ寄せる。 */
  const head=$('#measureHeadBadges');
+ /* 進捗は**いま選んでいる丈だけ**の数（②のチップは全丈の合算なので別の数）。
+    1行に収めるために縮み代を持つので、**全文は`title`で読めるようにする**。 */
  if(head)head.innerHTML=`<b class="mhead-item">${esc(type)}</b>`
-   +`<span class="mhead-status">${esc(compactMeasureStatus(done,slots))}</span>`+bulkBtn;
+   +`<span class="mhead-status" title="${esc(`この丈の進み: ${compactMeasureStatus(done,slots)}`)}">`
+   +`${esc(compactMeasureStatus(done,slots))}</span>`+bulkBtn;
  let h=`<section class="measure-grid-block compact-other"><div class="matrix-body${tol.graph?'':' no-graph'}"><aside class="compact-tolerance-side">${tol.graph}</aside>`;
  h+=measureMatrixHtml(actualKey,slots,type);
  h+='</div></section>';
@@ -772,8 +762,12 @@ function renderMeasureGridVertical(){
                             図が無いなら（＝公差が無い）ここのピル
       それ以外            … `#toleranceSummary`のピル（`updateMeasurementHeading`）
     3つとも「公差なし」を出せるので、**どれか1つに絞ってから描く**。 */
- WL.measureTolerance.paintFacts((tol.graph||!WL.measureItem.isDimensional(type))?'':tol.facts);
- applyToleranceFold(slots);
+ /* **図が無い項目では「図の見せ方」を出さない**（§4／§9.234 ③）。
+    公差の無い項目（ラテラルボー・フラットネス等）では数直線そのものが
+    作られないので、押しても当てる先が無い。1行の場所も26px空く。 */
+ {const nlBtn=document.getElementById('numberlineFold'),want=!tol.graph;
+  if(nlBtn&&nlBtn.hidden!==want){nlBtn.hidden=want;
+   if(want&&WL.numberlinePanel)WL.numberlinePanel.close()}}
  alignToleranceChart();
  syncNumberlineControls();
  bindMeasureInputs();applyInputProtection();focusCurrent();updateMeasurementHeading();
@@ -782,7 +776,12 @@ function renderMeasureGridVertical(){
    （`.compact-tolerance-side`）が基準値・公差±・判定範囲を既に持っており、
    **同じ数字を画面に2つ出さない**（§9.129。項目を分ける前の板厚/板幅と
    同じ扱いを、分けた後の両方へそのまま引き継ぐ）。 */
-const summary=$('#toleranceSummary');if(summary)summary.hidden=WL.measureItem.isDimensional(type);
+/* **公差はピル1つが言う**（§9.234 ③）。以前は寸法系のときだけ隠して
+   内訳の3行帯（`#toleranceFacts`）へ渡していたが、その帯が見出しを2行に
+   していた。数直線（図）は「どのへんか」、ピル（値）は「範囲はいくつか」で
+   **別の問いに答える**ので、両方あってよい（§9.140）。内訳（基準値・
+   公差±・出どころの列名）はピルの`title`が持つ。 */
+const summary=$('#toleranceSummary');if(summary&&summary.hidden)summary.hidden=false;
  if(type==='フラットネス'){
   updateCoilOptions($('#horizontalCount').value);
   $('#coilNo').onchange=()=>{saveFlatComment();loadFlatComment()};
@@ -1269,15 +1268,6 @@ WL.measureTolerance={
   if(graph)graph.remove();
   return{facts:box.innerHTML.trim(),graph:graph?graph.outerHTML:''};
  },
- /* 値の置き場は基本情報カードの中。**同じ値なら触らない**——`hidden`は値が
-    同じでも変更記録が積まれ、見張りと合わさると回り続ける（§9.131）。 */
- paintFacts(html){
-  const host=typeof $==='function'?$('#toleranceFacts'):null;
-  if(!host)return;
-  if(host.innerHTML!==html)host.innerHTML=html||'';
-  const empty=!html;
-  if(host.hidden!==empty)host.hidden=empty;
- },
  /* 描き直しの入口。表そのものは触らないので、入力欄のフォーカスも
     スクロール位置も動かない（条ごとに公差が変わる分割ロット用）。 */
  repaint(kind,values,count){
@@ -1285,7 +1275,6 @@ WL.measureTolerance={
   const body=document.querySelector('.matrix-body'),side=body&&body.querySelector('.compact-tolerance-side');
   if(side)side.innerHTML=parts.graph;
   if(body)body.classList.toggle('no-graph',!parts.graph);
-  this.paintFacts(parts.facts);
   alignToleranceChart();
   syncNumberlineControls();
   return parts;
@@ -1317,7 +1306,9 @@ function syncNumberlineControls(){
  if(note){
   /* 畳んである先に打つ手がある（§9.208 ④）。**どこを触れば見えるのか**まで
      書く——「表示幅を広げる」とだけ書いても、その欄が画面に無い。 */
-  note.textContent=out?`軸の外 ${out}件（押すと「図の見せ方」が開きます）`:'';
+  /* **案内は`title`だけが持つ**（§9.234 ③）。同じ文が本文と`title`に
+     二重に入っており、本文側だけで約205px使っていた（§CLAUDE 8）。 */
+  note.textContent=out?`軸の外 ${out}件`:'';
   note.title=out?'押すと「図の見せ方」が開きます。表示幅を広げると軸の外の点も図に入ります。':'';
   if(note.hidden!==!out)note.hidden=!out;
  }

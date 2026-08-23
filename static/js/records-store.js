@@ -14,7 +14,10 @@ async function showQuota(){
  const used=q.usage||0,cap=q.quota||0;
  if(!cap||used/cap<QUOTA_WARN_RATIO){el.hidden=true;el.textContent='';return}
  el.hidden=false;
- el.textContent=`端末内の保存容量が残り少なくなっています（使用 ${(used/1048576).toFixed(1)}MB / 目安 ${(cap/1073741824).toFixed(1)}GB）`;
+ /* **見出しは1行に収める**（§9.234 ③）ので、本文は短く・数字は`title`へ。
+    「出どころ・単位」（§CLAUDE 6）は`title`で残す。 */
+ el.textContent='保存容量ひっ迫';
+ el.title=`端末内の保存容量が残り少なくなっています（使用 ${(used/1048576).toFixed(1)}MB / 目安 ${(cap/1073741824).toFixed(1)}GB）`;
 }
 async function idbAll(){const d=await idb();return new Promise((o,n)=>{const r=d.transaction(STORE).objectStore(STORE).getAll();r.onsuccess=()=>o(r.result||[]);r.onerror=()=>n(r.error)})}
 /* IndexedDB障害時もlocalStorageミラーで読み書きを継続する二重化層。 */

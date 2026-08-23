@@ -76,14 +76,21 @@
    ——読むのは図を見たあとなので、上に置くと図より先に目へ入る。 */
 .split-visual{display:flex;flex-direction:column;min-width:0;min-height:0;background:transparent;border:0;border-radius:0;padding:0;box-shadow:none}
 .split-visual-hint{
-  flex:1 1 auto;min-width:0;margin-right:auto;align-self:center;color:var(--ink-soft);
+  /* **基準幅は0**（§9.234 ①）。`auto`だと文の長さが基準になり、
+     `flex-wrap:wrap`の器は縮める前に折り返すのでボタンが2行目へ落ちる。 */
+  flex:1 1 0;min-width:0;margin-right:auto;align-self:center;color:var(--ink-soft);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 /* 図は**カードの余りをすべて使う**（§9.157）。以前は帯の高さが88px固定で、
    カードの下に45pxの空きが残っていた。掴む的は大きいほどよい。 */
 /* `margin-top`は目盛りの数字（`.split-visual-tick-label`が`top:-15px`）の
-   置き場。**詰めると1000/1250/1500の数字が図の上で切れる**ので残す。 */
-.split-visual-row{display:flex;align-items:stretch;gap:var(--space-2);margin-top:var(--space-4);flex:1 1 auto;min-height:64px}
+   置き場。**詰めると1000/1250/1500の数字が図の上で切れる**ので、
+   **数字があるときだけ空ける**（§9.234 ①。`renderScrapAndRuler()`が
+   `has-tick-labels`を付ける）。母材幅が2000mm未満のロットでは目盛りの数字は
+   1つも出ないのに、常に16pxを取っていてカードが縦に溢れる原因になっていた。
+   素のときもセンターライン（`top:-5px`）のぶんは空けておく。 */
+.split-visual-row{display:flex;align-items:stretch;gap:var(--space-2);margin-top:var(--space-2);flex:1 1 auto;min-height:64px}
+.split-visual-row.has-tick-labels{margin-top:var(--space-4)}
 /* 図の両端の OS／DS は**軸の名前**であって帯ではない（§9.159、利用者の指摘
    「OS,DSの表示ラベルも屑条みたいな見た目のバッジでわかりにくい」）。
    面と角丸を与えていたため、隣の屑帯（同じ灰色の四角）と同じ種類のものに
@@ -142,7 +149,10 @@
 .split-visual-track{position:relative;width:100%;height:100%}
 /* 条の色はJSが --split-block-bg で渡す(background-colorを直接書かない。
    インラインはCSSのどのレイヤより強く、空欄条の淡色を打ち消せなくなるため)。 */
-.split-visual-block{position:absolute;top:0;bottom:0;background-color:var(--split-block-bg,#8a9a97);box-sizing:border-box;display:flex;align-items:center;justify-content:center;overflow:hidden;border-right:2px solid #eef2f4;color:#fff;text-shadow:0 1px 1px #0006;cursor:grab;transition:filter .1s}
+/* **ラベルと異常の印は縦に積む**（§9.234 ①）。横に並べると要る幅が
+   「ラベル＋印」の足し算になり、25条のような狭い図では両方とも切れる。
+   縦なら要るのは広いほうだけで、高さ（64px）には余裕がある。 */
+.split-visual-block{position:absolute;top:0;bottom:0;background-color:var(--split-block-bg,#8a9a97);box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;border-right:2px solid #eef2f4;color:#fff;text-shadow:0 1px 1px #0006;cursor:grab;transition:filter .1s}
 .split-visual-block:hover{filter:brightness(1.07)}
 .split-visual-block:last-child{border-right:0}
 .split-visual-strip.split-visual-dragging .split-visual-block{cursor:grabbing}
@@ -168,6 +178,21 @@
   text-shadow:none;cursor:pointer;white-space:nowrap;overflow:hidden;
 }
 .svb-defect:hover{filter:brightness(1.1)}
+/* 印の段（§9.234 ①、`fitDefectFlags()`）。既定は`異常`、狭ければ`!`、
+   それも入らなければ出さない。**切り落として`異`だけ残さない**——
+   読めない字は色だけで伝えているのと同じ（§3）。 */
+.svb-defect-mark{display:none}
+.split-visual-block.defect-mark .svb-defect-full{display:none}
+.split-visual-block.defect-mark .svb-defect-mark{display:inline}
+.split-visual-block.defect-none .svb-defect{display:none}
+/* 測っているあいだは**器の切り詰めを外す**（`max-width:100%`＋`overflow:hidden`
+   のままだと、どの段も器の幅で返ってきて「入る」と誤判定する）。段は1つずつ
+   出して外寸を測る。 */
+.svb-defect.is-measuring{max-width:none;overflow:visible}
+.svb-defect.is-measuring .svb-defect-full{display:inline}
+.svb-defect.is-measuring .svb-defect-mark{display:none}
+.svb-defect.is-measuring.measure-mark .svb-defect-full{display:none}
+.svb-defect.is-measuring.measure-mark .svb-defect-mark{display:inline}
 /* 帯のチップ。**判定があるときだけ**出す（無いときに空の枠を残さない）。 */
 .split-defect-chip{
   display:inline-flex;align-items:center;gap:var(--gap-tight);
@@ -178,7 +203,16 @@
   border:1px solid var(--line-mid);border-radius:var(--radius-pill);
   background:var(--surface);color:var(--ink-2);cursor:pointer;
 }
-.split-defect-chip>b{font-size:var(--fs-badge);font-weight:800}
+/* **器と中身の文字サイズを食い違わせない**（§9.206／§9.234 ①）。
+   `.measure-shell button`（40-records.css・詳細度0,1,1）が
+   `.split-ghost-btn`（0,1,0）に**同じレイヤで後から読まれて勝つ**ため、
+   12px用に作った`--ctl-h-sm`(30px)の器へ14pxが入り、ボタンが設計より
+   約15%太くなって操作行が2行へ折り返していた。**詳細度を1つ上げて当てる**
+   （10-roles.cssの役割別の寸法は触らない——測定画面の外を巻き添えにする）。
+   あわせて帯の中の文字を10/11/12/14pxの4種から2種へそろえる（§9.90）。 */
+.measure-shell .split-ghost-btn,
+.measure-shell .split-defect-chip{font-size:var(--fs-sm)}
+.split-defect-chip>b{font-size:var(--fs-sm);font-weight:800}
 .split-defect-chip>small{color:var(--ink-3);font-size:var(--fs-micro)}
 .split-defect-chip.is-hit{border-color:var(--danger);background:var(--danger-bg);
   color:var(--danger)}
@@ -221,7 +255,7 @@
    いた**（実測201px→177px。「クリックしたら条の図形のサイズが変わる」）。
    どちらも1行・同じ大きさなので、入れ替わっても行の高さは動かない。 */
 .split-visual-detail{
-  flex:1 1 auto;min-width:0;margin-right:auto;
+  flex:1 1 0;min-width:0;margin-right:auto;
   font-size:var(--fs-sm);font-weight:700;color:var(--ink-2);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
@@ -236,8 +270,12 @@
    `異常 1条／未保存`や`異常の印: 出す`が空白で折り返して器から溢れていた
    （文字に空白があるものほど先に折り返すので、押す前に何のボタンか
     読めなくなる。§9.222 ①と同じ話）。
-   **縮む役は案内（と詳細）だけが持つ。** 器は折り返せるままにしておく
-   ——極端に狭い窓では、切り落として見えなくするより2行がまし（§9.199）。 */
+   **縮む役は案内（と詳細）だけが持つ。**
+   **ただし`flex-shrink`だけでは足りない**（§9.234 ①）——`flex-wrap:wrap`の
+   器は「縮める」より先に「折り返す」ので、案内の**基準幅（＝文の長さ）**が
+   器を超えた時点でボタンが2行目へ落ちていた（実測: 行が30px→54px）。
+   案内の基準幅を0（`flex:1 1 0`）にすると、余りを受け取る側になるだけで
+   折り返しの原因にならない。全文は`title`で読める。 */
 /* **この行は縮ませない**（§9.233 ①、利用者の報告「『異常の印・出す』の
    バッジが別の表示と重なる」）。`.split-visual`は縦のflexなので、既定の
    `flex-shrink:1`のままだと**器が足りないときに行の高さだけが削られ**、
@@ -246,7 +284,7 @@
    縮んでよいのは図（`.split-visual-row`は`flex:1 1 auto`）だけ。 */
 .split-visual-actions{
   display:flex;align-items:center;flex-wrap:wrap;
-  gap:var(--space-2);margin-top:var(--space-3);
+  gap:var(--space-2);margin-top:var(--space-2);
   min-height:var(--ctl-h-sm);flex:0 0 auto;
 }
 .split-visual-actions>:not(.split-visual-hint):not(.split-visual-detail){
@@ -259,9 +297,12 @@
    左から右がそのまま作業の順（§CLAUDE.md 視覚導線と作業導線を一致させる）。
    **屑幅が求まらないロットでは行ごと出さない**——押せるのに何も起きない
    欄を残さない（同じ理由で図の屑帯も出ない）。 */
+/* **区切りは残し、余白だけ詰める**（§9.234 ①。--space-3×2＝24px→16px）。
+   まとまりの区切り（破線）は`枠は「まとまり」だけに使う`の意味を持つので
+   消さない（§CLAUDE 10）。 */
 .split-scrap-alloc{
-  display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2) var(--space-3);
-  margin-top:var(--space-3);padding-top:var(--space-3);
+  display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-1) var(--space-2);
+  margin-top:var(--space-1);padding-top:var(--space-1);
   border-top:1px dashed var(--line-soft);
   flex:0 0 auto;
 }
@@ -284,9 +325,20 @@
   font-variant-numeric:tabular-nums;font-weight:800;
 }
 .ssa-unit{display:flex;align-items:center;gap:2px}
-.ssa-unit input{width:var(--w-sm);height:var(--ctl-h-sm);text-align:right;font-variant-numeric:tabular-nums}
+/* 入る値は「32.5」程度＝4桁なので`--w-xs`（§CLAUDE 11 入れ物は中身の
+   長さから決める）。以前は`--w-sm`(7em)で、1行に収まらない原因の1つだった。 */
+.ssa-unit input{width:var(--w-xs);height:var(--ctl-h-sm);text-align:right;font-variant-numeric:tabular-nums}
 .ssa-unit i{color:var(--ink-3);font-size:var(--fs-micro);font-style:normal}
-.ssa-note{flex:1 1 100%;min-width:0;color:var(--warn-fg);font-size:var(--fs-micro);font-weight:700}
+/* **縮む役は案内だけが持つ**（§9.229 ⑤／§9.234 ①）。以前は`flex:1 1 100%`で
+   **必ず1行増やして**おり、カードの下端で見切れていた（実機で報告）。
+   全文は`title`で読める（`renderScrapAllocEditor()`が入れる）。 */
+.ssa-note{flex:1 1 0;min-width:0;color:var(--warn-fg);font-size:var(--fs-micro);font-weight:700;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* **警告は省略しない**（§9.149／§9.234 ①）。範囲外を丸めたときは「なぜこの値
+   なのか」を読まないと直せないので、そのときだけ1行を取って折り返す。
+   ただの案内（図の縁をドラッグ…）は同じことをつまみの`title`も言っている
+   ので、器に入るぶんだけでよい。 */
+.ssa-note.is-warn{flex:1 1 100%;white-space:normal;overflow:visible;text-overflow:clip}
 .ssa-note:empty{display:none}
 /* 片寄せしている側の屑帯は**色で言わずに文字で言う**（帯の中に「OS 10.0」と
    出るので、どちらへ寄っているかは数字で読める）。 */
@@ -314,6 +366,11 @@
   cursor:pointer;white-space:nowrap}
 .split-ghost-btn:hover:not(:disabled){background:#eef2f4;border-color:#9aabab}
 .split-ghost-btn:disabled{color:#b6c2c4;cursor:not-allowed}
+/* 条ごとの公差の一覧は**子ロットの内訳の中**（§9.234 ③）。以前は測定の
+   見出しへ差し込んでいたが、あちらは寸法系のとき常に`hidden`で一度も
+   見えていなかった。 */
+.split-tol-legend-slot:empty{display:none}
+.split-tol-legend-slot{flex:0 0 auto;min-width:0;max-width:100%}
 .split-tolerance-legend{margin-top:8px;padding:var(--space-2);background:#fff8e0;border:1px solid #d8c47a;border-radius:var(--radius-xs)}
 .split-tolerance-legend>b{display:block;margin-bottom:6px;color:#6b5a10}
 .split-tolerance-legend table{width:100%;border-collapse:collapse;font-size:var(--fs-base-sm);font-variant-numeric:tabular-nums}
@@ -354,15 +411,33 @@
 /* 状態・不一致・履歴は**横に1行**へ並べる。縦に積むと3行（実測84px）取り、
    そのぶん編集面がカードから溢れる。どれも「いまどうなっているか」の
    メタ情報なので、同じ高さで横に並ぶのが読み方とも合う。 */
-#splitCard>#splitGrid{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-tight)}
-#splitCard>#splitGrid>*{flex:0 1 auto;min-width:0}
-#splitCard .split-panel-status,#splitCard .split-mismatch-badge{
+/* **帯は`.split-state-bar`が持ち、`#splitGrid`はその中の1要素**
+   （§9.234 ①）。異常位置判定のチップを同じ行へ並べるための器で、
+   `#splitGrid`の外に置くのは、あちらが`innerHTML`ごと組み直されるため
+   （中へ入れるとチップの配線が外れる。§9.222 ①）。 */
+#splitCard>.split-state-bar{
+  display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-tight) var(--space-2);
+  min-width:0;flex:0 0 auto;
+}
+#splitCard>.split-state-bar>*{flex:0 1 auto;min-width:0}
+#splitCard>.split-state-bar>.split-defect-chip{flex:0 0 auto}
+#splitCard #splitGrid{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-tight);min-width:0}
+#splitCard #splitGrid>*{flex:0 1 auto;min-width:0}
+/* **帯の中は同じ大きさ・同じ高さ**（§9.90）。以前は状態行が12px・屑幅の行が
+   13pxで、しかも屑幅の行だけ`margin-bottom`と`padding:6px 7px`を持っていた
+   ため、横に並べても2行目へ折り返して帯だけで約68px使っていた
+   （§9.234 ①）。**`.split-scrap-line`の元の宣言（下の方）は消さないこと**
+   ——帳票・母材側からも使われうるので、ここでは`#splitCard`の中だけ上書きする。 */
+#splitCard .split-panel-status,#splitCard .split-mismatch-badge,
+#splitCard .split-scrap-line{
   margin:0;padding:var(--pad-row);font-size:var(--fs-sm);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
+#splitCard .split-scrap-line b{font-size:var(--fs-sm)}
 /* 反映が止まっている理由は**省略しない**（§9.149）。状態行と違って
    「読めば直せる」文なので、1行に収まらなければ折り返す。 */
 #splitCard .split-live-reason{white-space:normal;overflow:visible;text-overflow:clip;flex:1 1 100%}
+#splitCard>.split-state-bar>#splitGrid{flex:1 1 auto}
 /* 子ロットデータの更新・履歴は内訳カードの見出し直下（§9.153）。更新される
    のは子ロット候補と条割プレビューの**材料そのもの**なので、その2列の上に
    置くのが読み順と合う。**空のときは器ごと消す**（JSが`hidden`を入れる）
@@ -422,6 +497,14 @@
    ぶんはカード（`.split-pane{overflow:auto}`）がスクロールする。
    **`flex`をここと`.split-visual`の2箇所で宣言しないこと**——効くのは
    詳細度の高いこちらなので、あちらを直しても見た目は変わらない。 */
+/* **`flex-shrink:0`は外さないこと**（§9.233 ①）。外すと器が足りないときに
+   操作行が下の「屑幅の割り付け」の上へ描かれる（実測: 中身156pxに対して
+   器68px、重なり76px）。**ただし、縮まなくしたぶんはカードの外へ出るだけ**
+   ——`flex`を触るかぎり「重なり」と「スクロール」を往復するので、
+   **出口は中身の最小高を減らすことだけ**（§9.234 ①。状態帯を1行へ・
+   異常チップを帯へ移し・案内を`title`へ回して約110px減らした）。
+   `min-height:0`は`shrink:0`では効かない（消すと次に読む人が`flex`を
+   触りたくなるので、効いていないことを書いたうえで残す）。 */
 #splitCard>.split-visual{flex:1 0 auto;min-height:0}
 /* 差異が多いときは**表だけ**が中でスクロールする。表そのものへ
    `display:block`を当てると行が器いっぱいに伸びなくなるので、器を1枚かぶせる。 */

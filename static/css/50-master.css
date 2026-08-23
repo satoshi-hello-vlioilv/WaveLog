@@ -878,6 +878,22 @@
 .op-menu button.is-danger:hover{background:var(--danger-bg,var(--surface-2))}
 .op-menu button[disabled]{color:var(--muted);cursor:default}
 .op-menu button[disabled]:hover{background:none}
+/* ---------- 自動で入る値を足す（§9.234 ②、利用者の指示） ----------
+   一覧なので**縦に長くなる**——器の高さを画面に収め、内側だけをスクロール
+   させる（§9.222 ⑤。1段でも鎖が抜けると外側のスクロールへ戻る）。
+   群の見出しと説明で**出どころを文字で言う**（§CLAUDE 6）。 */
+.op-menu-auto{max-width:var(--w-2xl);max-height:60vh;overflow:auto;scrollbar-gutter:stable}
+.op-menu-note{
+  padding:0 var(--space-2) var(--space-1);color:var(--ink-3);
+  font-size:var(--fs-badge);font-weight:600;white-space:normal;
+}
+.op-menu-group{
+  margin-top:var(--space-1);padding:var(--space-1) var(--space-2);
+  border-top:1px solid var(--line-soft);color:var(--ink-2);
+  font-size:var(--fs-badge);font-weight:800;
+}
+.op-menu-auto button{display:flex;align-items:center;gap:var(--space-2)}
+.op-menu-auto button>small{margin-left:auto;color:var(--muted);font-size:var(--fs-badge)}
 .op-tile{
   display:flex;flex-direction:column;gap:2px;min-width:0;cursor:grab;
   padding:var(--space-1) var(--space-2);
@@ -886,6 +902,21 @@
 }
 .op-tile:focus-visible{outline:2px solid var(--nav);outline-offset:1px}
 .op-tile.is-picked{border-color:var(--nav);box-shadow:inset 3px 0 0 var(--nav)}
+/* ---------- 値がこの画面の外から入る欄（§9.234 ⑦、利用者の指示「操業データ
+   項目の項目カード自体に、自動に入力されるものについては配色してほしい」） ----
+   色は**1つ**（`--computed-bg`＝「自動計算値の強調」用の既存トークン）。
+   測定画面の`.mother-auto-field`と同じ色なので、盤と実物で色の意味がそろう。
+   **色だけで伝えない**（§CLAUDE 3）——カードには必ず「自動」「仕掛から」の
+   チップが出て、盤の頭に分類名と件数が出る（`opAutoLegendHtml()`）。
+   `preset`（仕掛から初期値が入る＝選び直せる）は**同じ色相の弱い段**にする
+   ——別の色にすると「別の分類」に読めるが、実際は同じ分類の強弱。
+   **`.op-tile.is-off`より前に置くこと**——同じ詳細度なので後勝ちで、
+   後ろに置くと「出さない」にした自動の欄が灰色にならず、外したことが
+   読めなくなる（落とし先の印`.is-drop-group`も同じ理由で後ろに在る）。 */
+.op-tile[data-op-auto]{background:var(--computed-bg);border-color:var(--teal-soft)}
+.op-tile[data-op-auto="preset"]{
+  background:color-mix(in srgb,var(--computed-bg) 55%,var(--surface-2));
+}
 .op-tile.is-off{opacity:.55;background:var(--surface-3)}
 .op-tile.is-dragging{opacity:.4}
 .op-tile-name{font-size:var(--fs-sm);font-weight:700;color:var(--ink);
@@ -932,6 +963,11 @@
 /* §9.220 ②③。盤の上で「初期値がある／手打ちできる」が分かるようにする。 */
 .op-chip-initial{background:var(--surface-3);color:var(--ink-2)}
 .op-chip-free{background:var(--warn-bg);color:var(--warn-fg)}
+/* 出どころのチップ（§9.234 ⑦）。カードの面と同じ色でそろえる。 */
+.op-chip-auto{background:var(--computed-bg);color:var(--computed-fg)}
+.op-chip-auto[data-op-auto="preset"]{
+  background:color-mix(in srgb,var(--computed-bg) 55%,var(--surface-2));
+}
 /* ---------- 1項目の設定はモーダル（§9.218 ①） ----------
    左に実物、右に決めること。**触った結果がその場で見えないと、幅も
    選ばせ方も当たっているか分からない**（列の設定パネルと同じ作法・§9.105）。 */
@@ -1002,6 +1038,12 @@
   border-left:3px solid var(--warn,var(--nav));border-radius:var(--radius-xs);
   background:var(--surface-2);color:var(--ink-2);font-size:var(--fs-sm);line-height:1.6;
 }
+/* 色の意味と件数（§9.234 ⑦）。**分類名と件数を必ず文字で出す**（§9.105）。 */
+.op-auto-legend{
+  display:flex;align-items:center;gap:var(--space-1) var(--space-2);flex-wrap:wrap;
+  margin:0 0 var(--space-2);color:var(--ink-3);font-size:var(--fs-micro);
+}
+.op-auto-legend small{color:var(--muted)}
 .op-modal-form{display:flex;flex-direction:column;gap:var(--gap-inline);min-width:0}
 /* **ラベル列は固定幅**（§CLAUDE 9）——`auto`だと項目ごとに値の左端がずれる。 */
 /* ---------- 決めることは4つの塊（§9.222 ⑦） ----------
