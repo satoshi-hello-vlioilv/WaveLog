@@ -121,6 +121,16 @@ let b=null;
     foots:pgs.map(p=>p.querySelector('.sp-foot').lastElementChild.textContent.trim()),
     cols:pgs.map(p=>p.querySelectorAll('thead th').length),
     wide:pgs.filter(p=>{const t=p.querySelector('.sp-table');return t.scrollWidth>t.clientWidth+1}).length,
+    /* **表が用紙の内寸を食っていないか**（§9.237）。`wide`は表の中しか見て
+       いないので、列幅の下限(4mm)の積み上げで表そのものが余白へ食い込んでも
+       0のまま——実際に16列A4縦で3.8mm食い込んでいた（右余白8mm→4.2mm）。 */
+    tableOver:pgs.filter(p=>{
+     const t=p.querySelector('.sp-table');if(!t)return false;
+     const s=cs(p);
+     const inner=p.getBoundingClientRect().width
+       -parseFloat(s.paddingLeft)-parseFloat(s.paddingRight);
+     return t.getBoundingClientRect().width>inner+1;
+    }).length,
     dataPaper:pgs.map(p=>p.dataset.paper),
     childRows:area.querySelectorAll('.sp-row-child').length,
    };
@@ -155,7 +165,15 @@ let b=null;
       JSON.stringify({高さ:all.rowH,基準:baseRowH}));
   rec('画面のしま模様が紙へ漏れない',
       all.rowBg.every(c=>c==='rgb(255, 255, 255)'),JSON.stringify(all.rowBg));
-  rec('文字は黒で刷る',all.cellFg.every(c=>c==='rgb(0, 0, 0)'),JSON.stringify(all.cellFg));
+  /* §9.237で「真っ黒(#000)」から画面の本文色(--ink #173842)へそろえた
+     ——**要件は「白黒コピーで飛ばない濃さ」**であって、literalの黒では
+     ない。相対輝度で見る（黒に見える濃さかどうか）。 */
+  const lum=c=>{const m=/rgba?\((\d+), ?(\d+), ?(\d+)/.exec(c||'');
+   if(!m)return 1;
+   const f=v=>{v=Number(v)/255;return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4)};
+   return .2126*f(m[1])+.7152*f(m[2])+.0722*f(m[3])};
+  rec('文字は黒に見える濃さで刷る（白黒コピーでも飛ばない）',
+      all.cellFg.every(c=>lum(c)<=.08),JSON.stringify(all.cellFg));
 
   /* ---- 4) 通し番号は続く・見出しの件数はその日の合計 ---- */
   const nums=all.numbers;
@@ -348,11 +366,27 @@ let b=null;
    const cols=WL.schedulePrint.printColumns(o);
    const mmCols=[...pg.querySelectorAll('colgroup col')].map(c=>parseFloat(c.style.width));
    const naturalMm=cols.map(c=>Math.round((c.w||60)*25.4/96*10)/10);
-   return {mmCols,naturalMm,sum:Math.round(mmCols.reduce((s,v)=>s+v,0)*10)/10,usableMm:420-8*2};
+   /* **刷り上がりの幅で見る**（§9.237）。宣言した`<col style>`だけを見ると、
+      `.sp-table{width:100%}`が余りを各列へ配り直していても素通りする
+      ——実際にそうなっており、利用者から「設定した列幅が印刷に反映され
+      ない」と報告された。実測pxを画面と同じ96dpiでmmへ直して比べる。 */
+   const row=pg.querySelector('tbody tr[data-row]:not(.sp-row-child)');
+   const realMm=row?[...row.children].map(td=>
+     Math.round(td.getBoundingClientRect().width*25.4/96*10)/10):[];
+   return {mmCols,naturalMm,realMm,
+           sum:Math.round(mmCols.reduce((s,v)=>s+v,0)*10)/10,usableMm:420-8*2,
+           /* 画面の実効px幅と、刷り上がりのpx幅の比（1.0なら設定どおり） */
+           ratio:realMm.length&&naturalMm.length
+             ?Math.round(realMm.reduce((s,v)=>s+v,0)/naturalMm.reduce((s,v)=>s+v,0)*100)/100:0};
   },naturalOpt);
   rec('列が少なく用紙が広いときは、設定した幅(px)をそのままmmへ換算した値になる（引き伸ばさない）',
       JSON.stringify(naturalInfo.mmCols)===JSON.stringify(naturalInfo.naturalMm),
-      JSON.stringify(naturalInfo));
+      JSON.stringify({宣言:naturalInfo.mmCols,期待:naturalInfo.naturalMm}));
+  /* 宣言だけでなく**刷り上がりの1列ずつ**が設定どおりであること（許容0.5mm）。 */
+  rec('刷り上がりの列幅そのものが設定どおり（表を用紙いっぱいへ引き伸ばさない）',
+      naturalInfo.realMm.length===naturalInfo.naturalMm.length
+      &&naturalInfo.realMm.every((v,i)=>Math.abs(v-naturalInfo.naturalMm[i])<=.5),
+      JSON.stringify({実測:naturalInfo.realMm,期待:naturalInfo.naturalMm,比:naturalInfo.ratio}));
   rec('引き伸ばさないので、表の幅は用紙の使える幅より狭いままでよい',
       naturalInfo.sum<naturalInfo.usableMm,
       `表=${naturalInfo.sum}mm / 用紙=${naturalInfo.usableMm}mm`);
@@ -361,6 +395,8 @@ let b=null;
   /* 列が多く(全ての列)用紙が狭い(A4縦)ときは、いままでどおり比率で圧縮され、
      紙からはみ出さない（§9.235で固定した既存の保証がそのまま生きている）。 */
   const denseBuild=await build({includeDone:true,pageByDate:false,paper:'a4-portrait',columnScope:'all'});
+  rec('列が多くても表そのものが用紙の余白へ食い込まない(§9.237)',
+      denseBuild.tableOver===0,String(denseBuild.tableOver));
   rec('列が多く用紙が狭いときは、いままでどおり比率で圧縮されて紙からはみ出さない',
       denseBuild.wide===0&&denseBuild.over===0&&denseBuild.clipped===0,
       JSON.stringify({横:denseBuild.wide,溢れ:denseBuild.over,切れ:denseBuild.clipped}));
@@ -374,27 +410,145 @@ let b=null;
   const bordersOn=await build({includeDone:true,pageByDate:false,borders:true});
   const onInfo=await page.evaluate(()=>{
    const pg=document.querySelector('#schedulePrintArea .sp-page');
-   const td=pg.querySelector('tbody td');
-   return {dataBorders:pg.dataset.borders||'',borderColor:getComputedStyle(td).borderTopColor};
+   const td=pg.querySelector('tbody td'),td2=pg.querySelectorAll('tbody tr td')[1];
+   const wrap=pg.querySelector('.sp-table-wrap');
+   const g=el=>el?getComputedStyle(el):null;
+   const cw=g(wrap),c=g(td),c2=g(td2);
+   return {dataBorders:pg.dataset.borders||'',
+           /* 器の枠と角丸（画面の一覧と同じ「角丸の器」。§9.237） */
+           wrapW:cw?parseFloat(cw.borderTopWidth):0,
+           wrapRadius:cw?parseFloat(cw.borderTopLeftRadius):0,
+           /* 中は「行の下線」と「列と列のあいだ」だけ。上下左の全周は引かない */
+           rowLine:c?parseFloat(c.borderBottomWidth):0,
+           firstLeft:c?parseFloat(c.borderLeftWidth):0,
+           nextLeft:c2?parseFloat(c2.borderLeftWidth):0,
+           top:c?parseFloat(c.borderTopWidth):0};
   });
   rec('既定(枠線あり)ではdata-bordersが付かない',onInfo.dataBorders==='',JSON.stringify(onInfo));
-  rec('既定は黒い罫線（白黒コピーでも飛ばない太さ・色）',
-      onInfo.borderColor==='rgb(0, 0, 0)',JSON.stringify(onInfo));
+  /* §9.237: 「画面の見た目を正に」。**黒い格子ではなく、角丸の器＋細い区切り**
+     ——数や有無ではなく実寸で見る（枠が在るだけなら黒い格子でも通る）。 */
+  rec('表は角丸の器に入っている（カクカクの黒枠ではない）',
+      onInfo.wrapW>0&&onInfo.wrapRadius>=3,JSON.stringify(onInfo));
+  rec('セルは全周を囲まず、行の下線と列の区切りだけ',
+      onInfo.top===0&&onInfo.firstLeft===0&&onInfo.rowLine>0&&onInfo.nextLeft>0,
+      JSON.stringify(onInfo));
   await clear();
   const bordersOff=await build({includeDone:true,pageByDate:false,borders:false});
   const offInfo=await page.evaluate(()=>{
    const pg=document.querySelector('#schedulePrintArea .sp-page');
-   const td=pg.querySelector('tbody td');
-   return {dataBorders:pg.dataset.borders||'',borderColor:getComputedStyle(td).borderTopColor};
+   const td=pg.querySelector('tbody td'),td2=pg.querySelectorAll('tbody tr td')[1];
+   const wrap=pg.querySelector('.sp-table-wrap'),th=pg.querySelector('thead th');
+   const g=el=>el?getComputedStyle(el):null;
+   const cw=g(wrap),c=g(td),c2=g(td2),ch=g(th);
+   const sum=s=>s?['Top','Right','Bottom','Left']
+     .reduce((n,k)=>n+(parseFloat(s['border'+k+'Width'])||0),0):0;
+   return {dataBorders:pg.dataset.borders||'',
+           wrapW:cw?parseFloat(cw.borderTopWidth):0,
+           tdBorders:sum(c),td2Borders:sum(c2),thBorders:sum(ch),
+           /* 面は残る（線ではないので「枠線を消す」の対象外。§9.237） */
+           thBg:ch?ch.backgroundColor:''};
   });
   rec('枠線を外すとdata-borders="off"が付く',offInfo.dataBorders==='off',JSON.stringify(offInfo));
-  /* **色で見る**——0.3mm(黒)と0.1mm(薄灰)の差はヘッドレスの描画丸めで
-     どちらも1pxに見えることがあり、太さの比較では捕まえられない。
-     「黒々とした網目をなくす」という要件そのものは色で確かめられる。 */
-  rec('枠線を外すと黒くない薄い色になる（画面のような、さわやかな区切りに近づく）',
-      offInfo.borderColor!=='rgb(0, 0, 0)',`あり=${onInfo.borderColor} / なし=${offInfo.borderColor}`);
+  /* §9.237（利用者の指摘「チェックを外しても薄く残る」）。§9.236の
+     「薄い線で残す」は**撤回**した——**本当に0にする**。太さで見ること
+     （色で見ると、線が無くても既定の色名が返るので素通りする）。 */
+  rec('枠線を外すと表の格子が本当に消える（薄くも残らない）',
+      offInfo.wrapW===0&&offInfo.tdBorders===0&&offInfo.td2Borders===0&&offInfo.thBorders===0,
+      JSON.stringify(offInfo));
+  /* 面（見出しの帯）は残す。ここまで消すと列の並びが読めなくなる。 */
+  rec('枠線を外しても見出しの帯（面）は残る',
+      !!offInfo.thBg&&offInfo.thBg!=='rgba(0, 0, 0, 0)',JSON.stringify(offInfo));
   rec('枠線を外しても紙からはみ出さない',bordersOff.over===0&&bordersOff.clipped===0);
   await clear();
+
+  /* ============================================================
+     §9.237 画面の一覧の見た目を紙でも出す
+     利用者の指示「画面印刷の時に映るスケジュール一覧表の見た目を正にして
+     その見た目に近づけてほしい」
+     ============================================================ */
+  const look=await build({includeDone:true,pageByDate:false});
+  const lookInfo=await page.evaluate(()=>{
+   const pg=document.querySelector('#schedulePrintArea .sp-page');
+   const cs=getComputedStyle(pg);
+   const th=pg.querySelector('thead th');
+   const badges=[...pg.querySelectorAll('tbody .sp-badge')];
+   const tone=b=>[...b.classList].filter(c=>c.indexOf('sp-b-')===0).join(',');
+   const hue=b=>{const s=getComputedStyle(b);return s.color+'|'+s.backgroundColor+'|'+s.borderLeftColor};
+   return {
+    /* 背景色を刷る指定（無いとブラウザが印刷時に落とし、帯もバッジも白紙） */
+    colorAdjust:(cs.printColorAdjust||cs.webkitPrintColorAdjust||''),
+    /* 見出しは折り返さない（§9.90。実機では「用途コ／ード」と2行に割れていた） */
+    thWrap:th?getComputedStyle(th).whiteSpace:'',
+    thWrapped:th?(th.scrollHeight>th.clientHeight+1):false,
+    badgeCount:badges.length,
+    /* 状態・可否のバッジが実際に色分けされているか（種類の数で見る） */
+    tones:[...new Set(badges.map(tone))].filter(Boolean),
+    colors:[...new Set(badges.map(hue))],
+    radius:badges.length?parseFloat(getComputedStyle(badges[0]).borderTopLeftRadius):0,
+    badgeClass:badges.length?badges[0].className:'',
+    radiusRaw:badges.length?getComputedStyle(badges[0]).borderTopLeftRadius:'',
+    pillVar:getComputedStyle(document.documentElement).getPropertyValue('--radius-pill').trim(),
+    badgeBox:badges.length?(()=>{const r=badges[0].getBoundingClientRect();
+      const s=getComputedStyle(badges[0]);
+      return Math.round(r.width)+'x'+Math.round(r.height)+' '+s.display+' w'+s.fontWeight})():'',
+    radiusRules:badges.length?(()=>{const out=[];
+      const walk=rs=>{for(const r of rs){
+        if(r.cssRules&&!r.selectorText){walk(r.cssRules);continue}
+        if(r.selectorText&&r.style&&r.style.borderTopLeftRadius!==''){
+         try{if(badges[0].matches(r.selectorText))
+           out.push(r.selectorText+'=>'+r.style.borderTopLeftRadius)}catch(_){}}
+      }};
+      for(const sh of document.styleSheets){let rs;try{rs=sh.cssRules}catch(_){continue}walk(rs)}
+      return out})():[],
+   };
+  });
+  rec('背景色を紙にも刷る指定がある（print-color-adjust）',
+      /exact/.test(lookInfo.colorAdjust),JSON.stringify(lookInfo.colorAdjust));
+  rec('列の見出しは折り返さない（§9.90と同じ約束）',
+      lookInfo.thWrap==='nowrap'&&!lookInfo.thWrapped,JSON.stringify(lookInfo));
+  rec('状態・可否は画面と同じバッジで出る',lookInfo.badgeCount>0,String(lookInfo.badgeCount));
+  rec('バッジは角丸（カクカクではない）',lookInfo.radius>=3,
+      JSON.stringify({半径:lookInfo.radiusRaw,class:lookInfo.badgeClass,pill:lookInfo.pillVar,
+                      箱:lookInfo.badgeBox,規則:lookInfo.radiusRules}));
+  /* **色の種類を数える**——1色で塗っただけの実装が通らないように
+     （画面は可否・区分で色が違う。§3の「色だけで伝えない」は文字側で担保）。 */
+  rec('バッジは状態ごとに色が違う（灰色一色ではない）',
+      lookInfo.colors.length>=2,JSON.stringify({種類:lookInfo.tones,色:lookInfo.colors}));
+  rec('画面の見た目に寄せても紙からはみ出さない',look.over===0&&look.clipped===0);
+  /* §9.237: 列幅の下限(4mm)を積み上げても**表が余白へ食い込まない**
+     （以前は16列A4縦で3.8mm食い込み、右余白が8mm→4.2mmへ痩せていた）。
+     `wide`は表の中しか見ないので、器の内寸と突き合わせる別の網が要る。 */
+  rec('表が用紙の余白へ食い込まない（列幅の下限を積んでも）',look.tableOver===0,
+      String(look.tableOver));
+  await clear();
+
+  /* ---- §9.237 収まらないときは文字も一緒に縮める（幅だけ詰めない） ---- */
+  /* 全ての列 × A4縦＝ふつう収まらない組み合わせ／
+     見える範囲 × A3横＝ふつう収まる組み合わせ、で見比べる。 */
+  await build({includeDone:true,pageByDate:false,columnScope:'all',paper:'a4-portrait'});
+  const dense=await page.evaluate(()=>{
+   const pg=document.querySelector('#schedulePrintArea .sp-page');
+   return {fit:parseFloat(pg.style.getPropertyValue('--sp-fit'))||1,
+           td:parseFloat(getComputedStyle(pg.querySelector('tbody td')).fontSize)};
+  });
+  await clear();
+  await build({includeDone:true,pageByDate:false,columnScope:'visible',paper:'a3-landscape'});
+  const roomy=await page.evaluate(()=>{
+   const pg=document.querySelector('#schedulePrintArea .sp-page');
+   return {fit:parseFloat(pg.style.getPropertyValue('--sp-fit'))||1,
+           td:parseFloat(getComputedStyle(pg.querySelector('tbody td')).fontSize)};
+  });
+  await clear();
+  rec('収まる組み合わせでは文字を縮めない（設定どおりの幅）',
+      roomy.fit===1,JSON.stringify(roomy));
+  /* **縮めるときは幅だけでなく文字も**（§9.237）。幅の比だけ詰めると、
+     同じ文字が入らずに折り返し/切り落としになる（実機で見出しが2行に割れた）。
+     ここは「収まらない組み合わせ」でだけ効くので、そうならない環境では
+     この1件は素通りしてよい——そのことが分かるよう理由を出す。 */
+  rec('収まらないときは文字も一緒に縮む（幅だけ詰めない）',
+      dense.fit>=1||dense.td<roomy.td,
+      JSON.stringify({狭い:dense,広い:roomy,
+                      注:dense.fit>=1?'この環境では全列でもA4縦に収まったため縮小なし':''}));
 
   /* ============================================================
      §9.235 ② 用紙サイズ・向き（A4/A3 × 縦/横）
@@ -481,8 +635,15 @@ let b=null;
      const page=r.closest('.sp-page');
      const parentRow=page.querySelector(`tbody tr[data-row="${r.dataset.row}"]:not(.sp-row-child)`);
      const lot=parentRow&&parentRow.querySelector('.sp-c-lot');
-     return !!lot&&lot.textContent.trim()==='L9000';
+     /* §9.237でロット番号のセルには「子N」の印も入るので、**値の側だけ**を
+        見る（`textContent`ごと比べると`L9000子2`になって当たらない）。 */
+     const v=lot&&(lot.querySelector('.sp-cell-in')||lot);
+     return !!v&&v.textContent.trim()==='L9000';
     }),
+    /* §9.237: 画面と同じ「子N」の印が紙にも出る（押せないただの印）。
+       **紙は何枚にも分かれる**ので、1枚目だけでなく器の全体から探す。 */
+    kidBadge:(()=>{const b=document.querySelector('#schedulePrintArea tbody .sp-kid');
+      return b?b.textContent.trim():''})(),
    };
   });
   rec('子ロットの番号が「└ 子ロット番号」の形で出る',
@@ -490,6 +651,8 @@ let b=null;
       JSON.stringify(kidsInfo.lots));
   rec('子ロットの内訳（条数など）が読める',
       kidsInfo.infos.every(t=>/条/.test(t)),JSON.stringify(kidsInfo.infos));
+  rec('親ロットに画面と同じ「子N」の印が付く（§9.237）',
+      /^(子\d+|親)$/.test(kidsInfo.kidBadge),JSON.stringify(kidsInfo.kidBadge));
   rec('子ロットの行は親と同じ紙に載る（親子で1つの塊。§9.235 ③）',
       kidsInfo.sameSheet,JSON.stringify(kidsInfo));
   rec('子ロットの行でも用紙に収まる',withKids.over===0&&withKids.clipped===0,
@@ -638,6 +801,47 @@ let b=null;
   }));
   rec('画面のまとめが紙にも見出しとして入る',gp.見出し.length>0,gp.見出し.slice(0,2).join(' / '));
   rec('見出しには件数も出る',gp.見出し.some(t=>/\d+件/.test(t)),gp.見出し[0]||'');
+  /* §9.237: まとまりの帯は**画面の`.sc-group-head`と同じ3点**（名前・
+     どの日付で数えているか・件数）で、濃い灰色のベタ帯ではない。 */
+  const band=await page.evaluate(()=>{
+   const g=document.querySelector('.sp-pv-sheet .sp-row-group');
+   const td=g&&g.querySelector('td');
+   return {label:!!(g&&g.querySelector('.sp-group-label')),
+           basis:((g&&g.querySelector('.sp-group-basis'))||{}).textContent||'',
+           count:!!(g&&g.querySelector('.sp-group-count')),
+           bg:td?getComputedStyle(td).backgroundColor:'',
+           accent:td?parseFloat(getComputedStyle(td).borderLeftWidth):0};
+  });
+  rec('まとまりの帯は名前と件数を持つ(§9.237)',band.label&&band.count,JSON.stringify(band));
+  rec('まとまりの帯は濃い灰色のベタ帯ではない（画面に近い淡い面＋左の色帯）',
+      band.bg!=='rgb(216, 216, 216)'&&band.accent>0,JSON.stringify(band));
+  /* 「現場歴／太陽暦」の印は**日付でまとめているときだけ**（画面の
+     `groupHeadHtml`も同じ。区分でまとめているときは日付を数えていないので
+     出ない）。日付でまとめ、かつ紙を日付で分けない形にして確かめる
+     ——分けると見出しが紙の頭と同じ文字になって出ない決まり（§9.129）。 */
+  await page.evaluate(()=>{const sel=document.getElementById('scGroupSelect');
+   sel.value='dateshift';sel.dispatchEvent(new Event('change',{bubbles:true}))});
+  await page.waitForTimeout(1200);
+  await page.evaluate(()=>WL.schedulePrint.openPreview('テスト設備A'));
+  await page.waitForFunction(()=>document.querySelectorAll('.sp-pv-sheet').length>0,null,{timeout:20000});
+  const wasByDate=await page.evaluate(()=>
+    !!document.querySelector('#spPvOptions [data-opt="pageByDate"]')?.checked);
+  if(wasByDate){await page.click('#spPvOptions [data-opt="pageByDate"]');await page.waitForTimeout(900)}
+  const basis=await page.evaluate(()=>{
+   const g=document.querySelector('.sp-pv-sheet .sp-row-group');
+   return {basis:((g&&g.querySelector('.sp-group-basis'))||{}).textContent||'',
+           label:((g&&g.querySelector('.sp-group-label'))||{}).textContent||'',
+           mode:WL.scheduleView.groupBasis()};
+  });
+  rec('日付でまとめたときは「現場歴／太陽暦」の印も紙に出る(§9.237)',
+      /現場歴|太陽暦/.test(basis.basis),JSON.stringify(basis));
+  if(wasByDate){await page.click('#spPvOptions [data-opt="pageByDate"]');await page.waitForTimeout(700)}
+  await page.evaluate(()=>{const sel=document.getElementById('scGroupSelect');
+   sel.value='category';sel.dispatchEvent(new Event('change',{bubbles:true}))});
+  await page.waitForTimeout(1000);
+  await page.evaluate(()=>WL.schedulePrint.openPreview('テスト設備A'));
+  await page.waitForFunction(()=>document.querySelectorAll('.sp-pv-sheet').length>0,null,{timeout:20000});
+  await page.waitForTimeout(400);
   /* **見出し行を「行」として数えないこと**——数えると、見出しのぶんだけ
      予定が紙から抜け落ちる。 */
   rec('見出しを行として数えていない（予定が抜けない）',gp.行===gp.件数,`${gp.行} / ${gp.件数}`);

@@ -3043,10 +3043,24 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  function printRowCells(e){
   const keys=timelineColumnKeys().filter(k=>k!=='__actions__');
   const ctx=rowDynamicCtx(e);
+  /* 固定列は`entryCellInfo()`を1行につき1回だけ解く（§9.198「同じ材料なら
+     作り直さない」）。`scFixedCellText()`を列ごとに呼ぶと、1行の中で
+     可否・区分・見積を何度も引き直すことになる。 */
+  let info=null;
+  try{info=entryCellInfo(e)}catch(_){info=null}
   return keys.map(k=>{
-   if(SC_FIXED_TEXT[k]){const v=scFixedCellText(e,k);return {key:k,label:scColLabel(k),text:v,raw:v,color:''}}
+   if(SC_FIXED_TEXT[k]){
+    const v=info?String(SC_FIXED_TEXT[k](info)||''):'';
+    /* 紙でもバッジで見せる列は**状態の名前**を添える（§9.237）。
+       無い列は空文字＝ただの文字として刷る。 */
+    const tone=(info&&SC_FIXED_TONE[k])?String(SC_FIXED_TONE[k](info)||''):'';
+    /* 印（計画外・固定・遅れ…）は**1つずつ**渡す——紙は画面と同じチップで
+       並べるので、連結した1本の文字列では分けられない。 */
+    const chips=(k==='__flags__'&&info)?(info.flagList||[]).map(f=>({...f})):null;
+    return {key:k,label:scColLabel(k),text:v,raw:v,color:'',tone,chips};
+   }
    const dyn=dynamicCellValue(e,k,ctx);
-   return {key:k,label:scColLabel(k),text:dyn.text,raw:dyn.raw||dyn.text,color:dyn.color};
+   return {key:k,label:scColLabel(k),text:dyn.text,raw:dyn.raw||dyn.text,color:dyn.color,tone:'',chips:null};
   });
  }
  /* 印刷が並べる列（`__actions__`を除いた、いま画面に出ている並び）。 */
@@ -3055,7 +3069,40 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     ——書き写すと、画面で手で広げた列が紙では既定幅のままになる食い違いが
     起きる。固定列は既定幅、内容の項目は`110`を下限にする(§9.209 ①のeff()
     と同じ数)。 */
+ /* ---------- 「画面でいま何px出ているか」を先に見る（§9.237） ----------
+    利用者の指摘「列幅も設定したものを活かして…印刷側できちんと反映され
+    ない」の**もう1つの原因**。保存値だけを見ると、
+     ①幅を指定していない内容の列は`minmax(110px,1fr)`で**残りを分け合って
+       伸びている**のに、紙では常に110px相当（29mm）へ痩せる
+     ②表示サイズ(`--ui-scale`)が掛かった幅も見えない
+    ので、画面で「折り返さない幅」に整えたつもりでも紙では折り返す。
+    実際に描かれている見出しのセルを測るのが唯一の正しい答え。
+
+    **表示サイズは割り戻す**——紙は`--ui-scale`へ追随させない約束
+    （CLAUDE.md「例外はA4帳票だけ」）。倍率を掛けたまま渡すと、特大の端末で
+    刷っただけで紙の列が1.1倍になり、収まっていた紙が収まらなくなる。
+    測れないとき（描かれていない・成り代わり中の他設備・幅0）は
+    **今までどおり保存値→既定**へ落ちる。 */
+ function uiScaleNow(){
+  try{const v=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui-scale'));
+      return (v&&v>0)?v:1}catch(_){return 1}
+ }
+ function measuredColumnWidthPx(k){
+  try{
+   const tl=document.getElementById('scTimeline');
+   if(!tl||tl.dataset.equipment!==String(scState.equipment||''))return 0;
+   const head=tl.querySelector('.sc-row-head');
+   if(!head)return 0;
+   const cell=head.querySelector(`[data-col="${CSS.escape(k)}"]`);
+   if(!cell)return 0;
+   const w=cell.getBoundingClientRect().width;
+   if(!w)return 0;
+   return Math.round(w/uiScaleNow());
+  }catch(_){return 0}
+ }
  function columnEffWidthPx(k){
+  const m=measuredColumnWidthPx(k);
+  if(m)return m;
   const t=timelineTarget();
   const w=t?WL.columnLayout.width(t,k):null;
   if(w)return w;
@@ -3074,7 +3121,18 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  function visibleColumnKeys(){
   const keys=printColumnKeys();
   let limit=0;
-  try{const tl=document.getElementById('scTimeline');limit=tl?tl.clientWidth:0}catch(_){limit=0}
+  try{
+   const tl=document.getElementById('scTimeline');
+   /* **同じ物差しで比べる**（§9.237）。`columnEffWidthPx()`は表示サイズを
+      割り戻した「等倍の幅」を返すので、器の幅も割り戻してから比べる
+      ——混ぜると、特大の端末では入る列を少なく数えてしまう。
+      取っ手の列（1列目）は並びに入らないが場所は取るので、その幅も引く。 */
+   if(tl){
+    const head=tl.querySelector('.sc-row-head');
+    const handle=head&&head.firstElementChild?head.firstElementChild.getBoundingClientRect().width:0;
+    limit=Math.max(0,(tl.clientWidth-handle)/uiScaleNow());
+   }
+  }catch(_){limit=0}
   if(!limit)return keys.slice();
   let sum=0;const out=[];
   for(const k of keys){
@@ -3617,6 +3675,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      見出しとセルが同じ定義を共有している土台は崩れない。 */
   cols.push('1fr');
   timeline.style.setProperty('--sc-cols',cols.join(' ')||'1fr');
+  /* **いまどの設備を描いてあるかを刻む**（§9.237）。`columnEffWidthPx()`は
+     「画面で実際に何px出ているか」を測って紙へ渡すが、`withEquipment()`で
+     他設備へ成り代わっている最中に測ると**目の前の設備の幅を別の設備の紙へ
+     当てて**しまう。刻んでおけば、その場合は測らずに保存値へ落とせる。 */
+  timeline.dataset.equipment=String(scState.equipment||'');
   /* 1列目(ハンドル)は、まとめて動かせる／外せる場面だけチェックを抱える
      ぶん広げる(§9.170)。**列を1本足さない**——`grid-template-columns`を
      2通り書くと、見出しと行で片方だけ直した状態が作れてしまう(この表は
@@ -4463,17 +4526,26 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     actualText=fmtCompact(e.actual.minutes)+(v!=null?`(${v>=0?'+':''}${Math.round(v)})`:'');
    }
   }
-  const flags=[
-   e.unplanned?'<span class="sc-flag sc-flag-unplanned" title="予定に無い実績です(仕掛一覧から直接開始した作業など)">計画外</span>':'',
-   locked?`<span class="sc-flag sc-flag-locked" title="固定開始 ${esc(fmtDateTime(e.fixedStart))}">固定</span>`:'',
-   e.__pending?'<span class="sc-flag sc-flag-pending" title="サーバーへ反映中です">追加中</span>':'',
-   e.overdueMinutes>0?`<span class="sc-flag sc-flag-overdue" title="${Math.round(e.overdueMinutes)}分押しています">+${Math.round(e.overdueMinutes)}分</span>`:'',
-   e.spansNonWorking?'<span class="sc-flag sc-flag-spans" title="夜間・休日を跨ぎます">夜間</span>':'',
-   /* **`固定`と同じことを2つ出さない**（§8／§9.220 2③）。`locked`は
-      `!!e.fixedStart`そのものなので、以前は🔒固定と📌が必ず並んで出て
-      いた。絵文字を文字へ直したら**同じ言葉が2つ**並び、112pxの列から
-      溢れた（`test_fit`が検出）。片方だけ残す。 */
-  ].join('');
+  /* ---------- 行の印は「並び」で持ち、HTMLはそこから作る（§9.237） ----------
+     以前はここでHTMLの文字列を直に組み立てており、印刷側は
+     `SC_FIXED_TEXT['__flags__']`がタグを正規表現で剥がしてプレーンテキストへ
+     戻していた。**紙にも画面と同じチップで出す**ようになったので、
+     「どの印が立っているか」を1箇所で持ち、画面のHTMLも紙のチップも
+     **同じ並びから作る**（書き写すと片方だけ直った状態が作れる）。
+     **`固定`と同じことを2つ出さない**（§8／§9.220 2③）。`locked`は
+     `!!e.fixedStart`そのものなので、以前は🔒固定と📌が必ず並んで出て
+     いた。絵文字を文字へ直したら**同じ言葉が2つ**並び、112pxの列から
+     溢れた（`test_fit`が検出）。片方だけ残す。 */
+  const flagList=[
+   e.unplanned?{cls:'unplanned',text:'計画外',title:'予定に無い実績です(仕掛一覧から直接開始した作業など)'}:null,
+   locked?{cls:'locked',text:'固定',title:`固定開始 ${fmtDateTime(e.fixedStart)}`}:null,
+   e.__pending?{cls:'pending',text:'追加中',title:'サーバーへ反映中です'}:null,
+   e.overdueMinutes>0?{cls:'overdue',text:`+${Math.round(e.overdueMinutes)}分`,
+                       title:`${Math.round(e.overdueMinutes)}分押しています`}:null,
+   e.spansNonWorking?{cls:'spans',text:'夜間',title:'夜間・休日を跨ぎます'}:null,
+  ].filter(Boolean);
+  const flags=flagList.map(f=>
+   `<span class="sc-flag sc-flag-${f.cls}" title="${esc(f.title)}">${esc(f.text)}</span>`).join('');
   /* 「誰が・どの端末で」(§9.180)。**空欄のときは`-`にする**——列に何も
      出ないと「読めていない」のか「記録が無い」のか区別が付かない。
      古い予定は端末名を持たない(列を後から足したため)ので、実際に空になる。 */
@@ -4482,7 +4554,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const updatedBy=dash(e.updatedBy),updatedPc=dash(e.updatedPc);
   return {cat,locked,workable,wk,wkTitle,dateText,dateTitle,dateShifted:shifted,
           calDateText,calDateTitle,timeText,timeTitle,shiftText,
-          relText,estText,estSrc,estProvisional,estNote,actualText,flags,
+          relText,estText,estSrc,estProvisional,estNote,actualText,flags,flagList,
           createdBy,createdPc,updatedBy,updatedPc,
           createdAt:e.createdAt||'',updatedAt:e.updatedAt||''};
  }
@@ -4497,12 +4569,26 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   '__rel__':i=>i.relText,
   '__est__':i=>(i.estProvisional?'~':'')+i.estText,
   '__actual__':i=>i.actualText,
-  '__flags__':i=>String(i.flags||'').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim(),
+  '__flags__':i=>(i.flagList||[]).map(f=>f.text).join(' '),
   '__by__':i=>i.createdBy,
   '__pc__':i=>i.createdPc,
   '__upby__':i=>i.updatedBy,
   '__uppc__':i=>i.updatedPc,
   '__actions__':()=>'（開始・固定・帳票などのボタン）',
+ };
+ /* ---------- 「この列はいまどの状態か」を1箇所が答える（§9.237） ----------
+    紙にも画面と同じ**バッジ**（可/不可・区分・印）で出すために、
+    印刷側が状態を知る必要がある。**状態そのものはここで決めない**
+    ——`WORKABLE_LABEL`（可否）・`categoryOf()`（区分）・`estProvisional`
+    （見積の出どころ）という既にある1箇所の答えを、紙が読める呼び名へ
+    写すだけ。ここで判定をやり直すと、画面と紙で状態が食い違う
+    （§9.163「判定を画面にも書かない」と同じ理由）。
+    返すのは**紙の意匠に依らない語彙**で、`schedule-print.js`が自分の
+    クラス名へ翻訳する。 */
+ const SC_FIXED_TONE={
+  '__cat__':i=>'cat-'+String(i.cat&&i.cat.key||''),
+  '__workable__':i=>'wk-'+String(i.wk&&i.wk.cls||'').replace(/^is-/,''),
+  '__est__':i=>i.estProvisional?'est-provisional':'',
  };
  function scFixedCellText(entry,k){
   const f=SC_FIXED_TEXT[k];
@@ -6738,6 +6824,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      (§9.198)——画面が暦でまとめているのに紙が現場歴で切ると、日ごとに配る
      紙の件数が画面と合わなくなる(§9.115と同じ理由)。 */
   groupBasis:()=>groupBasis(),
+  /* まとめの見出しに添える「現場歴／太陽暦」の呼び名（§9.237）。
+     **画面(`groupHeadHtml`)と同じ表を見る**——紙へ書き写すと、
+     呼び名を変えたときに片方だけ古いままになる。 */
+  groupBasisLabel:()=>SC_BASIS_LABEL[groupBasis()]||'',
   /* 行の見せ方(§9.198)。**判定の1箇所へ外から聞ける**ようにしておく
      ——DOMを掘って色を読むと、行が1件も無い区分を確かめられない。 */
   rowStyleOf:e=>rowStyleOf(e||{}),
@@ -6748,7 +6838,15 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   closeViewPop:()=>closeViewPop(),
   /* 親ロットの印('count'=子N / 'parent'=親)。 */
   childBadgeMode:()=>scLayout.childBadge||'count',
-  groupOf:e=>{const b=groupBucketOf(e);return b?{key:String(b.key),label:b.label}:null},
+  /* まとまり1つ。`tone`は**画面の帯と同じ色分け**（§9.237）——画面は
+     `.sc-group[data-group="running|planned|history"]`にだけ面の色を持つ
+     （`data-group`はまとまりのキーそのものなので、日付・勤務でまとめて
+     いるときは色が付かない＝素の帯）。紙もそこへ揃えるので、
+     **区分でまとめているときだけ**キーを渡す。 */
+  groupOf:e=>{const b=groupBucketOf(e);
+   if(!b)return null;
+   return {key:String(b.key),label:b.label,
+           tone:scState.groupMode==='category'?String(b.key):''};},
   categoryLabelOf:e=>categoryOf(e).label,
   /* 取り直す・描き直す。**渡すのは操作だけで、状態は渡さない**
      ——scStateを外へ出すと、他のファイルから画面の状態を書き換えられて
