@@ -312,11 +312,15 @@ body.sc-mode .hd-status .hd-chip-equip{display:none}
   body.df-print>*:not(.df-print-area){display:none}
   body.df-print .df-print-area{display:block}
 }
-/* 作業予定表(§9.115)。**画面のタイムラインは刷らない**——15列以上あり、
-   A4へ押し込むと読めない大きさになる。schedule-print.jsが組み立てた
-   専用の紙(#schedulePrintArea)だけを出す。
-   `@page`に向きを書かないのは、**縦で収まる列構成にしてあり、横で出したい
-   人はブラウザの印刷ダイアログで選べる**ため(こちらで固定すると選べない)。 */
+/* 作業予定表(§9.115/§9.235)。**画面のタイムラインは刷らない**
+   ——15列以上あり、A4へ押し込むと読めない大きさになる。schedule-print.jsが
+   組み立てた専用の紙(#schedulePrintArea)だけを出す。
+   用紙サイズ・向き(A4/A3×縦/横、§9.235)は`schedule-print.js`の
+   `applyPrintPageStyle()`が実際に刷る直前に`<style>`を書き換えて差し替える
+   （帳票=`report-dashboard.js`の`updatePageSizeStyle()`と同じ作法。
+   `<head>`の末尾へ挿すのでここより後に読まれ、こちらの既定より優先される）。
+   ここの`@page`は用紙選択が効かない場面（差し替えが間に合わなかった等）の
+   保険としてA4縦を既定にする。 */
 @media print{
   @page{size:A4;margin:0}
   body.sc-print>*:not(.sp-print-area){display:none}

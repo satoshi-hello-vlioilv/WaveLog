@@ -447,7 +447,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
       </button>
      </div>
      <div class="sc-tools" data-tools="act" id="scToolsAct">
-      <button type="button" class="sc-split-toggle sc-ico-btn" id="scPrintBtn" title="いま表示している予定を、現場へ配る形（A4）で印刷します"><i>🖨</i><span>印刷</span></button>
+      <button type="button" class="sc-split-toggle sc-ico-btn" id="scPrintBtn" title="いま表示している予定を、現場へ配る形（用紙サイズ・向きは選べます）で印刷します"><i>🖨</i><span>印刷</span></button>
       <button type="button" class="sc-refresh" id="scRefresh">再計算</button>
      </div>
     </div>
@@ -715,8 +715,14 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    const v=JSON.parse(localStorage.getItem(SC_LAYOUT_KEY)||'{}');
    return {swap:!!(v&&v.swap),open:(v&&SC_OPEN_MODES.some(m=>m[0]===v.open))?v.open:'last',
            tip:!(v&&v.tip===false),
-           childBadge:(v&&SC_CHILD_BADGES.some(m=>m[0]===v.childBadge))?v.childBadge:'count'};
-  }catch(e){return {swap:false,open:'last',tip:true,childBadge:'count'}}
+           childBadge:(v&&SC_CHILD_BADGES.some(m=>m[0]===v.childBadge))?v.childBadge:'count',
+           /* §9.235 ②、利用者の指示「子ロットのバッジの位置は、一番左固定
+              ではなく、どの列にも付けられるように…デフォルトはロット番号」。
+              **空欄＝自動**（`childBadgeTargetKey()`がロット番号→内容欄の
+              先頭→先頭列の順に落とす）。保存値は文字列のキーのみ有効にする
+              ——型が違う値が紛れ込んでも自動へ倒す。 */
+           childBadgeCol:(v&&typeof v.childBadgeCol==='string')?v.childBadgeCol:''};
+  }catch(e){return {swap:false,open:'last',tip:true,childBadge:'count',childBadgeCol:''}}
  })();
  function saveScLayout(){
   try{localStorage.setItem(SC_LAYOUT_KEY,JSON.stringify(scLayout))}catch(e){/* 保存できなくても表示は続く */}
@@ -762,8 +768,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     <label><input type="radio" name="scInsertTip" value="off"${scLayout.tip?'':' checked'}><span><b>線だけにする</b><small>入る位置の線は出ます。慣れたらこちらが静かです</small></span></label>
    </div>
    <div class="sc-layout-sec">
-    <b>親ロットの印（ロット番号のお尻）</b>
+    <b>親ロットの印</b>
     ${SC_CHILD_BADGES.map(([v,label,note])=>`<label><input type="radio" name="scChildBadge" value="${v}"${scLayout.childBadge===v?' checked':''}><span><b>${esc(label)}</b><small>${esc(note)}</small></span></label>`).join('')}
+    <label class="sc-layout-badgecol"><span><b>付ける列</b><small>既定はロット番号です。選んだ列を隠すと自動で戻ります</small></span>
+     <select id="scChildBadgeCol">${childBadgeColOptions()}</select></label>
    </div>
    <p class="sc-layout-note">この設定はこの端末に覚えます（設備ごとではありません）。</p>`;
   pop.querySelectorAll('input[name=scOpenMode]').forEach(r=>{
@@ -799,6 +807,21 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     renderLayoutPop();
    };
   });
+  /* バッジを付ける列(§9.235 ②)。**選んだ瞬間に表へ当てる**（同じ作法）。 */
+  const badgeCol=pop.querySelector('#scChildBadgeCol');
+  if(badgeCol)badgeCol.onchange=()=>{
+   scLayout.childBadgeCol=badgeCol.value;saveScLayout();
+   renderTimeline();
+   renderLayoutPop();
+  };
+ }
+ /* バッジを付ける列の選択肢(§9.235 ②)。**いま画面に出ている列だけ**
+    （隠している列を選ばせても、次に開くまでどこにも見えない）。 */
+ function childBadgeColOptions(){
+  const keys=timelineColumnKeys().filter(k=>k!=='__actions__');
+  const cur=scLayout.childBadgeCol;
+  const opts=keys.map(k=>`<option value="${esc(k)}"${cur===k?' selected':''}>${esc(scColLabel(k))}</option>`);
+  return `<option value=""${cur?'':' selected'}>自動（既定＝ロット番号）</option>`+opts.join('');
  }
  /* ---------- 行の見せ方のパネル(§9.198) ----------
     **その場で当てて、その場で保存する**（#scLayoutPopと同じ作法）。
@@ -2983,6 +3006,62 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    return {key:k,text:out.text,raw:String(raw==null?'':raw),color:out.color};
   });
  }
+ /* ---------- セル1つの値は1箇所で決める（帳票印刷の刷新、利用者の指示） ----------
+    「画面の見た目を活かしたレイアウトにしてほしい。列の情報や並びもそのまま、
+     『内容』で表示内容をまとめずに、画面印刷に近い形で、列の成型した内容が
+     生きるように」
+
+    固定列（区分・日付・時刻…）は`scFixedCellText()`が既に1箇所（設定パネルの
+    見本とも共有・§9.176）。**計算式・内容の項目はここが1箇所**——行の描画
+    （`renderEntryRow`のcellHtml）と印刷（`printRowCells`）の両方がここを
+    通ることで、同じ列は同じ値を見る（§9.163「判定を画面にも書かない」と
+    同じ理由。書き写すと片方だけ直った状態が作れる）。**HTMLは組み立てない**
+    ——呼び出し側がそれぞれの見せ方（タグ付きspan／プレーンテキスト）へ包む。 */
+ function dynamicCellValue(e,k,ctx){
+  if(ctx.formulaFns.has(k)||timelineIsFormulaKey(k)){
+   const raw=ctx.formulaFns.has(k)?timelineFormulaText(e,ctx.formulaFns.get(k)):'';
+   const out=WL.cellFormat.cell({raw,format:ctx.calcTarget?WL.columnLayout.format(ctx.calcTarget,k):null,
+                                 rule:ctx.calcTarget?WL.columnLayout.rule(ctx.calcTarget,k):'',
+                                 row:ctx.ruleRow,column:k});
+   return {text:out.text,raw:String(raw==null?'':raw),color:out.color,kind:'calc'};
+  }
+  const c=ctx.contentMap.get(k);
+  return c?{text:c.text,raw:c.raw,color:c.color,kind:'content'}:{text:'',raw:'',color:'',kind:''};
+ }
+ /* 1行ぶんの`dynamicCellValue`が要る材料をまとめて作る（式の控え・読み替えが
+    見る行は1行につき1回。§9.234 ⑥と同じ理由）。 */
+ function rowDynamicCtx(e){
+  return {contentMap:new Map(timelineContentCells(e).map(c=>[c.key,c])),
+          formulaFns:timelineFormulaFns(),ruleRow:timelineRuleRow(e),calcTarget:timelineTarget()};
+ }
+ /* ---------- 印刷向けの1行ぶんのセル文字列（帳票印刷の刷新、利用者の指示） ----------
+    紙は**画面と同じ列（並び・表示/非表示・書式・読み替え・計算式）**を使う
+    ——紙のためだけの列選択・「内容」へのまとめ直しはやめた（§9.235）。
+    `__actions__`（開始・固定・帳票などのボタン）は紙に意味を持たないので
+    渡さない。返す値は`printRowCells`を呼ぶ側（`schedule-print.js`）が
+    自由に幅・見出しを決められるよう、プレーンテキストにしてある。 */
+ function printRowCells(e){
+  const keys=timelineColumnKeys().filter(k=>k!=='__actions__');
+  const ctx=rowDynamicCtx(e);
+  return keys.map(k=>{
+   if(SC_FIXED_TEXT[k]){const v=scFixedCellText(e,k);return {key:k,label:scColLabel(k),text:v,raw:v,color:''}}
+   const dyn=dynamicCellValue(e,k,ctx);
+   return {key:k,label:scColLabel(k),text:dyn.text,raw:dyn.raw||dyn.text,color:dyn.color};
+  });
+ }
+ /* 印刷が並べる列（`__actions__`を除いた、いま画面に出ている並び）。 */
+ function printColumnKeys(){return timelineColumnKeys().filter(k=>k!=='__actions__')}
+ /* 列の効いている幅(px)。**画面の`applyTimelineContentColumns()`と同じ式**
+    ——書き写すと、画面で手で広げた列が紙では既定幅のままになる食い違いが
+    起きる。固定列は既定幅、内容の項目は`110`を下限にする(§9.209 ①のeff()
+    と同じ数)。 */
+ function columnEffWidthPx(k){
+  const t=timelineTarget();
+  const w=t?WL.columnLayout.width(t,k):null;
+  if(w)return w;
+  const d=SC_COL_MAP.get(k);
+  return d?d.w:110;
+ }
  function entryContentText(e){
   if(e.kind!=='作業')return (e.title||(e.kind==='コメント'?'（コメント）':'設備停止')).trim();
 
@@ -4175,6 +4254,30 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(d.__childMissing)bits.push('仕掛に無し');
   return bits.join(' / ');
  }
+ /* ---------- 子ロットの折りたたみバッジはどの列へ付けるか(§9.235 ②) ----------
+    利用者の指示「子ロットのバッジの位置は、一番左固定ではなく、バッジの
+    位置はどの列にも付けられるように位置を決められるようにしてください
+    デフォルトはロット番号につけてください」。
+
+    以前は`row.querySelector('.sc-row-title')`で**DOM順で最初に見つかった
+    内容セル**を掴んでいた。内容の項目を並べ替えてロット番号が先頭で
+    なくなっても、バッジは変わらず「たまたま先頭にある列」に付き続け、
+    選んでいるつもりの無い「一番左固定」になっていた。
+    **`__actions__`は候補にしない**——ボタンの並びなので、畳むつまみを
+    差し込む場所として意味を持たない。 */
+ function childBadgeTargetKey(){
+  const keys=timelineColumnKeys().filter(k=>k!=='__actions__');
+  const want=scLayout.childBadgeCol;
+  if(want&&keys.includes(want))return want;
+  /* **既定はロット番号**。選んでいない・選んだ列を隠したときにここへ
+     落ちる（キーを保存し直す必要が無い＝空欄のままロット番号が既定）。 */
+  if(keys.includes('lotNo'))return 'lotNo';
+  /* それも無ければ、以前と同じ「内容欄の先頭」まで後方互換で落とす。 */
+  const content=timelineContentKeys();
+  const hit=content.find(k=>keys.includes(k));
+  if(hit)return hit;
+  return keys[0]||'';
+ }
  function renderChildRows(box,parent,children){
   if(!children.length)return;
   const open=childOpenSet().has(String(parent.id));
@@ -4229,11 +4332,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const row=box.querySelector(`.sc-row-line[data-id="${CSS.escape(String(parent.id))}"]`);
   if(!row)return;
   row.classList.add('sc-row-has-children');
-  // つまみは**最初の内容セル**へ入れる(段6で内容が複数列になった)。
-  /* 内容の列を全部隠すこともできる(§9.176)。そのときは**最初のセル**へ
-     入れる——素の兄弟として足すと1列ぶんずれるので、必ずどれかのセルの
-     中に入れること。 */
-  const title=row.querySelector('.sc-row-title')||row.querySelector('[data-col]');
+  /* つまみは**設定した列のセル**へ入れる(§9.235 ②)。素の兄弟として足すと
+     1列ぶんずれるので、必ずどれかのセルの中に入れること。 */
+  const badgeKey=childBadgeTargetKey();
+  const title=(badgeKey&&row.querySelector(`[data-col="${CSS.escape(badgeKey)}"]`))
+    ||row.querySelector('.sc-row-title')||row.querySelector('[data-col]');
   if(!title)return;
   /* **印はロット番号のお尻**(§9.198、利用者の指示)。以前は「▸子ロット3」を
      ロット番号の**手前**に置いていたため、①番号より先に修飾語を読まされ
@@ -4266,10 +4369,13 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    paint(nowOpen);
    setChildOpen(parent.id,nowOpen);
   };
+  /* **中身は保ったまま包む**（`textContent`だけを写すと消える）——
+     `__cat__`のような列は文字の前に印(アイコン)のHTMLを持つので、
+     バッジの列をどれにでも選べるようにした以上、消してよいのは
+     `.sc-row-title`（プレーンテキストの列）だけとは限らない。 */
   const text=document.createElement('span');
   text.className='sc-row-title-text';
-  text.textContent=title.textContent;
-  title.textContent='';
+  while(title.firstChild)text.appendChild(title.firstChild);
   title.classList.add('has-children');
   title.append(text,btn);
  }
@@ -4490,18 +4596,16 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
        **式の結果が「生の値」で、その上に読み替え→書式**（矛盾しない答えは
        この1本だけ。列ごとに「ルール優先／式優先」を選ばせない）。
        式が空の列（＝読み替えだけで中身を作る列）もここで受ける。 */
-    if(formulaFns.has(k)||timelineIsFormulaKey(k)){
-     const raw=formulaFns.has(k)?timelineFormulaText(e,formulaFns.get(k)):'';
-     const out=WL.cellFormat.cell({raw,format:calcTarget?WL.columnLayout.format(calcTarget,k):null,
-                                   rule:calcTarget?WL.columnLayout.rule(calcTarget,k):'',
-                                   row:ruleRow,column:k});
+    /* 計算式・内容の項目は`dynamicCellValue()`の1箇所で決める
+       （§9.235。印刷向けの`printRowCells()`も同じ関数を通す）。 */
+    const dyn=dynamicCellValue(e,k,{formulaFns,ruleRow,calcTarget,contentMap});
+    if(dyn.kind==='calc')
      /* **元の値（式の結果）は`title`に残す**——読み替えで置き換わったことが
         読める（§9.94「切れたセルには生の値の`title`」と同じ約束）。 */
-     return `<span class="sc-row-title sc-row-calc${out.color?' cell-'+out.color:''}" data-col="${esc(k)}" title="${esc(raw||out.text)}">${esc(out.text)}</span>`;
-    }
-    const c=contentMap.get(k);
-    return c?`<span class="sc-row-title${c.color?' cell-'+c.color:''}" data-col="${esc(k)}" data-content-col="${esc(k)}" title="${esc(c.raw||c.text)}">${esc(c.text)}</span>`
-            :`<span data-col="${esc(k)}"></span>`;
+     return `<span class="sc-row-title sc-row-calc${dyn.color?' cell-'+dyn.color:''}" data-col="${esc(k)}" title="${esc(dyn.raw||dyn.text)}">${esc(dyn.text)}</span>`;
+    if(dyn.kind==='content')
+     return `<span class="sc-row-title${dyn.color?' cell-'+dyn.color:''}" data-col="${esc(k)}" data-content-col="${esc(k)}" title="${esc(dyn.raw||dyn.text)}">${esc(dyn.text)}</span>`;
+    return `<span data-col="${esc(k)}"></span>`;
    };
    row.innerHTML=`
     <span class="sc-row-handle" title="${canDrag?'ドラッグまたはAlt+↑/↓で並べ替え':(locked?'日時を固定中(ロック)':'')}">${pickBoxHtml(e)}${canDrag?'⠿':(locked?'🔒':'')}</span>`
@@ -6556,6 +6660,46 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   /* 1行ぶんまとめて返す([{key,text,raw,color}])。項目ごとに呼ぶ形にすると
      行×項目の回数だけ組み立て直すことになる。 */
   contentCellsOf:e=>timelineContentCells(e),
+  /* ---------- 印刷を「画面の見た目」へそろえる（§9.235、利用者の指示） ----------
+     「画面の見た目を活かしたレイアウトにしてほしい。列の情報や並びもそのまま、
+      『内容』で表示内容をまとめずに、画面印刷に近い形で」
+
+     紙が使うのは**画面と同じ列**（並び・表示/非表示・書式・読み替え・計算式）
+     で、紙のためだけの列選択は持たない（§9.235で`print:<設備>`の列選択を
+     廃止）。ここは印刷側(`schedule-print.js`)へ「いま画面に出ている列と
+     その1行ぶんの値」を渡す口。 */
+  printColumnKeys:()=>printColumnKeys(),
+  columnLabelOf:k=>scColLabel(k),
+  printRowCells:e=>printRowCells(e),
+  columnEffWidthPx:k=>columnEffWidthPx(k),
+  /* 子ロット(§9.83)。紙は`entries()`に混ざっている子（`parentId`付き）を
+     自分で拾わず、ここから引く——判定を2箇所に持たない。 */
+  childrenOf:parentId=>childEntriesByParent().get(parentId)||[],
+  childSummaryOf:c=>childSummary(c),
+  /* 子ロットの折りたたみバッジをどの列へ付けるか(§9.235)。画面と紙の
+     どちらも**同じ判定**（`childBadgeTargetKey()`）を通す。 */
+  childBadgeColKey:()=>childBadgeTargetKey(),
+  /* ---------- 他の設備ぶんを一時的に成り代わって解く（§9.235、「すべての
+     設備を続けて印刷する」） ----------
+     列の並び・書式・読み替え・計算式・内容欄の項目は`scState.equipment`
+     （`timelineTarget()`）と`scContentPrefs`の2箇所で判定しているので、
+     この端末が開いている設備以外を印刷するときは**その設備の値へ差し替えて
+     から呼び、終わったら必ず戻す**。**取得（`await`）は差し替えるより前**に
+     済ませること——差し替えたあとに`await`を挟むと、そのあいだに別の
+     コードが差し替え中の状態を覗いてしまう（1本のタブなので、同期の
+     あいだだけ差し替えれば他のコードが割り込む隙が無い）。 */
+  withEquipment:async(equipment,entries,fn)=>{
+   let items=null;
+   try{
+    const r=await api('/api/schedule-content-master?equipment='+encodeURIComponent(equipment));
+    items=(r.items&&r.items.length)?r.items:null;
+   }catch(e){items=null}
+   const prevEq=scState.equipment,prevEntries=scState.entries,prevPrefs=scContentPrefs;
+   scState.equipment=equipment;scState.entries=entries||[];
+   scContentPrefs={equipment,items};
+   try{return fn()}
+   finally{scState.equipment=prevEq;scState.entries=prevEntries;scContentPrefs=prevPrefs}
+  },
   equipmentNames:()=>{
    const items=(typeof equipmentMasterState!=='undefined'?equipmentMasterState.items:[])||[];
    const names=items.map(x=>String(x.name||'').trim()).filter(Boolean);
