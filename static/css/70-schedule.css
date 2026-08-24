@@ -1192,8 +1192,20 @@
 /* **`font-size`は必ずセレクタと同じ行に書くこと。** リテラルpxの見張り
    (`tests/test_csslint.py`)は行単位で「その行に紙のセレクタがあるか」を見る
    ので、次の行へ送ると紙の例外だと分かってもらえず落ちる。 */
+/* ---------- 紙は「画面の一覧の見た目」が正(§9.237、利用者の指示
+   「画面印刷の時に映るスケジュール一覧表の見た目を正にしてその見た目に
+   近づけてほしい」) ----------
+   以前は黒い格子・灰色の帯・角の立った箱で、同じデータでも画面とは
+   別の表に見えていた（実機で「角丸ベースのデザインも失ったカクカク
+   デザイン」「カラムの帯デザインもカラーなくグレー」と指摘された）。
+   **色はトークンから選ぶ**（`--ui-scale`が掛からないので紙でも安全。
+   寸法だけがmm/px固定という既存の約束はそのまま）。
+   **`print-color-adjust:exact`を必ず付けること**——付けないとブラウザは
+   印刷時に背景色を落とすので、帯もバッジも真っ白で刷られる（画面の
+   プレビューでは色が出ているのに紙だけ白い、という気付きにくい形になる）。 */
 .sp-page{padding:8mm;box-sizing:border-box;font-size:10px;
- background:#fff;color:#000;display:flex;flex-direction:column}
+ background:var(--surface);color:var(--ink);display:flex;flex-direction:column;
+ print-color-adjust:exact;-webkit-print-color-adjust:exact}
 /* ---------- 用紙サイズ・向き(§9.235、利用者の指示「印刷サイズA4だけでなく
    A3や縦向きや横向きも選べるようにしてください」) ----------
    `width`/`min-height`だけを`data-paper`で差し替える——`splitToSheets`が
@@ -1205,85 +1217,166 @@
 .sp-page[data-paper="a3-landscape"]{width:420mm;min-height:297mm}
 /* 見出し。**設備名を一番大きく**する——配られた人が最初に確かめるのは
    「これは自分のラインの紙か」なので、そこが読めないと配れない。 */
-.sp-head{border-bottom:1.2mm solid #000;padding-bottom:2mm;margin-bottom:3mm}
+.sp-head{border-bottom:0.6mm solid var(--teal);padding-bottom:2mm;margin-bottom:3mm}
 .sp-head-main{display:flex;align-items:baseline;gap:6mm}
-.sp-title{font-size:13px;font-weight:800;letter-spacing:.08em}
-.sp-equip{font-size:20px;font-weight:800}
+.sp-title{font-size:13px;font-weight:800;letter-spacing:.08em;color:var(--muted)}
+.sp-equip{font-size:20px;font-weight:800;color:var(--ink)}
 .sp-head-sub{display:flex;justify-content:space-between;margin-top:1.5mm;font-size:11px}
-.sp-day{font-weight:700}
-.sp-count{color:#333}
-/* 表。**罫線は濃く**（現場のコピー機で薄い線は飛ぶ）。
+.sp-day{font-weight:700;color:var(--ink-2)}
+.sp-count{color:var(--muted)}
+/* 表。**画面の一覧と同じ組み方**にする(§9.237)——器は角丸の枠で1つに
+   まとめ、中は「横の細い罫」＋「列と列のあいだの細い縦罫」だけ。
+   以前は0.3mmの黒で全周を囲っており、同じデータでも画面とは別の表に
+   見えていた（利用者の指摘「角丸ベースのデザインも失ったカクカク
+   デザイン」）。
    **表を`flex:1`で伸ばさないこと**——1枚に7件しか載らない日でも表が用紙の
    高さいっぱいまで引き伸ばされ、1行が指3本ぶんの高さになる（実測で
-   1行30px→140px）。行の高さは中身で決め、余った下は空けたままにする。 */
-.sp-table{width:100%;border-collapse:collapse;table-layout:fixed}
-.sp-table th,.sp-table td{border:0.3mm solid #000;padding:1.2mm 1mm;
- vertical-align:middle;overflow:hidden;word-break:break-all}
-.sp-table th{background:#e8e8e8;font-size:9px;font-weight:700;text-align:center}
-.sp-table td{font-size:11px;height:8mm}
+   1行30px→140px）。行の高さは中身で決め、余った下は空けたままにする。
+   **角丸はトークンから選ぶこと**——`.sp-*`は`border-radius`の
+   リテラル例外に入っていない（`tests/test_csslint.py`が落とす）。
+   `--radius-*`は`--ui-scale`が掛からない固定値なので紙でも安全。 */
+/* **器は表の幅ぶんだけ**（`align-self:flex-start`）。表の幅は
+   `pageHtml()`が列幅の合計を入れるので、引き伸ばさなかったぶんは
+   器の外の余白になる——器を用紙いっぱいに広げると、角丸の枠だけが
+   表より右へはみ出して「表が途中で終わっている」ように見える。 */
+.sp-table-wrap{align-self:flex-start;max-width:100%;
+ border:0.2mm solid var(--line-soft);border-radius:var(--radius-sm);
+ overflow:hidden;background:var(--surface)}
+/* `separate`にするのは**角丸を効かせる**ため（`collapse`だと器の
+   `overflow:hidden`で角が切られるだけで、セルの角丸が効かない）。
+   隙間は0なので見た目の詰まり方は変わらない。 */
+.sp-table{border-collapse:separate;border-spacing:0;table-layout:fixed}
+/* **折り返さない**(§9.90、利用者の指摘「列の折り返しを無くした形で列を
+   整えても印刷側できちんと反映されない」)。以前は`word-break:break-all`で、
+   画面では1行の見出し「用途コード」が紙では2行に割れていた。画面と同じ
+   「入らなければ省略記号」にし、収まらないときは`--sp-fit`で**文字ごと
+   縮める**（`withMm()`。幅の比だけを詰めると同じ文字が入らなくなる）。 */
+.sp-table th,.sp-table td{padding:1.2mm 1.4mm;vertical-align:middle;
+ overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.sp-table th{background:var(--surface-2);font-size:calc(9px * var(--sp-fit,1));font-weight:800;
+ color:var(--muted);text-align:center;border-bottom:0.3mm solid var(--line-mid)}
+.sp-table td{font-size:calc(11px * var(--sp-fit,1));color:var(--ink);height:calc(8mm * var(--sp-fit,1));
+ border-bottom:0.15mm solid var(--line-soft)}
+/* 列の区切りは画面と同じ「隙間の細い線」(§9.197)。**最初の列には引かない**
+   ——引くと器の枠と二重になる。 */
+.sp-table th+th,.sp-table td+td{border-left:0.12mm solid var(--line-soft)}
 /* **画面のしま模様を紙へ持ち込まないこと。** 30-measure.cssの
    `tbody tr:nth-child(even){background:#f7fafb}` は要素セレクタなので
-   この表にも当たり、1行おきに薄い水色が刷られる（白黒コピーでは灰色の帯に
-   なり、記入欄が塗り潰されて見える）。詳細度を上げて打ち消しておく
-   ——同じ@layer内の書き順に頼ると、ファイルの読み込み順を入れ替えた
-   ときに黙って戻る。 */
-.sp-page .sp-table tbody tr{background:#fff}
+   この表にも当たり、1行おきに薄い水色が刷られる（記入欄が塗り潰されて
+   見える）。詳細度を上げて打ち消しておく——同じ@layer内の書き順に頼ると、
+   ファイルの読み込み順を入れ替えたときに黙って戻る。 */
+.sp-page .sp-table tbody tr{background:var(--surface)}
 /* 見出しはページをまたぐたびに刷り直す（2枚目に見出しが無いと読めない）。 */
 .sp-table thead{display:table-header-group}
 .sp-table tbody tr{page-break-inside:avoid}
 /* **幅はここに書かない**(§9.118)。列の幅は`withMm`が画面の実効px幅から
-   比率で配り、colgroupがmmで与える。ここが持つのは揃え方と字面だけ。
+   配り、colgroupがmmで与える。ここが持つのは揃え方と字面だけ。
    揃え方は画面と同じキー(`fixedAlignClass`)で決まる汎用クラスにした
    (§9.235)——固定列ごとにクラスを持つと、画面側で列が増減するたびに
    ここへも書き足すことになる。 */
-.sp-al-c{text-align:center;white-space:nowrap}
-.sp-al-r{text-align:right;white-space:nowrap}
-.sp-c-lot{font-weight:700}
+.sp-al-c{text-align:center}
+.sp-al-r{text-align:right;font-variant-numeric:tabular-nums}
+.sp-c-lot{font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
 /* 記入欄は**空のまま罫線だけ**にする。薄い下線を入れると書きにくい。 */
 .sp-c-check{text-align:center}
-/* 設備停止の行は面で区別する（白黒なので色ではなく濃淡で分ける）。 */
-.sp-row-stop td{background:#f0f0f0}
+/* 設備停止の行は面で区別する。区分のバッジが文字でも言うので**淡く**
+   （以前は#f0f0f0の灰色で、白黒コピーだと記入欄まで沈んで見えた）。 */
+.sp-row-stop td{background:var(--surface-2)}
+/* 行表示マスタの色(§9.198)。**色の定義は画面と同じ`.sc-rs-*`が持つ**
+   （`--rs-bg`等）ので、紙のためにもう1つ色表を作らない。 */
+.sp-table tbody tr[class*="sc-rs-"] td{background:color-mix(in srgb, var(--rs-bg) 55%, var(--surface))}
+/* ---------- 画面と同じバッジ(§9.237) ----------
+   可否(可/不可)・区分(予定/作業中/設備停止…)は画面では色の付いた小さな札で、
+   そこが一覧の読みやすさの肝になっている。**色だけで伝えない**(§3)ので、
+   札の中の文字は画面と同じものを必ず出す。 */
+.sp-badge{display:inline-block;max-width:100%;padding:0 1.2mm;font-size:calc(10px * var(--sp-fit,1));
+ border-radius:var(--radius-pill);border:0.15mm solid transparent;
+ font-weight:800;line-height:1.5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sp-b-wk-ok{background:var(--success-bg);border-color:var(--success-border);color:var(--success)}
+.sp-b-wk-ng{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger)}
+.sp-b-wk-unknown{background:var(--warn-bg);border-color:var(--warn-border);color:var(--warn-fg)}
+.sp-b-wk-na{color:var(--muted)}
+/* 区分は画面(`.sc-row-cat`)と同じ「淡い面＋左の色帯」。丸は控えめに。 */
+.sp-badge[class*="sp-b-cat-"]{border-radius:var(--radius-xs);border-left-width:0.6mm;border-left-style:solid}
+.sp-b-cat-doing{background:var(--success-bg);color:var(--success);border-left-color:var(--success)}
+.sp-b-cat-done{color:var(--muted);border-left-color:var(--line-mid)}
+.sp-b-cat-planned{color:var(--teal-dark);border-left-color:var(--teal)}
+.sp-b-cat-cancel{background:var(--danger-bg);color:var(--danger);border-left-color:var(--danger)}
+.sp-b-cat-stop{background:var(--warn-bg);color:var(--warn-fg);border-left-color:var(--warn-border)}
+.sp-b-cat-comment{color:var(--ink-3);border-left-color:var(--line-mid)}
+/* 見積が暫定(実績がまだ無い)であることは画面と同じ薄い斜体で示す(§9.114)。
+   脚の注記「~の付いた見積は暫定」と対になる。 */
+.sp-est-prov{color:var(--muted);font-style:italic}
+/* 行の印(計画外・固定・遅れ…)。画面(`.sc-flag-*`)と同じ色で、1つずつ札。 */
+.sp-c-chips{overflow:hidden;white-space:nowrap}
+.sp-chip{display:inline-block;padding:0 1mm;font-size:calc(9px * var(--sp-fit,1));
+ border-radius:var(--radius-xs);font-weight:800;white-space:nowrap}
+.sp-chip+.sp-chip{margin-left:0.8mm}
+.sp-chip-unplanned{background:var(--warn-bg);border:0.15mm solid var(--warn-border);color:var(--warn-fg)}
+.sp-chip-locked{color:var(--warn-fg)}
+.sp-chip-pending{color:var(--warn-fg)}
+.sp-chip-overdue{color:var(--danger)}
+.sp-chip-spans{color:var(--muted)}
+/* 親ロットの印(子N／親。§9.199)。紙では押せないので**ただの印**。 */
+.sp-kid{display:inline-block;margin-left:1mm;padding:0 1mm;font-size:calc(9px * var(--sp-fit,1));
+ border:0.12mm solid var(--line-mid);border-radius:var(--radius-pill);
+ background:var(--surface-2);color:var(--ink-2);font-weight:700}
 /* ---------- 子ロットの内訳(§9.235③、利用者の指示「分割後の子ロットの
    情報も印刷表示ONOFFできるようにしてください」) ----------
-   画面(`.sc-child-lot`/`.sc-child-info`)と同じ考え方——番号は太字、
-   内訳は控えめな文字にして「予定そのものの行」と読み間違えないようにする。 */
-.sp-c-child-lot{font-weight:700;padding-left:3mm}
-.sp-c-child-info{color:#333}
-.sp-row-child td{border-top:none}
+   画面(`.sc-child-box`/`.sc-child-lot`/`.sc-child-info`)と同じ考え方——
+   淡い面に載せ、番号は太字、内訳は控えめな文字にして「予定そのものの行」と
+   読み間違えないようにする。 */
+.sp-c-child-lot{font-weight:700;padding-left:3mm;color:var(--ink)}
+.sp-c-child-info{color:var(--muted)}
+.sp-row-child td{background:var(--surface-2)}
 /* まとまりの見出し(§9.189)。画面の「まとめ」と同じ区切りを紙にも入れる。
-   **濃い帯にする**——白黒コピーでも行と見分けが付く必要がある。 */
-.sp-row-group td{background:#d8d8d8;font-weight:800;font-size:10px;text-align:left;padding:1mm}
-.sp-group-count{float:right;font-weight:400}
+   **画面(`.sc-group-head`)と同じ3つ**——名前・どの日付で数えているか
+   （現場歴／太陽暦）・件数。以前は濃い灰色(#d8d8d8)の帯に名前と件数だけで、
+   「カラーが無くグレー」と指摘された部分がここ。 */
+.sp-row-group td{background:var(--surface-2);border-left:0.7mm solid var(--line);
+ font-size:calc(10px * var(--sp-fit,1));text-align:left;padding:1.2mm 1.4mm;
+ border-bottom:0.15mm solid var(--line-soft)}
+.sp-group-label{font-weight:800;color:var(--ink)}
+.sp-group-basis{display:inline-block;margin-left:2mm;padding:0 1.2mm;
+ border:0.12mm solid var(--line-soft);border-radius:var(--radius-pill);
+ background:var(--surface);color:var(--ink-3);font-weight:700}
+.sp-group-count{float:right;color:var(--muted);font-weight:700}
+/* 区分でまとめているときだけ、帯の左を区分の色にする(§9.237)。日付・勤務で
+   まとめているときは画面と同じ素の帯（`tone`が空）。 */
+.sp-row-group[data-tone="doing"] td{border-left-color:var(--success)}
+.sp-row-group[data-tone="planned"] td{border-left-color:var(--teal)}
+.sp-row-group[data-tone="cancel"] td{border-left-color:var(--danger)}
+.sp-row-group[data-tone="stop"] td{border-left-color:var(--warn-border)}
 /* 申し送り(コメント)の行。**横いっぱい**にして読める幅を確保する。 */
-.sp-row-comment td{background:#fff;font-size:11px;text-align:left;font-style:italic}
+.sp-row-comment td{background:var(--surface);font-size:calc(11px * var(--sp-fit,1));
+ text-align:left;font-style:italic;color:var(--ink-2);white-space:normal}
 /* 紙の下の申し送り欄。**罫線だけの空白**にする(手書きするための場所)。 */
-.sp-note{display:flex;align-items:stretch;gap:2mm;margin-top:2mm;border:0.3mm solid #000}
-.sp-note-label{flex:none;padding:1.5mm;border-right:0.3mm solid #000;background:#e8e8e8;font-size:9px;
- font-weight:700;min-width:24mm}
+.sp-note{display:flex;align-items:stretch;gap:2mm;margin-top:2mm;
+ border:0.2mm solid var(--line-soft);border-radius:var(--radius-sm);overflow:hidden}
+.sp-note-label{flex:none;padding:1.5mm;border-right:0.2mm solid var(--line-soft);font-size:9px;
+ background:var(--surface-2);color:var(--ink-2);font-weight:700;min-width:24mm}
 .sp-note-area{flex:1;min-height:18mm}
-.sp-empty{text-align:center;color:#555;height:14mm}
+.sp-empty{text-align:center;color:var(--muted);height:14mm}
 /* 表を伸ばさなくなったので、下の余りは脚が引き受ける(`margin-top:auto`)。
    件数が少ない日でも脚は用紙の下端に来る。 */
-.sp-foot{display:flex;justify-content:space-between;gap:4mm;font-size:9px;color:#333;
- margin-top:auto;padding-top:1.5mm;border-top:0.3mm solid #000}
+.sp-foot{display:flex;justify-content:space-between;gap:4mm;font-size:9px;color:var(--muted);
+ margin-top:auto;padding-top:1.5mm;border-top:0.2mm solid var(--line-soft)}
 .sp-foot-note{flex:1;text-align:center}
-/* ---------- 枠線ON/OFF(§9.236、利用者の指示「枠線もなくすONOFF機能を
-   追加し…アプリのさわやかな見た目をそのまま印刷できるようなイメージに
-   近づけたい」) ----------
-   既定(`data-borders`無し＝ON)は今までどおりの太い黒罫線
-   （白黒コピーでも線が飛ばないための仕様。§9.115）。
-   OFFは画面の一覧に近い**薄い区切りだけ**にする——ただし**線を一切
-   無くしはしない**: §9.196で「15列が横一列の文字の並びに見えていた」
-   （区切りが無いと文字が続けて読めてしまう）不具合を踏んだのと同じ理由で、
-   印刷のセルの余白は1mmしか無く、太字を消してもなお区切りが要る。
-   縦横とも極細（0.1mm）の薄い灰色にとどめ、太い黒枠だけを無くす。 */
+/* ---------- 枠線ON/OFF(§9.237で作り直し、利用者の指摘「枠線を消す形で
+   チェックを外しても薄く残る」) ----------
+   §9.236では「線を一切無くしはしない」（薄い灰色で残す）としていたが、
+   **利用者の指示で撤回する**——外したのに残るなら、その入切は嘘になる。
+   OFFは**表の格子を本当に消す**。
+   残すのは線ではなく**面**（見出しの帯・まとまりの帯・停止行の淡い面）と、
+   **記入欄の下線**だけ——記入欄は「ここへ書く」ことが用なので、枠が
+   1本も無いと書く場所が分からない（§4。チェックの説明文にもそう書く）。 */
+.sp-page[data-borders="off"] .sp-table-wrap{border:0;border-radius:0}
 .sp-page[data-borders="off"] .sp-table th,
-.sp-page[data-borders="off"] .sp-table td{border:0.1mm solid #ddd}
-.sp-page[data-borders="off"] .sp-table th{border-bottom:0.25mm solid #999}
-.sp-page[data-borders="off"] .sp-row-group td{border-color:#999}
+.sp-page[data-borders="off"] .sp-table td{border:0}
+.sp-page[data-borders="off"] .sp-c-write,
+.sp-page[data-borders="off"] .sp-c-check{border-bottom:0.2mm solid var(--line-soft)}
 .sp-page[data-borders="off"] .sp-note,
-.sp-page[data-borders="off"] .sp-note-label{border-color:#bbb}
-.sp-page[data-borders="off"] .sp-foot{border-top-color:#bbb}
+.sp-page[data-borders="off"] .sp-note-label{border-color:var(--line-soft)}
 /* ---------- 印刷の設定（プレビューの左側に出る） ---------- */
 .sp-options{display:flex;flex-direction:column;gap:var(--gap-inline);margin-top:var(--space-3)}
 .sp-opt{display:flex;align-items:flex-start;gap:var(--gap-inline);cursor:pointer}
