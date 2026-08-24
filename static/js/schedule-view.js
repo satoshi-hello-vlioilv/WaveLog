@@ -3062,6 +3062,28 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const d=SC_COL_MAP.get(k);
   return d?d.w:110;
  }
+ /* ---------- 印刷の「見える範囲の列」（§9.236、利用者の指示「見える範囲の
+    列か、全ての列かを選べるようにして」） ----------
+    `#scTimeline`は横スクロールする器（`.sc-timeline{overflow-x:auto}`）
+    なので、いま画面をスクロールせずに見えている列だけを先頭から数える。
+    **`#scTimeline`の横幅は設備によらない**（ブラウザ窓の大きさで決まる）
+    ので、成り代わり中（`withEquipment`）の他設備でもそのまま使える——
+    毎回この関数を呼び直すだけで、設備ごとに測り直す必要が無い。
+    測れなければ（要素が無い等）**全部の列**を返す（安全側＝§9.235以前と
+    同じ挙動）。 */
+ function visibleColumnKeys(){
+  const keys=printColumnKeys();
+  let limit=0;
+  try{const tl=document.getElementById('scTimeline');limit=tl?tl.clientWidth:0}catch(_){limit=0}
+  if(!limit)return keys.slice();
+  let sum=0;const out=[];
+  for(const k of keys){
+   const w=columnEffWidthPx(k);
+   if(out.length&&sum+w>limit)break;
+   sum+=w;out.push(k);
+  }
+  return out.length?out:keys.slice(0,1);
+ }
  function entryContentText(e){
   if(e.kind!=='作業')return (e.title||(e.kind==='コメント'?'（コメント）':'設備停止')).trim();
 
@@ -6672,6 +6694,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   columnLabelOf:k=>scColLabel(k),
   printRowCells:e=>printRowCells(e),
   columnEffWidthPx:k=>columnEffWidthPx(k),
+  /* 「見える範囲の列」（§9.236）——画面をスクロールせずに見えている列だけ。 */
+  visibleColumnKeys:()=>visibleColumnKeys(),
   /* 子ロット(§9.83)。紙は`entries()`に混ざっている子（`parentId`付き）を
      自分で拾わず、ここから引く——判定を2箇所に持たない。 */
   childrenOf:parentId=>childEntriesByParent().get(parentId)||[],

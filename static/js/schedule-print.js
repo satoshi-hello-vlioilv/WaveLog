@@ -262,9 +262,27 @@
     計算式）をそのまま使う。紙にだけ足すのは**印刷専用の「#」「状態」列**
     （先頭。状態は白黒コピーで色分けが消える分の言い切り）と**記入欄**
     （末尾、§9.191の機能はそのまま）。 */
+ /* ---------- 列の範囲(§9.236、利用者の指示「見える範囲の列か、全ての列かを
+    選べるようにして」) ----------
+    「全ての列」（既定＝§9.235までの挙動）は、画面で表示中のすべての列
+    （横スクロールしないと見えないものも含む）を紙へ出す——列数が多い設備
+    ではどうしても1列が狭くなる。「見える範囲の列」は、いま画面を
+    スクロールせずに見えている列**だけ**を紙にする——列数が絞られるぶん、
+    下のwithMm()が「設定した幅をそのまま使える」場面が増え、画面の見た目に
+    近い、余白のある紙になる。 */
+ const COLUMN_SCOPES=[
+  {key:'all',    label:'すべての列',      note:'横スクロールしないと見えない列も含めて全部載せます（既定）'},
+  {key:'visible',label:'見える範囲の列だけ',note:'いま画面をスクロールせずに見えている列だけを、画面に近い余白で載せます'},
+ ];
+ function columnScopeOf(opt){
+  const k=String(opt&&opt.columnScope||'');
+  return COLUMN_SCOPES.some(s=>s.key===k)?k:'all';
+ }
  function printColumns(opt){
   const view=WL.scheduleView;
-  const keys=(typeof view.printColumnKeys==='function')?view.printColumnKeys():[];
+  const visible=columnScopeOf(opt)==='visible';
+  const keys=visible&&typeof view.visibleColumnKeys==='function'?view.visibleColumnKeys()
+    :(typeof view.printColumnKeys==='function'?view.printColumnKeys():[]);
   const base=[{key:'no',   label:'#', w:30},
               {key:'state',label:'状態',w:50},
               ...keys.map(k=>({key:k,
@@ -274,13 +292,25 @@
   const writeCols=(pat.keys||[]).map(k=>PAPER_WRITE.find(w=>w.key===k)).filter(Boolean);
   return [...base,...writeCols];
  }
- /* 幅(mm)はこの1本で配る。**列の効いているpx幅を比率のまま使う**ので、
-    列を足すほど1列が狭くなるだけで、**紙からはみ出す組み合わせが原理的に
-    作れない**——旧仕組み（固定mmの積み上げ）が必須にしていた「幅の合計と
-    残り」を見せる画面は、この作りではもう要らない。 */
+ /* ---------- 幅(mm)はこの1本で配る(§9.236、利用者の指示「列幅も設定した
+    ものを活かして」) ----------
+    以前は列数に関わらず**必ず用紙の使える幅いっぱいへ比率で伸縮**して
+    いた——列が少ないときも無理に間延びし、画面で決めた幅の「感じ」が
+    紙では消えていた。**まず画面の実効px幅を96dpi(CSSの標準)でmmへ
+    そのまま換算し**、それが用紙に収まるならそのまま使う（設定した幅を
+    活かす）。**収まらないときだけ**、いままでどおり比率で圧縮する
+    （紙からはみ出す組み合わせを原理的に作らない、という既存の保証は
+    そのまま残す）。余った分は表の右の余白になる——伸ばして埋め直さない
+    （§9.115「行の高さは中身で決め、余った下は空けたままにする」と同じ
+    考え方を横方向にも当てる）。 */
+ const MM_PER_PX=25.4/96;
  function withMm(cols,usableMm){
-  const total=cols.reduce((s,c)=>s+(c.w||60),0)||1;
-  return cols.map(c=>({...c,mm:Math.max(4,Math.round(usableMm*(c.w||60)/total*10)/10)}));
+  const natural=cols.map(c=>Math.max(4,(c.w||60)*MM_PER_PX));
+  const total=natural.reduce((s,w)=>s+w,0)||1;
+  if(total<=usableMm)
+   return cols.map((c,i)=>({...c,mm:Math.round(natural[i]*10)/10}));
+  const scale=usableMm/total;
+  return cols.map((c,i)=>({...c,mm:Math.max(4,Math.round(natural[i]*scale*10)/10)}));
  }
 
  /* 記入欄。**空のまま罫線だけ**にする(薄い下線を入れると書きにくい)。 */
@@ -430,7 +460,8 @@
    : page.total;
   const parts=page.parts||1;
   const cont=parts>1?`（${page.part||1}枚目 / 全${parts}枚）`:'';
-  return `<section class="sp-page" data-paper="${esc(opt.paper||'a4-portrait')}">
+  return `<section class="sp-page" data-paper="${esc(opt.paper||'a4-portrait')}"${
+    opt.borders===false?' data-borders="off"':''}>
    <header class="sp-head">
     <div class="sp-head-main">
      <span class="sp-title">作業予定表</span>
@@ -489,11 +520,14 @@
  /* useGroups=画面の「まとめ」を紙にも入れる / commentBox=紙の下に
     申し送りの欄を作る(§9.189、利用者の指示)。includeChildren=分割後の
     子ロットの内訳も載せる(§9.235③)。paper=用紙サイズ・向き(§9.235)。
-    どれも既定は今までの見え方を保つ側（子ロットの内訳とA3は新機能なので
-    既定オフ／A4縦）。 */
+    columnScope=列の範囲(§9.236)。borders=枠線を出すか(§9.236)。
+    どれも既定は今までの見え方を保つ側（子ロットの内訳・A3・見える範囲だけ・
+    枠線なしはどれも新機能なので既定オフ側＝これまでどおり全部の列に
+    枠線を付ける／A4縦）。 */
  const DEFAULTS={includeDone:false,actualColumns:true,pageByDate:true,allEquipment:false,
                  useGroups:true,commentBox:true,writePattern:'actual',
-                 includeChildren:false,paper:'a4-portrait'};
+                 includeChildren:false,paper:'a4-portrait',
+                 columnScope:'all',borders:true};
  function loadPref(){
   try{
    const v={...DEFAULTS,...(JSON.parse(localStorage.getItem(PREF_KEY)||'{}')||{})};
@@ -501,6 +535,8 @@
       意味だったが、紙だけの列選択が無くなったので既定へ倒す。 */
    if(v.writePattern==='custom')v.writePattern='actual';
    if(!PAPER_SIZES.some(p=>p.key===v.paper))v.paper='a4-portrait';
+   if(!COLUMN_SCOPES.some(s=>s.key===v.columnScope))v.columnScope='all';
+   v.borders=v.borders!==false;
    return v;
   }catch(_){return {...DEFAULTS}}
  }
@@ -641,6 +677,12 @@
   const patRows=WRITE_PATTERNS.map(p=>`<label class="sp-pat${cur===p.key?' is-on':''}" title="${esc(p.note)}">
      <input type="radio" name="spWritePattern" value="${p.key}"${cur===p.key?' checked':''}>
      <span><b>${esc(p.label)}</b><small>${esc(p.note)}</small></span></label>`).join('');
+  /* 列の範囲(§9.236、利用者の指示「見える範囲の列か、全ての列かを選べる
+     ように」)。用紙サイズと同じ`.sp-pat`の見せ方を使い回す。 */
+  const scopeCur=columnScopeOf(pref);
+  const scopeRows=COLUMN_SCOPES.map(s=>`<label class="sp-pat${scopeCur===s.key?' is-on':''}" title="${esc(s.note)}">
+     <input type="radio" name="spColumnScope" value="${s.key}"${scopeCur===s.key?' checked':''}>
+     <span><b>${esc(s.label)}</b><small>${esc(s.note)}</small></span></label>`).join('');
   return `<div class="sp-opt-group"><h4>載せるもの</h4>
    ${canAll?cb('allEquipment','すべての設備を続けて印刷する','設備ごとにページを分けます'):''}
    ${cb('includeDone','完了・取消も載せる','ふだんは載せません（これから流すものだけ配るため）')}
@@ -648,6 +690,12 @@
    ${grouped?cb('useGroups',`画面のまとめ（${gm}）で見出しを入れる`,'画面と同じまとまりで区切ります')
             :`<p class="sp-opt-note">画面は「まとめない」なので、紙にも見出しは入りません。</p>`}
    ${cb('pageByDate','日付ごとにページを分ける','日ごとに配る場合はこのまま')}
+  </div>
+  <div class="sp-opt-group"><h4>列の範囲（§9.236）</h4>
+   <div class="sp-pats" id="spColumnScope">${scopeRows}</div>
+  </div>
+  <div class="sp-opt-group"><h4>見た目（§9.236）</h4>
+   ${cb('borders','枠線（グリッド線）を出す','外すと画面のような薄い区切りだけの、さわやかな見た目になります')}
   </div>
   <div class="sp-opt-group"><h4>書き込む欄</h4>
    <div class="sp-pats" id="spWritePatterns">${patRows}</div>
@@ -678,13 +726,23 @@
   box.querySelectorAll('[data-opt]').forEach(inp=>inp.onclick=()=>{
    pv.pref[inp.dataset.opt]=!!inp.checked;savePref(pv.pref);renderPreview();
   });
+  /* 列の範囲(§9.236)。**選んだらその場で刷り上がりが変わる**（同じ作法）。 */
+  box.querySelectorAll('input[name="spColumnScope"]').forEach(inp=>inp.onclick=()=>{
+   pv.pref.columnScope=inp.value;savePref(pv.pref);
+   box.querySelectorAll('#spColumnScope .sp-pat').forEach(l=>l.classList.toggle('is-on',
+     l.querySelector('input')&&l.querySelector('input').value===inp.value));
+   renderPreview();
+  });
   /* 記入欄のパターン(§9.191)。**選んだらその場で刷り上がりが変わる**。 */
   box.querySelectorAll('input[name="spWritePattern"]').forEach(inp=>inp.onclick=()=>{
    pv.pref.writePattern=inp.value;
    /* 古い設定とも辻褄を合わせる（他の画面が actualColumns を見ている）。 */
    pv.pref.actualColumns=inp.value!=='none';
    savePref(pv.pref);
-   box.querySelectorAll('.sp-pat').forEach(l=>l.classList.toggle('is-on',
+   /* **`#spWritePatterns`の中だけ**を見る——`box`には他の`.sp-pat`群
+      （列の範囲。§9.236で増えた）も同居しており、絞らずに探すとそちらの
+      選択表示まで巻き添えで消える。 */
+   box.querySelectorAll('#spWritePatterns .sp-pat').forEach(l=>l.classList.toggle('is-on',
      l.querySelector('input')&&l.querySelector('input').value===inp.value));
    renderPreview();
   });
@@ -788,6 +846,9 @@
                    /* 書き込む欄のパターン(§9.191)。名前と並びは画面の文言と
                       同じものを1箇所から出す（テストも同じ表を見る）。 */
                    writePatterns:()=>WRITE_PATTERNS.map(p=>({...p})),
+                   /* 列の範囲(§9.236)。名前と並びは画面の文言と同じものを
+                      1箇所から出す（テストも同じ表を見る）。 */
+                   columnScopes:()=>COLUMN_SCOPES.map(s=>({...s})),
                    /* プレビューは**中身を見て確かめられる**ようにしておく
                       （テストが「何枚になったか」を画面から読むため）。 */
                    openPreview,closePreview,previewSheets:()=>pv.sheets.slice()};
