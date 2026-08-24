@@ -419,6 +419,101 @@ async function cleanup(){
   rec('計算式がサーバーに残る',
       /ロット番号/.test((s5.formulas||{})['計算テスト']||''),JSON.stringify(s5.formulas));
 
+  /* ---- 13b. 計算式の列にも読み替え（表示ルール）が効く（§9.234 ⑥、利用者の報告
+       「スケジュールのルール作成で、他の列のみで構成されたルールを適用した場合、
+        表示が何も出ません」） ----
+     以前は計算列だけが`WL.cellFormat.cell()`を通っておらず、式の結果を素で
+     埋めていた。そのため読み替えも書式も色も一切乗らず、「他の列だけを見る
+     ルール」で中身を作ろうとすると出るものが何も無かった。
+     **素通り注意**: 「セルに文字がある」だけを見ると、式の結果が出ている
+     だけの現状でも通る。①当たる行はルールの言葉＋色になること
+     ②**当たらない行では式の結果がそのまま出る**こと の両方を見る。 */
+  const RULE='__sctimecols_rule__';
+  await post('/api/display-rule-master',{name:RULE,user_id:'test',rows:[
+   /* 「区分が『完了』の行だけ」——**全行に当たる条件にしない**（当たらない
+      行で式の結果が出ることを確かめられなくなる）。条件は**画面に出ている
+      列の言葉**で書く（仕掛の生カラム名は予定の行に無い）。 */
+   {conditions:[{left:{kind:'column',column:'区分'},op:'eq',right:{kind:'value',value:'完了'}}],
+    text:'★済',color:'ok'}]});
+  /* **`save()`ではなく`patch()`**（§9.212 ②）——`save()`は「全部を送る」口で、
+     キャッシュを渡した内容へ丸ごと差し替えるので、`rules`だけ渡すと
+     `formulas`が消えて計算列が画面から落ちる（実際に落ちた）。 */
+  await page.evaluate(async(o)=>{
+   const {TARGET,RULE}=o;
+   const cur=WL.columnLayout.get(TARGET);
+   await WL.columnLayout.patch(TARGET,{rules:Object.assign({},cur.rules,{'計算テスト':RULE})});
+   WL.displayRules.forget(); await WL.displayRules.load(true);
+   if(WL.scheduleView&&WL.scheduleView.render)WL.scheduleView.render();
+  },{TARGET,RULE});
+  await page.waitForTimeout(1200);
+  const ruled=await page.evaluate(()=>{
+   const cells=[...document.querySelectorAll('.sc-row-line')].map(r=>{
+    const c=r.querySelector('[data-col="計算テスト"]'),cat=r.querySelector('[data-col="__cat__"]');
+    return c?{cat:(cat&&cat.textContent.trim())||'',t:c.textContent.trim(),
+              ok:c.classList.contains('cell-ok'),ti:c.getAttribute('title')||''}:null;
+   }).filter(Boolean);
+   return{当たり:cells.filter(x=>x.cat==='完了'),外れ:cells.filter(x=>x.cat!=='完了').slice(0,3),件数:cells.length};
+  });
+  rec('前提: 当たる行と当たらない行の両方がある（§9.234 ⑥）',
+      ruled.当たり.length>0&&ruled.外れ.length>0,
+      JSON.stringify({当:ruled.当たり.length,外:ruled.外れ.length,計:ruled.件数}));
+  rec('計算式の列にも読み替えが効く（他の列だけの条件でも）',
+      ruled.当たり.every(x=>x.t==='★済'&&x.ok===true),JSON.stringify(ruled.当たり.slice(0,2)));
+  rec('当たらない行は式の結果がそのまま出る（§9.234 ⑥）',
+      ruled.外れ.every(x=>x.t.startsWith('★')&&x.t!=='★済'&&x.ok===false),
+      JSON.stringify(ruled.外れ));
+  rec('置き換わっても元の値（式の結果）はtitleで読める',
+      ruled.当たり.every(x=>x.ti.startsWith('★')&&x.ti!=='★済'),
+      JSON.stringify(ruled.当たり.slice(0,1)));
+
+  /* ---- 13c. 式が空でも「読み替えだけの列」は残る（§9.234 ⑥） ----
+     以前はサーバーが空の計算式をNULLで捨てていたため、式を空にして
+     読み替えだけを付けた列は保存の往復で`formulas`から消え、画面は
+     「知らない列」として並びごと落としていた（＝報告の「何も出ません」）。
+     **空の辞書（＝全部消す）と、キーはあるが値が空（＝式が空の計算列）は別**。 */
+  await page.evaluate(async(o)=>{
+   const {TARGET,RULE}=o;
+   const cur=WL.columnLayout.get(TARGET);
+   await WL.columnLayout.patch(TARGET,{
+    order:[...(cur.order||[]).filter(k=>k!=='ルールだけ'),'ルールだけ'],
+    formulas:Object.assign({},cur.formulas,{'ルールだけ':''}),
+    rules:Object.assign({},cur.rules,{'ルールだけ':RULE}),
+    hidden:(cur.hidden||[]).filter(k=>k!=='ルールだけ')});
+   if(WL.scheduleView&&WL.scheduleView.render)WL.scheduleView.render();
+  },{TARGET,RULE});
+  await page.waitForTimeout(1200);
+  const s6=await saved();
+  rec('式が空でも読み替えだけの列はサーバーに残る（§9.234 ⑥）',
+      Object.prototype.hasOwnProperty.call(s6.formulas||{},'ルールだけ')
+      &&String((s6.formulas||{})['ルールだけ'])==='',JSON.stringify(s6.formulas));
+  const onlyRule=await page.evaluate(()=>{
+   const cells=[...document.querySelectorAll('.sc-row-line')].map(r=>{
+    const c=r.querySelector('[data-col="ルールだけ"]'),cat=r.querySelector('[data-col="__cat__"]');
+    return c?{cat:(cat&&cat.textContent.trim())||'',t:c.textContent.trim(),ok:c.classList.contains('cell-ok')}:null;
+   }).filter(Boolean);
+   return{見出し:!!document.querySelector('.sc-row-head [data-col="ルールだけ"]'),
+     当たり:cells.filter(x=>x.cat==='完了'),外れ:cells.filter(x=>x.cat!=='完了').slice(0,3)};
+  });
+  rec('読み替えだけの列が表に出る（§9.234 ⑥）',onlyRule.見出し===true,String(onlyRule.見出し));
+  rec('読み替えだけの列でも当たった行に中身が出る',
+      onlyRule.当たり.length>0&&onlyRule.当たり.every(x=>x.t==='★済'&&x.ok===true),
+      JSON.stringify(onlyRule.当たり.slice(0,2)));
+  rec('読み替えだけの列は当たらない行では空のまま',
+      onlyRule.外れ.every(x=>x.t===''),JSON.stringify(onlyRule.外れ));
+  /* **後片付け**（§9.121）。足した列とルールを残すと、このあとの列幅の検査で
+     列の合計が器を超えて「空きは右にできる」が成立しなくなる（実際に落ちた）。 */
+  await page.evaluate(async(o)=>{
+   const {TARGET}=o;
+   const cur=WL.columnLayout.get(TARGET);
+   const fx=Object.assign({},cur.formulas);delete fx['ルールだけ'];
+   const rl=Object.assign({},cur.rules);delete rl['ルールだけ'];delete rl['計算テスト'];
+   await WL.columnLayout.patch(TARGET,{
+    order:(cur.order||[]).filter(k=>k!=='ルールだけ'),formulas:fx,rules:rl});
+   if(WL.scheduleView&&WL.scheduleView.render)WL.scheduleView.render();
+  },{TARGET});
+  await page.waitForTimeout(900);
+  try{await post('/api/display-rule-master/delete',{name:RULE,user_id:'test'})}catch(e){}
+
   /* ---- 列幅の合計が器より狭くても、決めた幅がそのまま効く（§9.209 ①） ----
      以前は「伸びる列が1つも無いときは最後の列を`minmax(w,1fr)`にする」と
      していたため、**その列だけ幅を狭められなかった**（器の余りを引き受けて

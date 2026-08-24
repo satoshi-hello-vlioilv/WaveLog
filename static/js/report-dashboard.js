@@ -697,12 +697,24 @@
  /* 1行＝1ブロック。`html(x)`が''を返したら**このロットには中身が無い**。
     紙には出さず、組み換え中だけ「中身なし」と分かる形で置く（黙って消えると
     自分で隠したのかデータが無いのか分からない）。 */
+ /* ---------- エリアの塊（§9.234 ⑤、利用者の指示「ラベル貼り付けエリアと
+    同じタイプのエリア確保だけのタイプで文字を配置できる感じのものを追加
+    してください」） ----------
+    **値を出さず、場所を空けるだけ**の塊（ラベル貼付・手書き・確認印の欄）。
+    組み立ては**ここ1箇所**——既定の塊（ラベル貼付スペース）も、マスタで
+    作った塊も同じ関数を通るので、見え方が2通りにならない。
+    **必ず中身のある器を返す**（`html(x)`が''だと「このロットには中身が無い」
+    と判定されて紙に出ない）。 */
+ function rpAreaHtml(text){
+  const t=String(text||'');
+  return `<div class="rp-area">${t?`<span class="rp-area-text">${esc(t).replace(/\n/g,'<br>')}</span>`:''}</div>`;
+ }
  const RP_BLOCKS=[
   /* **中身が無くても枠として意味がある塊は、既定の高さを持つ**（§9.174）。
      ラベルを貼る場所は「何も書いていないこと」が中身なので、自動高さに
      任せると1行ぶんに潰れて役に立たない（実機で指摘された）。 */
-  {k:'ラベル貼付スペース',span:3,h:112,rows:5,
-   html:()=>`<div class="rp-label-area" aria-hidden="true"><span class="rp-label-caption">ラベル貼付スペース</span></div>`},
+  {k:'ラベル貼付スペース',span:3,h:112,rows:5,area:true,
+   html:()=>rpAreaHtml('ラベル貼付スペース')},
   {k:'基本情報',span:6,html:x=>{const b=x.basic||{};
    return reportSection('基本情報',[['ロット番号',b.lotNo],['検査番号',b.inspectionNo],['鋳造番号',b.castingNo],['オーダー番号',b.orderNo],['引当番号',b.allocationNo],['用途コード',b.purposeCode],['用途名',b.purposeName],['取引先',b.customer],['納入先',b.delivery]])}},
   {k:'コース情報',span:3,html:x=>{const b=x.basic||{};
@@ -764,12 +776,19 @@
   const name=r.name||b.k;
   const fields=(r.contentEditable&&(r.fields||[]).length)?r.fields:null;
   const renamed=name!==b.k;
+  /* **種別が先**（§9.234 ⑤）。マスタで「エリア」にした既定の塊も、
+     コードの側で`area:true`の塊も、同じ`rpAreaHtml()`を通す。
+     ——これでラベル貼付スペースの**改名が紙にも届く**（`rpRetitle()`は
+     `<h3>`を持たない塊に届かないので、以前は名前を変えても紙は元のままだった）。 */
+  const area=(r.kind==='エリア')||b.area===true;
   return Object.assign({},b,{
-   k:b.k,name,master:true,
+   k:b.k,name,master:true,area,
    span:r.span||b.span,rows:r.rows||b.rows||0,
-   html:fields
-     ?(x=>reportSection(name,fields.map(f=>[f.label,rpValueAt(x,f.path)]),r.cols||0))
-     :(x=>{const h=b.html(x);return renamed?rpRetitle(h,name):h})});
+   html:area
+     ?(()=>rpAreaHtml(r.kind==='エリア'&&r.text!=null&&r.text!==''?r.text:name))
+     :(fields
+       ?(x=>reportSection(name,fields.map(f=>[f.label,rpValueAt(x,f.path)]),r.cols||0))
+       :(x=>{const h=b.html(x);return renamed?rpRetitle(h,name):h}))});
  }
  function rpAllBlocks(){
   const code=new Map(RP_BLOCKS.map(b=>[b.k,b]));
@@ -834,8 +853,13 @@
  }
  function rpUserBlockDef(b){
   const fields=b.fields||[];
-  return {k:b.k||b.name,name:b.name,span:b.span||6,rows:b.rows||0,user:true,
-   html:x=>fields.length?reportSection(b.name,fields.map(f=>[f.label,rpValueAt(x,f.path)]),b.cols||0):''};
+  /* エリアの塊（§9.234 ⑤）。**既定の行数はここで与える**——0（中身なり）の
+     ままだと`rpFitRows()`が1行に潰し、場所を空けるという役目を果たせない
+     （§9.174「枠だけの塊は既定の高さを持つ」と同じ理由）。 */
+  const area=b.kind==='エリア';
+  return {k:b.k||b.name,name:b.name,span:b.span||6,rows:b.rows||(area?5:0),user:true,area,
+   html:area?(()=>rpAreaHtml(b.text))
+     :(x=>fields.length?reportSection(b.name,fields.map(f=>[f.label,rpValueAt(x,f.path)]),b.cols||0):'')};
  }
  /* その設備の自作ブロックを読む。**読めなくても帳票は出す**（fail-open）。 */
  async function rpLoadUserBlocks(equipment){
@@ -1194,6 +1218,25 @@
   return RP_FLOWS.some(f=>f.v===v)?v:'';
  }
  const RP_FLOW_CLASS={'':'','縦':'rp-flow-col','幅なり':'rp-flow-fit','高さなり':'rp-flow-tall'};
+ /* ---------- 枠（§9.234 ⑤、利用者の指示「エリアを枠(角丸の枠線)で囲う
+    感じにしたいのでサイズ調整に合うようにカードサイズとほぼ同じ枠を
+    付けたり外したりカスタム機能に追加してください」） ----------
+    **3つの段**（既定／付ける／付けない）を`流:`と同じ`|`区切りの印で持つ
+    （§9.226 ③。`formats`へ文字列を直に書かない＝§9.205）。
+    **既定はエリアの塊だけ枠あり**——いまのラベル貼付スペースの見え方を保つ。
+    枠は`.rp-block`（グリッドの子＝カードそのもの）に描くので、**大きさは
+    常にカードと一致する**（中身側に描くと、中身なりの高さまでしか伸びない）。 */
+ const RP_FRAMES=[
+  {v:'',    label:'既定',    note:'エリアの塊は枠あり、ふつうの塊は枠なしです。'},
+  {v:'あり',label:'付ける',  note:'カードとほぼ同じ大きさの角丸の枠で囲みます。'},
+  {v:'なし',label:'付けない',note:'枠を出しません（中身だけを置きます）。'},
+ ];
+ function rpFramed(k){
+  const v=rpToken(k,'枠:');
+  if(v==='あり')return true;
+  if(v==='なし')return false;
+  return !!(rpBlockOf(k)||{}).area;
+ }
  /* 帳票本体のHTML生成。一括印刷（複数ロットをまとめて別ページへ流し込む）でも
     同じHTMLを使うため、単一プレビューへの書き込みとは分離してある。
     `arranging`が真のときだけ、ブロックごとの操作帯を差し込む——**紙には
@@ -1274,7 +1317,11 @@
    /* 中のデータの並べ方（§9.226 ③）。**紙でも同じ**なので、組み換え中か
       どうかに関わらず当てる（刷り上がりと違う姿を見せない）。 */
    const flow=RP_FLOW_CLASS[rpFlow(k)]||'';
+   /* 枠（§9.234 ⑤）。**紙も画面も同じ組み立てを通る**ので、刷り上がりと
+      組み換え中の姿が食い違わない。 */
+   const framed=rpFramed(k),isArea=!!bl.area;
    return `<div class="rp-block${body?'':' is-empty'}${at?' is-placed':''}${ov?' is-overlap':''}`
+    +`${framed?' is-framed':''}${isArea?' is-area':''}`
     +`${flow?' '+flow:''}" data-rp-block="${esc(k)}"`
     +` style="${place}"`
     +`${(arranging&&!paper)?' draggable="true"':''}>`
@@ -1606,12 +1653,19 @@
        <input type="number" data-e-col="${esc(c.n)}" value="${rpColWidth(k,c.n)||''}" placeholder="自動" min="${RP_H_MIN}" max="${RP_H_MAX}" step="4"></label>`).join('')}
      <button type="button" data-e-colreset>全部オートフィットへ</button>
      <i class="rp-form-note">空欄＝オートフィット（中身なり）。入れた列だけ固定します。</i></span></div>`:''}
-   <div class="rp-form-row"><span class="rp-form-label">中の並べ方</span>
+   ${bl.area?'':`<div class="rp-form-row"><span class="rp-form-label">中の並べ方</span>
     <span class="rp-form-ctl">
      ${RP_FLOWS.map(f=>`<button type="button" data-e-flow="${esc(f.v)}" class="${f.v===rpFlow(k)?'is-on':''}"`
        +` title="${esc(String(f.note).replace(/<[^>]+>/g,''))}">${esc(f.label)}</button>`).join('')}
      <i class="rp-form-note">${(RP_FLOWS.find(f=>f.v===rpFlow(k))||RP_FLOWS[0]).note}
       ${rpFlow(k)==='高さなり'&&!rpRows(k)?'<b>いまは高さが「中身なり」なので1列のままです。</b>上の「高さ」で行数を決めてください。':''}</i>
+    </span></div>`}
+   <div class="rp-form-row"><span class="rp-form-label">枠</span>
+    <span class="rp-form-ctl">
+     ${RP_FRAMES.map(f=>`<button type="button" data-e-frame="${esc(f.v)}" class="${f.v===rpToken(k,'枠:')?'is-on':''}"`
+       +` title="${esc(String(f.note).replace(/<[^>]+>/g,''))}">${esc(f.label)}</button>`).join('')}
+     <i class="rp-form-note">${(RP_FRAMES.find(f=>f.v===rpToken(k,'枠:'))||RP_FRAMES[0]).note}
+      いまは<b>${rpFramed(k)?'枠あり':'枠なし'}</b>です。枠はカードそのものに描くので、幅や高さを変えると枠も一緒に変わります。</i>
     </span></div>
    ${split?`<div class="rp-form-row"><span class="rp-form-label">まとめ</span>
     <span class="rp-form-ctl">${split}
@@ -1656,6 +1710,13 @@
   });
   form.querySelectorAll('[data-e-flow]').forEach(b=>b.onclick=()=>{
    rpStage({formats:rpTokenPatch(k,'流:',b.dataset.eFlow)});renderBlockEditor();
+  });
+  /* 枠（§9.234 ⑤）。**`rpTokenPatch`を必ず通す**——`formats[k]`へ文字列を
+     直に書くと`normalize_format()`が辞書以外をNoneへ落とし、**保存だけが
+     黙って消える**（§9.205）。まるごと書かないので、転置・並べ方・
+     丈別データの印は残る（§9.226 ③）。 */
+  form.querySelectorAll('[data-e-frame]').forEach(b=>b.onclick=()=>{
+   rpStage({formats:rpTokenPatch(k,'枠:',b.dataset.eFrame)});renderBlockEditor();
   });
   /* 浮き帯から移してきた操作（§9.226 ③）。**当て方は元のまま**——判定が
      2つに分かれないよう、同じ`rpStage`の書き方を使う。 */

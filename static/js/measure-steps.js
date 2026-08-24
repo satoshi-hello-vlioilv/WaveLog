@@ -60,43 +60,37 @@
 
  /* ---------- 段の状態 ----------
     **色だけで伝えない。** 必ず文字（済／未／件数）を出す。 */
- function stepStates(){
+ /* `prog`は呼ぶ側が1回だけ引いて渡す（`paint()`が段3の`title`にも同じ
+    一覧を使う。2度引くと片方だけ直した状態が作れる）。省略時は自分で引く。 */
+ function stepStates(prog){
   const m=measuring()?S.measure:null;
   const started=!!(m&&m.workTime&&m.workTime.startAt);
   const ended=!!(m&&m.workTime&&m.workTime.endAt);
-  let prog=null;
-  try{if(typeof measureProgress==='function')prog=measureProgress()}catch(e){}
+  if(prog===undefined){prog=null;
+   try{if(typeof measureProgress==='function')prog=measureProgress()}catch(e){}}
   const rest=prog?prog.unmeasured.length:null;
   return {
    '1':started?'開始 済':'開始 未',
    '2':prog?`${prog.doneCount}/${prog.activeCount} 項目`:'—',
-   '3':ended?'終了 済':(rest===null?'—':(rest?`残り ${rest}項目`:'確認できます')),
+   /* **残件数を先に言う**（§9.234 ④）。以前は`終了 済`が勝っていたため、
+      作業終了を打刻したあとに未測定が残っている場面を言えるのは帯の
+      「未測定 N項目」だけだった。帯を廃止したのでここが引き受ける。 */
+   '3':rest?`残り ${rest}項目`:(ended?'終了 済':(rest===null?'—':'確認できます')),
   };
  }
 
- /* 進めない理由。**言えることがあるときだけ出す**（常設の注意書きは読まれない）。
-    帯は1本しかなく、右の文脈（ロット・製品・測定表の形・判定公差）と場所を
-    分け合う。**ここへ項目名を並べると文脈のほうが潰れて見切れる**（実機で
-    「未測定が 9項目あります（母材/丈毎・板厚 ほか）。」が載った
-    ときに報告された）。**どの項目かは③の確認表が1行ずつ出している**ので、
-    ここは件数だけにして、名前は`title`へ回す（§CLAUDE.md 同じ情報を2箇所に
-    出さない）。 */
- function noteFor(step){
-  if(!measuring())return null;
-  /* **母材の手入力の案内は帯へ出さない**（§9.233 ③、利用者の報告「母材の
-     時だけ…ロット情報が見切れている」）。帯は段ナビ・案内・文脈（ロット・
-     製品・測定表の形・判定公差）が場所を分け合う1本しかなく、152pxの案内が
-     入るとロット情報が押されて全部が切れていた（実測: 1366pxで4項目とも
-     33〜70px切れ、しかも案内そのものも32pxまで潰れて読めない）。
-     **入れる場所のすぐ上へ出す**（`MATERIAL_NOTE`／`paintMaterialNote()`）。 */
-  if(step==='3'){
-   let prog=null;try{if(typeof measureProgress==='function')prog=measureProgress()}catch(e){}
-   if(prog&&prog.unmeasured.length)
-    return {text:`未測定 ${prog.unmeasured.length}項目`,
-            title:'未測定: '+prog.unmeasured.map(x=>x.name).join('・')};
-  }
-  return null;
- }
+ /* ---------- 帯の「未測定 N項目」は廃止した（§9.234 ④、利用者の指示
+       「確認して完了のタブの横に出るオレンジ系の文字の情報が冗長で、
+        出たときにロット情報が見切れる」） ----------
+    出していたのは`未測定 ${n}項目`の1本だけで、その`n`は隣の段3の状態
+    （`残り ${n}項目`）と**同じ`measureProgress().unmeasured.length`**だった
+    ——同じ数字を10px離して2度出していた（§CLAUDE 8／§9.129）。しかも器は
+    `padding:0 16px`込みで1366px以下では32px＝**1文字も出ていなかった**
+    （広い窓では冗長・狭い窓では読めない）。
+    **どの項目かは③の確認表が1行ずつ出している**ので情報は失われない。
+    加えて段3のボタンの`title`にも名前を入れる（幅を1pxも使わない）。
+    **跡地へ新しい常設の一言を置かないこと**——母材の案内をここへ出して
+    同じ見切れを起こした前科がある（§9.233 ③）。 */
 
  /* **選ばれた値の使用回数を数える**(§9.133)。オペレータは実データで171人
     おり、五十音順のままでは「いつもの人」を毎回探すことになる。設備ごとに
@@ -254,7 +248,12 @@
  function paint(){
   const el=shell();if(!el)return;
   try{openInfoWall();openRecordWall()}catch(e){}
-  const states=stepStates();
+  /* 未測定の一覧は**同じ材料を1回だけ**引いて、状態の文字（`stepStates`）と
+     段3の`title`の両方へ渡す（2度計算すると片方だけ直した状態が作れる）。 */
+  let prog=null;
+  try{if(measuring()&&typeof measureProgress==='function')prog=measureProgress()}catch(e){}
+  const states=stepStates(prog);
+  const rest=prog?prog.unmeasured:null;
   STEP_KEYS.forEach(k=>{
    const btn=document.querySelector(`.mstep[data-mstep="${k}"]`);
    if(btn){
@@ -263,14 +262,13 @@
    }
    const st=document.getElementById('mstepState'+k);
    if(st)st.textContent=states[k]||'';
+   /* 未測定の**項目名**は幅を1pxも使わずに読めるようにする（§9.234 ④）。
+      件数は状態の文字（`残り N項目`）が出しているので、ここは名前だけ。 */
+   if(btn&&k==='3'){
+    const names=(rest&&rest.length)?'未測定: '+rest.map(x=>x.name).join('・'):'';
+    if(names)btn.title=names;else btn.removeAttribute('title');
+   }
   });
-  const note=document.getElementById('mstepNote');
-  if(note){
-   const n=noteFor(current);
-   note.textContent=n?n.text:'';
-   if(n&&n.title)note.title=n.title;else note.removeAttribute('title');
-   note.hidden=!n;
-  }
   fillContext();
   paintMaterialNote();
   try{fitLengthList()}catch(e){}

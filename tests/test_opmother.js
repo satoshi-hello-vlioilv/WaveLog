@@ -131,6 +131,21 @@ let b=null;
   /* ==========================================================
      3) 測定画面: 群の見出し＋マスタの名前で組む
      ========================================================== */
+  /* ---------- マスタの到着を必ず「後」にする（§9.234 ⑧、§9.200） ----------
+     測定を開く経路は`WL.opData.refresh()`を投げっぱなしで走らせ、進捗の
+     チップは同じタスクで積んだ`requestAnimationFrame`が塗る。**どちらが先に
+     着くかは決まっていない**ので、素のままだとマスタが先に着いた回だけ
+     「直っていなくても通る」網になる（実際に、直す前でも単体では通っていた）。
+     **遅らせるのは「先に取ってから届けるまで」**——`route.continue()`の前で
+     待つとサーバーへ届くのが後になり、競合そのものが起きない（§9.200で
+     一度踏んだ罠）。これで受け皿（8欄）の絵が必ず先に出るので、
+     「割り付けの最後に塗り直す」が無ければ下の断定は必ず落ちる。 */
+  await page.route('**/api/operation-form*',async route=>{
+   const res=await route.fetch();
+   const body=await res.text();
+   await new Promise(r=>setTimeout(r,350));
+   await route.fulfill({response:res,body});
+  });
   const openMeasure=async()=>{
    await page.goto(B+'/',{waitUntil:'domcontentloaded'});
    await page.waitForSelector('#openSchedule',{timeout:25000});
@@ -148,7 +163,16 @@ let b=null;
    await page.waitForFunction(()=>!document.querySelector('#measureModal')?.hidden,null,{timeout:25000});
    await page.waitForFunction(()=>typeof S!=='undefined'&&!!S.measure,null,{timeout:25000});
    await page.evaluate(()=>WL.measureSteps.go(2));
-   await page.waitForTimeout(900);
+   /* **時間でなく条件で待つ**（§9.102）。操業データのマスタ
+      （`/api/operation-form`）は`WL.opData.refresh()`が**投げっぱなし**で
+      取りに行くので、固定待ちだと「まだ届いていない画面」を測ることになる
+      ——実際、進捗の分母が受け皿の8欄のままの状態を測って通っていた
+      （§9.234 ⑧）。`motherKeys()`が答えられる＝`defs`が入った、が条件。 */
+   await page.waitForFunction(
+     ()=>!!(window.WL&&WL.opData&&WL.opData.motherKeys&&WL.opData.motherKeys()),
+     null,{timeout:20000});
+   /* 割り付け（`layout()`→`apply()`）が終わって進捗が塗り直るまで1フレーム。 */
+   await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
   };
   await openMeasure();
   const shown=()=>page.evaluate(()=>{
@@ -233,6 +257,25 @@ let b=null;
   const before=await total();
   rec('前提: 母材の進捗が「済んだ数／全部の数」で出ている',
       before.分母!==null,JSON.stringify(before));
+  /* **「呼ばれること」を見る。「公開されていること」ではない**（§9.234 ⑧）。
+     `window.refreshMeasureProgress`は`measure-progress.js`が無条件に公開して
+     いるので、存在を見るだけの網は**不具合があっても通る**。割り付け
+     （`WL.opData.layout()`）が実際に呼ぶかどうかを数える。 */
+  const called=await page.evaluate(async()=>{
+   const org=window.refreshMeasureProgress;
+   let n=0;
+   window.refreshMeasureProgress=function(){n++;return org.apply(this,arguments)};
+   try{WL.opData.layout()}finally{window.refreshMeasureProgress=org}
+   return n;
+  });
+  rec('割り付けの最後に進捗を塗り直す（無いと分母が古いまま残る）',called>0,String(called));
+  /* **分母は「鍵＋丈の数」ちょうど**（§9.234 ⑧）。`分母>=鍵`では丈が必ず1本
+     以上あるので**常に真＝何も確かめていない**（実際にそう書いて素通りした）。
+     受け皿（`MOTHER_FIELDS_FALLBACK`）は8欄で、いま有効な欄も8欄なので、
+     **全部有効なうちは古い値と新しい値が区別できない**——だから等式で締める。 */
+  const vertical=await page.evaluate(()=>Number((S.measure&&S.measure.settings&&S.measure.settings.verticalCount)||1));
+  rec('前提: 分母は「母材の欄数＋丈の数」ちょうど',
+      before.分母===before.鍵+vertical,JSON.stringify({...before,丈:vertical}));
 
   await saveItem({...target,name:'全長'+TAG,enabled:false});
   await openMeasure();

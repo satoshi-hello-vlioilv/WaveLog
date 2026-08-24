@@ -586,6 +586,62 @@ let b=null;
   rec('群ごと動いても帯の下に札が付いてくる',after4.塊===true,JSON.stringify(after4));
   /* 後始末は`finally`がAPIで戻す（画面越しに戻さない）。 */
 
+  /* ==========================================================
+     N) 値が「この画面の外から」入る欄を配色で見分けられる（§9.234 ⑦、
+        利用者の指示「操業データ項目の項目カード自体に自動に入力される
+        ものについては配色してほしいです」）
+     ========================================================== */
+  /* **色は「変えたら変わること」で見る**——16進を期待値に直書きすると、
+     トークンを直した瞬間に落ちる網になる。読むのは`requestAnimationFrame`
+     2回のあと（面には遷移が掛かる箇所があり、押した直後は途中の値が返る）。 */
+  await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+  const autoTiles=await page.evaluate(()=>{
+   const bg=el=>el?getComputedStyle(el).backgroundColor:'';
+   const one=sel=>document.querySelector(sel);
+   const plain=[...document.querySelectorAll('.op-tile:not([data-op-auto]):not(.is-pad):not(.is-off)')][0];
+   const c=one('.op-tile[data-op-auto="computed"]'),p=one('.op-tile[data-op-auto="preset"]');
+   const chipOf=el=>{const b=el&&el.querySelector('.op-chip-auto');return b?b.textContent.trim():''};
+   const leg=one('.op-auto-legend');
+   return{自動:!!c,仕掛:!!p,素:!!plain,
+     色:{自動:bg(c),仕掛:bg(p),素:bg(plain)},
+     文字:{自動:chipOf(c),仕掛:chipOf(p)},
+     凡例:leg?leg.textContent.replace(/\s+/g,' ').trim():''};
+  });
+  /* **前提を先に固定する**——0枚なら以降は何も確かめていない。 */
+  rec('前提: 盤に「自動」と「仕掛から」のカードがある（§9.234 ⑦）',
+      autoTiles.自動&&autoTiles.仕掛&&autoTiles.素,JSON.stringify({...autoTiles.色}));
+  /* **3値を突き合わせる**——片方だけ塗る欠陥は2値の網では素通りする。 */
+  rec('自動で入る欄はカードの地が変わる',
+      autoTiles.色.自動&&autoTiles.色.自動!==autoTiles.色.素,JSON.stringify(autoTiles.色));
+  rec('仕掛から入る欄も地が変わり、自動とも別の段',
+      autoTiles.色.仕掛&&autoTiles.色.仕掛!==autoTiles.色.素
+      &&autoTiles.色.仕掛!==autoTiles.色.自動,JSON.stringify(autoTiles.色));
+  /* **色だけで伝えない**（§CLAUDE 3）。 */
+  rec('色だけで伝えない（カードに分類の文字が出る）',
+      /自動/.test(autoTiles.文字.自動)&&/仕掛/.test(autoTiles.文字.仕掛),
+      JSON.stringify(autoTiles.文字));
+  rec('盤の頭に分類名と件数が文字で出る（§9.105）',
+      /自動\s*\d+件/.test(autoTiles.凡例)&&/仕掛から\s*\d+件/.test(autoTiles.凡例),
+      autoTiles.凡例.slice(0,120));
+  /* **境目を固定する**——マスタで決めた`[初期値]`は「設定」であって「連携」
+     ではない。これを見ないと「全部塗る」実装が通る。 */
+  {
+   const r=await (await post('/api/operation-item-master',
+     {equipment:EQ,group:TAG,name:TAG+' 初期値だけ',type:'文字',initial:'あ',user_id:'tests'})).json();
+   if(r&&r.id)madeIds.push(r.id);
+   await page.click('#masterMaintNav [data-master="opItem"]');
+   await page.waitForSelector('.op-board',{timeout:20000});
+   await page.waitForTimeout(900);
+   const marked=await page.evaluate(n=>{
+    const t=[...document.querySelectorAll('.op-tile')].find(e=>e.textContent.indexOf(n)>=0);
+    return t?{見つかった:true,印:t.getAttribute('data-op-auto')||'',
+      初期:!!t.querySelector('.op-chip-initial')}:{見つかった:false};
+   },TAG+' 初期値だけ');
+   rec('前提: 初期値だけの項目が盤に出ている',marked.見つかった===true,JSON.stringify(marked));
+   rec('マスタで決めた初期値は配色しない（§9.234 ⑦）',
+       marked.印===''&&marked.初期===true,JSON.stringify(marked));
+  }
+
   /* ---- 測定画面: 「空き」の文字がどこにも出ない ---- */
   await page.evaluate(()=>{const m=document.getElementById('masterMaintModal');if(m)m.hidden=true});
   await page.evaluate(e=>localStorage.setItem('AccessMeasurementConfiguredEquipment',e),EQ);

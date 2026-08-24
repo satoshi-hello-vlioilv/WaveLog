@@ -2838,7 +2838,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     **表示だけの列**で、並べ替え・絞り込みの対象にはしない。 */
  /* **式が空の列も数える**（一覧の`listColumnKeys()`と同じ作法）。作った
     直後は式が空なので、ここで落とすと**足した列がその場で消える**。
-    空のまま保存すればサーバー側で行ごと消える（パネルがそう書いている）。 */
+    **式が空でも読み替えを付けていれば列は残る**（§9.234 ⑥）——「他の列だけを
+    見るルール」で中身を作る列がそれ。式も読み替えも空なら保存で消える。 */
  function timelineFormulaKeys(){
   const t=timelineTarget();if(!t)return [];
   return Object.keys(WL.columnLayout.get(t).formulas||{});
@@ -2887,6 +2888,60 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const v=fn?fn.run(timelineFormulaRow(e,fn.columns)):null;
   return v===null||v===undefined?'':String(v);
  }
+ /* ---------- 読み替えが見る1行（§9.234 ⑥、利用者の報告） ----------
+    「スケジュールのルール作成で、**他の列のみで構成されたルールを適用した
+     場合、表示が何も出ません**」
+
+    読み替え（表示ルール）の条件は`self`（この列）と`column`（他の列）の
+    2種類を取れるが、スケジュール表が渡していた行は`entryRow(e)`＝仕掛の
+    スナップショット（`detail`）＋クエリ結合（`joined`）だけで、**画面に
+    出ている列（区分・日付・時刻・見積・他の計算列・内容項目の見出しの
+    言葉）が1つも入っていなかった**。ルール編集画面が候補に出す名前も
+    仕掛一覧の生カラム名なので、そこから選んだ「他の列」は**構造的に
+    当たらない**——だから「他の列のみ」で中身を作ろうとすると空になる。
+
+    **土台の`entryRow(e)`は必ず残す**（保存済みのルールは仕掛のキーで
+    書かれている。上書きすると今まで当たっていたルールが黙って別の値を
+    見る）。その上に、**いま効いているルールが実際に参照している列だけ**を
+    足す——行ごとに全列ぶん作ると、200行の設備で目に見えて遅くなる
+    （§9.224で踏んだ罠）。
+    キーは**キーそのものと見出しの言葉の両方**（利用者は画面に出ている
+    言葉で書く。式（§9.207の`timelineKeyByName`）と同じ約束）。 */
+ let scRuleColMemo={sig:'',cols:[]};
+ function timelineRuleColumns(){
+  const t=timelineTarget();
+  const keys=timelineColumnKeys();
+  const rules={};
+  keys.forEach(k=>{const n=t?WL.columnLayout.rule(t,k):'';if(n)rules[k]=n});
+  const rev=(WL.displayRules&&WL.displayRules.rev)?WL.displayRules.rev():0;
+  const sig=t+'|'+JSON.stringify(rules)+'|'+rev;
+  if(scRuleColMemo.sig===sig)return scRuleColMemo.cols;
+  const want=new Set();
+  Object.values(rules).forEach(name=>{
+   let used=[];
+   try{used=(WL.displayRules&&WL.displayRules.columnsUsed)?WL.displayRules.columnsUsed(name):[]}catch(err){used=[]}
+   used.forEach(c=>want.add(String(c)));
+  });
+  scRuleColMemo={sig,cols:[...want]};
+  return scRuleColMemo.cols;
+ }
+ function timelineRuleRow(e){
+  const base=entryRow(e);
+  const cols=timelineRuleColumns();
+  if(!cols.length)return base;
+  const row=Object.assign({},base);
+  const fx=timelineFormulaFns();
+  cols.forEach(name=>{
+   const k=timelineKeyByName(name);
+   if(!k)return;
+   const v=scIsFixedCol(k)?scFixedCellText(e,k)
+     :(fx.has(k)?timelineFormulaText(e,fx.get(k)):entryValueOf(e,k));
+   /* **土台のキーは上書きしない**（既存のルールの当たり方を変えない）。 */
+   if(!(name in base))row[name]=v;
+   if(!(k in base))row[k]=v;
+  });
+  return row;
+ }
  /* 覚えている並びを当てた全列（隠しているものも残す）。保存するのは
     **この並び**——見えている分だけ保存すると、隠した列の位置が失われる。 */
  function timelineOrderedKeys(){
@@ -2917,7 +2972,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    const title=(e.title||(e.kind==='コメント'?'（ダブルクリックで書けます）':'設備停止')).trim();
    return keys.map((k,i)=>({key:k,text:i===0?title:'',raw:i===0?title:'',color:''}));
   }
-  const row=entryRow(e);
+  /* 読み替えが見る行は`timelineRuleRow()`の1箇所が作る（§9.234 ⑥）。
+     **1行につき1回**——列ごとに作ると行数×列数になる。 */
+  const row=timelineRuleRow(e);
   return keys.map(k=>{
    const raw=entryValueOf(e,k);
    const out=WL.cellFormat.cell({raw,format:t?WL.columnLayout.format(t,k):null,
@@ -4361,6 +4418,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    const lotText=entryContentText(e);      // ツールチップ・帳票用の1行要約
    const contentCells=timelineContentCells(e);
    const formulaFns=timelineFormulaFns();      /* 計算で作る列(§9.207)。控えつき */
+   /* 読み替えが見る行と対象は**1行につき1回**作る（§9.234 ⑥）。 */
+   const ruleRow=timelineRuleRow(e),calcTarget=timelineTarget();
    /* **「誰が・どの端末で」は常に詳細へ入れる**(§9.180)。これにより
       すべての行に詳細(▾)が付く——監査の情報は行を選ばず必要になる。 */
    const detailHtml=fixedStartHtml(e)+estimateBreakdownHtml(e)+auditHtml(e);
@@ -4423,10 +4482,22 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      return `<span class="sc-row-audit" data-col="${esc(k)}" title="${esc(v)}">${esc(v)}</span>`;
     }
     /* 計算で作る列（§9.207）。**設備停止・コメントの行でも同じ式を当てる**
-       ——行ごとに材料が無ければ式の中で空になるだけで、列がずれない。 */
-    if(formulaFns.has(k)){
-     const v=timelineFormulaText(e,formulaFns.get(k));   /* §9.207 */
-     return `<span class="sc-row-title sc-row-calc" data-col="${esc(k)}" title="${esc(v)}">${esc(v)}</span>`;
+       ——行ごとに材料が無ければ式の中で空になるだけで、列がずれない。
+       **一覧と同じ`WL.cellFormat.cell()`を通す**（§9.234 ⑥）——以前は式の
+       結果を素で埋めていたので、計算列にだけ読み替えも書式も色も乗らず、
+       「他の列のみのルール」を当てても何も出なかった。一覧側
+       （`list-view.js`の`rawVal=calc?calc.run(r):r[c]`）と同じ形＝
+       **式の結果が「生の値」で、その上に読み替え→書式**（矛盾しない答えは
+       この1本だけ。列ごとに「ルール優先／式優先」を選ばせない）。
+       式が空の列（＝読み替えだけで中身を作る列）もここで受ける。 */
+    if(formulaFns.has(k)||timelineIsFormulaKey(k)){
+     const raw=formulaFns.has(k)?timelineFormulaText(e,formulaFns.get(k)):'';
+     const out=WL.cellFormat.cell({raw,format:calcTarget?WL.columnLayout.format(calcTarget,k):null,
+                                   rule:calcTarget?WL.columnLayout.rule(calcTarget,k):'',
+                                   row:ruleRow,column:k});
+     /* **元の値（式の結果）は`title`に残す**——読み替えで置き換わったことが
+        読める（§9.94「切れたセルには生の値の`title`」と同じ約束）。 */
+     return `<span class="sc-row-title sc-row-calc${out.color?' cell-'+out.color:''}" data-col="${esc(k)}" title="${esc(raw||out.text)}">${esc(out.text)}</span>`;
     }
     const c=contentMap.get(k);
     return c?`<span class="sc-row-title${c.color?' cell-'+c.color:''}" data-col="${esc(k)}" data-content-col="${esc(k)}" title="${esc(c.raw||c.text)}">${esc(c.text)}</span>`
@@ -6148,6 +6219,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    /* 式へ渡す1行（§9.207）。予定の行は`{列名:値}`ではないので、
       **見出しの言葉で書けるように**ここで組み立て直す。 */
    formulaRowOf:(row,cols)=>timelineFormulaRow(row,cols),
+   /* 読み替えが見る1行（§9.234 ⑥）。**表と設定パネルと「試してみる」が
+      同じ行を見る**ことが要件（§9.176「見本も同じ関数を通す」）——別の行で
+      評価すると、画面では当たるのに実表示は空、という食い違いが起きる。 */
+   ruleRowOf:row=>timelineRuleRow(row),
    valueOf:(row,k)=>{
     /* 計算で作る列は**式を当てた結果**を見せる（§9.207）。生の値は無いので、
        ここを素通しにすると設定画面だけ「値のある行がありません」と出る

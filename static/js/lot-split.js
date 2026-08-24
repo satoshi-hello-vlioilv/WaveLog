@@ -672,8 +672,10 @@
     const box=document.querySelector('#splitCard .split-visual');
     /* **できないことは書かない**（§4）。並べ替えられないので、案内も
        「1つ戻す／初めから」も出さない。 */
-    const hint=$('#splitVisualHint');
-    if(hint)hint.textContent='帯の幅は母材幅の比率。条を押すと番号と幅を確かめられます。両端の OS＝オペレータ側／DS＝駆動側。';
+    /* **案内は器に入るぶんだけ出し、全文は`title`で読ませる**（§9.234 ①）。
+       この行はボタンと場所を分け合うので、文が長いと折り返して行が増える。 */
+    const hint=$('#splitVisualHint'),selfHint='帯の幅は母材幅の比率。条を押すと番号と幅を確かめられます。両端の OS＝オペレータ側／DS＝駆動側。';
+    if(hint){hint.textContent=selfHint;hint.title=selfHint}
     ['#undoSplit','#resetSplit'].forEach(sel=>{const el=$(sel);if(el&&el.hidden!==true)el.hidden=true});
     const rows=selfSplitRows();
     const total=rows.reduce((a,x)=>a+x.count,0);
@@ -944,7 +946,7 @@
     const el=$('#splitVisualDetail'),hint=$('#splitVisualHint');
     if(!el)return;
     const t=String(text||'');
-    if(el.textContent!==t)el.textContent=t;
+    if(el.textContent!==t){el.textContent=t;el.title=t}
     if(el.hidden!==!t)el.hidden=!t;
     if(hint&&hint.hidden!==!!t)hint.hidden=!!t;
   }
@@ -1056,9 +1058,14 @@
       /* 欠陥の掛かる条（§9.226 ②）。**色だけで伝えない**ので、印の文字と
          `title`の理由を必ず添える（§3）。ダブルクリックで判定の窓へ。 */
       const bad=hit.has(i);
+      /* **両方の書き方を置いて、あとでまとめて選ぶ**（§9.213のラベルと同じ）。
+         狭い条では`異常`が入らず`異`だけが残って読めなくなっていた
+         （§9.234 ①、利用者の報告「異常位置の図の表示のラベルが別の表示と
+         重なる」）。`fitStripLabels()`が「異常 → ! → 出さない」を決める。 */
       const flag=bad?`<b class="svb-defect" data-defect-flag="1"`
         +` title="異常位置判定でこの条に掛かっています${dm.memo?`（${esc(dm.memo)}）`:''}`
-        +`／ダブルクリックで異常位置判定を開きます">異常</b>`:'';
+        +`／ダブルクリックで異常位置判定を開きます">`
+        +`<span class="svb-defect-full">異常</span><span class="svb-defect-mark">!</span></b>`:'';
       html+=`<div class="split-visual-block${lot?'':' empty'}${i===selectedStrip?' is-selected':''}${bad?' is-defect':''}" data-start="${i}" data-end="${i}" data-lot="${lot?esc(lot):''}"${lot?` data-wkey="${esc(wkey)}"`:''} style="left:${left}%;width:${width}%;--split-block-bg:${bg}" title="${fullLabel} ／ ${i+1}条目${hasWidth?` ／ 幅${widthText}`:''}${tolText?` ／ ${tolText}`:''}${bad?' ／ 異常位置判定に該当':''}">${cellLabel}${flag}</div>`;
     }
     html+='<div class="split-visual-ghost" id="splitVisualGhost" hidden></div></div>';
@@ -1144,6 +1151,42 @@
         el.classList.toggle('label-none',level==='none');
       }
     }
+    fitDefectFlags(strip);
+  }
+  /* 異常の印も「異常 → ! → 出さない」の3段（§9.234 ①）。**いちばん狭い
+     該当条で決める**——広いほうで決めると狭い1本だけが切れる（§9.210 ④と
+     同じ理由）。**該当条は幅がまちまちでも同じ見せ方**にする：出たり出な
+     かったりが図の中で混ざると、何か違いがあるのかと読み手が数え直す。
+     出さない段でも、条の赤い縁と帯のチップ（異常 N条）が「異常がある」ことを
+     文字で言っているので、読む手立ては残る（§3）。 */
+  function fitDefectFlags(strip){
+    const flags=[...strip.querySelectorAll('.split-visual-block .svb-defect')]
+      .filter(f=>f.closest('.split-visual-block'));
+    if(!flags.length)return;
+    /* **測るのは印そのもの**（中の文字ではない）。`.svb-defect`は
+       `max-width:100%`＋`overflow:hidden`なので、中の`<span>`を`display:block`
+       にして測ると**親の幅に切り詰められた値**が返る（実測22pxのはずが10.7px
+       で、いつまでも「入る」と判定されていた）。測るあいだだけ`max-width`を
+       外し、段ごとに器の外寸を測る。 */
+    let room=Infinity,full=0,mark=0;
+    for(const f of flags){
+      f.closest('.split-visual-block').classList.remove('defect-mark','defect-none');
+      f.classList.add('is-measuring');
+    }
+    for(const f of flags){
+      room=Math.min(room,f.closest('.split-visual-block').getBoundingClientRect().width);
+      full=Math.max(full,f.getBoundingClientRect().width);
+    }
+    for(const f of flags)f.classList.add('measure-mark');
+    for(const f of flags)mark=Math.max(mark,f.getBoundingClientRect().width);
+    for(const f of flags)f.classList.remove('is-measuring','measure-mark');
+    if(!Number.isFinite(room)||room<1)return;   /* 幅0のときは触らない */
+    const level=room>=full?'full':room>=mark?'mark':'none';
+    for(const f of flags){
+      const blk=f.closest('.split-visual-block');
+      blk.classList.toggle('defect-mark',level==='mark');
+      blk.classList.toggle('defect-none',level==='none');
+    }
   }
   /* 選んだ条の1行。ロット番号・幅・公差は帯の`title`と同じ材料だが、
      **マウスを載せなくても読める場所**が要る（触った結果を画面に返す）。 */
@@ -1218,6 +1261,17 @@
       });
     }
     ruler.innerHTML=html;
+    /* 目盛りの数字の置き場（`.split-visual-tick-label{top:-15px}`）は、
+       **数字があるときだけ空ける**（§9.234 ①）。母材幅が2000mm未満の
+       ロットでは±1000mmの目盛りが図の外になるので数字は1つも出ないのに、
+       図の上に16pxの余白を常に取っており、カードが縦に溢れる原因の1つに
+       なっていた。センターラインの`top:-5px`ぶんは常に空けておく。 */
+    const row=document.querySelector('#splitCard .split-visual-row');
+    if(row){
+      const hasTicks=html.indexOf('split-visual-tick-label')>=0;
+      if(row.classList.contains('has-tick-labels')!==hasTicks)
+        row.classList.toggle('has-tick-labels',hasTicks);
+    }
   }
   /* ---------- 屑の帯の文字は入るぶんだけ(§9.221 ⑥③) ----------
      帯の幅はmmの比で決まる（上）ので、狭い側では「屑 12.5」が入らない。
@@ -1449,8 +1503,8 @@
        掴めない見た目になる。 */
     const strip0=$('#splitVisualStrip');
     if(strip0)strip0.classList.remove('split-visual-self');
-    const hint0=$('#splitVisualHint');
-    if(hint0)hint0.textContent='帯の幅は母材幅の比率。条をつかんで並べ替えられます。両端の OS＝オペレータ側／DS＝駆動側。';
+    const hint0=$('#splitVisualHint'),dragHint='帯の幅は母材幅の比率。条をつかんで並べ替えられます。両端の OS＝オペレータ側／DS＝駆動側。';
+    if(hint0){hint0.textContent=dragHint;hint0.title=dragHint}
     ['#undoSplit','#resetSplit'].forEach(sel=>{const el=$(sel);if(el&&el.hidden!==false)el.hidden=false});
     const sources=splitSourceRows(),total=sources.reduce((a,x)=>a+x.count,0);
     const{seq}=seedSplitDefaults(sources,total);
@@ -1692,6 +1746,10 @@
     {scrapInfo:scrapWidthInfo,stripCountLimit});
   function updateScrapWidthDisplay(){
     renderScrapAllocEditor();
+    /* 自動で入る値（§9.234 ②）。条数・製品幅合計を欄として置けるように
+       なったので、条の設計が動いたらその場で引き直す——`updateScrapWidth
+       Display()`は条数・条幅・片寄せのどれが変わっても通る1本。 */
+    if(window.WL&&WL.opData&&WL.opData.paintAuto)WL.opData.paintAuto();
     const el=$('#motherScrapWidth');if(!el)return;
     const info=scrapWidthInfo();
     if(!info){el.textContent='－';el.classList.remove('scrap-width-warn');return}
@@ -1730,12 +1788,14 @@
       const gap=Math.abs(info.os-info.even);
       /* 主語は**屑**（見出しが「屑幅の割り付け」）。多く残っている側を言う
          ——条の束はその反対側へ寄る。 */
+      /* **短く言い、全文は`title`へ**（§9.234 ①）。1行に収めるための短縮で、
+         どちらへ何mm寄っているかという情報は落としていない。 */
       state.textContent=info.biased
-        ? `片寄せ ${info.os>info.even?'OS':'DS'}側へ +${fmtDim(gap,1)}mm`
+        ? `片寄せ ${info.os>info.even?'OS':'DS'} +${fmtDim(gap,1)}`
         : '均等';
       state.classList.toggle('is-biased',info.biased);
       state.title=info.biased
-        ? `均等なら両側 ${fmtDim(info.even,1)}mm ずつです`
+        ? `屑を ${info.os>info.even?'OS':'DS'}側へ ${fmtDim(gap,1)}mm 多く寄せています（均等なら両側 ${fmtDim(info.even,1)}mm ずつ）`
         : '両耳へ同じだけ付きます';
     }
     if(evenBtn)evenBtn.disabled=!info.manual;
@@ -1745,9 +1805,19 @@
     /* **図が無いロットで「図でドラッグ」と書かない**——屑幅の行は分割の
        無いロットでも出るが（§9.160。器は図の外）、条の帯は分割ありの
        ロットでしか組み立てられない。無い物を指す案内は、探させるだけ。 */
-    if(note)note.textContent=info.clamped
-      ? `OS側は0〜${fmtDim(info.scrap,1)}mm（両耳合計）の範囲です。${fmtDim(info.os,1)}mm として扱っています。`
-      : (splitVisualLayout?'上の図で条の束の縁をドラッグしても直せます（ダブルクリックで均等）。':'');
+    /* **案内は1行に収め、全文は`title`で読ませる**（§9.234 ①）。以前は
+       `flex:1 1 100%`で専用の1行を食っており、カードの下端で見切れていた
+       （実機で報告）。同じ内容はつまみの`title`にも書いてある。 */
+    if(note){
+      const clamped=`OS側は0〜${fmtDim(info.scrap,1)}mm（両耳合計）の範囲です。${fmtDim(info.os,1)}mm として扱っています。`;
+      const guide='図の縁をドラッグでも直せます（ダブルクリックで均等）';
+      if(info.clamped){note.textContent=clamped;note.title=clamped}
+      else if(splitVisualLayout){note.textContent=guide;
+        note.title='上の図で条の束の縁をドラッグしても屑幅の片寄せを直せます。ダブルクリックで均等へ戻ります'}
+      else{note.textContent='';note.removeAttribute('title')}
+      /* 警告のときだけ1行を取る（案内は器に入るぶんだけ）。 */
+      note.classList.toggle('is-warn',!!info.clamped);
+    }
   }
   /* ---- 屑幅の片寄せを図の上で直す（§9.167、利用者の指示「マウス操作で
      直接屑幅を調節して修正することもできるように」） ----------------------
@@ -1855,7 +1925,12 @@
     const info=scrapWidthInfo();
     if(!info)return '';
     const cls=info.scrap<0?'split-scrap-line split-scrap-warn':'split-scrap-line';
-    return `<div class="${cls}">元幅(実績) ${esc(fmtDim(info.original,1))} － 条幅合計 ${esc(fmtDim(info.slit,1))} ＝ <b>屑幅(両耳合計) ${esc(fmtDim(info.scrap,1))}</b></div>`;
+    /* **数値は1つも減らさない。単位語だけを`title`へ回す**（§9.234 ①）。
+       「元幅(実績)」「条幅合計」「屑幅(両耳合計)」の3語だけで実測66px使い、
+       状態帯が2行になっていた。式の形（a － b ＝ c）が読めれば、どれが
+       何かは並びで分かる。 */
+    return `<div class="${cls}" title="元幅(実績) ${esc(fmtDim(info.original,1))}mm から 条幅合計 ${esc(fmtDim(info.slit,1))}mm を引いた残りが 屑幅(両耳合計) ${esc(fmtDim(info.scrap,1))}mm です">`
+      +`元幅 ${esc(fmtDim(info.original,1))} － 条幅 ${esc(fmtDim(info.slit,1))} ＝ <b>屑 ${esc(fmtDim(info.scrap,1))}</b></div>`;
   }
 
   /* ======================================================================
@@ -2275,7 +2350,7 @@
     const totalCount=sources.reduce((a,x)=>a+x.count,0),horiz=Math.max(1,+($('#horizontalCount')?.value)||1);
     const mismatch=totalCount!==horiz;
     el.innerHTML=`
-      <div class="split-panel-status split-panel-status-pending">未設定 — 子ロット ${new Set(sources.map(x=>x.lot)).size} / 全 ${totalCount}条。下で条をつかんで並べ替えると、そのまま測定表に反映されます。</div>
+      <div class="split-panel-status split-panel-status-pending" title="子ロットの割り当てはまだ確定していません。下の図で条をつかんで並べ替えると、そのまま測定表に反映されます">未設定 ／ 子ロット ${new Set(sources.map(x=>x.lot)).size}・全 ${totalCount}条</div>
       ${mismatch?`<div class="split-mismatch-badge">子ロット条数合計(${totalCount})が横割数(${horiz})と一致しません。</div>`:''}
       ${scrapWidthLineHtml()}`;
   }
@@ -2460,8 +2535,13 @@
         /* **図は出す**（§9.209 ②）。編集面（子ロット候補・条割プレビュー）は
            並べ替える条が無いので出さない。 */
         const n=Math.max(1,Math.min(40,+($('#horizontalCount')?.value)||1));
-        el.innerHTML='<div class="split-panel-status split-panel-status-none">'
-          +`分割無し — このロットの条は ${n}本（横割数）です。図で条の番号と屑幅の寄りを確かめられます。</div>`
+        /* **図の使い方はここに書かない**（§9.234 ①）。同じことを
+           `#splitVisualHint`（図のすぐ下）が言っており、状態帯がそのぶん
+           2行になって、カードが縦に溢れていた（§CLAUDE 8）。ここは
+           「いまどういう状態か」だけにして、全文は`title`へ回す。 */
+        el.innerHTML='<div class="split-panel-status split-panel-status-none"'
+          +` title="このロットには分割データがありません。条は横割数のぶんだけあります（図で番号と屑幅の寄りを確かめられます）">`
+          +`分割無し ／ ${n}条（横割数）</div>`
           +scrapWidthLineHtml();
         updateSplitTabBadge('none');
         document.querySelectorAll('#splitCard .split-layout')
@@ -2653,14 +2733,20 @@
     });
     return `<div class="split-tolerance-legend"><b>条ごとの公差 — ${esc(summarizeAppliedGroups(groups))} — ▶は現在の入力位置</b><table><thead><tr><th>条範囲</th><th>ロット№</th><th>板幅 目標(公差)</th><th>板厚 目標(公差)</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
   }
+  /* 条ごとの公差の一覧は**子ロットの内訳の中**（§9.234 ③）。以前は測定の
+     見出しの`#toleranceSummary`へ差し込んでいたが、あちらは寸法系のとき
+     常に`hidden`だったので**一度も見えていなかった**（差し込む条件も
+     寸法系のときだけなので、どの場面でも出ない死んだ処理だった）。
+     条に属する情報なので、条の設計カードの内訳が正しい置き場——畳んで
+     あるので見出しの1行を1pxも取らない。 */
   if(typeof updateMeasurementHeading==='function'){
     const baseHeading=updateMeasurementHeading;
     updateMeasurementHeading=function(){
       baseHeading();
-      const el=$('#toleranceSummary');if(!el)return;
+      const slot=$('#splitTolLegendSlot');if(!slot)return;
       const type=$('#measureType')?.value;
-      el.querySelectorAll('.split-tolerance-legend').forEach(x=>x.remove());
-      if(WL.measureItem.isDimensional(type)){const html=splitLegendHtml();if(html)el.insertAdjacentHTML('beforeend',html)}
+      const html=WL.measureItem.isDimensional(type)?splitLegendHtml():'';
+      if(slot.innerHTML!==html)slot.innerHTML=html;
     };
   }
 

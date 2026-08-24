@@ -24,6 +24,10 @@ const EQ='テスト設備A';
    テスト設備Aなので、その1件だけを触って後片付けする。 */
 const TARGET='report:'+EQ;
 let b=null;
+/* エリアの塊（§9.234 ⑤）。**実行ごとに一意**にして、後片付けで必ず消す
+   （帳票ブロックマスタは`db/master.sqlite3`に残り、実行をまたぐ・§9.121）。 */
+const AREA_NAME='エリア確認-'+Date.now().toString(36);
+let areaId=null;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 const cleanup=()=>post('/api/column-layout-master',{target:TARGET,clear:true,order:[],widths:{},hidden:[],
   names:{},formats:{},rules:{},formulas:{},locks:[],user_id:'test'}).catch(()=>{});
@@ -655,10 +659,116 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
       Object.keys(lgBefore).length>0&&lgMoved.length===0,
       '動いた塊:'+JSON.stringify(lgMoved.slice(0,3).map(k=>k+' '+lgBefore[k]+'→'+lgAfter[k])));
 
+  /* ---- エリアの塊と枠（§9.234 ⑤、利用者の指示「ラベル貼り付けエリアと
+       同じタイプのエリア確保だけのタイプで文字を配置できる感じのものを
+       追加してください」「エリアを枠(角丸の枠線)で囲う感じにしたいので
+       サイズ調整に合うようにカードサイズとほぼ同じ枠を付けたり外したり
+       カスタム機能に追加してください」） ---- */
+  {
+   /* マスタで「エリア」の塊を作る。**文字が空でも紙に出る**ことと、
+      **改行が`<br>`で出る**ことを見る。 */
+   const made=await (await post('/api/report-block-master',
+     {equipment:'*',name:AREA_NAME,kindText:'エリア（枠と文字）',
+      text:'確認印\n（承認者）',span:3,rows:'4',user_id:'test'})).json();
+   if(made&&made.id)areaId=made.id;
+   rec('前提: エリアの塊をマスタで作れた',!!(made&&made.ok&&made.id),JSON.stringify(made));
+   /* **帳票を開き直して読み込ませる**（`forget()`だけでは控えが空になるだけ）。
+      入口は一覧の行の「帳票」——`#openReport`のようなボタンは無い。 */
+   await page.evaluate(()=>{
+    if(WL.reportBlocks&&WL.reportBlocks.forget)WL.reportBlocks.forget();
+    const c=document.getElementById('rpArrangeCancel');if(c&&!c.disabled)c.click();
+   });
+   await page.waitForTimeout(300);
+   await page.evaluate(()=>openRecordsSafe('編集中'));
+   await page.waitForSelector('.record-list-row',{timeout:25000});
+   await page.click('.record-list-row .report');
+   await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
+   await settle(page);
+   await page.waitForTimeout(600);
+   await page.click('#reportArrange');
+   await page.waitForSelector('.rp-blocks.is-arranging',{timeout:8000});
+   await settle(page);
+   /* 置き場（`#rpPalette`）から紙へ出す。 */
+   const shown=await page.evaluate(n=>{
+    const p=[...document.querySelectorAll('#rpPalette [data-rp-pal]')]
+      .find(e=>e.dataset.rpPal===n);
+    if(p){p.click();return 'placed'}
+    return document.querySelector(`[data-rp-block="${CSS.escape(n)}"]`)?'already':'missing';
+   },AREA_NAME);
+   await settle(page);
+   await page.waitForTimeout(400);
+   const area=await page.evaluate(n=>{
+    const el=document.querySelector(`[data-rp-block="${CSS.escape(n)}"]`);
+    if(!el)return{出た:false};
+    const inner=el.querySelector('.rp-area');
+    const cs=getComputedStyle(el);
+    const r=el.getBoundingClientRect(),ir=inner?inner.getBoundingClientRect():null;
+    return{出た:true,エリア:!!inner,
+      html:inner?inner.innerHTML:'',
+      節:!!el.querySelector('.rp-section'),
+      枠:cs.borderTopWidth,角:cs.borderTopLeftRadius,
+      中枠:inner?getComputedStyle(inner).borderTopWidth:null,
+      /* **枠はカードそのものに描く**——中身側に描く実装では、枠の矩形が
+         カードより小さくなる（「枠が在ること」だけを見る網では素通りする）。 */
+      器:{w:Math.round(r.width),h:Math.round(r.height)},
+      中:ir?{w:Math.round(ir.width),h:Math.round(ir.height)}:null};
+   },AREA_NAME);
+   rec('前提: エリアの塊が紙に出た',area.出た===true,JSON.stringify({shown,...area}));
+   rec('エリアの塊は値の節ではなく場所を空ける器になる',
+       area.エリア===true&&area.節===false,JSON.stringify(area));
+   rec('置いた文字が出る（改行は<br>）',
+       /確認印/.test(area.html)&&/<br>/.test(area.html),area.html);
+   rec('エリアの塊は既定で枠が付く（角丸）',
+       parseFloat(area.枠)>0&&parseFloat(area.角)>0,JSON.stringify({枠:area.枠,角:area.角}));
+   /* **枠の大きさはカードとほぼ同じ**（利用者の指示）。枠を描くのは
+      `.rp-block`＝カードそのもので、中身側には描かない——中身側に描く旧実装
+      では**中身なりの高さで止まる**（器と中の高さの比で見る。差のpxで見ると
+      枠線と内側の余白ぶんで落ちるので、割合で突き合わせること）。 */
+   rec('枠はカード（塊）とほぼ同じ大きさで出る',
+       !!area.中&&area.中.h>=area.器.h*0.9&&area.中.w>=area.器.w*0.9
+       &&parseFloat(area.中枠||'0')===0,
+       JSON.stringify({器:area.器,中:area.中,中枠:area.中枠}));
+   /* 枠は**既定の塊にも効く**。他の印（転置など）を巻き添えにしないことも見る。 */
+   await inDlg(page,'基本情報',async()=>{
+    await page.click('#rpBlockForm [data-e-frame="あり"]');
+   });
+   await settle(page);
+   const on=await page.evaluate(()=>getComputedStyle(
+     document.querySelector('[data-rp-block="基本情報"]')).borderTopWidth);
+   rec('ふつうの塊にも枠を付けられる',parseFloat(on)>0,on);
+   await inDlg(page,AREA_NAME,async()=>{
+    await page.click('#rpBlockForm [data-e-frame="なし"]');
+   });
+   await settle(page);
+   const off2=await page.evaluate(n=>getComputedStyle(
+     document.querySelector(`[data-rp-block="${CSS.escape(n)}"]`)).borderTopWidth,AREA_NAME);
+   rec('エリアの塊の枠を外せる',parseFloat(off2)===0,off2);
+   /* **保存して開き直しても残る**（§9.205の罠。`formats[k]`へ文字列を入れる
+      実装は、当てた直後だけは効いて保存で黙って消える）。 */
+   await page.click('#rpArrangeSave');
+   await page.waitForTimeout(1200);
+   await page.evaluate(t=>{if(WL.columnLayout.forget)WL.columnLayout.forget(t)},TARGET);
+   await page.evaluate(()=>openRecordsSafe('編集中'));
+   await page.waitForSelector('.record-list-row',{timeout:25000});
+   await page.click('.record-list-row .report');
+   await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
+   await settle(page);
+   await page.waitForTimeout(800);
+   const kept=await page.evaluate(n=>{
+    const a=document.querySelector(`[data-rp-block="${CSS.escape(n)}"]`);
+    const b2=document.querySelector('[data-rp-block="基本情報"]');
+    return{エリア:a?getComputedStyle(a).borderTopWidth:'(無し)',
+           基本:b2?getComputedStyle(b2).borderTopWidth:'(無し)'};
+   },AREA_NAME);
+   rec('枠の入切は保存して開き直しても残る（§9.205）',
+       parseFloat(kept.エリア)===0&&parseFloat(kept.基本)>0,JSON.stringify(kept));
+  }
+
   rec('コンソールに例外を出さない',errs.length===0,errs.slice(0,2).join(' / '));
  }catch(e){rec('FATAL',false,e.message)}
  finally{
   await cleanup();
+  if(areaId){try{await post('/api/report-block-master/delete',{id:areaId,user_id:'test'})}catch(e){}}
   if(b)await b.close();
  }
  const ok=R.filter(x=>x.ok).length;

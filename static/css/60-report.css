@@ -159,6 +159,19 @@
    はみ出して重なっていた（利用者の報告「重なりが生じている」）。中身は
    `rpFitBlockBodies()`が入るところまで縮める。 */
 .rp-block{min-width:0;min-height:0;overflow:hidden}
+/* ---------- 枠（§9.234 ⑤、利用者の指示「エリアを枠(角丸の枠線)で囲う感じに
+   したいのでサイズ調整に合うようにカードサイズとほぼ同じ枠を付けたり
+   外したりカスタム機能に追加してください」） ----------
+   **枠は`.rp-block`（グリッドの子＝カードそのもの）に描く**——中身側
+   （`.rp-block-fit`）に描くと中身なりの高さまでしか伸びず、「カードサイズと
+   ほぼ同じ枠」にならない。内側の余白は`.rp-block-fit`が持つ:
+   `rpFitRows()`が測るのは`fit.scrollHeight`（paddingを含む）で、
+   `rpFitBlockBodies()`が見る`room`は`.rp-block`の`clientHeight`
+   （**borderを含まずpaddingを含む**）なので、この置き方でだけ測定が
+   食い違わない（§9.222 ②「拡大前／拡大後を混ぜない」と同じ注意）。
+   **A4帳票配下はpx・16進が正しい例外**（`tests/test_theme.js`）。 */
+.rp-block.is-framed{border:1px solid #b7c7cc;border-radius:8px}
+.rp-block.is-framed>.rp-block-fit{padding:2px 4px}
 /* 縮める倍率は**カスタムプロパティで渡す**（`--rp-fit`）。インラインの
    `style.transform`はどのレイヤより強く、CSSから打ち消せなくなる
    （帳票の`--rp-scale`と同じ約束）。 */
@@ -379,10 +392,16 @@
    変わる表のため、ほぼ等幅で並べる。 */
 .rp-zone-length{grid-template-columns:.9fr 1.2fr .9fr}
 .rp-stack{display:flex;flex-direction:column;gap:3px;min-width:0}
-/* 旧帳票（B5帳票）の左上余白に相当。ラベル貼付や手書き用に空白のまま確保する
-   （中を埋めずキャプションだけ隅に添える）。 */
-.rp-label-area{min-height:0;height:100%;padding:3px 6px;border:1px dashed #b7c7cc;border-radius:8px;background:#ffffff;display:flex;align-items:flex-end;justify-content:flex-end;break-inside:avoid}
-.rp-label-caption{color:#aebfc4;font-size:7px}
+/* ---------- エリアの塊（§9.234 ⑤） ----------
+   ラベル貼付・手書き・確認印のように、**何も書いていないこと**が中身の塊。
+   **枠は持たない**——枠は`.rp-block.is-framed`が描く（二重に出さない＝
+   §CLAUDE 8）。器はカードいっぱいに伸びる。
+   （旧`.rp-label-area`／`.rp-label-caption`はここへ統合した。同じ役割の
+   CSSを2つ残さない。） */
+.rp-block.is-area>.rp-block-fit{height:100%}
+.rp-area{min-height:0;height:100%;padding:3px 6px;background:#ffffff;
+  display:flex;align-items:flex-end;justify-content:flex-end;break-inside:avoid}
+.rp-area-text{color:#60747b;font-size:8.5px;white-space:pre-wrap;overflow-wrap:break-word;text-align:right}
 .rp-section{margin:0;break-inside:avoid}
 .rp-section h3{margin:0 0 2px;padding:1.5px 6px;background:#eef2f4;border-left:4px solid var(--teal);color:#173842;font-size:9px}
 .rp-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 8px}

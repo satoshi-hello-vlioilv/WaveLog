@@ -112,15 +112,65 @@ let b=null,page=null;
    const chip=document.querySelector('#splitDefectChip');
    const tg=document.querySelector('#splitDefectToggle');
    const flags=[...document.querySelectorAll('.svb-defect')];
+   /* **読むのは「見えている文字」**（§9.234 ①）。印は「異常 → ! → 出さない」の
+      3段を持ち、狭い条では`異常`が入らないので段を落とす。`textContent`は
+      隠している段まで拾うので、それで判定すると段の切り替えが見えない。 */
+   const shown=el=>[...el.children].filter(c=>c.offsetParent!==null||c.getClientRects().length)
+       .map(c=>c.textContent.trim()).join('')||el.textContent.trim();
    return {印:flags.length,
            /* **色だけで伝えない**（§3）ので、文字が出ていること。 */
-           文字:flags.length?flags[0].textContent.trim():'',
+           文字:flags.length?shown(flags[0]):'',
+           /* **切り落として`異`だけ残さない**（§9.234 ①）。 */
+           はみ出し:flags.filter(f=>f.scrollWidth>f.offsetWidth+1).length,
            縁:document.querySelectorAll('.split-visual-block.is-defect').length,
            帯:chip&&!chip.hidden?chip.textContent.replace(/\s+/g,''):'(hidden)',
            入切:tg&&!tg.hidden?tg.textContent.trim():'(hidden)'};
   });
   rec('条の設計に該当条の印が出る',marks.印>=1&&marks.縁>=1,JSON.stringify(marks));
   rec('印は色だけでなく文字でも言う',marks.文字==='異常',marks.文字);
+  rec('印は器からはみ出さない（§9.234 ①）',marks.はみ出し===0,JSON.stringify(marks));
+
+  /* ---- 2b) 狭い条では印の段が落ちる（§9.234 ①、利用者の報告
+       「異常位置の図の表示のラベルが別の表示と重なる」） ----
+     以前は`異常`を`overflow:hidden`で切っていたため、25条のロットでは
+     **`異`だけが残って読めなかった**。段は「異常 → ! → 出さない」で、
+     どの段でも器からはみ出さないこと。**条数を実際に増やして見る**
+     ——4条のままでは広いので、直す前でも通ってしまう。 */
+  /* **条数の上限は屑幅から決まる**（§9.210 ⑤ `stripCountLimit()`）。
+     元幅1250／製造板幅300では**4条が上限**なので、横割数へ25を入れても
+     受け付けられない——先に条幅を細くすること（入れないまま測ると
+     「幅285px＝広いまま」で、直す前でも通ってしまう）。 */
+  await page.evaluate(()=>{
+   S.measure.basic.mfgWidth=28;
+   const h=document.getElementById('horizontalCount');
+   if(h){h.value='40';h.dispatchEvent(new Event('change',{bubbles:true}))}
+  });
+  await page.waitForTimeout(900);
+  const narrow=await page.evaluate(()=>{
+   const flags=[...document.querySelectorAll('.svb-defect')];
+   const shown=el=>[...el.children].filter(c=>c.offsetParent!==null||c.getClientRects().length)
+       .map(c=>c.textContent.trim()).join('');
+   const blk=flags.length?flags[0].closest('.split-visual-block'):null;
+   return{印:flags.length,幅:blk?Math.round(blk.getBoundingClientRect().width):0,
+     文字:flags.length?shown(flags[0]):'',
+     はみ出し:flags.filter(f=>f.scrollWidth>f.offsetWidth+1).length,
+     /* 該当条の見せ方は**全部そろっていること**（出たり出なかったりを混ぜない）。 */
+     段の数:new Set(flags.map(f=>shown(f))).size};
+  });
+  /* **前提を先に確かめる**——広いままだと段を落とす道を一度も通らず、
+     直す前でも通ってしまう。`異常`は実測30px要るので、それより狭くする。 */
+  rec('前提: 条が狭くなっている（40条）',narrow.幅>0&&narrow.幅<30,JSON.stringify(narrow));
+  rec('狭い条では印の段が落ちる（異常→!→出さない）',
+      narrow.印>=1&&narrow.文字!=='異常',JSON.stringify(narrow));
+  rec('狭い条でも印は器からはみ出さない（§9.234 ①）',
+      narrow.はみ出し===0,JSON.stringify(narrow));
+  rec('該当条の見せ方はそろっている（§9.210 ④）',narrow.段の数<=1,JSON.stringify(narrow));
+  await page.evaluate(()=>{
+   S.measure.basic.mfgWidth=300;
+   const h=document.getElementById('horizontalCount');
+   if(h){h.value='4';h.dispatchEvent(new Event('change',{bubbles:true}))}
+  });
+  await page.waitForTimeout(700);
   rec('帯に件数と保存の状態が出る',
       /異常/.test(marks.帯)&&/保存済み/.test(marks.帯),marks.帯);
 
