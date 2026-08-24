@@ -499,6 +499,11 @@
 .sc-layout-sec label b{color:var(--ink);font-size:var(--fs-sm)}
 .sc-layout-sec label small{color:var(--muted);font-size:var(--fs-micro);line-height:1.4}
 .sc-layout-note{margin:0;color:var(--muted);font-size:var(--fs-micro)}
+/* 子ロットのバッジをどの列へ付けるか(§9.235 ②)。選択肢の名前が長いことが
+   あるので、ラベル+説明の下に選択欄を縦に積む（横に並べると狭い浮きパネル
+   で折り返す）。 */
+.sc-layout-sec label.sc-layout-badgecol{flex-direction:column;align-items:stretch;gap:var(--gap-tight)}
+.sc-layout-badgecol select{width:100%}
 /* ---------- カーソル位置へ入れる境目(§9.179 → §9.196で作り直し) ----------
    **表を1pxも動かさない。** 以前は隙間そのものを行として流れへ挟んでいた
    ため、カーソルを動かすたびに下の行が1行ぶん上下し、鍵の印・詳細・削除の
@@ -1028,7 +1033,12 @@
    なので、見た目も「予定の行」ではなく「親にぶら下がる内訳」に寄せる:
    1段下げて、罫線でつなぎ、文字は一段小さく、操作は持たせない。
    既定は畳んだ状態(hidden)で、印の欄のつまみで開く。 */
-.sc-row-title.has-children{display:flex;align-items:center;gap:var(--gap-inline);min-width:0}
+/* **列を選ばせる**ようになったので(§9.235 ②)、`.sc-row-title`だけでなく
+   固定列（`.sc-row-date`等）へ付いても崩れないよう、印は`[data-col]`側で
+   一般化する。`.sc-row-line`の中だけに絞る——見出し(`.sc-row-title-head`)は
+   `.has-children`を持たない別の仕組みなので、絞らなくても実害は無いが
+   意図を書いておく。 */
+.sc-row-line [data-col].has-children{display:flex;align-items:center;gap:var(--gap-inline);min-width:0}
 /* つまみは縮ませない。詰まったときに削るのは文字の方(省略記号で示す)。 */
 .sc-row-title-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 /* 「親」のバッジ(§9.198)。**ロット番号のお尻**に付く小さな押し所で、
@@ -1182,8 +1192,17 @@
 /* **`font-size`は必ずセレクタと同じ行に書くこと。** リテラルpxの見張り
    (`tests/test_csslint.py`)は行単位で「その行に紙のセレクタがあるか」を見る
    ので、次の行へ送ると紙の例外だと分かってもらえず落ちる。 */
-.sp-page{width:210mm;min-height:297mm;padding:8mm;box-sizing:border-box;font-size:10px;
+.sp-page{padding:8mm;box-sizing:border-box;font-size:10px;
  background:#fff;color:#000;display:flex;flex-direction:column}
+/* ---------- 用紙サイズ・向き(§9.235、利用者の指示「印刷サイズA4だけでなく
+   A3や縦向きや横向きも選べるようにしてください」) ----------
+   `width`/`min-height`だけを`data-paper`で差し替える——`splitToSheets`が
+   実測に使うのは`min-height`(§9.235参照)なので、ここを`height`にすると
+   枚数の計算が狂う。余白は四辺とも同じ8mmで、どの用紙でもそろえる。 */
+.sp-page[data-paper="a4-portrait"]{width:210mm;min-height:297mm}
+.sp-page[data-paper="a4-landscape"]{width:297mm;min-height:210mm}
+.sp-page[data-paper="a3-portrait"]{width:297mm;min-height:420mm}
+.sp-page[data-paper="a3-landscape"]{width:420mm;min-height:297mm}
 /* 見出し。**設備名を一番大きく**する——配られた人が最初に確かめるのは
    「これは自分のラインの紙か」なので、そこが読めないと配れない。 */
 .sp-head{border-bottom:1.2mm solid #000;padding-bottom:2mm;margin-bottom:3mm}
@@ -1212,21 +1231,25 @@
 /* 見出しはページをまたぐたびに刷り直す（2枚目に見出しが無いと読めない）。 */
 .sp-table thead{display:table-header-group}
 .sp-table tbody tr{page-break-inside:avoid}
-/* **幅はここに書かない**(§9.118)。列の幅は利用者が紙のレイアウトで
-   決められるので、colgroupがmmで与える。ここに残すと、CSSの指定が
-   colgroupと食い違って「設定しても変わらない列」ができる。
-   ここが持つのは揃え方と字面だけ。 */
-.sp-c-no{text-align:center}
-.sp-c-state{text-align:center}
-.sp-c-date{text-align:center;white-space:nowrap}
-.sp-c-time{text-align:center;white-space:nowrap}
-.sp-c-shift{text-align:center}
+/* **幅はここに書かない**(§9.118)。列の幅は`withMm`が画面の実効px幅から
+   比率で配り、colgroupがmmで与える。ここが持つのは揃え方と字面だけ。
+   揃え方は画面と同じキー(`fixedAlignClass`)で決まる汎用クラスにした
+   (§9.235)——固定列ごとにクラスを持つと、画面側で列が増減するたびに
+   ここへも書き足すことになる。 */
+.sp-al-c{text-align:center;white-space:nowrap}
+.sp-al-r{text-align:right;white-space:nowrap}
 .sp-c-lot{font-weight:700}
-.sp-c-est{text-align:right;white-space:nowrap}
 /* 記入欄は**空のまま罫線だけ**にする。薄い下線を入れると書きにくい。 */
 .sp-c-check{text-align:center}
 /* 設備停止の行は面で区別する（白黒なので色ではなく濃淡で分ける）。 */
 .sp-row-stop td{background:#f0f0f0}
+/* ---------- 子ロットの内訳(§9.235③、利用者の指示「分割後の子ロットの
+   情報も印刷表示ONOFFできるようにしてください」) ----------
+   画面(`.sc-child-lot`/`.sc-child-info`)と同じ考え方——番号は太字、
+   内訳は控えめな文字にして「予定そのものの行」と読み間違えないようにする。 */
+.sp-c-child-lot{font-weight:700;padding-left:3mm}
+.sp-c-child-info{color:#333}
+.sp-row-child td{border-top:none}
 /* まとまりの見出し(§9.189)。画面の「まとめ」と同じ区切りを紙にも入れる。
    **濃い帯にする**——白黒コピーでも行と見分けが付く必要がある。 */
 .sp-row-group td{background:#d8d8d8;font-weight:800;font-size:10px;text-align:left;padding:1mm}
@@ -1244,50 +1267,7 @@
 .sp-foot{display:flex;justify-content:space-between;gap:4mm;font-size:9px;color:#333;
  margin-top:auto;padding-top:1.5mm;border-top:0.3mm solid #000}
 .sp-foot-note{flex:1;text-align:center}
-/* ---------- 紙のレイアウト(§9.118) ----------
-   画面のタイムラインとは別に、紙へ出す列・並び・幅(mm)・見出しを決める。
-   **幅の合計と残りを常に出す**のがこの画面の要——紙幅は194mmしかなく、
-   超えると列が潰れて読めない紙が刷り上がる。刷ってから気づくのでは
-   紙も時間も無駄になる。 */
-.spl-body{display:flex;flex-direction:column;gap:var(--gap-inline);overflow:auto}
-.spl-lead{margin:0;font-size:var(--fs-sm);color:var(--muted);flex:0 0 auto}
-.spl-lead b{color:var(--ink)}
-.spl-gauge{flex:0 0 auto;display:flex;align-items:baseline;gap:var(--gap-inline);flex-wrap:wrap;
- padding:var(--space-2);border:1px solid var(--line-soft);border-radius:var(--radius-sm);
- background:var(--surface-2);font-size:var(--fs-sm);color:var(--ink-2)}
-.spl-gauge b{color:var(--ink);font-size:var(--fs)}
-.spl-gauge small{flex:1 0 100%;font-size:var(--fs-micro);color:var(--muted)}
-/* はみ出しは**色だけで伝えない**。文で「何mm多い」と必ず書く。 */
-.spl-gauge.is-over{border-color:var(--danger)}
-.spl-gauge.is-over small{color:var(--danger);font-weight:700}
-.spl-rows{display:flex;flex-direction:column;gap:var(--gap-hair);flex:0 0 auto}
-.spl-row{display:flex;align-items:center;gap:var(--gap-inline);
- padding:var(--space-1) var(--space-2);border:1px solid var(--line-soft);
- border-radius:var(--radius-sm);background:var(--surface);font-size:var(--fs-sm)}
-/* 出さない列も**一覧に残す**（消すと、足せることに気づけない）。 */
-.spl-row.is-off{background:var(--surface-2);color:var(--muted)}
-.spl-on input{width:var(--ctl-box);height:var(--ctl-box);accent-color:var(--teal);flex:none}
-/* 出どころ。**文字で書く**——「ロット番号」は予定にも内容欄にもあり、
-   名前だけでは同じ行が2つ並んで見える(実機の並びで確認した)。 */
-.spl-kind{flex:0 0 auto;min-width:calc(38px * var(--ui-scale));text-align:center;
- font-size:var(--fs-micro);border-radius:var(--radius-pill);padding:0 var(--space-1);
- border:1px solid var(--line-mid);color:var(--ink-3);background:var(--surface-2)}
-.spl-kind-content{border-color:var(--teal);color:var(--teal-dark)}
-.spl-kind-write{border-style:dashed}
-.spl-name{flex:0 0 auto;min-width:calc(96px * var(--ui-scale));font-weight:700;color:var(--ink-2);
- overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.spl-row.is-off .spl-name{font-weight:400}
-.spl-alias{flex:1;min-width:calc(90px * var(--ui-scale))}
-.spl-mm{flex:0 0 auto;display:flex;align-items:center;gap:2px;color:var(--muted);
- font-size:var(--fs-micro)}
-.spl-w{width:calc(58px * var(--ui-scale));text-align:right}
-.spl-up,.spl-down{padding:0;min-width:calc(22px * var(--ui-scale));
- height:var(--ctl-h-xs);line-height:1;color:var(--ink-3);flex:0 0 auto}
-.spl-reset{color:var(--ink-3)}
-.sc-float-header .spl-sub{display:block;font-size:var(--fs-micro);line-height:1.5;margin-top:2px}
-/* ---------- 印刷の設定（確認モーダルの中に出る） ---------- */
-.sp-layout-open{margin-top:var(--space-3);align-self:flex-start}
-.sp-layout-note{margin:var(--space-1) 0 0;font-size:var(--fs-micro);color:var(--muted)}
+/* ---------- 印刷の設定（プレビューの左側に出る） ---------- */
 .sp-options{display:flex;flex-direction:column;gap:var(--gap-inline);margin-top:var(--space-3)}
 .sp-opt{display:flex;align-items:flex-start;gap:var(--gap-inline);cursor:pointer}
 .sp-opt input{width:var(--ctl-box);height:var(--ctl-box);margin-top:2px;accent-color:var(--teal);flex:none}

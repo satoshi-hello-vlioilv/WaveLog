@@ -182,6 +182,55 @@ let b=null;
   await closeView();
   rec('「子N」へ戻せる',/子/.test(((await badge())||{}).t||''),JSON.stringify(await badge()));
 
+  /* ---- 5b) バッジを付ける列を選べる(§9.235 ②、利用者の指示「子ロットの
+     バッジの位置は、一番左固定ではなく、バッジの位置はどの列にも付けられる
+     ように位置を決められるようにしてください デフォルトはロット番号に
+     つけてください」) ----
+     以前は`.sc-row-title`（DOM順で最初の内容セル）へ固定で入っており、
+     内容の項目を並べ替えてロット番号が先頭でなくなっても付く場所が
+     変わらなかった（「一番左固定」）。 */
+  const badgeColAt=()=>page.evaluate(()=>{
+   const el=document.querySelector('.sc-child-toggle');
+   const cell=el&&el.closest('[data-col]');
+   return cell?cell.dataset.col:null;
+  });
+  rec('既定はロット番号の列に付く',await badgeColAt()==='lotNo',String(await badgeColAt()));
+  const selInfo=await page.evaluate(()=>{
+   const keys=WL.scheduleView.printColumnKeys();
+   const sel=document.getElementById('scChildBadgeCol');
+   const opts=sel?[...sel.options].map(o=>o.value):[];
+   return {keys,hasAuto:opts.includes(''),
+           matchesKeys:keys.every(k=>opts.includes(k))&&opts.filter(v=>v!=='').every(v=>keys.includes(v)),
+           curValue:sel?sel.value:null};
+  });
+  rec('選択肢はいま画面に出ている列＋自動（今後も含めて全部並ぶ）',
+      selInfo.matchesKeys&&selInfo.hasAuto,JSON.stringify(selInfo));
+  rec('既定の選択は「自動（既定＝ロット番号）」',selInfo.curValue==='',String(selInfo.curValue));
+  const altKey=selInfo.keys.find(k=>k!=='lotNo');
+  if(altKey){
+   await openView();
+   await page.click('#scLayoutBtn');await page.waitForTimeout(300);
+   await page.selectOption('#scChildBadgeCol',altKey);
+   await page.waitForTimeout(700);
+   await closeView();
+   rec('選んだ列へバッジが移る（一番左固定ではない）',
+       await badgeColAt()===altKey,`${await badgeColAt()} / 選んだ:${altKey}`);
+   rec('ロット番号の列からは無くなる（同じ行に2つ出さない）',
+       await page.evaluate(()=>!document.querySelector('[data-col="lotNo"] .sc-child-toggle')));
+   rec('選んだ列は端末に残る',
+       (await page.evaluate(()=>{try{return JSON.parse(localStorage.getItem('scLayoutPrefsV1')||'{}').childBadgeCol}
+         catch(e){return null}}))===altKey);
+   // 自動へ戻す（デフォルトのロット番号を確かめてから、後始末を兼ねて戻す）
+   await openView();
+   await page.click('#scLayoutBtn');await page.waitForTimeout(250);
+   await page.selectOption('#scChildBadgeCol','');
+   await page.waitForTimeout(600);
+   await closeView();
+   rec('「自動」に戻すとロット番号（既定）へ戻る',await badgeColAt()==='lotNo',String(await badgeColAt()));
+  }else{
+   rec('ロット番号以外の列がある(前提)',false,JSON.stringify(selInfo.keys));
+  }
+
   /* ---- 6) 差し込みの当たり判定は境目のそばだけ ---------------
      **行の中央で出ないこと**を必ず見る——出るかどうかだけを見ると、
      全面が判定だった頃の実装でも通ってしまう。 */
@@ -243,7 +292,8 @@ let b=null;
       body:JSON.stringify({id:i,user_id:'test-scbar'})});
    },id);
    await page.evaluate(()=>{try{const p=JSON.parse(localStorage.getItem('scLayoutPrefsV1')||'{}');
-     delete p.childBadge;localStorage.setItem('scLayoutPrefsV1',JSON.stringify(p))}catch(e){}});
+     delete p.childBadge;delete p.childBadgeCol;
+     localStorage.setItem('scLayoutPrefsV1',JSON.stringify(p))}catch(e){}});
    await setMode('edit');
   }catch(e){}
   await b.close();
