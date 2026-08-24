@@ -288,6 +288,115 @@ let b=null;
       pats.古い並び.join(','));
 
   /* ============================================================
+     §9.236 ① 列の範囲（見える範囲の列／全ての列）
+     利用者の指示「見える範囲の列か、全ての列かを選べるようにして」
+     ============================================================ */
+  const scopes=await page.evaluate(()=>WL.schedulePrint.columnScopes());
+  rec('列の範囲は2通り（見える範囲/全て）',
+      scopes.length===2&&scopes.some(s=>s.key==='all')&&scopes.some(s=>s.key==='visible'),
+      JSON.stringify(scopes));
+  const wide=await page.evaluate(()=>({
+   既定:WL.schedulePrint.printColumns({}).map(c=>c.key),
+   全て:WL.schedulePrint.printColumns({columnScope:'all'}).map(c=>c.key),
+   見える範囲:WL.schedulePrint.printColumns({columnScope:'visible'}).map(c=>c.key),
+   /* `printColumns()`は印刷専用の「#」「状態」を先頭へ、記入欄を末尾へ
+      足すので、その2つを比べても「途中の列が抜けているか」は分からない
+      （見える範囲でも記入欄は今までどおり無条件で末尾に付く）。
+      画面の列だけを見るには`WL.scheduleView`側の素の値で比べる。 */
+   画面の全て:WL.scheduleView.printColumnKeys(),
+   画面の見える範囲:WL.scheduleView.visibleColumnKeys(),
+  }));
+  rec('columnScope未指定の既定は「全ての列」と同じ（既定は今までの見え方のまま）',
+      JSON.stringify(wide.既定)===JSON.stringify(wide.全て),JSON.stringify(wide));
+  rec('printColumns()のcolumnScopeは画面の列(visibleColumnKeys/printColumnKeys)をそのまま使っている',
+      JSON.stringify(wide.全て.slice(2,2+wide.画面の全て.length))===JSON.stringify(wide.画面の全て)&&
+      JSON.stringify(wide.見える範囲.slice(2,2+wide.画面の見える範囲.length))===JSON.stringify(wide.画面の見える範囲),
+      JSON.stringify(wide));
+  rec('見える範囲の列は、画面の並びの先頭からの一部（全ての列の件数以下）',
+      wide.画面の見える範囲.length<=wide.画面の全て.length&&
+      wide.画面の全て.slice(0,wide.画面の見える範囲.length).join(',')===wide.画面の見える範囲.join(','),
+      JSON.stringify(wide));
+  /* 画面を狭くすると、見える範囲の列も連動して減ることを確かめる
+     （「全ての列」は画面幅に関わらず変わらない）。 */
+  await page.setViewportSize({width:640,height:1000});
+  await page.waitForTimeout(400);
+  const narrow=await page.evaluate(()=>({
+   全て:WL.schedulePrint.printColumns({columnScope:'all'}).map(c=>c.key),
+   見える範囲:WL.schedulePrint.printColumns({columnScope:'visible'}).map(c=>c.key),
+  }));
+  await page.setViewportSize({width:1700,height:1000});
+  await page.waitForTimeout(400);
+  rec('画面を狭くすると見える範囲の列も減る（画面の見た目に連動する）',
+      narrow.見える範囲.length<wide.見える範囲.length,
+      `狭いとき${narrow.見える範囲.length}列 / 広いとき${wide.見える範囲.length}列`);
+  rec('「全ての列」は画面幅に関わらず変わらない',
+      narrow.全て.join(',')===wide.全て.join(','),
+      JSON.stringify({狭いとき:narrow.全て,広いとき:wide.全て}));
+  rec('見える範囲の列でも最低1列は残る（画面が極端に狭くても紙が空にならない）',
+      narrow.見える範囲.length>=1,String(narrow.見える範囲.length));
+
+  /* ============================================================
+     §9.236 ② 列幅は自然なサイズを優先し、はみ出す時だけ圧縮する
+     利用者の指示「列幅も設定したものを活かして」
+     ============================================================ */
+  /* 列が少なく(見える範囲)用紙が広い(A3横)ときは、画面の実効px幅を
+     そのままmmへ換算した値になる——用紙いっぱいへ引き伸ばさない。 */
+  const naturalOpt={includeDone:true,pageByDate:false,paper:'a3-landscape',columnScope:'visible'};
+  const naturalBuild=await build(naturalOpt);
+  const naturalInfo=await page.evaluate(o=>{
+   const pg=document.querySelector('#schedulePrintArea .sp-page');
+   const cols=WL.schedulePrint.printColumns(o);
+   const mmCols=[...pg.querySelectorAll('colgroup col')].map(c=>parseFloat(c.style.width));
+   const naturalMm=cols.map(c=>Math.round((c.w||60)*25.4/96*10)/10);
+   return {mmCols,naturalMm,sum:Math.round(mmCols.reduce((s,v)=>s+v,0)*10)/10,usableMm:420-8*2};
+  },naturalOpt);
+  rec('列が少なく用紙が広いときは、設定した幅(px)をそのままmmへ換算した値になる（引き伸ばさない）',
+      JSON.stringify(naturalInfo.mmCols)===JSON.stringify(naturalInfo.naturalMm),
+      JSON.stringify(naturalInfo));
+  rec('引き伸ばさないので、表の幅は用紙の使える幅より狭いままでよい',
+      naturalInfo.sum<naturalInfo.usableMm,
+      `表=${naturalInfo.sum}mm / 用紙=${naturalInfo.usableMm}mm`);
+  rec('自然な幅でも紙からはみ出さない',naturalBuild.over===0&&naturalBuild.clipped===0&&naturalBuild.wide===0);
+  await clear();
+  /* 列が多く(全ての列)用紙が狭い(A4縦)ときは、いままでどおり比率で圧縮され、
+     紙からはみ出さない（§9.235で固定した既存の保証がそのまま生きている）。 */
+  const denseBuild=await build({includeDone:true,pageByDate:false,paper:'a4-portrait',columnScope:'all'});
+  rec('列が多く用紙が狭いときは、いままでどおり比率で圧縮されて紙からはみ出さない',
+      denseBuild.wide===0&&denseBuild.over===0&&denseBuild.clipped===0,
+      JSON.stringify({横:denseBuild.wide,溢れ:denseBuild.over,切れ:denseBuild.clipped}));
+  await clear();
+
+  /* ============================================================
+     §9.236 ③ 枠線ON/OFF
+     利用者の指示「枠線もなくすONOFF機能を追加し…アプリのさわやかな
+     見た目をそのまま印刷できるようなイメージに近づけたい」
+     ============================================================ */
+  const bordersOn=await build({includeDone:true,pageByDate:false,borders:true});
+  const onInfo=await page.evaluate(()=>{
+   const pg=document.querySelector('#schedulePrintArea .sp-page');
+   const td=pg.querySelector('tbody td');
+   return {dataBorders:pg.dataset.borders||'',borderColor:getComputedStyle(td).borderTopColor};
+  });
+  rec('既定(枠線あり)ではdata-bordersが付かない',onInfo.dataBorders==='',JSON.stringify(onInfo));
+  rec('既定は黒い罫線（白黒コピーでも飛ばない太さ・色）',
+      onInfo.borderColor==='rgb(0, 0, 0)',JSON.stringify(onInfo));
+  await clear();
+  const bordersOff=await build({includeDone:true,pageByDate:false,borders:false});
+  const offInfo=await page.evaluate(()=>{
+   const pg=document.querySelector('#schedulePrintArea .sp-page');
+   const td=pg.querySelector('tbody td');
+   return {dataBorders:pg.dataset.borders||'',borderColor:getComputedStyle(td).borderTopColor};
+  });
+  rec('枠線を外すとdata-borders="off"が付く',offInfo.dataBorders==='off',JSON.stringify(offInfo));
+  /* **色で見る**——0.3mm(黒)と0.1mm(薄灰)の差はヘッドレスの描画丸めで
+     どちらも1pxに見えることがあり、太さの比較では捕まえられない。
+     「黒々とした網目をなくす」という要件そのものは色で確かめられる。 */
+  rec('枠線を外すと黒くない薄い色になる（画面のような、さわやかな区切りに近づく）',
+      offInfo.borderColor!=='rgb(0, 0, 0)',`あり=${onInfo.borderColor} / なし=${offInfo.borderColor}`);
+  rec('枠線を外しても紙からはみ出さない',bordersOff.over===0&&bordersOff.clipped===0);
+  await clear();
+
+  /* ============================================================
      §9.235 ② 用紙サイズ・向き（A4/A3 × 縦/横）
      利用者の指示「印刷サイズA4だけでなくA3や縦向きや横向きも選べるように」
      ============================================================ */
@@ -403,6 +512,7 @@ let b=null;
    opts:document.querySelectorAll('#spPvOptions [data-opt]').length,
    optKeys:[...document.querySelectorAll('#spPvOptions [data-opt]')].map(i=>i.dataset.opt),
    sizeOpts:document.querySelectorAll('#spPvSize .sp-pat').length,
+   scopeOpts:document.querySelectorAll('#spColumnScope .sp-pat').length,
    printBtn:!!document.getElementById('spPvPrint'),
    ask:!!document.querySelector('#appConfirm:not([hidden])'),
   }));
@@ -411,7 +521,10 @@ let b=null;
   rec('枚数と用紙サイズを文字で出す',/枚/.test(pv.facts),pv.facts.replace(/\n/g,' / '));
   rec('「分割後の子ロットの情報も載せる」がチェック項目にある(§9.235 ③)',
       pv.optKeys.includes('includeChildren'),JSON.stringify(pv.optKeys));
+  rec('「枠線を出す」がチェック項目にある(§9.236 ③)',
+      pv.optKeys.includes('borders'),JSON.stringify(pv.optKeys));
   rec('用紙の選択肢が4つ並ぶ(§9.235 ②)',pv.sizeOpts===4,String(pv.sizeOpts));
+  rec('列の範囲の選択肢が2つ並ぶ(§9.236 ①)',pv.scopeOpts===2,String(pv.scopeOpts));
   /* **紙が切れていないこと。** 器の寸法を`getBoundingClientRect()`（倍率を
      掛けたあとの値）から作ると、そこへもう一度倍率が掛かって右側が
      切り落とされる（実際に切れた）。列の数で見る。 */
@@ -445,6 +558,28 @@ let b=null;
   rec('刷るのは見えている紙そのもの',same.shown===same.kept,JSON.stringify(same));
   await page.click('#spPvOptions [data-opt="pageByDate"]');   // 元へ戻す
   await page.waitForTimeout(400);
+
+  /* ---- 14b) 列の範囲・枠線もその場でプレビューに効く(§9.236) ---- */
+  const colsBefore=await page.evaluate(()=>
+    (document.querySelector('.sp-pv-sheet .sp-page')||{}).querySelectorAll?.('thead th').length||0);
+  await page.click('#spColumnScope input[value="visible"]');
+  await page.waitForTimeout(700);
+  const colsAfterVisible=await page.evaluate(()=>
+    (document.querySelector('.sp-pv-sheet .sp-page')||{}).querySelectorAll?.('thead th').length||0);
+  rec('「見える範囲の列だけ」を選ぶとその場で列数が減る',
+      colsAfterVisible<colsBefore&&colsAfterVisible>0,`${colsBefore}列 → ${colsAfterVisible}列`);
+  await page.click('#spColumnScope input[value="all"]');      // 元へ戻す
+  await page.waitForTimeout(700);
+  const bordersBefore=await page.evaluate(()=>
+    (document.querySelector('.sp-pv-sheet .sp-page')||{}).dataset?.borders||'');
+  await page.click('#spPvOptions [data-opt="borders"]');
+  await page.waitForTimeout(700);
+  const bordersAfter=await page.evaluate(()=>
+    (document.querySelector('.sp-pv-sheet .sp-page')||{}).dataset?.borders||'');
+  rec('「枠線を出す」を外すとその場でdata-borders="off"になる',
+      bordersBefore===''&&bordersAfter==='off',JSON.stringify({前:bordersBefore,後:bordersAfter}));
+  await page.click('#spPvOptions [data-opt="borders"]');      // 元へ戻す
+  await page.waitForTimeout(700);
 
   /* ---- 15) 「分割後の子ロットの情報も載せる」もプレビューへその場で効く ---- */
   const kidsOff=await page.evaluate(()=>document.querySelectorAll('.sp-page .sp-row-child').length);
