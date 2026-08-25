@@ -117,11 +117,14 @@
      静かに外れる。 */
   {group:'equip',key:'roll',label:'ロール',icon:'ロ',endpoint:'/api/roll-master',hasDelete:true,
    titleText:'ロール — 設備ごとのロールの諸元（異常位置判定のピッチ照合に使います）',
+   /* **設備が親・ロールが子**（§9.239 ⑥ 訂正、利用者の指示「厳密に設備を
+      割ってから、個別にロール管理したい。1ロール1設備が正しい」）。
+      束ねる鍵は`equipment`で、1行は必ず1つの設備に属する。 */
    groupBy:'equipment',
-   fields:[{k:'equipment',label:'対象設備',type:'equipment-multi-text',required:true,key:true,fieldGroup:'① どの設備のどこのロールか',
-            tagHint:'このロールを持つ設備です。複数選べます。「すべての設備」を選ぶと、これから増える設備でも当たります。'},
+   fields:[{k:'equipment',label:'設備',type:'equipment-select',required:true,key:true,fieldGroup:'① どの設備のどこのロールか',
+            hint:'**このロールが付いている設備を1つだけ**選びます。ロールは設備ごとに実物が違うので、同じ呼び名でも設備が違えば別のロールとして登録してください（複数の設備をまとめて指定することはできません）。'},
            {k:'name',label:'ロール名',required:true,key:true,fieldGroup:'① どの設備のどこのロールか',
-            hint:'現場での呼び名です。**同じ設備に同じ名前を2つ置かないでください**（どちらの径で判定するか決まりません）。'},
+            hint:'現場での呼び名です。**同じ設備に同じ名前を2つ置かないでください**（どちらの径で判定するか決まりません）。**別の設備でなら同じ名前を使えます**——中身の違う別のロールとして扱われます。'},
            {k:'entryPos',label:'入出位置',type:'master-suggest',source:{key:'entryPositions'},fieldGroup:'① どの設備のどこのロールか',
             hint:'ラインのどこにあるかです（入側／出側／中間 など）。**一覧に無い呼び名も打てます。**'},
            {k:'contactFace',label:'接触面',type:'master-suggest',source:{key:'contactFaces'},fieldGroup:'① どの設備のどこのロールか',
@@ -151,7 +154,7 @@
          {k:'diaMin',label:'径MIN',grow:1},{k:'faceLen',label:'面長',grow:1},
          {k:'count',label:'本数',grow:1},{k:'material',label:'材質',grow:1},
          {k:'refNo',label:'基準番号',grow:1}],
-   hint:'設備ごとのロールの諸元です。**測定画面の「異常位置判定」→「② 長手方向（ロールを特定）」**で、欠陥のピッチ（繰り返しの間隔）から該当しそうなロールを探すのに使います。判定に効くのは**ロール径MAX**（周長＝π×径）で、**ロール径MIN**も入っていれば摩耗の範囲として幅を持たせて判定します。設備の行は「対象設備」でまとまります。'},
+   hint:'設備ごとのロールの諸元です。**1つのロールは1つの設備に属します**——同じ呼び名でも設備が違えば別のロールとして、それぞれ登録してください。**測定画面の「異常位置判定」→「② 長手方向（ロールを特定）」**で、欠陥のピッチ（繰り返しの間隔）から該当しそうなロールを探すのに使います。判定に効くのは**ロール径MAX**（周長＝π×径）で、**ロール径MIN**も入っていれば摩耗の範囲として幅を持たせて判定します。一覧は設備ごとにまとまって出ます。'},
   /* 帳票ブロックマスタ（§9.217、利用者の指示「内部データについても各項目
      ごと設計できるように、編集追加などできるように」）。中身の作り方が
      仕事になっている塊（測定表・条の図・異常位置判定）はコードの側のままで、
@@ -593,11 +596,18 @@
    const val=editing?String(editing[f.k]??''):'';
    if(f.type==='equipment-select'){
     const opts=equipmentMasterState.items||[];
-    if(!opts.length){
+    /* **いま入っている設備が候補に無くても捨てないこと**（§9.204と同じ罠）。
+       設備マスタからその設備が消えても、行そのものは残っている——候補に
+       足さずに描くと`<select>`は「選択...」に落ち、**開いて保存し直した
+       だけで設備が空になる**（保存側は空を断るので、その行は編集も
+       できなくなる）。足したうえで**無いことを文字で言う**（§4）。 */
+    const missing=!!val&&!opts.some(eq=>eq.name===val);
+    if(!opts.length&&!missing){
      return `<div class="mm-field"><span>${esc(f.label)}</span><span class="mm-empty-inline">設備マスタが未登録です。先に「設備」タブで登録してください。</span></div>`;
     }
-    const optHtml=opts.map(eq=>`<option value="${esc(eq.name)}"${eq.name===val?' selected':''}>${esc(eq.name)}</option>`).join('');
-    return `<label class="mm-field"><span>${esc(f.label)}${f.required?'<i>*</i>':''}${f.key?'<em class="mm-keytag">キー</em>':''}</span><select data-field="${f.k}"><option value="">選択...</option>${optHtml}</select></label>`;
+    const optHtml=(missing?`<option value="${esc(val)}" selected>${esc(val)}（設備マスタにありません）</option>`:'')
+      +opts.map(eq=>`<option value="${esc(eq.name)}"${eq.name===val?' selected':''}>${esc(eq.name)}</option>`).join('');
+    return `<label class="mm-field"><span>${esc(f.label)}${f.required?'<i>*</i>':''}${f.key?'<em class="mm-keytag">キー</em>':''}</span><select data-field="${f.k}">${missing?'':'<option value="">選択...</option>'}${optHtml}</select>${missing?`<small class="mm-field-hint">この設備は設備マスタにありません（消されたか、名前が変わっています）。**そのままにすれば今の設備名を保ちます**。登録済みの設備へ付け替えることもできます。</small>`:(f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:'')}</label>`;
    }
    /* 対象設備を複数選べる欄。作業可能設備(equipment-multi)と同じタグUIだが、
       保存先が配列ではなくカンマ区切りの1列で、さらに「すべての設備」という
@@ -1458,7 +1468,12 @@
      `groupBy`を持たないマスタは今までどおり平らに並ぶ。 */
   const gkey=def.groupBy||'';
   let lastGroup=null;
-  const groupLabel=v=>{const t=String(v??'').trim();return !t||t==='*'?'すべての設備':t};
+  /* 束ねの見出し。**空を「すべての設備」と読み替えないこと**（§9.239 ⑥ 訂正）
+     ——1行＝1設備になったので「すべて」という状態は無く、空は
+     **設備が決まっていない直すべき行**。「すべての設備」と出すと、
+     壊れている行が正常に見えて誰も直さない（§CLAUDE 4）。 */
+  const groupLabel=v=>{const t=String(v??'').trim();
+   return t&&t!=='*'?t:'設備が未設定（この行を開いて設備を選んでください）'};
   const counts={};
   if(gkey)items.forEach(it=>{const g=groupLabel(it[gkey]);counts[g]=(counts[g]||0)+1});
   items.forEach(it=>{
