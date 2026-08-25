@@ -120,6 +120,36 @@ try:
     rec('シート名の使えない文字を落として31字に収める',
         '/' not in back['sheet'] and '?' not in back['sheet'] and len(back['sheet']) <= 31,
         back['sheet'])
+    # **書き出したファイルをExcelで直して戻す往復**を守る要（§9.240 の追補）。
+    # 文字のセルに「文字」の書式（numFmtId=49＝`@`）が当たっていないと、
+    # 利用者がExcelでそのセルを直した瞬間に「標準」書式が働き `007` が `7` に
+    # なる。**読めることだけを見る網では捕まらない**（こちらが書いた直後は
+    # 文字のままなので必ず通る）ので、XMLに書式が乗っていることを直に見る。
+    import zipfile as _zip, io as _io, re as _re
+    with _zip.ZipFile(_io.BytesIO(data)) as _z:
+        names = set(_z.namelist())
+        sheet_xml = _z.read('xl/worksheets/sheet1.xml').decode('utf-8')
+        styles = _z.read('xl/styles.xml').decode('utf-8') if 'xl/styles.xml' in names else ''
+    rec('書式の定義（styles.xml）を同梱する', 'xl/styles.xml' in names,
+        json.dumps(sorted(names), ensure_ascii=False))
+    rec('「文字」の書式（numFmtId=49＝@）を持っている', 'numFmtId="49"' in styles,
+        styles[:160])
+    rec('文字のセルに書式を当てている（Excelで直しても先頭ゼロが消えない）',
+        bool(_re.search(r'<c r="C2" s="\d+" t="inlineStr"', sheet_xml)),
+        (_re.search(r'<c r="C2"[^>]*>', sheet_xml) or [''])[0]
+        if _re.search(r'<c r="C2"[^>]*>', sheet_xml) else sheet_xml[:120])
+    rec('数値のセルには文字の書式を当てない（数として計算できる）',
+        bool(_re.search(r'<c r="B2"><v>', sheet_xml)),
+        (_re.search(r'<c r="B2"[^>]*>', sheet_xml).group(0)
+         if _re.search(r'<c r="B2"[^>]*>', sheet_xml) else sheet_xml[:120]))
+    # 長すぎる値は**印を付けて**切る（切らないとExcelがファイルごと開けない）
+    from backend.xlsx_io import MAX_CELL_CHARS
+    longv = read_sheet(write_sheet(['x'], [['あ' * (MAX_CELL_CHARS + 500)]]))['rows'][1][0]
+    rec('長すぎる値は上限まで切る（Excelが開けなくならない）',
+        len(longv) == MAX_CELL_CHARS, str(len(longv)))
+    rec('切ったことが読めるように印を付ける（黙って減らさない）',
+        '省略' in longv[-30:], longv[-30:])
+
     for bad, label in ((b'', '空'), (b'not a zip', 'zipでない')):
         try:
             read_sheet(bad)

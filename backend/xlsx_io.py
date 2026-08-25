@@ -22,6 +22,12 @@
 - **文字列は必ず `inlineStr`**。共有文字列表(`sharedStrings.xml`)を持たない
   ぶん少しファイルが大きくなるが、**先頭ゼロ（`007`）が数値へ落ちない**し、
   部品が1つ減る。ロールの基準番号は先頭ゼロを持ちうる。
+- **文字のセルには「文字」の書式（`numFmtId=49`＝`@`）を当てる。**
+  当てないと、書き出したファイルを利用者がExcelで開いて**そのセルを直した
+  瞬間に**「標準」書式が働き、`007` が `7` になる——書き出す→Excelで直す→
+  取り込む、という本来の使い方でちょうど壊れ、CSVを避けた理由が無に帰す。
+- **長すぎる値は印を付けて切る**（`MAX_CELL_CHARS`）。切らないとExcelが
+  ファイルごと開けない。**黙って切らない。**
 - 見出し行は固定（freeze pane）、列幅は指定できる。**中身の長さから決める**
   のは呼ぶ側の仕事（§CLAUDE 11）。
 
@@ -51,6 +57,44 @@ _R = '{%s}' % NS_REL
 # Excelの上限。これを超えると Excel 自身が開けないので、書く前に断る。
 MAX_ROWS = 1048576
 MAX_COLS = 16384
+
+
+# セルへ入れられる文字数（Excelの上限）。**超えるとExcelがファイルごと開けない**
+# ので、書く前に切る。**黙って切らない**——切ったことがセルの中で読めるように
+# 印を付ける（§CLAUDE 4。データが減ったのに何も言わないのが一番困る）。
+MAX_CELL_CHARS = 32767
+_CLIP_MARK = '…（長すぎるため以降を省略しました）'
+
+# 書式。**3つだけ**——既定／文字（`@`）／見出し（太字＋淡い地）。
+# `fills` の0番は `none`、1番は `gray125` でなければならない（Excelの決まり。
+# 外すと「読み取れない内容」と言われて開けない）。
+STYLE_DEFAULT, STYLE_TEXT, STYLE_HEAD = 0, 1, 2
+STYLES_XML = (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    '<styleSheet xmlns="%s">'
+    '<fonts count="2">'
+    '<font><sz val="11"/><name val="Calibri"/></font>'
+    '<font><b/><sz val="11"/><name val="Calibri"/></font>'
+    '</fonts>'
+    '<fills count="3">'
+    '<fill><patternFill patternType="none"/></fill>'
+    '<fill><patternFill patternType="gray125"/></fill>'
+    '<fill><patternFill patternType="solid">'
+    '<fgColor rgb="FFEDF2F7"/><bgColor indexed="64"/></patternFill></fill>'
+    '</fills>'
+    '<borders count="1"><border/></borders>'
+    '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+    '<cellXfs count="3">'
+    '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+    # numFmtId=49 は組み込みの `@`（文字）。カスタム定義は要らない。
+    '<xf numFmtId="49" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
+    '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0"'
+    ' applyFont="1" applyFill="1"/>'
+    '</cellXfs>'
+    # 既定の名前付きスタイル。**無くても開けるが、リーダーは「既定の書式が
+    # 無い」と警告する**（本物のExcelのファイルには必ず在る）。1行なので足す。
+    '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
+    '</styleSheet>' % NS_MAIN)
 
 
 class XlsxError(ValueError):
@@ -86,6 +130,14 @@ def _text(v):
     return _BAD_CHARS.sub('', str(v))
 
 
+def _clip(v):
+    """Excelのセルの上限まで切る。**切ったことが読めるように印を付ける**。"""
+    t = _text(v)
+    if len(t) <= MAX_CELL_CHARS:
+        return t
+    return t[:MAX_CELL_CHARS - len(_CLIP_MARK)] + _CLIP_MARK
+
+
 def _is_num(v):
     return isinstance(v, (int, float)) and not isinstance(v, bool)
 
@@ -105,19 +157,25 @@ def write_sheet(header, rows, widths=None, sheet_name='Sheet1'):
     if len(rows) + 1 > MAX_ROWS:
         raise XlsxError('行が多すぎてExcelで開けません（%d行）。' % (len(rows) + 1))
 
-    def cell(ci, ri, v):
+    def cell(ci, ri, v, style):
         if v is None or v == '':
             return ''
         ref = '%s%d' % (col_letter(ci), ri)
         if _is_num(v):
             return '<c r="%s"><v>%s</v></c>' % (ref, v)
-        return ('<c r="%s" t="inlineStr"><is><t xml:space="preserve">%s</t></is></c>'
-                % (ref, escape(_text(v))))
+        # **文字のセルには「文字」の書式（`numFmtId=49`＝`@`）を当てる**
+        # （§9.240 の追補）。当てないと、書き出したファイルを利用者が Excel で
+        # 開いて**そのセルを直した瞬間に**「標準」書式が働き、`007` が `7` に
+        # なる。書き出す→Excelで直す→取り込む、という本来の使い方でちょうど
+        # 壊れるので、CSVを避けた理由がここで無に帰す。
+        return ('<c r="%s" s="%d" t="inlineStr"><is><t xml:space="preserve">%s</t></is></c>'
+                % (ref, style, escape(_clip(v))))
 
-    body = ['<row r="1">' + ''.join(cell(i + 1, 1, h) for i, h in enumerate(header)) + '</row>']
+    body = ['<row r="1">' + ''.join(cell(i + 1, 1, h, STYLE_HEAD)
+                                    for i, h in enumerate(header)) + '</row>']
     for ri, r in enumerate(rows, start=2):
         body.append('<row r="%d">' % ri
-                    + ''.join(cell(i + 1, ri, v) for i, v in enumerate(r)) + '</row>')
+                    + ''.join(cell(i + 1, ri, v, STYLE_TEXT) for i, v in enumerate(r)) + '</row>')
     cols = ''
     if widths:
         cols = '<cols>' + ''.join(
@@ -139,6 +197,7 @@ def write_sheet(header, rows, widths=None, sheet_name='Sheet1'):
         '<Default Extension="xml" ContentType="application/xml"/>'
         '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
         '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+        '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
         '</Types>')
     root_rels = (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -154,7 +213,8 @@ def write_sheet(header, rows, widths=None, sheet_name='Sheet1'):
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
         '<Relationship Id="rId1" Type="%s/worksheet" Target="worksheets/sheet1.xml"/>'
-        '</Relationships>' % NS_REL)
+        '<Relationship Id="rId2" Type="%s/styles" Target="styles.xml"/>'
+        '</Relationships>' % (NS_REL, NS_REL))
     import io
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
@@ -162,6 +222,7 @@ def write_sheet(header, rows, widths=None, sheet_name='Sheet1'):
         z.writestr('_rels/.rels', root_rels)
         z.writestr('xl/workbook.xml', workbook)
         z.writestr('xl/_rels/workbook.xml.rels', wb_rels)
+        z.writestr('xl/styles.xml', STYLES_XML)
         z.writestr('xl/worksheets/sheet1.xml', sheet_xml)
     return buf.getvalue()
 
