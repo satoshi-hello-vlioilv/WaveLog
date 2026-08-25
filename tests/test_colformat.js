@@ -126,8 +126,44 @@ const clear=()=>target?post('/api/column-layout-master',{target,clear:true,order
    td:await cellIn(col,'align'),
   });
   const alignNum=await align(numCol),alignText=await align(textCol);
-  rec('数値の列は見出しもセルも右づめ',alignNum.th==='right'&&alignNum.td==='right',JSON.stringify(alignNum));
+  /* ---- 揃え(§9.239 ④、利用者の指示) ----
+     「数値は右詰め、文字列は左詰めなど自動で書式に合わせた設定になりますが、
+      手動での任意変更もできるように」「カラムの文字列はデータとは別で
+      中央位置をデフォルトにして、データの位置に追従するか、別で設定するかを
+      選べるように」
+
+     **見出しの既定は中央**（データの揃えとは別）。以前はセルと同じ
+     `.col-num`が見出しにも付いており、見出しは常にデータへ追従していた
+     ——利用者の言う「データとは別で」が表現できていなかった。 */
+  rec('数値の列のセルは自動で右づめ',alignNum.td==='right',JSON.stringify(alignNum));
+  rec('見出しの既定は中央（データとは別）',alignNum.th==='center'&&alignText.th==='center',
+      JSON.stringify({num:alignNum.th,text:alignText.th}));
   rec('数値以外の列は右づめにしない',alignText.td!=='right',JSON.stringify(alignText));
+  /* **手で決めた揃えは書式に勝つ**（「任意変更」の意味）。数値の列を左へ、
+     文字の列を中央へ寄せて、両方が効くことを見る——数値の列だけを見ると、
+     自動判定を潰しても通る。 */
+  await page.evaluate(async a=>{
+   await WL.columnLayout.patch(listLayoutTarget(),
+    {aligns:{[a.numCol]:{data:'left',head:''},[a.textCol]:{data:'center',head:'follow'}}});
+   renderGrid();
+  },{textCol,numCol});
+  await page.waitForTimeout(250);
+  const manNum=await align(numCol),manText=await align(textCol);
+  rec('手で決めた揃えは書式より強い（数値の列を左へ）',manNum.td==='left',JSON.stringify(manNum));
+  rec('見出しは「データに追従」を選べる',manText.th==='center'&&manText.td==='center',
+      JSON.stringify(manText));
+  rec('見出しを追従にしていない列は中央のまま',manNum.th==='center',JSON.stringify(manNum));
+  /* **開き直しても残る**（保存の往復。§9.212 ②で `aligns` を
+     `fields`／`keep`／`extra` の3箇所へ足し忘れると、ここで落ちる）。 */
+  {
+   const saved=await (await fetch(B+'/api/column-layout-master?target='
+     +encodeURIComponent(await page.evaluate(()=>listLayoutTarget())))).json();
+   const a=(saved.aligns||{})[numCol]||{};
+   rec('揃えがマスタへ往復する',a.data==='left',JSON.stringify(saved.aligns||{}));
+  }
+  /* 元へ戻して、以降の検査に影響させない。 */
+  await page.evaluate(async()=>{await WL.columnLayout.patch(listLayoutTarget(),{aligns:{}});renderGrid()});
+  await page.waitForTimeout(200);
   rec('整形した値はツールチップで元の値が分かる',
    await cellIn(textCol,'title')===rawText);
 

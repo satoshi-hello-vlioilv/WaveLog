@@ -289,6 +289,12 @@
 .rp-bar-group{display:inline-flex;align-items:center;gap:var(--gap-tight);min-width:0}
 .rp-bar-label{font-style:normal;font-size:var(--fs-micro);font-weight:800;
   color:var(--ink-3);letter-spacing:.04em}
+/* どの設備の配置を編集しているか（§9.239 ③）。**器は中身の長さから決める**
+   （§CLAUDE 11）——設備名の長さはマスタ由来なので、`--w-*`の規格へ丸める。
+   帯は`flex-wrap:wrap`なので、1つ足したぶんで2行にならないよう幅を抑える。 */
+.rp-eq-pick{height:var(--ctl-h-xs);max-width:var(--w-lg);min-width:0;
+  padding:0 var(--space-1);font-size:var(--fs-sm);font-weight:700}
+.rp-bar-eq.is-warn .rp-bar-label{color:var(--warn-fg)}
 .rp-seg{display:inline-flex;align-items:center;gap:2px;
   padding:2px;border:1px solid var(--line);border-radius:var(--radius-sm);
   background:var(--surface)}

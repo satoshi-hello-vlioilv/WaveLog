@@ -824,23 +824,31 @@
       <!-- その場フィルタ(§9.238 ⑤、利用者の指示)。**登録しない絞り込み**。
            カラムと条件は覚え(利用者ごと×一覧ごと)、値だけがその場のもの。
            器は**1度だけ**作る——読み込みのたびに組み直すと、打っている
-           最中にカーソルが飛ぶ(§9.117)。 -->
-      <div class="filter-adhoc-row" id="filterAdhocRow" hidden>
-        <span class="filter-adhoc-label">その場フィルタ</span>
-        <label class="filter-adhoc-field"><span>カラム</span>
-          <select id="filterAdhocColumn" title="この一覧の列から選びます。選んだ列は次に開いたときも覚えています"></select></label>
-        <label class="filter-adhoc-field"><span>条件</span>
-          <select id="filterAdhocOp" title="選んだ列をどう比べるか"></select></label>
-        <label class="filter-adhoc-field filter-adhoc-value"><span>入力</span>
-          <input id="filterAdhocValue" list="filterAdhocList" autocomplete="off" type="search"
-                 title="打つとその場で絞り込みます。Enterですぐ、Escで解除">
-          <datalist id="filterAdhocList"></datalist></label>
-        <div class="filter-adhoc-actions">
-          <button id="filterAdhocKeep" type="button">条件に残す</button>
-          <button id="filterAdhocClear" type="button" title="入力を消して、この絞り込みを解除します">解除</button>
-        </div>
+           最中にカーソルが飛ぶ(§9.117)。
+
+           ---------- 1行に収める(§9.239 ①、利用者の指示) ----------
+           以前は「見出しの段＋操作の段＋状態の行＋注記の行」で実測4段に
+           なっており、開くだけで一覧が4行ぶん短くなっていた。畳んだものを
+           開いたときに本文がそれだけ痩せるのでは、開くこと自体をためらう。
+           削ったのは**同じことを2度言っている文だけ**(§CLAUDE 8):
+             ・器の名前「その場フィルタ」…すぐ上の入口ボタンが名乗っている
+             ・欄ごとの見出し「カラム/条件/入力」…並びが「列→条件→値」の
+               1文になっているので、先頭の選択欄が「列を選ぶ」と名乗れば足りる
+             ・注記の1行…**titleへ落とす**(§9.234 ①)。消さずに残す。
+           状態(#filterAdhocState)だけは行の中へ移して**必ず文字で出す**
+           (§3)——効いているかどうかは色ではなく言葉で分かる必要がある。 -->
+      <div class="filter-adhoc-row" id="filterAdhocRow" hidden
+           title="登録はしません。打っているあいだだけ効き、一覧を切り替えると入力は消えます（カラムと条件は覚えています）。">
+        <select id="filterAdhocColumn" class="filter-adhoc-col"
+                title="この一覧の列から選びます。選んだ列は次に開いたときも覚えています"></select>
+        <select id="filterAdhocOp" class="filter-adhoc-op" title="選んだ列をどう比べるか"></select>
+        <input id="filterAdhocValue" class="filter-adhoc-value" list="filterAdhocList"
+               autocomplete="off" type="search"
+               title="打つとその場で絞り込みます。Enterですぐ、Escで解除">
+        <datalist id="filterAdhocList"></datalist>
+        <button id="filterAdhocKeep" type="button">条件に残す</button>
+        <button id="filterAdhocClear" type="button" title="入力を消して、この絞り込みを解除します">解除</button>
         <span class="filter-adhoc-state" id="filterAdhocState"></span>
-        <p class="filter-adhoc-note">登録はしません。打っているあいだだけ効き、一覧を切り替えると入力は消えます（カラムと条件は覚えています）。</p>
       </div>
       <div class="filter-quick-row" id="filterQuickRow" hidden></div>
       <div class="filter-body" id="filterBody" hidden>
@@ -1119,7 +1127,9 @@
       if(sig!==adhocColsSig){
         adhocColsSig=sig;
         const missing=adhoc.column&&cols.length&&!cols.includes(adhoc.column);
-        colSel.innerHTML='<option value="">（選んでください）</option>'
+        /* **先頭の選択肢が欄の名前を兼ねる**（§9.239 ①）。見出しの段を
+           畳んだので、何を選ぶ欄なのかはここが言う。 */
+        colSel.innerHTML='<option value="">列を選ぶ…</option>'
           +(missing?`<option value="${esc(adhoc.column)}">${esc(adhoc.column)}（この一覧にありません）</option>`:'')
           +cols.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
       }

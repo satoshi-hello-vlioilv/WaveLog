@@ -423,10 +423,25 @@
  }
 
  /* 固定列の揃え方。画面と同じキーで判定する(§9.235)——`__est__`のような
-    内側のキーは並べ替えても変わらないので、ここに書いても崩れない。 */
+    内側のキーは並べ替えても変わらないので、ここに書いても崩れない。
+
+    **手で決めた揃えは紙にも効かせる**（§9.239 ④、利用者の指示「手動での
+    任意変更もできるように」）。判定は`WL.columnAlign`の1箇所を通す
+    ——画面で右にしたのに紙が中央、を作らない（§9.237「紙は画面の一覧の
+    見た目が正」）。
+    **既定だけは紙が別に持つ**（区分・日付・時刻・勤務・残りは紙では中央）
+    ——紙は1行が細く列が多いので、画面と同じ左詰めだと升目に見える。
+    設定していない列の刷り上がりは今までどおり。 */
  const FIXED_ALIGN_CENTER=new Set(['__cat__','__workable__','__date__','__caldate__','__time__','__shift__','__rel__']);
  const FIXED_ALIGN_RIGHT=new Set(['__est__','__actual__']);
+ const SP_ALIGN_CLASS={left:'',center:'sp-al-c',right:'sp-al-r'};
  function fixedAlignClass(k){
+  const t=(WL.scheduleView&&typeof WL.scheduleView.layoutTarget==='function')
+    ? WL.scheduleView.layoutTarget() : '';
+  if(t&&WL.columnLayout){
+   const set=WL.columnLayout.align(t,k).data;
+   if(set)return SP_ALIGN_CLASS[set]||'';
+  }
   if(FIXED_ALIGN_RIGHT.has(k))return 'sp-al-r';
   if(FIXED_ALIGN_CENTER.has(k)||k==='no'||k==='state')return 'sp-al-c';
   return '';

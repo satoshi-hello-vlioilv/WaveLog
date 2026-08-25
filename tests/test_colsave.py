@@ -49,7 +49,9 @@ FULL={'target':TARGET,'user_id':'tests',
       'rules':{'A':'ルール1'},
       'formulas':{'C':'[A]+[B]'},
       'locks':['A'],
-      'sorts':{'B':{'buckets':['empty','number','text'],'desc':False}}}
+      'sorts':{'B':{'buckets':['empty','number','text'],'desc':False}},
+      # 揃え(§9.239 ④)。値と見出しを別々に持つ。
+      'aligns':{'A':{'data':'right','head':'follow'},'B':{'data':'','head':'left'}}}
 
 try:
     post(FULL)
@@ -72,6 +74,10 @@ try:
     rec('幅だけ送っても非表示は残る',a.get('hidden')==['C'],json.dumps(a.get('hidden'),ensure_ascii=False))
     rec('幅だけ送っても書式は残る',bool(a.get('formats',{}).get('B')),
         json.dumps(a.get('formats'),ensure_ascii=False))
+    rec('幅だけ送っても揃えは残る',
+        a.get('aligns',{}).get('A',{}).get('data')=='right'
+        and a.get('aligns',{}).get('A',{}).get('head')=='follow',
+        json.dumps(a.get('aligns'),ensure_ascii=False))
     rec('送った幅はちゃんと変わる',a.get('widths',{}).get('A')==200,json.dumps(a.get('widths')))
 
     # ---- 2) 並びだけ送る（見出しのD&Dに相当） ----
@@ -81,6 +87,26 @@ try:
     rec('並びだけ送っても計算式は残る',b.get('formulas',{}).get('C')=='[A]+[B]',
         json.dumps(b.get('formulas'),ensure_ascii=False))
     rec('送った並びはちゃんと変わる',b.get('order')==['C','B','A'],json.dumps(b.get('order')))
+
+    # ---- 2b) 揃えだけ送る（設定パネルで揃えを変えたときに相当） ----
+    # **並びを送らずに揃えだけ保存した列が落ちないこと**も見る
+    # （`set_column_layout`の`extra`へ足し忘れると、並びに載っていない列の
+    #   揃えだけが黙って消える。§9.212 ②の3箇所セットの1つ）。
+    post({'target':TARGET,'user_id':'tests','aligns':{'B':{'data':'center','head':''}}})
+    g=get()
+    rec('揃えだけ送っても他の設定は残る',
+        g.get('widths',{}).get('A')==200 and g.get('locks')==['A']
+        and bool(g.get('formulas',{}).get('C')),
+        json.dumps({'widths':g.get('widths'),'locks':g.get('locks')},ensure_ascii=False))
+    rec('送った揃えはちゃんと変わる',g.get('aligns',{}).get('B',{}).get('data')=='center',
+        json.dumps(g.get('aligns'),ensure_ascii=False))
+    rec('送っていない列の揃えは消える（全体を送る決まり）',
+        'A' not in (g.get('aligns') or {}),json.dumps(g.get('aligns'),ensure_ascii=False))
+    # 知らない値は既定へ倒す（設定1つで一覧が開けなくならない）。
+    post({'target':TARGET,'user_id':'tests','aligns':{'B':{'data':'ななめ','head':'うえ'}}})
+    h=get()
+    rec('知らない揃えは持たない（既定へ倒す）','B' not in (h.get('aligns') or {}),
+        json.dumps(h.get('aligns'),ensure_ascii=False))
 
     # ---- 3) 「空」は省略と別のこと（消せなくならない） ----
     post({'target':TARGET,'user_id':'tests','formulas':{}})
@@ -113,7 +139,7 @@ try:
 
     # ---- 4) 全部送れば今までどおり全部が入れ替わる（設定パネルの保存） ----
     post({'target':TARGET,'user_id':'tests','order':['A'],'widths':{'A':60},'hidden':[],
-          'names':{},'formats':{},'rules':{},'formulas':{},'locks':[],'sorts':{}})
+          'names':{},'formats':{},'rules':{},'formulas':{},'locks':[],'sorts':{},'aligns':{}})
     d=get()
     rec('全部送れば全部入れ替わる（設定パネルの保存）',
         d.get('order')==['A'] and d.get('widths',{}).get('A')==60
@@ -122,11 +148,12 @@ try:
     # ---- 5) まっさらに戻す（clear:true） ----
     post(FULL)
     post({'target':TARGET,'user_id':'tests','clear':True,'order':[],'widths':{},'hidden':[],
-          'names':{},'formats':{},'rules':{},'formulas':{},'locks':[],'sorts':{}})
+          'names':{},'formats':{},'rules':{},'formulas':{},'locks':[],'sorts':{},'aligns':{}})
     e=get()
     rec('clear:true で全部消える（後片付けが消し残らない）',
         not e.get('order') and not e.get('widths') and not e.get('formulas')
-        and not e.get('sorts') and not e.get('locks') and not e.get('names'),
+        and not e.get('sorts') and not e.get('locks') and not e.get('names')
+        and not e.get('aligns'),
         json.dumps({k:e.get(k) for k in ('order','widths','formulas','sorts','locks','names')},
                    ensure_ascii=False))
     # **clearを付けないと消し残る**ことも見る（この口が要る理由そのもの）。
@@ -134,13 +161,14 @@ try:
     post({'target':TARGET,'user_id':'tests','order':[],'widths':{}})
     f=get()
     rec('clearを付けなければ送っていない設定は残る',
-        bool(f.get('formulas')) and bool(f.get('sorts')),
-        json.dumps({'formulas':f.get('formulas'),'sorts':f.get('sorts')},ensure_ascii=False))
+        bool(f.get('formulas')) and bool(f.get('sorts')) and bool(f.get('aligns')),
+        json.dumps({'formulas':f.get('formulas'),'sorts':f.get('sorts'),
+                    'aligns':f.get('aligns')},ensure_ascii=False))
 finally:
     # **後始末**。残すと`db/master.sqlite3`は実行をまたいで生き延びる(§9.121)。
     try:
         post({'target':TARGET,'user_id':'tests','clear':True,'order':[],'widths':{},'hidden':[],
-              'names':{},'formats':{},'rules':{},'formulas':{},'locks':[],'sorts':{}})
+              'names':{},'formats':{},'rules':{},'formulas':{},'locks':[],'sorts':{},'aligns':{}})
     except Exception:
         pass
 

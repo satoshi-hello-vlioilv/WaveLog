@@ -365,6 +365,8 @@
    locks:new Set((l.locks||[]).filter(k=>keys.includes(k))),
    /* 並べ替えの決まり(§9.187)。列ごとに1つ。 */
    sorts:JSON.parse(JSON.stringify(l.sorts||{})),
+   /* 揃え(§9.239 ④)。値と見出しを**別々に**持つ。 */
+   aligns:JSON.parse(JSON.stringify(l.aligns||{})),
   };
   if(!picked||!draft.order.includes(picked))picked=draft.order.find(k=>!isVirtual(k))||draft.order[0]||'';
  }
@@ -585,7 +587,7 @@
  function applyLive(){
   WL.columnLayout.stage(target,{locks:[...draft.locks],
                                 order:draft.order,widths:draft.widths,hidden:[...draft.hidden],
-                                formulas:draft.formulas,sorts:draft.sorts,
+                                formulas:draft.formulas,sorts:draft.sorts,aligns:draft.aligns,
                                 names:draft.names,formats:draft.formats,rules:draft.rules});
   panelSrc.afterApply();
   const note=document.getElementById('lcFootNote');
@@ -856,6 +858,7 @@
        ${widthModeOf(picked)==='auto'?'disabled':''}> px</span>
       <small class="lc-hint">${esc(WIDTH_MODE_NOTE[widthModeOf(picked)]||'')}</small>
      </div></div>
+   ${alignFieldsHtml()}
    </div>
    ${fx&&panelSrc.features.formula?formulaStepHtml():''}
    ${virt?`<div class="lc-note-calc"><b>この列は値を持ちません。</b>
@@ -933,6 +936,8 @@
      deleteFormulaColumn(picked);
    };
   }
+  /* 揃えは**番号・ボタンの列にも効く**ので、`virt`で降りる前に配線する。 */
+  wireAlign(box);
   if(virt)return;
   box.querySelectorAll('input[name="lcKind"]').forEach(el=>{
    el.onchange=()=>{
@@ -974,6 +979,76 @@
   });
   on('#lcRuleEdit','click',()=>editRule(draft.rules[picked]||''));
   wireSortStep(box);
+ }
+
+ /* ---------- 揃え(§9.239 ④、利用者の指示) ----------
+    「数値は右詰め、文字列は左詰めなど自動で書式に合わせた設定になりますが、
+     手動での任意変更もできるように」「カラムの文字列はデータとは別で
+     中央位置をデフォルトにして、データの位置に追従するか、別で設定するかを
+     選べるように」
+
+    **2段に分けて出す**——データと見出しは別の設定だと利用者が言っている。
+    1つの並びに混ぜると「見出しだけ中央」がどこの設定か分からなくなる。
+    **いま何が効いているかを文字で出す**（§3・§6）——「自動」を選んで
+    いるときは、その結果（右詰め／左詰め）と**理由**（書式が数値だから）を
+    添える。同じ「右詰め」でも、自動で右になっているのか手で決めたのかで
+    次にすることが違う。 */
+ const ALIGN_DIRS=[['left','左'],['center','中央'],['right','右']];
+ function alignOf(k){
+  /* **下書きに`aligns`が無くても落ちないこと。** 右ペインは1箇所でも
+     例外を投げると丸ごと描けなくなるので、設定が欠けたときは「既定」で
+     出す（直せる場所へ辿れる状態を保つ・§9.111 ⑦と同じ考え方）。 */
+  const a=(draft.aligns||{})[k]||{};
+  return {data:String(a.data||''),head:String(a.head||'')};
+ }
+ /* 自動のときに実際どちらへ寄るか。**判定は`WL.columnAlign`の1箇所**を
+    通す（パネルだけ別の答えを出すと、見本と一覧が食い違う）。 */
+ function autoDataDir(k){
+  const kind=(draft.formats[k]||{}).kind||'';
+  return kind==='number'?'right':'left';
+ }
+ function alignFieldsHtml(){
+  const a=alignOf(picked);
+  const auto=autoDataDir(picked);
+  const kind=(draft.formats[picked]||{}).kind||'';
+  const eff=a.data||auto;
+  const headEff=a.head==='follow'?eff:(a.head||'center');
+  const seg=(name,cur,opts)=>`<div class="lc-aligns" id="${name}">`+opts.map(([v,t,tip])=>
+    `<label class="lc-align${cur===v?' is-on':''}" title="${esc(tip||t)}">`
+    +`<input type="radio" name="${name}" value="${esc(v)}"${cur===v?' checked':''}><span>${esc(t)}</span></label>`).join('')+'</div>';
+  return `
+   <div class="lc-field lc-field-align"><span>データの揃え</span>
+    <div class="lc-alignbox">
+     ${seg('lcAlignData',a.data,[['','自動','書式に合わせます（数値なら右、それ以外は左）'],
+                                 ...ALIGN_DIRS.map(([v,t])=>[v,t,`このデータを${t}へそろえます`])])}
+     <small class="lc-hint">${a.data
+       ?`手で決めています（${esc(WL.columnAlign.LABEL[a.data])}）。書式を変えても動きません。`
+       :`自動 → いまは<b>${esc(WL.columnAlign.LABEL[auto])}</b>（書式は${esc(kind==='number'?'数値':kind==='datetime'?'日付・時刻':kind==='text'?'文字':'指定なし')}）`}</small>
+    </div></div>
+   <div class="lc-field lc-field-align"><span>見出しの揃え</span>
+    <div class="lc-alignbox">
+     ${seg('lcAlignHead',a.head,[['','中央','見出しは中央にそろえます（既定）'],
+                                 ['follow','データに追従','データの揃えと同じにします'],
+                                 ...ALIGN_DIRS.map(([v,t])=>[v,t,`見出しを${t}へそろえます`])])}
+     <small class="lc-hint">いまは<b>${esc(WL.columnAlign.LABEL[headEff])}</b>${
+       a.head==='follow'?'（データに追従）':a.head?'（手で決めています）':'（既定）'}</small>
+    </div></div>`;
+ }
+ function wireAlign(box){
+  const put=(kind,v)=>{
+   const a=alignOf(picked);
+   a[kind]=v;
+   if(!draft.aligns)draft.aligns={};
+   if(!a.data&&!a.head)delete draft.aligns[picked];
+   else draft.aligns[picked]={data:a.data,head:a.head};
+   /* **右ペインも描き直す**——「いまは右詰め」の説明が古いままだと、
+      効いていないように見える（§9.90の`renderPreview`と同じ理由）。 */
+   renderDetail();renderList();applyLive();
+  };
+  box.querySelectorAll('input[name="lcAlignData"]').forEach(el=>
+   el.addEventListener('change',e=>put('data',e.target.value)));
+  box.querySelectorAll('input[name="lcAlignHead"]').forEach(el=>
+   el.addEventListener('change',e=>put('head',e.target.value)));
  }
 
  /* ---------- ④ 並べ替え(§9.187) ----------
@@ -1068,7 +1143,8 @@
    const body={order:draft.order,widths:draft.widths,
                hidden:[...draft.hidden],names:draft.names,
                formats:draft.formats,rules:draft.rules,
-               formulas:draft.formulas,locks:[...draft.locks],sorts:draft.sorts};
+               formulas:draft.formulas,locks:[...draft.locks],sorts:draft.sorts,
+               aligns:draft.aligns};
    if(typeof panelSrc.save==='function')await panelSrc.save(target,body);
    else await WL.columnLayout.save(target,body);
    /* 保存が通ったら**下書きは役目を終える**(§9.212 ③)。`save()`が
@@ -1096,7 +1172,10 @@
                        hidden:[...draft.hidden],names:{...draft.names},
                        formats:JSON.parse(JSON.stringify(draft.formats)),rules:{...draft.rules},
                        formulas:{...draft.formulas},locks:[...draft.locks],
-                       sorts:JSON.parse(JSON.stringify(draft.sorts||{}))});
+                       sorts:JSON.parse(JSON.stringify(draft.sorts||{})),
+                       /* 揃え(§9.239 ④)も一緒に運ぶ。**1つでも書き漏らすと
+                          その設定だけが黙って消える**（§9.113）。 */
+                       aligns:JSON.parse(JSON.stringify(draft.aligns||{}))});
  function renderPresets(){
   const sel=document.getElementById('lcPresetSel');if(!sel)return;
   const cur=sel.value;
@@ -1146,6 +1225,7 @@
    formulas,
    locks:new Set((body.locks||[]).filter(k=>keys.includes(k)||formulas[k])),
    sorts:pickKnown(body.sorts,keys).out,
+   aligns:JSON.parse(JSON.stringify(pickKnown(body.aligns,keys).out)),
   };
   marked.clear();
   if(!draft.order.includes(picked))picked=draft.order.find(k=>!isVirtual(k))||draft.order[0]||'';
@@ -1370,8 +1450,8 @@
     await WL.columnLayout.save(x.target,{order:x.body.order||[],widths:x.body.widths||{},
       hidden:x.body.hidden||[],names:x.body.names||{},formats:x.body.formats||{},
       rules:x.body.rules||{},formulas:x.body.formulas||{},locks:x.body.locks||[],
-      /* **`sorts`を書き漏らさない**（§9.211 ①。全置換なので消える） */
-      sorts:x.body.sorts||{}});
+      /* **`sorts`・`aligns`を書き漏らさない**（§9.211 ①。全置換なので消える） */
+      sorts:x.body.sorts||{},aligns:x.body.aligns||{}});
     ok++;
    }catch(e){ng++;console.warn('列設定の書き込みに失敗',x.target,e)}
   }
@@ -1403,8 +1483,11 @@
   marked.clear();
   /* 式で作った列は**残す**——「既定に戻す」で消えると、作った本人が
      作り直すことになる(見せ方の初期化と、列そのものの削除は別の操作)。 */
+  /* **下書きの項目を1つでも書き漏らさないこと**（§9.113と同じ形）。
+     `aligns`を落とすと`alignFieldsHtml()`が`undefined[列名]`で落ち、
+     右ペインが丸ごと描けなくなる（`test_colpreset`が捕まえた）。 */
   draft={order:allKeys(),hidden:new Set(),widths:{},names:{},formats:{},rules:{},
-         formulas:{...(draft&&draft.formulas||{})},locks:new Set(),sorts:{}};
+         formulas:{...(draft&&draft.formulas||{})},locks:new Set(),sorts:{},aligns:{}};
   renderOrigins();renderList();renderDetail();applyLive();
  }
 

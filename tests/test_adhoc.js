@@ -83,6 +83,48 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
       opened.開いた&&opened.カラム&&opened.条件&&opened.入力,JSON.stringify(opened));
   rec('カラムの候補はこの一覧の列から作る',opened.列数>2,JSON.stringify(opened));
 
+  /* ---- 2b) 開いても**1行**に収まる(§9.239 ①、利用者の指示) ----
+     以前は「欄ごとの見出しの段＋操作の段＋状態＋注記」で実測4段あり、
+     開くだけで一覧が4行ぶん短くなっていた。
+     **要素の数や有無を見る網では捕まらない**(§9.130)ので、
+     ①中の部品が全部同じ段に居るか(＝折り返していないか)
+     ②器の高さがいちばん高い部品＋上下の余白に収まっているか
+     の2つを実測で見る。**幅を狭めた側でも見る**——広い窓でしか
+     確かめないと、狭い窓で段が増える実装を素通しさせる。 */
+  const oneLine=async()=>await page.evaluate(()=>{
+   const row=document.getElementById('filterAdhocRow');
+   if(!row||row.hidden)return {段数:0,器:0,部品:0,余り:0};
+   const r=row.getBoundingClientRect();
+   const cs=getComputedStyle(row);
+   const pad=parseFloat(cs.paddingTop)+parseFloat(cs.paddingBottom);
+   const kids=[...row.children].filter(el=>el.offsetParent&&el.getBoundingClientRect().height>0);
+   /* **同じ段かどうかは「上端」ではなく「中心」で見る**——部品の高さは
+      ボタンと選択欄で違い、中央そろえだと上端は当然ずれる。上端で数えると
+      1行に収まっていても段が増えたことになり、直っていても落ちる。 */
+   const mids=[];
+   let tall=0;
+   kids.forEach(el=>{
+    const b=el.getBoundingClientRect();
+    tall=Math.max(tall,b.height);
+    const mid=b.top+b.height/2;
+    if(!mids.some(m=>Math.abs(m-mid)<=3))mids.push(mid);
+   });
+   return {段数:mids.length,器:Math.round(r.height),部品:Math.round(tall),
+           余り:Math.round(r.height-tall-pad),数:kids.length};
+  });
+  const line1=await oneLine();
+  rec('開いても部品はすべて同じ段に並ぶ（折り返さない）',line1.段数===1&&line1.数>=4,
+      JSON.stringify(line1));
+  rec('開いた器の高さは1行ぶん（いちばん高い部品＋上下の余白）',
+      line1.器>0&&line1.余り<=4,JSON.stringify(line1));
+  /* 狭い器（スケジュールの分割表示に近い幅）でも段が増えないこと。 */
+  await page.setViewportSize({width:1100,height:1000});
+  await page.waitForTimeout(400);
+  const line2=await oneLine();
+  rec('狭い窓でも1行のまま',line2.段数===1&&line2.余り<=4,JSON.stringify(line2));
+  await page.setViewportSize({width:1700,height:1000});
+  await page.waitForTimeout(400);
+
   /* ---- 3) 選んで打つと、その場で絞り込みが効く ---- */
   /* **実際に絞れる列を選ぶ**——同じ値しか無い列だと件数が変わらず、
      効いていなくても通る。 */

@@ -291,8 +291,13 @@ def set_operator_equipment(c,oid,names,uid):
 # operation_repo は master_repo を読む側なので、モジュールの頭では引けない。
 def equipment_name_references():
  from . import operation_repo as op
+ from . import roll_repo as rr
  return (
   (OPERATOR_EQUIPMENT_TABLE,'設備名','exact'),
+  # ロールマスタ(§9.239 ⑥)。**足し忘れると設備を改名した瞬間に、その設備の
+  # ロールが1本も出てこなくなる**（異常位置判定の「ピッチからロールを探す」が
+  # 黙って0件になる）。書式は設備停止マスタと同じカンマ区切り＋`'*'`。
+  (rr.TABLE,'設備名','list'),
   # §9.221 ③でオペレータの作業可能設備の実体がここへ移った。**移した先を
   # この表へ足し忘れると、改名しても追従せず「その設備を選べるはずの
   # オペレータが選択肢に出てこなくなる」**——VER2.44.0で一度直した不具合
@@ -926,6 +931,29 @@ def normalize_format(raw):
          'thousands':thousands,'prefix':prefix,'suffix':suffix}
 
 
+# ---- 揃え(§9.239 ④、利用者の指示) ------------------------------------
+# 「数値は右詰め、文字列は左詰めなど自動で書式に合わせた設定になりますが、
+#  手動での任意変更もできるようにしてください。また、カラムの文字列は
+#  データとは別で中央位置をデフォルトにして、データの位置に追従するか、
+#  別で設定するか選べるようにしてください」。
+#
+# **2つの値を別々に持つ**——値の揃えと見出しの揃えは「別のもの」だと
+# 利用者が明示している。1つにまとめると「見出しだけ中央」が表現できない。
+#  値  : ''=自動(書式が数値なら右・それ以外は左) / left / center / right
+#  見出し: ''=既定(中央) / follow(値に追従) / left / center / right
+# **既定を空文字で表す**のは他の設定と同じ約束（列を足しても既存行が
+# 勝手に変わらない）。解決そのものは画面が持つ——サーバーは生の値を返し、
+# 整形も揃えも画面側だけで行う（並べ替え・絞り込みを生の値で効かせたまま
+# にするため。§9.88 段3と同じ理由）。
+VALUE_ALIGNS=('','left','center','right')
+HEAD_ALIGNS=('','follow','left','center','right')
+
+def normalize_align(value,head=False):
+ """保存できる揃えへ整える。知らない値は''(=既定)へ倒す。"""
+ v=str(value or '').strip().lower()
+ return v if v in (HEAD_ALIGNS if head else VALUE_ALIGNS) else ''
+
+
 def ensure_column_layout_table(c):
  names=tables(c);created=False
  if COLUMN_LAYOUT_TABLE not in names:
@@ -953,7 +981,10 @@ def ensure_column_layout_table(c):
                    ('書式種別','TEXT'),('書式パターン','TEXT'),('小数桁','INTEGER'),
                    ('桁区切り','INTEGER'),('単位前','TEXT'),('単位後','TEXT'),
                    ('読み替えルール','TEXT'),('計算式','TEXT'),('幅固定','INTEGER'),
-                   ('並べ替え','TEXT')):
+                   ('並べ替え','TEXT'),
+                   # 揃え(§9.239 ④)。**2列に分ける**——値と見出しは別の設定で、
+                   # 「見出しだけ中央」「見出しは値に追従」を1つの値では書けない。
+                   ('値揃え','TEXT'),('見出し揃え','TEXT')):
   if name not in have:
    c.cursor().execute(f'ALTER TABLE [{COLUMN_LAYOUT_TABLE}] ADD COLUMN [{name}] {decl}')
    c.commit()
@@ -976,7 +1007,7 @@ def column_layout_for(c,target):
  **hiddenは「この対象で隠す列」**。[表示]がNULLの行は表示(既定)として扱う
  ——列を足したときに既存の行が勝手に隠れないようにするため。"""
  empty={'order':[],'widths':{},'hidden':[],'names':{},'formats':{},'rules':{},'formulas':{},
-        'locks':[],'sorts':{}}
+        'locks':[],'sorts':{},'aligns':{}}
  if COLUMN_LAYOUT_TABLE not in tables(c):return dict(empty)
  target=str(target or '').strip()
  if not target:return dict(empty)
@@ -987,9 +1018,9 @@ def column_layout_for(c,target):
              +col('書式種別')+','+col('書式パターン')+','+col('小数桁')+','
              +col('桁区切り')+','+col('単位前')+','+col('単位後')+','
              +col('読み替えルール')+','+col('計算式')+','+col('幅固定')+','
-             +col('並べ替え')+
+             +col('並べ替え')+','+col('値揃え')+','+col('見出し揃え')+
              ' FROM [列レイアウトマスタ] WHERE [対象]=? ORDER BY [表示順],[ID]',[target])
- order=[];widths={};hidden=[];names={};formats={};rules={};formulas={};locks=[];sorts={}
+ order=[];widths={};hidden=[];names={};formats={};rules={};formulas={};locks=[];sorts={};aligns={}
  for row in cur.fetchall():
   name=str(row[0] or '').strip()
   if not name:continue
@@ -1016,9 +1047,14 @@ def column_layout_for(c,target):
    from .. import sort_order
    spec=sort_order.normalize_spec(row[14])
    if spec:sorts[name]=spec
+  # 揃え(§9.239 ④)。**どちらも既定なら持たない**——空の辞書が並ぶと
+  # 「触った列」と「触っていない列」が見分けられなくなる。
+  if len(row)>16:
+   va=normalize_align(row[15]);ha=normalize_align(row[16],True)
+   if va or ha:aligns[name]={'data':va,'head':ha}
  return {'order':order,'widths':widths,'hidden':hidden,'names':names,
          'formats':formats,'rules':rules,'formulas':formulas,'locks':locks,
-         'sorts':sorts}
+         'sorts':sorts,'aligns':aligns}
 
 def column_layout_targets(c):
  """保存されている対象(target)の一覧。**持ち出し・取り込み用**(§9.178)。
@@ -1032,7 +1068,7 @@ def column_layout_targets(c):
  return [str(r[0] or '').strip() for r in cur.fetchall() if str(r[0] or '').strip()]
 
 def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=None,rules=None,
-                      formulas=None,locks=None,sorts=None,fields=None):
+                      formulas=None,locks=None,sorts=None,aligns=None,fields=None):
  """対象(target)の行をまとめて書き直す。渡された順序がそのまま表示順になる。
 
  **並び(order)は必ず全体を送ること。** 部分的な並べ替えは「どちらが正か」が
@@ -1063,6 +1099,7 @@ def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=N
   if 'formulas' not in own:formulas=keep['formulas']
   if 'locks'    not in own:locks=keep['locks']
   if 'sorts'    not in own:sorts=keep['sorts']
+  if 'aligns'   not in own:aligns=keep['aligns']
  widths=widths if isinstance(widths,dict) else {}
  hide={str(x or '').strip() for x in (hidden or []) if str(x or '').strip()}
  label=names if isinstance(names,dict) else {}
@@ -1075,16 +1112,25 @@ def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=N
  for k,v in (sorts if isinstance(sorts,dict) else {}).items():
   txt=sort_order.spec_json(v)
   if txt:sortspec[str(k or '').strip()]=txt
+ # 揃え(§9.239 ④)。**どちらも既定の行は持たない**（下の`extra`で
+ # 「設定がある列」を数えるので、空の指定を残すと並びに載っていない列が
+ # 理由なく生き残る）。
+ align={}
+ for k,v in (aligns if isinstance(aligns,dict) else {}).items():
+  if not isinstance(v,dict):continue
+  va=normalize_align(v.get('data'));ha=normalize_align(v.get('head'),True)
+  if va or ha:align[str(k or '').strip()]={'data':va,'head':ha}
  cur=c.cursor()
  cur.execute('DELETE FROM [列レイアウトマスタ] WHERE [対象]=?',[target])
 
  def write(name,seq):
   f=normalize_format(fmt.get(name)) or {}
+  a=align.get(name) or {}
   cur.execute('INSERT INTO [列レイアウトマスタ] ([対象],[列名],[表示名],[表示順],[幅],[表示],'
               '[書式種別],[書式パターン],[小数桁],[桁区切り],[単位前],[単位後],'
-              '[読み替えルール],[計算式],[幅固定],[並べ替え],'
+              '[読み替えルール],[計算式],[幅固定],[並べ替え],[値揃え],[見出し揃え],'
               '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
-              'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',
+              'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',
               [target,name,str(label.get(name) or '').strip() or None,seq,
                normalize_column_width(widths.get(name)),
                0 if name in hide else -1,
@@ -1095,7 +1141,8 @@ def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=N
                # 空文字はそのまま空文字で書く（NULLにすると計算列でなくなる）。
                (str(formula.get(name) or '').strip() if name in formula else None),
                -1 if name in lock else 0,
-               sortspec.get(name) or None,uid,uid])
+               sortspec.get(name) or None,
+               a.get('data') or None,a.get('head') or None,uid,uid])
 
  seq=0;seen=set()
  for name in (order or []):
@@ -1108,7 +1155,7 @@ def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=N
  # **どれか1つでも拾い漏らすと、その設定だけが黙って消える**——並びを
  # 送らずに書式だけ保存した場合に実際に起きた。
  extra=[n for n in (list(widths)+list(label)+list(fmt)+list(rule)+list(formula)
-                    +list(sortspec)+sorted(hide)+sorted(lock))
+                    +list(sortspec)+list(align)+sorted(hide)+sorted(lock))
         if str(n or '').strip() and str(n).strip() not in seen]
  for name in extra:
   name=str(name).strip()

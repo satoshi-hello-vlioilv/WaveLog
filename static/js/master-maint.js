@@ -101,6 +101,57 @@
             消してよいのか判断できず、消すと項目側は黙って空の欄になる。 */
          {k:'usedBy',label:'使っている項目',grow:3}],
    hint:'操業データの「選択」型の項目で選ばせる値です。1行＝1つの値で、同じまとまり名の行がまとまって1つの選択肢になります。**同じまとまりを複数の項目が参照できます**（大径リング色と小径リング色はどちらも「リング色」を見ています）。ここで値を足すと、参照しているすべての項目の選択肢に増えます。**値を足すだけなら「操業データ項目」の設定の窓からもできます**（項目を作る手を止めなくて済みます）。'},
+  /* ---------- ロールマスタ（§9.239 ⑥、利用者の指示） ----------
+     「ロールマスタは『設備／入出位置／接触面／ロール径MAX／ロール径MIN／
+      ロール面長／材質／硬度／本数／ロール名／ロール使用条件／駆動方式／
+      基準番号／備考』という種類だけカラムを持つものとする。設備のカラムは
+      マスタに親子関係を持たせ、設備単位でロールマスタを持つ形とする」
+
+     **設備を親、ロールを子として束ねて出す**（`groupBy:'equipment'`）。
+     マスタを2つに割らずに階層を作れるので、所属を変えるのは`[対象設備]`を
+     1つ直すだけで済む（割ると、移すために消して作り直すことになる）。
+     欄は14あるので`fieldGroup`で4つの塊に分ける（§9.222 ⑦
+     「決めることが10を超える窓は塊に分ける」）。
+     **先頭は1行に続けて書くこと**——`tests/test_crudroutes.py`の正規表現は
+     空白・改行を許さないので、ここで改行すると4本のCRUDの検査から
+     静かに外れる。 */
+  {group:'equip',key:'roll',label:'ロール',icon:'ロ',endpoint:'/api/roll-master',hasDelete:true,
+   titleText:'ロール — 設備ごとのロールの諸元（異常位置判定のピッチ照合に使います）',
+   groupBy:'equipment',
+   fields:[{k:'equipment',label:'対象設備',type:'equipment-multi-text',required:true,key:true,fieldGroup:'① どの設備のどこのロールか',
+            tagHint:'このロールを持つ設備です。複数選べます。「すべての設備」を選ぶと、これから増える設備でも当たります。'},
+           {k:'name',label:'ロール名',required:true,key:true,fieldGroup:'① どの設備のどこのロールか',
+            hint:'現場での呼び名です。**同じ設備に同じ名前を2つ置かないでください**（どちらの径で判定するか決まりません）。'},
+           {k:'entryPos',label:'入出位置',type:'master-suggest',source:{key:'entryPositions'},fieldGroup:'① どの設備のどこのロールか',
+            hint:'ラインのどこにあるかです（入側／出側／中間 など）。**一覧に無い呼び名も打てます。**'},
+           {k:'contactFace',label:'接触面',type:'master-suggest',source:{key:'contactFaces'},fieldGroup:'① どの設備のどこのロールか',
+            hint:'材料のどの面に当たるかです。欠陥が出た面で候補を絞れます。'},
+           {k:'diaMax',label:'ロール径MAX',type:'number',min:0,step:0.1,unit:'mm',required:true,fieldGroup:'② 寸法',
+            hint:'**判定の主役**です。欠陥のピッチ＝この径の周長（π×径）と比べます。'},
+           {k:'diaMin',label:'ロール径MIN',type:'number',min:0,step:0.1,unit:'mm',fieldGroup:'② 寸法',
+            hint:'摩耗後の下限です。入れると周長が「幅」になり、その範囲で判定します。**空欄ならMAXの1点で判定します**（0を入れないでください）。'},
+           {k:'faceLen',label:'ロール面長',type:'number',min:0,step:1,unit:'mm',fieldGroup:'② 寸法',
+            hint:'胴の長さです。判定には使いませんが、板幅と突き合わせるときの目安になります。'},
+           {k:'count',label:'本数',type:'number',min:0,step:1,unit:'本',fieldGroup:'② 寸法',
+            hint:'同じ諸元のロールが何本あるかです。'},
+           {k:'material',label:'材質',fieldGroup:'③ 仕様',hint:'ゴム・鋼・ウレタンなど。'},
+           {k:'hardness',label:'硬度',fieldGroup:'③ 仕様',hint:'例: Hs70。単位ごと入れてかまいません。'},
+           {k:'driveKind',label:'駆動方式',type:'master-suggest',source:{key:'driveKinds'},fieldGroup:'③ 仕様',
+            hint:'駆動／従動／フリー など。'},
+           {k:'useCond',label:'ロール使用条件',fieldGroup:'③ 仕様',
+            hint:'どんなときに使うロールかです（例: 薄板のみ）。'},
+           {k:'refNo',label:'基準番号',fieldGroup:'④ 管理',hint:'図面番号・管理番号など。'},
+           {k:'note',label:'備考',size:'lg',fieldGroup:'④ 管理'},
+           {k:'order',label:'表示順',type:'number',min:0,step:10,fieldGroup:'④ 管理',
+            hint:'小さいほど先に出ます。空欄で保存すると今の並びのままです。'},
+           {k:'enabledText',label:'有効',type:'select',options:['有効','無効'],fieldGroup:'④ 管理',
+            hint:'「無効」にすると判定の候補から外れます。**行は消えません。**'}],
+   cols:[{k:'name',label:'ロール名',grow:2},{k:'entryPos',label:'入出位置',grow:1},
+         {k:'contactFace',label:'接触面',grow:1},{k:'diaMax',label:'径MAX',grow:1},
+         {k:'diaMin',label:'径MIN',grow:1},{k:'faceLen',label:'面長',grow:1},
+         {k:'count',label:'本数',grow:1},{k:'material',label:'材質',grow:1},
+         {k:'refNo',label:'基準番号',grow:1}],
+   hint:'設備ごとのロールの諸元です。**測定画面の「異常位置判定」→「② 長手方向（ロールを特定）」**で、欠陥のピッチ（繰り返しの間隔）から該当しそうなロールを探すのに使います。判定に効くのは**ロール径MAX**（周長＝π×径）で、**ロール径MIN**も入っていれば摩耗の範囲として幅を持たせて判定します。設備の行は「対象設備」でまとまります。'},
   /* 帳票ブロックマスタ（§9.217、利用者の指示「内部データについても各項目
      ごと設計できるように、編集追加などできるように」）。中身の作り方が
      仕事になっている塊（測定表・条の図・異常位置判定）はコードの側のままで、
@@ -220,7 +271,7 @@
     撤去した）。`currentDef()`は見つからなければ先頭へ落とすので中身は出るが、
     `syncNav()`は`defKey`と突き合わせるので**どのタブも選ばれていない**
     見た目になる——「今どこにいるか」を画面が言わなくなる。 */
- let maintState={defKey:MASTER_DEFS[0].key,items:[],editing:null,query:''};
+ let maintState={defKey:MASTER_DEFS[0].key,items:[],editing:null,query:'',meta:{}};
  function currentDef(){return MASTER_DEFS.find(d=>d.key===maintState.defKey)||MASTER_DEFS[0]}
  // scheduleモードは作業予定(schedule Blueprint)以外のマスタへ書込できない
  // (backend/access_mode.pyの_WRITE_ALLOWED_MODES)。マスタ管理モーダル自体は
@@ -485,7 +536,7 @@
     段は**型から自動で決まる**（数値=xs／日付=sm／選択=md／自由記述=md）ので、
     マスタを増やしても書き足す必要は無い。合わないものだけ`size:`で名指しする。 */
  const MM_SIZE_BY_TYPE={number:'xs',time:'xs',date:'sm',select:'md',
-   'master-combo':'md','equipment-select':'md',
+   'master-combo':'md','master-suggest':'md','equipment-select':'md',
    textarea:'full',path:'full','equipment-multi':'full','equipment-multi-text':'full'};
  function mmFieldSize(f){
   if(f.size)return f.size;
@@ -605,6 +656,19 @@
        <input class="mm-combo-new" data-combo-new="${f.k}" type="text" placeholder="新しい${esc(f.label)}を入力" autocomplete="off" hidden>
       </div>
       <small class="mm-field-hint">${hintHtml(f.hint||'一覧から選ぶだけで入力できます。無いものは「＋ 新しく追加」を選ぶとこの場で登録できます。')}</small></div>`;
+   }
+   /* 候補を出すだけの自由記述（§9.239 ⑥）。**選択肢で塞がない**——
+      現場の呼び名は事前に数え切れないので、一覧に無い値も打てるようにする。
+      候補の出どころは**サーバーの戻り**（`maintState.meta[source.key]`）で、
+      画面には綴りを書き写さない（§9.163）。 */
+   if(f.type==='master-suggest'){
+    const key=(f.source&&f.source.key)||'';
+    const opts=(maintState.meta&&Array.isArray(maintState.meta[key]))?maintState.meta[key]:[];
+    const lid=`mmSuggest_${f.k}`;
+    return `<label class="mm-field">${fieldLabelHtml(f)}
+      <input data-field="${f.k}" type="text" list="${lid}" autocomplete="off" value="${esc(val)}">
+      <datalist id="${lid}">${opts.map(o=>`<option value="${esc(o)}"></option>`).join('')}</datalist>
+      ${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</label>`;
    }
    if(f.type==='number'){
     return `<label class="mm-field mm-field-num">${fieldLabelHtml(f)}${numFieldHtml(f,val)}${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</label>`;
@@ -1386,7 +1450,29 @@
   list.innerHTML=`<div class="mm-row head" style="grid-template-columns:${tmpl}">${headCols}${showAudit?'<span>更新者</span><span>更新日時</span>':''}<span class="mm-act">操作</span></div>`;
   if(!items.length){list.insertAdjacentHTML('beforeend',`<div class="mm-empty">${all.length&&maintState.query?'絞り込み条件に一致するデータがありません。':'有効なデータがありません。上のフォームから追加してください。'}</div>`);return}
   const frag=document.createDocumentFragment();
+  /* ---------- 親子で束ねる(§9.239 ⑥、利用者の指示) ----------
+     「設備のカラムはマスタに親子関係を持たせ、設備単位でロールマスタを
+      持つ形とする」。**マスタを2つに割らない**——所属を変えるのは
+     `[対象設備]`を1つ直すだけで済む（割ると、移すために消して作り直す
+     ことになる）。見出しには**件数を文字で**添える（§3）。
+     `groupBy`を持たないマスタは今までどおり平らに並ぶ。 */
+  const gkey=def.groupBy||'';
+  let lastGroup=null;
+  const groupLabel=v=>{const t=String(v??'').trim();return !t||t==='*'?'すべての設備':t};
+  const counts={};
+  if(gkey)items.forEach(it=>{const g=groupLabel(it[gkey]);counts[g]=(counts[g]||0)+1});
   items.forEach(it=>{
+   if(gkey){
+    const g=groupLabel(it[gkey]);
+    if(g!==lastGroup){
+     lastGroup=g;
+     const h=document.createElement('div');
+     h.className='mm-group-head';
+     h.innerHTML=`<b>${esc(g)}</b><span>${counts[g]}件</span>`;
+     h.title=`${g} に登録されている${esc(def.label)}です`;
+     frag.append(h);
+    }
+   }
    const row=document.createElement('div');row.className='mm-row'+(maintState.editing&&maintState.editing.id===it.id?' editing':'');row.style.gridTemplateColumns=tmpl;row.tabIndex=0;row.setAttribute('role','button');
    // 列として出さない監査情報(更新者・更新日時)は行のツールチップで補う。
    const audit=`更新者: ${it.updated_by||'-'} / 更新日時: ${fmtDT(it.updated_at)}`;
@@ -1461,6 +1547,10 @@
    const r=await api(def.endpoint);let items=(r&&r.items)||[];
    if(multiField)items=items.map(it=>({...it,[multiField.k+'Text']:(Array.isArray(it[multiField.k])&&it[multiField.k].length)?it[multiField.k].join('、'):'（制限なし・全設備）'}));
    maintState.items=items;
+   /* **語彙はサーバーだけが持つ**（§9.163）。GETの戻りの`items`以外の
+      キー（ロールマスタの入出位置・接触面・駆動方式など）はここで控え、
+      `master-suggest`の欄が候補として出す。画面へ写さないための1行。 */
+   maintState.meta=r||{};
    renderMaintList();
   }catch(e){if(list)list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
  }
@@ -4220,6 +4310,11 @@
              /* §9.220 ②③。**盤の上で分かること**を増やす（開かないと
                 分からない設定は、設定したこと自体を忘れる）。 */
              x.initial?`初期値 ${x.initial}`:'',
+             /* §9.239 ②。**このカードの置き場がどこ由来か**を言う——
+                共通を直したつもりが1設備にしか効いていない、を作らない。 */
+             opState.equipment?(x.layoutFrom===opState.equipment
+               ?`置き場・並び・幅は「${opState.equipment}」だけの設定`
+               :'置き場・並び・幅は共通の設定（この設備で動かすとこの設備だけに効きます）'):'',
              x.freeText?'手打ち可':''].filter(Boolean).join('｜');
   /* 空きのカード（§9.228 ②）は**盤でも中身を持たない**——名前も型も出さない。
      測定画面では何も描かないので、盤で名前だけが目立つと「出るもの」に見える。
@@ -4238,6 +4333,9 @@
    /* **classを増やさず属性1つ**（§9.234 ⑦）——鍵はサーバーの綴り
       （`computed`/`preset`）なので、CSSも網もこの1つの印を見れば足りる。 */
    +(auto?` data-op-auto="${esc(auto)}"`:'')
+   /* レイアウトの出どころ（§9.239 ②）。**属性1つ**で表す（`.op-tile`の
+      classを増やさない。§9.234 ⑦と同じ作法）。 */
+   +(opState.equipment?` data-op-scope="${x.layoutFrom===opState.equipment?'one':'common'}"`:'')
    +` style="${spot?`grid-column:${spot.col}/span ${spot.span};grid-row:${spot.row}`
                  :`grid-column:span ${span}`}" title="${esc(tip)}" tabindex="0">`
    +`<span class="op-tile-name">${esc(x.name)}</span>`
@@ -4253,6 +4351,9 @@
    +(w!=='プルダウン'?`<b class="op-chip op-chip-widget">${esc((OP_WIDGET_NOTE[w]||{}).icon||'')} ${esc(opWidgetLabel(x,w))}</b>`:'')
    +(x.initial?`<b class="op-chip op-chip-initial">初期 ${esc(x.initial)}</b>`:'')
    +(x.freeText?'<b class="op-chip op-chip-free">手打ち可</b>':'')
+   /* **色だけで伝えない**（§3）——この設備だけの置き場かどうかは文字で言う。 */
+   +(opState.equipment&&x.layoutFrom===opState.equipment
+       ?`<b class="op-chip op-chip-scope">この設備だけ</b>`:'')
    /* 自動で入る値は**どの値なのか**を出す（§9.234 ②）——型（`文字`）は
       値を画面が入れる以上、読む側の打つ手を1つも変えない（§CLAUDE 6）。
       **引けない鍵はそう書く**（§4）。 */
@@ -4427,10 +4528,21 @@
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
   const eqs=(equipmentMasterState.items||[]).map(e=>e.name).filter(Boolean);
   form.innerHTML=`<div class="op-bar">`
-   +`<label class="op-bar-eq">設備<select id="opEqPick">`
-   +`<option value="">すべての登録を見る</option>`
+   +`<label class="op-bar-eq" title="どの設備のレイアウトを編集するかです。`
+   +`「共通」で並べ替えるとすべての設備に効き、設備を選んで並べ替えるとその設備だけに効きます。">`
+   +`レイアウトの対象<select id="opEqPick">`
+   +`<option value="">共通（すべての設備）</option>`
    +eqs.map(n=>`<option value="${esc(n)}"${opState.equipment===n?' selected':''}>${esc(n)}</option>`).join('')
    +`</select></label>`
+   /* **いま何を触っているかを文字で出す**（§9.239 ②・§CLAUDE 6）。
+      黙って設備ごとに分かれると、共通を直したつもりが1設備にしか
+      効いていない（あるいはその逆）ことに気づけない。 */
+   +`<span class="op-bar-scope${opState.equipment?' is-one':''}">`
+   +(opState.equipment
+     ?`<b>${esc(opState.equipment)}だけ</b>のレイアウトを編集しています`
+      +`<i>（置き場・群・並び・幅・畳みはこの設備だけに効きます。名前・型・選択肢・単位・意匠は共通です）</i>`
+     :`<b>共通</b>のレイアウトを編集しています<i>（設備ごとに変えたいときは上で設備を選んでください）</i>`)
+   +`</span>`
    +`<span class="op-bar-note">掴んで動かすと<b>並び</b>が決まり、<b>帯より下</b>がその群になります。`
    +`置き場をまたげば「準備」と「入力内容」も入れ替わります。押すと<b>設定の窓</b>が開きます。</span>`
    +`<button type="button" id="opAddItem" class="ghost">項目を追加</button>`
@@ -4506,7 +4618,10 @@
   try{
    await api('/api/operation-item-master/layout',{method:'POST',
      headers:{'Content-Type':'application/json'},
-     body:JSON.stringify({items:rows,user_id:uid})});
+     body:JSON.stringify({items:rows,user_id:uid,
+       /* **どの設備のレイアウトか**（§9.239 ②）。空＝共通で、今までどおり
+          行そのものを書き換える。設備を選んでいれば上書きへ入る。 */
+       equipment:opState.equipment||''})});
    /* 覚えを捨てて取り直す——保存の結果（表示順の振り直し）を画面へ戻す。 */
    await loadOpItemMaint(true);
    opSay('保存しました');
@@ -4634,7 +4749,8 @@
      await api('/api/operation-item-master/group',{method:'POST',
        headers:{'Content-Type':'application/json'},
        body:JSON.stringify({place,group,fold:!!(g&&g.fold),
-         showWhen:g?(g.showWhen||[]):[],groupSpan:Number(b.dataset.opGspan)||0,user_id:uid})});
+         showWhen:g?(g.showWhen||[]):[],groupSpan:Number(b.dataset.opGspan)||0,user_id:uid,
+         equipment:opState.equipment||''})});
      await loadOpItemMaint(true);
      if(window.WL&&WL.opData)WL.opData.forget();
      opSay(Number(b.dataset.opGspan)?`「${group}」の幅を${opGroupSpanLabel(b.dataset.opGspan)}にしました（横に並びます）`
@@ -6404,7 +6520,10 @@
  async function opSyncGroupFlags(place,group,showWhen,fold,uid){
   await api('/api/operation-item-master/group',{method:'POST',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({place,group,fold:!!fold,showWhen:showWhen||[],user_id:uid})});
+    body:JSON.stringify({place,group,fold:!!fold,showWhen:showWhen||[],user_id:uid,
+      /* 群の畳み・幅・空きも**選んでいる設備だけ**に効かせる（§9.239 ②）。
+         送らないと、設備Aで畳んだだけで全設備が畳まれる。 */
+      equipment:opState.equipment||''})});
  }
  async function opDeleteItem(){
   const x=opItemById(opState.picked);if(!x||x.builtin)return;

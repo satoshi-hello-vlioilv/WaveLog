@@ -46,6 +46,57 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   rec('見出しは掴んで並べ替えできる',afford.draggable===afford.total,`${afford.draggable}/${afford.total}`);
   rec('見出しに列幅の取っ手がある',afford.grips===afford.total,`${afford.grips}/${afford.total}`);
 
+  /* ---- 1b) 番号・ボタンの列にも取っ手がある(§9.239 ⑤-1、利用者の指摘
+       「この『分割』カラムについては幅変更ができません」) ----
+     `#`/`分割`/`測定`/`予定`/選択は §9.106 で「データ列と同じ1本の並び」に
+     載り、右クリックのメニューも幅の3つの状態を出していたのに、
+     **取っ手だけが無かった**（`th[data-sort-col]`で配線していたため）。
+     **「取っ手が在る」ことだけを見ない**——`.split-flag-head{min-width:112px}`が
+     colgroupの指定に勝っていたので、取っ手を足しても112pxより狭くならない。
+     **実際に狭めて、その幅になったか**を見る（§9.211 ①「確かめるときは
+     必ず狭める」）。 */
+  const virtGrips=await page.evaluate(()=>{
+   const out={};
+   ['#','__split__','__measure__'].forEach(k=>{
+    const th=document.querySelector(`#grid thead th[data-col="${k}"]`);
+    out[k]=!!th&&!!th.querySelector('.col-resize');
+   });
+   return out;
+  });
+  rec('番号・ボタンの列にも幅の取っ手がある',
+      Object.values(virtGrips).every(Boolean),JSON.stringify(virtGrips));
+  {
+   const splitTh=await page.$('#grid thead th[data-col="__split__"]');
+   if(splitTh){
+    const before=await page.evaluate(()=>{
+     const th=document.querySelector('#grid thead th[data-col="__split__"]');
+     const tbl=document.querySelector('#grid table');
+     return {幅:Math.round(th.getBoundingClientRect().width),
+             表:Math.round(tbl.getBoundingClientRect().width)};
+    });
+    const g=await (await page.$('#grid thead th[data-col="__split__"] .col-resize')).boundingBox();
+    await page.mouse.move(g.x+g.width/2,g.y+g.height/2);
+    await page.mouse.down();
+    await page.mouse.move(g.x+g.width/2-70,g.y+g.height/2,{steps:8});
+    await page.mouse.up();
+    await page.waitForTimeout(900);
+    const after=await page.evaluate(()=>{
+     const th=document.querySelector('#grid thead th[data-col="__split__"]');
+     const tbl=document.querySelector('#grid table');
+     return {幅:Math.round(th.getBoundingClientRect().width),
+             表:Math.round(tbl.getBoundingClientRect().width)};
+    });
+    /* 狭めた向きで見る（広げる向きは表そのものが広がるだけで再現しない）。
+       112px(旧min-width)より狭くなっていることまで確かめる。 */
+    rec('「分割」の列は実際に狭くできる',
+        after.幅<before.幅-40&&after.幅<112,JSON.stringify({before,after}));
+    const savedSplit=await (await fetch(B+'/api/column-layout-master?target='+encodeURIComponent(target))).json();
+    rec('狭めた「分割」の幅がマスタへ入る',
+        Math.abs(((savedSplit.widths||{})['__split__']||0)-after.幅)<=3,
+        JSON.stringify({保存:(savedSplit.widths||{})['__split__'],実測:after.幅}));
+   }else rec('「分割」の列がこの一覧にある',false,'見つからない');
+  }
+
   /* ---- 2) 並び・非表示・幅が効く ---- */
   const apply=(order,widths,hidden)=>page.evaluate(async a=>{
    await WL.columnLayout.save(listLayoutTarget(),a);renderGrid();

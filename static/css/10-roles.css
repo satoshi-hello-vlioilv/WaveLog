@@ -49,6 +49,7 @@
 }
 /* --- 補助（ツールバー・カード内の副次操作） --- */
 .list-toolbar-btn,.filter-search-row-actions button,.filter-builder button,
+.filter-adhoc-row>button,
 .filter-preset-toolbar button,.mm-act button,.mm-btn-ghost.sm,.mm-btn-primary.sm,
 .sc-float-foot button,.record-sync-bar button,.rp-back-btn,
 .split-ghost-btn,.qa-v7 .qa-seg button,.sc-stop-button,.sc-column-actions button,
@@ -164,6 +165,10 @@
    高さが決まっているなら、縦位置は中央揃えが決めるのでパディングは要らない。
    横は据え置き(--ctl-pad-x-* が持つ役割)。 */
 .filter-builder select,.filter-builder input,
+/* その場フィルタ（§9.239 ①）。1行に収めるために高さを`--ctl-h-sm`で
+   決めたので、素の`padding:7px`が残っていると本文が下から切れる
+   （§9.206「器と中身の文字サイズを食い違わせない」と同じ罠）。 */
+.filter-adhoc-row>select,.filter-adhoc-row>input,
 .filter-token-search,
 .sc-content-filter,
 .record-searchbar input,.record-searchbar select{padding-block:0}

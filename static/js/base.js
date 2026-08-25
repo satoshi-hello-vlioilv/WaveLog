@@ -440,12 +440,14 @@ const columnLayout=(()=>{
  /* locks=幅を固定した列(§9.119)。**幅の「自動/手動/固定」は3つの状態**で、
     自動と手動はwidthsの有無で分かるが、固定はもう1つの状態なので別に持つ。 */
  /* sorts=列ごとの並べ替えの決まり(§9.187)。`{列名:{buckets,on,natural}}`。 */
+ /* aligns=値と見出しの揃え(§9.239 ④)。`{列名:{data,head}}`。 */
  const empty=()=>({order:[],widths:{},hidden:[],names:{},formats:{},rules:{},formulas:{},
-                   locks:[],sorts:{}});
- const KEYS=['order','widths','hidden','names','formats','rules','formulas','locks','sorts'];
+                   locks:[],sorts:{},aligns:{}});
+ const KEYS=['order','widths','hidden','names','formats','rules','formulas','locks','sorts','aligns'];
  const norm=l=>({order:(l&&l.order)||[],widths:(l&&l.widths)||{},hidden:(l&&l.hidden)||[],
                  names:(l&&l.names)||{},formats:(l&&l.formats)||{},rules:(l&&l.rules)||{},
-                 formulas:(l&&l.formulas)||{},locks:(l&&l.locks)||[],sorts:(l&&l.sorts)||{}});
+                 formulas:(l&&l.formulas)||{},locks:(l&&l.locks)||[],sorts:(l&&l.sorts)||{},
+                 aligns:(l&&l.aligns)||{}});
  /* 重ねを畳んだ結果。**毎回作り直すと重い**(1列ごとに引く場面がある)ので
     覚え、どれかの重ねが変わったときだけ捨てる。 */
  const eff=new Map();
@@ -559,9 +561,196 @@ const columnLayout=(()=>{
          formulas:target=>({...get(target).formulas}),
          /* この列の並べ替えの決まり(§9.187)。未設定ならnull(=今までどおり
             SQLの素の並び)。 */
-         sort:(target,col)=>(get(target).sorts||{})[col]||null};
+         sort:(target,col)=>(get(target).sorts||{})[col]||null,
+         /* この列の揃え(§9.239 ④)。未設定なら`{data:'',head:''}`(=既定)。 */
+         align:(target,col)=>{
+          const a=(get(target).aligns||{})[col];
+          return {data:(a&&a.data)||'',head:(a&&a.head)||''};
+         }};
 })();
 window.WL.columnLayout=columnLayout;
+
+/* ---------- 列の揃え(§9.239 ④、利用者の指示) ----------
+   「数値は右詰め、文字列は左詰めなど自動で書式に合わせた設定になりますが、
+    手動での任意変更もできるようにしてください。また、カラムの文字列は
+    データとは別で中央位置をデフォルトにして、データの位置に追従するか、
+    別で設定するか選べるようにしてください」
+
+   **答えるのはここ1箇所**（§9.163）。仕掛一覧・データ一覧・スケジュール表の
+   3つが同じ関数を通す——別々に持つと「一覧では右なのに帳票では左」が作れる。
+
+   値の揃え:
+     ''(自動) … 書式が数値なら右、それ以外は左（＝これまでの見え方そのまま）
+     left / center / right … 手で決めたとおり
+   見出しの揃え:
+     ''(既定) … **中央**（利用者の指示。値とは別の既定）
+     follow  … 値の揃えに追従する
+     left / center / right … 手で決めたとおり
+
+   **書式の種別を渡してもらう**のは、`WL.columnLayout.format()`を毎セル
+   引くと重いから（描く側は列ごとに1度だけ引いて使い回している）。
+   渡されなければここで引く。 */
+const columnAlign=(()=>{
+ const DIRS=['left','center','right'];
+ const CLS={left:'al-l',center:'al-c',right:'al-r'};
+ const kindOf=(target,col,kind)=>
+   kind!==undefined?kind:((columnLayout.format(target,col)||{}).kind||'');
+ /* 値の揃え。**自動のときだけ書式を見る**——手で決めてあれば書式を変えても
+    動かない（「任意変更」の意味）。 */
+ function dataOf(target,col,kind){
+  const v=columnLayout.align(target,col).data;
+  if(DIRS.includes(v))return v;
+  return kindOf(target,col,kind)==='number'?'right':'left';
+ }
+ /* 見出しの揃え。**既定は中央**で、値とは別に持つ。 */
+ function headOf(target,col,kind){
+  const h=columnLayout.align(target,col).head;
+  if(h==='follow')return dataOf(target,col,kind);
+  if(DIRS.includes(h))return h;
+  return 'center';
+ }
+ return {DIRS,LABEL:{left:'左詰め',center:'中央',right:'右詰め'},
+         HEAD_LABEL:{'':'中央（既定）',follow:'データに追従',
+                     left:'左詰め',center:'中央',right:'右詰め'},
+         DATA_LABEL:{'':'自動（書式に合わせる）',
+                     left:'左詰め',center:'中央',right:'右詰め'},
+         dataOf,headOf,
+         cellClass:(target,col,kind)=>CLS[dataOf(target,col,kind)],
+         headClass:(target,col,kind)=>CLS[headOf(target,col,kind)],
+         classOf:dir=>CLS[dir]||'',
+         /* 文字列を組み立てて流し込む画面（スケジュール表）向け。
+            **描き終えてから1度だけ**当てる（セルごとにDOMを触らない）。 */
+         applyCells(root,target,opt){
+          if(!root||!target)return;
+          const o=opt||{};
+          const sel=o.selector||':scope>[data-col]';
+          const head=!!o.head;
+          root.querySelectorAll(sel).forEach(el=>{
+           const c=el.dataset.col;if(!c)return;
+           el.classList.remove('al-l','al-c','al-r');
+           el.classList.add(head?headClassOf(target,c):cellClassOf(target,c));
+          });
+         }};
+ function cellClassOf(t,c){return CLS[dataOf(t,c)]}
+ function headClassOf(t,c){return CLS[headOf(t,c)]}
+})();
+window.WL.columnAlign=columnAlign;
+
+/* ---------- 列に一時的な色を付ける(§9.239 ⑤-3、利用者の指示) ----------
+   「カラムに色を一時的に付けられる機能を実装してください。列移動させる際
+    などに目印にしたいです。右クリックのメニューに実装し、解除もセットで」
+
+   決めごと:
+    ・**マスタへ保存しない。** 「一時的」と言われているものを共有マスタへ
+      入れると、他のPCの画面にも色が付き、誰かが消すまで残る。置き場は
+      このタブの`sessionStorage`——画面を行き来しても・表を描き直しても
+      残り、アプリを閉じれば消える（＝「一時的」の意味そのまま）。
+    ・**色は7色から選ばせ、16進を選ばせない**（§9.198）。行表示マスタと
+      **同じ色・同じ呼び名**にする——2つの色の言葉を覚えさせない。
+      色そのものは`:root`のトークンから取る（リテラルを足さない）。
+    ・**色だけで伝えない**（§3）。見出しには色名を`title`へ添え、
+      メニューには「色: 青（この端末だけ・一時的）」と文字で出す。
+      **解除は必ず同じ場所に置く**（付けた本人が次に探すのはそこ）。
+    ・**表を描き直さない。** 色を変えるたびに一覧を組み直すと、200行×214列
+      では数百msかかり（§9.94）、横スクロールの位置も失われる——色を付ける
+      目的が「動かす前に見失わないこと」なのに本末転倒になる。
+      塗るのは**1枚の`<style>`を書き換えるだけ**にしてあり、
+      仕掛一覧・データ一覧・スケジュール表の3つに同じ規則が効く
+      （どのセルも`data-col`を持っているのが土台。§9.104）。 */
+const columnTint=(()=>{
+ const STORE='WaveLogColumnTintV1';
+ const STYLE_ID='wlColumnTintStyle';
+ /* 鍵→トークンの表は**ここ1つだけ**。CSSへ書くと画面ごとに増える。 */
+ const PALETTE={
+  gray  :{label:'灰',   note:'目立たせない', bg:'var(--surface-2)',    ink:'var(--ink-3)',      line:'var(--line-mid)'},
+  teal  :{label:'青緑', note:'基準・進行',   bg:'var(--pale)',         ink:'var(--teal-dark)',  line:'var(--teal)'},
+  blue  :{label:'青',   note:'情報・待ち',   bg:'var(--rs-blue-bg)',   ink:'var(--rs-blue)',    line:'var(--rs-blue-border)'},
+  green :{label:'緑',   note:'完了・良',     bg:'var(--success-bg)',   ink:'var(--success)',    line:'var(--success-border)'},
+  amber :{label:'橙',   note:'注意・段取り', bg:'var(--warn-bg)',      ink:'var(--warn-fg)',    line:'var(--warn-border)'},
+  red   :{label:'赤',   note:'停止・異常',   bg:'var(--danger-bg)',    ink:'var(--danger)',     line:'var(--danger-border)'},
+  purple:{label:'紫',   note:'臨時・特別',   bg:'var(--rs-purple-bg)', ink:'var(--rs-purple)',  line:'var(--rs-purple-border)'},
+ };
+ const KEYS=Object.keys(PALETTE);
+ let all=(()=>{try{const m=JSON.parse(sessionStorage.getItem(STORE)||'{}');
+   return (m&&typeof m==='object')?m:{}}catch(_){return {}}})();
+ const write=()=>{try{sessionStorage.setItem(STORE,JSON.stringify(all))}catch(_){}};
+ const bucket=t=>{const k=String(t||'');return (k&&all[k]&&typeof all[k]==='object')?all[k]:null};
+ /* 属性セレクタの値は**引用符つきの文字列**なので、エスケープするのは
+    `\` と `"` の2つだけ（`CSS.escape`は識別子用なのでここでは使えない）。 */
+ const q=v=>String(v).replace(/\\/g,'\\\\').replace(/"/g,'\\"');
+ /* 塗る場所。**対象(target)ごとに器を絞る**——`data-col`は列名なので、
+    絞らないと**別の一覧の同じ名前の列**まで塗られる（仕掛一覧はDB×表ごとに
+    別の対象なので、切り替えただけで身に覚えのない色が付く）。
+    器は`#grid`が`data-lt`（いまの対象）、スケジュール表は`#scTimeline`の
+    `data-equipment`で見分ける。データ一覧は対象が1つしかない。
+    見出しは面ごと・セルは淡く——面を濃くすると行が多い一覧では騒がしい
+    （§9.88 段4の「面ではなく文字へ色を置く」と同じ考え方で、ここは
+    「どの列か」を探すための印なので面は使うが、本文側は薄くする）。 */
+ function scopeOf(target){
+  const t=String(target||'');
+  if(t==='records:list')
+   return {head:'#recordList .record-list-head>',cell:'#recordList .record-list-row>'};
+  if(t.startsWith('timeline:')){
+   const eq=`#scTimeline[data-equipment="${q(t.slice('timeline:'.length))}"] `;
+   return {head:eq+'.sc-row-head>',cell:eq+':is(.sc-row-line,.sc-child-line)>'};
+  }
+  const g=`#grid[data-lt="${q(t)}"] `;
+  return {head:g+'thead th',cell:g+'tbody td'};
+ }
+ function css(){
+  const out=[];
+  Object.keys(all).forEach(target=>{
+   const cols=all[target];if(!cols||typeof cols!=='object')return;
+   const sc=scopeOf(target);
+   Object.keys(cols).forEach(col=>{
+    const p=PALETTE[cols[col]];if(!p)return;
+    const at=`[data-col="${q(col)}"]`;
+    out.push(`${sc.head}${at}{background:${p.bg};color:${p.ink};`
+             +`box-shadow:inset 0 -3px 0 ${p.line}}`);
+    out.push(`${sc.cell}${at}{background:color-mix(in srgb, ${p.bg} 55%, var(--surface))}`);
+   });
+  });
+  return out.join('\n');
+ }
+ function paint(){
+  let el=document.getElementById(STYLE_ID);
+  const text=css();
+  if(!el){
+   if(!text)return;
+   el=document.createElement('style');el.id=STYLE_ID;
+   document.head.appendChild(el);
+  }
+  if(el.textContent!==text)el.textContent=text;   // 同じなら触らない(§9.131)
+ }
+ function set(target,col,key){
+  const t=String(target||''),c=String(col||'');
+  if(!t||!c)return;
+  if(!KEYS.includes(key)){                        // 解除
+   if(all[t]){delete all[t][c];if(!Object.keys(all[t]).length)delete all[t]}
+  }else{
+   if(!all[t]||typeof all[t]!=='object')all[t]={};
+   all[t][c]=key;
+  }
+  write();paint();
+ }
+ function clearAll(target){
+  const t=String(target||'');
+  if(t)delete all[t];else all={};
+  write();paint();
+ }
+ return {
+  PALETTE,keys:()=>KEYS.slice(),
+  label:k=>(PALETTE[k]||{}).label||'',
+  note:k=>(PALETTE[k]||{}).note||'',
+  get:(target,col)=>{const b=bucket(target);return (b&&b[String(col||'')])||''},
+  count:target=>{const b=bucket(target);return b?Object.keys(b).length:0},
+  cols:target=>{const b=bucket(target);return b?Object.keys(b):[]},
+  set,clearAll,paint};
+})();
+window.WL.columnTint=columnTint;
+/* 覚えているぶんを最初に塗る。`sessionStorage`は読み直しでは残るので、
+   ここで塗らないと「リロードしたら目印だけ消えた」ことになる。 */
+columnTint.paint();
 
 /* ---------- 列ごとの並べ替えの決まり(§9.187) ----------
    実データの同じ項目には '' / '3' / '10' / '2026/08/01' / 'A2' が混ざる。
