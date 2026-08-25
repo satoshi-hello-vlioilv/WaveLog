@@ -36,7 +36,7 @@ ALWAYS = ['test_patchlint', 'test_globallint', 'test_dskeylint', 'test_csslint',
 G = {}
 G['一覧'] = ['test_nav', 'test_navdyn', 'test_listcache', 'test_listperf', 'test_allrows',
              'test_filterio', 'test_filteruser', 'test_filteractive', 'test_filterkeep',
-             'test_filterlock',
+             'test_filterlock', 'test_adhoc',
              'test_cols', 'test_hdctx', 'test_dsnav', 'test_dsrestart', 'test_listmodal', 'test_filter',
              'test_audit', 'test_sub', 'test_uisize', 'test_ttlcache']
 # 操業データ(§9.215)は測定画面のカード。マスタ管理からも触るので「マスタ」群。
@@ -58,6 +58,7 @@ G['モーダル'] = ['test_modalkeep', 'test_maint', 'test_p11c', 'test_opui', '
 G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'test_sccat',
                      'test_scbalance', 'test_scbatch', 'test_screorder', 'test_scperm',
                      'test_scperf', 'test_wkfast', 'test_scsplit', 'test_scprint', 'test_scdrop', 'test_scpick', 'test_sccontent', 'test_workable',
+                    'test_scframe',
                      'test_wkbg', 'test_orphan', 'test_histdel', 'test_sclock',
                      'test_scwritespeed', 'test_split_layout', 'test_sccols',
                      'test_sctimecols', 'test_scinsert', 'test_audittrail',
@@ -115,7 +116,7 @@ RULES = [
     ('static/js/list-rules.js', g('列')),
     ('static/js/list-formula.js', g('test_formula', 'test_colpreset', 'test_lcpanel')),
     ('static/js/filters.js', g('モーダル', 'test_filter', 'test_filterio', 'test_filteruser',
-                               'test_listcache', 'test_allrows', 'test_nav')),
+                               'test_listcache', 'test_allrows', 'test_nav', 'test_adhoc')),
     ('static/js/schedule-view.js', g('スケジュール', 'モーダル', 'test_listmodal')),
     ('static/js/schedule-print.js', g('モーダル', 'test_scprint')),
     ('static/js/lot-split.js', g('異常位置', 'test_orphan', 'test_sub')),

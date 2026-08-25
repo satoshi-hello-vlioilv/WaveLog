@@ -161,10 +161,20 @@ let b=null;
    row.dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer:new DataTransfer()}));
    const z=document.getElementById('scDropRemove');
    return {hidden:z.hidden,text:z.textContent.replace(/\s+/g,' ').trim(),
+           title:String(z.title||'').replace(/\s+/g,' ').trim(),
            dragging:document.querySelectorAll('.sc-row-line.sc-dragging').length};
   },made[0]);
+  /* **件数は必ず文字で**（§9.170）。§9.238 ①で受け皿を小さくしたので札は
+     1行になったが、**数えさせない**という要件は変わらない——確かめるのは
+     「選んだ3件」と読めることであって、特定の言い回しではない。 */
   rec('まとめて掴むと受け皿が件数を言う',
-      !zone.hidden&&/選んだ3件がまとめて対象になります/.test(zone.text),zone.text.slice(0,60));
+      !zone.hidden&&/選んだ\s*3\s*件/.test(zone.text),zone.text.slice(0,60));
+  /* **消した説明はtitleへ落ちていること**（§9.234 ①）。札を短くした代わりに
+     「確認してから外す」「仕掛一覧へ戻る」が消えると、外す前に何が起きるかが
+     読めなくなる。 */
+  rec('短くした説明は受け皿のtitleに残っている',
+      /確認してから外す/.test(zone.title)&&/仕掛一覧へ戻る/.test(zone.title)
+      &&/3件/.test(zone.title),zone.title.slice(0,90));
   rec('運んでいる行を全部そう見せる',zone.dragging===3,String(zone.dragging));
 
   /* ---- 5) まとめて掴んだままでも並べ替えられる(§9.177で§9.170を改訂) ----

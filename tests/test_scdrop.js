@@ -96,6 +96,33 @@ let b=null;
   rec('外せる行を掴むと受け皿が出る',grab.出た&&grab.見えている,JSON.stringify(grab));
   rec('受け皿は本文の上に出る',!!grab.本文より上,JSON.stringify(grab));
   rec('離すと受け皿が引っ込む',!!grab.離したら隠れる,JSON.stringify(grab));
+  /* ---- 2b) 受け皿は幅いっぱいにしない(§9.238 ①、利用者の指示) ----
+     「ロットの並び替えや入れ替えなどをやりたい時にその先がドロップゾーンに
+     あると干渉して目的の操作ができなくなる」。以前は`left`〜`right`で
+     下端を横断しており、**一覧の末尾へ行を運ぶ動線をそのまま覆っていた**。
+     **幅の数字だけを見ないこと**——器の半分より狭いことに加え、
+     「本文の左半分の同じ高さでは受け皿が手前に居ない」ことまで見る
+     （そこが並べ替えで使う場所なので）。 */
+  const zoneBox=await page.evaluate(id=>{
+   const row=document.querySelector('.sc-row-line[data-id="'+id+'"]');
+   const dt=new DataTransfer();
+   row.dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer:dt}));
+   const z=document.getElementById('scDropRemove');
+   const host=document.getElementById('scSingleBody');
+   const r=z.getBoundingClientRect(),h=host.getBoundingClientRect();
+   /* 受け皿と同じ高さの、器の左寄り。並べ替えで最後の行を狙う場所。 */
+   const y=Math.round(r.top+r.height/2);
+   const x=Math.round(h.left+h.width*0.25);
+   const hit=document.elementFromPoint(x,y);
+   const out={受け皿幅:Math.round(r.width),器幅:Math.round(h.width),
+              左に居ない:!(hit&&(hit===z||z.contains(hit)))};
+   row.dispatchEvent(new DragEvent('dragend',{bubbles:true,dataTransfer:dt}));
+   return out;
+  },madeId);
+  rec('受け皿は幅いっぱいではない（並べ替えの動線を覆わない）',
+      zoneBox.受け皿幅>0&&zoneBox.受け皿幅<=zoneBox.器幅/2,JSON.stringify(zoneBox));
+  rec('受け皿と同じ高さでも、左側は掴める場所が残っている',
+      zoneBox.左に居ない,JSON.stringify(zoneBox));
 
   /* ---- 3) 外せない行では出さない ---- */
   const notRemovable=await page.evaluate(()=>{

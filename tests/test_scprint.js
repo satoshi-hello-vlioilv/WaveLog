@@ -672,8 +672,8 @@ let b=null;
    pages:document.querySelectorAll('.sp-pv-sheet .sp-page').length,
    facts:(document.getElementById('spPvFacts')||{}).innerText||'',
    caption:(document.querySelector('.sp-pv-sheet figcaption')||{}).textContent||'',
-   opts:document.querySelectorAll('#spPvOptions [data-opt]').length,
-   optKeys:[...document.querySelectorAll('#spPvOptions [data-opt]')].map(i=>i.dataset.opt),
+   opts:document.querySelectorAll('.sp-pv-side [data-opt]').length,
+   optKeys:[...document.querySelectorAll('.sp-pv-side [data-opt]')].map(i=>i.dataset.opt),
    sizeOpts:document.querySelectorAll('#spPvSize .sp-pat').length,
    scopeOpts:document.querySelectorAll('#spColumnScope .sp-pat').length,
    printBtn:!!document.getElementById('spPvPrint'),
@@ -708,7 +708,7 @@ let b=null;
 
   /* ---- 14) 設定を触るとその場で刷り上がりが変わる ---- */
   const before=pv.sheets;
-  await page.click('#spPvOptions [data-opt="pageByDate"]');
+  await page.click('.sp-pv-side [data-opt="pageByDate"]');
   await page.waitForFunction(n=>document.querySelectorAll('.sp-pv-sheet').length!==n,
     before,{timeout:15000}).catch(()=>{});
   const after=await page.evaluate(()=>document.querySelectorAll('.sp-pv-sheet').length);
@@ -719,7 +719,7 @@ let b=null;
    return {shown,kept:WL.schedulePrint.previewSheets().length};
   });
   rec('刷るのは見えている紙そのもの',same.shown===same.kept,JSON.stringify(same));
-  await page.click('#spPvOptions [data-opt="pageByDate"]');   // 元へ戻す
+  await page.click('.sp-pv-side [data-opt="pageByDate"]');   // 元へ戻す
   await page.waitForTimeout(400);
 
   /* ---- 14b) 列の範囲・枠線もその場でプレビューに効く(§9.236) ---- */
@@ -735,24 +735,24 @@ let b=null;
   await page.waitForTimeout(700);
   const bordersBefore=await page.evaluate(()=>
     (document.querySelector('.sp-pv-sheet .sp-page')||{}).dataset?.borders||'');
-  await page.click('#spPvOptions [data-opt="borders"]');
+  await page.click('.sp-pv-side [data-opt="borders"]');
   await page.waitForTimeout(700);
   const bordersAfter=await page.evaluate(()=>
     (document.querySelector('.sp-pv-sheet .sp-page')||{}).dataset?.borders||'');
   rec('「枠線を出す」を外すとその場でdata-borders="off"になる',
       bordersBefore===''&&bordersAfter==='off',JSON.stringify({前:bordersBefore,後:bordersAfter}));
-  await page.click('#spPvOptions [data-opt="borders"]');      // 元へ戻す
+  await page.click('.sp-pv-side [data-opt="borders"]');      // 元へ戻す
   await page.waitForTimeout(700);
 
   /* ---- 15) 「分割後の子ロットの情報も載せる」もプレビューへその場で効く ---- */
   const kidsOff=await page.evaluate(()=>document.querySelectorAll('.sp-page .sp-row-child').length);
   rec('既定ではプレビューにも子ロットの行が出ない',kidsOff===0,String(kidsOff));
-  await page.click('#spPvOptions [data-opt="includeChildren"]');
+  await page.click('.sp-pv-side [data-opt="includeChildren"]');
   await page.waitForFunction(()=>document.querySelectorAll('.sp-page .sp-row-child').length>0,
     null,{timeout:15000}).catch(()=>{});
   const kidsOn=await page.evaluate(()=>document.querySelectorAll('.sp-page .sp-row-child').length);
   rec('チェックすると子ロットの行がその場で出る',kidsOn>0,String(kidsOn));
-  await page.click('#spPvOptions [data-opt="includeChildren"]');
+  await page.click('.sp-pv-side [data-opt="includeChildren"]');
   await page.waitForTimeout(400);
 
   /* ---- 16) 用紙サイズを選ぶとその場でプレビューの紙が変わる ---- */
@@ -846,15 +846,130 @@ let b=null;
      予定が紙から抜け落ちる。 */
   rec('見出しを行として数えていない（予定が抜けない）',gp.行===gp.件数,`${gp.行} / ${gp.件数}`);
   rec('申し送りの欄が紙ごとに付く',gp.申し送り===gp.紙,`${gp.申し送り} / ${gp.紙}枚`);
-  await page.click('#spPvOptions [data-opt="commentBox"]');
+  await page.click('.sp-pv-side [data-opt="commentBox"]');
   await page.waitForTimeout(900);
   rec('外すと申し送りの欄は消える',
       (await page.evaluate(()=>document.querySelectorAll('.sp-note').length))===0);
-  await page.click('#spPvOptions [data-opt="commentBox"]');
+  await page.click('.sp-pv-side [data-opt="commentBox"]');
   await page.waitForTimeout(700);
   await page.evaluate(()=>{const s=document.getElementById('scGroupSelect');
     s.value='none';s.dispatchEvent(new Event('change',{bubbles:true}))});
   await page.waitForTimeout(900);
+  /* ============================================================
+     §9.238 ③ 表示倍率 ／ ④ メニューの再構成
+     利用者の指示:
+      「プレビューを幅に合わせて、縦に合わせて、100%、など表示のスケール
+       調整も含めて調整できるようにしてください」
+      「使えないメニューも混在しているので…再構成して必要な機能は追加実装、
+       使えない不要な機能は整理してください」
+     ============================================================ */
+  /* ---- 18) 表示倍率の帯があり、選ぶと実際に見え方が変わる ---- */
+  await page.evaluate(()=>WL.schedulePrint.openPreview('テスト設備A'));
+  await page.waitForFunction(()=>document.querySelectorAll('.sp-pv-sheet').length>0,null,{timeout:20000});
+  await page.waitForTimeout(600);
+  const zoomBar=await page.evaluate(()=>{
+   const bar=document.getElementById('spPvZoom');
+   return {ある:!!bar&&!!bar.offsetParent,
+           段:[...document.querySelectorAll('#spPvZoom [data-zoom]')].map(b=>b.dataset.zoom),
+           いま:(document.getElementById('spPvZoomNow')||{}).textContent||'',
+           /* 倍率は**刷り上がりの設定とは別の場所**に置く（同じ欄に置くと
+              「100%で刷られる」と読まれる）。 */
+           左の欄にない:!document.querySelector('.sp-pv-side #spPvZoom')};
+  });
+  rec('表示倍率の帯が紙の側にある',zoomBar.ある&&zoomBar.左の欄にない,JSON.stringify(zoomBar));
+  rec('「幅」「縦」「100%」「全体」が選べる',
+      ['fit','width','height','actual'].every(k=>zoomBar.段.includes(k)),JSON.stringify(zoomBar.段));
+  rec('いまの倍率を%で出す',/%$/.test(zoomBar.いま.trim()),zoomBar.いま);
+
+  /* **実際に見え方が変わることまで見る**——ボタンが在ることだけを見る網は、
+     押しても何も起きない実装を素通りさせる。器の幅・高さと突き合わせる。 */
+  const zoomOf=()=>page.evaluate(()=>{
+   const paper=document.getElementById('spPvPaper');
+   const pg=document.querySelector('.sp-pv-sheet .sp-page');
+   const box=pg?pg.closest('.sp-pv-scale'):null;
+   return {zoom:Number(getComputedStyle(paper).getPropertyValue('--sp-zoom'))||1,
+           器W:paper.clientWidth,器H:paper.clientHeight,
+           紙W:box?box.clientWidth:0,紙H:box?box.clientHeight:0,
+           素のW:pg?pg.offsetWidth:0,素のH:pg?pg.offsetHeight:0};
+  });
+  await page.click('#spPvZoom [data-zoom="width"]');
+  await page.waitForTimeout(500);
+  const zw=await zoomOf();
+  rec('「幅」を選ぶと紙の横幅が器いっぱいになる',
+      Math.abs(zw.紙W-(zw.器W-24))<=3,JSON.stringify(zw));
+  await page.click('#spPvZoom [data-zoom="height"]');
+  await page.waitForTimeout(500);
+  const zh=await zoomOf();
+  rec('「縦」を選ぶと紙の高さが器いっぱいになる',
+      Math.abs(zh.紙H-(zh.器H-56))<=3,JSON.stringify(zh));
+  await page.click('#spPvZoom [data-zoom="actual"]');
+  await page.waitForTimeout(500);
+  const za=await zoomOf();
+  rec('「100%」は実寸で出す',Math.abs(za.zoom-1)<0.001&&Math.abs(za.紙W-za.素のW)<=2,JSON.stringify(za));
+  /* ＋／−で1段ずつ動く（100%からは下がる／上がる）。 */
+  await page.click('#spPvZoom [data-zoom-step="-1"]');
+  await page.waitForTimeout(400);
+  const zminus=await zoomOf();
+  rec('−で1段小さくなる',zminus.zoom<za.zoom&&zminus.zoom>0.2,JSON.stringify(zminus));
+  await page.click('#spPvZoom [data-zoom-step="1"]');
+  await page.waitForTimeout(400);
+  const zplus=await zoomOf();
+  rec('＋で1段大きくなる',zplus.zoom>zminus.zoom,JSON.stringify(zplus));
+  /* **倍率は刷り上がりを変えない**（見え方だけ）。枚数・列数が動かないこと。 */
+  const sameSheets=await page.evaluate(()=>({
+   枚:document.querySelectorAll('.sp-pv-sheet').length,
+   列:(document.querySelector('.sp-pv-sheet .sp-page')||{}).querySelectorAll?.('thead th').length||0}));
+  await page.click('#spPvZoom [data-zoom="fit"]');
+  await page.waitForTimeout(500);
+  const stillSame=await page.evaluate(()=>({
+   枚:document.querySelectorAll('.sp-pv-sheet').length,
+   列:(document.querySelector('.sp-pv-sheet .sp-page')||{}).querySelectorAll?.('thead th').length||0}));
+  rec('倍率を変えても刷り上がり（枚数・列数）は変わらない',
+      sameSheets.枚===stillSame.枚&&sameSheets.列===stillSame.列,
+      JSON.stringify({前:sameSheets,後:stillSame}));
+  rec('選んだ倍率は端末に残る',
+      (await page.evaluate(()=>{try{return JSON.parse(localStorage.getItem('SchedulePrintPrefV1')||'{}').zoomMode}
+        catch(e){return null}}))==='fit');
+
+  /* ---- 19) メニューは決める理由ごとに分かれている(§9.238 ④) ---- */
+  const menu=await page.evaluate(()=>{
+   const secs=[...document.querySelectorAll('.sp-pv-side .sp-pv-sec h3')].map(h=>h.textContent.trim());
+   const inOpts=[...document.querySelectorAll('#spPvOptions [data-opt]')].map(i=>i.dataset.opt);
+   const inLook=[...document.querySelectorAll('#spPvLook [data-opt]')].map(i=>i.dataset.opt);
+   return {節:secs,載せるもの:inOpts,見せ方:inLook,
+           用紙:!!document.querySelector('#spPvSize .sp-pat'),
+           既定へ戻す:!!document.getElementById('spPvReset')};
+  });
+  rec('節は「載せるもの／見せ方／用紙／刷り上がり」の4つ',menu.節.length===4,JSON.stringify(menu.節));
+  /* 見出しと中身が合っていること——以前は「何を載せるか」の中に用紙以外の
+     すべて（列・枠線・記入欄）が入っており、見出しが嘘をついていた。 */
+  rec('「載せるもの」には中身の話だけが入っている',
+      menu.載せるもの.every(k=>['allEquipment','includeDone','includeChildren','useGroups','pageByDate'].includes(k))
+      &&menu.載せるもの.length===5,JSON.stringify(menu.載せるもの));
+  rec('「見せ方」には枠線と申し送り欄が入っている',
+      menu.見せ方.includes('borders')&&menu.見せ方.includes('commentBox'),JSON.stringify(menu.見せ方));
+  rec('設定を既定へ戻す手立てがある',menu.既定へ戻す,JSON.stringify(menu));
+
+  /* ---- 20) いま効かない設定は押せなくして理由を書く(§4) ---- */
+  /* 「すべての設備」は、検証用フィクスチャの設備が1台なら押せない。
+     **押せる/押せないの一方だけを見ないこと**——どちらの道も通す。 */
+  const offs=await page.evaluate(()=>[...document.querySelectorAll('.sp-pv-side .sp-opt.is-off')]
+    .map(l=>({key:(l.querySelector('[data-opt]')||{}).dataset?.opt||'',
+              理由:(l.querySelector('.sp-opt-why')||{}).textContent||'',
+              押せない:!!(l.querySelector('input')||{}).disabled})));
+  rec('押せない設定には必ず理由が書いてある',
+      offs.every(o=>o.理由.length>0&&o.押せない),JSON.stringify(offs));
+  /* 「まとめ」は画面を「まとめない」に戻してあるので、必ず押せない側に居る。 */
+  rec('画面が「まとめない」なら、まとめの見出しは押せず理由が出る',
+      offs.some(o=>o.key==='useGroups'),JSON.stringify(offs.map(o=>o.key)));
+  /* 逆に、効く設定は押せたまま（全部を塞いでいない）。 */
+  const live=await page.evaluate(()=>[...document.querySelectorAll('.sp-pv-side [data-opt]')]
+    .filter(i=>!i.disabled).map(i=>i.dataset.opt));
+  rec('効く設定は今までどおり押せる',live.includes('borders')&&live.includes('commentBox'),
+      JSON.stringify(live));
+
+  await page.evaluate(()=>WL.schedulePrint.closePreview());
+
   await page.evaluate(()=>WL.schedulePrint.closePreview());
   rec('閉じても刷らない（プレビューだけ消える）',
       await page.evaluate(()=>document.getElementById('schedulePrintPreview').hidden

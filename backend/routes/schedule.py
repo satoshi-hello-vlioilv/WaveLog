@@ -383,10 +383,15 @@ def plan_update():
  if plan_id is None:return jsonify(error='更新対象の予定IDがありません。'),400
  # titleは申し送り(コメント)の本文(§9.191)。他の種別では repo が弾く。
  fields={k:x[k] for k in ('estimateMinutes','fixedStart','remark','state','title') if k in x}
+ # frame=枠の行き先(日付・直)(§9.238 ②)。**[予定名称]と[明細JSON]を一緒に
+ # 書き換える**ので、1列ずつ書く plan_update とは別の入口を通す。
+ frame=x.get('frame') if isinstance(x.get('frame'),dict) else None
  def fn(c):
   row=sr.plan_row(c,plan_id)
   if row:_check_session(row[1])
-  n=sr.plan_update(c,plan_id,request_user_id(x),pc=request_pc_name(x),**fields)
+  n=0
+  if frame is not None:n+=sr.plan_set_frame(c,plan_id,request_user_id(x),frame,pc=request_pc_name(x))
+  if fields:n+=sr.plan_update(c,plan_id,request_user_id(x),pc=request_pc_name(x),**fields)
   if n==0:raise ValueError('指定の予定が見つからないか、更新項目がありません。')
   return {'id':plan_id}
  return _write_response(fn)
@@ -444,7 +449,11 @@ def _apply_plan_op(c,op,uid,pc=''):
   row=sr.plan_row(c,plan_id)
   if row:_check_session(row[1])
   fields={k:op[k] for k in ('estimateMinutes','fixedStart','remark','state','title') if k in op}
-  n=sr.plan_update(c,plan_id,uid,pc=pc,**fields)
+  # 枠の行き先(§9.238 ②)。まとめ書込でも1件ずつと同じ経路を通す。
+  frame=op.get('frame') if isinstance(op.get('frame'),dict) else None
+  n=0
+  if frame is not None:n+=sr.plan_set_frame(c,plan_id,uid,frame,pc=pc)
+  if fields:n+=sr.plan_update(c,plan_id,uid,pc=pc,**fields)
   if n==0:raise ValueError('指定の予定が見つからないか、更新項目がありません。')
   return {'id':plan_id}
  if kind=='delete':

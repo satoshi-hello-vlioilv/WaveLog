@@ -678,10 +678,14 @@
     どれも既定は今までの見え方を保つ側（子ロットの内訳・A3・見える範囲だけ・
     枠線なしはどれも新機能なので既定オフ側＝これまでどおり全部の列に
     枠線を付ける／A4縦）。 */
+ /* zoomMode/zoomPct=プレビューの表示倍率(§9.238 ③)。**紙には効かない**
+    ——見え方だけの設定だが、毎回選び直させないので同じ場所へ覚える。
+    既定は今までの見え方（1枚がまるごと入る「全体」）。 */
  const DEFAULTS={includeDone:false,actualColumns:true,pageByDate:true,allEquipment:false,
                  useGroups:true,commentBox:true,writePattern:'actual',
                  includeChildren:false,paper:'a4-portrait',
-                 columnScope:'all',borders:true};
+                 columnScope:'all',borders:true,
+                 zoomMode:'fit',zoomPct:100};
  function loadPref(){
   try{
    const v={...DEFAULTS,...(JSON.parse(localStorage.getItem(PREF_KEY)||'{}')||{})};
@@ -691,6 +695,10 @@
    if(!PAPER_SIZES.some(p=>p.key===v.paper))v.paper='a4-portrait';
    if(!COLUMN_SCOPES.some(s=>s.key===v.columnScope))v.columnScope='all';
    v.borders=v.borders!==false;
+   /* 倍率(§9.238 ③)。知らない値は既定へ倒す（壊れた保存値で
+      プレビューが開けなくならないように）。 */
+   v.zoomMode=zoomModeOf(v);
+   v.zoomPct=Math.min(ZOOM_MAX*100,Math.max(ZOOM_MIN*100,Number(v.zoomPct)||100));
    return v;
   }catch(_){return {...DEFAULTS}}
  }
@@ -762,11 +770,88 @@
   return pages;
  }
 
- /* ---------- プレビューの画面 ----------
-    左に決めること、右に刷り上がり。並びは実際にする順(何を載せる→用紙→
-    枚数の確認→印刷)。 */
+ /* ---------- プレビューの画面(§9.186・§9.238 ③④) ----------
+    左に決めること、右に刷り上がり。並びは実際にする順（何を載せる→どう
+    見せる→用紙→枚数の確認→印刷）。
+
+    **§9.238 ④で組み直した**（利用者の指示「印刷プレビューのメニューが
+    使えないメニューも混在しているので、メニューのわかりやすく使いやすい形で
+    再構成して必要な機能は追加実装、使えない不要な機能は整理してください」）。
+    直したのは3点:
+     ① **見出しと中身を合わせた。** 「(1) 何を載せるか」の中に用紙以外の
+        すべて（列の範囲・枠線・記入欄）が入っており、見出しが嘘をついて
+        いた。決める理由ごとに「載せるもの／見せ方／用紙／刷り上がり」の
+        4つへ分ける。
+     ② **いま効かない設定は、効かないと書いて押せなくする**（CLAUDE.md §4）。
+        分割の無い設備で「子ロットも載せる」、1日ぶんしか無いときの
+        「日付ごとにページを分ける」、全部の列が画面に入っているときの
+        「見える範囲の列だけ」——どれも押せるのに何も起きなかった。
+        判定は`previewFacts()`の**1箇所**が答え、理由をその場に書く。
+     ③ **表示倍率を足した**（§9.238 ③、利用者の指示「プレビューを幅に
+        合わせて、縦に合わせて、100%、など表示のスケール調整も含めて
+        調整できるように」）。倍率は**刷り上がりではなく見え方**の話なので、
+        左の設定ではなく**紙の側の帯**へ置く（同じ場所に置くと「100%で
+        刷られる」と読まれる）。 */
  const PREVIEW_ID='schedulePrintPreview';
- let pv={equipment:'',pref:null,sheets:[],busy:false,again:false};
+ let pv={equipment:'',pref:null,sheets:[],busy:false,again:false,sheet:0};
+
+ /* ---------- 表示倍率(§9.238 ③) ----------
+    紙は実寸(mm)のまま組み、`transform`で見え方だけ変える(§9.186)。
+    **刷り上がりには一切効かない**——ここで100%にしても紙は同じ。 */
+ const ZOOM_MODES=[
+  {key:'fit',   label:'全体',  note:'紙1枚がまるごと入る大きさ（既定）'},
+  {key:'width', label:'幅',    note:'紙の横幅を器いっぱいに合わせます'},
+  {key:'height',label:'縦',    note:'紙の高さを器いっぱいに合わせます'},
+  {key:'actual',label:'100%',  note:'実寸。細かい文字まで確かめられます'},
+ ];
+ const ZOOM_MIN=.2,ZOOM_MAX=4;
+ /* ＋／−で辿る刻み。**等間隔にしないこと**——小さい側は細かく、大きい側は
+    粗くないと、100%付近で何度も押すことになる。 */
+ const ZOOM_STEPS=[.25,.33,.5,.67,.75,1,1.25,1.5,2,3,4];
+ function zoomModeOf(pref){
+  const k=String(pref&&pref.zoomMode||'');
+  return (k==='manual'||ZOOM_MODES.some(z=>z.key===k))?k:'fit';
+ }
+ const clampZoom=v=>Math.min(ZOOM_MAX,Math.max(ZOOM_MIN,v||1));
+ /* 器へ入る倍率。**`offsetWidth`で測る**——`getBoundingClientRect()`は
+    `transform`を掛けたあとの見かけの寸法なので、前回の倍率が掛かった値を
+    基準にしてしまう（回を重ねるほど縮む）。 */
+ const PAPER_GUTTER_PX=24;    // 器の左右の余白
+ const PAPER_CAPTION_PX=56;   // 「1 / 4」の見出しぶん
+ function computeZoom(box,pref){
+  const mode=zoomModeOf(pref);
+  if(mode==='manual')return clampZoom((pref.zoomPct||100)/100);
+  if(mode==='actual')return 1;
+  const probe=box.querySelector('.sp-page');
+  const w=probe?probe.offsetWidth:0,h=probe?probe.offsetHeight:0;
+  if(!w||!h)return 1;
+  const roomW=box.clientWidth-PAPER_GUTTER_PX,roomH=box.clientHeight-PAPER_CAPTION_PX;
+  if(roomW<=0||roomH<=0)return 1;
+  /* **「幅」「縦」は器いっぱいまで拡大する**——合わせる先が器なのだから、
+     1倍で頭打ちにすると小さい紙では一度も合わない（利用者の指示は
+     「幅に合わせて、縦に合わせて」）。**「全体」だけは1倍で止める**
+     ——既定の見え方(§9.186)を変えないため。大きくしたい人は「幅」か
+     「100%」か「＋」を明示的に選ぶ。 */
+  if(mode==='width')return clampZoom(roomW/w);
+  if(mode==='height')return clampZoom(roomH/h);
+  return Math.min(1,Math.max(ZOOM_MIN,Math.min(roomW/w,roomH/h)));
+ }
+ /* いま出ている倍率（帯の%表示と＋−の起点）。描いたあとに入れる。 */
+ let shownZoom=1;
+ /* 次の刻み。**無ければnull**——端では押せなくするので、判定は1箇所で答える
+    （§4。押せるのに何も起きないボタンを残さない）。 */
+ function nextZoomStep(dir){
+  const cur=shownZoom||1;
+  const list=dir>0?ZOOM_STEPS:[...ZOOM_STEPS].slice().reverse();
+  const next=list.find(v=>dir>0?v>cur+1e-6:v<cur-1e-6);
+  return next==null?null:next;
+ }
+ function stepZoom(dir){
+  const next=nextZoomStep(dir);
+  if(next==null)return;
+  pv.pref.zoomMode='manual';pv.pref.zoomPct=Math.round(next*100);
+  savePref(pv.pref);applyZoom();renderZoomBar();
+ }
 
  function ensurePreview(){
   let el=document.getElementById(PREVIEW_ID);
@@ -784,22 +869,33 @@
     <div class="sp-pv-body">
      <aside class="sp-pv-side">
       <section class="sp-pv-sec">
-       <h3>① 何を載せるか</h3>
+       <h3>① 載せるもの</h3>
        <div class="sp-options" id="spPvOptions"></div>
       </section>
       <section class="sp-pv-sec">
-       <h3>② 用紙</h3>
+       <h3>② 見せ方</h3>
+       <div class="sp-options" id="spPvLook"></div>
+      </section>
+      <section class="sp-pv-sec">
+       <h3>③ 用紙</h3>
        <div class="sp-pats" id="spPvSize"></div>
       </section>
       <section class="sp-pv-sec">
-       <h3>③ 刷り上がり</h3>
+       <h3>④ 刷り上がり</h3>
        <p class="sp-pv-facts" id="spPvFacts"></p>
+       <button type="button" id="spPvReset" class="sp-pv-reset"
+        title="この画面の設定（載せるもの・見せ方・用紙）を、はじめの形へ戻します。表示倍率は変えません">設定を既定へ戻す</button>
       </section>
      </aside>
-     <div class="sp-pv-paper" id="spPvPaper"></div>
+     <div class="sp-pv-view">
+      <!-- 表示倍率と紙送り(§9.238 ③)。**刷り上がりの設定とは分けて紙の側へ
+           置く**——左の欄に混ぜると「100%で刷られる」と読まれる。 -->
+      <div class="sp-pv-zoom" id="spPvZoom"></div>
+      <div class="sp-pv-paper" id="spPvPaper"></div>
+     </div>
     </div>
     <footer class="sp-pv-foot">
-     <span class="sp-pv-hint">設定を変えると、右のプレビューがその場で変わります。</span>
+     <span class="sp-pv-hint">設定を変えると、右のプレビューがその場で変わります。倍率は見え方だけで、紙は変わりません。</span>
      <button type="button" id="spPvCancel">閉じる</button>
      <button type="button" class="sp-pv-print" id="spPvPrint">印刷する</button>
     </footer>
@@ -808,6 +904,7 @@
   el.querySelector('#spPvClose').onclick=closePreview;
   el.querySelector('#spPvCancel').onclick=closePreview;
   el.querySelector('#spPvPrint').onclick=doPrint;
+  el.querySelector('#spPvReset').onclick=resetPref;
   /* **背景クリックでは閉じない**（§9.221 ①）。刷る前の設定を触っている
      最中に外を押して消えると、選び直しからやり直しになる。閉じるのは
      ×／キャンセル／Escの3つ。 */
@@ -815,46 +912,108 @@
   document.addEventListener('keydown',e=>{
    if(WL.modal.escCloses(e)&&!el.hidden){e.stopPropagation();closePreview()}
   },true);
+  /* 器の大きさが変わったら「合わせる」倍率を取り直す(§9.238 ③)。
+     **窓の`resize`だけでは足りない**——左の設定が増減しても器の幅は動く。
+     倍率を当て直すだけなので、紙は組み直さない。 */
+  if(typeof ResizeObserver==='function'){
+   const ro=new ResizeObserver(()=>{if(!el.hidden){applyZoom();renderZoomBar()}});
+   ro.observe(el.querySelector('#spPvPaper'));
+  }
   return el;
  }
- function optionRows(pref,canAll){
-  const cb=(k,label,note)=>`<label class="sp-opt"><input type="checkbox" data-opt="${k}"${pref[k]?' checked':''}>
-   <span><b>${esc(label)}</b>${note?`<small>${esc(note)}</small>`:''}</span></label>`;
-  /* 「まとめ」は画面で選んでいるものをそのまま使う。**いま何でまとめて
-     いるかを書く**——「まとめない」ときに設定だけ出ていると、押しても
-     何も変わらないことになる。 */
-  const gm=(typeof WL.scheduleView?.groupModeLabel==='function')?WL.scheduleView.groupModeLabel():'';
-  const grouped=(typeof WL.scheduleView?.groupMode==='function')&&WL.scheduleView.groupMode()!=='none';
+
+ /* ---------- いま何ができるか(§9.238 ④) ----------
+    **判定はここ1箇所**。散らすと「押せるのに何も起きない」が必ずどれかに
+    戻る。数えるのは**いま開いている設備**の予定——他の設備は「すべての設備」
+    を入れて初めて読むので、読む前に数えられない（数えられないものを
+    「無い」と言わない）。 */
+ function previewFacts(pref){
+  const view=WL.scheduleView;
+  const list=(typeof view?.entries==='function'?view.entries():[])||[];
+  const main=list.filter(e=>e.parentId==null&&!e.__pending);
+  const shown=main.filter(e=>{
+   const st=e.state||'予定';
+   return (st==='完了'||st==='取消')?!!(pref&&pref.includeDone):true;
+  });
+  const days=new Set(shown.map(e=>{
+   const useActual=(e.state==='完了'||e.state==='着手')&&e.actual&&e.actual.startAt;
+   return workDayKey(e,useActual?e.actual.startAt:e.plannedStart);
+  }));
+  const names=(typeof view?.equipmentNames==='function')?view.equipmentNames():[];
+  const allCols=(typeof view?.printColumnKeys==='function')?view.printColumnKeys().length:0;
+  let visCols=allCols;
+  try{if(typeof view?.visibleColumnKeys==='function')visCols=view.visibleColumnKeys().length}catch(_){}
+  return {
+   /* 「すべての設備」を入れていると、他設備ぶんは読むまで分からない。
+      そのときは**数えられないので断らない**（fail-open）。 */
+   unknown:!!(pref&&pref.allEquipment),
+   equipments:names.length,
+   doneCount:main.filter(e=>e.state==='完了'||e.state==='取消').length,
+   childCount:list.filter(e=>e.parentId!=null).length,
+   dayCount:days.size,
+   grouped:(typeof view?.groupMode==='function')&&view.groupMode()!=='none',
+   groupLabel:(typeof view?.groupModeLabel==='function')?view.groupModeLabel():'',
+   allCols,visCols,
+  };
+ }
+
+ /* チェック1つ。**効かないときは押せなくして理由を書く**（§4）。 */
+ function cb(pref,k,label,note,block){
+  const off=!!block;
+  return `<label class="sp-opt${off?' is-off':''}">`
+   +`<input type="checkbox" data-opt="${k}"${pref[k]?' checked':''}${off?' disabled':''}>`
+   +`<span><b>${esc(label)}</b>`
+   +(off?`<small class="sp-opt-why">いまは効きません: ${esc(block)}</small>`
+        :(note?`<small>${esc(note)}</small>`:''))
+   +`</span></label>`;
+ }
+ /* ---------- ① 載せるもの ----------
+    「この紙に何が出るか」だけ。見え方(列・枠線・記入欄)は②へ移した。 */
+ function optionRows(pref,facts){
+  return `${cb(pref,'allEquipment','すべての設備を続けて印刷する','設備ごとにページを分けます',
+      facts.equipments>1?'':(facts.equipments?'この画面に設備が1台しかありません':'設備の一覧を読めていません'))}
+   ${cb(pref,'includeDone','完了・取消も載せる','ふだんは載せません（これから流すものだけ配るため）',
+      (facts.unknown||facts.doneCount>0)?'':'この設備に完了・取消の予定がありません')}
+   ${cb(pref,'includeChildren','分割後の子ロットの情報も載せる','親の下に「└ 子ロット番号・幅・条数・公差」を差し込みます',
+      (facts.unknown||facts.childCount>0)?'':'この設備の予定に、分割後の子ロットがありません')}
+   ${cb(pref,'useGroups',
+      facts.grouped?`画面のまとめ（${facts.groupLabel}）で見出しを入れる`:'画面のまとめで見出しを入れる',
+      '画面と同じまとまりで区切ります',
+      facts.grouped?'':'画面が「まとめない」なので、入れる見出しがありません')}
+   ${cb(pref,'pageByDate','日付ごとにページを分ける','日ごとに配る場合はこのまま',
+      (facts.unknown||facts.dayCount>1)?'':`載せる予定が${facts.dayCount===0?'ありません':'1日ぶんしかありません'}`)}`;
+ }
+ /* ---------- ② 見せ方 ----------
+    「同じ中身をどう刷るか」。列の範囲・枠線・記入欄はどれもここ。 */
+ function lookRows(pref,facts){
+  const scopeCur=columnScopeOf(pref);
+  /* 全部の列が画面に入っているときは「見える範囲だけ」＝「すべて」なので、
+     選んでも何も起きない（§4）。 */
+  const scopeBlock=facts.visCols>0&&facts.visCols>=facts.allCols
+    ?'いま画面に全部の列が見えているので、「すべての列」と同じになります':'';
+  const scopeRows=COLUMN_SCOPES.map(s=>{
+   const off=s.key==='visible'&&!!scopeBlock;
+   return `<label class="sp-pat${scopeCur===s.key?' is-on':''}${off?' is-off':''}" title="${esc(off?scopeBlock:s.note)}">
+     <input type="radio" name="spColumnScope" value="${s.key}"${scopeCur===s.key?' checked':''}${off?' disabled':''}>
+     <span><b>${esc(s.label)}</b><small>${esc(off?scopeBlock:s.note)}</small></span></label>`;
+  }).join('');
   /* **記入欄はパターンから選ぶ**(§9.191)。チェックの寄せ集めだと
      「開始だけ欲しい」「備考だけ」を作るのに何回も試すことになる。 */
   const cur=writePatternOf(pref);
   const patRows=WRITE_PATTERNS.map(p=>`<label class="sp-pat${cur===p.key?' is-on':''}" title="${esc(p.note)}">
      <input type="radio" name="spWritePattern" value="${p.key}"${cur===p.key?' checked':''}>
      <span><b>${esc(p.label)}</b><small>${esc(p.note)}</small></span></label>`).join('');
-  /* 列の範囲(§9.236、利用者の指示「見える範囲の列か、全ての列かを選べる
-     ように」)。用紙サイズと同じ`.sp-pat`の見せ方を使い回す。 */
-  const scopeCur=columnScopeOf(pref);
-  const scopeRows=COLUMN_SCOPES.map(s=>`<label class="sp-pat${scopeCur===s.key?' is-on':''}" title="${esc(s.note)}">
-     <input type="radio" name="spColumnScope" value="${s.key}"${scopeCur===s.key?' checked':''}>
-     <span><b>${esc(s.label)}</b><small>${esc(s.note)}</small></span></label>`).join('');
-  return `<div class="sp-opt-group"><h4>載せるもの</h4>
-   ${canAll?cb('allEquipment','すべての設備を続けて印刷する','設備ごとにページを分けます'):''}
-   ${cb('includeDone','完了・取消も載せる','ふだんは載せません（これから流すものだけ配るため）')}
-   ${cb('includeChildren','分割後の子ロットの情報も載せる（§9.235）','親の下に「└ 子ロット番号・幅・条数・公差」を差し込みます')}
-   ${grouped?cb('useGroups',`画面のまとめ（${gm}）で見出しを入れる`,'画面と同じまとまりで区切ります')
-            :`<p class="sp-opt-note">画面は「まとめない」なので、紙にも見出しは入りません。</p>`}
-   ${cb('pageByDate','日付ごとにページを分ける','日ごとに配る場合はこのまま')}
-  </div>
-  <div class="sp-opt-group"><h4>列の範囲（§9.236）</h4>
+  return `<div class="sp-opt-group"><h4>列の範囲</h4>
    <div class="sp-pats" id="spColumnScope">${scopeRows}</div>
+   <p class="sp-opt-note">画面に出ている ${facts.allCols} 列のうち、スクロールせずに見えているのは ${facts.visCols} 列です。</p>
   </div>
-  <div class="sp-opt-group"><h4>見た目</h4>
-   ${cb('borders','枠線（表の格子）を出す',
+  <div class="sp-opt-group"><h4>枠線</h4>
+   ${cb(pref,'borders','枠線（表の格子）を出す',
         '外すと格子を消して、画面のようなさわやかな見た目になります（見出し・まとまりの帯と、記入欄の下線は残ります）')}
   </div>
   <div class="sp-opt-group"><h4>書き込む欄</h4>
    <div class="sp-pats" id="spWritePatterns">${patRows}</div>
-   ${cb('commentBox','紙の下に「申し送り・気付き」の欄をつける','行ごとではなく、紙1枚に1つの欄です')}
+   ${cb(pref,'commentBox','紙の下に「申し送り・気付き」の欄をつける','行ごとではなく、紙1枚に1つの欄です')}
   </div>`;
  }
  /* 用紙サイズ・向きの選択肢(§9.235、利用者の指示)。既存の「書き込む欄」と
@@ -865,73 +1024,138 @@
      <input type="radio" name="spPaperSize" value="${p.key}"${cur===p.key?' checked':''}>
      <span><b>${esc(p.label)}</b><small>${p.w}×${p.h}mm</small></span></label>`).join('');
  }
+ /* ---------- 倍率と紙送りの帯(§9.238 ③) ---------- */
+ function renderZoomBar(){
+  const bar=document.getElementById('spPvZoom');if(!bar)return;
+  const mode=zoomModeOf(pv.pref);
+  const n=pv.sheets.length;
+  const modeBtns=ZOOM_MODES.map(z=>`<button type="button" class="sp-zoom-btn${mode===z.key?' is-on':''}"
+     data-zoom="${z.key}" title="${esc(z.note)}">${esc(z.label)}</button>`).join('');
+  bar.innerHTML=`<span class="sp-zoom-label">表示倍率</span>
+   <div class="sp-zoom-modes">${modeBtns}</div>
+   <button type="button" class="sp-zoom-step" data-zoom-step="-1"${nextZoomStep(-1)==null?' disabled title="これ以上小さくできません"':' title="1段小さく"'}>−</button>
+   <span class="sp-zoom-now" id="spPvZoomNow" title="紙は実寸(mm)のまま。倍率は画面の見え方だけで、刷り上がりは変わりません">${Math.round(shownZoom*100)}%</span>
+   <button type="button" class="sp-zoom-step" data-zoom-step="1"${nextZoomStep(1)==null?' disabled title="これ以上大きくできません"':' title="1段大きく"'}>＋</button>
+   ${n>1?`<span class="sp-zoom-gap"></span>
+     <span class="sp-zoom-label">紙送り</span>
+     <button type="button" class="sp-zoom-step" data-sheet="-1" title="前の紙の頭へ">◀</button>
+     <button type="button" class="sp-zoom-step" data-sheet="1" title="次の紙の頭へ">▶</button>`:''}`;
+  bar.querySelectorAll('[data-zoom]').forEach(b=>b.onclick=()=>{
+   pv.pref.zoomMode=b.dataset.zoom;savePref(pv.pref);applyZoom();renderZoomBar();
+  });
+  bar.querySelectorAll('[data-zoom-step]').forEach(b=>b.onclick=()=>stepZoom(+b.dataset.zoomStep));
+  bar.querySelectorAll('[data-sheet]').forEach(b=>b.onclick=()=>goSheet(+b.dataset.sheet));
+ }
+ /* いま見えている紙。**控えた番号で決めないこと**——手でスクロールした
+    あとに「1枚目へ戻る」ような動きになる（止まった状態を出しておくと、
+    そのうち嘘になる・§9.198）。押した時点の位置から数える。 */
+ function currentSheetIndex(paper,sheets){
+  const top=paper.getBoundingClientRect().top;
+  let best=0,bestD=Infinity;
+  sheets.forEach((el,i)=>{
+   const d=Math.abs(el.getBoundingClientRect().top-top);
+   if(d<bestD){bestD=d;best=i}
+  });
+  return best;
+ }
+ function goSheet(dir){
+  const paper=document.getElementById('spPvPaper');if(!paper)return;
+  const sheets=[...paper.querySelectorAll('.sp-pv-sheet')];
+  if(!sheets.length)return;
+  const at=currentSheetIndex(paper,sheets);
+  pv.sheet=Math.min(Math.max(0,at+dir),sheets.length-1);
+  sheets[pv.sheet].scrollIntoView({block:'start',behavior:'smooth'});
+ }
+ /* 倍率を当てる。**紙は組み直さない**——組み直すと見ていた場所へ戻れない。
+    `transform`は場所を空けてくれないので、器の寸法もここで入れる。 */
+ function applyZoom(){
+  const paper=document.getElementById('spPvPaper');if(!paper)return;
+  const zoom=computeZoom(paper,pv.pref);
+  shownZoom=zoom;
+  paper.style.setProperty('--sp-zoom',String(Math.round(zoom*1000)/1000));
+  paper.querySelectorAll('.sp-pv-scale').forEach(box=>{
+   const pg=box.querySelector('.sp-page');
+   if(!pg)return;
+   /* **`offsetWidth`で測ること**——`getBoundingClientRect()`は倍率を
+      掛けたあとの寸法なので、そこへもう一度掛けると器が小さくなり、
+      紙の右側が切り落とされる(実際に切れた)。 */
+   box.style.width=Math.round(pg.offsetWidth*zoom)+'px';
+   box.style.height=Math.round(pg.offsetHeight*zoom)+'px';
+  });
+  const now=document.getElementById('spPvZoomNow');
+  if(now)now.textContent=`${Math.round(zoom*100)}%`;
+  return zoom;
+ }
  function openPreview(equipment){
   const view=WL.scheduleView;
-  const canAll=typeof view.equipmentNames==='function'&&view.equipmentNames().length>1;
   const pref=loadPref();
-  if(!canAll)pref.allEquipment=false;
-  pv={equipment:String(equipment||''),pref,sheets:[],busy:false,again:false};
+  pv={equipment:String(equipment||''),pref,sheets:[],busy:false,again:false,sheet:0};
   otherEntries.clear();
   const el=ensurePreview();
   el.querySelector('#spPvTitle').textContent=`作業予定表${pv.equipment?`（${pv.equipment}）`:''}`;
   el.querySelector('#spPvSub').textContent='いま画面に出ている条件（表示範囲・列の並び）のまま刷ります';
-  const box=el.querySelector('#spPvOptions');
-  box.innerHTML=optionRows(pref,canAll);
-  /* **clickで受ける**（changeはclickの後に飛ぶ。§9.90と同じ理由）。 */
-  box.querySelectorAll('[data-opt]').forEach(inp=>inp.onclick=()=>{
-   pv.pref[inp.dataset.opt]=!!inp.checked;savePref(pv.pref);renderPreview();
-  });
-  /* 列の範囲(§9.236)。**選んだらその場で刷り上がりが変わる**（同じ作法）。 */
-  box.querySelectorAll('input[name="spColumnScope"]').forEach(inp=>inp.onclick=()=>{
-   pv.pref.columnScope=inp.value;savePref(pv.pref);
-   box.querySelectorAll('#spColumnScope .sp-pat').forEach(l=>l.classList.toggle('is-on',
-     l.querySelector('input')&&l.querySelector('input').value===inp.value));
-   renderPreview();
-  });
-  /* 記入欄のパターン(§9.191)。**選んだらその場で刷り上がりが変わる**。 */
-  box.querySelectorAll('input[name="spWritePattern"]').forEach(inp=>inp.onclick=()=>{
-   pv.pref.writePattern=inp.value;
-   /* 古い設定とも辻褄を合わせる（他の画面が actualColumns を見ている）。 */
-   pv.pref.actualColumns=inp.value!=='none';
-   savePref(pv.pref);
-   /* **`#spWritePatterns`の中だけ**を見る——`box`には他の`.sp-pat`群
-      （列の範囲。§9.236で増えた）も同居しており、絞らずに探すとそちらの
-      選択表示まで巻き添えで消える。 */
-   box.querySelectorAll('#spWritePatterns .sp-pat').forEach(l=>l.classList.toggle('is-on',
-     l.querySelector('input')&&l.querySelector('input').value===inp.value));
-   renderPreview();
-  });
-  /* 用紙サイズ(§9.235)。**選んだらその場で刷り上がりが変わる**（同じ作法）。 */
-  const sizeBox=el.querySelector('#spPvSize');
-  sizeBox.innerHTML=paperSizeRows(pref);
-  sizeBox.querySelectorAll('input[name="spPaperSize"]').forEach(inp=>inp.onclick=()=>{
-   pv.pref.paper=inp.value;savePref(pv.pref);
-   sizeBox.querySelectorAll('.sp-pat').forEach(l=>l.classList.toggle('is-on',
-     l.querySelector('input')&&l.querySelector('input').value===inp.value));
-   renderPreview();
-  });
+  paintOptions();
   el.hidden=false;
+  renderZoomBar();
   renderPreview();
   requestAnimationFrame(()=>el.querySelector('#spPvPrint')?.focus());
  }
+ /* 左の欄を描いて配線する。**押せない理由はデータで変わる**ので、
+    設定を触るたびに描き直す（子ロットを載せると日数が変わる、など）。
+    **`renderPreview()`は呼ばない**——呼び出し側が続けて呼ぶ。 */
+ function paintOptions(){
+  const el=document.getElementById(PREVIEW_ID);if(!el)return;
+  /* **触っていた欄へ戻す**——押せない理由はデータで変わるので描き直すが、
+     戻さないと1つ触るたびにフォーカスが窓の頭へ飛ぶ（キーボードで
+     たどれなくなる）。 */
+  const focused=document.activeElement;
+  const keepOpt=focused&&focused.dataset?focused.dataset.opt:'';
+  const keepName=focused&&focused.name?focused.name:'';
+  const keepValue=focused&&focused.value!=null?focused.value:'';
+  const facts=previewFacts(pv.pref);
+  if(!facts.equipments||facts.equipments<=1)pv.pref.allEquipment=false;
+  const box=el.querySelector('#spPvOptions'),look=el.querySelector('#spPvLook');
+  box.innerHTML=optionRows(pv.pref,facts);
+  look.innerHTML=lookRows(pv.pref,facts);
+  /* **clickで受ける**（changeはclickの後に飛ぶ。§9.90と同じ理由）。 */
+  [box,look].forEach(host=>host.querySelectorAll('[data-opt]').forEach(inp=>inp.onclick=()=>{
+   pv.pref[inp.dataset.opt]=!!inp.checked;savePref(pv.pref);paintOptions();renderPreview();
+  }));
+  /* 列の範囲(§9.236)。**選んだらその場で刷り上がりが変わる**（同じ作法）。 */
+  look.querySelectorAll('input[name="spColumnScope"]').forEach(inp=>inp.onclick=()=>{
+   pv.pref.columnScope=inp.value;savePref(pv.pref);paintOptions();renderPreview();
+  });
+  /* 記入欄のパターン(§9.191)。**選んだらその場で刷り上がりが変わる**。 */
+  look.querySelectorAll('input[name="spWritePattern"]').forEach(inp=>inp.onclick=()=>{
+   pv.pref.writePattern=inp.value;
+   /* 古い設定とも辻褄を合わせる（他の画面が actualColumns を見ている）。 */
+   pv.pref.actualColumns=inp.value!=='none';
+   savePref(pv.pref);paintOptions();renderPreview();
+  });
+  /* 用紙サイズ(§9.235)。**選んだらその場で刷り上がりが変わる**（同じ作法）。 */
+  const sizeBox=el.querySelector('#spPvSize');
+  sizeBox.innerHTML=paperSizeRows(pv.pref);
+  sizeBox.querySelectorAll('input[name="spPaperSize"]').forEach(inp=>inp.onclick=()=>{
+   pv.pref.paper=inp.value;savePref(pv.pref);paintOptions();renderPreview();
+  });
+  if(keepOpt){
+   const back=el.querySelector(`.sp-pv-side [data-opt="${keepOpt}"]:not([disabled])`);
+   if(back)back.focus();
+  }else if(keepName){
+   const back=el.querySelector(`.sp-pv-side input[name="${keepName}"][value="${keepValue}"]:not([disabled])`);
+   if(back)back.focus();
+  }
+ }
+ /* 設定を既定へ戻す(§9.238 ④)。**倍率は戻さない**——あれは見え方の話で、
+    紙の設定ではない（戻した拍子に見ていた場所を失うほうが困る）。 */
+ function resetPref(){
+  const zoomMode=pv.pref.zoomMode,zoomPct=pv.pref.zoomPct;
+  pv.pref={...DEFAULTS,zoomMode,zoomPct};
+  savePref(pv.pref);paintOptions();renderPreview();
+  showToast&&showToast('印刷の設定を既定へ戻しました','用紙・載せるもの・見せ方が、はじめの形へ戻りました',3200);
+ }
  function closePreview(){
   const el=document.getElementById(PREVIEW_ID);if(el)el.hidden=true;
- }
- /* 実寸(用紙のmm×mm)を器へ収める倍率。**紙の寸法はmmのまま**にして
-    見た目だけ縮める(§9.115の「用紙はmm」を崩さない)。
-    **高さも見る**のが要点——幅だけで合わせると1枚が縦に切れ、
-    「配る紙が1枚に収まっているか」というプレビューの一番の用が果たせない
-    （下が見えないので、溢れているのかどうかが分からない）。 */
- function fitZoom(box){
-  const probe=box.querySelector('.sp-page');
-  /* **`offsetWidth`で測る。** `getBoundingClientRect()`は`transform`を
-     掛けたあとの見かけの寸法を返すので、前回の倍率が掛かった値を基準に
-     してしまう（回を重ねるほど縮む）。 */
-  const w=probe?probe.offsetWidth:0,h=probe?probe.offsetHeight:0;
-  if(!w||!h)return 1;
-  const roomW=box.clientWidth-24,roomH=box.clientHeight-56;   // 余白と枚数の見出しぶん
-  if(roomW<=0||roomH<=0)return 1;
-  return Math.min(1,Math.max(.3,Math.min(roomW/w,roomH/h)));
  }
  async function renderPreview(){
   const el=document.getElementById(PREVIEW_ID);if(!el||el.hidden)return;
@@ -945,34 +1169,28 @@
     paper.innerHTML=`<p class="sp-pv-wait">${esc(msg)}</p>`;
    });
    if(!pages.length||pages.every(p=>!p.rows.length)){
-    pv.sheets=[];
+    pv.sheets=[];pv.sheet=0;
     paper.innerHTML=`<p class="sp-pv-empty">${esc(pv.pref.includeDone
       ?'この設備に予定がありません。':'これから流す予定がありません。')}</p>`
      +(pv.pref.includeDone?'':'<p class="sp-pv-empty-how">「完了・取消も載せる」を入れると過去分も出せます。</p>');
     facts.innerHTML='<b>0枚</b>';
     el.querySelector('#spPvPrint').disabled=true;
+    /* 紙が無いときに前回の%を残さない（見えている紙が無いのに「62%」と
+       出ていると、何かが縮んでいるように読める）。 */
+    shownZoom=1;renderZoomBar();
     return;
    }
    const sheets=splitToSheets(pages,pv.pref);
    pv.sheets=sheets;
+   if(pv.sheet>=sheets.length)pv.sheet=0;
    el.querySelector('#spPvPrint').disabled=false;
    paper.innerHTML=sheets.map((p,i)=>
     `<figure class="sp-pv-sheet"><figcaption>${i+1} / ${sheets.length}${
       p.equipment&&pv.pref.allEquipment?`　${esc(p.equipment)}`:''}</figcaption>
      <div class="sp-pv-scale">${pageHtml(p,pv.pref,i+1,sheets.length)}</div></figure>`).join('');
    /* 倍率は**描いてから測って**決める(mm指定の実寸はブラウザに聞くしかない)。 */
-   const zoom=fitZoom(paper);
-   paper.style.setProperty('--sp-zoom',String(Math.round(zoom*1000)/1000));
-   paper.querySelectorAll('.sp-pv-scale').forEach(box=>{
-    const pg=box.querySelector('.sp-page');
-    if(!pg)return;
-    /* 縮めた分だけ器も縮める(transformは場所を空けてくれない)。
-       **`offsetWidth`で測ること**——`getBoundingClientRect()`は倍率を
-       掛けたあとの寸法なので、そこへもう一度掛けると器が小さくなり、
-       紙の右側が切り落とされる(実際に切れた)。 */
-    box.style.width=Math.round(pg.offsetWidth*zoom)+'px';
-    box.style.height=Math.round(pg.offsetHeight*zoom)+'px';
-   });
+   const zoom=applyZoom();
+   renderZoomBar();
    const rows=sheets.reduce((n,p)=>n+((p.rows||[]).length),0);
    const eqs=new Set(sheets.map(p=>p.equipment).filter(Boolean));
    const size=paperSizeOf(pv.pref.paper);
@@ -987,7 +1205,7 @@
    facts.innerHTML=`<b>${sheets.length}枚</b>・${rows}件・${esc(size.label)}`
     +(eqs.size>1?`・${eqs.size}台ぶん`:'')
     +`・列幅 ${minFit>=1?'設定どおり':`${Math.round(minFit*100)}%に縮小`}`
-    +`<small>実寸の ${Math.round(zoom*100)}% で表示しています`
+    +`<small>画面では実寸の ${Math.round(zoom*100)}%（見え方だけ。紙は${esc(size.label)}のまま）`
     +(minFit>=1?''
       :`／用紙に収めるため列と文字を詰めています。設定どおりの幅で刷るには、`
        +`用紙を大きく（A3・横）するか「見える範囲の列だけ」を選んでください。`)

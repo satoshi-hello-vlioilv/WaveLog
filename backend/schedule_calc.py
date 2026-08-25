@@ -104,6 +104,38 @@ def resolve_shift_label(specific_shift_rows,global_shift_rows,dt):
  """該当する勤務名称だけを返す（判定は resolve_shift_info の1箇所）。"""
  return resolve_shift_info(specific_shift_rows,global_shift_rows,dt)[0]
 
+# ========================================================================
+# 空の日付・直の枠(§9.238 ②)
+# ========================================================================
+def frame_target(detail,specific_shift_rows,global_shift_rows):
+ """枠(kind='枠')の行き先を実時刻へ解く。戻り値: (datetime or None, 理由)。
+
+ **保存されているのは日付と直の名称だけ**で、実時刻はここで毎回引き直す
+ (schedule_repo.normalize_frame のコメント参照)。直の開始時刻をマスタで
+ 直したら、置いてある枠も一緒に動いてほしいため。
+
+ 直を選んでいない枠は「その日の頭から」＝0:00。展開側が snap_to_working で
+ その日の最初の稼働開始まで繰り上げるので、休みの日を指しても壊れない。
+
+ **直の名前が見つからないときは0:00へ落とし、理由を返す**——黙って
+ その日の頭にすると、「2直と書いてあるのに朝から空いている」ことになる。
+ """
+ d=str((detail or {}).get('frameDate') or '').strip()
+ if not d:return (None,'枠に日付が入っていません。')
+ try:day=date.fromisoformat(d)
+ except Exception:return (None,f'枠の日付「{d}」を読めません。')
+ name=str((detail or {}).get('frameShift') or '').strip()
+ if not name:return (datetime.combine(day,time(0,0)),'')
+ rows=specific_shift_rows if specific_shift_rows else global_shift_rows
+ for r in (rows or []):
+  # r: 勤務ID,設備名,名称,開始時刻,終了時刻,表示順,有効,日付補正
+  if str(r[2] or '').strip()==name:
+   # 日を跨ぐ直(23:00〜翌7:00)でも、**開始は現場日そのもの**の側にある
+   # (§9.195の日付補正は「跨いだ後の時間帯」にだけ当たるので、開始時刻は
+   #  補正0＝暦の日付と現場日が一致する側)。だから素直に組み立ててよい。
+   return (_to_dt(day,r[3]),'')
+ return (datetime.combine(day,time(0,0)),f'勤務「{name}」が勤務形態マスタにありません。その日の頭として扱いました。')
+
 def build_slot_timeline(specific_rows,global_rows,from_date,horizon_days=MAX_HORIZON_DAYS):
  """from_dateの前日からfrom_date+horizon_days+1日までの稼働帯を集めて時系列
  ソート・隣接マージした(開始,終了)の絶対時刻リストにする(§7.3の展開が
@@ -342,6 +374,10 @@ def resolve_estimate(c,equipment,plan_row_dict,memo=None):
  # コメント(§9.189)は時間を持たない申し送り。見積は常に0分。
  if plan_row_dict.get('kind')=='コメント':
   return {'minutes':0.0,'source':'comment',**_EMPTY_ESTIMATE_EXTRAS}
+ # 枠(§9.238 ②)も**自分では時間を使わない**。効くのは「後続の起点を
+ # その日・その直まで進める」ことだけなので、見積は常に0分。
+ if plan_row_dict.get('kind')=='枠':
+  return {'minutes':0.0,'source':'frame',**_EMPTY_ESTIMATE_EXTRAS}
  if plan_row_dict.get('kind')=='設備停止':
   title=plan_row_dict.get('title') or ''
   stops=None if memo is None else memo.setdefault('stopMinutes',{})
@@ -534,6 +570,46 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
    continue
   est=resolve_estimate(mc,equipment,e,memo=est_memo)
   minutes=est['minutes']
+  if e['kind']=='枠':
+   # 空の日付・直の枠(§9.238 ②)。**カーソルを「進める」だけ**——
+   # 自分は時間を使わない(見積0分)。
+   #  ・起点が枠の時刻より前なら、そこまで飛ばす（空きができる）
+   #  ・起点が既に過ぎていたら**何もしない**——手前の予定が押してきて
+   #    埋まった、ということ。利用者の言う「押し出してくる際は連動して
+   #    ロットが自然にその設定枠に入る」がこれ。
+   # **後ろへ戻さないこと**。戻すと、既に始まっている予定より前の時刻へ
+   # 後続を置くことになる。
+   target,note=frame_target(e.get('detail'),specific_shift,global_shift)
+   at=cursor
+   if target is not None and target>cursor:
+    snapped,_w=snap_to_working(target,timeline)
+    if snapped is None:
+     # 稼働カレンダーの見える範囲(MAX_HORIZON_DAYS)より先。**打ち切らず
+     # そのまま置く**——後続は次の周回で truncated として理由が出る。
+     at=target
+     warnings.append(f"予定ID {e['id']} の枠は稼働カレンダー上、{MAX_HORIZON_DAYS}日以内に収まりません。")
+    else:
+     at=snapped
+   gap=max(0.0,_minutes_between(cursor,at))
+   e['plannedStart']=at.isoformat()
+   e['plannedEnd']=e['plannedStart']
+   e['startsInMinutes']=round(_minutes_between(now,at),1)
+   e['estimate']=dict(est,minutes=0.0)
+   e['reorderable']=(e['state']==sr.PLAN_REORDERABLE_STATE)
+   e['spansNonWorking']=False;e['overdueMinutes']=0
+   e['shift']=resolve_shift_label(specific_shift,global_shift,at)
+   # 画面が「いま何が起きているか」を書けるだけの材料を渡す(§6)。
+   #  reached=True … 起点が既にこの枠を過ぎている＝もう埋まった
+   #  gapMinutes  … この枠が作っている空き時間
+   e['frame']={'date':str((e.get('detail') or {}).get('frameDate') or ''),
+               'shift':str((e.get('detail') or {}).get('frameShift') or ''),
+               'note':str((e.get('detail') or {}).get('frameNote') or ''),
+               'target':target.isoformat() if target is not None else None,
+               'gapMinutes':round(gap,1),'reached':gap<=0,
+               'warning':note}
+   if note:warnings.append(f"予定ID {e['id']}: {note}")
+   cursor=at
+   continue
   if e['kind']=='コメント':
    # 申し送り(§9.189)。**カーソルを進めない**——時間を持たせると、
    # メモを1行挟むたびに後ろの予定が動くことになる。位置だけ持つ。

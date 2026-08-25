@@ -431,6 +431,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
       <button type="button" class="sc-split-toggle sc-ico-btn" id="scListModalBtn" hidden title="仕掛一覧をポップアップで表示してドラッグで追加します"><i>⧉</i><span>仕掛一覧</span></button>
       <button type="button" class="sc-split-toggle sc-ico-btn" id="scStopModalBtn" hidden title="設備停止をポップアップから追加します"><i>⛔</i><span>設備停止</span></button>
       <button type="button" class="sc-split-toggle sc-ico-btn" id="scCommentBtn" draggable="true" hidden title="申し送り（コメント）を予定の列へ挟みます。時間は取りません。&#10;・掴んで予定の間へ落とすと、空の枠だけが入ります（あとでダブルクリックして書けます）&#10;・押すとその場で書いて入れられます"><i>💬</i><span>コメント</span></button>
+      <!-- 空の日付・直の枠(§9.238 ②、利用者の指示「予定を少し飛ばして設定
+           する場合に、何も予定がない領域にセットできる、空の日付や直の枠を
+           登録できるようにしたい」)。コメントと同じく掴んでも押しても入る。 -->
+      <button type="button" class="sc-split-toggle sc-ico-btn" id="scFrameBtn" draggable="true" hidden title="空の日付・直の枠を挟みます。ここから先の予定を、その日・その直の頭から並べ直します。&#10;・日にちや直を飛ばして、先の予定を先に決められます&#10;・手前に予定を足していくと、空いた時間へ自然に入っていきます&#10;・掴んで予定の間へ落とすと、その位置に入ります"><i>📅</i><span>日付・直の枠</span></button>
      </div>
      <!-- 見え方の入口は1つ(§9.199)。**いまの設定を文字で連れて出す**
           ——畳んだ先の値が読めないと、開くまで思い出せない。 -->
@@ -471,11 +475,16 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     <div class="sc-timeline" id="scTimeline"></div>
     <!-- 予定から外す受け皿(§9.116)。**掴んでいる間だけ出す**——常設すると
          「消す場所」が画面に居座り、押し間違いの的になる。掴んで初めて
-         現れるので、外す意思があるときにしか目に入らない。 -->
-    <div class="sc-drop-remove" id="scDropRemove" hidden aria-hidden="true">
-     <span class="sc-drop-remove-icon">予定から外す</span>
-     <span class="sc-drop-remove-text">ここへ落とすと<b>この予定を外します</b>
-      <small>確認してから外します。仕掛一覧へ戻るので、また入れ直せます</small></span>
+         現れるので、外す意思があるときにしか目に入らない。
+         **幅いっぱいにしない**(§9.238 ①、利用者の指示)——下端を横断すると
+         「行を末尾へ運ぶ」動線をそのまま覆い、並べ替えのつもりが外す確認に
+         なる。右下の小さな札にして、説明はtitle属性へ落とす(§9.234 ①)。
+         **この覆いの中にバッククォートを書かないこと**——テンプレート
+         リテラルの中なので、そこで文字列が閉じて画面が組み上がらなくなる。 -->
+    <div class="sc-drop-remove" id="scDropRemove" hidden aria-hidden="true"
+         title="ここへ落とすと予定から外します。確認してから外すので、間違えても止められます。&#10;外した予定は仕掛一覧へ戻るので、また入れ直せます。">
+     <span class="sc-drop-remove-icon" aria-hidden="true">🗑</span>
+     <span class="sc-drop-remove-text">予定から外す</span>
     </div>
     <!-- ---------- 「表示」パネル(§9.199) ----------
          見え方の設定を**1箇所へ集める**。以前は「まとめ」「さかのぼり」が
@@ -597,6 +606,19 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    cmt.classList.add('is-row-dragging');
   });
   cmt.addEventListener('dragend',()=>{cmt.classList.remove('is-row-dragging');scState.dragComment=false});
+  /* 日付・直の枠(§9.238 ②)。コメントと同じ作法——押すとその場で聞いて
+     末尾（または固定した位置）へ、掴んで落とすと**落とした位置**へ入る。
+     **中身の無い枠は作らない**——日付の入っていない枠は何もしない行に
+     なるので、落とした位置を覚えたうえで先に日付を聞く(§4)。 */
+  const frm=$('#scFrameBtn');
+  frm.onclick=()=>openFramePicker(null);
+  frm.addEventListener('dragstart',e=>{
+   scState.dragFrame=true;
+   e.dataTransfer.effectAllowed='copy';
+   try{e.dataTransfer.setData('text/plain','枠')}catch(err){/* setData制限は無視 */}
+   frm.classList.add('is-row-dragging');
+  });
+  frm.addEventListener('dragend',()=>{frm.classList.remove('is-row-dragging');scState.dragFrame=false});
   /* 内容欄の設定は**仕掛一覧と同じパネル**で開く(§9.120)。専用モーダルの
      実装は当面残す（他から呼ばれていないかを通しで確かめるまでの保険）。 */
   /* 列の設定は別の窓(浮きウィンドウ)で開くので、**「表示」パネルは畳む**
@@ -833,7 +855,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
              {key:'cat:done',label:'完了',hint:'終わった作業'},
              {key:'cat:cancel',label:'取消',hint:'取り消した予定'},
              {key:'cat:stop',label:'設備停止',hint:'作業以外で設備が塞がる行'},
-             {key:'cat:comment',label:'コメント',hint:'時間を取らない申し送り'}];
+             {key:'cat:comment',label:'コメント',hint:'時間を取らない申し送り'},
+             /* 空の日付・直の枠(§9.238 ②)。時間は取らないが、ここから先の
+                起点を動かす行なので、コメントとは別に色を選べるようにする。 */
+             {key:'cat:frame',label:'枠',hint:'ここから先を、その日・その直から並べ直す行'}];
   /* 分類ごとの上書き。**登録されている分類だけ**を出す（架空の分類を
      並べない）。分類の指定は区分の指定より優先することを見出しに書く。 */
   (stopCategories||[]).forEach(name=>{
@@ -1379,7 +1404,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   panel.classList.add('sc-drop-target');
   const dropApplicable=()=>scState.fullControl&&scState.boardMode==='single'&&!!scState.equipment&&!sessionBlocked();
   panel.addEventListener('dragover',e=>{
-   if((!window.__scDragRows&&!window.__scDragStopReason&&!scState.dragComment)||!dropApplicable())return;
+   if((!window.__scDragRows&&!window.__scDragStopReason&&!scState.dragComment&&!scState.dragFrame)||!dropApplicable())return;
    e.preventDefault();
    e.dataTransfer.dropEffect='copy';
    panel.classList.add('sc-drop-active');
@@ -1415,6 +1440,17 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     scState.dragComment=false;
     if(WL.scheduleInsert)scState.insertBefore=WL.scheduleInsert.takeDropTarget();
     if(dropApplicable())addCommentAt('',{focus:true});
+    else clearInsertPin();
+    return;
+   }
+   /* 日付・直の枠(§9.238 ②)。**落とした位置を先に控えてから聞く**——
+      日付を選んでいる間に位置を忘れると、せっかく狙って落とした意味が無い。 */
+   if(scState.dragFrame){
+    e.preventDefault();
+    panel.classList.remove('sc-drop-active');
+    scState.dragFrame=false;
+    const at=WL.scheduleInsert?WL.scheduleInsert.takeDropTarget():'';
+    if(dropApplicable())openFramePicker(null,{before:at});
     else clearInsertPin();
     return;
    }
@@ -1549,6 +1585,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   updateSideUi();
   const stopBtn=$('#scStopModalBtn');if(stopBtn)stopBtn.hidden=!scState.fullControl||inBoard;
   const cmtBtn=$('#scCommentBtn');if(cmtBtn)cmtBtn.hidden=!scState.fullControl||inBoard;
+  const frmBtn=$('#scFrameBtn');if(frmBtn)frmBtn.hidden=!scState.fullControl||inBoard;
   if(inBoard)closeRowStylePop();
   document.querySelectorAll('.sc-board-window-btn').forEach(btn=>btn.classList.toggle('active',+btn.dataset.hours===scState.boardWindowHours));
   updateSplitToggleUi();
@@ -2640,6 +2677,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  }
  function fixedStartHtml(e){
   if(e.__pending)return ''; // サーバー未反映(§9.11の楽観的追加)の間はまだ予定IDが無く更新できない
+  /* 空の日付・直の枠(§9.238 ②)は**固定開始日時を使わない**。あちらは
+     「この予定自身をその時刻へ釘で留める」意味で、枠の「ここから先は
+     この日・この直から」とは別物なので、置いても効かない欄になる（§4）。
+     枠の行き先は`frameDetailHtml()`が出す。 */
+  if(e.kind==='枠')return '';
   if(scState.fullControl&&e.state==='予定'){
    return `<div class="sc-detail-block"><div class="sc-detail-heading">固定開始日時</div>
     <div class="sc-fixed-start">
@@ -2664,6 +2706,38 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   entry.fixedStart=iso;renderTimeline();
   queuePlanOp({op:'update',id,fixedStart:iso,
    onFailure:()=>{entry.fixedStart=previous;if(scState.equipment)renderTimeline()}});
+ }
+
+ /* 枠の内訳(§9.238 ②)。**行の題名は1行に収める**ので、細かいことは
+    ここで言う——どこから始めようとしているのか、いま何分空けているのか、
+    もう埋まったのか。**同じ数字を2箇所に出さない**(§8)ため、題名は
+    「空き ◯時間」だけ、内訳はここだけ。 */
+ function frameDetailHtml(e){
+  if(e.kind!=='枠')return '';
+  const f=e.frame||{};
+  const d=String(f.date||(e.detail&&e.detail.frameDate)||'');
+  const sh=String(f.shift||(e.detail&&e.detail.frameShift)||'');
+  const note=String(f.note||(e.detail&&e.detail.frameNote)||'');
+  const rows=[
+   ['行き先',d?`${frameDateLabel(d)}${sh?' '+sh:'（その日の頭から）'}`:'（日付が未設定）'],
+   /* **展開後の時刻を出す**——`f.target`は稼働カレンダーへ合わせる前の値なので、
+      休みの日を指すと繰り上がった実際の開始とずれる（行は繰り上がった時刻で
+      並んでいるのに、詳細だけ別の時刻を出すことになる）。合わせる前の値が
+      違うときだけ、そのことを添える。 */
+   ['実際の開始',e.plannedStart?fmtDateTime(e.plannedStart)
+     +((f.target&&String(f.target).slice(0,16)!==String(e.plannedStart).slice(0,16))
+       ?`（${fmtDateTime(f.target)}は稼働時間外なので繰り上げました）`:'')
+     :'—'],
+   ['いまの空き',f.reached?'0分（もう埋まりました）'
+     :(Number.isFinite(Number(f.gapMinutes))?fmtMinutes(Number(f.gapMinutes)):'—')],
+   note?['メモ',note]:null,
+   f.warning?['注意',f.warning]:null,
+  ].filter(Boolean);
+  return `<div class="sc-detail-block"><div class="sc-detail-heading">日付・直の枠</div>
+   <div class="sc-detail-list">${rows.map(([k,v])=>
+     `<div class="sc-detail-item"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}</div>
+   <p class="sc-detail-note">この枠は時間を使いません。手前に予定を足していくと空きへ入っていき、
+    追い越したら枠は何もしなくなります。</p></div>`;
  }
 
  /* ---------- 日時ロック(§9.38) ----------
@@ -2992,7 +3066,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const keys=timelineContentKeys();
   const t=timelineTarget();
   if(e.kind!=='作業'){
-   const title=(e.title||(e.kind==='コメント'?'（ダブルクリックで書けます）':'設備停止')).trim();
+   const title=nonWorkTitleText(e,'（ダブルクリックで書けます）');
    return keys.map((k,i)=>({key:k,text:i===0?title:'',raw:i===0?title:'',color:''}));
   }
   /* 読み替えが見る行は`timelineRuleRow()`の1箇所が作る（§9.234 ⑥）。
@@ -3142,8 +3216,48 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   }
   return out.length?out:keys.slice(0,1);
  }
+ /* ---------- 作業以外の行の題名は1箇所で作る(§9.238 ②) ----------
+    以前は「コメントか、そうでなければ設備停止」という2択を3箇所へ書き写して
+    いた。3つ目(枠)が増えた時点で、書き写した数だけ直す場所ができる
+    （CLAUDE.md「関数の定義は1箇所」）。空のコメントに何と出すかだけが
+    呼び出しごとに違うので、そこだけ引数で受ける。 */
+ function nonWorkTitleText(e,emptyComment){
+  if(e.kind==='枠')return frameText(e);
+  const t=String(e.title||'').trim();
+  if(t)return t;
+  return e.kind==='コメント'?String(emptyComment||'（コメント）'):'設備停止';
+ }
+ /* 枠の題名。**日付と直から組み立て直す**——保存されている[予定名称]は
+    明細JSONを開かない場所(帳票・監査ログ)のための控えで、画面はいつでも
+    今の設定から作る。**何が起きているかも一緒に書く**(§6・§3)——
+    「もう埋まった」のか「まだN時間空けている」のかで、次にすることが違う。 */
+ function frameText(e){
+  const f=e.frame||{};
+  const d=String(f.date||(e.detail&&e.detail.frameDate)||'').trim();
+  const sh=String(f.shift||(e.detail&&e.detail.frameShift)||'').trim();
+  const head=d?`${frameDateLabel(d)}${sh?' '+sh:''} から`:'枠（日付が未設定）';
+  const note=String(f.note||(e.detail&&e.detail.frameNote)||'').trim();
+  return [head,frameStateText(e),note].filter(Boolean).join(' ／ ');
+ }
+ function frameStateText(e){
+  const f=e.frame;
+  if(!f)return '';
+  if(f.reached)return 'ここまで埋まりました';
+  const g=Number(f.gapMinutes);
+  return Number.isFinite(g)&&g>0?`空き ${fmtMinutes(g)}`:'';
+ }
+ const FRAME_WD=['日','月','火','水','木','金','土'];
+ function frameDateLabel(iso){
+  /* **`new Date('2026-08-18')`で組み立てないこと**(§9.195)——UTCの0時として
+     読まれ、地方時で1日ずれる端末がある。 */
+  const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso||''));
+  if(!m)return String(iso||'');
+  const d=new Date(+m[1],+m[2]-1,+m[3]);
+  if(Number.isNaN(d.getTime()))return String(iso);
+  return `${+m[2]}/${+m[3]}（${FRAME_WD[d.getDay()]}）`;
+ }
  function entryContentText(e){
-  if(e.kind!=='作業')return (e.title||(e.kind==='コメント'?'（コメント）':'設備停止')).trim();
+  if(e.kind!=='作業')return nonWorkTitleText(e,'（コメント）');
 
   const items=(scContentPrefs.equipment===scState.equipment)?scContentPrefs.items:null;
   if(items&&items.length){
@@ -3231,10 +3345,14 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   /* 申し送り(§9.189)。**時間を持たない**ので、設備停止とは別の区分にする
      ——同じ「作業以外」でも、片方は時間を取り、片方は取らない。 */
   comment:{key:'comment',label:'コメント'},
+  /* 空の日付・直の枠(§9.238 ②)。**時間は使わないが起点を動かす**ので、
+     コメントとも設備停止とも違う3つ目の「作業以外」。 */
+  frame:{key:'frame',label:'枠'},
  };
  function categoryOf(e){
   if(e.state==='取消')return SC_CATEGORIES.cancel;
   if(e.kind==='コメント')return SC_CATEGORIES.comment;
+  if(e.kind==='枠')return SC_CATEGORIES.frame;
   if(e.state==='完了')return SC_CATEGORIES.done;
   if(e.state==='着手')return SC_CATEGORIES.doing;
   if(e.kind==='設備停止')return SC_CATEGORIES.stop;
@@ -3794,7 +3912,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     メニューは行を覆うので、押す時点で対象が見えなくなる。 */
  function scRowMenuTitle(e){
   if(e.kind==='作業')return String(e.lotNo||e.title||'予定').trim()||'予定';
-  return String(e.title||(e.kind==='コメント'?'申し送り':'設備停止')).trim();
+  return nonWorkTitleText(e,'申し送り');
  }
  function scRowMenuNote(e){
   return [e.kind==='作業'?'':e.kind,e.state,e.unplanned?'計画外':''].filter(Boolean).join(' / ');
@@ -4636,7 +4754,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    const ruleRow=timelineRuleRow(e),calcTarget=timelineTarget();
    /* **「誰が・どの端末で」は常に詳細へ入れる**(§9.180)。これにより
       すべての行に詳細(▾)が付く——監査の情報は行を選ばず必要になる。 */
-   const detailHtml=fixedStartHtml(e)+estimateBreakdownHtml(e)+auditHtml(e);
+   const detailHtml=frameDetailHtml(e)+fixedStartHtml(e)+estimateBreakdownHtml(e)+auditHtml(e);
    const canDelete=scState.fullControl&&e.state==='予定'&&!e.__pending&&!e.unplanned;
    // §9.35: 編集モード(=実際に測定する端末)なら、予定から直接測定画面を開ける。
    // 開始時刻を打刻すると実績突合(§7.4)でこの行が「実施中」へ移る。
@@ -4645,7 +4763,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    const canStart=scState.canStartWork&&e.kind==='作業'&&e.state==='予定'&&!e.__pending&&!e.unplanned
                   &&workable.state==='ok';
    // §9.38: 日時で固定する(ロック)。予定を動かせるモードでのみ操作できる。
-   const canLock=scState.fullControl&&e.state==='予定'&&!e.__pending&&!e.unplanned;
+   /* 枠(§9.238 ②)は固定開始日時を使わないので、鍵の入口も出さない（§4）。 */
+   const canLock=scState.fullControl&&e.state==='予定'&&!e.__pending&&!e.unplanned&&e.kind!=='枠';
    // §9.43: 実績のある行(作業中・完了)は帳票を開ける。実績突合で紐づいた
    // 測定データの記録ID(actualRecordId)をそのまま帳票へ渡す。
    const recordId=e.actualRecordId||'';
@@ -4773,6 +4892,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      e.kind==='設備停止'&&e.state==='予定'&&{label:'停止の内容を変える',
        note:stopEditable(e)?'名称・所要分・備考を直します':stopEditBlockReason(e),
        disabled:!stopEditable(e),run:()=>editStopEntry(e.id)},
+     /* 日付・直の枠(§9.238 ②)。**できないときも並べて理由を書く**（§4）。 */
+     e.kind==='枠'&&e.state==='予定'&&{label:'枠の日付・直を変える',
+       note:frameEditable(e)?'ここから先を、どの日・どの直から並べるか'
+         :(e.__pending?'サーバーへ反映中です':sessionHolderMessage()),
+       disabled:!frameEditable(e),run:()=>openFramePicker(e.id)},
      canPick&&{label:picked?'選択を外す':'この行を選ぶ',
                note:'選んだ行はまとめて動かす・まとめて外せます',
                run:()=>setPicked(e.id,!picked)},
@@ -4821,10 +4945,20 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      if(ev.target.closest('button'))return;
      ev.preventDefault();startCommentEdit(e.id);
     };
-   }else if(e.kind==='コメント'){
+   }else if(frameEditable(e)){
+    /* 日付・直の枠(§9.238 ②)も**ダブルクリックで直す**——設備停止・
+       申し送りと同じ作法（入口を種別ごとに変えない）。kindで排他なので
+       割り当てはぶつからない。 */
+    row.classList.add('sc-row-frame-edit');
+    row.title='ダブルクリックで日付・直を変えられます';
+    row.ondblclick=ev=>{
+     if(ev.target.closest('button'))return;
+     ev.preventDefault();openFramePicker(e.id);
+    };
+   }else if(e.kind==='コメント'||e.kind==='枠'){
     /* **できないことは、できないと書く**(CLAUDE.md §4)。 */
-    row.title=e.__pending?'サーバーへ反映中です。反映されたら書けます'
-      :(sessionBlocked()?sessionHolderMessage():'この行は書き直せません');
+    row.title=e.__pending?'サーバーへ反映中です。反映されたら直せます'
+      :(sessionBlocked()?sessionHolderMessage():'この行は直せません');
    }
    timeline.append(row);
 
@@ -5316,14 +5450,15 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const z=$('#scDropRemove');if(!z)return;
   const ids=draggingRemovableIds(id);
   if(!ids.length){z.hidden=true;return}
-  /* **何件外すのかを帯に書く**(§9.170)。まとめて掴んでいるときに
-     「この予定を外します」とだけ出ていると、1件だけ外れると読める。 */
+  /* **何件外すのかを札に書く**(§9.170)。まとめて掴んでいるときに
+     「予定から外す」とだけ出ていると、1件だけ外れると読める。
+     札は小さいので(§9.238 ①)**1行に収める**——説明は`title`が持つ。 */
   const t=z.querySelector('.sc-drop-remove-text');
-  if(t)t.innerHTML=ids.length>1
-   ?`ここへ落とすと<b>選んだ${ids.length}件がまとめて対象になります</b>`
-    +`<small>確認してから外します。仕掛一覧へ戻るので、また入れ直せます</small>`
-   :`ここへ落とすと<b>この予定が対象になります</b>`
-    +`<small>確認してから外します。仕掛一覧へ戻るので、また入れ直せます</small>`;
+  if(t)t.textContent=ids.length>1?`選んだ${ids.length}件を外す`:'予定から外す';
+  z.title=(ids.length>1?`ここへ落とすと、選んだ${ids.length}件をまとめて予定から外します。`
+                       :'ここへ落とすと、この予定を外します。')
+   +'\n確認してから外すので、間違えても止められます。'
+   +'\n外した予定は仕掛一覧へ戻るので、また入れ直せます。';
   z.hidden=false;z.classList.remove('is-over');
  }
  function hideRemoveZone(){
@@ -6026,6 +6161,176 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    onFailure:()=>discardOptimisticEntry(entry)});
   showToast&&showToast(text?'申し送りを入れました':'コメントの枠を入れました',
     text?String(text).slice(0,40):'枠をダブルクリックすると書けます',3200);
+ }
+
+ /* ================= 空の日付・直の枠(§9.238 ②) =================
+    利用者の指示:
+     「予定を少し飛ばして設定する場合に、何も予定がない領域にセットできる、
+      空の日付や直の枠を登録できるようにしたいです。これを作ると、日にちや
+      直をいくつか飛ばして、先のスケジュールを先に決めることができるように
+      なるので、そういった都合よく使える枠を実装してください。スケジュールが
+      押し出してくる際は連動してロットが自然にその設定枠に入るようにします」
+
+    決めごと（サーバー側は backend/repositories/schedule_repo.py の
+    normalize_frame / backend/schedule_calc.py の frame_target）:
+     ・枠が持つのは **日付と直の名称** だけ。実時刻は展開のたびに勤務形態
+       マスタから引き直す（直の時間帯を直したら枠も追随する）。
+     ・**枠自身は時間を使わない**（見積0分）。効くのは「ここから先は
+       その日・その直の頭から」——後続の起点を**前へ進めるだけ**。
+     ・起点が既に枠を過ぎていたら何もしない＝**手前へ予定を足していくと、
+       空けておいた時間へ自然に埋まっていく**（利用者の言う「押し出して
+       くる際は連動してロットが自然にその設定枠に入る」）。
+     ・**中身の無い枠は作らない**（§4）。コメント(§9.191)は「枠を置いてから
+       書く」でよいが、日付の無い枠は何も起こさない行なので、落とした位置を
+       控えたうえで**先に日付を聞く**。 */
+ /* 直の候補は設備ごと。**画面に書き写さない**——勤務形態マスタが持っている
+    ものを引く（§9.163。写すと増やしたときに2箇所直すことになる）。
+    取得は`WL.ttlCache`（CLAUDE.md「新しいキャッシュはWL.ttlCache」）。 */
+ const frameShiftCache=WL.ttlCache(5*60*1000,12);
+ async function frameShiftChoices(equipment){
+  const eq=String(equipment||'');
+  if(!eq)return [];
+  return frameShiftCache.fetch(eq,async()=>{
+   const r=await api(`/api/schedule/shift-pattern-master?equipment=${encodeURIComponent(eq)}`);
+   const out=[],seen=new Set();
+   (r.items||[]).forEach(p=>(p.segments||[]).forEach(sg=>{
+    const name=String(sg.name||'').trim();
+    if(!name||seen.has(name))return;
+    seen.add(name);out.push({name,start:String(sg.start||''),end:String(sg.end||'')});
+   }));
+   return out;
+  });
+ }
+ /* 枠を直せるか。設備停止・コメントと同じ条件（§9.211 ②の読み取り専用も見る）。 */
+ function frameEditable(e){
+  return !!e&&e.kind==='枠'&&e.state==='予定'&&!e.__pending
+    &&scState.fullControl&&!sessionBlocked();
+ }
+ /* 既定の日付。**今日ではなく「いま並んでいる予定の最後の日の次の日」**
+    ——枠は「先を決める」ための道具なので、今日を出されても必ず打ち直す
+    ことになる。予定が1本も無ければ今日。 */
+ function frameDefaultDate(){
+  let last='';
+  (scState.entries||[]).forEach(e=>{
+   const d=String(e.workDate||'').trim();
+   if(d&&d>last)last=d;
+  });
+  const base=last?new Date(`${last}T00:00:00`):new Date();
+  if(Number.isNaN(base.getTime()))return frameIso(new Date());
+  if(last)base.setDate(base.getDate()+1);
+  return frameIso(base);
+ }
+ const frameIso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+
+ /* 日付・直を聞く窓。**入れるときも直すときも同じ窓**（入口を2つにしない・
+    §9.207）。`id`がnullなら新しく入れる、あれば直す。 */
+ async function openFramePicker(id,opts={}){
+  if(!scState.equipment){showToast&&showToast('設備を選んでください','',3000);return}
+  const entry=id==null?null:(scState.entries||[]).find(x=>String(x.id)===String(id));
+  if(id!=null&&!entry)return;
+  if(entry&&!frameEditable(entry)){
+   showToast&&showToast('この枠は直せません',
+     entry.__pending?'サーバーへ反映中です。反映されたら直せます'
+       :(sessionBlocked()?sessionHolderMessage():'この行は直せません'),4500);
+   return;
+  }
+  if(!entry&&sessionBlocked()){
+   showToast&&showToast('枠を入れられません',sessionHolderMessage(),5000);return;
+  }
+  /* 直の一覧は**開く前に取る**（§9.182「開く前に用意する」）。読めなくても
+     窓は開く——日付だけの枠は作れるので、機能ごと閉ざさない。 */
+  let shifts=[];let shiftErr='';
+  try{shifts=await frameShiftChoices(scState.equipment)||[]}
+  catch(err){shifts=[];shiftErr=err&&err.message||'読めませんでした'}
+  const cur=entry?(entry.frame||entry.detail||{}):{};
+  const curDate=String(cur.date||cur.frameDate||'')||frameDefaultDate();
+  const curShift=String(cur.shift||cur.frameShift||'');
+  const curNote=String(cur.note||cur.frameNote||'');
+  const shiftBtns=[{name:'',start:'',end:''}].concat(shifts).map(sh=>{
+   const on=String(sh.name||'')===curShift;
+   const label=sh.name||'その日の頭から';
+   const sub=sh.name?`${sh.start||'?'}〜${sh.end||'?'}`:'稼働の始まりに合わせます';
+   return `<label class="sc-frame-shift${on?' is-on':''}">
+     <input type="radio" name="scFrameShift" value="${esc(sh.name||'')}"${on?' checked':''}>
+     <span><b>${esc(label)}</b><small>${esc(sub)}</small></span></label>`;
+  }).join('');
+  const asked=confirmModal({
+   eyebrow:'FRAME',title:entry?'枠の日付・直を変える':'空の日付・直の枠を入れる',
+   bodyHtml:`<div class="sc-frame-edit">
+     <label class="sc-frame-row"><span>日付</span>
+      <input type="date" id="scFrameDate" value="${esc(curDate)}"></label>
+     <div class="sc-frame-row sc-frame-row-shifts"><span>直</span>
+      <div class="sc-frame-shifts">${shiftBtns}</div></div>
+     ${shiftErr?`<p class="confirm-modal-note">直の一覧を読めませんでした（${esc(shiftErr)}）。日付だけの枠として入れられます。</p>`
+       :(shifts.length?'':'<p class="confirm-modal-note">この設備には勤務区分が登録されていません。日付だけの枠として入れられます。</p>')}
+     <label class="sc-frame-row"><span>メモ</span>
+      <input type="text" id="scFrameNote" maxlength="120" value="${esc(curNote)}"
+        placeholder="何のために空けるか（任意）" autocomplete="off"></label>
+     <p class="confirm-modal-note"><b>この枠は時間を使いません。</b>
+      ここから下の予定を、選んだ日・直の頭から並べ直すだけです。
+      手前に予定を足していくと、空けておいた時間へ自然に入っていき、
+      追い越したら枠は何もしなくなります。</p>
+    </div>`,
+   confirmLabel:entry?'変える':'入れる',cancelLabel:'やめる'});
+  /* **選んだ札の面を追随させる**（§9.229 ②「選んだ札のほうが濃い」）。
+     窓は`confirmModal`が組み立てるので、**待つ前に**配線する
+     ——`await`のあとでは、もう選び終わっている。 */
+  requestAnimationFrame(()=>{
+   const labels=[...document.querySelectorAll('.sc-frame-shift')];
+   labels.forEach(l=>{
+    const inp=l.querySelector('input');
+    if(inp)inp.onclick=()=>labels.forEach(x=>x.classList.toggle('is-on',
+      !!x.querySelector('input')&&x.querySelector('input').checked));
+   });
+  });
+  const ok=await asked;
+  const date=String(($('#scFrameDate')||{}).value||'').trim();
+  const shift=String((document.querySelector('input[name="scFrameShift"]:checked')||{}).value||'').trim();
+  const note=String(($('#scFrameNote')||{}).value||'').trim().slice(0,120);
+  if(!ok){if(!entry)clearInsertPin();return}
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){
+   showToast&&showToast('日付を入れてください','枠は「いつから」を決める行なので、日付が要ります',4000);
+   if(!entry)clearInsertPin();
+   return;
+  }
+  /* **送る直前にもう一度見る**（別の端末が編集権を奪っていることがある。§9.211 ②）。 */
+  if(sessionBlocked()){showToast&&showToast('保存できません',sessionHolderMessage(),5000);return}
+  const frame={frameDate:date,frameShift:shift,frameNote:note};
+  if(entry)updateFrameEntry(entry,frame);
+  else addFrameAt(frame,opts);
+ }
+ /* 入れる本体。位置は落とした場所（無ければ固定した位置／末尾）。 */
+ function addFrameAt(frame,opts={}){
+  const target=scState.equipment;
+  const at=opts.before!==undefined?opts.before:takeInsertBefore();
+  const entry=makeOptimisticEntry('枠',{
+   title:`${frame.frameDate}${frame.frameShift?' '+frame.frameShift:''}`,
+   detail:{...frame},
+   /* 反映されるまでは「まだ分かりません」と出す——0分の空きと言い切らない
+      （§6。ここで`reached:true`を作ると「もう埋まった」と嘘になる）。 */
+   frame:{date:frame.frameDate,shift:frame.frameShift,note:frame.frameNote,
+          target:null,gapMinutes:null,reached:false,warning:''}});
+  insertEntriesAt(at,[entry]);
+  renderTimeline();
+  queuePlanOp({op:'add',equipment:target,kind:'枠',detail:{...frame},
+   position:at?`before:${at}`:'end',
+   onSuccess:r=>resolveOptimisticEntry(entry,r),
+   onFailure:()=>discardOptimisticEntry(entry)});
+  showToast&&showToast('日付・直の枠を入れました',
+   `${frameDateLabel(frame.frameDate)}${frame.frameShift?' '+frame.frameShift:''} から並べ直します`,3600);
+ }
+ /* 直す本体。**画面を先に書き換えてから送る**（失敗したら戻す）。 */
+ function updateFrameEntry(entry,frame){
+  const before={detail:entry.detail,frame:entry.frame,title:entry.title};
+  entry.detail={...(entry.detail||{}),...frame};
+  entry.frame={...(entry.frame||{}),date:frame.frameDate,shift:frame.frameShift,
+               note:frame.frameNote,gapMinutes:null,reached:false};
+  renderTimeline();
+  queuePlanOp({op:'update',id:entry.id,frame:{...frame},
+   /* **時刻が動く操作**なので、書込キューが`loadPlan(true)`まで面倒を見る
+      （§9.185。ここで自分でも呼ぶと同じ問い合わせが2本飛ぶ）。 */
+   onFailure:()=>{Object.assign(entry,before);renderTimeline();
+    showToast&&showToast('枠を変えられませんでした','元の内容へ戻しました',6000)}});
  }
 
  /* ---------- 設備停止のポップアップ表示(§9.13新設) ----------
