@@ -197,6 +197,127 @@ try:
     rec('すべての設備(*)の行はどちらにも出る',
         'ラフレベラー 入' in mineNames and 'ラフレベラー 入' in otherNames)
 
+    # ---- 3b) 設備ごとのレイアウト（§9.239 ②、利用者の指示） ----
+    # 「操業データ項目マスタについて、設備ごとレイアウト調整できるように」
+    #
+    # **行は複製しない**——型・選択肢・役割まで写ることになる。置き場・群・
+    # 並び・幅だけを設備ごとに重ねる（`[設備別レイアウト]`）。
+    # **設備Aで動かして設備Bが変わらないこと**まで見る（設備Aだけを見る網は、
+    # 共有の行を書き換える古い実装でも通る）。
+    common = next((x for x in mine['items'] if x['name'] == 'ラフレベラー 入'), None)
+    rec('すべての設備(*)の行を材料にできる', bool(common),
+        json.dumps(common, ensure_ascii=False) if common else 'なし')
+    if common:
+        base_span = common.get('span')
+        base_place = common.get('place')
+        # 設備Aだけ幅と置き場を変える
+        code, res = post('/api/operation-item-master/layout',
+                         {'equipment': EQ, 'user_id': 'tests',
+                          'items': [{'id': common['id'], 'group': '設備A専用の群',
+                                     'place': '入力内容', 'span': 12,
+                                     'required': False, 'enabled': True}]})
+        rec('設備を選んでレイアウトを保存できる', code == 200 and res.get('ok'),
+            json.dumps(res, ensure_ascii=False))
+        a2 = get('/api/operation-item-master?equipment=' + urllib.parse.quote(EQ))
+        b2 = get('/api/operation-item-master?equipment=' + urllib.parse.quote('テスト設備B'))
+        av = next((x for x in a2['items'] if x['name'] == 'ラフレベラー 入'), None)
+        bv = next((x for x in b2['items'] if x['name'] == 'ラフレベラー 入'), None)
+        rec('設備Aでは上書きが効く',
+            bool(av) and av.get('span') == 12 and av.get('group') == '設備A専用の群'
+            and av.get('place') == '入力内容',
+            json.dumps(av and {'span': av.get('span'), 'group': av.get('group'),
+                               'place': av.get('place')}, ensure_ascii=False))
+        rec('設備Bは共通のまま（巻き添えにしない）',
+            bool(bv) and bv.get('span') == base_span and bv.get('place') == base_place
+            and bv.get('group') != '設備A専用の群',
+            json.dumps(bv and {'span': bv.get('span'), 'group': bv.get('group'),
+                               'place': bv.get('place')}, ensure_ascii=False))
+        rec('どこ由来の値かを言う（layoutFrom）',
+            bool(av) and av.get('layoutFrom') == EQ
+            and bool(bv) and bv.get('layoutFrom') == '共通',
+            json.dumps({'A': av and av.get('layoutFrom'), 'B': bv and bv.get('layoutFrom')},
+                       ensure_ascii=False))
+        # 測定画面が読む口（form_for_equipment）にも効く
+        fa = get('/api/operation-form?equipment=' + urllib.parse.quote(EQ))
+        fav = next((x for x in fa.get('items', []) if x['name'] == 'ラフレベラー 入'), None)
+        rec('測定画面の読み口にも上書きが効く',
+            bool(fav) and fav.get('span') == 12,
+            json.dumps(fav and {'span': fav.get('span')}, ensure_ascii=False))
+        # 群のふるまいも設備ごと（以前は WHERE に [設備名] が無く全設備が畳まれた）
+        code, res = post('/api/operation-item-master/group',
+                         {'equipment': EQ, 'place': '入力内容', 'group': '設備A専用の群',
+                          'fold': True, 'showWhen': [], 'user_id': 'tests'})
+        a3 = get('/api/operation-item-master?equipment=' + urllib.parse.quote(EQ))
+        b3 = get('/api/operation-item-master?equipment=' + urllib.parse.quote('テスト設備B'))
+        av3 = next((x for x in a3['items'] if x['name'] == 'ラフレベラー 入'), None)
+        bv3 = next((x for x in b3['items'] if x['name'] == 'ラフレベラー 入'), None)
+        rec('群を畳むのも設備ごとに効く', bool(av3) and av3.get('fold') is True,
+            json.dumps(av3 and av3.get('fold')))
+        rec('群を畳んでも他の設備は畳まれない', bool(bv3) and not bv3.get('fold'),
+            json.dumps(bv3 and bv3.get('fold')))
+        # **共通と同じ値は上書きに残さない**（§9.239 ②の追補）。
+        # 盤は画面に出ている全部のカードを送るので、比べずに書くと
+        # **1回並べ替えただけでその設備の全部の欄が共通から切り離される**
+        # ——以降どれだけ共通を直しても、その設備には1つも届かない
+        # （設定が黙って効かなくなる形・§CLAUDE 4）。
+        # ここでは「設備Aで動かしていない別の項目」が、共通を直したときに
+        # ちゃんと追随することを見る。**動かした項目のほうも一緒に見る**
+        # ——両方見ないと「何も上書きしない」実装でも通ってしまう。
+        other = next((x for x in mine['items']
+                      if x['name'] != 'ラフレベラー 入' and not x.get('builtin')), None)
+        if other:
+            post('/api/operation-item-master/update',
+                 {'id': other['id'], 'name': other['name'], 'group': '共通を直した群',
+                  'user_id': 'tests'})
+            a4 = get('/api/operation-item-master?equipment=' + urllib.parse.quote(EQ))
+            ov4 = next((x for x in a4['items'] if x['name'] == other['name']), None)
+            rec('設備Aで動かしていない項目は共通の変更に追随する',
+                bool(ov4) and ov4.get('group') == '共通を直した群'
+                and ov4.get('layoutFrom') == '共通',
+                json.dumps(ov4 and {'group': ov4.get('group'),
+                                    'from': ov4.get('layoutFrom')}, ensure_ascii=False))
+            av4 = next((x for x in a4['items'] if x['name'] == 'ラフレベラー 入'), None)
+            rec('動かした項目のほうは設備Aの設定のまま',
+                bool(av4) and av4.get('layoutFrom') == EQ and av4.get('span') == 12,
+                json.dumps(av4 and {'span': av4.get('span'),
+                                    'from': av4.get('layoutFrom')}, ensure_ascii=False))
+            post('/api/operation-item-master/update',
+                 {'id': other['id'], 'name': other['name'],
+                  'group': other.get('group') or '', 'user_id': 'tests'})
+        # 後片付け: 上書きを外して共通へ戻す
+        post('/api/operation-item-master/layout',
+             {'equipment': EQ, 'user_id': 'tests',
+              'items': [{'id': common['id'], 'group': common.get('group') or '',
+                         'place': base_place, 'span': base_span,
+                         'required': False, 'enabled': True}]})
+
+    # ---- 3c) 上書きに持てる設定は「全部ちゃんと効く」（§9.239 ②の追補） ----
+    # **死んだ設定を作らない**（§CLAUDE 4「できないことは、できないと書く」）。
+    # `LAYOUT_OVERRIDE_KEYS`に`enabled`（出す/出さない）を入れていたが、
+    # 有効/無効は`item_rows()`が**上書きを重ねる前に**落とすので、設備ごとに
+    # 保存しても誰も読まなかった——**盤では保存できるのに測定画面は変わらない**
+    # という一番分かりにくい形になる（設備ごとの出し分けは`[設備名]`が担う）。
+    # ここは「語彙に載っている鍵は、重ねたときに実際に値が変わること」を
+    # 機械で数える網。**目で数えないこと**（鍵を1つ足すたびに増える）。
+    from backend.repositories import operation_repo as _op
+    _base = {'place': '準備', 'group': 'g', 'order': 1, 'span': 2,
+             'groupSpan': 0, 'fold': False, 'showWhen': [], 'dummy': False,
+             'enabled': True, 'overrides': {}}
+    _alt = {'place': '入力内容', 'group': 'ちがう群', 'order': 99, 'span': 12,
+            'groupSpan': 6, 'fold': True, 'showWhen': ['板厚'], 'dummy': True}
+    _dead = []
+    for _k in _op.LAYOUT_OVERRIDE_KEYS:
+        if _k not in _alt:
+            _dead.append(_k + '（この網が試す値を持っていない）')
+            continue
+        _got = _op.apply_layout_override(dict(_base, overrides={EQ: {_k: _alt[_k]}}), EQ)
+        if _got.get(_k) == _base.get(_k):
+            _dead.append(_k)
+    rec('上書きに持てる設定はすべて実際に効く（死んだ設定を作らない）',
+        not _dead, '効かない鍵: ' + '、'.join(_dead) if _dead else '')
+    rec('「出す/出さない」は設備ごとに持たない（[設備名]が担う）',
+        'enabled' not in _op.LAYOUT_OVERRIDE_KEYS, str(_op.LAYOUT_OVERRIDE_KEYS))
+
     # ---- 4) 知らない型は文字へ倒す（入力を塞がない） ----
     code, res = post('/api/operation-item-master',
                      {'equipment': EQ, 'group': TAG, 'name': TAG + ' 変な型',

@@ -43,8 +43,31 @@
    左＝入力(何を聞かれているか)、右＝出力(結論→図→内訳)の2カラム。
    右カラムは上から「答え」「図」「根拠」の順で、知りたい順に並べる。
    ============================================================ */
+/* ---------- タブ（§9.239 ⑥、利用者の指示） ----------
+   「モーダルにタブを追加し、欠陥を発見した際にピッチがある場合、ピッチを
+    入力し、当設備の対象ロールを判定する機能を実装したい」
+
+   ①幅方向（何条目か）と②長手方向（どのロールか）は、**入れる値も答えも
+   別物**なので同じ面に並べない。器の大きさは変えない（上の「大きさを
+   固定する理由」がそのまま効く）ので、grid の行を1本足すだけ。
+   意匠はマスタ管理のタブ（`.op-tabs`／`.op-tab`）と同じ作法にそろえる
+   ——同じアプリの中で選ばせ方を増やさない（§9.226 ①）。
+   **選んだ札のほうが濃い**（§9.229 ②。未選択は`--ink-3`、選択は`--nav`）。 */
+.defect-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px;
+  margin:var(--space-2) var(--space-3) 0;padding:2px;
+  background:var(--surface-2);border-radius:var(--radius-sm)}
+.defect-tab{display:flex;flex-direction:column;align-items:flex-start;gap:0;min-width:0;
+  padding:var(--space-1) var(--space-2);border:0;border-radius:var(--radius-xs);
+  background:none;color:var(--ink-3);cursor:pointer;text-align:left}
+.defect-tab>b{font-size:var(--fs-sm);font-weight:800;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;max-width:100%}
+.defect-tab>span{font-size:var(--fs-micro);white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;max-width:100%}
+.defect-tab:hover{background:var(--surface)}
+.defect-tab.is-on{background:var(--surface);color:var(--nav);
+  box-shadow:inset 0 -2px 0 var(--teal)}
 .defect-dialog{
-  display:grid;grid-template-rows:auto minmax(0,1fr) auto;
+  display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;
   width:min(1180px,95vw);height:min(780px,92vh);
   background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius-card);
   box-shadow:0 18px 48px #0000003d;overflow:hidden;
@@ -60,6 +83,31 @@
   display:grid;grid-template-columns:minmax(250px,310px) minmax(0,1fr);
   gap:var(--space-3);padding:var(--space-3);min-height:0;overflow:hidden;
 }
+/* 2枚の面は**同じマスへ重ねて置く**（片方を`hidden`にする）。grid の行は
+   `minmax(0,1fr)`が1本しか無いので、並べると器が伸びる——上の
+   「中身の量に関係なく器の大きさは一定」を崩さないための置き方。 */
+#defectPanePos,#defectPaneRoll{grid-row:3;grid-column:1}
+/* 伸び縮みしてよいのは候補の表だけ（`.defect-detail`と同じ役割）。 */
+.defect-roll-list{min-height:0;overflow:auto;
+  border:1px solid var(--line-soft);border-radius:var(--radius-sm);background:var(--surface)}
+.defect-roll-table{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
+.defect-roll-table th,.defect-roll-table td{
+  padding:var(--space-1) var(--space-2);border-bottom:1px solid var(--line-soft);
+  white-space:nowrap;text-align:left}
+.defect-roll-table th{position:sticky;top:0;background:var(--surface-2);color:var(--ink-3);
+  font-size:var(--fs-micro);font-weight:800}
+.defect-roll-table td.num{text-align:right;font-variant-numeric:tabular-nums}
+/* 直接一致とそれ以外（倍音）は**言葉で分ける**（§3）。色は補助。 */
+.defect-roll-table tr.is-direct{background:var(--success-bg)}
+.defect-roll-table tr.is-direct td{color:var(--ink)}
+.defect-roll-kind{display:inline-flex;align-items:center;height:var(--ctl-h-xs);
+  padding:var(--pad-chip);border-radius:var(--radius-xs);
+  background:var(--surface-2);color:var(--ink-3);font-size:var(--fs-micro);font-weight:800}
+.defect-roll-kind.is-direct{background:var(--success-bg);color:var(--success);
+  border:1px solid var(--success-border)}
+.defect-roll-empty{padding:var(--space-4);color:var(--muted);text-align:center;font-size:var(--fs-sm)}
+.defect-roll-why{margin:var(--space-2) 0 0;color:var(--ink-3);font-size:var(--fs-sm);line-height:1.6}
+.defect-roll-why b{color:var(--ink-2)}
 /* ---------- 入力（左） ---------- */
 .defect-input{display:flex;flex-direction:column;gap:var(--space-2);min-width:0;min-height:0;overflow:auto}
 /* 「1 どこから測ったか」「2 どこに見つけたか」の2段階。作業記憶の負荷を

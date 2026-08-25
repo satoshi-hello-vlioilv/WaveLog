@@ -3287,7 +3287,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    const d=SC_COL_MAP.get(k);
    /* 操作の列は右端に貼り付く(sticky)。**並びの中では普通の列**なので、
       掴んで動かせるし隠せる——貼り付き方だけが違う。 */
-   const cls='sc-row-title-head'+(k==='__actions__'?' sc-actions-head':'');
+   /* 見出しの揃えは`WL.columnAlign`の1箇所が答える（§9.239 ④）。
+      既定は中央で、値の揃えとは別に持つ。 */
+   const cls='sc-row-title-head'+(k==='__actions__'?' sc-actions-head':'')
+     +' '+WL.columnAlign.headClass(t,k);
    const what=d?d.note:`内容欄の項目（${k}）`;
    return `<span class="${cls}" data-col="${esc(k)}"`
     +(scIsFixedCol(k)?'':` data-content-col="${esc(k)}"`)
@@ -4837,6 +4840,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    row.innerHTML=`
     <span class="sc-row-handle" title="${canDrag?'ドラッグまたはAlt+↑/↓で並べ替え':(locked?'日時を固定中(ロック)':'')}">${pickBoxHtml(e)}${canDrag?'⠿':(locked?'🔒':'')}</span>`
     +timelineColumnKeys().map(cellHtml).join('');
+   /* 揃え(§9.239 ④)。**セルを組み立てる文字列へ混ぜない**——`cellOf`は
+      15通りの分岐があり、1つ書き漏らすとその列だけ揃わない。
+      組み上がってから`data-col`で引いて1度だけ当てる（判定は
+      `WL.columnAlign`の1箇所）。 */
+   WL.columnAlign.applyCells(row,timelineTarget());
    row.classList.toggle('sc-row-not-workable',workable.state==='ng');
    if(canDrag)wireDrag(row);
    /* 選ばれている行は面でも分かるようにするが、**色だけで伝えない**
@@ -7055,6 +7063,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     をそのまま公開すると、印刷側から画面の状態を書き換えられてしまう。 */
  WL.scheduleView={
   equipment:()=>scState.equipment||'',
+  /* いま描いているタイムラインの列レイアウトの対象（§9.239 ④）。
+     紙が「手で決めた揃え」を引くのに使う——**判定は`WL.columnAlign`の
+     1箇所**で、紙は対象を聞くだけ（紙側で列名から推測しない）。
+     成り代わり中（`withEquipment`）もその設備の対象を返す。 */
+  layoutTarget:()=>timelineTarget(),
   /* 写しを渡す(印刷側が並べ替えても画面の並びを壊さない)。 */
   entries:()=>(scState.entries||[]).slice(),
   /* 内容欄の文字は**画面と同じ組み立て**を通す。設備ごとに選んだ項目・

@@ -255,18 +255,17 @@
 :is(.sc-split-wrap,.sc-float-body) .filter-tag em{max-width:80px;font-size:var(--fs-micro)}
 :is(.sc-split-wrap,.sc-float-body) .filter-tag b{font-size:var(--fs-tiny)}
 :is(.sc-split-wrap,.sc-float-body) .filter-search-row-actions button{height:var(--ctl-h-xs);padding:0 7px;font-size:var(--fs-micro)}
-/* その場フィルタ(§9.238 ⑤)も分割表示では詰める。器が狭いので**2列**へ
-   落とし、入力欄と操作は横いっぱいを使う。見出しの「その場フィルタ」は
-   入口のボタンが既に名乗っているので落とす(§9.199の落とし方と同じ)。 */
-:is(.sc-split-wrap,.sc-float-body) .filter-adhoc-row{
-  grid-template-columns:minmax(0,1fr) minmax(0,1fr);padding:var(--pad-row);gap:var(--gap-tight)}
-:is(.sc-split-wrap,.sc-float-body) .filter-adhoc-label{display:none}
-:is(.sc-split-wrap,.sc-float-body) .filter-adhoc-value{grid-column:1/-1}
-:is(.sc-split-wrap,.sc-float-body) .filter-adhoc-actions{grid-column:1/-1}
-:is(.sc-split-wrap,.sc-float-body) .filter-adhoc-field{font-size:var(--fs-micro)}
-:is(.sc-split-wrap,.sc-float-body) .filter-adhoc-field select,
-:is(.sc-split-wrap,.sc-float-body) .filter-adhoc-field input{height:var(--ctl-h-sm);font-size:var(--fs-micro)}
-:is(.sc-split-wrap,.sc-float-body) .filter-adhoc-actions button{height:var(--ctl-h-xs);padding:0 7px;font-size:var(--fs-micro)}
+/* その場フィルタ(§9.238 ⑤)も分割表示では詰める。**1行のままで文字だけ
+   小さくする**(§9.239 ①)——器が狭くても折り返しは flex-wrap に任せる
+   （並びが「列→条件→値」の1文なので、途中で段を切ると読み順が壊れる）。 */
+:is(.sc-split-wrap,.sc-float-body) .filter-adhoc-row{padding:var(--pad-row);gap:var(--gap-tight)}
+:is(.sc-split-wrap,.sc-float-body) .filter-adhoc-row>select,
+:is(.sc-split-wrap,.sc-float-body) .filter-adhoc-row>input{
+  height:var(--ctl-h-sm);font-size:var(--fs-micro)}
+:is(.sc-split-wrap,.sc-float-body) .filter-adhoc-col{max-width:var(--w-sm)}
+:is(.sc-split-wrap,.sc-float-body) .filter-adhoc-op{max-width:var(--w-xs)}
+:is(.sc-split-wrap,.sc-float-body) .filter-adhoc-row>button{
+  height:var(--ctl-h-xs);padding:0 7px;font-size:var(--fs-micro)}
 :is(.sc-split-wrap,.sc-float-body) .filter-body{padding:5px 6px}
 :is(.sc-split-wrap,.sc-float-body) .filter-builder{grid-template-columns:1fr;gap:var(--gap-tight)}
 :is(.sc-split-wrap,.sc-float-body) .filter-builder select,:is(.sc-split-wrap,.sc-float-body) .filter-builder input{height:var(--ctl-h-sm);font-size:var(--fs-micro)}

@@ -34,6 +34,20 @@
  font-size:var(--fs-micro);font-weight:800;color:var(--muted);background:var(--surface-2);
  border:1px solid var(--line-soft)}
 .list-load-chip.is-slow{color:var(--warn-fg);background:var(--warn-bg);border-color:var(--warn-border)}
+/* 列に一時的な色を付けていることを常時出す(§9.239 ⑤-3・§9.175)。
+   **押すと外せる**——覚えていることを画面に書き、忘れさせる手立ても
+   同じ場所に置く。色そのものは列に出ているので、ここは件数を文字で言う。 */
+.list-tint-chip{display:inline-flex;align-items:center;height:var(--ctl-h-xs);
+ padding:var(--pad-chip);border:1px solid var(--teal);border-radius:var(--radius-md);
+ background:var(--pale);color:var(--computed-fg);
+ font-size:var(--fs-micro);font-weight:800;white-space:nowrap;cursor:pointer}
+.list-tint-chip:hover{background:var(--teal);color:var(--surface);border-color:var(--teal)}
+/* 親の下へ畳んだ子ロットの件数(§9.239 ⑤-2)。**行が減ったことを黙らない**。 */
+.list-child-chip{display:inline-flex;align-items:center;height:var(--ctl-h-xs);
+ padding:var(--pad-chip);border:1px solid var(--line-soft);border-radius:var(--radius-md);
+ background:var(--surface-2);color:var(--ink-3);
+ font-size:var(--fs-micro);font-weight:800;white-space:nowrap;cursor:help}
+.list-child-chip.is-off{color:var(--muted)}
 :is(.sc-split-wrap,.sc-float-body) .list-toolbar{margin:4px 6px 0;gap:var(--gap-tight)}
 :is(.sc-split-wrap,.sc-float-body) .list-toolbar-btn{height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs)}
 /* **行の高さと行内ボタンの高さは #grid で解決させる。** カスタム
@@ -87,22 +101,55 @@ tbody tr:nth-child(even){background:#f7fafb}
 tbody tr:hover{background:#e5f2f3;cursor:pointer}
 .measurement-row td:first-child{border-left:4px solid var(--teal)}
 .measurement-row:hover{background:#d7eff1}
-.measurement-action-head{min-width:86px;text-align:center;background:#cde5e7}
+/* ---------- 仕掛一覧のしまは「親の並び順」で塗る(§9.239 ⑤-2) ----------
+   `tbody tr:nth-child(even)` は**DOMのパリティ**なので、子ロットの行を
+   親の直下へ差し込むと、その下の親のしまが一斉に反転する（§9.115 で紙が
+   踏んだのと同じ罠）。#gridでは親の並び順で付けた`.is-alt`で塗る
+   ——子を出しても親のしまは1行も動かない。
+   打ち消しとhoverの2つを**同じ詳細度まで上げて**書き直すこと（`#grid`が
+   付くと(1,0,2)になり、素の`tbody tr:hover`(0,1,1)に勝ってしまうため）。 */
+#grid tbody tr{background:var(--surface)}
+#grid tbody tr.is-alt{background:#f7fafb}
+#grid tbody tr:hover{background:#e5f2f3;cursor:pointer}
+#grid tbody tr.measurement-row:hover{background:#d7eff1}
+/* 子ロットの行（§9.239 ⑤-2）。意匠はスケジュール表の`.sc-child-line`に
+   そろえる——同じ「親の下に添える1行」なので、画面ごとに見え方を変えない。
+   **押せる行ではない**（測定・予定は親から。§9.83で子は親と一緒に載る）。 */
+#grid tbody tr.grid-child-row{background:var(--surface-2);cursor:default}
+#grid tbody tr.grid-child-row:hover{background:var(--surface-2)}
+#grid td.grid-child-cell{color:var(--ink-3);font-size:var(--tbl-fs);border-bottom:1px solid var(--line-soft)}
+#grid td.grid-child-lot{font-weight:800;color:var(--ink-2)}
+.grid-child-mark{margin-right:var(--gap-hair);color:var(--line-strong)}
+.grid-child-info{margin-left:var(--space-2);color:var(--ink-3)}
+.grid-child-info i{margin-left:var(--gap-tight);color:var(--muted);font-style:normal}
+/* 畳むつまみ。**件数を数字で出す**（開かなくても何本あるか分かる）。 */
+.grid-child-toggle{display:inline-flex;align-items:center;gap:var(--gap-hair);
+ height:var(--row-ctl-h);margin-right:var(--gap-tight);padding:0 var(--ctl-pad-x-xs);
+ border:1px solid var(--line);border-radius:var(--radius-xs);background:var(--surface);
+ color:var(--ink-2);font-size:var(--tbl-fs-mark);font-weight:800;cursor:pointer}
+.grid-child-toggle:hover{border-color:var(--teal);background:var(--pale);color:var(--computed-fg)}
+.grid-child-toggle[aria-expanded="true"]{background:var(--pale);border-color:var(--teal);color:var(--computed-fg)}
+.measurement-action-head{text-align:center;background:#cde5e7}
 .measurement-action-cell{text-align:center;background:inherit}
 .measurement-action-button{border:1px solid var(--teal);background:var(--teal);color:#fff;font-weight:700;white-space:nowrap}
 .measurement-action-button:hover{background:var(--teal-dark);color:#fff}
-.plan-action-head{min-width:80px;text-align:center;background:#e4e0f7}
+.plan-action-head{text-align:center;background:#e4e0f7}
 .plan-action-cell{text-align:center;background:inherit}
 .plan-action-button{border:1px solid #6a5acd;background:#fff;color:#4b3fa8;font-weight:700;white-space:nowrap;cursor:pointer}
 .plan-action-button:hover{background:#6a5acd;color:#fff}
-.split-flag-head{min-width:112px;text-align:center;background:#f2e6b3}
+/* **幅の下限をCSSで持たない**（§9.239 ⑤-1、利用者の指摘「分割カラムの
+   幅変更ができません」）。`min-width`はcolgroupで与えた幅に勝つので、
+   取っ手を付けても112pxより狭くできない——`#grid table`の`width:max-content`が
+   列幅の指定に勝っていた§9.119と同じ形の不具合。既定の幅は
+   `virtualColumnWidth()`がcolgroupへ入れるので、見え方は変わらない。 */
+.split-flag-head{text-align:center;background:#f2e6b3}
 /* セルの中の言葉なので、値と同じ大きさで読む(§9.90)。 */
 .split-flag-cell{text-align:center;font-weight:700;white-space:nowrap}
 .split-flag-cell.split-yes{background:#fff2cc;color:#8a6600}
 .split-flag-cell.split-no{background:inherit;color:#8a9a97}
 .split-flag-cell.split-missing{background:var(--danger-bg);color:var(--danger);animation:split-missing-pulse 1.6s ease-in-out 2}
 @keyframes split-missing-pulse{0%,100%{background:var(--danger-bg)}50%{background:#f8c9c9}}
-.plan-select-head,.plan-select-cell{width:26px;text-align:center;padding:4px 2px}
+.plan-select-head,.plan-select-cell{text-align:center;padding:4px 2px}
 .plan-select-checkbox,#planSelectAll{width:var(--ctl-box);height:var(--ctl-box);cursor:pointer;accent-color:var(--teal)}
 .plan-select-bar{display:flex;align-items:center;gap:var(--gap-section);margin:0 0 8px;padding:6px 12px;background:var(--computed-bg);border:1px solid var(--teal-soft);border-radius:var(--radius-sm);font-size:var(--fs-sm);font-weight:700;color:var(--computed-fg)}
 .plan-select-add{border:0;background:var(--teal);color:#fff;font-weight:700;cursor:pointer;margin-left:auto}

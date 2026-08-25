@@ -38,13 +38,17 @@ G['一覧'] = ['test_nav', 'test_navdyn', 'test_listcache', 'test_listperf', 'te
              'test_filterio', 'test_filteruser', 'test_filteractive', 'test_filterkeep',
              'test_filterlock', 'test_adhoc',
              'test_cols', 'test_hdctx', 'test_dsnav', 'test_dsrestart', 'test_listmodal', 'test_filter',
-             'test_audit', 'test_sub', 'test_uisize', 'test_ttlcache']
+             'test_audit', 'test_sub', 'test_uisize', 'test_ttlcache',
+             # §9.239 ⑤: 子ロットの畳み込みと列の一時的な色
+             'test_gridchild', 'test_coltint']
 # 操業データ(§9.215)は測定画面のカード。マスタ管理からも触るので「マスタ」群。
 G['操業データ'] = ['test_opdata', 'test_opui', 'test_msteps', 'test_maint', 'test_crudroutes',
                    'test_opchoice', 'test_oplimit', 'test_opmother', 'test_opunit',
                    'test_opauto']
 # 異常位置判定と条の設計の連携(§9.226 ④)。どちらを触っても両方を回す。
-G['異常位置'] = ['test_defect', 'test_defectlink', 'test_splitlive', 'test_scsplit']
+G['異常位置'] = ['test_defect', 'test_defectlink', 'test_splitlive', 'test_scsplit',
+                 # §9.239 ⑥: ピッチ→ロール判定とロールマスタ
+                 'test_roll']
 # 操業データの意匠・設定窓・空きの群（§9.227）
 G['操業意匠'] = ['test_oppad', 'test_opui', 'test_opdata', 'test_msteps', 'test_oplimit',
                  'test_opmother', 'test_opunit', 'test_opauto']
@@ -52,7 +56,9 @@ G['列'] = ['test_collayout', 'test_colformat', 'test_colrule', 'test_colsort', 
            'test_colscache', 'test_colsripple', 'test_colsave', 'test_displayrule', 'test_colmenu',
            'test_colpreset', 'test_formula', 'test_reccols', 'test_rpblocks', 'test_rplayout',
            'test_rpmaster',
-           'test_colio', 'test_multidrag', 'test_sortcustom', 'test_sortpipe']
+           'test_colio', 'test_multidrag', 'test_sortcustom', 'test_sortpipe',
+           # §9.239 ④⑤: 揃えと列の一時的な色
+           'test_coltint', 'test_gridchild']
 # モーダルの閉じ方(§9.221 ①)はどの画面にも掛かる横断の約束。
 G['モーダル'] = ['test_modalkeep', 'test_maint', 'test_p11c', 'test_opui', 'test_opchoice']
 G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'test_sccat',
@@ -68,7 +74,7 @@ G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'te
                      'test_scsession', 'test_scwho']
 G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 'test_eqkind',
                'test_shift', 'test_dbequip', 'test_crudroutes', 'test_setpage', 'test_eqstd',
-               'test_workdate', 'test_measstore']
+               'test_workdate', 'test_measstore', 'test_roll']
 G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'test_flows',
              'test_p11', 'test_p11c', 'test_waiting', 'test_mcore', 'test_msteps']
 G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'test_density',
@@ -129,6 +135,8 @@ RULES = [
                                         'test_collayout')),
     ('static/js/quality-analysis.js', g('test_uiux', 'test_hdr', 'test_fit', 'test_theme')),
     ('static/js/defect-locator.js', g('モーダル', '異常位置')),
+    # ロールマスタ（§9.239 ⑥）。マスタの4本セットと判定の両方に効く。
+    ('backend/repositories/roll_repo.py', g('マスタ', '異常位置')),
     ('static/js/log-view.js', g('ログ')),
     ('static/js/access-mode.js', g('権限', 'test_nav')),
     ('static/js/wl-window.js', g('test_lcpanel', 'test_listmodal', 'test_split_layout',

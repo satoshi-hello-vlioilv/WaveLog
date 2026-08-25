@@ -1397,7 +1397,105 @@ _ITEM_ADDED_COLUMNS = (
     # 自動で入る値の**鍵**（`AUTO_VALUES`）。空＝人が打つ欄（今までどおり）。
     # 入っている行は族が`output`になり、値は測定画面が入れる。
     ('自動値', 'TEXT'),
+    # --- §9.239 ②（利用者の指示「操業データ項目マスタについて、設備ごと
+    #     レイアウト調整できるようにしてください」）---
+    # **設備ごとのレイアウトの上書き**。1行＝1つの入力欄という形は変えず、
+    # 「この設備ではここに置く／この幅にする／出さない」だけを重ねる。
+    #
+    # なぜ行を設備ごとに複製しないか: 型・選択肢・役割・初期値・意匠まで
+    # 丸ごと複製することになり、共通の型を直しても複製先に届かない
+    # （§CLAUDE「同じ設定を2箇所に置かない」）。役割の担い手も二重に
+    # 数えられて「二重の役割」が常時赤くなる。
+    #
+    # なぜJSONか: 設備の数は決められないので**列にできない**（`[並べ替え]`が
+    # 列レイアウトマスタでJSONなのと同じ理由——表示だけの設定で、SQLで
+    # 絞り込む相手にならない）。
+    # 形は `{"<設備名>":{"place","group","order","span","groupSpan",
+    #                    "fold","showWhen","dummy"}}` で、
+    # **触った項目だけを持つ**（無い項目は共通の値がそのまま効く）。
+    ('設備別レイアウト', 'TEXT'),
 )
+
+# 設備ごとに上書きできる項目（§9.239 ②）。**ここに無いものは共通のまま**
+# ——型・選択肢・役割・初期値・意匠のような「何を記録するか」は設備で
+# 変わらない（変わるならそれは別の項目）。
+# **`enabled`（出す/出さない）はここに入れない。** 有効/無効は
+# `item_rows()`が**上書きを重ねる前に**落とすので、設備ごとに持たせても
+# 誰も読まない＝押せるのに何も起きない設定になる（§CLAUDE 4）。
+# 設備ごとの出し分けは`[設備名]`（`'A'`／`'A,B,C'`／`'*'`）が既に担って
+# いるので、二重に持たない（§CLAUDE「同じ設定を2箇所に置かない」）。
+LAYOUT_OVERRIDE_KEYS = ('place', 'group', 'order', 'span', 'groupSpan',
+                        'fold', 'showWhen', 'dummy')
+
+
+def _override_map(raw):
+    """保存されている上書きを読む。**壊れていたら「上書きなし」**
+    （設定1つで測定画面が開けなくならない。§9.187と同じ約束）。"""
+    if not raw:
+        return {}
+    if isinstance(raw, dict):
+        src = raw
+    else:
+        import json
+        try:
+            src = json.loads(str(raw))
+        except Exception:
+            return {}
+    if not isinstance(src, dict):
+        return {}
+    out = {}
+    for eq, v in src.items():
+        eq = str(eq or '').strip()
+        if not eq or not isinstance(v, dict):
+            continue
+        one = {k: v[k] for k in LAYOUT_OVERRIDE_KEYS if k in v}
+        if one:
+            out[eq] = one
+    return out
+
+
+def _override_json(m):
+    import json
+    m = {k: v for k, v in (m or {}).items() if v}
+    return json.dumps(m, ensure_ascii=False) if m else None
+
+
+def apply_layout_override(item, equipment):
+    """その設備で効いているレイアウトを重ねた項目を返す（§9.239 ②）。
+
+    **答えるのはここ1箇所**（§9.163）。`items_for_equipment()`が唯一の
+    読み口なので、測定画面・盤・帳票の候補が全部これを通る。
+    どこから来た値かは`layoutFrom`で言う（§CLAUDE 6「出どころを出す」）。"""
+    eq = str(equipment or '').strip()
+    ov = (item.get('overrides') or {}).get(eq) if eq else None
+    x = dict(item)
+    x['layoutFrom'] = '共通'
+    if not ov:
+        return x
+    x['layoutFrom'] = eq
+    if 'place' in ov:
+        x['place'] = normalize_place(ov['place'])
+    if 'group' in ov:
+        x['group'] = str(ov['group'] or '').strip()
+    if 'order' in ov:
+        try:
+            x['order'] = int(ov['order'])
+        except (TypeError, ValueError):
+            pass
+    if 'span' in ov:
+        x['span'] = normalize_span(ov['span'])
+    if 'groupSpan' in ov:
+        x['groupSpan'] = normalize_group_span(ov['groupSpan'])
+    if 'fold' in ov:
+        x['fold'] = bool(ov['fold'])
+    if 'showWhen' in ov:
+        w = ov['showWhen']
+        if isinstance(w, (list, tuple)):
+            w = ','.join(str(y).strip() for y in w if str(y).strip())
+        x['showWhen'] = [y.strip() for y in str(w or '').split(',') if y.strip()]
+    if 'dummy' in ov:
+        x['dummy'] = bool(ov['dummy'])
+    return x
 
 # ---------------------------------------------------------------------------
 # 上下限の出どころ（§9.231 ②）
@@ -1585,7 +1683,10 @@ def _row_to_item(r):
     # 選ばせ方・初期値・手打ちが効かない（判定は`widget_family()`の1箇所）。
     auto = normalize_auto_value(r[36] if len(r) > 36 else '')
     auto_def = auto_value_def(auto)
-    return {'id': r[0], 'equipment': str(r[1] or '').strip(), 'group': str(r[2] or '').strip(),
+    # 設備ごとのレイアウトの上書き（§9.239 ②）。**列が無い古いDBでも動く**。
+    overrides = _override_map(r[37] if len(r) > 37 else None)
+    return {'overrides': overrides,
+            'id': r[0], 'equipment': str(r[1] or '').strip(), 'group': str(r[2] or '').strip(),
             'name': str(r[3] or '').strip(), 'order': r[4],
             'type': normalize_item_type(r[5]), 'decimals': r[6],
             'min': r[7], 'max': r[8], 'choice': str(r[9] or '').strip(),
@@ -1693,7 +1794,7 @@ _ITEM_SELECT = ('SELECT [項目ID],[設備名],[群],[項目名],[表示順],[�
                 '[初期値],[手打ち可],[ステップ量],'
                 '[単位位置],[文字寄せ],[表示書式],[表示桁数],[役割],[意匠],'
                 '[並べ方],[群幅],[ダミー],[空欄なし],[最小の出どころ],[最大の出どころ],'
-                '[出どころ表示],[自動値] '
+                '[出どころ表示],[自動値],[設備別レイアウト] '
                 'FROM [操業データ項目マスタ] ORDER BY [表示順],[項目ID]')
 
 
@@ -1728,6 +1829,33 @@ def items_for_equipment(c, equipment, include_disabled=False):
             continue
         if eq and sr.stop_equipment_matches(target, eq):
             out.append(item)
+    # **同じ名前を2つ並べない**（§9.113）。`'*'`の行と設備を名指しした行に
+    # 同じ項目名があると、値の鍵（`settings.opData.<項目名>`）が衝突して
+    # どちらの値か決まらなくなる。**名指しの行が勝つ**——わざわざその設備の
+    # ために作った行のほうが後から足されたもの。落とすのは**入口で1回だけ**。
+    if eq:
+        named, seen, uniq = {}, set(), []
+        for x in out:
+            if x['equipment'] and x['equipment'] != '*':
+                named[x['name']] = True
+        for x in out:
+            key = x['name']
+            if key in seen:
+                continue
+            if named.get(key) and (not x['equipment'] or x['equipment'] == '*'):
+                continue          # 名指しの行があるので共通の行は使わない
+            seen.add(key)
+            uniq.append(x)
+        out = uniq
+    # 設備ごとのレイアウトを重ねる（§9.239 ②）。**読み口はここ1つ**なので、
+    # 測定画面・盤・帳票の候補が全部これを通る。並びも重ねたあとの`order`で
+    # 決め直す——上書きで置き場や順番が変われば、並びもそれに従う。
+    if eq:
+        out = [apply_layout_override(x, eq) for x in out]
+        out.sort(key=lambda x: (x.get('order') if x.get('order') is not None else 10 ** 9,
+                                x['id'] or 0))
+    else:
+        out = [dict(x, layoutFrom='共通') for x in out]
     return out
 
 
@@ -1921,7 +2049,64 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
     return int(cur.lastrowid)
 
 
-def item_layout_save(c, uid, rows):
+def _same_as_common(key, value, common):
+    """その鍵の値が共通の行と同じか（§9.239 ②）。
+
+    **形をそろえてから比べる**——`showWhen`は共通側がリスト・上書き側が
+    カンマ区切りの文字列、`fold`/`dummy`はAccess由来の`-1`と`True`という形で
+    同じことを言う。素で比べると「同じなのに違う」と判定され、落とすはずの
+    鍵が全部残る（＝この関数を足した意味が無くなる）。"""
+    cur = common.get(key)
+    if key == 'showWhen':
+        norm = lambda v: ','.join(
+            x.strip() for x in (v if isinstance(v, (list, tuple)) else str(v or '').split(','))
+            if str(x).strip())
+        return norm(value) == norm(cur)
+    if key in ('fold', 'dummy'):
+        return bool(value) == bool(cur)
+    if key in ('order', 'span', 'groupSpan'):
+        try:
+            return int(value) == int(cur if cur is not None else 0)
+        except (TypeError, ValueError):
+            return False
+    return str(value or '').strip() == str(cur or '').strip()
+
+
+def _override_write(cur, uid, item_id, equipment, patch, common=None):
+    """1行の「設備ごとの上書き」を書く（§9.239 ②）。
+
+    **触った項目だけを重ねる**——`patch`に無い鍵はそのまま残す（§9.212 ②）。
+
+    **共通と同じ値になった鍵は落とす**（`common`を渡したときだけ）。
+    落とさないと、盤で1回並べ替えただけで**その設備の全部の欄が共通から
+    切り離される**——以降どれだけ共通を直しても、その設備には1つも届かない
+    （§9.198「既定へ戻す＝行を消す」と同じ理由。設定が黙って効かなくなる形は
+    §CLAUDE 4）。判定に使う`common`は**上書きを重ねる前の行**であること。"""
+    cur.execute(f'SELECT [設備別レイアウト] FROM [{ITEM_TABLE}] WHERE [項目ID]=?', [item_id])
+    hit = cur.fetchone()
+    m = _override_map(hit[0] if hit else None)
+    eq = str(equipment or '').strip()
+    if not eq:
+        return 0
+    one = dict(m.get(eq) or {})
+    for k, v in (patch or {}).items():
+        if k not in LAYOUT_OVERRIDE_KEYS:
+            continue
+        if v is None or (common is not None and _same_as_common(k, v, common)):
+            one.pop(k, None)
+        else:
+            one[k] = v
+    if one:
+        m[eq] = one
+    else:
+        m.pop(eq, None)
+    cur.execute(f'UPDATE [{ITEM_TABLE}] SET [設備別レイアウト]=?,'
+                '[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
+                [_override_json(m), uid, item_id])
+    return cur.rowcount
+
+
+def item_layout_save(c, uid, rows, equipment=''):
     """並び・群・列幅・置き場・必須・出す/出さないを**まとめて1回で**書く
     (§9.216 ②)。D&Dで並べ替える画面なので1行ずつのPOSTでは往復が増え、
     途中で切れると**並びが半分だけ変わった状態**が残る。
@@ -1956,6 +2141,31 @@ def item_layout_save(c, uid, rows):
         if slots[i] <= slots[i - 1]:
             slots[i] = slots[i - 1] + 1
     n = 0
+    eq = str(equipment or '').strip()
+    if eq:
+        # **設備を選んで並べているときは共通の行を書き換えない**（§9.239 ②）。
+        # 書き換えると、その設備で並べ替えただけで**他の設備の並びも動く**
+        # ——「設備ごと」にした意味が消える。
+        # **共通と同じ値は上書きに残さない**（§9.239 ②）。盤は画面に出ている
+        # 全部のカードを送ってくるので、比べずに書くと**1回並べ替えただけで
+        # その設備の全部の欄が共通から切り離される**。材料は`item_rows()`＝
+        # **上書きを重ねる前の行**（`items_for_equipment()`は重ねたあとなので
+        # 使えない——自分の上書きと比べることになり、1つも落ちない）。
+        base = {x['id']: x for x in item_rows(c, True)}
+        for i, (item_id, r) in enumerate(todo):
+            when = r.get('showWhen')
+            if isinstance(when, (list, tuple)):
+                when = ','.join(str(x).strip() for x in when if str(x).strip())
+            n += _override_write(cur, uid, item_id, eq, {
+                'group': str(r.get('group') or '').strip(),
+                'order': slots[i],
+                'span': normalize_span(r.get('span')),
+                'place': normalize_place(r.get('place')),
+                'fold': bool(r.get('fold')),
+                'showWhen': str(when or ''),
+            }, common=base.get(item_id))
+        c.commit()
+        return n
     for i, (item_id, r) in enumerate(todo):
         when = r.get('showWhen')
         if isinstance(when, (list, tuple)):
@@ -1975,7 +2185,7 @@ def item_layout_save(c, uid, rows):
 
 
 def group_flags_save(c, uid, place, group, fold, show_when, group_span=None,
-                     dummy=None):
+                     dummy=None, equipment=''):
     """群のふるまい（畳む・開く条件・幅）だけを、その群の全部の行へ書く
     (§9.216 ④／§9.226 ③)。
 
@@ -1990,6 +2200,31 @@ def group_flags_save(c, uid, place, group, fold, show_when, group_span=None,
     if isinstance(show_when, (list, tuple)):
         show_when = ','.join(str(x).strip() for x in show_when if str(x).strip())
     cur = c.cursor()
+    eq = str(equipment or '').strip()
+    if eq:
+        # **設備を選んでいるときは上書き側へ**（§9.239 ②）。以前はWHEREに
+        # `[設備名]`が無く、設備Aで群を畳んだだけで**全設備の行**が畳まれた
+        # ——「半分だけ設備ごと」という一番分かりにくい状態になる。
+        # **効いている群で引く**——上書きで別の群へ移した項目は、共通の
+        # `[群]`列とは食い違う。共通の列で引くと「盤で同じ帯に並んでいる
+        # のに畳めない項目」が出る（設備ごとにした意味が半分消える）。
+        want_g, want_p = str(group or ''), normalize_place(place)
+        ids = [x['id'] for x in items_for_equipment(c, eq, True)
+               if str(x.get('group') or '') == want_g
+               and normalize_place(x.get('place')) == want_p]
+        patch = {'fold': bool(fold), 'showWhen': str(show_when or '')}
+        if group_span is not None:
+            patch['groupSpan'] = normalize_group_span(group_span)
+        if dummy is not None:
+            patch['dummy'] = bool(dummy)
+        n = 0
+        # ここも**共通と同じ値なら上書きに残さない**（§9.239 ②）。畳んで
+        # 開き直しただけで、その群が共通から切り離されてしまう。
+        base = {x['id']: x for x in item_rows(c, True)}
+        for i in ids:
+            n += _override_write(cur, uid, i, eq, patch, common=base.get(i))
+        c.commit()
+        return n
     sets = '[群折りたたみ]=?,[表示条件]=?'
     args = [-1 if fold else 0, str(show_when or '')]
     if group_span is not None:

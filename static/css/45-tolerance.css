@@ -120,32 +120,44 @@
    入力欄へ打つとその場で効く。既定は折りたたみ（段階的開示）。
    並びは実際にする順（カラム→条件→入力→残す/解除→いまの状態）。
    幅は**中身から決めて規格へ丸める**(§11・§9.131)——入力欄だけが余りを
-   受け、選択欄は中身なりの規格幅にする。 */
-.filter-adhoc-row{display:grid;
-  grid-template-columns:auto minmax(0,var(--w-md)) minmax(0,var(--w-sm)) minmax(0,1fr) auto;
-  align-items:end;gap:var(--gap-inline);
+   受け、選択欄は中身なりの規格幅にする。
+
+   ---------- 1行に収める(§9.239 ①、利用者の指示) ----------
+   以前は`grid-template-rows:auto var(--ctl-h-sm)`で欄ごとに見出しの段を
+   持ち、さらに状態と注記が`grid-column:1/-1`で2段を占めていた——開いた
+   だけで**4段(実測112px)**を取り、一覧がそのぶん短くなっていた。
+   1本のflexにし、**縮む役は入力欄と状態だけが持つ**(§9.229 ⑤)。
+   選択欄・ボタンは`flex:0 0 auto`で中身なりの規格幅のまま。
+   器そのものは折り返せるままにする(極端に狭い窓では、切り落として
+   見えなくするより2行がまし)。 */
+.filter-adhoc-row{display:flex;flex-wrap:wrap;align-items:center;
+  gap:var(--gap-inline);
   padding:var(--pad-row);background:#f2f8f9;border-top:1px solid #dbe7ea}
 .filter-adhoc-row[hidden]{display:none}
-.filter-adhoc-label{align-self:center;flex:0 0 auto;color:#526970;font-size:var(--fs-micro);font-weight:800;white-space:nowrap}
-.filter-adhoc-field{display:grid;grid-template-rows:auto var(--ctl-h-sm);gap:var(--gap-hair);
-  color:#526970;font-size:var(--fs-sm);white-space:nowrap;min-width:0}
-.filter-adhoc-field select,.filter-adhoc-field input{height:var(--ctl-h-sm);width:100%;min-width:0;font-size:var(--fs)}
-.filter-adhoc-actions{display:flex;gap:var(--gap-inline);align-items:end}
-.filter-adhoc-actions button{white-space:nowrap}
+/* 選択欄は中身なりの規格幅で固定。**器いっぱいに伸ばさない**(§11)。 */
+.filter-adhoc-row>select,.filter-adhoc-row>input,.filter-adhoc-row>button{
+  height:var(--ctl-h-sm);font-size:var(--fs)}
+.filter-adhoc-col{flex:0 0 auto;max-width:var(--w-md);min-width:0}
+.filter-adhoc-op{flex:0 0 auto;max-width:var(--w-sm);min-width:0}
+/* 打ち込む欄だけが余りを受ける。 */
+.filter-adhoc-row>input.filter-adhoc-value{flex:1 1 var(--w-md);min-width:var(--w-sm)}
+.filter-adhoc-row>button{flex:0 0 auto;white-space:nowrap}
 #filterAdhocKeep{background:#fff;color:var(--teal-dark);border-color:var(--teal);font-weight:700}
 #filterAdhocKeep:hover:not(:disabled){background:var(--pale)}
-/* 効いていることは**必ず文字で**(§3)。色だけにしない。 */
-.filter-adhoc-state{grid-column:1/-1;font-size:var(--fs-micro);color:var(--ink-soft);
+/* 効いていることは**必ず文字で**(§3)。色だけにしない。
+   **縮んでよいのはここだけ**(§9.229 ⑤)——入らなければ省略記号にし、
+   全文は`title`から読める。 */
+.filter-adhoc-state{flex:1 1 0;min-width:0;font-size:var(--fs-micro);color:var(--ink-soft);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .filter-adhoc-state.is-on{color:var(--teal-dark);font-weight:800}
 .filter-adhoc-state.is-warn{color:var(--danger);font-weight:800}
-.filter-adhoc-note{grid-column:1/-1;margin:0;font-size:var(--fs-micro);color:var(--ink-soft)}
 /* 入口。畳んでいても効いていれば名乗る(§9.175)ので、そのときは面を付ける。 */
 .filter-search-row-actions #filterAdhocToggle{max-width:var(--w-xl);overflow:hidden;text-overflow:ellipsis}
 .filter-search-row-actions #filterAdhocToggle.active{background:var(--pale);border-color:var(--teal);color:#0a6570;font-weight:700}
 .filter-search-row-actions #filterAdhocToggle.is-on{background:var(--teal);border-color:var(--teal);color:#fff}
+/* 狭い窓では選択欄も縮ませて1行を守る（切り落とさない）。 */
 @media(max-width:1400px){
-  .filter-adhoc-row{grid-template-columns:auto minmax(0,1fr) minmax(0,var(--w-sm)) minmax(0,1fr) auto}
+  .filter-adhoc-col{flex:0 1 auto;max-width:var(--w-sm)}
 }
 
 .filter-quick-label{flex:0 0 auto;color:#526970;font-size:var(--fs-micro);font-weight:800;white-space:nowrap}

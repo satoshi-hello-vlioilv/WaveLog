@@ -1135,7 +1135,9 @@ function renderRecordListRows(){
      ?`${t}｜幅: ${WL.columnWidthModeLabel[WL.columnLayout.widthMode(RECORD_LIST_TARGET,k)]||''}`
       +`（右端をドラッグで変更／ダブルクリックで自動へ）｜右クリックで列の出し入れ`
      :t;
-    return `<span data-col="${esc(k)}" title="${esc(tip)}">${esc(t)}`
+    /* 見出しの揃えは`WL.columnAlign`の1箇所が答える（§9.239 ④）。
+       既定は中央で、値の揃えとは別に持つ。 */
+    return `<span class="${WL.columnAlign.headClass(RECORD_LIST_TARGET,k)}" data-col="${esc(k)}" title="${esc(tip)}">${esc(t)}`
       +(editable?'<i class="col-resize" title="ドラッグで列幅を調整（ダブルクリックで自動へ戻す）" aria-hidden="true"></i>':'')
       +'</span>';
    }).join('')
@@ -1180,8 +1182,12 @@ function renderRecordListRows(){
   /* 列幅を決め打ちする以上、**入り切らない値には生の値のtitleを必ず付ける**
      （§9.94の一覧と同じ約束）。付けないと、切れた値はどこからも読めない。 */
   row.innerHTML=keys.map(k=>{
+   /* **どのセルにも`data-col`を付ける**（§9.104）。以前は操作・状態・
+      ロット番号の3つだけ付いておらず、列を鍵にする仕組み（一時的な色・
+      揃え）がその3列だけ効かなかった——見出しは塗られるのに本文が
+      塗られない、という気づきにくい食い違いになる。 */
    if(k===RECORD_COL_ACTIONS)
-    return `<div class="record-list-actions"><button class="resume" type="button" title="${isDone?'このロットの内容を測定画面で開きます':'測定画面を開いて続きから再開します'}（行のダブルクリックでも開けます）">${isDone?'開く':'再開'}</button><button class="report" type="button" title="このロットの帳票プレビューを開きます">帳票</button><button class="rec-more" type="button" aria-haspopup="menu" aria-expanded="false" title="その他の操作（削除はこの中）">⋯</button></div>`;
+    return `<div class="record-list-actions" data-col="${esc(k)}"><button class="resume" type="button" title="${isDone?'このロットの内容を測定画面で開きます':'測定画面を開いて続きから再開します'}（行のダブルクリックでも開けます）">${isDone?'開く':'再開'}</button><button class="report" type="button" title="このロットの帳票プレビューを開きます">帳票</button><button class="rec-more" type="button" aria-haspopup="menu" aria-expanded="false" title="その他の操作（削除はこの中）">⋯</button></div>`;
    const c=RECORD_COL_BY_KEY.get(k);
    const fx=calc.get(k);
    const raw=fx?fx.run(view):(k==='#'?view['#']:(c?c.get(x):''));
@@ -1189,11 +1195,12 @@ function renderRecordListRows(){
    const noSetting=!WL.columnLayout.format(RECORD_LIST_TARGET,k)&&!WL.columnLayout.rule(RECORD_LIST_TARGET,k);
    const text=(noSetting&&c&&c.short)?c.short(x):out.text;
    const shown=String(text??'').trim()||'-';
-   const cls=['record-list-cell',c&&c.cls,out.color?'cell-'+out.color:''].filter(Boolean).join(' ');
+   const cls=['record-list-cell',c&&c.cls,WL.columnAlign.cellClass(RECORD_LIST_TARGET,k),
+              out.color?'cell-'+out.color:''].filter(Boolean).join(' ');
    if(c&&c.cell==='status')
-    return `<div class="${cls}"><span class="rp-status-badge${statusClass(x.status)?' '+statusClass(x.status):''}" title="${isNg?'NG回数 '+(x.settings?.ngCount||0)+'回':esc(statusLabel(x.status))}">${esc(shown)}</span>${syncBadge}${remoteBadge}</div>`;
+    return `<div class="${cls}" data-col="${esc(k)}"><span class="rp-status-badge${statusClass(x.status)?' '+statusClass(x.status):''}" title="${isNg?'NG回数 '+(x.settings?.ngCount||0)+'回':esc(statusLabel(x.status))}">${esc(shown)}</span>${syncBadge}${remoteBadge}</div>`;
    if(c&&c.cell==='lot')
-    return `<div class="${cls}"><button type="button" class="lot-dsp-link grid-lot-link" title="${esc(shown)} ／ クリックでLotDspをこのロット番号で開きます">${esc(shown)}</button></div>`;
+    return `<div class="${cls}" data-col="${esc(k)}"><button type="button" class="lot-dsp-link grid-lot-link" title="${esc(shown)} ／ クリックでLotDspをこのロット番号で開きます">${esc(shown)}</button></div>`;
    const inner=(c&&c.tag==='time')?`<time>${esc(shown)}</time>`:esc(shown);
    return `<div class="${cls}" data-col="${esc(k)}" title="${esc(shown)}">${inner}</div>`;
   }).join('');

@@ -356,6 +356,26 @@ body.sc-mode .hd-status .hd-chip-equip{display:none}
   overflow:hidden;clip-path:inset(50%);white-space:nowrap;
 }
 
+/* ---------- 列の揃え(§9.239 ④、利用者の指示) ----------
+   「数値は右詰め、文字列は左詰めなど自動で書式に合わせた設定になりますが、
+    手動での任意変更もできるように」「カラムの文字列はデータとは別で中央
+    位置をデフォルトに」。
+
+   **utilityレイヤに置くのが要点。** 表の揃えは画面ごとに違う書き方で
+   散っている——`#grid th{text-align:left}`(詳細度1,0,1)・
+   `#grid th.col-num{text-align:right}`・`.sc-row-est{text-align:right}`・
+   `.record-list-cell`(flex)。componentレイヤより後に来るこのレイヤなら、
+   **詳細度をいちいち数えずに1組の規則で全部に効く**（`!important`も要らない）。
+
+   `text-align`と`justify-content`の両方を書くのは、器が
+   **表のセル（text-align）とflex（justify-content）の2種類ある**ため
+   ——データ一覧の`.record-list-cell`は`display:flex`なので、text-alignだけでは
+   中の要素が動かない。効かないほうは無視されるだけなので、器の名前で
+   書き分けない（§9.233 ③。器を1つ足すたびにCSSを書き足す作りにしない）。 */
+.al-l{text-align:left;justify-content:flex-start}
+.al-c{text-align:center;justify-content:center}
+.al-r{text-align:right;justify-content:flex-end}
+
 /* 確認ダイアログは**何の上に出しても押せる**必要がある(§9.80)。
    .record-modal と同じ 1500 のままだと、先に作られていた側が下敷きになる
    (登録フィルタ一覧の削除が押せなかった。生成順で前後が決まっていた)。 */

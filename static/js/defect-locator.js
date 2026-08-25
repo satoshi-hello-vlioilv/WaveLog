@@ -595,6 +595,280 @@
           outside:r.outside||''};
  }
 
+ /* ================================================================
+    ② 長手方向 — ピッチからロールを特定する（§9.239 ⑥、利用者の指示）
+    ================================================================
+    「欠陥を発見した際にピッチがある場合、ピッチを入力し、当設備の対象
+     ロールを判定する機能を実装したいです。（略）使うデータはこのカラムの
+     うちロール径MAXを主とし、ロール径MINもデータがあるものはそれも
+     計算に用いる。」
+
+    ■ 考え方
+    ロールに1箇所の傷があると、材料には**そのロールの周長ごとに**印が付く。
+    周長 C = π × 径。径は摩耗で減るので、MAXとMINの両方があれば
+    C は [π×MIN, π×MAX] の**範囲**になる。MINが空なら**MAXの1点**
+    （0で埋めない。§9.114／§9.231）。
+
+    ■ 「ちょうど1周」以外も見る
+      ・ロールの1周にk箇所の傷 → 印の間隔は C/k（＝ C = ピッチ×k）
+      ・k回に1回しか印を数えていない → 測ったピッチは C×k（＝ C = ピッチ÷k）
+    どちらも実際に起きるので候補には出すが、**直接一致とは必ず言葉で
+    分ける**（§3・§6。同じ「候補」でも当たる見込みが違う）。
+
+    ■ 判定はここ1箇所
+    `rollMatches()`が答える。画面（`refreshRoll`）は組み立てるだけ。
+    **`WL.defect.markers()`（幅方向）には混ぜない**——条の設計のバッジは
+    「何条目か」を指しており、意味が2つになる（§9.226 ④）。
+    **入力も`settings.defectLocation`へ混ぜない**——あちらは
+    `sameInput()`で「保存後に変わったか」を見ているので、ピッチを1文字
+    打っただけで幅方向の判定が「保存し直してください」になる。 */
+ const ROLL_TOL_DEFAULT=2;              // ±%
+ const PI=Math.PI;
+ const ROLL_INPUT_KEYS=['pitch','tol','face','harmonics','memo'];
+
+ /* この端末が測っている設備。**綴りを書き写さない**（§9.163）——
+    `currentConfiguredEquipment()`は`base.js`が持つ1箇所。 */
+ function rollEquipment(){
+  const s=S.measure?.settings||{};
+  const a=String(s.registeredEquipment||S.measure?.registeredEquipment
+    ||S.measure?.snapshot?.registeredEquipment||'').trim();
+  if(a)return a;
+  return (typeof currentConfiguredEquipment==='function')
+    ? String(currentConfiguredEquipment()||'').trim() : '';
+}
+ /* ロールは設備が変わったときだけ引く。**読めなくても窓は開く**
+    （fail-open。マスタが無い端末でも幅方向の判定は使える）。 */
+ const rollCache=(window.WL&&WL.ttlCache)?WL.ttlCache({ttl:5*60*1000,max:8}):null;
+ let rollState={equipment:null,rows:null,error:'',loading:false};
+ async function loadRolls(eq){
+  if(rollState.equipment===eq&&(rollState.rows||rollState.error))return;
+  rollState={equipment:eq,rows:null,error:'',loading:true};
+  try{
+   const get=()=>api('/api/roll-master?equipment='+encodeURIComponent(eq));
+   const r=rollCache?await rollCache.get('roll:'+eq,get):await get();
+   if(rollState.equipment!==eq)return;               // 別の設備へ移った
+   rollState={equipment:eq,rows:(r&&r.items)||[],faces:(r&&r.contactFaces)||[],
+              error:'',loading:false};
+  }catch(e){
+   if(rollState.equipment!==eq)return;
+   rollState={equipment:eq,rows:null,error:e.message||String(e),loading:false};
+  }
+  refreshRoll();
+ }
+ function rollInput(){
+  return {pitch:num($id('defectPitch')?.value),
+          tol:(()=>{const t=num($id('defectPitchTol')?.value);
+                    return Number.isFinite(t)&&t>=0?t:ROLL_TOL_DEFAULT})(),
+          face:String($id('defectRollFace')?.value||''),
+          harmonics:Math.max(1,Math.min(9,num($id('defectHarmonics')?.value)||1)),
+          memo:String($id('defectRollMemo')?.value||'')};
+ }
+ /* ロールの周長の範囲。**MAXが無ければ判定できない**（理由を返す）。 */
+ function rollBand(roll){
+  const dmax=num(roll.diaMax),dmin=num(roll.diaMin);
+  if(!Number.isFinite(dmax)||dmax<=0)return null;
+  const lo=(Number.isFinite(dmin)&&dmin>0)?Math.min(dmin,dmax):dmax;
+  return {dLo:lo,dHi:dmax,cLo:PI*lo,cHi:PI*dmax,worn:Number.isFinite(dmin)&&dmin>0&&dmin<dmax};
+ }
+ /* 判定の本体。**画面は組み立てるだけ**にするため、ここが理由まで返す。 */
+ function rollMatches(input,rolls){
+  const p=input.pitch;
+  if(!Number.isFinite(p)||p<=0)
+   return {error:'欠陥のピッチ（繰り返しの間隔）を入れてください。',errorKind:'input'};
+  const tol=(input.tol||0)/100;
+  const list=Array.isArray(rolls)?rolls:[];
+  const face=String(input.face||'').trim();
+  const targets=[];
+  targets.push({n:1,kind:'direct',c:p,note:'ちょうど1周ぶん'});
+  for(let k=2;k<=input.harmonics;k++){
+   targets.push({n:k,kind:'multi',c:p*k,note:`${k}回に1回だけ数えている場合`});
+   targets.push({n:k,kind:'divide',c:p/k,note:`1周に${k}箇所ある場合`});
+  }
+  const hits=[],skipped=[];
+  let filteredByFace=0;
+  list.forEach(roll=>{
+   const band=rollBand(roll);
+   if(!band){skipped.push({roll,why:'ロール径MAXが未登録'});return}
+   if(face&&roll.contactFace&&roll.contactFace!==face){filteredByFace++;return}
+   let best=null;
+   targets.forEach(t=>{
+    const lo=t.c*(1-tol),hi=t.c*(1+tol);
+    /* 帯どうしが重なれば一致。**片方が1点でも同じ式で解ける**。 */
+    if(hi<band.cLo||lo>band.cHi)return;
+    /* ずれは「狙いの周長」と「帯のいちばん近い点」の相対差。 */
+    const near=Math.min(Math.max(t.c,band.cLo),band.cHi);
+    const dev=Math.abs(t.c-near)/t.c;
+    const cand={...t,dev,band};
+    if(!best||cand.kind==='direct'&&best.kind!=='direct'
+       ||cand.kind===best.kind&&cand.dev<best.dev)best=cand;
+   });
+   if(best)hits.push({roll,...best});
+  });
+  /* 直接一致を先に、そのあとずれの小さい順。 */
+  hits.sort((a,b)=>(a.kind==='direct'?0:1)-(b.kind==='direct'?0:1)||a.dev-b.dev);
+  return {pitch:p,tolPct:input.tol,needDia:p/PI,face,
+          hits,skipped,filteredByFace,total:list.length};
+ }
+
+ const ROLL_KIND_LABEL={direct:'直接一致',multi:'倍の間隔',divide:'1周に複数'};
+ function rollAnswerHtml(r){
+  if(r.error)return `<div class="defect-answer is-empty"><b>${esc(r.error)}</b>
+    <span>ロールの周長（π×径）と比べて、当てはまるロールを探します。</span></div>`;
+  const dia=fmt(r.needDia,1);
+  if(!r.total)
+   return `<div class="defect-answer is-empty"><b>この設備のロールが登録されていません</b>
+    <span>マスタ管理 &gt; ロール でこの設備のロールを登録すると、ここで候補を出せます。
+    いまのピッチに合うロール径は <b>${esc(dia)} mm</b> です。</span></div>`;
+  if(!r.hits.length)
+   return `<div class="defect-answer is-empty"><b>当てはまるロールが見つかりません</b>
+    <span>このピッチ（${esc(fmt(r.pitch,1))} mm）に合うロール径は <b>${esc(dia)} mm</b> です。
+    登録 ${r.total}本の中に、この径のロールはありませんでした（許容差 ±${esc(String(r.tolPct))}%）。
+    許容差を広げるか、ロールマスタの径を確かめてください。</span></div>`;
+  const top=r.hits[0];
+  const direct=r.hits.filter(h=>h.kind==='direct').length;
+  return `<div class="defect-answer"><b>${esc(top.roll.name||'（名前なし）')}</b>
+    <span>${esc(ROLL_KIND_LABEL[top.kind])}（${esc(top.note)}）／ずれ ${esc((top.dev*100).toFixed(2))}%
+    ・候補 ${r.hits.length}本（うち直接一致 ${direct}本）／
+    このピッチに合うロール径は <b>${esc(dia)} mm</b></span></div>`;
+ }
+ function rollListHtml(r){
+  if(r.error||!r.hits||!r.hits.length)
+   return `<div class="defect-roll-empty">候補はまだありません。</div>`;
+  const row=h=>{
+   const b=h.band;
+   const dia=b.worn?`${fmt(b.dHi,1)}〜${fmt(b.dLo,1)}`:fmt(b.dHi,1);
+   const cir=b.worn?`${fmt(b.cLo,1)}〜${fmt(b.cHi,1)}`:fmt(b.cHi,1);
+   return `<tr class="${h.kind==='direct'?'is-direct':''}">
+    <td><b>${esc(h.roll.name||'（名前なし）')}</b></td>
+    <td>${esc(h.roll.entryPos||'—')}</td>
+    <td>${esc(h.roll.contactFace||'—')}</td>
+    <td class="num" title="ロール径MAX${b.worn?'〜MIN':'（MINは未登録）'}">${esc(dia)}</td>
+    <td class="num" title="周長＝π×径">${esc(cir)}</td>
+    <td><span class="defect-roll-kind${h.kind==='direct'?' is-direct':''}"
+      title="${esc(h.note)}">${esc(ROLL_KIND_LABEL[h.kind])}</span></td>
+    <td class="num">${esc((h.dev*100).toFixed(2))}%</td>
+    <td class="num">${h.roll.count==null?'—':esc(String(h.roll.count))}</td>
+    <td>${esc(h.roll.material||'—')}</td>
+    <td>${esc(h.roll.refNo||'—')}</td></tr>`;
+  };
+  return `<table class="defect-roll-table"><thead><tr>
+    <th>ロール名</th><th>入出位置</th><th>接触面</th><th>径(mm)</th><th>周長(mm)</th>
+    <th>一致の種類</th><th>ずれ</th><th>本数</th><th>材質</th><th>基準番号</th>
+   </tr></thead><tbody>${r.hits.map(row).join('')}</tbody></table>`;
+ }
+ function rollNoteHtml(r){
+  const chips=[];
+  if(r&&!r.error){
+   chips.push(`<span>ピッチ ${esc(fmt(r.pitch,1))} mm</span>`);
+   chips.push(`<span>合うロール径 ${esc(fmt(r.needDia,1))} mm（ピッチ÷π）</span>`);
+   chips.push(`<span>読んだロール ${r.total}本</span>`);
+   if(r.filteredByFace)chips.push(`<span>接触面で除外 ${r.filteredByFace}本</span>`);
+   if(r.skipped&&r.skipped.length)
+    chips.push(`<span title="${esc(r.skipped.map(x=>x.roll.name||'（名前なし）').join('、'))}">`
+     +`径が未登録で判定できない ${r.skipped.length}本</span>`);
+  }
+  return `<div class="defect-detail-head">判定の前提<span>ロールマスタ（マスタ管理 &gt; ロール）</span></div>`
+   +`<div class="defect-calc">${chips.join('')}</div>`
+   +`<p class="defect-roll-why">欠陥のピッチ＝ロールの周長（π×径）です。`
+   +`ロール径MINも入っていれば、摩耗の範囲として幅を持たせて比べます。`
+   +`「倍の間隔」「1周に複数」は<b>直接一致ではありません</b>——`
+   +`数え落とし・傷が複数あるときの候補として出しています。`
+   +`この判定は記録に残しますが、帳票には出しません（①と同じ扱いの一時データです）。</p>`;
+ }
+ /* 前提（左下）。**出どころを画面に出す**（§6）。 */
+ function rollBasisHtml(){
+  const eq=rollEquipment();
+  const rows=rollState.rows;
+  const state=rollState.loading?'読み込んでいます…'
+    :rollState.error?`読めませんでした（${rollState.error}）`
+    :rows?`${rows.length}本を読みました`:'まだ読んでいません';
+  return `<span>設備 <b>${esc(eq||'（未登録）')}</b></span>`
+   +`<span>ロールマスタ <b>${esc(state)}</b></span>`
+   +`<span>許容差 <b>±${esc(String(rollInput().tol))}%</b></span>`;
+ }
+ /* ピッチの入力を記録へ書き戻す。**幅方向とは別の鍵**（`defectRoll`）。 */
+ function saveRollInput(){
+  if(!S.measure)return;
+  const s=S.measure.settings=S.measure.settings||{};
+  const cur=s.defectRoll||{};
+  const now=rollInput();
+  if(ROLL_INPUT_KEYS.every(k=>String(cur[k]??'')===String(now[k]??'')))return;
+  s.defectRoll={...now,updatedAt:new Date().toISOString()};
+  if(typeof markDirty==='function')markDirty();
+ }
+ function restoreRollInput(){
+  const d=S.measure?.settings?.defectRoll||{};
+  const put=(id,v)=>{const el=$id(id);if(el&&v!==undefined&&v!==null&&String(v)!=='')el.value=String(v)};
+  put('defectPitch',d.pitch);
+  put('defectPitchTol',d.tol??ROLL_TOL_DEFAULT);
+  put('defectHarmonics',d.harmonics??3);
+  put('defectRollMemo',d.memo);
+  /* 接触面の候補は**サーバーが答える**（§9.163）。記録済みの値は候補へ
+     足してから当てる——候補に無い値を`select.value`へ入れると空文字に
+     なり、記録が黙って消える（§9.204と同じ罠）。 */
+  const sel=$id('defectRollFace');
+  if(sel){
+   const want=String(d.face||'');
+   const faces=[...new Set([...(rollState.faces||[]),
+     ...(rollState.rows||[]).map(x=>x.contactFace).filter(Boolean),
+     ...(want?[want]:[])])];
+   sel.innerHTML='<option value="">指定しない</option>'
+     +faces.map(f=>`<option value="${esc(f)}">${esc(f)}</option>`).join('');
+   sel.value=want;
+  }
+ }
+ function refreshRoll(){
+  if($id('defectPaneRoll')?.hidden)return;          // 隠れている面は組み立てない
+  const set=(id,html)=>{const el=$id(id);if(el)el.innerHTML=html};
+  const eq=rollEquipment();
+  if(!eq){
+   set('defectRollResult','<div class="defect-answer is-empty"><b>使用設備が未登録です</b>'
+    +'<span>左メニューの「アプリ使用設備の設定」で設備を登録すると、その設備のロールから探せます。</span></div>');
+   set('defectRollList','<div class="defect-roll-empty">設備が決まると候補を出せます。</div>');
+   set('defectRollNote','');
+   set('defectRollBasis',rollBasisHtml());
+   return;
+  }
+  if(rollState.equipment!==eq||(!rollState.rows&&!rollState.error&&!rollState.loading)){
+   loadRolls(eq);
+  }
+  const r=rollMatches(rollInput(),rollState.rows||[]);
+  set('defectRollResult',rollAnswerHtml(r));
+  set('defectRollList',rollListHtml(r));
+  set('defectRollNote',rollNoteHtml(r));
+  set('defectRollBasis',rollBasisHtml());
+  if(!r.error)saveRollInput();
+ }
+
+ /* ---------- タブ（§9.239 ⑥） ---------- */
+ let defectTab='pos';
+ function setTab(k){
+  defectTab=(k==='roll')?'roll':'pos';
+  document.querySelectorAll('#defectModal .defect-tab').forEach(b=>{
+   const on=b.dataset.defectTab===defectTab;
+   b.classList.toggle('is-on',on);
+   b.setAttribute('aria-selected',on?'true':'false');
+  });
+  document.querySelectorAll('#defectModal [data-defect-pane]').forEach(p=>{
+   p.hidden=p.dataset.defectPane!==defectTab;
+  });
+  /* **押せるのに何も起きないボタンを残さない**（§4）。フッターの操作は
+     ①幅方向の判定を指すので、②では押せなくして理由をその場に書く。 */
+  [['defectPrint','①幅方向の判定を1枚の帳票として印刷します'],
+   ['defectSave','①幅方向の判定を保存します'],
+   ['defectReset','①幅方向の入力を消します']].forEach(([id,tip])=>{
+   const el=$id(id);if(!el)return;
+   el.disabled=defectTab==='roll';
+   el.title=defectTab==='roll'
+     ? tip+'（いまは「② 長手方向」を開いています。①へ戻ると押せます）' : tip;
+  });
+  const un=$id('defectUnsave');
+  if(un&&defectTab==='roll')un.disabled=true;
+  else if(un)un.disabled=false;
+  if(defectTab==='roll'){restoreRollInput();refreshRoll();$id('defectPitch')?.focus()}
+  else refresh();
+ }
+
  /* ---------- 開閉と結線 ---------- */
  function open(){
   if(!S.measure){showToast?.('測定データがありません','ロットを開いてから実行してください');return}
@@ -603,6 +877,9 @@
   if(cap)cap.textContent=[S.measure.basic?.lotNo,S.measure.basic?.purposeName].filter(Boolean).join(' ／ ');
   restoreInput();
   modal.hidden=false;
+  /* **開いたときは①へ戻す**（§9.223 ②と同じ作法）。前に②を見ていたことは
+     覚えない——「何条目か」を知りたくてここを開く場面のほうが多い。 */
+  setTab('pos');
   refresh();
   $id('defectDistance')?.focus();
  }
@@ -631,11 +908,29 @@
   const el=$id(id);if(!el)return;
   el.addEventListener('input',refresh);el.addEventListener('change',refresh);
  });
+ /* ②の欄。**①と同じ形で結ぶ**（打つたびにその面だけ組み直す）。 */
+ ['defectPitch','defectPitchTol','defectRollFace','defectHarmonics','defectRollMemo'].forEach(id=>{
+  const el=$id(id);if(!el)return;
+  el.addEventListener('input',refreshRoll);el.addEventListener('change',refreshRoll);
+ });
+ document.querySelectorAll('#defectModal .defect-tab').forEach(b=>{
+  b.addEventListener('click',()=>{
+   /* 掴んでいる最中にタブを切り替えない（図の掴みは`document`で受けて
+      いるので、面を隠すと離す合図が届かなくなる）。判定は掴んでいる側の
+      印（`.defect-strip.is-dragging`）を見る——別の目印を作らない。 */
+   if($id('defectStrip')?.classList.contains('is-dragging'))return;
+   setTab(b.dataset.defectTab);
+  });
+ });
  document.addEventListener('keydown',e=>{if(WL.modal.escCloses(e)&&!$id('defectModal')?.hidden)close()},true);
 
  window.WL=window.WL||{};
  window.WL.defect={open,close,compute,lanes,refresh,save:doSave,unsave:doUnsave,
                    reportSectionHtml,hasSaved:hasSavedDefect,
                    /* 条の設計との連携（§9.226 ②）。 */
-                   markers};
+                   markers,
+                   /* ② 長手方向（§9.239 ⑥）。**判定は1箇所**なので、
+                      画面の外から確かめるときもこの関数を通す。 */
+                   setTab,rollMatches,rollEquipment,
+                   rollRows:()=>((rollState.rows||[]).slice())};
 })();

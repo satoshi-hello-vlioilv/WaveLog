@@ -615,6 +615,52 @@ let b=null,madeBlock=null;
   rec('空きマスの色が塊の地と見分けられる',
       !emptyColor.前提なし&&emptyColor.差>=18&&emptyColor.網===true,JSON.stringify(emptyColor));
 
+  /* ---- 設備ごとの配置（§9.239 ③、利用者の指示） ----
+     「帳票カスタム機能について、設備ごとレイアウト調整できるように」
+
+     保存の器は§9.174で既に`report:<設備>`だった。足りなかったのは
+     **設備を選ぶ手立て**——その設備で測ったロットがこの端末に1件も無いと、
+     その設備の配置を編集できなかった。
+     **「選択欄が在る」ことだけを見ない**——選ぶと`rpTarget()`が実際に
+     切り替わることまで見る（見た目だけ足した実装でも通ってしまう）。 */
+  const eqPick=await page.evaluate(()=>{
+   const sel=document.querySelector('#rpArrangeBar [data-rp-eq]');
+   if(!sel)return {無い:true};
+   return {数:sel.options.length,いま:sel.value,
+           札:[...sel.options].map(o=>o.textContent.trim()),
+           コピー:!!document.querySelector('#rpArrangeBar [data-rp-copy]')};
+  });
+  rec('組み換えの帯に設備の選択欄がある',!eqPick.無い&&eqPick.数>=1,JSON.stringify(eqPick));
+  rec('「他の設備へ当てる」が同じ帯にある',eqPick.コピー===true,JSON.stringify(eqPick));
+  rec('設備の選択肢には件数（またはロットなし）が添えてある',
+      !eqPick.無い&&eqPick.札.every(t=>/（.+）$/.test(t)),JSON.stringify(eqPick.札));
+  if(!eqPick.無い){
+   /* この端末に無い設備も選べること＝この機能の目的そのもの。 */
+   const other=await page.evaluate(()=>{
+    const sel=document.querySelector('#rpArrangeBar [data-rp-eq]');
+    const o=[...sel.options].find(x=>x.value!==sel.value);
+    return o?o.value:null;
+   });
+   if(other!==null){
+    await page.selectOption('#rpArrangeBar [data-rp-eq]',other);
+    await page.waitForTimeout(700);
+    const now=await page.evaluate(()=>({
+     対象:(document.querySelector('#rpArrangeBar [data-rp-eq]')||{}).value,
+    }));
+    rec('別の設備を選べる',now.対象===other,JSON.stringify({選んだ:other,いま:now.対象}));
+    /* 組み換えを閉じたら**元の設備へ戻す**（戻さないと通常表示まで
+       別設備の設定で描かれる）。 */
+    await page.click('#reportArrange');
+    await page.waitForTimeout(500);
+    await page.click('#reportArrange');
+    await page.waitForSelector('#rpArrangeBar:not([hidden])',{timeout:8000});
+    await page.waitForTimeout(500);
+    const back=await page.evaluate(()=>(document.querySelector('#rpArrangeBar [data-rp-eq]')||{}).value);
+    rec('組み換えを開き直すとこのロットの設備へ戻る',back!==other||other==='',
+        JSON.stringify({閉じる前:other,開き直し:back}));
+   }else rec('設備の選択肢が2つ以上ある',false,'1つしかない');
+  }
+
   rec('画面のエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){
   rec('FATAL',false,e.message);

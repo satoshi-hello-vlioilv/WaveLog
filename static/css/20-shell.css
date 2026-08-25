@@ -271,6 +271,23 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 .col-head-menu .chm-show{color:var(--ink-2)}
 .col-head-menu .chm-show::before{content:'＋';margin-right:var(--space-1);color:var(--teal);font-weight:800}
 .col-head-menu .chm-more{padding:var(--space-1) var(--space-2);font-size:var(--fs-micro);color:var(--muted)}
+/* ---------- 列の一時的な色(§9.239 ⑤-3、利用者の指示) ----------
+   選ばせるのは7色だけ（§9.198。16進は選ばせない）。**色見本の隣に必ず
+   色名を出す**——色だけで意味を伝えない（§3）ので、見本(`<i>`)は
+   「どの色か」を、名前は「何と呼ぶか」を担う。
+   選んでいる札は**面が濃くなる**ことで示す（§9.229 ②。枠だけでは差に
+   ならない）。 */
+.col-head-menu .chm-tints{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:var(--gap-hair);padding:var(--space-1) var(--space-2) var(--space-2)}
+.col-head-menu .chm-tints .chm-tint{display:flex;align-items:center;gap:var(--gap-tight);
+  width:100%;padding:var(--space-1);border:1px solid var(--line-soft);border-radius:var(--radius-xs);
+  background:var(--surface);font-size:var(--fs-micro);color:var(--ink-2);cursor:pointer}
+.col-head-menu .chm-tints .chm-tint>i{flex:0 0 auto;width:var(--ctl-box);height:var(--ctl-box);
+  border:1px solid var(--chm-tint-line);border-radius:var(--radius-xs);background:var(--chm-tint)}
+.col-head-menu .chm-tints .chm-tint>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.col-head-menu .chm-tints .chm-tint:hover{background:var(--surface-2)}
+.col-head-menu .chm-tints .chm-tint.is-on{background:var(--chm-tint);border-color:var(--chm-tint-line);
+  color:var(--ink);font-weight:800}
 /* 名前を付けて覚えさせる帯(§9.111)。足元(保存/既定に戻す)とは役割が違う
    ——あちらは「この一覧の設定」、こちらは「設定の出し入れ」なので、
    同じ行に混ぜず1段上に置く。 */
@@ -361,13 +378,18 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
     取っ手(`.col-resize`)の`position:absolute`の基準は`sticky`が兼ねる
     (sticky も位置指定済みの要素なので、絶対配置の包含ブロックになる)。
     わざわざ`relative`にする必要はない。 */
- #grid th.sortable-col .col-resize{
+ /* **`.sortable-col`で絞らない**（§9.239 ⑤-1）。この印はデータ列にしか
+    付かないので、番号・ボタンの列（`#`/`分割`/`測定`/`予定`/選択）には
+    取っ手が一度も描かれていなかった——「分割の幅が変えられない」の半分が
+    これ（もう半分は`.split-flag-head{min-width}`）。並びに載っている列は
+    全部掴める。 */
+ #grid th .col-resize{
   position:absolute;top:0;right:calc(var(--space-1) * -1);width:calc(var(--space-2) + 2px);height:100%;
   cursor:col-resize;opacity:0;transition:opacity .12s ease;
  }
- #grid th.sortable-col:hover .col-resize{opacity:1}
+ #grid th:hover .col-resize{opacity:1}
  /* 取っ手そのものは細い線1本。掴める幅は線より広く取る(掴めないと苛立つ)。 */
- #grid th.sortable-col .col-resize::after{
+ #grid th .col-resize::after{
   content:"";position:absolute;top:15%;bottom:15%;left:50%;width:2px;
   background:var(--line-strong);border-radius:var(--radius-xs);
  }
@@ -628,6 +650,23 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  /* 固定した列の取っ手は掴めない。**消さずに印を残す**——消すと、
     固定しているのか壊れているのかが分からない。 */
  .col-resize.is-locked{cursor:not-allowed;opacity:.45}
+ /* ---------- 揃え(§9.239 ④、利用者の指示) ----------
+    データと見出しを**別の段**で選ぶ。押せる面は書式の`.lc-kind`と同じ
+    作法にそろえる（同じパネルの中で選ばせ方を増やさない）。
+    **選んだ札は面が濃くなる**ことで示す（§9.229 ②。枠だけでは差にならない）。
+    いま何が効いているか・なぜそうなっているかは下の`.lc-hint`が文字で言う
+    （§3・§6。同じ「右詰め」でも自動か手動かで次にすることが違う）。 */
+ .lc-field-align{align-items:flex-start}
+ .lc-alignbox{flex:1;min-width:0;display:flex;flex-direction:column;gap:var(--gap-hair)}
+ .lc-aligns{display:flex;flex-wrap:wrap;gap:var(--gap-tight)}
+ .lc-align{display:inline-flex;align-items:center;gap:var(--gap-hair);cursor:pointer;
+  height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
+  border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);
+  font-size:var(--fs-sm);color:var(--ink-2);white-space:nowrap}
+ .lc-align:hover{border-color:var(--teal);background:var(--surface-2)}
+ .lc-align.is-on{background:var(--pale);border-color:var(--teal);color:var(--computed-fg);font-weight:700}
+ .lc-align input{accent-color:var(--teal)}
+ .lc-alignbox .lc-hint{margin:0}
  .lc-vis{display:inline-flex;align-items:center;justify-content:center}
  .lc-vis input{width:var(--ctl-box);height:var(--ctl-box);cursor:pointer;accent-color:var(--teal)}
  .lc-hint{font-size:var(--fs-micro);color:var(--muted);margin:0;line-height:1.5}

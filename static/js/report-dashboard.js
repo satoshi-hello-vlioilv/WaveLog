@@ -52,7 +52,10 @@
  /* `keys()`はコードが持っている既定の塊の一覧（§9.219 ②）。マスタの種と
     **食い違っていないこと**を網が突き合わせる——片方だけ増えると、マスタに
     出ない塊／画面に無い塊が黙って生まれる。 */
- WL.reportBlocks={forget:()=>{rpUserBlocks=[];rpMasterRows=[];rpBuiltinOff=new Set();rpUserBlocksFor=null},
+ WL.reportBlocks={forget:()=>{rpUserBlocks=[];rpMasterRows=[];rpBuiltinOff=new Set();rpUserBlocksFor=null;
+   /* 設備ごとの写しも一緒に捨てる（§9.239 ③）。片方だけ捨てると
+      「マスタで直したのに紙が変わらない」が残る。 */
+   rpBlocksByEq.clear()},
                   keys:()=>RP_BLOCKS.map(b=>b.k)};
 
  function ensurePanel(){
@@ -356,6 +359,18 @@
   const items=rpState.items.filter(x=>rpSelectedIds.has(x.id));
   if(!items.length)return;
   const area=ensureBulkPrintArea();
+  /* **設備ごとの設定は組み立てる前に読み終えておく**（§9.239 ③／§9.235 ⑤
+     「取得はなり代わるより前に済ませる」）。読んでいないと
+     `WL.columnLayout.get()`が空を返し、**選んでいる設備以外のロットは
+     コードの既定で刷られる**（保存した配置が効かない）。 */
+  const need=[...new Set(items.map(rpTargetOf))];
+  const eqs=[...new Set(items.map(x=>rpEquipmentOf(x)||''))];
+  Promise.all([...need.map(t=>WL.columnLayout.load(t).catch(()=>{})),
+               ...eqs.map(eq=>rpLoadUserBlocks(eq).catch(()=>{}))])
+   .then(()=>bulkPrintNow(items,area))
+   .catch(()=>bulkPrintNow(items,area));
+ }
+ function bulkPrintNow(items,area){
   area.innerHTML=items.map(x=>`<div class="rp-report rp-page${rpOrientation==='landscape'?' rp-landscape':''}">${reportHtml(x)}</div>`).join('');
   document.body.classList.add('rp-bulk-print');
   const prevTitle=document.title;
@@ -369,7 +384,21 @@
   // 描画が反映されるのを待ってから印刷ダイアログを開く(同期的に呼ぶと白紙になる)。
   // **行の割り付けもここで当てる**(§9.217)——測ってからでないと、跨ぎの
   // 効いていない紙が刷られる。
-  requestAnimationFrame(()=>requestAnimationFrame(()=>{rpFitAll();window.print()}));
+  /* **測り直しも1枚ずつその紙の設備で**（§9.239 ③）。`rpFitAll()`は
+     全ページをまとめて回すので、そのままだと最後に組み立てたロットの
+     設備で行高が解かれる（§9.174の罠の後半）。 */
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+   const pages=[...area.querySelectorAll('.rp-page')];
+   pages.forEach((h,i)=>{
+    const x=items[i];
+    if(!x){try{rpFitPage(h)}catch(e){}return}
+    rpWithLot(x,()=>{try{rpFitPage(h)}catch(e){console.warn('帳票の割り付けに失敗',e)}});
+   });
+   /* 画面のプレビューは選んでいるロットのままで測る。 */
+   const own=$id('reportContent');
+   if(own){try{rpFitPage(own)}catch(e){}}
+   window.print();
+  }));
  }
 
  function reportSection(title,rows,cols){
@@ -688,12 +717,44 @@
     設備の設定で描かれる。 */
  const RP_LAYOUT_PREFIX='report:';
  let rpActiveTarget=null;
+ /* ---------- どの設備の配置を触っているか（§9.239 ③、利用者の指示） ----------
+    「帳票カスタム機能について、設備ごとレイアウト調整できるようにして
+     ください」
+
+    保存の器は§9.174で**既に設備ごと**（`report:<設備>`）になっている。
+    足りなかったのは**設備を選ぶ手立て**で、編集できるのは「いま選んで
+    いるロットの設備」だけだった——その設備で測ったロットがこの端末に
+    1件も無ければ、その設備の配置は**永久に編集できない**。
+    `rpEditEquipment`が入っているあいだは、そちらの設定を読み書きする。
+    **判定は`rpTarget()`の1関数のまま**——`rpRaw`/`rpLayoutNow`/`rpStage`/
+    `rpHiddenSet`/`rpBlockKeys`が全部ここを通っているので、他は1行も
+    触らずに切り替わる。 */
+ let rpEditEquipment=null;
  function rpEquipmentOf(x){
   return String((x&&(x.settings?.registeredEquipment||x.registeredEquipment
     ||x.snapshot?.registeredEquipment))||'').trim();
  }
  function rpTargetOf(x){return RP_LAYOUT_PREFIX+(rpEquipmentOf(x)||'共通')}
- function rpTarget(){return rpActiveTarget||rpTargetOf(rpCurrentLot())}
+ function rpTarget(){
+  if(rpActiveTarget)return rpActiveTarget;
+  if(rpEditEquipment!=null)return RP_LAYOUT_PREFIX+(rpEditEquipment||'共通');
+  return rpTargetOf(rpCurrentLot());
+ }
+ /* 1枚の紙を**その紙の設備で固定して**組み立てる（§9.174・§9.235 ⑤）。
+    以前は`reportHtml()`が`rpActiveTarget`へ代入しっぱなしで、
+    **rAFのあとに走る測り直し（`rpFitAll`）は常に最後のロットの設備**で
+    解いていた——一括印刷で他設備の紙に別の設備の行高が当たる。
+    差し替えは**同期の間だけ**にし、終わったら必ず戻す（`finally`）。 */
+ function rpWithLot(x,fn){
+  const prev=rpActiveTarget,prevEq=rpUserBlocksFor;
+  rpActiveTarget=rpTargetOf(x);
+  /* 塊の顔ぶれも一緒に合わせる（読んであるときだけ）。 */
+  rpUseEquipmentBlocks(rpEquipmentOf(x)||'');
+  try{return fn()}finally{
+   rpActiveTarget=prev;
+   if(prevEq!=null)rpUseEquipmentBlocks(prevEq);
+  }
+ }
  /* 1行＝1ブロック。`html(x)`が''を返したら**このロットには中身が無い**。
     紙には出さず、組み換え中だけ「中身なし」と分かる形で置く（黙って消えると
     自分で隠したのかデータが無いのか分からない）。 */
@@ -862,17 +923,37 @@
      :(x=>fields.length?reportSection(b.name,fields.map(f=>[f.label,rpValueAt(x,f.path)]),b.cols||0):'')};
  }
  /* その設備の自作ブロックを読む。**読めなくても帳票は出す**（fail-open）。 */
+ /* 設備ごとの写し（§9.239 ③）。1設備ぶんしか持たないと、一括印刷で
+    設備をまたいだ瞬間に**設備Bの紙へ設備Aの塊集合が当たる**（`rpAllBlocks`
+    と`rpBuiltinOff`が最後に読んだ設備で固定される）。 */
+ const rpBlocksByEq=new Map();
  async function rpLoadUserBlocks(equipment){
   const eq=String(equipment||'').trim();
   if(rpUserBlocksFor===eq)return rpUserBlocks;
+  const hit=rpBlocksByEq.get(eq);
+  if(hit){rpApplyUserBlocks(eq,hit);return rpUserBlocks}
+  let got={rows:[],off:new Set()};
   try{
    const r=await api('/api/report-block-master?equipment='+encodeURIComponent(eq));
-   rpMasterRows=r.items||[];
-   rpBuiltinOff=new Set(r.builtinOff||[]);
-   rpUserBlocks=rpMasterRows.filter(b=>!b.builtin).map(rpUserBlockDef);
-  }catch(e){rpMasterRows=[];rpBuiltinOff=new Set();rpUserBlocks=[]}
-  rpUserBlocksFor=eq;
+   got={rows:r.items||[],off:new Set(r.builtinOff||[])};
+  }catch(e){got={rows:[],off:new Set()}}
+  rpBlocksByEq.set(eq,got);
+  rpApplyUserBlocks(eq,got);
   return rpUserBlocks;
+ }
+ /* いま効かせる設備を切り替えるだけ（取得はしない）。 */
+ function rpApplyUserBlocks(eq,got){
+  rpMasterRows=got.rows;
+  rpBuiltinOff=got.off;
+  rpUserBlocks=rpMasterRows.filter(b=>!b.builtin).map(rpUserBlockDef);
+  rpUserBlocksFor=eq;
+ }
+ /* 一括印刷で1枚ずつ設備を合わせる。**取得は済ませてから呼ぶこと**
+    （§9.235 ⑤「awaitは差し替えるより前に」）。 */
+ function rpUseEquipmentBlocks(eq){
+  const key=String(eq||'').trim();
+  const got=rpBlocksByEq.get(key);
+  if(got)rpApplyUserBlocks(key,got);
  }
  /* 「このロットに中身があるか」の判定は**元の場所から動かさない**。
     保存済みレコードは旧名`板厚/板幅`を持つ（§9.138で分けた）ので**両方**を
@@ -1243,7 +1324,15 @@
     絶対に出さない**ので、印刷経路（`arranging`を渡さない）では組み立て自体を
     しない（CSSで隠すやり方だと、隠し忘れがそのまま紙に出る）。 */
  function reportHtml(x,arranging){
-  rpActiveTarget=rpTargetOf(x);      /* この紙は最後までこの設備の設定で描く */
+  /* **組み立てのあいだだけ**その紙の設備で固定する（§9.239 ③）。
+     以前は代入しっぱなしで、`requestAnimationFrame`のあとに走る測り直しが
+     最後のロットの設備で解いていた（§9.174の罠が半分だけ塞がっていた）。
+     組み換え中は`rpEditEquipment`が選んだ設備で描くので固定しない
+     ——他設備の配置を編集するときに、見本の紙だけ別の設定になるのを防ぐ。 */
+  if(rpArranging&&rpEditEquipment!=null)return reportHtmlInner(x,arranging);
+  return rpWithLot(x,()=>reportHtmlInner(x,arranging));
+ }
+ function reportHtmlInner(x,arranging){
   const b=x.basic||{},s=x.settings||{};
   const equipment=s.registeredEquipment||x.registeredEquipment||x.snapshot?.registeredEquipment||'-';
   /* 帳票の頭は**「どこで・いつ・どのロットか」**（§9.161、利用者の指示
@@ -2141,7 +2230,12 @@
   return {order:[...(l.order||[])],widths:rpEncoded()?{...(l.widths||{})}:rpLegacyWidths(),
           hidden:[...(l.hidden||[])],
           names:{...(l.names||{})},formats:{...(l.formats||{})},rules:{...(l.rules||{})},
-          formulas:{...(l.formulas||{})},locks:[...(l.locks||[])]};
+          formulas:{...(l.formulas||{})},locks:[...(l.locks||[])],
+          /* **写し漏らさない**（§9.113）。`saveArrange()`は全置換なので、
+             ここに無いキーは保存のたびに空へ落ちる。帳票では使っていない
+             設定でも、同じ対象を別の画面が触りうる以上そのまま運ぶ。 */
+          sorts:JSON.parse(JSON.stringify(l.sorts||{})),
+          aligns:JSON.parse(JSON.stringify(l.aligns||{}))};
  }
  /* ---------- 古い形の`widths`を新しい形へ（§9.222 ②） ----------
     「40＋数」へ切り替えたので、古い保存値（×40 / ×60 / ×30）が混ざると
@@ -2200,7 +2294,15 @@
  async function toggleArrange(){
   if(rpArranging){closeArrange(false);return}
   if(!rpState.selectedId){showToast&&showToast('先にロットを選んでください','左の一覧から選ぶと、その帳票を見ながら組み換えられます',4000);return}
-  try{await WL.columnLayout.load(rpTarget())}catch(e){}
+  /* 開いた時点では**そのロットの設備**を編集対象にする（§9.239 ③）。 */
+  rpEditEquipment=rpEquipmentOf(rpCurrentLot())||'';
+  /* **設備マスタも読む**——「この端末にその設備のロットが無いから編集
+     できない」を無くすのがこの機能の目的なので、レコードから拾える設備
+     だけでは足りない（実際、検証用データでは1つしか出なかった）。
+     読めなくても組み換えは開ける（fail-open）。 */
+  try{if(typeof loadEquipmentMaster==='function')await loadEquipmentMaster()}catch(e){}
+  try{await Promise.all([WL.columnLayout.load(rpTarget()),
+                         rpLoadUserBlocks(rpEditEquipment)])}catch(e){}
   rpArranging=true;rpSeeded=false;
   document.body.classList.add('rp-arranging');
   updateArrangeBar();rpRepaint();
@@ -2213,6 +2315,10 @@
      重ねに載っているので、捨てれば保存済みがそのまま出る——控えを当て直すと
      組み換え中に別経路で保存されたぶんまで巻き戻る。 */
   if(!saved)WL.columnLayout.discard(rpTarget());
+  /* **選んだ設備は組み換えを抜けたら戻す**（§9.239 ③）。戻さないと、
+     通常表示のプレビューまで別設備の設定で描かれる。 */
+  rpEditEquipment=null;
+  rpUseEquipmentBlocks(rpEquipmentOf(rpCurrentLot())||'');
   rpArranging=false;rpPaperView=false;
   closeBlockEditor();
   document.body.classList.remove('rp-arranging');
@@ -2312,6 +2418,96 @@
   rpStage({widths:wid});
   rpSay('左上から詰め直しました。');
  }
+ /* ---------- どの設備の配置を編集するか（§9.239 ③、利用者の指示） ----------
+    「帳票カスタム機能について、設備ごとレイアウト調整できるように」
+
+    保存の器は§9.174で既に`report:<設備>`。足りなかったのは
+    **選ぶ手立て**と**いま何を触っているかの表示**（§9.176「どの表の設定かを
+    見出しに出す」が帳票では守られていなかった）。
+    **見本の紙は必ずそのロットのデータで描く**ので、選んだ設備のロットが
+    この端末に無いときは**そう書く**（§4／§9.107「0件は無いとは限らない」）。 */
+ function rpEquipmentChoices(){
+  const seen=new Map();
+  (rpState.items||[]).forEach(x=>{
+   const eq=rpEquipmentOf(x)||'';
+   seen.set(eq,(seen.get(eq)||0)+1);
+  });
+  /* 設備マスタにあってレコードが1件も無い設備も選べるようにする
+     ——「その設備のロットがまだ無いから設定できない」を作らない。
+     **`window.` を付けて参照しないこと**（§9.215と同じ罠）——
+     `equipmentMasterState`は`records-store.js`のトップレベルの`let`で、
+     `window`のプロパティにならない。`window.equipmentMasterState`と書くと
+     **常にundefined**になり、設備マスタの設備が1つも候補に出ない
+     （実際にそうなり、`test_rplayout`が「選択肢が1つしかない」で捕まえた）。 */
+  const master=(typeof equipmentMasterState!=='undefined'&&equipmentMasterState.items)||[];
+  master.forEach(e=>{const n=String(e.name||'').trim();if(n&&!seen.has(n))seen.set(n,0)});
+  const out=[...seen.entries()].map(([eq,n])=>({eq,n,label:eq||'共通（設備の分からないロット）'}));
+  out.sort((a,b)=>(a.eq?1:0)-(b.eq?1:0)||a.eq.localeCompare(b.eq,'ja'));
+  return out;
+ }
+ function rpEditEqNow(){
+  return rpEditEquipment!=null?rpEditEquipment:(rpEquipmentOf(rpCurrentLot())||'');
+ }
+ function rpEqPickHtml(){
+  const cur=rpEditEqNow();
+  const choices=rpEquipmentChoices();
+  const hit=choices.find(c=>c.eq===cur);
+  const lotEq=rpEquipmentOf(rpCurrentLot())||'';
+  /* 見本の紙とちがう設備を編集しているときは**必ず言う**（§CLAUDE 6）。 */
+  const mismatch=cur!==lotEq;
+  return `<span class="rp-bar-group rp-bar-eq${mismatch?' is-warn':''}">`
+   +`<i class="rp-bar-label" title="この配置を保存する対象です。設備ごとに別の配置を持てます">設備</i>`
+   +`<select class="rp-eq-pick" data-rp-eq title="どの設備の配置を編集するかを選びます。`
+   +`見本の紙はその設備のロットで描きます（無いときは今のロットで形だけ確かめます）">`
+   +choices.map(c=>`<option value="${esc(c.eq)}"${c.eq===cur?' selected':''}>`
+     +`${esc(c.label)}${c.n?`（${c.n}件）`:'（この端末にロットなし）'}</option>`).join('')
+   +(hit?'':`<option value="${esc(cur)}" selected>${esc(cur||'共通')}</option>`)
+   +`</select>`
+   +(mismatch?`<b class="rp-chip is-bad" title="見本の紙は「${esc(lotEq||'共通')}」のロットです。`
+      +`形は確かめられますが、値はそのロットのものです">見本は${esc(lotEq||'共通')}のロット</b>`:'')
+   +`</span>`;
+ }
+ function rpBindEqPick(root){
+  const sel=root.querySelector('[data-rp-eq]');if(!sel)return;
+  sel.onchange=async()=>{
+   const eq=String(sel.value||'');
+   /* **読み終えてから切り替える**（§9.239 ③）。読む前に`rpStage()`が走ると
+      `order`が空＝既定と見なして書き下ろし、その設備の保存済みの配置を
+      空だと思って上書きする（§9.173の罠）。 */
+   const t=RP_LAYOUT_PREFIX+(eq||'共通');
+   try{await Promise.all([WL.columnLayout.load(t),rpLoadUserBlocks(eq)])}catch(e){}
+   rpEditEquipment=eq;
+   rpUseEquipmentBlocks(eq);
+   /* その設備のロットがあれば見本もそちらへ移す（紙は必ずそのロットの
+      データで描く、を崩さない）。 */
+   const same=(rpState.items||[]).find(x=>(rpEquipmentOf(x)||'')===eq);
+   if(same&&same.id!==rpState.selectedId){selectLot(same.id);updateArrangeBar();return}
+   rpRepaint();updateArrangeBar();
+  };
+ }
+ /* この配置を他の設備へも当てる（§9.239 ③）。設備ごとに1件ずつ組み直す
+    のは現実的でないので、これが「設備ごとにできる」を実用にする鍵。
+    **材料は保存済みから取る**（`saved()`。`get()`は組み換え中の下書きを
+    含むので、触っただけの内容が他設備へ焼き付く。§9.212 ③）。
+    **上書きになるので宛先を名指しで1回だけ確認する**（§5）。 */
+ async function rpCopyLayoutTo(){
+  const from=rpTarget();
+  const src=WL.columnLayout.saved(from);
+  if(!(src.order||[]).length){
+   showToast&&showToast('先に保存してください','この設備の配置がまだ保存されていません',4500);return;
+  }
+  const others=rpEquipmentChoices().filter(c=>c.eq!==rpEditEqNow());
+  if(!others.length){showToast&&showToast('他の設備がありません','',3500);return}
+  const names=others.map(c=>c.label).join('、');
+  if(!(await confirmModal(`いまの配置を次の設備へも当てますか？\n\n${names}\n\n`
+    +'それぞれの今の配置は置き換わります（元へは戻せません）。')))return;
+  let ok=0,ng=0;
+  for(const c of others){
+   try{await WL.columnLayout.save(RP_LAYOUT_PREFIX+(c.eq||'共通'),src);ok++}
+   catch(e){ng++;console.warn('帳票の配置のコピーに失敗',c.eq,e)}
+  }
+  showToast&&showToast(`${ok}件の設備へ当てました`,ng?`${ng}件は失敗しました`:'次に開いたときも同じ形で出ます',5000);
+ }
  function updateArrangeBar(){
   const bar=$id('rpArrangeBar'),btn=$id('reportArrange');
   if(btn){
@@ -2346,7 +2542,8 @@
    const seg=(label,hint,items)=>`<span class="rp-bar-group"><i class="rp-bar-label" title="${esc(hint)}">${esc(label)}</i>`
      +`<span class="rp-seg">${items}</span></span>`;
    info.innerHTML=
-     seg('割り','紙を何マス×何段で割るか。細かいほど自由に置けます',
+     rpEqPickHtml()
+    +seg('割り','紙を何マス×何段で割るか。細かいほど自由に置けます',
        RP_GRIDS.map(v=>`<button type="button" data-rp-grid="${v}" class="${v===g?'is-on':''}"`
         +` title="紙を横${v}マスで割ります">${v}</button>`).join('')
        +`<b class="rp-seg-x">×</b>`
@@ -2358,6 +2555,8 @@
         +` aria-pressed="${rpPaperView?'true':'false'}"`
         +` title="${rpPaperView?'いまは「紙のとおり」です。押すと操作の帯へ戻ります':'操作の帯を隠して、刷ったとおりの姿で確かめます'}">`
         +`紙のとおり${rpPaperView?'：中':''}</button>`
+      +`<button type="button" class="rp-bar-btn" data-rp-copy`
+        +` title="いまの設備の配置を、他の設備へもそのまま当てます（それぞれの今の配置は置き換わります）">他の設備へ当てる</button>`
       +`<button type="button" class="rp-bar-btn rp-bar-help" data-rp-help aria-expanded="${rpHelpOpen?'true':'false'}" title="操作の仕方">?</button>`
     +`</span>`
     +`<span class="rp-bar-state">`
@@ -2380,6 +2579,9 @@
     rpStage({widths:{...rpLayoutNow().widths,[RP_PAGE_ROWS_KEY]:rpPageRowsStore(Number(b.dataset.rpProw))}});
     updateArrangeBar();
    });
+   rpBindEqPick(info);
+   const cp=info.querySelector('[data-rp-copy]');
+   if(cp)cp.onclick=()=>rpCopyLayoutTo();
    const rel=info.querySelector('[data-rp-relayout]');
    if(rel)rel.onclick=()=>rpRelayout();
    const pv=info.querySelector('[data-rp-paper]');
@@ -2649,6 +2851,13 @@
     描くと既定の形が一瞬出てから入れ替わる**（設備を切り替えるたびにちらつく）。 */
  /* 組み換え中でなくても行の割り付けは要る（紙がそれで組まれる）。
     描いたあとに1回だけ測る。 */
+ /* 1枚ぶんの割り付け。**設備を差し替えて呼べるように切り出してある**
+    （§9.239 ③）——`rpFitAll()`は今までどおり画面ぶんをまとめて回す。 */
+ function rpFitPage(h){
+  try{rpFitRows(h)}catch(e){console.warn('帳票の行の割り付けに失敗',e)}
+  try{rpFitBlockBodies(h)}catch(e){console.warn('帳票の中身の合わせ込みに失敗',e)}
+  try{rpFreeCells(h)}catch(e){console.warn('帳票の空きマスの計算に失敗',e)}
+ }
  function rpFitAll(){
   document.querySelectorAll('#reportContent,#reportBulkPrintArea .rp-page').forEach(h=>{
    try{rpFitRows(h)}catch(e){console.warn('帳票の行の割り付けに失敗',e)}
@@ -2703,8 +2912,11 @@
   WL.enterView('report');
   /* **自作の塊は開くたびに読み直す**（§9.217）。マスタ管理で足した直後に
      帳票を開くのがふつうの順番なので、設備ごとの写しを持ったままだと
-     「登録したのに候補に出ない」になる（実際にそうなった）。 */
-  rpUserBlocksFor=null;
+     「登録したのに候補に出ない」になる（実際にそうなった）。
+     **設備ごとの写し（§9.239 ③）も一緒に捨てること**——片方だけ消しても
+     `rpLoadUserBlocks()`がMapから古い顔ぶれを拾ってくる（実際にそうなり、
+     `test_rplayout`の「自作の塊が候補に並ぶ」が落ちた）。 */
+  rpUserBlocksFor=null;rpBlocksByEq.clear();
   ensurePanel().hidden=false;
   setZoom(rpZoom);
   $id('reportSelectedTitle').textContent='ロットを選択してください';

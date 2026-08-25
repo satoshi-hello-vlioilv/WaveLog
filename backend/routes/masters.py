@@ -583,13 +583,14 @@ def column_layout_master_save():
   formats=x.get('formats');rules=x.get('rules');formulas=x.get('formulas')
   locks=x.get('locks')          # 幅を固定する列(§9.119)
   sorts=x.get('sorts')          # 列ごとの並べ替えの決まり(§9.187)
+  aligns=x.get('aligns')        # 値と見出しの揃え(§9.239 ④)
   # **送られてきた項目だけを書く**(§9.212 ②、利用者の指示「修正した内容が
   # 戻されたりしないために」)。以前は常に全置換で、渡し忘れた設定が黙って
   # 消えていた(計算式・並べ替え・幅固定で実際に3回起きた)。判断の材料は
   # 「JSONにそのキーがあるか」の1点——**空の値と省略は別のこと**で、
   # `hidden:[]`は「隠す列は無い」、`hidden`が無いのは「触っていない」。
   fields={k for k in ('order','widths','hidden','names','formats','rules',
-                      'formulas','locks','sorts') if k in x}
+                      'formulas','locks','sorts','aligns') if k in x}
   # `clear:true`は**この対象の設定を全部消す**。差分更新にしたぶん、
   # 「まっさらに戻す」は9個のキーを空で並べる必要が出てしまうので、
   # **意図を1語で言える口**を用意する(書き漏らすと消し残る＝前の設定が
@@ -613,6 +614,7 @@ def column_layout_master_save():
                        formulas=formulas if isinstance(formulas,dict) else {},
                        locks=locks if isinstance(locks,list) else [],
                        sorts=sorts if isinstance(sorts,dict) else {},
+                       aligns=aligns if isinstance(aligns,dict) else {},
                        fields=fields)
   return jsonify(ok=True,target=target,columns=n,updated_by=uid,message='表示の並びを保存しました。')
  except Exception as e:return jsonify(error=f'列レイアウト保存失敗: {e}'),500
@@ -1186,8 +1188,12 @@ def operation_item_layout():
  rows=x.get('items')
  if not isinstance(rows,list):return jsonify(error='items（並び）がありません。'),400
  try:
-  n=_op_read(lambda c:op.item_layout_save(c,request_user_id(x),rows))
-  return jsonify(ok=True,saved=n,message='操業データの並びを保存しました。')
+  # 設備を選んで並べているときは**その設備の上書きへ**書く（§9.239 ②）。
+  # 空＝「共通（すべての設備）」で、今までどおり行そのものを書き換える。
+  eq=str(x.get('equipment') or '').strip()
+  n=_op_read(lambda c:op.item_layout_save(c,request_user_id(x),rows,equipment=eq))
+  return jsonify(ok=True,saved=n,equipment=eq,
+                 message=f'操業データの並びを保存しました（{eq or "共通（すべての設備）"}）。')
  except Exception as e:return jsonify(error=f'操業データの並びの保存に失敗しました: {e}'),500
 
 @bp.post('/api/operation-item-master/group')
@@ -1204,7 +1210,9 @@ def operation_item_group():
                                           # **送られてきたときだけ書く**（§9.226 ③）
                                           x.get('groupSpan'),
                                           # §9.227 ③ ダミー（空き）の群
-                                          x.get('dummy')))
+                                          x.get('dummy'),
+                                          # §9.239 ② 設備を選んでいるときは上書きへ
+                                          equipment=str(x.get('equipment') or '').strip()))
   return jsonify(ok=True,saved=n,message='群の設定を保存しました。')
  except Exception as e:return jsonify(error=f'群の設定の保存に失敗しました: {e}'),500
 
@@ -1431,6 +1439,76 @@ def report_block_delete():
  # 消せない、という断りは400で返す（500だと「失敗しました」に埋もれる）。
  except ValueError as e:return jsonify(error=str(e)),400
  except Exception as e:return jsonify(error=f'帳票ブロックマスタの削除に失敗しました: {e}'),500
+
+# ========================================================================
+# ロールマスタ(§9.239 ⑥、利用者の指示)
+#  - 「欠陥のピッチから当設備のロールを判定する」ための諸元。
+#  - 設備は**設備停止マスタと同じ書式**('A' / 'A,B,C' / '*')で、判定は
+#    schedule_repo.stop_equipment_* の1箇所を借りる（新しい照合を書かない）。
+#  - 語彙（入出位置・接触面・駆動方式）は**サーバーだけが持つ**（§9.163）。
+#    画面へ写すと、増やしたときに2箇所直すことになる。
+# ========================================================================
+@bp.get('/api/roll-master')
+def roll_master_list():
+ try:
+  from ..repositories import roll_repo as rr
+  eq=str(request.args.get('equipment') or '').strip()
+  def fn(c):
+   items=rr.rolls_for_equipment(c,eq) if eq else rr.roll_rows(c,True)
+   return {'items':items,
+           'entryPositions':list(rr.ENTRY_POSITIONS),
+           'contactFaces':list(rr.CONTACT_FACES),
+           'driveKinds':list(rr.DRIVE_KINDS),
+           'equipments':rr.equipments(c)}
+  return jsonify(ok=True,equipment=eq,**_op_read(fn))
+ except Exception as e:return jsonify(error=f'ロールマスタの読込に失敗しました: {e}'),500
+
+def _roll_save(x):
+ from ..repositories import roll_repo as rr
+ uid=request_user_id(x)
+ # 「有効」は画面からは文字列（有効/無効）で来る。**文字列をそのまま
+ # `bool()`へ渡さないこと**——`'無効'`は真なので、外したつもりが効かない。
+ def _on(v):
+  if v is None:return None
+  if isinstance(v,str):return v.strip() not in ('無効','出さない','false','0','')
+  return bool(v)
+ alive=_on(x.get('enabledText') if x.get('enabledText') is not None else x.get('enabled'))
+ try:
+  def fn(c):
+   return rr.roll_upsert(c,uid,
+     equipment=x.get('equipment'),name=x.get('name'),
+     entry_pos=x.get('entryPos'),contact_face=x.get('contactFace'),
+     dia_max=x.get('diaMax'),dia_min=x.get('diaMin'),face_len=x.get('faceLen'),
+     material=x.get('material'),hardness=x.get('hardness'),count=x.get('count'),
+     use_cond=x.get('useCond'),drive_kind=x.get('driveKind'),
+     ref_no=x.get('refNo'),note=x.get('note'),order=x.get('order'),
+     enabled=alive,
+     roll_id=(int(x['id']) if x.get('id') not in (None,'') else None))
+  return jsonify(ok=True,id=_op_read(fn),message='ロールを保存しました。')
+ except ValueError as e:return jsonify(error=str(e)),400
+ except Exception as e:return jsonify(error=f'ロールマスタの保存に失敗しました: {e}'),500
+
+@bp.post('/api/roll-master')
+def roll_master_register():
+ return _roll_save(request.get_json(force=True) or {})
+
+@bp.post('/api/roll-master/update')
+def roll_master_update():
+ x=request.get_json(force=True) or {}
+ if x.get('id') in (None,''):return jsonify(error='更新対象IDがありません。'),400
+ return _roll_save(x)
+
+@bp.post('/api/roll-master/delete')
+def roll_master_delete():
+ from ..repositories import roll_repo as rr
+ x=request.get_json(force=True) or {}
+ if x.get('id') in (None,''):return jsonify(error='削除対象IDがありません。'),400
+ try:
+  n=_op_read(lambda c:rr.roll_delete(c,x['id'],request_user_id(x)))
+  return jsonify(ok=True,deleted=n,message='ロールを削除しました。')
+ except ValueError as e:return jsonify(error=str(e)),400
+ except Exception as e:return jsonify(error=f'ロールマスタの削除に失敗しました: {e}'),500
+
 
 @bp.get('/api/operation-form')
 def operation_form():
