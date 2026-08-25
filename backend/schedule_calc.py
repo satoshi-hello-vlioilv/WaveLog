@@ -105,7 +105,7 @@ def resolve_shift_label(specific_shift_rows,global_shift_rows,dt):
  return resolve_shift_info(specific_shift_rows,global_shift_rows,dt)[0]
 
 # ========================================================================
-# 空の日付・直の枠(§9.237 ②)
+# 空の日付・直の枠(§9.238 ②)
 # ========================================================================
 def frame_target(detail,specific_shift_rows,global_shift_rows):
  """枠(kind='枠')の行き先を実時刻へ解く。戻り値: (datetime or None, 理由)。
@@ -374,7 +374,7 @@ def resolve_estimate(c,equipment,plan_row_dict,memo=None):
  # コメント(§9.189)は時間を持たない申し送り。見積は常に0分。
  if plan_row_dict.get('kind')=='コメント':
   return {'minutes':0.0,'source':'comment',**_EMPTY_ESTIMATE_EXTRAS}
- # 枠(§9.237 ②)も**自分では時間を使わない**。効くのは「後続の起点を
+ # 枠(§9.238 ②)も**自分では時間を使わない**。効くのは「後続の起点を
  # その日・その直まで進める」ことだけなので、見積は常に0分。
  if plan_row_dict.get('kind')=='枠':
   return {'minutes':0.0,'source':'frame',**_EMPTY_ESTIMATE_EXTRAS}
@@ -571,7 +571,7 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
   est=resolve_estimate(mc,equipment,e,memo=est_memo)
   minutes=est['minutes']
   if e['kind']=='枠':
-   # 空の日付・直の枠(§9.237 ②)。**カーソルを「進める」だけ**——
+   # 空の日付・直の枠(§9.238 ②)。**カーソルを「進める」だけ**——
    # 自分は時間を使わない(見積0分)。
    #  ・起点が枠の時刻より前なら、そこまで飛ばす（空きができる）
    #  ・起点が既に過ぎていたら**何もしない**——手前の予定が押してきて

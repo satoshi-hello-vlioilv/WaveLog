@@ -44,6 +44,10 @@
     予定/作業中/完了/取消という**状態**——別の軸なので、紙だけの列として
     「#」の隣に残す(§9.235)。 */
  const STATE_LABEL={'予定':'予定','着手':'作業中','完了':'完了','取消':'取消'};
+ /* 状態の色。**画面の区分(`.sc-cat-*`)と同じ語彙**へ寄せる（§9.237）
+    ——紙だけ別の色にすると、画面で赤かったものが紙で灰色になる。
+    状態は紙だけの列なので、対応表もここに置いてよい（画面に同じ列が無い）。 */
+ const STATE_TONE={'予定':'planned','着手':'doing','完了':'done','取消':'cancel'};
 
  const two=n=>String(n).padStart(2,'0');
  function hm(iso){
@@ -159,8 +163,17 @@
       にしか正しく引けないので、`pageHtml`側で遅延評価すると値が食い違う
       （成り代わりは同期のあいだしか続かない）。 */
    const cells=(typeof view.printRowCells==='function')?view.printRowCells(e):[];
-   const kids=(opt.includeChildren&&typeof view.childrenOf==='function')?(view.childrenOf(e.id)||[]):[];
-   index.get(key).rows.push({e,start,end:useActual?e.actual.endAt:e.plannedEnd,group,cells,kids});
+   const allKids=(typeof view.childrenOf==='function')?(view.childrenOf(e.id)||[]):[];
+   const kids=opt.includeChildren?allKids:[];
+   /* 行の見せ方（行表示マスタ。§9.198）も紙へ運ぶ（§9.237）——画面で色を
+      付けた区分・停止分類が、紙では真っ白では「画面の見た目そのまま」に
+      ならない。**判定は画面の1箇所**（`rowStyleOf`）を呼ぶだけ。 */
+   let rowStyle=null;
+   if(typeof view.rowStyleOf==='function'){try{rowStyle=view.rowStyleOf(e)}catch(_){rowStyle=null}}
+   /* 子ロットの件数は**内訳を載せるかどうかとは別**（§9.237）。画面は
+      ロット番号のお尻に「子N」の印を出しているので、紙でも出す。 */
+   index.get(key).rows.push({e,start,end:useActual?e.actual.endAt:e.plannedEnd,group,cells,kids,
+                             kidCount:allKids.length,rowStyle});
   });
   /* 紙の列は**1つの紙の中で変えない**ので、まとめて1回だけ決める。 */
   const cols=printColumns(opt);
@@ -304,13 +317,71 @@
     （§9.115「行の高さは中身で決め、余った下は空けたままにする」と同じ
     考え方を横方向にも当てる）。 */
  const MM_PER_PX=25.4/96;
+ /* 縮めるときは**文字も一緒に縮める**（§9.237、利用者の指摘「列の折り返しを
+    無くした形で列を整えても印刷側できちんと反映されない」）。
+    幅だけを比率で詰めると、同じ文字が狭い箱に入らなくなって折り返し
+    （実機で見出し「用途コード」が2行になっていた）か切り落としになる。
+    幅と文字を同じ比率で縮めれば、**画面で決めた「この列に何文字入るか」が
+    紙でもそのまま**になる。下限を切ったら（読めない大きさになるなら）
+    そこで止めて、収まらないことをプレビューに文字で出す（§4）。 */
+ const MIN_FIT=.62;
+ const MIN_COL_MM=4;      // これ以下の列は文字が1つも入らない
+ const FRAME_MM=.5;       // 表を囲む器(.sp-table-wrap)の枠のぶん
+ /* ---------- 下限のある比例配分（§9.237） ----------
+    「狭い列は最低◯mm」と「合計は用紙に収める」を**同時に**満たす。
+    以前は`Math.max(4, natural*scale)`と1回で済ませていたが、床に当たった
+    列のぶんだけ合計が膨らみ、**16列A4縦で3.8mmはみ出していた**（右余白が
+    8mm→4.2mmへ痩せる。表の中しか見ていない`wide`判定では捕まらない）。
+    床に着いた列を固定して、残りを残りの予算で配り直す——を落ち着くまで繰り返す。
+    列が多すぎて「全部が下限」でも入らないときは、**下限のほうを下げる**
+    （紙からはみ出させない、が最後まで優先）。 */
+ function shareMm(natural,usableMm){
+  const n=natural.length;
+  if(!n)return [];
+  const floor=Math.min(MIN_COL_MM,usableMm/n);
+  const out=natural.slice();
+  const fixed=new Array(n).fill(false);
+  for(let pass=0;pass<=n;pass++){
+   let used=0,freeNat=0;const free=[];
+   for(let i=0;i<n;i++){
+    if(fixed[i]){used+=out[i];continue}
+    free.push(i);freeNat+=natural[i];
+   }
+   if(!free.length)break;
+   const k=freeNat>0?Math.min(1,(usableMm-used)/freeNat):1;
+   let hit=false;
+   free.forEach(i=>{
+    const v=natural[i]*k;
+    if(v<floor){out[i]=floor;fixed[i]=true;hit=true}else out[i]=v;
+   });
+   if(!hit)break;
+  }
+  /* 0.1mm へ丸めた誤差で合計が予算を超えることがある。**いちばん広い列から
+     引く**（狭い列から引くと下限を割る）。 */
+  const mm=out.map(v=>Math.round(v*10)/10);
+  let over=Math.round((mm.reduce((s,v)=>s+v,0)-usableMm)*10)/10;
+  while(over>0.001){
+   let at=0;for(let i=1;i<n;i++)if(mm[i]>mm[at])at=i;
+   const cut=Math.min(over,Math.max(0,mm[at]-floor))||over;
+   mm[at]=Math.round((mm[at]-cut)*10)/10;
+   over=Math.round((over-cut)*10)/10;
+   if(cut<=0)break;
+  }
+  return mm;
+ }
  function withMm(cols,usableMm){
-  const natural=cols.map(c=>Math.max(4,(c.w||60)*MM_PER_PX));
+  const budget=Math.max(1,usableMm-FRAME_MM);
+  const natural=cols.map(c=>Math.max(MIN_COL_MM,(c.w||60)*MM_PER_PX));
   const total=natural.reduce((s,w)=>s+w,0)||1;
-  if(total<=usableMm)
-   return cols.map((c,i)=>({...c,mm:Math.round(natural[i]*10)/10}));
-  const scale=usableMm/total;
-  return cols.map((c,i)=>({...c,mm:Math.max(4,Math.round(natural[i]*scale*10)/10)}));
+  if(total<=budget)
+   return {cols:cols.map((c,i)=>({...c,mm:Math.round(natural[i]*10)/10})),fit:1,over:0};
+  const scale=budget/total;
+  /* 幅は今までどおり**必ず**用紙に収める（はみ出す組み合わせを原理的に
+     作らない、という既存の保証は変えない）。文字だけ下限で止める。 */
+  const fit=Math.max(MIN_FIT,scale);
+  const mm=shareMm(natural,budget);
+  return {cols:cols.map((c,i)=>({...c,mm:mm[i]})),
+          fit:Math.round(fit*1000)/1000,over:Math.round((total-budget)*10)/10};
  }
 
  /* 記入欄。**空のまま罫線だけ**にする(薄い下線を入れると書きにくい)。 */
@@ -362,11 +433,50 @@
  }
  function writeCellClass(k){return k==='write:check'?'sp-c-check':'sp-c-write'}
 
+ /* ---------- 紙のバッジ（§9.237、利用者の指示「画面印刷の時に映る
+    スケジュール一覧表の見た目を正にしてその見た目に近づけてほしい」） ----------
+    画面では可否・区分・印が**色の付いた小さな札**で、そこが一覧の読みやすさの
+    肝になっている。紙で全部を素の文字にすると、同じ表でも「灰色の升目」に
+    見える（実機で「カラーなくグレーの感じ」と指摘された）。
+    **状態そのものは画面が答える**（`printRowCells`の`tone`／`chips`。§9.237）
+    ので、ここがやるのは**紙の意匠へ翻訳するだけ**。
+    **色だけで伝えない**（§3）——札の中の文字（可／不可／予定／計画外…）は
+    画面と同じものを必ず出す。 */
+ function badgeHtml(tone,text,title,extra){
+  const t=String(tone||'');
+  const cls=t?` sp-b-${esc(t)}`:'';
+  const tip=title?` title="${esc(title)}"`:'';
+  return `<span class="sp-badge${cls}"${tip}>${extra||''}${esc(text)}</span>`;
+ }
+ /* 親ロットの印（子N／親）。**画面と同じ言い方**にする（§9.199）——
+    画面が「子2」と出しているのに紙が「親」では、同じ行の話だと分からない。
+    紙では押せないので、開閉のつまみではなく**ただの印**として出す。 */
+ function kidBadgeHtml(count){
+  if(!count)return '';
+  let mode='count';
+  try{if(typeof WL.scheduleView.childBadgeMode==='function')mode=WL.scheduleView.childBadgeMode()}catch(_){}
+  const text=mode==='parent'?'親':`子${count}`;
+  return `<span class="sp-kid" title="分割後の子ロットが${count}件あります">${esc(text)}</span>`;
+ }
+ /* 子ロットの印を付ける列。**画面と同じ列**（§9.235 ④の`childBadgeColKey`）
+    ——画面はロット番号のお尻に付けているので、紙だけ別の列に付けると
+    突き合わせられない。その列を刷っていなければロット番号へ落とす。 */
+ function kidBadgeKey(cols){
+  let k='';
+  try{if(typeof WL.scheduleView.childBadgeColKey==='function')k=String(WL.scheduleView.childBadgeColKey()||'')}catch(_){k=''}
+  if(k&&cols.some(c=>c.key===k))return k;
+  return cols.some(c=>c.key==='lotNo')?'lotNo':'';
+ }
  function cellsOf(item,no,cols){
   const map=new Map((item.cells||[]).map(c=>[c.key,c]));
+  const kidKey=item.kidCount?kidBadgeKey(cols):'';
   return cols.map(c=>{
    if(c.key==='no')return `<td class="sp-al-c">${esc(String(no))}</td>`;
-   if(c.key==='state')return `<td class="sp-al-c">${esc(STATE_LABEL[item.e.state]||item.e.state||'')}</td>`;
+   if(c.key==='state'){
+    const st=item.e.state||'';
+    return `<td class="sp-al-c">${badgeHtml('cat-'+(STATE_TONE[st]||'planned'),
+      STATE_LABEL[st]||st||'')}</td>`;
+   }
    if(c.write)return `<td class="${writeCellClass(c.key)}"></td>`;
    const v=map.get(c.key);
    const text=v?v.text:'';
@@ -374,6 +484,23 @@
               v&&v.color?'cell-'+v.color:''].filter(Boolean).join(' ');
    const raw=v&&v.raw!=null?String(v.raw):'';
    const title=raw&&raw!==text?` title="${esc(raw)}"`:'';
+   /* 印（計画外・固定・遅れ…）は**1つずつ札にする**（画面と同じ）。 */
+   if(v&&v.chips&&v.chips.length)
+    return `<td class="sp-c-chips">${v.chips.map(f=>
+      `<span class="sp-chip sp-chip-${esc(f.cls||'')}" title="${esc(f.title||'')}">${esc(f.text||'')}</span>`
+     ).join('')}</td>`;
+   /* 可否・区分は札。区分は**行表示マスタのアイコン**も画面と同じ位置へ
+      添える（§9.198。色だけで伝えないので文字は必ず残す）。 */
+   const tone=v&&v.tone?String(v.tone):'';
+   if(text&&(tone.indexOf('wk-')===0||tone.indexOf('cat-')===0)){
+    const icon=(tone.indexOf('cat-')===0&&item.rowStyle&&item.rowStyle.html)?item.rowStyle.html:'';
+    return `<td class="${esc(cls)}"${title}>${badgeHtml(tone,text,'',icon)}</td>`;
+   }
+   /* 暫定の見積（実績がまだ無い）は画面と同じく**薄い斜体**にする。 */
+   if(tone==='est-provisional')
+    return `<td class="${esc(cls)}"${title}><span class="sp-est-prov">${esc(text)}</span></td>`;
+   if(c.key===kidKey)
+    return `<td class="${esc(cls)}"${title}><span class="sp-cell-in">${esc(text)}</span>${kidBadgeHtml(item.kidCount)}</td>`;
    return `<td class="${esc(cls)}"${title}>${esc(text)}</td>`;
   }).join('');
  }
@@ -411,9 +538,17 @@
  }
 
  function pageHtml(page,opt,pageNo,pageCount){
-  const cols=withMm(page.cols||printColumns(opt),paperUsableMm(opt.paper).w);
+  const fitted=withMm(page.cols||printColumns(opt),paperUsableMm(opt.paper).w);
+  const cols=fitted.cols;
   /* 幅は**colgroupで与える**（CSSのクラスに書くと利用者が変えられない）。 */
   const group=`<colgroup>${cols.map(c=>`<col style="width:${c.mm}mm">`).join('')}</colgroup>`;
+  /* ---------- 表の幅は「列幅の合計」（§9.237、一覧の§9.119と同じ理由） ----------
+     `width:100%`のままだと、`table-layout:fixed`は**余った幅を各列へ配り直す**
+     ので、colgroupへ設定どおりのmmを入れても**刷り上がりでは引き伸ばされる**
+     （利用者の指摘「列幅も設定したものを活かして…印刷側できちんと反映されない」
+     の実体がこれ。宣言値だけを見る網は素通りしていた）。合計を入れて、
+     余りは表の右の余白にする（§9.115「余った下は空けたままにする」の横版）。 */
+  const tableMm=Math.round(cols.reduce((s,c)=>s+(c.mm||0),0)*10)/10;
   const head=cols.map(c=>`<th class="${esc([fixedAlignClass(c.key),
     c.key==='lotNo'?'sp-c-lot':''].filter(Boolean).join(' '))}">${esc(c.label)}</th>`);
   /* **通し番号はその日の頭から数える。** 紙が2枚に分かれても#1へ戻さない
@@ -424,6 +559,10 @@
      `data-row`が付いているのが実際の予定の行で、**枚数を測る側は
      この印で数える**(splitToSheets)。 */
   let lastGroup=null;
+  /* まとまりの見出しに添える「現場歴／太陽暦」（§9.237）。**紙の中で
+     変わらない**ので1回だけ引く。 */
+  let basisLabel='';
+  try{if(typeof WL.scheduleView?.groupBasisLabel==='function')basisLabel=WL.scheduleView.groupBasisLabel()||''}catch(_){basisLabel=''}
   const body=page.rows.map((item,i)=>{
    const g=item.group;
    let head2='';
@@ -433,7 +572,12 @@
        まとめも日付なら、見出しは紙の頭と同じ文字になる。 */
     if(String(g.label)!==String(page.day||'')){
      const n=page.rows.filter(x=>x.group&&x.group.key===g.key).length;
-     head2=`<tr class="sp-row-group"><td colspan="${head.length}">${esc(g.label)}`
+     /* 帯の中身は**画面の`groupHeadHtml()`と同じ3つ**（§9.237）——
+        まとまりの名前・どの日付で数えているか（現場歴／太陽暦）・件数。
+        以前は名前と件数だけで、しかも濃い灰色の帯だった。 */
+     head2=`<tr class="sp-row-group"${g.tone?` data-tone="${esc(g.tone)}"`:''}>`
+       +`<td colspan="${head.length}"><span class="sp-group-label">${esc(g.label)}</span>`
+       +(basisLabel?`<span class="sp-group-basis">${esc(basisLabel)}</span>`:'')
        +`<span class="sp-group-count">${n}件</span></td></tr>`;
     }
    }
@@ -443,7 +587,12 @@
     return head2+`<tr class="sp-row-comment" data-row="${i}">`
    +`<td colspan="${head.length}"><b>申し送り</b> ${esc((item.e.title||'').trim())}</td></tr>`;
    }
-   const mainRow=head2+`<tr class="${item.e.kind!=='作業'?'sp-row-stop':''}" data-row="${i}">`
+   /* 行の地の色は**画面と同じクラス**（`sc-rs-<色>`）を貼る（§9.237）——
+      色の定義（`--rs-fg`/`--rs-bg`/`--rs-line`）は行表示マスタの1箇所が
+      持っているので、紙のためにもう1つ色表を作らない。 */
+   const rsKey=item.rowStyle&&item.rowStyle.colorKey?String(item.rowStyle.colorKey):'';
+   const rowCls=[item.e.kind!=='作業'?'sp-row-stop':'',rsKey?'sc-rs-'+rsKey:''].filter(Boolean).join(' ');
+   const mainRow=head2+`<tr class="${esc(rowCls)}" data-row="${i}">`
      +`${cellsOf(item,from+i,cols)}</tr>`;
    /* 子ロットの内訳(§9.235③)。**「載せる」を選んだときだけ**——分割の
       無いロットが大半の現場では、内訳が常に付くと紙が長くなりすぎる。 */
@@ -460,8 +609,11 @@
    : page.total;
   const parts=page.parts||1;
   const cont=parts>1?`（${page.part||1}枚目 / 全${parts}枚）`:'';
+  /* 収まらないときは**文字も一緒に縮める**（§9.237）。`--sp-fit`は
+     `.sp-table`の中の文字サイズにだけ掛かる（用紙・余白はmmのまま）。 */
+  const fitVar=fitted.fit<1?` style="--sp-fit:${fitted.fit}"`:'';
   return `<section class="sp-page" data-paper="${esc(opt.paper||'a4-portrait')}"${
-    opt.borders===false?' data-borders="off"':''}>
+    opt.borders===false?' data-borders="off"':''}${fitVar}>
    <header class="sp-head">
     <div class="sp-head-main">
      <span class="sp-title">作業予定表</span>
@@ -472,7 +624,9 @@
      <span class="sp-count">${count}件 / 見積計 ${esc(minutesText(total))}</span>
     </div>
    </header>
-   <table class="sp-table">${group}<thead><tr>${head.join('')}</tr></thead><tbody>${body}</tbody></table>
+   <div class="sp-table-wrap">
+    <table class="sp-table" style="width:${tableMm}mm">${group}<thead><tr>${head.join('')}</tr></thead><tbody>${body}</tbody></table>
+   </div>
    ${opt.commentBox===false?'':`<section class="sp-note">
      <span class="sp-note-label">申し送り・気付き</span>
      <span class="sp-note-area"></span>
@@ -524,7 +678,7 @@
     どれも既定は今までの見え方を保つ側（子ロットの内訳・A3・見える範囲だけ・
     枠線なしはどれも新機能なので既定オフ側＝これまでどおり全部の列に
     枠線を付ける／A4縦）。 */
- /* zoomMode/zoomPct=プレビューの表示倍率(§9.237 ③)。**紙には効かない**
+ /* zoomMode/zoomPct=プレビューの表示倍率(§9.238 ③)。**紙には効かない**
     ——見え方だけの設定だが、毎回選び直させないので同じ場所へ覚える。
     既定は今までの見え方（1枚がまるごと入る「全体」）。 */
  const DEFAULTS={includeDone:false,actualColumns:true,pageByDate:true,allEquipment:false,
@@ -541,7 +695,7 @@
    if(!PAPER_SIZES.some(p=>p.key===v.paper))v.paper='a4-portrait';
    if(!COLUMN_SCOPES.some(s=>s.key===v.columnScope))v.columnScope='all';
    v.borders=v.borders!==false;
-   /* 倍率(§9.237 ③)。知らない値は既定へ倒す（壊れた保存値で
+   /* 倍率(§9.238 ③)。知らない値は既定へ倒す（壊れた保存値で
       プレビューが開けなくならないように）。 */
    v.zoomMode=zoomModeOf(v);
    v.zoomPct=Math.min(ZOOM_MAX*100,Math.max(ZOOM_MIN*100,Number(v.zoomPct)||100));
@@ -616,11 +770,11 @@
   return pages;
  }
 
- /* ---------- プレビューの画面(§9.186・§9.237 ③④) ----------
+ /* ---------- プレビューの画面(§9.186・§9.238 ③④) ----------
     左に決めること、右に刷り上がり。並びは実際にする順（何を載せる→どう
     見せる→用紙→枚数の確認→印刷）。
 
-    **§9.237 ④で組み直した**（利用者の指示「印刷プレビューのメニューが
+    **§9.238 ④で組み直した**（利用者の指示「印刷プレビューのメニューが
     使えないメニューも混在しているので、メニューのわかりやすく使いやすい形で
     再構成して必要な機能は追加実装、使えない不要な機能は整理してください」）。
     直したのは3点:
@@ -633,7 +787,7 @@
         「日付ごとにページを分ける」、全部の列が画面に入っているときの
         「見える範囲の列だけ」——どれも押せるのに何も起きなかった。
         判定は`previewFacts()`の**1箇所**が答え、理由をその場に書く。
-     ③ **表示倍率を足した**（§9.237 ③、利用者の指示「プレビューを幅に
+     ③ **表示倍率を足した**（§9.238 ③、利用者の指示「プレビューを幅に
         合わせて、縦に合わせて、100%、など表示のスケール調整も含めて
         調整できるように」）。倍率は**刷り上がりではなく見え方**の話なので、
         左の設定ではなく**紙の側の帯**へ置く（同じ場所に置くと「100%で
@@ -641,7 +795,7 @@
  const PREVIEW_ID='schedulePrintPreview';
  let pv={equipment:'',pref:null,sheets:[],busy:false,again:false,sheet:0};
 
- /* ---------- 表示倍率(§9.237 ③) ----------
+ /* ---------- 表示倍率(§9.238 ③) ----------
     紙は実寸(mm)のまま組み、`transform`で見え方だけ変える(§9.186)。
     **刷り上がりには一切効かない**——ここで100%にしても紙は同じ。 */
  const ZOOM_MODES=[
@@ -734,7 +888,7 @@
       </section>
      </aside>
      <div class="sp-pv-view">
-      <!-- 表示倍率と紙送り(§9.237 ③)。**刷り上がりの設定とは分けて紙の側へ
+      <!-- 表示倍率と紙送り(§9.238 ③)。**刷り上がりの設定とは分けて紙の側へ
            置く**——左の欄に混ぜると「100%で刷られる」と読まれる。 -->
       <div class="sp-pv-zoom" id="spPvZoom"></div>
       <div class="sp-pv-paper" id="spPvPaper"></div>
@@ -758,7 +912,7 @@
   document.addEventListener('keydown',e=>{
    if(WL.modal.escCloses(e)&&!el.hidden){e.stopPropagation();closePreview()}
   },true);
-  /* 器の大きさが変わったら「合わせる」倍率を取り直す(§9.237 ③)。
+  /* 器の大きさが変わったら「合わせる」倍率を取り直す(§9.238 ③)。
      **窓の`resize`だけでは足りない**——左の設定が増減しても器の幅は動く。
      倍率を当て直すだけなので、紙は組み直さない。 */
   if(typeof ResizeObserver==='function'){
@@ -768,7 +922,7 @@
   return el;
  }
 
- /* ---------- いま何ができるか(§9.237 ④) ----------
+ /* ---------- いま何ができるか(§9.238 ④) ----------
     **判定はここ1箇所**。散らすと「押せるのに何も起きない」が必ずどれかに
     戻る。数えるのは**いま開いている設備**の予定——他の設備は「すべての設備」
     を入れて初めて読むので、読む前に数えられない（数えられないものを
@@ -854,7 +1008,8 @@
    <p class="sp-opt-note">画面に出ている ${facts.allCols} 列のうち、スクロールせずに見えているのは ${facts.visCols} 列です。</p>
   </div>
   <div class="sp-opt-group"><h4>枠線</h4>
-   ${cb(pref,'borders','枠線（グリッド線）を出す','外すと画面のような薄い区切りだけの、さわやかな見た目になります')}
+   ${cb(pref,'borders','枠線（表の格子）を出す',
+        '外すと格子を消して、画面のようなさわやかな見た目になります（見出し・まとまりの帯と、記入欄の下線は残ります）')}
   </div>
   <div class="sp-opt-group"><h4>書き込む欄</h4>
    <div class="sp-pats" id="spWritePatterns">${patRows}</div>
@@ -869,7 +1024,7 @@
      <input type="radio" name="spPaperSize" value="${p.key}"${cur===p.key?' checked':''}>
      <span><b>${esc(p.label)}</b><small>${p.w}×${p.h}mm</small></span></label>`).join('');
  }
- /* ---------- 倍率と紙送りの帯(§9.237 ③) ---------- */
+ /* ---------- 倍率と紙送りの帯(§9.238 ③) ---------- */
  function renderZoomBar(){
   const bar=document.getElementById('spPvZoom');if(!bar)return;
   const mode=zoomModeOf(pv.pref);
@@ -991,7 +1146,7 @@
    if(back)back.focus();
   }
  }
- /* 設定を既定へ戻す(§9.237 ④)。**倍率は戻さない**——あれは見え方の話で、
+ /* 設定を既定へ戻す(§9.238 ④)。**倍率は戻さない**——あれは見え方の話で、
     紙の設定ではない（戻した拍子に見ていた場所を失うほうが困る）。 */
  function resetPref(){
   const zoomMode=pv.pref.zoomMode,zoomPct=pv.pref.zoomPct;
@@ -1039,9 +1194,22 @@
    const rows=sheets.reduce((n,p)=>n+((p.rows||[]).length),0);
    const eqs=new Set(sheets.map(p=>p.equipment).filter(Boolean));
    const size=paperSizeOf(pv.pref.paper);
+   /* ---------- 列幅が設定どおりか、詰めたのかを言う(§9.237) ----------
+      利用者は画面で「折り返さない幅」に整えてから刷る。用紙に収まらずに
+      詰めたのなら**そう書く**（§4／§6）——黙って縮めると「設定が効いて
+      いない」としか読めない。**刷り上がりから読む**ので、成り代わりで
+      刷った他の設備ぶんも含めて本当の値になる。 */
+   const fits=[...paper.querySelectorAll('.sp-page')]
+    .map(p=>parseFloat(p.style.getPropertyValue('--sp-fit'))||1);
+   const minFit=fits.length?Math.min(1,...fits):1;
    facts.innerHTML=`<b>${sheets.length}枚</b>・${rows}件・${esc(size.label)}`
     +(eqs.size>1?`・${eqs.size}台ぶん`:'')
-    +`<small>画面では実寸の ${Math.round(zoom*100)}%（見え方だけ。紙は${esc(size.label)}のまま）</small>`;
+    +`・列幅 ${minFit>=1?'設定どおり':`${Math.round(minFit*100)}%に縮小`}`
+    +`<small>画面では実寸の ${Math.round(zoom*100)}%（見え方だけ。紙は${esc(size.label)}のまま）`
+    +(minFit>=1?''
+      :`／用紙に収めるため列と文字を詰めています。設定どおりの幅で刷るには、`
+       +`用紙を大きく（A3・横）するか「見える範囲の列だけ」を選んでください。`)
+    +`</small>`;
   }catch(e){
    paper.innerHTML=`<p class="sp-pv-empty">プレビューを作れませんでした: ${esc(e.message)}</p>`;
    pv.sheets=[];
