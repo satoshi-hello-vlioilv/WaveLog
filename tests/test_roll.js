@@ -184,6 +184,43 @@ const made=[];
    }
   }
 
+  /* ---- 3c) IDを渡さない登録でも、送っていない項目は消えない（§9.240 の追補） ----
+     `keep()`は`prev`が読めているときだけ効く。以前は**IDを渡したときしか**
+     `prev`を読んでおらず、自然キー（設備名＋ロール名）で当てる経路
+     ——登録APIの再送とExcelの取り込み——では**送っていない列がNULLで
+     上書き**されていた。`/update`（IDあり）だけを見る網では素通りする。 */
+  {
+   const k=await mk({equipment:EQ,name:TAG+'KEEP',diaMax:150,entryPos:'出側',material:'鋼'});
+   /* **IDを渡さず**同じ (設備名, ロール名) で径だけ送る */
+   await post('/api/roll-master',{user_id:'test',equipment:EQ,name:TAG+'KEEP',diaMax:160});
+   const now=((await getj('/api/roll-master')).items||[]).find(x=>x.id===k.id);
+   rec('IDを渡さない登録でも同じ行を更新する（増えない）',
+       !!now&&now.diaMax===160,JSON.stringify(now));
+   rec('IDを渡さない登録でも送っていない項目は消えない',
+       !!now&&now.entryPos==='出側'&&now.material==='鋼',
+       JSON.stringify(now&&{p:now.entryPos,m:now.material}));
+  }
+
+  /* ---- 3d) 編集で自然キーが衝突したら断る（§9.240 の追補） ----
+     既存の行の設備や名前を**既に在る組み合わせへ書き換えられた**——
+     画面からは保存できたように見えて、次に開くと同じ設備に同名が2本並ぶ。 */
+  {
+   const x1=await mk({equipment:EQ,name:TAG+'DUP1',diaMax:120});
+   const x2=await mk({equipment:EQ,name:TAG+'DUP2',diaMax:130});
+   const r=await post('/api/roll-master/update',
+     {user_id:'test',id:x2.id,name:TAG+'DUP1'});
+   const j=await r.json().catch(()=>({}));
+   rec('同じ設備に同名へ改名しようとしたら断る',
+       r.status===400&&/登録済み/.test(String(j.error||'')),JSON.stringify(j));
+   const still=((await getj('/api/roll-master')).items||[])
+     .filter(y=>y.equipment===EQ&&y.name===TAG+'DUP1');
+   rec('断ったので同名が2本にならない',still.length===1,JSON.stringify(still.map(y=>y.id)));
+   rec('別の設備へなら同じ名前で移せる',
+       (await(await post('/api/roll-master/update',
+         {user_id:'test',id:x2.id,equipment:EQ2,name:TAG+'DUP1'})).json()).ok===true,
+       String(x2.id));
+  }
+
   /* ---- 4) 設備の改名に追随する（§CLAUDE「改名連動の一覧へ足す」） ----
      **足し忘れると設備を改名した瞬間にその設備のロールが1本も出なくなる**
      （VER2.44.0 で一度直した不具合の再発）。改名は設備マスタのIDで頼む。 */

@@ -1498,6 +1498,56 @@ def roll_master_update():
  if x.get('id') in (None,''):return jsonify(error='更新対象IDがありません。'),400
  return _roll_save(x)
 
+# ---- Excel の持ち出し・取り込み（§9.240、利用者の指示） ----
+# **書き出しはGET（バイナリ）**。既存の唯一の前例（`logs.py`の
+# `download_log`）と同じ`send_file`の作法に合わせる。
+# **取り込みはJSON+base64**——この repo は multipart を1つも受けておらず、
+# ここだけ別の受け口を作ると、後から触る人が2通りを覚えることになる。
+@bp.get('/api/roll-master/export')
+def roll_master_export():
+ from ..repositories import roll_repo as rr
+ try:
+  eq=str(request.args.get('equipment') or '').strip()
+  data=_op_read(lambda c:rr.export_bytes(c,eq))
+  import time
+  stamp=time.strftime('%Y%m%d-%H%M%S')
+  name=('ロールマスタ_%s_%s.xlsx'%(eq,stamp)) if eq else ('ロールマスタ_%s.xlsx'%stamp)
+  from flask import send_file
+  import io
+  return send_file(io.BytesIO(data),as_attachment=True,download_name=name,
+                   mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+ except Exception as e:return jsonify(error=f'ロールマスタの書き出しに失敗しました: {e}'),500
+
+@bp.post('/api/roll-master/import')
+def roll_master_import():
+ """Excelから取り込む。**既定は下見**（`apply`を付けたときだけ書く）。
+
+ §9.193 のクエリ結合と同じで、**保存する前に何が起きるかを見せる**
+ ——何件が追加で何件が上書きか、どの行がなぜ飛ばされるか。"""
+ from ..repositories import roll_repo as rr
+ from ..xlsx_io import XlsxError
+ x=request.get_json(force=True) or {}
+ b64=str(x.get('fileBase64') or '')
+ if not b64:return jsonify(error='ファイルがありません。'),400
+ try:
+  import base64
+  if ',' in b64[:200] and b64.strip().startswith('data:'):
+   b64=b64.split(',',1)[1]          # data: URL のまま来ても受ける
+  data=base64.b64decode(b64)
+ except Exception:
+  return jsonify(error='ファイルを読み取れませんでした（送信の途中で壊れた可能性があります）。'),400
+ apply=bool(x.get('apply'))
+ try:
+  uid=request_user_id(x)
+  r=_op_read(lambda c:rr.import_rows(c,uid,data,dry_run=not apply))
+  msg=(f"{r.get('saved',0)}件を取り込みました（追加{r['add']}・上書き{r['update']}）。"
+       if apply else
+       f"取り込むと 追加{r['add']}件・上書き{r['update']}件 になります。")
+  if r['skipped']:msg+=f" 取り込めない行が{len(r['skipped'])}件あります。"
+  return jsonify(ok=True,message=msg,**r)
+ except XlsxError as e:return jsonify(error=str(e)),400
+ except Exception as e:return jsonify(error=f'ロールマスタの取り込みに失敗しました: {e}'),500
+
 @bp.post('/api/roll-master/delete')
 def roll_master_delete():
  from ..repositories import roll_repo as rr

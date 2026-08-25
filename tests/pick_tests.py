@@ -74,7 +74,7 @@ G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'te
                      'test_scsession', 'test_scwho']
 G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 'test_eqkind',
                'test_shift', 'test_dbequip', 'test_crudroutes', 'test_setpage', 'test_eqstd',
-               'test_workdate', 'test_measstore', 'test_roll']
+               'test_workdate', 'test_measstore', 'test_roll', 'test_rollio']
 G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'test_flows',
              'test_p11', 'test_p11c', 'test_waiting', 'test_mcore', 'test_msteps']
 G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'test_density',
@@ -137,6 +137,8 @@ RULES = [
     ('static/js/defect-locator.js', g('モーダル', '異常位置')),
     # ロールマスタ（§9.239 ⑥）。マスタの4本セットと判定の両方に効く。
     ('backend/repositories/roll_repo.py', g('マスタ', '異常位置')),
+    # Excelの読み書き（§9.240）。ロールマスタの入出力が唯一の使い手。
+    ('backend/xlsx_io.py', g('test_rollio', 'test_roll')),
     ('static/js/log-view.js', g('ログ')),
     ('static/js/access-mode.js', g('権限', 'test_nav')),
     ('static/js/wl-window.js', g('test_lcpanel', 'test_listmodal', 'test_split_layout',

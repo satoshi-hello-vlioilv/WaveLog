@@ -117,6 +117,10 @@
      静かに外れる。 */
   {group:'equip',key:'roll',label:'ロール',icon:'ロ',endpoint:'/api/roll-master',hasDelete:true,
    titleText:'ロール — 設備ごとのロールの諸元（異常位置判定のピッチ照合に使います）',
+   /* Excelの持ち出し・取り込み（§9.240、利用者の指示）。**印を1つ付けるだけ**で
+      帯が出る差し替え口にしてある——他のマスタが要るときも、ここに
+      `excelIo:true` を足せば同じ帯が乗る（画面のコードを増やさない）。 */
+   excelIo:true,
    /* **設備が親・ロールが子**（§9.239 ⑥ 訂正、利用者の指示「厳密に設備を
       割ってから、個別にロール管理したい。1ロール1設備が正しい」）。
       束ねる鍵は`equipment`で、1行は必ず1つの設備に属する。 */
@@ -747,6 +751,110 @@
    return `<label class="mm-field">${fieldLabelHtml(f)}<input data-field="${f.k}" type="text" value="${esc(val)}" autocomplete="off"></label>`;
   })();
  }
+
+ /* ---------- Excelの持ち出し・取り込み（§9.240、利用者の指示） ----------
+    「ロールマスタについて EXCELでのインポート＆エクスポート機能を実装して
+     ください。」
+
+    作法は §9.171（フィルタ）・§9.178（列設定）に合わせる:
+     ・**モーダルを増やさない。** 一覧の上の帯に置く——何が出て行くのかを
+       実物の一覧を見たまま確かめられるのが値打ち。
+     ・**運ぶもの・運ばないものを画面に書く。** IDは運ばない（端末ごとの
+       連番なので、別のPCで取り込むと無関係な行を書き換える）。
+     ・**保存する前に下見できる**（§9.193）。何件が追加で何件が上書きか、
+       どの行がなぜ飛ばされるかを、書き込む前に出す。
+     ・**飛ばした件数と理由を必ず文字で言う**（§CLAUDE 4）。 */
+ function excelIoHtml(def){
+  if(!def.excelIo)return '';
+  return `<div class="mm-xio" id="mmXio">
+    <div class="mm-xio-head">
+     <b>Excel</b>
+     <button type="button" id="mmXioOut" class="mm-btn-ghost sm"
+       title="いまの一覧をそのままExcelファイル（.xlsx）で保存します。無効にした行も出ます">書き出す</button>
+     <button type="button" id="mmXioPick" class="mm-btn-ghost sm"
+       title="Excelファイル（.xlsx）を選ぶと、取り込む前に「何件追加・何件上書き」を出します">取り込む…</button>
+     <input type="file" id="mmXioFile" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+     <span class="mm-xio-note">突き合わせは<b>設備名＋ロール名</b>。同じ組み合わせがあれば上書き、無ければ追加します。
+      <i>IDは運びません（別のPCでも同じファイルが使えます）。行の削除はしません。</i></span>
+    </div>
+    <div class="mm-xio-result" id="mmXioResult" hidden></div>
+   </div>`;
+ }
+ let xioPending=null;          // 下見が通ったファイル（適用ボタンが使う）
+ function bindExcelIo(def){
+  if(!def.excelIo)return;
+  const say=(html,cls)=>{
+   const box=$('#mmXioResult');if(!box)return;
+   box.hidden=!html;box.className='mm-xio-result'+(cls?' '+cls:'');box.innerHTML=html||'';
+  };
+  const out=$('#mmXioOut');
+  if(out)out.onclick=()=>{
+   /* サーバーが組み立てた .xlsx をそのまま落とす（`logs.py`のログ保存と
+      同じ作法）。**画面側で組み立てない**——列の並びと見出しは
+      `roll_repo.IO_COLUMNS` の1箇所が持つ（書き写すと取り込みと食い違う）。 */
+   say('書き出しています…');
+   location.href=def.endpoint+'/export';
+   setTimeout(()=>say('書き出しました（ブラウザの保存先を確認してください）。','is-ok'),900);
+  };
+  const pick=$('#mmXioPick'),file=$('#mmXioFile');
+  if(pick&&file)pick.onclick=()=>{file.value='';file.click()};
+  if(file)file.onchange=async()=>{
+   const f=file.files&&file.files[0];if(!f)return;
+   const uid=requireMaintUser();if(uid===null)return;
+   say('読んでいます…');
+   let b64;
+   try{
+    b64=await new Promise((ok,ng)=>{
+     const r=new FileReader();
+     r.onload=()=>ok(String(r.result||'').split(',')[1]||'');
+     r.onerror=()=>ng(new Error('ファイルを読めませんでした'));
+     r.readAsDataURL(f);
+    });
+   }catch(e){say(esc(e.message),'is-bad');return}
+   try{
+    /* **まず下見**（保存しない）。ここで初めて「何が起きるか」が出る。 */
+    const r=await api(def.endpoint+'/import',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({fileBase64:b64,user_id:uid})});
+    xioPending={b64,uid,name:f.name};
+    say(xioPreviewHtml(r,f.name),r.add+r.update?'':'is-bad');
+    const go=$('#mmXioApply');
+    if(go)go.onclick=async()=>{
+     if(!xioPending)return;
+     go.disabled=true;say('取り込んでいます…');
+     try{
+      const done=await api(def.endpoint+'/import',{method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({fileBase64:xioPending.b64,user_id:xioPending.uid,apply:true})});
+      xioPending=null;
+      say(xioPreviewHtml(done,f.name),'is-ok');
+      await loadMaintInner(true);
+     }catch(e){say('取り込めませんでした: '+esc(e.message),'is-bad')}
+    };
+   }catch(e){xioPending=null;say('取り込めませんでした: '+esc(e.message),'is-bad')}
+  };
+ }
+ /* 下見・結果の見せ方。**件数は必ず文字で**、飛ばした行は**理由つきで
+    全部**出す（§CLAUDE 4。「N件飛ばしました」だけでは直せない）。 */
+ function xioPreviewHtml(r,fileName){
+  const skipped=r.skipped||[];
+  const rows=skipped.map(x=>`<li><b>${esc(String(x.row||'-'))}行目</b>${
+    x.name?` <span>${esc(x.name)}</span>`:''} — ${esc(x.why||'')}</li>`).join('');
+  const done=!r.dryRun;
+  return `<div class="mm-xio-sum">
+    <b>${esc(fileName||'')}</b>
+    <span>シート「${esc(r.sheet||'')}」／データ ${r.total||0}行</span>
+    <span class="mm-xio-num">追加 <b>${r.add||0}</b></span>
+    <span class="mm-xio-num">上書き <b>${r.update||0}</b></span>
+    ${skipped.length?`<span class="mm-xio-num is-bad">取り込めない <b>${skipped.length}</b></span>`:''}
+   </div>
+   ${done?`<p class="mm-xio-done">${esc(r.message||'取り込みました。')}</p>`
+     :(r.add||r.update
+       ?`<div class="mm-xio-go"><button type="button" id="mmXioApply" class="mm-btn-primary sm">この内容で取り込む</button>
+         <span>まだ書き込んでいません。押すまでマスタは変わりません。</span></div>`
+       :`<p class="mm-xio-done">取り込める行がありません。下の理由を直してから、もう一度選んでください。</p>`)}
+   ${skipped.length?`<details class="mm-xio-skip" open><summary>取り込めない行 ${skipped.length}件（この行だけ飛ばします）</summary><ul>${rows}</ul></details>`:''}`;
+ }
  function renderMaintForm(){
   const def=currentDef(),form=$('#masterMaintForm');if(!form)return;const editing=maintState.editing;
   // 入力項目が多いマスタは、上部に常設のフォームを置かず(一覧の表示領域を
@@ -758,9 +866,11 @@
      <button type="button" id="masterMaintAdd" class="mm-btn-primary sm">＋ ${esc(def.label)}を追加</button>
      <span class="mm-form-hint">一覧の行をクリック（またはダブルクリック・「編集」ボタン）で編集ウィンドウを開きます。</span>
     </div>
-    ${def.hint?`<p class="mm-def-hint">${hintHtml(def.hint)}</p>`:''}`;
+    ${def.hint?`<p class="mm-def-hint">${hintHtml(def.hint)}</p>`:''}
+    ${excelIoHtml(def)}`;
    form.onsubmit=ev=>ev.preventDefault();
    const ab=$('#masterMaintAdd');if(ab)ab.onclick=()=>openMaintEditor(null);
+   bindExcelIo(def);
    return;
   }
   form.classList.remove('mm-form-compact');
@@ -770,10 +880,11 @@
    ${def.hint?`<p class="mm-def-hint">${hintHtml(def.hint)}</p>`:''}
    <div class="mm-form-fields">${controls}${
     typeof def.extraHtml==='function'?def.extraHtml(editing):''}</div>
-   <div class="mm-form-tail"><button type="submit" class="mm-btn-primary">${editing?'更新を保存':'追加登録'}</button><span class="mm-form-hint">${editing?'キー項目（名称・区分など）も変更できます。保存すると同じIDのまま更新（リネーム）されます。同名が既にある場合は更新できません。':'必須(*)を入力して追加登録します。'}</span></div>`;
+   <div class="mm-form-tail"><button type="submit" class="mm-btn-primary">${editing?'更新を保存':'追加登録'}</button><span class="mm-form-hint">${editing?'キー項目（名称・区分など）も変更できます。保存すると同じIDのまま更新（リネーム）されます。同名が既にある場合は更新できません。':'必須(*)を入力して追加登録します。'}</span></div>
+   ${excelIoHtml(def)}`;
   form.onsubmit=ev=>{ev.preventDefault();submitMaint()};
   const nb=$('#masterMaintNew');if(nb)nb.onclick=()=>{maintState.editing=null;renderMaintForm()};
-  bindEquipmentPickers(form);bindInputHelpers(form);
+  bindEquipmentPickers(form);bindInputHelpers(form);bindExcelIo(def);
  }
 
  /* ---------- 汎用の編集専用モーダル(ARCHITECTURE.md「マスタ管理の画面形態」新設) ----------
