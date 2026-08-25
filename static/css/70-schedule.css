@@ -255,6 +255,18 @@
 :is(.sc-split-wrap,.sc-float-body) .filter-tag em{max-width:80px;font-size:var(--fs-micro)}
 :is(.sc-split-wrap,.sc-float-body) .filter-tag b{font-size:var(--fs-tiny)}
 :is(.sc-split-wrap,.sc-float-body) .filter-search-row-actions button{height:var(--ctl-h-xs);padding:0 7px;font-size:var(--fs-micro)}
+/* その場フィルタ(§9.237 ⑤)も分割表示では詰める。器が狭いので**2列**へ
+   落とし、入力欄と操作は横いっぱいを使う。見出しの「その場フィルタ」は
+   入口のボタンが既に名乗っているので落とす(§9.199の落とし方と同じ)。 */
+:is(.sc-split-wrap,.sc-float-body) .filter-adhoc-row{
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);padding:var(--pad-row);gap:var(--gap-tight)}
+:is(.sc-split-wrap,.sc-float-body) .filter-adhoc-label{display:none}
+:is(.sc-split-wrap,.sc-float-body) .filter-adhoc-value{grid-column:1/-1}
+:is(.sc-split-wrap,.sc-float-body) .filter-adhoc-actions{grid-column:1/-1}
+:is(.sc-split-wrap,.sc-float-body) .filter-adhoc-field{font-size:var(--fs-micro)}
+:is(.sc-split-wrap,.sc-float-body) .filter-adhoc-field select,
+:is(.sc-split-wrap,.sc-float-body) .filter-adhoc-field input{height:var(--ctl-h-sm);font-size:var(--fs-micro)}
+:is(.sc-split-wrap,.sc-float-body) .filter-adhoc-actions button{height:var(--ctl-h-xs);padding:0 7px;font-size:var(--fs-micro)}
 :is(.sc-split-wrap,.sc-float-body) .filter-body{padding:5px 6px}
 :is(.sc-split-wrap,.sc-float-body) .filter-builder{grid-template-columns:1fr;gap:var(--gap-tight)}
 :is(.sc-split-wrap,.sc-float-body) .filter-builder select,:is(.sc-split-wrap,.sc-float-body) .filter-builder input{height:var(--ctl-h-sm);font-size:var(--fs-micro)}
@@ -447,6 +459,9 @@
 .sc-cat-planned{background:transparent;color:#0c5d67;border-left-color:var(--teal)}
 .sc-cat-cancel{background:var(--danger-bg);color:var(--danger);border-left-color:var(--danger)}
 .sc-cat-stop{background:var(--warn-bg);color:var(--warn-fg);border-left-color:var(--warn-border)}
+/* 空の日付・直の枠(§9.237 ②)。作業でも停止でもない「場所取り」なので、
+   予定とも停止とも違う地にする。**色だけで伝えない**ので区分名は必ず出す。 */
+.sc-cat-frame{background:var(--surface-2);color:var(--ink-2);border-left-color:var(--line-strong)}
 .sc-row-date{font-size:var(--tbl-fs);color:#60747b;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}
 /* 現場歴で暦とずれている日付(§9.195)。**色だけで伝えない**ので、下線は
    「何か注記がある」ことの目印にとどめ、理由はツールチップの文で言う。 */
@@ -602,6 +617,15 @@
 .sc-audit-at{color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sc-audit-when{color:var(--muted);font-size:var(--fs-micro);white-space:nowrap}
 .sc-audit-note{color:var(--muted);font-size:var(--fs-micro)}
+/* ---------- 日付・直の枠の内訳(§9.237 ②) ----------
+   **ラベル列は固定幅**（§9.129。autoだと値の左端がずれて列を追えない）。
+   誰が・どの端末で(.sc-audit-row)と同じ幅にそろえる。 */
+.sc-detail-list{display:grid;gap:var(--gap-hair)}
+.sc-detail-item{display:grid;grid-template-columns:var(--w-sm) minmax(0,1fr);
+ align-items:baseline;gap:var(--gap-inline);font-size:var(--fs-sm);color:var(--ink-2)}
+.sc-detail-item>span{color:var(--muted);font-size:var(--fs-micro);font-weight:800;white-space:nowrap}
+.sc-detail-item b{color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sc-detail-note{margin:0;color:var(--muted);font-size:var(--fs-micro)}
 /* 行の中の登録者・登録端末(§9.180)。**普段見るものではない**ので色を1段
    落とす（大きさは変えない。1つの表の中は同じ文字サイズ。§9.161）。 */
 .sc-row-audit{color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -1098,6 +1122,25 @@
 /* ---------- 申し送りのその場編集(§9.191) ----------
    掴んで落とした枠は**まだ空**。空だと分かる文字を出し、押せば書けることを
    その場に書く（探させない）。入力欄は行の中に置き、**行は作り直さない**。 */
+/* ---------- 空の日付・直の枠(§9.237 ②) ---------- */
+.sc-row-frame-edit{cursor:pointer}
+.sc-frame-edit{display:grid;gap:var(--gap-inline);text-align:left}
+.sc-frame-row{display:grid;grid-template-columns:var(--w-xs) minmax(0,1fr);
+  align-items:center;gap:var(--gap-inline)}
+.sc-frame-row>span{font-size:var(--fs-sm);font-weight:700;color:var(--ink-2)}
+.sc-frame-row input{height:var(--ctl-h-sm);min-width:0;font-size:var(--fs)}
+.sc-frame-row-shifts{align-items:start}
+.sc-frame-row-shifts>span{padding-top:var(--space-1)}
+/* 直は**選んだものが面で分かる**ようにする（印刷プレビューの`.sp-pat`と
+   同じ作法。色だけに頼らず、開始〜終了の文も添える）。 */
+.sc-frame-shifts{display:grid;gap:var(--gap-hair)}
+.sc-frame-shift{display:flex;align-items:flex-start;gap:var(--gap-hair);padding:var(--pad-row);
+  border:1px solid var(--line-soft);border-radius:var(--radius-sm);background:var(--surface);cursor:pointer}
+.sc-frame-shift span{display:grid;min-width:0}
+.sc-frame-shift b{font-size:var(--fs-sm);font-weight:700;color:var(--ink)}
+.sc-frame-shift small{font-size:var(--fs-micro);color:var(--muted)}
+.sc-frame-shift:hover{border-color:var(--teal)}
+.sc-frame-shift.is-on{background:var(--pale);border-color:var(--teal)}
 .sc-row-comment-edit{cursor:text}
 .sc-row-comment-edit .sc-row-title.is-empty{color:var(--muted);font-style:italic}
 .sc-comment-edit{width:100%;min-width:0;height:var(--row-inner-h);padding:0 var(--ctl-pad-x-sm);
@@ -1173,8 +1216,37 @@
 .sp-pat:hover{border-color:var(--teal)}
 .sp-pat.is-on{background:var(--pale);border-color:var(--teal)}
 .sp-pat.is-on b{color:var(--computed-fg)}
+/* いま効かない設定は**押せなくして理由を書く**(§9.237 ④・CLAUDE.md §4)。
+   薄くするだけにしないこと——薄いだけでは「押せるのに反応しない」と読まれる。 */
+.sp-opt.is-off,.sp-pat.is-off{cursor:not-allowed}
+.sp-opt.is-off input,.sp-pat.is-off input{cursor:not-allowed;opacity:.5}
+/* **理由の文までは薄くしない**——読ませたい文なので、落とすのは名前と印だけ。 */
+.sp-opt.is-off b,.sp-pat.is-off b,.sp-pat.is-off small{color:var(--muted)}
+.sp-opt-why{font-size:var(--fs-micro);color:var(--danger);font-weight:700}
+.sp-pv-reset{justify-self:start;height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x);
+  border:1px solid var(--line);border-radius:var(--radius-sm);
+  background:var(--surface);color:var(--ink-2);font-size:var(--fs-sm)}
+.sp-pv-reset:hover{border-color:var(--teal);color:var(--teal-dark)}
+/* ---------- 紙の側(§9.237 ③) ----------
+   帯（表示倍率・紙送り）＋紙。**器の高さを中まで届ける鎖を1段も抜かない**
+   (§9.222 ⑤)——抜くと紙の側が中身なりに伸びて、窓の外側がスクロールする。 */
+.sp-pv-view{display:flex;flex-direction:column;min-width:0;min-height:0}
+.sp-pv-zoom{flex:0 0 auto;display:flex;align-items:center;gap:var(--gap-inline);
+  padding:var(--pad-row) var(--space-3);border-bottom:1px solid var(--line-soft);
+  background:var(--surface-2);flex-wrap:wrap}
+.sp-zoom-label{font-size:var(--fs-micro);font-weight:800;color:var(--ink-2);white-space:nowrap}
+.sp-zoom-modes{display:flex;gap:var(--gap-hair)}
+.sp-zoom-btn,.sp-zoom-step{height:var(--ctl-h-sm);min-width:var(--ctl-h-sm);
+  padding:0 var(--space-2);border:1px solid var(--line);border-radius:var(--radius-sm);
+  background:var(--surface);color:var(--ink-2);font-size:var(--fs-sm);font-weight:700}
+.sp-zoom-btn:hover:not(:disabled),.sp-zoom-step:hover:not(:disabled){border-color:var(--teal);color:var(--teal-dark)}
+.sp-zoom-btn.is-on{background:var(--teal);border-color:var(--teal);color:#fff}
+.sp-zoom-step:disabled{opacity:.45;cursor:not-allowed}
+.sp-zoom-now{min-width:var(--w-xs);text-align:center;font-size:var(--fs-sm);
+  font-weight:700;color:var(--ink-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.sp-zoom-gap{flex:1 1 auto}
 /* 紙の並ぶ側。**縮めた紙の器はJSが寸法を入れる**(transformは場所を空けない)。*/
-.sp-pv-paper{overflow:auto;padding:var(--space-3);background:var(--surface-3);
+.sp-pv-paper{flex:1;min-height:0;overflow:auto;padding:var(--space-3);background:var(--surface-3);
   display:flex;flex-wrap:wrap;gap:var(--space-3);align-content:flex-start;justify-content:center}
 .sp-pv-sheet{margin:0;display:grid;gap:var(--space-1);justify-items:center}
 .sp-pv-sheet figcaption{font-size:var(--fs-sm);color:var(--ink-2);font-variant-numeric:tabular-nums}
@@ -1292,28 +1364,36 @@
 .sp-opt b{font-size:var(--fs-sm);font-weight:700;color:var(--ink)}
 .sp-opt small{font-size:var(--fs-micro);color:var(--muted)}
 
-/* ---------- 予定から外す受け皿(§9.116) ----------
-   行を掴んでいる間だけ、タイムラインの下端に出る帯。**常設しない**
-   ——「消す場所」が居座ると、並べ替えのたびに押し間違いの的になる。
-   危険色は使うが、**塗りつぶさない**（掴んでいる最中に赤い面が広がると
-   もう消えたように見える）。落とせる状態(.is-over)で初めて面が付く。 */
+/* ---------- 予定から外す受け皿(§9.116・§9.237 ①) ----------
+   行を掴んでいる間だけ、タイムラインの右下に出る**小さな札**。
+   **常設しない**——「消す場所」が居座ると、並べ替えのたびに押し間違いの
+   的になる。危険色は使うが、**塗りつぶさない**（掴んでいる最中に赤い面が
+   広がるともう消えたように見える）。落とせる状態(.is-over)で初めて面が付く。
+
+   **幅いっぱいにしないこと**(§9.237 ①、利用者の指示「ロットの並び替えや
+   入れ替えなどをやりたい時にその先がドロップゾーンにあると干渉して目的の
+   操作ができなくなる」)。以前は`left`〜`right`で下端を横断しており、
+   **一覧の末尾へ行を運ぶ動線をそのまま覆っていた**——並べ替えの落とし先が
+   受け皿の裏に隠れ、末尾へ動かすと外す確認が出る。器は**中身の長さから
+   決め**(§11)、余りは空ける。中身も1行に詰め、消した説明は`title`へ
+   落とす(§9.234 ①)。 */
 .sc-drop-remove{
- position:absolute;left:var(--space-3);right:var(--space-3);bottom:var(--space-3);
+ position:absolute;right:var(--space-3);bottom:var(--space-3);left:auto;
  z-index:var(--z-drag);
+ width:max-content;max-width:min(var(--w-lg),calc(100% - var(--space-3) * 2));
  display:flex;align-items:center;justify-content:center;gap:var(--gap-inline);
- min-height:var(--ctl-h-lg);padding:var(--pad-card);
+ min-height:var(--ctl-h-lg);padding:var(--space-1) var(--space-3);
  border:2px dashed var(--danger-border);border-radius:var(--radius-md);
  background:var(--surface);color:var(--danger);
  box-shadow:0 6px 18px rgba(23,56,66,.18);
  pointer-events:auto;
 }
 .sc-drop-remove.is-over{background:var(--danger-bg);border-style:solid}
-.sc-drop-remove-icon{font-size:var(--fs-title);font-weight:800;line-height:1}
+.sc-drop-remove-icon{font-size:var(--fs);font-weight:800;line-height:1}
 /* 中の文字はポインタを飲まない。**帯の上に子要素があると dragleave が
    毎回飛んで**、点滅したり落とせなくなる(仕掛パネルのD&Dで既に踏んだ罠)。 */
-.sc-drop-remove-text{display:flex;flex-direction:column;gap:2px;
- font-size:var(--fs-sm);font-weight:700;pointer-events:none}
-.sc-drop-remove-text small{font-size:var(--fs-micro);font-weight:400;color:var(--muted)}
+.sc-drop-remove-text{font-size:var(--fs-sm);font-weight:700;pointer-events:none;
+ white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sc-drop-remove-icon{pointer-events:none}
 
 /* ---------- まとめて予定から外す(§9.170) ----------

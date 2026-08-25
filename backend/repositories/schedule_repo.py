@@ -26,6 +26,7 @@ with_write(login_id,pc_name,uid,apply_fn)のapply_fn内から
 既存データはdb_access側の初回起動時マイグレーションでmaster.sqlite3へ移す。
 """
 import json as _json
+import re as _re
 
 from ..db_access import tables
 from .master_repo import normalize_equipment_name
@@ -124,8 +125,11 @@ def plan_add(c_share,equipment,kind,uid,pc='',position='end',lot_no='',inspectio
  if not equipment:raise ValueError('設備名を指定してください。')
  # 'コメント'(§9.189): 予定の列に挟む申し送り。**時間を持たない**ので
  # 後続の時刻を動かさない(設備停止は時間を持つので別物)。
- if kind not in ('作業','設備停止','コメント'):
-  raise ValueError('種別は作業・設備停止・コメントのいずれかを指定してください。')
+ # '枠'(§9.237 ②): 空の日付・直の枠。**自分では時間を使わないが、後続の
+ # 起点をその日・その直まで進める**——「日にちや直をいくつか飛ばして、
+ # 先のスケジュールを先に決める」ための場所取り(利用者の指示)。
+ if kind not in ('作業','設備停止','コメント','枠'):
+  raise ValueError('種別は作業・設備停止・コメント・枠のいずれかを指定してください。')
  cur=c_share.cursor()
  title_snapshot=str(title or '').strip();detail_json='';est=estimate_minutes
  if kind=='設備停止':
@@ -150,6 +154,22 @@ def plan_add(c_share,equipment,kind,uid,pc='',position='end',lot_no='',inspectio
   # 標準所要分を後から編集したら、まだ見積を上書きしていない予定には反映
   # させたいため、解決はschedule_calc.py(フェーズ3)の展開時に(設備名,
   # 予定名称)で毎回引き直す
+  lot_no=inspection_no=casting_no=''
+ elif kind=='枠':
+  # 空の日付・直の枠(§9.237 ②)。**行が持つのは「いつまで飛ばすか」だけ**で、
+  # 実際の時刻はschedule_calcが展開のたびに勤務形態マスタから引き直す
+  # （直の開始時刻を後から直したら、置いてある枠も一緒に動いてほしい。
+  #   設備停止の標準所要分をスナップショットしないのと同じ理由・§5.1）。
+  # **[固定開始日時]は使わない**——あちらは「この予定自身をその時刻へ
+  # 釘で留める」意味で、枠の「ここから先はこの日・この直から」とは別物。
+  # 2つの意味を1つの列へ入れると、どちらのつもりで入れた値か分からなくなる。
+  frame=normalize_frame(detail)
+  if not frame.get('date'):
+   raise ValueError('枠には日付を指定してください。')
+  detail_json=_json.dumps(frame,ensure_ascii=False)
+  title_snapshot=(title_snapshot or frame_label(frame))[:200]
+  est=0
+  fixed_start=None
   lot_no=inspection_no=casting_no=''
  elif kind=='コメント':
   # 中身は[予定名称]の文字だけ。**時間は必ず0**——「見積を入れれば場所を
@@ -203,6 +223,66 @@ def plan_add(c_share,equipment,kind,uid,pc='',position='end',lot_no='',inspectio
                  detail=child.get('detail') or {},
                  order=order)
  return plan_id
+
+# ========================================================================
+# 空の日付・直の枠(§9.237 ②、利用者の指示)
+# ========================================================================
+# 「予定を少し飛ばして設定する場合に、何も予定がない領域にセットできる、
+#  空の日付や直の枠を登録できるようにしたいです。…日にちや直をいくつか
+#  飛ばして、先のスケジュールを先に決めることができるようになるので…
+#  スケジュールが押し出してくる際は連動してロットが自然にその設定枠に
+#  入るようにします」
+#
+# 決めごと:
+#  ・持つのは **日付(YYYY-MM-DD) と 直の名称** の2つだけ。実時刻は
+#    schedule_calc が勤務形態マスタから展開のたびに引き直す(スナップショット
+#    しない。§5.1と同じ理由——直の時間帯を直したら枠も追随してほしい)。
+#  ・**枠自身は時間を使わない**(見積0分)。効くのは「後続の起点を、その日・
+#    その直の開始まで**進める**」ことだけ。
+#  ・**進めるのは前へだけ**。前の予定が押してきて起点が枠の時刻を過ぎたら、
+#    枠は何もしない——これが利用者の言う「押し出してくる際は連動してロットが
+#    自然にその設定枠に入る」。飛ばした空き時間は、手前へ予定を入れるほど
+#    自然に埋まっていく。
+DATE_RE=_re.compile(r'^\d{4}-\d{2}-\d{2}$')
+
+def normalize_frame(detail):
+ """画面から来た枠の中身を、保存する形へそろえる。
+ **知らないキーは落とす**——明細JSONは何でも入る器なので、入口で形を決めて
+ おかないと、読む側が「あるかもしれない」前提で書くことになる。"""
+ d=detail if isinstance(detail,dict) else {}
+ date_s=str(d.get('frameDate') or d.get('date') or '').strip()
+ if not DATE_RE.match(date_s):date_s=''
+ shift=str(d.get('frameShift') or d.get('shift') or '').strip()[:60]
+ note=str(d.get('frameNote') or d.get('note') or '').strip()[:120]
+ return {'frameDate':date_s,'frameShift':shift,'frameNote':note,
+         # 読む側が「枠の明細だ」と一目で分かるようにしておく。
+         'frame':True,'date':date_s,'shift':shift}
+
+def frame_label(frame):
+ """[予定名称]へ入れる控えの文字。**画面はこれを表示に使わない**
+ (画面は日付と直から組み立て直す)が、一覧・帳票・監査ログのように
+ 明細JSONを開かない場所のために、読める形を1つ持たせておく。"""
+ d=str((frame or {}).get('frameDate') or '').strip()
+ sh=str((frame or {}).get('frameShift') or '').strip()
+ if not d:return '枠'
+ return f'{d} {sh}'.strip() if sh else d
+
+def plan_set_frame(c_share,plan_id,uid,detail,pc=''):
+ """枠の行き先(日付・直)を入れ替える。**種別が枠の行だけ**。
+ [予定名称]と[明細JSON]は必ず一緒に書く——片方だけ直すと、一覧に出る文字と
+ 実際に効く日付が食い違う(§9.113の「渡す設定を1つでも書き漏らさない」)。"""
+ ensure_plan_table(c_share)
+ cur=c_share.cursor()
+ cur.execute('SELECT [予定ID],[種別] FROM [作業予定] WHERE [予定ID]=?',[plan_id])
+ row=cur.fetchone()
+ if not row:raise ValueError('指定の予定が見つかりません。')
+ if str(row[1] or '')!='枠':
+  raise ValueError('日付・直を書き換えられるのは枠の行だけです。')
+ frame=normalize_frame(detail)
+ if not frame.get('frameDate'):raise ValueError('枠には日付を指定してください。')
+ cur.execute('UPDATE [作業予定] SET [予定名称]=?,[明細JSON]=?,[更新者ID]=?,[更新端末名]=?,[更新日時]=Now() WHERE [予定ID]=?',
+             [frame_label(frame),_json.dumps(frame,ensure_ascii=False),uid,pc,plan_id])
+ return cur.rowcount
 
 def plan_add_child(c_share,parent_id,equipment,uid,lot_no='',inspection_no='',casting_no='',detail=None,order=None,pc=''):
  """子ロットの行を1件足す(§9.83)。

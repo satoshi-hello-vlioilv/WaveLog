@@ -32,6 +32,29 @@
   const USAGE_STORE='MeasurementFilterCondUsageV3';
   const USAGE_STORE_V2='MeasurementFilterCondUsageV2';
   const QUICK_OPEN_STORE='MeasurementFilterQuickOpenV1';
+  /* ---------- その場フィルタ(§9.237 ⑤、利用者の指示) ----------
+     「フィルタ枠はあるが、基本的に登録して使う形になっている。このフィルタの
+     下に折りたたんだもう1つのフィルタを実装して、カラムを選択しておき、条件を
+     選択、入力欄に入れると、設定したカラムの選択した条件でフィルタが掛かる
+     ようにしてください」。
+
+     決めごと:
+      ・**登録もトークン化もしない**。打った瞬間に効き、消せば消える。
+        `S.genericFilters`へは入れない——入れると覚え(§9.175)へ焼き付き、
+        次に開いたときに身に覚えのない条件が復活する。問い合わせを組み立てる
+        瞬間(`listHooks.onQuery`)に足すだけ。
+      ・**「カラムと条件」は覚え、「値」は覚えない**。利用者の言う
+        「カラムを選択しておき」＝**支度は続く**が、絞り込みそのものは
+        毎回その場で打つもの。覚えは**利用者ごと×一覧ごと**(§9.172)。
+      ・**効いていることを必ず文字で出す**(§3・§9.175)。畳んでいるときは
+        入口のボタンが条件を名乗る——見えない場所で効く絞り込みを作らない。
+      ・**入力中に行を作り直さない**(§9.117)。この一覧は読み込みのたびに
+        `renderGenericFilterBar()`を通るので、素直に組み直すと1文字ごとに
+        カーソルが飛ぶ。器は1度だけ作り、中身は差分だけ書き換える。 */
+  const ADHOC_STORE='MeasurementFilterAdhocV1';
+  const ADHOC_OPEN_STORE='MeasurementFilterAdhocOpenV1';
+  const ADHOC_MAX_CONTEXTS=80;
+  const ADHOC_DEBOUNCE_MS=280;
   const OPS=[
     ['contains','含む'],['not_contains','含まない'],['eq','＝ 一致'],['neq','≠ 不一致'],
     ['starts','前方一致'],['ends','後方一致'],['gt','> より大きい'],['gte','>= 以上'],['lt','< より小さい'],['lte','<= 以下'],['empty','空欄'],['not_empty','空欄以外']
@@ -792,10 +815,32 @@
         <span class="filter-inline-loading" id="filterInlineLoading" hidden><span class="mini-spinner"></span><span id="filterInlineLoadingText">読込中</span></span>
         <div class="filter-search-row-actions">
           <button id="filterQuickToggle" type="button" aria-expanded="false" aria-controls="filterQuickRow" hidden>よく使う条件</button>
+          <button id="filterAdhocToggle" class="filter-adhoc-toggle" type="button" aria-expanded="false" aria-controls="filterAdhocRow">その場フィルタ</button>
           <button id="filterToggle" type="button">条件を作る</button>
           <button id="openFilterPresets" type="button">登録一覧</button>
           <button id="clearGenericFilters" type="button">全解除</button>
         </div>
+      </div>
+      <!-- その場フィルタ(§9.237 ⑤、利用者の指示)。**登録しない絞り込み**。
+           カラムと条件は覚え(利用者ごと×一覧ごと)、値だけがその場のもの。
+           器は**1度だけ**作る——読み込みのたびに組み直すと、打っている
+           最中にカーソルが飛ぶ(§9.117)。 -->
+      <div class="filter-adhoc-row" id="filterAdhocRow" hidden>
+        <span class="filter-adhoc-label">その場フィルタ</span>
+        <label class="filter-adhoc-field"><span>カラム</span>
+          <select id="filterAdhocColumn" title="この一覧の列から選びます。選んだ列は次に開いたときも覚えています"></select></label>
+        <label class="filter-adhoc-field"><span>条件</span>
+          <select id="filterAdhocOp" title="選んだ列をどう比べるか"></select></label>
+        <label class="filter-adhoc-field filter-adhoc-value"><span>入力</span>
+          <input id="filterAdhocValue" list="filterAdhocList" autocomplete="off" type="search"
+                 title="打つとその場で絞り込みます。Enterですぐ、Escで解除">
+          <datalist id="filterAdhocList"></datalist></label>
+        <div class="filter-adhoc-actions">
+          <button id="filterAdhocKeep" type="button">条件に残す</button>
+          <button id="filterAdhocClear" type="button" title="入力を消して、この絞り込みを解除します">解除</button>
+        </div>
+        <span class="filter-adhoc-state" id="filterAdhocState"></span>
+        <p class="filter-adhoc-note">登録はしません。打っているあいだだけ効き、一覧を切り替えると入力は消えます（カラムと条件は覚えています）。</p>
       </div>
       <div class="filter-quick-row" id="filterQuickRow" hidden></div>
       <div class="filter-body" id="filterBody" hidden>
@@ -816,6 +861,40 @@
     // よく使う条件は既定で折りたたむ(段階的開示)。以前は該当条件があれば
     // 常時1行を占有しており、狭い分割表示では一覧の縦幅を圧迫していた。
     $('#filterQuickToggle').onclick=()=>{quickOpen=!quickOpen;writeQuickOpen();renderQuickFilters()};
+    /* その場フィルタ(§9.237 ⑤)。**配線はここで1度だけ**——描き直しのたびに
+       付け替えると、打っている最中に欄ごと作り替えることになる(§9.117)。 */
+    $('#filterAdhocToggle').onclick=()=>{adhocOpen=!adhocOpen;writeAdhocOpen();renderAdhocRow();
+      if(adhocOpen)requestAnimationFrame(()=>$('#filterAdhocValue')?.focus())};
+    $('#filterAdhocOp').innerHTML=OPS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
+    $('#filterAdhocColumn').onchange=()=>{
+      adhoc.column=$('#filterAdhocColumn').value;
+      saveAdhocSetup(adhocScope,adhocUid);
+      updateAdhocSuggestions();renderAdhocRow();
+      /* 列を変えたら、いま入っている値でそのまま効かせ直す（打ち直させない）。 */
+      applyAdhoc(true);
+    };
+    $('#filterAdhocOp').onchange=()=>{
+      adhoc.op=$('#filterAdhocOp').value;
+      saveAdhocSetup(adhocScope,adhocUid);
+      renderAdhocRow();applyAdhoc(true);
+    };
+    {
+      const box=$('#filterAdhocValue');
+      box.addEventListener('input',()=>{
+        adhoc.value=box.value;
+        /* 状態の文字だけ書き換える。**欄そのものは触らない**。 */
+        renderAdhocRow();applyAdhoc(false);
+      });
+      box.addEventListener('keydown',e=>{
+        if(e.key==='Enter'){e.preventDefault();adhoc.value=box.value;renderAdhocRow();applyAdhoc(true)}
+        else if(e.key==='Escape'&&String(box.value||'')){e.preventDefault();e.stopPropagation();clearAdhoc()}
+      });
+      /* 値の候補は**開いたときに作る**（列ごとに違うので、行を描くたびに
+         全行を舐めると重い）。 */
+      box.addEventListener('focus',updateAdhocSuggestions);
+    }
+    $('#filterAdhocKeep').onclick=()=>keepAdhoc();
+    $('#filterAdhocClear').onclick=()=>clearAdhoc();
     $('#filterOp').innerHTML=OPS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
     $('#filterColumn').onchange=updateFilterSuggestions;
     $('#filterOp').onchange=()=>{$('#filterValue').disabled=noValueOp($('#filterOp').value)};
@@ -884,6 +963,15 @@
     const vals=[...new Set((S.rows||[]).map(r=>String(r[col]??'').trim()).filter(Boolean))].slice(0,80);
     list.innerHTML=vals.map(v=>`<option value="${esc(v)}"></option>`).join('');
   }
+  /* その場フィルタの値候補。既存の`updateFilterSuggestions`と同じ作り方だが、
+     見る列が違うので別に持つ（1つにまとめると、どちらの列を見るかを引数で
+     分けることになり呼び出し側が増える）。 */
+  function updateAdhocSuggestions(){
+    const list=$('#filterAdhocList');if(!list)return;
+    if(!adhoc.column||noValueOp(adhoc.op)){list.innerHTML='';return}
+    const vals=[...new Set((S.rows||[]).map(r=>String(r[adhoc.column]??'').trim()).filter(Boolean))].slice(0,80);
+    list.innerHTML=vals.map(v=>`<option value="${esc(v)}"></option>`).join('');
+  }
   function addGenericFilter(f){
     const key=filterKey(f);if(!S.genericFilters.some(x=>filterKey(x)===key))S.genericFilters.push(f);
     bumpCondUsage(f);S.page=1;renderGenericFilterBar();load();
@@ -924,8 +1012,167 @@
       }
       box.insertBefore(tag,input);
     });
-    const count=$('#filterCount');if(count)count.textContent=`${S.genericFilters.length}件`;
+    /* 件数には**その場フィルタも数える**(§9.237 ⑤)。効いているのに数えないと、
+       「絞り込んでいないのに件数が合わない」としか見えない。内訳は`title`へ。 */
+    const count=$('#filterCount');
+    if(count){
+      const extra=adhocActive()?1:0;
+      count.textContent=`${S.genericFilters.length+extra}件`;
+      count.title=extra?`登録・適用中の条件 ${S.genericFilters.length}件 ＋ その場フィルタ 1件（${adhocLabel()}）`
+                       :`登録・適用中の条件 ${S.genericFilters.length}件`;
+    }
   }
+  /* ================= その場フィルタ(§9.237 ⑤) =================
+     支度(カラム・条件)＋その場の値。**登録しない・覚えない**——効くのは
+     いま開いている一覧の、いまの入力だけ。 */
+  let adhocAll=(()=>{try{const m=JSON.parse(localStorage.getItem(ADHOC_STORE)||'{}');
+                          return (m&&typeof m==='object')?m:{}}catch(_){return {}}})();
+  let adhocOpen=(()=>{try{return localStorage.getItem(ADHOC_OPEN_STORE)==='1'}catch(_){return false}})();
+  function writeAdhocOpen(){try{localStorage.setItem(ADHOC_OPEN_STORE,adhocOpen?'1':'0')}catch(_){}}
+  function adhocBucket(who){
+    const uid=who==null?filterUserId():who;
+    if(!adhocAll[uid]||typeof adhocAll[uid]!=='object')adhocAll[uid]={};
+    return adhocAll[uid];
+  }
+  function writeAdhocAll(){try{localStorage.setItem(ADHOC_STORE,JSON.stringify(adhocAll))}catch(_){}}
+  /* いまの支度と値。**値はここにしか無い**（保存へ回らない）。 */
+  let adhoc={column:'',op:'contains',value:''};
+  let adhocScope=null,adhocUid=null,adhocTimer=null,adhocColsSig='';
+  /* 支度の保存。**空の支度は行ごと消す**（覚えている一覧の数だけが増えない
+     ようにする。§9.175の空配列と同じ理由）。 */
+  function saveAdhocSetup(scope,who){
+    if(scope==null)return;
+    const bucket=adhocBucket(who);
+    if(adhoc.column)bucket[scope]={column:adhoc.column,op:adhoc.op};
+    else delete bucket[scope];
+    const keys=Object.keys(bucket);
+    if(keys.length>ADHOC_MAX_CONTEXTS)keys.slice(0,keys.length-ADHOC_MAX_CONTEXTS).forEach(k=>{
+      if(k!==scope)delete bucket[k];
+    });
+    writeAdhocAll();
+  }
+  /* 一覧（と利用者）が変わったら支度を入れ替え、**値は捨てる**。
+     残すと、別の一覧を開いた瞬間に身に覚えのない絞り込みが効く。 */
+  function syncAdhocContext(){
+    const scope=usageScopeKey(),uid=filterUserId();
+    if(scope===adhocScope&&uid===adhocUid)return false;
+    if(adhocScope!=null)saveAdhocSetup(adhocScope,adhocUid);
+    const saved=adhocBucket(uid)[scope];
+    adhoc={column:String(saved&&saved.column||''),
+           op:OPS.some(o=>o[0]===(saved&&saved.op))?saved.op:'contains',
+           value:''};
+    adhocScope=scope;adhocUid=uid;adhocColsSig='';
+    const box=$('#filterAdhocValue');if(box)box.value='';
+    return true;
+  }
+  /* いまの一覧にその列があるか。**無ければ効かせない**——サーバーは知らない
+     列の条件を落とすので、当たらない理由が画面から読めなくなる。 */
+  function adhocColumnOk(){
+    const cols=S.columns||[];
+    return !!adhoc.column&&(!cols.length||cols.includes(adhoc.column));
+  }
+  function adhocActive(){
+    if(!adhocColumnOk())return false;
+    return noValueOp(adhoc.op)?true:!!String(adhoc.value||'').trim();
+  }
+  /* 問い合わせへ足す条件（0件か1件）。**`S.genericFilters`とは別に持つ**。 */
+  function adhocFilters(){
+    if(!adhocActive())return [];
+    return [{column:adhoc.column,op:adhoc.op,value:noValueOp(adhoc.op)?'':String(adhoc.value||'').trim()}];
+  }
+  function adhocLabel(){
+    if(!adhoc.column)return '';
+    return condLabel({column:adhoc.column,op:adhoc.op,value:String(adhoc.value||'').trim()});
+  }
+  /* 打った内容を効かせる。**待ってからまとめて1回**——1文字ごとに問い合わせ
+     ると、打っている最中ずっと一覧が組み直される。Enterはすぐ効かせる。 */
+  function applyAdhoc(now){
+    if(adhocTimer){clearTimeout(adhocTimer);adhocTimer=null}
+    const run=()=>{adhocTimer=null;S.page=1;load();};
+    if(now)run();else adhocTimer=setTimeout(run,ADHOC_DEBOUNCE_MS);
+  }
+  function clearAdhoc(){
+    adhoc.value='';
+    const box=$('#filterAdhocValue');if(box)box.value='';
+    renderAdhocRow();applyAdhoc(true);
+  }
+  /* いまの条件を**登録側のトークンへ移す**。「その場」で当たりを付けてから
+     残したくなることがあるので、作り直させない（同じ条件を2回打たせない）。 */
+  function keepAdhoc(){
+    const list=adhocFilters();if(!list.length)return;
+    adhoc.value='';
+    const box=$('#filterAdhocValue');if(box)box.value='';
+    /* addGenericFilter が load() まで呼ぶので、ここでは applyAdhoc しない
+       （同じ問い合わせを2回投げることになる）。 */
+    addGenericFilter(list[0]);
+  }
+  function renderAdhocRow(){
+    const row=$('#filterAdhocRow'),toggle=$('#filterAdhocToggle');
+    if(!row)return;
+    syncAdhocContext();
+    const colSel=$('#filterAdhocColumn');
+    if(colSel){
+      /* **同じ顔ぶれなら触らない**——選択欄を組み直すと、開いている候補も
+         フォーカスも落ちる（§9.117と同じ理由）。 */
+      const cols=S.columns||[];
+      const sig=cols.join('');
+      if(sig!==adhocColsSig){
+        adhocColsSig=sig;
+        const missing=adhoc.column&&cols.length&&!cols.includes(adhoc.column);
+        colSel.innerHTML='<option value="">（選んでください）</option>'
+          +(missing?`<option value="${esc(adhoc.column)}">${esc(adhoc.column)}（この一覧にありません）</option>`:'')
+          +cols.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
+      }
+      if(colSel.value!==adhoc.column)colSel.value=adhoc.column;
+    }
+    const opSel=$('#filterAdhocOp');
+    if(opSel&&opSel.value!==adhoc.op)opSel.value=adhoc.op;
+    const box=$('#filterAdhocValue');
+    if(box){
+      const noVal=noValueOp(adhoc.op);
+      box.disabled=noVal||!adhoc.column;
+      box.placeholder=!adhoc.column?'先にカラムを選んでください'
+        :noVal?'この条件では値は要りません'
+        :'打つとその場で絞り込みます（Enterですぐ）';
+      /* 打っている最中は値へ触らない（カーソルが飛ぶ）。 */
+      if(document.activeElement!==box&&box.value!==adhoc.value)box.value=adhoc.value;
+    }
+    const keep=$('#filterAdhocKeep'),clear=$('#filterAdhocClear');
+    const on=adhocActive();
+    if(keep){
+      keep.disabled=!on;
+      keep.title=on?`「${adhocLabel()}」を上の条件へ移します（そのあと登録もできます）`
+                   :'効いている条件があるときだけ移せます';
+    }
+    if(clear)clear.disabled=!on&&!String(adhoc.value||'').trim();
+    const state=$('#filterAdhocState');
+    if(state){
+      if(!adhoc.column){state.className='filter-adhoc-state';state.textContent='カラムと条件を選ぶと使えます';}
+      else if(!adhocColumnOk()){
+        state.className='filter-adhoc-state is-warn';
+        state.textContent=`この一覧に「${adhoc.column}」の列がありません`;
+      }else if(on){
+        state.className='filter-adhoc-state is-on';
+        state.textContent=`効いています: ${adhocLabel()}`;
+      }else{
+        state.className='filter-adhoc-state';
+        state.textContent='まだ効いていません（入力欄に打つと効きます）';
+      }
+      state.title=state.textContent;
+    }
+    row.hidden=!adhocOpen;
+    if(toggle){
+      /* **畳んでいても効いていることを名乗る**(§9.175)。見えない場所で
+         絞り込みが効いているのは「勝手に絞られている」としか読めない。 */
+      toggle.textContent=on?`その場フィルタ: ${adhocLabel()}`:'その場フィルタ';
+      toggle.classList.toggle('active',adhocOpen||on);
+      toggle.classList.toggle('is-on',on);
+      toggle.setAttribute('aria-expanded',adhocOpen?'true':'false');
+      toggle.title=on?`いま「${adhocLabel()}」で絞り込んでいます。押すと開いて直せます`
+        :'カラムと条件を決めておき、入力欄に打つとその場で絞り込みます（登録はしません）';
+    }
+  }
+
   /* クイックフィルタ: 詳細ビルダーを開かなくても、よく使う条件をワンクリックで
      追加できるチップを検索バー直下へ常時表示する(既存のfrequentConditions()
      ―保存フィルタ利用回数×2+個別条件の適用履歴―をそのまま流用)。
@@ -953,7 +1200,7 @@
     [...row.querySelectorAll('.suggest-chip')].forEach((btn,i)=>btn.onclick=()=>addGenericFilter(top[i]));
   }
   function renderGenericFilterBar(){
-    ensureGenericFilterBar();updateFilterColumns();renderActiveTokens();renderQuickFilters();
+    ensureGenericFilterBar();updateFilterColumns();renderActiveTokens();renderQuickFilters();renderAdhocRow();
     /* 条件が変わる経路は多い(追加・削除・全解除・登録フィルタの適用・
        設定画面からのやり直し)。**全部がここを通る**ので、覚えるのも1箇所で
        済ませる——経路ごとに書くと必ずどれかを書き忘れる。 */
@@ -1617,7 +1864,12 @@
     syncFilterContext();
     // 変数(例: {使用設備})はここで今の値へ展開する。保存されている条件は
     // 変数のままなので、端末や設備が変わってもそのまま使い回せる。
-    if(S.genericFilters?.length)q.set('filters',JSON.stringify(expandFilterList(S.genericFilters)));
+    /* その場フィルタ(§9.237 ⑤)は**ここでだけ足す**——`S.genericFilters`へ
+       入れると覚え(§9.175)へ焼き付き、次に開いたときに身に覚えのない条件が
+       復活する。効いていることは絞り込みバーが文字で言う。 */
+    syncAdhocContext();
+    const list=S.genericFilters.concat(adhocFilters());
+    if(list.length)q.set('filters',JSON.stringify(expandFilterList(list)));
   });
   WL.listHooks.onAfter(()=>renderGenericFilterBar());
   if(typeof renderTabs==='function'){
