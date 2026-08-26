@@ -476,7 +476,15 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .rv-group+.rv-group{margin-top:0}
 /* 見出しは**カードの中の群の見出しの規格**（§9.154）。ここだけ11pxで、
    同じ画面の①②より1段小さかった。 */
-.rv-group>b{display:block;margin-bottom:var(--space-1);color:var(--ink-3);font-size:var(--fs);font-weight:800;letter-spacing:.04em}
+/* 群の見出し。**件数も文字で出す**（§3／§9.242 ④）——値が「—」ばかりの
+   群を、中を読む前に見分けられる。 */
+.rv-group>b{display:flex;align-items:baseline;gap:var(--gap-inline);
+  margin-bottom:var(--space-1);color:var(--ink-3);font-size:var(--fs);font-weight:800;letter-spacing:.04em}
+.rv-group>b>small{color:var(--muted);font-size:var(--fs-sm);font-weight:700;
+  font-variant-numeric:tabular-nums;letter-spacing:0}
+/* 自動で入る値は**人が入れた値と見分けられるように**（§6／§9.234 ⑦と
+   同じ分け方）。色だけで伝えないので、`title`にも「自動で入る値」と書く。 */
+.rv-group dd.rv-auto{color:var(--computed-fg)}
 /* **値を切り詰めない**（§9.206、実機で「母材の項目が見切れています」）。
    `max-content`のままだと、長いラベル（「屑幅（両耳合計）」）が2段組の
    狭い列を食い尽くし、**数字のほうが「122…」と切られていた**。数字は
@@ -934,6 +942,71 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 }
 .fc-fix{grid-row:1;grid-column:3;height:var(--ctl-h-sm);white-space:nowrap}
 .fc-note{margin:var(--space-3) 0 0;color:var(--ink-soft);font-size:var(--fs-sm)}
+/* ---------- 公差外・基準外はカードで気づく（§9.242 ⑥、利用者の指示） ----------
+   「カード自体を背景色または縁の色などを変えて視覚的に気付くように…
+    今のままか強調か、色なども含めて変更できるように」
+   色は`--fc-alert-*`でJSが渡す（`WL.columnTint.PALETTE`の7色。16進を
+   選ばせない・§9.198）。**どこまで塗るかは`data-fc-alert`**で、
+   `off`のときはこの規則そのものが当たらない（＝今までどおり）。
+   **面は淡いまま**——確認カードは文字が主役で、面を濃くすると読めなくなる。 */
+.finish-check.fc-alert[data-fc-alert="frame"],
+.finish-check.fc-alert[data-fc-alert="both"]{
+  border-color:var(--fc-alert-line);
+  box-shadow:0 0 0 2px color-mix(in srgb, var(--fc-alert-line) 45%, transparent);
+}
+.finish-check.fc-alert[data-fc-alert="fill"],
+.finish-check.fc-alert[data-fc-alert="both"]{
+  background:color-mix(in srgb, var(--fc-alert-bg) 60%, var(--surface));
+}
+/* 強調の設定への入口。**題の右端**に置く（読む順の最後）。 */
+.fc-head{position:relative}
+.fc-alert-conf{
+  margin-left:auto;height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-sm);
+  border:1px solid var(--line);border-radius:var(--radius-pill);
+  background:var(--surface-2);color:var(--ink-3);font-weight:800;
+  font-size:var(--fs-sm);white-space:nowrap;
+}
+.fc-alert-conf[aria-expanded="true"]{border-color:var(--teal);color:var(--teal)}
+/* 浮き窓は**器の外**（`body`直下・`position:fixed`）。カードは`overflow:auto`
+   なので、中で開くと必ず切り落とされる（§9.201）。 */
+.fc-alert-pop{
+  position:fixed;z-index:var(--z-popover);min-width:16rem;max-width:22rem;
+  padding:var(--pad-card);border:1px solid var(--line);border-radius:var(--radius-card);
+  background:var(--surface);box-shadow:0 12px 28px rgba(23,56,66,.22);
+}
+.fc-alert-pop-head{display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-2)}
+.fc-alert-pop-head b{flex:1;min-width:0;font-size:var(--fs-sm)}
+.fc-alert-close{
+  height:var(--ctl-h-xs);width:var(--ctl-h-xs);padding:0;border:1px solid var(--line);
+  border-radius:var(--radius-sm);background:var(--surface-2);color:var(--ink-3);font-weight:800;
+}
+.fc-alert-row{display:flex;align-items:flex-start;gap:var(--space-2);margin-bottom:var(--space-2)}
+/* 見出しは**折り返さない**（§9.90「列の見出しは折り返さない」と同じ扱い）
+   ——`強調のしか／た`と割れると、2つの設定が並んでいるように読める。 */
+.fc-alert-row>small{flex:0 0 auto;color:var(--muted);font-size:var(--fs-sm);font-weight:700;
+  white-space:nowrap;line-height:var(--ctl-h-xs)}
+.fc-alert-modes,.fc-alert-colors{display:flex;flex-wrap:wrap;gap:var(--gap-inline);min-width:0}
+.fc-alert-mode,.fc-alert-color{
+  height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-sm);
+  border:1px solid var(--line);border-radius:var(--radius-sm);
+  background:var(--surface);color:var(--muted);font-size:var(--fs-sm);font-weight:700;
+  white-space:nowrap;
+}
+/* 選んだ札のほうが濃い（§9.229 ②）——未選択を`--muted`にしてあるので、
+   選んだ側に色を付けたときに差になる。合図は「面」と「枠」の2つまで。 */
+.fc-alert-mode.is-on{background:var(--pale);border-color:var(--teal);color:var(--teal-dark)}
+.fc-alert-color{background:var(--sw-bg);border-color:var(--sw-line);color:var(--sw-ink)}
+.fc-alert-color.is-on{box-shadow:inset 0 0 0 2px var(--sw-line);font-weight:800}
+.fc-alert-note{margin:0;color:var(--muted);font-size:var(--fs-sm)}
+/* ---------- 「NGが発生した」（§9.242 ⑥） ----------
+   行の中の最後の段。**押せないときは理由を文字で出す**（§4）——灰色に
+   なっているだけでは、壊れているのか制限なのかが読めない。 */
+.fc-actions{grid-column:2/-1;display:flex;align-items:center;gap:var(--space-2);
+  flex-wrap:wrap;margin-top:var(--space-1)}
+.fc-ng{height:var(--ctl-h-sm);white-space:nowrap;
+  border:1px solid var(--danger-border);background:var(--danger-bg);color:var(--danger);font-weight:800}
+.fc-ng:disabled{border-color:var(--line);background:var(--surface-2);color:var(--muted)}
+.fc-ng-note{flex:1 1 0;min-width:0;color:var(--muted);font-size:var(--fs-sm)}
 
 /* --- 本体 3 ペイン（比率 3 : 4 : 4） --- */
 /* ---------- カードの外側グリッド（§9.135） ----------
@@ -1772,6 +1845,38 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
    1行に収めるための縮み代だけを持たせる。 */
 .mhead-status{flex:0 1 auto;min-width:0;color:var(--ink-3);font-weight:700;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* ---------- バリの2段（§9.242 ③、利用者の指示） ----------
+   「1回目のデータを受け付けたことを表示し、2回目入力時にはそのデータの
+    計算式も合わせて見える形に表示…表示領域は今の1行の範囲内で納める」
+   **行を増やさない**ので、見出しの中の1つのピルにまとめる。中の並びが
+   そのまま作業の順（① → ② → 式）になっていて、読む向きと打つ順が一致する。
+   **数字は等幅**（`tabular-nums`）——桁が揺れると同じ式が別物に見える。
+   **縮まない**（`flex:0 0 auto`）——式は切れると意味を失うので、狭いときは
+   隣の進捗（`.mhead-status`）が先に縮む。 */
+.burr-step{
+  display:inline-flex;align-items:center;gap:var(--gap-hair);flex:0 0 auto;
+  padding:var(--pad-chip);border-radius:var(--radius-pill);
+  background:var(--computed-bg);color:var(--computed-fg);
+  font-weight:800;white-space:nowrap;font-variant-numeric:tabular-nums;
+}
+/* 次に押す番号だけを塗る（**次にすることを1つだけ指す**）。済んだ番号は
+   同じ器の中で色を落とすだけにして、位置は動かさない。 */
+.burr-no{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:1.25em;font-style:normal;font-weight:800;color:var(--ink-3);
+}
+.burr-no--next{color:var(--teal)}
+.burr-op{font-style:normal;font-weight:700;opacity:.7;padding:0 .1em}
+.burr-word{font-weight:700}
+.burr-val{font-weight:800}
+/* 差＝記録される値。**式の答えがどれかを色で言い切る**（数字が3つ並ぶので、
+   どれが入ったのかを読み取らせない）。文字でも`title`が言う。 */
+.burr-val--diff{color:var(--teal-dark)}
+/* 1回目を受け付けた状態だけ地を変える——「いま途中である」ことが、
+   見出しをちらと見ただけで分かる（色だけに頼らず、②の文字も出す）。 */
+.burr-step--second{background:var(--warn-bg);color:var(--warn-fg)}
+.burr-step--second .burr-no--next{color:var(--warn-fg)}
+.burr-step--first{background:var(--surface-2);color:var(--ink-2)}
 /* 自動／手動は**見出しの中の小さな切り替え**（§9.209 ③）。以前はタブ1本を
    丸ごと1行使っていた。 */
 .mode-tabs{display:flex;height:var(--ctl-h-xs);flex:0 0 auto;

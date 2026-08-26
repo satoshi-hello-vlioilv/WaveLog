@@ -105,6 +105,70 @@ function renderStats(){
 }
 function deviceParse(raw){const manual=S.measure?.settings?.inputMode==='manual',v=(manual?String(raw||''):toHalfWidth(String(raw||''))).trim().toUpperCase();if(v==='#DELETEMODE#'||v==='DELETE')return{device:'delete',value:null};if(v.includes('+#L')){const num=Number(v.split('+#L')[1]);return{device:'tape',value:Number.isFinite(num)?num:null}}if(!v.includes('+'))return Number.isFinite(Number(v))?{device:'manual',value:Number(v)}:{device:'invalid',value:null};const [code,data]=v.split('+');let device='invalid';if(code.startsWith('DT1')){const kind=code.slice(-2,-1);device=kind==='0'?'micrometer':kind==='1'?'caliper':kind==='2'?'depth':'invalid'}const num=Number(String(data).replace(/M$/,''));return{device,value:Number.isFinite(num)?num:null}}
 function activeMeasureKey(){return WL.measureItem.KEYS[$('#measureType').value]||'width'}
+/* ---------- バリは「2回測って差を採る」（§9.242 ③、利用者の指示） ----------
+   「1回目のデータを受け付けたことを表示し、2回目入力時にはそのデータの
+    計算式も合わせて見える形に表示してください。ただし、表示領域は今の1行の
+    範囲内で納めるようにしてください」
+
+   **今までは何も見えていなかった。** 案内は`setState()`＝保存状態のバッジ
+   （`#localState`）へ書いていたが、同じ転送処理の末尾で`markDirty()`が
+   `未保存（画面の中だけ）`を上書きするため、**1文字も表示されないまま消えて
+   いた**（しかも書けていたとしても保存状態を潰していた・§9.212 ④）。
+
+   置き場は**測定の見出しの1行**（`#measureHeadBadges`）——打ち込む欄のすぐ上で、
+   行を増やさない（§9.234 ③の「見出しは1行」を崩さない）。出るのはバリの
+   ときだけ。3つの状態しか持たない:
+
+     ① 板厚              … 1回目（バリ込みでない板厚）待ち
+     ① 2.000 → ② 高さ    … 1回目を受け付けた（受け付けた値をそのまま出す）
+     2.150 − 2.000 = 0.150 ▸ ①  … 2回目で確定。**計算式のまま**出す
+
+   **式の控えは記録へ入れない**（`burrEcho`はこのファイルの変数）——差の値は
+   既に`measurements.burr`にあり、途中式は「いま何をしたか」を示す画面の
+   道具でしかない。**開いている記録が変わったら捨てる**（idで見分ける）。 */
+const BURR_DIGITS=3;
+const burrNum=v=>{const n=Number(v);return Number.isFinite(n)?n.toFixed(BURR_DIGITS):String(v??'')};
+let burrEcho=null;
+function burrEchoNow(){
+ const m=S.measure;
+ return (m&&burrEcho&&burrEcho.id===m.id)?burrEcho:null;
+}
+/* 1回目を受け取ったら控えは捨てる（前の条の式が残っていると、いま受け付けた
+   値の話なのか前の話なのかが読めなくなる）。 */
+function burrRemember(rec){burrEcho=rec}
+function burrFirstValue(){
+ const v=S.measure&&S.measure.settings?S.measure.settings.burrFirst:null;
+ return (v===null||v===undefined||v==='')?null:Number(v);
+}
+function burrStepHtml(){
+ if(!S.measure)return '';
+ const first=burrFirstValue();
+ if(first!==null&&Number.isFinite(first)){
+  const tip=`① 板厚 ${burrNum(first)} を受け付けました。`
+    +`次は ② バリ込みの高さを測ってください（② − ① がバリの高さとして入ります）。`
+    +`測り直すときは測定器の DELETE を送ると ① からやり直せます。`;
+  return `<span class="burr-step burr-step--second" title="${esc(tip)}">`
+   +`<i class="burr-no">①</i><b class="burr-val">${esc(burrNum(first))}</b>`
+   +`<em class="burr-op" aria-hidden="true">▸</em>`
+   +`<i class="burr-no burr-no--next">②</i><span class="burr-word">高さ</span></span>`;
+ }
+ const echo=burrEchoNow();
+ if(echo){
+  const tip=`${echo.where}: ② ${burrNum(echo.top)} − ① ${burrNum(echo.base)}`
+    +` = ${burrNum(echo.diff)}（この差をバリとして記録しました）。次は ① 板厚からです。`;
+  return `<span class="burr-step burr-step--done" title="${esc(tip)}">`
+   +`<b class="burr-val">${esc(burrNum(echo.top))}</b>`
+   +`<em class="burr-op" aria-hidden="true">−</em>`
+   +`<b class="burr-val">${esc(burrNum(echo.base))}</b>`
+   +`<em class="burr-op" aria-hidden="true">=</em>`
+   +`<b class="burr-val burr-val--diff">${esc(burrNum(echo.diff))}</b>`
+   +`<em class="burr-op" aria-hidden="true">▸</em><i class="burr-no">①</i></span>`;
+ }
+ const tip='① バリの無いところの板厚を測ってください。'
+   +'続けて ② バリ込みの高さを測ると、その差がバリの高さとして入ります。';
+ return `<span class="burr-step burr-step--first" title="${esc(tip)}">`
+  +`<i class="burr-no burr-no--next">①</i><span class="burr-word">板厚</span></span>`;
+}
 /* 公差NGの先読み警告: 受信欄(#deviceInput)へ転送中の生データを、確定(Tab/Enter)
    前の時点でその都度deviceParseし、どの項目(kind)へ入るかを判定できれば
    数直線(#numberlinePending)へ即座にプレビュー表示する。実際に書き込みは
@@ -224,7 +288,13 @@ function refocusDeviceInput(){
 }
 /* 受信データ1件分の本処理。measureTypeごとの振り分け・値の確定・再描画。 */
 function processDeviceInputCore(raw){
- const p=deviceParse(raw),m=S.measure,st=m.settings,type=$('#measureType').value,li=lengthIndex();$('#deviceInput').classList.remove('device-ok','device-error');if(p.device==='invalid'||p.value===null&&p.device!=='delete'){setState('入力形式エラー');$('#deviceInput').classList.add('device-error');$('#deviceInput').value='';refocusDeviceInput();return}if(p.device==='delete'){const key=activeMeasureKey(),j=key==='thickness'?(st.tStep||0):(st.wStep||0);if(m.measurements[key])m.measurements[key][li][j]='';renderMeasureGrid();markDirty();refocusDeviceInput();return}
+ const p=deviceParse(raw),m=S.measure,st=m.settings,type=$('#measureType').value,li=lengthIndex();$('#deviceInput').classList.remove('device-ok','device-error');if(p.device==='invalid'||p.value===null&&p.device!=='delete'){setState('入力形式エラー');$('#deviceInput').classList.add('device-error');$('#deviceInput').value='';refocusDeviceInput();return}if(p.device==='delete'){const key=activeMeasureKey(),j=key==='thickness'?(st.tStep||0):(st.wStep||0);if(m.measurements[key])m.measurements[key][li][j]='';
+  /* **バリはDELETEで①からやり直せる**（§9.242 ③）。差がマイナスのときの
+     案内が「DELETEして再測定してください」と言っているのに、1回目の控え
+     （`burrFirst`）が残ったままでは②のまま——**言ったとおりにならない**
+     （押せるのに何も起きないのと同じ・§4）。 */
+  if(key==='burr'){st.burrFirst=null;burrRemember(null)}
+  renderMeasureGrid();markDirty();refocusDeviceInput();return}
  /* 板厚と板幅は別々の入力内容(§9.138)。使う測定器も枠の数も違うので、
     受け取れる機種もここで項目ごとに分かれる（バリ＝マイクロメータ、
     テレスコープ＝デプスゲージ と同じ形）。 */
@@ -233,9 +303,30 @@ function processDeviceInputCore(raw){
   const j=st.tStep||0;m.measurements.thickness[li][j]=p.value.toFixed(3);st.tStep=(j+1)%3;st.pendingDevice='micrometer'
  }else if(type==='板幅'){
   if(!['caliper','tape','manual'].includes(p.device))return inputError('板幅はノギスまたはコンベックスを使用してください');
-  const j=st.wStep||0;m.measurements.width[li][j]=p.value.toFixed(p.device==='caliper'?2:1);st.pendingDevice='width';advanceWidth()
+  /* **板幅は測定器によらず小数2桁**（§9.242 ②、利用者の指示）。以前は
+     ノギスだけ2桁・コンベックスは1桁だったが、入口の`processDeviceInput()`が
+     どちらも1桁へ丸めてから渡していたため、**ノギスの2桁目は必ず0**だった
+     （設定としては2桁なのに一度も効いていない）。桁数は`measurementDigits()`
+     の1箇所が答える。 */
+  const j=st.wStep||0;m.measurements.width[li][j]=fixedMeasurementValue('width',p.value);st.pendingDevice='width';advanceWidth()
  }else if(type==='バリ'){
-  if(!['micrometer','manual'].includes(p.device))return inputError('バリはマイクロメータを使用してください');const j=st.wStep||0;if(st.burrFirst===null||st.burrFirst===undefined){st.burrFirst=p.value;setState(`STEP 2/2 バリ高さを測定してください。基準 ${p.value}`)}else{const diff=p.value-st.burrFirst;if(diff<0)return inputError('測定値がマイナスになります。DELETEして再測定してください');m.measurements.burr[li][j]=Math.abs(diff).toFixed(3);st.burrFirst=null;advanceWidth();setState('STEP 1/2 バリ測定対象の板厚を測定してください')}
+  /* 段の案内は**見出しのバッジ**が出す（§9.242 ③）。`setState()`へ書いて
+     いた頃は、この関数の末尾の`markDirty()`が保存状態で上書きするため
+     **一度も表示されなかった**（しかも保存状態を潰していた・§9.212 ④）。 */
+  if(!['micrometer','manual'].includes(p.device))return inputError('バリはマイクロメータを使用してください');
+  const j=st.wStep||0;
+  if(st.burrFirst===null||st.burrFirst===undefined){
+   st.burrFirst=p.value;burrRemember(null);
+  }else{
+   const diff=p.value-st.burrFirst;
+   if(diff<0)return inputError('測定値がマイナスになります。DELETEして再測定してください');
+   m.measurements.burr[li][j]=Math.abs(diff).toFixed(BURR_DIGITS);
+   /* **計算式は「どの枠の話か」まで控える**（§6）——条が進んだあとに式だけ
+      残ると、いま光っている枠の値と読み違える。 */
+   burrRemember({id:m.id,base:st.burrFirst,top:p.value,diff:Math.abs(diff),
+     where:`${$('#lengthPos')?.value||''} ${j+1}条`.trim()});
+   st.burrFirst=null;advanceWidth();
+  }
  }else if(type==='テレスコープ'){
   if(!['depth','manual'].includes(p.device))return inputError('テレスコープはデプスゲージを使用してください');m.measurements.telescope[li][st.wStep||0]=p.value.toFixed(2);advanceWidth()
  }else{const key=activeMeasureKey();m.measurements[key][li][st.wStep||0]=type==='ラテラルボー'?(Math.ceil(p.value*2)/2).toFixed(1):p.value.toFixed(1);advanceWidth()}
@@ -244,14 +335,18 @@ function processDeviceInputCore(raw){
  WL.workStamp.note('transfer');
  $('#deviceInput').classList.add('device-ok');$('#deviceInput').value='';renderMeasureGrid();renderStats();markDirty();focusCurrent();refocusDeviceInput()
 }
-/* 受信処理の入口。板幅のノギス系値は小数1桁へ丸めてから本処理へ渡し、
-   処理後は診断用に直前受信の生データと結果を#deviceLastReceivedへ記録する。 */
+/* 受信処理の入口。板幅のノギス系値は`measurementDigits('width')`の桁へ
+   丸めてから本処理へ渡し（§9.242 ②）、処理後は診断用に直前受信の生データと
+   結果を#deviceLastReceivedへ記録する。 */
 function processDeviceInput(raw){
  const pad2=n=>String(n).padStart(2,'0'),d=new Date(),ts=`${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
  const type=$('#measureType')?.value,parsed=deviceParse(raw);
  let result;
  if(type==='板幅'&&parsed.value!==null&&Number.isFinite(parsed.value)&&['caliper','tape','manual'].includes(parsed.device)){
-  const normalized={...parsed,value:Number(parsed.value.toFixed(1))};const original=deviceParse;deviceParse=()=>normalized;
+  /* 丸めるのは**`measurementDigits('width')`の桁**（§9.242 ②）。ここに
+     桁数を直に書くと、`base.js`の桁数を上げてもこちらが先に落として
+     しまう（実際に2桁の設定が1桁で潰されていた）。 */
+  const normalized={...parsed,value:Number(parsed.value.toFixed(measurementDigits('width')))};const original=deviceParse;deviceParse=()=>normalized;
   try{result=processDeviceInputCore(raw)}finally{deviceParse=original}
  }else result=processDeviceInputCore(raw);
  const el=$('#deviceInput'),out=$('#deviceLastReceived');
@@ -749,9 +844,12 @@ function renderMeasureGridVertical(){
  const head=$('#measureHeadBadges');
  /* 進捗は**いま選んでいる丈だけ**の数（②のチップは全丈の合算なので別の数）。
     1行に収めるために縮み代を持つので、**全文は`title`で読めるようにする**。 */
+ /* バリの2段（§9.242 ③）は**この1行の中**に置く。項目名・進捗と同じ器なので
+    行は増えない。出るのはバリのときだけ。 */
+ const burrBadge=type==='バリ'?burrStepHtml():'';
  if(head)head.innerHTML=`<b class="mhead-item">${esc(type)}</b>`
    +`<span class="mhead-status" title="${esc(`この丈の進み: ${compactMeasureStatus(done,slots)}`)}">`
-   +`${esc(compactMeasureStatus(done,slots))}</span>`+bulkBtn;
+   +`${esc(compactMeasureStatus(done,slots))}</span>`+burrBadge+bulkBtn;
  let h=`<section class="measure-grid-block compact-other"><div class="matrix-body${tol.graph?'':' no-graph'}"><aside class="compact-tolerance-side">${tol.graph}</aside>`;
  h+=measureMatrixHtml(actualKey,slots,type);
  h+='</div></section>';
@@ -926,7 +1024,9 @@ function bindFlatnessInputs(){
  });
 }
 /* Horizontal tolerance summary: preserve hierarchy while avoiding vertical clipping. */
-const TOL_SOURCE_LABELS={manufacturing:'製造公差',order:'オーダー公差',instruction:'指示公差'};
+/* 出どころの呼び名。**指示値は上下限を持たない**ので「指示基準」と呼ぶ
+   （§9.242 ⑤、利用者の指示）。製造・オーダーは板厚・板幅の上下限なので公差。 */
+const TOL_SOURCE_LABELS={manufacturing:'製造公差',order:'オーダー公差',instruction:'指示基準'};
 function compactToleranceData(kind){
  const detail=toleranceDetail(kind),
    base=Number(S.measure.basic[(TOL_DIMENSIONS[kind]||TOL_DIMENSIONS.width).baseKey]),
@@ -939,8 +1039,16 @@ function compactToleranceFacts(kind){
  /* **公差が無いことはバッジ1つで言う**（§9.209 ②、利用者の指示）。
     3行のカード（実測34px＋余白）を1行の帯に置いていたので、そのぶん条が
     2本隠れていた。理由は`title`で読める。 */
- if(!data)return{html:'<span class="tol-pill is-none" title="選択した公差区分に使用可能なプラス・マイナス値がありません。判定は行いません。">公差なし</span>',range:null};
- return{range:data.range,html:`<div class="compact-tol-three-row"><div class="tol-line tol-line-base"><span class="compact-tol-source">${esc(data.source)}</span><span class="tol-value-pair"><small>基準</small><b>${esc(data.base)}</b></span></div><div class="tol-line tol-line-plusminus"><span class="tol-value-pair"><small>公差＋</small><b>+${esc(data.plus)}</b></span><span class="tol-value-pair"><small>公差－</small><b>-${esc(data.minus)}</b></span></div><div class="tol-line tol-line-range"><small>判定範囲</small><b>${esc(data.low)} ～ ${esc(data.high)}</b></div></div>`};
+ /* **言葉は項目で変える**（§9.242 ⑤）。上下限を持つ板厚・板幅だけが公差で、
+    それ以外は「基準」。判定は`WL.measureItem`の1箇所。 */
+ const word=WL.measureItem.limitWord();
+ if(!data)return{html:`<span class="tol-pill is-none" title="${esc(word==='公差'
+   ?'選択した公差区分に使用可能なプラス・マイナス値がありません。判定は行いません。'
+   :'この項目には判定に使える基準が登録されていません。判定は行いません。')}">${esc(word)}なし</span>`,range:null};
+ /* 中央の値は**基準値**（狙う寸法）。§9.242 ⑤で「基準」を「上下限を持たない
+    項目の判定のよりどころ」に使うようにしたので、**同じ2文字で2つの意味を
+    持たせない**——ここは`基準値`と言い切る（`title`でも既にそう書いていた）。 */
+ return{range:data.range,html:`<div class="compact-tol-three-row"><div class="tol-line tol-line-base"><span class="compact-tol-source">${esc(data.source)}</span><span class="tol-value-pair"><small>基準値</small><b>${esc(data.base)}</b></span></div><div class="tol-line tol-line-plusminus"><span class="tol-value-pair"><small>公差＋</small><b>+${esc(data.plus)}</b></span><span class="tol-value-pair"><small>公差－</small><b>-${esc(data.minus)}</b></span></div><div class="tol-line tol-line-range"><small>判定範囲</small><b>${esc(data.low)} ～ ${esc(data.high)}</b></div></div>`};
 }
 /* ---------- ③の公差一覧（§9.157、利用者の指摘） ----------
    「3枚目は、公差指示がラテラルボーしか出ていませんが、板厚、板幅、板丈の
@@ -989,7 +1097,7 @@ function toleranceListRows(){
  types.forEach(t=>{
   const info=WL.instruction.info(t);
   if(!info)return;                       /* 値の無い指示は行ごと出さない */
-  rows.push({key:'i:'+t,name:t,kind:'instruction',source:'指示公差',fallback:false,
+  rows.push({key:'i:'+t,name:t,kind:'instruction',source:'指示基準',fallback:false,
    base:'',plus:'',minus:'',
    range:Number.isFinite(info.value)?`0 ～ ${info.value}`:String(info.raw||''),
    note:info.unit?`${info.unit}単位`:'単位指定なし',missing:false});
@@ -1031,8 +1139,8 @@ function toleranceListHtml(){
      データに無くて製造公差へ落ちたときに黙っていると、別の公差で
      判定していることに気づけない。 */
   const basis=r.missing
-   ?'公差がマスタに登録されていません'
-   :[r.base?`基準 ${r.base}`:'',pm,
+   ?`${r.kind==='dimension'?'公差':'基準'}がマスタに登録されていません`
+   :[r.base?`基準値 ${r.base}`:'',pm,
      r.source+(r.fallback?'（指定の公差が無いため）':''),r.note||'']
      .filter(Boolean).join(' ／ ');
   return `<li class="tol-card${r.missing?' is-missing':''}" data-tol="${esc(r.key)}">`
@@ -1041,7 +1149,10 @@ function toleranceListHtml(){
       r.missing?'<span class="tol-list-missing">登録なし</span>':esc(r.range||'—')}</span>`
    +`<span class="tol-card-basis">${esc(basis)}</span></li>`;
  }).join('');
- return '<div class="tol-list-head">効いている公差</div>'
+ /* 見出しは**両方の言葉**を出す（§9.242 ⑤）。この一覧は板厚・板幅（公差）と
+    ラテラルボー等（基準）を同じ表に並べるので、片方の言葉だけでは
+    もう片方が「無い」ように読める。 */
+ return '<div class="tol-list-head">効いている公差・基準</div>'
   +`<ul class="tol-cards">${body}</ul>`
   +(note?`<p class="tol-list-note">${esc(note)}</p>`:'');
 }
@@ -1332,7 +1443,7 @@ function syncNumberlineControls(){
   state.textContent=chart
    ?(out?`いま軸の外に出ている点が ${out} 件あります。表示幅を広げると図に入ります。`
         :'いま軸の外に出ている点はありません。')
-   :'この項目では公差の図を描いていないので、ここの設定は効きません。';
+   :`この項目では${WL.measureItem.limitWord()}の図を描いていないので、ここの設定は効きません。`;
   state.classList.toggle('is-warn',!!out);
  }
 }

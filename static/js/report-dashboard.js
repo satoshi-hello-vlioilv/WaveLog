@@ -195,10 +195,25 @@
     向きは端末ごとの表示設定として保持する。 */
  const RP_ORIENT_KEY='WaveLogReportOrientationV1';
  let rpOrientation=(()=>{try{return localStorage.getItem(RP_ORIENT_KEY)==='landscape'?'landscape':'portrait'}catch(e){return 'portrait'}})();
+ /* ---------- 紙の余白は**0**（§9.243、利用者の指摘「アプリ内の印刷プレビューと
+       WINDOWSのプレビューに違いが出ています…用紙に対して80％くらいの比率と
+       共に表示内容のクオリティも下がっている」） ----------
+    §9.242 ⑦で`90-state.css`の`@page`を`margin:0`にしたのに、**ここが`5mm`の
+    ままだった**。この`<style>`は`<head>`の末尾へ挿すので後から読まれ、
+    **こちらが勝つ**——版面が 200×287mm になり、紙（`.rp-page`＝210×297mm）が
+    はみ出す。はみ出すとブラウザは**全体を縮めて版面へ収める**ので、
+    プレビューと比率が変わり、そのぶん文字も潰れる（＝報告そのもの）。
+
+    **`RP_PAGE_MARGIN`はここ1箇所**で、`90-state.css`の保険（JSが動く前・
+    差し替えが間に合わなかったとき用）と**必ず同じ値にする**。食い違うと、
+    後ろに読まれた側が黙って勝つ——2枚あることが問題なのではなく、
+    **違う値の2枚がある**ことが問題（`tests/test_rpprint.js`が突き合わせる）。 */
+ const RP_PAGE_MARGIN='0';
  function updatePageSizeStyle(){
   let el=document.getElementById('rpPageSizeStyle');
   if(!el){el=document.createElement('style');el.id='rpPageSizeStyle';document.head.appendChild(el)}
-  el.textContent=`@page{size:A4 ${rpOrientation==='landscape'?'landscape':'portrait'};margin:5mm}`;
+  el.textContent=`@page{size:A4 ${rpOrientation==='landscape'?'landscape':'portrait'};`
+   +`margin:${RP_PAGE_MARGIN}}`;
  }
  function applyOrientation(){
   const page=$id('reportContent');
@@ -402,6 +417,10 @@
  }
  window.WL=window.WL||{};
  WL.report={bulkPrint:bulkPrintByIds};
+ /* 測定した値の統計（§9.242 ⑨）。**引き口を1つ出す**——値の作り方は
+    ここが持ち、選べる綴りはサーバー（`report_block_repo.STAT_*`）が持つ。
+    外へ出すのは「1つの道を引く」だけで、内部の表は渡さない。 */
+ WL.reportStat=(x,path)=>rpValueAt(x,path);
 
  function bulkPrintNow(items,area){
   area.innerHTML=items.map(x=>`<div class="rp-report rp-page${rpOrientation==='landscape'?' rp-landscape':''}">${reportHtml(x)}</div>`).join('');
@@ -477,9 +496,16 @@
  }
  /* 仕掛データ取込時に別ファイル（品質情報テーブル）から取得し保存している
     異常/保留情報。旧帳票では品質等級欄の上（右上ブロック）に表示されていた。 */
+ /* 品質情報の枠は**カードの大きさいっぱい**（§9.242 ⑧、利用者の指摘
+    「異常登録のデータがない場合…その表示する枠は文字量に合わせて可変と
+     なっており、折角帳票レイアウトで最低表示領域を確保しても中の枠が
+     小さくなるのでバランスが悪くなってしまいます」）。
+    印は`rp-section-fill`の1つで、**高さを決めた塊のときだけ**効く
+    （CSSが`.rp-block.is-sized`で絞る）——中身なりの塊で効かせると、
+    `rpFitRows()`が測る`scrollHeight`が器の高さになって行数が決まらない。 */
  function qualityInfoSection(x){
   const text=String(x.qualityInfo||'異常情報なし');
-  return `<section class="rp-section"><h3>品質情報（仕掛）</h3><div class="rp-info-box">${esc(text).replace(/\n/g,'<br>')}</div></section>`;
+  return `<section class="rp-section rp-section-fill"><h3>品質情報（仕掛）</h3><div class="rp-info-box">${esc(text).replace(/\n/g,'<br>')}</div></section>`;
  }
  function motherSection(x){
   const m=x.mother||{},originalWidth=fmtDim(x.basic?.originalWidth,1);
@@ -928,10 +954,88 @@
    status:statusLabel(x.status),updatedAt:fmtDT(x.updatedAt),
   };
  }
+ /* ---------- 測定した値の統計（§9.242 ⑨、利用者の指示） ----------
+    「測定したデータの計算値や集計値など…特にロットごとの板厚MIN、MAXや
+     板幅MIN、MAXや板丈MIN、MAXなど測定した項目の統計値なども含めて
+     設計できるようにしたい」
+
+    **選べる綴りはサーバーが持つ**（`report_block_repo.STAT_ITEMS`／
+    `STAT_AGGS`）。ここが持つのは**値の作り方**だけ——測定値はレコードの
+    中にあるので、サーバーからは引けない（§9.163と同じ分け方）。
+
+    数える範囲は**そのロットの丈数・条数まで**（`measure-progress.js`の
+    `countsOf`と同じ考え方）——配列は12丈×40条で確保してあるので、素で
+    走査すると**条数を減らす前に入っていた値**まで数える。
+    板厚だけは条ではなく丈ごとに3点（OS/CL/DS。§9.138）。
+
+    桁は**記録されている値の小数桁にそろえる**（項目ごとの桁数の表を
+    ここへ持つと、測定側の丸めと2箇所になる）。 */
+ const RP_STAT_KEYS={thickness:'thickness',width:'width',lateral:'lateral',
+   burr:'burr',telescope:'telescope',offset:'offset'};
+ /* 丈ごとの記録（`product.rows`）。**板丈＝「長さ」**（§9.203の丈の表）。 */
+ const RP_STAT_ROWS={length:'productLength',wall:'wallThickness'};
+ function rpStatValues(x,item){
+  const out=[];
+  const st=(x&&x.settings)||{};
+  const vertical=Math.max(1,Math.min(9,Number(st.verticalCount)||1));
+  const horizontal=Math.max(1,Math.min(40,Number(st.horizontalCount)||1));
+  const key=RP_STAT_KEYS[item];
+  if(key){
+   const rows=((x&&x.measurements)||{})[key]||[];
+   const slots=Math.min(LENGTH_SLOTS,vertical+1);
+   const n=key==='thickness'?3:horizontal;
+   for(let li=0;li<slots;li++){
+    const row=rows[li]||[];
+    for(let j=0;j<n;j++)out.push(row[j]);
+   }
+   return out;
+  }
+  const field=RP_STAT_ROWS[item];
+  if(!field)return out;
+  const rows=((x&&x.product)||{}).rows||[];
+  for(let i=0;i<vertical;i++)out.push((rows[i]||{})[field]);
+  return out;
+ }
+ /* 小数桁は**記録されている文字から数える**（3桁まで）。 */
+ function rpStatDigits(raws){
+  let d=0;
+  raws.forEach(t=>{
+   const m=/\.(\d+)$/.exec(String(t).trim());
+   if(m)d=Math.max(d,Math.min(3,m[1].length));
+  });
+  return d;
+ }
+ /* **同じレコードなら作り直さない**（1枚の紙に何本も統計の欄が並びうる）。 */
+ let rpStatFor=null,rpStatCache=null;
+ function rpStat(x){
+  if(rpStatFor===x&&rpStatCache)return rpStatCache;
+  const out={};
+  Object.keys(RP_STAT_KEYS).concat(Object.keys(RP_STAT_ROWS)).forEach(item=>{
+   const raws=rpStatValues(x,item).map(v=>String(v==null?'':v).trim()).filter(t=>t!=='');
+   const nums=raws.map(Number).filter(v=>Number.isFinite(v));
+   if(!nums.length){out[item]={min:'',max:'',avg:'',span:'',n:'0'};return}
+   const d=rpStatDigits(raws);
+   const f=v=>v.toFixed(d);
+   const min=Math.min(...nums),max=Math.max(...nums);
+   out[item]={min:f(min),max:f(max),
+     avg:f(nums.reduce((a,v)=>a+v,0)/nums.length),
+     span:f(max-min),n:String(nums.length)};
+  });
+  rpStatFor=x;rpStatCache=out;
+  return out;
+ }
  function rpValueAt(x,path){
   const p=String(path||'');
   if(p.indexOf('calc.')===0){
    const v=rpCalc(x)[p.slice(5)];
+   return v==null?'':String(v);
+  }
+  /* §9.242 ⑨。`stat.<項目>.<集計>`。**知らない綴りは空**——`calc.*`と同じ
+     作法で、書き間違えても紙は出る（黙って別の値を出さない）。 */
+  if(p.indexOf('stat.')===0){
+   const part=p.slice(5).split('.');
+   const bag=rpStat(x)[part[0]];
+   const v=bag?bag[part[1]]:'';
    return v==null?'':String(v);
   }
   let v=x;
@@ -1442,7 +1546,11 @@
    /* 枠（§9.234 ⑤）。**紙も画面も同じ組み立てを通る**ので、刷り上がりと
       組み換え中の姿が食い違わない。 */
    const framed=rpFramed(k),isArea=!!bl.area;
+   /* **高さを決めた塊か**（§9.242 ⑧）。中の枠を器いっぱいへ伸ばしてよいのは
+      こちらだけ——中身なりの塊で伸ばすと、`rpFitRows()`が測る`scrollHeight`が
+      器の高さになり、行数が決まらなくなる（自分の高さで自分の高さを決める）。 */
    return `<div class="rp-block${body?'':' is-empty'}${at?' is-placed':''}${ov?' is-overlap':''}`
+    +`${rows?' is-sized':''}`
     +`${framed?' is-framed':''}${isArea?' is-area':''}`
     +`${flow?' '+flow:''}" data-rp-block="${esc(k)}"`
     +` style="${place}"`

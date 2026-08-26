@@ -15,9 +15,12 @@
    組み替えで受信欄のDOMを作り直すと両方が戻るため、転送のたびに
    フォーカスが戻ることをここで固定する。
 
-   期待値は**実際に転送を流して観測してから**書いた。憶測で書くと外す——
-   例えば `DT110+026.15`（ノギス）が入るのは "26.15" ではなく **"26.10"** で、
-   ノギス系は小数1桁へ丸めてから2桁で格納する2段階の丸めが入っている。 */
+   期待値は**実際に転送を流して観測してから**書く。憶測で書くと外す。
+   板幅の桁数は`measurementDigits('width')`の1箇所が決める——§9.242 ②
+   （利用者の指示）で**小数2桁**にした。それまでは入口で1桁へ丸めてから
+   2桁で格納しており、ノギスの`DT110+026.15`は2桁目が必ず0になっていた
+   （「ノギスだけ2桁」という設定はあったが、入口の丸めに潰されて一度も
+   効いていない）。いまは`26.15`がそのまま入り、`27.5`は`27.50`と桁がそろう。 */
 const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
 const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const API='http://127.0.0.1:5029';
@@ -128,7 +131,7 @@ let b=null,page=null;
   await send('DT110+026.15');
   let row=await widthRow();
   let st=await page.evaluate(()=>S.measure.settings.wStep);
-  rec('ノギスの転送が板幅の1条目へ入る',row[0]==='26.10',JSON.stringify(row));
+  rec('ノギスの転送が板幅の1条目へ小数2桁で入る',row[0]==='26.15',JSON.stringify(row));
   rec('転送のあと次の条へ進む',st===1,'wStep='+st);
   rec('転送のあとも受信欄にフォーカスが戻る',await focused()==='deviceInput',await focused());
   rec('受信欄は次の転送のために空になる',
@@ -137,7 +140,7 @@ let b=null,page=null;
   /* ---- 2) 続けて送ると隣の条へ積み上がる ---- */
   await send('DT110+026.20');
   row=await widthRow();st=await page.evaluate(()=>S.measure.settings.wStep);
-  rec('続けて送ると2条目へ入る',row[0]==='26.10'&&row[1]==='26.20',JSON.stringify(row));
+  rec('続けて送ると2条目へ入る',row[0]==='26.15'&&row[1]==='26.20',JSON.stringify(row));
   rec('2件目のあとも条が進む',st===2,'wStep='+st);
 
   /* ---- 3) 板厚は別の入力内容なので、板幅のままでは受け取らない（§9.138） ----
@@ -149,14 +152,14 @@ let b=null,page=null;
   const th0=await page.evaluate(()=>(S.measure.measurements.thickness?.[0]||[]).slice(0,3));
   row=await widthRow();
   rec('板幅のままマイクロメータを送っても板厚へは入らない',th0.every(v=>v===''),JSON.stringify(th0));
-  rec('受け取れない測定器では板幅も汚さない',row[0]==='26.10'&&row[1]==='26.20',JSON.stringify(row));
+  rec('受け取れない測定器では板幅も汚さない',row[0]==='26.15'&&row[1]==='26.20',JSON.stringify(row));
   rec('受け取れない測定器では受信欄で合図を出す',
       /device-error/.test(await page.evaluate(()=>document.querySelector('#deviceInput').className)));
 
   /* ---- 4) 測定器を通さない生の数値も受け付ける ---- */
   await send('27.5');
   row=await widthRow();
-  rec('生の数値も板幅として受け付ける',row[2]==='27.5',JSON.stringify(row));
+  rec('生の数値も板幅として受け付ける（桁はそろえる）',row[2]==='27.50',JSON.stringify(row));
 
   /* ---- 5) 壊れた入力は値を変えず、合図を出す ---- */
   const beforeBroken=await widthRow();
@@ -232,7 +235,7 @@ let b=null,page=null;
   rec('板厚ではマイクロメータの転送がOSへ入る',th1.値[0]==='3.015',JSON.stringify(th1));
   rec('板厚は次の点（CL）へ進む',th1.tStep===1,JSON.stringify(th1));
   const wAfter=await widthRow();
-  rec('板厚を入れても板幅は変わらない',wAfter[0]==='26.10'&&wAfter[1]==='26.20',JSON.stringify(wAfter));
+  rec('板厚を入れても板幅は変わらない',wAfter[0]==='26.15'&&wAfter[1]==='26.20',JSON.stringify(wAfter));
   /* この先の節は板幅の表を見るので戻す。 */
   await setType('板幅');
 
@@ -270,11 +273,11 @@ let b=null,page=null;
      丸めではない（丸めは冒頭のノギスの検証で固定している）。 */
   /* モードの切り替えボタン自身が受信欄へフォーカスを移すので、ここでも
      こちらからは触らない（触ると同じ空振りになる）。 */
-  await page.keyboard.type('28.4');
+  await page.keyboard.type('28.45');
   await page.keyboard.press('Enter');
   await page.waitForTimeout(500);
   const manualRow=await widthRow();
-  rec('手動入力モードはEnterで確定する',manualRow.includes('28.4'),JSON.stringify(manualRow));
+  rec('手動入力モードはEnterで確定する',manualRow.includes('28.45'),JSON.stringify(manualRow));
 
   /* ---- 12) 保存すると端末内と共有DBの両方へ残る（§9.91） ---- */
   const id=await page.evaluate(()=>S.measure.id);

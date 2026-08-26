@@ -62,6 +62,21 @@
          {k:'name',label:'項目名',grow:2},{k:'type',label:'型',grow:1},
          {k:'choice',label:'選択肢',grow:1},{k:'order',label:'表示順',grow:1}],
    hint:'測定画面①準備の「操業データ」に出る入力欄です。1行＝1つの欄で、設備ごとに変えられます（「すべての設備」を選べば設備が増えても登録し直す必要はありません）。**値そのものは測定データの中に入る**ので、このマスタには記録は残りません。項目名を変えると、それまでに記録した値は前の名前のまま残ります（消えはしませんが、新しい名前の欄は空で始まります）。'},
+  /* ③確認の「記録した値」のカードの並べ方（§9.243、利用者の指示「現在
+     操業データ項目マスタで設定している内容を候補に出して視覚的に配置して
+     設定できるようなマスタを別で追加立ち上げして簡単にD&Dで配置修正
+     再設定、編集できるようにしてほしいです」）。
+     **操業データ項目とは別の画面**にしてある——あちらは「何を記録するか」、
+     ここは「どう並べるか」。1枚に混ぜると盤の1枚のカードが2つの並びを
+     同時に表すことになる。書くのは`[記録表示]`／`[記録群]`／`[記録順]`の
+     3列だけで、汎用CRUDは持たない（`endpoint`はGETの読み口）。 */
+  {group:'equip',key:'recordLayout',label:'記録した値の配置',icon:'記',
+   special:'record-layout',endpoint:'/api/operation-item-master',
+   titleText:'記録した値 — ③確認のカードの並べ方',
+   /* 汎用の一覧・編集モーダルは通らない（`special`で分岐する）。`cols`が
+      空だと`def.cols[0].k`を読む箇所が投げうるので1つだけ置いておく。 */
+   fields:[],cols:[{k:'name',label:'項目名'}],
+   hint:'測定画面③確認の「記録した値」のカードに、どの項目をどの順で出すかです。候補は**操業データ項目マスタ**の項目で、ここで並べても項目そのもの（型・選択肢・単位）は変わりません。**並びは設備によらず共通**です。'},
   /* **名前は1行に収まる長さにする**（§9.218 ③、利用者の指摘「『操業データ
      選択肢』が文字数の関係でこれだけ折り返しが発生して見栄えが悪い」）。
      左の一覧は幅が決まっているので、8文字だとここだけ2行になっていた。
@@ -983,6 +998,7 @@
      汎用モーダルへ寄せた時点で**閉じるたびに新しいまとまりが増える**ように
      なる。追加は追加のボタンからだけ始める。 */
   if(currentDef().special==='op-item'){renderOpItem();return}
+  if(currentDef().special==='record-layout'){renderRecordLayout();return}
   if(currentDef().special==='op-choice'){renderOpChoice();return}
   renderMaintList();
  }
@@ -1765,6 +1781,7 @@
   if(def.special==='path-config'){setMaintSearchVisible(false);return loadPathConfigMaint(force)}
   if(def.special==='shift-pattern'){setMaintSearchVisible(false);return loadShiftPatternMaint(force)}
   if(def.special==='op-item'){setMaintSearchVisible(false);return loadOpItemMaint(force)}
+  if(def.special==='record-layout'){setMaintSearchVisible(false);return loadRecordLayoutMaint(force)}
   if(def.special==='op-choice'){setMaintSearchVisible(false);return loadOpChoiceMaint(force)}
   if(def.special==='raw-table'){setMaintSearchVisible(false);return loadRawTableMaint(force)}
   setMaintSearchVisible(true);
@@ -6139,6 +6156,14 @@
      <button type="button" id="opdEnabled" class="op-toggle${x.enabled===false?'':' is-on'}" aria-pressed="${x.enabled===false?'false':'true'}">測定画面に出す</button>
      <button type="button" id="opdFold" class="op-toggle${x.fold?' is-on':''}" aria-pressed="${x.fold?'true':'false'}">この群を畳む</button>
     </span></div>
+   ${x.dummy?'':`
+   <div class="op-form-row"><span class="op-form-label">確認の面</span>
+    <span class="op-form-ctl">
+     <button type="button" id="opdRecordShow" class="op-toggle${x.recordShow===false?'':' is-on'}" aria-pressed="${x.recordShow===false?'false':'true'}">③「記録した値」に出す</button>
+     <i class="op-form-note">測定画面の3枚目「確認して完了」の<b>記録した値</b>のカードへ、
+      この項目を出すかどうかです。<b>群と並びはこの項目の設定がそのまま使われます</b>
+      （カード用の並びを別に持ちません）。</i>
+    </span></div>`}
    ${x.dummy?`
    <div class="op-form-row is-danger"><span class="op-form-label">この空き</span>
     <span class="op-form-ctl">
@@ -6534,6 +6559,10 @@
   if(en)en.onclick=()=>touch({enabled:x.enabled===false});
   const fold=$('#opdFold');
   if(fold)fold.onclick=()=>touch({fold:!x.fold});
+  /* §9.242 ④ ③「記録した値」へ出すか。**既定は出す**なので、`false`だけを
+     「外した」として持つ（`undefined`と`true`はどちらも出す）。 */
+  const rsw=$('#opdRecordShow');
+  if(rsw)rsw.onclick=()=>touch({recordShow:x.recordShow===false});
   /* 対象設備（§9.219 ③）。**「すべての設備」と名指しは排他**——両方立つと
      どちらが効くのか読めない。 */
   const eqAll=$('#opdEqAll');
@@ -6668,6 +6697,9 @@
           layout:x.layout||'自動',groupSpan:Number(x.groupSpan)||0,
           /* §9.228 ②④。**空きと空欄の札も必ず送る**（同じ理由）。 */
           dummy:!!x.dummy,noBlank:!!x.noBlank,
+          /* §9.242 ④。③「記録した値」へ出すかも同じ——落とすと保存のたびに
+             既定（出す）へ戻る（§9.212 ②と同じ形）。 */
+          recordShow:x.recordShow!==false,
           /* §9.233 ⑤。添え書きの置き場も同じ——落とすと保存のたびに
              既定（欄の下）へ戻る（§9.212 ②と同じ形）。 */
           sourceNote:x.sourceNote||'',
@@ -6707,6 +6739,8 @@
     /* §9.228 ②④。**空きと空欄の札も必ず送る**——`item_upsert`は全列を
        書くので、送らないと保存のたびに既定へ戻る（§9.212 ②と同じ形）。 */
     dummy:!!d.dummy,noBlank:!!d.noBlank,
+    /* §9.242 ④ ③「記録した値」に出すか。 */
+    recordShow:d.recordShow!==false,
     /* §9.233 ⑤ */
     sourceNote:d.sourceNote||'',
     /* **初期値と手打ちは組み込みの欄にも効く**（§9.229 ③）。値の持ち方を
@@ -7263,6 +7297,378 @@
    renderOpModal();
   }catch(e){list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
  }
+ /* ==================================================================
+    「記録した値」の配置（§9.243、利用者の指示）
+    ------------------------------------------------------------------
+      「現在操業データ項目マスタで設定している内容を候補に出して視覚的に
+       配置して設定できるようなマスタを別で追加立ち上げして簡単にD&Dで
+       配置修正再設定、編集できるようにしてほしいです」
+
+    ③確認の「記録した値」のカードは、操業データ項目マスタの
+    `[記録表示]`／`[記録群]`／`[記録順]`の3列だけで決まる。設定窓の①に
+    ある入切だけでは、**並べたときにどう見えるか**が分からない
+    （操業データ項目の盤を`special`にしたのと同じ理由・§9.216 ④）。
+
+    盤は**カードと同じ形**で描く——左が候補（出していない項目）、右が
+    実際のカード（群ごとの塊）。掴んで動かせば並びと群が決まる。
+
+    **設備は「絞って見ている」だけ**で、並び自体は設備によらず共通
+    （`record_layout_save`は行そのものを書き換える）。§CLAUDE 6の
+    とおり、そのことを画面に書く。
+
+    **操業データ項目の盤とは別の画面**にしてある——あちらは「何を記録
+    するか」（型・選択肢・上下限・意匠）で、ここは「どう並べるか」。
+    1枚に混ぜると、盤の1枚のカードが2つの並びを同時に表すことになる。
+    ================================================================== */
+ const rlState={equipment:'',items:[],rows:null,busy:false,
+                /* 同じ群がばらけて保存されていたのを盤でまとめ直したか
+                   （§9.219 ③）。黙って直すと、保存されている形と見えている
+                   形が食い違ったままになるので画面に書く。 */
+                healed:false,
+                /* 掴んでいる項目のID（文字列）。**素の`window.*`を増やさない**。 */
+                drag:null};
+ /* この項目がカードのどの群に出るか。**空＝この項目の`[群]`に従う**
+    （`measure-opdata.js`の`recordGroupOf`と同じ判定——2つ持つと、盤で見た
+    見出しと測定画面の見出しが食い違う）。 */
+ const rlGroupOf=x=>String(x.recordGroup||'').trim()||String(x.group||'').trim()||'その他';
+ const rlOwnGroup=x=>String(x.group||'').trim()||'その他';
+ /* 盤に出す候補（`measure-opdata.js`の`recordRows()`が拾う条件と同じ）。
+    **空きのカードは出さない**（入力欄を一度も描かないので記録が無い・§9.227 ③）。 */
+ const rlCandidates=()=>(rlState.items||[]).filter(x=>!x.dummy&&x.enabled!==false);
+ /* 盤の並び。保存済みの`[記録順]`があればその順、無ければ`[表示順]`のまま
+    （`recordRows()`の「決めた項目だけを前後させる」と揃える——ここで別の
+    並べ方をすると、盤で見た順と測定画面の順が食い違う）。 */
+ function rlBuildRows(){
+  const list=rlCandidates();
+  const out=list.map((x,i)=>{
+   const order=(Number.isFinite(Number(x.recordOrder))&&Number(x.recordOrder)>0)?Number(x.recordOrder):null;
+   /* **触っていない項目は並びから切り離さない**（§9.243）——`[記録順]`が
+      空＝この項目の`[表示順]`に従う。掴んだ項目だけが`follow`を落とす。 */
+   return {id:String(x.id),base:i,order,follow:order==null,
+           show:x.recordShow!==false,group:rlGroupOf(x)};
+  });
+  const on=out.filter(r=>r.show);
+  const seats=on.map((r,i)=>i).filter(i=>on[i].order!=null);
+  if(seats.length>1){
+   const moved=seats.map(i=>on[i]).sort((a,b)=>a.order-b.order);
+   seats.forEach((seat,k)=>{on[seat]=moved[k]});
+  }
+  /* **同じ群はまとめて描く**（§9.219 ③と同じ作法）。保存されている並びでは
+     同じ群がばらけていることがある（`[表示順]`は置き場ごとの並びなので、
+     カードの群と一致する保証が無い）。盤は`renderRecordedValues()`と同じ
+     「出てきた順に束ねる」で描くので、**平らな並びのほうも束ねておかないと、
+     見えている形と保存される`[記録順]`が食い違う**（盤は1塊なのに、
+     保存された順は2つに割れている、という状態が作れる）。 */
+  const order=[],bag=new Map();
+  on.forEach(r=>{if(!bag.has(r.group)){bag.set(r.group,[]);order.push(r.group)}bag.get(r.group).push(r)});
+  const packed=order.flatMap(g=>bag.get(g));
+  rlState.healed=packed.some((r,i)=>r!==on[i]);
+  return {on:packed,off:out.filter(r=>!r.show)};
+ }
+ function rlRows(){
+  if(!rlState.rows)rlState.rows=rlBuildRows();
+  return rlState.rows;
+ }
+ const rlItemById=id=>(rlState.items||[]).find(x=>String(x.id)===String(id));
+ /* 群の並び（出てきた順）。`renderRecordedValues()`と同じ「出てきた順に束ねる」。 */
+ function rlGroups(){
+  const order=[],bag=new Map();
+  rlRows().on.forEach(r=>{
+   if(!bag.has(r.group)){bag.set(r.group,[]);order.push(r.group)}
+   bag.get(r.group).push(r);
+  });
+  return order.map(g=>({name:g,rows:bag.get(g)}));
+ }
+ function rlSay(text,bad){
+  const el=$('#rlState');if(!el)return;
+  el.textContent=text||'';el.classList.toggle('is-bad',!!bad);
+ }
+ function rlChipHtml(r,off){
+  const x=rlItemById(r.id);if(!x)return '';
+  const auto=!!(x.autoValue||x.autoFill);
+  const follow=!!r.follow;
+  const unit=String(x.unit||'').trim();
+  const own=rlOwnGroup(x);
+  /* **出どころを書く**（§CLAUDE 6）——この項目が測定画面のどこに居るか。
+     同じ名前の欄が準備と入力内容の両方にあることがある。 */
+  const tip=[x.name,`測定画面: ${x.place||'準備'}／${own}`,
+             unit?`単位 ${unit}`:'',
+             auto?'自動で入る値（人は打たない）':'',
+             (!off&&rlGroupOf(x)!==own)?`カードでは「${rlGroupOf(x)}」へ移してあります`:'',
+             /* **どちらの並びで出ているかを書く**（§CLAUDE 6）——同じ位置でも、
+                項目の表示順に追随しているのか、この盤で決めたのかで
+                「直す場所」が違う。 */
+             off?'':(follow?'並び: この項目の表示順に従う':'並び: この盤で決めた')
+            ].filter(Boolean).join(' ／ ');
+  return `<div class="rl-chip${auto?' is-auto':''}${(!off&&follow)?' is-follow':''}" draggable="true" data-rl-id="${esc(String(x.id))}"`
+   +` title="${esc(tip)}"><b>${esc(x.name)}</b>`
+   +(unit?`<i>${esc(unit)}</i>`:'')
+   +`<span class="rl-chip-from">${esc(x.place||'準備')}／${esc(own)}</span>`
+   +(auto?'<em class="rl-chip-auto">自動</em>':'')
+   +`<button type="button" class="rl-chip-x" data-rl-${off?'add':'off'}="${esc(String(x.id))}"`
+   +` title="${off?'このカードに出す':'このカードから外す（項目そのものは消えません）'}">${off?'＋':'✕'}</button></div>`;
+ }
+ function renderRecordLayout(){
+  const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
+  form.classList.remove('mm-form-compact');
+  const eqs=(equipmentMasterState.items||[]).map(e=>e.name).filter(Boolean);
+  form.innerHTML=`<div class="op-bar">`
+   +`<label class="op-bar-eq" title="どの設備の項目を候補に出すかです。並び自体は設備によらず共通です。">`
+   +`候補に出す設備<select id="rlEqPick">`
+   +`<option value="">共通（すべての設備）</option>`
+   +eqs.map(n=>`<option value="${esc(n)}"${rlState.equipment===n?' selected':''}>${esc(n)}</option>`).join('')
+   +`</select></label>`
+   /* **設備で絞っているのは候補だけ**だと書く（§CLAUDE 6）——書かないと、
+      設備ごとに別の並びを作れると読まれる。 */
+   +`<span class="op-bar-scope"><b>並びは設備によらず共通</b>です`
+   +`<i>（上の設備は、候補に出す項目を絞るためだけのものです）</i></span>`
+   +`<button type="button" id="rlAddGroup" class="ghost"`
+   +` title="カードの中だけの見出しを1つ足します（測定画面の入力欄の群は変わりません）">群を追加</button>`
+   +`<button type="button" id="rlReset" class="ghost"`
+   +` title="カードの並びと見出しを、それぞれの項目の「群」「表示順」に従う状態へ戻します">既定へ戻す</button>`
+   +`<button type="button" id="rlSave" class="primary">保存</button>`
+   +`<span class="op-bar-state" id="rlState"></span>`
+   /* **案内は最後の行へ回す**（§9.199／§9.211 ③）——`op-bar`は折り返す帯なので、
+      長い文を先に置くと**「保存」だけが2行目へこぼれる**（実機の見え方で確認）。 */
+   +`<span class="op-bar-note rl-note">右の盤が<b>③確認の「記録した値」のカード</b>そのものです。`
+   +`掴んで動かすと<b>並び</b>が決まり、<b>別の群へ落とせば見出しも変わります</b>。`
+   +`左へ落とすとカードから外れます（項目そのものは消えません）。</span></div>`;
+  const groups=rlGroups(),off=rlRows().off;
+  const total=rlRows().on.length;
+  const follows=rlRows().on.filter(r=>r.follow).length,fixed=total-follows;
+  list.innerHTML=`<div class="rl-edit">`
+   +`<div class="rl-pool" data-rl-pool="1">`
+   +`<h4>候補<small title="${esc('このカードに出していない項目 '+off.length+'件')}">${off.length}</small></h4>`
+   +`<p class="rl-hint">カードに出していない項目です。右へ掴んで落とすと出ます。</p>`
+   +(off.length?`<div class="rl-pool-list">${off.map(r=>rlChipHtml(r,true)).join('')}</div>`
+     :`<p class="mm-empty">すべての項目をカードに出しています。</p>`)
+   +`</div>`
+   +`<div class="rl-board">`
+   +`<h4>③確認のカード<small title="${esc('このカードに出す項目 '+total+'件・'+groups.length+'群')}">`
+   +`${total}件・${groups.length}群</small></h4>`
+   /* **状態は色だけで伝えない**（§3）——点線の印が何なのかを件数つきの文で言う。
+      **どちらも0のときは書かない**（自明な文は読まれない・§9.127）。 */
+   /* **まとめ直したことを画面に書く**（§9.219 ③）。 */
+   +(rlState.healed?`<p class="rl-hint rl-legend">同じ群がばらばらの位置に保存されていたので、`
+     +`盤ではまとめて出しています（<b>保存を押すと、この形で確定します</b>）。</p>`:'')
+   +((fixed&&follows)?`<p class="rl-hint rl-legend"><b>${fixed}件</b>はこの盤で並びを決めています`
+     +`（実線）。<b>${follows}件</b>は項目の「表示順」に従います（点線）。`
+     +`「既定へ戻す」で全部を表示順へ帰せます。</p>`
+     :(follows?`<p class="rl-hint rl-legend">並びは<b>それぞれの項目の「表示順」</b>に従っています。`
+       +`掴んで動かした項目だけが、この盤の並びで固定されます。</p>`:''))
+   +(groups.length?groups.map(g=>`<div class="rl-group" data-rl-group="${esc(g.name)}">`
+     +`<b><span class="rl-group-name" data-rl-rename="${esc(g.name)}"`
+     +` title="押すと見出しの名前を変えられます">${esc(g.name)}</span>`
+     +`<small title="${esc('この群の項目 '+g.rows.length+'件')}">${g.rows.length}</small></b>`
+     +`<div class="rl-group-list" data-rl-drop="${esc(g.name)}">`
+     +g.rows.map(r=>rlChipHtml(r,false)).join('')+`</div></div>`).join('')
+     :`<p class="mm-empty">カードに出す項目がありません。左の候補から掴んで落としてください。</p>`)
+   +`</div></div>`;
+  bindRecordLayout();
+ }
+ /* 落とす場所の印は**流れの中へ入れない**（§9.218 ④）——入れた瞬間に
+    後ろのカードがずれ、同じカーソル位置なのに違う境目がいちばん近くなって
+    印が往復する。器の座標へ浮かせて置く。 */
+ function rlMark(box,at){
+  const r=box.getBoundingClientRect();
+  let x,y,h;
+  if(at){const a=at.getBoundingClientRect();x=a.left-r.left;y=a.top-r.top;h=a.height}
+  else{
+   const kids=[...box.children].filter(el=>el.dataset.rlMark===undefined);
+   const last=kids[kids.length-1];
+   if(!last){rlClearMark();return}
+   const a=last.getBoundingClientRect();x=a.right-r.left;y=a.top-r.top;h=a.height;
+  }
+  let m=box.querySelector(':scope>[data-rl-mark]');
+  if(!m){m=document.createElement('div');m.className='rl-drop-mark';m.dataset.rlMark='1';box.appendChild(m)}
+  m.style.left=(x-2)+'px';m.style.top=y+'px';m.style.height=h+'px';
+ }
+ function rlClearMark(){
+  document.querySelectorAll('[data-rl-mark]').forEach(x=>x.remove());
+  document.querySelectorAll('.rl-group.is-drop').forEach(x=>x.classList.remove('is-drop'));
+  document.querySelectorAll('.rl-pool.is-drop').forEach(x=>x.classList.remove('is-drop'));
+ }
+ /* 落とし先は**カーソルの真下の札**で決める（§9.230 ①）。段に丸めると、
+    横に並んだ札の境目が選ばれて印が隣の群へ飛ぶ。 */
+ function rlDropAt(box,ev){
+  const kids=[...box.children].filter(el=>
+    el.dataset.rlMark===undefined&&!el.classList.contains('is-dragging')
+    &&el.getBoundingClientRect().height>0);
+  if(!kids.length)return null;
+  let best=null,bestD=Infinity;
+  kids.forEach(el=>{
+   const a=el.getBoundingClientRect();
+   const cx=a.left+a.width/2,cy=a.top+a.height/2;
+   const d=Math.abs(ev.clientY-cy)*4+Math.abs(ev.clientX-cx);
+   if(d<bestD){bestD=d;best=el}
+  });
+  if(!best)return null;
+  const a=best.getBoundingClientRect();
+  return ev.clientX<a.left+a.width/2?best:(best.nextElementSibling&&best.nextElementSibling.dataset.rlMark===undefined?best.nextElementSibling:null);
+ }
+ /* 掴んだ項目を group（null＝候補へ戻す）の beforeId の前へ移す。
+    **ヘッドレスではD&Dの座標を作れない**ので、網はここを直に呼ぶ（§9.218 ④）。 */
+ function rlMove(id,group,beforeId){
+  const rows=rlRows();
+  const key=String(id);
+  const cur=rows.on.find(r=>r.id===key)||rows.off.find(r=>r.id===key);
+  if(!cur)return false;
+  rows.on=rows.on.filter(r=>r.id!==key);
+  rows.off=rows.off.filter(r=>r.id!==key);
+  if(group===null||group===undefined){rows.off.push({...cur,show:false});return true}
+  /* **掴んで置いた項目は並びから切り離す**——ここで`follow`を落とさないと、
+     保存しても`[記録順]`がNULLのままで、盤で決めた位置が測定画面に出ない。 */
+  const moved={...cur,show:true,follow:false,group:String(group)};
+  const at=beforeId?rows.on.findIndex(r=>r.id===String(beforeId)):-1;
+  if(at>=0)rows.on.splice(at,0,moved);
+  else{
+   /* 群の末尾へ——その群の最後の項目の直後（群がばらけないように）。 */
+   let last=-1;
+   rows.on.forEach((r,i)=>{if(r.group===moved.group)last=i});
+   if(last>=0)rows.on.splice(last+1,0,moved);else rows.on.push(moved);
+  }
+  return true;
+ }
+ function bindRecordLayout(){
+  const pick=$('#rlEqPick');
+  if(pick)pick.onchange=()=>{rlState.equipment=pick.value;rlState.rows=null;loadRecordLayoutMaint(true)};
+  const save=$('#rlSave');if(save)save.onclick=()=>rlSaveLayout();
+  const add=$('#rlAddGroup');if(add)add.onclick=()=>rlCreateGroup();
+  const reset=$('#rlReset');if(reset)reset.onclick=()=>rlResetLayout();
+  document.querySelectorAll('#masterMaintList [data-rl-off]').forEach(b=>{
+   b.onclick=e=>{e.stopPropagation();rlMove(b.dataset.rlOff,null);renderRecordLayout();rlSay('保存を押すと確定します')};
+  });
+  document.querySelectorAll('#masterMaintList [data-rl-add]').forEach(b=>{
+   b.onclick=e=>{
+    e.stopPropagation();
+    const x=rlItemById(b.dataset.rlAdd);
+    rlMove(b.dataset.rlAdd,x?rlGroupOf(x):'その他');
+    renderRecordLayout();rlSay('保存を押すと確定します');
+   };
+  });
+  document.querySelectorAll('#masterMaintList [data-rl-rename]').forEach(el=>{
+   el.onclick=()=>rlRenameGroup(el.dataset.rlRename);
+  });
+  document.querySelectorAll('#masterMaintList .rl-chip').forEach(t=>{
+   t.ondragstart=e=>{
+    rlState.drag=t.dataset.rlId;t.classList.add('is-dragging');
+    try{e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',t.dataset.rlId)}catch(_){}
+   };
+   t.ondragend=()=>{rlState.drag=null;t.classList.remove('is-dragging');rlClearMark()};
+  });
+  document.querySelectorAll('#masterMaintList .rl-group-list').forEach(box=>{
+   box.ondragover=e=>{
+    if(!rlState.drag)return;
+    e.preventDefault();
+    try{e.dataTransfer.dropEffect='move'}catch(_){}
+    rlClearMark();
+    box.closest('.rl-group')?.classList.add('is-drop');
+    rlMark(box,rlDropAt(box,e));
+   };
+   box.ondrop=e=>{
+    if(!rlState.drag)return;
+    e.preventDefault();e.stopPropagation();
+    const at=rlDropAt(box,e);
+    rlMove(rlState.drag,box.dataset.rlDrop,at?at.dataset.rlId:'');
+    rlState.drag=null;rlClearMark();renderRecordLayout();rlSay('保存を押すと確定します');
+   };
+  });
+  const pool=$('#masterMaintList [data-rl-pool]');
+  if(pool){
+   pool.ondragover=e=>{
+    if(!rlState.drag)return;
+    e.preventDefault();
+    try{e.dataTransfer.dropEffect='move'}catch(_){}
+    rlClearMark();pool.classList.add('is-drop');
+   };
+   pool.ondrop=e=>{
+    if(!rlState.drag)return;
+    e.preventDefault();e.stopPropagation();
+    rlMove(rlState.drag,null);
+    rlState.drag=null;rlClearMark();renderRecordLayout();rlSay('保存を押すと確定します');
+   };
+  }
+ }
+ function rlRenameGroup(from){
+  const to=prompt('カードの中の見出しの名前（測定画面の入力欄の群は変わりません）',from);
+  if(to===null)return;
+  const n=String(to).trim();if(!n||n===from)return;
+  rlRows().on.forEach(r=>{if(r.group===from)r.group=n});
+  renderRecordLayout();rlSay('保存を押すと確定します');
+ }
+ function rlCreateGroup(){
+  const name=prompt('新しい見出しの名前','新しい見出し');
+  if(name===null)return;
+  const n=String(name).trim();if(!n)return;
+  if(rlGroups().some(g=>g.name===n)){rlSay(`「${n}」は既にあります`,true);return}
+  /* **空の群は保存できない**（群は項目行から導出するため・§9.227 ③と同じ）
+     ので、候補の先頭を1つ移して群を作る。候補が無ければ断る（§4）。 */
+  const off=rlRows().off;
+  const src=off[0]||rlRows().on[rlRows().on.length-1];
+  if(!src){rlSay('項目が1つも無いので見出しを作れません',true);return}
+  rlMove(src.id,n);
+  renderRecordLayout();
+  /* `rlSay()`は`textContent`へ書くので、ここで`esc()`を通すと実体参照が
+     そのまま読めてしまう（同じ文字列をHTMLへ入れないこと）。 */
+  rlSay(`「${n}」を作り、${(rlItemById(src.id)||{}).name||''}を移しました（保存を押すと確定します）`);
+ }
+ function rlResetLayout(){
+  /* **戻せること**（§CLAUDE 4）——盤で決めた群・並びを捨てて、それぞれの
+     項目の`[群]`と`[表示順]`に従う既定へ帰る。出す/出さないは保つ。 */
+  const on=new Set(rlRows().on.map(r=>r.id));
+  const list=rlCandidates();
+  const mk=(x,i,show)=>({id:String(x.id),base:i,order:null,follow:true,show,group:rlOwnGroup(x)});
+  rlState.rows={
+   on:list.filter(x=>on.has(String(x.id))).map((x,i)=>mk(x,i,true)),
+   off:list.filter(x=>!on.has(String(x.id))).map((x,i)=>mk(x,i,false))};
+  renderRecordLayout();
+  rlSay('それぞれの項目の「群」「表示順」に従う並びへ戻しました（保存を押すと確定します）');
+ }
+ async function rlSaveLayout(){
+  if(rlState.busy)return;
+  const uid=requireMaintUser();if(uid===null)return;
+  const rows=rlRows();
+  /* **群が項目自身の`[群]`と同じなら空で書く**——空＝追随なので、あとで
+     項目の群を変えたときにカードの見出しも一緒に動く（§9.243）。 */
+  const body=rows.on.map(r=>{
+   const x=rlItemById(r.id);
+   /* **群も並びも「同じなら空で書く」**——空＝追随なので、あとで項目の
+      群や表示順を変えたときカードも一緒に動く（§9.243）。 */
+   return {id:r.id,show:true,follow:!!r.follow,
+           group:(x&&rlOwnGroup(x)===r.group)?'':r.group};
+  }).concat(rows.off.map(r=>({id:r.id,show:false,follow:true,group:''})));
+  if(!body.length){rlSay('保存するものがありません',true);return}
+  rlState.busy=true;rlSay('保存しています…');
+  try{
+   await api('/api/operation-item-master/record-layout',{method:'POST',
+     headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({items:body,user_id:uid})});
+   rlState.rows=null;
+   await loadRecordLayoutMaint(true);
+   rlSay('保存しました');
+   /* **測定画面の写しを捨てる**（§9.226 ①）——捨てないとカードは古い並びのまま。 */
+   if(window.WL&&WL.opData)WL.opData.forget();
+  }catch(e){rlSay('保存できませんでした: '+e.message,true)}
+  finally{rlState.busy=false}
+ }
+ async function loadRecordLayoutMaint(force){
+  const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
+  if(typeof loadEquipmentMaster==='function'){try{await loadEquipmentMaster(force)}catch(e){}}
+  if(!list.querySelector('.rl-edit'))list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
+  try{
+   const q=rlState.equipment?('?equipment='+encodeURIComponent(rlState.equipment)):'';
+   const it=await api('/api/operation-item-master'+q);
+   rlState.items=(it.items||[]).map(x=>({...x}));
+   rlState.rows=null;
+   renderRecordLayout();
+  }catch(e){list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
+ }
+ /* ヘッドレスではHTML5のD&Dの座標を作れないので、口から呼べるようにする
+    （§9.218 ④と同じ理由）。**素の`window.*`を増やさない**。 */
+ window.WL=window.WL||{};
+ WL.recordBoard={move:rlMove,rows:rlRows,groups:rlGroups,render:renderRecordLayout,
+                 dropAt:rlDropAt,mark:rlMark,clearMark:rlClearMark,save:rlSaveLayout,
+                 reset:rlResetLayout,state:rlState};
  // capture段リスナーがstopImmediatePropagation()で先に処理を完結させるため
  // ボタン側のonclickは常に発火しない到達不能コードだった(削除済み)。
  document.addEventListener('click',e=>{const t=e.target.closest('#openMasterMaint');if(!t)return;e.preventDefault();e.stopImmediatePropagation();openMasterMaint()},true);

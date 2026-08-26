@@ -1764,4 +1764,89 @@
 .mm-xio-skip ul{margin:var(--space-1) 0 0;padding-left:var(--space-4);color:var(--ink-3)}
 .mm-xio-skip li{margin:2px 0;line-height:1.5}
 .mm-xio-skip li b{color:var(--ink-2)}
+
+/* ==========================================================
+   「記録した値」の配置（§9.243、利用者の指示）
+   ----------------------------------------------------------
+   左＝候補（カードに出していない項目）／右＝③確認のカードそのもの。
+   **見え方は測定画面の`.rv-group`に寄せる**（§CLAUDE 14「視覚導線と
+   作業導線を一致させる」）——盤で見た形と刷り上がる形が違うと、
+   ここで確かめる意味が無い。
+   ========================================================== */
+.rl-edit{
+  display:grid;grid-template-columns:minmax(0,var(--w-xl)) minmax(0,1fr);
+  gap:var(--space-3);align-items:start;min-width:0;
+}
+.rl-pool,.rl-board{
+  border:1px solid var(--line-soft);border-radius:var(--radius-md);
+  background:var(--surface);padding:var(--pad-row);min-width:0;
+}
+.rl-pool>h4,.rl-board>h4{
+  display:flex;align-items:baseline;gap:var(--gap-inline);
+  margin:0 0 var(--space-1);color:var(--nav);font-size:var(--fs-sm);font-weight:800;
+}
+.rl-pool>h4>small,.rl-board>h4>small{
+  color:var(--muted);font-size:var(--fs-badge);font-weight:700;
+  font-variant-numeric:tabular-nums;
+}
+.rl-hint{margin:0 0 var(--space-2);color:var(--ink-3);font-size:var(--fs-badge)}
+.rl-legend b{color:var(--ink-2);font-variant-numeric:tabular-nums}
+/* 凡例は**盤の頭**なので2段組を跨がせる（片方の列だけに出ると、右の列の
+   点線が何なのか読めない）。 */
+.rl-board>.rl-legend{column-span:all}
+/* 案内は**帯の最後の行を丸ごと使う**——`op-bar`は折り返す帯なので、
+   途中に長い文があると「保存」だけが次の行へこぼれる（§9.211 ③）。 */
+.op-bar>.rl-note{flex:1 1 100%}
+/* 落とせる場所であることを**面で**返す（§3。線だけでは受け皿と読めない）。 */
+.rl-pool.is-drop,.rl-group.is-drop{
+  box-shadow:inset 0 0 0 1px var(--teal);
+  background:color-mix(in srgb,var(--teal) 6%,transparent);
+}
+.rl-pool-list{display:flex;flex-direction:column;gap:var(--gap-tight);min-width:0}
+/* 群は途中で割らない（測定画面の`.rv-group`と同じ約束）。 */
+.rl-board{columns:2;column-gap:var(--space-3)}
+.rl-board>h4{column-span:all}
+.rl-group{break-inside:avoid;margin-bottom:var(--space-3);border-radius:var(--radius-sm);padding:var(--space-1)}
+.rl-group>b{
+  display:flex;align-items:baseline;gap:var(--gap-inline);
+  margin-bottom:var(--space-1);color:var(--ink-3);font-size:var(--fs-sm);
+  font-weight:800;letter-spacing:.04em;
+}
+.rl-group-name{cursor:text;text-decoration:underline dotted var(--line-mid)}
+.rl-group>b>small{color:var(--muted);font-size:var(--fs-badge);font-weight:700;
+  font-variant-numeric:tabular-nums;letter-spacing:0}
+/* 印は**流れの中へ入れない**（§9.218 ④）ので、器を基準にする。 */
+.rl-group-list{position:relative;display:flex;flex-direction:column;
+  gap:var(--gap-tight);min-height:var(--ctl-h-sm);min-width:0}
+.rl-chip{
+  display:flex;align-items:center;gap:var(--gap-inline);
+  min-height:var(--ctl-h-sm);padding:0 var(--space-1);
+  border:1px solid var(--line-soft);border-radius:var(--radius-sm);
+  background:var(--surface-2);cursor:grab;min-width:0;
+}
+.rl-chip:hover{border-color:var(--line-mid);background:var(--surface)}
+/* 項目の「表示順」に追随している札は**点線**（§3。色だけでは伝えないので、
+   盤の頭の凡例が件数を文字で言う）。 */
+.rl-chip.is-follow{border-style:dashed}
+.rl-chip.is-dragging{opacity:.4;cursor:grabbing}
+.rl-chip>b{flex:1 1 auto;min-width:0;font-size:var(--fs-sm);font-weight:700;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rl-chip>i{flex:0 0 auto;color:var(--muted);font-style:normal;font-size:var(--fs-badge)}
+/* **出どころを書く**（§CLAUDE 6）。同じ名前の欄が準備と入力内容の
+   両方にあることがあるので、どちらの欄かが読めないと選べない。 */
+.rl-chip-from{flex:0 0 auto;color:var(--muted);font-size:var(--fs-micro);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:10em}
+/* 自動で入る値は**色だけで伝えない**（§3）ので文字も出す（§9.234 ⑦と同じ分け方）。 */
+.rl-chip.is-auto>b{color:var(--computed-fg)}
+.rl-chip-auto{flex:0 0 auto;padding:0 var(--space-1);border-radius:var(--radius-xs);
+  background:var(--pale);color:var(--computed-fg);
+  font-style:normal;font-size:var(--fs-micro);font-weight:700}
+.rl-chip-x{
+  flex:0 0 auto;min-width:var(--ctl-h-xs);min-height:var(--ctl-h-xs);
+  padding:0;border:0;border-radius:var(--radius-xs);background:none;
+  color:var(--muted);font-size:var(--fs-badge);font-weight:700;cursor:pointer;
+}
+.rl-chip-x:hover{background:var(--surface-3);color:var(--ink-2)}
+.rl-drop-mark{position:absolute;width:3px;border-radius:var(--radius-xs);
+  background:var(--nav);pointer-events:none;z-index:2}
 }

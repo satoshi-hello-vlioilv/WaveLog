@@ -540,7 +540,11 @@ $('#backupNow').onclick=async()=>{
  }catch(e){hideSaveOverlay();alert('バックアップ失敗: '+e.message)}
 };
 $('#discard').onclick=async()=>{if(await confirmModal('端末内の測定データを削除しますか？')){await reliableDelete(S.measure.id);await refreshDraftCount();$('#measureModal').hidden=true;WL.refreshScheduleIfOpen?.()}};
-$('#ngLot').onclick=registerNg;
+/* NGの記録は**③の確認カードから呼ぶ**（§9.242 ⑥）。操作レールのボタンは
+   外したので、ここで配線する相手はもう居ない。**素の`window.*`を増やさず**
+   名前空間で公開する（呼び出し側で、どのファイルの機能かが読める）。 */
+window.WL=window.WL||{};
+WL.measureNg={register:registerNg};
 {const btn=$('#recordSyncNowBtn');if(btn)btn.onclick=()=>syncPendingRecords({silent:false})}
 /* 測定画面はスケジュール画面の上に重なって開く。閉じたときに下の
    スケジュールを描き直さないと、作業を始めた/終えた結果が反映されないまま

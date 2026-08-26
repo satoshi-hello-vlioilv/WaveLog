@@ -281,31 +281,59 @@ body.sc-mode .hd-status .hd-chip-equip{display:none}
  .qa-v7 .qa-graph-stage svg{width:100%;height:auto}
 }
 /* ---------------------------------------------------------------
-   印刷（PDF保存含む）: プレビューと同じCSSのまま、縮小表示用の
-   transformだけ解除してA4実寸で出力する。データの間引きはせず、
-   控え欄（40行グリッド等）も旧帳票どおり確保する。
+   印刷（PDF保存含む）: **プレビューの割り付けがそのまま正**
+   （§9.242 ⑦、利用者の指示「プレビューと比率が全く違います。幅方向の
+    余白が広い印象です。プレビューの通りに印刷したいです。プレビューの
+    レイアウト、比率が正で、正確に印刷するようにしてください」）。
+
+   直したのは**紙の箱の作り方**。以前はここで
+     `@page{margin:5mm}` ＋ `.rp-page{width:auto;padding:0}`
+   としていたため、刷るときの中身の幅は**用紙 − @pageの余白**（A4縦で
+   200mm）になり、プレビューの**210mm − 内側8mm×2＝194mm**とは別の幅で
+   組み直されていた。**同じCSSで組んでいるのに器の幅が違えば比率は合わない**
+   ——塊の幅は`1fr`の割り算、中身の縮小率（`--rp-fit`）は画面で測った値
+   なので、幅が変わると刷り上がりだけが崩れる。
+
+   いまは**作業予定表(§9.235)と同じ作法**にそろえた:
+     `@page{margin:0}` ＋ 紙は`210mm×297mm`のまま・内側の余白8mmもそのまま。
+   紙の外側の余白は`.rp-page`の`padding`が持つので、プレビューで見えている
+   箱がそのまま1枚になる。**`width:auto`／`padding:0`へ戻さないこと。**
+   （向きの`@page`は`report-dashboard.js`の`updatePageSizeStyle()`が
+    刷る直前に差し替える。ここはその保険。）
+
+   **余白は`report-dashboard.js`の`RP_PAGE_MARGIN`と必ず同じ値にすること**
+   （§9.243、利用者の指摘「用紙に対して80％くらいの比率…クオリティも
+    下がっている」）。あちらは`<head>`の末尾へ挿すので**後から読まれて勝つ**
+   ——ここだけ直しても効かず、しかも黙って効かない。1度これで踏んでいる。
+   `tests/test_rpprint.js`が2枚を突き合わせて、食い違ったら落とす。
    --------------------------------------------------------------- */
 @media print{
- @page{size:A4;margin:5mm}
+ /* RP_PAGE_MARGIN と同じ値（report-dashboard.js） */
+ @page{size:A4;margin:0}
  body.rp-mode .layout>aside,body.rp-mode #navResizeHandle,body.rp-mode main>*:not(#reportPanel){display:none}
- body.rp-mode .layout{display:block;height:auto}
- body.rp-mode main{display:block;height:auto}
+ body.rp-mode .layout{display:block;height:auto;margin:0;padding:0}
+ body.rp-mode main{display:block;height:auto;margin:0;padding:0}
  #reportPanel{position:static;margin:0;border:0;border-radius:0;background:#fff;display:block;height:auto}
  #reportPanel .rp-bar,#reportPanel .rp-nav{display:none}
- #reportPanel .rp-body{display:block;height:auto}
- #reportPanel .rp-main{display:block;height:auto;overflow:visible}
- #reportPanel .rp-scroll{padding:0;overflow:visible;display:block;background:none}
- #reportPanel .rp-page-box{width:auto;height:auto}
- #reportPanel .rp-page{width:auto;min-height:0;margin:0;box-shadow:none;padding:0;transform:none}
+ #reportPanel .rp-body{display:block;height:auto;margin:0;padding:0}
+ #reportPanel .rp-main{display:block;height:auto;overflow:visible;margin:0;padding:0}
+ #reportPanel .rp-scroll{padding:0;margin:0;overflow:visible;display:block;background:none}
+ #reportPanel .rp-page-box{width:auto;height:auto;margin:0;padding:0}
+ /* **プレビューと同じ箱**（幅・高さ・内側の余白）。倍率だけ等倍へ戻す。 */
+ #reportPanel .rp-page{width:210mm;min-height:297mm;margin:0;box-shadow:none;padding:8mm;transform:none}
+ #reportPanel .rp-page.rp-landscape{width:297mm;min-height:210mm}
 }
 /* 帳票の一括印刷: 通常の単一プレビュー(#reportPanel)は丸ごと隠し、
    印刷専用領域(#reportBulkPrintArea)だけを表示する。ロットごとに
    1ページとして、印刷時のみpage-break-afterで改ページする
-   （画面表示中は.rp-bulk-print-areaが常時display:noneのため無関係）。 */
+   （画面表示中は.rp-bulk-print-areaが常時display:noneのため無関係）。
+   **箱の作り方は単票と同じ**（§9.242 ⑦）——ここだけ`width:auto`に戻すと、
+   1枚ずつ刷ると合うのに一括だけ比率が違う、という分かりにくい形になる。 */
 @media print{
  body.rp-bulk-print #reportPanel{display:none}
  body.rp-bulk-print .rp-bulk-print-area{display:block}
- body.rp-bulk-print .rp-bulk-print-area .rp-page{width:auto;min-height:0;margin:0;box-shadow:none;padding:0;box-sizing:border-box;transform:none;page-break-after:always}
+ body.rp-bulk-print .rp-bulk-print-area .rp-page{width:210mm;min-height:297mm;margin:0;box-shadow:none;padding:8mm;box-sizing:border-box;transform:none;page-break-after:always}
+ body.rp-bulk-print .rp-bulk-print-area .rp-page.rp-landscape{width:297mm;min-height:210mm}
  body.rp-bulk-print .rp-bulk-print-area .rp-page:last-child{page-break-after:auto}
 }
 @media print{

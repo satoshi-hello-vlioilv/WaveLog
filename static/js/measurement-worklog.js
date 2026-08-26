@@ -52,8 +52,10 @@
     if(!info)return '<div class="instruction-tol-card no-data"><span>指示値なし</span></div>';
     var valText=Number.isFinite(info.value)?String(info.value):esc(info.raw);
     var unitText=info.unit?info.unit+'単位':'単位指定なし';
+    /* **上下限を持たないので「公差」ではなく「基準」**（§9.242 ⑤、利用者の
+       指示）。呼び名は`TOL_SOURCE_LABELS.instruction`と同じ言葉にそろえる。 */
     return '<div class="instruction-tol-card">'
-      +'<div class="instruction-tol-head"><span class="compact-tol-source">指示公差</span><span class="instruction-tol-type">'+esc(info.type)+'</span></div>'
+      +'<div class="instruction-tol-head"><span class="compact-tol-source">指示基準</span><span class="instruction-tol-type">'+esc(info.type)+'</span></div>'
       +'<div class="instruction-tol-main"><span class="instruction-tol-value">'+esc(valText)+'</span><span class="instruction-tol-unit">'+esc(unitText)+'</span></div>'
       +'<div class="instruction-tol-raw">指示値: '+esc(info.raw)+'</div>'
       +'</div>';
@@ -123,7 +125,15 @@
  if(typeof $!=='function')return;
  /* ---------- 作業時間: 直接編集・再調整対応 ---------- */
  const pad2=n=>String(n).padStart(2,'0');
- function isoToLocalInput(iso){if(!iso)return '';const d=new Date(iso);if(Number.isNaN(d.getTime()))return '';return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`}
+ /* ---------- 作業時間は「分」まで（§9.242 ①、利用者の指示「秒数は不要です。
+       表示、入力共に簡素化してください」） ----------
+    実作業時間は段取り・中断を含めて人が決める実績で、秒の位に意味は無い。
+    欄も`step="60"`（`templates/index.html`）にしてあるので、**書き込む側も
+    秒を持たせない**——`:ss`付きの値を入れると、ブラウザは秒の枠を出したまま
+    にする（`step`は「刻み」であって「桁」ではない）。
+    **秒を落とすのはここ1箇所**——`localInputToIso()`が受け取るのは欄の値
+    なので、欄に秒が無ければISOの秒も0になる。 */
+ function isoToLocalInput(iso){if(!iso)return '';const d=new Date(iso);if(Number.isNaN(d.getTime()))return '';return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`}
  function localInputToIso(v){if(!v)return '';const d=new Date(v);if(Number.isNaN(d.getTime()))return '';return d.toISOString()}
  function wt(){S.measure.workTime=S.measure.workTime||{startAt:'',endAt:''};return S.measure.workTime}
  function syncField(id){const el=$('#'+id);if(!el||!S.measure)return;const w=wt();const iso=id==='workStartAt'?w.startAt:w.endAt;el.dataset.iso=iso||'';el.value=isoToLocalInput(iso)}
@@ -171,13 +181,16 @@
  }
  /* 参考値は**時刻だけ**でよい（同じ日の作業なので日付は開始・終了が持つ）。
     ただし日をまたいだときに嘘にならないよう、開始と日が違えば日付も出す。 */
+ /* **参考値も分まで**（§9.242 ①）——ここだけ秒を出すと、押して開始・終了へ
+    入れた瞬間に秒が消えて「入れた値と違う」と読まれる。秒までの時刻は
+    `title`（`toLocaleString`）で読める。 */
  function stampText(iso){
   if(!iso)return '—';
   const d=new Date(iso);if(Number.isNaN(d.getTime()))return '—';
   const today=new Date();
   const sameDay=d.toDateString()===today.toDateString();
-  return sameDay?`${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`
-                :`${d.getMonth()+1}/${d.getDate()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+  return sameDay?`${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+                :`${d.getMonth()+1}/${d.getDate()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
  }
  function refreshAutoStamps(){
   if(!S.measure)return;
@@ -201,7 +214,10 @@
   if(!S.measure)return;
   const a=autoStamps(),w=wt();
   if(!a.firstInputAt||!a.lastInputAt)return;
-  w.startAt=a.firstInputAt;w.endAt=a.lastInputAt;
+  /* **分へ丸めてから入れる**（§9.242 ①）——秒を持ったまま入れると、欄には
+     分までしか出ないのに記録は秒を持つ状態になり、**画面の値と保存値が
+     食い違う**（実働時間の計算だけが数十秒ずれる）。 */
+  w.startAt=minuteIso(a.firstInputAt);w.endAt=minuteIso(a.lastInputAt);
   syncField('workStartAt');syncField('workEndAt');
   afterWorkChange();
   showToast&&showToast('参考値を入れました',`${stampText(a.firstInputAt)} 〜 ${stampText(a.lastInputAt)}`);
@@ -218,7 +234,13 @@
  },true);
  function afterWorkChange(){refreshWorkTime();refreshAutoStamps();markDirty();if(typeof updateValidationVisuals==='function')updateValidationVisuals()}
  function commitField(id){const el=$('#'+id);if(!el||!S.measure)return;const iso=localInputToIso(el.value);el.dataset.iso=iso;const w=wt();if(id==='workStartAt')w.startAt=iso;else w.endAt=iso;afterWorkChange()}
- function stampNow(id){if(!S.measure)return;const w=wt(),iso=new Date().toISOString();if(id==='workStartAt')w.startAt=iso;else w.endAt=iso;syncField(id);afterWorkChange();showToast&&showToast(id==='workStartAt'?'開始時刻を記録しました':'終了時刻を記録しました',formatWorkTime(iso))}
+ /* 秒を落としたISO。**画面・記録・実働時間の3つを同じ物差しにする**。 */
+ function minuteIso(iso){
+  if(!iso)return '';
+  const d=new Date(iso);if(Number.isNaN(d.getTime()))return '';
+  d.setSeconds(0,0);return d.toISOString();
+ }
+ function stampNow(id){if(!S.measure)return;const w=wt(),iso=minuteIso(new Date().toISOString());if(id==='workStartAt')w.startAt=iso;else w.endAt=iso;syncField(id);afterWorkChange();showToast&&showToast(id==='workStartAt'?'開始時刻を記録しました':'終了時刻を記録しました',formatWorkTime(iso))}
  function clearField(id){if(!S.measure)return;const w=wt();if(id==='workStartAt')w.startAt='';else w.endAt='';syncField(id);afterWorkChange()}
  function bindWorkTime(){
   const s=$('#workStartAt'),e=$('#workEndAt');

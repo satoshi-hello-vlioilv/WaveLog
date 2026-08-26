@@ -1686,6 +1686,14 @@
    try{refreshMeasureProgress()}
    catch(e){console.warn('measure-opdata: 進捗を塗り直せませんでした',e)}
   }else console.error('measure-opdata: refreshMeasureProgress が無い（母材の進捗の分母が古いまま残る）');
+  /* ③「記録した値」も**マスタが届いてから塗り直す**（§9.242 ④。§9.234 ⑧と
+     まったく同じ理由）——中身はマスタの行から組み立てるので、③を開いたまま
+     マスタが届いた場合に塗り直さないと**空のまま**になる。
+     **「あれば呼ぶ」で黙らせないこと**——無ければ理由を出す。 */
+  if(typeof renderRecordedValues==='function'){
+   try{renderRecordedValues()}
+   catch(e){console.warn('measure-opdata: 記録した値を塗り直せませんでした',e)}
+  }else console.error('measure-opdata: renderRecordedValues が無い（③の記録した値が空のまま残る）');
  }
  /* ---------- 1マスの実寸を覚える（§9.226 ①） ----------
     マスタの設定窓は「測定画面での見え方」を見せるが、**そこには測定画面が
@@ -1819,6 +1827,72 @@
   return bag;
  }
 
+/* ---------- ③「記録した値」はマスタが決める（§9.242 ④、利用者の指示） ----------
+    「メイン測定画面の3枚目の『記録した値』のカードについては汎用設計に
+     したいです。操業データ項目で配置した内容の中から選んで表示できるように
+     マスタ化してください」
+
+    以前は`measurement-view.js`の`RECORD_GROUPS`に**項目名を直に4群ぶん
+    書き並べて**おり、群の名前も並びも現場では変えられなかった（母材だけ
+    画面のラベルから拾うという別の道も持っていた）。いまは
+    **操業データ項目マスタの1行＝カードの1行**で、群・並び・呼び名・単位も
+    そのまま使う。出す／出さないは`[記録表示]`（既定は出す）。
+
+    **値は画面から読む**（`settings.opData`ではない）——`collect()`が書くのは
+    保存のときだけなので、そこだけを見ると①で選んだ値が「—」のまま出る
+    （§9.206で一度踏んだ罠）。
+    **選択肢は選んだ札の文字で出す**——値と表示が違う選択肢があるので、
+    `select.value`だけを見ると生の鍵が並ぶ。 */
+ function shownValue(el){
+  if(!el)return '';
+  if(el.tagName==='SELECT'){
+   const o=el.selectedOptions&&el.selectedOptions[0];
+   return String((o?o.textContent:el.value)??'').trim();
+  }
+  return String(el.value??'').trim();
+ }
+ /* カードの中の群と並び（§9.243）。**空＝この項目の群／表示順に従う**
+    ——専用の盤（マスタ管理＞記録した値の配置）で動かした項目だけが
+    切り離される。触っていない項目は測定画面の並びに追随し続ける。 */
+ const recordGroupOf=d=>String(d.recordGroup||'').trim()||String(d.group||'').trim()||'その他';
+ function recordRows(){
+  const out=[];
+  defs.forEach(d=>{
+   /* 空きの行は入力欄を一度も描かない（§9.227 ③）。 */
+   if(d.dummy)return;
+   if(d.recordShow===false)return;
+   const el=controlOf(d);
+   if(!el)return;                       /* 画面に無い欄は出しようがない */
+   /* **この設備で出していない欄は数えない**——`op-off`が付いた欄は
+      マスタで下ろしたもので、記録も残らない。**畳んだ群は出す**
+      （畳んでいても値は入っているので、確認の面では読めたほうがよい）。 */
+   const host=hostOf(d);
+   /* **画面に出ていない欄は出さない**——`op-off`はマスタで下ろしたもの、
+      `hidden`は条件が揃わないときに画面が伏せているもの（計算全長など）。
+      **畳んだ群は出す**（畳んでいても値は入っているので、確認の面では
+      読めたほうがよい）。 */
+   if(host&&(host.classList.contains('op-off')||host.hidden))return;
+   out.push({group:recordGroupOf(d),
+             name:d.name,unit:String(d.unit||'').trim(),
+             /* 並びは**盤で決めた順が先**（§9.243）。決めていない項目は
+                この項目の`[表示順]`のまま——`defs`は既に表示順で並んでいる
+                ので、決めた項目だけを`recordOrder`で前後させる。 */
+             order:(Number.isFinite(Number(d.recordOrder))&&Number(d.recordOrder)>0)
+               ?Number(d.recordOrder):null,
+             /* 自動で入る値は**そう書く**（§6。人が入れた値と見分けが付く）。 */
+             auto:!!(d.autoValue||d.autoFill),
+             value:shownValue(el)});
+  });
+  /* **決めた順の項目だけを並べ直す**（決めていない項目の前後関係は動かさない）
+     ——`item_layout_save`と同じ「席の入れ替え」の考え方。 */
+  const seats=out.map((x,i)=>i).filter(i=>out[i].order!=null);
+  if(seats.length>1){
+   const moved=seats.map(i=>out[i]).sort((a,b)=>a.order-b.order);
+   seats.forEach((seat,k)=>{out[seat]=moved[k]});
+  }
+  return out;
+ }
+
  /* 記録した件数（③確認の「記録した値」に出す）。自由項目だけを数える
     ——組み込みの欄はそれぞれ元からの置き場で数えられている（§8）。 */
  function filled(){
@@ -1922,6 +1996,10 @@
  }
  WL.opData={load,layout,render:layout,refresh,apply,collect,values,filled,requiredControls,
             motherKeys,
+            /* ③「記録した値」の中身（§9.242 ④）。**答えるのはマスタを
+               読んでいるここ**——呼ぶ側（`measurement-view.js`）に項目名の
+               写しを持たせない。 */
+            recordRows,
             /* 自動で入る値を引き直す口（§9.234 ②）。**呼ぶのは値が変わる
                ところ**——作業時間の打刻・条の設計の変更・入力内容の切り替え。
                引き直さないと、条数や実働時間が古いまま紙に出る。

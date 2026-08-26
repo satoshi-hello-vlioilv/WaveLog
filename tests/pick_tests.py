@@ -44,7 +44,10 @@ G['一覧'] = ['test_nav', 'test_navdyn', 'test_listcache', 'test_listperf', 'te
 # 操業データ(§9.215)は測定画面のカード。マスタ管理からも触るので「マスタ」群。
 G['操業データ'] = ['test_opdata', 'test_opui', 'test_msteps', 'test_maint', 'test_crudroutes',
                    'test_opchoice', 'test_oplimit', 'test_opmother', 'test_opunit',
-                   'test_opauto']
+                   # §9.242 ④: ③「記録した値」も操業データ項目マスタの行から作る
+                   'test_opauto', 'test_recvalues',
+                   # §9.243: 「記録した値」の配置をD&Dで組む専用のマスタ
+                   'test_reclayout']
 # 異常位置判定と条の設計の連携(§9.226 ④)。どちらを触っても両方を回す。
 G['異常位置'] = ['test_defect', 'test_defectlink', 'test_splitlive', 'test_scsplit',
                  # §9.239 ⑥: ピッチ→ロール判定とロールマスタ
@@ -53,7 +56,7 @@ G['異常位置'] = ['test_defect', 'test_defectlink', 'test_splitlive', 'test_s
                  'test_rollload']
 # 操業データの意匠・設定窓・空きの群（§9.227）
 G['操業意匠'] = ['test_oppad', 'test_opui', 'test_opdata', 'test_msteps', 'test_oplimit',
-                 'test_opmother', 'test_opunit', 'test_opauto']
+                 'test_opmother', 'test_opunit', 'test_opauto', 'test_reclayout']
 G['列'] = ['test_collayout', 'test_colformat', 'test_colrule', 'test_colsort', 'test_lcpanel',
            'test_colscache', 'test_colsripple', 'test_colsave', 'test_displayrule', 'test_colmenu',
            'test_colpreset', 'test_formula', 'test_reccols', 'test_rpblocks', 'test_rplayout',
@@ -83,7 +86,11 @@ G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 't
                # §9.241 ①: 束ねた見出しの開閉／④: ロールの読み込み経路
                'test_mmfold', 'test_rollload']
 G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'test_flows',
-             'test_p11', 'test_p11c', 'test_waiting', 'test_mcore', 'test_msteps']
+             'test_p11', 'test_p11c', 'test_waiting', 'test_mcore', 'test_msteps',
+             # §9.242 ③: バリの2段（1回目の受付・2回目の計算式）
+             # §9.242 ⑤⑥: 公差／基準の言い分けと、確認カードの強調・NGの記録
+             # §9.242 ④: ③「記録した値」は操業データ項目マスタが決める
+             'test_burr', 'test_ngcard', 'test_recvalues', 'test_reclayout']
 G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'test_density',
                'test_uiux', 'test_hdr', 'test_headbar', 'test_calscale', 'test_bootui',
                'test_gridhead']
@@ -143,6 +150,8 @@ RULES = [
     # 帳票の塊の組み換え(§9.169)は列レイアウトマスタに載るので列の網も回す。
     ('static/js/report-dashboard.js', g('モーダル', 'test_screport', 'test_hdr', 'test_calscale',
                                         'test_rpblocks', 'test_rplayout', 'test_rpmaster',
+                                        # §9.242 ⑦⑧: 刷るときの紙の箱・品質情報の枠
+                                        'test_rpprint',
                                         'test_collayout', 'test_actuals')),
     ('static/js/quality-analysis.js', g('test_uiux', 'test_hdr', 'test_fit', 'test_theme')),
     ('static/js/defect-locator.js', g('モーダル', '異常位置')),
@@ -177,7 +186,8 @@ RULES = [
     ('static/css/40-records.css', g('見た目', 'test_recperm', 'test_reccols', 'test_recdel')),
     ('static/css/50-master.css', g('見た目', 'マスタ', '操業意匠', 'test_dscap', 'test_qjoinui',
                                     'test_blockbuild')),
-    ('static/css/60-report.css', g('見た目', 'test_screport', 'test_rpblocks', 'test_rplayout')),
+    ('static/css/60-report.css', g('見た目', 'test_screport', 'test_rpblocks', 'test_rplayout',
+                                   'test_rpprint')),
     ('static/css/62-actuals.css', g('見た目', '実績')),
     ('backend/repositories/report_block_repo.py', g('test_rpmaster', 'test_rpblocks',
                                                     'test_rplayout', 'test_crudroutes',

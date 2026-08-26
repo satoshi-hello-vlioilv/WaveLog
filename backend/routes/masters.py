@@ -1157,6 +1157,9 @@ def _operation_item_save(x):
                          # 書く（設定窓は送らないので、触るたびに人が打つ欄へ
                          # 戻っては困る。`dummy`と同じ約束）。
                          auto_value=x.get('autoValue'),
+                         # §9.242 ④ ③「記録した値」のカードへ出すか。
+                         # **送られてきたときだけ**書く（`dummy`と同じ約束）。
+                         record_show=x.get('recordShow'),
                          report=ref)
   saved=_op_read(fn)
   # **付け替えたことは黙って済ませない**（§9.226 ①）。名前を変えると
@@ -1195,6 +1198,23 @@ def operation_item_layout():
   return jsonify(ok=True,saved=n,equipment=eq,
                  message=f'操業データの並びを保存しました（{eq or "共通（すべての設備）"}）。')
  except Exception as e:return jsonify(error=f'操業データの並びの保存に失敗しました: {e}'),500
+
+@bp.post('/api/operation-item-master/record-layout')
+def operation_item_record_layout():
+ """③「記録した値」のカードの配置を**まとめて1回で**書く（§9.243）。
+
+    D&Dで組み替える盤なので、1行ずつ送ると往復が増え、途中で切れると
+    並びが半分だけ変わった状態が残る（`layout`と同じ理由）。
+    書くのは`[記録表示]`／`[記録群]`／`[記録順]`の3つだけで、
+    型・選択肢・役割・意匠には触らない。"""
+ from ..repositories import operation_repo as op
+ x=request.get_json(force=True) or {}
+ rows=x.get('items')
+ if not isinstance(rows,list):return jsonify(error='items（配置）がありません。'),400
+ try:
+  n=_op_read(lambda c:op.record_layout_save(c,request_user_id(x),rows))
+  return jsonify(ok=True,saved=n,message=f'「記録した値」の配置を保存しました（{n}件）。')
+ except Exception as e:return jsonify(error=f'「記録した値」の配置の保存に失敗しました: {e}'),500
 
 @bp.post('/api/operation-item-master/group')
 def operation_item_group():

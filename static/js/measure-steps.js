@@ -51,11 +51,16 @@
   const v=Math.max(1,Math.min(9,Number(st.verticalCount)||1));
   const h=Math.max(1,Math.min(40,Number(st.horizontalCount)||1));
   put('mctxShape',`${h}条 × ${v}丈`,`横割数 ${h} / 縦割数 ${v}`);
-  /* 公差は「どちらを見ているか」が値そのものより効く（§CLAUDE.md 出どころを出す）。 */
+  /* 公差は「どちらを見ているか」が値そのものより効く（§CLAUDE.md 出どころを出す）。
+     **どの項目に効くのかも書く**（§9.242 ⑤）——上下限を持つのは板厚・板幅
+     だけなので、バリやテレスコープを測っている人が「この公差で判定されて
+     いる」と読まないようにする（あちらは片側の基準）。 */
   const src=st.toleranceSource==='order'?'オーダー公差':'製造公差';
   const has=typeof compactToleranceData==='function'&&!!compactToleranceData('width');
+  const scope='上下限のある板厚・板幅に効きます（ラテラルボー・バリ・テレスコープ・'
+    +'巻ずれ・フラットネスは片側の「基準」で判定します）';
   put('mctxTolerance',has?src:src+'（未設定）',
-      has?'':'このロットには使えるプラス・マイナス値がありません');
+      has?scope:'このロットには使えるプラス・マイナス値がありません。'+scope);
  }
 
  /* ---------- 段の状態 ----------
@@ -116,7 +121,12 @@
     分からなかった。押す前に見えれば直しに戻れる。
     完了ボタンは操作レールに常時出ているので**ここには置かない**。 */
  let fixMap={};
- const wtText=v=>String(v||'').replace('T',' ');
+ /* 作業時刻は**地方時の分まで**（§9.242 ①）。以前は保存値（ISO・UTC・
+    ミリ秒つき）の`T`を空白へ置き換えるだけで、`2026-08-26 04:59:31.307Z`と
+    そのまま出していた——**時差のぶんずれた時刻**を、欄には出ていない
+    精度で見せていたことになる。書式は`formatWorkTime()`の1箇所へ寄せる。 */
+ const wtText=v=>(typeof formatWorkTime==='function'?formatWorkTime(v):String(v||''))
+   ||String(v||'').replace('T',' ');
  /* 丈位置の呼び名は`#lengthPos`の選択肢が正（「1(頭)」「1(尾)」）。
     番号だけ出すと画面のどことも一致しない。 */
  const lengthLabel=li=>{
@@ -138,20 +148,28 @@
   }
   let ng=null;try{ng=WL.measureReview&&WL.measureReview.outOfTolerance()}catch(e){}
   if(ng){
-   /* **判定できなかった件数を隠さない。** 公差が引けない項目を「合格」と
-      同じに見せると、確認したつもりで何も確認していないことになる。 */
-   const un=ng.unjudged.length
-     ?` 公差が登録されていないため判定していない項目: ${ng.unjudged.join('・')}。`:'';
+   /* **公差と基準は言い分ける**（§9.242 ⑤、利用者の指示）。この行は板厚・
+      板幅（上下限＝公差）とラテラルボー等（片側＝基準）を同じ表に並べる
+      ので、**名前は両方の言葉を持つ**——片方だけだと、もう片方は数えて
+      いないように読める。項目ごとの言葉は`WL.measureItem`の1箇所が答える。 */
+   const wordOf=n=>WL.measureItem.limitWord(n);
+   /* **判定できなかった件数を隠さない。** 引けない項目を「合格」と同じに
+      見せると、確認したつもりで何も確認していないことになる。
+      **理由も言葉ごとに分ける**——直す先（公差マスタ／指示値）が違う。 */
+   const bag={};
+   ng.unjudged.forEach(n=>{const w=wordOf(n);(bag[w]=bag[w]||[]).push(n)});
+   const un=Object.keys(bag).map(w=>
+     ` ${w}が登録されていないため判定していない項目: ${bag[w].join('・')}。`).join('');
    /* **どの丈位置かまで言う。** 件数だけでは、いま出ていない丈のものを
       探しに行けない（そもそもこの集計は出ていない丈のためにある）。 */
    const where=x=>{
     const ls=[...new Set(x.hits.map(h=>lengthLabel(h.length)))];
     return ls.length?`（${ls.join('・')}）`:'';
    };
-   rows.push({key:'ng',name:'公差外',state:ng.total?'bad':'done',
+   rows.push({key:'ng',name:'公差外・基準外',state:ng.total?'bad':'done',
     value:ng.total?`${ng.total}件`:'なし',
-    detail:(ng.total?ng.items.map(x=>`${x.name} ${x.hits.length}件${where(x)}`).join('・')
-                    :'公差の外に出ている測定値はありません。')+un,
+    detail:(ng.total?ng.items.map(x=>`${x.name} ${wordOf(x.name)}外 ${x.hits.length}件${where(x)}`).join('・')
+                    :'公差・基準の外に出ている測定値はありません。')+un,
     fix:ng.total?{label:'見に行く',type:ng.items[0].name,length:ng.items[0].hits[0].length}:null});
   }
   const wt=m.workTime||{},both=!!(wt.startAt&&wt.endAt);
@@ -168,22 +186,215 @@
   }
   return rows;
  }
+/* ---------- 公差外・基準外はカードで気づく（§9.242 ⑥、利用者の指示） ----------
+    「完了前の確認のカードで公差外、基準外などが発生したときにカード自体を
+     背景色または縁の色などを変えて視覚的に気付くようにしてください。
+     今のままか強調か、色なども含めて変更できるように設計してください」
+
+    **色は`WL.columnTint.PALETTE`の7色から選ぶ**（§9.198／§9.239 ⑤-3）——
+    16進を選ばせない。色の言葉（灰・青緑・青・緑・橙・赤・紫）を2つ持たない。
+    **置き場はこの端末**（§9.199の親ロットの印と同じ。強調の強さは読み方の
+    好みで、共有マスタへ入れると全員が同じ強さに縛られる）。
+    **色だけで伝えない**（§3）——強調しているのは行の「公差外・基準外 N件」
+    という文字が既に言っている事実で、色はその増幅にすぎない。 */
+ const ALERT_KEY='WaveLogFinishAlertV1';
+ const ALERT_MODES=[['both','縁と面'],['frame','縁だけ'],['fill','面だけ'],
+                    ['off','強調しない（今までどおり）']];
+ /* **既定は強調する**（利用者が求めたのがこれ）。「今のまま」は選べる側。 */
+ const ALERT_DEFAULT={mode:'both',color:'red'};
+ const tintPalette=()=>(window.WL&&WL.columnTint&&WL.columnTint.PALETTE)||{};
+ function alertPref(){
+  let v=null;
+  try{v=JSON.parse(localStorage.getItem(ALERT_KEY)||'null')}catch(e){}
+  const p=(v&&typeof v==='object')?v:{};
+  const modes=ALERT_MODES.map(x=>x[0]);
+  return {mode:modes.includes(p.mode)?p.mode:ALERT_DEFAULT.mode,
+          color:tintPalette()[p.color]?p.color:ALERT_DEFAULT.color};
+ }
+ function setAlertPref(patch){
+  const next=Object.assign(alertPref(),patch||{});
+  try{localStorage.setItem(ALERT_KEY,JSON.stringify(next))}catch(e){}
+  paintFinish();
+ }
+ /* 強調を当てるのは**カードそのもの**（利用者の指示「カード自体を」）。
+    値は`--fc-alert-*`で渡す（インラインの`background`を直に書くと、
+    どのレイヤからも打ち消せなくなる。§9.221 ⑨の`--rp-fit`と同じ約束）。 */
+ function applyAlert(box,bad){
+  const p=alertPref(),tone=tintPalette()[p.color]||{};
+  const on=!!bad&&p.mode!=='off';
+  box.classList.toggle('fc-alert',on);
+  if(on){
+   box.dataset.fcAlert=p.mode;
+   box.style.setProperty('--fc-alert-bg',tone.bg||'var(--danger-bg)');
+   box.style.setProperty('--fc-alert-ink',tone.ink||'var(--danger)');
+   box.style.setProperty('--fc-alert-line',tone.line||'var(--danger-border)');
+   box.title='公差外・基準外があるため強調しています（強調のしかたは見出しの「強調」から変えられます）';
+  }else{
+   delete box.dataset.fcAlert;
+   ['--fc-alert-bg','--fc-alert-ink','--fc-alert-line'].forEach(k=>box.style.removeProperty(k));
+   box.removeAttribute('title');
+  }
+ }
+ /* ---------- 強調の設定は小さな浮き窓（§9.201） ----------
+    **器の外（`body`直下）へ`position:fixed`で出す**——カードは
+    `overflow:auto`なので、中で開くと必ず切り落とされる。
+    **開いた器は必ず控える**（§9.222 ①。控え忘れると、閉じる3つの経路
+    （×・外クリック・Esc）が全部先頭で引き返して二度と閉じられない）。 */
+ let alertPop=null;
+ function closeAlertPop(){
+  if(!alertPop)return;
+  alertPop.remove();alertPop=null;
+  document.removeEventListener('mousedown',onAlertOutside,true);
+  document.removeEventListener('keydown',onAlertKey,true);
+  const btn=document.getElementById('fcAlertConf');
+  if(btn)btn.setAttribute('aria-expanded','false');
+ }
+ function onAlertOutside(e){
+  if(!alertPop)return;
+  if(alertPop.contains(e.target))return;
+  if(e.target.closest&&e.target.closest('#fcAlertConf'))return;
+  closeAlertPop();
+ }
+ function onAlertKey(e){
+  /* Escは**変換中を除く**（§9.221 ①。日本語入力では変換の取り消しに使う）。 */
+  if(e.key!=='Escape'||e.isComposing||e.keyCode===229)return;
+  closeAlertPop();
+ }
+ function openAlertPop(btn){
+  closeAlertPop();
+  const p=alertPref(),pal=tintPalette();
+  const pop=document.createElement('div');
+  pop.className='fc-alert-pop';pop.id='fcAlertPop';
+  pop.setAttribute('role','dialog');
+  pop.setAttribute('aria-label','公差外・基準外のときの強調');
+  pop.innerHTML=`<div class="fc-alert-pop-head"><b>公差外・基準外のときの強調</b>`
+   +`<button type="button" class="fc-alert-close" aria-label="閉じる" title="閉じる">×</button></div>`
+   +`<div class="fc-alert-row"><small>強調のしかた</small>`
+   +`<div class="fc-alert-modes">`+ALERT_MODES.map(([k,label])=>
+      `<button type="button" class="fc-alert-mode${p.mode===k?' is-on':''}" data-fc-mode="${esc(k)}">${esc(label)}</button>`).join('')
+   +`</div></div>`
+   +`<div class="fc-alert-row"><small>色</small><div class="fc-alert-colors">`
+   +Object.keys(pal).map(k=>
+      `<button type="button" class="fc-alert-color${p.color===k?' is-on':''}" data-fc-color="${esc(k)}"`
+      +` style="--sw-bg:${pal[k].bg};--sw-line:${pal[k].line};--sw-ink:${pal[k].ink}"`
+      +` title="${esc(pal[k].label+'（'+pal[k].note+'）')}">${esc(pal[k].label)}</button>`).join('')
+   +`</div></div>`
+   +`<p class="fc-alert-note">この端末だけの設定です。色は行の色・列の色と同じ7色から選びます。</p>`;
+  document.body.appendChild(pop);
+  alertPop=pop;
+  const r=btn.getBoundingClientRect(),pr=pop.getBoundingClientRect();
+  /* **画面の外へ出さない。** 右端・下端で折り返す。 */
+  const left=Math.max(8,Math.min(window.innerWidth-pr.width-8,r.left));
+  const top=Math.min(window.innerHeight-pr.height-8,r.bottom+6);
+  pop.style.left=left+'px';pop.style.top=Math.max(8,top)+'px';
+  btn.setAttribute('aria-expanded','true');
+  pop.querySelector('.fc-alert-close').onclick=closeAlertPop;
+  pop.querySelectorAll('[data-fc-mode]').forEach(b=>b.onclick=()=>{
+   setAlertPref({mode:b.dataset.fcMode});
+   pop.querySelectorAll('[data-fc-mode]').forEach(x=>x.classList.toggle('is-on',x===b));
+  });
+  pop.querySelectorAll('[data-fc-color]').forEach(b=>b.onclick=()=>{
+   setAlertPref({color:b.dataset.fcColor});
+   pop.querySelectorAll('[data-fc-color]').forEach(x=>x.classList.toggle('is-on',x===b));
+  });
+  document.addEventListener('mousedown',onAlertOutside,true);
+  document.addEventListener('keydown',onAlertKey,true);
+ }
+
+ /* ---------- 「NGが発生した」は確認カードの中（§9.242 ⑥、利用者の指示） ----------
+    「NG回数として記録というボタンがありますが、この発生したとのみボタンを
+     カード内に表示、今のメニュー位置のボタンは削除。15分に1回以上は
+     押せないように制限し、作業導線に組み込む形に変更してください」
+
+    NGに気づくのは**この行**（公差外・基準外）なので、押す場所もここにある。
+    操作レールのボタンは`templates/index.html`から外した——**入口を2つに
+    しない**（片方だけに制限が掛かる形を作らない）。
+    **控えはレコードの中**（`settings.ngLastAt`）——このロットの制限なので、
+    別のPCで続きを開いても引き継がれる（端末に持つと、端末を替えれば
+    すぐ押せてしまう）。 */
+ const NG_GUARD_MS=15*60*1000;
+ function ngGuard(){
+  const m=measuring()?S.measure:null;
+  const st=(m&&m.settings)||{};
+  const count=Number(st.ngCount||0)||0;
+  const last=st.ngLastAt?new Date(st.ngLastAt).getTime():0;
+  const leftMs=(Number.isFinite(last)&&last>0)?(last+NG_GUARD_MS-Date.now()):0;
+  return {count,leftMin:leftMs>0?Math.ceil(leftMs/60000):0};
+ }
+ async function registerNgOnce(){
+  const g=ngGuard();
+  if(g.leftMin>0)return;
+  if(!(window.WL&&WL.measureNg&&WL.measureNg.register)){
+   console.error('NGの記録: WL.measureNg が見つかりません（records-store.jsの公開漏れ）');
+   return;
+  }
+  /* **取り消せない操作なので1回だけ確認する**（§5）。件数も出す——
+     何回目になるのかが分からないまま押させない。 */
+  const ok=typeof confirmModal==='function'
+   ? await confirmModal(`このロットでNGが発生したことを記録します（${g.count+1}回目）。\n記録すると状態は「測定値NG」になり、次に押せるのは15分後です。`)
+   : true;
+  if(!ok)return;
+  await WL.measureNg.register();
+  const m=measuring()?S.measure:null;
+  if(m&&m.settings)m.settings.ngLastAt=new Date().toISOString();
+  paintFinish();
+ }
+ /* 待ち時間は放っておくと**古いまま**なので、押せない間だけ数え直す。
+    **押せるようになったら止める**（測定中に無駄な描き直しを続けない）。 */
+ let ngTimer=null;
+ function syncNgTimer(){
+  const need=current==='3'&&ngGuard().leftMin>0;
+  if(need&&!ngTimer)ngTimer=setInterval(()=>{if(current==='3')paintFinish();else syncNgTimer()},30000);
+  if(!need&&ngTimer){clearInterval(ngTimer);ngTimer=null}
+ }
+ function ngButtonHtml(){
+  const g=ngGuard();
+  const label=g.leftMin>0?`NGが発生した（あと${g.leftMin}分）`:'NGが発生した';
+  const tip=g.leftMin>0
+   ?`直前の記録から15分たっていません（あと約${g.leftMin}分）。同じ不具合を続けて数えないための制限です。`
+   :'このロットでNGが発生したことを記録します。押すと状態が「測定値NG」になり、NG回数が1つ増えます。';
+  /* 添え書きは**短く**（§9.234 ①）。この行はカード3枚のうちの1枚ぶんしか幅が
+     無いので、文にすると必ず折り返す——数だけを出し、全文は`title`が持つ。 */
+  const note=`記録 ${g.count}回`;
+  const noteTip=(g.count?`このロットでNGを ${g.count}回 記録しています。`
+                        :'このロットではまだNGを記録していません。')
+   +(g.leftMin>0?`直前の記録から15分たっていないため、いまは押せません（あと約${g.leftMin}分）。`
+                :'');
+  return `<div class="fc-actions">`
+   +`<button type="button" class="fc-ng"${g.leftMin>0?' disabled':''} id="fcNgBtn"`
+   +` title="${esc(tip)}">${esc(label)}</button>`
+   +`<small class="fc-ng-note" title="${esc(noteTip)}">${esc(note)}</small></div>`;
+ }
+
  function paintFinish(){
   const box=document.getElementById('finishCheck');if(!box)return;
   const rows=current==='3'?finishRows():null;
-  if(!rows){box.innerHTML='';fixMap={};return}
+  if(!rows){box.innerHTML='';fixMap={};applyAlert(box,false);closeAlertPop();syncNgTimer();return}
   fixMap={};rows.forEach(r=>{if(r.fix)fixMap[r.key]=r.fix});
   const rest=rows.filter(r=>r.state==='todo'||r.state==='bad').length;
+  const bad=rows.some(r=>r.state==='bad');
   box.innerHTML=`<div class="fc-head"><h3 class="card-title">完了前の確認</h3>`
    +`<span class="fc-verdict fc-verdict--${rest?'rest':'ready'}">`
-   +esc(rest?`あと ${rest}件`:'このまま完了できます')+`</span></div>`
+   +esc(rest?`あと ${rest}件`:'このまま完了できます')+`</span>`
+   +`<button type="button" class="fc-alert-conf" id="fcAlertConf" aria-expanded="false"`
+   +` title="公差外・基準外が出たときの強調のしかた（縁・面・色）を変えます">強調</button></div>`
    +`<ul class="fc-list">`+rows.map(r=>
      `<li class="fc-row fc-row--${r.state}" data-fc="${esc(r.key)}">`
      +`<span class="fc-name">${esc(r.name)}</span>`
      +`<span class="fc-value">${esc(r.value)}</span>`
      +(r.fix?`<button type="button" class="fc-fix" data-fc-fix="${esc(r.key)}">${esc(r.fix.label)}</button>`:'<span></span>')
-     +`<span class="fc-detail">${esc(r.detail)}</span></li>`).join('')
+     +`<span class="fc-detail">${esc(r.detail)}</span>`
+     +(r.key==='ng'?ngButtonHtml():'')+`</li>`).join('')
    +`</ul><p class="fc-note">確認できたら、左の「測定を完了」を押してください。</p>`;
+  applyAlert(box,bad);
+  const conf=document.getElementById('fcAlertConf');
+  if(conf)conf.onclick=()=>{if(alertPop)closeAlertPop();else openAlertPop(conf)};
+  const ng=document.getElementById('fcNgBtn');
+  if(ng)ng.onclick=()=>{registerNgOnce()};
+  /* 描き直したら浮き窓は畳む——控えの持ち主が切り離された古いボタンに
+     なると、押して閉じて即開き直すちらつきになる（§9.222 ①）。 */
+  if(alertPop)closeAlertPop();
+  syncNgTimer();
  }
  /* 「直す」は**直せる場所まで連れて行く**。番号を言うだけでは探させることになる。 */
  document.addEventListener('click',e=>{
