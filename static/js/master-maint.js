@@ -199,6 +199,14 @@
             hint:'紙は12マスのグリッドです。3＝1/4、6＝1/2、12＝全幅。**ここは既定**で、設備ごとの紙で幅を変えるとそちらが優先されます（帳票画面の「配置を組み換え」で戻せます）。'},
            {k:'rows',label:'高さ（行数）',type:'select',options:['','2','3','4','5','6','8','12'],
             hint:'1行＝24px。空欄なら中身なり（描いてから測ります）。行数を決めると下の段へ跨いで置けます。'},
+           /* 繰り返し（§9.247 ②、利用者の指示「異幅分割ありのロットでロット番号が
+              1ロット内に複数混在するパターンにおいても各分割ロット単位ごとに
+              統計データが出てくるように」）。**分割の無いロットでは1回だけ**
+              出るので、設備の紙を分割あり・無しで分ける必要は無い。 */
+           {k:'repeatText',label:'繰り返し',type:'select',
+            options:['このロット全体（1回だけ）','分割後の子ロットごと'],
+            when:{kindText:'項目の並び'},
+            hint:'「分割後の子ロットごと」にすると、**異幅分割で子ロット番号が複数ある**ロットで、この塊が**子ロットの数だけ**出ます。見出しに子ロット番号と条の範囲が付き、載せた`測定した値の統計`は**その子ロットの条だけ**から数え直されます。**幅分割していないロットでは今までどおり1回だけ**出ます。板厚・板丈・肉厚は丈ごとに測るので子ロットには割り当てられず「—」になります（条ごとに測るのは板幅・ラテラルボー・バリ・テレスコープ・巻ずれ）。'},
            {k:'cols',label:'内訳の列数',type:'select',options:['','1','2','3','4'],
             hint:'節の中で「ラベル＝値」を何列に並べるかです。空欄なら中身の数から決まります（項目が多い塊は4列にすると紙が締まります）。**並べ方が「幅なり」「高さなり」のときは列数を使いません**（カードの大きさで決まります）——並べ方は帳票画面の「配置を組み換え」でカードをダブルクリックすると選べます。'},
            {k:'order',label:'表示順',type:'number',min:0,step:10,
@@ -216,6 +224,7 @@
             hint:'空欄＝自分で作った塊です。値が入っているものはアプリがもともと持っている塊で、**名前・幅・高さ・並び・出す/出さない・対象設備**を変えられます（中身は塊によります。下の説明を参照）。'}],
    cols:[{k:'equipment',label:'対象設備',grow:2,format:'equipmentTarget'},
          {k:'name',label:'ブロック名',grow:2},{k:'kindText',label:'種別',grow:1},
+         {k:'repeatText',label:'繰り返し',grow:1},
          {k:'builtin',label:'既定',grow:1},
          {k:'enabledText',label:'有効',grow:1},{k:'content',label:'内容',grow:4},
          {k:'span',label:'幅',grow:1},{k:'rows',label:'高さ',grow:1},{k:'order',label:'表示順',grow:1}],
@@ -4346,7 +4355,7 @@
                 unitPlaces:['外上左','外上中央','外上右','内部','外下左','外下中央','外下右','出さない'],
                 aligns:['自動','左','中央','右'],
                 valueFormats:['そのまま','3桁区切り','ゼロ埋め'],
-                unitInBlocked:[],unitInFreeTextBlocked:[],
+                unitInBlocked:[],unitInFreeTextBlocked:[],freeTextBlocked:[],
                 /* 並べ方の選択肢と、それが効く入力方法（§9.226 ①）。
                    **サーバーが答える**——ここは届くまでの受け皿。 */
                 layouts:['自動'],layoutWidgets:[],
@@ -4418,6 +4427,11 @@
      色違い・並び違いを種類として増やさない。 */
   '段階':{icon:'▰',note:'順番のある選択肢。選んだところまで塗る（等級・良/可/否）'},
   '入切':{icon:'◐',note:'1つのスイッチ。入＝先頭の値／切＝空欄（付ける・付けない）'},
+  /* §9.247 ①（利用者の指示「フローティングメニューみたいなものや、クリックで
+     選択肢が変化するタイプのUIなど」）。**一覧とどう違うかを一言に書く**
+     ——名前だけでは「浮き窓が開く」点で同じに読める。 */
+  'メニュー':{icon:'⋮',note:'押した欄のすぐ横に浮くメニュー。数個を目を動かさず選ぶとき'},
+  '切替':{icon:'↻',note:'ボタン1つ。押すたびに次の選択肢へ進む（狭いマスで2〜4個）'},
   'メーター':{icon:'▬',note:'打つ欄はそのまま。上下限のどこに居るかを帯で示す'},
   '定型文':{icon:'✎',note:'1行入力＋よく使う語句のボタン（まとまりの値から作る）'},
   /* §9.233 ①（利用者の指示「自動で入る値についても、選んで設定できるように
@@ -6091,6 +6105,8 @@
   if(w==='ボタン群')return row('opd-chips');
   if(w==='カード')return `<span class="opd opd-cards"><i class="opd-on">${esc(vs[0])}<u>説明</u></i>`
    +`<i>${esc(vs[1]||'')}<u>説明</u></i></span>`;
+  /* §9.247 ①でトグルは「割れ枠」へ作り直した。**見本の絵も一緒に直すこと**
+     ——実物と食い違うと、設定画面で確かめた意味が無い（§9.229 ②）。 */
   if(w==='トグル')return `<span class="opd opd-toggle"><i class="opd-on">${esc(vs[0])}</i><i>${esc(vs[1]||'—')}</i></span>`;
   if(w==='一覧')return `<span class="opd opd-pick">${esc(vs[0])}<b>⌸</b></span>`;
   if(w==='ステッパー')return `<span class="opd opd-step"><b>−</b><i>${esc(vs[0])}</i><b>＋</b></span>`;
@@ -6103,6 +6119,12 @@
   if(w==='段階')return `<span class="opd opd-stage"><i class="opd-fill">${esc(vs[0])}</i>`
    +`<i class="opd-on">${esc(vs[1]||'')}</i><i>${esc(vs[2]||'')}</i></span>`;
   if(w==='入切')return `<span class="opd opd-switch"><b></b><i>${esc(vs[0])}</i></span>`;
+  /* §9.247 ①で足した2つ。**絵でも違いが分かること**——`メニュー`は欄の下に
+     浮いた札、`切替`は回る印つきの1つのボタン。名前だけで選ばせない。 */
+  if(w==='メニュー')return `<span class="opd opd-menu"><u>${esc(vs[0])}<b>▾</b></u>`
+   +`<em><i class="opd-on">${esc(vs[0])}</i><i>${esc(vs[1]||'')}</i></em></span>`;
+  if(w==='切替')return `<span class="opd opd-cycle"><b>↻</b><i class="opd-on">${esc(vs[0])}</i>`
+   +`<u>1/${vs.length}</u></span>`;
   if(w==='メーター')return `<span class="opd opd-meter"><u></u></span>`;
   if(w==='定型文')return `<span class="opd opd-phrase"><u></u><i>${esc(vs[0])}</i><i>${esc(vs[1]||'')}</i></span>`;
   /* §9.233 ①。自動で入る値の2つ。**絵でも違いが分かること**——「枠が
@@ -6370,12 +6392,26 @@
      +'ただし入るのは<b>まだ何も選ばれていないとき</b>——空欄か「-」のときだけで、'
      +'「指定なし」のように<b>既定の選択肢が入っている欄には入りません</b>。'
      +'仕掛データから値が来る欄（内径）では<b>仕掛の値が勝ちます</b>。</p>')}
-   ${isChoice?`
+   ${isChoice?(()=>{
+     /* 手打ち（§9.220 ③）。**打ち込む席の無い形では押せなくして理由を書く**
+        （§9.247 ①・§4）——`入切`はスイッチ1つ、`切替`は押すたびに次へ進む
+        ボタン1つなので、打つ場所が出せない。以前は押せてしまい、盤には
+        「手打ち可」の印が出るのに測定画面では打つ場所がどこにも無かった。
+        **保存値は消さない**（形を戻せば復活する・§9.233 ④と同じ作法）ので、
+        すでに入にしてある項目にはそのことを書く。 */
+     const blocked=(opState.freeTextBlocked||[]).includes(widget);
+     const on=blocked?!!x.freeTextSaved:!!x.freeText;
+     return `
    <div class="op-form-row"><span class="op-form-label">手打ち</span>
     <span class="op-form-ctl">
-     <button type="button" id="opdFreeText" class="op-toggle${x.freeText?' is-on':''}" aria-pressed="${x.freeText?'true':'false'}">候補にない値も打てる</button>
-     <i class="op-form-note">候補の下に打ち込む欄が出ます。打った値は<b>そのまま記録に入り</b>、選択肢マスタには足しません。</i>
-    </span></div>`:''}
+     <button type="button" id="opdFreeText" class="op-toggle${on?' is-on':''}" aria-pressed="${on?'true':'false'}"${blocked?' disabled':''}>候補にない値も打てる</button>
+     <i class="op-form-note">${blocked
+       ?`<b>「${esc(widget)}」では使えません</b>——${widget==='入切'?'スイッチが1つ':'ボタンが1つ'}だけなので、打ち込む場所が出せません。`
+        +`打てるようにするなら、選ばせ方を<b>プルダウン・一覧・メニュー・ボタン群</b>などにしてください。`
+        +(on?'（この設定は<b>残してあります</b>。選ばせ方を戻すとまた効きます）':'')
+       :'候補の下に打ち込む欄が出ます。打った値は<b>そのまま記録に入り</b>、選択肢マスタには足しません。'}</i>
+    </span></div>`;
+    })():''}
    <div class="op-form-row is-danger"><span class="op-form-label">この項目</span>
     <span class="op-form-ctl">
      ${x.builtin
@@ -7351,6 +7387,9 @@
    opState.valueFormats=it.valueFormats||opState.valueFormats;
    opState.unitInBlocked=it.unitInBlocked||opState.unitInBlocked;
    opState.unitInFreeTextBlocked=it.unitInFreeTextBlocked||opState.unitInFreeTextBlocked;
+   /* 手打ちの席が無い入力方法（§9.247 ①）。**規則はサーバーが持つ**ので、
+      画面は一覧を引くだけ（判定を2つ持たない・§9.163）。 */
+   opState.freeTextBlocked=it.freeTextBlocked||opState.freeTextBlocked;
    /* §9.231 ②。**いまの値も一緒に来る**（選んだ設備で引き直した結果）。 */
    opState.limitSources=it.limitSources||opState.limitSources;
    /* §9.233 ⑤ */

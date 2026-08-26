@@ -1056,6 +1056,11 @@ def operation_item_list():
            # 重ねた単位は一度も見えない。**規則はサーバーの`unit_in_ok()`が
            # 持ち、画面は一覧を引くだけ**（判定を2つ持たない）。
            'unitInFreeTextBlocked':list(op.UNIT_IN_FREE_TEXT_BLOCKED),
+           # 手打ちの席が無い入力方法（§9.247 ①）。`入切`はスイッチ1つ、
+           # `切替`は押すたびに次へ進むボタン1つなので、**打ち込む場所が
+           # 出せない**。設定窓はここを見て欄ごと押せなくし、理由を書く（§4）。
+           # **規則はサーバーの`free_text_ok()`が持ち、画面は一覧を引くだけ。**
+           'freeTextBlocked':list(op.FREE_TEXT_BLOCKED_WIDGETS),
            # §9.233 ⑤ 自動で入る値の添え書きの置き場と、添え書きを持つ
            # 項目の役割。**サーバーが答える**——「どの項目が添え書きを
            # 出すのか」は仕掛からの読み込みを持っている側しか知らない。
@@ -1398,6 +1403,8 @@ def report_block_list():
            # 塊の種別の選択肢（§9.234 ⑤）。**呼び名もサーバーが答える**
            # ——画面へ写すと、増やしたときに2箇所直すことになる（§9.163）。
            'kinds':[{'v':v,'label':lb} for v,lb in rb.KIND_LABELS],
+           # 繰り返しの選択肢（§9.247 ②）。**呼び名もサーバーが答える**。
+           'repeats':[{'v':v,'label':lb} for v,lb in rb.REPEAT_LABELS],
            'contentEditable':sorted(rb.CONTENT_EDITABLE),
            # **出どころの見本**。ここに無い道も書けるので、選択肢で塞がない。
            'fields':[{'label':a,'path':b} for a,b in rb.FIELD_CATALOG],
@@ -1432,6 +1439,11 @@ def _report_block_save(x):
                           kind=(x.get('kindText') if x.get('kindText') is not None
                                 else x.get('kind')),
                           text=x.get('text'),
+                          # 繰り返し（§9.247 ②）。**呼び名でも受ける**
+                          # ——画面の汎用フォームは文字列の選択欄しか持たない
+                          # （`kindText`／`enabledText`とまったく同じ作法）。
+                          repeat=(x.get('repeatText') if x.get('repeatText') is not None
+                                  else x.get('repeat')),
                           block_id=(int(x['id']) if x.get('id') not in (None,'') else None))
   return jsonify(ok=True,id=_op_read(fn),message='帳票ブロックを保存しました。')
  except ValueError as e:return jsonify(error=str(e)),400

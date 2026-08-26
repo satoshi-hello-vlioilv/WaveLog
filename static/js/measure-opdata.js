@@ -758,6 +758,25 @@
    const now=box.querySelector('.opf-stage-now');
    if(now)now.textContent=at>=0?`${at+1}/${stage.length}`:'—';
   }
+  /* 切替（§9.247 ①）。**いま何番目か・次が何か**を文字で出す——押した先が
+     見えないと、目当ての値まで何回押すのか数えることになる（§2）。 */
+  const cyNow=box.querySelector('.opf-cycle-now');
+  if(cyNow){
+   let arr=[];try{arr=JSON.parse(box.dataset.opCycle||'[]')}catch(_){}
+   const at=arr.findIndex(o=>o[0]===v);
+   const cur=at>=0?arr[at][1]:(v||'—');
+   cyNow.textContent=cur;
+   cyNow.classList.toggle('is-empty',!v||v==='-');
+   const pos=box.querySelector('.opf-cycle-pos');
+   if(pos)pos.textContent=arr.length?(at>=0?`${at+1}/${arr.length}`:`—/${arr.length}`):'';
+   const nx=box.querySelector('.opf-cycle-next');
+   if(nx){
+    /* **次が今と同じなら言わない**（選択肢が1つのとき。押しても変わらない
+       ものに「次: 〜」と書くと、押せば変わると読める・§4）。 */
+    const to=arr.length>1?arr[(at<0?0:(at+1)%arr.length)][1]:'';
+    nx.textContent=to?`次 ${to}`:'';
+   }
+  }
   /* 入切（§9.226 ①）。**入＝先頭の値／切＝空**の1つのスイッチ。 */
   const sw=box.querySelector('.opf-switch-btn');
   if(sw){
@@ -1147,10 +1166,63 @@
    });
    box.querySelector('.opf-combo-open').onclick=e=>{e.preventDefault();openPicker(def,host,sel)};
   }else if(kind==='一覧'){
+   /* **`メニュー`と同じ顔にしないこと**（§9.247 ①）——両方とも「▾の付いた
+      1行の欄」だと、名前が2つあって見た目が同じ（セグメントとトグルで
+      指摘されたのと同じ形）になる。`一覧`が開くのは**画面のまん中の窓**
+      なので、合図も「窓が開く」印（`⌸`）にし、器から仕切って置く。
+      `メニュー`の▾は**その場に垂れる**という意味で、開くと反転する。 */
    box.className='opf-widget opf-pick';
    box.innerHTML='<button type="button" class="opf-pick-btn">'
-    +'<span class="opf-pick-now">選ぶ</span><span class="opf-pick-caret" aria-hidden="true">▾</span></button>';
+    +'<span class="opf-pick-now">選ぶ</span>'
+    +'<span class="opf-pick-caret" aria-hidden="true" title="押すと一覧の窓が開きます">☰</span></button>';
    box.querySelector('.opf-pick-btn').onclick=e=>{e.preventDefault();openPicker(def,host,sel)};
+  }else if(kind==='メニュー'){
+   /* メニュー（§9.247 ①、利用者の指示「フローティングメニューみたいなもの」）。
+      **`一覧`とは開く場所が違う**——あちらは画面のまん中に開く大きな窓＋
+      絞り込みで「数が多いとき」向き、こちらは**押した欄のすぐ横**に浮く
+      軽いメニューで「数個を、目を動かさずに」選ぶとき向き。
+      いまの値の見せ方は`一覧`と同じ`.opf-pick-now`を使う——`syncWidget()`が
+      1箇所で面倒を見るので、形ごとに書き足さない。 */
+   box.className='opf-widget opf-menu';
+   box.innerHTML='<button type="button" class="opf-menu-btn" aria-haspopup="menu" aria-expanded="false">'
+    +'<span class="opf-pick-now">選ぶ</span>'
+    +'<span class="opf-menu-caret" aria-hidden="true">▾</span></button>';
+   box.querySelector('.opf-menu-btn').onclick=e=>{
+    e.preventDefault();openMenu(def,host,sel,e.currentTarget);
+   };
+  }else if(kind==='切替'){
+   /* 切替（§9.247 ①、利用者の指示「クリックで選択肢が変化するタイプのUI」）。
+      **押すたびに次の選択肢へ進み、最後まで行ったら先頭へ戻る。**
+      札を並べる場所が無い狭いマスで2〜4個を切り替えるとき向き。
+      **いま何番目か・次が何かを必ず文字で出す**（§2「推測させない」）——
+      押した先が見えないと、目当ての値まで何回押すのか数えることになる。
+      **候補の並びは器が控える**（`data-op-cycle`）——`syncWidget()`が
+      「次」を言うのに要るが、`<select>`の全部の`<option>`とは違う
+      （`（選ばない）`を出さない設定があるので・§9.246 ①）。 */
+   const list=pickableOpts(opts,def);
+   box.className='opf-widget opf-cycle';
+   box.dataset.opCycle=JSON.stringify(list.map(o=>[o.v,(o.v===''||o.t==='-')?'—':o.t]));
+   box.innerHTML='<button type="button" class="opf-cycle-btn"'
+    +' aria-label="'+esc(def.name)+'（押すたびに次の選択肢へ変わります）">'
+    +'<i class="opf-cycle-mark" aria-hidden="true">↻</i>'
+    +'<span class="opf-cycle-now">—</span>'
+    +'<span class="opf-cycle-meta"><i class="opf-cycle-pos"></i>'
+    +'<i class="opf-cycle-next"></i></span></button>';
+   const step=d=>{
+    let arr=[];try{arr=JSON.parse(box.dataset.opCycle||'[]')}catch(_){}
+    if(!arr.length)return;
+    const at=arr.findIndex(o=>o[0]===String(sel.value==null?'':sel.value));
+    /* まだ選んでいないとき（`at<0`）は**先頭から**。−で戻るときは末尾から。 */
+    const nx=at<0?(d>0?0:arr.length-1):((at+d+arr.length)%arr.length);
+    setValue(sel,arr[nx][0]);syncWidget(host);
+   };
+   const btn=box.querySelector('.opf-cycle-btn');
+   btn.onclick=e=>{e.preventDefault();step(1)};
+   /* **戻れること**——行き過ぎたときに一周させるのは操作として重い。 */
+   btn.onkeydown=e=>{
+    if(e.key==='ArrowLeft'||e.key==='ArrowUp'){e.preventDefault();step(-1)}
+    else if(e.key==='ArrowRight'||e.key==='ArrowDown'){e.preventDefault();step(1)}
+   };
   }else if(kind==='入切'){
    /* 入切（§9.226 ①）。**入＝先頭の空でない値／切＝空**。3つ以上あっても
       使うのは先頭だけなので、そのことを文字で書く（§4）。 */
@@ -1196,6 +1268,13 @@
      +'>'+dot+no+'<span class="opf-btn-text">'+esc(label)+'</span>'+note+'</button>';
    }).join('')+(free?otherChipHtml(btnCls):'')+'</div>'
     +(stage?'<small class="opf-stage-scale"><b class="opf-stage-now">—</b> 段目</small>':'');
+   /* **説明を1つも持たないカードは背の高い空箱**（§9.247 ①、利用者の指摘
+      「カード…少し踏襲されていない感じを受けます」）。カードは「選ぶのに
+      説明が要る」ための形なので、説明が無いときは高さを取らず、文字を
+      真ん中へ置く——`:has()`に頼らず**印を付ける**（当たらなかったときに
+      誰も気づけない・§9.218 ②）。 */
+   if(shape&&shape.note)
+    box.classList.toggle('is-plain',!list.some(o=>noteOf(def,o.v)));
    applyLayout(box,def);
    box.querySelectorAll('[data-opv]').forEach(b=>{
     b.onclick=e=>{e.preventDefault();setValue(sel,b.dataset.opv);syncWidget(host)};
@@ -1229,6 +1308,9 @@
     ——外し忘れると、戻したはずの欄がボタンのまま残る（§9.210 ④と同じ罠）。 */
  function stripWidget(host){
   const box=host.querySelector(':scope>.opf-widget');
+  /* **開いているメニューは畳む**（§9.222 ①）——器を消したあとに浮いたまま
+     残ると、どの欄のものか分からないメニューが画面に残る。 */
+  if(box&&menuBack&&box.contains(menuBack))closeMenu();
   if(box)box.remove();
   host.classList.remove('opf-alt');
   /* **`<input>`の欄も元へ戻す**（§9.219 ③）。`select`だけを見ていると、
@@ -1286,11 +1368,158 @@
  }
  function openKeypad(def,host,el){
   const p=ensureKeypad();
+  carryLook(host,p);                         /* §9.247 ① 欄と同じ角丸・色で開く */
   p.hidden=false;padTarget=el;
   padBack=host.querySelector('.opf-pad-btn');
   p.querySelector('#opfKeypadName').textContent=def.name+(def.unit?`（${def.unit}）`:'');
   const view=p.querySelector('#opfKeypadView');
   if(view)view.textContent=String(el.value||'')||'—';
+ }
+
+ /* ---------- 浮くものへ欄の意匠を持ち出す（§9.247 ①、利用者の指摘） ----------
+    「角丸デザインを細部まで踏襲してください。（カード、一覧、プルダウンなど
+      少し踏襲されていない感じを受けます。）」
+
+    浮き窓は`body`直下に置く（§9.201）ので、**欄が宣言した`--opf-*`が
+    継承されない**——角丸も色も器の既定へ落ち、押した欄と別の見た目の窓が
+    開いていた。開くときに**欄で解決済みの値を写す**（規則を窓の側へ
+    書き写さない・§9.163）。 */
+ const LOOK_VARS=['--opf-radius','--opf-hue','--opf-hue-dark','--opf-hue-pale',
+                  '--opf-h','--opf-fs'];
+ function carryLook(host,el){
+  if(!host||!el)return;
+  const cs=getComputedStyle(host);
+  LOOK_VARS.forEach(k=>{
+   const v=cs.getPropertyValue(k).trim();
+   if(v)el.style.setProperty(k,v);else el.style.removeProperty(k);
+  });
+ }
+ /* ---------- 欄のすぐ横に開くメニュー（§9.247 ①、利用者の指示） ----------
+    「フローティングメニューみたいなもの」
+
+    **`一覧`（`.opf-picker`）とは別の道具**——あちらは画面のまん中に開く
+    大きな窓＋絞り込みで「選択肢が多いとき」向き。こちらは押した欄の
+    すぐ下に浮く軽いメニューで、**目を動かさずに数個から選ぶ**とき向き。
+
+    **`body`直下へ`position:fixed`**（§9.201）。`.selectors`は`overflow`を
+    持つ器の中なので、中に置くと下半分が切れる。
+    **画面の外へはみ出さない**——下に入らなければ上へ、右も器へ収める。 */
+ let menuEl=null,menuBack=null,menuOff=null;
+ function ensureMenu(){
+  if(menuEl)return menuEl;
+  menuEl=document.createElement('div');
+  menuEl.className='opf-menu-pop';menuEl.id='opfMenu';menuEl.hidden=true;
+  menuEl.setAttribute('role','menu');
+  document.body.appendChild(menuEl);
+  WL.modal.keepOpen(menuEl);
+  /* **外を押したら閉じる**。`mousedown`で受ける——`click`だと、押した先の
+     部品が先に動いてしまう。**開いた器は必ず控える**（§9.222 ①）ので、
+     ここは`menuEl`を見て早々に帰れる。 */
+  document.addEventListener('mousedown',e=>{
+   if(!menuEl||menuEl.hidden)return;
+   if(menuEl.contains(e.target))return;
+   if(menuBack&&menuBack.contains&&menuBack.contains(e.target))return;
+   closeMenu();
+  },true);
+  document.addEventListener('keydown',e=>{
+   if(menuEl&&!menuEl.hidden&&WL.modal.escCloses(e)){e.stopPropagation();closeMenu()}
+  },true);
+  return menuEl;
+ }
+ function closeMenu(){
+  if(!menuEl||menuEl.hidden)return;
+  menuEl.hidden=true;
+  if(menuOff){menuOff();menuOff=null}
+  const back=menuBack;menuBack=null;
+  if(back){
+   back.setAttribute('aria-expanded','false');
+   if(back.focus){try{back.focus()}catch(e){}}
+  }
+ }
+ /* 押した欄へ寄せる。**開いてから測る**——中身の高さが分からないと、
+    下に入るかどうかを決められない。 */
+ function placeMenu(el,btn){
+  const r=btn.getBoundingClientRect();
+  el.style.minWidth=Math.round(r.width)+'px';
+  el.style.left='0px';el.style.top='0px';        /* 測る前に前回の位置を外す */
+  const m=el.getBoundingClientRect();
+  const gap=4,pad=8;
+  const below=window.innerHeight-r.bottom-gap;
+  const up=m.height>below&&r.top-gap>below;      /* 下に入らず、上のほうが広い */
+  const top=up?Math.max(pad,r.top-gap-m.height):Math.min(r.bottom+gap,window.innerHeight-pad-m.height);
+  const left=Math.max(pad,Math.min(r.left,window.innerWidth-pad-m.width));
+  el.style.left=Math.round(left)+'px';
+  el.style.top=Math.round(Math.max(pad,top))+'px';
+  el.dataset.at=up?'up':'down';
+ }
+ function openMenu(def,host,sel,btn){
+  const el=ensureMenu();
+  menuBack=btn;
+  carryLook(host,el);
+  el.hidden=false;
+  btn.setAttribute('aria-expanded','true');
+  const opts=pickableOpts(optionsOf(sel),def);
+  const free=!!def.freeText;
+  const draw=()=>{
+   const v=String(sel.value==null?'':sel.value);
+   el.innerHTML='<div class="opf-menu-list">'+(opts.length?opts.map(o=>{
+    const label=(o.v===''||o.t==='-')?'（選ばない）':o.t;
+    const note=noteOf(def,o.v);
+    const on=o.v===v;
+    return '<button type="button" role="menuitemradio" aria-checked="'+(on?'true':'false')+'"'
+     +' class="opf-menu-item'+(on?' is-on':'')+'" data-opv="'+esc(o.v)+'">'
+     +'<i class="opf-menu-tick" aria-hidden="true">'+(on?'✓':'')+'</i>'
+     +'<span class="opf-menu-text"><b>'+esc(label)+'</b>'
+     +(note?'<small>'+esc(note)+'</small>':'')+'</span></button>';
+   }).join(''):'<p class="opf-menu-empty">選べる候補がありません。</p>')+'</div>'
+    /* **手打ちの席は1つ**（§9.226 ①）——メニューの足元へ置き、
+       打った時点で入る（別の入力欄を欄の下へ足さない）。 */
+    +(free?'<div class="opf-menu-free"><input type="text" class="opf-menu-free-in"'
+      +' autocomplete="off" placeholder="候補にない値を打つ" aria-label="候補にない値を打つ"></div>':'');
+   el.querySelectorAll('[data-opv]').forEach(b=>{
+    b.onclick=e=>{e.preventDefault();setValue(sel,b.dataset.opv);syncWidget(host);closeMenu()};
+   });
+   const fi=el.querySelector('.opf-menu-free-in');
+   if(fi){
+    if(isFreeValue(sel,v))fi.value=v;
+    /* **入力中に一覧を作り直さないこと**（§9.117）——1文字ごとに
+       カーソルが飛ぶ。印だけを付け替える。 */
+    fi.oninput=()=>{
+     const t=fi.value.trim();
+     if(t)setFree(sel,t);else setValue(sel,'');
+     syncWidget(host);
+     el.querySelectorAll('[data-opv]').forEach(b=>{
+      const on=b.dataset.opv===String(sel.value||'');
+      b.classList.toggle('is-on',on);b.setAttribute('aria-checked',on?'true':'false');
+      const tk=b.querySelector('.opf-menu-tick');if(tk)tk.textContent=on?'✓':'';
+     });
+    };
+   }
+   /* **キーボードで辿れること**（押せるのに辿れない部品を作らない）。 */
+   el.onkeydown=e=>{
+    if(['ArrowDown','ArrowUp'].indexOf(e.key)<0)return;
+    if(e.target&&e.target.classList&&e.target.classList.contains('opf-menu-free-in'))return;
+    const items=[...el.querySelectorAll('[data-opv]')];
+    if(!items.length)return;
+    e.preventDefault();
+    const i=items.indexOf(document.activeElement);
+    const d=e.key==='ArrowDown'?1:-1;
+    const nx=items[(Math.max(0,i)+d+items.length)%items.length];
+    if(nx&&nx.focus)nx.focus();
+   };
+  };
+  draw();
+  placeMenu(el,btn);
+  /* 窓の大きさが変わったら置き直す（開いたままスクロールしたら閉じる
+     ——ずれた場所に浮いたメニューは、どの欄のものか分からなくなる）。 */
+  const onScroll=()=>closeMenu();
+  const onResize=()=>{if(menuEl&&!menuEl.hidden&&menuBack)placeMenu(menuEl,menuBack)};
+  window.addEventListener('scroll',onScroll,true);
+  window.addEventListener('resize',onResize);
+  menuOff=()=>{window.removeEventListener('scroll',onScroll,true);
+               window.removeEventListener('resize',onResize)};
+  const first=el.querySelector('.opf-menu-item.is-on')||el.querySelector('.opf-menu-item');
+  if(first&&first.focus){try{first.focus()}catch(e){}}
  }
 
  /* ---------- 説明つきで選ぶ浮き窓 ----------
@@ -1322,6 +1551,7 @@
  }
  function openPicker(def,host,sel){
   const el=ensurePicker();
+  carryLook(host,el);                        /* §9.247 ① 欄と同じ角丸・色で開く */
   el.hidden=false;
   pickerBack=host.querySelector('.opf-pick-btn');
   el.querySelector('#opfPickerName').textContent=def.name;

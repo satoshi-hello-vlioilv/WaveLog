@@ -1359,10 +1359,30 @@
 .opd-cards>i>u{text-decoration:none;color:var(--muted);font-weight:400}
 .opd-cards .opd-on{border-color:var(--teal);background:var(--pale);color:var(--teal-dark)}
 .opd-cards .opd-on>u{color:var(--teal-dark)}
-.opd-toggle{border:1px solid var(--line);border-radius:var(--radius-xs);padding:1px;
-  background:var(--surface-2);gap:1px}
-.opd-toggle>i{border-radius:var(--radius-xs);background:none}
-.opd-toggle .opd-on{background:var(--teal);color:#fff}
+/* トグルは**1枚の枠を割った形**（§9.247 ①）。実物（`.opf-toggle`）と同じ
+   ——隙間は無く、選んだ側が縁まで淡く染まる。セグメント（`.opd-seg`）は
+   地色の帯に浮いた札なので、絵の段階で違いが読める。 */
+.opd-toggle{border:1px solid var(--line-mid);border-radius:var(--radius-xs);padding:0;
+  gap:0;overflow:hidden;background:var(--surface)}
+.opd-toggle>i{border-radius:0;background:none;color:var(--muted)}
+.opd-toggle>i+i{border-left:1px solid var(--line-soft)}
+.opd-toggle .opd-on{background:var(--pale);color:var(--teal-dark)}
+/* §9.247 ①で足した2つ。**絵でも違いが読めること**。 */
+.opd-menu{position:relative;display:flex;flex-direction:column;gap:2px;width:100%}
+.opd-menu>u{display:flex;align-items:center;justify-content:space-between;
+  padding:1px 3px;border:1px solid var(--line);border-radius:var(--radius-xs);
+  background:var(--surface);text-decoration:none}
+.opd-menu>em{display:flex;flex-direction:column;gap:1px;padding:2px;
+  border:1px solid var(--line-mid);border-radius:var(--radius-xs);
+  background:var(--surface);box-shadow:0 2px 4px #0000001f;font-style:normal}
+.opd-menu>em>i{padding:0 3px;border-radius:var(--radius-xs);background:none}
+.opd-menu>em .opd-on{background:var(--pale);color:var(--teal-dark)}
+.opd-cycle{gap:3px;padding:1px 3px;border:1px solid var(--line);
+  border-radius:var(--radius-xs);background:var(--surface)}
+.opd-cycle>b{display:inline-flex;align-items:center;justify-content:center;
+  width:11px;height:11px;border-radius:var(--radius-round);
+  background:var(--pale);color:var(--teal-dark);font-size:var(--fs-micro);line-height:1}
+.opd-cycle>u{margin-left:auto;color:var(--muted);text-decoration:none;font-weight:700}
 .opd-step>b,.opd-pad>b{display:inline-flex;align-items:center;justify-content:center;
   min-width:1.2em;padding:1px 2px;border:1px solid var(--line);border-radius:var(--radius-xs);
   background:var(--surface);font-weight:800}

@@ -49,7 +49,9 @@ G['操業データ'] = ['test_opdata', 'test_opui', 'test_msteps', 'test_maint',
                    # §9.243: 「記録した値」の配置をD&Dで組む専用のマスタ
                    'test_reclayout',
                    # §9.246 ①: 「空欄の札」は組み込みの選択欄でも効く
-                   'test_opblank']
+                   'test_opblank',
+                   # §9.247 ①: トグルの作り直しと、足した2つの選ばせ方
+                   'test_opwidget']
 # 異常位置判定と条の設計の連携(§9.226 ④)。どちらを触っても両方を回す。
 G['異常位置'] = ['test_defect', 'test_defectlink', 'test_splitlive', 'test_scsplit',
                  # §9.239 ⑥: ピッチ→ロール判定とロールマスタ
@@ -58,7 +60,9 @@ G['異常位置'] = ['test_defect', 'test_defectlink', 'test_splitlive', 'test_s
                  'test_rollload']
 # 操業データの意匠・設定窓・空きの群（§9.227）
 G['操業意匠'] = ['test_oppad', 'test_opui', 'test_opdata', 'test_msteps', 'test_oplimit',
-                 'test_opmother', 'test_opunit', 'test_opauto', 'test_reclayout']
+                 'test_opmother', 'test_opunit', 'test_opauto', 'test_reclayout',
+                 # §9.247 ①: 選ばせ方そのもの（トグル・メニュー・切替・角丸の踏襲）
+                 'test_opwidget']
 G['列'] = ['test_collayout', 'test_colformat', 'test_colrule', 'test_colsort', 'test_lcpanel',
            'test_colscache', 'test_colsripple', 'test_colsave', 'test_displayrule', 'test_colmenu',
            'test_colpreset', 'test_formula', 'test_reccols', 'test_rpblocks', 'test_rplayout',
