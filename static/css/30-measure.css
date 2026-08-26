@@ -981,8 +981,10 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
   border-radius:var(--radius-sm);background:var(--surface-2);color:var(--ink-3);font-weight:800;
 }
 .fc-alert-row{display:flex;align-items:flex-start;gap:var(--space-2);margin-bottom:var(--space-2)}
-.fc-alert-row>small{flex:0 0 5.5em;color:var(--muted);font-size:var(--fs-sm);font-weight:700;
-  line-height:var(--ctl-h-xs)}
+/* 見出しは**折り返さない**（§9.90「列の見出しは折り返さない」と同じ扱い）
+   ——`強調のしか／た`と割れると、2つの設定が並んでいるように読める。 */
+.fc-alert-row>small{flex:0 0 auto;color:var(--muted);font-size:var(--fs-sm);font-weight:700;
+  white-space:nowrap;line-height:var(--ctl-h-xs)}
 .fc-alert-modes,.fc-alert-colors{display:flex;flex-wrap:wrap;gap:var(--gap-inline);min-width:0}
 .fc-alert-mode,.fc-alert-color{
   height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-sm);

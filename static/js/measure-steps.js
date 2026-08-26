@@ -51,11 +51,16 @@
   const v=Math.max(1,Math.min(9,Number(st.verticalCount)||1));
   const h=Math.max(1,Math.min(40,Number(st.horizontalCount)||1));
   put('mctxShape',`${h}条 × ${v}丈`,`横割数 ${h} / 縦割数 ${v}`);
-  /* 公差は「どちらを見ているか」が値そのものより効く（§CLAUDE.md 出どころを出す）。 */
+  /* 公差は「どちらを見ているか」が値そのものより効く（§CLAUDE.md 出どころを出す）。
+     **どの項目に効くのかも書く**（§9.242 ⑤）——上下限を持つのは板厚・板幅
+     だけなので、バリやテレスコープを測っている人が「この公差で判定されて
+     いる」と読まないようにする（あちらは片側の基準）。 */
   const src=st.toleranceSource==='order'?'オーダー公差':'製造公差';
   const has=typeof compactToleranceData==='function'&&!!compactToleranceData('width');
+  const scope='上下限のある板厚・板幅に効きます（ラテラルボー・バリ・テレスコープ・'
+    +'巻ずれ・フラットネスは片側の「基準」で判定します）';
   put('mctxTolerance',has?src:src+'（未設定）',
-      has?'':'このロットには使えるプラス・マイナス値がありません');
+      has?scope:'このロットには使えるプラス・マイナス値がありません。'+scope);
  }
 
  /* ---------- 段の状態 ----------
@@ -348,11 +353,17 @@
   const tip=g.leftMin>0
    ?`直前の記録から15分たっていません（あと約${g.leftMin}分）。同じ不具合を続けて数えないための制限です。`
    :'このロットでNGが発生したことを記録します。押すと状態が「測定値NG」になり、NG回数が1つ増えます。';
+  /* 添え書きは**短く**（§9.234 ①）。この行はカード3枚のうちの1枚ぶんしか幅が
+     無いので、文にすると必ず折り返す——数だけを出し、全文は`title`が持つ。 */
+  const note=`記録 ${g.count}回`;
+  const noteTip=(g.count?`このロットでNGを ${g.count}回 記録しています。`
+                        :'このロットではまだNGを記録していません。')
+   +(g.leftMin>0?`直前の記録から15分たっていないため、いまは押せません（あと約${g.leftMin}分）。`
+                :'');
   return `<div class="fc-actions">`
    +`<button type="button" class="fc-ng"${g.leftMin>0?' disabled':''} id="fcNgBtn"`
    +` title="${esc(tip)}">${esc(label)}</button>`
-   +`<small class="fc-ng-note">${esc(g.count?`これまで ${g.count}回 記録`:'まだ記録はありません')}`
-   +`${g.leftMin>0?' ／ 15分に1回まで':''}</small></div>`;
+   +`<small class="fc-ng-note" title="${esc(noteTip)}">${esc(note)}</small></div>`;
  }
 
  function paintFinish(){

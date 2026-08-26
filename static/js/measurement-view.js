@@ -1055,8 +1055,11 @@ function renderRecordedValues(){
   h=order.map(g=>{
    const list=bag.get(g);
    const filled=list.filter(r=>shown(r.value)).length;
-   /* **件数を文字で出す**（§3）——値が「—」ばかりの群を、読む前に見分けられる。 */
-   return `<div class="rv-group"><b>${esc(g)}<small>${filled}/${list.length}</small></b>`
+   /* **件数を文字で出す**（§3）——値が「—」ばかりの群を、読む前に見分けられる。
+      **何の数かは`title`が言う**（`3/9`だけでは進捗とも読める）。 */
+   return `<div class="rv-group"><b>${esc(g)}`
+    +`<small title="${esc(`値が入っている項目 ${filled} / ${list.length}`)}">`
+    +`${filled}/${list.length}</small></b>`
     +`<dl>${list.map(line).join('')}</dl></div>`;
   }).join('');
  }
