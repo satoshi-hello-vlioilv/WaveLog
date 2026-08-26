@@ -871,7 +871,7 @@ function activeRequiredControls(){
   /* **ラベルは画面から読む**（§9.232）。以前はDOMの順番で決め打ちの配列を
      引いていたので、マスタで名前を変えても並べ替えても古い呼び名が出た
      ——母材の欄は操業データの項目になり、**順番も名前も現場が決める**。
-     読み方は`motherRecordRows()`と同じ（同じ欄を2通りに呼ばない）。 */
+     名前は`motherFieldLabel()`の1箇所が答える（同じ欄を2通りに呼ばない）。 */
   document.querySelectorAll('[data-mother]').forEach(el=>
    controls.push({el,label:motherFieldLabel(el)}));
   const fieldLabels={productLength:'長さ',wallThickness:'肉厚',edgeShape:'揃い(エッジ形状)'};
@@ -987,12 +987,13 @@ function renderDataManagementPanel(){
    「数値以外に何を残すか」——誰が測ったか・測定表の形・使う機材・
    その他の設定・母材の実測。同じ数字を2箇所に出さない（§9.129）。
    ①準備で決めた値をそのまま並べるので、完了前に**①へ戻らずに確かめられる**。 */
-const RECORD_GROUPS=[
- ['誰が測ったか',[['operator','オペレータ'],['inspector','検査員'],['crewSize','人数']]],
- ['測定表の形',[['verticalCount','丈数'],['horizontalCount','条数']]],
- ['使う機材',[['innerDiameter','内径'],['spool','スプール'],['thicknessGauge','板厚計'],['widthGauge','板幅計']]],
- ['その他の設定',[['unwind','巻出方向'],['widthOrder','条入力順'],['widthDirection','方向'],['burr','バリ揃え'],['coilStop','コイル止め']]],
-];
+/* ---------- ③「記録した値」はマスタが決める（§9.242 ④、利用者の指示） ----------
+   ここに在った`RECORD_GROUPS`（項目名を4群ぶん直に並べた表）は**廃止した**
+   ——群の名前も並びも現場では変えられず、母材だけ画面のラベルから拾うという
+   別の道も持っていた（同じことを2通りで書いていた）。
+   中身を答えるのは`WL.opData.recordRows()`の1箇所で、群・並び・呼び名・単位は
+   **操業データ項目マスタの行がそのまま**使われる。**ここへ項目名の写しを
+   戻さないこと**——戻すと、マスタで項目を足しても③だけ古いままになる。 */
 /* 母材の項目名は**画面のラベルから取る**（マスタでも定数でもない）。
    ここで別の名前を持つと、②で見た欄名と③の一覧で言葉が変わる。
    画面のラベルは`renameBuiltinLabel()`がマスタの項目名で書き換えるので
@@ -1010,21 +1011,9 @@ function motherFieldLabel(el){
    .map(n=>n.textContent.trim()).join('').trim();
  return name||(el&&(el.dataset.mother||el.id))||'母材';
 }
-function motherRecordRows(){
- const rows=[];
- /* 参考値も**画面のラベルから**読む（§9.232）——マスタで名前を変えられる
-    ようになったので、ここで別の名前を持つと③だけ古い呼び名になる。 */
- ['motherOriginalWidth','motherScrapWidth','motherCalcLength'].forEach(id=>{
-  const el=$('#'+id);if(!el)return;
-  const lab=el.closest('label');
-  if(lab&&lab.hidden)return;
-  rows.push([motherFieldLabel(el),el.textContent]);
- });
- document.querySelectorAll('[data-mother]').forEach(el=>{
-  rows.push([motherFieldLabel(el),el.value]);
- });
- return rows;
-}
+/* `motherRecordRows()`は**廃止した**（§9.242 ④）。母材の欄も操業データの
+   項目なので、③のカードは`WL.opData.recordRows()`が一本で組み立てる
+   ——同じ欄を2通りに読む道を残さない。 */
 /* **画面にいま入っている値を出す**（§9.206、実機で報告「準備の入力など、
    選択状態にしたら、記録した値に入ってほしいところ何も表示されません」）。
    `settings`が書かれるのは`collect()`＝**保存のときだけ**なので、そこだけを
@@ -1034,27 +1023,43 @@ function motherRecordRows(){
    反映されない」という分かりにくい壊れ方になっていた。
    鍵は`collect()`と同じで**設定キー＝入力欄のid**。**欄が無ければ`settings`**
    ——保存済みの控えを開いた直後や、閲覧側から呼ばれたときに落とさないため。 */
-function recordedValueOf(k,st){
- const el=$('#'+k);
- const v=el?String(el.value??''):'';
- return v!==''?v:st[k];
-}
 function renderRecordedValues(){
  const host=$('#recordedList');
  if(!host||!S.measure)return;
- const st=S.measure.settings||{};
  const shown=v=>{const s=String(v??'').trim();return s===''||s==='-'||s==='－'?'':s};
  /* ラベルは狭いと省略記号になる（値を守るため。§9.206）ので、**元の言葉を
     `title`に残す**——省略した文字が読めなくなるのは切り詰めと同じ。 */
- const line=(l,v)=>`<div><dt title="${esc(l)}">${esc(l)}</dt>`
-   +`<dd title="${esc(shown(v)||'')}">${esc(shown(v)||'—')}</dd></div>`;
- let h=RECORD_GROUPS.map(([title,items])=>
-  `<div class="rv-group"><b>${esc(title)}</b><dl>`
-  +items.map(([k,label])=>line(label,recordedValueOf(k,st))).join('')+'</dl></div>').join('');
- const mother=motherRecordRows().filter(([,v])=>shown(v));
- h+='<div class="rv-group"><b>母材</b>'
-  +(mother.length?`<dl>${mother.map(([l,v])=>line(l,v)).join('')}</dl>`
-   :'<p class="rv-empty">まだ入力がありません。</p>')+'</div>';
+ const line=r=>{
+  const v=shown(r.value);
+  const unit=v&&r.unit?` ${r.unit}`:'';
+  const tip=[r.name,v?v+unit:'（未入力）',r.auto?'自動で入る値':''].filter(Boolean).join(' ／ ');
+  return `<div><dt title="${esc(r.name)}">${esc(r.name)}</dt>`
+   +`<dd class="${r.auto?'rv-auto':''}" title="${esc(tip)}">${esc(v?v+unit:'—')}</dd></div>`;
+ };
+ /* **マスタが読めていないうちは何も出さない**（§4）。空の群だけを並べると
+    「項目が無い設備」と見分けが付かない。 */
+ let rows=[];
+ if(window.WL&&WL.opData&&WL.opData.recordRows){
+  try{rows=WL.opData.recordRows()||[]}catch(e){console.warn('記録した値を組み立てられませんでした',e)}
+ }else console.error('記録した値: WL.opData.recordRows が見つかりません（measure-opdata.jsの公開漏れ）');
+ let h='';
+ if(!rows.length){
+  h='<p class="rv-empty">操業データ項目マスタで「③の記録した値に出す」を選んだ項目がここに並びます。</p>';
+ }else{
+  /* 群は**マスタの並びのまま**——出てきた順に束ねる（並べ替えない）。 */
+  const order=[],bag=new Map();
+  rows.forEach(r=>{
+   if(!bag.has(r.group)){bag.set(r.group,[]);order.push(r.group)}
+   bag.get(r.group).push(r);
+  });
+  h=order.map(g=>{
+   const list=bag.get(g);
+   const filled=list.filter(r=>shown(r.value)).length;
+   /* **件数を文字で出す**（§3）——値が「—」ばかりの群を、読む前に見分けられる。 */
+   return `<div class="rv-group"><b>${esc(g)}<small>${filled}/${list.length}</small></b>`
+    +`<dl>${list.map(line).join('')}</dl></div>`;
+  }).join('');
+ }
  if(host.innerHTML!==h)host.innerHTML=h;
 }
 /* 品質情報の見出しに**件数を文字で**添える（§9.144）。状態を色だけで伝えない。

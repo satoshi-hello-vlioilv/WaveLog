@@ -476,7 +476,15 @@ main>footer{height:40px;display:flex;align-items:center;justify-content:space-be
 .rv-group+.rv-group{margin-top:0}
 /* 見出しは**カードの中の群の見出しの規格**（§9.154）。ここだけ11pxで、
    同じ画面の①②より1段小さかった。 */
-.rv-group>b{display:block;margin-bottom:var(--space-1);color:var(--ink-3);font-size:var(--fs);font-weight:800;letter-spacing:.04em}
+/* 群の見出し。**件数も文字で出す**（§3／§9.242 ④）——値が「—」ばかりの
+   群を、中を読む前に見分けられる。 */
+.rv-group>b{display:flex;align-items:baseline;gap:var(--gap-inline);
+  margin-bottom:var(--space-1);color:var(--ink-3);font-size:var(--fs);font-weight:800;letter-spacing:.04em}
+.rv-group>b>small{color:var(--muted);font-size:var(--fs-sm);font-weight:700;
+  font-variant-numeric:tabular-nums;letter-spacing:0}
+/* 自動で入る値は**人が入れた値と見分けられるように**（§6／§9.234 ⑦と
+   同じ分け方）。色だけで伝えないので、`title`にも「自動で入る値」と書く。 */
+.rv-group dd.rv-auto{color:var(--computed-fg)}
 /* **値を切り詰めない**（§9.206、実機で「母材の項目が見切れています」）。
    `max-content`のままだと、長いラベル（「屑幅（両耳合計）」）が2段組の
    狭い列を食い尽くし、**数字のほうが「122…」と切られていた**。数字は

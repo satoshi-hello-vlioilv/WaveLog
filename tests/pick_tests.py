@@ -44,7 +44,8 @@ G['一覧'] = ['test_nav', 'test_navdyn', 'test_listcache', 'test_listperf', 'te
 # 操業データ(§9.215)は測定画面のカード。マスタ管理からも触るので「マスタ」群。
 G['操業データ'] = ['test_opdata', 'test_opui', 'test_msteps', 'test_maint', 'test_crudroutes',
                    'test_opchoice', 'test_oplimit', 'test_opmother', 'test_opunit',
-                   'test_opauto']
+                   # §9.242 ④: ③「記録した値」も操業データ項目マスタの行から作る
+                   'test_opauto', 'test_recvalues']
 # 異常位置判定と条の設計の連携(§9.226 ④)。どちらを触っても両方を回す。
 G['異常位置'] = ['test_defect', 'test_defectlink', 'test_splitlive', 'test_scsplit',
                  # §9.239 ⑥: ピッチ→ロール判定とロールマスタ
@@ -86,7 +87,8 @@ G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'tes
              'test_p11', 'test_p11c', 'test_waiting', 'test_mcore', 'test_msteps',
              # §9.242 ③: バリの2段（1回目の受付・2回目の計算式）
              # §9.242 ⑤⑥: 公差／基準の言い分けと、確認カードの強調・NGの記録
-             'test_burr', 'test_ngcard']
+             # §9.242 ④: ③「記録した値」は操業データ項目マスタが決める
+             'test_burr', 'test_ngcard', 'test_recvalues']
 G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'test_density',
                'test_uiux', 'test_hdr', 'test_headbar', 'test_calscale', 'test_bootui',
                'test_gridhead']

@@ -99,6 +99,46 @@ CALC_CATALOG = (
 )
 
 
+# ---------------------------------------------------------------------------
+# 測定した値の統計（§9.242 ⑨、利用者の指示）
+# ---------------------------------------------------------------------------
+# 「測定したデータの計算値や集計値など、測定したデータも細かくカスタマイズ
+#  できるようにしてください。特にロットごとの板厚MIN、MAXや板幅MIN、MAXや
+#  板丈MIN、MAXなど測定した項目の統計値なども含めて設計できるようにしたい」
+#
+# **語彙はここだけが持つ**（§9.163）——値を作るのは`report-dashboard.js`の
+# `rpStat()`（測定値はレコードの中にあるので、サーバーからは引けない）だが、
+# 「何が選べるか」はサーバーが答える。画面へ綴りの写しを持たせない。
+#
+# **道は`stat.<項目>.<集計>`の2段**——`calc.*`と同じ形にしておくと、
+# `rpValueAt()`の分岐が1本増えるだけで済む。
+#
+# 桁数は**実際に記録されている値の小数桁**にそろえる（画面側で決める）。
+# 項目ごとの桁数の表をここへ持つと、測定側の丸めと2箇所になる（§CLAUDE）。
+STAT_ITEMS = (
+    ('thickness', '板厚'),
+    ('width', '板幅'),
+    ('lateral', 'ラテラルボー'),
+    ('burr', 'バリ'),
+    ('telescope', 'テレスコープ'),
+    ('offset', '巻ずれ'),
+    # 丈ごとの記録（`product.rows`）。**板丈＝「長さ」**（§9.203の丈の表）。
+    ('length', '板丈'),
+    ('wall', '肉厚'),
+)
+STAT_AGGS = (
+    ('min', 'MIN'),
+    ('max', 'MAX'),
+    ('avg', '平均'),
+    ('span', 'ばらつき（MAX−MIN）'),
+    ('n', 'N数'),
+)
+STAT_CATALOG = tuple(
+    (f'{item_label} {agg_label}', f'stat.{item_key}.{agg_key}')
+    for item_key, item_label in STAT_ITEMS
+    for agg_key, agg_label in STAT_AGGS)
+
+
 def field_catalog(c, equipment=''):
     """塊に載せられる項目の一覧(§9.226 ④、利用者の指示)。
 
@@ -166,6 +206,13 @@ def field_catalog(c, equipment=''):
     groups.append({'group': '計算した値',
                    'note': '実働時間・状態など、いくつかの値から作るものです。',
                    'items': [{'label': l, 'path': p} for l, p in CALC_CATALOG]})
+    # **測定した値の統計**（§9.242 ⑨）。ロット1件ぶんの測定値から作る。
+    # **N数を必ず添えられるようにしてある**——1点と80点では当たる見込みが
+    # 違うので、MIN/MAXだけを出せる形にはしない（§9.214と同じ約束）。
+    groups.append({'group': '測定した値の統計',
+                   'note': 'このロットで測った値から作ります（MIN・MAX・平均・'
+                           'ばらつき・N数）。まだ測っていない項目は空欄になります。',
+                   'items': [{'label': l, 'path': p} for l, p in STAT_CATALOG]})
     return [g for g in groups if g['items']]
 
 

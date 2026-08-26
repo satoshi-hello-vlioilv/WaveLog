@@ -128,7 +128,9 @@ let b=null;
      枠:box?Math.round(box.getBoundingClientRect().height):0};
   });
   rec('前提: 品質情報の塊が出ている',before.ある===true,JSON.stringify(before));
-  rec('前提: 中身は「異常情報なし」の1行だけ',/異常情報なし/.test(before.文),before.文);
+  /* **中身の長さは問わない**——ロットによって「異常情報なし」の1行のことも、
+     何行も入っていることもある。⑧で見たいのは「中身なりに縮まないこと」。 */
+  rec('前提: 品質情報の中身が読める',before.文.length>0,before.文.slice(0,40));
 
   /* カードの高さを決める（利用者の言う「帳票レイアウトで最低表示領域を確保」）。 */
   await page.click('#reportArrange');
@@ -196,6 +198,65 @@ let b=null;
   rec('中身なりへ戻すと印が外れる',!!back&&back.印===false,JSON.stringify(back));
   rec('中身なりへ戻すと高さも中身なりに戻る（行数の測り直しが効いている）',
       !!back&&back.器<after.器*0.6,JSON.stringify({決め打ち:after.器,中身なり:back&&back.器}));
+
+  /* ==========================================================
+     ⑨ 測定した値の統計を帳票の塊へ載せられる（§9.242 ⑨）
+     利用者の指示「測定したデータの計算値や集計値など…特にロットごとの
+      板厚MIN、MAXや板幅MIN、MAXや板丈MIN、MAXなど測定した項目の統計値なども
+      含めて設計できるようにしたい」
+     ========================================================== */
+  /* **語彙はサーバーが答える**（§9.163）——画面へ綴りの写しを持たせない。 */
+  const cat=await page.evaluate(async()=>{
+   const r=await fetch('/api/report-block-master').then(x=>x.json());
+   const g=(r.catalog||[]).find(x=>/統計/.test(x.group||''));
+   return g?{群:g.group,件数:g.items.length,道:g.items.map(i=>i.path),
+             名:g.items.map(i=>i.label)}:null;
+  });
+  rec('帳票の塊の候補に「測定した値の統計」がある',!!cat&&cat.件数>0,
+      JSON.stringify(cat&&{群:cat.群,件数:cat.件数}));
+  rec('板厚・板幅・板丈のMIN/MAXが選べる',
+      !!cat&&['stat.thickness.min','stat.thickness.max','stat.width.min','stat.width.max',
+              'stat.length.min','stat.length.max'].every(p=>cat.道.includes(p)),
+      JSON.stringify(cat&&cat.道.slice(0,8)));
+  /* **N数も選べる**（1点と80点では当たる見込みが違う・§9.214）。 */
+  rec('平均・ばらつき・N数も選べる',
+      !!cat&&['stat.width.avg','stat.width.span','stat.width.n'].every(p=>cat.道.includes(p)),
+      JSON.stringify(cat&&cat.名.slice(0,6)));
+
+  /* **値が実際に作られること**まで見る（候補に在るだけでは、1つも計算しない
+     実装でも通る）。測定値を注ぎ込んでから引く。 */
+  const stat=await page.evaluate(()=>{
+   /* 丈2・条3のロット。**丈数・条数の外は数えない**ので、配列に余分な
+      値が残っていても拾わない（板厚は丈ごとに3点＝OS/CL/DS）。 */
+   const x={settings:{verticalCount:2,horizontalCount:3},
+     measurements:{thickness:[['2.001','2.010','2.005'],['2.020','','']],
+                   width:[['100.10','100.30','100.20'],['','','']]},
+     product:{rows:[{productLength:'1200.5'},{productLength:'1180.0'}]}};
+   const at=p=>WL.reportStat?WL.reportStat(x,p):null;
+   return {板厚MIN:at('stat.thickness.min'),板厚MAX:at('stat.thickness.max'),
+     板厚N:at('stat.thickness.n'),
+     板幅MIN:at('stat.width.min'),板幅MAX:at('stat.width.max'),
+     板幅ばらつき:at('stat.width.span'),
+     板丈MIN:at('stat.length.min'),板丈MAX:at('stat.length.max'),
+     未測定:at('stat.burr.min'),未測定N:at('stat.burr.n'),
+     知らない道:at('stat.thickness.nope')};
+  });
+  rec('板厚のMIN/MAXが測定値から作られる（桁は記録の桁）',
+      stat.板厚MIN==='2.001'&&stat.板厚MAX==='2.020',JSON.stringify(stat));
+  /* **丈数・条数の外は数えない**——配列は12丈×40条で確保してあるので、
+     素で走査すると条数を減らす前の値まで拾う。ここは1丈(＋尾)×3条。 */
+  rec('丈数・条数の外の値は数えない',stat.板厚N==='4',JSON.stringify(stat));
+  rec('板幅のMIN/MAX・ばらつきが作られる',
+      stat.板幅MIN==='100.10'&&stat.板幅MAX==='100.30'&&stat.板幅ばらつき==='0.20',
+      JSON.stringify(stat));
+  /* 板丈は丈ごとの記録（`product.rows`の「長さ」）。 */
+  rec('板丈のMIN/MAXは丈ごとの記録から作られる',
+      stat.板丈MIN==='1180.0'&&stat.板丈MAX==='1200.5',JSON.stringify(stat));
+  /* **測っていない項目は空**（0で埋めない・§9.114と同じ約束）。 */
+  rec('測っていない項目は空欄で、N数は0',
+      stat.未測定===''&&stat.未測定N==='0',JSON.stringify(stat));
+  rec('知らない綴りは空（黙って別の値を出さない）',
+      stat.知らない道==='',JSON.stringify(stat));
 
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
 

@@ -6139,6 +6139,14 @@
      <button type="button" id="opdEnabled" class="op-toggle${x.enabled===false?'':' is-on'}" aria-pressed="${x.enabled===false?'false':'true'}">測定画面に出す</button>
      <button type="button" id="opdFold" class="op-toggle${x.fold?' is-on':''}" aria-pressed="${x.fold?'true':'false'}">この群を畳む</button>
     </span></div>
+   ${x.dummy?'':`
+   <div class="op-form-row"><span class="op-form-label">確認の面</span>
+    <span class="op-form-ctl">
+     <button type="button" id="opdRecordShow" class="op-toggle${x.recordShow===false?'':' is-on'}" aria-pressed="${x.recordShow===false?'false':'true'}">③「記録した値」に出す</button>
+     <i class="op-form-note">測定画面の3枚目「確認して完了」の<b>記録した値</b>のカードへ、
+      この項目を出すかどうかです。<b>群と並びはこの項目の設定がそのまま使われます</b>
+      （カード用の並びを別に持ちません）。</i>
+    </span></div>`}
    ${x.dummy?`
    <div class="op-form-row is-danger"><span class="op-form-label">この空き</span>
     <span class="op-form-ctl">
@@ -6534,6 +6542,10 @@
   if(en)en.onclick=()=>touch({enabled:x.enabled===false});
   const fold=$('#opdFold');
   if(fold)fold.onclick=()=>touch({fold:!x.fold});
+  /* §9.242 ④ ③「記録した値」へ出すか。**既定は出す**なので、`false`だけを
+     「外した」として持つ（`undefined`と`true`はどちらも出す）。 */
+  const rsw=$('#opdRecordShow');
+  if(rsw)rsw.onclick=()=>touch({recordShow:x.recordShow===false});
   /* 対象設備（§9.219 ③）。**「すべての設備」と名指しは排他**——両方立つと
      どちらが効くのか読めない。 */
   const eqAll=$('#opdEqAll');
@@ -6668,6 +6680,9 @@
           layout:x.layout||'自動',groupSpan:Number(x.groupSpan)||0,
           /* §9.228 ②④。**空きと空欄の札も必ず送る**（同じ理由）。 */
           dummy:!!x.dummy,noBlank:!!x.noBlank,
+          /* §9.242 ④。③「記録した値」へ出すかも同じ——落とすと保存のたびに
+             既定（出す）へ戻る（§9.212 ②と同じ形）。 */
+          recordShow:x.recordShow!==false,
           /* §9.233 ⑤。添え書きの置き場も同じ——落とすと保存のたびに
              既定（欄の下）へ戻る（§9.212 ②と同じ形）。 */
           sourceNote:x.sourceNote||'',
@@ -6707,6 +6722,8 @@
     /* §9.228 ②④。**空きと空欄の札も必ず送る**——`item_upsert`は全列を
        書くので、送らないと保存のたびに既定へ戻る（§9.212 ②と同じ形）。 */
     dummy:!!d.dummy,noBlank:!!d.noBlank,
+    /* §9.242 ④ ③「記録した値」に出すか。 */
+    recordShow:d.recordShow!==false,
     /* §9.233 ⑤ */
     sourceNote:d.sourceNote||'',
     /* **初期値と手打ちは組み込みの欄にも効く**（§9.229 ③）。値の持ち方を

@@ -1760,9 +1760,13 @@ let b=null,page=null;
    op.value=val;op.dispatchEvent(new Event('change',{bubbles:true}));
    WL.measureSteps.go('3');
    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-   const dd=[...document.querySelectorAll('.rv-group')]
-     .find(g=>/誰が測ったか/.test(g.querySelector('b')?.textContent||''))
-     ?.querySelector('dd');
+   /* **群の名前で探さない**（§9.242 ④）。群も並びも操業データ項目マスタが
+      決めるようになったので、名前を決め打ちにすると現場が群名を変えた
+      だけで落ちる。**項目名（`dt`）で引く**——こちらは役割の担い手が
+      変わらないかぎり動かない。 */
+   const dt=[...document.querySelectorAll('.rv-group dt')]
+     .find(t=>t.textContent.trim()==='オペレータ');
+   const dd=dt&&dt.parentElement?dt.parentElement.querySelector('dd'):null;
    return{選んだ:val,出た:dd?dd.textContent.trim():''};
   });
   rec('①で選んだ値が「記録した値」に出る',
