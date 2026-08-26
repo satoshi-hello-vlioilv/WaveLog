@@ -47,7 +47,9 @@ G['操業データ'] = ['test_opdata', 'test_opui', 'test_msteps', 'test_maint',
                    # §9.242 ④: ③「記録した値」も操業データ項目マスタの行から作る
                    'test_opauto', 'test_recvalues',
                    # §9.243: 「記録した値」の配置をD&Dで組む専用のマスタ
-                   'test_reclayout']
+                   'test_reclayout',
+                   # §9.246 ①: 「空欄の札」は組み込みの選択欄でも効く
+                   'test_opblank']
 # 異常位置判定と条の設計の連携(§9.226 ④)。どちらを触っても両方を回す。
 G['異常位置'] = ['test_defect', 'test_defectlink', 'test_splitlive', 'test_scsplit',
                  # §9.239 ⑥: ピッチ→ロール判定とロールマスタ
@@ -73,6 +75,8 @@ G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'te
                      'test_wkbg', 'test_orphan', 'test_histdel', 'test_sclock',
                      'test_scwritespeed', 'test_split_layout', 'test_sccols',
                      'test_sctimecols', 'test_scinsert', 'test_audittrail',
+                     # §9.246 ②: 表示列はモードで変わらない
+                     'test_scmodecols',
                      'test_scstop', 'test_scwarm', 'test_scundecided',
                      'test_scwatchui', 'test_scwatch', 'test_sccomment',
                      'test_scowner', 'test_scrowstyle', 'test_scload', 'test_scbar', 'test_scsave',

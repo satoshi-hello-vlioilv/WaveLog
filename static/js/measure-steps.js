@@ -343,12 +343,35 @@
     **押せるようになったら止める**（測定中に無駄な描き直しを続けない）。 */
  let ngTimer=null;
  function syncNgTimer(){
-  const need=current==='3'&&ngGuard().leftMin>0;
+  /* **ボタンを出していないときは数え直さない**（§9.246 ③）。出ていない
+     待ち時間のために30秒ごとに描き直すと、③に居るあいだ理由の無い
+     組み直しが続く。 */
+  const shown=!!(document.getElementById('fcNgBtn'));
+  const need=current==='3'&&shown&&ngGuard().leftMin>0;
   if(need&&!ngTimer)ngTimer=setInterval(()=>{if(current==='3')paintFinish();else syncNgTimer()},30000);
   if(!need&&ngTimer){clearInterval(ngTimer);ngTimer=null}
  }
- function ngButtonHtml(){
+ /* ---------- 出すのは「公差外・基準外が出ているとき」だけ（§9.246 ③） ----------
+    利用者の指示:
+      「完了前の確認のカードの表示で、公差外・基準外が出ていない場合、
+       『NGが発生した』ボタンは非表示にして使えないようにしてください」
+
+    §CLAUDE 4「押せるのに何も起きないボタンを残さない」の素直な適用
+    ——気づく場所（この行）に何も出ていないのに「NGが発生した」だけが
+    押せる状態は、押す理由の無いボタンを主要動線に置いていることになる。
+
+    **記録した事実は隠さない**（§3）——既にこのロットでNGを記録していれば
+    「記録 N回」の文字は残す。消すと、記録があること自体に気づけなくなる。
+    **出さない理由も`title`に書く**（§4／§6）。 */
+ function ngButtonHtml(row){
   const g=ngGuard();
+  if(!row||row.state!=='bad'){
+   if(!g.count)return '';
+   return `<div class="fc-actions">`
+    +`<small class="fc-ng-note" title="${esc('このロットでNGを '+g.count+'回 記録しています。'
+      +'いまは公差外・基準外が1件も出ていないので、「NGが発生した」は出していません。')}">`
+    +esc(`記録 ${g.count}回`)+`</small></div>`;
+  }
   const label=g.leftMin>0?`NGが発生した（あと${g.leftMin}分）`:'NGが発生した';
   const tip=g.leftMin>0
    ?`直前の記録から15分たっていません（あと約${g.leftMin}分）。同じ不具合を続けて数えないための制限です。`
@@ -384,7 +407,7 @@
      +`<span class="fc-value">${esc(r.value)}</span>`
      +(r.fix?`<button type="button" class="fc-fix" data-fc-fix="${esc(r.key)}">${esc(r.fix.label)}</button>`:'<span></span>')
      +`<span class="fc-detail">${esc(r.detail)}</span>`
-     +(r.key==='ng'?ngButtonHtml():'')+`</li>`).join('')
+     +(r.key==='ng'?ngButtonHtml(r):'')+`</li>`).join('')
    +`</ul><p class="fc-note">確認できたら、左の「測定を完了」を押してください。</p>`;
   applyAlert(box,bad);
   const conf=document.getElementById('fcAlertConf');

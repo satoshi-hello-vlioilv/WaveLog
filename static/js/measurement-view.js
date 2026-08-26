@@ -1023,6 +1023,116 @@ function motherFieldLabel(el){
    反映されない」という分かりにくい壊れ方になっていた。
    鍵は`collect()`と同じで**設定キー＝入力欄のid**。**欄が無ければ`settings`**
    ——保存済みの控えを開いた直後や、閲覧側から呼ばれたときに落とさないため。 */
+/* ---------- ③「記録した値」の見え方はこの端末が決める（§9.246 ④） ----------
+   利用者の指示:
+     「完了前の記録した値のカード表示の部分で、文字サイズと間隔の問題で
+      文字が見切れてしまうので、文字サイズと列の間隔も調整できるように
+      してください」
+
+   実機では値が「999.0 …」「－（選…」「アルミ…」と切れていた。器の幅は
+   ③の右ペインぶんしか無く、そこへ**2段組**で押し込んでいるので、
+   1つの値に配れる幅が半分になる——**中身を削らずに直すには器の使い方の
+   ほうを変えるしかない**（§9.126「中身を減らしたら器も減らす」の裏側）。
+
+   3つの軸だけ持つ:
+     文字   … 小(--fs-sm) / 中(--fs) / 大(--fs-title)  ※トークンから選ぶ（§CLAUDE 7）
+     列     … 1列 / 2列（既定・今までどおり） / 3列
+     間隔   … 詰める / 標準（既定） / 広め
+   **既定は今までの見え方**（わざわざ選んでいない人の画面を変えない・§9.132）。
+   **置き場はこの端末**（読み方の好みなので、共有マスタへ入れると全員が
+   同じ大きさに縛られる。§9.199の親ロットの印と同じ）。
+
+   **切れている件数は文字で出す**（§3／§CLAUDE 2「次にすることを1つだけ指す」）
+   ——切れていることに気づかないまま読み違えるのがいちばん悪い。
+   出すだけでなく、**その場で直せる手立て**（1列にする）を同じ場所に置く。 */
+const RV_KEY='WaveLogRecordedViewV1';
+const RV_AXES=[
+ {key:'fs',   label:'文字',  def:'md',
+  opts:[['sm','小'],['md','中'],['lg','大']]},
+ {key:'cols', label:'列',    def:'2',
+  opts:[['1','1列'],['2','2列'],['3','3列']]},
+ {key:'gap',  label:'間隔',  def:'md',
+  opts:[['sm','詰める'],['md','標準'],['lg','広め']]},
+];
+function rvPref(){
+ let v=null;
+ try{v=JSON.parse(localStorage.getItem(RV_KEY)||'null')}catch(e){}
+ const p=(v&&typeof v==='object')?v:{};
+ const out={};
+ RV_AXES.forEach(a=>{
+  const ok=a.opts.some(o=>o[0]===p[a.key]);
+  out[a.key]=ok?p[a.key]:a.def;
+ });
+ return out;
+}
+function setRvPref(patch){
+ const next=Object.assign(rvPref(),patch||{});
+ try{localStorage.setItem(RV_KEY,JSON.stringify(next))}catch(e){}
+ applyRvPref();
+ renderRecordedValues();
+}
+/* 当てるのは**印だけ**——実際の値（文字サイズ・列数・間隔）はCSSが
+   トークンから決める（§CLAUDE 7「リテラルを新しく足さない」）。 */
+function applyRvPref(){
+ const pane=$('#recordedPane');if(!pane)return;
+ const p=rvPref();
+ RV_AXES.forEach(a=>{pane.dataset['rv'+a.key.charAt(0).toUpperCase()+a.key.slice(1)]=p[a.key]});
+}
+let rvPop=null;
+function closeRvPop(){
+ if(!rvPop)return;
+ rvPop.remove();rvPop=null;
+ document.removeEventListener('mousedown',onRvOutside,true);
+ document.removeEventListener('keydown',onRvKey,true);
+ const b=$('#rvConf');if(b)b.setAttribute('aria-expanded','false');
+}
+function onRvOutside(e){
+ if(!rvPop)return;
+ if(rvPop.contains(e.target)||e.target.closest?.('#rvConf'))return;
+ closeRvPop();
+}
+function onRvKey(e){
+ /* **変換中のEscは取り消し**（§9.221 ①）。 */
+ if(e.key==='Escape'&&!e.isComposing&&e.keyCode!==229){e.preventDefault();closeRvPop()}
+}
+function openRvPop(anchor){
+ closeRvPop();
+ const p=rvPref();
+ rvPop=document.createElement('div');
+ rvPop.className='rv-conf-pop';rvPop.id='rvConfPop';
+ rvPop.innerHTML='<b>記録した値の見え方</b>'
+  +RV_AXES.map(a=>`<div class="rv-conf-row"><span>${esc(a.label)}</span><div>`
+    +a.opts.map(o=>`<button type="button" data-rv-axis="${esc(a.key)}" data-rv-val="${esc(o[0])}"`
+      +`${p[a.key]===o[0]?' class="is-on"':''}>${esc(o[1])}</button>`).join('')
+    +'</div></div>').join('')
+  +'<small>この端末だけで覚えます。値が切れるときは列を減らすか文字を小さくしてください。</small>';
+ document.body.appendChild(rvPop);
+ const r=anchor.getBoundingClientRect();
+ rvPop.style.top=Math.round(r.bottom+6)+'px';
+ rvPop.style.left=Math.round(Math.max(8,Math.min(r.left,innerWidth-rvPop.offsetWidth-8)))+'px';
+ rvPop.querySelectorAll('[data-rv-axis]').forEach(b=>b.onclick=()=>{
+  setRvPref({[b.dataset.rvAxis]:b.dataset.rvVal});
+  rvPop&&rvPop.querySelectorAll(`[data-rv-axis="${CSS.escape(b.dataset.rvAxis)}"]`)
+    .forEach(x=>x.classList.toggle('is-on',x===b));
+ });
+ anchor.setAttribute('aria-expanded','true');
+ document.addEventListener('mousedown',onRvOutside,true);
+ document.addEventListener('keydown',onRvKey,true);
+}
+/* 切れている件数を**実測**して出す（§9.130「網は画面の実寸と中身の実寸を
+   突き合わせる」）。DOMの数や有無を見る網では、器が狭くても要素は同じ数
+   なので素通りする。**描いたあとに測る**（`requestAnimationFrame`）。 */
+function paintRvClip(){
+ const chip=$('#rvClip');const host=$('#recordedList');
+ if(!chip||!host)return;
+ let n=0;
+ host.querySelectorAll('dt,dd').forEach(el=>{if(el.scrollWidth>el.clientWidth+1)n++});
+ chip.hidden=!n;
+ if(!n)return;
+ chip.textContent=`切れ ${n}件`;
+ chip.title=`${n}個の文字が幅に入りきらず「…」で切れています。`
+  +'「見え方」で列を減らすか文字を小さくすると全部出ます（全文はマウスを載せると出ます）。';
+}
 function renderRecordedValues(){
  const host=$('#recordedList');
  if(!host||!S.measure)return;
@@ -1064,7 +1174,17 @@ function renderRecordedValues(){
   }).join('');
  }
  if(host.innerHTML!==h)host.innerHTML=h;
+ applyRvPref();
+ /* **描いたあとに測る**——直後の`scrollWidth`は組み直す前の値。 */
+ requestAnimationFrame(()=>requestAnimationFrame(paintRvClip));
 }
+/* 「見え方」の入口は**カードの見出しの中**（§CLAUDE 2「探させない」）。
+   配線は1度だけ——描き直しでボタンは作り直されない（`index.html`が持つ）。 */
+WL.onReady(()=>{
+ const b=document.getElementById('rvConf');
+ if(b)b.onclick=()=>{if(rvPop)closeRvPop();else openRvPop(b)};
+ applyRvPref();
+});
 /* 品質情報の見出しに**件数を文字で**添える（§9.144）。状態を色だけで伝えない。
    本文は`qualityText()`が`(1) …`の塊を空行で連ねたもので、件数はその印の数。
    **値は`.value`への代入で入るのでDOMは変わらない**（§9.130と同じ）——

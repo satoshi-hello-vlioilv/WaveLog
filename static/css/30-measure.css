@@ -3129,4 +3129,65 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
   padding:var(--pad-chip);
   color:var(--ink);font-size:var(--fs);font-weight:700;font-variant-numeric:tabular-nums;
 }
+
+/* ---------- ③「記録した値」の見え方（§9.246 ④、利用者の指示） ----------
+   「文字サイズと間隔の問題で文字が見切れてしまうので、文字サイズと列の
+    間隔も調整できるようにしてください」
+
+   実際の値（文字サイズ・列数・間隔）は**トークンから選ぶ**（§CLAUDE 7）。
+   JSが当てるのは`data-rv-*`の印だけで、リテラルをJS側へ持たせない。
+   **既定は今までの見え方**（中・2列・標準）——わざわざ選んでいない人の
+   画面を変えない（§9.132）。 */
+.rv-head{display:flex;align-items:baseline;gap:var(--gap-inline);margin-bottom:var(--space-1)}
+/* 題は縮まない。縮んでよいのは付随情報だけ（§9.229 ⑤）。 */
+.rv-head>.card-title{flex:0 0 auto;margin:0}
+/* 切れている件数。**色だけで伝えない**（§3）ので必ず件数の文字で出す。 */
+.rv-clip{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--warn-fg);font-size:var(--fs-sm);font-weight:700}
+.rv-conf{flex:0 0 auto;margin-left:auto;height:var(--ctl-h-xs);padding:0 var(--space-2);
+  font-size:var(--fs-sm);border:1px solid var(--line);border-radius:var(--radius-sm);
+  background:var(--surface);color:var(--ink-2)}
+.rv-conf:hover{border-color:var(--line-strong);color:var(--ink)}
+
+/* 列数と間隔（器の使い方）。 */
+#recordedPane[data-rv-cols="1"] .recorded-list{columns:1}
+#recordedPane[data-rv-cols="2"] .recorded-list{columns:2}
+#recordedPane[data-rv-cols="3"] .recorded-list{columns:3}
+#recordedPane[data-rv-gap="sm"] .recorded-list{column-gap:var(--gap-inline)}
+#recordedPane[data-rv-gap="md"] .recorded-list{column-gap:var(--gap-section)}
+#recordedPane[data-rv-gap="lg"] .recorded-list{column-gap:var(--space-5)}
+/* ラベルと値のあいだも同じ軸で動かす——列だけ広げても、1行の中が詰まった
+   ままでは読みやすくならない（間隔は「列と列」だけの話ではない）。 */
+#recordedPane[data-rv-gap="sm"] .rv-group dl{column-gap:var(--gap-tight)}
+#recordedPane[data-rv-gap="md"] .rv-group dl{column-gap:var(--gap-inline)}
+#recordedPane[data-rv-gap="lg"] .rv-group dl{column-gap:var(--gap-section)}
+
+/* 文字。**器の中は同じ大きさ**（§CLAUDE「1つの表の中のセルは同じ大きさ」）
+   ——群の見出しだけは1段上のまま。 */
+#recordedPane[data-rv-fs="sm"] .rv-group dt,
+#recordedPane[data-rv-fs="sm"] .rv-group dd{font-size:var(--fs-sm)}
+#recordedPane[data-rv-fs="md"] .rv-group dt,
+#recordedPane[data-rv-fs="md"] .rv-group dd{font-size:var(--fs)}
+#recordedPane[data-rv-fs="lg"] .rv-group dt,
+#recordedPane[data-rv-fs="lg"] .rv-group dd{font-size:var(--fs-title)}
+#recordedPane[data-rv-fs="sm"] .rv-group>b{font-size:var(--fs-base-sm)}
+#recordedPane[data-rv-fs="lg"] .rv-group>b{font-size:var(--fs-title)}
+
+/* 見え方の浮き窓。**器の外へ`fixed`で出す**（§9.201。`overflow`を持つ
+   先祖の中に`absolute`で置くと切り落とされる）。 */
+.rv-conf-pop{position:fixed;z-index:var(--z-popover);min-width:16em;
+  display:flex;flex-direction:column;gap:var(--space-2);
+  padding:var(--space-3);border:1px solid var(--line-mid);border-radius:var(--radius-sm);
+  background:var(--surface);box-shadow:0 12px 28px rgba(23,56,66,.22)}
+.rv-conf-pop>b{font-size:var(--fs-base-sm);color:var(--teal-dark)}
+.rv-conf-pop>small{color:var(--muted);font-size:var(--fs-sm)}
+.rv-conf-row{display:flex;align-items:center;gap:var(--gap-inline)}
+.rv-conf-row>span{flex:0 0 3.2em;color:var(--muted);font-size:var(--fs-sm)}
+.rv-conf-row>div{display:flex;gap:var(--gap-hair)}
+.rv-conf-row button{height:var(--ctl-h-xs);padding:0 var(--space-2);font-size:var(--fs-sm);
+  border:1px solid var(--line);border-radius:var(--radius-sm);
+  background:var(--surface);color:var(--muted)}
+/* 選んだ札のほうが濃い（§9.229 ②）。合図は面と文字の2つまで。 */
+.rv-conf-row button.is-on{background:var(--pale);border-color:var(--teal);
+  color:var(--teal-dark);font-weight:700}
 }
