@@ -1851,6 +1851,10 @@
   }
   return String(el.value??'').trim();
  }
+ /* カードの中の群と並び（§9.243）。**空＝この項目の群／表示順に従う**
+    ——専用の盤（マスタ管理＞記録した値の配置）で動かした項目だけが
+    切り離される。触っていない項目は測定画面の並びに追随し続ける。 */
+ const recordGroupOf=d=>String(d.recordGroup||'').trim()||String(d.group||'').trim()||'その他';
  function recordRows(){
   const out=[];
   defs.forEach(d=>{
@@ -1868,12 +1872,24 @@
       **畳んだ群は出す**（畳んでいても値は入っているので、確認の面では
       読めたほうがよい）。 */
    if(host&&(host.classList.contains('op-off')||host.hidden))return;
-   out.push({group:String(d.group||'').trim()||'その他',
+   out.push({group:recordGroupOf(d),
              name:d.name,unit:String(d.unit||'').trim(),
+             /* 並びは**盤で決めた順が先**（§9.243）。決めていない項目は
+                この項目の`[表示順]`のまま——`defs`は既に表示順で並んでいる
+                ので、決めた項目だけを`recordOrder`で前後させる。 */
+             order:(Number.isFinite(Number(d.recordOrder))&&Number(d.recordOrder)>0)
+               ?Number(d.recordOrder):null,
              /* 自動で入る値は**そう書く**（§6。人が入れた値と見分けが付く）。 */
              auto:!!(d.autoValue||d.autoFill),
              value:shownValue(el)});
   });
+  /* **決めた順の項目だけを並べ直す**（決めていない項目の前後関係は動かさない）
+     ——`item_layout_save`と同じ「席の入れ替え」の考え方。 */
+  const seats=out.map((x,i)=>i).filter(i=>out[i].order!=null);
+  if(seats.length>1){
+   const moved=seats.map(i=>out[i]).sort((a,b)=>a.order-b.order);
+   seats.forEach((seat,k)=>{out[seat]=moved[k]});
+  }
   return out;
  }
 

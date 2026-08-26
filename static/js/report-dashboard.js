@@ -195,10 +195,25 @@
     向きは端末ごとの表示設定として保持する。 */
  const RP_ORIENT_KEY='WaveLogReportOrientationV1';
  let rpOrientation=(()=>{try{return localStorage.getItem(RP_ORIENT_KEY)==='landscape'?'landscape':'portrait'}catch(e){return 'portrait'}})();
+ /* ---------- 紙の余白は**0**（§9.243、利用者の指摘「アプリ内の印刷プレビューと
+       WINDOWSのプレビューに違いが出ています…用紙に対して80％くらいの比率と
+       共に表示内容のクオリティも下がっている」） ----------
+    §9.242 ⑦で`90-state.css`の`@page`を`margin:0`にしたのに、**ここが`5mm`の
+    ままだった**。この`<style>`は`<head>`の末尾へ挿すので後から読まれ、
+    **こちらが勝つ**——版面が 200×287mm になり、紙（`.rp-page`＝210×297mm）が
+    はみ出す。はみ出すとブラウザは**全体を縮めて版面へ収める**ので、
+    プレビューと比率が変わり、そのぶん文字も潰れる（＝報告そのもの）。
+
+    **`RP_PAGE_MARGIN`はここ1箇所**で、`90-state.css`の保険（JSが動く前・
+    差し替えが間に合わなかったとき用）と**必ず同じ値にする**。食い違うと、
+    後ろに読まれた側が黙って勝つ——2枚あることが問題なのではなく、
+    **違う値の2枚がある**ことが問題（`tests/test_rpprint.js`が突き合わせる）。 */
+ const RP_PAGE_MARGIN='0';
  function updatePageSizeStyle(){
   let el=document.getElementById('rpPageSizeStyle');
   if(!el){el=document.createElement('style');el.id='rpPageSizeStyle';document.head.appendChild(el)}
-  el.textContent=`@page{size:A4 ${rpOrientation==='landscape'?'landscape':'portrait'};margin:5mm}`;
+  el.textContent=`@page{size:A4 ${rpOrientation==='landscape'?'landscape':'portrait'};`
+   +`margin:${RP_PAGE_MARGIN}}`;
  }
  function applyOrientation(){
   const page=$id('reportContent');

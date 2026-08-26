@@ -45,7 +45,9 @@ G['一覧'] = ['test_nav', 'test_navdyn', 'test_listcache', 'test_listperf', 'te
 G['操業データ'] = ['test_opdata', 'test_opui', 'test_msteps', 'test_maint', 'test_crudroutes',
                    'test_opchoice', 'test_oplimit', 'test_opmother', 'test_opunit',
                    # §9.242 ④: ③「記録した値」も操業データ項目マスタの行から作る
-                   'test_opauto', 'test_recvalues']
+                   'test_opauto', 'test_recvalues',
+                   # §9.243: 「記録した値」の配置をD&Dで組む専用のマスタ
+                   'test_reclayout']
 # 異常位置判定と条の設計の連携(§9.226 ④)。どちらを触っても両方を回す。
 G['異常位置'] = ['test_defect', 'test_defectlink', 'test_splitlive', 'test_scsplit',
                  # §9.239 ⑥: ピッチ→ロール判定とロールマスタ
@@ -54,7 +56,7 @@ G['異常位置'] = ['test_defect', 'test_defectlink', 'test_splitlive', 'test_s
                  'test_rollload']
 # 操業データの意匠・設定窓・空きの群（§9.227）
 G['操業意匠'] = ['test_oppad', 'test_opui', 'test_opdata', 'test_msteps', 'test_oplimit',
-                 'test_opmother', 'test_opunit', 'test_opauto']
+                 'test_opmother', 'test_opunit', 'test_opauto', 'test_reclayout']
 G['列'] = ['test_collayout', 'test_colformat', 'test_colrule', 'test_colsort', 'test_lcpanel',
            'test_colscache', 'test_colsripple', 'test_colsave', 'test_displayrule', 'test_colmenu',
            'test_colpreset', 'test_formula', 'test_reccols', 'test_rpblocks', 'test_rplayout',
@@ -88,7 +90,7 @@ G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'tes
              # §9.242 ③: バリの2段（1回目の受付・2回目の計算式）
              # §9.242 ⑤⑥: 公差／基準の言い分けと、確認カードの強調・NGの記録
              # §9.242 ④: ③「記録した値」は操業データ項目マスタが決める
-             'test_burr', 'test_ngcard', 'test_recvalues']
+             'test_burr', 'test_ngcard', 'test_recvalues', 'test_reclayout']
 G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'test_density',
                'test_uiux', 'test_hdr', 'test_headbar', 'test_calscale', 'test_bootui',
                'test_gridhead']

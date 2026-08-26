@@ -300,8 +300,15 @@ body.sc-mode .hd-status .hd-chip-equip{display:none}
    箱がそのまま1枚になる。**`width:auto`／`padding:0`へ戻さないこと。**
    （向きの`@page`は`report-dashboard.js`の`updatePageSizeStyle()`が
     刷る直前に差し替える。ここはその保険。）
+
+   **余白は`report-dashboard.js`の`RP_PAGE_MARGIN`と必ず同じ値にすること**
+   （§9.243、利用者の指摘「用紙に対して80％くらいの比率…クオリティも
+    下がっている」）。あちらは`<head>`の末尾へ挿すので**後から読まれて勝つ**
+   ——ここだけ直しても効かず、しかも黙って効かない。1度これで踏んでいる。
+   `tests/test_rpprint.js`が2枚を突き合わせて、食い違ったら落とす。
    --------------------------------------------------------------- */
 @media print{
+ /* RP_PAGE_MARGIN と同じ値（report-dashboard.js） */
  @page{size:A4;margin:0}
  body.rp-mode .layout>aside,body.rp-mode #navResizeHandle,body.rp-mode main>*:not(#reportPanel){display:none}
  body.rp-mode .layout{display:block;height:auto;margin:0;padding:0}

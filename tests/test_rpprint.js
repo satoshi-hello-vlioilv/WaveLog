@@ -94,6 +94,68 @@ let b=null;
       !!print&&print.マス===screen.マス,
       JSON.stringify({画面:screen.マス,印刷:print&&print.マス}));
 
+  /* ---- ⑦ `@page`の余白は**2枚とも同じ値**（§9.243、利用者の指摘） ----
+     「アプリ内の印刷プレビューとWINDOWSのプレビューに違いが出ています…
+      用紙に対して80％くらいの比率と共に表示内容のクオリティも下がっている」
+
+     `@page`は2枚ある——`90-state.css`の保険と、向きを差し替える
+     `report-dashboard.js`の`<style>`（`#rpPageSizeStyle`）。後者は`<head>`の
+     末尾へ挿すので**後から読まれて勝つ**。§9.242 ⑦でCSSだけを`margin:0`に
+     したため、**実際に効いていたのは5mm**——版面が200×287mmになり、
+     210×297mmの紙が入らず、ブラウザが全体を縮めて合わせていた。
+     **2枚あることが問題なのではなく、違う値の2枚があることが問題。** */
+  const pageRules=await page.evaluate(()=>{
+   const out=[];
+   const walk=(list,where)=>{for(const r of list){
+    if(r.constructor&&r.constructor.name==='CSSPageRule')
+     out.push({where,margin:r.style.margin||r.style.marginTop||'',text:r.cssText});
+    if(r.cssRules)walk(r.cssRules,where);
+   }};
+   for(const sh of document.styleSheets){let rs=null;try{rs=sh.cssRules}catch(e){continue}
+    if(rs)walk(rs,(sh.ownerNode&&sh.ownerNode.id)?('#'+sh.ownerNode.id):(sh.href||'inline'));}
+   return out;
+  });
+  const margins=[...new Set(pageRules.map(r=>String(r.margin||'').trim()).filter(Boolean))];
+  rec('前提: 向きを差し替える@pageが出ている',
+      pageRules.some(r=>r.where==='#rpPageSizeStyle'),
+      JSON.stringify(pageRules.map(r=>r.where)));
+  rec('@pageの余白が2枚とも同じ値（後から読まれた側が黙って勝たない）',
+      margins.length===1,JSON.stringify(pageRules.map(r=>r.where+':'+r.margin)));
+  rec('@pageの余白は0（紙の外側の余白は`.rp-page`のpaddingが持つ）',
+      margins.length===1&&/^0(px)?$/.test(margins[0]),JSON.stringify(margins));
+
+  /* **実際に刷らせて確かめる**（§9.243）。CSSの値を読むだけでは、版面と紙の
+     大小関係までは分からない。`page.pdf()`はChromiumの印刷パイプラインを
+     通るので、紙が版面に入らなければ**ページが増える**（画面の印刷ダイアログ
+     では、そのぶん全体が縮んで1枚に収まる＝報告された「80％」）。
+     **壊れた状態も流して確かめること**——直った状態だけを見ても、直った
+     理由がこの修正なのかは分からない。 */
+  const pdfPages=async broken=>{
+   await page.emulateMedia({media:'print'});
+   if(broken)await page.evaluate(()=>{
+    const el=document.getElementById('rpPageSizeStyle');
+    if(el)el.textContent='@page{size:A4 portrait;margin:5mm}';
+   });
+   const buf=await page.pdf({preferCSSPageSize:true,printBackground:true});
+   if(broken)await page.evaluate(()=>{
+    const el=document.getElementById('rpPageSizeStyle');
+    if(el)el.textContent='@page{size:A4 portrait;margin:0}';
+   });
+   await page.emulateMedia({media:null});
+   const txt=buf.toString('latin1');
+   const box=/\/MediaBox\s*\[\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\]/.exec(txt);
+   return {枚:(txt.match(/\/Type\s*\/Page[^s]/g)||[]).length,
+     幅mm:box?+( (+box[3]-+box[1])*25.4/72 ).toFixed(1):0,
+     高mm:box?+( (+box[4]-+box[2])*25.4/72 ).toFixed(1):0};
+  };
+  const ok=await pdfPages(false);
+  rec('刷ると1枚のA4になる（縮めずに収まる）',
+      ok.枚===1&&Math.abs(ok.幅mm-210)<=1&&Math.abs(ok.高mm-297)<=1,JSON.stringify(ok));
+  const bad=await pdfPages(true);
+  rec('前提: 余白を5mmへ戻すと紙が版面に入らず2枚になる（縮む原因）',
+      bad.枚>=2,JSON.stringify(bad));
+  await settle(page);
+
   /* ---- ⑦ 一括印刷の紙も同じ箱（片方だけ直さない） ---- */
   const bulk=await page.evaluate(()=>{
    /* 実際に刷らずに、規則だけを確かめる——`@media print`の中の
