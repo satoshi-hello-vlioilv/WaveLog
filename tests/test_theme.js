@@ -40,10 +40,10 @@ let b=null;
    const m=l.match(/font-size:\s*[0-9.]+px/);
    if(m)literals.push({line:i+1,text:l.trim().slice(0,60)});
   });
-  // A4帳票(rp- / df- / sp-)とサイズ見本だけが例外。**紙は表示サイズ倍率へ
+  // A4帳票(rp- / df- / sp- / os-)とサイズ見本だけが例外。**紙は表示サイズ倍率へ
   // 追随させない**——追随させると画面の拡大率で紙の行数が変わる。
-  // sp- は作業予定表(§9.115、現場配布用)。
-  const stray=literals.filter(x=>!/rp-|df-|sp-|ui-size-swatch/.test(x.text));
+  // sp- は作業予定表(§9.115、現場配布用)、os- は操業データ表(§9.241 ②)。
+  const stray=literals.filter(x=>!/rp-|df-|sp-|os-|ui-size-swatch/.test(x.text));
   rec('文字サイズのリテラルpxは印刷物とサイズ見本だけ',stray.length===0,
    stray.map(x=>`${x.line}:${x.text}`).join(' / ').slice(0,200));
 

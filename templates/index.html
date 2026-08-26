@@ -36,6 +36,10 @@ setTimeout(function(){var r=document.documentElement;r.classList.remove('app-boo
 <nav class="nav-group" aria-label="測定データ">
 <div class="nav-group-label">測定データ</div>
 <button class="db nav-item nav-item--primary" data-open-records="編集中" id="homeDrafts" type="button"><svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg><span>データ一覧</span><b id="homeDraftCount">0</b><i class="sync-warn-dot" id="homeDraftSyncWarn" hidden title="バックアップDBへ未送信のデータがあります" aria-hidden="true"></i></button>
+<!-- 実績データリスト(§9.241 ③)。**データ一覧とは読む先が違う**——こちらは
+     共有された記録だけを設備＋期間で見る「閲覧のみ」の一覧なので、
+     閲覧権限のままでも開ける。 -->
+<button class="db nav-item nav-item--view" id="openActuals" type="button" title="設備と期間を選んで、作業時に記録した実績を一覧します（閲覧のみ）"><svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="14" y2="18"/></svg><span>実績データ</span></button>
 </nav>
 <!-- 「一覧を見る」の中身はデータソースマスタから作る(§9.87)。ここへ直接
      ボタンを書かないこと——マスタでキーを変えると、消えない静的ボタンが
@@ -137,6 +141,8 @@ setTimeout(function(){var r=document.documentElement;r.classList.remove('app-boo
   'calendar-view.js',
   'schedule-view.js',
   'schedule-print.js',
+  'actuals-view.js',
+  'opsheet-print.js',
   'log-view.js',
   'access-mode.js'
  ],TOKEN='?t={{asset_token}}',BOOT_WAIT_MS=1500,started=false;

@@ -370,6 +370,39 @@
    .then(()=>bulkPrintNow(items,area))
    .catch(()=>bulkPrintNow(items,area));
  }
+ /* ---------- 外から「選んだ記録の帳票をまとめて刷る」（§9.241 ③） ----------
+    実績データリストから呼ぶ。**組み立ては既存の1本**（`printSelectedReports`
+    と同じ道）を通す——別に持つと、設備ごとの設定の読み込み（§9.239 ③）や
+    1枚ずつの測り直し（§9.174）を片方だけ直した状態が作れる。
+    **端末に無い記録はサーバーから1件ずつ取り込む**（`fetchRecordFromBackup`）
+    ——実績は共有された記録なので、その端末で測っていないものが普通にある。 */
+ async function bulkPrintByIds(ids){
+  const want=[...new Set((ids||[]).map(String))];
+  if(!want.length)return;
+  await openReportView();
+  const missing=want.filter(id=>!rpState.items.some(x=>String(x.id)===id));
+  if(missing.length){
+   const got=(await Promise.all(missing.map(id=>fetchRecordFromBackup(id).catch(()=>null))))
+    .filter(Boolean);
+   if(got.length){rpState.items=[...got,...rpState.items];renderLotList()}
+  }
+  const found=want.filter(id=>rpState.items.some(x=>String(x.id)===id));
+  if(!found.length){
+   showToast&&showToast('帳票を刷れませんでした',
+     '選んだ記録がこの端末にも測定バックアップにも見つかりませんでした。',6000);
+   return;
+  }
+  /* **見つからなかったぶんは黙って落とさない**（§CLAUDE 4）。 */
+  if(found.length<want.length)
+   showToast&&showToast(`${want.length-found.length}件は見つかりませんでした`,
+     `${found.length}件だけ刷ります。`,5200);
+  rpSelectedIds=new Set(found);
+  renderLotList();
+  printSelectedReports();
+ }
+ window.WL=window.WL||{};
+ WL.report={bulkPrint:bulkPrintByIds};
+
  function bulkPrintNow(items,area){
   area.innerHTML=items.map(x=>`<div class="rp-report rp-page${rpOrientation==='landscape'?' rp-landscape':''}">${reportHtml(x)}</div>`).join('');
   document.body.classList.add('rp-bulk-print');
@@ -2964,7 +2997,9 @@
  }
  window.openReportForRecord=async function(id,options){
   const opt=options||{};
-  rpReturnTo=opt.returnTo==='measure'?'measure':'records';
+  /* 戻り先（§9.241 ③で実績データリストが増えた）。**知らない値は
+     データ一覧へ落とす**——戻り先が無い画面へ戻すと行き止まりになる。 */
+  rpReturnTo=(opt.returnTo==='measure'||opt.returnTo==='actuals')?opt.returnTo:'records';
   await openReportView();           // ここで初めてパネル(戻るボタン)が作られる
   updateBackButton();
   syncArrangeButton();
@@ -2986,8 +3021,9 @@
   const toMeasure=rpReturnTo==='measure';
   /* ボタンの中身は <svg>アイコン</svg> + 文字列。アイコンは残して文字だけ差し替える。 */
   const label=[...btn.childNodes].find(n=>n.nodeType===Node.TEXT_NODE);
-  if(label)label.textContent=toMeasure?'測定へ戻る':'戻る';
-  btn.title=toMeasure?'測定画面へ戻ります':'元の一覧に戻ります';
+  if(label)label.textContent=toMeasure?'測定へ戻る':(rpReturnTo==='actuals'?'実績へ戻る':'戻る');
+  btn.title=toMeasure?'測定画面へ戻ります'
+   :(rpReturnTo==='actuals'?'実績データリストへ戻ります':'元の一覧に戻ります');
  }
  function backToRecordList(){
   exitReportView();
@@ -3002,6 +3038,10 @@
     requestAnimationFrame(()=>$id('deviceInput')?.focus());
    }
    return;
+  }
+  if(rpReturnTo==='actuals'&&WL.actuals&&typeof WL.actuals.open==='function'){
+   rpReturnTo='records';updateBackButton();
+   WL.actuals.open();return;
   }
   if(typeof openRecordsSafe==='function')openRecordsSafe(null);
  }

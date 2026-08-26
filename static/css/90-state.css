@@ -329,6 +329,13 @@ body.sc-mode .hd-status .hd-chip-equip{display:none}
      1枚余計に出る(現場へ配る紙なので、余った白紙は毎回捨てる手間になる)。 */
   body.sc-print .sp-page{page-break-after:always;box-shadow:none}
   body.sc-print .sp-page:last-child{page-break-after:auto}
+  /* 操業データ表(§9.241 ②)。作法は作業予定表と同じ——本体を隠し、
+     1枚ずつ改ページ、**最後の1枚のあとには入れない**(白紙が余計に出る)。
+     プレビューの拡大(`--os-zoom`)は紙には効かせない。 */
+  body.os-print>*:not(.os-print-area){display:none}
+  body.os-print .os-print-area{display:block}
+  body.os-print .os-page{page-break-after:always;box-shadow:none;transform:none;margin:0}
+  body.os-print .os-page:last-child{page-break-after:auto}
 }
 }
 

@@ -288,6 +288,55 @@ def backup_summary():
   app_logger().warning('/api/measurement/backup/summary で失敗: %s',e)
   return jsonify(error=f'共有データの一覧を読めませんでした: {e}',meas_path=str(MEAS_DB)),500
 
+# ---------------------------------------------------------------------------
+# 実績データリスト(§9.241 ③、利用者の指示)
+# ---------------------------------------------------------------------------
+# 「メインメニューに『実績』のデータをリストとして表示する機能。設備単位で
+#  切り替えて対象期間のデータを一覧で確認できる。データ一覧の完了とは別扱いで
+#  **閲覧のみ**、作業時に記録した**全データ**を扱える。」
+#
+# **GETだけ。書き込みは一切しない**ので、閲覧モードでもそのまま読める
+# (書込ガードはGETを素通しする・backend/access_mode.py)。判定(現場日・直)は
+# `backend/actuals.py`＝サーバーの1箇所が持ち、画面へ写さない(§9.163)。
+ACTUALS_LIMIT_DEFAULT=2000
+
+@bp.get('/api/measurement/actuals')
+def measurement_actuals():
+ from .. import actuals
+ try:
+  eq=str(request.args.get('equipment') or '').strip()
+  frm=str(request.args.get('from') or '').strip()
+  to=str(request.args.get('to') or '').strip()
+  basis='cal' if str(request.args.get('basis') or '').strip()=='cal' else 'work'
+  try:limit=int(request.args.get('limit') or ACTUALS_LIMIT_DEFAULT)
+  except Exception:limit=ACTUALS_LIMIT_DEFAULT
+  limit=max(1,min(20000,limit))
+  items=actuals.rows(equipment=eq,date_from=frm,date_to=to,basis=basis)
+  total=len(items)
+  # **黙って切らない**(§CLAUDE「no silent caps」)。切ったことと件数を返し、
+  # 画面が「期間を狭めてください」と書けるようにする。
+  truncated=total>limit
+  return jsonify(ok=True,items=items[:limit],count=min(total,limit),total=total,
+                 truncated=truncated,limit=limit,basis=basis,
+                 # **列の呼び名はサーバーが答える**(§9.163)。画面が英字キーへ
+                 # 日本語を当てる表を持つと、項目が増えたときに2箇所直すことになる。
+                 lotFields=actuals.lot_fields(),
+                 equipment=eq,**{'from':frm,'to':to})
+ except Exception as e:
+  app_logger().warning('/api/measurement/actuals で失敗: %s',e)
+  return jsonify(error=f'実績データを読めませんでした: {e}'),500
+
+@bp.get('/api/measurement/actuals/equipments')
+def measurement_actuals_equipments():
+ """実績が1件でもある設備。**設備マスタと突き合わせない**——マスタから消した
+ 設備の実績も見られる必要がある(履歴なので)。"""
+ from .. import actuals
+ try:
+  return jsonify(ok=True,items=actuals.equipments())
+ except Exception as e:
+  app_logger().warning('/api/measurement/actuals/equipments で失敗: %s',e)
+  return jsonify(error=f'設備の一覧を読めませんでした: {e}'),500
+
 @bp.get('/api/measurement/backup/get')
 def backup_get():
  """1件だけペイロード込みで返す(§9.91)。他のPCで保存された続きを開くとき、

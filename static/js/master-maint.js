@@ -1487,6 +1487,9 @@
       （読み込み順に依存させない）。 */
    if(def.key==='reportBlock'&&window.WL&&WL.reportBlocks)WL.reportBlocks.forget();
    if((def.key==='opItem'||def.key==='opChoice')&&window.WL&&WL.opData)WL.opData.forget();
+   /* ロールを足した直後に異常位置判定を開くのがふつうの順番なので、
+      控えを持ったままだと「登録したのに候補に出ない」になる（§9.241 ④）。 */
+   if(def.key==='roll'&&window.WL&&WL.defect&&WL.defect.forgetRolls)WL.defect.forgetRolls();
    /* **保存した行の群は開く**（§9.241 ①）——畳んだ設備へ足したとき、
       保存できたのに一覧に出ないのは「消えた」と読まれる。 */
    if(def.groupBy)mmOpenGroupOf(def,body[def.groupBy]);

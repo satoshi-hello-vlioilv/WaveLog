@@ -48,7 +48,9 @@ G['操業データ'] = ['test_opdata', 'test_opui', 'test_msteps', 'test_maint',
 # 異常位置判定と条の設計の連携(§9.226 ④)。どちらを触っても両方を回す。
 G['異常位置'] = ['test_defect', 'test_defectlink', 'test_splitlive', 'test_scsplit',
                  # §9.239 ⑥: ピッチ→ロール判定とロールマスタ
-                 'test_roll', 'test_mmfold']
+                 'test_roll', 'test_mmfold',
+                 # §9.241 ④⑤: ロールの読み込み経路と、入力の取り消し
+                 'test_rollload']
 # 操業データの意匠・設定窓・空きの群（§9.227）
 G['操業意匠'] = ['test_oppad', 'test_opui', 'test_opdata', 'test_msteps', 'test_oplimit',
                  'test_opmother', 'test_opunit', 'test_opauto']
@@ -72,11 +74,14 @@ G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'te
                      'test_scwatchui', 'test_scwatch', 'test_sccomment',
                      'test_scowner', 'test_scrowstyle', 'test_scload', 'test_scbar', 'test_scsave',
                      'test_scsession', 'test_scwho']
+# 実績データリストと操業データ表（§9.241 ②③）。**一覧が紙の材料を渡す**ので、
+# どちらを触っても両方回す。
+G['実績'] = ['test_actuals', 'test_opsheet']
 G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 'test_eqkind',
                'test_shift', 'test_dbequip', 'test_crudroutes', 'test_setpage', 'test_eqstd',
                'test_workdate', 'test_measstore', 'test_roll', 'test_rollio',
-               # §9.241 ①: 束ねた見出しの開閉
-               'test_mmfold']
+               # §9.241 ①: 束ねた見出しの開閉／④: ロールの読み込み経路
+               'test_mmfold', 'test_rollload']
 G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'test_flows',
              'test_p11', 'test_p11c', 'test_waiting', 'test_mcore', 'test_msteps']
 G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'test_density',
@@ -127,6 +132,10 @@ RULES = [
                                'test_listcache', 'test_allrows', 'test_nav', 'test_adhoc')),
     ('static/js/schedule-view.js', g('スケジュール', 'モーダル', 'test_listmodal')),
     ('static/js/schedule-print.js', g('モーダル', 'test_scprint')),
+    # 実績データリストは列の設定パネル・帳票・アクセスモードへつながる。
+    ('static/js/actuals-view.js', g('実績', 'モーダル', '列', 'test_recperm', 'test_nav')),
+    ('static/js/opsheet-print.js', g('実績', 'モーダル', '列')),
+    ('backend/actuals.py', g('実績', 'test_workdate', 'test_modeguard')),
     ('static/js/lot-split.js', g('異常位置', 'test_orphan', 'test_sub')),
     ('static/js/master-maint.js', g('マスタ', 'モーダル', '操業意匠', 'test_headbar', 'test_datasource',
                                      'test_qjoinui', 'test_dscap', 'test_blockbuild')),
@@ -134,7 +143,7 @@ RULES = [
     # 帳票の塊の組み換え(§9.169)は列レイアウトマスタに載るので列の網も回す。
     ('static/js/report-dashboard.js', g('モーダル', 'test_screport', 'test_hdr', 'test_calscale',
                                         'test_rpblocks', 'test_rplayout', 'test_rpmaster',
-                                        'test_collayout')),
+                                        'test_collayout', 'test_actuals')),
     ('static/js/quality-analysis.js', g('test_uiux', 'test_hdr', 'test_fit', 'test_theme')),
     ('static/js/defect-locator.js', g('モーダル', '異常位置')),
     # ロールマスタ（§9.239 ⑥）。マスタの4本セットと判定の両方に効く。
@@ -169,6 +178,7 @@ RULES = [
     ('static/css/50-master.css', g('見た目', 'マスタ', '操業意匠', 'test_dscap', 'test_qjoinui',
                                     'test_blockbuild')),
     ('static/css/60-report.css', g('見た目', 'test_screport', 'test_rpblocks', 'test_rplayout')),
+    ('static/css/62-actuals.css', g('見た目', '実績')),
     ('backend/repositories/report_block_repo.py', g('test_rpmaster', 'test_rpblocks',
                                                     'test_rplayout', 'test_crudroutes',
                                                     'test_blockbuild', 'test_opdata')),
