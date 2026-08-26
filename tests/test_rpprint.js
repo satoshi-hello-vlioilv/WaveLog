@@ -387,6 +387,36 @@ let b=null;
   }
 
   /* ==========================================================
+     印刷ボタン1回で、刷るのは1回だけ（§9.247 ③、利用者の報告）
+     ----------------------------------------------------------
+       「印刷ボタンを押すと…プレビュー機能が出てきますが、ここをキャンセル
+        ボタンを押すと、もう一度同じプレビュー機能が出てきます。2回出てくる
+        ということは、印刷ボタンの挙動に問題がないでしょうか」
+
+     `rpPrintFrame()`は書類の**用意ができた合図を2つ**持っている——
+     `<iframe>`の`load`と、書き込んだ`<link>`の読み込み数え。どちらも
+     `go()`へ入るので、**多重防止が無いと`w.print()`が2回走る**。
+     実機では1回目のダイアログが閉じるまでJSが止まるので、
+     **キャンセルした直後に2枚目が開く**という形で出る。
+
+     **「窓が出たか」ではなく回数を数えること**——1回目だけを見る網
+     （上の`printed`）は2回呼ばれていても通る（実際に通っていた）。
+     ========================================================== */
+  const fired=await page.evaluate(()=>new Promise(resolve=>{
+   let n=0;
+   const iv=setInterval(()=>{
+    const f=document.getElementById('rpPrintFrame');
+    const w=f&&f.contentWindow;
+    if(!w||!w.document||w.__wlHooked)return;
+    w.__wlHooked=true;w.print=()=>{n++};
+   },5);
+   /* 2つ目の合図はrAF2回ぶん後に来るので、余裕をみて待ってから数える。 */
+   setTimeout(()=>{clearInterval(iv);resolve(n)},2500);
+   document.getElementById('reportPrint').click();
+  }));
+  rec('印刷ボタン1回で刷るのは1回だけ（プレビューが2度出ない）',fired===1,fired+'回');
+
+  /* ==========================================================
      測定値の統計はロットごとにも出る（§9.244、利用者の指示）
      ----------------------------------------------------------
        「異幅分割の複数ロットが混在するパターンにおいてもロットごとに
@@ -459,6 +489,95 @@ let b=null;
       stat2.rows[0].na===0&&stat2.rows[1].na>0&&stat2.rows[2].na>0,
       JSON.stringify(stat2.rows.map(r=>r.na)));
   rec('出せない理由を紙に書く',/丈ごと/.test(stat2.注記),stat2.注記.slice(0,60));
+
+  /* ==========================================================
+     帳票ブロックマスタの塊が子ロットごとに繰り返せる（§9.247 ②、利用者の指示）
+     ----------------------------------------------------------
+       「帳票ブロックマスタに異幅分割ありのロットでロット番号が1ロット内に
+        複数混在するパターンにおいても各分割ロット単位ごとに統計データが
+        出てくるように対応をお願いします」
+
+     §9.244で足したのは**既定の「測定値の統計」の表**だけで、
+     **帳票ブロックマスタで自分が作った塊**からは`stat.*`を子ロット単位で
+     引けなかった（全部の条をまとめた1組しか出ない）。
+
+     ここで固定するのは:
+      1. 繰り返すと**子ロットの数だけ節が出る**（見出しに番号と条の範囲）
+      2. 中の`stat.*`が**その子ロットの条だけ**から数え直される
+      3. 条に紐づかない項目（板厚）は「—」＋理由（§4）
+      4. **繰り返さない塊は今までどおり1回**・全体の値（見え方を変えない）
+      5. **分割の無いロットでは繰り返しても1回**（設備の紙を分けなくてよい）
+      6. `lot.*`はどちらに置いても空欄にならない（繰り返さなければ親ロット）
+
+     **紙になる節そのものを見ること**——値を1つ引くだけの網は、繰り返しが
+     効いていなくても通る。
+     ========================================================== */
+  const rep=await page.evaluate(()=>{
+   /* 上と同じ材料。条1〜2＝CHILD-A（50台）／条3〜5＝CHILD-B（60台）。 */
+   const x={basic:{lotNo:'PARENT-1'},
+    settings:{verticalCount:2,horizontalCount:5,
+     splitGroups:[{lot:'CHILD-A',count:2},{lot:'CHILD-B',count:3}]},
+    measurements:{
+     width:[['50.0','50.2','60.0','60.4','60.8'],
+            ['50.1','50.2','60.1','60.4','60.9']],
+     thickness:[['1.000','1.010','1.020'],['1.030','1.040','1.050']]},
+    product:{rows:[]}};
+   /* 分割の無いロット（同じ塊を当てて1回だけになることを見る）。 */
+   const solo={basic:{lotNo:'SOLO-1'},settings:{verticalCount:1,horizontalCount:3},
+     measurements:{width:[['10','11','12']]},product:{rows:[]}};
+   const fields=[{label:'子ロット',path:'lot.no',span:1},
+                 {label:'条',path:'lot.range',span:1},
+                 {label:'幅MIN',path:'stat.width.min',span:1},
+                 {label:'幅MAX',path:'stat.width.max',span:1},
+                 {label:'板厚MIN',path:'stat.thickness.min',span:1}];
+   const parse=h=>{
+    const d=document.createElement('div');d.innerHTML=h;
+    return [...d.querySelectorAll('.rp-section')].map(sec=>({
+      見出し:sec.querySelector('h3').textContent.replace(/\s+/g,' ').trim(),
+      値:[...sec.querySelectorAll('.rp-field-value')].map(v=>v.textContent.trim()),
+      理由:[...sec.querySelectorAll('.rp-field-value')]
+            .filter(v=>v.textContent.trim()==='—')
+            .map(v=>v.getAttribute('title')||'')}));
+   };
+   return {
+    繰返あり:parse(WL.reportStat.sectionHtml(x,'幅の統計',fields,0,'子ロット')),
+    繰返なし:parse(WL.reportStat.sectionHtml(x,'幅の統計',fields,0,'')),
+    分割なし:parse(WL.reportStat.sectionHtml(solo,'幅の統計',fields,0,'子ロット')),
+    回数:{あり:WL.reportStat.repeatLots(x,true).length,
+          なし:WL.reportStat.repeatLots(x,false).length,
+          分割なし:WL.reportStat.repeatLots(solo,true).length}};
+  });
+  rec('繰り返すと子ロットの数だけ節が出る',rep.繰返あり.length===2,
+      rep.繰返あり.map(s=>s.見出し).join(' / '));
+  rec('節の見出しに子ロット番号と条の範囲が付く',
+      /CHILD-A/.test((rep.繰返あり[0]||{}).見出し||'')
+      &&/1〜2条/.test((rep.繰返あり[0]||{}).見出し||'')
+      &&/CHILD-B/.test((rep.繰返あり[1]||{}).見出し||'')
+      &&/3〜5条/.test((rep.繰返あり[1]||{}).見出し||''),
+      rep.繰返あり.map(s=>s.見出し).join(' / '));
+  /* **本丸**——それぞれの子ロットの条だけから数え直されていること
+     （混ざっていれば 50台の節に 60台の数字が出る）。 */
+  rec('子ロットAの節は 50.0〜50.2（その子ロットの条だけ）',
+      ((rep.繰返あり[0]||{}).値||[]).join('/')==='CHILD-A/1〜2/50.0/50.2/—',
+      JSON.stringify((rep.繰返あり[0]||{}).値));
+  rec('子ロットBの節は 60.0〜60.9',
+      ((rep.繰返あり[1]||{}).値||[]).join('/')==='CHILD-B/3〜5/60.0/60.9/—',
+      JSON.stringify((rep.繰返あり[1]||{}).値));
+  rec('条に紐づかない項目は「—」＋理由（§4）',
+      /丈ごと/.test((((rep.繰返あり[0]||{}).理由)||[])[0]||''),
+      (((rep.繰返あり[0]||{}).理由)||[])[0]||'(理由なし)');
+  /* **もう片側**——繰り返さない塊の見え方を変えていないこと。片側だけを
+     見る網は、いつも繰り返す実装でも通る。 */
+  rec('繰り返さない塊は今までどおり1回・全体の値',
+      rep.繰返なし.length===1
+      &&((rep.繰返なし[0]||{}).値||[]).join('/')==='PARENT-1/-/50.0/60.9/1.000',
+      JSON.stringify((rep.繰返なし[0]||{}).値));
+  rec('分割の無いロットでは繰り返しても1回だけ',
+      rep.分割なし.length===1&&rep.回数.分割なし===1,
+      JSON.stringify(rep.回数));
+  rec('繰り返しの回数は子ロットの数（1回/2回）',
+      rep.回数.あり===2&&rep.回数.なし===1,JSON.stringify(rep.回数));
+
 
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
 

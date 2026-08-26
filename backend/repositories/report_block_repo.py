@@ -138,6 +138,24 @@ STAT_CATALOG = tuple(
     for item_key, item_label in STAT_ITEMS
     for agg_key, agg_label in STAT_AGGS)
 
+# ---------------------------------------------------------------------------
+# 子ロット（幅分割）そのものの値（§9.247 ②）
+# ---------------------------------------------------------------------------
+# 繰り返し（`[繰返]='子ロット'`）にした塊では、**その回の子ロット**を指す。
+# 繰り返していない塊では**親ロット自身**へ落ちるので、どちらに置いても
+# 空欄にならない（§4「押せるのに何も起きない」を作らない）。
+#
+# **`basic.lotNo`と別に持つ**——あちらは測定レコードの親ロット番号で、
+# 子ロットごとに繰り返しても値は変わらない。同じ紙に「親のロット番号」と
+# 「この段の子ロット番号」が両方要ることがあるので、道を分ける。
+LOT_CATALOG = (
+    ('子ロット番号', 'lot.no'),
+    ('子ロットの条の範囲', 'lot.range'),
+    ('子ロットの条数', 'lot.strips'),
+    ('子ロットの通し番号', 'lot.index'),
+    ('子ロットの件数', 'lot.count'),
+)
+
 
 def field_catalog(c, equipment=''):
     """塊に載せられる項目の一覧(§9.226 ④、利用者の指示)。
@@ -211,8 +229,19 @@ def field_catalog(c, equipment=''):
     # 違うので、MIN/MAXだけを出せる形にはしない（§9.214と同じ約束）。
     groups.append({'group': '測定した値の統計',
                    'note': 'このロットで測った値から作ります（MIN・MAX・平均・'
-                           'ばらつき・N数）。まだ測っていない項目は空欄になります。',
+                           'ばらつき・N数）。まだ測っていない項目は空欄になります。'
+                           '**塊の「繰り返し」を「分割後の子ロットごと」にすると、'
+                           'その子ロットの条だけから数えた値になります**（§9.247 ②）。'
+                           '板厚・板丈・肉厚は丈ごとに測るので子ロットには割り当てられず、'
+                           '「—」になります。',
                    'items': [{'label': l, 'path': p} for l, p in STAT_CATALOG]})
+    # 子ロットそのものの値（§9.247 ②）。**繰り返していない塊では親ロットへ
+    # 落ちる**ので、どちらに置いても空欄にならない。
+    groups.append({'group': '子ロット（幅分割）',
+                   'note': '塊の「繰り返し」を「分割後の子ロットごと」にしたとき、'
+                           'その回の子ロットを指します。'
+                           '繰り返していない塊では**このロット自身**の値になります。',
+                   'items': [{'label': l, 'path': p} for l, p in LOT_CATALOG]})
     return [g for g in groups if g['items']]
 
 
@@ -258,6 +287,44 @@ def normalize_kind(v):
     if s in _KIND_BY_LABEL:
         s = _KIND_BY_LABEL[s]
     return s if s == AREA_KIND else ''
+
+
+# ---------------------------------------------------------------------------
+# 繰り返し（§9.247 ②、利用者の指示）
+# ---------------------------------------------------------------------------
+# 「帳票ブロックマスタに異幅分割ありのロットでロット番号が1ロット内に複数
+#  混在するパターンにおいても各分割ロット単位ごとに統計データが出てくるように
+#  対応をお願いします」
+#
+# 異幅分割のロットは、**1件の測定レコードの中に子ロットが複数**ある
+# （`settings.splitGroups`。条を先頭から積んで区切る）。ところが塊は
+# レコード1件につき1回しか描かれないので、`stat.*`（§9.242 ⑨）は
+# **全部の条をまとめた1組**しか出せなかった——子ロットごとの板幅MIN/MAXを
+# 紙に出す手立てが無い、というのが利用者の指摘。
+#
+# **塊のほうを子ロットの数だけ繰り返す**のがいちばん短い道。値の作り方
+# （`rpStat`）も紙の組み方（`reportSection`）も既にあるものをそのまま使え、
+# 「どの項目を出すか」は今までどおり`[内容]`が持つ。
+#
+# ''＝このロット全体（今までどおり）／'子ロット'＝分割後の子ロットごと。
+# **分割の無いロットでは1回だけ**描く（＝今までと同じ）ので、設備の紙を
+# 分割あり・無しで分ける必要が無い。
+# **語彙はここだけが持つ**（§9.163。画面へ書き写さない）。
+REPEAT_CHILD = '子ロット'
+REPEAT_LABELS = (('', 'このロット全体（1回だけ）'),
+                 (REPEAT_CHILD, '分割後の子ロットごと'))
+_REPEAT_BY_LABEL = {lb: v for v, lb in REPEAT_LABELS}
+_LABEL_BY_REPEAT = {v: lb for v, lb in REPEAT_LABELS}
+
+
+def normalize_repeat(v):
+    """繰り返しの保存形。**知らない値は「1回だけ」へ倒す**（`normalize_kind`と
+    同じ作法——例外にすると帳票ブロックマスタが丸ごと開けなくなる）。
+    画面は文字列の選択欄しか持たないので、**呼び名でも受ける**。"""
+    s = str(v or '').strip()
+    if s in _REPEAT_BY_LABEL:
+        s = _REPEAT_BY_LABEL[s]
+    return s if s == REPEAT_CHILD else ''
 
 
 # 種は (組み込みキー, 幅, 行数, 内訳列数, 内容, 種別, 文字)
@@ -394,7 +461,14 @@ def _row(r):
             'kindText': _LABEL_BY_KIND.get(normalize_kind(r[11] if len(r) > 11 else ''),
                                            _LABEL_BY_KIND['']),
             # エリアに置く文字（改行できる）。**値は入らない。**
-            'text': str((r[12] if len(r) > 12 else '') or '')}
+            'text': str((r[12] if len(r) > 12 else '') or ''),
+            # 繰り返し（§9.247 ②）。'子ロット'＝分割後の子ロットの数だけ描く。
+            # **エリアの塊では繰り返さない**——値を出さない塊を子ロットの数だけ
+            # 並べても、同じ枠が増えるだけ（§4。効かない設定を出さない）。
+            'repeat': ('' if normalize_kind(r[11] if len(r) > 11 else '') == AREA_KIND
+                       else normalize_repeat(r[13] if len(r) > 13 else '')),
+            'repeatText': _LABEL_BY_REPEAT.get(
+                normalize_repeat(r[13] if len(r) > 13 else ''), _LABEL_BY_REPEAT[''])}
 
 
 # 後から足した列（§9.180「無ければ足す」で移行する。共有DBは現場で動いて
@@ -404,6 +478,7 @@ _ADDED_COLUMNS = (
     ('内訳列数', 'INTEGER'),       # 節の中を何列で並べるか（0＝既定）
     ('種別', 'TEXT'),              # ''＝項目の並び／'エリア'＝場所を空けるだけ
     ('文字', 'TEXT'),              # エリアに置く文字（改行できる）
+    ('繰返', 'TEXT'),              # ''＝1回だけ／'子ロット'＝分割後の子ロットごと
 )
 
 
@@ -482,7 +557,7 @@ def ensure_table(c):
 
 
 _SELECT = ('SELECT [ブロックID],[設備名],[ブロック名],[表示順],[幅],[行数],[内容],[備考],[有効],'
-           '[組み込みキー],[内訳列数],[種別],[文字] '
+           '[組み込みキー],[内訳列数],[種別],[文字],[繰返] '
            f'FROM [{TABLE}] ORDER BY [表示順],[ブロックID]')
 
 
@@ -528,7 +603,7 @@ def builtin_off(c, equipment):
 
 def block_upsert(c, uid, equipment='*', name='', order=None, span=6, rows=0,
                  content='', note='', enabled=True, block_id=None,
-                 builtin=None, cols=None, kind=None, text=None):
+                 builtin=None, cols=None, kind=None, text=None, repeat=None):
     ensure_table(c)
     name = str(name or '').strip()
     if not name:
@@ -543,14 +618,16 @@ def block_upsert(c, uid, equipment='*', name='', order=None, span=6, rows=0,
     cur_cols = 0
     cur_kind = ''
     cur_text = ''
+    cur_repeat = ''
     if block_id is not None:
-        cur.execute(f'SELECT [組み込みキー],[内訳列数],[種別],[文字] FROM [{TABLE}] '
+        cur.execute(f'SELECT [組み込みキー],[内訳列数],[種別],[文字],[繰返] FROM [{TABLE}] '
                     'WHERE [ブロックID]=?', [int(block_id)])
-        hit = cur.fetchone()
-        cur_builtin = str((hit or ['', 0, '', ''])[0] or '').strip()
-        cur_cols = int((hit or ['', 0, '', ''])[1] or 0)
-        cur_kind = normalize_kind((hit or ['', 0, '', ''])[2])
-        cur_text = str((hit or ['', 0, '', ''])[3] or '')
+        hit = cur.fetchone() or ['', 0, '', '', '']
+        cur_builtin = str(hit[0] or '').strip()
+        cur_cols = int(hit[1] or 0)
+        cur_kind = normalize_kind(hit[2])
+        cur_text = str(hit[3] or '')
+        cur_repeat = normalize_repeat(hit[4] if len(hit) > 4 else '')
     if builtin is None:
         builtin = cur_builtin
     builtin = str(builtin or '').strip()
@@ -560,6 +637,7 @@ def block_upsert(c, uid, equipment='*', name='', order=None, span=6, rows=0,
     # 1つ渡し忘れるとその設定だけが黙って消える）。
     kind = cur_kind if kind is None else normalize_kind(kind)
     text = cur_text if text is None else str(text or '')
+    repeat = cur_repeat if repeat is None else normalize_repeat(repeat)
     try:
         cols = max(0, min(6, int(cols or 0)))
     except (TypeError, ValueError):
@@ -579,11 +657,11 @@ def block_upsert(c, uid, equipment='*', name='', order=None, span=6, rows=0,
     # SET・VALUES・argsの**4箇所**（UPDATE2本＋INSERT1本＋この行）を同じ順に。
     args = [equipment, name, order, normalize_span(span), normalize_rows(rows),
             str(content or ''), str(note or ''), -1 if enabled else 0, builtin, cols,
-            kind, text]
+            kind, text, repeat]
     if block_id is not None:
         cur.execute('UPDATE [帳票ブロックマスタ] SET [設備名]=?,[ブロック名]=?,[表示順]=?,[幅]=?,'
                     '[行数]=?,[内容]=?,[備考]=?,[有効]=?,[組み込みキー]=?,[内訳列数]=?,'
-                    '[種別]=?,[文字]=?,'
+                    '[種別]=?,[文字]=?,[繰返]=?,'
                     '[更新者ID]=?,[更新日時]=Now() '
                     'WHERE [ブロックID]=?', args + [uid, int(block_id)])
         c.commit()
@@ -596,7 +674,7 @@ def block_upsert(c, uid, equipment='*', name='', order=None, span=6, rows=0,
     hit = cur.fetchone()
     if hit:
         cur.execute('UPDATE [帳票ブロックマスタ] SET [表示順]=?,[幅]=?,[行数]=?,[内容]=?,[備考]=?,'
-                    '[有効]=?,[組み込みキー]=?,[内訳列数]=?,[種別]=?,[文字]=?,'
+                    '[有効]=?,[組み込みキー]=?,[内訳列数]=?,[種別]=?,[文字]=?,[繰返]=?,'
                     '[更新者ID]=?,[更新日時]=Now() '
                     'WHERE [ブロックID]=?', args[2:] + [uid, hit[0]])
         c.commit()
@@ -608,9 +686,9 @@ def block_upsert(c, uid, equipment='*', name='', order=None, span=6, rows=0,
         args[2] = order
     cur.execute('INSERT INTO [帳票ブロックマスタ] '
                 '([設備名],[ブロック名],[表示順],[幅],[行数],[内容],[備考],[有効],'
-                '[組み込みキー],[内訳列数],[種別],[文字],'
+                '[組み込みキー],[内訳列数],[種別],[文字],[繰返],'
                 '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
-                'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())', args + [uid, uid])
+                'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())', args + [uid, uid])
     c.commit()
     return int(cur.lastrowid)
 

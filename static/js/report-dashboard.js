@@ -430,6 +430,14 @@
     なので、ここで値として読むと読み込み時に落ちる（TDZ。ファイル全体が
     動かなくなり、画面が組み上がらない）。 */
  WL.reportStat.blockKey=()=>RP_STAT_BLOCK;
+ /* 子ロットごとの繰り返し（§9.247 ②）。**網は「紙になる節そのもの」を見る**
+    ——値を1つ引くだけの口を見ても、繰り返しが効いているかは分からない
+    （`rpFieldsSection`が実際に紙を組む1本なので、そこを通す）。
+    `repeatLots`は「何回・どの子ロットで描くか」の答えで、
+    `sectionHtml`は塊1つぶんの紙。 */
+ WL.reportStat.repeatLots=(x,on)=>rpRepeatLots(x,!!on);
+ WL.reportStat.sectionHtml=(x,name,fields,cols,repeat)=>
+   rpFieldsSection(x,name,fields||[],cols||0,repeat||'');
 
  function bulkPrintNow(items,area){
   area.innerHTML=items.map(x=>`<div class="rp-report rp-page${rpOrientation==='landscape'?' rp-landscape':''}">${reportHtml(x)}</div>`).join('');
@@ -480,8 +488,11 @@
    const st=matrix?` style="grid-column:span ${span}"`:'';
    /* 空きマスは**中身を持たない**（場所を取るのが役目）。 */
    if(o&&o.blank)return `<div class="rp-field rp-field-blank"${st} aria-hidden="true"></div>`;
+   /* **理由を渡せる**（§9.247 ②）——子ロットへ割り当てられない項目は`—`に
+      なるので、なぜそうなのかを`title`で言う（黙って`—`だと壊れて見える）。 */
+   const tip=(o&&o.title)||value||'-';
    return `<div class="rp-field"${st}><span class="rp-field-label">${esc(label)}</span>`
-    +`<span class="rp-field-value" title="${esc(value||'-')}">${esc(value||'-')}</span></div>`;
+    +`<span class="rp-field-value" title="${esc(tip)}">${esc(value||'-')}</span></div>`;
   };
   const body=rows.map(cell).join('');
   const cls=matrix?'rp-grid rp-grid-m':('rp-grid'+(cols?' rp-grid-'+cols:''));
@@ -946,7 +957,9 @@
    html:area
      ?(()=>rpAreaHtml(r.kind==='エリア'&&r.text!=null&&r.text!==''?r.text:name))
      :(fields
-       ?(x=>reportSection(name,fields.map(f=>[f.label,rpValueAt(x,f.path)]),r.cols||0))
+       /* §9.247 ②。**既定の塊でも繰り返せる**（中身を差し替えてある塊は
+          自作の塊と同じ「ラベル＝出どころ」の並びなので、道を分けない）。 */
+       ?(x=>rpFieldsSection(x,name,fields,r.cols,r.repeat))
        :(x=>{const h=b.html(x);return renamed?rpRetitle(h,name):h}))});
  }
  function rpAllBlocks(){
@@ -1162,17 +1175,64 @@
    +`<table class="rp-dim-table rp-stat-table">${head}<tbody>${rows}</tbody></table>`
    +`<p class="rp-note">${note}</p></section>`;
  }
- function rpValueAt(x,path){
+ /* ---------- 繰り返しの1回ぶん（§9.247 ②、利用者の指示） ----------
+    「異幅分割ありのロットでロット番号が1ロット内に複数混在するパターンに
+     おいても各分割ロット単位ごとに統計データが出てくるように」
+
+    塊を子ロットの数だけ描くとき、**その回がどの子ロットなのか**を持ち回る。
+    分割の無いロット（と繰り返さない塊）では**親ロット自身**を指す1件を返す
+    ——こうしておくと`lot.*`がどこに置いても空欄にならず、繰り返しの
+    有無で紙の作り方を分けなくて済む（§4）。
+    **子ロットの区切りは`rpSplitLots()`の1箇所**（`statSection`と同じ材料）
+    ——別の数え方をすると、同じ紙の中で条番号とロット№の対応が2通りになる。 */
+ function rpRepeatLots(x,on){
+  const st=rpStat(x);
+  const lots=(st.byLot||[]);
+  if(!on||!lots.length){
+   /* 繰り返さない（または分割が無い）ときの1件。**`bag`は全体の統計**で、
+      `null`にしないこと——`stat.*`がそこを見るので、`null`にすると
+      繰り返していない塊の統計まで「—」になる。 */
+   return [{lot:String((x&&x.basic&&x.basic.lotNo)||''),
+            from:0,to:0,count:0,index:1,total:1,bag:st,split:false}];
+  }
+  return lots.map((L,i)=>Object.assign({},L,
+    {index:i+1,total:lots.length,bag:L,split:true}));
+ }
+ /* 条に紐づかない項目（板厚・板丈・肉厚）を子ロットへ割り当てられない理由。
+    **文字で言う**（§4）——空欄にすると「測っていない」と読める。 */
+ const RP_LOT_NA='この項目は丈ごとに測るので、条で分かれる子ロットには割り当てられません';
+ function rpValueAt(x,path,ctx){
   const p=String(path||'');
   if(p.indexOf('calc.')===0){
    const v=rpCalc(x)[p.slice(5)];
    return v==null?'':String(v);
   }
+  /* §9.247 ②。`lot.<なに>`。繰り返しの**その回の子ロット**を指す。
+     繰り返していない塊では親ロット自身へ落ちる（`rpRepeatLots`が1件返す）。 */
+  if(p.indexOf('lot.')===0){
+   const L=(ctx&&ctx.lot)||rpRepeatLots(x,false)[0];
+   const k=p.slice(4);
+   if(k==='no')return String(L.lot||'');
+   if(k==='index')return String(L.index||1);
+   if(k==='count')return String(L.total||1);
+   /* **分割していないロットでは条の範囲を作らない**——`0〜0条`と出すと、
+      1本も測っていないように読める（§4。言えないことは言わない）。 */
+   if(k==='strips')return L.split?String(L.count||0):'';
+   if(k==='range')return L.split?`${L.from+1}〜${L.to}`:'';
+   return '';
+  }
   /* §9.242 ⑨。`stat.<項目>.<集計>`。**知らない綴りは空**——`calc.*`と同じ
-     作法で、書き間違えても紙は出る（黙って別の値を出さない）。 */
+     作法で、書き間違えても紙は出る（黙って別の値を出さない）。
+     §9.247 ②で**その回の子ロットの統計**を見るようになった（`ctx.lot.bag`）
+     ——`rpStat()`の中身をそのまま使うので、まとめもロットごとも
+     値の作り方は1箇所（`rpStatOf`）のまま。 */
   if(p.indexOf('stat.')===0){
    const part=p.slice(5).split('.');
-   const bag=rpStat(x)[part[0]];
+   const src=(ctx&&ctx.lot&&ctx.lot.bag)||rpStat(x);
+   const bag=src[part[0]];
+   /* **`null`は「言えない」**（条に紐づかない項目）。0や空にすると
+      「測っていない」と読めるので、`—`と理由を出す（§4）。 */
+   if(bag===null)return '—';
    const v=bag?bag[part[1]]:'';
    return v==null?'':String(v);
   }
@@ -1187,6 +1247,31 @@
   /* ISOの日時はそのまま出すと読めない（末尾Z）。他は素のまま。 */
   return /^\d{4}-\d{2}-\d{2}T/.test(t)?fmtDT(t):t;
  }
+ /* ---------- 塊の中身を「子ロットごとに繰り返して」描く（§9.247 ②） ----------
+    **自作の塊も、中身を差し替えた既定の塊も同じここを通る**——別々に持つと、
+    片方だけ繰り返す状態が作れる（§CLAUDE「同じ処理を2つ持たない」）。
+
+    繰り返さない塊（と分割の無いロット）では`rpRepeatLots()`が1件を返すので、
+    **今までとまったく同じ1つの節**が出る（見え方を勝手に変えない）。
+    繰り返すときは見出しに子ロット番号を添える——同じ名前の節が並ぶと、
+    どれがどの子ロットのものか読めなくなる（§2）。 */
+ function rpFieldsSection(x,name,fields,cols,repeat){
+  const live=fields.filter(f=>!f.blank);
+  if(!live.length)return '';
+  const on=repeat==='子ロット';
+  const lots=rpRepeatLots(x,on);
+  return lots.map(L=>{
+   const title=(on&&L.split)
+     ?`${name}　${L.lot||'(番号なし)'}（${L.from+1}〜${L.to}条）`:name;
+   const rows=fields.map(f=>{
+    if(f.blank)return [f.label,'',{span:f.span,blank:true}];
+    const v=rpValueAt(x,f.path,{lot:L});
+    /* 割り当てられない項目は`—`（`rpValueAt`が返す）。**理由を添える**（§4）。 */
+    return [f.label,v,{span:f.span,title:(v==='—'?RP_LOT_NA:'')}];
+   });
+   return reportSection(title,rows,cols||0);
+  }).join('');
+ }
  function rpUserBlockDef(b){
   const fields=b.fields||[];
   /* エリアの塊（§9.234 ⑤）。**既定の行数はここで与える**——0（中身なり）の
@@ -1198,9 +1283,7 @@
      /* マス数と空きマスは**そのまま渡す**（§9.245）——ここで潰すと、
         設定画面で組んだマトリクスが紙では1列ずつの並びに戻る。
         **空きマスだけの塊は「中身なし」**（紙には出さない）。 */
-     :(x=>fields.some(f=>!f.blank)
-        ?reportSection(b.name,fields.map(f=>[f.label,f.blank?'':rpValueAt(x,f.path),
-                                             {span:f.span,blank:!!f.blank}]),b.cols||0):'')};
+     :(x=>rpFieldsSection(x,b.name,fields,b.cols,b.repeat))};
  }
  /* その設備の自作ブロックを読む。**読めなくても帳票は出す**（fail-open）。 */
  /* 設備ごとの写し（§9.239 ③）。1設備ぶんしか持たないと、一括印刷で
@@ -3292,7 +3375,21 @@
     setTimeout(()=>{try{f.remove()}catch(e){}},400);
     ok?resolve():reject(new Error('印刷の書類を組み立てられませんでした'));
    };
+   /* **刷るのは1回だけ**（§9.247 ③、利用者の報告「印刷ボタンを押すと…
+      キャンセルボタンを押すと、もう一度同じプレビューが出てくる」）。
+      書類の用意ができた合図は**2つある**——`<iframe>`の`load`と、書き込んだ
+      `<link>`の読み込み数え（`document.write`では`load`が飛ばないことが
+      あるので、片方だけでは足りない）。どちらも`go()`へ入るので、
+      **多重防止が無いと`w.print()`が2回走る**。`finish()`の`done`では
+      止められない——`print()`は`finish()`より前に呼ばれるので、
+      2回目は「ダイアログを開いてから何もしない」形になる。
+      実機では1回目のダイアログが閉じるまでJSが止まるため、
+      **キャンセルした直後に2枚目が開く**という見え方になっていた。
+      **合図のほうを1つに減らさないこと**——どちらが先に来るかは端末で
+      変わるので、早いほうで刷って遅いほうは捨てるのが正しい。 */
+   let started=false;
    const go=()=>{
+    if(started)return;started=true;
     try{
      const w=f.contentWindow;
      w.addEventListener('afterprint',()=>finish(true));
