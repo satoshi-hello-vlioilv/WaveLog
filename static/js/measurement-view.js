@@ -38,6 +38,22 @@ WL.measureItem={
  isMaterial(type){return this.normalize(type??this.current())===this.MATERIAL},
  /* 板厚・板幅か（＝製造/オーダー公差を選べる寸法系か）。 */
  isDimensional(type){const t=String(type??'');return t==='板厚'||t==='板幅'||t===this.LEGACY},
+ /* ---------- 「公差」と「基準」を言い分ける（§9.242 ⑤、利用者の指示） ----------
+    「板厚、板幅は公差ですが、ラテラルボーやバリ、テレスコープ、巻ズレ、
+     フラットネスなどは公差ではなく『基準』なので名称を変更し違和感の
+     ないようにしてください。公差は上下限があります」
+
+    **公差＝上下限を持つもの**。板厚・板幅は基準値の上下へ±で振れてよい
+    範囲があるが、ラテラルボー・バリ・テレスコープ・巻ずれ・フラットネスは
+    「これ以下」という片側の目標しか無い——同じ言葉で呼ぶと、上限しか無い
+    項目に下限があるかのように読める。
+    **判定は`isDimensional()`の1箇所に乗せる**（項目名の一覧をもう1つ
+    作らない。§9.138で文字列比較を散らして壊した形をくり返さない）。 */
+ limitWord(type){return this.isDimensional(type??this.current())?'公差':'基準'},
+ /* 判定の材料（`toleranceDetail()`の戻り）から決める版。片側だけの指示値
+    （`single`）は項目名に関わらず基準。**materialは判定そのものが無い**ので
+    呼ばれない。 */
+ limitWordOf(detail,type){return (detail&&detail.single)?'基準':this.limitWord(type)},
  current(){return (typeof $==='function'&&$('#measureType')?.value)||S.measure?.settings?.measureType||''},
  /* 公差・基準値をどちらの寸法で引くか。 */
  kindOf(type){return this.normalize(type??this.current())==='板厚'?'thickness':'width'},
@@ -1093,8 +1109,20 @@ function updateMeasurementHeading(){
     「〇が合格」という約束だけ。 */
  if(type==='フラットネス')return pill('is-mark','〇=OK','条ごとに記号を入力してください。〇がOK、△と×はどちらもNGです。');
  const kind=WL.measureItem.kindOf(type),detail=toleranceDetail(kind),base=Number(kind==='thickness'?S.measure.basic.mfgThickness:S.measure.basic.mfgWidth);
- if(!detail)return pill('is-none','公差なし','選択した公差区分に使用可能なプラス・マイナス値がありません。判定は行いません。');
- const labels={manufacturing:'製造公差',order:'オーダー公差',instruction:'指示公差'},sourceLabel=labels[detail.source],requestedLabel=labels[configuredToleranceSource()],fallback=detail.fallback?`${requestedLabel}が不足しているため製造公差を使用`:'';
+ /* **上下限を持つものだけが「公差」**（§9.242 ⑤、利用者の指示）。片側の
+    目標しか無い項目（ラテラルボー・バリ・テレスコープ・巻ずれ）で「公差」と
+    書くと、下限もあるかのように読める。言葉は`WL.measureItem`の1箇所。 */
+ const word=WL.measureItem.limitWordOf(detail,type);
+ if(!detail)return pill('is-none',`${word}なし`,
+   word==='公差'
+    ?'選択した公差区分に使用可能なプラス・マイナス値がありません。判定は行いません。'
+    :'この項目には判定に使える基準が登録されていません。判定は行いません。');
+ const labels={manufacturing:'製造公差',order:'オーダー公差',instruction:'指示基準'},sourceLabel=labels[detail.source],requestedLabel=labels[configuredToleranceSource()],fallback=detail.fallback?`${requestedLabel}が不足しているため製造公差を使用`:'';
+ /* 片側だけの基準は「0〜上限」なので、±の内訳を出しても読む値が無い。 */
+ if(detail.single)return pill('',`${sourceLabel} ${detail.range[0]}〜${detail.range[1]}`,
+   `基準 ${detail.range[0]}〜${detail.range[1]}`
+   +(detail.plusKey?`（${detail.plusKey}）`:'')
+   +'　※上下限のある公差ではなく、これ以下という基準です');
  pill(detail.source==='order'?'is-order':'',
       `${sourceLabel} ${detail.range[0]}〜${detail.range[1]}`,
       `基準値 ${base} ／ 公差 +${detail.plus}（${detail.plusKey}） -${detail.minus}（${detail.minusKey}）`
@@ -1183,7 +1211,10 @@ function configureToleranceSelector(){const el=$('#toleranceSource');if(!el||!S.
   if(box){const usable=isDimensional&&availability.available;if(box.hidden!==!usable)box.hidden=!usable;
    if(!usable&&pick&&!pick.hidden){pick.hidden=true;fold?.setAttribute('aria-expanded','false')}}}el.onchange=()=>{if(el.value==='order'&&!availability.available)return;S.measure.settings.toleranceSource=el.value;renderMeasureGrid();updateMeasurementHeading();markDirty()}}
 /* 作業時間パネル。開始→終了の順序を強制するロック付き打刻。 */
-function formatWorkTime(value){if(!value)return '';const d=new Date(value);return Number.isNaN(d.getTime())?'':d.toLocaleString('ja-JP',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'})}
+/* 作業時刻は**分まで**（§9.242 ①、利用者の指示「秒数は不要です」）。
+   欄が分刻みになった以上、帳票・トーストだけ秒を出すと**同じ時刻が場所に
+   よって違う長さで出る**（読む側は「別の値かもしれない」と数え直す）。 */
+function formatWorkTime(value){if(!value)return '';const d=new Date(value);return Number.isNaN(d.getTime())?'':d.toLocaleString('ja-JP',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}
 function stampWorkTimeLocked(kind){if(!S.measure)return;S.measure.workTime=S.measure.workTime||{};const now=new Date();if(kind==='start'){if(S.measure.workTime.endAt){showToast('開始時刻は変更できません','終了時刻の記録後は開始時刻を変更できません。');return}S.measure.workTime.startAt=now.toISOString()}else{if(!S.measure.workTime.startAt){showToast('開始時刻が未記録です','先に開始時刻を記録してください。');return}if(now<new Date(S.measure.workTime.startAt)){showToast('終了時刻を記録できません','終了時刻は開始時刻より後である必要があります。');return}S.measure.workTime.endAt=now.toISOString()}updateWorkTimePanel();markDirty();updateValidationVisuals()}
 function updateWorkTimePanel(){if(!S.measure)return;S.measure.workTime=S.measure.workTime||{startAt:'',endAt:''};const start=$('#workStartAt'),end=$('#workEndAt');if(!start||!end)return;start.dataset.iso=S.measure.workTime.startAt||'';end.dataset.iso=S.measure.workTime.endAt||'';start.value=formatWorkTime(start.dataset.iso);end.value=formatWorkTime(end.dataset.iso);$('#stampWorkStart').disabled=!!S.measure.workTime.startAt;$('#stampWorkEnd').disabled=!S.measure.workTime.startAt||!!S.measure.workTime.endAt;[[ $('#workStartCard'),start.dataset.iso],[ $('#workEndCard'),end.dataset.iso]].forEach(([card,value])=>{card?.classList.toggle('validation-required',!value);card?.classList.toggle('validation-valid',!!value)});$('#workDuration').textContent=S.measure.workTime.endAt?`実作業時間 ${formatDuration(durationMs(S.measure))}`:S.measure.workTime.startAt?'作業中':'未計測';$('#stampWorkStart').onclick=()=>stampWorkTimeLocked('start');$('#stampWorkEnd').onclick=()=>stampWorkTimeLocked('end');
  /* 自動で入る値（§9.234 ②）。開始・終了・実働時間を欄として置けるように

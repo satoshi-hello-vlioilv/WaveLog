@@ -1414,6 +1414,15 @@ _ITEM_ADDED_COLUMNS = (
     #                    "fold","showWhen","dummy"}}` で、
     # **触った項目だけを持つ**（無い項目は共通の値がそのまま効く）。
     ('設備別レイアウト', 'TEXT'),
+    # --- §9.242 ④（利用者の指示「メイン測定画面の3枚目の『記録した値』の
+    #     カードについては汎用設計にしたいです。操業データ項目で配置した
+    #     内容の中から選んで表示できるようにマスタ化してください」）---
+    # ③「記録した値」のカードへ出すか。**既定は出す**（列が無い＝NULLも
+    # 「出す」と読む）——組み込みの欄はもともと全部出ていたので、既定を
+    # 「出さない」にすると移行した瞬間にカードが空になる。
+    # **並びと群はこの行の`[表示順]``[群]`がそのまま使う**（カード専用の
+    # 並び順を別に持たない。§CLAUDE「同じ設定を2箇所に置かない」）。
+    ('記録表示', 'INTEGER'),
 )
 
 # 設備ごとに上書きできる項目（§9.239 ②）。**ここに無いものは共通のまま**
@@ -1785,7 +1794,10 @@ def _row_to_item(r):
             'autoValueKnown': auto_value_known(auto) if auto else True,
             'autoValueLabel': (auto_def[1] if auto_def else auto),
             'autoValueGroup': (auto_def[2] if auto_def else ''),
-            'autoValueNote': (auto_def[4] if auto_def else '')}
+            'autoValueNote': (auto_def[4] if auto_def else ''),
+            # §9.242 ④。③「記録した値」のカードへ出すか。**列の無い古いDBでも
+            # 動く**（`len(r)`で守る）。NULL＝まだ触っていない＝出す。
+            'recordShow': True if (len(r) <= 38 or r[38] is None) else bool(r[38])}
 
 
 _ITEM_SELECT = ('SELECT [項目ID],[設備名],[群],[項目名],[表示順],[型],[小数桁],[最小値],[最大値],'
@@ -1794,7 +1806,7 @@ _ITEM_SELECT = ('SELECT [項目ID],[設備名],[群],[項目名],[表示順],[�
                 '[初期値],[手打ち可],[ステップ量],'
                 '[単位位置],[文字寄せ],[表示書式],[表示桁数],[役割],[意匠],'
                 '[並べ方],[群幅],[ダミー],[空欄なし],[最小の出どころ],[最大の出どころ],'
-                '[出どころ表示],[自動値],[設備別レイアウト] '
+                '[出どころ表示],[自動値],[設備別レイアウト],[記録表示] '
                 'FROM [操業データ項目マスタ] ORDER BY [表示順],[項目ID]')
 
 
@@ -1912,7 +1924,7 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                 unit_place=None, align=None, value_format=None, digits=None,
                 role=None, look=None, layout=None, group_span=None, report=None,
                 dummy=None, no_blank=None, min_from=None, max_from=None,
-                source_note=None, auto_value=None):
+                source_note=None, auto_value=None, record_show=None):
     ensure_item_table(c)
     name = str(name or '').strip()
     if not name:
@@ -1927,11 +1939,11 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
     prev_name = ''
     if item_id is not None:
         cur.execute('SELECT [組み込みキー],[項目名],[ダミー],[空欄なし],'
-                    '[最小の出どころ],[最大の出どころ],[出どころ表示],[自動値] '
+                    '[最小の出どころ],[最大の出どころ],[出どころ表示],[自動値],[記録表示] '
                     'FROM [操業データ項目マスタ] WHERE [項目ID]=?', [int(item_id)])
         hit = cur.fetchone()
-        cur_builtin = str((hit or ['', '', 0, 0, '', '', '', ''])[0] or '').strip()
-        prev_name = str((hit or ['', '', 0, 0, '', '', '', ''])[1] or '').strip() if hit else ''
+        cur_builtin = str((hit or ['', '', 0, 0, '', '', '', '', None])[0] or '').strip()
+        prev_name = str((hit or ['', '', 0, 0, '', '', '', '', None])[1] or '').strip() if hit else ''
         # **渡されなかったら今の値を保つ**（§9.212 ②「送った項目だけ書く」）
         # ——設定窓は`dummy`を送らないので、触るたびに空きが解けては困る。
         if dummy is None and hit is not None:
@@ -1950,6 +1962,10 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
         # 送らないので、触るたびに「自動で入る値」が人が打つ欄へ戻っては困る。
         if auto_value is None and hit is not None:
             auto_value = hit[7]
+        # §9.242 ④。③「記録した値」へ出すかも同じ約束（送らない呼び出しで
+        # 消さない）。**NULLは「出す」**なので、そのまま持ち上げる。
+        if record_show is None and hit is not None:
+            record_show = True if hit[8] is None else bool(hit[8])
     if builtin is None:
         builtin = cur_builtin
     builtin = str(builtin or '').strip()
@@ -1995,7 +2011,9 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
             normalize_source_note(source_note),
             # §9.234 ② 自動で入る値の鍵。空＝人が打つ欄。**列は末尾へ足す**
             # ——2本目のUPDATEが`args[1:2]+args[3:]`で位置を数えている。
-            normalize_auto_value(auto_value)]
+            normalize_auto_value(auto_value),
+            # §9.242 ④ ③「記録した値」へ出すか。**既定は出す**（Noneも出す）。
+            0 if record_show is False else -1]
     if item_id is not None:
         cur.execute('UPDATE [操業データ項目マスタ] SET [設備名]=?,[群]=?,[項目名]=?,[表示順]=?,'
                     '[型]=?,[小数桁]=?,[最小値]=?,[最大値]=?,[選択肢名]=?,[単位]=?,[必須]=?,'
@@ -2004,6 +2022,7 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                     '[単位位置]=?,[文字寄せ]=?,[表示書式]=?,[表示桁数]=?,[役割]=?,[意匠]=?,'
                     '[並べ方]=?,[群幅]=?,[ダミー]=?,[空欄なし]=?,'
                     '[最小の出どころ]=?,[最大の出どころ]=?,[出どころ表示]=?,[自動値]=?,'
+                    '[記録表示]=?,'
                     '[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
                     args + [uid, int(item_id)])
         c.commit()
@@ -2026,6 +2045,7 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                     '[単位位置]=?,[文字寄せ]=?,[表示書式]=?,[表示桁数]=?,[役割]=?,[意匠]=?,'
                     '[並べ方]=?,[群幅]=?,[ダミー]=?,[空欄なし]=?,'
                     '[最小の出どころ]=?,[最大の出どころ]=?,[出どころ表示]=?,[自動値]=?,'
+                    '[記録表示]=?,'
                     '[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
                     args[1:2] + args[3:] + [uid, hit[0]])
         c.commit()
@@ -2041,9 +2061,9 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                 '[表示条件],[入力方法],[初期値],[手打ち可],[ステップ量],'
                 '[単位位置],[文字寄せ],[表示書式],[表示桁数],[役割],[意匠],'
                 '[並べ方],[群幅],[ダミー],[空欄なし],[最小の出どころ],[最大の出どころ],'
-                '[出どころ表示],[自動値],'
+                '[出どころ表示],[自動値],[記録表示],'
                 '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
-                'VALUES (' + ','.join(['?'] * 38) + ',Now(),Now())',
+                'VALUES (' + ','.join(['?'] * 39) + ',Now(),Now())',
                 args + [uid, uid])
     c.commit()
     return int(cur.lastrowid)

@@ -2660,7 +2660,8 @@
       const detail=toleranceDetail(kind,idx);
       if(!detail)return null;
       const base=Number.isFinite(detail.base)?detail.base:Number(kind==='thickness'?S.measure.basic.mfgThickness:S.measure.basic.mfgWidth);
-      const labels={manufacturing:'製造公差',order:'オーダー公差',instruction:'指示公差'};
+      /* 呼び名は`TOL_SOURCE_LABELS`と同じにそろえる（§9.242 ⑤）。 */
+      const labels={manufacturing:'製造公差',order:'オーダー公差',instruction:'指示基準'};
       return{source:labels[detail.source]||'公差',base:fixedToleranceValue(kind,base),plus:fixedToleranceValue(kind,detail.plus),minus:fixedToleranceValue(kind,detail.minus),low:fixedToleranceValue(kind,detail.range[0]),high:fixedToleranceValue(kind,detail.range[1]),range:detail.range,splitLot:detail.splitLot||''};
     };
   }

@@ -58,7 +58,8 @@
     if(detail&&detail.single){
       var label=detail.instructionType||'指示';
       var v=detail.plus;
-      var html='<div class="compact-tol-three-row"><div class="tol-line tol-line-base"><span class="compact-tol-source">指示公差</span><span class="tol-value-pair"><small>'+esc(label)+'</small><b>'+esc(v)+'</b></span></div><div class="tol-line tol-line-range"><small>判定範囲</small><b>0 ～ '+esc(v)+'</b></div></div>';
+      /* **上下限を持たないので「公差」ではなく「基準」**（§9.242 ⑤）。 */
+      var html='<div class="compact-tol-three-row"><div class="tol-line tol-line-base"><span class="compact-tol-source">指示基準</span><span class="tol-value-pair"><small>'+esc(label)+'</small><b>'+esc(v)+'</b></span></div><div class="tol-line tol-line-range"><small>判定範囲</small><b>0 ～ '+esc(v)+'</b></div></div>';
       return {range:detail.range,html:html};
     }
     return baseFacts(kind);

@@ -1157,6 +1157,9 @@ def _operation_item_save(x):
                          # 書く（設定窓は送らないので、触るたびに人が打つ欄へ
                          # 戻っては困る。`dummy`と同じ約束）。
                          auto_value=x.get('autoValue'),
+                         # §9.242 ④ ③「記録した値」のカードへ出すか。
+                         # **送られてきたときだけ**書く（`dummy`と同じ約束）。
+                         record_show=x.get('recordShow'),
                          report=ref)
   saved=_op_read(fn)
   # **付け替えたことは黙って済ませない**（§9.226 ①）。名前を変えると

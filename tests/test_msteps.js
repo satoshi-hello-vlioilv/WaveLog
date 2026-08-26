@@ -289,9 +289,11 @@ let b=null,page=null;
   rec('列は「条」＋丈位置の数',lc1.見出し.join('/')==='条/1(頭)/1(尾)',JSON.stringify(lc1.見出し));
   rec('行は条数ぶん',lc1.行数===8,String(lc1.行数));
   /* **出ていない丈の値が見えること。** ここが空なら、この表を出す意味がない。 */
-  rec('いま出ていない丈位置の値が見える',lc1.他の丈の値==='99.6',JSON.stringify(lc1));
+  /* 板幅は**小数2桁**（§9.242 ②、利用者の指示）。注ぎ込んだ`99.6`は
+     欄では`99.60`として出る（桁数は`measurementDigits('width')`の1箇所）。 */
+  rec('いま出ていない丈位置の値が見える',lc1.他の丈の値==='99.60',JSON.stringify(lc1));
   rec('いま入力している丈位置が分かる',lc1.いまの列===1,JSON.stringify(lc1));
-  rec('公差外はここでも印が付く',lc1.公差外の印===1&&lc1.公差外の値[0]==='150.0',
+  rec('公差外はここでも印が付く',lc1.公差外の印===1&&lc1.公差外の値[0]==='150.00',
       JSON.stringify(lc1.公差外の値));
   /* 見出しを押したらその丈位置へ移る（見えた値へすぐ行ける）。 */
   await page.evaluate(()=>{
@@ -695,8 +697,11 @@ let b=null,page=null;
   }));
   const c1=await check();
   rec('③に完了前の確認表が出る',c1.行.length>=3,JSON.stringify(c1.行.map(x=>x.名)));
-  rec('確認表は測定・公差外・作業時間を並べる',
-      ['測定','公差外','作業時間'].every(n=>c1.行.some(x=>x.名===n)),
+  /* 行の名前は**公差と基準の両方**を持つ（§9.242 ⑤、利用者の指示）。
+     この行は板厚・板幅（上下限＝公差）とラテラルボー等（片側＝基準）を
+     同じ表に並べるので、片方の言葉だけだと もう片方は数えていないと読める。 */
+  rec('確認表は測定・公差外/基準外・作業時間を並べる',
+      ['測定','公差外・基準外','作業時間'].every(n=>c1.行.some(x=>x.名===n)),
       JSON.stringify(c1.行.map(x=>x.名)));
   /* **状態を色だけで伝えない。** すべての行が数か言葉を持つこと。 */
   rec('どの行も状態を文字で持つ',c1.行.every(x=>x.値!==''),JSON.stringify(c1.行.map(x=>x.値)));
@@ -744,14 +749,16 @@ let b=null,page=null;
       JSON.stringify(inject.集計||{}));
   await go('1');await go('3');
   const c2=await check();
-  const ngRow=c2.行.find(x=>x.名==='公差外');
+  const ngRow=c2.行.find(x=>x.名==='公差外・基準外');
   rec('確認表が公差外を件数で言う',!!ngRow&&/2件/.test(ngRow.値),JSON.stringify(ngRow||{}));
   rec('公差外はどの丈位置かまで言う',!!ngRow&&/1\(尾\)/.test(ngRow.詳),ngRow?.詳||'');
   rec('公差外の行には直しに行く手立てがある',!!ngRow&&ngRow.直!=='',JSON.stringify(ngRow||{}));
+  /* **項目ごとに言葉を使い分ける**——板厚・板幅は「公差外」。 */
+  rec('公差外の詳細は項目ごとの言葉で言う',!!ngRow&&/板幅 公差外/.test(ngRow.詳),ngRow?.詳||'');
 
   /* 「見に行く」は**直せる場所まで連れて行く**。番号を言うだけでは探させる。 */
   await page.evaluate(()=>{
-   const r=[...document.querySelectorAll('.fc-row')].find(x=>x.querySelector('.fc-name')?.textContent.trim()==='公差外');
+   const r=[...document.querySelectorAll('.fc-row')].find(x=>x.querySelector('.fc-name')?.textContent.trim()==='公差外・基準外');
    r.querySelector('.fc-fix').click();
   });
   await page.waitForTimeout(700);
@@ -777,8 +784,8 @@ let b=null,page=null;
   await go('3');
   const c3=await check();
   rec('判定していない項目を画面にも出す',
-      /判定していない項目/.test((c3.行.find(x=>x.名==='公差外')||{}).詳||''),
-      (c3.行.find(x=>x.名==='公差外')||{}).詳||'');
+      /判定していない項目/.test((c3.行.find(x=>x.名==='公差外・基準外')||{}).詳||''),
+      (c3.行.find(x=>x.名==='公差外・基準外')||{}).詳||'');
 
   /* 作業時間を記録したら、その行だけが済みになる。 */
   await page.evaluate(()=>{

@@ -1293,11 +1293,24 @@ function statusLabel(s){return s||'編集中'}
 /* 一覧グリッドのように表示幅が狭い場所向けの短縮ラベル(NG登録のみ「NG」と省略)。 */
 function statusShortLabel(s){return s==='測定値NG'?'NG':statusLabel(s)}
 function durationMs(record){const a=record?.workTime?.startAt,b=record?.workTime?.endAt;if(!a||!b)return null;const ms=new Date(b)-new Date(a);return Number.isFinite(ms)&&ms>=0?ms:null}
-function formatDuration(ms){if(ms===null||ms===undefined)return '-';const sec=Math.floor(ms/1000),h=Math.floor(sec/3600),m=Math.floor(sec%3600/60),s=sec%60;return `${h}時間 ${m}分 ${s}秒`}
+/* 実働時間は**分まで**（§9.242 ①、利用者の指示「秒数は不要です」）。
+   開始・終了の欄が分刻み（`step="60"`）になったので、秒の位は必ず0になる
+   ——出しても嘘の精度が増えるだけ。**1時間未満は「N分」だけ**にする
+   （`0時間 8分`は0を読ませるぶん遅い）。
+   丸めは四捨五入——古い記録には秒が入っており、切り捨てると59秒が0分になる。 */
+function formatDuration(ms){if(ms===null||ms===undefined)return '-';const min=Math.round(ms/60000),h=Math.floor(min/60),m=min%60;return h>0?`${h}時間 ${m}分`:`${m}分`}
 /* Measurement precision and zero-order-tolerance correction. */
-function measurementDigits(key){return key==='thickness'?3:key==='width'?1:null}
+/* 板幅は**小数2桁**（§9.242 ②、利用者の指示「幅の自動入力データは小数点
+   以下2桁にしてください」）。**転送側だけ2桁にしても意味が無い**——欄を
+   離れたとき（`fixedMeasurementValue`）にここの桁数へ丸め直すので、1桁の
+   ままだと受け取った`1234.56`が`1234.6`へ戻る。**桁数を決めるのはここ
+   1箇所**にして、転送・手入力・読み直しが同じ答えを見る。 */
+function measurementDigits(key){return key==='thickness'?3:key==='width'?2:null}
 function fixedMeasurementValue(key,value){const raw=String(value??'').trim(),digits=measurementDigits(key);if(raw===''||digits===null)return raw;const n=Number(raw);return Number.isFinite(n)?n.toFixed(digits):raw}
-function fixedToleranceValue(kind,value){const n=Number(value);if(!Number.isFinite(n))return '-';return n.toFixed(kind==='thickness'?3:1)}
+/* 公差・基準の表示桁は**測定値と同じ**（§9.242 ②）。値だけ2桁にして範囲を
+   1桁のままにすると、`1234.55`が`1233.5 ～ 1234.5`の中に見えてしまう
+   （実際の判定は生の範囲で行うので、**画面だけが嘘をつく**）。 */
+function fixedToleranceValue(kind,value){const n=Number(value);if(!Number.isFinite(n))return '-';const d=measurementDigits(kind);return n.toFixed(d==null?1:d)}
 /* Final title guard for delayed initialization and browser history restoration. */
 function enforceApplicationTitle(){if(document.title!=='測定伝送システム')document.title='測定伝送システム'}
 enforceApplicationTitle();window.addEventListener('pageshow',enforceApplicationTitle);document.addEventListener('visibilitychange',()=>{if(!document.hidden)enforceApplicationTitle()});

@@ -464,6 +464,19 @@
    ことが多いため、狭い列に押し込めず全幅の専用行として常時確保する。
    短文の場合でも面積が安定するよう最小高さを確保する。 */
 .rp-info-box{min-height:26px;padding:1px 5px;border:1px solid #d6e0e3;border-radius:0 0 6px 6px;background:#ffffff;color:#173842;font-size:7.5px;line-height:1.25;white-space:normal;word-break:break-word}
+/* ---------- 中の枠はカードいっぱい（§9.242 ⑧、利用者の指摘） ----------
+   「品質情報のカードのサイズの枠に合わせて中の情報表示領域の枠を確保して
+    ください」——「異常情報なし」の1行しか無いときに枠が26pxまで縮み、
+   帳票レイアウトで確保した器の中に**小さな箱が1つ浮く**形になっていた。
+   **器の高さを中まで届ける鎖は1段も抜かない**（§9.222 ⑤）:
+   `.rp-block`（グリッドの子＝高さを持つ）→`.rp-block-fit`→`.rp-section`→枠。
+   **効かせるのは高さを決めた塊だけ**（`.is-sized`）——中身なりの塊で
+   効かせると、`rpFitRows()`が測る`scrollHeight`が器の高さになって
+   「自分の高さで自分の高さを決める」形になり、行数が決まらない。 */
+.rp-block.is-sized>.rp-block-fit{height:100%;min-height:0}
+.rp-block.is-sized>.rp-block-fit>.rp-section-fill{
+  display:flex;flex-direction:column;height:100%;min-height:0}
+.rp-section-fill>.rp-info-box{flex:1 1 auto}
 /* 頭/尾を1枚に収める測定データ表。列数が多いため小さめのフォントで密に配置する */
 .rp-note{margin:0 0 2px;color:#60747b;font-size:7.5px}
 .rp-wide-wrap{overflow:visible}

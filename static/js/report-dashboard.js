@@ -477,9 +477,16 @@
  }
  /* 仕掛データ取込時に別ファイル（品質情報テーブル）から取得し保存している
     異常/保留情報。旧帳票では品質等級欄の上（右上ブロック）に表示されていた。 */
+ /* 品質情報の枠は**カードの大きさいっぱい**（§9.242 ⑧、利用者の指摘
+    「異常登録のデータがない場合…その表示する枠は文字量に合わせて可変と
+     なっており、折角帳票レイアウトで最低表示領域を確保しても中の枠が
+     小さくなるのでバランスが悪くなってしまいます」）。
+    印は`rp-section-fill`の1つで、**高さを決めた塊のときだけ**効く
+    （CSSが`.rp-block.is-sized`で絞る）——中身なりの塊で効かせると、
+    `rpFitRows()`が測る`scrollHeight`が器の高さになって行数が決まらない。 */
  function qualityInfoSection(x){
   const text=String(x.qualityInfo||'異常情報なし');
-  return `<section class="rp-section"><h3>品質情報（仕掛）</h3><div class="rp-info-box">${esc(text).replace(/\n/g,'<br>')}</div></section>`;
+  return `<section class="rp-section rp-section-fill"><h3>品質情報（仕掛）</h3><div class="rp-info-box">${esc(text).replace(/\n/g,'<br>')}</div></section>`;
  }
  function motherSection(x){
   const m=x.mother||{},originalWidth=fmtDim(x.basic?.originalWidth,1);
@@ -1442,7 +1449,11 @@
    /* 枠（§9.234 ⑤）。**紙も画面も同じ組み立てを通る**ので、刷り上がりと
       組み換え中の姿が食い違わない。 */
    const framed=rpFramed(k),isArea=!!bl.area;
+   /* **高さを決めた塊か**（§9.242 ⑧）。中の枠を器いっぱいへ伸ばしてよいのは
+      こちらだけ——中身なりの塊で伸ばすと、`rpFitRows()`が測る`scrollHeight`が
+      器の高さになり、行数が決まらなくなる（自分の高さで自分の高さを決める）。 */
    return `<div class="rp-block${body?'':' is-empty'}${at?' is-placed':''}${ov?' is-overlap':''}`
+    +`${rows?' is-sized':''}`
     +`${framed?' is-framed':''}${isArea?' is-area':''}`
     +`${flow?' '+flow:''}" data-rp-block="${esc(k)}"`
     +` style="${place}"`
