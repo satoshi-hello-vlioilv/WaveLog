@@ -62,7 +62,11 @@ ALL_EQUIPMENTS = '*'
 # 事前に数え切れないので、ここに無い値も保存できる）。画面はこの一覧を
 # サジェストとして出すだけ。
 ENTRY_POSITIONS = ('入側', '出側', '中間', 'ルーパー', '巻取', '巻出')
-CONTACT_FACES = ('上面', '下面', '両面', '端面', '非接触')
+# 接触面は **上 / 下 / 上下** が現場の呼び名（§9.246 ⑤、利用者の指示
+# 「接触面は『上』『下』だけではなく、『上下』というものも存在する」）。
+# ここは**サジェスト**なので、これに無い値（旧`上面`など）も今までどおり
+# 保存でき、既に入っている行はそのまま残る。
+CONTACT_FACES = ('上', '下', '上下', '端面', '非接触')
 DRIVE_KINDS = ('駆動', '従動', 'フリー', 'ブレーキ')
 
 _ADDED_COLUMNS = (
@@ -107,6 +111,112 @@ def _norm_eq(v):
 def _same_eq(a, b):
     na = _norm_eq(a)
     return bool(na) and na == _norm_eq(b)
+
+
+def _norm_face(v):
+    """接触面の表記ゆれを潰す（判定にだけ使う。保存するのは打った文字）。
+
+    設備名と同じ規則（全角/半角・前後の空白）へ寄せる——`上 `と`上`が
+    別のロールになると、取り込みのたびに行が増える。"""
+    from .master_repo import normalize_equipment_name
+    return normalize_equipment_name(v)
+
+
+def roll_key(equipment, name, contact_face):
+    """ロール1本を見分ける自然キー（§9.246 ⑤、利用者の指示）。
+
+    > 「ロールマスタの接触面は『上』『下』だけではなく、『上下』というものも
+    >  存在するので、インポート時にデータ欠損させないように修正してください」
+
+    §9.239 ⑥／§9.240 では **(設備名, ロール名)** の2つだけだった。ところが
+    実データは**同じ設備の同じロール名が接触面ちがいで複数本**あり
+    （上／下／上下）、取り込むと`roll_upsert()`が最初の1本を引き当てて
+    **上書きし続け、最後の1行しか残らなかった**（画面からも2本目を
+    「同じ設備に同じ名前のロールを2つ置けません」で登録できなかった）。
+
+    **接触面まで含めて1本**と数える。**判定はここ1箇所**——`roll_upsert()`と
+    `import_rows()`が同じ関数を通すので、片方だけ直した状態が作れない。
+
+    **入出位置は入れない**（利用者が言っているのは接触面だけ）。同じ設備・
+    同じ名前・同じ接触面で入出位置だけが違うロールが出てきたら、そのときに
+    ここを1行足す——先回りで広げると、いま在る行の同一性が理由なく変わる。
+    """
+    return (_norm_eq(equipment), str(name or '').strip(), _norm_face(contact_face))
+
+
+class RollIndex:
+    """在るロールを自然キーで引く索引。**引き当ての規則はここだけが持つ**
+    （§9.246 ⑤）。鍵の作り方（`roll_key()`）と「どの行に当てるか」は別の
+    判断なので、それぞれ1箇所に置く。
+
+    `rows` は `(ロールID, 設備名, ロール名, 接触面)` の並び。
+    `roll_upsert()` は毎回DBから作り、`import_rows()` は下見の前に1回作って
+    使い回す——**下見が数えたものと、保存で実際に起きることを同じ規則に
+    決めさせる**（別々に持つと「追加1・上書き2」と言いながら1行しか
+    残らない、が作れる。それが今回直した不具合そのもの）。
+    """
+
+    def __init__(self, rows):
+        self._exact, self._blank, self._loose = {}, {}, {}
+        for rid, eq, nm, fc in rows:
+            k = roll_key(eq, nm, fc)
+            base = k[:2]
+            self._exact.setdefault(k, rid)
+            self._loose.setdefault(base, []).append(rid)
+            if not k[2]:
+                self._blank.setdefault(base, []).append(rid)
+
+    def find(self, equipment, name, contact_face):
+        """`(ロールID or None, 理由)` を返す。
+
+        理由:
+          `'exact'`     3つとも一致
+          `'blank'`     接触面がまだ空の同じロール（＝この機能より前の行）に
+                        面を書き足す。**行は増やさない**
+          `'loose'`     接触面を言われていない（列が無い／空欄）ので
+                        (設備, 名前) で1本だけ当たった
+          `'ambiguous'` 言われていないのに接触面ちがいで複数在る
+                        ——**どれを直すか決められないので断る**（§CLAUDE 4）
+          `None`        無い（＝追加）
+        """
+        k = roll_key(equipment, name, contact_face)
+        base = k[:2]
+        if contact_face is None:              # 列が無い／送っていない
+            ids = self._loose.get(base) or []
+            if len(ids) == 1:
+                return (ids[0], 'loose')
+            if len(ids) > 1:
+                return (None, 'ambiguous')
+            return (None, None)
+        rid = self._exact.get(k)
+        if rid is not None:
+            return (rid, 'exact')
+        if k[2]:
+            # **接触面がまだ空の行は「まだ分類していない同じロール」**として
+            # 拾う。拾わないと、書き出す→接触面を書き足す→取り込む、という
+            # いちばんありそうな往復で行がちょうど二重になる。
+            ids = self._blank.get(base) or []
+            if ids:
+                return (ids[0], 'blank')
+        return (None, None)
+
+    def take(self, equipment, name, contact_face):
+        """`find()` と同じ規則で引き、**拾った行を使い済みにする**。
+
+        面が空の行は1本しか無いので、2行目も「上書き」と数えると下見の
+        「追加 N件」が実際と食い違う（下見の意味が無くなる）。
+        """
+        rid, why = self.find(equipment, name, contact_face)
+        if rid is None:
+            return (rid, why)
+        k = roll_key(equipment, name, contact_face)
+        base = k[:2]
+        self._exact[k] = rid
+        for d in (self._blank, self._loose):
+            if rid in (d.get(base) or []):
+                d[base].remove(rid)
+        self._loose.setdefault(base, []).append(rid)
+        return (rid, why)
 
 
 def _split_eq(raw):
@@ -265,6 +375,11 @@ def roll_upsert(c, uid, equipment=None, name=None, entry_pos=None, contact_face=
     ensure_table(c)
     name = str(name or '').strip() if name is not None else None
     cur = c.cursor()
+    # **在るロールの索引は1回だけ作って使い回す**（§9.246 ⑤）。前段の
+    # 引き当てと後段の重複判定が**同じ写し**を見ることが要点——別々に
+    # SELECTすると、同じ行が2度目で別扱いになりうる。
+    cur.execute(f'SELECT [ロールID],[設備名],[ロール名],[接触面] FROM [{TABLE}]')
+    index = RollIndex(cur.fetchall())
     prev = None
     if roll_id is not None:
         cur.execute(f'SELECT * FROM [{TABLE}] WHERE [ロールID]=?', [roll_id])
@@ -282,11 +397,20 @@ def roll_upsert(c, uid, equipment=None, name=None, entry_pos=None, contact_face=
     if prev is None and roll_id is None and name and equipment is not None:
         want_eq = _norm_eq(equipment)
         if want_eq:
-            cur.execute(f'SELECT [ロールID],[設備名],[ロール名] FROM [{TABLE}]')
-            for rid, reo, rnm in cur.fetchall():
-                if _norm_eq(reo) == want_eq and str(rnm or '').strip() == name:
-                    roll_id = rid
-                    break
+            # **接触面まで見て引き当てる**（§9.246 ⑤）。ここが(設備,名前)だけ
+            # だったため、接触面ちがいの同名ロール（上／下／上下）を取り込むと
+            # **同じ行を上書きし続け、最後の1行しか残らなかった**。
+            #
+            # **引き当ての規則は`RollIndex`の1箇所**。ここへインラインで
+            # 比較を書くと、同じ規則が`import_rows()`にも要る＝2箇所になる。
+            hit, why = index.find(equipment, name, contact_face)
+            if why == 'ambiguous':
+                # 接触面を言われていないのに、面ちがいで複数在る。**黙って
+                # どれかを上書きしない**（§CLAUDE 4）——それが今回直した欠損。
+                raise ValueError('%s の「%s」は接触面ちがいで複数登録されています。'
+                                 'どれを直すか決められないので、接触面も指定して'
+                                 'ください。' % (equipment, name))
+            roll_id = hit
             if roll_id is not None:
                 cur.execute(f'SELECT * FROM [{TABLE}] WHERE [ロールID]=?', [roll_id])
                 row = cur.fetchone()
@@ -354,19 +478,21 @@ def roll_upsert(c, uid, equipment=None, name=None, entry_pos=None, contact_face=
     # 既存の行の設備や名前を**既に在る組み合わせへ書き換えられた**
     # （画面からは「保存できた」ように見えて、次に開くと同じ設備に同名が
     # 2本並ぶ。ピッチ判定に同じロールが別々の径で二重に出る）。
-    cur.execute(f'SELECT [ロールID],[設備名],[ロール名] FROM [{TABLE}]')
-    hit_id = None
-    for rid, reo, rnm in cur.fetchall():
-        if _same_eq(reo, eq) and str(rnm or '').strip() == name:
-            hit_id = rid
-            break
+    # **接触面まで含めて1本**（§9.246 ⑤）。ここが(設備,名前)だけだったため、
+    # 現場にある「同じロール名の上／下／上下」を**登録すらできなかった**。
+    face_now = vals['接触面']
+    hit_id, _why = index.find(eq, name, face_now)
     if prev is None:
         if hit_id is not None:
             roll_id = hit_id          # 同じ組み合わせ＝上書き（取り込みもここを通る）
     elif hit_id is not None and hit_id != roll_id:
-        raise ValueError('「%s」は %s に登録済みです。同じ設備に同じ名前の'
-                         'ロールを2つ置けません（どちらの径で判定するか'
-                         '決まりません）。' % (name, eq))
+        # **断る理由に接触面を出す**（§CLAUDE 6）——「同じ名前」だけだと、
+        # 接触面を変えれば置けることに気づけない。
+        raise ValueError('「%s」（接触面 %s）は %s に登録済みです。同じ設備に'
+                         '同じ名前・同じ接触面のロールを2つ置けません'
+                         '（どちらの径で判定するか決まりません）。'
+                         '上下で別のロールなら接触面を分けてください。'
+                         % (name, face_now or '未設定', eq))
     if roll_id is None:
         keys = ','.join(f'[{k}]' for k in vals)
         marks = ','.join('?' for _ in vals)
@@ -450,12 +576,13 @@ def migrate_single_equipment(c, uid='migrate:roll'):
     except Exception:
         pass                      # 目印が読めなくても移行そのものは冪等
     cur = c.cursor()
-    cur.execute(f'SELECT [ロールID],[設備名],[ロール名] FROM [{TABLE}]')
+    cur.execute(f'SELECT [ロールID],[設備名],[ロール名],[接触面] FROM [{TABLE}]')
     rows = cur.fetchall()
-    # いま在る自然キー。割った先の衝突を見るのに使う。
-    seen = {(_norm_eq(e), str(n or '').strip()) for _i, e, n in rows}
+    # いま在る自然キー。割った先の衝突を見るのに使う。**鍵の作り方を
+    # 2種類残さない**（§9.246 ⑤）——`roll_key()`の1箇所を通す。
+    seen = {roll_key(e, n, f) for _i, e, n, f in rows}
     split_from = made = held = clash = 0
-    for rid, raw, rname in rows:
+    for rid, raw, rname, rface in rows:
         raw = str(raw or '').strip()
         rname = str(rname or '').strip()
         if _norm_eq(raw) == ALL_EQUIPMENTS:
@@ -476,11 +603,11 @@ def migrate_single_equipment(c, uid='migrate:roll'):
         base = dict(zip(cols, src))
         cur.execute(f'UPDATE [{TABLE}] SET [設備名]=?,[更新者ID]=?,[更新日時]=Now() '
                     f'WHERE [ロールID]=?', [targets[0], uid, rid])
-        seen.discard((_norm_eq(raw), rname))
-        seen.add((_norm_eq(targets[0]), rname))
+        seen.discard(roll_key(raw, rname, rface))
+        seen.add(roll_key(targets[0], rname, rface))
         split_from += 1
         for eq in targets[1:]:
-            key = (_norm_eq(eq), rname)
+            key = roll_key(eq, rname, rface)
             if key in seen:
                 clash += 1        # その設備には同名が既に在る＝作らない
                 continue
@@ -627,9 +754,15 @@ def import_rows(c, uid, data, dry_run=True):
                         % '・'.join(missing))
     # いま在る行（自然キー→ID）。**正規化して突き合わせる**——設備名の
     # 全角/半角ゆれで「同じロールが2本」になるのを防ぐ。
-    have = {}
-    for x in roll_rows(c, True):
-        have[(_norm_eq(x['equipment']), x['name'])] = x['id']
+    # **引き当ての規則は`RollIndex`の1箇所**（§9.246 ⑤）。下見が数えたものと
+    # 保存で実際に起きることを同じ規則に決めさせる——別々に持つと
+    # 「追加1・上書き2」と言いながら1行しか残らない、が作れる。
+    index = RollIndex([(x['id'], x['equipment'], x['name'], x['contactFace'])
+                       for x in roll_rows(c, True)])
+    # 同じファイルの中で同じキーが2度出てきたら、**2度目は黙って上書きしない**
+    # （§CLAUDE 4）。上書きすると1行ぶんが消えるのに「取り込みました」としか
+    # 出ないので、**行番号を添えて飛ばす**。
+    seen_rows = {}
 
     def cell(r, key):
         i = pos[key]
@@ -678,12 +811,30 @@ def import_rows(c, uid, data, dry_run=True):
             skipped.append({'row': i, 'name': name,
                             'why': 'ロール径MINがMAXより大きくなっています'})
             continue
-        key = (_norm_eq(eq), name)
-        if have.get(key):
+        key = roll_key(eq, name, vals.get('contactFace'))
+        if key in seen_rows:
+            skipped.append({'row': i, 'name': name,
+                            'why': '同じ（設備・ロール名・接触面）の行が%d行目にもあります。'
+                                   'どちらの値で保存するか決められないので飛ばしました'
+                                   '（接触面を分けるか、片方を消してください）。'
+                                   % seen_rows[key]})
+            continue
+        seen_rows[key] = i
+        # **`take()`は拾った行を使い済みにする**——面が空の行は1本しか無いので、
+        # 2行目も「上書き」と数えると下見の件数が実際と食い違う。
+        rid, why = index.take(eq, name, vals.get('contactFace'))
+        if why == 'ambiguous':
+            # 接触面の列が無いシートを、面で割った後のマスタへ取り込んだ場合。
+            # **どれを直すか決められないので断る**（黙って1本を上書きしない）。
+            skipped.append({'row': i, 'name': name,
+                            'why': 'この設備の「%s」は接触面ちがいで複数登録されて'
+                                   'います。接触面の列を足して、どれを直すかを'
+                                   '決めてください。' % name})
+            continue
+        if rid is not None:
             update += 1
         else:
             add += 1
-            have[key] = -1                # 同じファイルの中の重複を2件と数えない
         plans.append(vals)
     result = {'total': len(rows) - 1, 'add': add, 'update': update,
               'skipped': skipped, 'sheet': book['sheet'], 'dryRun': bool(dry_run)}

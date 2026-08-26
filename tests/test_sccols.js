@@ -112,9 +112,12 @@ async function cleanup(){
   rec('行の高さは幅を変えても一定',v.rowHeights.length===1,JSON.stringify(v.rowHeights));
 
   /* ---- 5) 項目を増やすと列が増える(内容表示マスタが「何を出すか」を決める)
-     **内容の項目はscheduleモードでだけ読み込む**(scState.fullControl)。
-     編集モードは自端末の設備を見るだけの簡易表示で、既定の項目で出る
-     ——ここを間違えると「項目を変えても何も起きない」と誤診断する。 */
+     **内容表示マスタはモードによらず読む**（§9.246 ②で訂正。以前は
+     scheduleモードだけで、編集モードは既定の4項目へ落ちていた——
+     同じ表が2通りの姿を持っており、モードを一往復すると直るという形で
+     実機から報告された）。下の`mode:'schedule'`は**このあとの手順が
+     全体俯瞰から入る作りだから**残してある（モードの前提ではない）。
+     編集モードとの一致は`tests/test_scmodecols.js`が見る。 */
   const more=[...keys,'鋳造番号'];
   await post('/api/schedule-content-master',{equipment:EQ,items:more,user_id:'test'});
   await post('/api/access-mode',{mode:'schedule'});

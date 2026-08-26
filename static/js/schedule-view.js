@@ -2505,7 +2505,27 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   // 列表示マスタ(§9.18)・内容表示マスタは renderTimeline() が「内容」欄の
   // 組み立てに使うため、**描画より先に**揃える必要がある(後から取得すると
   // 初回描画が未設定のまま出て、直後に列が変わるちらつきが起きる)。
-  if(scState.fullControl){jobs.push(loadScheduleColumnPrefs(),loadScheduleContentPrefs())}
+  /* ---------- 「どの項目を出すか」はモードによらず読む（§9.246 ②） ----------
+     利用者の報告:
+       「編集モードから作業スケジュール表をみると表示列の項目数が明らかに
+        少ないです。スケジュールモードに切り替えてからすぐに編集モードに
+        切り替えると表示列数がスケジュールモードと同じになります」
+
+     以前はここが`if(scState.fullControl)`（＝scheduleモードだけ）で
+     **内容表示マスタを一度も読んでいなかった**ので、編集モードでは
+     `scContentPrefs.items`がnullのまま＝`chosenContentKeys()`が既定の
+     4項目へ落ちていた。`scContentPrefs`はモジュール変数なので、モードを
+     一往復すると値が残り、`chosenContentKeys()`はモードを見ない
+     ——**「切り替えると直る」の正体がこれ**（同じ画面が2通りの姿を持って
+     いた）。**見えるものはモードで変えない。変えるのは書けるかどうかだけ。**
+
+     **仕掛一覧の表示列（スケジュール列マスタ）はここに混ぜない**——読む側
+     （`list-view.js`の`canPlan`）がscheduleモードでしか使わないので、
+     編集モードで読んでも1つも効かないうえ、`loadScheduleColumnPrefs()`は
+     末尾で`refreshScheduledLotFilter()`＝仕掛一覧の組み直しを呼ぶ
+     （§9.224 ①。見えないもののために見えているものを止めない）。 */
+  jobs.push(loadScheduleContentPrefs());
+  if(scState.fullControl)jobs.push(loadScheduleColumnPrefs());
   /* 内容の列の見せ方(並び・幅・表示名・書式・読み替え)も同じ理由で先に。
      読めなくても既定で出る(fail-open)。 */
   jobs.push(WL.columnLayout.load(timelineTarget()));
@@ -6678,6 +6698,15 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     **保存先だけが2つに分かれる。** 「どの項目を出すか」はスケジュール内容
     表示マスタ、それ以外は列レイアウトマスタ。**振り分けはこの1箇所**で行い、
     パネルには知らせない（画面を割る理由にはしない）。 */
+ /* 内容欄の項目を足せる場面か（§9.246 ②）。**scheduleモードだけではない**
+    ——保存の口（`POST /api/schedule-content-master`）は`masters`Blueprintに
+    在り、`_WRITE_ALLOWED_MODES['masters']={'edit'}`＋
+    `_ENDPOINT_EXTRA_MODES['masters.schedule_content_master_save']={'schedule'}`
+    なので、**塞がっているのは閲覧モードだけ**。判定はここ1箇所で、
+    候補の一覧と案内の文言が同じものを見る（2箇所に置くと、片方だけ直した
+    「候補は並ぶのに保存で断られる」状態が作れる）。 */
+ const canPickContentItems=()=>(((window.accessMode&&accessMode.mode)||'edit')!=='view');
+
  function contentPanelSource(){
   const eq=scState.equipment;
   return {
@@ -6691,8 +6720,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
        +'区分・日付・操作などの列もここで消せます（<b>1列目の取っ手</b>は掴む場所なので残ります）。'
        +'<b>計算式の列</b>を足せます（名前を付けて式を書くと、その式の結果が並びます）。'
        +'触った結果はすぐスケジュール表に出ます（<b>保存するまでは元に戻せます</b>）。'
-       +(scState.fullControl?'':'<br><b>この端末では内容欄に新しい項目を足せません</b>'
-         +'（項目を選べるのはスケジュールモードだけ。並び・幅・出す出さないはここで変えられます）。'),
+       +(canPickContentItems()?'':'<br><b>閲覧モードでは内容欄に新しい項目を足せません</b>'
+         +'（保存できるのは編集モードとスケジュールモードです。並び・幅・出す出さないの'
+         +'見え方はここで変えられますが、保存はできません）。'),
    target:()=>timelineTarget(),
    noTargetToast:'設備を先に選んでください',
    noTargetNote:'内容欄の設定は設備ごとに保存します',
@@ -6705,10 +6735,13 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
        項目しか返さなかったので、設定画面から固定列を消すことも動かすことも
        できなかった。 */
     const chosen=timelineOrderedKeys();
-    /* **足せる項目を並べるのはスケジュールモードだけ**——内容表示マスタを
-       読むのはそちらだけなので(§9.88)、他のモードで足しても効かない。
-       押せるのに何も起きない候補は並べない(§9.120)。 */
-    const all=scState.fullControl?contentCandidateKeys():[];
+    /* **足せるかどうかは「書けるモードか」で決める**（§9.246 ②）。
+       以前は`scState.fullControl`（＝scheduleモードだけ）で塞いでいたが、
+       スケジュール内容表示マスタの保存は`masters`Blueprint＝**editモード**に
+       載っており、`masters.schedule_content_master_save`でscheduleへも
+       開けてある（`backend/access_mode.py`）。塞がっているのは閲覧モード
+       だけなので、**サーバーが通す操作を画面が断っていた**（§4の逆側）。 */
+    const all=canPickContentItems()?contentCandidateKeys():[];
     const seen=new Set(),out=[];
     [...chosen,...all].forEach(k=>{if(k&&!seen.has(k)){seen.add(k);out.push(k)}});
     return out;

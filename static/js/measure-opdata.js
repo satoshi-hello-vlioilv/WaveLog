@@ -453,6 +453,14 @@
     ——組み込みの欄（オペレータ等）へも同じ関数で当てられる。 */
  function applyPresentation(host,def){
   if(!host)return;
+  /* 「選ばない」の札を出すかは**行の設定**（§9.246 ①）。**当てるのはここ**
+     ——`layout()`（測定画面）と`WL.opData.presentation()`（設定窓の見本）が
+     どちらもこの1本を通るので、見本と実物が食い違わない（§9.221 ⑦と同じ
+     約束）。当てる側の`applyBlankPolicy()`は**DOMの印だけ**を見るので、
+     候補を入れ直したあと（`applyContextChoices()`→`syncWidgets()`）にも
+     定義を持ち歩かずに当て直せる。 */
+  if(def&&def.noBlank)host.dataset.opNoblank='1';else delete host.dataset.opNoblank;
+  applyBlankPolicy(host);
   const at=String(def.unitPlace||'外下左');
   const align=String(def.align||'自動');
   const fmt=String(def.valueFormat||'そのまま');
@@ -567,6 +575,53 @@
     次の組み直しで「選択肢の1つ」としてボタンに並ぶ。 */
  function optionsOf(sel){
   return [...sel.options].filter(o=>o.dataset.opFree!=='1').map(o=>({v:o.value,t:o.text}));
+ }
+ /* ---------- 「選ばない」の札はどれか（§9.246 ①、利用者の報告） ----------
+    「操業データ項目マスタで空欄の札を出さないに設定しても、自動の項目
+     (役割が設定されている項目)の場合、選択自体はできているが、それが
+     有効になりません。実際に適用された入力画面を見ると、空欄の札である
+     「－」が出たままになっています」
+
+    **空文字だけではない。** 組み込みの選択欄（オペレータ・検査員・
+    板厚/板幅測定器・内径・スプール）の候補は`base.js`の`optionFill()`が
+    入れており、**先頭へ`-`を1つ足す**——未選択の札の値は`''`ではなく`'-'`。
+    `noBlank`の絞り込みが`o.v!==''`しか見ていなかったので、
+    **組み込みの欄では一度も効いていなかった**。
+
+    設定窓の見本はマスタの値（`def.choices`）だけから部品を作るので`—`が
+    出ず、**見本と実物が食い違う**という形で出ていた（利用者の証拠③④）。
+
+    **判定はここ1箇所。** `o.t==='-'`まで見るのは、`syncWidget()`の
+    `is-empty`判定・入切の`sel.value!=='-'`・札のラベル生成が既に同じ約束で
+    書かれているため（`-`＝未選択、はこの画面全体の既定の読み方）。 */
+ const isBlankOpt=o=>o.v===''||o.v==='-'||o.t==='-';
+ const isBlankVal=v=>{const s=String(v==null?'':v).trim();return s===''||s==='-'};
+ /* 選ばせてよい候補だけ。**器を作る側も浮き窓も同じこれを通す**
+    ——別々に絞ると、形を変えたときだけ「—」が戻る状態が作れる。 */
+ const pickableOpts=(opts,def)=>(def&&def.noBlank)?opts.filter(o=>!isBlankOpt(o)):opts;
+ /* 素の`<select>`にも当てる（§9.246 ①）。ボタン系の札を落とすだけでは
+    **プルダウン・一覧では「—」が残る**（利用者「セグメント以外のUIに
+    変えても改善しません」）。
+
+    **値は作らないこと。** 先頭の候補を勝手に選ぶと、利用者が選んでいない
+    値が記録へ入る（§9.204と同じ罠）。空欄のままなら`selectedIndex=-1`で
+    **何も選ばれていない**ことをそのまま出す——「自動で持ってくるものが
+    なければ未選択」（利用者の証拠⑤）がこれ。
+
+    消さずに`hidden`＋`disabled`で伏せるのは、`noBlank`を外したときに
+    **候補を取り直さずに戻せる**ようにするため。 */
+ function applyBlankPolicy(host){
+  if(!host)return;
+  const sel=host.querySelector(':scope>select');
+  if(!sel)return;
+  const off=host.dataset.opNoblank==='1';
+  [...sel.options].forEach(o=>{
+   const want=off&&isBlankOpt({v:o.value,t:o.text});
+   if(o.hidden!==want)o.hidden=want;
+   /* `hidden`だけだと、選ばれている札は閉じた欄にそのまま出る。 */
+   if(o.disabled!==want)o.disabled=want;
+  });
+  if(off&&isBlankVal(sel.value)&&sel.selectedIndex>=0)sel.selectedIndex=-1;
  }
  /* **値を持つのは`<select>`とはかぎらない**（§9.219 ③）。数値の欄
     （縦割数・横割数や自由項目の数値）は`<input>`なので、器を被せる側は
@@ -1099,8 +1154,8 @@
   }else if(kind==='入切'){
    /* 入切（§9.226 ①）。**入＝先頭の空でない値／切＝空**。3つ以上あっても
       使うのは先頭だけなので、そのことを文字で書く（§4）。 */
-   const on=opts.find(o=>o.v!=='')||{v:'',t:''};
-   const more=opts.filter(o=>o.v!=='').length;
+   const on=opts.find(o=>!isBlankOpt(o))||{v:'',t:''};
+   const more=opts.filter(o=>!isBlankOpt(o)).length;
    box.className='opf-widget opf-switch';
    box.innerHTML='<button type="button" class="opf-switch-btn" role="switch" aria-checked="false"'
     +' data-op-on="'+esc(on.v)+'" data-op-on-label="'+esc(on.t||'入')+'" data-op-off-label="切">'
@@ -1128,7 +1183,7 @@
       表示が大きいのでそれをなしにしたり初期値設定したりできるようにしたい」）
       ——ラジオやトグルでは「—」の札が1枚ぶんの場所を取る。初期値と
       組み合わせれば、最初から1つ選ばれた状態で出せる。 */
-   const list=(stage||def.noBlank)?opts.filter(o=>o.v!==''):opts;
+   const list=stage?opts.filter(o=>!isBlankOpt(o)):pickableOpts(opts,def);
    box.innerHTML='<div class="opf-shape">'+list.map((o,i)=>{
     const label=(o.v===''||o.t==='-')?'—':o.t;
     const tip=noteOf(def,o.v);
@@ -1276,7 +1331,10 @@
   if(fnd)fnd.placeholder=def.freeText?'絞り込む／候補にない値を打つ':'絞り込む';
   const find=el.querySelector('#opfPickerFind');
   const list=el.querySelector('#opfPickerList');
-  const opts=optionsOf(sel);
+  /* **浮き窓も同じ絞り込みを通す**（§9.246 ①）——ここだけ`noBlank`を
+     見ていなかったので、「一覧」「プルダウン＋手打ち」の▾から
+     「（選ばない）」が選べたままだった。 */
+  const opts=pickableOpts(optionsOf(sel),def);
   const free=!!def.freeText;
   const draw=()=>{
    const raw=String(find.value||'').trim();
@@ -1814,6 +1872,13 @@
     印を合わせに行く。忘れると**値は入っているのにボタンがどれも選ばれて
     いない**という、いちばん分かりにくい形で壊れる。 */
  function syncWidgets(){
+  /* **候補を入れ直すと「選ばない」の札が戻る**（§9.246 ①）。
+     `applyContextChoices()`（`records-store.js`）は`optionFill()`で
+     `<select>`の中身を丸ごと作り直すので、そのたびに`-`が先頭へ復活する。
+     印（`data-op-noblank`）はホスト側に残っているので、ここで当て直す
+     ——**この関数は候補を入れ直した直後に必ず呼ばれる**（記録の復元・
+     プリセット・マスタの取り直しが全部ここを通る）。 */
+  document.querySelectorAll('[data-op-noblank="1"]').forEach(applyBlankPolicy);
   document.querySelectorAll('.selectors>.opf-alt').forEach(syncWidget);
  }
 

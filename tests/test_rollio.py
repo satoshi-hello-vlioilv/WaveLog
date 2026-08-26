@@ -9,7 +9,8 @@
  2. **利用者がExcelで作った形**を読める——共有文字列(sharedStrings)・
     空セルの省略・シート名/rIdが任意・行番号の飛び
  3. 先頭ゼロ（`007`）が数値へ落ちない
- 4. 突き合わせは**(設備名, ロール名)**。設備が違えば同名でも別の行
+ 4. 突き合わせは**(設備名, ロール名, 接触面)**（§9.246 ⑤）。設備が違えば
+    同名でも別の行。**接触面ちがいの同名ロール（上／下／上下）も別の行**
  5. **下見（保存しない）ができる**——何件追加・何件上書きかを書く前に返す
  6. **飛ばした行は理由つきで返す**（黙って減らさない）
  7. 壊れたファイルは**例外ではなく理由**で断る
@@ -308,6 +309,119 @@ try:
                         write_sheet(['よくわからない列'], [['x']])).decode()})
     rec('見出しが違うファイルは理由つきで断る',
         code == 400 and 'ロール名' in (r7.get('error') or ''), json.dumps(r7, ensure_ascii=False))
+    # ---- 8) 接触面ちがいの同名ロールを潰さない（§9.246 ⑤、利用者の指示） ----
+    #
+    #   「ロールマスタの接触面は『上』『下』だけではなく、『上下』というものも
+    #    存在するので、インポート時にデータ欠損させないように修正してください」
+    #
+    # 直す前は自然キーが (設備名, ロール名) だけだったので、この3行を取り込むと
+    # `roll_upsert()` が同じ行を引き当てて**上書きし続け、最後の1行しか
+    # 残らなかった**。**3件とも別の行として残ること**を見る。
+    # **件数だけを見ないこと**——径まで突き合わせないと、3行あっても中身が
+    # 同じ（＝最後の値で全部上書き）という壊れ方を見逃す。
+    FACES = [('上', 101.0), ('下', 102.0), ('上下', 103.0)]
+    def face_row(face, dmax):
+        r = [''] * len(head)
+        r[hi('設備名')] = EQ
+        r[hi('ロール名')] = TAG + 'FACE'
+        r[hi('接触面')] = face
+        r[hi('ロール径MAX')] = dmax
+        return r
+    code, rf = post('/api/roll-master/import', {
+        'user_id': 'test', 'apply': True,
+        'fileBase64': base64.b64encode(
+            write_sheet(tuple(head), [face_row(f, d) for f, d in FACES])).decode()})
+    rec('接触面ちがいの3行が3件とも取り込まれる（欠損しない）',
+        code == 200 and rf.get('saved') == 3 and rf.get('add') == 3,
+        json.dumps(rf, ensure_ascii=False))
+    got = {x['contactFace']: x for x in getj('/api/roll-master')['items']
+           if x['name'] == TAG + 'FACE'}
+    rec('上・下・上下がそれぞれ別の行として残る',
+        sorted(got) == ['上', '上下', '下'], json.dumps(sorted(got), ensure_ascii=False))
+    rec('3行それぞれの径がそのまま入る（最後の1行で塗り潰されていない）',
+        all(got.get(f, {}).get('diaMax') == d for f, d in FACES),
+        json.dumps({k: v.get('diaMax') for k, v in got.items()}, ensure_ascii=False))
+    # 2回目は**上書き**（増やさない）。キーを足しただけで往復が壊れていないか。
+    code, rf2 = post('/api/roll-master/import', {
+        'user_id': 'test', 'apply': True,
+        'fileBase64': base64.b64encode(
+            write_sheet(tuple(head), [face_row(f, d + 1) for f, d in FACES])).decode()})
+    again = [x for x in getj('/api/roll-master')['items'] if x['name'] == TAG + 'FACE']
+    rec('同じファイルをもう一度取り込んでも増えない（3件を上書き）',
+        rf2.get('update') == 3 and rf2.get('add') == 0 and len(again) == 3,
+        json.dumps({'res': rf2, 'rows': len(again)}, ensure_ascii=False))
+    # 画面（登録API）からも2本目を置ける。直す前は「同じ名前のロールを2つ
+    # 置けません」で弾かれ、**現場のロールを登録すらできなかった**。
+    code, rn = post('/api/roll-master', {
+        'user_id': 'test', 'equipment': EQ, 'name': TAG + 'UI', 'contactFace': '上',
+        'diaMax': 200})
+    code2, rn2 = post('/api/roll-master', {
+        'user_id': 'test', 'equipment': EQ, 'name': TAG + 'UI', 'contactFace': '下',
+        'diaMax': 201})
+    ui = [x for x in getj('/api/roll-master')['items'] if x['name'] == TAG + 'UI']
+    rec('画面からも接触面ちがいの同名ロールを2本登録できる',
+        code == 200 and code2 == 200 and len(ui) == 2,
+        json.dumps({'1': code, '2': code2, 'rows': len(ui),
+                    'err': rn2.get('error')}, ensure_ascii=False))
+    # **同じ接触面**の2本目は今までどおり断る（どちらの径で判定するか決まらない）。
+    code3, rn3 = post('/api/roll-master', {
+        'user_id': 'test', 'equipment': EQ, 'name': TAG + 'UI2', 'contactFace': '上',
+        'diaMax': 300})
+    code4, rn4 = post('/api/roll-master/update', {
+        'user_id': 'test', 'id': [x for x in getj('/api/roll-master')['items']
+                                  if x['name'] == TAG + 'UI'][1]['id'],
+        'equipment': EQ, 'name': TAG + 'UI2', 'contactFace': '上'})
+    rec('同じ接触面の同名ロールは今までどおり断る（理由に接触面を出す）',
+        code4 == 400 and '接触面' in (rn4.get('error') or ''),
+        json.dumps(rn4, ensure_ascii=False))
+    # **接触面の列を持たないシート**を、面で割ったあとのマスタへ取り込むと、
+    # (設備,ロール名)では3本とも当たる——**どれを直すか決められない**ので
+    # 黙って1本を上書きせず、理由つきで断る（§CLAUDE 4）。
+    # ※ここが「キーを足すだけでは足りない残りの穴」。
+    noface_head = [h for h in head if h != '接触面']
+    nf = [''] * len(noface_head)
+    nf[noface_head.index('設備名')] = EQ
+    nf[noface_head.index('ロール名')] = TAG + 'FACE'
+    nf[noface_head.index('ロール径MAX')] = 999.0
+    code, ra = post('/api/roll-master/import', {
+        'user_id': 'test', 'apply': True, 'fileBase64': base64.b64encode(
+            write_sheet(tuple(noface_head), [nf])).decode()})
+    still = {x['contactFace']: x.get('diaMax')
+             for x in getj('/api/roll-master')['items'] if x['name'] == TAG + 'FACE'}
+    rec('接触面の列が無いシートは、面ちがいが複数あるとき断る（黙って潰さない）',
+        code == 200 and ra.get('saved', 0) == 0
+        and '接触面ちがいで複数' in json.dumps(ra.get('skipped'), ensure_ascii=False),
+        json.dumps(ra, ensure_ascii=False))
+    rec('断ったので3本の径は1つも書き換わっていない',
+        len(still) == 3 and 999.0 not in still.values(),
+        json.dumps(still, ensure_ascii=False))
+    # **接触面がまだ空の行**（この機能より前の行）は、面を書いた行が来たら
+    # **その行へ書き足す**——増やさない（書き出す→面を足す→取り込む の往復）。
+    code, _ = post('/api/roll-master', {'user_id': 'test', 'equipment': EQ,
+                                        'name': TAG + 'BLANK', 'diaMax': 10})
+    code, rb = post('/api/roll-master/import', {
+        'user_id': 'test', 'apply': True, 'fileBase64': base64.b64encode(
+            write_sheet(tuple(head), [(lambda r: r)([
+                (EQ if h == '設備名' else (TAG + 'BLANK') if h == 'ロール名'
+                 else '上' if h == '接触面' else 11.0 if h == 'ロール径MAX' else '')
+                for h in head])])).decode()})
+    bl = [x for x in getj('/api/roll-master')['items'] if x['name'] == TAG + 'BLANK']
+    rec('接触面が空の既存行には書き足す（往復で二重にならない）',
+        len(bl) == 1 and bl[0]['contactFace'] == '上' and bl[0]['diaMax'] == 11.0
+        and rb.get('update') == 1 and rb.get('add') == 0,
+        json.dumps({'rows': len(bl), 'res': rb,
+                    'row': bl[0] if bl else None}, ensure_ascii=False))
+
+    # ファイルの中に同じキーが2行あったら、**黙って上書きせず行番号で言う**。
+    dup = [face_row('上', 501.0), face_row('上', 502.0)]
+    code, rd = post('/api/roll-master/import', {
+        'user_id': 'test', 'fileBase64': base64.b64encode(
+            write_sheet(tuple(head), dup)).decode()})
+    rec('同じファイルの中の重複は黙って潰さず行番号で断る',
+        code == 200 and len(rd.get('skipped') or []) == 1
+        and '2行目' in json.dumps(rd.get('skipped'), ensure_ascii=False),
+        json.dumps(rd.get('skipped'), ensure_ascii=False))
+
     code, r8 = post('/api/roll-master/import',
                     {'user_id': 'test', 'fileBase64': base64.b64encode(b'not a zip').decode()})
     rec('xlsxでないファイルは理由つきで断る',
