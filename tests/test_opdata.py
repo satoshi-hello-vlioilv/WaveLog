@@ -512,6 +512,70 @@ try:
     rec('知らない鍵は保存しない', lim_row().get('maxFrom') == '',
         json.dumps(lim_row().get('maxFrom'), ensure_ascii=False))
 
+    # ---- 10b) 「空欄の札を出さない」は族で判定する（§9.244） ----
+    # 利用者の報告:「操業データ項目マスタで空欄の札を出さないに設定しても、
+    # 自動の項目の場合、それが有効になりません」。
+    #
+    # 原因は`_row_to_item`が`[型]`で判定していたこと（§9.229 ③と同じ罠）。
+    # **組み込みの選択欄はどれも`[型]='文字'`**で、選択肢は`[選択肢名]`の
+    # ほうで結んである——画面(`opIsChoiceLike()`)は既に族で見ていたので、
+    # **書き込みは通るのに読むと必ずFalse**という形で出ていた。
+    #
+    # **確かめるのは組み込みの欄**（`[型]='選択'`の項目だけを見る網では
+    # 直す前でも通る）。内径は`autoFill='preset'`＝利用者の言う「自動の項目」。
+    def row_named(nm):
+        return next((x for x in get('/api/operation-item-master')['items']
+                     if x.get('name') == nm), {})
+    nb_target, nb_saved = None, None
+    for nm in ('内径', 'コイル止め', 'バリ揃え', 'オペレータ'):
+        r = row_named(nm)
+        if r.get('builtin') and r.get('widgetFamily') == 'choice':
+            nb_target, nb_saved = nm, r.get('noBlank')
+            break
+    if not nb_target:
+        rec('組み込みの選択欄がある（前提）', False, '見つかりません')
+    else:
+        base = row_named(nb_target)
+        rec('組み込みの選択欄の型は「文字」のまま（選択肢は[選択肢名]で結ぶ）',
+            base.get('type') != '選択' and base.get('widgetFamily') == 'choice',
+            '%s: type=%s family=%s' % (nb_target, base.get('type'), base.get('widgetFamily')))
+        post('/api/operation-item-master/update', {
+            'id': base['id'], 'name': nb_target, 'user_id': 'tests', 'noBlank': True})
+        # **保存できることと読み戻せることは別**——ここが割れていたのが不具合。
+        rec('「出さない」が読み戻せる（組み込みの選択欄）',
+            row_named(nb_target).get('noBlank') is True,
+            '%s / autoFill=%s' % (row_named(nb_target).get('noBlank'), base.get('autoFill')))
+        post('/api/operation-item-master/update', {
+            'id': base['id'], 'name': nb_target, 'user_id': 'tests', 'noBlank': False})
+        rec('「出す」へ戻せる', row_named(nb_target).get('noBlank') is False)
+        # **戻す**（組み込みの行は消せないので、触ったら必ず元へ・§9.121）。
+        if nb_saved is not None:
+            post('/api/operation-item-master/update', {
+                'id': base['id'], 'name': nb_target, 'user_id': 'tests',
+                'noBlank': bool(nb_saved)})
+
+    # 選択肢を持たない族では倒しておく（空の札という概念が無い）。
+    code, res = post('/api/operation-item-master', {
+        'name': TAG + '-空欄', 'type': '正の数', 'user_id': 'tests',
+        'equipment': '*', 'group': TAG, 'noBlank': True})
+    nb_id = res.get('id')
+    if nb_id:
+        made_items.append(nb_id)
+    nb_row = lambda: next((x for x in get('/api/operation-item-master')['items']
+                           if x['id'] == nb_id), {})
+    rec('数の欄では「空欄の札」を持たない',
+        nb_row().get('widgetFamily') == 'number' and nb_row().get('noBlank') is False,
+        '%s / %s' % (nb_row().get('widgetFamily'), nb_row().get('noBlank')))
+    # 自動で入る値（族=output）も同じ——画面が値を入れるので選ぶ札が無い。
+    auto_key = (get('/api/operation-item-master').get('autoValues') or [{}])[0].get('key', '')
+    if auto_key:
+        post('/api/operation-item-master/update', {
+            'id': nb_id, 'name': TAG + '-空欄', 'type': '文字', 'user_id': 'tests',
+            'equipment': '*', 'group': TAG, 'autoValue': auto_key, 'noBlank': True})
+        rec('自動で入る値では「空欄の札」を持たない',
+            nb_row().get('widgetFamily') == 'output' and nb_row().get('noBlank') is False,
+            '%s / %s' % (nb_row().get('widgetFamily'), nb_row().get('noBlank')))
+
     # ---- 11) IDが無ければ断る（黙って新規を作らない） ----
     code, res = post('/api/operation-item-master/update', {'name': 'x', 'user_id': 'tests'})
     rec('更新にIDが無ければ断る', code == 400, '%s %s' % (code, res.get('error')))

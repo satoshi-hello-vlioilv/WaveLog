@@ -217,13 +217,23 @@ run(){
   # 間に合っていただけで、テストを1本足すだけで崩れる。curl 1回で防ぐ。
   server_up || restart_server || echo "!! サーバーを起動できないまま $2 を実行します" >&2
   t0=$(date +%s)
-  out=$($1 "$2" 2>&1)
+  out=$($1 "$2" 2>&1); rc=$?
   # 1本ぶんの生ログを残したいときだけ（既定は残さない）。落ちた場所を
   # 探すのに要る——要約だけでは「どのPASSまで進んだか」が分からない。
   if [ -n "$WAVELOG_TEST_LOGDIR" ]; then printf '%s\n' "$out" > "$WAVELOG_TEST_LOGDIR/$2.log"; fi
   dt=$(( $(date +%s) - t0 ))
   p=$(echo "$out" | grep -c '^PASS'); f=$(echo "$out" | grep -c '^FAIL')
   fatal=$(echo "$out" | grep -c 'FATAL')
+  # **途中で落ちたテストを「全部PASS」と数えない。** Pythonのテストが
+  # 例外で止まると、そこまでのPASSだけが出力に残り FAIL も 'FATAL' の字も
+  # 出ない——実際に `test_opdata.py` が NameError で止まったまま
+  # 「59 PASS / 0 FAIL」と表示された。**赤いまま残っている網は網ではないが、
+  # 緑に見えている壊れた網はもっと悪い**（§9.200）。終了コードで見る。
+  if [ "$rc" -ne 0 ] && [ "$f" -eq 0 ] && [ "$fatal" -eq 0 ]; then
+    fatal=1
+    out="$out
+FATAL: 途中で終了しました (exit $rc)。最後のPASSの直後を見てください。"
+  fi
   TOT=$((TOT+p+f)); NG=$((NG+f+fatal))
   TIMES="$TIMES$dt $((p+f)) $2\n"
   printf '%-24s %3d PASS / %d FAIL  %4ds%s\n' "$2" "$p" "$f" "$dt" "$([ $fatal -gt 0 ] && echo ' [FATAL]')"
