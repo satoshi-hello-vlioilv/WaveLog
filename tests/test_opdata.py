@@ -539,20 +539,33 @@ try:
         rec('組み込みの選択欄の型は「文字」のまま（選択肢は[選択肢名]で結ぶ）',
             base.get('type') != '選択' and base.get('widgetFamily') == 'choice',
             '%s: type=%s family=%s' % (nb_target, base.get('type'), base.get('widgetFamily')))
-        post('/api/operation-item-master/update', {
-            'id': base['id'], 'name': nb_target, 'user_id': 'tests', 'noBlank': True})
+        # **`/update`は全列を書く**（§9.113／§9.212 ②）ので、**触らない値も
+        # 送り返すこと**。ここを`id`と`name`だけで呼ぶと、送らなかった`[群]`が
+        # 空で上書きされ、**内径が「その他」の群へ落ちる**——このテスト自身が
+        # 実際にそれを起こし、通しの`test_recvalues`が落ちた。
+        def nb_put(**patch):
+            r = row_named(nb_target)
+            body = {k: r.get(k) for k in
+                    ('id', 'name', 'group', 'place', 'type', 'unit', 'choice',
+                     'decimals', 'min', 'max', 'widget', 'order', 'required',
+                     'enabled', 'initial')}
+            body['equipment'] = r.get('equipmentText') or r.get('equipment') or '*'
+            body['user_id'] = 'tests'
+            body.update(patch)
+            return post('/api/operation-item-master/update', body)
+        nb_put(noBlank=True)
         # **保存できることと読み戻せることは別**——ここが割れていたのが不具合。
         rec('「出さない」が読み戻せる（組み込みの選択欄）',
             row_named(nb_target).get('noBlank') is True,
             '%s / autoFill=%s' % (row_named(nb_target).get('noBlank'), base.get('autoFill')))
-        post('/api/operation-item-master/update', {
-            'id': base['id'], 'name': nb_target, 'user_id': 'tests', 'noBlank': False})
+        rec('触っていない設定は巻き添えにしない（群が残る）',
+            row_named(nb_target).get('group') == base.get('group'),
+            '%s → %s' % (base.get('group'), row_named(nb_target).get('group')))
+        nb_put(noBlank=False)
         rec('「出す」へ戻せる', row_named(nb_target).get('noBlank') is False)
         # **戻す**（組み込みの行は消せないので、触ったら必ず元へ・§9.121）。
         if nb_saved is not None:
-            post('/api/operation-item-master/update', {
-                'id': base['id'], 'name': nb_target, 'user_id': 'tests',
-                'noBlank': bool(nb_saved)})
+            nb_put(noBlank=bool(nb_saved))
 
     # 選択肢を持たない族では倒しておく（空の札という概念が無い）。
     code, res = post('/api/operation-item-master', {
