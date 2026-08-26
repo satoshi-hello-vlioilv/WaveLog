@@ -101,8 +101,12 @@ let b=null,page=null;
   rec('載せているものは色だけでなく文字でも言う',added.文字===true,String(added.文字));
   /* 保存の形は`ラベル=出どころ`（既に登録してある塊が読める形のまま）。 */
   rec('保存の形は「ラベル=出どころ」の並びのまま',
-      added.値.split('\n').length===3&&added.値.split('\n').every(l=>/^[^=]+=[^=]+$/.test(l)),
+      added.値.split('\n').length===3&&added.値.split('\n').every(l=>/^[^=]+=[^=|]+$/.test(l)),
       JSON.stringify(added.値));
+  /* **1マスの項目に`|1`を足さない**（§9.245）——足すと、何も変えていない
+     塊まで保存のたびに形が変わる。 */
+  rec('1マスの項目は今までどおりの1行（|を足さない）',
+      added.値.indexOf('|')<0,JSON.stringify(added.値));
   await page.click(`[data-fb-add="${picks[1]}"]`);
   await page.waitForTimeout(200);
   const removed=await page.evaluate(()=>({
@@ -138,6 +142,84 @@ let b=null,page=null;
   rec('保存した内容がサーバーで項目として読める',
       !!row&&Array.isArray(row.fields)&&row.fields.length===2,
       JSON.stringify(row&&row.fields));
+
+  /* ==========================================================
+     6) マトリクス配置（§9.245、利用者の指示）
+     ----------------------------------------------------------
+       「ブロックごとにデータの配置をどのようなマトリクスに並べるか
+        視覚的に調整できる機能が欲しいです」
+
+     **枠が紙のこの塊そのもの**であること（列数がそのまま効く）と、
+     マス数・空きマスが保存の形へ入って読み戻せることを見る。
+     ========================================================== */
+  /* **保存すると窓は閉じる**（§9.222 ⑦）ので、ここから新しく開き直す。 */
+  await page.click('#masterMaintAdd');
+  await page.waitForSelector('[data-fb]',{timeout:10000});
+  await page.waitForFunction(()=>document.querySelectorAll('.fb-cat').length>0,null,{timeout:10000});
+  await page.waitForTimeout(300);
+  await page.click(`[data-fb-cat="${board.出どころ[0]}"]`);
+  await page.waitForTimeout(250);
+  for(const p of picks.slice(0,2)){await page.click(`[data-fb-add="${p}"]`);await page.waitForTimeout(120)}
+  const grid=await page.evaluate(()=>{
+   const w=document.querySelector('.fb-rows');
+   return {格子:getComputedStyle(w).display,
+     列:getComputedStyle(w).gridTemplateColumns.split(' ').length,
+     つまみ:document.querySelectorAll('.fb-row .fb-spans').length,
+     列ボタン:document.querySelectorAll('.fb-cols [data-fb-cols]').length};
+  });
+  rec('「紙での並び」はマトリクスで出る',grid.格子==='grid',grid.格子);
+  rec('各マスに「横に何マス使うか」のつまみが付く',grid.つまみ>0,String(grid.つまみ));
+  rec('列数は1〜4から選べる',grid.列ボタン===4,String(grid.列ボタン));
+  /* 列数を変えると**枠のほうも変わる**（設定と見た目が別々に動かない）。 */
+  await page.click('.fb-cols [data-fb-cols="3"]');
+  await page.waitForTimeout(200);
+  const c3=await page.evaluate(()=>({
+   列:getComputedStyle(document.querySelector('.fb-rows')).gridTemplateColumns.split(' ').length,
+   欄:document.querySelector('[data-field="cols"]').value,
+   つまみ:document.querySelectorAll('.fb-row:first-child .fb-spans button').length}));
+  rec('列数を変えると枠も変わる',c3.列===3,String(c3.列));
+  /* **同じ数を2箇所に持たない**（§CLAUDE 8）——「内訳の列数」の欄が持ち主。 */
+  rec('列数は「内訳の列数」の欄が持つ',c3.欄==='3',JSON.stringify(c3.欄));
+  rec('マス数の選択肢は列数まで',c3.つまみ===3,String(c3.つまみ));
+  /* 1つ目の項目を「横2マス」にする。 */
+  await page.click('.fb-row:first-child .fb-spans button:nth-child(2)');
+  await page.waitForTimeout(200);
+  const spanned=await page.evaluate(()=>({
+   値:document.querySelector('[data-fb] input[data-field="content"]').value,
+   幅:document.querySelector('.fb-row:first-child').style.gridColumn}));
+  rec('マス数が保存の形へ入る（|2）',/\|2$/.test(spanned.値.split('\n')[0]),
+      JSON.stringify(spanned.値.split('\n')[0]));
+  rec('掴む枠のほうも2マスぶんになる',/span 2/.test(spanned.幅),spanned.幅);
+  /* 空きマス（何も出さずに場所だけ取る）。 */
+  const before=await page.evaluate(()=>document.querySelectorAll('.fb-row').length);
+  await page.click('.fb-blank');
+  await page.waitForTimeout(200);
+  const blanked=await page.evaluate(()=>({
+   行:document.querySelectorAll('.fb-row').length,
+   空:document.querySelectorAll('.fb-row-blank').length,
+   値:document.querySelector('[data-fb] input[data-field="content"]').value}));
+  rec('空きマスを足せる',blanked.行===before+1&&blanked.空===1,JSON.stringify(blanked.行));
+  rec('空きマスは道もラベルも持たない行で書く',
+      blanked.値.split('\n').some(l=>/^\|\d+$/.test(l)),
+      JSON.stringify(blanked.値.split('\n')));
+  /* **サーバーが同じ読み方をすること**——2通りあると設定と紙が食い違う。 */
+  await page.fill('[data-field="name"]',TAG+'マトリクス');
+  /* **対象設備は必須**（新しく開いた窓なので入れ直す）。 */
+  await page.evaluate(()=>{
+   const all=document.querySelector('[data-equipment-all]');
+   if(all&&!all.checked){all.checked=true;all.dispatchEvent(new Event('change',{bubbles:true}))}
+  });
+  await page.click('#maintEditorSave');
+  await page.waitForTimeout(1500);
+  const saved2=await get('/api/report-block-master');
+  const row2=(saved2.items||[]).find(x=>x.name===TAG+'マトリクス');
+  if(row2&&row2.id)made.push(row2.id);
+  const f2=(row2&&row2.fields)||[];
+  rec('サーバーもマス数を読む',
+      f2.length>0&&f2[0].span===2,JSON.stringify(f2[0]));
+  rec('サーバーも空きマスを落とさない',
+      f2.some(f=>f.blank===true),JSON.stringify(f2.map(f=>f.blank)));
+  rec('列数も保存される',String((row2||{}).cols)==='3',JSON.stringify((row2||{}).cols));
 
   rec('画面のエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){

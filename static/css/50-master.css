@@ -1849,4 +1849,55 @@
 .rl-chip-x:hover{background:var(--surface-3);color:var(--ink-2)}
 .rl-drop-mark{position:absolute;width:3px;border-radius:var(--radius-xs);
   background:var(--nav);pointer-events:none;z-index:2}
+
+/* ---- 帳票ブロックの「紙での並び」はマトリクスで出す（§9.245） ----
+   縦1列の一覧では、何列になるのか・どこで折り返すのかが読めない。
+   **枠が紙のこの塊そのもの**なので、列数と各マスの幅がそのまま見える。 */
+.fb-rows.is-matrix{
+  display:grid;grid-template-columns:repeat(var(--fb-cols,2),minmax(0,1fr));
+  gap:var(--gap-tight);align-content:start;
+}
+.fb-rows.is-matrix .fb-empty{grid-column:1/-1}
+.fb-cols{display:inline-flex;align-items:center;gap:var(--gap-tight);margin-left:auto}
+.fb-cols>i{color:var(--muted);font-style:normal;font-size:var(--fs-badge)}
+.fb-cols>button{
+  min-width:var(--ctl-h-xs);min-height:var(--ctl-h-xs);padding:0 var(--space-1);
+  border:1px solid var(--line-soft);border-radius:var(--radius-xs);
+  background:var(--surface);color:var(--ink-3);
+  font-size:var(--fs-badge);font-weight:700;cursor:pointer;
+}
+.fb-cols>button.is-on{background:var(--nav);border-color:var(--nav);color:#fff}
+.fb-hint{margin:0 0 var(--space-1);color:var(--ink-3);font-size:var(--fs-badge)}
+/* マスの中の「横に何マス使うか」。**選んだものだけ濃い**（§9.229 ②）。 */
+.fb-spans{display:inline-flex;gap:1px;border-radius:var(--radius-xs);
+  background:var(--surface-3);overflow:hidden;flex:0 0 auto}
+.fb-spans>button{
+  min-width:calc(var(--ctl-h-xs) - 4px);min-height:var(--ctl-h-xs);
+  padding:0;border:0;border-radius:0;background:none;
+  color:var(--muted);font-size:var(--fs-micro);font-weight:700;cursor:pointer;
+}
+.fb-spans>button:hover{background:var(--surface)}
+.fb-spans>button.is-on{background:var(--nav);color:#fff}
+/* 空きマスは**斜線の地**（§9.222 ③の空きマスと同じ見せ方にそろえる）。 */
+.fb-row-blank{
+  border-style:dashed;color:var(--ink-3);
+  background:repeating-linear-gradient(135deg,
+    var(--surface-2) 0 6px,var(--surface-3) 6px 12px);
+}
+.fb-blank-name{flex:1 1 auto;min-width:0;font-size:var(--fs-badge);font-weight:700;color:var(--ink-3)}
+
+/* マスの中は2段（§9.245）。横1列に並べると3列のときに名前が1文字まで潰れる。 */
+.fb-rows.is-matrix .fb-row{display:block;min-width:0}
+.fb-row-top,.fb-row-bot{display:flex;align-items:center;gap:var(--gap-tight);min-width:0}
+.fb-row-bot{margin-top:2px}
+.fb-rows.is-matrix .fb-label{flex:1 1 auto;min-width:0}
+.fb-rows.is-matrix .fb-path{
+  flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--muted);font-size:var(--fs-micro);
+}
+/* **縮んでよいのは出どころだけ**（§9.229 ⑤）——マス数のつまみと×まで
+   一緒に縮むと、押せない大きさになって折り返す。 */
+.fb-rows.is-matrix .fb-spans,
+.fb-rows.is-matrix .fb-del,
+.fb-rows.is-matrix .fb-grip{flex:0 0 auto}
 }

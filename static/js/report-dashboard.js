@@ -468,9 +468,25 @@
   }));
  }
 
+ /* 節の中身。`rows`は`[ラベル,値]`か`[ラベル,値,{span,blank}]`（§9.245）。
+    **マス数を持つ行が1つでもあれば**グリッドを`--rp-cols`で組み、無ければ
+    今までどおり`rp-grid-N`のまま——**既に登録してある塊の見え方を変えない**。 */
  function reportSection(title,rows,cols){
-  const body=rows.map(([label,value])=>`<div class="rp-field"><span class="rp-field-label">${esc(label)}</span><span class="rp-field-value" title="${esc(value||'-')}">${esc(value||'-')}</span></div>`).join('');
-  return `<section class="rp-section"><h3>${esc(title)}</h3><div class="rp-grid${cols?' rp-grid-'+cols:''}">${body}</div></section>`;
+  const n=Math.max(1,Math.min(12,Number(cols)||2));
+  /* 「マトリクスとして組む」のは、1マスでない行か空きマスがあるときだけ。 */
+  const matrix=rows.some(r=>r&&r[2]&&((Number(r[2].span)||1)>1||r[2].blank));
+  const cell=([label,value,o])=>{
+   const span=Math.max(1,Math.min(n,Number(o&&o.span)||1));
+   const st=matrix?` style="grid-column:span ${span}"`:'';
+   /* 空きマスは**中身を持たない**（場所を取るのが役目）。 */
+   if(o&&o.blank)return `<div class="rp-field rp-field-blank"${st} aria-hidden="true"></div>`;
+   return `<div class="rp-field"${st}><span class="rp-field-label">${esc(label)}</span>`
+    +`<span class="rp-field-value" title="${esc(value||'-')}">${esc(value||'-')}</span></div>`;
+  };
+  const body=rows.map(cell).join('');
+  const cls=matrix?'rp-grid rp-grid-m':('rp-grid'+(cols?' rp-grid-'+cols:''));
+  const st=matrix?` style="--rp-cols:${n}"`:'';
+  return `<section class="rp-section"><h3>${esc(title)}</h3><div class="${cls}"${st}>${body}</div></section>`;
  }
  function dimensionSection(b){
   const row=(label,mat,temper,thick,width,length)=>`<tr><th>${esc(label)}</th><td>${esc(mat||'-')}</td><td>${esc(temper||'-')}</td><td>${esc(fmtDimSafe(thick,3)||'-')}</td><td>${esc(fmtDimSafe(width,1)||'-')}</td><td>${esc(fmtDimSafe(length,1)||'-')}</td></tr>`;
@@ -1179,7 +1195,12 @@
   const area=b.kind==='エリア';
   return {k:b.k||b.name,name:b.name,span:b.span||6,rows:b.rows||(area?5:0),user:true,area,
    html:area?(()=>rpAreaHtml(b.text))
-     :(x=>fields.length?reportSection(b.name,fields.map(f=>[f.label,rpValueAt(x,f.path)]),b.cols||0):'')};
+     /* マス数と空きマスは**そのまま渡す**（§9.245）——ここで潰すと、
+        設定画面で組んだマトリクスが紙では1列ずつの並びに戻る。
+        **空きマスだけの塊は「中身なし」**（紙には出さない）。 */
+     :(x=>fields.some(f=>!f.blank)
+        ?reportSection(b.name,fields.map(f=>[f.label,f.blank?'':rpValueAt(x,f.path),
+                                             {span:f.span,blank:!!f.blank}]),b.cols||0):'')};
  }
  /* その設備の自作ブロックを読む。**読めなくても帳票は出す**（fail-open）。 */
  /* 設備ごとの写し（§9.239 ③）。1設備ぶんしか持たないと、一括印刷で

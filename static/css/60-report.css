@@ -656,4 +656,10 @@
 .rp-stat-table tbody th{text-align:left;white-space:nowrap}
 .rp-stat-table tbody th small{margin-left:.4em;font-weight:400;color:#666}
 .rp-stat-table .rp-stat-na{color:#999;text-align:center}
+
+/* マトリクス配置（§9.245）。列数はJSが`--rp-cols`で渡す——項目ごとに
+   何マス使うかを持つので、`rp-grid-N`の決め打ちでは表せない。 */
+.rp-grid-m{grid-template-columns:repeat(var(--rp-cols,2),minmax(0,1fr))}
+/* 空きマスは**場所を取るだけ**（枠も文字も持たない）。 */
+.rp-field-blank{min-height:1px}
 }
