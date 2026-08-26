@@ -320,6 +320,146 @@ let b=null;
   rec('知らない綴りは空（黙って別の値を出さない）',
       stat.知らない道==='',JSON.stringify(stat));
 
+  /* ==========================================================
+     刷るのは「帳票だけの1枚もの」（§9.244、利用者の指示）
+     ----------------------------------------------------------
+     §9.243で`@page`をそろえてもなお縮んだ。**こちらの割り付けは正しい**
+     （上で確かめている）ので、残る差は**アプリの画面ごと刷っている**
+     ことから来る——伏せた要素も器の幅・`min-width`・`--ui-scale`として
+     版面に関わり得る。紙に出したいものだけの書類を作って刷る。
+
+     **`print()`をすり替えて中身を測る**——ヘッドレスでは印刷ダイアログを
+     開けないので、「窓が出たか」ではなく**刷ろうとした書類そのもの**を
+     見る（見た目だけを見る網は、書類が空でも通る）。
+     ========================================================== */
+  const printed=await page.evaluate(()=>new Promise(resolve=>{
+   const MM=96/25.4;
+   const give=w=>{
+    const pgs=[...w.document.querySelectorAll('.rp-page')];
+    const de=w.document.documentElement;
+    const r=pgs[0]?pgs[0].getBoundingClientRect():null;
+    resolve({枚数:pgs.length,
+      紙幅:r?Math.round(r.width):0,紙高:r?Math.round(r.height):0,
+      紙幅mm:r?+(r.width/MM).toFixed(1):0,紙高mm:r?+(r.height/MM).toFixed(1):0,
+      書類幅:de.clientWidth,
+      塊:w.document.querySelectorAll('.rp-block').length,
+      /* 画面と同じCSSを読んでいること（写しを作っていない）。 */
+      CSS:w.document.querySelectorAll('link[rel=stylesheet]').length,
+      /* 画面の拡大縮小は等倍へ戻すこと（紙には関係が無い倍率）。 */
+      倍率:getComputedStyle(w.document.body).getPropertyValue('--rp-scale').trim(),
+      表示サイズ:de.getAttribute('data-ui-size'),
+      /* 組み換えの道具は紙に出さない。 */
+      道具:w.document.querySelectorAll('.rp-block-tools,.rp-free-layer').length});
+   };
+   let hooked=false;
+   const iv=setInterval(()=>{
+    const f=document.getElementById('rpPrintFrame');
+    const w=f&&f.contentWindow;
+    if(!w||!w.document||!w.document.body||hooked)return;
+    hooked=true;w.print=()=>{clearInterval(iv);give(w)};
+   },15);
+   setTimeout(()=>{clearInterval(iv);resolve(null)},8000);
+   document.getElementById('reportPrint').click();
+  }));
+  rec('印刷は帳票だけの書類を組み立てて刷る',!!printed,JSON.stringify(printed));
+  if(printed){
+   rec('刷る書類は1枚（割って縮められない）',printed.枚数===1,String(printed.枚数));
+   rec('刷る紙はぴったりA4（210×297mm）',
+       Math.abs(printed.紙幅mm-210)<=1&&Math.abs(printed.紙高mm-297)<=1,
+       `${printed.紙幅mm}×${printed.紙高mm}mm`);
+   /* **画面の紙と同じ寸法**——別々に測ると、どちらも同じだけ狂っていても通る。 */
+   rec('画面のプレビューと同じ寸法',
+       Math.abs(printed.紙幅-screen.紙幅)<=1&&Math.abs(printed.紙高-screen.紙高)<=1,
+       JSON.stringify({画面:[screen.紙幅,screen.紙高],紙:[printed.紙幅,printed.紙高]}));
+   rec('書類の幅も紙の幅（紙より広い器で組まない）',
+       Math.abs(printed.書類幅-printed.紙幅)<=1,
+       `${printed.書類幅} / ${printed.紙幅}`);
+   /* **中身が入っていること**——空の紙でも寸法だけは合う。 */
+   const shownBlocks=await page.evaluate(()=>document.querySelectorAll('#reportContent .rp-block').length);
+   rec('中身は画面と同じ塊が入っている',printed.塊>0&&printed.塊===shownBlocks,
+       `${printed.塊} / ${shownBlocks}`);
+   rec('画面と同じCSSを読む（写しを作らない）',printed.CSS>=1,String(printed.CSS));
+   rec('画面の拡大縮小は等倍へ戻す',printed.倍率==='1',JSON.stringify(printed.倍率));
+   rec('表示サイズはプレビューと同じものを持ち込む',
+       printed.表示サイズ===await page.evaluate(()=>document.documentElement.getAttribute('data-ui-size')),
+       printed.表示サイズ);
+   rec('組み換えの道具は紙に出さない',printed.道具===0,String(printed.道具));
+  }
+
+  /* ==========================================================
+     測定値の統計はロットごとにも出る（§9.244、利用者の指示）
+     ----------------------------------------------------------
+       「異幅分割の複数ロットが混在するパターンにおいてもロットごとに
+        統計データが出てくるように対応をお願いします」
+
+     **条ごとに測る項目だけが子ロットごとに切れる**（§9.214）——板厚・板丈・
+     肉厚は丈ごとの測定なので、どの子ロットのものとも言えない。
+     **確かめるときは分割と測定値を自分で注ぎ込むこと**——検証用のレコードに
+     異幅分割がある保証は無く、「無ければ素通り」の書き方だと直す前でも通る。
+     ========================================================== */
+  const stat2=await page.evaluate(()=>{
+   /* 丈2・条5。条1〜2＝CHILD-A（板幅50台）／条3〜5＝CHILD-B（60台）。 */
+   const x={settings:{verticalCount:2,horizontalCount:5,
+     splitGroups:[{lot:'CHILD-A',count:2},{lot:'CHILD-B',count:3}]},
+    measurements:{
+     width:[['50.0','50.2','60.0','60.4','60.8'],
+            ['50.1','50.2','60.1','60.4','60.9']],
+     /* 板厚は丈ごとに3点（OS/CL/DS）。条には紐づかない。 */
+     thickness:[['1.000','1.010','1.020'],['1.030','1.040','1.050']]},
+    product:{rows:[{productLength:'1200.5'},{productLength:'1180.0'}]}};
+   const lots=WL.reportStat.lots(x);
+   const html=WL.reportStat.tableHtml(x);
+   const doc=new DOMParser().parseFromString('<table>'+html+'</table>','text/html');
+   const sec=doc.querySelector('.rp-stat-table');
+   const rows=sec?[...sec.querySelectorAll('tbody tr')].map(tr=>({
+     名:tr.querySelector('th').textContent.replace(/\s+/g,' ').trim(),
+     値:[...tr.querySelectorAll('td')].map(td=>td.textContent.trim()),
+     na:tr.querySelectorAll('td.rp-stat-na').length})):[];
+   return {lots,rows,
+     見出し:sec?[...sec.querySelectorAll('thead th')].map(t=>t.textContent.trim()):[],
+     注記:(doc.querySelector('.rp-note')||{}).textContent||'',
+     /* 分割の無いロットでは「全体」1行だけ（同じ塊が両方の場面で使える）。 */
+     単独:WL.reportStat.lots({settings:{verticalCount:1,horizontalCount:3},
+       measurements:{width:[['10','11','12']]}}).length,
+     塊:(WL.reportBlocks.keys()||[]).indexOf(WL.reportStat.blockKey())>=0};
+  });
+  rec('測定値の統計の塊が組み換えの候補に出る',stat2.塊);
+  rec('子ロットごとの統計が作られる',stat2.lots.length===2,
+      JSON.stringify(stat2.lots.map(l=>l.lot)));
+  rec('分割の無いロットでは子ロットの行を作らない',stat2.単独===0,String(stat2.単独));
+  if(stat2.lots.length===2){
+   const A=stat2.lots[0],Bl=stat2.lots[1];
+   /* **本丸**——それぞれの条の範囲だけから数えていること。 */
+   rec('子ロットAの板幅は 50.0〜50.2（そのロットの条だけ）',
+       A.width.min==='50.0'&&A.width.max==='50.2'&&A.width.n==='4',
+       JSON.stringify(A.width));
+   rec('子ロットBの板幅は 60.0〜60.9',
+       Bl.width.min==='60.0'&&Bl.width.max==='60.9'&&Bl.width.n==='6',
+       JSON.stringify(Bl.width));
+   rec('条の範囲を持つ（紙に「1〜2条」と書ける）',
+       A.from===0&&A.to===2&&Bl.from===2&&Bl.to===5,
+       JSON.stringify([A.from,A.to,Bl.from,Bl.to]));
+   /* **言えないことは言わない**（§4）——丈ごとの項目はnullで、表では「—」。 */
+   rec('板厚は子ロットごとに出さない（丈ごとの測定）',
+       A.thickness===null&&Bl.thickness===null,
+       JSON.stringify([A.thickness,Bl.thickness]));
+   rec('板丈も子ロットごとに出さない',A.length===null,JSON.stringify(A.length));
+  }
+  rec('表は「全体」＋子ロットの3行',
+      stat2.rows.length===3&&stat2.rows[0].名==='全体'
+      &&/CHILD-A/.test(stat2.rows[1].名)&&/CHILD-B/.test(stat2.rows[2].名),
+      stat2.rows.map(r=>r.名).join(' / '));
+  rec('子ロットの行に条の範囲を書く',
+      /1〜2条/.test(stat2.rows[1].名||'')&&/3〜5条/.test(stat2.rows[2].名||''),
+      (stat2.rows[1]||{}).名+' / '+(stat2.rows[2]||{}).名);
+  rec('全体の行は全部の条から数える',
+      (stat2.rows[0].値||[]).indexOf('50.0')>=0&&(stat2.rows[0].値||[]).indexOf('60.9')>=0,
+      (stat2.rows[0].値||[]).join(','));
+  rec('出せない組み合わせは「—」で、全体の行には出さない',
+      stat2.rows[0].na===0&&stat2.rows[1].na>0&&stat2.rows[2].na>0,
+      JSON.stringify(stat2.rows.map(r=>r.na)));
+  rec('出せない理由を紙に書く',/丈ごと/.test(stat2.注記),stat2.注記.slice(0,60));
+
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
 
   console.log('\n=== SUMMARY ===');

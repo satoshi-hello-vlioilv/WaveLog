@@ -52,7 +52,7 @@
  /* `keys()`はコードが持っている既定の塊の一覧（§9.219 ②）。マスタの種と
     **食い違っていないこと**を網が突き合わせる——片方だけ増えると、マスタに
     出ない塊／画面に無い塊が黙って生まれる。 */
- WL.reportBlocks={forget:()=>{rpUserBlocks=[];rpMasterRows=[];rpBuiltinOff=new Set();rpUserBlocksFor=null;
+ WL.reportBlocks={keys:()=>rpBlockKeys(),forget:()=>{rpUserBlocks=[];rpMasterRows=[];rpBuiltinOff=new Set();rpUserBlocksFor=null;
    /* 設備ごとの写しも一緒に捨てる（§9.239 ③）。片方だけ捨てると
       「マスタで直したのに紙が変わらない」が残る。 */
    rpBlocksByEq.clear()},
@@ -83,8 +83,8 @@
      <span class="rp-zoom-readout" id="rpZoomReadout" title="Ctrlを押しながらホイールで拡大・縮小できます">100%</span>
      <button type="button" id="reportArrange" class="rp-icon-btn" title="帳票に出す塊・並び・幅をその場で組み換えます" aria-label="帳票の配置を変える">${icon('<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="4" rx="1"/><rect x="14" y="11" width="7" height="10" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>')}</button>
      <button type="button" id="reportNavToggle" class="rp-icon-btn" title="ロット一覧を隠して帳票を広く表示します" aria-label="ロット一覧の表示切替">${icon('<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/>')}</button>
-     <button type="button" id="reportPrint" class="rp-icon-btn rp-icon-btn--primary" title="印刷する" aria-label="印刷する" disabled>${icon('<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>')}</button>
-     <button type="button" id="reportPdf" class="rp-icon-btn" title="PDFで保存する（印刷ダイアログが開きます。出力先で「PDFに保存」を選んでください）" aria-label="PDFで保存する" disabled>${icon('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>')}</button>
+     <button type="button" id="reportPrint" class="rp-icon-btn rp-icon-btn--primary" title="印刷する（帳票だけの1枚ものを組み立てて刷ります。刷り上がりがプレビューより小さいときは、印刷ダイアログの用紙をA4・倍率を100%（実際のサイズ）にしてください）" aria-label="印刷する" disabled>${icon('<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>')}</button>
+     <button type="button" id="reportPdf" class="rp-icon-btn" title="PDFで保存する（印刷ダイアログが開きます。出力先で「PDFに保存」、用紙をA4・倍率を100%（実際のサイズ）にしてください）" aria-label="PDFで保存する" disabled>${icon('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>')}</button>
     </div>
    </header>
    <div class="rp-body">
@@ -421,13 +421,24 @@
     ここが持ち、選べる綴りはサーバー（`report_block_repo.STAT_*`）が持つ。
     外へ出すのは「1つの道を引く」だけで、内部の表は渡さない。 */
  WL.reportStat=(x,path)=>rpValueAt(x,path);
+ /* ロットごとの統計と、その表そのもの（§9.244）。**網はここを直に呼ぶ**
+    ——紙に出す/出さないの状態に左右されずに「値が分かれているか」を見たい。
+    **素の`window.*`を増やさない**（CLAUDE.md「新規公開は名前空間経由」）。 */
+ WL.reportStat.lots=x=>rpStat(x).byLot||[];
+ WL.reportStat.tableHtml=(x,k)=>statSection(x,k||RP_STAT_BLOCK);
+ /* **鍵は関数で返す**——`RP_STAT_BLOCK`はこの行より後ろで宣言される`const`
+    なので、ここで値として読むと読み込み時に落ちる（TDZ。ファイル全体が
+    動かなくなり、画面が組み上がらない）。 */
+ WL.reportStat.blockKey=()=>RP_STAT_BLOCK;
 
  function bulkPrintNow(items,area){
   area.innerHTML=items.map(x=>`<div class="rp-report rp-page${rpOrientation==='landscape'?' rp-landscape':''}">${reportHtml(x)}</div>`).join('');
   document.body.classList.add('rp-bulk-print');
   const prevTitle=document.title;
   document.title=`測定帳票_${items.length}件`;
+  let cleaned=false;
   const cleanup=()=>{
+   if(cleaned)return;cleaned=true;
    document.body.classList.remove('rp-bulk-print');
    document.title=prevTitle;area.innerHTML='';
    window.removeEventListener('afterprint',cleanup);
@@ -449,13 +460,33 @@
    /* 画面のプレビューは選んでいるロットのままで測る。 */
    const own=$id('reportContent');
    if(own){try{rpFitPage(own)}catch(e){}}
-   window.print();
+   /* **1枚ずつと同じ道**（§9.244）——ここだけ`window.print()`のままにすると、
+      「1枚なら合うのに一括だけ縮む」という分かりにくい形になる（§9.242 ⑦で
+      箱の作り方を揃えたのと同じ理由）。測り終わったDOMをそのまま渡す。 */
+   const html=pages.map(rpPageHtmlFor).join('');
+   rpPrintPages(html,document.title).then(cleanup,cleanup);
   }));
  }
 
+ /* 節の中身。`rows`は`[ラベル,値]`か`[ラベル,値,{span,blank}]`（§9.245）。
+    **マス数を持つ行が1つでもあれば**グリッドを`--rp-cols`で組み、無ければ
+    今までどおり`rp-grid-N`のまま——**既に登録してある塊の見え方を変えない**。 */
  function reportSection(title,rows,cols){
-  const body=rows.map(([label,value])=>`<div class="rp-field"><span class="rp-field-label">${esc(label)}</span><span class="rp-field-value" title="${esc(value||'-')}">${esc(value||'-')}</span></div>`).join('');
-  return `<section class="rp-section"><h3>${esc(title)}</h3><div class="rp-grid${cols?' rp-grid-'+cols:''}">${body}</div></section>`;
+  const n=Math.max(1,Math.min(12,Number(cols)||2));
+  /* 「マトリクスとして組む」のは、1マスでない行か空きマスがあるときだけ。 */
+  const matrix=rows.some(r=>r&&r[2]&&((Number(r[2].span)||1)>1||r[2].blank));
+  const cell=([label,value,o])=>{
+   const span=Math.max(1,Math.min(n,Number(o&&o.span)||1));
+   const st=matrix?` style="grid-column:span ${span}"`:'';
+   /* 空きマスは**中身を持たない**（場所を取るのが役目）。 */
+   if(o&&o.blank)return `<div class="rp-field rp-field-blank"${st} aria-hidden="true"></div>`;
+   return `<div class="rp-field"${st}><span class="rp-field-label">${esc(label)}</span>`
+    +`<span class="rp-field-value" title="${esc(value||'-')}">${esc(value||'-')}</span></div>`;
+  };
+  const body=rows.map(cell).join('');
+  const cls=matrix?'rp-grid rp-grid-m':('rp-grid'+(cols?' rp-grid-'+cols:''));
+  const st=matrix?` style="--rp-cols:${n}"`:'';
+  return `<section class="rp-section"><h3>${esc(title)}</h3><div class="${cls}"${st}>${body}</div></section>`;
  }
  function dimensionSection(b){
   const row=(label,mat,temper,thick,width,length)=>`<tr><th>${esc(label)}</th><td>${esc(mat||'-')}</td><td>${esc(temper||'-')}</td><td>${esc(fmtDimSafe(thick,3)||'-')}</td><td>${esc(fmtDimSafe(width,1)||'-')}</td><td>${esc(fmtDimSafe(length,1)||'-')}</td></tr>`;
@@ -563,6 +594,9 @@
   {g:'備考',cols:[{c:'',f:'comments',li:'tail'}]},
  ];
  const RP_MEAS_COMBINED='板幅ほかの測定データ';          /* まとめの器（既存キーのまま） */
+ /* 測定値の統計（§9.244）。**既定は出さない**——今まで無かった塊なので、
+    置いていない現場の紙を勝手に増やさない（`rpInitialHidden()`に入れる）。 */
+ const RP_STAT_BLOCK='測定値の統計';
  const rpMeasColKey=(g,c)=>`測定列:${g}:${c||'値'}`;      /* 1列ぶんの部品 */
  const rpMeasSoloKey=g=>`測定データ・${g}`;               /* 分解したときの1枚 */
  const RP_MEAS_GROUP_BY=new Map(RP_MEAS_GROUPS.map(x=>[x.g,x]));
@@ -862,6 +896,11 @@
    const dur=w.startAt&&w.endAt?formatDuration(new Date(w.endAt)-new Date(w.startAt)):(w.startAt?'作業中':'未計測');
    return reportSection('作業時間',[['開始時刻',formatWorkTime(w.startAt)],['終了時刻',formatWorkTime(w.endAt)],['実働時間',dur]])}},
   {k:'登録状態',span:6,html:x=>reportSection('登録状態',[['状態',statusLabel(x.status)],['更新日時',fmtDT(x.updatedAt)],['NG回数',x.settings?.ngCount||0]])},
+  /* 測定値の統計（§9.244、利用者の指示「異幅分割の複数ロットが混在する
+     パターンにおいてもロットごとに統計データが出てくるように」）。
+     **既定は出さない**——今まで無かった塊なので、置いていない現場の紙を
+     勝手に増やさない（§9.173の「既定はまとめだけ」と同じ作法）。 */
+  {k:RP_STAT_BLOCK,span:6,stat:true,html:x=>statSection(x,RP_STAT_BLOCK)},
  ];
  /* ---------- 塊はマスタでも足せる（§9.217、利用者の指示） ----------
     「内部データについても各項目ごと設計できるようにする」。中身の作り方が
@@ -1005,24 +1044,123 @@
   });
   return d;
  }
+ /* 値の並びから1組の統計を作る。**まとめもロットごとも同じ関数**が作る
+    ——別々に持つと、片方だけ直した状態が作れる（§9.243と同じ理由）。 */
+ function rpStatOf(raw){
+  const raws=raw.map(v=>String(v==null?'':v).trim()).filter(t=>t!=='');
+  const nums=raws.map(Number).filter(v=>Number.isFinite(v));
+  if(!nums.length)return {min:'',max:'',avg:'',span:'',n:'0'};
+  const d=rpStatDigits(raws);
+  const f=v=>v.toFixed(d);
+  const min=Math.min(...nums),max=Math.max(...nums);
+  return {min:f(min),max:f(max),
+    avg:f(nums.reduce((a,v)=>a+v,0)/nums.length),
+    span:f(max-min),n:String(nums.length)};
+ }
+ /* ---------- 統計は「条に紐づくか」で2種類に分かれる（§9.244） ----------
+    利用者の指示:「異幅分割の複数ロットが混在するパターンにおいてもロットごとに
+    統計データが出てくるように対応をお願いします」。
+
+    **条ごとに測る項目だけがロットごとに切れる**（§9.214で一度書いたとおり）:
+      条ごと … 板幅・ラテラルボー・バリ・テレスコープ・巻ずれ
+      丈ごと … 板厚（丈位置ごとにOS/CL/DSの3点）・板丈・肉厚
+
+    子ロットは**条の範囲**（`settings.splitGroups`の`count`を先頭から積む）で
+    決まるので、丈ごとの項目はどの子ロットのものとも言えない。**言えないことは
+    そう書く**（§4）——`byLot`には入れず、表では「—」と注記で理由を出す。 */
+ const RP_STAT_BY_STRIP={width:1,lateral:1,burr:1,telescope:1,offset:1};
+ const RP_STAT_LABEL={thickness:'板厚',width:'板幅',lateral:'ラテラルボー',
+   burr:'バリ',telescope:'テレスコープ',offset:'巻ずれ',length:'板丈',wall:'肉厚'};
+ const RP_STAT_AGG=[['min','MIN'],['max','MAX'],['avg','平均'],['span','ばらつき'],['n','N数']];
+ /* 子ロットの区切り。**判定は`widthRowContext`と同じ材料**（`splitGroups`）で、
+    ここで別の数え方をすると紙の中で条番号とロット№の対応が2通りになる。
+    分割が無い（群が1つ以下）ときは**空**——「全体」1行だけで足りる。 */
+ function rpSplitLots(x){
+  const g=x&&x.settings&&x.settings.splitGroups;
+  if(!Array.isArray(g)||g.length<2)return [];
+  const out=[];let start=0;
+  g.forEach(gr=>{
+   const count=Math.max(0,Number(gr.count)||0);
+   if(count>0)out.push({lot:String(gr.lot||'-'),from:start,to:start+count,count});
+   start+=count;
+  });
+  return out.length>=2?out:[];
+ }
  /* **同じレコードなら作り直さない**（1枚の紙に何本も統計の欄が並びうる）。 */
  let rpStatFor=null,rpStatCache=null;
  function rpStat(x){
   if(rpStatFor===x&&rpStatCache)return rpStatCache;
-  const out={};
-  Object.keys(RP_STAT_KEYS).concat(Object.keys(RP_STAT_ROWS)).forEach(item=>{
-   const raws=rpStatValues(x,item).map(v=>String(v==null?'':v).trim()).filter(t=>t!=='');
-   const nums=raws.map(Number).filter(v=>Number.isFinite(v));
-   if(!nums.length){out[item]={min:'',max:'',avg:'',span:'',n:'0'};return}
-   const d=rpStatDigits(raws);
-   const f=v=>v.toFixed(d);
-   const min=Math.min(...nums),max=Math.max(...nums);
-   out[item]={min:f(min),max:f(max),
-     avg:f(nums.reduce((a,v)=>a+v,0)/nums.length),
-     span:f(max-min),n:String(nums.length)};
-  });
+  const out={byLot:[]};
+  const items=Object.keys(RP_STAT_KEYS).concat(Object.keys(RP_STAT_ROWS));
+  items.forEach(item=>{out[item]=rpStatOf(rpStatValues(x,item))});
+  /* ロットごと（条ごとに測る項目だけ）。 */
+  const lots=rpSplitLots(x);
+  if(lots.length){
+   const s=(x&&x.settings)||{};
+   const vertical=Math.max(1,Math.min(9,Number(s.verticalCount)||1));
+   const slots=Math.min(LENGTH_SLOTS,vertical+1);
+   out.byLot=lots.map(L=>{
+    const bag={lot:L.lot,from:L.from,to:L.to,count:L.count};
+    items.forEach(item=>{
+     if(!RP_STAT_BY_STRIP[item]){bag[item]=null;return}   /* 条に紐づかない＝言えない */
+     const rows=((x&&x.measurements)||{})[RP_STAT_KEYS[item]]||[];
+     const raw=[];
+     for(let li=0;li<slots;li++){
+      const row=rows[li]||[];
+      for(let j=L.from;j<L.to;j++)raw.push(row[j]);
+     }
+     bag[item]=rpStatOf(raw);
+    });
+    return bag;
+   });
+  }
   rpStatFor=x;rpStatCache=out;
   return out;
+ }
+ /* 統計の表（§9.244）。**行＝ロット・列＝項目×集計**で、分割が無いロットでは
+    「全体」の1行だけになる（同じ塊が両方の場面で使える）。
+    どの項目を出すかは塊の見せ方（`項目:`）が持つ——**既定は板厚・板幅・板丈**
+    （利用者が名指しした3つ）。 */
+ const RP_STAT_DEFAULT_ITEMS=['thickness','width','length'];
+ function rpStatItems(k){
+  const t=rpToken(k,'項目:');
+  const list=t?t.split('/').filter(v=>RP_STAT_LABEL[v]):[];
+  return list.length?list:RP_STAT_DEFAULT_ITEMS.slice();
+ }
+ function rpStatAggs(k){
+  const t=rpToken(k,'集計:');
+  const list=t?t.split('/').filter(v=>RP_STAT_AGG.some(a=>a[0]===v)):[];
+  return list.length?list:['min','max','n'];
+ }
+ function statSection(x,k){
+  const items=rpStatItems(k),aggs=rpStatAggs(k);
+  if(!items.length)return '';
+  const st=rpStat(x),lots=st.byLot||[];
+  const aggLabel=v=>(RP_STAT_AGG.find(a=>a[0]===v)||[v,v])[1];
+  const head=`<thead><tr><th rowspan="2">対象</th>`
+   +items.map(it=>`<th colspan="${aggs.length}">${esc(RP_STAT_LABEL[it]||it)}</th>`).join('')
+   +`</tr><tr>`
+   +items.map(it=>aggs.map(a=>`<th>${esc(aggLabel(a))}</th>`).join('')).join('')
+   +`</tr></thead>`;
+  const cells=bag=>items.map(it=>{
+   const b=bag[it];
+   /* **言えない組み合わせは「—」**（0や空にすると「測っていない」と読める）。 */
+   if(b===null)return aggs.map(()=>`<td class="rp-stat-na" title="この項目は丈ごとに測るので、条で分かれる子ロットには割り当てられません">—</td>`).join('');
+   return aggs.map(a=>`<td>${esc((b&&b[a])||'')}</td>`).join('');
+  }).join('');
+  const rows=[`<tr><th>全体</th>${cells(st)}</tr>`]
+   .concat(lots.map(L=>`<tr><th class="rp-collot" title="${esc(`条 ${L.from+1}〜${L.to}（${L.count}条）`)}">`
+     +`${esc(L.lot)}<small>${L.from+1}〜${L.to}条</small></th>${cells(L)}</tr>`)).join('');
+  /* **出どころと分母を書く**（§CLAUDE 6）——同じ「MIN」でも1点と80点では
+     当たる見込みが違う。ロットごとに出せない項目があることも書く。 */
+  const na=items.filter(it=>!RP_STAT_BY_STRIP[it]).map(it=>RP_STAT_LABEL[it]||it);
+  const note=lots.length
+   ?`子ロットごとの値は<b>その子ロットの条だけ</b>から数えています。`
+    +(na.length?`${esc(na.join('・'))}は丈ごとに測るので、子ロットには割り当てられません（—）。`:'')
+   :'このロットは幅分割されていないので、全体の1行だけです。';
+  return `<section class="rp-section"><h3>測定値の統計</h3>`
+   +`<table class="rp-dim-table rp-stat-table">${head}<tbody>${rows}</tbody></table>`
+   +`<p class="rp-note">${note}</p></section>`;
  }
  function rpValueAt(x,path){
   const p=String(path||'');
@@ -1057,7 +1195,12 @@
   const area=b.kind==='エリア';
   return {k:b.k||b.name,name:b.name,span:b.span||6,rows:b.rows||(area?5:0),user:true,area,
    html:area?(()=>rpAreaHtml(b.text))
-     :(x=>fields.length?reportSection(b.name,fields.map(f=>[f.label,rpValueAt(x,f.path)]),b.cols||0):'')};
+     /* マス数と空きマスは**そのまま渡す**（§9.245）——ここで潰すと、
+        設定画面で組んだマトリクスが紙では1列ずつの並びに戻る。
+        **空きマスだけの塊は「中身なし」**（紙には出さない）。 */
+     :(x=>fields.some(f=>!f.blank)
+        ?reportSection(b.name,fields.map(f=>[f.label,f.blank?'':rpValueAt(x,f.path),
+                                             {span:f.span,blank:!!f.blank}]),b.cols||0):'')};
  }
  /* その設備の自作ブロックを読む。**読めなくても帳票は出す**（fail-open）。 */
  /* 設備ごとの写し（§9.239 ③）。1設備ぶんしか持たないと、一括印刷で
@@ -1119,7 +1262,7 @@
  /* **一度も保存していないうちの既定**（§9.162と同じ約束）。列レイアウトマスタの
     hiddenは空なので、そのまま使うと分解した1枚ずつが全部紙に出てしまい、
     同じ測定値が2箇所に並ぶ。保存前は「まとめだけ」を既定にする。 */
- function rpInitialHidden(){return RP_MEAS_GROUPS.map(gr=>rpMeasSoloKey(gr.g))}
+ function rpInitialHidden(){return RP_MEAS_GROUPS.map(gr=>rpMeasSoloKey(gr.g)).concat([RP_STAT_BLOCK])}
  function rpHiddenSet(){
   const l=WL.columnLayout.get(rpTarget());
   const set=new Set((l.order||[]).length?(l.hidden||[]):rpInitialHidden());
@@ -1903,6 +2046,23 @@
    ${dropCols?`<div class="rp-form-row"><span class="rp-form-label">落とす列</span>
     <span class="rp-form-ctl">${dropCols}
      <i class="rp-form-note">紙に入りきらないときは、要らない列を落として幅を空けられます。</i></span></div>`:''}
+   ${k===RP_STAT_BLOCK?`<div class="rp-form-row"><span class="rp-form-label">出す項目</span>
+    <span class="rp-form-ctl">
+     ${Object.keys(RP_STAT_LABEL).map(it=>`<button type="button" data-e-stitem="${esc(it)}"`
+       +` class="${rpStatItems(k).indexOf(it)>=0?'is-on':''}"`
+       +` title="${RP_STAT_BY_STRIP[it]?'条ごとに測るので、子ロットごとの値も出せます':'丈ごとに測るので、子ロットごとには出せません（全体のみ）'}">`
+       +`${esc(RP_STAT_LABEL[it])}${RP_STAT_BY_STRIP[it]?'':'<small>全体のみ</small>'}</button>`).join('')}
+     <i class="rp-form-note">1つ以上選んでください（何も選ばないと既定の
+      <b>${esc(RP_STAT_DEFAULT_ITEMS.map(v=>RP_STAT_LABEL[v]).join('・'))}</b>に戻ります）。
+      <b>条ごとに測る項目だけ</b>が子ロットごとに分かれます——板厚・板丈・肉厚は
+      丈ごとの測定なので、どの子ロットのものとも言えません（「—」で出します）。</i></span></div>
+   <div class="rp-form-row"><span class="rp-form-label">出す集計</span>
+    <span class="rp-form-ctl">
+     ${RP_STAT_AGG.map(([v,lb])=>`<button type="button" data-e-stagg="${esc(v)}"`
+       +` class="${rpStatAggs(k).indexOf(v)>=0?'is-on':''}">${esc(lb)}</button>`).join('')}
+     <i class="rp-form-note">列は<b>項目 × 集計</b>で増えます（いま
+      ${rpStatItems(k).length}×${rpStatAggs(k).length}＝<b>${rpStatItems(k).length*rpStatAggs(k).length}列</b>）。
+      <b>N数は必ず添えることを勧めます</b>——同じMINでも1点と80点では当たる見込みが違います。</i></span></div>`:''}
    ${k===RP_PRODUCT_KEY?`<div class="rp-form-row"><span class="rp-form-label">揃いの欄</span>
     <span class="rp-form-ctl">
      ${RP_PRODUCT_MODES.map(m=>`<button type="button" data-e-pmode="${esc(m.v)}" class="${m.v===rpProductMode()?'is-on':''}">${esc(m.label)}${m.v===''?'（既定）':''}</button>`).join('')}
@@ -1913,6 +2073,20 @@
      <i class="rp-form-note">${rpHiddenSet().has(k)?'いまは紙に出していません。':'いまは紙に出しています。'}</i></span></div>`;
   const form=$id('rpBlockForm');
   const w=()=>({...rpLayoutNow().widths});
+  /* 測定値の統計（§9.244）。**印は`|`で並べる**ので1つずつ差し替える
+     （まるごと書くと他の見せ方が消える。§9.226 ⑤と同じ約束）。 */
+  const stToggle=(prefix,cur,v,order)=>{
+   const set=new Set(cur);
+   if(set.has(v))set.delete(v);else set.add(v);
+   const list=order.filter(o=>set.has(o));
+   /* **全部外したら既定へ戻す**（0列の表は作らない・§4）。 */
+   rpStage({formats:rpTokenPatch(k,prefix,list.join('/'))});
+   renderBlockEditor();
+  };
+  form.querySelectorAll('[data-e-stitem]').forEach(b=>b.onclick=()=>
+    stToggle('項目:',rpStatItems(k),b.dataset.eStitem,Object.keys(RP_STAT_LABEL)));
+  form.querySelectorAll('[data-e-stagg]').forEach(b=>b.onclick=()=>
+    stToggle('集計:',rpStatAggs(k),b.dataset.eStagg,RP_STAT_AGG.map(a=>a[0])));
   form.querySelectorAll('[data-e-span]').forEach(b=>b.onclick=()=>{
    /* **幅の当て方は1箇所**（§9.221 ⑨）——帯と設定窓で別々に書くと、
       「入らないときに左へ寄せる」が片方だけ効いた状態が作れる。 */
@@ -3038,12 +3212,142 @@
   fitPage();fitWidth();
  }
 
+/* ==================================================================
+   刷るのは「帳票だけの1枚もの」（§9.244、利用者の指示）
+   ------------------------------------------------------------------
+   利用者の報告:
+     「アプリ内の印刷プレビューと、実際の印刷直前のWINDOWSのプレビューに
+      違いが出ています。…用紙を最大活かせておらず、用紙に対して80％くらいの
+      比率と共に表示内容のクオリティも下がっているように見えます」
+     「このままうまくいかないようであれば、印刷ボタンの挙動を変更し、
+      印刷をWINDOWS介さず…独自モーダルから出力する方法でもよいです」
+
+   §9.243で`@page`の余白を1つにそろえたが、それでも縮んだ。**こちらの
+   割り付けは正しい**——`page.pdf({preferCSSPageSize:true})`で確かめると
+   1ページ・`MediaBox`はぴったりA4（`tests/test_rpprint.js`が固定）。
+   残る差は**アプリの画面ごと刷っている**ことから来る:
+
+     刷っている書類 ＝ SPA全体（`.layout`／`main`／`.rp-scroll`…）で、
+     帳票以外は`display:none`で伏せているだけ。
+
+   伏せた要素も**器の幅・`min-width`・`--ui-scale`・スクロール器**として
+   版面の組み立てに関わり得るし、`@media print`の規則が1つ増えるたびに
+   「刷るときだけ効く」経路が増える。**紙に出したいものだけの書類を作って
+   それを刷る**のがいちばん短い道で、利用者の言う「独自の出力」でもある。
+
+   同じ生成元の`<iframe>`へ、帳票のCSSと**測り終わった`.rp-page`のDOM**を
+   そのまま書き出して`print()`する。倍率（`--rp-fit`）はインラインで付いて
+   いるので**プレビューで見たものが1対1で出る**。
+   **`--rp-scale`（画面の拡大縮小）は等倍へ戻すこと**——あれは画面で見る
+   ためだけの倍率で、紙には関係が無い。
+
+   **窓（`window.open`）ではなく`<iframe>`**にしてある——ポップアップの
+   ブロックに掛からず、閉じ忘れも起きない。
+   **失敗したら今までどおり`window.print()`へ落とす**（刷れないより、
+   今までの形でも刷れるほうがよい）。理由はトーストで言う（§4）。
+   ================================================================== */
+ function rpPrintCssHref(){
+  /* 画面が読んでいるものと**同じ束**を読む（写しを作らない。版が変われば
+     `?t=`も変わるので、古いCSSで刷ることがない）。 */
+  return [...document.querySelectorAll('link[rel="stylesheet"]')]
+    .map(l=>l.getAttribute('href')).filter(Boolean);
+ }
+ function rpPrintDocHtml(pagesHtml,title){
+  const de=document.documentElement;
+  /* 表示サイズ・テーマは**プレビューと同じものを持ち込む**——`--ui-scale`は
+     プレビューにも効いており、`--rp-fit`はその状態で測った値。片方だけ
+     変えると測った倍率と食い違う。 */
+  const attrs=['data-ui-size','data-theme']
+    .map(k=>de.getAttribute(k)?` ${k}="${esc(de.getAttribute(k))}"`:'').join('');
+  const links=rpPrintCssHref().map(h=>`<link rel="stylesheet" href="${esc(h)}">`).join('');
+  const land=rpOrientation==='landscape';
+  return `<!doctype html><html lang="ja"${attrs}><head><meta charset="utf-8">`
+   +`<title>${esc(title)}</title>${links}<style>`
+   +`@page{size:A4 ${land?'landscape':'portrait'};margin:${RP_PAGE_MARGIN}}`
+   +`html,body{margin:0;padding:0;background:#fff;--rp-scale:1}`
+   +`.rp-page{width:210mm;min-height:297mm;margin:0;padding:8mm;`
+   +`box-sizing:border-box;box-shadow:none;transform:none;background:#fff}`
+   +`.rp-page.rp-landscape{width:297mm;min-height:210mm}`
+   +`.rp-page+.rp-page{page-break-before:always}`
+   /* 組み換え中の道具は紙に出さない（画面だけの道具）。 */
+   +`.rp-block-tools,.rp-free-layer,.rp-bar,.rp-nav{display:none!important}`
+   +`</style></head><body class="rp-print-doc">${pagesHtml}</body></html>`;
+ }
+ /* 刷り終わる（またはやめる）まで待って片付ける。**`afterprint`だけに
+    頼らないこと**——出ない環境があるので、時間でも必ず片付ける。 */
+ function rpPrintFrame(pagesHtml,title){
+  return new Promise((resolve,reject)=>{
+   let f=$id('rpPrintFrame');
+   if(f)f.remove();
+   f=document.createElement('iframe');
+   f.id='rpPrintFrame';f.className='rp-print-frame';f.setAttribute('aria-hidden','true');
+   /* **器の幅は紙の幅にそろえる**——刷る前の組み立てもこの幅で解かれるので、
+      紙より広い器で組むと`width:100%`のものだけが別の幅で決まる。 */
+   f.style.width=(rpOrientation==='landscape'?'297mm':'210mm');
+   f.style.height=(rpOrientation==='landscape'?'210mm':'297mm');
+   document.body.appendChild(f);
+   let done=false;
+   const finish=ok=>{
+    if(done)return;done=true;
+    setTimeout(()=>{try{f.remove()}catch(e){}},400);
+    ok?resolve():reject(new Error('印刷の書類を組み立てられませんでした'));
+   };
+   const go=()=>{
+    try{
+     const w=f.contentWindow;
+     w.addEventListener('afterprint',()=>finish(true));
+     /* **描き終わってから刷る**（同期で呼ぶと白紙になる。`bulkPrintNow`と
+        同じ理由）。フォントの読み込みも待つ——待たないと字送りが変わる。 */
+     const fire=()=>requestAnimationFrame(()=>requestAnimationFrame(()=>{
+      try{w.focus();w.print();finish(true)}catch(e){finish(false)}
+     }));
+     if(w.document.fonts&&w.document.fonts.ready)w.document.fonts.ready.then(fire,fire);
+     else fire();
+    }catch(e){finish(false)}
+   };
+   f.onload=go;
+   try{
+    const d=f.contentDocument;
+    d.open();d.write(rpPrintDocHtml(pagesHtml,title));d.close();
+    /* `document.write`では`onload`が飛ばないことがあるので、CSSの読み込みを
+       自分で待つ（`<link>`のonloadを数える）。 */
+    const links=[...d.querySelectorAll('link[rel="stylesheet"]')];
+    if(!links.length){go();return}
+    let left=links.length;
+    const tick=()=>{if(--left<=0)go()};
+    links.forEach(l=>{l.addEventListener('load',tick);l.addEventListener('error',tick)});
+    /* **読み込みが返ってこなくても刷れること**が最優先（§CLAUDE 起動の覆いと
+       同じ考え方）。3秒で先へ進む。 */
+    setTimeout(()=>{if(left>0){left=0;go()}},3000);
+   }catch(e){finish(false)}
+  });
+ }
+ /* 紙に出す`.rp-page`のHTMLを、**測り終わった状態のまま**取り出す。 */
+ function rpPageHtmlFor(el){
+  if(!el)return '';
+  const c=el.cloneNode(true);
+  c.querySelectorAll('.rp-block-tools,.rp-free-layer').forEach(x=>x.remove());
+  return c.outerHTML;
+ }
+ async function rpPrintPages(pagesHtml,title){
+  try{
+   await rpPrintFrame(pagesHtml,title);
+   return true;
+  }catch(e){
+   /* **黙って落とさない**（§4）——今までの形で刷れることと、なぜそうなったかを言う。 */
+   if(typeof toast==='function')
+    toast('帳票だけの書類を作れなかったので、画面ごと印刷します（'+e.message+'）','warn');
+   const prev=document.title;document.title=title;
+   window.print();
+   setTimeout(()=>{document.title=prev},500);
+   return false;
+  }
+ }
  function printReport(){
   if(!rpState.selectedId)return;
-  const x=rpState.items.find(i=>i.id===rpState.selectedId),prevTitle=document.title;
-  document.title=`測定帳票_${x?.basic?.lotNo||x?.id||'lot'}`;
-  window.print();
-  setTimeout(()=>{document.title=prevTitle},500);
+  const x=rpState.items.find(i=>i.id===rpState.selectedId);
+  const title=`測定帳票_${x?.basic?.lotNo||x?.id||'lot'}`;
+  rpPrintPages(rpPageHtmlFor($id('reportContent')),title);
  }
 
  /* 帳票は測定画面から開く場合もある。重なって残らないよう#measureModalを

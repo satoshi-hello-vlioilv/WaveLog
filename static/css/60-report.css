@@ -640,4 +640,26 @@
 .db-status-table{width:100%;border-collapse:collapse}
 .db-status-table th,.db-status-table td{padding:var(--row-pad-y) var(--row-pad-x);
  border-bottom:1px solid #eef2f4;text-align:center;font-size:var(--fs-sm);white-space:nowrap}
+
+/* 刷るための書類を組み立てる器（§9.244）。**画面には出さない**が、
+   `display:none`にすると中身が組み上がらない（寸法が全部0になり、
+   `--rp-fit`で縮めた塊が測れない）ので、置き場を画面の外へ逃がす。 */
+.rp-print-frame{
+  position:fixed;left:-10000px;top:0;width:210mm;height:297mm;
+  border:0;pointer-events:none;opacity:0;
+}
+
+/* 測定値の統計（§9.244）。**行＝ロット・列＝項目×集計**。
+   「言えない組み合わせ」は`—`で出し、色だけで伝えないので`title`が理由を言う。 */
+.rp-stat-table td{text-align:right;font-variant-numeric:tabular-nums}
+.rp-stat-table th{text-align:center}
+.rp-stat-table tbody th{text-align:left;white-space:nowrap}
+.rp-stat-table tbody th small{margin-left:.4em;font-weight:400;color:#666}
+.rp-stat-table .rp-stat-na{color:#999;text-align:center}
+
+/* マトリクス配置（§9.245）。列数はJSが`--rp-cols`で渡す——項目ごとに
+   何マス使うかを持つので、`rp-grid-N`の決め打ちでは表せない。 */
+.rp-grid-m{grid-template-columns:repeat(var(--rp-cols,2),minmax(0,1fr))}
+/* 空きマスは**場所を取るだけ**（枠も文字も持たない）。 */
+.rp-field-blank{min-height:1px}
 }

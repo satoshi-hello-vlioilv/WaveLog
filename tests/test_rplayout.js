@@ -112,8 +112,14 @@ let b=null,madeBlock=null;
   await page.evaluate(t=>WL.columnLayout.forget(t),TARGET);
   await page.evaluate(()=>window.exitReportView&&window.exitReportView());
   await openReport();
-  /* この3つ以外は「並びに載っていない」だけで出てしまうので、隠して絞る。 */
-  const rest=keys.filter(k=>k!==A&&k!==C1&&k!==C2);
+  /* この3つ以外は「並びに載っていない」だけで出てしまうので、隠して絞る。
+     **分母は「いま出ている塊」ではなく全部**（§9.244）——`hidden`を書いた
+     時点で`order`が埋まり、以降`rpInitialHidden()`（既定で出さない塊）は
+     見に行かなくなる。出ている塊だけを隠すと、**既定で伏せてあった塊が
+     そこで出てくる**（測定値の統計を足したときに実際に踏んだ）。 */
+  const allKeys=await page.evaluate(()=>
+    (window.WL&&WL.reportBlocks&&WL.reportBlocks.keys)?WL.reportBlocks.keys():null);
+  const rest=(allKeys||keys).filter(k=>k!==A&&k!==C1&&k!==C2);
   await post('/api/column-layout-master',{target:TARGET,user_id:'test',hidden:rest});
   await page.evaluate(t=>WL.columnLayout.forget(t),TARGET);
   await page.evaluate(()=>window.exitReportView&&window.exitReportView());

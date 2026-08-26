@@ -297,11 +297,21 @@ BUILTIN_SEEDS = (
      '開始時刻=calc.workStart\n終了時刻=calc.workEnd\n実働時間=calc.workDuration', '', ''),
     ('登録状態', 6, 0, 0,
      '状態=calc.status\n更新日時=calc.updatedAt\nNG回数=settings.ngCount', '', ''),
+    # 測定値の統計（§9.244）。中身の作り方が仕事になっている塊なので
+    # `[内容]`は持たない（＝`CONTENT_EDITABLE`にも入らない）。**ここに載せる
+    # のは、幅・高さ・出す/出さないをマスタで触れるようにするため**（§9.219 ②）
+    # ——載せ忘れると`tests/test_rpmaster.js`が「マスタに無い塊」で落ちる。
+    ('測定値の統計', 6, 0, 0, '', '', ''),
 )
 BUILTIN_KEYS = tuple(x[0] for x in BUILTIN_SEEDS)
 # **中身をマスタで書き換えてよい塊**（＝ラベルと出どころを並べただけのもの）。
 # ここに無い塊の`[内容]`は効かないので、画面は欄ごと出さずに理由を書く（§4）。
 CONTENT_EDITABLE = frozenset(k for k, _s, _r, _c, content, _kd, _tx in BUILTIN_SEEDS if content)
+
+
+# 1つの項目が横に何マス使うか（§9.245）。**1〜12**——内訳の列数は最大4だが、
+# 「1マス」の意味は列数で決まるので、丸めは読む側（画面）が列数を見て行う。
+SPAN_MIN, SPAN_MAX = 1, 12
 
 
 def parse_content(text):
@@ -310,20 +320,45 @@ def parse_content(text):
     **壊れた行は1行だけ落とす**（§9.88の読み替えルールと同じ約束）——
     1行の書き間違いで塊ごと消えると、どこが悪いのか分からなくなる。
     `=`が無い行は「ラベルも道も同じ」として扱う（`basic.lotNo`だけ書いても
-    出る）。"""
+    出る）。
+
+    ---- マトリクス配置（§9.245、利用者の指示） ----
+    「ブロックごとにデータの配置をどのようなマトリクスに並べるか視覚的に
+     調整できる機能が欲しいです」
+
+    **保存の形は`ラベル=出どころ`のまま**（§9.226 ⑥）で、後ろに`|`で
+    **横に使うマス数**を足せるようにした。`|`の無い行は今までどおり1マス
+    ——既に登録してある塊はそのまま読める（**足すのは任意の後置きだけ**）。
+
+        ロット番号=basic.lotNo|2   … 横2マスぶん使う
+        |1                        … 空きマス（何も出さずに場所だけ取る）
+
+    空きマスは**道もラベルも持たない行**で表す。`,`と`、`は区切りに使って
+    いるので**マス数の区切りに使えない**（`|`にした理由）。"""
     out = []
     for raw in str(text or '').replace('、', ',').replace('\r', '\n').replace(',', '\n').split('\n'):
         s = raw.strip()
         if not s:
             continue
+        span = 1
+        if '|' in s:
+            s, _, tail = s.partition('|')
+            s = s.strip()
+            try:
+                span = max(SPAN_MIN, min(SPAN_MAX, int(str(tail).strip() or 1)))
+            except (TypeError, ValueError):
+                span = 1
         if '=' in s:
             label, _, path = s.partition('=')
             label, path = label.strip(), path.strip()
         else:
             label, path = s, s
         if not path:
+            # 空きマス。**落とさない**——場所を取ることが役目なので、
+            # 消すとマトリクスが1マスずつ詰まって崩れる。
+            out.append({'label': '', 'path': '', 'blank': True, 'span': span})
             continue
-        out.append({'label': label or path, 'path': path})
+        out.append({'label': label or path, 'path': path, 'blank': False, 'span': span})
     return out
 
 

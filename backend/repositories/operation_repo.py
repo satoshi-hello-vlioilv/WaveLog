@@ -1703,6 +1703,11 @@ def _row_to_item(r):
     # 選ばせ方・初期値・手打ちが効かない（判定は`widget_family()`の1箇所）。
     auto = normalize_auto_value(r[36] if len(r) > 36 else '')
     auto_def = auto_value_def(auto)
+    # その項目がどの入力方法の仲間か。**`[型]`で判定しないこと**
+    # （§9.244、§9.229 ③と同じ罠）——組み込みの選択欄はどれも
+    # `[型]='文字'`で、まとまり（`[選択肢名]`）のほうで選択肢に結んで
+    # いる。`widget_family()`が唯一の判定。
+    fam = widget_family(normalize_item_type(r[5]), builtin, auto)
     # 設備ごとのレイアウトの上書き（§9.239 ②）。**列が無い古いDBでも動く**。
     overrides = _override_map(r[37] if len(r) > 37 else None)
     return {'overrides': overrides,
@@ -1725,10 +1730,9 @@ def _row_to_item(r):
             # 残す（型を戻したときに選び直させない）。仲間分けは
             # `widget_family()`の1箇所が答える。
             'widget': normalize_widget(r[19]),
-            'widgetFamily': widget_family(normalize_item_type(r[5]), builtin, auto),
+            'widgetFamily': fam,
             'widgetLive': (normalize_widget(r[19])
-                           if normalize_widget(r[19]) in WIDGET_FAMILIES[
-                               widget_family(normalize_item_type(r[5]), builtin, auto)]
+                           if normalize_widget(r[19]) in WIDGET_FAMILIES[fam]
                            else WIDGET_SELECT),
             # --- §9.220 ---
             # ② 初期値。**組み込みの欄も持てる**（§9.229 ③、利用者の指示
@@ -1781,9 +1785,17 @@ def _row_to_item(r):
             # 食い違ったときは「1つでも印があればダミー」**（畳むと同じ読み方）。
             'dummy': bool(r[31]),
             # --- §9.228 ④ ---
-            # 「空欄（選ばない）」を並べないか。**選択肢を持つ型だけの話**
-            # （自由記述や数値には空の札が無いので、読む側で倒しておく）。
-            'noBlank': bool(r[32]) and str(r[5] or '') in CHOICE_TYPES,
+            # 「空欄（選ばない）」を並べないか。**選択肢を持つ欄だけの話**
+            # （自由記述や数値・自動で入る値には空の札が無いので、読む側で
+            # 倒しておく）。**判定は族**（§9.244、利用者の報告「空欄の札を
+            # 出さないに設定しても、自動の項目の場合それが有効にならない」）
+            # ——以前は`[型]`で見ていたので、**組み込みの選択欄が全部すり抜けて
+            # いた**。オペレータ・検査員・内径・バリ揃え・コイル止め等はどれも
+            # `[型]='文字'`で、選択肢は`[選択肢名]`のほうで結んである。
+            # 画面（`opIsChoiceLike()`）は既に族で見ており設定は保存されて
+            # いたので、**書けるのに読むと必ずfalse**という形で出ていた
+            # （押しても効かない設定・§4）。
+            'noBlank': bool(r[32]) and fam == 'choice',
             # --- §9.231 ② ---
             # 上下限の出どころ。空＝この行の数をそのまま使う。
             'minFrom': normalize_limit_source(r[33]),
