@@ -48,7 +48,7 @@ G['操業データ'] = ['test_opdata', 'test_opui', 'test_msteps', 'test_maint',
 # 異常位置判定と条の設計の連携(§9.226 ④)。どちらを触っても両方を回す。
 G['異常位置'] = ['test_defect', 'test_defectlink', 'test_splitlive', 'test_scsplit',
                  # §9.239 ⑥: ピッチ→ロール判定とロールマスタ
-                 'test_roll']
+                 'test_roll', 'test_mmfold']
 # 操業データの意匠・設定窓・空きの群（§9.227）
 G['操業意匠'] = ['test_oppad', 'test_opui', 'test_opdata', 'test_msteps', 'test_oplimit',
                  'test_opmother', 'test_opunit', 'test_opauto']
@@ -74,7 +74,9 @@ G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'te
                      'test_scsession', 'test_scwho']
 G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 'test_eqkind',
                'test_shift', 'test_dbequip', 'test_crudroutes', 'test_setpage', 'test_eqstd',
-               'test_workdate', 'test_measstore', 'test_roll', 'test_rollio']
+               'test_workdate', 'test_measstore', 'test_roll', 'test_rollio',
+               # §9.241 ①: 束ねた見出しの開閉
+               'test_mmfold']
 G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'test_flows',
              'test_p11', 'test_p11c', 'test_waiting', 'test_mcore', 'test_msteps']
 G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'test_density',

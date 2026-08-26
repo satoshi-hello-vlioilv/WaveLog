@@ -346,6 +346,10 @@
           この画面だけ操作の置き場が2段になる。 -->
      <div class="mm-toolbar">
       <div class="mm-toolbar-left"><b id="masterMaintTitle">オペレータ</b><span class="mm-count" id="masterMaintCount"></span></div>
+      <!-- 束ねた見出しの開閉（§9.241 ①）。**群を持つマスタのときだけ**中身が
+           入る（renderMaintList が出し入れする。押せるのに何も起きない
+           ボタンを置かない・§CLAUDE 4）。 -->
+      <div class="mm-fold" id="masterMaintFold" hidden></div>
      </div>
      <form class="mm-form" id="masterMaintForm"></form>
      <div class="mm-list-wrap"><div class="mm-list" id="masterMaintList"></div></div>
@@ -1483,6 +1487,9 @@
       （読み込み順に依存させない）。 */
    if(def.key==='reportBlock'&&window.WL&&WL.reportBlocks)WL.reportBlocks.forget();
    if((def.key==='opItem'||def.key==='opChoice')&&window.WL&&WL.opData)WL.opData.forget();
+   /* **保存した行の群は開く**（§9.241 ①）——畳んだ設備へ足したとき、
+      保存できたのに一覧に出ないのは「消えた」と読まれる。 */
+   if(def.groupBy)mmOpenGroupOf(def,body[def.groupBy]);
    maintState.editing=null;await loadMaint(true);
    showToast&&showToast(def.label+(editing?'を更新しました':'を登録しました'),(r&&r.message)||'',3600);
   }catch(e){showToast&&showToast(editing?'更新できませんでした':'登録できませんでした',e.message,6500)}
@@ -1562,6 +1569,98 @@
   if(q)items=items.filter(it=>{const hay=[...def.cols.map(c=>it[c.k]),it.updated_by].map(v=>String(v??'').normalize('NFKC').toLowerCase()).join(' ');return hay.includes(q)});
   return items;
  }
+ /* ---------- 束ねた見出しの開閉（§9.241 ①、利用者の指示「ロールマスタに
+    ついて、設備名毎に折りたためるようにしてください」） ----------
+    ロールは設備ごとに何十本もあり、`groupBy`で束ねてはいたが**全部が出たまま**
+    だったので、目的の設備へ着くまで他の設備を通り過ぎることになっていた。
+
+    ・**畳んだ群の行は作らない**（§9.104）。`display:none`で隠すだけでは
+      レイアウトから外れないので、行が増えるほど描き直しが重くなる。
+    ・**覚えるのはこの端末**（読み方の好みなのでPCごとに違ってよい。§9.199の
+      `childBadge`と同じ）。**触った群だけ**を覚え、触っていない群は既定
+      （開く）に追随する——既定を変えないので、今までの見え方は変わらない。
+    ・**絞り込み中は畳まない**——畳んだ群の中に当たりがあると、見出しの件数
+      だけが出て行が1つも出ない（探しているのに出ない、が起きる）。
+      そのことは画面に書く（§CLAUDE 2）。
+    ・**登録・更新した行の群は開く**（§CLAUDE「思い出させない」）——畳んだ
+      設備へ足したとき、保存できたのに一覧に出ないのは「消えた」と読まれる。 */
+ const MM_FOLD_KEY='MasterListFoldV1';
+ let mmFoldPref=new Map();
+ try{mmFoldPref=new Map(Object.entries(JSON.parse(localStorage.getItem(MM_FOLD_KEY)||'{}')))}catch(e){}
+ const mmFoldKey=(def,g)=>`${def.key}::${g}`;
+ function mmFoldRemember(){try{localStorage.setItem(MM_FOLD_KEY,JSON.stringify(Object.fromEntries(mmFoldPref)))}catch(e){}}
+ function mmIsFolded(def,g){return mmFoldPref.get(mmFoldKey(def,g))===true}
+ function mmSetFolded(def,g,on){
+  /* **開いた群は覚えない**（鍵ごと消す）——既定が「開く」なので、
+     覚えると既定を変えたときに追随しなくなる。 */
+  if(on)mmFoldPref.set(mmFoldKey(def,g),true);else mmFoldPref.delete(mmFoldKey(def,g));
+  mmFoldRemember();
+ }
+ /* 束ねの見出し。**空を「すべての設備」と読み替えないこと**（§9.239 ⑥ 訂正）
+    ——1行＝1設備になったので「すべて」という状態は無く、空は**設備が
+    決まっていない直すべき行**。「すべての設備」と出すと、壊れている行が
+    正常に見えて誰も直さない（§CLAUDE 4）。 */
+ function maintGroupLabel(v){
+  const t=String(v??'').trim();
+  return t&&t!=='*'?t:'設備が未設定（この行を開いて設備を選んでください）';
+ }
+ /* 保存した行の群を開く。**畳みの鍵は見出しの文字**なので、生の値ではなく
+    `maintGroupLabel()`を通してから消す（通さないと、設備が未設定の行を
+    足したときに畳んだままになる）。 */
+ function mmOpenGroupOf(def,rawValue){
+  if(!def||!def.groupBy)return;
+  mmSetFolded(def,maintGroupLabel(rawValue),false);
+ }
+ function maintGroupHeadEl(def,info){
+  const h=document.createElement('div');
+  h.className='mm-group-head'+(info.folded?' is-folded':'');
+  h.setAttribute('role','button');h.tabIndex=0;
+  h.setAttribute('aria-expanded',info.folded?'false':'true');
+  h.dataset.mmGroup=info.label;
+  /* **状態は色だけで伝えない**（§CLAUDE 3）——印(▸/▾)と一緒に、件数と
+     「畳んでいます」を必ず文字で出す。 */
+  h.innerHTML=`<i class="mm-group-mark" aria-hidden="true">${info.folded?'▸':'▾'}</i>`
+   +`<b>${esc(info.label)}</b><span>${info.count}件</span>`
+   +(info.folded?'<span class="mm-group-folded">畳んでいます（押すと開きます）</span>':'');
+  h.title=info.folded
+   ?`${info.label} の${def.label} ${info.count}件を畳んでいます。押すと開きます。`
+   :`${info.label} に登録されている${def.label}です（${info.count}件）。押すと畳みます。`;
+  const toggle=()=>{
+   mmSetFolded(def,info.label,!info.folded);
+   renderMaintList();
+   /* 押した見出しを画面の中へ戻す。**上の群を畳むと下が巻き上がる**ので、
+      戻さないと押した場所が視界から消える（何が起きたのか読めない）。
+      見出しは作り直されているので、**同じ文字の見出しを引き直す**
+      （属性セレクタは設備名に引用符が入ると壊れる）。 */
+   const back=[...document.querySelectorAll('#masterMaintList .mm-group-head')]
+    .find(el=>el.dataset.mmGroup===info.label);
+   if(back)back.scrollIntoView({block:'nearest'});
+  };
+  h.onclick=toggle;
+  h.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggle()}};
+  return h;
+ }
+ /* 一覧の上の「すべて開く／すべて畳む」。**群を持たないマスタでは帯ごと
+    出さない**（押せるのに何も起きないボタンを置かない・§CLAUDE 4）。 */
+ function renderMaintFoldTools(def,groups,searching){
+  const box=$('#masterMaintFold');if(!box)return;
+  if(!def.groupBy||!groups.length){box.hidden=true;box.innerHTML='';return}
+  box.hidden=false;
+  const open=groups.filter(g=>!g.folded).length;
+  const allOpen=open===groups.length;
+  box.innerHTML=`<b class="mm-fold-state">${groups.length}${esc(def.groupWord||'設備')}`
+    +` <span>${searching?'絞り込み中は全部開きます':`開 ${open} / 畳 ${groups.length-open}`}</span></b>`
+   +`<button type="button" class="mm-btn-ghost sm" data-mm-fold="open"${allOpen?' disabled':''}`
+   +` title="${allOpen?'すべて開いています':'畳んでいる'+esc(def.groupWord||'設備')+'をすべて開きます'}">すべて開く</button>`
+   +`<button type="button" class="mm-btn-ghost sm" data-mm-fold="close"${(searching||!open)?' disabled':''}`
+   +` title="${searching?'絞り込み中は畳みません（当たった行が出なくなるため）'
+      :(open?'見出しだけを残して行を畳みます':'すべて畳んでいます')}">すべて畳む</button>`;
+  box.querySelectorAll('[data-mm-fold]').forEach(b=>b.onclick=()=>{
+   const close=b.dataset.mmFold==='close';
+   groups.forEach(g=>mmSetFolded(def,g.label,close));
+   renderMaintList();
+  });
+ }
  function renderMaintList(){
   const def=currentDef(),list=$('#masterMaintList');if(!list)return;
   const all=maintState.items||[],items=filteredMaintItems(def),tmpl=maintGridTemplate(def);
@@ -1569,7 +1668,11 @@
   const showAudit=maintShowsAudit(def);
   const headCols=def.cols.map(c=>`<span>${esc(c.label)}</span>`).join('');
   list.innerHTML=`<div class="mm-row head" style="grid-template-columns:${tmpl}">${headCols}${showAudit?'<span>更新者</span><span>更新日時</span>':''}<span class="mm-act">操作</span></div>`;
-  if(!items.length){list.insertAdjacentHTML('beforeend',`<div class="mm-empty">${all.length&&maintState.query?'絞り込み条件に一致するデータがありません。':'有効なデータがありません。上のフォームから追加してください。'}</div>`);return}
+  if(!items.length){
+   /* 行が無いときは開閉の帯も出さない（畳む対象が無いのにボタンだけ残ると、
+      押せるのに何も起きない・§CLAUDE 4）。 */
+   renderMaintFoldTools(def,[],false);
+   list.insertAdjacentHTML('beforeend',`<div class="mm-empty">${all.length&&maintState.query?'絞り込み条件に一致するデータがありません。':'有効なデータがありません。上のフォームから追加してください。'}</div>`);return}
   const frag=document.createDocumentFragment();
   /* ---------- 親子で束ねる(§9.239 ⑥、利用者の指示) ----------
      「設備のカラムはマスタに親子関係を持たせ、設備単位でロールマスタを
@@ -1578,26 +1681,30 @@
      ことになる）。見出しには**件数を文字で**添える（§3）。
      `groupBy`を持たないマスタは今までどおり平らに並ぶ。 */
   const gkey=def.groupBy||'';
-  let lastGroup=null;
-  /* 束ねの見出し。**空を「すべての設備」と読み替えないこと**（§9.239 ⑥ 訂正）
-     ——1行＝1設備になったので「すべて」という状態は無く、空は
-     **設備が決まっていない直すべき行**。「すべての設備」と出すと、
-     壊れている行が正常に見えて誰も直さない（§CLAUDE 4）。 */
-  const groupLabel=v=>{const t=String(v??'').trim();
-   return t&&t!=='*'?t:'設備が未設定（この行を開いて設備を選んでください）'};
-  const counts={};
-  if(gkey)items.forEach(it=>{const g=groupLabel(it[gkey]);counts[g]=(counts[g]||0)+1});
+  let lastGroup=null,foldedNow=false;
+  /* 群ごとの件数と畳み。**出てくる順のまま**並べる（並べ替えるとサーバーが
+     返した順＝表示順の設定が効かなくなる）。**絞り込み中は畳まない**
+     （§9.241 ①）——当たった行が出ないと、探しているのに無いと読まれる。 */
+  const searching=!!String(maintState.query||'').trim();
+  const groups=[],gidx={};
+  if(gkey)items.forEach(it=>{
+   const g=maintGroupLabel(it[gkey]);
+   if(gidx[g]===undefined){gidx[g]=groups.length;groups.push({label:g,count:0,folded:false})}
+   groups[gidx[g]].count++;
+  });
+  groups.forEach(g=>{g.folded=!searching&&mmIsFolded(def,g.label)});
+  renderMaintFoldTools(def,groups,searching);
   items.forEach(it=>{
    if(gkey){
-    const g=groupLabel(it[gkey]);
+    const g=maintGroupLabel(it[gkey]);
     if(g!==lastGroup){
      lastGroup=g;
-     const h=document.createElement('div');
-     h.className='mm-group-head';
-     h.innerHTML=`<b>${esc(g)}</b><span>${counts[g]}件</span>`;
-     h.title=`${g} に登録されている${esc(def.label)}です`;
-     frag.append(h);
+     const info=groups[gidx[g]];
+     foldedNow=info.folded;
+     frag.append(maintGroupHeadEl(def,info));
     }
+    /* 畳んだ群の行は**作らない**（§9.104。隠すだけでは組み直しが重い）。 */
+    if(foldedNow)return;
    }
    const row=document.createElement('div');row.className='mm-row'+(maintState.editing&&maintState.editing.id===it.id?' editing':'');row.style.gridTemplateColumns=tmpl;row.tabIndex=0;row.setAttribute('role','button');
    // 列として出さない監査情報(更新者・更新日時)は行のツールチップで補う。
