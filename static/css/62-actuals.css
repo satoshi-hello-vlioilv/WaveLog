@@ -1,0 +1,179 @@
+/* ============================================================
+   62-actuals.css: 実績データリスト（§9.241 ③）と操業データ表の紙（§9.241 ②）
+   ------------------------------------------------------------
+   一覧（`.ac-*`）は**画面**なので寸法・色はトークンから選ぶ。
+   紙（`.os-*`）は**印刷物**なので px 固定が正しい例外——用紙の割り付けが
+   表示サイズ倍率で崩れるため（`.rp-page`/`.sp-page`と同じ扱い。
+   `tests/test_theme.js` / `tests/test_csslint.py` の除外に `os-` を足してある）。
+   ============================================================ */
+@layer component {
+
+/* ---------- 実績データリスト（画面） ---------- */
+.ac-panel{display:none;flex-direction:column;flex:1;min-height:0;background:var(--surface)}
+body.ac-mode .ac-panel:not([hidden]){display:flex}
+body.ac-mode #grid,body.ac-mode .pager{display:none}
+
+.ac-head{display:flex;align-items:center;gap:var(--gap-inline);flex-wrap:wrap;min-width:0}
+.ac-field{display:flex;align-items:center;gap:var(--space-1);
+ font-size:var(--fs-sm);font-weight:700;color:var(--ink-2);white-space:nowrap}
+.ac-field select,.ac-field input{height:var(--ctl-h-sm);font-size:var(--fs-sm)}
+.ac-field select{max-width:var(--w-lg)}
+.ac-search input{height:var(--ctl-h-sm);width:var(--w-lg);font-size:var(--fs-sm);
+ border:1px solid var(--line);border-radius:var(--radius-pill);padding:0 var(--ctl-pad-x-sm)}
+.ac-presets{display:flex;align-items:center;gap:var(--space-1)}
+.ac-chip{height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);border:1px solid var(--line);
+ border-radius:var(--radius-pill);background:var(--surface);color:var(--ink-2);
+ font-size:var(--fs-micro);font-weight:700;cursor:pointer;white-space:nowrap}
+.ac-chip:hover{background:var(--surface-2)}
+/* 選んだ札のほうが濃い（§9.229 ②）。合図は面と文字色の2つまで。 */
+.ac-chip.is-on{background:var(--teal);border-color:var(--teal);color:#fff}
+.ac-btn{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);border:1px solid var(--line);
+ border-radius:var(--radius-sm);background:var(--surface);color:var(--ink);
+ font-size:var(--fs-sm);font-weight:700;cursor:pointer;white-space:nowrap}
+.ac-btn:hover{background:var(--surface-2)}
+.ac-btn[disabled]{opacity:.5;cursor:default}
+.ac-btn--primary{background:var(--teal);border-color:var(--teal);color:#fff}
+.ac-btn--primary:hover{background:var(--teal-dark)}
+.ac-btn--primary[disabled]{background:var(--muted);border-color:var(--muted)}
+
+.ac-body{flex:1;min-height:0;display:flex;flex-direction:column;padding:0 var(--space-3) var(--space-3)}
+.ac-note{display:flex;flex-direction:column;gap:var(--space-1);
+ margin:var(--space-2) 0;padding:var(--pad-row);
+ border:1px solid var(--line-soft);border-left:3px solid var(--teal);
+ border-radius:var(--radius-sm);background:var(--surface-2);font-size:var(--fs-sm)}
+.ac-note[hidden]{display:none}
+.ac-note-line{display:flex;align-items:baseline;gap:var(--space-2);flex-wrap:wrap}
+.ac-note-line b{font-weight:800;color:var(--ink)}
+.ac-note-line .ac-bad{color:var(--danger-fg,#9d2020)}
+.ac-note-line span{color:var(--ink-3)}
+
+/* 一覧は器の側で行の寸法を定義し直す（§9.161。カスタムプロパティは
+   定義した場所で解決される）。1つの表の中は同じ文字サイズにする。 */
+.ac-list{flex:1;min-height:0;overflow:auto;
+ --row-h:calc(var(--fs-sm) * var(--lh) + var(--space-1) * 2 + 1px);
+ font-size:var(--fs-sm);background:var(--surface);
+ border:1px solid var(--line-soft);border-radius:var(--radius-sm)}
+.ac-row{display:grid;grid-template-columns:var(--ac-cols,1fr);align-items:center;
+ gap:0;min-height:var(--row-h);border-bottom:1px solid var(--line-soft);
+ background:var(--surface)}
+.ac-row.head{position:sticky;top:0;z-index:2;background:var(--surface-2);
+ border-bottom:2px solid var(--line-mid);color:var(--ink-2);font-weight:800}
+.ac-row:not(.head):nth-child(even){background:var(--surface-2)}
+.ac-row:not(.head):hover{background:var(--pale)}
+.ac-row.is-picked{box-shadow:inset 3px 0 0 var(--teal)}
+.ac-row>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+ padding:0 var(--space-2);position:relative}
+.ac-row.head>span{cursor:default}
+.ac-num{text-align:right;font-variant-numeric:tabular-nums}
+.ac-idx{display:flex;align-items:center;gap:var(--space-1);color:var(--ink-3)}
+.ac-pick{display:flex;align-items:center;gap:var(--space-1);cursor:pointer}
+.ac-pick input{margin:0}
+.ac-act{display:flex;align-items:center;gap:var(--space-1)}
+.ac-row-btn{height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);border:1px solid var(--line);
+ border-radius:var(--radius-xs);background:var(--surface);color:var(--ink-2);
+ font-size:var(--fs-micro);font-weight:700;cursor:pointer;white-space:nowrap}
+.ac-row-btn:hover{background:var(--pale)}
+/* 列幅の取っ手（§9.164。既存の道具をそのまま呼ぶので、見た目だけ用意する）。 */
+.ac-grip{position:absolute;top:0;right:0;width:10px;height:100%;cursor:col-resize}
+.ac-grip:hover{background:var(--teal-soft)}
+.ac-empty{padding:var(--space-5);text-align:center;color:var(--muted)}
+
+/* ---------- 操業データ表（紙） ----------
+   px 固定はここでは正しい（印刷物）。画面の表示サイズ倍率に追随させると、
+   拡大しただけで紙の行数が変わる（§9.115と同じ理由）。 */
+.os-print-area{display:none}
+.os-page{font-size:10px;line-height:1.25;box-sizing:border-box;
+ width:297mm;min-height:210mm;padding:8mm;background:#fff;color:#111;
+ display:flex;flex-direction:column;gap:2mm}
+.os-page[data-paper="a4-portrait"]{width:210mm;min-height:297mm}
+.os-page[data-paper="a3-landscape"]{width:420mm;min-height:297mm}
+.os-page[data-paper="a3-portrait"]{width:297mm;min-height:420mm}
+/* 高密度（既定）。**中身を削らずに詰める**——文字と余白だけを落とす。 */
+.os-page[data-dense="on"]{font-size:8.5px;line-height:1.15}
+
+.os-head{display:flex;align-items:baseline;gap:3mm;flex-wrap:nowrap;
+ border-bottom:0.4mm solid #111;padding-bottom:1mm}
+.os-title{font-size:13px;font-weight:800;white-space:nowrap}
+.os-eq{font-size:12px;font-weight:800;white-space:nowrap}
+.os-day{font-size:12px;font-weight:800;white-space:nowrap}
+.os-day i{font-size:8px;font-weight:700;font-style:normal;margin-left:1mm;color:#555}
+.os-shift{font-size:12px;font-weight:800;white-space:nowrap}
+.os-count{margin-left:auto;font-size:9px;font-weight:700;color:#333;white-space:nowrap}
+.os-count i{font-style:normal;color:#555}
+
+.os-table-wrap{align-self:flex-start;border:0.2mm solid #111}
+.os-table{table-layout:fixed;border-collapse:collapse;
+ font-size:calc(1em * var(--os-fit,1))}
+.os-table th,.os-table td{border:0.15mm solid #666;padding:0.3mm 0.6mm;
+ overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
+.os-table th{background:#eceff1;font-weight:800;text-align:center}
+.os-table .os-head-2 th{background:#f4f6f7;font-weight:700}
+.os-num{text-align:right;font-variant-numeric:tabular-nums}
+/* 2行1データ構成。**1件が2行であることを見た目で言う**——上段の下罫線を
+   薄くし、件と件のあいだ（下段の下）に太い線を引く。 */
+.os-row-1>td{border-bottom-color:#c8ced1}
+.os-row-2>td{border-bottom:0.35mm solid #111;background:#fafbfc}
+.os-page:not([data-borders="off"]) .os-row-2>td{background:#fafbfc}
+
+/* 枠線OFF（§9.236 ①）。**線を完全には無くさない**——セルの余白が1mmしか
+   ないので、太い黒枠だけを外して極細の薄い区切りにとどめる。 */
+.os-page[data-borders="off"] .os-table-wrap{border:0}
+.os-page[data-borders="off"] .os-table th,
+.os-page[data-borders="off"] .os-table td{border:0;border-bottom:0.1mm solid #d8dde0}
+.os-page[data-borders="off"] .os-table th{background:#f5f7f8}
+.os-page[data-borders="off"] .os-row-2>td{border-bottom:0.2mm solid #b9c0c4}
+.os-page[data-borders="off"] .os-head{border-bottom:0.2mm solid #999}
+
+.os-foot{font-size:8px;margin-top:auto;display:flex;align-items:baseline;
+ justify-content:space-between;gap:3mm;border-top:0.2mm solid #999;
+ padding-top:1mm;color:#333}
+
+/* ---------- 印刷プレビュー（画面。§9.186） ---------- */
+.os-pv{position:fixed;inset:0;z-index:var(--z-modal);display:grid;place-items:center;
+ background:#0b2b3355;padding:var(--space-3)}
+.os-pv[hidden]{display:none}
+.os-pv-dialog{display:flex;flex-direction:column;width:min(1400px,96vw);height:min(900px,94vh);
+ background:var(--surface);border-radius:var(--radius-md);overflow:hidden;
+ box-shadow:0 18px 50px #0b2b3355}
+.os-pv-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);
+ padding:var(--pad-card);border-bottom:1px solid var(--line-soft);background:var(--surface-2)}
+.os-pv-head small{display:block;font-size:var(--fs-micro);font-weight:700;color:var(--ink-3)}
+.os-pv-head h2{margin:0;font-size:var(--fs-title);color:var(--ink)}
+.os-pv-x{border:0;background:transparent;font-size:var(--fs-lg);cursor:pointer;color:var(--ink-3)}
+.os-pv-body{flex:1;min-height:0;display:grid;grid-template-columns:var(--w-xl,300px) minmax(0,1fr)}
+.os-pv-side{min-height:0;overflow:auto;padding:var(--pad-card);
+ border-right:1px solid var(--line-soft);display:flex;flex-direction:column;gap:var(--space-3);
+ scrollbar-gutter:stable}
+.os-pv-side h3{margin:0 0 var(--space-1);font-size:var(--fs-sm);color:var(--ink-2)}
+.os-pv-seg{display:flex;flex-wrap:wrap;gap:var(--space-1)}
+.os-pv-seg button{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
+ border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);
+ color:var(--ink-2);font-size:var(--fs-sm);font-weight:700;cursor:pointer}
+.os-pv-seg button:hover{background:var(--surface-2)}
+.os-pv-seg button.is-on{background:var(--teal);border-color:var(--teal);color:#fff}
+.os-pv-note{margin:var(--space-1) 0 0;font-size:var(--fs-micro);color:var(--ink-3)}
+.os-pv-check{display:flex;align-items:center;gap:var(--space-1);
+ font-size:var(--fs-sm);color:var(--ink-2);cursor:pointer}
+.os-pv-btn{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);border:1px solid var(--line);
+ border-radius:var(--radius-sm);background:var(--surface);color:var(--ink);
+ font-size:var(--fs-sm);font-weight:700;cursor:pointer}
+.os-pv-btn:hover{background:var(--surface-2)}
+.os-pv-btn--primary{background:var(--teal);border-color:var(--teal);color:#fff}
+.os-pv-btn--primary:hover{background:var(--teal-dark)}
+.os-pv-sum dl{margin:0;display:flex;flex-direction:column;gap:var(--space-1)}
+.os-pv-sum dl>div{display:grid;grid-template-columns:var(--w-sm,7em) minmax(0,1fr);
+ gap:var(--space-2);font-size:var(--fs-micro)}
+.os-pv-sum dt{color:var(--ink-3);font-weight:700}
+.os-pv-sum dd{margin:0;color:var(--ink-2)}
+.os-pv-main{min-height:0;display:flex;flex-direction:column}
+.os-pv-bar{display:flex;align-items:center;gap:var(--space-2);
+ padding:var(--pad-row);border-bottom:1px solid var(--line-soft);
+ font-size:var(--fs-sm);color:var(--ink-2);font-weight:700}
+.os-pv-grow{flex:1}
+.os-pv-scroll{flex:1;min-height:0;overflow:auto;background:var(--surface-3);
+ padding:var(--space-3);display:flex;justify-content:center}
+/* `transform`は場所を空けないので、器の寸法はJSが入れる（--os-zoom-w/h）。 */
+.os-pv-scale{width:var(--os-zoom-w,auto);height:var(--os-zoom-h,auto)}
+.os-pv-scale .os-page{transform:scale(var(--os-zoom,1));transform-origin:top left;
+ margin-bottom:12px;box-shadow:0 2px 10px #0b2b3333}
+}

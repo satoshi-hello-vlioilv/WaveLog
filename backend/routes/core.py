@@ -41,6 +41,7 @@ BODY_CSS_FILES=[
  '50-master.css',      # マスタ管理
  '55-quality.css',     # 品質データ分析
  '60-report.css',      # 測定帳票(画面)・ダッシュボード
+ '62-actuals.css',     # 実績データリスト・操業データ表(紙とプレビュー)
  '65-calendar.css',    # 実績カレンダー
  '70-schedule.css',    # 作業スケジュール・勤務体系
  '75-master-paths.css',# マスタ管理(パス設定・RNE抽出)

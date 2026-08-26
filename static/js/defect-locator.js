@@ -270,15 +270,32 @@
          memo:$id('defectMemo')?.value||''};
  }
  const sameInput=(a,b)=>!!a&&!!b&&INPUT_KEYS.every(k=>String(a[k]??'')===String(b[k]??''));
+ /* 何も入れていない状態（§9.241 ⑤）。**「消した」と「まだ何も入れていない」を
+    見分ける**ためだけの判定で、記録が既にあるときは使わない。 */
+ function blankInput(i){
+  return String(i.distance??'')===''&&String(i.memo??'')==='';
+ }
  /* 一時データの書き戻し。開いて眺めただけで「未保存の変更あり」にならない
     よう、中身が変わっていないときは何もしない。**保存済みスナップショット
     (saved)は絶対に落とさない**——ここで作り直すと、入力を1文字触った
-    だけで帳票から消える。 */
+    だけで帳票から消える。
+
+    ---------- §9.241 ⑤（利用者の報告「入力を取り消しても元に戻る」）
+    以前は`refresh()`が **`if(!r.error)saveInput(r)`** と、判定できたときだけ
+    書き戻していた。**入力を消すと必ず判定できない**（距離が空なので
+    `compute()`は`errorKind:'input'`を返す）ので、**消した結果だけが一度も
+    記録へ入らなかった**——窓を閉じて開き直すと`restoreInput()`が古い値を
+    書き戻し、「消す前に戻る」ように見える。判定の成否と、入力を覚えることは
+    別のこと。**判定できなくても入力は書き戻す。** */
  function saveInput(r){
   if(!S.measure)return;
   const i=readInput();
   S.measure.settings=S.measure.settings||{};
   const prev=S.measure.settings.defectLocation;
+  /* **まだ何も記録が無く、入力も空なら何もしない**（開いて眺めただけで
+     「未保存の変更あり」にしない）。記録があるときは、空になったことも
+     ちゃんと書く——それが「消した」という操作の結果なので。 */
+  if(!prev&&blankInput(i))return;
   if(prev&&sameInput(prev,i))return;
   S.measure.settings.defectLocation={...i,saved:prev?.saved,
    // 判定の答えも一緒に保存する。帳票と一覧で再計算しなくても出せるように。
@@ -353,7 +370,8 @@
   if(typeof markDirty==='function')markDirty();
   renderSaveState(lastResult);
   syncSplitMarks();
-  showToast?.('保存を取り消しました','測定帳票には表示されなくなります');
+  showToast?.('保存を取り消しました',
+    '測定帳票には表示されなくなります。この変更は測定画面の「保存」でDBへ入ります');
  }
 
  /* ---------- 図をつかんで位置を決める（§9.226 ②、利用者の指示
@@ -467,7 +485,9 @@
     :'ロットの基本情報と判定結果を1枚の帳票として印刷します';
   }
   renderSaveState(r);
-  if(!r.error)saveInput(r);
+  /* **判定できなくても入力は書き戻す**（§9.241 ⑤）。消した結果を記録へ
+     入れないと、開き直したときに古い値が戻る。 */
+  saveInput(r);
  }
 
  /* ---------- 帳票（この判定だけの1枚） ---------- */
@@ -643,18 +663,47 @@
     ? String(currentConfiguredEquipment()||'').trim() : '';
 }
  /* ロールは設備が変わったときだけ引く。**読めなくても窓は開く**
-    （fail-open。マスタが無い端末でも幅方向の判定は使える）。 */
- const rollCache=(window.WL&&WL.ttlCache)?WL.ttlCache({ttl:5*60*1000,max:8}):null;
+    （fail-open。マスタが無い端末でも幅方向の判定は使える）。
+
+    ---------- §9.241 ④（利用者の報告「登録されたロールマスタを読めていない」）
+    ここは**2つ同時に間違えていて、しかも例外が出ない**形だった:
+     ① `WL.ttlCache` は **位置引数**（`ttlCache(ttlMs,maxEntries)`）なのに
+        オブジェクトを渡していた
+     ② 「無ければ取りに行く」のは **`fetch(key,loader)`**。`get(key)` は
+        **控えを見るだけ**で、第2引数は捨てられる
+    ②のせいで`get()`は常に`null`を返し、**loaderが一度も呼ばれない**——
+    つまり `/api/roll-master` へのリクエストが1本も飛んでいなかった。
+    それでも`rows=(r&&r.items)||[]`が空配列になるので、画面は
+    「この設備のロールが登録されていません」と**もっともらしく**言い切る。
+    §CLAUDE「公開漏れは黙って素通しになる」と同じ形なので、**取りに行った
+    ことを確かめる網**（`tests/test_rollload.js`）を置いた。 */
+ const rollCache=(window.WL&&typeof WL.ttlCache==='function')?WL.ttlCache(5*60*1000,8):null;
  let rollState={equipment:null,rows:null,error:'',loading:false};
+ /* マスタで登録・変更した直後に効かせるための捨て口（§9.216／§9.217と同じ
+    作法）。**捨てるのは控えと今の状態の両方**——控えだけ捨てても、
+    `rollState`が「この設備は読み終えた」と言い続ける。 */
+ function forgetRolls(){
+  if(rollCache)rollCache.invalidate();
+  rollState={equipment:null,rows:null,error:'',loading:false};
+ }
  async function loadRolls(eq){
   if(rollState.equipment===eq&&(rollState.rows||rollState.error))return;
   rollState={equipment:eq,rows:null,error:'',loading:true};
   try{
    const get=()=>api('/api/roll-master?equipment='+encodeURIComponent(eq));
-   const r=rollCache?await rollCache.get('roll:'+eq,get):await get();
+   /* **`fetch`（無ければ取りに行く）**。`get`は控えを見るだけ。 */
+   const r=rollCache?await rollCache.fetch('roll:'+eq,get):await get();
    if(rollState.equipment!==eq)return;               // 別の設備へ移った
-   rollState={equipment:eq,rows:(r&&r.items)||[],faces:(r&&r.contactFaces)||[],
-              error:'',loading:false};
+   /* **答えの形が違ったら「0本」と言い切らない**（§CLAUDE 4）。読めたのに
+      中身が無いのか、そもそも読めていないのかを画面が言い分けられるように。 */
+   if(!r||!Array.isArray(r.items)){
+    rollState={equipment:eq,rows:null,
+      error:'ロールマスタの答えを読めませんでした（この端末の版が古い可能性があります）',
+      loading:false};
+   }else{
+    rollState={equipment:eq,rows:r.items,faces:r.contactFaces||[],
+               error:'',loading:false};
+   }
   }catch(e){
    if(rollState.equipment!==eq)return;
    rollState={equipment:eq,rows:null,error:e.message||String(e),loading:false};
@@ -798,6 +847,14 @@
   const s=S.measure.settings=S.measure.settings||{};
   const cur=s.defectRoll||{};
   const now=rollInput();
+  /* **開いただけで「未保存の変更あり」にしない**（§9.241 ⑤）——まだ記録が
+     無く、ピッチもメモも空のうちは書かない。既に記録があるときは、空に
+     なったこともちゃんと書く。 */
+  /* **`NaN`を「空」として読むこと**——`rollInput()`のピッチは`num()`を通すので、
+     空欄は`NaN`（`null`ではない）。`String(NaN??'')`は`'NaN'`になるため、
+     `??`だけの判定では「空欄なのに値がある」と読んで、開いただけで
+     未保存の変更を作ってしまう（実際にそうなった）。 */
+  if(!s.defectRoll&&!Number.isFinite(now.pitch)&&String(now.memo??'')==='')return;
   if(ROLL_INPUT_KEYS.every(k=>String(cur[k]??'')===String(now[k]??'')))return;
   s.defectRoll={...now,updatedAt:new Date().toISOString()};
   if(typeof markDirty==='function')markDirty();
@@ -843,7 +900,8 @@
   set('defectRollList',rollListHtml(r));
   set('defectRollNote',rollNoteHtml(r));
   set('defectRollBasis',rollBasisHtml());
-  if(!r.error)saveRollInput();
+  /* ①と同じ理由で、**判定できなくても入力は書き戻す**（§9.241 ⑤）。 */
+  saveRollInput();
  }
 
  /* ---------- タブ（§9.239 ⑥） ---------- */
@@ -908,7 +966,14 @@
   if($id('defectDistance'))$id('defectDistance').value='';
   if($id('defectMemo'))$id('defectMemo').value='';
   if($id('defectWidth'))$id('defectWidth').value=DEFAULT_DEFECT_WIDTH;
-  refresh();
+  refresh();                       /* ここで記録へも書き戻る（§9.241 ⑤） */
+  /* **押したことは必ず返す**（§9.221 ①）。窓は閉じない作りなので、
+     何も起きなかったのか消えたのかが分からないと「壊れている」と読まれる。
+     **どこまで効いたかも書く**（§CLAUDE 6）——記録へは入ったが、DBへは
+     測定画面の「保存」で入る。 */
+  showToast?.('入力を消しました',
+    savedRecord()?'帳票に載せている判定はそのままです（外すときは「帳票から外す」）。この変更は測定画面の「保存」でDBへ入ります'
+                :'この変更は測定画面の「保存」でDBへ入ります');
  });
  ['defectBasis','defectDistance','defectWidthBasis','defectWidth','defectMemo'].forEach(id=>{
   const el=$id(id);if(!el)return;
@@ -937,6 +1002,6 @@
                    markers,
                    /* ② 長手方向（§9.239 ⑥）。**判定は1箇所**なので、
                       画面の外から確かめるときもこの関数を通す。 */
-                   setTab,rollMatches,rollEquipment,
+                   setTab,rollMatches,rollEquipment,forgetRolls,
                    rollRows:()=>((rollState.rows||[]).slice())};
 })();

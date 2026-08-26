@@ -131,12 +131,12 @@ rec('帳票の拡大率は--rp-scaleで渡している',
     '--rp-scale' in rp and 'style.transform=' not in rp)
 
 # ---- 7) リテラルの文字サイズは印刷物と見本だけ(既存の約束の再確認) ----
-# 紙(rp-=帳票 / df-=異常位置判定 / sp-=作業予定表§9.115)は表示サイズ倍率へ
-# 追随させない——追随させると画面の拡大率で紙の行数が変わる。
+# 紙(rp-=帳票 / df-=異常位置判定 / sp-=作業予定表§9.115 / os-=操業データ表§9.241 ②)は
+# 表示サイズ倍率へ追随させない——追随させると画面の拡大率で紙の行数が変わる。
 stray_fs=[]
 for i,l in enumerate(CSS.split('\n')):
     if not re.search(r'font-size:\s*[0-9.]+px',l): continue
-    if re.search(r'\.(rp|df|sp)-',l) or 'ui-size-swatch' in l: continue
+    if re.search(r'\.(rp|df|sp|os)-',l) or 'ui-size-swatch' in l: continue
     stray_fs.append(f'L{i+1} {l.strip()[:70]}')
 rec('文字サイズのリテラルpxは印刷物とサイズ見本だけ',not stray_fs,'; '.join(stray_fs[:5]))
 
