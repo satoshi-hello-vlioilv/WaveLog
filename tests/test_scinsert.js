@@ -271,7 +271,12 @@ const plan=()=>fetch(B+'/api/schedule/plan?equipment='+encodeURIComponent(EQ)).t
      並べると必ず末尾へ落ちていた。**サーバーの応答を遅らせて**、待って
      いるあいだの並びを見る（応答が速いと反映後の並びしか見えない）。 */
   await page.route('**/api/schedule/plan/add',async route=>{
-   await new Promise(r=>setTimeout(r,2600));await route.continue();
+   await new Promise(r=>setTimeout(r,2600));
+   /* **待っているあいだに要求が畳まれることがある**（画面を切り替えた・
+      ブラウザを閉じた）。そのときの`continue()`は`Route is already handled!`で
+      投げ、**ハンドラの中なので誰も拾わない**——プロセスが終了コード1で落ち、
+      通しでだけ「25 PASS / 0 FAIL なのにFATAL」という形で出ていた。 */
+   try{await route.continue()}catch(e){}
   });
   const lot2=await page.evaluate(()=>{
    const trs=[...document.querySelectorAll('#scListModal #grid tbody tr')];
