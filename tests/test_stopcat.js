@@ -31,8 +31,24 @@ let b=null;
        では永久に待つことになる。 */
     if(list.offsetParent===null)return true;
     if(!list.children.length)return false;
+    /* **失敗の知らせも「待ち終わり」として受ける。** これを待ち続けると
+       20秒かけて「来なかった」としか言えない。中身の判定は下でする。 */
+    if(list.querySelector('.mm-empty.error'))return true;
     return !/読み込んでいます/.test(list.textContent||'');
    },key,{timeout:20000});
+   /* **「読み込みに失敗しました」を「行が0件」と混同しないこと。**
+      `loadMaintInner()`のcatchは一覧を`.mm-empty.error`1件で置き換えるので、
+      上の待ちは通り、次の`.mm-row`の数え上げが0件になる——**サーバーが
+      500を返したのに「既定の分類が入っていない」と報告される**ことになり、
+      直す場所を丸ごと取り違える（実際に通しで1度そうなった。原因は
+      `_cfg_read()`が共有DBに触る`migrate_config_masters_from_shared()`を
+      通ることで、この網とは無関係の既存の脆さだった）。
+      失敗はその場で理由ごと投げる。 */
+   const bad=await page.evaluate(()=>{
+    const el=document.querySelector('#masterMaintList .mm-empty.error');
+    return el?(el.textContent||'').trim():'';
+   });
+   if(bad)throw Error(`${key}の一覧が読み込めなかった: ${bad}`);
   }catch(e){
    /* **落ちたときに何が出ていたかを言う**——「待っても来なかった」だけでは
       取りに行けていないのか描けていないのかが分からない。 */

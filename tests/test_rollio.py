@@ -1,0 +1,334 @@
+# -*- coding: utf-8 -*-
+"""ロールマスタのExcel持ち出し・取り込み(§9.240、利用者の指示)。
+
+  「追加実装した、ロールマスタについて EXCELでのインポート＆エクスポート
+   機能を実装してください。」
+
+ここで固定すること:
+ 1. `.xlsx` を**追加ライブラリなし**で書ける／読める（往復する）
+ 2. **利用者がExcelで作った形**を読める——共有文字列(sharedStrings)・
+    空セルの省略・シート名/rIdが任意・行番号の飛び
+ 3. 先頭ゼロ（`007`）が数値へ落ちない
+ 4. 突き合わせは**(設備名, ロール名)**。設備が違えば同名でも別の行
+ 5. **下見（保存しない）ができる**——何件追加・何件上書きかを書く前に返す
+ 6. **飛ばした行は理由つきで返す**（黙って減らさない）
+ 7. 壊れたファイルは**例外ではなく理由**で断る
+ 8. 書き出しは**無効な行も出す**（往復で消えない）
+
+**素通りに注意**: 自分が書いた .xlsx を自分で読み返すだけでは、Excel が吐く
+形（共有文字列・空セル省略）を一度も通らない。**手で組んだExcel風の
+ファイル**を必ず1本通すこと。
+"""
+import os
+import sys
+import json
+import base64
+import zipfile
+import urllib.request
+import urllib.error
+import urllib.parse
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+B = 'http://127.0.0.1:5029'
+EQ, EQ2 = 'テスト設備A', 'テスト設備B'
+TAG = 'RX%d' % os.getpid()
+
+R = []
+
+
+def rec(n, ok, d=''):
+    R.append(bool(ok))
+    print(('PASS' if ok else 'FAIL') + ': ' + n + (' -- ' + str(d) if d else ''))
+
+
+def get(path):
+    with urllib.request.urlopen(B + path, timeout=30) as r:
+        return r.read(), dict(r.headers)
+
+
+def post(path, body):
+    req = urllib.request.Request(B + path, data=json.dumps(body, ensure_ascii=False).encode(),
+                                 headers={'Content-Type': 'application/json'})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return r.getcode(), json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        try:
+            return e.code, json.loads(e.read())
+        except Exception:
+            return e.code, {}
+
+
+def getj(path):
+    with urllib.request.urlopen(B + path, timeout=30) as r:
+        return json.loads(r.read())
+
+
+def excel_like(rows_xml, sheet_part='xl/worksheets/mySheet.xml', shared=()):
+    """**本物のExcelが吐く形**を手で組む（共有文字列・任意のシート名/rId）。"""
+    ns = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
+    rel = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+    target = sheet_part.split('xl/', 1)[1]
+    ct = ('<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+          '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+          '<Default Extension="xml" ContentType="application/xml"/>'
+          '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+          '<Override PartName="/%s" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+          '</Types>' % sheet_part)
+    rels = ('<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="%s/officeDocument" Target="xl/workbook.xml"/></Relationships>' % rel)
+    wb = ('<?xml version="1.0"?><workbook xmlns="%s" xmlns:r="%s">'
+          '<sheets><sheet name="ロール一覧" sheetId="1" r:id="rId9"/></sheets></workbook>' % (ns, rel))
+    wbr = ('<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+           '<Relationship Id="rId9" Type="%s/worksheet" Target="%s"/>'
+           '<Relationship Id="rIdS" Type="%s/sharedStrings" Target="sharedStrings.xml"/>'
+           '</Relationships>' % (rel, target, rel))
+    ss = ('<?xml version="1.0"?><sst xmlns="%s" count="%d" uniqueCount="%d">%s</sst>'
+          % (ns, len(shared), len(shared),
+             ''.join('<si><t xml:space="preserve">%s</t></si>' % x for x in shared)))
+    sheet = ('<?xml version="1.0"?><worksheet xmlns="%s"><sheetData>%s</sheetData></worksheet>'
+             % (ns, rows_xml))
+    import io
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
+        z.writestr('[Content_Types].xml', ct)
+        z.writestr('_rels/.rels', rels)
+        z.writestr('xl/workbook.xml', wb)
+        z.writestr('xl/_rels/workbook.xml.rels', wbr)
+        z.writestr('xl/sharedStrings.xml', ss)
+        z.writestr(sheet_part, sheet)
+    return buf.getvalue()
+
+
+made = []
+try:
+    post('/api/access-mode', {'mode': 'edit'})
+
+    # ---- 0) モジュール単体: 往復と断り方 ----
+    from backend.xlsx_io import write_sheet, read_sheet, XlsxError, col_letter, col_index
+    rec('列の記号と番号が往復する',
+        col_letter(1) == 'A' and col_letter(27) == 'AA' and col_index('AA9') == 27,
+        '%s/%s/%s' % (col_letter(1), col_letter(27), col_index('AA9')))
+    data = write_sheet(['あ', 'い', 'う'], [['日本語', 250, '007'], ['x', None, '']],
+                       widths=[10, 10, 10], sheet_name='テスト/名前?')
+    back = read_sheet(data)
+    rec('自分で書いた.xlsxを読み返せる（日本語も）',
+        back['rows'][0] == ['あ', 'い', 'う'] and back['rows'][1][0] == '日本語',
+        json.dumps(back['rows'], ensure_ascii=False))
+    rec('先頭ゼロが数値へ落ちない', back['rows'][1][2] == '007',
+        json.dumps(back['rows'][1], ensure_ascii=False))
+    rec('シート名の使えない文字を落として31字に収める',
+        '/' not in back['sheet'] and '?' not in back['sheet'] and len(back['sheet']) <= 31,
+        back['sheet'])
+    # **書き出したファイルをExcelで直して戻す往復**を守る要（§9.240 の追補）。
+    # 文字のセルに「文字」の書式（numFmtId=49＝`@`）が当たっていないと、
+    # 利用者がExcelでそのセルを直した瞬間に「標準」書式が働き `007` が `7` に
+    # なる。**読めることだけを見る網では捕まらない**（こちらが書いた直後は
+    # 文字のままなので必ず通る）ので、XMLに書式が乗っていることを直に見る。
+    import zipfile as _zip, io as _io, re as _re
+    with _zip.ZipFile(_io.BytesIO(data)) as _z:
+        names = set(_z.namelist())
+        sheet_xml = _z.read('xl/worksheets/sheet1.xml').decode('utf-8')
+        styles = _z.read('xl/styles.xml').decode('utf-8') if 'xl/styles.xml' in names else ''
+    rec('書式の定義（styles.xml）を同梱する', 'xl/styles.xml' in names,
+        json.dumps(sorted(names), ensure_ascii=False))
+    rec('「文字」の書式（numFmtId=49＝@）を持っている', 'numFmtId="49"' in styles,
+        styles[:160])
+    rec('文字のセルに書式を当てている（Excelで直しても先頭ゼロが消えない）',
+        bool(_re.search(r'<c r="C2" s="\d+" t="inlineStr"', sheet_xml)),
+        (_re.search(r'<c r="C2"[^>]*>', sheet_xml) or [''])[0]
+        if _re.search(r'<c r="C2"[^>]*>', sheet_xml) else sheet_xml[:120])
+    rec('数値のセルには文字の書式を当てない（数として計算できる）',
+        bool(_re.search(r'<c r="B2"><v>', sheet_xml)),
+        (_re.search(r'<c r="B2"[^>]*>', sheet_xml).group(0)
+         if _re.search(r'<c r="B2"[^>]*>', sheet_xml) else sheet_xml[:120]))
+    # 長すぎる値は**印を付けて**切る（切らないとExcelがファイルごと開けない）
+    from backend.xlsx_io import MAX_CELL_CHARS
+    longv = read_sheet(write_sheet(['x'], [['あ' * (MAX_CELL_CHARS + 500)]]))['rows'][1][0]
+    rec('長すぎる値は上限まで切る（Excelが開けなくならない）',
+        len(longv) == MAX_CELL_CHARS, str(len(longv)))
+    rec('切ったことが読めるように印を付ける（黙って減らさない）',
+        '省略' in longv[-30:], longv[-30:])
+
+    for bad, label in ((b'', '空'), (b'not a zip', 'zipでない')):
+        try:
+            read_sheet(bad)
+            rec('壊れたファイル(%s)を理由つきで断る' % label, False, '例外が出なかった')
+        except XlsxError as e:
+            rec('壊れたファイル(%s)を理由つきで断る' % label, len(str(e)) > 8, str(e)[:50])
+
+    # ---- 1) 書き出し（HTTP） ----
+    a = post('/api/roll-master', {'user_id': 'test', 'equipment': EQ, 'name': TAG + 'A',
+                                  'diaMax': 250, 'diaMin': 200, 'refNo': '007',
+                                  'entryPos': '入側', 'count': 2})[1]
+    if a.get('id'):
+        made.append(a['id'])
+    b = post('/api/roll-master', {'user_id': 'test', 'equipment': EQ2, 'name': TAG + 'A',
+                                  'diaMax': 100})[1]
+    if b.get('id'):
+        made.append(b['id'])
+    # **無効にした行も書き出しに出ること**（出さないと往復で消える）
+    off = post('/api/roll-master', {'user_id': 'test', 'equipment': EQ, 'name': TAG + 'OFF',
+                                    'diaMax': 111, 'enabledText': '無効'})[1]
+    if off.get('id'):
+        made.append(off['id'])
+
+    raw, headers = get('/api/roll-master/export')
+    rec('書き出しは.xlsxとして返る',
+        raw[:2] == b'PK' and 'sheet' in (headers.get('Content-Type') or ''),
+        '%s / %s' % (raw[:2], headers.get('Content-Type')))
+    rec('ファイル名が付いている（添付として落ちる）',
+        'attachment' in (headers.get('Content-Disposition') or ''),
+        headers.get('Content-Disposition'))
+    sheet = read_sheet(raw)
+    head = sheet['rows'][0]
+    from backend.repositories import roll_repo as rr
+    rec('見出しはIO_COLUMNSの1箇所が持つ（書き写していない）',
+        head == list(rr.IO_HEADER), json.dumps(head, ensure_ascii=False))
+    rec('IDの列は運ばない', not any('ID' in x for x in head),
+        json.dumps(head, ensure_ascii=False))
+    # **鍵は (設備名, ロール名)**。ロール名だけを鍵にすると、設備違いの同名が
+    # 互いを上書きして「先頭ゼロが消えた」ように見える（この網が実際に踏んだ）。
+    body = {}
+    for r in sheet['rows'][1:]:
+        if len(r) > head.index('ロール名'):
+            body[(r[head.index('設備名')], r[head.index('ロール名')])] = r
+    rec('無効にした行も書き出す（往復で消えない）',
+        (EQ, TAG + 'OFF') in body and body[(EQ, TAG + 'OFF')][head.index('有効')] == '無効',
+        json.dumps(body.get((EQ, TAG + 'OFF')), ensure_ascii=False))
+    rec('先頭ゼロの基準番号がそのまま出る',
+        body.get((EQ, TAG + 'A'), [''] * 20)[head.index('基準番号')] == '007',
+        json.dumps(body.get((EQ, TAG + 'A')), ensure_ascii=False))
+    rec('同じロール名でも設備ごとに別の行として書き出す',
+        (EQ, TAG + 'A') in body and (EQ2, TAG + 'A') in body,
+        json.dumps(sorted(k[0] for k in body if k[1] == TAG + 'A'), ensure_ascii=False))
+    one = read_sheet(get('/api/roll-master/export?equipment=' + urllib.parse.quote(EQ))[0])
+    names = [r[head.index('設備名')] for r in one['rows'][1:] if r]
+    rec('設備を指定するとその設備だけ書き出す',
+        names and all(n == EQ for n in names), json.dumps(sorted(set(names)), ensure_ascii=False))
+
+    # ---- 2) 取り込み: 下見は書き込まない ----
+    hi = head.index
+    def row_for(eq, name, dmax, ref=''):
+        r = [''] * len(head)
+        r[hi('設備名')] = eq; r[hi('ロール名')] = name
+        r[hi('ロール径MAX')] = dmax; r[hi('基準番号')] = ref
+        r[hi('有効')] = '有効'
+        return r
+    up = write_sheet(head, [row_for(EQ, TAG + 'A', 260, '008'),
+                            row_for(EQ, TAG + 'NEW', 300, '009')])
+    code, dry = post('/api/roll-master/import',
+                     {'user_id': 'test', 'fileBase64': base64.b64encode(up).decode()})
+    rec('下見が通る', code == 200 and dry.get('ok'), json.dumps(dry, ensure_ascii=False)[:200])
+    rec('下見は「追加1・上書き1」と数える',
+        dry.get('add') == 1 and dry.get('update') == 1,
+        json.dumps({'add': dry.get('add'), 'update': dry.get('update')}))
+    rec('下見は dryRun と名乗る', dry.get('dryRun') is True, str(dry.get('dryRun')))
+    after = [x for x in getj('/api/roll-master')['items'] if x['name'] == TAG + 'A'
+             and x['equipment'] == EQ]
+    rec('下見では1件も書き込まない',
+        after and after[0]['diaMax'] == 250, json.dumps(after[:1], ensure_ascii=False))
+    rec('下見では新しい行も作らない',
+        not any(x['name'] == TAG + 'NEW' for x in getj('/api/roll-master')['items']), '')
+
+    # ---- 3) 取り込み: 適用 ----
+    code, done = post('/api/roll-master/import',
+                      {'user_id': 'test', 'fileBase64': base64.b64encode(up).decode(),
+                       'apply': True})
+    rec('適用が通る', code == 200 and done.get('saved') == 2,
+        json.dumps(done, ensure_ascii=False)[:200])
+    items = getj('/api/roll-master')['items']
+    upd = [x for x in items if x['name'] == TAG + 'A' and x['equipment'] == EQ]
+    new = [x for x in items if x['name'] == TAG + 'NEW']
+    for x in new:
+        made.append(x['id'])
+    rec('上書きが効く（径が変わる）', upd and upd[0]['diaMax'] == 260,
+        json.dumps(upd[:1], ensure_ascii=False))
+    rec('送っていない列は消えない（入出位置が残る）',
+        upd and upd[0]['entryPos'] == '入側', json.dumps(upd[:1], ensure_ascii=False))
+    rec('追加が効く', len(new) == 1 and new[0]['diaMax'] == 300,
+        json.dumps(new, ensure_ascii=False))
+    other = [x for x in items if x['name'] == TAG + 'A' and x['equipment'] == EQ2]
+    rec('設備が違う同名の行は巻き添えにしない',
+        other and other[0]['diaMax'] == 100, json.dumps(other, ensure_ascii=False))
+
+    # ---- 4) 本物のExcelが吐く形（共有文字列・空セル省略・シート名任意） ----
+    shared = ['設備名', 'ロール名', 'ロール径MAX', '基準番号', EQ, TAG + 'XL', '007']
+    rows_xml = (
+        '<row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c>'
+        '<c r="C1" t="s"><v>2</v></c><c r="D1" t="s"><v>3</v></c></row>'
+        # B と C を要素ごと省略（＝ここで列がずれる実装は基準番号を径として読む）
+        '<row r="3"><c r="A3" t="s"><v>4</v></c><c r="B3" t="s"><v>5</v></c>'
+        '<c r="D3" t="s"><v>6</v></c></row>')
+    xl = excel_like(rows_xml, shared=shared)
+    code, r4 = post('/api/roll-master/import',
+                    {'user_id': 'test', 'fileBase64': base64.b64encode(xl).decode(),
+                     'apply': True})
+    rec('Excelが吐く形（共有文字列・任意のシート名）を取り込める',
+        code == 200 and r4.get('saved') == 1, json.dumps(r4, ensure_ascii=False)[:200])
+    xlrow = [x for x in getj('/api/roll-master')['items'] if x['name'] == TAG + 'XL']
+    for x in xlrow:
+        made.append(x['id'])
+    rec('空セルが省略されていても列がずれない（径は空・基準番号は007）',
+        xlrow and xlrow[0]['diaMax'] is None and xlrow[0]['refNo'] == '007',
+        json.dumps(xlrow, ensure_ascii=False))
+
+    # ---- 5) 飛ばす行は理由つきで返す ----
+    bad_rows = [row_for('', TAG + 'NOEQ', 100),                 # 設備が空
+                row_for('存在しない設備' + TAG, TAG + 'UNK', 100),  # 設備マスタに無い
+                row_for(EQ, '', 100),                            # ロール名が空
+                row_for(EQ, TAG + 'BADNUM', 'あいう')]           # 数として読めない
+    r5 = post('/api/roll-master/import',
+              {'user_id': 'test', 'fileBase64': base64.b64encode(
+                  write_sheet(head, bad_rows)).decode()})[1]
+    sk = r5.get('skipped') or []
+    rec('取り込めない行は全部返す（4件）', len(sk) == 4, json.dumps(sk, ensure_ascii=False))
+    rec('飛ばした理由を名指しする',
+        all(x.get('why') for x in sk)
+        and any('設備' in x['why'] for x in sk)
+        and any('数' in x['why'] for x in sk),
+        json.dumps([x.get('why') for x in sk], ensure_ascii=False))
+    rec('飛ばした行の行番号を返す（直せるように）',
+        all(isinstance(x.get('row'), int) for x in sk),
+        json.dumps([x.get('row') for x in sk]))
+
+    # 径MIN>MAX も断る（登録APIと同じ判断を通っていること）
+    mm = row_for(EQ, TAG + 'MINMAX', 100)
+    mm[hi('ロール径MIN')] = 200
+    r6 = post('/api/roll-master/import',
+              {'user_id': 'test', 'fileBase64': base64.b64encode(
+                  write_sheet(head, [mm])).decode()})[1]
+    rec('径MIN>MAXは取り込みでも断る',
+        len(r6.get('skipped') or []) == 1 and 'MIN' in (r6['skipped'][0].get('why') or ''),
+        json.dumps(r6.get('skipped'), ensure_ascii=False))
+
+    # ---- 6) 見出しが無い／空のシートは理由で断る ----
+    code, r7 = post('/api/roll-master/import',
+                    {'user_id': 'test', 'fileBase64': base64.b64encode(
+                        write_sheet(['よくわからない列'], [['x']])).decode()})
+    rec('見出しが違うファイルは理由つきで断る',
+        code == 400 and 'ロール名' in (r7.get('error') or ''), json.dumps(r7, ensure_ascii=False))
+    code, r8 = post('/api/roll-master/import',
+                    {'user_id': 'test', 'fileBase64': base64.b64encode(b'not a zip').decode()})
+    rec('xlsxでないファイルは理由つきで断る',
+        code == 400 and 'xlsx' in (r8.get('error') or ''), json.dumps(r8, ensure_ascii=False))
+    code, r9 = post('/api/roll-master/import', {'user_id': 'test'})
+    rec('ファイルが無ければ断る', code == 400, json.dumps(r9, ensure_ascii=False))
+
+except Exception as e:
+    import traceback
+    traceback.print_exc()
+    print('FATAL ' + str(e))
+    R.append(False)
+finally:
+    # **後始末**（§9.121。ロールマスタは実行をまたいで残る）
+    try:
+        for x in getj('/api/roll-master')['items']:
+            if str(x.get('name') or '').startswith(TAG):
+                post('/api/roll-master/delete', {'user_id': 'cleanup', 'id': x['id']})
+    except Exception:
+        pass
+
+ok = sum(1 for x in R if x)
+print('\n== %d/%d PASS ==' % (ok, len(R)))
+sys.exit(0 if ok == len(R) else 1)

@@ -7,7 +7,12 @@
 
    ここで固定するのは次の点。
     1. ロールマスタの4本セット（GET/POST/update/delete）が通る
-    2. **設備で絞れる**（`'*'`の行は全設備に出る／名指しは片方だけ）
+    2. **1ロール1設備**（§9.239 ⑥ 訂正、利用者の指示「同一ロール名でも全く
+       違う設備の全く違うものとして管理する。厳密に設備を割ってから個別に
+       ロール管理したい。1ロール1設備が正しい」）——
+       ・**同じロール名を別々の設備に登録でき、両方が別の行として残る**
+       ・カンマ区切り／`'*'`／空／未登録の設備は**理由つきで断る**
+       ・ある設備の判定に**他の設備のロールが混ざらない**
     3. **空欄は0にしない**（径MIN・面長・本数が未入力なら null のまま）
     4. **径MIN>MAXは断る**（黙って入れ替えない）
     5. 語彙（入出位置・接触面・駆動方式）は**サーバーが返す**
@@ -50,18 +55,51 @@ const made=[];
   /* 径が空の行（判定できないと言う相手） */
   const d=await mk({equipment:EQ,name:TAG+'C',entryPos:'中間'});
   rec('径が空でも登録はできる（判定できないと言うため）',!!d.id,JSON.stringify(d));
-  /* すべての設備 */
-  const e=await mk({equipment:'*',name:TAG+'ALL',diaMax:100});
-  rec('「すべての設備」のロールを登録できる',!!e.id,JSON.stringify(e));
+  /* ---- 1b) 1ロール1設備（§9.239 ⑥ 訂正、利用者の指示） ----
+     **これがこの訂正の要件そのもの**: 同じ呼び名でも設備が違えば別のロール。
+     径をわざと変える——同じ名前で「同じ1本が共有されている」実装だと、
+     あとの判定で片方の径しか出てこないので必ず落ちる。 */
+  const sameA=await mk({equipment:EQ, name:TAG+'SAME',diaMax:250});
+  const sameB=await mk({equipment:EQ2,name:TAG+'SAME',diaMax:100});
+  rec('同じロール名を別々の設備に登録できる',
+      !!sameA.id&&!!sameB.id&&sameA.id!==sameB.id,
+      JSON.stringify({A:sameA.id,B:sameB.id}));
+
+  /* **断る側も見る。** 断り文は「何が悪いか」を名指しすること（§CLAUDE 4／§6）。 */
+  const reject=async(eq,label)=>{
+   const r=await post('/api/roll-master',{user_id:'test',equipment:eq,name:TAG+'NG'+label,diaMax:50});
+   const j=await r.json().catch(()=>({}));
+   if(j.id)made.push(j.id);
+   return {code:r.status,err:String(j.error||''),id:j.id};
+  };
+  const rejAll=await reject('*','ALL');
+  rec('「すべての設備」は断る',rejAll.code===400&&!rejAll.id&&/設備を1つ/.test(rejAll.err),
+      JSON.stringify(rejAll));
+  const rejCsv=await reject(EQ+','+EQ2,'CSV');
+  rec('カンマ区切りは断る',rejCsv.code===400&&!rejCsv.id&&/1つだけ/.test(rejCsv.err),
+      JSON.stringify(rejCsv));
+  const rejEmpty=await reject('','EMPTY');
+  rec('設備が空なら断る',rejEmpty.code===400&&!rejEmpty.id&&/設備を選んで/.test(rejEmpty.err),
+      JSON.stringify(rejEmpty));
+  const rejUnknown=await reject('存在しない設備'+TAG,'UNK');
+  rec('設備マスタに無い設備は断る（理由を名指しする）',
+      rejUnknown.code===400&&!rejUnknown.id&&/設備マスタに/.test(rejUnknown.err),
+      JSON.stringify(rejUnknown));
 
   const one=await getj('/api/roll-master?equipment='+encodeURIComponent(EQ));
   const mine=(one.items||[]).filter(x=>x.name.startsWith(TAG));
-  rec('設備で絞れる（名指し3本＋すべて1本）',mine.length===4,
+  rec('設備で絞れる（この設備に入れた4本だけ）',mine.length===4,
       JSON.stringify(mine.map(x=>x.name)));
   const two=await getj('/api/roll-master?equipment='+encodeURIComponent(EQ2));
   const other=(two.items||[]).filter(x=>x.name.startsWith(TAG));
-  rec('別の設備には「すべての設備」の1本だけ出る',
-      other.length===1&&other[0].name===TAG+'ALL',JSON.stringify(other.map(x=>x.name)));
+  /* **他の設備のロールが1本も混ざらないこと。** ここが通らないと
+     「当設備の対象ロールを判定する」という機能の意味が消える。 */
+  rec('他の設備のロールは混ざらない（同名の1本だけ・径も別物）',
+      other.length===1&&other[0].name===TAG+'SAME'&&other[0].diaMax===100,
+      JSON.stringify(other.map(x=>({n:x.name,d:x.diaMax}))));
+  rec('同じ名前でも設備ごとに別の径を持てる',
+      (mine.find(x=>x.name===TAG+'SAME')||{}).diaMax===250,
+      JSON.stringify(mine.map(x=>({n:x.name,d:x.diaMax}))));
 
   const hitC=mine.find(x=>x.name===TAG+'C');
   rec('空欄は0にしない（径MIN・面長・本数はnullのまま）',
@@ -91,6 +129,97 @@ const made=[];
   rec('送っていない項目は消えない',
       after&&after.diaMax===250&&after.material==='ゴム'&&after.refNo==='RN-2',
       JSON.stringify(after&&{max:after.diaMax,mat:after.material,ref:after.refNo}));
+
+  /* ---- 3b) 設備マスタから消えた設備のロールも編集できる（§9.204と同じ罠） ----
+     `equipment-select`は候補（設備マスタ）から`<option>`を作る。**いま入って
+     いる設備が候補に無いときに足さないと**、開いた瞬間に「選択...」へ落ち、
+     **保存し直しただけで設備が空になる**（保存側は空を断るので、その行は
+     編集も付け替えもできなくなる）。ここは画面を開いて実際に見る。 */
+  {
+   const EQGONE=TAG+'消える設備';
+   await post('/api/equipment-master',{name:EQGONE,user_id:'test'});
+   const gone=((await getj('/api/equipment-master')).items||[]).find(x=>x.name===EQGONE);
+   if(gone){
+    const orphan=await mk({equipment:EQGONE,name:TAG+'ORPHAN',diaMax:180});
+    /* 設備マスタから消す（ロールの行は残る）。 */
+    try{await post('/api/equipment-master/delete',{id:gone.id,force:true,user_id:'test'})}catch(_){}
+    b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
+    const page=await b.newPage({viewport:{width:1600,height:1000}});
+    try{
+     await page.goto(B+'/',{waitUntil:'domcontentloaded'});
+     await page.waitForSelector('#openMasterMaint',{timeout:20000});
+     await page.click('#openMasterMaint');
+     await page.waitForSelector('#masterMaintPanel',{state:'visible',timeout:10000});
+     await page.fill('#masterUserId','tester');
+     await page.evaluate(()=>document.querySelector('#masterUserId').dispatchEvent(new Event('change')));
+     await page.evaluate(()=>{
+      const t=[...document.querySelectorAll('#masterMaintNav [data-master]')]
+        .find(x=>x.dataset.master==='roll');
+      if(t)t.click();
+     });
+     await page.waitForSelector('#masterMaintList .mm-row:not(.head)',{timeout:10000});
+     /* **その行の編集フォームを実際に開く**（一覧の見た目ではなく入力欄を見る）。 */
+     const opened=await page.evaluate(async name=>{
+      const rows=[...document.querySelectorAll('#masterMaintList .mm-row:not(.head)')];
+      const row=rows.find(r=>r.textContent.includes(name));
+      if(!row)return {前提なし:'ロールの行が一覧に無い'};
+      row.click();
+      for(let i=0;i<40;i++){
+       if(document.querySelector('[data-field="equipment"]'))break;
+       await new Promise(r=>requestAnimationFrame(r));
+      }
+      const sel=document.querySelector('[data-field="equipment"]');
+      if(!sel)return {前提なし:'設備の欄が開かない'};
+      return {値:sel.value,
+              候補:[...sel.options].map(x=>x.textContent.trim()),
+              注記:(sel.closest('.mm-field')||sel.parentElement||{}).textContent||''};
+     },TAG+'ORPHAN');
+     rec('消えた設備のロールでも編集フォームを開ける',!opened.前提なし,JSON.stringify(opened));
+     rec('候補に無い今の設備名を捨てない（選ばれたまま）',
+         opened.値===EQGONE,JSON.stringify({値:opened.値,候補:(opened.候補||[]).slice(0,4)}));
+     rec('設備マスタに無いことを文字で言う（§4）',
+         /設備マスタにありません/.test(String(opened.注記||'')),
+         String(opened.注記||'').slice(0,120));
+    }finally{ await b.close(); b=null; }
+   }
+  }
+
+  /* ---- 3c) IDを渡さない登録でも、送っていない項目は消えない（§9.240 の追補） ----
+     `keep()`は`prev`が読めているときだけ効く。以前は**IDを渡したときしか**
+     `prev`を読んでおらず、自然キー（設備名＋ロール名）で当てる経路
+     ——登録APIの再送とExcelの取り込み——では**送っていない列がNULLで
+     上書き**されていた。`/update`（IDあり）だけを見る網では素通りする。 */
+  {
+   const k=await mk({equipment:EQ,name:TAG+'KEEP',diaMax:150,entryPos:'出側',material:'鋼'});
+   /* **IDを渡さず**同じ (設備名, ロール名) で径だけ送る */
+   await post('/api/roll-master',{user_id:'test',equipment:EQ,name:TAG+'KEEP',diaMax:160});
+   const now=((await getj('/api/roll-master')).items||[]).find(x=>x.id===k.id);
+   rec('IDを渡さない登録でも同じ行を更新する（増えない）',
+       !!now&&now.diaMax===160,JSON.stringify(now));
+   rec('IDを渡さない登録でも送っていない項目は消えない',
+       !!now&&now.entryPos==='出側'&&now.material==='鋼',
+       JSON.stringify(now&&{p:now.entryPos,m:now.material}));
+  }
+
+  /* ---- 3d) 編集で自然キーが衝突したら断る（§9.240 の追補） ----
+     既存の行の設備や名前を**既に在る組み合わせへ書き換えられた**——
+     画面からは保存できたように見えて、次に開くと同じ設備に同名が2本並ぶ。 */
+  {
+   const x1=await mk({equipment:EQ,name:TAG+'DUP1',diaMax:120});
+   const x2=await mk({equipment:EQ,name:TAG+'DUP2',diaMax:130});
+   const r=await post('/api/roll-master/update',
+     {user_id:'test',id:x2.id,name:TAG+'DUP1'});
+   const j=await r.json().catch(()=>({}));
+   rec('同じ設備に同名へ改名しようとしたら断る',
+       r.status===400&&/登録済み/.test(String(j.error||'')),JSON.stringify(j));
+   const still=((await getj('/api/roll-master')).items||[])
+     .filter(y=>y.equipment===EQ&&y.name===TAG+'DUP1');
+   rec('断ったので同名が2本にならない',still.length===1,JSON.stringify(still.map(y=>y.id)));
+   rec('別の設備へなら同じ名前で移せる',
+       (await(await post('/api/roll-master/update',
+         {user_id:'test',id:x2.id,equipment:EQ2,name:TAG+'DUP1'})).json()).ok===true,
+       String(x2.id));
+  }
 
   /* ---- 4) 設備の改名に追随する（§CLAUDE「改名連動の一覧へ足す」） ----
      **足し忘れると設備を改名した瞬間にその設備のロールが1本も出なくなる**

@@ -117,11 +117,18 @@
      静かに外れる。 */
   {group:'equip',key:'roll',label:'ロール',icon:'ロ',endpoint:'/api/roll-master',hasDelete:true,
    titleText:'ロール — 設備ごとのロールの諸元（異常位置判定のピッチ照合に使います）',
+   /* Excelの持ち出し・取り込み（§9.240、利用者の指示）。**印を1つ付けるだけ**で
+      帯が出る差し替え口にしてある——他のマスタが要るときも、ここに
+      `excelIo:true` を足せば同じ帯が乗る（画面のコードを増やさない）。 */
+   excelIo:true,
+   /* **設備が親・ロールが子**（§9.239 ⑥ 訂正、利用者の指示「厳密に設備を
+      割ってから、個別にロール管理したい。1ロール1設備が正しい」）。
+      束ねる鍵は`equipment`で、1行は必ず1つの設備に属する。 */
    groupBy:'equipment',
-   fields:[{k:'equipment',label:'対象設備',type:'equipment-multi-text',required:true,key:true,fieldGroup:'① どの設備のどこのロールか',
-            tagHint:'このロールを持つ設備です。複数選べます。「すべての設備」を選ぶと、これから増える設備でも当たります。'},
+   fields:[{k:'equipment',label:'設備',type:'equipment-select',required:true,key:true,fieldGroup:'① どの設備のどこのロールか',
+            hint:'**このロールが付いている設備を1つだけ**選びます。ロールは設備ごとに実物が違うので、同じ呼び名でも設備が違えば別のロールとして登録してください（複数の設備をまとめて指定することはできません）。'},
            {k:'name',label:'ロール名',required:true,key:true,fieldGroup:'① どの設備のどこのロールか',
-            hint:'現場での呼び名です。**同じ設備に同じ名前を2つ置かないでください**（どちらの径で判定するか決まりません）。'},
+            hint:'現場での呼び名です。**同じ設備に同じ名前を2つ置かないでください**（どちらの径で判定するか決まりません）。**別の設備でなら同じ名前を使えます**——中身の違う別のロールとして扱われます。'},
            {k:'entryPos',label:'入出位置',type:'master-suggest',source:{key:'entryPositions'},fieldGroup:'① どの設備のどこのロールか',
             hint:'ラインのどこにあるかです（入側／出側／中間 など）。**一覧に無い呼び名も打てます。**'},
            {k:'contactFace',label:'接触面',type:'master-suggest',source:{key:'contactFaces'},fieldGroup:'① どの設備のどこのロールか',
@@ -151,7 +158,7 @@
          {k:'diaMin',label:'径MIN',grow:1},{k:'faceLen',label:'面長',grow:1},
          {k:'count',label:'本数',grow:1},{k:'material',label:'材質',grow:1},
          {k:'refNo',label:'基準番号',grow:1}],
-   hint:'設備ごとのロールの諸元です。**測定画面の「異常位置判定」→「② 長手方向（ロールを特定）」**で、欠陥のピッチ（繰り返しの間隔）から該当しそうなロールを探すのに使います。判定に効くのは**ロール径MAX**（周長＝π×径）で、**ロール径MIN**も入っていれば摩耗の範囲として幅を持たせて判定します。設備の行は「対象設備」でまとまります。'},
+   hint:'設備ごとのロールの諸元です。**1つのロールは1つの設備に属します**——同じ呼び名でも設備が違えば別のロールとして、それぞれ登録してください。**測定画面の「異常位置判定」→「② 長手方向（ロールを特定）」**で、欠陥のピッチ（繰り返しの間隔）から該当しそうなロールを探すのに使います。判定に効くのは**ロール径MAX**（周長＝π×径）で、**ロール径MIN**も入っていれば摩耗の範囲として幅を持たせて判定します。一覧は設備ごとにまとまって出ます。'},
   /* 帳票ブロックマスタ（§9.217、利用者の指示「内部データについても各項目
      ごと設計できるように、編集追加などできるように」）。中身の作り方が
      仕事になっている塊（測定表・条の図・異常位置判定）はコードの側のままで、
@@ -593,11 +600,18 @@
    const val=editing?String(editing[f.k]??''):'';
    if(f.type==='equipment-select'){
     const opts=equipmentMasterState.items||[];
-    if(!opts.length){
+    /* **いま入っている設備が候補に無くても捨てないこと**（§9.204と同じ罠）。
+       設備マスタからその設備が消えても、行そのものは残っている——候補に
+       足さずに描くと`<select>`は「選択...」に落ち、**開いて保存し直した
+       だけで設備が空になる**（保存側は空を断るので、その行は編集も
+       できなくなる）。足したうえで**無いことを文字で言う**（§4）。 */
+    const missing=!!val&&!opts.some(eq=>eq.name===val);
+    if(!opts.length&&!missing){
      return `<div class="mm-field"><span>${esc(f.label)}</span><span class="mm-empty-inline">設備マスタが未登録です。先に「設備」タブで登録してください。</span></div>`;
     }
-    const optHtml=opts.map(eq=>`<option value="${esc(eq.name)}"${eq.name===val?' selected':''}>${esc(eq.name)}</option>`).join('');
-    return `<label class="mm-field"><span>${esc(f.label)}${f.required?'<i>*</i>':''}${f.key?'<em class="mm-keytag">キー</em>':''}</span><select data-field="${f.k}"><option value="">選択...</option>${optHtml}</select></label>`;
+    const optHtml=(missing?`<option value="${esc(val)}" selected>${esc(val)}（設備マスタにありません）</option>`:'')
+      +opts.map(eq=>`<option value="${esc(eq.name)}"${eq.name===val?' selected':''}>${esc(eq.name)}</option>`).join('');
+    return `<label class="mm-field"><span>${esc(f.label)}${f.required?'<i>*</i>':''}${f.key?'<em class="mm-keytag">キー</em>':''}</span><select data-field="${f.k}">${missing?'':'<option value="">選択...</option>'}${optHtml}</select>${missing?`<small class="mm-field-hint">この設備は設備マスタにありません（消されたか、名前が変わっています）。**そのままにすれば今の設備名を保ちます**。登録済みの設備へ付け替えることもできます。</small>`:(f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:'')}</label>`;
    }
    /* 対象設備を複数選べる欄。作業可能設備(equipment-multi)と同じタグUIだが、
       保存先が配列ではなくカンマ区切りの1列で、さらに「すべての設備」という
@@ -737,6 +751,110 @@
    return `<label class="mm-field">${fieldLabelHtml(f)}<input data-field="${f.k}" type="text" value="${esc(val)}" autocomplete="off"></label>`;
   })();
  }
+
+ /* ---------- Excelの持ち出し・取り込み（§9.240、利用者の指示） ----------
+    「ロールマスタについて EXCELでのインポート＆エクスポート機能を実装して
+     ください。」
+
+    作法は §9.171（フィルタ）・§9.178（列設定）に合わせる:
+     ・**モーダルを増やさない。** 一覧の上の帯に置く——何が出て行くのかを
+       実物の一覧を見たまま確かめられるのが値打ち。
+     ・**運ぶもの・運ばないものを画面に書く。** IDは運ばない（端末ごとの
+       連番なので、別のPCで取り込むと無関係な行を書き換える）。
+     ・**保存する前に下見できる**（§9.193）。何件が追加で何件が上書きか、
+       どの行がなぜ飛ばされるかを、書き込む前に出す。
+     ・**飛ばした件数と理由を必ず文字で言う**（§CLAUDE 4）。 */
+ function excelIoHtml(def){
+  if(!def.excelIo)return '';
+  return `<div class="mm-xio" id="mmXio">
+    <div class="mm-xio-head">
+     <b>Excel</b>
+     <button type="button" id="mmXioOut" class="mm-btn-ghost sm"
+       title="いまの一覧をそのままExcelファイル（.xlsx）で保存します。無効にした行も出ます">書き出す</button>
+     <button type="button" id="mmXioPick" class="mm-btn-ghost sm"
+       title="Excelファイル（.xlsx）を選ぶと、取り込む前に「何件追加・何件上書き」を出します">取り込む…</button>
+     <input type="file" id="mmXioFile" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+     <span class="mm-xio-note">突き合わせは<b>設備名＋ロール名</b>。同じ組み合わせがあれば上書き、無ければ追加します。
+      <i>IDは運びません（別のPCでも同じファイルが使えます）。行の削除はしません。</i></span>
+    </div>
+    <div class="mm-xio-result" id="mmXioResult" hidden></div>
+   </div>`;
+ }
+ let xioPending=null;          // 下見が通ったファイル（適用ボタンが使う）
+ function bindExcelIo(def){
+  if(!def.excelIo)return;
+  const say=(html,cls)=>{
+   const box=$('#mmXioResult');if(!box)return;
+   box.hidden=!html;box.className='mm-xio-result'+(cls?' '+cls:'');box.innerHTML=html||'';
+  };
+  const out=$('#mmXioOut');
+  if(out)out.onclick=()=>{
+   /* サーバーが組み立てた .xlsx をそのまま落とす（`logs.py`のログ保存と
+      同じ作法）。**画面側で組み立てない**——列の並びと見出しは
+      `roll_repo.IO_COLUMNS` の1箇所が持つ（書き写すと取り込みと食い違う）。 */
+   say('書き出しています…');
+   location.href=def.endpoint+'/export';
+   setTimeout(()=>say('書き出しました（ブラウザの保存先を確認してください）。','is-ok'),900);
+  };
+  const pick=$('#mmXioPick'),file=$('#mmXioFile');
+  if(pick&&file)pick.onclick=()=>{file.value='';file.click()};
+  if(file)file.onchange=async()=>{
+   const f=file.files&&file.files[0];if(!f)return;
+   const uid=requireMaintUser();if(uid===null)return;
+   say('読んでいます…');
+   let b64;
+   try{
+    b64=await new Promise((ok,ng)=>{
+     const r=new FileReader();
+     r.onload=()=>ok(String(r.result||'').split(',')[1]||'');
+     r.onerror=()=>ng(new Error('ファイルを読めませんでした'));
+     r.readAsDataURL(f);
+    });
+   }catch(e){say(esc(e.message),'is-bad');return}
+   try{
+    /* **まず下見**（保存しない）。ここで初めて「何が起きるか」が出る。 */
+    const r=await api(def.endpoint+'/import',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({fileBase64:b64,user_id:uid})});
+    xioPending={b64,uid,name:f.name};
+    say(xioPreviewHtml(r,f.name),r.add+r.update?'':'is-bad');
+    const go=$('#mmXioApply');
+    if(go)go.onclick=async()=>{
+     if(!xioPending)return;
+     go.disabled=true;say('取り込んでいます…');
+     try{
+      const done=await api(def.endpoint+'/import',{method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({fileBase64:xioPending.b64,user_id:xioPending.uid,apply:true})});
+      xioPending=null;
+      say(xioPreviewHtml(done,f.name),'is-ok');
+      await loadMaintInner(true);
+     }catch(e){say('取り込めませんでした: '+esc(e.message),'is-bad')}
+    };
+   }catch(e){xioPending=null;say('取り込めませんでした: '+esc(e.message),'is-bad')}
+  };
+ }
+ /* 下見・結果の見せ方。**件数は必ず文字で**、飛ばした行は**理由つきで
+    全部**出す（§CLAUDE 4。「N件飛ばしました」だけでは直せない）。 */
+ function xioPreviewHtml(r,fileName){
+  const skipped=r.skipped||[];
+  const rows=skipped.map(x=>`<li><b>${esc(String(x.row||'-'))}行目</b>${
+    x.name?` <span>${esc(x.name)}</span>`:''} — ${esc(x.why||'')}</li>`).join('');
+  const done=!r.dryRun;
+  return `<div class="mm-xio-sum">
+    <b>${esc(fileName||'')}</b>
+    <span>シート「${esc(r.sheet||'')}」／データ ${r.total||0}行</span>
+    <span class="mm-xio-num">追加 <b>${r.add||0}</b></span>
+    <span class="mm-xio-num">上書き <b>${r.update||0}</b></span>
+    ${skipped.length?`<span class="mm-xio-num is-bad">取り込めない <b>${skipped.length}</b></span>`:''}
+   </div>
+   ${done?`<p class="mm-xio-done">${esc(r.message||'取り込みました。')}</p>`
+     :(r.add||r.update
+       ?`<div class="mm-xio-go"><button type="button" id="mmXioApply" class="mm-btn-primary sm">この内容で取り込む</button>
+         <span>まだ書き込んでいません。押すまでマスタは変わりません。</span></div>`
+       :`<p class="mm-xio-done">取り込める行がありません。下の理由を直してから、もう一度選んでください。</p>`)}
+   ${skipped.length?`<details class="mm-xio-skip" open><summary>取り込めない行 ${skipped.length}件（この行だけ飛ばします）</summary><ul>${rows}</ul></details>`:''}`;
+ }
  function renderMaintForm(){
   const def=currentDef(),form=$('#masterMaintForm');if(!form)return;const editing=maintState.editing;
   // 入力項目が多いマスタは、上部に常設のフォームを置かず(一覧の表示領域を
@@ -748,9 +866,11 @@
      <button type="button" id="masterMaintAdd" class="mm-btn-primary sm">＋ ${esc(def.label)}を追加</button>
      <span class="mm-form-hint">一覧の行をクリック（またはダブルクリック・「編集」ボタン）で編集ウィンドウを開きます。</span>
     </div>
-    ${def.hint?`<p class="mm-def-hint">${hintHtml(def.hint)}</p>`:''}`;
+    ${def.hint?`<p class="mm-def-hint">${hintHtml(def.hint)}</p>`:''}
+    ${excelIoHtml(def)}`;
    form.onsubmit=ev=>ev.preventDefault();
    const ab=$('#masterMaintAdd');if(ab)ab.onclick=()=>openMaintEditor(null);
+   bindExcelIo(def);
    return;
   }
   form.classList.remove('mm-form-compact');
@@ -760,10 +880,11 @@
    ${def.hint?`<p class="mm-def-hint">${hintHtml(def.hint)}</p>`:''}
    <div class="mm-form-fields">${controls}${
     typeof def.extraHtml==='function'?def.extraHtml(editing):''}</div>
-   <div class="mm-form-tail"><button type="submit" class="mm-btn-primary">${editing?'更新を保存':'追加登録'}</button><span class="mm-form-hint">${editing?'キー項目（名称・区分など）も変更できます。保存すると同じIDのまま更新（リネーム）されます。同名が既にある場合は更新できません。':'必須(*)を入力して追加登録します。'}</span></div>`;
+   <div class="mm-form-tail"><button type="submit" class="mm-btn-primary">${editing?'更新を保存':'追加登録'}</button><span class="mm-form-hint">${editing?'キー項目（名称・区分など）も変更できます。保存すると同じIDのまま更新（リネーム）されます。同名が既にある場合は更新できません。':'必須(*)を入力して追加登録します。'}</span></div>
+   ${excelIoHtml(def)}`;
   form.onsubmit=ev=>{ev.preventDefault();submitMaint()};
   const nb=$('#masterMaintNew');if(nb)nb.onclick=()=>{maintState.editing=null;renderMaintForm()};
-  bindEquipmentPickers(form);bindInputHelpers(form);
+  bindEquipmentPickers(form);bindInputHelpers(form);bindExcelIo(def);
  }
 
  /* ---------- 汎用の編集専用モーダル(ARCHITECTURE.md「マスタ管理の画面形態」新設) ----------
@@ -1458,7 +1579,12 @@
      `groupBy`を持たないマスタは今までどおり平らに並ぶ。 */
   const gkey=def.groupBy||'';
   let lastGroup=null;
-  const groupLabel=v=>{const t=String(v??'').trim();return !t||t==='*'?'すべての設備':t};
+  /* 束ねの見出し。**空を「すべての設備」と読み替えないこと**（§9.239 ⑥ 訂正）
+     ——1行＝1設備になったので「すべて」という状態は無く、空は
+     **設備が決まっていない直すべき行**。「すべての設備」と出すと、
+     壊れている行が正常に見えて誰も直さない（§CLAUDE 4）。 */
+  const groupLabel=v=>{const t=String(v??'').trim();
+   return t&&t!=='*'?t:'設備が未設定（この行を開いて設備を選んでください）'};
   const counts={};
   if(gkey)items.forEach(it=>{const g=groupLabel(it[gkey]);counts[g]=(counts[g]||0)+1});
   items.forEach(it=>{

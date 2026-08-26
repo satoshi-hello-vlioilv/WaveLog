@@ -12,12 +12,30 @@
    形とする。使うデータはこのカラムのうちロール径MAXを主とし、
    ロール径MINもデータがあるものはそれも計算に用いる。」
 
-■ 「設備の親子関係」の持ち方
-`[設備名]` は**設備停止マスタと同じ書式**（`'A'` / `'A,B,C'` / `'*'`）で、
-判定は `schedule_repo.stop_equipment_*` の1箇所を借りる（§CLAUDE
-「判定は1箇所」。新しい照合を書き起こさない）。画面では設備を親、
-ロールを子として**設備ごとに束ねて**出す（`groupBy`）——マスタを2つに
-割らずに階層を作れるので、`[設備名]` を1つ直せば所属が変わる。
+■ 「設備の親子関係」の持ち方 ＝ **1ロール1設備**
+利用者の指示（訂正）:
+
+  「同一ロール名でも全く違う設備の全く違うものとして管理しなければいけない
+   ものも多いため厳密に設備を割ってから、個別にロール管理したいです。
+   したがって設備の下に子としてロールマスタが複数ある形、1ロール1設備が
+   正しいです。」
+
+`[設備名]` は**ちょうど1つの登録済み設備名**。カンマ区切り（`'A,B'`）も
+`'*'`（すべての設備）も**受け付けない**——1行が複数の設備を指せると、
+「どの設備のロールか」が決まらず、同名で中身の違うロールを別物として
+管理できなくなる（それがこの訂正の理由そのもの）。
+
+**設備停止マスタの書式を借りないこと。** あちらは1行で複数の設備に効くのが
+仕様で、こちらは正反対。`stop_equipment_matches()` を使い回すと `'*'` の行が
+全設備に出てしまう。照合は正規化した**完全一致**（`_same_eq()`）。
+
+自然キーは **(設備名, ロール名)**。設備が違えば同じ名前でも別の行で、
+互いに何の関係も無い。画面（`master-maint.js` の `groupBy:'equipment'`）は
+設備を親、ロールを子として束ねて出す。
+
+綴りは**設備マスタの表記へ寄せる**（`_canonical_eq()`）——全角/半角の
+ゆれで「設備Ａ」と「設備A」が別の親になると、同じ設備の下にロールが2つの
+束で並ぶ（画面の束ね方が黙って壊れる）。
 
 ■ 判定に使うのは径
 欠陥が長手方向に一定のピッチで出るとき、そのピッチは**そのロールの周長**
@@ -36,6 +54,9 @@
 from ..db_access import ensure_audit_columns, tables
 
 TABLE = 'ロールマスタ'
+# 設備停止マスタが「すべての設備」に使う印。**ロールでは受け付けない**が、
+# 断るときと移行のときに名指しするので綴りをここに置く（§9.163）。
+ALL_EQUIPMENTS = '*'
 
 # 入出位置・接触面・駆動方式の呼び名。**選択肢で塞がない**（現場の呼び名は
 # 事前に数え切れないので、ここに無い値も保存できる）。画面はこの一覧を
@@ -69,6 +90,67 @@ def _int(v):
     return None if n is None else int(n)
 
 
+# ---------------------------------------------------------------------------
+# 設備の解決（§9.239 ⑥ 訂正: 1ロール1設備）
+# ---------------------------------------------------------------------------
+# **語彙はここだけが持つ**（§9.163）。画面もルートも「1つだけ」「登録済み」の
+# 判定を書き写さない——2箇所に置くと、画面が通す値をサーバーが弾く（または
+# その逆）という食い違いが必ず生まれる。
+
+def _norm_eq(v):
+    """設備名の表記ゆれを潰す。**判定にだけ使い、保存には使わない**
+    （保存するのは設備マスタの綴りそのもの。`_canonical_eq()`）。"""
+    from .master_repo import normalize_equipment_name
+    return normalize_equipment_name(v)
+
+
+def _same_eq(a, b):
+    na = _norm_eq(a)
+    return bool(na) and na == _norm_eq(b)
+
+
+def _split_eq(raw):
+    """カンマ区切り（全角読点も）を分解する。**移行と、断るときの説明にだけ**
+    使う——通常の保存経路はそもそも複数を受け付けない。"""
+    return [x.strip() for x in str(raw or '').replace('、', ',').split(',') if x.strip()]
+
+
+def _canonical_eq(c, raw):
+    """ちょうど1つの**登録済み**設備名へ解決する（§9.239 ⑥ 訂正）。
+
+    **断る理由を名指しで返す**（§CLAUDE 4／§6）——「保存できません」だけでは
+    設備を消したのか綴りが違うのか複数書いたのかが分からない。
+
+    戻すのは**設備マスタの綴り**。打った文字をそのまま保存すると、全角/半角の
+    ゆれで同じ設備が2つの親として並ぶ（画面の束ねが黙って壊れる）。"""
+    from .master_repo import equipment_master_rows
+    raw = str(raw or '').strip()
+    if not raw:
+        raise ValueError('設備を選んでください。ロールは設備ごとに管理します'
+                         '（同じロール名でも設備が違えば別のロールです）。')
+    # **全角の ＊ も同じ意味に読む**（NFKCで寄せてから見る）。素の比較だと
+    # `＊` が「設備マスタに無い名前」として別の断り方になり、同じ操作なのに
+    # 説明が変わる。
+    if _norm_eq(raw) == ALL_EQUIPMENTS:
+        raise ValueError('「すべての設備」は指定できません。ロールは設備ごとに'
+                         '実物が違うので、設備を1つだけ選んでください。')
+    parts = _split_eq(raw)
+    if len(parts) > 1:
+        raise ValueError(f'設備は1つだけ選んでください（「{raw}」のように複数は'
+                         f'指定できません）。同じロールが複数の設備にあるときは、'
+                         f'設備ごとに1本ずつ登録してください。')
+    want = parts[0]
+    known = [str(r[1] or '').strip() for r in equipment_master_rows(c)]
+    for name in known:
+        if _same_eq(name, want):
+            return name                       # 設備マスタの綴りへ寄せる
+    if not known:
+        raise ValueError('設備マスタに1件も登録がありません。先に「設備」タブで'
+                         '設備を登録してから、そのロールを足してください。')
+    raise ValueError(f'設備マスタに「{want}」がありません。先に「設備」タブで'
+                     f'登録するか、登録済みの設備から選んでください。')
+
+
 def ensure_table(c):
     if TABLE not in tables(c):
         cur = c.cursor()
@@ -94,7 +176,27 @@ def ensure_table(c):
     if added:
         c.commit()
     ensure_audit_columns(c, TABLE)
+    _migrate_once(c)
     return False
+
+
+# 移行はプロセスに1回だけ試す。目印はDBに残る（他の端末・次の起動のため）が、
+# **毎回パス設定マスタを読みに行かない**——`ensure_table()`はどの入口からも
+# 通るので、1リクエストで何度も呼ばれる。
+_migrated_this_process = False
+
+
+def _migrate_once(c):
+    global _migrated_this_process
+    if _migrated_this_process:
+        return
+    _migrated_this_process = True
+    try:
+        migrate_single_equipment(c)
+    except Exception:
+        # **移行に失敗してもロールマスタは開けること**（fail-open）。
+        # 割れなかった行は「設備なし」として画面に出るので、気づいて直せる。
+        pass
 
 
 _SELECT = ('SELECT [ロールID],[設備名],[入出位置],[接触面],[ロール径MAX],[ロール径MIN],'
@@ -137,19 +239,19 @@ def roll_rows(c, include_disabled=False):
 
 
 def rolls_for_equipment(c, equipment, include_disabled=False):
-    """その設備のロールだけ。判定は設備停止マスタと**同じ関数**を通す
-    （`'*'`＝すべての設備／カンマ区切り／名前の全角半角ゆれ。§CLAUDE）。"""
-    from . import schedule_repo as sr
+    """**その設備のロールだけ**（1ロール1設備。§9.239 ⑥ 訂正）。
+
+    照合は正規化した完全一致で、**設備停止マスタの `stop_equipment_matches()`
+    を借りないこと**——あちらは `'*'` を「すべての設備」として通すので、
+    1本のロールが全設備の判定に混ざる。ロールは設備ごとに実物が違うので、
+    混ざった瞬間に「当設備の対象ロールを判定する」という機能の意味が消える。
+
+    **設備が空なら1本も返さない**（全部返す方が親切に見えるが、他の設備の
+    ロールを候補に出すのはこの機能では嘘になる）。"""
     eq = str(equipment or '').strip()
-    out = []
-    for x in roll_rows(c, include_disabled):
-        target = x['equipment']
-        if not target or target == '*':
-            out.append(x)
-            continue
-        if eq and sr.stop_equipment_matches(target, eq):
-            out.append(x)
-    return out
+    if not eq:
+        return []
+    return [x for x in roll_rows(c, include_disabled) if _same_eq(x['equipment'], eq)]
 
 
 def roll_upsert(c, uid, equipment=None, name=None, entry_pos=None, contact_face=None,
@@ -171,15 +273,42 @@ def roll_upsert(c, uid, equipment=None, name=None, entry_pos=None, contact_face=
             raise ValueError('更新対象のロールが見つかりません。')
         cols = [d[0] for d in cur.description]
         prev = dict(zip(cols, row))
+    # **自然キーで引き当てるのは`prev`を読む前**（§9.240 の追補）。
+    # 以前はここが値を組み立てた**あと**に在ったため、IDを渡さない経路
+    # （Excelの取り込み・登録API）では`prev`が`None`のままで`keep()`が効かず、
+    # **送っていない列がNULLで上書きされた**（入出位置が消えた。
+    # `tests/test_rollio.py`が捕まえた）。「渡していない項目は今の値を残す」
+    # はIDを渡したときだけの約束ではない。
+    if prev is None and roll_id is None and name and equipment is not None:
+        want_eq = _norm_eq(equipment)
+        if want_eq:
+            cur.execute(f'SELECT [ロールID],[設備名],[ロール名] FROM [{TABLE}]')
+            for rid, reo, rnm in cur.fetchall():
+                if _norm_eq(reo) == want_eq and str(rnm or '').strip() == name:
+                    roll_id = rid
+                    break
+            if roll_id is not None:
+                cur.execute(f'SELECT * FROM [{TABLE}] WHERE [ロールID]=?', [roll_id])
+                row = cur.fetchone()
+                if row is not None:
+                    cols = [d[0] for d in cur.description]
+                    prev = dict(zip(cols, row))
     keep = lambda col, v: (prev.get(col) if (v is None and prev is not None) else v)
 
+    # 設備は**ちょうど1つの登録済み設備**（§9.239 ⑥ 訂正）。
+    # **触っていないときは確かめ直さない**——設備マスタからその設備が消えた
+    # あとでも、そのロールの備考や径は直せるべき（確かめ直すと、消えた設備の
+    # ロールが編集も削除もできない行として残る＝§CLAUDE 4）。
     eq = str(equipment or '').strip() if equipment is not None else None
     if prev is None:
-        eq = eq or '*'
+        eq = _canonical_eq(c, eq)
         if not name:
             raise ValueError('ロール名を入力してください。')
     else:
-        eq = keep('設備名', eq) or '*'
+        if eq is None or _same_eq(eq, prev.get('設備名')):
+            eq = keep('設備名', None)          # 設備は触っていない＝そのまま
+        else:
+            eq = _canonical_eq(c, eq)          # 付け替えたときだけ確かめる
         name = keep('ロール名', name)
         if not str(name or '').strip():
             raise ValueError('ロール名を入力してください。')
@@ -214,14 +343,30 @@ def roll_upsert(c, uid, equipment=None, name=None, entry_pos=None, contact_face=
     if vals['有効'] is None:
         vals['有効'] = -1
 
+    # 自然キーは **(設備名, ロール名)**（§9.239 ⑥ 訂正）。同じ設備に同じ
+    # 名前のロールを2本置かない——どちらの径が効くのか決められなくなる
+    # （§9.113）。**逆に、設備が違えば同じ名前でも別の行**にする。
+    # それがこの訂正の要件そのものなので、ロール名だけで探さないこと。
+    # 照合は**正規化つき**——移行で入った行は綴りが設備マスタと
+    # 揃っていないことがあり、素の`=`だと同じ設備に2本できる。
+    #
+    # **更新のときも見ること。** 以前は新規のときしか照合しておらず、
+    # 既存の行の設備や名前を**既に在る組み合わせへ書き換えられた**
+    # （画面からは「保存できた」ように見えて、次に開くと同じ設備に同名が
+    # 2本並ぶ。ピッチ判定に同じロールが別々の径で二重に出る）。
+    cur.execute(f'SELECT [ロールID],[設備名],[ロール名] FROM [{TABLE}]')
+    hit_id = None
+    for rid, reo, rnm in cur.fetchall():
+        if _same_eq(reo, eq) and str(rnm or '').strip() == name:
+            hit_id = rid
+            break
     if prev is None:
-        # 自然キーは (設備名, ロール名)。同じ設備に同じ名前のロールを2本
-        # 置かない——どちらの径が効くのか決められなくなる（§9.113）。
-        cur.execute(f'SELECT [ロールID] FROM [{TABLE}] WHERE [設備名]=? AND [ロール名]=?',
-                    [eq, name])
-        hit = cur.fetchone()
-        if hit:
-            roll_id = hit[0]
+        if hit_id is not None:
+            roll_id = hit_id          # 同じ組み合わせ＝上書き（取り込みもここを通る）
+    elif hit_id is not None and hit_id != roll_id:
+        raise ValueError('「%s」は %s に登録済みです。同じ設備に同じ名前の'
+                         'ロールを2つ置けません（どちらの径で判定するか'
+                         '決まりません）。' % (name, eq))
     if roll_id is None:
         keys = ','.join(f'[{k}]' for k in vals)
         marks = ','.join('?' for _ in vals)
@@ -247,10 +392,312 @@ def roll_delete(c, roll_id, uid=''):
 
 
 def equipments(c):
-    """登録のある設備名（`'*'` を含む）。画面の束ね方の材料。"""
+    """ロールが登録されている設備名。画面の束ね方（親）の材料。
+
+    **`'*'` は出てこない**（1ロール1設備なので存在しない）。設備が空の行は
+    移行し損ねた古い行なので、**黙って隠さず** `''` のまま返して画面に
+    「設備なし」として見せる——隠すと直す手立てごと消える（§CLAUDE 4）。"""
     seen = []
     for x in roll_rows(c, True):
-        eq = x['equipment'] or '*'
+        eq = x['equipment']
         if eq not in seen:
             seen.append(eq)
     return seen
+
+
+# ---------------------------------------------------------------------------
+# 多設備で保存された行を1設備ずつへ割る（§9.239 ⑥ 訂正の移行）
+# ---------------------------------------------------------------------------
+MIGRATE_KEY = '__roll_single_equipment_split__'
+# 保留にした行の備考へ残す一言。**なぜ止まっているか・何をすれば直るか**を
+# 書く（§CLAUDE 4／§6）。「移行しました」だけでは打つ手が分からない。
+MIGRATE_NOTE = ('【移行】以前は「すべての設備」でしたが、ロールは設備ごとに'
+                '1本ずつ持つ形に変わりました。設備を選び直してから'
+                '「有効」に戻してください。')
+
+
+def migrate_single_equipment(c, uid='migrate:roll'):
+    """`'A,B'` / `'*'` の行を、1ロール1設備の形へ直す（§9.239 ⑥ 訂正）。
+
+    **1度だけ**走らせる（目印はパス設定マスタ。§9.232 の
+    `seed_mother_builtins` と同じ作法）——「多設備の行があれば直す」を毎回
+    やる作りにすると、利用者が意図して直した綴りを繰り返し書き換える。
+
+    ■ `'A,B'`（設備を名指ししたカンマ区切り）は**割る**
+    利用者が設備を名指ししている以上、設備ごとの1行へ展開するのは解釈では
+    なく忠実な読み替え。1本目は元の行を書き換え、2本目以降は複製する
+    （消してから作り直すと、途中で落ちたときにロールが丸ごと消える）。
+    **割った先に同じ (設備名, ロール名) が既に在れば作らない**——作ると
+    同じ設備に同名が2本並び、ピッチ判定に同じロールが別々の径で二重に出る
+    （§9.113 を移行そのものが破る）。
+
+    ■ `'*'`（すべての設備）は**展開しない**
+    設備マスタの全設備へコピーすると、利用者が一度も入力していない径・材質を
+    **N台ぶんの現物の諸元として**書き込むことになる（ロールは特定の機械に
+    付いている物なので、コピーは事実の捏造）。しかも移行後に増えた設備には
+    付かないので、結局あとから手で足すことになる。
+    かといって `'*'` のまま残すと、新しい照合ではどの設備にも当たらず
+    **異常位置判定から黙って消える**（§CLAUDE 4）。
+    だから**設備を空にし、無効にし、理由を備考へ残す**——「設備が未設定」の
+    群として一覧に見えたまま止まるので、利用者が設備を選び直せる。
+
+    **直し切れないうちは目印を書かない。** 戻り値は
+    (割った元の行数, 作った行数, 保留にした行数, 衝突で飛ばした行数)。"""
+    from ..db_access import path_config_rows, set_path_config
+    try:
+        if path_config_rows(c).get(MIGRATE_KEY):
+            return (0, 0, 0, 0)
+    except Exception:
+        pass                      # 目印が読めなくても移行そのものは冪等
+    cur = c.cursor()
+    cur.execute(f'SELECT [ロールID],[設備名],[ロール名] FROM [{TABLE}]')
+    rows = cur.fetchall()
+    # いま在る自然キー。割った先の衝突を見るのに使う。
+    seen = {(_norm_eq(e), str(n or '').strip()) for _i, e, n in rows}
+    split_from = made = held = clash = 0
+    for rid, raw, rname in rows:
+        raw = str(raw or '').strip()
+        rname = str(rname or '').strip()
+        if _norm_eq(raw) == ALL_EQUIPMENTS:
+            cur.execute(
+                f'UPDATE [{TABLE}] SET [設備名]=?,[有効]=0,'
+                f'[備考]=?,[更新者ID]=?,[更新日時]=Now() WHERE [ロールID]=?',
+                ['', (MIGRATE_NOTE + '\n' + _note_of(cur, rid)).strip(), uid, rid])
+            held += 1
+            continue
+        targets = _split_eq(raw)
+        if len(targets) <= 1:
+            continue              # 既に1設備（または空）＝触らない
+        cur.execute(f'SELECT * FROM [{TABLE}] WHERE [ロールID]=?', [rid])
+        src = cur.fetchone()
+        if src is None:
+            continue
+        cols = [d[0] for d in cur.description]
+        base = dict(zip(cols, src))
+        cur.execute(f'UPDATE [{TABLE}] SET [設備名]=?,[更新者ID]=?,[更新日時]=Now() '
+                    f'WHERE [ロールID]=?', [targets[0], uid, rid])
+        seen.discard((_norm_eq(raw), rname))
+        seen.add((_norm_eq(targets[0]), rname))
+        split_from += 1
+        for eq in targets[1:]:
+            key = (_norm_eq(eq), rname)
+            if key in seen:
+                clash += 1        # その設備には同名が既に在る＝作らない
+                continue
+            vals = {k: v for k, v in base.items() if k != 'ロールID'}
+            vals['設備名'] = eq
+            vals['更新者ID'] = uid
+            keys = ','.join(f'[{k}]' for k in vals)
+            marks = ','.join('?' for _ in vals)
+            cur.execute(f'INSERT INTO [{TABLE}] ({keys}) VALUES ({marks})',
+                        list(vals.values()))
+            seen.add(key)
+            made += 1
+    # 割り残しが無くなってから目印を書く（`'*'` は保留にした時点で片付いている）。
+    left = 0
+    cur.execute(f'SELECT [設備名] FROM [{TABLE}]')
+    for (raw,) in cur.fetchall():
+        raw = str(raw or '').strip()
+        if _norm_eq(raw) == ALL_EQUIPMENTS or len(_split_eq(raw)) > 1:
+            left += 1
+    c.commit()
+    if not left:
+        try:
+            set_path_config(c, MIGRATE_KEY, 'done', uid)
+        except Exception:
+            pass
+    return (split_from, made, held, clash)
+
+
+def _note_of(cur, rid):
+    cur.execute(f'SELECT [備考] FROM [{TABLE}] WHERE [ロールID]=?', [rid])
+    hit = cur.fetchone()
+    return str((hit[0] if hit else '') or '')
+
+
+# ---------------------------------------------------------------------------
+# Excel の持ち出し・取り込み（§9.240、利用者の指示）
+# ---------------------------------------------------------------------------
+# 「ロールマスタについて EXCELでのインポート＆エクスポート機能を実装して
+#  ください。」
+#
+# **列の並びと見出しはここ1つが持つ**（§9.163）。画面にもテストにも
+# 書き写さない——書き写すと、列を1本足したときに書き出しと取り込みで
+# 食い違う（見出しで突き合わせているので、片方だけ直すと黙って空になる）。
+#
+# **突き合わせは自然キー (設備名, ロール名)**（§9.239 ⑥ 訂正）。同じ設備に
+# 同じ名前があれば上書き、無ければ追加。**IDの列は持ち出さない**——IDは
+# 端末ごとの連番なので、別のPCで取り込むと無関係な行を書き換える（§9.171
+# 「印はIDでなく名前で運ぶ」と同じ理由）。
+IO_COLUMNS = (
+    # (見出し, 鍵, 型, 列幅の目安)
+    ('設備名',         'equipment',   'text', 18),
+    ('ロール名',       'name',        'text', 22),
+    ('入出位置',       'entryPos',    'text', 12),
+    ('接触面',         'contactFace', 'text', 10),
+    ('ロール径MAX',    'diaMax',      'num',  12),
+    ('ロール径MIN',    'diaMin',      'num',  12),
+    ('ロール面長',     'faceLen',     'num',  12),
+    ('材質',           'material',    'text', 12),
+    ('硬度',           'hardness',    'text', 10),
+    ('本数',           'count',       'int',  8),
+    ('ロール使用条件', 'useCond',     'text', 20),
+    ('駆動方式',       'driveKind',   'text', 10),
+    ('基準番号',       'refNo',       'text', 14),
+    ('備考',           'note',        'text', 30),
+    ('表示順',         'order',       'int',  8),
+    ('有効',           'enabledText', 'text', 8),
+)
+IO_HEADER = tuple(x[0] for x in IO_COLUMNS)
+
+# 取り込みが組み立てる鍵は**画面と同じ camelCase**（`_row()` が返す形）だが、
+# `roll_upsert()` の引数は snake_case。**ここで1回だけ寄せる**——呼ぶ側で
+# 綴りを2通り持つと、列を1本足したときに「取り込んでも1列だけ入らない」が
+# 起きる（実際に `entryPos` で落ちた）。
+_UPSERT_KW = {'entryPos': 'entry_pos', 'contactFace': 'contact_face',
+              'diaMax': 'dia_max', 'diaMin': 'dia_min', 'faceLen': 'face_len',
+              'useCond': 'use_cond', 'driveKind': 'drive_kind', 'refNo': 'ref_no'}
+
+
+def export_bytes(c, equipment=''):
+    """いまのロールを .xlsx の bytes で返す（§9.240）。
+
+    **無効な行も出す**（`[有効]` 列で分かる）——出さないと、書き出して
+    直して取り込む往復で**無効にした行が消える**。
+    `equipment` を渡すとその設備だけ。"""
+    from ..xlsx_io import write_sheet
+    eq = str(equipment or '').strip()
+    rows = rolls_for_equipment(c, eq, True) if eq else roll_rows(c, True)
+    out = []
+    for x in rows:
+        line = []
+        for _label, key, kind, _w in IO_COLUMNS:
+            if key == 'enabledText':
+                line.append('有効' if x.get('enabled', True) else '無効')
+                continue
+            v = x.get(key)
+            if v is None or v == '':
+                line.append('')
+            elif kind in ('num', 'int'):
+                line.append(v)              # 数はセルも数（Excelで計算できる）
+            else:
+                line.append(str(v))
+        out.append(line)
+    name = ('ロール_' + eq) if eq else 'ロール'
+    return write_sheet(IO_HEADER, out,
+                       widths=[x[3] for x in IO_COLUMNS], sheet_name=name)
+
+
+def _num_or_none(v):
+    """空欄は None。数として読めなければ `'NG'`（**0にしない**。§9.114）。"""
+    v = str(v or '').strip().replace(',', '')
+    if not v:
+        return None
+    try:
+        return float(v)
+    except ValueError:
+        return 'NG'
+
+
+def import_rows(c, uid, data, dry_run=True):
+    """Excelから取り込む（§9.240）。**下見（dry_run）ができる**。
+
+    §9.193 のクエリ結合と同じ作法で、**保存する前に何が起きるかを見せる**
+    ——何件が追加で何件が上書きか、どの行がなぜ飛ばされるかを返す。
+
+    **飛ばした行は必ず理由つきで返すこと**（§CLAUDE 4）。黙って減らすと
+    「取り込んだのに増えていない」としか分からない。
+    """
+    from ..xlsx_io import read_sheet, XlsxError
+    book = read_sheet(data)
+    rows = book['rows']
+    if not rows:
+        raise XlsxError('シートが空です。1行目に見出し（%s …）を置いてください。'
+                        % '／'.join(IO_HEADER[:3]))
+    head = [str(x or '').strip() for x in rows[0]]
+    # **見出しは名前で探す**（列の順番を変えても取り込める。§9.171）。
+    pos = {}
+    for label, key, _kind, _w in IO_COLUMNS:
+        pos[key] = head.index(label) if label in head else -1
+    missing = [lab for lab, key, _k, _w in IO_COLUMNS
+               if key in ('equipment', 'name') and pos[key] < 0]
+    if missing:
+        raise XlsxError('見出しに %s がありません。1行目を見出しの行にして'
+                        'ください（書き出したファイルをそのまま直すのが確実です）。'
+                        % '・'.join(missing))
+    # いま在る行（自然キー→ID）。**正規化して突き合わせる**——設備名の
+    # 全角/半角ゆれで「同じロールが2本」になるのを防ぐ。
+    have = {}
+    for x in roll_rows(c, True):
+        have[(_norm_eq(x['equipment']), x['name'])] = x['id']
+
+    def cell(r, key):
+        i = pos[key]
+        return str(r[i]).strip() if 0 <= i < len(r) and r[i] is not None else ''
+
+    add = update = 0
+    skipped = []
+    plans = []
+    for i, r in enumerate(rows[1:], start=2):
+        if not any(str(v or '').strip() for v in r):
+            continue                      # 空行は黙って飛ばす（Excelの末尾に必ず出る）
+        eq_raw, name = cell(r, 'equipment'), cell(r, 'name')
+        if not name:
+            skipped.append({'row': i, 'why': 'ロール名が空です'})
+            continue
+        try:
+            eq = _canonical_eq(c, eq_raw)
+        except ValueError as e:
+            skipped.append({'row': i, 'why': str(e), 'name': name})
+            continue
+        vals = {'equipment': eq, 'name': name}
+        bad = None
+        for label, key, kind, _w in IO_COLUMNS:
+            if key in ('equipment', 'name'):
+                continue
+            raw = cell(r, key)
+            if key == 'enabledText':
+                vals['enabled'] = raw.strip() not in ('無効', '出さない', 'false', '0')
+                continue
+            if pos[key] < 0 or raw == '':
+                vals[key] = None          # 列が無い／空欄＝触らない（§9.212 ②）
+                continue
+            if kind in ('num', 'int'):
+                n = _num_or_none(raw)
+                if n == 'NG':
+                    bad = '%s が数として読めません（%s）' % (label, raw)
+                    break
+                vals[key] = int(n) if (kind == 'int' and n is not None) else n
+            else:
+                vals[key] = raw
+        if bad:
+            skipped.append({'row': i, 'why': bad, 'name': name})
+            continue
+        dmax, dmin = vals.get('diaMax'), vals.get('diaMin')
+        if dmax is not None and dmin is not None and dmin > dmax:
+            skipped.append({'row': i, 'name': name,
+                            'why': 'ロール径MINがMAXより大きくなっています'})
+            continue
+        key = (_norm_eq(eq), name)
+        if have.get(key):
+            update += 1
+        else:
+            add += 1
+            have[key] = -1                # 同じファイルの中の重複を2件と数えない
+        plans.append(vals)
+    result = {'total': len(rows) - 1, 'add': add, 'update': update,
+              'skipped': skipped, 'sheet': book['sheet'], 'dryRun': bool(dry_run)}
+    if dry_run:
+        # **下見では3件だけ見せる**（§9.193。1件では「たまたま」と区別が付かない）
+        result['sample'] = plans[:3]
+        return result
+    saved = 0
+    for v in plans:
+        try:
+            roll_upsert(c, uid, **{_UPSERT_KW.get(k, k): val for k, val in v.items()})
+            saved += 1
+        except ValueError as e:
+            skipped.append({'row': '-', 'name': v.get('name'), 'why': str(e)})
+    result['saved'] = saved
+    result['skipped'] = skipped
+    return result

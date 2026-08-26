@@ -1709,4 +1709,38 @@
 }
 .fb-del:hover{border-color:var(--danger);color:var(--danger)}
 .fb-empty{margin:0;color:var(--muted);font-size:var(--fs-badge);line-height:1.6}
+
+/* ---------- Excelの持ち出し・取り込み（§9.240、利用者の指示） ----------
+   置き場は一覧の上の帯（モーダルを増やさない・§9.171）。
+   **色だけで伝えない**（§3）ので、件数も理由もすべて文字で出す。
+   寸法・色はトークンから取る（リテラルを新しく足さない・§CLAUDE 7）。 */
+.mm-xio{margin-top:var(--space-2);padding:var(--pad-row);
+  border:1px solid var(--line-soft);border-radius:var(--radius-sm);background:var(--surface-2)}
+.mm-xio-head{display:flex;align-items:center;flex-wrap:wrap;gap:var(--gap-inline)}
+.mm-xio-head>b{flex:0 0 auto;font-size:var(--fs-micro);font-weight:800;color:var(--ink-3);
+  letter-spacing:.04em}
+/* **縮んでよいのは説明だけ**（§9.229 ⑤）——ボタンまで縮むと文字が見切れる。 */
+.mm-xio-head>button{flex:0 0 auto}
+.mm-xio-note{flex:1 1 var(--w-xl);min-width:0;color:var(--ink-3);font-size:var(--fs-micro);line-height:1.5}
+.mm-xio-note i{color:var(--muted);font-style:normal}
+.mm-xio-result{margin-top:var(--space-2);padding:var(--pad-row);
+  border:1px solid var(--line-soft);border-radius:var(--radius-xs);background:var(--surface);
+  font-size:var(--fs-sm);color:var(--ink-2)}
+.mm-xio-result.is-ok{border-color:var(--success-border);background:var(--success-bg)}
+.mm-xio-result.is-bad{border-color:var(--danger-border);background:var(--danger-bg)}
+.mm-xio-sum{display:flex;align-items:center;flex-wrap:wrap;gap:var(--gap-inline)}
+.mm-xio-sum>b{font-size:var(--fs-sm)}
+.mm-xio-sum>span{font-size:var(--fs-micro);color:var(--ink-3)}
+.mm-xio-num{padding:var(--pad-chip);border-radius:var(--radius-xs);
+  background:var(--surface-2);color:var(--ink-2);font-size:var(--fs-micro);font-weight:700}
+.mm-xio-num b{font-size:var(--fs-sm)}
+.mm-xio-num.is-bad{background:var(--danger-bg);color:var(--danger)}
+.mm-xio-go{display:flex;align-items:center;gap:var(--gap-inline);margin-top:var(--space-2)}
+.mm-xio-go span{color:var(--ink-3);font-size:var(--fs-micro)}
+.mm-xio-done{margin:var(--space-1) 0 0;font-size:var(--fs-sm)}
+.mm-xio-skip{margin-top:var(--space-2);font-size:var(--fs-micro)}
+.mm-xio-skip summary{cursor:pointer;color:var(--danger);font-weight:700}
+.mm-xio-skip ul{margin:var(--space-1) 0 0;padding-left:var(--space-4);color:var(--ink-3)}
+.mm-xio-skip li{margin:2px 0;line-height:1.5}
+.mm-xio-skip li b{color:var(--ink-2)}
 }

@@ -623,6 +623,12 @@
     `sameInput()`で「保存後に変わったか」を見ているので、ピッチを1文字
     打っただけで幅方向の判定が「保存し直してください」になる。 */
  const ROLL_TOL_DEFAULT=2;              // ±%
+ /* 周期の見かたの既定（§9.239 ⑥ の追補、利用者の指示「ちょうど1周分だけ
+    見るをデフォルトにしてください」）。**`index.html`の`selected`と
+    ここの2箇所が食い違うと、記録の無いロットを開いた瞬間だけ別の値に
+    なる**（画面は「ちょうど1周」なのに判定は倍音まで見ている、という
+    気づけない状態）。片方を変えたら必ずもう片方も変えること。 */
+ const ROLL_HARMONICS_DEFAULT=1;
  const PI=Math.PI;
  const ROLL_INPUT_KEYS=['pitch','tol','face','harmonics','memo'];
 
@@ -660,7 +666,7 @@
           tol:(()=>{const t=num($id('defectPitchTol')?.value);
                     return Number.isFinite(t)&&t>=0?t:ROLL_TOL_DEFAULT})(),
           face:String($id('defectRollFace')?.value||''),
-          harmonics:Math.max(1,Math.min(9,num($id('defectHarmonics')?.value)||1)),
+          harmonics:Math.max(1,Math.min(9,num($id('defectHarmonics')?.value)||ROLL_HARMONICS_DEFAULT)),
           memo:String($id('defectRollMemo')?.value||'')};
  }
  /* ロールの周長の範囲。**MAXが無ければ判定できない**（理由を返す）。 */
@@ -801,7 +807,7 @@
   const put=(id,v)=>{const el=$id(id);if(el&&v!==undefined&&v!==null&&String(v)!=='')el.value=String(v)};
   put('defectPitch',d.pitch);
   put('defectPitchTol',d.tol??ROLL_TOL_DEFAULT);
-  put('defectHarmonics',d.harmonics??3);
+  put('defectHarmonics',d.harmonics??ROLL_HARMONICS_DEFAULT);
   put('defectRollMemo',d.memo);
   /* 接触面の候補は**サーバーが答える**（§9.163）。記録済みの値は候補へ
      足してから当てる——候補に無い値を`select.value`へ入れると空文字に
