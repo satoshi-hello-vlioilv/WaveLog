@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>測定伝送システム を起動しています</title>
+<!-- サーバー(127.0.0.1)への接続を先に温めておく。生存確認のポーリングでも
+     繋ぎに行くが、preconnect を宣言しておくと ready 検出→location.replace で
+     本体(http://)へ移る瞬間のTCP/接続の立ち上がりが省け、遷移が速くなる
+     (file://→http:// の継ぎ目を短くする。§9.92)。 -->
+<link rel="preconnect" href="http://127.0.0.1:5029">
 <!--
   起動待機画面。start_app.bat / Start.vbs から、サーバーより先にブラウザで
   開かれる(file://)。サーバーが応答するまで待ってからアプリ本体へ遷移する
