@@ -69,7 +69,9 @@ G['列'] = ['test_collayout', 'test_colformat', 'test_colrule', 'test_colsort', 
            'test_rpmaster',
            'test_colio', 'test_multidrag', 'test_sortcustom', 'test_sortpipe',
            # §9.239 ④⑤: 揃えと列の一時的な色
-           'test_coltint', 'test_gridchild']
+           'test_coltint', 'test_gridchild',
+           # §9.248 ③④: 表示列が消えない／表示中・非表示中の札
+           'test_colkeep']
 # モーダルの閉じ方(§9.221 ①)はどの画面にも掛かる横断の約束。
 G['モーダル'] = ['test_modalkeep', 'test_maint', 'test_p11c', 'test_opui', 'test_opchoice']
 G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'test_sccat',
@@ -87,7 +89,8 @@ G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'te
                      'test_scsession', 'test_scwho']
 # 実績データリストと操業データ表（§9.241 ②③）。**一覧が紙の材料を渡す**ので、
 # どちらを触っても両方回す。
-G['実績'] = ['test_actuals', 'test_opsheet']
+# §9.248 ⑥: 見せる範囲を「実施した設備」で絞る（データ一覧・実績データ）
+G['実績'] = ['test_actuals', 'test_opsheet', 'test_eqscope']
 G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 'test_eqkind',
                'test_shift', 'test_dbequip', 'test_crudroutes', 'test_setpage', 'test_eqstd',
                'test_workdate', 'test_measstore', 'test_roll', 'test_rollio',
@@ -177,7 +180,9 @@ RULES = [
     # データ一覧の表示列(§9.162)も持つので、列の網も回す。
     ('static/js/records-store.js', g('モーダル', 'test_share', 'test_flows', 'test_p11',
                                      'test_recperm', 'test_reccols', 'test_lcpanel',
-                                     'test_audittrail', 'test_recdel')),
+                                     'test_audittrail', 'test_recdel',
+                                     # §9.248 ⑥: 見せる範囲を設備で絞る
+                                     'test_eqscope')),
     # 測定画面は test_scale(寸法の網)の巡回にも入っている(§9.127)ので見た目も回す。
     ('static/js/measurement-', g('測定', '見た目', 'モーダル')),   # measurement-*.js
 
@@ -191,7 +196,8 @@ RULES = [
     ('static/css/70-schedule.css', g('見た目', 'test_sccols', 'test_split_layout',
                                       'test_scbalance', 'test_scprint')),
     ('static/css/35-split.css', g('見た目', '異常位置', 'test_split_layout')),
-    ('static/css/40-records.css', g('見た目', 'test_recperm', 'test_reccols', 'test_recdel')),
+    ('static/css/40-records.css', g('見た目', 'test_recperm', 'test_reccols', 'test_recdel',
+                                     'test_eqscope')),
     ('static/css/50-master.css', g('見た目', 'マスタ', '操業意匠', 'test_dscap', 'test_qjoinui',
                                     'test_blockbuild')),
     ('static/css/60-report.css', g('見た目', 'test_screport', 'test_rpblocks', 'test_rplayout',

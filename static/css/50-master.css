@@ -1313,6 +1313,27 @@
    位置が変化する」）。`auto-fill`は器の幅で列数が変わるので、器が15px
    狭くなっただけでタイルが1列減り、**18枚の並びが丸ごと組み替わる**。
    数は決め打ちにして、狭い窓のときだけ段を落とす。 */
+/* ---------- 選ばせ方の盤は「まとまり」で束ねる（§9.248 ①、利用者の指示） ----------
+   24種を平らに並べると、選ぶこと自体が「探す」作業になる（§2）。
+   **見出しは1行**（名前・件数・一言）で、**面や枠で囲わない**——群の中の
+   タイルが既に枠を持っているので、その外にもう1つ枠を作ると枠が二重になる
+   （§CLAUDE 10）。分けているのは**見出しと余白**だけ。 */
+.op-widget-groups{display:flex;flex-direction:column;gap:var(--space-3);
+  flex:1 1 100%;min-width:0}
+.op-widget-group{display:flex;flex-direction:column;gap:var(--gap-tight);min-width:0}
+.op-widget-group-head{display:flex;align-items:baseline;gap:var(--gap-inline);
+  min-width:0;padding-bottom:2px;border-bottom:1px solid var(--line-soft)}
+.op-widget-group-head>b{font-size:var(--fs-sm);font-weight:800;color:var(--ink)}
+/* 件数は**必ず出す**（そのまとまりに何個あるかが分かる・§3）。 */
+.op-widget-group-head>i{font-style:normal;font-size:var(--fs-micro);font-weight:800;
+  color:var(--muted)}
+/* いま選んでいる群を**文字でも言う**（24枚の中から目で探させない・§2）。 */
+.op-widget-group-head>em{font-style:normal;font-size:var(--fs-micro);font-weight:700;
+  color:var(--teal-dark);background:var(--pale);border-radius:var(--radius-pill);
+  padding:0 var(--space-2)}
+.op-widget-group-head>small{flex:1 1 0;min-width:0;color:var(--muted);
+  font-size:var(--fs-micro);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.op-widget-group.is-here .op-widget-group-head{border-bottom-color:var(--teal)}
 .op-widget-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
   gap:var(--gap-tight);flex:1 1 100%;min-width:0}
 @media (max-width:1400px){.op-widget-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
@@ -1383,6 +1404,24 @@
   width:11px;height:11px;border-radius:var(--radius-round);
   background:var(--pale);color:var(--teal-dark);font-size:var(--fs-micro);line-height:1}
 .opd-cycle>u{margin-left:auto;color:var(--muted);text-decoration:none;font-weight:700}
+/* §9.248 ①で足した2つ。**絵でも違いが読めること**（名前だけで選ばせない）。
+   パネル＝札が並んだ窓（メニューは1列、こちらは2列で「大きな札」が分かる）、
+   スピナー＝欄の右端に縦2段の矢印。 */
+.opd-panel{position:relative;display:flex;flex-direction:column;gap:2px;width:100%}
+.opd-panel>u{display:flex;align-items:center;justify-content:space-between;
+  padding:1px 3px;border:1px solid var(--line);border-radius:var(--radius-xs);
+  background:var(--surface);text-decoration:none}
+.opd-panel>em{display:grid;grid-template-columns:1fr 1fr;gap:1px;padding:2px;
+  border:1px solid var(--line-mid);border-radius:var(--radius-xs);
+  background:var(--surface);box-shadow:0 2px 4px #0000001f;font-style:normal}
+.opd-panel>em>i{min-height:7px;padding:0 2px;border:1px solid var(--line-soft);
+  border-radius:var(--radius-xs);background:var(--surface)}
+.opd-panel>em .opd-on{background:var(--pale);color:var(--teal-dark);border-color:var(--teal)}
+.opd-spin{gap:2px;padding:1px 3px;border:1px solid var(--line);
+  border-radius:var(--radius-xs);background:var(--surface)}
+.opd-spin>i{flex:1 1 auto;background:none;padding:0}
+.opd-spin>u{display:flex;flex-direction:column;gap:0;text-decoration:none}
+.opd-spin>u>b{display:block;line-height:.8;font-size:var(--fs-micro);color:var(--ink-3)}
 .opd-step>b,.opd-pad>b{display:inline-flex;align-items:center;justify-content:center;
   min-width:1.2em;padding:1px 2px;border:1px solid var(--line);border-radius:var(--radius-xs);
   background:var(--surface);font-weight:800}
@@ -1624,9 +1663,16 @@
    **行ごとに別のグリッド**なので手前の列の左端までそろわなくなる。
    下限は`--w-*`の規格から選び、伸びしろだけを割合で配る。 */
 .oc-row{display:grid;align-items:center;gap:var(--gap-inline);
+  /* §9.248 ⑤で「使用」の1列を足した。**入れ物は中身の長さから**（§CLAUDE 11）
+     ——回数は数桁なので`--w-xs`で足り、伸ばすと値と説明の列が痩せる。 */
   grid-template-columns:1.4em minmax(var(--w-sm),1.1fr) minmax(var(--w-sm),1.6fr)
-    minmax(var(--w-xs),0.9fr) minmax(var(--w-sm),1.4fr) var(--w-sm) var(--w-xs);
+    minmax(var(--w-xs),0.9fr) minmax(var(--w-sm),1.4fr) var(--w-xs) var(--w-sm) var(--w-xs);
   padding:2px var(--space-1);border-radius:var(--radius-xs)}
+/* 使用回数。**数字なので右づめ**（桁がそろって多寡が読める）。0回は「—」で
+   薄く出す（0と書くと「0という値」に見え、まだ使われていないことが伝わらない）。 */
+.oc-used{text-align:right;font-variant-numeric:tabular-nums;font-weight:700;
+  color:var(--ink-2);font-size:var(--fs-sm)}
+.oc-used.is-blank{color:var(--muted);font-weight:400}
 /* **見出しにも本文と同じ文字サイズを置く**（§9.193）。列幅を`em`で書いて
    いるので、器の文字サイズを変えると**同じ`--w-md`が別の幅に解ける**
    ——見出しと本文の左端がそろわなくなる（実測66.5pxと84px）。

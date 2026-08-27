@@ -154,11 +154,61 @@ WIDGET_SELECT = 'プルダウン'
 #              こちらは**数個を、目を動かさずに**選ぶとき向き
 #   切替     … 1つのボタン。**押すたびに次の選択肢へ**進む（一巡する）。
 #              札を並べる場所が無い狭いマスで、2〜4個を切り替えるとき
+# §9.248 ①（利用者の指示「フローティングモーダルやポップオーバーメニューや
+# スピナーなど違うタイプのものを増やしたい」）で2つ足した。
+# **ポップオーバーメニューは`メニュー`が既にそれ**（§9.247 ①）なので足さない
+# ——同じものに2つ目の名前を与えると、選ぶ盤が「同じ物の別名」で埋まる。
+#   パネル   … 押すと**画面のまん中に大きな札を並べた窓**が開く。指で押す
+#              端末や、説明を読んで選びたい選択肢が多いとき。`一覧`は
+#              **1行ずつの表＋絞り込み**なので、見え方も探し方も違う
+#   スピナー … 打つ欄の右端に**上下の小さな矢印**。`ステッパー`は−／＋の
+#              大きなボタンが欄を挟む形で、置き場所の広さが違う（狭いマス向き）
 WIDGETS = (WIDGET_SELECT, 'ラジオ', 'セグメント', 'タブ', 'ボタン群', '一覧',
-           'カード', 'トグル', '段階', '入切', 'メニュー', '切替',
-           'ステッパー', 'スライダー', 'キーパッド', '早見ボタン', 'メーター',
+           'カード', 'トグル', '段階', '入切', 'メニュー', '切替', 'パネル',
+           'ステッパー', 'スピナー', 'スライダー', 'キーパッド', '早見ボタン', 'メーター',
            'メモ', '1行', '定型文',
            '文字だけ', '強調')
+# ---------------------------------------------------------------------------
+# 選ばせ方のまとまり（§9.248 ①、利用者の指示）
+# ---------------------------------------------------------------------------
+# 「UIの選択自体もUIでもう少しグルーピングや階層を持たせて似たようなものを
+#  まとめわかりやすく選びやすく配置してほしいです。」
+#
+# 24種を平らに並べると、選ぶこと自体が「探す」作業になる（§2）。
+# **分けるのは「選ぶ状況」で、見た目の似ているもの同士ではない**——
+# 「開いて選ぶ」か「並べて見せる」かは**置き場所の広さ**で決まり、
+# 「2択・順番」は**選択肢の性質**で決まる。迷ったときに手掛かりになるのは
+# そちらなので、見た目（丸い・四角い）で束ねない。
+#
+# **並びと呼び名はここだけが持つ**（§9.163。画面へ書き写さない）。
+# ここに載っていない入力方法は画面が最後の「その他」へ落とすので、
+# 載せ忘れても盤から消えない（§4）。
+WIDGET_GROUPS = (
+    ('開いて選ぶ', '押すと選ぶ面が開く。置き場所が狭くても選択肢を増やせる',
+     (WIDGET_SELECT, 'メニュー', '一覧', 'パネル')),
+    ('並べて見せる', '選択肢が全部見えたまま選ぶ。数が少なく、迷わせたくないとき',
+     ('ラジオ', 'セグメント', 'タブ', 'ボタン群', 'カード')),
+    ('2択と順番', '対になっているもの・順番に意味があるもの',
+     ('トグル', '入切', '段階', '切替')),
+    ('数を入れる', '打ち込む欄はそのまま。押して決める道具を添える',
+     ('ステッパー', 'スピナー', 'スライダー', 'キーパッド', '早見ボタン', 'メーター')),
+    ('文字を書く', '自由記述の欄',
+     ('メモ', '1行', '定型文')),
+    ('自動で入る値', '画面が値を入れる欄。選ぶ道具は要らず、見せ方だけを決める',
+     ('文字だけ', '強調')),
+)
+
+
+def widget_group_of(widget):
+    # その入力方法がどのまとまりか。**判定はここ1箇所**（画面へ写さない）。
+    # 載っていないものは空＝画面が「その他」へ落とす。
+    w = str(widget or '')
+    for label, _note, items in WIDGET_GROUPS:
+        if w in items:
+            return label
+    return ''
+
+
 # 選択肢を持つ型。判定はここ1箇所。
 CHOICE_TYPES = ('選択',)
 NUMBER_TYPES = ('整数', '正の整数', '数値', '正の数')
@@ -168,9 +218,9 @@ NUMBER_TYPES = ('整数', '正の整数', '数値', '正の数')
 # 変えないこと**——型を切り替えた瞬間に「知らない値」になって設定が消える。
 WIDGET_FAMILIES = {
     'choice': (WIDGET_SELECT, 'ラジオ', 'セグメント', 'タブ', 'ボタン群', '一覧',
-               'カード', 'トグル', '段階', '入切', 'メニュー', '切替'),
-    'number': (WIDGET_SELECT, 'ステッパー', 'スライダー', 'キーパッド', '早見ボタン',
-               'メーター'),
+               'カード', 'トグル', '段階', '入切', 'メニュー', '切替', 'パネル'),
+    'number': (WIDGET_SELECT, 'ステッパー', 'スピナー', 'スライダー', 'キーパッド',
+               '早見ボタン', 'メーター'),
     'text': (WIDGET_SELECT, 'メモ', '1行', '定型文'),
     # 画面が値を入れる欄（§9.232／§9.233 ②）。値を**選ぶ**道具は要らないが、
     # **どう見せるか**は選べる（利用者の指示「自動で入る値についても、選んで
@@ -193,7 +243,9 @@ LAYOUT_AUTO = '自動'
 LAYOUTS = (LAYOUT_AUTO, '横1行', '折り返し', '縦', '2列', '3列')
 # 並べ方が効く入力方法。ここに無いものは`自動`のまま（画面は欄ごと出さない）。
 LAYOUT_WIDGETS = ('ラジオ', 'セグメント', 'ボタン群', 'カード', '段階',
-                  '早見ボタン', '定型文')
+                  '早見ボタン', '定型文',
+                  # §9.248 ① `パネル`は窓の中に札を並べるので、何列で並べるかを選べる。
+                  'パネル')
 
 
 def normalize_group_span(v):
@@ -872,6 +924,13 @@ _CHOICE_ADDED_COLUMNS = (
     # 書式は設備停止マスタと同じ（`'A'` / `'A,B,C'` / 空＝すべて）。
     # 判定は`schedule_repo.stop_equipment_*`を借りる（新しく書き起こさない）。
     ('対象設備', 'TEXT'),
+    # --- §9.248 ⑤（利用者の指示「選択肢の使用回数に応じて選択肢の並び順を
+    #     変えることができる機能を実装してほしい。マスタ側に使用回数を、
+    #     使用回数の多いものほど上に来るようにすれば非常に使いやすい」）---
+    # **共有マスタへ持つ**（利用者が名指しした）。現場で「よく使う値」は
+    # 端末ごとの好みではなく**その現場の事実**なので、§9.172で
+    # 「共有すべきものが端末にあった」と直したのと同じ向き。
+    ('使用回数', 'INTEGER'),
 )
 
 
@@ -895,7 +954,7 @@ def ensure_choice_table(c):
         cur.execute('CREATE TABLE [操業データ選択肢マスタ] ('
                     '[選択肢ID] INTEGER PRIMARY KEY AUTOINCREMENT, [選択肢名] TEXT, [値] TEXT, '
                     '[説明] TEXT, [表示順] INTEGER, [有効] INTEGER, '
-                    '[よみ] TEXT, [対象設備] TEXT, '
+                    '[よみ] TEXT, [対象設備] TEXT, [使用回数] INTEGER, '
                     '[登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
         c.commit()
         _seed_choices(c)
@@ -928,13 +987,19 @@ def choice_rows(c, include_disabled=False):
         return []
     cur = c.cursor()
     try:
-        cur.execute('SELECT [選択肢ID],[選択肢名],[値],[表示順],[有効],[説明],[よみ],[対象設備] '
+        cur.execute('SELECT [選択肢ID],[選択肢名],[値],[表示順],[有効],[説明],[よみ],[対象設備],'
+                    '[使用回数] '
                     'FROM [操業データ選択肢マスタ] ORDER BY [選択肢名],[表示順],[選択肢ID]')
         raw = cur.fetchall()
     except Exception:
-        cur.execute('SELECT [選択肢ID],[選択肢名],[値],[表示順],[有効],[説明] '
-                    'FROM [操業データ選択肢マスタ] ORDER BY [選択肢名],[表示順],[選択肢ID]')
-        raw = [tuple(r) + ('', '') for r in cur.fetchall()]
+        try:
+            cur.execute('SELECT [選択肢ID],[選択肢名],[値],[表示順],[有効],[説明],[よみ],[対象設備] '
+                        'FROM [操業データ選択肢マスタ] ORDER BY [選択肢名],[表示順],[選択肢ID]')
+            raw = [tuple(r) + (0,) for r in cur.fetchall()]
+        except Exception:
+            cur.execute('SELECT [選択肢ID],[選択肢名],[値],[表示順],[有効],[説明] '
+                        'FROM [操業データ選択肢マスタ] ORDER BY [選択肢名],[表示順],[選択肢ID]')
+            raw = [tuple(r) + ('', '', 0) for r in cur.fetchall()]
     out = []
     for r in raw:
         on = True if r[4] is None else bool(r[4])
@@ -943,7 +1008,9 @@ def choice_rows(c, include_disabled=False):
         out.append({'id': r[0], 'name': str(r[1] or '').strip(),
                     'value': str(r[2] or ''), 'order': r[3], 'enabled': on,
                     'note': str(r[5] or ''),
-                    'reading': str(r[6] or ''), 'equipment': str(r[7] or '')})
+                    'reading': str(r[6] or ''), 'equipment': str(r[7] or ''),
+                    # §9.248 ⑤ 使われた回数。**無い列は0**（古い端末でも読める）。
+                    'used': int(r[8] or 0) if len(r) > 8 and r[8] is not None else 0})
     return out
 
 
@@ -973,6 +1040,35 @@ def choice_notes(c, equipment=None):
     return out
 
 
+# ---------------------------------------------------------------------------
+# 選択肢の並び（§9.248 ⑤、利用者の指示）
+# ---------------------------------------------------------------------------
+# 「操業データ項目のUIでプルダウンリストなど、**新しい表示領域を作って表示する
+#  タイプのUI**については、余白に余裕がある方なので、選択肢の使用回数に応じて
+#  選択肢の並び順を変えることができる機能を実装してほしいです。マスタ側に
+#  使用回数を、使用回数の多いものほど上に来るようにすれば、非常に使いやすい」
+#
+# **効くのは「押すと新しい面が開く」形だけ**——札を並べる形（ラジオ・
+# セグメント・ボタン群…）で並びが変わると、**同じ欄なのに押す場所が毎回動く**
+# （手が場所を覚えられない）。開く面は毎回読んで選ぶので、上に寄せる意味がある。
+# **判定はここ1箇所**（§9.163。画面へ写さない）。
+CHOICE_ORDER_DEFAULT = ''
+CHOICE_ORDER_USED = 'よく使う順'
+CHOICE_ORDERS = (CHOICE_ORDER_DEFAULT, CHOICE_ORDER_USED)
+# 並び順を選べる入力方法＝**開くと新しい面が出るもの**。
+CHOICE_ORDER_WIDGETS = (WIDGET_SELECT, '一覧', 'メニュー', 'パネル')
+
+
+def normalize_choice_order(v):
+    s = str(v or '').strip()
+    return s if s in CHOICE_ORDERS else CHOICE_ORDER_DEFAULT
+
+
+def choice_order_usable(widget):
+    """その入力方法で「よく使う順」が効くか。**判定はここ1箇所**。"""
+    return str(widget or '') in CHOICE_ORDER_WIDGETS
+
+
 def choice_map(c, equipment=None):
     """{選択肢名: [値,...]}。**表示順で並べる**（選ぶ順番は現場が決める）。
 
@@ -987,8 +1083,21 @@ def choice_map(c, equipment=None):
             continue
         if equipment and not choice_matches_equipment(r['equipment'], equipment):
             continue
-        out.setdefault(r['name'], []).append(r['value'])
-    return out
+        # §9.248 ⑤ 使用回数も一緒に持つ——並べ替えるのは**項目ごと**なので、
+        # ここでは並べない（同じまとまりを「登録順」で使う欄と「よく使う順」で
+        # 使う欄が同時にありうる）。
+        out.setdefault(r['name'], []).append((r['value'], int(r.get('used') or 0)))
+    return {k: v for k, v in out.items()}
+
+
+def choice_list(cmap, name, order=CHOICE_ORDER_DEFAULT):
+    """`choice_map()`の1件を、頼まれた並びの**値の配列**にする（§9.248 ⑤）。
+    **同じ回数のときは表示順のまま**——回数が並ぶ値の場所が読むたびに
+    変わると「昨日と違う」になる（`sorted`は安定なのでそれで満たせる）。"""
+    rows = list(cmap.get(name) or [])
+    if order == CHOICE_ORDER_USED:
+        rows = sorted(rows, key=lambda t: -t[1])
+    return [v for v, _n in rows]
 
 
 def choice_names(c):
@@ -1078,7 +1187,27 @@ def builtin_choice_name(c, key):
     return fallback
 
 
-def choice_values(c, name, equipment=None):
+def choice_used_bump(c, name, value, n=1):
+    """選ばれた回数を1つ増やす（§9.248 ⑤）。**無ければ何もしない**
+    ——手で打った値（選択肢に無い値）まで行を作ると、マスタが打ち間違いで
+    膨れる（§9.226 ①「手打ちの値は選択肢マスタへ足さない」）。"""
+    nm = str(name or '').strip()
+    v = str(value or '')
+    if not nm or not v:
+        return 0
+    try:
+        ensure_choice_table(c)
+    except Exception:
+        return 0
+    cur = c.cursor()
+    cur.execute(f'UPDATE [{CHOICE_TABLE}] '
+                'SET [使用回数]=COALESCE([使用回数],0)+? '
+                'WHERE [選択肢名]=? AND [値]=?', [int(n), nm, v])
+    c.commit()
+    return cur.rowcount
+
+
+def choice_values(c, name, equipment=None, order=CHOICE_ORDER_DEFAULT):
     """まとまり名から**選べる値の並び**を返す(§9.221 ③)。有効な行だけを
     表示順で、`[対象設備]`が合うものに絞る。
 
@@ -1088,7 +1217,7 @@ def choice_values(c, name, equipment=None):
     ここが**唯一の読み口**。オペレータ・機器・スプール・内径・バリ揃え・
     コイル止めの6つは以前それぞれ専用の関数を持っていたが、同じことを
     6箇所に書いていたので、まとまり名が変わるだけの1本にまとめた。"""
-    out = []
+    rows = []
     seen = set()
     for r in choice_rows(c):
         if r['name'] != name or not r['value']:
@@ -1099,8 +1228,13 @@ def choice_values(c, name, equipment=None):
         if key in seen:
             continue
         seen.add(key)
-        out.append(r['value'])
-    return out
+        rows.append(r)
+    # §9.248 ⑤ **並べ替えは「頼まれたときだけ」**——既定は今までどおり表示順。
+    if order == CHOICE_ORDER_USED:
+        # **同じ回数のときは表示順のまま**（安定な並び替え）——回数が並ぶ値の
+        # 順番が読むたびに変わると、「昨日と場所が違う」になる。
+        rows = sorted(rows, key=lambda r: -int(r.get('used') or 0))
+    return [r['value'] for r in rows]
 
 
 # ---------------------------------------------------------------------------
@@ -1472,6 +1606,11 @@ _ITEM_ADDED_COLUMNS = (
     # 変えず、「カードではどこへ置くか」だけを重ねる。
     ('記録群', 'TEXT'),
     ('記録順', 'INTEGER'),
+    # --- §9.248 ⑤（利用者の指示「選択肢の使用回数に応じて選択肢の並び順を
+    #     変えることができる機能」）---
+    # ''＝表示順（今までどおり）／'よく使う順'＝使用回数の多い順。
+    # **効くのは「開くと新しい面が出る」形だけ**（`choice_order_usable`）。
+    ('選択肢の並び', 'TEXT'),
 )
 
 # 設備ごとに上書きできる項目（§9.239 ②）。**ここに無いものは共通のまま**
@@ -1872,7 +2011,10 @@ def _row_to_item(r):
             # §9.243。カードの中の群と並び。**空＝この項目の群／表示順に従う**
             # （盤で動かしていない項目は測定画面の並びへ追随し続ける）。
             'recordGroup': (str(r[39] or '').strip() if len(r) > 39 else ''),
-            'recordOrder': (int(r[40]) if len(r) > 40 and r[40] is not None else None)}
+            'recordOrder': (int(r[40]) if len(r) > 40 and r[40] is not None else None),
+            # §9.248 ⑤ 選択肢の並び。**列の無い古いDBでも動く**。
+            'choiceOrder': (normalize_choice_order(r[41]) if len(r) > 41
+                            else CHOICE_ORDER_DEFAULT)}
 
 
 _ITEM_SELECT = ('SELECT [項目ID],[設備名],[群],[項目名],[表示順],[型],[小数桁],[最小値],[最大値],'
@@ -1882,7 +2024,7 @@ _ITEM_SELECT = ('SELECT [項目ID],[設備名],[群],[項目名],[表示順],[�
                 '[単位位置],[文字寄せ],[表示書式],[表示桁数],[役割],[意匠],'
                 '[並べ方],[群幅],[ダミー],[空欄なし],[最小の出どころ],[最大の出どころ],'
                 '[出どころ表示],[自動値],[設備別レイアウト],[記録表示],'
-                '[記録群],[記録順] '
+                '[記録群],[記録順],[選択肢の並び] '
                 'FROM [操業データ項目マスタ] ORDER BY [表示順],[項目ID]')
 
 
@@ -2000,7 +2142,8 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                 unit_place=None, align=None, value_format=None, digits=None,
                 role=None, look=None, layout=None, group_span=None, report=None,
                 dummy=None, no_blank=None, min_from=None, max_from=None,
-                source_note=None, auto_value=None, record_show=None):
+                source_note=None, auto_value=None, record_show=None,
+                choice_order=None):
     ensure_item_table(c)
     name = str(name or '').strip()
     if not name:
@@ -2015,10 +2158,11 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
     prev_name = ''
     if item_id is not None:
         cur.execute('SELECT [組み込みキー],[項目名],[ダミー],[空欄なし],'
-                    '[最小の出どころ],[最大の出どころ],[出どころ表示],[自動値],[記録表示] '
+                    '[最小の出どころ],[最大の出どころ],[出どころ表示],[自動値],[記録表示],'
+                    '[選択肢の並び] '
                     'FROM [操業データ項目マスタ] WHERE [項目ID]=?', [int(item_id)])
         hit = cur.fetchone()
-        cur_builtin = str((hit or ['', '', 0, 0, '', '', '', '', None])[0] or '').strip()
+        cur_builtin = str((hit or ['', '', 0, 0, '', '', '', '', None, ''])[0] or '').strip()
         prev_name = str((hit or ['', '', 0, 0, '', '', '', '', None])[1] or '').strip() if hit else ''
         # **渡されなかったら今の値を保つ**（§9.212 ②「送った項目だけ書く」）
         # ——設定窓は`dummy`を送らないので、触るたびに空きが解けては困る。
@@ -2042,6 +2186,9 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
         # 消さない）。**NULLは「出す」**なので、そのまま持ち上げる。
         if record_show is None and hit is not None:
             record_show = True if hit[8] is None else bool(hit[8])
+        # §9.248 ⑤。選択肢の並びも同じ約束（送らない呼び出しで消さない）。
+        if choice_order is None and hit is not None and len(hit) > 9:
+            choice_order = hit[9]
     if builtin is None:
         builtin = cur_builtin
     builtin = str(builtin or '').strip()
@@ -2089,7 +2236,10 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
             # ——2本目のUPDATEが`args[1:2]+args[3:]`で位置を数えている。
             normalize_auto_value(auto_value),
             # §9.242 ④ ③「記録した値」へ出すか。**既定は出す**（Noneも出す）。
-            0 if record_show is False else -1]
+            0 if record_show is False else -1,
+            # §9.248 ⑤ 選択肢の並び。**列は末尾へ足す**——2本目のUPDATEが
+            # `args[1:2]+args[3:]`で位置を数えている。
+            normalize_choice_order(choice_order)]
     if item_id is not None:
         cur.execute('UPDATE [操業データ項目マスタ] SET [設備名]=?,[群]=?,[項目名]=?,[表示順]=?,'
                     '[型]=?,[小数桁]=?,[最小値]=?,[最大値]=?,[選択肢名]=?,[単位]=?,[必須]=?,'
@@ -2098,7 +2248,7 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                     '[単位位置]=?,[文字寄せ]=?,[表示書式]=?,[表示桁数]=?,[役割]=?,[意匠]=?,'
                     '[並べ方]=?,[群幅]=?,[ダミー]=?,[空欄なし]=?,'
                     '[最小の出どころ]=?,[最大の出どころ]=?,[出どころ表示]=?,[自動値]=?,'
-                    '[記録表示]=?,'
+                    '[記録表示]=?,[選択肢の並び]=?,'
                     '[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
                     args + [uid, int(item_id)])
         c.commit()
@@ -2121,7 +2271,7 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                     '[単位位置]=?,[文字寄せ]=?,[表示書式]=?,[表示桁数]=?,[役割]=?,[意匠]=?,'
                     '[並べ方]=?,[群幅]=?,[ダミー]=?,[空欄なし]=?,'
                     '[最小の出どころ]=?,[最大の出どころ]=?,[出どころ表示]=?,[自動値]=?,'
-                    '[記録表示]=?,'
+                    '[記録表示]=?,[選択肢の並び]=?,'
                     '[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
                     args[1:2] + args[3:] + [uid, hit[0]])
         c.commit()
@@ -2137,9 +2287,9 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                 '[表示条件],[入力方法],[初期値],[手打ち可],[ステップ量],'
                 '[単位位置],[文字寄せ],[表示書式],[表示桁数],[役割],[意匠],'
                 '[並べ方],[群幅],[ダミー],[空欄なし],[最小の出どころ],[最大の出どころ],'
-                '[出どころ表示],[自動値],[記録表示],'
+                '[出どころ表示],[自動値],[記録表示],[選択肢の並び],'
                 '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
-                'VALUES (' + ','.join(['?'] * 39) + ',Now(),Now())',
+                'VALUES (' + ','.join(['?'] * 40) + ',Now(),Now())',
                 args + [uid, uid])
     c.commit()
     return int(cur.lastrowid)
@@ -2414,7 +2564,13 @@ def form_for_equipment(c, equipment):
     out = []
     for it in items:
         row = dict(it)
-        row['choices'] = list(cmap.get(it['choice'], [])) if it['choice'] else []
+        # §9.248 ⑤ 並びは**項目の設定**で決まる（既定は表示順＝今までどおり）。
+        # **効かない入力方法では並べ替えない**（§4）——札を並べる形で順番が
+        # 変わると、同じ欄なのに押す場所が毎回動く。
+        row['choices'] = (choice_list(cmap, it['choice'],
+                                      it['choiceOrder'] if choice_order_usable(it['widgetLive'])
+                                      else CHOICE_ORDER_DEFAULT)
+                          if it['choice'] else [])
         # 説明つきで選ばせるのに要る（§9.218 ②）。**説明のある値だけ**入れる。
         row['choiceNotes'] = dict(notes.get(it['choice'], {})) if it['choice'] else {}
         row['choiceMissing'] = bool(it['choice']) and it['choice'] not in cmap

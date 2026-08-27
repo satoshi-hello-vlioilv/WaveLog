@@ -42,9 +42,22 @@
                 query:'',gen:0};
 
  function loadPref(){
+  /* **既定はこの端末の使用設備**（§9.248 ⑥、利用者の指示「実施した設備ごとに
+     見せる範囲を変えたい…他の設備の情報が表示されていたら混乱してしまい
+     データも混ざってしまう」）。以前の既定は`''`＝すべての設備だったので、
+     何も選ばずに開くと**他の設備の実績が混ざって並んでいた**。
+     **覚えがあればそちらが勝つ**——「すべての設備」を明示的に選んだ人の
+     見え方を勝手に戻さない（§9.132の作法）。使用設備が未登録の端末では
+     今までどおりすべてを出す（絞る材料が無い）。 */
   try{
+   const eq=(typeof currentConfiguredEquipment==='function')
+     ?String(currentConfiguredEquipment()||'').trim():'';
+   if(eq)acState.equipment=eq;
    const v=JSON.parse(localStorage.getItem(AC_PREF_KEY)||'{}')||{};
-   if(v.equipment)acState.equipment=String(v.equipment);
+   /* `equipment`は**キーがあれば**そのまま採る（空文字＝「すべての設備」を
+      選んだという意思表示なので、真偽値で見ると拾えない）。 */
+   if(Object.prototype.hasOwnProperty.call(v,'equipment'))
+    acState.equipment=String(v.equipment||'');
    if(v.basis==='cal')acState.basis='cal';
    const d=Number(v.days);
    if(Number.isFinite(d)&&d>0&&d<=3660)acState.days=d;

@@ -392,17 +392,30 @@
  /* いま絞り込みに残っている列。分類チップ・まとめて操作・リストが
     **同じ答え**を使う(別々に数えると画面の中で数が食い違う)。 */
  let originFilter='';
- function shownKeys(ignoreOrigin){
+ /* ---------- 「表示中／非表示中」で絞る（§9.248 ④、利用者の指示） ----------
+    「列のカスタム機能の中の表示する列のフィルタ機能について、バッジを使って
+     フィルタする機能がありますが、『表示中の列』と『非表示中の列』という
+     バッジを追加してほしいです。」
+
+    **出どころとは別の軸**なので、同じ帯の中で群を分けて置き、
+    **かけ合わせ（AND）で効かせる**——1つの群にまとめると「結合」と
+    「非表示中」が排他になり、「結合された列のうち隠しているものだけ」を
+    見る、という**いちばん使いたい形**が作れない。
+    件数は**相手の軸を効かせたまま**数える（そうしないと、絞り込んだあとに
+    出る数と実際に並ぶ行数が食い違う）。 */
+ let stateFilter='';                   /* ''＝すべて／'on'＝表示中／'off'＝非表示中 */
+ function shownKeys(ignoreOrigin,ignoreState){
   const q=String(document.getElementById('lcFilter')?.value||'').trim().toLowerCase();
   return draft.order.filter(k=>{
    if(q&&!labelOf(k).toLowerCase().includes(q)&&!k.toLowerCase().includes(q))return false;
    if(!ignoreOrigin&&originFilter&&originOf(k)!==originFilter)return false;
+   if(!ignoreState&&stateFilter&&(stateFilter==='off')!==draft.hidden.has(k))return false;
    return true;
   });
  }
  function setAllVisible(on){
   shownKeys().forEach(k=>{if(on)draft.hidden.delete(k);else draft.hidden.add(k)});
-  renderPreview();renderList();
+  renderPreview();renderOrigins();renderList();
  }
  /* 「出す」の見出しのチェックは3状態(全部出す/全部隠す/一部)。
     **一部のときは中間表示**にする——チェックが外れて見えると
@@ -433,19 +446,38 @@
     押せなくする)。 */
  function renderOrigins(){
   const box=document.getElementById('lcOrigins');if(!box)return;
-  const pool=shownKeys(true);
+  /* 出どころの件数は**状態の絞り込みを効かせたまま**数える（逆も同じ）。 */
+  const pool=shownKeys(true,false);
+  const spool=shownKeys(false,true);
   const n=o=>pool.filter(k=>originOf(k)===o).length;
   const chip=(o,label,count,note)=>
    `<button type="button" class="lc-origin-chip lc-origin-${o}${originFilter===o?' is-on':''}"
      data-origin="${o}"${count?'':' disabled'} title="${esc(note)}"
      aria-pressed="${originFilter===o?'true':'false'}">${esc(label)}<b>${count}</b></button>`;
+  /* 状態の札（§9.248 ④）。**出どころとは別の群**として仕切りで分ける
+     ——同じ並びに混ぜると、押したときに何が外れるのか読めない。 */
+  const on=spool.filter(k=>!draft.hidden.has(k)).length;
+  const off=spool.length-on;
+  const st=(v,label,count,note)=>
+   `<button type="button" class="lc-origin-chip lc-state-chip lc-state-${v||'all'}${stateFilter===v?' is-on':''}"
+     data-state="${v}"${count||!v?'':' disabled'} title="${esc(note)}"
+     aria-pressed="${stateFilter===v?'true':'false'}">${esc(label)}<b>${count}</b></button>`;
   box.innerHTML=
    `<button type="button" class="lc-origin-chip lc-origin-all${originFilter?'':' is-on'}" data-origin=""
      aria-pressed="${originFilter?'false':'true'}" title="すべての列">すべて<b>${pool.length}</b></button>`
    +(panelSrc.origins?panelSrc.origins():ORIGIN_ORDER).map(o=>chip(o,ORIGIN[o].label,n(o),
-       o==='join'?`${ORIGIN[o].note}（${joinFrom()}）`:ORIGIN[o].note)).join('');
+       o==='join'?`${ORIGIN[o].note}（${joinFrom()}）`:ORIGIN[o].note)).join('')
+   +`<i class="lc-chip-sep" aria-hidden="true"></i>`
+   +st('on','表示中',on,'一覧に出している列だけを並べます（出どころの絞り込みと重ねて効きます）')
+   +st('off','非表示中',off,'一覧に出していない列だけを並べます。戻したい列を探すときに使います');
   box.querySelectorAll('.lc-origin-chip').forEach(b=>{
-   b.onclick=()=>{originFilter=b.dataset.origin||'';renderOrigins();renderList()};
+   b.onclick=()=>{
+    if(b.dataset.state!==undefined){
+     /* **同じ札をもう一度押したら外す**——「すべて」を探させない（§2）。 */
+     stateFilter=(stateFilter===b.dataset.state)?'':b.dataset.state;
+    }else originFilter=b.dataset.origin||'';
+    renderOrigins();renderList();
+   };
   });
  }
  function renderList(){
@@ -482,7 +514,11 @@
     /* 見出しの全選択チェックも合わせる(§9.106)。ここで合わせ忘れると、
        1つ外しても「全部出ている」ままに見える。**リストは作り直さない**
        ——作り直すと今掴んでいる行が入れ替わる。 */
-    renderCount();syncAllVisible();applyLive();
+    /* **札の件数も合わせる**（§9.248 ④）——「表示中 12／非表示中 3」は
+       チェックを1つ触るたびに動く。ここで合わせ忘れると、画面の数と
+       実際に並ぶ行数が食い違う（§CLAUDE 8）。
+       **リストは作り直さない**——掴んでいる行が入れ替わる。 */
+    renderCount();syncAllVisible();renderOrigins();applyLive();
    });
    /* **選ぶのは click。** mouseup で選ぶ作りにすると、`el.click()` のような
       素のクリック(キーボード操作・自動化・支援技術)で選べなくなる。 */
@@ -1135,12 +1171,38 @@
     「効いていない」と受け取られる(実際にそう見える状態を作ってしまった)。 */
  function renderPreview(){renderOrigins();renderList();applyLive()}
 
+ /* **パネルに出ていない列も並びから落とさない**（§9.248 ③、利用者の報告
+    「一覧表関係の表示列が一部表示されなかったり消えていることがあります」）。
+
+    パネルが並べるのは`panelSrc.keys()`＝**いま出せる列**だけ。結合が当たって
+    いない・別のモードで開いた・マスタがまだ届いていない、のどれでも顔ぶれは
+    縮むので、そのまま保存すると**居なかった列が保存済みの並びから消える**
+    （次に出てきたとき「知らない列」として末尾へ回る）。
+    **保存済みにあってパネルに無い列は、元の隣の列の後ろへ挿し直す**
+    ——末尾へまとめて足すと、戻ってきたときに並びがひとかたまり動く。
+    **差し替え口が自前で保存する対象（作業スケジュールの内容欄）は触らない**
+    ——あちらは`body.order`から「内容表示マスタへ書く項目」を作るので、
+    出せない列を混ぜると**選んだ覚えの無い項目**がマスタへ入る。 */
+ function orderForSave(){
+  const saved=(WL.columnLayout.saved(target).order)||[];
+  const shown=new Set(draft.order);
+  const out=[...draft.order];
+  let anchor=-1;                       /* 直前に見た「パネルにも在る列」の位置 */
+  saved.forEach(k=>{
+   if(shown.has(k)){anchor=out.indexOf(k);return}
+   if(out.includes(k))return;
+   anchor=anchor<0?0:anchor+1;
+   out.splice(anchor,0,k);
+  });
+  return out;
+ }
  async function save(){
   try{
    /* 保存先が違う対象もある(§9.120)。作業スケジュールの内容欄は
       「どの項目を出すか」だけスケジュール内容表示マスタが持つので、
       **振り分けは差し替え口の1箇所**で行う(パネルは知らなくてよい)。 */
-   const body={order:draft.order,widths:draft.widths,
+   const body={order:(typeof panelSrc.save==='function'?draft.order:orderForSave()),
+               widths:draft.widths,
                hidden:[...draft.hidden],names:draft.names,
                formats:draft.formats,rules:draft.rules,
                formulas:draft.formulas,locks:[...draft.locks],sorts:draft.sorts,
@@ -1518,6 +1580,9 @@
      増えたり減ったりする)ので、**開くたびに取り直す**。 */
   joined=joinedKeys();
   originFilter='';
+  /* **状態の絞り込みも開くたびに外す**（§9.248 ④）——覚えたままだと、
+     次に開いたとき候補が半分しか無く「列が消えた」と読まれる。 */
+  stateFilter='';
   loadDraft();
   renderOrigins();renderList();renderDetail();
   document.getElementById(PANEL_ID).hidden=false;

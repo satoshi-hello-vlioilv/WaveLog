@@ -74,7 +74,10 @@ async function openList(page){
    rows:document.querySelectorAll('#listColumnPanel .lc-item').length,
    checked:[...document.querySelectorAll('#listColumnPanel .lc-item input[type=checkbox]')]
      .filter(x=>x.checked).length,
-   origins:[...document.querySelectorAll('#lcOrigins button')].map(x=>x.textContent.trim()),
+   /* 出どころの札だけを数える（§9.248 ④で「表示中／非表示中」の札が
+      同じ帯に並んだ。**別の軸**なので出どころの数には入れない）。 */
+   origins:[...document.querySelectorAll('#lcOrigins button[data-origin]')].map(x=>x.textContent.trim()),
+   states:[...document.querySelectorAll('#lcOrigins button[data-state]')].map(x=>x.textContent.trim()),
    fx:!document.getElementById('lcAddCol')?.hidden,
   }));
   rec('仕掛一覧と同じパネル（#listColumnPanel）が開く',panel.id==='listColumnPanel',panel.title);
@@ -85,6 +88,14 @@ async function openList(page){
       panel.origins.length===3&&panel.origins.join('').includes('元データ')
       &&panel.origins.join('').includes('計算・操作')
       &&!panel.origins.join('').includes('結合'),panel.origins.join(' / '));
+  /* §9.248 ④: 出どころとは**別の軸**として「表示中／非表示中」が並ぶ。
+     **件数を文字で出すこと**まで見る（§3。札が在るだけでは何件か読めない）。 */
+  rec('「表示中の列」「非表示中の列」の札が別の軸として並ぶ',
+      panel.states.length===2&&panel.states.join('').includes('表示中')
+      &&panel.states.join('').includes('非表示中'),panel.states.join(' / '));
+  rec('札は件数を文字で出す（表示中＝既定の15列）',
+      /表示中\s*15$/.test(panel.states[0]||'')
+      &&/非表示中\s*\d+$/.test(panel.states[1]||''),panel.states.join(' / '));
   rec('計算式で列を作れる（仕掛一覧と同じ機能）',panel.fx===true);
 
   /* ---- 3) 触った結果がそのまま一覧に出る（保存していなくても） ---- */

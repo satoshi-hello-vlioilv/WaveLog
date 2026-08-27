@@ -1061,6 +1061,15 @@ def operation_item_list():
            # 出せない**。設定窓はここを見て欄ごと押せなくし、理由を書く（§4）。
            # **規則はサーバーの`free_text_ok()`が持ち、画面は一覧を引くだけ。**
            'freeTextBlocked':list(op.FREE_TEXT_BLOCKED_WIDGETS),
+           # §9.248 ⑤ 選択肢の並びの語彙と、それが効く入力方法。
+           # **効くのは「押すと新しい面が開く」形だけ**——札を並べる形で
+           # 順番が変わると、同じ欄なのに押す場所が毎回動く（§4）。
+           'choiceOrders':list(op.CHOICE_ORDERS),
+           'choiceOrderWidgets':list(op.CHOICE_ORDER_WIDGETS),
+           # §9.248 ① 選ばせ方のまとまり（盤の見出しと並び）。**サーバーが
+           # 答える**——画面へ写すと、種類を足したときに2箇所直すことになる。
+           'widgetGroups':[{'label':l,'note':n,'items':list(i)}
+                           for l,n,i in op.WIDGET_GROUPS],
            # §9.233 ⑤ 自動で入る値の添え書きの置き場と、添え書きを持つ
            # 項目の役割。**サーバーが答える**——「どの項目が添え書きを
            # 出すのか」は仕掛からの読み込みを持っている側しか知らない。
@@ -1165,6 +1174,8 @@ def _operation_item_save(x):
                          # §9.242 ④ ③「記録した値」のカードへ出すか。
                          # **送られてきたときだけ**書く（`dummy`と同じ約束）。
                          record_show=x.get('recordShow'),
+                         # §9.248 ⑤ 選択肢の並び（''＝表示順／'よく使う順'）。
+                         choice_order=x.get('choiceOrder'),
                          report=ref)
   saved=_op_read(fn)
   # **付け替えたことは黙って済ませない**（§9.226 ①）。名前を変えると
@@ -1371,6 +1382,28 @@ def operation_choice_reorder():
   n=_op_read(lambda c:op.choice_reorder(c,ids,request_user_id(x)))
   return jsonify(ok=True,saved=n,message='選択肢の並びを保存しました。')
  except Exception as e:return jsonify(error=f'選択肢の並びの保存に失敗しました: {e}'),500
+
+@bp.post('/api/operation-choice-master/used')
+def operation_choice_used():
+ """選ばれた回数を1つ増やす（§9.248 ⑤、利用者の指示）。
+
+ **測定画面は投げっぱなしで呼ぶ**（値が入るのを待たせない）。選択肢に
+ 無い値（手打ち）は`choice_used_bump`が何もしないので、打ち間違いで
+ マスタが膨れることは無い。
+
+ **書き込みだが、閲覧モードからも通す**——数えているのは「選ばれた」と
+ いう事実だけで、現場の設定は1つも変わらない。ここを塞ぐと、閲覧モードの
+ 端末で測った回数だけが数えられず、並びが端末によって食い違う。"""
+ from ..repositories import operation_repo as op
+ x=request.get_json(force=True) or {}
+ try:
+  # `_op_read`は名前に反して**書ける接続**（`connect(path,False)`）を開く
+  # だけの道具で、他の保存経路も同じものを通っている。
+  n=_op_read(lambda c:op.choice_used_bump(c,x.get('name'),x.get('value')))
+  return jsonify(ok=True,updated=n)
+ except Exception as e:
+  # **数えられなくても測定は続く**——ここで500を返しても画面は何もしない。
+  return jsonify(error=f'使用回数を数えられませんでした: {e}'),500
 
 @bp.post('/api/operation-choice-master/delete')
 def operation_choice_delete():

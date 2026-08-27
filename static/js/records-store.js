@@ -567,12 +567,63 @@ $('#closeModal').onclick=closeMeasureModal;$('.shade').onclick=closeMeasureModal
    から受け取る**——モードの判定・権限の有無はあちらが持っているため。 */
 let recordListState={statuses:{editing:true,done:false},items:[],query:'',sort:'updated-desc',
  notice:'',emptyHtml:'',sourceNote:''};
+/* ---------- 実施した設備で見せる範囲を絞る（§9.248 ⑥、利用者の指示） ----------
+   「データ一覧や実績データ、作業スケジュール表については、実施した設備ごとに
+    見せる範囲を変えたいです。設備設定を変えても他の設備の情報が表示されて
+    いたら混乱してしまいデータも混ざってしまうと問題になるため修正を
+    お願いします。」
+
+   データ一覧は**端末内＋共有DBの全件**を出していた（`mergedRecords()`に
+   設備の条件が1つも無かった）。共有DBは全設備ぶんが入るので、設備Aの端末で
+   開いても設備Bの測定が並ぶ。
+
+   **既定はこの端末の使用設備だけ**。ただし:
+    ・使用設備が未登録の端末では**絞れない**ので、絞らずにそう書く（§4）
+    ・設備の記録が無い古いデータは**どの設備のものとも言えない**ので隠さない
+      （隠すと「消えた」と読まれる。§9.107「0件は無いとは限らない」）
+    ・**切り替えは同じ場所に置き、隠している件数を文字で出す**（§3・§8）
+   置き場は**この端末**（読み方の好みなのでPCごと・§9.199）。 */
+const RECORD_SCOPE_KEY='MeasurementRecordScopeV1';
+function recordScope(){
+ try{return localStorage.getItem(RECORD_SCOPE_KEY)==='all'?'all':'mine'}catch(e){return 'mine'}
+}
+function setRecordScope(v){
+ try{localStorage.setItem(RECORD_SCOPE_KEY,v==='all'?'all':'mine')}catch(e){}
+}
+/* その記録が「どの設備で実施されたか」。**測ったPCの登録設備**が正で、
+   仕掛の設計設備ではない（§9.91の`[設備]`列と同じ考え方）。
+   分からないときは空文字＝**どの設備のものとも言えない**。 */
+function recordEquipmentOf(x){
+ return String(x.registeredEquipment||x.settings?.registeredEquipment
+               ||x.remoteEquipment||x.basic?.equipment||'').normalize('NFKC').trim();
+}
+/* いま絞り込みに使う設備。未登録なら空＝絞らない。 */
+function recordScopeEquipment(){
+ if(recordScope()==='all')return '';
+ return String(currentConfiguredEquipment()||'').normalize('NFKC').trim();
+}
+function recordMatchesScope(x){
+ const eq=recordScopeEquipment();
+ if(!eq)return true;
+ const own=recordEquipmentOf(x);
+ /* **設備の分からない記録は隠さない**——古い版で保存されたものは
+    設備を持たないことがあり、隠すと戻す手立てが画面から消える。 */
+ return !own||own===eq;
+}
 /* 編集モードの経路(openRecords)へ戻ったときに、閲覧モードで入れた説明が
    残っていると嘘になる。開き直すたびに必ず消す。 */
 function clearRecordListNotice(){recordListState.notice='';recordListState.emptyHtml='';recordListState.sourceNote=''}
 function recordMatchesStatusFilter(x){const done=x.status==='完了';return done?!!recordListState.statuses?.done:!!recordListState.statuses?.editing}
 function recordSearchText(x){return [x.basic?.lotNo,x.basic?.inspectionNo,x.basic?.castingNo,x.basic?.equipment,x.settings?.registeredEquipment,x.registeredEquipment,x.status].map(v=>String(v||'').normalize('NFKC').toLowerCase()).join(' ')}
-function sortedFilteredRecords(){let items=recordListState.items.filter(x=>recordMatchesStatusFilter(x)&&recordSearchText(x).includes(recordListState.query.normalize('NFKC').toLowerCase()));items=[...items];if(recordListState.sort==='updated-asc')items.sort((a,b)=>String(a.updatedAt||'').localeCompare(String(b.updatedAt||'')));else if(recordListState.sort==='lot-asc')items.sort((a,b)=>String(a.basic?.lotNo||'').localeCompare(String(b.basic?.lotNo||''),'ja'));else items.sort((a,b)=>String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')));return items}
+/* 状態と検索の絞り込み。**設備の絞り込みとは別に呼べること**——切替ボタンが
+   「他N件」を数えるとき、この2つは効かせたまま数えないと、**押しても増えない
+   件数**を出してしまう（状態や検索で既に落ちている行まで「伏せている」と
+   書くことになる。§CLAUDE 8「同じ数字が食い違わない」）。 */
+function recordMatchesView(x){
+ return recordMatchesStatusFilter(x)
+   &&recordSearchText(x).includes(recordListState.query.normalize('NFKC').toLowerCase());
+}
+function sortedFilteredRecords(){let items=recordListState.items.filter(x=>recordMatchesScope(x)&&recordMatchesView(x));items=[...items];if(recordListState.sort==='updated-asc')items.sort((a,b)=>String(a.updatedAt||'').localeCompare(String(b.updatedAt||'')));else if(recordListState.sort==='lot-asc')items.sort((a,b)=>String(a.basic?.lotNo||'').localeCompare(String(b.basic?.lotNo||''),'ja'));else items.sort((a,b)=>String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')));return items}
 /* statusは呼び出し元からの既定プリセット('編集中'/'履歴')。省略時、あるいは
    トグル操作後の再読込時は直前のトグル状態(recordListState.statuses)を
    維持する。 */
@@ -1227,6 +1278,49 @@ function renderRecordListRows(){
  });
  const result=$('#recordSearchResult');
  if(result)result.textContent=`${items.length} / ${recordListState.items.length}件を表示`;
+ renderRecordScopeBtn();
+}
+/* 設備の絞り込みの入口（§9.248 ⑥）。**入口は1つ**——ツールバーの中に置き、
+   いま何で絞っているか・隠している件数を**ボタン自身が名乗る**（§3・§9.199
+   「畳んだ先の設定はボタンに書く」）。黙って絞ると「データが消えた」と読まれる。 */
+function renderRecordScopeBtn(){
+ const bar=$('#recordSearchBar');if(!bar)return;
+ let btn=$('#recordScopeBtn');
+ if(!btn){
+  btn=document.createElement('button');
+  btn.type='button';btn.id='recordScopeBtn';btn.className='record-scope-btn';
+  const anchor=$('#recordColumnsBtn');
+  if(anchor)bar.insertBefore(btn,anchor);else bar.appendChild(btn);
+  btn.onclick=()=>{setRecordScope(recordScope()==='all'?'mine':'all');renderRecordListRows()};
+ }
+ const eq=String(currentConfiguredEquipment()||'').trim();
+ /* **数える相手は「設備の絞り込みだけを外した一覧」**（状態と検索は効かせた
+    まま）——押したときに実際に増える行の数と一致させる。 */
+ const all=recordListState.items.filter(recordMatchesView);
+ if(!eq){
+  /* **絞れないことを書く**（§4）——使用設備が未登録の端末では、どれが
+     「この設備のもの」なのか決めようがない。押しても何も起きないボタンを
+     残さない。 */
+  btn.disabled=true;btn.classList.remove('is-on');
+  btn.innerHTML='<b>すべての設備</b>';
+  btn.title='この端末に使用設備が登録されていないため、設備では絞れません。ヘッダーの「使用設備」から登録できます。';
+  return;
+ }
+ btn.disabled=false;
+ const mine=recordScope()!=='all';
+ /* **隠している件数を数える**——0件のときも出す（「絞っているのに全部
+    出ている」ことが分かる）。 */
+ const off=all.filter(x=>{const o=recordEquipmentOf(x);return o&&o!==eq.normalize('NFKC')}).length;
+ const unknown=all.filter(x=>!recordEquipmentOf(x)).length;
+ btn.classList.toggle('is-on',mine);
+ btn.innerHTML=mine?`<b>${esc(eq)}</b>のみ${off?`<i>他${off}件</i>`:''}`
+                   :`<b>すべての設備</b>${off?`<i>他${off}件</i>`:''}`;
+ btn.title=mine
+  ?`この端末の使用設備「${eq}」で測ったデータだけを出しています`
+   +(off?`（他の設備の${off}件は伏せています）`:'（他の設備のデータはありません）')
+   +(unknown?`。設備の記録が無い${unknown}件は伏せずに出しています。`:'。')
+   +'押すとすべての設備を出します。'
+  :`すべての設備のデータを出しています。押すと「${eq}」だけに絞ります。`;
 }
 
 /* 列の設定を触れるか。**判定は1箇所**——ボタン・取っ手・右クリックの

@@ -254,6 +254,14 @@ let b=null;
   });
   rec('一覧の浮き窓も欄と同じ角丸で開く（意匠を持ち出す）',
       popRad.項目>=10&&!!popRad.写し,JSON.stringify(popRad));
+  /* **開いた窓は閉じてから次へ**——開けっ放しだと、あとの確かめが
+     「別の器か」を見るときに引っかかる（この網が実際に引っかかった）。 */
+  await page.click('#opfPickerClose');
+  /* **`waitForSelector`の既定は「見えるまで」**——`[hidden]`の要素は
+     いつまでも見えないので、閉じたことは`waitForFunction`で見る
+     （この網が実際に5秒待って落ちた）。 */
+  await page.waitForFunction(()=>document.getElementById('opfPicker').hidden,
+    null,{timeout:5000});
 
   /* ==========================================================
      8) カードは説明が無いとき背の高い空箱にならない
@@ -275,6 +283,192 @@ let b=null;
       cards.説明なし.印===true&&cards.説明あり.印===false,JSON.stringify(cards));
   rec('説明の無いカードは背が高くならない',
       cards.説明なし.高さ<cards.説明あり.高さ,JSON.stringify(cards));
+
+  /* ==========================================================
+     9) 足した2つ（§9.248 ①、利用者の指示）
+     ---------------------------------------------------------
+       「フローティングモーダルやポップオーバーメニューやスピナーなど
+        違うタイプのものを増やしたい。」
+
+     **ポップオーバーメニューは`メニュー`が既にそれ**（§9.247 ①）なので
+     足していない——同じものに2つ目の名前を与えると、選ぶ盤が「同じ物の
+     別名」で埋まる。ここで固定するのは、足した2つが**既にあるものと
+     別の顔**であること。
+     ========================================================== */
+  await page.evaluate(()=>{window.__clear();
+    window.__mk('パネル',{values:['上巻','下巻','指定なし','特殊'],
+      notes:{'上巻':'コイルの外側から巻き出す'}});});
+  const panelFace=await page.evaluate(()=>{
+   const p=document.querySelector('.opf-panel-mark');
+   const cs=p?getComputedStyle(p):null;
+   return {印:(p||{}).textContent,仕切り:cs?cs.borderLeftWidth:''};
+  });
+  /* **`一覧`と同じ顔にしない**——どちらも窓が開くので、合図が同じだと
+     名前が2つあって見た目が同じ（§9.247 ①で指摘された形）になる。 */
+  rec('パネルの合図は一覧（☰）と違う',
+      panelFace.印&&panelFace.印!=='☰'&&parseFloat(panelFace.仕切り||0)>0,
+      JSON.stringify(panelFace));
+  await page.click('.opf-panel-btn');
+  await page.waitForSelector('#opfPanel:not([hidden])',{timeout:5000});
+  const panelWin=await page.evaluate(()=>{
+   const g=document.getElementById('opfPanelGrid');
+   const it=g.querySelector('.opf-panel-item');
+   return {札:g.querySelectorAll('.opf-panel-item').length,
+     説明:g.querySelectorAll('.opf-panel-item small').length,
+     列:getComputedStyle(g).gridTemplateColumns.split(' ').length,
+     札の高さ:it?Math.round(it.getBoundingClientRect().height):0,
+     /* `一覧`の窓（1行ずつの表）と**別の器**であること。 */
+     一覧の窓:!!document.querySelector('#opfPicker:not([hidden])')};
+  });
+  /* **「大きな札を並べる」形であること**——1列に細い行が並ぶだけなら
+     `一覧`と変わらない（名前だけ増えて選ぶ意味が無い）。 */
+  rec('パネルは大きな札を2列以上に並べる',
+      panelWin.列>=2&&panelWin.札===5&&panelWin.札の高さ>=40,
+      JSON.stringify(panelWin));
+  rec('パネルは説明つきで選べる',panelWin.説明>=1,JSON.stringify(panelWin));
+  rec('パネルは一覧の窓を開かない（別の器）',!panelWin.一覧の窓);
+  await page.click('#opfPanel .opf-panel-item:nth-child(2)');
+  const panelPicked=await page.evaluate(()=>({
+    値:document.querySelector('#wbed select').value,
+    閉:document.getElementById('opfPanel').hidden,
+    表示:(document.querySelector('.opf-pick-now')||{}).textContent}));
+  rec('パネルで選ぶと値が入り、窓は閉じる',
+      panelPicked.値==='上巻'&&panelPicked.閉===true&&panelPicked.表示==='上巻',
+      JSON.stringify(panelPicked));
+
+  /* スピナー。**`ステッパー`との違いは置き場所の広さ**なので、
+     「行が増えないこと」と「矢印が欄の右端に乗ること」を測る
+     ——絵が違うことだけを見る網は、どちらも1行増える実装でも通る。 */
+  const spin=await page.evaluate(()=>{
+   window.__clear();
+   const mk=kind=>{
+    const label=document.createElement('label');
+    label.className='opf opf-host';label.dataset.opfill='1';
+    label.innerHTML='<span class="opf-name">'+kind+'</span>';
+    const inp=document.createElement('input');
+    inp.type='text';inp.className='numeric-input';inp.min=0;inp.max=20;inp.value='5';
+    label.appendChild(inp);
+    document.getElementById('wbed').appendChild(label);
+    const def={name:kind,preview:true,look:{color:'既定',shape:'標準',size:'中'},
+      step:1,min:0,max:20};
+    WL.opData.previewWidget(def,label,kind);
+    WL.opData.presentation(label,def);
+    const box=label.querySelector('.opf-widget');
+    return {高さ:Math.round(label.getBoundingClientRect().height),
+      欄右:Math.round(inp.getBoundingClientRect().right),
+      部品右:box?Math.round(box.getBoundingClientRect().right):0,
+      印:box?box.dataset.opSpin||label.dataset.opSpin||'':''};
+   };
+   return {spin:mk('スピナー'),step:mk('ステッパー')};
+  });
+  rec('スピナーは行を増やさない（ステッパーより背が低い）',
+      spin.spin.高さ<spin.step.高さ-8,JSON.stringify(spin));
+  rec('スピナーの矢印は欄の右端に乗る',
+      Math.abs(spin.spin.欄右-spin.spin.部品右)<=8,JSON.stringify(spin.spin));
+
+  /* ==========================================================
+     10) 選ばせ方の盤はまとまりで束ねる（§9.248 ①）
+     ---------------------------------------------------------
+     **まとまりはサーバーが持つ**（`WIDGET_GROUPS`）。ここでは画面が
+     それをそのまま使っていることと、**空の群を出さない**ことを見る。
+     ========================================================== */
+  const groups=await page.evaluate(async()=>{
+   const r=await fetch('/api/operation-item-master').then(x=>x.json());
+   const gs=r.widgetGroups||[];
+   return {群:gs.map(g=>g.label),
+     一言:gs.every(g=>!!g.note),
+     数値の群:gs.filter(g=>(g.items||[]).includes('スピナー')).map(g=>g.label),
+     選択の群:gs.filter(g=>(g.items||[]).includes('パネル')).map(g=>g.label)};
+  });
+  rec('選ばせ方のまとまりをサーバーが答える（見出しと一言つき）',
+      groups.群.length>=5&&groups.一言,JSON.stringify(groups.群));
+  rec('スピナーは「数を入れる」、パネルは「開いて選ぶ」',
+      groups.数値の群.length===1&&groups.選択の群.length===1
+      &&groups.数値の群[0]!==groups.選択の群[0],
+      JSON.stringify({数値:groups.数値の群,選択:groups.選択の群}));
+
+  /* ==========================================================
+     9) 「よく使う順」は**器を被せた形でも数える**（§9.248 ⑤）
+     ----------------------------------------------------------
+     利用者の指示は「プルダウンリストなど、**新しい表示領域を作って表示する
+     タイプ**のUIについては…選択肢の使用回数に応じて並び順を変える」。
+     ところが器を被せた形（一覧・メニュー・パネル・ボタン群）は、札を押しても
+     値を持つのは`<select>`のままで、飛ぶ`change`は`setValue()`が作った
+     **合成イベント（`isTrusted`が偽）**。「本物のイベントだけ数える」に
+     すると、**いちばん効かせたい形が1回も数えられない**。
+     逆に`change`を全部数えると、記録の復元・プリセット・`syncWidgets()`の
+     当て直しまで数に入り、開き直すたびに前回の値が先頭へ固定される。
+
+     ここで見ること:
+      a) 器の札を押したら1回数える（合成イベントでも数える）
+      b) 画面側が値を入れ直しただけでは数えない（人が選んでいない）
+      c) 素のプルダウンで選んでも数える（`isTrusted`の道）
+     **片方だけを見ないこと**——どちらか一方の網は、もう片方が壊れていても通る。
+     ========================================================== */
+  const NAME='wtest-choice';
+  /* 口は塞いで**呼ばれた回数と中身だけ**を見る（マスタを汚さない）。 */
+  const hits=[];
+  await page.route('**/api/operation-choice-master/used',route=>{
+   let body={};try{body=JSON.parse(route.request().postData()||'{}')}catch(e){}
+   hits.push(body);
+   route.fulfill({status:200,contentType:'application/json',body:'{"ok":true}'});
+  });
+  /* 測定画面と同じ形で置く——**`preview`ではない**（見本で押した回数まで
+     数えると、現場で1度も選んでいない値が上へ来る）。 */
+  await page.evaluate(name=>{
+   window.__clear();
+   window.__mkLive=(kind,choice)=>{
+    const label=document.createElement('label');
+    label.className='opf opf-host';label.dataset.opfill='1';
+    label.innerHTML='<span class="opf-name">'+kind+'</span>';
+    const sel=document.createElement('select');
+    sel.innerHTML='<option value="">-</option><option value="あ">あ</option>'
+      +'<option value="い">い</option>';
+    label.appendChild(sel);
+    document.getElementById('wbed').appendChild(label);
+    const def={name:kind,choice:choice,look:{color:'既定',shape:'標準',size:'中'},layout:'自動'};
+    WL.opData.previewWidget(def,label,kind);
+    WL.opData.presentation(label,def);
+    return label;
+   };
+  },NAME);
+  const wired=await page.evaluate(()=>{
+   /* 数える配線は`layout()`が1度だけ張る。測定画面を開かずに確かめたいので
+      直接呼ぶ（**`layout()`は何度呼んでも1度しか張らない**）。 */
+   try{WL.opData.layout()}catch(e){}
+   return true;
+  });
+  rec('前提: 数える配線を張れた',wired);
+
+  /* a) 器を被せた形（ボタン群）で札を押す＝合成イベント。 */
+  hits.length=0;
+  await page.evaluate(n=>{const h=window.__mkLive('ボタン群',n);
+    h.querySelector('[data-opv="い"]').click()},NAME);
+  await page.waitForTimeout(400);
+  rec('器の札を押すと数える（合成イベントでも数える）',
+      hits.length===1&&hits[0].name===NAME&&hits[0].value==='い',
+      JSON.stringify(hits));
+
+  /* b) 画面側が入れ直しただけ（記録の復元・プリセット・当て直し）は数えない。 */
+  hits.length=0;
+  await page.evaluate(()=>{
+   const sel=[...document.querySelectorAll('#wbed select')].pop();
+   sel.value='あ';
+   sel.dispatchEvent(new Event('input',{bubbles:true}));
+   sel.dispatchEvent(new Event('change',{bubbles:true}));
+  });
+  await page.waitForTimeout(400);
+  rec('画面が値を入れ直しただけでは数えない',hits.length===0,JSON.stringify(hits));
+
+  /* c) 素のプルダウンで人が選ぶ道（本物のイベント）。 */
+  hits.length=0;
+  await page.evaluate(n=>{window.__mkLive('プルダウン',n)},NAME);
+  const sels=await page.$$('#wbed select');
+  await sels[sels.length-1].selectOption('あ');
+  await page.waitForTimeout(400);
+  rec('素のプルダウンで選んでも数える',
+      hits.length===1&&hits[0].value==='あ',JSON.stringify(hits));
+  await page.unroute('**/api/operation-choice-master/used');
 
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
 
