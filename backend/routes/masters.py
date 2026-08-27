@@ -1030,6 +1030,30 @@ def operation_item_list():
    # **「出さない」にした項目も返す**（§9.219 ③）。落とすと盤から消えて
    # 戻せなくなる——盤は`is-off`の見た目で置き、測定画面だけが落とす。
    items=op.items_for_equipment(c,eq,True) if eq else op.item_rows(c,True)
+   # 見本の値（§9.250 ⑤、利用者の指示「データダミーをつかって…操業データが
+   # どうなるかといった結果を…すぐに確認できる導線を」）。**作るのは
+   # `report_block_repo.sample_for()`の1箇所**——帳票の候補と設定窓の見本で
+   # 違う値が出ると、どちらが本当か分からなくなる（§9.163）。
+   #
+   # **道の組み立ても`field_catalog()`と同じにすること**——組み込みの欄は
+   # `settings.<キー>`で、`settings.opData.<項目名>`ではない（§9.215）。
+   # 揃えないと、組み込みの欄だけ見本の値が引けず「（値）」のまま残る。
+   # **選択肢は選択肢マスタから引く**（行そのものは名前しか持っていない）。
+   from ..repositories import report_block_repo as rb
+   for it in items:
+    builtin=str(it.get('builtin') or '').strip()
+    path=('settings.'+builtin) if builtin else ('settings.opData.'+str(it.get('name') or ''))
+    src=it
+    if not (it.get('choices') or []):
+     cname=str(it.get('choice') or '').strip()
+     if cname:
+      try:
+       vals=op.choice_values(c,cname,eq)
+      except Exception:
+       vals=[]
+      if vals:
+       src=dict(it);src['choices']=vals
+    it['sample']=rb.sample_for(path,src)
    return {'items':items,'types':list(op.ITEM_TYPES),'choiceNames':op.choice_names(c),
            # 画面が「どこへ出すか」「何列ぶんか」を選ばせるための一覧(§9.216 ②)。
            # **画面へ書き写さない**——増減したときに2箇所を直すことになる。

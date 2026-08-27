@@ -157,6 +157,131 @@ LOT_CATALOG = (
 )
 
 
+# ---------------------------------------------------------------------------
+# 見本の値（§9.250 ⑤、利用者の指示）
+# ---------------------------------------------------------------------------
+# 「データダミーをつかって、帳票の表示が最終的にどうなるか、操業データが
+#  どうなるかといった結果をそれぞれ編集するマスタに直結させてすぐに確認
+#  できる導線を準備してください」
+#
+# 設定窓の見本は今まで値の場所へ「値」と書いていた。**桁も文字種も分からない
+# ので、幅が足りるのか・折り返すのかが確かめられない**（見本の値打ちの半分が
+# 出ていなかった）。ここでダミーを1つずつ持つ。
+#
+# **語彙と同じ場所が持つ**（§9.163）——`FIELD_CATALOG`の隣に置けば、道を
+# 1本足したときに見本も一緒に足すことになる。画面へ写すと、道が増えるたびに
+# 2箇所直すことになり、片方だけ足した状態が作れる。
+#
+# **ありそうな値にする**（`123`ではなく`L240815-03`）——長さと文字種が
+# 実物と違うと、紙に入るかどうかを見誤る（§9.130「入れ物の大きさは中身の
+# 長さから決める」を確かめる道具なので、中身が嘘だと意味が無い）。
+SAMPLE_VALUES = {
+    'basic.lotNo': 'L240815-03',
+    'basic.inspectionNo': 'K0241',
+    'basic.castingNo': 'C7821',
+    'basic.orderNo': 'ORD-24-00815',
+    'basic.purposeName': '端子用条',
+    'basic.customer': '○○電機株式会社',
+    'basic.delivery': '△△工場 第2倉庫',
+    'basic.material': 'C1020-1/2H',
+    'basic.thickness': '0.300',
+    'basic.width': '1250',
+    'settings.registeredEquipment': 'スリッター1号',
+    'settings.measureType': '板厚',
+    'settings.lengthPos': '中',
+    'settings.verticalCount': '3',
+    'settings.horizontalCount': '8',
+    'settings.operator': '山田 太郎',
+    'settings.inspector': '佐藤 花子',
+    'settings.crewSize': '2',
+    'settings.innerDiameter': '508',
+    'settings.spool': 'S-12',
+    # 組み込みの欄はどれも`settings.<キー>`（§9.215）。**選択肢マスタが
+    # 空の端末でも見本が出るように**、ここでも1つずつ持つ。
+    'settings.thicknessGauge': 'マイクロメータ-A',
+    'settings.widthGauge': 'ノギス-B',
+    'settings.unwind': '上巻',
+    'settings.widthOrder': 'OS→DS',
+    'settings.widthDirection': 'OS',
+    'settings.burrAlign': 'バリ上',
+    'settings.coilStop': 'テープ止め',
+    # 母材の欄（§9.232）。単位はmmで、桁も実物に寄せる。
+    'settings.motherOriginalWidth': '1250',
+    'settings.motherScrapWidth': '18.0',
+    'settings.motherCalcLength': '1980',
+    'settings.motherManual': '1985',
+    'settings.motherFullLength': '1980',
+    'settings.motherMinCard': '1975',
+    'settings.motherMaxCard': '1990',
+    'settings.motherFront': '3.0',
+    'settings.motherRear': '2.5',
+    'settings.motherFrontCard': '3.0',
+    'settings.motherRearCard': '2.5',
+    'workTime.startAt': '2026-08-27 08:15',
+    'workTime.endAt': '2026-08-27 11:40',
+    'updatedAt': '2026-08-27 11:42',
+    'calc.equipment': 'スリッター1号',
+    'calc.coilStop': 'テープ止め',
+    'calc.crewSize': '2名班',
+    'calc.workStart': '2026-08-27 08:15',
+    'calc.workEnd': '2026-08-27 11:40',
+    'calc.workDuration': '3時間25分',
+    'calc.status': '完了',
+    'calc.updatedAt': '2026-08-27 11:42',
+    'lot.no': 'L240815-03-2',
+    'lot.range': '条 5〜8',
+    'lot.strips': '4条',
+    'lot.index': '2',
+    'lot.count': '3',
+}
+# 統計は**項目ごとに桁が違う**（板厚は3桁・板幅は2桁・N数は整数）。
+# 表で持つと項目を1つ足すたびに40行増えるので、項目の代表値と集計の作り方で持つ。
+_STAT_SAMPLE = {
+    'thickness': ('0.298', '0.302', '0.300', '0.004'),
+    'width': ('12.48', '12.53', '12.50', '0.05'),
+    'lateral': ('0.2', '0.8', '0.5', '0.6'),
+    'burr': ('0.01', '0.03', '0.02', '0.02'),
+    'telescope': ('0.5', '1.2', '0.8', '0.7'),
+    'offset': ('0.3', '0.9', '0.6', '0.6'),
+    'length': ('1998', '2002', '2000', '4'),
+    'wall': ('1.48', '1.52', '1.50', '0.04'),
+}
+for _k, _vals in _STAT_SAMPLE.items():
+    SAMPLE_VALUES[f'stat.{_k}.min'] = _vals[0]
+    SAMPLE_VALUES[f'stat.{_k}.max'] = _vals[1]
+    SAMPLE_VALUES[f'stat.{_k}.avg'] = _vals[2]
+    SAMPLE_VALUES[f'stat.{_k}.span'] = _vals[3]
+    SAMPLE_VALUES[f'stat.{_k}.n'] = '80'
+
+
+def sample_for(path, item=None):
+    """その道に入りそうな値を1つ返す（§9.250 ⑤）。
+
+    **操業データの項目はマスタから作る**——項目名も型も選択肢も現場が
+    決めるので、表では持てない。選択肢があれば先頭、数なら桁と上下限から
+    それらしい数、それ以外は短い語。**知らない道でも空にしない**
+    （空だと「見本が壊れている」と読まれる・§CLAUDE 6）。"""
+    fixed = SAMPLE_VALUES.get(str(path or ''))
+    if fixed is not None:
+        return fixed
+    if item:
+        choices = item.get('choices') or []
+        if choices:
+            return str(choices[0])
+        kind = str(item.get('kind') or item.get('type') or '')
+        if kind in ('整数', '正の整数'):
+            lo = item.get('min')
+            return str(int(lo) + 1) if isinstance(lo, (int, float)) else '12'
+        if kind in ('数値', '正の数'):
+            try:
+                d = int(item.get('decimals'))
+            except (TypeError, ValueError):
+                d = 1
+            d = max(0, min(4, d))
+            return f'{12.5:.{d}f}' if d else '12'
+    return '（値）'
+
+
 def field_catalog(c, equipment=''):
     """塊に載せられる項目の一覧(§9.226 ④、利用者の指示)。
 
@@ -177,8 +302,8 @@ def field_catalog(c, equipment=''):
     groups = [
         {'group': '仕掛（ロットの情報）',
          'note': '測定を始めたときに仕掛データから写した値です。',
-         'items': [{'label': l, 'path': p} for l, p in FIELD_CATALOG
-                   if p.startswith('basic.')]},
+         'items': [{'label': l, 'path': p, 'sample': sample_for(p)}
+                   for l, p in FIELD_CATALOG if p.startswith('basic.')]},
     ]
     prep, opdata = [], []
     try:
@@ -207,6 +332,9 @@ def field_catalog(c, equipment=''):
                 # 自由項目は**項目名が鍵**（§9.215）。
                 row['path'] = 'settings.opData.' + name
                 opdata.append(row)
+            # 見本の値（§9.250 ⑤）。**行そのものから作る**——項目名も型も
+            # 選択肢も現場が決めるので、道の表では持てない。
+            row['sample'] = sample_for(row['path'], it)
     except Exception:
         pass
     if prep:
@@ -219,11 +347,13 @@ def field_catalog(c, equipment=''):
                        'items': opdata})
     groups.append({'group': '作業時間',
                    'note': '測定の開始・終了の記録です。',
-                   'items': [{'label': l, 'path': p} for l, p in FIELD_CATALOG
+                   'items': [{'label': l, 'path': p, 'sample': sample_for(p)}
+                             for l, p in FIELD_CATALOG
                              if p.startswith('workTime.') or p == 'updatedAt']})
     groups.append({'group': '計算した値',
                    'note': '実働時間・状態など、いくつかの値から作るものです。',
-                   'items': [{'label': l, 'path': p} for l, p in CALC_CATALOG]})
+                   'items': [{'label': l, 'path': p, 'sample': sample_for(p)}
+                             for l, p in CALC_CATALOG]})
     # **測定した値の統計**（§9.242 ⑨）。ロット1件ぶんの測定値から作る。
     # **N数を必ず添えられるようにしてある**——1点と80点では当たる見込みが
     # 違うので、MIN/MAXだけを出せる形にはしない（§9.214と同じ約束）。
@@ -234,14 +364,16 @@ def field_catalog(c, equipment=''):
                            'その子ロットの条だけから数えた値になります**（§9.247 ②）。'
                            '板厚・板丈・肉厚は丈ごとに測るので子ロットには割り当てられず、'
                            '「—」になります。',
-                   'items': [{'label': l, 'path': p} for l, p in STAT_CATALOG]})
+                   'items': [{'label': l, 'path': p, 'sample': sample_for(p)}
+                             for l, p in STAT_CATALOG]})
     # 子ロットそのものの値（§9.247 ②）。**繰り返していない塊では親ロットへ
     # 落ちる**ので、どちらに置いても空欄にならない。
     groups.append({'group': '子ロット（幅分割）',
                    'note': '塊の「繰り返し」を「分割後の子ロットごと」にしたとき、'
                            'その回の子ロットを指します。'
                            '繰り返していない塊では**このロット自身**の値になります。',
-                   'items': [{'label': l, 'path': p} for l, p in LOT_CATALOG]})
+                   'items': [{'label': l, 'path': p, 'sample': sample_for(p)}
+                             for l, p in LOT_CATALOG]})
     return [g for g in groups if g['items']]
 
 

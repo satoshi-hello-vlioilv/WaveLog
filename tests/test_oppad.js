@@ -642,6 +642,60 @@ let b=null;
        marked.印===''&&marked.初期===true,JSON.stringify(marked));
   }
 
+  /* ==========================================================
+     隣の欄もダミーの値つきの本物（§9.250 ⑤、利用者の指示）
+     ----------------------------------------------------------
+     「データダミーをつかって…操業データがどうなるかといった結果を
+      それぞれ編集するマスタに直結させてすぐに確認できる導線を」
+
+     以前は隣の欄を**名前だけの点線の箱**で置いていた。1枚のカードが実際に
+     どう見えるか——高さのそろい・単位の置き場・幅の釣り合い——はそれでは
+     分からない。**同じ口（`WL.opData.previewWidget`）で作る**ので、設定画面と
+     測定画面で形が食い違わない。**値はダミー**（サーバーの`sample`）で、
+     桁と文字数が実物に近いので幅が足りるかを確かめられる。
+     **見本の隣は押せないこと**——触ってもどこにも記録されない（§4）。
+     ========================================================== */
+  await page.waitForSelector('.op-board',{timeout:20000});
+  await page.evaluate(()=>{const t=document.querySelector('.op-tile');if(t)t.click()});
+  await page.waitForFunction(()=>{const m=document.getElementById('opItemModal');return !!m&&!m.hidden},
+    null,{timeout:10000});
+  await page.waitForTimeout(600);
+  const ghosts=await page.evaluate(()=>{
+   const gs=[...document.querySelectorAll('#opModalPreview [data-op-ghost]')];
+   return {n:gs.length,
+     本物:gs.filter(g=>g.querySelector('.opf')).length,
+     値あり:gs.filter(g=>{const c=g.querySelector('input,select,output');
+       const v=c?(c.tagName==='OUTPUT'?c.textContent:c.value):'';
+       return String(v||'').trim()!==''}).length,
+     押せない:gs.filter(g=>{const f=g.querySelector('.opf');
+       return !!f&&getComputedStyle(f).pointerEvents==='none'}).length};
+  });
+  rec('隣の欄も本物の部品で描かれる（点線の箱ではない）',
+      ghosts.n===0||ghosts.本物===ghosts.n,JSON.stringify(ghosts));
+  rec('隣の欄にダミーの値が入る（幅が足りるか確かめられる）',
+      ghosts.n===0||ghosts.値あり>=1,JSON.stringify(ghosts));
+  rec('見本の隣の欄は押せない（触っても記録されないので）',
+      ghosts.n===0||ghosts.押せない===ghosts.n,JSON.stringify(ghosts));
+  /* 編集中の欄は**押したときだけ**ダミーが入る（黙って入れると
+     「記録される値」が嘘になる）。 */
+  const fill=await page.evaluate(async()=>{
+   const raf=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   const btn=document.getElementById('opPrevFill');
+   if(!btn)return {none:true};
+   const ctl=document.querySelector('#opPrevField input,#opPrevField select,#opPrevField output');
+   const before=ctl?String(ctl.value||''):'';
+   btn.click();await raf();
+   const after=ctl?String(ctl.value||''):'';
+   return {before,after,line:document.getElementById('opPrevValue').textContent.trim()};
+  });
+  rec('編集中の欄は「見本の値を入れる」を押したときだけ入る',
+      fill.none===true||(fill.before===''&&fill.after!==''&&fill.line.indexOf(fill.after)>=0),
+      JSON.stringify(fill));
+  /* **後始末**——窓を閉じる（この先の確認は盤と測定画面を見る）。 */
+  await page.evaluate(()=>{const c=document.getElementById('opModalClose')
+    ||document.querySelector('#opItemModal .mm-close');if(c)c.click()});
+  await page.waitForTimeout(300);
+
   /* ---- 測定画面: 「空き」の文字がどこにも出ない ---- */
   await page.evaluate(()=>{const m=document.getElementById('masterMaintModal');if(m)m.hidden=true});
   await page.evaluate(e=>localStorage.setItem('AccessMeasurementConfiguredEquipment',e),EQ);

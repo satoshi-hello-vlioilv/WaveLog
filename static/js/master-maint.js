@@ -182,7 +182,9 @@
    endpoint:'/api/report-block-master',hasDelete:true,
    titleText:'帳票ブロック — 紙に載せる塊',
    asideHtml:()=>rbAsideHtml(),bindAside:form=>rbBindAside(form),
-   hintShort:'①から④の順に決めます。**右の見本が刷り上がりです**——幅・高さ・列数を押すとその場で形が変わります。'
+   groupsAsTabs:true,
+   hintShort:'①から④の順に決めます。**右の見本が刷り上がりです**——'
+    +'**紙の中の塊は四方どこでも掴んで大きさを変えられます**（幅・高さの札でも決められます）。'
     +'**既定の塊は消せません**（紙へ出したくないときは④を「出さない」に）。',
    /* ---------- 決めることを4つに束ねる（§9.249 ③、利用者の指示） ----------
       「モーダルを大きくしてください。大きくしたモーダルに合うようにバランス
@@ -615,7 +617,42 @@
     見出しにマウスを当てれば全文が読める（§CLAUDE 8）。 */
  function fieldLabelHtml(f){
   const t=f.more?` title="${esc(f.label+'｜'+String(f.more).replace(/\*\*/g,''))}"`:'';
-  return `<span${t}>${esc(f.label)}${f.required?'<i>*</i>':''}${f.key?'<em class="mm-keytag">キー</em>':''}${f.more?'<em class="mm-more" aria-hidden="true">?</em>':''}</span>`;
+  /* ---------- 続きは畳んで置く（§9.250 ④、利用者の指示） ----------
+     「タブとアコーディオンによる情報の階層化、チャンク化を取り入れて」
+
+     以前は`?`が**マウスを乗せたときだけ**出る`title`で、触る画面では
+     一度も読めなかった（説明があること自体は見えているので、
+     「押しても何も起きない」に見える・§4）。押すと開く形にする。
+     `title`は残す——読み方が2つあって困るものではない。 */
+  return `<span${t}>${esc(f.label)}${f.required?'<i>*</i>':''}${f.key?'<em class="mm-keytag">キー</em>':''}`
+   +(f.more?`<button type="button" class="mm-more" aria-expanded="false"`
+     +` aria-label="${esc(f.label)}のくわしい説明" data-more="${esc(String(f.more))}">?</button>`:'')
+   +`</span>`;
+ }
+ /* 押したら欄の下へ開く。**器へ足すのは押したときだけ**——最初から置くと、
+    畳んでいても`.mm-field`の子が1つ増えて並びの計算が変わる。
+    **`<label>`の中なので`preventDefault()`が要る**（押すと欄へフォーカスが
+    飛んで、開いた瞬間に入力欄が選ばれる）。 */
+ function bindMoreToggles(form){
+  form.querySelectorAll('.mm-more').forEach(b=>{
+   if(b.dataset.moreWired)return;
+   b.dataset.moreWired='1';
+   b.onclick=e=>{
+    e.preventDefault();e.stopPropagation();
+    const fld=b.closest('.mm-field');if(!fld)return;
+    let body=fld.querySelector(':scope>.mm-more-body');
+    if(!body){
+     body=document.createElement('small');
+     body.className='mm-more-body';
+     body.innerHTML=hintHtml(String(b.dataset.more||''));
+     fld.appendChild(body);
+    }
+    const on=b.getAttribute('aria-expanded')!=='true';
+    b.setAttribute('aria-expanded',on?'true':'false');
+    b.classList.toggle('is-on',on);
+    body.hidden=!on;
+   };
+  });
  }
  /* master-combo の選択肢は別マスタから取る。同じマスタを何度も引かないよう
     タブを開いている間だけ持つ(登録すると連動して増えるので、保存後の
@@ -686,12 +723,120 @@
  function groupFieldControls(def,html){
   const groups=(def.fields||[]).map(f=>f.fieldGroup||'');
   if(!groups.some(Boolean))return html.join('');
-  let prev=null;const out=[];
+  /* ---------- 段（タブ）に分ける（§9.250 ④、利用者の指示） ----------
+     「スクロールレス設計をベースにSPAで構成することを軸にしたいので
+      基本的に**情報量が多くなった時には**、タブとアコーディオンによる
+      情報の階層化、チャンク化を取り入れてください」
+
+     縦に積むと窓に入らない（帳票ブロックは1700×1000の窓で実測**227px**
+     はみ出していた）。束はもともと「決める順番」で切ってあるので、
+     **束ごとに段へ分ければ1段ぶんの高さで済む**。
+
+     **段の見出しにいまの値を出す**（§2「思い出させない」）——開かないと
+     何を決めたか分からない段は、結局全部開いて回ることになる。
+     **見本（`asideHtml`）は段の外**に置くので、どの段を見ていても
+     刷り上がりが見える（§CLAUDE 14「視覚導線と作業導線を一致させる」）。 */
+  if(!def.groupsAsTabs){
+   let prev=null;const out=[];
+   groups.forEach((g,i)=>{
+    if(g&&g!==prev)out.push(`<h4 class="mm-fieldgroup">${esc(g)}</h4>`);
+    prev=g||prev;out.push(html[i]);
+   });
+   return out.join('');
+  }
+  const order=[],bucket=new Map();
+  let prev='';
   groups.forEach((g,i)=>{
-   if(g&&g!==prev)out.push(`<h4 class="mm-fieldgroup">${esc(g)}</h4>`);
-   prev=g||prev;out.push(html[i]);
+   const k=g||prev||'';
+   if(!bucket.has(k)){bucket.set(k,[]);order.push(k)}
+   bucket.get(k).push(i);
+   prev=k;
   });
-  return out.join('');
+  const tabs=order.map((g,i)=>
+   `<button type="button" class="mm-tab" role="tab" id="mmTab${i}" data-mmtab="${i}"`
+   +` aria-selected="${i?'false':'true'}" aria-controls="mmPanel${i}" tabindex="${i?-1:0}">`
+   +`<span class="mm-fieldgroup">${esc(g)}</span>`
+   +`<small class="mm-tab-sum" data-mmtab-sum="${i}"></small></button>`).join('');
+  const panels=order.map((g,i)=>
+   `<section class="mm-tabpanel" role="tabpanel" id="mmPanel${i}" aria-labelledby="mmTab${i}"`
+   +` data-mmtab="${i}"${i?' hidden':''}>${bucket.get(g).map(j=>html[j]).join('')}</section>`).join('');
+  return `<div class="mm-tabbar" role="tablist">${tabs}</div>`
+   +`<div class="mm-tabbody">${panels}</div>`;
+ }
+ /* 段の見出しに出す一言。**欄の値そのものから作る**——束ごとに文言を
+    書き分けると、欄を1つ足したときに書き足す場所が増える。
+    空の欄は言わない（「未設定・未設定・未設定」は何も語らない）。 */
+ function mmTabSummaryText(panel){
+  const parts=[];
+  panel.querySelectorAll('.mm-field').forEach(fld=>{
+   const el=fld.querySelector('[data-field]');
+   if(!el)return;
+   /* **触れない欄は数えない**（§CLAUDE 8）——組み込みの印のような
+      読み取り専用の値を並べても、決めたことは1つも増えない。 */
+   if(fld.classList.contains('mm-field-ro')||el.hasAttribute('readonly'))return;
+   let v=String(el.value||'').trim();
+   /* 行数は**空も`0`も「中身なり」**（§9.250 ④）。「何も決めていない」と
+      「既定のまま」は別のことなので、空欄として落とさず言う。 */
+   if(fld.classList.contains('mm-rowsfield')&&(v===''||v==='0')){parts.push('中身なり');return}
+   if(!v)return;
+   /* 見て選ぶ欄・幅・高さは**押した札の言葉**で言う（保存値の綴りは長い）。 */
+   const card=fld.querySelector(`[data-card="${CSS.escape(el.dataset.field)}"].is-on`);
+   if(card)v=(card.querySelector('.mm-card-txt>b')||card).textContent.trim()||v;
+   else if(fld.classList.contains('mm-spanfield'))v=v+'マス';
+   else if(fld.classList.contains('mm-rowsfield'))v=v+'行';
+   else if(fld.dataset.fb)v=String(v).split(/[\n,、]/).filter(Boolean).length+'項目';
+   if(v.length>14)v=v.slice(0,13)+'…';
+   parts.push(v);
+  });
+  return parts.slice(0,3).join('・')+(parts.length>3?' ほか':'');
+ }
+ function bindMaintTabs(form){
+  const bar=form.querySelector('.mm-tabbar');
+  if(!bar)return;
+  const tabs=[...bar.querySelectorAll('[data-mmtab]')];
+  const panels=[...form.querySelectorAll('.mm-tabpanel')];
+  const show=i=>{
+   tabs.forEach((t,j)=>{
+    const on=j===i;
+    t.setAttribute('aria-selected',on?'true':'false');
+    t.tabIndex=on?0:-1;
+    t.classList.toggle('is-on',on);
+   });
+   panels.forEach((p,j)=>{if(p.hidden!==(j!==i))p.hidden=j!==i});
+  };
+  const paint=()=>panels.forEach((p,i)=>{
+   const el=bar.querySelector(`[data-mmtab-sum="${i}"]`);
+   if(el)el.textContent=mmTabSummaryText(p);
+  });
+  if(form.dataset.mmTabsWired!=='1'){
+   form.dataset.mmTabsWired='1';
+   /* **値が変わったら見出しの一言を描き直す**（忘れると、直したのに
+      畳んだ段だけ古い値を名乗る）。 */
+   form.addEventListener('change',()=>paint());
+   form.addEventListener('input',()=>paint());
+  }
+  tabs.forEach((t,i)=>{
+   t.onclick=()=>show(i);
+   t.onkeydown=e=>{
+    if(['ArrowRight','ArrowLeft'].indexOf(e.key)<0)return;
+    e.preventDefault();
+    const nx=(i+(e.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;
+    show(nx);tabs[nx].focus();
+   };
+  });
+  show(0);
+  paint();
+  form.__mmShowTab=show;
+ }
+ /* 入っていない必須の欄がある段を開く（§4）。**開かずに断らないこと**
+    ——畳んだ段の中の欄を「入れてください」と言われても、どこにあるのか
+    分からない。 */
+ function mmRevealField(form,el){
+  if(!form||!el||typeof form.__mmShowTab!=='function')return;
+  const panel=el.closest('.mm-tabpanel');
+  if(!panel)return;
+  const i=[...form.querySelectorAll('.mm-tabpanel')].indexOf(panel);
+  if(i>=0)form.__mmShowTab(i);
  }
  /* ---------- モーダルの中の欄は「中身の長さ」で決める(§9.221 ④) ----------
     利用者の指摘「モーダル内のUIサイズの設計がモーダル横幅いっぱいまで
@@ -1137,7 +1282,7 @@
    ${excelIoHtml(def)}`;
   form.onsubmit=ev=>{ev.preventDefault();submitMaint()};
   const nb=$('#masterMaintNew');if(nb)nb.onclick=()=>{maintState.editing=null;renderMaintForm()};
-  bindEquipmentPickers(form);bindInputHelpers(form);bindExcelIo(def);
+  bindEquipmentPickers(form);bindInputHelpers(form);bindMaintTabs(form);bindMoreToggles(form);bindExcelIo(def);
  }
 
  /* ---------- 汎用の編集専用モーダル(ARCHITECTURE.md「マスタ管理の画面形態」新設) ----------
@@ -1209,7 +1354,7 @@
     typeof def.extraHtml==='function'?def.extraHtml(editing):''}</div>
    ${typeof def.asideHtml==='function'?def.asideHtml(editing):''}`;
   form.onsubmit=ev=>{ev.preventDefault();submitMaint('#maintEditorForm')};
-  bindEquipmentPickers(form);bindInputHelpers(form);
+  bindEquipmentPickers(form);bindInputHelpers(form);bindMaintTabs(form);bindMoreToggles(form);
   if(typeof def.bindAside==='function')def.bindAside(form);
   modal.hidden=false;
   /* **最初のフォーカスに「候補が出る欄」を選ばない**（§9.221 ④）。タグ入力は
@@ -1290,16 +1435,32 @@
   });
  }
  function bindRowsPicks(form){
-  form.querySelectorAll('[data-rows]').forEach(b=>{
-   if(b.dataset.rowsWired)return;
-   b.dataset.rowsWired='1';
-   b.onclick=()=>{
-    const k=b.dataset.rows,v=b.dataset.rowsV;
-    form.querySelectorAll(`[data-rows="${CSS.escape(k)}"]`).forEach(x=>{
-     const on=x===b;x.classList.toggle('is-on',on);x.setAttribute('aria-pressed',on?'true':'false');
+  form.querySelectorAll('.mm-rowsfield').forEach(box=>{
+   const opts=[...box.querySelectorAll('[data-rows]')];
+   if(!opts.length)return;
+   const key=opts[0].dataset.rows;
+   /* 押した印を値から塗り直す。**隠し欄の`change`でも塗ること**——
+      紙の見本を掴んで高さを変えたときに札が追随しないと、押した札と
+      実際の値が食い違う（`bindSpanGrids`は最初からそうしている）。 */
+   const paint=v=>{
+    /* **`0`は「中身なり」**（§9.250 ④）。保存済みの塊が`0`を持っているので、
+       素で比べると**どの札も押されていない**状態になる。 */
+    const cur=(String(v||'')==='0')?'':String(v||'');
+    opts.forEach(x=>{
+     const on=String(x.dataset.rowsV||'')===cur;
+     x.classList.toggle('is-on',on);x.setAttribute('aria-pressed',on?'true':'false');
     });
-    mmSetHidden(form,k,v);
    };
+   opts.forEach(b=>{
+    if(b.dataset.rowsWired)return;
+    b.dataset.rowsWired='1';
+    b.onclick=()=>{paint(b.dataset.rowsV);mmSetHidden(form,key,b.dataset.rowsV)};
+   });
+   const hidden=form.querySelector(`[data-field="${CSS.escape(key)}"]`);
+   if(hidden&&!hidden.dataset.rowsSync){
+    hidden.dataset.rowsSync='1';
+    hidden.addEventListener('change',()=>paint(hidden.value));
+   }
   });
  }
  function bindInputHelpers(form){
@@ -1339,12 +1500,22 @@
  const RB_PAGE_ROWS=12;   // 紙の縦のマス数（report-dashboard.js の既定と同じ）
  function rbAsideHtml(){
   return `<aside class="rb-aside" aria-label="刷り上がりの見本">
-    <div class="rb-aside-head"><b>刷り上がりの見本</b>
-     <span class="rb-aside-note" id="rbNote">形だけの見本です。値は実際のロットで入ります。</span></div>
+    <div class="rb-aside-head">
+     <b>刷り上がりの見本</b>
+     <span class="rb-aside-tools">
+      <button type="button" class="rb-tgl is-on" id="rbToggleOthers" aria-pressed="false"
+        title="この設備のほかの塊も薄く重ねて、紙全体でどう見えるかを出します">紙全体で見る</button>
+      <button type="button" class="rb-tgl is-on" id="rbToggleDummy" aria-pressed="true"
+        title="値の場所にありそうなダミーを入れます。桁と文字数が実物に近いので、幅が足りるかを確かめられます">見本の値</button>
+     </span>
+    </div>
     <div class="rb-paper" id="rbPaper" role="img" aria-label="紙の中のこの塊の位置と大きさ">
      <div class="rb-paper-grid" id="rbPaperGrid"></div>
+     <div class="rb-paper-others" id="rbPaperOthers" hidden></div>
      <div class="rb-paper-block" id="rbPaperBlock"><b id="rbPaperName">この塊</b></div>
     </div>
+    <p class="rb-spill" id="rbSpill" hidden></p>
+    <p class="rb-aside-note" id="rbNote">${hintHtml('**紙の中の四方どこでも掴んで**大きさを変えられます。置く場所は帳票画面の「配置を組み換え」で決めます。')}</p>
     <dl class="rb-facts">
      <dt>幅</dt><dd id="rbFactSpan">—</dd>
      <dt>高さ</dt><dd id="rbFactRows">—</dd>
@@ -1354,6 +1525,31 @@
     <div class="rb-sec" id="rbSection"></div>
    </aside>`;
  }
+ /* ---------- ダミーの値（§9.250 ⑤、利用者の指示） ----------
+    「データダミーをつかって、帳票の表示が最終的にどうなるか…すぐに確認
+     できる導線を準備してください」
+
+    **見本の値はサーバーが答える**（`field_catalog()`の`sample`）——道を
+    1本足したときに見本も一緒に足すことになる（§9.163）。画面が道の綴りから
+    推測すると、道が増えるたびに2箇所直すことになる。
+    **知らない道でも空にしない**（空だと「見本が壊れている」と読まれる）。 */
+ const rbSample=new Map();
+ function rbNoteSamples(groups){
+  (groups||[]).forEach(g=>(g.items||[]).forEach(it=>{
+   if(it&&it.path)rbSample.set(String(it.path),String(it.sample==null?'':it.sample));
+  }));
+ }
+ function rbSampleOf(path){
+  const v=rbSample.get(String(path||''));
+  return (v===undefined||v==='')?'（値）':v;
+ }
+ /* 行数の生の値。**空と`0`はどちらも「中身なり」**（§9.250 ④）。
+    判定を1箇所に置く——散らすと、見本と札と一言で別々の答えが出る。 */
+ function rbRowsRaw(form){
+  const el=form&&form.querySelector('[data-field="rows"]');
+  const v=String(el?(el.value||''):'').trim();
+  return (v===''||v==='0')?'':v;
+ }
  /* 見本を描き直す。**読むのは隠し欄の値だけ**——押した札の見た目ではなく
     保存される値を映す（見た目だけを写すと、保存と食い違う見本ができる）。 */
  function rbPaintPreview(form){
@@ -1361,7 +1557,11 @@
   const grid=form.querySelector('#rbPaperGrid'),block=form.querySelector('#rbPaperBlock');
   if(!grid||!block)return;
   const span=Math.max(1,Math.min(12,Number(v('span'))||12));
-  const rowsRaw=v('rows');
+  /* **`0`も「中身なり」**（§9.250 ④）。保存済みの塊は行数を`0`で持っている
+     ものがあり、`rowsRaw?…`だけで見ると**文字の`'0'`は真**なので
+     `Math.max(1,0)`＝1行として描いていた（「中身なり」の塊が紙の見本では
+     1行に潰れていた）。空と0は同じ意味なので1箇所で揃える。 */
+  const rowsRaw=rbRowsRaw(form);
   const rows=rowsRaw?Math.max(1,Math.min(RB_PAGE_ROWS,Number(rowsRaw))):3;
   const area=v('kindText')==='エリア（枠と文字）';
   if(!grid.childElementCount){
@@ -1402,18 +1602,230 @@
      ?`<div class="rb-sec-body">${rowsData.map(r=>{
         const sp=Math.min(cols,Math.max(1,Number(r.span)||1));
         if(r.blank)return `<div class="rb-cell is-blank" style="grid-column:span ${sp}"></div>`;
+        const val=rbState.dummy?rbSampleOf(r.path):'値';
         return `<div class="rb-cell" style="grid-column:span ${sp}">`
          +`<span class="rb-cell-k" title="${esc(r.path)}">${esc(r.label||r.path)}</span>`
-         +`<span class="rb-cell-v">値</span></div>`;
+         +`<span class="rb-cell-v" title="${esc(r.path)}">${esc(val)}</span></div>`;
        }).join('')}</div>`
      :'<p class="rb-sec-empty">載せる項目がありません。<b>画面がもともと持っている中身</b>のまま刷られます。</p>');
  }
+ /* ---------- 紙全体で見る（§9.250 ⑤、利用者の指示） ----------
+    「データダミーをつかって、帳票の表示が最終的にどうなるか…すぐに確認
+     できる導線を準備してください」
+
+    この塊だけを見ても、**紙のどこが空いているか・何ページ目に来るか**は
+    分からない。同じ設備の塊を**表示順に流し込んで**紙を組み、
+    **いま編集している塊はその流れの中で強調する**——除いて重ねると、
+    自分の塊が実際に来る場所とは違う絵になる（見本の値打ちが消える）。
+
+    **掴めることは変えない**（§4）——`#rbPaperBlock`（8方向のつまみを持つ）
+    を、流れの中の自分の席へ**測って重ねる**。席の位置はブラウザの自動配置が
+    決めるので、こちらで組み直さない（同じ並べ方を2つ持たない）。
+
+    **紙からはみ出したものは「次の紙へ」と数える**（§CLAUDE 4・6）
+    ——`.rb-paper`は`overflow:hidden`なので、黙って切ると「無い」と読まれる。 */
+ function rbPaintOthers(form){
+  const layer=form.querySelector('#rbPaperOthers');
+  const block=form.querySelector('#rbPaperBlock');
+  const note=form.querySelector('#rbSpill');
+  if(!layer||!block)return;
+  if(!rbState.others){
+   layer.hidden=true;layer.innerHTML='';
+   block.classList.remove('is-placed');
+   block.style.left=block.style.top=block.style.width=block.style.height='';
+   if(note){note.hidden=true;note.textContent=''}
+   return;
+  }
+  const v=k=>{const el=form.querySelector(`[data-field="${CSS.escape(k)}"]`);return el?String(el.value||''):''};
+  const me=String(v('name')||maintState.editing&&maintState.editing.name||'');
+  const eq=v('equipment');
+  const eqFirst=eq.split(/[,、]/)[0].trim();
+  const fits=x=>{
+   if(String(x.enabledText||'')==='無効')return false;
+   /* 対象設備は設備停止マスタと同じ書式（`'*'`＝すべて）。**同じ設備の
+      塊だけ**を流す——ほかの設備の塊を混ぜると、紙が実際より埋まって見える。 */
+   const t=String(x.equipment||'').trim();
+   if(!eq||eq==='*'||t==='*'||!t)return true;
+   return t.split(/[,、]/).map(y=>y.trim()).includes(eqFirst);
+  };
+  const meSpan=Math.max(1,Math.min(12,Number(v('span'))||12));
+  const meRows=(()=>{const r=rbRowsRaw(form);return r?Math.max(1,Math.min(RB_PAGE_ROWS,Number(r))):3})();
+  const list=(rbState.blocks||[]).filter(x=>String(x.name||'')!==me).filter(fits)
+    .map(x=>({name:String(x.name||''),order:Number(x.order)||0,
+      span:Math.max(1,Math.min(12,Number(x.span)||12)),
+      rows:Math.max(1,Math.min(RB_PAGE_ROWS,Number(x.rows)||2)),me:false}));
+  list.push({name:me||'この塊',order:Number(v('order'))||0,span:meSpan,rows:meRows,me:true});
+  list.sort((a,b)=>(a.order-b.order)||a.name.localeCompare(b.name,'ja'));
+  layer.hidden=false;
+  layer.innerHTML=list.map(x=>
+   `<i style="--rb-span:${x.span};--rb-rows:${x.rows}"${x.me?' data-me="1" class="is-me"':''}`
+   +` title="${esc(x.name)}"><b>${esc(x.name)}</b></i>`).join('');
+  /* 席へ重ねるのは**描いたあと**（自動配置の結果を測る）。 */
+  requestAnimationFrame(()=>{
+   const slot=layer.querySelector('[data-me]');
+   const paper=form.querySelector('#rbPaper');
+   if(!slot||!paper)return;
+   const pr=paper.getBoundingClientRect(),sr=slot.getBoundingClientRect();
+   if(!(sr.height>0))return;
+   block.classList.add('is-placed');
+   block.style.left=Math.round(sr.left-pr.left)+'px';
+   block.style.top=Math.round(sr.top-pr.top)+'px';
+   block.style.width=Math.round(sr.width)+'px';
+   block.style.height=Math.round(sr.height)+'px';
+   /* 紙に載りきらなかった塊を数える。**「無い」ではなく「次の紙へ」**。 */
+   if(note){
+    const lr=layer.getBoundingClientRect();
+    const over=[...layer.children].filter(el=>el.getBoundingClientRect().bottom>lr.bottom+1);
+    note.hidden=!over.length;
+    note.textContent=over.length?`この紙に載りきらないもの ${over.length}件（次の紙へ回ります）`:'';
+   }
+  });
+ }
+ /* ---------- 紙の見本を掴んで大きさを変える（§9.250 ④、利用者の指示） ----------
+    「幅と高さの指定をさせる部分だが、刷り上がりの見本という視覚表示があるので
+     これを**四方のどこからでもドラッグアンドドロップで大きさの変更**が
+     できるようにするだけで大きさの指定を直感的に行うことができるように
+     なります」
+
+    つまみは**8方向**（四辺＋四隅）。**JSが差し込む**——HTMLへ8個書かせると、
+    書き漏らした窓だけ端を掴めなくなる（`WL.makeFloatingWindow`と同じ作法）。
+    **マスに吸い付かせる**（1マス＝紙の1/12）——中途半端な幅は保存できない
+    ので、掴んでいる最中だけ滑らかに動いても意味が無い。
+    **値は隠し欄へ書く**（`mmSetHidden`）ので、札の押した印も紙の見本も
+    ③の欄も同じ`change`で追随する（見た目だけ変えると保存と食い違う）。 */
+ const RB_GRIPS=['n','e','s','w','ne','nw','se','sw'];
+ function rbBindPaperDrag(form){
+  const block=form.querySelector('#rbPaperBlock'),grid=form.querySelector('#rbPaperGrid');
+  if(!block||!grid||block.dataset.rbDrag)return;
+  block.dataset.rbDrag='1';
+  block.insertAdjacentHTML('beforeend',RB_GRIPS.map(h=>
+   `<i class="rb-grip rb-grip-${h}" data-rb-grip="${h}" role="slider" tabindex="0"`
+   +` aria-label="大きさを変える（${h.length>1?'角':'辺'}）"></i>`).join(''));
+  block.querySelectorAll('[data-rb-grip]').forEach(g=>{
+   g.onpointerdown=ev=>{
+    ev.preventDefault();ev.stopPropagation();
+    const dir=g.dataset.rbGrip;
+    const gr=grid.getBoundingClientRect();
+    const cw=gr.width/12,ch=gr.height/RB_PAGE_ROWS;
+    if(!(cw>0&&ch>0))return;
+    const spanEl=form.querySelector('[data-field="span"]');
+    const span0=Math.max(1,Math.min(12,Number(spanEl&&spanEl.value)||12));
+    const rowsRaw0=rbRowsRaw(form);
+    const rows0=rowsRaw0?Math.max(1,Math.min(RB_PAGE_ROWS,Number(rowsRaw0))):3;
+    /* **選べる幅・高さへ吸い付かせる**（§9.250 ④）。紙の幅は5段
+       （1/4・1/3・1/2・2/3・全幅）しか無く、サーバーの`normalize_span()`が
+       いちばん近い段へ丸める——掴んで5マスにできてしまうと、**見本は5マス
+       なのに保存は4マス**になり、見本が嘘をつく（§CLAUDE 6）。
+       **選べる値は札から読む**（`data-span-v`／`data-rows-v`）ので、
+       マスタ側で段を増減しても付いてくる（一覧を書き写さない）。 */
+    const allowOf=(sel,attr)=>{
+     const vs=[...form.querySelectorAll(sel)].map(x=>Number(x.dataset[attr]))
+       .filter(n=>Number.isFinite(n)&&n>0);
+     return [...new Set(vs)].sort((a,b)=>a-b);
+    };
+    const spanAllow=allowOf('.mm-span-grid [data-span-v]','spanV');
+    const rowsAllow=allowOf('.mm-rows-pick [data-rows-v]','rowsV');
+    const snap=(n,list)=>{
+     if(!list.length)return n;
+     return list.reduce((best,x)=>Math.abs(x-n)<Math.abs(best-n)?x:best,list[0]);
+    };
+    const x0=ev.clientX,y0=ev.clientY;
+    let lastSpan=span0,lastRows=rows0;
+    g.setPointerCapture&&g.setPointerCapture(ev.pointerId);
+    block.classList.add('is-grabbing');
+    const move=m=>{
+     if(dir.indexOf('e')>=0||dir.indexOf('w')>=0){
+      const d=Math.round((m.clientX-x0)/cw)*(dir.indexOf('w')>=0?-1:1);
+      const v=snap(Math.max(1,Math.min(12,span0+d)),spanAllow);
+      if(v!==lastSpan){lastSpan=v;mmSetHidden(form,'span',String(v))}
+     }
+     if(dir.indexOf('s')>=0||dir.indexOf('n')>=0){
+      const d=Math.round((m.clientY-y0)/ch)*(dir.indexOf('n')>=0?-1:1);
+      const v=snap(Math.max(1,Math.min(RB_PAGE_ROWS,rows0+d)),rowsAllow);
+      if(v!==lastRows){lastRows=v;mmSetHidden(form,'rows',String(v))}
+     }
+    };
+    const up=()=>{
+     block.classList.remove('is-grabbing');
+     document.removeEventListener('pointermove',move,true);
+     document.removeEventListener('pointerup',up,true);
+    };
+    document.addEventListener('pointermove',move,true);
+    document.addEventListener('pointerup',up,true);
+   };
+   /* **キーボードでも変えられること**（掴めるのに辿れない部品を作らない）。 */
+   /* **キーボードでも変えられること**（掴めるのに辿れない部品を作らない）。
+      1回で**選べる段を1つ**進む——ドラッグと同じ値しか作らない。 */
+   g.onkeydown=e=>{
+    const dir=g.dataset.rbGrip;
+    const wide=dir.indexOf('e')>=0||dir.indexOf('w')>=0;
+    const tall=dir.indexOf('s')>=0||dir.indexOf('n')>=0;
+    let d=0;
+    if(e.key==='ArrowRight'||e.key==='ArrowUp')d=1;
+    else if(e.key==='ArrowLeft'||e.key==='ArrowDown')d=-1;
+    else return;
+    e.preventDefault();
+    const stepIn=(sel,attr,cur)=>{
+     const vs=[...new Set([...form.querySelectorAll(sel)].map(x=>Number(x.dataset[attr]))
+       .filter(n=>Number.isFinite(n)&&n>0))].sort((a,b)=>a-b);
+     if(!vs.length)return cur+d;
+     let i=vs.indexOf(cur);
+     if(i<0)i=vs.reduce((bi,x,k)=>Math.abs(x-cur)<Math.abs(vs[bi]-cur)?k:bi,0);
+     return vs[Math.max(0,Math.min(vs.length-1,i+d))];
+    };
+    if(wide){
+     const el=form.querySelector('[data-field="span"]');
+     mmSetHidden(form,'span',String(stepIn('.mm-span-grid [data-span-v]','spanV',
+       Math.max(1,Math.min(12,Number(el&&el.value)||12)))));
+    }
+    if(tall){
+     const raw=rbRowsRaw(form);
+     mmSetHidden(form,'rows',String(stepIn('.mm-rows-pick [data-rows-v]','rowsV',raw?Number(raw):3)));
+    }
+   };
+  });
+ }
  /* 配線。**打っている最中も追う**（`input`）——名前を打つたびに紙の見本の
     題が変わるので、どの塊を触っているのかを見失わない。 */
+ const rbState={dummy:true,others:false,blocks:[]};
  function rbBindAside(form){
-  if(form.dataset.rbWired==='1'){rbPaintPreview(form);return}
+  const paint=()=>{rbPaintPreview(form);rbPaintOthers(form)};
+  rbBindPaperDrag(form);
+  const tglDummy=form.querySelector('#rbToggleDummy');
+  if(tglDummy&&!tglDummy.dataset.wired){
+   tglDummy.dataset.wired='1';
+   tglDummy.onclick=e=>{
+    e.preventDefault();
+    rbState.dummy=!rbState.dummy;
+    tglDummy.classList.toggle('is-on',rbState.dummy);
+    tglDummy.setAttribute('aria-pressed',rbState.dummy?'true':'false');
+    paint();
+   };
+  }
+  const tglOthers=form.querySelector('#rbToggleOthers');
+  if(tglOthers&&!tglOthers.dataset.wired){
+   tglOthers.dataset.wired='1';
+   tglOthers.onclick=async e=>{
+    e.preventDefault();
+    rbState.others=!rbState.others;
+    tglOthers.classList.toggle('is-on',rbState.others);
+    tglOthers.setAttribute('aria-pressed',rbState.others?'true':'false');
+    /* **重ねるものは開いたときに取る**（窓を開くたびに引くと、紙全体を
+       見ない人まで往復が1本増える）。 */
+    if(rbState.others&&!rbState.blocks.length){
+     try{const r=await api('/api/report-block-master');rbState.blocks=r.items||[]}
+     catch(_){rbState.blocks=[]}
+    }
+    paint();
+   };
+  }
+  /* 見本の値は候補と一緒に届く（§9.250 ⑤）。**届いたら塗り直すこと**
+     ——投げっぱなしにすると、②のタブを開くまで値の場所が「（値）」のまま
+     残る（§9.234 ⑧と同じ罠）。**失敗しても黙って進む**（値が「（値）」に
+     なるだけで、設定そのものは触れる）。 */
+  fbLoadCatalog().then(()=>paint()).catch(()=>{});
+  if(form.dataset.rbWired==='1'){paint();return}
   form.dataset.rbWired='1';
-  const paint=()=>rbPaintPreview(form);
   form.addEventListener('change',paint);
   form.addEventListener('input',paint);
   requestAnimationFrame(paint);
@@ -1427,6 +1839,9 @@
    try{
     const r=await api('/api/report-block-master'+(eq?'?equipment='+encodeURIComponent(eq):''));
     fbCatalog.groups=Array.isArray(r.catalog)?r.catalog:[];
+    /* 見本の値は**候補と一緒に届く**（§9.250 ⑤）。別の口で取りに行くと、
+       候補にあるのに見本の値だけ無い道が作れる。 */
+    rbNoteSamples(fbCatalog.groups);
    }catch(e){fbCatalog.groups=[]}
    fbCatalog.loadedFor=eq;fbCatalog.loading=null;
    return fbCatalog.groups;
@@ -1954,7 +2369,7 @@
  async function submitMaint(rootSel){
   const root=rootSel||'#masterMaintForm';
   const def=currentDef(),uid=requireMaintUser();if(uid===null)return;const editing=maintState.editing;
-  const body={user_id:uid};let ok=true;
+  const body={user_id:uid};let ok=true,firstMissing=null;
   if(editing)body.id=editing.id;
   def.fields.forEach(f=>{
    if(f.type==='equipment-multi'){body[f.k]=[...document.querySelectorAll(`${root} [data-equipment-field="${f.k}"]:checked`)].map(el=>el.value);return}
@@ -1964,15 +2379,27 @@
      :[...document.querySelectorAll(`${root} [data-equipment-field="${f.k}"]:checked`)].map(el=>el.value).join(',');
     // 必須のタグ欄(設備停止マスタの対象設備)は未選択で送らせない。素の入力欄と
     // 違い、空でも「未設定」として通ってしまうため、ここで同じ扱いに揃える。
-    if(f.required&&!body[f.k])ok=false;
+    if(f.required&&!body[f.k]){ok=false;
+     if(!firstMissing)firstMissing=document.querySelector(`${root} [data-equipment-all="${f.k}"]`);}
     return;
    }
    const el=$(`${root} [data-field="${f.k}"]`);
    // 数値欄は表示用の3桁区切りが入っているので、送る前に外す(§9.49)
    const v=f.type==='number'?numRaw(el?el.value:''):String(el?el.value:'').trim();
-   if(f.required&&!v)ok=false;body[f.k]=v;
+   if(f.required&&!v){ok=false;if(!firstMissing)firstMissing=el}
+   body[f.k]=v;
   });
-  if(!ok){showToast('入力を確認してください','必須項目が未入力です。',4000);return}
+  if(!ok){
+   /* **入っていない欄の段を開いてから断る**（§9.250 ④・§4）——段（タブ）に
+      分けたので、畳んだ先の欄を「入れてください」と言われても、どこにあるのか
+      分からない。開いてから知らせる。 */
+   const form=document.querySelector(root);
+   if(form&&firstMissing){
+    mmRevealField(form,firstMissing);
+    if(firstMissing.focus){try{firstMissing.focus()}catch(e){}}
+   }
+   showToast('入力を確認してください','必須項目が未入力です。',4000);return;
+  }
   const endpoint=editing?def.endpoint+'/update':def.endpoint;
   try{
    setMaintLoading(true,editing?`${def.label}を更新しています…`:`${def.label}を登録しています…`);
@@ -7156,8 +7583,21 @@
   const mates=opState.items.filter(i=>(i.place||'準備')===(x.place||'準備')
     &&(i.group||'その他')===(x.group||'その他')&&String(i.id)!==String(x.id)
     &&i.enabled!==false);
-  const ghost=i=>`<div class="op-prev-ghost" style="grid-column:span ${opSpanOf(i)}">`
-   +`<span>${esc(i.name)}</span></div>`;
+  /* ---------- 隣の欄も本物で出す（§9.250 ⑤、利用者の指示） ----------
+     「データダミーをつかって…操業データがどうなるかといった結果を…
+      すぐに確認できる導線を準備してください」
+
+     以前は隣の欄を**名前だけの点線の箱**で置いていた。1枚のカードが
+     実際にどう見えるか——選ばせ方が混ざったときの高さのそろい・単位の
+     置き場・幅の釣り合い——は、それでは分からない。
+     **本物の部品を同じ口（`WL.opData.previewWidget`）で作る**ので、
+     設定画面と測定画面で形が食い違わない（§9.218 ①）。
+     **値はダミー**（サーバーの`sample`）——桁と文字数が実物に近いので、
+     幅が足りるかを確かめられる（§9.130）。
+     **押せないようにする**（`.is-ghost`）——見本の隣の欄を触っても
+     どこにも記録されないので、触れると壊れて見える（§4）。 */
+  const ghost=i=>`<div class="op-prev-ghost" data-op-ghost="${esc(i.name)}"`
+   +` style="grid-column:span ${opSpanOf(i)}"></div>`;
   const rule=[];
   if(x.required)rule.push('必須');
   if(opFamilyOf(x)==='number'){
@@ -7506,6 +7946,60 @@
    +`<i class="op-form-note">${every?'すべての設備の測定画面に出ます（これから増える設備でも出ます）。'
      :`選んだ ${on.length} 設備だけに出ます: ${esc(on.join('、'))}`}</i>`;
  }
+ /* 隣の欄をダミーの値つきで描く（§9.250 ⑤）。**マスタの行そのものから
+    作る**ので、項目を足せばここにも増える（コードへ項目名を書かない）。 */
+ function opPaintGhosts(){
+  document.querySelectorAll('#opModalPreview [data-op-ghost]').forEach(box=>{
+   const name=box.dataset.opGhost;
+   const it=(opState.items||[]).find(y=>String(y.name||'')===name);
+   if(!it){box.textContent=name;return}
+   const fam=opFamilyOf(it);
+   const label=document.createElement('label');
+   label.className='opf opf-host is-ghost';
+   label.dataset.opfill='1';
+   label.innerHTML=`<span class="opf-name">${esc(it.name)}</span>`;
+   let ctl;
+   if(fam==='output'){ctl=document.createElement('output')}
+   else if(fam==='choice'){
+    ctl=document.createElement('select');
+    const vals=(opState.choices||[]).filter(c=>c.name===it.choice).map(c=>c.value);
+    ctl.innerHTML=['<option value="">-</option>']
+      .concat(vals.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`)).join('');
+   }else{
+    ctl=document.createElement('input');ctl.type='text';
+    if(fam==='number'){ctl.className='numeric-input';ctl.inputMode='decimal';
+     const eff=opRuleDef(it);
+     if(eff.min!==null&&eff.min!==undefined&&eff.min!=='')ctl.min=eff.min;
+     if(eff.max!==null&&eff.max!==undefined&&eff.max!=='')ctl.max=eff.max;
+    }
+   }
+   label.appendChild(ctl);
+   box.innerHTML='';box.appendChild(label);
+   const def={name:it.name,unit:it.unit,type:it.type,decimals:it.decimals,step:it.step,
+     min:opRuleDef(it).min,max:opRuleDef(it).max,freeText:!!it.freeText,
+     unitPlace:opUnitPlaceOf(it),align:it.align,valueFormat:it.valueFormat,digits:it.digits,
+     look:opLookOf(it),layout:opLayoutOf(it),choices:opChoiceValues(it.choice),
+     noBlank:!!it.noBlank,preview:true};
+   const w=String(it.widget||'プルダウン');
+   if(window.WL&&WL.opData&&WL.opData.previewWidget){
+    const needs=fam!=='output'&&(w!=='プルダウン'||(def.freeText&&fam==='choice'));
+    if(needs)WL.opData.previewWidget(def,label,w);
+   }
+   if(window.WL&&WL.opData&&WL.opData.presentation)WL.opData.presentation(label,def);
+   /* ダミーの値（§9.250 ⑤）。**選択欄では候補へ足してから入れる**
+      ——`select.value`へ無い値を代入すると空になる（§9.204と同じ罠）。
+      組み込みの選択欄は候補を画面が持っているので、マスタからは引けない。 */
+   const v=String(it.sample==null?'':it.sample);
+   if(v&&ctl.tagName==='OUTPUT')ctl.textContent=v;
+   else if(v&&ctl.tagName==='SELECT'){
+    if(![...ctl.options].some(o=>o.value===v)){
+     const o=document.createElement('option');o.value=v;o.textContent=v;ctl.appendChild(o);
+    }
+    ctl.value=v;
+   }else if(v)ctl.value=v;
+   if(window.WL&&WL.opData&&WL.opData.syncWidgets)WL.opData.syncWidgets();
+  });
+ }
  function opRenderPreviewField(x,widget,usable){
   const host=$('#opPrevField');if(!host)return;
   const vals=(opState.choices||[]).filter(c=>c.name===x.choice).map(c=>c.value);
@@ -7643,14 +8137,37 @@
    note.textContent=why?`${why}。いまは打ち込みだけの欄になります（「② 何を記録するか」で決められます）。`:'';
    note.hidden=!why;
   }
+  /* 隣の欄をダミーの値つきで描く（§9.250 ⑤）。**同じ口を通す**ので、
+     選ばせ方・意匠・単位の置き場がそのまま出る。 */
+  opPaintGhosts();
   /* **押した結果が何として記録されるか**を出す（§9.219 ③、利用者の指示
      「実際の挙動ももう少しわかるように」）。見本が本物なので、押せば
      そのまま値が変わる——記録に入るのはこの文字列。 */
   const out=document.getElementById('opPrevValue');
   if(out){
+   /* 見本の値を入れてみる（§9.250 ⑤）。**押したときだけ入れる**——
+      黙って入れると`記録される値`が嘘になる（打っていない値が「記録される」
+      と読める）。桁と文字数が実物に近いので、**幅が足りるか**をその場で
+      確かめられる（§9.130）。 */
+   const sample=String((x&&x.sample)||'');
    const show=()=>{
     const v=String(ctl.value==null?'':ctl.value);
-    out.innerHTML=`記録される値: <b>${v?esc(v):'（まだ入っていません）'}</b>`;
+    out.innerHTML=`記録される値: <b>${v?esc(v):'（まだ入っていません）'}</b>`
+     +(sample&&sample!=='（値）'&&ctl.tagName!=='OUTPUT'
+        ?` <button type="button" class="op-prev-fill" id="opPrevFill"`
+         +` title="ありそうな値（${esc(sample)}）を入れて、幅が足りるかを確かめます">見本の値を入れる</button>`:'');
+    const fill=document.getElementById('opPrevFill');
+    if(fill)fill.onclick=e=>{
+     e.preventDefault();
+     if(ctl.tagName==='SELECT'&&![...ctl.options].some(o=>o.value===sample)){
+      const o=document.createElement('option');o.value=sample;o.textContent=sample;
+      o.dataset.opFree='1';ctl.appendChild(o);
+     }
+     ctl.value=sample;
+     ctl.dispatchEvent(new Event('input',{bubbles:true}));
+     ctl.dispatchEvent(new Event('change',{bubbles:true}));
+     if(window.WL&&WL.opData&&WL.opData.syncWidgets)WL.opData.syncWidgets();
+    };
    };
    ctl.addEventListener('input',show);
    ctl.addEventListener('change',show);

@@ -52,8 +52,24 @@ let b=null,page=null;
   },null,{timeout:20000});
   await page.waitForTimeout(400);
 
+  /* ---------- 段（タブ）を開く（§9.250 ④） ----------
+     決めることは4つの段に分かれた（縦に積むと窓に入らない・実測227px）。
+     組み立ての盤は「② 何を載せるか」の段にあるので、**その段を開いてから**
+     触る。**番号ではなく見出しの言葉で探すこと**——段が1つ増えただけで
+     番号がずれる網は、直していないのに落ちる。 */
+  const tab=async name=>{
+   await page.waitForSelector('.mm-tab',{timeout:10000});
+   await page.evaluate(n=>{
+    const t=[...document.querySelectorAll('.mm-tab')]
+      .find(x=>x.textContent.indexOf(n)>=0);
+    if(t)t.click();
+   },name);
+   await page.waitForTimeout(200);
+  };
+
   /* ---- 1) 窓を開くと組み立ての盤が出る ---- */
   await page.click('#masterMaintAdd');
+  await tab('何を載せるか');
   await page.waitForSelector('[data-fb]',{timeout:10000});
   await page.waitForFunction(()=>document.querySelectorAll('.fb-cat').length>0,null,{timeout:10000});
   await page.waitForTimeout(300);
@@ -124,6 +140,8 @@ let b=null,page=null;
       labelled.indexOf(TAG+'ラベル=')===0,JSON.stringify(labelled.split('\n')[0]));
 
   /* ---- 5) 保存すると読み直せる（塊が作れる） ---- */
+  /* 名前と対象設備は「① これは何の塊か」の段（§9.250 ④）。 */
+  await tab('これは何の塊か');
   await page.fill('[data-field="name"]',TAG+'塊');
   await page.evaluate(()=>{
    const all=document.querySelector('[data-equipment-all]');
@@ -154,6 +172,7 @@ let b=null,page=null;
      ========================================================== */
   /* **保存すると窓は閉じる**（§9.222 ⑦）ので、ここから新しく開き直す。 */
   await page.click('#masterMaintAdd');
+  await tab('何を載せるか');
   await page.waitForSelector('[data-fb]',{timeout:10000});
   await page.waitForFunction(()=>document.querySelectorAll('.fb-cat').length>0,null,{timeout:10000});
   await page.waitForTimeout(300);
@@ -203,6 +222,7 @@ let b=null,page=null;
       blanked.値.split('\n').some(l=>/^\|\d+$/.test(l)),
       JSON.stringify(blanked.値.split('\n')));
   /* **サーバーが同じ読み方をすること**——2通りあると設定と紙が食い違う。 */
+  await tab('これは何の塊か');
   await page.fill('[data-field="name"]',TAG+'マトリクス');
   /* **対象設備は必須**（新しく開いた窓なので入れ直す）。 */
   await page.evaluate(()=>{
