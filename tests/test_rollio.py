@@ -429,6 +429,168 @@ try:
     code, r9 = post('/api/roll-master/import', {'user_id': 'test'})
     rec('ファイルが無ければ断る', code == 400, json.dumps(r9, ensure_ascii=False))
 
+    # ---- 9) まとめて消す・完全入替（§9.251、利用者の指示） ----
+    #   「ロールマスタの全削除機能（ロールマスタの完全入替機能）を実装して
+    #    ください」
+    # §9.240 で決めた「**行の削除はしない**」を、ここで**取り消している**。
+    # 既定（`replace`なし）は今までどおり消さないことを併せて固定する
+    # ——既定が変わると、何も選ばずに取り込んでいる現場の動きが黙って変わる。
+    # **この節だけ別の設備を使う**——入れ替えは「その設備の、ファイルに無い行」を
+    # 消すので、上の節で作った行まで巻き添えにすると、下見の件数と実際の件数を
+    # 突き合わせる網が自分の置き土産で狂う（何を確かめているのか分からなくなる）。
+    W = TAG + 'W'
+    EQ3, EQ4 = 'テスト設備C', 'テスト設備D'
+    wipe = []
+    for eq, nm, face, dia in ((EQ3, W + '1', '上', 250.0), (EQ3, W + '2', '下', 300.0),
+                              (EQ3, W + '2', '上', 310.0), (EQ4, W + '9', '', 150.0)):
+        _c, _r = post('/api/roll-master', {'user_id': 'test', 'equipment': eq, 'name': nm,
+                                           'contactFace': face, 'diaMax': dia})
+        if _r.get('id'):
+            made.append(_r['id'])
+            wipe.append(_r['id'])
+    rec('前提: 入れ替えを試す材料を作れた（2設備・接触面ちがいを含む）',
+        len(wipe) == 4, str(len(wipe)))
+
+    def mine(items=None):
+        items = items if items is not None else getj('/api/roll-master')['items']
+        return [x for x in items if str(x.get('name') or '').startswith(W)]
+
+    def sheet_of(rows):
+        return base64.b64encode(write_sheet(tuple(head), rows)).decode()
+
+    def io_row(eq, nm, face, dia):
+        return [(eq if h == '設備名' else nm if h == 'ロール名' else face if h == '接触面'
+                 else dia if h == 'ロール径MAX' else '') for h in head]
+
+    one = sheet_of([io_row(EQ3, W + '1', '上', 251.0)])
+
+    # 既定（消さない）——**ここが変わると現場の動きが黙って変わる**
+    code, d0 = post('/api/roll-master/import', {'user_id': 'test', 'fileBase64': one})
+    rec('既定の取り込みは今までどおり1件も消さない（§9.240を残す）',
+        code == 200 and not d0.get('removeCount') and not d0.get('remove')
+        and d0.get('replace') == '',
+        json.dumps({k: d0.get(k) for k in ('replace', 'removeCount', 'add', 'update')},
+                   ensure_ascii=False))
+
+    # 「ファイルに出てくる設備だけ」——**他の設備を巻き添えにしない**のが値打ち
+    code, df = post('/api/roll-master/import',
+                    {'user_id': 'test', 'fileBase64': one, 'replace': 'file'})
+    rm_f = [x for x in (df.get('remove') or []) if str(x.get('name') or '').startswith(W)]
+    rec('「ファイルの設備を入れ替える」はその設備の余った行だけを消す',
+        code == 200 and len(rm_f) == 2 and all(x['equipment'] == EQ3 for x in rm_f),
+        json.dumps(df.get('remove'), ensure_ascii=False))
+    rec('他の設備のロールは消える一覧に入らない（巻き添えにしない）',
+        not any(x['equipment'] == EQ4 for x in (df.get('remove') or [])),
+        json.dumps(df.get('remove'), ensure_ascii=False))
+    # **接触面まで見て数える**（§9.246 ⑤）——(設備,名前)だけで数えると
+    # 面ちがいの2本が1本にまとまり、下見の件数が実際と食い違う。
+    rec('接触面ちがいの2本は2件として数える',
+        sorted(x['contactFace'] for x in rm_f) == ['上', '下'],
+        json.dumps(rm_f, ensure_ascii=False))
+
+    # 「すべての設備」——ファイルに1行も出てこない設備も消える
+    code, da = post('/api/roll-master/import',
+                    {'user_id': 'test', 'fileBase64': one, 'replace': 'all'})
+    rm_a = [x for x in (da.get('remove') or []) if str(x.get('name') or '').startswith(W)]
+    rec('「すべての設備を入れ替える」はファイルに無い設備のロールも消す',
+        code == 200 and any(x['equipment'] == EQ4 for x in rm_a) and len(rm_a) == 3,
+        json.dumps(rm_a, ensure_ascii=False))
+
+    # **下見は1件も消さない**（下見の意味そのもの）
+    rec('下見（applyなし）では1件も消えていない', len(mine()) == 4, str(len(mine())))
+
+    # **読めない行があるうちは入れ替えない**（§CLAUDE 4）
+    bad = sheet_of([io_row(EQ3, W + '1', '上', 251.0), io_row('居ない設備', W + 'X', '', 10.0)])
+    code, db_ = post('/api/roll-master/import',
+                     {'user_id': 'test', 'fileBase64': bad, 'replace': 'file'})
+    rec('取り込めない行があると、入れ替えは下見の時点で断る',
+        code == 200 and bool(db_.get('blocked')) and len(db_.get('skipped') or []) == 1,
+        json.dumps({'blocked': bool(db_.get('blocked')),
+                    'skipped': db_.get('skipped')}, ensure_ascii=False))
+    code, db2 = post('/api/roll-master/import',
+                     {'user_id': 'test', 'fileBase64': bad, 'replace': 'file', 'apply': True})
+    rec('断った入れ替えは口も通さない（画面が押せてしまっても書かない）',
+        code == 400 and len(mine()) == 4,
+        '%s / 残り%d件' % (code, len(mine())))
+    # **同じファイルでも「足す・上書き」なら通る**——直す手立てを塞がない
+    code, db3 = post('/api/roll-master/import',
+                     {'user_id': 'test', 'fileBase64': bad, 'apply': True})
+    rec('同じファイルでも「足す・上書きする」なら取り込める（直す道を塞がない）',
+        code == 200 and db3.get('saved') == 1 and len(mine()) == 4,
+        json.dumps({'code': code, 'saved': db3.get('saved')}, ensure_ascii=False))
+
+    # 実際に入れ替える。**下見が言った件数と、実際に消えた件数が一致すること**
+    code, ap = post('/api/roll-master/import',
+                    {'user_id': 'test', 'fileBase64': one, 'replace': 'file', 'apply': True})
+    left = mine()
+    rec('入れ替えを当てると、下見の「消える件数」と実際が一致する',
+        code == 200 and ap.get('removed') == df.get('removeCount') == len(rm_f),
+        json.dumps({'removed': ap.get('removed'), 'dry': df.get('removeCount'),
+                    'mine': len(rm_f)}, ensure_ascii=False))
+    rec('入れ替えたあとに残るのはファイルの行と、他の設備の行だけ',
+        sorted((x['equipment'], x['name']) for x in left)
+        == sorted([(EQ3, W + '1'), (EQ4, W + '9')]),
+        json.dumps([(x['equipment'], x['name']) for x in left], ensure_ascii=False))
+    rec('入れ替えでもファイルの値はちゃんと入る（消すだけで終わらない）',
+        next((x['diaMax'] for x in left if x['name'] == W + '1'), None) == 251.0,
+        json.dumps([x['diaMax'] for x in left], ensure_ascii=False))
+
+    # ---- 9b) 全削除（範囲は「すべて」か「設備を1つ」） ----
+    code, dp = post('/api/roll-master/delete-all', {'user_id': 'test', 'scope': 'all'})
+    rec('全削除も既定は下見（applyなしでは1件も消えない）',
+        code == 200 and dp.get('dryRun') is True and len(mine()) == len(left),
+        json.dumps({'code': code, 'dryRun': dp.get('dryRun')}, ensure_ascii=False))
+    rec('下見は設備ごとの内訳を返す（画面が数え直さなくてよい）',
+        isinstance(dp.get('byEquipment'), list)
+        and sum(x['count'] for x in dp['byEquipment']) == dp['total'],
+        json.dumps(dp.get('byEquipment'), ensure_ascii=False))
+    rec('消える行を名前で挙げる（件数だけで済ませない）',
+        isinstance(dp.get('names'), list) and dp['count'] > 0 and len(dp['names']) > 0,
+        json.dumps(dp.get('names', [])[:3], ensure_ascii=False))
+    # **範囲を選んでいないときは断る**——既定の範囲を持たせない（押し間違いが
+    # そのまま全消しになる）
+    code, e1 = post('/api/roll-master/delete-all', {'user_id': 'test'})
+    rec('範囲を選んでいなければ断る（「消す」に既定を持たせない）',
+        code == 400 and '範囲' in (e1.get('error') or ''), json.dumps(e1, ensure_ascii=False))
+    code, e2 = post('/api/roll-master/delete-all', {'user_id': 'test', 'scope': 'equipment'})
+    rec('設備を選んでいなければ断る', code == 400 and '設備' in (e2.get('error') or ''),
+        json.dumps(e2, ensure_ascii=False))
+
+    # 設備を1つ消す——**他の設備は1件も減らない**
+    before_a = len([x for x in mine() if x['equipment'] == EQ3])
+    code, d1 = post('/api/roll-master/delete-all',
+                    {'user_id': 'test', 'scope': 'equipment', 'equipment': EQ4, 'apply': True})
+    after = mine()
+    rec('設備を1つ選ぶと、その設備のロールだけが消える',
+        code == 200 and not any(x['equipment'] == EQ4 for x in after)
+        and len([x for x in after if x['equipment'] == EQ3]) == before_a,
+        json.dumps([(x['equipment'], x['name']) for x in after], ensure_ascii=False))
+    rec('消した件数を文字で言う', '件' in (d1.get('message') or ''), d1.get('message'))
+
+    # 「設備の入っていない行」は**空文字で名指しできる**（移行し損ねた古い行）
+    from backend.db_access import connect, DBS
+    with connect(DBS['MASTER']['path'], False) as _c:
+        rr.ensure_table(_c)
+        _c.execute('INSERT INTO [%s] ([設備名],[ロール名],[ロール径MAX],[有効],'
+                   '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
+                   "VALUES ('',?,?,-1,'test','test',Now(),Now())" % rr.TABLE,
+                   [W + 'NOEQ', 77.0])
+        _c.commit()
+    made.extend(x['id'] for x in mine() if x['name'] == W + 'NOEQ')
+    # **「すべて入れ替える」でも設備なしの行は消さない**（ファイルで表せない）
+    code, dn = post('/api/roll-master/import',
+                    {'user_id': 'test', 'fileBase64': one, 'replace': 'all'})
+    rec('設備の入っていない行は「すべて入れ替える」でも消さない',
+        code == 200 and not any(not x['equipment'] for x in (dn.get('remove') or []))
+        and (dn.get('keptNoEquipment') or 0) >= 1,
+        json.dumps({'kept': dn.get('keptNoEquipment'),
+                    'remove': dn.get('remove')}, ensure_ascii=False))
+    code, d2 = post('/api/roll-master/delete-all',
+                    {'user_id': 'test', 'scope': 'equipment', 'equipment': '', 'apply': True})
+    rec('設備の入っていない行は全削除から名指しで消せる（隠して終わらせない）',
+        code == 200 and not any(x['name'] == W + 'NOEQ' for x in mine()),
+        json.dumps({'code': code, 'msg': d2.get('message')}, ensure_ascii=False))
+
 except Exception as e:
     import traceback
     traceback.print_exc()

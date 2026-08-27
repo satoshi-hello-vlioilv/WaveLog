@@ -136,6 +136,12 @@
       帯が出る差し替え口にしてある——他のマスタが要るときも、ここに
       `excelIo:true` を足せば同じ帯が乗る（画面のコードを増やさない）。 */
    excelIo:true,
+   /* **まとめて消せる**（§9.251、利用者の指示「ロールマスタの全削除機能
+      （ロールマスタの完全入替機能）を実装してください」）。`excelIo`と同じく
+      **印1つ**で、範囲（すべて／設備を1つ）と件数の確認は画面の共通の流れが
+      持つ。**取り消せない操作なので主要動線から離す**（§CLAUDE 5）——
+      帯のいちばん右へ寄せてある。 */
+   bulkDelete:true,
    /* **設備が親・ロールが子**（§9.239 ⑥ 訂正、利用者の指示「厳密に設備を
       割ってから、個別にロール管理したい。1ロール1設備が正しい」）。
       束ねる鍵は`equipment`で、1行は必ず1つの設備に属する。 */
@@ -1194,6 +1200,106 @@
      ・**保存する前に下見できる**（§9.193）。何件が追加で何件が上書きか、
        どの行がなぜ飛ばされるかを、書き込む前に出す。
      ・**飛ばした件数と理由を必ず文字で言う**（§CLAUDE 4）。 */
+ /* ---------- まとめて消す（§9.251、利用者の指示「ロールマスタの全削除機能
+    （ロールマスタの完全入替機能）を実装してください」） ----------
+    **印を1つ付けるだけ**の差し替え口（`excelIo`と同じ作法）。
+    `bulkDelete:true` を足すと、`<endpoint>/delete-all` を叩く帯が出る。
+    **範囲の選択肢はサーバーが数える**（下見の`byEquipment`）——画面が
+    一覧から数え直すと、消す範囲と選択肢が別々の数え方になる（§9.163）。 */
+ function bulkDeleteHtml(def){
+  if(!def.bulkDelete)return '';
+  return `<button type="button" id="mmBulkDel" class="mm-btn-danger sm mm-bulk-del"
+    title="登録されているロールをまとめて消します。押すと、範囲（すべて／設備を1つ）と件数を確かめてから消します">全部消す…</button>`;
+ }
+ function bindBulkDelete(def){
+  const b=$('#mmBulkDel');if(!b||!def.bulkDelete)return;
+  b.onclick=()=>bulkDeleteFlow(def);
+ }
+ async function bulkDeleteFlow(def){
+  const uid=requireMaintUser();if(uid===null)return;
+  let plan;
+  try{
+   /* **まず下見**（`apply`を付けない＝1件も消えない）。ここで初めて
+      「どの設備に何件あるか」がサーバーの数え方で分かる。 */
+   plan=await api(def.endpoint+'/delete-all',{method:'POST',
+     headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({scope:'all',user_id:uid})});
+  }catch(e){showToast&&showToast('件数を数えられませんでした',e.message,7000);return}
+  if(!plan.total){
+   showToast&&showToast('消すものがありません',`${def.label}は0件です。`,3600);return;
+  }
+  const by=plan.byEquipment||[];
+  const rows=by.map((x,i)=>`<label class="mm-bulk-pick"><input type="radio" name="mmBulkScope"
+     value="eq:${i}"><span>${esc(x.equipment||'設備の入っていない行')}</span><em>${x.count}件</em></label>`).join('');
+  /* **既定を持たせない**——「消す」に既定の範囲があると、押し間違いが
+     そのまま全消しになる。選ぶまでボタンは押せず、その理由をその場に書く
+     （§CLAUDE 4）。 */
+  const body=`<p class="confirm-modal-message">${esc(def.label)}を<b>まとめて消します</b>。取り消せません。
+    <b>どの範囲を消すか</b>を選んでください。</p>
+   <div class="mm-bulk-scopes">
+    ${rows}
+    <label class="mm-bulk-pick is-all"><input type="radio" name="mmBulkScope" value="all">
+     <span>すべての設備</span><em>${plan.total}件</em></label>
+   </div>
+   <p class="confirm-modal-message mm-bulk-tip">元へ戻すには、消す前に「書き出す」でExcelへ残してください
+    （そのファイルを「取り込む」で戻せます）。</p>`;
+  const p=confirmModal({title:`${def.label}をまとめて削除します`,eyebrow:'DELETE ALL',
+                        bodyHtml:body,confirmLabel:'削除する',danger:true});
+  /* 確認モーダルは**画面で1枚を使い回す**（`ensureConfirmModal`）ので、
+     ここで足した見張りと`disabled`は**必ず自分で外す**——外さないと、
+     次にどこかが確認を出したときに前の流れの見張りが一緒に動く。 */
+  const ok=$('#appConfirmOk'),box=$('#appConfirmBody');
+  let pick=null,onPick=null,note=null;
+  if(ok&&box){
+   ok.disabled=true;
+   note=document.createElement('p');
+   note.className='confirm-modal-message mm-bulk-need';
+   note.textContent='範囲を選ぶと「削除する」を押せます。';
+   box.append(note);
+   onPick=ev=>{
+    const el=ev.target;if(!el||el.name!=='mmBulkScope')return;
+    pick=el.value;ok.disabled=false;if(note)note.remove();
+   };
+   box.addEventListener('change',onPick);
+  }
+  let go=false;
+  try{go=await p}
+  finally{
+   if(ok)ok.disabled=false;
+   if(box&&onPick)box.removeEventListener('change',onPick);
+  }
+  if(!go||!pick)return;
+  const scope=pick==='all'?'all':'equipment';
+  const eq=pick==='all'?undefined:(by[Number(pick.slice(3))]||{}).equipment;
+  try{
+   setMaintLoading(true,'削除しています…');
+   const body2={scope,user_id:uid,apply:true};
+   if(scope==='equipment')body2.equipment=eq||'';
+   const r=await api(def.endpoint+'/delete-all',{method:'POST',
+     headers:{'Content-Type':'application/json'},body:JSON.stringify(body2)});
+   await loadMaintInner(true);
+   showToast&&showToast('削除しました',(r&&r.message)||'',4200);
+  }catch(e){showToast&&showToast('削除できませんでした',e.message,7000)}
+  finally{setMaintLoading(false)}
+ }
+
+ /* **取り込み方は3つ**（§9.251、利用者の指示「ロールマスタの全削除機能
+    （ロールマスタの完全入替機能）を実装してください」）。綴りはサーバーの
+    `roll_repo.REPLACE_MODES`と1対1で、**何が消えるかを画面は決めない**
+    ——決めるのは`import_rows()`の1箇所（§9.163）。ここが持つのは
+    「どう名乗るか」だけ。 */
+ const XIO_MODES=[
+  {v:'',    label:'足す・上書きする',
+   note:'ファイルに在る行だけを足す・上書きします。<i>ファイルに無いロールはそのまま残ります（今までどおり）。</i>'},
+  {v:'file',label:'ファイルの設備を入れ替える',
+   note:'<b>ファイルに出てくる設備</b>のロールを、ファイルの内容そのものにします。<i>その設備の、ファイルに無いロールは削除されます。他の設備は触りません。</i>'},
+  {v:'all', label:'すべての設備を入れ替える',
+   note:'<b>すべての設備</b>のロールを、ファイルの内容そのものにします。<i>ファイルに1行も出てこない設備のロールも削除されます。</i>'}];
+ const xioMode=()=>String($('#mmXioMode')?.value||'');
+ function xioModeNote(){
+  const m=XIO_MODES.find(x=>x.v===xioMode())||XIO_MODES[0],box=$('#mmXioNote');
+  if(box)box.innerHTML=m.note;
+ }
  function excelIoHtml(def){
   if(!def.excelIo)return '';
   return `<div class="mm-xio" id="mmXio">
@@ -1201,11 +1307,15 @@
      <b>Excel</b>
      <button type="button" id="mmXioOut" class="mm-btn-ghost sm"
        title="いまの一覧をそのままExcelファイル（.xlsx）で保存します。無効にした行も出ます">書き出す</button>
+     <label class="mm-xio-mode" for="mmXioMode">取り込み方
+      <select id="mmXioMode">${XIO_MODES.map(m=>
+        `<option value="${esc(m.v)}">${esc(m.label)}</option>`).join('')}</select></label>
      <button type="button" id="mmXioPick" class="mm-btn-ghost sm"
-       title="Excelファイル（.xlsx）を選ぶと、取り込む前に「何件追加・何件上書き」を出します">取り込む…</button>
+       title="Excelファイル（.xlsx）を選ぶと、取り込む前に「何件追加・何件上書き・何件削除」を出します">取り込む…</button>
      <input type="file" id="mmXioFile" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
-     <span class="mm-xio-note">突き合わせは<b>設備名＋ロール名</b>。同じ組み合わせがあれば上書き、無ければ追加します。
-      <i>IDは運びません（別のPCでも同じファイルが使えます）。行の削除はしません。</i></span>
+     <span class="mm-xio-note">突き合わせは<b>設備名＋ロール名＋接触面</b>。同じ組み合わせがあれば上書き、無ければ追加します。
+      <i>IDは運びません（別のPCでも同じファイルが使えます）。</i>
+      <span id="mmXioNote"></span></span>
     </div>
     <div class="mm-xio-result" id="mmXioResult" hidden></div>
    </div>`;
@@ -1216,6 +1326,16 @@
   const say=(html,cls)=>{
    const box=$('#mmXioResult');if(!box)return;
    box.hidden=!html;box.className='mm-xio-result'+(cls?' '+cls:'');box.innerHTML=html||'';
+  };
+  xioModeNote();
+  const mode=$('#mmXioMode');
+  if(mode)mode.onchange=()=>{
+   xioModeNote();
+   /* **取り込み方を変えたら下見をやり直す**（§CLAUDE 2「次にすることを
+      常に1つだけ指す」）——古い下見を残すと、「削除0件」と書いてある画面の
+      ボタンを押した瞬間に削除が走る。選び直したその場で数え直す。 */
+   if(xioPending)xioPreview(def,say,xioPending.b64,xioPending.uid,xioPending.name);
+   else say('');
   };
   const out=$('#mmXioOut');
   if(out)out.onclick=()=>{
@@ -1241,28 +1361,59 @@
      r.readAsDataURL(f);
     });
    }catch(e){say(esc(e.message),'is-bad');return}
-   try{
-    /* **まず下見**（保存しない）。ここで初めて「何が起きるか」が出る。 */
-    const r=await api(def.endpoint+'/import',{method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({fileBase64:b64,user_id:uid})});
-    xioPending={b64,uid,name:f.name};
-    say(xioPreviewHtml(r,f.name),r.add+r.update?'':'is-bad');
-    const go=$('#mmXioApply');
-    if(go)go.onclick=async()=>{
-     if(!xioPending)return;
-     go.disabled=true;say('取り込んでいます…');
-     try{
-      const done=await api(def.endpoint+'/import',{method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({fileBase64:xioPending.b64,user_id:xioPending.uid,apply:true})});
-      xioPending=null;
-      say(xioPreviewHtml(done,f.name),'is-ok');
-      await loadMaintInner(true);
-     }catch(e){say('取り込めませんでした: '+esc(e.message),'is-bad')}
-    };
-   }catch(e){xioPending=null;say('取り込めませんでした: '+esc(e.message),'is-bad')}
+   xioPending={b64,uid,name:f.name};
+   await xioPreview(def,say,b64,uid,f.name);
   };
+ }
+ /* 入れ替えは取り消せないので、**消える件数と設備を名乗って1回だけ確かめる**
+    （§CLAUDE 5。`dropRetiredTable()`と同じ作法）。 */
+ async function xioConfirmReplace(r){
+  const by={};
+  (r.remove||[]).forEach(x=>{const k=x.equipment||'（設備なし）';by[k]=(by[k]||0)+1});
+  const list=Object.keys(by).map(k=>`<li><b>${esc(k)}</b><em>${by[k]}件${
+    r.removeMore?'以上':''}</em></li>`).join('');
+  const body=`<p class="confirm-modal-message">ファイルに出てこないロール
+    <b>${r.removeCount}件</b>を<b>削除します</b>。取り消せません。</p>
+   <ul class="cl-confirm">${list}</ul>
+   <p class="confirm-modal-message">同時に 追加${r.add||0}件・上書き${r.update||0}件 を行います。
+    元へ戻すには、いまのマスタを先に「書き出す」でExcelへ残してください。</p>`;
+  if(typeof confirmModal!=='function')
+   return window.confirm(`ファイルに出てこないロール ${r.removeCount}件を削除します。よろしいですか？`);
+  return await confirmModal({title:'ロールを入れ替えます',eyebrow:'REPLACE',
+                             bodyHtml:body,confirmLabel:'入れ替える',danger:true});
+ }
+ /* **下見と適用は同じ1本を通る**（§9.240 の`RollIndex`と同じ理由）——
+    取り込み方・ファイル・利用者が同じなら、見せた内容と起きることが必ず
+    一致する。取り込み方を選び直したときもここへ戻ってくる。 */
+ async function xioPreview(def,say,b64,uid,name){
+  const replace=xioMode();
+  say('読んでいます…');
+  try{
+   const r=await api(def.endpoint+'/import',{method:'POST',
+     headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({fileBase64:b64,user_id:uid,replace})});
+   xioPending={b64,uid,name};
+   const nothing=!(r.add+r.update+(r.removeCount||0));
+   say(xioPreviewHtml(r,name),(nothing||r.blocked)?'is-bad':'');
+   const go=$('#mmXioApply');
+   if(go)go.onclick=async()=>{
+    if(!xioPending)return;
+    /* **消える行があるときだけ、もう一度だけ確かめる**（§CLAUDE 5）。
+       件数が0のときは今までどおり1押しで通す——確認を毎回出すと読まずに
+       押す癖が付く（§9.170）。 */
+    if(r.removeCount&&!(await xioConfirmReplace(r)))return;
+    go.disabled=true;say('取り込んでいます…');
+    try{
+     const done=await api(def.endpoint+'/import',{method:'POST',
+       headers:{'Content-Type':'application/json'},
+       body:JSON.stringify({fileBase64:xioPending.b64,user_id:xioPending.uid,
+                            replace,apply:true})});
+     xioPending=null;
+     say(xioPreviewHtml(done,name),'is-ok');
+     await loadMaintInner(true);
+    }catch(e){say('取り込めませんでした: '+esc(e.message),'is-bad')}
+   };
+  }catch(e){xioPending=null;say('取り込めませんでした: '+esc(e.message),'is-bad')}
  }
  /* 下見・結果の見せ方。**件数は必ず文字で**、飛ばした行は**理由つきで
     全部**出す（§CLAUDE 4。「N件飛ばしました」だけでは直せない）。 */
@@ -1271,18 +1422,33 @@
   const rows=skipped.map(x=>`<li><b>${esc(String(x.row||'-'))}行目</b>${
     x.name?` <span>${esc(x.name)}</span>`:''} — ${esc(x.why||'')}</li>`).join('');
   const done=!r.dryRun;
+  /* **消える行は件数だけで済ませない**（§CLAUDE 4／§3）——取り消せない
+     ので、どのロールが消えるのかを名前で出す。全部は並べないが、
+     **並べなかった件数は必ず言う**。 */
+  const rm=r.remove||[],rmN=r.removeCount||0;
+  const rmRows=rm.map(x=>`<li><b>${esc(x.equipment||'（設備なし）')}</b> <span>${esc(x.name||'')}</span>${
+    x.contactFace?` — ${esc(x.contactFace)}`:''}</li>`).join('')
+   +(r.removeMore?`<li>ほか ${r.removeMore}件</li>`:'');
+  const kept=r.keptNoEquipment||0;
+  const canGo=!r.blocked&&(r.add||r.update||rmN);
   return `<div class="mm-xio-sum">
     <b>${esc(fileName||'')}</b>
     <span>シート「${esc(r.sheet||'')}」／データ ${r.total||0}行</span>
     <span class="mm-xio-num">追加 <b>${r.add||0}</b></span>
     <span class="mm-xio-num">上書き <b>${r.update||0}</b></span>
+    ${r.replace?`<span class="mm-xio-num${rmN?' is-warn':''}">削除 <b>${done?(r.removed||0):rmN}</b></span>`:''}
     ${skipped.length?`<span class="mm-xio-num is-bad">取り込めない <b>${skipped.length}</b></span>`:''}
    </div>
+   ${kept?`<p class="mm-xio-kept">設備の入っていない行 ${kept}件は残します（Excelでは設備名が空のまま表せないため）。消すときは「全部消す…」から。</p>`:''}
    ${done?`<p class="mm-xio-done">${esc(r.message||'取り込みました。')}</p>`
-     :(r.add||r.update
-       ?`<div class="mm-xio-go"><button type="button" id="mmXioApply" class="mm-btn-primary sm">この内容で取り込む</button>
-         <span>まだ書き込んでいません。押すまでマスタは変わりません。</span></div>`
-       :`<p class="mm-xio-done">取り込める行がありません。下の理由を直してから、もう一度選んでください。</p>`)}
+     :(r.blocked
+       ?`<p class="mm-xio-done is-bad">${hintHtml(r.blocked)}</p>`
+       :(canGo
+        ?`<div class="mm-xio-go"><button type="button" id="mmXioApply" class="mm-btn-${rmN?'danger':'primary'} sm">${
+            rmN?`この内容で入れ替える（${rmN}件削除）`:'この内容で取り込む'}</button>
+          <span>まだ書き込んでいません。押すまでマスタは変わりません。</span></div>`
+        :`<p class="mm-xio-done">取り込める行がありません。下の理由を直してから、もう一度選んでください。</p>`))}
+   ${(!done&&rmN)?`<details class="mm-xio-skip is-warn" open><summary>消えるロール ${rmN}件（ファイルに出てこない行）</summary><ul>${rmRows}</ul></details>`:''}
    ${skipped.length?`<details class="mm-xio-skip" open><summary>取り込めない行 ${skipped.length}件（この行だけ飛ばします）</summary><ul>${rows}</ul></details>`:''}`;
  }
  function renderMaintForm(){
@@ -1315,18 +1481,19 @@
      <span class="mm-mode-chip new">新規登録</span>
      <button type="button" id="masterMaintAdd" class="mm-btn-primary sm">＋ ${esc(def.label)}を追加</button>
      <span class="mm-form-hint">一覧の行をクリック（またはダブルクリック・「編集」ボタン）で編集ウィンドウを開きます。</span>
+     ${bulkDeleteHtml(def)}
     </div>
     ${def.hint?`<p class="mm-def-hint">${hintHtml(def.hint)}</p>`:''}
     ${excelIoHtml(def)}`;
    form.onsubmit=ev=>ev.preventDefault();
    const ab=$('#masterMaintAdd');if(ab)ab.onclick=()=>openMaintEditor(null);
-   bindExcelIo(def);
+   bindExcelIo(def);bindBulkDelete(def);
    return;
   }
   form.classList.remove('mm-form-compact');
   const controls=buildFieldControls(def,editing);
   const chip=editing?`<span class="mm-mode-chip editing">編集中 <b>${esc(editing[def.cols[0].k]||'')}</b><small>ID:${esc(editing.id)}</small></span>`:`<span class="mm-mode-chip new">新規登録</span>`;
-  form.innerHTML=`<div class="mm-form-head">${chip}${editing?'<button type="button" id="masterMaintNew" class="mm-btn-ghost sm">＋ 新規入力に切替</button>':''}</div>
+  form.innerHTML=`<div class="mm-form-head">${chip}${editing?'<button type="button" id="masterMaintNew" class="mm-btn-ghost sm">＋ 新規入力に切替</button>':''}${bulkDeleteHtml(def)}</div>
    ${def.hint?`<p class="mm-def-hint">${hintHtml(def.hint)}</p>`:''}
    <div class="mm-form-fields">${controls}${
     typeof def.extraHtml==='function'?def.extraHtml(editing):''}</div>
@@ -1334,7 +1501,8 @@
    ${excelIoHtml(def)}`;
   form.onsubmit=ev=>{ev.preventDefault();submitMaint()};
   const nb=$('#masterMaintNew');if(nb)nb.onclick=()=>{maintState.editing=null;renderMaintForm()};
-  bindEquipmentPickers(form);bindInputHelpers(form);bindMaintTabs(form);bindMoreToggles(form);bindExcelIo(def);
+  bindEquipmentPickers(form);bindInputHelpers(form);bindMaintTabs(form);bindMoreToggles(form);
+  bindExcelIo(def);bindBulkDelete(def);
  }
 
  /* ---------- 汎用の編集専用モーダル(ARCHITECTURE.md「マスタ管理の画面形態」新設) ----------

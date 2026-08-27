@@ -57,7 +57,9 @@ G['異常位置'] = ['test_defect', 'test_defectlink', 'test_splitlive', 'test_s
                  # §9.239 ⑥: ピッチ→ロール判定とロールマスタ
                  'test_roll', 'test_mmfold',
                  # §9.241 ④⑤: ロールの読み込み経路と、入力の取り消し
-                 'test_rollload']
+                 'test_rollload',
+                 # §9.251: 全削除・完全入替（ロールが1本も無くなる形を通る）
+                 'test_rollwipe']
 # 操業データの意匠・設定窓・空きの群（§9.227）
 G['操業意匠'] = ['test_oppad', 'test_opui', 'test_opdata', 'test_msteps', 'test_oplimit',
                  'test_opmother', 'test_opunit', 'test_opauto', 'test_reclayout',
@@ -96,6 +98,8 @@ G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 't
                'test_workdate', 'test_measstore', 'test_roll', 'test_rollio',
                # §9.241 ①: 束ねた見出しの開閉／④: ロールの読み込み経路
                'test_mmfold', 'test_rollload',
+               # §9.251: ロールの全削除・完全入替
+               'test_rollwipe',
                # §9.250 ①②③⑥⑦: 一覧の折りたたみ・移行済みの削除・並べ替え/列幅
                'test_mmtable']
 G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'test_flows',
