@@ -13,6 +13,16 @@
 .rp-bar-title{
   font-weight:800;font-size:var(--fs);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
+/* 子ロットの統計を先回りして知らせる札（§9.248 ②）。**出るのは「出せるのに
+   出していない」ときだけ**なので、常設の飾りにはならない。押すと出る、と
+   分かる形（枠つきの押せる札）にする。 */
+.rp-split-hint{flex:none;display:inline-flex;align-items:center;gap:var(--gap-hair);
+  min-height:var(--ctl-h-xs);padding:0 var(--space-2);
+  border:1px solid rgba(255,255,255,.45);border-radius:var(--radius-pill);
+  background:rgba(255,255,255,.14);color:#fff;
+  font-size:var(--fs-micro);font-weight:700;cursor:pointer;white-space:nowrap}
+.rp-split-hint>b{font-weight:800;text-decoration:underline}
+.rp-split-hint:hover{background:rgba(255,255,255,.26)}
 .rp-bar-actions{margin-left:auto;display:flex;align-items:center;gap:6px;flex:none}
 .rp-zoom-seg{display:flex;gap:2px;background:rgba(255,255,255,.14);border-radius:var(--radius-sm);padding:2px}
 .rp-zoom-seg button{

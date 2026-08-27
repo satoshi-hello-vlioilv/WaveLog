@@ -177,14 +177,28 @@ const restore=[];
     色:document.querySelectorAll('[data-op-look="color"]').length,
     形:document.querySelectorAll('[data-op-look="shape"]').length,
     大きさ:document.querySelectorAll('[data-op-look="size"]').length,
-    並べ方:document.querySelectorAll('[data-op-layout]').length}));
-  /* §9.226 ①で`段階`と`入切`、§9.247 ①で`メニュー`と`切替`を足した
-     （選択肢を持つ型では12）。**数だけでなく綴りまで見る**——名前が変わると
-     マスタの保存値が「知らない値」になってプルダウンへ倒れる（保存済みの
-     設定が黙って消える）。 */
-  rec('選ばせ方は12から選ぶ（メニュー・切替を足した）',
-      lookPane.選ばせ方.join('/')==='プルダウン/ラジオ/セグメント/タブ/ボタン群/一覧/カード/トグル/段階/入切/メニュー/切替',
+    並べ方:document.querySelectorAll('[data-op-layout]').length,
+    /* §9.248 ① 束ねて出す。**見出しの並びと「いま選んでいます」まで見る**
+       ——札が全部在ることだけを見る網は、平らに並べた実装でも通る。 */
+    束:[...document.querySelectorAll('.op-widget-group-head>b')].map(x=>x.textContent.trim()),
+    いる束:[...document.querySelectorAll('.op-widget-group.is-here .op-widget-group-head>b')]
+      .map(x=>x.textContent.trim())}));
+  /* §9.226 ①で`段階`と`入切`、§9.247 ①で`メニュー`と`切替`、§9.248 ①で
+     `パネル`を足した（選択肢を持つ型では13）。**数だけでなく綴りまで見る**
+     ——名前が変わるとマスタの保存値が「知らない値」になってプルダウンへ
+     倒れる（保存済みの設定が黙って消える）。
+     **並びは束ごとの並び**（§9.248 ①）なので、平らだった頃とは順番が違う。 */
+  rec('選ばせ方は13から選ぶ（パネルを足した）',
+      lookPane.選ばせ方.join('/')==='プルダウン/メニュー/一覧/パネル/ラジオ/セグメント/タブ/ボタン群/カード/トグル/入切/段階/切替',
       JSON.stringify(lookPane.選ばせ方));
+  /* **束ねてあること**（§9.248 ①、利用者の指示「UIの選択自体もUIでもう少し
+     グルーピングや階層を持たせて似たようなものをまとめ…」）。選択肢を持つ型
+     なので「数を入れる」「文字を書く」の束はそもそも出ない（§4）。 */
+  rec('選ばせ方は「束」に分けて出す',
+      lookPane.束.join('/')==='開いて選ぶ/並べて見せる/2択と順番',
+      JSON.stringify(lookPane.束));
+  rec('いま選んでいる形がどの束かを見出しが言う',
+      lookPane.いる束.join('/')==='開いて選ぶ',JSON.stringify(lookPane.いる束));
   /* **並べ方は選ばせ方とは別の軸**（§9.226 ①）。効かない形では欄ごと
      出さない（§4）ので、ここではプルダウンなので0件が正しい。 */
   rec('並べ方はプルダウンでは選ばせない（並べる先が無い）',

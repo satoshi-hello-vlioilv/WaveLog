@@ -3068,6 +3068,24 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const known=order.filter(k=>all.includes(k));
   return [...known,...all.filter(k=>!known.includes(k))];
  }
+ /* **保存する並びは、いま出せない列を落とさない**（§9.248 ③、利用者の報告
+    「一覧表関係の表示列が一部表示されなかったり消えていることがあります」）。
+
+    上の`timelineOrderedKeys()`は**描くため**の並びなので、いま出せる列
+    （`timelineAllColumnKeys()`）だけに絞るのが正しい——知らないキーを返すと
+    セルの無い空の列ができる。ところが`persistTimelineColumns()`がその
+    絞ったほうを**そのまま保存**していたため、`chosenContentKeys()`が
+    まだ既定の4項目しか返していない瞬間（スケジュール内容表示マスタが
+    届く前）に幅を1回引くだけで、**選んであった内容欄の列が保存済みの並びから
+    丸ごと消えていた**。次に出てきたときは「知らない列」として末尾へ回る。
+    保存用は**保存済みの並び ∪ いま出せる列**にする（一覧の`fullOrder()`と
+    同じ作法・§9.216 ②）。 */
+ function timelineOrderForSave(){
+  const t=timelineTarget();
+  const stored=t?(WL.columnLayout.saved(t).order||[]):[];
+  const kept=stored.filter((k,i)=>stored.indexOf(k)===i);
+  return [...kept,...timelineAllColumnKeys().filter(k=>!kept.includes(k))];
+ }
  /* いま出す列。並びと表示/非表示は列レイアウトマスタが決める。 */
  function timelineColumnKeys(){
   const hide=timelineHiddenSet();
@@ -3964,7 +3982,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     出ていない列をそのまま`hidden`として書く。 */
  async function persistTimelineColumns(target,patch){
   try{
-   await WL.columnLayout.patch(target,{order:timelineOrderedKeys(),
+   await WL.columnLayout.patch(target,{order:timelineOrderForSave(),
                                        hidden:[...timelineHiddenSet()],...patch});
   }catch(e){showToast&&showToast('列の設定を保存できませんでした',e.message,5000)}
  }

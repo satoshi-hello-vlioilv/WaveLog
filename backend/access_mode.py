@@ -181,7 +181,13 @@ _READ_ONLY_POST_ENDPOINTS={'rne.rne_extract_run','tables.api_db_mirror_refresh',
                            'masters.query_join_master_probe',
                            # 共有スケジュールを手元へ取り込むだけ(§9.188)。
                            # 作業予定は書き換えないので全モードから通す。
-                           'schedule.sync_now'}
+                           'schedule.sync_now',
+                           # 選択肢が選ばれた回数を1つ増やすだけ(§9.248 ⑤)。
+                           # **現場の設定は1つも変わらない**——数えているのは
+                           # 「選ばれた」という事実だけ。ここをeditへ絞ると、
+                           # 閲覧・スケジュールモードの端末で測ったぶんだけが
+                           # 数えられず、**並びが端末によって食い違う**。
+                           'masters.operation_choice_used'}
 # editモードで許可する際、さらに「現場段取り可否」を要求するエンドポイント。
 # 作業予定を実際に動かす操作だけが対象で、設定系マスタの保存は含めない。
 _FIELD_REORDER_ENDPOINTS={'schedule.plan_reorder'}

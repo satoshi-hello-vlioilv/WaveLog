@@ -73,7 +73,10 @@ let b=null;
            チェック済み:boxes.filter(x=>x.checked).length,
            式ボタン隠れる:document.getElementById('lcAddCol').hidden,
            プリセット出る:!document.querySelector('#listColumnPanel .lc-presets').hidden,
-           分類の数:el.querySelectorAll('.lc-origin-chip').length,
+           /* 出どころの札だけを数える（§9.248 ④で「表示中／非表示中」の札が
+              同じ帯に並んだ。**別の軸**なので出どころの数には入れない）。 */
+           分類の数:el.querySelectorAll('.lc-origin-chip[data-origin]').length,
+           状態の札:el.querySelectorAll('.lc-origin-chip[data-state]').length,
            画面内:r.left>=0&&r.top>=0&&r.right<=innerWidth+1&&r.bottom<=innerHeight+1};
   });
   rec('内容欄の設定が仕掛一覧と同じパネルで開く',p.項目数>4,JSON.stringify(p.項目数));
@@ -95,6 +98,9 @@ let b=null;
      「すべて＋元データ＋計算・操作」の3つ。**結合は使わないので出さない**
      ——使わない分類を並べても覚える手間が増えるだけ（§9.120）。 */
   rec('分類は対象に合わせて減らす（結合は出さない）',p.分類の数===3,`${p.分類の数}個`);
+  /* §9.248 ④の「表示中／非表示中」は**出どころとは別の軸**なので、対象が
+     変わっても2枚のまま出る（列の出し入れはどのパネルでもするため）。 */
+  rec('「表示中／非表示中」の札は対象によらず出る',p.状態の札===2,`${p.状態の札}枚`);
   rec('パネルは画面の中に開く',p.画面内);
 
   /* ---- 2) 右ペインは1項目ぶんの見え方を出す ---- */
@@ -234,7 +240,8 @@ let b=null;
    見出し:document.getElementById('lcTitle').textContent,
    分野:document.getElementById('lcEyebrow').textContent,
    式ボタン出る:!document.getElementById('lcAddCol').hidden,
-   分類の数:document.querySelectorAll('.lc-origin-chip').length,
+   分類の数:document.querySelectorAll('.lc-origin-chip[data-origin]').length,
+   状態の札:document.querySelectorAll('.lc-origin-chip[data-state]').length,
    列数:document.querySelectorAll('#lcList .lc-item').length,
   }));
   /* §9.176で**どの表かを見出しに出す**ようにした（利用者の指摘。同じパネルを
@@ -245,6 +252,7 @@ let b=null;
       JSON.stringify(list));
   rec('仕掛一覧側は計算式が使える',list.式ボタン出る===true);
   rec('仕掛一覧側の分類は「すべて＋3分類」のまま',list.分類の数===4,`${list.分類の数}個`);
+  rec('仕掛一覧側にも「表示中／非表示中」の札が出る',list.状態の札===2,`${list.状態の札}枚`);
   await page.evaluate(()=>WL.listColumns.close());
 
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));

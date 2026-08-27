@@ -460,4 +460,21 @@
 .record-list-head .col-resize::after{
   content:"";position:absolute;top:15%;bottom:15%;left:50%;width:2px;
   background:var(--line-strong);border-radius:var(--radius-xs)}
+
+/* ---------- 設備の絞り込みの入口（§9.248 ⑥、利用者の指示） ----------
+   **いま何で絞っているかをボタン自身が名乗る**（§3）。絞っているときは
+   主色で塗り、隠している件数を小さく添える——黙って絞ると「データが
+   消えた」と読まれる。絞れない端末（使用設備が未登録）では押せなくする（§4）。 */
+.record-scope-btn{display:inline-flex;align-items:center;gap:var(--gap-hair);
+  min-height:var(--ctl-h-sm);padding:0 var(--space-2);
+  border:1px solid var(--line-mid);border-radius:var(--radius-sm);
+  background:var(--surface);color:var(--ink-2);font-size:var(--fs-sm);cursor:pointer;
+  white-space:nowrap}
+.record-scope-btn>b{font-weight:700;max-width:12em;overflow:hidden;text-overflow:ellipsis}
+.record-scope-btn>i{font-style:normal;font-size:var(--fs-micro);color:var(--muted)}
+.record-scope-btn:hover:not(:disabled){border-color:var(--teal)}
+.record-scope-btn.is-on{border-color:var(--teal);background:var(--pale);color:var(--teal-dark)}
+.record-scope-btn.is-on>i{color:var(--teal-dark)}
+.record-scope-btn:disabled{opacity:.55;cursor:default}
+
 }

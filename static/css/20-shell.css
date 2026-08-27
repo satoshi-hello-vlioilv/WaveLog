@@ -534,6 +534,15 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  .lc-origin-chip.lc-origin-source.is-on{background:var(--origin-source);border-color:var(--origin-source)}
  .lc-origin-chip.lc-origin-join.is-on{background:var(--origin-join);border-color:var(--origin-join)}
  .lc-origin-chip.lc-origin-calc.is-on{background:var(--origin-calc);border-color:var(--origin-calc)}
+ /* ---------- 「表示中／非表示中」の札(§9.248 ④、利用者の指示) ----------
+    **出どころとは別の軸**なので、仕切りで群を分ける——同じ並びに混ぜると、
+    押したときに何が外れるのか読めない（出どころは排他、状態も排他、
+    2つはかけ合わせ）。色は**状態の色**（出ている＝主色／隠している＝灰）で、
+    出どころの3色とは別の意味であることが色でも読める。 */
+ .lc-chip-sep{flex:none;align-self:center;width:1px;height:var(--ctl-h-xs);
+  margin:0 var(--space-1);background:var(--line-mid)}
+ .lc-state-chip.is-on{background:var(--teal);border-color:var(--teal);color:#fff}
+ .lc-state-chip.lc-state-off.is-on{background:var(--look-slate);border-color:var(--look-slate)}
  /* リストの行頭に置く小さな点。分類名はチップとツールチップが持つ。 */
  .lc-dot{flex:none;width:var(--space-2);height:var(--space-2);margin-right:var(--space-2);
   border-radius:var(--radius-round);display:inline-block;vertical-align:middle}

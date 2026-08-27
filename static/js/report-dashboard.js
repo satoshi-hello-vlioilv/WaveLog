@@ -849,13 +849,19 @@
     **rAFのあとに走る測り直し（`rpFitAll`）は常に最後のロットの設備**で
     解いていた——一括印刷で他設備の紙に別の設備の行高が当たる。
     差し替えは**同期の間だけ**にし、終わったら必ず戻す（`finally`）。 */
+ /* いま組み立てている紙のロット（§9.248 ②）。**既定の見せ方がロットで
+    変わる**——異幅分割で子ロットが複数あるロットだけ「測定値の統計」を
+    既定で出す（`rpInitialHidden`）。一括印刷は1枚ずつ設備を差し替えるので、
+    ロットも同じ`rpWithLot()`の中で持ち替える（別に持つと食い違う）。 */
+ let rpActiveLot=null;
  function rpWithLot(x,fn){
-  const prev=rpActiveTarget,prevEq=rpUserBlocksFor;
+  const prev=rpActiveTarget,prevEq=rpUserBlocksFor,prevLot=rpActiveLot;
+  rpActiveLot=x;
   rpActiveTarget=rpTargetOf(x);
   /* 塊の顔ぶれも一緒に合わせる（読んであるときだけ）。 */
   rpUseEquipmentBlocks(rpEquipmentOf(x)||'');
   try{return fn()}finally{
-   rpActiveTarget=prev;
+   rpActiveTarget=prev;rpActiveLot=prevLot;
    if(prevEq!=null)rpUseEquipmentBlocks(prevEq);
   }
  }
@@ -1345,7 +1351,25 @@
  /* **一度も保存していないうちの既定**（§9.162と同じ約束）。列レイアウトマスタの
     hiddenは空なので、そのまま使うと分解した1枚ずつが全部紙に出てしまい、
     同じ測定値が2箇所に並ぶ。保存前は「まとめだけ」を既定にする。 */
- function rpInitialHidden(){return RP_MEAS_GROUPS.map(gr=>rpMeasSoloKey(gr.g)).concat([RP_STAT_BLOCK])}
+ /* 子ロットが複数あるロットか（§9.248 ②）。**判定は`rpStat()`の1箇所**を
+    通す——別の数え方をすると、紙の中で条番号とロット№の対応が2通りになる。 */
+ function rpHasSplitLots(x){
+  if(!x)return false;
+  try{return (rpStat(x).byLot||[]).length>=2}catch(e){return false}
+ }
+ function rpLotForDefaults(){return rpActiveLot||rpCurrentLot()}
+ /* **一度も配置を触っていないときの既定**（§9.162と同じ約束）。
+    §9.244で足した「測定値の統計」は**既定で出していなかった**——今まで
+    無かった塊なので、現場の紙を勝手に増やさないため。ところがそのせいで、
+    §9.247 ②で子ロットごとの統計を出せるようにしても**利用者からは何も
+    変わって見えなかった**（利用者が同じ指摘を2度した・§9.248 ②）。
+    **異幅分割で子ロット番号が複数あるロットのときだけ既定で出す**
+    ——そのときこそ子ロットごとのMIN/MAXが要る場面で、分割の無いロットの
+    紙は今までどおり1枚も増えない（§2「先回りして提示する」）。 */
+ function rpInitialHidden(){
+  const solo=RP_MEAS_GROUPS.map(gr=>rpMeasSoloKey(gr.g));
+  return rpHasSplitLots(rpLotForDefaults())?solo:solo.concat([RP_STAT_BLOCK]);
+ }
  function rpHiddenSet(){
   const l=WL.columnLayout.get(rpTarget());
   const set=new Set((l.order||[]).length?(l.hidden||[]):rpInitialHidden());
@@ -3293,6 +3317,44 @@
   $id('reportPrint').disabled=false;$id('reportPdf').disabled=false;
   renderReport(x);
   fitPage();fitWidth();
+  renderSplitHint(x);
+ }
+ /* ---------- 子ロットの統計を先回りして知らせる（§9.248 ②） ----------
+    既定（`rpInitialHidden`）は**一度も配置を触っていない設備**にしか効かない。
+    既に配置を保存してある設備では「測定値の統計」が`hidden`に焼き付いて
+    いるので、子ロットが複数あるロットを開いても紙は増えない。
+    **そのことを画面で言い、出す手立てを同じ場所に置く**（§2「探させない」・
+    §4「できることを書く」）——紙に注意書きを刷るのではなく、画面で伝える。 */
+ function renderSplitHint(x){
+  const bar=document.querySelector('#reportPanel .rp-bar-title');
+  let el=$id('rpSplitHint');
+  const lots=rpHasSplitLots(x)?(rpStat(x).byLot||[]):[];
+  const hidden=lots.length&&rpHiddenSet().has(RP_STAT_BLOCK);
+  if(!hidden){if(el)el.remove();return}
+  if(!el){
+   el=document.createElement('button');
+   el.type='button';el.id='rpSplitHint';el.className='rp-split-hint';
+   if(bar&&bar.parentNode)bar.parentNode.insertBefore(el,bar.nextSibling);
+  }
+  el.innerHTML=`子ロット${lots.length}件 <b>統計を出す</b>`;
+  el.title=`このロットは幅分割されていて、子ロット番号が${lots.length}件あります`
+   +`（${lots.map(L=>L.lot||'(番号なし)').join('・')}）。`
+   +'押すと「測定値の統計」の塊を紙に出します——子ロットごとの板幅MIN/MAXなどが、'
+   +'その子ロットの条だけから数え直されて並びます。';
+  el.onclick=async()=>{
+   /* **出すのは1つだけ**——他の塊の設定は触らない（§9.212 ②）。 */
+   const t=rpTargetOf(x);
+   const cur=WL.columnLayout.saved(t);
+   const order=(cur.order||[]).length?cur.order:rpBlockKeys();
+   const hide=(cur.order||[]).length?(cur.hidden||[]):rpInitialHidden();
+   try{
+    await WL.columnLayout.patch(t,{order:[...order],
+      hidden:hide.filter(k=>k!==RP_STAT_BLOCK)});
+    renderReport(x);fitPage();fitWidth();renderSplitHint(x);
+    showToast&&showToast('「測定値の統計」を紙に出しました',
+      '子ロットごとのMIN/MAXが並びます。戻すときは「配置を組み換え」から外せます',4000);
+   }catch(e){showToast&&showToast('設定を保存できませんでした',e.message,5000)}
+  };
  }
 
 /* ==================================================================

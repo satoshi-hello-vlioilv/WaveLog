@@ -254,14 +254,19 @@ async function cleanup(){
      元データ／結合／計算・操作の3つを、**色だけでなく文字と件数**で示す。 */
   const cls=await page.evaluate(()=>{
    const p=document.getElementById('listColumnPanel');
-   const chips=[...p.querySelectorAll('.lc-origin-chip')].map(c=>({
+   /* 出どころの札だけを数える（§9.248 ④で「表示中／非表示中」の札が同じ帯に
+      並んだ。**別の軸**なので出どころの数には入れない）。 */
+   const chips=[...p.querySelectorAll('.lc-origin-chip[data-origin]')].map(c=>({
     origin:c.dataset.origin,text:c.textContent.trim(),n:Number(c.querySelector('b')?.textContent||0),
     disabled:c.disabled}));
+   const states=[...p.querySelectorAll('.lc-origin-chip[data-state]')].map(c=>({
+    state:c.dataset.state,text:c.textContent.trim(),
+    n:Number(c.querySelector('b')?.textContent||0)}));
    const rows=[...p.querySelectorAll('.lc-item')];
    const kinds={};rows.forEach(r=>{kinds[r.dataset.origin]=(kinds[r.dataset.origin]||0)+1});
    const dot=c=>{const d=p.querySelector(`.lc-item[data-origin="${c}"] .lc-dot`);
                  return d?getComputedStyle(d).backgroundColor:''};
-   return {chips,kinds,行数:rows.length,
+   return {chips,states,kinds,行数:rows.length,
            点の色:{source:dot('source'),calc:dot('calc')},
            印付き:rows.filter(r=>r.querySelector('.lc-dot')).length};
   });
@@ -278,6 +283,15 @@ async function cleanup(){
   rec('0件の分類は押せない（押しても何も起きないボタンを見せない）',
     cls.chips.filter(c=>c.origin&&c.n===0).every(c=>c.disabled),
     cls.chips.filter(c=>c.n===0).map(c=>c.text).join(','));
+  /* §9.248 ④: 出どころとは**別の軸**として「表示中／非表示中」が並ぶ
+     （利用者の指示「『表示中の列』と『非表示中の列』というバッジを追加して
+     ほしい」）。**件数を文字で出すこと**まで見る（§3）。 */
+  rec('「表示中の列」「非表示中の列」の札が別の軸として並ぶ',
+    cls.states.length===2&&cls.states[0].state==='on'&&cls.states[1].state==='off',
+    cls.states.map(c=>c.text).join(' / '));
+  rec('状態の札の合計も全列数と合う（出どころとは別の数え方）',
+    cls.states.reduce((a,c)=>a+c.n,0)===cls.行数,
+    JSON.stringify({札:cls.states.map(c=>c.text),行数:cls.行数}));
 
   /* 分類で絞ると、その分類の行だけになる。 */
   const calcN=cls.chips.find(c=>c.origin==='calc')?.n||0;

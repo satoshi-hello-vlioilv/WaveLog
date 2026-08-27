@@ -461,6 +461,13 @@
      定義を持ち歩かずに当て直せる。 */
   if(def&&def.noBlank)host.dataset.opNoblank='1';else delete host.dataset.opNoblank;
   applyBlankPolicy(host);
+  /* 選択肢のまとまり名を器へ刻む（§9.248 ⑤）。**数えるのは1箇所**——
+     組み込みの欄と自由項目で配線が別なので、どちらも通るこの器の上で
+     `change`を受ける（`bind()`は自由項目しか配線しない）。
+     `preview`（設定窓の見本）では刻まない——見本で押した回数まで数えると、
+     現場で1度も選んでいない値が上へ来る。 */
+  if(def&&def.choice&&!def.preview)host.dataset.opChoice=def.choice;
+  else delete host.dataset.opChoice;
   const at=String(def.unitPlace||'外下左');
   const align=String(def.align||'自動');
   const fmt=String(def.valueFormat||'そのまま');
@@ -685,6 +692,19 @@
   sel.dispatchEvent(new Event('input',{bubbles:true}));
   sel.dispatchEvent(new Event('change',{bubbles:true}));
  }
+ /* **「人が候補から選んだ」ことは呼ぶ側が名乗る**（§9.248 ⑤）。
+    器を被せた選ばせ方（一覧・メニュー・パネル・ボタン群・切替・入切）は、
+    札を押しても値を持つのは`<select>`のままで、飛ぶ`change`は
+    **`setValue()`が作った合成イベント＝`isTrusted`が偽**。だから
+    「本物のイベントだけ数える」では、**この⑤がいちばん効かせたい形
+    （新しい表示領域を開くタイプ）が1回も数えられない**。
+    かといって`change`を全部数えると、記録の復元・仕掛由来のプリセット・
+    `syncWidgets()`の当て直しまで数に入り、**開き直すたびに前回の値が
+    先頭へ固定される**。
+    そこで**選んだ瞬間だけ立てる印**を持つ。`dispatchEvent`は同期なので、
+    数える側（`wireChoiceUsage()`）はこの印が立っている間に呼ばれる。 */
+ let userPicking=0;
+ function pickValue(sel,v){userPicking++;try{setValue(sel,v)}finally{userPicking--}}
  /* いま選ばれているものに印を付け直す。**作り直さない**——押すたびに
     組み直すと、キーボードで辿っている途中でフォーカスが飛ぶ。 */
  function syncWidget(host){
@@ -811,7 +831,7 @@
     **素の欄は消さない**——選択肢のように「候補から選ぶ」のではなく「打つ」
     欄なので、打てる場所を残したまま押して決める道具を足すのが正しい
     （`.opf-native-off`にすると打てなくなる）。 */
- const NUM_WIDGETS=['ステッパー','スライダー','キーパッド','早見ボタン','メーター'];
+ const NUM_WIDGETS=['ステッパー','スピナー','スライダー','キーパッド','早見ボタン','メーター'];
  /* よく使う値を並べる（§9.223 ③）。上下限と刻みから作り、**多すぎるときは
     出さない**——20個も並ぶと「探す」作業になり、打ったほうが速い（§4）。 */
  const QUICK_MAX=12;
@@ -831,6 +851,7 @@
   const step=stepOf(def),lo=numOr(def.min,null),hi=numOr(def.max,null);
   const sig=[kind,step,lo,hi].join('/');
   const box=widgetHost(host);
+  if(kind!=='スピナー')delete host.dataset.opSpin;
   if(box.dataset.sig===sig){syncWidget(host);return true}
   box.dataset.sig=sig;
   host.classList.add('opf-alt');
@@ -843,7 +864,18 @@
    const dec=String(step).indexOf('.')>=0?String(step).split('.')[1].length:0;
    setValue(el,dec?v.toFixed(dec):String(Math.round(v)));
   };
-  if(kind==='ステッパー'){
+  if(kind==='スピナー'){
+   /* スピナー（§9.248 ①）。**`ステッパー`と置き場所の広さが違う**——
+      あちらは−／＋の大きなボタンが欄を挟む形で、器の幅を1行ぶん食う。
+      こちらは欄の右端へ縦に積んだ小さな矢印なので、**狭いマス**でも入る。
+      押した先が同じ（1刻み増減）でも、置ける場所が違えば別の道具（§9.223 ③）。 */
+   /* **印は器へ**（§9.233 ③）——CSSは印を見る。欄の右へ矢印を重ねるので、
+      値が矢印の下に潜らないよう逃げ場も器の変数で渡す。 */
+   host.dataset.opSpin='1';
+   box.className='opf-widget opf-spin';
+   box.innerHTML='<button type="button" class="opf-spin-btn" data-opstep="1" aria-label="1つ増やす">▲</button>'
+    +'<button type="button" class="opf-spin-btn" data-opstep="-1" aria-label="1つ減らす">▼</button>';
+  }else if(kind==='ステッパー'){
    box.className='opf-widget opf-step';
    box.innerHTML='<button type="button" class="opf-step-btn" data-opstep="-1" aria-label="1つ減らす">−</button>'
     +'<button type="button" class="opf-step-btn" data-opstep="1" aria-label="1つ増やす">＋</button>';
@@ -1176,6 +1208,17 @@
     +'<span class="opf-pick-now">選ぶ</span>'
     +'<span class="opf-pick-caret" aria-hidden="true" title="押すと一覧の窓が開きます">☰</span></button>';
    box.querySelector('.opf-pick-btn').onclick=e=>{e.preventDefault();openPicker(def,host,sel)};
+  }else if(kind==='パネル'){
+   /* パネル（§9.248 ①、利用者の指示「フローティングモーダル…違うタイプの
+      ものを増やしたい」）。**`一覧`とは見え方も探し方も違う**——あちらは
+      1行ずつの表＋絞り込みで「名前で探す」形、こちらは**大きな札を並べた
+      窓**で「見て選ぶ」形（指で押す端末・説明を読んで決めたいとき）。
+      合図も分ける（`一覧`＝仕切った`☰`／こちら＝`▦`）。 */
+   box.className='opf-widget opf-panel';
+   box.innerHTML='<button type="button" class="opf-panel-btn">'
+    +'<span class="opf-pick-now">選ぶ</span>'
+    +'<span class="opf-panel-mark" aria-hidden="true" title="押すと大きな札の窓が開きます">▦</span></button>';
+   box.querySelector('.opf-panel-btn').onclick=e=>{e.preventDefault();openPanel(def,host,sel)};
   }else if(kind==='メニュー'){
    /* メニュー（§9.247 ①、利用者の指示「フローティングメニューみたいなもの」）。
       **`一覧`とは開く場所が違う**——あちらは画面のまん中に開く大きな窓＋
@@ -1214,7 +1257,7 @@
     const at=arr.findIndex(o=>o[0]===String(sel.value==null?'':sel.value));
     /* まだ選んでいないとき（`at<0`）は**先頭から**。−で戻るときは末尾から。 */
     const nx=at<0?(d>0?0:arr.length-1):((at+d+arr.length)%arr.length);
-    setValue(sel,arr[nx][0]);syncWidget(host);
+    pickValue(sel,arr[nx][0]);syncWidget(host);
    };
    const btn=box.querySelector('.opf-cycle-btn');
    btn.onclick=e=>{e.preventDefault();step(1)};
@@ -1239,7 +1282,7 @@
    sw.onclick=e=>{
     e.preventDefault();
     const nowOn=!!sel.value&&sel.value!=='-';
-    setValue(sel,nowOn?'':sw.dataset.opOn);
+    pickValue(sel,nowOn?'':sw.dataset.opOn);
     syncWidget(host);
    };
   }else{
@@ -1277,7 +1320,7 @@
     box.classList.toggle('is-plain',!list.some(o=>noteOf(def,o.v)));
    applyLayout(box,def);
    box.querySelectorAll('[data-opv]').forEach(b=>{
-    b.onclick=e=>{e.preventDefault();setValue(sel,b.dataset.opv);syncWidget(host)};
+    b.onclick=e=>{e.preventDefault();pickValue(sel,b.dataset.opv);syncWidget(host)};
    });
    if(free)wireOther(box,sel,host);
    /* **左右キーで移れること**（ラジオグループの約束）。押せるのにキーボードで
@@ -1292,7 +1335,7 @@
     const i=Math.max(0,btns.findIndex(b=>b.classList.contains('is-on')));
     const d=(e.key==='ArrowRight'||e.key==='ArrowDown')?1:-1;
     const nx=btns[(i+d+btns.length)%btns.length];
-    setValue(sel,nx.dataset.opv);syncWidget(host);nx.focus();
+    pickValue(sel,nx.dataset.opv);syncWidget(host);nx.focus();
    };
   }
   applyLook(host,def);                       /* §9.223 ③ 色・形・大きさ */
@@ -1307,10 +1350,12 @@
  /* 器を外す（マスタで「プルダウン」へ戻したとき）。**付いたまま置かない**
     ——外し忘れると、戻したはずの欄がボタンのまま残る（§9.210 ④と同じ罠）。 */
  function stripWidget(host){
+  delete host.dataset.opSpin;               /* §9.248 ① 付いたまま置かない */
   const box=host.querySelector(':scope>.opf-widget');
   /* **開いているメニューは畳む**（§9.222 ①）——器を消したあとに浮いたまま
      残ると、どの欄のものか分からないメニューが画面に残る。 */
   if(box&&menuBack&&box.contains(menuBack))closeMenu();
+  if(box&&panelBack&&box.contains(panelBack))closePanel();
   if(box)box.remove();
   host.classList.remove('opf-alt');
   /* **`<input>`の欄も元へ戻す**（§9.219 ③）。`select`だけを見ていると、
@@ -1477,7 +1522,7 @@
     +(free?'<div class="opf-menu-free"><input type="text" class="opf-menu-free-in"'
       +' autocomplete="off" placeholder="候補にない値を打つ" aria-label="候補にない値を打つ"></div>':'');
    el.querySelectorAll('[data-opv]').forEach(b=>{
-    b.onclick=e=>{e.preventDefault();setValue(sel,b.dataset.opv);syncWidget(host);closeMenu()};
+    b.onclick=e=>{e.preventDefault();pickValue(sel,b.dataset.opv);syncWidget(host);closeMenu()};
    });
    const fi=el.querySelector('.opf-menu-free-in');
    if(fi){
@@ -1519,6 +1564,79 @@
   menuOff=()=>{window.removeEventListener('scroll',onScroll,true);
                window.removeEventListener('resize',onResize)};
   const first=el.querySelector('.opf-menu-item.is-on')||el.querySelector('.opf-menu-item');
+  if(first&&first.focus){try{first.focus()}catch(e){}}
+ }
+
+ /* ---------- 大きな札を並べた窓（§9.248 ①、利用者の指示） ----------
+    「フローティングモーダル…違うタイプのものを増やしたい」
+
+    **`一覧`（`.opf-picker`）とは別の道具**——あちらは1行ずつの表＋絞り込みで
+    「名前で探す」形。こちらは**札を並べて見て選ぶ**形で、指で押す端末や、
+    説明を読んで決めたい選択肢に向く。並べ方（何列か）は`並べ方`の軸が持つ。
+    **器の外（body直下）へ`position:fixed`**（§9.201）。角丸・色は開くときに
+    欄から写す（`carryLook()`）。 */
+ let panelEl=null,panelBack=null;
+ function ensurePanelWin(){
+  if(panelEl)return panelEl;
+  panelEl=document.createElement('div');
+  panelEl.className='opf-picker opf-panel-win';panelEl.id='opfPanel';panelEl.hidden=true;
+  panelEl.innerHTML='<div class="opf-picker-box" role="dialog" aria-modal="true">'
+   +'<header><b id="opfPanelName"></b>'
+   +'<button type="button" id="opfPanelClose" aria-label="閉じる">×</button></header>'
+   +'<div class="opf-panel-grid" id="opfPanelGrid"></div>'
+   +'<div class="opf-panel-free" id="opfPanelFree" hidden>'
+   +'<input type="text" class="opf-menu-free-in" id="opfPanelFreeIn" autocomplete="off"'
+   +' placeholder="候補にない値を打つ" aria-label="候補にない値を打つ"></div></div>';
+  document.body.appendChild(panelEl);
+  WL.modal.keepOpen(panelEl);
+  panelEl.querySelector('#opfPanelClose').onclick=closePanel;
+  document.addEventListener('keydown',e=>{
+   if(panelEl&&!panelEl.hidden&&WL.modal.escCloses(e)){e.stopPropagation();closePanel()}
+  },true);
+  return panelEl;
+ }
+ function closePanel(){
+  if(!panelEl||panelEl.hidden)return;
+  panelEl.hidden=true;
+  const back=panelBack;panelBack=null;
+  if(back&&back.focus){try{back.focus()}catch(e){}}
+ }
+ function openPanel(def,host,sel){
+  const el=ensurePanelWin();
+  carryLook(host,el);
+  panelBack=host.querySelector('.opf-panel-btn');
+  el.hidden=false;
+  el.querySelector('#opfPanelName').textContent=def.name;
+  /* 並べ方（§9.226 ①）は窓の中の札にも効く。 */
+  const grid=el.querySelector('#opfPanelGrid');
+  applyLayout(grid,def);
+  const opts=pickableOpts(optionsOf(sel),def);
+  const draw=()=>{
+   const v=String(sel.value==null?'':sel.value);
+   grid.innerHTML=opts.length?opts.map(o=>{
+    const label=(o.v===''||o.t==='-')?'（選ばない）':o.t;
+    const note=noteOf(def,o.v);
+    return '<button type="button" class="opf-panel-item'+(o.v===v?' is-on':'')+'"'
+     +' data-opv="'+esc(o.v)+'"><b>'+esc(label)+'</b>'
+     +(note?'<small>'+esc(note)+'</small>':'')+'</button>';
+   }).join(''):'<p class="opf-picker-empty">選べる候補がありません。</p>';
+   grid.querySelectorAll('[data-opv]').forEach(b=>{
+    b.onclick=e=>{e.preventDefault();pickValue(sel,b.dataset.opv);syncWidget(host);closePanel()};
+   });
+  };
+  draw();
+  /* 手打ちの席は**窓の足元に1つ**（§9.226 ①「打つ場所は1つ」）。 */
+  const free=el.querySelector('#opfPanelFree'),fi=el.querySelector('#opfPanelFreeIn');
+  free.hidden=!def.freeText;
+  if(def.freeText&&fi){
+   fi.value=isFreeValue(sel,sel.value)?String(sel.value||''):'';
+   fi.oninput=()=>{
+    const t=fi.value.trim();
+    if(t)setFree(sel,t);else setValue(sel,'');
+    syncWidget(host);draw();
+   };
+  }
+  const first=grid.querySelector('.opf-panel-item.is-on')||grid.querySelector('.opf-panel-item');
   if(first&&first.focus){try{first.focus()}catch(e){}}
  }
 
@@ -1587,7 +1705,7 @@
    }).join(''):(own?'':'<p class="opf-picker-empty">「'+esc(find.value)+'」に当たる選択肢はありません。'
      +(free?'':'この項目は候補からしか選べません。')+'</p>'));
    list.querySelectorAll('[data-opv]').forEach(b=>{
-    b.onclick=()=>{setValue(sel,b.dataset.opv);syncWidget(host);closePicker()};
+    b.onclick=()=>{pickValue(sel,b.dataset.opv);syncWidget(host);closePicker()};
    });
    const fb=list.querySelector('[data-opfree]');
    if(fb)fb.onclick=()=>{setFree(sel,fb.dataset.opfree);syncWidget(host);closePicker()};
@@ -1757,6 +1875,7 @@
      ——母材の器だけが在ることは無い（同じ測定画面の中）。 */
   const boxes=[...new Set(PLACE_ORDER.map(boxFor).filter(Boolean))];
   if(!boxes.length)return;
+  wireChoiceUsage();                       /* §9.248 ⑤ 1度だけ配線する */
   /* 前回の割り付けを外してから始める（§9.210 ④と同じ約束——付いたまま
      測る・置くと、1回変えた形が二度と戻らない）。 */
   boxes.forEach(bx=>{
@@ -2249,6 +2368,58 @@
   el.addEventListener('change',syncAutoOpen);
  }
 
+ /* ---------- 選ばれた回数を数える（§9.248 ⑤、利用者の指示） ----------
+    「マスタ側に使用回数を、使用回数の多いものほど上に来るようにすれば、
+     非常に使いやすくなるはずです。」
+
+    **投げっぱなしで呼ぶ**——数え損ねても測定は続く（並びが1回ぶん古くなる
+    だけ）。値が入るのを待たせない。
+    **手で打った値は数えない**——サーバーの`choice_used_bump()`が選択肢に
+    無い値では何もしないので、打ち間違いでマスタが膨れることは無い。
+    **同じ値を続けて選んでも1回ずつ数える**（選び直しは選び直し）が、
+    **器を組み直すたびに飛ぶ`change`は数えない**——記録の復元・仕掛由来の
+    プリセット・`syncWidgets()`の当て直しで回数が増えると、「よく使う順」が
+    実際の使用と食い違う。見分けは**本物のイベント（素のプルダウン）か、
+    `pickValue()`の印が立っている（器を被せた形）か**の2つ。
+    **片方だけを見ないこと**——`isTrusted`だけだと、⑤がいちばん効かせたい
+    「新しい表示領域を開くタイプ」（一覧・メニュー・パネル）が合成イベント
+    なので1回も数えられない。 */
+ let usedWired=false;
+ function wireChoiceUsage(){
+  if(usedWired)return;
+  usedWired=true;
+  document.addEventListener('change',e=>{
+   const el=e.target;
+   if(!el||el.tagName!=='SELECT')return;
+   const host=el.closest('.opf-host');
+   const name=host&&host.dataset.opChoice;
+   /* **数えてよいのは「人が選んだ」ときだけ**。見分けは3つで、どれか1つでも
+      当たれば数える:
+       ・`isTrusted` ＝ 本物のイベント（実機で素のプルダウンを操作した）
+       ・`userPicking` ＝ 器の札を押した（`pickValue()`が立てる印。器を被せた
+         形は`setValue()`の合成イベントなので`isTrusted`は偽）
+       ・器を被せていない ＝ 押す札が無いので、飛んできた`change`は人しかいない
+         （**画面側の書き戻しは`change`を飛ばさない**——記録の復元は
+         `putValue()`、内径のプリセットは`el.value=`のまま。`measurement-view.js`
+         にも「`el.value=`ではchangeが飛ばない」と書いてある）
+      **1つだけを見ないこと**——`isTrusted`だけだと⑤がいちばん効かせたい
+      「新しい表示領域を開くタイプ」が1回も数えられず、全部数えると
+      `syncWidgets()`の当て直しで前回の値が先頭へ固定される。
+      **「器を被せたか」は`displayEl()`と同じ見分けを使う**（§9.233 ③）
+      ——素のプルダウンにも**空の器**（`.opf-widget.opf-plain`）が付くので、
+      `.opf-widget`が在るかだけを見ると素のプルダウンまで器扱いになり、
+      **人が選んでも1回も数えない**（実際にそうなった）。 */
+   if(!e.isTrusted&&!userPicking
+      &&host&&host.querySelector(':scope>.opf-widget:not(.opf-plain)'))return;
+   const value=String(el.value||'');
+   if(!name||!value||value==='-')return;
+   try{
+    api('/api/operation-choice-master/used',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name,value})}).catch(()=>{});
+   }catch(_){}
+  },true);
+ }
  async function refresh(equipment){
   await load(equipment);
   layout();

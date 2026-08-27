@@ -4356,6 +4356,7 @@
                 aligns:['自動','左','中央','右'],
                 valueFormats:['そのまま','3桁区切り','ゼロ埋め'],
                 unitInBlocked:[],unitInFreeTextBlocked:[],freeTextBlocked:[],
+                choiceOrders:[],choiceOrderWidgets:[],widgetGroups:[],
                 /* 並べ方の選択肢と、それが効く入力方法（§9.226 ①）。
                    **サーバーが答える**——ここは届くまでの受け皿。 */
                 layouts:['自動'],layoutWidgets:[],
@@ -4412,6 +4413,7 @@
   /* §9.219 ③（利用者の指示「UIの種類を増やしたり」）。数値・自由記述にも
      「押して決める道具」を置く。**素の欄は残る**ので、打つこともできる。 */
   'ステッパー':{icon:'∓',note:'−／＋で1つずつ増減。1〜9くらいの整数向き'},
+  'スピナー':{icon:'⇕',note:'欄の右端に小さな上下矢印。狭いマスでも入る'},
   'スライダー':{icon:'⇹',note:'目盛を引いて決める。上下限のある数値向き'},
   'キーパッド':{icon:'⌗',note:'押すと浮き窓のテンキー。キーボードの無い端末向き'},
   'メモ':{icon:'☰',note:'複数行で書ける。自由記述向き'},
@@ -4431,6 +4433,9 @@
      選択肢が変化するタイプのUIなど」）。**一覧とどう違うかを一言に書く**
      ——名前だけでは「浮き窓が開く」点で同じに読める。 */
   'メニュー':{icon:'⋮',note:'押した欄のすぐ横に浮くメニュー。数個を目を動かさず選ぶとき'},
+  /* §9.248 ①（利用者の指示「フローティングモーダル…違うタイプのものを増やしたい」）。
+     **一覧との違いを一言に書く**——どちらも窓が開くので、名前だけでは選べない。 */
+  'パネル':{icon:'▦',note:'画面のまん中に大きな札を並べた窓。指で押す端末・説明を読んで選ぶとき'},
   '切替':{icon:'↻',note:'ボタン1つ。押すたびに次の選択肢へ進む（狭いマスで2〜4個）'},
   'メーター':{icon:'▬',note:'打つ欄はそのまま。上下限のどこに居るかを帯で示す'},
   '定型文':{icon:'✎',note:'1行入力＋よく使う語句のボタン（まとまりの値から作る）'},
@@ -6016,6 +6021,39 @@
          +'記録は空のまま、画面ではどれも選ばれていない状態になります。':''}</i>
     </span></div>`;
  }
+ /* ---------- 選択肢の並び（§9.248 ⑤、利用者の指示） ----------
+    「プルダウンリストなど、**新しい表示領域を作って表示するタイプのUI**に
+     ついては、余白に余裕がある方なので、選択肢の使用回数に応じて選択肢の
+     並び順を変えることができる機能を実装してほしいです。」
+
+    **効くのは「押すと新しい面が開く」形だけ**——札を並べる形（ラジオ・
+    セグメント・ボタン群…）で順番が変わると、**同じ欄なのに押す場所が
+    毎回動く**（手が場所を覚えられない）。効かない形では押せなくして
+    理由を書く（§4）。**どの形で効くかはサーバーが答える**（§9.163）。 */
+ function opChoiceOrderRowHtml(x,widget){
+  if(!opIsChoiceLike(x))return '';
+  const usable=(opState.choiceOrderWidgets||[]).includes(widget);
+  const now=String(x.choiceOrder||'');
+  const used=(opState.choices||[]).filter(c=>c.name===x.choice)
+    .reduce((n,c)=>n+(Number(c.used)||0),0);
+  return `<div class="op-form-row is-fixed-layout"><span class="op-form-label">選択肢の並び</span>
+    <span class="op-form-ctl">
+     <span class="op-look-row">
+      <button type="button" data-op-corder="" class="op-mini${now?'':' is-on'}"${usable?'':' disabled'}>登録順</button>
+      <button type="button" data-op-corder="よく使う順" class="op-mini${now?' is-on':''}"${usable?'':' disabled'}>よく使う順</button>
+     </span>
+     <i class="op-form-note">${usable
+       ?(now?'<b>選ばれた回数の多いものほど上</b>に並べます。'
+            +'回数が同じものは登録順のままです（並びが読むたびに変わらないように）。'
+            +`いまこのまとまりの合計は<b>${used}回</b>です。`
+            +'回数は「選択肢の値」の画面で確かめられます。'
+          :'マスタの<b>表示順</b>のまま並べます（今までどおり）。')
+       :`<b>「${esc(widget)}」では使えません</b>——札を並べる形で順番が変わると、`
+        +'同じ欄なのに<b>押す場所が毎回動きます</b>。'
+        +'<b>プルダウン・一覧・メニュー</b>のように、押すと新しい面が開く形で選べます。'
+        +(now?'（この設定は<b>残してあります</b>。選ばせ方を戻すとまた効きます）':'')}</i>
+    </span></div>`;
+ }
  function opLookPickHtml(x){
   const lk=opLookOf(x);
   const swatch=c=>`<button type="button" data-op-look="color" data-op-val="${esc(c)}"`
@@ -6108,8 +6146,15 @@
   /* §9.247 ①でトグルは「割れ枠」へ作り直した。**見本の絵も一緒に直すこと**
      ——実物と食い違うと、設定画面で確かめた意味が無い（§9.229 ②）。 */
   if(w==='トグル')return `<span class="opd opd-toggle"><i class="opd-on">${esc(vs[0])}</i><i>${esc(vs[1]||'—')}</i></span>`;
-  if(w==='一覧')return `<span class="opd opd-pick">${esc(vs[0])}<b>⌸</b></span>`;
+  if(w==='一覧')return `<span class="opd opd-pick">${esc(vs[0])}<b>☰</b></span>`;
+  /* §9.248 ①で足した2つ。**絵でも違いが読めること**——`パネル`は札が並んだ
+     窓、`スピナー`は欄の右端の上下矢印。名前だけで選ばせない。 */
+  if(w==='パネル')return `<span class="opd opd-panel"><u>${esc(vs[0])}<b>▦</b></u>`
+   +`<em><i class="opd-on">${esc(vs[0])}</i><i>${esc(vs[1]||'')}</i>`
+   +`<i>${esc(vs[2]||'')}</i><i></i></em></span>`;
   if(w==='ステッパー')return `<span class="opd opd-step"><b>−</b><i>${esc(vs[0])}</i><b>＋</b></span>`;
+  if(w==='スピナー')return `<span class="opd opd-spin"><i>${esc(vs[0])}</i>`
+   +`<u><b>▲</b><b>▼</b></u></span>`;
   if(w==='スライダー')return `<span class="opd opd-range"><u></u><b></b></span>`;
   if(w==='キーパッド')return `<span class="opd opd-pad"><b>7</b><b>8</b><b>9</b></span>`;
   if(w==='早見ボタン')return row('opd-chips');
@@ -6132,6 +6177,48 @@
   if(w==='文字だけ')return `<span class="opd opd-bare">123.4</span>`;
   if(w==='強調')return `<span class="opd opd-strong">123.4</span>`;
   return '';
+ }
+ /* ---------- 選ばせ方の盤は「まとまり」で束ねる（§9.248 ①、利用者の指示） ----------
+    「UIの選択自体もUIでもう少しグルーピングや階層を持たせて似たようなものを
+     まとめわかりやすく選びやすく配置してほしいです。」
+
+    24種を平らに並べると、選ぶこと自体が「探す」作業になる（§2）。
+    **まとまりと並びはサーバーが持つ**（`operation_repo.WIDGET_GROUPS`）
+    ——画面へ写すと、種類を足したときに2箇所直すことになる（§9.163）。
+    **その型で選べないものは出さない**（今までどおり`opWidgetsFor`で絞る）ので、
+    数値の欄には「並べて見せる」の群がそもそも出ない——空の見出しを残さない（§4）。
+    **見出しには件数と一言**を添える（何のまとまりかを推測させない・§6）。
+    **いま選んでいるものがどの群かを見出しでも言う**——畳んでいないので
+    探せば見つかるが、24枚の中から自分の選択を目で探すのは「探させる」こと。 */
+ function opWidgetPickerHtml(x,widget,usable){
+  const usableList=opWidgetsFor(x);
+  const groups=(opState.widgetGroups||[]).map(g=>({
+    label:g.label,note:g.note,items:(g.items||[]).filter(w=>usableList.includes(w))}))
+   .filter(g=>g.items.length);
+  /* **まとまりに載っていないものは最後へ**（載せ忘れても盤から消えない・§4）。 */
+  const seen=new Set(groups.flatMap(g=>g.items));
+  const rest=usableList.filter(w=>!seen.has(w));
+  if(rest.length)groups.push({label:'その他',note:'',items:rest});
+  const tile=w=>`<button type="button" data-op-widget="${esc(w)}"`
+    +` class="op-widget-tile${widget===w?' is-on':''}"${usable?'':' disabled'}>`
+    +`<b class="op-widget-icon">${esc((OP_WIDGET_NOTE[w]||{}).icon||'')}</b>`
+    +`<span class="op-widget-name">${esc(opWidgetLabel(x,w))}</span>`
+    +`<span class="op-widget-demo">${opWidgetDemoHtml(x,w)}</span>`
+    +`<small class="op-widget-note">${esc((OP_WIDGET_NOTE[w]||{}).note||'')}</small></button>`;
+  /* まとまりが1つしか無いなら見出しを出さない（1つのものに名前を付けても
+     何も分けられない——覚える手間だけが増える・§8）。 */
+  if(groups.length<=1)
+   return `<span class="op-widget-grid">${usableList.map(tile).join('')}</span>`;
+  return `<span class="op-widget-groups">${groups.map(g=>{
+    const here=g.items.includes(widget);
+    return `<span class="op-widget-group${here?' is-here':''}">`
+     +`<span class="op-widget-group-head">`
+     +`<b>${esc(g.label)}</b><i>${g.items.length}</i>`
+     +(here?'<em>いま選んでいます</em>':'')
+     +(g.note?`<small>${esc(g.note)}</small>`:'')
+     +`</span>`
+     +`<span class="op-widget-grid">${g.items.map(tile).join('')}</span></span>`;
+   }).join('')}</span>`;
  }
  function renderOpModal(){
   const m=$('#opItemModal');if(!m||m.hidden)return;
@@ -6429,12 +6516,7 @@
   const paneLook=sec('どう見せるか','選ばせ方・意匠・単位の置き場（記録の中身は変わりません）',`
    <div class="op-form-row"><span class="op-form-label">選ばせ方</span>
     <span class="op-form-ctl">
-     <span class="op-widget-grid">${opWidgetsFor(x).map(w=>`<button type="button" data-op-widget="${esc(w)}"`
-       +` class="op-widget-tile${widget===w?' is-on':''}"${usable?'':' disabled'}>`
-       +`<b class="op-widget-icon">${esc((OP_WIDGET_NOTE[w]||{}).icon||'')}</b>`
-       +`<span class="op-widget-name">${esc(opWidgetLabel(x,w))}</span>`
-       +`<span class="op-widget-demo">${opWidgetDemoHtml(x,w)}</span>`
-       +`<small class="op-widget-note">${esc((OP_WIDGET_NOTE[w]||{}).note||'')}</small></button>`).join('')}</span>
+     ${opWidgetPickerHtml(x,widget,usable)}
      <i class="op-form-note">${opIsOutput(x)
        ?'この欄は<b>画面が値を入れます</b>（前工程の実績・計算の結果）。打ち込む部品は要らないので、選べるのは<b>見せ方</b>だけです——単位・寄せ・意匠は他の欄と同じように効きます。'
        :usable
@@ -6445,6 +6527,7 @@
     </span></div>
    ${opLayoutRowHtml(x,widget)}
    ${opBlankRowHtml(x,widget)}
+   ${opChoiceOrderRowHtml(x,widget)}
    ${opLookPickHtml(x)}
    ${opLookRowHtml(x,widget)}
    ${opSourceNoteRowHtml(x)}`);
@@ -6665,6 +6748,10 @@
   /* §9.228 ④ 空欄（選ばない）の札と、その場で直せる初期値。 */
   form.querySelectorAll('[data-op-blank]').forEach(b=>b.onclick=()=>
     touch({noBlank:b.dataset.opBlank==='1'}));
+  /* §9.248 ⑤ 選択肢の並び。 */
+  form.querySelectorAll('[data-op-corder]').forEach(b=>b.onclick=()=>{
+   if(b.disabled)return;touch({choiceOrder:b.dataset.opCorder});
+  });
 
   form.querySelectorAll('[data-op-align]').forEach(b=>b.onclick=()=>touch({align:b.dataset.opAlign}));
   /* §9.233 ⑤ 仕掛由来の添え書きの置き場。 */
@@ -6820,6 +6907,8 @@
           layout:x.layout||'自動',groupSpan:Number(x.groupSpan)||0,
           /* §9.228 ②④。**空きと空欄の札も必ず送る**（同じ理由）。 */
           dummy:!!x.dummy,noBlank:!!x.noBlank,
+          /* §9.248 ⑤。選択肢の並びも同じ——落とすと保存のたびに登録順へ戻る。 */
+          choiceOrder:x.choiceOrder||'',
           /* §9.242 ④。③「記録した値」へ出すかも同じ——落とすと保存のたびに
              既定（出す）へ戻る（§9.212 ②と同じ形）。 */
           recordShow:x.recordShow!==false,
@@ -6862,6 +6951,8 @@
     /* §9.228 ②④。**空きと空欄の札も必ず送る**——`item_upsert`は全列を
        書くので、送らないと保存のたびに既定へ戻る（§9.212 ②と同じ形）。 */
     dummy:!!d.dummy,noBlank:!!d.noBlank,
+    /* §9.248 ⑤ 選択肢の並び（''＝登録順／'よく使う順'）。 */
+    choiceOrder:d.choiceOrder||'',
     /* §9.242 ④ ③「記録した値」に出すか。 */
     recordShow:d.recordShow!==false,
     /* §9.233 ⑤ */
@@ -7117,7 +7208,7 @@
     </div>
     <div class="oc-table" role="table">
      <div class="oc-row is-head" role="row">
-      <span></span><span>値</span><span>説明</span><span>よみ</span><span>出る設備</span><span>出す</span><span></span>
+      <span></span><span>値</span><span>説明</span><span>よみ</span><span>出る設備</span><span title="この値が測定画面で選ばれた回数です。項目マスタで「選択肢の並び」を『よく使う順』にすると、この回数の多いものから並びます（§9.248 ⑤）">使用</span><span>出す</span><span></span>
      </div>
      <div class="oc-table-scroll">
       ${rows.map(r=>ocValueRowHtml(r)).join('')
@@ -7155,6 +7246,10 @@
     <span class="oc-cell is-sub${r.note?'':' is-blank'}" title="${esc(r.note||'（説明なし）')}">${esc(r.note||'—')}</span>
     <span class="oc-cell is-sub${r.reading?'':' is-blank'}" title="${esc(r.reading||'（よみなし）')}">${esc(r.reading||'—')}</span>
     <span class="oc-eq-tags" title="${esc(ocEqLabel(r.equipment))}">${ocEqTagsHtml(r.equipment)}</span>
+    <span class="oc-used${Number(r.used)?'':' is-blank'}" title="${
+      Number(r.used)?`測定画面でこの値が選ばれた回数です（${Number(r.used)}回）。項目マスタで「選択肢の並び」を『よく使う順』にすると、この回数の多いものから並びます`
+                    :'測定画面でまだ1度も選ばれていません'
+     }">${Number(r.used)||'—'}</span>
     <label class="oc-on" title="外すと選択肢に出なくなります（記録は消えません）">
      <input type="checkbox" data-oc-f="enabled"${r.enabled?' checked':''}><span>${r.enabled?'出す':'出さない'}</span></label>
     <button type="button" class="oc-del" title="この値を削除します">削除</button>
@@ -7390,6 +7485,11 @@
    /* 手打ちの席が無い入力方法（§9.247 ①）。**規則はサーバーが持つ**ので、
       画面は一覧を引くだけ（判定を2つ持たない・§9.163）。 */
    opState.freeTextBlocked=it.freeTextBlocked||opState.freeTextBlocked;
+   /* §9.248 ⑤ 選択肢の並びの語彙と、それが効く入力方法。 */
+   opState.choiceOrders=it.choiceOrders||opState.choiceOrders;
+   opState.choiceOrderWidgets=it.choiceOrderWidgets||opState.choiceOrderWidgets;
+   /* §9.248 ① 選ばせ方のまとまり（盤の見出しと並び）。 */
+   opState.widgetGroups=it.widgetGroups||opState.widgetGroups;
    /* §9.231 ②。**いまの値も一緒に来る**（選んだ設備で引き直した結果）。 */
    opState.limitSources=it.limitSources||opState.limitSources;
    /* §9.233 ⑤ */

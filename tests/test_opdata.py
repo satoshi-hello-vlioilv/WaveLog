@@ -596,6 +596,115 @@ try:
     rec('削除にIDが無ければ断る', code == 400, '%s %s' % (code, res.get('error')))
     code, res = post('/api/operation-item-master', {'name': '', 'user_id': 'tests'})
     rec('名前が空なら断る', code == 400, '%s %s' % (code, res.get('error')))
+
+    # ==================================================================
+    # 選択肢の並びを「よく使う順」にできる（§9.248 ⑤、利用者の指示）
+    # ------------------------------------------------------------------
+    #   「選択肢の使用回数に応じて選択肢の並び順を変えることができる機能を
+    #    実装してほしいです。マスタ側に使用回数を、使用回数の多いものほど
+    #    上に来るようにすれば、非常に使いやすくなるはずです。」
+    #
+    # ここで固定すること:
+    #  1. 使われた回数が数えられる（選択肢に無い値では**行を作らない**）
+    #  2. 「よく使う順」にすると回数の多い順、**同数は表示順のまま**
+    #  3. **効くのは「押すと新しい面が開く」形だけ**——札を並べる形で
+    #     順番が変わると、同じ欄なのに押す場所が毎回動く（§4）
+    #  4. 効かない形でも**保存値は残る**（形を戻せばまた効く）
+    # ==================================================================
+    NAME = '回帰_並び%d' % (os.getpid() % 100000)
+    ids = []
+    for i, v in enumerate(['あ', 'い', 'う']):
+        code, res = post('/api/operation-choice-master',
+                         {'name': NAME, 'value': v, 'user_id': 'tests'})
+        if res.get('id'):
+            ids.append(res['id'])
+            made_choices.append(res['id'])
+    rec('前提: 並べ替えを見る選択肢を3つ作れた', len(ids) == 3, str(ids))
+    # 「い」を3回・「う」を1回選んだことにする（「あ」は0回）。
+    for _ in range(3):
+        post('/api/operation-choice-master/used', {'name': NAME, 'value': 'い'})
+    post('/api/operation-choice-master/used', {'name': NAME, 'value': 'う'})
+    # **選択肢に無い値は数えない**（手打ちでマスタが膨れない）。
+    code, res = post('/api/operation-choice-master/used',
+                     {'name': NAME, 'value': '打ち間違い'})
+    rec('選択肢に無い値では行を作らない', res.get('updated') == 0,
+        '%s %s' % (code, res.get('updated')))
+    res = get('/api/operation-choice-master')
+    used = {r['value']: r.get('used') for r in res.get('items', []) if r.get('name') == NAME}
+    rec('使われた回数が数えられている', used.get('い') == 3 and used.get('う') == 1
+        and not used.get('あ'), str(used))
+
+    ITEM = '回帰_並び項目%d' % (os.getpid() % 100000)
+    code, res = post('/api/operation-item-master',
+                     {'name': ITEM, 'user_id': 'tests', 'equipment': '*',
+                      'group': 'その他', 'type': '選択', 'choice': NAME,
+                      'widget': 'プルダウン'})
+    item_id = res.get('id')
+    if item_id:
+        made_items.append(item_id)
+
+    def choices_of():
+        r = get('/api/operation-form?equipment=' + urllib.parse.quote(EQ))
+        hit = [x for x in r.get('items', []) if x.get('name') == ITEM]
+        return (hit[0].get('choices') if hit else None,
+                hit[0].get('choiceOrder') if hit else None)
+
+    rec('前提: 既定は登録順（今までどおり）', choices_of()[0] == ['あ', 'い', 'う'],
+        str(choices_of()))
+
+    def save_item(widget, order):
+        return post('/api/operation-item-master/update',
+                    {'id': item_id, 'user_id': 'tests', 'name': ITEM,
+                     'equipment': '*', 'group': 'その他', 'type': '選択',
+                     'choice': NAME, 'widget': widget, 'choiceOrder': order})
+
+    save_item('プルダウン', 'よく使う順')
+    got, saved = choices_of()
+    rec('「よく使う順」にすると回数の多い順（プルダウン）',
+        got == ['い', 'う', 'あ'] and saved == 'よく使う順', '%s %s' % (got, saved))
+    # **札を並べる形では効かない**（押す場所が毎回動くのを避ける）。
+    save_item('セグメント', 'よく使う順')
+    got, saved = choices_of()
+    rec('札を並べる形（セグメント）では並べ替えない', got == ['あ', 'い', 'う'],
+        str(got))
+    # **保存値は残す**——形を戻せばまた効く（§9.233 ④と同じ作法）。
+    rec('効かない形でも保存値は残る', saved == 'よく使う順', str(saved))
+    save_item('メニュー', 'よく使う順')
+    rec('メニューでも効く（押すと面が開く形）', choices_of()[0] == ['い', 'う', 'あ'],
+        str(choices_of()[0]))
+    save_item('パネル', 'よく使う順')
+    rec('パネルでも効く（押すと面が開く形）', choices_of()[0] == ['い', 'う', 'あ'],
+        str(choices_of()[0]))
+
+    # ==================================================================
+    # 選ばせ方のまとまり（§9.248 ①、利用者の指示）
+    # ------------------------------------------------------------------
+    #   「UIの選択自体もUIでもう少しグルーピングや階層を持たせて似たような
+    #    ものをまとめわかりやすく選びやすく配置してほしいです。」
+    #
+    # **語彙も並びもサーバーが持つ**（画面へ写さない・§9.163）。
+    # **どの入力方法もどこかの群に居ること**を機械で数える——載せ忘れると
+    # 盤の最後の「その他」へ落ちるだけで気づけない（§CLAUDE「目で数えない」）。
+    # ==================================================================
+    res = get('/api/operation-item-master')
+    groups = res.get('widgetGroups') or []
+    widgets = res.get('widgets') or []
+    rec('選ばせ方のまとまりをサーバーが答える', len(groups) >= 5, str(len(groups)))
+    covered = [w for g in groups for w in (g.get('items') or [])]
+    rec('どの入力方法もどこかの群に居る',
+        all(w in covered for w in widgets),
+        str([w for w in widgets if w not in covered]))
+    rec('群に、語彙に無い入力方法が混ざっていない',
+        all(w in widgets for w in covered),
+        str([w for w in covered if w not in widgets]))
+    rec('同じ入力方法が2つの群に居ない', len(covered) == len(set(covered)),
+        str(len(covered) - len(set(covered))))
+    rec('群には見出しと一言が付いている',
+        all(g.get('label') and g.get('note') for g in groups),
+        str([g.get('label') for g in groups if not g.get('note')]))
+    # §9.248 ① 足した2つが語彙に入っていること（綴りまで見る）。
+    rec('パネル・スピナーが選べる',
+        'パネル' in widgets and 'スピナー' in widgets, str(len(widgets)))
 finally:
     # **後始末**。db/master.sqlite3は実行をまたいで生き延びる(§9.121)。
     for i in made_blocks:

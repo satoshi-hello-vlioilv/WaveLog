@@ -31,11 +31,15 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
 /* 列レイアウトマスタは**実行をまたいで生き延びる**（§9.121）ので必ず消す。 */
 const cleanup=()=>post('/api/column-layout-master',{target:TARGET,clear:true,order:[],widths:{},hidden:[],
   names:{},formats:{},rules:{},formulas:{},locks:[],user_id:'test'}).catch(()=>{});
+/* 共有DBへ注ぎ込んだ検証用のレコードも同じ理由で必ず消す。 */
+const cleanupRecs=()=>post('/api/measurement/backup/delete',
+  {id:'rpsplit-eqA',user_id:'test'}).catch(()=>{});
 const settle=async page=>{await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))))};
 let b=null;
 
 (async()=>{
  await cleanup();
+ await cleanupRecs();
  b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
  const page=await b.newPage({viewport:{width:1700,height:1000}});
  const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
@@ -578,6 +582,139 @@ let b=null;
   rec('繰り返しの回数は子ロットの数（1回/2回）',
       rep.回数.あり===2&&rep.回数.なし===1,JSON.stringify(rep.回数));
 
+  /* ==========================================================
+     子ロットごとの統計は「開けば出ている」（§9.248 ②、利用者の指示）
+     ----------------------------------------------------------
+       「帳票ブロックマスタに異幅分割ありのロットでロット番号が1ロット内に
+        複数混在するパターンにおいても各分割ロット単位ごとに統計データが
+        出てくるように対応をお願いします」
+
+     **これは§9.247 ②と同じ文言の2度目の指摘**——仕組み（`[繰返]`＝子ロット、
+     `統計の塊`）は前回で入っていたが、**どちらも既定が「出さない」**だったので
+     利用者の席からは何一つ変わっていなかった。だから固定するのは
+     「引ける」ことではなく**紙に出ている**こと。
+
+     ここで見ること:
+      1. 分割ありのロットを開くと、**触らなくても**統計の節が紙に出る
+      2. 子ロットの数だけ行があり、板幅が子ロットごとに切れている
+      3. **分割の無いロットの紙は1枚も増えない**（今までどおり）
+      4. 既に配置を保存してある設備（＝既定が効かない）では、
+         **先回りして「統計を出す」を画面に出す**（§2）。押すと紙に出る
+
+     **紙になる節そのものを見ること**——`WL.reportStat.lots()`が値を返すか
+     だけを見る網は、既定で隠したままの実装でも通る（実際にそうなっていた）。
+     ========================================================== */
+  const SPLIT_ID='rpsplit-eqA';
+  const putRec=(id,lotNo,payload)=>post('/api/measurement/backup',
+    {id,equipment:EQ,lotNo,inspectionNo:'K-RP',status:'編集中',
+     codec:'json-full-v32',payload:JSON.stringify(payload),user_id:'test'});
+  /* 丈2・条5。条1〜2＝CHILD-A（板幅50台）／条3〜5＝CHILD-B（60台）。 */
+  await putRec(SPLIT_ID,'RPSPLIT-1',{
+    basic:{lotNo:'RPSPLIT-1',inspectionNo:'K-RP'},
+    settings:{registeredEquipment:EQ,verticalCount:2,horizontalCount:5,
+      splitGroups:[{lot:'CHILD-A',count:2},{lot:'CHILD-B',count:3}]},
+    measurements:{width:[['50.0','50.2','60.0','60.4','60.8'],
+                         ['50.1','50.2','60.1','60.4','60.9']],
+      thickness:[['1.000','1.010','1.020'],['1.030','1.040','1.050']]}});
+  /* **配置は白紙から**（既定を見たいので、前の段が保存したものを消す）。 */
+  await cleanup();
+  await page.evaluate(()=>WL.columnLayout.forget&&WL.columnLayout.forget());
+
+  const openSplit=async()=>{
+   await page.evaluate(()=>openRecordsSafe('編集中'));
+   await page.waitForSelector('.record-list-row',{timeout:25000});
+   const hit=await page.evaluate(()=>{
+    const r=[...document.querySelectorAll('.record-list-row')]
+      .find(x=>/RPSPLIT-1/.test(x.textContent||''));
+    if(!r)return false;
+    const b=r.querySelector('.report');if(!b)return false;
+    b.click();return true;
+   });
+   if(!hit)return false;
+   await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
+   await settle(page);
+   return true;
+  };
+  const paper=()=>page.evaluate(()=>{
+   /* 節の題は`<h3>`（`.rp-section-title`ではない）。**表そのものから辿る**
+      ——題の綴りに依存すると、見出しを直しただけで網が空振りする。 */
+   const tbl=document.querySelector('#reportContent .rp-stat-table');
+   const sec=tbl&&tbl.closest('.rp-section');
+   return {
+    節:!!sec,
+    行:tbl?[...tbl.querySelectorAll('tbody tr')].map(tr=>
+        [tr.querySelector('th')?tr.querySelector('th').textContent.trim():'',
+         ...[...tr.querySelectorAll('td')].map(td=>td.textContent.trim())].join('/')):[],
+    先回り:(()=>{const e=document.getElementById('rpSplitHint');
+      return e?{文:(e.textContent||'').replace(/\s+/g,' ').trim(),
+                説明:(e.title||'').slice(0,120)}:null})()};
+  });
+
+  const opened=await openSplit();
+  rec('前提: 分割ありのロットの帳票を開ける',opened,String(opened));
+  const P1=opened?await paper():{節:false,行:[],先回り:null};
+  /* **本丸①**——触らずに開いて、紙に統計の節が出ていること。 */
+  rec('分割ありのロットは開いた時点で統計の節が紙に出る',P1.節===true,
+      JSON.stringify({節:P1.節,行数:P1.行.length}));
+  rec('子ロットの数だけ行がある（全体＋CHILD-A＋CHILD-B）',
+      P1.行.some(r=>/CHILD-A/.test(r))&&P1.行.some(r=>/CHILD-B/.test(r)),
+      P1.行.join(' | ').slice(0,200));
+  rec('板幅が子ロットごとに切れている（50台と60台）',
+      P1.行.some(r=>/CHILD-A/.test(r)&&/50\.0/.test(r)&&/50\.2/.test(r))
+      &&P1.行.some(r=>/CHILD-B/.test(r)&&/60\.0/.test(r)&&/60\.9/.test(r)),
+      P1.行.filter(r=>/CHILD-/.test(r)).join(' | ').slice(0,200));
+  /* **先回りの案内は要らない**（既に出ているので、出すと同じことを2度言う・§8）。 */
+  rec('既に出ているときは「統計を出す」を出さない',P1.先回り===null,
+      JSON.stringify(P1.先回り));
+
+  /* **本丸②**——分割の無いロットの紙は今までどおり（勝手に増やさない）。 */
+  await page.evaluate(()=>openRecordsSafe('編集中'));
+  await page.waitForSelector('.record-list-row',{timeout:25000});
+  const soloOk=await page.evaluate(()=>{
+   const r=[...document.querySelectorAll('.record-list-row')]
+     .find(x=>!/RPSPLIT-1/.test(x.textContent||'')&&x.querySelector('.report'));
+   if(!r)return false;r.querySelector('.report').click();return true;
+  });
+  if(soloOk){
+   await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
+   await settle(page);
+   const P2=await paper();
+   rec('分割の無いロットの紙は増えない（統計の節を出さない）',P2.節===false,
+       JSON.stringify({節:P2.節}));
+   rec('分割が無ければ「統計を出す」の案内も出さない',P2.先回り===null,
+       JSON.stringify(P2.先回り));
+  }else{
+   rec('分割の無いロットの紙は増えない（統計の節を出さない）',false,'比べる相手が居ません');
+   rec('分割が無ければ「統計を出す」の案内も出さない',false,'比べる相手が居ません');
+  }
+
+  /* **本丸③**——既に配置を保存してある設備では既定が効かない。
+     そこで**先回りして出す手立てを画面に置く**（§2・§4）。 */
+  await page.evaluate(async t=>{
+   const keys=WL.reportBlocks.keys();
+   await WL.columnLayout.patch(t,{order:[...keys],hidden:['測定値の統計']});
+  },TARGET);
+  const again=await openSplit();
+  const P3=again?await paper():{節:null,先回り:null};
+  rec('保存済みの配置で隠していれば、紙には出ない（設定を尊重する）',
+      P3.節===false,JSON.stringify({節:P3.節}));
+  rec('そのとき「子ロットN件 統計を出す」を先回りして出す',
+      !!P3.先回り&&/子ロット2件/.test(P3.先回り.文)&&/統計を出す/.test(P3.先回り.文),
+      JSON.stringify(P3.先回り));
+  rec('何が起きるかを説明に書く（子ロット番号つき）',
+      !!P3.先回り&&/CHILD-A/.test(P3.先回り.説明)&&/CHILD-B/.test(P3.先回り.説明),
+      (P3.先回り||{}).説明||'(説明なし)');
+  if(P3.先回り){
+   await page.click('#rpSplitHint');
+   await page.waitForFunction(()=>!document.getElementById('rpSplitHint'),null,{timeout:15000})
+     .catch(()=>{});
+   await settle(page);
+   const P4=await paper();
+   rec('押すと統計の節が紙に出て、案内は引っ込む',
+       P4.節===true&&P4.先回り===null&&P4.行.some(r=>/CHILD-B/.test(r)),
+       JSON.stringify({節:P4.節,案内:P4.先回り,行数:P4.行.length}));
+  }else rec('押すと統計の節が紙に出て、案内は引っ込む',false,'案内が出ていません');
+
 
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
 
@@ -591,6 +728,7 @@ let b=null;
  }finally{
   /* **落ちても必ず後片付け**（§9.121）。 */
   await cleanup();
+  await cleanupRecs();
   if(b)await b.close().catch(()=>{});
  }
 })();

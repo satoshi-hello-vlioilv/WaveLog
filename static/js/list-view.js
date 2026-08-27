@@ -758,8 +758,22 @@ function openColumnHeaderMenu(ev,col,target,allColumns,src){
   if(S2.persist){await S2.persist(patch);S2.refresh();return}
   const v=WL.columnLayout.saved(target);
   const all=S2.keys();
-  const known=(v.order||[]).filter(c=>all.includes(c));
-  await WL.columnLayout.patch(target,{order:[...known,...all.filter(c=>!known.includes(c))],
+  /* **いま出せない列も並びから落とさない**（§9.248 ③、利用者の報告
+     「一覧表関係の表示列が一部表示されなかったり消えていることがあります」）。
+     以前はここが`(v.order||[]).filter(c=>all.includes(c))`で、**その瞬間に
+     画面へ出ている列だけ**を残していた。`S2.keys()`の顔ぶれは場面で変わる
+     ——結合が当たっていない・別のモードで開いた・内容欄のマスタがまだ
+     届いていない、のどれでも縮む。そこで右クリックのメニューから
+     幅や表示を1つ変えると、**居なかった列が保存済みの並びから丸ごと消える**。
+     並びから消えた列は次に出てきたとき「知らない列」として末尾へ回るので、
+     利用者からは「列の順番が勝手に変わった／列が消えた」と見える。
+     `bindColumnHeaderTools`の`fullOrder()`は§9.216 ②で同じ理由から既に
+     直してあったが、**こちらの経路（右クリックのメニュー）は直っていなかった**。
+     並べ替えに要るのは「触った列を動かす」ことだけなので、知らない列は
+     その場に残す——実際に描くときは`S2.keys()`側が今ある列へ当てはめ直す。 */
+  const stored=(v.order||[]);
+  const kept=stored.filter((c,i)=>stored.indexOf(c)===i);
+  await WL.columnLayout.patch(target,{order:[...kept,...all.filter(c=>!kept.includes(c))],
                                       hidden:S2.hiddenOf(),...patch});
   S2.refresh();
  };
