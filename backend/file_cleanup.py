@@ -197,7 +197,18 @@ def _scan_mirror():
  for p in sorted(_safe(lambda: [x for x in d.iterdir() if x.is_file()], []) or []):
   if p.suffix != '.sqlite3':
    continue
-  out.append(_item(p, keep='いま読んでいる世代です' if p.name in current else ''))
+  it = _item(p)
+  if p.name in current:
+   it['keep'] = 'いま読んでいる世代です'
+  else:
+   # **世代を切り替えた直後は触らない。** 台帳が次の世代を指した後も、
+   # 開いたまま読み終えていない画面がある(§9.108の「読み手は開いた世代を
+   # 最後まで読み切れる」)。`db_mirror`自身も毎周回で片付けを試みるので、
+   # ここが急ぐ理由は無い——古くなったものだけを引き受ける。
+   age = time.time() - (it['mtime'] or 0)
+   if age < TMP_MIN_AGE_SEC:
+    it['keep'] = '切り替えたばかりです（まだ読んでいる画面があるかもしれません）'
+  out.append(it)
  return out
 
 
@@ -314,7 +325,7 @@ def _scan_work():
 CATEGORIES = [
  {'key': 'mirror', 'label': '共有DBの写し（古い世代）', 'icon': '写',
   'note': '仕掛・品質データを手元へ写したファイルです。読むたびに作り直せます。',
-  'why': 'いま読んでいる世代だけを残し、古い世代を消します。',
+  'why': 'いま読んでいる世代と、切り替えたばかりの世代を残します（%d分より古いものだけ消します）。' % int(TMP_MIN_AGE_SEC / 60),
   'auto': True, 'scan': _scan_mirror},
  {'key': 'tmp', 'label': '置き去りの一時ファイル', 'icon': '仮',
   'note': '書き換えの途中で作られる `.tmp` / `.incoming` です。正常に終われば自分で消えます。',
