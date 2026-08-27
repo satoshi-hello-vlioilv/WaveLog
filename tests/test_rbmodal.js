@@ -62,6 +62,7 @@ let b=null,page=null;
      asideX:a&&Math.round(a.x),asideW:a&&Math.round(a.width),
      fieldsX:f&&Math.round(f.x),fieldsRight:f&&Math.round(f.right),
      overflowX:Math.round(body.scrollWidth-body.clientWidth),
+     overflowY:Math.round(body.scrollHeight-body.clientHeight),
      inView:d&&d.right<=window.innerWidth+1&&d.left>=-1};
   });
   rec('窓が大きい（1700pxの窓で1400px以上）',box.w>=1400,JSON.stringify(box));
@@ -71,12 +72,36 @@ let b=null,page=null;
       JSON.stringify({fieldsRight:box.fieldsRight,asideX:box.asideX}));
   rec('横に溢れない',box.overflowX<=1,String(box.overflowX));
 
-  /* ---- 2) 決めることが4つの群に束ねてある ---- */
+  /* ---- 2) 決めることが4つの段（タブ）に束ねてある（§9.250 ④） ----
+     以前は縦に積んでいたので、1700×1000の窓でも**227pxはみ出していた**
+     （利用者の指摘「スクロールベースで文字が配置されており、使いづらい」）。
+     **段の見出しには決めた値の一言を出す**（開かないと分からない段は、
+     結局全部開いて回ることになる・§2）。 */
   const groups=await page.evaluate(()=>[...document.querySelectorAll('#maintEditorForm .mm-fieldgroup')].map(x=>x.textContent.trim()));
   rec('決めることが4つの群に束ねてある',groups.length===4,JSON.stringify(groups));
   rec('群の並びが決める順番と同じ',
       groups[0].startsWith('①')&&groups[1].startsWith('②')&&groups[2].startsWith('③')&&groups[3].startsWith('④'),
       JSON.stringify(groups));
+  const tabState=await page.evaluate(()=>({
+    tabs:document.querySelectorAll('.mm-tab').length,
+    panels:document.querySelectorAll('.mm-tabpanel').length,
+    open:[...document.querySelectorAll('.mm-tabpanel')].filter(p=>!p.hidden).length,
+    sums:[...document.querySelectorAll('.mm-tab-sum')].map(x=>x.textContent.trim())}));
+  rec('段は一度に1つだけ開く（縦に積まない）',
+      tabState.tabs===4&&tabState.panels===4&&tabState.open===1,JSON.stringify(tabState));
+  rec('畳んだ段でも決めた値が見出しに出る（思い出させない）',
+      tabState.sums.filter(Boolean).length>=2,JSON.stringify(tabState.sums));
+  rec('窓を開いた時点で縦に溢れない（スクロールレス）',box.overflowY===0,String(box.overflowY));
+  /* 段を見出しの言葉で開く。**番号で探さないこと**——段が1つ増えただけで
+     番号がずれる網は、直していないのに落ちる。 */
+  const tab=async name=>{
+   await page.evaluate(n=>{
+    const t=[...document.querySelectorAll('.mm-tab')].find(x=>x.textContent.indexOf(n)>=0);
+    if(t)t.click();
+   },name);
+   await page.waitForTimeout(200);
+  };
+  await tab('何を載せるか');
 
   /* ---- 3) 見て選ぶ札。**新規でも既定が選ばれている** ---- */
   const cards=await page.evaluate(()=>{
@@ -111,6 +136,7 @@ let b=null,page=null;
            read:document.querySelector('#rbFactSpan').textContent,
            rowsRead:document.querySelector('#rbFactRows').textContent};
   });
+  await tab('紙のどこへ出すか');
   const m0=await measure();
   await page.click('#maintEditorForm .mm-span-cell:nth-child(6)');
   await page.waitForTimeout(150);
@@ -127,8 +153,10 @@ let b=null,page=null;
   rec('高さも文字で言う（中身なりか固定か）',/4行/.test(m2.rowsRead),m2.rowsRead);
 
   /* ---- 5) 種別を変えると②の中身が入れ替わり、見本も変わる ---- */
+  await tab('これは何の塊か');
   await page.click('[data-card="kindText"][data-card-v="エリア（枠と文字）"]');
   await page.waitForTimeout(200);
+  await tab('何を載せるか');
   const area=await page.evaluate(()=>{
    const fb=document.querySelector('[data-fb]');
    const t=document.querySelector('#maintEditorForm textarea[data-field="text"]');
@@ -141,6 +169,7 @@ let b=null,page=null;
   rec('エリアでは見本も枠だけの形になる',/is-area/.test(area.sec),area.sec);
   rec('エリアでは列数を「—」と言う（効かない設定を数字で見せない）',
       area.cols.indexOf('—')===0,area.cols);
+  await tab('これは何の塊か');
   await page.click('[data-card="kindText"][data-card-v="項目の並び"]');
   await page.waitForTimeout(200);
 
@@ -154,23 +183,132 @@ let b=null,page=null;
    return {n:s.length,titled:s.filter(x=>(x.getAttribute('title')||'').length>20).length};
   });
   rec('短くした説明の続きは見出しのtitleから読める',more.n>=4&&more.n===more.titled,JSON.stringify(more));
+  /* 続きは**押すと開く**（§9.250 ④）。`title`は触る画面では読めないので、
+     「説明があるのに読めない」を残さない（§4）。 */
+  const acc=await page.evaluate(async()=>{
+   const raf=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   const b=document.querySelector('.mm-tabpanel:not([hidden]) .mm-more');
+   if(!b)return {none:true};
+   const before=!!document.querySelector('.mm-tabpanel:not([hidden]) .mm-more-body:not([hidden])');
+   b.click();await raf();
+   const body=b.closest('.mm-field').querySelector('.mm-more-body');
+   const open=!!body&&!body.hidden&&body.textContent.trim().length>10;
+   b.click();await raf();
+   return {before,open,closed:!!body&&body.hidden,aria:b.getAttribute('aria-expanded')};
+  });
+  rec('くわしい説明は押すと開いて、もう一度押すと畳む',
+      acc.before===false&&acc.open===true&&acc.closed===true,JSON.stringify(acc));
+
+  /* ---- 6b) 紙の見本を四方から掴んで大きさを変えられる（§9.250 ④） ----
+     利用者の指示「刷り上がりの見本という視覚表示があるのでこれを四方の
+     どこからでもドラッグアンドドロップで大きさの変更ができるように」。
+     **つまみが在ることだけを見ないこと**——実際に引いて、幅の値・札の印・
+     紙の中の塊の3つが揃って変わることまで見る。 */
+  await tab('紙のどこへ出すか');
+  const grip=await page.evaluate(async()=>{
+   const raf=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   const grid=document.querySelector('#rbPaperGrid').getBoundingClientRect();
+   const cw=grid.width/12,ch=grid.height/12;
+   const pull=async(dir,dx,dy)=>{
+    const g=document.querySelector('.rb-grip-'+dir);
+    if(!g)return null;
+    const r=g.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2;
+    const ev=(t,cx,cy)=>{const e=new PointerEvent(t,{bubbles:true,clientX:cx,clientY:cy,pointerId:1,buttons:1});
+      (t==='pointerdown'?g:document).dispatchEvent(e)};
+    ev('pointerdown',x,y);ev('pointermove',x+dx,y+dy);await raf();ev('pointerup',x+dx,y+dy);await raf();
+    return true;
+   };
+   const n=document.querySelectorAll('.rb-grip').length;
+   const span0=document.querySelector('[data-field="span"]').value;
+   await pull('e',-cw*3,0);
+   const span1=document.querySelector('[data-field="span"]').value;
+   const cells1=document.querySelectorAll('.mm-span-cell.is-on').length;
+   const w1=Math.round(document.querySelector('#rbPaperBlock').getBoundingClientRect().width/grid.width*100);
+   await pull('w',-cw*2,0);
+   const span2=document.querySelector('[data-field="span"]').value;
+   const rows0=document.querySelector('[data-field="rows"]').value;
+   await pull('s',0,ch*2);
+   const rows1=document.querySelector('[data-field="rows"]').value;
+   const allow=(sel,attr)=>[...new Set([...document.querySelectorAll(sel)]
+     .map(x=>Number(x.dataset[attr])).filter(n=>n>0))].sort((a,b)=>a-b);
+   return {n,span0,span1,span2,cells1,w1,rows0,rows1,
+     spanAllow:allow('.mm-span-grid [data-span-v]','spanV'),
+     rowsAllow:allow('.mm-rows-pick [data-rows-v]','rowsV'),
+     rowsOn:document.querySelector('.mm-rows-opt.is-on')?.dataset.rowsV};
+  });
+  rec('紙の見本に四方＋四隅の8つのつまみが出る',grip.n===8,JSON.stringify({n:grip.n}));
+  rec('右の辺を引くと幅が縮み、マス目の札もそろう',
+      Number(grip.span1)<Number(grip.span0)&&grip.cells1===Number(grip.span1)
+      &&Math.abs(grip.w1-Number(grip.span1)/12*100)<=3,JSON.stringify(grip));
+  rec('左の辺を引くと反対向きに広がる（四方から変えられる）',
+      Number(grip.span2)>Number(grip.span1),JSON.stringify(grip));
+  /* **選べる幅にしか止まらない**（§9.250 ④）。紙の幅は5段しかなく、
+     サーバーが近い段へ丸めるので、途中の数を作れると**見本と保存が
+     食い違う**（見本が嘘をつく・§CLAUDE 6）。 */
+  rec('掴んで作れるのは選べる幅・高さだけ（見本と保存が食い違わない）',
+      grip.spanAllow.indexOf(Number(grip.span1))>=0
+      &&grip.spanAllow.indexOf(Number(grip.span2))>=0
+      &&grip.rowsAllow.indexOf(Number(grip.rows1))>=0,JSON.stringify(grip));
+  rec('下の辺を引くと高さが決まり、高さの札もそろう',
+      Number(grip.rows1)>0&&String(grip.rowsOn)===String(grip.rows1),JSON.stringify(grip));
+
+  /* ---- 6c) ダミーの値と紙全体（§9.250 ⑤、利用者の指示） ----
+     「データダミーをつかって、帳票の表示が最終的にどうなるか…すぐに確認
+      できる導線を準備してください」 */
+  const dummy=await page.evaluate(()=>{
+   const vs=[...document.querySelectorAll('#rbSection .rb-cell-v')].map(x=>x.textContent.trim());
+   return {n:vs.length,vals:vs.slice(0,4),plain:vs.filter(v=>v==='値').length};
+  });
+  rec('見本の値の場所にダミーが入る（桁と文字数が実物に近い）',
+      dummy.n===0||(dummy.plain===0&&dummy.vals.some(v=>v&&v!=='（値）')),JSON.stringify(dummy));
+  const whole=await page.evaluate(async()=>{
+   document.querySelector('#rbToggleOthers').click();
+   await new Promise(r=>setTimeout(r,1200));
+   const paper=document.querySelector('#rbPaper').getBoundingClientRect();
+   const slot=document.querySelector('#rbPaperOthers [data-me]');
+   const block=document.querySelector('#rbPaperBlock');
+   const br=block.getBoundingClientRect(),sr=slot?slot.getBoundingClientRect():null;
+   const body=document.querySelector('.mm-editor-body');
+   return {n:document.querySelectorAll('#rbPaperOthers>i').length,
+     hasSlot:!!slot,
+     onSlot:!!sr&&Math.abs(br.left-sr.left)<=3&&Math.abs(br.top-sr.top)<=3
+       &&Math.abs(br.width-sr.width)<=3&&Math.abs(br.height-sr.height)<=3,
+     grips:document.querySelectorAll('#rbPaperBlock .rb-grip').length,
+     inPaper:br.top>=paper.top-1&&br.bottom<=paper.bottom+1,
+     ov:Math.round(body.scrollHeight-body.clientHeight)};
+  });
+  rec('「紙全体で見る」で同じ設備の塊が流し込まれる',whole.n>1&&whole.hasSlot,JSON.stringify(whole));
+  rec('編集中の塊は流れの中の自分の席に重なる（掴めるまま）',
+      whole.onSlot===true&&whole.grips===8,JSON.stringify(whole));
+  rec('紙の外へはみ出さず、窓もスクロールしない',
+      whole.inPaper===true&&whole.ov===0,JSON.stringify(whole));
+  await page.evaluate(()=>document.querySelector('#rbToggleOthers').click());
+  await page.waitForTimeout(300);
 
   /* ---- 7) 札が書いた値がそのまま保存される ---- */
+  await tab('これは何の塊か');
   await page.fill('#maintEditorForm [data-field="name"]',TAG+'塊');
   await page.evaluate(()=>{
    const all=document.querySelector('[data-equipment-all="equipment"]');
    if(all&&!all.checked){all.checked=true;all.dispatchEvent(new Event('change',{bubbles:true}))}
   });
+  await tab('紙のどこへ出すか');
   await page.click('[data-card="repeatText"][data-card-v="分割後の子ロットごと"]');
+  /* **保存の前に画面の値を控える**（§9.250 ④）。札で押した値と掴んで
+     変えた値のどちらもここへ来るので、**期待値を数で書き込まないこと**
+     ——つまみの網を1つ足しただけで落ちる網になる。 */
+  const want=await page.evaluate(()=>({
+    span:document.querySelector('[data-field="span"]').value,
+    rows:document.querySelector('[data-field="rows"]').value}));
   await page.click('#maintEditorSave');
   await page.waitForTimeout(1500);
   const rows=await get('/api/report-block-master');
   const saved=(rows.items||[]).find(x=>x.name===TAG+'塊');
   if(saved)made.push(saved.id);
-  rec('札で選んだ値がそのまま保存される',
+  rec('札で選んだ値・掴んで変えた値がそのまま保存される',
       !!saved&&saved.kindText==='項目の並び'&&saved.repeatText==='分割後の子ロットごと'
-      &&String(saved.span)==='6'&&String(saved.rows)==='4',
-      JSON.stringify(saved&&{k:saved.kindText,r:saved.repeatText,s:saved.span,rw:saved.rows}));
+      &&String(saved.span)===String(want.span)&&String(saved.rows)===String(want.rows),
+      JSON.stringify({want,got:saved&&{k:saved.kindText,r:saved.repeatText,s:saved.span,rw:saved.rows}}));
 
   /* ---- 8) 開き直すと保存した値が札に出ている ---- */
   if(saved){
@@ -180,6 +318,7 @@ let b=null,page=null;
     if(row)row.click();
    },TAG+'塊');
    await page.waitForTimeout(900);
+   await tab('紙のどこへ出すか');
    const back=await page.evaluate(()=>{
     const on=k=>{const e=document.querySelector(`[data-card="${k}"].is-on`);return e?e.dataset.cardV:''};
     return {kind:on('kindText'),repeat:on('repeatText'),
@@ -188,8 +327,9 @@ let b=null,page=null;
             name:document.querySelector('#rbPaperName')?.textContent};
    });
    rec('開き直すと保存した値が札とマス目に出ている',
-       back.repeat==='分割後の子ロットごと'&&back.span==='6'&&back.spanOn===6,
-       JSON.stringify(back));
+       back.repeat==='分割後の子ロットごと'&&String(back.span)===String(want.span)
+       &&back.spanOn===Number(want.span),
+       JSON.stringify({back,want}));
    rec('見本の題が編集中の塊の名前になる',String(back.name).indexOf(TAG)>=0,String(back.name));
   }
   rec('画面のエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));

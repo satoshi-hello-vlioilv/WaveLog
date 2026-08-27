@@ -182,7 +182,9 @@
    endpoint:'/api/report-block-master',hasDelete:true,
    titleText:'帳票ブロック — 紙に載せる塊',
    asideHtml:()=>rbAsideHtml(),bindAside:form=>rbBindAside(form),
-   hintShort:'①から④の順に決めます。**右の見本が刷り上がりです**——幅・高さ・列数を押すとその場で形が変わります。'
+   groupsAsTabs:true,
+   hintShort:'①から④の順に決めます。**右の見本が刷り上がりです**——'
+    +'**紙の中の塊は四方どこでも掴んで大きさを変えられます**（幅・高さの札でも決められます）。'
     +'**既定の塊は消せません**（紙へ出したくないときは④を「出さない」に）。',
    /* ---------- 決めることを4つに束ねる（§9.249 ③、利用者の指示） ----------
       「モーダルを大きくしてください。大きくしたモーダルに合うようにバランス
@@ -269,23 +271,43 @@
          {k:'enabledText',label:'有効',grow:1},{k:'content',label:'内容',grow:4},
          {k:'span',label:'幅',grow:1},{k:'rows',label:'高さ',grow:1},{k:'order',label:'表示順',grow:1}],
    hint:'帳票の紙に載せる塊の一覧です。**アプリがもともと持っている塊もここに載っています**（「既定」に値が入っている行）。既定の塊は**名前・幅・高さ・並び・出す/出さない・対象設備**を変えられ、`基本情報`／`コース情報`／`測定条件`／`作業班構成`／`作業時間`／`登録状態`の6つは**中身**も変えられます。測定表・条の図・異常位置判定のように組み立て方そのものが仕事になっている塊は中身を変えられません。既定の塊は**消せません**——紙へ出したくないときは「紙に出す」を「出さない」にします。作った塊は帳票画面の「配置を組み換え」の「出していない塊」から紙へ落としてください。'},
+  /* 設備は**表を主役にしてモーダルで直す**（§9.250 ⑦、利用者の指示
+     「設備マスタは文字が多くUIの幅も無駄に長いのでもっとコンパクトにする
+      ために、表をメインに、修正は他と同じようにモーダルで行うように」）。
+     以前はインラインのフォームを常設しており、**5欄それぞれに長い説明が
+     ぶら下がって上半分を占めていた**（一覧に残るのは数行）。ほかのマスタと
+     同じ作法（`editorModal:true`）に揃え、説明は1行へ詰めて続きは
+     見出しの`?`（`more`）から読む（§9.234 ①）。
+     欄は**中身の長さから**決める（§CLAUDE 11）——設備名は名前1つ、
+     残りは数値なので、規格幅の`sm`/`xs`に収まる。 */
   {group:'equip',key:'equipment',label:'設備',icon:'設',endpoint:'/api/equipment-master',hasDelete:true,
-   editorModal:false,
-   fields:[{k:'name',label:'設備名',required:true,key:true},
+   editorModal:true,titleText:'設備 — この工場のライン',
+   hintShort:'1行＝1つの設備です。**行を押すと編集の窓が開きます。**',
+   fields:[{k:'name',label:'設備名',required:true,key:true,size:'md',
+            fieldGroup:'① どの設備か',
+            more:'この名前で作業予定・ロール・停止・権限などが結び付きます。変えると、その名前を指していた設定も一緒に付け替わります。'},
            {k:'kind',label:'区分',type:'select',options:['','コイル','板'],
-            hint:'この設備が扱う材料の形です。空欄のままでも登録・編集できます（未設定）。'},
-           {k:'maxStrips',label:'最大条数',type:'number',min:1,max:40,
-            hint:'この設備で幅方向に割れる条数の上限。空欄なら40（測定データの構造上の上限）。'},
-           {k:'standardMinutes',label:'1ロットあたり標準時間（分）',type:'number',min:1,max:1440,step:1,
-            hint:'実績がまだ無いときに作業スケジュールの見積として使う分数です。空欄なら120分（全体の暫定既定値）。実績がたまると自動で実績由来の見積へ切り替わります。'},
+            fieldGroup:'① どの設備か',
+            hint:'扱う材料の形。**空欄でも登録できます。**',
+            more:'コイル／板。既に登録してある設備は未設定のままでも今までどおり動きます。'},
+           {k:'maxStrips',label:'最大条数',type:'number',min:1,max:40,unit:'条',
+            fieldGroup:'② 数の決まり',
+            hint:'空欄なら**40条**（構造上の上限）。',
+            more:'幅分割（条割）で割れる条数の上限です。設備によって割れる本数が違うため設備ごとに登録します。子ロットの数（最大9ロット）とは別の値です。'},
+           {k:'standardMinutes',label:'標準時間',type:'number',min:1,max:1440,step:1,unit:'分',
+            fieldGroup:'② 数の決まり',
+            hint:'空欄なら**120分**（暫定の既定）。',
+            more:'実績がまだ1件も無い設備の作業スケジュールで、1ロットあたりの見積として使う分数です。実績がたまると実績から算出した見積（換算係数）が優先されるので、最初の保険として登録します。'},
            /* §9.231 ①。**空欄＝未設定**（0は「上限0」になってしまうので受けない）。 */
-           {k:'maxLineSpeed',label:'最大ライン速度（m/min）',type:'number',min:1,max:100000,step:1,
-            hint:'このラインで出せる速度の上限です。操業データ項目の「数の決まり」から**この値を上限として参照**できます（マスタを直せば入力欄の上限も変わります）。空欄なら未設定で、参照している項目には上限が掛かりません。'}],
+           {k:'maxLineSpeed',label:'最大ライン速度',type:'number',min:1,max:100000,step:1,unit:'m/min',
+            fieldGroup:'② 数の決まり',
+            hint:'空欄なら**上限なし**。',
+            more:'このラインで出せる速度の上限です。操業データ項目の「数の決まり」からこの値を上限として参照できます（マスタを直せば入力欄の上限も変わります）。'}],
    cols:[{k:'name',label:'設備名',grow:2},{k:'kind',label:'区分',grow:1,format:'equipmentKind'},
          {k:'maxStrips',label:'最大条数',grow:1,format:'maxStrips'},
          {k:'standardMinutes',label:'標準時間',grow:1,format:'standardMinutes'},
          {k:'maxLineSpeed',label:'最大速度',grow:1,format:'maxLineSpeed'}],
-   hint:'「区分」はその設備が扱う材料の形（コイル／板）です。既に登録してある設備は未設定のままでも今までどおり動きます。「最大条数」は幅分割（条割）で割れる条数の上限です。設備によって割れる本数が違うため設備ごとに登録します。空欄のままなら40条（測定データの構造上の上限）として扱います。子ロットの数（最大9ロット）とは別の値です。「1ロットあたり標準時間」は、実績がまだ1件も無い設備の作業スケジュールで見積として使う分数です。実績がたまると実績から算出した見積（換算係数）が優先されるため、あくまで最初の保険として登録します。'},
+   hint:'この工場のラインの一覧です。1行＝1つの設備で、**行を押すと編集の窓が開きます**。「区分」は扱う材料の形（コイル／板）、「最大条数」は幅分割で割れる条数の上限（空欄＝40条）、「標準時間」は実績が無いときの見積（空欄＝120分）、「最大ライン速度」は操業データの入力上限として参照できます（空欄＝上限なし）。'},
   {group:'system',key:'accessPermission',label:'アクセス権限',icon:'権',endpoint:'/api/access-permission-master',hasDelete:true,
    fields:[{k:'loginId',label:'ログインID',key:true},{k:'pcName',label:'PC名',key:true},
            {k:'canEdit',label:'編集可否',type:'select',options:['編集可','閲覧のみ']},
@@ -389,17 +411,65 @@
   {key:'internal',label:'内部データ',hint:'専用のタブを持たないマスタ（そのまま行を編集します）'},
   {key:'retired',label:'移行済み',hint:'アプリはもう読みません。移行前の中身を見返すためだけに残しています'},
  ];
+ /* ---------- 群ごとに畳める（§9.250 ②、利用者の指示） ----------
+    「マスタのカテゴリ単位で折りたためるようにしてください。さらに内部データに
+     属するマスタと移行済みのマスタについては折りたたんだ状態をデフォルトに」
+
+    37タブになった時点で左の一覧は**器の倍の高さ**（実測1635px / 806px）に
+    なっていた。探すたびに転がすことになるので、群ごとに畳めるようにする。
+    **既定で畳むのは`internal`と`retired`の2つだけ**——どちらも「ふだんは
+    触らない」群で、開いている人はそのまま開いたままになる（§CLAUDE 1）。
+    覚えは**この端末**（読み方の好みなので、共有マスタへ入れて全員を縛らない）。
+    **畳んでも件数は文字で出す**（§CLAUDE 3。何を畳んでいるのか分からないと
+    「消えた」と読まれる）。 */
+ const MM_NAVFOLD_KEY='MasterNavFoldV1';
+ const MM_NAVFOLD_DEFAULT=['internal','retired'];
+ function mmNavFolded(){
+  try{
+   const raw=localStorage.getItem(MM_NAVFOLD_KEY);
+   if(raw===null)return new Set(MM_NAVFOLD_DEFAULT);
+   const v=JSON.parse(raw);
+   return new Set(Array.isArray(v)?v:[]);
+  }catch(e){return new Set(MM_NAVFOLD_DEFAULT)}
+ }
+ function mmSetNavFolded(set){
+  try{localStorage.setItem(MM_NAVFOLD_KEY,JSON.stringify([...set]))}catch(e){}
+ }
  function renderMaintNav(){
   const nav=$('#masterMaintNav');if(!nav)return;
   const visible=allDefs().filter(maintDefVisible);
+  const folded=mmNavFolded();
+  /* **いま開いているタブの群は必ず開く**（§CLAUDE 4）。畳んだ群の中の
+     タブを選んだままにすると、「今どこにいるか」が画面から消える。 */
+  const cur=visible.find(d=>d.key===maintState.defKey);
+  if(cur)folded.delete(cur.group||'system');
   const html=MASTER_GROUPS.map(g=>{
    const defs=visible.filter(d=>(d.group||'system')===g.key);
    if(!defs.length)return '';
-   return `<div class="mm-nav-group"><div class="mm-nav-group-label" title="${esc(g.hint)}">${esc(g.label)}</div>`+
-    defs.map(d=>`<button type="button" data-master="${d.key}"><span class="mm-nav-ico" aria-hidden="true">${esc(d.icon)}</span><span class="mm-nav-label">${esc(d.label)}</span></button>`).join('')+
-    '</div>';
+   const off=folded.has(g.key);
+   /* **見出しは`<button>`にしない**——`10-roles.css`の`.mm-nav button`が
+      「行き先の的」の寸法（`--ctl-h`・`--fs`）を配るので、見出しまで
+      行き先と同じ大きさになる（実測: 文字が14pxになり「作業スケジュール」が
+      入らなくなった）。役割が違うものへ同じ役割の寸法を配らない。 */
+   return `<div class="mm-nav-group${off?' is-folded':''}" data-nav-group="${esc(g.key)}">`
+    +`<div class="mm-nav-group-label" data-nav-fold="${esc(g.key)}" role="button" tabindex="0"`
+    +` aria-expanded="${off?'false':'true'}" title="${esc(g.hint)}｜押すと${off?'開きます':'畳みます'}">`
+    +`<span class="mm-nav-caret" aria-hidden="true">${off?'▸':'▾'}</span>`
+    +`<span class="mm-nav-group-name">${esc(g.label)}</span>`
+    +`<span class="mm-nav-count">${defs.length}</span></div>`
+    +(off?'':defs.map(d=>`<button type="button" data-master="${d.key}" title="${esc(d.label)}"><span class="mm-nav-ico" aria-hidden="true">${esc(d.icon)}</span><span class="mm-nav-label">${esc(d.label)}</span></button>`).join(''))
+    +'</div>';
   }).join('');
   nav.innerHTML=html;
+  nav.querySelectorAll('[data-nav-fold]').forEach(b=>{
+   const toggle=()=>{
+    const k=b.dataset.navFold,now=mmNavFolded();
+    if(now.has(k))now.delete(k);else now.add(k);
+    mmSetNavFolded(now);renderMaintNav();
+   };
+   b.onclick=toggle;
+   b.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggle()}};
+  });
   nav.querySelectorAll('[data-master]').forEach(b=>b.onclick=()=>{maintState.defKey=b.dataset.master;maintState.editing=null;maintState.query='';const se=$('#masterMaintSearch');if(se)se.value='';syncNav();loadMaint(true)});
   syncNav();
  }
@@ -547,7 +617,42 @@
     見出しにマウスを当てれば全文が読める（§CLAUDE 8）。 */
  function fieldLabelHtml(f){
   const t=f.more?` title="${esc(f.label+'｜'+String(f.more).replace(/\*\*/g,''))}"`:'';
-  return `<span${t}>${esc(f.label)}${f.required?'<i>*</i>':''}${f.key?'<em class="mm-keytag">キー</em>':''}${f.more?'<em class="mm-more" aria-hidden="true">?</em>':''}</span>`;
+  /* ---------- 続きは畳んで置く（§9.250 ④、利用者の指示） ----------
+     「タブとアコーディオンによる情報の階層化、チャンク化を取り入れて」
+
+     以前は`?`が**マウスを乗せたときだけ**出る`title`で、触る画面では
+     一度も読めなかった（説明があること自体は見えているので、
+     「押しても何も起きない」に見える・§4）。押すと開く形にする。
+     `title`は残す——読み方が2つあって困るものではない。 */
+  return `<span${t}>${esc(f.label)}${f.required?'<i>*</i>':''}${f.key?'<em class="mm-keytag">キー</em>':''}`
+   +(f.more?`<button type="button" class="mm-more" aria-expanded="false"`
+     +` aria-label="${esc(f.label)}のくわしい説明" data-more="${esc(String(f.more))}">?</button>`:'')
+   +`</span>`;
+ }
+ /* 押したら欄の下へ開く。**器へ足すのは押したときだけ**——最初から置くと、
+    畳んでいても`.mm-field`の子が1つ増えて並びの計算が変わる。
+    **`<label>`の中なので`preventDefault()`が要る**（押すと欄へフォーカスが
+    飛んで、開いた瞬間に入力欄が選ばれる）。 */
+ function bindMoreToggles(form){
+  form.querySelectorAll('.mm-more').forEach(b=>{
+   if(b.dataset.moreWired)return;
+   b.dataset.moreWired='1';
+   b.onclick=e=>{
+    e.preventDefault();e.stopPropagation();
+    const fld=b.closest('.mm-field');if(!fld)return;
+    let body=fld.querySelector(':scope>.mm-more-body');
+    if(!body){
+     body=document.createElement('small');
+     body.className='mm-more-body';
+     body.innerHTML=hintHtml(String(b.dataset.more||''));
+     fld.appendChild(body);
+    }
+    const on=b.getAttribute('aria-expanded')!=='true';
+    b.setAttribute('aria-expanded',on?'true':'false');
+    b.classList.toggle('is-on',on);
+    body.hidden=!on;
+   };
+  });
  }
  /* master-combo の選択肢は別マスタから取る。同じマスタを何度も引かないよう
     タブを開いている間だけ持つ(登録すると連動して増えるので、保存後の
@@ -618,12 +723,120 @@
  function groupFieldControls(def,html){
   const groups=(def.fields||[]).map(f=>f.fieldGroup||'');
   if(!groups.some(Boolean))return html.join('');
-  let prev=null;const out=[];
+  /* ---------- 段（タブ）に分ける（§9.250 ④、利用者の指示） ----------
+     「スクロールレス設計をベースにSPAで構成することを軸にしたいので
+      基本的に**情報量が多くなった時には**、タブとアコーディオンによる
+      情報の階層化、チャンク化を取り入れてください」
+
+     縦に積むと窓に入らない（帳票ブロックは1700×1000の窓で実測**227px**
+     はみ出していた）。束はもともと「決める順番」で切ってあるので、
+     **束ごとに段へ分ければ1段ぶんの高さで済む**。
+
+     **段の見出しにいまの値を出す**（§2「思い出させない」）——開かないと
+     何を決めたか分からない段は、結局全部開いて回ることになる。
+     **見本（`asideHtml`）は段の外**に置くので、どの段を見ていても
+     刷り上がりが見える（§CLAUDE 14「視覚導線と作業導線を一致させる」）。 */
+  if(!def.groupsAsTabs){
+   let prev=null;const out=[];
+   groups.forEach((g,i)=>{
+    if(g&&g!==prev)out.push(`<h4 class="mm-fieldgroup">${esc(g)}</h4>`);
+    prev=g||prev;out.push(html[i]);
+   });
+   return out.join('');
+  }
+  const order=[],bucket=new Map();
+  let prev='';
   groups.forEach((g,i)=>{
-   if(g&&g!==prev)out.push(`<h4 class="mm-fieldgroup">${esc(g)}</h4>`);
-   prev=g||prev;out.push(html[i]);
+   const k=g||prev||'';
+   if(!bucket.has(k)){bucket.set(k,[]);order.push(k)}
+   bucket.get(k).push(i);
+   prev=k;
   });
-  return out.join('');
+  const tabs=order.map((g,i)=>
+   `<button type="button" class="mm-tab" role="tab" id="mmTab${i}" data-mmtab="${i}"`
+   +` aria-selected="${i?'false':'true'}" aria-controls="mmPanel${i}" tabindex="${i?-1:0}">`
+   +`<span class="mm-fieldgroup">${esc(g)}</span>`
+   +`<small class="mm-tab-sum" data-mmtab-sum="${i}"></small></button>`).join('');
+  const panels=order.map((g,i)=>
+   `<section class="mm-tabpanel" role="tabpanel" id="mmPanel${i}" aria-labelledby="mmTab${i}"`
+   +` data-mmtab="${i}"${i?' hidden':''}>${bucket.get(g).map(j=>html[j]).join('')}</section>`).join('');
+  return `<div class="mm-tabbar" role="tablist">${tabs}</div>`
+   +`<div class="mm-tabbody">${panels}</div>`;
+ }
+ /* 段の見出しに出す一言。**欄の値そのものから作る**——束ごとに文言を
+    書き分けると、欄を1つ足したときに書き足す場所が増える。
+    空の欄は言わない（「未設定・未設定・未設定」は何も語らない）。 */
+ function mmTabSummaryText(panel){
+  const parts=[];
+  panel.querySelectorAll('.mm-field').forEach(fld=>{
+   const el=fld.querySelector('[data-field]');
+   if(!el)return;
+   /* **触れない欄は数えない**（§CLAUDE 8）——組み込みの印のような
+      読み取り専用の値を並べても、決めたことは1つも増えない。 */
+   if(fld.classList.contains('mm-field-ro')||el.hasAttribute('readonly'))return;
+   let v=String(el.value||'').trim();
+   /* 行数は**空も`0`も「中身なり」**（§9.250 ④）。「何も決めていない」と
+      「既定のまま」は別のことなので、空欄として落とさず言う。 */
+   if(fld.classList.contains('mm-rowsfield')&&(v===''||v==='0')){parts.push('中身なり');return}
+   if(!v)return;
+   /* 見て選ぶ欄・幅・高さは**押した札の言葉**で言う（保存値の綴りは長い）。 */
+   const card=fld.querySelector(`[data-card="${CSS.escape(el.dataset.field)}"].is-on`);
+   if(card)v=(card.querySelector('.mm-card-txt>b')||card).textContent.trim()||v;
+   else if(fld.classList.contains('mm-spanfield'))v=v+'マス';
+   else if(fld.classList.contains('mm-rowsfield'))v=v+'行';
+   else if(fld.dataset.fb)v=String(v).split(/[\n,、]/).filter(Boolean).length+'項目';
+   if(v.length>14)v=v.slice(0,13)+'…';
+   parts.push(v);
+  });
+  return parts.slice(0,3).join('・')+(parts.length>3?' ほか':'');
+ }
+ function bindMaintTabs(form){
+  const bar=form.querySelector('.mm-tabbar');
+  if(!bar)return;
+  const tabs=[...bar.querySelectorAll('[data-mmtab]')];
+  const panels=[...form.querySelectorAll('.mm-tabpanel')];
+  const show=i=>{
+   tabs.forEach((t,j)=>{
+    const on=j===i;
+    t.setAttribute('aria-selected',on?'true':'false');
+    t.tabIndex=on?0:-1;
+    t.classList.toggle('is-on',on);
+   });
+   panels.forEach((p,j)=>{if(p.hidden!==(j!==i))p.hidden=j!==i});
+  };
+  const paint=()=>panels.forEach((p,i)=>{
+   const el=bar.querySelector(`[data-mmtab-sum="${i}"]`);
+   if(el)el.textContent=mmTabSummaryText(p);
+  });
+  if(form.dataset.mmTabsWired!=='1'){
+   form.dataset.mmTabsWired='1';
+   /* **値が変わったら見出しの一言を描き直す**（忘れると、直したのに
+      畳んだ段だけ古い値を名乗る）。 */
+   form.addEventListener('change',()=>paint());
+   form.addEventListener('input',()=>paint());
+  }
+  tabs.forEach((t,i)=>{
+   t.onclick=()=>show(i);
+   t.onkeydown=e=>{
+    if(['ArrowRight','ArrowLeft'].indexOf(e.key)<0)return;
+    e.preventDefault();
+    const nx=(i+(e.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;
+    show(nx);tabs[nx].focus();
+   };
+  });
+  show(0);
+  paint();
+  form.__mmShowTab=show;
+ }
+ /* 入っていない必須の欄がある段を開く（§4）。**開かずに断らないこと**
+    ——畳んだ段の中の欄を「入れてください」と言われても、どこにあるのか
+    分からない。 */
+ function mmRevealField(form,el){
+  if(!form||!el||typeof form.__mmShowTab!=='function')return;
+  const panel=el.closest('.mm-tabpanel');
+  if(!panel)return;
+  const i=[...form.querySelectorAll('.mm-tabpanel')].indexOf(panel);
+  if(i>=0)form.__mmShowTab(i);
  }
  /* ---------- モーダルの中の欄は「中身の長さ」で決める(§9.221 ④) ----------
     利用者の指摘「モーダル内のUIサイズの設計がモーダル横幅いっぱいまで
@@ -1028,10 +1241,20 @@
      押せるのに何も起きないボタンを残さない）。理由は`hint`が書く。 */
   if(def.readOnly&&!def.special){
    form.classList.add('mm-form-compact');
+   /* **移行済みの表は丸ごと消せる**（§9.250 ③、利用者の指示「移行済みの
+      マスタについては不要なはずなので削除できるようにしてください」）。
+      **危ない操作なので主要動線に置かない**（§CLAUDE 5）——器の右端へ寄せ、
+      押すと**表の名前と件数を名乗る確認**を1回だけ出す。消せるのは
+      サーバーが`RETIRED`と名指ししている表だけ（判定は1箇所・§9.163）。 */
+   const drop=def.rawKind==='retired'&&def.rawTable
+    ?`<button type="button" id="mmDropTable" class="mm-btn-danger sm"
+        title="この表をマスタDBから丸ごと消します（取り消せません）">この表を削除</button>`:'';
    form.innerHTML=`<div class="mm-form-head"><span class="mm-mode-chip">読み取り専用</span>
-     <span class="mm-form-hint">この表は見るだけです。追加・編集・削除はできません。</span></div>
+     <span class="mm-form-hint">この表は見るだけです。追加・編集はできません。</span>${drop}</div>
     ${def.hint?`<p class="mm-def-hint">${hintHtml(def.hint)}</p>`:''}`;
    form.onsubmit=ev=>ev.preventDefault();
+   const db=$('#mmDropTable');
+   if(db)db.onclick=()=>dropRetiredTable(def);
    return;
   }
   if(defUsesEditorModal(def)){
@@ -1059,7 +1282,7 @@
    ${excelIoHtml(def)}`;
   form.onsubmit=ev=>{ev.preventDefault();submitMaint()};
   const nb=$('#masterMaintNew');if(nb)nb.onclick=()=>{maintState.editing=null;renderMaintForm()};
-  bindEquipmentPickers(form);bindInputHelpers(form);bindExcelIo(def);
+  bindEquipmentPickers(form);bindInputHelpers(form);bindMaintTabs(form);bindMoreToggles(form);bindExcelIo(def);
  }
 
  /* ---------- 汎用の編集専用モーダル(ARCHITECTURE.md「マスタ管理の画面形態」新設) ----------
@@ -1131,7 +1354,7 @@
     typeof def.extraHtml==='function'?def.extraHtml(editing):''}</div>
    ${typeof def.asideHtml==='function'?def.asideHtml(editing):''}`;
   form.onsubmit=ev=>{ev.preventDefault();submitMaint('#maintEditorForm')};
-  bindEquipmentPickers(form);bindInputHelpers(form);
+  bindEquipmentPickers(form);bindInputHelpers(form);bindMaintTabs(form);bindMoreToggles(form);
   if(typeof def.bindAside==='function')def.bindAside(form);
   modal.hidden=false;
   /* **最初のフォーカスに「候補が出る欄」を選ばない**（§9.221 ④）。タグ入力は
@@ -1212,16 +1435,32 @@
   });
  }
  function bindRowsPicks(form){
-  form.querySelectorAll('[data-rows]').forEach(b=>{
-   if(b.dataset.rowsWired)return;
-   b.dataset.rowsWired='1';
-   b.onclick=()=>{
-    const k=b.dataset.rows,v=b.dataset.rowsV;
-    form.querySelectorAll(`[data-rows="${CSS.escape(k)}"]`).forEach(x=>{
-     const on=x===b;x.classList.toggle('is-on',on);x.setAttribute('aria-pressed',on?'true':'false');
+  form.querySelectorAll('.mm-rowsfield').forEach(box=>{
+   const opts=[...box.querySelectorAll('[data-rows]')];
+   if(!opts.length)return;
+   const key=opts[0].dataset.rows;
+   /* 押した印を値から塗り直す。**隠し欄の`change`でも塗ること**——
+      紙の見本を掴んで高さを変えたときに札が追随しないと、押した札と
+      実際の値が食い違う（`bindSpanGrids`は最初からそうしている）。 */
+   const paint=v=>{
+    /* **`0`は「中身なり」**（§9.250 ④）。保存済みの塊が`0`を持っているので、
+       素で比べると**どの札も押されていない**状態になる。 */
+    const cur=(String(v||'')==='0')?'':String(v||'');
+    opts.forEach(x=>{
+     const on=String(x.dataset.rowsV||'')===cur;
+     x.classList.toggle('is-on',on);x.setAttribute('aria-pressed',on?'true':'false');
     });
-    mmSetHidden(form,k,v);
    };
+   opts.forEach(b=>{
+    if(b.dataset.rowsWired)return;
+    b.dataset.rowsWired='1';
+    b.onclick=()=>{paint(b.dataset.rowsV);mmSetHidden(form,key,b.dataset.rowsV)};
+   });
+   const hidden=form.querySelector(`[data-field="${CSS.escape(key)}"]`);
+   if(hidden&&!hidden.dataset.rowsSync){
+    hidden.dataset.rowsSync='1';
+    hidden.addEventListener('change',()=>paint(hidden.value));
+   }
   });
  }
  function bindInputHelpers(form){
@@ -1261,12 +1500,22 @@
  const RB_PAGE_ROWS=12;   // 紙の縦のマス数（report-dashboard.js の既定と同じ）
  function rbAsideHtml(){
   return `<aside class="rb-aside" aria-label="刷り上がりの見本">
-    <div class="rb-aside-head"><b>刷り上がりの見本</b>
-     <span class="rb-aside-note" id="rbNote">形だけの見本です。値は実際のロットで入ります。</span></div>
+    <div class="rb-aside-head">
+     <b>刷り上がりの見本</b>
+     <span class="rb-aside-tools">
+      <button type="button" class="rb-tgl is-on" id="rbToggleOthers" aria-pressed="false"
+        title="この設備のほかの塊も薄く重ねて、紙全体でどう見えるかを出します">紙全体で見る</button>
+      <button type="button" class="rb-tgl is-on" id="rbToggleDummy" aria-pressed="true"
+        title="値の場所にありそうなダミーを入れます。桁と文字数が実物に近いので、幅が足りるかを確かめられます">見本の値</button>
+     </span>
+    </div>
     <div class="rb-paper" id="rbPaper" role="img" aria-label="紙の中のこの塊の位置と大きさ">
      <div class="rb-paper-grid" id="rbPaperGrid"></div>
+     <div class="rb-paper-others" id="rbPaperOthers" hidden></div>
      <div class="rb-paper-block" id="rbPaperBlock"><b id="rbPaperName">この塊</b></div>
     </div>
+    <p class="rb-spill" id="rbSpill" hidden></p>
+    <p class="rb-aside-note" id="rbNote">${hintHtml('**紙の中の四方どこでも掴んで**大きさを変えられます。置く場所は帳票画面の「配置を組み換え」で決めます。')}</p>
     <dl class="rb-facts">
      <dt>幅</dt><dd id="rbFactSpan">—</dd>
      <dt>高さ</dt><dd id="rbFactRows">—</dd>
@@ -1276,6 +1525,31 @@
     <div class="rb-sec" id="rbSection"></div>
    </aside>`;
  }
+ /* ---------- ダミーの値（§9.250 ⑤、利用者の指示） ----------
+    「データダミーをつかって、帳票の表示が最終的にどうなるか…すぐに確認
+     できる導線を準備してください」
+
+    **見本の値はサーバーが答える**（`field_catalog()`の`sample`）——道を
+    1本足したときに見本も一緒に足すことになる（§9.163）。画面が道の綴りから
+    推測すると、道が増えるたびに2箇所直すことになる。
+    **知らない道でも空にしない**（空だと「見本が壊れている」と読まれる）。 */
+ const rbSample=new Map();
+ function rbNoteSamples(groups){
+  (groups||[]).forEach(g=>(g.items||[]).forEach(it=>{
+   if(it&&it.path)rbSample.set(String(it.path),String(it.sample==null?'':it.sample));
+  }));
+ }
+ function rbSampleOf(path){
+  const v=rbSample.get(String(path||''));
+  return (v===undefined||v==='')?'（値）':v;
+ }
+ /* 行数の生の値。**空と`0`はどちらも「中身なり」**（§9.250 ④）。
+    判定を1箇所に置く——散らすと、見本と札と一言で別々の答えが出る。 */
+ function rbRowsRaw(form){
+  const el=form&&form.querySelector('[data-field="rows"]');
+  const v=String(el?(el.value||''):'').trim();
+  return (v===''||v==='0')?'':v;
+ }
  /* 見本を描き直す。**読むのは隠し欄の値だけ**——押した札の見た目ではなく
     保存される値を映す（見た目だけを写すと、保存と食い違う見本ができる）。 */
  function rbPaintPreview(form){
@@ -1283,7 +1557,11 @@
   const grid=form.querySelector('#rbPaperGrid'),block=form.querySelector('#rbPaperBlock');
   if(!grid||!block)return;
   const span=Math.max(1,Math.min(12,Number(v('span'))||12));
-  const rowsRaw=v('rows');
+  /* **`0`も「中身なり」**（§9.250 ④）。保存済みの塊は行数を`0`で持っている
+     ものがあり、`rowsRaw?…`だけで見ると**文字の`'0'`は真**なので
+     `Math.max(1,0)`＝1行として描いていた（「中身なり」の塊が紙の見本では
+     1行に潰れていた）。空と0は同じ意味なので1箇所で揃える。 */
+  const rowsRaw=rbRowsRaw(form);
   const rows=rowsRaw?Math.max(1,Math.min(RB_PAGE_ROWS,Number(rowsRaw))):3;
   const area=v('kindText')==='エリア（枠と文字）';
   if(!grid.childElementCount){
@@ -1298,7 +1576,12 @@
   const setText=(id,text)=>{const el=form.querySelector(id);if(el)el.textContent=text};
   setText('#rbFactSpan',`${span} / 12 マス（${mmFracText(span,12)}）`);
   setText('#rbFactRows',rowsRaw?`${rowsRaw}行（固定）`:'中身なり（描いてから測ります）');
-  setText('#rbFactCols',area?'—（エリアは値を出しません）':(v('cols')?`${v('cols')}列`:'中身の数から決まります'));
+  /* **空欄でも「いま何列で出るか」を言う**（§CLAUDE 6）。`reportSection`の
+     既定は2列なので、「中身の数から決まります」だけだと何列になるか読めない。 */
+  const colsRaw=v('cols');
+  const colsEff=Math.max(1,Math.min(4,Number(colsRaw)||2));
+  setText('#rbFactCols',area?'—（エリアは値を出しません）'
+    :(colsRaw?`${colsRaw}列`:`未指定（いまは${colsEff}列）`));
   setText('#rbFactRepeat',area?'—':(v('repeatText')==='分割後の子ロットごと'?'子ロットの数だけ':'1回だけ'));
   /* 節そのもの（紙に出る形）。**列数と載せた項目をそのまま並べる**。 */
   const sec=form.querySelector('#rbSection');
@@ -1311,7 +1594,7 @@
    return;
   }
   const rowsData=fbParse(v('content'));
-  const cols=Math.max(1,Math.min(4,Number(v('cols'))||2));
+  const cols=colsEff;
   sec.className='rb-sec';
   sec.style.setProperty('--rb-cols',String(cols));
   sec.innerHTML=`<div class="rb-sec-head">${esc(v('name')||'（名前）')}</div>`
@@ -1319,18 +1602,230 @@
      ?`<div class="rb-sec-body">${rowsData.map(r=>{
         const sp=Math.min(cols,Math.max(1,Number(r.span)||1));
         if(r.blank)return `<div class="rb-cell is-blank" style="grid-column:span ${sp}"></div>`;
+        const val=rbState.dummy?rbSampleOf(r.path):'値';
         return `<div class="rb-cell" style="grid-column:span ${sp}">`
          +`<span class="rb-cell-k" title="${esc(r.path)}">${esc(r.label||r.path)}</span>`
-         +`<span class="rb-cell-v">値</span></div>`;
+         +`<span class="rb-cell-v" title="${esc(r.path)}">${esc(val)}</span></div>`;
        }).join('')}</div>`
      :'<p class="rb-sec-empty">載せる項目がありません。<b>画面がもともと持っている中身</b>のまま刷られます。</p>');
  }
+ /* ---------- 紙全体で見る（§9.250 ⑤、利用者の指示） ----------
+    「データダミーをつかって、帳票の表示が最終的にどうなるか…すぐに確認
+     できる導線を準備してください」
+
+    この塊だけを見ても、**紙のどこが空いているか・何ページ目に来るか**は
+    分からない。同じ設備の塊を**表示順に流し込んで**紙を組み、
+    **いま編集している塊はその流れの中で強調する**——除いて重ねると、
+    自分の塊が実際に来る場所とは違う絵になる（見本の値打ちが消える）。
+
+    **掴めることは変えない**（§4）——`#rbPaperBlock`（8方向のつまみを持つ）
+    を、流れの中の自分の席へ**測って重ねる**。席の位置はブラウザの自動配置が
+    決めるので、こちらで組み直さない（同じ並べ方を2つ持たない）。
+
+    **紙からはみ出したものは「次の紙へ」と数える**（§CLAUDE 4・6）
+    ——`.rb-paper`は`overflow:hidden`なので、黙って切ると「無い」と読まれる。 */
+ function rbPaintOthers(form){
+  const layer=form.querySelector('#rbPaperOthers');
+  const block=form.querySelector('#rbPaperBlock');
+  const note=form.querySelector('#rbSpill');
+  if(!layer||!block)return;
+  if(!rbState.others){
+   layer.hidden=true;layer.innerHTML='';
+   block.classList.remove('is-placed');
+   block.style.left=block.style.top=block.style.width=block.style.height='';
+   if(note){note.hidden=true;note.textContent=''}
+   return;
+  }
+  const v=k=>{const el=form.querySelector(`[data-field="${CSS.escape(k)}"]`);return el?String(el.value||''):''};
+  const me=String(v('name')||maintState.editing&&maintState.editing.name||'');
+  const eq=v('equipment');
+  const eqFirst=eq.split(/[,、]/)[0].trim();
+  const fits=x=>{
+   if(String(x.enabledText||'')==='無効')return false;
+   /* 対象設備は設備停止マスタと同じ書式（`'*'`＝すべて）。**同じ設備の
+      塊だけ**を流す——ほかの設備の塊を混ぜると、紙が実際より埋まって見える。 */
+   const t=String(x.equipment||'').trim();
+   if(!eq||eq==='*'||t==='*'||!t)return true;
+   return t.split(/[,、]/).map(y=>y.trim()).includes(eqFirst);
+  };
+  const meSpan=Math.max(1,Math.min(12,Number(v('span'))||12));
+  const meRows=(()=>{const r=rbRowsRaw(form);return r?Math.max(1,Math.min(RB_PAGE_ROWS,Number(r))):3})();
+  const list=(rbState.blocks||[]).filter(x=>String(x.name||'')!==me).filter(fits)
+    .map(x=>({name:String(x.name||''),order:Number(x.order)||0,
+      span:Math.max(1,Math.min(12,Number(x.span)||12)),
+      rows:Math.max(1,Math.min(RB_PAGE_ROWS,Number(x.rows)||2)),me:false}));
+  list.push({name:me||'この塊',order:Number(v('order'))||0,span:meSpan,rows:meRows,me:true});
+  list.sort((a,b)=>(a.order-b.order)||a.name.localeCompare(b.name,'ja'));
+  layer.hidden=false;
+  layer.innerHTML=list.map(x=>
+   `<i style="--rb-span:${x.span};--rb-rows:${x.rows}"${x.me?' data-me="1" class="is-me"':''}`
+   +` title="${esc(x.name)}"><b>${esc(x.name)}</b></i>`).join('');
+  /* 席へ重ねるのは**描いたあと**（自動配置の結果を測る）。 */
+  requestAnimationFrame(()=>{
+   const slot=layer.querySelector('[data-me]');
+   const paper=form.querySelector('#rbPaper');
+   if(!slot||!paper)return;
+   const pr=paper.getBoundingClientRect(),sr=slot.getBoundingClientRect();
+   if(!(sr.height>0))return;
+   block.classList.add('is-placed');
+   block.style.left=Math.round(sr.left-pr.left)+'px';
+   block.style.top=Math.round(sr.top-pr.top)+'px';
+   block.style.width=Math.round(sr.width)+'px';
+   block.style.height=Math.round(sr.height)+'px';
+   /* 紙に載りきらなかった塊を数える。**「無い」ではなく「次の紙へ」**。 */
+   if(note){
+    const lr=layer.getBoundingClientRect();
+    const over=[...layer.children].filter(el=>el.getBoundingClientRect().bottom>lr.bottom+1);
+    note.hidden=!over.length;
+    note.textContent=over.length?`この紙に載りきらないもの ${over.length}件（次の紙へ回ります）`:'';
+   }
+  });
+ }
+ /* ---------- 紙の見本を掴んで大きさを変える（§9.250 ④、利用者の指示） ----------
+    「幅と高さの指定をさせる部分だが、刷り上がりの見本という視覚表示があるので
+     これを**四方のどこからでもドラッグアンドドロップで大きさの変更**が
+     できるようにするだけで大きさの指定を直感的に行うことができるように
+     なります」
+
+    つまみは**8方向**（四辺＋四隅）。**JSが差し込む**——HTMLへ8個書かせると、
+    書き漏らした窓だけ端を掴めなくなる（`WL.makeFloatingWindow`と同じ作法）。
+    **マスに吸い付かせる**（1マス＝紙の1/12）——中途半端な幅は保存できない
+    ので、掴んでいる最中だけ滑らかに動いても意味が無い。
+    **値は隠し欄へ書く**（`mmSetHidden`）ので、札の押した印も紙の見本も
+    ③の欄も同じ`change`で追随する（見た目だけ変えると保存と食い違う）。 */
+ const RB_GRIPS=['n','e','s','w','ne','nw','se','sw'];
+ function rbBindPaperDrag(form){
+  const block=form.querySelector('#rbPaperBlock'),grid=form.querySelector('#rbPaperGrid');
+  if(!block||!grid||block.dataset.rbDrag)return;
+  block.dataset.rbDrag='1';
+  block.insertAdjacentHTML('beforeend',RB_GRIPS.map(h=>
+   `<i class="rb-grip rb-grip-${h}" data-rb-grip="${h}" role="slider" tabindex="0"`
+   +` aria-label="大きさを変える（${h.length>1?'角':'辺'}）"></i>`).join(''));
+  block.querySelectorAll('[data-rb-grip]').forEach(g=>{
+   g.onpointerdown=ev=>{
+    ev.preventDefault();ev.stopPropagation();
+    const dir=g.dataset.rbGrip;
+    const gr=grid.getBoundingClientRect();
+    const cw=gr.width/12,ch=gr.height/RB_PAGE_ROWS;
+    if(!(cw>0&&ch>0))return;
+    const spanEl=form.querySelector('[data-field="span"]');
+    const span0=Math.max(1,Math.min(12,Number(spanEl&&spanEl.value)||12));
+    const rowsRaw0=rbRowsRaw(form);
+    const rows0=rowsRaw0?Math.max(1,Math.min(RB_PAGE_ROWS,Number(rowsRaw0))):3;
+    /* **選べる幅・高さへ吸い付かせる**（§9.250 ④）。紙の幅は5段
+       （1/4・1/3・1/2・2/3・全幅）しか無く、サーバーの`normalize_span()`が
+       いちばん近い段へ丸める——掴んで5マスにできてしまうと、**見本は5マス
+       なのに保存は4マス**になり、見本が嘘をつく（§CLAUDE 6）。
+       **選べる値は札から読む**（`data-span-v`／`data-rows-v`）ので、
+       マスタ側で段を増減しても付いてくる（一覧を書き写さない）。 */
+    const allowOf=(sel,attr)=>{
+     const vs=[...form.querySelectorAll(sel)].map(x=>Number(x.dataset[attr]))
+       .filter(n=>Number.isFinite(n)&&n>0);
+     return [...new Set(vs)].sort((a,b)=>a-b);
+    };
+    const spanAllow=allowOf('.mm-span-grid [data-span-v]','spanV');
+    const rowsAllow=allowOf('.mm-rows-pick [data-rows-v]','rowsV');
+    const snap=(n,list)=>{
+     if(!list.length)return n;
+     return list.reduce((best,x)=>Math.abs(x-n)<Math.abs(best-n)?x:best,list[0]);
+    };
+    const x0=ev.clientX,y0=ev.clientY;
+    let lastSpan=span0,lastRows=rows0;
+    g.setPointerCapture&&g.setPointerCapture(ev.pointerId);
+    block.classList.add('is-grabbing');
+    const move=m=>{
+     if(dir.indexOf('e')>=0||dir.indexOf('w')>=0){
+      const d=Math.round((m.clientX-x0)/cw)*(dir.indexOf('w')>=0?-1:1);
+      const v=snap(Math.max(1,Math.min(12,span0+d)),spanAllow);
+      if(v!==lastSpan){lastSpan=v;mmSetHidden(form,'span',String(v))}
+     }
+     if(dir.indexOf('s')>=0||dir.indexOf('n')>=0){
+      const d=Math.round((m.clientY-y0)/ch)*(dir.indexOf('n')>=0?-1:1);
+      const v=snap(Math.max(1,Math.min(RB_PAGE_ROWS,rows0+d)),rowsAllow);
+      if(v!==lastRows){lastRows=v;mmSetHidden(form,'rows',String(v))}
+     }
+    };
+    const up=()=>{
+     block.classList.remove('is-grabbing');
+     document.removeEventListener('pointermove',move,true);
+     document.removeEventListener('pointerup',up,true);
+    };
+    document.addEventListener('pointermove',move,true);
+    document.addEventListener('pointerup',up,true);
+   };
+   /* **キーボードでも変えられること**（掴めるのに辿れない部品を作らない）。 */
+   /* **キーボードでも変えられること**（掴めるのに辿れない部品を作らない）。
+      1回で**選べる段を1つ**進む——ドラッグと同じ値しか作らない。 */
+   g.onkeydown=e=>{
+    const dir=g.dataset.rbGrip;
+    const wide=dir.indexOf('e')>=0||dir.indexOf('w')>=0;
+    const tall=dir.indexOf('s')>=0||dir.indexOf('n')>=0;
+    let d=0;
+    if(e.key==='ArrowRight'||e.key==='ArrowUp')d=1;
+    else if(e.key==='ArrowLeft'||e.key==='ArrowDown')d=-1;
+    else return;
+    e.preventDefault();
+    const stepIn=(sel,attr,cur)=>{
+     const vs=[...new Set([...form.querySelectorAll(sel)].map(x=>Number(x.dataset[attr]))
+       .filter(n=>Number.isFinite(n)&&n>0))].sort((a,b)=>a-b);
+     if(!vs.length)return cur+d;
+     let i=vs.indexOf(cur);
+     if(i<0)i=vs.reduce((bi,x,k)=>Math.abs(x-cur)<Math.abs(vs[bi]-cur)?k:bi,0);
+     return vs[Math.max(0,Math.min(vs.length-1,i+d))];
+    };
+    if(wide){
+     const el=form.querySelector('[data-field="span"]');
+     mmSetHidden(form,'span',String(stepIn('.mm-span-grid [data-span-v]','spanV',
+       Math.max(1,Math.min(12,Number(el&&el.value)||12)))));
+    }
+    if(tall){
+     const raw=rbRowsRaw(form);
+     mmSetHidden(form,'rows',String(stepIn('.mm-rows-pick [data-rows-v]','rowsV',raw?Number(raw):3)));
+    }
+   };
+  });
+ }
  /* 配線。**打っている最中も追う**（`input`）——名前を打つたびに紙の見本の
     題が変わるので、どの塊を触っているのかを見失わない。 */
+ const rbState={dummy:true,others:false,blocks:[]};
  function rbBindAside(form){
-  if(form.dataset.rbWired==='1'){rbPaintPreview(form);return}
+  const paint=()=>{rbPaintPreview(form);rbPaintOthers(form)};
+  rbBindPaperDrag(form);
+  const tglDummy=form.querySelector('#rbToggleDummy');
+  if(tglDummy&&!tglDummy.dataset.wired){
+   tglDummy.dataset.wired='1';
+   tglDummy.onclick=e=>{
+    e.preventDefault();
+    rbState.dummy=!rbState.dummy;
+    tglDummy.classList.toggle('is-on',rbState.dummy);
+    tglDummy.setAttribute('aria-pressed',rbState.dummy?'true':'false');
+    paint();
+   };
+  }
+  const tglOthers=form.querySelector('#rbToggleOthers');
+  if(tglOthers&&!tglOthers.dataset.wired){
+   tglOthers.dataset.wired='1';
+   tglOthers.onclick=async e=>{
+    e.preventDefault();
+    rbState.others=!rbState.others;
+    tglOthers.classList.toggle('is-on',rbState.others);
+    tglOthers.setAttribute('aria-pressed',rbState.others?'true':'false');
+    /* **重ねるものは開いたときに取る**（窓を開くたびに引くと、紙全体を
+       見ない人まで往復が1本増える）。 */
+    if(rbState.others&&!rbState.blocks.length){
+     try{const r=await api('/api/report-block-master');rbState.blocks=r.items||[]}
+     catch(_){rbState.blocks=[]}
+    }
+    paint();
+   };
+  }
+  /* 見本の値は候補と一緒に届く（§9.250 ⑤）。**届いたら塗り直すこと**
+     ——投げっぱなしにすると、②のタブを開くまで値の場所が「（値）」のまま
+     残る（§9.234 ⑧と同じ罠）。**失敗しても黙って進む**（値が「（値）」に
+     なるだけで、設定そのものは触れる）。 */
+  fbLoadCatalog().then(()=>paint()).catch(()=>{});
+  if(form.dataset.rbWired==='1'){paint();return}
   form.dataset.rbWired='1';
-  const paint=()=>rbPaintPreview(form);
   form.addEventListener('change',paint);
   form.addEventListener('input',paint);
   requestAnimationFrame(paint);
@@ -1344,6 +1839,9 @@
    try{
     const r=await api('/api/report-block-master'+(eq?'?equipment='+encodeURIComponent(eq):''));
     fbCatalog.groups=Array.isArray(r.catalog)?r.catalog:[];
+    /* 見本の値は**候補と一緒に届く**（§9.250 ⑤）。別の口で取りに行くと、
+       候補にあるのに見本の値だけ無い道が作れる。 */
+    rbNoteSamples(fbCatalog.groups);
    }catch(e){fbCatalog.groups=[]}
    fbCatalog.loadedFor=eq;fbCatalog.loading=null;
    return fbCatalog.groups;
@@ -1396,8 +1894,17 @@
    box.dataset.fbWired='1';
    const hidden=box.querySelector('input[data-field]');
    const state={rows:fbParse(hidden?hidden.value:''),cat:'',q:''};
+   /* **隠し欄へ書いたら`change`を飛ばす**（§9.218 ②「`.value`への代入では
+      `change`が飛ばない」）。飛ばさないと、同じフォームの中で値を見ている
+      もの——刷り上がりの見本（§9.249 ③）・`data-when`の出し入れ——が
+      **一度も気づけない**（見本が「載せる項目がありません」のままだった）。 */
+   const push=()=>{
+    if(!hidden)return;
+    hidden.value=fbText(state.rows);
+    hidden.dispatchEvent(new Event('change',{bubbles:true}));
+   };
    const sync=()=>{
-    if(hidden)hidden.value=fbText(state.rows);
+    push();
     drawCols();drawChosen();drawList();
    };
    /* 列数は**「内訳の列数」の欄が持つ**（§CLAUDE 8。同じ数を2箇所に置くと
@@ -1470,7 +1977,7 @@
         値だけを控えておき、書き戻しは隠し欄へ直接行う。 */
      inp.oninput=()=>{
       state.rows[Number(inp.closest('.fb-row').dataset.fbI)].label=inp.value;
-      if(hidden)hidden.value=fbText(state.rows);
+      push();
      };
     });
     let from=-1;
@@ -1862,7 +2369,7 @@
  async function submitMaint(rootSel){
   const root=rootSel||'#masterMaintForm';
   const def=currentDef(),uid=requireMaintUser();if(uid===null)return;const editing=maintState.editing;
-  const body={user_id:uid};let ok=true;
+  const body={user_id:uid};let ok=true,firstMissing=null;
   if(editing)body.id=editing.id;
   def.fields.forEach(f=>{
    if(f.type==='equipment-multi'){body[f.k]=[...document.querySelectorAll(`${root} [data-equipment-field="${f.k}"]:checked`)].map(el=>el.value);return}
@@ -1872,15 +2379,27 @@
      :[...document.querySelectorAll(`${root} [data-equipment-field="${f.k}"]:checked`)].map(el=>el.value).join(',');
     // 必須のタグ欄(設備停止マスタの対象設備)は未選択で送らせない。素の入力欄と
     // 違い、空でも「未設定」として通ってしまうため、ここで同じ扱いに揃える。
-    if(f.required&&!body[f.k])ok=false;
+    if(f.required&&!body[f.k]){ok=false;
+     if(!firstMissing)firstMissing=document.querySelector(`${root} [data-equipment-all="${f.k}"]`);}
     return;
    }
    const el=$(`${root} [data-field="${f.k}"]`);
    // 数値欄は表示用の3桁区切りが入っているので、送る前に外す(§9.49)
    const v=f.type==='number'?numRaw(el?el.value:''):String(el?el.value:'').trim();
-   if(f.required&&!v)ok=false;body[f.k]=v;
+   if(f.required&&!v){ok=false;if(!firstMissing)firstMissing=el}
+   body[f.k]=v;
   });
-  if(!ok){showToast('入力を確認してください','必須項目が未入力です。',4000);return}
+  if(!ok){
+   /* **入っていない欄の段を開いてから断る**（§9.250 ④・§4）——段（タブ）に
+      分けたので、畳んだ先の欄を「入れてください」と言われても、どこにあるのか
+      分からない。開いてから知らせる。 */
+   const form=document.querySelector(root);
+   if(form&&firstMissing){
+    mmRevealField(form,firstMissing);
+    if(firstMissing.focus){try{firstMissing.focus()}catch(e){}}
+   }
+   showToast('入力を確認してください','必須項目が未入力です。',4000);return;
+  }
   const endpoint=editing?def.endpoint+'/update':def.endpoint;
   try{
    setMaintLoading(true,editing?`${def.label}を更新しています…`:`${def.label}を登録しています…`);
@@ -1980,15 +2499,78 @@
       行のツールチップ(title)へ退避して主情報の幅を確保する。 */
  const MAINT_AUDIT_MAX_COLS=3;
  function maintShowsAudit(def){return (def.cols||[]).length<=MAINT_AUDIT_MAX_COLS}
+ /* ================================================================
+    一覧の並べ替えと列幅（§9.250 ⑥、利用者の指示）
+    ----------------------------------------------------------------
+    「マスタのデータが並べてある、よく使われている表は並び替え、列幅調整
+      できるようにしてください。」
+
+    ・**覚えるのはこの端末**（`MasterListViewV1`）。読み方の好みなので、
+      共有マスタへ入れて全員を縛らない（§9.199の`childBadge`と同じ）。
+    ・**列幅の掴み方は書き写さない**——`WL.columnWidthGrip`をそのまま呼ぶ
+      （§9.164。仕掛一覧・データ一覧・実績と同じ手つきになる）。
+    ・**触ったことは画面に出し、戻す手立てを同じ場所に置く**（§9.175）。
+    ================================================================ */
+ const MM_VIEW_KEY='MasterListViewV1';
+ let mmViewPref=null;
+ function mmView(){
+  if(mmViewPref)return mmViewPref;
+  try{mmViewPref=JSON.parse(localStorage.getItem(MM_VIEW_KEY)||'{}')||{}}catch(e){mmViewPref={}}
+  return mmViewPref;
+ }
+ function mmViewOf(def){const v=mmView()[def.key];return v&&typeof v==='object'?v:{}}
+ function mmViewSet(def,patch){
+  const all=mmView();
+  const cur=Object.assign({},all[def.key]||{},patch);
+  if(!cur.sort&&!(cur.widths&&Object.keys(cur.widths).length))delete all[def.key];
+  else all[def.key]=cur;
+  try{localStorage.setItem(MM_VIEW_KEY,JSON.stringify(all))}catch(e){}
+ }
+ function mmViewTouched(def){
+  const v=mmViewOf(def);
+  return !!(v.sort||(v.widths&&Object.keys(v.widths).length));
+ }
+ /* 幅は**指定があるものだけ**px で固定し、残りは今までどおり割合で分ける
+    （§9.119と同じ考え方。全部を px にすると器の広さに追随しなくなる）。 */
  function maintGridTemplate(def){
-  const data=def.cols.map(c=>`minmax(0,${c.grow||1}fr)`).join(' ');
+  const w=mmViewOf(def).widths||{};
+  const data=def.cols.map(c=>w[c.k]?`${Math.round(w[c.k])}px`:`minmax(0,${c.grow||1}fr)`).join(' ');
   return maintShowsAudit(def)?`${data} 96px 128px 108px`:`${data} 108px`;
+ }
+ /* 並べ替えの物差し。**空欄は必ず最後**（向きを変えても最後）——空欄が
+    先頭に集まると、探している行が画面の外へ押し出される（§9.187の
+    「向きは塊の中の値だけを反転する」と同じ考え方を、小さく持つ）。
+    数字は数として、それ以外は日本語の並びで比べる。 */
+ function mmSortValue(it,col){
+  const raw=it[col.k];
+  const t=String(raw??'').trim();
+  if(!t)return {empty:true,n:0,s:''};
+  const n=Number(t.replace(/,/g,''));
+  return {empty:false,n:Number.isFinite(n)?n:null,s:t.normalize('NFKC')};
+ }
+ function mmSortItems(def,items){
+  const sort=mmViewOf(def).sort;
+  if(!sort)return items;
+  const col=(def.cols||[]).find(c=>c.k===sort.k);
+  if(!col)return items;
+  const dir=sort.dir==='desc'?-1:1;
+  /* **安定に並べる**（同点は元の順のまま）。`Array.prototype.sort`は
+     仕様上安定だが、比較が0を返さないと崩れるので明示的に添え字で解く。 */
+  return items.map((it,i)=>({it,i})).sort((a,b)=>{
+   const x=mmSortValue(a.it,col),y=mmSortValue(b.it,col);
+   if(x.empty!==y.empty)return x.empty?1:-1;      // 空欄は向きによらず最後
+   if(!x.empty){
+    if(x.n!==null&&y.n!==null&&x.n!==y.n)return (x.n-y.n)*dir;
+    if(x.s!==y.s)return x.s.localeCompare(y.s,'ja')*dir;
+   }
+   return a.i-b.i;
+  }).map(x=>x.it);
  }
  function filteredMaintItems(def){
   const q=String(maintState.query||'').trim().normalize('NFKC').toLowerCase();
   let items=maintState.items||[];
   if(q)items=items.filter(it=>{const hay=[...def.cols.map(c=>it[c.k]),it.updated_by].map(v=>String(v??'').normalize('NFKC').toLowerCase()).join(' ');return hay.includes(q)});
-  return items;
+  return mmSortItems(def,items);
  }
  /* ---------- 束ねた見出しの開閉（§9.241 ①、利用者の指示「ロールマスタに
     ついて、設備名毎に折りたためるようにしてください」） ----------
@@ -2085,10 +2667,37 @@
  function renderMaintList(){
   const def=currentDef(),list=$('#masterMaintList');if(!list)return;
   const all=maintState.items||[],items=filteredMaintItems(def),tmpl=maintGridTemplate(def);
-  const cnt=$('#masterMaintCount');if(cnt)cnt.textContent=maintState.query?`${items.length} / 有効 ${all.length}件`:`有効 ${all.length}件`;
+  const cnt=$('#masterMaintCount');
+  if(cnt){
+   /* **覚えていることは画面に書き、忘れさせる手立ても同じ場所に置く**
+      （§9.175・§9.250 ⑥）。黙って並べ替えたままだと「順番がおかしい」と
+      読まれる。件数の隣に、いま効いている並びと戻すボタンを出す。 */
+   const v=mmViewOf(def),sc=(def.cols||[]).find(c=>v.sort&&c.k===v.sort.k);
+   const wn=Object.keys(v.widths||{}).length;
+   const marks=[];
+   if(sc)marks.push(`並び: ${esc(sc.label)} ${v.sort.dir==='desc'?'降順':'昇順'}`);
+   if(wn)marks.push(`幅: ${wn}列`);
+   cnt.innerHTML=(maintState.query?`${items.length} / 有効 ${all.length}件`:`有効 ${all.length}件`)
+    +(marks.length?`<span class="mm-viewmark">${marks.map(esc).join('・')}`
+      +`<button type="button" id="mmViewReset" title="この表の並びと列幅を既定へ戻します">✕</button></span>`:'');
+   const rb=$('#mmViewReset');
+   if(rb)rb.onclick=()=>{mmViewSet(def,{sort:null,widths:{}});renderMaintList()};
+  }
   const showAudit=maintShowsAudit(def);
-  const headCols=def.cols.map(c=>`<span>${esc(c.label)}</span>`).join('');
+  /* 見出しは**押すと並べ替え・右端を引くと幅**（§9.250 ⑥）。
+     いまの向きは矢印と`aria-sort`の両方で言う（色だけで伝えない・§CLAUDE 3）。 */
+  const sort=mmViewOf(def).sort||null;
+  const headCols=def.cols.map(c=>{
+   const on=sort&&sort.k===c.k;
+   const mark=on?(sort.dir==='desc'?'▼':'▲'):'';
+   return `<span class="mm-th" data-col="${esc(c.k)}" role="button" tabindex="0"`
+    +` aria-sort="${on?(sort.dir==='desc'?'descending':'ascending'):'none'}"`
+    +` title="${esc(c.label)}｜押すと並べ替え（もう一度で逆順・3回目で元の並び）／右端を引くと幅が変わります">`
+    +`<b>${esc(c.label)}</b>${mark?`<i class="mm-th-mark" aria-hidden="true">${mark}</i>`:''}`
+    +`<i class="mm-th-grip" aria-hidden="true"></i></span>`;
+  }).join('');
   list.innerHTML=`<div class="mm-row head" style="grid-template-columns:${tmpl}">${headCols}${showAudit?'<span>更新者</span><span>更新日時</span>':''}<span class="mm-act">操作</span></div>`;
+  bindMaintHeadTools(def,list);
   if(!items.length){
    /* 行が無いときは開閉の帯も出さない（畳む対象が無いのにボタンだけ残ると、
       押せるのに何も起きない・§CLAUDE 4）。 */
@@ -2152,6 +2761,52 @@
    frag.append(row);
   });
   list.append(frag);
+ }
+ /* 見出しの配線（§9.250 ⑥）。**掴む道具は書き写さない**——列幅は
+    `WL.columnWidthGrip`（§9.164）が「掴む→追う→離す→保存」を持っている。 */
+ function bindMaintHeadTools(def,list){
+  list.querySelectorAll('.mm-row.head>.mm-th').forEach(cell=>{
+   const key=cell.dataset.col;
+   const sortNow=()=>{
+    const cur=mmViewOf(def).sort;
+    /* 3回で一周する（昇順→降順→元の並び）。**戻す道を同じ場所に置く**
+       ——別に「戻す」を作ると、押した本人が探すことになる（§CLAUDE 4）。 */
+    const next=!cur||cur.k!==key?{k:key,dir:'asc'}
+      :cur.dir==='asc'?{k:key,dir:'desc'}:null;
+    mmViewSet(def,{sort:next});
+    renderMaintList();
+   };
+   cell.addEventListener('click',e=>{
+    if(e.target.closest('.mm-th-grip'))return;     // 取っ手は並べ替えに渡さない
+    sortNow();
+   });
+   cell.addEventListener('keydown',e=>{
+    if(e.key==='Enter'||e.key===' '){e.preventDefault();sortNow()}
+   });
+   const grip=cell.querySelector('.mm-th-grip');
+   if(!grip||typeof WL.columnWidthGrip!=='function')return;
+   /* **今そこに在る見出しから測る**（§9.211 ①）——一覧は`innerHTML`ごと
+      作り直されるので、綴じ込んだ`cell`はすぐ孤児になる。孤児は幅0で、
+      掴んでも動かない。 */
+   const liveCell=()=>document.querySelector(
+     `#masterMaintList .mm-row.head>.mm-th[data-col="${CSS.escape(key)}"]`)||cell;
+   WL.columnWidthGrip(grip,{
+    startWidth:()=>liveCell().getBoundingClientRect().width,
+    /* 引いている最中は**トラックだけ**入れ替える（行を作り直さない）。 */
+    preview:w=>{
+     const widths=Object.assign({},mmViewOf(def).widths||{},{[key]:w});
+     const tmpl=(()=>{
+      const data=def.cols.map(c=>widths[c.k]?`${Math.round(widths[c.k])}px`:`minmax(0,${c.grow||1}fr)`).join(' ');
+      return maintShowsAudit(def)?`${data} 96px 128px 108px`:`${data} 108px`;
+     })();
+     document.querySelectorAll('#masterMaintList .mm-row').forEach(r=>r.style.gridTemplateColumns=tmpl);
+    },
+    commit:w=>{
+     mmViewSet(def,{widths:Object.assign({},mmViewOf(def).widths||{},{[key]:w})});
+     renderMaintList();
+    },
+   });
+  });
  }
  function setMaintSearchVisible(show){
   const search=document.querySelector('#masterMaintPanel .mm-search');if(search)search.style.display=show?'':'none';
@@ -4574,7 +5229,8 @@
  let cleanupState={data:null,loaded:false,picked:null,busy:false};
  function clSize(n){
   const v=Number(n)||0;
-  if(v<=0)return '0';
+  /* **単位を落とさない**（§CLAUDE 6）。「0・1件」だと0が何の0なのか読めない。 */
+  if(v<=0)return '0B';
   if(v<1024)return v+'B';
   if(v<1048576)return (v/1024).toFixed(0)+'KB';
   if(v<1073741824)return (v/1048576).toFixed(1)+'MB';
@@ -4824,7 +5480,10 @@
  }
  function mtDefOf(t){
   const longNames=t.long||[];
-  const cols=(t.schema||[]).filter(c=>!c.audit&&!c.pk);
+  /* **「触らせない列」の判定はサーバーの1つの印を見る**（§9.163）。
+     監査列と、rowidの別名になる`INTEGER PRIMARY KEY`だけが`auto`。
+     利用者が決める鍵（`TEXT PRIMARY KEY`）は編集できる。 */
+  const cols=(t.schema||[]).filter(c=>!(c.auto!==undefined?c.auto:(c.audit||c.pk)));
   const fields=cols.map(c=>mtFieldOf(c,longNames));
   /* 一覧の列は**先頭から6本まで**。全部並べると1列あたりが潰れて読めない
      （残りは編集モーダルで見る。§CLAUDE 11「入れ物は中身の長さから決める」）。 */
@@ -4855,6 +5514,36 @@
               +'列の意味はアプリの内部の決まりに沿っているので、'
               +'**値の形（書き方）を変えると、その設定は読めなくなることがあります**。'
               +'迷ったときは、ふだんの画面から設定し直してください。')};
+ }
+ /* 移行済みの表を丸ごと消す（§9.250 ③）。**取り消せないので、消す前に
+    「何を・何件」を名乗る**（§9.193の下見と同じ作法）。消したあとは
+    タブごと消えるので、**次にどこへ行くのかも先に決めておく**（§CLAUDE 2）。 */
+ async function dropRetiredTable(def){
+  const rows=(maintState.items||[]).length;
+  const body=`<p class="confirm-modal-message"><b>${esc(def.rawTable)}</b> をマスタDBから
+    <b>丸ごと消します</b>。取り消せません。</p>
+   <ul class="cl-confirm"><li><b>${esc(def.rawTable)}</b><em>${rows}件</em></li></ul>
+   <p class="confirm-modal-message">この表は<b>アプリがもう読みません</b>
+    （中身は移行先へ移っています）。消しても画面の動きは変わりません。</p>`;
+  const ok=typeof confirmModal==='function'
+   ? await confirmModal({title:'移行済みの表を削除します',eyebrow:'DROP TABLE',bodyHtml:body,
+                         confirmLabel:'削除する',danger:true})
+   : window.confirm(`${def.rawTable} を丸ごと消します。よろしいですか？`);
+  if(!ok)return;
+  try{
+   setMaintLoading(true,'削除しています…');
+   const r=await api('/api/master-table/'+encodeURIComponent(def.rawTable)+'/drop',
+     {method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({user_id:String($('#masterUserId')?.value||'').trim()})});
+   /* **消えたタブに留まらない**——写しを捨てて一覧を取り直し、
+      いま居るタブが無くなっていたら見えているものの先頭へ移す。 */
+   mtState.loaded=false;
+   await loadMasterTableCatalog(true);
+   if(!allDefs().some(d=>d.key===maintState.defKey))maintState.defKey=firstVisibleDefKey();
+   syncNav();await loadMaint(true);
+   showToast&&showToast('削除しました',(r&&r.message)||def.rawTable,3600);
+  }catch(e){showToast&&showToast('削除できませんでした',e.message,7000)}
+  finally{setMaintLoading(false)}
  }
  async function loadMasterTableCatalog(force){
   if(!force&&mtState.loaded)return mtState.tables;
@@ -6894,8 +7583,21 @@
   const mates=opState.items.filter(i=>(i.place||'準備')===(x.place||'準備')
     &&(i.group||'その他')===(x.group||'その他')&&String(i.id)!==String(x.id)
     &&i.enabled!==false);
-  const ghost=i=>`<div class="op-prev-ghost" style="grid-column:span ${opSpanOf(i)}">`
-   +`<span>${esc(i.name)}</span></div>`;
+  /* ---------- 隣の欄も本物で出す（§9.250 ⑤、利用者の指示） ----------
+     「データダミーをつかって…操業データがどうなるかといった結果を…
+      すぐに確認できる導線を準備してください」
+
+     以前は隣の欄を**名前だけの点線の箱**で置いていた。1枚のカードが
+     実際にどう見えるか——選ばせ方が混ざったときの高さのそろい・単位の
+     置き場・幅の釣り合い——は、それでは分からない。
+     **本物の部品を同じ口（`WL.opData.previewWidget`）で作る**ので、
+     設定画面と測定画面で形が食い違わない（§9.218 ①）。
+     **値はダミー**（サーバーの`sample`）——桁と文字数が実物に近いので、
+     幅が足りるかを確かめられる（§9.130）。
+     **押せないようにする**（`.is-ghost`）——見本の隣の欄を触っても
+     どこにも記録されないので、触れると壊れて見える（§4）。 */
+  const ghost=i=>`<div class="op-prev-ghost" data-op-ghost="${esc(i.name)}"`
+   +` style="grid-column:span ${opSpanOf(i)}"></div>`;
   const rule=[];
   if(x.required)rule.push('必須');
   if(opFamilyOf(x)==='number'){
@@ -6957,6 +7659,7 @@
    +`</div></div>`
    +(restN?`<p class="op-prev-rest">この群にはあと${restN}件あります`
       +`（この幅に入らないので出していません）。</p>`:'')
+   +`<p class="op-prev-note" id="opPrevNote" hidden></p>`
    +`<p class="op-prev-value" id="opPrevValue"></p>`
    +`<ul class="op-prev-facts">`
    +`<li><b>入力の決まり</b>${esc(rule.join('／'))}</li>`
@@ -7243,6 +7946,60 @@
    +`<i class="op-form-note">${every?'すべての設備の測定画面に出ます（これから増える設備でも出ます）。'
      :`選んだ ${on.length} 設備だけに出ます: ${esc(on.join('、'))}`}</i>`;
  }
+ /* 隣の欄をダミーの値つきで描く（§9.250 ⑤）。**マスタの行そのものから
+    作る**ので、項目を足せばここにも増える（コードへ項目名を書かない）。 */
+ function opPaintGhosts(){
+  document.querySelectorAll('#opModalPreview [data-op-ghost]').forEach(box=>{
+   const name=box.dataset.opGhost;
+   const it=(opState.items||[]).find(y=>String(y.name||'')===name);
+   if(!it){box.textContent=name;return}
+   const fam=opFamilyOf(it);
+   const label=document.createElement('label');
+   label.className='opf opf-host is-ghost';
+   label.dataset.opfill='1';
+   label.innerHTML=`<span class="opf-name">${esc(it.name)}</span>`;
+   let ctl;
+   if(fam==='output'){ctl=document.createElement('output')}
+   else if(fam==='choice'){
+    ctl=document.createElement('select');
+    const vals=(opState.choices||[]).filter(c=>c.name===it.choice).map(c=>c.value);
+    ctl.innerHTML=['<option value="">-</option>']
+      .concat(vals.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`)).join('');
+   }else{
+    ctl=document.createElement('input');ctl.type='text';
+    if(fam==='number'){ctl.className='numeric-input';ctl.inputMode='decimal';
+     const eff=opRuleDef(it);
+     if(eff.min!==null&&eff.min!==undefined&&eff.min!=='')ctl.min=eff.min;
+     if(eff.max!==null&&eff.max!==undefined&&eff.max!=='')ctl.max=eff.max;
+    }
+   }
+   label.appendChild(ctl);
+   box.innerHTML='';box.appendChild(label);
+   const def={name:it.name,unit:it.unit,type:it.type,decimals:it.decimals,step:it.step,
+     min:opRuleDef(it).min,max:opRuleDef(it).max,freeText:!!it.freeText,
+     unitPlace:opUnitPlaceOf(it),align:it.align,valueFormat:it.valueFormat,digits:it.digits,
+     look:opLookOf(it),layout:opLayoutOf(it),choices:opChoiceValues(it.choice),
+     noBlank:!!it.noBlank,preview:true};
+   const w=String(it.widget||'プルダウン');
+   if(window.WL&&WL.opData&&WL.opData.previewWidget){
+    const needs=fam!=='output'&&(w!=='プルダウン'||(def.freeText&&fam==='choice'));
+    if(needs)WL.opData.previewWidget(def,label,w);
+   }
+   if(window.WL&&WL.opData&&WL.opData.presentation)WL.opData.presentation(label,def);
+   /* ダミーの値（§9.250 ⑤）。**選択欄では候補へ足してから入れる**
+      ——`select.value`へ無い値を代入すると空になる（§9.204と同じ罠）。
+      組み込みの選択欄は候補を画面が持っているので、マスタからは引けない。 */
+   const v=String(it.sample==null?'':it.sample);
+   if(v&&ctl.tagName==='OUTPUT')ctl.textContent=v;
+   else if(v&&ctl.tagName==='SELECT'){
+    if(![...ctl.options].some(o=>o.value===v)){
+     const o=document.createElement('option');o.value=v;o.textContent=v;ctl.appendChild(o);
+    }
+    ctl.value=v;
+   }else if(v)ctl.value=v;
+   if(window.WL&&WL.opData&&WL.opData.syncWidgets)WL.opData.syncWidgets();
+  });
+ }
  function opRenderPreviewField(x,widget,usable){
   const host=$('#opPrevField');if(!host)return;
   const vals=(opState.choices||[]).filter(c=>c.name===x.choice).map(c=>c.value);
@@ -7366,14 +8123,51 @@
       ままだと、見本だけ単位が器の上に出る（実物と食い違う）。 */
    if(WL.opData.presentation)WL.opData.presentation(label,previewDef);
   }
+  /* ---------- 「いまは作れない」理由はここで言う（§9.250 ⑧） ----------
+     スライダー・メーターは上下限が、早見ボタンは上下限と刻みが決まって
+     いないと作れない。以前はその案内を**測定画面の欄の下**へ1行足して
+     いたが、①直す場所はここ（マスタ）であって測定画面ではない
+     ②案内のほうが道具より場所を取っていた（実測45px）。
+     **押せるのに何も起きない道具は残さない**（§4）ので、道具は素の欄の
+     ままにして、理由と直し方は**選んでいるこの窓**に出す。 */
+  const note=document.getElementById('opPrevNote');
+  if(note){
+   const box=label.querySelector('.opf-widget');
+   const why=(box&&box.dataset.why)||'';
+   note.textContent=why?`${why}。いまは打ち込みだけの欄になります（「② 何を記録するか」で決められます）。`:'';
+   note.hidden=!why;
+  }
+  /* 隣の欄をダミーの値つきで描く（§9.250 ⑤）。**同じ口を通す**ので、
+     選ばせ方・意匠・単位の置き場がそのまま出る。 */
+  opPaintGhosts();
   /* **押した結果が何として記録されるか**を出す（§9.219 ③、利用者の指示
      「実際の挙動ももう少しわかるように」）。見本が本物なので、押せば
      そのまま値が変わる——記録に入るのはこの文字列。 */
   const out=document.getElementById('opPrevValue');
   if(out){
+   /* 見本の値を入れてみる（§9.250 ⑤）。**押したときだけ入れる**——
+      黙って入れると`記録される値`が嘘になる（打っていない値が「記録される」
+      と読める）。桁と文字数が実物に近いので、**幅が足りるか**をその場で
+      確かめられる（§9.130）。 */
+   const sample=String((x&&x.sample)||'');
    const show=()=>{
     const v=String(ctl.value==null?'':ctl.value);
-    out.innerHTML=`記録される値: <b>${v?esc(v):'（まだ入っていません）'}</b>`;
+    out.innerHTML=`記録される値: <b>${v?esc(v):'（まだ入っていません）'}</b>`
+     +(sample&&sample!=='（値）'&&ctl.tagName!=='OUTPUT'
+        ?` <button type="button" class="op-prev-fill" id="opPrevFill"`
+         +` title="ありそうな値（${esc(sample)}）を入れて、幅が足りるかを確かめます">見本の値を入れる</button>`:'');
+    const fill=document.getElementById('opPrevFill');
+    if(fill)fill.onclick=e=>{
+     e.preventDefault();
+     if(ctl.tagName==='SELECT'&&![...ctl.options].some(o=>o.value===sample)){
+      const o=document.createElement('option');o.value=sample;o.textContent=sample;
+      o.dataset.opFree='1';ctl.appendChild(o);
+     }
+     ctl.value=sample;
+     ctl.dispatchEvent(new Event('input',{bubbles:true}));
+     ctl.dispatchEvent(new Event('change',{bubbles:true}));
+     if(window.WL&&WL.opData&&WL.opData.syncWidgets)WL.opData.syncWidgets();
+    };
    };
    ctl.addEventListener('input',show);
    ctl.addEventListener('change',show);

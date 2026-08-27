@@ -95,7 +95,9 @@ G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 't
                'test_shift', 'test_dbequip', 'test_crudroutes', 'test_setpage', 'test_eqstd',
                'test_workdate', 'test_measstore', 'test_roll', 'test_rollio',
                # §9.241 ①: 束ねた見出しの開閉／④: ロールの読み込み経路
-               'test_mmfold', 'test_rollload']
+               'test_mmfold', 'test_rollload',
+               # §9.250 ①②③⑥⑦: 一覧の折りたたみ・移行済みの削除・並べ替え/列幅
+               'test_mmtable']
 G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'test_flows',
              'test_master', 'test_waiting', 'test_mcore', 'test_msteps',
              # §9.242 ③: バリの2段（1回目の受付・2回目の計算式）
@@ -242,7 +244,7 @@ RULES = [
     # 専用タブを持たないマスタの編集(§9.249 (2))。対応表がタブのキーを指すので、
     # マスタ管理の画面(master-maint.js)を触ったときも回す。
     ('backend/routes/master_tables.py', g('test_rawmaster', 'test_modeguard',
-                                          'test_crudroutes', 'test_maint')),
+                                          'test_crudroutes', 'test_maint', 'test_mmtable')),
     # 置き換えの粘り(§9.108)は写し・共有JSON・RNE公開の全部が通る土台。
     ('backend/atomic_io.py', g('test_atomicio', 'test_dbmirror', 'test_sclock',
                                'test_scsync', 'test_datasource', 'test_cleanup')),

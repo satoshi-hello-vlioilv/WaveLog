@@ -43,6 +43,10 @@ def rec(name, ok, detail=''):
     print(('PASS' if ok else 'FAIL') + ': ' + name + ((' -- ' + str(detail)) if detail else ''))
 
 
+def set_mode(m):
+    call('/api/access-mode', {'mode': m})
+
+
 def call(path, body=None):
     url = API + path
     data = json.dumps(body).encode() if body is not None else None
@@ -91,6 +95,10 @@ c.execute(f'INSERT INTO [{TABLE}] ([名前],[数],[内容]) VALUES (?,?,?)', ['�
 c.commit()
 c.close()
 enc = urllib.parse.quote(TABLE)
+# **マスタの書き込みは編集モードだけ**（access_mode の `master_tables`）。
+# サーバー側のテストは schedule モードで走るので、ここで切り替えて
+# **finally で必ず戻す**——戻さないと後続のスケジュール系が全部落ちる。
+set_mode('edit')
 try:
     st, cat = call('/api/master-table/catalog')
     row = next((t for t in cat.get('tables', []) if t['table'] == TABLE), None)
@@ -102,6 +110,10 @@ try:
         bool(row) and {x['name'] for x in row['schema'] if x['audit']}
         == {'登録者ID', '更新者ID', '登録日時', '更新日時'}
         and [x['name'] for x in row['schema'] if x['pk']] == ['ID'])
+    rec('「サーバーが埋める列」の印は監査列と INTEGER PRIMARY KEY だけ',
+        bool(row) and {x['name'] for x in row['schema'] if x['auto']}
+        == {'ID', '登録者ID', '更新者ID', '登録日時', '更新日時'},
+        str(sorted(x['name'] for x in (row or {}).get('schema', []) if x.get('auto'))))
 
     st, d = call('/api/master-table/' + enc)
     rec('中身を rowid つきで返す', st == 200 and d['items'] and d['items'][0]['id'] == 1, str(d)[:120])
@@ -132,11 +144,45 @@ try:
     st, d = call(f'/api/master-table/{enc}/delete', {'id': new_id})
     rec('消えている行の削除は404で理由を返す', st == 404 and d.get('error'), f'{st} {d}')
 
+    # ---- 3b) 利用者が決める鍵（TEXT PRIMARY KEY）は編集できる ----
+    # **主キーだからと一律に外さないこと**——外すと、この形の表へ1行も足せない。
+    KEYED = 'テスト鍵マスタ'
+    c2 = sqlite3.connect(master)
+    c2.execute(f'DROP TABLE IF EXISTS [{KEYED}]')
+    c2.execute(f'CREATE TABLE [{KEYED}] ([設定キー] TEXT PRIMARY KEY,[設定値] TEXT)')
+    c2.commit()
+    c2.close()
+    enc2 = urllib.parse.quote(KEYED)
+    try:
+        st, cat2 = call('/api/master-table/catalog')
+        r2 = next((t for t in cat2.get('tables', []) if t['table'] == KEYED), None)
+        rec('TEXT PRIMARY KEY は「サーバーが埋める列」に数えない',
+            bool(r2) and not next(x for x in r2['schema'] if x['name'] == '設定キー')['auto'])
+        st, d2 = call('/api/master-table/' + enc2, {'設定キー': 'k1', '設定値': 'v1', 'user_id': 'tester'})
+        rec('利用者が決める鍵を送って1行足せる', st == 200 and d2.get('ok'), str(d2)[:100])
+        st, d2 = call('/api/master-table/' + enc2)
+        rec('足した鍵がそのまま読み戻せる',
+            any(x.get('設定キー') == 'k1' for x in d2.get('items', [])), str(d2.get('items'))[:100])
+    finally:
+        c2 = sqlite3.connect(master)
+        c2.execute(f'DROP TABLE IF EXISTS [{KEYED}]')
+        c2.commit()
+        c2.close()
+
     # ---- 4) 扱えない表は断る（名前を組み立てさせない） ----
     st, d = call('/api/master-table/sqlite_master')
     rec('sqlite内部の表は断る', st == 400 and d.get('error'), f'{st} {d}')
     st, d = call('/api/master-table/' + urllib.parse.quote('存在しない表'))
     rec('実在しない表は断る（理由つき）', st == 400 and '存在しない表' in str(d.get('error', '')), f'{st} {d}')
+
+    # ---- 4b) 書けるのは編集モードだけ（宣言が効いていること） ----
+    # **未宣言のBlueprintは fail-open（素通し）**なので、宣言が外れると
+    # 閲覧モードの端末からも生の表を書き換えられてしまう（tests/test_modeguard.py
+    # が一覧としては見張るが、実際に弾かれるかはここで見る）。
+    set_mode('view')
+    st, d = call('/api/master-table/' + enc, {'名前': 'だめな行', 'user_id': 'tester'})
+    rec('閲覧モードでは書けない（ガードが弾く）', st == 403, f'{st} {d}')
+    set_mode('edit')
 
     # ---- 5) CRUDの4本が実在する（404/405で無いこと） ----
     ok4 = []
@@ -152,6 +198,11 @@ finally:
     c.execute(f'DROP TABLE IF EXISTS [{TABLE}]')
     c.commit()
     c.close()
+    # **モードは必ず戻す**（このブロックは schedule モードで走る約束）。
+    try:
+        set_mode('schedule')
+    except Exception:
+        pass
 
 ng = [x for x in R if not x[1]]
 print('\n=== SUMMARY ===')

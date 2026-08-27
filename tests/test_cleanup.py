@@ -144,6 +144,13 @@ try:
         not mir.get('SIKALOTNOW.g1.sqlite3', {}).get('keep')
         and not mir.get('SIKALOTNOW.g2.sqlite3', {}).get('keep'),
         f"g1={mir.get('SIKALOTNOW.g1.sqlite3',{}).get('keep')!r}")
+    # **切り替えたばかりの世代には触らない**——台帳が次を指した後も、開いたまま
+    # 読み終えていない画面がある(§9.108)。若い世代を1つ注ぎ込んで確かめる。
+    touch(cache / 'SIKALOTNOW.g4.sqlite3', 900)
+    fresh = {pathlib.Path(i['path']).name: i for i in file_cleanup._scan_mirror()}
+    rec('切り替えたばかりの世代には触らない',
+        bool(fresh.get('SIKALOTNOW.g4.sqlite3', {}).get('keep')),
+        str(fresh.get('SIKALOTNOW.g4.sqlite3')))
     lg = {pathlib.Path(i['path']).name: i for i in file_cleanup._scan_logs()}
     rec('いま書いているログは残す', bool(lg.get('app.log', {}).get('keep')),
         str(lg.get('app.log')))
@@ -179,7 +186,8 @@ try:
     real = file_cleanup.run(keys=['mirror', 'logs'])
     left = sorted(p.name for p in cache.glob('*.sqlite3'))
     rec('掃除すると古い世代だけが消える',
-        left == ['SIKALOTNOW.g3.sqlite3'] and real['removed'] >= 2, f'{left} removed={real["removed"]}')
+        left == ['SIKALOTNOW.g3.sqlite3', 'SIKALOTNOW.g4.sqlite3'] and real['removed'] >= 2,
+        f'{left} removed={real["removed"]}')
     rec('いま書いているログは掃除のあとも在る', (logs / 'app.log').exists())
     rec('本物のデータは掃除のあとも在る',
         all((dbdir / n).exists() for n in holy))

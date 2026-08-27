@@ -813,25 +813,76 @@
    const t=String(v||'');
    words.forEach(b=>b.classList.toggle('is-on',!!b.dataset.opw&&t.indexOf(b.dataset.opw)>=0));
   }
-  /* メーター（§9.226 ①）。**打つ欄はそのまま**で、上下限のどこに居るかを
-     帯で言う。外れているときは色と文字の両方で言う（§3）。 */
-  const meter=box.querySelector('.opf-meter-fill');
-  if(meter){
+  /* 底の帯（§9.250 ⑧）。メーターとスライダーが**同じ1本**を使う——
+     どちらも「上下限のどこに居るか」を言う道具で、違うのは引けるかどうか
+     だけ。**行を増やさない**ので、位置は`.opf-num-rail`の中の塗りだけで
+     語る。**目盛の数字は出さない**——効いている上下限は決まり書き
+     （`ruleText()`）が既に文字で出しており、同じ数を2箇所に置くと
+     読む側が数え直すことになる（§CLAUDE 8）。全文は`title`（§9.234 ①）。 */
+  const fill=box.querySelector('.opf-num-fill');
+  if(fill){
    const lo=Number(box.dataset.opLo),hi=Number(box.dataset.opHi),n=Number(v);
    const ok=Number.isFinite(n)&&Number.isFinite(lo)&&Number.isFinite(hi)&&hi>lo;
    const pct=ok?Math.max(0,Math.min(100,(n-lo)/(hi-lo)*100)):0;
-   meter.style.width=pct.toFixed(2)+'%';
+   fill.style.width=pct.toFixed(2)+'%';
+   /* **範囲の外は色と形の両方で言う**（§3）。`settle()`が欄を離れた時点で
+      上下限まで戻すので、外れているのは打っている最中だけ——それでも
+      黙って戻すより、その場で分かるほうが速い。 */
    const out=ok&&(n<lo||n>hi);
    box.classList.toggle('is-out',!!out);
-   const note=box.querySelector('.opf-meter-note');
-   if(note)note.textContent=!Number.isFinite(n)?'':(out?'範囲の外です':`${lo}〜${hi} の中`);
+   const rail=box.querySelector('.opf-num-rail');
+   if(rail&&Number.isFinite(lo)&&Number.isFinite(hi)){
+    rail.title=(rail.classList.contains('is-live')
+      ?'押した位置へ動きます（細かく決めるときは右の ↔ ）｜'
+      :'')+`${lo}〜${hi}`+(Number.isFinite(n)?`（いま ${v}${out?'・範囲の外':''}）`:'');
+   }
   }
  }
- /* 数値の器（§9.219 ③、利用者の指示「UIの種類を増やしたり」）。
-    **素の欄は消さない**——選択肢のように「候補から選ぶ」のではなく「打つ」
-    欄なので、打てる場所を残したまま押して決める道具を足すのが正しい
-    （`.opf-native-off`にすると打てなくなる）。 */
+ /* ============================================================
+    数値の器（§9.250 ⑧、利用者の指示）
+    ------------------------------------------------------------
+    「ステッパー、スピナー、スライダー、キーパッド、早見ボタン、メーターなど、
+     メインで数値を取り扱うものほぼすべてにおいて、そのまま打つで決まるUI
+     サイズをベースに考えると、縦横サイズが大きくなるか、UI内に被り正常に
+     使えない状態です。…範囲に収めること、入力データは隠さないこと、
+     使いやすいこと、デザインに統一感があり美しいこと」
+
+    **物差しは「そのまま打つ」の1枠**。幅は`[どこに出すか]`のマスが決めて
+    いて（`--op-cols`の`minmax(0,1fr)`）**それ以上には使えない**し、高さは
+    敷き詰めるので**名前の行＋欄の1行**を超えてはいけない。以前は器を欄の
+    **下へ足して**いたので、実測で
+      ステッパー +35px ／ スライダー +45px ／ キーパッド +54px ／
+      早見ボタン +89px ／ メーター +23px
+    と、道具を選んだ欄だけが縦に伸びて隣とそろわなくなっていた
+    （唯一そろっていたのがスピナーで、あれだけが**欄の行へ引き上げて**いた）。
+
+    直し方は**スピナーの作法を6つ全部へ広げる**こと:
+
+      1. 道具は必ず**欄の行の中**（`.opf-num`）。器は負の余白で1行ぶん
+         引き上げるので、**縦の footprint は0**（`--gap-tight`のぶんも引く）。
+      2. 右端に**帯（`.opf-num-strip`）**を置き、欄の`padding-right`で
+         **同じ幅だけ場所を空ける**（`--opf-num-w`）。だから値が道具の下へ
+         潜らない（§9.233 ③の`--opf-pad-r`と同じ約束。単位を内側へ重ねる
+         設定と**足し算で共存**する）。
+      3. 帯に入りきらないもの（スライダーの目盛・テンキー・早見の並び）は
+         **押すと浮くポップオーバー**にする（§9.201の作法をそのまま使う）。
+         ——「常時表示できるものはそれで収まる方が良いがそうではない場合は、
+         ポップオーバーの要素を加えた複合的なコントロールに」（利用者の指示）
+      4. いまどこに居るかは**欄の底の細い帯**（`.opf-num-rail`）で言う。
+         行を増やさずに位置が読め、値の字にも被らない。
+
+    **器は`pointer-events:none`**——欄の上に重ねるので、素通しにしないと
+    欄そのものが押せなくなる（押せるのは帯と底の目盛だけ）。
+    ============================================================ */
  const NUM_WIDGETS=['ステッパー','スピナー','スライダー','キーパッド','早見ボタン','メーター'];
+ /* 帯の幅（em）。**1箇所で持つ**——欄の逃げ場（`--opf-num-w`）とCSSの
+    見た目が同じ数を見るので、片方だけ変えた状態が作れない。
+    `em`なのは表示サイズ（`--ui-scale`）に追随させるため（§9.199）。 */
+ const NUM_STRIP={'スピナー':1.7,'ステッパー':3.4,'スライダー':1.9,
+                  'キーパッド':1.9,'早見ボタン':1.9,'メーター':0};
+ /* 底の目盛を出す形。**スライダーとメーターだけ**——他は「いまどこか」を
+    語る道具ではないので、出すと意味の無い線が増える。 */
+ const NUM_RAIL={'スライダー':1,'メーター':1};
  /* よく使う値を並べる（§9.223 ③）。上下限と刻みから作り、**多すぎるときは
     出さない**——20個も並ぶと「探す」作業になり、打ったほうが速い（§4）。 */
  const QUICK_MAX=12;
@@ -845,13 +896,171 @@
   for(let i=0;i<n;i++){const v=lo+i*step;out.push(dec?v.toFixed(dec):String(Math.round(v)))}
   return out;
  }
+ /* 刻みから小数桁を決める（浮動小数の誤差を持ち込まない）。 */
+ function stepDec(step){
+  const s=String(step);const i=s.indexOf('.');
+  return i<0?0:s.length-i-1;
+ }
+ function numFix(v,step){const d=stepDec(step);return d?v.toFixed(d):String(Math.round(v))}
+
+ /* ---------- 数値のポップオーバー（§9.250 ⑧） ----------
+    **`一覧`（`.opf-picker`）でも`メニュー`（`.opf-menu-pop`）でもない第3の窓**
+    にはしない——置き場所の決め方（`placeMenu`）・閉じ方・意匠の持ち出し
+    （`carryLook`）は`メニュー`と同じでよいので、**同じ道具を使い回す**
+    （§9.164）。違うのは中身だけ。 */
+ let numPopEl=null,numPopBack=null,numPopOff=null;
+ function ensureNumPop(){
+  if(numPopEl)return numPopEl;
+  numPopEl=document.createElement('div');
+  numPopEl.className='opf-menu-pop opf-num-pop';numPopEl.id='opfNumPop';numPopEl.hidden=true;
+  document.body.appendChild(numPopEl);
+  WL.modal.keepOpen(numPopEl);
+  /* **開いた器は必ず控える**（§9.222 ①）——控えないと、外クリックもEscも
+     先頭の`if(!el)return`で引き返し、どれでも閉じられないまま積み上がる。 */
+  document.addEventListener('mousedown',e=>{
+   if(!numPopEl||numPopEl.hidden)return;
+   if(numPopEl.contains(e.target))return;
+   if(numPopBack&&numPopBack.contains&&numPopBack.contains(e.target))return;
+   closeNumPop();
+  },true);
+  document.addEventListener('keydown',e=>{
+   if(numPopEl&&!numPopEl.hidden&&WL.modal.escCloses(e)){e.stopPropagation();closeNumPop()}
+  },true);
+  return numPopEl;
+ }
+ function closeNumPop(){
+  if(!numPopEl||numPopEl.hidden)return;
+  numPopEl.hidden=true;
+  if(numPopOff){numPopOff();numPopOff=null}
+  const back=numPopBack;numPopBack=null;
+  if(back){
+   back.setAttribute('aria-expanded','false');
+   if(back.focus){try{back.focus()}catch(e){}}
+  }
+ }
+ function openNumPop(def,host,el,btn,kind){
+  const pop=ensureNumPop();
+  numPopBack=btn;
+  carryLook(host,pop);                       /* §9.247 ① 欄と同じ角丸・色で開く */
+  pop.hidden=false;
+  btn.setAttribute('aria-expanded','true');
+  const step=stepOf(def),lo=numOr(def.min,null),hi=numOr(def.max,null);
+  const unit=def.unit?`（${def.unit}）`:'';
+  const head=`<div class="opf-num-pop-head"><b>${esc(def.name)}${esc(unit)}</b>`
+    +`<output class="opf-num-pop-val"></output></div>`;
+  let body='';
+  if(kind==='スライダー'){
+   body='<div class="opf-num-pop-slide">'
+     +`<input type="range" class="opf-range-in" min="${lo}" max="${hi}" step="${step}">`
+     +`<span class="opf-range-scale"><i>${esc(String(lo))}</i><i>${esc(String(hi))}</i></span>`
+     +'</div>';
+  }else if(kind==='早見ボタン'){
+   const vs=quickValues(def)||[];
+   /* 並べ方（§9.226 ①）は**窓の中の並び**に効く——`早見ボタン`は
+      `LAYOUT_WIDGETS`に載っているので、当てないと設定が黙って効かなくなる。 */
+   body='<div class="opf-num-pop-quick">'+vs.map(v=>
+     `<button type="button" class="opf-quick-btn" data-opv="${esc(v)}">`
+     +`<span class="opf-btn-text">${esc(v)}</span></button>`).join('')+'</div>';
+  }else{
+   /* テンキー。**`0`と`.`と`←`と`消す`まで**（打ち直せない窓にしない）。 */
+   const keys=['7','8','9','4','5','6','1','2','3','0','.','←'];
+   body='<div class="opf-num-pop-pad">'+keys.map(k=>
+     `<button type="button" class="opf-numkey" data-opk="${esc(k)}">${esc(k)}</button>`).join('')
+     +'<button type="button" class="opf-numkey opf-numkey-wide" data-opk="clear">消す</button>'
+     +'<button type="button" class="opf-numkey opf-numkey-wide opf-numkey-ok" data-opk="ok">入れる</button>'
+     +'</div>';
+  }
+  pop.innerHTML=head+body;
+  const view=pop.querySelector('.opf-num-pop-val');
+  const paint=()=>{if(view)view.value=String(el.value||'')||'—'};
+  paint();
+  if(kind==='スライダー'){
+   const rg=pop.querySelector('.opf-range-in');
+   if(rg){
+    rg.value=String(numOr(el.value,lo));
+    rg.oninput=()=>{setValue(el,rg.value);paint();syncWidget(host)};
+   }
+  }else if(kind==='早見ボタン'){
+   applyLayout(pop.querySelector('.opf-num-pop-quick'),def);
+   pop.querySelectorAll('[data-opv]').forEach(b=>{
+    const on=b.dataset.opv===String(el.value||'');
+    b.classList.toggle('is-on',on);
+    b.onclick=e=>{e.preventDefault();setValue(el,b.dataset.opv);syncWidget(host);closeNumPop()};
+   });
+  }else{
+   pop.querySelectorAll('[data-opk]').forEach(b=>{
+    b.onclick=e=>{
+     e.preventDefault();
+     const k=b.dataset.opk;
+     if(k==='ok'){closeNumPop();return}
+     let v=String(el.value||'');
+     if(k==='clear')v='';
+     else if(k==='←')v=v.slice(0,-1);
+     else if(k==='.'){if(v.indexOf('.')<0)v=(v||'0')+'.'}
+     else v+=k;
+     setValue(el,v);paint();syncWidget(host);
+    };
+   });
+  }
+  placeMenu(pop,btn);
+  const onScroll=()=>closeNumPop();
+  window.addEventListener('scroll',onScroll,true);
+  window.addEventListener('resize',onScroll);
+  numPopOff=()=>{
+   window.removeEventListener('scroll',onScroll,true);
+   window.removeEventListener('resize',onScroll);
+  };
+ }
+
+ /* ---------- 道具を欄の行へ重ねる（§9.250 ⑧） ----------
+    **位置と高さは欄を測って入れる。** CSSの定数では決められない——器は
+    場面によって`flex`（`gap`あり）にも素のブロック（`gap`なし＋行boxの
+    descenderぶん）にもなり、単位を「外上」にすれば欄の上に行が増える。
+    **測ってから書く**のは§9.130（入れ物の大きさは中身から決める）と同じ作法。
+
+    測るのは`requestAnimationFrame`で**まとめて1回**——欄ごとに読むと、
+    そのたびにレイアウトが起きる（§9.94「ブラウザに測らせない」）。
+    器の大きさが変わったら測り直す（`ResizeObserver`）——単位の置き場を
+    変えた・表示サイズを変えた・窓幅が変わった、が全部ここを通る。
+    **同じ値なら触らない**（§9.131。見張りと組み合わせると回り続ける）。 */
+ let numRO=null,numQueue=null,numRaf=0;
+ function placeNumNow(host){
+  if(!host||!host.isConnected)return;
+  const box=host.querySelector(':scope>.opf-num');
+  if(!box)return;
+  const el=valueEl(host)||outputEl(host);
+  if(!el)return;
+  const hr=host.getBoundingClientRect(),er=el.getBoundingClientRect();
+  if(!(er.height>0))return;                  /* まだ描かれていない／隠れている */
+  const top=Math.round(er.top-hr.top)+'px',h=Math.round(er.height)+'px';
+  if(box.style.top!==top)box.style.top=top;
+  if(box.style.height!==h)box.style.height=h;
+ }
+ function placeNumSoon(host){
+  if(!host)return;
+  if(!numQueue)numQueue=new Set();
+  numQueue.add(host);
+  if(numRaf)return;
+  numRaf=requestAnimationFrame(()=>{
+   numRaf=0;
+   const hs=[...numQueue];numQueue.clear();
+   hs.forEach(placeNumNow);
+  });
+ }
+ function watchNum(host){
+  placeNumSoon(host);
+  if(typeof ResizeObserver!=='function')return;
+  if(!numRO)numRO=new ResizeObserver(es=>es.forEach(e=>placeNumSoon(e.target)));
+  if(host.dataset.opNumWatch)return;
+  host.dataset.opNumWatch='1';
+  numRO.observe(host);
+ }
  function buildNumberWidget(def,host,kind){
   const el=valueEl(host);
   if(!el||el.tagName==='SELECT')return false;
   const step=stepOf(def),lo=numOr(def.min,null),hi=numOr(def.max,null);
   const sig=[kind,step,lo,hi].join('/');
   const box=widgetHost(host);
-  if(kind!=='スピナー')delete host.dataset.opSpin;
   if(box.dataset.sig===sig){syncWidget(host);return true}
   box.dataset.sig=sig;
   host.classList.add('opf-alt');
@@ -860,81 +1069,106 @@
    let v=cur+d*step;
    if(lo!==null)v=Math.max(lo,v);
    if(hi!==null)v=Math.min(hi,v);
-   /* 浮動小数の誤差を持ち込まない（0.1+0.2の類）。桁は刻みから決まる。 */
-   const dec=String(step).indexOf('.')>=0?String(step).split('.')[1].length:0;
-   setValue(el,dec?v.toFixed(dec):String(Math.round(v)));
+   setValue(el,numFix(v,step));
   };
-  if(kind==='スピナー'){
-   /* スピナー（§9.248 ①）。**`ステッパー`と置き場所の広さが違う**——
-      あちらは−／＋の大きなボタンが欄を挟む形で、器の幅を1行ぶん食う。
-      こちらは欄の右端へ縦に積んだ小さな矢印なので、**狭いマス**でも入る。
-      押した先が同じ（1刻み増減）でも、置ける場所が違えば別の道具（§9.223 ③）。 */
-   /* **印は器へ**（§9.233 ③）——CSSは印を見る。欄の右へ矢印を重ねるので、
-      値が矢印の下に潜らないよう逃げ場も器の変数で渡す。 */
-   host.dataset.opSpin='1';
-   box.className='opf-widget opf-spin';
-   box.innerHTML='<button type="button" class="opf-spin-btn" data-opstep="1" aria-label="1つ増やす">▲</button>'
-    +'<button type="button" class="opf-spin-btn" data-opstep="-1" aria-label="1つ減らす">▼</button>';
-  }else if(kind==='ステッパー'){
-   box.className='opf-widget opf-step';
-   box.innerHTML='<button type="button" class="opf-step-btn" data-opstep="-1" aria-label="1つ減らす">−</button>'
-    +'<button type="button" class="opf-step-btn" data-opstep="1" aria-label="1つ増やす">＋</button>';
-   box.querySelectorAll('[data-opstep]').forEach(b=>{
-    b.onclick=e=>{e.preventDefault();bump(Number(b.dataset.opstep));syncWidget(host)};
-   });
-  }else if(kind==='スライダー'){
-   box.className='opf-widget opf-range';
-   /* **上下限が無ければ引けない**（どこからどこまでか決まらない）。
-      押せるのに何も起きない道具を置かないので、理由を書いて出さない（§4）。 */
-   if(lo===null||hi===null){
-    box.innerHTML='<small class="opf-widget-note">上下限を決めるとスライダーになります（いまは打ち込みだけ）</small>';
-   }else{
-    box.innerHTML='<input type="range" class="opf-range-in" min="'+lo+'" max="'+hi+'" step="'+step+'">'
-     +'<span class="opf-range-scale"><i>'+esc(String(lo))+'</i><i>'+esc(String(hi))+'</i></span>';
-    const rg=box.querySelector('.opf-range-in');
-    rg.oninput=()=>setValue(el,rg.value);
-   }
-  }else if(kind==='早見ボタン'){
-   box.className='opf-widget opf-quick';
-   const vs=quickValues(def);
-   /* **作れないときは理由を書く**（§4）。上下限と刻みから並びを作るので、
-      決まっていなければ並べようがない——押せるのに何も起きない道具を残さない。 */
-   if(!vs){
-    box.innerHTML='<small class="opf-widget-note">最小・最大・刻みを決めると早見ボタンになります'
-     +'（いまは打ち込みだけ。'+QUICK_MAX+'個までのときに出ます）</small>';
-   }else{
-    box.innerHTML='<div class="opf-shape">'+vs.map(v=>
-      '<button type="button" class="opf-quick-btn" data-opv="'+esc(v)+'">'
-      +'<span class="opf-btn-text">'+esc(v)+'</span></button>').join('')+'</div>';
-    box.querySelectorAll('[data-opv]').forEach(b=>{
-     b.onclick=e=>{e.preventDefault();setValue(el,b.dataset.opv);syncWidget(host)};
-    });
-   }
-  }else if(kind==='メーター'){
-   /* メーター（§9.226 ①）。**打つ欄はそのまま**で、上下限のどこに居るかを
-      帯で言う——「正確に打ちたいが規格の中かも見たい」ときの形。
-      スライダーと違って**値は引いて決めない**（引くと桁が落ちる）。 */
-   box.className='opf-widget opf-meter';
-   if(lo===null||hi===null){
-    box.innerHTML='<small class="opf-widget-note">上下限を決めるとメーターになります（いまは打ち込みだけ）</small>';
-   }else{
-    box.dataset.opLo=String(lo);box.dataset.opHi=String(hi);
-    box.innerHTML='<span class="opf-meter-bar"><i class="opf-meter-fill"></i></span>'
-     +'<span class="opf-meter-scale"><i>'+esc(String(lo))+'</i>'
-     +'<b class="opf-meter-note"></b><i>'+esc(String(hi))+'</i></span>';
-   }
-  }else{
-   box.className='opf-widget opf-pad';
-   box.innerHTML='<button type="button" class="opf-pad-btn">キーで入れる</button>';
-   box.querySelector('.opf-pad-btn').onclick=e=>{e.preventDefault();openKeypad(def,host,el)};
+  /* **作れない道具は帯ごと出さず、理由を欄の説明へ落とす**（§4・§9.234 ①）。
+     以前は「上下限を決めるとスライダーになります」という1行を欄の下へ
+     足しており、**案内のほうが道具より場所を取っていた**（実測45px）。
+     決めるのはマスタの設定窓なので、測定画面に置いても直せない。 */
+  let ready=true,why='';
+  if(kind==='スライダー'&&(lo===null||hi===null)){ready=false;why='上下限を決めるとスライダーになります'}
+  if(kind==='メーター'&&(lo===null||hi===null)){ready=false;why='上下限を決めるとメーターになります'}
+  if(kind==='早見ボタン'&&!quickValues(def)){
+   ready=false;why=`最小・最大・刻みを決めると早見ボタンになります（${QUICK_MAX}個までのとき）`;
   }
-  applyLayout(box,def);                      /* §9.226 ① 早見ボタンの並べ方 */
+  const wide=ready?(NUM_STRIP[kind]||0):0;
+  const rail=ready&&NUM_RAIL[kind]?1:0;
+  /* 欄の逃げ場（§9.233 ③）。**帯と同じ数**を器の変数で渡す——CSSが
+     `--opf-pad-r`（単位を内側へ重ねたぶん）と**足し算**で使う。 */
+  if(wide||rail)host.dataset.opNum=kind;else delete host.dataset.opNum;
+  if(wide)host.style.setProperty('--opf-num-w',wide+'em');
+  else host.style.removeProperty('--opf-num-w');
+  box.className='opf-widget'+(wide||rail?' opf-num':'');
+  box.innerHTML='';
+  if(!ready){
+   /* 道具が作れないときは**素の欄のまま**。理由は欄の説明（`title`）で言い、
+      **直す場所（マスタの設定窓）にも出す**（`box.dataset.why`を設定窓が
+      読む）——測定画面に案内の行を足すと、直せない場所で場所だけ取る。
+      **元の説明は控えてから足すこと**——組み立て直すたびに足すと、
+      同じ文が何度も並ぶ。 */
+   if(host.dataset.opTitle===undefined)host.dataset.opTitle=host.title||'';
+   host.title=[host.dataset.opTitle,why].filter(Boolean).join('｜');
+   box.dataset.why=why;
+   applyLook(host,def);
+   syncWidget(host);
+   return true;
+  }
+  
+  delete box.dataset.why;
+  if(host.dataset.opTitle!==undefined)host.title=host.dataset.opTitle;
+  let html='';
+  if(rail)html+='<i class="opf-num-rail"><b class="opf-num-fill"></b></i>';
+  if(kind==='スピナー'){
+   html+='<span class="opf-num-strip is-col">'
+     +'<button type="button" class="opf-spin-btn opf-num-btn" data-opstep="1" aria-label="1つ増やす" title="1つ増やす">▲</button>'
+     +'<button type="button" class="opf-spin-btn opf-num-btn" data-opstep="-1" aria-label="1つ減らす" title="1つ減らす">▼</button>'
+     +'</span>';
+  }else if(kind==='ステッパー'){
+   html+='<span class="opf-num-strip">'
+     +'<button type="button" class="opf-step-btn opf-num-btn" data-opstep="-1" aria-label="1つ減らす" title="1つ減らす">−</button>'
+     +'<button type="button" class="opf-step-btn opf-num-btn" data-opstep="1" aria-label="1つ増やす" title="1つ増やす">＋</button>'
+     +'</span>';
+  }else if(kind!=='メーター'){
+   /* 帯に入りきらない道具は**押すと浮く**（複合コントロール）。
+      印は**それぞれ違う字**にする——同じ字だと、開くまで何が出るか
+      分からない（§2）。 */
+   const mark=kind==='スライダー'?'↔':(kind==='早見ボタン'?'…':'▦');
+   const name=kind==='スライダー'?'目盛で決める':(kind==='早見ボタン'?'よく使う値から選ぶ':'テンキーで入れる');
+   html+='<span class="opf-num-strip">'
+     +`<button type="button" class="opf-num-btn opf-num-open" aria-haspopup="dialog"`
+     +` aria-expanded="false" aria-label="${esc(name)}" title="${esc(name)}">${mark}</button>`
+     +'</span>';
+  }
+  box.innerHTML=html;
+  box.querySelectorAll('[data-opstep]').forEach(b=>{
+   b.onclick=e=>{e.preventDefault();bump(Number(b.dataset.opstep));syncWidget(host)};
+  });
+  const open=box.querySelector('.opf-num-open');
+  if(open)open.onclick=e=>{e.preventDefault();openNumPop(def,host,el,open,kind)};
+  if(rail){
+   box.dataset.opLo=String(lo);box.dataset.opHi=String(hi);
+   /* スライダーは**底の帯をそのまま引ける**（メーターは読むだけ・§9.226 ①
+      「値は引いて決めない」）。細いので**押した位置へ跳ばす**形にし、
+      細かく合わせたいときは浮き窓で引く。 */
+   if(kind==='スライダー'){
+    const r=box.querySelector('.opf-num-rail');
+    r.classList.add('is-live');   /* 説明は`syncWidget()`が`title`で言う */
+    const at=ev=>{
+     const b=r.getBoundingClientRect();
+     if(!(b.width>0))return;
+     const p=Math.max(0,Math.min(1,(ev.clientX-b.left)/b.width));
+     const raw=lo+p*(hi-lo);
+     const snapped=lo+Math.round((raw-lo)/step)*step;
+     setValue(el,numFix(Math.max(lo,Math.min(hi,snapped)),step));
+     syncWidget(host);
+    };
+    r.onpointerdown=ev=>{
+     ev.preventDefault();
+     r.setPointerCapture&&r.setPointerCapture(ev.pointerId);
+     at(ev);
+     r.onpointermove=m=>{if(m.buttons)at(m)};
+     const up=()=>{r.onpointermove=null;document.removeEventListener('pointerup',up,true)};
+     document.addEventListener('pointerup',up,true);
+    };
+   }
+  }
   applyLook(host,def);                       /* §9.223 ③ */
   if(!el.dataset.opWidgetWired){
    el.dataset.opWidgetWired='1';
    el.addEventListener('input',()=>syncWidget(host));
    el.addEventListener('change',()=>syncWidget(host));
   }
+  watchNum(host);                            /* 欄の行へ重ねる（測ってから） */
   syncWidget(host);
   return true;
  }
@@ -1363,63 +1597,13 @@
   const sel=valueEl(host);
   if(sel){sel.classList.remove('opf-native-off');sel.removeAttribute('tabindex')}
  }
- /* ---------- テンキー（§9.219 ③、キーボードの無い端末向け） ----------
-    **浮き窓は器の外（body直下）へ`position:fixed`で出す**（§9.201）。
-    値を持つのは元の`<input>`のままで、ここは押した文字を書き込むだけ。 */
- let padEl=null,padBack=null,padTarget=null;
- function ensureKeypad(){
-  if(padEl)return padEl;
-  padEl=document.createElement('div');
-  padEl.className='opf-picker opf-keypad';padEl.id='opfKeypad';padEl.hidden=true;
-  const keys=['7','8','9','4','5','6','1','2','3','0','.','-'];
-  padEl.innerHTML='<div class="opf-picker-box" role="dialog" aria-modal="true">'
-   +'<header><b id="opfKeypadName"></b>'
-   +'<button type="button" id="opfKeypadClose" aria-label="閉じる">×</button></header>'
-   +'<output class="opf-keypad-view" id="opfKeypadView"></output>'
-   +'<div class="opf-keypad-grid">'
-   +keys.map(k=>'<button type="button" class="opf-keypad-key" data-opk="'+k+'">'+k+'</button>').join('')
-   +'<button type="button" class="opf-keypad-key opf-keypad-del" data-opk="del">1文字消す</button>'
-   +'<button type="button" class="opf-keypad-key opf-keypad-clear" data-opk="clear">全部消す</button>'
-   +'</div></div>';
-  document.body.appendChild(padEl);
-  WL.modal.keepOpen(padEl);
-  padEl.querySelector('#opfKeypadClose').onclick=closeKeypad;
-  padEl.querySelectorAll('[data-opk]').forEach(b=>{
-   b.onclick=e=>{
-    e.preventDefault();
-    if(!padTarget)return;
-    const k=b.dataset.opk;
-    let v=String(padTarget.value==null?'':padTarget.value);
-    if(k==='clear')v='';
-    else if(k==='del')v=v.slice(0,-1);
-    else if(k==='-')v=v.charAt(0)==='-'?v.slice(1):('-'+v);
-    else if(k==='.'){if(v.indexOf('.')<0)v=(v||'0')+'.'}
-    else v=v+k;
-    setValue(padTarget,v);
-    const view=padEl.querySelector('#opfKeypadView');
-    if(view)view.textContent=v||'—';
-   };
-  });
-  document.addEventListener('keydown',e=>{
-   if(WL.modal.escCloses(e)&&padEl&&!padEl.hidden){e.stopPropagation();closeKeypad()}
-  },true);
-  return padEl;
- }
- function closeKeypad(){
-  if(!padEl)return;
-  padEl.hidden=true;padTarget=null;
-  const back=padBack;padBack=null;
-  if(back&&back.focus){try{back.focus()}catch(e){}}
- }
- function openKeypad(def,host,el){
-  const p=ensureKeypad();
-  carryLook(host,p);                         /* §9.247 ① 欄と同じ角丸・色で開く */
-  p.hidden=false;padTarget=el;
-  padBack=host.querySelector('.opf-pad-btn');
-  p.querySelector('#opfKeypadName').textContent=def.name+(def.unit?`（${def.unit}）`:'');
-  const view=p.querySelector('#opfKeypadView');
-  if(view)view.textContent=String(el.value||'')||'—';
- }
+ /* ---------- テンキーは欄の右の「▦」から浮く（§9.250 ⑧） ----------
+    以前はここに**画面中央の大きな窓**（`.opf-keypad`）を持っていたが、
+    入口が欄の下の「キーで入れる」という**1行ぶんのボタン**だったので、
+    テンキーを選んだ欄だけが54px背が高くなっていた。入口は帯の中の
+    印1つ（`.opf-num-open`）に、窓は`openNumPop()`の**1本**に寄せてある
+    ——スライダー・早見ボタンと同じ窓なので、開き方・閉じ方・意匠の
+    持ち出しを3通り持たずに済む（§9.164）。 */
 
  /* ---------- 浮くものへ欄の意匠を持ち出す（§9.247 ①、利用者の指摘） ----------
     「角丸デザインを細部まで踏襲してください。（カード、一覧、プルダウンなど

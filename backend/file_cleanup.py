@@ -197,7 +197,18 @@ def _scan_mirror():
  for p in sorted(_safe(lambda: [x for x in d.iterdir() if x.is_file()], []) or []):
   if p.suffix != '.sqlite3':
    continue
-  out.append(_item(p, keep='いま読んでいる世代です' if p.name in current else ''))
+  it = _item(p)
+  if p.name in current:
+   it['keep'] = 'いま読んでいる世代です'
+  else:
+   # **世代を切り替えた直後は触らない。** 台帳が次の世代を指した後も、
+   # 開いたまま読み終えていない画面がある(§9.108の「読み手は開いた世代を
+   # 最後まで読み切れる」)。`db_mirror`自身も毎周回で片付けを試みるので、
+   # ここが急ぐ理由は無い——古くなったものだけを引き受ける。
+   age = time.time() - (it['mtime'] or 0)
+   if age < TMP_MIN_AGE_SEC:
+    it['keep'] = '切り替えたばかりです（まだ読んでいる画面があるかもしれません）'
+  out.append(it)
  return out
 
 
@@ -285,12 +296,23 @@ def _scan_pending():
 
 def _scan_pycache():
  """Pythonのバイトコード。**丸ごと作り直せる**が、消すと次の起動が一度だけ
- 遅くなる——だから自動では消さない(`auto=False`)。"""
+ 遅くなる——だから自動では消さない(`auto=False`)。
+
+ 置き場は2つある。ふつうは`_pycache_bootstrap`が`sys.pycache_prefix`で
+ ローカル領域へ逃がすが、**それが効いていない経路**(テストを直に
+ `python3 tests/....py`で走らせた等)では**ソースの隣に`__pycache__`が
+ 生える**。どちらも同じもの＝作り直せる中間ファイルなので、両方数える。"""
+ out = []
  d = _pycache_dir()
- if not d or not _safe(d.is_dir, False):
-  return []
- subs = _safe(lambda: [x for x in d.iterdir() if x.is_dir()], []) or []
- return [_dir_item(s) for s in subs]
+ if d and _safe(d.is_dir, False):
+  out += [_dir_item(s) for s in (_safe(lambda: [x for x in d.iterdir() if x.is_dir()], []) or [])]
+ # ソースの隣に生えたぶん。**アプリの置き場の中だけ**を見る(利用者の
+ # フォルダを歩き回らない)。
+ from .paths import APP_ROOT
+ for p in _safe(lambda: sorted(Path(APP_ROOT).rglob('__pycache__')), []) or []:
+  if _safe(p.is_dir, False):
+   out.append(_dir_item(p))
+ return out
 
 
 def _scan_work():
@@ -314,7 +336,7 @@ def _scan_work():
 CATEGORIES = [
  {'key': 'mirror', 'label': '共有DBの写し（古い世代）', 'icon': '写',
   'note': '仕掛・品質データを手元へ写したファイルです。読むたびに作り直せます。',
-  'why': 'いま読んでいる世代だけを残し、古い世代を消します。',
+  'why': 'いま読んでいる世代と、切り替えたばかりの世代を残します（%d分より古いものだけ消します）。' % int(TMP_MIN_AGE_SEC / 60),
   'auto': True, 'scan': _scan_mirror},
  {'key': 'tmp', 'label': '置き去りの一時ファイル', 'icon': '仮',
   'note': '書き換えの途中で作られる `.tmp` / `.incoming` です。正常に終われば自分で消えます。',
@@ -337,7 +359,7 @@ CATEGORIES = [
   'why': 'いま使っているフォルダ以外を消します。',
   'auto': False, 'scan': _scan_work},
  {'key': 'pycache', 'label': 'Pythonのバイトコード', 'icon': '速',
-  'note': '起動を速くするための中間ファイルです。消しても動きますが、次の起動が一度だけ遅くなります。',
+  'note': '起動を速くするための中間ファイルです（手元の置き場と、ソースの隣の `__pycache__`）。消しても動きますが、次の起動が一度だけ遅くなります。',
   'why': '**自動では消しません。** 押したときだけ消します。',
   'auto': False, 'scan': _scan_pycache},
 ]

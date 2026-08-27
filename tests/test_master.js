@@ -68,17 +68,41 @@ const made={perm:[],cat:[]};
   /* 群は**固定の3つ＋サーバーが答える2つ**（§9.249 ②）。あとの2つ
      （内部データ／移行済み）は master.sqlite3 に該当する表があるときだけ出るので、
      **数で固定しない**——先頭3つの並びと、余分な群が出ていないことを見る。 */
-  const g=await page.$$eval('.mm-nav-group-label',ns=>ns.map(n=>n.textContent));
+  /* 群の見出しは**畳む的**になったので、名前は`.mm-nav-group-name`から読む
+     （§9.250 ②。`.mm-nav-group-label`には▾と件数も入っている）。 */
+  const g=await page.$$eval('.mm-nav-group-name',ns=>ns.map(n=>n.textContent));
   const KNOWN=['設備・人','作業スケジュール','表示・システム','内部データ','移行済み'];
   rec('マスタ種別がグループ見出しで階層化される',
     g.slice(0,3).join('/')==='設備・人/作業スケジュール/表示・システム'
     &&g.every(x=>KNOWN.includes(x)),g.join('/'));
   const inSchedGroup=await page.evaluate(()=>{
-   const grp=[...document.querySelectorAll('.mm-nav-group')].find(x=>x.querySelector('.mm-nav-group-label')?.textContent==='作業スケジュール');
+   const grp=document.querySelector('.mm-nav-group[data-nav-group="schedule"]');
    return grp?[...grp.querySelectorAll('[data-master]')].map(b=>b.dataset.master):[];
   });
   rec('スケジュール系マスタが同じグループに集まる',
     ['stopReason','shiftMaster','loadFactor'].every(k=>inSchedGroup.includes(k)),inSchedGroup.join(','));
+  /* ---- 群ごとに畳める（§9.250 ②、利用者の指示） ---- */
+  const folds=await page.evaluate(()=>[...document.querySelectorAll('.mm-nav-group')].map(x=>({
+    k:x.dataset.navGroup,folded:x.classList.contains('is-folded'),
+    count:x.querySelector('.mm-nav-count')?.textContent,
+    items:x.querySelectorAll('[data-master]').length})));
+  rec('内部データと移行済みは畳んだ状態が既定',
+      folds.filter(f=>f.folded).map(f=>f.k).sort().join(',')==='internal,retired',
+      JSON.stringify(folds.map(f=>f.k+':'+(f.folded?'畳':'開'))));
+  rec('畳んでも件数は文字で出る（何を畳んでいるのか分かる）',
+      folds.filter(f=>f.folded).every(f=>Number(f.count)>0&&f.items===0),JSON.stringify(folds));
+  await page.click('[data-nav-fold="internal"]');
+  await page.waitForTimeout(400);
+  const opened=await page.evaluate(()=>{
+   const x=document.querySelector('.mm-nav-group[data-nav-group="internal"]');
+   return {folded:x.classList.contains('is-folded'),items:x.querySelectorAll('[data-master]').length};
+  });
+  rec('見出しを押すと開く',!opened.folded&&opened.items>0,JSON.stringify(opened));
+  await page.click('[data-nav-fold="internal"]');
+  await page.waitForTimeout(400);
+  rec('もう一度押すと畳む',
+      await page.evaluate(()=>document.querySelector('.mm-nav-group[data-nav-group="internal"]').classList.contains('is-folded')));
+
   const navLabels=await page.$$eval('#masterMaintNav [data-master]',bs=>bs.map(b=>b.textContent.trim()));
   rec('マスタ種別タブに「テーブル生データ」が統合されている',
       navLabels.some(t=>t.includes('テーブル生データ')),navLabels.join('/'));

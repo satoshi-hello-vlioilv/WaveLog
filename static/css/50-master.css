@@ -81,18 +81,44 @@
 .mm-head .mm-btn-ghost{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);border-radius:var(--radius-sm);font-size:var(--fs-sm)}
 .mm-head-user{display:flex;align-items:center;gap:var(--space-2);color:var(--muted);font-weight:700;font-size:var(--fs-sm);white-space:nowrap}
 .mm-head-user input{height:var(--ctl-h-sm);min-width:calc(180px * var(--ui-scale));padding:0 var(--ctl-pad-x-sm);border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;color:var(--ink);font-weight:700}
-.mm-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(150px,calc(200px * var(--ui-scale))) minmax(0,1fr)}
+/* 左の一覧の幅は**いちばん長い呼び名から決める**（§9.250 ①、利用者の指摘
+   「記録した値の配置について文字が1行で収まっていない」）。
+   以前は`200px * --ui-scale`の決め打ちで、**器だけが縮み、中のアイコン
+   (26px)・余白(28px)・隙間は px のまま**だったため、表示サイズ「小」では
+   8文字の呼び名（記録した値の配置／測定データの保存／テーブル生データ…）が
+   2行に折り返していた（実測: 使える幅100px に対し文字103px）。
+   文字ぶんは`em`（＝文字サイズに追随）、器物は px で足し合わせる。
+     8.4em … 8文字ぶん＋にじみ / 84px … アイコン26+隙間8+左右余白28+枠2+器の余白20 */
+.mm-body{flex:1;min-height:0;display:grid;
+ grid-template-columns:minmax(150px,calc(8.4em + 84px)) minmax(0,1fr)}
 .mm-nav{display:flex;flex-direction:column;gap:var(--gap-hair);padding:12px 10px;background:#e7eff1;border-right:1px solid var(--line);overflow:auto}
 /* マスタ種別のグループ見出し(情報アーキテクチャ)。左ナビのnav-group-labelと
    同じ言語で、色相はteal系のまま彩度だけ落として階層を示す。 */
 .mm-nav-group{display:flex;flex-direction:column;gap:var(--gap-tight);margin-bottom:10px}
-.mm-nav-group-label{padding:0 6px 2px;font-size:var(--fs-badge);font-weight:800;letter-spacing:.06em;color:#6f8f96}
+.mm-nav-group.is-folded{margin-bottom:var(--space-1)}
+/* 群の見出しは**押して畳める**（§9.250 ②）。畳んでも件数は文字で残す。 */
+/* 見出しは**行き先より一段小さく**（主役は下の行き先）。`<button>`にすると
+   `10-roles.css`の`.mm-nav button`が行き先と同じ寸法（--ctl-h・--fs）を
+   配ってしまうので、器は`div[role=button]`にしてある。 */
+.mm-nav-group-label{display:flex;align-items:center;gap:2px;width:100%;
+ padding:2px 4px;border:0;background:transparent;cursor:pointer;
+ font-size:var(--fs-badge);font-weight:800;letter-spacing:.03em;color:#6f8f96;text-align:left}
+.mm-nav-group-label:hover{color:var(--teal-dark)}
+.mm-nav-caret{flex:0 0 auto;width:.9em;color:var(--muted)}
+.mm-nav-group-name{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mm-nav-count{flex:0 0 auto;margin-left:2px;padding:0 3px;border-radius:var(--radius-pill);
+ background:#dceff1;color:#0a6570;font-size:var(--fs-micro);font-weight:800}
+/* 危ない操作は器の右端へ寄せる（§CLAUDE 5。「完了」の隣に「削除」を置かない）。 */
+.mm-form-head #mmDropTable{margin-left:auto}
 .mm-nav button{display:flex;align-items:center;gap:var(--gap-inline);border:1px solid transparent;background:#fff;color:#23454d;font-weight:700;cursor:pointer;transition:.12s;text-align:left}
 .mm-nav button:hover{border-color:#9fc3c8;background:#f7fafb}
 .mm-nav button.active{background:var(--teal);color:#fff;border-color:var(--teal);box-shadow:0 4px 12px #087c8940}
 .mm-nav-ico{display:grid;place-items:center;width:26px;height:26px;border-radius:var(--radius-sm);background:#dceff1;color:#0a6570;font-weight:900;font-size:var(--fs-base-sm);flex:0 0 auto}
 .mm-nav button.active .mm-nav-ico{background:#ffffff30;color:#fff}
-.mm-nav-label{font-size:var(--fs)}
+/* **折り返さない**（§9.250 ①）。折り返すと36pxの並びが崩れて、
+   どこまでが1つの行き先なのかが読めなくなる。入らないときだけ省略記号
+   （全文はボタンの`title`が持つ・§9.234 ①）。 */
+.mm-nav-label{min-width:0;font-size:var(--fs);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mm-main{min-width:0;display:flex;flex-direction:column;min-height:0}
 /* 操作が抜けて見出しだけになったので、行の高さは文字ぶんで足りる。 */
 .mm-toolbar{display:flex;align-items:center;gap:var(--space-3);padding:var(--pad-card);background:#fff;border-bottom:1px solid var(--line)}
@@ -1040,6 +1066,17 @@
 .op-prev-scroll{overflow-x:auto;overflow-y:hidden;padding-bottom:2px;
   min-height:var(--op-prev-h,9.8em);align-content:start}
 .op-prev-rest{margin:0;color:var(--ink-3);font-size:var(--fs-badge)}
+/* 「いまは作れない」理由（§9.250 ⑧）。**直す場所はこの窓**なので、
+   測定画面ではなくここに出す。色は警告——押しても何も起きない設定を
+   選んでいる状態で、そのまま保存できてしまうのを止めたいわけではない
+   （上下限は後から決められる）ので、赤ではなく琥珀。 */
+.op-prev-note{
+  margin:0;padding:var(--space-1) var(--space-2);
+  border-left:3px solid var(--warn-fg);border-radius:var(--radius-xs);
+  background:var(--warn-bg);color:var(--warn-fg);
+  font-size:var(--fs-badge);font-weight:700;
+}
+.op-prev-note[hidden]{display:none}
 .op-prev-card{
   display:grid;grid-template-columns:repeat(var(--op-cols,12),var(--op-cell,94px));
   gap:var(--gap-inline);padding:var(--pad-row);width:max-content;
@@ -1057,12 +1094,28 @@
 /* **隣に並ぶものも一緒に見せる**（§9.219 ③）。幅は「12マスのうち何マス」
    なので、1枚だけでは広いのか狭いのかが読めない。薄く置くだけで、押せない
    （見本として本物なのは真ん中の1枚だけ）。 */
-.op-prev-ghost{
-  min-width:0;padding:var(--pad-row);border:1px dashed var(--line-soft);
+/* 隣の欄（§9.250 ⑤）。**本物の部品をダミーの値つきで描く**ので、点線の箱
+   ではなく測定画面と同じ器を置く。**押せないようにする**——見本の隣を
+   触っても記録されないので、触れると壊れて見える（§4）。 */
+.op-prev-ghost{min-width:0}
+.op-prev-ghost>.opf{pointer-events:none;opacity:.72}
+.op-prev-ghost>.opf .opf-name{color:var(--muted)}
+/* 名前だけしか出せなかったとき（マスタから引けない）の受け皿。 */
+.op-prev-ghost:not(:has(>.opf)){
+  padding:var(--pad-row);border:1px dashed var(--line-soft);
   border-radius:var(--radius-xs);background:var(--surface-2);
   color:var(--muted);font-size:var(--fs-badge);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
+/* 見本の値を入れてみる札（§9.250 ⑤）。**押したときだけ入る**ので、
+   「記録される値」の行と並べて置く（何が入ったのかが同じ行で読める）。 */
+.op-prev-fill{
+  margin-left:var(--space-2);padding:0 var(--space-2);min-height:var(--ctl-h-xs);
+  border:1px solid var(--line-mid);border-radius:var(--radius-sm);
+  background:var(--surface);color:var(--ink-2);
+  font-size:var(--fs-micro);font-weight:700;cursor:pointer;
+}
+.op-prev-fill:hover{border-color:var(--teal);color:var(--teal-dark)}
 /* 押した結果が何として記録されるか（§9.219 ③、利用者の指示「実際の挙動も
    もう少しわかるように」）。見本は本物の部品なので、押せば実際に変わる。 */
 .op-prev-value{
@@ -2078,6 +2131,62 @@
 .mm-editor-dialog.is-builder .mm-editor-body{
   display:grid;grid-template-columns:minmax(0,1fr) minmax(0,26em);
   align-content:start;gap:var(--space-4);overflow:auto}
+/* ============================================================
+   段（タブ）とくわしい説明（アコーディオン）（§9.250 ④、利用者の指示）
+   ------------------------------------------------------------
+   「スクロールベースで文字が配置されており、使いづらいです。スクロールレス
+    設計をベースにSPAで構成することを軸にしたいので…タブとアコーディオンに
+    よる情報の階層化、チャンク化を取り入れてください」
+   束を縦に積むと窓に入らない（帳票ブロックは1700×1000の窓で実測227px
+   はみ出していた）。束ごとに段へ分けると、1段ぶんの高さで済む。
+   ============================================================ */
+.mm-tabbar{
+  display:flex;gap:var(--gap-tight);min-width:0;
+  padding-bottom:var(--space-1);border-bottom:1px solid var(--line-soft);
+}
+.mm-tab{
+  display:flex;flex-direction:column;align-items:flex-start;gap:0;
+  flex:1 1 0;min-width:0;padding:var(--space-1) var(--space-2);
+  border:1px solid transparent;border-radius:var(--radius-sm);
+  background:none;color:var(--muted);cursor:pointer;text-align:left;
+}
+.mm-tab:hover{background:var(--surface-2);color:var(--ink-2)}
+/* **選んだ段は面を持つ**（§9.229 ②）——下線1本だけでは差が読めない。
+   合図は面と文字の濃さの2つまで（色だけで伝えない・§CLAUDE 3）。 */
+.mm-tab.is-on{
+  border-color:var(--teal);color:var(--teal-dark);
+  background:color-mix(in srgb,var(--teal) 12%,var(--surface));
+}
+.mm-tab>.mm-fieldgroup{
+  margin:0;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:var(--fs-sm);font-weight:800;color:inherit;
+}
+/* いま何を決めてあるか（§2「思い出させない」）。**畳んだ段でも読める。** */
+.mm-tab-sum{
+  min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--ink-3);font-size:var(--fs-micro);font-weight:600;
+}
+.mm-tab.is-on .mm-tab-sum{color:var(--teal-dark)}
+.mm-tabbody{min-width:0}
+.mm-tabpanel{display:flex;flex-direction:column;gap:var(--space-2);min-width:0}
+.mm-tabpanel[hidden]{display:none}
+/* くわしい説明は押すと開く（触る画面では`title`が読めない・§4）。 */
+.mm-more{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:1.25em;height:1.25em;margin-left:var(--space-1);padding:0;
+  border:1px solid var(--line-mid);border-radius:var(--radius-pill);
+  background:var(--surface);color:var(--muted);
+  font-size:var(--fs-micro);font-weight:800;line-height:1;cursor:pointer;
+}
+.mm-more:hover{border-color:var(--teal);color:var(--teal-dark)}
+.mm-more.is-on{border-color:var(--teal);background:var(--teal);color:#fff}
+.mm-more-body{
+  margin-top:var(--space-1);padding:var(--space-2);
+  border-left:3px solid var(--line-mid);border-radius:var(--radius-xs);
+  background:var(--surface-2);color:var(--ink-2);
+  font-size:var(--fs-badge);line-height:1.7;
+}
+.mm-more-body[hidden]{display:none}
 .mm-editor-dialog.is-builder .mm-def-hint{grid-column:1/-1;margin:0}
 .mm-editor-dialog.is-builder .mm-form-fields{grid-column:1;min-width:0}
 .mm-editor-dialog.is-builder .rb-aside{grid-column:2}
@@ -2088,14 +2197,32 @@
 /* --- 右: 刷り上がりの見本 --- */
 .rb-aside{display:flex;flex-direction:column;gap:var(--space-2);min-width:0;
  position:sticky;top:0;align-self:start}
-.rb-aside-head{display:flex;flex-direction:column;gap:2px}
+.rb-aside-head{display:flex;align-items:center;gap:var(--gap-tight);flex-wrap:wrap}
 .rb-aside-head>b{font-size:var(--fs-sm);font-weight:800;color:var(--nav)}
-.rb-aside-note{color:var(--muted);font-size:var(--fs-micro);line-height:1.6}
+.rb-aside-tools{display:flex;gap:var(--gap-tight);margin-left:auto}
+/* 見本の出し方を切り替える札（§9.250 ⑤）。**入切は面で言う**（§9.229 ②）。 */
+.rb-tgl{
+  padding:0 var(--space-2);min-height:var(--ctl-h-xs);
+  border:1px solid var(--line-mid);border-radius:var(--radius-sm);
+  background:var(--surface);color:var(--muted);
+  font-size:var(--fs-micro);font-weight:700;cursor:pointer;white-space:nowrap;
+}
+.rb-tgl:hover{border-color:var(--teal);color:var(--teal-dark)}
+.rb-tgl[aria-pressed="true"]{
+  border-color:var(--teal);color:var(--teal-dark);
+  background:color-mix(in srgb,var(--teal) 14%,var(--surface));
+}
+.rb-aside-note{margin:0;color:var(--muted);font-size:var(--fs-micro);line-height:1.6}
 /* 紙。**A4の比（210:297）で置く**——実際の紙と形が違うと見本にならない。 */
-.rb-paper{position:relative;width:100%;aspect-ratio:210/297;max-height:22em;
+/* **紙の外へは描かない**（§9.250 ⑤）。紙全体で見るときは塊が12段を
+   はみ出しうるので、切らないと窓のほうがスクロールする（実測67px）。
+   切ったぶんは`#rbSpill`が件数を文字で言う（黙って消さない・§CLAUDE 4）。 */
+.rb-paper{position:relative;width:100%;aspect-ratio:210/297;max-height:22em;overflow:hidden;
  margin-inline:auto;padding:var(--space-2);
  border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;
  box-shadow:0 2px 10px #0000000f}
+.rb-spill{margin:0;color:var(--warn-fg);font-size:var(--fs-micro);font-weight:700}
+.rb-spill[hidden]{display:none}
 .rb-paper-grid{position:absolute;inset:var(--space-2);display:grid;
  grid-template-columns:repeat(12,1fr);grid-auto-rows:1fr;gap:1px}
 .rb-paper-grid>i{background:var(--surface-2);border-radius:var(--radius-xs)}
@@ -2104,7 +2231,57 @@
  padding:2px var(--space-1);
  border:2px solid var(--teal);border-radius:var(--radius-xs);
  background:color-mix(in srgb,var(--teal) 14%,#fff)}
+/* ほかの塊（§9.250 ⑤）。**薄く重ねるだけ**——押せると、どれを編集して
+   いるのか分からなくなる。並びは表示順で流し込む（紙の組み方と同じ）。 */
+.rb-paper-others{
+  position:absolute;inset:var(--space-2);z-index:0;
+  display:grid;grid-template-columns:repeat(12,1fr);grid-auto-rows:calc(100% / 12);
+  gap:0;pointer-events:none;
+}
+.rb-paper-others>i{
+  grid-column:span var(--rb-span,12);grid-row:span var(--rb-rows,2);
+  display:flex;align-items:flex-start;min-width:0;padding:1px 2px;
+  border:1px dashed var(--line-mid);border-radius:var(--radius-xs);
+  background:var(--surface-2);
+}
+/* いま編集している塊の席。**中身は出さない**——同じ場所へ`#rbPaperBlock`を
+   重ねるので、二重に名前が出る。 */
+.rb-paper-others>i.is-me{visibility:hidden}
+/* 紙全体で見るときは、掴める塊を**席へ測って重ねる**（JSが座標を入れる）。 */
+.rb-paper-block.is-placed{position:absolute;z-index:1}
+.rb-paper-others>i>b{
+  min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--muted);font-size:var(--fs-micro);font-weight:600;
+}
 .rb-paper-block.is-auto{border-bottom-style:dashed}
+/* ---------- 四方どこでも掴んで大きさを変える（§9.250 ④、利用者の指示） ----------
+   つまみは**8方向**（四辺＋四隅）。**内側へ収める**——縁から外へ出すと、
+   隣に置いた塊の領域になって`pointerdown`が吸われうる（§9.221 ⑨と同じ）。 */
+.rb-paper-block{cursor:default}
+.rb-paper-block.is-grabbing{cursor:grabbing}
+.rb-grip{position:absolute;z-index:2;display:block}
+.rb-grip:focus-visible{outline:2px solid var(--teal-dark);outline-offset:1px}
+.rb-grip-n,.rb-grip-s{left:8px;right:8px;height:7px;cursor:ns-resize}
+.rb-grip-n{top:-3px}
+.rb-grip-s{bottom:-3px}
+.rb-grip-e,.rb-grip-w{top:8px;bottom:8px;width:7px;cursor:ew-resize}
+.rb-grip-e{right:-3px}
+.rb-grip-w{left:-3px}
+.rb-grip-ne,.rb-grip-nw,.rb-grip-se,.rb-grip-sw{width:10px;height:10px}
+.rb-grip-ne{top:-3px;right:-3px;cursor:nesw-resize}
+.rb-grip-nw{top:-3px;left:-3px;cursor:nwse-resize}
+.rb-grip-se{bottom:-3px;right:-3px;cursor:nwse-resize}
+.rb-grip-sw{bottom:-3px;left:-3px;cursor:nesw-resize}
+/* **掴めることは形で言う**（§CLAUDE 3）——角に小さな印を出す。
+   線ではなく面なので、細い塊でも見える。 */
+.rb-grip-ne::after,.rb-grip-nw::after,.rb-grip-se::after,.rb-grip-sw::after{
+  content:"";position:absolute;inset:2px;
+  border-radius:var(--radius-xs);background:var(--teal);
+}
+.rb-paper-block.is-area .rb-grip-ne::after,.rb-paper-block.is-area .rb-grip-nw::after,
+.rb-paper-block.is-area .rb-grip-se::after,.rb-paper-block.is-area .rb-grip-sw::after{
+  background:var(--warn-solid);
+}
 .rb-paper-block.is-area{border-style:dashed;background:color-mix(in srgb,var(--warn-solid) 12%,#fff);border-color:var(--warn-solid)}
 .rb-paper-block>b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
  font-size:var(--fs-micro);color:var(--teal-dark)}
@@ -2184,5 +2361,33 @@
  border-radius:var(--radius-round);background:var(--surface-3);color:var(--muted);
  font-style:normal;font-size:var(--fs-micro);font-weight:800;cursor:help}
 .mm-field>span:hover .mm-more{background:var(--teal);color:#fff}
+
+
+/* ---------- 一覧の見出し: 並べ替えと列幅（§9.250 (6)） ---------- */
+/* **`overflow`を戻す**——`.mm-row>span{overflow:hidden}`が効いたままだと、
+   セルの縁へ置いた取っ手が切り落とされて**掴めない**（実測: 取っ手の座標を
+   押しても`elementFromPoint`が行そのものを返していた）。文字の省略は
+   中の`<b>`が引き受ける。 */
+.mm-row.head>.mm-th{position:relative;display:flex;align-items:center;gap:var(--gap-tight);
+ min-width:0;overflow:visible;cursor:pointer;user-select:none;
+ /* **見出しの高さいっぱいへ伸ばす**——`align-items:center`のままだと
+    セルは文字ぶん（16px）しかなく、取っ手も16pxになって狙いにくい。 */
+ align-self:stretch}
+.mm-row.head>.mm-th>b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:inherit}
+.mm-row.head>.mm-th:hover{color:var(--teal-dark)}
+.mm-th-mark{flex:0 0 auto;font-style:normal;color:var(--teal);font-size:var(--fs-micro)}
+/* 取っ手は**見出しの右端**。掴める幅を10pxとり、線は1本だけ見せる。 */
+.mm-th-grip{position:absolute;top:0;right:calc(var(--space-2) * -1);width:10px;height:100%;
+ cursor:col-resize;z-index:1}
+.mm-th-grip::after{content:"";position:absolute;top:20%;left:4px;width:1px;height:60%;
+ background:var(--line-mid)}
+.mm-th-grip:hover::after{background:var(--teal);width:2px}
+/* いま効いている並び・幅と、戻す手立て。 */
+.mm-viewmark{display:inline-flex;align-items:center;gap:var(--gap-tight);
+ margin-left:var(--space-2);padding:var(--pad-chip);border-radius:var(--radius-pill);
+ background:var(--pale);color:var(--teal-dark);font-size:var(--fs-micro);font-weight:800}
+.mm-viewmark>button{border:0;background:transparent;color:inherit;cursor:pointer;
+ font-size:var(--fs-micro);line-height:1;padding:0 2px}
+.mm-viewmark>button:hover{color:var(--danger)}
 
 }
