@@ -307,6 +307,13 @@ PATH_CONFIG_LIVE_KEYS=('rne_extract_interval_sec','rne_extract_enabled','schedul
                        # パスは接続先と同じ扱い(再起動が要る)だが、間隔だけは
                        # 呼び出しのたびに読み直すので再起動は要らない。
                        'records_backup_export_interval_sec',
+                       # 不要ファイルの掃除(§9.249 ①)。既定は入で6時間ごと。
+                       #   cleanup_auto_enabled     … 'on'(既定)/'off'
+                       #   cleanup_interval_sec     … 掃除の間隔(秒)
+                       #   cleanup_keep_days        … 何日以内のものを残すか
+                       #   cleanup_keep_generations … 何世代を残すか
+                       'cleanup_auto_enabled','cleanup_interval_sec',
+                       'cleanup_keep_days','cleanup_keep_generations',
                        # この端末の呼び名(§9.208 ⑧)。空なら OS から解決する。
                        # 権限マスタとの照合・監査列・編集セッションの持ち主表示が
                        # すべてこの1つの答えを見るので、**現場で名乗り直せる**

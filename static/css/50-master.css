@@ -1966,4 +1966,97 @@
 .fb-rows.is-matrix .fb-spans,
 .fb-rows.is-matrix .fb-del,
 .fb-rows.is-matrix .fb-grip{flex:0 0 auto}
+
+/* ============================================================
+   不要ファイルの掃除（§9.249 (1)）
+   ------------------------------------------------------------
+   ここへ来る人が見に来るのは「いま何MB片付くか」と押すボタンの2つ。
+   だから面積はその2つへ大きく配り、種別のカードは同じ形で並べる
+   （形が同じなら、読むのは中の数字だけで済む）。
+   ============================================================ */
+.cl-lead{margin:0 0 var(--space-2);color:var(--ink-2);font-size:var(--fs-sm);line-height:1.7}
+.cl-top{display:grid;grid-template-columns:minmax(0,auto) minmax(0,1fr);gap:var(--gap-section);
+ align-items:stretch;margin-bottom:var(--space-2)}
+.cl-gauge{display:flex;flex-direction:column;justify-content:center;gap:2px;min-width:var(--w-lg);
+ padding:var(--pad-card);border:1px solid var(--line);border-radius:var(--radius-card);background:var(--card-bg)}
+.cl-gauge-main{display:flex;align-items:baseline;gap:var(--gap-inline)}
+.cl-gauge-main>b{font-size:var(--fs-xl);font-weight:800;color:var(--teal-dark);line-height:1.1}
+.cl-gauge-main>span{color:var(--ink-3);font-size:var(--fs-sm);font-weight:700}
+.cl-gauge-sub{color:var(--muted);font-size:var(--fs-badge)}
+.cl-bar{height:var(--space-2);margin-top:var(--space-1);border-radius:var(--radius-pill);
+ background:var(--surface-3);overflow:hidden}
+.cl-bar>i{display:block;height:100%;background:var(--teal);border-radius:var(--radius-pill)}
+.cl-next{display:flex;align-items:center;gap:var(--gap-inline);min-width:0;
+ padding:var(--pad-card);border:1px solid var(--teal-soft);border-radius:var(--radius-card);background:var(--pale)}
+.cl-next-label{flex:0 0 auto;align-self:flex-start;padding:var(--pad-chip);border-radius:var(--radius-pill);
+ background:var(--teal);color:#fff;font-size:var(--fs-micro);font-weight:800;white-space:nowrap}
+.cl-next>span:last-child{min-width:0;color:var(--ink);font-size:var(--fs-sm);line-height:1.7}
+
+/* 種別のカード。**同じ形で並べる**ので、列数は器の幅だけで決める。 */
+.cl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--w-2xl),1fr));
+ gap:var(--gap-section);align-items:start}
+.cl-card{display:flex;flex-direction:column;gap:var(--space-1);min-width:0;
+ padding:var(--pad-card);border:1px solid var(--line);border-radius:var(--radius-card);background:#fff}
+.cl-card.is-on{border-color:var(--teal);box-shadow:inset 0 0 0 1px var(--teal-soft)}
+.cl-card.is-empty{background:var(--surface);color:var(--ink-3)}
+.cl-card-head{display:flex;align-items:center;gap:var(--gap-inline);min-width:0;cursor:pointer}
+.cl-card.is-empty .cl-card-head{cursor:default}
+.cl-card-head>b{min-width:0;flex:1 1 auto;font-size:var(--fs);font-weight:800;color:var(--nav)}
+.cl-ico{flex:0 0 auto;display:grid;place-items:center;width:var(--ctl-h-sm);height:var(--ctl-h-sm);
+ border-radius:var(--radius-sm);background:var(--pale);color:var(--teal-dark);font-size:var(--fs-sm);font-weight:800}
+.cl-badge{flex:0 0 auto;padding:var(--pad-chip);border-radius:var(--radius-pill);
+ background:var(--teal);color:#fff;font-size:var(--fs-badge);font-weight:800;white-space:nowrap}
+.cl-badge.is-none{background:var(--surface-3);color:var(--muted)}
+.cl-note{margin:0;color:var(--ink-3);font-size:var(--fs-badge);line-height:1.6}
+.cl-kv{display:grid;grid-template-columns:var(--w-info-label) minmax(0,1fr);gap:2px var(--gap-inline);margin:0}
+.cl-kv>dt{color:var(--muted);font-size:var(--fs-micro);font-weight:700}
+.cl-kv>dd{margin:0;min-width:0;color:var(--ink-2);font-size:var(--fs-badge);line-height:1.6}
+.cl-kv>dd>small{color:var(--muted);font-size:var(--fs-micro)}
+.cl-kv>dd.is-warn{color:var(--warn-fg)}
+.cl-kv code{font-size:var(--fs-micro);word-break:break-all}
+.cl-ex,.cl-keep{border-top:1px dashed var(--line-soft);padding-top:var(--space-1)}
+.cl-ex>b,.cl-keep>b{display:block;color:var(--muted);font-size:var(--fs-micro);font-weight:800}
+.cl-ex ul,.cl-keep ul{list-style:none;margin:2px 0 0;padding:0;display:flex;flex-direction:column;gap:1px}
+.cl-ex li,.cl-keep li{display:flex;align-items:baseline;gap:var(--gap-tight);min-width:0;font-size:var(--fs-micro)}
+.cl-ex code,.cl-keep code{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
+.cl-ex em{flex:0 0 auto;font-style:normal;font-weight:800;color:var(--ink-3)}
+.cl-ex i,.cl-keep i{flex:0 0 auto;font-style:normal;color:var(--muted)}
+.cl-more{color:var(--muted)}
+.cl-keep>span{color:var(--ink-3);font-size:var(--fs-micro)}
+
+/* 足の帯。**押す前に何が消えるかを数字で言う**（推測させない）。 */
+.cl-foot{position:sticky;bottom:0;z-index:1;display:flex;align-items:center;gap:var(--gap-section);
+ flex-wrap:wrap;margin-top:var(--space-3);padding:var(--pad-card);
+ border:1px solid var(--line);border-radius:var(--radius-card);background:var(--card-bg)}
+.cl-foot-sum{flex:1 1 auto;min-width:0;color:var(--ink-2);font-size:var(--fs-sm)}
+.cl-foot-act{flex:0 0 auto;display:flex;gap:var(--gap-inline)}
+.cl-confirm{list-style:none;margin:var(--space-2) 0;padding:0;display:flex;flex-direction:column;gap:2px}
+.cl-confirm li{display:flex;align-items:baseline;gap:var(--gap-inline);font-size:var(--fs-sm)}
+.cl-confirm em{margin-left:auto;font-style:normal;font-weight:800;color:var(--danger)}
+.cl-confirm i{font-style:normal;color:var(--warn-fg);font-size:var(--fs-micro);font-weight:700}
+
+/* 定期掃除の設定。**この画面に置く**（同じ設定を2画面に置かない）。 */
+.cl-auto{margin-top:var(--space-4);padding-top:var(--space-3);border-top:1px solid var(--line)}
+.cl-auto>h4{margin:0 0 var(--space-1);font-size:var(--fs);color:var(--nav)}
+.cl-on,.cl-off{padding:var(--pad-chip);border-radius:var(--radius-pill);font-size:var(--fs-badge);font-weight:800}
+.cl-on{background:var(--success-bg);color:var(--success);border:1px solid var(--success-border)}
+.cl-off{background:var(--surface-3);color:var(--muted);border:1px solid var(--line)}
+.cl-auto-lead{margin:0 0 var(--space-2);color:var(--ink-3);font-size:var(--fs-badge);line-height:1.7}
+.cl-auto-fields{display:flex;flex-wrap:wrap;align-items:flex-start;gap:var(--space-3);margin-bottom:var(--space-2)}
+.cl-auto-fields>.mm-field{flex:0 0 auto}
+.cl-auto-fields .mm-field-hint{max-width:var(--w-xl)}
+.cl-places{margin-top:var(--space-3)}
+
+
+/* いま空の種別は1行の札に畳む。**消さずに畳む**ので、何を見ているのかは残る。 */
+.cl-none{margin:0;padding:var(--space-4);text-align:center;color:var(--ink-3);font-size:var(--fs-sm);
+ border:1px dashed var(--line);border-radius:var(--radius-card);background:var(--surface)}
+.cl-cold{display:flex;align-items:center;flex-wrap:wrap;gap:var(--gap-tight);margin-top:var(--space-3)}
+.cl-cold>b{color:var(--muted);font-size:var(--fs-micro);font-weight:800;margin-right:var(--space-1)}
+.cl-cold-chip{display:inline-flex;align-items:center;gap:var(--gap-tight);padding:var(--pad-chip);
+ border:1px solid var(--line-soft);border-radius:var(--radius-pill);background:var(--surface);
+ color:var(--ink-3);font-size:var(--fs-micro);white-space:nowrap}
+.cl-cold-chip>i{font-style:normal;color:var(--muted);font-weight:800}
+.cl-cold-chip>em{font-style:normal;color:var(--muted)}
+
 }

@@ -293,6 +293,13 @@
    special:'query-join',titleText:'クエリ結合 — 読んだデータ同士をつなぐ'},
   {group:'system',key:'pathConfig',label:'共通設定',icon:'共',special:'path-config',
    titleText:'共通設定 — この端末の共有パス・RNE・間隔',endpoint:'/api/path-config-master'},
+  /* 不要ファイルの掃除（§9.249 ①、利用者の指示「溜まってくると問題なので、
+     不要なキャッシュファイルや不要なバックアップファイルを削除する機能を
+     実装してください。いらないものや世代の古いものは定期的に削除するような
+     機能も欲しいです」）。**判定はサーバーの1箇所**（`backend/file_cleanup.py`）
+     が持ち、画面は返ってきた種別をそのまま出す（§9.163）。 */
+  {group:'system',key:'cleanup',label:'不要ファイル掃除',icon:'掃',special:'cleanup',
+   titleText:'不要ファイルの掃除 — 作り直せるものだけを片付ける'},
   // 旧「マスタ一覧」(サイドバーのMASTERナビ→汎用グリッド)をここへ統合した
   // (ARCHITECTURE.md「マスタ管理の画面形態」)。上のタブが扱わないテーブル(スケジュール列表示マスタ
   // 等)も含め、master.sqlite3の中身をそのまま確認するための読み取り専用タブ。
@@ -1879,6 +1886,7 @@
   if(def.special==='op-item'){setMaintSearchVisible(false);return loadOpItemMaint(force)}
   if(def.special==='record-layout'){setMaintSearchVisible(false);return loadRecordLayoutMaint(force)}
   if(def.special==='op-choice'){setMaintSearchVisible(false);return loadOpChoiceMaint(force)}
+  if(def.special==='cleanup'){setMaintSearchVisible(false);return loadCleanupMaint(force)}
   if(def.special==='raw-table'){setMaintSearchVisible(false);return loadRawTableMaint(force)}
   setMaintSearchVisible(true);
   const list=$('#masterMaintList');if(list&&force)list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
@@ -4236,6 +4244,242 @@
    showToast&&showToast('勤務体系を削除しました',d.name,3600);
   }catch(e){showToast&&showToast('削除できませんでした',e.message,6500)}
   finally{setMaintLoading(false)}
+ }
+
+
+ /* ================================================================
+    不要ファイルの掃除（§9.249 ①、利用者の指示）
+    ----------------------------------------------------------------
+    「溜まってくると問題なので、不要なキャッシュファイルや不要なバックアップ
+      ファイルを削除する機能を実装してください。いらないものや世代の古いものは
+      定期的に削除するような機能も欲しいです。」
+
+    **判定はサーバーの1箇所**（`backend/file_cleanup.py`）。画面は
+    返ってきた種別をそのまま並べるだけで、「どのファイルが要る／要らない」の
+    規則を持たない（§9.163。2つ持つと画面が「消える」と言ったものが残る）。
+
+    画面の作り（§CLAUDE「画面を作るときの基準」）:
+     ・**面積は頻度×重要度。** いちばん大きいのは「いま何MB片付くか」と
+       押すボタン——ここへ来る人はそれを見に来ている。設定は下段。
+     ・**次にすることを1つだけ指す。** 溜まっていなければ「いまは何もする
+       必要がありません」と書き、ボタンを押せなくする（§4）。
+     ・**色だけで伝えない。** 種別ごとに件数・容量・**何が消えて何が残るか**を
+       文字で出す。残す理由も1件ずつ言う（推測させない）。
+     ・**消す前に何が消えるかを出す**（§9.193の下見と同じ作法）。確認は
+       まとめて1回だけ（種別ごとに聞くと読まずに押す癖が付く・§9.170）。
+    ================================================================ */
+ let cleanupState={data:null,loaded:false,picked:null,busy:false};
+ function clSize(n){
+  const v=Number(n)||0;
+  if(v<=0)return '0';
+  if(v<1024)return v+'B';
+  if(v<1048576)return (v/1024).toFixed(0)+'KB';
+  if(v<1073741824)return (v/1048576).toFixed(1)+'MB';
+  return (v/1073741824).toFixed(2)+'GB';
+ }
+ function clWhen(sec){
+  if(!sec)return '—';
+  const t=Number(sec)*1000;
+  if(!Number.isFinite(t))return '—';
+  const d=Math.floor((Date.now()-t)/86400000);
+  const stamp=new Date(t).toLocaleDateString('ja-JP',{month:'2-digit',day:'2-digit'});
+  return d<1?`${stamp}（今日）`:`${stamp}（${d}日前）`;
+ }
+ function clEvery(sec){
+  const n=Math.max(1,Math.round(Number(sec||0)/60));
+  return n<60?`${n}分ごと`:(n%60?`${Math.floor(n/60)}時間${n%60}分ごと`:`${Math.floor(n/60)}時間ごと`);
+ }
+ /* 選んでいる種別。**既定は「消せるものがある種別」すべて**。
+    以前は自動掃除の対象だけを選んでいたが、そうすると上の帯が
+    「8.2MB片付けられます」と言っているのにボタンが押せない、という
+    **画面が自分の言ったことを否定する**状態が作れた（§CLAUDE 2「次にする
+    ことを1つだけ指す」・§4）。消す前には必ず**何が消えるかを1件ずつ並べた
+    確認**が出る（§9.193）ので、選んだまま押しても不意打ちにはならない。
+    自動掃除の対象外であることは、カードにも確認にも文字で出す（§CLAUDE 3）。 */
+ function clPicked(){
+  const cats=(cleanupState.data&&cleanupState.data.categories)||[];
+  if(!cleanupState.picked){
+   cleanupState.picked=new Set(cats.filter(c=>c.removable>0).map(c=>c.key));
+  }
+  return cleanupState.picked;
+ }
+ function clPickedStats(){
+  const cats=((cleanupState.data&&cleanupState.data.categories)||[]).filter(c=>clPicked().has(c.key));
+  return {n:cats.reduce((a,c)=>a+c.removable,0),bytes:cats.reduce((a,c)=>a+c.removableBytes,0),cats};
+ }
+ async function loadCleanupMaint(force){
+  const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
+  if(!force&&cleanupState.loaded){renderCleanup();return}
+  form.innerHTML='';list.innerHTML='<div class="mm-empty">溜まっているファイルを調べています…</div>';
+  try{
+   const [d,cfg]=await Promise.all([api('/api/cleanup'),api('/api/path-config-master')]);
+   cleanupState.data=d;cleanupState.cfg=cfg;cleanupState.loaded=true;cleanupState.picked=null;
+   renderCleanup();
+  }catch(e){list.innerHTML=`<div class="mm-empty error">調べられませんでした: ${esc(e.message)}</div>`}
+ }
+ function renderCleanup(){
+  const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
+  const d=cleanupState.data||{};
+  const cats=d.categories||[],tot=d.total||{},pol=d.policy||{},st=d.state||{},places=d.places||{};
+  const v=(cleanupState.cfg&&cleanupState.cfg.values)||{};
+  const pick=clPicked(),sel=clPickedStats();
+  /* 次にすること。**1つだけ指す**（§2）。 */
+  const next=sel.n
+   ? `いま <b>${clSize(sel.bytes)}（${sel.n}件）</b>を片付けられます。`
+     +`何が消えるかは下のカードに出ています——確かめて「選んだものを掃除する」を押してください。`
+   : (tot.removable
+      ? `片付けられるものは <b>${clSize(tot.removableBytes)}（${tot.removable}件）</b>ありますが、`
+        +`<b>種別を1つも選んでいません</b>。下のカードの左端で選んでください。`
+      : 'いまは何もする必要がありません。<b>片付けられるファイルはありません</b>（定期掃除が効いています）。');
+  form.innerHTML=`
+   <div class="mm-form-head"><span class="mm-mode-chip editing">この端末のファイル</span></div>
+   <p class="cl-lead">アプリが動くうちに増える<b>作り直せるファイル</b>だけを片付けます。
+    <b>測定データ・マスタ・共有スケジュールには一切触れません</b>——ここから消せるのは、
+    消しても次に使うときに作り直されるものだけです。</p>
+   <div class="cl-top">
+    <div class="cl-gauge">
+     <div class="cl-gauge-main"><b>${clSize(tot.removableBytes||0)}</b><span>片付けられます</span></div>
+     <div class="cl-gauge-sub">${tot.removable||0}件 ／ 全体 ${clSize(tot.bytes||0)}・${tot.files||0}件</div>
+     <div class="cl-bar" role="img" aria-label="全体のうち片付けられる割合">
+      <i style="width:${tot.bytes?Math.max(2,Math.round((tot.removableBytes/tot.bytes)*100)):0}%"></i></div>
+    </div>
+    <div class="cl-next"><span class="cl-next-label">次にすること</span><span>${next}</span></div>
+   </div>`;
+  /* **面積は頻度×重要度**（§CLAUDE 1）。片付けられる種別だけをカードで
+     大きく出し、**いま空の種別は1行の札に畳む**——溜まっていないのが
+     ふつうの状態なので、そこへ画面の大半を割くと、肝心の「消せるもの」が
+     埋もれる。**畳んでも消さない**（何を見ているのかが分からなくなる・
+     §CLAUDE 12）。並びはサーバーの順のままにする（開くたびに場所が
+     変わると探すことになる）。 */
+  const card=c=>{
+   const on=pick.has(c.key);
+   const none=!c.removable;
+   return `<div class="cl-card${on?' is-on':''}${none?' is-empty':''}" data-cl-card="${esc(c.key)}">
+    <label class="cl-card-head">
+     <input type="checkbox" data-cl-pick="${esc(c.key)}"${on?' checked':''}${none?' disabled':''}>
+     <span class="cl-ico" aria-hidden="true">${esc(c.icon||'')}</span>
+     <b>${esc(c.label)}</b>
+     <span class="cl-badge${none?' is-none':''}">${none?'なし':`${clSize(c.removableBytes)}・${c.removable}件`}</span>
+    </label>
+    <p class="cl-note">${esc(c.note)}</p>
+    <dl class="cl-kv">
+     <dt>消し方</dt><dd>${hintHtml(c.why)}</dd>
+     <dt>いちばん古い</dt><dd>${clWhen(c.oldest)}</dd>
+     <dt>自動掃除</dt><dd>${c.auto?'対象<small>（定期掃除でも消えます）</small>':'<b>対象外</b><small>（押したときだけ消えます）</small>'}</dd>
+    </dl>
+    ${c.examples&&c.examples.length?`<div class="cl-ex"><b>消えるもの</b><ul>${
+      c.examples.map(x=>`<li><code title="${esc(x.name)}">${esc(x.name)}</code><em>${clSize(x.size)}</em><i>${clWhen(x.mtime)}</i></li>`).join('')
+     }${c.removable>c.examples.length?`<li class="cl-more">ほか${c.removable-c.examples.length}件</li>`:''}</ul></div>`:''}
+    ${c.keptExamples&&c.keptExamples.length?`<div class="cl-keep"><b>残すもの（${c.kept}件）</b><ul>${
+      c.keptExamples.map(x=>`<li><code title="${esc(x.name)}">${esc(x.name)}</code><i>${esc(x.why)}</i></li>`).join('')}</ul></div>`
+     :(c.kept?`<div class="cl-keep"><b>残すもの</b><span>${c.kept}件</span></div>`:'')}
+   </div>`;
+  };
+  const hot=cats.filter(c=>c.removable>0),cold=cats.filter(c=>!c.removable);
+  list.innerHTML=`
+   ${hot.length?`<div class="cl-grid">${hot.map(card).join('')}</div>`
+    :'<p class="cl-none">片付けられるファイルは<b>1件もありません</b>。溜まってきたらここへ出ます。</p>'}
+   ${cold.length?`<div class="cl-cold"><b>いま空の種別（${cold.length}）</b>${cold.map(c=>
+     `<span class="cl-cold-chip" title="${esc(c.label)}｜${esc(c.note)}">`
+     +`<i aria-hidden="true">${esc(c.icon||'')}</i>${esc(c.label)}`
+     +`${c.kept?`<em>${c.kept}件は残します</em>`:''}</span>`).join('')}</div>`:''}
+   <div class="cl-foot">
+    <div class="cl-foot-sum">選んでいるのは <b>${sel.cats.length}種別</b>
+     ${sel.n?`／ <b>${clSize(sel.bytes)}（${sel.n}件）</b>が消えます`:'／ <b>消えるものはありません</b>'}</div>
+    <div class="cl-foot-act">
+     <button type="button" id="clReload" class="mm-btn-ghost sm">調べ直す</button>
+     <button type="button" id="clRun" class="mm-btn-primary"${sel.n?'':' disabled'}
+       title="${sel.n?'選んだ種別のファイルを消します（消す前に確認します）':'選んだ種別に消せるファイルがありません'}">選んだものを掃除する${sel.n?`（${clSize(sel.bytes)}）`:''}</button>
+    </div>
+   </div>
+   <div class="cl-auto">
+    <h4>定期掃除 — ${pol.auto?`<span class="cl-on">入</span> ${esc(clEvery(pol.intervalSec))}`:'<span class="cl-off">切</span>'}</h4>
+    <p class="cl-auto-lead">アプリが動いているあいだ、<b>自動掃除の対象</b>の種別だけを決めた間隔で片付けます。
+     <b>バイトコードと古い作業フォルダは自動では消しません</b>（消すと次の起動が一度だけ遅くなる／中身を確かめてから消したいため）。</p>
+    <div class="cl-auto-fields">
+     <label class="mm-field mm-w-md"><span>定期掃除</span>
+      <select id="clAuto">
+       <option value="on"${pol.auto?' selected':''}>入（決めた間隔で片付ける）</option>
+       <option value="off"${pol.auto?'':' selected'}>切（押したときだけ片付ける）</option></select>
+      <small class="mm-field-hint">切にしても、この画面から手で掃除できます。</small></label>
+     <label class="mm-field mm-w-sm"><span>掃除の間隔</span>
+      <span class="mm-field-num"><input type="number" id="clInterval" min="300" step="300"
+        value="${esc(String(v.cleanup_interval_sec||pol.intervalSec||21600))}"><em>秒</em></span>
+      <small class="mm-field-hint">300秒（5分）以上。既定は21600秒＝6時間です。</small></label>
+     <label class="mm-field mm-w-xs"><span>残す世代</span>
+      <span class="mm-field-num"><input type="number" id="clGens" min="1" max="50" step="1"
+        value="${esc(String(v.cleanup_keep_generations||pol.keepGenerations||3))}"><em>世代</em></span>
+      <small class="mm-field-hint">ログ・バックアップで<b>新しいほうから残す本数</b>です。</small></label>
+     <label class="mm-field mm-w-xs"><span>残す日数</span>
+      <span class="mm-field-num"><input type="number" id="clDays" min="1" max="3650" step="1"
+        value="${esc(String(v.cleanup_keep_days||pol.keepDays||14))}"><em>日</em></span>
+      <small class="mm-field-hint">この日数以内のものは、世代の数に関わらず残します。</small></label>
+    </div>
+    <div class="mm-cd-actions"><button type="button" id="clSaveCfg" class="mm-btn-primary">この設定を保存</button>
+     <span class="mm-form-hint">保存後すぐ反映されます（再起動は要りません）。</span></div>
+    <dl class="cl-kv cl-places">
+     <dt>最後の掃除</dt><dd>${st.lastRunAt?`${clWhen(st.lastRunAt)}・${st.lastRemoved||0}件 ${clSize(st.lastFreed||0)}`:'まだ走っていません'}</dd>
+     ${st.lastError?`<dt>前回の言い分</dt><dd class="is-warn">${esc(st.lastError)}</dd>`:''}
+     <dt>写しの置き場</dt><dd><code title="${esc(places.cache||'')}">${esc(places.cache||'—')}</code></dd>
+     <dt>ログの置き場</dt><dd><code title="${esc(places.logs||'')}">${esc(places.logs||'—')}</code></dd>
+     <dt>控えの置き場</dt><dd><code title="${esc(places.backup||'')}">${esc(places.backup||'—')}</code></dd>
+    </dl>
+   </div>`;
+  /* **チェックは`click`で受ける**（§9.90。`change`は`click`の後に飛ぶため、
+     行ごと作り直す作りでは反映されない）。ここは器だけを描き直す。 */
+  list.querySelectorAll('[data-cl-pick]').forEach(b=>b.onclick=()=>{
+   const k=b.dataset.clPick;
+   if(b.checked)pick.add(k);else pick.delete(k);
+   renderCleanup();
+  });
+  $('#clReload').onclick=()=>{cleanupState.loaded=false;loadCleanupMaint(true)};
+  const run=$('#clRun');
+  if(run)run.onclick=()=>cleanupRun();
+  $('#clSaveCfg').onclick=async()=>{
+   /* **送るのはこの4つだけ。** パス設定の保存は「送られてきた項目だけ」を
+      書くので、他の設定を巻き添えにしない（§9.192）。 */
+   const body={cleanup_auto_enabled:String($('#clAuto').value||'on'),
+               cleanup_interval_sec:String($('#clInterval').value||'').trim(),
+               cleanup_keep_generations:String($('#clGens').value||'').trim(),
+               cleanup_keep_days:String($('#clDays').value||'').trim(),
+               user_id:String($('#masterUserId')?.value||'').trim()};
+   try{
+    setMaintLoading(true,'保存しています…');
+    await api('/api/path-config-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    pathConfigState.loaded=false;
+    showToast&&showToast('保存しました','次の掃除から新しい決まりで片付けます',4000);
+   }catch(e){showToast&&showToast('保存できませんでした',e.message,7000)}
+   finally{setMaintLoading(false);cleanupState.loaded=false;loadCleanupMaint(true)}
+  };
+ }
+ /* 消す。**確認はまとめて1回**（§9.170）。何が消えるかは種別ごとの件数と
+    容量で出す——「本当によろしいですか？」だけでは読まずに押す癖が付く。 */
+ async function cleanupRun(){
+  if(cleanupState.busy)return;
+  const sel=clPickedStats();
+  if(!sel.n)return;
+  const body=`<p class="confirm-modal-message">次のファイルを消します。<b>取り消せません。</b></p>
+   <ul class="cl-confirm">${sel.cats.filter(c=>c.removable).map(c=>
+     `<li><b>${esc(c.label)}</b>${c.auto?'':'<i>自動掃除の対象外</i>'}<em>${clSize(c.removableBytes)}・${c.removable}件</em></li>`).join('')}</ul>
+   <p class="confirm-modal-message">合計 <b>${clSize(sel.bytes)}（${sel.n}件）</b>。
+    どれも<b>作り直せるファイル</b>で、測定データ・マスタ・共有スケジュールには触れません。</p>`;
+  const ok=typeof confirmModal==='function'
+   ? await confirmModal({title:'不要ファイルを消します',eyebrow:'CLEANUP',bodyHtml:body,
+                         confirmLabel:'掃除する',danger:true})
+   : window.confirm(`${clSize(sel.bytes)}（${sel.n}件）を消します。よろしいですか？`);
+  if(!ok)return;
+  cleanupState.busy=true;
+  try{
+   setMaintLoading(true,'掃除しています…');
+   const r=await api('/api/cleanup/run',{method:'POST',headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({categories:[...clPicked()]})});
+   /* **消せなかったものは失敗にしない**（§9.108）——待てば消せるので次の
+      掃除で消える。黙らずに件数と理由を言う（§CLAUDE 4）。 */
+   showToast&&showToast(`${r.removed||0}件・${clSize(r.bytes||0)}を片付けました`,
+     r.failed?`${r.failed}件は使用中のため残りました（次の掃除で消えます）`:'',
+     r.failed?7000:3600);
+  }catch(e){showToast&&showToast('掃除できませんでした',e.message,7000)}
+  finally{cleanupState.busy=false;setMaintLoading(false);cleanupState.loaded=false;loadCleanupMaint(true)}
  }
 
  /* ---------- テーブル生データ(旧「マスタ一覧」、ARCHITECTURE.md「マスタ管理の画面形態」で統合) ----------

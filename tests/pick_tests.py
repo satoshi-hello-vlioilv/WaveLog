@@ -231,10 +231,15 @@ RULES = [
     ('backend/source_capability.py', g('test_dscap', 'test_datasource', 'test_dsnav',
                                        'test_tablequery', 'test_uiux')),
     ('backend/db_mirror.py', g('test_dbmirror', 'test_dbopen', 'test_listcache',
-                               'test_atomicio')),
+                               'test_atomicio', 'test_cleanup')),
+    # 不要ファイルの掃除(§9.249 (1))。置き場の判定を触ると対象が変わるので、
+    # 写し・置き場の網も一緒に回す。
+    ('backend/file_cleanup.py', g('test_cleanup', 'test_dbmirror', 'test_localwork',
+                                  'test_modeguard')),
+    ('backend/routes/cleanup.py', g('test_cleanup', 'test_modeguard', 'test_crudroutes')),
     # 置き換えの粘り(§9.108)は写し・共有JSON・RNE公開の全部が通る土台。
     ('backend/atomic_io.py', g('test_atomicio', 'test_dbmirror', 'test_sclock',
-                               'test_scsync', 'test_datasource')),
+                               'test_scsync', 'test_datasource', 'test_cleanup')),
     ('backend/repositories/master_repo.py', g('マスタ', '列', 'test_workable', 'test_oplimit')),
     ('backend/repositories/operation_repo.py', g('操業データ', '操業意匠', 'test_msteps', 'test_mcore')),
     # 操業データの入力欄（§9.215）。測定画面①の中身なので測定一式へ。
@@ -257,7 +262,7 @@ RULES = [
     ('backend/watchdog.py', g('test_tabclose', 'test_boot')),
     ('backend/errors.py', g('test_error')),
     ('backend/paths.py', g('test_setpage', 'test_dbopen', 'test_datasource',
-                           'test_localwork', 'test_dbmirror', '起動')),
+                           'test_localwork', 'test_dbmirror', 'test_cleanup', '起動')),
     ('backend/changelog_data.py', g('test_docindex', 'test_boot')),
     ('backend/rne_', g('test_datasource', 'test_setpage', 'test_atomicio')),
     ('backend/navigator_api.py', g('test_datasource')),
