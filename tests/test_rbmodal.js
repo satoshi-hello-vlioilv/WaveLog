@@ -91,6 +91,31 @@ let b=null,page=null;
       tabState.tabs===4&&tabState.panels===4&&tabState.open===1,JSON.stringify(tabState));
   rec('畳んだ段でも決めた値が見出しに出る（思い出させない）',
       tabState.sums.filter(Boolean).length>=2,JSON.stringify(tabState.sums));
+  /* 段の帯と欄は**器の全幅を使う**（§9.250 ⑨、利用者の報告「タブを出す位置と、
+     メインコンテンツ表示エリアがずれており、左側のスペースが完全に死に
+     スペースになっていてもったいないです」）。`.mm-form-fields`は折り返す
+     横並びなので、帯をそのまま入れると**欄1つぶんの札**として左に縮み、
+     欄がその右へ回り込んで左下が丸ごと空く。
+     **札の2行目が下に潜っていないこと**も見る（同「タブの中身もレイヤー
+     表示を間違っていて下にもぐって見えなくなっています」）。 */
+  const bar=await page.evaluate(()=>{
+   const b=document.querySelector('.mm-tabbar');
+   const f=document.querySelector('.mm-form-fields');
+   const p=document.querySelector('.mm-tabpanel:not([hidden])');
+   const r=e=>e.getBoundingClientRect();
+   const sums=[...document.querySelectorAll('.mm-tab')].map(t=>({
+     下へ潜る:Math.round(r(t.querySelector('.mm-tab-sum')).bottom-r(t).bottom),
+     切れ:Math.round(t.querySelector('.mm-tab-sum').scrollWidth-t.querySelector('.mm-tab-sum').clientWidth)}));
+   return {帯:Math.round(r(b).width),欄:Math.round(r(f).width),
+     パネル:Math.round(r(p).width),
+     帯の左:Math.round(r(b).left),パネルの左:Math.round(r(p).left),
+     札:sums};
+  });
+  rec('段の帯と欄が器の全幅を使う（左が死にスペースにならない）',
+      Math.abs(bar.帯-bar.欄)<=2&&Math.abs(bar.パネル-bar.欄)<=2
+      &&Math.abs(bar.帯の左-bar.パネルの左)<=2,JSON.stringify(bar));
+  rec('段の札の2行目が下に潜らない（見出しと今の値が両方読める）',
+      bar.札.every(x=>x.下へ潜る<=0&&x.切れ<=1),JSON.stringify(bar.札));
   rec('窓を開いた時点で縦に溢れない（スクロールレス）',box.overflowY===0,String(box.overflowY));
   /* 段を見出しの言葉で開く。**番号で探さないこと**——段が1つ増えただけで
      番号がずれる網は、直していないのに落ちる。 */
