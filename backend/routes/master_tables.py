@@ -326,6 +326,34 @@ def master_table_update(table):
  return jsonify(ok=True, id=rid, message=f'{name} の1行を書き換えました')
 
 
+@bp.post('/api/master-table/<path:table>/drop')
+def master_table_drop(table):
+ """表そのものを消す（§9.250 ③、利用者の指示「移行済みのマスタについては
+ 不要なはずなので削除できるようにしてください」）。
+
+ **消せるのは`RETIRED`に載っている表だけ。** アプリがもう読まない、と
+ このファイルが名指ししている表に限る——生きている表を消せる口があると、
+ 押し間違い1回でマスタが消える（§CLAUDE 5「危ない操作を主要動線に置かない」）。
+ **判定は`RETIRED`の1箇所**で、画面には表の名前を書き写さない（§9.163）。
+ """
+ name, err = _resolve(table)
+ if name is None:
+  return jsonify(error=err), 400
+ if name not in RETIRED:
+  return jsonify(error=f'「{name}」はアプリが読んでいる表なので、ここからは消せません。'
+                       '（消せるのは移行済みの表だけです）'), 400
+ with connect(_master_path(), False) as c:
+  try:
+   rows = c.execute(f'SELECT COUNT(*) FROM [{name}]').fetchone()[0]
+  except Exception:
+   rows = None
+  c.cursor().execute(f'DROP TABLE IF EXISTS [{name}]')
+  c.commit()
+ app_logger().info('移行済みの表を削除しました: %s (%s件)', name, rows)
+ return jsonify(ok=True, table=name, rows=rows,
+                message=f'{name} を削除しました' + (f'（{rows}件）' if rows is not None else ''))
+
+
 @bp.post('/api/master-table/<path:table>/delete')
 def master_table_delete(table):
  name, err = _resolve(table)

@@ -62,15 +62,19 @@ async function cleanup(){
     .find(x=>x.textContent.includes('設備'));if(b)b.click()});
   await page.waitForTimeout(1500);
 
-  const form=await page.evaluate(()=>{
-   const sel=document.querySelector('#masterMaintForm select[data-field="kind"]');
-   return {exists:!!sel,inline:!document.querySelector('#masterMaintForm')?.classList.contains('mm-form-compact'),
-           options:sel?[...sel.options].map(o=>o.value):null,
-           heads:[...document.querySelectorAll('#masterMaintList .mm-row.head span')].map(s=>s.textContent.trim())};
-  });
-  rec('設備タブは上のフォームで直接入力する形式のまま（項目が増えてもモーダルにしない）',form.inline,JSON.stringify(form.inline));
-  rec('区分の選択欄がある',form.exists);
-  rec('選択肢は 未選択／コイル／板',form.exists&&form.options.join('|')==='|コイル|板',JSON.stringify(form.options));
+  /* **設備マスタは表が主役で、直すのは窓**（§9.250 ⑦、利用者の指示
+     「設備マスタは文字が多くUIの幅も無駄に長いのでもっとコンパクトにする
+      ために、表をメインに、修正は他と同じようにモーダルで行うように」）。
+     以前ここは「項目が増えてもモーダルにしない」を固定していたが、
+     **利用者の指示で撤回した**——網は新しい約束へ書き直す。 */
+  const form=await page.evaluate(()=>({
+   compact:!!document.querySelector('#masterMaintForm')?.classList.contains('mm-form-compact'),
+   inlineFields:document.querySelectorAll('#masterMaintForm [data-field]').length,
+   add:!!document.querySelector('#masterMaintAdd'),
+   heads:[...document.querySelectorAll('#masterMaintList .mm-row.head span')].map(s=>s.textContent.trim()),
+  }));
+  rec('設備タブは表が主役（上のフォームは畳んで追加ボタンだけ）',
+      form.compact&&form.inlineFields===0&&form.add,JSON.stringify(form));
   rec('一覧に区分列がある',form.heads.includes('区分'),form.heads.join('/'));
   rec('区分が空の設備は一覧で「未設定」と出る',
    await page.evaluate(()=>{
@@ -79,9 +83,20 @@ async function cleanup(){
     return !!r&&r.children[1]?.textContent.trim()==='未設定';
    }));
 
-  await page.fill('#masterMaintForm [data-field="name"]',NAME);
-  await page.selectOption('#masterMaintForm select[data-field="kind"]','コイル');
-  await page.click('#masterMaintForm button[type="submit"]');
+  await page.click('#masterMaintAdd');
+  await page.waitForSelector('#maintEditorModal',{state:'visible',timeout:8000});
+  const modalForm=await page.evaluate(()=>{
+   const sel=document.querySelector('#maintEditorForm select[data-field="kind"]');
+   return {exists:!!sel,options:sel?[...sel.options].map(o=>o.value):null,
+           groups:[...document.querySelectorAll('#maintEditorForm .mm-fieldgroup')].map(x=>x.textContent.trim())};
+  });
+  rec('区分の選択欄がある',modalForm.exists);
+  rec('選択肢は 未選択／コイル／板',modalForm.exists&&modalForm.options.join('|')==='|コイル|板',JSON.stringify(modalForm.options));
+  rec('決めることが束ねてある（①どの設備か／②数の決まり）',
+      modalForm.groups.length===2,JSON.stringify(modalForm.groups));
+  await page.fill('#maintEditorForm [data-field="name"]',NAME);
+  await page.selectOption('#maintEditorForm select[data-field="kind"]','コイル');
+  await page.click('#maintEditorSave');
   await page.waitForTimeout(2500);
   const added=await getEquip(NAME);
   rec('画面から区分つきで新規登録できる',added.item&&added.item.kind==='コイル',
@@ -97,12 +112,13 @@ async function cleanup(){
   await page.evaluate(n=>{const rows=[...document.querySelectorAll('#masterMaintList .mm-row:not(.head)')];
    const r=rows.find(x=>x.children[0]?.textContent.trim()===n);if(r)r.click()},NAME);
   await page.waitForTimeout(800);
+  await page.waitForSelector('#maintEditorModal',{state:'visible',timeout:8000});
   const loaded=await page.evaluate(()=>({
-   name:document.querySelector('#masterMaintForm [data-field="name"]')?.value,
-   kind:document.querySelector('#masterMaintForm select[data-field="kind"]')?.value}));
-  rec('行クリックで編集フォームへ区分ごと読み込まれる',loaded.kind==='コイル'&&loaded.name===NAME,JSON.stringify(loaded));
-  await page.selectOption('#masterMaintForm select[data-field="kind"]','板');
-  await page.click('#masterMaintForm button[type="submit"]');
+   name:document.querySelector('#maintEditorForm [data-field="name"]')?.value,
+   kind:document.querySelector('#maintEditorForm select[data-field="kind"]')?.value}));
+  rec('行クリックで編集の窓へ区分ごと読み込まれる',loaded.kind==='コイル'&&loaded.name===NAME,JSON.stringify(loaded));
+  await page.selectOption('#maintEditorForm select[data-field="kind"]','板');
+  await page.click('#maintEditorSave');
   await page.waitForTimeout(2500);
   const changed=await getEquip(NAME);
   rec('画面から区分を変更できる',changed.item&&changed.item.kind==='板',

@@ -269,23 +269,43 @@
          {k:'enabledText',label:'有効',grow:1},{k:'content',label:'内容',grow:4},
          {k:'span',label:'幅',grow:1},{k:'rows',label:'高さ',grow:1},{k:'order',label:'表示順',grow:1}],
    hint:'帳票の紙に載せる塊の一覧です。**アプリがもともと持っている塊もここに載っています**（「既定」に値が入っている行）。既定の塊は**名前・幅・高さ・並び・出す/出さない・対象設備**を変えられ、`基本情報`／`コース情報`／`測定条件`／`作業班構成`／`作業時間`／`登録状態`の6つは**中身**も変えられます。測定表・条の図・異常位置判定のように組み立て方そのものが仕事になっている塊は中身を変えられません。既定の塊は**消せません**——紙へ出したくないときは「紙に出す」を「出さない」にします。作った塊は帳票画面の「配置を組み換え」の「出していない塊」から紙へ落としてください。'},
+  /* 設備は**表を主役にしてモーダルで直す**（§9.250 ⑦、利用者の指示
+     「設備マスタは文字が多くUIの幅も無駄に長いのでもっとコンパクトにする
+      ために、表をメインに、修正は他と同じようにモーダルで行うように」）。
+     以前はインラインのフォームを常設しており、**5欄それぞれに長い説明が
+     ぶら下がって上半分を占めていた**（一覧に残るのは数行）。ほかのマスタと
+     同じ作法（`editorModal:true`）に揃え、説明は1行へ詰めて続きは
+     見出しの`?`（`more`）から読む（§9.234 ①）。
+     欄は**中身の長さから**決める（§CLAUDE 11）——設備名は名前1つ、
+     残りは数値なので、規格幅の`sm`/`xs`に収まる。 */
   {group:'equip',key:'equipment',label:'設備',icon:'設',endpoint:'/api/equipment-master',hasDelete:true,
-   editorModal:false,
-   fields:[{k:'name',label:'設備名',required:true,key:true},
+   editorModal:true,titleText:'設備 — この工場のライン',
+   hintShort:'1行＝1つの設備です。**行を押すと編集の窓が開きます。**',
+   fields:[{k:'name',label:'設備名',required:true,key:true,size:'md',
+            fieldGroup:'① どの設備か',
+            more:'この名前で作業予定・ロール・停止・権限などが結び付きます。変えると、その名前を指していた設定も一緒に付け替わります。'},
            {k:'kind',label:'区分',type:'select',options:['','コイル','板'],
-            hint:'この設備が扱う材料の形です。空欄のままでも登録・編集できます（未設定）。'},
-           {k:'maxStrips',label:'最大条数',type:'number',min:1,max:40,
-            hint:'この設備で幅方向に割れる条数の上限。空欄なら40（測定データの構造上の上限）。'},
-           {k:'standardMinutes',label:'1ロットあたり標準時間（分）',type:'number',min:1,max:1440,step:1,
-            hint:'実績がまだ無いときに作業スケジュールの見積として使う分数です。空欄なら120分（全体の暫定既定値）。実績がたまると自動で実績由来の見積へ切り替わります。'},
+            fieldGroup:'① どの設備か',
+            hint:'扱う材料の形。**空欄でも登録できます。**',
+            more:'コイル／板。既に登録してある設備は未設定のままでも今までどおり動きます。'},
+           {k:'maxStrips',label:'最大条数',type:'number',min:1,max:40,unit:'条',
+            fieldGroup:'② 数の決まり',
+            hint:'空欄なら**40条**（構造上の上限）。',
+            more:'幅分割（条割）で割れる条数の上限です。設備によって割れる本数が違うため設備ごとに登録します。子ロットの数（最大9ロット）とは別の値です。'},
+           {k:'standardMinutes',label:'標準時間',type:'number',min:1,max:1440,step:1,unit:'分',
+            fieldGroup:'② 数の決まり',
+            hint:'空欄なら**120分**（暫定の既定）。',
+            more:'実績がまだ1件も無い設備の作業スケジュールで、1ロットあたりの見積として使う分数です。実績がたまると実績から算出した見積（換算係数）が優先されるので、最初の保険として登録します。'},
            /* §9.231 ①。**空欄＝未設定**（0は「上限0」になってしまうので受けない）。 */
-           {k:'maxLineSpeed',label:'最大ライン速度（m/min）',type:'number',min:1,max:100000,step:1,
-            hint:'このラインで出せる速度の上限です。操業データ項目の「数の決まり」から**この値を上限として参照**できます（マスタを直せば入力欄の上限も変わります）。空欄なら未設定で、参照している項目には上限が掛かりません。'}],
+           {k:'maxLineSpeed',label:'最大ライン速度',type:'number',min:1,max:100000,step:1,unit:'m/min',
+            fieldGroup:'② 数の決まり',
+            hint:'空欄なら**上限なし**。',
+            more:'このラインで出せる速度の上限です。操業データ項目の「数の決まり」からこの値を上限として参照できます（マスタを直せば入力欄の上限も変わります）。'}],
    cols:[{k:'name',label:'設備名',grow:2},{k:'kind',label:'区分',grow:1,format:'equipmentKind'},
          {k:'maxStrips',label:'最大条数',grow:1,format:'maxStrips'},
          {k:'standardMinutes',label:'標準時間',grow:1,format:'standardMinutes'},
          {k:'maxLineSpeed',label:'最大速度',grow:1,format:'maxLineSpeed'}],
-   hint:'「区分」はその設備が扱う材料の形（コイル／板）です。既に登録してある設備は未設定のままでも今までどおり動きます。「最大条数」は幅分割（条割）で割れる条数の上限です。設備によって割れる本数が違うため設備ごとに登録します。空欄のままなら40条（測定データの構造上の上限）として扱います。子ロットの数（最大9ロット）とは別の値です。「1ロットあたり標準時間」は、実績がまだ1件も無い設備の作業スケジュールで見積として使う分数です。実績がたまると実績から算出した見積（換算係数）が優先されるため、あくまで最初の保険として登録します。'},
+   hint:'この工場のラインの一覧です。1行＝1つの設備で、**行を押すと編集の窓が開きます**。「区分」は扱う材料の形（コイル／板）、「最大条数」は幅分割で割れる条数の上限（空欄＝40条）、「標準時間」は実績が無いときの見積（空欄＝120分）、「最大ライン速度」は操業データの入力上限として参照できます（空欄＝上限なし）。'},
   {group:'system',key:'accessPermission',label:'アクセス権限',icon:'権',endpoint:'/api/access-permission-master',hasDelete:true,
    fields:[{k:'loginId',label:'ログインID',key:true},{k:'pcName',label:'PC名',key:true},
            {k:'canEdit',label:'編集可否',type:'select',options:['編集可','閲覧のみ']},
@@ -389,17 +409,65 @@
   {key:'internal',label:'内部データ',hint:'専用のタブを持たないマスタ（そのまま行を編集します）'},
   {key:'retired',label:'移行済み',hint:'アプリはもう読みません。移行前の中身を見返すためだけに残しています'},
  ];
+ /* ---------- 群ごとに畳める（§9.250 ②、利用者の指示） ----------
+    「マスタのカテゴリ単位で折りたためるようにしてください。さらに内部データに
+     属するマスタと移行済みのマスタについては折りたたんだ状態をデフォルトに」
+
+    37タブになった時点で左の一覧は**器の倍の高さ**（実測1635px / 806px）に
+    なっていた。探すたびに転がすことになるので、群ごとに畳めるようにする。
+    **既定で畳むのは`internal`と`retired`の2つだけ**——どちらも「ふだんは
+    触らない」群で、開いている人はそのまま開いたままになる（§CLAUDE 1）。
+    覚えは**この端末**（読み方の好みなので、共有マスタへ入れて全員を縛らない）。
+    **畳んでも件数は文字で出す**（§CLAUDE 3。何を畳んでいるのか分からないと
+    「消えた」と読まれる）。 */
+ const MM_NAVFOLD_KEY='MasterNavFoldV1';
+ const MM_NAVFOLD_DEFAULT=['internal','retired'];
+ function mmNavFolded(){
+  try{
+   const raw=localStorage.getItem(MM_NAVFOLD_KEY);
+   if(raw===null)return new Set(MM_NAVFOLD_DEFAULT);
+   const v=JSON.parse(raw);
+   return new Set(Array.isArray(v)?v:[]);
+  }catch(e){return new Set(MM_NAVFOLD_DEFAULT)}
+ }
+ function mmSetNavFolded(set){
+  try{localStorage.setItem(MM_NAVFOLD_KEY,JSON.stringify([...set]))}catch(e){}
+ }
  function renderMaintNav(){
   const nav=$('#masterMaintNav');if(!nav)return;
   const visible=allDefs().filter(maintDefVisible);
+  const folded=mmNavFolded();
+  /* **いま開いているタブの群は必ず開く**（§CLAUDE 4）。畳んだ群の中の
+     タブを選んだままにすると、「今どこにいるか」が画面から消える。 */
+  const cur=visible.find(d=>d.key===maintState.defKey);
+  if(cur)folded.delete(cur.group||'system');
   const html=MASTER_GROUPS.map(g=>{
    const defs=visible.filter(d=>(d.group||'system')===g.key);
    if(!defs.length)return '';
-   return `<div class="mm-nav-group"><div class="mm-nav-group-label" title="${esc(g.hint)}">${esc(g.label)}</div>`+
-    defs.map(d=>`<button type="button" data-master="${d.key}"><span class="mm-nav-ico" aria-hidden="true">${esc(d.icon)}</span><span class="mm-nav-label">${esc(d.label)}</span></button>`).join('')+
-    '</div>';
+   const off=folded.has(g.key);
+   /* **見出しは`<button>`にしない**——`10-roles.css`の`.mm-nav button`が
+      「行き先の的」の寸法（`--ctl-h`・`--fs`）を配るので、見出しまで
+      行き先と同じ大きさになる（実測: 文字が14pxになり「作業スケジュール」が
+      入らなくなった）。役割が違うものへ同じ役割の寸法を配らない。 */
+   return `<div class="mm-nav-group${off?' is-folded':''}" data-nav-group="${esc(g.key)}">`
+    +`<div class="mm-nav-group-label" data-nav-fold="${esc(g.key)}" role="button" tabindex="0"`
+    +` aria-expanded="${off?'false':'true'}" title="${esc(g.hint)}｜押すと${off?'開きます':'畳みます'}">`
+    +`<span class="mm-nav-caret" aria-hidden="true">${off?'▸':'▾'}</span>`
+    +`<span class="mm-nav-group-name">${esc(g.label)}</span>`
+    +`<span class="mm-nav-count">${defs.length}</span></div>`
+    +(off?'':defs.map(d=>`<button type="button" data-master="${d.key}" title="${esc(d.label)}"><span class="mm-nav-ico" aria-hidden="true">${esc(d.icon)}</span><span class="mm-nav-label">${esc(d.label)}</span></button>`).join(''))
+    +'</div>';
   }).join('');
   nav.innerHTML=html;
+  nav.querySelectorAll('[data-nav-fold]').forEach(b=>{
+   const toggle=()=>{
+    const k=b.dataset.navFold,now=mmNavFolded();
+    if(now.has(k))now.delete(k);else now.add(k);
+    mmSetNavFolded(now);renderMaintNav();
+   };
+   b.onclick=toggle;
+   b.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggle()}};
+  });
   nav.querySelectorAll('[data-master]').forEach(b=>b.onclick=()=>{maintState.defKey=b.dataset.master;maintState.editing=null;maintState.query='';const se=$('#masterMaintSearch');if(se)se.value='';syncNav();loadMaint(true)});
   syncNav();
  }
@@ -1028,10 +1096,20 @@
      押せるのに何も起きないボタンを残さない）。理由は`hint`が書く。 */
   if(def.readOnly&&!def.special){
    form.classList.add('mm-form-compact');
+   /* **移行済みの表は丸ごと消せる**（§9.250 ③、利用者の指示「移行済みの
+      マスタについては不要なはずなので削除できるようにしてください」）。
+      **危ない操作なので主要動線に置かない**（§CLAUDE 5）——器の右端へ寄せ、
+      押すと**表の名前と件数を名乗る確認**を1回だけ出す。消せるのは
+      サーバーが`RETIRED`と名指ししている表だけ（判定は1箇所・§9.163）。 */
+   const drop=def.rawKind==='retired'&&def.rawTable
+    ?`<button type="button" id="mmDropTable" class="mm-btn-danger sm"
+        title="この表をマスタDBから丸ごと消します（取り消せません）">この表を削除</button>`:'';
    form.innerHTML=`<div class="mm-form-head"><span class="mm-mode-chip">読み取り専用</span>
-     <span class="mm-form-hint">この表は見るだけです。追加・編集・削除はできません。</span></div>
+     <span class="mm-form-hint">この表は見るだけです。追加・編集はできません。</span>${drop}</div>
     ${def.hint?`<p class="mm-def-hint">${hintHtml(def.hint)}</p>`:''}`;
    form.onsubmit=ev=>ev.preventDefault();
+   const db=$('#mmDropTable');
+   if(db)db.onclick=()=>dropRetiredTable(def);
    return;
   }
   if(defUsesEditorModal(def)){
@@ -1994,15 +2072,78 @@
       行のツールチップ(title)へ退避して主情報の幅を確保する。 */
  const MAINT_AUDIT_MAX_COLS=3;
  function maintShowsAudit(def){return (def.cols||[]).length<=MAINT_AUDIT_MAX_COLS}
+ /* ================================================================
+    一覧の並べ替えと列幅（§9.250 ⑥、利用者の指示）
+    ----------------------------------------------------------------
+    「マスタのデータが並べてある、よく使われている表は並び替え、列幅調整
+      できるようにしてください。」
+
+    ・**覚えるのはこの端末**（`MasterListViewV1`）。読み方の好みなので、
+      共有マスタへ入れて全員を縛らない（§9.199の`childBadge`と同じ）。
+    ・**列幅の掴み方は書き写さない**——`WL.columnWidthGrip`をそのまま呼ぶ
+      （§9.164。仕掛一覧・データ一覧・実績と同じ手つきになる）。
+    ・**触ったことは画面に出し、戻す手立てを同じ場所に置く**（§9.175）。
+    ================================================================ */
+ const MM_VIEW_KEY='MasterListViewV1';
+ let mmViewPref=null;
+ function mmView(){
+  if(mmViewPref)return mmViewPref;
+  try{mmViewPref=JSON.parse(localStorage.getItem(MM_VIEW_KEY)||'{}')||{}}catch(e){mmViewPref={}}
+  return mmViewPref;
+ }
+ function mmViewOf(def){const v=mmView()[def.key];return v&&typeof v==='object'?v:{}}
+ function mmViewSet(def,patch){
+  const all=mmView();
+  const cur=Object.assign({},all[def.key]||{},patch);
+  if(!cur.sort&&!(cur.widths&&Object.keys(cur.widths).length))delete all[def.key];
+  else all[def.key]=cur;
+  try{localStorage.setItem(MM_VIEW_KEY,JSON.stringify(all))}catch(e){}
+ }
+ function mmViewTouched(def){
+  const v=mmViewOf(def);
+  return !!(v.sort||(v.widths&&Object.keys(v.widths).length));
+ }
+ /* 幅は**指定があるものだけ**px で固定し、残りは今までどおり割合で分ける
+    （§9.119と同じ考え方。全部を px にすると器の広さに追随しなくなる）。 */
  function maintGridTemplate(def){
-  const data=def.cols.map(c=>`minmax(0,${c.grow||1}fr)`).join(' ');
+  const w=mmViewOf(def).widths||{};
+  const data=def.cols.map(c=>w[c.k]?`${Math.round(w[c.k])}px`:`minmax(0,${c.grow||1}fr)`).join(' ');
   return maintShowsAudit(def)?`${data} 96px 128px 108px`:`${data} 108px`;
+ }
+ /* 並べ替えの物差し。**空欄は必ず最後**（向きを変えても最後）——空欄が
+    先頭に集まると、探している行が画面の外へ押し出される（§9.187の
+    「向きは塊の中の値だけを反転する」と同じ考え方を、小さく持つ）。
+    数字は数として、それ以外は日本語の並びで比べる。 */
+ function mmSortValue(it,col){
+  const raw=it[col.k];
+  const t=String(raw??'').trim();
+  if(!t)return {empty:true,n:0,s:''};
+  const n=Number(t.replace(/,/g,''));
+  return {empty:false,n:Number.isFinite(n)?n:null,s:t.normalize('NFKC')};
+ }
+ function mmSortItems(def,items){
+  const sort=mmViewOf(def).sort;
+  if(!sort)return items;
+  const col=(def.cols||[]).find(c=>c.k===sort.k);
+  if(!col)return items;
+  const dir=sort.dir==='desc'?-1:1;
+  /* **安定に並べる**（同点は元の順のまま）。`Array.prototype.sort`は
+     仕様上安定だが、比較が0を返さないと崩れるので明示的に添え字で解く。 */
+  return items.map((it,i)=>({it,i})).sort((a,b)=>{
+   const x=mmSortValue(a.it,col),y=mmSortValue(b.it,col);
+   if(x.empty!==y.empty)return x.empty?1:-1;      // 空欄は向きによらず最後
+   if(!x.empty){
+    if(x.n!==null&&y.n!==null&&x.n!==y.n)return (x.n-y.n)*dir;
+    if(x.s!==y.s)return x.s.localeCompare(y.s,'ja')*dir;
+   }
+   return a.i-b.i;
+  }).map(x=>x.it);
  }
  function filteredMaintItems(def){
   const q=String(maintState.query||'').trim().normalize('NFKC').toLowerCase();
   let items=maintState.items||[];
   if(q)items=items.filter(it=>{const hay=[...def.cols.map(c=>it[c.k]),it.updated_by].map(v=>String(v??'').normalize('NFKC').toLowerCase()).join(' ');return hay.includes(q)});
-  return items;
+  return mmSortItems(def,items);
  }
  /* ---------- 束ねた見出しの開閉（§9.241 ①、利用者の指示「ロールマスタに
     ついて、設備名毎に折りたためるようにしてください」） ----------
@@ -2099,10 +2240,37 @@
  function renderMaintList(){
   const def=currentDef(),list=$('#masterMaintList');if(!list)return;
   const all=maintState.items||[],items=filteredMaintItems(def),tmpl=maintGridTemplate(def);
-  const cnt=$('#masterMaintCount');if(cnt)cnt.textContent=maintState.query?`${items.length} / 有効 ${all.length}件`:`有効 ${all.length}件`;
+  const cnt=$('#masterMaintCount');
+  if(cnt){
+   /* **覚えていることは画面に書き、忘れさせる手立ても同じ場所に置く**
+      （§9.175・§9.250 ⑥）。黙って並べ替えたままだと「順番がおかしい」と
+      読まれる。件数の隣に、いま効いている並びと戻すボタンを出す。 */
+   const v=mmViewOf(def),sc=(def.cols||[]).find(c=>v.sort&&c.k===v.sort.k);
+   const wn=Object.keys(v.widths||{}).length;
+   const marks=[];
+   if(sc)marks.push(`並び: ${esc(sc.label)} ${v.sort.dir==='desc'?'降順':'昇順'}`);
+   if(wn)marks.push(`幅: ${wn}列`);
+   cnt.innerHTML=(maintState.query?`${items.length} / 有効 ${all.length}件`:`有効 ${all.length}件`)
+    +(marks.length?`<span class="mm-viewmark">${marks.map(esc).join('・')}`
+      +`<button type="button" id="mmViewReset" title="この表の並びと列幅を既定へ戻します">✕</button></span>`:'');
+   const rb=$('#mmViewReset');
+   if(rb)rb.onclick=()=>{mmViewSet(def,{sort:null,widths:{}});renderMaintList()};
+  }
   const showAudit=maintShowsAudit(def);
-  const headCols=def.cols.map(c=>`<span>${esc(c.label)}</span>`).join('');
+  /* 見出しは**押すと並べ替え・右端を引くと幅**（§9.250 ⑥）。
+     いまの向きは矢印と`aria-sort`の両方で言う（色だけで伝えない・§CLAUDE 3）。 */
+  const sort=mmViewOf(def).sort||null;
+  const headCols=def.cols.map(c=>{
+   const on=sort&&sort.k===c.k;
+   const mark=on?(sort.dir==='desc'?'▼':'▲'):'';
+   return `<span class="mm-th" data-col="${esc(c.k)}" role="button" tabindex="0"`
+    +` aria-sort="${on?(sort.dir==='desc'?'descending':'ascending'):'none'}"`
+    +` title="${esc(c.label)}｜押すと並べ替え（もう一度で逆順・3回目で元の並び）／右端を引くと幅が変わります">`
+    +`<b>${esc(c.label)}</b>${mark?`<i class="mm-th-mark" aria-hidden="true">${mark}</i>`:''}`
+    +`<i class="mm-th-grip" aria-hidden="true"></i></span>`;
+  }).join('');
   list.innerHTML=`<div class="mm-row head" style="grid-template-columns:${tmpl}">${headCols}${showAudit?'<span>更新者</span><span>更新日時</span>':''}<span class="mm-act">操作</span></div>`;
+  bindMaintHeadTools(def,list);
   if(!items.length){
    /* 行が無いときは開閉の帯も出さない（畳む対象が無いのにボタンだけ残ると、
       押せるのに何も起きない・§CLAUDE 4）。 */
@@ -2166,6 +2334,52 @@
    frag.append(row);
   });
   list.append(frag);
+ }
+ /* 見出しの配線（§9.250 ⑥）。**掴む道具は書き写さない**——列幅は
+    `WL.columnWidthGrip`（§9.164）が「掴む→追う→離す→保存」を持っている。 */
+ function bindMaintHeadTools(def,list){
+  list.querySelectorAll('.mm-row.head>.mm-th').forEach(cell=>{
+   const key=cell.dataset.col;
+   const sortNow=()=>{
+    const cur=mmViewOf(def).sort;
+    /* 3回で一周する（昇順→降順→元の並び）。**戻す道を同じ場所に置く**
+       ——別に「戻す」を作ると、押した本人が探すことになる（§CLAUDE 4）。 */
+    const next=!cur||cur.k!==key?{k:key,dir:'asc'}
+      :cur.dir==='asc'?{k:key,dir:'desc'}:null;
+    mmViewSet(def,{sort:next});
+    renderMaintList();
+   };
+   cell.addEventListener('click',e=>{
+    if(e.target.closest('.mm-th-grip'))return;     // 取っ手は並べ替えに渡さない
+    sortNow();
+   });
+   cell.addEventListener('keydown',e=>{
+    if(e.key==='Enter'||e.key===' '){e.preventDefault();sortNow()}
+   });
+   const grip=cell.querySelector('.mm-th-grip');
+   if(!grip||typeof WL.columnWidthGrip!=='function')return;
+   /* **今そこに在る見出しから測る**（§9.211 ①）——一覧は`innerHTML`ごと
+      作り直されるので、綴じ込んだ`cell`はすぐ孤児になる。孤児は幅0で、
+      掴んでも動かない。 */
+   const liveCell=()=>document.querySelector(
+     `#masterMaintList .mm-row.head>.mm-th[data-col="${CSS.escape(key)}"]`)||cell;
+   WL.columnWidthGrip(grip,{
+    startWidth:()=>liveCell().getBoundingClientRect().width,
+    /* 引いている最中は**トラックだけ**入れ替える（行を作り直さない）。 */
+    preview:w=>{
+     const widths=Object.assign({},mmViewOf(def).widths||{},{[key]:w});
+     const tmpl=(()=>{
+      const data=def.cols.map(c=>widths[c.k]?`${Math.round(widths[c.k])}px`:`minmax(0,${c.grow||1}fr)`).join(' ');
+      return maintShowsAudit(def)?`${data} 96px 128px 108px`:`${data} 108px`;
+     })();
+     document.querySelectorAll('#masterMaintList .mm-row').forEach(r=>r.style.gridTemplateColumns=tmpl);
+    },
+    commit:w=>{
+     mmViewSet(def,{widths:Object.assign({},mmViewOf(def).widths||{},{[key]:w})});
+     renderMaintList();
+    },
+   });
+  });
  }
  function setMaintSearchVisible(show){
   const search=document.querySelector('#masterMaintPanel .mm-search');if(search)search.style.display=show?'':'none';
@@ -4873,6 +5087,36 @@
               +'列の意味はアプリの内部の決まりに沿っているので、'
               +'**値の形（書き方）を変えると、その設定は読めなくなることがあります**。'
               +'迷ったときは、ふだんの画面から設定し直してください。')};
+ }
+ /* 移行済みの表を丸ごと消す（§9.250 ③）。**取り消せないので、消す前に
+    「何を・何件」を名乗る**（§9.193の下見と同じ作法）。消したあとは
+    タブごと消えるので、**次にどこへ行くのかも先に決めておく**（§CLAUDE 2）。 */
+ async function dropRetiredTable(def){
+  const rows=(maintState.items||[]).length;
+  const body=`<p class="confirm-modal-message"><b>${esc(def.rawTable)}</b> をマスタDBから
+    <b>丸ごと消します</b>。取り消せません。</p>
+   <ul class="cl-confirm"><li><b>${esc(def.rawTable)}</b><em>${rows}件</em></li></ul>
+   <p class="confirm-modal-message">この表は<b>アプリがもう読みません</b>
+    （中身は移行先へ移っています）。消しても画面の動きは変わりません。</p>`;
+  const ok=typeof confirmModal==='function'
+   ? await confirmModal({title:'移行済みの表を削除します',eyebrow:'DROP TABLE',bodyHtml:body,
+                         confirmLabel:'削除する',danger:true})
+   : window.confirm(`${def.rawTable} を丸ごと消します。よろしいですか？`);
+  if(!ok)return;
+  try{
+   setMaintLoading(true,'削除しています…');
+   const r=await api('/api/master-table/'+encodeURIComponent(def.rawTable)+'/drop',
+     {method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({user_id:String($('#masterUserId')?.value||'').trim()})});
+   /* **消えたタブに留まらない**——写しを捨てて一覧を取り直し、
+      いま居るタブが無くなっていたら見えているものの先頭へ移す。 */
+   mtState.loaded=false;
+   await loadMasterTableCatalog(true);
+   if(!allDefs().some(d=>d.key===maintState.defKey))maintState.defKey=firstVisibleDefKey();
+   syncNav();await loadMaint(true);
+   showToast&&showToast('削除しました',(r&&r.message)||def.rawTable,3600);
+  }catch(e){showToast&&showToast('削除できませんでした',e.message,7000)}
+  finally{setMaintLoading(false)}
  }
  async function loadMasterTableCatalog(force){
   if(!force&&mtState.loaded)return mtState.tables;
