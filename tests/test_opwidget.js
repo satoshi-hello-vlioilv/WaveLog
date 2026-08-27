@@ -336,35 +336,122 @@ let b=null;
       panelPicked.値==='上巻'&&panelPicked.閉===true&&panelPicked.表示==='上巻',
       JSON.stringify(panelPicked));
 
-  /* スピナー。**`ステッパー`との違いは置き場所の広さ**なので、
-     「行が増えないこと」と「矢印が欄の右端に乗ること」を測る
-     ——絵が違うことだけを見る網は、どちらも1行増える実装でも通る。 */
-  const spin=await page.evaluate(()=>{
+  /* 数の道具は6つとも**「そのまま打つ」の1枠に収まる**（§9.250 ⑧、
+     利用者の指示「範囲に収めること、入力データは隠さないこと」）。
+     以前ここは「スピナーだけがステッパーより背が低いこと」を固定して
+     いたが、**それは他の5つが1行ぶん背が高いことを追認する網**だった。
+     いまは全部が同じ枠なので、**新しい約束へ書き直す**（§9.200）。
+
+     測るのは3つ:
+       ① 「そのまま打つ」と高さが同じ（行を増やさない）
+       ② 器（マス）より広くならない
+       ③ 値の文字が道具の下に潜らない（欄の中身の右端 < 帯の左端）
+     絵が違うことだけを見る網は、1行増える実装でも通る。 */
+  const numFit=await page.evaluate(async()=>{
+   const raf=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
    window.__clear();
+   const CELL=94;
+   const bed=document.getElementById('wbed');
+   /* **器を実際に7マス入る広さにしてから測る**——狭いままだと
+      `minmax(0,94px)`のトラックが余りを分け合って56pxに縮み、
+      「マスの幅を超えない」を一度も確かめないまま通る（§9.211 ①と同じ罠）。 */
+   bed.style.width=(CELL*7+40)+'px';
+   bed.style.display='grid';
+   bed.style.gridTemplateColumns='repeat(7,minmax(0,'+CELL+'px))';
    const mk=kind=>{
     const label=document.createElement('label');
     label.className='opf opf-host';label.dataset.opfill='1';
     label.innerHTML='<span class="opf-name">'+kind+'</span>';
     const inp=document.createElement('input');
-    inp.type='text';inp.className='numeric-input';inp.min=0;inp.max=20;inp.value='5';
+    inp.type='text';inp.className='numeric-input';inp.min=0;inp.max=10;inp.value='5';
     label.appendChild(inp);
-    document.getElementById('wbed').appendChild(label);
+    bed.appendChild(label);
     const def={name:kind,preview:true,look:{color:'既定',shape:'標準',size:'中'},
-      step:1,min:0,max:20};
+      type:'整数',step:1,min:0,max:10,decimals:0,unit:'mm'};
     WL.opData.previewWidget(def,label,kind);
     WL.opData.presentation(label,def);
-    const box=label.querySelector('.opf-widget');
-    return {高さ:Math.round(label.getBoundingClientRect().height),
-      欄右:Math.round(inp.getBoundingClientRect().right),
-      部品右:box?Math.round(box.getBoundingClientRect().right):0,
-      印:box?box.dataset.opSpin||label.dataset.opSpin||'':''};
+    return label;
    };
-   return {spin:mk('スピナー'),step:mk('ステッパー')};
+   const kinds=['ステッパー','スピナー','スライダー','キーパッド','早見ボタン','メーター'];
+   const plain=mk('そのまま打つ');
+   const labs=kinds.map(mk);
+   await raf();await raf();
+   const base=Math.round(plain.getBoundingClientRect().height);
+   return {base,rows:labs.map((lab,i)=>{
+    const r=lab.getBoundingClientRect();
+    const inp=lab.querySelector('input'),ir=inp.getBoundingClientRect();
+    const cs=getComputedStyle(inp);
+    const right=ir.right-parseFloat(cs.paddingRight)-parseFloat(cs.borderRightWidth);
+    const strip=lab.querySelector('.opf-num-strip');
+    const sr=strip?strip.getBoundingClientRect():null;
+    const box=lab.querySelector('.opf-num');
+    return {kind:kinds[i],over:Math.round(r.height-base),
+      cellOver:Math.round(r.width-CELL),
+      すき間:sr?Math.round(sr.left-right):null,
+      行に乗る:box?Math.round(box.getBoundingClientRect().top-ir.top):null};
+   })};
   });
-  rec('スピナーは行を増やさない（ステッパーより背が低い）',
-      spin.spin.高さ<spin.step.高さ-8,JSON.stringify(spin));
-  rec('スピナーの矢印は欄の右端に乗る',
-      Math.abs(spin.spin.欄右-spin.spin.部品右)<=8,JSON.stringify(spin.spin));
+  rec('数の道具はどれも行を増やさない（「そのまま打つ」と同じ高さ）',
+      numFit.rows.every(r=>r.over===0),
+      JSON.stringify(numFit.rows.map(r=>r.kind+':'+r.over)));
+  rec('数の道具はどれもマスの幅を超えない',
+      numFit.rows.every(r=>r.cellOver<=0),
+      JSON.stringify(numFit.rows.map(r=>r.kind+':'+r.cellOver)));
+  rec('道具は欄の行にちょうど重なる',
+      numFit.rows.every(r=>r.行に乗る===null||Math.abs(r.行に乗る)<=1),
+      JSON.stringify(numFit.rows.map(r=>r.kind+':'+r.行に乗る)));
+  rec('値の文字は道具の下に潜らない（帯のぶん場所が空く）',
+      numFit.rows.every(r=>r.すき間===null||r.すき間>=0),
+      JSON.stringify(numFit.rows.map(r=>r.kind+':'+r.すき間)));
+  /* 帯に入りきらない3つ（目盛・テンキー・早見）は**押すと浮く**
+     （複合コントロール）。**開いて・効いて・閉じる**まで見る
+     ——「ボタンが在る」ことだけを見る網は、押しても何も起きない実装でも通る。 */
+  const pops=await page.evaluate(async()=>{
+   const raf=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   const out={};
+   const labs=[...document.querySelectorAll('#wbed label')];
+   for(const kind of ['スライダー','キーパッド','早見ボタン']){
+    const lab=labs.find(l=>l.querySelector('.opf-name')?.textContent===kind);
+    const btn=lab&&lab.querySelector('.opf-num-open');
+    if(!btn){out[kind]={btn:false};continue}
+    btn.click();await raf();
+    const pop=document.getElementById('opfNumPop');
+    const pr=pop.getBoundingClientRect();
+    const inp=lab.querySelector('input');
+    const before=inp.value;
+    if(kind==='キーパッド'){
+     pop.querySelector('[data-opk="clear"]').click();
+     pop.querySelector('[data-opk="7"]').click();
+    }else if(kind==='早見ボタン'){
+     const bs=[...pop.querySelectorAll('[data-opv]')];
+     if(bs[3])bs[3].click();
+    }else{
+     const rg=pop.querySelector('.opf-range-in');
+     rg.value='8';rg.dispatchEvent(new Event('input',{bubbles:true}));
+    }
+    const after=inp.value;
+    document.body.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));
+    await raf();
+    out[kind]={btn:true,開いた:pr.width>0,
+      画面の中:pr.left>=0&&pr.top>=0&&pr.right<=innerWidth&&pr.bottom<=innerHeight,
+      効いた:after!==before&&after!=='',値:after,
+      閉じた:document.getElementById('opfNumPop').hidden};
+   }
+   /* **後片付け**（§9.121）——器の形を変えたまま次の確認へ渡すと、
+      関係の無いところで落ちる。 */
+   const bed=document.getElementById('wbed');
+   bed.style.display='';bed.style.gridTemplateColumns='';bed.style.width='420px';
+   return out;
+  });
+  rec('入りきらない道具は押すと浮く（目盛・テンキー・早見）',
+      ['スライダー','キーパッド','早見ボタン'].every(k=>pops[k]&&pops[k].btn&&pops[k].開いた),
+      JSON.stringify(pops));
+  rec('浮いた窓は画面の中に収まり、押すと値が入る',
+      ['スライダー','キーパッド','早見ボタン'].every(k=>pops[k].画面の中&&pops[k].効いた),
+      JSON.stringify(pops));
+  rec('外を押すと閉じる（開いた器を控えている・§9.222 ①）',
+      ['スライダー','キーパッド','早見ボタン'].every(k=>pops[k].閉じた),
+      JSON.stringify(pops));
 
   /* ==========================================================
      10) 選ばせ方の盤はまとまりで束ねる（§9.248 ①）

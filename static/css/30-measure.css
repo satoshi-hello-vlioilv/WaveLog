@@ -2475,7 +2475,8 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .opf-widget .opf-chip-btn,
 .opf-widget .opf-pick-btn,
 .opf-widget .opf-step-btn,
-.opf-widget .opf-pad-btn,
+.opf-widget .opf-num-btn,
+.opf-widget .opf-numkey,
 .opf-widget .opf-card-btn,
 .opf-widget .opf-toggle-btn,
 .opf-widget .opf-quick-btn,
@@ -2784,30 +2785,89 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
 .opf-picker-item>b{font-size:var(--fs);font-weight:700}
 .opf-picker-item>small{color:var(--ink-3);font-size:var(--fs-sm);white-space:normal}
 .opf-picker-empty{margin:0;color:var(--muted);font-size:var(--fs-sm)}
-/* ---------- 数値・自由記述の器（§9.219 ③） ----------
-   利用者の指示「UIの種類を増やしたり」。選択肢を持たない項目にも
-   「押して決める道具」を置く。**素の欄は消さない**（打つ欄なので、打てる
-   場所が要る）ので、器は欄の**隣**に並ぶ——`.opf`は縦積みなので、
-   ここだけ横に並べる。 */
-.opf-step{display:flex;flex-direction:row;gap:var(--gap-tight)}
-.opf-step-btn{
-  flex:1 1 0;min-width:0;min-height:var(--opf-h,var(--ctl-h-sm));
-  border:1px solid var(--line);border-radius:var(--opf-radius,var(--radius-sm));
-  background:var(--surface);color:var(--ink);font-size:var(--fs-title);font-weight:800;
+/* ---------- 数値の道具は「欄の1行の中」（§9.250 ⑧、利用者の指示） ----------
+   「そのまま打つで決まるUIサイズをベースに考えると、縦横サイズが大きくなるか、
+    UI内に被り正常に使えない状態です。…範囲に収めること、入力データは
+    隠さないこと、使いやすいこと、デザインに統一感があり美しいこと」
+
+   以前はここで**欄の下へ器を足して**いた（`.opf-step`／`.opf-range`／
+   `.opf-pad`／`.opf-meter`）。マスの幅は`[どこに出すか]`が決めていて
+   それ以上には使えないのに、道具は`width:100%`＋1行ぶんの高さを別に取る
+   ので、実測で **+23〜+89px** 背が高くなり隣の欄とそろわなくなっていた。
+
+   いまは**6つとも欄の行の中**に入る:
+     ・器（`.opf-num`）は負の余白で1行ぶん引き上げる＝**縦の footprint は0**
+       （`.opf`のflex gapぶんも引く。引き忘れると4pxずつ伸びる）
+     ・器は`pointer-events:none`——欄の上に重ねるので、素通しにしないと
+       **欄そのものが押せなくなる**
+     ・右端の帯（`.opf-num-strip`）は`--opf-num-w`ぶんだけ場所を取り、
+       欄の`padding-right`が**同じ数**を空ける＝値が道具の下に潜らない
+     ・帯に入りきらない道具（目盛・テンキー・早見の並び）は浮き窓へ
+   幅の数はJS（`NUM_STRIP`）が器の変数で渡す——CSSに書き写すと、
+   帯の幅と逃げ場が食い違う形が作れる。 */
+.opf-num{
+  /* **欄の上に重ねる**（`.opf-alt{position:relative}`が受け）。以前の
+     スピナーは「負の余白で1行ぶん引き上げる」形だったが、**引く量を
+     CSSの定数では決められない**——器は場面によって`flex`（`gap`あり）にも
+     素のブロック（`gap`なし＋行box下の descender 4px）にもなり、単位を
+     「外上」にすれば欄の上に行が1つ増える。実測すると4pxずれていた。
+     **位置と高さは欄そのものを測って入れる**（§9.130と同じ作法。JSが
+     `top`/`height`を書く。ここに書いてあるのは測れるまでの受け皿）。 */
+  position:absolute;left:0;right:0;top:0;z-index:1;
+  height:var(--opf-h,var(--ctl-h-sm));
+  pointer-events:none;
 }
-.opf-step-btn:hover:not(:disabled){background:var(--surface-2)}
-.opf-step-btn:disabled{color:var(--muted);background:var(--surface-2);cursor:not-allowed}
-.opf-range{display:grid;gap:0}
-.opf-range-in{width:100%;min-width:0;height:var(--ctl-h-xs);padding:0}
-.opf-range-scale{display:flex;justify-content:space-between;color:var(--muted);font-size:var(--fs-micro)}
-.opf-range-scale>i{font-style:normal}
-.opf-pad{display:block}
-.opf-pad-btn{
-  width:100%;min-height:var(--opf-h,var(--ctl-h-sm));
-  border:1px solid var(--line);border-radius:var(--opf-radius,var(--radius-sm));
-  background:var(--surface);color:var(--ink);font-size:var(--fs-sm);
+.opf-num>*{pointer-events:auto}
+.opf-num-strip{
+  position:absolute;top:1px;right:1px;bottom:1px;
+  display:flex;flex-direction:row;gap:0;width:var(--opf-num-w,1.9em);
 }
-.opf-pad-btn:hover{background:var(--surface-2)}
+.opf-num-strip.is-col{flex-direction:column}
+.opf-num-btn{
+  display:inline-flex;align-items:center;justify-content:center;
+  flex:1 1 0;min-width:0;min-height:0;padding:0;
+  border:1px solid var(--line);background:var(--surface);color:var(--ink-2);
+  font-size:var(--fs-micro);line-height:1;cursor:pointer;border-radius:0;
+}
+/* **丸めるのは帯の外側の角だけ**——1つ1つを丸めると、隣り合った2つの
+   あいだに丸が並んで「2つの部品」に見える（帯は1つの道具）。 */
+.opf-num-strip>.opf-num-btn:first-child{
+  border-radius:var(--opf-radius,var(--radius-sm)) 0 0 var(--opf-radius,var(--radius-sm))}
+.opf-num-strip>.opf-num-btn:last-child{
+  border-radius:0 var(--opf-radius,var(--radius-sm)) var(--opf-radius,var(--radius-sm)) 0;
+  border-left:0}
+.opf-num-strip.is-col>.opf-num-btn:first-child{
+  border-radius:var(--opf-radius,var(--radius-sm)) var(--opf-radius,var(--radius-sm)) 0 0}
+.opf-num-strip.is-col>.opf-num-btn:last-child{
+  border-radius:0 0 var(--opf-radius,var(--radius-sm)) var(--opf-radius,var(--radius-sm));
+  border-left:1px solid var(--line);border-top:0}
+.opf-num-strip>.opf-num-btn:only-child{border-radius:var(--opf-radius,var(--radius-sm));border-left:1px solid var(--line)}
+.opf-num-btn:hover:not(:disabled){background:var(--surface-2);color:var(--opf-hue-dark,var(--teal-dark))}
+.opf-num-btn:disabled{color:var(--muted);background:var(--surface-2);cursor:not-allowed}
+/* −／＋は数字と同じ大きさで（矢印より打ちやすい的にする）。 */
+.opf-num-strip>.opf-step-btn{font-size:var(--fs-sm);font-weight:800;color:var(--ink)}
+.opf-num-open[aria-expanded="true"]{
+  border-color:var(--opf-hue,var(--teal));color:var(--opf-hue-dark,var(--teal-dark));
+  background:color-mix(in srgb,var(--opf-hue,var(--teal)) 12%,var(--surface));
+}
+/* --- 底の帯: いま上下限のどこに居るか（スライダーとメーターが共有） ---
+   **欄の底の内側**へ引く。値の字は行の中央にあるので**被らない**し、
+   行も増えない。`--radius-pill`は「形そのものが意味を持つ部品」の例外
+   （§9.227 ①）。 */
+.opf-num-rail{
+  position:absolute;left:1px;bottom:1px;height:3px;
+  right:calc(var(--opf-num-w,0px) + 3px);
+  border-radius:var(--radius-pill);background:var(--surface-3);overflow:hidden;
+}
+.opf-num-fill{
+  display:block;height:100%;width:0;border-radius:var(--radius-pill);
+  background:var(--opf-hue,var(--teal));transition:width .12s;
+}
+.opf-num.is-out .opf-num-fill{background:var(--danger)}
+/* 引ける帯は**掴みしろを広げる**（見えるのは3pxのまま、当たるのは9px）。 */
+.opf-num-rail.is-live{cursor:ew-resize}
+.opf-num-rail.is-live::after{content:"";position:absolute;inset:-3px 0;display:block}
+.opf-num-rail.is-live:hover{background:var(--line-mid)}
 .opf-memo{display:block}
 .opf-memo-in{width:100%;min-width:0;resize:vertical;font-size:var(--opf-fs,var(--fs));
   border-radius:var(--opf-radius,var(--radius-sm))}
@@ -3027,29 +3087,17 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
    幅だと矢印だけが器の右端に離れて浮く（設定窓の見本で実際にそうなった。
    測定画面の`.selectors`では`data-opfill`が同じことをしているが、
    **見本と実物を食い違わせない**ためにスピナー自身が面倒を見る・§9.229 ②）。 */
-.opf-host[data-op-spin]>input:not([type=checkbox]):not([type=radio]){
+/* **欄は器いっぱいにする**——道具は欄の右端へ寄せるので、欄が中身なりの
+   幅だと帯だけが器の右端に離れて浮く（設定窓の見本で実際にそうなった）。
+   逃げ場は**単位を内側へ重ねたぶん（`--opf-pad-r`）との足し算**
+   （§9.233 ③）——片方だけ見ると、単位を「内部」にした欄で値が帯の下へ潜る。 */
+.opf-host[data-op-num]>input:not([type=checkbox]):not([type=radio]),
+.opf-host[data-op-num]>output{
   width:100%;max-width:100%;
-  padding-right:calc(1.9em + var(--space-1));
+  padding-right:calc(var(--opf-pad-r,var(--space-2)) + var(--opf-num-w,0px) + var(--space-1));
 }
-.opf-spin{
-  display:flex;flex-direction:column;gap:0;
-  /* **右へ寄せるのは`margin-left:auto`**——`align-self`は器がflexのときしか
-     効かず、`.opf-host`は場面によって素のブロックになる（実測で左端に出た）。
-     幅が決まっていれば自動余白はどちらでも効く。 */
-  margin-left:auto;position:relative;z-index:1;
-  width:1.7em;margin-top:calc(0px - var(--opf-h,var(--ctl-h-sm)));
-  margin-right:1px;margin-bottom:0;
-}
-.opf-spin-btn{
-  display:inline-flex;align-items:center;justify-content:center;
-  width:100%;height:calc((var(--opf-h,var(--ctl-h-sm)) - 2px) / 2);padding:0;
-  border:1px solid var(--line);background:var(--surface);color:var(--ink-2);
-  font-size:var(--fs-micro);line-height:1;cursor:pointer;
-}
-.opf-spin-btn:first-child{border-radius:var(--opf-radius,var(--radius-sm)) var(--opf-radius,var(--radius-sm)) 0 0}
-.opf-spin-btn:last-child{border-radius:0 0 var(--opf-radius,var(--radius-sm)) var(--opf-radius,var(--radius-sm));border-top:0}
-.opf-spin-btn:hover:not(:disabled){background:var(--surface-2);color:var(--opf-hue-dark,var(--teal-dark))}
-.opf-spin-btn:disabled{color:var(--muted);background:var(--surface-2);cursor:not-allowed}
+/* ▲▼は矢印なので小さめ、−／＋は数字と同じ大きさ（上で当てている）。 */
+.opf-num-strip>.opf-spin-btn{font-size:calc(var(--fs-micro) - 1px)}
 /* --- 切替: ボタン1つ。**押すたびに次へ**。いま何番目かと次を文字で出す --- */
 .opf-cycle{display:flex}
 .opf-cycle-btn{
@@ -3087,7 +3135,6 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
 .opf-cycle-pos{flex:0 0 auto;font-weight:700}
 .opf-cycle-next{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
 /* --- 早見ボタン: 数値の札。**打つ欄は残す**（素の`<input>`の下に並べる） --- */
-.opf-quick .opf-shape{flex-wrap:wrap;gap:var(--gap-tight)}
 .opf-quick-btn{
   display:inline-flex;align-items:center;justify-content:center;
   min-width:2.6em;min-height:var(--opf-h,var(--ctl-h-sm));padding:0 var(--space-2);
@@ -3164,22 +3211,6 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
 .opf-switch-btn.is-on{border-color:var(--opf-hue,var(--teal));color:var(--ink)}
 .opf-switch-btn.is-on .opf-switch-track{background:var(--opf-hue,var(--teal))}
 .opf-switch-btn.is-on .opf-switch-knob{left:calc(100% - 1.4em + 2px)}
-/* --- メーター: 打つ欄はそのまま。上下限の中のどこかを帯で言う --- */
-.opf-meter{display:flex;flex-direction:column;gap:2px}
-.opf-meter-bar{
-  position:relative;height:6px;border-radius:var(--radius-pill);
-  background:var(--surface-3);overflow:hidden;
-}
-.opf-meter-fill{
-  display:block;height:100%;width:0;border-radius:var(--radius-pill);
-  background:var(--opf-hue,var(--teal));transition:width .12s;
-}
-.opf-meter.is-out .opf-meter-fill{background:var(--danger)}
-.opf-meter-scale{display:flex;justify-content:space-between;gap:var(--gap-tight);
-  color:var(--muted);font-size:var(--fs-micro)}
-.opf-meter-scale>i{font-style:normal}
-.opf-meter-note{color:var(--ink-3);font-weight:700}
-.opf-meter.is-out .opf-meter-note{color:var(--danger)}
 /* --- 定型文: 打つ欄はそのまま。よく使う語句を下に並べる --- */
 .opf-phrase .opf-shape{flex-wrap:wrap;gap:var(--gap-tight)}
 .opf-phrase-btn{
@@ -3296,20 +3327,47 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
 .opf-z-sm>select,.opf-z-sm>input,.opf-z-lg>select,.opf-z-lg>input{
   font-size:var(--opf-fs);min-height:var(--opf-h)}
 
-/* テンキーは選ぶ浮き窓と同じ器（`.opf-picker`）を使い、中の盤だけ足す。 */
-.opf-keypad-view{
-  display:block;padding:var(--pad-row);border:1px solid var(--line);
-  border-radius:var(--opf-radius,var(--radius-sm));background:var(--surface-2);
-  font-size:var(--fs-lg);font-weight:800;text-align:right;
+/* ---------- 数値の浮き窓（§9.250 ⑧） ----------
+   目盛・早見・テンキーの**3つとも同じ窓**（`.opf-menu-pop`を借りる）。
+   置き場所の決め方・閉じ方・意匠の持ち出しを3通り持たない（§9.164）。
+   頭にはいま入っている値を出す——押した結果が窓の中で読めないと、
+   窓を閉じるまで効いたかどうか分からない（§2）。 */
+.opf-num-pop{padding:var(--space-2);min-width:12em}
+.opf-num-pop-head{
+  display:flex;align-items:baseline;justify-content:space-between;gap:var(--gap-tight);
+  margin-bottom:var(--space-2);
 }
-.opf-keypad-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--gap-tight)}
-.opf-keypad-key{
-  min-height:var(--ctl-h-lg);border:1px solid var(--line);
+.opf-num-pop-head>b{font-size:var(--fs-sm);color:var(--ink-2);font-weight:700}
+.opf-num-pop-val{
+  min-width:4em;padding:0 var(--space-1);border:0;background:none;
+  color:var(--ink);font-size:var(--fs-title);font-weight:800;text-align:right;
+}
+.opf-num-pop-slide{display:grid;gap:2px;min-width:14em}
+.opf-num-pop-slide .opf-range-in{width:100%;min-width:0;height:var(--ctl-h-xs);padding:0}
+.opf-range-scale{display:flex;justify-content:space-between;color:var(--muted);font-size:var(--fs-micro)}
+.opf-range-scale>i{font-style:normal}
+.opf-num-pop-quick{display:flex;flex-wrap:wrap;gap:var(--gap-tight);max-width:18em}
+/* 並べ方（§9.226 ①）は窓の中でも効かせる。**`.opf-widget>.opf-shape`の
+   規則は借りられない**（あちらは器と中身が2枚に分かれている前提）ので、
+   窓の器そのものへ当てる規則をここに置く。 */
+.opf-num-pop-quick.opf-l-row{flex-wrap:nowrap}
+.opf-num-pop-quick.opf-l-col{flex-direction:column;align-items:stretch}
+.opf-num-pop-quick.opf-l-g2,.opf-num-pop-quick.opf-l-g3{display:grid}
+.opf-num-pop-quick.opf-l-g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.opf-num-pop-quick.opf-l-g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.opf-num-pop-pad{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--gap-tight)}
+.opf-numkey{
+  min-height:var(--ctl-h);border:1px solid var(--line);
   border-radius:var(--opf-radius,var(--radius-sm));
   background:var(--surface);color:var(--ink);font-size:var(--fs-title);font-weight:700;
+  cursor:pointer;
 }
-.opf-keypad-key:hover{background:var(--surface-2)}
-.opf-keypad-del,.opf-keypad-clear{grid-column:span 3;font-size:var(--fs-sm);font-weight:600}
+.opf-numkey:hover{background:var(--surface-2)}
+.opf-numkey-wide{grid-column:span 3;min-height:var(--ctl-h-sm);font-size:var(--fs-sm);font-weight:600}
+.opf-numkey-ok{
+  border-color:var(--opf-hue,var(--teal));color:var(--opf-hue-dark,var(--teal-dark));
+  background:color-mix(in srgb,var(--opf-hue,var(--teal)) 10%,var(--surface));
+}
 
 /* 下段は**操業データ1枚**（§9.215、利用者の指示「『入力の準備』のエリアと
    カード統合(2×3にする)」）。以前はここに「条の設計 — 子ロットの内訳」が

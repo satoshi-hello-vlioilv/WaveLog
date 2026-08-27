@@ -7219,6 +7219,7 @@
    +`</div></div>`
    +(restN?`<p class="op-prev-rest">この群にはあと${restN}件あります`
       +`（この幅に入らないので出していません）。</p>`:'')
+   +`<p class="op-prev-note" id="opPrevNote" hidden></p>`
    +`<p class="op-prev-value" id="opPrevValue"></p>`
    +`<ul class="op-prev-facts">`
    +`<li><b>入力の決まり</b>${esc(rule.join('／'))}</li>`
@@ -7627,6 +7628,20 @@
       「いま見えている操作面」を基準にするので、器が足される前に当てた
       ままだと、見本だけ単位が器の上に出る（実物と食い違う）。 */
    if(WL.opData.presentation)WL.opData.presentation(label,previewDef);
+  }
+  /* ---------- 「いまは作れない」理由はここで言う（§9.250 ⑧） ----------
+     スライダー・メーターは上下限が、早見ボタンは上下限と刻みが決まって
+     いないと作れない。以前はその案内を**測定画面の欄の下**へ1行足して
+     いたが、①直す場所はここ（マスタ）であって測定画面ではない
+     ②案内のほうが道具より場所を取っていた（実測45px）。
+     **押せるのに何も起きない道具は残さない**（§4）ので、道具は素の欄の
+     ままにして、理由と直し方は**選んでいるこの窓**に出す。 */
+  const note=document.getElementById('opPrevNote');
+  if(note){
+   const box=label.querySelector('.opf-widget');
+   const why=(box&&box.dataset.why)||'';
+   note.textContent=why?`${why}。いまは打ち込みだけの欄になります（「② 何を記録するか」で決められます）。`:'';
+   note.hidden=!why;
   }
   /* **押した結果が何として記録されるか**を出す（§9.219 ③、利用者の指示
      「実際の挙動ももう少しわかるように」）。見本が本物なので、押せば

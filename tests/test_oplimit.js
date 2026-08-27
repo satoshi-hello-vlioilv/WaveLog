@@ -59,14 +59,14 @@ let b=null;
      ① 設備マスタ 最大ライン速度（利用者の指示）
      ========================================================== */
   await page.click('#masterMaintNav [data-master="equipment"]');
-  await page.waitForFunction(()=>!!document.querySelector('#masterMaintForm [data-field="name"]'),
+  await page.waitForFunction(()=>document.querySelectorAll('#masterMaintList .mm-row:not(.head)').length>0,
     null,{timeout:20000});
-  const heads=await page.$$eval('#masterMaintList .mm-row.head span',es=>es.map(s=>s.textContent.trim()));
+  const heads=await page.$$eval('#masterMaintList .mm-row.head .mm-th,#masterMaintList .mm-row.head span',
+    es=>es.map(s=>s.textContent.trim()));
   rec('一覧に最大速度の列がある',heads.some(h=>/最大速度/.test(h)),heads.join('/'));
-  const hasField=await page.evaluate(()=>!!document.querySelector('#masterMaintForm [data-field="maxLineSpeed"]'));
-  rec('入力欄がある（設備マスタは上のフォームで直接入れる形のまま）',hasField);
   const cellOf=n=>page.evaluate(name=>{
-   const hs=[...document.querySelectorAll('#masterMaintList .mm-row.head span')].map(s=>s.textContent.trim());
+   const hs=[...document.querySelectorAll('#masterMaintList .mm-row.head .mm-th,#masterMaintList .mm-row.head span')]
+     .map(s=>s.textContent.trim());
    const i=hs.findIndex(h=>/最大速度/.test(h));
    const r=[...document.querySelectorAll('#masterMaintList .mm-row:not(.head)')]
      .find(x=>x.children[0]?.textContent.trim()===name);
@@ -74,17 +74,24 @@ let b=null;
   },n);
   rec('未設定の設備は「未設定」と出る（空欄で黙らない・§CLAUDE 4）',
       (await cellOf(EQ))==='未設定',String(await cellOf(EQ)));
-  /* 画面から入れる。**行を押して読み込んでから**書き換える（登録の欄へ
-     打つと別の設備を作ってしまう）。 */
+  /* 画面から入れる。**行を押すと編集の窓が開く**（§9.250 ⑦、利用者の指示
+     「設備マスタは文字が多くUIの幅も無駄に長いのでもっとコンパクトに
+      するために、表をメインに、修正は他と同じようにモーダルで」）。
+     ここは以前「上のフォームで直接入れる形のまま」を固定していたが、
+     **網は新しい約束へ書き直す**（§9.200）。 */
   await page.evaluate(n=>{const r=[...document.querySelectorAll('#masterMaintList .mm-row:not(.head)')]
     .find(x=>x.children[0]?.textContent.trim()===n);if(r)r.click()},EQ);
-  await page.waitForFunction(n=>document.querySelector('#masterMaintForm [data-field="name"]')?.value===n,
+  await page.waitForFunction(n=>document.querySelector('#maintEditorForm [data-field="name"]')?.value===n,
     EQ,{timeout:10000});
-  await page.fill('#masterMaintForm [data-field="maxLineSpeed"]','350');
-  await page.click('#masterMaintForm button[type="submit"]');
-  await page.waitForFunction(async()=>true,null,{timeout:1000}).catch(()=>{});
+  rec('行を押すと編集の窓が開き、最大速度の欄がその中にある',
+      await page.evaluate(()=>!!document.querySelector('#maintEditorForm [data-field="maxLineSpeed"]')));
+  await page.fill('#maintEditorForm [data-field="maxLineSpeed"]','350');
+  await page.click('#maintEditorSave');
+  await page.waitForFunction(()=>{const m=document.getElementById('maintEditorModal');return !m||m.hidden},
+    null,{timeout:10000}).catch(()=>{});
   await page.waitForFunction(n=>{
-   const hs=[...document.querySelectorAll('#masterMaintList .mm-row.head span')].map(s=>s.textContent.trim());
+   const hs=[...document.querySelectorAll('#masterMaintList .mm-row.head .mm-th,#masterMaintList .mm-row.head span')]
+     .map(s=>s.textContent.trim());
    const i=hs.findIndex(h=>/最大速度/.test(h));
    const r=[...document.querySelectorAll('#masterMaintList .mm-row:not(.head)')]
      .find(x=>x.children[0]?.textContent.trim()===n);

@@ -1066,6 +1066,17 @@
 .op-prev-scroll{overflow-x:auto;overflow-y:hidden;padding-bottom:2px;
   min-height:var(--op-prev-h,9.8em);align-content:start}
 .op-prev-rest{margin:0;color:var(--ink-3);font-size:var(--fs-badge)}
+/* 「いまは作れない」理由（§9.250 ⑧）。**直す場所はこの窓**なので、
+   測定画面ではなくここに出す。色は警告——押しても何も起きない設定を
+   選んでいる状態で、そのまま保存できてしまうのを止めたいわけではない
+   （上下限は後から決められる）ので、赤ではなく琥珀。 */
+.op-prev-note{
+  margin:0;padding:var(--space-1) var(--space-2);
+  border-left:3px solid var(--warn-fg);border-radius:var(--radius-xs);
+  background:var(--warn-bg);color:var(--warn-fg);
+  font-size:var(--fs-badge);font-weight:700;
+}
+.op-prev-note[hidden]{display:none}
 .op-prev-card{
   display:grid;grid-template-columns:repeat(var(--op-cols,12),var(--op-cell,94px));
   gap:var(--gap-inline);padding:var(--pad-row);width:max-content;
