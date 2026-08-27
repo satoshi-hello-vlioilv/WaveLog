@@ -310,7 +310,15 @@
     `syncNav()`は`defKey`と突き合わせるので**どのタブも選ばれていない**
     見た目になる——「今どこにいるか」を画面が言わなくなる。 */
  let maintState={defKey:MASTER_DEFS[0].key,items:[],editing:null,query:'',meta:{}};
- function currentDef(){return MASTER_DEFS.find(d=>d.key===maintState.defKey)||MASTER_DEFS[0]}
+ /* ---------- 専用タブを持たないマスタ（§9.249 ②） ----------
+    タブの一覧は**固定のMASTER_DEFSと、サーバーが答える表から作った分**の
+    2本立て。**どちらも同じ`def`の形**にしてあるので、一覧・編集モーダル・
+    削除・検索の道具は1つも書き足していない（§9.164「同じ道具を使い回す」）。
+    ここから先は`allDefs()`を見ること——`MASTER_DEFS`を直に見ると、
+    足したタブがそこだけ見えない状態が作れる。 */
+ let rawDefs=[];
+ function allDefs(){return rawDefs.length?MASTER_DEFS.concat(rawDefs):MASTER_DEFS}
+ function currentDef(){return allDefs().find(d=>d.key===maintState.defKey)||MASTER_DEFS[0]}
  // scheduleモードは作業予定(schedule Blueprint)以外のマスタへ書込できない
  // (backend/access_mode.pyの_WRITE_ALLOWED_MODES)。マスタ管理モーダル自体は
  // 開けるようにしつつ(設備停止マスタはscheduleモードでのみ書込可能なため)、
@@ -323,7 +331,7 @@
   if(def.readOnly)return true;
   return !!(def.endpoint&&def.endpoint.indexOf('/api/schedule/')===0);
  }
- function firstVisibleDefKey(){const d=MASTER_DEFS.find(maintDefVisible);return d?d.key:MASTER_DEFS[0].key}
+ function firstVisibleDefKey(){const d=allDefs().find(maintDefVisible);return d?d.key:MASTER_DEFS[0].key}
  /* マスタ種別のグループ(情報アーキテクチャ): 13種を平坦に並べると
     「どれが何の設定か」を毎回読んで探すことになるため、利用者の頭の中の
     分類(誰が・何を使うか / 作業スケジュールの設定 / システム寄りの設定)で
@@ -332,10 +340,18 @@
   {key:'equip',label:'設備・人',hint:'測定の現場で使う基本マスタ'},
   {key:'schedule',label:'作業スケジュール',hint:'計画の時間計算に使う設定'},
   {key:'system',label:'表示・システム',hint:'画面表示と端末・データの設定'},
+  /* 専用タブを持たないマスタ（§9.249 ②、利用者の指示「テーブル生データ内で
+     閲覧可能なマスタかつ、テーブル生データマスタの配置された階層にないものは、
+     この階層に配置し、編集可能な形に実装してください」）。
+     **中身はサーバーが答える**（`/api/master-table/catalog`）ので、ここには
+     表の名前を書き写さない（§9.163。マスタを1つ足すたびに2箇所直すことになる）。
+     最後に置くのは**頻度が低いから**（面積は頻度×重要度・§CLAUDE 1）。 */
+  {key:'internal',label:'内部データ',hint:'専用のタブを持たないマスタ（そのまま行を編集します）'},
+  {key:'retired',label:'移行済み',hint:'アプリはもう読みません。移行前の中身を見返すためだけに残しています'},
  ];
  function renderMaintNav(){
   const nav=$('#masterMaintNav');if(!nav)return;
-  const visible=MASTER_DEFS.filter(maintDefVisible);
+  const visible=allDefs().filter(maintDefVisible);
   const html=MASTER_GROUPS.map(g=>{
    const defs=visible.filter(d=>(d.group||'system')===g.key);
    if(!defs.length)return '';
@@ -898,6 +914,16 @@
   const def=currentDef(),form=$('#masterMaintForm');if(!form)return;const editing=maintState.editing;
   // 入力項目が多いマスタは、上部に常設のフォームを置かず(一覧の表示領域を
   // 空けるため)、編集専用モーダルへ入口だけを出す(ARCHITECTURE.md「マスタ管理の画面形態」)。
+  /* **読み取り専用のマスタは追加の入口ごと出さない**（§CLAUDE 4。
+     押せるのに何も起きないボタンを残さない）。理由は`hint`が書く。 */
+  if(def.readOnly&&!def.special){
+   form.classList.add('mm-form-compact');
+   form.innerHTML=`<div class="mm-form-head"><span class="mm-mode-chip">読み取り専用</span>
+     <span class="mm-form-hint">この表は見るだけです。追加・編集・削除はできません。</span></div>
+    ${def.hint?`<p class="mm-def-hint">${hintHtml(def.hint)}</p>`:''}`;
+   form.onsubmit=ev=>ev.preventDefault();
+   return;
+  }
   if(defUsesEditorModal(def)){
    form.classList.add('mm-form-compact');
    form.innerHTML=`<div class="mm-form-head">
@@ -1609,6 +1635,9 @@
    /* ロールを足した直後に異常位置判定を開くのがふつうの順番なので、
       控えを持ったままだと「登録したのに候補に出ない」になる（§9.241 ④）。 */
    if(def.key==='roll'&&window.WL&&WL.defect&&WL.defect.forgetRolls)WL.defect.forgetRolls();
+   /* 生の表を触ったら件数の写しを捨てる（§9.249 ②）。持ったままだと
+      「足したのに件数が増えない」になる。 */
+   if(def.rawTable)mtState.loaded=false;
    /* **保存した行の群は開く**（§9.241 ①）——畳んだ設備へ足したとき、
       保存できたのに一覧に出ないのは「消えた」と読まれる。 */
    if(def.groupBy)mmOpenGroupOf(def,body[def.groupBy]);
@@ -1663,12 +1692,15 @@
    }catch(e){showToast&&showToast('削除できませんでした',e.message,6500)}
    return;
   }
-  if(!confirm(`${def.label}「${nm}」を無効化（削除）しますか？`))return;
+  /* **言い回しはdefが決める**（§9.249 ②）。有効フラグを持つマスタの削除は
+     「無効化」だが、生の表は**本当に行が消える**——同じ文言で言うと嘘になる。 */
+  const word=def.deleteWord||'無効化（削除）';
+  if(!confirm(`${def.label}「${nm}」を${word}しますか？`))return;
   try{
-   setMaintLoading(true,`${def.label}を無効化しています…`);
+   setMaintLoading(true,`${def.label}を${def.deleteWord||'無効化'}しています…`);
    await api(def.endpoint+'/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:item.id,user_id:uid})});
    if(maintState.editing&&maintState.editing.id===item.id)maintState.editing=null;
-   await loadMaint(true);showToast&&showToast(def.label+'を無効化しました',nm,3600);
+   await loadMaint(true);showToast&&showToast(def.label+'を'+(def.deleteWord||'無効化')+'しました',nm,3600);
   }catch(e){showToast&&showToast('削除できませんでした',e.message,6500)}
   finally{setMaintLoading(false)}
  }
@@ -1834,7 +1866,9 @@
    row.title=showAudit?'クリックで編集フォームに読み込みます':`クリックで編集\n${audit}`;
    const cells=def.cols.map(c=>{const v=cellText({...c,row:it},it[c.k]);
     return `<span title="${esc(v)}">${esc(v)||'<em class="mm-blank">—</em>'}</span>`}).join('');
-   row.innerHTML=`${cells}${showAudit?`<span class="mm-user" title="${esc(it.updated_by||'')}">${esc(it.updated_by||'-')}</span><span class="mm-date">${esc(fmtDT(it.updated_at))}</span>`:''}<span class="mm-act"><button type="button" class="mm-edit" title="この行の内容を編集します">編集</button>${def.hasDelete?'<button type="button" class="mm-del" title="この行を削除します（確認画面が出ます）">削除</button>':''}</span>`;
+   const acts=def.readOnly?'<em class="mm-blank">—</em>'
+     :`<button type="button" class="mm-edit" title="この行の内容を編集します">編集</button>${def.hasDelete?'<button type="button" class="mm-del" title="この行を削除します（確認画面が出ます）">削除</button>':''}`;
+   row.innerHTML=`${cells}${showAudit?`<span class="mm-user" title="${esc(it.updated_by||'')}">${esc(it.updated_by||'-')}</span><span class="mm-date">${esc(fmtDT(it.updated_at))}</span>`:''}<span class="mm-act">${acts}</span>`;
    // 入力項目が多いマスタは編集専用モーダル、少ないマスタは従来どおり
    // 上部のインラインフォームへ読み込む(ARCHITECTURE.md「マスタ管理の画面形態」、defUsesEditorModal)。
    const edit=()=>{
@@ -1842,10 +1876,12 @@
     maintState.editing=Object.assign({},it);renderMaintForm();
     const f=$('#masterMaintForm');if(f)f.scrollIntoView({block:'nearest'});
    };
-   row.querySelector('.mm-edit').onclick=e=>{e.stopPropagation();edit()};
+   const eb=row.querySelector('.mm-edit');if(eb)eb.onclick=e=>{e.stopPropagation();edit()};
    const del=row.querySelector('.mm-del');if(del)del.onclick=e=>{e.stopPropagation();deleteMaint(it)};
-   row.onclick=()=>edit();row.ondblclick=()=>edit();
-   row.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){if(e.key===' ')e.preventDefault();edit()}};
+   if(!def.readOnly){
+    row.onclick=()=>edit();row.ondblclick=()=>edit();
+    row.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){if(e.key===' ')e.preventDefault();edit()}};
+   }
    frag.append(row);
   });
   list.append(frag);
@@ -4482,6 +4518,96 @@
   finally{cleanupState.busy=false;setMaintLoading(false);cleanupState.loaded=false;loadCleanupMaint(true)}
  }
 
+
+ /* ================================================================
+    専用タブを持たないマスタを、階層の中で編集する（§9.249 ②、利用者の指示）
+    ----------------------------------------------------------------
+    「テーブル生データ内で閲覧可能なマスタかつ、テーブル生データマスタの配置
+      された階層にないものは、この階層に配置し、編集可能な形に実装してください。」
+
+    これまで`master.sqlite3`の表のうちタブを持たないものは、「テーブル生データ」
+    から**眺めることしかできなかった**。直したいときは、その表を書いている
+    画面（列の設定パネル・登録フィルタ・行の色…）を思い出して探しに行く必要が
+    あり、**どこからも直せない表**（移行済みの旧マスタ）も混ざっていた。
+
+    作り（**新しい画面を作らない**のが要点・§9.120）:
+     ・**表の一覧と扱いはサーバーが答える**（`/api/master-table/catalog`）。
+       画面には表の名前を1つも書かない（§9.163）。
+     ・答えを**`def`の形へ翻訳するだけ**で、一覧・編集モーダル・削除・検索は
+       既存の汎用CRUDがそのまま動く（`endpoint`＋`/update`＋`/delete`の
+       4本セット・§CLAUDE「マスタ管理の汎用CRUDは4本セット」）。
+     ・**入力欄は表の作り（PRAGMA）から組み立てる**——列を足しても書き足さない。
+     ・**ふだんの直し方があるものは、それを画面に書く**（§CLAUDE 6）。
+       ここで直せることと、専用の画面があることは両立する。
+     ・**移行済みの表は別の群にして「もう読みません」と書く**（§4）。
+       直せると書いておいて画面が変わらないのは、押せないボタンより悪い。
+    ================================================================ */
+ let mtState={loaded:false,loading:null,tables:[],err:''};
+ /* 列の作りから入力欄を組み立てる。**監査列と主キーは出さない**
+    （サーバーが埋める・付け替えられない）。 */
+ function mtFieldOf(col,longNames){
+  const name=String(col.name||'');
+  const decl=String(col.decl||'').toUpperCase();
+  const f={k:name,label:name};
+  if(/INT|REAL|NUM|FLOA|DOUB/.test(decl))f.type='number';
+  else if(longNames.some(x=>name.indexOf(x)>=0))Object.assign(f,{type:'textarea',rows:4,size:'full'});
+  /* **必須は「空を受け付けない列」だけ**。既定値のある列は空でも通る。 */
+  if(col.notnull&&col.default===null&&!/INT|REAL|NUM/.test(decl))f.required=true;
+  return f;
+ }
+ function mtDefOf(t){
+  const longNames=t.long||[];
+  const cols=(t.schema||[]).filter(c=>!c.audit&&!c.pk);
+  const fields=cols.map(c=>mtFieldOf(c,longNames));
+  /* 一覧の列は**先頭から6本まで**。全部並べると1列あたりが潰れて読めない
+     （残りは編集モーダルで見る。§CLAUDE 11「入れ物は中身の長さから決める」）。 */
+  const shown=cols.slice(0,6);
+  const retired=t.kind==='retired';
+  const where=t.where?`ふだんは**${t.where}**から書き換えています。`:'';
+  return {group:retired?'retired':'internal',key:'mt:'+t.table,
+          label:t.label||t.table,icon:(t.label||t.table).slice(0,1),
+          endpoint:'/api/master-table/'+encodeURIComponent(t.table),
+          hasDelete:!retired,editorModal:!retired,readOnly:retired,
+          rawTable:t.table,rawKind:t.kind,
+          titleText:t.table+(t.note?' — '+t.note:''),
+          /* **消すのは本当に行を消すこと**。汎用の言い回し（無効化）は
+             有効フラグを持つマスタのためのもので、ここでは嘘になる。 */
+          deleteWord:'削除',
+          fields:retired?[]:fields,
+          cols:shown.length?shown.map((c,i)=>({k:c.name,label:c.name,grow:i===0?2:1}))
+                          :[{k:'id',label:'行'}],
+          /* **説明は`**強調**`で書く**（§9.222 ⑧）——`hintHtml()`は
+             エスケープしてから印を`<b>`へ変えるので、生のHTMLを書くと
+             タグがそのまま画面に出る。 */
+          hint:(retired
+            ? '**この表はアプリがもう読みません。**'+(t.where?t.where+'。':'')
+              +'ここに残してあるのは、移行前の中身を見返せるようにするためです。'
+              +'**書き換えても画面は変わりません**——だからこの表は読み取り専用にしてあります。'
+            : (t.note?t.note+'。':'')+where
+              +'ここでは**行をそのまま**足す・直す・消せます。'
+              +'列の意味はアプリの内部の決まりに沿っているので、'
+              +'**値の形（書き方）を変えると、その設定は読めなくなることがあります**。'
+              +'迷ったときは、ふだんの画面から設定し直してください。')};
+ }
+ async function loadMasterTableCatalog(force){
+  if(!force&&mtState.loaded)return mtState.tables;
+  if(mtState.loading)return mtState.loading;
+  mtState.loading=(async()=>{
+   try{
+    const r=await api('/api/master-table/catalog');
+    mtState.tables=(r&&r.tables)||[];mtState.err=(r&&r.error)||'';
+   }catch(e){mtState.tables=[];mtState.err=e.message}
+   mtState.loaded=true;mtState.loading=null;
+   /* 「ここで編集」→「ふだんは別画面」の順（作業導線と視覚導線を揃える）。 */
+   const rank={here:0,elsewhere:1,retired:2};
+   rawDefs=mtState.tables.filter(t=>t.kind!=='covered')
+    .sort((a,b)=>(rank[a.kind]??9)-(rank[b.kind]??9)||String(a.table).localeCompare(b.table,'ja'))
+    .map(mtDefOf);
+   renderMaintNav();syncNav();
+   return mtState.tables;
+  })();
+  return mtState.loading;
+ }
  /* ---------- テーブル生データ(旧「マスタ一覧」、ARCHITECTURE.md「マスタ管理の画面形態」で統合) ----------
     master.sqlite3のテーブルをそのまま読み取り専用で表示する。上のタブが
     面倒を見ていないテーブル(表示マスタ・スケジュール列表示マスタ・
@@ -4504,6 +4630,7 @@
     return;
    }
   }
+  try{await loadMasterTableCatalog()}catch(e){/* 読めなくても一覧は出す */}
   renderRawTableForm();
   await loadRawTableRows();
  }
@@ -4511,15 +4638,30 @@
   const form=$('#masterMaintForm');if(!form)return;
   if(!rawTableState.tables.length){form.innerHTML='<div class="mm-form-head"><span class="mm-mode-chip new">テーブルがありません</span></div>';return}
   const opts=rawTableState.tables.map(t=>`<option value="${esc(t)}"${t===rawTableState.table?' selected':''}>${esc(t)}</option>`).join('');
+  /* **行き止まりにしない**（§9.249 ②）。ここは読むだけの画面なので、
+     **その表をどこから直すのか**を必ず出して連れて行く（§CLAUDE 4・6）。
+     判定はサーバーの答え（`/api/master-table/catalog`）で、画面には
+     表と画面の対応を書き写さない（§9.163）。 */
+  const info=(mtState.tables||[]).find(t=>t.table===rawTableState.table);
+  const goKey=info?(info.kind==='covered'?info.tab:(info.kind==='retired'?'':'mt:'+info.table)):'';
+  const goLabel=goKey?(allDefs().find(d=>d.key===goKey)||{}).label||'':'';
+  const where=!info?''
+   :(info.kind==='retired'
+     ?`<p class="mm-def-hint">${hintHtml('**この表はアプリがもう読みません。**'+(info.where||''))}</p>`
+     :(goLabel?`<div class="mm-raw-goto"><span>この表は<b>${esc(goLabel)}</b>から編集できます</span>`
+       +`<button type="button" id="rawTableGo" class="mm-btn-primary sm">${esc(goLabel)}を開く</button></div>`:''));
   form.innerHTML=`<div class="mm-form-head">
     <label class="mm-field mm-field-inline"><span>テーブル</span><select id="rawTableSelect">${opts}</select></label>
     <button type="button" id="rawTableReload" class="mm-btn-ghost sm">再読込</button>
-    <span class="mm-form-hint">読み取り専用です。編集は左の各マスタタブから行ってください。</span>
+    <span class="mm-form-hint">ここは読むだけの画面です。編集は表ごとの専用タブから行います。</span>
    </div>
-   <p class="mm-def-hint">マスタDB(master.sqlite3)のテーブルをそのまま表示します。専用タブが用意されていないテーブルの中身を確認したいときに使います。先頭200件まで表示します。</p>`;
+   <p class="mm-def-hint">${hintHtml('マスタDB(master.sqlite3)のテーブルをそのまま表示します。**専用タブを持たないマスタも「内部データ」から編集できます**（この一覧はどの表でも中身を確かめられる最後の手段です）。先頭200件まで表示します。')}</p>
+   ${where}`;
   form.onsubmit=ev=>ev.preventDefault();
-  const sel=$('#rawTableSelect');if(sel)sel.onchange=()=>{rawTableState.table=sel.value;loadRawTableRows()};
+  const sel=$('#rawTableSelect');if(sel)sel.onchange=()=>{rawTableState.table=sel.value;renderRawTableForm();loadRawTableRows()};
   const rb=$('#rawTableReload');if(rb)rb.onclick=()=>loadRawTableRows();
+  const go=$('#rawTableGo');
+  if(go)go.onclick=()=>{maintState.defKey=goKey;maintState.editing=null;maintState.query='';syncNav();loadMaint(true)};
  }
  async function loadRawTableRows(){
   const list=$('#masterMaintList');if(!list)return;
@@ -4546,7 +4688,7 @@
   WL.enterView('master');
   /* どのタブを開くか指定できる(§9.183)。左メニューの「再起動待ち」から
      押したときに、データ接続のタブを開いた状態で出すため。 */
-  if(defKey&&MASTER_DEFS.some(d=>d.key===defKey))maintState.defKey=defKey;
+  if(defKey&&allDefs().some(d=>d.key===defKey))maintState.defKey=defKey;
   const panel=ensureMaintPanel();
   WL.syncViewToolbar('master');   // 更新者ID(#mmHead)はパネル生成後にヘッダーへ載せる
   renderMaintNav();
@@ -4555,6 +4697,9 @@
   maintState.editing=null;maintState.query='';
   const se=$('#masterMaintSearch');if(se)se.value='';
   syncNav();panel.hidden=false;loadMaint(true);
+  /* 専用タブを持たないマスタ（§9.249 ②）。**画面は待たせない**——届いたら
+     ナビを描き直す。読めなくても他のタブは今までどおり使える。 */
+  loadMasterTableCatalog().catch(()=>{});
   requestAnimationFrame(()=>{const u=$('#masterUserId');if(u&&!u.value){u.focus();return}const s=$('#masterMaintSearch');if(s)s.focus()});
  }
  window.openMasterMaint=openMasterMaint;

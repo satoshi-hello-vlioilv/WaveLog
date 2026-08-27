@@ -2059,4 +2059,11 @@
 .cl-cold-chip>i{font-style:normal;color:var(--muted);font-weight:800}
 .cl-cold-chip>em{font-style:normal;color:var(--muted)}
 
+
+/* 生データの一覧から「どこで直すか」へ連れて行く帯（§9.249 (2)）。 */
+.mm-raw-goto{display:flex;align-items:center;gap:var(--gap-inline);flex-wrap:wrap;
+ margin-top:var(--space-2);padding:var(--pad-card);
+ border:1px solid var(--teal-soft);border-radius:var(--radius-card);background:var(--pale)}
+.mm-raw-goto>span{flex:1 1 auto;min-width:0;color:var(--ink);font-size:var(--fs-sm)}
+
 }

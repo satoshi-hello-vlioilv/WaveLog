@@ -66,6 +66,9 @@ _WRITE_ALLOWED_MODES={
  # 触らないが、閲覧の端末から他人の写しやログを消せる必要が無い。
  # 一覧(GET /api/cleanup)は読むだけなのでガードの対象外(全モードで見える)。
  'cleanup':{'edit'},
+ # 専用画面を持たないマスタの編集(§9.249 ②)。**editだけ**——マスタ管理の
+ # 他のタブと同じ扱い(scheduleモードは/api/schedule/以下だけが書ける)。
+ 'master_tables':{'edit'},
 }
 # 上の表より広く許可する例外(エンドポイント名 -> 追加で許可するモード)。
 # 現場段取り: 並べ替えAPI(schedule.plan_reorder)だけをeditにも開ける。

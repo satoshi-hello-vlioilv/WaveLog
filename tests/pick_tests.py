@@ -155,7 +155,8 @@ RULES = [
     ('static/js/opsheet-print.js', g('実績', 'モーダル', '列')),
     ('backend/actuals.py', g('実績', 'test_workdate', 'test_modeguard')),
     ('static/js/lot-split.js', g('異常位置', 'test_orphan', 'test_sub')),
-    ('static/js/master-maint.js', g('マスタ', 'モーダル', '操業意匠', 'test_headbar', 'test_datasource',
+    ('static/js/master-maint.js', g('マスタ', 'モーダル', '操業意匠', 'test_rawmaster',
+                                    'test_headbar', 'test_datasource',
                                      'test_qjoinui', 'test_dscap', 'test_blockbuild')),
     ('static/js/calendar-view.js', g('test_calscale', 'test_histdel', 'test_headbar')),
     # 帳票の塊の組み換え(§9.169)は列レイアウトマスタに載るので列の網も回す。
@@ -237,6 +238,10 @@ RULES = [
     ('backend/file_cleanup.py', g('test_cleanup', 'test_dbmirror', 'test_localwork',
                                   'test_modeguard')),
     ('backend/routes/cleanup.py', g('test_cleanup', 'test_modeguard', 'test_crudroutes')),
+    # 専用タブを持たないマスタの編集(§9.249 (2))。対応表がタブのキーを指すので、
+    # マスタ管理の画面(master-maint.js)を触ったときも回す。
+    ('backend/routes/master_tables.py', g('test_rawmaster', 'test_modeguard',
+                                          'test_crudroutes', 'test_maint')),
     # 置き換えの粘り(§9.108)は写し・共有JSON・RNE公開の全部が通る土台。
     ('backend/atomic_io.py', g('test_atomicio', 'test_dbmirror', 'test_sclock',
                                'test_scsync', 'test_datasource', 'test_cleanup')),
