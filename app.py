@@ -20,7 +20,7 @@ app_logger()
 
 app=Flask(__name__)
 
-from backend import watchdog, records_export, access_mode, rne_scheduler, errors
+from backend import watchdog, records_export, access_mode, rne_scheduler, errors, file_cleanup
 from backend.routes.core import bp as core_bp
 from backend.routes.tables import bp as tables_bp
 from backend.routes.measurement import bp as measurement_bp
@@ -30,6 +30,8 @@ from backend.routes.path_config import bp as path_config_bp
 from backend.routes.rne import bp as rne_bp
 from backend.routes.schedule import bp as schedule_bp
 from backend.routes.logs import bp as logs_bp
+from backend.routes.cleanup import bp as cleanup_bp
+from backend.routes.master_tables import bp as master_tables_bp
 
 app.register_blueprint(core_bp)
 app.register_blueprint(tables_bp)
@@ -40,6 +42,8 @@ app.register_blueprint(path_config_bp)
 app.register_blueprint(rne_bp)
 app.register_blueprint(schedule_bp)
 app.register_blueprint(logs_bp)
+app.register_blueprint(cleanup_bp)
+app.register_blueprint(master_tables_bp)
 
 # ========================================================================
 # キャッシュの方針(§9.97)
@@ -95,6 +99,10 @@ records_export.start()
 access_mode.install(app)
 # 仕掛/品質データのローカル運用(sikalot_source=local)時のみRNE定期抽出を開始。
 rne_scheduler.start()
+# 不要ファイルの掃除(§9.249 ①)。作り直せるものだけを、決めた間隔で片付ける。
+# **自動で消すのは`auto=True`の種別だけ**(バイトコードのように「消すと次の
+# 起動が遅くなる」ものは押したときだけ)。入切・間隔はパス設定マスタ。
+file_cleanup.start()
 
 if __name__=='__main__':
  # 直接 python app.py で起動された場合も、通常の起動経路(Start.vbs /

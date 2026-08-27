@@ -180,55 +180,95 @@
      **「ラベルと値の出どころを並べただけの塊」だけ**を現場が足せる。 */
   {group:'equip',key:'reportBlock',label:'帳票ブロック',icon:'票',
    endpoint:'/api/report-block-master',hasDelete:true,
+   titleText:'帳票ブロック — 紙に載せる塊',
+   asideHtml:()=>rbAsideHtml(),bindAside:form=>rbBindAside(form),
+   hintShort:'①から④の順に決めます。**右の見本が刷り上がりです**——幅・高さ・列数を押すとその場で形が変わります。'
+    +'**既定の塊は消せません**（紙へ出したくないときは④を「出さない」に）。',
+   /* ---------- 決めることを4つに束ねる（§9.249 ③、利用者の指示） ----------
+      「モーダルを大きくしてください。大きくしたモーダルに合うようにバランス
+       よく再構築して、もっとわかりやすく視覚化した形で表示を工夫し設定し
+       やすいものを作成してください。文字が多いわりにわかりにくく、情報の
+       階層化、チャンク化も駆使し」
+
+      以前は**11の欄が平らに並び**、どれも長い説明文を抱えていた。
+      決めることは実際には4段階で、しかも**紙のどこにどう出るか**は
+      文字では伝わらない（「6マス」が紙の何割かを頭の中で割り算していた）。
+
+       ① これは何の塊か   … 設備・名前・種別
+       ② 何を載せるか     … 中身（種別で変わる）
+       ③ 紙のどこへ出すか … 幅・高さ・列数・繰り返し
+       ④ 出す・並び       … 有効・表示順
+
+      ①→④は**実際に決める順番**なので、視覚導線と作業導線が一致する
+      （§CLAUDE 14）。幅と高さは**紙のマス目そのもの**を押して決め、
+      右の見本が刷り上がりの位置と大きさを常に映す。 */
    fields:[{k:'equipment',label:'対象設備',type:'equipment-multi-text',required:true,key:true,
+            fieldGroup:'① これは何の塊か',
             tagHint:'この塊をどの設備の帳票へ出せるようにするかです。「すべての設備」を選ぶと、これから増える設備でも使えます。'},
-           {k:'name',label:'ブロック名',required:true,key:true,
-            hint:'帳票の見出しになり、並び・幅・高さの設定の鍵にもなります。**同じ設備に同じ名前を2つ置かないでください**（どちらの設定か決まりません）。'},
-           /* 塊の種別（§9.234 ⑤、利用者の指示「ラベル貼り付けエリアと同じ
-              タイプのエリア確保だけのタイプで文字を配置できる感じのものを
-              追加してください」）。**決めることが変わる**ので、選んだ種別に
-              合う欄だけを出す（§4。押せるのに何も起きない欄を残さない）。 */
-           {k:'kindText',label:'種別',type:'select',options:['項目の並び','エリア（枠と文字）'],
-            hint:'「エリア（枠と文字）」は**値を出さず、場所を空けるだけの塊**です（ラベル貼付・手書き・確認印の欄）。置く文字は下の「エリアに置く文字」で決めます。空のままでも枠だけの塊として使えます。**高さは「中身なり」だと1行に潰れる**ので、行数を決めてください。'},
+           {k:'name',label:'ブロック名',required:true,key:true,size:'lg',
+            fieldGroup:'① これは何の塊か',
+            hint:'帳票の見出しになります。',
+            more:'幅・高さ・並びの設定の鍵にもなります。同じ設備に同じ名前を2つ置かないでください（どちらの設定か決まりません）。'},
+           /* 塊の種別（§9.234 ⑤）。**選ぶ前に違いが読める形にする**——
+              名前だけのプルダウンでは「エリア」が何なのか開くまで分からない。 */
+           {k:'kindText',label:'種別',type:'choice-card',
+            fieldGroup:'① これは何の塊か',
+            cards:[{v:'項目の並び',icon:'≣',label:'項目の並び',note:'ラベルと値を並べて刷る'},
+                   {v:'エリア（枠と文字）',icon:'▢',label:'エリア',note:'値は出さず、場所だけ空ける'}],
+            hint:'「エリア」は**高さを③で決めてください**（「中身なり」だと1行に潰れます）。',
+            more:'エリアはラベル貼付・手書き・確認印のように、値を出さず場所を空けるだけの塊です。'},
            /* §9.226 ④。**選んで組み立てる**（手で道を書かせない）。 */
-           {k:'content',label:'内容（載せる項目）',type:'field-builder',when:{kindText:'項目の並び'},
-            hint:'左の候補を押すと右へ増え、**上から順に紙へ並びます**。掴んで並べ替え、名前はその場で直せます。候補には**操業データ項目マスタで足した項目もそのまま出ます**（項目を足せばここにも増えます）。載せる項目が空のときは、画面がもともと持っている中身のまま出ます。'},
+           {k:'content',label:'載せる項目',type:'field-builder',when:{kindText:'項目の並び'},
+            fieldGroup:'② 何を載せるか',
+            hint:'左の候補を押すと右へ増え、**左上から順に紙へ並びます**。',
+            more:'掴んで並べ替え、名前はその場で直せます。候補には操業データ項目マスタで足した項目もそのまま出ます。空のままなら、画面がもともと持っている中身で出ます。'},
            {k:'text',label:'エリアに置く文字',type:'textarea',rows:3,when:{kindText:'エリア（枠と文字）'},
-            hint:'改行できます。**値は入りません**——測定データを出したいときは種別を「項目の並び」にしてください。空のままなら枠だけの塊になります。'},
-           {k:'span',label:'幅（12マス中）',type:'select',options:['3','4','6','8','12'],
-            hint:'紙は12マスのグリッドです。3＝1/4、6＝1/2、12＝全幅。**ここは既定**で、設備ごとの紙で幅を変えるとそちらが優先されます（帳票画面の「配置を組み換え」で戻せます）。'},
-           {k:'rows',label:'高さ（行数）',type:'select',options:['','2','3','4','5','6','8','12'],
-            hint:'1行＝24px。空欄なら中身なり（描いてから測ります）。行数を決めると下の段へ跨いで置けます。'},
-           /* 繰り返し（§9.247 ②、利用者の指示「異幅分割ありのロットでロット番号が
-              1ロット内に複数混在するパターンにおいても各分割ロット単位ごとに
-              統計データが出てくるように」）。**分割の無いロットでは1回だけ**
-              出るので、設備の紙を分割あり・無しで分ける必要は無い。 */
-           {k:'repeatText',label:'繰り返し',type:'select',
-            options:['このロット全体（1回だけ）','分割後の子ロットごと'],
-            when:{kindText:'項目の並び'},
-            hint:'「分割後の子ロットごと」にすると、**異幅分割で子ロット番号が複数ある**ロットで、この塊が**子ロットの数だけ**出ます。見出しに子ロット番号と条の範囲が付き、載せた`測定した値の統計`は**その子ロットの条だけ**から数え直されます。**幅分割していないロットでは今までどおり1回だけ**出ます。板厚・板丈・肉厚は丈ごとに測るので子ロットには割り当てられず「—」になります（条ごとに測るのは板幅・ラテラルボー・バリ・テレスコープ・巻ずれ）。'},
+            fieldGroup:'② 何を載せるか',
+            hint:'改行できます。**値は入りません。**',
+            more:'測定データを出したいときは種別を「項目の並び」にしてください。空のままなら枠だけの塊になります。'},
+           /* 幅・高さは**紙のマス目を押して決める**（§9.249 ③）。 */
+           {k:'span',label:'幅',type:'span-grid',options:['3','4','6','8','12'],max:12,
+            fieldGroup:'③ 紙のどこへ出すか',
+            hint:'紙は12マスのグリッドです。**ここは既定**です。',
+            more:'設備ごとの紙で幅を変えると、そちらが優先されます（帳票画面の「配置を組み換え」で戻せます）。'},
+           {k:'rows',label:'高さ',type:'rows-pick',options:['','2','3','4','5','6','8','12'],
+            fieldGroup:'③ 紙のどこへ出すか',
+            hint:'1行＝24px。**「中身なり」は描いてから測ります。**',
+            more:'行数を決めると、下の段へ跨いで置けます。エリアは中身なりだと1行に潰れるので行数を決めてください。'},
            {k:'cols',label:'内訳の列数',type:'select',options:['','1','2','3','4'],
-            hint:'節の中で「ラベル＝値」を何列に並べるかです。空欄なら中身の数から決まります（項目が多い塊は4列にすると紙が締まります）。**並べ方が「幅なり」「高さなり」のときは列数を使いません**（カードの大きさで決まります）——並べ方は帳票画面の「配置を組み換え」でカードをダブルクリックすると選べます。'},
+            when:{kindText:'項目の並び'},
+            fieldGroup:'③ 紙のどこへ出すか',
+            hint:'空欄なら**中身の数から決まります**。',
+            more:'節の中で「ラベル＝値」を何列に並べるかです。並べ方が「幅なり」「高さなり」のときは使いません（カードの大きさで決まります）。'},
+           /* 繰り返し（§9.247 ②）。**分割の無いロットでは1回だけ**出る。 */
+           {k:'repeatText',label:'繰り返し',type:'choice-card',
+            when:{kindText:'項目の並び'},
+            fieldGroup:'③ 紙のどこへ出すか',
+            cards:[{v:'このロット全体（1回だけ）',icon:'１',label:'1回だけ',note:'このロット全体で1つ'},
+                   {v:'分割後の子ロットごと',icon:'⋮',label:'子ロットごと',note:'異幅分割の子ロットの数だけ出す'}],
+            hint:'**幅分割していないロットでは1回だけ**です。',
+            more:'「子ロットごと」にすると、異幅分割で子ロット番号が複数あるロットで、この塊が子ロットの数だけ出ます。見出しに子ロット番号と条の範囲が付き、載せた「測定した値の統計」はその子ロットの条だけから数え直されます。板厚・板丈・肉厚は丈ごとに測るので子ロットに割り当てられず「—」になります。'},
+           {k:'enabledText',label:'紙に出す',type:'choice-card',
+            fieldGroup:'④ 出す・並び',
+            cards:[{v:'有効',icon:'✓',label:'出す',note:'配置に置けば紙へ出る'},
+                   {v:'無効',icon:'—',label:'出さない',note:'設定は残る。いつでも戻せる'}],
+            hint:'**既定の塊を紙から外す手立てはこれだけです。**',
+            more:'既定の塊は消せません。「出さない」にしても設定は残るので、いつでも戻せます。'},
            {k:'order',label:'表示順',type:'number',min:0,step:10,
+            fieldGroup:'④ 出す・並び',
             hint:'小さいほど先に出ます。空欄で保存すると今の並びのままです。'},
-           /* **「有効」の欄が無いと行き止まりになる**（§9.219 ②）。既定の塊は
-              消せないので、紙へ出さない手立てはここだけ。欄が無いまま
-              「有効を外してください」と書くのは、§4より悪い「存在しない操作の
-              指示」になる。 */
-           {k:'enabledText',label:'有効',type:'select',options:['有効','無効'],
-            hint:'「無効」にすると、その塊は帳票に出なくなります（設定は残るので、いつでも戻せます）。**既定の塊を紙から外す手立てはこれだけです**（既定の塊は消せません）。'},
-           /* **組み込みの印は見せるが触らせない**（§9.219 ②）。どのコードの
-              塊を指しているかは付け替えられない——付け替えると「どの塊の設定
-              なのか」が決まらなくなる。 */
-           {k:'builtin',label:'既定の塊',readonly:true,
-            hint:'空欄＝自分で作った塊です。値が入っているものはアプリがもともと持っている塊で、**名前・幅・高さ・並び・出す/出さない・対象設備**を変えられます（中身は塊によります。下の説明を参照）。'}],
+           /* **組み込みの印は見せるが触らせない**（§9.219 ②）。 */
+           {k:'builtin',label:'既定の塊',readonly:true,size:'md',
+            fieldGroup:'④ 出す・並び',
+            hint:'空欄＝**自分で作った塊**です。',
+            more:'値が入っているものはアプリがもともと持っている塊で、名前・幅・高さ・並び・出す/出さない・対象設備を変えられます。この印は付け替えられません。'}],
    cols:[{k:'equipment',label:'対象設備',grow:2,format:'equipmentTarget'},
          {k:'name',label:'ブロック名',grow:2},{k:'kindText',label:'種別',grow:1},
          {k:'repeatText',label:'繰り返し',grow:1},
          {k:'builtin',label:'既定',grow:1},
          {k:'enabledText',label:'有効',grow:1},{k:'content',label:'内容',grow:4},
          {k:'span',label:'幅',grow:1},{k:'rows',label:'高さ',grow:1},{k:'order',label:'表示順',grow:1}],
-   hint:'帳票の塊の一覧です。**アプリがもともと持っている塊もここに載っています**（「既定」に値が入っている行）。既定の塊は**名前・幅・高さ・並び・出す/出さない・対象設備**を変えられ、`基本情報`／`コース情報`／`測定条件`／`作業班構成`／`作業時間`／`登録状態`の6つは**中身（ラベルと出どころの並び）も**変えられます。中身を空にすると画面がもともと持っている形へ戻ります。測定表・条の図・異常位置判定のように組み立て方そのものが仕事になっている塊は中身を変えられません（書いても効かないので、変えないでください）。既定の塊は**消せません**——紙へ出したくないときは「有効」を外します。自分で作った塊は1行＝1つの塊で、中身は「ラベルと値の出どころ」を並べたものです。出どころには`calc.workDuration`（実働時間）`calc.status`（状態）`calc.crewSize`（N名班）`calc.coilStop`（コイル止め・旧データ込み）といった**計算した値**も使えます。作った塊は既定では紙に出していないので、帳票画面の「配置を組み換え」の「出していない塊」から紙へ落としてください。'},
+   hint:'帳票の紙に載せる塊の一覧です。**アプリがもともと持っている塊もここに載っています**（「既定」に値が入っている行）。既定の塊は**名前・幅・高さ・並び・出す/出さない・対象設備**を変えられ、`基本情報`／`コース情報`／`測定条件`／`作業班構成`／`作業時間`／`登録状態`の6つは**中身**も変えられます。測定表・条の図・異常位置判定のように組み立て方そのものが仕事になっている塊は中身を変えられません。既定の塊は**消せません**——紙へ出したくないときは「紙に出す」を「出さない」にします。作った塊は帳票画面の「配置を組み換え」の「出していない塊」から紙へ落としてください。'},
   {group:'equip',key:'equipment',label:'設備',icon:'設',endpoint:'/api/equipment-master',hasDelete:true,
    editorModal:false,
    fields:[{k:'name',label:'設備名',required:true,key:true},
@@ -293,6 +333,13 @@
    special:'query-join',titleText:'クエリ結合 — 読んだデータ同士をつなぐ'},
   {group:'system',key:'pathConfig',label:'共通設定',icon:'共',special:'path-config',
    titleText:'共通設定 — この端末の共有パス・RNE・間隔',endpoint:'/api/path-config-master'},
+  /* 不要ファイルの掃除（§9.249 ①、利用者の指示「溜まってくると問題なので、
+     不要なキャッシュファイルや不要なバックアップファイルを削除する機能を
+     実装してください。いらないものや世代の古いものは定期的に削除するような
+     機能も欲しいです」）。**判定はサーバーの1箇所**（`backend/file_cleanup.py`）
+     が持ち、画面は返ってきた種別をそのまま出す（§9.163）。 */
+  {group:'system',key:'cleanup',label:'不要ファイル掃除',icon:'掃',special:'cleanup',
+   titleText:'不要ファイルの掃除 — 作り直せるものだけを片付ける'},
   // 旧「マスタ一覧」(サイドバーのMASTERナビ→汎用グリッド)をここへ統合した
   // (ARCHITECTURE.md「マスタ管理の画面形態」)。上のタブが扱わないテーブル(スケジュール列表示マスタ
   // 等)も含め、master.sqlite3の中身をそのまま確認するための読み取り専用タブ。
@@ -303,7 +350,15 @@
     `syncNav()`は`defKey`と突き合わせるので**どのタブも選ばれていない**
     見た目になる——「今どこにいるか」を画面が言わなくなる。 */
  let maintState={defKey:MASTER_DEFS[0].key,items:[],editing:null,query:'',meta:{}};
- function currentDef(){return MASTER_DEFS.find(d=>d.key===maintState.defKey)||MASTER_DEFS[0]}
+ /* ---------- 専用タブを持たないマスタ（§9.249 ②） ----------
+    タブの一覧は**固定のMASTER_DEFSと、サーバーが答える表から作った分**の
+    2本立て。**どちらも同じ`def`の形**にしてあるので、一覧・編集モーダル・
+    削除・検索の道具は1つも書き足していない（§9.164「同じ道具を使い回す」）。
+    ここから先は`allDefs()`を見ること——`MASTER_DEFS`を直に見ると、
+    足したタブがそこだけ見えない状態が作れる。 */
+ let rawDefs=[];
+ function allDefs(){return rawDefs.length?MASTER_DEFS.concat(rawDefs):MASTER_DEFS}
+ function currentDef(){return allDefs().find(d=>d.key===maintState.defKey)||MASTER_DEFS[0]}
  // scheduleモードは作業予定(schedule Blueprint)以外のマスタへ書込できない
  // (backend/access_mode.pyの_WRITE_ALLOWED_MODES)。マスタ管理モーダル自体は
  // 開けるようにしつつ(設備停止マスタはscheduleモードでのみ書込可能なため)、
@@ -316,7 +371,7 @@
   if(def.readOnly)return true;
   return !!(def.endpoint&&def.endpoint.indexOf('/api/schedule/')===0);
  }
- function firstVisibleDefKey(){const d=MASTER_DEFS.find(maintDefVisible);return d?d.key:MASTER_DEFS[0].key}
+ function firstVisibleDefKey(){const d=allDefs().find(maintDefVisible);return d?d.key:MASTER_DEFS[0].key}
  /* マスタ種別のグループ(情報アーキテクチャ): 13種を平坦に並べると
     「どれが何の設定か」を毎回読んで探すことになるため、利用者の頭の中の
     分類(誰が・何を使うか / 作業スケジュールの設定 / システム寄りの設定)で
@@ -325,10 +380,18 @@
   {key:'equip',label:'設備・人',hint:'測定の現場で使う基本マスタ'},
   {key:'schedule',label:'作業スケジュール',hint:'計画の時間計算に使う設定'},
   {key:'system',label:'表示・システム',hint:'画面表示と端末・データの設定'},
+  /* 専用タブを持たないマスタ（§9.249 ②、利用者の指示「テーブル生データ内で
+     閲覧可能なマスタかつ、テーブル生データマスタの配置された階層にないものは、
+     この階層に配置し、編集可能な形に実装してください」）。
+     **中身はサーバーが答える**（`/api/master-table/catalog`）ので、ここには
+     表の名前を書き写さない（§9.163。マスタを1つ足すたびに2箇所直すことになる）。
+     最後に置くのは**頻度が低いから**（面積は頻度×重要度・§CLAUDE 1）。 */
+  {key:'internal',label:'内部データ',hint:'専用のタブを持たないマスタ（そのまま行を編集します）'},
+  {key:'retired',label:'移行済み',hint:'アプリはもう読みません。移行前の中身を見返すためだけに残しています'},
  ];
  function renderMaintNav(){
   const nav=$('#masterMaintNav');if(!nav)return;
-  const visible=MASTER_DEFS.filter(maintDefVisible);
+  const visible=allDefs().filter(maintDefVisible);
   const html=MASTER_GROUPS.map(g=>{
    const defs=visible.filter(d=>(d.group||'system')===g.key);
    if(!defs.length)return '';
@@ -479,8 +542,12 @@
  function hintHtml(t){
   return esc(String(t||'')).replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');
  }
+ /* **消した説明は`title`へ落とす**（§9.234 ①）。欄の説明を短くすると
+    読めるようになるが、消してしまうと調べようが無くなる。`more`を持つ欄は
+    見出しにマウスを当てれば全文が読める（§CLAUDE 8）。 */
  function fieldLabelHtml(f){
-  return `<span>${esc(f.label)}${f.required?'<i>*</i>':''}${f.key?'<em class="mm-keytag">キー</em>':''}</span>`;
+  const t=f.more?` title="${esc(f.label+'｜'+String(f.more).replace(/\*\*/g,''))}"`:'';
+  return `<span${t}>${esc(f.label)}${f.required?'<i>*</i>':''}${f.key?'<em class="mm-keytag">キー</em>':''}${f.more?'<em class="mm-more" aria-hidden="true">?</em>':''}</span>`;
  }
  /* master-combo の選択肢は別マスタから取る。同じマスタを何度も引かないよう
     タブを開いている間だけ持つ(登録すると連動して増えるので、保存後の
@@ -570,9 +637,18 @@
 
     段は**型から自動で決まる**（数値=xs／日付=sm／選択=md／自由記述=md）ので、
     マスタを増やしても書き足す必要は無い。合わないものだけ`size:`で名指しする。 */
+ /* 12マス中の幅を「読める言葉」にする（§9.249 ③）。6を1/2と読み替えるのは
+    人の側の仕事にしない。割り切れないものは「◯マス」のまま言う。 */
+ function mmFracText(n,max){
+  const m=max||12;
+  const map={1:'1/12',2:'1/6',3:'1/4',4:'1/3',6:'1/2',8:'2/3',9:'3/4',12:'全幅'};
+  return map[n]||`${n}マス`;
+ }
  const MM_SIZE_BY_TYPE={number:'xs',time:'xs',date:'sm',select:'md',
    'master-combo':'md','master-suggest':'md','equipment-select':'md',
-   textarea:'full',path:'full','equipment-multi':'full','equipment-multi-text':'full'};
+   textarea:'full',path:'full','equipment-multi':'full','equipment-multi-text':'full',
+   /* 見て選ぶ欄は横いっぱい（札が折り返さないように・§9.249 ③）。 */
+   'choice-card':'full','span-grid':'full','rows-pick':'full'};
  function mmFieldSize(f){
   if(f.size)return f.size;
   const t=String(f.type||'text');
@@ -727,6 +803,63 @@
       移り、掴んで並べ替えられる。ラベルはその場で直せる。
       **候補はサーバーが答える**（`catalog`）ので、操業データの項目を足せば
       そのままここに増える（§9.163「判定を画面に書かない」）。 */
+   /* ---------- 選ばせる欄を「見て選ぶ」形にする（§9.249 ③） ----------
+      利用者の指摘「文字が多いわりにわかりにくく」。選択肢の意味が
+      **選ぶ前に読めない**のが原因で、プルダウンは名前しか出せない。
+      札に**絵・名前・一言**を並べれば、開かなくても違いが分かる（§CLAUDE 2）。
+      値を持つのは今までどおり隠し欄なので、`submitMaint`は型を知らなくてよい。 */
+   if(f.type==='choice-card'){
+    /* **選択欄と同じ既定にする**（§9.249 ③）——`<select>`は先頭の選択肢が
+       最初から選ばれている。札にした途端に「どれも選ばれていない」状態が
+       生まれると、②の欄が`data-when`で消えて**決めることが1つ消える**
+       （新規登録で実際にそうなった）。 */
+    const cur=String(val||'')||String(((f.cards||[])[0]||{}).v||'');
+    const cards=(f.cards||[]).map(c=>{
+     const on=cur===String(c.v);
+     return `<button type="button" class="mm-card-opt${on?' is-on':''}" data-card="${f.k}" data-card-v="${esc(c.v)}"`
+      +` aria-pressed="${on?'true':'false'}" title="${esc(c.note||c.label)}">`
+      +`<span class="mm-card-ico" aria-hidden="true">${esc(c.icon||'')}</span>`
+      +`<span class="mm-card-txt"><b>${esc(c.label)}</b>`
+      +`${c.note?`<small>${esc(c.note)}</small>`:''}</span></button>`;
+    }).join('');
+    return `<div class="mm-field mm-field-area mm-cards">${fieldLabelHtml(f)}
+      <div class="mm-card-row">${cards}</div>
+      <input type="hidden" data-field="${f.k}" value="${esc(cur)}">
+      ${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</div>`;
+   }
+   /* 紙の12マスをそのまま出して、**押した幅がそのまま見える**ようにする。
+      「6＝1/2」を頭の中で割り算させない（§CLAUDE 6）。 */
+   if(f.type==='span-grid'){
+    const max=f.max||12,cur=Math.max(1,Math.min(max,Number(val)||max));
+    const allow=(f.options||[]).map(Number).filter(n=>n>0);
+    const cells=[];
+    for(let i=1;i<=max;i++){
+     const pick=allow.length?allow.find(n=>n>=i)||allow[allow.length-1]:i;
+     cells.push(`<button type="button" class="mm-span-cell${i<=cur?' is-on':''}"`
+      +` data-span="${f.k}" data-span-v="${pick}" title="${pick}マス（12マス中）にします">${i}</button>`);
+    }
+    return `<div class="mm-field mm-field-area mm-spanfield">${fieldLabelHtml(f)}
+      <div class="mm-span-grid" role="group" aria-label="幅（12マス中）">${cells.join('')}</div>
+      <div class="mm-span-read"><b data-span-read="${f.k}">${cur}</b> / ${max} マス
+       <em data-span-frac="${f.k}">${esc(mmFracText(cur,max))}</em></div>
+      <input type="hidden" data-field="${f.k}" value="${esc(val)}">
+      ${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</div>`;
+   }
+   /* 高さ。**「中身なり」を1つ目の札にする**——既定がどれかを最初に見せる。 */
+   if(f.type==='rows-pick'){
+    const opts=f.options||[''];
+    const cur=String(val||'');
+    return `<div class="mm-field mm-field-area mm-rowsfield">${fieldLabelHtml(f)}
+      <div class="mm-rows-pick" role="group" aria-label="高さ（行数）">${opts.map(o=>{
+       const on=String(o)===cur;
+       const label=o===''?'中身なり':o+'行';
+       return `<button type="button" class="mm-rows-opt${on?' is-on':''}" data-rows="${f.k}" data-rows-v="${esc(o)}"`
+        +` aria-pressed="${on?'true':'false'}" title="${o===''?'描いてから測って、中身の高さに合わせます':o+'行ぶん（1行＝24px）の高さで固定します'}">`
+        +`<i aria-hidden="true" style="--mm-rows:${o===''?1:Number(o)}"></i><span>${esc(label)}</span></button>`;
+      }).join('')}</div>
+      <input type="hidden" data-field="${f.k}" value="${esc(val)}">
+      ${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</div>`;
+   }
    if(f.type==='field-builder'){
     return `<div class="mm-field mm-field-area fb" data-fb="${f.k}">${fieldLabelHtml(f)}
       <div class="fb-body">
@@ -891,6 +1024,16 @@
   const def=currentDef(),form=$('#masterMaintForm');if(!form)return;const editing=maintState.editing;
   // 入力項目が多いマスタは、上部に常設のフォームを置かず(一覧の表示領域を
   // 空けるため)、編集専用モーダルへ入口だけを出す(ARCHITECTURE.md「マスタ管理の画面形態」)。
+  /* **読み取り専用のマスタは追加の入口ごと出さない**（§CLAUDE 4。
+     押せるのに何も起きないボタンを残さない）。理由は`hint`が書く。 */
+  if(def.readOnly&&!def.special){
+   form.classList.add('mm-form-compact');
+   form.innerHTML=`<div class="mm-form-head"><span class="mm-mode-chip">読み取り専用</span>
+     <span class="mm-form-hint">この表は見るだけです。追加・編集・削除はできません。</span></div>
+    ${def.hint?`<p class="mm-def-hint">${hintHtml(def.hint)}</p>`:''}`;
+   form.onsubmit=ev=>ev.preventDefault();
+   return;
+  }
   if(defUsesEditorModal(def)){
    form.classList.add('mm-form-compact');
    form.innerHTML=`<div class="mm-form-head">
@@ -977,11 +1120,19 @@
   modal.querySelector('.mm-editor-dialog')?.classList.remove('is-wide','is-tall');
   $('#maintEditorSave').onclick=()=>submitMaint('#maintEditorForm');
   const form=$('#maintEditorForm');
-  form.innerHTML=`${def.hint?`<p class="mm-def-hint">${hintHtml(def.hint)}</p>`:''}
+  /* **決めることの隣に、刷り上がりを置く**（§9.249 ③）。`asideHtml`を持つ
+     マスタだけ2段組みになる（持たないマスタは今までどおり1段）。 */
+  /* **窓の説明は一覧の説明と同じにしない**（§CLAUDE 8）。一覧の`hint`は
+     「このマスタは何か」を書くので長い。窓では**いま決めることの一言**だけを
+     出し、詳しくは各欄の説明が言う（`hintShort`を持たないマスタは今までどおり）。 */
+  const modalHint=def.hintShort||def.hint;
+  form.innerHTML=`${modalHint?`<p class="mm-def-hint">${hintHtml(modalHint)}</p>`:''}
    <div class="mm-form-fields">${buildFieldControls(def,editing)}${
-    typeof def.extraHtml==='function'?def.extraHtml(editing):''}</div>`;
+    typeof def.extraHtml==='function'?def.extraHtml(editing):''}</div>
+   ${typeof def.asideHtml==='function'?def.asideHtml(editing):''}`;
   form.onsubmit=ev=>{ev.preventDefault();submitMaint('#maintEditorForm')};
   bindEquipmentPickers(form);bindInputHelpers(form);
+  if(typeof def.bindAside==='function')def.bindAside(form);
   modal.hidden=false;
   /* **最初のフォーカスに「候補が出る欄」を選ばない**（§9.221 ④）。タグ入力は
      フォーカスした時点で候補の一覧を開くので、窓を開けた瞬間にその一覧が
@@ -1018,7 +1169,63 @@
  /* 入力支援の配線(§9.49)。buildFieldControls()が出した各型を動かす。
     どの型も「data-field を持つ要素の value が最終的な値」という約束を守るので、
     submitMaint()側は型を知らなくてよい。 */
+ /* 見て選ぶ欄の配線（§9.249 ③）。**値は隠し欄が持つ**ので、
+    押したら`change`を飛ばす——`data-when`の出し入れも紙の見本も、
+    値が変わったことを`change`で知る（§9.218 ②と同じ作法）。 */
+ function mmSetHidden(form,key,value){
+  const el=form.querySelector(`[data-field="${CSS.escape(key)}"]`);
+  if(!el)return;
+  el.value=String(value);
+  el.dispatchEvent(new Event('change',{bubbles:true}));
+ }
+ function bindChoiceCards(form){
+  form.querySelectorAll('[data-card]').forEach(b=>{
+   if(b.dataset.cardWired)return;
+   b.dataset.cardWired='1';
+   b.onclick=()=>{
+    const k=b.dataset.card,v=b.dataset.cardV;
+    form.querySelectorAll(`[data-card="${CSS.escape(k)}"]`).forEach(x=>{
+     const on=x===b;x.classList.toggle('is-on',on);x.setAttribute('aria-pressed',on?'true':'false');
+    });
+    mmSetHidden(form,k,v);
+   };
+  });
+ }
+ function bindSpanGrids(form){
+  form.querySelectorAll('.mm-spanfield').forEach(box=>{
+   if(box.dataset.spanWired)return;
+   box.dataset.spanWired='1';
+   const cells=[...box.querySelectorAll('[data-span]')];
+   if(!cells.length)return;
+   const key=cells[0].dataset.span;
+   const paint=v=>{
+    const n=Number(v)||0;
+    cells.forEach((c,i)=>c.classList.toggle('is-on',i+1<=n));
+    const read=box.querySelector(`[data-span-read="${CSS.escape(key)}"]`);
+    if(read)read.textContent=String(n);
+    const frac=box.querySelector(`[data-span-frac="${CSS.escape(key)}"]`);
+    if(frac)frac.textContent=mmFracText(n,cells.length);
+   };
+   cells.forEach(c=>c.onclick=()=>{paint(c.dataset.spanV);mmSetHidden(form,key,c.dataset.spanV)});
+   const hidden=form.querySelector(`[data-field="${CSS.escape(key)}"]`);
+   if(hidden)hidden.addEventListener('change',()=>paint(hidden.value));
+  });
+ }
+ function bindRowsPicks(form){
+  form.querySelectorAll('[data-rows]').forEach(b=>{
+   if(b.dataset.rowsWired)return;
+   b.dataset.rowsWired='1';
+   b.onclick=()=>{
+    const k=b.dataset.rows,v=b.dataset.rowsV;
+    form.querySelectorAll(`[data-rows="${CSS.escape(k)}"]`).forEach(x=>{
+     const on=x===b;x.classList.toggle('is-on',on);x.setAttribute('aria-pressed',on?'true':'false');
+    });
+    mmSetHidden(form,k,v);
+   };
+  });
+ }
  function bindInputHelpers(form){
+  bindChoiceCards(form);bindSpanGrids(form);bindRowsPicks(form);
   bindNumberFields(form);
   bindDateFields(form);
   bindComboFields(form);
@@ -1036,6 +1243,99 @@
     1箇所にしておかないと、「並べ替えただけでは保存されない」のような
     片方だけ効く状態が作れる（§9.201と同じ形）。 */
  const fbCatalog={groups:[],loadedFor:null,loading:null};
+
+ /* ================================================================
+    帳票ブロックの「刷り上がりの見本」（§9.249 ③、利用者の指示）
+    ----------------------------------------------------------------
+    「もっとわかりやすく視覚化した形で表示を工夫し設定しやすいものを」
+
+    幅「6マス」が紙の何割かは、**紙を見なければ分からない**。決めることの
+    すぐ隣に紙の見本を置き、押した幅・高さ・列数・載せた項目がその場で
+    形になるようにする。
+
+    **見本は形だけ**——値は実際のロットで入る。そう書いておかないと、
+    「見本に値が出ていない＝壊れている」と読まれる（§CLAUDE 6）。
+    **紙の割り付けは`report-dashboard.js`が持つ**ので、ここでは寸法を
+    決め打ちにせず、12マスという約束だけを借りる（幅の数字は同じ`span`）。
+    ================================================================ */
+ const RB_PAGE_ROWS=12;   // 紙の縦のマス数（report-dashboard.js の既定と同じ）
+ function rbAsideHtml(){
+  return `<aside class="rb-aside" aria-label="刷り上がりの見本">
+    <div class="rb-aside-head"><b>刷り上がりの見本</b>
+     <span class="rb-aside-note" id="rbNote">形だけの見本です。値は実際のロットで入ります。</span></div>
+    <div class="rb-paper" id="rbPaper" role="img" aria-label="紙の中のこの塊の位置と大きさ">
+     <div class="rb-paper-grid" id="rbPaperGrid"></div>
+     <div class="rb-paper-block" id="rbPaperBlock"><b id="rbPaperName">この塊</b></div>
+    </div>
+    <dl class="rb-facts">
+     <dt>幅</dt><dd id="rbFactSpan">—</dd>
+     <dt>高さ</dt><dd id="rbFactRows">—</dd>
+     <dt>内訳</dt><dd id="rbFactCols">—</dd>
+     <dt>繰り返し</dt><dd id="rbFactRepeat">—</dd>
+    </dl>
+    <div class="rb-sec" id="rbSection"></div>
+   </aside>`;
+ }
+ /* 見本を描き直す。**読むのは隠し欄の値だけ**——押した札の見た目ではなく
+    保存される値を映す（見た目だけを写すと、保存と食い違う見本ができる）。 */
+ function rbPaintPreview(form){
+  const v=k=>{const el=form.querySelector(`[data-field="${CSS.escape(k)}"]`);return el?String(el.value||''):''};
+  const grid=form.querySelector('#rbPaperGrid'),block=form.querySelector('#rbPaperBlock');
+  if(!grid||!block)return;
+  const span=Math.max(1,Math.min(12,Number(v('span'))||12));
+  const rowsRaw=v('rows');
+  const rows=rowsRaw?Math.max(1,Math.min(RB_PAGE_ROWS,Number(rowsRaw))):3;
+  const area=v('kindText')==='エリア（枠と文字）';
+  if(!grid.childElementCount){
+   grid.innerHTML=Array.from({length:12*RB_PAGE_ROWS},()=>'<i></i>').join('');
+  }
+  block.style.setProperty('--rb-span',String(span));
+  block.style.setProperty('--rb-rows',String(rows));
+  block.classList.toggle('is-auto',!rowsRaw);
+  block.classList.toggle('is-area',area);
+  const nm=form.querySelector('#rbPaperName');
+  if(nm)nm.textContent=v('name')||'（名前を入れてください）';
+  const setText=(id,text)=>{const el=form.querySelector(id);if(el)el.textContent=text};
+  setText('#rbFactSpan',`${span} / 12 マス（${mmFracText(span,12)}）`);
+  setText('#rbFactRows',rowsRaw?`${rowsRaw}行（固定）`:'中身なり（描いてから測ります）');
+  setText('#rbFactCols',area?'—（エリアは値を出しません）':(v('cols')?`${v('cols')}列`:'中身の数から決まります'));
+  setText('#rbFactRepeat',area?'—':(v('repeatText')==='分割後の子ロットごと'?'子ロットの数だけ':'1回だけ'));
+  /* 節そのもの（紙に出る形）。**列数と載せた項目をそのまま並べる**。 */
+  const sec=form.querySelector('#rbSection');
+  if(!sec)return;
+  if(area){
+   const text=v('text');
+   sec.className='rb-sec is-area';
+   sec.innerHTML=`<div class="rb-sec-head">${esc(v('name')||'（名前）')}</div>`
+    +`<div class="rb-sec-area">${text?esc(text).replace(/\n/g,'<br>'):'<em>（文字なし・枠だけ）</em>'}</div>`;
+   return;
+  }
+  const rowsData=fbParse(v('content'));
+  const cols=Math.max(1,Math.min(4,Number(v('cols'))||2));
+  sec.className='rb-sec';
+  sec.style.setProperty('--rb-cols',String(cols));
+  sec.innerHTML=`<div class="rb-sec-head">${esc(v('name')||'（名前）')}</div>`
+   +(rowsData.length
+     ?`<div class="rb-sec-body">${rowsData.map(r=>{
+        const sp=Math.min(cols,Math.max(1,Number(r.span)||1));
+        if(r.blank)return `<div class="rb-cell is-blank" style="grid-column:span ${sp}"></div>`;
+        return `<div class="rb-cell" style="grid-column:span ${sp}">`
+         +`<span class="rb-cell-k" title="${esc(r.path)}">${esc(r.label||r.path)}</span>`
+         +`<span class="rb-cell-v">値</span></div>`;
+       }).join('')}</div>`
+     :'<p class="rb-sec-empty">載せる項目がありません。<b>画面がもともと持っている中身</b>のまま刷られます。</p>');
+ }
+ /* 配線。**打っている最中も追う**（`input`）——名前を打つたびに紙の見本の
+    題が変わるので、どの塊を触っているのかを見失わない。 */
+ function rbBindAside(form){
+  if(form.dataset.rbWired==='1'){rbPaintPreview(form);return}
+  form.dataset.rbWired='1';
+  const paint=()=>rbPaintPreview(form);
+  form.addEventListener('change',paint);
+  form.addEventListener('input',paint);
+  requestAnimationFrame(paint);
+ }
+
  async function fbLoadCatalog(){
   const eq=String(maintState.equipment||'');
   if(fbCatalog.loadedFor===eq)return fbCatalog.groups;
@@ -1602,6 +1902,9 @@
    /* ロールを足した直後に異常位置判定を開くのがふつうの順番なので、
       控えを持ったままだと「登録したのに候補に出ない」になる（§9.241 ④）。 */
    if(def.key==='roll'&&window.WL&&WL.defect&&WL.defect.forgetRolls)WL.defect.forgetRolls();
+   /* 生の表を触ったら件数の写しを捨てる（§9.249 ②）。持ったままだと
+      「足したのに件数が増えない」になる。 */
+   if(def.rawTable)mtState.loaded=false;
    /* **保存した行の群は開く**（§9.241 ①）——畳んだ設備へ足したとき、
       保存できたのに一覧に出ないのは「消えた」と読まれる。 */
    if(def.groupBy)mmOpenGroupOf(def,body[def.groupBy]);
@@ -1656,12 +1959,15 @@
    }catch(e){showToast&&showToast('削除できませんでした',e.message,6500)}
    return;
   }
-  if(!confirm(`${def.label}「${nm}」を無効化（削除）しますか？`))return;
+  /* **言い回しはdefが決める**（§9.249 ②）。有効フラグを持つマスタの削除は
+     「無効化」だが、生の表は**本当に行が消える**——同じ文言で言うと嘘になる。 */
+  const word=def.deleteWord||'無効化（削除）';
+  if(!confirm(`${def.label}「${nm}」を${word}しますか？`))return;
   try{
-   setMaintLoading(true,`${def.label}を無効化しています…`);
+   setMaintLoading(true,`${def.label}を${def.deleteWord||'無効化'}しています…`);
    await api(def.endpoint+'/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:item.id,user_id:uid})});
    if(maintState.editing&&maintState.editing.id===item.id)maintState.editing=null;
-   await loadMaint(true);showToast&&showToast(def.label+'を無効化しました',nm,3600);
+   await loadMaint(true);showToast&&showToast(def.label+'を'+(def.deleteWord||'無効化')+'しました',nm,3600);
   }catch(e){showToast&&showToast('削除できませんでした',e.message,6500)}
   finally{setMaintLoading(false)}
  }
@@ -1827,7 +2133,9 @@
    row.title=showAudit?'クリックで編集フォームに読み込みます':`クリックで編集\n${audit}`;
    const cells=def.cols.map(c=>{const v=cellText({...c,row:it},it[c.k]);
     return `<span title="${esc(v)}">${esc(v)||'<em class="mm-blank">—</em>'}</span>`}).join('');
-   row.innerHTML=`${cells}${showAudit?`<span class="mm-user" title="${esc(it.updated_by||'')}">${esc(it.updated_by||'-')}</span><span class="mm-date">${esc(fmtDT(it.updated_at))}</span>`:''}<span class="mm-act"><button type="button" class="mm-edit" title="この行の内容を編集します">編集</button>${def.hasDelete?'<button type="button" class="mm-del" title="この行を削除します（確認画面が出ます）">削除</button>':''}</span>`;
+   const acts=def.readOnly?'<em class="mm-blank">—</em>'
+     :`<button type="button" class="mm-edit" title="この行の内容を編集します">編集</button>${def.hasDelete?'<button type="button" class="mm-del" title="この行を削除します（確認画面が出ます）">削除</button>':''}`;
+   row.innerHTML=`${cells}${showAudit?`<span class="mm-user" title="${esc(it.updated_by||'')}">${esc(it.updated_by||'-')}</span><span class="mm-date">${esc(fmtDT(it.updated_at))}</span>`:''}<span class="mm-act">${acts}</span>`;
    // 入力項目が多いマスタは編集専用モーダル、少ないマスタは従来どおり
    // 上部のインラインフォームへ読み込む(ARCHITECTURE.md「マスタ管理の画面形態」、defUsesEditorModal)。
    const edit=()=>{
@@ -1835,10 +2143,12 @@
     maintState.editing=Object.assign({},it);renderMaintForm();
     const f=$('#masterMaintForm');if(f)f.scrollIntoView({block:'nearest'});
    };
-   row.querySelector('.mm-edit').onclick=e=>{e.stopPropagation();edit()};
+   const eb=row.querySelector('.mm-edit');if(eb)eb.onclick=e=>{e.stopPropagation();edit()};
    const del=row.querySelector('.mm-del');if(del)del.onclick=e=>{e.stopPropagation();deleteMaint(it)};
-   row.onclick=()=>edit();row.ondblclick=()=>edit();
-   row.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){if(e.key===' ')e.preventDefault();edit()}};
+   if(!def.readOnly){
+    row.onclick=()=>edit();row.ondblclick=()=>edit();
+    row.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){if(e.key===' ')e.preventDefault();edit()}};
+   }
    frag.append(row);
   });
   list.append(frag);
@@ -1879,6 +2189,7 @@
   if(def.special==='op-item'){setMaintSearchVisible(false);return loadOpItemMaint(force)}
   if(def.special==='record-layout'){setMaintSearchVisible(false);return loadRecordLayoutMaint(force)}
   if(def.special==='op-choice'){setMaintSearchVisible(false);return loadOpChoiceMaint(force)}
+  if(def.special==='cleanup'){setMaintSearchVisible(false);return loadCleanupMaint(force)}
   if(def.special==='raw-table'){setMaintSearchVisible(false);return loadRawTableMaint(force)}
   setMaintSearchVisible(true);
   const list=$('#masterMaintList');if(list&&force)list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
@@ -4238,6 +4549,332 @@
   finally{setMaintLoading(false)}
  }
 
+
+ /* ================================================================
+    不要ファイルの掃除（§9.249 ①、利用者の指示）
+    ----------------------------------------------------------------
+    「溜まってくると問題なので、不要なキャッシュファイルや不要なバックアップ
+      ファイルを削除する機能を実装してください。いらないものや世代の古いものは
+      定期的に削除するような機能も欲しいです。」
+
+    **判定はサーバーの1箇所**（`backend/file_cleanup.py`）。画面は
+    返ってきた種別をそのまま並べるだけで、「どのファイルが要る／要らない」の
+    規則を持たない（§9.163。2つ持つと画面が「消える」と言ったものが残る）。
+
+    画面の作り（§CLAUDE「画面を作るときの基準」）:
+     ・**面積は頻度×重要度。** いちばん大きいのは「いま何MB片付くか」と
+       押すボタン——ここへ来る人はそれを見に来ている。設定は下段。
+     ・**次にすることを1つだけ指す。** 溜まっていなければ「いまは何もする
+       必要がありません」と書き、ボタンを押せなくする（§4）。
+     ・**色だけで伝えない。** 種別ごとに件数・容量・**何が消えて何が残るか**を
+       文字で出す。残す理由も1件ずつ言う（推測させない）。
+     ・**消す前に何が消えるかを出す**（§9.193の下見と同じ作法）。確認は
+       まとめて1回だけ（種別ごとに聞くと読まずに押す癖が付く・§9.170）。
+    ================================================================ */
+ let cleanupState={data:null,loaded:false,picked:null,busy:false};
+ function clSize(n){
+  const v=Number(n)||0;
+  if(v<=0)return '0';
+  if(v<1024)return v+'B';
+  if(v<1048576)return (v/1024).toFixed(0)+'KB';
+  if(v<1073741824)return (v/1048576).toFixed(1)+'MB';
+  return (v/1073741824).toFixed(2)+'GB';
+ }
+ function clWhen(sec){
+  if(!sec)return '—';
+  const t=Number(sec)*1000;
+  if(!Number.isFinite(t))return '—';
+  const d=Math.floor((Date.now()-t)/86400000);
+  const stamp=new Date(t).toLocaleDateString('ja-JP',{month:'2-digit',day:'2-digit'});
+  return d<1?`${stamp}（今日）`:`${stamp}（${d}日前）`;
+ }
+ function clEvery(sec){
+  const n=Math.max(1,Math.round(Number(sec||0)/60));
+  return n<60?`${n}分ごと`:(n%60?`${Math.floor(n/60)}時間${n%60}分ごと`:`${Math.floor(n/60)}時間ごと`);
+ }
+ /* 選んでいる種別。**既定は「消せるものがある種別」すべて**。
+    以前は自動掃除の対象だけを選んでいたが、そうすると上の帯が
+    「8.2MB片付けられます」と言っているのにボタンが押せない、という
+    **画面が自分の言ったことを否定する**状態が作れた（§CLAUDE 2「次にする
+    ことを1つだけ指す」・§4）。消す前には必ず**何が消えるかを1件ずつ並べた
+    確認**が出る（§9.193）ので、選んだまま押しても不意打ちにはならない。
+    自動掃除の対象外であることは、カードにも確認にも文字で出す（§CLAUDE 3）。 */
+ function clPicked(){
+  const cats=(cleanupState.data&&cleanupState.data.categories)||[];
+  if(!cleanupState.picked){
+   cleanupState.picked=new Set(cats.filter(c=>c.removable>0).map(c=>c.key));
+  }
+  return cleanupState.picked;
+ }
+ function clPickedStats(){
+  const cats=((cleanupState.data&&cleanupState.data.categories)||[]).filter(c=>clPicked().has(c.key));
+  return {n:cats.reduce((a,c)=>a+c.removable,0),bytes:cats.reduce((a,c)=>a+c.removableBytes,0),cats};
+ }
+ async function loadCleanupMaint(force){
+  const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
+  if(!force&&cleanupState.loaded){renderCleanup();return}
+  form.innerHTML='';list.innerHTML='<div class="mm-empty">溜まっているファイルを調べています…</div>';
+  try{
+   const [d,cfg]=await Promise.all([api('/api/cleanup'),api('/api/path-config-master')]);
+   cleanupState.data=d;cleanupState.cfg=cfg;cleanupState.loaded=true;cleanupState.picked=null;
+   renderCleanup();
+  }catch(e){list.innerHTML=`<div class="mm-empty error">調べられませんでした: ${esc(e.message)}</div>`}
+ }
+ function renderCleanup(){
+  const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
+  const d=cleanupState.data||{};
+  const cats=d.categories||[],tot=d.total||{},pol=d.policy||{},st=d.state||{},places=d.places||{};
+  const v=(cleanupState.cfg&&cleanupState.cfg.values)||{};
+  const pick=clPicked(),sel=clPickedStats();
+  /* 次にすること。**1つだけ指す**（§2）。 */
+  const next=sel.n
+   ? `いま <b>${clSize(sel.bytes)}（${sel.n}件）</b>を片付けられます。`
+     +`何が消えるかは下のカードに出ています——確かめて「選んだものを掃除する」を押してください。`
+   : (tot.removable
+      ? `片付けられるものは <b>${clSize(tot.removableBytes)}（${tot.removable}件）</b>ありますが、`
+        +`<b>種別を1つも選んでいません</b>。下のカードの左端で選んでください。`
+      : 'いまは何もする必要がありません。<b>片付けられるファイルはありません</b>（定期掃除が効いています）。');
+  form.innerHTML=`
+   <div class="mm-form-head"><span class="mm-mode-chip editing">この端末のファイル</span></div>
+   <p class="cl-lead">アプリが動くうちに増える<b>作り直せるファイル</b>だけを片付けます。
+    <b>測定データ・マスタ・共有スケジュールには一切触れません</b>——ここから消せるのは、
+    消しても次に使うときに作り直されるものだけです。</p>
+   <div class="cl-top">
+    <div class="cl-gauge">
+     <div class="cl-gauge-main"><b>${clSize(tot.removableBytes||0)}</b><span>片付けられます</span></div>
+     <div class="cl-gauge-sub">${tot.removable||0}件 ／ 全体 ${clSize(tot.bytes||0)}・${tot.files||0}件</div>
+     <div class="cl-bar" role="img" aria-label="全体のうち片付けられる割合">
+      <i style="width:${tot.bytes?Math.max(2,Math.round((tot.removableBytes/tot.bytes)*100)):0}%"></i></div>
+    </div>
+    <div class="cl-next"><span class="cl-next-label">次にすること</span><span>${next}</span></div>
+   </div>`;
+  /* **面積は頻度×重要度**（§CLAUDE 1）。片付けられる種別だけをカードで
+     大きく出し、**いま空の種別は1行の札に畳む**——溜まっていないのが
+     ふつうの状態なので、そこへ画面の大半を割くと、肝心の「消せるもの」が
+     埋もれる。**畳んでも消さない**（何を見ているのかが分からなくなる・
+     §CLAUDE 12）。並びはサーバーの順のままにする（開くたびに場所が
+     変わると探すことになる）。 */
+  const card=c=>{
+   const on=pick.has(c.key);
+   const none=!c.removable;
+   return `<div class="cl-card${on?' is-on':''}${none?' is-empty':''}" data-cl-card="${esc(c.key)}">
+    <label class="cl-card-head">
+     <input type="checkbox" data-cl-pick="${esc(c.key)}"${on?' checked':''}${none?' disabled':''}>
+     <span class="cl-ico" aria-hidden="true">${esc(c.icon||'')}</span>
+     <b>${esc(c.label)}</b>
+     <span class="cl-badge${none?' is-none':''}">${none?'なし':`${clSize(c.removableBytes)}・${c.removable}件`}</span>
+    </label>
+    <p class="cl-note">${esc(c.note)}</p>
+    <dl class="cl-kv">
+     <dt>消し方</dt><dd>${hintHtml(c.why)}</dd>
+     <dt>いちばん古い</dt><dd>${clWhen(c.oldest)}</dd>
+     <dt>自動掃除</dt><dd>${c.auto?'対象<small>（定期掃除でも消えます）</small>':'<b>対象外</b><small>（押したときだけ消えます）</small>'}</dd>
+    </dl>
+    ${c.examples&&c.examples.length?`<div class="cl-ex"><b>消えるもの</b><ul>${
+      c.examples.map(x=>`<li><code title="${esc(x.name)}">${esc(x.name)}</code><em>${clSize(x.size)}</em><i>${clWhen(x.mtime)}</i></li>`).join('')
+     }${c.removable>c.examples.length?`<li class="cl-more">ほか${c.removable-c.examples.length}件</li>`:''}</ul></div>`:''}
+    ${c.keptExamples&&c.keptExamples.length?`<div class="cl-keep"><b>残すもの（${c.kept}件）</b><ul>${
+      c.keptExamples.map(x=>`<li><code title="${esc(x.name)}">${esc(x.name)}</code><i>${esc(x.why)}</i></li>`).join('')}</ul></div>`
+     :(c.kept?`<div class="cl-keep"><b>残すもの</b><span>${c.kept}件</span></div>`:'')}
+   </div>`;
+  };
+  const hot=cats.filter(c=>c.removable>0),cold=cats.filter(c=>!c.removable);
+  list.innerHTML=`
+   ${hot.length?`<div class="cl-grid">${hot.map(card).join('')}</div>`
+    :'<p class="cl-none">片付けられるファイルは<b>1件もありません</b>。溜まってきたらここへ出ます。</p>'}
+   ${cold.length?`<div class="cl-cold"><b>いま空の種別（${cold.length}）</b>${cold.map(c=>
+     `<span class="cl-cold-chip" title="${esc(c.label)}｜${esc(c.note)}">`
+     +`<i aria-hidden="true">${esc(c.icon||'')}</i>${esc(c.label)}`
+     +`${c.kept?`<em>${c.kept}件は残します</em>`:''}</span>`).join('')}</div>`:''}
+   <div class="cl-foot">
+    <div class="cl-foot-sum">選んでいるのは <b>${sel.cats.length}種別</b>
+     ${sel.n?`／ <b>${clSize(sel.bytes)}（${sel.n}件）</b>が消えます`:'／ <b>消えるものはありません</b>'}</div>
+    <div class="cl-foot-act">
+     <button type="button" id="clReload" class="mm-btn-ghost sm">調べ直す</button>
+     <button type="button" id="clRun" class="mm-btn-primary"${sel.n?'':' disabled'}
+       title="${sel.n?'選んだ種別のファイルを消します（消す前に確認します）':'選んだ種別に消せるファイルがありません'}">選んだものを掃除する${sel.n?`（${clSize(sel.bytes)}）`:''}</button>
+    </div>
+   </div>
+   <div class="cl-auto">
+    <h4>定期掃除 — ${pol.auto?`<span class="cl-on">入</span> ${esc(clEvery(pol.intervalSec))}`:'<span class="cl-off">切</span>'}</h4>
+    <p class="cl-auto-lead">アプリが動いているあいだ、<b>自動掃除の対象</b>の種別だけを決めた間隔で片付けます。
+     <b>バイトコードと古い作業フォルダは自動では消しません</b>（消すと次の起動が一度だけ遅くなる／中身を確かめてから消したいため）。</p>
+    <div class="cl-auto-fields">
+     <label class="mm-field mm-w-md"><span>定期掃除</span>
+      <select id="clAuto">
+       <option value="on"${pol.auto?' selected':''}>入（決めた間隔で片付ける）</option>
+       <option value="off"${pol.auto?'':' selected'}>切（押したときだけ片付ける）</option></select>
+      <small class="mm-field-hint">切にしても、この画面から手で掃除できます。</small></label>
+     <label class="mm-field mm-w-sm"><span>掃除の間隔</span>
+      <span class="mm-field-num"><input type="number" id="clInterval" min="300" step="300"
+        value="${esc(String(v.cleanup_interval_sec||pol.intervalSec||21600))}"><em>秒</em></span>
+      <small class="mm-field-hint">300秒（5分）以上。既定は21600秒＝6時間です。</small></label>
+     <label class="mm-field mm-w-xs"><span>残す世代</span>
+      <span class="mm-field-num"><input type="number" id="clGens" min="1" max="50" step="1"
+        value="${esc(String(v.cleanup_keep_generations||pol.keepGenerations||3))}"><em>世代</em></span>
+      <small class="mm-field-hint">ログ・バックアップで<b>新しいほうから残す本数</b>です。</small></label>
+     <label class="mm-field mm-w-xs"><span>残す日数</span>
+      <span class="mm-field-num"><input type="number" id="clDays" min="1" max="3650" step="1"
+        value="${esc(String(v.cleanup_keep_days||pol.keepDays||14))}"><em>日</em></span>
+      <small class="mm-field-hint">この日数以内のものは、世代の数に関わらず残します。</small></label>
+    </div>
+    <div class="mm-cd-actions"><button type="button" id="clSaveCfg" class="mm-btn-primary">この設定を保存</button>
+     <span class="mm-form-hint">保存後すぐ反映されます（再起動は要りません）。</span></div>
+    <dl class="cl-kv cl-places">
+     <dt>最後の掃除</dt><dd>${st.lastRunAt?`${clWhen(st.lastRunAt)}・${st.lastRemoved||0}件 ${clSize(st.lastFreed||0)}`:'まだ走っていません'}</dd>
+     ${st.lastError?`<dt>前回の言い分</dt><dd class="is-warn">${esc(st.lastError)}</dd>`:''}
+     <dt>写しの置き場</dt><dd><code title="${esc(places.cache||'')}">${esc(places.cache||'—')}</code></dd>
+     <dt>ログの置き場</dt><dd><code title="${esc(places.logs||'')}">${esc(places.logs||'—')}</code></dd>
+     <dt>控えの置き場</dt><dd><code title="${esc(places.backup||'')}">${esc(places.backup||'—')}</code></dd>
+    </dl>
+   </div>`;
+  /* **チェックは`click`で受ける**（§9.90。`change`は`click`の後に飛ぶため、
+     行ごと作り直す作りでは反映されない）。ここは器だけを描き直す。 */
+  list.querySelectorAll('[data-cl-pick]').forEach(b=>b.onclick=()=>{
+   const k=b.dataset.clPick;
+   if(b.checked)pick.add(k);else pick.delete(k);
+   renderCleanup();
+  });
+  $('#clReload').onclick=()=>{cleanupState.loaded=false;loadCleanupMaint(true)};
+  const run=$('#clRun');
+  if(run)run.onclick=()=>cleanupRun();
+  $('#clSaveCfg').onclick=async()=>{
+   /* **送るのはこの4つだけ。** パス設定の保存は「送られてきた項目だけ」を
+      書くので、他の設定を巻き添えにしない（§9.192）。 */
+   const body={cleanup_auto_enabled:String($('#clAuto').value||'on'),
+               cleanup_interval_sec:String($('#clInterval').value||'').trim(),
+               cleanup_keep_generations:String($('#clGens').value||'').trim(),
+               cleanup_keep_days:String($('#clDays').value||'').trim(),
+               user_id:String($('#masterUserId')?.value||'').trim()};
+   try{
+    setMaintLoading(true,'保存しています…');
+    await api('/api/path-config-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    pathConfigState.loaded=false;
+    showToast&&showToast('保存しました','次の掃除から新しい決まりで片付けます',4000);
+   }catch(e){showToast&&showToast('保存できませんでした',e.message,7000)}
+   finally{setMaintLoading(false);cleanupState.loaded=false;loadCleanupMaint(true)}
+  };
+ }
+ /* 消す。**確認はまとめて1回**（§9.170）。何が消えるかは種別ごとの件数と
+    容量で出す——「本当によろしいですか？」だけでは読まずに押す癖が付く。 */
+ async function cleanupRun(){
+  if(cleanupState.busy)return;
+  const sel=clPickedStats();
+  if(!sel.n)return;
+  const body=`<p class="confirm-modal-message">次のファイルを消します。<b>取り消せません。</b></p>
+   <ul class="cl-confirm">${sel.cats.filter(c=>c.removable).map(c=>
+     `<li><b>${esc(c.label)}</b>${c.auto?'':'<i>自動掃除の対象外</i>'}<em>${clSize(c.removableBytes)}・${c.removable}件</em></li>`).join('')}</ul>
+   <p class="confirm-modal-message">合計 <b>${clSize(sel.bytes)}（${sel.n}件）</b>。
+    どれも<b>作り直せるファイル</b>で、測定データ・マスタ・共有スケジュールには触れません。</p>`;
+  const ok=typeof confirmModal==='function'
+   ? await confirmModal({title:'不要ファイルを消します',eyebrow:'CLEANUP',bodyHtml:body,
+                         confirmLabel:'掃除する',danger:true})
+   : window.confirm(`${clSize(sel.bytes)}（${sel.n}件）を消します。よろしいですか？`);
+  if(!ok)return;
+  cleanupState.busy=true;
+  try{
+   setMaintLoading(true,'掃除しています…');
+   const r=await api('/api/cleanup/run',{method:'POST',headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({categories:[...clPicked()]})});
+   /* **消せなかったものは失敗にしない**（§9.108）——待てば消せるので次の
+      掃除で消える。黙らずに件数と理由を言う（§CLAUDE 4）。 */
+   showToast&&showToast(`${r.removed||0}件・${clSize(r.bytes||0)}を片付けました`,
+     r.failed?`${r.failed}件は使用中のため残りました（次の掃除で消えます）`:'',
+     r.failed?7000:3600);
+  }catch(e){showToast&&showToast('掃除できませんでした',e.message,7000)}
+  finally{cleanupState.busy=false;setMaintLoading(false);cleanupState.loaded=false;loadCleanupMaint(true)}
+ }
+
+
+ /* ================================================================
+    専用タブを持たないマスタを、階層の中で編集する（§9.249 ②、利用者の指示）
+    ----------------------------------------------------------------
+    「テーブル生データ内で閲覧可能なマスタかつ、テーブル生データマスタの配置
+      された階層にないものは、この階層に配置し、編集可能な形に実装してください。」
+
+    これまで`master.sqlite3`の表のうちタブを持たないものは、「テーブル生データ」
+    から**眺めることしかできなかった**。直したいときは、その表を書いている
+    画面（列の設定パネル・登録フィルタ・行の色…）を思い出して探しに行く必要が
+    あり、**どこからも直せない表**（移行済みの旧マスタ）も混ざっていた。
+
+    作り（**新しい画面を作らない**のが要点・§9.120）:
+     ・**表の一覧と扱いはサーバーが答える**（`/api/master-table/catalog`）。
+       画面には表の名前を1つも書かない（§9.163）。
+     ・答えを**`def`の形へ翻訳するだけ**で、一覧・編集モーダル・削除・検索は
+       既存の汎用CRUDがそのまま動く（`endpoint`＋`/update`＋`/delete`の
+       4本セット・§CLAUDE「マスタ管理の汎用CRUDは4本セット」）。
+     ・**入力欄は表の作り（PRAGMA）から組み立てる**——列を足しても書き足さない。
+     ・**ふだんの直し方があるものは、それを画面に書く**（§CLAUDE 6）。
+       ここで直せることと、専用の画面があることは両立する。
+     ・**移行済みの表は別の群にして「もう読みません」と書く**（§4）。
+       直せると書いておいて画面が変わらないのは、押せないボタンより悪い。
+    ================================================================ */
+ let mtState={loaded:false,loading:null,tables:[],err:''};
+ /* 列の作りから入力欄を組み立てる。**監査列と主キーは出さない**
+    （サーバーが埋める・付け替えられない）。 */
+ function mtFieldOf(col,longNames){
+  const name=String(col.name||'');
+  const decl=String(col.decl||'').toUpperCase();
+  const f={k:name,label:name};
+  if(/INT|REAL|NUM|FLOA|DOUB/.test(decl))f.type='number';
+  else if(longNames.some(x=>name.indexOf(x)>=0))Object.assign(f,{type:'textarea',rows:4,size:'full'});
+  /* **必須は「空を受け付けない列」だけ**。既定値のある列は空でも通る。 */
+  if(col.notnull&&col.default===null&&!/INT|REAL|NUM/.test(decl))f.required=true;
+  return f;
+ }
+ function mtDefOf(t){
+  const longNames=t.long||[];
+  const cols=(t.schema||[]).filter(c=>!c.audit&&!c.pk);
+  const fields=cols.map(c=>mtFieldOf(c,longNames));
+  /* 一覧の列は**先頭から6本まで**。全部並べると1列あたりが潰れて読めない
+     （残りは編集モーダルで見る。§CLAUDE 11「入れ物は中身の長さから決める」）。 */
+  const shown=cols.slice(0,6);
+  const retired=t.kind==='retired';
+  const where=t.where?`ふだんは**${t.where}**から書き換えています。`:'';
+  return {group:retired?'retired':'internal',key:'mt:'+t.table,
+          label:t.label||t.table,icon:(t.label||t.table).slice(0,1),
+          endpoint:'/api/master-table/'+encodeURIComponent(t.table),
+          hasDelete:!retired,editorModal:!retired,readOnly:retired,
+          rawTable:t.table,rawKind:t.kind,
+          titleText:t.table+(t.note?' — '+t.note:''),
+          /* **消すのは本当に行を消すこと**。汎用の言い回し（無効化）は
+             有効フラグを持つマスタのためのもので、ここでは嘘になる。 */
+          deleteWord:'削除',
+          fields:retired?[]:fields,
+          cols:shown.length?shown.map((c,i)=>({k:c.name,label:c.name,grow:i===0?2:1}))
+                          :[{k:'id',label:'行'}],
+          /* **説明は`**強調**`で書く**（§9.222 ⑧）——`hintHtml()`は
+             エスケープしてから印を`<b>`へ変えるので、生のHTMLを書くと
+             タグがそのまま画面に出る。 */
+          hint:(retired
+            ? '**この表はアプリがもう読みません。**'+(t.where?t.where+'。':'')
+              +'ここに残してあるのは、移行前の中身を見返せるようにするためです。'
+              +'**書き換えても画面は変わりません**——だからこの表は読み取り専用にしてあります。'
+            : (t.note?t.note+'。':'')+where
+              +'ここでは**行をそのまま**足す・直す・消せます。'
+              +'列の意味はアプリの内部の決まりに沿っているので、'
+              +'**値の形（書き方）を変えると、その設定は読めなくなることがあります**。'
+              +'迷ったときは、ふだんの画面から設定し直してください。')};
+ }
+ async function loadMasterTableCatalog(force){
+  if(!force&&mtState.loaded)return mtState.tables;
+  if(mtState.loading)return mtState.loading;
+  mtState.loading=(async()=>{
+   try{
+    const r=await api('/api/master-table/catalog');
+    mtState.tables=(r&&r.tables)||[];mtState.err=(r&&r.error)||'';
+   }catch(e){mtState.tables=[];mtState.err=e.message}
+   mtState.loaded=true;mtState.loading=null;
+   /* 「ここで編集」→「ふだんは別画面」の順（作業導線と視覚導線を揃える）。 */
+   const rank={here:0,elsewhere:1,retired:2};
+   rawDefs=mtState.tables.filter(t=>t.kind!=='covered')
+    .sort((a,b)=>(rank[a.kind]??9)-(rank[b.kind]??9)||String(a.table).localeCompare(b.table,'ja'))
+    .map(mtDefOf);
+   renderMaintNav();syncNav();
+   return mtState.tables;
+  })();
+  return mtState.loading;
+ }
  /* ---------- テーブル生データ(旧「マスタ一覧」、ARCHITECTURE.md「マスタ管理の画面形態」で統合) ----------
     master.sqlite3のテーブルをそのまま読み取り専用で表示する。上のタブが
     面倒を見ていないテーブル(表示マスタ・スケジュール列表示マスタ・
@@ -4260,6 +4897,7 @@
     return;
    }
   }
+  try{await loadMasterTableCatalog()}catch(e){/* 読めなくても一覧は出す */}
   renderRawTableForm();
   await loadRawTableRows();
  }
@@ -4267,15 +4905,30 @@
   const form=$('#masterMaintForm');if(!form)return;
   if(!rawTableState.tables.length){form.innerHTML='<div class="mm-form-head"><span class="mm-mode-chip new">テーブルがありません</span></div>';return}
   const opts=rawTableState.tables.map(t=>`<option value="${esc(t)}"${t===rawTableState.table?' selected':''}>${esc(t)}</option>`).join('');
+  /* **行き止まりにしない**（§9.249 ②）。ここは読むだけの画面なので、
+     **その表をどこから直すのか**を必ず出して連れて行く（§CLAUDE 4・6）。
+     判定はサーバーの答え（`/api/master-table/catalog`）で、画面には
+     表と画面の対応を書き写さない（§9.163）。 */
+  const info=(mtState.tables||[]).find(t=>t.table===rawTableState.table);
+  const goKey=info?(info.kind==='covered'?info.tab:(info.kind==='retired'?'':'mt:'+info.table)):'';
+  const goLabel=goKey?(allDefs().find(d=>d.key===goKey)||{}).label||'':'';
+  const where=!info?''
+   :(info.kind==='retired'
+     ?`<p class="mm-def-hint">${hintHtml('**この表はアプリがもう読みません。**'+(info.where||''))}</p>`
+     :(goLabel?`<div class="mm-raw-goto"><span>この表は<b>${esc(goLabel)}</b>から編集できます</span>`
+       +`<button type="button" id="rawTableGo" class="mm-btn-primary sm">${esc(goLabel)}を開く</button></div>`:''));
   form.innerHTML=`<div class="mm-form-head">
     <label class="mm-field mm-field-inline"><span>テーブル</span><select id="rawTableSelect">${opts}</select></label>
     <button type="button" id="rawTableReload" class="mm-btn-ghost sm">再読込</button>
-    <span class="mm-form-hint">読み取り専用です。編集は左の各マスタタブから行ってください。</span>
+    <span class="mm-form-hint">ここは読むだけの画面です。編集は表ごとの専用タブから行います。</span>
    </div>
-   <p class="mm-def-hint">マスタDB(master.sqlite3)のテーブルをそのまま表示します。専用タブが用意されていないテーブルの中身を確認したいときに使います。先頭200件まで表示します。</p>`;
+   <p class="mm-def-hint">${hintHtml('マスタDB(master.sqlite3)のテーブルをそのまま表示します。**専用タブを持たないマスタも「内部データ」から編集できます**（この一覧はどの表でも中身を確かめられる最後の手段です）。先頭200件まで表示します。')}</p>
+   ${where}`;
   form.onsubmit=ev=>ev.preventDefault();
-  const sel=$('#rawTableSelect');if(sel)sel.onchange=()=>{rawTableState.table=sel.value;loadRawTableRows()};
+  const sel=$('#rawTableSelect');if(sel)sel.onchange=()=>{rawTableState.table=sel.value;renderRawTableForm();loadRawTableRows()};
   const rb=$('#rawTableReload');if(rb)rb.onclick=()=>loadRawTableRows();
+  const go=$('#rawTableGo');
+  if(go)go.onclick=()=>{maintState.defKey=goKey;maintState.editing=null;maintState.query='';syncNav();loadMaint(true)};
  }
  async function loadRawTableRows(){
   const list=$('#masterMaintList');if(!list)return;
@@ -4302,7 +4955,7 @@
   WL.enterView('master');
   /* どのタブを開くか指定できる(§9.183)。左メニューの「再起動待ち」から
      押したときに、データ接続のタブを開いた状態で出すため。 */
-  if(defKey&&MASTER_DEFS.some(d=>d.key===defKey))maintState.defKey=defKey;
+  if(defKey&&allDefs().some(d=>d.key===defKey))maintState.defKey=defKey;
   const panel=ensureMaintPanel();
   WL.syncViewToolbar('master');   // 更新者ID(#mmHead)はパネル生成後にヘッダーへ載せる
   renderMaintNav();
@@ -4311,6 +4964,9 @@
   maintState.editing=null;maintState.query='';
   const se=$('#masterMaintSearch');if(se)se.value='';
   syncNav();panel.hidden=false;loadMaint(true);
+  /* 専用タブを持たないマスタ（§9.249 ②）。**画面は待たせない**——届いたら
+     ナビを描き直す。読めなくても他のタブは今までどおり使える。 */
+  loadMasterTableCatalog().catch(()=>{});
   requestAnimationFrame(()=>{const u=$('#masterUserId');if(u&&!u.value){u.focus();return}const s=$('#masterMaintSearch');if(s)s.focus()});
  }
  window.openMasterMaint=openMasterMaint;

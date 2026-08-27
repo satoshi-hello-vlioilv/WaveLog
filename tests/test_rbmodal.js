@@ -1,0 +1,208 @@
+/* test_rbmodal.js: 帳票ブロックの編集窓を組み直す（§9.249 ③）
+   ============================================================
+   利用者の指示:
+     「帳票ブロックマスタに関して、モーダルを大きくしてください。大きくした
+      モーダルに合うようにバランスよく再構築して、もっとわかりやすく視覚化
+      した形で表示を工夫し設定しやすいものを作成してください。文字が多い
+      わりにわかりにくく、情報の階層化、チャンク化も駆使し」
+
+   ここで固定すること:
+    - 窓が**大きく2段組み**（左＝決めること／右＝刷り上がりの見本）で、
+      **横に溢れない**
+    - 決めることが**4つの群**に束ねてある（チャンク化）
+    - 種別・繰り返し・紙に出すが**見て選ぶ札**で、**新規でも既定が選ばれている**
+      （選ばれていないと `data-when` で②の欄が丸ごと消える。実際に起きた）
+    - 幅・高さが**紙のマス目**で決まり、**見本が実際に変わる**
+    - 説明が**縦に長い列にならない**（短くして続きは`?`のtitleへ）
+    - 保存の形は今までどおり（札が書いた値がそのまま保存される）
+   ============================================================ */
+const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+const B='http://127.0.0.1:5029';
+const TAG='rb-'+Date.now().toString(36);
+const post=(p,x)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},
+  body:JSON.stringify(x)});
+const get=p=>fetch(B+p).then(r=>r.json());
+
+let b=null,page=null;
+(async()=>{
+ b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
+ page=await b.newPage({viewport:{width:1760,height:1000}});
+ const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
+ const errs=[];
+ page.on('pageerror',e=>errs.push(e.message));
+ page.on('dialog',d=>d.accept());
+ const made=[];
+ try{
+  await post('/api/access-mode',{mode:'edit'});
+  await page.goto(B+'/',{waitUntil:'domcontentloaded'});
+  await page.waitForSelector('#openMasterMaint',{timeout:30000});
+  await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:30000});
+  await page.click('#openMasterMaint');
+  await page.waitForSelector('#masterMaintNav [data-master="reportBlock"]',{timeout:20000});
+  await page.evaluate(()=>{
+   const el=document.querySelector('#masterUserId');
+   if(el&&!el.value){el.value='tests';el.dispatchEvent(new Event('change',{bubbles:true}))}
+  });
+  await page.click('#masterMaintNav [data-master="reportBlock"]');
+  await page.waitForSelector('#masterMaintAdd',{timeout:20000});
+  await page.click('#masterMaintAdd');
+  await page.waitForSelector('#maintEditorModal .mm-editor-dialog.is-builder',{state:'visible',timeout:15000});
+  await page.waitForSelector('.rb-paper-grid > i',{timeout:10000});
+
+  /* ---- 1) 大きい窓・2段組み・溢れない ---- */
+  const box=await page.evaluate(()=>{
+   const dlg=document.querySelector('.mm-editor-dialog');
+   const body=document.querySelector('.mm-editor-body');
+   const aside=document.querySelector('.rb-aside');
+   const fields=document.querySelector('.mm-form-fields');
+   const r=x=>x?x.getBoundingClientRect():null;
+   const d=r(dlg),a=r(aside),f=r(fields);
+   return {w:d&&Math.round(d.width),h:d&&Math.round(d.height),
+     asideX:a&&Math.round(a.x),asideW:a&&Math.round(a.width),
+     fieldsX:f&&Math.round(f.x),fieldsRight:f&&Math.round(f.right),
+     overflowX:Math.round(body.scrollWidth-body.clientWidth),
+     inView:d&&d.right<=window.innerWidth+1&&d.left>=-1};
+  });
+  rec('窓が大きい（1700pxの窓で1400px以上）',box.w>=1400,JSON.stringify(box));
+  rec('窓が画面からはみ出していない',box.inView===true,JSON.stringify({w:box.w}));
+  rec('左＝決めること／右＝見本の2段組み',
+      box.asideX>box.fieldsX&&box.fieldsRight<=box.asideX+1,
+      JSON.stringify({fieldsRight:box.fieldsRight,asideX:box.asideX}));
+  rec('横に溢れない',box.overflowX<=1,String(box.overflowX));
+
+  /* ---- 2) 決めることが4つの群に束ねてある ---- */
+  const groups=await page.evaluate(()=>[...document.querySelectorAll('#maintEditorForm .mm-fieldgroup')].map(x=>x.textContent.trim()));
+  rec('決めることが4つの群に束ねてある',groups.length===4,JSON.stringify(groups));
+  rec('群の並びが決める順番と同じ',
+      groups[0].startsWith('①')&&groups[1].startsWith('②')&&groups[2].startsWith('③')&&groups[3].startsWith('④'),
+      JSON.stringify(groups));
+
+  /* ---- 3) 見て選ぶ札。**新規でも既定が選ばれている** ---- */
+  const cards=await page.evaluate(()=>{
+   const of=k=>{
+    const on=document.querySelector(`[data-card="${k}"].is-on`);
+    const hidden=document.querySelector(`#maintEditorForm [data-field="${k}"]`);
+    return {n:document.querySelectorAll(`[data-card="${k}"]`).length,
+            on:on?on.dataset.cardV:'',v:hidden?hidden.value:''};
+   };
+   return {kind:of('kindText'),repeat:of('repeatText'),enabled:of('enabledText')};
+  });
+  rec('種別・繰り返し・紙に出すが札で選べる',
+      cards.kind.n===2&&cards.repeat.n===2&&cards.enabled.n===2,JSON.stringify(cards));
+  rec('新規でも既定の札が選ばれている（選ばれていないと②が消える）',
+      cards.kind.v==='項目の並び'&&cards.repeat.v&&cards.enabled.v==='有効',JSON.stringify(cards));
+  const shown=await page.evaluate(()=>{
+   const fb=document.querySelector('[data-fb]');
+   return {builder:!!fb&&fb.offsetParent!==null,
+           area:(()=>{const t=document.querySelector('#maintEditorForm textarea[data-field="text"]');
+             return !!t&&t.closest('.mm-field').offsetParent!==null})()};
+  });
+  rec('②に「載せる項目」が出ている（既定が選ばれているから）',
+      shown.builder&&!shown.area,JSON.stringify(shown));
+
+  /* ---- 4) 幅は紙のマス目で決まり、見本が実際に変わる ---- */
+  const measure=()=>page.evaluate(()=>{
+   const bk=document.querySelector('#rbPaperBlock').getBoundingClientRect();
+   const pg=document.querySelector('#rbPaperGrid').getBoundingClientRect();
+   return {span:document.querySelector('#maintEditorForm [data-field="span"]').value,
+           rows:document.querySelector('#maintEditorForm [data-field="rows"]').value,
+           w:Math.round(bk.width/pg.width*100),h:Math.round(bk.height/pg.height*100),
+           read:document.querySelector('#rbFactSpan').textContent,
+           rowsRead:document.querySelector('#rbFactRows').textContent};
+  });
+  const m0=await measure();
+  await page.click('#maintEditorForm .mm-span-cell:nth-child(6)');
+  await page.waitForTimeout(150);
+  const m1=await measure();
+  rec('紙のマス目を押すと幅が決まる',m1.span==='6',JSON.stringify(m1));
+  rec('見本の塊の幅が実際に変わる',m1.w!==m0.w&&Math.abs(m1.w-50)<=2,
+      JSON.stringify({before:m0.w,after:m1.w}));
+  rec('何マス中の何分かを文字で出す',/6 \/ 12/.test(m1.read)&&/1\/2/.test(m1.read),m1.read);
+  await page.click('#maintEditorForm .mm-rows-opt:nth-child(4)');
+  await page.waitForTimeout(150);
+  const m2=await measure();
+  rec('高さを押すと見本の高さが変わる',m2.rows==='4'&&m2.h!==m1.h&&Math.abs(m2.h-33)<=2,
+      JSON.stringify({rows:m2.rows,before:m1.h,after:m2.h}));
+  rec('高さも文字で言う（中身なりか固定か）',/4行/.test(m2.rowsRead),m2.rowsRead);
+
+  /* ---- 5) 種別を変えると②の中身が入れ替わり、見本も変わる ---- */
+  await page.click('[data-card="kindText"][data-card-v="エリア（枠と文字）"]');
+  await page.waitForTimeout(200);
+  const area=await page.evaluate(()=>{
+   const fb=document.querySelector('[data-fb]');
+   const t=document.querySelector('#maintEditorForm textarea[data-field="text"]');
+   return {builder:!!fb&&fb.offsetParent!==null,
+           area:!!t&&t.closest('.mm-field').offsetParent!==null,
+           sec:document.querySelector('#rbSection').className,
+           cols:document.querySelector('#rbFactCols').textContent};
+  });
+  rec('エリアにすると②が「置く文字」へ入れ替わる',!area.builder&&area.area,JSON.stringify(area));
+  rec('エリアでは見本も枠だけの形になる',/is-area/.test(area.sec),area.sec);
+  rec('エリアでは列数を「—」と言う（効かない設定を数字で見せない）',
+      area.cols.indexOf('—')===0,area.cols);
+  await page.click('[data-card="kindText"][data-card-v="項目の並び"]');
+  await page.waitForTimeout(200);
+
+  /* ---- 6) 説明が縦に長い列にならない ---- */
+  const hints=await page.evaluate(()=>[...document.querySelectorAll('#maintEditorForm .mm-field-hint')]
+    .map(h=>({t:h.textContent.trim().slice(0,16),h:Math.round(h.getBoundingClientRect().height)}))
+    .filter(x=>x.h>72));
+  rec('説明が縦に長い列にならない（3行以内）',hints.length===0,JSON.stringify(hints));
+  const more=await page.evaluate(()=>{
+   const s=[...document.querySelectorAll('#maintEditorForm .mm-field>span')].filter(x=>x.querySelector('.mm-more'));
+   return {n:s.length,titled:s.filter(x=>(x.getAttribute('title')||'').length>20).length};
+  });
+  rec('短くした説明の続きは見出しのtitleから読める',more.n>=4&&more.n===more.titled,JSON.stringify(more));
+
+  /* ---- 7) 札が書いた値がそのまま保存される ---- */
+  await page.fill('#maintEditorForm [data-field="name"]',TAG+'塊');
+  await page.evaluate(()=>{
+   const all=document.querySelector('[data-equipment-all="equipment"]');
+   if(all&&!all.checked){all.checked=true;all.dispatchEvent(new Event('change',{bubbles:true}))}
+  });
+  await page.click('[data-card="repeatText"][data-card-v="分割後の子ロットごと"]');
+  await page.click('#maintEditorSave');
+  await page.waitForTimeout(1500);
+  const rows=await get('/api/report-block-master');
+  const saved=(rows.items||[]).find(x=>x.name===TAG+'塊');
+  if(saved)made.push(saved.id);
+  rec('札で選んだ値がそのまま保存される',
+      !!saved&&saved.kindText==='項目の並び'&&saved.repeatText==='分割後の子ロットごと'
+      &&String(saved.span)==='6'&&String(saved.rows)==='4',
+      JSON.stringify(saved&&{k:saved.kindText,r:saved.repeatText,s:saved.span,rw:saved.rows}));
+
+  /* ---- 8) 開き直すと保存した値が札に出ている ---- */
+  if(saved){
+   await page.evaluate(id=>{
+    const row=[...document.querySelectorAll('#masterMaintList .mm-row')]
+      .find(r=>r.textContent.indexOf(id)>=0);
+    if(row)row.click();
+   },TAG+'塊');
+   await page.waitForTimeout(900);
+   const back=await page.evaluate(()=>{
+    const on=k=>{const e=document.querySelector(`[data-card="${k}"].is-on`);return e?e.dataset.cardV:''};
+    return {kind:on('kindText'),repeat:on('repeatText'),
+            span:document.querySelector('#maintEditorForm [data-field="span"]')?.value,
+            spanOn:document.querySelectorAll('.mm-span-cell.is-on').length,
+            name:document.querySelector('#rbPaperName')?.textContent};
+   });
+   rec('開き直すと保存した値が札とマス目に出ている',
+       back.repeat==='分割後の子ロットごと'&&back.span==='6'&&back.spanOn===6,
+       JSON.stringify(back));
+   rec('見本の題が編集中の塊の名前になる',String(back.name).indexOf(TAG)>=0,String(back.name));
+  }
+  rec('画面のエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
+ }catch(e){
+  rec('FATAL',false,e.message);
+ }finally{
+  /* **後始末**（§9.121）。db/master.sqlite3は実行をまたいで生き延びる。 */
+  for(const id of made){
+   try{await post('/api/report-block-master/delete',{id,user_id:'tests'})}catch(e){}
+  }
+  if(b)await b.close();
+ }
+ const ok=R.filter(x=>x.ok).length;
+ console.log(`\n== ${ok}/${R.length} PASS ==`);
+ process.exit(ok===R.length?0:1);
+})();

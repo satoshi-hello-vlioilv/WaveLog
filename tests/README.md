@@ -127,7 +127,7 @@ NODE_PATH=/opt/node22/lib/node_modules /opt/node22/bin/node tests/test_nav.js
 
 | 残したもの | 起きたこと |
 |---|---|
-| アクセスモード | `test_nav.js`がscheduleのまま終了 → 後続の`test_p11.js`が読み取り専用で落ちた |
+| アクセスモード | `test_nav.js`がscheduleのまま終了 → 後続の`test_master.js`（旧`test_p11.js`）が読み取り専用で落ちた（§9.249 ④で`test_nav.js`はモードを切り替えなくなった） |
 | 編集セッション(ロック) | `test_wkfast.js`がロックを握ったまま終了 → `test_cols.js`が「他端末が編集中」の画面になった |
 | 追加した作業予定 | 実行のたびに増え続け、描画が遅くなって固定待ちのテストが時間切れになった |
 | バックアップ行 | 残骸が計画外実績として合成され、別テストの表示内容が変わった |

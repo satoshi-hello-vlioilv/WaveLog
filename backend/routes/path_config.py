@@ -77,6 +77,10 @@ _PATH_CONFIG_NUMERIC_FIELDS={
  'schedule_watch_pause_sec':('取り込んだあと休む時間(秒)',0),
  'schedule_owner_port':('持ち主の受け口のポート',1025),
  'schedule_owner_ttl_sec':('持ち主の目印の有効期限(秒)',30),
+ # 不要ファイルの掃除(§9.249 ①)。最小値は file_cleanup 側の下限と揃える。
+ 'cleanup_interval_sec':('不要ファイルの掃除の間隔(秒)',300),
+ 'cleanup_keep_days':('掃除で残す日数',1),
+ 'cleanup_keep_generations':('掃除で残す世代数',1),
 }
 
 def _pc_name_now():
@@ -97,6 +101,7 @@ _PATH_CONFIG_CHOICE_FIELDS={
  'schedule_watch_enabled':('共有スケジュールの見張り',('auto','on','off')),
  'schedule_owner_enabled':('共有スケジュールの書き込み役',('on','off')),
  'builtin_quality_join':('既定の品質データ結合',('on','off')),
+ 'cleanup_auto_enabled':('不要ファイルの定期掃除',('on','off')),
 }
 # 自由に書ける文字列の設定（置き場と端末名）。空欄なら既定へ戻る。
 # `pc_name`はこの端末の呼び名(§9.208 ⑧)——OSから取れない端末が名乗り直すため。
