@@ -1298,7 +1298,12 @@
   const setText=(id,text)=>{const el=form.querySelector(id);if(el)el.textContent=text};
   setText('#rbFactSpan',`${span} / 12 マス（${mmFracText(span,12)}）`);
   setText('#rbFactRows',rowsRaw?`${rowsRaw}行（固定）`:'中身なり（描いてから測ります）');
-  setText('#rbFactCols',area?'—（エリアは値を出しません）':(v('cols')?`${v('cols')}列`:'中身の数から決まります'));
+  /* **空欄でも「いま何列で出るか」を言う**（§CLAUDE 6）。`reportSection`の
+     既定は2列なので、「中身の数から決まります」だけだと何列になるか読めない。 */
+  const colsRaw=v('cols');
+  const colsEff=Math.max(1,Math.min(4,Number(colsRaw)||2));
+  setText('#rbFactCols',area?'—（エリアは値を出しません）'
+    :(colsRaw?`${colsRaw}列`:`未指定（いまは${colsEff}列）`));
   setText('#rbFactRepeat',area?'—':(v('repeatText')==='分割後の子ロットごと'?'子ロットの数だけ':'1回だけ'));
   /* 節そのもの（紙に出る形）。**列数と載せた項目をそのまま並べる**。 */
   const sec=form.querySelector('#rbSection');
@@ -1311,7 +1316,7 @@
    return;
   }
   const rowsData=fbParse(v('content'));
-  const cols=Math.max(1,Math.min(4,Number(v('cols'))||2));
+  const cols=colsEff;
   sec.className='rb-sec';
   sec.style.setProperty('--rb-cols',String(cols));
   sec.innerHTML=`<div class="rb-sec-head">${esc(v('name')||'（名前）')}</div>`
@@ -1396,8 +1401,17 @@
    box.dataset.fbWired='1';
    const hidden=box.querySelector('input[data-field]');
    const state={rows:fbParse(hidden?hidden.value:''),cat:'',q:''};
+   /* **隠し欄へ書いたら`change`を飛ばす**（§9.218 ②「`.value`への代入では
+      `change`が飛ばない」）。飛ばさないと、同じフォームの中で値を見ている
+      もの——刷り上がりの見本（§9.249 ③）・`data-when`の出し入れ——が
+      **一度も気づけない**（見本が「載せる項目がありません」のままだった）。 */
+   const push=()=>{
+    if(!hidden)return;
+    hidden.value=fbText(state.rows);
+    hidden.dispatchEvent(new Event('change',{bubbles:true}));
+   };
    const sync=()=>{
-    if(hidden)hidden.value=fbText(state.rows);
+    push();
     drawCols();drawChosen();drawList();
    };
    /* 列数は**「内訳の列数」の欄が持つ**（§CLAUDE 8。同じ数を2箇所に置くと
@@ -1470,7 +1484,7 @@
         値だけを控えておき、書き戻しは隠し欄へ直接行う。 */
      inp.oninput=()=>{
       state.rows[Number(inp.closest('.fb-row').dataset.fbI)].label=inp.value;
-      if(hidden)hidden.value=fbText(state.rows);
+      push();
      };
     });
     let from=-1;
@@ -4574,7 +4588,8 @@
  let cleanupState={data:null,loaded:false,picked:null,busy:false};
  function clSize(n){
   const v=Number(n)||0;
-  if(v<=0)return '0';
+  /* **単位を落とさない**（§CLAUDE 6）。「0・1件」だと0が何の0なのか読めない。 */
+  if(v<=0)return '0B';
   if(v<1024)return v+'B';
   if(v<1048576)return (v/1024).toFixed(0)+'KB';
   if(v<1073741824)return (v/1048576).toFixed(1)+'MB';
@@ -4824,7 +4839,10 @@
  }
  function mtDefOf(t){
   const longNames=t.long||[];
-  const cols=(t.schema||[]).filter(c=>!c.audit&&!c.pk);
+  /* **「触らせない列」の判定はサーバーの1つの印を見る**（§9.163）。
+     監査列と、rowidの別名になる`INTEGER PRIMARY KEY`だけが`auto`。
+     利用者が決める鍵（`TEXT PRIMARY KEY`）は編集できる。 */
+  const cols=(t.schema||[]).filter(c=>!(c.auto!==undefined?c.auto:(c.audit||c.pk)));
   const fields=cols.map(c=>mtFieldOf(c,longNames));
   /* 一覧の列は**先頭から6本まで**。全部並べると1列あたりが潰れて読めない
      （残りは編集モーダルで見る。§CLAUDE 11「入れ物は中身の長さから決める」）。 */

@@ -142,8 +142,15 @@ def _schema(c, table):
  cur.execute(f'PRAGMA table_info([{table}])')
  out = []
  for _cid, name, decl, notnull, dflt, pk in cur.fetchall():
+  # **「サーバーが埋めるので触らせない列」は1つの印で答える**(§9.163)。
+  # 監査列と、rowidの別名になる`INTEGER PRIMARY KEY`がそれ。
+  # **主キーだからと一律に外さないこと**——`[設定キー] TEXT PRIMARY KEY`の
+  # ように**利用者が決める鍵**を持つ表では、外すと1行も足せなくなる。
+  rowid_pk = bool(pk) and str(decl or '').strip().upper() == 'INTEGER'
   out.append({'name': str(name), 'decl': str(decl or ''), 'notnull': bool(notnull),
-              'default': dflt, 'pk': bool(pk), 'audit': str(name) in AUDIT_NAMES})
+              'default': dflt, 'pk': bool(pk), 'rowidPk': rowid_pk,
+              'audit': str(name) in AUDIT_NAMES,
+              'auto': rowid_pk or str(name) in AUDIT_NAMES})
  return out
 
 
@@ -234,7 +241,7 @@ def _writable_values(x, cols):
  保存されないほうが気づける）。"""
  out = {}
  for col in cols:
-  if col['audit'] or col['pk']:
+  if col['auto']:
    continue
   if col['name'] in x:
    v = x[col['name']]

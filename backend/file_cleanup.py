@@ -296,12 +296,23 @@ def _scan_pending():
 
 def _scan_pycache():
  """Pythonのバイトコード。**丸ごと作り直せる**が、消すと次の起動が一度だけ
- 遅くなる——だから自動では消さない(`auto=False`)。"""
+ 遅くなる——だから自動では消さない(`auto=False`)。
+
+ 置き場は2つある。ふつうは`_pycache_bootstrap`が`sys.pycache_prefix`で
+ ローカル領域へ逃がすが、**それが効いていない経路**(テストを直に
+ `python3 tests/....py`で走らせた等)では**ソースの隣に`__pycache__`が
+ 生える**。どちらも同じもの＝作り直せる中間ファイルなので、両方数える。"""
+ out = []
  d = _pycache_dir()
- if not d or not _safe(d.is_dir, False):
-  return []
- subs = _safe(lambda: [x for x in d.iterdir() if x.is_dir()], []) or []
- return [_dir_item(s) for s in subs]
+ if d and _safe(d.is_dir, False):
+  out += [_dir_item(s) for s in (_safe(lambda: [x for x in d.iterdir() if x.is_dir()], []) or [])]
+ # ソースの隣に生えたぶん。**アプリの置き場の中だけ**を見る(利用者の
+ # フォルダを歩き回らない)。
+ from .paths import APP_ROOT
+ for p in _safe(lambda: sorted(Path(APP_ROOT).rglob('__pycache__')), []) or []:
+  if _safe(p.is_dir, False):
+   out.append(_dir_item(p))
+ return out
 
 
 def _scan_work():
@@ -348,7 +359,7 @@ CATEGORIES = [
   'why': 'いま使っているフォルダ以外を消します。',
   'auto': False, 'scan': _scan_work},
  {'key': 'pycache', 'label': 'Pythonのバイトコード', 'icon': '速',
-  'note': '起動を速くするための中間ファイルです。消しても動きますが、次の起動が一度だけ遅くなります。',
+  'note': '起動を速くするための中間ファイルです（手元の置き場と、ソースの隣の `__pycache__`）。消しても動きますが、次の起動が一度だけ遅くなります。',
   'why': '**自動では消しません。** 押したときだけ消します。',
   'auto': False, 'scan': _scan_pycache},
 ]
