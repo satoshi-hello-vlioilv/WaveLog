@@ -489,11 +489,32 @@
      プルダウンは右端に▼の場所（実測16px）が要るので、そのぶん内側へ寄せる
      ——**見えている操作面**で見分けること（器を被せた欄では`<select>`は
      1pxの裏方で、▼は出ていない）。 */
+  /* ---------- 右端の逃げ場は1本の変数にまとめる（§9.250 ⑨） ----------
+     利用者の報告「スピナーもしっかり直してほしいです。テキストボックスと
+     スピナーが被っているので数字が見えなくなります」
+
+     §9.250 ⑧では帯のぶんを`--opf-num-w`という**別の変数**で持ち、
+     `.opf-host[data-op-num]>input{padding-right:…}`という**別の規則**で
+     足していた。ところが実物の器には
+     `.measure-shell .selectors>label>input:not(…):not(…)`（要素2つ）が
+     当たっており、**同じ数の詳細度なら要素が多いほうが勝つ**——
+     `.opf-host[data-op-num]>input:not(…):not(…)`（要素1つ）は負けて
+     `padding:0 var(--opf-pad-r,…) 0 …`に打ち消されていた。測定画面では
+     値が矢印の下へ潜り、**合成した器（`.measure-shell`の外）で測った網は
+     素通りした**（§9.233 ③「器の名前で書き分けない」の再発）。
+
+     詳細度の competition を続けないこと。**「右端に空ける幅」という
+     1つの事実**を`--opf-pad-r`が持てば、当てる規則は共有の1本で足りる
+     ——単位を内側へ重ねたぶんも帯のぶんも同じ意味の値なので、分ける
+     理由がそもそも無かった。 */
   const shown=displayEl(host);
-  if((def.unit||'')&&at==='内部'){
-   const caret=(shown&&shown.tagName==='SELECT')?' + 16px':'';
-   host.style.setProperty('--opf-pad-r',`calc(var(--opf-unit-w,2ch) + var(--space-4)${caret})`);
-  }else host.style.removeProperty('--opf-pad-r');
+  const caret=(shown&&shown.tagName==='SELECT')?' + 16px':'';
+  const unitPad=((def.unit||'')&&at==='内部')
+    ? `var(--opf-unit-w,2ch) + var(--space-4)${caret}`
+    : 'var(--space-2)';
+  /* `--opf-num-w`は数の道具の帯（`buildNumberWidget`が入れる）。**変数の
+     参照のまま渡す**ので、どちらを先に当てても解決は使うときに起きる。 */
+  host.style.setProperty('--opf-pad-r',`calc(${unitPad} + var(--opf-num-w,0px))`);
   /* **値を持つ欄が無くても、画面に出ている欄はある**（§9.233 ①②）。
      母材の参考値3つ（元幅・屑幅・計算全長）は`<output>`で、`valueEl()`は
      「書ける欄」を返す口なので当たらない——以前はここで黙って落ちており、
@@ -1086,7 +1107,9 @@
   /* 欄の逃げ場（§9.233 ③）。**帯と同じ数**を器の変数で渡す——CSSが
      `--opf-pad-r`（単位を内側へ重ねたぶん）と**足し算**で使う。 */
   if(wide||rail)host.dataset.opNum=kind;else delete host.dataset.opNum;
-  if(wide)host.style.setProperty('--opf-num-w',wide+'em');
+  /* **隙間まで込みで渡す**（§9.250 ⑨）——足し算を規則の側でやると、
+     `--opf-pad-r`を読む規則が2種類の足し方を知ることになる。 */
+  if(wide)host.style.setProperty('--opf-num-w',`calc(${wide}em + var(--space-1))`);
   else host.style.removeProperty('--opf-num-w');
   box.className='opf-widget'+(wide||rail?' opf-num':'');
   box.innerHTML='';
@@ -1381,6 +1404,28 @@
 
  /* 器を1回だけ作る。**選択肢が変わったら作り直す**（内径のプリセットは
     仕掛データが届いてから入る・§9.204）ので、署名で見分ける。 */
+ /* ---------- 段を積む器は行を中身なりにする（§9.250 ⑨、利用者の報告） ----------
+    「他のコントロールも常時表示のものは被っていないかチェックしてください。
+     入力値が見えないものがあります」
+
+    欄の器（`.dense-controls label`）は**2行目を`var(--ctl-h)`で固定**して
+    いる。素の`<select>`は`opf-native-off`で流れから外れるので、器を被せた
+    形では`.opf-widget`がその固定の行に入る——**1段しか入らない**ので、
+    段を積む器（段階の「N/M 段目」・メモの複数行・折り返すボタン群）は
+    **次の行＝単位の行へはみ出して重なる**（実測: 器36pxに中身49px、
+    「1/4 段目」と「mm」が212×11pxで完全に重なっていた）。
+
+    印は**器の側に付ける**（`data-op-stack`）。`:has()`に頼らないのは、
+    当たらなかったときに誰も気づけないから（§9.218 ②）。
+    **数の道具（`.opf-num`）は欄の行へ重ねる作り**（§9.250 ⑧）で流れに
+    居ないので、印を付けない——付けると欄の行が中身なりになって、
+    数の欄だけ高さが揃わなくなる。 */
+ function markStack(host){
+  if(!host)return;
+  const box=host.querySelector(':scope>.opf-widget');
+  const stack=!!box&&!box.classList.contains('opf-num');
+  if(stack)host.dataset.opStack='1';else delete host.dataset.opStack;
+ }
  function buildWidget(def,host,kind){
   /* **意匠は組み立ての前に当てる**（§9.223 ③）。色・形・大きさを変えても
      部品の署名（種類＋選択肢）は同じなので、下の`box.dataset.sig===sig`で
@@ -1388,8 +1433,11 @@
      押しても何も起きない**（設定窓の見本で実際にそうなっていた）。
      当て直しはクラスの付け替えだけなので、毎回通しても安い。 */
   applyLook(host,def);
-  if(kind==='メモ'||kind==='1行'||kind==='定型文')return buildMemoWidget(def,host,kind);
-  if(NUM_WIDGETS.indexOf(kind)>=0)return buildNumberWidget(def,host,kind);
+  /* **印は必ず付け直す**（早い戻り道も通るので、組み立てのあとではなく
+     ここで見る）。 */
+  const stamp=r=>{markStack(host);return r};
+  if(kind==='メモ'||kind==='1行'||kind==='定型文')return stamp(buildMemoWidget(def,host,kind));
+  if(NUM_WIDGETS.indexOf(kind)>=0)return stamp(buildNumberWidget(def,host,kind));
   const sel=host.querySelector(':scope>select');
   if(!sel)return false;
   const free=!!def.freeText;
@@ -1399,7 +1447,7 @@
     +(def.noBlank?'/nb':'')
     +'|'+opts.map(o=>o.v+'\u0001'+o.t).join('\u0002');
   const box=widgetHost(host);
-  if(box.dataset.sig===sig){syncWidget(host);return true}
+  if(box.dataset.sig===sig){syncWidget(host);markStack(host);return true}
   box.dataset.sig=sig;
   host.classList.add('opf-alt');
   /* **選ぶ器そのものを打てるようにする**（§9.226 ①）。以前は
@@ -1573,6 +1621,7 @@
    };
   }
   applyLook(host,def);                       /* §9.223 ③ 色・形・大きさ */
+  markStack(host);                           /* §9.250 ⑨ 段を積むなら行を中身なりに */
   /* selectの側が変わっても印を合わせる（プリセット・記録の復元）。 */
   if(!sel.dataset.opWidgetWired){
    sel.dataset.opWidgetWired='1';
@@ -1585,6 +1634,9 @@
     ——外し忘れると、戻したはずの欄がボタンのまま残る（§9.210 ④と同じ罠）。 */
  function stripWidget(host){
   delete host.dataset.opSpin;               /* §9.248 ① 付いたまま置かない */
+  delete host.dataset.opStack;              /* §9.250 ⑨ 段を積む印も外す */
+  delete host.dataset.opNum;
+  host.style.removeProperty('--opf-num-w');
   const box=host.querySelector(':scope>.opf-widget');
   /* **開いているメニューは畳む**（§9.222 ①）——器を消したあとに浮いたまま
      残ると、どの欄のものか分からないメニューが画面に残る。 */

@@ -422,6 +422,57 @@
     覚えは**この端末**（読み方の好みなので、共有マスタへ入れて全員を縛らない）。
     **畳んでも件数は文字で出す**（§CLAUDE 3。何を畳んでいるのか分からないと
     「消えた」と読まれる）。 */
+ /* ---------- 一覧の器の幅は「実測して決める」（§9.250 ⑨、利用者の報告） ----------
+    「『記録した値の配置』が1行に収まっておらず、・・・で省略されています」
+
+    §9.250 ①では器の式を「文字ぶん(em)＋固定ぶん(px)」に分けた。**足りない
+    ものが1つあった**——**スクロールバー**。タブが増えて一覧が縦に溢れると
+    バーが出て、その幅（端末とブラウザで違う）ぶん文字の場所が減る。
+    固定ぶんに数を足して追いかけると、次に何かが増えたときにまたずれる。
+
+    **測ってから決める**（§9.130と同じ作法）。切れている量（`scrollWidth`
+    −`clientWidth`）はブラウザが正確に知っているので、それを足すだけでよい
+    ——バーの幅も文字の太さも表示サイズも、測れば全部込みになる。
+    **既定へ戻してから測る**ので、狭くもなる（増やす一方にしない）。
+    **見張りと組み合わせるので、同じ値なら書かないこと**（§9.131）。 */
+ let mmNavFitting=false,mmNavRO=null;
+ function fitMaintNav(){
+  const nav=$('#masterMaintNav');
+  if(!nav||mmNavFitting)return;
+  const body=nav.closest('.mm-body');
+  if(!body)return;
+  mmNavFitting=true;
+  requestAnimationFrame(()=>{
+   try{
+    /* 既定の幅へ戻して測る（前回広げたぶんを持ち越さない）。 */
+    body.style.removeProperty('--mm-nav-w');
+    const base=nav.getBoundingClientRect().width;
+    if(!(base>0))return;
+    let need=0;
+    nav.querySelectorAll('button[data-master]').forEach(b=>{
+     const l=b.querySelector('.mm-nav-label');
+     if(!l)return;
+     const over=l.scrollWidth-l.clientWidth;
+     if(over>need)need=over;
+    });
+    /* 束の見出し（件数つき）も切らさない。 */
+    nav.querySelectorAll('.mm-nav-group-name').forEach(l=>{
+     const over=l.scrollWidth-l.clientWidth;
+     if(over>need)need=over;
+    });
+    if(need>0)body.style.setProperty('--mm-nav-w',Math.ceil(base+need+1)+'px');
+   }finally{
+    /* **見張りが自分の書き換えで回らないように**、1フレーム置いて解く。 */
+    requestAnimationFrame(()=>{mmNavFitting=false});
+   }
+  });
+  if(!mmNavRO&&typeof ResizeObserver==='function'){
+   /* 表示サイズを変えた・窓の幅が変わった、で測り直す（`--ui-scale`は
+      文字だけを伸ばすので、同じ器でも切れ方が変わる・§9.130）。 */
+   mmNavRO=new ResizeObserver(()=>{if(!mmNavFitting)fitMaintNav()});
+   mmNavRO.observe(nav);
+  }
+ }
  const MM_NAVFOLD_KEY='MasterNavFoldV1';
  const MM_NAVFOLD_DEFAULT=['internal','retired'];
  function mmNavFolded(){
@@ -461,6 +512,7 @@
     +'</div>';
   }).join('');
   nav.innerHTML=html;
+  fitMaintNav();
   nav.querySelectorAll('[data-nav-fold]').forEach(b=>{
    const toggle=()=>{
     const k=b.dataset.navFold,now=mmNavFolded();

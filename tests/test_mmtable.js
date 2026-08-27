@@ -178,6 +178,58 @@ let b=null;
    rec('移行済みの表は読むだけ＋削除の入口が出る',true,'この端末に移行済みの表が無いので省略');
   }
   rec('画面のエラーが出ていない',errs.length===0,errs.slice(0,2).join(' / '));
+  /* ==========================================================
+     名前が切れない——**バーが出た状態で測ること**（§9.250 ⑨、利用者の報告）
+     ----------------------------------------------------------
+     「『記録した値の配置』が1行に収まっておらず、・・・で省略されています」
+
+     §9.250 ①の式（文字ぶん＋固定ぶん）は**スクロールバーの幅**を数えて
+     いなかった。タブが増えて一覧が縦に溢れた端末でだけ8文字の名前が
+     省略記号になる——**溢れていない状態で測る網は素通りする**ので、
+     ここでは束を全部開いてバーを出してから測る。
+     ========================================================== */
+  const navFit=await page.evaluate(async()=>{
+   const out=[];
+   const nav=document.querySelector('#masterMaintNav');
+   for(const size of ['sm','md','lg']){
+    document.documentElement.setAttribute('data-ui-size',size);
+    /* 束を全部開いて縦に溢れさせる（バーを出す）。 */
+    nav.querySelectorAll('.mm-nav-group.is-folded [data-nav-fold]').forEach(x=>x.click());
+    await new Promise(r=>setTimeout(r,450));
+    const bad=[];
+    nav.querySelectorAll('button[data-master]').forEach(b=>{
+     const l=b.querySelector('.mm-nav-label');
+     const over=l.scrollWidth-l.clientWidth;
+     if(over>1)bad.push(l.textContent.trim()+'('+over+'px)');
+    });
+    nav.querySelectorAll('.mm-nav-group-name').forEach(l=>{
+     const over=l.scrollWidth-l.clientWidth;
+     if(over>1)bad.push('[群]'+l.textContent.trim()+'('+over+'px)');
+    });
+    out.push({size,バー:nav.scrollHeight>nav.clientHeight+1,
+      幅:Math.round(nav.getBoundingClientRect().width),切れ:bad});
+   }
+   document.documentElement.setAttribute('data-ui-size','md');
+   return out;
+  });
+  rec('前提: 一覧が縦に溢れてスクロールバーが出ている（出ない状態で測らない）',
+      navFit.every(x=>x.バー),JSON.stringify(navFit.map(x=>x.size+':'+x.バー)));
+  /* **バーの場所は常に空けておく**（§9.250 ⑨）。端末によってはバーが幅を
+     持つので、出た瞬間に中身が狭くなって**そのときだけ**名前が切れる
+     ——この網が動く環境では重ならないバー（幅0）のこともあるので、
+     「切れていない」だけでは足りない。**場所を空ける宣言そのもの**を見る。 */
+  const gutter=await page.evaluate(()=>{
+   const nav=document.querySelector('#masterMaintNav');
+   return {宣言:getComputedStyle(nav).scrollbarGutter,
+     器の幅の決め方:getComputedStyle(document.querySelector('.mm-body')).gridTemplateColumns,
+     実測で入れた幅:document.querySelector('.mm-body').style.getPropertyValue('--mm-nav-w')||'(不要だった)'};
+  });
+  rec('一覧はスクロールバーの場所を常に空ける（出た瞬間に狭くならない）',
+      /stable/.test(gutter.宣言),JSON.stringify(gutter));
+  rec('どの表示サイズでも一覧の名前が切れない（バーの幅も込みで器を決める）',
+      navFit.every(x=>x.切れ.length===0),
+      JSON.stringify(navFit.map(x=>({s:x.size,w:x.幅,bad:x.切れ}))));
+
  }catch(e){
   rec('FATAL',false,e.message);
  }finally{

@@ -350,24 +350,35 @@ let b=null;
   const numFit=await page.evaluate(async()=>{
    const raf=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
    window.__clear();
-   const CELL=94;
-   const bed=document.getElementById('wbed');
-   /* **器を実際に7マス入る広さにしてから測る**——狭いままだと
-      `minmax(0,94px)`のトラックが余りを分け合って56pxに縮み、
-      「マスの幅を超えない」を一度も確かめないまま通る（§9.211 ①と同じ罠）。 */
-   bed.style.width=(CELL*7+40)+'px';
-   bed.style.display='grid';
-   bed.style.gridTemplateColumns='repeat(7,minmax(0,'+CELL+'px))';
+   /* ---------- **実物の器の中で測る**（§9.250 ⑨、利用者の報告） ----------
+      「テキストボックスとスピナーが被っているので数字が見えなくなります」
+
+      前は`#wbed`という**合成した器**で測っていた。ところが右の逃げ場を
+      当てる規則は`.measure-shell .selectors>label>input:not(…):not(…)`
+      （要素2つ）で、器の外では当たらない——**同じ数の詳細度なら要素が
+      多いほうが勝つ**ので、実物では打ち消されて値が矢印の下に潜っていた
+      のに、この網は素通りした。測定画面のDOMは`index.html`に最初から
+      在るので、**そこへ置いて測る**（開かなくてもカスケードは同じ）。 */
+   const modal=document.getElementById('measureModal');
+   if(modal)modal.hidden=false;
+   const shell=document.querySelector('.measure-shell');
+   if(shell)shell.classList.add('mstep-1');
+   const bed=document.querySelector('.measure-shell .selectors');
+   if(!bed)return {noBed:true};
+   bed.dataset.probe='1';
+   bed.style.setProperty('--op-cols','12');
+   [...bed.querySelectorAll('[data-probe-item]')].forEach(x=>x.remove());
    const mk=kind=>{
     const label=document.createElement('label');
     label.className='opf opf-host';label.dataset.opfill='1';
+    label.dataset.probeItem='1';label.style.gridColumn='span 3';
     label.innerHTML='<span class="opf-name">'+kind+'</span>';
     const inp=document.createElement('input');
-    inp.type='text';inp.className='numeric-input';inp.min=0;inp.max=10;inp.value='5';
+    inp.type='text';inp.className='numeric-input';inp.min=0;inp.max=10;inp.value='-10';
     label.appendChild(inp);
     bed.appendChild(label);
     const def={name:kind,preview:true,look:{color:'既定',shape:'標準',size:'中'},
-      type:'整数',step:1,min:0,max:10,decimals:0,unit:'mm'};
+      type:'整数',step:1,min:0,max:10,decimals:0,unit:'mm',align:'右'};
     WL.opData.previewWidget(def,label,kind);
     WL.opData.presentation(label,def);
     return label;
@@ -377,7 +388,8 @@ let b=null;
    const labs=kinds.map(mk);
    await raf();await raf();
    const base=Math.round(plain.getBoundingClientRect().height);
-   return {base,rows:labs.map((lab,i)=>{
+   const cell=Math.round(plain.getBoundingClientRect().width);
+   const out={base,cell,rows:labs.map((lab,i)=>{
     const r=lab.getBoundingClientRect();
     const inp=lab.querySelector('input'),ir=inp.getBoundingClientRect();
     const cs=getComputedStyle(inp);
@@ -386,10 +398,11 @@ let b=null;
     const sr=strip?strip.getBoundingClientRect():null;
     const box=lab.querySelector('.opf-num');
     return {kind:kinds[i],over:Math.round(r.height-base),
-      cellOver:Math.round(r.width-CELL),
+      cellOver:Math.round(r.width-cell),
       すき間:sr?Math.round(sr.left-right):null,
       行に乗る:box?Math.round(box.getBoundingClientRect().top-ir.top):null};
    })};
+   return out;
   });
   rec('数の道具はどれも行を増やさない（「そのまま打つ」と同じ高さ）',
       numFit.rows.every(r=>r.over===0),
@@ -409,7 +422,7 @@ let b=null;
   const pops=await page.evaluate(async()=>{
    const raf=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
    const out={};
-   const labs=[...document.querySelectorAll('#wbed label')];
+   const labs=[...document.querySelectorAll('.measure-shell .selectors [data-probe-item]')];
    for(const kind of ['スライダー','キーパッド','早見ボタン']){
     const lab=labs.find(l=>l.querySelector('.opf-name')?.textContent===kind);
     const btn=lab&&lab.querySelector('.opf-num-open');
@@ -437,10 +450,15 @@ let b=null;
       効いた:after!==before&&after!=='',値:after,
       閉じた:document.getElementById('opfNumPop').hidden};
    }
-   /* **後片付け**（§9.121）——器の形を変えたまま次の確認へ渡すと、
-      関係の無いところで落ちる。 */
-   const bed=document.getElementById('wbed');
-   bed.style.display='';bed.style.gridTemplateColumns='';bed.style.width='420px';
+   /* **後片付け**（§9.121）——実物の器へ置いたので、置いたものを必ず外す。
+      外し忘れると、この先の確認（測定画面を見るもの）に知らない欄が混ざる。 */
+   const bed=document.querySelector('.measure-shell .selectors');
+   if(bed){[...bed.querySelectorAll('[data-probe-item]')].forEach(x=>x.remove());
+     delete bed.dataset.probe;bed.style.removeProperty('--op-cols');}
+   const modal=document.getElementById('measureModal');
+   if(modal)modal.hidden=true;
+   const shell=document.querySelector('.measure-shell');
+   if(shell)shell.classList.remove('mstep-1');
    return out;
   });
   rec('入りきらない道具は押すと浮く（目盛・テンキー・早見）',
@@ -452,6 +470,78 @@ let b=null;
   rec('外を押すと閉じる（開いた器を控えている・§9.222 ①）',
       ['スライダー','キーパッド','早見ボタン'].every(k=>pops[k].閉じた),
       JSON.stringify(pops));
+
+  /* ==========================================================
+     段を積む器は、下の行（単位）へ潜らない（§9.250 ⑨、利用者の報告）
+     ----------------------------------------------------------
+     「他のコントロールも常時表示のものは被っていないかチェックして
+      ください。入力値が見えないものがあります」
+
+     欄の器は**2行目が`var(--ctl-h)`で固定**なので、段を積む器（段階の
+     「N/M 段目」・メモの複数行・折り返す説明）は**次の行＝単位の行へ
+     はみ出して重なる**（実測: 行36pxに中身49px、「1/4 段目」と「mm」が
+     212×11pxで完全に重なっていた）。
+     **文字どうしの重なりで見ること**——器や透ける覆いを数えると、
+     設計どおりの重なり（欄に重ねた帯）まで拾ってしまう。
+     ここも**実物の器の中**で組む（器の外では行の固定が当たらない）。
+     ========================================================== */
+  const stacked=await page.evaluate(async()=>{
+   const raf=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   const modal=document.getElementById('measureModal');if(modal)modal.hidden=false;
+   const shell=document.querySelector('.measure-shell');if(shell)shell.classList.add('mstep-1');
+   const bed=document.querySelector('.measure-shell .selectors');
+   if(!bed)return {noBed:true};
+   bed.style.setProperty('--op-cols','12');
+   const KINDS=[['段階','choice'],['入切','choice'],['ラジオ','choice'],
+     ['定型文','text'],['メモ','text'],['セグメント','choice'],['カード','choice']];
+   const out=[];
+   for(const [kind,fam] of KINDS){
+    [...bed.querySelectorAll('[data-probe-item]')].forEach(x=>x.remove());
+    const lab=document.createElement('label');
+    lab.className='opf opf-host';lab.dataset.opfill='1';lab.dataset.probeItem='1';
+    lab.style.gridColumn='span 3';
+    lab.innerHTML='<span class="opf-name">'+kind+'</span>';
+    let ctl;
+    if(fam==='choice'){ctl=document.createElement('select');
+     ctl.innerHTML='<option value="">-</option>'
+       +['あ','い','う'].map(v=>'<option value="'+v+'">'+v+'</option>').join('');}
+    else{ctl=document.createElement('input');ctl.type='text'}
+    lab.appendChild(ctl);bed.appendChild(lab);
+    const def={name:kind,preview:true,unit:'mm',unitPlace:'外下左',align:'自動',
+      look:{color:'既定',shape:'標準',size:'中'},layout:'自動',
+      type:fam==='choice'?'選択':'文字',choices:fam==='choice'?['あ','い','う']:[]};
+    WL.opData.previewWidget(def,lab,kind);
+    WL.opData.presentation(lab,def);
+    ctl.value=fam==='choice'?'あ':'あいうえお';
+    ctl.dispatchEvent(new Event('change',{bubbles:true}));
+    if(WL.opData.syncWidgets)WL.opData.syncWidgets();
+    await raf();await raf();
+    /* 自分の直下に文字を持つ要素＝葉の文字。 */
+    const leaves=[];
+    lab.querySelectorAll('*').forEach(el=>{
+     if(![...el.childNodes].some(n=>n.nodeType===3&&n.textContent.trim()))return;
+     const cs=getComputedStyle(el);
+     if(cs.display==='none'||cs.visibility==='hidden'||parseFloat(cs.opacity)===0)return;
+     const r=el.getBoundingClientRect();
+     if(r.width>0&&r.height>0)leaves.push({el,r,t:(el.className||el.tagName)});
+    });
+    for(let i=0;i<leaves.length;i++)for(let j=i+1;j<leaves.length;j++){
+     const A=leaves[i],B=leaves[j];
+     if(A.el.contains(B.el)||B.el.contains(A.el))continue;
+     const ox=Math.min(A.r.right,B.r.right)-Math.max(A.r.left,B.r.left);
+     const oy=Math.min(A.r.bottom,B.r.bottom)-Math.max(A.r.top,B.r.top);
+     if(ox>1&&oy>1)out.push(kind+': '+A.t+' × '+B.t+' ('+Math.round(ox)+'x'+Math.round(oy)+')');
+    }
+   }
+   [...bed.querySelectorAll('[data-probe-item]')].forEach(x=>x.remove());
+   bed.style.removeProperty('--op-cols');
+   if(modal)modal.hidden=true;
+   if(shell)shell.classList.remove('mstep-1');
+   return {重なり:out};
+  });
+  rec('段を積む器でも文字どうしが重ならない（単位の行へ潜らない）',
+      stacked.noBed===true||stacked.重なり.length===0,
+      JSON.stringify(stacked.重なり||stacked).slice(0,220));
 
   /* ==========================================================
      10) 選ばせ方の盤はまとまりで束ねる（§9.248 ①）

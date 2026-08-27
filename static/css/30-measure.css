@@ -2392,7 +2392,11 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
    与えること——片方だけだと自動配置が空きマスを探して欄が下の段へ落ちる。 */
 [data-opunit="内部"]>.opf-unit-in{
   grid-row:2;grid-column:1;justify-self:end;align-self:center;
-  margin:0 var(--space-2) 0 0;pointer-events:none;color:var(--muted);
+  /* **数の道具の帯ぶんも避ける**（§9.250 ⑨）——欄の右端に帯（スピナー等）が
+     あるとき、単位だけがその下に潜る。値の逃げ場（`--opf-pad-r`）と同じ数を
+     見るので、帯の幅を変えてもここは追いかけなくてよい。 */
+  margin:0 calc(var(--space-2) + var(--opf-num-w,0px)) 0 0;
+  pointer-events:none;color:var(--muted);
 }
 /* **`<output>`も同じマスへ**（§9.233 ②）。挙げ忘れると自動配置が次の段へ
    回し、単位だけが1段上に浮く（母材の参考値で実際にそうなっていた）。 */
@@ -2805,6 +2809,21 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
      ・帯に入りきらない道具（目盛・テンキー・早見の並び）は浮き窓へ
    幅の数はJS（`NUM_STRIP`）が器の変数で渡す——CSSに書き写すと、
    帯の幅と逃げ場が食い違う形が作れる。 */
+/* ---------- 段を積む器は行を中身なりにする（§9.250 ⑨、利用者の報告） ----------
+   「他のコントロールも常時表示のものは被っていないかチェックしてください。
+    入力値が見えないものがあります」
+
+   欄の器（`.dense-controls label`）は**2行目を`var(--ctl-h)`で固定**して
+   いる。素の`<select>`は`opf-native-off`で流れから外れるので、器を被せた形
+   では`.opf-widget`がその固定の行に入る——**1段しか入らない**ので、段を積む
+   器（段階の「N/M 段目」・メモの複数行・折り返すボタン群）は**次の行＝単位の
+   行へはみ出して重なる**（実測: 行36pxに中身49px、「1/4 段目」と「mm」が
+   212×11pxで完全に重なっていた）。
+   **印はJSが付ける**（`data-op-stack`）——`:has()`に頼ると、当たらなかった
+   ときに誰も気づけない（§9.218 ②）。数の道具（`.opf-num`）は欄の行へ
+   重ねる作りで流れに居ないので、印を付けない（付けると数の欄だけ高さが
+   そろわなくなる）。 */
+.opf-host[data-op-stack]{grid-template-rows:auto auto}
 .opf-num{
   /* **欄の上に重ねる**（`.opf-alt{position:relative}`が受け）。以前の
      スピナーは「負の余白で1行ぶん引き上げる」形だったが、**引く量を
@@ -3089,13 +3108,14 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
    **見本と実物を食い違わせない**ためにスピナー自身が面倒を見る・§9.229 ②）。 */
 /* **欄は器いっぱいにする**——道具は欄の右端へ寄せるので、欄が中身なりの
    幅だと帯だけが器の右端に離れて浮く（設定窓の見本で実際にそうなった）。
-   逃げ場は**単位を内側へ重ねたぶん（`--opf-pad-r`）との足し算**
-   （§9.233 ③）——片方だけ見ると、単位を「内部」にした欄で値が帯の下へ潜る。 */
+   **右の逃げ場はここで足さない**（§9.250 ⑨、利用者の報告「テキストボックスと
+   スピナーが被っているので数字が見えなくなります」）——ここに
+   `padding-right`を書くと、実物の器に当たる
+   `.measure-shell .selectors>label>input:not(…):not(…)`（要素2つ）に
+   **同じ数の詳細度で負けて**打ち消される。逃げ場は`--opf-pad-r`が
+   帯のぶんまで含めて持ち、当てるのは共有の1本（上の`.opf-host>input`）。 */
 .opf-host[data-op-num]>input:not([type=checkbox]):not([type=radio]),
-.opf-host[data-op-num]>output{
-  width:100%;max-width:100%;
-  padding-right:calc(var(--opf-pad-r,var(--space-2)) + var(--opf-num-w,0px) + var(--space-1));
-}
+.opf-host[data-op-num]>output{width:100%;max-width:100%}
 /* ▲▼は矢印なので小さめ、−／＋は数字と同じ大きさ（上で当てている）。 */
 .opf-num-strip>.opf-spin-btn{font-size:calc(var(--fs-micro) - 1px)}
 /* --- 切替: ボタン1つ。**押すたびに次へ**。いま何番目かと次を文字で出す --- */

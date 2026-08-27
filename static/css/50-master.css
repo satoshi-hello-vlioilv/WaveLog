@@ -89,9 +89,18 @@
    2行に折り返していた（実測: 使える幅100px に対し文字103px）。
    文字ぶんは`em`（＝文字サイズに追随）、器物は px で足し合わせる。
      8.4em … 8文字ぶん＋にじみ / 84px … アイコン26+隙間8+左右余白28+枠2+器の余白20 */
+/* 器の幅は**実測して決める**（§9.250 ⑨、利用者の報告「『記録した値の配置』が
+   1行に収まっておらず、・・・で省略されています」）。`--mm-nav-w`はJSの
+   `fitMaintNav()`が「切れているぶん」を足して入れる——**スクロールバーの幅**も
+   文字の太さも表示サイズも、測れば全部込みになる。§9.250 ①の式（文字ぶん＋
+   固定ぶん）はバーのぶんを数えておらず、タブが増えて一覧が縦に溢れた端末で
+   8文字の名前が省略記号になっていた。**変数が無いときは式のまま**
+   （読み込む前の1瞬と、測れなかったときの受け皿）。 */
 .mm-body{flex:1;min-height:0;display:grid;
- grid-template-columns:minmax(150px,calc(8.4em + 84px)) minmax(0,1fr)}
-.mm-nav{display:flex;flex-direction:column;gap:var(--gap-hair);padding:12px 10px;background:#e7eff1;border-right:1px solid var(--line);overflow:auto}
+ grid-template-columns:var(--mm-nav-w,minmax(150px,calc(8.4em + 84px))) minmax(0,1fr)}
+/* **バーの場所は常に空けておく**（§9.227 ②）——出た瞬間に中身が15px狭く
+   なると、そのときだけ文字が切れる。 */
+.mm-nav{display:flex;flex-direction:column;gap:var(--gap-hair);padding:12px 10px;background:#e7eff1;border-right:1px solid var(--line);overflow:auto;scrollbar-gutter:stable}
 /* マスタ種別のグループ見出し(情報アーキテクチャ)。左ナビのnav-group-labelと
    同じ言語で、色相はteal系のまま彩度だけ落として階層を示す。 */
 .mm-nav-group{display:flex;flex-direction:column;gap:var(--gap-tight);margin-bottom:10px}
@@ -2127,9 +2136,12 @@
    紙の見本を隣へ置いた。窓は大きく取り、**左＝決めること／右＝刷り上がり**
    の2段組みにする（視線が往復しない）。
    ============================================================ */
-.mm-editor-dialog.is-builder{width:min(1560px,97vw);max-height:94vh}
+.mm-editor-dialog.is-builder{width:min(1760px,98vw);max-height:95vh}
+/* 右の見本は**広く取る**（§9.250 ⑨、利用者の指示「モーダルも大きくして
+   広いスペースを使った方が良いです」）——紙の見本は掴んで大きさを変える
+   道具でもあるので、小さいと1マスが数pxになって狙えない。 */
 .mm-editor-dialog.is-builder .mm-editor-body{
-  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,26em);
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,30em);
   align-content:start;gap:var(--space-4);overflow:auto}
 /* ============================================================
    段（タブ）とくわしい説明（アコーディオン）（§9.250 ④、利用者の指示）
@@ -2140,13 +2152,27 @@
    束を縦に積むと窓に入らない（帳票ブロックは1700×1000の窓で実測227px
    はみ出していた）。束ごとに段へ分けると、1段ぶんの高さで済む。
    ============================================================ */
+/* **段の帯とパネルは器の全幅を使う**（§9.250 ⑨、利用者の報告「タブを出す
+   位置と、メインコンテンツ表示エリアがずれており、左側のスペースが完全に
+   死にスペースになっていてもったいないです」）。
+   `.mm-form-fields`は**折り返す横並び**（欄を規格幅で並べるため）なので、
+   段の帯とパネルをそのまま入れると**欄1つぶんの札**として扱われ、帯が左に
+   縮んでパネルがその右へ回り込む——左下が丸ごと空く。1行を占める形にする。 */
+.mm-tabbar,.mm-tabbody{flex:1 0 100%;min-width:0}
 .mm-tabbar{
   display:flex;gap:var(--gap-tight);min-width:0;
   padding-bottom:var(--space-1);border-bottom:1px solid var(--line-soft);
+  /* **札は中身なりの高さ**（名前＋いまの値の2行）。器の高さを決めると
+     2行目が下に潜って読めなくなる（利用者の報告「タブの中身もレイヤー表示を
+     間違っていて下にもぐって見えなくなっています」）。 */
+  align-items:stretch;
 }
+/* パネルの中は**欄の並びそのもの**（`.mm-form-fields`と同じ折り返す横並び）。
+   ここを縦積みにすると、規格幅で並べた欄が1列に伸びて窓が縦に長くなる。 */
+.mm-tabpanel{display:flex;flex-wrap:wrap;gap:var(--space-3);align-items:flex-start}
 .mm-tab{
-  display:flex;flex-direction:column;align-items:flex-start;gap:0;
-  flex:1 1 0;min-width:0;padding:var(--space-1) var(--space-2);
+  display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:0;
+  flex:1 1 0;min-width:0;height:auto;padding:var(--space-1) var(--space-2);
   border:1px solid transparent;border-radius:var(--radius-sm);
   background:none;color:var(--muted);cursor:pointer;text-align:left;
 }
@@ -2167,8 +2193,6 @@
   color:var(--ink-3);font-size:var(--fs-micro);font-weight:600;
 }
 .mm-tab.is-on .mm-tab-sum{color:var(--teal-dark)}
-.mm-tabbody{min-width:0}
-.mm-tabpanel{display:flex;flex-direction:column;gap:var(--space-2);min-width:0}
 .mm-tabpanel[hidden]{display:none}
 /* くわしい説明は押すと開く（触る画面では`title`が読めない・§4）。 */
 .mm-more{
@@ -2188,7 +2212,11 @@
 }
 .mm-more-body[hidden]{display:none}
 .mm-editor-dialog.is-builder .mm-def-hint{grid-column:1/-1;margin:0}
-.mm-editor-dialog.is-builder .mm-form-fields{grid-column:1;min-width:0}
+/* **行は上から詰める**（§9.250 ⑨）。`.mm-form-fields`は折り返す横並びで、
+   既定の`align-content:stretch`は**行と行のあいだを引き伸ばす**——右の見本の
+   ほうが背が高いと器がその高さまで伸び、段の帯と欄のあいだに実測125pxの
+   空きができていた（利用者の報告「左側のスペースが完全に死にスペース」）。 */
+.mm-editor-dialog.is-builder .mm-form-fields{grid-column:1;min-width:0;align-content:flex-start}
 .mm-editor-dialog.is-builder .rb-aside{grid-column:2}
 /* 群の見出しは行を切る。**同じ群の欄は必ず同じ段に並ぶ**（チャンク化）。 */
 .mm-editor-dialog.is-builder .mm-fieldgroup{margin:var(--space-3) 0 0}
@@ -2217,7 +2245,7 @@
 /* **紙の外へは描かない**（§9.250 ⑤）。紙全体で見るときは塊が12段を
    はみ出しうるので、切らないと窓のほうがスクロールする（実測67px）。
    切ったぶんは`#rbSpill`が件数を文字で言う（黙って消さない・§CLAUDE 4）。 */
-.rb-paper{position:relative;width:100%;aspect-ratio:210/297;max-height:22em;overflow:hidden;
+.rb-paper{position:relative;width:100%;aspect-ratio:210/297;max-height:28em;overflow:hidden;
  margin-inline:auto;padding:var(--space-2);
  border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;
  box-shadow:0 2px 10px #0000000f}
