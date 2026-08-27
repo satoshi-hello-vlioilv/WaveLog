@@ -1,26 +1,32 @@
-/* test_headbar.js: 画面ごとの操作はヘッダーの操作列が持つ（§9.100）
+/* test_headbar.js: ヘッダーの作り（§9.48 寸法／§9.60 画面名／§9.100 操作列）
 
    ============================================================
+   3本を1本へまとめた（§9.249 ④、利用者の指示「重複しているテストは統合
+   できるか確認し必要に応じて統合して最適化してください」）
+   ------------------------------------------------------------
+   `test_hdr.js`（3グループと寸法）・`test_hdctx.js`（画面名と名残）・
+   `test_headbar.js`（操作列）は、**どれもヘッダーを見るために画面を
+   開き直していた**——ブラウザを3回立ち上げ、同じ起動を3回待っていた。
+   見ている対象が同じなので、直すときも3ファイルを開くことになる。
+
+   まとめても**1件も落としていない**（下の3部が元の3本と同じ順で並ぶ）。
+
    ここで固定すること
    ------------------------------------------------------------
-   この土台の約束は「**画面名はヘッダーが持ち、操作ボタンは
-   `#headerViewBar` へ相乗りさせる**」(base.js の mountViewToolbar)。
-   画面ごとに見出しの帯を持つと、画名がヘッダーと二重に出るうえ、
-   バー1本ぶん(40〜50px)本文の高さを食う。
+   ① 形（§9.48）  … 「状況/状態/操作」の3グループ・高さ/天端/角丸が揃う・
+                     バッジは「項目名＋値」・表示サイズに追随・狭い幅でも1行
+   ② 文脈（§9.60）… 画面名はデータソースマスタの表示名・前の画面の名残が
+                     残らない・同期バナー・`hidden`が効いている
+   ③ 操作（§9.100）… 画面ごとの操作列がヘッダーへ載り、パネルに二重に
+                      残らず、出るときは元の親へ戻る
 
-   守られているかは**画面を開くまで分からない**——登録
-   (registerView の toolbar)を書き忘れても、パネルの中に操作列が
-   残ったまま普通に動いてしまう。だから機械で見る。
-
-    1. 各画面の操作列が本当にヘッダーへ載っている（元の親に残っていない）
-    2. 操作はパネルの中に**二重に**置かれていない
-    3. 画面を出ると操作列は元の場所へ戻る（次の画面のものと混ざらない）
-    4. ヘッダーへ載せた操作の高さ・文字が揃っている
-       (**移すと `.hd-viewbar input` が左右の余白を上書きする**ので、
-        アイコン付きの入力は文字が重なりやすい。実際に重なった)
+   **順番に意味がある。** ①は表示サイズと窓幅を触るので、必ず元へ戻してから
+   ②③へ進む（戻し忘れると、後ろの2部が「大きい文字・狭い窓」で測られる）。
    ============================================================ */
 const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
 const B='http://127.0.0.1:5029';
+const setMode=async m=>{await fetch(B+'/api/access-mode',{method:'POST',
+ headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})};
 let b=null;
 
 /* 画面 → [ナビのid, ヘッダーへ載る操作列のid] */
@@ -33,15 +39,144 @@ const VIEWS=[
 ];
 
 (async()=>{
+ await setMode('edit');
  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1600,height:950}});
+ const page=await b.newPage({viewport:{width:1600,height:1000}});
  const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
  page.on('pageerror',e=>console.log('[pageerror]',e.message.slice(0,140)));
 
  await page.goto(B+'/',{waitUntil:'domcontentloaded'});
- await page.waitForSelector('#openMasterMaint',{timeout:20000});
+ await page.waitForSelector('#openSchedule',{timeout:20000});
+ /* 使用設備を入れてから読み直す。**先に済ませる**——後ろで読み直すと、
+    そこまでに開いた画面の状態が全部消える。 */
+ await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','LS4'));
+ await page.reload({waitUntil:'domcontentloaded'});
+ await page.waitForSelector('#uiSizeBadge',{timeout:20000});
+ await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:30000});
+ await page.waitForTimeout(600);
 
- for(const [label,nav,bar] of VIEWS){
+ /* =========================================================
+    ① 形（§9.48 ヘッダー再設計）
+    ========================================================= */
+ const groups=await page.evaluate(()=>['.hd-context','.hd-status','.hd-actions']
+   .map(s=>!!document.querySelector('header '+s)));
+ rec('ヘッダーが「状況/状態/操作」の3グループに分かれている',groups.every(Boolean),JSON.stringify(groups));
+
+ const metrics=async()=>page.evaluate(()=>{
+  const sel='header .hd-chip,header .hd-btn,header .hd-search,header .hd-field,header #printCurrentView';
+  return [...document.querySelectorAll(sel)].filter(e=>e.offsetParent).map(e=>{
+   const r=e.getBoundingClientRect(),cs=getComputedStyle(e);
+   return {id:e.id||e.className.split(' ')[1]||e.className,
+           h:Math.round(r.height),y:Math.round(r.top),
+           radius:cs.borderTopLeftRadius};
+  });
+ });
+ const m=await metrics();
+ const hs=[...new Set(m.map(x=>x.h))],ys=[...new Set(m.map(x=>x.y))],rs=[...new Set(m.map(x=>x.radius))];
+ rec('ヘッダーの全コントロールが同じ高さ',hs.length===1,'高さ='+hs.join('/')+' 対象'+m.length+'件');
+ rec('ヘッダーの全コントロールが同じ天端(縦位置が揃う)',ys.length===1,'top='+ys.join('/'));
+ rec('ヘッダーの全コントロールが同じ角丸',rs.length===1,'radius='+rs.join('/'));
+
+ const chips=await page.evaluate(()=>[...document.querySelectorAll('header .hd-chip')]
+   .filter(e=>e.offsetParent)
+   .map(e=>({k:e.querySelector('.hd-chip-key')?.textContent,v:e.querySelector('.hd-chip-val')?.textContent})));
+ rec('バッジが「項目名＋値」の形で内容を明示している',
+   chips.length>0&&chips.every(c=>c.k&&c.v),JSON.stringify(chips));
+
+ /* 使用設備チップから設備設定が開ける(旧 .equipment-header-button の役割を継承) */
+ await page.click('.hd-chip-equip');
+ await page.waitForTimeout(400);
+ const opened=await page.evaluate(()=>!document.querySelector('#appSettingsModal').hidden);
+ rec('使用設備チップから設備設定が開く',opened);
+ if(opened){await page.click('#cancelAppSettings');await page.waitForTimeout(300)}
+
+ /* 表示サイズを変えるとヘッダーも一括で追随する(統一が崩れない) */
+ const md=await metrics();
+ await page.click('#uiSizeBadge');await page.waitForSelector('#uiSizeMenu',{timeout:4000});
+ await page.click('#uiSizeMenu [data-ui-size-option="lg"]');await page.waitForTimeout(400);
+ const lg=await metrics();
+ const lgHs=[...new Set(lg.map(x=>x.h))];
+ rec('大でもヘッダーの高さが揃ったまま拡大する',
+   lgHs.length===1&&lgHs[0]>md[0].h,'md='+md[0].h+' lg='+lgHs.join('/'));
+ await page.click('#uiSizeBadge');await page.waitForSelector('#uiSizeMenu',{timeout:4000});
+ await page.click('#uiSizeMenu [data-ui-size-option="md"]');await page.waitForTimeout(400);
+
+ /* 横幅が狭くても操作群が折り返して縦に伸びない
+    (画面ごとの操作列#headerViewBarは「ヘッダーの2行目」として意図的に
+     別の行に置く。ここで見るのは1行目の並び。) */
+ await page.setViewportSize({width:1100,height:900});
+ await page.waitForTimeout(400);
+ const narrow=await page.evaluate(()=>{
+  const h=document.querySelector('header').getBoundingClientRect();
+  const list=[...document.querySelectorAll('header .hd-chip,header .hd-btn,header .hd-search,header .hd-field')]
+    .filter(e=>e.offsetParent&&!e.closest('#headerViewBar')).map(e=>Math.round(e.getBoundingClientRect().top));
+  const bar=document.getElementById('headerViewBar');
+  const barShown=!!(bar&&bar.offsetParent);
+  return {height:Math.round(h.height),rows:[...new Set(list)].length,barShown};
+ });
+ rec('幅1100pxでもヘッダーの1行目が1行に収まる',
+   narrow.rows===1&&narrow.height<(narrow.barShown?130:80),JSON.stringify(narrow));
+ /* **必ず戻す。** ②③は元の広さで測る。 */
+ await page.setViewportSize({width:1700,height:1000});
+ await page.waitForTimeout(400);
+
+ /* =========================================================
+    ② 文脈（§9.60 画面名／§9.59 hidden／同期バナー）
+    ========================================================= */
+ const ctx=()=>page.evaluate(()=>({
+   title:document.querySelector('#fileName').textContent.trim(),
+   src:document.querySelector('#headerContextSource')?.hidden?'':document.querySelector('#headerContextSource').textContent.trim()}));
+ const go=async(sel,wait=1800)=>{await page.click(sel);await page.waitForTimeout(wait)};
+
+ /* ヘッダーの画面名は**データソースマスタの表示名**を使う(§9.87)。
+    以前は'SIKALOTNOW'なら'仕掛一覧'と固定で書いており、左メニュー
+    (マスタの表示名＝「仕掛（現在）」)とヘッダーで別の名前が出ていた。
+    表示名を変えても追随するよう、期待値もマスタから取る。 */
+ const navLabel=k=>page.evaluate(key=>WL.dataSource.label(key),k);
+ await go('[data-db-key="SIKALOTNOW"]',2500);
+ let c=await ctx();
+ rec('仕掛(現在): 画面名が主・ファイル名が副',
+   c.title===await navLabel('SIKALOTNOW')&&/sikalotnow/i.test(c.src),JSON.stringify(c));
+ for(const [sel,want] of [['#homeDrafts','データ一覧'],['#openDashboard','ダッシュボード'],
+                          ['#openCalendar','実績カレンダー'],['#openSchedule','作業スケジュール'],
+                          ['#openMasterMaint','マスタ管理']]){
+  await go(sel,2200);c=await ctx();
+  rec(`${want}: 見出しが画面名になる`,c.title===want,JSON.stringify(c));
+  rec(`${want}: 前に見たDBファイル名が残らない`,!/sikalot/i.test(c.title+' '+c.src),JSON.stringify(c));
+ }
+ await go('[data-db-key="SIKALOTDEF"]',2500);c=await ctx();
+ rec('品質データ: 画面名が主',c.title===await navLabel('SIKALOTDEF'),JSON.stringify(c));
+ await go('#homeDrafts',2200);c=await ctx();
+ rec('品質データ→データ一覧でも名残なし',c.title==='データ一覧'&&!/sikalot/i.test(c.src),JSON.stringify(c));
+
+ const bar=await page.evaluate(()=>{
+  const el=document.querySelector('#recordSyncBar');
+  return {visible:!!el&&getComputedStyle(el).display!=='none',
+          count:document.querySelector('#recordSyncCount')?.textContent,
+          text:el?el.textContent.replace(/\s+/g,' ').trim():''};
+ });
+ rec('未送信0件なら同期バナーを出さない',!bar.visible,JSON.stringify(bar));
+ const accessLeft=await page.evaluate(()=>{
+  const walk=document.body.innerText;
+  const titles=[...document.querySelectorAll('[title]')].map(e=>e.title).join(' ');
+  return (walk+' '+titles).match(/Access[^\s]*/g)||[];
+ });
+ rec('画面文言に「Access」が残っていない',accessLeft.length===0,JSON.stringify(accessLeft));
+ const badHidden=await page.evaluate(()=>[...document.querySelectorAll('[hidden]')]
+   .filter(e=>getComputedStyle(e).display!=='none').length);
+ rec('hidden属性が効いていない要素が無い',badHidden===0,badHidden+'件');
+
+ /* =========================================================
+    ③ 操作（§9.100 画面ごとの操作列）
+    ---------------------------------------------------------
+    この土台の約束は「**画面名はヘッダーが持ち、操作ボタンは
+    `#headerViewBar` へ相乗りさせる**」(base.js の mountViewToolbar)。
+    画面ごとに見出しの帯を持つと、画名がヘッダーと二重に出るうえ、
+    バー1本ぶん(40〜50px)本文の高さを食う。守られているかは
+    **画面を開くまで分からない**ので機械で見る。
+    ========================================================= */
+ await page.setViewportSize({width:1600,height:950});
+ for(const [label,nav,barId] of VIEWS){
   await page.click('#'+nav);
   await page.waitForTimeout(1400);
   const s=await page.evaluate(id=>{
@@ -58,14 +193,13 @@ const VIEWS=[
       .filter(x=>document.querySelectorAll('#'+CSS.escape(x)).length>1),
     heights:[...new Set(ctls.map(e=>Math.round(e.getBoundingClientRect().height)))].sort((a,b)=>a-b),
     // アイコンだけのボタン(‹ ›)は記号なので文字サイズの対象外。
-    // tests/test_theme.js が既に置いている例外と同じ扱いにする——
-    // ここだけ厳しくすると、既存の意図的な作りが落ちるだけになる。
+    // tests/test_theme.js が既に置いている例外と同じ扱いにする。
     fonts:[...new Set(ctls.filter(e=>!e.classList.contains('rp-btn-icon'))
                           .map(e=>getComputedStyle(e).fontSize))],
     clipped:ctls.filter(e=>e.scrollWidth-e.clientWidth>2).map(e=>e.id||e.className),
    };
-  },bar);
-  rec(`${label}: 操作列がヘッダーへ載る`,!s.missing&&s.inHeader===true,JSON.stringify(s.missing?'#'+bar+'が無い':s.inHeader));
+  },barId);
+  rec(`${label}: 操作列がヘッダーへ載る`,!s.missing&&s.inHeader===true,JSON.stringify(s.missing?'#'+barId+'が無い':s.inHeader));
   rec(`${label}: 同じ操作がパネル側に二重に残らない`,!s.missing&&s.strays.length===0,JSON.stringify(s.strays||[]));
   rec(`${label}: 操作の高さがトークンに収まる(30/26px)`,
       !s.missing&&s.heights.length>0&&s.heights.every(h=>h===30||h===26),JSON.stringify(s.heights));
@@ -74,7 +208,7 @@ const VIEWS=[
   rec(`${label}: 操作の中身が見切れていない`,!s.missing&&s.clipped.length===0,JSON.stringify(s.clipped||[]));
  }
 
- /* マスタ管理は今回の移設(§9.100)の当事者なので、個別に確かめる。
+ /* マスタ管理は移設(§9.100)の当事者なので、個別に確かめる。
     絞り込み・再読込がヘッダーにあり、パネルには見出しだけが残ること。 */
  await page.click('#openMasterMaint');
  await page.waitForTimeout(1400);
@@ -116,6 +250,9 @@ const VIEWS=[
  console.log('\n== '+(R.length-ng.length)+'/'+R.length+' PASS ==');
  process.exit(ng.length?1:0);
 })().catch(async e=>{
+ /* 落ちてもブラウザは必ず閉じる。閉じ忘れると開いたままの画面が設備の
+    編集セッションを掴み続け、後続のスケジュール系テストが「編集中です」で
+    連鎖的に落ちる(実際に1本のFATALから8本が落ちた)。 */
  console.error('FATAL',e);
  if(b)await b.close().catch(()=>{});
  process.exit(2);

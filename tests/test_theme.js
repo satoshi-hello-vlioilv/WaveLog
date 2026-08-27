@@ -25,9 +25,14 @@ let b=null;
   await page.waitForSelector('#grid',{timeout:20000});
   await page.waitForTimeout(1500);
 
-  /* ---- 1) CSSに残るリテラルの文字サイズは印刷物だけ ---- */
+  /* ---- 1) 実際に配られたCSSを1枚として取る ---- */
   /* CSSは static/css/ 配下へ分割されている(§9.72)。読み込み順=カスケード順
-     なので、document.styleSheets の順に取って1枚として見る。 */
+     なので、document.styleSheets の順に取って1枚として見る。
+     **「文字サイズのリテラルpxは印刷物とサイズ見本だけ」はここでは見ない**
+     （§9.249 ④）——まったく同じ検査を `tests/test_csslint.py` が
+     **ブラウザを立てずに1秒で**やっており、しかもあちらは常に回る
+     （pick_tests の ALWAYS）。同じ約束を2箇所で持つと、片方だけ直した
+     状態が作れる。ここが見るのは**描画してみないと分からないこと**だけ。 */
   const css=await page.evaluate(async()=>{
    const links=[...document.styleSheets].map(s=>s.href).filter(h=>h&&h.includes('app.css'));
    const parts=[];
@@ -35,17 +40,6 @@ let b=null;
    return parts.join('\n');
   });
   const noComment=css.replace(/\/\*[\s\S]*?\*\//g,'');
-  const literals=[];
-  noComment.split('\n').forEach((l,i)=>{
-   const m=l.match(/font-size:\s*[0-9.]+px/);
-   if(m)literals.push({line:i+1,text:l.trim().slice(0,60)});
-  });
-  // A4帳票(rp- / df- / sp- / os-)とサイズ見本だけが例外。**紙は表示サイズ倍率へ
-  // 追随させない**——追随させると画面の拡大率で紙の行数が変わる。
-  // sp- は作業予定表(§9.115、現場配布用)、os- は操業データ表(§9.241 ②)。
-  const stray=literals.filter(x=>!/rp-|df-|sp-|os-|ui-size-swatch/.test(x.text));
-  rec('文字サイズのリテラルpxは印刷物とサイズ見本だけ',stray.length===0,
-   stray.map(x=>`${x.line}:${x.text}`).join(' / ').slice(0,200));
 
   /* ---- 2) 表示サイズを変えると測定画面の文字も全部変わる ---- */
   const sizes=await page.evaluate(async()=>{

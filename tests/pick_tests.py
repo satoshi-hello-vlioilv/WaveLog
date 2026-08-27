@@ -34,10 +34,10 @@ ALWAYS = ['test_patchlint', 'test_globallint', 'test_dskeylint', 'test_csslint',
 
 # 束ねた呼び名。右辺は実際のテスト名。
 G = {}
-G['一覧'] = ['test_nav', 'test_navdyn', 'test_listcache', 'test_listperf', 'test_allrows',
+G['一覧'] = ['test_nav', 'test_listcache', 'test_listperf', 'test_allrows',
              'test_filterio', 'test_filteruser', 'test_filteractive', 'test_filterkeep',
              'test_filterlock', 'test_adhoc',
-             'test_cols', 'test_hdctx', 'test_dsnav', 'test_dsrestart', 'test_listmodal', 'test_filter',
+             'test_cols', 'test_headbar', 'test_dsnav', 'test_dsrestart', 'test_listmodal', 'test_filter',
              'test_audit', 'test_sub', 'test_uisize', 'test_ttlcache',
              # §9.239 ⑤: 子ロットの畳み込みと列の一時的な色
              'test_gridchild', 'test_coltint']
@@ -73,7 +73,7 @@ G['列'] = ['test_collayout', 'test_colformat', 'test_colrule', 'test_colsort', 
            # §9.248 ③④: 表示列が消えない／表示中・非表示中の札
            'test_colkeep']
 # モーダルの閉じ方(§9.221 ①)はどの画面にも掛かる横断の約束。
-G['モーダル'] = ['test_modalkeep', 'test_maint', 'test_p11c', 'test_opui', 'test_opchoice']
+G['モーダル'] = ['test_modalkeep', 'test_maint', 'test_master', 'test_opui', 'test_opchoice']
 G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'test_sccat',
                      'test_scbalance', 'test_scbatch', 'test_screorder', 'test_scperm',
                      'test_scperf', 'test_wkfast', 'test_scsplit', 'test_scprint', 'test_scdrop', 'test_scpick', 'test_sccontent', 'test_workable',
@@ -97,13 +97,13 @@ G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 't
                # §9.241 ①: 束ねた見出しの開閉／④: ロールの読み込み経路
                'test_mmfold', 'test_rollload']
 G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'test_flows',
-             'test_p11', 'test_p11c', 'test_waiting', 'test_mcore', 'test_msteps',
+             'test_master', 'test_waiting', 'test_mcore', 'test_msteps',
              # §9.242 ③: バリの2段（1回目の受付・2回目の計算式）
              # §9.242 ⑤⑥: 公差／基準の言い分けと、確認カードの強調・NGの記録
              # §9.242 ④: ③「記録した値」は操業データ項目マスタが決める
              'test_burr', 'test_ngcard', 'test_recvalues', 'test_reclayout']
 G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'test_density',
-               'test_uiux', 'test_hdr', 'test_headbar', 'test_calscale', 'test_bootui',
+               'test_uiux', 'test_headbar', 'test_uisize', 'test_bootui',
                'test_gridhead']
 G['起動'] = ['test_boot', 'test_bootui', 'test_bootflash', 'test_assetcache', 'test_tabclose',
              'test_faststart']
@@ -157,15 +157,15 @@ RULES = [
     ('static/js/lot-split.js', g('異常位置', 'test_orphan', 'test_sub')),
     ('static/js/master-maint.js', g('マスタ', 'モーダル', '操業意匠', 'test_rawmaster',
                                     'test_headbar', 'test_datasource',
-                                     'test_qjoinui', 'test_dscap', 'test_blockbuild')),
-    ('static/js/calendar-view.js', g('test_calscale', 'test_histdel', 'test_headbar')),
+                                     'test_qjoinui', 'test_dscap', 'test_blockbuild', 'test_rbmodal')),
+    ('static/js/calendar-view.js', g('test_uisize', 'test_histdel', 'test_headbar')),
     # 帳票の塊の組み換え(§9.169)は列レイアウトマスタに載るので列の網も回す。
-    ('static/js/report-dashboard.js', g('モーダル', 'test_screport', 'test_hdr', 'test_calscale',
+    ('static/js/report-dashboard.js', g('モーダル', 'test_screport', 'test_headbar', 'test_uisize',
                                         'test_rpblocks', 'test_rplayout', 'test_rpmaster',
                                         # §9.242 ⑦⑧: 刷るときの紙の箱・品質情報の枠
                                         'test_rpprint',
                                         'test_collayout', 'test_actuals')),
-    ('static/js/quality-analysis.js', g('test_uiux', 'test_hdr', 'test_fit', 'test_theme')),
+    ('static/js/quality-analysis.js', g('test_uiux', 'test_headbar', 'test_fit', 'test_theme')),
     ('static/js/defect-locator.js', g('モーダル', '異常位置')),
     # ロールマスタ（§9.239 ⑥）。マスタの4本セットと判定の両方に効く。
     ('backend/repositories/roll_repo.py', g('マスタ', '異常位置')),
@@ -179,7 +179,7 @@ RULES = [
                                         'test_msteps')),
     ('static/js/measure-steps.js', g('測定', '見た目')),   # 段の枠は測定画面全体に効く
     # データ一覧の表示列(§9.162)も持つので、列の網も回す。
-    ('static/js/records-store.js', g('モーダル', 'test_share', 'test_flows', 'test_p11',
+    ('static/js/records-store.js', g('モーダル', 'test_share', 'test_flows', 'test_master',
                                      'test_recperm', 'test_reccols', 'test_lcpanel',
                                      'test_audittrail', 'test_recdel',
                                      # §9.248 ⑥: 見せる範囲を設備で絞る
@@ -199,12 +199,13 @@ RULES = [
     ('static/css/35-split.css', g('見た目', '異常位置', 'test_split_layout')),
     ('static/css/40-records.css', g('見た目', 'test_recperm', 'test_reccols', 'test_recdel',
                                      'test_eqscope')),
-    ('static/css/50-master.css', g('見た目', 'マスタ', '操業意匠', 'test_dscap', 'test_qjoinui',
+    ('static/css/50-master.css', g('見た目', 'マスタ', '操業意匠', 'test_rbmodal',
+                                   'test_dscap', 'test_qjoinui',
                                     'test_blockbuild')),
     ('static/css/60-report.css', g('見た目', 'test_screport', 'test_rpblocks', 'test_rplayout',
                                    'test_rpprint')),
     ('static/css/62-actuals.css', g('見た目', '実績')),
-    ('backend/repositories/report_block_repo.py', g('test_rpmaster', 'test_rpblocks',
+    ('backend/repositories/report_block_repo.py', g('test_rpmaster', 'test_rpblocks', 'test_rbmodal',
                                                     'test_rplayout', 'test_crudroutes',
                                                     'test_blockbuild', 'test_opdata')),
     ('static/css/88-logs.css', g('見た目', 'test_logview')),
@@ -215,7 +216,7 @@ RULES = [
     ('backend/routes/masters.py', g('マスタ', '列', 'test_modeguard')),
     ('backend/routes/schedule.py', g('スケジュール', 'test_modeguard', 'test_crudroutes')),
     ('backend/routes/measurement.py', g('測定', 'test_modeguard', 'test_measstore')),
-    ('backend/routes/quality.py', g('test_uiux', 'test_hdr', 'test_tablequery',
+    ('backend/routes/quality.py', g('test_uiux', 'test_headbar', 'test_tablequery',
                                     'test_modeguard')),
     ('backend/routes/logs.py', g('ログ', 'test_modeguard')),
     ('backend/routes/path_config.py', g('test_setpage', 'test_datasource', 'test_dbopen',

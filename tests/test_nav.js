@@ -1,12 +1,35 @@
-/* メインメニューの畳み込み(§9.58)と、
-   作業可否フラグを予定ロット全件へ行き渡らせる修正(§9.57)の検証 */
+/* test_nav.js: メインメニューの畳み込み（§9.58）
+
+   ============================================================
+   `test_navdyn.js` をここへ取り込んだ（§9.249 ④、利用者の指示
+   「重複しているテストは統合できるか確認し必要に応じて統合して最適化」）
+   ------------------------------------------------------------
+   あちらは「**後から足されるナビ項目**（カレンダー／ダッシュボード／DB一覧）
+   にも畳んだときのツールチップが付くか」だけを見る54行で、そのために
+   ブラウザをもう1回立ち上げて同じ起動を待っていた。見ているのは同じ
+   MutationObserver の仕掛けなので1本にまとめる。
+
+   **作業可否の索引（§9.57）の検証はここから外した。** まったく同じ前提
+   （仕掛に無いロットの予定を1件作る）と同じ確認が `test_audit.js` にもあり、
+   **2本が同じ索引を2回作っていた**。索引は性能の話なので `test_audit.js`
+   （問い合わせ回数を数える側）へ寄せ、ここはメニューだけを見る。
+   おかげでこのテストは**モードを切り替えなくなった**——`test_nav` が
+   scheduleモードのまま終わって後続が落ちる事故（tests/README.md）の
+   種そのものが消える。
+
+   ここで固定すること
+   ------------------------------------------------------------
+    1. 畳むと細い帯になり、行き先(アイコン)は全部見えたままラベルだけ隠れる
+    2. ラベルの代わりにツールチップで行き先が分かる
+    3. 畳んだままでも画面を切り替えられ、再読込しても畳んだまま
+    4. 開き直すと元の幅とラベルへ戻る
+    5. **後から足されるナビ項目**にもツールチップが付き、開くと元へ戻る
+   ============================================================ */
 const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const { addOrphanPlan } = require('./orphan_lot');
 const B='http://127.0.0.1:5029';
-const EQ='テスト設備A';
 const setMode=async m=>{await fetch(B+'/api/access-mode',{method:'POST',
  headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})};
-let b=null,orphan=null;
+let b=null;
 (async()=>{
  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
  const page=await b.newPage({viewport:{width:1600,height:950}});
@@ -14,11 +37,6 @@ let b=null,orphan=null;
  page.on('pageerror',e=>console.log('[pageerror]',e.message.slice(0,140)));
  page.on('dialog',d=>d.accept());
 
- // 作業可否の検証(後半)の前提: 仕掛に無いロットの予定が1件あること。
- // 無いと索引は1ページ目で打ち切られる(それが正しい動き)。
- orphan=await addOrphanPlan(EQ);
-
- // ---------- メニューの畳み込み ----------
  await setMode('edit');
  await page.goto(B+'/',{waitUntil:'domcontentloaded'});
  await page.waitForSelector('#openSchedule',{timeout:15000});
@@ -60,44 +78,38 @@ let b=null,orphan=null;
  await page.reload({waitUntil:'domcontentloaded'});await page.waitForTimeout(2200);
  rec('再読込しても畳んだままになる',(await width())<80,(await width())+'px');
 
- // 開き直すと元の幅へ戻る
+ /* ---------- 後から足されるナビ項目（旧 test_navdyn.js・§9.58 MutationObserver） ----------
+    いまは**畳んだ状態で読み込み直した直後**なので、カレンダー・
+    ダッシュボードは「畳み済みの後から生えた」項目そのもの。 */
+ await page.waitForSelector('#openCalendar',{timeout:15000});
+ await page.waitForTimeout(1500);
+ const st=await page.evaluate(()=>{
+  const t=id=>{const e=document.getElementById(id);return e?{title:e.title,
+    label:(e.querySelector('span')||{}).textContent.trim()||'',orig:e.dataset.navTitle}:null};
+  const all=[...document.querySelectorAll('aside .nav-item')];
+  return {collapsed:document.body.classList.contains('nav-collapsed'),
+   cal:t('openCalendar'),dash:t('openDashboard'),
+   missing:all.filter(e=>!e.title).map(e=>e.id||e.className)};
+ });
+ rec('畳んだ状態で復元されている',st.collapsed);
+ // 元の説明文を持つ項目は「ラベル：説明」、持たない項目はラベルのみ
+ const tipOk=x=>!!x&&x.title===(x.label?(x.orig?x.label+'：'+x.orig:x.label):x.orig)&&!!x.title
+              &&x.title.startsWith(x.label);
+ rec('後から足されるカレンダーにツールチップが付く',tipOk(st.cal),JSON.stringify(st.cal));
+ rec('後から足されるダッシュボードにツールチップが付く',tipOk(st.dash),JSON.stringify(st.dash));
+ rec('元の説明文は畳んでも失われない',!!st.cal&&st.cal.title.includes(st.cal.orig),st.cal.title);
+ rec('ツールチップの無いナビ項目が無い',st.missing.length===0,JSON.stringify(st.missing));
+
+ // 開き直すと元の幅・ラベル・title へ戻る
  await page.click('#navCollapseToggle');await page.waitForTimeout(400);
  rec('開き直すと元の幅へ戻る',(await width())===open,`${await width()}px (元 ${open}px)`);
  const back=await page.evaluate(()=>[...document.querySelectorAll('aside .nav-item span')].filter(x=>x.offsetParent).length);
  rec('開くとラベルが戻る',back>=5,back+'個');
-
- // ---------- 作業可否: 予定ロットが全部判定される ----------
- await setMode('schedule');
- await page.goto(B+'/',{waitUntil:'domcontentloaded'});
- await page.waitForSelector('#openSchedule',{timeout:15000});
- await page.waitForTimeout(1200);
- await page.click('#openSchedule');
- await page.waitForSelector('.sc-board-row',{timeout:15000});
- await page.evaluate(()=>{const r=[...document.querySelectorAll('.sc-board-row')].find(x=>x.dataset.equipment==='テスト設備A');if(r)r.click()});
- await page.waitForSelector('.sc-row-line',{timeout:15000});
- await page.waitForFunction(()=>[...document.querySelectorAll('.sc-row-workable')]
-   .some(n=>n.classList.contains('is-ok')||n.classList.contains('is-ng')),{timeout:40000});
- await page.waitForTimeout(3500);
- const wk=await page.evaluate(()=>{
-  const c={};document.querySelectorAll('.sc-row-line .sc-row-workable').forEach(n=>{
-   const k=[...n.classList].find(x=>x.startsWith('is-'));c[k]=(c[k]||0)+1});
-  return {counts:c,state:window.scheduleWorkableState()};
- });
- rec('予定に「?」(判定できない)が残らない',
-   !wk.counts['is-unknown'],JSON.stringify(wk.counts));
- rec('前提: 仕掛に無いロットの予定を用意できた',orphan.ok,`${orphan.lotNo} / ${orphan.detail}`);
- rec('仕掛の500件上限を越えて索引を作れている',
-   wk.state.scanned>500&&wk.state.pages>1,
-   `${wk.state.pages}ページ / ${wk.state.scanned}件走査 / 全${wk.state.total}件`);
- rec('索引が仕掛の全件をカバーしている',
-   wk.state.indexSize>=wk.state.total,`索引${wk.state.indexSize}件 / 仕掛${wk.state.total}件`);
+ const tips=await page.evaluate(()=>[...document.querySelectorAll('aside .nav-item')]
+   .filter(e=>e.title!==(e.dataset.navTitle??'')).map(e=>e.id+':'+e.title));
+ rec('開くとツールチップは元の値へ戻る(元が空なら空)',tips.length===0,JSON.stringify(tips));
 
  await b.close();b=null;
- // 自分で足した予定は必ず消す(残すと後続テストの「不可」の件数や行位置が変わる)。
- await orphan.remove();
- // このテストは途中でscheduleモードへ切り替えるので、後続テスト(編集モード前提)の
- // ために必ずeditへ戻してから終わる。
- await setMode('edit');
  const ng=R.filter(x=>!x.ok);
  console.log('\n== '+(R.length-ng.length)+'/'+R.length+' PASS ==');
  process.exit(ng.length?1:0);
@@ -107,7 +119,5 @@ let b=null,orphan=null;
  // 連鎖的に落ちる(実際に1本のFATALから8本が落ちた)。
  console.error('FATAL',e);
  if(b)await b.close().catch(()=>{});
- if(orphan)await orphan.remove().catch(()=>{});
- await setMode('edit').catch(()=>{});
  process.exit(2);
 });

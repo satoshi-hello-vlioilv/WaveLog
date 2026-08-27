@@ -180,55 +180,95 @@
      **「ラベルと値の出どころを並べただけの塊」だけ**を現場が足せる。 */
   {group:'equip',key:'reportBlock',label:'帳票ブロック',icon:'票',
    endpoint:'/api/report-block-master',hasDelete:true,
+   titleText:'帳票ブロック — 紙に載せる塊',
+   asideHtml:()=>rbAsideHtml(),bindAside:form=>rbBindAside(form),
+   hintShort:'①から④の順に決めます。**右の見本が刷り上がりです**——幅・高さ・列数を押すとその場で形が変わります。'
+    +'**既定の塊は消せません**（紙へ出したくないときは④を「出さない」に）。',
+   /* ---------- 決めることを4つに束ねる（§9.249 ③、利用者の指示） ----------
+      「モーダルを大きくしてください。大きくしたモーダルに合うようにバランス
+       よく再構築して、もっとわかりやすく視覚化した形で表示を工夫し設定し
+       やすいものを作成してください。文字が多いわりにわかりにくく、情報の
+       階層化、チャンク化も駆使し」
+
+      以前は**11の欄が平らに並び**、どれも長い説明文を抱えていた。
+      決めることは実際には4段階で、しかも**紙のどこにどう出るか**は
+      文字では伝わらない（「6マス」が紙の何割かを頭の中で割り算していた）。
+
+       ① これは何の塊か   … 設備・名前・種別
+       ② 何を載せるか     … 中身（種別で変わる）
+       ③ 紙のどこへ出すか … 幅・高さ・列数・繰り返し
+       ④ 出す・並び       … 有効・表示順
+
+      ①→④は**実際に決める順番**なので、視覚導線と作業導線が一致する
+      （§CLAUDE 14）。幅と高さは**紙のマス目そのもの**を押して決め、
+      右の見本が刷り上がりの位置と大きさを常に映す。 */
    fields:[{k:'equipment',label:'対象設備',type:'equipment-multi-text',required:true,key:true,
+            fieldGroup:'① これは何の塊か',
             tagHint:'この塊をどの設備の帳票へ出せるようにするかです。「すべての設備」を選ぶと、これから増える設備でも使えます。'},
-           {k:'name',label:'ブロック名',required:true,key:true,
-            hint:'帳票の見出しになり、並び・幅・高さの設定の鍵にもなります。**同じ設備に同じ名前を2つ置かないでください**（どちらの設定か決まりません）。'},
-           /* 塊の種別（§9.234 ⑤、利用者の指示「ラベル貼り付けエリアと同じ
-              タイプのエリア確保だけのタイプで文字を配置できる感じのものを
-              追加してください」）。**決めることが変わる**ので、選んだ種別に
-              合う欄だけを出す（§4。押せるのに何も起きない欄を残さない）。 */
-           {k:'kindText',label:'種別',type:'select',options:['項目の並び','エリア（枠と文字）'],
-            hint:'「エリア（枠と文字）」は**値を出さず、場所を空けるだけの塊**です（ラベル貼付・手書き・確認印の欄）。置く文字は下の「エリアに置く文字」で決めます。空のままでも枠だけの塊として使えます。**高さは「中身なり」だと1行に潰れる**ので、行数を決めてください。'},
+           {k:'name',label:'ブロック名',required:true,key:true,size:'lg',
+            fieldGroup:'① これは何の塊か',
+            hint:'帳票の見出しになります。',
+            more:'幅・高さ・並びの設定の鍵にもなります。同じ設備に同じ名前を2つ置かないでください（どちらの設定か決まりません）。'},
+           /* 塊の種別（§9.234 ⑤）。**選ぶ前に違いが読める形にする**——
+              名前だけのプルダウンでは「エリア」が何なのか開くまで分からない。 */
+           {k:'kindText',label:'種別',type:'choice-card',
+            fieldGroup:'① これは何の塊か',
+            cards:[{v:'項目の並び',icon:'≣',label:'項目の並び',note:'ラベルと値を並べて刷る'},
+                   {v:'エリア（枠と文字）',icon:'▢',label:'エリア',note:'値は出さず、場所だけ空ける'}],
+            hint:'「エリア」は**高さを③で決めてください**（「中身なり」だと1行に潰れます）。',
+            more:'エリアはラベル貼付・手書き・確認印のように、値を出さず場所を空けるだけの塊です。'},
            /* §9.226 ④。**選んで組み立てる**（手で道を書かせない）。 */
-           {k:'content',label:'内容（載せる項目）',type:'field-builder',when:{kindText:'項目の並び'},
-            hint:'左の候補を押すと右へ増え、**上から順に紙へ並びます**。掴んで並べ替え、名前はその場で直せます。候補には**操業データ項目マスタで足した項目もそのまま出ます**（項目を足せばここにも増えます）。載せる項目が空のときは、画面がもともと持っている中身のまま出ます。'},
+           {k:'content',label:'載せる項目',type:'field-builder',when:{kindText:'項目の並び'},
+            fieldGroup:'② 何を載せるか',
+            hint:'左の候補を押すと右へ増え、**左上から順に紙へ並びます**。',
+            more:'掴んで並べ替え、名前はその場で直せます。候補には操業データ項目マスタで足した項目もそのまま出ます。空のままなら、画面がもともと持っている中身で出ます。'},
            {k:'text',label:'エリアに置く文字',type:'textarea',rows:3,when:{kindText:'エリア（枠と文字）'},
-            hint:'改行できます。**値は入りません**——測定データを出したいときは種別を「項目の並び」にしてください。空のままなら枠だけの塊になります。'},
-           {k:'span',label:'幅（12マス中）',type:'select',options:['3','4','6','8','12'],
-            hint:'紙は12マスのグリッドです。3＝1/4、6＝1/2、12＝全幅。**ここは既定**で、設備ごとの紙で幅を変えるとそちらが優先されます（帳票画面の「配置を組み換え」で戻せます）。'},
-           {k:'rows',label:'高さ（行数）',type:'select',options:['','2','3','4','5','6','8','12'],
-            hint:'1行＝24px。空欄なら中身なり（描いてから測ります）。行数を決めると下の段へ跨いで置けます。'},
-           /* 繰り返し（§9.247 ②、利用者の指示「異幅分割ありのロットでロット番号が
-              1ロット内に複数混在するパターンにおいても各分割ロット単位ごとに
-              統計データが出てくるように」）。**分割の無いロットでは1回だけ**
-              出るので、設備の紙を分割あり・無しで分ける必要は無い。 */
-           {k:'repeatText',label:'繰り返し',type:'select',
-            options:['このロット全体（1回だけ）','分割後の子ロットごと'],
-            when:{kindText:'項目の並び'},
-            hint:'「分割後の子ロットごと」にすると、**異幅分割で子ロット番号が複数ある**ロットで、この塊が**子ロットの数だけ**出ます。見出しに子ロット番号と条の範囲が付き、載せた`測定した値の統計`は**その子ロットの条だけ**から数え直されます。**幅分割していないロットでは今までどおり1回だけ**出ます。板厚・板丈・肉厚は丈ごとに測るので子ロットには割り当てられず「—」になります（条ごとに測るのは板幅・ラテラルボー・バリ・テレスコープ・巻ずれ）。'},
+            fieldGroup:'② 何を載せるか',
+            hint:'改行できます。**値は入りません。**',
+            more:'測定データを出したいときは種別を「項目の並び」にしてください。空のままなら枠だけの塊になります。'},
+           /* 幅・高さは**紙のマス目を押して決める**（§9.249 ③）。 */
+           {k:'span',label:'幅',type:'span-grid',options:['3','4','6','8','12'],max:12,
+            fieldGroup:'③ 紙のどこへ出すか',
+            hint:'紙は12マスのグリッドです。**ここは既定**です。',
+            more:'設備ごとの紙で幅を変えると、そちらが優先されます（帳票画面の「配置を組み換え」で戻せます）。'},
+           {k:'rows',label:'高さ',type:'rows-pick',options:['','2','3','4','5','6','8','12'],
+            fieldGroup:'③ 紙のどこへ出すか',
+            hint:'1行＝24px。**「中身なり」は描いてから測ります。**',
+            more:'行数を決めると、下の段へ跨いで置けます。エリアは中身なりだと1行に潰れるので行数を決めてください。'},
            {k:'cols',label:'内訳の列数',type:'select',options:['','1','2','3','4'],
-            hint:'節の中で「ラベル＝値」を何列に並べるかです。空欄なら中身の数から決まります（項目が多い塊は4列にすると紙が締まります）。**並べ方が「幅なり」「高さなり」のときは列数を使いません**（カードの大きさで決まります）——並べ方は帳票画面の「配置を組み換え」でカードをダブルクリックすると選べます。'},
+            when:{kindText:'項目の並び'},
+            fieldGroup:'③ 紙のどこへ出すか',
+            hint:'空欄なら**中身の数から決まります**。',
+            more:'節の中で「ラベル＝値」を何列に並べるかです。並べ方が「幅なり」「高さなり」のときは使いません（カードの大きさで決まります）。'},
+           /* 繰り返し（§9.247 ②）。**分割の無いロットでは1回だけ**出る。 */
+           {k:'repeatText',label:'繰り返し',type:'choice-card',
+            when:{kindText:'項目の並び'},
+            fieldGroup:'③ 紙のどこへ出すか',
+            cards:[{v:'このロット全体（1回だけ）',icon:'１',label:'1回だけ',note:'このロット全体で1つ'},
+                   {v:'分割後の子ロットごと',icon:'⋮',label:'子ロットごと',note:'異幅分割の子ロットの数だけ出す'}],
+            hint:'**幅分割していないロットでは1回だけ**です。',
+            more:'「子ロットごと」にすると、異幅分割で子ロット番号が複数あるロットで、この塊が子ロットの数だけ出ます。見出しに子ロット番号と条の範囲が付き、載せた「測定した値の統計」はその子ロットの条だけから数え直されます。板厚・板丈・肉厚は丈ごとに測るので子ロットに割り当てられず「—」になります。'},
+           {k:'enabledText',label:'紙に出す',type:'choice-card',
+            fieldGroup:'④ 出す・並び',
+            cards:[{v:'有効',icon:'✓',label:'出す',note:'配置に置けば紙へ出る'},
+                   {v:'無効',icon:'—',label:'出さない',note:'設定は残る。いつでも戻せる'}],
+            hint:'**既定の塊を紙から外す手立てはこれだけです。**',
+            more:'既定の塊は消せません。「出さない」にしても設定は残るので、いつでも戻せます。'},
            {k:'order',label:'表示順',type:'number',min:0,step:10,
+            fieldGroup:'④ 出す・並び',
             hint:'小さいほど先に出ます。空欄で保存すると今の並びのままです。'},
-           /* **「有効」の欄が無いと行き止まりになる**（§9.219 ②）。既定の塊は
-              消せないので、紙へ出さない手立てはここだけ。欄が無いまま
-              「有効を外してください」と書くのは、§4より悪い「存在しない操作の
-              指示」になる。 */
-           {k:'enabledText',label:'有効',type:'select',options:['有効','無効'],
-            hint:'「無効」にすると、その塊は帳票に出なくなります（設定は残るので、いつでも戻せます）。**既定の塊を紙から外す手立てはこれだけです**（既定の塊は消せません）。'},
-           /* **組み込みの印は見せるが触らせない**（§9.219 ②）。どのコードの
-              塊を指しているかは付け替えられない——付け替えると「どの塊の設定
-              なのか」が決まらなくなる。 */
-           {k:'builtin',label:'既定の塊',readonly:true,
-            hint:'空欄＝自分で作った塊です。値が入っているものはアプリがもともと持っている塊で、**名前・幅・高さ・並び・出す/出さない・対象設備**を変えられます（中身は塊によります。下の説明を参照）。'}],
+           /* **組み込みの印は見せるが触らせない**（§9.219 ②）。 */
+           {k:'builtin',label:'既定の塊',readonly:true,size:'md',
+            fieldGroup:'④ 出す・並び',
+            hint:'空欄＝**自分で作った塊**です。',
+            more:'値が入っているものはアプリがもともと持っている塊で、名前・幅・高さ・並び・出す/出さない・対象設備を変えられます。この印は付け替えられません。'}],
    cols:[{k:'equipment',label:'対象設備',grow:2,format:'equipmentTarget'},
          {k:'name',label:'ブロック名',grow:2},{k:'kindText',label:'種別',grow:1},
          {k:'repeatText',label:'繰り返し',grow:1},
          {k:'builtin',label:'既定',grow:1},
          {k:'enabledText',label:'有効',grow:1},{k:'content',label:'内容',grow:4},
          {k:'span',label:'幅',grow:1},{k:'rows',label:'高さ',grow:1},{k:'order',label:'表示順',grow:1}],
-   hint:'帳票の塊の一覧です。**アプリがもともと持っている塊もここに載っています**（「既定」に値が入っている行）。既定の塊は**名前・幅・高さ・並び・出す/出さない・対象設備**を変えられ、`基本情報`／`コース情報`／`測定条件`／`作業班構成`／`作業時間`／`登録状態`の6つは**中身（ラベルと出どころの並び）も**変えられます。中身を空にすると画面がもともと持っている形へ戻ります。測定表・条の図・異常位置判定のように組み立て方そのものが仕事になっている塊は中身を変えられません（書いても効かないので、変えないでください）。既定の塊は**消せません**——紙へ出したくないときは「有効」を外します。自分で作った塊は1行＝1つの塊で、中身は「ラベルと値の出どころ」を並べたものです。出どころには`calc.workDuration`（実働時間）`calc.status`（状態）`calc.crewSize`（N名班）`calc.coilStop`（コイル止め・旧データ込み）といった**計算した値**も使えます。作った塊は既定では紙に出していないので、帳票画面の「配置を組み換え」の「出していない塊」から紙へ落としてください。'},
+   hint:'帳票の紙に載せる塊の一覧です。**アプリがもともと持っている塊もここに載っています**（「既定」に値が入っている行）。既定の塊は**名前・幅・高さ・並び・出す/出さない・対象設備**を変えられ、`基本情報`／`コース情報`／`測定条件`／`作業班構成`／`作業時間`／`登録状態`の6つは**中身**も変えられます。測定表・条の図・異常位置判定のように組み立て方そのものが仕事になっている塊は中身を変えられません。既定の塊は**消せません**——紙へ出したくないときは「紙に出す」を「出さない」にします。作った塊は帳票画面の「配置を組み換え」の「出していない塊」から紙へ落としてください。'},
   {group:'equip',key:'equipment',label:'設備',icon:'設',endpoint:'/api/equipment-master',hasDelete:true,
    editorModal:false,
    fields:[{k:'name',label:'設備名',required:true,key:true},
@@ -502,8 +542,12 @@
  function hintHtml(t){
   return esc(String(t||'')).replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');
  }
+ /* **消した説明は`title`へ落とす**（§9.234 ①）。欄の説明を短くすると
+    読めるようになるが、消してしまうと調べようが無くなる。`more`を持つ欄は
+    見出しにマウスを当てれば全文が読める（§CLAUDE 8）。 */
  function fieldLabelHtml(f){
-  return `<span>${esc(f.label)}${f.required?'<i>*</i>':''}${f.key?'<em class="mm-keytag">キー</em>':''}</span>`;
+  const t=f.more?` title="${esc(f.label+'｜'+String(f.more).replace(/\*\*/g,''))}"`:'';
+  return `<span${t}>${esc(f.label)}${f.required?'<i>*</i>':''}${f.key?'<em class="mm-keytag">キー</em>':''}${f.more?'<em class="mm-more" aria-hidden="true">?</em>':''}</span>`;
  }
  /* master-combo の選択肢は別マスタから取る。同じマスタを何度も引かないよう
     タブを開いている間だけ持つ(登録すると連動して増えるので、保存後の
@@ -593,9 +637,18 @@
 
     段は**型から自動で決まる**（数値=xs／日付=sm／選択=md／自由記述=md）ので、
     マスタを増やしても書き足す必要は無い。合わないものだけ`size:`で名指しする。 */
+ /* 12マス中の幅を「読める言葉」にする（§9.249 ③）。6を1/2と読み替えるのは
+    人の側の仕事にしない。割り切れないものは「◯マス」のまま言う。 */
+ function mmFracText(n,max){
+  const m=max||12;
+  const map={1:'1/12',2:'1/6',3:'1/4',4:'1/3',6:'1/2',8:'2/3',9:'3/4',12:'全幅'};
+  return map[n]||`${n}マス`;
+ }
  const MM_SIZE_BY_TYPE={number:'xs',time:'xs',date:'sm',select:'md',
    'master-combo':'md','master-suggest':'md','equipment-select':'md',
-   textarea:'full',path:'full','equipment-multi':'full','equipment-multi-text':'full'};
+   textarea:'full',path:'full','equipment-multi':'full','equipment-multi-text':'full',
+   /* 見て選ぶ欄は横いっぱい（札が折り返さないように・§9.249 ③）。 */
+   'choice-card':'full','span-grid':'full','rows-pick':'full'};
  function mmFieldSize(f){
   if(f.size)return f.size;
   const t=String(f.type||'text');
@@ -750,6 +803,63 @@
       移り、掴んで並べ替えられる。ラベルはその場で直せる。
       **候補はサーバーが答える**（`catalog`）ので、操業データの項目を足せば
       そのままここに増える（§9.163「判定を画面に書かない」）。 */
+   /* ---------- 選ばせる欄を「見て選ぶ」形にする（§9.249 ③） ----------
+      利用者の指摘「文字が多いわりにわかりにくく」。選択肢の意味が
+      **選ぶ前に読めない**のが原因で、プルダウンは名前しか出せない。
+      札に**絵・名前・一言**を並べれば、開かなくても違いが分かる（§CLAUDE 2）。
+      値を持つのは今までどおり隠し欄なので、`submitMaint`は型を知らなくてよい。 */
+   if(f.type==='choice-card'){
+    /* **選択欄と同じ既定にする**（§9.249 ③）——`<select>`は先頭の選択肢が
+       最初から選ばれている。札にした途端に「どれも選ばれていない」状態が
+       生まれると、②の欄が`data-when`で消えて**決めることが1つ消える**
+       （新規登録で実際にそうなった）。 */
+    const cur=String(val||'')||String(((f.cards||[])[0]||{}).v||'');
+    const cards=(f.cards||[]).map(c=>{
+     const on=cur===String(c.v);
+     return `<button type="button" class="mm-card-opt${on?' is-on':''}" data-card="${f.k}" data-card-v="${esc(c.v)}"`
+      +` aria-pressed="${on?'true':'false'}" title="${esc(c.note||c.label)}">`
+      +`<span class="mm-card-ico" aria-hidden="true">${esc(c.icon||'')}</span>`
+      +`<span class="mm-card-txt"><b>${esc(c.label)}</b>`
+      +`${c.note?`<small>${esc(c.note)}</small>`:''}</span></button>`;
+    }).join('');
+    return `<div class="mm-field mm-field-area mm-cards">${fieldLabelHtml(f)}
+      <div class="mm-card-row">${cards}</div>
+      <input type="hidden" data-field="${f.k}" value="${esc(cur)}">
+      ${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</div>`;
+   }
+   /* 紙の12マスをそのまま出して、**押した幅がそのまま見える**ようにする。
+      「6＝1/2」を頭の中で割り算させない（§CLAUDE 6）。 */
+   if(f.type==='span-grid'){
+    const max=f.max||12,cur=Math.max(1,Math.min(max,Number(val)||max));
+    const allow=(f.options||[]).map(Number).filter(n=>n>0);
+    const cells=[];
+    for(let i=1;i<=max;i++){
+     const pick=allow.length?allow.find(n=>n>=i)||allow[allow.length-1]:i;
+     cells.push(`<button type="button" class="mm-span-cell${i<=cur?' is-on':''}"`
+      +` data-span="${f.k}" data-span-v="${pick}" title="${pick}マス（12マス中）にします">${i}</button>`);
+    }
+    return `<div class="mm-field mm-field-area mm-spanfield">${fieldLabelHtml(f)}
+      <div class="mm-span-grid" role="group" aria-label="幅（12マス中）">${cells.join('')}</div>
+      <div class="mm-span-read"><b data-span-read="${f.k}">${cur}</b> / ${max} マス
+       <em data-span-frac="${f.k}">${esc(mmFracText(cur,max))}</em></div>
+      <input type="hidden" data-field="${f.k}" value="${esc(val)}">
+      ${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</div>`;
+   }
+   /* 高さ。**「中身なり」を1つ目の札にする**——既定がどれかを最初に見せる。 */
+   if(f.type==='rows-pick'){
+    const opts=f.options||[''];
+    const cur=String(val||'');
+    return `<div class="mm-field mm-field-area mm-rowsfield">${fieldLabelHtml(f)}
+      <div class="mm-rows-pick" role="group" aria-label="高さ（行数）">${opts.map(o=>{
+       const on=String(o)===cur;
+       const label=o===''?'中身なり':o+'行';
+       return `<button type="button" class="mm-rows-opt${on?' is-on':''}" data-rows="${f.k}" data-rows-v="${esc(o)}"`
+        +` aria-pressed="${on?'true':'false'}" title="${o===''?'描いてから測って、中身の高さに合わせます':o+'行ぶん（1行＝24px）の高さで固定します'}">`
+        +`<i aria-hidden="true" style="--mm-rows:${o===''?1:Number(o)}"></i><span>${esc(label)}</span></button>`;
+      }).join('')}</div>
+      <input type="hidden" data-field="${f.k}" value="${esc(val)}">
+      ${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</div>`;
+   }
    if(f.type==='field-builder'){
     return `<div class="mm-field mm-field-area fb" data-fb="${f.k}">${fieldLabelHtml(f)}
       <div class="fb-body">
@@ -1010,11 +1120,19 @@
   modal.querySelector('.mm-editor-dialog')?.classList.remove('is-wide','is-tall');
   $('#maintEditorSave').onclick=()=>submitMaint('#maintEditorForm');
   const form=$('#maintEditorForm');
-  form.innerHTML=`${def.hint?`<p class="mm-def-hint">${hintHtml(def.hint)}</p>`:''}
+  /* **決めることの隣に、刷り上がりを置く**（§9.249 ③）。`asideHtml`を持つ
+     マスタだけ2段組みになる（持たないマスタは今までどおり1段）。 */
+  /* **窓の説明は一覧の説明と同じにしない**（§CLAUDE 8）。一覧の`hint`は
+     「このマスタは何か」を書くので長い。窓では**いま決めることの一言**だけを
+     出し、詳しくは各欄の説明が言う（`hintShort`を持たないマスタは今までどおり）。 */
+  const modalHint=def.hintShort||def.hint;
+  form.innerHTML=`${modalHint?`<p class="mm-def-hint">${hintHtml(modalHint)}</p>`:''}
    <div class="mm-form-fields">${buildFieldControls(def,editing)}${
-    typeof def.extraHtml==='function'?def.extraHtml(editing):''}</div>`;
+    typeof def.extraHtml==='function'?def.extraHtml(editing):''}</div>
+   ${typeof def.asideHtml==='function'?def.asideHtml(editing):''}`;
   form.onsubmit=ev=>{ev.preventDefault();submitMaint('#maintEditorForm')};
   bindEquipmentPickers(form);bindInputHelpers(form);
+  if(typeof def.bindAside==='function')def.bindAside(form);
   modal.hidden=false;
   /* **最初のフォーカスに「候補が出る欄」を選ばない**（§9.221 ④）。タグ入力は
      フォーカスした時点で候補の一覧を開くので、窓を開けた瞬間にその一覧が
@@ -1051,7 +1169,63 @@
  /* 入力支援の配線(§9.49)。buildFieldControls()が出した各型を動かす。
     どの型も「data-field を持つ要素の value が最終的な値」という約束を守るので、
     submitMaint()側は型を知らなくてよい。 */
+ /* 見て選ぶ欄の配線（§9.249 ③）。**値は隠し欄が持つ**ので、
+    押したら`change`を飛ばす——`data-when`の出し入れも紙の見本も、
+    値が変わったことを`change`で知る（§9.218 ②と同じ作法）。 */
+ function mmSetHidden(form,key,value){
+  const el=form.querySelector(`[data-field="${CSS.escape(key)}"]`);
+  if(!el)return;
+  el.value=String(value);
+  el.dispatchEvent(new Event('change',{bubbles:true}));
+ }
+ function bindChoiceCards(form){
+  form.querySelectorAll('[data-card]').forEach(b=>{
+   if(b.dataset.cardWired)return;
+   b.dataset.cardWired='1';
+   b.onclick=()=>{
+    const k=b.dataset.card,v=b.dataset.cardV;
+    form.querySelectorAll(`[data-card="${CSS.escape(k)}"]`).forEach(x=>{
+     const on=x===b;x.classList.toggle('is-on',on);x.setAttribute('aria-pressed',on?'true':'false');
+    });
+    mmSetHidden(form,k,v);
+   };
+  });
+ }
+ function bindSpanGrids(form){
+  form.querySelectorAll('.mm-spanfield').forEach(box=>{
+   if(box.dataset.spanWired)return;
+   box.dataset.spanWired='1';
+   const cells=[...box.querySelectorAll('[data-span]')];
+   if(!cells.length)return;
+   const key=cells[0].dataset.span;
+   const paint=v=>{
+    const n=Number(v)||0;
+    cells.forEach((c,i)=>c.classList.toggle('is-on',i+1<=n));
+    const read=box.querySelector(`[data-span-read="${CSS.escape(key)}"]`);
+    if(read)read.textContent=String(n);
+    const frac=box.querySelector(`[data-span-frac="${CSS.escape(key)}"]`);
+    if(frac)frac.textContent=mmFracText(n,cells.length);
+   };
+   cells.forEach(c=>c.onclick=()=>{paint(c.dataset.spanV);mmSetHidden(form,key,c.dataset.spanV)});
+   const hidden=form.querySelector(`[data-field="${CSS.escape(key)}"]`);
+   if(hidden)hidden.addEventListener('change',()=>paint(hidden.value));
+  });
+ }
+ function bindRowsPicks(form){
+  form.querySelectorAll('[data-rows]').forEach(b=>{
+   if(b.dataset.rowsWired)return;
+   b.dataset.rowsWired='1';
+   b.onclick=()=>{
+    const k=b.dataset.rows,v=b.dataset.rowsV;
+    form.querySelectorAll(`[data-rows="${CSS.escape(k)}"]`).forEach(x=>{
+     const on=x===b;x.classList.toggle('is-on',on);x.setAttribute('aria-pressed',on?'true':'false');
+    });
+    mmSetHidden(form,k,v);
+   };
+  });
+ }
  function bindInputHelpers(form){
+  bindChoiceCards(form);bindSpanGrids(form);bindRowsPicks(form);
   bindNumberFields(form);
   bindDateFields(form);
   bindComboFields(form);
@@ -1069,6 +1243,99 @@
     1箇所にしておかないと、「並べ替えただけでは保存されない」のような
     片方だけ効く状態が作れる（§9.201と同じ形）。 */
  const fbCatalog={groups:[],loadedFor:null,loading:null};
+
+ /* ================================================================
+    帳票ブロックの「刷り上がりの見本」（§9.249 ③、利用者の指示）
+    ----------------------------------------------------------------
+    「もっとわかりやすく視覚化した形で表示を工夫し設定しやすいものを」
+
+    幅「6マス」が紙の何割かは、**紙を見なければ分からない**。決めることの
+    すぐ隣に紙の見本を置き、押した幅・高さ・列数・載せた項目がその場で
+    形になるようにする。
+
+    **見本は形だけ**——値は実際のロットで入る。そう書いておかないと、
+    「見本に値が出ていない＝壊れている」と読まれる（§CLAUDE 6）。
+    **紙の割り付けは`report-dashboard.js`が持つ**ので、ここでは寸法を
+    決め打ちにせず、12マスという約束だけを借りる（幅の数字は同じ`span`）。
+    ================================================================ */
+ const RB_PAGE_ROWS=12;   // 紙の縦のマス数（report-dashboard.js の既定と同じ）
+ function rbAsideHtml(){
+  return `<aside class="rb-aside" aria-label="刷り上がりの見本">
+    <div class="rb-aside-head"><b>刷り上がりの見本</b>
+     <span class="rb-aside-note" id="rbNote">形だけの見本です。値は実際のロットで入ります。</span></div>
+    <div class="rb-paper" id="rbPaper" role="img" aria-label="紙の中のこの塊の位置と大きさ">
+     <div class="rb-paper-grid" id="rbPaperGrid"></div>
+     <div class="rb-paper-block" id="rbPaperBlock"><b id="rbPaperName">この塊</b></div>
+    </div>
+    <dl class="rb-facts">
+     <dt>幅</dt><dd id="rbFactSpan">—</dd>
+     <dt>高さ</dt><dd id="rbFactRows">—</dd>
+     <dt>内訳</dt><dd id="rbFactCols">—</dd>
+     <dt>繰り返し</dt><dd id="rbFactRepeat">—</dd>
+    </dl>
+    <div class="rb-sec" id="rbSection"></div>
+   </aside>`;
+ }
+ /* 見本を描き直す。**読むのは隠し欄の値だけ**——押した札の見た目ではなく
+    保存される値を映す（見た目だけを写すと、保存と食い違う見本ができる）。 */
+ function rbPaintPreview(form){
+  const v=k=>{const el=form.querySelector(`[data-field="${CSS.escape(k)}"]`);return el?String(el.value||''):''};
+  const grid=form.querySelector('#rbPaperGrid'),block=form.querySelector('#rbPaperBlock');
+  if(!grid||!block)return;
+  const span=Math.max(1,Math.min(12,Number(v('span'))||12));
+  const rowsRaw=v('rows');
+  const rows=rowsRaw?Math.max(1,Math.min(RB_PAGE_ROWS,Number(rowsRaw))):3;
+  const area=v('kindText')==='エリア（枠と文字）';
+  if(!grid.childElementCount){
+   grid.innerHTML=Array.from({length:12*RB_PAGE_ROWS},()=>'<i></i>').join('');
+  }
+  block.style.setProperty('--rb-span',String(span));
+  block.style.setProperty('--rb-rows',String(rows));
+  block.classList.toggle('is-auto',!rowsRaw);
+  block.classList.toggle('is-area',area);
+  const nm=form.querySelector('#rbPaperName');
+  if(nm)nm.textContent=v('name')||'（名前を入れてください）';
+  const setText=(id,text)=>{const el=form.querySelector(id);if(el)el.textContent=text};
+  setText('#rbFactSpan',`${span} / 12 マス（${mmFracText(span,12)}）`);
+  setText('#rbFactRows',rowsRaw?`${rowsRaw}行（固定）`:'中身なり（描いてから測ります）');
+  setText('#rbFactCols',area?'—（エリアは値を出しません）':(v('cols')?`${v('cols')}列`:'中身の数から決まります'));
+  setText('#rbFactRepeat',area?'—':(v('repeatText')==='分割後の子ロットごと'?'子ロットの数だけ':'1回だけ'));
+  /* 節そのもの（紙に出る形）。**列数と載せた項目をそのまま並べる**。 */
+  const sec=form.querySelector('#rbSection');
+  if(!sec)return;
+  if(area){
+   const text=v('text');
+   sec.className='rb-sec is-area';
+   sec.innerHTML=`<div class="rb-sec-head">${esc(v('name')||'（名前）')}</div>`
+    +`<div class="rb-sec-area">${text?esc(text).replace(/\n/g,'<br>'):'<em>（文字なし・枠だけ）</em>'}</div>`;
+   return;
+  }
+  const rowsData=fbParse(v('content'));
+  const cols=Math.max(1,Math.min(4,Number(v('cols'))||2));
+  sec.className='rb-sec';
+  sec.style.setProperty('--rb-cols',String(cols));
+  sec.innerHTML=`<div class="rb-sec-head">${esc(v('name')||'（名前）')}</div>`
+   +(rowsData.length
+     ?`<div class="rb-sec-body">${rowsData.map(r=>{
+        const sp=Math.min(cols,Math.max(1,Number(r.span)||1));
+        if(r.blank)return `<div class="rb-cell is-blank" style="grid-column:span ${sp}"></div>`;
+        return `<div class="rb-cell" style="grid-column:span ${sp}">`
+         +`<span class="rb-cell-k" title="${esc(r.path)}">${esc(r.label||r.path)}</span>`
+         +`<span class="rb-cell-v">値</span></div>`;
+       }).join('')}</div>`
+     :'<p class="rb-sec-empty">載せる項目がありません。<b>画面がもともと持っている中身</b>のまま刷られます。</p>');
+ }
+ /* 配線。**打っている最中も追う**（`input`）——名前を打つたびに紙の見本の
+    題が変わるので、どの塊を触っているのかを見失わない。 */
+ function rbBindAside(form){
+  if(form.dataset.rbWired==='1'){rbPaintPreview(form);return}
+  form.dataset.rbWired='1';
+  const paint=()=>rbPaintPreview(form);
+  form.addEventListener('change',paint);
+  form.addEventListener('input',paint);
+  requestAnimationFrame(paint);
+ }
+
  async function fbLoadCatalog(){
   const eq=String(maintState.equipment||'');
   if(fbCatalog.loadedFor===eq)return fbCatalog.groups;
