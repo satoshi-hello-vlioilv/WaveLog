@@ -210,6 +210,11 @@ async function cleanup(){
     枠の中に収まる:!!edit&&bottom(edit)<=bottom(wrap)+2,
     内側が流れる:{値:scroll?scroll.scrollHeight-scroll.clientHeight:0,
                   まとまり:glist?glist.scrollHeight-glist.clientHeight:0},
+    /* **溢れているかは中身の量しだい**（§9.266でヘッダーが96px→54pxになり、
+       まとまりの一覧は溢れなくなった）。器が「溢れたら自分で流す」側に
+       なっているか＝宣言そのものを見るほうが、中身の量に左右されない。 */
+    内側が流す側:{値:scroll?getComputedStyle(scroll).overflowY:'',
+                  まとまり:glist?getComputedStyle(glist).overflowY:''},
     行の横溢れ:row?row.scrollWidth-row.clientWidth:null,
     件数:document.querySelectorAll('.oc-row[data-oc-id]').length,
    };
@@ -219,8 +224,14 @@ async function cleanup(){
       JSON.stringify(fill));
   rec('左右のペインが枠いっぱいまで伸びて下端がそろう',
       fill.左右の下端がそろう===true&&fill.枠の中に収まる===true,JSON.stringify(fill));
+  /* 外側が流れないことは1つ上で見ている。ここは**内側が流す側になっている**
+     ことを見る——実際に溢れているかは中身の量しだいで、値の一覧は種を
+     蒔いてあるので溢れる（そちらは実測で見る）。 */
   rec('スクロールするのはいちばん内側の一覧だけ',
-      fill.内側が流れる.値>0&&fill.内側が流れる.まとまり>0,JSON.stringify(fill.内側が流れる));
+      fill.内側が流れる.値>0
+      &&/auto|scroll/.test(fill.内側が流す側.値)
+      &&/auto|scroll/.test(fill.内側が流す側.まとまり),
+      JSON.stringify({流れた:fill.内側が流れる,流す側:fill.内側が流す側}));
   rec('行が横へはみ出さない（削除ボタンが切り落とされない）',
       fill.行の横溢れ<=1,String(fill.行の横溢れ));
 
