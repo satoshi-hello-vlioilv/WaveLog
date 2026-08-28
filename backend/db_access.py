@@ -905,9 +905,28 @@ def records_paths_all():
 # 未設定ならNoneのままで、backend/schedule_sync.pyはScheduleNotConfiguredを
 # 送出し、機能自体が無効になる(仕掛/品質データのsikalotnow_path等と同じく、
 # 検証時はここをローカルの空ファイルへ一時的に切り替えて安全に試せる)。
+# 共有スケジュールのファイル名。**フォルダを指定されたらこの名前を足す**
+# （§9.262、利用者の指示「フォルダがなければフォルダは自動生成し、ファイルも
+# 自動生成、フォルダがあればファイルを探し、ファイルがあればそれを使う」）。
+SCHEDULE_FILE_NAME='schedule.sqlite3'
+
+def resolve_schedule_share(raw):
+ """設定値 -> 実際に読み書きする schedule.sqlite3 のパス。
+
+ **フォルダを指定できる**——利用者が共有フォルダを指定して「登録を
+ 受け付けない」と読んだのはここ。判定は**綴りだけ**で行う（`.sqlite3`／
+ `.db`で終わらなければフォルダ扱い）——共有越しでは`is_dir()`が失敗する
+ ことがあり、**存在確認そのものが唯一の失敗原因になる**のを避けるため
+ （`Path.exists()`を接続の前に置かない、という既存の約束と同じ理由）。
+ """
+ raw=str(raw or '').strip().rstrip('\\/')
+ if not raw:return None
+ p=Path(raw)
+ return p if p.suffix.lower() in ('.sqlite3','.db','.sqlite') else p/SCHEDULE_FILE_NAME
+
 _schedule_share_override=_static_path_cfg('schedule_share_path')
 if _schedule_share_override:
- SCHEDULE_SHARE_PATH=Path(_schedule_share_override)
+ SCHEDULE_SHARE_PATH=resolve_schedule_share(_schedule_share_override)
 elif SCHEDULE_DB_KEY and DBS.get(SCHEDULE_DB_KEY):
  # 役割「スケジュール」を付けたデータソースから決める(§9.193)。**共通設定の
  # schedule_share_path が最優先**——既に現場で効いている設定を、役割を付けた

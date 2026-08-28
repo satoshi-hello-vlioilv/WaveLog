@@ -36,10 +36,21 @@ let b=null;
     groups:document.querySelectorAll('.mm-set-group').length,
     badges:document.querySelectorAll('.mm-apply-badge').length,
     fields:[...document.querySelectorAll('[data-pc-field]')].map(e=>e.dataset.pcField),
-    clipped,listWrap:getComputedStyle(document.querySelector('.mm-list-wrap')).display};
+    clipped,listWrap:getComputedStyle(document.querySelector('.mm-list-wrap')).display,
+    tabs:document.querySelectorAll('.mm-tabbar.is-page .mm-tab').length,
+    shownPanels:[...document.querySelectorAll('.mm-tabpanel.is-page')].filter(x=>!x.hidden).length,
+    scrollH:sc.scrollHeight,clientH:sc.clientHeight};
  });
- rec('パス設定が1本のスクロール領域になっている',p.scrollable,`${p.groups}グループ`);
+ /* **1本の長いスクロールはやめた**（§9.261、利用者の指示「タブとアコーディオンを
+    主構成に」）。以前は実測2768pxを736pxの器で見ており、4回ぶんスクロール
+    していた。いまは章＝段（タブ）で、開いている章だけが出る。 */
+ rec('章が段（タブ）になっている',p.tabs>=4,`${p.tabs}段`);
  rec('章の数だけまとまりがある',p.groups>=4,`${p.groups}グループ`);
+ rec('開いている章は1つだけ',p.shownPanels===1,`${p.shownPanels}段が開いている`);
+ /* **1画面に収まる**（段に分けた値打ちはここ）。器より中身が高いと
+    「畳んだのに結局スクロールする」ことになる。 */
+ rec('1つの章は器に収まる（長いスクロールにならない）',
+     p.scrollH<=p.clientH+2,`中身${p.scrollH}px / 器${p.clientH}px`);
 /* 件数ではなく**キーの一覧**で見る。項目は増える(RNE資材の置き場・
     symnavim.confの場所を§9.79で追加した)ので、数を固定すると足すたびに
     落ちる。「あるべきものが全部出ているか」が見たいこと。 */
@@ -78,6 +89,17 @@ let b=null;
  });
  rec('最後までスクロールしても保存ボタンが押せる',bottom.save);
  rec('最下部の内容まで表示できる',bottom.lastVisible);
+ /* 段を切り替えても保存ボタンは動かない（本文の外にある・§9.222 ⑦）。 */
+ const afterTab=await page.evaluate(()=>{
+  const t=[...document.querySelectorAll('.mm-tabbar.is-page .mm-tab')];
+  if(t.length>2)t[2].click();
+  const panel=document.querySelector('#masterMaintPanel').getBoundingClientRect();
+  const sr=document.querySelector('.mm-set-sticky button').getBoundingClientRect();
+  return {save:sr.bottom<=panel.bottom+1,
+          shown:[...document.querySelectorAll('.mm-tabpanel.is-page')].filter(x=>!x.hidden).length};
+ });
+ rec('段を切り替えても保存ボタンはパネル内に居る',afterTab.save);
+ rec('段を切り替えても開くのは1つだけ',afterTab.shown===1,`${afterTab.shown}段`);
  /* ---- 状態は**その欄のすぐ下**（§9.208 ⑨、利用者の指示で作り直した） ----
     以前は画面のいちばん下に「保存値／いま効いている値」の対比表があり、
     直した欄がその表のどの行なのかを探すことになっていた。表は廃止し、

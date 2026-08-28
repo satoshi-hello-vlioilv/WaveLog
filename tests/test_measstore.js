@@ -110,6 +110,17 @@ let b=null;
   rec('次にすることを1つだけ指す',next.n===1&&next.text.length>10,next.text.slice(0,120));
 
   /* ---- 4) 設定はここにあり、共通設定には無い ---- */
+  /* 画面は**段（タブ）**になった（§9.261）。設定は「閲覧用の複製」の段。
+     **段の名前で開くこと**——番号で探すと、段が1つ増えただけで落ちる。 */
+  const msTab=async label=>{
+   await page.evaluate(l=>{
+    const t=[...document.querySelectorAll('#masterMaintForm .mm-tab')]
+     .find(e=>e.textContent.includes(l));
+    if(t)t.click();
+   },label);
+   await page.waitForTimeout(300);
+  };
+  await msTab('閲覧用の複製');
   const cfg=await page.evaluate(()=>({
    path:!!document.querySelector('#msExportPath'),
    interval:!!document.querySelector('#msExportInterval'),

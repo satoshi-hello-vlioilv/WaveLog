@@ -218,6 +218,8 @@ def path_config_master_get():
    'rne_assets_dir':str(rne_scheduler.assets_dir()),
    'rne_conf_path':str(rne_scheduler.conf_path()),
    'records_backup_export_path':str(RECORDS_BACKUP_EXPORT_PATH) if RECORDS_BACKUP_EXPORT_PATH else '',
+   # **解決したあとの値**を出す（§9.262）。フォルダを指定できるので、
+   # 保存値のままだと「どのファイルを読み書きするのか」が画面から分からない。
    'schedule_share_path':str(SCHEDULE_SHARE_PATH) if SCHEDULE_SHARE_PATH else '',
    'records_share_dir':str(RECORDS_SHARE_DIR) if RECORDS_SHARE_DIR else '',
    'rne_extract_enabled':str(path_config_value('rne_extract_enabled','auto') or 'auto'),

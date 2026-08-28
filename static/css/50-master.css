@@ -795,29 +795,34 @@
   border-left:3px solid var(--teal);border-radius:var(--radius-sm);
   background:var(--pale);font-size:var(--fs-sm);color:var(--ink-2);line-height:1.7}
 .ms-next-label{flex:none;font-size:var(--fs-micro);font-weight:800;color:var(--teal-dark);letter-spacing:.04em}
-.ms-flow{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) auto minmax(0,1fr);
-  align-items:stretch;gap:var(--space-2);margin-bottom:var(--space-3)}
-.ms-stage{display:flex;flex-direction:column;gap:var(--gap-tight);min-width:0;
-  padding:var(--space-3);border:1px solid var(--line-soft);border-radius:var(--radius-md);
-  background:var(--surface)}
+/* **1行1段**（§9.261）。横3列だと盤が狭いとき1段204pxまで痩せ、値が
+   「未設定（…」と切れていた（実測1366px窓）。縦に積めば切れない。 */
+.ms-flow{display:flex;flex-direction:column;gap:var(--gap-hair);margin-bottom:var(--space-3)}
+.ms-stage{display:grid;gap:var(--gap-tight) var(--space-3);min-width:0;align-items:baseline;
+  grid-template-columns:var(--w-md) minmax(0,1fr) minmax(0,1.4fr);
+  padding:var(--space-2) var(--space-3);border:1px solid var(--line-soft);
+  border-radius:var(--radius-md);background:var(--surface)}
 .ms-stage.is-warn{border-color:var(--warn-border);background:var(--warn-bg)}
 .ms-stage.is-off{background:var(--surface-2)}
-.ms-stage-head{display:flex;align-items:baseline;gap:var(--gap-tight);flex-wrap:wrap}
+.ms-stage-head{display:flex;align-items:baseline;gap:var(--gap-tight);flex-wrap:wrap;min-width:0}
 .ms-stage-head b{font-size:var(--fs-base-sm);color:var(--ink)}
 .ms-stage-head small{font-size:var(--fs-tiny);color:var(--muted)}
 .ms-no{flex:none;font-size:var(--fs-title);font-weight:800;color:var(--teal-dark);line-height:1}
 /* ラベル列は固定幅でそろえる（§9）。 */
-.ms-kv{display:grid;grid-template-columns:var(--w-sm) minmax(0,1fr);gap:2px var(--space-2);margin:0}
+.ms-kv{display:grid;grid-template-columns:var(--w-sm) minmax(0,1fr);gap:2px var(--space-2);margin:0;
+  min-width:0}
 .ms-kv dt{margin:0;font-size:var(--fs-tiny);color:var(--muted)}
-.ms-kv dd{margin:0;font-size:var(--fs-sm);color:var(--ink-2);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* **切らない**——1行1段にして横幅が取れたので、入らなければ折り返す。
+   省略記号にすると「未設定（…」のように**打つ手の書いてある側**が消える。 */
+.ms-kv dd{margin:0;font-size:var(--fs-sm);color:var(--ink-2);min-width:0;overflow-wrap:anywhere}
 .ms-kv dd.is-warn{color:var(--warn-fg);font-weight:800}
 .ms-note{margin:0;font-size:var(--fs-tiny);color:var(--muted);line-height:1.7}
 .ms-note code{font-size:var(--fs-tiny);color:var(--ink-3);word-break:break-all;white-space:normal}
-.ms-arrow{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
-  min-width:var(--w-sm);padding:0 var(--gap-tight)}
-.ms-arrow b{font-size:var(--fs-tiny);font-weight:800;color:var(--ink-3);text-align:center}
-.ms-arrow i{font-style:normal;font-size:var(--fs-lg);color:var(--teal);line-height:1}
+/* 段と段のあいだ。**幅を取らない**（縦積みなので1行の高さだけ）。 */
+.ms-arrow{display:flex;align-items:baseline;gap:var(--gap-tight);
+  padding-left:calc(var(--w-md) / 2)}
+.ms-arrow b{font-size:var(--fs-tiny);font-weight:800;color:var(--ink-3)}
+.ms-arrow i{font-style:normal;font-size:var(--fs-sm);color:var(--teal);line-height:1}
 .ms-arrow small{font-size:var(--fs-tiny);color:var(--muted)}
 .ms-err{margin:0 0 var(--space-2);font-size:var(--fs-sm);color:var(--danger)}
 /* ---- 設備ごとへの引っ越し（§9.258）。下見 → 振り分ける の2段 ---- */
@@ -2298,6 +2303,43 @@
 }
 .mm-tab.is-on .mm-tab-sum{color:var(--teal-dark)}
 .mm-tabpanel[hidden]{display:none}
+
+/* ---- 設定ページの段（§9.261） ----
+   **`.mm-form`は縦積みのflex**（`flex-direction:column`）。そこへ`flex:1 0 100%`
+   を渡すと、`flex-basis:100%`が**高さの100%**を指し、段の札が1枚543pxの
+   空箱になる（実測。§9.253 ①・§9.254 ①と同じ罠——`.mm-form-fields`のような
+   折り返す横並びと取り違えると必ずこれを踏む）。
+   **縦積みでは`flex:0 0 auto`＋`width:100%`**——中身なりの高さで、幅は器いっぱい。
+   パネルの中も**縦積み**（編集窓は欄の折り返しだが、ページは全幅の塊が並ぶ）。 */
+/* **器の直下とは限らない**——共通設定は`.mm-set-scroll`の中に置くので、
+   `.mm-form >`で絞ると当たらない（実際に当たらず、札が1枚600pxに伸びた）。
+   `is-page`はこの段専用の印なので、クラスだけで当てる。 */
+.mm-tabbar.is-page,
+.mm-tabbody.is-page{flex:0 0 auto;width:100%;min-width:0}
+.mm-tabbar.is-page{margin-bottom:var(--space-2)}
+.mm-tabpanel.is-page{display:flex;flex-direction:column;flex-wrap:nowrap;
+  gap:var(--space-3);align-items:stretch;min-width:0}
+/* **畳んだ段は必ず消す。** `.mm-tabpanel[hidden]{display:none}`と詳細度が同点
+   （どちらもクラス2つぶん）なので、あとに書いたこちらが勝ってしまい、
+   段を切り替えても全部の章が出たままになる（§9.206と同じ罠）。 */
+.mm-tabpanel.is-page[hidden]{display:none}
+
+/* ---- 畳み（アコーディオン）。既定は畳む ---- */
+.pc-acc{border:1px solid var(--line-soft);border-radius:var(--radius-sm);
+  background:var(--surface);min-width:0}
+.pc-acc>summary{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--space-2);
+  padding:var(--space-2);cursor:pointer;list-style:none;border-radius:var(--radius-sm)}
+.pc-acc>summary::-webkit-details-marker{display:none}
+/* 開閉の合図は**形**（▸▾）。色だけで伝えない（§3）。 */
+.pc-acc>summary::before{content:'▸';color:var(--teal);font-size:var(--fs-sm);flex:none}
+.pc-acc[open]>summary::before{content:'▾'}
+.pc-acc>summary:hover{background:var(--surface-2)}
+.pc-acc>summary b{font-size:var(--fs-sm);color:var(--ink)}
+/* **畳んだままでも「いま何が効いているか」を出す**（§3・§9.125）。 */
+.pc-acc-now{font-size:var(--fs-micro);color:var(--ink-3);min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pc-acc-body{display:flex;flex-direction:column;gap:var(--gap-inline);
+  padding:0 var(--space-2) var(--space-2);min-width:0}
 /* くわしい説明は押すと開く（触る画面では`title`が読めない・§4）。 */
 .mm-more{
   display:inline-flex;align-items:center;justify-content:center;

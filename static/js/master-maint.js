@@ -868,7 +868,9 @@
  function mmTabSummaryText(panel){
   const parts=[];
   panel.querySelectorAll('.mm-field').forEach(fld=>{
-   const el=fld.querySelector('[data-field]');
+   /* 設定ページの欄は`data-pc-field`（§9.261で段に分けた）。**両方見る**
+      ——片方だけだと、そのページの段だけ一言が空になる。 */
+   const el=fld.querySelector('[data-field],[data-pc-field]');
    if(!el)return;
    /* **触れない欄は数えない**（§CLAUDE 8）——組み込みの印のような
       読み取り専用の値を並べても、決めたことは1つも増えない。 */
@@ -888,6 +890,35 @@
    parts.push(v);
   });
   return parts.slice(0,3).join('・')+(parts.length>3?' ほか':'');
+ }
+ /* ---------- 設定ページの段（タブ）と畳み（アコーディオン）（§9.261） ----------
+    利用者の指示「認知心理学に基づきSPAをベースにわかりやすく使いやすいように
+    タブとアコーディオンを主構成にして再構成」。
+
+    **編集窓の段と同じ受け皿を使う**（`.mm-tabbar`/`.mm-tabpanel`）——CSSも
+    キーボード操作も`bindMaintTabs`もそのまま効く。ここで別の作りを持つと、
+    段の見た目と動きが画面ごとに違うことになる（§9.163と同じ理由）。
+
+    畳みは素の`<details>`。**畳んだままでも「いま何が効いているか」は
+    見出しに出す**（§3。隠したものを何も書かずに隠すと、設定の存在ごと
+    忘れられる・§9.125）。 */
+ function pageTabsHtml(items){
+  const tabs=items.map((x,i)=>
+   `<button type="button" class="mm-tab" role="tab" id="mmTab${i}" data-mmtab="${i}"`
+   +` aria-selected="${i?'false':'true'}" aria-controls="mmPanel${i}" tabindex="${i?-1:0}">`
+   +`<span class="mm-fieldgroup">${esc(x.name)}</span>`
+   +`<small class="mm-tab-sum" data-mmtab-sum="${i}"></small></button>`).join('');
+  const panels=items.map((x,i)=>
+   `<section class="mm-tabpanel is-page" role="tabpanel" id="mmPanel${i}"`
+   +` aria-labelledby="mmTab${i}" data-mmtab="${i}"${i?' hidden':''}>${x.body}</section>`).join('');
+  return `<div class="mm-tabbar is-page" role="tablist">${tabs}</div>`
+   +`<div class="mm-tabbody is-page">${panels}</div>`;
+ }
+ /* 畳み。`open`を渡したときだけ開いた状態で出す（既定は畳む）。 */
+ function pageFoldHtml(title,now,body,open){
+  return `<details class="pc-acc"${open?' open':''}>`
+   +`<summary><b>${esc(title)}</b>${now?`<span class="pc-acc-now">${esc(now)}</span>`:''}</summary>`
+   +`<div class="pc-acc-body">${body}</div></details>`;
  }
  function bindMaintTabs(form){
   const bar=form.querySelector('.mm-tabbar');
@@ -3427,18 +3458,24 @@
      ?'②までは保存できています。他のPCから<b>閲覧だけ</b>させたい場合は、下の「閲覧用の複製先」を設定してください（設定しなくても測定・共有はできます）。'
      :(exp.pending?'②に新しい変更があります。次の複製で③へ写ります（すぐ写したいときは「いま複製する」）。'
                   :'すべて送信・複製できています。いまは何もする必要がありません。'));
+  /* **1行1段**にする（§9.261）。以前は3段を横に並べていたが、盤は
+     ビューポートより狭く（1366pxの窓で875px）、矢印2本が240pxを取るので
+     1段あたり204pxしか残らず、**値が「未設定（…」「08/28 15:2…」と
+     切れていた**（実測。CLAUDE 画面基準 11「器は中身の長さから決める」）。
+     縦に積めば値は切れず、流れも上から下で読める。 */
   const stage=(no,title,sub,rows,note,cls)=>`<div class="ms-stage ${cls||''}">
     <div class="ms-stage-head"><span class="ms-no">${no}</span><b>${esc(title)}</b><small>${esc(sub)}</small></div>
     <dl class="ms-kv">${rows.map(([k,val,warn])=>
       `<dt>${esc(k)}</dt><dd${warn?' class="is-warn"':''}>${val}</dd>`).join('')}</dl>
     <p class="ms-note">${note}</p></div>`;
-  const arrow=(a,b)=>`<div class="ms-arrow" aria-hidden="true"><b>${esc(a)}</b><i>→</i><small>${esc(b)}</small></div>`;
+  const arrow=(a,b)=>`<div class="ms-arrow" aria-hidden="true"><i>↓</i><b>${esc(a)}</b><small>${esc(b)}</small></div>`;
   form.innerHTML=`
    <div class="mm-form-head"><span class="mm-mode-chip editing">この端末の設定</span></div>
-   <p class="ms-lead">測定データは<b>3か所</b>に置かれます。左から右へ流れます。
+   <p class="ms-lead">測定データは<b>3か所</b>に置かれます。上から下へ流れます。
     <b>打っている最中はまだどこにも入っていません</b>——「保存して一覧へ」か「測定を完了」を押した時点で①と②へ入ります。</p>
    <div class="ms-next"><span class="ms-next-label">次にすること</span><span>${next}</span></div>
-   <div class="ms-flow">
+   ${pageTabsHtml([
+    {name:'いまの状態',body:`   <div class="ms-flow">
     ${stage('①','この端末のブラウザ','IndexedDB＋控え',[
       ['編集中',msNum(draft)+(draft===null?'':'件')],
       ['完了',msNum(done)+(done===null?'':'件')],
@@ -3475,8 +3512,8 @@
     <button type="button" id="msExportNow" class="mm-btn-ghost sm"${exp.configured?'':' disabled'}
       title="${exp.configured?'間隔を待たずに、いま②を③へ写します':'複製先が未設定です'}">いま複製する</button>
     <button type="button" id="msReload" class="mm-btn-ghost sm">状態を読み直す</button>
-   </div></div>
-   <div class="ms-settings">
+   </div></div>`},
+    {name:'置き場と引っ越し',body:`   <div class="ms-settings">
     <h4>② 測定データの置き場</h4>
     <label class="mm-field"><span>共有の置き場（設備ごとに分けます）</span>
      <input type="text" id="msShareDir" value="${esc(v.records_share_dir||'')}"
@@ -3503,8 +3540,8 @@
      ${loc.perEquipment?'':'<p class="ms-split-why">共有の置き場が<b>まだ効いていません</b>。上で置き場を決めて保存し、アプリを再起動すると押せるようになります。</p>'}
      <div class="ms-split-result" id="msSplitResult" hidden></div>
     </div>
-   </div>
-   <div class="ms-settings">
+   </div>`},
+    {name:'閲覧用の複製',body:`   <div class="ms-settings">
     <h4>③ 閲覧用の複製の設定</h4>
     <label class="mm-field"><span>複製先のフォルダ</span>
      <input type="text" id="msExportPath" value="${esc(v.records_backup_export_path||'')}"
@@ -3520,8 +3557,12 @@
    </div>
    <p class="mm-field-hint">測定画面の「DBへ同期」は、<b>いま開いている測定を①②へ即座に書く</b>ボタンです
     （保存して閉じずに、そこまでの入力を確実に残したいときに使います）。他のPCへ渡したい・PCを入れ替えるときは
-    「データ引継ぎ」タブを使ってください。</p>`;
+    「データ引継ぎ」タブを使ってください。</p>`},
+   ])}`;
   list.innerHTML='';
+  /* 段の切り替えを配線する（§9.261）。編集窓と同じ`bindMaintTabs`なので、
+     キーボード操作（←→）も見出しの一言もそのまま効く。 */
+  bindMaintTabs(form);
   $('#msReload').onclick=()=>{measStorageState.loaded=false;loadMeasStorageMaint(true)};
   $('#msSyncNow').onclick=async()=>{
    if(typeof syncPendingRecords!=='function'){showToast&&showToast('この画面からは送れません','',4000);return}
@@ -5010,6 +5051,23 @@
  /* 1項目＝「名前 / 入力 / 一行の説明 / いまどうなっているか」。
     状態欄(`data-pc-state`)は`renderPathConfigList()`が後から埋める。 */
  function pcStateHtml(key){return `<small class="pc-state" data-pc-state="${esc(key)}"></small>`}
+ /* 畳んだ段の見出しへ出す「いま効いている値」（§3・§9.125）。
+    **保存値が空なら既定を名乗る**——空欄のままだと、畳んだ中に何が
+    入っているのか読めない。 */
+ function pcNowText(key,fallback){
+  const v=pathConfigState.values||{},a=pathConfigState.active||{};
+  const raw=String(v[key]||a[key]||'').trim();
+  if(!raw)return fallback||'';
+  const def=(_PC_CHOICE_LABELS[key]||{})[raw];
+  return def||raw;
+ }
+ /* 選択肢の綴り→画面の言葉。綴りをそのまま出すと`auto`としか読めない。 */
+ const _PC_CHOICE_LABELS={
+  schedule_watch_enabled:{auto:'auto: 見張る',on:'on: 見張る',off:'off: 見張らない'},
+  schedule_owner_enabled:{off:'off: 各PCが自分で書く',on:'on: 1台が書く'},
+  db_mirror_enabled:{auto:'auto: 写して読む',on:'on: 写して読む',off:'off: 共有を直接読む'},
+  rne_extract_enabled:{auto:'auto: localのときだけ',on:'on: 定期実行',off:'off: 手動のみ'},
+ };
  function renderPathConfigForm(){
   const form=$('#masterMaintForm');if(!form)return;
   const v=pathConfigState.values||{};
@@ -5038,6 +5096,76 @@
   const pcNow=act.pc_name||(term&&term.pcName())||'';
   const pcFrom=act.pc_name_source||(term&&term.pcNameSource())||'';
   form.className='mm-form mm-form-page';
+  const SEC_TERMINAL=group('terminal','この端末','保存後すぐ反映','is-live',`
+    <div class="pc-who" id="pcWho">
+     <div><small>PC名</small><b>${esc(pcNow||'（取得できていません）')}</b>
+      <i>${esc(pcFrom||'出どころ不明')}</i></div>
+     <div><small>ログインID</small><b>${esc((term&&term.loginId())||'（取得できていません）')}</b><i>OS</i></div>
+     <div><small>いまのモード</small><b>${esc((window.accessMode&&accessMode.mode)||'edit')}</b>
+      <i>アクセス権限マスタ</i></div>
+    </div>
+    <label class="mm-field mm-field-wide"><span>この端末の名前を決め打ちする</span>
+     <input data-pc-field="pc_name" type="text" value="${esc(v.pc_name||'')}" placeholder="空欄ならOSから自動で取得します" autocomplete="off" spellcheck="false">
+     <small class="mm-field-hint">アクセス権限マスタとの照合・記録の「更新端末名」・編集中の持ち主表示は、
+      <b>すべてこの名前</b>を見ます。自動で取れない端末だけここで名乗ってください。</small>
+     ${pcStateHtml('pc_name')}</label>
+    <div id="pcNotes"></div>`);
+  const SEC_READ=group('read','どこから読むか','サーバー再起動後に反映','is-restart',`
+    <div class="pc-source-list" id="pcSourceList"></div>
+    <p class="mm-field-hint">読み込み先を変えるには「データ接続」のカードから <b>編集</b> を押してください
+     （同じ設定を2画面に置くと、どちらが効くのか分からなくなるためここでは変えられません）。</p>
+    ${pickField('sikalot_source','読み方を決めていないデータソースの既定',
+      [['','（既定）network'],['network','network'],['local','local']],
+      'network=共有フォルダを読む ／ local=この端末でRNEから抽出したものを読む。<b>読み方を決めたデータソースには効きません</b>。')}
+    ${pcStateHtml('sikalot_source')}`);
+  const SEC_SCHEDULE=group('schedule','共有の置き場','一部は再起動後に反映','is-restart',`
+    <!-- **何がどこへ行くかを1枚で言う**(§9.260)。以前は作業予定・測定データ・
+         マスタの置き場が3画面に散っており、いま何がどこにあるのかを
+         確かめる手立てが無かった。判定はサーバーが持つ(§9.163)ので、
+         ここは受け取った答えを並べるだけ。 -->
+    <div class="pc-share" id="pcShare">
+     <div class="pc-share-head">
+      <b>この端末が読み書きする置き場</b>
+      <span class="pc-share-root" id="pcShareRoot"></span>
+     </div>
+     <div class="pc-share-rows" id="pcShareRows"></div>
+    </div>
+    ${pathField('schedule_share_path','作業予定の置き場','dir',
+      'フォルダを指定すれば、その中に schedule.sqlite3 を作ります（ファイル名まで指定しても構いません）。'
+      +'フォルダもファイルも無ければ自動で作り、既にあればそれを使います。空欄ならスケジュール機能は無効です。')}
+    ${pageFoldHtml('共有の変化をどう取り込むか',pcNowText('schedule_watch_enabled','auto: 見張る'),`
+     <p class="mm-field-hint">共有（Box等）のschedule.sqlite3は<b>他の端末も書きます</b>。読むときは手元へ写したものを読み、
+      <b>改訂番号が変わったときだけ</b>写し直します（読むたびに写すと共有を掴み続け、他の端末の書込とぶつかります）。</p>
+     ${pickField('schedule_watch_enabled','共有の変化を見張る',
+       [['','（既定）auto: 見張る'],['auto','auto: 見張る'],['on','on: 見張る'],['off','off: 見張らない（読むたびに共有から写す）']],
+       'offにすると以前の動きに戻ります（共有が遅い環境では読み込みも遅くなります）。')}
+     ${numField('schedule_watch_interval_sec','変化を見る間隔','秒',5,5)}
+     ${numField('schedule_watch_pause_sec','取り込んだあと休む時間','秒',5,0)}`)}
+    ${pageFoldHtml('同時に書いたときの取り合い',
+      'ロック'+esc(String(v.schedule_lock_ttl_sec||pathConfigState.defaults.schedule_lock_ttl_sec||''))+'秒',`
+     ${numField('schedule_lock_ttl_sec','書込ロックの有効期限','秒',5,1)}
+     ${numField('schedule_lock_verify_delay_ms','ロック確認までの待機時間','ミリ秒',100,0)}`)}
+    ${pageFoldHtml('書く役を1台に絞る',pcNowText('schedule_owner_enabled','off: 各PCが自分で書く'),`
+     <p class="mm-field-hint">共有へ<b>実際に書く役を1台に絞る</b>仕掛けです。他のPCは書き込みだけをその1台へLAN内のHTTPで頼み、
+      <b>読みは今までどおり手元の写しから</b>読みます（画面のURLは全員 http://127.0.0.1:5029/ のまま）。
+      <b>持ち主が落ちていても止まりません</b>——頼めなかったPCは自分で共有へ書きます。</p>
+     ${pickField('schedule_owner_enabled','書き込み役を1台に絞る',
+       [['','（既定）off: 各PCが自分で共有へ書く'],['off','off: 各PCが自分で共有へ書く'],['on','on: 最初に入った1台が書き込み役になる']],
+       'onにすると、書き込み役になったPCだけが下のポートを<b>LANへ開きます</b>（合言葉つきの決められた書き込みしか受け付けません）。')}
+     ${numField('schedule_owner_port','書き込み役の受け口ポート','',1,1025)}
+     ${numField('schedule_owner_ttl_sec','書き込み役の目印の有効期限','秒',10,30)}
+     <div id="scheduleOwnerStatus" class="pc-owner-status">状態を読み込んでいます…</div>`)}`);
+  const SEC_RNE=group('rne','RNE抽出','保存後すぐ反映','is-live',`
+    <p class="mm-field-hint">RNE（Navigator問い合わせ定義）から <code>.sqlite3</code> を作り、それを一覧として読む仕組みです。
+     取得元が <b>local</b> のデータソースだけが、ここで作ったファイルを読みます。</p>
+    ${pickField('rne_extract_enabled','RNE抽出の定期実行',
+      [['','（既定）auto: 取得元がlocalのときだけ'],['auto','auto: 取得元がlocalのときだけ'],
+       ['on','on: 取得元に関わらず定期実行する'],['off','off: 定期実行しない（手動のみ）']],
+      '「今すぐ抽出」は、この設定に関わらず資材が配置されていれば実行できます。')}
+    ${numField('rne_extract_interval_sec','RNE抽出間隔','秒',60,60)}
+    ${pathField('rne_assets_dir','RNE資材の置き場（フォルダ）','dir','RNEファイルと symnavim.conf をまとめて置くフォルダです。RNEファイルはこの下の rne/ 配下に置きます。共有フォルダを指定すれば、端末ごとにコピーせず1式を共用できます。空欄ならアプリ内の config/rne_extract です。')}
+    ${pathField('rne_conf_path','接続情報 symnavim.conf の場所','file','認証情報だけを別の場所に置きたい場合に指定します。空欄なら上の資材置き場の直下（symnavim.conf）です。')}
+    ${rneStatusPanelHtml()}`);
   form.innerHTML=`<div class="mm-set-scroll pc-page">
    <!-- ① 図：この端末が何とつながっているか -->
    <div class="pc-map" id="pcMap" aria-label="この端末のつながり">
@@ -5054,96 +5182,37 @@
      <span class="pc-node-val" data-pc-map="schedule">—</span></button>
    </div>
 
-   <!-- ② 章のレール -->
-   <nav class="pc-rail" id="pcRail" aria-label="共通設定の章">
-    ${PC_SECTIONS.map(x=>`<button type="button" data-pc-jump="${x.id}">${esc(x.name)}</button>`).join('')}
+   <!-- ② 章は**段（タブ）**（§9.261、利用者の指示「タブとアコーディオンを主構成に」）。
+        以前は全部を縦に並べて飛ぶだけで、実測2768pxを736pxの器で見ていた
+        （4回ぶんスクロール）。段にすれば1章ぶんだけになる。 -->
+   <nav class="pc-rail" id="pcRail" aria-label="共通設定の状態">
     <span class="pc-rail-restart" id="pcRestartCount" hidden></span>
    </nav>
 
-   ${group('terminal','この端末','保存後すぐ反映','is-live',`
-    <div class="pc-who" id="pcWho">
-     <div><small>PC名</small><b>${esc(pcNow||'（取得できていません）')}</b>
-      <i>${esc(pcFrom||'出どころ不明')}</i></div>
-     <div><small>ログインID</small><b>${esc((term&&term.loginId())||'（取得できていません）')}</b><i>OS</i></div>
-     <div><small>いまのモード</small><b>${esc((window.accessMode&&accessMode.mode)||'edit')}</b>
-      <i>アクセス権限マスタ</i></div>
-    </div>
-    <label class="mm-field mm-field-wide"><span>この端末の名前を決め打ちする</span>
-     <input data-pc-field="pc_name" type="text" value="${esc(v.pc_name||'')}" placeholder="空欄ならOSから自動で取得します" autocomplete="off" spellcheck="false">
-     <small class="mm-field-hint">アクセス権限マスタとの照合・記録の「更新端末名」・編集中の持ち主表示は、
-      <b>すべてこの名前</b>を見ます。自動で取れない端末だけここで名乗ってください。</small>
-     ${pcStateHtml('pc_name')}</label>
-    <div id="pcNotes"></div>`)}
+   ${pageTabsHtml([
+    {name:'この端末',body:SEC_TERMINAL},
+    {name:'どこから読むか',body:SEC_READ},
+    {name:'共有の置き場',body:SEC_SCHEDULE},
+    {name:'RNE抽出',body:SEC_RNE},
+   ])}
 
-   ${group('read','どこから読むか','サーバー再起動後に反映','is-restart',`
-    <div class="pc-source-list" id="pcSourceList"></div>
-    <p class="mm-field-hint">読み込み先を変えるには「データ接続」のカードから <b>編集</b> を押してください
-     （同じ設定を2画面に置くと、どちらが効くのか分からなくなるためここでは変えられません）。</p>
-    ${pickField('sikalot_source','読み方を決めていないデータソースの既定',
-      [['','（既定）network'],['network','network'],['local','local']],
-      'network=共有フォルダを読む ／ local=この端末でRNEから抽出したものを読む。<b>読み方を決めたデータソースには効きません</b>。')}
-    ${pcStateHtml('sikalot_source')}`)}
-
-   ${group('schedule','共有の置き場','一部は再起動後に反映','is-restart',`
-    <!-- **何がどこへ行くかを1枚で言う**(§9.260)。以前は作業予定・測定データ・
-         マスタの置き場が3画面に散っており、いま何がどこにあるのかを
-         確かめる手立てが無かった。判定はサーバーが持つ(§9.163)ので、
-         ここは受け取った答えを並べるだけ。 -->
-    <div class="pc-share" id="pcShare">
-     <div class="pc-share-head">
-      <b>この端末が読み書きする置き場</b>
-      <span class="pc-share-root" id="pcShareRoot"></span>
-     </div>
-     <div class="pc-share-rows" id="pcShareRows"></div>
-    </div>
-    ${pathField('schedule_share_path','作業予定の置き場（schedule.sqlite3）','file','共有フォルダ上のschedule.sqlite3を選びます。空欄ならスケジュール機能は無効です。')}
-    <div class="pc-sub">
-     <b class="pc-sub-head">共有の変化をどう取り込むか</b>
-     <p class="mm-field-hint">共有（Box等）のschedule.sqlite3は<b>他の端末も書きます</b>。読むときは手元へ写したものを読み、
-      <b>改訂番号が変わったときだけ</b>写し直します（読むたびに写すと共有を掴み続け、他の端末の書込とぶつかります）。</p>
-     ${pickField('schedule_watch_enabled','共有の変化を見張る',
-       [['','（既定）auto: 見張る'],['auto','auto: 見張る'],['on','on: 見張る'],['off','off: 見張らない（読むたびに共有から写す）']],
-       'offにすると以前の動きに戻ります（共有が遅い環境では読み込みも遅くなります）。')}
-     ${numField('schedule_watch_interval_sec','変化を見る間隔','秒',5,5)}
-     ${numField('schedule_watch_pause_sec','取り込んだあと休む時間','秒',5,0)}
-    </div>
-    <div class="pc-sub">
-     <b class="pc-sub-head">同時に書いたときの取り合い</b>
-     ${numField('schedule_lock_ttl_sec','書込ロックの有効期限','秒',5,1)}
-     ${numField('schedule_lock_verify_delay_ms','ロック確認までの待機時間','ミリ秒',100,0)}
-    </div>
-    <div class="pc-sub">
-     <b class="pc-sub-head">書く役を1台に絞る（既定はoff）</b>
-     <p class="mm-field-hint">共有へ<b>実際に書く役を1台に絞る</b>仕掛けです。他のPCは書き込みだけをその1台へLAN内のHTTPで頼み、
-      <b>読みは今までどおり手元の写しから</b>読みます（画面のURLは全員 http://127.0.0.1:5029/ のまま）。
-      <b>持ち主が落ちていても止まりません</b>——頼めなかったPCは自分で共有へ書きます。</p>
-     ${pickField('schedule_owner_enabled','書き込み役を1台に絞る',
-       [['','（既定）off: 各PCが自分で共有へ書く'],['off','off: 各PCが自分で共有へ書く'],['on','on: 最初に入った1台が書き込み役になる']],
-       'onにすると、書き込み役になったPCだけが下のポートを<b>LANへ開きます</b>（合言葉つきの決められた書き込みしか受け付けません）。')}
-     ${numField('schedule_owner_port','書き込み役の受け口ポート','',1,1025)}
-     ${numField('schedule_owner_ttl_sec','書き込み役の目印の有効期限','秒',10,30)}
-     <div id="scheduleOwnerStatus" class="pc-owner-status">状態を読み込んでいます…</div>
-    </div>`)}
-
-   ${group('rne','RNE抽出','保存後すぐ反映','is-live',`
-    <p class="mm-field-hint">RNE（Navigator問い合わせ定義）から <code>.sqlite3</code> を作り、それを一覧として読む仕組みです。
-     取得元が <b>local</b> のデータソースだけが、ここで作ったファイルを読みます。</p>
-    ${pickField('rne_extract_enabled','RNE抽出の定期実行',
-      [['','（既定）auto: 取得元がlocalのときだけ'],['auto','auto: 取得元がlocalのときだけ'],
-       ['on','on: 取得元に関わらず定期実行する'],['off','off: 定期実行しない（手動のみ）']],
-      '「今すぐ抽出」は、この設定に関わらず資材が配置されていれば実行できます。')}
-    ${numField('rne_extract_interval_sec','RNE抽出間隔','秒',60,60)}
-    ${pathField('rne_assets_dir','RNE資材の置き場（フォルダ）','dir','RNEファイルと symnavim.conf をまとめて置くフォルダです。RNEファイルはこの下の rne/ 配下に置きます。共有フォルダを指定すれば、端末ごとにコピーせず1式を共用できます。空欄ならアプリ内の config/rne_extract です。')}
-    ${pathField('rne_conf_path','接続情報 symnavim.conf の場所','file','認証情報だけを別の場所に置きたい場合に指定します。空欄なら上の資材置き場の直下（symnavim.conf）です。')}
-    ${rneStatusPanelHtml()}`)}
   </div>
   <div class="mm-form-tail mm-set-sticky"><button type="submit" class="mm-btn-primary">共通設定を保存</button><span class="mm-form-hint">更新者IDは画面右上の入力欄を使用します。</span></div>`;
   form.onsubmit=ev=>{ev.preventDefault();savePathConfigMaint()};
-  /* 図と章のレールは**同じ道**で章へ連れて行く（入口を2本作らない）。 */
+  /* 段の切り替えを配線する（§9.261）。編集窓と同じ`bindMaintTabs`なので、
+     キーボード操作（←→）も見出しの一言もそのまま効く。 */
+  bindMaintTabs(form);
+  /* 図から章へ飛ぶのは**段を切り替えること**（入口を2本作らない）。
+     段になったので、スクロールではなく表示の切り替えで連れて行く。 */
   form.querySelectorAll('[data-pc-jump]').forEach(btn=>btn.onclick=ev=>{
    ev.preventDefault();
    const sec=form.querySelector(`#pcSec-${btn.dataset.pcJump}`);
    if(!sec)return;
+   const panel=sec.closest('.mm-tabpanel');
+   if(panel&&typeof form.__mmShowTab==='function'){
+    const i=[...form.querySelectorAll('.mm-tabpanel')].indexOf(panel);
+    if(i>=0)form.__mmShowTab(i);
+   }
    sec.scrollIntoView({block:'start',behavior:'smooth'});
    sec.classList.add('is-jumped');
    setTimeout(()=>sec.classList.remove('is-jumped'),1200);
