@@ -280,7 +280,11 @@ PATH_CONFIG_TABLE='パス設定マスタ'
 # キーで絞らずに読む（＝登録されたぶんだけ自然に効く）。
 # 下の2件は既定のデータソースぶんで、config/local.json からの一度きりの
 # 移行(_migrate_legacy_path_config)のために名前を残してある。
-PATH_CONFIG_STATIC_KEYS=('sikalot_source','sikalotnow_path','sikalotdef_path','records_backup_export_path','schedule_share_path')
+PATH_CONFIG_STATIC_KEYS=('sikalot_source','sikalotnow_path','sikalotdef_path','records_backup_export_path','schedule_share_path',
+                         # 測定データの置き場(§9.258)。接続先と同じ扱いで再起動が要る。
+                         # **この一覧に入れ忘れると、保存はできるのに読み出せない**
+                         # ——画面の欄が空のままになり「保存されていない」と読まれる。
+                         'records_share_dir')
 # 呼び出しのたびに読み直せる項目(間隔・タイムアウト値のみで、接続先には
 # 影響しないため、変更を再起動無しで反映できる)。
 # rne_extract_enabled: RNE抽出(定期実行)を動かすかどうか。

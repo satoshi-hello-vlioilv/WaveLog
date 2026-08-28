@@ -3487,6 +3487,22 @@
       <b>変えたときはアプリの再起動が必要です</b>（接続先は起動時に1回だけ決まります）。
       設定しても<b>今までの記録は消えません</b>——読むときは旧い置き場も一緒に見ます。</small></label>
     <div class="mm-cd-actions"><button type="button" id="msSaveShare" class="mm-btn-primary">この設定を保存</button></div>
+    <!-- 置き場を決めたあとの引っ越し(§9.258)。**既定は下見**(§9.193)で、
+         押す前に「どの設備へ何件」を出す。元のファイルは消さない。 -->
+    <div class="ms-split" id="msSplitBox">
+     <b class="ms-split-head">今ある測定データを設備ごとに振り分ける</b>
+     <p class="mm-field-hint">この端末の <code>db/records.sqlite3</code> にある記録を、
+      設備ごとのフォルダへ写します。<b>元のファイルは消しません</b>——読むときは旧い置き場も
+      一緒に見るので、記録は1件も消えず、二重にも出ません。</p>
+     <div class="mm-cd-actions">
+      <button type="button" id="msSplitPreview" class="mm-btn-ghost sm"${loc.perEquipment?'':' disabled'}
+       title="${loc.perEquipment?'どの設備へ何件になるかを、書き込む前に見ます':'先に共有の置き場を決めて、アプリを再起動してください'}">どうなるか見る</button>
+      <button type="button" id="msSplitApply" class="mm-btn-primary" disabled
+       title="下見を見てから押せます">振り分ける</button>
+     </div>
+     ${loc.perEquipment?'':'<p class="ms-split-why">共有の置き場が<b>まだ効いていません</b>。上で置き場を決めて保存し、アプリを再起動すると押せるようになります。</p>'}
+     <div class="ms-split-result" id="msSplitResult" hidden></div>
+    </div>
    </div>
    <div class="ms-settings">
     <h4>③ 閲覧用の複製の設定</h4>
@@ -3521,6 +3537,45 @@
    finally{setMaintLoading(false);measStorageState.loaded=false;loadMeasStorageMaint(true)}
   };
   $('#msSaveShare').onclick=()=>$('#msSaveCfg').onclick();
+  /* 引っ越しは**下見 → 振り分ける**の2段(§9.193)。下見を見るまで
+     「振り分ける」は押せない（押した瞬間に何が起きるか分からない操作にしない）。 */
+  let splitSeen=false;
+  const msSplitRun=async apply=>{
+   const box=$('#msSplitResult');
+   try{
+    setMaintLoading(true,apply?'振り分けています…':'調べています…');
+    const r=await api('/api/measurement/records/split',
+     {method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({apply,user_id:String($('#masterUserId')?.value||'').trim()})});
+    const gs=r.groups||[];
+    box.hidden=false;
+    box.innerHTML=gs.length
+     ?`<p class="ms-split-total">${apply?'振り分けました':'下見'}：全 ${r.total} 件 → ${gs.length} 設備</p>`
+      +`<ul class="ms-split-list">${gs.map(g=>
+        `<li><b>${esc(g.equipment||'（設備なし）')}</b> ${g.count}件
+          <code title="${esc(g.path||'')}">${esc(g.dirName||'')}</code>
+          ${g.error?`<em class="ms-split-err">${esc(g.error)}</em>`:''}</li>`).join('')}</ul>`
+      +`<p class="mm-field-hint">${esc(r.note||'')}</p>`
+     :`<p class="ms-split-total">振り分ける記録がありません（${esc(r.note||'')}）</p>`;
+    if(apply){
+     splitSeen=false;$('#msSplitApply').disabled=true;
+     showToast&&showToast('振り分けました',`${r.moved}件を設備ごとのフォルダへ写しました`,6000);
+     measStorageState.loaded=false;loadMeasStorageMaint(true);
+    }else{
+     splitSeen=gs.length>0;$('#msSplitApply').disabled=!splitSeen;
+    }
+   }catch(e){
+    showToast&&showToast(apply?'振り分けられませんでした':'調べられませんでした',e.message,7000);
+   }finally{setMaintLoading(false)}
+  };
+  if($('#msSplitPreview'))$('#msSplitPreview').onclick=()=>msSplitRun(false);
+  if($('#msSplitApply'))$('#msSplitApply').onclick=async()=>{
+   if(!splitSeen)return;
+   if(!confirm('今ある測定データを、設備ごとのフォルダへ写します。\n\n'
+              +'元のファイルは消しません（記録は1件も消えず、二重にも出ません）。\n'
+              +'よろしいですか？'))return;
+   await msSplitRun(true);
+  };
   $('#msSaveCfg').onclick=async()=>{
    /* **送るのはこの2つだけ**。パス設定の保存は「送られてきた項目だけ」を
       書くので、他の設定を巻き添えにしない(§9.192)。 */

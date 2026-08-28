@@ -159,6 +159,22 @@ try:
     except Exception as e:
         ok = False; all_paths = str(e)
     rec('置き場へ到達できなくても旧い置き場は読める', ok, str(all_paths))
+    # ---- 9. 設定が保存できて、読み出せる --------------------------------
+    # **一覧への入れ忘れは「保存はできるのに読み出せない」**——画面の欄が
+    # 空のままになり、利用者からは「保存されていない」としか見えない
+    # （実際に踏んだ。保存も反映も効いているので気づきにくい）。
+    from backend.db_access import (PATH_CONFIG_KEYS, PATH_CONFIG_STATIC_KEYS,
+                                   PATH_CONFIG_LIVE_KEYS)
+    from backend.routes import path_config as _pc
+    rec('records_share_dir がパス設定の読み出し一覧に載っている',
+        'records_share_dir' in PATH_CONFIG_KEYS)
+    rec('records_share_dir が保存側の一覧にも載っている',
+        'records_share_dir' in _pc._PATH_CONFIG_TEXT_FIELDS)
+    # 置き場は接続先と同じ扱い（起動時に1回だけ決まる）なので、
+    # **再起動が要る側**の一覧に入っていること。
+    rec('records_share_dir は「再起動が要る」側にある',
+        'records_share_dir' in PATH_CONFIG_STATIC_KEYS
+        and 'records_share_dir' not in PATH_CONFIG_LIVE_KEYS)
 finally:
     d.RECORDS_SHARE_DIR, d.MEAS_DB, d.RECORDS_BACKUP_EXPORT_PATH = _orig_dir, _orig_meas, _orig_exp
     d.invalidate_records_dirs_cache(); d.invalidate_backup_rows_cache()
