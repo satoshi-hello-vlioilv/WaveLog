@@ -1506,6 +1506,23 @@ def _report_block_save(x):
  except ValueError as e:return jsonify(error=str(e)),400
  except Exception as e:return jsonify(error=f'帳票ブロックマスタの保存に失敗しました: {e}'),500
 
+@bp.get('/api/report-block-master/sample-record')
+def report_block_sample_record():
+ """帳票の見本に使う**ダミーのロット1件**（§9.253、利用者の指示）。
+
+    **読むだけ・保存しない。** このレコードは画面のメモリにしか置かず、
+    測定データの一覧にも共有DBにも入らない（見本のロットが実データとして
+    残るのは、どんな見間違いより悪い）。
+
+    `equipment` を渡すと登録設備をそれにする——帳票の配置は
+    `report:<設備>`（§9.174）なので、**どの設備の配置で見るか**が決まる。"""
+ try:
+  from ..repositories import report_block_repo as rb
+  eq=str(request.args.get('equipment') or '').strip()
+  rec=_op_read(lambda c:rb.sample_record(c,eq))
+  return jsonify(ok=True,equipment=eq,id=rb.SAMPLE_RECORD_ID,record=rec)
+ except Exception as e:return jsonify(error=f'見本のロットを作れませんでした: {e}'),500
+
 @bp.post('/api/report-block-master')
 def report_block_register():
  return _report_block_save(request.get_json(force=True) or {})

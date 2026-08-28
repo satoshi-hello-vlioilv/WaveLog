@@ -186,6 +186,25 @@ SAMPLE_VALUES = {
     'basic.material': 'C1020-1/2H',
     'basic.thickness': '0.300',
     'basic.width': '1250',
+    # 既定の塊（基本情報・コース情報・寸法）が読む道。**`FIELD_CATALOG`に
+    # 無い道もここに置く**（§9.253）——見本のロットは「全部の欄が埋まって
+    # いる1件」であることが値打ちなので、`-`のままの欄を残さない。
+    # 埋めないと、その塊だけ紙の上で実物より痩せて見える（§9.130）。
+    'basic.allocationNo': 'A-24-0087',
+    'basic.purposeCode': 'TZ-02',
+    'basic.designCourse': 'S-3',
+    'basic.course': 'S-3',
+    'basic.residualCourse': '0',
+    'basic.orderMaterial': 'C1020',
+    'basic.orderTemper': '1/2H',
+    'basic.orderThickness': '0.300',
+    'basic.orderWidth': '12.5',
+    'basic.orderLength': '2000',
+    'basic.mfgMaterial': 'C1020',
+    'basic.mfgTemper': '1/2H',
+    'basic.mfgThickness': '0.300',
+    'basic.mfgWidth': '12.5',
+    'basic.mfgLength': '2000',
     'settings.registeredEquipment': 'スリッター1号',
     'settings.measureType': '板厚',
     'settings.lengthPos': '中',
@@ -252,6 +271,174 @@ for _k, _vals in _STAT_SAMPLE.items():
     SAMPLE_VALUES[f'stat.{_k}.avg'] = _vals[2]
     SAMPLE_VALUES[f'stat.{_k}.span'] = _vals[3]
     SAMPLE_VALUES[f'stat.{_k}.n'] = '80'
+
+
+# ---------------------------------------------------------------------------
+# 見本のロット1件（§9.253、利用者の指示）
+# ---------------------------------------------------------------------------
+# 利用者の指示:
+#
+#   「全入力可能データのダミーデータを1データ、内部に持っておくこととその
+#    データを活用し帳票のプレビューを帳票ブロックマスタから確認用に実際の
+#    データを配置した形かつ、現在のレイアウトでのデータを見られる、試し印刷も
+#    できるようにしてください」
+#
+# **値はここが持つ**（`SAMPLE_VALUES`と同じ1箇所・§9.163）——設定画面の
+# 「見本の値」とプレビューの値が別々だと、`L240815-03`で幅を確かめたのに
+# 紙には別の文字が出る、という食い違いが作れる。
+#
+# **形（配列の大きさ）は画面が持つ**——`ensureMeasureShape()`が丈×条へ
+# 揃え直すので、ここは**使う範囲だけ**埋める。丈数・条数の定数を
+# サーバーへ書き写さない。
+#
+# **絶対に保存しない**。このレコードは画面のメモリにしか置かず、
+# `records.sqlite3`にもIndexedDBにも入れない（見本のロットが実データの
+# 一覧に並ぶのは、どんな見間違いより悪い）。番号もひと目で見本と分かる
+# ものにする。
+SAMPLE_RECORD_ID = '__sample__'
+# 見本の測定値。**実物に寄せた桁とばらつき**にする（§9.250 ⑤と同じ理由）
+# ——桁が違うと紙に入るかどうかを見誤る。中心値は`_STAT_SAMPLE`と揃える。
+_SAMPLE_LENGTHS = ('1(頭)', '中', '尾')
+_SAMPLE_STRIPS = 8
+_SAMPLE_SERIES = {
+    # 鍵: (中心値, 1つずつずらす幅, 小数桁, 1丈あたりの本数)
+    #     本数 None は「条の数だけ」（板厚だけが丈ごとに3点・§9.138）。
+    'thickness': (0.300, 0.002, 3, 3),
+    'width': (12.50, 0.02, 2, None),
+    'lateral': (0.5, 0.1, 1, None),
+    'burr': (0.02, 0.01, 2, None),
+    'telescope': (0.8, 0.1, 1, None),
+    'offset': (0.6, 0.1, 1, None),
+}
+# 子ロット（分割あり）。**合計は条数と合わせる**——合わないと、
+# `rpSplitLots()`が数える条の範囲と実際の測定値の並びがずれる。
+_SAMPLE_SPLIT = (('L240815-03-1', 3), ('L240815-03-2', 3), ('L240815-03-3', 2))
+
+
+def _put_path(out, path, value):
+    """`a.b.c` を入れ子の辞書へ入れる。**道の綴りは`SAMPLE_VALUES`が正**
+    なので、ここでキー名を並べ直さない（並べると2箇所になる）。"""
+    parts = str(path or '').split('.')
+    if len(parts) == 1:
+        out[parts[0]] = value
+        return
+    cur = out
+    for k in parts[:-1]:
+        nxt = cur.get(k)
+        if not isinstance(nxt, dict):
+            nxt = {}
+            cur[k] = nxt
+        cur = nxt
+    cur[parts[-1]] = value
+
+
+def sample_record(c=None, equipment=''):
+    """帳票の見本に使う**ダミーのロット1件**（§9.253）。
+
+    **`SAMPLE_VALUES`の道をそのまま入れ子へ広げる**ので、`FIELD_CATALOG`に
+    在る道は**全部**値を持つ（道を1本足したら見本も一緒に足すことになる）。
+    操業データの項目は設備ごとに違うので、マスタから引いて`sample_for()`で
+    埋める——現場が項目を足せば、見本のロットにもその欄が増える。
+
+    `equipment` を渡すと登録設備をそれにする（帳票の配置は
+    `report:<設備>`なので、**どの設備の配置で見るか**がこれで決まる）。
+    """
+    rec = {}
+    for path, value in SAMPLE_VALUES.items():
+        # `calc.*`/`stat.*`/`lot.*` は**レコードから導かれる値**なので入れない
+        # （入れると、計算した値と食い違う写しが1つ増える）。
+        if path.split('.')[0] in ('calc', 'stat', 'lot'):
+            continue
+        _put_path(rec, path, value)
+    basic = rec.setdefault('basic', {})
+    st = rec.setdefault('settings', {})
+    eq = str(equipment or '').strip()
+    if eq:
+        st['registeredEquipment'] = eq
+    rec['registeredEquipment'] = st.get('registeredEquipment', '')
+    # 数で持つもの（画面が`Number()`で扱う）。文字のままだと条数が1になる。
+    st['verticalCount'] = len(_SAMPLE_LENGTHS)
+    st['horizontalCount'] = _SAMPLE_STRIPS
+    st['splitGroups'] = [{'lot': lot, 'count': n} for lot, n in _SAMPLE_SPLIT]
+    # 母材は記録の鍵が `mother.<キー>`（§9.232。`settings.mother*`は
+    # 操業データ項目としての道で、**どちらの道で組んだ塊もある**ので両方入れる）。
+    rec['mother'] = {
+        'fullLength': SAMPLE_VALUES.get('settings.motherFullLength', ''),
+        'manual': SAMPLE_VALUES.get('settings.motherManual', ''),
+        'minCard': SAMPLE_VALUES.get('settings.motherMinCard', ''),
+        'maxCard': SAMPLE_VALUES.get('settings.motherMaxCard', ''),
+        'front': SAMPLE_VALUES.get('settings.motherFront', ''),
+        'rear': SAMPLE_VALUES.get('settings.motherRear', ''),
+        'frontCard': SAMPLE_VALUES.get('settings.motherFrontCard', ''),
+        'rearCard': SAMPLE_VALUES.get('settings.motherRearCard', ''),
+    }
+    # 品質等級（既定の塊が`x.qualityGrades`から読む）。**切断面は等級を入れる**
+    # ——揃いの合否がここから出る（§9.204）ので、空だと「基準なし」になり、
+    # 丈別データの合否欄が紙で確かめられない。
+    rec['qualityGrades'] = {
+        '生地外観': 'A', 'アルマイト': 'A', '表面処理': 'なし', '付着油': '有',
+        '方向性': '指定なし', '強度': 'A', 'ラテラルボー': 'A', '直角度': 'A',
+        '切断面': '3級', '板厚公差': 'A', '幅丈公差': 'A', 'フラットネス': 'A',
+    }
+    # 仕掛の生の行。**公差はここから読む**（`toleranceRangeLocal`）ので、
+    # 入れないと測定値の表に公差の範囲が出ず、幅が実物と違って見える。
+    rec['source'] = {
+        '板厚公差_製造_プラス': 0.005, '板厚公差_製造_マイナス': 0.005,
+        '板幅公差_製造_プラス': 0.05, '板幅公差_製造_マイナス': 0.05,
+        '板厚公差_オーダー_プラス': 0.008, '板厚公差_オーダー_マイナス': 0.008,
+        '板幅公差_オーダー_プラス': 0.08, '板幅公差_オーダー_マイナス': 0.08,
+    }
+    rec['qualityInfo'] = '異常情報なし'
+    rec['status'] = '完了'
+    rec['id'] = SAMPLE_RECORD_ID
+    rec['createdAt'] = SAMPLE_VALUES.get('updatedAt', '')
+    # 測定値。**使う範囲だけ**（丈×条）。残りは画面の`ensureMeasureShape()`が
+    # 空で埋める——丈の総数(LENGTH_SLOTS)をここへ書き写さない。
+    ms = {}
+    for key, (base, step, digits, points) in _SAMPLE_SERIES.items():
+        width = points if points else _SAMPLE_STRIPS
+        rows = []
+        for li in range(len(_SAMPLE_LENGTHS)):
+            row = []
+            for si in range(width):
+                # 上下に振る（同じ値が並ぶと「1つも測っていない」ように見える）
+                k = ((li * width + si) % 5) - 2
+                row.append(('%.' + str(digits) + 'f') % (base + step * k))
+            rows.append(row)
+        ms[key] = rows
+    ms['flatness'] = [['〇'] * _SAMPLE_STRIPS for _ in _SAMPLE_LENGTHS]
+    ms['comments'] = [[''] * _SAMPLE_STRIPS for _ in _SAMPLE_LENGTHS]
+    rec['measurements'] = ms
+    # 丈ごとのデータ（板丈・肉厚・揃い）。**丈位置の名前も入れる**——
+    # 空だと「どの丈の行か」が紙で分からない。
+    rec['product'] = {'rows': [{
+        'productLength': ('%d' % (2000 + i)),
+        'wallThickness': ('%.2f' % (1.50 + 0.01 * (i - 1))),
+        'edgeShape': '揃い綺麗' if i == 0 else 'のこぎり状',
+        'occurrencePosition': '' if i == 0 else '端部',
+        'regularity': '' if i == 0 else '一定',
+        'direction': '' if i == 0 else 'OS',
+        'pitch': '' if i == 0 else '120',
+        'alignmentValue': '' if i == 0 else '1.2',
+    } for i in range(len(_SAMPLE_LENGTHS))]}
+    rec['workTime'] = rec.get('workTime') or {}
+    # 操業データ（§9.215）。**項目は設備ごとのマスタが決める**ので並べない。
+    if c is not None:
+        try:
+            from . import operation_repo as op
+            bag = st.setdefault('opData', {})
+            for it in op.items_for_equipment(c, eq):
+                if not it.get('enabled', True):
+                    continue
+                name = str(it.get('name') or '').strip()
+                if not name or name in bag:
+                    continue
+                bag[name] = sample_for('settings.opData.' + name, it)
+        except Exception:
+            # **見本が作れないことを失敗にしない**（§9.163の判定と同じ作法）
+            # ——操業データが読めなくても、帳票の見本そのものは出せる。
+            pass
+    return rec
 
 
 def sample_for(path, item=None):

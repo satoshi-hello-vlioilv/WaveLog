@@ -3318,6 +3318,9 @@
   renderReport(x);
   fitPage();fitWidth();
   renderSplitHint(x);
+  /* 見本の帯（§9.253）。**選び直したら必ず消す**——実データを開いたのに
+     「見本です」と出たままだと、本物を見本と読み違える。 */
+  renderSampleBar(x);
  }
  /* ---------- 子ロットの統計を先回りして知らせる（§9.248 ②） ----------
     既定（`rpInitialHidden`）は**一度も配置を触っていない設備**にしか効かない。
@@ -3566,11 +3569,13 @@
   }
   return null;
  }
+ const RP_RETURNS=['measure','actuals','blocks'];
  window.openReportForRecord=async function(id,options){
   const opt=options||{};
-  /* 戻り先（§9.241 ③で実績データリストが増えた）。**知らない値は
-     データ一覧へ落とす**——戻り先が無い画面へ戻すと行き止まりになる。 */
-  rpReturnTo=(opt.returnTo==='measure'||opt.returnTo==='actuals')?opt.returnTo:'records';
+  /* 戻り先（§9.241 ③で実績データリストが増えた／§9.253で帳票ブロック
+     マスタが増えた）。**知らない値はデータ一覧へ落とす**——戻り先が無い
+     画面へ戻すと行き止まりになる。 */
+  rpReturnTo=RP_RETURNS.indexOf(opt.returnTo)>=0?opt.returnTo:'records';
   await openReportView();           // ここで初めてパネル(戻るボタン)が作られる
   updateBackButton();
   syncArrangeButton();
@@ -3587,14 +3592,94 @@
   /* 印刷は描画後でないと白紙になるため、1フレーム置いてから開く。 */
   if(opt.print)requestAnimationFrame(()=>requestAnimationFrame(printReport));
  };
+ /* ---------- 見本のロットで帳票を見る（§9.253、利用者の指示） ----------
+    「全入力可能データのダミーデータを1データ、内部に持っておくこととその
+     データを活用し帳票のプレビューを帳票ブロックマスタから確認用に実際の
+     データを配置した形かつ、現在のレイアウトでのデータを見られる、試し印刷も
+     できるようにしてください」
+
+    それまでは**実データが1件も無いと配置を確かめられなかった**。しかも
+    確かめるには「データ一覧を開く→ロットを探す→行を開く→帳票」と辿る
+    必要があり、マスタを直すたびに毎回それをやることになる。
+
+    **描くのは今までと同じ1本**（`selectLot`→`renderReport`）——見本のための
+    別の描き方を持つと、「見本では出るのに実データでは出ない」が作れる
+    （§CLAUDE「同じ処理を2つ持たない」）。ここがやるのは
+    **レコードを1件、一覧の先頭へ差し込むこと**だけ。
+
+    **絶対に保存しない。** `rpState.items`は`openReportView()`のたびに
+    作り直されるので、画面を離れれば消える。IndexedDBにも共有DBにも
+    入らない（見本のロットが実データの一覧に並ぶのは、どんな見間違いより
+    悪い）。**そのことが分かる番号と帯を必ず出す**（§CLAUDE 3・§6）。 */
+ const RP_SAMPLE_ID='__sample__';
+ function rpIsSample(x){return !!(x&&(x.__sample||x.id===RP_SAMPLE_ID))}
+ /* 見本であることは**文字で**言う（色だけで伝えない・§CLAUDE 3）。
+    帯には**どの設備の配置で見ているか**まで出す——帳票の配置は
+    `report:<設備>`（§9.174）なので、設備が違えば別の紙になる。 */
+ function renderSampleBar(x){
+  let el=$id('rpSampleBar');
+  if(!rpIsSample(x)){if(el)el.remove();return}
+  if(!el){
+   el=document.createElement('div');el.id='rpSampleBar';el.className='rp-sample-bar';
+   /* **紙の外へ置く**（`.rp-arrange-bar`と同じ場所）——`#reportContent`は
+      A4の紙そのもので、中へ入れると刷り上がりに混ざり、割り付けも崩れる。 */
+   const scroll=$id('rpScroll');
+   if(scroll&&scroll.parentNode)scroll.parentNode.insertBefore(el,scroll);
+   else return;
+  }
+  const eq=rpEquipmentOf(x)||'';
+  el.innerHTML=`<b>見本データです</b>
+   <span>実際の測定データではありません。保存されません。</span>
+   <span class="rp-sample-eq">配置は<b>${esc(eq||'共通')}</b>のもの${
+     eq?'':'（この端末に使用設備が登録されていないため）'}</span>
+   <button type="button" id="rpSamplePrint" class="rp-foot-btn"
+     title="いまの配置のまま、この見本データで試しに1枚刷ります">試し印刷</button>`;
+  const pb=el.querySelector('#rpSamplePrint');
+  if(pb)pb.onclick=()=>printReport();
+ }
+ /* 見本を開く。`equipment`を省くとこの端末の使用設備（無ければ共通）。 */
+ async function openSampleReport(options){
+  const opt=options||{};
+  let eq=opt.equipment;
+  if(eq==null&&typeof currentConfiguredEquipment==='function'){
+   try{eq=currentConfiguredEquipment()}catch(e){eq=''}
+  }
+  eq=String(eq||'');
+  let rec=null;
+  try{
+   const r=await api('/api/report-block-master/sample-record?equipment='+encodeURIComponent(eq));
+   rec=r&&r.record;
+  }catch(e){
+   showToast&&showToast('見本を作れませんでした',e.message,6000);return;
+  }
+  if(!rec){showToast&&showToast('見本を作れませんでした','サーバーが見本のロットを返しませんでした。',6000);return}
+  rec.id=RP_SAMPLE_ID;rec.__sample=true;
+  if(typeof ensureMeasureShape==='function')ensureMeasureShape(rec);
+  rpReturnTo=RP_RETURNS.indexOf(opt.returnTo)>=0?opt.returnTo:'blocks';
+  await openReportView();
+  updateBackButton();
+  syncArrangeButton();
+  /* **先頭へ差し込む**（探させない・§2）。同じidが残っていたら入れ替える
+     ——2回開くと見本が2件並ぶ。 */
+  rpState.items=[rec,...(rpState.items||[]).filter(i=>!rpIsSample(i))];
+  renderLotList();
+  selectLot(RP_SAMPLE_ID);
+  if(opt.print)requestAnimationFrame(()=>requestAnimationFrame(printReport));
+ }
+ WL.reportSample={open:openSampleReport,id:()=>RP_SAMPLE_ID};
  function updateBackButton(){
   const btn=$id('reportBack');if(!btn)return;
-  const toMeasure=rpReturnTo==='measure';
-  /* ボタンの中身は <svg>アイコン</svg> + 文字列。アイコンは残して文字だけ差し替える。 */
-  const label=[...btn.childNodes].find(n=>n.nodeType===Node.TEXT_NODE);
-  if(label)label.textContent=toMeasure?'測定へ戻る':(rpReturnTo==='actuals'?'実績へ戻る':'戻る');
-  btn.title=toMeasure?'測定画面へ戻ります'
-   :(rpReturnTo==='actuals'?'実績データリストへ戻ります':'元の一覧に戻ります');
+  /* ボタンの中身は <svg>アイコン</svg> + 文字列。アイコンは残して文字だけ差し替える。
+     **戻り先の名前をそのまま出す**（§2「探させない」）——「戻る」だけだと
+     どこへ帰るのか押すまで分からない。 */
+  const NAMES={measure:['測定へ戻る','測定画面へ戻ります'],
+               actuals:['実績へ戻る','実績データリストへ戻ります'],
+               blocks:['帳票ブロックへ戻る','マスタ管理の「帳票ブロック」へ戻ります'],
+               records:['戻る','元の一覧に戻ります']};
+  const n=NAMES[rpReturnTo]||NAMES.records;
+  const label=[...btn.childNodes].find(x=>x.nodeType===Node.TEXT_NODE);
+  if(label)label.textContent=n[0];
+  btn.title=n[1];
  }
  function backToRecordList(){
   exitReportView();
@@ -3613,6 +3698,12 @@
   if(rpReturnTo==='actuals'&&WL.actuals&&typeof WL.actuals.open==='function'){
    rpReturnTo='records';updateBackButton();
    WL.actuals.open();return;
+  }
+  /* 帳票ブロックマスタへ（§9.253）。**開いていたタブまで戻す**——
+     「マスタ管理」の先頭へ落とすと、直していた塊をもう一度探すことになる。 */
+  if(rpReturnTo==='blocks'&&typeof window.openMasterMaint==='function'){
+   rpReturnTo='records';updateBackButton();
+   window.openMasterMaint('reportBlock');return;
   }
   if(typeof openRecordsSafe==='function')openRecordsSafe(null);
  }

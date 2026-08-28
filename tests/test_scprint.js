@@ -554,11 +554,29 @@ let b=null;
      §9.235 ② 用紙サイズ・向き（A4/A3 × 縦/横）
      利用者の指示「印刷サイズA4だけでなくA3や縦向きや横向きも選べるように」
      ============================================================ */
-  /* ---- 10) 4つの用紙が実寸(mm)どおりCSSへ効いている ---- */
+  /* ---- 10) 用紙が実寸(mm)どおりCSSへ効いている（§9.252 でB4を追加） ---- */
   const sizes=await page.evaluate(()=>WL.schedulePrint.paperSizes());
-  rec('用紙は4通り（A4/A3 × 縦/横）',
-      sizes.length===4&&['a4-portrait','a4-landscape','a3-portrait','a3-landscape']
-        .every(k=>sizes.some(s=>s.key===k)),JSON.stringify(sizes));
+  rec('用紙は6通り（A4/B4/A3 × 縦/横）',
+      sizes.length===6&&['a4-portrait','a4-landscape','b4-portrait','b4-landscape',
+                         'a3-portrait','a3-landscape'].every(k=>sizes.some(s=>s.key===k)),
+      JSON.stringify(sizes));
+  /* **B4はJIS(257×364mm)**（§9.252）。CSSの`B4`はISO(250×353mm)なので、
+     `@page`を名前で頼むと紙だけ小さくなり中身が縮む。ここは寸法そのものを
+     見る——「B4という選択肢が在る」だけを見る網では捕まらない。 */
+  const b4=sizes.find(s=>s.key==='b4-portrait')||{};
+  rec('B4はJIS(257×364mm)で持っている（ISOの250×353ではない）',
+      b4.w===257&&b4.h===364,JSON.stringify(b4));
+  /* **`@page`は用紙の名前ではなく実寸mmで頼む**（§9.252）。名前で頼むと
+     ①用紙を1つ足したときにその用紙だけ既定のA4で刷られ（以前は
+     `key.indexOf('a3')===0`で当てていた）②CSSの`B4`はISOなので紙が
+     小さくなり中身が縮む。**刷り上がりでしか見えない**ので、規則そのものを
+     見る。 */
+  const rules=await page.evaluate(ks=>ks.map(k=>WL.schedulePrint.pageRule(k)),
+                                  sizes.map(s=>s.key));
+  const ruleOk=sizes.every((s,i)=>rules[i]===`@page{size:${s.w}mm ${s.h}mm;margin:0}`);
+  rec('@pageは用紙の名前ではなく実寸mmで頼む（全6通り）',ruleOk,JSON.stringify(rules));
+  rec('@pageに用紙の名前(A4/B4/A3)を書いていない',
+      rules.every(r=>!/\b(A4|A3|B4|Letter)\b/.test(r)),JSON.stringify(rules));
   const paperCss=await page.evaluate(keys=>{
    const wrap=document.createElement('div');wrap.style.cssText='position:fixed;left:-10000px;top:0';
    document.body.appendChild(wrap);
@@ -675,6 +693,8 @@ let b=null;
    opts:document.querySelectorAll('.sp-pv-side [data-opt]').length,
    optKeys:[...document.querySelectorAll('.sp-pv-side [data-opt]')].map(i=>i.dataset.opt),
    sizeOpts:document.querySelectorAll('#spPvSize .sp-pat').length,
+   kindOpts:document.querySelectorAll('#spPaperKinds .sp-pat').length,
+   orientOpts:document.querySelectorAll('#spPaperOrients .sp-pat').length,
    scopeOpts:document.querySelectorAll('#spColumnScope .sp-pat').length,
    printBtn:!!document.getElementById('spPvPrint'),
    ask:!!document.querySelector('#appConfirm:not([hidden])'),
@@ -686,7 +706,11 @@ let b=null;
       pv.optKeys.includes('includeChildren'),JSON.stringify(pv.optKeys));
   rec('「枠線を出す」がチェック項目にある(§9.236 ③)',
       pv.optKeys.includes('borders'),JSON.stringify(pv.optKeys));
-  rec('用紙の選択肢が4つ並ぶ(§9.235 ②)',pv.sizeOpts===4,String(pv.sizeOpts));
+  /* **掛け算で並べない**（§9.252）——大きさ3＋向き2＝5枚。掛け合わせると
+     用紙を1つ足すたびに札が2枚増える（B4を足した時点で8枚になっていた）。 */
+  rec('用紙は「大きさ3枚＋向き2枚」に分かれて並ぶ(§9.252)',
+      pv.sizeOpts===5&&pv.kindOpts===3&&pv.orientOpts===2,
+      JSON.stringify({計:pv.sizeOpts,大きさ:pv.kindOpts,向き:pv.orientOpts}));
   rec('列の範囲の選択肢が2つ並ぶ(§9.236 ①)',pv.scopeOpts===2,String(pv.scopeOpts));
   /* **紙が切れていないこと。** 器の寸法を`getBoundingClientRect()`（倍率を
      掛けたあとの値）から作ると、そこへもう一度倍率が掛かって右側が
@@ -760,24 +784,54 @@ let b=null;
    const pg=document.querySelector('.sp-pv-sheet .sp-page');
    return {paper:pg?pg.dataset.paper:'',minH:pg?parseFloat(getComputedStyle(pg).minHeight):0};
   });
-  await page.click('#spPvSize input[value="a3-portrait"]');
-  await page.waitForFunction(()=>{
+  /* 大きさと向きは**別の欄**（§9.252）。まず大きさだけを選ぶ。 */
+  const waitPaper=async k=>page.waitForFunction(want=>{
    const pg=document.querySelector('.sp-pv-sheet .sp-page');
-   return pg&&pg.dataset.paper==='a3-portrait';
-  },null,{timeout:15000}).catch(()=>{});
-  const afterPaper=await page.evaluate(()=>{
+   return pg&&pg.dataset.paper===want;
+  },k,{timeout:15000}).catch(()=>{});
+  const paperNow=()=>page.evaluate(()=>{
    const pg=document.querySelector('.sp-pv-sheet .sp-page');
    return {paper:pg?pg.dataset.paper:'',minH:pg?parseFloat(getComputedStyle(pg).minHeight):0};
   });
-  rec('用紙サイズを選ぶとその場でプレビューの紙が変わる',
+  await page.click('#spPaperKinds input[value="a3"]');
+  await waitPaper('a3-portrait');
+  const afterPaper=await paperNow();
+  rec('大きさを選ぶとその場でプレビューの紙が変わる',
       afterPaper.paper==='a3-portrait'&&afterPaper.minH>beforePaper.minH,
       JSON.stringify({前:beforePaper,後:afterPaper}));
   rec('選んだ用紙は端末に残る',
       (await page.evaluate(()=>{try{return JSON.parse(localStorage.getItem('SchedulePrintPrefV1')||'{}').paper}
         catch(e){return null}}))==='a3-portrait');
+  /* **向きだけを変えても大きさは残る**（§9.252。片方だけ選び直したときに
+     もう片方が既定へ落ちると、選び直すたびに元へ戻る）。 */
+  await page.click('#spPaperOrients input[value="landscape"]');
+  await waitPaper('a3-landscape');
+  const turned=await paperNow();
+  rec('向きだけを変えても大きさは残る（A3のまま横になる）',
+      turned.paper==='a3-landscape',JSON.stringify(turned));
+  /* **B4も実際に紙が変わる**——選択肢が並ぶだけでは、CSSの規則を足し忘れて
+     いても通る（幅がA4のまま出る）。 */
+  await page.click('#spPaperKinds input[value="b4"]');
+  await waitPaper('b4-landscape');
+  const b4Now=await page.evaluate(()=>{
+   const pg=document.querySelector('.sp-pv-sheet .sp-page');
+   const cs=pg?getComputedStyle(pg):null;
+   return {paper:pg?pg.dataset.paper:'',
+           w:cs?Math.round(parseFloat(cs.width)/96*25.4):0,
+           h:cs?Math.round(parseFloat(cs.minHeight)/96*25.4):0,
+           note:(document.getElementById('spPaperNow')||{}).textContent||''};
+  });
+  rec('B4を選ぶと紙がJISのB4横(364×257mm)になる',
+      b4Now.paper==='b4-landscape'&&b4Now.w===364&&b4Now.h===257,JSON.stringify(b4Now));
+  /* **刷れる範囲まで文字で出す**（§CLAUDE 6。余白を引く暗算をさせない）。 */
+  rec('いまの用紙と刷れる範囲を文字で出す',
+      /B4 横/.test(b4Now.note)&&/364×257mm/.test(b4Now.note)&&/348×241mm/.test(b4Now.note),
+      b4Now.note.replace(/\s+/g,' ').slice(0,120));
   // A4縦へ戻す(このあとの検査・後片付けを素直にするため)
-  await page.click('#spPvSize input[value="a4-portrait"]');
-  await page.waitForTimeout(700);
+  await page.click('#spPaperKinds input[value="a4"]');
+  await page.click('#spPaperOrients input[value="portrait"]');
+  await waitPaper('a4-portrait');
+  await page.waitForTimeout(400);
 
   /* ---- 17) 画面のまとめを紙にも入れる／申し送りの欄(§9.189) ---- */
   const grouped=await page.evaluate(async()=>{

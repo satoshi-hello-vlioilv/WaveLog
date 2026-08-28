@@ -370,6 +370,18 @@
   padding:var(--pad-chip) var(--space-2);background:var(--computed-bg);
   border-bottom:1px solid var(--teal);color:var(--computed-fg)}
 .rp-arrange-bar[hidden]{display:none}
+/* 見本のロットで見ていることを言う帯（§9.253）。**紙の外**（`.rp-arrange-bar`と
+   同じ場所）——紙の中へ入れると刷り上がりに混ざる。
+   **色だけで伝えない**（§CLAUDE 3）ので、文言と設備名を必ず文字で出す。
+   注意を引く必要はあるが、危険ではない（消えるだけ）ので警告の色にとどめる。 */
+.rp-sample-bar{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;
+  padding:var(--pad-chip) var(--space-2);
+  background:var(--warn-bg);border-bottom:1px solid var(--warn-border);
+  color:var(--warn-fg);font-size:var(--fs-sm)}
+.rp-sample-bar>b{font-weight:800}
+.rp-sample-bar>span{color:var(--ink-2);font-size:var(--fs-micro)}
+.rp-sample-eq b{color:var(--warn-fg)}
+.rp-sample-bar>button{margin-left:auto}
 /* 出していない塊の置き場（§9.217）。**紙の外**——紙の中へ入れると
    刷り上がりに混ざる。 */
 .rp-palette{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;
