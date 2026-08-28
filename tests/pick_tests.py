@@ -72,6 +72,8 @@ G['列'] = ['test_collayout', 'test_colformat', 'test_colrule', 'test_colsort', 
            'test_colio', 'test_multidrag', 'test_sortcustom', 'test_sortpipe',
            # §9.253: 見本のロットで帳票を見る・試し印刷
            'test_rbsample',
+           # §9.254 (3): 帳票レイアウトマスタ（列レイアウトマスタの report: を触る）
+           'test_rlmaster',
            # §9.239 ④⑤: 揃えと列の一時的な色
            'test_coltint', 'test_gridchild',
            # §9.248 ③④: 表示列が消えない／表示中・非表示中の札
@@ -167,11 +169,15 @@ RULES = [
     ('static/js/lot-split.js', g('異常位置', 'test_orphan', 'test_sub')),
     ('static/js/master-maint.js', g('マスタ', 'モーダル', '操業意匠', 'test_rawmaster',
                                     'test_headbar', 'test_datasource',
-                                     'test_qjoinui', 'test_dscap', 'test_blockbuild', 'test_rbmodal')),
+                                     'test_qjoinui', 'test_dscap', 'test_blockbuild', 'test_rbmodal',
+                                     # §9.254 (3): 帳票レイアウトマスタ（親子の行き来）
+                                     'test_rlmaster')),
     ('static/js/calendar-view.js', g('test_uisize', 'test_histdel', 'test_headbar')),
     # 帳票の塊の組み換え(§9.169)は列レイアウトマスタに載るので列の網も回す。
     ('static/js/report-dashboard.js', g('モーダル', 'test_screport', 'test_headbar', 'test_uisize',
                                         'test_rpblocks', 'test_rplayout', 'test_rpmaster',
+                                        # §9.254 (3): 帳票レイアウトマスタの口（WL.reportLayout）
+                                        'test_rlmaster',
                                         # §9.242 ⑦⑧: 刷るときの紙の箱・品質情報の枠
                                         'test_rpprint',
                                         # §9.253: 見本のロットで帳票を見る

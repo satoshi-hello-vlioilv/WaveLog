@@ -180,18 +180,46 @@
          {k:'count',label:'本数',grow:1},{k:'material',label:'材質',grow:1},
          {k:'refNo',label:'基準番号',grow:1}],
    hint:'設備ごとのロールの諸元です。**1つのロールは1つの設備に属します**——同じ呼び名でも設備が違えば別のロールとして、それぞれ登録してください。**同じ設備の中では「ロール名＋接触面」で1本**です（上／下／上下は別のロール。Excelの取り込みもこの3つで突き合わせます）。**測定画面の「異常位置判定」→「② 長手方向（ロールを特定）」**で、欠陥のピッチ（繰り返しの間隔）から該当しそうなロールを探すのに使います。判定に効くのは**ロール径MAX**（周長＝π×径）で、**ロール径MIN**も入っていれば摩耗の範囲として幅を持たせて判定します。一覧は設備ごとにまとまって出ます。'},
+  /* ---------- 帳票レイアウト（§9.254 ③、利用者の指示） ----------
+     「帳票の表示画面からいける、レイアウト調整画面ですが、これは実質、
+      帳票レイアウトマスタなので、マスタとしても配置し、この帳票レイアウト
+      マスタと帳票ブロックマスタを配線しリンクさせて…機能が重複する部分は
+      統合して帳票マスタとして親子関係のある高性能マスタとして」
+
+     **親＝設備1つぶんの紙**（列レイアウトマスタの`report:<設備>`。§9.174）／
+     **子＝その紙に載る塊**（帳票ブロックマスタの行＋コードが持つ既定の塊）。
+     すぐ下の「帳票ブロック」と対で読む並びにしてある（親→子）。
+
+     **組み換えの画面を写さない**（§9.163）。紙の上でどこへ置けるか・
+     何マスに収まるかは`WL.reportLayout`の1本が答え、細かい置き場所は
+     「紙で組み換える」で**同じ組み換え画面**へ連れて行く（入口を2つに
+     しない・§9.207）。ここが受け持つのは、組み換え画面と重複していた
+     **出す/出さない・幅・高さ・紙の割り**——一覧で見比べながら直せる形。 */
+  {group:'equip',key:'reportLayout',label:'帳票レイアウト',icon:'配',
+   special:'report-layout',endpoint:'/api/column-layout-master',
+   titleText:'帳票レイアウト — 設備ごとの紙（親）と、そこに載る塊（子）',
+   /* 汎用の一覧・編集モーダルは通らない（`special`で分岐する）。`cols`が
+      空だと`def.cols[0].k`を読む箇所が投げうるので1つだけ置いておく。 */
+   fields:[],cols:[{k:'equipment',label:'設備'}],
+   hint:'設備ごとの帳票の紙です。**1行＝1つの設備の紙**で、その紙に載る塊（子）を右に並べます。塊そのもの（名前・種別・載せる項目）は下の**帳票ブロック**が持ち、ここが決めるのは**その設備の紙でどう出るか**——出す/出さない・幅・高さ・紙の割り（列×段）です。細かい置き場所は「紙で組み換える」から、**見本のロットで実際の紙を見ながら**動かせます（その設備で測ったロットがこの端末に無くても直せます）。'},
   /* 帳票ブロックマスタ（§9.217、利用者の指示「内部データについても各項目
      ごと設計できるように、編集追加などできるように」）。中身の作り方が
      仕事になっている塊（測定表・条の図・異常位置判定）はコードの側のままで、
      **「ラベルと値の出どころを並べただけの塊」だけ**を現場が足せる。 */
   {group:'equip',key:'reportBlock',label:'帳票ブロック',icon:'票',
    endpoint:'/api/report-block-master',hasDelete:true,
-   titleText:'帳票ブロック — 紙に載せる塊',
+   titleText:'帳票ブロック — 紙に載せる塊',titleKey:'name',
    asideHtml:()=>rbAsideHtml(),bindAside:form=>rbBindAside(form),
    groupsAsTabs:true,
    /* **見本のロットで刷り上がりを見る**（§9.253、利用者の指示）。
       印1つで帯にボタンが出る差し替え口（`excelIo`・`bulkDelete`と同じ）。 */
    sampleReport:true,
+   /* **親（紙）へ渡る**（§9.254 ③）。ここが決めるのは塊そのもの（名前・
+      種別・載せる項目・既定の幅と高さ）で、**設備ごとの紙でどう出るか**は
+      帳票レイアウトが持つ。行き来の口を出しておかないと、どちらで直すのか
+      を毎回思い出すことになる（§2）。 */
+   linkTo:{key:'reportLayout',label:'紙での見え方（帳票レイアウト）',
+           title:'この塊が設備ごとの紙でどう出るか（出す/出さない・幅・高さ・置き場所）は帳票レイアウトで決めます'},
    hintShort:'①から④の順に決めます。**右の見本が刷り上がりです**——'
     +'**紙の中の塊は四方どこでも掴んで大きさを変えられます**（幅・高さの札でも決められます）。'
     +'**既定の塊は消せません**（紙へ出したくないときは④を「出さない」に）。',
@@ -818,9 +846,18 @@
    +` aria-selected="${i?'false':'true'}" aria-controls="mmPanel${i}" tabindex="${i?-1:0}">`
    +`<span class="mm-fieldgroup">${esc(g)}</span>`
    +`<small class="mm-tab-sum" data-mmtab-sum="${i}"></small></button>`).join('');
-  const panels=order.map((g,i)=>
-   `<section class="mm-tabpanel" role="tabpanel" id="mmPanel${i}" aria-labelledby="mmTab${i}"`
-   +` data-mmtab="${i}"${i?' hidden':''}>${bucket.get(g).map(j=>html[j]).join('')}</section>`).join('');
+  /* **盤を持つ段は器いっぱいに伸ばす**（§9.254 ①）。パネルは欄を規格幅で
+     並べる折り返す横並びなので、既定では中身なりの高さで止まる（それが
+     正しい——欄が縦に伸びても嬉しくない）。組み立ての盤（`field-builder`）
+     だけは「余った高さがそのまま作業面」なので、その段にだけ印を付ける。
+     **`:has()`に頼らない**（§9.218 ②——当たらなかったときに誰も気づけない）。 */
+  const panels=order.map((g,i)=>{
+   const idx=bucket.get(g);
+   const fill=idx.some(j=>((def.fields||[])[j]||{}).type==='field-builder');
+   return `<section class="mm-tabpanel${fill?' is-fill':''}" role="tabpanel" id="mmPanel${i}"`
+    +` aria-labelledby="mmTab${i}" data-mmtab="${i}"${i?' hidden':''}>`
+    +`${idx.map(j=>html[j]).join('')}</section>`;
+  }).join('');
   return `<div class="mm-tabbar" role="tablist">${tabs}</div>`
    +`<div class="mm-tabbody">${panels}</div>`;
  }
@@ -1228,6 +1265,25 @@
       title="見本のロットで、いまの配置のまま試しに1枚刷ります">試し印刷</button>
    </span>`;
  }
+/* ---------- 親子のマスタを行き来する（§9.254 ③、利用者の指示
+    「帳票レイアウトマスタと帳票ブロックマスタを配線しリンクさせて」） ----------
+    **印1つの差し替え口**（`excelIo`・`bulkDelete`・`sampleReport`と同じ作法）。
+    `linkTo:{key,label,title}`を足すと、一覧の帯に相手のタブへ渡るボタンが出る。
+    **入口を2つにしない**——渡す先は左のナビと同じボタンを押すだけなので、
+    タブの選び方が2通りにならない。 */
+ function linkMasterHtml(def){
+  const l=def&&def.linkTo;if(!l)return '';
+  return `<button type="button" id="mmLinkMaster" class="mm-btn-ghost sm"
+    title="${esc(l.title||'')}">${esc(l.label)}</button>`;
+ }
+ function bindLinkMaster(def){
+  const b=$('#mmLinkMaster'),l=def&&def.linkTo;if(!b||!l)return;
+  b.onclick=()=>{
+   const nav=document.querySelector(`#masterMaintNav [data-master="${CSS.escape(l.key)}"]`);
+   if(nav)nav.click();
+   else showToast&&showToast('移れませんでした',`「${l.label}」のタブが見つかりません。`,5000);
+  };
+ }
  function bindSampleReport(def){
   if(!def.sampleReport)return;
   const go=async print=>{
@@ -1525,19 +1581,20 @@
      <button type="button" id="masterMaintAdd" class="mm-btn-primary sm">＋ ${esc(def.label)}を追加</button>
      <span class="mm-form-hint">一覧の行をクリック（またはダブルクリック・「編集」ボタン）で編集ウィンドウを開きます。</span>
      ${sampleReportHtml(def)}
+     ${linkMasterHtml(def)}
      ${bulkDeleteHtml(def)}
     </div>
     ${def.hint?`<p class="mm-def-hint">${hintHtml(def.hint)}</p>`:''}
     ${excelIoHtml(def)}`;
    form.onsubmit=ev=>ev.preventDefault();
    const ab=$('#masterMaintAdd');if(ab)ab.onclick=()=>openMaintEditor(null);
-   bindExcelIo(def);bindBulkDelete(def);bindSampleReport(def);
+   bindExcelIo(def);bindBulkDelete(def);bindSampleReport(def);bindLinkMaster(def);
    return;
   }
   form.classList.remove('mm-form-compact');
   const controls=buildFieldControls(def,editing);
   const chip=editing?`<span class="mm-mode-chip editing">編集中 <b>${esc(editing[def.cols[0].k]||'')}</b><small>ID:${esc(editing.id)}</small></span>`:`<span class="mm-mode-chip new">新規登録</span>`;
-  form.innerHTML=`<div class="mm-form-head">${chip}${editing?'<button type="button" id="masterMaintNew" class="mm-btn-ghost sm">＋ 新規入力に切替</button>':''}${sampleReportHtml(def)}${bulkDeleteHtml(def)}</div>
+  form.innerHTML=`<div class="mm-form-head">${chip}${editing?'<button type="button" id="masterMaintNew" class="mm-btn-ghost sm">＋ 新規入力に切替</button>':''}${sampleReportHtml(def)}${linkMasterHtml(def)}${bulkDeleteHtml(def)}</div>
    ${def.hint?`<p class="mm-def-hint">${hintHtml(def.hint)}</p>`:''}
    <div class="mm-form-fields">${controls}${
     typeof def.extraHtml==='function'?def.extraHtml(editing):''}</div>
@@ -1546,7 +1603,7 @@
   form.onsubmit=ev=>{ev.preventDefault();submitMaint()};
   const nb=$('#masterMaintNew');if(nb)nb.onclick=()=>{maintState.editing=null;renderMaintForm()};
   bindEquipmentPickers(form);bindInputHelpers(form);bindMaintTabs(form);bindMoreToggles(form);
-  bindExcelIo(def);bindBulkDelete(def);bindSampleReport(def);
+  bindExcelIo(def);bindBulkDelete(def);bindSampleReport(def);bindLinkMaster(def);
  }
 
  /* ---------- 汎用の編集専用モーダル(ARCHITECTURE.md「マスタ管理の画面形態」新設) ----------
@@ -1599,7 +1656,12 @@
   maintState.editing=item?Object.assign({},item):null;
   const editing=maintState.editing;
   $('#maintEditorEyebrow').textContent=def.label+'マスタ';
-  $('#maintEditorTitle').textContent=editing?`${String(editing[def.cols[0].k]??'')||'(名称なし)'} を編集`:`${def.label}を新規登録`;
+  /* 窓の題は**その行を名指しできる欄**から作る（§9.254 ③）。既定は一覧の
+     先頭列だが、帳票ブロックのように先頭が「対象設備」のマスタだと
+     「* を編集」としか出ず、どの塊を開いたのか分からない（親のマスタから
+     直接この窓へ渡れるようにしたぶん、名前が出ないと迷子になる）。 */
+  const titleKey=def.titleKey||def.cols[0].k;
+  $('#maintEditorTitle').textContent=editing?`${String(editing[titleKey]??'')||'(名称なし)'} を編集`:`${def.label}を新規登録`;
   $('#maintEditorHint').textContent=editing
    ?'キー項目（名称・区分など）も変更できます。保存すると同じIDのまま更新されます。'
    :'必須(*)を入力して登録します。';
@@ -1650,6 +1712,7 @@
      なる。追加は追加のボタンからだけ始める。 */
   if(currentDef().special==='op-item'){renderOpItem();return}
   if(currentDef().special==='record-layout'){renderRecordLayout();return}
+  if(currentDef().special==='report-layout'){renderReportLayout();return}
   if(currentDef().special==='op-choice'){renderOpChoice();return}
   renderMaintList();
  }
@@ -3107,6 +3170,7 @@
   if(def.special==='shift-pattern'){setMaintSearchVisible(false);return loadShiftPatternMaint(force)}
   if(def.special==='op-item'){setMaintSearchVisible(false);return loadOpItemMaint(force)}
   if(def.special==='record-layout'){setMaintSearchVisible(false);return loadRecordLayoutMaint(force)}
+  if(def.special==='report-layout'){setMaintSearchVisible(false);return loadReportLayoutMaint(force)}
   if(def.special==='op-choice'){setMaintSearchVisible(false);return loadOpChoiceMaint(force)}
   if(def.special==='cleanup'){setMaintSearchVisible(false);return loadCleanupMaint(force)}
   if(def.special==='raw-table'){setMaintSearchVisible(false);return loadRawTableMaint(force)}
@@ -5902,6 +5966,302 @@
   const body=rows.map(r=>`<tr>${cols.map(c=>{const v=r[c];return `<td title="${esc(v??'')}">${esc(v??'')||'<em class="mm-blank">—</em>'}</td>`}).join('')}</tr>`).join('');
   list.innerHTML=`<div class="mm-raw-meta">${esc(rawTableState.table)} — ${rows.length}件を表示${(count!=null&&count>rows.length)?` (全${count}件)`:''}</div>
    <div class="mm-raw-scroll"><table class="mm-raw-table"><thead><tr>${head}</tr></thead><tbody>${body||`<tr><td colspan="${cols.length}">データがありません。</td></tr>`}</tbody></table></div>`;
+ }
+
+ /* ============================================================
+    帳票レイアウトマスタ（§9.254 ③、利用者の指示）
+    ------------------------------------------------------------
+    「帳票の表示画面からいける、レイアウト調整画面ですが、これは実質、
+     帳票レイアウトマスタなので、マスタとしても配置し、この帳票レイアウト
+     マスタと帳票ブロックマスタを配線しリンクさせてレイアウト調整画面から
+     表示内容調整できたところなど、機能が重複する部分は統合して帳票マスタ
+     として親子関係のある高性能マスタとしてさらに使いやすく改良再構成して
+     ください」
+
+    左＝**設備ごとの紙**（親）／右＝**その紙に載る塊**（子）。`op-choice`と
+    同じ2ペインの作法（§9.221 ②）で、器→ペイン→一覧の3段に
+    `flex:1;min-height:0`を通してスクロールは内側だけにする（§9.222 ⑤）。
+
+    **判定と保存は`WL.reportLayout`の1本だけ**（§9.163）——幅の詰め方も
+    既定の書き下ろしも紙の割りも`report-dashboard.js`にしか無い。ここで
+    数え直すと、マスタと紙で違う答えが出る。
+    ============================================================ */
+ let rlyState={papers:[],picked:null,info:null,q:'',loading:false,err:''};
+ function rlySay(text,bad){
+  const el=$('#rlyState');if(!el)return;
+  el.textContent=text||'';el.classList.toggle('is-bad',!!bad);
+ }
+ const RLY_COMMON='';                      /* 空＝設備の分からないロットの紙 */
+ const rlyLabel=eq=>String(eq||'')||'共通（設備の分からないロット）';
+ /* **閲覧モードでは触らせない**（§9.169と同じ作法）。列レイアウトマスタの
+    保存はedit/scheduleにしか開いていないので、押せると403で断られる
+    ——押せるのに何も起きないボタンは、無い機能より質が悪い（§4）。
+    **消さずに押せなくして理由を書く**（何ができないのかが読めるように）。 */
+ const rlyEditable=()=>((window.accessMode&&window.accessMode.mode)||'edit')!=='view';
+ const RLY_READONLY='この端末は閲覧モードなので、配置は変えられません（編集モードの端末で直してください）。';
+ /* 保存済みの紙。**サーバーだけが全対象を知っている**（§9.178）——`target`は
+    画面が組み立てる文字列なので、どんな設備の紙が保存済みかは推測できない。 */
+ async function rlyLoadPapers(){
+  const prefix=(WL.reportLayout&&WL.reportLayout.targetOf(RLY_COMMON)||'report:共通')
+    .replace(/共通$/,'');
+  const saved=new Map();
+  try{
+   const r=await api('/api/column-layout-master?all=1');
+   (r.items||[]).forEach(it=>{
+    const t=String(it.target||'');
+    if(t.indexOf(prefix)!==0)return;
+    const name=t.slice(prefix.length);
+    saved.set(name==='共通'?RLY_COMMON:name,
+      {order:(it.order||[]).length,hidden:(it.hidden||[]).length});
+   });
+  }catch(e){/* 読めなくても設備の一覧は出せる（fail-open） */}
+  /* **設備マスタが正**（§9.239 ③）。保存済みの紙だけを並べると、これから
+     作る設備の紙を開く手立てが無い。保存が残っている「もう無い設備」も
+     消さずに出す——消すと、その設定を片付けられなくなる。 */
+  let eqs=[];
+  try{await loadEquipmentMaster();eqs=(equipmentMasterState.items||[]).map(e=>e.name).filter(Boolean)}
+  catch(e){eqs=[]}
+  const seen=new Set(),out=[];
+  const push=(eq,gone)=>{
+   const k=String(eq||'');
+   if(seen.has(k))return;
+   seen.add(k);
+   const s=saved.get(k)||null;
+   out.push({equipment:k,label:rlyLabel(k),saved:!!s,
+             blocks:s?s.order:0,hiddenCount:s?s.hidden:0,gone:!!gone});
+  };
+  push(RLY_COMMON,false);
+  eqs.forEach(e=>push(e,false));
+  [...saved.keys()].forEach(k=>push(k,true));
+  return out;
+ }
+ async function loadReportLayoutMaint(force){
+  const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
+  form.classList.remove('mm-form-compact');
+  if(!(window.WL&&WL.reportLayout)){
+   /* **公開漏れは黙って素通しにしない**（§CLAUDE）——「あれば使う」で書くと、
+      名前を変えた日に画面が静かに空になる。 */
+   console.error('WL.reportLayout が見つかりません（report-dashboard.js）');
+   list.innerHTML='<div class="mm-empty">帳票の画面が読み込まれていないため、配置を読めません。</div>';
+   return;
+  }
+  if(!list.querySelector('.rly-edit'))list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
+  try{
+   rlyState.papers=await rlyLoadPapers();
+   if(rlyState.picked==null||!rlyState.papers.some(p=>p.equipment===rlyState.picked)){
+    /* **この端末の使用設備から始める**（§2「探させない」）——無ければ先頭。 */
+    let want=null;
+    try{want=(typeof currentConfiguredEquipment==='function')?currentConfiguredEquipment():''}
+    catch(e){want=''}
+    rlyState.picked=rlyState.papers.some(p=>p.equipment===want)?want:(rlyState.papers[0]||{}).equipment;
+    if(rlyState.picked===undefined)rlyState.picked=RLY_COMMON;
+   }
+   rlyState.info=await WL.reportLayout.info(rlyState.picked);
+   rlyState.err='';
+  }catch(e){
+   rlyState.err=e.message||String(e);
+  }
+  renderReportLayout();
+ }
+ function renderReportLayout(){
+  const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
+  /* **器の高さを中まで届ける**（§9.222 ⑤）。印を外すのは`loadMaintInner()`の
+     1箇所——外し忘れると他のタブの一覧がスクロールしない枠になる。 */
+  list.classList.add('is-fill');
+  list.parentElement&&list.parentElement.classList.add('is-fill');
+  const info=rlyState.info||{};
+  form.innerHTML=`<div class="op-bar">`
+   +`<span class="op-bar-note">左が<b>設備ごとの紙</b>、右がその紙に載る<b>塊</b>です。`
+   +`塊そのもの（名前・種別・載せる項目）は<b>帳票ブロック</b>が持ちます。</span>`
+   +`<button type="button" id="rlyArrange" class="mm-btn-primary sm"${rlyEditable()?'':' disabled'}`
+   +` title="${rlyEditable()?'見本のロットでこの設備の紙を開き、置き場所を掴んで動かせる状態にします（実データは要りません）':esc(RLY_READONLY)}">紙で組み換える</button>`
+   +`<button type="button" id="rlyGotoBlocks" class="mm-btn-ghost sm"`
+   +` title="塊そのもの（名前・種別・載せる項目）を直す帳票ブロックマスタへ移ります">帳票ブロックを開く</button>`
+   +`<span class="op-bar-state" id="rlyState"></span></div>`;
+  list.innerHTML=`<div class="rly-edit">${rlyPaperPaneHtml()}${rlyBlockPaneHtml(info)}</div>`;
+  bindReportLayout();
+  if(rlyState.err)rlySay('配置を読めませんでした: '+rlyState.err,true);
+ }
+ function rlyPaperPaneHtml(){
+  const q=String(rlyState.q||'').trim().toLowerCase();
+  const all=rlyState.papers||[];
+  const hit=q?all.filter(p=>p.label.toLowerCase().includes(q)):all;
+  const kept=all.filter(p=>p.saved).length;
+  return `<div class="rly-papers">
+    <div class="rly-papers-head">
+     <b>設備ごとの紙</b><span class="oc-count">${all.length}件（設定あり ${kept}件）</span>
+     <input type="search" id="rlySearch" value="${esc(rlyState.q||'')}" placeholder="設備名で絞る" autocomplete="off">
+    </div>
+    <div class="rly-paper-list">${hit.map(p=>{
+      const on=p.equipment===rlyState.picked;
+      const state=p.saved?`${p.blocks}塊を配置${p.hiddenCount?`／外し ${p.hiddenCount}`:''}`:'既定のまま';
+      return `<button type="button" class="rly-paper${on?' is-on':''}" data-rly-paper="${esc(p.equipment)}"
+        title="${esc(p.label)}／${esc(state)}${p.gone?'／設備マスタにはもうありません（設定だけが残っています）':''}">
+       <b>${esc(p.label)}</b>
+       <span class="rly-paper-sub">
+        <span class="rly-paper-meta">${esc(state)}</span>
+        ${p.gone?'<span class="rly-paper-gone">設備マスタに無し</span>':''}
+       </span>
+      </button>`}).join('')
+      ||`<p class="mm-empty">${q?'絞り込みに当たる設備がありません。':'設備がまだ登録されていません。'}</p>`}</div>
+   </div>`;
+ }
+ function rlyBlockPaneHtml(info){
+  if(!info||!info.blocks)return `<div class="rly-blocks"><p class="mm-empty">左で<b>設備</b>を選ぶと、その紙に載る塊が出ます。</p></div>`;
+  const shown=info.blocks.filter(b=>b.shown).length;
+  const spans=info.spans||[],rowChoices=info.rowChoices||[];
+  const ro=rlyEditable()?'':' disabled';
+  const head=`<div class="rly-blocks-head">
+    <b>${esc(rlyLabel(info.equipment))}の紙</b>
+    <span class="oc-count">塊 ${info.blocks.length}件（出す ${shown}／出さない ${info.blocks.length-shown}）</span>
+    <span class="rly-grid">紙の割り
+     <span class="rly-grid-pick" role="group" aria-label="紙の列数">${(info.gridChoices||[]).map(n=>
+       `<button type="button" data-rly-cols="${n}" class="${n===info.grid?'is-on':''}"${ro} title="紙を横${n}マスに割ります">${n}列</button>`).join('')}</span>
+     <span class="rly-grid-pick" role="group" aria-label="紙の段数">${(info.pageRowChoices||[]).map(n=>
+       `<button type="button" data-rly-rows="${n}" class="${n===info.pageRows?'is-on':''}"${ro} title="紙を縦${n}段に割ります">${n}段</button>`).join('')}</span>
+    </span>
+    <button type="button" id="rlyReset" class="mm-btn-ghost sm danger"${(info.saved&&rlyEditable())?'':' disabled'}
+      title="${!rlyEditable()?esc(RLY_READONLY)
+        :(info.saved?'この設備の配置を消して、登録順・登録幅・全部出す（既定）へ戻します'
+        :'まだこの設備の配置は保存されていません（いまも既定のままです）')}">既定に戻す</button>
+   </div>`;
+  const rows=info.blocks.map(b=>{
+   const pos=b.col&&b.row?`${b.col}列 ${b.row}段`:'自動';
+   const origin=b.user?'自作の塊':(b.id?'既定の塊':'既定の塊（マスタ未登録）');
+   /* **既定と違うところを言う**（§9.254 ③／§2）——幅と高さは帳票ブロックが
+      既定を持ち、この紙が上書きする。どちらで直すのかを思い出させないため、
+      **違うときだけ**「既定 X → いま Y」と書く（同じときは何も足さない）。 */
+   const rowsWord=n=>n?`${n}/${info.pageRows}段`:'中身なり';
+   const diff=[];
+   if(b.defSpan&&b.span!==b.defSpan)diff.push(`幅 既定${b.defSpan}→${b.span}`);
+   if(b.rows!==b.defRows)diff.push(`高さ 既定${rowsWord(b.defRows)}→${rowsWord(b.rows)}`);
+   return `<div class="rly-row${b.shown?'':' is-off'}" data-rly-key="${esc(b.key)}">
+     <span class="rly-cell rly-name" title="${esc(b.key)}">
+      <b>${esc(b.label)}</b>
+      <small>${esc(origin)}${b.kind?'・'+esc(b.kind):''}${b.fields?`・${b.fields}項目`:''}${
+       diff.length?`<i class="rly-diff" title="帳票ブロックが持つ既定と違います。既定へ戻すには同じ値を選び直してください">${esc(diff.join('・'))}</i>`:''}</small></span>
+     <span class="rly-cell rly-vis">
+      <button type="button" class="rly-tgl${b.shown?' is-on':''}" data-rly-vis="${esc(b.key)}"
+        aria-pressed="${b.shown?'true':'false'}"${ro}
+        title="${ro?esc(RLY_READONLY):(b.shown?'この紙から外します（設定は残ります）':'この紙へ出します')}">${b.shown?'出す':'出さない'}</button></span>
+     <span class="rly-cell rly-pick">
+      <select data-rly-span="${esc(b.key)}" aria-label="${esc(b.label)}の幅"${ro}
+        title="${ro?esc(RLY_READONLY):`紙の横${info.grid}マスのうち何マスを使うかです`}">${spans.map(c=>
+        `<option value="${c.v}"${c.v===b.span?' selected':''}>幅 ${esc(c.label)}（${c.v}/${info.grid}）</option>`).join('')}</select></span>
+     <span class="rly-cell rly-pick">
+      <select data-rly-rows-of="${esc(b.key)}" aria-label="${esc(b.label)}の高さ"${ro}
+        title="${ro?esc(RLY_READONLY):`紙の縦${info.pageRows}段のうち何段を使うかです。「中身なり」は描いてから測って合わせます`}">
+       <option value="0"${b.rows?'':' selected'}>高さ 中身なり</option>${rowChoices.map(c=>
+        `<option value="${c.v}"${c.v===b.rows?' selected':''}>高さ ${esc(c.label)}（${c.v}/${info.pageRows}）</option>`).join('')}</select></span>
+     <span class="rly-cell rly-pos" title="置き場所は「紙で組み換える」で決めます">${esc(pos)}</span>
+     <span class="rly-cell rly-act">
+      ${b.id?`<button type="button" class="mm-btn-ghost sm" data-rly-edit="${b.id}"
+        title="この塊そのもの（名前・種別・載せる項目）を帳票ブロックマスタで直します">中身を直す</button>`
+       :`<em class="mm-blank" title="この塊はアプリがもともと持っているもので、帳票ブロックマスタにまだ行がありません">—</em>`}</span>
+    </div>`;
+  }).join('');
+  return `<div class="rly-blocks">
+    ${head}
+    <div class="rly-table" role="table">
+     <div class="rly-row is-head" role="row">
+      <span>塊</span><span>紙に出す</span><span>幅</span><span>高さ</span><span>置き場所</span><span></span>
+     </div>
+     <div class="rly-table-scroll">${rows||'<p class="mm-empty">この設備の紙に載る塊がありません。</p>'}</div>
+    </div>
+    <p class="rly-note">${rlyEditable()?'':`<b>${esc(RLY_READONLY)}</b> `}置き場所（何列目・何段目）は<b>紙で組み換える</b>から、見本のロットで実際の紙を見ながら決めます。
+     ここで決めた幅・高さ・出す/出さないは<b>この設備の紙だけ</b>に効きます（塊そのものの既定は帳票ブロックが持ちます）。</p>
+   </div>`;
+ }
+ function bindReportLayout(){
+  const list=$('#masterMaintList');if(!list)return;
+  const se=$('#rlySearch');
+  if(se)se.oninput=()=>{
+   /* **入力中に器を作り直さない**（§9.117）——1文字ごとにカーソルが飛ぶ。
+      作り直すのは左の一覧だけ。 */
+   rlyState.q=se.value;
+   const pane=list.querySelector('.rly-papers');
+   if(!pane){renderReportLayout();return}
+   const keep=se.selectionStart;
+   pane.outerHTML=rlyPaperPaneHtml();
+   bindReportLayout();
+   const el=$('#rlySearch');
+   if(el){el.focus();try{el.setSelectionRange(keep,keep)}catch(_){}}
+  };
+  list.querySelectorAll('[data-rly-paper]').forEach(b=>b.onclick=()=>rlyPick(b.dataset.rlyPaper));
+  list.querySelectorAll('[data-rly-vis]').forEach(b=>b.onclick=()=>{
+   const k=b.dataset.rlyVis,on=b.classList.contains('is-on');
+   rlyWrite(()=>WL.reportLayout.setShown(rlyState.picked,k,!on),
+     on?`「${k}」を紙から外しました。`:`「${k}」を紙へ出しました。`);
+  });
+  list.querySelectorAll('select[data-rly-span]').forEach(el=>el.onchange=()=>{
+   const k=el.dataset.rlySpan;
+   rlyWrite(()=>WL.reportLayout.setSpan(rlyState.picked,k,Number(el.value)),`「${k}」の幅を変えました。`);
+  });
+  list.querySelectorAll('select[data-rly-rows-of]').forEach(el=>el.onchange=()=>{
+   const k=el.dataset.rlyRowsOf;
+   rlyWrite(()=>WL.reportLayout.setRows(rlyState.picked,k,Number(el.value)),`「${k}」の高さを変えました。`);
+  });
+  list.querySelectorAll('[data-rly-cols]').forEach(b=>b.onclick=()=>
+   rlyWrite(()=>WL.reportLayout.setGrid(rlyState.picked,Number(b.dataset.rlyCols),null),'紙の列数を変えました。'));
+  list.querySelectorAll('[data-rly-rows]').forEach(b=>b.onclick=()=>
+   rlyWrite(()=>WL.reportLayout.setGrid(rlyState.picked,null,Number(b.dataset.rlyRows)),'紙の段数を変えました。'));
+  list.querySelectorAll('[data-rly-edit]').forEach(b=>b.onclick=()=>rlyEditBlock(b.dataset.rlyEdit));
+  const rs=$('#rlyReset');
+  if(rs)rs.onclick=async()=>{
+   /* **消える操作は1回だけ確かめる**（§CLAUDE 5）。 */
+   if(!confirm(`${rlyLabel(rlyState.picked)}の紙の設定（並び・幅・高さ・出す/出さない・紙の割り）を消して、既定に戻しますか？\n塊そのもの（帳票ブロック）は消えません。`))return;
+   rlyWrite(()=>WL.reportLayout.reset(rlyState.picked),'既定に戻しました。');
+  };
+  const ar=$('#rlyArrange');
+  if(ar)ar.onclick=async()=>{
+   rlySay('見本のロットで紙を開いています…');
+   try{await WL.reportLayout.arrange(rlyState.picked,{returnTo:'layout'})}
+   catch(e){rlySay('紙を開けませんでした: '+(e.message||String(e)),true)}
+  };
+  const gb=$('#rlyGotoBlocks');
+  if(gb)gb.onclick=()=>document.querySelector('#masterMaintNav [data-master="reportBlock"]')?.click();
+ }
+ async function rlyPick(eq){
+  const v=String(eq||'');
+  if(rlyState.picked===v&&rlyState.info)return;
+  rlyState.picked=v;
+  rlySay('読み込んでいます…');
+  try{rlyState.info=await WL.reportLayout.info(v);rlyState.err=''}
+  catch(e){rlyState.err=e.message||String(e)}
+  renderReportLayout();
+ }
+ /* 書き込みは1本にまとめる。**保存の状態を必ず文字で出す**（§9.212 ④）
+    ——黙って投げると、次の読み直しで元の値が出るだけで「勝手に戻った」と
+    しか見えない。書いたあとは**帳票の写しも捨てる**（§9.226 ①）。 */
+ async function rlyWrite(run,okText){
+  if(requireMaintUser()===null)return;
+  rlySay('保存しています…');
+  try{
+   await run();
+   if(WL.reportBlocks&&typeof WL.reportBlocks.forget==='function')WL.reportBlocks.forget();
+   rlyState.papers=await rlyLoadPapers();
+   rlyState.info=await WL.reportLayout.info(rlyState.picked);
+   rlyState.err='';
+   renderReportLayout();
+   rlySay(okText||'保存しました。');
+  }catch(e){
+   rlySay('保存できませんでした: '+(e.message||String(e)),true);
+  }
+ }
+ /* 子（帳票ブロック）へ渡す。**開いていたタブごと移る**（§9.253と同じ
+    作法）——「マスタ管理の先頭」へ落とすと、直したい塊をもう一度探すことになる。 */
+ async function rlyEditBlock(id){
+  const nav=document.querySelector('#masterMaintNav [data-master="reportBlock"]');
+  if(!nav){rlySay('帳票ブロックのタブが見つかりません。',true);return}
+  nav.click();
+  /* 一覧が届いてから開く。**届かなければ一覧のまま**（黙って何もしない、を
+     作らない）。 */
+  for(let i=0;i<60;i++){
+   const it=(maintState.items||[]).find(x=>String(x.id)===String(id));
+   if(it){openMaintEditor(it);return}
+   await new Promise(r=>setTimeout(r,100));
+  }
+  showToast&&showToast('塊を開けませんでした','帳票ブロックの一覧から選んでください。',5000);
  }
 
  function openMasterMaint(defKey){
