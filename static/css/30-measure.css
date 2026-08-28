@@ -2398,6 +2398,19 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
   margin:0 calc(var(--space-2) + var(--opf-num-w,0px)) 0 0;
   pointer-events:none;color:var(--muted);
 }
+/* ---------- 器を被せた形は「いまの値の隣」（§9.255 ③、利用者の指示） ----------
+   「UIのテキストボックスの内部に入れられない(「内部」を選べない)ものがあり、
+    …選択後にテキストボックスにデータが入るときに単位が内部にも収まるように」
+
+   メニュー・一覧・パネル・切替・入切・コンボは、値を出す面が**器の中**に
+   ある（`<select>`は1pxの裏方へ回る）。上の「同じマスへ重ねる」規則は
+   その裏方に重ねてしまうので、器を被せた形では**いまの値の直後へ差し込む**
+   （`placeUnit()`の`unitFaceEl()`）。同じ行のflexの子になるので、値の側が
+   自分で縮んで場所を空ける——逃げ場の幅を測らなくてよい。 */
+.opf-widget .opf-unit-in{
+  flex:0 0 auto;margin:0 0 0 var(--gap-tight);
+  font-size:var(--fs-badge);color:var(--muted);line-height:1;pointer-events:none;
+}
 /* **`<output>`も同じマスへ**（§9.233 ②）。挙げ忘れると自動配置が次の段へ
    回し、単位だけが1段上に浮く（母材の参考値で実際にそうなっていた）。 */
 [data-opunit="内部"]>select,

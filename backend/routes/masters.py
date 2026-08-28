@@ -30,7 +30,7 @@ from ..repositories.master_repo import (
  MAX_LINE_SPEED_MAX, normalize_max_line_speed,
  # オペレータ設備マスタは**設備を消したときの後片付け**にだけ使う
  # （§9.221 ③で選択肢マスタへ移したので、読み書きの本線からは外れた）。
- ensure_operator_equipment_table,
+ ensure_operator_equipment_table, OPERATOR_EQUIPMENT_TABLE,
  rename_equipment_references,
  FILTER_PRESET_TABLE, ensure_filter_preset_table, filter_preset_rows,
  FILTER_PERSONAL_TABLE, ensure_filter_personal_table, filter_personal_marks,
@@ -197,7 +197,10 @@ def equipment_master_delete():
    # オペレータ設備マスタは設備名で紐づいているため、削除した設備を作業可能
    # 設備として持つオペレータの割当からも取り除き、削除済みの設備名が
    # 選択肢から消えた後も表示上だけ残り続ける(ゴースト参照)のを防ぐ。
-   if name:
+   # **移行済みの表は無ければ作らない**（§9.255 ①）。在るときだけ片付ける
+   #  ——`ensure_operator_equipment_table()`はもう作らないので、
+   #  存在を確かめずにDELETEすると、消してある端末で500になる。
+   if name and OPERATOR_EQUIPMENT_TABLE in tables(c):
     ensure_operator_equipment_table(c)
     cur.execute('DELETE FROM [オペレータ設備マスタ] WHERE [設備名]=?',[name])
    c.commit()

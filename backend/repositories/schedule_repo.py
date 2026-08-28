@@ -895,14 +895,13 @@ SHIFT_PATTERN_TABLE='勤務体系マスタ'   # 親: 日勤 / 交替勤務(1,2,3
 SHIFT_SEGMENT_TABLE='勤務区分マスタ'   # 子: 1直 7:00-15:00 など
 
 def ensure_shift_table(c_master):
- """旧フラット構造。移行元として読むだけなので、無ければ作るだけで使わない。"""
- names=tables(c_master);created=False
- if SHIFT_TABLE not in names:
-  cur=c_master.cursor()
-  cur.execute('CREATE TABLE [勤務形態マスタ] ([勤務ID] INTEGER PRIMARY KEY AUTOINCREMENT, [設備名] TEXT, [名称] TEXT, [開始時刻] TEXT, [終了時刻] TEXT, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
-  cur.execute('CREATE INDEX [IX_勤務形態マスタ_設備] ON [勤務形態マスタ] ([設備名])')
-  c_master.commit();created=True
- return created
+ """旧フラット構造。**移行元として読むだけなので、無ければ作らない**
+ （§9.255 ①、利用者の報告「移行済みデータをすべて消したはずが、
+ 復活しました」）。以前は「無ければ作る」だったので、設定系マスタを
+ 用意するたび（＝スケジュールを開くたび）に空の`勤務形態マスタ`が
+ 作り直され、マスタ管理の「移行済み」から消えなかった。
+ **ここを「無ければ作る」に戻さないこと。**"""
+ return False
 
 def ensure_shift_pattern_tables(c_master):
  """勤務体系(親)と勤務区分(子)の2テーブル。

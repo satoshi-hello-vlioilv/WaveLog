@@ -341,29 +341,54 @@ UNIT_PLACE_IN = '内部'
 UNIT_PLACE_DEFAULT = '外下左'
 UNIT_PLACES = ('外上左', '外上中央', '外上右', UNIT_PLACE_IN,
                '外下左', '外下中央', '外下右', UNIT_PLACE_HIDE)
-# 単位を重ねられる入力方法＝**箱が1つのもの**だけ（§9.233 ④、利用者の報告
-# 「選択したUIによっては、単位の位置のずれや単位が出ないということがある」）。
-# 以前は「重ねられない側」を手で並べており、`メーター`・`1行`・`定型文`が
-# 抜けていた——器を被せる欄では欄そのものが1pxへ落ちるので、重ねた単位が
-# **見えない場所に置かれる**（「単位が出ない」の正体）。
-# **重ねられる側を挙げて、残りを導出する**——選ばせ方を足したときに
-# 片方だけ直した状態が作れない。
-UNIT_IN_OK_WIDGETS = (WIDGET_SELECT, '文字だけ', '強調')
-UNIT_IN_BLOCKED_WIDGETS = tuple(w for w in WIDGETS if w not in UNIT_IN_OK_WIDGETS)
+# ---------------------------------------------------------------------------
+# 単位を欄の中へ重ねられるか（§9.255 ③、利用者の指示）
+# ---------------------------------------------------------------------------
+# 「UIのテキストボックスの内部に入れられない(「内部」を選べない)ものがあり、
+#  プルダウンやメニュー、一覧、パネル、ラジオなど様々なUIがありますが、
+#  選択後にテキストボックスにデータが入るときに単位が内部にも収まるように
+#  することで、見せ方で内部も選べるようにして反映できるようにしてほしいです」
+#
+# 以前は`プルダウン`と自動で入る値の3つだけを許していた。**規則そのものは
+# 正しかったが、当てる相手を間違えていた**——器を被せる形（メニュー・一覧・
+# パネル・切替・入切・コンボ）は`<select>`が1pxの裏方へ回るだけで、
+# **値を出す面は器のほうに1つある**。単位はその裏方の隣へ置かれていたので
+# 「重ねられない」ように見えていた（実測: 器の上14pxのところに出ていた）。
+# 置き場を器の中へ直した（`measure-opdata.js`の`unitFaceEl()`）ので、
+# **面が1つある形はすべて重ねられる**。
+#
+# **重ねられないのは「重ねる面が1つに決まらない」形だけ**——札がN枚あって
+# どの札の中へ入れるのか決まらないもの（ラジオ・セグメント…）と、
+# 何行になるか分からない複数行の欄（メモ）。ここも§9.233 ④と同じ作法で
+# **重ねられない側を挙げて、残りを導く**（選ばせ方を足したときに、
+# 片方だけ直した状態が作れない）。
+UNIT_IN_NO_FACE = ('ラジオ', 'セグメント', 'タブ', 'ボタン群', 'カード',
+                   'トグル', '段階', 'メモ')
+UNIT_IN_BLOCKED_WIDGETS = tuple(w for w in WIDGETS if w in UNIT_IN_NO_FACE)
+UNIT_IN_OK_WIDGETS = tuple(w for w in WIDGETS if w not in UNIT_IN_NO_FACE)
 
 
 def unit_in_ok(widget, free_text=False):
     """単位を欄の中へ重ねられるか。**判定はここ1箇所**（§9.233 ④）。
 
-    箱が1つでないもの（ラジオ・セグメント…）は重ねられない。**手打ちを
-    許したプルダウンも同じ**——`<select>`は器の裏へ回って1pxになり、
-    見えているのはコンボボックスの入力欄なので、`<select>`の隣へ重ねた
-    単位は**一度も見えない**（§9.233 ④で実機の「単位が出ない」の1つ）。
+    値の出る面が複数あるもの（ラジオ・セグメント…）は重ねられない——
+    どの札の中へ置くのかが決まらないので、そのときは`外下左`へ落として
+    **画面にそう書く**（§4）。
+
+    `free_text`（候補にない値も打てる）は**面を変えない**ので、いまは
+    どの形も断らない。以前は手打ちのプルダウンを断っていたが、あれは
+    「見えているのはコンボボックスの入力欄なのに、単位を1pxの`<select>`の
+    隣へ置いていた」ための不具合で、規則の話ではなかった。引数と
+    `UNIT_IN_FREE_TEXT_BLOCKED`は**規則から導いたまま**残す——将来
+    「手打ちにすると面が消える」形が出たら、ここを直すだけで画面が追随する。
+
     **画面へ同じ判定を書かないこと**——2つの答えが出る（§9.163）。"""
     w = str(widget or '')
     if w not in UNIT_IN_OK_WIDGETS:
         return False
-    return not (w == WIDGET_SELECT and free_text)
+    # 手打ちの席は面を減らさない（コンボの入力欄がその面そのもの）ので、
+    # `free_text`はいまの規則では答えを変えない。
+    return True
 
 
 # 手打ちを許すと重ねられなくなる入力方法。**規則から導く**（§9.163）
@@ -1281,22 +1306,29 @@ def _legacy_source_rows(c):
                 rows.append((group, name, (reading or {}).get(name, ''),
                              (equipment or {}).get(name, ''), (i + 1) * 10))
 
+    # **移行元の表が無いのは「失敗」ではない**（§9.255 ①）。移行済みの表を
+    # 消した端末・新規導入の端末では最初から無いので、無いことを`failed`へ
+    # 数えると**目印が永久に立たず、開くたびに写しを試し続ける**（しかも
+    # `ensure_*`が作り直していたので、消した表が毎回復活していた）。
+    from ..db_access import tables as _tables
+    have = set(_tables(c))
     try:
-        cur = c.cursor()
-        cur.execute('SELECT [オペレータID],[氏名],[ﾖﾐｶﾞﾅ],[表示順],[有効] '
-                    'FROM [オペレータマスタ] ORDER BY [表示順],[氏名]')
-        eqmap = mr.operator_equipment_map(c)
-        names, reading, equip = [], {}, {}
-        for r in cur.fetchall():
-            if r[4] is not None and not bool(r[4]):
-                continue
-            nm = str(r[1] or '').strip()
-            if not nm:
-                continue
-            names.append(nm)
-            reading[nm] = str(r[2] or '')
-            equip[nm] = _norm_equipment(eqmap.get(r[0]) or [])
-        add(CHOICE_GROUP_OPERATOR, names, reading, equip)
+        if mr.OPERATOR_MASTER_TABLE in have:
+            cur = c.cursor()
+            cur.execute('SELECT [オペレータID],[氏名],[ﾖﾐｶﾞﾅ],[表示順],[有効] '
+                        'FROM [オペレータマスタ] ORDER BY [表示順],[氏名]')
+            eqmap = mr.operator_equipment_map(c)
+            names, reading, equip = [], {}, {}
+            for r in cur.fetchall():
+                if r[4] is not None and not bool(r[4]):
+                    continue
+                nm = str(r[1] or '').strip()
+                if not nm:
+                    continue
+                names.append(nm)
+                reading[nm] = str(r[2] or '')
+                equip[nm] = _norm_equipment(eqmap.get(r[0]) or [])
+            add(CHOICE_GROUP_OPERATOR, names, reading, equip)
     except Exception:
         failed.append(CHOICE_GROUP_OPERATOR)
     for group, kind in (('板厚測定器', '板厚'), ('板幅測定器', '板幅')):

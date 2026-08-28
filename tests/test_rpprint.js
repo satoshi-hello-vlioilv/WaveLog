@@ -583,6 +583,46 @@ let b=null;
       rep.回数.あり===2&&rep.回数.なし===1,JSON.stringify(rep.回数));
 
   /* ==========================================================
+     塊の中もグリッド（§9.255 ②、利用者の指示）
+     ----------------------------------------------------------
+       「帳票ブロックマスタも『紙での並び』の部分は単純に何列何行だけでなく、
+        データ内もグリッドに対応する形で細かく調整できるようにしてください」
+
+     **紙に出る節そのものを見る**——設定画面のつまみが動くだけでは、
+     紙が今までどおり1マスずつ並べていても通る。
+     ========================================================== */
+  const mx=await page.evaluate(()=>{
+   const x={basic:{lotNo:'G-1'},settings:{verticalCount:1,horizontalCount:1},
+     measurements:{},product:{rows:[]}};
+   const fields=[{label:'大きい',path:'basic.lotNo',span:2,rows:3},
+                 {label:'ふつう',path:'basic.lotNo',span:1,rows:1},
+                 {label:'空き',path:'',blank:true,span:1,rows:1}];
+   const old=[{label:'ふつう',path:'basic.lotNo',span:1,rows:1}];
+   const cells=h=>{
+    const d=document.createElement('div');d.innerHTML=h;
+    const g=d.querySelector('.rp-grid');
+    return {格子:g?g.className:'',
+      並べ方:g?(g.getAttribute('style')||''):'',
+      マス:[...d.querySelectorAll('.rp-field')].map(f=>f.getAttribute('style')||'')};
+   };
+   return {広い:cells(WL.reportStat.sectionHtml(x,'配置',fields,3,'')),
+           素:cells(WL.reportStat.sectionHtml(x,'配置',old,0,''))};
+  });
+  rec('横のマス数が紙のグリッドへ出る',
+      /grid-column:\s*span 2/.test((mx.広い.マス||[])[0]||''),
+      JSON.stringify(mx.広い.マス));
+  rec('縦のマス数も紙のグリッドへ出る（§9.255 ②）',
+      /grid-row:\s*span 3/.test((mx.広い.マス||[])[0]||''),
+      JSON.stringify(mx.広い.マス));
+  rec('1マスの項目には縦の指定を書かない（余計な指定を増やさない）',
+      !/grid-row/.test((mx.広い.マス||[])[1]||''),
+      JSON.stringify((mx.広い.マス||[])[1]));
+  /* **もう片側**——1マスだけの塊（既に登録してある形）の見え方は変えない。 */
+  rec('全部1マスの塊は今までどおり（マトリクスにしない）',
+      !/rp-grid-m/.test(mx.素.格子)&&((mx.素.マス||[])[0]||'')==='',
+      JSON.stringify(mx.素));
+
+  /* ==========================================================
      子ロットごとの統計は「開けば出ている」（§9.248 ②、利用者の指示）
      ----------------------------------------------------------
        「帳票ブロックマスタに異幅分割ありのロットでロット番号が1ロット内に

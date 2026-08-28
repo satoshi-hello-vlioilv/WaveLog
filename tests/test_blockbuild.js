@@ -188,18 +188,24 @@ let b=null,page=null;
   });
   rec('「紙での並び」はマトリクスで出る',grid.格子==='grid',grid.格子);
   rec('各マスに「横に何マス使うか」のつまみが付く',grid.つまみ>0,String(grid.つまみ));
-  rec('列数は1〜4から選べる',grid.列ボタン===4,String(grid.列ボタン));
+  /* §9.255 ② 列数はサーバーが受ける上限（6）まで。**盤で選べない列数を
+     紙が受け入れる状態を作らない**（片方だけ直すとそうなる）。 */
+  rec('列数は1〜6から選べる（サーバーの上限と同じ）',grid.列ボタン===6,String(grid.列ボタン));
   /* 列数を変えると**枠のほうも変わる**（設定と見た目が別々に動かない）。 */
   await page.click('.fb-cols [data-fb-cols="3"]');
   await page.waitForTimeout(200);
   const c3=await page.evaluate(()=>({
    列:getComputedStyle(document.querySelector('.fb-rows')).gridTemplateColumns.split(' ').length,
    欄:document.querySelector('[data-field="cols"]').value,
-   つまみ:document.querySelectorAll('.fb-row:first-child .fb-spans button').length}));
+   /* 横のつまみは**1つ目の群**（2つ目は縦）。混ぜて数えると、軸が
+      増えた時点で落ちる（§9.248 ④で3本まとめて落ちたのと同じ形）。 */
+   つまみ:document.querySelectorAll('.fb-row:first-child .fb-spans:nth-of-type(1) button').length,
+   縦つまみ:document.querySelectorAll('.fb-row:first-child .fb-spans:nth-of-type(2) button').length}));
   rec('列数を変えると枠も変わる',c3.列===3,String(c3.列));
   /* **同じ数を2箇所に持たない**（§CLAUDE 8）——「内訳の列数」の欄が持ち主。 */
   rec('列数は「内訳の列数」の欄が持つ',c3.欄==='3',JSON.stringify(c3.欄));
-  rec('マス数の選択肢は列数まで',c3.つまみ===3,String(c3.つまみ));
+  rec('横のマス数の選択肢は列数まで',c3.つまみ===3,String(c3.つまみ));
+  rec('縦のマス数も選べる（§9.255 ②）',c3.縦つまみ>=2,String(c3.縦つまみ));
   /* 1つ目の項目を「横2マス」にする。 */
   await page.click('.fb-row:first-child .fb-spans button:nth-child(2)');
   await page.waitForTimeout(200);
@@ -209,6 +215,28 @@ let b=null,page=null;
   rec('マス数が保存の形へ入る（|2）',/\|2$/.test(spanned.値.split('\n')[0]),
       JSON.stringify(spanned.値.split('\n')[0]));
   rec('掴む枠のほうも2マスぶんになる',/span 2/.test(spanned.幅),spanned.幅);
+  /* ---- 縦のマス数（§9.255 ②、利用者の指示） ----
+     「『紙での並び』の部分は単純に何列何行だけでなく、データ内もグリッドに
+      対応する形で細かく調整できるようにしてください」
+     **「つまみが在る」だけを見ない**——保存の形と枠の両方が変わることまで。 */
+  await page.click('.fb-row:first-child .fb-spans:nth-of-type(2) button:nth-child(3)');
+  await page.waitForTimeout(200);
+  const tall=await page.evaluate(()=>({
+   値:document.querySelector('[data-fb] input[data-field="content"]').value.split('\n')[0],
+   幅:document.querySelector('.fb-row:first-child').style.gridColumn,
+   高:document.querySelector('.fb-row:first-child').style.gridRow,
+   詰め:getComputedStyle(document.querySelector('.fb-rows')).gridAutoFlow}));
+  rec('縦のマス数が保存の形へ入る（|2x3）',/\|2x3$/.test(tall.値),JSON.stringify(tall.値));
+  rec('掴む枠も縦3マスぶんになる',/span 3/.test(tall.高),JSON.stringify(tall));
+  rec('横のマス数は残る（片方を触っても消えない）',/span 2/.test(tall.幅),tall.幅);
+  rec('空いたマスは後ろの項目で詰める（紙と同じdense）',
+      /dense/.test(tall.詰め),tall.詰め);
+  /* 縦1へ戻したら`x`も消える（触っていない塊まで形が変わらないように）。 */
+  await page.click('.fb-row:first-child .fb-spans:nth-of-type(2) button:nth-child(1)');
+  await page.waitForTimeout(200);
+  const back=await page.evaluate(()=>
+   document.querySelector('[data-fb] input[data-field="content"]').value.split('\n')[0]);
+  rec('縦1へ戻すと「x」は書かない（|2のまま）',/\|2$/.test(back),JSON.stringify(back));
   /* 空きマス（何も出さずに場所だけ取る）。 */
   const before=await page.evaluate(()=>document.querySelectorAll('.fb-row').length);
   await page.click('.fb-blank');

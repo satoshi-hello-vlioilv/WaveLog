@@ -1916,8 +1916,23 @@
 .mm-xio-skip.is-warn summary{color:var(--warn-fg)}
 /* **取り消せない操作は主要動線から離す**（§CLAUDE 5）——帯のいちばん右へ。 */
 .mm-bulk-del{margin-left:auto}
-.mm-bulk-scopes{display:flex;flex-direction:column;gap:2px;margin:var(--space-2) 0}
-.mm-bulk-pick{display:flex;align-items:baseline;gap:var(--gap-inline);
+/* ---------- 消す範囲を選ぶ一覧（§9.255 ②、利用者の報告） ----------
+   「ロールマスタの削除機能で対象が多い時にモーダルの範囲がウィンドウの
+    高さを超え、ボタンを操作不能となり身動きが取れなくなりました」
+
+   原因は2つで、**片方だけ直しても直らない**——
+   ①`.settings-body label{display:grid}`（0,1,1）が`.mm-bulk-pick`（0,1,0）に
+     勝っており、**1行が3段**（丸ぽち／設備名／件数）になっていた。実測で
+     1行約90px。設備13件で1,170pxになり、窓の高さを軽く超える（§9.197の
+     `.mm-field input{min-width:200px}`と同じ形の詳細度の取りこぼし）。
+   ②一覧に上限が無く、器（`.record-modal`）は`place-items:center`で真ん中へ
+     置くだけなので、はみ出したぶんは**画面の外**へ出る。器は`overflow`を
+     持たないのでスクロールもできず、「削除する」にも「×」にも手が届かない。
+   **一覧の中でスクロールさせる**（スクロールするのはいちばん内側だけ・
+   §9.222 ⑤）。件数はいちばん上の文が言うので、隠れた行があっても数は読める。 */
+.mm-bulk-scopes{display:flex;flex-direction:column;gap:2px;margin:var(--space-2) 0;
+  max-height:min(46vh,420px);overflow:auto;scrollbar-gutter:stable}
+.settings-body .mm-bulk-pick{display:flex;align-items:baseline;gap:var(--gap-inline);
   padding:var(--pad-chip);border:1px solid var(--line-soft);border-radius:var(--radius-xs);
   background:var(--surface);font-size:var(--fs-sm);cursor:pointer}
 .mm-bulk-pick:hover{border-color:var(--line-mid);background:var(--surface-2)}
@@ -2021,6 +2036,12 @@
 .fb-rows.is-matrix{
   display:grid;grid-template-columns:repeat(var(--fb-cols,2),minmax(0,1fr));
   gap:var(--gap-tight);align-content:start;
+  /* §9.255 ② **縦のマス数**を持てるようにしたので、段の高さをそろえ、
+     詰め方は紙と同じ`dense`にする（縦に伸ばした項目の隣へ、後ろの1マスの
+     項目が入る）。段の高さを`auto`のままにすると、`grid-row:span 2`の
+     マスだけが2段ぶん伸びずに見え、**盤と紙で形が違う**（§CLAUDE 6の
+     「見本が嘘をつく」）。 */
+  grid-auto-rows:minmax(var(--fb-cell-h,3.4em),auto);grid-auto-flow:row dense;
 }
 .fb-rows.is-matrix .fb-empty{grid-column:1/-1}
 .fb-cols{display:inline-flex;align-items:center;gap:var(--gap-tight);margin-left:auto}
@@ -2051,6 +2072,10 @@
 }
 .fb-blank-name{flex:1 1 auto;min-width:0;font-size:var(--fs-badge);font-weight:700;color:var(--ink-3)}
 
+/* 横／縦の見出し（§9.255 ②）。**数字だけを並べない**——「4」が4列なのか
+   4段なのか読めない。 */
+.fb-size{display:inline-flex;align-items:center;gap:2px;flex:0 0 auto}
+.fb-size-tag{font-style:normal;font-size:var(--fs-micro);font-weight:700;color:var(--muted)}
 /* マスの中は2段（§9.245）。横1列に並べると3列のときに名前が1文字まで潰れる。 */
 .fb-rows.is-matrix .fb-row{display:block;min-width:0}
 .fb-row-top,.fb-row-bot{display:flex;align-items:center;gap:var(--gap-tight);min-width:0}
@@ -2063,8 +2088,12 @@
 /* **縮んでよいのは出どころだけ**（§9.229 ⑤）——マス数のつまみと×まで
    一緒に縮むと、押せない大きさになって折り返す。 */
 .fb-rows.is-matrix .fb-spans,
+.fb-rows.is-matrix .fb-size,
 .fb-rows.is-matrix .fb-del,
 .fb-rows.is-matrix .fb-grip{flex:0 0 auto}
+/* 6列や横×縦のつまみが並ぶと1行に入らないことがある。**器は折り返せる
+   まま**（狭い窓では切り落とすより2行がまし・§9.199）。 */
+.fb-rows.is-matrix .fb-row-bot{flex-wrap:wrap;row-gap:2px}
 
 /* ============================================================
    不要ファイルの掃除（§9.249 (1)）

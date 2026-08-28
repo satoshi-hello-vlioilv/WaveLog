@@ -10,8 +10,6 @@ from ..db_access import DBS, MEAS_DB, RECORDS_BACKUP_EXPORT_PATH, qi, connect, c
 # read_operator_names が今もここに当たり、廃止した経路が現役だと誤読される
 # (§9.87 で「同じ判定が2箇所に散って実際に壊れた」のと同じ入口)。
 # ensure_* は /api/measurement/diagnose が今も表の作成を確かめるので残る。
-from ..repositories.master_repo import ensure_operator_master, ensure_spool_master, ensure_inner_master, ensure_device_master, ensure_operator_equipment
-from ..repositories.master_repo import ensure_burr_master, ensure_coil_stop_master
 from ..repositories.master_repo import read_equipment_max_strips, read_equipment_kind, STRIP_LIMIT, DEFAULT_MAX_STRIPS
 from ..repositories.master_repo import choice_usage_for, choice_usage_bump
 from .. import records_export
@@ -54,33 +52,19 @@ def measurement_context():
        d=dict(zip(cs,row));result['quality'].append({k:norm(d.get(matching_col(cs,[k]) or k)) for k in ['発生設備','登録日時','異常内容','コメント','最終処置','保留設定日','保留解除']})
   master=DBS['MASTER']['path']
   if master.exists():
-   # オペレータマスタの存在を保証してから読み取る。
-   try:
-    created=ensure_operator_master(master);result['diagnostics']['operator_master']={'created':created}
-   except Exception as _e:result['diagnostics']['operator_master_error']=str(_e)
-   # オペレータ設備マスタ（オペレータ×設備の割当）の存在を保証してから読み取る。
-   try:
-    oe_created=ensure_operator_equipment(master);result['diagnostics']['operator_equipment_master']={'created':oe_created}
-   except Exception as _e:result['diagnostics']['operator_equipment_master_error']=str(_e)
-   # スプール種別マスタの存在を保証してから読み取る。
-   try:
-    s_created=ensure_spool_master(master);result['diagnostics']['spool_master']={'created':s_created}
-   except Exception as _e:result['diagnostics']['spool_master_error']=str(_e)
-   # 内径種別マスタの存在を保証してから読み取る。
-   try:
-    i_created=ensure_inner_master(master);result['diagnostics']['inner_master']={'created':i_created}
-   except Exception as _e:result['diagnostics']['inner_master_error']=str(_e)
-   # 機器マスタの存在を保証してから読み取る。
-   try:
-    d_created=ensure_device_master(master);result['diagnostics']['device_master']={'created':d_created}
-   except Exception as _e:result['diagnostics']['device_master_error']=str(_e)
-   # バリ揃え・コイル止めマスタ（作成時に既定の選択肢を種として入れる）。
-   try:
-    b_created=ensure_burr_master(master);result['diagnostics']['burr_master']={'created':b_created}
-   except Exception as _e:result['diagnostics']['burr_master_error']=str(_e)
-   try:
-    cs_created=ensure_coil_stop_master(master);result['diagnostics']['coil_stop_master']={'created':cs_created}
-   except Exception as _e:result['diagnostics']['coil_stop_master_error']=str(_e)
+   # ---------- 移行済みの6マスタはもう用意しない（§9.255 ①、利用者の報告） ----------
+   # 「移行済みデータをすべて消したはずが、復活しました。
+   #   旧マスタは無ければ表示しない形にしたいです」
+   #
+   # ここには`ensure_operator_master`ほか**7つの「無ければ作る」**が並んで
+   # いた。中身は§9.221 ③で`操業データ選択肢マスタ`へ移したのに用意だけが
+   # 残っていたので、**測定画面を1回開くだけで7つとも空の表として作り直され**、
+   # マスタ管理の「移行済み」から消えなかった（＝消せないマスタ）。
+   # 既定の選択肢（バリ揃え・コイル止め）は`operation_repo.CHOICE_SEEDS`が
+   # 持つので、まっさらな端末でも選べる値は在る。
+   # **`ensure_*`をここへ戻さないこと。** 移行元として読むのは
+   # `migrate_legacy_choice_masters()`の1回だけで、あちらは表が無ければ
+   # 「写すものが無い」として素通りする。
    # ---------- 選択肢は操業データ選択肢マスタの1本から引く(§9.221 ③) ----------
    # 利用者の指示「オペレータ、機器、スプール種別、内径種別、バリ揃え、
    # コイル止めについても汎用化した操業データ項目マスタに移行させて」。

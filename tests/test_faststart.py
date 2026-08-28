@@ -120,6 +120,92 @@ try:
         setup_check.waiting_page().parent == boot_status.status_path().parent,
         str(setup_check.waiting_page().parent))
 
+    # ---- 5b) 他PCで待機画面が出ない（§9.255 ③、利用者の報告） ----
+    # 「他PCで起動に失敗する（モーダルが出ずエラー画面／loading.html 直クリック
+    #   で復帰）」
+    # 直したのは3つで、**どれが欠けても「何も出ない」に戻る**:
+    #   ① 置き場の解決（`local_root()`）が送出しない＝起動の1行目で死なない
+    #   ② 手元に写しが無くても**本体を読まずに**組み込みの簡易画面で開く
+    #   ③ 手元にもテンポラリにも書けない、を作らない（候補を3段持つ）
+    import importlib  # noqa: E402
+    import tempfile  # noqa: E402
+    from backend import paths as _paths  # noqa: E402
+    import start_app as _start  # noqa: E402
+
+    # ① 置き場が書けなくても**送出しない**。健全な端末の答えは変えない。
+    _keep_root, _keep_env = _paths._LOCAL_ROOT, os.environ.get('LOCALAPPDATA')
+    try:
+        _paths._LOCAL_ROOT = None
+        # **書けない置き場をわざと作る**——既存の「ファイル」を親にすると
+        # `mkdir` は必ず失敗する（移動プロファイル・ポリシーで書けない端末の
+        # 代わり。環境変数にNUL文字は入れられないので、この形で再現する）。
+        blocker = Path(tempfile.gettempdir()) / 'wl-blocker.txt'
+        blocker.write_text('x', encoding='utf-8')
+        os.environ['LOCALAPPDATA'] = str(blocker / 'inside')
+        picked = None
+        raised = ''
+        try:
+            picked = _paths.local_root()
+            _paths.ensure_local_dirs()
+        except Exception as e:
+            raised = f'{type(e).__name__}: {e}'
+        rec('書けない置き場でも送出しない（起動の1行目で死なない）', not raised, raised)
+        rec('書ける場所へ落ちる（一時フォルダーまで候補にする）',
+            picked is not None and os.access(str(picked), os.W_OK), str(picked))
+    finally:
+        try:
+            (Path(tempfile.gettempdir()) / 'wl-blocker.txt').unlink()
+        except Exception:
+            pass
+        _paths._LOCAL_ROOT = _keep_root
+        if _keep_env is None:
+            os.environ.pop('LOCALAPPDATA', None)
+        else:
+            os.environ['LOCALAPPDATA'] = _keep_env
+
+    # ② **本体を読まずに**開ける。写しを消した状態で、本体側の読み出しを
+    #    わざと失敗させても待機画面のパスが返ること（＝直列路に本体が無い）。
+    _page = setup_check.waiting_page()
+    _backup = _page.read_bytes() if _page.exists() else None
+    _real_copy = setup_check.copy_waiting_page
+    try:
+        _page.unlink(missing_ok=True)
+        setup_check.copy_waiting_page = lambda say=None: (_ for _ in ()).throw(
+            OSError('[WinError 59] 予期しないネットワークエラーです。'))
+        _start.setup_check.copy_waiting_page = setup_check.copy_waiting_page
+
+        class _Log:
+            def info(self, *a, **k):
+                pass
+            warning = error = info
+        got = _start._ensure_local_waiting_page(_Log())
+        rec('写しが無く本体も読めなくても、待機画面のパスを返す（②）',
+            got is not None and Path(got).exists(), str(got))
+        rec('そのときは組み込みの簡易画面（目印が付く）',
+            got is not None and _start._is_emergency_page(got), str(got))
+        head = Path(got).read_text(encoding='utf-8', errors='ignore') if got else ''
+        rec('簡易画面もサーバーを待って本体へ移る（http://を直接開かない）',
+            '/api/ready.js' in head and 'location.replace' in head)
+    finally:
+        setup_check.copy_waiting_page = _real_copy
+        _start.setup_check.copy_waiting_page = _real_copy
+        if _backup is not None:
+            _page.write_bytes(_backup)
+    # ③ 候補は3段（渡された置き場 → 手元の runtime → 一時フォルダー）。
+    #    **1つでも欠けると「1つもブラウザが開かない」経路が戻る。**
+    _starter_src = (ROOT / 'start_app.py').read_text(encoding='utf-8')
+    rec('書き出し先の候補に一時フォルダーがある（③）',
+        'tempfile.gettempdir()' in _starter_src)
+    # **コメントを落としてから見る**——この行の説明そのものに
+    # `webbrowser.open(app_url())` と書いてあるので、素で探すと必ず当たる。
+    _starter_code = '\n'.join(l for l in _starter_src.splitlines()
+                              if not l.lstrip().startswith('#'))
+    rec('サーバー未起動の http:// を直接開かない',
+        'webbrowser.open(app_url())' not in _starter_code)
+    rec('本体の写し直しは裏で走らせる（起動の直列路に置かない）',
+        '_refresh_waiting_page_later' in _starter_src
+        and 'daemon=True' in _starter_src)
+
     # ---- 6) 確認の実処理は1箇所（起動側に写しを作らない） ----
     starter = (ROOT / 'start_app.py').read_text(encoding='utf-8')
     rec('起動側にパッケージ導入の写しを作っていない',
