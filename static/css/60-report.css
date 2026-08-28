@@ -329,7 +329,6 @@
   background:var(--surface-2);color:var(--ink-3);border:1px solid var(--line-soft)}
 .rp-chip.is-ok{color:var(--success);border-color:#bfe0cf;background:#f1fbf5}
 .rp-chip.is-bad{color:var(--danger);border-color:#e6bcbc;background:var(--danger-bg)}
-.rp-arrange-note{flex:1 1 100%;margin-top:2px;color:var(--ink-3)}
 .rp-arrange-note[hidden]{display:none}
 /* 直前の操作の一言。**常設の案内を消さずに継ぎ足す**（§9.221 ⑨の追補）。 */
 .rp-arrange-tip{margin-left:var(--space-2);color:var(--ink);font-weight:800}
@@ -365,42 +364,86 @@
 .rp-col-w span{min-width:8em;text-align:right}
 .rp-form-cols .rp-form-ctl{flex-direction:column;align-items:stretch}
 .rp-block-empty{margin:0;padding:6px;font-size:9px;color:#8a6a2a;background:#fbf5ea;border-radius:3px}
-/* 組み換えの帯は**紙の外**（印刷物に混ざらない・A4の割り付けを崩さない）。 */
+/* ---------- 組み換えの帯は1行（§9.255 ①、利用者の指示） ----------
+   「帳票表示画面の上部がごちゃついているので、すっきりわかりやすいメニューで
+    コンパクトに2行分くらいにまとめてほしいです」
+   紙の外に置くのは今までどおり（印刷物に混ざらない・A4の割り付けを崩さない）。
+   **器そのものは折り返せるまま**にする——極端に狭い窓では、切り落として
+   見えなくするより2行がまし（§9.199）。 */
 .rp-arrange-bar{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;
   padding:var(--pad-chip) var(--space-2);background:var(--computed-bg);
   border-bottom:1px solid var(--teal);color:var(--computed-fg)}
 .rp-arrange-bar[hidden]{display:none}
-/* 見本のロットで見ていることを言う帯（§9.253）。**紙の外**（`.rp-arrange-bar`と
-   同じ場所）——紙の中へ入れると刷り上がりに混ざる。
-   **色だけで伝えない**（§CLAUDE 3）ので、文言と設備名を必ず文字で出す。
-   注意を引く必要はあるが、危険ではない（消えるだけ）ので警告の色にとどめる。 */
-.rp-sample-bar{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;
-  padding:var(--pad-chip) var(--space-2);
-  background:var(--warn-bg);border-bottom:1px solid var(--warn-border);
-  color:var(--warn-fg);font-size:var(--fs-sm)}
-.rp-sample-bar>b{font-weight:800}
-.rp-sample-bar>span{color:var(--ink-2);font-size:var(--fs-micro)}
-.rp-sample-eq b{color:var(--warn-fg)}
-.rp-sample-bar>button{margin-left:auto}
-/* 出していない塊の置き場（§9.217）。**紙の外**——紙の中へ入れると
-   刷り上がりに混ざる。 */
-.rp-palette{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;
+/* 「いま組み換え中」は短い札1枚（帯の色と`#reportArrange`の点灯が既に
+   言っているので、文を長くしない・§CLAUDE 8）。 */
+.rp-arrange-tag{flex:none;padding:2px var(--space-2);border-radius:var(--radius-pill);
+  background:var(--teal);color:#fff;font-size:var(--fs-micro);font-weight:800;white-space:nowrap}
+/* 決める2つは右端。**塊の中は折り返さない**（§9.199）。 */
+.rp-arrange-act{margin-left:auto;display:inline-flex;align-items:center;gap:var(--gap-tight);flex:none}
+.rp-bar-btn--primary{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:800}
+.rp-bar-btn--primary:hover{background:#0a95a4;border-color:#0a95a4;color:#fff}
+.rp-bar-more{min-width:var(--ctl-h-xs);padding:0 var(--space-1);font-weight:800}
+/* 「⋯」で開く面。**帯の子のまま浮かせる**（§9.255 ①）——body直下へ出すと
+   「帯の中に在るか」を見る網が空振りする。fixedなので器のoverflowに切られない。 */
+.rp-bar-menu{position:fixed;z-index:var(--z-popover);min-width:12em;padding:var(--space-1);
+  border:1px solid var(--line-mid);border-radius:var(--radius-sm);
+  background:var(--surface);box-shadow:0 10px 28px #0d20292e}
+.rp-bar-menu[hidden]{display:none}
+.rp-bar-menu-item{display:block;width:100%;height:var(--ctl-h-xs);padding:0 var(--space-2);
+  border:0;border-radius:var(--radius-xs);background:none;color:var(--ink-2);
+  font-size:var(--fs-sm);font-weight:700;text-align:left;cursor:pointer;white-space:nowrap}
+.rp-bar-menu-item:hover{background:var(--surface-2);color:var(--nav)}
+.rp-bar-menu-item.is-danger{color:var(--danger)}
+.rp-bar-menu-item.is-danger:hover{background:var(--danger-bg);color:var(--danger)}
+.rp-bar-menu-sep{margin:var(--space-1) 0;border:0;border-top:1px solid var(--line-soft)}
+/* ---------- 見本の印は題のとなりの札1枚（§9.255 ①） ---------- */
+.rp-sample-chip{flex:none;display:inline-flex;align-items:center;gap:var(--gap-tight);
+  min-height:var(--ctl-h-xs);padding:0 var(--space-2);
+  border:1px solid var(--warn-border);border-radius:var(--radius-pill);
+  background:var(--warn-bg);color:var(--warn-fg);
+  font-size:var(--fs-micro);font-weight:700;white-space:nowrap;cursor:help}
+.rp-sample-chip>b{font-weight:800}
+.rp-sample-chip>.rp-sample-eq{color:var(--ink-2)}
+/* **取り違えを防ぐ事実は見える場所に**（§9.255 ①の追補）。詰めてよいのは
+   言い回しだけで、「保存されません」は`title`へ落とさない。 */
+.rp-sample-chip>.rp-sample-safe{color:var(--warn-fg);font-weight:700}
+.rp-sample-chip>button{height:calc(var(--ctl-h-xs) - 6px);padding:0 var(--space-2);
+  border:1px solid var(--warn-border);border-radius:var(--radius-pill);
+  background:#fff;color:var(--warn-fg);font-size:var(--fs-micro);font-weight:800;cursor:pointer}
+.rp-sample-chip>button:hover{background:var(--warn-fg);border-color:var(--warn-fg);color:#fff}
+/* ---------- 出していない塊の置き場は1行（§9.255 ①） ----------
+   **紙の外**——紙の中へ入れると刷り上がりに混ざる（§9.217）。
+   以前は「見出し＋2行の説明＋札の並び」で実測70px。説明は札の形が既に
+   言っているので`title`へ落とし（§9.234 ①）、札は横1列にして足りないぶんは
+   **器の中で横へスクロール**させる（§CLAUDE 11「入れ物は中身の長さから」）。
+   **畳まない**——掴んで紙へ落とす道具そのものなので、隠すと組み換えの
+   主要動線が1つ消える。 */
+.rp-palette{display:flex;align-items:center;gap:var(--space-2);
   padding:var(--pad-chip) var(--space-2);
   background:var(--surface-2);border-bottom:1px solid var(--line-soft)}
 .rp-palette[hidden]{display:none}
 .rp-palette.is-target{background:rgba(8,124,137,.10);outline:2px dashed var(--teal);outline-offset:-2px}
-.rp-palette-head{font-size:var(--fs-sm);font-weight:800;color:var(--nav)}
-.rp-palette-note{flex:1 1 240px;min-width:0;color:var(--ink-3);font-size:var(--fs-tiny)}
-.rp-palette-list{display:flex;gap:var(--gap-tight);flex-wrap:wrap;flex:1 1 100%;min-width:0}
-.rp-palette-list.is-empty{color:var(--muted);font-size:var(--fs-tiny)}
-.rp-palette-item{display:flex;flex-direction:column;align-items:flex-start;gap:1px;
+.rp-palette-head{flex:none;font-size:var(--fs-tiny);font-weight:800;color:var(--nav);
+  white-space:nowrap;cursor:help}
+.rp-palette-head>i{font-style:normal;margin-left:2px;padding:0 var(--space-1);
+  border-radius:var(--radius-pill);background:var(--nav);color:#fff;font-size:var(--fs-micro)}
+/* 説明と直前の一言（§9.255 ①）。**畳んでいるあいだは場所を取らない。** */
+.rp-arrange-note{flex:1 1 14em;min-width:0;color:var(--ink-3);font-size:var(--fs-micro)}
+.rp-palette-list{display:flex;gap:var(--gap-tight);flex:1 1 auto;min-width:0;
+  overflow-x:auto;overflow-y:hidden;scrollbar-gutter:stable}
+.rp-palette-list.is-empty{color:var(--muted);font-size:var(--fs-tiny);overflow:visible}
+.rp-palette-item{display:flex;align-items:baseline;gap:var(--gap-tight);flex:0 0 auto;
   min-width:0;max-width:var(--w-md);cursor:grab;
   padding:2px var(--ctl-pad-x-sm);border:1px solid var(--line-mid);
   border-radius:var(--radius-xs);background:#fff;color:var(--ink-2)}
 .rp-palette-item.is-dragging{opacity:.45}
 .rp-palette-name{font-size:var(--fs-tiny);font-weight:800;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
-.rp-palette-size{font-size:var(--fs-micro);color:var(--muted);font-weight:700}
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:14em}
+.rp-palette-size{flex:none;font-size:var(--fs-micro);color:var(--muted);font-weight:700}
+/* できることの一覧（§9.255 ①の追補）。**1行に収める**——縮んでよいのは
+   ここだけで、札の並びは縮ませない（§9.229 ⑤）。 */
+.rp-palette-note{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;color:var(--ink-3);font-size:var(--fs-micro);line-height:var(--lh)}
 .rp-arrange-bar b{font-size:var(--fs-sm)}
 /* 帯の中身は**塊ごとに折り返す**（塊の中は折り返さない・§9.199）。 */
 .rp-arrange-info{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap;
@@ -680,8 +723,14 @@
 .rp-stat-table .rp-stat-na{color:#999;text-align:center}
 
 /* マトリクス配置（§9.245）。列数はJSが`--rp-cols`で渡す——項目ごとに
-   何マス使うかを持つので、`rp-grid-N`の決め打ちでは表せない。 */
-.rp-grid-m{grid-template-columns:repeat(var(--rp-cols,2),minmax(0,1fr))}
+   何マス使うかを持つので、`rp-grid-N`の決め打ちでは表せない。
+   §9.255 ②で**縦のマス数**も持てるようにした。縦に伸ばした項目の隣が
+   空くので、**詰め方は`dense`**——空いたマスへ後ろの1マスの項目が入る
+   （そこも空けたいときは「空きマス」を置く）。 */
+.rp-grid-m{grid-template-columns:repeat(var(--rp-cols,2),minmax(0,1fr));
+  grid-auto-flow:row dense}
+/* 縦に伸ばした項目は**器いっぱい**に広がる（値を下へ寄せない）。 */
+.rp-grid-m>.rp-field{align-content:start}
 /* 空きマスは**場所を取るだけ**（枠も文字も持たない）。 */
 .rp-field-blank{min-height:1px}
 }

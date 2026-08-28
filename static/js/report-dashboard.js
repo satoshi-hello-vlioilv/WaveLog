@@ -112,11 +112,17 @@
      <!-- 組み換え中だけ出る帯。**やめる/保存を紙の外に置く**——紙の中に
           置くと印刷物に混ざる危険があるうえ、A4の割り付けを崩す。 -->
      <div class="rp-arrange-bar" id="rpArrangeBar" hidden>
-      <b>配置を組み換え中</b>
       <span class="rp-arrange-info"></span>
-      <button type="button" id="rpArrangeReset" class="rp-foot-btn">既定に戻す</button>
-      <button type="button" id="rpArrangeCancel" class="rp-foot-btn">やめる</button>
-      <button type="button" id="rpArrangeSave" class="rp-foot-btn rp-foot-btn--primary">この配置を保存</button>
+      <!-- 決める2つだけを帯へ残す（§9.255 ①）。「既定に戻す」は取り消せない
+           操作なので、主要動線から離して「⋯」の中へ置く（§CLAUDE 5）。 -->
+      <span class="rp-arrange-act">
+       <button type="button" id="rpArrangeCancel" class="rp-bar-btn">やめる</button>
+       <button type="button" id="rpArrangeSave" class="rp-bar-btn rp-bar-btn--primary">保存</button>
+      </span>
+      <!-- 「⋯」で開く小さな面。**帯の子のまま position:fixed で浮かせる**
+           （テンプレートリテラルの中なのでバッククォートは書かない・§9.211 ③）
+           ——body直下へ出すと「帯の中に在るか」を見る網が空振りする。 -->
+      <div class="rp-bar-menu" id="rpArrangeMenu" hidden></div>
      </div>
      <!-- 出していない塊の置き場（§9.217）。**紙の外**に置く——紙の中へ
           入れると刷り上がりに混ざる。掴んで紙へ落とすと出て、紙の塊を
@@ -150,7 +156,7 @@
   $id('reportArrange').onclick=toggleArrange;
   $id('rpArrangeSave').onclick=saveArrange;
   $id('rpArrangeCancel').onclick=()=>closeArrange(false);
-  $id('rpArrangeReset').onclick=resetArrange;
+  /* 「既定に戻す」は「⋯」の中（`updateArrangeBar`が組み立てて配線する）。 */
   applyOrientation();applyNavVisibility();
   window.addEventListener('resize',()=>{if(rpZoom==='fit')fitPage();else if(rpZoom==='width')fitWidth()});
   // Ctrl(⌘)+ホイールで拡大縮小。通常のホイールは一覧のスクロールを妨げないよう素通しする。
@@ -476,16 +482,23 @@
   }));
  }
 
- /* 節の中身。`rows`は`[ラベル,値]`か`[ラベル,値,{span,blank}]`（§9.245）。
+ /* 節の中身。`rows`は`[ラベル,値]`か`[ラベル,値,{span,rows,blank}]`（§9.245）。
     **マス数を持つ行が1つでもあれば**グリッドを`--rp-cols`で組み、無ければ
-    今までどおり`rp-grid-N`のまま——**既に登録してある塊の見え方を変えない**。 */
+    今までどおり`rp-grid-N`のまま——**既に登録してある塊の見え方を変えない**。
+    §9.255 ②で**縦のマス数**（`rows`）も持てるようにした（利用者の指示
+    「単純に何列何行だけでなく、データ内もグリッドに対応する形で細かく
+    調整できるように」）。縦に伸ばした項目の隣が空くので、**詰め方は
+    `dense`**——空いたマスへ後ろの1マスの項目が入る（そこも空けたいときは
+    「空きマス」を置く）。 */
  function reportSection(title,rows,cols){
   const n=Math.max(1,Math.min(12,Number(cols)||2));
   /* 「マトリクスとして組む」のは、1マスでない行か空きマスがあるときだけ。 */
-  const matrix=rows.some(r=>r&&r[2]&&((Number(r[2].span)||1)>1||r[2].blank));
+  const matrix=rows.some(r=>r&&r[2]&&((Number(r[2].span)||1)>1
+    ||(Number(r[2].rows)||1)>1||r[2].blank));
   const cell=([label,value,o])=>{
    const span=Math.max(1,Math.min(n,Number(o&&o.span)||1));
-   const st=matrix?` style="grid-column:span ${span}"`:'';
+   const tall=Math.max(1,Math.min(12,Number(o&&o.rows)||1));
+   const st=matrix?` style="grid-column:span ${span}${tall>1?`;grid-row:span ${tall}`:''}"`:'';
    /* 空きマスは**中身を持たない**（場所を取るのが役目）。 */
    if(o&&o.blank)return `<div class="rp-field rp-field-blank"${st} aria-hidden="true"></div>`;
    /* **理由を渡せる**（§9.247 ②）——子ロットへ割り当てられない項目は`—`に
@@ -1270,10 +1283,10 @@
    const title=(on&&L.split)
      ?`${name}　${L.lot||'(番号なし)'}（${L.from+1}〜${L.to}条）`:name;
    const rows=fields.map(f=>{
-    if(f.blank)return [f.label,'',{span:f.span,blank:true}];
+    if(f.blank)return [f.label,'',{span:f.span,rows:f.rows,blank:true}];
     const v=rpValueAt(x,f.path,{lot:L});
     /* 割り当てられない項目は`—`（`rpValueAt`が返す）。**理由を添える**（§4）。 */
-    return [f.label,v,{span:f.span,title:(v==='—'?RP_LOT_NA:'')}];
+    return [f.label,v,{span:f.span,rows:f.rows,title:(v==='—'?RP_LOT_NA:'')}];
    });
    return reportSection(title,rows,cols||0);
   }).join('');
@@ -1871,12 +1884,23 @@
   if(!avail){el.textContent='';return}
   const over=inner-avail;
   const mm=v=>Math.round(v/(avail/(rpOrientation==='landscape'?210:297)));
+  /* ---------- 収まりは短く言い、続きは`title`（§9.255 ①） ----------
+     帯を1行にした（利用者の指示「コンパクトに2行分くらいに」）ので、
+     ここの文が長いと**帯だけで折り返す**（実測: この1文で約380px）。
+     **数は落とさない**（§CLAUDE 6「暗算をさせない」）——枚数と残り／超過の
+     mmは短い形で必ず出し、言い回しは`title`が持つ。 */
+  const dir=rpOrientation==='landscape'?'横':'縦';
   if(over<=1){
+   const rest=Math.max(0,mm(avail-inner));
    el.className='rp-page-fit is-ok';
-   el.textContent=`A4${rpOrientation==='landscape'?'横':'縦'}1枚に収まっています（残り約${Math.max(0,mm(avail-inner))}mm）`;
+   el.textContent=`A4${dir} 1枚（残り${rest}mm）`;
+   el.title=`いまの配置はA4${dir}1枚に収まっています（残り約${rest}mm）。`;
   }else{
+   const sheets=Math.ceil(inner/avail);
    el.className='rp-page-fit is-over';
-   el.textContent=`A4${rpOrientation==='landscape'?'横':'縦'}1枚に収まりません（約${mm(over)}mm超過・${Math.ceil(inner/avail)}枚になります）`;
+   el.textContent=`A4${dir} ${sheets}枚（${mm(over)}mm超過）`;
+   el.title=`いまの配置はA4${dir}1枚に収まりません（約${mm(over)}mm超過するので${sheets}枚になります）。`
+     +'塊の高さを下げるか、要らない塊を「出していない塊」へ落としてください。';
   }
  }
  /* **既定の高さは中身から測る**（§9.217）。
@@ -2281,6 +2305,61 @@
  let rpOverlapCells=new Set();
  /* 操作の説明は畳んでおく（§9.222 ④）。常設だと帯の半分を文が占める。 */
  let rpHelpOpen=false;
+ /* 「⋯」の面（§9.255 ①）。**開いた器は必ず控える**（§9.222 ①）——控えないと
+    外クリック・Escのどれでも閉じられないまま押すたびに積み上がる。 */
+ let rpMoreOpen=false;
+ function rpMoreEl(){return $id('rpArrangeMenu')}
+ function rpCloseMore(){
+  const el=rpMoreEl();
+  if(!el||el.hidden)return;
+  el.hidden=true;rpMoreOpen=false;
+  const b=document.querySelector('#rpArrangeBar [data-rp-more]');
+  if(b)b.setAttribute('aria-expanded','false');
+ }
+ function rpToggleMore(btn){
+  const el=rpMoreEl();if(!el)return;
+  if(!el.hidden){rpCloseMore();return}
+  rpMoreOpen=true;el.hidden=false;
+  btn.setAttribute('aria-expanded','true');
+  /* **開いてから測る**（中身の高さが分からないと画面の外へ出る・§9.247 ①）。 */
+  const b=btn.getBoundingClientRect(),m=el.getBoundingClientRect();
+  const left=Math.max(8,Math.min(window.innerWidth-m.width-8,b.right-m.width));
+  const top=(b.bottom+m.height+8>window.innerHeight)?Math.max(8,b.top-m.height-4):b.bottom+4;
+  el.style.left=Math.round(left)+'px';
+  el.style.top=Math.round(top)+'px';
+ }
+ /* 中身は**組み立て直すたびに配線し直す**（帯は innerHTML ごと作り直る）。 */
+ function rpRenderArrangeMenu(){
+  const el=rpMoreEl();if(!el)return;
+  el.innerHTML=
+    `<button type="button" class="rp-bar-menu-item" data-rp-copy`
+     +` title="いまの設備の配置を、他の設備へもそのまま当てます（それぞれの今の配置は置き換わります）">`
+     +`他の設備へ当てる</button>`
+   +`<button type="button" class="rp-bar-menu-item" data-rp-help`
+     +` aria-expanded="${rpHelpOpen?'true':'false'}">操作の仕方を${rpHelpOpen?'閉じる':'見る'}</button>`
+   +`<hr class="rp-bar-menu-sep">`
+   /* **取り消せない操作は主要動線から離す**（§CLAUDE 5）。 */
+   +`<button type="button" class="rp-bar-menu-item is-danger" id="rpArrangeReset"`
+     +` title="この設備の配置（並び・幅・高さ・出す/出さない・紙の割り）を消して既定へ戻します">`
+     +`既定に戻す</button>`;
+  el.querySelector('[data-rp-copy]').onclick=()=>{rpCloseMore();rpCopyLayoutTo()};
+  el.querySelector('[data-rp-help]').onclick=()=>{rpHelpOpen=!rpHelpOpen;rpCloseMore();updateArrangeBar()};
+  el.querySelector('#rpArrangeReset').onclick=()=>{rpCloseMore();resetArrange()};
+  if(el.dataset.wired)return;
+  el.dataset.wired='1';
+  /* 外を押したら閉じる（mousedown で受ける・§9.247 ①）。 */
+  document.addEventListener('mousedown',e=>{
+   const m=rpMoreEl();
+   if(!m||m.hidden)return;
+   if(m.contains(e.target))return;
+   if(e.target.closest&&e.target.closest('[data-rp-more]'))return;
+   rpCloseMore();
+  },true);
+  document.addEventListener('keydown',e=>{
+   const m=rpMoreEl();
+   if(m&&!m.hidden&&WL.modal.escCloses(e)){e.stopPropagation();rpCloseMore()}
+  },true);
+ }
  /* **落ちる場所を実物大で見せる**（§9.217、利用者の指示「ゴーストが出て
     配置可能な部分がわかりやすいように」）。線1本だと「どこへ何マスぶん
     入るのか」が読めないので、掴んでいる塊と同じ幅・高さの枠をその位置へ
@@ -2963,36 +3042,47 @@
       **状態は文字で出す**（§3）——収まり・重なり・外している数の3つ。 */
    const seg=(label,hint,items)=>`<span class="rp-bar-group"><i class="rp-bar-label" title="${esc(hint)}">${esc(label)}</i>`
      +`<span class="rp-seg">${items}</span></span>`;
+   /* ---------- 帯は1行（§9.255 ①、利用者の指示） ----------
+      「帳票表示画面の上部がごちゃついているので、すっきりわかりやすい
+       メニューでコンパクトに2行分くらいにまとめてほしいです」
+
+      直す前は**帯だけで実測137px（3行）**＋置き場70px＋見本の帯41pxで、
+      紙が始まるのは297pxから。減らしたのは3つ。
+       ①**同じことを2度言わない**（§CLAUDE 8）——「配置を組み換え中」は
+         帯の色と`#reportArrange`の点灯が既に言っている。短い札1枚にする。
+       ②**たまにしか押さないものは「⋯」の中へ**（他の設備へ当てる・
+         既定に戻す・操作の説明）。取り消せない「既定に戻す」を主要動線から
+         離せるので、§CLAUDE 5にも合う。
+       ③**状態は1行に詰める**——収まり・重なり・外しの3つは変わらないが、
+         「重なりなし」「全部出しています」のような**何も起きていないこと**は
+         短い印で足りる（§3の「文字で言う」は保つ）。 */
    info.innerHTML=
-     rpEqPickHtml()
+     `<b class="rp-arrange-tag" title="いまは配置の組み換え中です。紙の塊を掴んで動かせます">組み換え中</b>`
+    +rpEqPickHtml()
     +seg('割り','紙を何マス×何段で割るか。細かいほど自由に置けます',
        RP_GRIDS.map(v=>`<button type="button" data-rp-grid="${v}" class="${v===g?'is-on':''}"`
         +` title="紙を横${v}マスで割ります">${v}</button>`).join('')
        +`<b class="rp-seg-x">×</b>`
        +RP_PAGE_ROW_CHOICES.map(v=>`<button type="button" data-rp-prow="${v}" class="${v===rpPageRows()?'is-on':''}"`
         +` title="紙の縦を${v}段で割ります（1マスが紙の1/${v}）">${v}</button>`).join(''))
-    +`<span class="rp-bar-group">`
+    +`<span class="rp-bar-state">`
+      +`<span class="rp-page-fit" id="rpPageFit"></span>`
+      +(over?`<b class="rp-chip is-bad" title="場所が重なっている塊です。「並べ直す」で整えられます">重なり ${over}</b>`
+            :`<b class="rp-chip is-ok" title="場所が重なっている塊はありません">重なりなし</b>`)
+      +(hidden?`<b class="rp-chip" title="下の置き場にあります。掴んで紙へ落とすと出ます">外し ${hidden}</b>`
+             :`<b class="rp-chip" title="すべての塊を紙に出しています">全部出す</b>`)
+    +`</span>`
+    +`<span class="rp-bar-group rp-bar-tools">`
       +`<button type="button" class="rp-bar-btn" data-rp-relayout title="いま出ている塊を左上から詰め直します。押した瞬間だけ効きます（ふだんは自動で動きません）">並べ直す</button>`
       +`<button type="button" class="rp-bar-btn${rpPaperView?' is-on':''}" data-rp-paper`
         +` aria-pressed="${rpPaperView?'true':'false'}"`
         +` title="${rpPaperView?'いまは「紙のとおり」です。押すと操作の帯へ戻ります':'操作の帯を隠して、刷ったとおりの姿で確かめます'}">`
         +`紙のとおり${rpPaperView?'：中':''}</button>`
-      +`<button type="button" class="rp-bar-btn" data-rp-copy`
-        +` title="いまの設備の配置を、他の設備へもそのまま当てます（それぞれの今の配置は置き換わります）">他の設備へ当てる</button>`
-      +`<button type="button" class="rp-bar-btn rp-bar-help" data-rp-help aria-expanded="${rpHelpOpen?'true':'false'}" title="操作の仕方">?</button>`
-    +`</span>`
-    +`<span class="rp-bar-state">`
-      +`<span class="rp-page-fit" id="rpPageFit"></span>`
-      +(over?`<b class="rp-chip is-bad" title="場所が重なっている塊です。「並べ直す」で整えられます">重なり ${over}件</b>`
-            :`<b class="rp-chip is-ok">重なりなし</b>`)
-      +(hidden?`<b class="rp-chip" title="下の置き場にあります。掴んで紙へ落とすと出ます">外している ${hidden}件</b>`
-             :`<b class="rp-chip">全部出しています</b>`)
-    +`</span>`
-    +`<span class="rp-arrange-note" id="rpArrangeNote"${rpHelpOpen?'':' hidden'}>`
-      +`掴んで<b>置きたいマスへ</b>。<b>縁を引く</b>と大きさ（右＝幅・下＝高さ・右下＝両方）。`
-      +`<b>ダブルクリック</b>で設定（幅・高さ・中の並べ方・紙に出す/出さない）。`
-      +`大きさを変えても<b>場所は動きません</b>。`
+      +`<button type="button" class="rp-bar-btn rp-bar-more" data-rp-more`
+        +` aria-haspopup="menu" aria-expanded="${rpMoreOpen?'true':'false'}"`
+        +` title="他の設備へ当てる・既定に戻す・操作の仕方">⋯</button>`
     +`</span>`;
+   rpRenderArrangeMenu();
    info.querySelectorAll('[data-rp-grid]').forEach(b=>b.onclick=()=>{
     rpStage({widths:{...rpLayoutNow().widths,[RP_GRID_KEY]:rpEnc(Number(b.dataset.rpGrid))}});
     updateArrangeBar();
@@ -3002,14 +3092,12 @@
     updateArrangeBar();
    });
    rpBindEqPick(info);
-   const cp=info.querySelector('[data-rp-copy]');
-   if(cp)cp.onclick=()=>rpCopyLayoutTo();
    const rel=info.querySelector('[data-rp-relayout]');
    if(rel)rel.onclick=()=>rpRelayout();
    const pv=info.querySelector('[data-rp-paper]');
    if(pv)pv.onclick=()=>{rpPaperView=!rpPaperView;rpRepaint();updateArrangeBar()};
-   const hp=info.querySelector('[data-rp-help]');
-   if(hp)hp.onclick=()=>{rpHelpOpen=!rpHelpOpen;updateArrangeBar()};
+   const mo=info.querySelector('[data-rp-more]');
+   if(mo)mo.onclick=e=>{e.preventDefault();rpToggleMore(mo)};
   }
   renderPalette();
   /* **帯を組み直したら残りmmと一言も入れ直す**（§CLAUDE 2）。`#rpPageFit`と
@@ -3218,19 +3306,44 @@
   if(el.hidden){el.innerHTML='';return}
   const hidden=rpHiddenSet();
   const items=rpBlockKeys().filter(k=>hidden.has(k));
-  el.innerHTML=`<b class="rp-palette-head">紙に出していない塊（${items.length}）</b>`
-   +`<span class="rp-palette-note">掴んで紙へ落とすと出ます（落ちる場所は枠で見えます）。`
-   +`紙の塊をここへ落とすと外れます。押すだけでも出せます。</span>`
+  /* ---------- 置き場は1行（§9.255 ①、利用者の指示「コンパクトに2行分くらい」） ----------
+     以前は「見出し＋2行の説明＋札の並び」で実測70px。説明は**同じことを
+     2度言っている**（掴めることは札の形が言う）ので`title`へ落とし（§9.234 ①）、
+     札は横1列で足りないぶんは器の中で横へスクロールさせる。
+     **消さないこと**——掴んで紙へ落とす道具そのものなので、畳むと
+     組み換えの主要動線が1つ消える。 */
+  el.innerHTML=`<b class="rp-palette-head"`
+   +` title="掴んで紙へ落とすと出ます（落ちる場所は枠で見えます）。`
+   +`紙の塊をここへ落とすと外れます。押すだけでも出せます。">`
+   +`出していない塊 <i>${items.length}</i></b>`
+   /* **できることは見える場所に1行で書く**（§CLAUDE 4）——「押すだけでも
+      出せる」は札の形からは読めない（掴めない環境の唯一の道でもある）。
+      §9.255 ①で帯を1行にしたときにここごと`title`へ落としていたが、
+      畳んでよいのは**言い回し**であって**できることの一覧**ではない。
+      長い説明は今までどおり見出しの`title`が持つ。 */
+   +`<span class="rp-palette-note">掴んで紙へ落とすと出ます／`
+   +`紙の塊をここへ落とすと外れます／押すだけでも出せます</span>`
    +(items.length
      ?`<div class="rp-palette-list">`+items.map(k=>{
         const r=rpRows(k);
         return `<button type="button" class="rp-palette-item" draggable="true" data-rp-pal="${esc(k)}"`
-         +` title="幅 ${rpSpan(k)}/${rpGrid()}マス・高さ ${r?r+'行':'中身なり'}">`
+         +` title="${esc(rpBlockLabel(k))}／幅 ${rpSpan(k)}/${rpGrid()}マス・高さ ${r?r+'行':'中身なり'}`
+         +`／掴んで紙へ落とすと出ます（押すだけでも出せます）">`
          +`<span class="rp-palette-name">${esc(rpBlockLabel(k))}</span>`
+         /* **単位を落とさない**（§CLAUDE 6）——`6×20`では「6行×20列」とも
+            「6mm」とも読める。詰めてよいのは言い回しで、単位はその対象外。 */
          +`<span class="rp-palette-size">${rpSpan(k)}マス×${r?r+'行':'自動'}</span></button>`;
        }).join('')+`</div>`
-     :`<div class="rp-palette-list is-empty">全部の塊を紙に出しています。</div>`);
+     :`<div class="rp-palette-list is-empty">全部の塊を紙に出しています。</div>`)
+   /* 操作の説明と直前の一言はここへ置く（§9.255 ①）——帯は1行にしたので、
+      文を出す場所は置き場の帯が持つ。`rpPaintNote()`がここへ書き足す。 */
+   +`<span class="rp-arrange-note" id="rpArrangeNote"${rpHelpOpen?'':' hidden'}>`
+     +`掴んで<b>置きたいマスへ</b>。<b>縁を引く</b>と大きさ（右＝幅・下＝高さ・右下＝両方）。`
+     +`<b>ダブルクリック</b>で<b>帳票ブロックマスタ</b>の編集画面が開きます。`
+     +`大きさを変えても<b>場所は動きません</b>。`
+   +`</span>`;
   bindPalette();
+  rpPaintNote();
  }
  function bindPalette(){
   const el=$id('rpPalette');if(!el)return;
@@ -3620,20 +3733,35 @@
   let el=$id('rpSampleBar');
   if(!rpIsSample(x)){if(el)el.remove();return}
   if(!el){
-   el=document.createElement('div');el.id='rpSampleBar';el.className='rp-sample-bar';
-   /* **紙の外へ置く**（`.rp-arrange-bar`と同じ場所）——`#reportContent`は
-      A4の紙そのもので、中へ入れると刷り上がりに混ざり、割り付けも崩れる。 */
-   const scroll=$id('rpScroll');
-   if(scroll&&scroll.parentNode)scroll.parentNode.insertBefore(el,scroll);
+   /* ---------- 見本の印は題の帯へ（§9.255 ①、利用者の指示） ----------
+      「帳票表示画面の上部がごちゃついているので…コンパクトに2行分くらいに」
+
+      以前は**横いっぱいの帯を1本**（実測41px）使って
+      「見本データです／実際の測定データではありません。保存されません。／
+       配置は◯◯のもの」と3つの文を並べ、右端に幅いっぱいの「試し印刷」を
+      置いていた。言っていることは1つ（**これは見本**）なので、
+      題のとなりの札1枚へ詰め、続きは`title`で読む（§9.234 ①）。
+      **紙の外**であることは変わらない——`#reportContent`はA4の紙そのもので、
+      中へ入れると刷り上がりに混ざる。 */
+   el=document.createElement('span');el.id='rpSampleBar';el.className='rp-sample-chip';
+   const title=document.querySelector('#reportPanel .rp-bar-title');
+   if(title&&title.parentNode)title.parentNode.insertBefore(el,title.nextSibling);
    else return;
   }
   const eq=rpEquipmentOf(x)||'';
-  el.innerHTML=`<b>見本データです</b>
-   <span>実際の測定データではありません。保存されません。</span>
-   <span class="rp-sample-eq">配置は<b>${esc(eq||'共通')}</b>のもの${
-     eq?'':'（この端末に使用設備が登録されていないため）'}</span>
-   <button type="button" id="rpSamplePrint" class="rp-foot-btn"
-     title="いまの配置のまま、この見本データで試しに1枚刷ります">試し印刷</button>`;
+  /* **色だけで伝えない**（§CLAUDE 3）ので、見本であることと**どの設備の
+     配置で見ているか**は文字で出す（配置は`report:<設備>`・§9.174）。 */
+  el.title='実際の測定データではありません。保存されません。'
+   +`配置は「${eq||'共通'}」のものです`
+   +(eq?'。':'（この端末に使用設備が登録されていないため）。');
+  /* **「保存されません」は`title`へ落とさない**（§9.222 ④）——これは
+     「見本だ」という分類ではなく、**取り違えを防ぐ唯一の事実**で、
+     触る画面では`title`が読めない。畳んでよいのは言い回しのほうだけ
+     （§CLAUDE 8）。札1枚に収まる長さなので、詰めても消さない。 */
+  el.innerHTML=`<b>見本データ</b><span class="rp-sample-safe">保存されません</span>`
+   +`<span class="rp-sample-eq">${esc(eq||'共通')}</span>`
+   +`<button type="button" id="rpSamplePrint"`
+   +` title="いまの配置のまま、この見本データで試しに1枚刷ります">試し印刷</button>`;
   const pb=el.querySelector('#rpSamplePrint');
   if(pb)pb.onclick=()=>printReport();
  }

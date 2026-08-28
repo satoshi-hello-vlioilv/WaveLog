@@ -875,9 +875,14 @@ BUILTIN_KEYS = tuple(x[0] for x in BUILTIN_SEEDS)
 CONTENT_EDITABLE = frozenset(k for k, _s, _r, _c, content, _kd, _tx in BUILTIN_SEEDS if content)
 
 
-# 1つの項目が横に何マス使うか（§9.245）。**1〜12**——内訳の列数は最大4だが、
+# 1つの項目が横に何マス使うか（§9.245）。**1〜12**——内訳の列数は最大6だが、
 # 「1マス」の意味は列数で決まるので、丸めは読む側（画面）が列数を見て行う。
 SPAN_MIN, SPAN_MAX = 1, 12
+# 縦に何マス使うか（§9.255 ②、利用者の指示「『紙での並び』の部分は単純に
+# 何列何行だけでなく、データ内もグリッドに対応する形で細かく調整できる
+# ようにしてください」）。**横と同じ数え方**——器の中のマス目の話なので、
+# 上限も同じにしておく（紙そのものの段数＝`RP_PAGE_ROW_CHOICES`とは別物）。
+ROWSPAN_MIN, ROWSPAN_MAX = 1, 12
 
 
 def parse_content(text):
@@ -897,7 +902,11 @@ def parse_content(text):
     ——既に登録してある塊はそのまま読める（**足すのは任意の後置きだけ**）。
 
         ロット番号=basic.lotNo|2   … 横2マスぶん使う
+        ロット番号=basic.lotNo|2x3 … 横2マス×縦3マスぶん使う（§9.255 ②）
         |1                        … 空きマス（何も出さずに場所だけ取る）
+
+    縦のマス数は`x`のうしろ。**`x`が無ければ縦1**なので、`|2`だけの
+    古い保存値はそのまま読める（後置きを足しただけ）。
 
     空きマスは**道もラベルも持たない行**で表す。`,`と`、`は区切りに使って
     いるので**マス数の区切りに使えない**（`|`にした理由）。"""
@@ -906,14 +915,21 @@ def parse_content(text):
         s = raw.strip()
         if not s:
             continue
-        span = 1
+        span, rows = 1, 1
         if '|' in s:
             s, _, tail = s.partition('|')
             s = s.strip()
+            # `<横>` か `<横>x<縦>`。**`x`が無ければ縦1**——`|2`だけの
+            # 古い保存値がそのまま読める（§9.245の約束を壊さない）。
+            wide, _, tall = str(tail).strip().lower().partition('x')
             try:
-                span = max(SPAN_MIN, min(SPAN_MAX, int(str(tail).strip() or 1)))
+                span = max(SPAN_MIN, min(SPAN_MAX, int(wide.strip() or 1)))
             except (TypeError, ValueError):
                 span = 1
+            try:
+                rows = max(ROWSPAN_MIN, min(ROWSPAN_MAX, int(tall.strip() or 1)))
+            except (TypeError, ValueError):
+                rows = 1
         if '=' in s:
             label, _, path = s.partition('=')
             label, path = label.strip(), path.strip()
@@ -922,9 +938,11 @@ def parse_content(text):
         if not path:
             # 空きマス。**落とさない**——場所を取ることが役目なので、
             # 消すとマトリクスが1マスずつ詰まって崩れる。
-            out.append({'label': '', 'path': '', 'blank': True, 'span': span})
+            out.append({'label': '', 'path': '', 'blank': True,
+                        'span': span, 'rows': rows})
             continue
-        out.append({'label': label or path, 'path': path, 'blank': False, 'span': span})
+        out.append({'label': label or path, 'path': path, 'blank': False,
+                    'span': span, 'rows': rows})
     return out
 
 

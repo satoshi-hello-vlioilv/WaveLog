@@ -274,7 +274,7 @@
             fieldGroup:'③ 紙のどこへ出すか',
             hint:'1行＝24px。**「中身なり」は描いてから測ります。**',
             more:'行数を決めると、下の段へ跨いで置けます。エリアは中身なりだと1行に潰れるので行数を決めてください。'},
-           {k:'cols',label:'内訳の列数',type:'select',options:['','1','2','3','4'],
+           {k:'cols',label:'内訳の列数',type:'select',options:['','1','2','3','4','5','6'],
             when:{kindText:'項目の並び'},
             fieldGroup:'③ 紙のどこへ出すか',
             hint:'空欄なら**中身の数から決まります**。',
@@ -2188,31 +2188,52 @@
     **読み方はサーバー（`parse_content`）と同じにすること**——2通りあると、
     設定画面で組んだ形と紙が食い違う。 */
  const FB_SPAN_MAX=12;
+ /* 内訳の列数（§9.255 ②）。**サーバーが受ける上限（6）に合わせる**
+    ——ここだけ4のままだと、盤で選べない列数を紙が受け入れることになる。
+    縦のマス数は器の高さで決まるので、選ばせるのは4段まで（それ以上は
+    塊の高さのほうを③で決める話になる・§CLAUDE 11）。 */
+ const FB_COLS_MAX=6,FB_COL_CHOICES=[1,2,3,4,5,6],FB_ROWS_MAX=4;
  function fbSpan(v,max){
   const n=Math.floor(Number(v));
   return Number.isFinite(n)?Math.max(1,Math.min(max||FB_SPAN_MAX,n)):1;
  }
+ /* ---------- 縦のマス数（§9.255 ②、利用者の指示） ----------
+    「『紙での並び』の部分は単純に何列何行だけでなく、データ内もグリッドに
+     対応する形で細かく調整できるようにしてください」
+
+    後置きを`<横>`から`<横>x<縦>`へ広げた。**`x`が無ければ縦1**なので、
+    既に登録してある塊（`|2`だけ）はそのまま読める。読み方はサーバーの
+    `parse_content`と**同じ約束**にすること（2通りあると、設定画面で組んだ
+    形と紙が食い違う・§9.245）。 */
  function fbParse(text){
   return String(text||'').replace(/、/g,',').replace(/\r/g,'\n').replace(/,/g,'\n')
    .split('\n').map(x=>x.trim()).filter(Boolean).map(line=>{
-    let s=line,span=1;
+    let s=line,span=1,rows=1;
     const b=s.indexOf('|');
-    if(b>=0){span=fbSpan(s.slice(b+1).trim()||1);s=s.slice(0,b).trim()}
+    if(b>=0){
+     const tail=s.slice(b+1).trim().toLowerCase();
+     const x=tail.indexOf('x');
+     span=fbSpan((x>=0?tail.slice(0,x):tail).trim()||1);
+     rows=x>=0?fbSpan(tail.slice(x+1).trim()||1):1;
+     s=s.slice(0,b).trim();
+    }
     const i=s.indexOf('=');
     const label=i>=0?s.slice(0,i).trim():s;
     const path=i>=0?s.slice(i+1).trim():s;
     /* 空きマスは落とさない——場所を取ることが役目なので、消すと詰まる。 */
-    if(!path)return {label:'',path:'',blank:true,span};
-    return {label:label||path,path,blank:false,span};
+    if(!path)return {label:'',path:'',blank:true,span,rows};
+    return {label:label||path,path,blank:false,span,rows};
    });
  }
  function fbText(rows){
   /* **1マスの項目は今までどおりの1行で書く**（`|1`を足さない）——書き足すと、
-     何も変えていない塊まで保存のたびに形が変わる。 */
+     何も変えていない塊まで保存のたびに形が変わる。
+     縦も1なら`x`を足さない（同じ理由）。 */
   return rows.map(r=>{
-   const sp=fbSpan(r.span);
-   if(r.blank)return '|'+sp;
-   return `${r.label||r.path}=${r.path}`+(sp>1?'|'+sp:'');
+   const sp=fbSpan(r.span),tall=fbSpan(r.rows);
+   const size=(tall>1?sp+'x'+tall:(sp>1?String(sp):''));
+   if(r.blank)return '|'+(size||'1');
+   return `${r.label||r.path}=${r.path}`+(size?'|'+size:'');
   }).join('\n');
  }
  function bindFieldBuilders(form){
@@ -2240,12 +2261,12 @@
    const colCount=()=>{
     const el=colsInput();
     const n=Math.floor(Number(el&&el.value));
-    return Number.isFinite(n)&&n>=1?Math.min(4,n):2;
+    return Number.isFinite(n)&&n>=1?Math.min(FB_COLS_MAX,n):2;
    };
    const drawCols=()=>{
     const host=box.querySelector('.fb-cols');if(!host)return;
     const cur=colCount();
-    host.innerHTML=`<i>列数</i>`+[1,2,3,4].map(n=>
+    host.innerHTML=`<i>列数</i>`+FB_COL_CHOICES.map(n=>
       `<button type="button" data-fb-cols="${n}" class="${n===cur?'is-on':''}"`
       +` aria-pressed="${n===cur?'true':'false'}">${n}</button>`).join('');
     host.querySelectorAll('[data-fb-cols]').forEach(b=>b.onclick=()=>{
@@ -2270,31 +2291,47 @@
     wrap.classList.toggle('is-matrix',true);
     wrap.innerHTML=state.rows.length?state.rows.map((r,i)=>{
       const sp=Math.min(n,fbSpan(r.span,n));
+      const tall=fbSpan(r.rows,FB_ROWS_MAX);
+      /* **横と縦は別の群にして、どちらか分かる形にする**（§9.255 ②）——
+         数字だけを並べると「4」が4列なのか4段なのか読めない。 */
       const spans=[];
       for(let v=1;v<=n;v++)spans.push(
        `<button type="button" class="fb-span${v===sp?' is-on':''}" data-fb-span="${i}:${v}"`
        +` title="横に${v}マス使います">${v}</button>`);
+      const talls=[];
+      for(let v=1;v<=FB_ROWS_MAX;v++)talls.push(
+       `<button type="button" class="fb-span${v===tall?' is-on':''}" data-fb-rows="${i}:${v}"`
+       +` title="縦に${v}マス使います">${v}</button>`);
+      const size=`<span class="fb-size">`
+       +`<i class="fb-size-tag" title="横に使うマス数">横</i>`
+       +`<span class="fb-spans">${spans.join('')}</span>`
+       +`<i class="fb-size-tag" title="縦に使うマス数">縦</i>`
+       +`<span class="fb-spans">${talls.join('')}</span></span>`;
+      const st=` style="grid-column:span ${sp}${tall>1?`;grid-row:span ${tall}`:''}"`;
       /* **1マスの中は2段**（§CLAUDE 11）——名前・出どころ・マス数・×を横1列に
          並べると、3列のときに名前の欄が1文字ぶんまで潰れる（実機の見え方で
          確認）。上段＝掴む所と名前、下段＝出どころとマス数。 */
-      if(r.blank)return `<div class="fb-row fb-row-blank" draggable="true" data-fb-i="${i}"`
-       +` style="grid-column:span ${sp}">`
+      if(r.blank)return `<div class="fb-row fb-row-blank" draggable="true" data-fb-i="${i}"${st}>`
        +`<div class="fb-row-top"><span class="fb-grip" aria-hidden="true">⠿</span>`
        +`<b class="fb-blank-name">空きマス</b>`
        +`<button type="button" class="fb-del" title="この空きマスを外します">×</button></div>`
-       +`<div class="fb-row-bot"><span class="fb-spans">${spans.join('')}</span></div></div>`;
-      return `<div class="fb-row" draggable="true" data-fb-i="${i}" style="grid-column:span ${sp}">`
+       +`<div class="fb-row-bot">${size}</div></div>`;
+      return `<div class="fb-row" draggable="true" data-fb-i="${i}"${st}>`
       +`<div class="fb-row-top"><span class="fb-grip" aria-hidden="true">⠿</span>`
       +`<input type="text" class="fb-label" value="${esc(r.label)}" aria-label="紙に出す名前">`
       +`<button type="button" class="fb-del" title="この項目を外します">×</button></div>`
       +`<div class="fb-row-bot">`
       +`<code class="fb-path" title="${esc(r.path)}">${esc(r.path)}</code>`
-      +`<span class="fb-spans">${spans.join('')}</span></div></div>`;
+      +size+`</div></div>`;
      }).join('')
       :`<p class="fb-empty">左の候補を押すと、ここへ増えます。<b>左上から順に紙へ並びます。</b></p>`;
     wrap.querySelectorAll('[data-fb-span]').forEach(b=>b.onclick=()=>{
      const [i,v]=b.dataset.fbSpan.split(':').map(Number);
      state.rows[i].span=v;sync();
+    });
+    wrap.querySelectorAll('[data-fb-rows]').forEach(b=>b.onclick=()=>{
+     const [i,v]=b.dataset.fbRows.split(':').map(Number);
+     state.rows[i].rows=v;sync();
     });
     wrap.querySelectorAll('.fb-del').forEach(b=>b.onclick=()=>{
      state.rows.splice(Number(b.closest('.fb-row').dataset.fbI),1);sync();

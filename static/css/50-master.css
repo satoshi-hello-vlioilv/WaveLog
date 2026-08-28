@@ -2036,6 +2036,12 @@
 .fb-rows.is-matrix{
   display:grid;grid-template-columns:repeat(var(--fb-cols,2),minmax(0,1fr));
   gap:var(--gap-tight);align-content:start;
+  /* §9.255 ② **縦のマス数**を持てるようにしたので、段の高さをそろえ、
+     詰め方は紙と同じ`dense`にする（縦に伸ばした項目の隣へ、後ろの1マスの
+     項目が入る）。段の高さを`auto`のままにすると、`grid-row:span 2`の
+     マスだけが2段ぶん伸びずに見え、**盤と紙で形が違う**（§CLAUDE 6の
+     「見本が嘘をつく」）。 */
+  grid-auto-rows:minmax(var(--fb-cell-h,3.4em),auto);grid-auto-flow:row dense;
 }
 .fb-rows.is-matrix .fb-empty{grid-column:1/-1}
 .fb-cols{display:inline-flex;align-items:center;gap:var(--gap-tight);margin-left:auto}
@@ -2066,6 +2072,10 @@
 }
 .fb-blank-name{flex:1 1 auto;min-width:0;font-size:var(--fs-badge);font-weight:700;color:var(--ink-3)}
 
+/* 横／縦の見出し（§9.255 ②）。**数字だけを並べない**——「4」が4列なのか
+   4段なのか読めない。 */
+.fb-size{display:inline-flex;align-items:center;gap:2px;flex:0 0 auto}
+.fb-size-tag{font-style:normal;font-size:var(--fs-micro);font-weight:700;color:var(--muted)}
 /* マスの中は2段（§9.245）。横1列に並べると3列のときに名前が1文字まで潰れる。 */
 .fb-rows.is-matrix .fb-row{display:block;min-width:0}
 .fb-row-top,.fb-row-bot{display:flex;align-items:center;gap:var(--gap-tight);min-width:0}
@@ -2078,8 +2088,12 @@
 /* **縮んでよいのは出どころだけ**（§9.229 ⑤）——マス数のつまみと×まで
    一緒に縮むと、押せない大きさになって折り返す。 */
 .fb-rows.is-matrix .fb-spans,
+.fb-rows.is-matrix .fb-size,
 .fb-rows.is-matrix .fb-del,
 .fb-rows.is-matrix .fb-grip{flex:0 0 auto}
+/* 6列や横×縦のつまみが並ぶと1行に入らないことがある。**器は折り返せる
+   まま**（狭い窓では切り落とすより2行がまし・§9.199）。 */
+.fb-rows.is-matrix .fb-row-bot{flex-wrap:wrap;row-gap:2px}
 
 /* ============================================================
    不要ファイルの掃除（§9.249 (1)）
