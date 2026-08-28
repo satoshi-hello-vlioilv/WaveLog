@@ -2632,3 +2632,26 @@
 .rly-act{display:flex;justify-content:flex-end}
 .rly-note{margin:0;flex:none;color:var(--ink-3);font-size:var(--fs-micro);line-height:1.7}
 }
+
+/* ---------- 式で作る自動値（§9.256、利用者の指示） ----------
+   **候補は押して入れる**（§CLAUDE 2「思い出させない」）——名前を打たせない。
+   寸法・色はトークンから取る（リテラルを新しく足さない・§CLAUDE 7）。 */
+.op-form-row-formula .op-form-ctl{display:flex;flex-direction:column;
+  align-items:stretch;gap:var(--space-1)}
+.op-formula-input{width:100%;min-width:0;min-height:calc(var(--ctl-h) * 1.6);
+  padding:var(--pad-row);border:1px solid var(--line);border-radius:var(--radius-sm);
+  background:#fff;color:var(--ink);font-size:var(--fs-sm);line-height:var(--lh);
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;resize:vertical}
+.op-formula-input:focus{border-color:var(--teal);outline:none}
+/* 候補。**器の中でスクロールさせる**——数が多い設備で窓が縦に伸びない
+   （§9.255 ④と同じ理由）。 */
+.op-formula-pick{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-tight);
+  max-height:calc(var(--ctl-h) * 4);overflow:auto;scrollbar-gutter:stable;
+  padding:var(--pad-row);border:1px solid var(--line-soft);border-radius:var(--radius-sm);
+  background:var(--surface-2)}
+.op-formula-group{flex:0 0 100%;color:var(--ink-3);font-size:var(--fs-micro);font-weight:800}
+.op-formula-name{min-height:var(--ctl-h-xs);padding:0 var(--space-2);
+  border:1px solid var(--line-mid);border-radius:var(--radius-sm);
+  background:var(--surface);color:var(--ink-2);
+  font-size:var(--fs-micro);font-weight:700;cursor:pointer;white-space:nowrap}
+.op-formula-name:hover{border-color:var(--teal);color:var(--teal-dark)}

@@ -506,6 +506,9 @@ def auto_fill_of(kind, builtin='', auto=''):
 # 項目を作らないため、引けないものは載せない（§4）。
 #
 # (鍵, 呼び名, 群, 単位, 説明)
+# §9.256。**式で作る自動値の鍵**。綴りはここだけが持つ（§9.163）——画面へ
+# 書き写すと、変えたときに2箇所直すことになる。
+AUTO_FORMULA_KEY = '式'
 AUTO_VALUES = (
     ('lot.lotNo', 'ロット番号', '仕掛（ロットの情報）', '',
      '測定を始めたときに仕掛データから写したロット番号です。'),
@@ -534,6 +537,11 @@ AUTO_VALUES = (
      '条の設計で決まっている条の本数です（分割ありなら子ロットの合計）。'),
     ('calc.slitWidth', '製品幅合計', '計算した値', 'mm',
      '条幅の合計です（屑幅は含みません）。'),
+    # §9.256。**式で作る**。上の値と同じ土俵の1行だが、値の出どころが
+    # 固定の鍵ではなく**利用者の書いた式**になる。呼び名で参照するので、
+    # 書く側は鍵の綴りを覚えなくてよい（§CLAUDE 2「思い出させない」）。
+    (AUTO_FORMULA_KEY, '式で作る', '自分で組み立てる', '',
+     '上の値や同じ設備の他の項目を、計算式・条件式で組み合わせて作ります。'),
 )
 AUTO_VALUE_KEYS = tuple(x[0] for x in AUTO_VALUES)
 
@@ -1601,6 +1609,14 @@ _ITEM_ADDED_COLUMNS = (
     # 自動で入る値の**鍵**（`AUTO_VALUES`）。空＝人が打つ欄（今までどおり）。
     # 入っている行は族が`output`になり、値は測定画面が入れる。
     ('自動値', 'TEXT'),
+    # --- §9.256（利用者の指示「取得データから組み合わせたり、計算式を
+    #     組み合わせたり、条件式を組み合わせて、式を設定することで
+    #     『自動』項目を作成できるようにしたい」）---
+    # `[自動値]`が`式`のときの**式そのもの**。他の自動値と同じ1行に持つので、
+    # 置き場・幅・単位・意匠・記録表示はふつうの項目とまったく同じに効く。
+    # **式の読み書きは画面が持つ**（`WL.formula`・§9.111）——`eval`を使わない
+    # 自前の字句解析→構文解析→評価が既にあるので、2つ目の評価器を作らない。
+    ('自動計算式', 'TEXT'),
     # --- §9.239 ②（利用者の指示「操業データ項目マスタについて、設備ごと
     #     レイアウト調整できるようにしてください」）---
     # **設備ごとのレイアウトの上書き**。1行＝1つの入力欄という形は変えず、
@@ -2046,7 +2062,9 @@ def _row_to_item(r):
             'recordOrder': (int(r[40]) if len(r) > 40 and r[40] is not None else None),
             # §9.248 ⑤ 選択肢の並び。**列の無い古いDBでも動く**。
             'choiceOrder': (normalize_choice_order(r[41]) if len(r) > 41
-                            else CHOICE_ORDER_DEFAULT)}
+                            else CHOICE_ORDER_DEFAULT),
+            # §9.256 式で作る自動値。**列の無い古いDBでも動く**。
+            'autoFormula': (str(r[42] or '').strip() if len(r) > 42 else '')}
 
 
 _ITEM_SELECT = ('SELECT [項目ID],[設備名],[群],[項目名],[表示順],[型],[小数桁],[最小値],[最大値],'
@@ -2056,7 +2074,10 @@ _ITEM_SELECT = ('SELECT [項目ID],[設備名],[群],[項目名],[表示順],[�
                 '[単位位置],[文字寄せ],[表示書式],[表示桁数],[役割],[意匠],'
                 '[並べ方],[群幅],[ダミー],[空欄なし],[最小の出どころ],[最大の出どころ],'
                 '[出どころ表示],[自動値],[設備別レイアウト],[記録表示],'
-                '[記録群],[記録順],[選択肢の並び] '
+                '[記録群],[記録順],[選択肢の並び],'
+                # §9.256。**末尾へ足す**——上の並びは`_row_to_item`が位置で
+                # 読んでいるので、途中へ挿すと全部の項目が1つずれる。
+                '[自動計算式] '
                 'FROM [操業データ項目マスタ] ORDER BY [表示順],[項目ID]')
 
 
@@ -2175,7 +2196,7 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                 role=None, look=None, layout=None, group_span=None, report=None,
                 dummy=None, no_blank=None, min_from=None, max_from=None,
                 source_note=None, auto_value=None, record_show=None,
-                choice_order=None):
+                choice_order=None, auto_formula=None):
     ensure_item_table(c)
     name = str(name or '').strip()
     if not name:
@@ -2191,7 +2212,7 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
     if item_id is not None:
         cur.execute('SELECT [組み込みキー],[項目名],[ダミー],[空欄なし],'
                     '[最小の出どころ],[最大の出どころ],[出どころ表示],[自動値],[記録表示],'
-                    '[選択肢の並び] '
+                    '[選択肢の並び],[自動計算式] '
                     'FROM [操業データ項目マスタ] WHERE [項目ID]=?', [int(item_id)])
         hit = cur.fetchone()
         cur_builtin = str((hit or ['', '', 0, 0, '', '', '', '', None, ''])[0] or '').strip()
@@ -2221,6 +2242,10 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
         # §9.248 ⑤。選択肢の並びも同じ約束（送らない呼び出しで消さない）。
         if choice_order is None and hit is not None and len(hit) > 9:
             choice_order = hit[9]
+        # §9.256。式も同じ約束——設定窓の他の段から保存したときに、
+        # 書いた式が黙って消えては困る（§9.223 ②と同じ形）。
+        if auto_formula is None and hit is not None and len(hit) > 10:
+            auto_formula = hit[10]
     if builtin is None:
         builtin = cur_builtin
     builtin = str(builtin or '').strip()
@@ -2271,7 +2296,10 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
             0 if record_show is False else -1,
             # §9.248 ⑤ 選択肢の並び。**列は末尾へ足す**——2本目のUPDATEが
             # `args[1:2]+args[3:]`で位置を数えている。
-            normalize_choice_order(choice_order)]
+            normalize_choice_order(choice_order),
+            # §9.256 式で作る自動値の式。**列は末尾へ足す**——2本目のUPDATEが
+            # `args[1:2]+args[3:]`で位置を数えている。
+            str(auto_formula or '').strip()]
     if item_id is not None:
         cur.execute('UPDATE [操業データ項目マスタ] SET [設備名]=?,[群]=?,[項目名]=?,[表示順]=?,'
                     '[型]=?,[小数桁]=?,[最小値]=?,[最大値]=?,[選択肢名]=?,[単位]=?,[必須]=?,'
@@ -2280,7 +2308,7 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                     '[単位位置]=?,[文字寄せ]=?,[表示書式]=?,[表示桁数]=?,[役割]=?,[意匠]=?,'
                     '[並べ方]=?,[群幅]=?,[ダミー]=?,[空欄なし]=?,'
                     '[最小の出どころ]=?,[最大の出どころ]=?,[出どころ表示]=?,[自動値]=?,'
-                    '[記録表示]=?,[選択肢の並び]=?,'
+                    '[記録表示]=?,[選択肢の並び]=?,[自動計算式]=?,'
                     '[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
                     args + [uid, int(item_id)])
         c.commit()
@@ -2303,7 +2331,7 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                     '[単位位置]=?,[文字寄せ]=?,[表示書式]=?,[表示桁数]=?,[役割]=?,[意匠]=?,'
                     '[並べ方]=?,[群幅]=?,[ダミー]=?,[空欄なし]=?,'
                     '[最小の出どころ]=?,[最大の出どころ]=?,[出どころ表示]=?,[自動値]=?,'
-                    '[記録表示]=?,[選択肢の並び]=?,'
+                    '[記録表示]=?,[選択肢の並び]=?,[自動計算式]=?,'
                     '[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
                     args[1:2] + args[3:] + [uid, hit[0]])
         c.commit()
@@ -2319,9 +2347,9 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                 '[表示条件],[入力方法],[初期値],[手打ち可],[ステップ量],'
                 '[単位位置],[文字寄せ],[表示書式],[表示桁数],[役割],[意匠],'
                 '[並べ方],[群幅],[ダミー],[空欄なし],[最小の出どころ],[最大の出どころ],'
-                '[出どころ表示],[自動値],[記録表示],[選択肢の並び],'
+                '[出どころ表示],[自動値],[記録表示],[選択肢の並び],[自動計算式],'
                 '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
-                'VALUES (' + ','.join(['?'] * 40) + ',Now(),Now())',
+                'VALUES (' + ','.join(['?'] * 41) + ',Now(),Now())',
                 args + [uid, uid])
     c.commit()
     return int(cur.lastrowid)
@@ -2635,6 +2663,16 @@ def form_for_equipment(c, equipment):
     if down:
         out = [r for r in out if r.get('builtin') not in down]
     return {'items': out, 'builtinOff': sorted((known - live) | down),
+            # §9.256。式が参照できる**取得データの呼び名**。**鍵ではなく
+            # 呼び名で書かせる**ので（§CLAUDE 2「思い出させない」）、
+            # 画面は`[ロット番号]`と`lot.lotNo`を結ぶこの表を要る。
+            # **語彙はサーバーが持つ**（§9.163）——画面へ写すと、値を1つ
+            # 足したときに2箇所直すことになる。
+            'autoValues': [{'key': k, 'label': lb, 'group': g, 'unit': u, 'note': n}
+                           for k, lb, g, u, n in AUTO_VALUES],
+            # **式で作る自動値の鍵も答える**——画面へ綴りを書き写さない
+            # （`tests/test_opauto.js`が機械で見張っている）。
+            'autoFormulaKey': AUTO_FORMULA_KEY,
             'limitSources': [{'key': k, 'label': l, 'unit': u} for k, l, u in LIMIT_SOURCES],
             'gridCols': GRID_COLS, 'spanUnit': SPAN_UNIT,
             'widgets': list(WIDGETS),

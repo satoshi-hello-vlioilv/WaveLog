@@ -1114,6 +1114,9 @@ def operation_item_list():
            # 値の**引き方**は測定画面が持つ（出どころは開いているレコード）。
            'autoValues':[{'key':k,'label':l,'group':g,'unit':u,'note':n}
                          for k,l,g,u,n in op.AUTO_VALUES],
+           # §9.256。式で作る自動値の鍵。**画面へ綴りを書き写さない**
+           # （`tests/test_opauto.js`が機械で見張っている）。
+           'autoFormulaKey':op.AUTO_FORMULA_KEY,
            # 並べ方(§9.226 ①)。**効く入力方法もサーバーが答える**——画面へ
            # 写すと、並べても何も起きない設定を選ばせることになる（§4）。
            'layouts':list(op.LAYOUTS),'layoutWidgets':list(op.LAYOUT_WIDGETS),
@@ -1198,6 +1201,9 @@ def _operation_item_save(x):
                          # 書く（設定窓は送らないので、触るたびに人が打つ欄へ
                          # 戻っては困る。`dummy`と同じ約束）。
                          auto_value=x.get('autoValue'),
+                         # §9.256 式で作る自動値。**送っていないときは今の値を
+                         # 残す**（`None`のまま渡す・§9.212 ②）。
+                         auto_formula=x.get('autoFormula'),
                          # §9.242 ④ ③「記録した値」のカードへ出すか。
                          # **送られてきたときだけ**書く（`dummy`と同じ約束）。
                          record_show=x.get('recordShow'),
