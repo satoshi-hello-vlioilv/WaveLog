@@ -27,7 +27,11 @@ let b=null;
   const sr=save.getBoundingClientRect();
   // 入力欄が枠外へ切れていないか(親のスクロール領域の内側に収まっているか)
   const scr=sc.getBoundingClientRect();
+  /* **いま開いている段の中だけを測る**（§9.261）。畳んだ段の欄は
+     `display:none`なので寸法を持たず、全部「見切れ」に数えられてしまう
+     （実際に14件と出た）。見えていない欄は切れようがない。 */
   const clipped=[...sc.querySelectorAll('input,select')].filter(e=>{
+   if(!e.offsetParent)return false;
    const r=e.getBoundingClientRect();
    return r.height<8||r.right>scr.right+1;
   }).length;
@@ -116,23 +120,30 @@ let b=null;
     章:[...document.querySelectorAll('[data-pc-section]')].map(x=>x.dataset.pcSection),
     図:document.querySelectorAll('.pc-map .pc-node').length,
     図の値:[...document.querySelectorAll('[data-pc-map]')].map(x=>x.textContent.trim()).filter(Boolean).length,
-    レール:document.querySelectorAll('.pc-rail [data-pc-jump]').length};
+    /* レールは§9.261で**段（タブ）**になった。 */
+    段:document.querySelectorAll('.mm-tabbar.is-page .mm-tab').length};
  });
  rec('下段の対比表は廃止した（状態は欄が持つ）',cmp.旧表===false,String(cmp.旧表));
  rec('保存値と現在有効な値を欄のすぐ下で見比べられる',
    cmp.比べている>=1&&cmp.欄の下にある>=1,JSON.stringify(cmp));
  rec('この端末のつながりを図で出す',cmp.図>=3&&cmp.図の値>=3,JSON.stringify({図:cmp.図,値:cmp.図の値}));
- rec('章立てとレールがある',cmp.レール===cmp.章.length&&cmp.章.length>=4,cmp.章.join('／'));
+ rec('章立てと段（タブ）がある',cmp.段===cmp.章.length&&cmp.章.length>=4,
+     cmp.章.join('／')+' / '+cmp.段+'段');
  /* 押すとその章へ連れて行く（探させない）。 */
+ /* 章は段になったので、**飛ぶ＝段を切り替えること**（§9.261・§9.266）。
+    図のノードから飛べることを見る（入口を2本作らない）。 */
  const jumped=await page.evaluate(async()=>{
-  const btn=document.querySelector('.pc-rail [data-pc-jump="rne"]');
+  const btn=document.querySelector('.pc-map [data-pc-jump="schedule"]');
   if(!btn)return{無い:true};
   btn.click();
   await new Promise(r=>setTimeout(r,700));
-  const sec=document.getElementById('pcSec-rne'),sc=document.querySelector('.mm-set-scroll');
-  return{上端:Math.round(sec.getBoundingClientRect().top-sc.getBoundingClientRect().top)};
+  const sec=document.getElementById('pcSec-schedule');
+  const panel=sec&&sec.closest('.mm-tabpanel');
+  return{見えている:!!panel&&!panel.hidden,
+    開いている段:[...document.querySelectorAll('.mm-tabpanel.is-page')].filter(x=>!x.hidden).length};
  });
- rec('章のレールを押すとその章へ移る',Math.abs(jumped.上端??999)<80,JSON.stringify(jumped));
+ rec('図から章へ飛ぶとその段が開く',
+     jumped.見えている===true&&jumped.開いている段===1,JSON.stringify(jumped));
  // 一致している項目に「再起動待ち」を出さない(表示文字列で誤検知しない)
  const pend=await page.evaluate(()=>[...document.querySelectorAll('.pc-state.is-pending-restart,.pc-source.is-pending-restart')]
    .map(r=>r.innerText.split('\n')[0]));

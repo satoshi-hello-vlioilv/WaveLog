@@ -76,11 +76,20 @@ let b=null;
      no:st.map(s=>s.querySelector('.ms-no').textContent.trim()),
      title:st.map(s=>s.querySelector('b').textContent.trim()),
      lefts:st.map(s=>Math.round(box(s).left)),
+     tops:st.map(s=>Math.round(box(s).top)),
+     widths:st.map(s=>Math.round(box(s).width)),
      arrowText:ar.map(a=>a.textContent.replace(/\s+/g,' ').trim())};
   });
   rec('置き場は3段',flow.n===3&&flow.arrows===2,JSON.stringify({n:flow.n,arrows:flow.arrows}));
   rec('①②③の順に並ぶ',flow.no.join('')==='①②③',flow.no.join(''));
-  rec('左から右へ流れる',flow.lefts[0]<flow.lefts[1]&&flow.lefts[1]<flow.lefts[2],JSON.stringify(flow.lefts));
+  /* **上から下へ流れる**（§9.261）。以前は横3列だったが、盤が狭いと
+     1段204pxまで痩せて値が「未設定（…」と切れていた（実測1366px窓）。
+     1行1段なら切れない。 */
+  rec('上から下へ流れる',flow.tops[0]<flow.tops[1]&&flow.tops[1]<flow.tops[2],
+      JSON.stringify(flow.tops));
+  rec('段は全幅で左端がそろう（狭い盤でも値が切れない）',
+      new Set(flow.lefts).size===1&&flow.widths.every(w=>w>400),
+      JSON.stringify({lefts:flow.lefts,widths:flow.widths}));
   rec('矢印に「いつ動くか」を字で書く',
       /保存のたび/.test(flow.arrowText[0]||'')&&/分ごと|未設定/.test(flow.arrowText[1]||''),
       JSON.stringify(flow.arrowText));
