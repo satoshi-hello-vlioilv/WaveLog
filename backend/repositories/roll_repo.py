@@ -158,9 +158,15 @@ class RollIndex:
 
     def __init__(self, rows):
         self._exact, self._blank, self._loose = {}, {}, {}
+        # **元の行をそのまま覚えておく**（§9.251）。完全入替は「ファイルの
+        # どの行にも当たらなかった行」が消える範囲なので、**引き当てと同じ
+        # 索引に数えさせる**のが唯一の正しい答え。別に数え直すと、下見が
+        # 「消える3件」と言いながら5件消える、が作れる。
+        self._rows, self._taken = [], set()
         for rid, eq, nm, fc in rows:
             k = roll_key(eq, nm, fc)
             base = k[:2]
+            self._rows.append((rid, eq, nm, fc))
             self._exact.setdefault(k, rid)
             self._loose.setdefault(base, []).append(rid)
             if not k[2]:
@@ -209,6 +215,7 @@ class RollIndex:
         rid, why = self.find(equipment, name, contact_face)
         if rid is None:
             return (rid, why)
+        self._taken.add(rid)
         k = roll_key(equipment, name, contact_face)
         base = k[:2]
         self._exact[k] = rid
@@ -217,6 +224,15 @@ class RollIndex:
                 d[base].remove(rid)
         self._loose.setdefault(base, []).append(rid)
         return (rid, why)
+
+    def rest(self):
+        """**どの行にも当たらなかった行**を `(ロールID, 設備名, ロール名,
+        接触面)` で返す（§9.251）。完全入替で消える候補そのもの。
+
+        `find()` は数えない——数えると、下見のあとに保存で引き直したときに
+        「もう当たっている」ことになって消える範囲が変わる。数えるのは
+        `take()`（＝実際にその行を使った）だけ。"""
+        return [x for x in self._rows if x[0] not in self._taken]
 
 
 def _split_eq(raw):
@@ -517,6 +533,104 @@ def roll_delete(c, roll_id, uid=''):
     return n
 
 
+# ---------------------------------------------------------------------------
+# まとめて消す（§9.251、利用者の指示「ロールマスタの全削除機能
+# （ロールマスタの完全入替機能）を実装してください」）
+# ---------------------------------------------------------------------------
+# ここまでのロールマスタは**行を消すのは1件ずつ**だけだった（取り込みも
+# 「足す・上書きするが消さない」・§9.240）。設備のロールを丸ごと入れ替える
+# ——古い一覧を捨てて、いま持っているExcelの内容そのものにする——という
+# 現場の作業がそれでは何十回の削除になる。
+#
+# **範囲は「すべて」か「設備を1つ」の2つだけ**（§9.239 ⑥「1ロール1設備」）。
+# ロールは設備の子なので、この2つで現場の言う「全削除」は言い切れる。
+# **既定を持たせないこと**——「消す」に既定の範囲があると、押し間違いが
+# そのまま全消しになる（画面はどちらも選ばれていない状態から始める）。
+DELETE_SCOPES = ('all', 'equipment')
+# 下見・確認で名前を挙げる件数。**全部は挙げない**（数百行を並べても読めない）
+# が、**挙げなかった件数は必ず言う**（§CLAUDE 4。「ほか N件」）。
+NAME_SAMPLE = 30
+
+
+def _delete_ids(c, ids):
+    """IDの並びをまとめて消す。**SQLの変数の上限があるので刻んで投げる**
+    （SQLiteの既定は999。数百本のロールで普通に超える）。"""
+    cur = c.cursor()
+    n = 0
+    ids = [x for x in ids]
+    for i in range(0, len(ids), 400):
+        part = ids[i:i + 400]
+        marks = ','.join('?' * len(part))
+        cur.execute(f'DELETE FROM [{TABLE}] WHERE [ロールID] IN ({marks})', part)
+        n += cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+    c.commit()
+    return n
+
+
+def _count_by_equipment(rows):
+    """設備ごとの件数。**出てくる順を保つ**（`equipments()`と同じ並びで
+    画面に出したいので、名前で並べ直さない）。設備が空の行も落とさない
+    ——隠すと直す手立てごと消える（§CLAUDE 4）。"""
+    out, seen = [], {}
+    for x in rows:
+        eq = str(x.get('equipment') or '')
+        if eq not in seen:
+            seen[eq] = len(out)
+            out.append({'equipment': eq, 'count': 0})
+        out[seen[eq]]['count'] += 1
+    return out
+
+
+def delete_plan(c, scope='', equipment=None):
+    """まとめて消す範囲を決めて数える（§9.251）。**消す側もここを通る**
+    ——下見と実際に消えるものを別々に決めさせない（§9.240 の`RollIndex`と
+    同じ理由。「12件消えます」と言って15件消えるのが最悪の壊れ方）。
+
+    `scope='equipment'` の `equipment` は**空文字も意味を持つ**（＝設備の
+    入っていない行。移行し損ねた古い行がそれで、画面では「設備なし」として
+    出ている）。だから「選んでいない」は `None` で表す——空文字を
+    「選んでいない」と読むと、設備なしの行を名指しで消せなくなる。"""
+    ensure_table(c)
+    scope = str(scope or '').strip()
+    if scope not in DELETE_SCOPES:
+        raise ValueError('消す範囲を選んでください（「すべての設備」か、'
+                         '設備を1つ選ぶかのどちらかです）。')
+    rows = roll_rows(c, True)
+    if scope == 'all':
+        hit, label = list(rows), 'すべての設備'
+    else:
+        if equipment is None:
+            raise ValueError('どの設備のロールを消すのかを選んでください。')
+        want = _norm_eq(equipment)
+        hit = [x for x in rows if _norm_eq(x.get('equipment')) == want]
+        label = str(equipment or '').strip() or '設備の入っていない行'
+    names = ['%s／%s%s' % (x.get('equipment') or '（設備なし）', x.get('name') or '',
+                          ('（%s）' % x['contactFace']) if x.get('contactFace') else '')
+             for x in hit[:NAME_SAMPLE]]
+    return {'scope': scope,
+            'equipment': ('' if scope == 'all' else str(equipment or '')),
+            'label': label, 'count': len(hit), 'total': len(rows),
+            'byEquipment': _count_by_equipment(rows),
+            'names': names, 'more': max(0, len(hit) - len(names)),
+            'ids': [x['id'] for x in hit]}
+
+
+def delete_all(c, uid='', scope='', equipment=None, dry_run=True):
+    """範囲を決めてまとめて消す。**既定は下見**（§9.193／§9.240）——
+    取り消せない操作なので、書き込む前に「何件・どの設備が消えるか」を返す。
+
+    **`byEquipment`は範囲に関わらず全体の内訳**を返す（画面はこれで
+    「どの設備を選べるか」を組み立てる。設備の一覧を画面が別に数えると、
+    削除の範囲と選択肢が別々の数え方になる）。"""
+    plan = delete_plan(c, scope, equipment)
+    ids = plan.pop('ids')
+    plan['dryRun'] = bool(dry_run)
+    if dry_run:
+        return plan
+    plan['deleted'] = _delete_ids(c, ids) if ids else 0
+    return plan
+
+
 def equipments(c):
     """ロールが登録されている設備名。画面の束ね方（親）の材料。
 
@@ -726,7 +840,18 @@ def _num_or_none(v):
         return 'NG'
 
 
-def import_rows(c, uid, data, dry_run=True):
+REPLACE_MODES = ('', 'file', 'all')
+# 完全入替で「取り込めない行」があったときの断り文句。**判定も文言も1箇所**
+# ——画面が同じ理由を書き写すと、条件を直したときに片方だけ古くなる。
+REPLACE_BLOCKED = ('取り込めない行があるうちは入れ替えられません。'
+                   '「入れ替える」は**このファイルが全部です**という意味なので、'
+                   '読めない行が1行でもあると、その行にあたるロールを'
+                   '**消してよいのか決められません**。'
+                   '下の理由を直してから、もう一度選んでください'
+                   '（いま取り込むだけなら「足す・上書きする」で進められます）。')
+
+
+def import_rows(c, uid, data, dry_run=True, replace=''):
     """Excelから取り込む（§9.240）。**下見（dry_run）ができる**。
 
     §9.193 のクエリ結合と同じ作法で、**保存する前に何が起きるかを見せる**
@@ -734,8 +859,36 @@ def import_rows(c, uid, data, dry_run=True):
 
     **飛ばした行は必ず理由つきで返すこと**（§CLAUDE 4）。黙って減らすと
     「取り込んだのに増えていない」としか分からない。
+
+    ■ `replace`（§9.251、利用者の指示「ロールマスタの完全入替機能」）
+    §9.240 では「**行の削除はしない**」と決めていた。**その決めは取り消す**
+    ——設備のロールを丸ごと入れ替える（古い一覧を捨てて、いま持っている
+    ファイルの内容そのものにする）現場の作業が、それでは1件ずつの削除に
+    なるため。ただし**既定は今までどおり消さない**（`''`）ので、何も選ばずに
+    取り込んでいる現場の動きは1つも変わらない。
+
+      `''`     足す・上書きする（消さない。**既定**）
+      `'file'` **ファイルに出てくる設備だけ**入れ替える
+      `'all'`  全設備を入れ替える（ファイルに1行も無い設備のロールも消える）
+
+    **範囲をファイルに答えさせる**のが`'file'`の値打ち——1設備ぶんを
+    書き出して直して戻す、といういちばんありそうな往復で、**他の設備の
+    ロールを巻き添えにしない**。
+
+    **消える範囲は`RollIndex.rest()`が答える**（§9.246 ⑤と同じ理由）——
+    「どの行にも当たらなかった行」は引き当てそのものなので、別に数えると
+    下見と食い違う。
+
+    **設備の入っていない行は`'all'`でも消さない**——取り込みは空の設備名を
+    受け付けない（`_canonical_eq()`）ので、その行は**ファイルでは表せない**。
+    表せないものに「ファイルが全部」という主張は届かない。消したいときは
+    `delete_all()`（全削除）で名指しする。**残したことは必ず数えて返す**。
     """
     from ..xlsx_io import read_sheet, XlsxError
+    replace = str(replace or '').strip()
+    if replace not in REPLACE_MODES:
+        raise XlsxError('取り込み方が分かりません（「足す・上書きする」か'
+                        '「入れ替える」のどちらかです）。')
     book = read_sheet(data)
     rows = book['rows']
     if not rows:
@@ -837,11 +990,41 @@ def import_rows(c, uid, data, dry_run=True):
             add += 1
         plans.append(vals)
     result = {'total': len(rows) - 1, 'add': add, 'update': update,
-              'skipped': skipped, 'sheet': book['sheet'], 'dryRun': bool(dry_run)}
+              'skipped': skipped, 'sheet': book['sheet'], 'dryRun': bool(dry_run),
+              'replace': replace}
+    # ---- 完全入替で消える範囲（§9.251） ----
+    remove, kept_blank = [], 0
+    if replace:
+        # **索引に残っている行＝ファイルのどの行にも当たらなかった行**。
+        # 引き当てと同じ索引が答えるので、下見と保存が食い違わない。
+        rest = index.rest()
+        if replace == 'file':
+            eqs = {_norm_eq(v['equipment']) for v in plans}
+            remove = [x for x in rest if _norm_eq(x[1]) in eqs]
+        else:
+            for x in rest:
+                if _norm_eq(x[1]):
+                    remove.append(x)
+                else:
+                    kept_blank += 1       # 設備の入っていない行は残す（上の説明）
+        result['remove'] = [{'equipment': x[1] or '', 'name': x[2] or '',
+                             'contactFace': x[3] or ''} for x in remove[:NAME_SAMPLE]]
+        result['removeCount'] = len(remove)
+        result['removeMore'] = max(0, len(remove) - len(result['remove']))
+        result['keptNoEquipment'] = kept_blank
+        if skipped:
+            # **読めない行があるうちは入れ替えない**（§CLAUDE 4）。進めると、
+            # その行にあたるロールが「ファイルに無い」として消える——利用者は
+            # 打ち間違えただけなのに、直そうとした行が先に消えている。
+            result['blocked'] = REPLACE_BLOCKED
     if dry_run:
         # **下見では3件だけ見せる**（§9.193。1件では「たまたま」と区別が付かない）
         result['sample'] = plans[:3]
         return result
+    if result.get('blocked'):
+        # 下見で断った理由は保存でも同じ。**画面が押せてしまった場合の最後の砦**
+        # （押せなくするのは画面の仕事だが、口が通してしまうと守るものが無い）。
+        raise XlsxError(result['blocked'])
     saved = 0
     for v in plans:
         try:
@@ -849,6 +1032,9 @@ def import_rows(c, uid, data, dry_run=True):
             saved += 1
         except ValueError as e:
             skipped.append({'row': '-', 'name': v.get('name'), 'why': str(e)})
+    # **消すのは書いたあと**——途中で落ちたときに「余分な行が残る」ほうが
+    # 「要る行が消えている」より直しやすい（消えた行はファイルからしか戻せない）。
+    result['removed'] = _delete_ids(c, [x[0] for x in remove]) if remove else 0
     result['saved'] = saved
     result['skipped'] = skipped
     return result

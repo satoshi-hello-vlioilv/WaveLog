@@ -407,13 +407,30 @@ def data_source_master_list():
 
 _KEY_RE=re.compile(r'^[A-Za-z0-9_]{1,40}$')
 
-def _read_mode_of(x):
+def _read_mode_of(x,current=''):
  """画面から来た読み方を正規化する(§9.168)。'share'/'rne' 以外は空欄
     （＝全体設定に従う）。**'direct' は保存しない**——直接指定は
     パス設定マスタの個別上書き(<キー>_path)の有無そのものなので、
-    2箇所に持つと必ず食い違う。"""
+    2箇所に持つと必ず食い違う。
+
+    **「いま効いている値」を保存値に混ぜないこと**（§9.250 ⑩）。以前は
+    `x.get('mode') or x.get('readMode') or ''`と書いており、`mode`（保存値）が
+    **空欄＝全体設定に従う**のときに`readMode`（`source_read_mode()`が解決した
+    **効いている値**）へ落ちていた。一覧はこの2つを両方返すので、画面が行を
+    そのまま送り返すだけで**空欄が`share`に焼き付く**——名称を1文字直しただけで
+    「共有を直接読む」に変わり、抽出ジョブからそのソースが消える（実機で
+    `test_datasource`が「抽出ジョブも同じマスタから作られる」で落ちた）。
+    §9.163の「保存値と効いている値を混ぜない」と同じ罠。
+
+    **送っていないときは今の値を残す**（§9.212 ②）——`mode`を持たない古い
+    呼び出しの保存で、設定してある読み方を巻き添えで消さない。"""
  from ..db_access import _read_mode_value
- return _read_mode_value(x.get('mode') or x.get('readMode') or '')
+ if 'mode' in x:return _read_mode_value(x.get('mode') or '')
+ if 'readMode' in x and str(x.get('readMode') or '') in ('share','rne'):
+  # `readMode`しか持たない画面は、明に選んだ2つだけを保存値として受ける
+  # （`direct`と空欄は「解決の結果」なので保存しない）。
+  return _read_mode_value(x.get('readMode'))
+ return _read_mode_value(current)
 
 def _save_source_override(key,value,uid):
  """読み込み先の個別上書き。**データソースの行から直接触れる**ようにした
@@ -480,15 +497,18 @@ def data_source_master_save():
   path=DBS['MASTER']['path']
   with connect(path,False) as c:
    ensure_data_source_table(c);cur=c.cursor()
-   cur.execute('SELECT [ソースID] FROM [データソースマスタ] WHERE [キー]=?',[key])
+   cur.execute('SELECT [ソースID],[読み方] FROM [データソースマスタ] WHERE [キー]=?',[key])
    row=cur.fetchone()
    err=_purpose_conflict(cur,purpose,exclude_id=row[0] if row else None)
    if err:return jsonify(error=err),400
+   # **送っていない読み方は今の値を残す**（§9.250 ⑩・§9.212 ②）。
+   now_mode=str(row[1] or '') if row else ''
    vals=[label,str(x.get('rne') or '').strip(),str(x.get('table') or '').strip() or '仕掛',
          str(x.get('output') or '').strip(),str(x.get('share') or '').strip(),
          str(x.get('preferred') or '').strip(),
          int(x.get('order') or 0),
-         0 if str(x.get('enabled') or '').strip()=='無効' else -1,purpose,_read_mode_of(x),
+         0 if str(x.get('enabled') or '').strip()=='無効' else -1,purpose,
+         _read_mode_of(x,now_mode),
          _listed_of(x,purpose),uid]
    if row:
     cur.execute('UPDATE [データソースマスタ] SET [表示名]=?,[RNEファイル]=?,[抽出テーブル]=?,'
@@ -535,8 +555,11 @@ def data_source_master_update():
   path=DBS['MASTER']['path']
   with connect(path,False) as c:
    ensure_data_source_table(c);cur=c.cursor()
-   cur.execute('SELECT [ソースID] FROM [データソースマスタ] WHERE [ソースID]=?',[sid])
-   if not cur.fetchone():return jsonify(error='指定のデータソースが見つかりません。'),400
+   cur.execute('SELECT [ソースID],[読み方] FROM [データソースマスタ] WHERE [ソースID]=?',[sid])
+   cur_row=cur.fetchone()
+   if not cur_row:return jsonify(error='指定のデータソースが見つかりません。'),400
+   # **送っていない読み方は今の値を残す**（§9.250 ⑩・§9.212 ②）。
+   now_mode=str(cur_row[1] or '')
    # 付け替え先のキーが別の行で使われていないか。キーは一覧を指す識別子で、
    # 重なると「どちらの設定で読むのか」が決まらない。
    cur.execute('SELECT [ソースID] FROM [データソースマスタ] WHERE [キー]=? AND [ソースID]<>?',[key,sid])
@@ -553,7 +576,7 @@ def data_source_master_update():
                 str(x.get('preferred') or '').strip(),
                 int(x.get('order') or 0),
                 0 if str(x.get('enabled') or '').strip()=='無効' else -1,
-                purpose,_read_mode_of(x),_listed_of(x,purpose),uid,sid])
+                purpose,_read_mode_of(x,now_mode),_listed_of(x,purpose),uid,sid])
    c.commit()
   if 'overridePath' in x:_save_source_override(key,x.get('overridePath'),uid)
   return jsonify(ok=True,id=sid,key=key,registered=False,updated_by=uid,

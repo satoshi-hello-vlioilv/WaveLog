@@ -123,6 +123,47 @@ rec('同じキーで保存すると更新になる（増えない）',
     and (next((x for x in again['items'] if x['key'] == KEY), {}) or {}).get('label') == '検証ソース2',
     f"{before_n}→{len(again.get('items', []))}")
 
+# ---- 3a2) 一覧の行をそのまま送り返しても「読み方」が変わらない（§9.250 ⑩） ----
+# 一覧は**保存値（`mode`）**と**いま効いている値（`readMode`）**を両方返す。
+# 保存側が `x['mode'] or x['readMode']` と書いていたため、**空欄＝全体設定に
+# 従う**の行を画面がそのまま送り返すだけで、効いている値（`share`）が保存値へ
+# 焼き付いていた——名称を1文字直しただけで「共有を直接読む」に変わり、
+# 抽出ジョブからそのソースが消える（実際に上の「抽出ジョブも同じマスタから
+# 作られる」がそれで落ちた）。§9.163「保存値と効いている値を混ぜない」。
+#
+# **空欄の行で確かめること**——最初から`share`/`rne`が入っている行で往復させても
+# 変わらないので、この網は素通りする。
+row = next((x for x in sources().get('items', []) if x['key'] == KEY), None)
+if row is not None:
+    client.post('/api/data-source-master/update',
+                json={**row, 'id': row['id'], 'mode': '', 'user_id': 'test'})
+    base = next((x for x in sources()['items'] if x['key'] == KEY), {})
+    rec('前提: 読み方が空欄（全体設定に従う）の行を用意できた',
+        str(base.get('mode') or '') == '', repr(base.get('mode')))
+    rec('前提: 一覧は「いま効いている値」も返す（混ざる材料が揃っている）',
+        str(base.get('readMode') or '') != '', repr(base.get('readMode')))
+    # 行をそのまま送り返す（画面の「編集して保存」と同じ形）
+    client.post('/api/data-source-master/update',
+                json={**base, 'id': base['id'], 'user_id': 'test'})
+    same = next((x for x in sources()['items'] if x['key'] == KEY), {})
+    rec('そのまま送り返しても読み方は空欄のまま（効いている値が焼き付かない）',
+        str(same.get('mode') or '') == '', repr(same.get('mode')))
+    # 明に選んだときはちゃんと保存される
+    client.post('/api/data-source-master/update',
+                json={**base, 'id': base['id'], 'mode': 'rne', 'user_id': 'test'})
+    picked = next((x for x in sources()['items'] if x['key'] == KEY), {})
+    rec('明に選んだ読み方は保存される', str(picked.get('mode') or '') == 'rne',
+        repr(picked.get('mode')))
+    # 送っていないときは今の値を残す（§9.212 ②）
+    client.post('/api/data-source-master/update',
+                json={'id': base['id'], 'key': KEY, 'label': base.get('label') or KEY,
+                      'user_id': 'test'})
+    kept = next((x for x in sources()['items'] if x['key'] == KEY), {})
+    rec('読み方を送っていない保存では今の値を残す', str(kept.get('mode') or '') == 'rne',
+        repr(kept.get('mode')))
+    client.post('/api/data-source-master/update',
+                json={**kept, 'id': base['id'], 'mode': '', 'user_id': 'test'})
+
 # ---- 3b) 編集（キーの付け替え、§9.82） ----
 # 登録側はキーで既存を探すので、キーを書き換えると別行の新規登録になる。
 # ID指定の /update だけが付け替えられる。マスタ管理画面の「編集」は元から

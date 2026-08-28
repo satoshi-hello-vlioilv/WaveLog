@@ -1626,16 +1626,48 @@ def roll_master_import():
  except Exception:
   return jsonify(error='ファイルを読み取れませんでした（送信の途中で壊れた可能性があります）。'),400
  apply=bool(x.get('apply'))
+ # **取り込み方は口が受けるだけ**（§9.251）。何が消えるかを決めるのは
+ # `roll_repo.import_rows()`の1箇所で、ここは綴りを運ぶだけにする。
+ replace=str(x.get('replace') or '').strip()
  try:
   uid=request_user_id(x)
-  r=_op_read(lambda c:rr.import_rows(c,uid,data,dry_run=not apply))
-  msg=(f"{r.get('saved',0)}件を取り込みました（追加{r['add']}・上書き{r['update']}）。"
-       if apply else
-       f"取り込むと 追加{r['add']}件・上書き{r['update']}件 になります。")
+  r=_op_read(lambda c:rr.import_rows(c,uid,data,dry_run=not apply,replace=replace))
+  n_rm=int(r.get('removeCount') or 0)
+  if apply:
+   msg=f"{r.get('saved',0)}件を取り込みました（追加{r['add']}・上書き{r['update']}"
+   msg+=(f"・削除{r.get('removed',0)}）。" if replace else '）。')
+  else:
+   msg=f"取り込むと 追加{r['add']}件・上書き{r['update']}件"
+   msg+=(f"・削除{n_rm}件 になります。" if replace else ' になります。')
   if r['skipped']:msg+=f" 取り込めない行が{len(r['skipped'])}件あります。"
   return jsonify(ok=True,message=msg,**r)
  except XlsxError as e:return jsonify(error=str(e)),400
  except Exception as e:return jsonify(error=f'ロールマスタの取り込みに失敗しました: {e}'),500
+
+@bp.post('/api/roll-master/delete-all')
+def roll_master_delete_all():
+ """まとめて消す（§9.251、利用者の指示「ロールマスタの全削除機能
+    （ロールマスタの完全入替機能）」）。**既定は下見**——`apply`を付けた
+    ときだけ消す。取り消せない操作なので、何件・どの設備が消えるかを
+    書き込む前に返す（§9.193／§9.240と同じ作法）。
+
+    **範囲の`equipment`は「送ってきたかどうか」で見る**——空文字は
+    「設備の入っていない行」という意味を持つので、`or ''`で潰すと
+    その行を名指しで消せなくなる。"""
+ from ..repositories import roll_repo as rr
+ x=request.get_json(force=True) or {}
+ scope=str(x.get('scope') or '').strip()
+ eq=x.get('equipment') if 'equipment' in x else None
+ if eq is not None:eq=str(eq)
+ apply=bool(x.get('apply'))
+ try:
+  uid=request_user_id(x)
+  r=_op_read(lambda c:rr.delete_all(c,uid,scope=scope,equipment=eq,dry_run=not apply))
+  msg=(f"{r.get('deleted',0)}件を削除しました（{r['label']}）。" if apply
+       else f"{r['label']}のロール {r['count']}件を削除します（全{r['total']}件）。")
+  return jsonify(ok=True,message=msg,**r)
+ except ValueError as e:return jsonify(error=str(e)),400
+ except Exception as e:return jsonify(error=f'ロールマスタの一括削除に失敗しました: {e}'),500
 
 @bp.post('/api/roll-master/delete')
 def roll_master_delete():

@@ -1892,6 +1892,27 @@
 .mm-xio-skip ul{margin:var(--space-1) 0 0;padding-left:var(--space-4);color:var(--ink-3)}
 .mm-xio-skip li{margin:2px 0;line-height:1.5}
 .mm-xio-skip li b{color:var(--ink-2)}
+/* ---------- 全削除・完全入替（§9.251、利用者の指示） ----------
+   **消える件数は色だけで伝えない**（§3）ので、数字と理由は必ず文字で出す。
+   ここで足す色は「気づかせる」ためだけの補助。 */
+.mm-xio-mode{flex:0 0 auto;display:flex;align-items:center;gap:var(--space-1);
+  color:var(--ink-3);font-size:var(--fs-micro)}
+.mm-xio-mode select{max-width:var(--w-xl)}
+.mm-xio-num.is-warn{background:var(--warn-bg);color:var(--warn-fg)}
+.mm-xio-kept{margin:var(--space-1) 0 0;color:var(--ink-3);font-size:var(--fs-micro);line-height:1.5}
+.mm-xio-done.is-bad{color:var(--danger)}
+.mm-xio-skip.is-warn summary{color:var(--warn-fg)}
+/* **取り消せない操作は主要動線から離す**（§CLAUDE 5）——帯のいちばん右へ。 */
+.mm-bulk-del{margin-left:auto}
+.mm-bulk-scopes{display:flex;flex-direction:column;gap:2px;margin:var(--space-2) 0}
+.mm-bulk-pick{display:flex;align-items:baseline;gap:var(--gap-inline);
+  padding:var(--pad-chip);border:1px solid var(--line-soft);border-radius:var(--radius-xs);
+  background:var(--surface);font-size:var(--fs-sm);cursor:pointer}
+.mm-bulk-pick:hover{border-color:var(--line-mid);background:var(--surface-2)}
+.mm-bulk-pick em{margin-left:auto;font-style:normal;font-weight:800;color:var(--danger)}
+.mm-bulk-pick.is-all{border-color:var(--danger-border);background:var(--danger-bg)}
+.mm-bulk-need{color:var(--ink-3);font-size:var(--fs-micro)}
+.mm-bulk-tip{color:var(--ink-3);font-size:var(--fs-micro);line-height:1.5}
 
 /* ==========================================================
    「記録した値」の配置（§9.243、利用者の指示）
