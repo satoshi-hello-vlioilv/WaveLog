@@ -59,7 +59,7 @@ function openLotDsp(lotNo,castingNo,tab){
 }
 document.addEventListener('click',e=>{
  const link=e.target.closest('.lot-dsp-link');if(!link)return;
- openLotDsp(S.measure?.basic?.lotNo,S.measure?.basic?.castingNo,localStorage.getItem('LotDspLastTabV1')||'1');
+ openLotDsp(S.measure?.basic?.lotNo,S.measure?.basic?.castingNo,WL.lotDspTab.get());
 });
 /* 段階的開示(.disclosure)の共通トグル。品質データ分析(qa-acc)で確立した
    見た目を条割パネル・母材パネル等でも同じ言語で使うための汎用部品
@@ -69,14 +69,25 @@ document.addEventListener('click',e=>{
  const head=e.target.closest('.disclosure-head');if(!head)return;
  head.closest('.disclosure')?.classList.toggle('open');
 });
-/* タブ番号は測定画面には出さず、アプリ設定(使用設備の設定)モーダルの
-   内部設定として切り替える。ロット№欄の見た目・サイズは常に元のまま。
-   既定値はTab1(実機URLの例に合わせる)。 */
-(function(){
- const sel=document.getElementById('lotDspTabSetting');if(!sel)return;
- sel.value=localStorage.getItem('LotDspLastTabV1')||'1';
- sel.onchange=()=>localStorage.setItem('LotDspLastTabV1',sel.value);
-})();
+/* タブ番号は測定画面には出さず、使用設備の設定モーダルの中で切り替える。
+   ロット№欄の見た目・サイズは常に元のまま。既定値はTab1(実機URLの例に合わせる)。
+
+   **ここで`getElementById`しないこと**（§9.257 ②）。以前は読み込み時に
+   1度だけ`#lotDspTabSetting`を探すIIFEだったが、モーダルの中身は
+   `records-store.js`が**あとから**組み立てる（同じ作りを2つ持たないため・
+   §9.163）ので、その時点では欄がまだ無い＝**選んでも保存されない**。
+   欄を作った側から`WL.lotDspTab.bind()`を呼ぶ。 */
+window.WL=window.WL||{};
+WL.lotDspTab={
+ KEY:'LotDspLastTabV1',
+ get(){return localStorage.getItem(WL.lotDspTab.KEY)||'1'},
+ /* **選んだらすぐ効く**（保存ボタンを待たない）。窓の中でそう名乗っている。 */
+ bind(sel){
+  if(!sel){console.error('LotDspのタブ: 欄が見つかりません');return}
+  sel.value=WL.lotDspTab.get();
+  sel.onchange=()=>localStorage.setItem(WL.lotDspTab.KEY,sel.value);
+ }
+};
 function setState(x){$('#localState').textContent=x}
 /* 保存されていない変更があるかどうかを追跡する。×ボタン/背景クリックで
    閉じようとした際、破棄してよいか確認するために使う。renderMeasurement()

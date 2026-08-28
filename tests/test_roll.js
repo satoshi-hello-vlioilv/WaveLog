@@ -188,29 +188,66 @@ const made=[];
      `keep()`は`prev`が読めているときだけ効く。以前は**IDを渡したときしか**
      `prev`を読んでおらず、自然キー（設備名＋ロール名）で当てる経路
      ——登録APIの再送とExcelの取り込み——では**送っていない列がNULLで
-     上書き**されていた。`/update`（IDあり）だけを見る網では素通りする。 */
+     上書き**されていた。`/update`（IDあり）だけを見る網では素通りする。
+
+     **鍵の列は変えずに送ること**（§9.257 ③）——径は鍵なので、変えて送れば
+     別のロールとして増えるのが正しい（それは下ですぐ確かめる）。 */
   {
    const k=await mk({equipment:EQ,name:TAG+'KEEP',diaMax:150,entryPos:'出側',material:'鋼'});
-   /* **IDを渡さず**同じ (設備名, ロール名) で径だけ送る */
-   await post('/api/roll-master',{user_id:'test',equipment:EQ,name:TAG+'KEEP',diaMax:160});
-   const now=((await getj('/api/roll-master')).items||[]).find(x=>x.id===k.id);
+   /* **IDを渡さず**同じ鍵（設備・名前・接触面・径・備考）で硬度だけ送る */
+   await post('/api/roll-master',{user_id:'test',equipment:EQ,name:TAG+'KEEP',
+                                  diaMax:150,hardness:'Hs70'});
+   const all1=((await getj('/api/roll-master')).items||[]).filter(x=>x.name===TAG+'KEEP');
+   const now=all1.find(x=>x.id===k.id);
    rec('IDを渡さない登録でも同じ行を更新する（増えない）',
-       !!now&&now.diaMax===160,JSON.stringify(now));
+       all1.length===1&&!!now&&now.hardness==='Hs70',JSON.stringify(all1));
    rec('IDを渡さない登録でも送っていない項目は消えない',
-       !!now&&now.entryPos==='出側'&&now.material==='鋼',
-       JSON.stringify(now&&{p:now.entryPos,m:now.material}));
+       !!now&&now.entryPos==='出側'&&now.material==='鋼'&&now.diaMax===150,
+       JSON.stringify(now&&{p:now.entryPos,m:now.material,d:now.diaMax}));
+   /* ---- 径・備考は「区別する情報」（§9.257 ③、利用者の指示） ----
+      「設備＆ロール名＆接触面だけでなく、ロール径と備考の内容も区別する
+       情報に加えてください」
+      同じ設備・同じ名前・同じ接触面でも、**径が違えば別のロール**として
+      置ける。直す前はここで1本目を上書きしていた（現場に在る2本目を
+      登録できなかった）。 */
+   const k2=await post('/api/roll-master',{user_id:'test',equipment:EQ,
+                                           name:TAG+'KEEP',diaMax:160});
+   const j2=await k2.json().catch(()=>({}));if(j2.id)made.push(j2.id);
+   const all2=((await getj('/api/roll-master')).items||[]).filter(x=>x.name===TAG+'KEEP');
+   rec('径が違えば同じ名前でも別のロールとして置ける（§9.257 ③）',
+       all2.length===2&&all2.map(x=>x.diaMax).sort((a,b)=>a-b).join()==='150,160',
+       JSON.stringify(all2.map(x=>x.diaMax)));
+   /* 備考も同じ（5つとも同じでなければ別の行）。 */
+   const k3=await post('/api/roll-master',{user_id:'test',equipment:EQ,
+                                           name:TAG+'KEEP',diaMax:150,note:'予備'});
+   const j3=await k3.json().catch(()=>({}));if(j3.id)made.push(j3.id);
+   const all3=((await getj('/api/roll-master')).items||[]).filter(x=>x.name===TAG+'KEEP');
+   rec('備考が違えば同じ名前・同じ径でも別のロールとして置ける（§9.257 ③）',
+       all3.length===3&&all3.filter(x=>x.note==='予備').length===1,
+       JSON.stringify(all3.map(x=>({d:x.diaMax,n:x.note}))));
+   /* **6つとも同じ2本目は今までどおり断る**（どちらの径で判定するか決まらない）。 */
+   const k4=await post('/api/roll-master',{user_id:'test',equipment:EQ,
+                                           name:TAG+'KEEP',diaMax:160,hardness:'Hs80'});
+   const j4=await k4.json().catch(()=>({}));
+   const all4=((await getj('/api/roll-master')).items||[]).filter(x=>x.name===TAG+'KEEP');
+   rec('鍵が6つとも同じなら今までどおり同じ行を上書きする（増えない）',
+       k4.status===200&&all4.length===3
+       &&all4.some(x=>x.diaMax===160&&x.hardness==='Hs80'),
+       JSON.stringify({code:k4.status,rows:all4.length,err:j4.error}));
   }
 
   /* ---- 3d) 編集で自然キーが衝突したら断る（§9.240 の追補） ----
      既存の行の設備や名前を**既に在る組み合わせへ書き換えられた**——
      画面からは保存できたように見えて、次に開くと同じ設備に同名が2本並ぶ。 */
   {
+   /* **鍵は6つ**（§9.257 ③）なので、断らせるには径までそろえる
+      ——径が違えば別のロールとして置けるのが新しい約束（上の 3c）。 */
    const x1=await mk({equipment:EQ,name:TAG+'DUP1',diaMax:120});
-   const x2=await mk({equipment:EQ,name:TAG+'DUP2',diaMax:130});
+   const x2=await mk({equipment:EQ,name:TAG+'DUP2',diaMax:120});
    const r=await post('/api/roll-master/update',
-     {user_id:'test',id:x2.id,name:TAG+'DUP1'});
+     {user_id:'test',id:x2.id,name:TAG+'DUP1',diaMax:120});
    const j=await r.json().catch(()=>({}));
-   rec('同じ設備に同名へ改名しようとしたら断る',
+   rec('同じ設備に同名（かつ鍵が同じ）へ改名しようとしたら断る',
        r.status===400&&/登録済み/.test(String(j.error||'')),JSON.stringify(j));
    const still=((await getj('/api/roll-master')).items||[])
      .filter(y=>y.equipment===EQ&&y.name===TAG+'DUP1');

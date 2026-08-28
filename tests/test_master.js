@@ -179,8 +179,16 @@ const made={perm:[],cat:[]};
      少項目マスタの代表は**設備停止分類**（1項目）。スプール種別マスタは
      §9.221 ③で操業データ選択肢マスタへ統合して撤去した。 */
   await clickTab('設備停止分類');
+  /* **一覧が描き終わるまで待つ**（§9.102「待ちは時間でなく条件で置く」）。
+     上のフォームは同期に組み上がるが、一覧はサーバーから引いたあとなので、
+     フォームだけを待つと**まだ空の`#masterMaintList`**を測ることがある
+     ——実測で3回に1回、見出しが0個のまま次の行を読んでいた（詳細が空欄の
+     FAILとして出るので、原因が読み取れない形で落ちる）。 */
   await page.waitForFunction(
-    ()=>document.querySelectorAll('#masterMaintForm [data-field]').length>0,null,{timeout:15000});
+    ()=>document.querySelectorAll('#masterMaintForm [data-field]').length>0
+      &&[...document.querySelectorAll('.mm-row.head>span')]
+          .some(s=>s.textContent.trim()==='分類名'),
+    null,{timeout:15000});
   const inline=await page.evaluate(()=>({
     compact:document.querySelector('#masterMaintForm')?.classList.contains('mm-form-compact'),
     fieldCount:document.querySelectorAll('#masterMaintForm [data-field]').length,

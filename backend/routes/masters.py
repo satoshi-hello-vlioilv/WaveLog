@@ -1574,6 +1574,11 @@ def roll_master_list():
            'entryPositions':list(rr.ENTRY_POSITIONS),
            'contactFaces':list(rr.CONTACT_FACES),
            'driveKinds':list(rr.DRIVE_KINDS),
+           # **1本を見分ける列はサーバーが答える**（§9.163／§9.257 ③）。
+           # 画面へ書き写すと、鍵を1つ足したときに2箇所直すことになる
+           # ——実際にこの一覧は (設備,名前) → +接触面 → +径・備考 と
+           # 2度広がっている。
+           'keyLabels':list(rr.KEY_LABELS),
            'equipments':rr.equipments(c)}
   return jsonify(ok=True,equipment=eq,**_op_read(fn))
  except Exception as e:return jsonify(error=f'ロールマスタの読込に失敗しました: {e}'),500

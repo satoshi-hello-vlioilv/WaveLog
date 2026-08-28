@@ -1266,7 +1266,7 @@ function renderRecordListRows(){
   const reportBtn=row.querySelector('.report');
   if(reportBtn)reportBtn.onclick=e=>{e.stopPropagation();if(typeof openReportForRecord==='function')openReportForRecord(x.id)};
   const recLotBtn=row.querySelector('.grid-lot-link');
-  if(recLotBtn)recLotBtn.onclick=e=>{e.preventDefault();e.stopPropagation();openLotDsp(x.basic?.lotNo,x.basic?.castingNo,localStorage.getItem('LotDspLastTabV1')||'1')};
+  if(recLotBtn)recLotBtn.onclick=e=>{e.preventDefault();e.stopPropagation();openLotDsp(x.basic?.lotNo,x.basic?.castingNo,WL.lotDspTab.get())};
   // ダブルクリックは編集再開ではなく帳票プレビューへの遷移とする(編集は「続きから再開/内容を開く」ボタンから明示的に行う)。
   row.ondblclick=e=>{if(!e.target.closest('.rec-more')&&!e.target.closest('.resume')&&!e.target.closest('.report')&&!e.target.closest('.grid-lot-link')&&typeof openReportForRecord==='function')openReportForRecord(x.id)};
   row.setAttribute('role','button');
@@ -1473,27 +1473,111 @@ WL.recordColumns={open:openRecordColumnPanel,close:closeRecordColumnPanel,bind:b
 /* ---- 使用設備の登録・設備マスタ ---- */
 let pendingMeasurementRow=null;
 function updateRegisteredEquipmentBadge(){const badge=$('#registeredEquipmentBadge'),equipment=currentConfiguredEquipment();if(!badge)return;const label=badge.querySelector('.equip-badge-text')||badge;label.textContent=equipment?`使用設備: ${equipment}`:'使用設備: 未登録';badge.classList.toggle('unregistered',!equipment);badge.title=equipment?'クリックして使用設備を変更できます':'測定開始前に使用設備の登録が必要です';badge.onclick=openAppSettings}
-function closeAppSettings(){$('#appSettingsModal').hidden=true}
-function bindAppSettingsControls(){
- const openButton=$('#openAppSettings'),closeButton=$('#closeAppSettings'),cancelButton=$('#cancelAppSettings'),saveButton=$('#saveAppSettings');
- if(openButton)openButton.onclick=openAppSettings;
- if(closeButton)closeButton.onclick=closeAppSettings;
- if(cancelButton)cancelButton.onclick=closeAppSettings;
- updateRegisteredEquipmentBadge();
- const save=$('#saveAppSettings');if(save)save.onclick=async()=>{
-  const input=$('#configuredEquipment'),status=$('#equipmentSettingStatus');if(!input||!status)return;const value=input.value.trim();
-  if(!value){status.textContent='設備名を入力してください。';status.className='setting-status warn';return}
-  localStorage.setItem(APP_EQUIPMENT_KEY,value);status.textContent=`登録しました: ${value}`;status.className='setting-status ok';updateRegisteredEquipmentBadge();updateCourseGuard();
-  const row=pendingMeasurementRow;pendingMeasurementRow=null;setTimeout(closeAppSettings,250);if(row){await nextPaint();openMeasurement(row).catch(error=>alert('測定画面を開けません: '+error.message))}
- };
+/* ---------- 使用設備の設定（§9.257 ②、利用者の指示） ----------
+   「アプリ使用設備の設定のモーダルが使いづらいのでわかりやすく使いやすく
+    再構築してください。」
+
+   直す前の窓は、決めることが2つ（この端末で使う設備／LotDspで開くタブ）
+   なのに見出しでそう言わず、**同じ設備名を3箇所**に出していた:
+     ・選択欄そのもの（`LS4`）
+     ・`#equipmentMasterHelp` … 「設備マスタから選択: LS4」
+     ・`#equipmentSettingStatus` … 「現在の設定: LS4」
+   同じ値が枠付きで3つ並ぶと、読む側は「違うものかもしれない」と見比べる
+   ことになる（§CLAUDE 画面基準 8／§9.129）。しかも下の2つは読み取り専用の
+   値に入力欄風の枠が付いており（基準10）、「＋ 設備マスタへ新規登録」を
+   選ぶと欄が生えて窓の高さが動いた（§9.227 ②「選んでも1pxも動かない」）。
+   さらに「設定を保存」の隣にある②は**選んだ瞬間に効く**ので、ボタンが
+   何を保存するのか嘘をついていた（§CLAUDE 2）。
+
+   組み直しの方針:
+    1. **決める順に番号を振って節に分ける**（§14）——①使う設備 ②開くタブ。
+       面積は頻度×重要度で配る（基準1）ので①が主役、②は小さく。
+    2. **いまの値は1箇所だけ**——①の見出しの右のチップ。助けの行は
+       「値」ではなく**次にすること**を言う（基準2）。
+    3. **効くタイミングを書く**（§CLAUDE 6）——①は保存ボタン、②は
+       「選ぶとすぐ反映」。ボタンの字も`使用設備を保存`と名乗る。
+    4. **何に効くのかを書く**（基準6）——測定の開始・記録の絞り込み・
+       ロール／帳票の当たり先まで、この設備で決まる。
+    5. **選んでも高さが動かない**（§9.227 ②）——新規登録の欄は
+       `visibility`で伏せ、場所は常に空けておく。
+    6. 決めるボタンは**本文の外**（`footer`）——本文だけがスクロールするので、
+       中身が増えてもボタンに手が届く（§9.255 ④／§9.222 ⑤）。
+
+   **中身を作るのはこの1箇所**（§9.163）。以前は`templates/index.html`と
+   `ensureEquipmentSettingsModal()`が**別々の作り**を持っており、後者は
+   `<select>`ではなく`<input>`・`#newEquipmentEntry`も無い形だったので、
+   そちらが動いた瞬間に`fillEquipmentSelect()`が落ちた（一度も動いて
+   いなかったので誰も気づけない）。 */
+const LOTDSP_TABS=[0,1,2,3,4,5,6,7];
+function equipmentSettingsHtml(){
+ return `<div class="settings-dialog eqset" role="dialog" aria-modal="true" aria-labelledby="eqsetTitle">
+  <header>
+   <div><h2 id="eqsetTitle">使用設備の設定</h2>
+    <small>この端末で使う設備と、ロット№の開き方</small></div>
+   <button id="closeAppSettings" type="button" aria-label="閉じる">×</button>
+  </header>
+  <div class="settings-body">
+   <section class="eqset-sec" aria-labelledby="eqsetH1">
+    <h3 id="eqsetH1"><span class="eqset-no">①</span>この端末で使う設備
+     <b class="eqset-now" id="equipmentSettingStatus">未登録</b></h3>
+    <p class="eqset-lead">この設備で<b>測定を開始</b>し、データ一覧・実績データも<b>この設備のぶんだけ</b>出します。仕掛データの「設計_設備ｺｰｽ」に入っていないロットは、測定画面の上で知らせます。</p>
+    <div class="eqset-pick">
+     <label class="eqset-field"><span>設備名</span>
+      <select id="configuredEquipment"><option value="">設備マスタを読み込んでいます</option></select></label>
+     <div class="eqset-new" id="newEquipmentEntry">
+      <label class="eqset-field"><span>新しく登録する設備名</span>
+       <input autocomplete="off" id="newEquipmentName" placeholder="例: LS4" type="text"/></label>
+     </div>
+    </div>
+    <p class="eqset-help" id="equipmentMasterHelp">設備マスタを読み込んでいます。</p>
+   </section>
+   <section class="eqset-sec eqset-sec-minor" aria-labelledby="eqsetH2">
+    <h3 id="eqsetH2"><span class="eqset-no">②</span>ロット№を押したときに開くタブ
+     <b class="eqset-now is-instant">選ぶとすぐ反映</b></h3>
+    <label class="eqset-field"><span>LotDspのタブ</span>
+     <select id="lotDspTabSetting">${LOTDSP_TABS.map(n=>`<option value="${n}">Tab ${n}</option>`).join('')}</select></label>
+    <p class="eqset-help">一覧や測定画面のロット№を押すと、LotDspをこのタブで開きます。<b>下の「保存」は要りません</b>（この端末だけの設定です）。</p>
+   </section>
+  </div>
+  <footer class="settings-actions">
+   <span class="eqset-foot" id="eqsetFoot"></span>
+   <button id="cancelAppSettings" type="button">やめる</button>
+   <button id="saveAppSettings" type="button">使用設備を保存</button>
+  </footer>
+ </div>`;
 }
-/* Equipment settings final controller: repairs missing DOM, closes lower layers, and owns all entry points. */
 function ensureEquipmentSettingsModal(){
  let modal=$('#appSettingsModal');
- if(modal&&$('#configuredEquipment')&&$('#equipmentSettingStatus')&&$('#saveAppSettings'))return modal;
- modal?.remove();
- const wrapper=document.createElement('div');wrapper.className='record-modal';wrapper.hidden=true;wrapper.id='appSettingsModal';wrapper.innerHTML=`<div class="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="equipmentSettingsTitle"><header><div><h2 id="equipmentSettingsTitle">使用設備の設定</h2></div><button id="closeAppSettings" type="button" aria-label="閉じる">×</button></header><div class="settings-body"><p>この端末で測定する設備を登録します。登録設備は、仕掛データの設計コースとの照合と保存データの識別に使用します。</p><label>使用設備名<input autocomplete="off" id="configuredEquipment" placeholder="例: LS4" type="text"/></label><div class="setting-status warn" id="equipmentSettingStatus">使用設備は未登録です</div><div class="settings-actions"><button id="cancelAppSettings" type="button">キャンセル</button><button id="saveAppSettings" type="button">この設備を登録</button></div></div></div>`;
- document.body.append(wrapper);return wrapper;
+ if(!modal){
+  modal=document.createElement('div');
+  modal.className='record-modal';modal.hidden=true;modal.id='appSettingsModal';
+  document.body.append(modal);
+ }
+ /* **同じ形なら組み直さない**——開くたびに作り替えると、選んでいた値も
+    フォーカスも消える。欠けている部品があるときだけ作る。 */
+ if(!($('#configuredEquipment')&&$('#equipmentSettingStatus')&&$('#saveAppSettings')
+      &&$('#lotDspTabSetting')&&$('#newEquipmentEntry')&&$('#equipmentMasterHelp'))){
+  modal.innerHTML=equipmentSettingsHtml();
+  /* **欄を作った側が配線する**（§9.257 ②）——`base.js`は読み込み時に
+     1度だけ探す作りだと、あとから組み立てるこの欄に間に合わない。 */
+  if(WL.lotDspTab&&typeof WL.lotDspTab.bind==='function')WL.lotDspTab.bind($('#lotDspTabSetting'));
+  else console.error('LotDspのタブ: WL.lotDspTab が見つかりません');
+  /* **背景クリックでは閉じない**（§9.221 ①）。押したことは器を弾ませて返す。 */
+  if(WL.modal&&typeof WL.modal.keepOpen==='function')WL.modal.keepOpen(modal);
+  else console.error('使用設備の設定: WL.modal が見つかりません');
+ }
+ return modal;
+}
+function bindAppSettingsControls(){
+ /* 入口（ヘッダーのチップ・バナー・警告帯）は`openEquipmentSettingsFinal()`が
+    受け持つ。ここは器を用意してバッジを塗るだけ——**閉じる・保存の配線は
+    開くときに1箇所で当てる**（`openEquipmentSettingsFinal()`）。
+    以前はここにも`#saveAppSettings.onclick`があり、**`<select>`ではなく
+    `<input>`から値を読む**古い作りのまま残っていた（開いた側が必ず上書き
+    するので一度も動かず、消しても画面は1つも変わらない）。`#openAppSettings`
+    という入口も、そのボタンが画面から無くなったあとも配線だけ残っていた。 */
+ ensureEquipmentSettingsModal();
+ updateRegisteredEquipmentBadge();
 }
 function updateEquipmentEntryPoints(){
  const equipment=currentConfiguredEquipment(),configured=!!equipment,banner=$('#equipmentSetupBanner');
@@ -1529,17 +1613,166 @@ async function loadEquipmentMaster(force=false){
    (従来どおりの挙動)。この入口は使用設備を選ぶだけの軽い操作のため、
    「新しい設備として登録」の選択肢はマスタ管理画面(設備タブ)側のみで扱う。 */
 async function registerAndSelectEquipment(name){const result=await api('/api/equipment-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(withUserId({name,reuseExisting:true}))});localStorage.setItem(APP_EQUIPMENT_KEY,result.name);await loadEquipmentMaster(true);return result}
+/* 候補を並べる。**「＋ 設備マスタへ新規登録」を選んでも窓の高さは動かない**
+   （§9.227 ②）——`hidden`で行ごと消すと、選んだ拍子に下のボタンが上下して
+   狙いが外れる。場所は常に空けておき、伏せるのは中身だけ（CSSが
+   `visibility`で受ける）。 */
+const EQ_NEW='__new__';
 function fillEquipmentSelect(selected='',suggested=''){
- const select=$('#configuredEquipment');if(!select)return;const names=equipmentMasterState.items.map(x=>x.name),preset=suggested&&names.find(x=>normalizeCourseText(x)===normalizeCourseText(suggested)),current=selected&&names.find(x=>normalizeCourseText(x)===normalizeCourseText(selected));
- select.innerHTML='<option value="">設備マスタから選択</option>'+names.map(name=>`<option value="${esc(name)}">${esc(name)}</option>`).join('')+'<option value="__new__">＋ 設備マスタへ新規登録</option>';const unmatchedSuggestion=suggested&&!preset?suggested:'',unmatchedCurrent=selected&&!current?selected:'';select.value=preset||current||((unmatchedSuggestion||unmatchedCurrent)?'__new__':'');$('#newEquipmentEntry').hidden=select.value!=='__new__';const newName=$('#newEquipmentName');if(newName)newName.value=unmatchedSuggestion||unmatchedCurrent||'';select.onchange=()=>{$('#newEquipmentEntry').hidden=select.value!=='__new__';if(select.value!=='__new__'&&newName)newName.value='';updateEquipmentMasterHelp()};
+ const select=$('#configuredEquipment');if(!select)return;
+ const names=equipmentMasterState.items.map(x=>x.name),
+       preset=suggested&&names.find(x=>normalizeCourseText(x)===normalizeCourseText(suggested)),
+       current=selected&&names.find(x=>normalizeCourseText(x)===normalizeCourseText(selected));
+ select.innerHTML='<option value="">選んでください</option>'
+   +names.map(name=>`<option value="${esc(name)}">${esc(name)}</option>`).join('')
+   +`<option value="${EQ_NEW}">＋ 設備マスタへ新規登録</option>`;
+ const unmatchedSuggestion=suggested&&!preset?suggested:'',
+       unmatchedCurrent=selected&&!current?selected:'';
+ select.value=preset||current||((unmatchedSuggestion||unmatchedCurrent)?EQ_NEW:'');
+ const newName=$('#newEquipmentName');
+ if(newName)newName.value=unmatchedSuggestion||unmatchedCurrent||'';
+ syncNewEquipmentSlot();
+ select.onchange=()=>{
+  if(select.value!==EQ_NEW&&newName)newName.value='';
+  syncNewEquipmentSlot();updateEquipmentMasterHelp();
+  /* 新規登録を選んだら**打つ場所へ連れて行く**（§CLAUDE 画面基準 2）。
+     **焦点を当てるのはここだけ**——`syncNewEquipmentSlot()`は開いた直後にも
+     走るので、あちらで当てると窓を開いた瞬間の焦点を横取りする。 */
+  if(select.value===EQ_NEW&&newName)requestAnimationFrame(()=>{try{newName.focus()}catch(e){}});
+  /* いま選んでいるものを見出しのチップへ返す（§CLAUDE 2「いま選んでいる
+     ものは名乗る」）。**値を出す場所はここ1箇所**にする。 */
+  paintEquipmentNow(select.value===EQ_NEW?(newName&&newName.value)||'':select.value,'pick');
+ };
+ if(newName)newName.oninput=()=>{
+  if(select.value===EQ_NEW)paintEquipmentNow(newName.value,'pick');
+ };
 }
-function updateEquipmentMasterHelp(){const select=$('#configuredEquipment'),help=$('#equipmentMasterHelp');if(!select||!help)return;if(!equipmentMasterState.items.length){help.className='equipment-master-help warn';help.textContent='設備マスタに登録がありません。「設備マスタへ新規登録」から最初の設備を登録してください。';return}if(select.value==='__new__'){help.className='equipment-master-help warn';help.textContent='入力した設備をmaster.sqlite3の設備マスタへ登録し、次回から一覧に表示します。';return}if(select.value){help.className='equipment-master-help ok';help.textContent=`設備マスタから選択: ${select.value}`;return}help.className='equipment-master-help';help.textContent=`設備マスタから選択してください。登録済み ${equipmentMasterState.items.length}件`}
+/* **場所は空けたまま中身だけ伏せる**（§9.227 ②）。`hidden`属性は
+   `[hidden]{display:none}`がutilityレイヤで当たるので使わない。 */
+function syncNewEquipmentSlot(){
+ const select=$('#configuredEquipment'),slot=$('#newEquipmentEntry');
+ if(!select||!slot)return;
+ const on=select.value===EQ_NEW;
+ slot.classList.toggle('is-on',on);
+ const input=$('#newEquipmentName');
+ if(input)input.disabled=!on;      /* 伏せた欄へタブで入らない */
+}
+/* ---------- いまの設備は「1箇所」だけに出す（§9.257 ②） ----------
+   直す前は選択欄・助けの行・状態の帯の**3箇所**に同じ名前が出ていた。
+   出すのは①の見出しのチップだけにして、助けの行は**次にすること**を言う。
+   `kind`: `saved`＝保存済み／`pick`＝選んだが未保存／`none`＝未登録。 */
+function paintEquipmentNow(name,kind){
+ const el=$('#equipmentSettingStatus');if(!el)return;
+ const now=String(name||'').trim();
+ const saved=currentConfiguredEquipment();
+ const state=!now?'none':(kind==='saved'||now===saved?'saved':'pick');
+ el.className='eqset-now'+(state==='none'?' is-none':(state==='pick'?' is-pick':''));
+ el.textContent=state==='none'?'未登録'
+   :(state==='pick'?`${now}（保存前）`:`${now}`);
+ /* **色だけで伝えない**（§CLAUDE 3）。読み上げにも同じ文が届く。 */
+ el.title=state==='none'?'この端末の使用設備はまだ登録されていません'
+   :(state==='pick'?`「${now}」を選んでいます。まだ保存していません`
+                   :`この端末の使用設備は「${now}」です`);
+}
+/* 助けの行は**次にすること**を1つだけ言う（§CLAUDE 画面基準 2）。
+   **いまの値をここへ書かないこと**——見出しのチップが既に言っている。 */
+function updateEquipmentMasterHelp(){
+ const select=$('#configuredEquipment'),help=$('#equipmentMasterHelp');
+ if(!select||!help)return;
+ const n=equipmentMasterState.items.length;
+ const set=(cls,html)=>{help.className='eqset-help'+(cls?' '+cls:'');help.innerHTML=html};
+ if(!n){
+  set('is-warn','設備マスタに<b>まだ1件も登録がありません</b>。'
+    +'「＋ 設備マスタへ新規登録」を選んで、この端末で使う設備名を入れてください。');
+  return;
+ }
+ if(select.value===EQ_NEW){
+  set('is-warn','入れた名前を<b>設備マスタへ登録</b>してから、この端末の使用設備にします'
+    +'（次からは上の一覧に出ます）。');
+  return;
+ }
+ if(!select.value){
+  set('is-warn',`登録済みの設備 <b>${n}件</b> から選んでください。`
+    +'無ければ「＋ 設備マスタへ新規登録」です。');
+  return;
+ }
+ set('',`あとは下の<b>「使用設備を保存」</b>を押すだけです（登録済み ${n}件）。`);
+}
+/* 窓を開く。**なぜ開いたか（`reason`）で足の一言が変わる**——測定を
+   開こうとして止められたのか、自分で開いたのかで、次にすることが違う
+   （§CLAUDE 画面基準 2「次にすることを常に1つだけ指す」）。 */
 async function openEquipmentSettingsFinal(reason='manual',suggested=''){
- const modal=ensureEquipmentSettingsModal();['recordModal','measureModal','splitModal'].forEach(id=>{const el=$('#'+id);if(el&&!el.hidden)el.hidden=true});hideSaveOverlay();const status=$('#equipmentSettingStatus');modal.hidden=false;
- try{await loadEquipmentMaster(true)}catch(error){status.textContent=error.message;status.className='setting-status warn';return false}
- const suggestion=suggested||((reason==='suggestion'||reason==='required')?residualEquipmentSuggestion():'');fillEquipmentSelect(currentConfiguredEquipment(),suggestion);updateEquipmentMasterHelp();status.textContent=suggestion?`残コースから候補設備「${suggestion}」をプリセットしました。`:currentConfiguredEquipment()?`現在の設定: ${currentConfiguredEquipment()}`:'設備マスタから使用設備を選択してください。';status.className='setting-status '+(suggestion||!currentConfiguredEquipment()?'warn':'ok');
- const close=()=>modal.hidden=true;$('#closeAppSettings').onclick=close;$('#cancelAppSettings').onclick=close;
- $('#saveAppSettings').onclick=async()=>{const select=$('#configuredEquipment');let name=select.value;if(name==='__new__')name=$('#newEquipmentName').value.trim();if(!name){status.textContent='設備を選択してください。';status.className='setting-status warn';select.focus();return}try{const result=await registerAndSelectEquipment(name);status.textContent=result.message;status.className='setting-status ok';updateEquipmentEntryPoints();updateCourseGuard();const row=pendingMeasurementRow;pendingMeasurementRow=null;setTimeout(close,450);if(row){await nextPaint();openMeasurement(row).catch(error=>showToast('測定画面を開けません',error.message,8000))}}catch(error){status.textContent=error.message;status.className='setting-status warn'}};requestAnimationFrame(()=>$('#configuredEquipment').focus());return true;
+ const modal=ensureEquipmentSettingsModal();
+ ['recordModal','measureModal','splitModal'].forEach(id=>{
+  const el=$('#'+id);if(el&&!el.hidden)el.hidden=true;
+ });
+ hideSaveOverlay();
+ modal.hidden=false;
+ const foot=$('#eqsetFoot'),help=$('#equipmentMasterHelp');
+ const say=(msg,cls)=>{if(!foot)return;foot.className='eqset-foot'+(cls?' '+cls:'');foot.textContent=msg||''};
+ try{await loadEquipmentMaster(true)}
+ catch(error){
+  /* **読めなかったことを「無い」と言わない**（§CLAUDE 3／§9.211 ②）。 */
+  if(help){help.className='eqset-help is-warn';
+           help.textContent='設備マスタを読めませんでした: '+error.message}
+  say('設備マスタを読めていないので保存できません。','is-warn');
+  const sv=$('#saveAppSettings');if(sv)sv.disabled=true;
+  return false;
+ }
+ const sv=$('#saveAppSettings');if(sv)sv.disabled=false;
+ const suggestion=suggested||((reason==='suggestion'||reason==='required')
+   ?residualEquipmentSuggestion():'');
+ fillEquipmentSelect(currentConfiguredEquipment(),suggestion);
+ updateEquipmentMasterHelp();
+ const sel=$('#configuredEquipment');
+ paintEquipmentNow(currentConfiguredEquipment(),'saved');
+ if(suggestion&&sel&&sel.value)paintEquipmentNow(
+   sel.value===EQ_NEW?suggestion:sel.value,'pick');
+ /* **なぜここに居るのかを足に書く**（§CLAUDE 6）。開いた理由は3通りしか
+    無いので、文言もここ1箇所で決める。 */
+ say(reason==='required'
+     ? '測定を始めるには、この端末の使用設備が要ります。'
+     : (suggestion
+        ? `残コースから「${suggestion}」を候補に入れました。違うときは選び直してください。`
+        : (currentConfiguredEquipment() ? '' : 'まだ登録されていません。')),
+     reason==='required'||!currentConfiguredEquipment()?'is-warn':'');
+ const close=()=>{modal.hidden=true};
+ $('#closeAppSettings').onclick=close;
+ $('#cancelAppSettings').onclick=close;
+ $('#saveAppSettings').onclick=async()=>{
+  const select=$('#configuredEquipment');
+  let name=select.value;
+  if(name===EQ_NEW)name=($('#newEquipmentName').value||'').trim();
+  if(!name){
+   /* **押せるのに何も起きない、にしない**（§CLAUDE 4）——直す場所へ連れて行く。 */
+   say('設備を選んでください。','is-warn');
+   updateEquipmentMasterHelp();
+   (select.value===EQ_NEW?$('#newEquipmentName'):select).focus();
+   return;
+  }
+  try{
+   const result=await registerAndSelectEquipment(name);
+   paintEquipmentNow(name,'saved');
+   say(result.message||'保存しました。','is-ok');
+   updateEquipmentEntryPoints();updateCourseGuard();
+   const row=pendingMeasurementRow;pendingMeasurementRow=null;
+   setTimeout(close,450);
+   if(row){
+    await nextPaint();
+    openMeasurement(row).catch(error=>showToast('測定画面を開けません',error.message,8000));
+   }
+  }catch(error){say(error.message,'is-warn')}
+ };
+ /* **開いた直後の焦点は「いま打つべき欄」へ**——候補に無い設備が入って
+    いれば新規登録の欄が開いているので、そちらを当てる（§9.221 ④と同じ
+    「最初のフォーカスは打てる欄へ」）。 */
+ requestAnimationFrame(()=>{
+  try{
+   const s2=$('#configuredEquipment');
+   ((s2&&s2.value===EQ_NEW)?$('#newEquipmentName'):s2).focus();
+  }catch(e){}
+ });
+ return true;
 }
 function openAppSettings(){return openEquipmentSettingsFinal('manual')}
 /* 使用設備が未登録なら従来通り登録を促す。登録済みでも、対象データの
