@@ -1159,6 +1159,9 @@ function setHeaderContext(title,source){
  const t=document.querySelector('#fileName');if(t)t.textContent=title||'測定伝送システム';
  const s=document.querySelector('#headerContextSource');
  if(s){s.textContent=source||'';s.hidden=!source}
+ /* 操作を1行目へ相乗りさせる画面では説明を畳む（§9.266）。**消さずに
+    `title`へ残す**——1回読めば足りる文だが、読めなくしてよい訳ではない。 */
+ if(t)t.title=source?(title?title+'：'+source:source):'';
  // 画面が変わったら鮮度表示(一覧専用)は持ち越さない
  if(typeof window.updateListFreshness==='function'&&!source)window.updateListFreshness(null);
 }
@@ -1260,6 +1263,14 @@ function mountViewToolbar(def){
  if(!el||el.parentNode===slot)return;
  if(!toolbarHome.has(el))toolbarHome.set(el,{parent:el.parentNode,next:el.nextSibling});
  slot.appendChild(el);
+ /* **操作が少ない画面は1行目へ相乗りさせる**（§9.266、利用者の指示
+    「上部のメニューがごちゃついている…1行に収める」）。操作列は既定では
+    ヘッダーの2行目（どの画面でも同じ位置に出るため）だが、マスタ管理は
+    操作が3つしかなく、2行目を1本まるごと使うのは面積の配り方として
+    合っていない（面積は頻度×重要度・§CLAUDE 1）。
+    **入りきらない画面は今までどおり2行目**——`compactToolbar`と名乗った
+    画面だけが相乗りする（勝手に詰め込むと、操作の多い画面が切れる）。 */
+ slot.classList.toggle('is-inline',!!(def&&def.compactToolbar));
 }
 /* 画面のパネルは enterView の**後**に組み立てられることが多い(ensurePanel等)。
    その場合、enterView の時点では操作列のDOMがまだ無く移せない。パネルを
@@ -1437,8 +1448,11 @@ window.addEventListener('unload',notifyTabClosed);
    toggle.setAttribute('aria-expanded',String(!collapsed));
    toggle.title=collapsed?'メニューを開く':'メニューを畳む';
   }
-  /* 畳んでいる間はラベルが出ないので、行き先はツールチップで示す。
-     元のtitle(説明文)を持つ項目は説明も残す。
+  /* 畳んでいる間はラベルが出ないので、行き先を**浮き出し**で示す（§9.265、
+     利用者の指示「折りたたんだときはわかりにくいので、ポップオーバーでの
+     説明はきれいにわかりやすく」）。素の`title`は出るまで1秒近くかかり、
+     見た目も揃わず、**触る画面では読めない**（§4）。
+     `title`は**外す**——残すと浮き出しと二重に出る（同じことを2箇所・§8）。
      退避済みかの判定は`undefined`で見ること。**元のtitleが空の項目は
      `!b.dataset.navTitle`が真になり**、2回目以降(下のMutationObserver等)で
      退避値を「適用済みのラベル」で上書きしてしまい、開いても戻らなくなる。 */
@@ -1446,12 +1460,67 @@ window.addEventListener('unload',notifyTabClosed);
    const label=(b.querySelector('span')||{}).textContent.trim()||'';
    if(collapsed){
     if(b.dataset.navTitle===undefined)b.dataset.navTitle=b.title||'';
-    const orig=b.dataset.navTitle;
-    b.title=label?(orig?label+'：'+orig:label):orig;
+    b.dataset.navLabel=label;
+    b.removeAttribute('title');
+    if(label&&!b.getAttribute('aria-label'))b.setAttribute('aria-label',label);
+   }else{
+    if(b.dataset.navTitle!==undefined)b.title=b.dataset.navTitle;
+    delete b.dataset.navLabel;
    }
-   else if(b.dataset.navTitle!==undefined)b.title=b.dataset.navTitle;
   });
+  if(!collapsed)hideNavTip();
  }
+ /* ---- 畳んだメニューの浮き出し（§9.265） ----
+    **器はbody直下に1つだけ**（`aside`は幅54pxで`overflow`を持つので、
+    中に置くと切り落とされる・§9.201）。中身は**行き先の名前が主、説明は従**
+    ——アイコンだけでは何の画面か分からないのが畳んだときの問題なので、
+    まず名前をはっきり出す。 */
+ let navTip=null,navTipFor=null;
+ function ensureNavTip(){
+  if(navTip)return navTip;
+  navTip=document.createElement('div');
+  navTip.className='nav-tip';navTip.id='navTip';navTip.hidden=true;
+  navTip.setAttribute('role','tooltip');
+  document.body.appendChild(navTip);
+  return navTip;
+ }
+ function hideNavTip(){if(navTip){navTip.hidden=true;navTipFor=null}}
+ function showNavTip(btn){
+  if(!collapsed||!btn)return;
+  const label=btn.dataset.navLabel||'';
+  const desc=btn.dataset.navTitle||'';
+  if(!label&&!desc)return;
+  const el=ensureNavTip();
+  /* 件数のバッジ（データ一覧の「0」）は名前に混ぜない——行き先の名前として
+     読めなくなる。名前の後ろに小さく添える。 */
+  const badge=(btn.querySelector('.nav-badge,.db-count')||{}).textContent||'';
+  el.innerHTML='<b>'+esc(label)+'</b>'
+   +(badge.trim()?'<span class="nav-tip-badge">'+esc(badge.trim())+'</span>':'')
+   +(desc?'<small>'+esc(desc)+'</small>':'');
+  el.hidden=false;navTipFor=btn;
+  /* **画面の外へ出さない**。上端・下端で押し戻す。 */
+  const r=btn.getBoundingClientRect(),t=el.getBoundingClientRect();
+  const gap=8;
+  let top=r.top+r.height/2-t.height/2;
+  top=Math.max(gap,Math.min(top,window.innerHeight-t.height-gap));
+  el.style.top=Math.round(top)+'px';
+  el.style.left=Math.round(r.right+gap)+'px';
+ }
+ /* 委譲で受ける。**行き先は後から足される**（カレンダー・ダッシュボード等）
+    ので、1つずつ配線すると足された項目だけ浮き出しが出ない。 */
+ aside.addEventListener('mouseover',e=>{
+  const b=e.target.closest&&e.target.closest('.nav-item');
+  if(b&&b!==navTipFor)showNavTip(b);
+ });
+ aside.addEventListener('mouseleave',hideNavTip);
+ aside.addEventListener('focusin',e=>{
+  const b=e.target.closest&&e.target.closest('.nav-item');
+  if(b)showNavTip(b);
+ });
+ aside.addEventListener('focusout',hideNavTip);
+ /* 押したら消す（行き先が変わるので、前の画面の名前が残らない）。 */
+ aside.addEventListener('click',hideNavTip);
+ window.addEventListener('scroll',hideNavTip,true);
  const toggle=document.createElement('button');
  toggle.type='button';toggle.id='navCollapseToggle';toggle.className='nav-collapse-toggle';
  toggle.innerHTML='<span aria-hidden="true"></span>';

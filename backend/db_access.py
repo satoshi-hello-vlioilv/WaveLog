@@ -250,7 +250,13 @@ def resolve_local_db(name,legacy_names):
 # (db_dir/master_db_path、上記参照)でのみ決まる。ここで先に確定させておく
 # ことで、以降のパス設定マスタ読み込み(_master_path_config等)がこの値を
 # 使える。
-_MASTER_PATH=configured_path('master_db_path') or resolve_local_db('master.sqlite3',['マスタ.sqlite3','マスタデータ.sqlite3','Master.sqlite3'])
+_MASTER_PATH_CONFIGURED=configured_path('master_db_path') or resolve_local_db('master.sqlite3',['マスタ.sqlite3','マスタデータ.sqlite3','Master.sqlite3'])
+# マスタを共有に置いたときは**手元の写しを読む**(§9.263)。共有でなければ
+# 設定どおりのパスがそのまま返るので、手元に置いている端末は何も変わらない。
+# **ここで1回だけ差し替える**——以降のコードは今までどおり`_MASTER_PATH`
+# （＝`DBS['MASTER']['path']`）を開けばよく、72箇所を書き換えずに済む。
+from . import master_share as _master_share
+_MASTER_PATH=_master_share.configure(_MASTER_PATH_CONFIGURED)
 MEAS_DB=configured_path('records_db_path') or resolve_local_db('records.sqlite3',['測定データ.sqlite3','Measurement.sqlite3']); MEAS_ENGINE='sqlite'
 # 共有スケジュールDBのローカル作業コピー。**共有から取り直せる**ので
 # WORK_DIR側(§9.109)。毎回の取得で丸ごと置き換えるため、共有・クラウド
@@ -280,7 +286,11 @@ PATH_CONFIG_TABLE='パス設定マスタ'
 # キーで絞らずに読む（＝登録されたぶんだけ自然に効く）。
 # 下の2件は既定のデータソースぶんで、config/local.json からの一度きりの
 # 移行(_migrate_legacy_path_config)のために名前を残してある。
-PATH_CONFIG_STATIC_KEYS=('sikalot_source','sikalotnow_path','sikalotdef_path','records_backup_export_path','schedule_share_path')
+PATH_CONFIG_STATIC_KEYS=('sikalot_source','sikalotnow_path','sikalotdef_path','records_backup_export_path','schedule_share_path',
+                         # 測定データの置き場(§9.258)。接続先と同じ扱いで再起動が要る。
+                         # **この一覧に入れ忘れると、保存はできるのに読み出せない**
+                         # ——画面の欄が空のままになり「保存されていない」と読まれる。
+                         'records_share_dir')
 # 呼び出しのたびに読み直せる項目(間隔・タイムアウト値のみで、接続先には
 # 影響しないため、変更を再起動無しで反映できる)。
 # rne_extract_enabled: RNE抽出(定期実行)を動かすかどうか。
@@ -901,9 +911,28 @@ def records_paths_all():
 # 未設定ならNoneのままで、backend/schedule_sync.pyはScheduleNotConfiguredを
 # 送出し、機能自体が無効になる(仕掛/品質データのsikalotnow_path等と同じく、
 # 検証時はここをローカルの空ファイルへ一時的に切り替えて安全に試せる)。
+# 共有スケジュールのファイル名。**フォルダを指定されたらこの名前を足す**
+# （§9.262、利用者の指示「フォルダがなければフォルダは自動生成し、ファイルも
+# 自動生成、フォルダがあればファイルを探し、ファイルがあればそれを使う」）。
+SCHEDULE_FILE_NAME='schedule.sqlite3'
+
+def resolve_schedule_share(raw):
+ """設定値 -> 実際に読み書きする schedule.sqlite3 のパス。
+
+ **フォルダを指定できる**——利用者が共有フォルダを指定して「登録を
+ 受け付けない」と読んだのはここ。判定は**綴りだけ**で行う（`.sqlite3`／
+ `.db`で終わらなければフォルダ扱い）——共有越しでは`is_dir()`が失敗する
+ ことがあり、**存在確認そのものが唯一の失敗原因になる**のを避けるため
+ （`Path.exists()`を接続の前に置かない、という既存の約束と同じ理由）。
+ """
+ raw=str(raw or '').strip().rstrip('\\/')
+ if not raw:return None
+ p=Path(raw)
+ return p if p.suffix.lower() in ('.sqlite3','.db','.sqlite') else p/SCHEDULE_FILE_NAME
+
 _schedule_share_override=_static_path_cfg('schedule_share_path')
 if _schedule_share_override:
- SCHEDULE_SHARE_PATH=Path(_schedule_share_override)
+ SCHEDULE_SHARE_PATH=resolve_schedule_share(_schedule_share_override)
 elif SCHEDULE_DB_KEY and DBS.get(SCHEDULE_DB_KEY):
  # 役割「スケジュール」を付けたデータソースから決める(§9.193)。**共通設定の
  # schedule_share_path が最優先**——既に現場で効いている設定を、役割を付けた

@@ -47,6 +47,14 @@ let b=null;
      .find(x=>x.textContent.includes(l));if(t)t.click();},label);
   };
   await tab('共通設定');
+  /* 章は**段（タブ）**になった（§9.261）。共有の置き場はその1つ。
+     **段の名前で開くこと**（番号で探すと段が増えただけで落ちる）。 */
+  await page.waitForSelector('#masterMaintForm .mm-tab',{timeout:30000});
+  await page.evaluate(()=>{
+   const t=[...document.querySelectorAll('#masterMaintForm .mm-tab')]
+    .find(e=>e.textContent.includes('共有の置き場'));
+   if(t)t.click();
+  });
   await page.waitForSelector('#pcShareRows .pc-share-row',{timeout:30000});
 
   const rows=await page.evaluate(()=>[...document.querySelectorAll('#pcShareRows .pc-share-row')]
@@ -87,15 +95,24 @@ let b=null;
   /* ---- 5) 直せない行は理由を書く ---- */
   rec('マスタは直す場所がconfig/local.jsonだと書いてある',
       /local\.json/.test(mRow.where),mRow.where);
-  rec('マスタが共有に未対応であることを書いてある',
-      /共有の置き場に対応していません/.test(mRow.note),mRow.note.slice(0,50));
+  /* マスタの一言は**共有に置いたときと置いていないときで違う**（§9.263）。
+     置いていない端末に「共有で動いています」と書かないこと。 */
+  rec('マスタの置き場の状態が文で書いてある',
+      /この端末の中だけ|共有で動いています/.test(mRow.note),mRow.note.slice(0,60));
+  rec('共有へ移したときどうなるかが書いてある',
+      /順番待ち/.test(mRow.note),mRow.note.slice(0,60));
 
   /* ---- 6) 直す場所へ飛べる ---- */
   rec('測定データの行から直す場所へ飛べる',recRow.jump===true);
   await page.evaluate(()=>document.querySelector('#pcShareRows [data-pc-goto]').click());
-  await page.waitForSelector('#msShareDir',{timeout:20000});
-  const moved=await page.evaluate(()=>!!document.getElementById('msShareDir'));
-  rec('押すと「測定データの保存」が開く',moved===true);
+  /* 飛んだ先も段（タブ）なので、**器が出ることで見る**——置き場の欄は
+     「置き場と引っ越し」の段にあり、開くまでは見えない（DOMには在る）。 */
+  await page.waitForSelector('#masterMaintForm .ms-flow',{timeout:20000});
+  const moved=await page.evaluate(()=>({
+   here:!!document.getElementById('msShareDir'),
+   tabs:[...document.querySelectorAll('#masterMaintForm .mm-tab')].map(x=>x.textContent.trim()),
+  }));
+  rec('押すと「測定データの保存」が開く',moved.here===true,JSON.stringify(moved.tabs));
 
   /* ---- 7) 判定はサーバーが持つ ---- */
   const srv=await fetch(B+'/api/path-config-master').then(r=>r.json());

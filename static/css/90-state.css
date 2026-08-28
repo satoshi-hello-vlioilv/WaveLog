@@ -224,6 +224,29 @@ body.connection-lost .layout{padding-top:52px}
    (帳票=rp-mode は専用の印刷アイコン、品質データ分析=qa-mode はツールバーの
    印刷ボタンを持つ)。 */
 body.rp-mode #printCurrentView,body.qa-mode #printCurrentView{display:none}
+/* ---- 畳んだメニューの浮き出し（§9.265） ----
+   素の`title`は出るまで1秒近くかかり、見た目も揃わず、触る画面では読めない。
+   **器はbody直下**（`aside`は幅54pxで`overflow`を持つので中に置くと切れる・§9.201）。
+   **行き先の名前が主、説明は従**——アイコンだけでは何の画面か分からないのが
+   畳んだときの問題なので、まず名前をはっきり出す。 */
+.nav-tip{
+  position:fixed;z-index:var(--z-popover);max-width:var(--w-xl);
+  display:flex;flex-direction:column;gap:2px;
+  padding:var(--space-2) var(--space-3);
+  background:var(--nav);color:#eaf6f7;
+  border:1px solid color-mix(in srgb,#ffffff 18%,transparent);
+  border-radius:var(--radius-sm);box-shadow:0 8px 24px rgba(0,0,0,.28);
+  pointer-events:none;   /* 下の行き先を押せなくしない */
+}
+.nav-tip[hidden]{display:none}
+.nav-tip b{font-size:var(--fs);font-weight:800;line-height:var(--lh);white-space:nowrap}
+.nav-tip small{font-size:var(--fs-sm);color:#b9d6d9;line-height:1.5}
+/* 件数は名前に混ぜない（行き先の名前として読めなくなる）。 */
+.nav-tip-badge{
+  align-self:flex-start;font-size:var(--fs-tiny);font-weight:800;
+  padding:0 var(--space-1);border-radius:var(--radius-pill);
+  background:color-mix(in srgb,var(--teal) 45%,transparent);color:#fff;
+}
 body.nav-collapsed .nav-collapse-toggle span{transform:rotate(-135deg) translate(-1px,1px)}
 body.nav-collapsed .layout>aside{padding-left:5px;padding-right:5px;overflow:visible}
 body.nav-collapsed .layout>aside .brand{

@@ -27,7 +27,11 @@ let b=null;
   const sr=save.getBoundingClientRect();
   // 入力欄が枠外へ切れていないか(親のスクロール領域の内側に収まっているか)
   const scr=sc.getBoundingClientRect();
+  /* **いま開いている段の中だけを測る**（§9.261）。畳んだ段の欄は
+     `display:none`なので寸法を持たず、全部「見切れ」に数えられてしまう
+     （実際に14件と出た）。見えていない欄は切れようがない。 */
   const clipped=[...sc.querySelectorAll('input,select')].filter(e=>{
+   if(!e.offsetParent)return false;
    const r=e.getBoundingClientRect();
    return r.height<8||r.right>scr.right+1;
   }).length;
@@ -36,10 +40,21 @@ let b=null;
     groups:document.querySelectorAll('.mm-set-group').length,
     badges:document.querySelectorAll('.mm-apply-badge').length,
     fields:[...document.querySelectorAll('[data-pc-field]')].map(e=>e.dataset.pcField),
-    clipped,listWrap:getComputedStyle(document.querySelector('.mm-list-wrap')).display};
+    clipped,listWrap:getComputedStyle(document.querySelector('.mm-list-wrap')).display,
+    tabs:document.querySelectorAll('.mm-tabbar.is-page .mm-tab').length,
+    shownPanels:[...document.querySelectorAll('.mm-tabpanel.is-page')].filter(x=>!x.hidden).length,
+    scrollH:sc.scrollHeight,clientH:sc.clientHeight};
  });
- rec('パス設定が1本のスクロール領域になっている',p.scrollable,`${p.groups}グループ`);
+ /* **1本の長いスクロールはやめた**（§9.261、利用者の指示「タブとアコーディオンを
+    主構成に」）。以前は実測2768pxを736pxの器で見ており、4回ぶんスクロール
+    していた。いまは章＝段（タブ）で、開いている章だけが出る。 */
+ rec('章が段（タブ）になっている',p.tabs>=4,`${p.tabs}段`);
  rec('章の数だけまとまりがある',p.groups>=4,`${p.groups}グループ`);
+ rec('開いている章は1つだけ',p.shownPanels===1,`${p.shownPanels}段が開いている`);
+ /* **1画面に収まる**（段に分けた値打ちはここ）。器より中身が高いと
+    「畳んだのに結局スクロールする」ことになる。 */
+ rec('1つの章は器に収まる（長いスクロールにならない）',
+     p.scrollH<=p.clientH+2,`中身${p.scrollH}px / 器${p.clientH}px`);
 /* 件数ではなく**キーの一覧**で見る。項目は増える(RNE資材の置き場・
     symnavim.confの場所を§9.79で追加した)ので、数を固定すると足すたびに
     落ちる。「あるべきものが全部出ているか」が見たいこと。 */
@@ -78,6 +93,17 @@ let b=null;
  });
  rec('最後までスクロールしても保存ボタンが押せる',bottom.save);
  rec('最下部の内容まで表示できる',bottom.lastVisible);
+ /* 段を切り替えても保存ボタンは動かない（本文の外にある・§9.222 ⑦）。 */
+ const afterTab=await page.evaluate(()=>{
+  const t=[...document.querySelectorAll('.mm-tabbar.is-page .mm-tab')];
+  if(t.length>2)t[2].click();
+  const panel=document.querySelector('#masterMaintPanel').getBoundingClientRect();
+  const sr=document.querySelector('.mm-set-sticky button').getBoundingClientRect();
+  return {save:sr.bottom<=panel.bottom+1,
+          shown:[...document.querySelectorAll('.mm-tabpanel.is-page')].filter(x=>!x.hidden).length};
+ });
+ rec('段を切り替えても保存ボタンはパネル内に居る',afterTab.save);
+ rec('段を切り替えても開くのは1つだけ',afterTab.shown===1,`${afterTab.shown}段`);
  /* ---- 状態は**その欄のすぐ下**（§9.208 ⑨、利用者の指示で作り直した） ----
     以前は画面のいちばん下に「保存値／いま効いている値」の対比表があり、
     直した欄がその表のどの行なのかを探すことになっていた。表は廃止し、
@@ -94,23 +120,30 @@ let b=null;
     章:[...document.querySelectorAll('[data-pc-section]')].map(x=>x.dataset.pcSection),
     図:document.querySelectorAll('.pc-map .pc-node').length,
     図の値:[...document.querySelectorAll('[data-pc-map]')].map(x=>x.textContent.trim()).filter(Boolean).length,
-    レール:document.querySelectorAll('.pc-rail [data-pc-jump]').length};
+    /* レールは§9.261で**段（タブ）**になった。 */
+    段:document.querySelectorAll('.mm-tabbar.is-page .mm-tab').length};
  });
  rec('下段の対比表は廃止した（状態は欄が持つ）',cmp.旧表===false,String(cmp.旧表));
  rec('保存値と現在有効な値を欄のすぐ下で見比べられる',
    cmp.比べている>=1&&cmp.欄の下にある>=1,JSON.stringify(cmp));
  rec('この端末のつながりを図で出す',cmp.図>=3&&cmp.図の値>=3,JSON.stringify({図:cmp.図,値:cmp.図の値}));
- rec('章立てとレールがある',cmp.レール===cmp.章.length&&cmp.章.length>=4,cmp.章.join('／'));
+ rec('章立てと段（タブ）がある',cmp.段===cmp.章.length&&cmp.章.length>=4,
+     cmp.章.join('／')+' / '+cmp.段+'段');
  /* 押すとその章へ連れて行く（探させない）。 */
+ /* 章は段になったので、**飛ぶ＝段を切り替えること**（§9.261・§9.266）。
+    図のノードから飛べることを見る（入口を2本作らない）。 */
  const jumped=await page.evaluate(async()=>{
-  const btn=document.querySelector('.pc-rail [data-pc-jump="rne"]');
+  const btn=document.querySelector('.pc-map [data-pc-jump="schedule"]');
   if(!btn)return{無い:true};
   btn.click();
   await new Promise(r=>setTimeout(r,700));
-  const sec=document.getElementById('pcSec-rne'),sc=document.querySelector('.mm-set-scroll');
-  return{上端:Math.round(sec.getBoundingClientRect().top-sc.getBoundingClientRect().top)};
+  const sec=document.getElementById('pcSec-schedule');
+  const panel=sec&&sec.closest('.mm-tabpanel');
+  return{見えている:!!panel&&!panel.hidden,
+    開いている段:[...document.querySelectorAll('.mm-tabpanel.is-page')].filter(x=>!x.hidden).length};
  });
- rec('章のレールを押すとその章へ移る',Math.abs(jumped.上端??999)<80,JSON.stringify(jumped));
+ rec('図から章へ飛ぶとその段が開く',
+     jumped.見えている===true&&jumped.開いている段===1,JSON.stringify(jumped));
  // 一致している項目に「再起動待ち」を出さない(表示文字列で誤検知しない)
  const pend=await page.evaluate(()=>[...document.querySelectorAll('.pc-state.is-pending-restart,.pc-source.is-pending-restart')]
    .map(r=>r.innerText.split('\n')[0]));

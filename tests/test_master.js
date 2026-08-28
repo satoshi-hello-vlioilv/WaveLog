@@ -65,15 +65,19 @@ const made={perm:[],cat:[]};
       integ.mmMode&&integ.panelInMain&&integ.noShade&&integ.navActive,JSON.stringify(integ));
   rec('統合表示中は一覧グリッドが隠れる',integ.gridHidden);
 
-  /* 群は**固定の3つ＋サーバーが答える2つ**（§9.249 ②）。あとの2つ
+  /* 群は**固定の6つ＋サーバーが答える2つ**（§9.264・§9.249 ②）。あとの2つ
      （内部データ／移行済み）は master.sqlite3 に該当する表があるときだけ出るので、
-     **数で固定しない**——先頭3つの並びと、余分な群が出ていないことを見る。 */
+     **数で固定しない**——先頭6つの並びと、余分な群が出ていないことを見る。 */
   /* 群の見出しは**畳む的**になったので、名前は`.mm-nav-group-name`から読む
      （§9.250 ②。`.mm-nav-group-label`には▾と件数も入っている）。 */
   const g=await page.$$eval('.mm-nav-group-name',ns=>ns.map(n=>n.textContent));
-  const KNOWN=['設備・人','作業スケジュール','表示・システム','内部データ','移行済み'];
+  /* 群は§9.264で組み直した。以前の3群は名前と中身が食い違っていた——
+     「設備・人」に人のマスタが1つも無く、「表示・システム」に表示マスタが
+     1つも無かった。**名前の一覧で見る**（数を固定すると群を1つ足すたびに落ちる）。 */
+  const KNOWN=['測定と記録','帳票','設備','作業スケジュール','データと接続','管理',
+               '内部データ','移行済み'];
   rec('マスタ種別がグループ見出しで階層化される',
-    g.slice(0,3).join('/')==='設備・人/作業スケジュール/表示・システム'
+    g.slice(0,6).join('/')==='測定と記録/帳票/設備/作業スケジュール/データと接続/管理'
     &&g.every(x=>KNOWN.includes(x)),g.join('/'));
   const inSchedGroup=await page.evaluate(()=>{
    const grp=document.querySelector('.mm-nav-group[data-nav-group="schedule"]');
@@ -81,6 +85,29 @@ const made={perm:[],cat:[]};
   });
   rec('スケジュール系マスタが同じグループに集まる',
     ['stopReason','shiftMaster','loadFactor'].every(k=>inSchedGroup.includes(k)),inSchedGroup.join(','));
+  /* **群の中は決める順に並ぶ**（§9.264、利用者の指摘「並びが不規則」）。
+     配列に書いた順のままだと、マスタを足すたびに並びが崩れる。 */
+  rec('群の中が決める順に並ぶ（勤務形態→換算係数→分類→設備停止）',
+    inSchedGroup.join(',')==='shiftMaster,loadFactor,stopCategory,stopReason',
+    inSchedGroup.join(','));
+  /* 名前と中身が合っていること——「設備」の群に設備そのものが入っている。 */
+  const byGroup=await page.evaluate(()=>{
+   const out={};
+   document.querySelectorAll('.mm-nav-group').forEach(g=>{
+    out[g.dataset.navGroup]=[...g.querySelectorAll('[data-master]')].map(b=>b.dataset.master);
+   });
+   return out;
+  });
+  rec('「測定と記録」に測定画面の入力まわりが集まる',
+    ['opItem','opChoice','recordLayout'].every(k=>(byGroup.measure||[]).includes(k)),
+    (byGroup.measure||[]).join(','));
+  rec('「帳票」に帳票の2つが集まる',
+    (byGroup.report||[]).join(',')==='reportLayout,reportBlock',(byGroup.report||[]).join(','));
+  rec('「設備」に設備とロールが集まる',
+    (byGroup.equip||[]).join(',')==='equipment,roll',(byGroup.equip||[]).join(','));
+  rec('「データと接続」に置き場と読み込み先が集まる',
+    ['dataSource','measStorage','pathConfig'].every(k=>(byGroup.data||[]).includes(k)),
+    (byGroup.data||[]).join(','));
   /* ---- 群ごとに畳める（§9.250 ②、利用者の指示） ---- */
   const folds=await page.evaluate(()=>[...document.querySelectorAll('.mm-nav-group')].map(x=>({
     k:x.dataset.navGroup,folded:x.classList.contains('is-folded'),

@@ -39,7 +39,7 @@ setTimeout(function(){var r=document.documentElement;r.classList.remove('app-boo
 <!-- 実績データリスト(§9.241 ③)。**データ一覧とは読む先が違う**——こちらは
      共有された記録だけを設備＋期間で見る「閲覧のみ」の一覧なので、
      閲覧権限のままでも開ける。 -->
-<button class="db nav-item nav-item--view" id="openActuals" type="button" title="設備と期間を選んで、作業時に記録した実績を一覧します（閲覧のみ）"><svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="14" y2="18"/></svg><span>実績データ</span></button>
+<button class="db nav-item nav-item--view" id="openActuals" type="button" title="設備と期間を選んで、作業時に記録した実績を一覧します（閲覧のみ）"><svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 4h8a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path d="M9.5 3h5v3h-5z"/><path d="m9.5 13 2 2 3.5-4"/></svg><span>実績データ</span></button>
 </nav>
 <!-- 「一覧を見る」の中身はデータソースマスタから作る(§9.87)。ここへ直接
      ボタンを書かないこと——マスタでキーを変えると、消えない静的ボタンが
@@ -50,7 +50,7 @@ setTimeout(function(){var r=document.documentElement;r.classList.remove('app-boo
 </nav>
 <nav class="nav-group plan-nav" id="planNav" aria-label="計画">
 <div class="nav-group-label">計画</div>
-<button class="db nav-item nav-item--view" id="openSchedule" type="button"><svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="14" x2="16" y2="14"/></svg><span>作業スケジュール</span></button>
+<button class="db nav-item nav-item--view" id="openSchedule" type="button"><svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="4" x2="3" y2="20"/><rect x="6" y="5" width="11" height="3.5" rx="1.5"/><rect x="9" y="10.2" width="12" height="3.5" rx="1.5"/><rect x="6" y="15.4" width="8" height="3.5" rx="1.5"/></svg><span>作業スケジュール</span></button>
 </nav>
 <nav class="nav-group analysis-nav" id="analysisNav" aria-label="分析">
 <div class="nav-group-label">分析</div>

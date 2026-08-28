@@ -59,14 +59,19 @@ let b=null;
    icons:[...a.querySelectorAll('.nav-item')].filter(x=>x.offsetParent).length,
    labelsVisible:[...a.querySelectorAll('.nav-item span')].filter(x=>x.offsetParent).length,
    overflow:[...a.querySelectorAll('*')].some(e=>e.offsetParent&&e.getBoundingClientRect().right>ar.right+1),
-   tip:document.querySelector('#openSchedule')?.title||'',
+   /* 畳んだら**素のtitleは外す**（浮き出しと二重に出さない・§9.265）。
+      行き先の名前は`data-nav-label`が持ち、浮き出しがそれを出す。 */
+   tip:document.querySelector('#openSchedule')?.dataset.navLabel||'',
+   rawTitle:document.querySelector('#openSchedule')?.getAttribute('title')||'',
    mainWider:document.querySelector('main').getBoundingClientRect().width,
   };
  });
  rec('行き先(アイコン)は畳んでも全部見えている',railState.icons>=5,railState.icons+'個');
  rec('ラベルは隠れる',railState.labelsVisible===0,railState.labelsVisible+'個表示');
  rec('帯からはみ出す要素が無い',!railState.overflow);
- rec('ラベルの代わりにツールチップで行き先が分かる',railState.tip==='作業スケジュール',railState.tip);
+ rec('ラベルの代わりに浮き出しで行き先が分かる',railState.tip==='作業スケジュール',railState.tip);
+ rec('畳んだら素のツールチップは外す（浮き出しと二重に出さない）',
+     railState.rawTitle==='',railState.rawTitle);
 
  // 畳んだ状態でも画面遷移できる
  await page.click('#openSchedule');await page.waitForTimeout(2500);
@@ -85,20 +90,24 @@ let b=null;
  await page.waitForTimeout(1500);
  const st=await page.evaluate(()=>{
   const t=id=>{const e=document.getElementById(id);return e?{title:e.title,
-    label:(e.querySelector('span')||{}).textContent.trim()||'',orig:e.dataset.navTitle}:null};
+    label:(e.querySelector('span')||{}).textContent.trim()||'',orig:e.dataset.navTitle,
+    navLabel:e.dataset.navLabel||''}:null};
   const all=[...document.querySelectorAll('aside .nav-item')];
   return {collapsed:document.body.classList.contains('nav-collapsed'),
    cal:t('openCalendar'),dash:t('openDashboard'),
-   missing:all.filter(e=>!e.title).map(e=>e.id||e.className)};
+   missing:all.filter(e=>!e.dataset.navLabel).map(e=>e.id||e.className)};
  });
  rec('畳んだ状態で復元されている',st.collapsed);
  // 元の説明文を持つ項目は「ラベル：説明」、持たない項目はラベルのみ
- const tipOk=x=>!!x&&x.title===(x.label?(x.orig?x.label+'：'+x.orig:x.label):x.orig)&&!!x.title
-              &&x.title.startsWith(x.label);
- rec('後から足されるカレンダーにツールチップが付く',tipOk(st.cal),JSON.stringify(st.cal));
- rec('後から足されるダッシュボードにツールチップが付く',tipOk(st.dash),JSON.stringify(st.dash));
- rec('元の説明文は畳んでも失われない',!!st.cal&&st.cal.title.includes(st.cal.orig),st.cal.title);
- rec('ツールチップの無いナビ項目が無い',st.missing.length===0,JSON.stringify(st.missing));
+ /* 浮き出しの材料は`data-nav-label`（名前）と`data-nav-title`（元の説明）。
+    **後から足される項目にも付くこと**——1つずつ配線すると、足された項目だけ
+    浮き出しが出ない。 */
+ const tipOk=x=>!!x&&x.navLabel===x.label&&!!x.navLabel;
+ rec('後から足されるカレンダーにも浮き出しの材料が付く',tipOk(st.cal),JSON.stringify(st.cal));
+ rec('後から足されるダッシュボードにも浮き出しの材料が付く',tipOk(st.dash),JSON.stringify(st.dash));
+ rec('元の説明文は畳んでも失われない（浮き出しが出す）',
+     !!st.cal&&!!st.cal.orig,String(st.cal&&st.cal.orig).slice(0,40));
+ rec('名前の付かないナビ項目が無い',st.missing.length===0,JSON.stringify(st.missing));
 
  // 開き直すと元の幅・ラベル・title へ戻る
  await page.click('#navCollapseToggle');await page.waitForTimeout(400);
@@ -108,6 +117,46 @@ let b=null;
  const tips=await page.evaluate(()=>[...document.querySelectorAll('aside .nav-item')]
    .filter(e=>e.title!==(e.dataset.navTitle??'')).map(e=>e.id+':'+e.title));
  rec('開くとツールチップは元の値へ戻る(元が空なら空)',tips.length===0,JSON.stringify(tips));
+
+ /* ---------- 畳んだメニューの浮き出し（§9.265、利用者の指示） ----------
+    「折りたたんだときはわかりにくいので、ポップオーバーでの説明はきれいに
+     わかりやすく表示が出るように」。素の`title`は出るまで1秒近くかかり、
+     見た目も揃わず、触る画面では読めない（§4）。 */
+ try{
+  await page.click('#navCollapseToggle');
+  await page.waitForFunction(()=>document.body.classList.contains('nav-collapsed'),null,{timeout:8000});
+  /* 畳んだら`title`は外す（浮き出しと二重に出ない・§8）。 */
+  const noTitle=await page.evaluate(()=>
+    [...document.querySelectorAll('aside .nav-item')].every(b=>!b.getAttribute('title')));
+  rec('畳んだら素のツールチップは外す（浮き出しと二重に出さない）',noTitle,String(noTitle));
+  await page.hover('#openSchedule');
+  await page.waitForSelector('#navTip:not([hidden])',{timeout:8000});
+  const tip=await page.evaluate(()=>{
+   const t=document.getElementById('navTip');
+   const r=t.getBoundingClientRect();
+   const a=document.querySelector('.layout>aside').getBoundingClientRect();
+   return {name:(t.querySelector('b')||{}).textContent||'',
+     right:r.left>=a.right,        // 畳んだ帯の外へ出る（中だと切られる）
+     inView:r.top>=0&&r.bottom<=innerHeight&&r.right<=innerWidth,
+     through:getComputedStyle(t).pointerEvents};
+  });
+  rec('浮き出しに行き先の名前が出る',tip.name==='作業スケジュール',tip.name);
+  rec('浮き出しは畳んだ帯の外に出る（中だと切り落とされる）',tip.right,String(tip.right));
+  rec('浮き出しは画面の中に収まる',tip.inView,String(tip.inView));
+  rec('浮き出しが下の行き先を押せなくしない',tip.through==='none',tip.through);
+  /* 離れたら消える（次に別の画面名が残らない）。 */
+  await page.hover('main');
+  await page.waitForFunction(()=>document.getElementById('navTip').hidden,null,{timeout:8000});
+  rec('離れると消える',true);
+  /* 開き直したら元のツールチップへ戻る。 */
+  await page.click('#navCollapseToggle');
+  await page.waitForFunction(()=>!document.body.classList.contains('nav-collapsed'),null,{timeout:8000});
+  const back=await page.evaluate(()=>({
+    tip:document.getElementById('navTip').hidden,
+    title:document.getElementById('openActuals').getAttribute('title')||''}));
+  rec('開き直すと浮き出しは消え、元の説明が戻る',
+      back.tip&&/実績/.test(back.title),JSON.stringify(back));
+ }catch(e){rec('畳んだメニューの浮き出し',false,String(e&&e.message||e))}
 
  await b.close();b=null;
  const ng=R.filter(x=>!x.ok);
