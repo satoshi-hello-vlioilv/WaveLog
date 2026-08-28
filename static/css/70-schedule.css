@@ -1284,6 +1284,8 @@
    枚数の計算が狂う。余白は四辺とも同じ8mmで、どの用紙でもそろえる。 */
 .sp-page[data-paper="a4-portrait"]{width:210mm;min-height:297mm}
 .sp-page[data-paper="a4-landscape"]{width:297mm;min-height:210mm}
+.sp-page[data-paper="b4-portrait"]{width:257mm;min-height:364mm}
+.sp-page[data-paper="b4-landscape"]{width:364mm;min-height:257mm}
 .sp-page[data-paper="a3-portrait"]{width:297mm;min-height:420mm}
 .sp-page[data-paper="a3-landscape"]{width:420mm;min-height:297mm}
 /* 見出し。**設備名を一番大きく**する——配られた人が最初に確かめるのは

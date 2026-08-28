@@ -99,22 +99,56 @@
   return `${d.getFullYear()}-${two(d.getMonth()+1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}`;
  }
 
- /* ---------- 用紙サイズ(§9.235、利用者の指示「印刷サイズA4だけでなくA3や
-    縦向きや横向きも選べるようにしてください」) ----------
-    画面が15列以上・内容の項目が多い設備ではA4では狭いことがあるので、
-    A3・横向きも選べるようにする。**余白は四辺とも同じ8mm**（既存のA4と
-    揃える）。 */
- const PAPER_SIZES=[
-  {key:'a4-portrait', label:'A4 縦',w:210,h:297},
-  {key:'a4-landscape',label:'A4 横',w:297,h:210},
-  {key:'a3-portrait', label:'A3 縦',w:297,h:420},
-  {key:'a3-landscape',label:'A3 横',w:420,h:297},
+ /* ---------- 用紙(§9.235 ②／§9.252) ----------
+    §9.235 ②（利用者の指示「印刷サイズA4だけでなくA3や縦向きや横向きも
+    選べるようにしてください」）で用紙を選べるようにしたが、**大きさと向きを
+    1つの選択肢に掛け合わせて**並べていた（A4縦／A4横／A3縦／A3横）。
+    利用者の指示（§9.252）:
+
+      「作業スケジュール表の用紙設定と縦横選択を分けて、わかりやすくまとめ直し
+       用紙選択はB4も追加してください」
+
+    **掛け算で並べない。** 大きさと向きは**別々に決めること**で、選択肢は
+    足し算（3＋2＝5）で済む。掛け合わせると用紙を1つ足すたびに札が2枚増え、
+    B4を足した時点で8枚を読み比べることになる。決める順も「まず大きさ→
+    次に向き」で、実際に決める順番と画面の並びが一致する（§CLAUDE 14）。
+
+    **持つのは今までどおり1つの鍵**（`<大きさ>-<向き>`）。2つに割って保存すると
+    「大きさだけ保存されて向きが古い」という食い違いが作れるうえ、
+    `data-paper`・CSS・保存済みの設定が全部この綴りに乗っている。
+    画面が2つに見えるのと、保存が1つなのは矛盾しない（§9.242 ⑤の
+    「値は隠し欄が持つ」と同じ）。
+
+    **余白は四辺とも同じ8mm**（既存のA4と揃える）。 */
+ const PAPER_KINDS=[
+  // w/h は**縦のときの寸法**。横は入れ替えるだけなので2通り持たない。
+  // B4は**JIS B4(257×364mm)**——日本の印刷機の「B4」はこちら。
+  {key:'a4',label:'A4',w:210,h:297,note:'ふだんの帳票'},
+  {key:'b4',label:'B4',w:257,h:364,note:'A4では狭いが、A3ほどは要らないとき'},
+  {key:'a3',label:'A3',w:297,h:420,note:'列がとても多い設備向け'},
  ];
+ const PAPER_ORIENTS=[
+  {key:'portrait', label:'縦',note:'1枚に載る行数が増えます'},
+  {key:'landscape',label:'横',note:'列が多いときはこちら'},
+ ];
+ /* 掛け合わせは**ここで1回だけ**作る。`data-paper`・保存値・
+    `paperSizeOf()`の呼び出し側は今までどおりこの綴りを見る。 */
+ const PAPER_SIZES=PAPER_KINDS.reduce((out,k)=>out.concat(PAPER_ORIENTS.map(o=>({
+   key:k.key+'-'+o.key,label:k.label+' '+o.label,kind:k.key,orient:o.key,
+   w:o.key==='landscape'?k.h:k.w,h:o.key==='landscape'?k.w:k.h}))),[]);
  const PAPER_MARGIN_MM=8;
  function paperSizeOf(key){return PAPER_SIZES.find(p=>p.key===key)||PAPER_SIZES[0]}
  function paperUsableMm(key){
   const p=paperSizeOf(key);
   return {w:p.w-PAPER_MARGIN_MM*2,h:p.h-PAPER_MARGIN_MM*2};
+ }
+ /* 片方だけ選び直したときの鍵。**知らない綴りは今の値を残す**（§9.204）
+    ——古い設定や別の版の値で、用紙が黙って既定へ戻らないように。 */
+ function paperKeyWith(cur,part){
+  const now=paperSizeOf(cur);
+  const kind=PAPER_KINDS.some(k=>k.key===part)?part:now.kind;
+  const orient=PAPER_ORIENTS.some(o=>o.key===part)?part:now.orient;
+  return paperSizeOf(kind+'-'+orient).key;
  }
  /* 実際に紙へ出すときだけ`@page`を差し替える(§9.235)。**クラスでは
     切り替えられない**ため、専用の<style>を書き換える方式にする
@@ -124,10 +158,21 @@
  function applyPrintPageStyle(paperKey){
   let el=document.getElementById(PAGE_STYLE_ID);
   if(!el){el=document.createElement('style');el.id=PAGE_STYLE_ID;document.head.appendChild(el)}
+  /* **用紙の名前(A4/A3…)で頼まないこと**（§9.252）。理由は2つあり、
+     どちらも「刷ったときだけ紙が違う」という気付きにくい形で出る。
+     ① 以前は`p.key.indexOf('a3')===0`で綴りから当てていたので、**用紙を
+        1つ足すとその用紙だけ既定のA4で刷られる**（B4がまさにそれ）。
+     ② CSSの`B4`は**ISO B4(250×353mm)**で、日本の印刷機のB4＝
+        **JIS B4(257×364mm)**とは別物。`.sp-page`はJISのmmで組んであるので、
+        名前で頼むと紙だけ小さくなり、ブラウザが中身を縮めて刷る。
+     実寸をそのまま渡せばどちらも起きず、`.sp-page`と`@page`が必ず同じ箱に
+     なる（§9.242 ⑦「紙の箱は、刷るときもプレビューと同じ」）。 */
+  el.textContent=pageRuleFor(paperKey);
+ }
+ /* `@page`の中身は**1箇所が作る**（刷る側とテストが同じ答えを見る）。 */
+ function pageRuleFor(paperKey){
   const p=paperSizeOf(paperKey);
-  const orient=p.w>p.h?'landscape':'portrait';
-  const size=p.key.indexOf('a3')===0?'A3':'A4';
-  el.textContent=`@page{size:${size} ${orient};margin:0}`;
+  return `@page{size:${p.w}mm ${p.h}mm;margin:0}`;
  }
 
  /* ---------- 印刷する中身を組み立てる ----------
@@ -893,7 +938,14 @@
       </section>
       <section class="sp-pv-sec">
        <h3>③ 用紙</h3>
-       <div class="sp-pats" id="spPvSize"></div>
+       <!-- 大きさと向きは別の欄(§9.252)。器は②見せ方と同じ sp-options に
+            する——中に「大きさ」「向き」の2つの群が入るので、sp-pats を
+            直に置くと群の見出しが札と同じ並びに混ざる。
+            **この中にバッククォートを書かないこと**(§9.211 ③)——ここは
+            テンプレートリテラルの中なので、コメントの中でも文字列が閉じ、
+            以降がJSとして解釈されて画面が組み上がらない(node --check は
+            通るので構文検査では捕まらない。実際にここで踏んだ)。 -->
+       <div class="sp-options" id="spPvSize"></div>
       </section>
       <section class="sp-pv-sec">
        <h3>④ 刷り上がり</h3>
@@ -1031,13 +1083,36 @@
    ${cb(pref,'commentBox','紙の下に「申し送り・気付き」の欄をつける','行ごとではなく、紙1枚に1つの欄です')}
   </div>`;
  }
- /* 用紙サイズ・向きの選択肢(§9.235、利用者の指示)。既存の「書き込む欄」と
-   同じ`.sp-pat`の見せ方を使い回す(選んだものが面で分かる)。 */
- function paperSizeRows(pref){
-  const cur=PAPER_SIZES.some(p=>p.key===pref.paper)?pref.paper:'a4-portrait';
-  return PAPER_SIZES.map(p=>`<label class="sp-pat${cur===p.key?' is-on':''}">
-     <input type="radio" name="spPaperSize" value="${p.key}"${cur===p.key?' checked':''}>
-     <span><b>${esc(p.label)}</b><small>${p.w}×${p.h}mm</small></span></label>`).join('');
+ /* 用紙の選択肢(§9.252、利用者の指示「用紙設定と縦横選択を分けて、
+    わかりやすくまとめ直し」)。**大きさと向きを別の群にする**——掛け合わせて
+    並べると用紙を1つ足すたびに札が2枚増える（B4を足すと8枚）。
+    見せ方は既存の「書き込む欄」と同じ`.sp-pat`（選んだものが面で分かる）。
+
+    **数字はいまの向きで出す**（§CLAUDE 6「単位と根拠を画面に出す」）——
+    「横」を選んでいるのに札が`210×297mm`と言っていると、どちらが本当か
+    確かめに行くことになる。**刷れる範囲まで書く**ので、余白を引く暗算を
+    させない。 */
+ function paperRowsHtml(pref){
+  const cur=paperSizeOf(pref.paper),usable=paperUsableMm(cur.key);
+  const dims=(k,orient)=>orient==='landscape'?{w:k.h,h:k.w}:{w:k.w,h:k.h};
+  const kinds=PAPER_KINDS.map(k=>{
+   const d=dims(k,cur.orient);
+   return `<label class="sp-pat${cur.kind===k.key?' is-on':''}" title="${esc(k.note)}">
+     <input type="radio" name="spPaperKind" value="${k.key}"${cur.kind===k.key?' checked':''}>
+     <span><b>${esc(k.label)}</b><small>${d.w}×${d.h}mm</small></span></label>`;
+  }).join('');
+  const orients=PAPER_ORIENTS.map(o=>{
+   const k=PAPER_KINDS.find(x=>x.key===cur.kind)||PAPER_KINDS[0],d=dims(k,o.key);
+   return `<label class="sp-pat${cur.orient===o.key?' is-on':''}" title="${esc(o.note)}">
+     <input type="radio" name="spPaperOrient" value="${o.key}"${cur.orient===o.key?' checked':''}>
+     <span><b>${esc(o.label)}</b><small>${d.w}×${d.h}mm</small></span></label>`;
+  }).join('');
+  return `<div class="sp-opt-group"><h4>大きさ</h4>
+    <div class="sp-pats" id="spPaperKinds">${kinds}</div></div>
+   <div class="sp-opt-group"><h4>向き</h4>
+    <div class="sp-pats" id="spPaperOrients">${orients}</div></div>
+   <p class="sp-opt-note" id="spPaperNow">いまの用紙は <b>${esc(cur.label)} ${cur.w}×${cur.h}mm</b>。
+    四辺 ${PAPER_MARGIN_MM}mm を空けるので、刷れる範囲は ${usable.w}×${usable.h}mm です。</p>`;
  }
  /* ---------- 倍率と紙送りの帯(§9.238 ③) ---------- */
  function renderZoomBar(){
@@ -1147,12 +1222,16 @@
    pv.pref.actualColumns=inp.value!=='none';
    savePref(pv.pref);paintOptions();renderPreview();
   });
-  /* 用紙サイズ(§9.235)。**選んだらその場で刷り上がりが変わる**（同じ作法）。 */
+  /* 用紙(§9.235 ②／§9.252)。**選んだらその場で刷り上がりが変わる**（同じ作法）。
+     大きさと向きは別の欄だが、**書き込む先は1つの鍵**（片方だけ選び直しても
+     もう片方は今の値を残す）。 */
   const sizeBox=el.querySelector('#spPvSize');
-  sizeBox.innerHTML=paperSizeRows(pv.pref);
-  sizeBox.querySelectorAll('input[name="spPaperSize"]').forEach(inp=>inp.onclick=()=>{
-   pv.pref.paper=inp.value;savePref(pv.pref);paintOptions();renderPreview();
-  });
+  sizeBox.innerHTML=paperRowsHtml(pv.pref);
+  sizeBox.querySelectorAll('input[name="spPaperKind"],input[name="spPaperOrient"]')
+   .forEach(inp=>inp.onclick=()=>{
+    pv.pref.paper=paperKeyWith(pv.pref.paper,inp.value);
+    savePref(pv.pref);paintOptions();renderPreview();
+   });
   if(keepOpt){
    const back=el.querySelector(`.sp-pv-side [data-opt="${keepOpt}"]:not([disabled])`);
    if(back)back.focus();
@@ -1244,6 +1323,11 @@
  window.WL=window.WL||{};
  WL.schedulePrint={open,buildPages,splitToSheets,pageHtml,
                    printColumns,paperSizes:()=>PAPER_SIZES.map(p=>({...p})),
+                   /* 刷るときの`@page`(§9.252)。**名前ではなく実寸mm**で
+                      頼んでいることを網が直に見られるようにしておく——名前で
+                      頼むと、用紙を1つ足したときにその用紙だけ既定のA4で
+                      刷られ、B4はISO(250×353mm)へ化ける。 */
+                   pageRule:pageRuleFor,
                    /* 書き込む欄のパターン(§9.191)。名前と並びは画面の文言と
                       同じものを1箇所から出す（テストも同じ表を見る）。 */
                    writePatterns:()=>WRITE_PATTERNS.map(p=>({...p})),
