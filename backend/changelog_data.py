@@ -4,11 +4,22 @@
 意味のある変更をコミットするたびに APP_VERSION を上げ、CHANGELOG の
 先頭へ新しいエントリを追記すること(新しい順)。
 """
-APP_VERSION='2.146.0'
+APP_VERSION='2.147.0'
 
 # 更新履歴。画面の「VERx.y.z」バッジから一覧表示する。APP_VERSIONを
 # 上げるたびに、このリストの先頭に新しいバージョンを追記すること。
 CHANGELOG=[
+ {'version':'2.147.0','notes':[
+  '**共有フォルダーへ移す手順をまとめました**（<code>docs/SHARE_MIGRATION.md</code>）。'
+  '測定データ・作業予定・マスタの3つは<b>直す場所も効くタイミングも違う</b>ので、'
+  '順番と確認の仕方まで含めて1枚にしてあります。'
+  'マスタを先に移すと、そのあとの設定が全端末へ一度に届きます。',
+  '<code>config/local.example.json</code> を用意しました。'
+  'ここに書けるのは<b>4つだけ</b>（<code>db_dir</code>・<code>master_db_path</code>・'
+  '<code>records_db_path</code>・<code>master_share_mode</code>）で、'
+  'マスタDB自身の置き場を決める設定なのでマスタの中には置けません。'
+  '他の設定はすべてマスタ管理の画面から直せます。',
+ ]},
  {'version':'2.146.0','notes':[
   '**マスタ管理の上部を1行にまとめました。**'
   '更新者ID・絞り込み・再読込をアイコン付きで詰め、画面名の説明は畳みました'

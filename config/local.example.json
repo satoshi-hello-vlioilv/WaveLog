@@ -1,0 +1,18 @@
+{
+  "_comment1": "このファイルを local.json という名前でコピーして使います。",
+  "_comment2": "ここに書けるのは4つだけ——マスタDB自身の置き場を決める設定なので、",
+  "_comment3": "マスタの中(パス設定マスタ)には置けません(鶏と卵)。他の設定は全部",
+  "_comment4": "マスタ管理の画面から直せます。使わないキーは行ごと消してください。",
+
+  "_db_dir": "master.sqlite3 と records.sqlite3 をまとめて置く場所",
+  "db_dir": "D:\\WaveLogData",
+
+  "_master_db_path": "マスタDBだけを別の場所に置く(db_dirより優先)",
+  "master_db_path": "\\\\nlmsrvngy03\\工場内共有\\検査データ\\Records\\master.sqlite3",
+
+  "_records_db_path": "この端末の測定データDBだけを別の場所に置く(db_dirより優先)",
+  "records_db_path": "D:\\WaveLogData\\records.sqlite3",
+
+  "_master_share_mode": "マスタの書込サイクル: auto(既定・置き場の綴りで判定) / on / off",
+  "master_share_mode": "auto"
+}
