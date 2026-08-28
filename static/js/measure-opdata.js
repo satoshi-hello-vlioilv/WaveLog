@@ -47,6 +47,10 @@
  /* 設備ごとの定義。**開いた設備が変わるまで使い回す**——測定を開くたびに
     引き直すと、ロットを開く速さがマスタの往復に引きずられる。 */
  let defs=[],builtinOff=[],gridCols=12,defsFor=null,loading=null;
+ /* §9.256。式が参照できる取得データの**呼び名→鍵**。サーバーが答える
+    （§9.163。画面へ綴りを書き写さない）。読めなかったら空——式は
+    「引けません」として空欄になるが、測定そのものは開ける（fail-open）。 */
+ let autoVocab=[];
  /* 畳んでいる群。**この端末の覚え**（読み方の好みなのでPCごとに違ってよい。
     §9.199の`childBadge`と同じ考え方）。 */
  const FOLD_KEY='MeasureOpFoldV2';
@@ -82,13 +86,15 @@
     defs=Array.isArray(r.items)?r.items:[];
     builtinOff=Array.isArray(r.builtinOff)?r.builtinOff:[];
     gridCols=Number(r.gridCols)>0?Number(r.gridCols):12;
+    autoVocab=Array.isArray(r.autoValues)?r.autoValues:[];
+    autoFormulaKey=String(r.autoFormulaKey||'');
    }catch(e){
     /* **読めなくても測定は開ける**（fail-open）。入力欄が出ないことは
        画面に書く——黙って空にすると「項目が無い設備」と区別が付かない。
        **組み込みの欄はそのまま**にする（読めなかったことを理由に、今まで
        使えていた入力欄を消さない）。 */
     console.warn('操業データの項目を読めませんでした',e);
-    defs=[];builtinOff=[];
+    defs=[];builtinOff=[];autoVocab=[];autoFormulaKey='';
    }
    defsFor=eq;loading=null;return defs;
   })();
@@ -324,6 +330,13 @@
   }catch(_){}
   return null;
  }
+ /* §9.256。式で作る自動値の鍵は**サーバーが答える**（§9.163／§9.234 ②）。
+    **画面に綴りを書かないこと**——`tests/test_opauto.js`が「画面のJSに鍵の
+    綴りを書き写していない」で機械的に見張っている。書き写すと、綴りを
+    変えたときに片方だけ直した状態が作れる。読めなかったら空＝どの行も
+    式として扱わない（測定は今までどおり開ける・fail-open）。 */
+ let autoFormulaKey='';
+ const isFormulaKey=k=>!!autoFormulaKey&&String(k||'')===autoFormulaKey;
  const AUTO_GETTERS={
   'lot.lotNo':()=>lotOf('lotNo'),
   'lot.inspectionNo':()=>lotOf('inspectionNo'),
@@ -357,7 +370,88 @@
   },
  };
  /* その鍵をこの版が引けるか。**引けないことは画面に書く**（§4）。 */
- function autoKnown(key){return Object.prototype.hasOwnProperty.call(AUTO_GETTERS,String(key||''))}
+ /* ---------- 式で作る自動値（§9.256、利用者の指示） ----------
+    「取得データから組み合わせたり、計算式を組み合わせたり、条件式を
+     組み合わせて、式を設定することで『自動』項目を作成できるように」
+
+    **評価器は作らない**——列の計算式（§9.111）が既に`eval`を使わない
+    字句解析→構文解析→評価を持っているので、`WL.formula`をそのまま使う。
+    ここがやるのは**材料（row）を1つ組み立てること**だけ。
+
+    材料は**呼び名を鍵にした1つのオブジェクト**:
+      ① 取得データ（`AUTO_VALUES`の呼び名。ロット番号・製造板厚・条数…）
+      ② 同じ設備の**他の操業データ項目**（項目名で引く。人が打った値も、
+         自動で入る値も、他の式の結果も）
+    利用者が書くのは`[ロット番号]`や`[OS31795速度]`——**鍵の綴りを覚えなくて
+    よい**（§CLAUDE 2「思い出させない」）。
+
+    **式どうしの参照は落ち着くまで数回まわす**。上から順に1回だけ解くと、
+    後ろの式を参照した式が「まだ空」で計算されてしまう（並び順を変えた
+    だけで答えが変わる、といういちばん分かりにくい壊れ方）。
+    **循環は止める**——回数で打ち切り、空欄にする（設定画面が保存前に断るが、
+    古い設定が残っていても画面が固まらないように、ここでも最後の砦を置く）。 */
+ const FORMULA_PASSES=4;
+ function formulaDefs(){
+  return (defs||[]).filter(d=>d&&isFormulaKey(d.autoValue)
+                              &&String(d.autoFormula||'').trim());
+ }
+ /* 式の材料。**呼び名で引く**（鍵ではない）。 */
+ function formulaRow(){
+  const row={},bag=store()||{};
+  /* ① 取得データ。**引けない鍵は入れない**——`[実働時間]`が空文字で入ると
+     「まだ終わっていない」と「そんな値は無い」が区別できなくなる。 */
+  (autoVocab||[]).forEach(a=>{
+   if(!a||!a.label||isFormulaKey(a.key))return;
+   const v=autoValueOf(a.key);
+   if(v!==null)row[a.label]=v;
+  });
+  /* ② 同じ設備の項目。**記録の値が先**（人が打った値・自動で入った値は
+     どちらもここに居る）。①と名前が重なったら**項目のほうを採る**
+     ——画面に出ている名前で書いた人の意図はそちら。 */
+  (defs||[]).forEach(d=>{
+   if(!d||!d.name)return;
+   const v=bag[d.name];
+   row[d.name]=(v==null?'':String(v));
+  });
+  return row;
+ }
+ /* 式の結果。**同じ材料なら作り直さない**（1回の描き直しで何度も呼ばれる）。 */
+ let formulaCacheRow=null,formulaCache=null;
+ function formulaValues(){
+  const list=formulaDefs();
+  if(!list.length)return {};
+  const row=formulaRow();
+  const sig=JSON.stringify(row);
+  if(formulaCacheRow===sig&&formulaCache)return formulaCache;
+  const out={};
+  if(!(window.WL&&WL.formula&&typeof WL.formula.compile==='function')){
+   /* **公開漏れを黙って素通しにしない**（§CLAUDE）——式の欄だけが静かに
+      空になるので、理由が画面からもログからも消える。 */
+   console.error('WL.formula が読み込まれていません（式で作る自動値は空欄になります）');
+   return {};
+  }
+  /* **`compile()`が返すのは関数ではなく`{columns,run}`**（`list-formula.js`）。
+     解いた木を使い回すための形で、評価は`run(row)`。 */
+  const fns=list.map(d=>{
+   try{return {name:d.name,c:WL.formula.compile(String(d.autoFormula||''))}}
+   catch(e){return {name:d.name,err:e&&e.message||String(e)}}
+  });
+  for(let pass=0;pass<FORMULA_PASSES;pass++){
+   let moved=false;
+   fns.forEach(f=>{
+    if(f.err){out[f.name]='';return}
+    let v='';
+    try{v=f.c.run({...row,...out})}catch(e){v=''}
+    v=(v==null?'':String(v));
+    if(out[f.name]!==v){out[f.name]=v;moved=true}
+   });
+   if(!moved)break;
+  }
+  formulaCacheRow=sig;formulaCache=out;
+  return out;
+ }
+ function autoKnown(key){return isFormulaKey(key)
+   ||Object.prototype.hasOwnProperty.call(AUTO_GETTERS,String(key||''))}
  function autoValueOf(key){
   const fn=AUTO_GETTERS[String(key||'')];
   if(!fn)return null;                       /* null＝引けない（空欄とは別） */
@@ -368,10 +462,15 @@
     （読み直すたびに作れる値で「保存していない変更」を作らない）。 */
  function paintAuto(){
   const bag=store();
+  /* §9.256。式は**まとめて1回**解く（互いを参照しうるので、欄ごとに
+     解くと並び順で答えが変わる）。 */
+  const fv=formulaValues();
   document.querySelectorAll('[data-opauto]').forEach(el=>{
    const out=el.querySelector(':scope>output');if(!out)return;
    const key=el.dataset.opauto,name=el.dataset.opfield||'';
-   const v=autoValueOf(key);
+   const v=isFormulaKey(key)
+     ?(Object.prototype.hasOwnProperty.call(fv,name)?fv[name]:'')
+     :autoValueOf(key);
    if(v===null){
     out.value='';
     out.title=`この版では引けない鍵です（${key}）。`;
@@ -2784,5 +2883,9 @@
                同じ大きさ**で描くために使う。 */
             cellPx,
             /* 設備が変わったら次に開くとき読み直す（マスタ管理で足した直後）。 */
-            forget:()=>{defs=[];builtinOff=[];defsFor=null;loading=null}};
+            /* §9.256。式が参照できる呼び名（設定画面が候補として出す）。 */
+            autoVocab:()=>autoVocab.map(x=>({...x})),
+            formulaRow:()=>formulaRow(),
+            forget:()=>{defs=[];builtinOff=[];autoVocab=[];autoFormulaKey='';
+                        defsFor=null;loading=null}};
 })();

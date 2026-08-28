@@ -62,6 +62,8 @@ G['異常位置'] = ['test_defect', 'test_defectlink', 'test_splitlive', 'test_s
                  'test_rollwipe']
 # 操業データの意匠・設定窓・空きの群（§9.227）
 G['操業意匠'] = ['test_oppad', 'test_opui', 'test_opdata', 'test_msteps', 'test_oplimit',
+                 # §9.256: 式で作る自動値
+                 'test_opformula',
                  'test_opmother', 'test_opunit', 'test_opauto', 'test_reclayout',
                  # §9.247 ①: 選ばせ方そのもの（トグル・メニュー・切替・角丸の踏襲）
                  'test_opwidget']
@@ -157,7 +159,9 @@ RULES = [
     ('static/js/list-columns.js', g('列', 'test_sccontent',
                                     'test_sccols', 'test_cols', 'test_lcpanel')),
     ('static/js/list-rules.js', g('列')),
-    ('static/js/list-formula.js', g('test_formula', 'test_colpreset', 'test_lcpanel')),
+    # §9.256 式で作る自動値も同じ評価器を使う（片方だけ直した状態を作らない）
+    ('static/js/list-formula.js', g('test_formula', 'test_colpreset', 'test_lcpanel',
+                                    'test_opformula')),
     ('static/js/filters.js', g('モーダル', 'test_filter', 'test_filterio', 'test_filteruser',
                                'test_listcache', 'test_allrows', 'test_nav', 'test_adhoc')),
     ('static/js/schedule-view.js', g('スケジュール', 'モーダル', 'test_listmodal')),

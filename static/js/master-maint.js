@@ -6382,7 +6382,7 @@
                 sourceNotePlaces:['欄の下','名前の横','出さない'],sourceNoteKeys:[],autoFills:[],
                 /* 自動で入る値・計算値の一覧（§9.234 ②）。**サーバーが答える**
                    ——ここは届くまでの受け皿で、鍵の綴りを画面に持たない。 */
-                autoValues:[],
+                autoValues:[],autoFormulaKey:'',
                 /* 同じ群がばらけて保存されていた置き場（§9.219 ③）。
                    まとめて描いたことを画面に書くために覚える。 */
                 healed:new Set(),
@@ -7517,7 +7517,12 @@
     2つあると、同じ数字が2箇所に出る（§CLAUDE 8）。 */
  function opAutoValueUsed(){
   const m=new Map();
-  (opState.items||[]).forEach(x=>{if(x.autoValue)m.set(String(x.autoValue),x)});
+  /* §9.256。**「式で作る」は何個でも置ける**——固定の鍵は同じ値が2箇所に
+     出るので1つに絞るが、式は1本ごとに別の値を作る道具なので、
+     1つ置いたら選べなくなっては困る（§CLAUDE 4）。 */
+  (opState.items||[]).forEach(x=>{
+   if(x.autoValue&&x.autoValue!==opFormulaKey())m.set(String(x.autoValue),x);
+  });
   return m;
  }
  function opOpenAutoMenu(ev){
@@ -8416,7 +8421,8 @@
       値を入れるのは<b>測定画面</b>なので、型・数の決まり・選ばせ方・初期値・手打ちは持ちません。
       <b>名前・置き場・幅・単位・見せ方はふつうの項目と同じように決められます。</b>
       出どころを変えたいときは、この項目を消して足し直してください。</i>
-    </span></div>`:''}
+    </span></div>
+   ${opIsFormula(x)?opFormulaRowHtml(x):''}`:''}
    <div class="op-form-row"><span class="op-form-label">役割</span>
     <span class="op-form-ctl">${opRolePickHtml(x)}</span></div>
    <div class="op-form-row"><span class="op-form-label">型</span>
@@ -8836,6 +8842,8 @@
   }
  }
  function bindOpModal(x){
+  /* §9.256。式の欄（`[自動値]`が`式`のときだけ在る）。 */
+  opBindFormula();
   const form=$('#opModalForm');if(!form)return;
   /* **触った結果はその場で当てる**（保存はまとめて1回）。押すたびに
      サーバーへ書くと、途中で切れたときに半分だけ効いた行が残る。 */
@@ -8971,6 +8979,101 @@
   t('opdMinFrom','minFrom');t('opdMaxFrom','maxFrom');
   return out;
  }
+ /* ---------- 式で作る自動値（§9.256、利用者の指示） ----------
+    「取得データから組み合わせたり、計算式を組み合わせたり、条件式を
+     組み合わせて、式を設定することで『自動』項目を作成できるように」
+
+    **評価器も書き方も列の計算式と同じ**（`WL.formula`・§9.111）——`eval`を
+    使わない自前の解析器が既にあるので、2つ目を作らない。書く材料は
+    **呼び名**（`[ロット番号]`・`[条数]`・`[OS31795速度]`）なので、鍵の綴りを
+    覚えなくてよい（§CLAUDE 2）。
+
+    **候補は押して入れられる**（§CLAUDE 2「探させない」）——名前を思い出して
+    打つのではなく、一覧から選ぶ。**壊れた式は書いている時点で断る**
+    （§9.111）——評価まで待つと、実データが全部空になってから気づく。 */
+ /* 鍵の綴りは**サーバーが答える**（§9.163）——画面へ書き写さない
+    （`tests/test_opauto.js`が機械で見張っている）。 */
+ const opFormulaKey=()=>String(opState.autoFormulaKey||'');
+ const opIsFormula=x=>!!x&&!!opFormulaKey()&&String(x.autoValue||'')===opFormulaKey();
+ /* 式が参照できる呼び名。**取得データはサーバーの語彙**、項目はこの設備の
+    一覧から。**自分自身は候補に出さない**——自分を参照する式は必ず循環する。 */
+ function opFormulaNames(x){
+  const groups=[];
+  const push=(g,label,note)=>{
+   let hit=groups.find(z=>z.name===g);
+   if(!hit){hit={name:g,items:[]};groups.push(hit)}
+   if(!hit.items.some(z=>z.label===label))hit.items.push({label,note:note||''});
+  };
+  (opState.autoValues||[]).forEach(a=>{
+   if(!a||!a.label||a.key===opFormulaKey())return;
+   push(a.group||'取得データ',a.label,[a.unit?`単位 ${a.unit}`:'',a.note].filter(Boolean).join('｜'));
+  });
+  (opState.items||[]).forEach(it=>{
+   if(!it||!it.name||it.id===(x&&x.id))return;
+   push('この設備の項目',it.name,
+        it.autoValue?`自動で入る値（${it.autoValueLabel||it.autoValue}）`:(it.unit?`単位 ${it.unit}`:''));
+  });
+  return groups;
+ }
+ /* いま書いてある式が使ってよいか。**理由まで返す**（§CLAUDE 4）。 */
+ function opFormulaCheck(x,src){
+  const text=String(src||'').trim();
+  if(!text)return {ok:false,why:'式が空です。下の候補を押して組み立ててください。'};
+  if(!(window.WL&&WL.formula&&typeof WL.formula.check==='function'))
+   return {ok:false,why:'式を確かめる部品が読み込まれていません。'};
+  const r=WL.formula.check(text);
+  if(r&&r.error)return {ok:false,why:r.error};
+  /* **知らない呼び名は断る**——評価時には空文字になるだけなので、
+     打ち間違えると「いつも空欄」の欄が黙って出来上がる。 */
+  const known=new Set();
+  opFormulaNames(x).forEach(g=>g.items.forEach(i=>known.add(i.label)));
+  const used=(r&&r.columns)||[];
+  const bad=used.filter(n=>!known.has(n));
+  if(bad.length)return {ok:false,why:`この名前は使えません: ${bad.join('・')}`
+    +'（下の候補にあるものだけが使えます。項目名を変えたときは書き直してください）'};
+  /* **自分を参照していたら断る**（循環の入口）。 */
+  if(x&&x.name&&used.indexOf(x.name)>=0)
+   return {ok:false,why:'自分自身は使えません（値が決まりません）。'};
+  return {ok:true,why:`使える式です（${used.length}件の値を使っています）`,columns:used};
+ }
+ function opFormulaRowHtml(x){
+  const src=String(x.autoFormula||'');
+  const r=opFormulaCheck(x,src);
+  const groups=opFormulaNames(x);
+  return `<div class="op-form-row op-form-row-formula"><span class="op-form-label">式</span>
+   <span class="op-form-ctl">
+    <textarea id="opdFormula" class="op-formula-input" rows="2"
+      placeholder="例: if([製造板厚] &lt; 0.3, &quot;薄物&quot;, &quot;厚物&quot;)">${esc(src)}</textarea>
+    <b class="${r.ok?'op-chip':'op-warn-chip'}" id="opdFormulaState">${esc(r.why)}</b>
+    <i class="op-form-note">取得データ・この設備の他の項目を、計算（<b>+ - * / %</b>）・
+     比較（<b>= &lt;&gt; &lt; &lt;= &gt; &gt;=</b>）・条件（<b>if(条件, 真, 偽)</b>）で組み合わせます。
+     <b>表示だけの値</b>で、並べ替え・絞り込みの対象にはなりません。</i>
+    <div class="op-formula-pick">
+     ${groups.map(g=>`<div class="op-formula-group">${esc(g.name)}</div>`
+       +g.items.map(i=>`<button type="button" class="op-formula-name" data-opf-name="${esc(i.label)}"
+          title="${esc(i.note||'')}">${esc(i.label)}</button>`).join('')).join('')}
+    </div>
+   </span></div>`;
+ }
+ function opBindFormula(){
+  const ta=$('#opdFormula');if(!ta)return;
+  const x=opItemById(opState.picked)||{};
+  const state=$('#opdFormulaState');
+  const paint=()=>{
+   const r=opFormulaCheck(x,ta.value);
+   if(state){state.textContent=r.why;state.className=r.ok?'op-chip':'op-warn-chip'}
+  };
+  /* **打っている最中に窓を組み直さない**（§9.117）——1文字ごとに
+     カーソルが飛ぶ。書き換えるのは判定の札だけ。 */
+  ta.oninput=paint;
+  document.querySelectorAll('[data-opf-name]').forEach(b=>b.onclick=()=>{
+   const ins='['+b.dataset.opfName+']';
+   const s=ta.selectionStart||0,e=ta.selectionEnd||0;
+   ta.value=ta.value.slice(0,s)+ins+ta.value.slice(e);
+   ta.focus();ta.selectionStart=ta.selectionEnd=s+ins.length;
+   paint();
+  });
+ }
  function opDetailValues(){
   const x=opItemById(opState.picked)||{};
   /* **画面に出ていない段の値は控えから読む**（§9.223 ②）。決めることを
@@ -8993,6 +9096,10 @@
              落とすと保存のたびに出どころが消える（§9.212 ②と同じ形）。 */
           minFrom:(v('opdMinFrom','minFrom')||''),maxFrom:(v('opdMaxFrom','maxFrom')||''),
           unit:v('opdUnit','unit'),choice:v('opdChoice','choice'),
+          /* §9.256。**必ず送る**——`item_upsert`は全列を書くので、他の段から
+             保存したときに落とすと書いた式が消える（§9.223 ②と同じ形）。
+             欄が描かれていない段では控え(`x`)が正。 */
+          autoFormula:(v('opdFormula','autoFormula')||''),
           group:v('opdGroup','group'),
           /* §9.223 ①③。役割は`<select>`から、意匠は押した結果が`x`に
              載っているのでそのまま持ち出す（保存の形はサーバーが作る）。 */
@@ -9088,6 +9195,14 @@
     role:d.role||'',look:d.look||null,
     /* §9.226 ①③ */
     layout:d.layout||'自動',groupSpan:d.groupSpan||0};
+  /* §9.256。式で作る自動値だけが持つ設定。**壊れた式は保存しない**
+     （§9.111「書いている時点で断る」）——評価まで待つと、実データが
+     全部空になってから気づく。理由はその場に出して直させる（§CLAUDE 4）。 */
+  if(opIsFormula(x)){
+   const r=opFormulaCheck(x,d.autoFormula);
+   if(!r.ok){opModalSay('式を直してください: '+r.why,true);return}
+   body.autoFormula=d.autoFormula;
+  }
   try{
    opModalSay('保存しています…');
    await api('/api/operation-item-master/update',{method:'POST',
@@ -9608,6 +9723,8 @@
    opState.sourceNoteKeys=it.sourceNoteKeys||opState.sourceNoteKeys;
    opState.autoFills=it.autoFills||opState.autoFills;
    opState.autoValues=it.autoValues||opState.autoValues;
+   /* §9.256。式で作る自動値の鍵（画面へ綴りを書き写さない・§9.163）。 */
+   opState.autoFormulaKey=it.autoFormulaKey||opState.autoFormulaKey||'';
    opState.layouts=it.layouts||opState.layouts;
    opState.layoutWidgets=it.layoutWidgets||opState.layoutWidgets;
    opState.typeFamilies=it.typeFamilies||opState.typeFamilies;
