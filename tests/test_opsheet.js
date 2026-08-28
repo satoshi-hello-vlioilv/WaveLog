@@ -159,20 +159,46 @@ const cleanupLayout=async()=>{
   rec('2行構成では見出しも2段になる',two.下段見出し.length===two.下段セル,
       JSON.stringify({見出し:two.下段見出し.length,セル:two.下段セル}));
 
-  /* ---- 用紙・枠線 ---- */
-  await page.click('#osPvPaper [data-paper="a3-landscape"]');
-  await page.waitForFunction(()=>{
+  /* ---- 用紙・枠線 ----
+     用紙は**大きさと向きを別々に**選ぶ（§9.252、利用者の指示「実績データ表も
+     同じ形に揃えてください」）。掛け合わせて並べると用紙を1つ足すたびに札が
+     2枚増える。 */
+  const waitPaper=k=>page.waitForFunction(want=>{
    const p=document.querySelector('#osPreview .os-page');
-   return p&&p.getAttribute('data-paper')==='a3-landscape';
-  },null,{timeout:10000});
+   return p&&p.getAttribute('data-paper')===want;
+  },k,{timeout:10000});
+  const papers=await page.evaluate(()=>({
+   大きさ:[...document.querySelectorAll('#osPvPaperKind [data-kind]')].map(b=>b.dataset.kind),
+   向き:[...document.querySelectorAll('#osPvPaperOrient [data-orient]')].map(b=>b.dataset.orient),
+   全部:WL.opSheet.paperSizes().map(p=>p.key),
+   規則:WL.opSheet.paperSizes().map(p=>WL.opSheet.pageRule(p.key))}));
+  rec('用紙は「大きさ3枚＋向き2枚」に分かれて並ぶ(§9.252)',
+      papers.大きさ.join(',')==='a4,b4,a3'&&papers.向き.join(',')==='landscape,portrait',
+      JSON.stringify({大きさ:papers.大きさ,向き:papers.向き}));
+  rec('B4を足しても選択肢は掛け算で増えない（札は5枚）',
+      papers.大きさ.length+papers.向き.length===5&&papers.全部.length===6,
+      JSON.stringify(papers.全部));
+  /* **`@page`は用紙の名前ではなく実寸mm**（§9.252）——名前で頼むと
+     B4だけA4の紙に刷られ、さらにCSSの`B4`はISO(250×353mm)で紙が縮む。 */
+  rec('@pageは用紙の名前ではなく実寸mmで頼む',
+      papers.規則.every(r=>/^@page\{size:\d+mm \d+mm;margin:0\}$/.test(r))
+      &&papers.規則.every(r=>!/\b(A4|A3|B4)\b/.test(r)),JSON.stringify(papers.規則));
+  await page.click('#osPvPaperKind [data-kind="a3"]');
+  await waitPaper('a3-landscape');
   const a3=await snap();
-  rec('用紙をA3横にすると紙が広くなる',a3.紙.w>two.紙.w,
+  rec('大きさをA3にすると紙が広くなる（向きは横のまま残る）',a3.紙.w>two.紙.w,
       JSON.stringify({A4:two.紙.w,A3:a3.紙.w}));
-  await page.click('#osPvPaper [data-paper="a4-landscape"]');
-  await page.waitForFunction(()=>{
-   const p=document.querySelector('#osPreview .os-page');
-   return p&&p.getAttribute('data-paper')==='a4-landscape';
-  },null,{timeout:10000});
+  await page.click('#osPvPaperKind [data-kind="b4"]');
+  await waitPaper('b4-landscape');
+  const b4=await snap();
+  rec('B4横はJISの364×257mmで紙が組まれる（A4横とA3横の間）',
+      b4.紙.w>two.紙.w&&b4.紙.w<a3.紙.w,
+      JSON.stringify({A4:two.紙.w,B4:b4.紙.w,A3:a3.紙.w}));
+  const note=await page.evaluate(()=>(document.getElementById('osPvPaperNow')||{}).textContent||'');
+  rec('いまの用紙と刷れる範囲を文字で出す',
+      /B4 横/.test(note)&&/364×257mm/.test(note)&&/348×241mm/.test(note),note);
+  await page.click('#osPvPaperKind [data-kind="a4"]');
+  await waitPaper('a4-landscape');
 
   const before=await snap();
   await page.click('#osPvBorders');

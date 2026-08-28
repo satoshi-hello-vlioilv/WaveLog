@@ -37,14 +37,26 @@
  const PREF_KEY='OpSheetPrintPrefV1';
  const TARGET_PREFIX='opsheet:';
 
- /* 用紙は作業予定表と同じ4種・余白は四辺8mm（§9.235 ②）。**既定はA4横**
-    （利用者の指示）——列が多い表なので、縦だと1行に収まらない。 */
- const PAPER_SIZES=[
-  {key:'a4-landscape',label:'A4 横',w:297,h:210},
-  {key:'a4-portrait', label:'A4 縦',w:210,h:297},
-  {key:'a3-landscape',label:'A3 横',w:420,h:297},
-  {key:'a3-portrait', label:'A3 縦',w:297,h:420},
+ /* 用紙は作業予定表と**同じ形**（§9.252、利用者の指示「実績データ表も同じ形に
+    揃えてください」）——大きさ（A4/B4/A3）と向き（縦/横）を**別々に決める**。
+    掛け合わせて並べると用紙を1つ足すたびに札が2枚増える（B4を足すと8枚）。
+    **既定はA4横**（利用者の指示）——列が多い表なので、縦だと1行に収まらない。
+    余白は四辺8mm。B4は**JIS B4(257×364mm)**。 */
+ const PAPER_KINDS=[
+  {key:'a4',label:'A4',w:210,h:297},
+  {key:'b4',label:'B4',w:257,h:364},
+  {key:'a3',label:'A3',w:297,h:420},
  ];
+ const PAPER_ORIENTS=[
+  {key:'landscape',label:'横'},
+  {key:'portrait', label:'縦'},
+ ];
+ /* 掛け合わせは**ここで1回だけ**。`data-paper`・保存値・`paperSizeOf()`の
+    呼び出し側は今までどおりこの綴りを見る（**保存は1つの鍵のまま**）。
+    並びの先頭が既定なので、横→縦の順にしてA4横を先頭に置く。 */
+ const PAPER_SIZES=PAPER_KINDS.reduce((out,k)=>out.concat(PAPER_ORIENTS.map(o=>({
+   key:k.key+'-'+o.key,label:k.label+' '+o.label,kind:k.key,orient:o.key,
+   w:o.key==='landscape'?k.h:k.w,h:o.key==='landscape'?k.w:k.h}))),[]);
  const PAPER_MARGIN_MM=8;
  const MM_PER_PX=25.4/96;
  const MIN_COL_MM=6;
@@ -57,11 +69,28 @@
   const p=paperSizeOf(key);
   return {w:p.w-PAPER_MARGIN_MM*2,h:p.h-PAPER_MARGIN_MM*2};
  }
+ /* 片方だけ選び直したときの鍵（§9.252）。**もう片方の今の値を残す**
+    ——残さないと、向きを変えるたびに大きさが既定へ戻る。 */
+ function paperKeyWith(cur,part){
+  const now=paperSizeOf(cur);
+  const kind=PAPER_KINDS.some(k=>k.key===part)?part:now.kind;
+  const orient=PAPER_ORIENTS.some(o=>o.key===part)?part:now.orient;
+  return paperSizeOf(kind+'-'+orient).key;
+ }
+ /* `@page`の中身は**1箇所が作る**。**用紙の名前で頼まないこと**（§9.252）
+    ——①以前は`key.indexOf('a3')===0`で名前を当てており、**用紙を1つ足すと
+    その用紙だけ既定のA4で刷られる**（B4がまさにそれ）②CSSの`B4`は
+    **ISO B4(250×353mm)**で、日本の印刷機のB4＝**JIS B4(257×364mm)**とは
+    別物。`.os-page`はJISのmmで組んであるので、名前で頼むと紙だけ小さくなり
+    中身が縮む。実寸をそのまま渡せばどちらも起きない。 */
+ function pageRuleFor(paperKey){
+  const p=paperSizeOf(paperKey);
+  return `@page{size:${p.w}mm ${p.h}mm;margin:0}`;
+ }
  function applyPrintPageStyle(paperKey){
   let el=$id(PAGE_STYLE_ID);
   if(!el){el=document.createElement('style');el.id=PAGE_STYLE_ID;document.head.appendChild(el)}
-  const p=paperSizeOf(paperKey);
-  el.textContent=`@page{size:${p.key.indexOf('a3')===0?'A3':'A4'} ${p.w>p.h?'landscape':'portrait'};margin:0}`;
+  el.textContent=pageRuleFor(paperKey);
  }
 
  /* ---------- 設定（この端末に覚える） ----------
@@ -474,9 +503,18 @@
         <button type="button" data-rows="1" title="必ず1行。入りきらないときは列を細くして詰めます">1行</button>
         <button type="button" data-rows="2" title="必ず2行1データ。列が多いときはこちら">2行</button></div>
        <p class="os-pv-note" id="osPvRowsNote"></p></section>
-      <section><h3>③ 用紙</h3><div class="os-pv-seg" id="osPvPaper">
-        ${PAPER_SIZES.map(p=>`<button type="button" data-paper="${p.key}">${p.label}</button>`).join('')}
-       </div></section>
+      <section><h3>③ 用紙</h3>
+       <!-- 大きさと向きは別の欄(§9.252)。掛け合わせて並べると用紙を1つ
+            足すたびに札が2枚増える。 -->
+       <div class="os-pv-sub">大きさ</div>
+       <div class="os-pv-seg" id="osPvPaperKind">
+        ${PAPER_KINDS.map(k=>`<button type="button" data-kind="${k.key}">${k.label}</button>`).join('')}
+       </div>
+       <div class="os-pv-sub">向き</div>
+       <div class="os-pv-seg" id="osPvPaperOrient">
+        ${PAPER_ORIENTS.map(o=>`<button type="button" data-orient="${o.key}">${o.label}</button>`).join('')}
+       </div>
+       <p class="os-pv-note" id="osPvPaperNow"></p></section>
       <section><h3>④ 見せ方</h3>
        <label class="os-pv-check"><input type="checkbox" id="osPvBorders">枠線を出す</label>
        <label class="os-pv-check"><input type="checkbox" id="osPvDense">高密度（文字と余白を詰める）</label>
@@ -501,7 +539,10 @@
      押した結果で作り直す作りだと反映されない）。 */
   el.querySelectorAll('#osPvUnit [data-unit]').forEach(b=>b.onclick=()=>{pref.unit=b.dataset.unit;afterPref()});
   el.querySelectorAll('#osPvRows [data-rows]').forEach(b=>b.onclick=()=>{pref.rows=b.dataset.rows;afterPref()});
-  el.querySelectorAll('#osPvPaper [data-paper]').forEach(b=>b.onclick=()=>{pref.paper=b.dataset.paper;afterPref()});
+  el.querySelectorAll('#osPvPaperKind [data-kind],#osPvPaperOrient [data-orient]')
+   .forEach(b=>b.onclick=()=>{
+    pref.paper=paperKeyWith(pref.paper,b.dataset.kind||b.dataset.orient);afterPref();
+   });
   $id('osPvBorders').onclick=()=>{pref.borders=$id('osPvBorders').checked;afterPref()};
   $id('osPvDense').onclick=()=>{pref.dense=$id('osPvDense').checked;afterPref()};
   /* **背景クリックでは閉じない**（§9.221 ①）。閉じる場所は×とEscだけ。 */
@@ -521,7 +562,17 @@
    b.classList.toggle('is-on',b.dataset[attr]===val));
   on('#osPvUnit [data-unit]','unit',pref.unit);
   on('#osPvRows [data-rows]','rows',pref.rows);
-  on('#osPvPaper [data-paper]','paper',pref.paper);
+  const cur=paperSizeOf(pref.paper);
+  on('#osPvPaperKind [data-kind]','kind',cur.kind);
+  on('#osPvPaperOrient [data-orient]','orient',cur.orient);
+  /* **いまの用紙と刷れる範囲を文字で出す**（§9.252・§CLAUDE 6）
+     ——余白を引く暗算をさせない。 */
+  const now=$id('osPvPaperNow');
+  if(now){
+   const u=paperUsableMm(cur.key);
+   now.textContent=`いまの用紙は ${cur.label} ${cur.w}×${cur.h}mm。`
+    +`四辺 ${PAPER_MARGIN_MM}mm を空けるので、刷れる範囲は ${u.w}×${u.h}mm です。`;
+  }
   const b=$id('osPvBorders');if(b)b.checked=pref.borders!==false;
   const d=$id('osPvDense');if(d)d.checked=pref.dense!==false;
  }
@@ -652,7 +703,11 @@
  });
 
  WL.opSheet={open,close:closePreview,buildPages,splitToSheets,pageHtml,printPages,
-             paperSizes:()=>PAPER_SIZES.slice(),planLines,withMm,layoutLines,mergeTracks,
+             paperSizes:()=>PAPER_SIZES.slice(),
+             /* 刷るときの`@page`(§9.252)。**名前ではなく実寸mm**で頼んで
+                いることを網が直に見られるようにしておく。 */
+             pageRule:pageRuleFor,
+             planLines,withMm,layoutLines,mergeTracks,
              columnKeys:allColumnKeys,visibleColumnKeys,targetOf,lineOf,
              pref:()=>({...pref}),sheets:()=>pv.sheets.slice(),
              render:renderPreview};

@@ -189,6 +189,9 @@
    titleText:'帳票ブロック — 紙に載せる塊',
    asideHtml:()=>rbAsideHtml(),bindAside:form=>rbBindAside(form),
    groupsAsTabs:true,
+   /* **見本のロットで刷り上がりを見る**（§9.253、利用者の指示）。
+      印1つで帯にボタンが出る差し替え口（`excelIo`・`bulkDelete`と同じ）。 */
+   sampleReport:true,
    hintShort:'①から④の順に決めます。**右の見本が刷り上がりです**——'
     +'**紙の中の塊は四方どこでも掴んで大きさを変えられます**（幅・高さの札でも決められます）。'
     +'**既定の塊は消せません**（紙へ出したくないときは④を「出さない」に）。',
@@ -1200,6 +1203,46 @@
      ・**保存する前に下見できる**（§9.193）。何件が追加で何件が上書きか、
        どの行がなぜ飛ばされるかを、書き込む前に出す。
      ・**飛ばした件数と理由を必ず文字で言う**（§CLAUDE 4）。 */
+ /* ---------- 見本のロットで帳票を見る（§9.253、利用者の指示） ----------
+    「今の状態だと、登録済みのデータから、帳票の表示を行うパターンで実データ
+     での確認が必要です。クリックのステップ数が多いのと、実データがないと
+     確認できない点が問題です。全入力可能データのダミーデータを1データ、
+     内部に持っておくこととそのデータを活用し帳票のプレビューを帳票ブロック
+     マスタから確認用に実際のデータを配置した形かつ、現在のレイアウトでの
+     データを見られる、試し印刷もできるようにしてください」
+
+    **1押しで刷り上がりまで行く**（§2「探させない」）——それまでは
+    「データ一覧を開く→ロットを探す→行を開く→帳票」の4段で、しかも
+    実データが1件も無い端末では**確かめる手立てが無かった**。
+    見本のロットはサーバーが1件だけ作る（§9.163。値は設定画面の
+    「見本の値」と同じ`SAMPLE_VALUES`が持つので、欄で確かめた文字が
+    そのまま紙に出る）。
+
+    印は`sampleReport:true`の1つ（`excelIo`・`bulkDelete`と同じ差し替え口）。 */
+ function sampleReportHtml(def){
+  if(!def.sampleReport)return '';
+  return `<span class="mm-sample-tools">
+    <button type="button" id="mmSampleView" class="mm-btn-ghost sm"
+      title="見本のロット1件で、いまの配置のまま帳票のプレビューを開きます（実データは要りません。保存もされません）">見本で帳票を見る</button>
+    <button type="button" id="mmSamplePrint" class="mm-btn-ghost sm"
+      title="見本のロットで、いまの配置のまま試しに1枚刷ります">試し印刷</button>
+   </span>`;
+ }
+ function bindSampleReport(def){
+  if(!def.sampleReport)return;
+  const go=async print=>{
+   if(!(window.WL&&WL.reportSample&&typeof WL.reportSample.open==='function')){
+    /* **公開漏れは黙って素通しにしない**（§CLAUDE）——「あれば使う」で
+       書くと、名前を変えた日に押しても何も起きない欄になる。 */
+    console.error('WL.reportSample.open が見つかりません');
+    showToast&&showToast('帳票を開けません','帳票の画面が読み込まれていません。',6000);return;
+   }
+   await WL.reportSample.open({returnTo:'blocks',print:!!print});
+  };
+  const v=$('#mmSampleView');if(v)v.onclick=()=>go(false);
+  const pr=$('#mmSamplePrint');if(pr)pr.onclick=()=>go(true);
+ }
+
  /* ---------- まとめて消す（§9.251、利用者の指示「ロールマスタの全削除機能
     （ロールマスタの完全入替機能）を実装してください」） ----------
     **印を1つ付けるだけ**の差し替え口（`excelIo`と同じ作法）。
@@ -1481,19 +1524,20 @@
      <span class="mm-mode-chip new">新規登録</span>
      <button type="button" id="masterMaintAdd" class="mm-btn-primary sm">＋ ${esc(def.label)}を追加</button>
      <span class="mm-form-hint">一覧の行をクリック（またはダブルクリック・「編集」ボタン）で編集ウィンドウを開きます。</span>
+     ${sampleReportHtml(def)}
      ${bulkDeleteHtml(def)}
     </div>
     ${def.hint?`<p class="mm-def-hint">${hintHtml(def.hint)}</p>`:''}
     ${excelIoHtml(def)}`;
    form.onsubmit=ev=>ev.preventDefault();
    const ab=$('#masterMaintAdd');if(ab)ab.onclick=()=>openMaintEditor(null);
-   bindExcelIo(def);bindBulkDelete(def);
+   bindExcelIo(def);bindBulkDelete(def);bindSampleReport(def);
    return;
   }
   form.classList.remove('mm-form-compact');
   const controls=buildFieldControls(def,editing);
   const chip=editing?`<span class="mm-mode-chip editing">編集中 <b>${esc(editing[def.cols[0].k]||'')}</b><small>ID:${esc(editing.id)}</small></span>`:`<span class="mm-mode-chip new">新規登録</span>`;
-  form.innerHTML=`<div class="mm-form-head">${chip}${editing?'<button type="button" id="masterMaintNew" class="mm-btn-ghost sm">＋ 新規入力に切替</button>':''}${bulkDeleteHtml(def)}</div>
+  form.innerHTML=`<div class="mm-form-head">${chip}${editing?'<button type="button" id="masterMaintNew" class="mm-btn-ghost sm">＋ 新規入力に切替</button>':''}${sampleReportHtml(def)}${bulkDeleteHtml(def)}</div>
    ${def.hint?`<p class="mm-def-hint">${hintHtml(def.hint)}</p>`:''}
    <div class="mm-form-fields">${controls}${
     typeof def.extraHtml==='function'?def.extraHtml(editing):''}</div>
@@ -1502,7 +1546,7 @@
   form.onsubmit=ev=>{ev.preventDefault();submitMaint()};
   const nb=$('#masterMaintNew');if(nb)nb.onclick=()=>{maintState.editing=null;renderMaintForm()};
   bindEquipmentPickers(form);bindInputHelpers(form);bindMaintTabs(form);bindMoreToggles(form);
-  bindExcelIo(def);bindBulkDelete(def);
+  bindExcelIo(def);bindBulkDelete(def);bindSampleReport(def);
  }
 
  /* ---------- 汎用の編集専用モーダル(ARCHITECTURE.md「マスタ管理の画面形態」新設) ----------

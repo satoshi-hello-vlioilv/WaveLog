@@ -1913,6 +1913,10 @@
 .mm-bulk-pick.is-all{border-color:var(--danger-border);background:var(--danger-bg)}
 .mm-bulk-need{color:var(--ink-3);font-size:var(--fs-micro)}
 .mm-bulk-tip{color:var(--ink-3);font-size:var(--fs-micro);line-height:1.5}
+/* 見本のロットで帳票を見る（§9.253）。**追加の隣に置く**——実データが
+   要らない確認は危ない操作ではないので、主要動線の中で構わない
+   （消す操作だけが右端へ離れる・§CLAUDE 5）。 */
+.mm-sample-tools{display:flex;align-items:center;gap:var(--gap-tight);flex:0 0 auto}
 
 /* ==========================================================
    「記録した値」の配置（§9.243、利用者の指示）
@@ -2204,14 +2208,27 @@
   border-color:var(--teal);color:var(--teal-dark);
   background:color-mix(in srgb,var(--teal) 12%,var(--surface));
 }
+/* **札の中の2行は縮ませない**（§9.253、利用者の報告「タブの見切れが残って
+   います」）。原因は2つあり、**片方だけ直しても文字は切れたまま**:
+   ① `.mm-editor-body .mm-fieldgroup`の`flex:1 1 100%`が当たっている。
+      札は**縦積みのflex**なので、`flex-basis:100%`は**高さの100%**を指す
+      ——名前の行が器いっぱいを要求し、あぶれた2行目（いま決めた値）が
+      `flex-shrink`で潰される（実測: 行送り14.85pxの箱が10.05pxまで縮み、
+      `overflow:hidden`で下が切れていた）。
+   ② 群の見出しの飾り（下余白＋罫線）がそのまま乗って、名前の行だけが
+      26pxを取っていた。札の中では見出しではなく**ただの1行**。
+   高さは「文字×行送り」で決める（§9.90）ので、行送りも明示する
+   ——`overflow:hidden`の箱では、行送りが足りないぶんがそのまま欠ける。 */
+.mm-tab>*{flex:0 0 auto}
 .mm-tab>.mm-fieldgroup{
-  margin:0;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  font-size:var(--fs-sm);font-weight:800;color:inherit;
+  margin:0;padding:0;border:0;min-width:0;max-width:100%;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:var(--fs-sm);line-height:var(--lh);font-weight:800;color:inherit;
 }
 /* いま何を決めてあるか（§2「思い出させない」）。**畳んだ段でも読める。** */
 .mm-tab-sum{
   min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  color:var(--ink-3);font-size:var(--fs-micro);font-weight:600;
+  color:var(--ink-3);font-size:var(--fs-micro);line-height:var(--lh);font-weight:600;
 }
 .mm-tab.is-on .mm-tab-sum{color:var(--teal-dark)}
 .mm-tabpanel[hidden]{display:none}

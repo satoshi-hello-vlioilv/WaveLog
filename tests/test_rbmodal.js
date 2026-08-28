@@ -103,9 +103,17 @@ let b=null,page=null;
    const f=document.querySelector('.mm-form-fields');
    const p=document.querySelector('.mm-tabpanel:not([hidden])');
    const r=e=>e.getBoundingClientRect();
+   /* **縦の見切れは箱の中で起きる**（§9.253）——`.mm-tab-sum`は
+      `overflow:hidden`なので、行送りぶんの高さが無いと**箱は札に収まった
+      まま文字の下だけが欠ける**。「下へ潜る」（札からのはみ出し）だけを
+      見る網はこれを素通りする（実際に素通りしていた。実測で
+      箱10.05px / 中身15px＝5px欠け）。 */
+   const cut=e=>Math.round(e.scrollHeight-e.clientHeight);
    const sums=[...document.querySelectorAll('.mm-tab')].map(t=>({
      下へ潜る:Math.round(r(t.querySelector('.mm-tab-sum')).bottom-r(t).bottom),
-     切れ:Math.round(t.querySelector('.mm-tab-sum').scrollWidth-t.querySelector('.mm-tab-sum').clientWidth)}));
+     切れ:Math.round(t.querySelector('.mm-tab-sum').scrollWidth-t.querySelector('.mm-tab-sum').clientWidth),
+     縦切れ:cut(t.querySelector('.mm-tab-sum')),
+     名の縦切れ:cut(t.querySelector('.mm-fieldgroup'))}));
    return {帯:Math.round(r(b).width),欄:Math.round(r(f).width),
      パネル:Math.round(r(p).width),
      帯の左:Math.round(r(b).left),パネルの左:Math.round(r(p).left),
@@ -116,6 +124,8 @@ let b=null,page=null;
       &&Math.abs(bar.帯の左-bar.パネルの左)<=2,JSON.stringify(bar));
   rec('段の札の2行目が下に潜らない（見出しと今の値が両方読める）',
       bar.札.every(x=>x.下へ潜る<=0&&x.切れ<=1),JSON.stringify(bar.札));
+  rec('段の札の文字が箱の中で切れない（§9.253。行送りぶんの高さがある）',
+      bar.札.every(x=>x.縦切れ<=0&&x.名の縦切れ<=0),JSON.stringify(bar.札));
   rec('窓を開いた時点で縦に溢れない（スクロールレス）',box.overflowY===0,String(box.overflowY));
   /* 段を見出しの言葉で開く。**番号で探さないこと**——段が1つ増えただけで
      番号がずれる網は、直していないのに落ちる。 */

@@ -81,11 +81,18 @@ body.ac-mode #grid,body.ac-mode .pager{display:none}
 /* ---------- 操業データ表（紙） ----------
    px 固定はここでは正しい（印刷物）。画面の表示サイズ倍率に追随させると、
    拡大しただけで紙の行数が変わる（§9.115と同じ理由）。 */
+/* 用紙の「大きさ」「向き」の見出し（§9.252）。**群に分けたことが読める
+   ように**、札の並びの上へ小さく置く（見出しが無いと2列の札が1つの群に
+   見える）。 */
+.os-pv-sub{margin:var(--space-1) 0 2px;color:var(--ink-3);
+  font-size:var(--fs-micro);font-weight:700}
 .os-print-area{display:none}
 .os-page{font-size:10px;line-height:1.25;box-sizing:border-box;
  width:297mm;min-height:210mm;padding:8mm;background:#fff;color:#111;
  display:flex;flex-direction:column;gap:2mm}
 .os-page[data-paper="a4-portrait"]{width:210mm;min-height:297mm}
+.os-page[data-paper="b4-portrait"]{width:257mm;min-height:364mm}
+.os-page[data-paper="b4-landscape"]{width:364mm;min-height:257mm}
 .os-page[data-paper="a3-landscape"]{width:420mm;min-height:297mm}
 .os-page[data-paper="a3-portrait"]{width:297mm;min-height:420mm}
 /* 高密度（既定）。**中身を削らずに詰める**——文字と余白だけを落とす。 */
