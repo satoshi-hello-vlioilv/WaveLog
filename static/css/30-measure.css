@@ -2394,7 +2394,10 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
   grid-row:2;grid-column:1;justify-self:end;align-self:center;
   /* **数の道具の帯ぶんも避ける**（§9.250 ⑨）——欄の右端に帯（スピナー等）が
      あるとき、単位だけがその下に潜る。値の逃げ場（`--opf-pad-r`）と同じ数を
-     見るので、帯の幅を変えてもここは追いかけなくてよい。 */
+     見るので、帯の幅を変えてもここは追いかけなくてよい。
+     **`--opf-num-w`は絶対の長さで渡ってくる**（§9.257 ①）。以前は`em`
+     だったため、ここは`--fs-badge`（10px）で解けて**帯より7px手前**で
+     場所取りをやめており、単位が帯に接していた。 */
   margin:0 calc(var(--space-2) + var(--opf-num-w,0px)) 0 0;
   pointer-events:none;color:var(--muted);
 }
@@ -2852,7 +2855,11 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
 .opf-num>*{pointer-events:auto}
 .opf-num-strip{
   position:absolute;top:1px;right:1px;bottom:1px;
-  display:flex;flex-direction:row;gap:0;width:var(--opf-num-w,1.9em);
+  /* 幅は**JSが器へ入れた絶対の長さ**（§9.257 ①）。ここで`em`の受け皿を
+     持たないこと——器が渡さない場面では帯そのものを描いていないので、
+     受け皿は「万一の0」でよい。`em`にすると、変数が来たときと来ないときで
+     基準の文字サイズが変わる（それが直した不具合そのもの）。 */
+  display:flex;flex-direction:row;gap:0;width:var(--opf-num-w,0px);
 }
 .opf-num-strip.is-col{flex-direction:column}
 .opf-num-btn{

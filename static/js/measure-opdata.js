@@ -1258,8 +1258,28 @@
      `--opf-pad-r`（単位を内側へ重ねたぶん）と**足し算**で使う。 */
   if(wide||rail)host.dataset.opNum=kind;else delete host.dataset.opNum;
   /* **隙間まで込みで渡す**（§9.250 ⑨）——足し算を規則の側でやると、
-     `--opf-pad-r`を読む規則が2種類の足し方を知ることになる。 */
-  if(wide)host.style.setProperty('--opf-num-w',`calc(${wide}em + var(--space-1))`);
+     `--opf-pad-r`を読む規則が2種類の足し方を知ることになる。
+     ---------- `em`で渡さないこと（§9.257 ①、利用者の報告） ----------
+     「単位の表示位置を内部設定にした場合、微妙に単位が被っている」
+
+     カスタムプロパティの`em`は**書いた場所ではなく使った場所の文字サイズ**で
+     解ける。`--opf-num-w`は3箇所が読むのに、その3箇所の文字サイズが揃って
+     いなかったので、**1つの変数が場所ごとに違う数になっていた**（実測、
+     既定の見た目で）:
+       ・帯（`.opf-num-strip`）  … 器の`14px` → スピナー27.8px
+       ・欄の逃げ場（`--opf-pad-r`）… 欄の`--opf-fs`
+       ・単位（`.opf-unit-in`）  … `--fs-badge`の`10px` → **21px**
+     単位だけが7px手前で場所取りをやめるので、帯の下へ潜る。ステッパー
+     （3.4em）では6.6px、スピナーでも0.2pxしか空かない＝見た目には接する。
+     意匠の「大きさ」を`小`にすると欄の文字だけが12pxになるので、今度は
+     **値のほうが**帯の下へ潜った（`.opf-z-sm>input{font-size:var(--opf-fs)}`）。
+
+     直し方は「1つの事実は1つの数」（§9.250 ⑨）を最後まで通すこと——
+     **絶対の長さで渡す**。`--opf-fs`は器が宣言する絶対値（`--fs`＝
+     `calc(14px * var(--ui-scale))`）なので、どの要素で解いても同じ数になり、
+     表示サイズにも意匠の「大きさ」にも今までどおり追随する。 */
+  if(wide)host.style.setProperty('--opf-num-w',
+    `calc(${wide} * var(--opf-fs,var(--fs)) + var(--space-1))`);
   else host.style.removeProperty('--opf-num-w');
   box.className='opf-widget'+(wide||rail?' opf-num':'');
   box.innerHTML='';

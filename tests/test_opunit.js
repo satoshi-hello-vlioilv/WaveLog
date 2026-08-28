@@ -293,6 +293,69 @@ let b=null;
       !!(cb&&cb.器の中&&cb.欄の右&&cb.幅>0),JSON.stringify(cb));
   await setDef('coilStop',{unit:'mm',unitPlace:'外下左',widget:'プルダウン',freeText:false});
 
+  /* ---------- 内部の単位 × 数の道具（§9.257 ①、利用者の報告） ----------
+     「操業データ項目の…『見せ方』で単位を表示する機能がありますが、単位の
+      表示位置を内部設定にした場合、微妙に単位が被っている」
+
+     欄の右端の帯（スピナー等）の幅は`--opf-num-w`が持つが、以前これは
+     `em`で渡っていた。カスタムプロパティの`em`は**使った場所の文字サイズ**で
+     解けるので、1つの変数が読む場所ごとに違う数になっていた——単位は
+     `--fs-badge`（10px）で解くため、帯（器の14px）より手前で場所取りを
+     やめて帯の下へ潜っていた（実測: ステッパー −6.6px／スライダー −0.6px／
+     スピナー +0.2px＝見た目には接する）。
+
+     **「帯が在る」「単位が在る」だけを見る網では捕まらない**（直す前も
+     両方在った）。矩形で突き合わせ、しかも**道具ごとに空きが同じ**ことまで
+     見る——1つの変数が1つの数なら、幅の違う帯でも空きは同じになる。
+     道具ごとに違えば、どこかがまた`em`で解けている。 */
+  const numProbe=nm=>page.evaluate(n=>{
+   const el=document.querySelector('[data-op="'+n.replace(/"/g,'\\"')+'"]');
+   const host=el&&el.closest('label');
+   if(!host)return null;
+   const strip=host.querySelector('.opf-num-strip'),unit=host.querySelector('.opf-unit-in');
+   const cs=getComputedStyle(el),e=el.getBoundingClientRect();
+   const s=strip&&strip.getBoundingClientRect(),u=unit&&unit.getBoundingClientRect();
+   return {帯:!!strip,単位:!!(u&&u.width>0),
+     空き:(s&&u)?Math.round((s.left-u.right)*10)/10:null,
+     値の右端:Math.round(e.right-parseFloat(cs.paddingRight)-parseFloat(cs.borderRightWidth)),
+     単位の左端:u?Math.round(u.left):null,帯の幅:s?Math.round(s.width*10)/10:null};
+  },nm);
+  const NUMNAME='スリット 刃径';        /* 種は`operation_repo._SEED_ITEMS`（正の数） */
+  const setNum=p=>page.evaluate(([n,p])=>{
+   const d=WL.opData.defs().find(x=>x.name===n);
+   if(!d)return false;
+   Object.assign(d,p);
+   if(p.widget!==undefined)d.widgetLive=p.widget;
+   WL.opData.layout();return true;
+  },[NUMNAME,p]);
+  rec('前提: 数の欄がある（'+NUMNAME+'）',await setNum({unit:'MPa',unitPlace:'内部'}));
+  const gaps={};
+  for(const w of ['スピナー','ステッパー','スライダー','キーパッド']){
+   await setNum({unit:'MPa',unitPlace:'内部',widget:w,min:0,max:10,step:0.1});
+   await page.waitForTimeout(180);
+   const r=await numProbe(NUMNAME);
+   gaps[w]=r&&r.空き;
+   rec('「'+w+'」で単位が帯に被らない（§9.257 ①）',
+       !!(r&&r.帯&&r.単位&&r.空き>0),JSON.stringify(r));
+   rec('「'+w+'」で値の字も帯・単位に潜らない（§9.250 ⑨）',
+       !!(r&&r.値の右端<=r.単位の左端),JSON.stringify(r));
+  }
+  {const v=Object.values(gaps);
+   rec('道具が変わっても空きは同じ＝1つの変数が1つの数（§9.257 ①）',
+       v.length===4&&v.every(x=>x!==null&&Math.abs(x-v[0])<0.6),JSON.stringify(gaps));}
+  /* 意匠の「大きさ」を変えても崩れない——欄の文字だけが変わる形なので、
+     ここが`em`だと今度は**値のほう**が帯の下へ潜る。 */
+  for(const z of ['小','大']){
+   await setNum({unit:'MPa',unitPlace:'内部',widget:'スピナー',min:0,max:10,step:0.1,
+                 look:{color:'既定',shape:'標準',size:z}});
+   await page.waitForTimeout(180);
+   const r=await numProbe(NUMNAME);
+   rec('大きさ「'+z+'」でも被らない（§9.257 ①）',
+       !!(r&&r.空き>0&&r.値の右端<=r.単位の左端),JSON.stringify(r));
+  }
+  await setNum({unit:'mm',unitPlace:'外下左',widget:'プルダウン',
+                look:{color:'既定',shape:'標準',size:'中'}});
+
   /* ---------- ③ 母材: 内部の単位 × 右寄せ ---------- */
   await page.evaluate(()=>WL.measureSteps.go(2));
   await page.waitForTimeout(600);
