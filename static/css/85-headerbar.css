@@ -30,6 +30,29 @@
   font-size:var(--fs-sm);color:var(--ink-2);
 }
 .hd-viewbar:empty{display:none}
+/* **操作が少ない画面は1行目へ相乗りする**（§9.266）。既定の「2行目に全幅」は
+   操作の多い画面（作業スケジュール等）のためのもので、操作が3つしかない
+   マスタ管理には広すぎる。相乗りするのは`compactToolbar`と名乗った画面だけ
+   ——勝手に詰め込むと、操作の多い画面が切れる（既定を変えない・§9.251）。 */
+/* **ヘッダーはgrid**（`20-shell.css`）。既定は`grid-column:1/-1;grid-row:2`
+   ＝全幅の2行目。相乗りするときは**1行目の3列目へ移し、全体操作を4列目へ
+   送る**——flexのつもりで`flex:0 1 auto`を書いても1ミリも効かない
+   （実際に効かず、器の幅が678pxのまま変わらなかった）。 */
+main>header:has(>.hd-viewbar.is-inline){
+  grid-template-columns:minmax(0,1fr) max-content max-content max-content;
+}
+main>header>.hd-viewbar.is-inline{
+  grid-column:3;grid-row:1;width:auto;
+  padding-top:0;border-top:0;flex-wrap:nowrap;
+}
+main>header:has(>.hd-viewbar.is-inline)>.hd-actions{grid-column:4;grid-row:1}
+.hd-viewbar.is-inline .mm-head{width:auto;flex-wrap:nowrap}
+/* 相乗りするときは1行目に居るので、**画面名のほうが縮む**。
+   説明（`#headerContextSource`）は**畳んで`title`へ落とす**（§9.234 ①）
+   ——1回読めば足りる文が、毎回400px以上を占めていた（実測。面積は
+   頻度×重要度・§CLAUDE 1）。名前は`nowrap`で切らない。 */
+main>header:has(>.hd-viewbar.is-inline)>.hd-context{min-width:0}
+main>header:has(>.hd-viewbar.is-inline) #headerContextSource{display:none}
 /* 元パネル向けの枠・余白・背景は落とし、ヘッダーのコントロールと同じ寸法・
    同じ色づかい(白地+--line枠)へ揃える。 */
 .hd-viewbar>*{margin:0;min-width:0}

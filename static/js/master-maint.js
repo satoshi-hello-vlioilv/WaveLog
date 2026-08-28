@@ -38,7 +38,7 @@
      `special`の画面で測定画面と同じ6列のグリッドを出し、掴んで動かす。
      `fields`/`cols`は残す——編集モーダルの部品としてではなく、
      `tests/test_crudroutes.py`が4本のCRUDを見張る材料になっている。 */
-  {group:'equip',key:'opItem',label:'操業データ項目',icon:'操',endpoint:'/api/operation-item-master',
+  {group:'measure',key:'opItem',label:'操業データ項目',icon:'操',endpoint:'/api/operation-item-master',
    hasDelete:true,special:'op-item',titleText:'操業データ — 測定画面に出す入力欄と並び',
    fields:[{k:'equipment',label:'対象設備',type:'equipment-multi-text',required:true,key:true,
             tagHint:'この項目をどの設備の測定画面へ出すかです。複数選べます。「すべての設備」を選ぶと、これから増える設備でも自動的に出ます。'},
@@ -70,7 +70,7 @@
      ここは「どう並べるか」。1枚に混ぜると盤の1枚のカードが2つの並びを
      同時に表すことになる。書くのは`[記録表示]`／`[記録群]`／`[記録順]`の
      3列だけで、汎用CRUDは持たない（`endpoint`はGETの読み口）。 */
-  {group:'equip',key:'recordLayout',label:'記録した値の配置',icon:'記',
+  {group:'measure',key:'recordLayout',label:'記録した値の配置',icon:'記',
    special:'record-layout',endpoint:'/api/operation-item-master',
    titleText:'記録した値 — ③確認のカードの並べ方',
    /* 汎用の一覧・編集モーダルは通らない（`special`で分岐する）。`cols`が
@@ -88,7 +88,7 @@
      `fields`/`cols`は残す——編集モーダルの部品としてではなく、
      `tests/test_crudroutes.py`が4本のCRUDを見張る材料になっている
      （操業データ項目マスタと同じ扱い）。 */
-  {group:'equip',key:'opChoice',label:'選択肢の値',icon:'択',endpoint:'/api/operation-choice-master',hasDelete:true,
+  {group:'measure',key:'opChoice',label:'選択肢の値',icon:'択',endpoint:'/api/operation-choice-master',hasDelete:true,
    special:'op-choice',
    titleText:'操業データの選択肢 — まとまりと値',
    /* **編集は汎用モーダル1枚**（§9.222 ⑥、利用者の指示「オペレータマスタなど
@@ -196,7 +196,7 @@
      「紙で組み換える」で**同じ組み換え画面**へ連れて行く（入口を2つに
      しない・§9.207）。ここが受け持つのは、組み換え画面と重複していた
      **出す/出さない・幅・高さ・紙の割り**——一覧で見比べながら直せる形。 */
-  {group:'equip',key:'reportLayout',label:'帳票レイアウト',icon:'配',
+  {group:'report',key:'reportLayout',label:'帳票レイアウト',icon:'配',
    special:'report-layout',endpoint:'/api/column-layout-master',
    titleText:'帳票レイアウト — 設備ごとの紙（親）と、そこに載る塊（子）',
    /* 汎用の一覧・編集モーダルは通らない（`special`で分岐する）。`cols`が
@@ -207,7 +207,7 @@
      ごと設計できるように、編集追加などできるように」）。中身の作り方が
      仕事になっている塊（測定表・条の図・異常位置判定）はコードの側のままで、
      **「ラベルと値の出どころを並べただけの塊」だけ**を現場が足せる。 */
-  {group:'equip',key:'reportBlock',label:'帳票ブロック',icon:'票',
+  {group:'report',key:'reportBlock',label:'帳票ブロック',icon:'票',
    endpoint:'/api/report-block-master',hasDelete:true,
    titleText:'帳票ブロック — 紙に載せる塊',titleKey:'name',
    asideHtml:()=>rbAsideHtml(),bindAside:form=>rbBindAside(form),
@@ -375,23 +375,23 @@
      「バックアップの設定画面が無い」は、どれも置き場の関係が画面に
      書かれていないことが元だった。設定もここへ集める（共通設定から移動。
      同じ設定を2画面に置かない＝§9.168と同じ作法）。 */
-  {group:'system',key:'measStorage',label:'測定データの保存',icon:'測',special:'meas-storage',
+  {group:'data',key:'measStorage',label:'測定データの保存',icon:'測',special:'meas-storage',
    titleText:'測定データの保存 — どこに何が入るか'},
-  {group:'system',key:'importBackup',label:'データ引継ぎ',icon:'継',special:'import-backup'},
+  {group:'data',key:'importBackup',label:'データ引継ぎ',icon:'継',special:'import-backup'},
   /* データ接続(§9.168)。**1行＝1つのデータソース**で、「これは何か／どこから
      読むか／この設定で何ができるか」を1枚のカードにまとめる。読み込み先の
      個別上書きは以前パス設定タブにあったが、同じ「どこを読むか」の設定が
      2画面に分かれていたため、**データソース側へ寄せた**（保存先は今までどおり
      パス設定マスタなので、検証用の差し替えはそのまま効く）。 */
-  {group:'system',key:'dataSource',label:'データ接続',icon:'源',special:'data-source',
+  {group:'data',key:'dataSource',label:'データ接続',icon:'源',special:'data-source',
    titleText:'データ接続 — このアプリが読むデータ',
    endpoint:'/api/data-source-master',hasDelete:true},
   /* クエリ結合(§9.193)。**データ接続に登録済みのものだけを組み合わせる**
      （利用者の指示）。データ接続のすぐ下に置くのは、「読む」→「つなぐ」が
      そのまま作業の順番だから（視覚導線と作業導線を一致させる）。 */
-  {group:'system',key:'queryJoin',label:'クエリ結合',icon:'結',endpoint:'/api/query-join-master',hasDelete:true,
+  {group:'data',key:'queryJoin',label:'クエリ結合',icon:'結',endpoint:'/api/query-join-master',hasDelete:true,
    special:'query-join',titleText:'クエリ結合 — 読んだデータ同士をつなぐ'},
-  {group:'system',key:'pathConfig',label:'共通設定',icon:'共',special:'path-config',
+  {group:'data',key:'pathConfig',label:'共通設定',icon:'共',special:'path-config',
    titleText:'共通設定 — この端末の共有パス・RNE・間隔',endpoint:'/api/path-config-master'},
   /* 不要ファイルの掃除（§9.249 ①、利用者の指示「溜まってくると問題なので、
      不要なキャッシュファイルや不要なバックアップファイルを削除する機能を
@@ -437,9 +437,29 @@
     分類(誰が・何を使うか / 作業スケジュールの設定 / システム寄りの設定)で
     3つに束ねる。1グループ5件前後=一度に見渡せる粒度(Miller)。 */
  const MASTER_GROUPS=[
-  {key:'equip',label:'設備・人',hint:'測定の現場で使う基本マスタ'},
-  {key:'schedule',label:'作業スケジュール',hint:'計画の時間計算に使う設定'},
-  {key:'system',label:'表示・システム',hint:'画面表示と端末・データの設定'},
+  /* 群は**その画面で何をするか**で分ける（§9.264、利用者の指示「類似項目や
+     関連項目を集めまとめながら順番を整えて」）。以前の3群は名前と中身が
+     食い違っていた——「設備・人」に**人のマスタが1つも無く**（オペレータは
+     選択肢の値へ統合済み・§9.221 ②）、設備と無関係な帳票が2つ入っていた。
+     「表示・システム」には**表示マスタが1つも無い**（列レイアウト・表示ルール・
+     行表示は一覧画面から編集する）。群を増やしたのはそのため——並べ替えだけでは
+     名前の嘘は直らない。 */
+  /* `items`は**群の中の並び**。決める順に並べる（§CLAUDE 画面基準 14）——
+     配列に書いた順のままだと、マスタを1つ足すたびに並びが崩れる（利用者の
+     指摘「並びが不規則」）。**ここに載っていないマスタは末尾**へ回るので、
+     足し忘れても消えない。載せ忘れは`tests/test_master.js`が数える。 */
+  {key:'measure',label:'測定と記録',hint:'測定画面に出す入力欄と、記録した値の見せ方',
+   items:['opItem','opChoice','recordLayout']},
+  {key:'report',label:'帳票',hint:'紙に刷る内容と、その割り付け',
+   items:['reportLayout','reportBlock']},
+  {key:'equip',label:'設備',hint:'設備そのものと、設備に付くもの',
+   items:['equipment','roll']},
+  {key:'schedule',label:'作業スケジュール',hint:'計画の時間計算に使う設定',
+   items:['shiftMaster','loadFactor','stopCategory','stopReason']},
+  {key:'data',label:'データと接続',hint:'どこから読み、どこへ置くか',
+   items:['dataSource','queryJoin','measStorage','importBackup','pathConfig']},
+  {key:'system',label:'管理',hint:'権限・後片付け・生データ',
+   items:['accessPermission','cleanup','rawTable']},
   /* 専用タブを持たないマスタ（§9.249 ②、利用者の指示「テーブル生データ内で
      閲覧可能なマスタかつ、テーブル生データマスタの配置された階層にないものは、
      この階層に配置し、編集可能な形に実装してください」）。
@@ -474,9 +494,15 @@
     **既定へ戻してから測る**ので、狭くもなる（増やす一方にしない）。
     **見張りと組み合わせるので、同じ値なら書かないこと**（§9.131）。 */
  let mmNavFitting=false,mmNavRO=null;
+ let mmNavFitPending=false,mmNavSizeMO=null;
  function fitMaintNav(){
   const nav=$('#masterMaintNav');
-  if(!nav||mmNavFitting)return;
+  if(!nav)return;
+  /* **測っている最中に頼まれたら、あとでもう一度測る**（§9.264）。
+     以前は`return`で捨てていたため、**群を開いた直後の測り直しが黙って
+     落ちて**、長い名前が切れたままになっていた（`列レイアウト個人設定`が
+     10px切れる。畳んだ群の中は行を作らないので、開くまで測れない）。 */
+  if(mmNavFitting){mmNavFitPending=true;return}
   const body=nav.closest('.mm-body');
   if(!body)return;
   mmNavFitting=true;
@@ -501,9 +527,20 @@
     if(need>0)body.style.setProperty('--mm-nav-w',Math.ceil(base+need+1)+'px');
    }finally{
     /* **見張りが自分の書き換えで回らないように**、1フレーム置いて解く。 */
-    requestAnimationFrame(()=>{mmNavFitting=false});
+    requestAnimationFrame(()=>{
+     mmNavFitting=false;
+     if(mmNavFitPending){mmNavFitPending=false;fitMaintNav()}
+    });
    }
   });
+  /* **表示サイズを変えたら測り直す**（§9.264。§9.130と同じ理由）——幅は
+     「そのときの文字サイズで測った結果」なので、文字だけが1.1倍になると
+     器はそのままで名前が切れる（実測: 中で10px切れていた）。器の幅は
+     変わらないので`ResizeObserver`では気づけない。 */
+  if(!mmNavSizeMO&&typeof MutationObserver==='function'){
+   mmNavSizeMO=new MutationObserver(()=>fitMaintNav());
+   mmNavSizeMO.observe(document.documentElement,{attributes:true,attributeFilter:['data-ui-size']});
+  }
   if(!mmNavRO&&typeof ResizeObserver==='function'){
    /* 表示サイズを変えた・窓の幅が変わった、で測り直す（`--ui-scale`は
       文字だけを伸ばすので、同じ器でも切れ方が変わる・§9.130）。 */
@@ -535,6 +572,12 @@
   const html=MASTER_GROUPS.map(g=>{
    const defs=visible.filter(d=>(d.group||'system')===g.key);
    if(!defs.length)return '';
+   /* 群の中は`items`の順（決める順）。**載っていないものは末尾**——
+      足し忘れても消えないようにする（並びが決まらないだけ）。 */
+   if(g.items&&g.items.length){
+    const rank=k=>{const i=g.items.indexOf(k);return i<0?g.items.length:i};
+    defs.sort((a,b)=>rank(a.key)-rank(b.key));
+   }
    const off=folded.has(g.key);
    /* **見出しは`<button>`にしない**——`10-roles.css`の`.mm-nav button`が
       「行き先の的」の寸法（`--ctl-h`・`--fs`）を配るので、見出しまで
@@ -581,9 +624,18 @@
      無く、左のメニューから移れば閉じるため、この画面だけ閉じ方が違っていた。 */
   panel.innerHTML=`<div class="mm-dialog">
    <div class="mm-head" id="mmHead">
-    <label class="mm-head-user">更新者ID<input id="masterUserId" type="text" autocomplete="off" placeholder="社員番号など"></label>
-    <div class="mm-search"><span class="mm-search-icon" aria-hidden="true">🔍</span><input id="masterMaintSearch" type="search" placeholder="一覧を絞り込み（名称・更新者など）" autocomplete="off"></div>
-    <button id="reloadMasterMaint" type="button" class="mm-btn-ghost">再読込</button>
+    <!-- 上部の操作は3つだけ（§9.266、利用者の指示「アイコンなども活用し…
+         1行に収める」）。**アイコンだけにしない**——何の欄かはツールチップでは
+         読めない（§4）ので、更新者IDは印と短い名前、絞り込みは虫めがねと
+         短い誘い文句、再読込は印とaria-labelにする。
+         **この中にバッククォートを書かないこと**（§9.211 ③。テンプレート
+         リテラルがそこで閉じ、以降がJSとして解釈されて画面が組み上がらない）。 -->
+    <label class="mm-head-user" title="マスタを更新した人として記録します">
+     <span class="mm-head-ico" aria-hidden="true">👤</span>
+     <input id="masterUserId" type="text" autocomplete="off" placeholder="更新者ID"></label>
+    <div class="mm-search"><span class="mm-search-icon" aria-hidden="true">🔍</span><input id="masterMaintSearch" type="search" placeholder="絞り込み" autocomplete="off"></div>
+    <button id="reloadMasterMaint" type="button" class="mm-btn-ghost mm-head-icobtn"
+     title="マスタを読み直します" aria-label="再読込"><span aria-hidden="true">↻</span></button>
    </div>
    <div class="mm-body">
     <nav class="mm-nav" id="masterMaintNav" aria-label="マスタ種別"></nav>
@@ -623,6 +675,8 @@
     何ができるかを書く(ファイル名は開発者向けの情報で、現場では読めても
     意味が無い)。 */
  WL.registerView({key:'master',bodyClass:'mm-mode',nav:'openMasterMaint',toolbar:'#mmHead',
+  /* 操作は3つだけなので、ヘッダーの1行目へ相乗りする（§9.266）。 */
+  compactToolbar:true,
   header:['マスタ管理','登録内容の追加・編集・無効化（更新者IDとともに記録）'],exit:exitMasterMaint});
  function syncNav(){document.querySelectorAll('#masterMaintNav [data-master]').forEach(b=>b.classList.toggle('active',b.dataset.master===maintState.defKey))}
  function requireMaintUser(){const el=$('#masterUserId');const id=String(el?el.value:'').trim();if(!id){showToast('更新者IDを入力してください','マスタ更新には更新者IDが必要です。',4200);el&&el.focus();return null}setUserId(id);return id}

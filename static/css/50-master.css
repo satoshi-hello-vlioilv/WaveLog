@@ -840,6 +840,16 @@
 .ms-split-list code{color:var(--muted)}
 .ms-split-err{font-style:normal;color:var(--danger)}
 
+/* ---- 上部の操作（§9.266）。3つだけなので詰めて1行に置く ---- */
+.mm-head-ico{font-size:var(--fs-sm);line-height:1;flex:none;opacity:.75}
+.mm-head-user{display:inline-flex;align-items:center;gap:var(--space-1);min-width:0}
+/* **器は中身の長さから決める**（§CLAUDE 画面基準 11）——社員番号なので
+   長くない。ここを伸ばすと絞り込みと再読込が2行目へ落ちる。 */
+.mm-head-user input{max-width:var(--w-md);min-width:0}
+.mm-head .mm-search input{max-width:var(--w-lg);min-width:0}
+/* 印だけのボタン。**中身なりの正方形**にして、名前はaria-labelが持つ。 */
+.mm-head-icobtn{flex:none;padding-inline:var(--space-2);font-size:var(--fs)}
+
 .ms-settings{margin-top:var(--space-3);padding:var(--space-3);
   border:1px solid var(--line-soft);border-radius:var(--radius-md);background:var(--surface-2)}
 .ms-settings h4{margin:0 0 var(--space-2);font-size:var(--fs-base-sm);color:var(--ink)}
