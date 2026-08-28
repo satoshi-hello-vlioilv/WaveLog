@@ -667,7 +667,10 @@
    originOf:k=>(k==='#'?'calc':'source'),
    noteOf:k=>{const c=columnOf(k);return (c&&c.origin==='op')?'操業データ項目マスタの項目です。':''},
    currentWidthOf:k=>widthPxOf(k),
-   features:{formula:true,preset:true,width:true,format:true,rule:true,sort:false},
+   /* 紙の割り付けは**みんなで同じ**(§9.259)。人ごとに列が違うと、同じ名前の
+      紙を2人が刷って中身が違う、が起きる。個人設定は「表示する一覧表」だけ。 */
+   features:{formula:true,preset:true,width:true,format:true,rule:true,sort:false,
+             personalScope:false},
    afterApply:()=>renderPreview(),
    save:null,
   });

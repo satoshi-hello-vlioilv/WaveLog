@@ -998,11 +998,119 @@ def ensure_column_layout_table(c):
                    ('並べ替え','TEXT'),
                    # 揃え(§9.239 ④)。**2列に分ける**——値と見出しは別の設定で、
                    # 「見出しだけ中央」「見出しは値に追従」を1つの値では書けない。
-                   ('値揃え','TEXT'),('見出し揃え','TEXT')):
+                   ('値揃え','TEXT'),('見出し揃え','TEXT'),
+                   # 所有者(§9.259): **空欄＝みんなのもの**。既存の行はそのまま
+                   # 共通の設定として効き続ける（フィルタの[所有者ID]・§9.172と
+                   # 同じ約束）。**NULLにしないこと**——SQLiteの一意索引は
+                   # NULL同士を「違う」と見るので、同じ列の行を何本でも作れて
+                   # しまう。NOT NULL DEFAULT '' で必ず値を持たせる。
+                   ('所有者ID',"TEXT NOT NULL DEFAULT ''")):
   if name not in have:
    c.cursor().execute(f'ALTER TABLE [{COLUMN_LAYOUT_TABLE}] ADD COLUMN [{name}] {decl}')
    c.commit()
+ # 鍵は(対象,列名)から(対象,列名,所有者ID)へ張り直す。所有者を足した以上、
+ # 古い鍵のままでは**同じ列の個人設定を1つも作れない**。
+ cur=c.cursor()
+ idx={r[1] for r in cur.execute(f'PRAGMA index_list([{COLUMN_LAYOUT_TABLE}])')}
+ if 'UX_列レイアウトマスタ_所有者' not in idx:
+  cur.execute(f"UPDATE [{COLUMN_LAYOUT_TABLE}] SET [所有者ID]='' WHERE [所有者ID] IS NULL")
+  if 'UX_列レイアウトマスタ' in idx:cur.execute('DROP INDEX [UX_列レイアウトマスタ]')
+  cur.execute('CREATE UNIQUE INDEX [UX_列レイアウトマスタ_所有者] ON '
+              '[列レイアウトマスタ] ([対象],[列名],[所有者ID])')
+  c.commit()
  return created
+
+
+# ---- 列の見せ方を「共通／個人」で選ぶ(§9.259、利用者の指示) --------------
+# 「列の表示の部分については、こだわりが強い人もいるので、表示する一覧表毎に
+#  共通のものを使うか、個別ID単位のものを使うか選べるようにしたい」
+#
+# **行が有る＝その人はその一覧で個人の設定を使う。無ければ共通**（フィルタの
+# 個人設定マスタ・§9.172と同じ「行が無い＝印なし」の約束）。選ぶのは
+# **一覧ごと・人ごと**——こだわりのある人だけが自分の並びを持ち、他の人の
+# 見え方は1ピクセルも変わらない、というのがこの指示の趣旨。
+COLUMN_LAYOUT_SCOPE_TABLE='列レイアウト個人設定マスタ'
+
+def ensure_column_layout_scope_table(c):
+ names=tables(c);created=False
+ if COLUMN_LAYOUT_SCOPE_TABLE not in names:
+  cur=c.cursor()
+  cur.execute('CREATE TABLE [列レイアウト個人設定マスタ] ([設定ID] INTEGER PRIMARY KEY AUTOINCREMENT, '
+              '[利用者ID] TEXT, [対象] TEXT, [有効] INTEGER, '
+              '[登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
+  cur.execute('CREATE UNIQUE INDEX [UX_列レイアウト個人設定マスタ] ON '
+              '[列レイアウト個人設定マスタ] ([利用者ID],[対象])')
+  c.commit();created=True
+ ensure_audit_columns(c,COLUMN_LAYOUT_SCOPE_TABLE)
+ return created
+
+def column_layout_is_personal(c,target,user_id):
+ """その人がその一覧で個人の設定を使っているか。
+
+ **利用者IDが空なら必ず共通**——空を1つの入れ物として扱うと、IDを名乗れない
+ 端末どうしが同じ「個人設定」を共有してしまい、共通と区別が付かなくなる
+ （フィルタの§9.172は空を受け皿にしてよいが、あれは印であってレイアウト
+ そのものではない）。"""
+ uid=str(user_id or '').strip();target=str(target or '').strip()
+ if not uid or not target:return False
+ if COLUMN_LAYOUT_SCOPE_TABLE not in tables(c):return False
+ cur=c.cursor()
+ cur.execute('SELECT [有効] FROM [列レイアウト個人設定マスタ] WHERE [利用者ID]=? AND [対象]=?',[uid,target])
+ row=cur.fetchone()
+ return bool(row) and bool(row[0])
+
+def column_layout_owner(c,target,user_id):
+ """その読み書きが**どの所有者の行**に当たるかを答える1箇所。
+
+ 戻り値は所有者ID（''＝みんなのもの）。読む側・書く側・切り替える側が
+ すべてここを通ることで、「画面には個人の並びが出ているのに保存は共通へ
+ 行く」が構造として作れない。"""
+ return str(user_id or '').strip() if column_layout_is_personal(c,target,user_id) else ''
+
+def column_layout_scope_set(c,target,user_id,personal,updated_by=''):
+ """共通⇄個人を切り替える。戻り値は切り替えた後が個人かどうか。
+
+ **個人にするときは、いま見えている共通の設定を写してから切り替える**
+ ——白紙から始めると、こだわって作った並びが押した瞬間に消えたように見える。
+ **共通へ戻すときは個人の行を消さない**（また個人へ戻せば続きから使える）。
+ 消したいときは列の設定パネルの「まっさらに戻す」を使う。"""
+ uid=str(user_id or '').strip();target=str(target or '').strip()
+ if not uid or not target:return False
+ ensure_column_layout_scope_table(c)
+ cur=c.cursor()
+ if personal:
+  # 個人の行がまだ1つも無ければ、共通をそのまま写す。
+  ensure_column_layout_table(c)
+  cur.execute('SELECT COUNT(*) FROM [列レイアウトマスタ] WHERE [対象]=? AND [所有者ID]=?',[target,uid])
+  if not int((cur.fetchone() or [0])[0] or 0):
+   have=[r[1] for r in cur.execute(f'PRAGMA table_info([{COLUMN_LAYOUT_TABLE}])')]
+   copy=[n for n in have if n not in ('ID','所有者ID','登録者ID','更新者ID','登録日時','更新日時')]
+   if copy:
+    cols=','.join('['+n+']' for n in copy)
+    cur.execute(f'INSERT INTO [列レイアウトマスタ] ({cols},[所有者ID],[登録者ID],[更新者ID],[登録日時],[更新日時]) '
+                f'SELECT {cols},?,?,?,Now(),Now() FROM [列レイアウトマスタ] '
+                'WHERE [対象]=? AND [所有者ID]=?',
+                [uid,str(updated_by or uid)[:50],str(updated_by or uid)[:50],target,''])
+ cur.execute('SELECT [設定ID] FROM [列レイアウト個人設定マスタ] WHERE [利用者ID]=? AND [対象]=?',[uid,target])
+ row=cur.fetchone()
+ if row:
+  cur.execute('UPDATE [列レイアウト個人設定マスタ] SET [有効]=?,[更新者ID]=?,[更新日時]=Now() WHERE [設定ID]=?',
+              [-1 if personal else 0,str(updated_by or uid)[:50],row[0]])
+ else:
+  cur.execute('INSERT INTO [列レイアウト個人設定マスタ] ([利用者ID],[対象],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) '
+              'VALUES (?,?,?,?,?,Now(),Now())',
+              [uid,target,-1 if personal else 0,str(updated_by or uid)[:50],str(updated_by or uid)[:50]])
+ c.commit()
+ return bool(personal)
+
+def column_layout_personal_targets(c,user_id):
+ """その人が個人の設定を使っている一覧の一覧。画面が「いくつ持っているか」を
+ 文字で出すために使う（黙って個人設定にしない・§3）。"""
+ uid=str(user_id or '').strip()
+ if not uid or COLUMN_LAYOUT_SCOPE_TABLE not in tables(c):return []
+ cur=c.cursor()
+ cur.execute('SELECT [対象] FROM [列レイアウト個人設定マスタ] WHERE [利用者ID]=? AND [有効]<>0 ORDER BY [対象]',[uid])
+ return [str(r[0] or '').strip() for r in cur.fetchall() if str(r[0] or '').strip()]
 
 # 幅の下限・上限。狭すぎると掴めなくなり、広すぎると他の列が押し出される。
 COLUMN_WIDTH_MIN=40
@@ -1015,8 +1123,12 @@ def normalize_column_width(value):
  except (TypeError,ValueError):return None
  return max(COLUMN_WIDTH_MIN,min(COLUMN_WIDTH_MAX,w))
 
-def column_layout_for(c,target):
+def column_layout_for(c,target,owner=''):
  """{'order':[列名...], 'widths':{列名:幅}, 'hidden':[列名...]}。未設定なら空。
+
+ `owner`は所有者ID（''＝みんなのもの・§9.259）。**誰の行を読むかは
+ 呼ぶ側が`column_layout_owner()`で決めてから渡す**——ここで利用者IDから
+ 引き直すと、同じ問いに2通りの答えが生まれる。
 
  **hiddenは「この対象で隠す列」**。[表示]がNULLの行は表示(既定)として扱う
  ——列を足したときに既存の行が勝手に隠れないようにするため。"""
@@ -1033,7 +1145,10 @@ def column_layout_for(c,target):
              +col('桁区切り')+','+col('単位前')+','+col('単位後')+','
              +col('読み替えルール')+','+col('計算式')+','+col('幅固定')+','
              +col('並べ替え')+','+col('値揃え')+','+col('見出し揃え')+
-             ' FROM [列レイアウトマスタ] WHERE [対象]=? ORDER BY [表示順],[ID]',[target])
+             ' FROM [列レイアウトマスタ] WHERE [対象]=? AND '
+             +('[所有者ID]=?' if '所有者ID' in have else '?=?')+
+             ' ORDER BY [表示順],[ID]',
+             [target,str(owner or '')] if '所有者ID' in have else [target,'',''])
  order=[];widths={};hidden=[];names={};formats={};rules={};formulas={};locks=[];sorts={};aligns={}
  for row in cur.fetchall():
   name=str(row[0] or '').strip()
@@ -1070,19 +1185,27 @@ def column_layout_for(c,target):
          'formats':formats,'rules':rules,'formulas':formulas,'locks':locks,
          'sorts':sorts,'aligns':aligns}
 
-def column_layout_targets(c):
+def column_layout_targets(c,owner=''):
  """保存されている対象(target)の一覧。**持ち出し・取り込み用**(§9.178)。
+
+ 既定は共通ぶんだけ——持ち出しは「みんなの設定」を配るためのものなので、
+ 誰かの個人設定が混ざると、受け取った側の全員にその人の好みが当たる。
 
  対象は画面が組み立てる文字列(list:<DB>:<表> / timeline:<設備> / print:<設備> /
  report:<設備> / records:list)で、サーバーは中身を解釈しない。並びは
  名前順——保存順は「最後に触った順」で、人が探すときの手掛かりにならない。"""
  if COLUMN_LAYOUT_TABLE not in tables(c):return []
  cur=c.cursor()
- cur.execute(f'SELECT DISTINCT [対象] FROM [{COLUMN_LAYOUT_TABLE}] ORDER BY [対象]')
+ have={r[1] for r in cur.execute(f'PRAGMA table_info([{COLUMN_LAYOUT_TABLE}])')}
+ if '所有者ID' in have:
+  cur.execute(f'SELECT DISTINCT [対象] FROM [{COLUMN_LAYOUT_TABLE}] WHERE [所有者ID]=? ORDER BY [対象]',
+              [str(owner or '')])
+ else:
+  cur.execute(f'SELECT DISTINCT [対象] FROM [{COLUMN_LAYOUT_TABLE}] ORDER BY [対象]')
  return [str(r[0] or '').strip() for r in cur.fetchall() if str(r[0] or '').strip()]
 
 def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=None,rules=None,
-                      formulas=None,locks=None,sorts=None,aligns=None,fields=None):
+                      formulas=None,locks=None,sorts=None,aligns=None,fields=None,owner=''):
  """対象(target)の行をまとめて書き直す。渡された順序がそのまま表示順になる。
 
  **並び(order)は必ず全体を送ること。** 部分的な並べ替えは「どちらが正か」が
@@ -1102,7 +1225,9 @@ def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=N
  target=str(target or '').strip()
  if not target:raise ValueError('対象を指定してください。')
  if fields is not None:
-  keep=column_layout_for(c,target)
+  # **残す値は同じ所有者の行から取る**——共通から取ると、個人設定を
+  # 1項目だけ触った瞬間に残りが共通の値で塗り替わる。
+  keep=column_layout_for(c,target,str(owner or ''))
   own=set(fields)
   if 'order'    not in own:order=keep['order']
   if 'widths'   not in own:widths=keep['widths']
@@ -1135,7 +1260,10 @@ def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=N
   va=normalize_align(v.get('data'));ha=normalize_align(v.get('head'),True)
   if va or ha:align[str(k or '').strip()]={'data':va,'head':ha}
  cur=c.cursor()
- cur.execute('DELETE FROM [列レイアウトマスタ] WHERE [対象]=?',[target])
+ # 所有者の行だけを書き直す(§9.259)。**所有者を絞り忘れると、個人の設定を
+ # 保存した瞬間に共通の設定が消える**（あるいはその逆）。
+ owner=str(owner or '')
+ cur.execute('DELETE FROM [列レイアウトマスタ] WHERE [対象]=? AND [所有者ID]=?',[target,owner])
 
  def write(name,seq):
   f=normalize_format(fmt.get(name)) or {}
@@ -1143,8 +1271,8 @@ def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=N
   cur.execute('INSERT INTO [列レイアウトマスタ] ([対象],[列名],[表示名],[表示順],[幅],[表示],'
               '[書式種別],[書式パターン],[小数桁],[桁区切り],[単位前],[単位後],'
               '[読み替えルール],[計算式],[幅固定],[並べ替え],[値揃え],[見出し揃え],'
-              '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
-              'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',
+              '[所有者ID],[登録者ID],[更新者ID],[登録日時],[更新日時]) '
+              'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',
               [target,name,str(label.get(name) or '').strip() or None,seq,
                normalize_column_width(widths.get(name)),
                0 if name in hide else -1,
@@ -1156,7 +1284,7 @@ def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=N
                (str(formula.get(name) or '').strip() if name in formula else None),
                -1 if name in lock else 0,
                sortspec.get(name) or None,
-               a.get('data') or None,a.get('head') or None,uid,uid])
+               a.get('data') or None,a.get('head') or None,owner,uid,uid])
 
  seq=0;seen=set()
  for name in (order or []):

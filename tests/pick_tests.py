@@ -79,7 +79,9 @@ G['列'] = ['test_collayout', 'test_colformat', 'test_colrule', 'test_colsort', 
            # §9.239 ④⑤: 揃えと列の一時的な色
            'test_coltint', 'test_gridchild',
            # §9.248 ③④: 表示列が消えない／表示中・非表示中の札
-           'test_colkeep']
+           'test_colkeep',
+           # §9.259: 列の見せ方を「みんなと同じ／自分だけ」で選ぶ
+           'test_colscope', 'test_colscopeui']
 # モーダルの閉じ方(§9.221 ①)はどの画面にも掛かる横断の約束。
 G['モーダル'] = ['test_modalkeep', 'test_maint', 'test_master', 'test_opui', 'test_opchoice',
                  # §9.257 ②: 使用設備の設定（窓の作りは1箇所・選んでも動かない）
@@ -256,7 +258,7 @@ RULES = [
     ('backend/routes/core.py', g('起動', 'test_error', 'test_nav')),
 
     # --- サーバー(その他) --------------------------------------------
-    ('backend/access_mode.py', g('権限', 'test_nav', 'test_crudroutes')),
+    ('backend/access_mode.py', g('権限', 'test_nav', 'test_crudroutes', 'test_colscope')),
     ('backend/db_access.py', g('接続', '一覧', 'test_setpage')),
     # データソースの「できること」の判定(§9.163)。列名の別名解決も
     # ここが持つので、品質結合(/api/table)の網も回す。

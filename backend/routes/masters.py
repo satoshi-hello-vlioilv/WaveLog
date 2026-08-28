@@ -38,6 +38,7 @@ from ..repositories.master_repo import (
  SCHEDULE_COLUMN_TABLE, ensure_schedule_column_table, schedule_columns_for, set_schedule_columns,
  SCHEDULE_CONTENT_TABLE, ensure_schedule_content_table, schedule_content_items_for, set_schedule_content_items,
  COLUMN_LAYOUT_TABLE, ensure_column_layout_table, column_layout_for, column_layout_targets, set_column_layout,
+ column_layout_owner, column_layout_is_personal, column_layout_scope_set, column_layout_personal_targets,
  COLUMN_PRESET_TABLE, ensure_column_preset_table, column_presets, save_column_preset,
  delete_column_preset, normalize_column_preset,
  FORMAT_KINDS, normalize_format,
@@ -567,11 +568,19 @@ def column_layout_master_get():
    return jsonify(ok=True,items=items)
   target=str(request.args.get('target') or '').strip()
   if not target:return jsonify(error='対象(target)を指定してください。'),400
+  uid=str(request.args.get('user') or '').strip()
   path=DBS['MASTER']['path']
-  if not path.exists():return jsonify(ok=True,target=target,order=[],widths={})
+  if not path.exists():
+   return jsonify(ok=True,target=target,order=[],widths={},scope='common',canPersonalize=bool(uid))
   with connect(path,True) as c:
-   layout=column_layout_for(c,target)
-  return jsonify(ok=True,target=target,**layout)
+   # **誰の行を読むかは column_layout_owner の1箇所が答える**(§9.259)。
+   # 画面は今までどおり対象(target)だけを送り、所有者のことを知らない。
+   owner=column_layout_owner(c,target,uid)
+   layout=column_layout_for(c,target,owner)
+  # **どちらを見ているかを必ず返す**(§3)。黙って個人の並びを出すと、
+  # 「自分にだけ違って見える」理由が画面のどこにも無くなる。
+  return jsonify(ok=True,target=target,scope=('personal' if owner else 'common'),
+                 canPersonalize=bool(uid),**layout)
  except Exception as e:
   # 並びが読めなくても一覧そのものは出せる(既定の並び)。画面はfail-openで扱う。
   return jsonify(error=f'列レイアウト読込失敗: {e}'),500
@@ -610,7 +619,10 @@ def column_layout_master_save():
    return jsonify(error='幅を固定する列(locks)の指定が不正です。'),400
   path=DBS['MASTER']['path']
   with connect(path,False) as c:
-   n=set_column_layout(c,target,order or [],widths or {},uid,hidden=hidden or [],
+   # 読むときと**同じ1箇所**で所有者を決める(§9.259)。別々に決めると
+   # 「画面には個人の並びが出ているのに保存は共通へ行く」が作れる。
+   owner=column_layout_owner(c,target,uid)
+   n=set_column_layout(c,target,order or [],widths or {},uid,owner=owner,hidden=hidden or [],
                        names=names if isinstance(names,dict) else {},
                        formats=formats if isinstance(formats,dict) else {},
                        rules=rules if isinstance(rules,dict) else {},
@@ -619,8 +631,49 @@ def column_layout_master_save():
                        sorts=sorts if isinstance(sorts,dict) else {},
                        aligns=aligns if isinstance(aligns,dict) else {},
                        fields=fields)
-  return jsonify(ok=True,target=target,columns=n,updated_by=uid,message='表示の並びを保存しました。')
+  return jsonify(ok=True,target=target,columns=n,updated_by=uid,
+                 scope=('personal' if owner else 'common'),
+                 message=('自分だけの表示の並びを保存しました。' if owner
+                          else '表示の並びを保存しました。'))
  except Exception as e:return jsonify(error=f'列レイアウト保存失敗: {e}'),500
+
+
+@bp.post('/api/column-layout-master/scope')
+def column_layout_master_scope():
+ """その一覧の列の見せ方を「みんなと同じ／自分だけ」で切り替える(§9.259)。
+
+ 利用者の指示「列の表示の部分については、こだわりが強い人もいるので、
+ 表示する一覧表毎に共通のものを使うか、個別ID単位のものを使うか選べるように」。
+
+ **個人にするときは、いま見えている共通の設定を写してから切り替える**
+ ——白紙から始めると、こだわって作った並びが押した瞬間に消えたように見える。
+ **共通へ戻しても個人の行は消さない**（また個人へ戻せば続きから使える）。
+ """
+ try:
+  x=request.get_json(force=True) or {};uid=request_user_id(x)
+  target=str(x.get('target') or '').strip()
+  if not target:return jsonify(error='対象(target)を指定してください。'),400
+  if not uid:
+   # **押せるのに何も起きないボタンを残さない**(§4)。画面はこの理由をそのまま出す。
+   return jsonify(error='利用者IDが分からないため、自分だけの設定は持てません。'
+                        'この端末のログインIDを取得できていない可能性があります。'),400
+  scope=str(x.get('scope') or '').strip().lower()
+  if scope not in ('common','personal'):
+   return jsonify(error="scopeは'common'か'personal'を指定してください。"),400
+  path=DBS['MASTER']['path']
+  with connect(path,False) as c:
+   personal=column_layout_scope_set(c,target,uid,scope=='personal',updated_by=uid)
+   layout=column_layout_for(c,target,uid if personal else '')
+   mine=column_layout_personal_targets(c,uid)
+  return jsonify(ok=True,target=target,scope=('personal' if personal else 'common'),
+                 personalTargets=mine,canPersonalize=True,
+                 message=('この一覧の列は、これから自分だけの設定になります。'
+                          '（いまの見え方を写してあるので、続きから直せます）'
+                          if personal else
+                          'この一覧の列は、みんなと同じ設定に戻りました。'
+                          '（自分だけの設定は消していないので、いつでも戻せます）'),
+                 **layout)
+ except Exception as e:return jsonify(error=f'列レイアウトの切り替えに失敗: {e}'),500
 
 
 # ========================================================================

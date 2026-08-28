@@ -446,6 +446,15 @@ window.WL.saveState=saveState;
              **保存には行かない**——離した時点の値だけを`patch()`が送る。 */
 const columnLayout=(()=>{
  const saved=new Map();                 // target -> 保存済み
+ /* その一覧の列を「みんなと同じ(common)／自分だけ(personal)」のどちらで
+    見ているか(§9.259)。**サーバーが答える**——所有者の解決は
+    column_layout_owner の1箇所が持つので、画面は受け取って出すだけ。 */
+ const scopes=new Map();                // target -> 'common' | 'personal'
+ /* **どの利用者IDで読んだか**を覚える(§9.184と同じ罠)。IDは`/api/whoami`から
+    後から届くので、空のIDで読んだ結果を「読んだ」ことにすると、その人の
+    個人設定は**永久に載って来ない**。IDが変わったら読み直す。 */
+ const loadedFor=new Map();             // target -> そのとき使った利用者ID
+ let canPersonalize=false;              // 利用者IDが分かっているか(サーバーの答え)
  const draft=new Map();                 // target -> 設定パネルの下書き(無ければ持たない)
  const live=new Map();                  // target -> 掴んでいる最中の見え方
  /* locks=幅を固定した列(§9.119)。**幅の「自動/手動/固定」は3つの状態**で、
@@ -465,13 +474,34 @@ const columnLayout=(()=>{
  const bump=t=>{if(t)eff.delete(t);else eff.clear()};
  async function load(target){
   if(!target)return empty();
-  if(saved.has(target))return get(target);
+  const uid=ensureUserId();
+  /* IDが後から届いたときは読み直す。**同じIDで読み済みならそのまま。** */
+  if(saved.has(target)&&loadedFor.get(target)===uid)return get(target);
   let v=empty();
   try{
-   const r=await api('/api/column-layout-master?target='+encodeURIComponent(target));
+   const r=await api('/api/column-layout-master?target='+encodeURIComponent(target)
+                     +'&user='+encodeURIComponent(uid));
    v=norm(r);
+   scopes.set(target,r&&r.scope==='personal'?'personal':'common');
+   canPersonalize=!!(r&&r.canPersonalize);
   }catch(e){/* 読めなくても既定の並びで一覧は出す(fail-open) */}
-  saved.set(target,v);bump(target);return get(target);
+  saved.set(target,v);loadedFor.set(target,uid);bump(target);return get(target);
+ }
+ /* いまどちらで見ているか。**読む前は分からないので'common'とは言い切らない** */
+ function scopeOf(target){return scopes.get(target)||''}
+ function personalizable(){return canPersonalize}
+ /* みんなと同じ⇄自分だけ を切り替える(§9.259)。サーバーが写しを作ってから
+    切り替え、切り替えた後の設定をそのまま返すので、**当て直しは1往復で済む**。 */
+ async function setScope(target,personal){
+  if(!target)return null;
+  const r=await api('/api/column-layout-master/scope',
+   {method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(withUserId({target,scope:personal?'personal':'common'}))});
+  saved.set(target,norm(r));loadedFor.set(target,ensureUserId());
+  scopes.set(target,r&&r.scope==='personal'?'personal':'common');
+  canPersonalize=!!(r&&r.canPersonalize);
+  draft.delete(target);live.delete(target);bump(target);
+  return r;
  }
  /* 画面に出す値。**上の重ねが勝つ。ただし持っている項目だけ。**
     重ねを「まるごとの写し」にしないこと（§9.212 ③）——掴んでいる最中の
@@ -517,8 +547,9 @@ const columnLayout=(()=>{
     body:JSON.stringify(withUserId({target,...pick}))}));
  }
  function forget(target){
-  if(target){saved.delete(target);draft.delete(target);live.delete(target)}
-  else{saved.clear();draft.clear();live.clear()}
+  if(target){saved.delete(target);draft.delete(target);live.delete(target);
+             loadedFor.delete(target);scopes.delete(target)}
+  else{saved.clear();draft.clear();live.clear();loadedFor.clear();scopes.clear()}
   bump(target);
  }
  /* **保存せずに今の画面へ当てる**(§9.90)。列の設定パネルは、触った結果が
@@ -556,6 +587,8 @@ const columnLayout=(()=>{
  const locked=(target,col)=>(get(target).locks||[]).includes(col);
  return {load,get,save,patch,forget,apply,stage,discard,hold,release,
          saved:savedOf,shows,locked,
+         /* 列の見せ方の持ち主(§9.259)。'common'=みんなと同じ／'personal'=自分だけ。 */
+         scope:scopeOf,setScope,personalizable,
          width:(target,col)=>get(target).widths[col]||null,
          /* 幅の状態を1語で。'auto'=内容に合わせる / 'manual'=手で決めた /
             'locked'=固定(手で決めた幅から動かさない)。 */

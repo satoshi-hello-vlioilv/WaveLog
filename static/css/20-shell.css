@@ -485,6 +485,18 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  .lc-eyebrow{font-size:var(--fs-tiny);font-weight:800;letter-spacing:.12em;color:#9fdbdb}
  .lc-lead{grid-column:1/-1;margin:0;font-size:var(--fs-sm);color:#d4e8ea;line-height:1.5}
  .lc-lead b{color:#fff;font-weight:700}
+ /* 列の見せ方の持ち主(§9.259)。**いまどちらかを文字で名乗る**(§3)ので、
+    印は「色の付いた札」ではなく**文字が主**——札は補助。
+    説明文と同じ段(1/-1)に置き、閉じるボタンの行とは重ねない。 */
+ .lc-scope{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;
+  gap:var(--space-2);margin:0}
+ .lc-scope-now{font-size:var(--fs-sm);font-weight:700;color:#d4e8ea;
+  border:1px solid #ffffff40;border-radius:var(--radius-sm);
+  padding:0 var(--space-2);line-height:var(--ctl-h-xs)}
+ .lc-scope-now.is-mine{color:#fff;background:#ffffff26;border-color:#ffffff66}
+ .lc-scope .lc-side-btn{flex:0 0 auto}
+ .lc-scope-note{flex:1 1 var(--w-md);min-width:0;font-size:var(--fs-tiny);
+  color:#b9d6d9;line-height:1.5}
  /* 閉じるは**必ず右上**。行を明示しないと、説明文(1/-1)に押し出されて
     下の段へ落ちる(実際に落ちた)。 */
  .lc-close{grid-column:2;grid-row:1;align-self:start;
