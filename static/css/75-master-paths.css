@@ -182,7 +182,6 @@
 .pc-arrow{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:var(--ink-3)}
 .pc-arrow i{display:block;width:100%;min-width:2.2em;border-top:2px solid var(--line-strong)}
 .pc-arrow em{font-style:normal;font-size:var(--fs-micro);font-weight:700}
-.pc-map-note{margin:0;font-size:var(--fs-sm);color:var(--ink-3)}
 .pc-goto{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm)}
 
 /* ---- 章のレール ---- */
@@ -216,7 +215,42 @@
 .pc-who b{font-size:var(--fs);color:var(--ink)}
 .pc-who i{font-style:normal;font-size:var(--fs-micro);color:var(--muted)}
 
-/* ---- 章の中の小見出し（節が長い共有スケジュールだけ） ---- */
+/* ---- 共有の置き場を1枚で（§9.260） ----
+   作業予定・測定データ・マスタの3行。**ラベル列は固定幅**で縦にそろえる
+   （CLAUDE 画面基準 9。autoだと行ごとに値の左端がずれる）。 */
+.pc-share{display:flex;flex-direction:column;gap:var(--gap-inline);
+  padding:var(--space-2);border:1px solid var(--line-soft);
+  border-radius:var(--radius-sm);background:var(--surface-2)}
+.pc-share-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--gap-inline)}
+.pc-share-head b{font-size:var(--fs-sm);color:var(--ink)}
+.pc-share-root{font-size:var(--fs-micro);color:var(--ink-3)}
+.pc-share-rows{display:flex;flex-direction:column;gap:var(--space-1)}
+.pc-share-row{display:grid;gap:var(--space-1) var(--gap-inline);align-items:baseline;
+  grid-template-columns:var(--w-sm) var(--w-sm) minmax(0,1fr) var(--w-lg);
+  padding:var(--space-1) var(--space-2);border-radius:var(--radius-xs);
+  background:var(--surface);border:1px solid var(--line-soft)}
+/* 共有に置かれている行は左に色の帯。**色だけで伝えない**ので種類は文字でも出す。 */
+.pc-share-row.is-shared{border-left:3px solid var(--teal)}
+.pc-share-what{font-size:var(--fs-sm);color:var(--ink);display:flex;
+  flex-direction:column;gap:0;min-width:0}
+.pc-share-what small{font-family:var(--font-mono,monospace);font-size:var(--fs-micro);
+  color:var(--muted);font-weight:400;overflow:hidden;text-overflow:ellipsis}
+.pc-share-kind{font-size:var(--fs-micro);color:var(--ink-2);font-weight:700}
+.pc-share-path{min-width:0;font-size:var(--fs-micro);color:var(--ink-2);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pc-share-where{font-size:var(--fs-micro);color:var(--ink-3);
+  display:flex;flex-direction:column;gap:0;min-width:0}
+.pc-share-where b{color:var(--ink-2)}
+.pc-share-note{grid-column:1/-1;font-size:var(--fs-micro);color:var(--warn-fg);line-height:1.5}
+/* 器そのものを問い合わせ先にする（マスタ管理はビューポート幅では判断
+   できない——左のナビと右のパネルで実幅が変わる）。しきい値は**em**で置く
+   （§9.199。表示サイズを変えても段が変わらない）。 */
+.pc-share{container-type:inline-size;container-name:pcshare}
+@container pcshare (max-width:52em){
+  .pc-share-row{grid-template-columns:minmax(0,1fr)}
+}
+
+/* ---- 章の中の小見出し（節が長い共有の置き場だけ） ---- */
 .pc-sub{display:flex;flex-direction:column;gap:var(--gap-inline);
   padding-top:var(--space-2);border-top:1px dashed var(--line-soft)}
 .pc-sub-head{font-size:var(--fs-sm);color:var(--ink-2);font-weight:800}

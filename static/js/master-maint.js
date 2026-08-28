@@ -4949,7 +4949,7 @@
  const PC_SECTIONS=[
   {id:'terminal',name:'この端末',icon:'PC',when:'保存後すぐ反映',cls:'is-live'},
   {id:'read',    name:'どこから読むか',when:'サーバー再起動後に反映',cls:'is-restart'},
-  {id:'schedule',name:'共有スケジュール',when:'一部は再起動後に反映',cls:'is-restart'},
+  {id:'schedule',name:'共有の置き場',when:'一部は再起動後に反映',cls:'is-restart'},
   {id:'rne',     name:'RNE抽出',when:'保存後すぐ反映',cls:'is-live'},
  ];
  /* 1項目＝「名前 / 入力 / 一行の説明 / いまどうなっているか」。
@@ -4998,8 +4998,6 @@
      <b>共有スケジュール</b><span class="pc-node-sub">作業予定（みんなで使う）</span>
      <span class="pc-node-val" data-pc-map="schedule">—</span></button>
    </div>
-   <p class="pc-map-note">測定データの置き場（この端末のDB → 閲覧用の複製）は
-    <button type="button" class="mm-btn-ghost pc-goto" id="pcGoRecords">測定データの保存</button>にあります。</p>
 
    <!-- ② 章のレール -->
    <nav class="pc-rail" id="pcRail" aria-label="共通設定の章">
@@ -5031,8 +5029,19 @@
       'network=共有フォルダを読む ／ local=この端末でRNEから抽出したものを読む。<b>読み方を決めたデータソースには効きません</b>。')}
     ${pcStateHtml('sikalot_source')}`)}
 
-   ${group('schedule','共有スケジュール','一部は再起動後に反映','is-restart',`
-    ${pathField('schedule_share_path','作業予定の共有データ置き場（schedule.sqlite3）','file','共有フォルダ上のschedule.sqlite3を選びます。空欄ならスケジュール機能は無効です。')}
+   ${group('schedule','共有の置き場','一部は再起動後に反映','is-restart',`
+    <!-- **何がどこへ行くかを1枚で言う**(§9.260)。以前は作業予定・測定データ・
+         マスタの置き場が3画面に散っており、いま何がどこにあるのかを
+         確かめる手立てが無かった。判定はサーバーが持つ(§9.163)ので、
+         ここは受け取った答えを並べるだけ。 -->
+    <div class="pc-share" id="pcShare">
+     <div class="pc-share-head">
+      <b>この端末が読み書きする置き場</b>
+      <span class="pc-share-root" id="pcShareRoot"></span>
+     </div>
+     <div class="pc-share-rows" id="pcShareRows"></div>
+    </div>
+    ${pathField('schedule_share_path','作業予定の置き場（schedule.sqlite3）','file','共有フォルダ上のschedule.sqlite3を選びます。空欄ならスケジュール機能は無効です。')}
     <div class="pc-sub">
      <b class="pc-sub-head">共有の変化をどう取り込むか</b>
      <p class="mm-field-hint">共有（Box等）のschedule.sqlite3は<b>他の端末も書きます</b>。読むときは手元へ写したものを読み、
@@ -5084,8 +5093,12 @@
    sec.classList.add('is-jumped');
    setTimeout(()=>sec.classList.remove('is-jumped'),1200);
   });
-  const rec=$('#pcGoRecords');
-  if(rec)rec.onclick=()=>document.querySelector('#masterMaintNav [data-master="measStorage"]')?.click();
+  /* 「直す場所」からその画面へ飛ぶ。**行が持つ印で開く**ので、置き場が
+     増えてもここは触らなくてよい（飛び先はサーバーの答えの一部）。 */
+  form.addEventListener('click',ev=>{
+   const b=ev.target.closest('[data-pc-goto]');if(!b)return;
+   document.querySelector(`#masterMaintNav [data-master="${b.dataset.pcGoto}"]`)?.click();
+  });
   bindInputHelpers(form);
   refreshRneStatus();
   refreshOwnerStatus();
@@ -5178,6 +5191,37 @@
     なり、**再起動待ちかどうかを見るのに視線が上下する**。状態は欄の持ち物
     なので欄が持つ——表そのものは廃止した（§8 同じ情報を2箇所に出さない）。
     ここが埋めるのは「各欄の状態」「図の中の値」「章のレールの件数」の3つ。 */
+ /* 共有の置き場を1枚で出す(§9.260)。**判定はサーバーが持つ**（§9.163）ので、
+    ここは受け取った答えを並べるだけ——「UNCかどうか」「同じ根の下か」を
+    画面でも判定すると答えが2通りになる。
+    **色だけで伝えない**(§3)ので、置き場の種類は必ず文字で書く。 */
+ const PC_SHARE_KIND={network:'共有（ネットワーク）',cloud:'共有（クラウド同期）',
+                      local:'この端末の中','':'—'};
+ function paintShareLayout(sl){
+  const rows=$('#pcShareRows'),root=$('#pcShareRoot');
+  if(!rows)return;
+  const items=(sl&&sl.items)||[];
+  if(!items.length){rows.innerHTML='<p class="mm-field-hint">置き場を読めませんでした。</p>';return}
+  rows.innerHTML=items.map(x=>{
+   const kind=PC_SHARE_KIND[x.kind||'']||'—';
+   const onShare=x.kind==='network'||x.kind==='cloud';
+   return `<div class="pc-share-row${onShare?' is-shared':''}">
+    <b class="pc-share-what">${esc(x.label)}<small>${esc(x.file||'')}</small></b>
+    <span class="pc-share-kind">${esc(kind)}</span>
+    <code class="pc-share-path" title="${esc(x.path||'')}">${esc(x.path||'（未設定）')}</code>
+    <span class="pc-share-where">直す場所: <b>${esc(x.where||'')}</b>
+     <small>${esc(x.when||'')}に反映</small>
+     ${x.jump?`<button type="button" class="mm-btn-ghost pc-goto" data-pc-goto="${esc(x.jump)}">ここを開く</button>`:''}</span>
+    ${x.note?`<small class="pc-share-note">${esc(x.note)}</small>`:''}
+   </div>`;
+  }).join('');
+  if(root){
+   /* **揃っているときだけ言う**。揃っていない置き方が悪いわけではないので、
+      「バラバラです」とは書かない（直す必要のない状態を不備に見せない）。 */
+   root.textContent=(sl&&sl.sameRoot)?`3つとも同じ場所の下です: ${sl.sameRoot}`:'';
+   root.hidden=!(sl&&sl.sameRoot);
+  }
+ }
  function renderPathConfigList(){
   const form=$('#masterMaintForm');if(!form||!form.classList.contains('mm-form-page'))return;
   const v=pathConfigState.values||{},a=pathConfigState.active||{};
@@ -5214,6 +5258,7 @@
   };
   /* 各欄の状態。**再起動が要らない項目は「保存後すぐ反映」とだけ言う**
      ——比べる相手（いま効いている値）が無いのに空欄の対比を並べない。 */
+  paintShareLayout(a.share_layout);
   let pending=0;
   form.querySelectorAll('[data-pc-state]').forEach(el=>{
    const key=el.dataset.pcState;

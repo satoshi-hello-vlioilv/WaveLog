@@ -125,7 +125,7 @@ G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'tes
                'test_gridhead']
 G['起動'] = ['test_boot', 'test_bootui', 'test_bootflash', 'test_assetcache', 'test_tabclose',
              'test_faststart']
-G['接続'] = ['test_dbopen', 'test_dbmirror', 'test_datasource', 'test_tablequery',
+G['接続'] = ['test_pcshare', 'test_dbopen', 'test_dbmirror', 'test_datasource', 'test_tablequery',
              'test_atomicio', 'test_localwork', 'test_dscap',
              'test_qjoin', 'test_qjoinui',
              # §9.258: 測定データは設備ごとに1ファイル（置き場の解決）
@@ -253,7 +253,9 @@ RULES = [
                                     'test_modeguard')),
     ('backend/routes/logs.py', g('ログ', 'test_modeguard')),
     ('backend/routes/path_config.py', g('test_setpage', 'test_datasource', 'test_dbopen',
-                                        'test_crudroutes', 'test_modeguard', 'test_dscap')),
+                                        'test_crudroutes', 'test_modeguard', 'test_dscap',
+                                        # §9.260: 共有の置き場を1枚で見せる
+                                        'test_pcshare')),
     ('backend/routes/rne.py', g('test_datasource', 'test_setpage', 'test_modeguard')),
     ('backend/routes/core.py', g('起動', 'test_error', 'test_nav')),
 
