@@ -3446,20 +3446,27 @@
      ],'入力した値の実体です。<b>この端末でしか見えません</b>。ブラウザのデータを消すと失われます。',
       unsent?'is-warn':'')}
     ${arrow('保存のたび','自動')}
-    ${stage('②','この端末のDB','db/records.sqlite3',[
+    ${stage('②',loc.perEquipment?'測定データのDB':'この端末のDB',
+      loc.perEquipment?'共有・設備ごとに1ファイル':'db/records.sqlite3',[
       ['記録',msNum(loc.count)+(loc.count===null?'':'件')],
       ['最終書込',msWhen(loc.lastWriteAt)],
       ['大きさ',msSize(loc.size)],
-     ],`<b>他のPCから続きを開けるのはここ</b>です（データ一覧はここも読みます）。<br><code title="${esc(loc.path||'')}">${esc(loc.path||'—')}</code>`)}
-    ${arrow(`変わったら${mins}分ごと`,exp.configured?'自動':'未設定')}
+     ].concat(loc.perEquipment?[['読む先',(loc.readPaths||[]).length+'ファイル']]:[]),
+     loc.perEquipment
+      ?`<b>設備ごとに1ファイル</b>に分けています——書くのはその設備の担当端末だけなので、同じファイルを2台が変えることがありません。
+        一覧は<b>全設備ぶん</b>を読みます。<br><code title="${esc(loc.shareDir||'')}">${esc(loc.shareDir||'—')}\\&lt;設備&gt;\\records.sqlite3</code>`
+      :`<b>他のPCから続きを開けるのはここ</b>です（データ一覧はここも読みます）。<br><code title="${esc(loc.path||'')}">${esc(loc.path||'—')}</code>`)}
+    ${arrow(exp.retired?'使いません':`変わったら${mins}分ごと`,exp.retired?'—':(exp.configured?'自動':'未設定'))}
     ${stage('③','閲覧用の複製','Box等・読むだけ',[
-      ['状態',exp.configured?(exp.exists===false?'まだ作られていません':'複製しています'):'<b>未設定（複製しません）</b>',!exp.configured],
-      ['最終複製',exp.configured?msWhen(exp.lastOkAt):'—'],
-      ['未反映の変更',exp.configured?(exp.pending?'あり':'なし'):'—'],
-     ],exp.configured
+      ['状態',exp.retired?'<b>使いません</b>':(exp.configured?(exp.exists===false?'まだ作られていません':'複製しています'):'<b>未設定（複製しません）</b>'),exp.retired||!exp.configured],
+      ['最終複製',(!exp.retired&&exp.configured)?msWhen(exp.lastOkAt):'—'],
+      ['未反映の変更',(!exp.retired&&exp.configured)?(exp.pending?'あり':'なし'):'—'],
+     ],exp.retired
+        ?esc(exp.retired)
+        :(exp.configured
         ?`閲覧モードの端末はここを読みます。書き戻しはしません。<br><code title="${esc(exp.path||'')}">${esc(exp.path||'—')}</code>`
-        :'設定すると、②の中身をまるごとBox等へ写します。<b>測定・共有には必要ありません</b>——閲覧専用の端末に見せたいときだけ設定してください。',
-      exp.configured?'':'is-off')}
+        :'設定すると、②の中身をまるごとBox等へ写します。<b>測定・共有には必要ありません</b>——閲覧専用の端末に見せたいときだけ設定してください。'),
+      (exp.retired||!exp.configured)?'is-off':'')}
    </div>
    ${exp.lastError?`<p class="ms-err">前回の複製に失敗しました: ${esc(exp.lastError)}</p>`:''}
    <div class="mm-cd-toolbar"><div class="mm-cd-actions">
@@ -3469,6 +3476,18 @@
       title="${exp.configured?'間隔を待たずに、いま②を③へ写します':'複製先が未設定です'}">いま複製する</button>
     <button type="button" id="msReload" class="mm-btn-ghost sm">状態を読み直す</button>
    </div></div>
+   <div class="ms-settings">
+    <h4>② 測定データの置き場</h4>
+    <label class="mm-field"><span>共有の置き場（設備ごとに分けます）</span>
+     <input type="text" id="msShareDir" value="${esc(v.records_share_dir||'')}"
+       placeholder="例: \\\\server\\共有\\WaveLog\\records" autocomplete="off">
+     <small class="mm-field-hint">この下に<b>設備の名前のフォルダ</b>を作り、その中に <code>records.sqlite3</code> を置きます。
+      書くのはその設備を担当する端末だけなので、<b>同じファイルを2台が変えることがありません</b>。
+      空欄なら今までどおり、この端末の <code>db/records.sqlite3</code> 1本に貯めます。
+      <b>変えたときはアプリの再起動が必要です</b>（接続先は起動時に1回だけ決まります）。
+      設定しても<b>今までの記録は消えません</b>——読むときは旧い置き場も一緒に見ます。</small></label>
+    <div class="mm-cd-actions"><button type="button" id="msSaveShare" class="mm-btn-primary">この設定を保存</button></div>
+   </div>
    <div class="ms-settings">
     <h4>③ 閲覧用の複製の設定</h4>
     <label class="mm-field"><span>複製先のフォルダ</span>
@@ -3501,10 +3520,12 @@
    }catch(e){showToast&&showToast('複製できませんでした',e.message,7000)}
    finally{setMaintLoading(false);measStorageState.loaded=false;loadMeasStorageMaint(true)}
   };
+  $('#msSaveShare').onclick=()=>$('#msSaveCfg').onclick();
   $('#msSaveCfg').onclick=async()=>{
    /* **送るのはこの2つだけ**。パス設定の保存は「送られてきた項目だけ」を
       書くので、他の設定を巻き添えにしない(§9.192)。 */
-   const body={records_backup_export_path:String($('#msExportPath').value||'').trim(),
+   const body={records_share_dir:String($('#msShareDir').value||'').trim(),
+               records_backup_export_path:String($('#msExportPath').value||'').trim(),
                records_backup_export_interval_sec:String($('#msExportInterval').value||'').trim(),
                user_id:String($('#masterUserId')?.value||'').trim()};
    try{
@@ -4886,6 +4907,7 @@
     ままだった。 */
  const PATH_CONFIG_RESTART_BASE=[['sikalot_source','参照データの取得元']];
  const PATH_CONFIG_RESTART_TAIL=[
+  ['records_share_dir','測定データの置き場（設備ごと）'],
   ['records_backup_export_path','測定データバックアップの複製先'],
   ['schedule_share_path','スケジュール共有パス(schedule.sqlite3)'],
  ];

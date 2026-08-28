@@ -125,7 +125,9 @@ G['起動'] = ['test_boot', 'test_bootui', 'test_bootflash', 'test_assetcache', 
              'test_faststart']
 G['接続'] = ['test_dbopen', 'test_dbmirror', 'test_datasource', 'test_tablequery',
              'test_atomicio', 'test_localwork', 'test_dscap',
-             'test_qjoin', 'test_qjoinui']
+             'test_qjoin', 'test_qjoinui',
+             # §9.258: 測定データは設備ごとに1ファイル（置き場の解決）
+             'test_recsplit']
 G['権限'] = ['test_modeguard', 'test_noaccess', 'test_scperm', 'test_recperm', 'test_pcname']
 G['ログ'] = ['test_logs', 'test_logview', 'test_error']
 
@@ -243,7 +245,8 @@ RULES = [
                                    'test_modeguard')),
     ('backend/routes/masters.py', g('マスタ', '列', 'test_modeguard')),
     ('backend/routes/schedule.py', g('スケジュール', 'test_modeguard', 'test_crudroutes')),
-    ('backend/routes/measurement.py', g('測定', 'test_modeguard', 'test_measstore')),
+    ('backend/routes/measurement.py', g('測定', 'test_modeguard', 'test_measstore',
+                                        'test_recsplit')),
     ('backend/routes/quality.py', g('test_uiux', 'test_headbar', 'test_tablequery',
                                     'test_modeguard')),
     ('backend/routes/logs.py', g('ログ', 'test_modeguard')),
@@ -290,7 +293,8 @@ RULES = [
                                    'test_screorder', 'test_atomicio', 'test_scsession',
                                    'test_scwho')),
     ('backend/load_factor.py', g('test_scbalance', 'test_sccat', 'test_screport', 'test_eqstd')),
-    ('backend/records_export.py', g('test_share', 'test_flows', 'test_measstore')),
+    ('backend/records_export.py', g('test_share', 'test_flows', 'test_measstore',
+                                    'test_recsplit')),
     ('backend/logging_setup.py', g('ログ')),
     ('backend/boot_status.py', g('起動')),
     ('backend/watchdog.py', g('test_tabclose', 'test_boot')),

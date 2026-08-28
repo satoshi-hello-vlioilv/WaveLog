@@ -26,7 +26,7 @@ from ..logging_setup import app_logger
 from ..db_access import (
  DBS, connect, request_user_id,
  PATH_CONFIG_KEYS, path_config_rows, set_path_config, path_config_value,
- SIKALOT_SOURCE, RECORDS_BACKUP_EXPORT_PATH, SCHEDULE_SHARE_PATH,
+ SIKALOT_SOURCE, RECORDS_BACKUP_EXPORT_PATH, RECORDS_SHARE_DIR, SCHEDULE_SHARE_PATH,
 )
 
 bp=Blueprint('path_config',__name__)
@@ -42,7 +42,7 @@ bp=Blueprint('path_config',__name__)
 # ========================================================================
 _PATH_CONFIG_DEFAULTS={
  'sikalot_source':'network','sikalotnow_path':'','sikalotdef_path':'',
- 'records_backup_export_path':'','schedule_share_path':'',
+ 'records_backup_export_path':'','schedule_share_path':'','records_share_dir':'',
  # 閲覧用の複製をどれくらいの間隔で見に行くか(§9.202)。**変化があった
  # ときだけ複製する**ので、短くしても無駄な複製は増えない。こちらは
  # 呼び出しのたびに読み直すので再起動は要らない(複製先のパスは要る)。
@@ -106,6 +106,7 @@ _PATH_CONFIG_CHOICE_FIELDS={
 # 自由に書ける文字列の設定（置き場と端末名）。空欄なら既定へ戻る。
 # `pc_name`はこの端末の呼び名(§9.208 ⑧)——OSから取れない端末が名乗り直すため。
 _PATH_CONFIG_TEXT_FIELDS=('records_backup_export_path','schedule_share_path',
+                          'records_share_dir',
                           'rne_assets_dir','rne_conf_path','pc_name')
 
 @bp.get('/api/path-config-master')
@@ -154,6 +155,7 @@ def path_config_master_get():
    'rne_conf_path':str(rne_scheduler.conf_path()),
    'records_backup_export_path':str(RECORDS_BACKUP_EXPORT_PATH) if RECORDS_BACKUP_EXPORT_PATH else '',
    'schedule_share_path':str(SCHEDULE_SHARE_PATH) if SCHEDULE_SHARE_PATH else '',
+   'records_share_dir':str(RECORDS_SHARE_DIR) if RECORDS_SHARE_DIR else '',
    'rne_extract_enabled':str(path_config_value('rne_extract_enabled','auto') or 'auto'),
    'rne_extract_interval_sec':str(path_config_value('rne_extract_interval_sec',RNE_EXTRACT_INTERVAL_SEC_DEFAULT)),
    'records_backup_export_interval_sec':str(path_config_value('records_backup_export_interval_sec',RECORDS_BACKUP_EXPORT_INTERVAL_SEC)),

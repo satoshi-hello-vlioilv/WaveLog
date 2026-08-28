@@ -749,6 +749,153 @@ if not WORK_DB_KEY:
 _records_backup_export_override=_static_path_cfg('records_backup_export_path')
 RECORDS_BACKUP_EXPORT_PATH=Path(_records_backup_export_override) if _records_backup_export_override else None
 
+# ---------- 測定データの置き場は設備ごとに1ファイル(§9.258) ----------
+# 共有スペースを正とする運用では、測定データを**設備ごとに1ファイル**へ分ける。
+# 1台の測定端末が担当するのは1設備なので、こうすると「1つのファイルを書くのは
+# いつも1台だけ」が**構造として**成り立つ——クラウド同期で壊れるのは同じ
+# ファイルを2台が変えたときだけなので、その条件そのものが消える(書込役を
+# 立てる§9.192より強い。設定も要らない)。
+#
+#   <records_share_dir>\<設備>\records.sqlite3
+#
+# **ファイル名は据え置く**(`records.sqlite3`)。分ける手段はフォルダなので、
+# 名前まで設備ごとにすると汎用性が落ちる(利用者の指示)。
+#
+# **未設定なら今までどおりMEAS_DB 1本**で、この節は何も変えない——現場で
+# 動いている置き方を黙って変えないため(§9.251の「既定は今までどおり」と
+# 同じ作法)。移行の途中でも、読む側は下記のとおり**旧い置き場も一緒に**
+# 読むので、どちらに保存された記録も消えない。
+_records_share_dir_override=_static_path_cfg('records_share_dir')
+RECORDS_SHARE_DIR=Path(_records_share_dir_override) if _records_share_dir_override else None
+
+# 置き場が決まっていない記録(設備を名乗らない古いレコード)の行き先。
+# **捨てないこと**——設備を書き足す手立ては画面にしか無いので、隠すと
+# 直しようが無くなる(§9.248 ⑥と同じ理由)。
+RECORDS_UNSET_DIR_NAME='_未設定'
+RECORDS_FILE_NAME='records.sqlite3'
+# Windowsがフォルダ名に使えない文字。設備名は現場が付けるので、
+# ここを通さないと**フォルダごと作れない設備**が出る(§9.240でシート名に
+# ついて踏んだのと同じ罠)。
+_RECORDS_BAD_CHARS='<>:"/\\|?*'
+
+def _records_equipment_ident(equipment):
+ # 設備の同一判定は**アプリ全体で1つ**(全角/半角のゆれを吸収する。§9.239 ⑥)。
+ # master_repoはdb_accessを読む側なので、循環importを避けて呼ぶときに引く。
+ from .repositories.master_repo import normalize_equipment_name
+ return normalize_equipment_name(equipment)
+
+def records_dir_name(equipment):
+ """設備名 -> その設備の測定データを置くフォルダ名。
+
+ 使えない文字は`_`へ落とし、**落としたときだけ**短い識別子を付ける
+ ——落とすだけだと`A/B`と`A:B`が同じフォルダになり、**別の設備の測定
+ データが1つのファイルに混ざる**。ふつうの設備名(`LS4`等)は素のまま。
+ """
+ ident=_records_equipment_ident(equipment)
+ if not ident:return RECORDS_UNSET_DIR_NAME
+ safe=''.join(('_' if (ch in _RECORDS_BAD_CHARS or ord(ch)<32) else ch) for ch in ident)
+ safe=safe.rstrip(' .')  # Windowsは末尾の空白とピリオドを落とす
+ if safe!=ident or not safe:
+  import hashlib
+  safe=(safe or 'eq')+'-'+hashlib.sha1(ident.encode('utf-8')).hexdigest()[:6]
+ return safe
+
+def records_path_for(equipment,create=False):
+ """その設備の測定データを**書き込む**ファイル。
+
+ 置き場が未設定なら今までどおりMEAS_DB(この端末のdb/records.sqlite3)。
+ `create=True`のときだけフォルダを作る——**読む側では作らない**
+ (存在しない設備のフォルダが読むたびに増える)。
+ """
+ if RECORDS_SHARE_DIR is None:return MEAS_DB
+ d=RECORDS_SHARE_DIR/records_dir_name(equipment)
+ if create:
+  try:
+   existed=d.is_dir()
+   d.mkdir(parents=True,exist_ok=True)
+   # **作ったときだけ**一覧の覚えを捨てる(毎回捨てると共有の走査が増える)。
+   if not existed:invalidate_records_dirs_cache()
+  except Exception as e:
+   # 共有が不調でも**測定は続けられること**が最優先。手元へ落として理由を残す。
+   app_logger().warning('測定データの置き場(%s)を作れませんでした: %s。この端末の%sへ保存します。',d,e,MEAS_DB)
+   return MEAS_DB
+ return d/RECORDS_FILE_NAME
+
+# 設備フォルダの一覧は共有越しの走査になるので、短いあいだ覚える
+# (§9.188と同じ考え方。新しい設備のフォルダが増えるのは稀で、
+#  遅れて見えても実害が無い)。
+RECORDS_DIR_SCAN_TTL_SEC=20.0
+_records_dirs_cache={'paths':None,'ts':0.0}
+_records_dirs_lock=threading.Lock()
+
+def invalidate_records_dirs_cache():
+ with _records_dirs_lock:
+  _records_dirs_cache['paths']=None;_records_dirs_cache['ts']=0.0
+
+def _records_share_files():
+ if RECORDS_SHARE_DIR is None:return []
+ now=time.time()
+ with _records_dirs_lock:
+  cached=_records_dirs_cache['paths']
+  if cached is not None and (now-_records_dirs_cache['ts'])<RECORDS_DIR_SCAN_TTL_SEC:
+   return cached
+ found=[]
+ try:
+  for entry in sorted(RECORDS_SHARE_DIR.iterdir(),key=lambda e:e.name):
+   try:
+    if entry.is_dir():found.append(entry/RECORDS_FILE_NAME)
+   except Exception:continue
+ except Exception as e:
+  # **読めなかったことを「1件も無い」と同じに扱わない**(§9.211 ②)。
+  # 前に読めた一覧があればそれを使い続ける。
+  app_logger().warning('測定データの置き場(%s)を一覧できませんでした: %s',RECORDS_SHARE_DIR,e)
+  with _records_dirs_lock:
+   return _records_dirs_cache['paths'] or []
+ with _records_dirs_lock:
+  _records_dirs_cache['paths']=found;_records_dirs_cache['ts']=time.time()
+ return found
+
+def records_paths_holding(ids):
+ """その記録IDを実際に持っているファイルだけを返す({path: [記録ID,...]})。
+
+ 消すときに使う。**持っていないファイルは開かない**——1つの記録は1つの
+ ファイルにしか無いので、全部へDELETEを流すと、無関係な設備のファイルまで
+ この端末が書いたことになる(§9.258の「1ファイル1書き手」が崩れる)。
+ """
+ want={str(i).strip() for i in (ids or []) if str(i or '').strip()}
+ out={}
+ if not want:return out
+ for path in records_paths_all():
+  if path is None or path_exists_safe(path) is False:continue
+  try:
+   with connect(path,True) as c:
+    if 'Web測定バックアップ' not in tables(c):continue
+    cur=c.cursor()
+    qs=','.join('?' for _ in want)
+    cur.execute('SELECT [記録ID] FROM [Web測定バックアップ] WHERE [記録ID] IN ('+qs+')',list(want))
+    hit=[str(r[0]) for r in cur.fetchall()]
+  except Exception as e:
+   app_logger().warning('測定データ(%s)を確かめられませんでした: %s',path,e)
+   continue
+  if hit:out[path]=hit
+ return out
+
+def records_paths_all():
+ """測定データを**読む**ときに見るファイルの全部。
+
+ 閲覧は全設備の測定データが見られるべき(利用者の指示)なので、設備フォルダを
+ 全部並べる。**旧い置き場も必ず末尾に足す**——移行の途中でどちらに保存された
+ 記録も消えないようにするため(片方だけを見る形にすると、移行した瞬間に
+ それまでの記録が画面から消える)。同じファイルは1回だけ。
+ """
+ out=[];seen=set()
+ for p in list(_records_share_files())+[MEAS_DB,RECORDS_BACKUP_EXPORT_PATH]:
+  if p is None:continue
+  k=str(p)
+  if k in seen:continue
+  seen.add(k);out.append(p)
+ return out
+
 # スケジュール機能(docs/SCHEDULE_MODE_DESIGN.md §4)のデータ本体。共有環境
 # (Box等)上のパスをパス設定マスタの"schedule_share_path"で指定する。
 # 未設定ならNoneのままで、backend/schedule_sync.pyはScheduleNotConfiguredを
@@ -883,7 +1030,7 @@ _backup_rows_lock=threading.Lock()
 
 def _backup_sources_signature():
  sig=[]
- for path in (MEAS_DB,RECORDS_BACKUP_EXPORT_PATH):
+ for path in records_paths_all():
   try:
    st=path.stat();sig.append((str(path),st.st_mtime_ns,st.st_size))
   except Exception:
@@ -896,21 +1043,44 @@ def invalidate_backup_rows_cache():
  # 明示的に捨てられる口を用意しておく。
  with _backup_rows_lock:
   _backup_rows_cache['rows']=None;_backup_rows_cache['ts']=0.0;_backup_rows_cache['sig']=None
+  # ファイルごとの覚えも捨てる——同一秒内の連続保存はstatの署名で拾えない
+  # ことがあるので、明示的に捨てる口ではここも空にする。
+  _backup_file_cache.clear()
+
+# ファイルごとの読み結果を、そのファイルの署名で覚える。
+# 設備ごとに分けた(§9.258)ことで読む対象がN本になったので、**1台が保存する
+# たびにN本すべてを読み直す**形にすると、設備が増えるほど一覧が重くなる。
+# 変わったファイルだけ読み直す。
+_backup_file_cache={}
+
+def _backup_file_rows(path):
+ try:
+  st=path.stat();sig=(st.st_mtime_ns,st.st_size)
+ except Exception:
+  # 署名が取れないときは覚えない(共有越しではstatだけ失敗する。§9.188)。
+  sig=None
+ if sig is not None:
+  hit=_backup_file_cache.get(str(path))
+  if hit is not None and hit[0]==sig:return hit[1]
+ try:
+  items,_=read_backup_rows(path)
+ except Exception:
+  items=None
+ rows=items or []
+ if sig is not None:_backup_file_cache[str(path)]=(sig,rows)
+ return rows
 
 def _merged_backup_rows_uncached():
- # MEAS_DB(書込端末のローカルrecords.sqlite3)とRECORDS_BACKUP_EXPORT_PATH
- # (閲覧用複製、Box等)の両方から[Web測定バックアップ]を集め、記録IDごとに
+ # 読む対象は records_paths_all() が答える1箇所(§9.258)——設備ごとの
+ # 測定データ・この端末のMEAS_DB・閲覧用複製(Box等)の全部から
+ # [Web測定バックアップ]を集め、記録IDごとに
  # 更新日時が新しい方を残す。schedule_calc.py(実績突合、§7.4)・
  # load_factor.py(換算係数モデルの学習、§6.6)が共用する。どちらの端末
  # (書込端末そのもの/閲覧・スケジュール専用端末)から呼んでも同じ実績が
  # 見える。
  merged={}
- for path in (MEAS_DB,RECORDS_BACKUP_EXPORT_PATH):
-  try:
-   items,_=read_backup_rows(path)
-  except Exception:
-   items=None
-  for row in (items or []):
+ for path in records_paths_all():
+  for row in _backup_file_rows(path):
    rid=row.get('id')
    if not rid:continue
    existing=merged.get(rid)
