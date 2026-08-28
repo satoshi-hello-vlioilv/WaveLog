@@ -2631,8 +2631,6 @@
 .rly-pos{color:var(--ink-3);font-variant-numeric:tabular-nums;white-space:nowrap}
 .rly-act{display:flex;justify-content:flex-end}
 .rly-note{margin:0;flex:none;color:var(--ink-3);font-size:var(--fs-micro);line-height:1.7}
-}
-
 /* ---------- 式で作る自動値（§9.256、利用者の指示） ----------
    **候補は押して入れる**（§CLAUDE 2「思い出させない」）——名前を打たせない。
    寸法・色はトークンから取る（リテラルを新しく足さない・§CLAUDE 7）。 */
@@ -2655,3 +2653,4 @@
   background:var(--surface);color:var(--ink-2);
   font-size:var(--fs-micro);font-weight:700;cursor:pointer;white-space:nowrap}
 .op-formula-name:hover{border-color:var(--teal);color:var(--teal-dark)}
+}

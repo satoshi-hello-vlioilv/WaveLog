@@ -20,6 +20,7 @@ const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_m
 const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
+const SEEDED_STOP='SD'+process.pid+'停止';
 
 let b=null;
 (async()=>{
@@ -40,6 +41,9 @@ let b=null;
   return (await r.json()).entries||[];
  },EQ);
  let madeId=null;
+ /* この実行で足した停止理由（足したときだけ消す。**元から在ったものは
+    消さない**——他のテストも読む・§9.121）。 */
+ let seededStopId=null;
 
  try{
   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
@@ -50,14 +54,28 @@ let b=null;
 
   /* 落として消すための行を1件だけ自分で作る。**既存の行を消さない**
      ——フィクスチャは他のテストも読むので、消すのは自分が作ったものだけ。 */
-  const stops=await page.evaluate(async e=>{
+  /* **停止理由は自分で用意する**（§9.121「材料は自分で注ぎ込むこと」）。
+     以前は既存の登録の先頭を借りていたが、設備停止理由マスタは
+     `master.sqlite3`にあって**実行をまたいで残る**——別のテストが途中で
+     落ちて空にすると、この網は「予定を1件も作れない」でFATALになり、
+     原因がこのファイルの外にあるので追いにくい（実際に踏んだ）。 */
+  const stopReasons=async()=>page.evaluate(async e=>{
    const r=await fetch('/api/schedule/stop-reason-master?equipment='+encodeURIComponent(e));
    return (await r.json()).items||[];
   },EQ);
+  let stops=await stopReasons();
+  if(!stops.length){
+   const r=await post('/api/schedule/stop-reason-master',
+     {equipment:EQ,category:'その他',name:SEEDED_STOP,standardMinutes:10,user_id:'test'});
+   if(r.status===200&&r.body&&r.body.id)seededStopId=r.body.id;
+   stops=await stopReasons();
+  }
   await post('/api/schedule/session/acquire',{equipment:EQ});
   const add=await post('/api/schedule/plan/add',
     {equipment:EQ,kind:'設備停止',stopReasonId:stops[0]&&stops[0].id});
   madeId=add.body&&add.body.id;
+  rec('前提: 停止理由が1件はある（無ければ自分で足す）',stops.length>0,
+      `${stops.length}件${seededStopId?'（この実行で足した）':''}`);
   rec('外す用の予定を1件作れた',add.status===200&&!!madeId,`${add.status} ${JSON.stringify(add.body).slice(0,90)}`);
 
   await page.reload({waitUntil:'domcontentloaded'});
@@ -195,6 +213,9 @@ let b=null;
  async function cleanup(){
   try{
    if(madeId)await post('/api/schedule/plan/delete',{id:madeId,equipment:EQ});
+   /* **足したときだけ消す**（元から在った登録は他のテストも読む・§9.121）。 */
+   if(seededStopId)await post('/api/schedule/stop-reason-master/delete',
+                              {id:seededStopId,user_id:'test'});
    await post('/api/schedule/session/release',{equipment:EQ});
    await setMode('edit');
   }catch(e){}
