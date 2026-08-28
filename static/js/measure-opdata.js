@@ -556,18 +556,33 @@
   const u=unitParts(def);
   const want=u.top+u.inside+u.bottom;
   const anchor=displayEl(host);
+  /* 内部だけは**値の出る面**が基準（§9.255 ③）。器を被せた形では、
+     器の中の右端へ入れないと「重ねた」ことにならない。 */
+  const face=u.inside?unitFaceEl(host):null;
+  const inBox=!!(face&&face.closest&&face.closest('.opf-widget'));
   /* 印は「出す物」と「どこを基準にしたか」の組。器が出入りすると
      基準の素性が変わるので、そのときだけ置き直す。 */
-  const sig=want+'@'+(anchor?anchor.tagName+'.'+(anchor.className||''):'-');
-  if(host.dataset.opunitSig===sig)return;
+  const sig=want+'@'+(anchor?anchor.tagName+'.'+(anchor.className||''):'-')
+    +'@'+(inBox?'in':'out');
+  /* **印だけを見て早く帰らないこと。** `buildWidget()`は器の中身を
+     `innerHTML`ごと作り直すので、器の中へ入れた単位は**印はそのままで
+     消える**（クラス名は変わらない）。実際に置いてあるかまで見る。 */
+  const have=host.querySelector('.opf-unit-in,.opf-unit-line');
+  if(host.dataset.opunitSig===sig&&(!want)===(!have))return;
   host.dataset.opunitSig=sig;
-  host.querySelectorAll(':scope>.opf-unit-line,:scope>.opf-unit-in').forEach(x=>x.remove());
+  host.querySelectorAll('.opf-unit-line,.opf-unit-in').forEach(x=>x.remove());
   if(!want)return;
   if(u.top){
    if(anchor)anchor.insertAdjacentHTML('beforebegin',u.top);
    else host.insertAdjacentHTML('beforeend',u.top);
   }
-  if(u.inside&&anchor)anchor.insertAdjacentHTML('afterend',u.inside);
+  if(u.inside){
+   /* 器を被せた形は**いまの値の直後**（同じ行のflexの子になるので、
+      値の側が縮んで場所を空ける——逃げ場の幅を測らなくてよい）。
+      素の欄・`<output>`・数の欄は今までどおり**同じマスへ重ねる**。 */
+   const at=face||anchor;
+   if(at)at.insertAdjacentHTML('afterend',u.inside);
+  }
   if(u.bottom){
    if(anchor)anchor.insertAdjacentHTML('afterend',u.bottom);
    else host.insertAdjacentHTML('beforeend',u.bottom);
@@ -674,6 +689,42 @@
  function displayEl(host){
   return host.querySelector(':scope>.opf-widget:not(.opf-plain)')
     ||valueEl(host)||outputEl(host);
+ }
+ /* ---------- 単位を重ねる「面」（§9.255 ③、利用者の指示） ----------
+    「UIのテキストボックスの内部に入れられない(「内部」を選べない)ものがあり、
+     …選択後にテキストボックスにデータが入るときに単位が内部にも収まるように
+     することで、見せ方で内部も選べるようにして反映できるようにしてほしいです」
+
+    `displayEl()`は「いま見えている操作面」——**外下・外上**の単位はその
+    上下へ置けばよいので、これで足りる。ところが**内部**は「値がそこへ出る
+    箱の中」でなければならず、2つは同じとは限らない:
+
+      メニュー・一覧・パネル・切替・入切・コンボ … 器（`.opf-widget`）が
+        1つの箱で、いまの値もその中に出る → **面は器**
+      数の道具（`.opf-num`）… 器は欄へ重ねる素通しの覆いで、値が出るのは
+        `<input>`のほう → **面は欄**（覆いの中へ入れると帯の下へ潜る）
+      素のプルダウン・`<output>` … それ自身が面
+      ラジオ・セグメント・タブ・ボタン群・カード・トグル・段階 … 札がN枚で
+        **面が1つに決まらない** → 重ねられない（サーバーが`外下左`へ落とし、
+        設定画面は「内部」を押せなくして理由を書く・§4）
+
+    **一覧はここだけが持つ**（`UNIT_FACE_BOX`）。サーバーの
+    `UNIT_IN_MULTI_FACE`と裏返しの関係だが、あちらは「選ばせてよいか」、
+    こちらは「どこへ置くか」で役割が違う——同じ判定を2つ持っているのでは
+    ないので、片方だけ直した状態にはならない（形を足したときに、ここへ
+    書き足さなければ今までどおり欄の隣へ落ちるだけ）。 */
+ /* いまの値を出している面（器を被せた形）。**器ごとに名前が違う**ので
+    一覧はここ1箇所に持つ——`syncWidget()`が値を書き込む先と同じ顔ぶれ。
+    ここに載っていない形（ラジオ・セグメント…・メモ）は面が1つに決まらない
+    ので、サーバーが`内部`を断る（`UNIT_IN_NO_FACE`）。 */
+ const UNIT_NOW_SEL=':scope>.opf-widget:not(.opf-plain) .opf-pick-now,'
+   +':scope>.opf-widget .opf-cycle-now,'
+   +':scope>.opf-widget .opf-switch-text,'
+   +':scope>.opf-widget .opf-combo-in';
+ function unitFaceEl(host){
+  /* **器の中の「いまの値」の直後**へ置く（§9.255 ③）——押す印（▾・☰・▦）の
+     上に重ねると、押す場所が単位で隠れる。値のすぐ横なら`508 mm`と読める。 */
+  return host.querySelector(UNIT_NOW_SEL)||valueEl(host)||outputEl(host);
  }
  /* 数値の刻み。**マスタで決めていればそれ**（§9.220 ⑤、利用者の指示
     「ステップ入力に関して、ステップ量も決められるようにしてほしい」）。

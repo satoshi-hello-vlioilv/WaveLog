@@ -63,28 +63,96 @@ def configured_path(key):
  value=load_local_config().get(key)
  return Path(value) if value else None
 
+# ---------------------------------------------------------------------------
+# ユーザー別ローカル領域（§9.255 ③、利用者の報告「他PCで起動に失敗する」）
+# ---------------------------------------------------------------------------
+# ここは**起動のいちばん最初に通る**（`start_app.main()`の1行目が
+# `ensure_local_dirs()`で、その次が`launcher_logger()`＝`logs_dir()`）。
+# 以前は`mkdir`の失敗をそのまま送出していたので、`%LOCALAPPDATA%`が
+# 移動プロファイル（ネットワーク上のホーム）・ポリシー・容量で書けない端末では
+# **待機画面を開く前にプロセスが死んでいた**。`Start.vbs`は`pythonw.exe`を
+# 黒い画面なしで起動するので、利用者から見えるのは「モーダルが出ない」だけ
+# ——前に開いていたタブが残っていれば、そこに接続エラーが出たままになる
+# （報告の「モーダルが出ずエラー画面」）。
+#
+# **書ける場所を1つ必ず見つける。** 候補は
+#   %LOCALAPPDATA% → XDG_DATA_HOME → ホーム → 一時フォルダー
+# の順で、**実際に作って書いてみて**決める——`exists()`は「書けるか」を
+# 答えない（§9.108と同じ理由）。決めた場所は覚える（呼ぶたびに探し直すと、
+# 遅い共有では確認そのものが起動より重くなる・§9.225）。
+_LOCAL_ROOT=None
+
+def _local_root_candidates():
+ out=[]
+ for key in ('LOCALAPPDATA','XDG_DATA_HOME'):
+  base=os.environ.get(key)
+  if base:out.append(Path(base)/LOCAL_DIR_NAME)
+ try:out.append(Path.home()/'.local'/'share'/LOCAL_DIR_NAME)
+ except Exception:pass
+ try:
+  import tempfile
+  out.append(Path(tempfile.gettempdir())/LOCAL_DIR_NAME)
+ except Exception:pass
+ return out
+
 def local_root():
- """ユーザー別ローカル領域のルート。存在しなくてもパスだけ返す。"""
- base=os.environ.get('LOCALAPPDATA')          # Windows
- if not base:
-  base=os.environ.get('XDG_DATA_HOME')        # Linux(サンドボックス等)
- if not base:
-  return Path.home()/'.local'/'share'/LOCAL_DIR_NAME
- return Path(base)/LOCAL_DIR_NAME
+ """ユーザー別ローカル領域のルート。**実際に書ける場所**を返す。
+
+ **健全な端末の答えは変えない**（`%LOCALAPPDATA%\WaveLog`）——書けたら
+ そこで止まるので、候補が増えても今までと同じ場所になる（§9.208 ⑧の
+ 端末名の解決と同じ作法）。"""
+ global _LOCAL_ROOT
+ if _LOCAL_ROOT is not None:return _LOCAL_ROOT
+ cands=_local_root_candidates()
+ for path in cands:
+  try:
+   path.mkdir(parents=True,exist_ok=True)
+   probe=path/'.writable'
+   probe.write_text('',encoding='utf-8')
+   try:probe.unlink()
+   except Exception:pass
+   _LOCAL_ROOT=path
+   return path
+  except Exception:
+   continue
+ # どこにも書けない。**それでもパスは返す**——ここで送出すると、
+ # 起動が待機画面を開く前に死ぬ（この節の冒頭がまさにそれ）。
+ _LOCAL_ROOT=cands[0] if cands else Path('.')/LOCAL_DIR_NAME
+ return _LOCAL_ROOT
 
 def ensure_local_dirs():
- """ローカル領域の各フォルダを作成し、辞書で返す。"""
+ """ローカル領域の各フォルダを作成し、辞書で返す。
+
+ **1つも送出しない**（§9.255 ③）——作れなかったフォルダがあっても起動は
+ 続ける。どれが作れなかったかは呼び出し元がログへ残せるよう、辞書とは別に
+ `ensure_local_dirs.failed`へ名前を積む（起動の1行目なので、ここでログを
+ 開くと鶏と卵になる）。"""
  root=local_root()
  dirs={name:root/name for name in ('runtime','logs','pycache','cache','work','backup')}
- for path in dirs.values():
-  path.mkdir(parents=True,exist_ok=True)
+ failed=[]
+ for name,path in dirs.items():
+  try:
+   path.mkdir(parents=True,exist_ok=True)
+  except Exception as e:
+   failed.append(f'{name}: {e}')
+ ensure_local_dirs.failed=failed
  return dirs
+ensure_local_dirs.failed=[]
+
+def _sub_dir(name):
+ """ローカル領域の下の1つ。**作れなくてもパスを返す**（送出しない）。"""
+ path=local_root()/name
+ try:
+  path.mkdir(parents=True,exist_ok=True)
+ except Exception:
+  pass
+ return path
 
 def logs_dir():
- path=local_root()/'logs'; path.mkdir(parents=True,exist_ok=True); return path
+ return _sub_dir('logs')
 
 def runtime_dir():
- path=local_root()/'runtime'; path.mkdir(parents=True,exist_ok=True); return path
+ return _sub_dir('runtime')
 
 def instance_file():
  """起動中のプロセス情報(PID・URL・アプリ配置場所)を書き出す先。"""

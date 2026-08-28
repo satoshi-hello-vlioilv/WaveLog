@@ -124,14 +124,28 @@ def waiting_page():
 
 
 def copy_waiting_page(say=None):
+    """本体の`loading.html`を手元へ写す。**意匠の出どころはあれ1つ**（§9.225）。
+
+    **置き換えは一時ファイル→`atomic_io.replace()`**（§9.255 ③）。写しは
+    ブラウザが開いている最中に上書きされうる（起動のたびに裏で写し直す）ので、
+    素の`write_bytes`だと**読んでいる途中の半分だけの画面**を見せうるし、
+    Windowsでは掴まれている置き換えが`WinError 5`になる（§9.108）。"""
+    from .. import atomic_io
     src = APP_ROOT / 'loading.html'
     dst = waiting_page()
+    tmp = dst.with_suffix(dst.suffix + '.tmp')
     try:
-        dst.write_bytes(src.read_bytes())
+        data = src.read_bytes()
+        tmp.write_bytes(data)
+        atomic_io.replace(tmp, dst, label='loading.html')
         if say:
             say('起動待機画面を手元へ写しました: %s' % dst)
         return dst
     except Exception as e:
+        try:
+            tmp.unlink()
+        except Exception:
+            pass
         if say:
             say('起動待機画面を写せませんでした（共有側をそのまま開きます）: %s' % e, bad=True)
         return None

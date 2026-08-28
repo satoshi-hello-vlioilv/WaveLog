@@ -39,7 +39,7 @@ from backend.launcher import ready, setup_check
 from backend import boot_status
 from backend.config import PORT, app_url
 from backend.logging_setup import launcher_logger, log_environment
-from backend.paths import APP_ROOT, configured_path, ensure_local_dirs, is_network_path
+from backend.paths import APP_ROOT, configured_path, ensure_local_dirs, is_network_path, runtime_dir
 
 
 # ============================================================================
@@ -75,6 +75,7 @@ from backend.paths import APP_ROOT, configured_path, ensure_local_dirs, is_netwo
 # 最小版。深い紺(#0d2029)は index.html / loading.html と同じ起点で、遷移時に
 # 白く光らせない(§9.92)。{PORT}/{APP_URL} は起動時に差し込む。
 _EMERGENCY_WAITING_HTML = r"""<!doctype html>
+<!--wavelog-emergency-waiting-->
 <html lang="ja"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>測定伝送システム を起動しています</title>
@@ -143,19 +144,29 @@ def _exists_safe(path):
   return False
 
 
-def _local_runtime_dir():
- """手元(ユーザー別ローカル)の runtime 置き場。`_pycache_bootstrap` と同じ
-    基準で `%LOCALAPPDATA%\\WaveLog\\runtime` を解決する。`ensure_local_dirs()`
-    が main() 冒頭で作成済みの想定だが、無ければここでも作る。"""
- base=os.environ.get('LOCALAPPDATA') or os.environ.get('XDG_DATA_HOME')
- if not base:
-  base=os.path.join(os.path.expanduser('~'),'.local','share')
- d=Path(base)/'WaveLog'/'runtime'
+def _is_emergency_page(path):
+ """その待機画面が**組み込みの簡易版**か（§9.255 ③）。読めなければ False
+    ——「本来の写し」として扱えば、少なくとも今まで通り開ける。"""
  try:
-  d.mkdir(parents=True,exist_ok=True)
+  head=Path(path).read_text(encoding='utf-8',errors='ignore')[:400]
  except Exception:
-  pass
- return d
+  return False
+ return _EMERGENCY_MARK in head
+
+
+def _local_runtime_dir():
+ """手元(ユーザー別ローカル)の runtime 置き場。**解決は`backend.paths`の
+    1箇所**（§9.255 ③）——ここに同じ式を書き写していたため、`paths`側が
+    「書ける場所を探して落ちる」ようになっても**この関数だけが古い答え**を
+    返し、待機画面だけが書けない端末が作れる。"""
+ return runtime_dir()
+
+
+# 組み込みの簡易待機画面には**目印を刻む**（§9.255 ③）。これが在ると
+# ①の「既にある手元の写し」に当たってしまい、**本来の`loading.html`へ一生
+# 上がれない**——段階の進捗も出ないままになる。目印を見て、次の起動で
+# 本来の写しを作り直せるようにする。
+_EMERGENCY_MARK='<!--wavelog-emergency-waiting-->'
 
 
 def _write_emergency_waiting_page(log,target):
@@ -171,8 +182,19 @@ def _write_emergency_waiting_page(log,target):
  if target is not None:
   candidates.append(Path(target))
  local=_local_runtime_dir()/'loading.html'
- if not candidates or candidates[0]!=local:
+ if local not in candidates:
   candidates.append(local)
+ # **一時フォルダーまで落ちる**（§9.255 ③）。`%LOCALAPPDATA%`が移動
+ # プロファイル・ポリシーで書けない端末では上の2つが両方外れる——そこで
+ # 諦めると**ブラウザが1つも開かず、利用者からは「何も起きない」**になる。
+ # 一時フォルダーは消えても構わない（毎回書き直す）。
+ try:
+  import tempfile
+  tmpdir=Path(tempfile.gettempdir())/'WaveLog'
+  if tmpdir/'loading.html' not in candidates:
+   candidates.append(tmpdir/'loading.html')
+ except Exception:
+  pass
  last_err=None
  for dest in candidates:
   try:
@@ -192,27 +214,55 @@ def _write_emergency_waiting_page(log,target):
 
 def _ensure_local_waiting_page(log):
  """**手元から開ける待機画面のパスを必ず1つ返す**(用意できなければ None)。
-    ① 既にある手元の写し → ② 本来の写しを作る(setup_check、意匠の唯一の
-    出どころ) → ③ 組み込みの簡易画面、の順に降りる。どの存在確認も例外を
-    送出しない。Box(APP_ROOT)の loading.html は**存在確認せず**、届かない
-    前提で扱う(届くなら②の写し作成が成功する)。"""
- # ① setup_check が指す手元の写しが既にあるか
+
+    **本体(Box)を起動の直列路に置かない**（§9.255 ③）。本体は
+    クラウド同期フォルダーに置く運用で、未ハイドレートのファイルは最初の
+    読み出しに十数秒かかる（今回の調査ではimportに21秒）。待機画面は
+    「起動して最初の数msに出す」ものなので、そこへ本体の読み出しを挟むと
+    **待機画面が出ない時間**がそのまま延びる——別端末の「モーダルが出ずに
+    エラー画面」は、たいていこの待ち時間のあいだに見えているものだった。
+
+      ① 手元に写しが在る          → それを開く（本物でも簡易版でも）
+      ② 無い                      → 組み込みの簡易画面を手元へ書いて開く
+    どちらの場合も、本来の`loading.html`の写し直しは**裏で**走らせる
+    （`_refresh_waiting_page_later`）。次の起動から本物の意匠・段階表示に
+    なるので、意匠の出どころは`loading.html`の1つのまま。
+    どの存在確認も例外を送出しない。"""
  local=None
  try:
   local=setup_check.waiting_page()
  except Exception as e:
   log.warning('待機画面: 写しの置き場所を特定できませんでした(%s)',e)
+ # ① 手元の写しが在ればそれを開く。**本物でも簡易版でも開く**
+ #    ——ここで本体を読みに行かないのが要点（下の説明）。
  if _exists_safe(local):
+  _refresh_waiting_page_later(log)
   return local
- # ② 本来の loading.html から手元へ写す(Box が届くならここで成功する)
+ # ② 無ければ**組み込みの簡易画面を手元へ書いて開く**（本体を読まない）。
+ #    本来の写しは裏で作る——次の起動から本物の意匠・段階表示になる。
+ page=_write_emergency_waiting_page(log,local)
+ _refresh_waiting_page_later(log)
+ return page
+
+
+def _refresh_waiting_page_later(log):
+ """本来の`loading.html`の写しを**裏で**作り直す（§9.255 ③）。
+
+ 意匠の出どころは`loading.html`ただ1つで、写しを作るのは
+ `setup_check.copy_waiting_page()`の1箇所——ここは「いつ作るか」だけを
+ 決める。簡易版が在るときは本物へ上げ、本物が在るときも版ずれを直す。
+ **失敗しても何も言わない**（起動には関係が無い。次の起動でまた試す）。"""
+ def work():
+  try:
+   made=setup_check.copy_waiting_page()
+   if made:
+    log.info('待機画面: 次回のために本来の写しを更新しました: %s',made)
+  except Exception as e:
+   log.info('待機画面: 本来の写しは更新できませんでした(%s)。いまの写しで開いています',e)
  try:
-  made=setup_check.copy_waiting_page()
-  if _exists_safe(made):
-   return made
- except Exception as e:
-  log.warning('待機画面: 本来の写しを作成できませんでした(%s)。組み込みの簡易画面へ切り替えます',e)
- # ③ Box が届かない/未ハイドレート。手元へ簡易画面を書き出す
- return _write_emergency_waiting_page(log,local)
+  threading.Thread(target=work,daemon=True,name='refresh-waiting-page').start()
+ except Exception:
+  pass
 
 
 def open_waiting_screen(log):
@@ -228,7 +278,10 @@ def open_waiting_screen(log):
   log.error('待機画面: 手元に開ける画面を用意できませんでした。ブラウザは自動で開きません('
             'サーバー起動後に %s を開いてください)',app_url())
   return
- log.info('待機画面を開きます: %s',page)
+ # **どれで開いたかを1行残す**（§9.255 ③）。別端末で「モーダルが出ない」を
+ # 調べるとき、launcher.log にこの1行が在るかどうかが最初の分かれ道になる。
+ log.info('待機画面を開きます: %s%s',page,
+          '（組み込みの簡易画面。本来の写しは裏で作り直します）' if _is_emergency_page(page) else '')
  uri=Path(page).as_uri()
  # 既定ブラウザで file:// を開く。失敗(.html の関連付け無し・権限)しても
  # 握り潰さず、webbrowser 経由へ切り替える(「1つもブラウザが開かない」を残さない)。
@@ -269,16 +322,42 @@ def warn_if_shared(log):
 
 
 def main():
- ensure_local_dirs()
+ # ---------- 待機画面より前で死なない（§9.255 ③、利用者の報告） ----------
+ # 「他PCで起動に失敗する（モーダルが出ずエラー画面／loading.html 直クリックで
+ #   復帰）」
+ # **ここから待機画面までの4行が、以前は素通しで送出していた。**
+ # `%LOCALAPPDATA%`が移動プロファイル・ポリシー・容量で書けない端末では
+ # `ensure_local_dirs()`の`mkdir`が送出し、**待機画面を開く前にプロセスが
+ # 死ぬ**——`Start.vbs`は`pythonw.exe`を黒い画面なしで起動するので、
+ # 利用者から見えるのは「モーダルが出ない」だけ（前に開いていたタブが
+ # 残っていれば、そこに接続エラーが出たまま＝「エラー画面」）。
+ # 置き場の解決そのものは`backend.paths`が落ちる形に直した（1箇所）。
+ # ここでは**どれも起動を止めない**ことを守る。
+ try:
+  ensure_local_dirs()
+ except Exception:
+  pass
  log=launcher_logger()
  started=time.monotonic()
  # 段階表示(boot_status)は待機画面を開く前に1件書いておく。開いた直後の
  # ポーリングで「まだ何も無い」状態を見せないため。
- boot_status.report('env','ログと実行環境を準備しています')
- log_environment(log)
+ try:
+  boot_status.report('env','ログと実行環境を準備しています')
+  log_environment(log)
+  for why in (getattr(ensure_local_dirs,'failed',None) or []):
+   log.warning('手元のフォルダを作れませんでした（%s）。起動は続けます',why)
+ except Exception as e:
+  try:log.warning('起動の記録を残せませんでした(%s)。起動は続けます',e)
+  except Exception:pass
 
  # 以降どこで失敗しても利用者の画面に状況が出るよう、先に待機画面を開く。
- open_waiting_screen(log)
+ # **ここも送出させない**——開けなかった理由はログへ残し、起動そのものは
+ # 続ける（サーバーが立てば、利用者はブラウザから開ける）。
+ try:
+  open_waiting_screen(log)
+ except Exception as e:
+  try:log.error('待機画面を開く処理で失敗しました(%s)。起動は続けます',e)
+  except Exception:pass
 
  boot_status.report('instance',f'ポート {PORT} を確認しています')
  state,info=launch_guard.probe()

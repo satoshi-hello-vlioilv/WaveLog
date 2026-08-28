@@ -1916,8 +1916,23 @@
 .mm-xio-skip.is-warn summary{color:var(--warn-fg)}
 /* **取り消せない操作は主要動線から離す**（§CLAUDE 5）——帯のいちばん右へ。 */
 .mm-bulk-del{margin-left:auto}
-.mm-bulk-scopes{display:flex;flex-direction:column;gap:2px;margin:var(--space-2) 0}
-.mm-bulk-pick{display:flex;align-items:baseline;gap:var(--gap-inline);
+/* ---------- 消す範囲を選ぶ一覧（§9.255 ②、利用者の報告） ----------
+   「ロールマスタの削除機能で対象が多い時にモーダルの範囲がウィンドウの
+    高さを超え、ボタンを操作不能となり身動きが取れなくなりました」
+
+   原因は2つで、**片方だけ直しても直らない**——
+   ①`.settings-body label{display:grid}`（0,1,1）が`.mm-bulk-pick`（0,1,0）に
+     勝っており、**1行が3段**（丸ぽち／設備名／件数）になっていた。実測で
+     1行約90px。設備13件で1,170pxになり、窓の高さを軽く超える（§9.197の
+     `.mm-field input{min-width:200px}`と同じ形の詳細度の取りこぼし）。
+   ②一覧に上限が無く、器（`.record-modal`）は`place-items:center`で真ん中へ
+     置くだけなので、はみ出したぶんは**画面の外**へ出る。器は`overflow`を
+     持たないのでスクロールもできず、「削除する」にも「×」にも手が届かない。
+   **一覧の中でスクロールさせる**（スクロールするのはいちばん内側だけ・
+   §9.222 ⑤）。件数はいちばん上の文が言うので、隠れた行があっても数は読める。 */
+.mm-bulk-scopes{display:flex;flex-direction:column;gap:2px;margin:var(--space-2) 0;
+  max-height:min(46vh,420px);overflow:auto;scrollbar-gutter:stable}
+.settings-body .mm-bulk-pick{display:flex;align-items:baseline;gap:var(--gap-inline);
   padding:var(--pad-chip);border:1px solid var(--line-soft);border-radius:var(--radius-xs);
   background:var(--surface);font-size:var(--fs-sm);cursor:pointer}
 .mm-bulk-pick:hover{border-color:var(--line-mid);background:var(--surface-2)}

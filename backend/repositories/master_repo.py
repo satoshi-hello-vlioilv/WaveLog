@@ -182,6 +182,38 @@ def equipment_master_rows(c):
  return rows
 
 # ========================================================================
+# ---------------------------------------------------------------------------
+# 移行が済んでいて、**アプリがもう読まない**表（§9.255 ①、利用者の報告）
+# ---------------------------------------------------------------------------
+# 「移行済みデータをすべて消したはずが、復活しました。
+#   旧マスタは無ければ表示しない形にしたいです」
+#
+# 中身は§9.221 ③で`操業データ選択肢マスタ`へ、勤務形態は`勤務体系＋勤務区分`へ
+# 移した。**それでも`ensure_*_table()`が「無ければ作る」ままだった**ので、
+# 測定画面を1回開くだけで7つとも作り直され、マスタ管理の「移行済み」に
+# 空の表が並び直していた（＝消せないマスタ）。
+#
+# **無ければ作らない。** 在るときだけ監査列をそろえて読む（移行前の中身を
+# 見返すためだけに残す、という約束はそのまま）。消えていれば
+# `/api/master-table/catalog`は実在する表しか返さないので、画面からも消える。
+# **一覧はここ1箇所**——`backend/routes/master_tables.py`の`RETIRED`（説明文）
+# と食い違わないことを`tests/test_rawmaster.py`が機械で見る（§9.163）。
+RETIRED_TABLES = ('オペレータマスタ', 'オペレータ設備マスタ', '機器マスタ',
+                  'スプール種別マスタ', '内径種別マスタ', 'バリ揃えマスタ',
+                  'コイル止めマスタ', '勤務形態マスタ')
+
+
+def retired_table_present(c, table):
+ """移行済みの表が**いま在るか**。無ければ作らない（§9.255 ①）。
+
+ 在るときだけ監査列をそろえる——移行前の中身を見返す経路（マスタ管理の
+ 「移行済み」）はそのまま動く。**ここを「無ければ作る」に戻さないこと。"""
+ if table not in tables(c):
+  return False
+ ensure_audit_columns(c, table)
+ return True
+
+
 # オペレータマスタ（一般的なオートナンバー方式）
 #  - 主キーは COUNTER（オートナンバー）で人手管理不要。
 #  - 有効フラグ・表示順・登録/更新日時を持ち、論理削除で履歴を保持。
@@ -189,15 +221,9 @@ def equipment_master_rows(c):
 # ========================================================================
 OPERATOR_MASTER_TABLE='オペレータマスタ'
 def ensure_operator_master_table(c):
- names=tables(c);created=False
- if OPERATOR_MASTER_TABLE not in names:
-  # 設備マスタと同じ方針。制約と索引は別SQLで作成する。
-  cur=c.cursor()
-  cur.execute('CREATE TABLE [オペレータマスタ] ([オペレータID] INTEGER PRIMARY KEY AUTOINCREMENT, [氏名] TEXT, [ﾖﾐｶﾞﾅ] TEXT, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
-  cur.execute('CREATE UNIQUE INDEX [UX_オペレータマスタ_氏名] ON [オペレータマスタ] ([氏名])')
-  c.commit();created=True
- ensure_audit_columns(c,OPERATOR_MASTER_TABLE)
- return created
+ # **移行済み（§9.221 ③）なので無ければ作らない**（§9.255 ①）。
+ retired_table_present(c,OPERATOR_MASTER_TABLE)
+ return False
 
 def normalize_operator_name(value):
  import unicodedata
@@ -210,6 +236,8 @@ def ensure_operator_master(path):
  return created
 
 def operator_master_rows(c):
+ # **表が無ければ空**（§9.255 ①）。移行済みなので作り直さない。
+ if OPERATOR_MASTER_TABLE not in tables(c):return []
  ensure_operator_master_table(c)
  cur=c.cursor()
  # 全行取得後にPython側で有効判定する。
@@ -230,17 +258,14 @@ def operator_master_rows(c):
 # ------------------------------------------------------------------------
 OPERATOR_EQUIPMENT_TABLE='オペレータ設備マスタ'
 def ensure_operator_equipment_table(c):
- names=tables(c);created=False
- if OPERATOR_EQUIPMENT_TABLE not in names:
-  cur=c.cursor()
-  cur.execute('CREATE TABLE [オペレータ設備マスタ] ([ID] INTEGER PRIMARY KEY AUTOINCREMENT, [オペレータID] INTEGER, [設備名] TEXT, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
-  cur.execute('CREATE UNIQUE INDEX [UX_オペレータ設備マスタ] ON [オペレータ設備マスタ] ([オペレータID],[設備名])')
-  c.commit();created=True
- ensure_audit_columns(c,OPERATOR_EQUIPMENT_TABLE)
- return created
+ # **移行済み（§9.221 ③）なので無ければ作らない**（§9.255 ①）。
+ retired_table_present(c,OPERATOR_EQUIPMENT_TABLE)
+ return False
 
 def operator_equipment_map(c):
- # {オペレータID: [設備名, ...]} を返す。テーブル未作成の場合は空。
+ # {オペレータID: [設備名, ...]} を返す。**表が無ければ空**（§9.255 ①）
+ # ——移行済みなので、消えていれば「割当は無い」でよい。
+ if OPERATOR_EQUIPMENT_TABLE not in tables(c):return {}
  ensure_operator_equipment_table(c)
  cur=c.cursor();cur.execute('SELECT [オペレータID],[設備名] FROM [オペレータ設備マスタ] ORDER BY [設備名]')
  out={}
@@ -258,6 +283,8 @@ def ensure_operator_equipment(path):
 
 def set_operator_equipment(c,oid,names,uid):
  # 指定オペレータの割当設備を names の内容に完全同期する（増分の追加・削除）。
+ # **移行済みの表なので、無ければ何もしない**（§9.255 ①）。
+ if OPERATOR_EQUIPMENT_TABLE not in tables(c):return
  ensure_operator_equipment_table(c)
  cur=c.cursor()
  wanted={str(n).strip() for n in (names or []) if str(n or '').strip()}
@@ -365,15 +392,9 @@ def read_operator_names(c,equipment=None):
 # ========================================================================
 SPOOL_MASTER_TABLE='スプール種別マスタ'
 def ensure_spool_master_table(c):
- names=tables(c);created=False
- if SPOOL_MASTER_TABLE not in names:
-  # 設備マスタ・オペレータマスタと同じ方針。制約と索引は別SQLで作成する。
-  cur=c.cursor()
-  cur.execute('CREATE TABLE [スプール種別マスタ] ([スプールID] INTEGER PRIMARY KEY AUTOINCREMENT, [種別名] TEXT, [備考] TEXT, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
-  cur.execute('CREATE UNIQUE INDEX [UX_スプール種別マスタ_種別名] ON [スプール種別マスタ] ([種別名])')
-  c.commit();created=True
- ensure_audit_columns(c,SPOOL_MASTER_TABLE)
- return created
+ # **移行済み（§9.221 ③）なので無ければ作らない**（§9.255 ①）。
+ retired_table_present(c,SPOOL_MASTER_TABLE)
+ return False
 
 def normalize_spool_name(value):
  import unicodedata
@@ -386,6 +407,8 @@ def ensure_spool_master(path):
  return created
 
 def spool_master_rows(c):
+ # **表が無ければ空**（§9.255 ①）。移行済みなので作り直さない。
+ if SPOOL_MASTER_TABLE not in tables(c):return []
  ensure_spool_master_table(c)
  cur=c.cursor()
  # 全行取得後にPython側で有効判定する。
@@ -414,15 +437,9 @@ def read_spool_names(c):
 # ========================================================================
 INNER_MASTER_TABLE='内径種別マスタ'
 def ensure_inner_master_table(c):
- names=tables(c);created=False
- if INNER_MASTER_TABLE not in names:
-  # 設備マスタ・オペレータマスタ・スプール種別マスタと同じ方針。制約と索引は別SQLで作成する。
-  cur=c.cursor()
-  cur.execute('CREATE TABLE [内径種別マスタ] ([内径ID] INTEGER PRIMARY KEY AUTOINCREMENT, [内径種別] TEXT, [備考] TEXT, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
-  cur.execute('CREATE UNIQUE INDEX [UX_内径種別マスタ_内径種別] ON [内径種別マスタ] ([内径種別])')
-  c.commit();created=True
- ensure_audit_columns(c,INNER_MASTER_TABLE)
- return created
+ # **移行済み（§9.221 ③）なので無ければ作らない**（§9.255 ①）。
+ retired_table_present(c,INNER_MASTER_TABLE)
+ return False
 
 def normalize_inner_name(value):
  import unicodedata
@@ -435,6 +452,8 @@ def ensure_inner_master(path):
  return created
 
 def inner_master_rows(c):
+ # **表が無ければ空**（§9.255 ①）。移行済みなので作り直さない。
+ if INNER_MASTER_TABLE not in tables(c):return []
  ensure_inner_master_table(c)
  cur=c.cursor()
  # 全行取得後にPython側で有効判定する。
@@ -476,20 +495,17 @@ COIL_STOP_MASTER_SEED=['内巻両面テープ','指定なし']
 def _build_simple_master(table,id_col,name_col,seed):
  """名称+備考だけの単純マスタ一式(ensure_table/ensure/rows/read_names/normalize)を作る。"""
  def ensure_table(c):
-  created=False
-  if table not in tables(c):
-   cur=c.cursor()
-   cur.execute(f'CREATE TABLE [{table}] ([{id_col}] INTEGER PRIMARY KEY AUTOINCREMENT, [{name_col}] TEXT, [備考] TEXT, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
-   cur.execute(f'CREATE UNIQUE INDEX [UX_{table}_{name_col}] ON [{table}] ([{name_col}])')
-   for i,nm in enumerate(seed):
-    cur.execute(f'INSERT INTO [{table}] ([{name_col}],[備考],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,-1,?,?,Now(),Now())',[nm,'',(i+1)*10,'seed','seed'])
-   c.commit();created=True
-  ensure_audit_columns(c,table)
-  return created
+  # **移行済み（§9.221 ③）なので無ければ作らない**（§9.255 ①）。
+  # 既定の選択肢（`seed`）は`operation_repo.CHOICE_SEEDS`が持つので、
+  # まっさらな端末でも選べる値は在る——ここで作り直す理由はもう無い。
+  retired_table_present(c,table)
+  return False
  def ensure(path):
   with connect(path,False) as c:
    return ensure_table(c)
  def rows(c):
+  # **表が無ければ空**（§9.255 ①）。
+  if table not in tables(c):return []
   ensure_table(c)
   cur=c.cursor()
   cur.execute(f'SELECT [{id_col}],[{name_col}],[表示順],[有効],[更新日時],[更新者ID] FROM [{table}] ORDER BY [表示順],[{name_col}]')
@@ -526,16 +542,9 @@ ensure_coil_stop_master_table,ensure_coil_stop_master,coil_stop_master_rows,read
 # ========================================================================
 DEVICE_MASTER_TABLE='機器マスタ'
 def ensure_device_master_table(c):
- names=tables(c);created=False
- if DEVICE_MASTER_TABLE not in names:
-  # 他マスタと同じ方針。制約と索引は別SQLで作成する。
-  # 測定区分＋機器名の複合一意（同名でも区分違いは別レコードとして許容）。
-  cur=c.cursor()
-  cur.execute('CREATE TABLE [機器マスタ] ([機器ID] INTEGER PRIMARY KEY AUTOINCREMENT, [機器名] TEXT, [測定区分] TEXT, [備考] TEXT, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
-  cur.execute('CREATE UNIQUE INDEX [UX_機器マスタ_区分名] ON [機器マスタ] ([測定区分],[機器名])')
-  c.commit();created=True
- ensure_audit_columns(c,DEVICE_MASTER_TABLE)
- return created
+ # **移行済み（§9.221 ③）なので無ければ作らない**（§9.255 ①）。
+ retired_table_present(c,DEVICE_MASTER_TABLE)
+ return False
 
 def normalize_device_name(value):
  import unicodedata
@@ -548,6 +557,8 @@ def ensure_device_master(path):
  return created
 
 def device_master_rows(c):
+ # **表が無ければ空**（§9.255 ①）。移行済みなので作り直さない。
+ if DEVICE_MASTER_TABLE not in tables(c):return []
  ensure_device_master_table(c)
  cur=c.cursor()
  # 全行取得後にPython側で有効判定する。

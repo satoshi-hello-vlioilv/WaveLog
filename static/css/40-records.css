@@ -195,12 +195,20 @@
 .record-empty .record-empty-why{max-width:76ch;margin:var(--space-2) auto 0;font-size:var(--fs-sm);line-height:1.7;text-align:left;color:var(--ink-3)}
 /* ---------- 12. 設備設定モーダル ---------- */
 #appSettingsModal{z-index:var(--z-settings);background:#071c22b8;backdrop-filter:blur(2px)}
-.settings-dialog{width:min(620px,94vw);background:#fff;border:2px solid var(--teal);border-radius:var(--radius-md);overflow:hidden;box-shadow:0 28px 90px #0009}
-.settings-dialog>header{display:flex;align-items:center;justify-content:space-between;padding:var(--pad-dialog);background:var(--nav);color:#fff}
+/* **窓は画面より高くならない**（§9.255 ②、利用者の報告「モーダルの範囲が
+   ウィンドウの高さを超え、ボタンを操作不能となり身動きが取れなくなりました」）。
+   `.record-modal`は`place-items:center`で真ん中へ置くだけで`overflow`を
+   持たないので、中身が画面より高い窓は**上下へはみ出したまま**になり、
+   決めるボタンにも×にも手が届かない。上限を与え、**スクロールするのは
+   いちばん内側（本文）だけ**にする（§9.222 ⑤）。`max-height`は「これ以上
+   大きくならない」なので、収まる窓の見え方は今までのまま。 */
+.settings-dialog{width:min(620px,94vw);max-height:92vh;display:flex;flex-direction:column;
+  background:#fff;border:2px solid var(--teal);border-radius:var(--radius-md);overflow:hidden;box-shadow:0 28px 90px #0009}
+.settings-dialog>header{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:var(--pad-dialog);background:var(--nav);color:#fff}
 .settings-dialog h2{margin:2px 0}
 .settings-dialog small{color:#8fd4d4}
 .settings-dialog header button{border:0;background:transparent;color:#fff;font-size:var(--fs-lg)}
-.settings-body{padding:var(--space-5)}
+.settings-body{flex:1 1 auto;min-height:0;overflow:auto;padding:var(--space-5)}
 .settings-body>p{margin:0 0 18px;padding:var(--pad-card);border-left:4px solid var(--teal);background:#eef8f9;color:#526970;line-height:1.7}
 .settings-body label{display:grid;gap:var(--gap-inline);font-weight:700}
 .settings-body select{width:100%;height:44px;background:#fff}

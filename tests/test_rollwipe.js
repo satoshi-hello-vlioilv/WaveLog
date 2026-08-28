@@ -115,6 +115,53 @@ const made=[];
   rec('選ぶまで「削除する」は押せない',!c0.押せる,String(c0.押せる));
   rec('押せない理由をその場に書く',/範囲を選ぶ/.test(c0.理由),c0.理由);
 
+  /* ---- 6b) 対象が多くてもボタンに手が届く（§9.255 ②、利用者の報告） ----
+     「ロールマスタの削除機能で対象が多い時にモーダルの範囲がウィンドウの
+      高さを超え、ボタンを操作不能となり身動きが取れなくなりました」
+
+     原因は2つで**片方だけ直しても直らない**ので、両方を見る:
+      ①1行が3段（丸ぽち／設備名／件数）になっていた——`.settings-body label`
+        の`display:grid`が`.mm-bulk-pick`の`display:flex`に詳細度で勝っていた
+      ②一覧に上限が無く、器（`.record-modal`）は`overflow`を持たないので
+        はみ出したぶんは画面の外
+     **「高さの数字」だけを見ないこと**——実際に押せるか（その座標にボタンが
+     居るか）まで見る。行数は実機どおり多い状態を作ってから測る。 */
+  const rowH=await page.evaluate(()=>{
+   const l=document.querySelector('.mm-bulk-pick');
+   return l?Math.round(l.getBoundingClientRect().height):0;
+  });
+  rec('範囲の1行は1段に収まる（丸ぽち・設備名・件数が横並び）',
+      rowH>0&&rowH<=40,String(rowH)+'px');
+  /* 実機（設備13件）と同じ混み具合を、開いている一覧そのものへ注ぎ込んで作る
+     ——マスタを汚さずに**本物の器**の振る舞いを見るため。 */
+  const fit=await page.evaluate(()=>{
+   const box=document.querySelector('.mm-bulk-scopes');
+   const one=box&&box.querySelector('.mm-bulk-pick');
+   if(!box||!one)return null;
+   for(let i=0;i<14;i++){
+    const c=one.cloneNode(true);c.dataset.probe='1';
+    const r=c.querySelector('input');if(r)r.checked=false;
+    box.insertBefore(c,box.lastElementChild);
+   }
+   const dlg=document.querySelector('#appConfirmModal .settings-dialog');
+   const ok=document.getElementById('appConfirmOk');
+   const d=dlg.getBoundingClientRect(),o=ok.getBoundingClientRect();
+   const hit=document.elementFromPoint(Math.round(o.left+o.width/2),
+                                       Math.round(o.top+o.height/2));
+   return {窓の上:Math.round(d.top),窓の下:Math.round(d.bottom),
+           画面:window.innerHeight,
+           ボタンの下:Math.round(o.bottom),
+           押せる:!!(hit&&(hit===ok||ok.contains(hit))),
+           一覧が中でスクロール:box.scrollHeight>box.clientHeight+1};
+  });
+  rec('対象が多くても窓が画面からはみ出さない（②）',
+      !!(fit&&fit.窓の上>=0&&fit.窓の下<=fit.画面),JSON.stringify(fit));
+  rec('対象が多くても「削除する」に手が届く（②）',
+      !!(fit&&fit.押せる&&fit.ボタンの下<=fit.画面),JSON.stringify(fit));
+  rec('あふれたぶんは一覧の中でスクロールする（②）',
+      !!(fit&&fit.一覧が中でスクロール),JSON.stringify(fit));
+  await page.evaluate(()=>document.querySelectorAll('[data-probe]').forEach(x=>x.remove()));
+
   /* ---- 7) 設備を1つ選んで消す ---- */
   await page.evaluate(e=>{
    const l=[...document.querySelectorAll('.mm-bulk-pick')].find(x=>x.textContent.includes(e));

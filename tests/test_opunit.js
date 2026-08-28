@@ -71,15 +71,34 @@ let b=null;
   rec('添え書きを持つ項目もサーバーが答える（⑤）',
       (list.sourceNoteKeys||[]).includes('innerDiameter'),
       JSON.stringify(list.sourceNoteKeys));
-  /* **手打ちを許すと重ねられない**（④）。規則はサーバーの`unit_in_ok()`が
-     1箇所で持ち、画面は一覧を引くだけ。 */
-  rec('手打ちのプルダウンは内部に重ねられないとサーバーが言う（④）',
-      JSON.stringify(list.unitInFreeTextBlocked||[])==='["プルダウン"]',
-      JSON.stringify(list.unitInFreeTextBlocked));
-  rec('自動で入る値の3つは内部に重ねられる（②）',
-      !(list.unitInBlocked||[]).includes('文字だけ')
-      &&!(list.unitInBlocked||[]).includes('強調'),
+  /* ---- 単位を重ねられるか（§9.255 ③、利用者の指示） ----
+     「プルダウンやメニュー、一覧、パネル…選択後にテキストボックスにデータが
+      入るときに単位が内部にも収まるようにすることで、見せ方で内部も選べる
+      ようにして反映できるように」
+     **規則はサーバーの`unit_in_ok()`が1箇所で持つ**（画面は一覧を引くだけ）。
+     以前は「プルダウン＋自動で入る値の3つ」だけを許し、手打ちのプルダウンを
+     断っていた——あれは**単位を1pxの裏方の`<select>`の隣へ置いていた**ための
+     不具合で、規則の話ではなかった。置き場を器の中へ直したので、
+     **重ねる面が1つある形はすべて重ねられる**。 */
+  rec('重ねられないのは「面が1つに決まらない」形だけ（③）',
+      JSON.stringify(list.unitInBlocked||[])
+      ==='["ラジオ","セグメント","タブ","ボタン群","カード","トグル","段階","メモ"]',
       JSON.stringify(list.unitInBlocked));
+  rec('メニュー・一覧・パネル・切替・入切も内部に重ねられる（③）',
+      ['メニュー','一覧','パネル','切替','入切']
+        .every(w=>!(list.unitInBlocked||[]).includes(w)),
+      JSON.stringify(list.unitInBlocked));
+  rec('数を入れる形・自動で入る値も内部に重ねられる（②③）',
+      ['ステッパー','スピナー','スライダー','キーパッド','早見ボタン','メーター',
+       '1行','定型文','文字だけ','強調']
+        .every(w=>!(list.unitInBlocked||[]).includes(w)),
+      JSON.stringify(list.unitInBlocked));
+  /* 手打ちは**面を減らさない**（コンボの入力欄がその面）ので、いまは断らない。
+     規則から導いた一覧なので、将来「手打ちにすると面が消える」形が出たら
+     ここが勝手に埋まる（§9.163）。 */
+  rec('手打ちを許しても重ねられる（③）',
+      JSON.stringify(list.unitInFreeTextBlocked||[])==='[]',
+      JSON.stringify(list.unitInFreeTextBlocked));
 
   const items=list.items||[];
   const byKey=k=>items.find(x=>x.builtin===k&&(x.equipment==='*'||x.equipment===EQ));
@@ -116,18 +135,24 @@ let b=null;
   rec('知らない置き場は既定（欄の下）へ落とす（⑤）',
       now&&now.sourceNote==='欄の下',now&&now.sourceNote);
 
-  /* 手打ちを許したプルダウン＋内部 → サーバーが外下左へ落とす（④）。
-     **保存値は残す**（手打ちを外したら復活する）。 */
+  /* 手打ちを許したプルダウン＋内部は**そのまま効く**（§9.255 ③）。 */
   await saveItem({...coil,widget:'プルダウン',freeText:true,unit:'mm',unitPlace:'内部'});
   now=(await get('/api/operation-item-master?equipment='+encodeURIComponent(EQ)))
     .items.find(x=>x.id===coil.id);
-  rec('手打ち＋内部は外下左へ落ちる（④）',
+  rec('手打ち＋内部がそのまま効く（③）',now&&now.unitPlace==='内部',
+      JSON.stringify(now&&{効:now.unitPlace,保存:now.unitPlaceSaved}));
+  /* 面が1つに決まらない形＋内部 → サーバーが外下左へ落とす（④）。
+     **保存値は残す**（形を戻したら復活する）。 */
+  await saveItem({...coil,widget:'セグメント',freeText:false,unit:'mm',unitPlace:'内部'});
+  now=(await get('/api/operation-item-master?equipment='+encodeURIComponent(EQ)))
+    .items.find(x=>x.id===coil.id);
+  rec('セグメント＋内部は外下左へ落ちる（④）',
       now&&now.unitPlace==='外下左'&&now.unitPlaceSaved==='内部',
       JSON.stringify(now&&{効:now.unitPlace,保存:now.unitPlaceSaved}));
   await saveItem({...coil,widget:'プルダウン',freeText:false,unit:'mm',unitPlace:'内部'});
   now=(await get('/api/operation-item-master?equipment='+encodeURIComponent(EQ)))
     .items.find(x=>x.id===coil.id);
-  rec('手打ちを外すと内部が復活する（④）',now&&now.unitPlace==='内部',
+  rec('形を戻すと内部が復活する（④）',now&&now.unitPlace==='内部',
       now&&now.unitPlace);
 
   /* ==========================================================
@@ -173,7 +198,9 @@ let b=null;
              b:Math.round(x.bottom),w:Math.round(x.width),h:Math.round(x.height)}};
    const ctl=host.querySelector(':scope>select,:scope>input:not([type=hidden]),:scope>output');
    const box=host.querySelector(':scope>.opf-widget:not(.opf-plain)');
-   const uin=host.querySelector(':scope>.opf-unit-in');
+   /* **器の中も探す**（§9.255 ③）——器を被せた形の`内部`は、いまの値の
+      直後（器の中）へ入る。直下だけを見ると「なし」と読み違える。 */
+   const uin=host.querySelector('.opf-unit-in');
    const ul=host.querySelector(':scope>.opf-unit-line');
    const shown=box||ctl;
    let at='なし';
@@ -214,6 +241,57 @@ let b=null;
    }
    rec('「'+w+'」でも単位が指定どおりの位置に出る（④）',bad.length===0,bad.join(' '));
   }
+
+  /* ---------- ③ 内部＝「値の出る面の中」（§9.255 ③、利用者の指示） ----------
+     「UIのテキストボックスの内部に入れられない(「内部」を選べない)ものがあり…
+      選択後にテキストボックスにデータが入るときに単位が内部にも収まるように」
+
+     **「`.opf-unit-in`が在る」だけを見る網では捕まらない**——直す前も
+     要素そのものは在って、**器の14px上**に出ていた（実測）。値を出す面の
+     矩形と突き合わせ、**中に入っていること**と**いまの値に重なっていないこと**
+     まで見る。 */
+  const faceProbe=sel=>page.evaluate(s=>{
+   const host=document.querySelector(s);if(!host)return null;
+   const R=el=>{if(!el)return null;const x=el.getBoundingClientRect();
+     return {l:Math.round(x.left),r:Math.round(x.right),t:Math.round(x.top),
+             b:Math.round(x.bottom),w:Math.round(x.width),h:Math.round(x.height)}};
+   /* いま見えている「値の面」。器を被せた形は器の中のボタン／入力欄。 */
+   const face=host.querySelector(':scope>.opf-widget:not(.opf-plain)>button,'
+     +':scope>.opf-widget .opf-combo-in')
+     ||host.querySelector(':scope>select,:scope>input:not([type=hidden]),:scope>output');
+   const now=host.querySelector('.opf-pick-now,.opf-cycle-now,.opf-switch-text');
+   const uin=host.querySelector('.opf-unit-in');
+   const f=face&&face.getBoundingClientRect(),u=uin&&uin.getBoundingClientRect();
+   const n=now&&now.getBoundingClientRect();
+   return {面:R(face),単位:R(uin),いまの値:R(now),
+     見える:!!(u&&u.width>0&&u.height>0),
+     中:!!(u&&f&&u.left>=f.left-1&&u.right<=f.right+1&&u.top>=f.top-1&&u.bottom<=f.bottom+1),
+     値に重ならない:!n||!u||u.left>=n.right-1};
+  },sel);
+  for(const w of ['メニュー','一覧','パネル','切替','入切']){
+   await setDef('coilStop',{unit:'mm',unitPlace:'内部',widget:w,freeText:false});
+   await page.waitForTimeout(200);
+   const r=await faceProbe('[data-f="coilStop"]');
+   rec('「'+w+'」で単位が値の面の中に収まる（③）',
+       !!(r&&r.見える&&r.中&&r.値に重ならない),JSON.stringify(r));
+  }
+  /* 手打ちのプルダウン（コンボ）は**打ち込む欄のすぐ隣**（▾の手前）。 */
+  await setDef('coilStop',{unit:'mm',unitPlace:'内部',widget:'プルダウン',freeText:true});
+  await page.waitForTimeout(240);
+  const cb=await page.evaluate(()=>{
+   const host=document.querySelector('[data-f="coilStop"]');
+   const box=host&&host.querySelector(':scope>.opf-combo');
+   const inp=host&&host.querySelector('.opf-combo-in');
+   const uin=host&&host.querySelector('.opf-unit-in');
+   if(!box||!inp||!uin)return null;
+   const b=box.getBoundingClientRect(),i=inp.getBoundingClientRect(),
+         u=uin.getBoundingClientRect();
+   return {器の中:u.left>=b.left-1&&u.right<=b.right+1,
+           欄の右:u.left>=i.right-1,幅:Math.round(u.width)};
+  });
+  rec('手打ちのプルダウンでも単位が器の中に収まる（③）',
+      !!(cb&&cb.器の中&&cb.欄の右&&cb.幅>0),JSON.stringify(cb));
+  await setDef('coilStop',{unit:'mm',unitPlace:'外下左',widget:'プルダウン',freeText:false});
 
   /* ---------- ③ 母材: 内部の単位 × 右寄せ ---------- */
   await page.evaluate(()=>WL.measureSteps.go(2));

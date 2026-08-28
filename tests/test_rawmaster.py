@@ -77,6 +77,116 @@ rec('短い呼び名は1行に収まる長さ（10文字以内）',
     all(len(v) <= 10 for v in mt.SHORT_LABELS.values()),
     str([v for v in mt.SHORT_LABELS.values() if len(v) > 10]))
 
+# ---- 1b) 移行済みの表は「無ければ作らない」（§9.255 ①、利用者の報告） ----
+# 「移行済みデータをすべて消したはずが、復活しました。
+#   旧マスタは無ければ表示しない形にしたいです」
+#
+# 中身は§9.221 ③で選択肢マスタへ移したのに、`ensure_*_table()`が
+# **「無ければ作る」のまま**だった——測定画面を1回開くだけで7つとも空の表
+# として作り直され、マスタ管理の「移行済み」から消えなかった（＝消せない
+# マスタ）。**一覧は`master_repo.RETIRED_TABLES`の1箇所**（§9.163）。
+from backend.repositories import master_repo as mr  # noqa: E402
+from backend.repositories import operation_repo as op  # noqa: E402
+from backend.repositories import schedule_repo as sr  # noqa: E402
+
+rec('「移行済み」の一覧が説明文と食い違っていない（§9.163）',
+    set(mr.RETIRED_TABLES) == set(mt.RETIRED),
+    str(sorted(set(mr.RETIRED_TABLES) ^ set(mt.RETIRED))))
+
+_master = ROOT / 'db/master.sqlite3'
+
+
+def _retired_snapshot():
+    """移行済みの表の作りと中身を控える（消して確かめたあと元へ戻すため）。"""
+    out = {}
+    con = sqlite3.connect(_master)
+    for t in mr.RETIRED_TABLES:
+        row = con.execute('SELECT sql FROM sqlite_master WHERE type=? AND name=?',
+                          ['table', t]).fetchone()
+        if not row:
+            continue
+        idx = [r[0] for r in con.execute(
+            'SELECT sql FROM sqlite_master WHERE type=? AND tbl_name=? AND sql IS NOT NULL',
+            ['index', t]).fetchall()]
+        cur = con.execute(f'SELECT * FROM [{t}]')
+        cols_ = [d[0] for d in cur.description]
+        out[t] = {'sql': row[0], 'idx': idx, 'cols': cols_, 'rows': cur.fetchall()}
+    con.close()
+    return out
+
+
+def _drop_retired():
+    con = sqlite3.connect(_master)
+    for t in mr.RETIRED_TABLES:
+        con.execute(f'DROP TABLE IF EXISTS [{t}]')
+    con.commit()
+    con.close()
+
+
+def _restore_retired(snap):
+    con = sqlite3.connect(_master)
+    for t, d in snap.items():
+        con.execute(f'DROP TABLE IF EXISTS [{t}]')
+        con.execute(d['sql'])
+        for q in d['idx']:
+            con.execute(q)
+        if d['rows']:
+            ph = ','.join('?' * len(d['cols']))
+            names = ','.join(f'[{c}]' for c in d['cols'])
+            con.executemany(f'INSERT INTO [{t}] ({names}) VALUES ({ph})', d['rows'])
+    con.commit()
+    con.close()
+
+
+def _present():
+    con = sqlite3.connect(_master)
+    have = {r[0] for r in con.execute('SELECT name FROM sqlite_master WHERE type=?', ['table'])}
+    con.close()
+    return sorted(t for t in mr.RETIRED_TABLES if t in have)
+
+
+_snap = _retired_snapshot()
+try:
+    _drop_retired()
+    rec('前提: 移行済みの表を消せた', not _present(), str(_present()))
+    # 以前ここで作り直していた経路を**全部**通す。**1つでも作り直すと復活する**
+    # ので、まとめて通してから数える。
+    op.ensure_operation_choices(_master)
+    with sqlite3.connect(_master):
+        pass
+    from backend.db_access import connect as _connect  # noqa: E402
+    with _connect(_master, False) as _c:
+        sr.ensure_config_master_tables(_c)
+        mr.ensure_operator_master_table(_c)
+        mr.ensure_operator_equipment_table(_c)
+        mr.ensure_spool_master_table(_c)
+        mr.ensure_inner_master_table(_c)
+        mr.ensure_device_master_table(_c)
+        mr.ensure_burr_master_table(_c)
+        mr.ensure_coil_stop_master_table(_c)
+    rec('用意の口を通しても移行済みの表は戻らない', not _present(), str(_present()))
+    # 実機の手順そのもの——**測定画面を開く**（`/api/measurement/context`）。
+    try:
+        with urllib.request.urlopen(API + '/api/measurement/context?lot=&equipment=',
+                                    timeout=30) as _r:
+            _r.read()
+    except Exception as _e:  # 読めなくても「作られていないこと」は数えられる
+        pass
+    rec('測定画面を開いても移行済みの表は戻らない（利用者の報告そのもの）',
+        not _present(), str(_present()))
+    # **画面にも出ない**——一覧は実在する表しか返さないので、消えたら消えたまま。
+    _st, _cat = call('/api/master-table/catalog')
+    _names = {x.get('table') for x in (_cat.get('tables') or [])}
+    rec('無い旧マスタは一覧に出ない', not (_names & set(mr.RETIRED_TABLES)),
+        str(sorted(_names & set(mr.RETIRED_TABLES))))
+    # 選択肢は**種**から入るので、旧マスタが無くても値は在る（新規導入と同じ）。
+    with _connect(_master, True) as _c2:
+        _burr = op.choice_values(_c2, 'バリ揃え')
+    rec('旧マスタが無くても既定の選択肢は残る（種は選択肢マスタが持つ）',
+        len(_burr) >= 2, str(_burr))
+finally:
+    _restore_retired(_snap)
+
 # ---- 2) 触れるのはマスタDBだけ --------------------------------------
 src = (ROOT / 'backend/routes/master_tables.py').read_text(encoding='utf-8')
 rec('マスタDB以外へ向いた口が無い',
