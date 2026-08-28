@@ -250,7 +250,13 @@ def resolve_local_db(name,legacy_names):
 # (db_dir/master_db_path、上記参照)でのみ決まる。ここで先に確定させておく
 # ことで、以降のパス設定マスタ読み込み(_master_path_config等)がこの値を
 # 使える。
-_MASTER_PATH=configured_path('master_db_path') or resolve_local_db('master.sqlite3',['マスタ.sqlite3','マスタデータ.sqlite3','Master.sqlite3'])
+_MASTER_PATH_CONFIGURED=configured_path('master_db_path') or resolve_local_db('master.sqlite3',['マスタ.sqlite3','マスタデータ.sqlite3','Master.sqlite3'])
+# マスタを共有に置いたときは**手元の写しを読む**(§9.263)。共有でなければ
+# 設定どおりのパスがそのまま返るので、手元に置いている端末は何も変わらない。
+# **ここで1回だけ差し替える**——以降のコードは今までどおり`_MASTER_PATH`
+# （＝`DBS['MASTER']['path']`）を開けばよく、72箇所を書き換えずに済む。
+from . import master_share as _master_share
+_MASTER_PATH=_master_share.configure(_MASTER_PATH_CONFIGURED)
 MEAS_DB=configured_path('records_db_path') or resolve_local_db('records.sqlite3',['測定データ.sqlite3','Measurement.sqlite3']); MEAS_ENGINE='sqlite'
 # 共有スケジュールDBのローカル作業コピー。**共有から取り直せる**ので
 # WORK_DIR側(§9.109)。毎回の取得で丸ごと置き換えるため、共有・クラウド

@@ -115,9 +115,19 @@ _PATH_CONFIG_TEXT_FIELDS=('records_backup_export_path','schedule_share_path',
 # タイミングも別々**。以前は画面の3箇所に散っていて、いま何がどこに置かれて
 # いるのかを1画面で確かめられなかった。**判定はサーバーが持つ**（§9.163）
 # ——画面で「UNCかどうか」「同じ根の下か」を推測すると答えが2通りになる。
-_SHARE_MASTER_NOTE=('マスタは共有の置き場に対応していません（この版）。'
-                    '複数の端末が同じ master.sqlite3 へ直に書くことになり、'
-                    '共有越しの書き込みが重なると壊れることがあります。')
+def _master_note():
+ """マスタの行に添える一言。**共有に置いたときと置いていないときで違う**
+ （§9.263）——置いていない端末に「共有で動いています」と書かない。"""
+ from .. import master_share
+ if master_share.is_shared():
+  return ('共有で動いています。書くときは順番待ち（ロック→取り直し→反映）を通り、'
+          '読むのはこの端末の写しからです。')
+ return ('この端末の中だけです。共有フォルダへ移すと、'
+         '書き込みが重ならないよう順番待ちを通る形で動きます。')
+
+def master_share_is_shared():
+ from .. import master_share
+ return master_share.is_shared()
 
 def _share_kind(path):
  """置き場の種類。'network'／'cloud'／'local'／''（分からない）。"""
@@ -140,7 +150,10 @@ def _share_layout():
  """
  sched=str(SCHEDULE_SHARE_PATH) if SCHEDULE_SHARE_PATH else ''
  recs=str(RECORDS_SHARE_DIR) if RECORDS_SHARE_DIR else str(MEAS_DB)
- master=str(DBS['MASTER']['path'])
+ # **共有に置いていれば共有側のパスを出す**——`DBS['MASTER']['path']`は
+ # 手元の写しなので、そのまま出すと「共有に置いたのに手元のまま」に見える。
+ from .. import master_share
+ master=str(master_share.source_path() or DBS['MASTER']['path'])
  items=[
   {'key':'schedule','label':'作業予定','file':'schedule.sqlite3','path':sched,
    'kind':_share_kind(sched),'editable':True,'where':'この画面',
@@ -153,7 +166,8 @@ def _share_layout():
            'まだこの端末の中だけです。共有の置き場を決めると設備ごとに分けて置けます。')},
   {'key':'master','label':'マスタ','file':'master.sqlite3','path':master,
    'kind':_share_kind(master),'editable':False,'where':'config/local.json の master_db_path',
-   'when':'サーバー再起動後','note':_SHARE_MASTER_NOTE},
+   'when':'サーバー再起動後','note':_master_note(),
+   'shared':master_share_is_shared()},
  ]
  # 3つが同じ根の下にあるか。**揃っていることを画面が言えるように**する
  # （揃っていない置き方が悪いわけではないので、判定は「同じか違うか」だけ）。

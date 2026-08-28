@@ -95,8 +95,12 @@ let b=null;
   /* ---- 5) 直せない行は理由を書く ---- */
   rec('マスタは直す場所がconfig/local.jsonだと書いてある',
       /local\.json/.test(mRow.where),mRow.where);
-  rec('マスタが共有に未対応であることを書いてある',
-      /共有の置き場に対応していません/.test(mRow.note),mRow.note.slice(0,50));
+  /* マスタの一言は**共有に置いたときと置いていないときで違う**（§9.263）。
+     置いていない端末に「共有で動いています」と書かないこと。 */
+  rec('マスタの置き場の状態が文で書いてある',
+      /この端末の中だけ|共有で動いています/.test(mRow.note),mRow.note.slice(0,60));
+  rec('共有へ移したときどうなるかが書いてある',
+      /順番待ち/.test(mRow.note),mRow.note.slice(0,60));
 
   /* ---- 6) 直す場所へ飛べる ---- */
   rec('測定データの行から直す場所へ飛べる',recRow.jump===true);

@@ -125,7 +125,7 @@ G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'tes
                'test_gridhead']
 G['起動'] = ['test_boot', 'test_bootui', 'test_bootflash', 'test_assetcache', 'test_tabclose',
              'test_faststart']
-G['接続'] = ['test_pcshare', 'test_dbopen', 'test_dbmirror', 'test_datasource', 'test_tablequery',
+G['接続'] = ['test_pcshare', 'test_mastershare', 'test_dbopen', 'test_dbmirror', 'test_datasource', 'test_tablequery',
              'test_atomicio', 'test_localwork', 'test_dscap',
              'test_qjoin', 'test_qjoinui',
              # §9.258: 測定データは設備ごとに1ファイル（置き場の解決）
@@ -260,7 +260,8 @@ RULES = [
     ('backend/routes/core.py', g('起動', 'test_error', 'test_nav')),
 
     # --- サーバー(その他) --------------------------------------------
-    ('backend/access_mode.py', g('権限', 'test_nav', 'test_crudroutes', 'test_colscope')),
+    ('backend/access_mode.py', g('権限', 'test_nav', 'test_crudroutes', 'test_colscope',
+                                 'test_mastershare')),
     ('backend/db_access.py', g('接続', '一覧', 'test_setpage')),
     # データソースの「できること」の判定(§9.163)。列名の別名解決も
     # ここが持つので、品質結合(/api/table)の網も回す。
