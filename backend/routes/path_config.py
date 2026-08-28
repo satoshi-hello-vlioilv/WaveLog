@@ -24,9 +24,9 @@ from ..config import (RNE_EXTRACT_INTERVAL_SEC_DEFAULT, SCHEDULE_LOCK_TTL_SEC_DE
 from .. import source_capability
 from ..logging_setup import app_logger
 from ..db_access import (
- DBS, connect, request_user_id,
+ DBS, MEAS_DB, connect, request_user_id,
  PATH_CONFIG_KEYS, path_config_rows, set_path_config, path_config_value,
- SIKALOT_SOURCE, RECORDS_BACKUP_EXPORT_PATH, SCHEDULE_SHARE_PATH,
+ SIKALOT_SOURCE, RECORDS_BACKUP_EXPORT_PATH, RECORDS_SHARE_DIR, SCHEDULE_SHARE_PATH,
 )
 
 bp=Blueprint('path_config',__name__)
@@ -42,7 +42,7 @@ bp=Blueprint('path_config',__name__)
 # ========================================================================
 _PATH_CONFIG_DEFAULTS={
  'sikalot_source':'network','sikalotnow_path':'','sikalotdef_path':'',
- 'records_backup_export_path':'','schedule_share_path':'',
+ 'records_backup_export_path':'','schedule_share_path':'','records_share_dir':'',
  # 閲覧用の複製をどれくらいの間隔で見に行くか(§9.202)。**変化があった
  # ときだけ複製する**ので、短くしても無駄な複製は増えない。こちらは
  # 呼び出しのたびに読み直すので再起動は要らない(複製先のパスは要る)。
@@ -106,7 +106,72 @@ _PATH_CONFIG_CHOICE_FIELDS={
 # 自由に書ける文字列の設定（置き場と端末名）。空欄なら既定へ戻る。
 # `pc_name`はこの端末の呼び名(§9.208 ⑧)——OSから取れない端末が名乗り直すため。
 _PATH_CONFIG_TEXT_FIELDS=('records_backup_export_path','schedule_share_path',
+                          'records_share_dir',
                           'rne_assets_dir','rne_conf_path','pc_name')
+
+
+# ---- 共有の置き場を1枚にまとめて答える(§9.260) ----------------------------
+# 共有の設定は3つ（作業予定・測定データ・マスタ）あり、**直す場所も効く
+# タイミングも別々**。以前は画面の3箇所に散っていて、いま何がどこに置かれて
+# いるのかを1画面で確かめられなかった。**判定はサーバーが持つ**（§9.163）
+# ——画面で「UNCかどうか」「同じ根の下か」を推測すると答えが2通りになる。
+_SHARE_MASTER_NOTE=('マスタは共有の置き場に対応していません（この版）。'
+                    '複数の端末が同じ master.sqlite3 へ直に書くことになり、'
+                    '共有越しの書き込みが重なると壊れることがあります。')
+
+def _share_kind(path):
+ """置き場の種類。'network'／'cloud'／'local'／''（分からない）。"""
+ raw=str(path or '')
+ if not raw:return ''
+ try:
+  if paths.is_network_path(raw):return 'network'
+ except Exception:pass
+ try:
+  if paths.cloud_sync_hint(Path(raw)):return 'cloud'
+ except Exception:pass
+ return 'local'
+
+def _share_layout():
+ """作業予定・測定データ・マスタが**いまどこにあるか**を1枚で返す。
+
+ `editable`は「この画面で直せるか」、`where`は直せる場所、`when`は効く
+ タイミング。**直せないものは直せないと書く**(§4)ので、画面はこの答えを
+ そのまま出すだけでよい。
+ """
+ sched=str(SCHEDULE_SHARE_PATH) if SCHEDULE_SHARE_PATH else ''
+ recs=str(RECORDS_SHARE_DIR) if RECORDS_SHARE_DIR else str(MEAS_DB)
+ master=str(DBS['MASTER']['path'])
+ items=[
+  {'key':'schedule','label':'作業予定','file':'schedule.sqlite3','path':sched,
+   'kind':_share_kind(sched),'editable':True,'where':'この画面',
+   'when':'サーバー再起動後','note':'' if sched else 'まだ設定されていません（スケジュール機能は無効です）。'},
+  {'key':'records','label':'測定データ','file':'<設備>\\records.sqlite3','path':recs,
+   'kind':_share_kind(recs),'editable':False,'where':'マスタ管理 > 測定データの保存',
+   # 直す場所へ**その場から飛べる**ようにする（探させない）。
+   'jump':'measStorage','when':'サーバー再起動後',
+   'note':('' if RECORDS_SHARE_DIR else
+           'まだこの端末の中だけです。共有の置き場を決めると設備ごとに分けて置けます。')},
+  {'key':'master','label':'マスタ','file':'master.sqlite3','path':master,
+   'kind':_share_kind(master),'editable':False,'where':'config/local.json の master_db_path',
+   'when':'サーバー再起動後','note':_SHARE_MASTER_NOTE},
+ ]
+ # 3つが同じ根の下にあるか。**揃っていることを画面が言えるように**する
+ # （揃っていない置き方が悪いわけではないので、判定は「同じか違うか」だけ）。
+ roots=[]
+ for x in items:
+  raw=x['path']
+  # **1つでも決まっていなければ「揃っている」とは言わない**——2つだけを見て
+  # 同じ根だと言うと、まだ置いていないものまで置いた気にさせる。
+  if not raw:
+   roots=[];break
+  try:
+   pp=Path(raw)
+   roots.append(str(pp if x['key']=='records' and RECORDS_SHARE_DIR else pp.parent))
+  except Exception:
+   roots=[];break
+ same=len(roots)==len(items) and len(set(roots))==1
+ return {'items':items,'sameRoot':roots[0] if same else '',
+         'onShare':[x['key'] for x in items if x['kind'] in ('network','cloud')]}
 
 @bp.get('/api/path-config-master')
 def path_config_master_get():
@@ -154,6 +219,7 @@ def path_config_master_get():
    'rne_conf_path':str(rne_scheduler.conf_path()),
    'records_backup_export_path':str(RECORDS_BACKUP_EXPORT_PATH) if RECORDS_BACKUP_EXPORT_PATH else '',
    'schedule_share_path':str(SCHEDULE_SHARE_PATH) if SCHEDULE_SHARE_PATH else '',
+   'records_share_dir':str(RECORDS_SHARE_DIR) if RECORDS_SHARE_DIR else '',
    'rne_extract_enabled':str(path_config_value('rne_extract_enabled','auto') or 'auto'),
    'rne_extract_interval_sec':str(path_config_value('rne_extract_interval_sec',RNE_EXTRACT_INTERVAL_SEC_DEFAULT)),
    'records_backup_export_interval_sec':str(path_config_value('records_backup_export_interval_sec',RECORDS_BACKUP_EXPORT_INTERVAL_SEC)),
@@ -175,7 +241,13 @@ def path_config_master_get():
    # 設定が失われうる。判定はサーバーが答える（画面で推測しない）。
    'master_cloud':paths.cloud_sync_hint(paths.db_dir()),
    'db_dir':str(paths.db_dir()),
+   # マスタDB・測定データDBの実際の場所。**設定項目ではない**が、共有へ
+   # 移すときに「いまどこか」が分からないと動かしようがない。
+   'master_db_path':str(DBS['MASTER']['path']),
+   'records_db_path':str(MEAS_DB),
   }
+  # 共有の置き場を1枚にまとめた答え(§9.260)。画面はこれをそのまま出す。
+  active['share_layout']=_share_layout()
   for src in sources:
    values.setdefault(src['valueKey'],src['saved'])
    # **「いま効いている値」も登録されたデータソースぶんだけ作る**(§9.163)。

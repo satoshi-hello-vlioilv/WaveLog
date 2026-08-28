@@ -23,13 +23,23 @@ import threading
 import time
 
 from .config import RECORDS_BACKUP_EXPORT_INTERVAL_SEC
-from .db_access import MEAS_DB, RECORDS_BACKUP_EXPORT_PATH, path_config_value
+from .db_access import MEAS_DB, RECORDS_BACKUP_EXPORT_PATH, RECORDS_SHARE_DIR, path_config_value
 from .logging_setup import app_logger
 
 _dirty=threading.Event()
 # 最後に試した結果。画面(GET /api/measurement/storage)がそのまま出す。
 _state={'lastOkAt':None,'lastTryAt':None,'lastError':'','running':False}
 _lock=threading.Lock()
+
+# 測定データを設備ごとに共有へ置く運用(§9.258)にすると、この複製は**役目を終える**。
+# 閲覧端末は records_paths_all() で全設備のファイルを直接読むので写しが要らず、
+# しかも写しは**全端末が同じ1ファイルへ書く**形なので、残すと消したばかりの
+# 「同じファイルを2台が変える」を1つだけ残すことになる。
+# **黙って止めないこと**——理由を status() が返し、画面がそのまま出す(§4)。
+def retired_reason():
+ if RECORDS_SHARE_DIR is None:return ''
+ return ('測定データは設備ごとに共有へ置く設定になっているため、閲覧用の複製は使いません'
+         f'（{RECORDS_SHARE_DIR}）。閲覧端末はそちらを直接読みます。')
 
 def interval_sec():
  """複製を見に行く間隔(秒)。パス設定マスタから毎回読み直す。"""
@@ -57,6 +67,7 @@ def status():
  st['configured']=RECORDS_BACKUP_EXPORT_PATH is not None
  st['path']=str(RECORDS_BACKUP_EXPORT_PATH) if RECORDS_BACKUP_EXPORT_PATH else ''
  st['intervalSec']=interval_sec()
+ st['retired']=retired_reason()
  st['pending']=pending()
  st['size']=None
  st['exists']=None
@@ -73,6 +84,9 @@ def status():
 
 def export_once():
  """今すぐ複製を試みる。戻り値は成功可否(例外は投げない)。"""
+ if retired_reason():
+  with _lock:_state['lastError']=retired_reason()
+  return False
  if RECORDS_BACKUP_EXPORT_PATH is None or not MEAS_DB.exists():
   return False
  src=dst=None
@@ -113,4 +127,6 @@ def start():
  """複製の背景スレッドを開始する(デーモンスレッド)。
     records_backup_export_path未設定なら何もしない(既定は現状維持)。"""
  if RECORDS_BACKUP_EXPORT_PATH is None:return
+ if retired_reason():
+  app_logger().info('閲覧用複製は行いません: %s',retired_reason());return
  threading.Thread(target=_loop,daemon=True,name='records-export').start()

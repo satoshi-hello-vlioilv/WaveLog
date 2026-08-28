@@ -79,7 +79,9 @@ G['列'] = ['test_collayout', 'test_colformat', 'test_colrule', 'test_colsort', 
            # §9.239 ④⑤: 揃えと列の一時的な色
            'test_coltint', 'test_gridchild',
            # §9.248 ③④: 表示列が消えない／表示中・非表示中の札
-           'test_colkeep']
+           'test_colkeep',
+           # §9.259: 列の見せ方を「みんなと同じ／自分だけ」で選ぶ
+           'test_colscope', 'test_colscopeui']
 # モーダルの閉じ方(§9.221 ①)はどの画面にも掛かる横断の約束。
 G['モーダル'] = ['test_modalkeep', 'test_maint', 'test_master', 'test_opui', 'test_opchoice',
                  # §9.257 ②: 使用設備の設定（窓の作りは1箇所・選んでも動かない）
@@ -123,9 +125,11 @@ G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'tes
                'test_gridhead']
 G['起動'] = ['test_boot', 'test_bootui', 'test_bootflash', 'test_assetcache', 'test_tabclose',
              'test_faststart']
-G['接続'] = ['test_dbopen', 'test_dbmirror', 'test_datasource', 'test_tablequery',
+G['接続'] = ['test_pcshare', 'test_dbopen', 'test_dbmirror', 'test_datasource', 'test_tablequery',
              'test_atomicio', 'test_localwork', 'test_dscap',
-             'test_qjoin', 'test_qjoinui']
+             'test_qjoin', 'test_qjoinui',
+             # §9.258: 測定データは設備ごとに1ファイル（置き場の解決）
+             'test_recsplit']
 G['権限'] = ['test_modeguard', 'test_noaccess', 'test_scperm', 'test_recperm', 'test_pcname']
 G['ログ'] = ['test_logs', 'test_logview', 'test_error']
 
@@ -243,17 +247,20 @@ RULES = [
                                    'test_modeguard')),
     ('backend/routes/masters.py', g('マスタ', '列', 'test_modeguard')),
     ('backend/routes/schedule.py', g('スケジュール', 'test_modeguard', 'test_crudroutes')),
-    ('backend/routes/measurement.py', g('測定', 'test_modeguard', 'test_measstore')),
+    ('backend/routes/measurement.py', g('測定', 'test_modeguard', 'test_measstore',
+                                        'test_recsplit')),
     ('backend/routes/quality.py', g('test_uiux', 'test_headbar', 'test_tablequery',
                                     'test_modeguard')),
     ('backend/routes/logs.py', g('ログ', 'test_modeguard')),
     ('backend/routes/path_config.py', g('test_setpage', 'test_datasource', 'test_dbopen',
-                                        'test_crudroutes', 'test_modeguard', 'test_dscap')),
+                                        'test_crudroutes', 'test_modeguard', 'test_dscap',
+                                        # §9.260: 共有の置き場を1枚で見せる
+                                        'test_pcshare')),
     ('backend/routes/rne.py', g('test_datasource', 'test_setpage', 'test_modeguard')),
     ('backend/routes/core.py', g('起動', 'test_error', 'test_nav')),
 
     # --- サーバー(その他) --------------------------------------------
-    ('backend/access_mode.py', g('権限', 'test_nav', 'test_crudroutes')),
+    ('backend/access_mode.py', g('権限', 'test_nav', 'test_crudroutes', 'test_colscope')),
     ('backend/db_access.py', g('接続', '一覧', 'test_setpage')),
     # データソースの「できること」の判定(§9.163)。列名の別名解決も
     # ここが持つので、品質結合(/api/table)の網も回す。
@@ -290,7 +297,8 @@ RULES = [
                                    'test_screorder', 'test_atomicio', 'test_scsession',
                                    'test_scwho')),
     ('backend/load_factor.py', g('test_scbalance', 'test_sccat', 'test_screport', 'test_eqstd')),
-    ('backend/records_export.py', g('test_share', 'test_flows', 'test_measstore')),
+    ('backend/records_export.py', g('test_share', 'test_flows', 'test_measstore',
+                                    'test_recsplit')),
     ('backend/logging_setup.py', g('ログ')),
     ('backend/boot_status.py', g('起動')),
     ('backend/watchdog.py', g('test_tabclose', 'test_boot')),

@@ -161,6 +161,9 @@ _ENDPOINT_EXTRA_MODES={
  # scheduleへ開ける(スケジュールモードの端末は仕掛一覧を主に使うのに、
  # 列を動かした瞬間だけ403で弾かれる、という形で出る)。
  'masters.column_layout_master_save':{'schedule'},
+ # 列の見せ方を「みんなと同じ／自分だけ」で切り替える(§9.259)。保存の口と
+ # 同じ扱いにする——切り替えられるのに保存できない、の逆も作らない。
+ 'masters.column_layout_master_scope':{'schedule'},
  'masters.list_view_master_save':{'schedule'},
  'masters.display_rule_master_save':{'schedule'},
  'masters.display_rule_master_delete':{'schedule'},

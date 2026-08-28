@@ -3446,20 +3446,27 @@
      ],'入力した値の実体です。<b>この端末でしか見えません</b>。ブラウザのデータを消すと失われます。',
       unsent?'is-warn':'')}
     ${arrow('保存のたび','自動')}
-    ${stage('②','この端末のDB','db/records.sqlite3',[
+    ${stage('②',loc.perEquipment?'測定データのDB':'この端末のDB',
+      loc.perEquipment?'共有・設備ごとに1ファイル':'db/records.sqlite3',[
       ['記録',msNum(loc.count)+(loc.count===null?'':'件')],
       ['最終書込',msWhen(loc.lastWriteAt)],
       ['大きさ',msSize(loc.size)],
-     ],`<b>他のPCから続きを開けるのはここ</b>です（データ一覧はここも読みます）。<br><code title="${esc(loc.path||'')}">${esc(loc.path||'—')}</code>`)}
-    ${arrow(`変わったら${mins}分ごと`,exp.configured?'自動':'未設定')}
+     ].concat(loc.perEquipment?[['読む先',(loc.readPaths||[]).length+'ファイル']]:[]),
+     loc.perEquipment
+      ?`<b>設備ごとに1ファイル</b>に分けています——書くのはその設備の担当端末だけなので、同じファイルを2台が変えることがありません。
+        一覧は<b>全設備ぶん</b>を読みます。<br><code title="${esc(loc.shareDir||'')}">${esc(loc.shareDir||'—')}\\&lt;設備&gt;\\records.sqlite3</code>`
+      :`<b>他のPCから続きを開けるのはここ</b>です（データ一覧はここも読みます）。<br><code title="${esc(loc.path||'')}">${esc(loc.path||'—')}</code>`)}
+    ${arrow(exp.retired?'使いません':`変わったら${mins}分ごと`,exp.retired?'—':(exp.configured?'自動':'未設定'))}
     ${stage('③','閲覧用の複製','Box等・読むだけ',[
-      ['状態',exp.configured?(exp.exists===false?'まだ作られていません':'複製しています'):'<b>未設定（複製しません）</b>',!exp.configured],
-      ['最終複製',exp.configured?msWhen(exp.lastOkAt):'—'],
-      ['未反映の変更',exp.configured?(exp.pending?'あり':'なし'):'—'],
-     ],exp.configured
+      ['状態',exp.retired?'<b>使いません</b>':(exp.configured?(exp.exists===false?'まだ作られていません':'複製しています'):'<b>未設定（複製しません）</b>'),exp.retired||!exp.configured],
+      ['最終複製',(!exp.retired&&exp.configured)?msWhen(exp.lastOkAt):'—'],
+      ['未反映の変更',(!exp.retired&&exp.configured)?(exp.pending?'あり':'なし'):'—'],
+     ],exp.retired
+        ?esc(exp.retired)
+        :(exp.configured
         ?`閲覧モードの端末はここを読みます。書き戻しはしません。<br><code title="${esc(exp.path||'')}">${esc(exp.path||'—')}</code>`
-        :'設定すると、②の中身をまるごとBox等へ写します。<b>測定・共有には必要ありません</b>——閲覧専用の端末に見せたいときだけ設定してください。',
-      exp.configured?'':'is-off')}
+        :'設定すると、②の中身をまるごとBox等へ写します。<b>測定・共有には必要ありません</b>——閲覧専用の端末に見せたいときだけ設定してください。'),
+      (exp.retired||!exp.configured)?'is-off':'')}
    </div>
    ${exp.lastError?`<p class="ms-err">前回の複製に失敗しました: ${esc(exp.lastError)}</p>`:''}
    <div class="mm-cd-toolbar"><div class="mm-cd-actions">
@@ -3469,6 +3476,18 @@
       title="${exp.configured?'間隔を待たずに、いま②を③へ写します':'複製先が未設定です'}">いま複製する</button>
     <button type="button" id="msReload" class="mm-btn-ghost sm">状態を読み直す</button>
    </div></div>
+   <div class="ms-settings">
+    <h4>② 測定データの置き場</h4>
+    <label class="mm-field"><span>共有の置き場（設備ごとに分けます）</span>
+     <input type="text" id="msShareDir" value="${esc(v.records_share_dir||'')}"
+       placeholder="例: \\\\server\\共有\\WaveLog\\records" autocomplete="off">
+     <small class="mm-field-hint">この下に<b>設備の名前のフォルダ</b>を作り、その中に <code>records.sqlite3</code> を置きます。
+      書くのはその設備を担当する端末だけなので、<b>同じファイルを2台が変えることがありません</b>。
+      空欄なら今までどおり、この端末の <code>db/records.sqlite3</code> 1本に貯めます。
+      <b>変えたときはアプリの再起動が必要です</b>（接続先は起動時に1回だけ決まります）。
+      設定しても<b>今までの記録は消えません</b>——読むときは旧い置き場も一緒に見ます。</small></label>
+    <div class="mm-cd-actions"><button type="button" id="msSaveShare" class="mm-btn-primary">この設定を保存</button></div>
+   </div>
    <div class="ms-settings">
     <h4>③ 閲覧用の複製の設定</h4>
     <label class="mm-field"><span>複製先のフォルダ</span>
@@ -3501,10 +3520,12 @@
    }catch(e){showToast&&showToast('複製できませんでした',e.message,7000)}
    finally{setMaintLoading(false);measStorageState.loaded=false;loadMeasStorageMaint(true)}
   };
+  $('#msSaveShare').onclick=()=>$('#msSaveCfg').onclick();
   $('#msSaveCfg').onclick=async()=>{
    /* **送るのはこの2つだけ**。パス設定の保存は「送られてきた項目だけ」を
       書くので、他の設定を巻き添えにしない(§9.192)。 */
-   const body={records_backup_export_path:String($('#msExportPath').value||'').trim(),
+   const body={records_share_dir:String($('#msShareDir').value||'').trim(),
+               records_backup_export_path:String($('#msExportPath').value||'').trim(),
                records_backup_export_interval_sec:String($('#msExportInterval').value||'').trim(),
                user_id:String($('#masterUserId')?.value||'').trim()};
    try{
@@ -4886,6 +4907,7 @@
     ままだった。 */
  const PATH_CONFIG_RESTART_BASE=[['sikalot_source','参照データの取得元']];
  const PATH_CONFIG_RESTART_TAIL=[
+  ['records_share_dir','測定データの置き場（設備ごと）'],
   ['records_backup_export_path','測定データバックアップの複製先'],
   ['schedule_share_path','スケジュール共有パス(schedule.sqlite3)'],
  ];
@@ -4927,7 +4949,7 @@
  const PC_SECTIONS=[
   {id:'terminal',name:'この端末',icon:'PC',when:'保存後すぐ反映',cls:'is-live'},
   {id:'read',    name:'どこから読むか',when:'サーバー再起動後に反映',cls:'is-restart'},
-  {id:'schedule',name:'共有スケジュール',when:'一部は再起動後に反映',cls:'is-restart'},
+  {id:'schedule',name:'共有の置き場',when:'一部は再起動後に反映',cls:'is-restart'},
   {id:'rne',     name:'RNE抽出',when:'保存後すぐ反映',cls:'is-live'},
  ];
  /* 1項目＝「名前 / 入力 / 一行の説明 / いまどうなっているか」。
@@ -4976,8 +4998,6 @@
      <b>共有スケジュール</b><span class="pc-node-sub">作業予定（みんなで使う）</span>
      <span class="pc-node-val" data-pc-map="schedule">—</span></button>
    </div>
-   <p class="pc-map-note">測定データの置き場（この端末のDB → 閲覧用の複製）は
-    <button type="button" class="mm-btn-ghost pc-goto" id="pcGoRecords">測定データの保存</button>にあります。</p>
 
    <!-- ② 章のレール -->
    <nav class="pc-rail" id="pcRail" aria-label="共通設定の章">
@@ -5009,8 +5029,19 @@
       'network=共有フォルダを読む ／ local=この端末でRNEから抽出したものを読む。<b>読み方を決めたデータソースには効きません</b>。')}
     ${pcStateHtml('sikalot_source')}`)}
 
-   ${group('schedule','共有スケジュール','一部は再起動後に反映','is-restart',`
-    ${pathField('schedule_share_path','作業予定の共有データ置き場（schedule.sqlite3）','file','共有フォルダ上のschedule.sqlite3を選びます。空欄ならスケジュール機能は無効です。')}
+   ${group('schedule','共有の置き場','一部は再起動後に反映','is-restart',`
+    <!-- **何がどこへ行くかを1枚で言う**(§9.260)。以前は作業予定・測定データ・
+         マスタの置き場が3画面に散っており、いま何がどこにあるのかを
+         確かめる手立てが無かった。判定はサーバーが持つ(§9.163)ので、
+         ここは受け取った答えを並べるだけ。 -->
+    <div class="pc-share" id="pcShare">
+     <div class="pc-share-head">
+      <b>この端末が読み書きする置き場</b>
+      <span class="pc-share-root" id="pcShareRoot"></span>
+     </div>
+     <div class="pc-share-rows" id="pcShareRows"></div>
+    </div>
+    ${pathField('schedule_share_path','作業予定の置き場（schedule.sqlite3）','file','共有フォルダ上のschedule.sqlite3を選びます。空欄ならスケジュール機能は無効です。')}
     <div class="pc-sub">
      <b class="pc-sub-head">共有の変化をどう取り込むか</b>
      <p class="mm-field-hint">共有（Box等）のschedule.sqlite3は<b>他の端末も書きます</b>。読むときは手元へ写したものを読み、
@@ -5062,8 +5093,12 @@
    sec.classList.add('is-jumped');
    setTimeout(()=>sec.classList.remove('is-jumped'),1200);
   });
-  const rec=$('#pcGoRecords');
-  if(rec)rec.onclick=()=>document.querySelector('#masterMaintNav [data-master="measStorage"]')?.click();
+  /* 「直す場所」からその画面へ飛ぶ。**行が持つ印で開く**ので、置き場が
+     増えてもここは触らなくてよい（飛び先はサーバーの答えの一部）。 */
+  form.addEventListener('click',ev=>{
+   const b=ev.target.closest('[data-pc-goto]');if(!b)return;
+   document.querySelector(`#masterMaintNav [data-master="${b.dataset.pcGoto}"]`)?.click();
+  });
   bindInputHelpers(form);
   refreshRneStatus();
   refreshOwnerStatus();
@@ -5156,6 +5191,37 @@
     なり、**再起動待ちかどうかを見るのに視線が上下する**。状態は欄の持ち物
     なので欄が持つ——表そのものは廃止した（§8 同じ情報を2箇所に出さない）。
     ここが埋めるのは「各欄の状態」「図の中の値」「章のレールの件数」の3つ。 */
+ /* 共有の置き場を1枚で出す(§9.260)。**判定はサーバーが持つ**（§9.163）ので、
+    ここは受け取った答えを並べるだけ——「UNCかどうか」「同じ根の下か」を
+    画面でも判定すると答えが2通りになる。
+    **色だけで伝えない**(§3)ので、置き場の種類は必ず文字で書く。 */
+ const PC_SHARE_KIND={network:'共有（ネットワーク）',cloud:'共有（クラウド同期）',
+                      local:'この端末の中','':'—'};
+ function paintShareLayout(sl){
+  const rows=$('#pcShareRows'),root=$('#pcShareRoot');
+  if(!rows)return;
+  const items=(sl&&sl.items)||[];
+  if(!items.length){rows.innerHTML='<p class="mm-field-hint">置き場を読めませんでした。</p>';return}
+  rows.innerHTML=items.map(x=>{
+   const kind=PC_SHARE_KIND[x.kind||'']||'—';
+   const onShare=x.kind==='network'||x.kind==='cloud';
+   return `<div class="pc-share-row${onShare?' is-shared':''}">
+    <b class="pc-share-what">${esc(x.label)}<small>${esc(x.file||'')}</small></b>
+    <span class="pc-share-kind">${esc(kind)}</span>
+    <code class="pc-share-path" title="${esc(x.path||'')}">${esc(x.path||'（未設定）')}</code>
+    <span class="pc-share-where">直す場所: <b>${esc(x.where||'')}</b>
+     <small>${esc(x.when||'')}に反映</small>
+     ${x.jump?`<button type="button" class="mm-btn-ghost pc-goto" data-pc-goto="${esc(x.jump)}">ここを開く</button>`:''}</span>
+    ${x.note?`<small class="pc-share-note">${esc(x.note)}</small>`:''}
+   </div>`;
+  }).join('');
+  if(root){
+   /* **揃っているときだけ言う**。揃っていない置き方が悪いわけではないので、
+      「バラバラです」とは書かない（直す必要のない状態を不備に見せない）。 */
+   root.textContent=(sl&&sl.sameRoot)?`3つとも同じ場所の下です: ${sl.sameRoot}`:'';
+   root.hidden=!(sl&&sl.sameRoot);
+  }
+ }
  function renderPathConfigList(){
   const form=$('#masterMaintForm');if(!form||!form.classList.contains('mm-form-page'))return;
   const v=pathConfigState.values||{},a=pathConfigState.active||{};
@@ -5192,6 +5258,7 @@
   };
   /* 各欄の状態。**再起動が要らない項目は「保存後すぐ反映」とだけ言う**
      ——比べる相手（いま効いている値）が無いのに空欄の対比を並べない。 */
+  paintShareLayout(a.share_layout);
   let pending=0;
   form.querySelectorAll('[data-pc-state]').forEach(el=>{
    const key=el.dataset.pcState;

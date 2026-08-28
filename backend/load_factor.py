@@ -14,7 +14,7 @@ import time
 from datetime import datetime
 
 from .config import LOAD_FACTOR_CACHE_TTL_SEC, MIN_SAMPLES
-from .db_access import MEAS_DB, RECORDS_BACKUP_EXPORT_PATH, merged_backup_rows
+from .db_access import records_paths_all, merged_backup_rows
 from .repositories import schedule_repo as sr
 from .repositories.master_repo import normalize_equipment_name, read_equipment_standard_minutes
 
@@ -195,7 +195,8 @@ _cache_lock=threading.Lock()
 
 def _source_mtime():
  mtimes=[]
- for p in (MEAS_DB,RECORDS_BACKUP_EXPORT_PATH):
+ # 見る対象は records_paths_all() の1箇所(§9.258。設備ごとの測定データを含む)。
+ for p in records_paths_all():
   try:
    if p and p.exists():mtimes.append(p.stat().st_mtime)
   except Exception:pass

@@ -227,6 +227,14 @@
     </div>
     <p class="lc-lead" id="lcLead">左で<b>出す列と並び</b>を決め、右で<b>選んだ1列の見え方</b>を整えます。
      触った結果はすぐ後ろの一覧に出ます（<b>保存するまでは元に戻せます</b>）。</p>
+    <!-- この一覧の列を「みんなと同じ」で持つか「自分だけ」で持つか(§9.259)。
+         **いまどちらかを必ず文字で出す**(§3)——黙って個人の並びを出すと、
+         自分にだけ違って見える理由が画面のどこにも無くなる。 -->
+    <div class="lc-scope" id="lcScope" hidden>
+     <span class="lc-scope-now" id="lcScopeNow"></span>
+     <button type="button" id="lcScopeBtn" class="lc-side-btn"></button>
+     <small class="lc-scope-note" id="lcScopeNote"></small>
+    </div>
     <button type="button" id="lcClose" class="lc-close" title="閉じる（保存していない変更は元に戻ります）">×</button></div>
    <div class="sc-float-body lc-body">
     <div class="lc-side">
@@ -444,6 +452,71 @@
  /* 出どころの絞り込み。**件数を必ず出す**——「結合された列がそもそも
     あるのか」は数が出ていて初めて分かる(0件なら押しても意味が無いので
     押せなくする)。 */
+ /* ---------- 列の見せ方は「みんなと同じ／自分だけ」(§9.259、利用者の指示) ----------
+    「列の表示の部分については、こだわりが強い人もいるので、表示する一覧表毎に
+     共通のものを使うか、個別ID単位のものを使うか選べるように」。
+
+    **持ち主を決めるのはサーバーの1箇所**(`column_layout_owner`)で、画面は
+    受け取った答えを出して切り替えを頼むだけ。ここで画面が独自に判断すると、
+    「見えているのは自分の並びなのに保存は共通へ行く」が作れる。 */
+ const scopeAsked=new Set();
+ function renderScope(){
+  const box=document.getElementById('lcScope');if(!box)return;
+  const now=document.getElementById('lcScopeNow'),btn=document.getElementById('lcScopeBtn'),
+        note=document.getElementById('lcScopeNote');
+  /* `target`はこのモジュールが持つ「いま開いている対象」。 */
+  /* この口が個人設定を扱えるかは**差し替え口が答える**(§9.120)。
+     答えない口は今までどおり＝みんなと同じ設定だけ。 */
+  const allow=!(panelSrc.features&&panelSrc.features.personalScope===false);
+  box.hidden=!(target&&allow);
+  if(box.hidden)return;
+  let scope=WL.columnLayout.scope(target);
+  /* まだ一度も読んでいなければ、読んでから描き直す。**パネルは一覧より先に
+     開きうる**し、利用者IDは`/api/whoami`から後から届く(§9.184)ので、
+     「読む前だから分からない」を「みんなと同じ」と言い切らない。
+     1対象につき1回だけ頼む（読めなかったときに回り続けないように）。 */
+  if(!scope&&!scopeAsked.has(target)){
+   scopeAsked.add(target);
+   WL.columnLayout.load(target).then(()=>renderScope()).catch(()=>{});
+  }
+  scope=WL.columnLayout.scope(target);
+  const mine=scope==='personal';
+  const can=WL.columnLayout.personalizable();
+  now.textContent=mine?'自分だけの設定':'みんなと同じ設定';
+  now.className='lc-scope-now'+(mine?' is-mine':'');
+  btn.textContent=mine?'みんなと同じに戻す':'自分だけの設定にする';
+  /* **できないことは、できないと書く**(§4)。利用者IDが分からない端末では
+     自分だけの設定を持てない——押せるボタンを残すと壊れて見える。 */
+  btn.disabled=!can&&!mine;
+  if(!can&&!mine){
+   note.textContent='この端末では利用者IDが分からないため、自分だけの設定は持てません。';
+  }else if(mine){
+   note.textContent='この一覧の列は、あなたにだけこう見えています。他の人の見え方は変わりません。';
+  }else{
+   note.textContent='この一覧の列は、いま全員で同じものを使っています。変えると全員に効きます。';
+  }
+  btn.title=mine
+   ?'みんなと同じ設定に戻します（自分だけの設定は消さないので、いつでも戻せます）'
+   :'いまの見え方をそのまま写して、この一覧だけ自分専用の設定にします（他の人の見え方は変わりません）';
+  btn.onclick=async()=>{
+   const to=!mine;
+   if(mine&&!confirm('この一覧の列を、みんなと同じ設定に戻します。\n\n'
+                     +'自分だけの設定は消さないので、あとで戻せます。よろしいですか？'))return;
+   btn.disabled=true;
+   try{
+    const r=await WL.columnLayout.setScope(target,to);
+    /* **触った結果をそのまま一覧へ出す**(§9.90)。切り替えは保存そのものなので
+       下書きは持たず、開き直した形にそろえる。 */
+    loadDraft();renderScope();renderOrigins();renderList();renderDetail();
+    if(typeof panelSrc.afterScope==='function')panelSrc.afterScope(target);
+    showToast&&showToast(to?'自分だけの設定にしました':'みんなと同じ設定に戻しました',
+                         (r&&r.message)||'',5200);
+   }catch(e){
+    showToast&&showToast('切り替えられませんでした',e.message,7000);
+    renderScope();
+   }
+  };
+ }
  function renderOrigins(){
   const box=document.getElementById('lcOrigins');if(!box)return;
   /* 出どころの件数は**状態の絞り込みを効かせたまま**数える（逆も同じ）。 */
@@ -1578,6 +1651,9 @@
   if(presetBox)presetBox.hidden=!(panelSrc.features&&panelSrc.features.preset);
   /* 結合されてきた列は一覧を読むたびに変わり得る(結合できたかどうかで
      増えたり減ったりする)ので、**開くたびに取り直す**。 */
+  /* 開き直したら一度は聞き直す（前回読めなかったときのため）。 */
+  scopeAsked.delete(target);
+  renderScope();
   joined=joinedKeys();
   originFilter='';
   /* **状態の絞り込みも開くたびに外す**（§9.248 ④）——覚えたままだと、
