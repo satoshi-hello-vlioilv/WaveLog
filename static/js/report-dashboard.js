@@ -3569,7 +3569,7 @@
   }
   return null;
  }
- const RP_RETURNS=['measure','actuals','blocks'];
+ const RP_RETURNS=['measure','actuals','blocks','layout'];
  window.openReportForRecord=async function(id,options){
   const opt=options||{};
   /* 戻り先（§9.241 ③で実績データリストが増えた／§9.253で帳票ブロック
@@ -3667,6 +3667,140 @@
   if(opt.print)requestAnimationFrame(()=>requestAnimationFrame(printReport));
  }
  WL.reportSample={open:openSampleReport,id:()=>RP_SAMPLE_ID};
+
+ /* ---------- 帳票レイアウトマスタの口（§9.254 ③、利用者の指示） ----------
+    「帳票の表示画面からいける、レイアウト調整画面ですが、これは実質、帳票
+     レイアウトマスタなので、マスタとしても配置し、この帳票レイアウトマスタと
+     帳票ブロックマスタを配線しリンクさせて…機能が重複する部分は統合して
+     帳票マスタとして親子関係のある高性能マスタとして」
+
+    親＝**設備1つぶんの紙**（`report:<設備>`）／子＝**その紙に載る塊**
+    （帳票ブロックマスタの行＋コードが持つ既定の塊）。マスタ管理はこの口
+    だけを見る——**組み換えの画面を写さない**（§9.163／§CLAUDE「同じ処理を
+    2つ持たない」）。幅の詰め方も既定の書き下ろしも版の刻印も`rpStage()`の
+    1箇所にしか無いので、マスタから触っても紙から触っても同じ答えになる。
+
+    **成り代わりは同期の間だけ**（§9.235 ⑤）。`await`はすべて外側で済ませ、
+    差し替えている最中に別のコードが割り込む隙を作らない。 */
+ function rpWithEquipment(eq,fn){
+  const prev={edit:rpEditEquipment,target:rpActiveTarget,forEq:rpUserBlocksFor,
+              rows:rpMasterRows,off:rpBuiltinOff,user:rpUserBlocks};
+  rpEditEquipment=String(eq==null?'':eq);
+  /* 紙を組み立てている最中の固定より弱い印なので、いったん外す。 */
+  rpActiveTarget=null;
+  rpUseEquipmentBlocks(rpEditEquipment);
+  try{return fn()}finally{
+   rpEditEquipment=prev.edit;rpActiveTarget=prev.target;
+   rpMasterRows=prev.rows;rpBuiltinOff=prev.off;
+   rpUserBlocks=prev.user;rpUserBlocksFor=prev.forEq;
+  }
+ }
+ const rpLayoutTarget=eq=>RP_LAYOUT_PREFIX+(String(eq==null?'':eq).trim()||'共通');
+ /* 塊そのものの既定（帳票ブロックマスタの`[幅]`/`[高さ]`）を、いまの割りの
+    マス数で言う。**設備ごとの上書きと見比べられるように**（§9.254 ③）
+    ——どちらで直すのかを毎回思い出させないための材料（§2）。
+    式は`rpSpan()`/`rpRows()`の既定の枝と同じ（12マス・12段基準）。 */
+ function rpSpanDefault(k){
+  const g=rpGrid(),d=(rpBlockOf(k)||{}).span||RP_COLS;
+  return Math.max(1,Math.min(g,Math.round(d*g/RP_COLS)));
+ }
+ function rpRowsDefault(k){
+  const d=(rpBlockOf(k)||{}).rows||0;
+  return d>0?Math.max(1,Math.min(rpRowCap(),Math.round(d*rpPageRows()/RP_PAGE_ROWS_LEGACY))):0;
+ }
+ /* その設備の紙1枚ぶん。**塊の顔ぶれと配置を読んでから**答える。 */
+ async function rpLayoutInfo(equipment){
+  const eq=String(equipment==null?'':equipment).trim();
+  const target=rpLayoutTarget(eq);
+  await rpLoadUserBlocks(eq);
+  try{await WL.columnLayout.load(target)}catch(e){}
+  return rpWithEquipment(eq,()=>{
+   const savedOrder=(WL.columnLayout.saved(target).order||[]);
+   const hidden=rpHiddenSet();
+   /* 塊の鍵→マスタの行。既定の塊は`[既定]`、自作の塊は名前が鍵。 */
+   const byKey=new Map();
+   rpMasterRows.forEach(r=>byKey.set(String(r.builtin||r.name||''),r));
+   const blocks=rpBlockKeys().map(k=>{
+    const b=rpBlockOf(k)||{},r=byKey.get(k)||null,at=rpPos(k);
+    return {key:k,label:rpBlockLabel(k),
+            span:rpSpan(k),rows:rpRows(k),
+            defSpan:rpSpanDefault(k),defRows:rpRowsDefault(k),
+            shown:!hidden.has(k),
+            col:at?at.col:0,row:at?at.row:0,
+            area:!!b.area,user:!!b.user,
+            id:r?r.id:null,kind:r?(r.kindText||''):'',
+            equipment:r?(r.equipment||''):'',
+            contentEditable:r?!!r.contentEditable:false,
+            fields:r?((r.fields||[]).length):0};
+   });
+   /* **選べる数もここが答える**（§9.163）——画面へ写すと、割りを1つ足した
+      ときに2箇所直すことになる（実際、写した直後は6/12/24という
+      実在しない割りが並んでいた）。 */
+   return {target,equipment:eq,grid:rpGrid(),pageRows:rpPageRows(),
+           gridChoices:RP_GRIDS.slice(),pageRowChoices:RP_PAGE_ROW_CHOICES.slice(),
+           saved:savedOrder.length>0,
+           spans:rpSpanChoices(),rowChoices:rpRowChoices(),blocks};
+  });
+ }
+ /* マスタから直す。**当て方は組み換えと同じ`rpStage()`を通し、保存まで行く**
+    ——マスタは「触ったら残る」画面なので、下書きのまま置いていくと
+    別の画面が触った覚えのない設定で描かれる（§9.169）。 */
+ async function rpLayoutCommit(eq,fn){
+  const target=rpLayoutTarget(eq);
+  await rpLoadUserBlocks(String(eq==null?'':eq).trim());
+  try{await WL.columnLayout.load(target)}catch(e){}
+  rpWithEquipment(eq,fn);                     /* 下書きへ当てる（同期） */
+  const now=WL.columnLayout.get(target);
+  const body={};
+  ['order','widths','hidden','names','formats','rules','formulas','locks','sorts','aligns']
+   .forEach(k=>{body[k]=now[k]});
+  WL.columnLayout.discard(target);
+  await WL.columnLayout.save(target,body);
+ }
+ WL.reportLayout={
+  targetOf:rpLayoutTarget,
+  info:rpLayoutInfo,
+  /* 出す/出さない。**並びも一緒に書き下ろす**のは`rpStage()`の役目。 */
+  setShown:(eq,key,on)=>rpLayoutCommit(eq,()=>{
+   const set=new Set(rpHiddenSet());
+   if(on)set.delete(key);else set.add(key);
+   rpStage({hidden:[...set]});
+  }),
+  setSpan:(eq,key,n)=>rpLayoutCommit(eq,()=>rpApplySpan(key,Number(n)||1)),
+  setRows:(eq,key,n)=>rpLayoutCommit(eq,()=>{
+   const v=Number(n)||0,wid={...rpLayoutNow().widths};
+   /* 旧いpxの高さは捨てる（§9.217。両方残すとどちらが効くか決まらない）。 */
+   delete wid[rpHeightKey(key)];
+   if(v>0)wid[rpRowsKey(key)]=rpRowsStore(rpRowsFromGrid(v));else delete wid[rpRowsKey(key)];
+   rpStage({widths:wid});
+  }),
+  /* 紙のマス数（列×段）。組み換えの帯と**同じ`rpSetGrid`は使わない**
+     ——あちらは帯を描き直すので、ここでは値だけを書いて保存する。 */
+  setGrid:(eq,cols,rows)=>rpLayoutCommit(eq,()=>{
+   const wid={...rpLayoutNow().widths};
+   wid[RP_GRID_KEY]=rpEnc(Math.max(1,Math.round(Number(cols)||rpGrid())));
+   wid[RP_PAGE_ROWS_KEY]=rpEnc(Math.max(1,Math.round(Number(rows)||rpPageRows())));
+   rpStage({widths:wid});
+  }),
+  /* 既定へ戻す＝この設備の設定を消す（登録順・登録幅・全部出す）。 */
+  reset:async eq=>{
+   const target=rpLayoutTarget(eq);
+   await WL.columnLayout.save(target,{});
+   WL.columnLayout.forget(target);
+   try{await WL.columnLayout.load(target)}catch(e){}
+  },
+  /* 紙で組み換える。**見本のロットで開く**ので、その設備で測ったロットが
+     この端末に1件も無くても配置を直せる（§9.253）。 */
+  arrange:async(eq,opt)=>{
+   const o=opt||{};
+   if(!(WL.reportSample&&typeof WL.reportSample.open==='function')){
+    console.error('WL.reportSample.open が見つかりません');return false;
+   }
+   await WL.reportSample.open({equipment:String(eq==null?'':eq),
+     returnTo:o.returnTo||'layout'});
+   if(o.arrange!==false&&!rpArranging)await toggleArrange();
+   return true;
+  }};
  function updateBackButton(){
   const btn=$id('reportBack');if(!btn)return;
   /* ボタンの中身は <svg>アイコン</svg> + 文字列。アイコンは残して文字だけ差し替える。
@@ -3675,6 +3809,7 @@
   const NAMES={measure:['測定へ戻る','測定画面へ戻ります'],
                actuals:['実績へ戻る','実績データリストへ戻ります'],
                blocks:['帳票ブロックへ戻る','マスタ管理の「帳票ブロック」へ戻ります'],
+               layout:['帳票レイアウトへ戻る','マスタ管理の「帳票レイアウト」へ戻ります'],
                records:['戻る','元の一覧に戻ります']};
   const n=NAMES[rpReturnTo]||NAMES.records;
   const label=[...btn.childNodes].find(x=>x.nodeType===Node.TEXT_NODE);
@@ -3704,6 +3839,12 @@
   if(rpReturnTo==='blocks'&&typeof window.openMasterMaint==='function'){
    rpReturnTo='records';updateBackButton();
    window.openMasterMaint('reportBlock');return;
+  }
+  /* 帳票レイアウトマスタへ（§9.254 ③）。組み換えはあちらから開くので、
+     **開いていたタブまで戻す**（帳票ブロックと同じ作法）。 */
+  if(rpReturnTo==='layout'&&typeof window.openMasterMaint==='function'){
+   rpReturnTo='records';updateBackButton();
+   window.openMasterMaint('reportLayout');return;
   }
   if(typeof openRecordsSafe==='function')openRecordsSafe(null);
  }

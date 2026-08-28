@@ -59,6 +59,59 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
       Array.isArray((r0.measurements||{}).width)&&((r0.settings||{}).splitGroups||[]).length>=2,
       JSON.stringify({丈:(r0.measurements||{}).width?.length,子:(r0.settings||{}).splitGroups?.length}));
 
+  /* ---- 0b) 器の上限まで埋まっている（§9.254 ④、利用者の指示） ----
+     「最大データ数40条分埋まっているなど、埋まっていないデータがないように
+      すべてのデータ項目で表示したいです。条の異常位置判定がある場合なども
+      異常データがあるものとして、異常情報もあるものとして設定をお願いします。
+      ダミーデータのロット№の桁数は7桁にしてください」
+     **件数だけを見ないこと**——40列の器を作っても中身が空なら意味が無いので、
+     実際に値が入っているセルを数える。 */
+  const LOT=String(r0.basic?.lotNo||'');
+  rec('ロット№は7桁（LotDspのlinkkeyと同じ幅）',LOT.length===7,LOT);
+  const st0=r0.settings||{},ms0=r0.measurements||{};
+  rec('条は器の上限（40条）まで埋まっている',
+      Number(st0.horizontalCount)===40
+      &&(ms0.width||[]).every(row=>row.length>=40)
+      &&(ms0.width||[])[0].filter(v=>String(v||'').trim()!=='').length===40,
+      JSON.stringify({横割数:st0.horizontalCount,列:(ms0.width||[])[0]?.length,
+                      埋:(ms0.width||[])[0]?.filter(v=>String(v||'').trim()!=='').length}));
+  rec('丈も選べる上限まで埋まっている（頭9＋尾1）',
+      Number(st0.verticalCount)===9&&(ms0.width||[]).length===10
+      &&(ms0.width||[]).every(row=>row.filter(v=>String(v||'').trim()!=='').length===40),
+      JSON.stringify({縦割数:st0.verticalCount,丈:(ms0.width||[]).length}));
+  const blankCells=['thickness','width','lateral','burr','telescope','offset','flatness','comments']
+    .filter(k=>{const rows=ms0[k]||[];
+      if(!rows.length)return true;
+      return rows.some(row=>row.some(v=>String(v||'').trim()===''))&&k!=='comments';});
+  rec('測定値に空のマスが残らない',!blankCells.length,JSON.stringify(blankCells));
+  const prod=(r0.product||{}).rows||[];
+  rec('丈別データも全部の丈が埋まっている（長さ・肉厚・揃い・備考）',
+      prod.length>=10&&prod.slice(0,10).every(r=>String(r.productLength||'').trim()!==''
+        &&String(r.wallThickness||'').trim()!==''&&String(r.edgeShape||'').trim()!==''
+        &&String(r.note||'').trim()!==''),
+      JSON.stringify({丈:prod.length,先頭:prod[0]}));
+  const sv=(st0.defectLocation||{}).saved||null;
+  rec('異常位置判定が保存済みで、該当条がある（帳票に載る）',
+      !!sv&&Array.isArray(sv.hits)&&sv.hits.length>0&&Array.isArray(sv.lanes)&&sv.lanes.length===40,
+      JSON.stringify({該当条:(sv&&sv.hits||[]).map(h=>h.index+1),条:(sv&&sv.lanes||[]).length}));
+  rec('長手方向（ロール）の入力も埋まっている',
+      !!(st0.defectRoll&&Number(st0.defectRoll.pitch)>0),JSON.stringify(st0.defectRoll||null));
+  rec('異常情報も「有る」ほうで持つ',
+      String(r0.qualityInfo||'').trim()!==''&&!/異常情報なし/.test(String(r0.qualityInfo||'')),
+      String(r0.qualityInfo||''));
+  rec('子ロットは異幅で、公差の材料も持つ（子ロットごとの範囲が出る）',
+      (st0.splitGroups||[]).length>=2
+      &&new Set((st0.splitGroups||[]).map(g=>g.base&&g.base.width)).size>=2
+      &&(st0.splitGroups||[]).every(g=>g.tol&&g.tol.width),
+      JSON.stringify((st0.splitGroups||[]).map(g=>[g.lot,g.count,g.base&&g.base.width])));
+  rec('条→子ロットの対応が条数ぶんある（条の図が組める）',
+      (st0.splitPositionGroup||[]).length===40,String((st0.splitPositionGroup||[]).length));
+  /* 子ロットの番号も**親と同じ7桁で、下3桁が重ならない**（条の図のバッジは下3桁）。 */
+  const kids=(st0.splitGroups||[]).map(g=>String(g.lot||''));
+  rec('子ロット番号も7桁で下3桁が重ならない',
+      kids.length>=2&&kids.every(v=>v.length===7)
+      &&new Set(kids.map(v=>v.slice(-3))).size===kids.length,JSON.stringify(kids));
+
   /* 見本を開く前の件数。**保存されないこと**を後で突き合わせる。 */
   let before=null;
   try{const sum=await getj('/api/measurement/backup/summary');
@@ -105,8 +158,10 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
            刷れる:!(document.getElementById('reportPrint')||{}).disabled,
            本文:c.textContent.replace(/\s+/g,' ')};
   });
+  /* **期待値に綴りを直接書かない**（§9.200）——見本の値が変わるたびに
+     テストも直すことになる。サーバーが返した見本そのものと突き合わせる。 */
   rec('1押しで帳票のプレビューが開き、見本のロットが選ばれている',
-      /L240815-03/.test(view.題),view.題);
+      view.題.indexOf(LOT)>=0,view.題);
   /* ---- 3) 実際のデータが配置されている ---- */
   const shown=['A-24-0087','TZ-02','S-3','C1020','端子用条','○○電機株式会社'];
   const miss=shown.filter(v=>view.本文.indexOf(v)<0);
@@ -115,8 +170,11 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
       /0\.295/.test(view.本文)&&/0\.305/.test(view.本文),
       view.本文.slice(view.本文.indexOf('測定データ（板厚'),view.本文.indexOf('測定データ（板厚')+90));
   rec('子ロットごとの統計が出る（分割が効いている）',
-      /L240815-03-1/.test(view.本文)&&/L240815-03-3/.test(view.本文),
+      kids.length>=2&&view.本文.indexOf(kids[0])>=0&&view.本文.indexOf(kids[kids.length-1])>=0,
       view.本文.slice(view.本文.indexOf('測定値の統計'),view.本文.indexOf('測定値の統計')+80));
+  rec('保存済みの異常位置判定が紙に載る',
+      /異常位置判定/.test(view.本文)&&view.本文.indexOf('該当条')>=0,
+      view.本文.slice(view.本文.indexOf('異常位置判定'),view.本文.indexOf('異常位置判定')+90));
   /* ---- 4) 見本であることを文字で言い、紙の外に置く ---- */
   rec('見本であることを文字で言う（色だけで伝えない）',
       !!view.帯&&/見本/.test(view.帯)&&/保存されません/.test(view.帯),view.帯);
@@ -144,7 +202,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   }));
   rec('試し印刷は帳票だけの書類を組み立てる',!!printed&&printed.枚数===1,JSON.stringify(printed&&{枚数:printed.枚数,塊:printed.塊}));
   rec('刷る書類に見本の値が載っている（白紙ではない）',
-      !!printed&&/L240815-03/.test(printed.中身),printed?printed.中身.slice(0,120):'');
+      !!printed&&printed.中身.indexOf(LOT)>=0,printed?printed.中身.slice(0,120):'');
 
   /* ---- 5b) 実際に帳票ブロックマスタへ帰る ---- */
   await page.click('#reportBack');

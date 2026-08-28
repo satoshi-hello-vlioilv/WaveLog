@@ -71,6 +71,53 @@ let b=null,page=null;
       box.asideX>box.fieldsX&&box.fieldsRight<=box.asideX+1,
       JSON.stringify({fieldsRight:box.fieldsRight,asideX:box.asideX}));
   rec('横に溢れない',box.overflowX<=1,String(box.overflowX));
+  /* ---- 1b) 縦も横も使い切る（§9.254 ①②、利用者の指示） ----
+     「モーダルの表示領域を使い切れていません。表示エリアがもったいないので
+      余白のままにせず、最大限活用するようにしてください。モーダルも縦方向に
+      まだ大きくする余裕があるはずなのでこちらも含めて最大活用するように」
+     **`max-height`だけだと中身なりの高さで止まる**（実測: 1000pxの画面で
+     窓877px）。器の高さを与え、余りは中の盤へ配る。 */
+  rec('窓が画面の縦をほぼ使い切る（中身なりの高さで止まらない）',
+      box.h>=Math.round(1000*0.9),JSON.stringify({h:box.h,vh:1000}));
+  rec('縦にも溢れない（外側がスクロールしない）',box.overflowY<=1,String(box.overflowY));
+
+  /* ---- 1c) 「何を載せるか」の盤が余った高さを全部使う（§9.254 ①②） ----
+     以前は`.fb-list`/`.fb-rows`が`max-height:18em`で頭打ちだったので、窓を
+     いくら大きくしても候補126px・並び252pxで止まっていた（実測）。
+     **左＝選べる項目：右＝紙での並び＝3:7**（利用者の指示「メインを最も
+     大きく表示することを心掛けてください」）。
+     **素通りに注意**: 「盤が在る」だけを見る網は、頭打ちのままでも通る。
+     器（段のパネル）に対する割合と、左右の比を実測で見る。 */
+  await page.evaluate(()=>{
+   const t=[...document.querySelectorAll('.mm-tab')].find(x=>x.textContent.includes('何を載せるか'));
+   if(t)t.click();
+  });
+  await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+  const fb=await page.evaluate(()=>{
+   const r=x=>x?x.getBoundingClientRect():null;
+   const panel=r(document.querySelector('.mm-tabpanel:not([hidden])'));
+   const body=r(document.querySelector('.fb-body'));
+   const pick=r(document.querySelector('.fb-pick')),ch=r(document.querySelector('.fb-chosen'));
+   const list=r(document.querySelector('.fb-list')),rows=r(document.querySelector('.fb-rows'));
+   return {panelH:panel&&Math.round(panel.height),bodyH:body&&Math.round(body.height),
+     pickW:pick&&Math.round(pick.width),chosenW:ch&&Math.round(ch.width),
+     listH:list&&Math.round(list.height),rowsH:rows&&Math.round(rows.height)};
+  });
+  rec('盤が段の高さをほぼ全部使う（余白のまま残さない）',
+      fb.bodyH>=fb.panelH-40,JSON.stringify(fb));
+  rec('選べる項目：紙での並び＝3:7（メインがいちばん大きい）',
+      Math.abs(fb.pickW/(fb.pickW+fb.chosenW)-0.3)<0.03&&fb.chosenW>fb.pickW,
+      JSON.stringify({pick:fb.pickW,chosen:fb.chosenW,
+        比:(fb.pickW/(fb.pickW+fb.chosenW)).toFixed(2)}));
+  rec('候補も並びも縦を使い切る（頭打ちで止まらない）',
+      fb.listH>=fb.bodyH*0.6&&fb.rowsH>=fb.bodyH*0.6,JSON.stringify(fb));
+  /* 見本の紙は**A4の比**（§9.254 ①。`max-height`で切ると比が崩れ、
+     「紙に入るか」を確かめる道具にならない）。 */
+  const paper=await page.evaluate(()=>{
+   const b=document.querySelector('.rb-paper').getBoundingClientRect();
+   return {w:Math.round(b.width),h:Math.round(b.height),r:+(b.height/b.width).toFixed(3)};
+  });
+  rec('見本の紙がA4の比（210:297）で出る',Math.abs(paper.r-297/210)<0.03,JSON.stringify(paper));
 
   /* ---- 2) 決めることが4つの段（タブ）に束ねてある（§9.250 ④） ----
      以前は縦に積んでいたので、1700×1000の窓でも**227pxはみ出していた**

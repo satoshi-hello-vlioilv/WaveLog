@@ -1789,14 +1789,22 @@
 /* **1行を丸ごと使う**（§9.226 ④）。編集の窓は`flex-wrap`で欄を横に
    並べる作りなので、`grid-column`ではなく`flex`で幅いっぱいを取る
    （§9.222 ⑥で規格幅へ寄せたときの約束と同じ形）。 */
-.mm-editor-body .mm-field.fb{flex:1 1 100%;width:100%;max-width:100%}
+/* **盤は段の余りを全部取る**（§9.254 ①）。`.mm-field`は縦積みのflexなので、
+   自分が伸びる（`flex:1 1 100%`＋`min-height:0`）と中の`.fb-body`へ高さが
+   届く（§9.222 ⑤の鎖）。 */
+.mm-editor-body .mm-field.fb{flex:1 1 100%;width:100%;max-width:100%;min-height:0}
+.mm-editor-body .mm-field.fb>.fb-body{flex:1 1 auto;min-height:0}
 .fb{grid-column:1/-1}
 /* 組み立ての盤がある窓は広く取る——候補と載せる項目を**左右に並べて
    見比べられること**がこの機能の値打ちなので、狭いと両方が読めない。 */
 .mm-editor-dialog.is-builder{width:min(1180px,96vw)}
+/* 左＝候補／右＝紙での並び。**3:7**（§9.254 ②、利用者の指示「選べる項目：
+   紙での並び＝３：７になるように設定し、メインを最も大きく表示することを
+   心掛けてください」）——候補は探すための棚、紙での並びが**主役**。
+   以前は 1:1.1（実測 595:654）でほぼ半々だった。 */
 .fb-body{
-  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);
-  gap:var(--space-2);min-width:0;
+  display:grid;grid-template-columns:minmax(0,3fr) minmax(0,7fr);
+  gap:var(--space-2);min-width:0;min-height:0;
 }
 .fb-pick,.fb-chosen{
   display:flex;flex-direction:column;gap:var(--gap-tight);min-width:0;min-height:0;
@@ -1820,9 +1828,13 @@
 .fb-cat>i{font-style:normal;color:var(--muted);font-size:var(--fs-micro)}
 .fb-cat.is-on{background:var(--nav);border-color:var(--nav);color:#fff}
 .fb-cat.is-on>i{color:#fff}
+/* **縦は器いっぱい**（§9.254 ②、利用者の指示「縦方向表示可能領域の半分の
+   高さくらいしか使っていないので最大限の高さを利用して見やすくして」）。
+   `max-height:18em`で頭打ちにしていたため、窓をどれだけ大きくしても
+   候補は126px・並びは252pxで止まっていた（実測）。 */
 .fb-list{
   display:flex;flex-wrap:wrap;align-content:flex-start;gap:var(--gap-tight);
-  min-height:9em;max-height:18em;overflow:auto;
+  flex:1 1 auto;min-height:6em;overflow:auto;
 }
 .fb-note{flex:1 1 100%;margin:0;color:var(--ink-3);font-size:var(--fs-micro)}
 .fb-item{
@@ -1838,7 +1850,7 @@
    ので「載せています」と文字も出す。もう一度押すと外れる）。 */
 .fb-item.is-used{border-color:var(--teal);background:var(--pale);color:var(--teal-dark)}
 .fb-used{font-style:normal;color:var(--teal-dark);font-size:var(--fs-micro);font-weight:800}
-.fb-rows{display:flex;flex-direction:column;gap:2px;min-height:9em;max-height:18em;overflow:auto}
+.fb-rows{display:flex;flex-direction:column;gap:2px;flex:1 1 auto;min-height:6em;overflow:auto}
 .fb-row{
   display:grid;grid-template-columns:auto minmax(0,1fr) minmax(0,1fr) auto;
   align-items:center;gap:var(--gap-tight);
@@ -2161,13 +2173,23 @@
    紙の見本を隣へ置いた。窓は大きく取り、**左＝決めること／右＝刷り上がり**
    の2段組みにする（視線が往復しない）。
    ============================================================ */
-.mm-editor-dialog.is-builder{width:min(1760px,98vw);max-height:95vh}
+/* **窓は縦も横も使い切る**（§9.254 ①、利用者の指示「モーダルの表示領域を
+   使い切れていません。表示エリアがもったいないので余白のままにせず、最大限
+   活用するように。モーダルも縦方向にまだ大きくする余裕があるはず」）。
+   `max-height`だけだと**中身なりの高さ**で止まるので、決めることが少ない段
+   （①これは何の塊か）では窓そのものが縮み、下が丸ごと空く（実測: 1000pxの
+   画面で窓877px・②の盤の下に249pxの空き）。**高さを与えて、余りは中の盤へ
+   配る**——器の高さを中まで届ける鎖は1段も抜かない（§9.222 ⑤）。 */
+.mm-editor-dialog.is-builder{width:min(1760px,98vw);height:96vh;max-height:96vh}
 /* 右の見本は**広く取る**（§9.250 ⑨、利用者の指示「モーダルも大きくして
    広いスペースを使った方が良いです」）——紙の見本は掴んで大きさを変える
-   道具でもあるので、小さいと1マスが数pxになって狙えない。 */
+   道具でもあるので、小さいと1マスが数pxになって狙えない。
+   **段は2つだけ**（説明の行／本体の行）で、本体の行が余りを全部取る。
+   `align-content:start`のままだと行が中身なりに縮んで下が空く。 */
 .mm-editor-dialog.is-builder .mm-editor-body{
-  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,30em);
-  align-content:start;gap:var(--space-4);overflow:auto}
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,27em);
+  grid-template-rows:auto minmax(0,1fr);
+  align-content:stretch;gap:var(--space-3);overflow:hidden;min-height:0}
 /* ============================================================
    段（タブ）とくわしい説明（アコーディオン）（§9.250 ④、利用者の指示）
    ------------------------------------------------------------
@@ -2249,20 +2271,55 @@
   font-size:var(--fs-badge);line-height:1.7;
 }
 .mm-more-body[hidden]{display:none}
-.mm-editor-dialog.is-builder .mm-def-hint{grid-column:1/-1;margin:0}
-/* **行は上から詰める**（§9.250 ⑨）。`.mm-form-fields`は折り返す横並びで、
-   既定の`align-content:stretch`は**行と行のあいだを引き伸ばす**——右の見本の
-   ほうが背が高いと器がその高さまで伸び、段の帯と欄のあいだに実測125pxの
-   空きができていた（利用者の報告「左側のスペースが完全に死にスペース」）。 */
-.mm-editor-dialog.is-builder .mm-form-fields{grid-column:1;min-width:0;align-content:flex-start}
-.mm-editor-dialog.is-builder .rb-aside{grid-column:2}
+.mm-editor-dialog.is-builder .mm-def-hint{grid-column:1/-1;grid-row:1;margin:0}
+/* **左は段（タブ）を縦に積む1本の柱**（§9.254 ①）。中身は
+   「段の帯」と「段の中身」の2つだけなので、ここは折り返す横並びではなく
+   **縦積み**にして、余りを段の中身へ渡す（折り返す横並びのままだと
+   `flex-basis:100%`の帯とパネルが中身なりの高さで止まり、下が空く）。
+   欄を規格幅で横に並べるのは**パネルの中**（`.mm-tabpanel`）の役目。 */
+.mm-editor-dialog.is-builder .mm-form-fields{
+  grid-column:1;grid-row:2;min-width:0;min-height:0;
+  display:flex;flex-direction:column;flex-wrap:nowrap;gap:var(--space-2);
+  /* **`align-items:flex-start`を持ち越さないこと**——横並びのときは
+     「欄を上端でそろえる」意味だが、縦積みでは**幅が中身なり**になり、
+     段の帯が左へ縮む（実測: 器1303pxに対して帯498px）。 */
+  align-items:stretch}
+/* **縦積みでは`flex-basis:100%`は「高さの100%」**（§9.253 ①と同じ罠）。
+   帯は中身なり・中身は余り全部、と書き直す。 */
+.mm-editor-dialog.is-builder .mm-tabbar{flex:0 0 auto;width:100%}
+.mm-editor-dialog.is-builder .mm-tabbody{
+  flex:1 1 auto;min-height:0;width:100%;display:flex;flex-direction:column}
+/* パネルは**器いっぱい**。決めることが少ない段では中身が上に寄るだけで、
+   多い段（②何を載せるか）は余りを全部使う。 */
+.mm-editor-dialog.is-builder .mm-tabpanel{
+  flex:1 1 auto;min-height:0;overflow:auto;align-content:flex-start}
+/* 組み立ての盤を持つ段だけ、器いっぱいへ伸ばす（印はJSが付ける）。
+   **すぐ上の`align-content:flex-start`より詳細度を上げること**——同じ数だと
+   後から読まれる側が勝ち、伸びない（§9.206と同じ罠。実測で盤が445px、
+   段が709pxのまま264px空いていた）。 */
+.mm-editor-dialog.is-builder .mm-tabpanel.is-fill,
+.mm-tabpanel.is-fill{align-items:stretch;align-content:stretch;overflow:hidden}
+/* **見本の柱も器いっぱい**。`position:sticky`＋`align-self:start`は
+   「外側が流れる」前提の書き方で、器の高さが決まった今は要らない
+   （残すと柱が中身なりの高さで止まり、紙が小さいままになる）。 */
+.mm-editor-dialog.is-builder .rb-aside{
+  grid-column:2;grid-row:2;min-height:0;overflow:auto;
+  position:static;align-self:stretch}
 /* 群の見出しは行を切る。**同じ群の欄は必ず同じ段に並ぶ**（チャンク化）。 */
 .mm-editor-dialog.is-builder .mm-fieldgroup{margin:var(--space-3) 0 0}
 .mm-editor-dialog.is-builder .mm-fieldgroup:first-child{margin-top:0}
 
 /* --- 右: 刷り上がりの見本 --- */
+/* **柱の中身は縮ませない**（§9.254 ①。§9.253の`.mm-tab>*`と同じ罠）——
+   器の高さを決めたぶん、縦積みのflexは既定で中身を潰す。実測で見本の節が
+   `scrollHeight:124`に対して`clientHeight:2`まで潰れ、`overflow:hidden`で
+   丸ごと消えていた。入りきらないぶんは柱の側がスクロールする。 */
+.rb-aside>*{flex:0 0 auto}
 .rb-aside{display:flex;flex-direction:column;gap:var(--space-2);min-width:0;
- position:sticky;top:0;align-self:start}
+ position:sticky;top:0;align-self:start;
+ /* 紙の高さの上限（§9.254 ①）。窓が縦に伸びたぶん紙も大きくなる
+    ——1マスが数pxだと四方の掴みどころが狙えない（§9.250 ④）。 */
+ --rb-paper-h:min(56vh,38em)}
 .rb-aside-head{display:flex;align-items:center;gap:var(--gap-tight);flex-wrap:wrap}
 .rb-aside-head>b{font-size:var(--fs-sm);font-weight:800;color:var(--nav)}
 .rb-aside-tools{display:flex;gap:var(--gap-tight);margin-left:auto}
@@ -2283,7 +2340,14 @@
 /* **紙の外へは描かない**（§9.250 ⑤）。紙全体で見るときは塊が12段を
    はみ出しうるので、切らないと窓のほうがスクロールする（実測67px）。
    切ったぶんは`#rbSpill`が件数を文字で言う（黙って消さない・§CLAUDE 4）。 */
-.rb-paper{position:relative;width:100%;aspect-ratio:210/297;max-height:28em;overflow:hidden;
+/* **高さで頭打ちにしないこと**（§9.254 ①）。`max-height`で切ると
+   `aspect-ratio`は解けず、**A4ではない形の紙**になる（実測 420×384＝1.09。
+   A4は1.414）。見本が嘘をつくと、紙に入るかどうかを確かめる道具にならない
+   （§CLAUDE 6）。高さの上限は**幅の上限へ翻訳する**——こうすると比は必ず
+   保たれ、余った幅は左右の余白になる。 */
+.rb-paper{position:relative;width:100%;flex:0 0 auto;
+ max-width:calc(var(--rb-paper-h,28em) * 210 / 297);
+ aspect-ratio:210/297;overflow:hidden;
  margin-inline:auto;padding:var(--space-2);
  border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;
  box-shadow:0 2px 10px #0000000f}
@@ -2456,4 +2520,86 @@
  font-size:var(--fs-micro);line-height:1;padding:0 2px}
 .mm-viewmark>button:hover{color:var(--danger)}
 
+
+
+/* ============================================================
+   帳票レイアウトマスタ（§9.254 (3)、利用者の指示）
+   ------------------------------------------------------------
+   左＝設備ごとの紙（親）／右＝その紙に載る塊（子）。作りは
+   「選択肢の値」（`.oc-*`）と同じ2ペインで、器→ペイン→一覧の3段に
+   `flex:1;min-height:0`を通してスクロールは内側だけにする（§9.222 (5)）。
+   ============================================================ */
+.rly-edit{display:grid;grid-template-columns:minmax(var(--w-lg),var(--w-xl)) minmax(0,1fr);
+  gap:var(--space-3);flex:1;min-height:0;align-items:stretch}
+.rly-papers,.rly-blocks{display:flex;flex-direction:column;gap:var(--space-2);
+  min-width:0;min-height:0;padding:var(--pad-card);
+  border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface)}
+.rly-papers-head,.rly-blocks-head{display:flex;flex-wrap:wrap;align-items:center;
+  gap:var(--gap-inline);flex:none}
+.rly-papers-head>b,.rly-blocks-head>b{font-size:var(--fs-base-sm);color:var(--teal-dark)}
+.rly-papers-head input[type=search]{flex:1 1 100%;height:var(--ctl-h-sm);min-width:0;
+  padding:0 var(--space-2);border:1px solid var(--line);border-radius:var(--radius-sm);
+  font-size:var(--fs-sm)}
+.rly-paper-list{display:flex;flex-direction:column;gap:2px;flex:1;min-height:0;overflow:auto}
+/* 1件は2行（名前＋いまの状態）。**畳んでも件数は出す**（§CLAUDE 3）。 */
+.rly-paper{display:grid;gap:0;width:100%;text-align:left;padding:2px var(--space-2);
+  border:1px solid transparent;border-radius:var(--radius-sm);background:transparent;cursor:pointer}
+.rly-paper:hover{background:var(--surface-2)}
+.rly-paper.is-on{background:var(--teal);border-color:var(--teal)}
+.rly-paper>b{font-size:var(--fs-sm);font-weight:800;color:var(--ink)}
+.rly-paper.is-on>b,.rly-paper.is-on .rly-paper-meta,.rly-paper.is-on .rly-paper-gone{color:#fff}
+.rly-paper-sub{display:flex;flex-wrap:nowrap;gap:var(--space-2);min-width:0}
+.rly-paper-sub>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rly-paper-meta{font-size:var(--fs-micro);font-weight:700;color:var(--ink-3)}
+.rly-paper-gone{font-size:var(--fs-micro);color:var(--warn-fg);font-weight:700}
+/* 紙の割り（列×段）。**いまの値を札で言う**（§CLAUDE 3）。 */
+.rly-grid{display:flex;align-items:center;gap:var(--gap-tight);margin-left:auto;
+  font-size:var(--fs-micro);color:var(--ink-3);font-weight:700}
+.rly-grid-pick{display:inline-flex;gap:1px;border-radius:var(--radius-xs);
+  border:1px solid var(--line);overflow:hidden}
+.rly-grid-pick>button{
+  min-height:var(--ctl-h-xs);padding:0 var(--space-2);border:0;background:var(--surface);
+  color:var(--ink-2);font-size:var(--fs-micro);font-weight:700;cursor:pointer;white-space:nowrap}
+.rly-grid-pick>button:hover{background:var(--surface-2)}
+.rly-grid-pick>button.is-on{background:var(--nav);color:#fff}
+/* 幅・高さは**選ぶ欄1つ**（§9.254 ③）。札を並べると幅5＋高さ9で1行が
+   2段に折り返し、23件の一覧が縦に倍になる——ここは「見比べて直す」画面
+   なので、行は1行に収める（§CLAUDE 11「入れ物は中身の長さから」）。 */
+.rly-pick{min-width:0;display:flex}
+.rly-pick>select{width:100%;min-width:0;height:var(--ctl-h-xs);padding:0 var(--space-1);
+  border:1px solid var(--line);border-radius:var(--radius-xs);
+  background:var(--surface);color:var(--ink-2);font-size:var(--fs-micro)}
+.rly-table{display:flex;flex-direction:column;min-width:0;flex:1;min-height:0}
+.rly-table-scroll{flex:1;min-height:0;overflow:auto;min-width:0}
+/* 1行＝1つの塊。列は「下限＋割合」で書く（`auto`を混ぜない・§9.222 (6)）。 */
+.rly-row{display:grid;align-items:center;gap:var(--gap-inline);
+  grid-template-columns:minmax(var(--w-md),2fr) minmax(var(--w-xs),auto)
+    minmax(var(--w-md),1.4fr) minmax(var(--w-md),1.6fr)
+    minmax(var(--w-xs),auto) minmax(var(--w-sm),auto);
+  padding:2px var(--space-2);border-bottom:1px solid var(--line-soft)}
+.rly-row.is-head{position:sticky;top:0;z-index:1;background:var(--surface);
+  border-bottom:1px solid var(--line);color:var(--ink-3);font-weight:800}
+.rly-row.is-head>span{font-size:var(--fs-micro)}
+.rly-row:nth-of-type(even){background:var(--surface-2)}
+/* **出していない塊は薄くする。ただし色だけで伝えない**（§CLAUDE 3）
+   ——札の文字が「出さない」と言う。 */
+.rly-row.is-off{opacity:.62}
+.rly-cell{min-width:0;font-size:var(--fs-badge);color:var(--ink-2)}
+.rly-name{display:flex;flex-direction:column;gap:0;min-width:0}
+.rly-name>b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:var(--fs-sm);font-weight:800;color:var(--ink)}
+.rly-name>small{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:var(--fs-micro);color:var(--muted)}
+.rly-tgl{min-height:var(--ctl-h-xs);padding:0 var(--space-2);
+  border:1px solid var(--line-mid);border-radius:var(--radius-sm);
+  background:var(--surface);color:var(--muted);
+  font-size:var(--fs-micro);font-weight:700;cursor:pointer;white-space:nowrap}
+.rly-tgl.is-on{border-color:var(--teal);color:var(--teal-dark);
+  background:color-mix(in srgb,var(--teal) 14%,var(--surface))}
+/* 既定と違うところ（§9.254 ③）。**色だけで伝えない**ので、既定の値と
+   いまの値を両方文字で出す。 */
+.rly-diff{font-style:normal;margin-left:var(--gap-tight);color:var(--warn-fg);font-weight:700}
+.rly-pos{color:var(--ink-3);font-variant-numeric:tabular-nums;white-space:nowrap}
+.rly-act{display:flex;justify-content:flex-end}
+.rly-note{margin:0;flex:none;color:var(--ink-3);font-size:var(--fs-micro);line-height:1.7}
 }

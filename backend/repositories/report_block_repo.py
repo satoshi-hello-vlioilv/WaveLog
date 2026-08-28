@@ -23,6 +23,8 @@
 対象設備の書式は設備停止マスタと同じ(`schedule_repo.stop_equipment_*`)。
 判定を新しく書き起こさない。
 """
+import copy as _copy
+
 from .master_repo import tables
 
 TABLE = '帳票ブロックマスタ'
@@ -65,9 +67,27 @@ FIELD_CATALOG = (
     ('用途名', 'basic.purposeName'),
     ('取引先', 'basic.customer'),
     ('納入先', 'basic.delivery'),
-    ('製造材質', 'basic.material'),
-    ('製造板厚', 'basic.thickness'),
-    ('製造板幅', 'basic.width'),
+    # **道は`aliases`（`base.js`）の綴りで書くこと**（§9.254 ④）。以前は
+    # `basic.material`／`basic.thickness`／`basic.width`と書いていたが、
+    # 測定レコードの`basic`は`aliases`のキーしか持たないので、**実データでは
+    # 必ず空**だった（見本だけが値を持ち、紙では出ない——§CLAUDE 6の
+    # 「見本が嘘をつく」そのもの）。
+    ('製造材質', 'basic.mfgMaterial'),
+    ('製造調質', 'basic.mfgTemper'),
+    ('製造板厚', 'basic.mfgThickness'),
+    ('製造板幅', 'basic.mfgWidth'),
+    ('製造板丈', 'basic.mfgLength'),
+    ('オーダー材質', 'basic.orderMaterial'),
+    ('オーダー調質', 'basic.orderTemper'),
+    ('オーダー板厚', 'basic.orderThickness'),
+    ('オーダー板幅', 'basic.orderWidth'),
+    ('オーダー板丈', 'basic.orderLength'),
+    ('引当番号', 'basic.allocationNo'),
+    ('用途コード', 'basic.purposeCode'),
+    ('設計コース', 'basic.designCourse'),
+    ('実績コース', 'basic.course'),
+    ('残仕掛コース', 'basic.residualCourse'),
+    ('元幅（BOX実績_板幅）', 'basic.originalWidth'),
     ('登録設備', 'settings.registeredEquipment'),
     ('入力内容', 'settings.measureType'),
     ('丈位置', 'settings.lengthPos'),
@@ -175,17 +195,19 @@ LOT_CATALOG = (
 # **ありそうな値にする**（`123`ではなく`L240815-03`）——長さと文字種が
 # 実物と違うと、紙に入るかどうかを見誤る（§9.130「入れ物の大きさは中身の
 # 長さから決める」を確かめる道具なので、中身が嘘だと意味が無い）。
+# **ロット№は7桁**（§9.254 ④、利用者の指示「ダミーデータのロット№の桁数は
+# 7桁にしてください」）。実機のLotDsp検索は`linkkey`を**7文字固定幅**の
+# ロット番号で組み立てる（`base.js`の`lotDspField()`）ので、7桁が実物の桁数。
+# 子ロットも同じ桁数の別番号にする（分割後はそれぞれが独立したロット）。
+SAMPLE_LOT_NO = 'L240815'
 SAMPLE_VALUES = {
-    'basic.lotNo': 'L240815-03',
-    'basic.inspectionNo': 'K0241',
-    'basic.castingNo': 'C7821',
+    'basic.lotNo': SAMPLE_LOT_NO,
+    'basic.inspectionNo': 'K024107',
+    'basic.castingNo': 'C78210',
     'basic.orderNo': 'ORD-24-00815',
     'basic.purposeName': '端子用条',
     'basic.customer': '○○電機株式会社',
     'basic.delivery': '△△工場 第2倉庫',
-    'basic.material': 'C1020-1/2H',
-    'basic.thickness': '0.300',
-    'basic.width': '1250',
     # 既定の塊（基本情報・コース情報・寸法）が読む道。**`FIELD_CATALOG`に
     # 無い道もここに置く**（§9.253）——見本のロットは「全部の欄が埋まって
     # いる1件」であることが値打ちなので、`-`のままの欄を残さない。
@@ -198,18 +220,24 @@ SAMPLE_VALUES = {
     'basic.orderMaterial': 'C1020',
     'basic.orderTemper': '1/2H',
     'basic.orderThickness': '0.300',
-    'basic.orderWidth': '12.5',
+    'basic.orderWidth': '30.0',
     'basic.orderLength': '2000',
     'basic.mfgMaterial': 'C1020',
     'basic.mfgTemper': '1/2H',
     'basic.mfgThickness': '0.300',
-    'basic.mfgWidth': '12.5',
+    # **条幅と元幅は辻褄を合わせる**（§9.254 ④）——製造板幅は「条1本の幅」で、
+    # 元幅（BOX実績_板幅）は母材の幅。`_SAMPLE_SPLIT`の合計＋屑幅＝元幅。
+    'basic.mfgWidth': '30.0',
     'basic.mfgLength': '2000',
+    'basic.originalWidth': '1224.5',
     'settings.registeredEquipment': 'スリッター1号',
     'settings.measureType': '板厚',
-    'settings.lengthPos': '中',
-    'settings.verticalCount': '3',
-    'settings.horizontalCount': '8',
+    # 丈位置は**選択欄に実在する綴り**にする（`updateLengthOptions()`が
+    # `1(頭)…N(頭)`＋`N(尾)`を作る）。`select.value`に無い値を入れると
+    # 空文字へ落ちて記録が黙って消える（§9.204と同じ罠）。
+    'settings.lengthPos': '1(頭)',
+    'settings.verticalCount': '9',
+    'settings.horizontalCount': '40',
     'settings.operator': '山田 太郎',
     'settings.inspector': '佐藤 花子',
     'settings.crewSize': '2',
@@ -219,13 +247,22 @@ SAMPLE_VALUES = {
     # 空の端末でも見本が出るように**、ここでも1つずつ持つ。
     'settings.thicknessGauge': 'マイクロメータ-A',
     'settings.widthGauge': 'ノギス-B',
-    'settings.unwind': '上巻',
-    'settings.widthOrder': 'OS→DS',
-    'settings.widthDirection': 'OS',
-    'settings.burrAlign': 'バリ上',
-    'settings.coilStop': 'テープ止め',
+    # **選択欄に実在する綴りにすること**（§9.254 ④）。以前は`上巻`／`OS→DS`／
+    # `OS`／`バリ上`と、どの選択肢にも無い値だった——長さも文字種も実物と違うので、
+    # 幅を確かめる道具にならない（§9.130）。綴りは`index.html`の選択欄と
+    # `operation_repo.CHOICE_SEEDS`が正。
+    'settings.unwind': '上出し',
+    'settings.widthOrder': '奇数条優先',
+    'settings.widthDirection': '昇順',
+    # **鍵は`burr`**（組み込みの欄のキー。`operation_repo.BUILTIN_*`）。
+    # `burrAlign`はどこからも読まれない綴りだったので、測定条件の
+    # 「バリ揃え」は見本でも既定の「指定なし」のままだった。
+    'settings.burr': '上バリ揃え',
+    'settings.coilStop': '内巻両面テープ',
+    # 梱包員（作業班構成が読む道）。**空のままにしない**（§9.254 ④）。
+    'settings.packer': '鈴木 一郎',
     # 母材の欄（§9.232）。単位はmmで、桁も実物に寄せる。
-    'settings.motherOriginalWidth': '1250',
+    'settings.motherOriginalWidth': '1224.5',
     'settings.motherScrapWidth': '18.0',
     'settings.motherCalcLength': '1980',
     'settings.motherManual': '1985',
@@ -247,17 +284,17 @@ SAMPLE_VALUES = {
     'calc.workDuration': '3時間25分',
     'calc.status': '完了',
     'calc.updatedAt': '2026-08-27 11:42',
-    'lot.no': 'L240815-03-2',
-    'lot.range': '条 5〜8',
-    'lot.strips': '4条',
+    'lot.no': 'L240817',
+    'lot.range': '条 7〜11',
+    'lot.strips': '5条',
     'lot.index': '2',
-    'lot.count': '3',
+    'lot.count': '9',
 }
 # 統計は**項目ごとに桁が違う**（板厚は3桁・板幅は2桁・N数は整数）。
 # 表で持つと項目を1つ足すたびに40行増えるので、項目の代表値と集計の作り方で持つ。
 _STAT_SAMPLE = {
     'thickness': ('0.298', '0.302', '0.300', '0.004'),
-    'width': ('12.48', '12.53', '12.50', '0.05'),
+    'width': ('29.96', '30.05', '30.00', '0.09'),
     'lateral': ('0.2', '0.8', '0.5', '0.6'),
     'burr': ('0.01', '0.03', '0.02', '0.02'),
     'telescope': ('0.5', '1.2', '0.8', '0.7'),
@@ -265,12 +302,16 @@ _STAT_SAMPLE = {
     'length': ('1998', '2002', '2000', '4'),
     'wall': ('1.48', '1.52', '1.50', '0.04'),
 }
+# N数は**項目ごとに違う**（§9.254 ④）。条ごとに測るもの（板幅ほか）は
+# 丈×条、板厚は丈×3点、丈ごとの記録（板丈・肉厚）は丈の数——1つの数で
+# 揃えると、見本を見た人が「1点でも400点でも同じ」と読んでしまう（§9.214）。
+_STAT_N = {'thickness': 3 * 10, 'length': 10, 'wall': 10}
 for _k, _vals in _STAT_SAMPLE.items():
     SAMPLE_VALUES[f'stat.{_k}.min'] = _vals[0]
     SAMPLE_VALUES[f'stat.{_k}.max'] = _vals[1]
     SAMPLE_VALUES[f'stat.{_k}.avg'] = _vals[2]
     SAMPLE_VALUES[f'stat.{_k}.span'] = _vals[3]
-    SAMPLE_VALUES[f'stat.{_k}.n'] = '80'
+    SAMPLE_VALUES[f'stat.{_k}.n'] = str(_STAT_N.get(_k, 40 * 10))
 
 
 # ---------------------------------------------------------------------------
@@ -298,21 +339,111 @@ for _k, _vals in _STAT_SAMPLE.items():
 SAMPLE_RECORD_ID = '__sample__'
 # 見本の測定値。**実物に寄せた桁とばらつき**にする（§9.250 ⑤と同じ理由）
 # ——桁が違うと紙に入るかどうかを見誤る。中心値は`_STAT_SAMPLE`と揃える。
-_SAMPLE_LENGTHS = ('1(頭)', '中', '尾')
-_SAMPLE_STRIPS = 8
+#
+# **器の上限まで埋める**（§9.254 ④、利用者の指示「最大データ数40条分
+# 埋まっているなど、埋まっていないデータがないようにすべてのデータ項目で
+# 表示したい」）。紙に入るかどうかを確かめる道具なので、**いちばん詰まった
+# ロット**で見られないと意味が無い（8条3丈では、40条10丈の紙が何枚になるか
+# 分からない）。条は`measurements`の器の幅（40）、丈は選択欄の上限
+# （`updateLengthOptions()`が作る`1(頭)…9(頭)`＋`9(尾)`＝10）。
+_SAMPLE_VERTICAL = 9
+_SAMPLE_LENGTHS = tuple(f'{i + 1}(頭)' for i in range(_SAMPLE_VERTICAL)) + (f'{_SAMPLE_VERTICAL}(尾)',)
+_SAMPLE_STRIPS = 40
 _SAMPLE_SERIES = {
     # 鍵: (中心値, 1つずつずらす幅, 小数桁, 1丈あたりの本数)
     #     本数 None は「条の数だけ」（板厚だけが丈ごとに3点・§9.138）。
     'thickness': (0.300, 0.002, 3, 3),
-    'width': (12.50, 0.02, 2, None),
+    'width': (30.00, 0.03, 2, None),
     'lateral': (0.5, 0.1, 1, None),
     'burr': (0.02, 0.01, 2, None),
     'telescope': (0.8, 0.1, 1, None),
     'offset': (0.6, 0.1, 1, None),
 }
-# 子ロット（分割あり）。**合計は条数と合わせる**——合わないと、
+# 平面度と備考は数の列ではないので別に持つ。**空にしない**——空欄の列が
+# 1本あると、その塊だけ紙の上で実物より痩せて見える（§9.130）。
+_SAMPLE_FLATNESS = ('〇', '〇', '〇', '△', '〇', '〇', '×', '〇')
+_SAMPLE_COMMENTS = ('', '軽微キズ', '', '端部ダレ', '', '', '色ムラ', '')
+# 子ロット（異幅分割）。**合計は条数と合わせる**——合わないと、
 # `rpSplitLots()`が数える条の範囲と実際の測定値の並びがずれる。
-_SAMPLE_SPLIT = (('L240815-03-1', 3), ('L240815-03-2', 3), ('L240815-03-3', 2))
+# 幅を1つずつ変えてあるのは**異幅分割の紙**を確かめるため（等幅だと
+# 子ロットごとの公差の欄が全部同じ値になり、効いているか分からない）。
+# ロット№は親と同じ7桁（§9.254 ④）。**下3桁は重ねない**——条の図の
+# バッジは下3桁を出すので、重なると別の子ロットが同じ札になる。
+_SAMPLE_SPLIT = (
+    ('L240816', 6, 32.0),
+    ('L240817', 5, 31.5),
+    ('L240818', 5, 31.0),
+    ('L240819', 4, 30.5),
+    ('L240820', 4, 30.0),
+    ('L240821', 4, 29.5),
+    ('L240822', 4, 29.0),
+    ('L240823', 4, 28.5),
+    ('L240824', 4, 28.0),
+)
+# 母材（元幅）と屑幅。**条幅の合計＋屑幅＝元幅**にする（辻褄が合わないと、
+# 条の設計の帯も異常位置判定の図も出せない）。屑は**片寄せ**にしてある
+# ——均等だと`scrapOs`／`scrapDs`を分けて持つ意味が紙で確かめられない（§9.160）。
+_SAMPLE_SLIT = round(sum(n * w for _, n, w in _SAMPLE_SPLIT), 3)
+_SAMPLE_SCRAP = 18.0
+_SAMPLE_SCRAP_OS = 10.5
+_SAMPLE_ORIGINAL_WIDTH = round(_SAMPLE_SLIT + _SAMPLE_SCRAP, 3)
+# 幅の公差（親ロットの`source`と同じ値。子ロットごとの欄がここから出る）。
+_SAMPLE_WIDTH_TOL = {'plus': 0.05, 'minus': 0.05}
+_SAMPLE_WIDTH_TOL_ORDER = {'plus': 0.08, 'minus': 0.08}
+
+
+def _sample_lanes():
+    """条の並び（OS側から）。`defect-locator.js`の`lanes()`と同じ形。"""
+    out, acc = [], 0.0
+    i = 0
+    for lot, count, width in _SAMPLE_SPLIT:
+        for _ in range(count):
+            out.append({'index': i, 'lot': lot, 'width': width,
+                        'start': round(acc, 3), 'end': round(acc + width, 3)})
+            acc += width
+            i += 1
+    return out
+
+
+# 異常位置判定（§9.254 ④、利用者の指示「条の異常位置判定がある場合なども
+# 異常データがあるものとして、異常情報もあるものとして設定を」）。
+#
+# 帳票が読むのは**保存されたスナップショット**（`settings.defectLocation.saved`）
+# だけで、`defect-locator.js`は「保存した時点の判定」をそのまま描く——つまり
+# ここが持つのは**凍った1件の記録**であって、判定の処理ではない（現場の
+# 保存済みデータとまったく同じ立場。§CLAUDE「同じ処理を2つ持たない」に
+# 触れない）。数字は`compute()`と同じ式でここに書き下してある。
+_SAMPLE_DEFECT_BASIS = 'os'          # OSからの距離で指す
+_SAMPLE_DEFECT_DISTANCE = 620.0      # mm
+_SAMPLE_DEFECT_WIDTH = 40.0          # mm（3条にまたがる幅にしてある）
+_SAMPLE_DEFECT_MEMO = 'OS側 620mm付近に連続した打痕。ロール起因の疑い。'
+
+
+def _sample_defect_saved():
+    """凍らせた異常位置判定1件。**該当条が必ず出る**ように作る。"""
+    lanes = _sample_lanes()
+    # 基準幅は元幅（屑を含む）。条1のOS端はOS側の屑幅だけ内側（compute()と同じ）。
+    base_width = _SAMPLE_ORIGINAL_WIDTH
+    pos = round(_SAMPLE_DEFECT_DISTANCE - _SAMPLE_SCRAP_OS, 3)
+    lo = round(pos - _SAMPLE_DEFECT_WIDTH / 2, 3)
+    hi = round(pos + _SAMPLE_DEFECT_WIDTH / 2, 3)
+    hits = [dict(l, fromLaneOs=round(max(0.0, min(l['width'], pos - l['start'])), 3))
+            for l in lanes if l['end'] > lo and l['start'] < hi]
+    inp = {'basis': _SAMPLE_DEFECT_BASIS, 'distance': str(_SAMPLE_DEFECT_DISTANCE),
+           'widthBasis': 'original', 'defectWidth': str(_SAMPLE_DEFECT_WIDTH),
+           'memo': _SAMPLE_DEFECT_MEMO}
+    return {'savedAt': SAMPLE_VALUES.get('updatedAt', ''), 'input': inp,
+            'basis': _SAMPLE_DEFECT_BASIS, 'widthBasis': 'original',
+            'distance': _SAMPLE_DEFECT_DISTANCE, 'defectWidth': _SAMPLE_DEFECT_WIDTH,
+            'memo': _SAMPLE_DEFECT_MEMO,
+            'baseWidth': base_width, 'original': _SAMPLE_ORIGINAL_WIDTH,
+            'scrap': _SAMPLE_SCRAP, 'scrapOs': _SAMPLE_SCRAP_OS,
+            'scrapDs': round(_SAMPLE_SCRAP - _SAMPLE_SCRAP_OS, 3), 'scrapBiased': True,
+            'slit': _SAMPLE_SLIT, 'pos': pos, 'lo': lo, 'hi': hi,
+            'lanes': lanes, 'hits': hits}
+
+
+_SAMPLE_DEFECT = _sample_defect_saved()
 
 
 def _put_path(out, path, value):
@@ -357,9 +488,46 @@ def sample_record(c=None, equipment=''):
         st['registeredEquipment'] = eq
     rec['registeredEquipment'] = st.get('registeredEquipment', '')
     # 数で持つもの（画面が`Number()`で扱う）。文字のままだと条数が1になる。
-    st['verticalCount'] = len(_SAMPLE_LENGTHS)
+    # **丈数は「頭の数」**（`lengthLabels()`が`N(尾)`を`N`番目として読む）ので、
+    # 丈の札の数（頭N＋尾1）とは1つずれる。
+    st['verticalCount'] = _SAMPLE_VERTICAL
     st['horizontalCount'] = _SAMPLE_STRIPS
-    st['splitGroups'] = [{'lot': lot, 'count': n} for lot, n in _SAMPLE_SPLIT]
+    # 子ロット。**基準幅と公差まで入れる**（§9.254 ④）——`widthRowContext()`が
+    # ここから子ロットごとの公差の範囲を作るので、入れないと紙の
+    # 「範囲下限／範囲上限」が親ロットの公差で全部同じ値になる。
+    st['splitGroups'] = [{'lot': lot, 'count': n,
+                          'base': {'width': w, 'lotNo': lot},
+                          'tol': {'width': {'manufacturing': dict(_SAMPLE_WIDTH_TOL),
+                                            'order': dict(_SAMPLE_WIDTH_TOL_ORDER)}},
+                          'missing': False}
+                         for lot, n, w in _SAMPLE_SPLIT]
+    # 条→子ロットの対応（`defect-locator.js`の`lanes()`が見る）。**これが
+    # 無いと条幅が分からず**、条の設計の図も異常位置判定の図も出せない。
+    pos_group = []
+    for gi, (_lot, n, _w) in enumerate(_SAMPLE_SPLIT):
+        pos_group.extend([gi] * n)
+    st['splitPositionGroup'] = pos_group
+    # 屑幅の片寄せ（§9.160）。**OS側の実寸そのもの**を持つ。
+    st['scrapOsWidth'] = _SAMPLE_SCRAP_OS
+    # 異常位置判定（§9.254 ④）。入力と、帳票へ載る**保存済みの判定**の両方。
+    st['defectLocation'] = {'basis': _SAMPLE_DEFECT_BASIS,
+                            'distance': str(_SAMPLE_DEFECT_DISTANCE),
+                            'widthBasis': 'original',
+                            'defectWidth': str(_SAMPLE_DEFECT_WIDTH),
+                            'memo': _SAMPLE_DEFECT_MEMO,
+                            'lanes': [{'index': h['index'], 'lot': h['lot'],
+                                       'width': h['width']}
+                                      for h in _SAMPLE_DEFECT['hits']],
+                            'position': _SAMPLE_DEFECT['pos'],
+                            'updatedAt': SAMPLE_VALUES.get('updatedAt', ''),
+                            # **写しを配る**——画面はこのレコードを書き換えるので、
+                            # 使い回すと2回目に開いた見本が前回の続きになる。
+                            'saved': _copy.deepcopy(_SAMPLE_DEFECT)}
+    # 長手方向（ロールを特定）の入力（§9.239 ⑥）。**こちらも埋める**
+    # ——同じ窓の②が空だと、判定の材料がそろった1件にならない。
+    st['defectRoll'] = {'pitch': 314.2, 'tol': 3, 'face': '上面', 'harmonics': 3,
+                        'memo': '打痕の繰り返し間隔（実測3点の平均）',
+                        'updatedAt': SAMPLE_VALUES.get('updatedAt', '')}
     # 母材は記録の鍵が `mother.<キー>`（§9.232。`settings.mother*`は
     # 操業データ項目としての道で、**どちらの道で組んだ塊もある**ので両方入れる）。
     rec['mother'] = {
@@ -388,7 +556,11 @@ def sample_record(c=None, equipment=''):
         '板厚公差_オーダー_プラス': 0.008, '板厚公差_オーダー_マイナス': 0.008,
         '板幅公差_オーダー_プラス': 0.08, '板幅公差_オーダー_マイナス': 0.08,
     }
-    rec['qualityInfo'] = '異常情報なし'
+    # **異常情報も「有る」ほうで持つ**（§9.254 ④、利用者の指示「異常情報も
+    # あるものとして設定を」）——「異常情報なし」だと、その欄が紙で何行に
+    # なるのか確かめられない（§9.130）。
+    rec['qualityInfo'] = ('OS側 620mm付近に打痕（19〜21条）。ロール起因の疑いで'
+                          '異常位置判定を保存済み。該当条は要選別。')
     rec['status'] = '完了'
     rec['id'] = SAMPLE_RECORD_ID
     rec['createdAt'] = SAMPLE_VALUES.get('updatedAt', '')
@@ -406,20 +578,28 @@ def sample_record(c=None, equipment=''):
                 row.append(('%.' + str(digits) + 'f') % (base + step * k))
             rows.append(row)
         ms[key] = rows
-    ms['flatness'] = [['〇'] * _SAMPLE_STRIPS for _ in _SAMPLE_LENGTHS]
-    ms['comments'] = [[''] * _SAMPLE_STRIPS for _ in _SAMPLE_LENGTHS]
+    # 平面度と備考。**全部同じにしない**（§9.254 ④）——1種類だけだと、
+    # 異常の印が紙でどう出るのか確かめられない。
+    ms['flatness'] = [[_SAMPLE_FLATNESS[(li + si) % len(_SAMPLE_FLATNESS)]
+                       for si in range(_SAMPLE_STRIPS)] for li in range(len(_SAMPLE_LENGTHS))]
+    ms['comments'] = [[_SAMPLE_COMMENTS[(li + si) % len(_SAMPLE_COMMENTS)]
+                       for si in range(_SAMPLE_STRIPS)] for li in range(len(_SAMPLE_LENGTHS))]
     rec['measurements'] = ms
     # 丈ごとのデータ（板丈・肉厚・揃い）。**丈位置の名前も入れる**——
     # 空だと「どの丈の行か」が紙で分からない。
+    # **どの丈も埋める**（§9.254 ④）。エッジ形状は3通りを回して、
+    # 合否（OK／NG）と内訳の欄が**両方**紙に出るようにする（§9.204）。
+    _EDGE = ('揃い綺麗', 'のこぎり状', 'テレスコ状')
     rec['product'] = {'rows': [{
-        'productLength': ('%d' % (2000 + i)),
-        'wallThickness': ('%.2f' % (1.50 + 0.01 * (i - 1))),
-        'edgeShape': '揃い綺麗' if i == 0 else 'のこぎり状',
-        'occurrencePosition': '' if i == 0 else '端部',
-        'regularity': '' if i == 0 else '一定',
-        'direction': '' if i == 0 else 'OS',
-        'pitch': '' if i == 0 else '120',
-        'alignmentValue': '' if i == 0 else '1.2',
+        'productLength': ('%d' % (1998 + (i % 5))),
+        'wallThickness': ('%.2f' % (1.48 + 0.01 * (i % 5))),
+        'edgeShape': _EDGE[i % 3],
+        'occurrencePosition': '' if i % 3 == 0 else ('端部' if i % 3 == 1 else '中央'),
+        'regularity': '' if i % 3 == 0 else ('一定' if i % 3 == 1 else '不定'),
+        'direction': '' if i % 3 == 0 else ('OS' if i % 3 == 1 else 'DS'),
+        'pitch': '' if i % 3 == 0 else ('120' if i % 3 == 1 else '245'),
+        'alignmentValue': '' if i % 3 == 0 else ('1.2' if i % 3 == 1 else '2.8'),
+        'note': ('良' if i % 3 == 0 else ('要観察' if i % 3 == 1 else '選別対象')),
     } for i in range(len(_SAMPLE_LENGTHS))]}
     rec['workTime'] = rec.get('workTime') or {}
     # 操業データ（§9.215）。**項目は設備ごとのマスタが決める**ので並べない。
