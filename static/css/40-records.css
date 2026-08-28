@@ -211,20 +211,69 @@
 .settings-body{flex:1 1 auto;min-height:0;overflow:auto;padding:var(--space-5)}
 .settings-body>p{margin:0 0 18px;padding:var(--pad-card);border-left:4px solid var(--teal);background:#eef8f9;color:#526970;line-height:1.7}
 .settings-body label{display:grid;gap:var(--gap-inline);font-weight:700}
-.settings-body select{width:100%;height:44px;background:#fff}
-.new-equipment-entry{margin-top:10px}
-.new-equipment-entry[hidden]{display:none}
-.new-equipment-entry input{width:100%}
-.equipment-master-help{margin-top:8px;padding:9px 11px;border:1px solid #b9cdd1;border-radius:var(--radius-sm);background:#f7fafb;color:#526970;line-height:1.5}
-.equipment-master-help.warn{border-color:var(--warn-border);background:var(--warn-bg);color:var(--warn-fg)}
-.equipment-master-help.ok{border-color:#62aa96;background:#edf9f5;color:#1e624d}
-.setting-status{margin-top:10px;padding:9px 11px;border-radius:var(--radius-sm);background:#eef2f4;color:#526970}
-.setting-status.ok{background:#e8f8f2;color:#1e624d}
-.setting-status.warn{background:#fff0e3;color:#7a2f00}
-.settings-divider{margin:18px 0;border:0;border-top:1px solid var(--line)}
-.settings-hint{margin:6px 0 0;color:#60747b;font-size:var(--fs-micro);font-weight:400}
-.settings-actions{display:flex;justify-content:flex-end;gap:var(--space-2);margin-top:20px}
-.settings-actions #saveAppSettings{min-width:140px;height:42px;background:var(--teal);color:#fff;border-color:var(--teal);font-weight:800}
+/* ---------- 使用設備の設定（§9.257 ②、利用者の指示） ----------
+   「アプリ使用設備の設定のモーダルが使いづらいのでわかりやすく使いやすく
+    再構築してください。」
+
+   決めることは2つ（①この端末で使う設備 ②ロット№を開くタブ）で、
+   **決める順に節へ分ける**（§14）。面積は頻度×重要度で配るので①が主役、
+   ②は淡い地の小さな節（基準1）。
+   **色はトークンから取る**（§CLAUDE「リテラルの16進・pxを新しく足さない」）
+   ——直す前のこの節は`#eef8f9`／`#b9cdd1`／`#62aa96`のような直値が並び、
+   同じ役割の色が画面ごとに違っていた。 */
+.eqset .settings-body{display:flex;flex-direction:column;gap:var(--space-4)}
+.eqset-sec{display:flex;flex-direction:column;gap:var(--space-2)}
+/* **枠は「まとまり」だけに使う**（基準10）。①は枠を持たず、②だけ淡い面で
+   「別のこと」と分かるようにする（枠の中に枠を作らない）。 */
+.eqset-sec-minor{padding:var(--pad-card);border-radius:var(--radius-md);
+  background:var(--surface-2);border:1px solid var(--line-soft)}
+.eqset-sec>h3{display:flex;align-items:center;gap:var(--gap-inline);flex-wrap:wrap;
+  margin:0;font-size:var(--fs);line-height:var(--lh);color:var(--ink)}
+.eqset-no{display:inline-flex;align-items:center;justify-content:center;
+  min-width:1.6em;height:1.6em;border-radius:var(--radius-sm);
+  background:var(--teal);color:var(--surface);font-size:var(--fs-sm);font-weight:800}
+/* **いまの値はここだけに出す**（§CLAUDE 画面基準 8）。直す前は選択欄・
+   助けの行・状態の帯の3箇所に同じ設備名が出ていた。 */
+.eqset-now{margin-left:auto;padding:2px var(--space-2);border-radius:var(--radius-sm);
+  background:var(--surface-3);color:var(--ink-2);font-size:var(--fs-sm);font-weight:800}
+.eqset-now.is-none{background:var(--warn-bg);color:var(--warn-fg)}
+.eqset-now.is-pick{background:var(--teal);color:var(--surface)}
+.eqset-now.is-instant{background:transparent;color:var(--muted);font-weight:400}
+.eqset-lead{margin:0;color:var(--ink-3);font-size:var(--fs-sm);line-height:1.7}
+.eqset-lead b{color:var(--ink-2)}
+/* ---------- 選んでも1pxも動かない（§9.227 ②） ----------
+   「＋ 設備マスタへ新規登録」を選ぶと欄が生える形だと、選んだ拍子に窓が
+   伸びて下のボタンが逃げる。**場所は常に空けて中身だけ伏せる**——
+   `hidden`属性だと`[hidden]{display:none}`（utilityレイヤ）が当たって
+   行ごと消えるので、印はクラスで持つ。 */
+.eqset-pick{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-3);align-items:start}
+.eqset-new{visibility:hidden}
+.eqset-new.is-on{visibility:visible}
+/* **器は中身の長さから決める**（基準11）。設備名は`LS4`のような短い文字列
+   なので、器いっぱいに伸ばさない。 */
+.eqset-field{display:grid;gap:var(--gap-tight);font-weight:700;
+  font-size:var(--fs-sm);color:var(--ink-2)}
+.eqset-field>select,.eqset-field>input{width:100%;max-width:var(--w-lg);
+  height:var(--ctl-h);background:var(--surface);font-size:var(--fs);font-weight:400}
+/* 助けの行は**次にすること**を1つだけ言う。読み取り専用の文なので
+   入力欄風の枠は付けない（基準10）。
+   **2行ぶんの場所を先に取る**（§9.227 ②）——文言は場面で1行にも2行にも
+   なるので、そのたびに窓が伸び縮みして下のボタンが逃げる（実測19px）。 */
+.eqset-help{margin:0;min-height:calc(var(--fs-sm) * 1.6 * 2);
+  color:var(--ink-3);font-size:var(--fs-sm);line-height:1.6}
+.eqset-help b{color:var(--ink-2)}
+.eqset-help.is-warn{color:var(--warn-fg)}
+/* 足の一言。**なぜここに居るか**と保存の結果を出す（§CLAUDE 6）。 */
+.eqset-foot{margin-right:auto;color:var(--ink-3);font-size:var(--fs-sm);line-height:1.5}
+.eqset-foot.is-warn{color:var(--warn-fg);font-weight:700}
+.eqset-foot.is-ok{color:var(--teal-dark);font-weight:700}
+/* 決めるボタンは**本文の外**（§9.255 ④／§9.222 ⑤）。本文だけがスクロール
+   するので、中身が増えてもボタンに手が届く。 */
+.eqset>.settings-actions{flex:0 0 auto;margin:0;padding:var(--pad-dialog);
+  border-top:1px solid var(--line-soft);background:var(--surface-2);align-items:center}
+.settings-actions{display:flex;justify-content:flex-end;gap:var(--space-2);margin-top:20px;flex-wrap:wrap}
+.settings-actions #saveAppSettings{min-width:var(--w-md);height:var(--ctl-h-lg);background:var(--teal);color:var(--surface);border-color:var(--teal);font-weight:800}
+.settings-actions #saveAppSettings:disabled{background:var(--surface-3);color:var(--muted);border-color:var(--line);cursor:not-allowed}
 .settings-actions .danger{min-width:120px;height:42px;background:#c62828;color:#fff;border-color:#c62828;font-weight:800}
 .settings-actions .danger:hover{background:#a31f1f}
 /* ---------- データ削除の確認モーダル(何も入力がないデータ以外はここでしっかり警告する) ---------- */

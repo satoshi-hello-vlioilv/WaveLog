@@ -81,7 +81,9 @@ G['列'] = ['test_collayout', 'test_colformat', 'test_colrule', 'test_colsort', 
            # §9.248 ③④: 表示列が消えない／表示中・非表示中の札
            'test_colkeep']
 # モーダルの閉じ方(§9.221 ①)はどの画面にも掛かる横断の約束。
-G['モーダル'] = ['test_modalkeep', 'test_maint', 'test_master', 'test_opui', 'test_opchoice']
+G['モーダル'] = ['test_modalkeep', 'test_maint', 'test_master', 'test_opui', 'test_opchoice',
+                 # §9.257 ②: 使用設備の設定（窓の作りは1箇所・選んでも動かない）
+                 'test_eqsetup']
 G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'test_sccat',
                      'test_scbalance', 'test_scbatch', 'test_screorder', 'test_scperm',
                      'test_scperf', 'test_wkfast', 'test_scsplit', 'test_scprint', 'test_scdrop', 'test_scpick', 'test_sccontent', 'test_workable',
@@ -205,7 +207,9 @@ RULES = [
                                      'test_recperm', 'test_reccols', 'test_lcpanel',
                                      'test_audittrail', 'test_recdel',
                                      # §9.248 ⑥: 見せる範囲を設備で絞る
-                                     'test_eqscope')),
+                                     'test_eqscope',
+                                     # §9.257 ②: 使用設備の設定モーダル（作りはここ1箇所）
+                                     'test_eqsetup')),
     # 測定画面は test_scale(寸法の網)の巡回にも入っている(§9.127)ので見た目も回す。
     ('static/js/measurement-', g('測定', '見た目', 'モーダル')),   # measurement-*.js
 

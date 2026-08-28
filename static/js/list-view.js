@@ -1887,7 +1887,7 @@ function renderGridInner(){
   }
   if(hasLotDsp){
    const lotBtn=tr.querySelector('.grid-lot-link');
-   if(lotBtn)lotBtn.onclick=e=>{e.preventDefault();e.stopPropagation();openLotDsp(pick(r,'lotNo'),castCol?r[castCol]:pick(r,'castingNo'),localStorage.getItem('LotDspLastTabV1')||'1')};
+   if(lotBtn)lotBtn.onclick=e=>{e.preventDefault();e.stopPropagation();openLotDsp(pick(r,'lotNo'),castCol?r[castCol]:pick(r,'castingNo'),WL.lotDspTab.get())};
   }
   /* ---------- 子ロットの行(§9.239 ⑤-2) ----------
      **畳んでいる間は作らない**。押した時点で親の直下へ差し込み、
