@@ -210,8 +210,7 @@ let b=null;
  });
  rec('取り込みと削除が色で見分けられる',!btn.sameColor&&btn.sep,JSON.stringify(btn));
  // 取り込みは確認モーダルで内容を示す(更新者IDが必要なので先に入れる)
- await page.evaluate(()=>{const u=document.querySelector('#masterUserId');
-   if(u){u.value='test-user';u.dispatchEvent(new Event('change',{bubbles:true}))}});
+ await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'test-user');
  await page.evaluate(()=>document.querySelector('#mmImpRun').click());
  const shown=await page.waitForSelector('#appConfirmModal:not([hidden])',{timeout:6000})
    .then(()=>true).catch(()=>false);

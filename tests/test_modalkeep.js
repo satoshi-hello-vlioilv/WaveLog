@@ -67,8 +67,8 @@ let b=null;
   /* ---- 4) マスタの編集モーダル: 打ちかけの文字が消えない ---- */
   await page.click('#openMasterMaint');
   await page.waitForSelector('#masterMaintPanel',{state:'visible',timeout:8000});
-  await page.fill('#masterUserId','tester');
-  await page.evaluate(()=>document.querySelector('#masterUserId').dispatchEvent(new Event('change')));
+  /* 更新者IDは打ち込む欄ではなくなった（§9.276 ③）。端末の覚え（localStorage）へ入れる。 */
+  await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'tester');
   await page.click('#masterMaintNav [data-master="accessPermission"]');
   /* **「追加」が出るまで待つ**（固定待ちにしない・tests/README.md）。 */
   await page.waitForSelector('#masterMaintAdd',{state:'visible',timeout:15000});

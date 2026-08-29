@@ -40,10 +40,7 @@ let b=null,page=null;
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:30000});
   await page.click('#openMasterMaint');
   await page.waitForSelector('#masterMaintNav [data-master="reportBlock"]',{timeout:20000});
-  await page.evaluate(()=>{
-   const el=document.querySelector('#masterUserId');
-   if(el&&!el.value){el.value='tests';el.dispatchEvent(new Event('change',{bubbles:true}))}
-  });
+  await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'tests');
   await page.click('#masterMaintNav [data-master="reportBlock"]');
   await page.waitForSelector('#masterMaintAdd',{timeout:20000});
   await page.click('#masterMaintAdd');

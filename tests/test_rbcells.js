@@ -34,8 +34,7 @@ const KEYS=['label','path','kind','span','rows','showLabel','align','format'];
  await page.waitForSelector('#saveState',{state:'attached',timeout:20000});
  await page.click('#openMasterMaint');
  await page.waitForSelector('#masterMaintNav',{timeout:20000});
- await page.evaluate(()=>{const el=document.querySelector('#masterUserId');
-  if(el){el.value='rbcells';el.dispatchEvent(new Event('change',{bubbles:true}))}});
+ await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'rbcells');
  await page.evaluate(()=>document.querySelector('#masterMaintNav [data-master="reportBlock"]')?.click());
  await page.waitForSelector('#masterMaintList .mm-row',{timeout:20000});
 
@@ -71,6 +70,29 @@ const KEYS=['label','path','kind','span','rows','showLabel','align','format'];
    rec('① 往復しても形が変わらない',rt.every(x=>x.same),
        JSON.stringify(rt.filter(x=>!x.same).slice(0,2)));
   }
+
+  /* ---- ①-b 属性へ埋めても切れない（§9.276 ⑤、利用者の報告） ----
+     「帳票ブロックのカスタムで表で組み替えて保存したらその瞬間はきれいに
+      保存されますが、再度読み込むと『表に組む』というボタンが押せなく
+      なっていたり」
+
+     本体は`esc()`——`textContent`→`innerHTML`に任せていたので**引用符を
+     逃がさず**、`value="${esc(v)}"`の属性がセルのJSON（`[{"label":…`）の
+     最初の`"`で閉じ、保存値が`[{`まで切り詰められていた。
+     **中身に使ったときの見え方は変わらない**（`&quot;`は`"`として出る）。 */
+  const escOk=await page.evaluate(()=>{
+   const raw='[{"a":1}] \'x\' <b> & ';
+   const out=esc(raw);
+   const d=document.createElement('div');
+   d.innerHTML=`<input value="${out}">`;
+   const i=d.querySelector('input');
+   const p=document.createElement('p');p.innerHTML=out;
+   return {属性で往復:i?i.value:null,中身の見え方:p.textContent,元:raw};
+  });
+  rec('① 引用符を含む値を属性へ埋めても切れない（§9.276 ⑤）',
+      escOk.属性で往復===escOk.元,JSON.stringify(escOk));
+  rec('① 中身に使ったときの見え方は変わらない',
+      escOk.中身の見え方===escOk.元,JSON.stringify(escOk));
 
   // 新規登録の窓を開く
   await page.evaluate(()=>{
@@ -179,9 +201,58 @@ const KEYS=['label','path','kind','span','rows','showLabel','align','format'];
       !!saved&&saved.fields===12&&saved.fmt===1&&/head/.test(saved.kinds),
       JSON.stringify(saved));
 
+  /* ---- ②-b 開き直しても組んだ表が残る（§9.276 ⑤、利用者の報告） ----
+     「再度読み込むと『表に組む』というボタンが押せなくなっていたり」
+
+     保存は通っていた——壊れていたのは**開き直し**で、セルのJSONを
+     `value="…"`へ埋めるときに`esc()`が引用符を逃がさず`[{`まで切れていた。
+     そのまま保存すると**マスタの中身まで壊れる**。
+     **保存の口だけを見る網では捕まらない**（サーバーは正しかった）ので、
+     **窓を開き直して盤の中身**を見る。 */
+  await page.evaluate(n=>{
+   const rows=[...document.querySelectorAll('#masterMaintList .mm-row')];
+   const r=rows.find(x=>(x.textContent||'').indexOf(n)>=0);
+   if(r)r.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));
+  },NAME);
+  await page.waitForSelector('#maintEditorModal:not([hidden])',{timeout:15000});
+  await page.evaluate(()=>{
+   const t=[...document.querySelectorAll('#maintEditorModal .mm-tabbar button')]
+    .find(b=>/何を載せる/.test(b.textContent||''));t&&t.click()});
+  await page.waitForSelector('.fb-rows',{timeout:15000});
+  await page.waitForTimeout(600);
+  const again=await page.evaluate(()=>{
+   const b=document.querySelector('.fb-table');
+   const raw=String((document.querySelector('#maintEditorForm [data-field="content"]')||{}).value);
+   return {表に組む:b?!b.disabled:null,
+     マス:document.querySelectorAll('.fb-row').length,
+     見出し:[...document.querySelectorAll('.fb-row-head .fb-label')].map(e=>e.value),
+     ラベル無し:document.querySelectorAll('.fb-row-bare').length,
+     /* **切れていないこと**——`[{`だけになっていたのが元の症状。 */
+     保存値の長さ:raw.length,JSONで読める:(()=>{try{return Array.isArray(JSON.parse(raw))}catch(e){return false}})()};
+  });
+  rec('②-b 開き直しても組んだ表がそのまま残る（保存値が切れない）',
+      again.マス===12&&again.ラベル無し===6&&again.JSONで読める===true
+      &&again.見出し.join(',')==='MIN,MAX,板厚,板幅,板丈',
+      JSON.stringify(again));
+  rec('②-b 開き直しても「表に組む」を押せる',again.表に組む===true,JSON.stringify(again));
+  await page.evaluate(()=>{const c=document.getElementById('maintEditorCancel');if(c)c.click()});
+  await page.waitForTimeout(400);
+
   // ---- ④ あとから足した塊が「出す」で紙に出る --------------------------
   const shownOk=await page.evaluate(async ([eq,n])=>{
    WL.reportBlocks.forget();
+   /* **「一度配置を保存した紙」を自分で作る**（§9.121）——以前は前の実行が
+      残した保存済みの配置に頼っており、まっさらなDBでは`saved:false`で
+      この網が落ちた（**置き土産が前提になっている網は網ではない**）。
+      いま出ている塊の並びをそのまま保存し、この塊だけを`hidden`にする。 */
+   {
+    const t=WL.reportLayout.targetOf(eq);
+    const info=await WL.reportLayout.info(eq);
+    const keys=(info.blocks||[]).map(b=>b.key);
+    await WL.columnLayout.save(t,{order:keys.filter(k=>k!==n),
+      hidden:[...new Set([...(WL.columnLayout.saved(t).hidden||[]),n])]});
+    WL.reportBlocks.forget();
+   }
    const before=await WL.reportLayout.info(eq);
    const had=(before.blocks||[]).find(x=>x.key===n);
    await WL.reportLayout.setShown(eq,n,true);
@@ -252,22 +323,59 @@ const KEYS=['label','path','kind','span','rows','showLabel','align','format'];
    lv:document.documentElement.getAttribute('data-hint'),
    def:(document.querySelector('#masterMaintForm .mm-def-hint')||{}).textContent||'',
    more:document.querySelectorAll('#masterMaintForm .mm-more').length}));
+  /* §9.276 ②。**帯ではなく浮きメニュー**になったので、押して開いてから選ぶ。
+     `#mmHintMenu`は`body`直下（`#mmHead`は`overflow`を持つ器の中）。 */
+  const setHint=async v=>{
+   await page.evaluate(()=>document.querySelector('#mmHintBadge').click());
+   await page.waitForSelector('#mmHintMenu',{timeout:5000});
+   await page.evaluate(x=>document.querySelector(`#mmHintMenu [data-hint-lv="${x}"]`).click(),v);
+   await page.waitForFunction(x=>document.documentElement.getAttribute('data-hint')===x
+     &&!document.getElementById('mmHintMenu'),v,{timeout:5000});
+   await page.waitForTimeout(250);
+  };
   await page.evaluate(()=>document.querySelector('#masterMaintNav [data-master="equipment"]')?.click());
   await page.waitForTimeout(900);
   const full=await hints();
-  await page.evaluate(()=>document.querySelector('#mmHead [data-hint-lv="short"]').click());
-  await page.waitForTimeout(300);
+  await setHint('short');
   const short=await hints();
-  await page.evaluate(()=>document.querySelector('#mmHead [data-hint-lv="off"]').click());
-  await page.waitForTimeout(300);
+  await setHint('off');
   const off=await hints();
-  await page.evaluate(()=>document.querySelector('#mmHead [data-hint-lv="full"]').click());
-  await page.waitForTimeout(200);
+  await setHint('full');
   rec('⑥ 「短め」は最初の1文だけ（文の途中で切らない）',
       short.def.length>0&&short.def.length<full.def.length&&/。$/.test(short.def),
       JSON.stringify({full:full.def.length,short:short.def}));
   rec('⑥ 「出さない」で説明が消える',off.def==='' &&off.lv==='off',JSON.stringify(off));
   rec('⑥ 通常へ戻せる（片道にしない）',(await hints()).def===full.def);
+  /* **いま何を選んでいるかはボタンに文字で出す**（§CLAUDE 3）——畳んだだけで
+     現在値が読めなくなるのでは、場所を空けた意味が無い。 */
+  await setHint('short');
+  const badge=await page.evaluate(()=>({
+   label:(document.querySelector('#mmHintLabel')||{}).textContent||'',
+   title:(document.querySelector('#mmHintBadge')||{}).title||''}));
+  rec('⑥ いま選んでいる量をボタンが名乗る',
+      badge.label==='短め'&&/短め/.test(badge.title),JSON.stringify(badge));
+
+  /* ---- ⑦ 専用の画面（`special:*`）を潰さない（§9.276 ②、利用者の報告） ----
+     「マスタを確認しているときに説明文の長さを切り替えると、マスタ表示内容が
+      消えます」——`renderMaintList()`が汎用の一覧を無条件に書いていたため。
+     **専用の画面で試すこと**——ふつうのマスタ（設備）で切り替える網は、
+     直す前でも通る（あちらは汎用の一覧そのものなので描き直せば戻る）。 */
+  await page.evaluate(()=>document.querySelector('#masterMaintNav [data-master="presence"]')?.click());
+  await page.waitForFunction(()=>{
+   const l=document.getElementById('masterMaintList');
+   return l&&l.textContent.replace(/\s+/g,'').length>10;
+  },null,{timeout:20000});
+  const before=await page.evaluate(()=>({
+   len:document.getElementById('masterMaintList').textContent.replace(/\s+/g,'').length,
+   pz:!!document.getElementById('pzList')}));
+  await setHint('off');
+  await page.waitForTimeout(600);
+  const after=await page.evaluate(()=>({
+   len:document.getElementById('masterMaintList').textContent.replace(/\s+/g,'').length,
+   pz:!!document.getElementById('pzList')}));
+  rec('⑦ 説明の量を切り替えても専用の画面の中身が消えない',
+      before.pz&&after.pz&&after.len>10,JSON.stringify({before,after}));
+  await setHint('full');
 
  }catch(e){
   rec('FATAL',false,e.message);
@@ -283,12 +391,15 @@ const KEYS=['label','path','kind','span','rows','showLabel','align','format'];
        body:JSON.stringify({user_id:'rbcells',id:r.id})});
      if(window.WL&&WL.reportBlocks)WL.reportBlocks.forget();
      /* 紙の並びからも外す（残すと次の実行が「知らない列」として末尾へ回す）。 */
+     /* **紙の設定ごと消す**（§9.121）——この網は④で自分から配置を保存する
+        ので、残すと次の実行がその置き土産を引き継ぐ（見本のロットの設備は
+        `run_all.sh`の`resetcontent`の対象でもなかった）。 */
      const t=WL.reportLayout.targetOf(eq);
-     const now=WL.columnLayout.saved(t);
-     if((now.order||[]).indexOf(n)>=0){
-      await WL.columnLayout.save(t,{order:(now.order||[]).filter(k=>k!==n),
-        hidden:(now.hidden||[]).filter(k=>k!==n)});
-     }
+     await api('/api/column-layout-master',{method:'POST',
+       headers:{'Content-Type':'application/json'},
+       body:JSON.stringify({target:t,clear:true,order:[],hidden:[],widths:{},
+         names:{},formats:{},rules:{},formulas:{},locks:[],sorts:{},user_id:'rbcells'})});
+     WL.columnLayout.forget(t);
     }catch(e){}
    },[NAME,EQ]);
    await page.evaluate(()=>{try{localStorage.removeItem('MasterHintLevelV1')}catch(e){}});

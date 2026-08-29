@@ -484,6 +484,13 @@
   });
  }
 
+ /* ---------- 見本は「記録の対象にしない」（§9.276 ⑥） ----------
+    `values()`／`apply()`／`collect()`／`paintAuto()`は**画面全体**から
+    `[data-op]`・`[data-opauto]`を拾う（測定画面には欄が1組しか無い前提）。
+    設定窓の見本も同じ印を持つと、**開いているロットの記録へ見本の値が
+    混ざる**——見本は`def.preview`を立てて印を持たない形で作る。
+    印の綴りを2つ持たないよう、**属性を付けるかどうかだけ**を分ける。 */
+ const opAttr=def=>def&&def.preview?'':` data-op="${esc(def.name)}"`;
  function fieldEl(def,i){
   const label=document.createElement('label');
   label.className='opf';
@@ -497,19 +504,19 @@
    /* 自動で入る値（§9.234 ②）。**打てる欄を作らない**——押せるのに何も
       起きない欄は壊れて見える（§4）。母材の参考値3つと同じ`<output>`で、
       `values()`／`apply()`／`collect()`は`.value`をそのまま読める。 */
-   label.dataset.opauto=def.autoValue;
-   control=`<output id="${id}" data-op="${esc(def.name)}"></output>`;
+   if(!def.preview)label.dataset.opauto=def.autoValue;
+   control=`<output id="${id}"${opAttr(def)}></output>`;
   }else if(def.type==='選択'){
    const opts=['<option value=""></option>']
      .concat((def.choices||[]).map(v=>`<option value="${esc(v)}">${esc(v)}</option>`)).join('');
-   control=`<select id="${id}" data-op="${esc(def.name)}">${opts}</select>`;
+   control=`<select id="${id}"${opAttr(def)}>${opts}</select>`;
   }else if(isNumeric(def.type)){
    /* `type=number`にしない（§9.208 ③）——`.5`のような途中の形が
       **黙って消える**。文字として受けて自分で整える。 */
    control=`<input id="${id}" class="numeric-input" type="text" inputmode="decimal"`
-     +` data-op="${esc(def.name)}" autocomplete="off">`;
+     +`${opAttr(def)} autocomplete="off">`;
   }else{
-   control=`<input id="${id}" type="text" data-op="${esc(def.name)}" autocomplete="off">`;
+   control=`<input id="${id}" type="text"${opAttr(def)} autocomplete="off">`;
   }
   label.title=[def.name,def.unit?`単位 ${def.unit}`:'',
                def.autoValue?`自動で入る値（${def.autoValueLabel||def.autoValue}）`:hint,
@@ -2835,6 +2842,39 @@
  /* マスタ管理の設定窓が**同じ部品**で見本を出すための口（§9.218 ①）。
     見本を別に作ると、設定画面で見えた形と実際の形が食い違う
     （§9.176の`entryCellInfo()`と同じ約束）。 */
+ /* ---------- 見本の欄は測定画面と同じ手順で作る（§9.276 ⑥、利用者の指示） ----------
+    「操業データ項目のモーダル左半分のプレビュー機能が再現度が中途半端です。
+     …UIのサイズがバラバラで再現されていない。…変更中の対象項目だけの
+     再現で十分なので再現度をしっかり上げてほしいです」
+
+    以前は設定窓が`<label>`と中の欄を**自前で組み立て**、そのあとで
+    `previewWidget()`・`presentation()`を呼んでいた。組み立てが2箇所に
+    分かれている以上、測定画面の`layout()`が足す1手でも欠ければ見本だけが
+    違う形になる（実際に、`placeholder`に単位を入れていたため**「内部」に
+    した単位が二重に出て**いた）。
+
+    **通すのはこの1本**（§9.163）——`fieldEl()`から`applyLook()`まで、
+    `layout()`が1つの欄に対してする手順をそのままの順番でなぞる。
+    **`def.preview`を立てて呼ぶこと**——記録の対象にしないため（`fieldEl`）。 */
+ function buildPreviewField(def){
+  const d=Object.assign({},def,{preview:true});
+  const el=fieldEl(d,'prev');
+  /* `opf-host`＝マスタが差配している欄の印（§9.233 ③）。**器の名前ごとに
+     書き分けない**ので、単位の逃げ場も高さも意匠も測定画面と同じCSSが当たる。 */
+  el.classList.add('opf-host');
+  el.dataset.opfill='1';
+  applyPresentation(el,d);
+  const kind=widgetOf(d);
+  const needsBox=kind!==WIDGET_SELECT||(d.freeText&&el.querySelector(':scope>select'));
+  if(needsBox&&valueEl(el))buildWidget(d,el,kind);
+  else stripWidget(el);
+  if(outputEl(el)&&kind!==WIDGET_SELECT)el.dataset.opout=kind;
+  else delete el.dataset.opout;
+  /* **単位は器を被せたあと**（§9.233 ④）——先に置くと「外下」が器の上に出る。 */
+  placeUnit(el,d);
+  applyLook(el,d);
+  return el;
+ }
  function previewWidget(def,host,kind){
   try{return buildWidget(def,host,kind)}catch(e){console.warn('見本を作れませんでした',e);return false}
  }
@@ -2883,6 +2923,10 @@
                項目が増えるたびに同じ判定が増える。 */
             sourceNotePlace,
             syncAutoOpen,syncWidgets,previewWidget,ruleText,
+            /* 見本の欄まるごと（§9.276 ⑥）。**設定窓はこれを使う**——
+               `<label>`から組み立てを写すと、測定画面に1手足したときに
+               見本だけ古い形のまま残る。 */
+            buildPreviewField,
             /* 見せ方を当てる口（§9.221 ⑦）。**当てるのはこの1本**——設定窓の
                見本も測定画面もここを通るので、形が食い違わない。 */
             /* 意匠（§9.223 ③）もこの口が当てる——**選ばせ方が「プルダウン」の

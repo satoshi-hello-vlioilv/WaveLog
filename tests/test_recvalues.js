@@ -53,10 +53,7 @@ let b=null,page=null,turnedOff=false;
   await page.evaluate(()=>{const m=document.querySelector('#measureModal');if(m)m.hidden=true});
   await page.click('#openMasterMaint');
   await page.waitForSelector('#masterMaintNav [data-master="opItem"]',{timeout:20000});
-  await page.evaluate(()=>{
-   const el=document.querySelector('#masterUserId');
-   if(el&&!el.value){el.value='tests';el.dispatchEvent(new Event('change',{bubbles:true}))}
-  });
+  await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'tests');
   await page.click('#masterMaintNav [data-master="opItem"]');
   await page.waitForSelector('.op-board',{timeout:20000});
   await page.waitForTimeout(700);

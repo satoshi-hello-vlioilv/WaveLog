@@ -88,8 +88,8 @@ async function cleanup(){
   await page.waitForSelector('#openMasterMaint',{timeout:15000});
   await page.click('#openMasterMaint');
   await page.waitForSelector('#masterMaintPanel',{state:'visible',timeout:8000});
-  await page.fill('#masterUserId','tester');
-  await page.evaluate(()=>document.querySelector('#masterUserId').dispatchEvent(new Event('change')));
+  /* 更新者IDは打ち込む欄ではなくなった（§9.276 ③）。端末の覚え（localStorage）へ入れる。 */
+  await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'tester');
   const menu=await page.$$eval('#masterMaintNav [data-master]',n=>n.map(x=>x.dataset.master));
   rec('専用タブ（オペレータ・機器・スプール・内径・バリ・コイル止め）を残していない',
       !['operator','device','spool','inner','burr','coilStop'].some(k=>menu.includes(k)),menu.join(','));

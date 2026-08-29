@@ -48,7 +48,7 @@ let b=null;
   await page.waitForSelector('#masterMaintForm',{timeout:10000});
   await page.evaluate(()=>{const b=document.querySelector('[data-master="stopReason"]');if(b)b.click()});
   await settle(1400);
-  await page.evaluate(()=>{const el=document.querySelector('#masterUserId');if(el)el.value='test-stopeq'});
+  await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'test-stopeq');
  };
  const made=[];
 

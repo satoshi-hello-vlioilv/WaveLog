@@ -84,8 +84,9 @@ const restore=[];
   /* 更新者IDが無いと保存は断られる（マスタ共通の約束）。**入ったことを
      確かめてから進む**——入っていないと、以降の「保存できる」を見る網が
      全部「更新者IDが無いだけ」で落ち、原因が読めなくなる。 */
-  await page.fill('#masterUserId',TAG);
-  const uid=await page.evaluate(()=>document.getElementById('masterUserId').value);
+  /* 更新者IDは打ち込む欄ではなくなった（§9.276 ③）。端末の覚え（localStorage）へ入れる。 */
+  await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},TAG);
+  const uid=await page.evaluate(()=>{try{return localStorage.getItem('AccessMeasurementUserId')||''}catch(e){return ''}});
   rec('前提: 更新者IDを入れてある',uid===TAG_,uid);
 
   /* ---- 1) 測定画面と同じ形のボードが出る ---- */

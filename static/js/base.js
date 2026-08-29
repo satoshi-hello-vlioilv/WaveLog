@@ -59,7 +59,23 @@ const api=async(u,o)=>{
   const err=Error((parsed&&j.error)||apiErrorMessage(r.status,text,u));
   if(parsed)Object.assign(err,j);err.status=r.status;err.body=String(text||'').slice(0,500);throw err}
  settle(true);
- return j},esc=v=>{const d=document.createElement('div');d.textContent=v??'';return d.innerHTML};
+ return j},
+/* ---------- HTMLへ埋める前の逃がし（§9.276 ⑤、利用者の報告） ----------
+   「帳票ブロックのカスタムで表で組み替えて保存したらその瞬間はきれいに
+    保存されますが、再度読み込むと『表に組む』というボタンが押せなく
+    なっていたり」
+
+   以前は`textContent`→`innerHTML`に任せていたが、**ブラウザのその直列化は
+   `&` `<` `>`しか逃がさない**（引用符は文字節点では意味を持たないため）。
+   ところがこの関数の使い道の大半は`value="${esc(v)}"`／`title="${esc(v)}"`
+   ——**属性**なので、値に`"`が1つでもあるとそこで属性が閉じ、**残りが黙って
+   消える**。帳票ブロックのセル（§9.274）は`[{"label":...`というJSONなので、
+   保存値が`[{`まで切り詰められ、開き直すと中身が丸ごと失われていた
+   （そのまま保存すると**マスタの中身まで壊れる**）。
+   属性にも中身にも使える1つの関数にする——`&quot;`／`&#39;`は文字として
+   出るので、中身に使ったときの見え方は1文字も変わらない。 */
+esc=v=>String(v??'').replace(/[&<>"']/g,c=>(
+  {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const aliases={lotNo:['ロット番号','ﾛｯﾄ番号','LTNO'],inspectionNo:['検査番号','KNNO'],orderNo:['オーダー番号','JUON','JUNO'],castingNo:['鋳造番号','CYNO'],allocationNo:['引当番号','HKNO'],orderMaterial:['オーダー材質','JUA'],orderTemper:['オーダー調質','JUB'],orderThickness:['オーダー板厚','JUX'],orderWidth:['オーダー板幅','JUY'],orderLength:['オーダー板丈','JUZ'],mfgMaterial:['製造材質','LTA'],mfgTemper:['製造調質','LTB'],mfgThickness:['製造板厚','LTX'],mfgWidth:['製造板幅','LTY'],mfgLength:['製造板丈','LTZ'],purposeCode:['用途コード','用途ｺｰﾄﾞ','YOTOC'],purposeName:['用途名','YOTON'],customer:['取引先','TOKUNA'],delivery:['納入先','NONNA'],designCourse:['設計_設備ｺｰｽ','設計_設備コース'],course:['実績_設備ｺｰｽ','実績_設備コース','実績コース'],residualCourse:['残仕掛設備ｺｰｽ','残仕掛設備コース','ZANMC'],equipment:['BOX設計_設備名','設備'],originalWidth:['BOX実績_板幅'],boxHorizontalCount:['BOX設計_横割数'],boxVerticalCount:['BOX設計_縦割数']};
 function pick(row,key){for(const n of aliases[key]||[])if(row[n]!==undefined&&row[n]!==null)return String(row[n]);return ''}
 function lotKey(r){return [pick(r,'equipment'),pick(r,'lotNo'),pick(r,'inspectionNo'),pick(r,'castingNo')].join('|')}

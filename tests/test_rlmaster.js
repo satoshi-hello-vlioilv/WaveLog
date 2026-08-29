@@ -52,8 +52,7 @@ let b=null;
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:30000});
   await page.click('#openMasterMaint');
   await page.waitForSelector('#masterMaintNav [data-master="reportBlock"]',{timeout:20000});
-  await page.evaluate(()=>{const el=document.querySelector('#masterUserId');
-    el.value='tests';el.dispatchEvent(new Event('change',{bubbles:true}))});
+  await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'tests');
 
   /* ---- 1) タブが在り、親→子の順に並ぶ ---- */
   const nav=await page.evaluate(()=>{

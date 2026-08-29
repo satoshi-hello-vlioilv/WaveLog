@@ -215,8 +215,11 @@ def ready_js():
 def whoami():
  # この端末(各測定端末)で実行しているアプリのOSログインユーザー名を返す。
  # マスタ更新記録(登録者ID)に、手入力させず自動で使うためのもの。
- try:username=os.getlogin()
- except Exception:username=os.environ.get('USERNAME') or os.environ.get('USER') or os.environ.get('LOGNAME') or ''
- return jsonify(username=str(username or '').strip())
+ # **答えるのは`access_mode.current_login_id()`の1箇所**（§9.276 ③）——
+ # 以前はここにも同じ判定を書き写しており、**権限の照合に使う値と画面が
+ # 名乗る値が食い違いうる**状態だった（片方だけ手当てすると、画面には
+ # IDが出ているのに権限は空のIDで判定される、が作れる）。
+ from ..access_mode import current_login_id
+ return jsonify(username=current_login_id())
 @bp.get('/api/changelog')
 def changelog(): return jsonify(version=APP_VERSION, entries=CHANGELOG)

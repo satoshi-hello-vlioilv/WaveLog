@@ -127,8 +127,8 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   await page.waitForSelector('#openMasterMaint',{timeout:20000});
   await page.click('#openMasterMaint');
   await page.waitForSelector('#masterMaintPanel',{state:'visible',timeout:10000});
-  await page.fill('#masterUserId','tester');
-  await page.evaluate(()=>document.querySelector('#masterUserId').dispatchEvent(new Event('change')));
+  /* 更新者IDは打ち込む欄ではなくなった（§9.276 ③）。端末の覚え（localStorage）へ入れる。 */
+  await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'tester');
   await page.waitForSelector('#masterMaintNav [data-master="reportBlock"]',{timeout:20000});
   await page.click('#masterMaintNav [data-master="reportBlock"]');
 

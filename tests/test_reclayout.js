@@ -40,10 +40,7 @@ let b=null;
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:30000});
   await page.click('#openMasterMaint');
   await page.waitForSelector('#masterMaintNav [data-master="recordLayout"]',{timeout:20000});
-  await page.evaluate(()=>{
-   const el=document.querySelector('#masterUserId');
-   if(el&&!el.value){el.value='tests';el.dispatchEvent(new Event('change',{bubbles:true}))}
-  });
+  await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'tests');
 
   /* ==========================================================
      1) 専用画面が開き、③確認のカードと同じ形で出る

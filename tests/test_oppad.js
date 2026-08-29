@@ -44,10 +44,7 @@ let b=null;
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:30000});
   await page.click('#openMasterMaint');
   await page.waitForSelector('#masterMaintNav [data-master="opItem"]',{timeout:20000});
-  await page.evaluate(()=>{
-   const el=document.querySelector('#masterUserId');
-   if(el&&!el.value){el.value='tests';el.dispatchEvent(new Event('change',{bubbles:true}))}
-  });
+  await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'tests');
   await page.click('#masterMaintNav [data-master="opItem"]');
   await page.waitForSelector('.op-board',{timeout:20000});
   await page.waitForTimeout(900);
@@ -643,39 +640,39 @@ let b=null;
   }
 
   /* ==========================================================
-     隣の欄もダミーの値つきの本物（§9.250 ⑤、利用者の指示）
+     見本は「いま触っている1つ」だけを実物どおりに（§9.276 ⑥、利用者の指示）
      ----------------------------------------------------------
-     「データダミーをつかって…操業データがどうなるかといった結果を
-      それぞれ編集するマスタに直結させてすぐに確認できる導線を」
+     「単位の表示位置が追従していない…内部で表示するとき、単位が重複表示
+      される。対象外で同一グループの時は単位の表示位置やUI配置がでたらめ。
+      UIのサイズがバラバラで再現されていない。…変更中の対象項目だけの
+      再現で十分なので再現度をしっかり上げてほしいです」
 
-     以前は隣の欄を**名前だけの点線の箱**で置いていた。1枚のカードが実際に
-     どう見えるか——高さのそろい・単位の置き場・幅の釣り合い——はそれでは
-     分からない。**同じ口（`WL.opData.previewWidget`）で作る**ので、設定画面と
-     測定画面で形が食い違わない。**値はダミー**（サーバーの`sample`）で、
-     桁と文字数が実物に近いので幅が足りるかを確かめられる。
-     **見本の隣は押せないこと**——触ってもどこにも記録されない（§4）。
+     §9.250 ⑤で隣の欄も並べていたが、あれはマスタの行から**自前で組み立てて**
+     いたので本物と揃わなかった。**やめて1つに絞り**、その1つを測定画面と
+     同じ口（`WL.opData.buildPreviewField`）で作る。
+     **「隣が無い」だけを見る網にしないこと**——本体を描かない実装でも通る。
      ========================================================== */
   await page.waitForSelector('.op-board',{timeout:20000});
   await page.evaluate(()=>{const t=document.querySelector('.op-tile');if(t)t.click()});
   await page.waitForFunction(()=>{const m=document.getElementById('opItemModal');return !!m&&!m.hidden},
     null,{timeout:10000});
   await page.waitForTimeout(600);
-  const ghosts=await page.evaluate(()=>{
-   const gs=[...document.querySelectorAll('#opModalPreview [data-op-ghost]')];
-   return {n:gs.length,
-     本物:gs.filter(g=>g.querySelector('.opf')).length,
-     値あり:gs.filter(g=>{const c=g.querySelector('input,select,output');
-       const v=c?(c.tagName==='OUTPUT'?c.textContent:c.value):'';
-       return String(v||'').trim()!==''}).length,
-     押せない:gs.filter(g=>{const f=g.querySelector('.opf');
-       return !!f&&getComputedStyle(f).pointerEvents==='none'}).length};
+  const only=await page.evaluate(()=>{
+   const host=document.getElementById('opPrevField');
+   const f=host&&host.querySelector('.opf');
+   return {本体:!!f,
+     印:f?f.classList.contains('opf-host'):null,
+     欄:!!(host&&host.querySelector('input,select,output')),
+     /* **記録の対象にしない**（`values()`は画面全体から`[data-op]`を拾う）。 */
+     記録に混ざらない:!(host&&host.querySelector('[data-op]')),
+     隣:document.querySelectorAll('#opModalPreview [data-op-ghost]').length};
   });
-  rec('隣の欄も本物の部品で描かれる（点線の箱ではない）',
-      ghosts.n===0||ghosts.本物===ghosts.n,JSON.stringify(ghosts));
-  rec('隣の欄にダミーの値が入る（幅が足りるか確かめられる）',
-      ghosts.n===0||ghosts.値あり>=1,JSON.stringify(ghosts));
-  rec('見本の隣の欄は押せない（触っても記録されないので）',
-      ghosts.n===0||ghosts.押せない===ghosts.n,JSON.stringify(ghosts));
+  rec('見本は本物の欄を1つ描く（測定画面と同じ印が付く）',
+      only.本体&&only.印===true&&only.欄===true,JSON.stringify(only));
+  rec('見本の欄は記録の対象にしない（開いているロットへ混ざらない）',
+      only.記録に混ざらない===true,JSON.stringify(only));
+  rec('隣の欄は並べない（本物と揃わない絵で幅を判断させない）',
+      only.隣===0,JSON.stringify(only));
   /* 編集中の欄は**押したときだけ**ダミーが入る（黙って入れると
      「記録される値」が嘘になる）。 */
   const fill=await page.evaluate(async()=>{

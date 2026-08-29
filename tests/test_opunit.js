@@ -460,6 +460,80 @@ let b=null;
   await page.waitForTimeout(200);
   rec('選び直すと添え書きは消える（⑤）',(await note()).隠===true);
 
+  /* ==========================================================
+     ⑥ 設定窓の見本（§9.276 ⑥、利用者の指示）
+     ----------------------------------------------------------
+     「単位の表示位置が追従していないことと、変更対象の単位をプレビューする
+      ときの内部で表示するとき、単位が重複表示される」
+
+     原因は、見本の`<label>`を設定窓が**自前で組み立てて**いたこと——
+     `placeholder`に`0 mm`を入れていたので、「内部」にすると欄の中に
+     `mm`が2つ見えた（実物の`fieldEl()`は`placeholder`を持たない）。
+     いまは`WL.opData.buildPreviewField()`の1本を通す。
+     **「単位の要素が1つ」だけを見ないこと**——`placeholder`は要素ではないので
+     素通りする。**欄に見えている字**まで見る。
+     ========================================================== */
+  await page.evaluate(()=>{const b=document.getElementById('openMasterMaint');if(b)b.click()});
+  await page.waitForSelector('#masterMaintNav',{timeout:20000});
+  await page.evaluate(()=>document.querySelector('#masterMaintNav [data-master="opItem"]')?.click());
+  await page.waitForSelector('.op-tile',{timeout:20000});
+  const openTile=await page.evaluate(n=>{
+   const t=[...document.querySelectorAll('.op-tile')].find(x=>(x.textContent||'').indexOf(n)>=0);
+   if(!t)return false;t.click();return true;
+  },NUMNAME);
+  rec('前提: 見本の窓を「'+NUMNAME+'」で開ける（⑥）',openTile);
+  await page.waitForFunction(()=>{const m=document.getElementById('opItemModal');return !!m&&!m.hidden},
+    null,{timeout:10000});
+  await page.waitForSelector('#opPrevField .opf',{timeout:10000});
+  const prev=()=>page.evaluate(()=>{
+   const host=document.getElementById('opPrevField');
+   const f=host&&host.querySelector('.opf');
+   if(!f)return null;
+   const ctl=f.querySelector(':scope>select,:scope>input,:scope>output');
+   const ins=f.querySelector('.opf-unit-in'),line=f.querySelector('.opf-unit-line');
+   const r=e=>{const b=e.getBoundingClientRect();
+     return {l:Math.round(b.left),t:Math.round(b.top),w:Math.round(b.width),h:Math.round(b.height)}};
+   return {印:f.classList.contains('opf-host'),
+     位置:f.dataset.opunit||'',
+     単位の数:f.querySelectorAll('.opf-unit').length,
+     内部:!!ins,下:!!(line&&!f.dataset.opunitTop),
+     /* **欄に見えている字**——`placeholder`で単位を二重に出していないか。 */
+     欄の字:ctl?String(ctl.placeholder||''):'',
+     欄:ctl?r(ctl):null,単位:(ins||line)?r(ins||line):null};
+  });
+  /* 置き場の盤は`[data-op-unitplace]`（§9.221 ⑦の9マス）。**綴りで押す**
+     ——文字で探すと、マスの見出しが記号のものを取りこぼす。 */
+  const setUnit=at=>page.evaluate(a=>{
+   const el=document.querySelector(`#opItemModal [data-op-unitplace="${a}"]`);
+   if(el&&!el.disabled){el.click();return true}
+   return false;
+  },at);
+  await page.evaluate(()=>{
+   const t=[...document.querySelectorAll('.op-tab')].find(x=>/見せ/.test(x.textContent));
+   if(t)t.click()});
+  await page.waitForTimeout(400);
+  const pv={};
+  for(const at of ['内部','外下左','外上左']){
+   const ok=await setUnit(at);
+   if(!ok){rec('前提: 単位の置き場「'+at+'」を選べる（⑥）',false);continue}
+   await page.waitForTimeout(450);
+   pv[at]=await prev();
+  }
+  rec('見本の単位は1つだけ（「内部」で二重に出さない）（⑥）',
+      !!(pv['内部']&&pv['内部'].単位の数===1&&pv['内部'].内部===true),
+      JSON.stringify(pv['内部']));
+  rec('見本の欄が単位を`placeholder`でもう一度出さない（⑥）',
+      !!(pv['内部']&&pv['内部'].欄の字.indexOf('mm')<0&&pv['内部'].欄の字.indexOf('MPa')<0),
+      JSON.stringify(pv['内部']&&pv['内部'].欄の字));
+  rec('見本の単位は置き場に追従する（内部→外下→外上で実際に動く）（⑥）',
+      !!(pv['内部']&&pv['外下左']&&pv['外上左']
+         &&pv['外下左'].単位.t>pv['外下左'].欄.t
+         &&pv['外上左'].単位.t<pv['外上左'].欄.t),
+      JSON.stringify({内:pv['内部']&&pv['内部'].単位,下:pv['外下左']&&pv['外下左'].単位,
+                      上:pv['外上左']&&pv['外上左'].単位}));
+  rec('見本の欄には測定画面と同じ印（`opf-host`）が付く（⑥）',
+      !!(pv['外下左']&&pv['外下左'].印===true),JSON.stringify(pv['外下左']));
+
   console.log('\n合計 '+R.filter(r=>r.ok).length+'/'+R.length+' PASS'
     +'  (FAIL: '+R.filter(r=>!r.ok).length+')');
   process.exitCode=R.some(r=>!r.ok)?1:0;
