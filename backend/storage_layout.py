@@ -42,7 +42,9 @@ LOCAL_CONFIG_KEYS = LOCAL_CONFIG_PATH_KEYS + tuple(LOCAL_CONFIG_CHOICE_KEYS)
 
 
 def local_config_path():
-    return paths.APP_ROOT / 'config' / 'local.json'
+    # **答えるのは `paths` の1箇所**（§9.163）。ここに同じ組み立てを持つと、
+    # 置き場を変えたときに読む側と書く側で食い違う。
+    return paths.local_config_path()
 
 
 def kind_of(path):
@@ -225,34 +227,26 @@ def _saved_of(field, store):
 def _planned_of(key, saved, active):
     """保存値から解決した「これから効く置き場」。
 
-    **綴りの解釈は本体と同じ1箇所を通す**（§9.163）——作業予定はフォルダを
-    書いてもよいので、ここで自前に組み立てると画面と実物が食い違う。
+    **綴りの解釈は本体と同じ1箇所を通す**（§9.163）——どの置き場もフォルダを
+    書いてよいので（§9.271）、ここで自前に組み立てると画面と実物が食い違う。
+
+    **環境変数は展開してから返す**（§9.271）。ここは「これから効く値」＝
+    画面が出す先であり、**「無いので作る」が作る先**でもある。生のまま返すと、
+    `%LOCALAPPDATA%\WaveLog` と書いた端末では**どこへ置かれるのか画面から
+    読めず**、作ることもできない（`_is_absolute()`に弾かれる）。
+    **保存は生のまま**なのは今までどおり（§9.268の追補）。
     """
     if not saved:
         return str(active or '')
-    if key == 'schedule':
-        from .db_access import resolve_schedule_share
+    from .db_access import resolve_db_file
+    name = {'schedule': 'schedule.sqlite3', 'master': 'master.sqlite3',
+            'recordsLocal': 'records.sqlite3'}.get(key)
+    if name:
         try:
-            return str(resolve_schedule_share(saved) or '')
+            return str(resolve_db_file(paths.expand_path(saved), name) or '')
         except Exception:
             return str(saved)
-    if key == 'master':
-        from .db_access import _MASTER_PATH_CONFIGURED
-        raw = _local_config_raw()
-        if raw.get('master_db_path'):
-            return str(raw['master_db_path'])
-        if raw.get('db_dir'):
-            return str(Path(raw['db_dir']) / 'master.sqlite3')
-        return str(_MASTER_PATH_CONFIGURED)
-    if key == 'recordsLocal':
-        from .db_access import MEAS_DB
-        raw = _local_config_raw()
-        if raw.get('records_db_path'):
-            return str(raw['records_db_path'])
-        if raw.get('db_dir'):
-            return str(Path(raw['db_dir']) / 'records.sqlite3')
-        return str(MEAS_DB)
-    return str(saved)
+    return str(paths.expand_path(saved) or saved)
 
 
 def _row(key, group, label, what, path, **kw):
@@ -444,6 +438,9 @@ def layout():
     return {'items': rows, 'sameRoot': same_root(rows),
             'localConfig': local_config_fields(),
             'localConfigPath': str(local_config_path()),
+            # **読めなかったことを画面に出す**（§9.271）。黙って空として扱うと、
+            # 書いた設定が1つも効いていないのに画面は「既定のまま」に見える。
+            'localConfigError': paths.local_config_error() or '',
             'onShare': [x['key'] for x in rows if x['kind'] in ('network', 'cloud')]}
 
 
@@ -604,11 +601,24 @@ def prepare_path(raw, mode='dir', apply=False):
 
     `mode='file'` ならフォルダの連鎖＋空のファイル、`'dir'` ならフォルダだけ。
     """
-    raw = str(raw or '').strip()
-    if not raw:
+    written = str(raw or '').strip()
+    if not written:
         raise LocalConfigError('先に置き場を決めてください（空欄です）。')
+    # **先に環境変数を展開する**（§9.271）。`%LOCALAPPDATA%\WaveLog` は
+    # 展開前は相対パスに見えるので、素で見ると**変数で書いた端末では
+    # 「無いので作る」が一度も押せない**（しかも「絶対パスで指定して
+    # ください」と、書いてあるのに否定する文言が出る）。
+    raw = paths.expand_path(written)
     if not _is_absolute(raw):
-        raise LocalConfigError(f'絶対パスで指定してください（いまは「{raw}」）。')
+        has_var = ('%' in written) or ('$' in written)
+        if raw != written:
+            why = f'（「{written}」は「{raw}」になります）'
+        elif has_var:
+            why = (f'（「{written}」の環境変数がこの端末では空でした。'
+                   'システム環境変数を確かめるか、実際のパスを書いてください）')
+        else:
+            why = f'（いまは「{written}」）'
+        raise LocalConfigError(f'絶対パスで指定してください{why}。')
     target = Path(raw.rstrip('\\/') if len(raw.rstrip('\\/')) > 2 else raw)
     folder = target.parent if mode == 'file' else target
     made_dirs = _chain(folder)

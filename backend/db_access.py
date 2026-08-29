@@ -21,7 +21,7 @@ import threading
 import time
 
 from . import paths
-from .paths import APP_ROOT, configured_path, load_local_config
+from .paths import APP_ROOT, configured_path, load_local_config, local_config_error
 from .logging_setup import app_logger
 
 # DBの置き場所は既定でAPP_ROOT/db。config/local.jsonの"db_dir"で上書き可能
@@ -246,18 +246,38 @@ def resolve_local_db(name,legacy_names):
    if old_path.exists():return old_path
  return DB_DIR/name
 
+# ブートストラップ設定(config/local.json)を**読めなかったことを黙らせない**
+# (§9.271、利用者の報告「master_db_pathを書いたのに正しく読み込んでいない」)。
+# ここは値を実際に使う場所なので、効いていないことに気づける唯一の場所。
+_LOCAL_CFG_ERROR=local_config_error()
+if _LOCAL_CFG_ERROR:
+ app_logger().warning('%s この端末の置き場は既定のままで動いています。',_LOCAL_CFG_ERROR)
+
+# 設定値 -> 実際のDBファイル。**フォルダを書いてもよい**(§9.271)。
+# 利用者は「この共有フォルダに master.sqlite3 と schedule.sqlite3 を置きたい」と
+# 考えるので、置き場の綴りはどれも同じ約束にする(スケジュールは§9.262で
+# 既にそうなっており、**マスタと測定データだけが違った**)。
+# 判定は**綴りだけ**——共有越しでは`is_dir()`が失敗することがあり、
+# 存在確認そのものが唯一の失敗原因になるのを避ける(§9.262と同じ理由)。
+DB_FILE_SUFFIXES=('.sqlite3','.db','.sqlite')
+def resolve_db_file(raw,filename):
+ text=str(raw or '').strip().rstrip('\\/')
+ if not text:return None
+ p=Path(text)
+ return p if p.suffix.lower() in DB_FILE_SUFFIXES else p/filename
+
 # マスタDB(db/master.sqlite3)自体の置き場所はブートストラップ専用設定
 # (db_dir/master_db_path、上記参照)でのみ決まる。ここで先に確定させておく
 # ことで、以降のパス設定マスタ読み込み(_master_path_config等)がこの値を
 # 使える。
-_MASTER_PATH_CONFIGURED=configured_path('master_db_path') or resolve_local_db('master.sqlite3',['マスタ.sqlite3','マスタデータ.sqlite3','Master.sqlite3'])
+_MASTER_PATH_CONFIGURED=resolve_db_file(configured_path('master_db_path'),'master.sqlite3') or resolve_local_db('master.sqlite3',['マスタ.sqlite3','マスタデータ.sqlite3','Master.sqlite3'])
 # マスタを共有に置いたときは**手元の写しを読む**(§9.263)。共有でなければ
 # 設定どおりのパスがそのまま返るので、手元に置いている端末は何も変わらない。
 # **ここで1回だけ差し替える**——以降のコードは今までどおり`_MASTER_PATH`
 # （＝`DBS['MASTER']['path']`）を開けばよく、72箇所を書き換えずに済む。
 from . import master_share as _master_share
 _MASTER_PATH=_master_share.configure(_MASTER_PATH_CONFIGURED)
-MEAS_DB=configured_path('records_db_path') or resolve_local_db('records.sqlite3',['測定データ.sqlite3','Measurement.sqlite3']); MEAS_ENGINE='sqlite'
+MEAS_DB=resolve_db_file(configured_path('records_db_path'),'records.sqlite3') or resolve_local_db('records.sqlite3',['測定データ.sqlite3','Measurement.sqlite3']); MEAS_ENGINE='sqlite'
 # 共有スケジュールDBのローカル作業コピー。**共有から取り直せる**ので
 # WORK_DIR側(§9.109)。毎回の取得で丸ごと置き換えるため、共有・クラウド
 # 同期フォルダーの上にあると置き換えを拒まれる(§9.108)。
@@ -991,10 +1011,8 @@ def resolve_schedule_share(raw):
  ことがあり、**存在確認そのものが唯一の失敗原因になる**のを避けるため
  （`Path.exists()`を接続の前に置かない、という既存の約束と同じ理由）。
  """
- raw=str(raw or '').strip().rstrip('\\/')
- if not raw:return None
- p=Path(raw)
- return p if p.suffix.lower() in ('.sqlite3','.db','.sqlite') else p/SCHEDULE_FILE_NAME
+ # **答えるのは resolve_db_file の1箇所**——マスタ・測定データと同じ約束。
+ return resolve_db_file(raw,SCHEDULE_FILE_NAME)
 
 _schedule_share_override=_static_path_cfg('schedule_share_path')
 if _schedule_share_override:

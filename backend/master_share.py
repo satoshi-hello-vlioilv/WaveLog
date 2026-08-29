@@ -29,6 +29,7 @@ import json
 import threading
 import time
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -168,6 +169,54 @@ def status():
     return out
 
 
+# ---- 接続とファイルの扱い ------------------------------------------------
+@contextmanager
+def _opened(path, readonly):
+    """**必ず閉じる**接続（§9.270）。
+
+    `with connect(...) as c:` は**閉じない**——`sqlite3.Connection` は参照の
+    輪を作るので、`with` を抜けてもハンドルは**GCが回るまで開いたまま**に
+    なる（実測: 関数から戻った直後も fd が残り、`gc.collect()` で消える）。
+    `sqlite3.Connection.__exit__` がするのはコミット／ロールバックだけで、
+    close ではない。
+
+    Linux では開いたままでも `rename` も `unlink` も通るので**何も起きない**。
+    **Windows は開いているファイルを置き換えも削除もできない**（§9.108）。
+    このモジュールは共有と写しを置き換える側なので、閉じ忘れが**そのまま**
+    `WinError 32` になる（実機で、起動時の取り込みも保存も全部これで
+    失敗していた——一時ファイルを `_verify()` が開いたまま
+    `os.replace(一時ファイル, 写し)` を呼んでいた）。
+
+    `db_mirror._verify()` は最初から `finally: c.close()` で書かれており、
+    だからあちらは実機で動いていた。**同じ約束をここにも持ち込む。**
+    """
+    from .db_access import connect
+    c = connect(path, readonly)
+    try:
+        yield c
+    finally:
+        c.close()
+
+
+def _copy_db(src_path, dst_path):
+    """`src_path` の中身で `dst_path` を**丸ごと上書きする**。
+
+    **名前を差し替えない**（`os.replace` を使わない）のが要点。写し
+    （`master.local.sqlite3`）は**この端末のリクエストが開いているファイル**で、
+    しかもアプリ全体の開き方は `with connect(...)`＝上記のとおり
+    **閉じないまま GC を待つ**形が約100箇所ある。1つでも残っていれば
+    Windows では置き換えが失敗するので、**置き換えられないことを前提に
+    書く**しかない。
+
+    SQLite のバックアップAPIは**SQLiteの層で**書くので、開いているだけの
+    （＝トランザクションを持たない）接続はまったく邪魔にならず、読み手は
+    ロックで待たされるだけで**中途半端な中身を見ることも無い**。途中で
+    落ちてもジャーナルが元へ巻き戻す。
+    """
+    with _opened(src_path, True) as s, _opened(dst_path, False) as d:
+        s.backup(d)
+
+
 # ---- 改訂番号 ------------------------------------------------------------
 def _ensure_meta(c):
     cur = c.cursor()
@@ -178,7 +227,7 @@ def _ensure_meta(c):
 def _read_revision(path):
     from .db_access import connect, tables
     try:
-        with connect(path, True) as c:
+        with _opened(path, True) as c:
             if META_TABLE not in tables(c):
                 return 0
             row = c.cursor().execute(
@@ -189,8 +238,7 @@ def _read_revision(path):
 
 
 def _bump_revision(path, uid=''):
-    from .db_access import connect
-    with connect(path, False) as c:
+    with _opened(path, False) as c:
         _ensure_meta(c)
         cur = c.cursor()
         row = cur.execute(f'SELECT [値] FROM [{META_TABLE}] WHERE [キー]=?', [REVISION_KEY]).fetchone()
@@ -310,9 +358,8 @@ def release_lock(token):
 
 # ---- 取り込み / 押し出し -------------------------------------------------
 def _verify(path):
-    from .db_access import connect
     try:
-        with connect(path, True) as c:
+        with _opened(path, True) as c:
             row = c.cursor().execute('PRAGMA integrity_check').fetchone()
             return bool(row) and str(row[0]).lower() == 'ok'
     except Exception:
@@ -332,33 +379,33 @@ def _pull(force=False):
         except Exception:
             pass
     mirror.parent.mkdir(parents=True, exist_ok=True)
-    if not src.exists():
+    from .db_access import path_exists_safe
+    found = path_exists_safe(src)
+    if found is False:
         # 共有にまだ無い（初回）。**手元の写しをそのまま正とする**——
         # 次の書込で共有へ出る。
         return False
+    if found is None:
+        # **「確かめられなかった」を「無い」と同じに扱わない**（§9.108）。
+        # ここで「初回」と読むと、共有には全員のマスタがあるのに手元の写しを
+        # 正とみなし、**次の書込でそれを丸ごと上書きしてしまう**。共有越しでは
+        # stat だけ失敗することが実際にあるので、これは起こりうる（§9.262）。
+        raise MasterShareUnavailable(
+            f'共有のマスタがあるか確かめられませんでした（ネットワーク共有の応答不良）: {src}')
     tmp = mirror.with_suffix(f'.pull.{uuid.uuid4().hex}.tmp')
-    from .db_access import connect
     try:
-        s = connect(src, True)
-        try:
-            d = connect(tmp, False)
-            try:
-                s.backup(d)
-            finally:
-                d.close()
-        finally:
-            s.close()
+        _copy_db(src, tmp)          # 共有 → 一時ファイル（手元）
         if not _verify(tmp):
             raise MasterShareUnavailable('取り込んだマスタが壊れていました（整合性チェック失敗）。')
-        atomic_io.replace(tmp, mirror, label='master.mirror')
+        # **写しは名前を差し替えず中身を書き換える**（_copy_db の注記）。
+        # ここを `os.replace` へ戻すと、Windows では写しを開いている接続が
+        # 1つでもあるだけで取り込みも保存も全部失敗する。
+        _copy_db(tmp, mirror)       # 一時ファイル → 写し
         with _lock:
             _state['revision'] = _read_revision(mirror)
         return True
     finally:
-        try:
-            tmp.unlink(missing_ok=True)
-        except Exception:
-            pass
+        atomic_io.unlink(tmp, budget_sec=1.0, label='master.pull.tmp')
 
 
 def _push():
@@ -368,26 +415,18 @@ def _push():
         return False
     src.parent.mkdir(parents=True, exist_ok=True)
     tmp = src.with_suffix(f'.push.{uuid.uuid4().hex}.tmp')
-    from .db_access import connect
     try:
-        s = connect(mirror, True)
-        try:
-            d = connect(tmp, False)
-            try:
-                s.backup(d)
-            finally:
-                d.close()
-        finally:
-            s.close()
+        _copy_db(mirror, tmp)
         if not _verify(tmp):
             raise MasterShareUnavailable('書き出すマスタが壊れていました（整合性チェック失敗）。')
+        # 共有側は**名前の差し替え**でよい（書きかけの中身を他の端末に
+        # 拾わせないため。schedule_sync._push と同じ作法）。写しと違って
+        # 他の端末が長く開き続けるファイルではなく、こちらの読み書きは
+        # 上の `_opened` で必ず閉じているので、掴まれる時間が短い。
         atomic_io.replace(tmp, src, label='master.share')
         return True
     finally:
-        try:
-            tmp.unlink(missing_ok=True)
-        except Exception:
-            pass
+        atomic_io.unlink(tmp, budget_sec=1.0, label='master.push.tmp')
 
 
 def refresh(force=False):

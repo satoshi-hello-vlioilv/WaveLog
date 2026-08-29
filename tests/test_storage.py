@@ -19,6 +19,9 @@
  7. 作るのは**下見 → apply** の2段（下見では1つも作らない）
  8. `存在するか`は3値（True/False/**None＝確かめられなかった**）で、
     Noneを「無い」と同じに扱わない
+ 9. `local.json` を**読めなかったことを黙らない**（§9.271）
+10. 置き場は**フォルダで書いてもよい**（マスタ・測定データ・作業予定とも）
+11. 「これから効く値」も「作る先」も**環境変数を展開してから**答える
 ============================================================
 """
 import json, pathlib, sys, tempfile, shutil
@@ -277,6 +280,110 @@ try:
         sl.same_root(rows[:2] + [{'key': 'recordsShare', 'path': ''}]) == '')
     rec('違う場所なら言わない',
         sl.same_root(rows[:2] + [{'key': 'recordsShare', 'path': '/other'}]) == '')
+
+    # ---- 9. local.json を読めなかったことを黙らない（§9.271）----------
+    # 実機の報告「master_db_path を書いたのに正しく読み込んでいない」。
+    # 以前は `except Exception: return {}` で握り潰しており、**BOM付き・
+    # ANSI(CP932)・カンマの打ち過ぎ**のどれでも「1つも書かれていない」のと
+    # まったく同じ結果になり、画面にもログにも何も出なかった。
+    from backend import paths as _paths
+    body = ('{\n  "master_db_path": "\\\\\\\\srv\\\\share\\\\master.sqlite3"\n}\n')
+
+    def load_with(data_bytes):
+        lc_path.parent.mkdir(parents=True, exist_ok=True)
+        lc_path.write_bytes(data_bytes)
+        got = _paths.load_local_config()
+        return got, _paths.local_config_error()
+
+    got, err = load_with(body.encode('utf-8'))
+    rec('ふつうのUTF-8は読める', got.get('master_db_path') and not err, str(err or got))
+
+    # メモ帳などが付けるBOM。**読めること**（現場が手で書くファイルなので）。
+    got, err = load_with(b'\xef\xbb\xbf' + body.encode('utf-8'))
+    rec('BOM付きで保存されていても読める', bool(got.get('master_db_path')) and not err,
+        str(err or got))
+
+    # 日本語のコメントを入れて「ANSI」で保存した場合（日本語WindowsはCP932）。
+    got, err = load_with('{\n  "_説明": "マスタの置き場",\n  "master_db_path": "C:\\\\x\\\\m.sqlite3"\n}'.encode('cp932'))
+    rec('ANSI(CP932)で保存されていても読める', bool(got.get('master_db_path')) and not err,
+        str(err or got))
+
+    # 打ち間違い。**読めないのは仕方がないが、黙るのは駄目**。
+    got, err = load_with(b'{\n  "master_db_path": "x",\n}\n')
+    rec('壊れたJSONは空として返す', got == {}, str(got))
+    rec('壊れたJSONは理由を返す（黙らない）', bool(err), str(err))
+    rec('理由にファイルの場所が入っている', bool(err) and 'local.json' in str(err), str(err)[:60])
+
+    got, err = load_with(body.encode('utf-8'))
+    rec('直せば理由は消える', not err and bool(got.get('master_db_path')), str(err))
+
+    # **画面まで届くこと**——理由を作っても渡し忘れれば黙るのと同じ。
+    load_with(b'{\n  "master_db_path": "x",\n}\n')
+    lay = sl.layout()
+    rec('読めなかった理由は画面の答えに入る', bool(lay.get('localConfigError')),
+        str(lay.get('localConfigError'))[:60])
+    load_with(body.encode('utf-8'))
+    rec('読めていれば理由は空', sl.layout().get('localConfigError') == '',
+        str(sl.layout().get('localConfigError')))
+
+    # ---- 10. 置き場はフォルダで書いてもよい（§9.271）-------------------
+    from backend.db_access import resolve_db_file, resolve_schedule_share
+    folder = '\\\\srv\\共有\\Records'
+    rec('マスタ: フォルダを書いたら master.sqlite3 を足す',
+        str(resolve_db_file(folder, 'master.sqlite3')).endswith('master.sqlite3'),
+        str(resolve_db_file(folder, 'master.sqlite3')))
+    rec('測定データ: フォルダを書いたら records.sqlite3 を足す',
+        str(resolve_db_file(folder, 'records.sqlite3')).endswith('records.sqlite3'),
+        str(resolve_db_file(folder, 'records.sqlite3')))
+    rec('作業予定: 今までどおりフォルダを書ける',
+        str(resolve_schedule_share(folder)).endswith('schedule.sqlite3'),
+        str(resolve_schedule_share(folder)))
+    keep = resolve_db_file(folder + '\\master.sqlite3', 'master.sqlite3')
+    rec('ファイル名まで書いてあればそのまま', str(keep).endswith('master.sqlite3')
+        and not str(keep).endswith('master.sqlite3/master.sqlite3'), str(keep))
+    rec('空欄は None（既定へ落とす）', resolve_db_file('', 'master.sqlite3') is None)
+    # **3つとも同じ関数が答えること**——別々に持つと、片方だけフォルダを
+    # 受ける状態が作れる（実際にマスタと測定データだけが受けていなかった）。
+    rec('3つとも同じ1箇所が答える',
+        resolve_schedule_share(folder) == resolve_db_file(folder, 'schedule.sqlite3'))
+
+    # **本体が実際にそこを開くこと**まで見る。上の3つは「答えられる」だけで、
+    # 本体が答えを使っていなければ素通りする（§9.268で実際に踏んだ形）。
+    # 起動時に1回だけ決まる値なので、別のプロセスで読み直して確かめる。
+    import subprocess
+    box = tmp / 'folderstyle'
+    lc_path.write_text(json.dumps({'master_db_path': str(box)}, ensure_ascii=False),
+                       encoding='utf-8')
+    out = subprocess.run(
+        [sys.executable, '-c',
+         'from backend import db_access; print(db_access._MASTER_PATH_CONFIGURED)'],
+        cwd=str(ROOT), capture_output=True, text=True, timeout=120)
+    got = (out.stdout or '').strip().splitlines()[-1] if out.stdout.strip() else ''
+    rec('本体もフォルダ指定でその中の master.sqlite3 を開く',
+        got == str(box / 'master.sqlite3'), got or (out.stderr or '')[-160:])
+
+    # ---- 11. 環境変数を展開してから答える（§9.271）--------------------
+    import os as _os
+    _os.environ['WLTESTHOME'] = str(tmp / 'expand')
+    rec('「これから効く値」は展開してから答える',
+        sl._planned_of('master', '%WLTESTHOME%', '') == str(tmp / 'expand' / 'master.sqlite3'),
+        sl._planned_of('master', '%WLTESTHOME%', ''))
+    # **例外で止めずに報告する**——ここで送出させると、以降の確認が1つも
+    # 走らないまま検証そのものが終わる（§9.269と同じ罠）。
+    try:
+        plan = sl.prepare_path('%WLTESTHOME%/WaveLog/master.sqlite3', mode='file', apply=False)
+        made, why = plan['path'], ''
+    except Exception as e:
+        made, why = '', f'断られた: {e}'
+    rec('「無いので作る」も展開してから答える',
+        made == str(tmp / 'expand' / 'WaveLog' / 'master.sqlite3'), why or made)
+    rec('下見では1つも作っていない', not (tmp / 'expand').exists())
+    try:
+        sl.prepare_path('%WL_NOT_DEFINED_VAR%/x', mode='dir')
+        why = ''
+    except sl.LocalConfigError as e:
+        why = str(e)
+    rec('未定義の変数は理由を言い分ける', '空でした' in why, why[:70])
 finally:
     if saved_local is None:
         try:
