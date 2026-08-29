@@ -4066,6 +4066,27 @@
   `tests/test_dbmirror.py`（`os.replace`/`os.unlink`を差し替えてWindowsの
   規則を持ち込む。**「前提」の確認を先に置くこと**——真似が効いていないと
   両方PASSして何も確かめられない）。
+- **`with connect(...) as c:` は接続を閉じない**（§9.270）: `sqlite3.Connection`
+  の`__exit__`がするのは**コミットかロールバックだけ**で、closeではない。
+  しかも参照の輪を作るので、`with`を抜けても**ハンドルはGCが回るまで開いた
+  まま**残る（実測。`gc.collect()`で消える）。POSIXの`rename(2)`は開いている
+  ファイルも置き換えられるので**Linuxでは何も起きず**、Windowsだけが
+  `WinError 32`で落ちる（§9.108）。しかも**掴んでいるのが自分自身**なので
+  `atomic_io.replace()`が5秒粘っても手放す者がおらず、**毎回・確実に失敗する**
+  ——実機で、マスタを共有に置いた端末が起動時の取り込みも保存も一切できない
+  状態になっていた。**ファイルを置き換える／削除する側のモジュールでは
+  `with connect(...)`を書かないこと**（`master_share._opened()`のように
+  `finally: c.close()`を持つ`@contextmanager`を通す。`db_mirror`と
+  `schedule_sync`は最初からそう書かれており、だから実機で動いていた）。
+  **さらに、自分が読んでいるファイルは名前を差し替えない**——写し
+  （`master.local.sqlite3`）はアプリの約100箇所が`with connect(...)`で開くので、
+  1つでも残っていれば置き換えは失敗する。SQLiteのバックアップAPIで**中身を
+  上書きする**（`_copy_db()`。SQLiteの層で書くので、開いているだけ＝
+  トランザクションを持たない接続は邪魔にならない）。
+  **網は「動いたか」で見ないこと**——Linuxでは壊れた実装でも通る。
+  `/proc/self/fd`で**開いているハンドルを数え**、写しの**inodeが変わらない**
+  ことを見る（`tests/test_mastershare.py`8節。綴りで`with connect(`を探す網は
+  説明文まで拾うので**構文木で見る**）。
 - **作り直せるファイルの置き場は`paths.work_dir()`が決める**（§9.109）:
   `db_dir`がクラウド同期フォルダー（Box/OneDrive等）やUNC・ネットワーク
   ドライブの上なら、**利用者に設定を求めず**`%LOCALAPPDATA%\WaveLog\work\

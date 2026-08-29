@@ -18,9 +18,18 @@ master.sqlite3 へ直に書き、読むときも共有を直接開いていた�
  6. 共有へ届かなくても**読みは続く**（前の写しで読める）
  7. マスタへ書くBlueprintが**書込サイクルの一覧に全部載っている**
     （載せ忘れるとそのAPIだけ素通しになる）
+ 8. **ファイルを開いたままにしない・写しを rename しない**（§9.270）
+
+8について。実機で「起動時の取り込みも保存も全部 WinError 32」になった。
+原因は `with connect(...) as c:` が**閉じない**こと——`sqlite3.Connection`
+は参照の輪を作るので、`with` を抜けてもハンドルは**GCが回るまで開いたまま**
+残る（`__exit__` はコミット／ロールバックだけで close ではない）。
+Linux では開いているファイルも `rename`／`unlink` できるので**何も起きず**、
+Windows だけが落ちる。**だから「動いた」ことを見る網では捕まらない**——
+開いているハンドルの数そのものと、写しの inode（＝名前を差し替えたか）を見る。
 ============================================================
 """
-import pathlib, re, shutil, sys, tempfile
+import ast, gc, os, pathlib, re, shutil, sys, tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -164,6 +173,111 @@ try:
     rec('マスタへ書く段は全部 WRITING_BLUEPRINTS に載っている',
         not missing, '載っていない: ' + ','.join(missing) if missing else
         '/'.join(sorted(ms.WRITING_BLUEPRINTS)))
+
+    # ---- 8. ファイルを開いたままにしない・写しを rename しない ----------
+    def open_fds():
+        """このモジュールが関わるファイルのうち、今この瞬間に開いている数。"""
+        d = '/proc/self/fd'
+        if not os.path.isdir(d):
+            return None
+        out = []
+        for x in os.listdir(d):
+            try:
+                t = os.readlink(os.path.join(d, x))
+            except OSError:
+                continue
+            # 一時ファイルは消したあとも「(deleted)」として残るので拾える。
+            if 'master.local' in t or str(share) in t or '.tmp' in t:
+                out.append(t)
+        return out
+
+    # **前提**: 開いているファイルを実際に数えられること。数えられていない
+    # 網は、閉じ忘れを注ぎ込んでも 0 のまま通ってしまう。
+    gc.collect()
+    probe = connect(opened, True)
+    fds = open_fds()
+    rec('前提: 開いているファイルを数えられる', fds is not None and len(fds) >= 1,
+        '(この環境では /proc/self/fd が読めないため8節は確かめられない)'
+        if fds is None else str(len(fds)))
+    probe.close()
+    gc.collect()
+    rec('前提: 閉じれば数は戻る', open_fds() == [], str(open_fds()))
+
+    # 取り込みがハンドルを残さないこと。**残すと Windows では次の置き換えが
+    # 必ず失敗する**（実機の WinError 32 はこれ）。
+    make_master(share, 'handle-check')
+    gc.collect()
+    ms.refresh(force=True)
+    rec('取り込みはファイルを開いたままにしない', open_fds() == [], str(open_fds()))
+    rec('取り込めている', read_value(opened) == 'handle-check', read_value(opened))
+
+    # 書込サイクル（ロック→取り直し→改訂番号→押し出し）も同じ。
+    cyc = ms.begin_write('tester', 'PC1')
+    make_master(opened, 'handle-check-2')
+    cyc.end('tester')
+    gc.collect()
+    rec('書込サイクルはファイルを開いたままにしない', open_fds() == [], str(open_fds()))
+
+    # **写しは名前を差し替えない。** アプリ側の約100箇所は `with connect(...)`
+    # で開くので、写しを `os.replace` する実装に戻すと、そのうち1つでも
+    # 開いたままなら Windows では取り込みが失敗する。inode が変わらない
+    # ことで「中身を書き換えている」ことを固定する。
+    ino0 = opened.stat().st_ino
+    make_master(share, 'inode-check')
+    ms.refresh(force=True)
+    rec('写しは中身を書き換える（名前を差し替えない）', opened.stat().st_ino == ino0,
+        f'{ino0} -> {opened.stat().st_ino}')
+    rec('それでも取り込めている', read_value(opened) == 'inode-check', read_value(opened))
+
+    # **「確かめられなかった」を「共有にまだ無い」と読まないこと。** 読むと、
+    # 共有には全員のマスタがあるのに手元の写しを正とみなし、次の書込で
+    # 丸ごと上書きしてしまう。
+    from backend import db_access as _dba
+    _orig_exists = _dba.path_exists_safe
+    _dba.path_exists_safe = lambda p: None
+    try:
+        try:
+            ms._pull(force=True)
+            got = None
+        except ms.MasterShareUnavailable as e:
+            got = e
+        rec('共有の有無を確かめられないときは取り込みを断る', got is not None, str(got)[:70])
+        try:
+            ms.begin_write('tester', 'PC1')
+            wrote = True
+        except Exception:
+            wrote = False
+        rec('確かめられないときは書込サイクルに入らない（共有を上書きしない）',
+            wrote is False, str(wrote))
+        rec('断ったあともロックは残さない', ms.lock_status().get('locked') is False,
+            str(ms.lock_status()))
+    finally:
+        _dba.path_exists_safe = _orig_exists
+    rec('共有が読めれば元どおり取り込める',
+        ms.refresh(force=True) is not None and read_value(opened) == 'inode-check',
+        read_value(opened))
+
+    # ファイルを置き換える／削除する側のモジュールは `with connect(...)` を
+    # **書かない**。上のfd検査は実際に通る道しか見られないので、あとから
+    # 足した関数は素通りする。綴りでも見張っておく（`_opened()` を通すこと）。
+    # **綴りではなく構文木で見る**——説明文の中の `with connect(...)` まで
+    # 拾ってしまい、直したのに落ちたままになる（実際にそうなった）。
+    leaky = []
+    for name in ('master_share.py', 'schedule_sync.py', 'db_mirror.py'):
+        tree = ast.parse((ROOT / 'backend' / name).read_text(encoding='utf-8'))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.With):
+                continue
+            for item in node.items:
+                fn = item.context_expr
+                if not isinstance(fn, ast.Call):
+                    continue
+                nm = (fn.func.id if isinstance(fn.func, ast.Name)
+                      else fn.func.attr if isinstance(fn.func, ast.Attribute) else '')
+                if nm == 'connect':
+                    leaky.append(f'{name}:{fn.lineno}')
+    rec('置き換える側のモジュールは with connect(...) を書かない（閉じないため）',
+        not leaky, '／'.join(leaky) if leaky else 'master_share/schedule_sync/db_mirror')
 finally:
     ms._state.clear(); ms._state.update(_orig[0])
     ms._mode_setting, ms._looks_shared, ms.paths.work_dir = _orig[1], _orig[2], _orig[3]
