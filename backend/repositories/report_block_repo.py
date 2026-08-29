@@ -24,6 +24,7 @@
 判定を新しく書き起こさない。
 """
 import copy as _copy
+import json
 
 from .master_repo import tables
 
@@ -157,6 +158,12 @@ STAT_CATALOG = tuple(
     (f'{item_label} {agg_label}', f'stat.{item_key}.{agg_key}')
     for item_key, item_label in STAT_ITEMS
     for agg_key, agg_label in STAT_AGGS)
+# **2つの軸を名乗る**（§9.274）。「板厚 MIN」は行＝板厚・列＝MINなので、
+# これを候補に添えておくと**盤の「表に組む」が綴りを知らずに表を作れる**
+# ——画面がラベルを空白で割って推測すると、名前に空白を含む項目で必ず崩れる。
+# 軸を名乗らない候補は表に組めない、と画面が言えるのもこの印があるから。
+STAT_AXIS = {f'stat.{ik}.{ak}': (il, al)
+             for ik, il in STAT_ITEMS for ak, al in STAT_AGGS}
 
 # ---------------------------------------------------------------------------
 # 子ロット（幅分割）そのものの値（§9.247 ②）
@@ -731,7 +738,8 @@ def field_catalog(c, equipment=''):
                            'その子ロットの条だけから数えた値になります**（§9.247 ②）。'
                            '板厚・板丈・肉厚は丈ごとに測るので子ロットには割り当てられず、'
                            '「—」になります。',
-                   'items': [{'label': l, 'path': p, 'sample': sample_for(p)}
+                   'items': [{'label': l, 'path': p, 'sample': sample_for(p),
+                              'row': STAT_AXIS[p][0], 'col': STAT_AXIS[p][1]}
                              for l, p in STAT_CATALOG]})
     # 子ロットそのものの値（§9.247 ②）。**繰り返していない塊では親ロットへ
     # 落ちる**ので、どちらに置いても空欄にならない。
@@ -885,6 +893,154 @@ SPAN_MIN, SPAN_MAX = 1, 12
 ROWSPAN_MIN, ROWSPAN_MAX = 1, 12
 
 
+# ---------------------------------------------------------------------------
+# 1つのマス（セル）が持つもの（§9.274、利用者の指示）
+# ---------------------------------------------------------------------------
+# 「板厚MIN、板厚MAX、板幅MIN、板幅MAX、板丈MIN、板丈MAXをブロックに設定して
+#  表示させると、すべて横方向に、2段のカラムで並べられます。縦にも項目を
+#  並べて、横も共通軸で並べたりすることでマトリクスも整形できるように
+#  したいです」
+#  「配置したデータの書式変更もできるようにしてください。数値の桁数、
+#   日付の書式、文字列を寄せる方向など」
+#
+# 今まで1マスが持てたのは「ラベル・出どころ・横×縦のマス数」だけだった。
+# 表（マトリクス）を組むには**軸の見出し**——値を持たず文字だけ出すマス——が
+# 要る。共通の軸で並べたときはラベルが見出しと二重になるので、
+# **ラベルを出さない**も要る。書式と寄せはそこに足す。
+#
+#   種別 value ＝ ラベルと値／head ＝ 見出し（文字だけ）／blank ＝ 空き
+#
+# **`blank`は今までどおり残す**——読む側（画面・紙）が`f.blank`で見ており、
+# 消すと既に登録してある塊の空きマスが値のマスとして描かれる。
+CELL_VALUE, CELL_HEAD, CELL_BLANK = 'value', 'head', 'blank'
+CELL_KINDS = ((CELL_VALUE, '値（ラベルと値）'), (CELL_HEAD, '見出し（文字だけ）'),
+              (CELL_BLANK, '空き（場所だけ取る）'))
+
+# 寄せ。**一覧の`[値揃え]`（§9.239 ④）と同じ綴り**——2つの言葉を覚えさせない。
+ALIGNS = (('', '自動'), ('left', '左'), ('center', '中央'), ('right', '右'))
+_ALIGN_SET = frozenset(v for v, _lb in ALIGNS)
+
+# 書式。**綴りは`WL.cellFormat`（`base.js`）と同じ**——値を整えるのは画面の
+# その1箇所で、ここが持つのは「何が選べるか」だけ（§9.163）。別の綴りを
+# 作ると、一覧の書式と帳票の書式で覚えることが2倍になる。
+FORMAT_KINDS = (('', 'そのまま'), ('number', '数値'), ('datetime', '日付・時刻'),
+                ('text', '文字'))
+_FORMAT_SET = frozenset(v for v, _lb in FORMAT_KINDS if v)
+# 日付の書式の見本。**選ばせるだけで、手で書いてもよい**（`WL.cellFormat`が
+# 受ける綴りは`yyyy/MM/dd HH:mm`の形。ここで塞ぐと現場の書き方を狭める）。
+DATE_PATTERNS = ('yyyy/MM/dd', 'yyyy/MM/dd HH:mm', 'yyyy-MM-dd', 'MM/dd',
+                 'M月d日', 'yyyy年M月d日', 'HH:mm', 'HH:mm:ss')
+DECIMAL_MAX = 6
+
+
+def normalize_align(v):
+    s = str(v or '').strip()
+    return s if s in _ALIGN_SET else ''
+
+
+def normalize_format(spec):
+    """書式の指定を整える。**知らないものはNone（そのまま）へ倒す**
+    （§9.215と同じ作法——例外にすると塊が丸ごと開けなくなる）。"""
+    if not isinstance(spec, dict):
+        return None
+    kind = str(spec.get('kind') or '').strip()
+    if kind not in _FORMAT_SET:
+        return None
+    pre = str(spec.get('prefix') or '')[:16]
+    suf = str(spec.get('suffix') or '')[:16]
+    if kind == 'number':
+        dec = spec.get('decimals')
+        if dec in (None, ''):
+            dec = None
+        else:
+            try:
+                dec = max(0, min(DECIMAL_MAX, int(dec)))
+            except (TypeError, ValueError):
+                dec = None
+        out = {'kind': 'number', 'decimals': dec, 'thousands': bool(spec.get('thousands'))}
+    elif kind == 'datetime':
+        out = {'kind': 'datetime', 'pattern': str(spec.get('pattern') or '')[:40] or 'yyyy/MM/dd'}
+    else:
+        out = {'kind': 'text'}
+    if pre:
+        out['prefix'] = pre
+    if suf:
+        out['suffix'] = suf
+    # **既定だけの指定は持たない**——「そのまま」と同じ意味の指定を保存すると、
+    # 何も変えていない塊まで保存のたびに形が変わる（`fbText`と同じ約束）。
+    if kind == 'text' and not pre and not suf:
+        return None
+    return out
+
+
+def _cell(label='', path='', span=1, rows=1, kind=CELL_VALUE,
+          show_label=True, align='', fmt=None):
+    span = max(SPAN_MIN, min(SPAN_MAX, int(span or 1)))
+    rows = max(ROWSPAN_MIN, min(ROWSPAN_MAX, int(rows or 1)))
+    label, path = str(label or '').strip(), str(path or '').strip()
+    if kind == CELL_HEAD:
+        path = ''
+    elif kind == CELL_BLANK:
+        label, path = '', ''
+    elif not path:
+        # 道を持たない「値」のマスは存在できない。**空きへ落とす**
+        # （落とさないと、ラベルだけのマスが値の場所に「-」を出す）。
+        kind, label = CELL_BLANK, ''
+    return {'label': label, 'path': path, 'blank': kind == CELL_BLANK,
+            'span': span, 'rows': rows, 'kind': kind,
+            'showLabel': bool(show_label) if kind == CELL_VALUE else False,
+            'align': normalize_align(align), 'format': normalize_format(fmt)}
+
+
+def _cell_from_json(x):
+    if not isinstance(x, dict):
+        return None
+    kind = str(x.get('kind') or '').strip()
+    if kind not in (CELL_VALUE, CELL_HEAD, CELL_BLANK):
+        # **知らない種別は「値」へ倒す**（`blank`が真なら空き）。
+        kind = CELL_BLANK if x.get('blank') else CELL_VALUE
+    return _cell(label=x.get('label'), path=x.get('path'),
+                 span=x.get('span'), rows=x.get('rows'), kind=kind,
+                 show_label=x.get('showLabel', True),
+                 align=x.get('align'), fmt=x.get('format'))
+
+
+def _rich(c):
+    """行の形（`ラベル=道|横x縦`）では書けないマスか。"""
+    return (c['kind'] == CELL_HEAD or (c['kind'] == CELL_VALUE and not c['showLabel'])
+            or c['align'] or c['format'])
+
+
+def _cell_line(c):
+    """1マスを行の形へ。**1マス・ラベルありのマスは今までどおりの1行**
+    （`|1`を足さない）——書き足すと、何も変えていない塊まで保存のたびに
+    形が変わる（`fbText`と同じ約束）。"""
+    size = ''
+    if c['rows'] > 1:
+        size = '|%dx%d' % (c['span'], c['rows'])
+    elif c['span'] > 1:
+        size = '|%d' % c['span']
+    if c['kind'] == CELL_BLANK:
+        return '|' + (size[1:] if size else '1')
+    return '%s=%s%s' % (c['label'] or c['path'], c['path'], size)
+
+
+def dump_content(cells):
+    """マスの並び → `[内容]`の文字列。
+
+    **書ける限り今までの行の形で書く**（§9.226 ⑥「保存の形は変えない」）
+    ——1つでも新しい持ちもの（見出し・ラベルを出さない・寄せ・書式）を
+    使っているときだけJSONへ切り替える。こうすると、**触っていない塊の
+    保存値は1バイトも変わらない**。"""
+    cells = [c for c in (cells or []) if isinstance(c, dict)]
+    if not cells:
+        return ''
+    if any(_rich(c) for c in cells):
+        return json.dumps([{k: v for k, v in c.items() if k != 'blank'}
+                           for c in cells], ensure_ascii=False)
+    return '\n'.join(_cell_line(c) for c in cells)
+
+
 def parse_content(text):
     """`ラベル=出どころ`の並びを読む。改行でもカンマでも区切れる。
 
@@ -906,10 +1062,25 @@ def parse_content(text):
         |1                        … 空きマス（何も出さずに場所だけ取る）
 
     縦のマス数は`x`のうしろ。**`x`が無ければ縦1**なので、`|2`だけの
-    古い保存値はそのまま読める（後置きを足しただけ）。
+    古い保存値はそのまま読める。
 
     空きマスは**道もラベルも持たない行**で表す。`,`と`、`は区切りに使って
-    いるので**マス数の区切りに使えない**（`|`にした理由）。"""
+    いるので**マス数の区切りに使えない**（`|`にした理由）。
+
+    ---- 見出し・書式・寄せ（§9.274） ----
+    行の形では書けない持ちもの（見出しのマス・ラベルを出さない・寄せ・書式）を
+    使う塊は**JSONの配列**で持つ。読む側は`[`で始まるかどうかだけで見分ける
+    ——**書き方が2つに増えたことを利用者に見せない**（盤で組むので、綴りは
+    誰も打たない）。壊れたJSONは行の形として読み直す（黙って空にしない）。"""
+    s = str(text or '').strip()
+    if s[:1] == '[':
+        try:
+            data = json.loads(s)
+        except Exception:
+            data = None
+        if isinstance(data, list):
+            out = [_cell_from_json(x) for x in data]
+            return [c for c in out if c]
     out = []
     for raw in str(text or '').replace('、', ',').replace('\r', '\n').replace(',', '\n').split('\n'):
         s = raw.strip()
@@ -938,11 +1109,9 @@ def parse_content(text):
         if not path:
             # 空きマス。**落とさない**——場所を取ることが役目なので、
             # 消すとマトリクスが1マスずつ詰まって崩れる。
-            out.append({'label': '', 'path': '', 'blank': True,
-                        'span': span, 'rows': rows})
+            out.append(_cell(span=span, rows=rows, kind=CELL_BLANK))
             continue
-        out.append({'label': label or path, 'path': path, 'blank': False,
-                    'span': span, 'rows': rows})
+        out.append(_cell(label=label or path, path=path, span=span, rows=rows))
     return out
 
 

@@ -40,14 +40,20 @@ const tap=async(page,sel,dbl)=>{
  if(m)await page.hover(m[1]);
  await (dbl?page.dblclick(sel):page.click(sel));
 };
-/* 塊の設定は**ダブルクリックで開く窓**が持つ（§9.226 ⑤で浮き帯を廃止した）。
+/* **この紙だけの見え方**は塊の左上の「紙」ボタンが開く（§9.274）。
+   ダブルクリックは**帳票ブロックマスタへ移る**ようになった（利用者の指示
+   「今のモーダルでできることは少ないのでマスタに繋いできちんと修正できる
+   ようにしたい」）ので、ここでは押さない——移ってしまうと以降の操作が
+   マスタ管理の画面で走る。行き先そのものは`tests/test_rbcells.js`が見る。
    開く→押す→閉じるを1本にしておく——呼ぶ側が毎回書くと、閉じ忘れた窓が
    次の操作を覆って「押せない」で落ちる。 */
 const inDlg=async(page,key,fn)=>{
  await page.evaluate(k=>{
   const el=document.querySelector(`[data-rp-block="${CSS.escape(k)}"]`);
   if(!el)throw Error('塊が無い: '+k);
-  el.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));
+  const b=el.querySelector('[data-rp-paper]');
+  if(!b)throw Error('「紙での見え方」の入口が無い: '+k);
+  b.click();
  },key);
  await page.waitForFunction(()=>{
   const m=document.getElementById('rpBlockModal');return !!m&&!m.hidden;
@@ -490,10 +496,11 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
   await page.waitForSelector('#reportContent .rp-blocks',{timeout:20000});
   await page.click('#reportArrange');
   await page.waitForSelector('.rp-blocks.is-arranging',{timeout:8000});
-  /* 塊を大きく開くのは**ダブルクリック**（§9.174）。帯のボタンではない。 */
+  /* この紙だけの見え方は**左上の「紙」ボタン**（§9.274。ダブルクリックは
+     帳票ブロックマスタへ移る）。 */
   await page.evaluate(()=>{
-   const el=document.querySelector('[data-rp-block="丈別データ"]');
-   if(el)el.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));
+   const el=document.querySelector('[data-rp-block="丈別データ"] [data-rp-paper]');
+   if(el)el.click();
   });
   await page.waitForSelector('#rpBlockForm [data-e-pmode]',{timeout:8000});
   const modes=await page.evaluate(()=>[...document.querySelectorAll('#rpBlockForm [data-e-pmode]')]
@@ -531,8 +538,8 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
   await page.click('#reportArrange');
   await page.waitForSelector('.rp-blocks.is-arranging',{timeout:8000});
   await page.evaluate(()=>{
-   const el=document.querySelector('[data-rp-block="丈別データ"]');
-   if(el)el.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));
+   const el=document.querySelector('[data-rp-block="丈別データ"] [data-rp-paper]');
+   if(el)el.click();
   });
   await page.waitForSelector('#rpBlockForm [data-e-pmode]',{timeout:8000});
   await page.click('#rpBlockForm [data-e-pmode=""]');

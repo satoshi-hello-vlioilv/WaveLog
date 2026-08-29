@@ -52,5 +52,9 @@ tests/.run_all.lock
 # 共有DBの写し(db_mirror。手元の作業用なので共有しない)
 db/cache/
 
+# 在席ファイル(§9.272)。端末ごとに1ファイルで、共有の置き場が無いときは
+# ここへ落ちる。中身はその端末の状態なので共有しない。
+db/presence/
+
 # 実測用に立てる開発サーバーの作業コピー(tests/run_all.sh の work/ と同じ役割)
 db/test_fixture/devwork/

@@ -366,7 +366,13 @@ let b=null,madeBlock=null;
      ダブルクリックで開く設定の窓が「何マス×何行」を出す。**入口が1つ
      しかないなら、そこに必ず出ていること**を見る（出ていないと、開いても
      いま何マスなのか分からないまま押すことになる）。 */
-  await page.dblclick(`[data-rp-block="${A.replace(/"/g,'\\"')}"] .rp-block-fit`);
+  /* **ダブルクリックは帳票ブロックマスタへ移る**（§9.274、利用者の指示）
+     ——塊そのもの（名前・載せる項目・書式）を直せるのはあちらだけ。
+     この紙だけの見え方（幅・高さ・列幅・行列入れ替え）はマスタが持てないので、
+     塊の左上の「紙」ボタンが今までの窓を開く。**入口は消していない**（§4）。
+     ダブルクリックの行き先そのものは`tests/test_rbcells.js`が見る
+     （同じ確認を2箇所に置かない・§9.249 ④）。 */
+  await page.click(`[data-rp-block="${A.replace(/"/g,'\\"')}"] [data-rp-paper]`);
   await page.waitForFunction(()=>{
    const m=document.getElementById('rpBlockModal');return !!m&&!m.hidden;
   },null,{timeout:8000});

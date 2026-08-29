@@ -24,11 +24,15 @@ let b=null,TARGET='';
 /* 列レイアウトマスタは**実行をまたいで生き延びる**（§9.121）ので必ず片付ける。 */
 async function cleanup(){
  if(!TARGET)return;
+ const wipe=u=>post('/api/column-layout-master',{target:TARGET,clear:true,order:[],widths:{},hidden:[],
+   names:{},formats:{},rules:{},formulas:{},locks:[],user_id:u}).catch(()=>{});
+ /* **個人設定を先に消す**（§9.121）。誰の行を読み書きするかは
+    `column_layout_owner()`が答える（§9.259）ので、先に「みんなのもの」へ
+    戻してから消すと、**消えるのは共通の行だけ**で個人の行が残る
+    ——実行のたびに`tests-colscope-<時刻>`の行が積み上がっていた（実測436行）。 */
+ await wipe(UID);
  await post('/api/column-layout-master/scope',{target:TARGET,scope:'common',user_id:UID}).catch(()=>{});
- for(const u of [UID,'']){
-  await post('/api/column-layout-master',{target:TARGET,clear:true,order:[],widths:{},hidden:[],
-    names:{},formats:{},rules:{},formulas:{},locks:[],user_id:u}).catch(()=>{});
- }
+ for(const u of [UID,'']) await wipe(u);
 }
 
 (async()=>{

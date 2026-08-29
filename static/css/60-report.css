@@ -733,4 +733,39 @@
 .rp-grid-m>.rp-field{align-content:start}
 /* 空きマスは**場所を取るだけ**（枠も文字も持たない）。 */
 .rp-field-blank{min-height:1px}
+/* ---------- 表（マトリクス）の軸（§9.274、利用者の指示） ----------
+   「縦にも項目を並べて、横も共通軸で並べたりすることでマトリクスも
+    整形できるようにしたいです」
+
+   見出しのマスは**値を持たない**ので1列で組む（ラベル列を空けない）。
+   面で軸だと分かるようにし、**色だけで伝えない**ので文字は太字にする。
+   `print-color-adjust:exact`は`.rp-page`が持っている（§9.237 ②）ので、
+   ここでは面を置くだけでよい。 */
+.rp-field-head{grid-template-columns:minmax(0,1fr);
+  background:var(--surface-2);border-bottom:1px solid var(--line-mid)}
+.rp-field-headtext{color:var(--ink-2);font-weight:800;font-size:8px;
+  overflow-wrap:break-word;white-space:normal}
+/* ラベルを出さないマス（共通の軸で並べたとき）。**ラベル列ごと落とす**
+   ——空の箱を残すと`min-content`の列がそのぶん残り、値が右へずれる。 */
+.rp-field-bare{grid-template-columns:minmax(0,1fr)}
+/* この紙だけの見え方を開く小さな入口（§9.274）。**左上**に置く
+   ——縁の掴み（右・下・右下）と重ならない位置でないと、掴む的が消える
+   （§9.226 ③で浮き帯を外したのと同じ理由）。組み換え中しか出ない。 */
+.rp-block-paper{
+  position:absolute;left:2px;top:2px;z-index:2;
+  min-width:1.6em;min-height:1.6em;padding:0 var(--space-1);
+  border:1px solid var(--line-mid);border-radius:var(--radius-xs);
+  background:var(--card-bg);color:var(--ink-3);
+  font-size:var(--fs-micro);font-weight:800;line-height:1;cursor:pointer;
+  opacity:.55;
+}
+.rp-block:hover>.rp-block-paper,.rp-block-paper:focus-visible{opacity:1;color:var(--nav);border-color:var(--nav)}
+/* 窓から帳票ブロックマスタへ（§9.274）。**×の左**——閉じるの隣に置くと
+   押し間違えるので、面を持たせて別の役だと分かる形にする（§CLAUDE 5）。 */
+.rp-to-master{margin-left:auto;margin-right:var(--space-2);
+  min-height:var(--ctl-h-xs);padding:0 var(--space-2);
+  border:1px solid var(--nav);border-radius:var(--radius-sm);
+  background:var(--card-bg);color:var(--nav);
+  font-size:var(--fs-badge);font-weight:700;cursor:pointer}
+.rp-to-master:hover{background:var(--pale)}
 }
