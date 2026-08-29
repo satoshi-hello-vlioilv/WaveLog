@@ -151,11 +151,16 @@ const made={perm:[],cat:[]};
    return {listScrollW:w.scrollWidth,listClientW:w.clientWidth,
            panelScrollW:p.scrollWidth,panelClientW:p.clientWidth,
            bodyScrollW:document.body.scrollWidth,bodyClientW:document.body.clientWidth,
-           cols:document.querySelectorAll('.mm-row.head>span').length};
+           cols:document.querySelectorAll('.mm-row.head>span').length,
+           heads:[...document.querySelectorAll('.mm-row.head>span')].map(x=>x.textContent.trim())};
   });
   rec('列数の多いマスタでも一覧に横スクロールが出ない',ov.listScrollW<=ov.listClientW+1,JSON.stringify(ov));
   rec('画面全体にも横スクロールが出ない',ov.bodyScrollW<=ov.bodyClientW+1,`body ${ov.bodyScrollW}/${ov.bodyClientW}`);
-  rec('列数が多いマスタでは更新者/更新日時を列から外す(6項目+操作=7)',ov.cols===7,'head spans='+ov.cols);
+  /* **数を焼き付けないこと**（§9.200）。以前は「6項目+操作=7」と書いており、
+     権限区分（§9.272）を1つ足しただけで、直していない約束が落ちた。
+     ここで守りたいのは**更新者・更新日時を列に出さない**ことそのもの。 */
+  rec('列数が多いマスタでは更新者/更新日時を列から外す',
+      !ov.heads.some(h=>/更新者|更新日時/.test(h)),`${ov.cols}列: ${ov.heads.join('/')}`);
 
   /* ---- ③ 一周: モーダルから登録→一覧とサーバー→行クリックで編集→更新（旧 test_p11c） ----
      モーダル方式の代表はアクセス権限マスタ（equipment-multi-textを含む）。

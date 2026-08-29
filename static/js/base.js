@@ -26,7 +26,40 @@ const apiErrorMessage=(status,text,url)=>{
  const hint=HTTP_HINT[status]||`サーバーがエラーを返しました（HTTP ${status}）。`;
  return `${hint}（${String(url||'').split('?')[0]}）`;
 };
-const api=async(u,o)=>{let r;try{r=await fetch(u,{cache:'no-store',...(o||{})})}catch(error){throw Error('サーバーへ接続できません。Flaskアプリが起動中か、ポート5029で開いているか確認してください。詳細: '+(error?.message||String(error)))}const text=await r.text();let j={},parsed=false;try{if(text){j=JSON.parse(text);parsed=true}}catch(_){j={}}if(!r.ok){const err=Error((parsed&&j.error)||apiErrorMessage(r.status,text,u));if(parsed)Object.assign(err,j);err.status=r.status;err.body=String(text||'').slice(0,500);throw err}return j},esc=v=>{const d=document.createElement('div');d.textContent=v??'';return d.innerHTML};
+/* 遅い書き込みには「保存しています…」を出す（§9.273、利用者の指示
+   「共有へ保存しているときに、少しタイムラグがあるので保存していますという
+   メッセージが欲しいです。保存しましたというメッセージが出るまで6秒くらい
+   待たされます」）。共有のマスタへ保存するときは書込サイクル（ロック→
+   取り直し→押し出し・§9.263）を通るので、実機で数秒かかる。そのあいだ画面が
+   無反応だと「効いていない」と読まれ、もう一度押されることになる。
+
+   **500ms待ってから出す**——手元に置いている端末の保存は一瞬で終わるので、
+   出すと光って消えるだけになる。
+   **読むだけのPOSTには出さない**（`quiet:true`）。どのPOSTが読みだけかは
+   サーバーの`_READ_ONLY_POST_ENDPOINTS`が正で、**呼ぶ側がその印を付ける**
+   （知っているのは呼ぶ側）。付け忘れは`tests/test_savechip.py`が数える。 */
+const SAVE_CHIP_DELAY_MS=500;
+const api=async(u,o)=>{
+ const opt={...(o||{})};
+ const quiet=opt.quiet===true;delete opt.quiet;
+ const watching=String(opt.method||'GET').toUpperCase()!=='GET'&&!quiet;
+ let armed=false;
+ /* `saveState`はこの下で宣言されるので**名前空間経由で触る**（宣言前に
+    素の名前を読むと ReferenceError になる）。 */
+ const chip=()=>(window.WL&&window.WL.saveState)||null;
+ const timer=watching?setTimeout(()=>{const c=chip();armed=!!(c&&c.autoBegin())},SAVE_CHIP_DELAY_MS):0;
+ const settle=ok=>{clearTimeout(timer);if(armed){const c=chip();if(c)c.autoEnd(ok)}};
+ let r;
+ try{r=await fetch(u,{cache:'no-store',...opt})}
+ catch(error){settle(false);throw Error('サーバーへ接続できません。Flaskアプリが起動中か、ポート5029で開いているか確認してください。詳細: '+(error?.message||String(error)))}
+ const text=await r.text();let j={},parsed=false;
+ try{if(text){j=JSON.parse(text);parsed=true}}catch(_){j={}}
+ if(!r.ok){
+  settle(false);
+  const err=Error((parsed&&j.error)||apiErrorMessage(r.status,text,u));
+  if(parsed)Object.assign(err,j);err.status=r.status;err.body=String(text||'').slice(0,500);throw err}
+ settle(true);
+ return j},esc=v=>{const d=document.createElement('div');d.textContent=v??'';return d.innerHTML};
 const aliases={lotNo:['ロット番号','ﾛｯﾄ番号','LTNO'],inspectionNo:['検査番号','KNNO'],orderNo:['オーダー番号','JUON','JUNO'],castingNo:['鋳造番号','CYNO'],allocationNo:['引当番号','HKNO'],orderMaterial:['オーダー材質','JUA'],orderTemper:['オーダー調質','JUB'],orderThickness:['オーダー板厚','JUX'],orderWidth:['オーダー板幅','JUY'],orderLength:['オーダー板丈','JUZ'],mfgMaterial:['製造材質','LTA'],mfgTemper:['製造調質','LTB'],mfgThickness:['製造板厚','LTX'],mfgWidth:['製造板幅','LTY'],mfgLength:['製造板丈','LTZ'],purposeCode:['用途コード','用途ｺｰﾄﾞ','YOTOC'],purposeName:['用途名','YOTON'],customer:['取引先','TOKUNA'],delivery:['納入先','NONNA'],designCourse:['設計_設備ｺｰｽ','設計_設備コース'],course:['実績_設備ｺｰｽ','実績_設備コース','実績コース'],residualCourse:['残仕掛設備ｺｰｽ','残仕掛設備コース','ZANMC'],equipment:['BOX設計_設備名','設備'],originalWidth:['BOX実績_板幅'],boxHorizontalCount:['BOX設計_横割数'],boxVerticalCount:['BOX設計_縦割数']};
 function pick(row,key){for(const n of aliases[key]||[])if(row[n]!==undefined&&row[n]!==null)return String(row[n]);return ''}
 function lotKey(r){return [pick(r,'equipment'),pick(r,'lotNo'),pick(r,'inspectionNo'),pick(r,'castingNo')].join('|')}
@@ -392,11 +425,11 @@ window.WL.dataSource=dataSource;
 const saveState=(()=>{
  let busy=0,hideTimer=0,retry=null;
  const box=()=>document.getElementById('saveState');
- function paint(kind,text,tip){
+ function paint(kind,text,tip,withRetry){
   const el=box();if(!el)return;
   el.hidden=false;el.className='save-chip save-chip-'+kind;
   el.innerHTML='<b class="save-chip-state"></b>'
-   +(kind==='ng'?'<button type="button" class="save-chip-retry" id="saveStateRetry">再試行</button>':'');
+   +((kind==='ng'&&withRetry!==false)?'<button type="button" class="save-chip-retry" id="saveStateRetry">再試行</button>':'');
   el.querySelector('.save-chip-state').textContent=text;
   el.title=tip||'';
   const r=el.querySelector('#saveStateRetry');
@@ -424,7 +457,26 @@ const saveState=(()=>{
    throw e;
   }
  }
- return {run,pending:()=>busy>0,failed:()=>!!retry};
+ /* ---- `api()`が自動で出す「保存しています…」（§9.273）----
+    `run()`で包まれている保存は**そちらが出している**ので手を出さない
+    （同じ場所に2つ書くと後から書いたほうが勝ち、文言が入れ替わる）。
+    **やり直しのボタンは出さない**——同じPOSTをもう一度投げると二重に
+    書きうる（`run()`は`fn`を持っているので出せる）。理由は呼んだ側の
+    トーストが言うので、ここは状態だけを持つ（§8）。 */
+ let auto=0;
+ function autoBegin(){
+  if(busy>0||retry)return false;
+  auto++;clearTimeout(hideTimer);
+  paint('busy','保存しています…','共有へ保存しているときは数秒かかることがあります');
+  return true;
+ }
+ function autoEnd(ok){
+  auto=Math.max(0,auto-1);
+  if(busy>0||retry||auto>0)return;
+  if(ok){paint('ok','保存しました','',false);clearLater(2000)}
+  else{paint('ng','保存できませんでした','くわしい理由は画面のお知らせに出ています。',false);clearLater(6000)}
+ }
+ return {run,autoBegin,autoEnd,pending:()=>busy>0||auto>0,failed:()=>!!retry};
 })();
 window.WL=window.WL||{};
 window.WL.saveState=saveState;
@@ -1205,7 +1257,10 @@ function registerView(def){VIEW_REGISTRY.set(def.key,def);return def}
    ヘッダー表示・bodyクラスを新しい画面のものへ揃える。
    **画面を開く関数は、自分の描画を始める前にこれを1回呼ぶこと。**
    opts.header で見出しを差し替えられる(同じ画面で見出しが変わる場合)。 */
+/* いま開いている画面。ハートビートが在席と一緒に伝える（§9.272）。 */
+WL.currentView='';
 function enterView(key,opts){
+ WL.currentView=String(key||'');
  VIEW_REGISTRY.forEach((v,k)=>{
   if(k===key)return;
   // 1つの画面の終了処理が例外を投げても、残りの画面は必ず閉じる
@@ -1402,7 +1457,11 @@ function setConnectionLost(lost){
 }
 async function sendHeartbeat(){
  try{
-  const res=await fetch(`/api/heartbeat?tab=${encodeURIComponent(WATCHDOG_TAB_ID)}`,{method:'POST',cache:'no-store',keepalive:true});
+  /* いま開いている画面も一緒に伝える（§9.272）。接続状況の一覧が「誰が
+     何をしているか」まで出せる。**専用の周期は足さない**——間隔・失敗時の
+     扱い・タブを閉じたときの後始末を2つ持つことになる。 */
+  const res=await fetch(`/api/heartbeat?tab=${encodeURIComponent(WATCHDOG_TAB_ID)}`
+   +`&view=${encodeURIComponent(WL.currentView||'')}`,{method:'POST',cache:'no-store',keepalive:true});
   if(!res.ok)throw Error('HTTP '+res.status);
   heartbeatFailures=0;setConnectionLost(false);
  }catch(e){

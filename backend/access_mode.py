@@ -33,6 +33,7 @@ from flask import request, jsonify
 import os
 import socket
 import threading
+import time
 
 from .db_access import DBS, connect
 from .repositories.master_repo import permission_flags
@@ -85,6 +86,11 @@ _WRITE_ALLOWED_MODES={
 # scheduleモードはBlueprintの既定(_WRITE_ALLOWED_MODES)で元から書ける。
 # これらは設定値であって作業予定(運用データ)ではないため、editへ開いても
 # 共有スケジュールDBの排他制御(§4.2)には一切影響しない。
+# 接続の管理(§9.272)。**3モードとも許す**——区分(開発者/メンテナンス者/
+# 一般ユーザー)は「何を触れるか」とは別の軸で、閲覧モードの開発者でも
+# 切断はできる。実際に断るのは`master_repo.role_can()`の1箇所。
+_WRITE_ALLOWED_MODES['presence']={'edit','view','schedule'}
+
 _ENDPOINT_EXTRA_MODES={
  'schedule.plan_reorder':{'edit'},
  # 編集セッション(§9.211 ②、利用者の指示「スケジュール編集者が1名になる
@@ -373,6 +379,31 @@ def _allowed_modes(flags):
  if flags['canSchedule']:modes.add('schedule')
  return modes
 
+# 切断の指示は共有の置き場にあるので、**リクエストのたびに読みに行かない**
+# （書込の1本ごとに共有を往復すると、切断の仕組みが遅さの原因になる）。
+_REVOCATION_CACHE_SEC=5.0
+_revocation={'at':0.0,'value':None}
+_revocation_lock=threading.Lock()
+
+def revocation_now():
+ """この端末に効いている切断の指示（無ければNone）。"""
+ now=time.monotonic()
+ with _revocation_lock:
+  if (now-_revocation['at'])<_REVOCATION_CACHE_SEC:
+   return _revocation['value']
+ try:
+  from . import presence
+  value=presence.my_revocation(current_login_id(),current_pc_name())
+ except Exception:
+  value=None                      # **読めなかったら止めない**（fail-open）
+ with _revocation_lock:
+  _revocation['at']=now;_revocation['value']=value
+ return value
+
+def forget_revocation():
+ with _revocation_lock:
+  _revocation['at']=0.0;_revocation['value']=None
+
 def get_mode():
  with _lock:
   return _mode
@@ -399,7 +430,9 @@ def install(app):
   return jsonify(ok=True,mode=get_mode(),canEdit=flags['canEdit'],canSchedule=flags['canSchedule'],
                  canFieldReorder=flags['canFieldReorder'],fieldReorderEquipment=flags['fieldReorderEquipment'],
                  loginId=current_login_id(),pcName=current_pc_name(),
-                 pcNameSource=pc_name_info()['source'])
+                 pcNameSource=pc_name_info()['source'],
+                 # 権限区分と切断の状態(§9.272)。画面はこれを見て帯を出す。
+                 role=flags.get('role',''),revoked=revocation_now())
 
  @app.post('/api/access-mode')
  def access_mode_set():
@@ -418,6 +451,17 @@ def install(app):
  def _guard_write():
   if request.method=='GET':return None
   if request.endpoint in _READ_ONLY_POST_ENDPOINTS:return None  # 読み直すだけのPOST(§9.50)
+  # ---- 切断されている端末は書けない(§9.272) ----
+  # **読みは止めない**。開いている画面を消すのではなく、書き込みだけを
+  # 落として理由を出す（別のPCのプロセスを外から殺さない、という方針）。
+  # 冷却時間で自然に解けるので、間違えても直せる。
+  rev=revocation_now()
+  if rev is not None and request.blueprint!='presence':
+   return jsonify(error=('この端末は接続を解除されています'
+                         f'（{rev.get("by") or "不明"}／{rev.get("byPc") or "不明"}、'
+                         f'あと約{max(1,int(rev.get("remainingSec") or 0)//60+1)}分）。'
+                         +(f' 理由: {rev["reason"]}' if rev.get('reason') else '')),
+                  revoked=rev),403
   if _relayed_write_ok():return None   # 持ち主への中継(§9.192)。判定は依頼元で済んでいる
   bp=request.blueprint
   if bp is None:return None            # app直付け(モード切替API・shutdown等)は対象外

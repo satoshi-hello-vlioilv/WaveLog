@@ -32,6 +32,7 @@ from backend.routes.schedule import bp as schedule_bp
 from backend.routes.logs import bp as logs_bp
 from backend.routes.cleanup import bp as cleanup_bp
 from backend.routes.master_tables import bp as master_tables_bp
+from backend.routes.presence import bp as presence_bp
 
 app.register_blueprint(core_bp)
 app.register_blueprint(tables_bp)
@@ -44,6 +45,7 @@ app.register_blueprint(schedule_bp)
 app.register_blueprint(logs_bp)
 app.register_blueprint(cleanup_bp)
 app.register_blueprint(master_tables_bp)
+app.register_blueprint(presence_bp)
 
 # ========================================================================
 # キャッシュの方針(§9.97)

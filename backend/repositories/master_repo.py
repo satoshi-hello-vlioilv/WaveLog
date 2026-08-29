@@ -697,6 +697,54 @@ ACCESS_PERMISSION_TABLE='アクセス権限マスタ'
 # スケジュールモード(docs/SCHEDULE_MODE_DESIGN.md §3.2)で追加した3列。
 # 既存の ensure_audit_columns と同じ「列が無ければ ALTER TABLE で足す」方式。
 _SCHEDULE_PERMISSION_COLUMNS=(('スケジュール可否','INTEGER'),('現場段取り可否','INTEGER'),('現場段取り対象設備','TEXT'))
+# ------------------------------------------------------------------------
+# 権限区分（§9.272、利用者の指示「アクセス権限マスタに上位概念としてカテゴリ
+# 追加し、開発者、メンテナンス者、一般ユーザーの3タイプを作ってください」）
+#
+# 既存の3つ（編集可否・スケジュール可否・現場段取り可否）が「**何を触れるか**」
+# なのに対し、こちらは「**アプリそのものをどこまで管理できるか**」——在席を
+# 見る／他の端末を切断する、という運用側の権限。**上位概念**なので、区分だけで
+# 判定し、編集可否などとは掛け合わせない（閲覧モードの開発者も切断はできる）。
+#
+# **既定は一般ユーザー**。登録の無い端末に管理の権限を配らない（触れる範囲が
+# 広がる側の既定は安全側へ倒す、という既存の約束と同じ）。編集可否の既定が
+# 「可」なのは互換のためで、**そちらへ揃えないこと**。
+# ------------------------------------------------------------------------
+ROLE_DEVELOPER='開発者'
+ROLE_MAINTAINER='メンテナンス者'
+ROLE_USER='一般ユーザー'
+ROLES=(ROLE_DEVELOPER,ROLE_MAINTAINER,ROLE_USER)
+ROLE_DEFAULT=ROLE_USER
+_ROLE_COLUMNS=(('権限区分','TEXT'),)
+
+def normalize_role(value):
+ """保存値 -> 3つのどれか。知らない綴り・空欄は既定（一般ユーザー）。"""
+ v=str(value or '').strip()
+ return v if v in ROLES else ROLE_DEFAULT
+
+# 何ができるか。**ここ1箇所が答える**（§9.163）——画面にもルートにも
+# 書き写さない。写すと「画面には切断ボタンが出るのにサーバーが断る」が作れる。
+#   'presence:view'       … 接続状況を見る
+#   'presence:disconnect' … 他の端末を切断する（対象の区分も見る）
+def role_can(role,action,target_role=''):
+ r=normalize_role(role)
+ if action=='presence:view':
+  return True                      # 3区分とも見られる（利用者の指示）
+ if action=='presence:disconnect':
+  if r==ROLE_DEVELOPER:return True
+  if r==ROLE_MAINTAINER:
+   # **開発者は切れない**（利用者の指示「開発者を除いて実行可能」）。
+   return normalize_role(target_role)!=ROLE_DEVELOPER
+  return False
+ return False
+
+def role_capabilities(role,):
+ """画面へ渡す「できること」。**判定を画面へ写さないための窓口**。"""
+ r=normalize_role(role)
+ return {'role':r,
+         'canView':role_can(r,'presence:view'),
+         'canDisconnect':role_can(r,'presence:disconnect'),
+         'canDisconnectDeveloper':role_can(r,'presence:disconnect',ROLE_DEVELOPER)}
 def ensure_access_permission_table(c):
  names=tables(c);created=False
  if ACCESS_PERMISSION_TABLE not in names:
@@ -706,7 +754,7 @@ def ensure_access_permission_table(c):
   c.commit();created=True
  ensure_audit_columns(c,ACCESS_PERMISSION_TABLE)
  existing=set(cols(c,ACCESS_PERMISSION_TABLE));cur=c.cursor();changed=False
- for name,typ in _SCHEDULE_PERMISSION_COLUMNS:
+ for name,typ in _SCHEDULE_PERMISSION_COLUMNS+_ROLE_COLUMNS:
   if name not in existing:
    cur.execute(f'ALTER TABLE [{ACCESS_PERMISSION_TABLE}] ADD COLUMN [{name}] {typ}');changed=True
  if changed:c.commit()
@@ -727,7 +775,7 @@ def access_permission_master_rows(c):
  cur=c.cursor()
  # 全行取得後にPython側で有効判定する。スケジュール関連3列は既存の呼び出し元
  # (masters.pyのCRUD一覧等)のインデックス([0]〜[7])を壊さないよう末尾へ追加する。
- cur.execute('SELECT [権限ID],[ログインID],[PC名],[編集可否],[表示順],[有効],[更新日時],[更新者ID],[スケジュール可否],[現場段取り可否],[現場段取り対象設備] FROM [アクセス権限マスタ] ORDER BY [表示順],[ログインID],[PC名]')
+ cur.execute('SELECT [権限ID],[ログインID],[PC名],[編集可否],[表示順],[有効],[更新日時],[更新者ID],[スケジュール可否],[現場段取り可否],[現場段取り対象設備],[権限区分] FROM [アクセス権限マスタ] ORDER BY [表示順],[ログインID],[PC名]')
  rows=[]
  for r in cur.fetchall():
   active=True if r[5] is None else bool(r[5])
@@ -737,7 +785,7 @@ def access_permission_master_rows(c):
 def has_edit_permission(c,login_id,pc_name):
  return permission_flags(c,login_id,pc_name)['canEdit']
 
-_DEFAULT_PERMISSION_FLAGS={'canEdit':True,'canSchedule':False,'canFieldReorder':False,'fieldReorderEquipment':''}
+_DEFAULT_PERMISSION_FLAGS={'canEdit':True,'canSchedule':False,'canFieldReorder':False,'fieldReorderEquipment':'','role':ROLE_DEFAULT}
 
 # 現場段取りの対象設備。1設備だけでなく、複数設備とワイルドカードも書ける。
 #   ''          … 未設定（権限なし。空欄は「全設備許可」ではない）
@@ -777,7 +825,8 @@ def permission_flags(c,login_id,pc_name):
   return dict(_DEFAULT_PERMISSION_FLAGS)
  target_login=normalize_identity_part(login_id);target_pc=normalize_identity_part(pc_name)
  def flags_of(r):
-  return {'canEdit':bool(r[3]),'canSchedule':bool(r[8]),'canFieldReorder':bool(r[9]),'fieldReorderEquipment':str(r[10] or '').strip()}
+  return {'canEdit':bool(r[3]),'canSchedule':bool(r[8]),'canFieldReorder':bool(r[9]),'fieldReorderEquipment':str(r[10] or '').strip(),
+          'role':normalize_role(r[11] if len(r)>11 else '')}
  exact=login_only=pc_only=global_rule=None
  for r in access_permission_master_rows(c):
   rl,rp=normalize_identity_part(r[1]),normalize_identity_part(r[2])
