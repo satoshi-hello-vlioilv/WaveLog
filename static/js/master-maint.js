@@ -5525,6 +5525,16 @@
   return `<small class="mm-field-hint">${hintHtml(f.hint||'')}
     いまは <b>${esc(f.effective||'')}</b> です。${exp}</small>`;
  }
+ /* **読めなかったことを画面のいちばん上に出す**（§9.271）。以前はサーバーが
+    黙って空の設定として扱っていたので、`master_db_path` を書いてあるのに
+    アプリは既定の `db\master.sqlite3` を読み、画面は「未設定」に見えていた。
+    ここに出る＝**このファイルに書いた設定は1つも効いていない**。 */
+ function pcLocalErrorHtml(err){
+  if(!err)return '';
+  return `<p class="mm-warn-note" id="pcLocalConfigError"><b>この端末の設定ファイルを読めませんでした。</b>
+   ${esc(err)}<br>そのため、<b>下の3つに書いた内容は効いていません</b>（アプリは既定の置き場を読んでいます）。
+   このまま下の欄から保存し直すと、正しい形で書き直せます。</p>`;
+ }
  function pcLocalExtraHtml(fields){
   const rows=(fields||[]).filter(f=>f.key==='db_dir'||f.key==='master_share_mode');
   if(!rows.length)return '';
@@ -5619,7 +5629,7 @@
    return `<section class="pc-store-group" data-store-group="${esc(g.id)}">
     <h5 class="pc-store-group-head">${esc(g.name)}<small>${g.why}</small></h5>
     ${list.map(r=>pcStorageRowHtml(r,sl&&sl.localConfig)).join('')}
-    ${g.id==='terminal'?`<div class="pc-store-extra">${pcLocalExtraHtml(sl&&sl.localConfig)}
+    ${g.id==='terminal'?`<div class="pc-store-extra">${pcLocalErrorHtml(sl&&sl.localConfigError)}${pcLocalExtraHtml(sl&&sl.localConfig)}
      <small class="mm-field-hint">この3つは <code>${esc((sl&&sl.localConfigPath)||'config/local.json')}</code> に入ります。
       <b>マスタDB自身の置き場を決める値</b>なので、マスタの中には置けません（読みに行く先が分からなくなるため）。
       直す前の内容は <code>local.json.bak</code> に控えます。</small></div>`:''}

@@ -45,18 +45,68 @@ APP_ROOT=Path(__file__).resolve().parent.parent
 #    PATH_CONFIG_TABLE)へ移行済みで、マスタ管理画面から編集する。
 #    config/local.jsonに残っていた値は初回起動時に一度だけパス設定マスタへ
 #    自動移行される(db_access.py の _migrate_legacy_path_config)。
-#  - ファイルが無い/壊れている場合は空の設定として扱い、既存データの場所に
-#    一切影響しない。
+#  - ファイルが無い場合は空の設定として扱い、既存データの場所に一切影響しない。
+#  - **読めなかった場合は黙らないこと**(§9.271、利用者の報告
+#    「master_db_pathを書いたのに正しく読み込んでいない」)。以前は
+#    `except Exception: return {}` で握り潰しており、**BOM付きで保存された・
+#    ANSI(CP932)で保存された・カンマを1つ多く打った**、のどれでも
+#    「設定が1つも書かれていない」のと**まったく同じ**になっていた。
+#    このファイルはマスタの置き場を決めるので、空として扱うと本体は
+#    `db\master.sqlite3` を黙って読み、画面にも何も出ない。
+#    理由を`local_config_error()`に残し、起動ログと共通設定の画面に出す。
 # ========================================================================
+def local_config_path():
+ return APP_ROOT/'config'/'local.json'
+
+# 直近の読み込みで何が起きたか。None=問題なし。
+_local_config_error=None
+
+def local_config_error():
+ """`config/local.json` を読めなかった理由（読めていればNone）。
+
+ **「無い」と「読めない」は別のこと。** 無いのはふつうの状態だが、
+ 読めないのは**書いた設定が全部効いていない**という事故で、打つ手も違う。"""
+ load_local_config()
+ return _local_config_error
+
 def load_local_config():
- path=APP_ROOT/'config'/'local.json'
+ """`config/local.json` を読む。**現場が手で書くファイル**なので、
+ Windowsのエディタが付けるものは受ける（BOM・CP932）。"""
+ global _local_config_error
+ path=local_config_path()
+ _local_config_error=None
  if not path.exists():
   return {}
+ raw=None
  try:
-  data=json.loads(path.read_text(encoding='utf-8'))
-  return data if isinstance(data,dict) else {}
- except Exception:
+  raw=path.read_bytes()
+ except Exception as e:
+  _local_config_error=f'{path} を開けませんでした（{e}）。'
   return {}
+ text=None
+ # utf-8-sig は BOM 付きも無しも読める。日本語Windowsのメモ帳で「ANSI」を
+ # 選ぶと CP932 になるので、そこまでは受ける（読めれば設定は効く）。
+ for enc in ('utf-8-sig','cp932'):
+  try:
+   text=raw.decode(enc);break
+  except UnicodeDecodeError:
+   continue
+ if text is None:
+  _local_config_error=(f'{path} の文字コードを判別できませんでした。'
+                       'UTF-8 で保存し直してください。')
+  return {}
+ try:
+  data=json.loads(text)
+ except Exception as e:
+  _local_config_error=(f'{path} の書き方に誤りがあります（{e}）。'
+                       'カンマの打ち過ぎ・引用符の閉じ忘れ・`\\` の重ね忘れが'
+                       'よくある原因です。直すまで、このファイルに書いた設定は'
+                       '1つも効きません。')
+  return {}
+ if not isinstance(data,dict):
+  _local_config_error=f'{path} は {{ }} で囲んだ設定の並びである必要があります。'
+  return {}
+ return data
 
 # 環境変数の展開（§9.268の追補、利用者の指摘）
 #   "%LOCALAPPDATA%\\WaveLog" のように書けること。**書いたとおりに保存し、
