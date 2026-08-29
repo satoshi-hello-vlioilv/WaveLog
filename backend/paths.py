@@ -26,6 +26,7 @@ import ctypes
 import hashlib
 import json
 import os
+import re
 import sys
 
 from .config import LOCAL_DIR_NAME
@@ -57,11 +58,41 @@ def load_local_config():
  except Exception:
   return {}
 
+# 環境変数の展開（§9.268の追補、利用者の指摘）
+#   "%LOCALAPPDATA%\\WaveLog" のように書けること。**書いたとおりに保存し、
+#   使うときに展開する**のが要点——展開して保存すると端末ごとに違う文字列に
+#   なり、同じ config/local.json を全端末へ配れなくなる（変数で書きたい理由が
+#   まさにそれ）。
+#   **`%VAR%` も `$VAR` も両方見る。** `os.path.expandvars` はプラットフォーム
+#   任せ（Windowsは`%VAR%`、POSIXは`$VAR`）なので、それだけに頼ると
+#   **検証がLinuxで走るこの構成では`%VAR%`の道を一度も通らない**
+#   （§9.108・`is_network_path`が生の文字列で見ているのと同じ理由）。
+_ENV_PERCENT=re.compile(r'%([A-Za-z_][A-Za-z0-9_]*)%')
+
+def expand_path(raw):
+ """設定に書かれた文字列 -> 実際のパス文字列。環境変数と`~`を展開する。
+
+ **未定義の変数はそのまま残す**（`os.path.expandvars`と同じ作法）——
+ 消してしまうと、打ち間違えた変数名が「フォルダ名の一部が抜けたパス」に
+ 化けて、身に覚えのない場所へ書きに行く。
+ """
+ text=str(raw or '')
+ if not text:return ''
+ text=_ENV_PERCENT.sub(lambda m:os.environ.get(m.group(1),m.group(0)),text)
+ text=os.path.expandvars(text)
+ try:
+  text=os.path.expanduser(text)
+ except Exception:
+  pass
+ return text
+
 def configured_path(key):
  """config/local.jsonでのパス上書き値(db_dir/master_db_path/records_db_path
- 専用)。未設定/該当なしはNone。"""
+ 専用)。未設定/該当なしはNone。**環境変数を展開してから返す。**"""
  value=load_local_config().get(key)
- return Path(value) if value else None
+ if not value:return None
+ text=expand_path(value)
+ return Path(text) if text else None
 
 # ---------------------------------------------------------------------------
 # ユーザー別ローカル領域（§9.255 ③、利用者の報告「他PCで起動に失敗する」）

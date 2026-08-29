@@ -4,7 +4,7 @@ app.pyから移設。ロジックは変更していない(移動のみ)。
 """
 from flask import Blueprint, request, jsonify
 
-from ..db_access import DBS, MEAS_DB, RECORDS_BACKUP_EXPORT_PATH, RECORDS_SHARE_DIR, qi, connect, cols, tables, ensure_backup_table, read_backup_rows, merged_backup_rows, records_path_for, records_dir_name, records_paths_all, records_paths_holding, invalidate_backup_rows_cache, request_user_id, request_pc_name, QUALITY_DB_KEY, path_exists_safe
+from ..db_access import DBS, MEAS_DB, RECORDS_BACKUP_EXPORT_PATH, RECORDS_SHARE_DIR, qi, connect, cols, tables, ensure_backup_table, read_backup_rows, merged_backup_rows, records_path_for, records_dir_name, records_paths_all, records_read_paths, records_paths_holding, note_records_written, invalidate_backup_rows_cache, request_user_id, request_pc_name, QUALITY_DB_KEY, path_exists_safe
 # 選択肢の読み取りは §9.221 ③ で op.choice_values() の1本になった。
 # **読み取り関数と表名の定数は import ごと外す**——残すと grep で
 # read_operator_names が今もここに当たり、廃止した経路が現役だと誤読される
@@ -220,6 +220,9 @@ def backup():
    try:
     with connect(path) as c2:
      c2.cursor().execute('DELETE FROM [Web測定バックアップ] WHERE [記録ID]=?',[x['id']]);c2.commit()
+    # **書いた先は覚える**(§9.268)。写しから読むと、自分が消した行が
+    # 写しの間隔ぶん残って見える。
+    note_records_written(path)
    except Exception as e:
     app_logger().warning('設備を移した測定データ(%s)の置き去りを消せませんでした: %s',path,e)
   records_export.mark_dirty()
@@ -262,6 +265,8 @@ def backup_delete():
      cur.execute('DELETE FROM [Web測定バックアップ] WHERE [記録ID]=?',[rid])
      deleted+=cur.rowcount or 0
     c.commit()
+   # **書いた先は覚える**(§9.268)。以後この端末はここを実物から読む。
+   note_records_written(path)
   records_export.mark_dirty()
   # 実績突合が次の描画で必ず消えた状態を見るようにする(§9.41のキャッシュ)。
   invalidate_backup_rows_cache()
@@ -432,6 +437,26 @@ def records_split():
                       if apply else
                       '下見です。まだ1件も書いていません。'))
 
+def _mirror_state():
+ """閲覧が手元の写しから読めているか(§9.268)。画面はこれをそのまま出す。
+
+ **「写している/いない」だけでなく、実物のまま読んでいるものも数える**
+ ——写しがまだ無いあいだは実物を読む(fail-open)ので、そこを黙ると
+ 「もう写しから読んでいる」と誤解される。
+ """
+ try:
+  from .. import db_mirror
+  real=[str(p) for p in records_paths_all()]
+  read=[str(p) for p in records_read_paths()]
+  mirrored=[a for a,b in zip(real,read) if a!=b]
+  return {'enabled':db_mirror.enabled(),
+          'intervalSec':db_mirror.interval_sec(),
+          'mirrored':len(mirrored),'direct':len(real)-len(mirrored),
+          'paths':read}
+ except Exception as e:
+  # **読めなかったことを「写していない」と混同しない**(§9.211 ②)。
+  return {'enabled':None,'error':str(e)}
+
 @bp.get('/api/measurement/storage')
 def storage_status():
  """測定データの置き場の状態(§9.202、利用者の指示「仕組みを整理して視覚的に」)。
@@ -457,7 +482,10 @@ def storage_status():
  local={'path':str(write_target),'exists':None,'count':None,'size':None,'lastWriteAt':None,'error':'',
         'shareDir':str(RECORDS_SHARE_DIR) if RECORDS_SHARE_DIR else '',
         'perEquipment':RECORDS_SHARE_DIR is not None,
-        'readPaths':[str(p) for p in records_paths_all()]}
+        'readPaths':[str(p) for p in records_paths_all()],
+        # **閲覧は手元の写しから**(§9.268)。黙って写しを読むと、他の端末の
+        # 記録が写しの間隔ぶん古いことに気づけない(§3・§9.198)。
+        'mirrored':_mirror_state()}
  try:
   local['exists']=path_exists_safe(write_target)
  except Exception:

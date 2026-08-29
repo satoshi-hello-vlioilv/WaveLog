@@ -41,7 +41,9 @@ from pathlib import Path
 import json
 
 from . import atomic_io
+from . import paths
 from .config import (SCHEDULE_LOCK_TTL_SEC_DEFAULT, SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT,
+                     SCHEDULE_LOCK_VERIFY_DELAY_NETWORK_MS,
                      SCHEDULE_WATCH_INTERVAL_SEC_DEFAULT, SCHEDULE_WATCH_PAUSE_SEC_DEFAULT)
 from .db_access import SCHEDULE_SHARE_PATH, SCHEDULE_CACHE_PATH, connect, path_config_value
 from .logging_setup import app_logger
@@ -55,9 +57,28 @@ META_TABLE='スケジュールメタ'
 def _lock_ttl_sec():
  try:return int(path_config_value('schedule_lock_ttl_sec',SCHEDULE_LOCK_TTL_SEC_DEFAULT))
  except (TypeError,ValueError):return SCHEDULE_LOCK_TTL_SEC_DEFAULT
+def _lock_verify_delay_default_ms():
+ """ロックを読み直して確かめるまでの待ちの**既定**（§9.267の追補）。
+
+ **置き場の種類で変える**（§9.263の`master_share`と同じ作法）——クラウド同期
+ （Box等）は結果整合なので待たないと確かめにならないが、ファイルサーバー
+ （SMB）は書いた直後に読み返せる。一律1.5秒にすると、**予定を1本足すたびに
+ 1.2秒よけいに待たされる**（しかもロックは設備をまたいで1本なので、他の設備を
+ 触っている人も一緒に待つ）。
+
+ **明示の設定があればそちらが勝つ**——`schedule_lock_verify_delay_ms`を
+ 現場で決めた端末の動きを、既定を賢くしたせいで変えない。
+ """
+ try:
+  if SCHEDULE_SHARE_PATH is not None and paths.cloud_sync_hint(Path(SCHEDULE_SHARE_PATH)):
+   return SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT
+ except Exception:
+  return SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT
+ return SCHEDULE_LOCK_VERIFY_DELAY_NETWORK_MS
+
 def _lock_verify_delay_sec():
- try:return int(path_config_value('schedule_lock_verify_delay_ms',SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT))/1000
- except (TypeError,ValueError):return SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT/1000
+ try:return int(path_config_value('schedule_lock_verify_delay_ms',_lock_verify_delay_default_ms()))/1000
+ except (TypeError,ValueError):return _lock_verify_delay_default_ms()/1000
 
 
 class ScheduleNotConfigured(Exception):

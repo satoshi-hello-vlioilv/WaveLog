@@ -81,6 +81,9 @@ HDR_PC='X-Wavelog-Pc'
 HDR_MODE='X-Wavelog-Mode'
 # 受け口が受け取る依頼の上限。まとめ書込(§9.45)でも数十KBなので十分広い。
 MAX_RELAY_BYTES=8*1024*1024
+# 受け口の1接続あたりの読み待ち上限(§9.269)。**依頼側の12秒より短くする**
+# ——長くしても、頼んだ側はもう諦めて自分で書いているので誰も待っていない。
+RELAY_SOCKET_TIMEOUT_SEC=10
 
 _state={
  'id':uuid.uuid4().hex,      # このプロセスの札
@@ -102,10 +105,18 @@ _lock=threading.Lock()
 # 設定
 # ------------------------------------------------------------------
 def enabled():
- """既定は off。**現場の端末をいきなりLANへ開かない**——入れると
- 決めた現場だけが、マスタ管理の1つのスイッチで入れる。"""
- v=str(path_config_value('schedule_owner_enabled','off') or 'off').strip().lower()
- return v in ('on','auto','true','1')
+ """**既定は on**（§9.269、利用者の指示「常にそれを正にしてください」）。
+
+ §9.192では「現場の端末をいきなりLANへ開かない」として既定offにしていたが、
+ **共有へ書くのを1台に絞るのが正しい形**という判断になった。切るための
+ スイッチは残す——**listenポートを開けない現場がある**（社内規程・
+ ファイアウォール）ので、規程に合わせる道を塞がない。
+
+ **切ってあっても壊れない。** 持ち主になれない／頼めない端末は今までどおり
+ 自分で共有へ書く（ロックと改訂番号の砦はどちらの道でも同じ）。
+ """
+ v=str(path_config_value('schedule_owner_enabled','on') or 'on').strip().lower()
+ return v not in ('off','no','false','0')
 
 
 def relay_port():
@@ -270,7 +281,7 @@ def status():
  # **切っているときは名前解決へ行かない**(§9.198)。`myUrls`は書込役の受け口を
  # 伝えるためのもので、機能が切ってあれば誰も見ない。ところがこの状態は
  # 10秒ごとに聞かれるため、DNSの調子が悪い端末では**使っていない機能のために
- # 定期的に待たされる**（既定はoffなので、ほとんどの現場が該当する）。
+ # 定期的に待たされる**（切ってある現場が該当する）。
  return {
   'enabled':on,'configured':bool(SCHEDULE_SHARE_PATH),
   'running':st['running'],
@@ -290,6 +301,20 @@ def status():
 # ------------------------------------------------------------------
 class _Handler(BaseHTTPRequestHandler):
  server_version='WaveLogOwner/1'
+ # **繋いだまま黙っている相手にスレッドを握らせない**（§9.269、利用者の指示）。
+ # `ThreadingHTTPServer`は接続ごとにスレッドを作り、既定では
+ # `timeout=None`（＝無期限）。合言葉を確かめるのは本文を読んだ後なので、
+ # **認証の前に1スレッド確保される**——繋ぐだけで何も送らない相手が並ぶと、
+ # そのぶんスレッドが解放されないまま積み上がる。
+ # 中継の依頼は数十KB（`MAX_RELAY_BYTES`は上限8MB）で、依頼側は12秒で
+ # 諦めて自分で書く道へ落ちるので、**受ける側がそれより長く待つ意味は無い**。
+ timeout=RELAY_SOCKET_TIMEOUT_SEC
+
+ # **`handle_one_request`は上書きしない。** 最初は「時間切れを握りつぶす」
+ # 上書きを足したが、網（実際に繋いで黙る）は**外しても通った**——
+ # `BaseHTTPRequestHandler`が`socket.timeout`を自分で拾って
+ # `close_connection`を立てるので、`timeout`を宣言するだけで足りる。
+ # 動かして確かめられないコードは残さない。
 
  def log_message(self,fmt,*args):     # 既定の標準エラー出力を止める
   pass

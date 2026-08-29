@@ -99,6 +99,11 @@ def export_once():
   src.backup(dst)
   with _lock:
    _state['lastOkAt']=time.time();_state['lastError']=''
+  # **この端末が書いた先は覚える**(§9.268)。閲覧用の複製をこの端末が
+  # 作っているなら、読むのも実物でよい(写しから読むと、いま書いたものが
+  # 写しの間隔ぶん見えない)。
+  from .db_access import note_records_written
+  note_records_written(RECORDS_BACKUP_EXPORT_PATH)
   return True
  except Exception as e:
   app_logger().warning('測定データバックアップの複製に失敗しました(%s): %s',RECORDS_BACKUP_EXPORT_PATH,e)

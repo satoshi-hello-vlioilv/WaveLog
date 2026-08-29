@@ -39,7 +39,12 @@ let b=null;
     saveInsidePanel:sr.bottom<=panel.bottom+1&&sr.top>=panel.top,
     groups:document.querySelectorAll('.mm-set-group').length,
     badges:document.querySelectorAll('.mm-apply-badge').length,
-    fields:[...document.querySelectorAll('[data-pc-field]')].map(e=>e.dataset.pcField),
+    /* **置き場の行の中の欄は数えない**（§9.267）——あれは「置き場」の
+       1枚に並ぶ行で、1つの保存ボタンで送るために`data-pc-field`を持つ。
+       ここが見たいのは「素の欄として二重に置いていないか」。 */
+    fields:[...document.querySelectorAll('[data-pc-field]')]
+      .filter(e=>!e.closest('.pc-store-row')).map(e=>e.dataset.pcField),
+    storeRows:document.querySelectorAll('.pc-store-row').length,
     clipped,listWrap:getComputedStyle(document.querySelector('.mm-list-wrap')).display,
     tabs:document.querySelectorAll('.mm-tabbar.is-page .mm-tab').length,
     shownPanels:[...document.querySelectorAll('.mm-tabpanel.is-page')].filter(x=>!x.hidden).length,
@@ -60,14 +65,18 @@ let b=null;
     落ちる。「あるべきものが全部出ているか」が見たいこと。 */
  /* **データソースごとの読み込み先はここに無い**（§9.168）。同じ「どこを読むか」を
     2画面に置くと、どちらが効くのか分からなくなるため「データ接続」へ寄せた。
-    **測定データバックアップの複製先もここに無い**（§9.202）——置き場の図・
-    件数・「いま複製する」と同じ画面（測定データの保存）にあるほうが、
-    何が起きるか分かるため。 */
- const WANT=['sikalot_source',
-   'schedule_share_path','rne_extract_enabled',
+    **置き場（作業予定・測定データ・複製先・マスタ）は「置き場」の段が持つ**
+    （§9.267、利用者の指示「全ての設定を共通設定に視覚的に表現した上で」）。
+    §9.202では複製先を「測定データの保存」に置くと決めていたが、置き場が
+    画面に散っているのがそもそもの困りごとだったので撤回した。あちらは
+    `data-pc-field`ではなく置き場の行（`.pc-store-row`）として出るので、
+    ここが数える欄の一覧には**入らない**。 */
+ const WANT=['sikalot_source','rne_extract_enabled',
    'rne_extract_interval_sec','rne_assets_dir','rne_conf_path',
    'schedule_lock_ttl_sec','schedule_lock_verify_delay_ms'];
- const MOVED=['records_backup_export_path'];
+ /* 置き場の欄をここ（`data-pc-field`）へ戻さない——戻すと同じ設定が
+    「置き場」の行と欄の2箇所に出る。 */
+ const MOVED=['records_backup_export_path','records_share_dir','schedule_share_path'];
  const missing=WANT.filter(k=>!p.fields.includes(k));
  rec('よそへ移した設定をここに残さない',MOVED.every(k=>!p.fields.includes(k)),
      MOVED.filter(k=>p.fields.includes(k)).join(',')||'なし');

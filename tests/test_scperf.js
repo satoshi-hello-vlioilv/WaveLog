@@ -93,13 +93,38 @@ let b=null;
  reset();
  const id=await page.evaluate(()=>{const r=[...document.querySelectorAll('.sc-row-line')]
    .find(x=>x.querySelector('.sc-row-lock'));return r?r.dataset.id:null});
+ /* **書込が終わるまで待ってから数え直す**（§9.268の追補）。
+    以前は`untilRows()`（行が在れば350msで返る）のあと`reset()`していたが、
+    書込は1.5秒かかっていたので、**その書込自身の取り直し**が`reset()`より
+    後に届き、それを「開き直したら取り直した」と数えていた。
+    ロックの確認待ちを短くしたら（§9.267の追補）書込が先に終わるようになり、
+    露見した——**待ちの長さに寄りかかった網だった。**
+    書込の取り直しが届くのを待ってから数え直す。 */
+ const before=api.plan;
  await page.click(`.sc-row-line[data-id="${id}"] .sc-row-lock`);
+ for(let i=0;i<160&&api.plan<=before;i++)await page.waitForTimeout(50);
  await untilRows();
+ rec('固定を押すと、その場で取り直す',api.plan>before,`plan=${api.plan}`);
  reset();
  await page.click('#scModeBoard'); await untilBoard();
  await page.evaluate(()=>{const r=[...document.querySelectorAll('.sc-board-row')].find(x=>x.dataset.equipment==='テスト設備A');if(r)r.click()});
  await untilRows();
- rec('予定を変えた後は次に開いたとき取り直す',api.plan===1,`plan=${api.plan}`);
+ /* **見たいのは「古い内容が残らない」こと**（§9.268の追補）。
+    以前は`plan===1`（＝開き直したら1回取りに行く）で見ていたが、書込の
+    直後に取り直している以上、そのあとの再訪でキャッシュを使うのは**正しい**
+    ——数え方のほうが 約束 を取り違えていた（待ちが長かったので、書込
+    自身の取り直しを「再訪の取り直し」と数えていただけ）。
+    行の状態そのもので見る。 */
+ const stillFixed=await page.evaluate(i=>{
+   const r=document.querySelector(`.sc-row-line[data-id="${i}"]`);
+   return r?{locked:r.classList.contains('sc-row-locked'),
+             btn:(r.querySelector('.sc-row-lock')||{}).textContent||''}:null;
+ },id);
+ rec('予定を変えた後に開き直しても、古い内容が残らない',
+     !!stillFixed&&(stillFixed.locked||/解除/.test(stillFixed.btn)),
+     JSON.stringify(stillFixed));
+ rec('開き直しでむだに取りに行かない（書込の直後に取り直している）',
+     api.plan===0,`plan=${api.plan}`);
  await page.click(`.sc-row-line[data-id="${id}"] .sc-row-lock`); await untilRows();
 
  // --- 日付＋勤務のまとめ ---

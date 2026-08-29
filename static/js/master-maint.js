@@ -392,7 +392,7 @@
   {group:'data',key:'queryJoin',label:'クエリ結合',icon:'結',endpoint:'/api/query-join-master',hasDelete:true,
    special:'query-join',titleText:'クエリ結合 — 読んだデータ同士をつなぐ'},
   {group:'data',key:'pathConfig',label:'共通設定',icon:'共',special:'path-config',
-   titleText:'共通設定 — この端末の共有パス・RNE・間隔',endpoint:'/api/path-config-master'},
+   titleText:'共通設定 — 置き場・読み込み先・間隔',endpoint:'/api/path-config-master'},
   /* 不要ファイルの掃除（§9.249 ①、利用者の指示「溜まってくると問題なので、
      不要なキャッシュファイルや不要なバックアップファイルを削除する機能を
      実装してください。いらないものや世代の古いものは定期的に削除するような
@@ -3494,6 +3494,17 @@
   if(min<60)return `${stamp}（${min}分前）`;
   return `${stamp}（${Math.round(min/60)}時間前）`;
  }
+ /* 閲覧が手元の写しから読めているか（§9.268）。**「写している」だけでなく、
+    実物のまま読んでいる本数も出す**——写しがまだ無いあいだは実物を読む
+    （fail-open）ので、そこを黙ると「もう写しから読んでいる」と誤解される。 */
+ function msMirrorText(m){
+  if(!m)return '—';
+  if(m.enabled===null)return '確かめられません';
+  if(m.enabled===false)return '共有を直接読む（写しは無効）';
+  const mins=Math.max(1,Math.round(Number(m.intervalSec||60)/60));
+  if(!m.mirrored)return `写しの用意中（あと${mins}分以内）`;
+  return `写し${m.mirrored}本`+(m.direct?` ／ 実物${m.direct}本`:'');
+ }
  function msSize(n){return (n===null||n===undefined)?'—':(n/1048576).toFixed(1)+'MB'}
  function renderMeasStorage(){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
@@ -3542,10 +3553,13 @@
       ['記録',msNum(loc.count)+(loc.count===null?'':'件')],
       ['最終書込',msWhen(loc.lastWriteAt)],
       ['大きさ',msSize(loc.size)],
-     ].concat(loc.perEquipment?[['読む先',(loc.readPaths||[]).length+'ファイル']]:[]),
+     ].concat(loc.perEquipment?[['読む先',(loc.readPaths||[]).length+'ファイル'],
+                                ['読み方',msMirrorText(loc.mirrored)]]:[]),
      loc.perEquipment
       ?`<b>設備ごとに1ファイル</b>に分けています——書くのはその設備の担当端末だけなので、同じファイルを2台が変えることがありません。
-        一覧は<b>全設備ぶん</b>を読みます。<br><code title="${esc(loc.shareDir||'')}">${esc(loc.shareDir||'—')}\\&lt;設備&gt;\\records.sqlite3</code>`
+        一覧は<b>全設備ぶん</b>を読みますが、<b>開くのは手元の写し</b>です——共有を直接開くと、
+        読んでいるあいだ測定端末の書き込みを待たせます（自分が書いたぶんだけは実物を読むので、
+        自分の記録はすぐ見えます）。<br><code title="${esc(loc.shareDir||'')}">${esc(loc.shareDir||'—')}\\&lt;設備&gt;\\records.sqlite3</code>`
       :`<b>他のPCから続きを開けるのはここ</b>です（データ一覧はここも読みます）。<br><code title="${esc(loc.path||'')}">${esc(loc.path||'—')}</code>`)}
     ${arrow(exp.retired?'使いません':`変わったら${mins}分ごと`,exp.retired?'—':(exp.configured?'自動':'未設定'))}
     ${stage('③','閲覧用の複製','Box等・読むだけ',[
@@ -3569,15 +3583,20 @@
    </div></div>`},
     {name:'置き場と引っ越し',body:`   <div class="ms-settings">
     <h4>② 測定データの置き場</h4>
-    <label class="mm-field"><span>共有の置き場（設備ごとに分けます）</span>
-     <input type="text" id="msShareDir" value="${esc(v.records_share_dir||'')}"
-       placeholder="例: \\\\server\\共有\\WaveLog\\records" autocomplete="off">
-     <small class="mm-field-hint">この下に<b>設備の名前のフォルダ</b>を作り、その中に <code>records.sqlite3</code> を置きます。
-      書くのはその設備を担当する端末だけなので、<b>同じファイルを2台が変えることがありません</b>。
-      空欄なら今までどおり、この端末の <code>db/records.sqlite3</code> 1本に貯めます。
-      <b>変えたときはアプリの再起動が必要です</b>（接続先は起動時に1回だけ決まります）。
-      設定しても<b>今までの記録は消えません</b>——読むときは旧い置き場も一緒に見ます。</small></label>
-    <div class="mm-cd-actions"><button type="button" id="msSaveShare" class="mm-btn-primary">この設定を保存</button></div>
+    <!-- **置き場を決めるのは共通設定の1箇所**（§9.267、§9.207「入口を2つに
+         しない」）。以前はここにも欄があり、共通設定の「置き場」にも同じ
+         設定が出ていた——同じ設定が2画面にあると、どちらが効くのか分からない。
+         ここは**いまどこか**を言って、直す場所へ連れて行くだけにする。 -->
+    <div class="ms-where${loc.perEquipment?' is-on':''}">
+     <span class="ms-where-label">いまの置き場</span>
+     <code class="ms-where-path">${esc(v.records_share_dir||'（未設定：この端末の db/records.sqlite3 に貯めています）')}</code>
+     <button type="button" class="mm-btn-ghost sm" data-ms-goto="pathConfig">共通設定 &gt; 置き場 で決める</button>
+    </div>
+    <p class="mm-field-hint">決めた置き場の下に<b>設備の名前のフォルダ</b>を作り、その中に <code>records.sqlite3</code> を置きます。
+     書くのはその設備を担当する端末だけなので、<b>同じファイルを2台が変えることがありません</b>。
+     空欄なら今までどおり、この端末の <code>db/records.sqlite3</code> 1本に貯めます。
+     <b>変えたときはアプリの再起動が必要です</b>（接続先は起動時に1回だけ決まります）。
+     設定しても<b>今までの記録は消えません</b>——読むときは旧い置き場も一緒に見ます。</p>
     <!-- 置き場を決めたあとの引っ越し(§9.258)。**既定は下見**(§9.193)で、
          押す前に「どの設備へ何件」を出す。元のファイルは消さない。 -->
     <div class="ms-split" id="msSplitBox">
@@ -3597,11 +3616,16 @@
    </div>`},
     {name:'閲覧用の複製',body:`   <div class="ms-settings">
     <h4>③ 閲覧用の複製の設定</h4>
-    <label class="mm-field"><span>複製先のフォルダ</span>
-     <input type="text" id="msExportPath" value="${esc(v.records_backup_export_path||'')}"
-       placeholder="例: C:\\Users\\…\\Box\\WaveLog閲覧用" autocomplete="off">
-     <small class="mm-field-hint">フォルダを指定します（この下に records.sqlite3 を作ります）。
-      空欄なら複製しません。<b>複製先を変えたときはアプリの再起動が必要です</b>（接続先は起動時に1回だけ決まります）。</small></label>
+    <!-- **置き場を決めるのは共通設定の1箇所**（§9.267、利用者の指示
+         「バックアップの置き場などを含めた全ての設定を共通設定に」）。
+         §9.202ではここに置くと決めていたが、置き場が画面に散っているのが
+         そもそもの困りごとだったので撤回した。ここに残すのは**間隔**だけ
+         ——あれは置き場ではなく、保存後すぐ効く動きの設定。 -->
+    <div class="ms-where${exp.configured?' is-on':''}">
+     <span class="ms-where-label">いまの複製先</span>
+     <code class="ms-where-path">${esc(v.records_backup_export_path||'（未設定：複製しません）')}</code>
+     <button type="button" class="mm-btn-ghost sm" data-ms-goto="pathConfig">共通設定 &gt; 置き場 で決める</button>
+    </div>
     <label class="mm-field"><span>複製を見に行く間隔</span>
      <span class="mm-field-num"><input type="number" id="msExportInterval" min="30" step="30"
        value="${esc(String(v.records_backup_export_interval_sec||exp.intervalSec||600))}"><em>秒</em></span>
@@ -3631,7 +3655,16 @@
    }catch(e){showToast&&showToast('複製できませんでした',e.message,7000)}
    finally{setMaintLoading(false);measStorageState.loaded=false;loadMeasStorageMaint(true)}
   };
-  $('#msSaveShare').onclick=()=>$('#msSaveCfg').onclick();
+  /* 置き場を直す場所へ連れて行く（§9.207。ここには欄を置かない）。
+     **段まで連れて行く**——「共通設定を開く」だけだと、置き場の段を
+     自分で探すことになる（§2）。飛び先は `pcPendingSection` が覚え、
+     共通設定が組み上がった時点で開く（描く前に押しても取りこぼさない）。 */
+  form.querySelectorAll('[data-ms-goto]').forEach(btn=>{
+   btn.onclick=()=>{
+    pcPendingSection='schedule';
+    document.querySelector(`#masterMaintNav [data-master="${btn.dataset.msGoto}"]`)?.click();
+   };
+  });
   /* 引っ越しは**下見 → 振り分ける**の2段(§9.193)。下見を見るまで
      「振り分ける」は押せない（押した瞬間に何が起きるか分からない操作にしない）。 */
   let splitSeen=false;
@@ -3674,9 +3707,10 @@
   $('#msSaveCfg').onclick=async()=>{
    /* **送るのはこの2つだけ**。パス設定の保存は「送られてきた項目だけ」を
       書くので、他の設定を巻き添えにしない(§9.192)。 */
-   const body={records_share_dir:String($('#msShareDir').value||'').trim(),
-               records_backup_export_path:String($('#msExportPath').value||'').trim(),
-               records_backup_export_interval_sec:String($('#msExportInterval').value||'').trim(),
+   /* **置き場はここでは送らない**（§9.267）——`records_share_dir`も
+      `records_backup_export_path`も決めるのは共通設定の1箇所で、
+      送ると2画面から同じ設定を書くことになる。ここは間隔だけ。 */
+   const body={records_backup_export_interval_sec:String($('#msExportInterval').value||'').trim(),
                user_id:String($('#masterUserId')?.value||'').trim()};
    try{
     setMaintLoading(true,'保存しています…');
@@ -5050,7 +5084,10 @@
     schedule_share_pathはサーバー起動時に1回だけ接続先へ反映されるため、保存後も
     このプロセスでは反映されない(再起動が必要)。一覧欄には「保存値」と「現在
     有効な値(このプロセス)」を並べて表示し、反映済みかを確認できるようにする。 ---------- */
- let pathConfigState={values:{},defaults:{},active:{},sources:[],loaded:false};
+ /* 他の画面から「置き場で決める」で来たときの行き先（§9.267）。共通設定は
+    非同期で組み上がるので、押した時点ではまだ段が無い。 */
+ let pcPendingSection='';
+ let pathConfigState={values:{},defaults:{},active:{},sources:[],storage:null,storageError:"",loaded:false};
  /* 再起動しないと反映されない項目。データソースぶんは登録内容から作るので
     ここには固定で書かない(§9.81)。以前は「仕掛(SIKALOTNOW)」等が直接
     書かれており、データソースを増やしても増えず、名前を変えても古い
@@ -5071,8 +5108,16 @@
   if(!force&&pathConfigState.loaded){renderPathConfigForm();renderPathConfigList();return}
   form.innerHTML='';list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
   try{
-   const r=await api('/api/path-config-master');
+   /* 置き場は**別の口**が答える（§9.267）——`config/local.json`の側も
+      含めた1枚の答えで、パス設定マスタの読み書きとは持ち主が違う。
+      **読めなくても共通設定は開く**（置き場の節だけが空になる）。 */
+   const [r,st]=await Promise.all([
+    api('/api/path-config-master'),
+    api('/api/storage-layout').catch(e=>({error:e.message})),
+   ]);
    pathConfigState.values=r.values||{};pathConfigState.defaults=r.defaults||{};pathConfigState.active=r.active||{};pathConfigState.sources=r.sources||[];
+   pathConfigState.storage=(st&&st.items)?st:null;
+   pathConfigState.storageError=(st&&st.error)||'';
    pathConfigState.loaded=true;
    renderPathConfigForm();renderPathConfigList();
   }catch(e){list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
@@ -5099,7 +5144,7 @@
  const PC_SECTIONS=[
   {id:'terminal',name:'この端末',icon:'PC',when:'保存後すぐ反映',cls:'is-live'},
   {id:'read',    name:'どこから読むか',when:'サーバー再起動後に反映',cls:'is-restart'},
-  {id:'schedule',name:'共有の置き場',when:'一部は再起動後に反映',cls:'is-restart'},
+  {id:'schedule',name:'置き場',when:'一部は再起動後に反映',cls:'is-restart'},
   {id:'rne',     name:'RNE抽出',when:'保存後すぐ反映',cls:'is-live'},
  ];
  /* 1項目＝「名前 / 入力 / 一行の説明 / いまどうなっているか」。
@@ -5118,7 +5163,7 @@
  /* 選択肢の綴り→画面の言葉。綴りをそのまま出すと`auto`としか読めない。 */
  const _PC_CHOICE_LABELS={
   schedule_watch_enabled:{auto:'auto: 見張る',on:'on: 見張る',off:'off: 見張らない'},
-  schedule_owner_enabled:{off:'off: 各PCが自分で書く',on:'on: 1台が書く'},
+  schedule_owner_enabled:{off:'off: 各PCが自分で書く',on:'on: 1台が書く（既定）'},
   db_mirror_enabled:{auto:'auto: 写して読む',on:'on: 写して読む',off:'off: 共有を直接読む'},
   rne_extract_enabled:{auto:'auto: localのときだけ',on:'on: 定期実行',off:'off: 手動のみ'},
  };
@@ -5172,21 +5217,19 @@
       [['','（既定）network'],['network','network'],['local','local']],
       'network=共有フォルダを読む ／ local=この端末でRNEから抽出したものを読む。<b>読み方を決めたデータソースには効きません</b>。')}
     ${pcStateHtml('sikalot_source')}`);
-  const SEC_SCHEDULE=group('schedule','共有の置き場','一部は再起動後に反映','is-restart',`
-    <!-- **何がどこへ行くかを1枚で言う**(§9.260)。以前は作業予定・測定データ・
-         マスタの置き場が3画面に散っており、いま何がどこにあるのかを
-         確かめる手立てが無かった。判定はサーバーが持つ(§9.163)ので、
-         ここは受け取った答えを並べるだけ。 -->
+  /* **置き場は1枚**（§9.267、利用者の指示「マスタの置き場、スケジュールの
+     置き場、測定データの置き場、バックアップの置き場などを含めた全ての設定を
+     共通設定に視覚的に表現した上でそのままその表示とリンクして設定を簡単に
+     わかりやすく」）。以前は同じ「置き場の設定」なのに直す場所が3つに
+     分かれており、`config/local.json` の3つは**画面に一切出ていなかった**。
+     判定はサーバーが持つ（§9.163）ので、ここは答えを並べて直す口を添えるだけ。 */
+  const SEC_SCHEDULE=group('schedule','置き場','一部は再起動後に反映','is-restart',`
     <div class="pc-share" id="pcShare">
-     <div class="pc-share-head">
-      <b>この端末が読み書きする置き場</b>
-      <span class="pc-share-root" id="pcShareRoot"></span>
-     </div>
+     <!-- 見出しは節の題(「置き場」)が既に言っている（§8 同じことを2度言わない）。
+          ここに出すのは**揃っているかどうか**だけ。 -->
+     <div class="pc-share-head"><span class="pc-share-root" id="pcShareRoot"></span></div>
      <div class="pc-share-rows" id="pcShareRows"></div>
     </div>
-    ${pathField('schedule_share_path','作業予定の置き場','dir',
-      'フォルダを指定すれば、その中に schedule.sqlite3 を作ります（ファイル名まで指定しても構いません）。'
-      +'フォルダもファイルも無ければ自動で作り、既にあればそれを使います。空欄ならスケジュール機能は無効です。')}
     ${pageFoldHtml('共有の変化をどう取り込むか',pcNowText('schedule_watch_enabled','auto: 見張る'),`
      <p class="mm-field-hint">共有（Box等）のschedule.sqlite3は<b>他の端末も書きます</b>。読むときは手元へ写したものを読み、
       <b>改訂番号が変わったときだけ</b>写し直します（読むたびに写すと共有を掴み続け、他の端末の書込とぶつかります）。</p>
@@ -5199,13 +5242,15 @@
       'ロック'+esc(String(v.schedule_lock_ttl_sec||pathConfigState.defaults.schedule_lock_ttl_sec||''))+'秒',`
      ${numField('schedule_lock_ttl_sec','書込ロックの有効期限','秒',5,1)}
      ${numField('schedule_lock_verify_delay_ms','ロック確認までの待機時間','ミリ秒',100,0)}`)}
-    ${pageFoldHtml('書く役を1台に絞る',pcNowText('schedule_owner_enabled','off: 各PCが自分で書く'),`
+    ${pageFoldHtml('書く役を1台に絞る',pcNowText('schedule_owner_enabled','on: 1台が書く（既定）'),`
      <p class="mm-field-hint">共有へ<b>実際に書く役を1台に絞る</b>仕掛けです。他のPCは書き込みだけをその1台へLAN内のHTTPで頼み、
       <b>読みは今までどおり手元の写しから</b>読みます（画面のURLは全員 http://127.0.0.1:5029/ のまま）。
-      <b>持ち主が落ちていても止まりません</b>——頼めなかったPCは自分で共有へ書きます。</p>
+      <b>持ち主が落ちていても止まりません</b>——頼めなかったPCは自分で共有へ書きます。
+      <b>既定で入っています。</b>切ってよいのは、社内規程などで<b>受け口のポートを開けられない</b>ときです
+      （切っても動きます——各PCが自分で共有へ書く形に戻るだけです）。</p>
      ${pickField('schedule_owner_enabled','書き込み役を1台に絞る',
-       [['','（既定）off: 各PCが自分で共有へ書く'],['off','off: 各PCが自分で共有へ書く'],['on','on: 最初に入った1台が書き込み役になる']],
-       'onにすると、書き込み役になったPCだけが下のポートを<b>LANへ開きます</b>（合言葉つきの決められた書き込みしか受け付けません）。')}
+       [['','（既定）on: 最初に入った1台が書き込み役になる'],['on','on: 最初に入った1台が書き込み役になる'],['off','off: 各PCが自分で共有へ書く']],
+       '書き込み役になったPCだけが下のポートを<b>LANへ開きます</b>（合言葉つきの決められた書き込みしか受け付けません）。')}
      ${numField('schedule_owner_port','書き込み役の受け口ポート','',1,1025)}
      ${numField('schedule_owner_ttl_sec','書き込み役の目印の有効期限','秒',10,30)}
      <div id="scheduleOwnerStatus" class="pc-owner-status">状態を読み込んでいます…</div>`)}`);
@@ -5246,7 +5291,7 @@
    ${pageTabsHtml([
     {name:'この端末',body:SEC_TERMINAL},
     {name:'どこから読むか',body:SEC_READ},
-    {name:'共有の置き場',body:SEC_SCHEDULE},
+    {name:'置き場',body:SEC_SCHEDULE},
     {name:'RNE抽出',body:SEC_RNE},
    ])}
 
@@ -5258,7 +5303,10 @@
   bindMaintTabs(form);
   /* 図から章へ飛ぶのは**段を切り替えること**（入口を2本作らない）。
      段になったので、スクロールではなく表示の切り替えで連れて行く。 */
-  form.querySelectorAll('[data-pc-jump]').forEach(btn=>btn.onclick=ev=>{
+  /* **委譲で受ける**（§9.265と同じ理由）——置き場の行は後から描かれるので、
+     このとき1つずつ配線すると、行の中の「直す場所を開く」だけ効かない。 */
+  form.addEventListener('click',ev=>{
+   const btn=ev.target.closest('[data-pc-jump]');if(!btn||!form.contains(btn))return;
    ev.preventDefault();
    const sec=form.querySelector(`#pcSec-${btn.dataset.pcJump}`);
    if(!sec)return;
@@ -5278,6 +5326,21 @@
    document.querySelector(`#masterMaintNav [data-master="${b.dataset.pcGoto}"]`)?.click();
   });
   bindInputHelpers(form);
+  /* 他の画面から「置き場で決める」で来たときは、その段を開いて印を付ける。
+     **一度きり**——次に共通設定を開いたときまで覚えていると、身に覚えの
+     無い段が開く。 */
+  if(pcPendingSection){
+   const want=pcPendingSection;pcPendingSection='';
+   const btn=form.querySelector(`[data-pc-jump="${want}"]`);
+   if(btn)btn.click();
+   else{
+    const sec=form.querySelector(`#pcSec-${want}`),panel=sec&&sec.closest('.mm-tabpanel');
+    if(panel&&typeof form.__mmShowTab==='function'){
+     const i=[...form.querySelectorAll('.mm-tabpanel')].indexOf(panel);
+     if(i>=0)form.__mmShowTab(i);
+    }
+   }
+  }
   refreshRneStatus();
   refreshOwnerStatus();
  }
@@ -5373,33 +5436,207 @@
     ここは受け取った答えを並べるだけ——「UNCかどうか」「同じ根の下か」を
     画面でも判定すると答えが2通りになる。
     **色だけで伝えない**(§3)ので、置き場の種類は必ず文字で書く。 */
+ /* 置き場の種類は**必ず文字で**（§3。色だけで伝えない）。 */
  const PC_SHARE_KIND={network:'共有（ネットワーク）',cloud:'共有（クラウド同期）',
-                      local:'この端末の中','':'—'};
- function paintShareLayout(sl){
+                      local:'この端末の中','':'未設定'};
+ /* 群の題と、その群が何のためにあるか。**3つより増やさない**（§9.105と
+    同じ理由——群の意味を覚える手間のほうが大きくなる）。 */
+ const PC_STORE_GROUPS=[
+  {id:'terminal',name:'① この端末の中',
+   why:'この端末だけが使うもの。<b>置き場は config/local.json が決めます</b>（起動時に1回だけ読むので再起動が要ります）。'},
+  {id:'share',name:'② みんなで使う',
+   why:'他の端末とやりとりするもの。ここを共有フォルダにすると全員で同じものを見ます。'},
+  {id:'read',name:'③ 読むだけ',
+   why:'別のシステムが書いたものを読むだけです。書き換えません。'},
+ ];
+ /* 「在るか」は3値（§CLAUDE「共有DBを開く前にstatを置かない」）。
+    **null（確かめられなかった）を「無い」と同じに扱わない。** */
+ function pcExistsText(x){
+  if(!x.path)return {t:'未設定',c:'is-unset'};
+  if(x.exists===true)return {t:'あります',c:'is-ok'};
+  if(x.exists===false)return {t:'まだありません',c:'is-missing'};
+  return {t:'確かめられません',c:'is-unknown'};
+ }
+ /* 置き場の1行。**直せるものには欄と「参照…」を、無いものには「作る」を**
+    その場に置く（§9.207。直す場所へ行かせない）。 */
+ function pcStorageRowHtml(x,lcFields){
+  /* `config/local.json`の行は、**その欄の説明も一緒に出す**（利用者の混乱の元
+     ——「フォルダなのかファイルなのか」「共有の置き場と何が違うのか」が
+     行だけからは読めなかった）。説明は`localConfig`が持っている。 */
+  const lcDef=(lcFields||[]).find(f=>f.key===x.field)||null;
+  /* 種類と「在るか」は**別のこと**だが、置き場が未設定のときはどちらも
+     「未設定」になり、同じ言葉が2つ並ぶ（§8）。そのときは種類を出さない。 */
+  const kind=x.path?(PC_SHARE_KIND[x.kind||'']||''):'';
+  const ex=pcExistsText(x);
+  const onShare=x.kind==='network'||x.kind==='cloud';
+  const lc=x.store==='local-json';
+  const field=lc?`data-lc-field="${esc(x.field)}"`:`data-pc-field="${esc(x.field)}"`;
+  const canEdit=x.editable&&x.field;
+  const box=canEdit
+   ? `<span class="mm-path" data-path-drop="${esc(x.field)}">
+       <input ${field} data-field="${esc(x.field)}" type="text" value="${esc(x.saved!=null?x.saved:x.path)}"
+        placeholder="未設定（既定を使います）" autocomplete="off" spellcheck="false">
+       <button type="button" class="mm-path-browse" data-path-browse="${esc(x.field)}" data-path-mode="${esc(x.mode||'dir')}">参照…</button>
+      </span>`
+   : `<code class="pc-share-path" title="${esc(x.path||'')}">${esc(x.path||'（未設定）')}</code>`;
+  /* **作れるのは「無いと分かっている」ときだけ**——確かめられなかった
+     ものに「作る」を出すと、在るものを作りに行ったように見える。 */
+  const canMake=x.creatable&&x.path&&x.exists===false;
+  /* **1行＝3段**（題と素性／欄／打つ手）。素性を別の段にすると1件が4段に
+     なり、9件で器の2倍を超える（実測 1955px を 828px の器で見ていた）。
+     題の右へ添えれば読む順は変わらない（§CLAUDE 画面基準 1・12）。 */
+  return `<div class="pc-store-row${onShare?' is-shared':''}${lc?' is-local':''}" data-store-key="${esc(x.key)}">
+   <div class="pc-store-head">
+    <b class="pc-store-label">${esc(x.label)}</b>
+    <small class="pc-store-what">${esc(x.what||'')}</small>
+    ${kind?`<span class="pc-store-kind">${esc(kind)}</span>`:''}
+    <span class="pc-store-exists ${ex.c}">${esc(ex.t)}</span>
+    ${lc?'<span class="pc-store-tag">この端末だけ</span>':''}
+    ${x.retired?'<span class="pc-store-tag is-retired">役目を終えました</span>':''}
+   </div>
+   ${x.pending?`<small class="pc-store-note is-pending">保存済みですが、まだ効いていません。
+     いまは <code>${esc(x.active||'（未設定）')}</code> を使っています——
+     <b>アプリを再起動すると切り替わります</b>。置き場は先に作っておけます。</small>`:''}
+   ${box}
+   <div class="pc-store-foot">
+    ${canEdit?`<code class="pc-store-eff" title="${esc(x.path||'')}">${
+      x.pending?'これから':'いま'}: ${esc(x.path||'（未設定）')}</code>`:''}
+    ${x.from?`<span>出どころ <b>${esc(x.from)}</b></span>`:''}
+    ${x.pending
+      ? `<span class="pc-store-pending" title="いまは ${esc(x.active||'（未設定）')} を使っています">再起動待ち</span>`
+      : `<span>${x.when==='live'?'保存後すぐ反映':'再起動後に反映'}</span>`}
+    ${canMake?`<button type="button" class="mm-btn-ghost pc-make" data-pc-make="${esc(x.key)}"
+       data-pc-make-mode="${esc(x.mode||'dir')}">無いので作る…</button>`:''}
+    ${x.jump?`<button type="button" class="mm-btn-ghost pc-goto" data-pc-goto="${esc(x.jump)}">直す場所を開く</button>`:''}
+    ${x.section?`<button type="button" class="mm-btn-ghost" data-pc-jump="${esc(x.section)}">直す場所を開く</button>`:''}
+   </div>
+   ${x.note?`<small class="pc-store-note">${esc(x.note)}</small>`:''}
+   ${lcDef&&lcDef.hint?`<small class="pc-store-note">${hintHtml(lcDef.hint)}${
+     lcDef.expanded?` この端末では <code>${esc(lcDef.expanded)}</code> になります。`:''}</small>`:''}
+  </div>`;
+ }
+ /* `config/local.json` の残り2つ（まとめて決める / 書込サイクル）。
+    **優先順位はサーバーが言う**——段を1つ足したときに2箇所直さない。 */
+ /* 説明は**マスタと同じ書き方**を通す（`**強調**`が生で出ないように・§9.222 ⑧）。
+    変数で書いてあるときは**展開後の姿も出す**（§6。書いたものと効くものが
+    違うので、片方だけ見せると確かめようがない）。 */
+ function pcLcNow(f){
+  const exp=f.expanded?`<br>この端末では <code>${esc(f.expanded)}</code> になります。`:'';
+  return `<small class="mm-field-hint">${hintHtml(f.hint||'')}
+    いまは <b>${esc(f.effective||'')}</b> です。${exp}</small>`;
+ }
+ function pcLocalExtraHtml(fields){
+  const rows=(fields||[]).filter(f=>f.key==='db_dir'||f.key==='master_share_mode');
+  if(!rows.length)return '';
+  return rows.map(f=>f.mode==='choice'
+   ? `<label class="mm-field"><span>${esc(f.label)}</span>
+      <select data-lc-field="${esc(f.key)}">${(f.choices||[]).map(([v,t])=>
+       `<option value="${esc(v)}"${(f.value||'')===v?' selected':''}>${esc(t)}</option>`).join('')}</select>
+      ${pcLcNow(f)}</label>`
+   : `<div class="mm-field mm-field-wide mm-field-path"><span>${esc(f.label)}</span>
+      <span class="mm-path" data-path-drop="${esc(f.key)}">
+       <input data-lc-field="${esc(f.key)}" data-field="${esc(f.key)}" type="text" value="${esc(f.value||'')}"
+        placeholder="未設定（既定: ${esc(f.default||'')}）" autocomplete="off" spellcheck="false">
+       <button type="button" class="mm-path-browse" data-path-browse="${esc(f.key)}" data-path-mode="${esc(f.mode||'dir')}">参照…</button>
+      </span>
+      ${pcLcNow(f)}</div>`
+  ).join('');
+ }
+ /* 置き場を1枚で出す(§9.260→§9.267)。**判定はサーバーが持つ**（§9.163）ので、
+    ここは受け取った答えを並べて直す口を添えるだけ——「UNCかどうか」
+    「どの段で決まったか」を画面でも判定すると答えが2通りになる。 */
+ /* 置き場を「無ければ作る」（§9.267、利用者の指示「設定さえ書いてあれば
+    フォルダやファイルが存在しない場合には強制的に作成して、ユーザーの操作を
+    妨げないようにしたい。但し作成する前にユーザーに確認する方式に」）。
+    **下見 → 確認 → 作る**の3段（§9.193）——何ができるのかを先に出す。 */
+ async function makeStoragePath(key,mode){
+  const row=document.querySelector(`[data-store-key="${CSS.escape(key)}"]`);
+  const input=row&&row.querySelector('[data-field]');
+  /* **欄に打った値で作る**（保存していなくてよい）——「保存してから作る」に
+     すると、打ち間違えた値をマスタへ入れてから確かめることになる。 */
+  const path=input?String(input.value||'').trim():'';
+  const label=row?(row.querySelector('.pc-store-label')||{}).textContent||'':'';
+  try{
+   setMaintLoading(true,'どうなるか調べています…');
+   const pre=await api('/api/storage-layout/prepare',{method:'POST',
+     headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({path,mode,apply:false})});
+   setMaintLoading(false);
+   const plan=(pre&&pre.plan)||{};
+   if(plan.already){
+    showToast&&showToast('もうあります',`${plan.path} は既にあります。`,4500);
+    return;
+   }
+   const made=[...(plan.dirs||[]),...(plan.file?[plan.file]:[])];
+   /* **何ができるのかを1つずつ出す**（§4・§6）。「作ります」だけでは、
+      どこに何ができるのか確かめようがない。 */
+   const body=`<p class="confirm-modal-message">これから <b>${made.length}件</b> 作ります。</p>
+     <ul class="pc-make-list">${made.map(x=>`<li><code>${esc(x)}</code></li>`).join('')}</ul>
+     <p class="confirm-modal-message">${plan.kind==='network'||plan.kind==='cloud'
+       ?'共有の置き場です。<b>作るだけ</b>で、中のデータは触りません。'
+       :'この端末の中に作ります。'}</p>`;
+   const ok=(typeof confirmModal==='function')
+    ? await confirmModal({title:`${label||'置き場'}を作ります`,eyebrow:'CREATE',
+                          bodyHtml:body,confirmLabel:'作る'})
+    : window.confirm(`${made.length}件のフォルダ／ファイルを作ります。よろしいですか？`);
+   if(!ok)return;
+   setMaintLoading(true,'作っています…');
+   const r=await api('/api/storage-layout/prepare',{method:'POST',
+     headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({path,mode,apply:true})});
+   const done=(r&&r.plan)||{};
+   /* **作れても書けない共有がある**ので、書けるかまで見て言う（§4）。 */
+   if(done.writable===false){
+    showToast&&showToast('作りましたが書き込めません',
+      `${done.path} を作りましたが、書き込みを試すと失敗しました。${done.writeError||''}`,9000);
+   }else{
+    showToast&&showToast('作りました',`${done.path} を用意しました。`,5000);
+   }
+   pathConfigState.loaded=false;await loadPathConfigMaint(true);
+  }catch(e){
+   setMaintLoading(false);
+   showToast&&showToast('作れませんでした',e.message,7000);
+  }finally{setMaintLoading(false)}
+ }
+ function bindStorageActions(root){
+  root.querySelectorAll('[data-pc-make]').forEach(btn=>{
+   btn.onclick=()=>makeStoragePath(btn.dataset.pcMake,btn.dataset.pcMakeMode||'dir');
+  });
+ }
+ function paintShareLayout(sl,err){
   const rows=$('#pcShareRows'),root=$('#pcShareRoot');
   if(!rows)return;
   const items=(sl&&sl.items)||[];
-  if(!items.length){rows.innerHTML='<p class="mm-field-hint">置き場を読めませんでした。</p>';return}
-  rows.innerHTML=items.map(x=>{
-   const kind=PC_SHARE_KIND[x.kind||'']||'—';
-   const onShare=x.kind==='network'||x.kind==='cloud';
-   return `<div class="pc-share-row${onShare?' is-shared':''}">
-    <b class="pc-share-what">${esc(x.label)}<small>${esc(x.file||'')}</small></b>
-    <span class="pc-share-kind">${esc(kind)}</span>
-    <code class="pc-share-path" title="${esc(x.path||'')}">${esc(x.path||'（未設定）')}</code>
-    <span class="pc-share-where">直す場所: <b>${esc(x.where||'')}</b>
-     <small>${esc(x.when||'')}に反映</small>
-     ${x.jump?`<button type="button" class="mm-btn-ghost pc-goto" data-pc-goto="${esc(x.jump)}">ここを開く</button>`:''}</span>
-    ${x.note?`<small class="pc-share-note">${esc(x.note)}</small>`:''}
-   </div>`;
+  if(!items.length){
+   rows.innerHTML=`<p class="mm-field-hint">置き場の一覧を読めませんでした${
+     err?`: ${esc(err)}`:''}。他の設定はこのまま直せます。</p>`;
+   return;
+  }
+  const byGroup={};items.forEach(x=>{(byGroup[x.group]=byGroup[x.group]||[]).push(x)});
+  rows.innerHTML=PC_STORE_GROUPS.map(g=>{
+   const list=byGroup[g.id]||[];
+   if(!list.length)return '';
+   return `<section class="pc-store-group" data-store-group="${esc(g.id)}">
+    <h5 class="pc-store-group-head">${esc(g.name)}<small>${g.why}</small></h5>
+    ${list.map(r=>pcStorageRowHtml(r,sl&&sl.localConfig)).join('')}
+    ${g.id==='terminal'?`<div class="pc-store-extra">${pcLocalExtraHtml(sl&&sl.localConfig)}
+     <small class="mm-field-hint">この3つは <code>${esc((sl&&sl.localConfigPath)||'config/local.json')}</code> に入ります。
+      <b>マスタDB自身の置き場を決める値</b>なので、マスタの中には置けません（読みに行く先が分からなくなるため）。
+      直す前の内容は <code>local.json.bak</code> に控えます。</small></div>`:''}
+   </section>`;
   }).join('');
   if(root){
    /* **揃っているときだけ言う**。揃っていない置き方が悪いわけではないので、
       「バラバラです」とは書かない（直す必要のない状態を不備に見せない）。 */
-   root.textContent=(sl&&sl.sameRoot)?`3つとも同じ場所の下です: ${sl.sameRoot}`:'';
+   root.textContent=(sl&&sl.sameRoot)?`本体3つとも同じ場所の下です: ${sl.sameRoot}`:'';
    root.hidden=!(sl&&sl.sameRoot);
+   /* **器ごと畳む**——中身が隠れただけだと、器の余白が1行ぶん残る。 */
+   const head=root.closest('.pc-share-head');if(head)head.hidden=root.hidden;
   }
+  bindPathFields(rows);
+  bindStorageActions(rows);
  }
+
  function renderPathConfigList(){
   const form=$('#masterMaintForm');if(!form||!form.classList.contains('mm-form-page'))return;
   const v=pathConfigState.values||{},a=pathConfigState.active||{};
@@ -5436,7 +5673,9 @@
   };
   /* 各欄の状態。**再起動が要らない項目は「保存後すぐ反映」とだけ言う**
      ——比べる相手（いま効いている値）が無いのに空欄の対比を並べない。 */
-  paintShareLayout(a.share_layout);
+  /* 置き場は`/api/storage-layout`の答え（§9.267）。読めなかったときは
+     理由を出す——空のまま黙ると「設定が消えた」と読まれる（§4）。 */
+  paintShareLayout(pathConfigState.storage,pathConfigState.storageError);
   let pending=0;
   form.querySelectorAll('[data-pc-state]').forEach(el=>{
    const key=el.dataset.pcState;
@@ -5515,6 +5754,27 @@
    notes.innerHTML=wd+cloud;
   }
  }
+ /* 保存の口は**2つある**（§9.267）——パス設定マスタ（`data-pc-field`）と
+    `config/local.json`（`data-lc-field`）。**ボタンは1つ**にする（利用者の
+    指示「一元管理したい」）が、片方だけ失敗しうるので**どちらがどうなったかは
+    分けて言う**（§4。まとめて「保存しました」と言うと、効いていない側に
+    気づけない）。 */
+ function pcLocalConfigBody(){
+  const body={};
+  document.querySelectorAll('#masterMaintForm [data-lc-field]').forEach(el=>{
+   body[el.dataset.lcField]=String(el.value||'').trim();
+  });
+  return body;
+ }
+ /* いま画面に出ている `local.json` の値と、保存済みの値が違うか。
+    **違うときだけ送る**——`local.json`は起動を左右するファイルなので、
+    触っていない保存で毎回書き換えない。 */
+ function pcLocalConfigChanged(body){
+  const saved={};
+  ((pathConfigState.storage&&pathConfigState.storage.localConfig)||[])
+   .forEach(f=>{saved[f.key]=String(f.value||'')});
+  return Object.keys(body).some(k=>String(body[k]||'')!==String(saved[k]||''));
+ }
  async function savePathConfigMaint(){
   const uid=requireMaintUser();if(uid===null)return;
   const body={user_id:uid};
@@ -5522,11 +5782,31 @@
   document.querySelectorAll('#masterMaintForm [data-pc-field]').forEach(el=>{
    body[el.dataset.pcField]=el.classList.contains('mm-num-input')?numRaw(el.value):el.value;
   });
+  const lc=pcLocalConfigBody();
+  const lcChanged=pcLocalConfigChanged(lc);
   try{
    setMaintLoading(true,'パス設定を保存しています…');
    const r=await api('/api/path-config-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+   let extra=(r&&r.message)||'';
+   if(lcChanged){
+    setMaintLoading(true,'この端末の置き場を保存しています…');
+    try{
+     const lr=await api('/api/storage-layout/local-config',{method:'POST',
+       headers:{'Content-Type':'application/json'},body:JSON.stringify(lc)});
+     extra=(extra?extra+' ／ ':'')
+       +`この端末の置き場（${(lr&&lr.path)||'config/local.json'}）も保存しました。`
+       +'<b>サーバーを再起動すると反映されます。</b>';
+    }catch(e){
+     /* **片方だけ失敗したことを必ず言う**——まとめて「保存しました」と
+        返すと、効いていない側に気づけない（§4・§9.190と同じ理由）。 */
+     pathConfigState.loaded=false;await loadPathConfigMaint(true);
+     showToast&&showToast('この端末の置き場だけ保存できませんでした',
+       `他の設定は保存しました。config/local.json は書けませんでした: ${e.message}`,9000);
+     return;
+    }
+   }
    pathConfigState.loaded=false;await loadPathConfigMaint(true);
-   showToast&&showToast('パス設定を保存しました',(r&&r.message)||'',5200);
+   showToast&&showToast('パス設定を保存しました',extra,lcChanged?7000:5200);
   }catch(e){showToast&&showToast('保存できませんでした',e.message,6500)}
   finally{setMaintLoading(false)}
  }

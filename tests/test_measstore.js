@@ -12,7 +12,8 @@
     2. いま何件どこにあるかが数字で出る（数えられなければ「—」。0件と
        言い切らない）
     3. **次にすることを1つだけ**指す
-    4. 複製先と間隔をここで設定でき、**共通設定には二重に置かない**
+    4. 間隔はここで設定でき、**置き場（複製先）は共通設定の1箇所**が持つ
+       （§9.267。二重に置かない）
     5. サーバーが状態を答える（/api/measurement/storage）／複製先が
        未設定なら「いま複製する」は理由を返す
     6. 文字が見切れていない
@@ -131,13 +132,20 @@ let b=null;
   };
   await msTab('閲覧用の複製');
   const cfg=await page.evaluate(()=>({
+   /* 置き場は共通設定が持つ（§9.267）。ここは**いまどこか**を言って
+      直す場所へ連れて行くだけ——欄を置くと入口が2つになる（§9.207）。 */
    path:!!document.querySelector('#msExportPath'),
+   where:(document.querySelector('.ms-where-path')||{}).textContent||'',
+   goto:!!document.querySelector('[data-ms-goto]'),
    interval:!!document.querySelector('#msExportInterval'),
    save:!!document.querySelector('#msSaveCfg'),
    syncBtn:!!document.querySelector('#msSyncNow'),
    exportBtn:!!document.querySelector('#msExportNow'),
   }));
-  rec('複製先と間隔をここで設定できる',cfg.path&&cfg.interval&&cfg.save,JSON.stringify(cfg));
+  rec('間隔はここで設定できる（保存後すぐ効く動きの設定）',
+    cfg.interval&&cfg.save,JSON.stringify(cfg));
+  rec('複製先はここに欄を置かず、いまどこかを書いて直す場所へ連れて行く',
+    !cfg.path&&cfg.goto&&cfg.where.length>0,JSON.stringify(cfg));
   rec('「未送信を今すぐ送る」「いま複製する」がここにある',cfg.syncBtn&&cfg.exportBtn,JSON.stringify(cfg));
   /* 「DBに同期」が何をするのかを画面に書いてある。 */
   const explains=await page.evaluate(()=>document.querySelector('#masterMaintForm').textContent);
@@ -158,15 +166,25 @@ let b=null;
   const live=await page.evaluate(async()=>(await api('/api/measurement/storage')).export.intervalSec);
   rec('間隔は再起動なしで効く',live===300,String(live));
 
-  /* 共通設定タブへ移り、複製先の欄が**二重に無い**こと。 */
+  /* 置き場（複製先）は**共通設定の「置き場」が持つ**（§9.267、利用者の指示
+     「バックアップの置き場などを含めた全ての設定を共通設定に」）。§9.202では
+     逆向き（測定データの保存が持つ）だったが、置き場が画面に散っていること
+     自体が困りごとだったので撤回した。見るのは**二重になっていないこと**
+     ——欄は置き場の行に1つだけで、素の`data-pc-field`としては出ない。 */
   await page.click('#masterMaintNav [data-master="pathConfig"]');
   await page.waitForTimeout(1800);
+  /* **置き場の行の外に同じ欄が無いこと**を見る。行の中の欄は
+     `data-pc-field`を持つ（1つの保存ボタンで送るため）ので、
+     「在るかどうか」だけを数えると必ず引っかかる。 */
   const pc=await page.evaluate(()=>({
-   field:!!document.querySelector('[data-pc-field="records_backup_export_path"]'),
-   hint:/測定データの保存/.test(document.querySelector('#masterMaintForm').textContent||''),
+   plain:[...document.querySelectorAll('[data-pc-field="records_backup_export_path"]')]
+     .filter(e=>!e.closest('.pc-store-row')).length,
+   inMap:document.querySelectorAll('[data-store-key="export"] input[data-field]').length,
+   browse:!!document.querySelector('[data-store-key="export"] .mm-path-browse'),
   }));
-  rec('共通設定に複製先の欄を二重に置かない',!pc.field,String(pc.field));
-  rec('共通設定からは移動先を案内する',pc.hint,String(pc.hint));
+  rec('複製先の欄を二重に置かない（置き場の行に1つだけ）',
+    pc.plain===0&&pc.inMap===1,JSON.stringify(pc));
+  rec('置き場の行から参照…で選べる',pc.browse,String(pc.browse));
 
   /* ---- 6) 見切れていない ---- */
   await page.click('#masterMaintNav [data-master="measStorage"]');

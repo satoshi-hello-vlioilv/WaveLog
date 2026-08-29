@@ -210,7 +210,17 @@ let b=null;
     **この画面に実在する欄で押すこと**——`sikalotnow_path`はデータ接続の
     カード側へ移った(§9.168)ので、ここには無い。無い相手を押しに行くと
     30秒待ってFATALになり、**この節の残り2件が一度も動かない**(実際に
-    そうなっていた)。 */
+    そうなっていた)。
+    **段（タブ）を開いてから押すこと**(§9.267)——置き場の欄は「置き場」の
+    段に移った。DOMには在るが**見えていない**ので、開かずに押すと
+    「element is not visible」で30秒待って落ちる(実際に落ちた)。
+    段は**名前で開く**(番号だと段が1つ増えただけで落ちる)。 */
+ await page.evaluate(()=>{
+  const t=[...document.querySelectorAll('#masterMaintForm .mm-tab')]
+   .find(e=>e.textContent.includes('置き場'));
+  if(t)t.click();
+ });
+ await page.waitForSelector('[data-path-browse="schedule_share_path"]',{state:'visible',timeout:15000});
  await page.click('[data-path-browse="schedule_share_path"]');
  await page.waitForSelector('#pathPickerModal:not([hidden])',{timeout:5000});
  await page.waitForTimeout(900);
@@ -220,15 +230,31 @@ let b=null;
   places:document.querySelectorAll('.pathpick-place').length,
  }));
  rec('参照ダイアログがサーバー上の実際のパスを表示する',
-   picker.path.startsWith('/')&&picker.rows>0,JSON.stringify(picker));
+   picker.path.startsWith('/'),JSON.stringify(picker));
  rec('よく使う場所へワンクリックで飛べる',picker.places>0,JSON.stringify(picker));
+ /* **中身は「よく使う場所」へ飛んでから見る**——開いた時点の場所は欄の値
+    （検証用の置き場）なので、そこに下位フォルダがあるとは限らない。
+    実際、検証用の作業フォルダにはファイルが1つあるだけで**フォルダは0件**
+    で、`rows>0`は置き場の作り方しだいで落ちる網だった（今までは手前の
+    クリックがFATALになっていて、この2件が一度も動いていなかった）。 */
+ await page.evaluate(()=>{const p=document.querySelector('.pathpick-place');if(p)p.click()});
+ await page.waitForTimeout(900);
+ const jumped=await page.evaluate(()=>({
+  path:document.querySelector('#pathPickerPath')?.value||'',
+  rows:document.querySelectorAll('.pathpick-row').length,
+  dirs:document.querySelectorAll('.pathpick-row.is-dir').length,
+ }));
+ rec('飛んだ先の中身が実際に並ぶ',jumped.rows>0&&jumped.dirs>0,JSON.stringify(jumped));
  // フォルダを1つ潜って「選択」→ 入力欄へ実パスが入る
  await page.evaluate(()=>{const r=[...document.querySelectorAll('.pathpick-row.is-dir')][0];if(r)r.click()});
  await page.waitForTimeout(800);
  await page.click('#pathPickerPick');
  await page.waitForTimeout(500);
  const filled=await page.$eval('[data-pc-field="schedule_share_path"]',i=>i.value);
- rec('選んだ場所が入力欄へ入る(手入力不要)',filled.startsWith('/'),filled);
+ /* **潜った先が入ること**まで見る（開いた時点の値がそのまま残っていても
+    `/`で始まるので、それだけでは何も確かめていない）。 */
+ rec('選んだ場所が入力欄へ入る(手入力不要)',
+   filled.startsWith('/')&&filled!==picker.path,`${filled} (開いた時点: ${picker.path})`);
 
  await b.close();
  const ng=R.filter(x=>!x.ok);

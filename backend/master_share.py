@@ -54,6 +54,18 @@ LOCK_VERIFY_DELAY_NETWORK_SEC = 0.3
 # （`access_mode._WRITE_ALLOWED_MODES`の宣言漏れを見張るのと同じ作法）。
 WRITING_BLUEPRINTS = {'masters', 'path_config', 'master_tables', 'schedule', 'measurement'}
 
+# 上の段に居るが**マスタは書かない**非GET（§9.267）。置き場を作る・
+# config/local.json を書くのはファイルシステムへの操作で、master.sqlite3 は
+# 1バイトも触らない。ここに載せないと、押すたびに共有のロックを取りに行き、
+# **他の端末の保存を待たせる**（しかも押し直せる操作なので409が出やすい）。
+# `access_mode._READ_ONLY_POST_ENDPOINTS` と同じ作法で、鍵は
+# `Blueprint名.関数名`——**エンドポイントを別のBlueprintへ移すと黙って
+# 意味が変わる**ので、移すときは必ずここも直す。
+NON_MASTER_ENDPOINTS = {
+    'path_config.storage_layout_prepare',
+    'path_config.storage_layout_local_config',
+}
+
 
 class MasterLockHeld(Exception):
     def __init__(self, holder_login, holder_pc, remaining):
@@ -246,6 +258,8 @@ def writes_master(blueprint, method, endpoint=''):
     if not is_shared():
         return False
     if str(method or '').upper() == 'GET':
+        return False
+    if str(endpoint or '') in NON_MASTER_ENDPOINTS:
         return False
     return str(blueprint or '') in WRITING_BLUEPRINTS
 

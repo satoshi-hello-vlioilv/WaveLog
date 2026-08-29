@@ -1,18 +1,21 @@
 {
-  "_comment1": "このファイルを local.json という名前でコピーして使います。",
-  "_comment2": "ここに書けるのは4つだけ——マスタDB自身の置き場を決める設定なので、",
-  "_comment3": "マスタの中(パス設定マスタ)には置けません(鶏と卵)。他の設定は全部",
-  "_comment4": "マスタ管理の画面から直せます。使わないキーは行ごと消してください。",
+  "_1_これは何か": "このファイルを local.json という名前でコピーして使います。ここに書けるのは4つだけです。",
+  "_2_なぜ外にあるか": "マスタDB(master.sqlite3)の置き場を決める値は、そのマスタDBの中には置けません(読みに行く先が分からなくなるため)。他の設定は全部マスタ管理の画面から直せます。",
+  "_3_ふつうは": "共有へ移すだけなら master_db_path の1行で足ります。残りは空欄のままで構いません。",
 
-  "_db_dir": "master.sqlite3 と records.sqlite3 をまとめて置く場所",
+  "_db_dir_とは": "この端末が持つ2つのDBファイル(master.sqlite3 と records.sqlite3)を置くフォルダ。作業用のコピー置き場ではありません(写しの置き場はアプリが自動で決めます)。",
+  "_db_dir_既定": "アプリの中の db フォルダ",
   "db_dir": "D:\\WaveLogData",
 
-  "_master_db_path": "マスタDBだけを別の場所に置く(db_dirより優先)",
-  "master_db_path": "\\\\nlmsrvngy03\\工場内共有\\検査データ\\Records\\master.sqlite3",
+  "_master_db_path_とは": "master.sqlite3 1ファイルのフルパス(ファイル名まで)。db_dir より優先されます。共有を指せば、書込は順番待ちを通り、読みはこの端末の写しからになります。",
+  "master_db_path": "\\\\server\\share\\WaveLog\\master.sqlite3",
 
-  "_records_db_path": "この端末の測定データDBだけを別の場所に置く(db_dirより優先)",
+  "_records_db_path_とは": "この端末の records.sqlite3 1ファイルのフルパス(ファイル名まで)。db_dir より優先されます。みんなで見る測定データの置き場ではありません(そちらは共通設定 > 置き場 の「測定データ(共有)」)。",
   "records_db_path": "D:\\WaveLogData\\records.sqlite3",
 
-  "_master_share_mode": "マスタの書込サイクル: auto(既定・置き場の綴りで判定) / on / off",
-  "master_share_mode": "auto"
+  "_master_share_mode_とは": "マスタの書込サイクル。auto(既定)=置き場がUNC/クラウド同期フォルダなら順番待ちを通す / on=常に通す / off=常に直に書く",
+  "master_share_mode": "auto",
+
+  "_環境変数": "パスには %LOCALAPPDATA% のような環境変数が使えます(書いたまま保存され、使うときに展開されます)。同じ local.json を全端末へ配れます。",
+  "_JSONの書き方": "\\ は2つ重ねます。UNCの先頭 \\\\ は \\\\\\\\ になります。使わないキーは行ごと消してください。"
 }
