@@ -2820,7 +2820,7 @@
    const value=String(el.value||'');
    if(!name||!value||value==='-')return;
    try{
-    api('/api/operation-choice-master/used',{method:'POST',
+    api('/api/operation-choice-master/used',{quiet:true,method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({name,value})}).catch(()=>{});
    }catch(_){}

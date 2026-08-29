@@ -2498,7 +2498,7 @@ WL.rne=(()=>{
  async function runWithProgress(){
   show(true);paint({jobs:[]},'抽出を開始しています');
   try{
-   await api('/api/rne-extract/run',{method:'POST'});
+   await api('/api/rne-extract/run',{quiet:true,method:'POST'});
   }catch(e){
    show(false);showToast?.('RNEからの作成を開始できませんでした',e.message,7000);return false;
   }
@@ -2541,7 +2541,7 @@ function rneTargetDbs(){return WL.dataSource.views().map(x=>x.key)}
    写しの更新は共有への往復を伴うので待つが、失敗しても読み直しは行う
    (共有が不調でも、手元の写しで一覧は出る)。 */
 async function reloadList(){
- try{await api('/api/db-mirror/refresh',{method:'POST',headers:{'Content-Type':'application/json'},
+ try{await api('/api/db-mirror/refresh',{quiet:true,method:'POST',headers:{'Content-Type':'application/json'},
    body:JSON.stringify({wait:true})})}
  catch(e){console.warn('共有からの写しを更新できませんでした',e)}
  invalidateTableCache();load(true);

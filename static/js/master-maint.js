@@ -4797,7 +4797,7 @@
   const seq=++qjState.probeSeq;
   qjState.probing=true;qjRenderProbe();
   try{
-   const r=await api('/api/query-join-master/probe',{method:'POST',
+   const r=await api('/api/query-join-master/probe',{quiet:true,method:'POST',
      headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
    if(seq!==qjState.probeSeq)return;
    qjState.probe=r.result||null;
@@ -5044,7 +5044,7 @@
   const seq=++dsState.probeSeq;
   dsState.probing=true;dsRenderProbe();
   let r=null;
-  try{r=await api('/api/data-source-master/probe',{method:'POST',headers:{'Content-Type':'application/json'},
+  try{r=await api('/api/data-source-master/probe',{quiet:true,method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify(d)})}
   catch(e){r={error:e.message,capability:{features:{}}}}
   if(seq!==dsState.probeSeq)return;          /* 打っている最中の古い結果は捨てる */
@@ -5431,7 +5431,7 @@
   btn.onclick=async()=>{
    btn.disabled=true;
    try{
-    const r=await api('/api/rne-extract/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:String($('#masterUserId')?.value||'').trim()})});
+    const r=await api('/api/rne-extract/run',{quiet:true,method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:String($('#masterUserId')?.value||'').trim()})});
     showToast('抽出を開始しました',r.message||'',4000);
    }catch(e){showToast('抽出を開始できません',e.message,7000);btn.disabled=false;return}
    refreshRneStatus();

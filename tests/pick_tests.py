@@ -134,6 +134,8 @@ G['権限'] = ['test_modeguard', 'test_noaccess', 'test_scperm', 'test_recperm',
              # §9.272: 権限区分（開発者/メンテナンス者/一般ユーザー）と接続の管理
              'test_presence', 'test_presenceui']
 G['ログ'] = ['test_logs', 'test_logview', 'test_error']
+# §9.273: 遅い書き込みに「保存しています…」を出す（api()と保存の帯）
+G['保存の帯'] = ['test_savechip']
 
 ALL = '*'  # 「全部回す」を表す印
 
@@ -266,7 +268,7 @@ RULES = [
     ('backend/routes/core.py', g('起動', 'test_error', 'test_nav')),
 
     # --- サーバー(その他) --------------------------------------------
-    ('backend/access_mode.py', g('権限', 'test_nav', 'test_crudroutes', 'test_colscope',
+    ('backend/access_mode.py', g('権限', '保存の帯', 'test_nav', 'test_crudroutes', 'test_colscope',
                                  'test_mastershare')),
     ('backend/db_access.py', g('接続', '一覧', 'test_setpage')),
     # データソースの「できること」の判定(§9.163)。列名の別名解決も

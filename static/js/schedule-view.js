@@ -314,7 +314,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  }
  async function syncNow(){
   try{
-   const st=await api('/api/schedule/sync-now',{method:'POST',
+   const st=await api('/api/schedule/sync-now',{quiet:true,method:'POST',
      headers:{'Content-Type':'application/json'},body:'{}'});
    scSyncState=st;renderSyncChip();
    if(st.result==='fetched'){scSyncSeen=null;renderSyncBanner(false);await refreshCurrentMode(true)}
@@ -6650,7 +6650,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const seq=++scJoinSeq;
   const joinStarted=Date.now();
   try{
-   const r=await api('/api/query-join/resolve',{method:'POST',
+   const r=await api('/api/query-join/resolve',{quiet:true,method:'POST',
      headers:{'Content-Type':'application/json'},
      body:JSON.stringify({db:meta.db,rows,builtin:false})});
    if(seq!==scJoinSeq||scState.equipment!==eq)return;
