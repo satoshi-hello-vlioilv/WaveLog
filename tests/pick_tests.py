@@ -30,7 +30,10 @@ ROOT = Path(__file__).resolve().parent.parent
 TESTS = ROOT / 'tests'
 
 # 常に回す静的検査(サーバーもブラウザも要らない安い網)。
-ALWAYS = ['test_patchlint', 'test_globallint', 'test_dskeylint', 'test_csslint', 'test_docindex']
+# §9.275: どの`.py`を触っても走らせる（知らないエスケープは、書いた本人の
+# Pythonでは警告にならないことがある——利用者の端末で初めて出た）。
+ALWAYS = ['test_patchlint', 'test_globallint', 'test_dskeylint', 'test_csslint',
+          'test_docindex', 'test_pywarn']
 
 # 束ねた呼び名。右辺は実際のテスト名。
 G = {}
